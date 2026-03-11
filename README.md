@@ -42,8 +42,9 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 | [21_ANALYTICS_DASHBOARD.md](./docs/21_ANALYTICS_DASHBOARD.md) | 報表儀表板（Agent績效 / 渠道分析 / 行銷效果）|
 
 ## 快速了解系統邊界
-
 ```
+從「LINE OA 後台工具」升級成「企業溝通中樞」，
+
 一個企業客戶 (Tenant)
   ├── 多個 LINE OA Channel
   ├── 多個 FB Page
@@ -53,6 +54,32 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 系統部署模式（Lite 版）
   → 單租戶：一個客戶 = 一套服務
   → 未來可升級為多租戶 SaaS
+
+---
+最有價值的幾個整合情境（家電業為例）:
+電商（Shopline/91APP）→ 新訂單 → 自動貼標 + 7天後寄調查
+IoT 智慧家電 → 溫度異常 → 自動開 Case + 通知客戶
+ERP/POS → 批量同步購買紀錄 → enriched Contact attributes + 保固廣播
+
+
+情境 A：電商平台 → CRM
+  Shopline 新訂單 POST → /api/v1/integrations/orders
+  → 系統找到或建立 Contact
+  → 自動貼標：「已購買」「冰箱系列」
+  → 觸發 Automation：3天後發送安裝說明
+
+情境 B：IoT 異常警報 → CRM
+  智慧冰箱偵測溫度異常 POST → /api/v1/integrations/events
+  → 自動開 Case（priority: HIGH）
+  → 指派給維修部門
+  → 通知客服主管
+
+情境 C：ERP 購買資料 → CRM
+  定時批量 POST 客戶購買紀錄
+  → 更新 ContactAttribute（brand, model, purchaseDate）
+  → 計算保固剩餘天數 → 定期廣播提醒
+
+
 ```
 # 結構
 ```
