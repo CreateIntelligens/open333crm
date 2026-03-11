@@ -36,6 +36,10 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 | [15_LICENSE_SERVER.md](./docs/15_LICENSE_SERVER.md) | License Server 自建設計（DB Schema / BD Portal / 扣點安全）|
 | [16_DB_SCHEMA.md](./docs/16_DB_SCHEMA.md) | CRM 完整資料庫 Schema（Prisma + pgvector，所有 Model）|
 | [17_UI_WIREFRAMES.md](./docs/17_UI_WIREFRAMES.md) | 企業後台 UI 畫面設計（ASCII Wireframe，8 大頁面）|
+| [18_BOT_AUTOROUTER.md](./docs/18_BOT_AUTOROUTER.md) | Bot 模式 + 人工接管邏輯（關鍵字/LLM/辦公時間）|
+| [19_CSAT_FLOW.md](./docs/19_CSAT_FLOW.md) | CSAT 滿意度調查完整流程（Flex 設計 + 低分挽救）|
+| [20_NOTIFICATION.md](./docs/20_NOTIFICATION.md) | 通知系統（Web Push / In-App / Email + 靜音設定）|
+| [21_ANALYTICS_DASHBOARD.md](./docs/21_ANALYTICS_DASHBOARD.md) | 報表儀表板（Agent績效 / 渠道分析 / 行銷效果）|
 
 ## 快速了解系統邊界
 
