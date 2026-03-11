@@ -258,3 +258,182 @@ Body:
 ```
 
 所有事件 POST 到指定 URL，Header 包含 `X-CRM-Signature: hmac-sha256-...`
+
+---
+
+### 渠道綁定（Channels — 完整版）
+
+> 相較前面的基礎版，加入綁定流程專屬端點
+
+```
+GET    /api/v1/channels                    # 渠道列表（含狀態）
+POST   /api/v1/channels/line               # 新增 LINE OA（自動設定 Webhook）
+POST   /api/v1/channels/fb                 # 新增 FB Messenger
+POST   /api/v1/channels/webchat            # 新增 Web Chat Widget
+GET    /api/v1/channels/:id                # 渠道詳情
+PATCH  /api/v1/channels/:id                # 更新設定（名稱/外觀/訊息）
+DELETE /api/v1/channels/:id                # 解除綁定
+
+POST   /api/v1/channels/:id/verify         # 手動重新驗證連線
+GET    /api/v1/channels/:id/status         # 即時連線狀態
+GET    /api/v1/channels/:id/webhook-url    # 取得 Webhook URL（供管理員複製貼到渠道後台）
+GET    /api/v1/channels/:id/embed-code     # Web Chat 嵌入碼（HTML snippet）
+POST   /api/v1/channels/:id/refresh-token  # 手動更新 Token（FB Long-lived）
+```
+
+**POST /api/v1/channels/line Body**
+```json
+{
+  "displayName": "XX家電官方帳號",
+  "channelId": "1234567890",
+  "channelSecret": "abcdef...",
+  "channelAccessToken": "eyJ...",
+  "settings": {
+    "welcomeMessage": "您好！歡迎加入！",
+    "botEnabled": false
+  }
+}
+```
+
+---
+
+### 訊息模板（Templates）
+
+```
+GET    /api/v1/templates                   # 列表（可過濾 channelType / category）
+POST   /api/v1/templates                   # 建立模板
+GET    /api/v1/templates/:id               # 詳情
+PATCH  /api/v1/templates/:id               # 更新
+DELETE /api/v1/templates/:id               # 刪除（系統模板不可刪）
+
+GET    /api/v1/templates/categories        # 分類清單
+POST   /api/v1/templates/:id/preview       # 預覽（代入變數值，回傳渲染後 JSON）
+  Body: { "variables": { "contact.name": "王小明", "attribute.brand": "Samsung" } }
+
+POST   /api/v1/templates/:id/render-send   # 渲染並發送到指定對話
+  Body: { "conversationId": "uuid", "variables": { ... } }
+
+POST   /api/v1/templates/import            # 匯入 JSON（批量建立）
+GET    /api/v1/templates/:id/export        # 匯出為 JSON
+```
+
+**GET /api/v1/templates 查詢參數**
+```
+?channelType=line|fb|universal
+&category=服務類|行銷類|產品資訊類
+&contentType=flex|text|quick_reply
+&q=模板名稱關鍵字
+&page=1&limit=20
+```
+
+---
+
+### 儲存層（Storage）
+
+```
+POST   /api/v1/storage/upload              # 上傳檔案（multipart/form-data）
+  FormData: file, folder (media|templates|km|avatars)
+  Response: { key, publicUrl, size, contentType }
+
+DELETE /api/v1/storage                     # 刪除（by key）
+  Body: { "key": "media/tenant/xxx.jpg" }
+
+GET    /api/v1/storage/signed-url/:key     # Private 檔案取 presigned URL（1小時有效）
+
+POST   /api/v1/storage/presign-upload      # 取得前端直傳 URL（避免大檔走 API Server）
+  Body: { "filename": "banner.jpg", "contentType": "image/jpeg", "folder": "templates" }
+  Response: { "uploadUrl": "https://minio/...", "publicUrl": "https://...", "key": "..." }
+```
+
+> **LINE 注意**：Flex Message 內圖片必須為公開 HTTPS URL。
+> 所有上傳到 `/templates` 資料夾的圖片預設為 public ACL，直接用 `publicUrl` 填入 Flex JSON。
+
+---
+
+### 行銷（Marketing）— 補全版
+
+```
+# 受眾分群
+GET    /api/v1/segments                    # 分群列表
+POST   /api/v1/segments                    # 建立分群
+GET    /api/v1/segments/:id                # 詳情
+PATCH  /api/v1/segments/:id                # 更新
+DELETE /api/v1/segments/:id                # 刪除
+POST   /api/v1/segments/:id/count          # 即時計算符合人數
+  Response: { "count": 1234, "estimatedAt": "..." }
+
+# 廣播
+GET    /api/v1/broadcasts                  # 廣播列表
+POST   /api/v1/broadcasts                  # 建立廣播
+GET    /api/v1/broadcasts/:id              # 詳情 + 統計
+PATCH  /api/v1/broadcasts/:id              # 更新（DRAFT 狀態才可）
+DELETE /api/v1/broadcasts/:id              # 刪除（只能刪 DRAFT）
+POST   /api/v1/broadcasts/:id/send-now     # 立即發送
+POST   /api/v1/broadcasts/:id/schedule     # 設定排程時間
+POST   /api/v1/broadcasts/:id/cancel       # 取消排程
+
+# 行銷活動
+GET    /api/v1/campaigns                   # 活動列表
+POST   /api/v1/campaigns                   # 建立活動
+GET    /api/v1/campaigns/:id               # 活動詳情 + 下屬廣播
+PATCH  /api/v1/campaigns/:id               # 更新
+```
+
+---
+
+### License 狀態（供 Tenant Admin 查看，部分資訊）
+
+> 這個端點只回傳允許 Tenant 知道的資訊，不包含 API Key / 計費細節。
+
+```
+GET /api/v1/license/status
+Response:
+{
+  "plan": "professional",
+  "expiresAt": "2026-12-31T23:59:59Z",
+  "features": {
+    "channels.whatsapp": false,
+    "ai.imageGeneration": true,
+    ...
+  },
+  "credits": {
+    "llmTokens":      { "remaining": 8500000, "unit": "tokens" },
+    "imageGen":       { "remaining": 450,      "unit": "images" },
+    "broadcastMsgs":  { "remaining": 28000,    "unit": "messages" }
+  }
+}
+```
+
+---
+
+## 補充：API Key 權限範圍（更新）
+
+加入新模組的 scope：
+
+```
+read:conversations       write:messages
+read:contacts            write:contacts
+read:cases               write:cases
+read:tags                write:tags
+read:templates           write:templates
+read:km                  write:km
+read:segments            write:broadcasts
+read:license_status      (只能讀，不可寫)
+```
+
+---
+
+## 補充：錯誤代碼
+
+| HTTP | Code | 說明 |
+|------|------|------|
+| 400 | `VALIDATION_ERROR` | 請求資料不符格式 |
+| 401 | `UNAUTHORIZED` | 未登入或 Token 失效 |
+| 403 | `FORBIDDEN` | 無此操作權限（角色限制）|
+| 402 | `FEATURE_NOT_ENABLED` | 此功能未在授權方案內 |
+| 402 | `INSUFFICIENT_CREDITS` | Credits 餘額不足 |
+| 404 | `NOT_FOUND` | 資源不存在 |
+| 409 | `CONFLICT` | 資源衝突（如重複 E-mail）|
+| 422 | `UNPROCESSABLE` | 業務邏輯驗證失敗 |
+| 429 | `RATE_LIMITED` | 請求過於頻繁 |
+| 500 | `INTERNAL_ERROR` | 系統內部錯誤 |
