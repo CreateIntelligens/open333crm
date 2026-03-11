@@ -32,6 +32,8 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 | [11_ROADMAP.md](./docs/11_ROADMAP.md) | 開發里程碑與 MVP 範圍 |
 | [12_TEMPLATE_AND_STORAGE.md](./docs/12_TEMPLATE_AND_STORAGE.md) | Flex 模板庫 + 統一儲存層（S3/MinIO/GCS）|
 | [13_CHANNEL_BINDING.md](./docs/13_CHANNEL_BINDING.md) | 企業自助綁定社交渠道（LINE / FB / WebChat）|
+| [14_BILLING_AND_LICENSE.md](./docs/14_BILLING_AND_LICENSE.md) | 平台授權 & Billing 控制（太上皇層，Tenant 看不到）|
+| [15_LICENSE_SERVER.md](./docs/15_LICENSE_SERVER.md) | License Server 自建設計（DB Schema / BD Portal / 扣點安全）|
 
 ## 快速了解系統邊界
 

@@ -3,45 +3,61 @@
 ## 架構分層圖
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        前端層 (Frontend)                      │
-│  React/Next.js Admin Console  +  Web Chat Widget             │
-└────────────────────────┬────────────────────────────────────┘
-                         │ REST API / WebSocket
-┌────────────────────────▼────────────────────────────────────┐
-│                      API Gateway Layer                        │
-│   認證 (JWT/OAuth)  │  Rate Limit  │  Tenant Routing         │
-└──┬────────┬──────────┬─────────────┬───────────────────────┘
-   │        │          │             │
-   ▼        ▼          ▼             ▼
-┌──────┐ ┌──────┐ ┌────────┐ ┌────────────┐
-│Core  │ │Case  │ │Contact │ │Automation  │
-│Inbox │ │Svc   │ │Svc     │ │Engine      │
-└──────┘ └──────┘ └────────┘ └────────────┘
-   │        │          │             │
-   └────────┴──────────┴─────────────┘
-                    │
-┌───────────────────▼────────────────────────────────────────┐
-│                  Event Bus (内部事件匯流)                    │
-│               Redis Streams / RabbitMQ                       │
-└───────────────────┬────────────────────────────────────────┘
-                    │ 發 / 收
-┌───────────────────▼────────────────────────────────────────┐
-│              Channel Plugin Layer（渠道插件層）              │
-│   LINE Plugin │ FB Plugin │ WebChat Plugin │ [Future: WA]   │
-└───────────────────┬────────────────────────────────────────┘
-                    │ Webhook 接收 / 訊息發送
-┌───────────────────▼────────────────────────────────────────┐
-│              外部 IM 平台 (Third-Party)                      │
-│   LINE Messaging API │ FB Graph API │ ...                    │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│              👑  平台授權 & Billing 控制層 [太上皇]              │
+│   license.open333crm.com 提供遠端 License JSON              │
+│   功能開關 / AI Credits 額度 / LLM API Key  [ Tenant 看不到 ] │
+└─────────────────────────────┬───────────────────────────────────┘
+                             │  定時拉取（每 60 分鐘）快取至 Redis
+┌────────────────────────────▼─────────────────────────────────────┐
+│           LicenseService（內部全局 Singleton）                  │
+│           isFeatureEnabled() / hasCredits() / deductCredits()  │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │ Feature Guard 每個 API 呼叫前檢查
 
-                   支援服務
-┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐
-│PostgreSQL│ │  Redis   │ │  MinIO/  │ │LLM Service │
-│  (主庫)  │ │(快取/佇列)│ │  S3(檔案)│ │(OpenAI/本地)│
-└──────────┘ └──────────┘ └──────────┘ └────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       前端層 (Frontend)                           │
+│    React/Next.js Admin Console  +  Web Chat Widget (Embed JS)    │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ REST API / WebSocket
+┌────────────────────────▼────────────────────────────────────────┐
+│                      API Gateway Layer                            │
+│    認證 (JWT/API Key)  │  Rate Limit  │  Tenant Routing           │
+└──┬───────┬──────────┬──────────┬──────────┬──────────┬──────────┘
+   │       │          │          │          │          │
+   ▼       ▼          ▼          ▼          ▼          ▼
+┌──────┐ ┌──────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐
+│Core  │ │Case  │ │Contact │ │Auto-   │ │Template│ │Marketing │
+│Inbox │ │Svc   │ │Svc     │ │mation  │ │Svc     │ │Svc       │
+└──────┘ └──────┘ └────────┘ └────────┘ └────────┘ └──────────┘
+   │       │          │          │          │          │
+   └───────┴──────────┴──────────┴──────────┴──────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────────┐
+│                    Event Bus (內部事件匯流)                        │
+│                   Redis Streams (BullMQ)                          │
+└──────────┬────────────────────────────────┬───────────────────── ┘
+           │ 發 / 收                         │ 定時任務
+┌──────────▼──────────────────┐  ┌──────────▼────────────────────┐
+│    Channel Plugin Layer      │  │         Workers                │
+│  LINE │ FB │ WebChat │ [WA] │  │  automation / broadcast / sla  │
+└──────────┬──────────────────┘  └───────────────────────────────┘
+           │ Webhook 接收 / 訊息發送
+┌──────────▼──────────────────────────────────────────────────────┐
+│                   外部 IM 平台 (Third-Party)                       │
+│        LINE Messaging API  │  FB Graph API  │  ...               │
+└─────────────────────────────────────────────────────────────────┘
+
+                          支援服務層
+┌──────────┐ ┌──────────┐ ┌─────────────────┐ ┌────────────┐
+│PostgreSQL│ │  Redis   │ │  Storage Layer  │ │LLM Service │
+│+pgvector │ │(快取/佇列)│ │ MinIO/S3/GCS   │ │(OpenAI/本地)│
+└──────────┘ └──────────┘ └─────────────────┘ └────────────┘
 ```
+
+> **說明**：Storage Layer 是統一儲存抽象，MinIO 為本地預設，
+> 可透過環境變數切換至 S3 或 GCS，詳見 [12_TEMPLATE_AND_STORAGE.md](./12_TEMPLATE_AND_STORAGE.md)。
+> 渠道自助綁定流程詳見 [13_CHANNEL_BINDING.md](./13_CHANNEL_BINDING.md)。
 
 ---
 
@@ -71,18 +87,45 @@
 
 ### 5. Channel Plugin Layer
 - 每個渠道是一個獨立的 Plugin/Adapter
-- 實作統一介面：`receive(rawWebhook) → UniversalMessage`、`send(message, channel) → void`
+- 統一介面：`receive(rawWebhook) → UniversalMessage`、`send(message, channel) → void`
 - 渠道特有功能（如 LINE Flex Message）透過 Plugin Extension 暴露
+- 企業管理員可在後台**自助綁定**渠道，系統自動設定 Webhook URL
+- 詳見 [03_CHANNEL_PLUGIN.md](./03_CHANNEL_PLUGIN.md) 和 [13_CHANNEL_BINDING.md](./13_CHANNEL_BINDING.md)
 
 ### 6. LLM Service（AI 輔助）
-- 知識庫 Embedding + 向量搜尋
-- 建議回覆生成
+- 知識庫 Embedding + 向量搜尋（pgvector）
+- RAG 流程：語義搜尋知識庫 → 組裝 Prompt → 生成建議回覆
 - 僅做「建議」，客服人員確認後才發送
+- 詳見 [07_LLM_AND_KM.md](./07_LLM_AND_KM.md)
 
 ### 7. Marketing Service
-- 廣播任務管理
+- 廣播任務管理（立即 / 排程 / 觸發）
 - 受眾分群（Tag / Attribute / 條件組合）
-- 模板管理（含 LINE Flex / FB 模板）
+- 模板管理（含 LINE Flex 30+ 模板 / FB 模板）
+- 詳見 [08_MARKETING.md](./08_MARKETING.md)
+
+### 8. Template Service
+- 統一管理 LINE Flex、FB、純文字等所有訊息模板
+- 支援 `{{變數}}` 語法的動態替換
+- 模板圖片 URL 透過 Storage Layer 產生，與儲存體解耦
+- 提供 JSON 編輯器 + 即時預覽 API
+- 詳見 [12_TEMPLATE_AND_STORAGE.md](./12_TEMPLATE_AND_STORAGE.md)
+
+### 9. Storage Layer（統一儲存層）
+- 抽象介面：`upload()` / `getPublicUrl()` / `delete()`
+- 預設 MinIO（本地自架），可切換 AWS S3 或 GCS，改環境變數即可
+- LINE 傳入的媒體（圖片/影片）在 Webhook 接收時**立即下載**存入此層，避免 LINE 臨時 URL 过期
+- 模板圖片、KM 附件、對話媒體、Agent 頭像皆走此層
+- 詳見 [12_TEMPLATE_AND_STORAGE.md](./12_TEMPLATE_AND_STORAGE.md)
+
+### 10. LicenseService（平台授權層）
+- 啟動時從遠端拉取 License JSON，定時刷新（預設 60 分鐘）
+- HMAC-SHA256 簽名驗證，防止被竿改
+- 提供 `isFeatureEnabled()` / `hasCredits()` / `deductCredits()` 給全系統
+- 網路斷線時使用 Redis 快取，超過 24 小時進入降級模式
+- LLM API Key **存在 License JSON 中**，Tenant 不知情，無法繞過額度機制
+- Tenant 終端專有两個環境變數：`LICENSE_KEY` + `LICENSE_FETCH_URL`
+- 詳見 [14_BILLING_AND_LICENSE.md](./14_BILLING_AND_LICENSE.md)
 
 ---
 
@@ -99,10 +142,12 @@
 
 ## 資料庫設計原則
 
-- **PostgreSQL**：所有核心業務資料（Contact / Case / Conversation / Rule）
-- **Redis**：Session、快取、Rate Limit、WebSocket 廣播
-- **向量資料庫（pgvector 或 LanceDB）**：KM 文章 Embedding，供 LLM 語義搜尋
-- **MinIO / S3**：媒體檔案（圖片、PDF、語音）
+- **PostgreSQL + pgvector**：所有核心業務資料（Contact / Case / Conversation / Rule）+ KM 向量搜尋
+- **Redis**：Session、快取、Rate Limit、WebSocket 廣播、BullMQ 任務佇列
+- **Storage Layer（MinIO / S3 / GCS）**：所有媒體檔案（圖片、PDF、語音）、模板圖片、KM 附件
+  - Lite 版預設 MinIO（容器內自架）
+  - 客戶要求時可切換至 S3 / GCS，零程式碼修改
+  - Channel credentials 以 AES-256 加密後存入 PostgreSQL
 
 ---
 
@@ -123,11 +168,18 @@
 
 ```yaml
 services:
-  api:       # Node.js/FastAPI 後端
-  worker:    # Automation Engine worker
-  frontend:  # Next.js Admin Console
-  postgres:  # 主資料庫
-  redis:     # 快取 + 事件佇列
-  minio:     # 本地 S3 相容物件儲存
-  nginx:     # 反向代理
+  api:              # Node.js + Fastify 後端 API
+  worker-auto:      # Automation Engine worker（規則觸發/執行）
+  worker-broadcast: # 廣播 / 排程發送 worker
+  worker-sla:       # SLA 監控 + 到期提醒 worker
+  frontend:         # Next.js Admin Console
+  widget:           # Web Chat Widget 靜態資源
+  postgres:         # 主資料庫（pgvector extension）
+  redis:            # 快取 + BullMQ 任務佇列
+  minio:            # 本地 S3 相容物件儲存（Storage Layer 預設）
+  caddy:            # 反向代理 + 自動 HTTPS
 ```
+
+> **授權服務**（`license.open333crm.com`）是平台方獲作的外部服務，
+> **不包含在客戶端 Docker Compose 中**。
+> 客戶端統一透過 `LICENSE_KEY` 向遠端拉取 JSON。
