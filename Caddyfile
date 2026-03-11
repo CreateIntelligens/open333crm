@@ -1,0 +1,39 @@
+# Caddy reverse proxy for open333CRM
+# Replace your-domain.com with actual domain
+
+your-domain.com {
+    # Admin Console (Next.js)
+    handle /admin/* {
+        reverse_proxy web:3001
+    }
+
+    # API Server (Fastify)
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+
+    # WebSocket
+    handle /ws* {
+        reverse_proxy api:3000
+    }
+
+    # Channel Webhooks
+    handle /webhooks/* {
+        reverse_proxy api:3000
+    }
+
+    # Web Chat Widget (static)
+    handle /widget/* {
+        reverse_proxy widget:80
+    }
+
+    # Default: forward to admin console
+    handle {
+        reverse_proxy web:3001
+    }
+}
+
+# Storage (MinIO) — public bucket access
+storage.your-domain.com {
+    reverse_proxy minio:9000
+}

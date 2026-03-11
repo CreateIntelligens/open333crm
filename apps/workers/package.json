@@ -1,0 +1,25 @@
+{
+  "name": "@open333crm/workers",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open333crm/types": "workspace:*",
+    "@open333crm/core": "workspace:*",
+    "@open333crm/channel-plugins": "workspace:*",
+    "bullmq": "^5.7.0",
+    "ioredis": "^5.3.0",
+    "@prisma/client": "^5.13.0",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}

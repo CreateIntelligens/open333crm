@@ -54,3 +54,23 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
   → 單租戶：一個客戶 = 一套服務
   → 未來可升級為多租戶 SaaS
 ```
+# 結構
+```
+open333CRM/
+├── apps/
+│   ├── api/          ← Fastify + Prisma + BullMQ（src/index.ts + config/env.ts）
+│   ├── web/          ← Next.js Admin Console
+│   ├── widget/       ← Web Chat Widget（Vite）
+│   └── workers/      ← 4 個 BullMQ Worker（automation/broadcast/sla/notification）
+├── packages/
+│   ├── types/        ← 共用 TS 型別（UniversalMessage, Contact, License...）
+│   ├── core/         ← 共用業務邏輯（待填）
+│   ├── channel-plugins/ ← ChannelPlugin 介面 + Plugin Registry
+│   └── ui/           ← 共用 React 元件（待填）
+├── docs/             ← 21 份架構文件
+├── .env.example      ← 所有環境變數範本
+├── docker-compose.yml ← 完整 8 服務
+├── Caddyfile         ← 反向代理路由
+├── pnpm-workspace.yaml
+└── turbo.json
+```
