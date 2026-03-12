@@ -18,6 +18,7 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 
 | 文件 | 說明 |
 |------|------|
+| [📋 PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) | **專案規劃：里程碑 / 工時預估 / 並行執行軌道（2PM+2BE+2FE）** |
 | [00_WHY_AND_VISION.md](./docs/00_WHY_AND_VISION.md) | 為什麼重建？舊系統痛點分析 + 新系統願景 |
 | [01_DOMAIN_MODEL.md](./docs/01_DOMAIN_MODEL.md) | 核心領域模型 — 聯繫人、渠道、Case、事件 |
 | [02_SYSTEM_ARCHITECTURE.md](./docs/02_SYSTEM_ARCHITECTURE.md) | 系統架構總覽 — 分層設計、模組邊界 |
