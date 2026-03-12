@@ -40,6 +40,8 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 | [19_CSAT_FLOW.md](./docs/19_CSAT_FLOW.md) | CSAT 滿意度調查完整流程（Flex 設計 + 低分挽救）|
 | [20_NOTIFICATION.md](./docs/20_NOTIFICATION.md) | 通知系統（Web Push / In-App / Email + 靜音設定）|
 | [21_ANALYTICS_DASHBOARD.md](./docs/21_ANALYTICS_DASHBOARD.md) | 報表儀表板（Agent績效 / 渠道分析 / 行銷效果）|
+| [22_FAN_PORTAL.md](./docs/22_FAN_PORTAL.md) | 粉絲會員入口（投票/表單/競猜 + LIFF 導流 + 積分系統）|
+| [23_SHORT_URL_TRACKING.md](./docs/23_SHORT_URL_TRACKING.md) | 短連結追蹤（LIFF 身份識別 + 自動貼標 + 行為分析）|
 
 ## 快速了解系統邊界
 ```
