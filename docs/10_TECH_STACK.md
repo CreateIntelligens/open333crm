@@ -14,6 +14,8 @@
 | **物件儲存** | MinIO（本地）/ AWS S3 | 媒體檔案，MinIO 相容 S3 API |
 | **容器化** | Docker + Docker Compose | 單機部署簡單；未來 k8s 升級平滑 |
 | **反向代理** | Caddy | 自動 HTTPS、設定簡單 |
+| **Monorepo/任務編排** | pnpm workspaces + Turborepo | 統一依賴管理、任務快取與並行 |
+| **CI** | GitHub Actions | lint / build / test |
 
 ---
 
