@@ -8,21 +8,29 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
     depends_on: [api, web]
+  # ── Application ────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   web:
     # Build will be defined later
     image: node:20-alpine
     restart: always
 
-  api:
-    # Build will be defined later
-    image: node:20-alpine
-    restart: always
-    env_file: .env
-    volumes:
-      - ./workspace:/workspace
-    depends_on: [postgres, redis, minio]
-
+  # ── Data ───────────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:16-pg16
     environment:
@@ -38,6 +46,12 @@ services:
     ports: ["6379:6379"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
   minio:
     image: minio/minio
