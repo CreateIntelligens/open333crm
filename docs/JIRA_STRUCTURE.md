@@ -63,6 +63,46 @@ Story Point：建議 1pt = 半天
 
 ---
 
+## 📄 Epic ↔ 參考文件對照表
+
+> 每個 Jira Story/Sub-task 的「Description」欄位請附上對應文件連結，
+> 讓執行者直接查閱規格，不用開口問。
+
+| Epic | Story 主題 | 參考文件 |
+|------|-----------|---------|
+| EP-UX | 後台設計稿 | [17_UI_WIREFRAMES.md](./17_UI_WIREFRAMES.md)、[02_SYSTEM_ARCHITECTURE.md](./02_SYSTEM_ARCHITECTURE.md) |
+| EP-UX | Design System | [17_UI_WIREFRAMES.md](./17_UI_WIREFRAMES.md) |
+| EP-UX | Fan Portal 設計 | [22_FAN_PORTAL.md](./22_FAN_PORTAL.md) |
+| EP-INFRA | DB Schema | [16_DB_SCHEMA.md](./16_DB_SCHEMA.md) |
+| EP-INFRA | OpenAPI / MSW | [09_API_DESIGN.md](./09_API_DESIGN.md) |
+| EP-INFRA | Docker / CI | [10_TECH_STACK.md](./10_TECH_STACK.md)、[02_SYSTEM_ARCHITECTURE.md](./02_SYSTEM_ARCHITECTURE.md) |
+| EP-INBOX | LINE Plugin | [03_CHANNEL_PLUGIN.md](./03_CHANNEL_PLUGIN.md)、[13_CHANNEL_BINDING.md](./13_CHANNEL_BINDING.md) |
+| EP-INBOX | FB Plugin | [03_CHANNEL_PLUGIN.md](./03_CHANNEL_PLUGIN.md)、[13_CHANNEL_BINDING.md](./13_CHANNEL_BINDING.md) |
+| EP-INBOX | WebChat Plugin | [03_CHANNEL_PLUGIN.md](./03_CHANNEL_PLUGIN.md) |
+| EP-INBOX | 收件匣 UI | [17_UI_WIREFRAMES.md](./17_UI_WIREFRAMES.md)、[09_API_DESIGN.md](./09_API_DESIGN.md) |
+| EP-INBOX | Auth 登入 | [09_API_DESIGN.md](./09_API_DESIGN.md) |
+| EP-CHANNEL | 渠道綁定 | [13_CHANNEL_BINDING.md](./13_CHANNEL_BINDING.md)、[03_CHANNEL_PLUGIN.md](./03_CHANNEL_PLUGIN.md) |
+| EP-CASE | Case 狀態機 | [04_CASE_MANAGEMENT.md](./04_CASE_MANAGEMENT.md)、[09_API_DESIGN.md](./09_API_DESIGN.md) |
+| EP-CASE | 指派系統 | [04_CASE_MANAGEMENT.md](./04_CASE_MANAGEMENT.md) |
+| EP-CASE | SLA 監控 | [04_CASE_MANAGEMENT.md](./04_CASE_MANAGEMENT.md)、[20_NOTIFICATION.md](./20_NOTIFICATION.md) |
+| EP-CASE | Case UI | [17_UI_WIREFRAMES.md](./17_UI_WIREFRAMES.md) |
+| EP-CONTACT | Contact 管理 | [05_CONTACT_AND_TAG.md](./05_CONTACT_AND_TAG.md)、[16_DB_SCHEMA.md](./16_DB_SCHEMA.md) |
+| EP-CONTACT | 標籤系統 | [05_CONTACT_AND_TAG.md](./05_CONTACT_AND_TAG.md) |
+| EP-AUTO | Automation Engine | [06_AUTOMATION_AND_EVENT.md](./06_AUTOMATION_AND_EVENT.md) |
+| EP-AUTO | Automation UI | [06_AUTOMATION_AND_EVENT.md](./06_AUTOMATION_AND_EVENT.md)、[17_UI_WIREFRAMES.md](./17_UI_WIREFRAMES.md) |
+| EP-MKT | 受眾分群 | [08_MARKETING.md](./08_MARKETING.md) |
+| EP-MKT | Flex 模板 | [12_TEMPLATE_AND_STORAGE.md](./12_TEMPLATE_AND_STORAGE.md) |
+| EP-MKT | 廣播發送 | [08_MARKETING.md](./08_MARKETING.md)、[09_API_DESIGN.md](./09_API_DESIGN.md) |
+| EP-BOT | Bot & 接管 | [18_BOT_AUTOROUTER.md](./18_BOT_AUTOROUTER.md) |
+| EP-BOT | CSAT | [19_CSAT_FLOW.md](./19_CSAT_FLOW.md) |
+| EP-ANALYTICS | 報表 | [21_ANALYTICS_DASHBOARD.md](./21_ANALYTICS_DASHBOARD.md) |
+| EP-ANALYTICS | 通知系統 | [20_NOTIFICATION.md](./20_NOTIFICATION.md) |
+| EP-ANALYTICS | License / Plan | [14_BILLING_AND_LICENSE.md](./14_BILLING_AND_LICENSE.md) |
+| EP-PORTAL | Fan Portal 全部 | [22_FAN_PORTAL.md](./22_FAN_PORTAL.md) |
+| EP-TRACKING | 短連結追蹤 | [23_SHORT_URL_TRACKING.md](./23_SHORT_URL_TRACKING.md) |
+
+---
+
 ## EP-UX — UX 設計（W0，Pre-sprint）
 
 ```
