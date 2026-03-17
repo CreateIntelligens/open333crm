@@ -5,6 +5,10 @@ const EnvSchema = z.object({
   PORT:           z.coerce.number().default(3000),
   DATABASE_URL:   z.string().min(1),
   REDIS_URL:      z.string().min(1),
+  CACHE_DRIVER:   z.enum(['memory', 'redis']).default('memory'),
+  CACHE_SEGMENT:  z.string().default('open333crm-api-cache'),
+  CACHE_EXPIRES_IN: z.coerce.number().optional(),
+  CACHE_REDIS_DB: z.coerce.number().int().nonnegative().default(0),
   JWT_SECRET:     z.string().min(32),
   CORS_ORIGIN:    z.string().default('http://localhost:3001'),
 
