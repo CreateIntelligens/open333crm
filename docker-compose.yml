@@ -6,15 +6,28 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    env_file: .env
-    environment:
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+    env_file: apps/api/.env
     ports:
       - "3000:3000"
+    volumes:
+      - ./apps/api:/app/apps/api
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  studio:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: apps/api/.env
+    command: ["pnpm", "--filter", "@open333crm/api", "run", "db:gui"]
+    ports:
+      - "5555:5555"
+    depends_on:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

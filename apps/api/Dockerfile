@@ -5,6 +5,9 @@ WORKDIR /app
 # Enable pnpm
 RUN corepack enable
 
+# Prisma engine runtime dependencies (Alpine)
+RUN apk add --no-cache openssl libc6-compat
+
 # Install dependencies (monorepo)
 COPY package.json pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
@@ -26,6 +29,6 @@ COPY tsconfig.base.json ./
 COPY apps/api ./apps/api
 COPY packages ./packages
 
-EXPOSE 3000
+EXPOSE 3000 5555
 
-CMD ["pnpm", "--filter", "@open333crm/api", "dev"]
+CMD ["sh", "-c", "pnpm --filter @open333crm/api run prisma:generate && pnpm --filter @open333crm/api run prisma:migrate:deploy && pnpm --filter @open333crm/api dev"]
