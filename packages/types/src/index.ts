@@ -4,7 +4,7 @@
 
 // ── Channel ──────────────────────────────
 
-export type ChannelType = 'LINE' | 'FB' | 'WEBCHAT' | 'WHATSAPP';
+export type ChannelType = 'LINE' | 'FB' | 'WEBCHAT' | 'WHATSAPP' | 'TELEGRAM' | 'THREADS';
 
 export interface ChannelConfig {
   id: string;
@@ -89,12 +89,33 @@ export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 // ── License ───────────────────────────────
 
+// ─────────────────────────────────────────
+// License v0.2.0 — Channel as object (Q4: no boolean)
+// ─────────────────────────────────────────
+
+export type ChannelTeamAccessLevel = 'full' | 'reply_only' | 'read_only';
+
+export interface ChannelLimit {
+  enabled: boolean;
+  maxCount?: number;           // 最大開通數量（支援多組帳號 Q1）
+  messageFee?: number;         // 每則訊息費用
+  messageFeeCurrency?: string; // USD | TWD
+}
+
+export interface TeamLicense {
+  teamId: string;              // 對應 DB Team.licenseTeamId
+  teamName: string;
+  channels: Partial<Record<ChannelType, ChannelLimit>>;
+  expiresAt?: string;
+}
+
 export interface LicenseFeatures {
-  channels: {
-    line: boolean;
-    fb: boolean;
-    webchat: boolean;
-    whatsapp: boolean;
+  channels: Partial<Record<ChannelType, ChannelLimit>>;
+  inbox: {
+    unifiedInbox: boolean;
+    maxAgents: number;
+    maxTeams: number;          // Q3: 部門數上限
+    maxConcurrentConversations: number;
   };
   ai: {
     llmSuggestReply: boolean;
@@ -113,9 +134,17 @@ export interface LicenseFeatures {
   };
   contacts: {
     maxContacts: number;
+    relationGraph?: boolean;
+    customAttributes?: boolean;
+    maxCustomAttributes?: number;
+  };
+  teams?: TeamLicense[];       // 多部門授權
+  defaultTeam?: {
+    channels: Partial<Record<ChannelType, ChannelLimit>>;
   };
   [key: string]: unknown;
 }
+
 
 export interface LicenseCredits {
   llmTokens: CreditInfo;

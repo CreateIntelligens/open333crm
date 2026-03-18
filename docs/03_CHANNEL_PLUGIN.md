@@ -23,10 +23,10 @@ WhatsApp   ──→   WhatsAppPlugin (未來)      │ （核心不知道訊息
 ```typescript
 interface UniversalMessage {
   id: string;                      // 系統內部 UUID
-  channelType: ChannelType;        // 'LINE' | 'FB' | 'WEBCHAT' | 'WHATSAPP'
+  channelType: ChannelType;        // 'LINE' | 'FB' | 'WEBCHAT' | 'WHATSAPP' | 'TELEGRAM' | 'THREADS'
   channelId: string;               // 對應的 Channel 設定 UUID
   direction: 'inbound' | 'outbound';
-  contactUid: string;              // 渠道內的用戶 ID（LINE userId / FB PSID）
+  contactUid: string;              // 渠道內的用戶 ID（LINE userId / FB PSID / Telegram chat_id）
   timestamp: Date;
   messageType: MessageContentType;
   content: MessageContent;
@@ -128,6 +128,8 @@ function getPlugin(type: ChannelType): ChannelPlugin {
 registerPlugin(new LinePlugin());
 registerPlugin(new FbPlugin());
 registerPlugin(new WebChatPlugin());
+registerPlugin(new TelegramPlugin());   // v0.2.0 新增
+registerPlugin(new ThreadsPlugin());    // v0.2.0 新增
 // 未來：registerPlugin(new WhatsAppPlugin());
 ```
 
@@ -142,6 +144,9 @@ POST /webhooks/line/:channelId       → LinePlugin
 POST /webhooks/fb/:channelId         → FbPlugin
 GET  /webhooks/fb/:channelId         → FB Webhook 驗證（Challenge）
 WS   /webhooks/webchat/:channelId    → WebChatPlugin（WebSocket）
+POST /webhooks/telegram/:channelId   → TelegramPlugin
+POST /webhooks/threads/:channelId    → ThreadsPlugin
+GET  /webhooks/threads/:channelId    → Instagram Webhook Challenge
 POST /webhooks/whatsapp/:channelId   → WhatsAppPlugin（未來）
 ```
 
@@ -166,30 +171,36 @@ Webhook 請求進來
 
 ## 5. 渠道新增 Checklist
 
-新增一個渠道（以 WhatsApp 為例），只需做以下事項，**核心業務邏輯不用改**：
+新增一個渠道（以 **Telegram** 為例），只需做以下事項，**核心業務邏輯不用改**：
 
-- [ ] 建立 `WhatsAppPlugin implements ChannelPlugin`
-- [ ] 實作 `verifySignature`（WhatsApp Cloud API Signature）
-- [ ] 實作 `parseWebhook`（WhatsApp Cloud API → UniversalMessage）
-- [ ] 實作 `sendMessage`（呼叫 WhatsApp Send Message API）
-- [ ] 實作 `getProfile`
-- [ ] 在 Registry 中 `registerPlugin(new WhatsAppPlugin())`
-- [ ] 新增 `/webhooks/whatsapp/:channelId` 路由
-- [ ] 前端新增 WhatsApp Channel 設定頁
+- [ ] 新增 `ChannelType.TELEGRAM` 到 `packages/types`
+- [ ] 建立 `TelegramPlugin implements ChannelPlugin`
+- [ ] `verifySignature`：驗證 `X-Telegram-Bot-Api-Secret-Token` header
+- [ ] `parseWebhook`：解析 text / photo / sticker / location / callback_query
+- [ ] `sendMessage`：呼叫 Telegram `sendMessage` / `sendPhoto` API
+- [ ] `getProfile`：取得 Telegram user firstName / lastName
+- [ ] `setWebhook`：自動設定 Bot Webhook URL
+- [ ] 在 Plugin Registry `registerPlugin(new TelegramPlugin())`
+- [ ] 新增 `/webhooks/telegram/:channelId` 路由
+- [ ] 前端新增 Telegram Channel 設定頁（botToken + webhookSecret 輸入）
+
+> **Threads 同理**，差別在使用 Instagram Graph API + HMAC-SHA256 App Secret 驗證。
 
 ---
 
 ## 6. 各渠道能力差異矩陣
 
-| 能力 | LINE | FB | WebChat | WhatsApp |
-|------|------|----|---------|----------|
-| 文字收發 | ✅ | ✅ | ✅ | ✅ |
-| 圖片/影片 | ✅ | ✅ | ✅ | ✅ |
-| Flex / 模板 | ✅ Flex | ✅ Generic/Button | ✅ 自製 | ✅ Template |
-| Quick Reply | ✅ | ✅ | ✅ | ✅ |
-| Postback | ✅ | ✅ | ✅ | ✅ |
-| Sticker | ✅ | ❌ | ❌ | ❌ |
-| Rich Menu | ✅ | ❌（Persistent Menu） | ❌ | ❌ |
-| 語音 | 接收 | 接收 | ❌ | ✅ |
-| 已讀回條 | ❌ | ✅ | 自製 | ✅ |
-| Webhook自動設定 | ✅（Messaging API） | ✅（OAuth Flow） | N/A | ❌（手動） |
+| 能力 | LINE | FB | WebChat | WhatsApp | **Telegram** | **Threads** |
+|------|------|----|---------|----------|------------|----------|
+| 文字收發 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 圖片/影片 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅圖片 |
+| Flex / 模板 | ✅ Flex | ✅ Generic | ✅ 自製 | ✅ Template | ❌ | ❌ |
+| Quick Reply | ✅ | ✅ | ✅ | ✅ | ✅ Inline KB | ✅ |
+| Postback | ✅ | ✅ | ✅ | ✅ | ✅ Callback | ❌ |
+| Sticker | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Location | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Story Reply | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Rich Menu | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 語音 | 接收 | 接收 | ❌ | ✅ | ✅ | ❌ |
+| 已讀回條 | ❌ | ✅ | 自製 | ✅ | ❌ | ❌ |
+| Webhook自動設定 | ✅ | ✅ | N/A | ❌ | ✅ setWebhook | ✅ 手動＋review |

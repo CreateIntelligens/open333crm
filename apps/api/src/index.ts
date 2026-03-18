@@ -22,18 +22,22 @@ await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
 app.get('/health', async () => ({ status: 'ok', version: '0.1.0' }));
 
 // ── Webhook routes ────────────────────────
-// TODO: register channel webhook routes
-// app.register(lineWebhookRoutes, { prefix: '/webhooks/line' });
-// app.register(fbWebhookRoutes,   { prefix: '/webhooks/fb' });
-// app.register(webchatRoutes,     { prefix: '/webhooks/webchat' });
+import webhookRoutes from './routes/webhooks.js';
+
+app.register(webhookRoutes, { prefix: '/webhooks' });
+
 
 // ── API routes ────────────────────────────
 import kmRoutes from './routes/km.js';
 import brainRoutes from './routes/brain.js';
+import channelRoutes from './routes/channels.js';
+import reportRoutes from './routes/reports.js';
 
 app.register(kmRoutes, { prefix: '/api/v1/km' });
 app.register(brainRoutes, { prefix: '/api/v1/brain' });
-// TODO: register other API route modules
+app.register(channelRoutes, { prefix: '/api/v1/channels' });
+app.register(reportRoutes, { prefix: '/api/v1/reports' });
+
 
 // ── Start ─────────────────────────────────
 try {

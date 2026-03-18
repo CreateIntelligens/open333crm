@@ -1,6 +1,6 @@
 # open333CRM — Lite CRM 架構
 
-> 版本：v0.1.0-alpha　　更新：2026-03-18
+> 版本：v0.1.0-alpha    更新：2026-03-18    下一版計畫：[v0.2.0 multi-channel-billing](./openspec/changes/multi-channel-billing/proposal.md)
 
 ## 什麼是 open333CRM？
 
@@ -9,17 +9,18 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 
 核心設計原則：
 - 🔌 **Plugin 優先** — 渠道、AI 功能、行銷模組皆以插件概念載入
-- 🌐 **多渠道統一** — LINE OA、FB Messenger、Web Chat、未來 WhatsApp
+- 🌐 **多渠道統一** — LINE OA、FB Messenger、Web Chat、未來：Telegram、Threads、WhatsApp
 - 📁 **真正的 CRM** — Case 開/處理/關閉、聯繫人管理、事件升級
 - 🤖 **LLM 輔助** — KM 知識庫 + LLM 建議回覆，非硬核 chatbot
 - 🧩 **集團共享模式 (B-1)** — 全集團聯絡人共享，跨部門對話與案件隔離
-- 🏗️ **單租戶託管** — 每個客戶獨立實例，由太上皇系統遠端計費控管
+- 🚦 **Channel 多部門授權** — 一個渠道可授權多個部門共用，各有獨立 Credit 額度
+- 🏦 **單租戶託管** — 每個客戶獨立實例，由太上皇 License Server 遠端計費控管
 
 ## 專案進度 (Status)
 
 - [x] **Phase 1: 基礎建設** — Monorepo, Docker, 數據庫簡化實作完成
 - [x] **Phase 2: 太上皇計費系統** — License 控制與點數機制框架完成
-- [ ] **Phase 3: 多渠道核心** — Line/FB Webhook 接收與發送邏輯
+- [ ] **Phase 3: 多渠道擴充 (v0.2.0)** — Telegram/Threads Plugin + Channel-Team 授權 + 計費機制 _(OpenSpec 進行中)_
 - [ ] **Phase 4: Case & Conversation 管理** — 收件匣 UI 與工作流
 - [x] **Phase 5: AI 與自動化** — KM 與 Rule Engine 整合 (LanceDB + BM25)
 
@@ -28,8 +29,11 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 | 文件 | 說明 |
 |------|------|
 | [📋 PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) | **專案規劃：里程碑 / 工時預估** |
+| [03_CHANNEL_PLUGIN.md](./docs/03_CHANNEL_PLUGIN.md) | 多渠道 Plugin 架構與新增渠道 Checklist |
+| [09_API_DESIGN.md](./docs/09_API_DESIGN.md) | 對外 REST API 規格、頻道授權、錯誤碼 |
 | [14_BILLING_AND_LICENSE.md](./docs/14_BILLING_AND_LICENSE.md) | 平台授權 & Billing 控制（太上皇層）|
 | [16_DB_SCHEMA.md](./docs/16_DB_SCHEMA.md) | CRM 完整資料庫 Schema（Prisma + pgvector）|
+| [📦 multi-channel-billing OpenSpec](./openspec/changes/multi-channel-billing/proposal.md) | **v0.2.0 計畫：Telegram/Threads + 多部門授權 + 計費** |
 
 ## 快速了解系統邊界
 \`\`\`

@@ -15,6 +15,7 @@
     "@fastify/websocket": "^8.3.1",
     "@open333crm/automation": "workspace:*",
     "@open333crm/brain": "workspace:*",
+    "@open333crm/channel-plugins": "workspace:*",
     "@open333crm/database": "workspace:*",
     "axios": "^1.13.6",
     "dotenv": "^16.4.5",

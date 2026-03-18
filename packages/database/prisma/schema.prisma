@@ -40,13 +40,16 @@ enum AgentRole {
 }
 
 model Team {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  createdAt DateTime @default(now())
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  licenseTeamId String?  // 對應 License JSON teams[].teamId（平台方分配字串）
+  createdAt     DateTime @default(now())
 
-  members       AgentTeamMember[]
-  cases         Case[]
-  conversations Conversation[]
+  members          AgentTeamMember[]
+  cases            Case[]
+  conversations    Conversation[]
+  channelAccesses  ChannelTeamAccess[]
+  channelUsages    ChannelUsage[]
 
   @@map("teams")
 }
@@ -79,6 +82,8 @@ model Channel {
 
   channelIdentities    ChannelIdentity[]
   conversations        Conversation[]
+  teamAccesses         ChannelTeamAccess[]
+  usages               ChannelUsage[]
 
   @@map("channels")
 }
@@ -88,9 +93,53 @@ enum ChannelType {
   FB
   WEBCHAT
   WHATSAPP
+  TELEGRAM
+  THREADS
 }
 
 // ─────────────────────────────────────────────
+// Channel 多部門授權（ChannelTeamAccess）
+// ─────────────────────────────────────────────
+
+model ChannelTeamAccess {
+  channelId   String   @db.Uuid
+  teamId      String   @db.Uuid
+  // full: 回覆+廣播 | reply_only: 僅回覆 | read_only: 僅讀入站
+  accessLevel String   @default("full")
+  grantedAt   DateTime @default(now())
+  grantedById String?  @db.Uuid // Agent.id
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, teamId])
+  @@index([teamId])
+  @@map("channel_team_accesses")
+}
+
+// ─────────────────────────────────────────────
+// 渠道計費記錄（ChannelUsage）
+// ─────────────────────────────────────────────
+
+model ChannelUsage {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId    String    @db.Uuid
+  teamId       String?   @db.Uuid // 僅報表用，不影響 Credit 計算
+  direction    Direction          // INBOUND | OUTBOUND
+  messageCount Int       @default(1)
+  feeAmount    Float?             // null = 免費渠道
+  feeCurrency  String?            // USD | TWD | null
+  recordedAt   DateTime  @default(now())
+
+  channel      Channel   @relation(fields: [channelId], references: [id])
+  team         Team?     @relation(fields: [teamId], references: [id])
+
+  @@index([channelId, recordedAt])
+  @@index([teamId, recordedAt])
+  @@map("channel_usages")
+}
+
+
 // 聯繫人（Contact）
 // ─────────────────────────────────────────────
 

@@ -30,14 +30,17 @@
   },
   "features": {
     "channels": {
-      "line": true,
-      "fb": true,
-      "webchat": true,
-      "whatsapp": false
+      "line":     { "enabled": true,  "maxCount": 3 },
+      "fb":       { "enabled": true,  "maxCount": 2 },
+      "webchat":  { "enabled": true,  "maxCount": 1 },
+      "whatsapp": { "enabled": false },
+      "telegram": { "enabled": true,  "maxCount": 2, "messageFee": 0, "messageFeeCurrency": "USD" },
+      "threads":  { "enabled": false }
     },
     "inbox": {
       "unifiedInbox": true,
       "maxAgents": 15,
+      "maxTeams": 10,
       "maxConcurrentConversations": 500
     },
     "caseManagement": {
@@ -173,23 +176,31 @@ API Server 啟動
 class LicenseService {
   // 功能開關檢查
   isFeatureEnabled(feature: string): boolean;
-  // 範例：licenseService.isFeatureEnabled('ai.imageGeneration')
 
-  // 取得數量限制
+  // 數量限制
   getLimit(key: string): number;
   // 範例：licenseService.getLimit('contacts.maxContacts')
+  // 範例：licenseService.getLimit('inbox.maxTeams')  ← 新增
 
-  // 取得遠端服務設定（LLM API Key 等）
+  // 部門數限制（Q3 決策）
+  isTeamCreationAllowed(): boolean;  // 檢查此時 teams.count < maxTeams
+
+  // 渠道檢查（支援多組賬號）
+  isChannelEnabled(channelType: string): boolean;
+  getChannelMaxCount(channelType: string): number;  // maxCount 授權上限
+  getMessageFee(channelType: string): { amount: number; currency: string } | null;
+
+  // 遠端服務設定
   getRemoteService(service: 'llm' | 'imageGen' | 'embedding'): RemoteServiceConfig;
 
   // Credits 相關
   getCredits(type: 'llmTokens' | 'imageGen' | 'broadcastMessages'): CreditInfo;
   hasCredits(type: string, amount?: number): boolean;
 
-  // 扣點（呼叫遠端 API 後回報用量）
+  // 扣點（即時預扣制，Q2 決策）
   deductCredits(type: string, amount: number): Promise<DeductResult>;
 
-  // 完整 License 物件（給後台 Admin 顯示，部分遮蔽後）
+  // 完整 License 物件給後台 Admin 顯示
   getLicenseSummary(): LicenseSummary;  // 不包含 API Key
 }
 ```

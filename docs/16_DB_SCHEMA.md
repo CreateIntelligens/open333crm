@@ -596,3 +596,93 @@ CREATE INDEX km_articles_embedding_idx
 
 `Case.slaPolicy` 只存 Policy 的 id（字串），不做 FK。
 允許 Policy 刪除後，歷史 Case 的 SLA 記錄不被連帶影響。
+
+---
+
+## v0.2.0 Schema 變更（multi-channel-billing）
+
+> 以下為 `openspec/changes/multi-channel-billing` 計畫中的 DB Schema 新增/修改。
+> 實作前需執行 `prisma migrate dev --name multi-channel-billing`。
+
+### 修改：`ChannelType` enum
+
+```prisma
+enum ChannelType {
+  LINE
+  FB
+  WEBCHAT
+  WHATSAPP
+  TELEGRAM    // v0.2.0 新增
+  THREADS     // v0.2.0 新增
+}
+```
+
+### 修改：`Team` 表
+
+```diff
+ model Team {
+   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+   name      String
++  licenseTeamId  String?  // 對應 License JSON teams[].teamId（平台方分配字串）
+   createdAt DateTime @default(now())
+   ...
+ }
+```
+
+> **說明**：License JSON 中 `teams[].teamId` 是平台方（太上皇）分配的字串識別碼（如 `team_sales`），與 DB 的 UUID 是兩套。`licenseTeamId` 為橋接欄位，`LicenseService.getTeamLicense()` 時先查 DB `Team` 找到 `licenseTeamId` 再對應 License JSON。
+
+### 新增：`ChannelTeamAccess`（Channel 多部門授權）
+
+```prisma
+model ChannelTeamAccess {
+  channelId   String   @db.Uuid
+  teamId      String   @db.Uuid
+  // full: 回覆 + 廣播 | reply_only: 僅回覆 | read_only: 僅讀入站
+  accessLevel String   @default("full")
+  grantedAt   DateTime @default(now())
+  grantedById String?  @db.Uuid     // 執行授權的 Agent.id
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, teamId])
+  @@index([teamId])
+  @@map("channel_team_accesses")
+}
+```
+
+### 新增：`ChannelUsage`（訊息計費記錄）
+
+```prisma
+model ChannelUsage {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId    String    @db.Uuid
+  teamId       String?   @db.Uuid   // 僅用於報表分組，不影響 Credit 計算
+  direction    Direction            // INBOUND | OUTBOUND
+  messageCount Int       @default(1)
+  feeAmount    Float?               // null = 免費渠道（LINE/FB/WebChat）
+  feeCurrency  String?              // USD | TWD | null
+  recordedAt   DateTime  @default(now())
+
+  channel      Channel   @relation(fields: [channelId], references: [id])
+  team         Team?     @relation(fields: [teamId], references: [id])
+
+  @@index([channelId, recordedAt])
+  @@index([teamId, recordedAt])
+  @@map("channel_usages")
+}
+```
+
+### 設計決策：費用與 Credits 統一由主 Tenant 承擔
+
+- `ChannelUsage.teamId`：**僅報表用途**，顯示各部門用量比例，不觸發 team 層級的 Credit 扣除
+- Credit 扣除統一從 Tenant 層（`LicenseService.deductCredits()`）執行
+- License JSON `teams[]` 只描述各部門可用的渠道類型與數量上限（channel features），不設獨立 Credits 額度
+
+### 索引補充
+
+| 索引 | 原因 |
+|------|------|
+| `channel_team_accesses(teamId)` | 查詢某 Team 可用的所有渠道 |
+| `channel_usages(channelId, recordedAt)` | 渠道用量報表的時間範圍查詢 |
+| `channel_usages(teamId, recordedAt)` | 部門用量報表的時間範圍查詢 |

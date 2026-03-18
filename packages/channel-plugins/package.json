@@ -20,6 +20,14 @@
     "./webchat": {
       "import": "./dist/webchat/index.js",
       "types": "./dist/webchat/index.d.ts"
+    },
+    "./telegram": {
+      "import": "./dist/telegram.js",
+      "types": "./dist/telegram.d.ts"
+    },
+    "./threads": {
+      "import": "./dist/threads.js",
+      "types": "./dist/threads.d.ts"
     }
   },
   "scripts": {

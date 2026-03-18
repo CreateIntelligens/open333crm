@@ -154,11 +154,42 @@ DELETE /api/v1/tags/:id                   # 刪除（需確認無使用中）
 
 ```
 GET    /api/v1/channels                   # 渠道列表
-POST   /api/v1/channels                   # 新增渠道
+
+POST   /api/v1/channels/line               # 新增 LINE OA
+POST   /api/v1/channels/fb                 # 新增 FB Messenger
+POST   /api/v1/channels/webchat            # 新增 Web Chat Widget
+POST   /api/v1/channels/telegram           # 新增 Telegram Bot
+POST   /api/v1/channels/threads            # 新增 Threads (Instagram)
+
 GET    /api/v1/channels/:id               # 渠道詳情
 PATCH  /api/v1/channels/:id               # 更新渠道設定
-DELETE /api/v1/channels/:id               # 移除渠道
+DELETE /api/v1/channels/:id               # 軟除渠道
 POST   /api/v1/channels/:id/test          # 測試渠道連線
+
+# Channel 多部門授權
+GET    /api/v1/channels/:id/teams          # 列出該 Channel 授權的所有 Team
+POST   /api/v1/channels/:id/teams          # 授權 Team 使用此 Channel
+DELETE /api/v1/channels/:id/teams/:teamId  # 撤除 Team 授權
+
+GET    /api/v1/teams/:teamId/channels      # 列出 Team 被授權的所有 Channel
+```
+
+**POST /api/v1/channels/:id/teams Body**
+```json
+{
+  "teamId": "uuid",
+  "accessLevel": "full"  // full | reply_only | read_only
+}
+```
+
+**POST /api/v1/channels/telegram Body**
+```json
+{
+  "displayName": "XX家電 Telegram",
+  "botToken": "12345678:AABBccDDeeff...",
+  "webhookSecret": "your-secret-token",
+  "defaultTeamId": "uuid-optional"
+}
 ```
 
 ---
@@ -406,6 +437,33 @@ Response:
 
 ---
 
+### 渠道計費與用量報表 (Channel Billing & Reports)
+
+> 需 License: `channel-billing` 功能開啟。所有報表用量統計均屬於主 Tenant，`teamId` 僅用於報表分組。
+
+```
+# 渠道用量報表
+GET /api/v1/reports/channel-usage
+  ?startDate=2026-01-01&endDate=2026-03-31
+  &channelId=uuid        # 可選，過濾單一渠道
+  &teamId=uuid           # 可選，過濾部門（僅報表特化，不影響計費）
+Response: 按 channelId 分組的 inbound/outbound 訊息數與費用小計
+
+# 渠道費用報表
+GET /api/v1/reports/channel-fees
+  ?period=monthly&year=2026&month=3
+Response: 各渠道當期總費用，含部門分組顯示
+
+# 趣勢分析
+GET /api/v1/analytics/channel-usage/trend   # 連續 30 天每日訊息數
+GET /api/v1/analytics/channel-health         # 渠道傳送成功率 / 錯誤率
+
+# 匯出
+GET /api/v1/reports/channel-usage/export?format=csv&startDate=...&endDate=...
+```
+
+---
+
 ## 補充：API Key 權限範圍（更新）
 
 加入新模組的 scope：
@@ -418,7 +476,8 @@ read:tags                write:tags
 read:templates           write:templates
 read:km                  write:km
 read:segments            write:broadcasts
-read:license_status      (只能讀，不可寫)
+read:license_status      (only read)
+read:channel_reports     write:channel_teams   # 新增
 ```
 
 ---
@@ -430,10 +489,13 @@ read:license_status      (只能讀，不可寫)
 | 400 | `VALIDATION_ERROR` | 請求資料不符格式 |
 | 401 | `UNAUTHORIZED` | 未登入或 Token 失效 |
 | 403 | `FORBIDDEN` | 無此操作權限（角色限制）|
+| 403 | `ACCESS_LEVEL_INSUFFICIENT` | 授權層級不足（read_only/reply_only 權限限制）|
 | 402 | `FEATURE_NOT_ENABLED` | 此功能未在授權方案內 |
 | 402 | `INSUFFICIENT_CREDITS` | Credits 餘額不足 |
+| 402 | `CHANNEL_LIMIT_EXCEEDED` | 渠道數量已達授權上限 |
+| 402 | `TEAM_LIMIT_EXCEEDED` | 部門數量已達授權上限（maxTeams），請升級方案 |
 | 404 | `NOT_FOUND` | 資源不存在 |
-| 409 | `CONFLICT` | 資源衝突（如重複 E-mail）|
+| 409 | `CONFLICT` | 資源衝突（如重複 E-mail / 授權已存在）|
 | 422 | `UNPROCESSABLE` | 業務邏輯驗證失敗 |
 | 429 | `RATE_LIMITED` | 請求過於頻繁 |
 | 500 | `INTERNAL_ERROR` | 系統內部錯誤 |
