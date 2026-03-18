@@ -1,0 +1,2 @@
+// Widget entry point
+export {};
