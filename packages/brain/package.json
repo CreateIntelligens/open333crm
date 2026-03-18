@@ -1,0 +1,25 @@
+{
+  "name": "@open333crm/brain",
+  "version": "0.1.0",
+  "description": "KM Brain for open333CRM using LanceDB and BM25",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.11.0",
+    "axios": "^1.7.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0"
+  }
+}

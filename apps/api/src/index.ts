@@ -28,11 +28,12 @@ app.get('/health', async () => ({ status: 'ok', version: '0.1.0' }));
 // app.register(webchatRoutes,     { prefix: '/webhooks/webchat' });
 
 // ── API routes ────────────────────────────
-// TODO: register API route modules
-// app.register(authRoutes,        { prefix: '/api/v1/auth' });
-// app.register(contactRoutes,     { prefix: '/api/v1/contacts' });
-// app.register(conversationRoutes,{ prefix: '/api/v1/conversations' });
-// app.register(caseRoutes,        { prefix: '/api/v1/cases' });
+import kmRoutes from './routes/km.js';
+import brainRoutes from './routes/brain.js';
+
+app.register(kmRoutes, { prefix: '/api/v1/km' });
+app.register(brainRoutes, { prefix: '/api/v1/brain' });
+// TODO: register other API route modules
 
 // ── Start ─────────────────────────────────
 try {

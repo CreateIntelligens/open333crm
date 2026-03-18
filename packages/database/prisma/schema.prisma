@@ -112,6 +112,7 @@ model Contact {
   relationsTo        ContactRelation[]   @relation("ToContact")
   conversations      Conversation[]
   cases              Case[]
+  longTermMemories   LongTermMemory[]
 
   @@index([phone])
   @@index([email])
@@ -425,6 +426,9 @@ model KmArticle {
   category       String
   tags           String[]
   status         KmStatus  @default(DRAFT)
+  version        String?   @default("1.0")
+  teamId         String?   @db.Uuid
+  metadata       Json?     // Any additional metadata
   embedding      Unsupported("vector(1536)")?
   embeddingModel String?
   viewCount      Int       @default(0)
@@ -434,7 +438,23 @@ model KmArticle {
   createdAt      DateTime  @default(now())
 
   @@index([status])
+  @@index([teamId])
   @@map("km_articles")
+}
+
+model LongTermMemory {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contactId      String    @db.Uuid
+  content        String    // Summarized content
+  embedding      Unsupported("vector(1536)")?
+  embeddingModel String?
+  metadata       Json?     // { conversationId: string, topic: string, etc. }
+  createdAt      DateTime  @default(now())
+
+  contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@map("long_term_memories")
 }
 
 enum KmStatus {

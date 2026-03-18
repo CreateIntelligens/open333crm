@@ -21,7 +21,7 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 - [x] **Phase 2: 太上皇計費系統** — License 控制與點數機制框架完成
 - [ ] **Phase 3: 多渠道核心** — Line/FB Webhook 接收與發送邏輯
 - [ ] **Phase 4: Case & Conversation 管理** — 收件匣 UI 與工作流
-- [ ] **Phase 5: AI 與自動化** — KM 與 Rule Engine 整合
+- [x] **Phase 5: AI 與自動化** — KM 與 Rule Engine 整合 (LanceDB + BM25)
 
 ## 文件索引 (Partial)
 
@@ -48,15 +48,17 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 
 ## 結構
 \`\`\`
+```
 open333CRM/
 ├── apps/
 │   ├── api/          ← Fastify (License Guard + Plugin Registry)
 │   └── web/          ← Next.js 15 Admin Console
 ├── packages/
 │   ├── database/     ← Prisma Schema + Generated Client
-│   └── automation/   ← json-rules-engine core
+│   ├── automation/   ← json-rules-engine core
+│   └── brain/        ← AI Brain (LanceDB + Hybrid Search + markitdown)
 ├── docs/             ← 架構與設計文件
 ├── docker-compose.yml ← PostgreSQL, Redis, MinIO, Caddy
 ├── CHANGELOG.md      ← 詳細更動紀錄
 └── turbo.json        ← Pnpm 工作區管理
-\`\`\`
+```

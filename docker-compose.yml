@@ -19,6 +19,8 @@ services:
     image: node:20-alpine
     restart: always
     env_file: .env
+    volumes:
+      - ./workspace:/workspace
     depends_on: [postgres, redis, minio]
 
   postgres:
