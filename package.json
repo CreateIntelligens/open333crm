@@ -1,6 +1,7 @@
 {
   "name": "open333crm",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -10,8 +11,11 @@
     "db:generate": "pnpm --filter @open333crm/database generate"
   },
   "devDependencies": {
-    "turbo": "latest",
-    "prettier": "^3.0.0"
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^9",
+    "prettier": "^3.0.0",
+    "turbo": "latest"
   },
   "packageManager": "pnpm@9.0.0"
 }
