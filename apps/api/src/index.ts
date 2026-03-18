@@ -5,8 +5,12 @@ import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 
 import { env } from './config/env.js';
+import { licenseService } from './services/license.js';
 
 const app = Fastify({ logger: true });
+
+// ── Initialization ────────────────────────
+await licenseService.initialize();
 
 // ── Plugins ───────────────────────────────
 await app.register(cors, { origin: env.CORS_ORIGIN });
