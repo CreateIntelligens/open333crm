@@ -1,0 +1,23 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 方案資訊,方案名稱,string,license.tenant.plan,Starter / Professional / Enterprise,
+① 方案資訊,授權狀態,enum,license.tenant.expiresAt > now(),授權有效（綠）/ 即將到期（橘）/ 已到期（紅）,到期 30 天內顯示橘色警告
+① 方案資訊,企業名稱,string,license.tenant.name,唯讀,
+① 方案資訊,授權到期日,date,license.tenant.expiresAt,格式 YYYY-MM-DD,
+① 方案資訊,業務聯絡,string,license.tenant.note,顯示業務聯絡人資訊,
+① 方案資訊,聯繫升級方案,link,前端固定,連結至業務聯絡 Email / 升級頁面,
+② 用量進度條,客服人數,progress,COUNT(agents WHERE isActive=true) / license.features.inbox.maxAgents,格式「N / M 人」；進度條顏色：< 80% 藍 / ≥ 80% 橘 / 100% 紅,
+② 用量進度條,聯繫人數,progress,COUNT(contacts WHERE isArchived=false) / license.features.contacts.maxContacts,同上配色規則,
+② 用量進度條,知識庫文章,progress,COUNT(knowledge_articles WHERE status!=archived) / license.features.km.maxArticles,,
+② 用量進度條,本月廣播次數,progress,本月 COUNT(broadcasts WHERE status!=draft) / license.features.marketing.maxBroadcastPerMonth,每月 1 日重置,
+② 用量進度條,自動化規則數,progress,COUNT(automation_rules WHERE isActive=true) / license.features.automation.maxRules,,
+② 用量進度條,AI Token 餘額,progress,license.credits.llmTokens.remaining / license.credits.llmTokens.total,< 20% 顯示橘色警告 badge,來自 license JSON credits 欄位
+② 用量進度條,進度條低量警告,rule,前端計算,各用量 ≥ 90% 時在標題旁顯示橘色「⚠」,
+③ 功能開關,功能開關列表,array,license.features.*,顯示所有功能項目的開關狀態,唯讀；Admin 不可在此頁修改
+③ 功能開關,已授權功能,boolean,license.features.*.enabled = true,顯示「✅ {功能名稱}（含限制說明）」,如「✅ 廣播（每月 10 次）」
+③ 功能開關,未授權功能,boolean,license.features.*.enabled = false,顯示「❌ {功能名稱}（未授權）」,點擊顯示「聯繫業務升級」提示
+③ 功能開關,版本計畫功能,string,前端固定,如「WhatsApp / A/B 測試 / 子案件」標示「未授權」,依 license 版本控制
+④ License 刷新,刷新 License 按鈕,action,POST /license/refresh,手動觸發 License 從平台方重新拉取,方案升級後需手動刷新才生效；通常每小時自動背景刷新
+④ License 刷新,上次同步時間,datetime,license._syncedAt,格式「上次同步：N 分鐘前」,
+⑤ API 端點,取得用量資訊,GET,GET /tenant/usage,回傳各項目的 used / limit,彙整多個 count 查詢
+⑤ API 端點,取得功能開關,GET,GET /tenant/license,回傳 license.features 完整結構,前端用於控制功能顯示 / 按鈕狀態
+⑤ API 端點,手動刷新 License,POST,POST /license/refresh,重新從平台方拉取 License JSON,

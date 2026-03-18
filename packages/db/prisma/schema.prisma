@@ -1,0 +1,464 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector", schema: "public")]
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum AgentRole {
+  ADMIN
+  SUPERVISOR
+  AGENT
+}
+
+enum ChannelType {
+  LINE
+  FB
+  WEBCHAT
+  WHATSAPP
+}
+
+enum ConversationStatus {
+  ACTIVE
+  BOT_HANDLED
+  AGENT_HANDLED
+  CLOSED
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum SenderType {
+  CONTACT
+  AGENT
+  BOT
+  SYSTEM
+}
+
+enum CaseStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  ESCALATED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TagType {
+  MANUAL
+  AUTO
+  SYSTEM
+  CHANNEL
+}
+
+enum TagScope {
+  CONTACT
+  CONVERSATION
+  CASE
+}
+
+enum KmStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model Agent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @db.Uuid
+  email        String
+  name         String
+  avatarUrl    String?
+  role         AgentRole
+  isActive     Boolean  @default(true)
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teams         AgentTeamMember[]
+  assignedConvs Conversation[]    @relation("AssignedAgent")
+  assignedCases Case[]            @relation("AssignedAgent")
+  caseEvents    CaseEvent[]
+  sentMessages  Message[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("agents")
+}
+
+model Team {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+
+  members AgentTeamMember[]
+  cases   Case[]
+
+  @@index([tenantId])
+  @@map("teams")
+}
+
+model AgentTeamMember {
+  agentId String @db.Uuid
+  teamId  String @db.Uuid
+
+  agent Agent @relation(fields: [agentId], references: [id])
+  team  Team  @relation(fields: [teamId], references: [id])
+
+  @@id([agentId, teamId])
+  @@map("agent_team_members")
+}
+
+model Channel {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String      @db.Uuid
+  channelType          ChannelType
+  displayName          String
+  isActive             Boolean     @default(true)
+  credentialsEncrypted String
+  settings             Json        @default("{}")
+  webhookUrl           String?
+  lastVerifiedAt       DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  channelIdentities ChannelIdentity[]
+  conversations     Conversation[]
+
+  @@index([tenantId])
+  @@map("channels")
+}
+
+model Contact {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @db.Uuid
+  displayName String
+  avatarUrl   String?
+  phone       String?
+  email       String?
+  language    String   @default("zh-TW")
+  isBlocked     Boolean  @default(false)
+  isArchived    Boolean  @default(false)
+  mergedIntoId  String?  @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  channelIdentities ChannelIdentity[]
+  attributes        ContactAttribute[]
+  tags              ContactTag[]
+  relationsFrom     ContactRelation[]  @relation("FromContact")
+  relationsTo       ContactRelation[]  @relation("ToContact")
+  conversations     Conversation[]
+  cases             Case[]
+
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@map("contacts")
+}
+
+model ChannelIdentity {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contactId   String      @db.Uuid
+  channelId   String      @db.Uuid
+  channelType ChannelType
+  uid         String
+  profileName String?
+  profilePic  String?
+  linkedAt    DateTime    @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id])
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  @@unique([channelId, uid])
+  @@index([contactId])
+  @@map("channel_identities")
+}
+
+model ContactAttribute {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contactId String @db.Uuid
+  key       String
+  value     String
+  dataType  String @default("string")
+
+  contact Contact @relation(fields: [contactId], references: [id])
+
+  @@unique([contactId, key])
+  @@map("contact_attributes")
+}
+
+model ContactRelation {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fromContactId String   @db.Uuid
+  toContactId   String   @db.Uuid
+  relationType  String
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  fromContact Contact @relation("FromContact", fields: [fromContactId], references: [id])
+  toContact   Contact @relation("ToContact", fields: [toContactId], references: [id])
+
+  @@unique([fromContactId, toContactId, relationType])
+  @@map("contact_relations")
+}
+
+model Tag {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  color       String   @default("#6366f1")
+  type        TagType
+  scope       TagScope
+  description String?
+  createdAt   DateTime @default(now())
+
+  contacts ContactTag[]
+
+  @@unique([tenantId, name, scope])
+  @@index([tenantId])
+  @@map("tags")
+}
+
+model ContactTag {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contactId String    @db.Uuid
+  tagId     String    @db.Uuid
+  addedBy   String    @default("agent")
+  addedById String?   @db.Uuid
+  addedAt   DateTime  @default(now())
+  expiresAt DateTime?
+
+  contact Contact @relation(fields: [contactId], references: [id])
+  tag     Tag     @relation(fields: [tagId], references: [id])
+
+  @@unique([contactId, tagId])
+  @@map("contact_tags")
+}
+
+model Conversation {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String             @db.Uuid
+  contactId       String             @db.Uuid
+  channelId       String             @db.Uuid
+  channelType     ChannelType
+  status          ConversationStatus @default(ACTIVE)
+  assignedToId    String?            @db.Uuid
+  caseId          String?            @unique @db.Uuid
+  unreadCount     Int                @default(0)
+  lastMessageAt   DateTime?
+  botRepliesCount Int                @default(0)
+  handoffReason   String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  channel    Channel  @relation(fields: [channelId], references: [id])
+  assignedTo Agent?   @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  case       Case?    @relation(fields: [caseId], references: [id])
+  messages   Message[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, contactId])
+  @@index([tenantId, lastMessageAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Message {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String     @db.Uuid
+  direction      Direction
+  senderType     SenderType
+  senderId       String?    @db.Uuid
+  contentType    String
+  content        Json
+  metadata       Json       @default("{}")
+  channelMsgId   String?
+  isRead         Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       Agent?       @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model Case {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String     @db.Uuid
+  contactId      String     @db.Uuid
+  channelId      String     @db.Uuid
+  conversationId String?    @db.Uuid
+  title          String
+  description    String?
+  status         CaseStatus @default(OPEN)
+  priority       Priority   @default(MEDIUM)
+  category       String?
+  assigneeId     String?    @db.Uuid
+  teamId         String?    @db.Uuid
+  slaPolicy       String?
+  slaDueAt        DateTime?
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  csatScore      Int?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  contact      Contact       @relation(fields: [contactId], references: [id])
+  assignee     Agent?        @relation("AssignedAgent", fields: [assigneeId], references: [id])
+  team         Team?         @relation(fields: [teamId], references: [id])
+  conversation Conversation?
+  events       CaseEvent[]
+  notes        CaseNote[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, assigneeId])
+  @@index([tenantId, slaDueAt])
+  @@map("cases")
+}
+
+model CaseEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId    String   @db.Uuid
+  actorType String
+  actorId   String?  @db.Uuid
+  eventType String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  case  Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actor Agent? @relation(fields: [actorId], references: [id])
+
+  @@index([caseId])
+  @@map("case_events")
+}
+
+model CaseNote {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId     String   @db.Uuid
+  agentId    String   @db.Uuid
+  content    String
+  isInternal Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("case_notes")
+}
+
+model SlaPolicy {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String   @db.Uuid
+  name                 String
+  priority             Priority
+  firstResponseMinutes Int
+  resolutionMinutes    Int
+  warningBeforeMinutes Int      @default(30)
+  isDefault            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("sla_policies")
+}
+
+model AutomationRule {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  priority    Int       @default(0)
+  stopOnMatch Boolean   @default(false)
+  trigger     Json
+  conditions  Json      @default("{}")
+  actions     Json
+  runCount    Int       @default(0)
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  logs AutomationLog[]
+
+  @@index([tenantId, isActive])
+  @@map("automation_rules")
+}
+
+model AutomationLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ruleId     String   @db.Uuid
+  tenantId   String   @db.Uuid
+  triggerRef String?
+  success    Boolean
+  actionsRan Json     @default("[]")
+  errorMsg   String?
+  createdAt  DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("automation_logs")
+}
+
+model KmArticle {
+  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                         @db.Uuid
+  title          String
+  content        String
+  summary        String
+  category       String
+  tags           String[]
+  status         KmStatus                       @default(DRAFT)
+  embedding      Unsupported("vector(1024)")?
+  embeddingModel String?
+  viewCount      Int                            @default(0)
+  helpfulCount   Int                            @default(0)
+  createdById    String                         @db.Uuid
+  updatedAt      DateTime                       @updatedAt
+  createdAt      DateTime                       @default(now())
+
+  @@index([tenantId, status])
+  @@map("km_articles")
+}
+
+model MessageTemplate {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String?  @db.Uuid
+  name            String
+  description     String?
+  category        String
+  channelType     String   @default("universal")
+  contentType     String
+  body            Json
+  variables       Json     @default("[]")
+  previewImageUrl String?
+  isActive        Boolean  @default(true)
+  isSystem        Boolean  @default(false)
+  usageCount      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("message_templates")
+}

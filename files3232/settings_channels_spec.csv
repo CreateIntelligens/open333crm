@@ -1,0 +1,27 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,新增渠道按鈕,action,前端事件,點擊開啟渠道類型選擇；選擇後進入對應綁定精靈,需 Admin 權限
+② 渠道卡片,渠道圖示,string,channel.channelType,LINE=綠 L / FB=藍 F / WebChat=青 W,
+② 渠道卡片,渠道名稱,string,channel.name,企業自訂名稱，如「XX 家電官方帳號」,
+② 渠道卡片,連線狀態,enum,channel.status,連線正常（綠）/ Token 即將到期（橘）/ 連線異常（紅）/ 停用（灰）,
+② 渠道卡片,Webhook URL,string,系統自動產生,格式：https://domain/webhooks/{type}/{channelId},唯讀；點擊複製
+② 渠道卡片,上次驗證時間,datetime,channel.lastVerifiedAt,格式「N 分鐘前」,
+② 渠道卡片,今日訊息數,integer,前端計算,今日收發訊息總數,來自 messages table 當日 count
+② 渠道卡片,Token 到期警告,date,channel.credentials.tokenExpiresAt,距到期 < 60 天顯示橘色警告,FB Page Token 有效期問題
+② 渠道卡片,設定按鈕,action,前端事件,開啟渠道設定 Modal（Bot 設定 / 辦公時段 / 指派策略）,
+② 渠道卡片,停用 / 啟用按鈕,action,PATCH /channels/:id,body: { isActive: false|true }；停用後不再接收訊息,需二次確認
+② 渠道卡片,驗證 Webhook 按鈕,action,POST /channels/:id/verify,呼叫 LINE verifyWebhook API；成功更新 lastVerifiedAt,
+② 渠道卡片,更新 Token 按鈕,action,PATCH /channels/:id/credentials,FB 專用；重新授權取得新 Page Token,
+② 渠道卡片,嵌入碼按鈕,action,前端事件,WebChat 專用；顯示 <script> 嵌入碼與網域白名單設定,
+③ 新增渠道區,LINE OA,action,POST /channels（type=LINE）,開啟三步驟精靈：填入憑證 → 系統自動設 Webhook → 驗證,
+③ 新增渠道區,Facebook,action,POST /channels（type=FB）,OAuth 流程：導向 FB 授權頁 → 取得 Page Token → 訂閱 Webhook,
+③ 新增渠道區,Web Chat,action,POST /channels（type=WEBCHAT）,填入名稱 + 網域白名單 → 產生嵌入碼,
+③ 新增渠道區,WhatsApp,disabled,License 控制,需授權才開放；未授權顯示「即將推出」,來自 license.features.channels.whatsapp
+④ Bot 全域設定,Bot 模式,enum,tenant.settings.botMode,keyword_only / keyword_then_llm / llm_only,
+④ Bot 全域設定,靜音時段,time,tenant.settings.quietHours,格式 HH:MM – HH:MM,靜音時段不主動發送訊息
+④ Bot 全域設定,升人工上限,integer,tenant.settings.maxBotReplies,Bot 回覆幾次後自動升人工；預設 2,
+④ Bot 全域設定,升人工關鍵字,array,tenant.settings.handoffKeywords[],逗號分隔；客戶說這些詞時自動升人工,
+⑤ API 端點,取得渠道列表,GET,GET /channels,回傳所有渠道含狀態,
+⑤ API 端點,建立渠道,POST,POST /channels,"body: { channelType, name, credentials }",
+⑤ API 端點,更新渠道設定,PATCH,PATCH /channels/:id,"body: { isActive?, settings? }",
+⑤ API 端點,驗證 Webhook,POST,POST /channels/:id/verify,,
+⑤ API 端點,更新 Bot 全域設定,PATCH,PATCH /tenants/me/settings,"body: { botMode, quietHours, maxBotReplies, handoffKeywords }",

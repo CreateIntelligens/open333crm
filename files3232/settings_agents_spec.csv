@@ -1,0 +1,28 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,已用 / 上限人數,string,COUNT(agents) / license.maxAgents,格式「N / M 人」,超過上限邀請按鈕 disabled
+① 頁面標頭,邀請成員按鈕,action,POST /agents/invite,開啟邀請 Modal；填入 Email + 角色,需 Admin 權限
+② 角色 Tab,全部,tab,GET /agents,顯示所有成員數,預設選中
+② 角色 Tab,Admin,tab,GET /agents?role=admin,,
+② 角色 Tab,Supervisor,tab,GET /agents?role=supervisor,,
+② 角色 Tab,Agent,tab,GET /agents?role=agent,,
+③ 成員列表,頭像縮寫,string,agent.name 首字,圓形頭像；有上傳則顯示圖片,顏色依姓名 hash
+③ 成員列表,姓名,string,agent.name,,
+③ 成員列表,Email,string,agent.email,顯示於姓名下方小字,
+③ 成員列表,角色徽章,enum,agent.role,Admin（紫）/ Supervisor（藍）/ Agent（灰）,
+③ 成員列表,在線狀態,enum,agent.presenceStatus,在線（綠）/ 忙碌（橘）/ 離線（灰）/ 待接受邀請（橘）,WS 即時更新
+③ 成員列表,開啟案件數,integer,COUNT(cases WHERE assigneeId=X AND status!=CLOSED),格式「N 件」；Admin 顯示「—」,
+③ 成員列表,編輯按鈕,action,前端事件,開啟編輯 Modal：修改姓名 / 角色 / 通知設定,Admin 才能改角色
+③ 成員列表,停用按鈕,action,PATCH /agents/:id,body: { isActive: false }；停用後無法登入,需二次確認
+③ 成員列表,邀請中 — 重寄,action,POST /agents/invite/resend,對待接受成員重新發送邀請 Email,
+③ 成員列表,邀請中 — 取消,action,DELETE /agents/invites/:id,取消邀請；名額歸還,
+④ 邀請 Modal,Email 輸入,string,agent.email,必填；格式驗證,會發送邀請 Email
+④ 邀請 Modal,角色選擇,enum,agent.role,Agent / Supervisor / Admin,預設 Agent
+④ 邀請 Modal,邀請後配額,rule,前端即時計算,顯示邀請後剩餘名額,
+⑤ 團隊分組,團隊卡片,array,GET /teams,顯示團隊名稱 + 成員數 + 成員頭像,
+⑤ 團隊分組,建立團隊,action,POST /teams,"body: { name, agentIds[] }",
+⑤ 團隊分組,編輯團隊,action,PATCH /teams/:id,修改名稱 / 成員,
+⑤ 團隊分組,刪除團隊,action,DELETE /teams/:id,需二次確認,刪除團隊不刪除成員
+⑥ API 端點,取得成員列表,GET,GET /agents,支援 role / isActive 篩選,
+⑥ API 端點,邀請成員,POST,POST /agents/invite,"body: { email, role }",發送邀請 Email；需檢查配額
+⑥ API 端點,更新成員,PATCH,PATCH /agents/:id,"body: { name?, role?, isActive? }",
+⑥ API 端點,取得 / 管理團隊,GET/POST/PATCH/DELETE,GET /teams 等,,

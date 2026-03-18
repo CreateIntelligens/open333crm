@@ -1,0 +1,27 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① API 金鑰,建立 API 金鑰按鈕,action,POST /api-keys,開啟 Modal；填入名稱後建立,需 Admin 權限；金鑰只在建立時顯示一次
+① API 金鑰,金鑰名稱,string,api_key.name,如「官網整合金鑰」,用途備註
+① API 金鑰,金鑰值（遮罩）,string,api_key.maskedKey,格式 sk-live-••••••••{後4碼},完整值只在建立時顯示一次
+① API 金鑰,狀態,enum,api_key.isActive,啟用中（綠）/ 已撤銷（灰）,
+① API 金鑰,建立時間,date,api_key.createdAt,格式 YYYY-MM-DD,
+① API 金鑰,最後使用,datetime,api_key.lastUsedAt,格式「N 分鐘前」/ 「N 天前」；null 顯示「從未使用」,
+① API 金鑰,複製按鈕,action,前端事件,複製完整金鑰到剪貼簿；金鑰已遮罩時提示「金鑰只在建立時可複製」,
+① API 金鑰,撤銷按鈕,action,DELETE /api-keys/:id,需二次確認；撤銷後立即失效,不可還原
+② Webhook URL,LINE Webhook URL,string,系統自動產生,格式 https://domain/webhooks/line/{channelId}；唯讀,
+② Webhook URL,FB Webhook URL,string,系統自動產生,格式 https://domain/webhooks/fb/{channelId}；唯讀,
+③ 通知設定,通知事件列表,array,前端固定定義,新對話指派 / 案件指派 / SLA 預警 / SLA 違規 / 低 CSAT / 未指派堆積 / 渠道異常 / Token 低於 20%,
+③ 通知設定,站內通知 checkbox,boolean,agent_notification_settings.inApp,每個事件可獨立開關,來自 agent_notification_settings table
+③ 通知設定,Email 通知 checkbox,boolean,agent_notification_settings.email,需設定 SMTP 才生效,
+③ 通知設定,Web Push checkbox,boolean,agent_notification_settings.webPush,需瀏覽器授權才生效,
+③ 通知設定,通知對象,string,前端固定,每個事件預設通知對象（Agent / Supervisor）；唯讀提示,部分事件只通知特定角色
+③ 通知設定,儲存按鈕,action,PATCH /agents/me/notification-settings,body: 各事件的通知偏好,每個 Agent 個人設定
+④ SMTP 設定,SMTP 主機,string,tenant.settings.smtpHost,Email 通知需設定,
+④ SMTP 設定,SMTP 連接埠,integer,tenant.settings.smtpPort,預設 587,
+④ SMTP 設定,SMTP 帳號 / 密碼,string,tenant.settings.smtpUser / smtpPassword,密碼加密存入 DB,
+④ SMTP 設定,發件人地址,string,tenant.settings.smtpFrom,格式「XX 家電客服 <noreply@xx.com>」,
+④ SMTP 設定,測試 Email 按鈕,action,POST /tenant/settings/test-smtp,發送測試 Email 到 Admin 信箱,
+⑤ API 端點,建立 API 金鑰,POST,POST /api-keys,body: { name }；回傳完整金鑰（僅此一次）,
+⑤ API 端點,列出 API 金鑰,GET,GET /api-keys,回傳遮罩後的金鑰列表,
+⑤ API 端點,撤銷 API 金鑰,DELETE,DELETE /api-keys/:id,,
+⑤ API 端點,更新通知設定,PATCH,PATCH /agents/me/notification-settings,,
+⑤ API 端點,更新 SMTP 設定,PATCH,PATCH /tenants/me/settings,body: { smtp: {...} },

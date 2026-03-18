@@ -1,0 +1,20 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,建立標籤按鈕,action,前端事件,開啟底部建立表單,需 Admin / Supervisor 權限
+② Scope Tab,聯繫人標籤,tab,GET /tags?scope=CONTACT,scope=CONTACT 的標籤,預設選中
+② Scope Tab,對話標籤,tab,GET /tags?scope=CONVERSATION,scope=CONVERSATION 的標籤,
+② Scope Tab,案件標籤,tab,GET /tags?scope=CASE,scope=CASE 的標籤,
+③ 搜尋,搜尋框,string,前端過濾,前端即時過濾標籤名稱；不打 API,
+④ 標籤列表,標籤 Pill,string,tag.name + tag.color,圓角 Pill 顯示；顏色來自 tag.color,
+④ 標籤列表,類型,enum,tag.type,手動 / 自動化 / 系統 / 渠道,系統類型唯讀不可刪
+④ 標籤列表,使用數,integer,COUNT(contact_tags WHERE tagId=X),格式「N 人」/ 「N 次」,
+④ 標籤列表,有效期,date,tag.expiresAt？（透過 contact_tag.expiresAt）,格式 YYYY-MM-DD；null 顯示「—」,標籤本身無到期，每次貼標時設定
+④ 標籤列表,編輯按鈕,action,PATCH /tags/:id,可修改名稱 / 顏色；系統類型不可改,
+④ 標籤列表,刪除按鈕,action,DELETE /tags/:id,需二次確認；系統類型不可刪；刪除後相關 contact_tags 同步清除,
+⑤ 建立 / 編輯表單,標籤名稱,string,tag.name,必填；max 20 字；同 scope 內不可重複,
+⑤ 建立 / 編輯表單,顏色選擇,string,tag.color,預設 6 個顏色選項；可自訂 hex,以色板選擇器呈現
+⑤ 建立 / 編輯表單,Scope,enum,tag.scope,CONTACT / CONVERSATION / CASE；建立時選定，之後不可更改,
+⑤ 建立 / 編輯表單,儲存按鈕,action,POST /tags 或 PATCH /tags/:id,名稱空白時 disabled,
+⑥ API 端點,取得標籤列表,GET,GET /tags?scope=,依 scope 篩選,
+⑥ API 端點,建立標籤,POST,POST /tags,"body: { name, color, scope }",
+⑥ API 端點,更新標籤,PATCH,PATCH /tags/:id,"body: { name?, color? }",
+⑥ API 端點,刪除標籤,DELETE,DELETE /tags/:id,系統類型回傳 403,

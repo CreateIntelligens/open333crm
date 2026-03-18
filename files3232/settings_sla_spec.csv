@@ -1,0 +1,21 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,建立 SLA 政策按鈕,action,前端事件,開啟底部編輯區,需 Admin 權限
+② SLA 列表,政策名稱,string,sla_policy.name,如「標準服務」/ 「VIP 快速服務」,
+② SLA 列表,預設標記,badge,sla_policy.isDefault,預設政策顯示「預設」紅色 badge,新案件未指定時自動套用預設
+② SLA 列表,套用優先級,enum,sla_policy.priority,LOW / MEDIUM / HIGH / URGENT；多個優先級可選,一個政策可套用多個優先級
+② SLA 列表,首次回應目標,integer,sla_policy.firstResponseMinutes,格式「N 分鐘」/ 「N 小時」,來自 sla_policies.first_response_minutes
+② SLA 列表,解決時間目標,integer,sla_policy.resolutionMinutes,格式「N 小時」/ 「N 天」,來自 sla_policies.resolution_minutes
+② SLA 列表,預警時間,integer,sla_policy.warningBeforeMinutes,格式「到期前 N 分鐘 / N 小時預警」,來自 sla_policies.warning_before_minutes
+② SLA 列表,點列展開編輯,action,前端狀態,點擊列展開底部編輯表單並帶入該政策資料,
+③ 編輯表單,政策名稱輸入,string,sla_policy.name,必填；max 50 字,
+③ 編輯表單,套用優先級,multiselect,sla_policy.priority,LOW / MEDIUM / HIGH / URGENT 可複選,
+③ 編輯表單,首次回應目標,integer,sla_policy.firstResponseMinutes,數字輸入；單位下拉（分鐘 / 小時）,
+③ 編輯表單,解決時間目標,integer,sla_policy.resolutionMinutes,數字輸入；單位下拉（分鐘 / 小時 / 天）,
+③ 編輯表單,預警時間,integer,sla_policy.warningBeforeMinutes,數字輸入；單位下拉（分鐘 / 小時）,
+③ 編輯表單,設為預設,boolean,sla_policy.isDefault,勾選後此政策成為預設；原預設自動取消,每個 tenant 只能有一個預設
+③ 編輯表單,儲存按鈕,action,POST /sla-policies 或 PATCH /sla-policies/:id,必填欄位未填時 disabled,
+③ 編輯表單,刪除按鈕,action,DELETE /sla-policies/:id,預設政策不可刪；有案件正在使用的政策需先重新指派,
+④ API 端點,取得政策列表,GET,GET /sla-policies,,
+④ API 端點,建立政策,POST,POST /sla-policies,"body: { name, priority[], firstResponseMinutes, resolutionMinutes, warningBeforeMinutes, isDefault }",
+④ API 端點,更新政策,PATCH,PATCH /sla-policies/:id,,
+④ API 端點,刪除政策,DELETE,DELETE /sla-policies/:id,預設政策回傳 400,
