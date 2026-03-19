@@ -1,10 +1,5 @@
-import { 
-  UniversalMessage, 
-  ChannelType, 
-  OutboundMessage, 
-  SendResult 
-} from '@open333crm/types';
-import { getPlugin } from '@open333crm/channel-plugins';
+import { ChannelType } from '@open333crm/types';
+import { OutboundMessage, getPlugin, SendResult } from '@open333crm/channel-plugins';
 import { licenseService } from './license.js';
 import { channelTeamAccessService } from './channel-team-access.js';
 
@@ -24,7 +19,7 @@ class MessageService {
     channelType: ChannelType,
     credentials: Record<string, string>
   ): Promise<SendResult> {
-    
+
     // 1. Authorization check
     const { hasAccess, level } = await channelTeamAccessService.checkAccess({
       channelId: metadata.channelId,
@@ -43,7 +38,7 @@ class MessageService {
       if (!hasCredits) {
         return { success: false, error: 'INSUFFICIENT_CREDITS' };
       }
-      
+
       // Real implementation would use a transaction for deduction + send
       await licenseService.deductCredits('broadcastMessages', fee.amount);
     }
