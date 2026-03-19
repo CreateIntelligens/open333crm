@@ -1,0 +1,30 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,頁面標題,string,前端固定文案,「AI 搜尋測試工具」,
+① 頁面標頭,頁面說明,string,前端固定文案,「模擬客服 AI 收到訊息時，會搜尋到哪些知識庫文章」,
+② 輸入區,問題輸入框,string,前端狀態,輸入模擬客戶訊息；支援完整句子；無字數上限,
+② 輸入區,佔位文字,string,前端固定文案,「模擬客戶訊息，如：我的冰箱昨晚開始不製冷了，插頭有插好」,
+② 輸入區,開始搜尋按鈕,action,POST /km/search,送出輸入內容；空白時 disabled,呼叫向量搜尋 API
+③ 搜尋參數,Top-K 篇數,integer,前端設定,下拉選擇 1 / 3 / 5 / 10；預設 5,對應 API body: { topK }
+③ 搜尋參數,相似度門檻,float,前端設定,下拉選擇 0.60 / 0.65 / 0.70 / 0.72 / 0.80 / 0.90；預設 0.72,對應 API body: { threshold }；低於此值的文章不顯示
+③ 搜尋參數,篩選分類,string,GET /km/categories,全部分類 / 特定分類；預設全部,對應 API body: { category? }
+③ 搜尋參數,向量模型說明,string,tenant.settings.embeddingModel,唯讀顯示目前使用的 Embedding 模型,不可在此更改；需至設定頁修改
+④ 搜尋結果,結果統計,string,前端計算,格式「共找到 N 篇  ·  向量化 Xms  ·  搜尋 Yms」,向量化耗時來自 API 回傳 metadata
+④ 搜尋結果,每篇 — 排名,integer,response.results[].rank,格式「#N」；第一篇加「最相關」標籤,
+④ 搜尋結果,每篇 — 相似度,float,response.results[].similarity,格式「相似度 XX%」；> 0.85 綠色；0.72~0.85 橘色；< 0.72 灰色（被過濾）,
+④ 搜尋結果,每篇 — 標題,string,knowledge_article.title,點擊跳轉 /km/:id/edit,
+④ 搜尋結果,每篇 — 分類,string,knowledge_article.category,顯示於標題下方,
+④ 搜尋結果,每篇 — 狀態,enum,knowledge_article.status,已發布 / 草稿；草稿文章仍可被搜到，提示客服注意,
+④ 搜尋結果,每篇 — 採用次數,integer,knowledge_article.helpfulCount,顯示歷史採用次數,
+④ 搜尋結果,被過濾文章提示,string,response.filtered[],顯示相似度 < 門檻而被過濾的文章，格式「{標題} {XX%}」,幫助 Admin 判斷門檻設定是否合理
+④ 搜尋結果,無結果提示,string,前端狀態,「沒有符合門檻的文章，建議降低相似度門檻或新增相關知識」,結果為空時顯示
+⑤ Prompt 預覽,System Prompt,string,tenant.settings.systemPromptTemplate,顯示目前設定的 System Prompt 模板（含佔位符）,唯讀；點擊可複製
+⑤ Prompt 預覽,引用知識庫內容,array,response.results[].summary,"依排名列出每篇文章的摘要；格式「[N] {標題}
+{摘要}」",顯示實際會放入 Prompt 的內容
+⑤ Prompt 預覽,Token 估算,integer,response.meta.estimatedTokens,組裝後整個 Prompt 的預估 Token 數,來自 API 回傳 metadata
+⑤ Prompt 預覽,費用估算,float,前端計算,estimatedTokens / 1000 × 模型單價；格式「約 NT$0.05」,依 tenant 設定的 LLM 模型計算單價
+⑤ Prompt 預覽,複製 Prompt 按鈕,action,前端事件,將完整 Prompt 複製到剪貼簿,方便在外部工具測試
+⑥ 歷史記錄,最近搜尋記錄,array,前端 sessionStorage,本次 session 內的搜尋記錄；最多保留 10 筆,關閉頁面後清除；不寫入 DB
+⑥ 歷史記錄,點擊歷史重新搜尋,action,前端事件,點擊歷史記錄中的問題，自動填入輸入框並執行搜尋,
+⑦ API 端點,語義搜尋,POST,POST /km/search,"body: { query, topK?, threshold?, category? }",主要呼叫；含向量化 + pgvector 搜尋
+⑦ API 端點,回傳格式,JSON,response,"{ results: [{ articleId, title, category, similarity, summary, helpfulCount, status }], filtered: [...], meta: { totalFound, vectorizeMs, searchMs, estimatedTokens } }",
+⑦ API 端點,取得分類清單,GET,GET /km/categories,篩選分類下拉用,頁面載入時呼叫一次

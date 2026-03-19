@@ -1,0 +1,41 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頂部操作列,麵包屑,string,前端路由,「案件 / #XXXX」；點「案件」回到列表,
+① 頂部操作列,案件標題,string,case.title,H2 大標；可行內編輯，失焦後 PATCH 儲存,最長 100 字
+① 頂部操作列,標記解決按鈕,action,POST /cases/:id/resolve,將 status → RESOLVED；僅 OPEN / IN_PROGRESS / PENDING / ESCALATED 時顯示,已 RESOLVED / CLOSED 時隱藏
+① 頂部操作列,關閉案件按鈕,action,POST /cases/:id/close,將 status → CLOSED；需二次確認 Dialog,已 CLOSED 時隱藏；顯示「重新開啟」
+① 頂部操作列,合併案件按鈕,action,POST /cases/merge,開啟合併 Modal；搜尋目標案件後合併,合併後此案件成為子記錄，對話歷程保留
+① 頂部操作列,升級案件按鈕,action,POST /cases/:id/escalate,開啟升級 Modal；status → ESCALATED,ESCALATED / CLOSED 時隱藏
+① 頂部操作列,返回列表,link,前端路由,「↑」圖示，返回 /cases,
+② 左欄 — 案件資訊,狀態下拉,enum,PATCH /cases/:id,OPEN / IN_PROGRESS / PENDING / RESOLVED / ESCALATED / CLOSED；下拉選取後即時儲存,來自 cases.status；非所有狀態均可直接跳轉，需符合狀態機規則
+② 左欄 — 案件資訊,優先級下拉,enum,PATCH /cases/:id,LOW / MEDIUM / HIGH / URGENT；下拉選取後即時儲存,來自 cases.priority
+② 左欄 — 案件資訊,SLA 剩餘時間,datetime,case.slaDueAt,格式「剩 Xh Ym」；前端每分鐘計算；超時顯示「已超時 Xh」,slaDueAt = null 時顯示「未設定」
+② 左欄 — 案件資訊,SLA 首回達標,boolean,前端計算,第一則 AGENT 訊息的 createdAt - case.createdAt <= firstResponseMinutes；顯示「已達 ✓ / 未達 ✗」,
+② 左欄 — 案件資訊,SLA 解決目標,string,slaPolicy.resolutionMinutes,格式「解決目標：N 小時」,來自 sla_policies.resolution_minutes
+② 左欄 — 案件資訊,分類下拉,string,PATCH /cases/:id,維修 / 查詢 / 投訴 / 其他；下拉選取後即時儲存,來自 cases.category；選項動態來自 GET /cases/categories
+② 左欄 — 案件資訊,指派給下拉,string,PATCH /cases/:id + POST /cases/:id/assign,顯示 agent.name；下拉選取後儲存並觸發通知,來自 cases.assignee_id；未指派顯示「未指派」
+② 左欄 — 案件資訊,團隊下拉,string,PATCH /cases/:id,顯示 team.name；下拉選取後儲存,來自 cases.team_id；null 顯示「—」
+② 左欄 — 案件資訊,聯繫人頭像 + 名稱,string,case.contact.displayName + avatarUrl,點擊跳轉 /contacts/:contactId,
+② 左欄 — 案件資訊,聯繫人渠道身份,array,contact.channelIdentities[],顯示 LINE / FB / WebChat 等 pill,
+② 左欄 — 案件資訊,來源對話連結,link,case.conversationId,「查看對話記錄 ↗」；點擊跳轉 /inbox/:conversationId,conversationId = null 時隱藏
+② 左欄 — 案件資訊,標籤,array,PATCH /cases/:id/tags,顯示已加標籤 pill；可新增 / 移除,來自 case_tags（若有）或 contact_tags
+② 左欄 — 案件資訊,內部備註輸入框,string,POST /cases/:id/notes,textarea；點「新增」送出；isInternal = true,來自 case_notes table
+② 左欄 — 案件資訊,建立時間,datetime,case.createdAt,格式 YYYY-MM-DD HH:MM,唯讀
+② 左欄 — 案件資訊,最後更新,datetime,case.updatedAt,格式 YYYY-MM-DD HH:MM,唯讀
+③ 右欄 — 歷程 Timeline,歷程列表,array,GET /cases/:id/events,依 createdAt 升冪顯示全部 CaseEvent,來自 case_events table
+③ 右欄 — 歷程 Timeline,每列 — 時間,datetime,case_event.createdAt,格式 HH:MM,
+③ 右欄 — 歷程 Timeline,每列 — 執行者,string,case_event.actorType + actorId,agent → agent.name；system → 「系統」；contact → 聯繫人姓名,
+③ 右欄 — 歷程 Timeline,每列 — 事件類型,enum,case_event.eventType,created / assigned / status_changed / escalated / note_added / closed 等,
+③ 右欄 — 歷程 Timeline,每列 — 事件描述,string,case_event.payload,依 eventType 組裝描述文字；如「狀態：OPEN → IN_PROGRESS」,前端 i18n 模板 + payload 資料填入
+③ 右欄 — 歷程 Timeline,備註卡片,string,case_event.payload.note / case_note.content,note_added 事件顯示備註卡片，內容來自 case_notes,卡片樣式與一般文字事件區分
+③ 右欄 — 歷程 Timeline,圓點顏色,enum,case_event.eventType,系統=灰 / 客服=藍 / 備註=綠 / SLA 警告=橘 / 升級=紅,
+③ 右欄 — 歷程 Timeline,新增備註輸入框,string,POST /cases/:id/notes,固定在 Timeline 底部；提交後即時追加到歷程最下方,isInternal = true；僅客服可見
+③ 右欄 — 歷程 Timeline,WS 即時追加,WS,case.updated 事件,新 CaseEvent 產生時即時 append 到 Timeline 末端，不需整頁刷新,
+④ API 端點,取得案件詳情,GET,GET /cases/:id,回傳 case 完整資料，含 contact / assignee / team join,頁面載入時呼叫
+④ API 端點,取得歷程列表,GET,GET /cases/:id/events,回傳所有 CaseEvent；依 createdAt ASC,頁面載入時呼叫
+④ API 端點,更新案件欄位,PATCH,PATCH /cases/:id,body: 任意可更新欄位；後端自動寫入 CaseEvent,狀態 / 優先 / 分類 / 指派 / 團隊均透過此 API
+④ API 端點,標記解決,POST,POST /cases/:id/resolve,status → RESOLVED；寫入 resolvedAt；觸發 CSAT 排程,
+④ API 端點,關閉案件,POST,POST /cases/:id/close,status → CLOSED；寫入 closedAt,
+④ API 端點,新增備註,POST,POST /cases/:id/notes,"body: { content, isInternal: true }",寫入 case_notes；同時建立 CaseEvent(note_added)
+④ API 端點,升級案件,POST,POST /cases/:id/escalate,"body: { reason, newPriority, assigneeId?, notifyIds[] }",
+④ API 端點,合併案件,POST,POST /cases/merge,"body: { primaryCaseId, secondaryCaseId }",secondary case 標記為已合併
+④ API 端點,WebSocket 訂閱,WS,subscribe: case:{id},監聽 case.updated；即時更新欄位值與 Timeline,進入頁面時訂閱；離開時取消

@@ -1,0 +1,30 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,分群總數,integer,GET /marketing/segments?count=true,格式「共 N 個分群」,
+① 頁面標頭,建立分群按鈕,action,前端事件,點擊展開底部分群編輯器（空白）,
+① 頁面標頭,搜尋框,string,GET /marketing/segments?q=,搜尋分群名稱,debounce 300ms
+② 分群卡片,分群名稱,string,segment.name,最長 50 字；點擊卡片展開編輯器,
+② 分群卡片,條件邏輯,enum,segment.logic,格式「AND · N 個條件」或「OR · N 個條件」,
+② 分群卡片,條件摘要,array,segment.conditions[],顯示前 3 條條件文字描述；超出顯示「...」,如「標籤：冰箱客戶」/ 「屬性：保固到期 30 天內」
+② 分群卡片,預估人數,integer,segment.estimatedCount,格式「預估：N 人」；灰色小字,依最後計算時間顯示；非即時
+② 分群卡片,最後計算時間,datetime,segment.calculatedAt,格式「N 分前計算」,提示人數可能有所變動
+② 分群卡片,用於廣播按鈕,action,前端路由,點擊跳轉建立廣播精靈並帶入此分群,GET param: segmentId=X
+② 分群卡片,編輯按鈕,action,前端事件,點擊展開底部分群編輯器並載入此分群資料,
+② 分群卡片,刪除按鈕,action,DELETE /marketing/segments/:id,hover 顯示；需二次確認；使用中的分群（有廣播引用）需提示,
+③ 分群編輯器,分群名稱輸入,string,segment.name,必填；max 50 字,
+③ 分群編輯器,條件邏輯切換,enum,segment.logic,AND（全部符合）/ OR（任一符合）；切換後即時更新預估人數,
+③ 分群編輯器,條件列 — 欄位選擇,enum,condition.field,標籤 / 屬性 / 渠道 / 最後互動時間 / 案件數 / VIP 等級 / 保固狀態,從 tenant 定義的 contact_attributes 動態取得
+③ 分群編輯器,條件列 — 運算子,enum,condition.operator,equals / not_equals / contains / gt / lt / between / has_tag / not_has_tag / is_empty,依欄位類型動態顯示可用運算子
+③ 分群編輯器,條件列 — 值,mixed,condition.value,文字 / 數字 / 日期 / 標籤選擇器；依運算子顯示對應輸入元件,between 時顯示兩個輸入框
+③ 分群編輯器,新增條件,action,前端狀態,點擊「+ 新增條件」新增一列；最多 10 條,
+③ 分群編輯器,移除條件,action,前端狀態,每列右側「×」；至少保留 1 條,
+③ 分群編輯器,即時預估人數,integer,POST /marketing/segments/preview,條件變更後 debounce 500ms 呼叫；顯示「預估：N 人」,含過濾 do_not_disturb
+③ 分群編輯器,受眾預覽,array,POST /marketing/segments/preview,顯示前 5 筆姓名 + 渠道,
+③ 分群編輯器,儲存分群按鈕,action,POST / PUT /marketing/segments,必填欄位驗證後送出,新建 POST；編輯 PUT
+③ 分群編輯器,取消按鈕,action,前端事件,清空編輯器；不送出,
+④ API 端點,取得分群列表,GET,GET /marketing/segments,支援 q / page / limit,
+④ API 端點,取得分群詳情,GET,GET /marketing/segments/:id,含完整 conditions[],編輯時呼叫
+④ API 端點,計算受眾預覽,POST,POST /marketing/segments/preview,"body: { conditions, logic }；回傳 estimatedCount + 前 5 筆",條件變更時 debounce 呼叫
+④ API 端點,建立分群,POST,POST /marketing/segments,"body: { name, logic, conditions[] }",
+④ API 端點,更新分群,PUT,PUT /marketing/segments/:id,body: 同建立,
+④ API 端點,刪除分群,DELETE,DELETE /marketing/segments/:id,使用中的分群（廣播引用）需先確認,
+④ API 端點,取得可用欄位清單,GET,GET /marketing/segments/fields,回傳可用 condition.field 清單（含 tenant 自訂屬性）,分群編輯器初始化時呼叫

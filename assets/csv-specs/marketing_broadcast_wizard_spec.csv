@@ -1,0 +1,41 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 步驟導覽,步驟指示器,enum,前端狀態,四步驟：① 選擇受眾 → ② 設計訊息 → ③ 排程設定 → ④ 確認送出,當前步驟高亮；已完成步驟可點擊返回
+① 步驟導覽,廣播名稱,string,broadcast.name,頂部輸入框；必填；最長 50 字,所有步驟共用，隨時可編輯
+① 步驟導覽,儲存草稿,action,POST /marketing/broadcasts（status=draft）,任意步驟可儲存草稿,關閉頁面前提示儲存草稿
+② Step 1 受眾,受眾類型,enum,broadcast.audienceType,分群條件 / 靜態清單 / 全部聯繫人；三選一,
+② Step 1 受眾,分群條件 — 條件邏輯,enum,segment.logic,AND / OR；預設 AND,選擇「分群條件」類型時顯示
+② Step 1 受眾,分群條件 — 條件列,array,segment.conditions[],欄位 / 運算子 / 值；最多 10 條；可新增 / 移除,
+② Step 1 受眾,分群條件 — 欄位選擇,enum,condition.field,標籤 / 屬性（動態） / 渠道 / 最後互動時間 / 案件數,依欄位類型動態顯示運算子
+② Step 1 受眾,靜態清單 — 匯入,file,前端上傳,上傳 CSV；欄位：channelUid + channelType,格式驗證；錯誤列顯示警告
+② Step 1 受眾,發送渠道,array,broadcast.channelIds[],從已綁定渠道選擇；可多選,LINE / FB；WebChat 不支援廣播
+② Step 1 受眾,預估發送人數,integer,POST /marketing/segments/preview,即時計算；條件變更後 debounce 500ms 重新計算,過濾 do_not_disturb 後的人數
+② Step 1 受眾,受眾預覽列表,array,POST /marketing/segments/preview,前 5 筆預覽；格式「姓名 · 渠道」,
+② Step 1 受眾,匯出受眾清單,action,GET /marketing/segments/export,匯出最終受眾為 CSV,需 Admin / Supervisor 權限
+② Step 1 受眾,系統保護提示,string,前端固定,「已自動濾除封鎖用戶、免打擾標籤用戶」,唯讀提示文字
+③ Step 2 訊息,訊息設計方式,enum,broadcast.contentType,選擇模板 / 自行設計；二選一,
+③ Step 2 訊息,選擇模板,string,broadcast.templateId,從 GET /templates 取清單；選取後右側預覽,
+③ Step 2 訊息,模板分類 Tab,array,GET /templates/categories,LINE Flex / 純文字 / FB 模板 / 快速回覆,
+③ Step 2 訊息,模板搜尋,string,GET /templates?q=,搜尋模板名稱,debounce 300ms
+③ Step 2 訊息,變數填入,array,template.variables[],自動帶入聯繫人資料；可手動覆蓋預設值,{{contact.name}} / {{attribute.*}}
+③ Step 2 訊息,訊息預覽,JSON,POST /templates/:id/preview,右側即時渲染 Flex 卡片 / 純文字預覽,選取模板或變數變更後即時更新
+③ Step 2 訊息,自行設計 — 純文字,string,broadcast.content.text,textarea；max 2000 字；支援 {{變數}},自行設計模式才顯示
+③ Step 2 訊息,自行設計 — Flex JSON,JSON,broadcast.content.flexJson,Monaco Editor 輸入；可從 LINE Simulator 貼入,右側即時預覽渲染結果
+④ Step 3 排程,發送時機,enum,broadcast.scheduleType,立即發送 / 指定時間；二選一,
+④ Step 3 排程,指定時間 — 日期時間,datetime,broadcast.scheduledAt,日期時間選擇器；需大於現在時間,過去時間 disabled
+④ Step 3 排程,時區設定,string,broadcast.timezone,預設 Asia/Taipei；下拉選擇,
+④ Step 3 排程,分批發送間隔,integer,broadcast.batchInterval,每批 100 人，間隔 N 秒；預設 1 秒；可調整 1~10 秒,避免 LINE / FB Rate Limit
+④ Step 3 排程,LINE 頻道額度提示,string,前端計算,顯示本月剩餘 LINE 免費推播額度,來自 license.lineQuotaRemaining
+⑤ Step 4 確認,廣播名稱摘要,string,broadcast.name,唯讀顯示,
+⑤ Step 4 確認,受眾摘要,string,broadcast.audienceSummary + totalCount,格式「分群：{名稱}（N 人）· 渠道：LINE」,
+⑤ Step 4 確認,訊息預覽,JSON,broadcast.templateId / content,縮小版訊息預覽卡片,唯讀
+⑤ Step 4 確認,發送時間摘要,string,broadcast.scheduledAt / scheduleType,「立即發送」或「YYYY-MM-DD HH:MM（Asia/Taipei）」,
+⑤ Step 4 確認,確認 checkbox,boolean,前端狀態,「我已確認受眾、訊息與發送時間正確」；未勾選時「送出廣播」disabled,防誤觸
+⑤ Step 4 確認,儲存草稿按鈕,action,POST /marketing/broadcasts（status=draft）,不送出；儲存後跳回廣播列表,
+⑤ Step 4 確認,送出廣播按鈕,action,POST /marketing/broadcasts（status=scheduled / sending）,立即發送 → status=sending；排程 → status=scheduled,送出後跳轉廣播列表頁
+⑤ Step 4 確認,送出失敗處理,string,前端狀態,顯示錯誤 Toast；保留所有填寫內容；可重試,
+⑥ API 端點,計算受眾預覽,POST,POST /marketing/segments/preview,"body: { conditions, logic, channelIds }；回傳 totalCount + 前 5 筆預覽",Step 1 條件變更時 debounce 呼叫
+⑥ API 端點,取得模板列表,GET,GET /templates?channelType=&category=&q=,Step 2 模板選擇用,
+⑥ API 端點,預覽模板,POST,POST /templates/:id/preview,body: { variables: {} }；Step 2 右側預覽用,
+⑥ API 端點,建立廣播（草稿）,POST,POST /marketing/broadcasts,"body: { name, status: draft, ... }；任意步驟可儲存",
+⑥ API 端點,送出廣播,POST,POST /marketing/broadcasts,"body: { name, audienceType, segmentConditions, channelIds, templateId, scheduledAt?, status: scheduled|sending }",Step 4 確認後呼叫
+⑥ API 端點,更新草稿,PUT,PUT /marketing/broadcasts/:id,繼續編輯草稿時更新,

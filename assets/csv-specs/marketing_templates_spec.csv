@@ -1,0 +1,37 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,頁面標題,string,前端固定文案,「模板庫」,
+① 頁面標頭,匯入 JSON 按鈕,action,前端事件,開啟檔案選擇器；上傳 .json 格式模板,JSON 格式需符合 MessageTemplate schema
+① 頁面標頭,新增模板按鈕,action,前端路由,點擊跳轉 /marketing/templates/new（模板編輯頁）,需 Admin / Supervisor 權限
+② 分類 Tab,全部,tab,GET /templates,顯示所有模板,預設選中
+② 分類 Tab,LINE Flex,tab,GET /templates?contentType=flex,contentType = flex 的模板,
+② 分類 Tab,純文字,tab,GET /templates?contentType=text,contentType = text,
+② 分類 Tab,FB 模板,tab,"GET /templates?contentType=fb_generic,fb_carousel",FB 渠道模板,
+② 分類 Tab,快速回覆,tab,GET /templates?contentType=quick_reply,含快速回覆按鈕的模板,
+② 分類 Tab,搜尋框,string,GET /templates?q=,搜尋模板名稱 / 描述,debounce 300ms
+③ 模板列表,模板列表,array,GET /templates,依 usageCount DESC 排列；左側固定寬度欄,
+③ 模板列表,每列 — 類型徽章,enum,template.contentType,LINE Flex（紫）/ 純文字（綠）/ FB（藍）/ 快速回覆（橘）,pill 樣式
+③ 模板列表,每列 — 模板名稱,string,template.name,最長 20 字；超出截斷,
+③ 模板列表,每列 — 使用次數,integer,template.usageCount,格式「使用 N 次」；小字灰色,
+③ 模板列表,每列 — 系統模板標示,boolean,template.isSystem,isSystem=true 顯示「系統」小標籤,系統模板不可刪除，只能複製
+③ 模板列表,每列 — 選取狀態,boolean,前端狀態,點擊後該列高亮藍色邊框；右側同步顯示預覽,單選
+④ 右側預覽,預覽標題,string,template.name,格式「預覽：{模板名稱}」,
+④ 右側預覽,渠道說明,string,template.channelType + contentType,如「LINE Flex Message 渲染效果」,
+④ 右側預覽,Flex 卡片預覽,JSON,POST /templates/:id/preview,帶入範例變數後渲染；以卡片樣式顯示,選取模板時呼叫
+④ 右側預覽,純文字預覽,string,template.body.text（替換變數）,直接顯示替換後文字,
+④ 右側預覽,快速回覆按鈕預覽,array,template.body.quickReplies[],顯示所有快速回覆選項按鈕,
+④ 右側預覽,預覽載入狀態,boolean,前端狀態,呼叫 preview API 期間顯示 skeleton,
+⑤ 變數清單,變數列表,array,template.variables[],顯示該模板定義的所有變數；格式「{{key}} → 範例值」,
+⑤ 變數清單,變數 key,string,template_variable.key,如 {{contact.name}},
+⑤ 變數清單,變數範例值,string,template_variable.defaultValue,預覽時使用的示範值,
+⑤ 變數清單,必填標示,boolean,template_variable.required,required=true 顯示紅色星號,
+⑥ 操作按鈕,複製模板,action,POST /templates/:id/duplicate,複製後跳轉至新模板編輯頁；isSystem 的模板也可複製,複製出的新模板 isSystem=false
+⑥ 操作按鈕,匯出,action,GET /templates/:id/export,下載此模板的 JSON 檔,
+⑥ 操作按鈕,編輯模板,action,前端路由,跳轉 /marketing/templates/:id/edit,isSystem=true 時此按鈕隱藏
+⑥ 操作按鈕,刪除模板,action,DELETE /templates/:id,isSystem=true 時隱藏；需二次確認；使用中的模板需提示,
+⑦ API 端點,取得模板列表,GET,GET /templates,支援 contentType / q / page / limit；依 usageCount DESC,
+⑦ API 端點,取得模板詳情,GET,GET /templates/:id,含 variables[] + body；選取列時呼叫,
+⑦ API 端點,預覽模板,POST,POST /templates/:id/preview,body: { variables: { key: defaultValue } }；右側預覽用,
+⑦ API 端點,複製模板,POST,POST /templates/:id/duplicate,回傳新模板 id；跳轉編輯頁,
+⑦ API 端點,匯入模板,POST,POST /templates/import,body: JSON 檔案內容；驗證 schema 後建立,
+⑦ API 端點,匯出模板,GET,GET /templates/:id/export,回傳 JSON 檔案下載,
+⑦ API 端點,刪除模板,DELETE,DELETE /templates/:id,isSystem=true 的模板返回 403,

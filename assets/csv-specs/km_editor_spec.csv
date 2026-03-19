@@ -1,0 +1,36 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頂部操作列,麵包屑,string,前端路由,「知識庫 / {文章標題}」；點「知識庫」返回列表,
+① 頂部操作列,版本歷程按鈕,action,GET /km/articles/:id/versions,開啟版本歷程側拉面板,
+① 頂部操作列,預覽按鈕,action,前端狀態,在新視窗或側拉面板顯示文章渲染後的 Markdown 預覽,
+① 頂部操作列,儲存草稿按鈕,action,PATCH /km/articles/:id,"body: { status: 'draft', ...fields }；儲存但不觸發 Embedding 重建",
+① 頂部操作列,發布文章按鈕,action,PATCH /km/articles/:id,"body: { status: 'published', ...fields }；儲存後觸發 Embedding 重建",發布後 Embedding Worker 開始非同步處理
+② 工具列,格式按鈕,action,前端編輯器,B（粗體）/ I（斜體）/ H1 / H2 / H3 / 分隔線 / 無序清單 / 有序清單 / 連結 / 圖片 / 程式碼區塊 / 表格,點擊在游標位置插入對應 Markdown 語法
+② 工具列,圖片上傳,action,POST /storage/upload,點圖片按鈕後選擇本地圖片；上傳至 Storage Layer；回傳 URL 插入 Markdown,格式：![alt](url)；支援 jpg / png / webp；max 5MB
+③ 文章標題,標題輸入框,string,knowledge_article.title,必填；max 100 字；單行輸入,失焦後不自動儲存；按儲存草稿 / 發布時才寫入
+③ 文章標題,標題驗證,rule,前端驗證,空白時「發布」/ 「儲存草稿」按鈕 disabled，顯示紅色提示,
+④ 短摘要,摘要輸入框,string,knowledge_article.summary,選填；max 300 字；多行 textarea,供 LLM Prompt 使用；若未填則 AI 自動從內容截取前 200 字
+④ 短摘要,摘要用途說明,string,前端固定文案,「短摘要會直接放入 AI 建議回覆的 Prompt，影響回覆品質」,提示文字
+⑤ 文章內容,Markdown 編輯器,string,knowledge_article.content,支援完整 Markdown 語法；即時渲染預覽（分割視圖可選）,來自 knowledge_articles.content
+⑤ 文章內容,字數計算,integer,前端計算,即時顯示純文字字數（去除 Markdown 語法）,顯示於編輯器右下角
+⑤ 文章內容,自動儲存,rule,前端定時器,內容變更後每 60 秒自動儲存為草稿（不改變 status）,顯示「上次自動儲存：N 秒前」
+⑥ 發布設定,狀態下拉,enum,knowledge_article.status,草稿 / 已發布 / 封存；下拉選取後不即時儲存，等按儲存按鈕,封存後不出現在 AI 搜尋結果中
+⑥ 發布設定,分類下拉,string,knowledge_article.category,從 GET /km/categories 取清單；必填,下拉選取；可輸入新分類名稱直接建立
+⑥ 發布設定,標籤,array,knowledge_article.tags[],Tag 式輸入；Enter 新增；點「×」移除,自由輸入，不強制從現有標籤選取
+⑥ 發布設定,Embedding 狀態,enum,knowledge_article.embeddedAt + embeddingModel,已完成（綠）/ 待建立（橘）/ 建立中（動畫）/ 未建立,來自 knowledge_articles.embedded_at
+⑥ 發布設定,Embedding 模型,string,knowledge_article.embeddingModel,顯示此文章使用的向量模型名稱,如 text-embedding-3-small
+⑥ 發布設定,Embedding 更新時間,datetime,knowledge_article.embeddedAt,格式「N 分鐘前」,null 時顯示「尚未建立」
+⑥ 發布設定,採用次數,integer,knowledge_article.helpfulCount,AI 建議被採用的累計次數,來自 knowledge_articles.helpful_count
+⑥ 發布設定,忽略次數,integer,knowledge_article.ignoredCount,AI 建議被忽略的累計次數,來自 knowledge_articles.ignored_count
+⑥ 發布設定,採用率,float,前端計算,helpfulCount / (helpfulCount + ignoredCount) × 100%；格式「88%」,分母為 0 時顯示「—」
+⑦ 版本歷程,版本列表,array,GET /km/articles/:id/versions,依 createdAt DESC 顯示所有版本,來自 knowledge_article_versions table
+⑦ 版本歷程,每版本 — 版本號,integer,version.versionNumber,格式「v{N}」,
+⑦ 版本歷程,每版本 — 修改時間,datetime,version.createdAt,格式 YYYY-MM-DD HH:MM,
+⑦ 版本歷程,每版本 — 修改者,string,version.agentId → agent.name,,
+⑦ 版本歷程,每版本 — 變更摘要,string,version.changeSummary,由系統自動比對前後版本標題差異產生,可選填手動摘要
+⑦ 版本歷程,還原按鈕,action,POST /km/articles/:id/restore,body: { versionId }；還原後建立新版本（不覆蓋舊版）,
+⑧ API 端點,取得文章詳情,GET,GET /km/articles/:id,含完整 content / tags / embedding 資訊,頁面載入時呼叫
+⑧ API 端點,建立文章,POST,POST /km/articles,"body: { title, summary?, content, category, tags[], status }",新文章頁面儲存時
+⑧ API 端點,更新文章,PATCH,PATCH /km/articles/:id,body: 可部分更新；status 從 draft → published 時觸發 Embedding 重建,
+⑧ API 端點,上傳圖片,POST,POST /storage/upload,multipart/form-data；回傳 { url },工具列圖片按鈕觸發
+⑧ API 端點,取得版本歷程,GET,GET /km/articles/:id/versions,,版本歷程面板開啟時呼叫
+⑧ API 端點,還原版本,POST,POST /km/articles/:id/restore,body: { versionId },

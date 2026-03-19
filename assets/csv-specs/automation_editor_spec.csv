@@ -1,0 +1,48 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,麵包屑,string,前端路由,「自動化 / {規則名稱}」；新建時顯示「自動化 / 新規則」,
+① 頁面標頭,規則名稱輸入框,string,automation_rule.name,必填；最長 50 字；空白時「儲存」disabled,行內編輯，不另開 Modal
+① 頁面標頭,啟用狀態 Toggle,boolean,automation_rule.isActive,開 / 關；切換後即時更新（不需按儲存）,PATCH /automation/rules/:id { isActive }
+① 頁面標頭,試執行按鈕,action,POST /automation/rules/:id/test,開啟試執行 Modal；可選目標聯繫人 + Dry Run 不真實執行,需先儲存才能試執行
+① 頁面標頭,儲存按鈕,action,PUT /automation/rules/:id,儲存所有 trigger / conditions / actions；成功後顯示 Toast,必填欄位未填時 disabled
+① 頁面標頭,刪除按鈕,action,DELETE /automation/rules/:id,需二次確認；刪除後跳回列表頁,
+② WHEN 觸發器,區塊標題,string,前端固定文案,「WHEN — 觸發條件（選一個）」,一條規則只能有一個觸發器
+② WHEN 觸發器,觸發器類型下拉,enum,automation_rule.trigger.type,渠道事件 / 聯繫人事件 / 案件事件 / 排程；選擇後顯示對應參數欄位,切換觸發器類型時清空已填參數
+② WHEN 觸發器,渠道選擇,array,automation_rule.trigger.params.channelId,渠道事件類觸發器顯示；可選特定渠道或「所有渠道」,GET /channels 取清單
+② WHEN 觸發器,關鍵字輸入,array,automation_rule.trigger.params.keywords[],keyword.matched 觸發器顯示；以逗號分隔輸入,Tag 式輸入，Enter / 逗號新增一個 Tag
+② WHEN 觸發器,關鍵字比對模式,enum,automation_rule.trigger.params.matchMode,任一（any）/ 全部（all）；預設 any,
+② WHEN 觸發器,Postback 資料,string,automation_rule.trigger.params.data,postback.received 觸發器顯示；填入 Postback data 值,
+② WHEN 觸發器,案件觸發器參數,enum,automation_rule.trigger.params,case.sla_warning 顯示「提前幾分鐘」；case.status_changed 顯示「從哪個狀態」,依觸發器類型動態顯示不同參數
+② WHEN 觸發器,Cron 表達式,string,automation_rule.trigger.params.expression,schedule.cron 觸發器顯示；提供常用預設選項（每天 / 每週 / 每月）,附 Cron 表達式說明提示
+② WHEN 觸發器,排程時間,datetime,automation_rule.trigger.params.runAt,schedule.once 觸發器顯示；日期時間選擇器,過去時間 disabled
+③ IF 條件,區塊標題 + 邏輯切換,enum,automation_rule.conditionLogic,「IF — 過濾條件（AND ▾）」；AND = 全部符合 / OR = 任一符合,預設 AND
+③ IF 條件,條件列 — 欄位選擇,enum,condition.field,contact.tag / contact.channel / contact.attribute.* / message.text / case.priority / case.category 等,依觸發器類型動態顯示可用欄位
+③ IF 條件,條件列 — 運算子,enum,condition.operator,equals / not_equals / contains / not_contains / has_tag / not_has_tag / gt / lt / is_empty 等,依欄位類型動態顯示可用運算子
+③ IF 條件,條件列 — 值,mixed,condition.value,依欄位類型顯示對應輸入元件：文字輸入 / 數字 / 下拉 / 標籤選擇器,
+③ IF 條件,新增條件按鈕,action,前端狀態,點擊新增一列空白條件；最多 10 條,
+③ IF 條件,移除條件按鈕,action,前端狀態,每列右側「×」；至少保留 0 條（無條件 = 全部觸發）,
+④ THEN 動作,區塊標題,string,前端固定文案,「THEN — 執行動作（依序執行）」,
+④ THEN 動作,動作列 — 動作類型,enum,action.type,send_message / send_template / add_tag / remove_tag / create_case / assign_case / update_case_status / escalate_case / notify_agent / notify_supervisor / call_webhook / delay,依觸發器類型過濾不適用的動作
+④ THEN 動作,動作列 — 動作參數,mixed,action.params,依動作類型顯示不同參數欄位；如 send_message 顯示訊息輸入框；delay 顯示分鐘數輸入,
+④ THEN 動作,send_message 訊息內容,string,action.params.text,支援 {{變數}} 語法；如 {{contact.name}},提供可用變數提示下拉
+④ THEN 動作,send_template 模板選擇,string,action.params.templateId,從 GET /templates 取清單；選取後顯示預覽,
+④ THEN 動作,add_tag / remove_tag,string,action.params.tagId,從 GET /tags?scope=CONTACT 取清單,
+④ THEN 動作,create_case 參數,object,action.params,title / priority / category / assigneeId 等；支援 {{變數}} 填入標題,
+④ THEN 動作,call_webhook 參數,object,action.params,url / method / headers / body；支援 {{變數}} 語法,POST only；Headers 以 key-value 形式輸入
+④ THEN 動作,delay 動作,integer,action.params.minutes,輸入延遲分鐘數；最少 1 分鐘；最多 10080 分鐘（7 天）,延遲後繼續執行後續動作
+④ THEN 動作,動作排序,action,前端狀態,拖曳調整動作執行順序,
+④ THEN 動作,新增動作按鈕,action,前端狀態,點擊新增一列空白動作；最多 20 個,
+④ THEN 動作,移除動作按鈕,action,前端狀態,每列右側「×」；至少保留 1 個動作,
+⑤ 規則 Freq Cap,規則層級 Cap,integer,automation_rule.frequencyCapCount + frequencyCapHours,此規則獨立的頻率限制；不填則使用全域設定,格式「同一聯繫人 N 小時內最多執行 M 次」
+⑤ 規則 Freq Cap,Cap 時窗（小時）,integer,automation_rule.frequencyCapHours,1~168 小時,
+⑤ 規則 Freq Cap,Cap 次數,integer,automation_rule.frequencyCapCount,1~99 次,0 = 無限制
+⑥ 試執行 Modal,目標聯繫人搜尋,string,GET /contacts?q=,選取要模擬的聯繫人,
+⑥ 試執行 Modal,Dry Run 模式,boolean,前端固定,預設開啟；Dry Run = 不真實執行動作，只顯示會執行哪些動作,
+⑥ 試執行 Modal,試執行結果,array,POST /automation/rules/:id/test,顯示條件是否通過 + 每個動作的預期執行結果,success / skip / would_execute
+⑦ API 端點,取得規則詳情,GET,GET /automation/rules/:id,含完整 trigger / conditions / actions JSON,頁面載入時呼叫
+⑦ API 端點,建立規則,POST,POST /automation/rules,"body: { name, trigger, conditions, actions, conditionLogic, frequencyCapCount?, frequencyCapHours? }",新規則頁面儲存時
+⑦ API 端點,更新規則,PUT,PUT /automation/rules/:id,body: 同建立；完整覆蓋,現有規則儲存時
+⑦ API 端點,切換啟用,PATCH,PATCH /automation/rules/:id,body: { isActive },Toggle 切換即時呼叫
+⑦ API 端點,試執行,POST,POST /automation/rules/:id/test,"body: { contactId, dryRun: true }",
+⑦ API 端點,取得模板清單,GET,GET /templates?channelType=,send_template 動作的選單用,
+⑦ API 端點,取得標籤清單,GET,GET /tags?scope=CONTACT,add_tag / remove_tag 動作的選單用,
+⑦ API 端點,取得 Agent 清單,GET,GET /agents?isActive=true,assign_case / notify_agent 動作的選單用,

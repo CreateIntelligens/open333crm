@@ -1,0 +1,29 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,批量匯入按鈕,action,POST /km/articles/import,開啟匯入 Modal；支援 CSV / JSON 格式,需 Admin / Supervisor 權限
+① 頁面標頭,重建 Embedding 按鈕,action,POST /km/articles/rebuild-embeddings,對所有已發布文章重新建立 Embedding；背景執行,需 Admin 權限；執行中顯示進度
+① 頁面標頭,新增文章按鈕,link,前端路由 /km/new,跳轉至空白文章編輯器,
+② 分類樹,分類列表,array,GET /km/categories,樹狀結構顯示；可展開 / 收合,來自 knowledge_articles.category 欄位去重或獨立 categories table
+② 分類樹,已選分類,string,前端狀態,點擊分類後高亮，右側文章列表自動篩選,Query param: category=
+② 分類樹,新增分類,action,POST /km/categories,點「+ 新增分類」開啟輸入框,需 Admin 權限
+③ 篩選,狀態篩選 — 已發布,pill,GET /km/articles?status=published,綠色 pill；點擊切換選中狀態,可與草稿複選
+③ 篩選,狀態篩選 — 草稿,pill,GET /km/articles?status=draft,橘色 pill,
+③ 篩選,排序方式,enum,Query param: sortBy,採用次數（多→少）/ 更新時間 / 建立時間；預設採用次數,
+④ 搜尋,搜尋框,string,GET /km/articles?q=,搜尋文章標題 / 內容全文,debounce 300ms；支援中文分詞
+⑤ 文章列表,文章標題,string,knowledge_article.title,點擊跳轉 /km/:id/edit,最長 100 字，超出截斷
+⑤ 文章列表,分類,string,knowledge_article.category,顯示於標題下方小字,
+⑤ 文章列表,狀態徽章,enum,knowledge_article.status,已發布（綠）/ 草稿（橘）/ 封存（灰）,來自 knowledge_articles.status
+⑤ 文章列表,更新日期,date,knowledge_article.updatedAt,格式 MM-DD,
+⑤ 文章列表,採用次數,integer,knowledge_article.helpfulCount,AI 建議被客服採用的累計次數；排序依據,來自 knowledge_articles.helpful_count
+⑤ 文章列表,列操作,action,前端事件,hover 顯示：編輯 / 發布 / 封存 / 刪除,刪除需二次確認；有 Embedding 的文章刪除同時清除向量
+⑥ Embedding 狀態,已完成篇數,integer,GET /km/embedding-status,已建立 Embedding 的文章數,
+⑥ Embedding 狀態,待建立篇數,integer,GET /km/embedding-status,尚未建立 Embedding 的文章數（含新文章 / 已更新）,> 0 時顯示橘色提示
+⑥ Embedding 狀態,建立中篇數,integer,GET /km/embedding-status,BullMQ Worker 正在處理的文章數,建立中時顯示進度條
+⑥ Embedding 狀態,向量模型,string,tenant.settings.embeddingModel,顯示目前使用的 Embedding 模型名稱,
+⑥ Embedding 狀態,上次更新,datetime,knowledge_article.embeddedAt（最新一筆）,格式「N 分鐘前」,
+⑦ AI 搜尋測試,入口按鈕,link,前端路由 /km/search-test,「前往測試 →」；跳轉至搜尋測試工具頁,
+⑧ 分頁,分頁控制,integer,"page, limit",預設 limit=20；顯示「第 X–Y / 共 N 篇」,
+⑨ API 端點,取得文章列表,GET,GET /km/articles,支援 q / category / status / sortBy / page / limit,
+⑨ API 端點,取得分類列表,GET,GET /km/categories,樹狀結構,
+⑨ API 端點,取得 Embedding 狀態,GET,GET /km/embedding-status,回傳 done / pending / inProgress 各篇數,
+⑨ API 端點,批量匯入,POST,POST /km/articles/import,body: CSV / JSON 檔案；後端非同步解析並建立 Embedding,
+⑨ API 端點,重建所有 Embedding,POST,POST /km/articles/rebuild-embeddings,背景執行；可用 GET /km/embedding-status 查進度,

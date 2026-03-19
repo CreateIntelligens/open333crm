@@ -1,0 +1,39 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,聯繫人總數,integer,GET /contacts?count=true,格式「共 N 人」；顯示於頁面標題右方,頁面載入時呼叫；不隨篩選條件變動（顯示全部總數）
+① 頁面標頭,新增聯繫人按鈕,action,前端事件,點擊開啟新增聯繫人 Modal,Admin / Supervisor / Agent 皆可操作
+② 搜尋與篩選,搜尋框,string,GET /contacts?q=,搜尋聯繫人姓名 / 電話 / Email；支援模糊比對,debounce 300ms；最少 2 字元才送出
+② 搜尋與篩選,渠道篩選,enum,GET /contacts?channel=,LINE / FB / WebChat / WhatsApp；可複選,"Query param: channel=LINE,FB"
+② 搜尋與篩選,標籤篩選,array,GET /contacts?tag=,多選；從 GET /tags?scope=CONTACT 取清單,多個標籤預設 OR 邏輯
+② 搜尋與篩選,排序下拉,enum,Query param: sortBy + sortOrder,最後互動時間（新→舊）/ 建立時間 / 姓名 A-Z / 案件數（多→少）；預設最後互動時間,
+② 搜尋與篩選,匯出按鈕,action,GET /contacts/export,匯出符合目前篩選條件的聯繫人為 CSV；支援全部或已選取,需 Admin / Supervisor 權限
+③ 表格欄位,全選 checkbox,boolean,前端狀態,勾選後選取當頁所有列；搭配批次操作區使用,
+③ 表格欄位,個人 checkbox,boolean,前端狀態,每列獨立勾選；已勾選數顯示於批次操作列,
+③ 表格欄位,頭像,string,contact.avatarUrl,有圖片顯示圓形頭像；無則顯示 displayName 首字縮寫圓形,顏色依姓名 hash 自動產生，保持一致
+③ 表格欄位,姓名,string,contact.displayName,主要識別文字；點擊跳轉 /contacts/:id,最長 20 字，超出截斷
+③ 表格欄位,Email,string,contact.email,顯示於姓名下方小字；null 時不顯示,
+③ 表格欄位,渠道 pill,array,contact.channelIdentities[],依已綁定渠道顯示 pill：LINE 綠 / FB 藍 / Chat 紫 / WA 綠,最多顯示 3 個，超出顯示「+N」
+③ 表格欄位,電話,string,contact.phone,nullable；null 顯示「—」,
+③ 表格欄位,標籤,array,contact.tags[],每個標籤顯示為 pill，顏色來自 tag.color；最多顯示 3 個，超出顯示「+N」,來自 contact_tags 關聯查詢
+③ 表格欄位,最後互動時間,datetime,contact.updatedAt（取最後 conversation.lastMessageAt）,今天內：「N 分鐘前」/ 「N 小時前」；超過今天：「N 天前」,排序預設欄位
+③ 表格欄位,相關案件數,integer,COUNT(cases WHERE contactId = X AND status != CLOSED),顯示開啟中案件數；0 顯示灰色「0」,點擊跳轉至 /cases?contactId=X
+④ 側邊快覽,觸發方式,action,前端事件,點擊列（非 checkbox、非連結）後從右側滑入快覽面板；不離開列表頁,
+④ 側邊快覽,頭像 + 姓名,string,contact.displayName + avatarUrl,大頭像圓形 + 姓名粗體,
+④ 側邊快覽,渠道身份,array,contact.channelIdentities[],顯示所有已綁定渠道,
+④ 側邊快覽,電話,string,contact.phone,nullable；有值才顯示,
+④ 側邊快覽,開啟中案件數,integer,同表格欄位計算方式,格式「開啟中案件：N 件」,
+④ 側邊快覽,最後互動,datetime,conversation.lastMessageAt,格式「N 分鐘前（LINE）」,顯示渠道來源
+④ 側邊快覽,標籤,array,contact.tags[],最多顯示 5 個,
+④ 側邊快覽,開啟詳情頁按鈕,link,前端路由,「開啟詳情頁 ↗」→ /contacts/:id,
+④ 側邊快覽,發送訊息按鈕,action,前端路由,「發送訊息」→ 跳轉至 /inbox 並開啟與該聯繫人的對話,需該聯繫人至少有一個渠道身份
+⑤ 批次操作,已選取數顯示,integer,前端狀態,格式「已選 N 筆」；0 筆時不顯示批次操作列,
+⑤ 批次操作,批次貼標,action,POST /contacts/batch-tag,開啟標籤選擇 Modal；選取後對所有勾選聯繫人新增標籤,"body: { contactIds[], tagIds[] }"
+⑤ 批次操作,批次匯出,action,GET /contacts/export?ids=,僅匯出已選取的聯繫人,需 Admin / Supervisor 權限
+⑤ 批次操作,批次合併,action,前端事件,僅允許選取 2 筆時啟用；開啟合併 Modal,超過 2 筆時 disabled 並提示「合併僅支援 2 筆」
+⑥ 分頁,分頁控制,integer,"page, limit",預設 limit=20；底部顯示「第 X–Y / 共 N 筆」,使用分頁按鈕，非 infinite scroll
+⑥ 分頁,每頁筆數切換,enum,前端設定,可切換 20 / 50 / 100 筆,
+⑦ API 端點,取得聯繫人列表,GET,GET /contacts,支援 q / channel / tag / sortBy / sortOrder / page / limit,主要查詢 API
+⑦ API 端點,取得總數,GET,GET /contacts?count=true,回傳符合條件的總筆數；用於分頁顯示,
+⑦ API 端點,取得標籤清單,GET,GET /tags?scope=CONTACT,用於標籤篩選下拉；頁面載入時呼叫一次快取,
+⑦ API 端點,批次貼標,POST,POST /contacts/batch-tag,"body: { contactIds[], tagIds[], action: add|remove }",
+⑦ API 端點,匯出,GET,GET /contacts/export?format=csv,支援 ids= 指定匯出或不帶 ids 匯出全部篩選結果,後端非同步產生；完成後推播下載連結
+⑦ API 端點,合併,POST,POST /contacts/merge,"body: { primaryContactId, secondaryContactId }",跳至合併 Modal 後呼叫

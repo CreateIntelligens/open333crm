@@ -1,0 +1,54 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頂部操作列,麵包屑,string,前端路由,「聯繫人 / {displayName}」；點「聯繫人」回列表,
+① 頂部操作列,發送訊息按鈕,action,前端路由,跳轉至 /inbox 並開啟與該聯繫人對話,需至少一個渠道身份；無渠道時 disabled
+① 頂部操作列,合併聯繫人按鈕,action,前端事件,開啟合併 Modal；此聯繫人自動設為主要聯繫人,
+① 頂部操作列,更多操作下拉,action,前端事件,包含：封鎖聯繫人 / 刪除聯繫人 / 匯出此聯繫人,刪除需二次確認；封鎖後該聯繫人訊息不再進入收件匣
+② 左欄 — 基本識別,頭像,string,contact.avatarUrl,圓形；無圖片顯示 displayName 首字縮寫,
+② 左欄 — 基本識別,顯示名稱,string,contact.displayName,可行內編輯；失焦後 PATCH 儲存,最長 50 字
+② 左欄 — 基本識別,聯繫人 ID,string,contact.id,格式「C-XXXXX」；唯讀,顯示於名稱下方小字
+② 左欄 — 基本識別,VIP 標籤,badge,contact.tags[],若有 VIP 標籤則顯示橘色 VIP 徽章,判斷 tag.name = 'VIP'
+② 左欄 — 基本識別,封鎖狀態,boolean,contact.isBlocked,被封鎖時顯示紅色「已封鎖」徽章,來自 contacts.is_blocked
+③ 左欄 — 基本資料,電話,string?,contact.phone,可行內編輯；失焦後 PATCH 儲存；null 顯示「+ 新增電話」,
+③ 左欄 — 基本資料,Email,string?,contact.email,可行內編輯；null 顯示「+ 新增 Email」,格式驗證 RFC 5322
+③ 左欄 — 基本資料,語言,enum,contact.language,zh-TW / en / ja 等；下拉選取後 PATCH 儲存,
+③ 左欄 — 基本資料,生日,date?,contact.birthday,日期選擇器；null 顯示「+ 新增生日」；格式 YYYY-MM-DD,選填；可用於行銷分群
+④ 左欄 — 渠道身份,渠道身份列表,array,contact.channelIdentities[],每個渠道一個 pill：渠道圖示 + 渠道名稱,來自 channel_identities table
+④ 左欄 — 渠道身份,連結新渠道,action,前端事件,點擊「+ 連結新渠道」開啟連結流程；產生連結碼給客戶輸入,由客戶在對話中輸入 /link + 連結碼完成綁定
+④ 左欄 — 渠道身份,解除渠道連結,action,DELETE /contacts/:id/channel-identities/:channelIdentityId,滑鼠 hover 渠道 pill 後顯示「×」；需二次確認,解除後對應渠道的對話歷程保留，身份解綁
+⑤ 左欄 — 標籤,標籤列表,array,contact.tags[],每個標籤顯示為圓角 pill；顏色來自 tag.color,來自 contact_tags 關聯
+⑤ 左欄 — 標籤,標籤類型說明,enum,tag.type,手動標籤（可刪）/ 自動標籤（系統貼，可刪）/ 系統標籤（不可刪）,hover 顯示 tooltip 說明類型
+⑤ 左欄 — 標籤,有效期顯示,datetime?,contact_tag.expiresAt,有效期標籤顯示「至 MM/DD」；null 則不顯示,
+⑤ 左欄 — 標籤,新增標籤,action,POST /contacts/:id/tags,點「+ 新增」開啟標籤下拉選單；從 GET /tags?scope=CONTACT 取清單,可搜尋標籤名稱；不存在時顯示「+ 建立新標籤」
+⑤ 左欄 — 標籤,移除標籤,action,DELETE /contacts/:id/tags/:tagId,hover 標籤 pill 後顯示「×」；系統標籤不可移除,type = SYSTEM 的標籤無「×」
+⑥ 左欄 — 自訂屬性,屬性列表,array,contact.attributes[],key-value 格式；依 Tenant 設定的欄位定義排列,來自 contact_attributes table
+⑥ 左欄 — 自訂屬性,每個屬性 — 欄位名稱,string,contact_attribute.key → 欄位定義 label,顯示友善名稱，如「商品品牌」而非「appliance_brand」,欄位定義由 Admin 在設定頁維護
+⑥ 左欄 — 自訂屬性,每個屬性 — 值,string,contact_attribute.value,可行內編輯；依 dataType 顯示對應輸入元件（文字 / 日期 / 下拉）,失焦後 PATCH /contacts/:id/attributes 儲存
+⑥ 左欄 — 自訂屬性,新增屬性,action,POST /contacts/:id/attributes,點「+ 新增屬性」顯示尚未填值的欄位清單,只顯示 Tenant 定義但尚未填值的欄位
+⑦ 左欄 — 關係鏈,關係列表,array,contact.relations[],每條關係顯示：關係類型 + 對方姓名 + 跳轉連結,來自 contact_relations table
+⑦ 左欄 — 關係鏈,關係類型,enum,contact_relation.relationType,推薦人 / 家庭成員 / 同事 / 自訂,
+⑦ 左欄 — 關係鏈,對方聯繫人連結,link,contact_relation.toContactId → contact.displayName,點擊跳轉至對方聯繫人詳情頁,
+⑦ 左欄 — 關係鏈,新增關係,action,POST /contacts/:id/relations,點「+ 新增關係」：搜尋目標聯繫人 + 選擇關係類型後儲存,
+⑦ 左欄 — 關係鏈,移除關係,action,DELETE /contacts/:id/relations/:relationId,hover 顯示「×」；需二次確認,
+⑧ 右欄 — Tab,互動時間軸 Tab,tab,GET /contacts/:id/timeline,預設選中；顯示全部互動歷程,
+⑧ 右欄 — Tab,相關案件 Tab,tab,GET /cases?contactId=,顯示該聯繫人的所有案件；含狀態 / 優先級 / 指派,點擊案件跳轉 /cases/:id
+⑧ 右欄 — Tab,廣播記錄 Tab,tab,GET /contacts/:id/broadcast-history,顯示該聯繫人收到的廣播記錄；含標題 / 發送時間 / 渠道,
+⑧ 右欄 — Tab,備註 Tab,tab,GET /contacts/:id/notes,顯示客服針對此聯繫人的內部備註；可新增 / 編輯 / 刪除,isInternal = true；客戶不可見
+⑨ 右欄 — 時間軸,時間軸來源,array,GET /contacts/:id/timeline,彙整 Conversation / Case / Tag / Broadcast / CaseEvent 五個來源,後端統一轉成 TimelineEvent 格式
+⑨ 右欄 — 時間軸,每列 — 時間,datetime,event.timestamp,格式 YYYY-MM-DD；同日多筆顯示 HH:MM,依 timestamp DESC 排列
+⑨ 右欄 — 時間軸,每列 — 來源 / 類型,enum,event.type + event.channel,對話=藍 / 案件=橘 / 標籤=灰 / 廣播=綠 / 案件事件=紫,圓點顏色對應類型
+⑨ 右欄 — 時間軸,每列 — 標題,string,event.title,如「開案：冰箱不製冷問題（Case #102）」,可點擊跳轉至對應頁面
+⑨ 右欄 — 時間軸,每列 — 副文字,string,event.subtitle?,如「→ 王客服 接手」/ 「系統標籤：LINE已追蹤」,選填，部分事件無副文字
+⑨ 右欄 — 時間軸,類型篩選,enum,Query param: type=,全部 / 對話 / 案件 / 標籤 / 廣播；前端 Tab 切換後重新呼叫 API,
+⑨ 右欄 — 時間軸,載入更多,pagination,GET /contacts/:id/timeline?cursor=,cursor-based；每次 20 筆；捲動至底部觸發,
+⑨ 右欄 — 時間軸,WS 即時 prepend,WS,contact.updated 事件,新事件發生時 prepend 至列表頂端，不需重整,
+⑩ API 端點,取得聯繫人詳情,GET,GET /contacts/:id,含 channelIdentities / tags / attributes / relations join,頁面載入時呼叫
+⑩ API 端點,更新基本資料,PATCH,PATCH /contacts/:id,"body: { displayName?, phone?, email?, language?, birthday? }",行內編輯失焦後呼叫
+⑩ API 端點,新增 / 更新屬性,PATCH,PATCH /contacts/:id/attributes,"body: { key, value }",
+⑩ API 端點,新增標籤,POST,POST /contacts/:id/tags,body: { tagId },
+⑩ API 端點,移除標籤,DELETE,DELETE /contacts/:id/tags/:tagId,,
+⑩ API 端點,新增關係,POST,POST /contacts/:id/relations,"body: { toContactId, relationType }",
+⑩ API 端點,移除關係,DELETE,DELETE /contacts/:id/relations/:relationId,,
+⑩ API 端點,取得時間軸,GET,GET /contacts/:id/timeline?type=&cursor=&limit=20,,
+⑩ API 端點,取得相關案件,GET,GET /cases?contactId=:id,,
+⑩ API 端點,封鎖聯繫人,PATCH,PATCH /contacts/:id,body: { isBlocked: true },
+⑩ API 端點,刪除聯繫人,DELETE,DELETE /contacts/:id,需二次確認；soft delete（isArchived = true）,

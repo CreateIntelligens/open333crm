@@ -1,0 +1,35 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,頁面標題,string,前端固定文案,「廣播列表」,
+① 頁面標頭,建立廣播按鈕,action,前端路由,點擊跳轉 /marketing/broadcasts/new（精靈第一步）,需 Admin / Supervisor 權限
+② 狀態 Tab,全部,tab,GET /marketing/broadcasts,預設選中,
+② 狀態 Tab,排程中,tab,GET /marketing/broadcasts?status=scheduled,status = scheduled；格式「排程中 N」,
+② 狀態 Tab,發送中,tab,GET /marketing/broadcasts?status=sending,status = sending；格式「發送中 N」,發送中數 > 0 時 Tab 顯示藍色動態點
+② 狀態 Tab,已完成,tab,GET /marketing/broadcasts?status=completed,status = completed,
+② 狀態 Tab,草稿,tab,GET /marketing/broadcasts?status=draft,status = draft,
+③ 搜尋篩選,搜尋框,string,GET /marketing/broadcasts?q=,搜尋廣播名稱,debounce 300ms
+③ 搜尋篩選,渠道篩選,enum,GET /marketing/broadcasts?channel=,LINE / FB / 全部,
+④ 表格欄位,狀態徽章,enum,broadcast.status,發送中（藍）/ 排程中（橘）/ 已完成（灰）/ 草稿（灰）/ 失敗（紅）,
+④ 表格欄位,廣播名稱,string,broadcast.name,點擊跳轉廣播詳情；最長 50 字,
+④ 表格欄位,發送進度（發送中）,string,broadcast.sentCount / broadcast.totalCount,格式「進度：N / M 人」；發送中狀態才顯示,
+④ 表格欄位,完成時間（已完成）,datetime,broadcast.completedAt,格式「完成：MM/DD HH:MM」；已完成狀態才顯示,
+④ 表格欄位,預計時間（排程中）,datetime,broadcast.scheduledAt,格式「預計：MM/DD HH:MM」；排程中狀態才顯示,
+④ 表格欄位,渠道,enum,broadcast.channelType,LINE（綠）/ FB（藍）pill；多渠道時並排顯示,
+④ 表格欄位,發送時間,datetime,broadcast.scheduledAt / sentAt,格式 YYYY-MM-DD HH:MM；草稿顯示「—」,
+④ 表格欄位,受眾人數,integer,broadcast.totalCount,預估受眾人數；草稿顯示「—」,
+④ 表格欄位,送達率,float,broadcast.deliveredCount / broadcast.totalCount,格式「NN.N%」；未完成顯示「—」,
+④ 表格欄位,回覆率,float,broadcast.repliedCount / broadcast.deliveredCount,格式「NN.N%」；未完成顯示「—」,
+⑤ 展開詳情,觸發方式,string,前端事件,點擊列後展開底部詳情列；再點收合,
+⑤ 展開詳情,廣播名稱 + 渠道 + 完成時間,string,broadcast.*,格式「{名稱} · {渠道} · {時間}」,
+⑤ 展開詳情,受眾描述,string,broadcast.segmentName / broadcast.audienceSummary,"如「保固即將到期（3,456 人）」",
+⑤ 展開詳情,訊息類型,string,broadcast.templateName + contentType,如「保固到期提醒 Flex 卡片」,
+⑤ 展開詳情,發送數,integer,broadcast.sentCount,,
+⑤ 展開詳情,送達數（送達率）,string,broadcast.deliveredCount,格式「N（NN.N%）」,
+⑤ 展開詳情,回覆數,integer,broadcast.repliedCount,,
+⑤ 展開詳情,點擊數,integer,broadcast.clickedCount,Postback 按鈕點擊次數,
+⑤ 展開詳情,查看完整報表按鈕,link,前端路由,跳轉 /marketing/broadcasts/:id/report,已完成狀態才顯示
+⑤ 展開詳情,取消廣播按鈕,action,POST /marketing/broadcasts/:id/cancel,排程中狀態才顯示；需二次確認,取消後 status → cancelled
+⑥ 分頁,分頁控制,integer,"page, limit",預設 limit=20；底部顯示「第 X–Y / 共 N 筆」,
+⑦ API 端點,取得廣播列表,GET,GET /marketing/broadcasts,支援 status / channel / q / page / limit,
+⑦ API 端點,取得廣播詳情,GET,GET /marketing/broadcasts/:id,含完整 metrics；展開詳情時 lazy load,
+⑦ API 端點,取消廣播,POST,POST /marketing/broadcasts/:id/cancel,排程中才可取消,
+⑦ API 端點,WS 即時更新,WS,broadcast.updated 事件,發送中廣播進度即時更新,前端訂閱，不需輪詢

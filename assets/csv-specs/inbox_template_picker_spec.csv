@@ -1,0 +1,48 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 面板觸發與外觀,觸發方式,action,前端事件,客服點擊輸入框旁「🃏 模板」按鈕後，從底部滑出 Panel,僅 AGENT_HANDLED 狀態可點；BOT_HANDLED 時按鈕 disabled
+① 面板觸發與外觀,顯示位置,CSS,前端常數,從聊天視窗底部向上滑出，覆蓋訊息列表下半部,不蓋住頂部標頭
+① 面板觸發與外觀,面板寬度,CSS,前端常數,與聊天視窗等寬,
+① 面板觸發與外觀,關閉方式,action,前端事件,點擊右上角「×」或點擊面板外區域關閉；不影響已選取的模板,
+① 面板觸發與外觀,面板標頭文字,string,前端固定文案,「選擇訊息模板」,
+② 搜尋與分類篩選,搜尋框,string,GET /templates?q=,搜尋模板名稱 / 描述關鍵字,debounce 300ms 後送出
+② 搜尋與分類篩選,分類 Tab 列表,array,GET /templates/categories,動態取得所有分類；固定加「全部」Tab 在第一位,來自 template.category 欄位去重
+② 搜尋與分類篩選,分類 Tab — 全部,tab,前端固定,顯示所有啟用中的模板；預設選中,
+② 搜尋與分類篩選,分類 Tab — 服務類,tab,category = service,案件確認卡 / 維修進度 / 預約確認等,
+② 搜尋與分類篩選,分類 Tab — 行銷類,tab,category = marketing,保固提醒 / 優惠 Banner / 積點通知等,
+② 搜尋與分類篩選,分類 Tab — 通用,tab,channelType = universal,純文字 / 快速回覆按鈕，適用所有渠道,
+② 搜尋與分類篩選,分類 Tab — 互動類,tab,category = interactive,問卷調查 / 輪播卡等,
+② 搜尋與分類篩選,渠道自動過濾,rule,conversation.channelType,自動過濾不支援當前渠道的模板；如 WebChat 不顯示 LINE 專屬 Flex,依 template.channelType 過濾：line / fb / universal
+③ 模板卡片列表,卡片列表來源,array,GET /templates?channelType=&category=&q=,回傳符合篩選條件的模板列表；預設依 usageCount 降冪排列,
+③ 模板卡片列表,每張卡片 — 名稱,string,template.name,最長 20 字，超出截斷,
+③ 模板卡片列表,每張卡片 — 描述,string,template.description,最長 30 字，超出截斷,
+③ 模板卡片列表,每張卡片 — 類型徽章,enum,template.contentType,Flex 紫色 / 文字 綠色 / 快速回覆 橘色 / FB通用 藍色,
+③ 模板卡片列表,每張卡片 — 使用次數,integer,template.usageCount,顯示格式「使用 N 次」；排序依據,
+③ 模板卡片列表,每張卡片 — 選取狀態,boolean,前端狀態,點擊卡片後高亮顯示藍色外框；同時更新右側預覽,單選，不支援多選
+③ 模板卡片列表,系統模板標示,boolean,template.isSystem,系統預設模板顯示「系統」小標籤,isSystem = true 的模板不可刪除
+③ 模板卡片列表,無結果提示,string,前端狀態,搜尋無結果時顯示「找不到符合的模板」,
+③ 模板卡片列表,列表分頁,integer,"page, limit",預設 limit=20；捲動至底部自動 load more,Infinite scroll
+④ 右側預覽,預覽標題,string,template.name,顯示「預覽：{模板名稱}」,
+④ 右側預覽,渠道說明,string,template.channelType,顯示「LINE Flex Message 渲染效果」/ 「FB 通用模板」/ 「純文字」,依 channelType 顯示對應說明
+④ 右側預覽,Flex 卡片預覽,JSON,POST /templates/:id/preview,呼叫 preview API，代入當前聯繫人變數後回傳渲染結果；以卡片樣式顯示,選取模板時即時呼叫
+④ 右側預覽,文字模板預覽,string,template.body.text（變數已替換）,直接顯示替換後的純文字內容,
+④ 右側預覽,預覽載入狀態,boolean,前端狀態,呼叫 preview API 期間顯示 skeleton loader,
+④ 右側預覽,預覽失敗處理,string,前端狀態,API 失敗時顯示「預覽載入失敗，請選擇其他模板」,不阻擋插入操作
+⑤ 變數填入,變數列表,array,template.variables[],顯示該模板定義的所有可用變數；每個變數一列,來自 MessageTemplate.variables[]
+⑤ 變數填入,每個變數 — 標籤,string,template.variables[].label,友善顯示名稱，如「聯繫人姓名」,
+⑤ 變數填入,每個變數 — key,string,template.variables[].key,變數 key，如 contact.name / attribute.appliance_brand,
+⑤ 變數填入,每個變數 — 自動填值,string,conversation.contact 相關欄位,系統自動帶入：contact.name / case.id / attribute.*,找不到對應值時使用 defaultValue
+⑤ 變數填入,每個變數 — 可手動覆蓋,boolean,前端狀態,客服可手動修改自動填入的值,修改後即時更新右側預覽
+⑤ 變數填入,必填變數未填提示,boolean,template.variables[].required,required = true 的變數若為空值，「插入此模板」按鈕 disabled，並顯示紅色提示,
+⑤ 變數填入,無變數提示,string,template.variables 為空,該模板無需填入變數時，隱藏此區塊,
+⑥ 操作按鈕,取消按鈕,action,前端事件,關閉面板，不做任何操作；輸入框維持原內容,
+⑥ 操作按鈕,插入此模板按鈕,action,前端事件,將渲染後的模板內容填入聊天輸入框；關閉 Template Picker,不直接送出，讓客服再確認後按發送
+⑥ 操作按鈕,插入按鈕 disabled 條件,boolean,前端狀態,尚未選取模板 OR 必填變數未填 → disabled,
+⑥ 操作按鈕,插入後輸入框狀態,string,前端狀態,Flex 模板插入後輸入框顯示「[Flex 卡片：{模板名稱}]」佔位文字；純文字則直接填入文字,Flex 訊息以 contentType=flex 發送，不顯示完整 JSON
+⑦ 發送行為,發送 API,POST,POST /conversations/:id/messages,"body: { contentType: 'flex', content: { flexJson, variables } } 或 { contentType: 'text', content: { text } }",由發送按鈕觸發，與一般訊息發送相同流程
+⑦ 發送行為,usageCount 累加,integer,後端自動,訊息發送成功後，後端自動將 template.usageCount + 1,前端不需額外呼叫
+⑦ 發送行為,渠道格式轉換,rule,Channel Plugin,Core Inbox 收到 flex contentType 後，由 LinePlugin / FbPlugin 各自渲染為對應格式發出,前端只送統一格式
+⑧ API 端點,取得模板列表,GET,GET /templates?channelType=&category=&q=&page=&limit=,支援渠道類型 / 分類 / 關鍵字 / 分頁篩選,面板開啟及篩選條件改變時呼叫
+⑧ API 端點,取得分類列表,GET,GET /templates/categories,回傳所有可用分類名稱陣列,面板初始化時呼叫一次
+⑧ API 端點,取得模板詳情,GET,GET /templates/:id,取得完整 variables[] 與 body,點擊卡片時呼叫
+⑧ API 端點,預覽渲染,POST,POST /templates/:id/preview,body: { variables: { key: value } }；回傳代入變數後的渲染結果,選取模板 / 修改變數時即時呼叫
+⑧ API 端點,發送訊息,POST,POST /conversations/:id/messages,"body: { contentType, content }；與一般訊息發送共用同一端點",插入模板後按發送觸發

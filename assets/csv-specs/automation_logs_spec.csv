@@ -1,0 +1,35 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,頁面標題,string,前端固定文案,「執行記錄」,
+① 頁面標頭,返回規則列表,link,前端路由,「← 返回規則列表」→ /automation,
+② 篩選列,搜尋框,string,GET /automation/logs?q=,搜尋規則名稱 / 聯繫人姓名,debounce 300ms
+② 篩選列,結果篩選,enum,GET /automation/logs?result=,全部 / 成功 / 失敗 / 略過,對應 AutomationLog.success + 略過判斷
+② 篩選列,規則篩選,string,GET /automation/logs?ruleId=,從規則列表中選一條規則過濾,GET /automation/rules 取清單
+② 篩選列,時間範圍,enum,GET /automation/logs?after=&before=,今天 / 最近 7 天 / 最近 30 天 / 自訂,預設今天
+③ 統計指標卡,今日成功數,integer,GET /automation/logs/stats?date=today,符合篩選條件的成功執行次數,
+③ 統計指標卡,今日失敗數,integer,GET /automation/logs/stats?date=today,success=false 的次數；> 0 顯示紅色,
+③ 統計指標卡,成功率,float,前端計算,成功數 / (成功數 + 失敗數) × 100%；格式「99.5%」,略過的不計入分母
+③ 統計指標卡,平均耗時,integer,GET /automation/logs/stats,AVG(completedAt - startedAt)；格式「N ms」,來自 automation_logs
+④ 表格欄位,結果徽章,enum,automation_log.success + skipped,成功（綠）/ 失敗（紅）/ 略過（灰）,略過 = 條件不符 or Frequency Cap 攔截 or Quiet Hours 延遲
+④ 表格欄位,規則名稱,string,automation_log.ruleId → automation_rule.name,點擊跳轉 /automation/:ruleId/edit,
+④ 表格欄位,聯繫人,string,automation_log.contactId → contact.displayName,點擊跳轉 /contacts/:contactId；無聯繫人時顯示「—」（排程觸發）,
+④ 表格欄位,觸發時間,datetime,automation_log.createdAt,格式 HH:MM:SS,今天內顯示時間；超過今天顯示日期
+④ 表格欄位,執行耗時,integer,automation_log.completedAt - automation_log.startedAt,格式「N ms」；> 3000ms 顯示橘色,略過的顯示極短時間（< 50ms）
+④ 表格欄位,動作完成率,string,前端計算,格式「N/M 完成」；N = 成功動作數；M = 總動作數,失敗時紅色顯示
+④ 表格欄位,展開 / 收合,action,前端狀態,點擊列可展開詳情；再點收合,預設全部收合
+⑤ 展開詳情,詳情標題,string,automation_log.ruleId + result,格式「{規則名稱} — {成功/失敗}詳情」,
+⑤ 展開詳情,觸發器資訊,string,automation_log.triggerRef,觸發此次執行的事件 ID + 類型,如「keyword.matched #msg-abc123」
+⑤ 展開詳情,條件評估結果,array,automation_log.conditionsResult[],逐條顯示每個 Condition 是否通過；綠✓ / 紅✗,略過時顯示哪個條件不符
+⑤ 展開詳情,動作執行列表,array,automation_log.actionsRan[],逐個動作顯示：動作類型 + 參數 + 執行結果,失敗的動作顯示錯誤訊息
+⑤ 展開詳情,每個動作 — 類型,string,action.type,如「send_message」/ 「add_tag」,
+⑤ 展開詳情,每個動作 — 結果,enum,action.result,success / failed / skipped（被保護閘攔截）,
+⑤ 展開詳情,每個動作 — 錯誤訊息,string,action.errorMessage,失敗時顯示；如「NO_AVAILABLE_AGENT」,
+⑤ 展開詳情,略過原因,string,automation_log.skipReason,條件不符 / Frequency Cap 超限 / Quiet Hours 延遲 / Opt-out 標籤,略過才顯示
+⑤ 展開詳情,錯誤代碼,string,automation_log.errorMsg,失敗才顯示；格式錯誤代碼 + 說明,
+⑤ 展開詳情,執行時間區間,datetime,automation_log.startedAt + completedAt,格式「HH:MM:SS.mmm → HH:MM:SS.mmm」,
+⑤ 展開詳情,重新執行按鈕,action,POST /automation/logs/:id/retry,僅失敗的記錄顯示；重新對同一聯繫人執行同一規則,不 Dry Run，真實執行
+⑥ 分頁,分頁控制,integer,"page, limit",預設 limit=20；底部顯示「第 X–Y / 共 N 筆」,使用分頁按鈕
+⑦ API 端點,取得執行記錄列表,GET,GET /automation/logs,支援 q / result / ruleId / after / before / page / limit,
+⑦ API 端點,取得統計指標,GET,GET /automation/logs/stats,回傳 successCount / failCount / avgDurationMs；支援 date / ruleId 篩選,
+⑦ API 端點,取得記錄詳情,GET,GET /automation/logs/:id,含 conditionsResult / actionsRan 完整資料,展開詳情時呼叫（lazy load）
+⑦ API 端點,重新執行,POST,POST /automation/logs/:id/retry,對同一聯繫人重新執行同一規則；回傳新的 log id,
+⑦ API 端點,取得規則清單（篩選用）,GET,"GET /automation/rules?fields=id,name",規則篩選下拉選單用,輕量查詢只取 id + name

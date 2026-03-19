@@ -1,0 +1,35 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 觸發,觸發方式 A — 手動,action,前端事件,客服在案件詳情頁點「升級案件」按鈕後開啟 Modal,
+① 觸發,觸發方式 B — SLA 自動,action,BullMQ SLA Worker,SLA 違規後後端自動呼叫 POST /cases/:id/escalate；不開 Modal,自動升級不顯示 Modal；前端收到 WS 事件後刷新頁面
+① 觸發,觸發方式 C — Automation,action,AutomationRule Engine,規則 action = escalate_case 觸發；同自動升級，不開 Modal,
+① 觸發,顯示條件,enum,case.status,status 為 OPEN / IN_PROGRESS / PENDING 時才顯示升級按鈕；ESCALATED / CLOSED 時隱藏,
+① 觸發,背景遮罩,CSS,前端狀態,底層畫面加半透明遮罩；不可點擊遮罩關閉（防誤觸）,
+② 案件摘要,案件編號 + 標題,string,case.id + case.title,格式「案件 #XXXX — {標題}」；唯讀,
+② 案件摘要,聯繫人,string,case.contact.displayName,唯讀,
+② 案件摘要,目前優先級,enum,case.priority,唯讀顯示；格式「目前優先級：高」,
+② 案件摘要,目前指派,string,case.assignee.name,唯讀；未指派顯示「未指派」,
+③ 升級原因,升級原因下拉 *,enum,escalation.reason,必填；選項：SLA 即將違規 / SLA 已違規 / 客戶多次催促 / 負面情緒 / 案情複雜 / 其他,
+③ 升級原因,快速選擇 Chips,array,前端固定,五個常用原因以 Chip 顯示；點擊等同下拉選取,Chip 點選後同步更新下拉值
+③ 升級原因,補充說明,string,escalation.note,選填；textarea；max 500 字,寫入 CaseEvent.payload.note
+④ 優先級調整,升級後優先級 *,enum,PATCH /cases/:id priority,必填；只能選比目前更高的優先級（防止降級）,如目前=HIGH，只顯示 URGENT 可選
+④ 優先級調整,目前優先級對照,string,前端顯示,右側顯示「原來：{priority}」提示,
+⑤ 重新指派,重新指派對象,string,cases.assignee_id,選填；下拉顯示所有在職 Agent + 目前案件數,GET /agents?isActive=true
+⑤ 重新指派,不指派說明,string,前端固定文案,「不選則維持原指派人」提示文字,
+⑤ 重新指派,建議指派人,string,前端邏輯,依 least_load 策略自動標記建議人選（藍色「建議」標籤）,僅視覺提示，不強制
+⑥ 通知設定,通知 Supervisor,checkbox,notification.targets[],預設勾選；取消勾選可停止通知,
+⑥ 通知設定,通知原負責客服,checkbox,notification.targets[],預設勾選；重新指派後原客服也收到通知,
+⑥ 通知設定,通知團隊群組,checkbox,notification.targets[],預設不勾選；勾選後所有 Team 成員收通知,
+⑥ 通知設定,通知方式,rule,Notification Service,系統通知（站內）必送；Email 依 agent.notificationPreferences 設定,前端僅控制收件人，不控制通知方式
+⑦ 操作按鈕,取消按鈕,action,前端事件,關閉 Modal；不呼叫任何 API；案件維持原狀態,
+⑦ 操作按鈕,確認升級按鈕,action,POST /cases/:id/escalate,文字「確認升級案件」；點擊後進入 loading 狀態,必填欄位未填時 disabled
+⑦ 操作按鈕,確認升級 body,JSON,POST /cases/:id/escalate,"{ reason, note?, newPriority, assigneeId?, notifyTargets[] }",
+⑦ 操作按鈕,成功後行為,action,前端狀態,關閉 Modal；case.status → ESCALATED；優先級更新；Timeline 新增 escalated 事件,WS 推播觸發前端更新
+⑦ 操作按鈕,失敗處理,string,前端狀態,顯示 Toast 錯誤；Modal 保持開啟；欄位資料保留,
+⑧ 系統行為,status 更新,enum,cases.status,IN_PROGRESS / PENDING → ESCALATED,
+⑧ 系統行為,priority 更新,enum,cases.priority,寫入新的 priority 值,
+⑧ 系統行為,CaseEvent 寫入,action,case_events,eventType = escalated；payload 含 reason / note / newPriority / previousPriority,
+⑧ 系統行為,通知發送,action,Notification Service,依 notifyTargets 發送系統通知 + Email,
+⑧ 系統行為,WS 推播,WS,case.updated 事件,推播至所有訂閱該 case 的前端；刷新狀態與 Timeline,
+⑨ API 端點,執行升級,POST,POST /cases/:id/escalate,"body: { reason, note?, newPriority, assigneeId?, notifyTargets[] }",主要呼叫
+⑨ API 端點,取得 Agent 列表,GET,GET /agents?isActive=true,重新指派下拉選單用,Modal 開啟時呼叫
+⑨ API 端點,WebSocket,WS,case.updated 事件,成功後後端推播；前端收到後刷新案件詳情頁,

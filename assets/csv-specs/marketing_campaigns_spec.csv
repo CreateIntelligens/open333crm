@@ -1,0 +1,26 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,頁面標題,string,前端固定文案,「行銷活動」,
+① 頁面標頭,建立活動按鈕,action,前端路由,點擊跳轉 /marketing/campaigns/new,需 Admin / Supervisor 權限
+② 狀態 Tab,全部,tab,GET /marketing/campaigns,顯示所有活動；格式「全部 N」,預設選中
+② 狀態 Tab,進行中,tab,GET /marketing/campaigns?status=active,status = active 的活動,
+② 狀態 Tab,草稿,tab,GET /marketing/campaigns?status=draft,status = draft,
+② 狀態 Tab,已完成,tab,GET /marketing/campaigns?status=completed,status = completed,
+② 狀態 Tab,已取消,tab,GET /marketing/campaigns?status=cancelled,status = cancelled,
+③ 活動卡片,狀態徽章,enum,campaign.status,進行中（綠）/ 草稿（灰）/ 已完成（藍）/ 已取消（紅）,
+③ 活動卡片,活動名稱,string,campaign.name,最長 50 字；點擊跳轉活動詳情頁,
+③ 活動卡片,活動期間,date,campaign.startDate + endDate,格式「YYYY-MM-DD ~ YYYY-MM-DD」；無 endDate 顯示「YYYY-MM-DD ~」,
+③ 活動卡片,廣播次數,integer,COUNT(broadcasts WHERE campaignId = X),格式「廣播 N 次」,
+③ 活動卡片,受眾描述,string,campaign.audienceSummary,如「空調客戶 · 已追蹤 LINE OA」；自動摘要,由後端組合 segment 條件名稱
+③ 活動卡片,發送總數,integer,campaign.metrics.totalSent,累計所有廣播的發送數,
+③ 活動卡片,回覆人數,integer,campaign.metrics.replied,累計所有廣播的回覆人數,
+③ 活動卡片,開案數,integer,campaign.metrics.casesOpened,由此活動引發的開案數（帶 campaignId 標記的案件）,
+③ 活動卡片,轉換率,float,campaign.metrics.conversionRate,格式「N.N%」；計算方式：(replied / totalSent) × 100,
+③ 活動卡片,查看詳情按鈕,link,前端路由,跳轉 /marketing/campaigns/:id,進行中 / 已完成狀態顯示
+③ 活動卡片,繼續編輯按鈕,link,前端路由,跳轉 /marketing/campaigns/:id/edit,草稿狀態顯示
+③ 活動卡片,查看報表按鈕,link,前端路由,跳轉 /marketing/campaigns/:id/report,已完成狀態顯示
+③ 活動卡片,刪除按鈕,action,DELETE /marketing/campaigns/:id,草稿狀態才顯示；需二次確認,
+④ 分頁,分頁控制,integer,"page, limit",預設 limit=10；底部顯示「第 X–Y / 共 N 個活動」,活動用卡片顯示，每頁 10 個
+⑤ API 端點,取得活動列表,GET,GET /marketing/campaigns,支援 status / page / limit,
+⑤ API 端點,取得各 Tab 數量,GET,GET /marketing/campaigns?count=true&status=,各 Tab 旁數字來源,頁面載入時呼叫
+⑤ API 端點,建立活動,POST,POST /marketing/campaigns,"body: { name, description, startDate, endDate?, goal? }",
+⑤ API 端點,刪除活動,DELETE,DELETE /marketing/campaigns/:id,僅草稿可刪除,

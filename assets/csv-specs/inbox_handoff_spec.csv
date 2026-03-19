@@ -1,0 +1,46 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① Modal 觸發與外觀,觸發方式 — 接管按鈕,action,前端事件,客服點擊「接管此對話（升人工）」按鈕後開啟,來自 BOT_HANDLED 頁面底部 CTA
+① Modal 觸發與外觀,觸發方式 — 自動升人工,action,conversation.status 變更事件,系統自動偵測升人工條件成立時，直接切換狀態，不開 Modal,自動升人工不顯示 Modal，直接執行
+① Modal 觸發與外觀,背景遮罩,CSS,前端狀態,"底層畫面加半透明黑色遮罩 rgba(0,0,0,0.45)；不可點擊遮罩關閉",防止誤觸底層操作
+① Modal 觸發與外觀,Modal 寬度,CSS,前端常數,固定寬度 360px，垂直居中顯示,
+① Modal 觸發與外觀,Modal 標頭文字,string,前端固定文案,「升人工 — 接管此對話」,
+① Modal 觸發與外觀,關閉按鈕（×）,action,前端事件,點擊關閉 Modal，不執行任何 API 呼叫，對話維持 BOT_HANDLED,
+② Bot 對話摘要,區塊標題,string,前端固定文案,「Bot 對話摘要（AI 自動生成）」,
+② Bot 對話摘要,摘要內容,string,POST /ai/summarize,body: { conversationId }；回傳本次對話的 AI 摘要文字,Modal 開啟時非同步呼叫；載入中顯示 skeleton
+② Bot 對話摘要,摘要字數上限,integer,前端限制,最多顯示 200 字，超出截斷加「...」,
+② Bot 對話摘要,載入失敗處理,string,前端狀態,API 失敗時顯示「摘要生成失敗，請直接查看對話記錄」,不阻擋後續升人工操作
+③ Bot 回覆記錄,區塊標題,string,前端固定文案,「Bot 回覆記錄（共 N 則）」；N 來自 conversation.botRepliesCount,
+③ Bot 回覆記錄,回覆記錄列表,array,GET /conversations/:id/messages?senderType=BOT,每列顯示：時間 / 摘要內容（前 30 字）/ 信心值 / 觸發方式,依 message.createdAt 升冪排列
+③ Bot 回覆記錄,每列 — 時間,datetime,message.createdAt,格式 HH:MM,
+③ Bot 回覆記錄,每列 — 內容摘要,string,message.content.text,截取前 30 字；Flex 訊息顯示「[卡片訊息]」,
+③ Bot 回覆記錄,每列 — 信心值,float,message.metadata.confidence,顯示格式「信心值 XX%」；> 80% 綠色；50%~80% 橘色,
+③ Bot 回覆記錄,每列 — 觸發方式,enum,message.metadata.triggerType,「關鍵字命中」/ 「KM 語義命中」,
+③ Bot 回覆記錄,達上限警告,string,conversation.botRepliesCount >= maxBotRepliesBeforeHandoff,橘色提示：「已達 N 次上限，觸發升人工」,超過上限才顯示
+③ Bot 回覆記錄,升人工原因,string,conversation.handoffReason,顯示系統判斷的升人工原因，如「回覆次數達上限」/ 「信心值不足」/ 「關鍵字觸發」,來自 conversations.handoff_reason
+④ 指派客服,區塊標題,string,前端固定文案,「指派客服」,
+④ 指派客服,客服下拉選單,array,GET /agents?isActive=true,列出所有在線客服；每個選項顯示姓名 + 目前負責案件數,格式：「王客服（目前 3 案）」
+④ 指派客服,預設選中值,string,自動指派策略計算,依 channel.settings.assignStrategy 決定：round_robin / least_load / skill_match,預設 least_load；前端顯示建議人選
+④ 指派客服,指派策略說明,enum,channel.settings.assignStrategy,顯示目前渠道的指派策略名稱，如「最少負荷」,來自 channels.settings JSONB
+④ 指派客服,未指派選項,option,—,可選擇「不指派，等待客服主動接取」,此時 assignedToId 為 null
+⑤ 銜接訊息,區塊標題,string,前端固定文案,「銜接訊息（將發送給客戶）」,
+⑤ 銜接訊息,銜接訊息內容,string,channel.settings.handoffMessage,可編輯文字框；預設值來自渠道設定,預設：「稍等，正在為您轉接客服人員，平均等待時間約 3 分鐘」
+⑤ 銜接訊息,訊息可編輯,boolean,前端狀態,本次可臨時修改訊息內容，不影響渠道設定的預設值,修改僅套用本次升人工
+⑤ 銜接訊息,字數上限,integer,前端限制,最多 200 字,超出限制時禁止繼續輸入
+⑤ 銜接訊息,訊息發送渠道,string,conversation.channelType,銜接訊息依對話渠道格式發送（LINE 文字 / FB 文字 / WebChat 文字）,不支援 Flex 格式
+⑥ 操作按鈕,取消按鈕,action,前端事件,關閉 Modal，不執行任何 API；對話維持 BOT_HANDLED,
+⑥ 操作按鈕,確認接管按鈕,action,PATCH /conversations/:id/handoff,文字「確認接管，發送銜接訊息」；點擊後按鈕進入 loading 狀態,
+⑥ 操作按鈕,確認接管 — 請求 body,JSON,PATCH /conversations/:id/handoff,"{ assignTo: agentId | null, handoffMessage: string }",
+⑥ 操作按鈕,確認接管 — 成功行為,action,前端狀態,關閉 Modal；conversation.status 切換為 AGENT_HANDLED；輸入框解鎖；頂部 Banner 消失,WS 推播 conversation.updated 觸發前端更新
+⑥ 操作按鈕,確認接管 — 失敗行為,action,前端狀態,顯示錯誤 Toast「接管失敗，請稍後再試」；Modal 保持開啟,
+⑦ 升人工後系統行為,發送銜接訊息,action,Core Inbox API,系統自動發送 handoffMessage 給客戶；sender_type = SYSTEM,
+⑦ 升人工後系統行為,對話狀態切換,enum,conversation.status,BOT_HANDLED → AGENT_HANDLED,
+⑦ 升人工後系統行為,Bot 停止回覆,rule,conversation.status,status 非 BOT_HANDLED 時 Bot Service 不再處理此對話,
+⑦ 升人工後系統行為,通知被指派客服,action,Notification Service,推送通知給 assignedToId 的客服：「有新對話需要處理」,依 agent 的通知設定決定通知方式
+⑦ 升人工後系統行為,記錄升人工原因,string,conversations.handoff_reason,寫入「manual_takeover」（客服主動）或其他自動觸發原因,
+⑦ 升人工後系統行為,記錄 Bot 回覆次數,integer,conversations.bot_replies_count,升人工時凍結此欄位值，供後續報表統計使用,
+⑦ 升人工後系統行為,WS 推播,WS,conversation.updated 事件,推送至所有訂閱該對話的客服端；前端收到後刷新畫面狀態,
+⑧ API 端點,取得 Bot 訊息列表,GET,GET /conversations/:id/messages?senderType=BOT,取得本對話所有 Bot 回覆記錄；Modal 開啟時呼叫,
+⑧ API 端點,AI 摘要,POST,POST /ai/summarize,body: { conversationId }；Modal 開啟時非同步呼叫,
+⑧ API 端點,取得可指派客服列表,GET,GET /agents?isActive=true,取得所有在線客服及其負責案件數,
+⑧ API 端點,執行升人工,PATCH,PATCH /conversations/:id/handoff,"body: { assignTo?: agentId, handoffMessage: string }",主要操作 API
+⑧ API 端點,WebSocket 推播,WS,conversation.updated,升人工成功後由後端推送；前端收到更新 status 與 UI,

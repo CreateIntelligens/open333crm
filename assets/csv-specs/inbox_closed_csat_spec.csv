@@ -1,0 +1,54 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 對話列表 — 已關閉分頁,分頁 Tab — 進行中,tab,前端狀態,顯示 status != CLOSED 的對話,預設選中
+① 對話列表 — 已關閉分頁,分頁 Tab — 已關閉,tab,conversation.status = CLOSED,切換後列表改為顯示已關閉對話,選中時高亮
+① 對話列表 — 已關閉分頁,已關閉時間篩選,enum,Query param: after / before,預設「最近 30 天」；可選最近 7 天 / 30 天 / 90 天 / 自訂,依 conversation.updatedAt 過濾
+① 對話列表 — 已關閉分頁,對話列 — 聯繫人名稱,string,conversation.contact.displayName,同進行中列表格式,
+① 對話列表 — 已關閉分頁,對話列 — 渠道標籤,enum,conversation.channelType,LINE / FB / Chat / WA,
+① 對話列表 — 已關閉分頁,對話列 — 最後訊息摘要,string,message.content.text（最新一則）,同進行中列表規則,
+① 對話列表 — 已關閉分頁,對話列 — 關閉日期,date,conversation.updatedAt,格式 MM/DD；不顯示時間,已關閉對話不顯示「幾分鐘前」，改顯示日期
+① 對話列表 — 已關閉分頁,CSAT 星級顯示,integer,case.csatScore,若 csatScore 有值，在對話列右側顯示星星數（1~5）,csatScore = null 時不顯示
+② 頂部已關閉 Banner,狀態色帶背景,CSS,conversation.status = CLOSED,灰色色帶，高度 28px，覆蓋頂部標頭區,與 BOT_HANDLED 紫色色帶相同位置
+② 頂部已關閉 Banner,狀態文字,string,前端固定文案,「此對話已關閉」,
+② 頂部已關閉 Banner,顯示條件,enum,conversation.status,僅 CLOSED 時出現,
+③ 聊天視窗 — 唯讀歷程,對話標頭 — 聯繫人名稱,string,conversation.contact.displayName,同正常對話,
+③ 聊天視窗 — 唯讀歷程,對話標頭 — 渠道 + 關閉日期,string,channelType + conversation.updatedAt,格式「FB · 2024-03-08」,已關閉不顯示 relative time
+③ 聊天視窗 — 唯讀歷程,訊息歷程,array,GET /conversations/:id/messages,顯示完整對話記錄，樣式與進行中相同,全部唯讀，無法互動
+③ 聊天視窗 — 唯讀歷程,CSAT 訊息氣泡,JSON,message.contentType = flex / quick_reply，senderType = SYSTEM,在對話歷程中顯示系統發出的 CSAT 調查訊息卡片,LINE 顯示 Flex 星星卡；FB/WebChat 顯示 Quick Reply 按鈕樣式
+③ 聊天視窗 — 唯讀歷程,客戶評分回覆,string,message.content（postback 回覆）,顯示客戶點選的評分，如「[客戶] 非常滿意 ⭐⭐⭐⭐⭐」,senderType = CONTACT，contentType = postback
+③ 聊天視窗 — 唯讀歷程,系統感謝訊息,string,message.senderType = SYSTEM,顯示系統依評分發出的回覆訊息，如「感謝您的好評！案件 #1085 正式關閉」,
+③ 聊天視窗 — 唯讀歷程,CSAT 分隔線,string,前端固定,案件標記 Resolved 前後以虛線分隔，顯示「案件 #XXXX 已解決，30 分後發送 CSAT」,senderType = SYSTEM 的時間節點訊息
+③ 聊天視窗 — 唯讀歷程,未回覆自動關閉提示,string,case.csatScore IS NULL AND case.closedAt IS NOT NULL,顯示「客戶 72 小時未回覆，案件自動關閉」系統訊息,csatAutoCloseHours 設定值決定小時數
+④ 輸入區（CLOSED 鎖定）,訊息輸入框,disabled,conversation.status = CLOSED,disabled=true；背景深灰,比 BOT_HANDLED 更深的灰色，視覺上更明確表示無法操作
+④ 輸入區（CLOSED 鎖定）,輸入框佔位文字,string,前端固定文案,「對話已關閉，無法回覆」,
+④ 輸入區（CLOSED 鎖定）,附件 / 模板 / 發送按鈕,disabled,conversation.status = CLOSED,全部 disabled,
+④ 輸入區（CLOSED 鎖定）,重新開啟對話按鈕,action,PATCH /conversations/:id,文字「重新開啟對話」；點擊後 conversation.status → ACTIVE,需有 Agent 或 Admin 權限；Agent 角色只能重開自己的對話
+④ 輸入區（CLOSED 鎖定）,重新開啟 API,PATCH,PATCH /conversations/:id,body: { status: 'ACTIVE' }；成功後解鎖輸入區，頂部 Banner 消失,
+⑤ 右側面板 — 案件資訊,案件編號,string,case.id,格式「#XXXX」；點擊跳轉 /cases/:caseId,
+⑤ 右側面板 — 案件資訊,案件狀態,enum,case.status = CLOSED,顯示灰色「已關閉」徽章,
+⑤ 右側面板 — 案件資訊,關閉時間,datetime,case.closedAt,格式 YYYY-MM-DD HH:MM,
+⑤ 右側面板 — 案件資訊,負責客服,string,case.assigneeId → agent.name,顯示處理此案件的客服姓名,
+⑤ 右側面板 — 案件資訊,首次回覆時間,duration,前端計算,conversation 建立到第一則 AGENT 回覆的時間差；格式「N 分鐘」,來自 messages 中第一則 senderType=AGENT 的 createdAt
+⑤ 右側面板 — 案件資訊,解決時長,duration,前端計算,case.createdAt 到 case.resolvedAt 的時間差；格式「N 分鐘 / N 小時」,resolvedAt = null 時不顯示
+⑥ 右側面板 — CSAT 評分,區塊標題,string,前端固定文案,「CSAT 評分」,csatEnabled = false 時整個區塊隱藏
+⑥ 右側面板 — CSAT 評分,星級評分,integer,case.csatScore,1~5 顆星圖示；滿分顯示綠色；1~2 分顯示紅色；null 顯示「未回覆」,來自 cases.csat_score
+⑥ 右側面板 — CSAT 評分,分數文字說明,string,前端對應文案,1→非常不滿 / 2→不滿意 / 3→普通 / 4→滿意 / 5→非常滿意 / null→客戶未回覆,
+⑥ 右側面板 — CSAT 評分,回覆時間,datetime,case.csatRespondedAt,格式 MM-DD HH:MM；null 時不顯示,來自 cases.csat_responded_at
+⑥ 右側面板 — CSAT 評分,文字回饋,string,case.csatComment,客戶填寫的文字回饋；null 或空字串時顯示「（無）」,來自 cases.csat_comment
+⑥ 右側面板 — CSAT 評分,低分警告,boolean,case.csatScore <= tenant.settings.csatLowScoreThreshold,分數低於閾值（預設 ≤2）時顯示橘色警告圖示,提示 Supervisor 關注
+⑦ 右側面板 — 聯繫人資訊,頭像,string,contact.avatarUrl,同進行中畫面規則,
+⑦ 右側面板 — 聯繫人資訊,聯繫人名稱,string,contact.displayName,點擊跳轉 /contacts/:id,
+⑦ 右側面板 — 聯繫人資訊,渠道,string,conversation.channelType,本次對話渠道,
+⑦ 右側面板 — 聯繫人資訊,電話,string?,contact.phone,nullable；有值才顯示,
+⑦ 右側面板 — 聯繫人資訊,歷史案件數,integer,GET /contacts/:id/cases?count=true,顯示「歷史案件：N 件」,含本次關閉的案件
+⑧ CSAT 系統行為,CSAT 發送時機,rule,BullMQ Worker,case.status → RESOLVED 後，延遲 csatDelayMinutes（預設 30 分）發送 CSAT 訊息,由後端 Worker 處理，前端只顯示結果
+⑧ CSAT 系統行為,CSAT 訊息格式,enum,conversation.channelType,LINE → Flex Message 星星評分卡；FB / WebChat → Quick Reply 5 個按鈕,Channel Plugin 負責格式轉換
+⑧ CSAT 系統行為,Postback 資料格式,string,Channel Plugin Postback,格式「csat:{score}:{caseId}」；由 Channel Plugin 解析後呼叫 caseService.recordCsat,前端不處理，由後端 Webhook 接收
+⑧ CSAT 系統行為,低分通知,action,Notification Service,csatScore <= csatLowScoreThreshold 時通知 Supervisor；csatLowScoreNotifyAgent=true 時也通知負責 Agent,
+⑧ CSAT 系統行為,自動關閉,rule,BullMQ Worker,客戶 csatAutoCloseHours（預設 72 小時）未回覆 → case.status → CLOSED；csatScore 維持 null,
+⑧ CSAT 系統行為,好評 Automation,rule,AutomationRule Engine,csatScore >= 4 可觸發 Automation（如送積點 / 推薦優惠）；需在自動化模組設定,非預設行為，需另行設定
+⑨ API 端點,取得已關閉對話列表,GET,GET /conversations?status=CLOSED&after=&before=,支援時間範圍篩選,
+⑨ API 端點,取得訊息列表,GET,GET /conversations/:id/messages,包含 CSAT 系統訊息與客戶評分 postback,
+⑨ API 端點,取得案件詳情,GET,GET /cases/:id,取得 csatScore / csatComment / csatRespondedAt / closedAt,右側面板資料來源
+⑨ API 端點,重新開啟對話,PATCH,PATCH /conversations/:id,body: { status: 'ACTIVE' },需 Agent 或 Admin 權限
+⑨ API 端點,記錄 CSAT（後端）,internal,"caseService.recordCsat(caseId, score)",由 Channel Plugin Postback handler 呼叫；前端不直接呼叫,寫入 cases.csat_score / csat_responded_at
+⑨ API 端點,WebSocket 推播,WS,conversation.updated / case.updated,CSAT 收到後端更新 case.csatScore；WS 推播至前端即時顯示評分,

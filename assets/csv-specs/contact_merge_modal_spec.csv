@@ -1,0 +1,47 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 觸發與外觀,觸發方式 A — 詳情頁,action,前端事件,在聯繫人詳情頁點「合併聯繫人」；此聯繫人自動設為主要聯繫人（Primary）,
+① 觸發與外觀,觸發方式 B — 列表批次,action,前端事件,在列表勾選恰好 2 筆後點「批次合併」；第一筆勾選自動設為主要聯繫人,超過 2 筆時批次合併按鈕 disabled
+① 觸發與外觀,步驟指示器,enum,前端狀態,三步驟：① 選擇合併對象 → ② 確認資料保留 → ③ 確認合併,當前步驟高亮顯示
+① 觸發與外觀,背景遮罩,CSS,前端狀態,半透明黑色遮罩；不可點擊遮罩關閉（防誤觸）,合併為不可復原操作，防止意外關閉
+① 觸發與外觀,關閉方式,action,前端事件,只能點「取消」或「×」關閉；不支援點遮罩關閉,
+② Step 1 — 主要聯繫人,主要聯繫人頭像,string,contact.avatarUrl,圓形頭像；無圖片顯示首字縮寫,自動帶入，不可更換（若需更換主副需重新進入 Modal）
+② Step 1 — 主要聯繫人,主要聯繫人姓名,string,contact.displayName,唯讀顯示,
+② Step 1 — 主要聯繫人,主要聯繫人 ID,string,contact.id,格式「C-XXXXX」；唯讀,
+② Step 1 — 主要聯繫人,主要聯繫人電話,string,contact.phone,唯讀；null 顯示「未填」,
+② Step 1 — 主要聯繫人,主要聯繫人渠道,array,contact.channelIdentities[],顯示已綁定渠道 pill,
+② Step 1 — 來源聯繫人,來源聯繫人搜尋框,string,GET /contacts?q=,搜尋姓名 / 電話 / Email；排除主要聯繫人本身,debounce 300ms；最少 2 字元
+② Step 1 — 來源聯繫人,來源聯繫人候選列表,array,GET /contacts?q=,下拉顯示最多 10 筆；每筆顯示姓名 + ID + 渠道,選取後顯示於來源卡片
+② Step 1 — 來源聯繫人,來源聯繫人卡片,object,contact.*,選取後顯示：頭像 / 姓名 / ID / 電話 / 渠道身份,與主要聯繫人並排顯示
+② Step 1 — 來源聯繫人,自動偵測提示,string,前端邏輯,若兩者 phone 或 email 相同，顯示「系統偵測到相同電話 / Email」提示,輔助客服判斷是否真的是同一人
+② Step 1 — 來源聯繫人,互換主副按鈕,action,前端狀態,點擊後交換主要與來源聯繫人位置,合併後保留的 ID 會不同
+② Step 1 — 下一步,下一步按鈕,action,前端事件,未選取來源聯繫人時 disabled；選取後啟用,點擊進入 Step 2
+③ Step 2 — 資料預覽,區塊標題,string,前端固定文案,「合併後資料預覽」,
+③ Step 2 — 資料預覽,渠道身份合併,rule,後端計算,secondary 的所有渠道身份將合併至 primary；顯示「LINE · FB（新增）」,
+③ Step 2 — 資料預覽,歷史案件合併,integer,COUNT(cases WHERE contactId = secondaryId),格式「N 件（合併入）= 共 M 件」,
+③ Step 2 — 資料預覽,標籤合併,array,contact.tags[] 兩者取聯集,顯示新增的標籤清單；重複標籤自動去重,
+③ Step 2 — 資料預覽,自訂屬性合併,rule,前端邏輯,primary 已有值的欄位保留 primary；primary 無值而 secondary 有值的欄位補入,顯示「新增」/ 「保留」/ 「衝突（以主要為準）」三種狀態
+③ Step 2 — 資料預覽,屬性衝突處理,rule,前端顯示,同一欄位 primary 與 secondary 都有值時，保留 primary 的值；以橘色「衝突，以主要為準」標示,不提供逐欄選擇（MVP 簡化）
+③ Step 2 — 資料預覽,對話歷程合併,rule,後端,secondary 所有 Conversation 的 contactId 改為 primary；歷程完整保留,唯讀顯示「對話記錄將全部合併至主要聯繫人」
+③ Step 2 — 資料預覽,合併後 ID,string,contact.id（primary）,合併後保留 primary 的 ID；secondary ID 作廢,唯讀顯示「合併後 ID：C-XXXXX（主要）」
+③ Step 2 — 不可復原警告,警告提示列,string,前端固定文案,橘色背景：「合併後 C-XXXXX 將永久無法存取，此操作無法復原，請確認後再執行」,secondary 標記 isArchived = true，資料保留但 ID 作廢
+③ Step 2 — 下一步,上一步按鈕,action,前端事件,回到 Step 1；已選取的來源聯繫人保留,
+③ Step 2 — 下一步,下一步按鈕,action,前端事件,進入 Step 3 最終確認,
+④ Step 3 — 最終確認,確認摘要文字,string,前端組合,格式：「即將將 {secondary.name}（C-XXXXX）合併至 {primary.name}（C-XXXXX）」,
+④ Step 3 — 最終確認,確認 checkbox,boolean,前端狀態,「我已確認此操作無法復原」；未勾選時「確認合併」按鈕 disabled,防止誤觸
+④ Step 3 — 最終確認,上一步按鈕,action,前端事件,回到 Step 2,
+④ Step 3 — 最終確認,取消按鈕,action,前端事件,關閉 Modal；不執行任何 API,
+④ Step 3 — 最終確認,確認合併按鈕,action,POST /contacts/merge,勾選確認 checkbox 後啟用；點擊後按鈕進入 loading 狀態,
+④ Step 3 — 最終確認,確認合併 body,JSON,POST /contacts/merge,"{ primaryContactId, secondaryContactId }",
+④ Step 3 — 最終確認,成功後行為,action,前端路由,關閉 Modal；跳轉至 primary 聯繫人詳情頁 /contacts/:primaryId；顯示成功 Toast,
+④ Step 3 — 最終確認,失敗處理,string,前端狀態,顯示錯誤 Toast 訊息；Modal 回到 Step 3；保留所有已填資料,
+⑤ 系統行為,Transaction 執行,rule,後端 DB Transaction,全部 Step 在同一 Transaction 執行；任一失敗全部回滾,保證資料一致性
+⑤ 系統行為,ChannelIdentity 移轉,rule,UPDATE channel_identities,secondary 的所有 channel_identities.contactId → primaryId,
+⑤ 系統行為,Conversation 移轉,rule,UPDATE conversations,secondary 的所有 conversations.contactId → primaryId,對話歷程完整保留
+⑤ 系統行為,Case 移轉,rule,UPDATE cases,secondary 的所有 cases.contactId → primaryId,案件歷程完整保留
+⑤ 系統行為,Tag 合併,rule,INSERT INTO contact_tags（去重）,secondary 的 tag 若 primary 尚未有則新增；已有則略過,
+⑤ 系統行為,Attribute 合併,rule,INSERT INTO contact_attributes（選擇性）,primary 無值的欄位補入 secondary 的值；primary 已有值的保留,
+⑤ 系統行為,Secondary 標記,rule,UPDATE contacts SET isArchived = true,secondary 不刪除，標記為已封存；保留稽核軌跡,isArchived = true 的聯繫人不顯示於列表
+⑤ 系統行為,WS 推播,WS,contact.merged 事件,推播至所有訂閱該 contact 的前端；刷新頁面,
+⑥ API 端點,執行合併,POST,POST /contacts/merge,"body: { primaryContactId, secondaryContactId }",主要呼叫；包含完整 Transaction
+⑥ API 端點,搜尋來源聯繫人,GET,GET /contacts?q=&exclude=:primaryId&limit=10,排除主要聯繫人本身；Step 1 搜尋用,
+⑥ API 端點,取得預覽資料,GET,GET /contacts/merge-preview?primary=:id&secondary=:id,回傳合併後的資料預覽；Step 2 顯示用,可選；前端也可自行計算

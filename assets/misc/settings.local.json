@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: organize project files into docs/ and assets/ directories\n\n- docs/: 01-23 design specs, PROJECT_PLAN, JIRA_STRUCTURE \\(25 MD files\\)\n- assets/csv-specs/: settings specification CSVs\n- assets/screenshots-inbox/: inbox UI screenshots\n- assets/screenshots-contacts/: contact module screenshots & flow diagrams\n- assets/screenshots-settings/: settings module screenshots\n- assets/: flow diagrams and misc PNG files\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}

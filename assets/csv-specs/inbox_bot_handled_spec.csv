@@ -1,0 +1,46 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頂部狀態 Banner,狀態色帶背景,CSS,conversation.status,status = BOT_HANDLED 時顯示紫色色帶，高度 28px，覆蓋頂部標頭區,其他 status 不顯示此色帶
+① 頂部狀態 Banner,狀態文字,string,前端固定文案,「Bot 自動處理中」,固定文案，不從 API 取
+① 頂部狀態 Banner,顯示條件,enum,conversation.status,僅 BOT_HANDLED 時出現；AGENT_HANDLED / ACTIVE / CLOSED 不顯示,
+② 對話列表 — Bot 標記,Bot 徽章,badge,conversation.status,status = BOT_HANDLED 時顯示紫色「Bot 中」pill，位於聯繫人名稱右方,優先於未讀數字圓點顯示
+② 對話列表 — Bot 標記,徽章顏色,CSS,前端常數,紫色系，對應 BOT_HANDLED 狀態識別色,
+② 對話列表 — Bot 標記,列表排序,rule,conversation.lastMessageAt,BOT_HANDLED 對話仍依最後訊息時間排序，不另外提前,不因 Bot 狀態而插隊
+③ 聊天視窗 — Bot 氣泡,氣泡背景色,CSS,message.senderType,senderType = BOT 時使用紫色氣泡；區別客服（藍）與客戶（白）,
+③ 聊天視窗 — Bot 氣泡,發送者標籤,string,message.senderType + message.createdAt,格式「[Bot] HH:MM」,
+③ 聊天視窗 — Bot 氣泡,訊息內容,JSON,message.content,依 contentType 渲染：text 顯示文字；flex 渲染卡片預覽（如維修預約卡）,來自 messages.content JSONB
+③ 聊天視窗 — Bot 氣泡,信心值徽章,float,message.metadata.confidence,範圍 0.0~1.0，顯示格式「信心值 XX%」,> 80% 綠色；50%~80% 橘色；< 50% 不顯示（已升人工）
+③ 聊天視窗 — Bot 氣泡,觸發方式標籤,enum,message.metadata.triggerType,「關鍵字命中」/ 「KM 語義命中」,顯示於信心值徽章右方
+③ 聊天視窗 — Bot 氣泡,知識庫引用連結,array,message.metadata.knowledgeRefs[],顯示「參考：文章標題 #ID」，可點擊跳至 /km/:id,無引用時不顯示此列
+③ 聊天視窗 — Bot 氣泡,Bot 次數警告列,string,conversation.botRepliesCount >= channel.settings.maxBotRepliesBeforeHandoff,橘色背景提示列：「Bot 已回覆 N 次・如需升人工請點下方」,達到上限才顯示，未達不顯示
+③ 聊天視窗 — Bot 氣泡,系統訊息（Bot 回覆記錄）,string,message.senderType = SYSTEM,灰色居中文字，如「Bot 已回覆 2 次，等待客戶確認」,不顯示氣泡，只顯示文字
+④ 輸入區（鎖定）,訊息輸入框,disabled,conversation.status,status = BOT_HANDLED 時 disabled=true，背景變淺灰,AGENT_HANDLED 時恢復可輸入
+④ 輸入區（鎖定）,輸入框佔位文字,string,前端固定文案,「Bot 回覆中，客服無法輸入」,替換正常的 placeholder
+④ 輸入區（鎖定）,附件按鈕（📎）,disabled,conversation.status,BOT_HANDLED 時 disabled,
+④ 輸入區（鎖定）,模板按鈕（🃏）,disabled,conversation.status,BOT_HANDLED 時 disabled,
+④ 輸入區（鎖定）,發送按鈕,disabled,conversation.status,BOT_HANDLED 時 disabled,
+④ 輸入區（鎖定）,接管按鈕,CTA,前端固定,文字「接管此對話（升人工）」；固定顯示於輸入框下方,點擊開啟 Handoff Modal
+④ 輸入區（鎖定）,接管按鈕 API,action,PATCH /conversations/:id/handoff,確認後呼叫；body: { assignTo?: agentId },呼叫成功後 status 切換為 AGENT_HANDLED
+⑤ 右側面板 — Bot 狀態,狀態徽章,badge,conversation.status,顯示「BOT_HANDLED」紫色徽章,
+⑤ 右側面板 — Bot 狀態,Bot 模式,enum,channel.settings.botMode,keyword / llm / keyword_then_llm / off,來自 channels.settings JSONB
+⑤ 右側面板 — Bot 狀態,Bot 已回覆次數,integer,conversation.botRepliesCount,本對話中 Bot 發送訊息總數；超過上限時數字顯示橘色,來自 conversations.bot_replies_count
+⑤ 右側面板 — Bot 狀態,回覆次數上限,integer,channel.settings.maxBotRepliesBeforeHandoff,預設值 2；可於渠道設定調整,來自 channels.settings JSONB
+⑤ 右側面板 — Bot 狀態,最高信心值,float,計算自 messages.metadata.confidence,本對話所有 Bot 訊息的 max(confidence)，顯示為 %,前端計算，非 DB 直接欄位
+⑤ 右側面板 — Bot 狀態,本次引用知識庫,array,conversation 下所有 message.metadata.knowledgeRefs[] 去重,文章標題列表，可點擊跳轉 /km/:id,彙整所有 Bot 訊息的引用
+⑥ 右側面板 — 聯繫人資訊,頭像,string,contact.avatarUrl,有圖片顯示圖片；無則顯示姓名首字縮寫圓形,fallback 顯示 displayName[0]
+⑥ 右側面板 — 聯繫人資訊,聯繫人名稱,string,contact.displayName,,點擊跳轉 /contacts/:id
+⑥ 右側面板 — 聯繫人資訊,渠道,string,conversation.channelType,顯示本次對話渠道，如「WebChat」,
+⑥ 右側面板 — 聯繫人資訊,電話,string?,contact.phone,nullable；有值才顯示,
+⑥ 右側面板 — 聯繫人資訊,相關案件,array,GET /contacts/:id/cases,顯示該聯繫人的歷史案件數量；無案件顯示「無相關案件」,
+⑦ 升人工觸發條件,Bot 回覆次數達上限,auto,conversation.botRepliesCount >= channel.settings.maxBotRepliesBeforeHandoff,預設 botRepliesCount >= 2 自動觸發,觸發後 status 切換為 AGENT_HANDLED
+⑦ 升人工觸發條件,LLM 信心值過低,auto,message.metadata.confidence < 0.5,Bot 判斷自己答不了，直接升人工，不發送回覆,
+⑦ 升人工觸發條件,升人工關鍵字,auto,channel.settings.handoffKeywords[],預設：「真人」「人工」「客服」「不想跟機器人講」；可自訂,來自 channels.settings JSONB
+⑦ 升人工觸發條件,收到圖片或檔案,auto,message.contentType = image | file,Bot 無法處理，收到即升人工,
+⑦ 升人工觸發條件,VIP 客戶自動規則,rule,AutomationRule engine,Automation Rule 設定：聯繫人含 VIP 標籤 → 永遠直接人工，不走 Bot,需在自動化模組中設定
+⑦ 升人工觸發條件,負面情緒偵測,optional,message.metadata.sentiment,LLM sentimentAnalysis 信心值低於閾值時觸發；需啟用 LLM 擴充功能,非預設開啟
+⑦ 升人工觸發條件,客戶手動要求,manual,Channel Postback handler,客戶點選「聯繫客服」Postback 按鈕,來自渠道 Postback 事件
+⑧ API 端點,取得對話詳情,GET,GET /conversations/:id,回傳 status / botRepliesCount / handoffReason / assignedToId,進入頁面時呼叫
+⑧ API 端點,取得訊息列表,GET,GET /conversations/:id/messages,回傳含 metadata.confidence / triggerType / knowledgeRefs 的訊息列表,cursor-based；每次 30 則
+⑧ API 端點,執行升人工接管,PATCH,PATCH /conversations/:id/handoff,body: { assignTo?: agentId }；成功後 status → AGENT_HANDLED,從 Handoff Modal 確認後呼叫
+⑧ API 端點,取得 AI 建議回覆,POST,POST /ai/suggest-reply,body: { conversationId }；BOT_HANDLED 時此按鈕隱藏,僅 AGENT_HANDLED 時可用
+⑧ API 端點,WebSocket 訂閱,WS,subscribe: conversation:{id},監聽 message.new / conversation.updated,Bot 新訊息到達時即時推送
+⑧ API 端點,Bot 回覆內部事件,internal,Redis Streams → Core Inbox API,Bot Service 發送訊息後更新 botRepliesCount；觸發 WS 推播,前端不直接呼叫

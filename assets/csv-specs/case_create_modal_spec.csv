@@ -1,0 +1,28 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 觸發,觸發方式 A,action,前端事件,案件列表頁點「+ 建立案件」按鈕,
+① 觸發,觸發方式 B,action,前端事件,收件匣右側面板點「+ 開立案件」按鈕,此方式會自動帶入 conversationId 與 contactId
+① 觸發,觸發方式 C,action,AutomationRule Engine,自動化規則 action = create_case 觸發；不顯示 Modal，直接建立,前端不參與，後端直接呼叫 POST /cases
+① 觸發,Modal 關閉,action,前端事件,點「×」或「取消」關閉；不儲存任何資料,
+② 表單欄位,案件標題 *,string,cases.title,必填；max 100 字；空白時「建立案件」按鈕 disabled,
+② 表單欄位,問題描述,string,cases.description,選填；textarea；max 2000 字,
+② 表單欄位,聯繫人 *,string,cases.contact_id,必填；搜尋框：輸入姓名 / 電話 / Email 後顯示下拉候選,呼叫 GET /contacts?q= 取候選；從收件匣開案時自動帶入且唯讀
+② 表單欄位,優先級 *,enum,cases.priority,必填；LOW / MEDIUM / HIGH / URGENT；預設 MEDIUM,
+② 表單欄位,分類 *,enum,cases.category,必填；維修 / 查詢 / 投訴 / 其他；動態來自 GET /cases/categories,
+② 表單欄位,指派給,string,cases.assignee_id,選填；顯示所有在職 Agent；未填則 status=OPEN 等待手動指派,GET /agents?isActive=true 取清單
+② 表單欄位,團隊,string,cases.team_id,選填；GET /teams 取清單,選擇指派給後，自動帶入該 Agent 所屬團隊（可覆蓋）
+② 表單欄位,SLA 政策,string,cases.sla_policy,選填；預設「依優先級自動套用」；可手動指定特定 SLA Policy,GET /sla-policies 取清單
+② 表單欄位,來源對話,string,cases.conversation_id,從收件匣開案時自動帶入（唯讀）；從案件列表直接建立時可搜尋,格式：「聯繫人 · 渠道 · 時間」
+③ 驗證,必填欄位未填,boolean,前端驗證,標題 / 聯繫人 / 優先級 / 分類任一為空 → 「建立案件」按鈕 disabled + 紅色提示,
+③ 驗證,標題重複檢查,rule,前端不主動檢查,允許同一聯繫人有多個同標題案件；由客服自行判斷,
+③ 驗證,聯繫人不存在,rule,前端,若搜尋無結果，顯示「+ 建立新聯繫人」捷徑連結,點擊開啟新建聯繫人流程（另一 Modal）
+④ 提交行為,建立案件按鈕,action,POST /cases,送出所有填寫欄位；成功後關閉 Modal,
+④ 提交行為,成功後行為,action,前端路由,關閉 Modal → 跳轉至新建案件的詳情頁 /cases/:newId,
+④ 提交行為,失敗處理,string,前端狀態,顯示 Toast 錯誤訊息；Modal 保持開啟；欄位資料保留,
+④ 提交行為,自動計算 slaDueAt,rule,後端,POST /cases 時後端依 priority + slaPolicy 計算 slaDueAt 並寫入,前端不需傳入 slaDueAt
+④ 提交行為,自動建立 CaseEvent,rule,後端,建立成功後後端自動寫入 CaseEvent(created),
+④ 提交行為,自動指派觸發,rule,後端,若 assigneeId 為 null 且 channel.settings.assignStrategy != manual，後端自動執行指派邏輯,
+⑤ API 端點,建立案件,POST,POST /cases,"body: { title, description?, contactId, priority, category, assigneeId?, teamId?, slaPolicy?, conversationId? }",主要呼叫
+⑤ API 端點,搜尋聯繫人,GET,GET /contacts?q=&limit=10,聯繫人搜尋下拉候選,輸入 debounce 300ms 後呼叫
+⑤ API 端點,取得 Agent 列表,GET,GET /agents?isActive=true,指派給下拉選單,Modal 開啟時呼叫一次
+⑤ API 端點,取得 SLA 政策列表,GET,GET /sla-policies,SLA 政策下拉選單,Modal 開啟時呼叫一次
+⑤ API 端點,取得分類清單,GET,GET /cases/categories,分類下拉選單,Modal 開啟時呼叫一次

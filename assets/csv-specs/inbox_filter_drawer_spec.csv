@@ -1,0 +1,47 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 面板觸發與外觀,觸發方式,action,前端事件,點擊對話列表欄上方「篩選 ▾」按鈕後，從右側滑入抽屜,
+① 面板觸發與外觀,顯示位置,CSS,前端常數,從對話列表欄右側滑入，寬度 230px，覆蓋聊天視窗左側,不影響右側面板
+① 面板觸發與外觀,關閉方式,action,前端事件,點擊「×」/ 點擊抽屜外區域 / 點擊「套用篩選」後關閉,點擊外部關閉不清除已設定條件
+① 面板觸發與外觀,抽屜標頭文字,string,前端固定文案,「進階篩選」,
+① 面板觸發與外觀,Active 篩選 Chip,array,前端狀態,已套用的篩選條件以 Chip 顯示於列表搜尋框下方；每個 Chip 可單獨點「×」移除,Chip 顏色依篩選類型：渠道藍 / 標籤紫 / 狀態橘
+② 對話狀態篩選,區塊標題,string,前端固定文案,「對話狀態」,
+② 對話狀態篩選,進行中,checkbox,conversation.status = ACTIVE,勾選後過濾 status = ACTIVE 的對話,可複選
+② 對話狀態篩選,Bot 處理中,checkbox,conversation.status = BOT_HANDLED,勾選後過濾 status = BOT_HANDLED 的對話,可複選
+② 對話狀態篩選,等待客服,checkbox,conversation.status = ACTIVE AND assignedToId IS NULL,勾選後過濾未指派的進行中對話,可複選
+② 對話狀態篩選,已關閉,checkbox,conversation.status = CLOSED,勾選後過濾已關閉對話,可複選
+③ 渠道篩選,區塊標題,string,前端固定文案,「渠道」,
+③ 渠道篩選,LINE,checkbox,conversation.channelType = LINE,Query param: channelType=LINE,可複選
+③ 渠道篩選,FB,checkbox,conversation.channelType = FB,Query param: channelType=FB,可複選
+③ 渠道篩選,WebChat,checkbox,conversation.channelType = WEBCHAT,Query param: channelType=WEBCHAT,可複選
+③ 渠道篩選,WhatsApp,checkbox,conversation.channelType = WHATSAPP,Query param: channelType=WHATSAPP；未啟用時 disabled 並顯示「即將推出」,依 license 功能開關決定是否顯示
+④ 指派篩選,區塊標題,string,前端固定文案,「指派給」,
+④ 指派篩選,指派下拉選單,enum,GET /agents?isActive=true,選項：我的對話（預設）/ 未指派 / 所有對話 / 特定 Agent,
+④ 指派篩選,我的對話,option,assignedToId = currentAgent.id,Query param: assigneeId=me,預設選項
+④ 指派篩選,未指派,option,assignedToId IS NULL,Query param: assigneeId=none,
+④ 指派篩選,特定 Agent,option,GET /agents?isActive=true,顯示所有在職客服姓名列表；選取後 Query param: assigneeId={agentId},
+④ 指派篩選,所有對話,option,無 assigneeId 限制,不帶 assigneeId param，顯示所有對話,Supervisor / Admin 專用，Agent 角色不顯示此選項
+⑤ 標籤篩選,區塊標題,string,前端固定文案,「聯繫人標籤」,
+⑤ 標籤篩選,標籤列表,array,GET /tags?scope=CONTACT,以 Chip 形式顯示所有 CONTACT 範圍的標籤,來自 tags table，scope = CONTACT
+⑤ 標籤篩選,已選取標籤,array,前端狀態,點擊 Chip 後高亮選取；可多選,Query param: tag=標籤名（可重複）
+⑤ 標籤篩選,標籤搜尋,string,前端過濾,標籤數量超過 10 個時顯示搜尋框，前端過濾不打 API,
+⑤ 標籤篩選,多標籤邏輯,enum,前端固定,預設 OR 邏輯（符合任一標籤即顯示）,暫不支援 AND 邏輯
+⑥ 時間範圍篩選,區塊標題,string,前端固定文案,「時間範圍」,依 conversation.lastMessageAt 過濾
+⑥ 時間範圍篩選,起始時間下拉,enum,前端固定選項,今天 / 最近 3 天 / 最近 7 天 / 最近 30 天 / 自訂,選「自訂」後顯示日期選擇器
+⑥ 時間範圍篩選,結束時間,enum,前端固定,預設「至今」；選「自訂」後可選擇截止日,
+⑥ 時間範圍篩選,日期選擇器,date,前端元件,自訂模式下顯示日期輸入框；格式 YYYY-MM-DD,Query param: after= / before=（ISO 8601）
+⑦ 排序方式,區塊標題,string,前端固定文案,「排序方式」,
+⑦ 排序方式,排序下拉選單,enum,Query param: sortBy + sortOrder,最後訊息時間（新→舊）/ 最後訊息時間（舊→新）/ 建立時間（新→舊）/ 未讀數量（多→少）,預設：最後訊息時間（新→舊）
+⑧ 操作按鈕,清除全部按鈕,action,前端事件,重置所有篩選條件為預設值；不關閉抽屜,
+⑧ 操作按鈕,套用篩選按鈕,action,前端事件 + GET /conversations,將所有勾選條件組合為 Query params 後重新呼叫列表 API；關閉抽屜,套用後列表重新載入
+⑧ 操作按鈕,套用後 Chip 更新,array,前端狀態,Active 篩選 Chip 依套用結果更新；移除 Chip 即移除對應條件並重新查詢,
+⑧ 操作按鈕,符合數量預覽,integer,前端即時計算 / GET /conversations?count=true,顯示「符合：N 個對話」；條件改變時即時更新,可 debounce 500ms 後呼叫 count API
+⑨ 常用篩選儲存,另存為常用,action,POST /agents/me/saved-filters,將目前篩選條件組合命名後儲存；名稱由客服自訂,每個 Agent 最多儲存 10 組
+⑨ 常用篩選儲存,常用篩選列表,array,GET /agents/me/saved-filters,顯示該 Agent 已儲存的篩選組合；點擊後直接套用,儲存於 agent 個人設定，不跨 Agent 共享
+⑨ 常用篩選儲存,刪除常用篩選,action,DELETE /agents/me/saved-filters/:id,點擊常用篩選旁「×」刪除,
+⑩ API 端點,取得對話列表（含篩選）,GET,GET /conversations,支援 status / channelType / assigneeId / tag / after / before / sortBy / sortOrder / page / limit,主要查詢 API
+⑩ API 端點,取得對話數量,GET,GET /conversations?count=true,僅回傳符合條件的數量；用於預覽符合筆數,條件改變時 debounce 呼叫
+⑩ API 端點,取得標籤列表,GET,GET /tags?scope=CONTACT,用於標籤篩選 Chip 顯示,面板開啟時呼叫一次，快取於前端
+⑩ API 端點,取得客服列表,GET,GET /agents?isActive=true,用於指派篩選下拉選單,面板開啟時呼叫一次
+⑩ API 端點,儲存常用篩選,POST,POST /agents/me/saved-filters,"body: { name, filters: { status[], channelType[], assigneeId, tag[], sortBy, sortOrder } }",
+⑩ API 端點,取得常用篩選,GET,GET /agents/me/saved-filters,回傳該 Agent 的常用篩選列表,面板開啟時呼叫
+⑩ API 端點,刪除常用篩選,DELETE,DELETE /agents/me/saved-filters/:id,,

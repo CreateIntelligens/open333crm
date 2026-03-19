@@ -1,0 +1,50 @@
+區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 對話列表欄,收件匣標題,string,前端固定文案,「收件匣」,固定，不從 API 取
+① 對話列表欄,未讀總數徽章,integer,GET /conversations?unread=true,所有 unreadCount > 0 的對話數加總；超過 99 顯示「99+」,
+① 對話列表欄,篩選下拉（全部▾）,enum,Query param: status,全部 / 進行中 / Bot 中 / 已關閉；對應 ConversationStatus enum,
+① 對話列表欄,搜尋框,string,GET /conversations?q=,搜尋聯繫人姓名 / 對話內文,debounce 300ms 後送出
+① 對話列表欄,快速篩選列,multi-enum,Query params 組合,未讀 unread=true / 我的 assigneeId=me / 全通道；可多選以 chip 顯示,
+① 對話列表欄,對話列 — 聯繫人名稱,string,conversation.contact.displayName,最長 20 字，超出截斷加「…」,來自 contacts.display_name
+① 對話列表欄,對話列 — 渠道標籤,enum,conversation.channelType,LINE / FB / Chat / WA；對應 ChannelType enum,
+① 對話列表欄,對話列 — 最後訊息摘要,string,message.content.text（最新一則）,純文字截取前 25 字；圖片顯示「[圖片]」；Flex 顯示「[卡片訊息]」,message.contentType 決定摘要格式
+① 對話列表欄,對話列 — 時間戳,datetime,conversation.lastMessageAt,今天內：HH:MM；超過今天：MM/DD,前端格式化
+① 對話列表欄,對話列 — 未讀圓點,integer,conversation.unreadCount,> 0 顯示藍色圓點,讀取後呼叫 PATCH /conversations/:id 清零
+① 對話列表欄,對話列 — Bot 徽章,badge,conversation.status,status = BOT_HANDLED 時顯示紫色「Bot 中」pill；優先於未讀點顯示,
+① 對話列表欄,對話列 — 已開案標示,badge,conversation.caseId != null,顯示小型案件圖示,來自 conversations.case_id
+① 對話列表欄,列表排序,rule,Query param: sortBy=lastMessageAt,預設：最後訊息時間新→舊,後端 index: tenantId + lastMessageAt DESC
+① 對話列表欄,分頁,integer,"page, limit",預設 limit=20；捲動至底部自動 load more,Infinite scroll，非分頁按鈕
+② 聊天視窗,對話標頭 — 聯繫人名稱,string,conversation.contact.displayName,同列表欄，不截斷,
+② 聊天視窗,對話標頭 — 渠道 + 時間,string,channelType + lastMessageAt,格式「LINE · 5 分鐘前」,時間用 relative format；每分鐘更新
+② 聊天視窗,訊息氣泡 — 方向,enum,message.direction,INBOUND（客戶）靠左；OUTBOUND（客服/Bot/系統）靠右,
+② 聊天視窗,訊息氣泡 — 發送者標籤,enum,message.senderType,CONTACT→「[客戶]」/ AGENT→「[客服]」/ BOT→「[Bot]」/ SYSTEM→「[系統]」,
+② 聊天視窗,訊息氣泡 — 時間,datetime,message.createdAt,格式 HH:MM,
+② 聊天視窗,訊息氣泡 — 內容,JSON,message.content,text 顯示文字；image 顯示縮圖；flex 渲染卡片預覽；postback 顯示按鈕選項,依 message.contentType 分支渲染
+② 聊天視窗,系統訊息列,string,message.senderType = SYSTEM,居中灰色文字（如「已建立案件 #1087」）；不顯示氣泡只顯示文字,
+② 聊天視窗,AI 建議回覆面板,array,POST /ai/suggest-reply,顯示最多 3 條建議；每條附信心值 %,點「採用」→ 填入輸入框；點「×」→ 收起面板
+② 聊天視窗,AI 建議 — 知識庫引用,array,response.kmRefs[],顯示「參考：文章標題」；可點擊跳至 /km/:id,
+② 聊天視窗,輸入框,string,前端狀態,max 5000 字；BOT_HANDLED 時 disabled,Enter 送出；Shift+Enter 換行
+② 聊天視窗,附件按鈕（📎）,action,POST /conversations/:id/messages,接受 image/jpeg / image/png / application/pdf；max 10MB,上傳至 Storage Layer 取 URL 後送出
+② 聊天視窗,模板按鈕（🃏）,action,GET /templates,開啟 Template Picker 面板,見 Template Picker spec
+② 聊天視窗,發送按鈕,action,POST /conversations/:id/messages,"body: { contentType, content }；BOT_HANDLED 時 disabled",送出後清空輸入框；樂觀更新列表
+② 聊天視窗,訊息已讀狀態,boolean,message.isRead,WebChat 支援已讀回條；LINE / FB 不支援,依 channelType 決定是否顯示
+② 聊天視窗,載入更多訊息,pagination,GET /conversations/:id/messages?before=,捲動至頂部觸發；cursor-based；每次取 30 則,
+② 聊天視窗,WebSocket 訂閱,WS,"subscribe: conversation:{id}","監聽 message.new / conversation.updated / typing.start / typing.stop",進入對話頁即訂閱；離開時取消
+③ 右側 — 聯繫人資訊,頭像,string,contact.avatarUrl,有圖片顯示圖片；無則顯示姓名首字縮寫圓形,fallback 顯示 displayName[0]
+③ 右側 — 聯繫人資訊,聯繫人名稱,string,contact.displayName,,點擊跳轉 /contacts/:id
+③ 右側 — 聯繫人資訊,渠道身份標籤,array,contact.channelIdentities[],顯示該聯繫人已綁定的渠道類型（如 LINE · FB）,來自 channel_identities table
+③ 右側 — 聯繫人資訊,電話,string?,contact.phone,nullable；有值才顯示,
+③ 右側 — 聯繫人資訊,標籤,array,contact.tags[].name,每個標籤顯示為 pill；顏色來自 tag.color,最多顯示 5 個；超出折疊
+③ 右側 — 聯繫人資訊,自訂屬性,JSONB,contact.attributes[],key-value 格式；依 Tenant 設定的欄位定義顯示（如商品 / 購買日期 / 保固到期）,
+③ 右側 — 聯繫人資訊,跳轉聯繫人詳情,link,—,「開啟聯繫人詳情」按鈕 → /contacts/:contactId,
+④ 右側 — 本次對話,指派給,string?,conversation.assignedToId → agent.name,未指派顯示「未指派」,下拉選擇其他 Agent；呼叫 PATCH /conversations/:id
+④ 右側 — 本次對話,開立案件按鈕,action,POST /conversations/:id/case,僅 conversation.caseId = null 時顯示,已開案則顯示案件資訊區
+④ 右側 — 本次對話,案件編號,string,case.id（前綴 #）,格式「#XXXX」；點擊跳轉 /cases/:caseId,conversation.caseId != null 時顯示
+④ 右側 — 本次對話,案件狀態,enum,case.status,OPEN / IN_PROGRESS / PENDING / RESOLVED / CLOSED,對應顏色：橘=IN_PROGRESS；紅=緊急；灰=CLOSED
+④ 右側 — 本次對話,SLA 剩餘時間,datetime,case.slaDueAt,格式「剩 Xh Ym」；到期前 2 小時變橘色；已過期變紅色,slaDueAt - now() 前端計算；每分鐘刷新
+④ 右側 — 本次對話,案件優先級,enum,case.priority,LOW / MEDIUM / HIGH / URGENT,
+⑤ 全域 Shell,企業名稱,string,tenant.displayName,JWT payload 或 GET /me,最長 20 字
+⑤ 全域 Shell,通知鈴鐺數字,integer,GET /notifications/unread-count,未讀通知總數；超 99 顯示「99+」,WS notification.new 事件即時更新
+⑤ 全域 Shell,登入者名稱,string,agent.name（JWT payload）,,
+⑤ 全域 Shell,左側導覽未讀數,integer,同收件匣未讀總數,「📥 收件匣 ●N」,與列表徽章同一資料來源
+⑤ 全域 Shell,案件待處理數,integer,"GET /cases?status=open,in_progress&assigneeId=me&count=true",「📋 案件 ●N」；僅計自己負責的,
+⑤ 全域 Shell,方案資訊,string,GET /license/status,顯示方案名稱 + Token 剩餘量,快取；每 60 分鐘更新一次

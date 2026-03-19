@@ -1,0 +1,32 @@
+﻿區塊,欄位,類型,DB / API 來源,值 / 規則,備註
+① 頁面標頭,規則總數,integer,GET /automation/rules?count=true,格式「共 N 條」；顯示於標題右方,頁面載入時呼叫
+① 頁面標頭,執行記錄按鈕,link,前端路由,點擊跳轉 /automation/logs,
+① 頁面標頭,新增規則按鈕,action,前端路由,點擊跳轉 /automation/new（空白編輯器）,需 Admin / Supervisor 權限
+② 分類 Tab,全部,tab,GET /automation/rules,顯示所有規則；格式「全部 N」,預設選中
+② 分類 Tab,渠道事件,tab,GET /automation/rules?triggerGroup=channel,contact.followed / message.received / keyword.matched / postback.received,
+② 分類 Tab,聯繫人事件,tab,GET /automation/rules?triggerGroup=contact,contact.created / tag_added / tag_removed / attribute_updated,
+② 分類 Tab,案件事件,tab,GET /automation/rules?triggerGroup=case,case.created / assigned / status_changed / sla_warning / sla_breached / closed,
+② 分類 Tab,排程,tab,GET /automation/rules?triggerGroup=schedule,schedule.once / cron / daily,
+③ 搜尋篩選,搜尋框,string,GET /automation/rules?q=,搜尋規則名稱；debounce 300ms,
+③ 搜尋篩選,狀態篩選,enum,GET /automation/rules?isActive=,全部 / 啟用中 / 停用中 / 錯誤,錯誤 = 最後一次執行失敗
+③ 搜尋篩選,觸發器篩選,enum,GET /automation/rules?trigger=,從所有觸發器類型中選一,動態取得目前有哪些觸發器在使用
+④ 表格欄位,狀態徽章,enum,automation_rule.isActive + 最後執行結果,啟用中（綠）/ 停用中（灰）/ 錯誤（紅）,錯誤 = isActive=true 但最後一次 AutomationLog.success=false
+④ 表格欄位,規則名稱,string,automation_rule.name,主要文字；點擊跳轉 /automation/:id/edit,最長 50 字，超出截斷
+④ 表格欄位,規則描述,string,automation_rule.description,小字顯示於名稱下方,選填；來自 automation_rules.description
+④ 表格欄位,觸發器類型,badge,automation_rule.trigger.type,以色彩 pill 顯示觸發器名稱；渠道=綠 / 聯繫人=藍 / 案件=紅 / 排程=紫,
+④ 表格欄位,動作數,integer,COUNT(automation_rule.actions[]),格式「N 個」,前端計算 actions 陣列長度
+④ 表格欄位,執行次數,integer,automation_rule.runCount,累計總執行次數,來自 automation_rules.run_count
+④ 表格欄位,最後執行,datetime,automation_rule.lastRunAt,格式「N 分前」/ 「N 小時前」/ 「N 天前」；失敗顯示紅色「執行失敗」,來自 automation_rules.last_run_at
+④ 表格欄位,列操作,action,前端事件,hover 顯示：啟用 / 停用 / 編輯 / 複製 / 刪除；錯誤狀態顯示「診斷」,刪除需二次確認
+⑤ 全域保護設定,Frequency Cap 次數,integer,tenant.settings.frequencyCapCount,同一聯繫人 + 同一規則，N 小時內最多觸發次數；預設 3 次,來自 tenants.settings JSONB
+⑤ 全域保護設定,Frequency Cap 時窗,integer,tenant.settings.frequencyCapHours,時窗小時數；預設 1 小時,
+⑤ 全域保護設定,靜音開始時間,time,tenant.settings.quietHoursStart,格式 HH:MM；預設 22:00,來自 tenants.settings JSONB
+⑤ 全域保護設定,靜音結束時間,time,tenant.settings.quietHoursEnd,格式 HH:MM；預設 08:00,
+⑤ 全域保護設定,靜音時段行為,enum,tenant.settings.quietHoursBehavior,delay（延遲到靜音結束後發送）/ skip（直接略過）,預設 delay
+⑤ 全域保護設定,儲存按鈕,action,PATCH /tenant/settings,儲存全域保護設定,需 Admin 權限
+⑥ API 端點,取得規則列表,GET,GET /automation/rules,支援 q / isActive / triggerGroup / trigger / page / limit,
+⑥ API 端點,取得各 Tab 數量,GET,GET /automation/rules?count=true&triggerGroup=,各 Tab 旁數字來源；頁面載入時一次取全部,
+⑥ API 端點,切換啟用狀態,PATCH,PATCH /automation/rules/:id,body: { isActive: true|false },啟用 / 停用按鈕觸發
+⑥ API 端點,複製規則,POST,POST /automation/rules/:id/duplicate,複製規則後跳轉至新規則編輯器,
+⑥ API 端點,刪除規則,DELETE,DELETE /automation/rules/:id,需二次確認,
+⑥ API 端點,更新全域設定,PATCH,PATCH /tenants/me/settings,"body: { frequencyCapCount, frequencyCapHours, quietHoursStart, quietHoursEnd, quietHoursBehavior }",
