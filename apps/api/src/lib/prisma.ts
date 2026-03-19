@@ -1,16 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@open333crm/database';
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ['error', 'warn'],
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+export { prisma };
+export * from '@prisma/client';
 
 export const connectPostgres = async () => {
   await prisma.$connect();

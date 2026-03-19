@@ -21,7 +21,6 @@ export class BM25Service {
     const table = await this.lanceDb.getOrCreateTable(tableName);
     // In LanceDB JS SDK, FTS index creation is handled via create_index or similar
     // Note: Version 0.11+ uses a specific syntax for FTS
-    // @ts-ignore - LanceDB types might be lagging for newer FTS syntax
     await table.createIndex('fts'); 
   }
 
@@ -31,7 +30,7 @@ export class BM25Service {
   async fullTextSearch(tableName: string, queryText: string, topK = 5): Promise<any[]> {
     const table = await this.lanceDb.getOrCreateTable(tableName);
     // LanceDB full text search syntax
-    // @ts-ignore - LanceDB search syntax might vary slightly across versions
+    // @ts-expect-error: LanceDB types lag behind for new FTS syntax
     return await table.fullTextSearch(queryText).limit(topK).toArray();
   }
 }
