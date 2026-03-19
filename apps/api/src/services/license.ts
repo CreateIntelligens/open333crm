@@ -28,11 +28,11 @@ class LicenseService {
         licenseKey: env.LICENSE_KEY,
         features: {
           channels: {
-            line:     { enabled: true,  maxCount: 3 },
-            fb:       { enabled: true,  maxCount: 2 },
-            webchat:  { enabled: true,  maxCount: 1 },
-            telegram: { enabled: true,  maxCount: 2, messageFee: 0.1, messageFeeCurrency: 'USD' },
-            threads:  { enabled: false }
+            LINE:     { enabled: true,  maxCount: 1 },
+            FB:       { enabled: true,  maxCount: 2 },
+            WEBCHAT:  { enabled: true,  maxCount: 1 },
+            TELEGRAM: { enabled: true,  maxCount: 2, messageFee: 0.1, messageFeeCurrency: 'USD' },
+            THREADS:  { enabled: false }
           },
           inbox: {
             unifiedInbox: true,
@@ -63,7 +63,7 @@ class LicenseService {
               teamId: 'team_sales',
               teamName: 'Sales Dept',
               channels: {
-                line: { enabled: true, maxCount: 1 }
+                LINE: { enabled: true, maxCount: 1 }
               }
             }
           ]
@@ -149,8 +149,8 @@ class LicenseService {
     }
     
     // In a real implementation, this would call the License Server
-    this.config.credits[type].remaining -= amount;
-    return { success: true, remaining: this.config.credits[type].remaining };
+    this.config.credits[type]!.remaining -= amount;
+    return { success: true, remaining: this.config.credits[type]!.remaining };
   }
 
   getRemoteService(service: 'llm') {

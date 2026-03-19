@@ -8,23 +8,45 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
     depends_on: [api, web]
+  # ── Application ────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: apps/api/.env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/api:/app/apps/api
+    command: ["sh", "-c", "pnpm --filter @open333crm/database run migrate:deploy && pnpm --filter @open333crm/api dev"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  studio:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: apps/api/.env
+    command: ["sh", "-c", "pnpm --filter @open333crm/database run migrate:deploy && pnpm --filter @open333crm/database run db:gui"]
+    ports:
+      - "5555:5555"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
   web:
     # Build will be defined later
     image: node:20-alpine
     restart: always
 
-  api:
-    # Build will be defined later
-    image: node:20-alpine
-    restart: always
-    env_file: .env
-    volumes:
-      - ./workspace:/workspace
-    depends_on: [postgres, redis, minio]
-
+  # ── Data ───────────────────────────────────────────────────────
   postgres:
-    image: pgvector/pgvector:16-pg16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: open333crm
       POSTGRES_USER: crm
@@ -32,12 +54,23 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d open333crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
   minio:
     image: minio/minio
