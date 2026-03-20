@@ -21,6 +21,7 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 - [x] **Phase 1: 基礎建設** — Monorepo, Docker, 數據庫簡化實作完成
 - [x] **Phase 2: 太上皇計費系統** — License 控制與點數機制框架完成
 - [ ] **Phase 3: 多渠道擴充 (v0.2.0)** — Telegram/Threads Plugin + Channel-Team 授權 + 計費機制 _(OpenSpec 進行中)_
+- [x] **Phase 3.1: LINE OA Plugin (v0.3.0)** — 完整 LinePlugin 實作：5 種發送策略、Rich Menu、Narrowcast Audience、Insight Sync、LIFF、Account Link ✅
 - [ ] **Phase 4: Case & Conversation 管理** — 收件匣 UI 與工作流
 - [x] **Phase 5: AI 與自動化** — KM 與 Rule Engine 整合 (LanceDB + BM25)
 
@@ -29,10 +30,12 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 | 文件 | 說明 |
 |------|------|
 | [📋 PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) | **專案規劃：里程碑 / 工時預估** |
-| [03_CHANNEL_PLUGIN.md](./docs/03_CHANNEL_PLUGIN.md) | 多渠道 Plugin 架構與新增渠道 Checklist |
+| [03_CHANNEL_PLUGIN.md](./docs/03_CHANNEL_PLUGIN.md) | 多渠道 Plugin 架構、Extension 介面定義 |
+| [03_CHANNEL_PLUGINS/LINE_OA.md](./docs/03_CHANNEL_PLUGINS/LINE_OA.md) | **LINE OA 官方 API 完整參考（16 章節）** |
 | [09_API_DESIGN.md](./docs/09_API_DESIGN.md) | 對外 REST API 規格、頻道授權、錯誤碼 |
 | [14_BILLING_AND_LICENSE.md](./docs/14_BILLING_AND_LICENSE.md) | 平台授權 & Billing 控制（太上皇層）|
 | [16_DB_SCHEMA.md](./docs/16_DB_SCHEMA.md) | CRM 完整資料庫 Schema（Prisma + pgvector）|
+| [📦 line-oa-channel-plugin OpenSpec](./openspec/changes/line-oa-channel-plugin/proposal.md) | **v0.3.0：LINE OA Plugin 完整實作規格** |
 | [📦 multi-channel-billing OpenSpec](./openspec/changes/multi-channel-billing/proposal.md) | **v0.2.0 計畫：Telegram/Threads + 多部門授權 + 計費** |
 
 ## 快速了解系統邊界
@@ -58,10 +61,17 @@ open333CRM/
 │   ├── api/          ← Fastify (License Guard + Plugin Registry)
 │   └── web/          ← Next.js 15 Admin Console
 ├── packages/
-│   ├── database/     ← Prisma Schema + Generated Client
-│   ├── automation/   ← json-rules-engine core
-│   └── brain/        ← AI Brain (LanceDB + Hybrid Search + markitdown)
-├── docs/             ← 架構與設計文件
+├── packages/
+│   ├── database/         ← Prisma Schema + Generated Client
+│   ├── types/            ← 共享型別（ChannelPlugin, OutboundMessage 等）
+│   ├── channel-plugins/  ← 所有渠道插件（LINE/Telegram/Threads...）
+│   │   └── src/line/     ← LinePlugin + BullMQ Workers
+│   ├── automation/       ← json-rules-engine core
+│   └── brain/            ← AI Brain (LanceDB + Hybrid Search + markitdown)
+├── docs/
+│   ├── 03_CHANNEL_PLUGIN.md         ← Plugin 核心介面規範
+│   └── 03_CHANNEL_PLUGINS/          ← 各渠道專屬 API 文件
+│       └── LINE_OA.md               ← LINE OA 完整 API 文件
 ├── docker-compose.yml ← PostgreSQL, Redis, MinIO, Caddy
 ├── CHANGELOG.md      ← 詳細更動紀錄
 └── turbo.json        ← Pnpm 工作區管理

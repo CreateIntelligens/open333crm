@@ -38,7 +38,8 @@
   },
   "dependencies": {
     "@open333crm/types": "workspace:*",
-    "@line/bot-sdk": "^9.3.0"
+    "@line/bot-sdk": "^9.3.0",
+    "bullmq": "^5.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

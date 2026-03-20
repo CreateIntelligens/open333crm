@@ -101,6 +101,48 @@ interface ChannelPlugin {
     webhookUrl: string,
     credentials: ChannelCredentials
   ): Promise<void>;
+
+  /** 
+   * [New] 擴展能力 (Extensions)
+   * 用於處理渠道特有功能，如 Rich Menu, Audience Sync 等
+   */
+  readonly extensions?: {
+    ui?: ChannelUiExtension;
+    audience?: ChannelAudienceExtension;
+    analytics?: ChannelAnalyticsExtension;
+  };
+}
+
+/** 
+ * UI 擴展：管理 Rich Menu 等渠道特有 UI 
+ */
+interface ChannelUiExtension {
+  /** 建立/更新 Rich Menu 結構 */
+  upsertMenu(menuConfig: unknown, credentials: ChannelCredentials): Promise<string>;
+  /** 綁定 Menu 給用戶 */
+  linkMenuToUser(uid: string, menuId: string, credentials: ChannelCredentials): Promise<void>;
+  /** 批次綁定 */
+  linkMenuToUsers(uids: string[], menuId: string, credentials: ChannelCredentials): Promise<void>;
+}
+
+/** 
+ * 受眾擴展：同步分眾名單至渠道平台 
+ */
+interface ChannelAudienceExtension {
+  /** 同步 UUID 列表至渠道平台的受眾包 */
+  syncAudience(audienceId: string, uids: string[], credentials: ChannelCredentials): Promise<void>;
+  /** 建立點擊型/曝光型受眾 (如 LINE Click-based Audience) */
+  createInteractionAudience(campaignId: string, type: 'click' | 'imp'): Promise<string>;
+}
+
+/** 
+ * 分析擴展：抓取平台原生的送達/讀取數據 
+ */
+interface ChannelAnalyticsExtension {
+  /** 依發送 ID 取得平台數據 */
+  getDeliveryStats(requestId: string, credentials: ChannelCredentials): Promise<Record<string, number>>;
+  /** 取得粉絲統計 (Followers / Blocks) */
+  getFollowerStats(credentials: ChannelCredentials): Promise<{ followers: number; blocks: number }>;
 }
 ```
 

@@ -2,7 +2,42 @@
 
 All notable changes to the **open333CRM** project will be documented in this file.
 
+## [Unreleased] — 0.3.0 (line-oa-channel-plugin)
+
+> **狀態**：OpenSpec 實作完成，測試（11.x）待補。變更由 `openspec/changes/line-oa-channel-plugin` 管理。
+
+### Added
+- **LINE OA Channel Plugin** (`packages/channel-plugins/src/line/`) — 完整實作 `LinePlugin`：
+  - HMAC-SHA256 Webhook 簽名驗證
+  - 解析 11 種 LINE Webhook 事件（`message`, `postback`, `follow`, `unfollow`, `join`, `leave`, `memberJoined`, `memberLeft`, `unsend`, `videoPlayComplete`, `accountLink`）
+  - 支援 5 種發送策略：Reply / Push / Multicast（500/批）/ Broadcast / Narrowcast
+  - 支援全部 LINE 訊息類型：Text / Image / Video / Audio / Location / Sticker / Flex / Imagemap / Template + Quick Reply
+- **Plugin Extensions 機制** — `ChannelPlugin.extensions?: { ui, audience, analytics }` 可選介面，供渠道特有功能擴充使用
+- **`ChannelUiExtension`** — Rich Menu 完整 CRUD、批次用戶綁定（3次/小時 Rate Limit）、Alias A/B 切換
+- **`ChannelAudienceExtension`** — Audience Group 管理（upload / click / impression 三種類型），Narrowcast 進度輪詢，取消 Narrowcast
+- **`ChannelAnalyticsExtension`** — Insight 粉絲統計、人口統計、送達/讀取率查詢，配額查詢
+- **LIFF helpers** — LIFF App CRUD（列出 / 建立 / 更新 / 刪除）
+- **Account Link helpers** — Issue Link Token、`accountLink` Webhook 處理
+- **BullMQ Workers**：
+  - `worker-media-download` — Webhook 收到媒體時立即下載並上傳至 Storage Layer
+  - `worker-narrowcast-progress` — 每 5 分鐘輪詢 Narrowcast 進度（最多 12 小時）
+  - `worker-insight-sync` — 每日 UTC 00:30 定時同步 Insight 數據，突破 LINE 14 天保留限制
+- **Prisma Schema** — 新增 5 個 Model：`rich_menus`, `rich_menu_user_bindings`, `rich_menu_aliases`, `audience_groups`, `insight_snapshots`
+- **`docs/03_CHANNEL_PLUGINS/LINE_OA.md`** — LINE 官方 API 完整參考文件（16 個章節，覆蓋全部 Webhook 事件、訊息類型、發送策略、Rich Menu、Insight、LIFF、Account Link）
+
+### Changed
+- **`OutboundMessage`** — 新增 `strategy`、`recipientUids`、`audienceGroupId`、`mediaUrl`、`trackingId`、`quickReplies.imageUrl` 等 LINE 發送所需欄位
+- **`packages/channel-plugins/package.json`** — 新增 `bullmq ^5.0.0` 依賴
+
+### Note for Ops
+- **DB Migration**: 需執行 `npx prisma migrate dev --name add-line-oa-models` 以套用 5 個新模型。
+- **Workers**: 需配置並啟動 `media-download`, `narrowcast-progress`, `insight-sync` 三個 BullMQ Workers 以支援媒體轉存與分析同步。
+- **Credentials**: 確保 LINE Channel 憑證中包含 `channelAccessToken` 與 `channelSecret`。
+
+---
+
 ## [Unreleased] — 0.2.0 (multi-channel-billing)
+
 
 > **\u72c0\u614b**\uff1aOpenSpec \u958b\u653e\u4e2d\uff0c\u5be6\u4f5c\u9707\u524d\u3002\u8b8a\u66f4\u7531 `openspec/changes/multi-channel-billing` \u7ba1\u7406\u3002
 

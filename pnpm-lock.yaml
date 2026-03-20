@@ -224,6 +224,9 @@ importers:
       '@open333crm/types':
         specifier: workspace:*
         version: link:../types
+      bullmq:
+        specifier: ^5.0.0
+        version: 5.70.4
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

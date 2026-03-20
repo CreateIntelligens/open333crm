@@ -592,6 +592,94 @@ enum BroadcastStatus {
   FAILED
 }
 
+// ─────────────────────────────────────────────
+// LINE OA — Rich Menu
+// ─────────────────────────────────────────────
+
+model RichMenu {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId      String   @db.Uuid
+  lineRichMenuId String   // ID returned by LINE API
+  name           String
+  chatBarText    String
+  configJson     Json     // Full rich menu config JSON
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userBindings   RichMenuUserBinding[]
+  aliases        RichMenuAlias[]
+
+  @@index([channelId])
+  @@map("rich_menus")
+}
+
+model RichMenuUserBinding {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  richMenuId  String   @db.Uuid
+  channelId   String   @db.Uuid
+  lineUserId  String
+  boundAt     DateTime @default(now())
+
+  richMenu    RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, lineUserId])
+  @@index([richMenuId])
+  @@map("rich_menu_user_bindings")
+}
+
+model RichMenuAlias {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  richMenuId     String   @db.Uuid
+  channelId      String   @db.Uuid
+  lineAliasId    String   // richMenuAliasId on LINE
+  createdAt      DateTime @default(now())
+
+  richMenu       RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, lineAliasId])
+  @@map("rich_menu_aliases")
+}
+
+// ─────────────────────────────────────────────
+// LINE OA — Audience Group (Narrowcast)
+// ─────────────────────────────────────────────
+
+model AudienceGroup {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId           String   @db.Uuid
+  segmentId           String?  @db.Uuid
+  lineAudienceGroupId String   // ID returned by LINE API
+  description         String
+  audienceType        String   @default("upload")  // upload | click | impression
+  size                Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([channelId])
+  @@map("audience_groups")
+}
+
+// ─────────────────────────────────────────────
+// LINE OA — Insight Snapshot (daily sync)
+// ─────────────────────────────────────────────
+
+model InsightSnapshot {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channelId       String   @db.Uuid
+  snapshotDate    String   // YYYYMMDD
+  followers       Int      @default(0)
+  blocks          Int      @default(0)
+  targetedReaches Int      @default(0)
+  demographicsJson Json?   // raw demographics response
+  createdAt       DateTime @default(now())
+
+  @@unique([channelId, snapshotDate])
+  @@index([channelId, snapshotDate(sort: Desc)])
+  @@map("insight_snapshots")
+}
+
+
 model Segment {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name       String
