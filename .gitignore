@@ -13,8 +13,8 @@ out/
 .env.local
 .env.*.local
 
-# Prisma
-**/prisma/migrations/
+# Prisma - ignore dev migration artifacts but keep migration SQL files
+**/prisma/migrations/**/migration_lock.toml
 
 # Logs
 *.log
@@ -33,3 +33,4 @@ coverage/
 
 # MinIO data (local dev)
 minio-data/
+packages/database/.env
