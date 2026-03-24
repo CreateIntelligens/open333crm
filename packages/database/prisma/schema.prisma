@@ -21,12 +21,14 @@ model Tenant {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  agents          Agent[]
-  channels        Channel[]
-  contacts        Contact[]
-  conversations   Conversation[]
-  cases           Case[]
-  automationRules AutomationRule[]
+  agents              Agent[]
+  channels            Channel[]
+  contacts            Contact[]
+  conversations       Conversation[]
+  cases               Case[]
+  automationRules     AutomationRule[]
+  automationExecutions AutomationExecution[]
+  automationActionResults AutomationActionResult[]
 
   @@map("tenants")
 }
@@ -489,28 +491,96 @@ model SlaPolicy {
 }
 
 // ─────────────────────────────────────────────
-// 自動化規則（Automation）
+// 自動化引擎（Automation Engine）
 // ─────────────────────────────────────────────
 
 model AutomationRule {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String   @db.Uuid
-  name       String
-  isActive   Boolean  @default(true)
-  trigger    Json     // { type, params }
-  conditions Json     @default("[]")  // Condition[]
-  actions    Json     // Action[]
-  runCount   Int      @default(0)
-  lastRunAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String     @db.Uuid
+  name           String
+  description    String?
+  enabled        Boolean    @default(true)
+  eventType      String
+  priority       Int        @default(0)
+  stopProcessing Boolean    @default(false)
+  scopeType      ScopeType
+  scopeId        String?
+  conditionsJson Json
+  actionsJson    Json
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id])
 
-  logs  AutomationLog[]
+  executions     AutomationExecution[]
+  logs           AutomationLog[]
 
-  @@index([isActive])
+  @@index([enabled])
+  @@index([eventType])
   @@map("automation_rules")
+}
+
+model AutomationExecution {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String           @db.Uuid
+  eventType       String
+  eventId         String?
+  factSnapshot    Json
+  candidateRuleIds String[]
+  matchedRuleIds  String[]
+  actionsExecuted Json
+  stoppedAt       String?
+  status          ExecutionStatus
+  createdAt       DateTime         @default(now())
+
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id])
+  rule            AutomationRule?           @relation(fields: [ruleId], references: [id])
+  ruleId          String?
+
+  actionResults   AutomationActionResult[]
+
+  @@index([status])
+  @@index([eventType])
+  @@map("automation_executions")
+}
+
+model AutomationActionResult {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String              @db.Uuid
+  executionId    String              @db.Uuid
+  actionType     String
+  params         Json
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  status         ActionResultStatus
+  errorMessage   String?
+  rollbackable   Boolean             @default(false)
+  rolledBackAt   DateTime?
+  createdAt      DateTime             @default(now())
+
+  tenant         Tenant              @relation(fields: [tenantId], references: [id])
+  execution      AutomationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+  @@map("automation_action_results")
+}
+
+enum ScopeType {
+  TENANT
+  TEAM
+  CHANNEL
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ActionResultStatus {
+  SUCCESS
+  FAILED
+  ROLLED_BACK
 }
 
 model AutomationLog {
