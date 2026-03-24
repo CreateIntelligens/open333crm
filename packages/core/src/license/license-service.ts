@@ -65,6 +65,15 @@ export class LicenseService {
     return !!data?.features[feature];
   }
 
+  async isChannelEnabled(channelType: string): Promise<boolean> {
+    const data = await this.getCurrentLicense();
+    if (!data || !data.features || typeof data.features.channels !== 'object') return false;
+    const channels = data.features.channels as any;
+    const channelKey = channelType.toLowerCase();
+    const channelConfig = channels[channelKey] || channels[channelKey.replace('fb', 'facebook')];
+    return !!channelConfig?.enabled;
+  }
+
   async getCurrentLicense(): Promise<LicenseData | null> {
     const cached = await redis.get(LicenseService.CACHE_KEY);
     if (cached) {

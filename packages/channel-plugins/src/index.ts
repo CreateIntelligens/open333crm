@@ -123,11 +123,12 @@ export function getPlugin(channelType: ChannelType): ChannelPlugin {
 
 // ── Exports ───────────────────────────────────────────────────────
 
-export { TelegramPlugin } from './telegram.js';
+export { TelegramPlugin } from './telegram/index.js';
+export { FbPlugin }       from './facebook/index.js';
 export { ThreadsPlugin }  from './threads.js';
 export { LinePlugin }     from './line/index.js';
 
 // Channel-specific plugin stubs (to be implemented)
-// export { FbPlugin }     from './fb/index.js';
 // export { WebChatPlugin } from './webchat/index.js';
 // export { WhatsAppPlugin } from './whatsapp/index.js';  // future
+
