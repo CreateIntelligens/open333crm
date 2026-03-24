@@ -46,10 +46,11 @@ app.register(agentRoutes, { prefix: '/api/v1/agents' });
 
 import contactRoutes from './routes/contacts.js';
 import caseRoutes from './routes/cases.js';
+import automationRoutes from './routes/automations.js';
 
 app.register(contactRoutes,     { prefix: '/api/v1/contacts' });
-// app.register(conversationRoutes,{ prefix: '/api/v1/conversations' });
 app.register(caseRoutes,        { prefix: '/api/v1/cases' });
+app.register(automationRoutes,  { prefix: '/api/v1/automations' });
 
 app.addHook('onClose', async () => {
   await disconnectPostgres();

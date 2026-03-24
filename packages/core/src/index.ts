@@ -7,5 +7,5 @@ export * from './license/license-service';
 export * from './inbox/inbox-service';
 export * from './contacts/contact-service';
 export * from './cases/case-service';
-export * from './automation/automation-engine';
+export * from './automation/engine';
 export * from './channels/channel-adapter';

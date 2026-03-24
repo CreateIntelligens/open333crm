@@ -22,4 +22,12 @@ export default async function contactRoutes(app: FastifyInstance) {
     await ContactService.setAttribute(id, key, value, dataType);
     return { success: true };
   });
+
+  app.post('/merge', async (request) => {
+    const tenantId = (request.user as any)?.tenantId || 'default-tenant';
+    const { sourceId, targetId } = request.body as { sourceId: string; targetId: string };
+    
+    const finalId = await ContactService.mergeContacts(tenantId, sourceId, targetId);
+    return { success: true, targetId: finalId };
+  });
 }

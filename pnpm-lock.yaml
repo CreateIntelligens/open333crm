@@ -267,6 +267,9 @@ importers:
       ioredis:
         specifier: ^5.3.0
         version: 5.10.0
+      json-rules-engine:
+        specifier: ^6.5.0
+        version: 6.6.0
       minio:
         specifier: ^8.0.0
         version: 8.0.7

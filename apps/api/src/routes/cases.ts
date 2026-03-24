@@ -24,4 +24,23 @@ export default async function caseRoutes(app: FastifyInstance) {
     const agentId = (request.user as any)?.id;
     return CaseService.updateStatus(id, status, agentId);
   });
+
+  app.post('/:id/merge', async (request) => {
+    const tenantId = (request.user as any)?.tenantId || 'default-tenant';
+    const { id: sourceId } = request.params as { id: string };
+    const { targetId } = request.body as { targetId: string };
+    const agentId = (request.user as any)?.id;
+    
+    await CaseService.mergeCases(tenantId, sourceId, targetId, agentId);
+    return { success: true, mergedIntoId: targetId };
+  });
+
+  app.post('/:id/auto-assign', async (request) => {
+    const tenantId = (request.user as any)?.tenantId || 'default-tenant';
+    const { id: caseId } = request.params as { id: string };
+    const { teamId } = request.body as { teamId?: string };
+    
+    const assignedCase = await CaseService.assignToLeastLoadedAgent(tenantId, caseId, teamId);
+    return { success: true, case: assignedCase };
+  });
 }

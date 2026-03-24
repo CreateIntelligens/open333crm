@@ -388,12 +388,23 @@ model Case {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  mergedIntoId   String?      @db.Uuid
+  parentCaseId   String?      @db.Uuid
 
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
   contact        Contact      @relation(fields: [contactId], references: [id])
   assignee       Agent?       @relation("AssignedAgent", fields: [assigneeId], references: [id])
   team           Team?        @relation(fields: [teamId], references: [id])
   conversation   Conversation?
+
+  mergedInto     Case?          @relation("MergedCases", fields: [mergedIntoId], references: [id])
+  mergedCases    Case[]         @relation("MergedCases")
+  parentCase     Case?          @relation("SubCases", fields: [parentCaseId], references: [id])
+  subCases       Case[]         @relation("SubCases")
+  
+  relationsFrom  CaseRelation[] @relation("FromCase")
+  relationsTo    CaseRelation[] @relation("ToCase")
+
   events         CaseEvent[]
   notes          CaseNote[]
 
@@ -447,6 +458,21 @@ model CaseNote {
 
   @@index([caseId])
   @@map("case_notes")
+}
+
+model CaseRelation {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fromCaseId    String   @db.Uuid
+  toCaseId      String   @db.Uuid
+  relationType  String   // relates_to, blocks, duplicates
+  createdAt     DateTime @default(now())
+
+  fromCase Case @relation("FromCase", fields: [fromCaseId], references: [id], onDelete: Cascade)
+  toCase   Case @relation("ToCase", fields: [toCaseId], references: [id], onDelete: Cascade)
+
+  @@index([fromCaseId])
+  @@index([toCaseId])
+  @@map("case_relations")
 }
 
 model SlaPolicy {
