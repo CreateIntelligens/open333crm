@@ -3,6 +3,7 @@
 // until sendingComplete. Updates Broadcast record status accordingly.
 
 import { Worker, Queue } from 'bullmq';
+import { redis } from '@open333crm/core';
 import type { LineChannelCredentials } from './index.js';
 
 export interface NarrowcastProgressJob {
@@ -16,6 +17,7 @@ const LINE_API = 'https://api.line.me';
 const MAX_POLLS = 144; // 144 × 5min = 12 hours max tracking
 
 export const narrowcastProgressQueue = new Queue<NarrowcastProgressJob>('line-narrowcast-progress', {
+  connection: redis as any,
   defaultJobOptions: {
     attempts: 1, // polling re-queues itself
   },
@@ -65,6 +67,6 @@ export function createNarrowcastProgressWorker(
       // Still in progress — re-enqueue after 5 minutes
       await narrowcastProgressQueue.add('poll', { ...job.data, polledCount: polledCount + 1 }, { delay: 5 * 60 * 1000 });
     },
-    { concurrency: 20 },
+    { connection: redis as any, concurrency: 20 },
   );
 }

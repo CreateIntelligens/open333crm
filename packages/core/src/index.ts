@@ -1,2 +1,11 @@
-// Core shared utilities — add exports here
-export {};
+export * from './logger';
+export * from './redis/client';
+export * from './event-bus/event-bus';
+export * from './storage';
+export * from './storage/minio-provider';
+export * from './license/license-service';
+export * from './inbox/inbox-service';
+export * from './contacts/contact-service';
+export * from './cases/case-service';
+export * from './automation/automation-engine';
+export * from './channels/channel-adapter';

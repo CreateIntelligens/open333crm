@@ -22,8 +22,8 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 - [x] **Phase 2: 太上皇計費系統** — License 控制與點數機制框架完成
 - [ ] **Phase 3: 多渠道擴充 (v0.2.0)** — Telegram/Threads Plugin + Channel-Team 授權 + 計費機制 _(OpenSpec 進行中)_
 - [x] **Phase 3.1: LINE OA Plugin (v0.3.0)** — 完整 LinePlugin 實作：5 種發送策略、Rich Menu、Narrowcast Audience、Insight Sync、LIFF、Account Link ✅
-- [ ] **Phase 4: Case & Conversation 管理** — 收件匣 UI 與工作流
-- [x] **Phase 5: AI 與自動化** — KM 與 Rule Engine 整合 (LanceDB + BM25)
+- [x] **Phase 4: Case & Conversation 管理** — 核心 InboxService, CaseService 與 SLA 監控框架完成 (v0.4.0) ✅
+- [x] **Phase 5: AI 與自動化** — KM 與 Rule Engine 核心整合完成，支持事件驅動 (v0.4.0) ✅
 
 ## 文件索引 (Partial)
 
@@ -58,21 +58,20 @@ open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息
 ```
 open333CRM/
 ├── apps/
-│   ├── api/          ← Fastify (License Guard + Plugin Registry)
-│   └── web/          ← Next.js 15 Admin Console
+│   ├── api/          ← Fastify API Gateway (與 Core Services 介接)
+│   ├── web/          ← Next.js 15 管理後台
+│   ├── widget/       ← 訪客端聊天視窗元件
+│   └── workers/      ← 背景任務 (如媒體下載、SLA 監控、數據同步)
 ├── packages/
-├── packages/
-│   ├── database/         ← Prisma Schema + Generated Client
-│   ├── types/            ← 共享型別（ChannelPlugin, OutboundMessage 等）
-│   ├── channel-plugins/  ← 所有渠道插件（LINE/Telegram/Threads...）
-│   │   └── src/line/     ← LinePlugin + BullMQ Workers
-│   ├── automation/       ← json-rules-engine core
-│   └── brain/            ← AI Brain (LanceDB + Hybrid Search + markitdown)
-├── docs/
-│   ├── 03_CHANNEL_PLUGIN.md         ← Plugin 核心介面規範
-│   └── 03_CHANNEL_PLUGINS/          ← 各渠道專屬 API 文件
-│       └── LINE_OA.md               ← LINE OA 完整 API 文件
+│   ├── core/         ← 核心業務服務 (Inbox, Contact, Case, Automation, EventBus)
+│   ├── database/     ← Prisma Schema (含 Tenant 多租戶隔離)
+│   ├── types/        ← 共享型別定義
+│   ├── channel-plugins/ ← 渠道插件與各渠道專屬 Workers
+│   ├── automation/   ← 基礎規則引擎工具
+│   └── brain/        ← AI 知識庫 (LanceDB + Hybrid Search)
+├── docs/             ← 系統架構與各模組專詳文檔 (00-23)
 ├── docker-compose.yml ← PostgreSQL, Redis, MinIO, Caddy
 ├── CHANGELOG.md      ← 詳細更動紀錄
 └── turbo.json        ← Pnpm 工作區管理
 ```
+\`\`\`

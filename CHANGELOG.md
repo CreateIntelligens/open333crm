@@ -2,6 +2,29 @@
 
 All notable changes to the **open333CRM** project will be documented in this file.
 
+## [Unreleased] — 0.4.0 (docs-01-02-architecture)
+
+> **狀態**：完成核心架構實作與多租戶隔離。變更由 `openspec/changes/docs-01-02-architecture` 管理並已封存。
+
+### Added
+- **多租戶隔離 (Multi-tenancy)** — 在 Prisma Schema 中導入 `Tenant` 模型，並完成所有核心實體的 `tenantId` 範圍限制（Agent, Contact, Case, Conversation, AutomationRule）。
+- **核心業務服務 (`packages/core`)** — 建立並實作五大基礎服務模組：
+    - `InboxService`：統一訊息攝入與事件分發。
+    - `ContactService`：跨渠道身份識別與聯絡人管理。
+    - `CaseService`：案件生命週期管理，整合 BullMQ 進行 SLA 延遲任務監控。
+    - `AutomationEngine`：響應式自動化引擎，基於 Event Bus 觸發標籤、案件與訊息動作。
+    - `ChannelAdapter`：標準化渠道介入介面。
+- **平台基礎設施** — 
+    - `EventBus`：基於 Redis 的內部分發機制。
+    - `StorageLayer`：抽象儲存層，支援 MinIO 物件儲存。
+    - `LicenseService`：租戶授權與功能旗標管控中心。
+- **API Gateway 路由註冊** — 在 `apps/api` 完成 `contacts`、`cases` 路由註冊與 Webhook 轉接邏輯。
+
+### Fixed
+- **Monorepo 編譯依賴** — 修復 `packages/database` 與 `packages/channel-plugins` 的 TypeScript 編譯設定與 Redis 型別轉換問題。
+
+---
+
 ## [Unreleased] — 0.3.0 (line-oa-channel-plugin)
 
 > **狀態**：OpenSpec 實作完成，測試（11.x）待補。變更由 `openspec/changes/line-oa-channel-plugin` 管理。

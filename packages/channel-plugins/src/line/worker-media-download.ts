@@ -3,6 +3,7 @@
 // Triggered by LinePlugin.parseWebhook() for image/video/audio/file messages
 
 import { Worker, Queue } from 'bullmq';
+import { redis } from '@open333crm/core';
 
 export interface MediaDownloadJob {
   lineMessageId: string;
@@ -16,6 +17,7 @@ const LINE_API = 'https://api.line.me';
 
 // Queue export for producers (LinePlugin webhook handler)
 export const mediaDownloadQueue = new Queue<MediaDownloadJob>('line-media-download', {
+  connection: redis as any,
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 2000 },
@@ -54,6 +56,7 @@ export function createMediaDownloadWorker(
       await updateMessageUrl(messageDbId, permanentUrl);
     },
     {
+      connection: redis as any,
       concurrency: 10,
     },
   );

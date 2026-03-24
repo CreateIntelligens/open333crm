@@ -4,6 +4,7 @@
 // Data is stored in `insight_snapshots` table to outlive LINE's 14-day retention.
 
 import { Worker, Queue } from 'bullmq';
+import { redis } from '@open333crm/core';
 import type { LineChannelCredentials } from './index.js';
 
 export interface InsightSyncJob {
@@ -22,6 +23,7 @@ function yesterday(): string {
 }
 
 export const insightSyncQueue = new Queue<InsightSyncJob>('line-insight-sync', {
+  connection: redis as any,
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
@@ -73,6 +75,6 @@ export function createInsightSyncWorker(
         demographicsJson: demoData,
       });
     },
-    { concurrency: 5 },
+    { connection: redis as any, concurrency: 5 },
   );
 }

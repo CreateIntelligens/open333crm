@@ -61,8 +61,10 @@ const agentRoutes = async (fastify: FastifyInstance) => {
     };
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const tenantId = (request.user as any)?.tenantId || '00000000-0000-0000-0000-000000000000';
+
     const agent = await prisma.agent.create({
-      data: { email, name, passwordHash, role: role ?? AgentRole.AGENT },
+      data: { tenantId, email, name, passwordHash, role: role ?? AgentRole.AGENT },
       select: AGENT_SELECT,
     });
 

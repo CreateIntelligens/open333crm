@@ -44,11 +44,12 @@ app.register(channelRoutes, { prefix: '/api/v1/channels' });
 app.register(reportRoutes, { prefix: '/api/v1/reports' });
 app.register(agentRoutes, { prefix: '/api/v1/agents' });
 
-// TODO: register API route modules
-app.register(authRoutes, { prefix: '/api/v1/auth' });
-// app.register(contactRoutes,     { prefix: '/api/v1/contacts' });
+import contactRoutes from './routes/contacts.js';
+import caseRoutes from './routes/cases.js';
+
+app.register(contactRoutes,     { prefix: '/api/v1/contacts' });
 // app.register(conversationRoutes,{ prefix: '/api/v1/conversations' });
-// app.register(caseRoutes,        { prefix: '/api/v1/cases' });
+app.register(caseRoutes,        { prefix: '/api/v1/cases' });
 
 app.addHook('onClose', async () => {
   await disconnectPostgres();

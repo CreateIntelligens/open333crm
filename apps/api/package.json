@@ -21,6 +21,7 @@
     "@open333crm/automation": "workspace:*",
     "@open333crm/brain": "workspace:*",
     "@open333crm/channel-plugins": "workspace:*",
+    "@open333crm/core": "workspace:*",
     "@open333crm/database": "workspace:*",
     "@open333crm/types": "workspace:*",
     "@prisma/client": "^5.13.0",

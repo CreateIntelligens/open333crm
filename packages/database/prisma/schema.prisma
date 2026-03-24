@@ -10,12 +10,35 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────
+// 基礎：Tenant（企業客戶）
+// ─────────────────────────────────────────────
+
+model Tenant {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agents          Agent[]
+  channels        Channel[]
+  contacts        Contact[]
+  conversations   Conversation[]
+  cases           Case[]
+  automationRules AutomationRule[]
+
+  @@map("tenants")
+}
+
+// ─────────────────────────────────────────────
 // 基礎：Agent（客服人員）
 // ─────────────────────────────────────────────
 
 model Agent {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String   @unique
+  tenantId     String    @db.Uuid
+  email        String    @unique
   name         String
   avatarUrl    String?
   role         AgentRole @default(AGENT)
@@ -23,6 +46,8 @@ model Agent {
   passwordHash String
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
 
   teams            AgentTeamMember[]
   assignedConvs    Conversation[]    @relation("AssignedAgent")
@@ -70,6 +95,7 @@ model AgentTeamMember {
 
 model Channel {
   id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String      @db.Uuid
   channelType          ChannelType
   displayName          String
   isActive             Boolean     @default(true)
@@ -79,6 +105,8 @@ model Channel {
   lastVerifiedAt       DateTime?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
+
+  tenant               Tenant      @relation(fields: [tenantId], references: [id])
 
   channelIdentities    ChannelIdentity[]
   conversations        Conversation[]
@@ -145,6 +173,7 @@ model ChannelUsage {
 
 model Contact {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
   displayName String
   avatarUrl   String?
   phone       String?
@@ -153,6 +182,8 @@ model Contact {
   isBlocked   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
 
   channelIdentities  ChannelIdentity[]
   attributes         ContactAttribute[]
@@ -267,6 +298,7 @@ model ContactTag {
 
 model Conversation {
   id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String             @db.Uuid
   contactId     String             @db.Uuid
   channelId     String             @db.Uuid
   teamId        String?            @db.Uuid
@@ -278,6 +310,8 @@ model Conversation {
   lastMessageAt DateTime?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
 
   contact    Contact   @relation(fields: [contactId], references: [id])
   channel    Channel   @relation(fields: [channelId], references: [id])
@@ -335,6 +369,7 @@ enum SenderType {
 
 model Case {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String       @db.Uuid
   contactId      String       @db.Uuid
   channelId      String       @db.Uuid
   conversationId String?      @db.Uuid
@@ -352,6 +387,8 @@ model Case {
   csatScore      Int?         // 1~5
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
 
   contact        Contact      @relation(fields: [contactId], references: [id])
   assignee       Agent?       @relation("AssignedAgent", fields: [assigneeId], references: [id])
@@ -431,6 +468,7 @@ model SlaPolicy {
 
 model AutomationRule {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @db.Uuid
   name       String
   isActive   Boolean  @default(true)
   trigger    Json     // { type, params }
@@ -440,6 +478,8 @@ model AutomationRule {
   lastRunAt  DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   logs  AutomationLog[]
 

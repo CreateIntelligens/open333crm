@@ -50,4 +50,12 @@ export default async function webhookRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // ── Generic Webhook ──────────────────────────
+  app.post('/:channelId', async (req, reply) => {
+    const { channelId } = req.params as { channelId: string };
+    app.log.info(`[Webhook] Received generic payload for channel: ${channelId}`);
+    // Logic to route to InboxService would go here
+    return { ok: true };
+  });
+
 }
