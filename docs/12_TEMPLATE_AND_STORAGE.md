@@ -127,32 +127,31 @@ interface TemplateBody {
 
 ---
 
-### 模板變數替換機制
+### 模板變數替換與「採用 (Adopt)」機制
 
-Flex JSON 中用 `{{variable}}` 語法標記動態欄位：
-
-```json
-{
-  "type": "bubble",
-  "body": {
-    "type": "box",
-    "contents": [
-      { "type": "text", "text": "嗨，{{contact.name}}！" },
-      { "type": "text", "text": "您的 {{attribute.appliance_brand}} 保固將於 {{attribute.warranty_expires_at}} 到期" },
-      { "type": "image", "url": "{{storage.base_url}}/templates/warranty-banner.jpg" }
-    ]
-  }
-}
-```
-
-**`{{storage.base_url}}`** 是關鍵！模板中的圖片 URL 用變數而不是寫死，
-這樣換儲存體（MinIO → S3 → GCP）時，只需改設定，不必逐一改模板。
+1. **變數自動填充**: 廣播時自動從 `Contact.attributes` 取得資料。
+2. **人工審核 (Adopt)**: 客服在「AI 建議面板」點擊採用後，可二次編輯訊息。系統會記錄該訊息：
+   - `is_ai_suggested: true`
+   - `adopted_at: Date`
+   - `original_suggestion: TEXT`
 
 ---
 
-### 模板管理 API
+## Part B：統一儲存層 (Unified Storage Layer)
 
-```
+### 核心問題：LINE 對圖片的限制
+... (其餘不變)
+
+---
+
+### AI 生成素材儲存策略
+
+對於由 AI 生成的圖片（Banner, Rich Menu），系統採取以下管理：
+
+1. **獨立目錄**: 儲存於 `open333crm/ai-generated/{tenantId}/{category}/`。
+2. **自動清理 (選用)**: 對於多次生成但未被選用的草稿圖，30 天後自動轉入 Archive。
+3. **公網存取**: 所有選用的素材預設為 `public` ACL，確保 LINE 可直接讀取。
+
 GET    /api/v1/templates                  # 列表（可過濾 channelType / category）
 POST   /api/v1/templates                  # 建立
 GET    /api/v1/templates/:id              # 詳情
