@@ -24,25 +24,27 @@ export class AutomationEngine {
   private static async handleEvent(event: BaseEvent) {
     // 1. Fetch active rules for this tenant
     const rules = await prisma.automationRule.findMany({
-      where: { tenantId: event.tenantId, enabled: true },
+      where: { tenantId: event.tenantId, isActive: true },
     });
 
     if (rules.length === 0) return;
 
     for (const rule of rules) {
       try {
-        // 2. Check if event type matches
-        if (rule.eventType !== event.type && rule.eventType !== "*") continue;
+        // 2. Check if event type matches (stored in trigger JSON)
+        const trigger = rule.trigger as Record<string, unknown> | null;
+        const triggerType = (trigger?.type as string) ?? '';
+        if (triggerType !== event.type && triggerType !== "*") continue;
 
         // 3. Initialize json-rules-engine
         const engine = new Engine();
 
         // Setup engine rule
         const engineRule = {
-          conditions: rule.conditionsJson as any,
+          conditions: rule.conditions as any,
           event: {
             type: "match",
-            params: rule.actionsJson as any,
+            params: rule.actions as any,
           },
         };
 
@@ -87,6 +89,7 @@ export class AutomationEngine {
           await prisma.automationLog.create({
             data: {
               ruleId: rule.id,
+              tenantId: event.tenantId,
               triggerRef: event.type,
               success,
             },

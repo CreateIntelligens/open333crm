@@ -1,4 +1,4 @@
-import { prisma } from '@open333crm/database';
+import { prisma, Prisma } from '@open333crm/database';
 import { logger } from '../logger';
 
 export class ContactService {
@@ -98,7 +98,7 @@ export class ContactService {
   static async mergeContacts(tenantId: string, sourceId: string, targetId: string) {
     if (sourceId === targetId) throw new Error('Cannot merge a contact into itself');
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const source = await tx.contact.findUnique({ where: { id: sourceId, tenantId } });
       const target = await tx.contact.findUnique({ where: { id: targetId, tenantId } });
 

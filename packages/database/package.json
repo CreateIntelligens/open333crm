@@ -2,30 +2,25 @@
   "name": "@open333crm/database",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "prepare": "pnpm run generate && pnpm run build",
-    "generate": "prisma generate --schema=prisma/schema.prisma",
-    "migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
-    "migrate:dev": "prisma migrate dev --schema=prisma/schema.prisma",
-    "db:push": "prisma db push --schema=prisma/schema.prisma",
-    "db:gui": "prisma studio --schema=prisma/schema.prisma --port 5555 --hostname 0.0.0.0 --browser none",
-    "db:seed": "tsx prisma/seed.ts"
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@prisma/client": "^5.10.2"
+    "@open333crm/db": "workspace:*",
+    "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^25.5.0",
-    "bcryptjs": "^3.0.3",
-    "prisma": "^5.10.2",
-    "tsx": "^4.11.0",
     "typescript": "^5.4.0"
   }
 }

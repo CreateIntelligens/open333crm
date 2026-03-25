@@ -1,4 +1,5 @@
-import { prisma, CaseStatus, Priority } from "@open333crm/database";
+import { prisma, CaseStatus, Priority, Prisma } from "@open333crm/database";
+import type { Agent, Case as PrismaCase } from "@open333crm/database";
 import { Queue, Worker } from "bullmq";
 import { redis } from "../redis/client";
 import { logger } from "../logger";
@@ -151,7 +152,7 @@ export class CaseService {
     if (sourceId === targetId)
       throw new Error("Cannot merge a case into itself");
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const source = await tx.case.findUnique({
         where: { id: sourceId, tenantId },
       });
@@ -226,7 +227,7 @@ export class CaseService {
     if (agents.length === 0) return null; // No available agents
 
     // 2. Sort by lowest workload (cases count)
-    agents.sort((a, b) => a.assignedCases.length - b.assignedCases.length);
+    agents.sort((a: { assignedCases: PrismaCase[] }, b: { assignedCases: PrismaCase[] }) => a.assignedCases.length - b.assignedCases.length);
     const selectedAgent = agents[0];
 
     // 3. Assign

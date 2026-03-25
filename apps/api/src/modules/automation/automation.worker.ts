@@ -286,7 +286,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
           await prisma.message.update({
             where: { id: messageId },
             data: {
-              metadata: { ...existingMetadata, sentiment: sentimentResult },
+              metadata: JSON.parse(JSON.stringify({ ...existingMetadata, sentiment: sentimentResult })),
             },
           });
           console.log(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);

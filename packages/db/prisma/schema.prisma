@@ -91,6 +91,24 @@ enum KmStatus {
   ARCHIVED
 }
 
+enum ScopeType {
+  TENANT
+  TEAM
+  CHANNEL
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ActionResultStatus {
+  SUCCESS
+  FAILED
+  ROLLED_BACK
+}
+
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 model Agent {
@@ -184,6 +202,7 @@ model Contact {
   cases             Case[]
   portalSubmissions PortalSubmission[]
   pointTransactions PointTransaction[]
+  longTermMemories  LongTermMemory[]
 
   @@index([tenantId])
   @@index([tenantId, phone])
@@ -340,6 +359,7 @@ model Case {
   csatComment     String?
   csatRespondedAt DateTime?
   csatSentAt      DateTime?
+  mergedIntoId    String?    @db.Uuid
   createdAt       DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -347,6 +367,8 @@ model Case {
   assignee     Agent?        @relation("AssignedAgent", fields: [assigneeId], references: [id])
   team         Team?         @relation(fields: [teamId], references: [id])
   conversation Conversation?
+  mergedInto   Case?         @relation("MergedCases", fields: [mergedIntoId], references: [id])
+  mergedCases  Case[]        @relation("MergedCases")
   events       CaseEvent[]
   notes        CaseNote[]
 
@@ -417,7 +439,8 @@ model AutomationRule {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  logs AutomationLog[]
+  logs       AutomationLog[]
+  executions AutomationExecution[]
 
   @@index([tenantId, isActive])
   @@map("automation_rules")
@@ -440,6 +463,49 @@ model AutomationLog {
   @@map("automation_logs")
 }
 
+model AutomationExecution {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String          @db.Uuid
+  eventType        String
+  eventId          String?
+  factSnapshot     Json
+  candidateRuleIds String[]
+  matchedRuleIds   String[]
+  actionsExecuted  Json
+  stoppedAt        String?
+  status           ExecutionStatus
+  ruleId           String?         @db.Uuid
+  createdAt        DateTime        @default(now())
+
+  rule          AutomationRule?           @relation(fields: [ruleId], references: [id])
+  actionResults AutomationActionResult[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([eventType])
+  @@map("automation_executions")
+}
+
+model AutomationActionResult {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String             @db.Uuid
+  executionId    String             @db.Uuid
+  actionType     String
+  params         Json
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  status         ActionResultStatus
+  errorMessage   String?
+  rollbackable   Boolean            @default(false)
+  rolledBackAt   DateTime?
+  createdAt      DateTime           @default(now())
+
+  execution AutomationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+  @@map("automation_action_results")
+}
+
 model KmArticle {
   id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String                         @db.Uuid
@@ -459,6 +525,21 @@ model KmArticle {
 
   @@index([tenantId, status])
   @@map("km_articles")
+}
+
+model LongTermMemory {
+  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contactId      String                         @db.Uuid
+  content        String
+  embedding      Unsupported("vector(1024)")?
+  embeddingModel String?
+  metadata       Json?
+  createdAt      DateTime                       @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@map("long_term_memories")
 }
 
 model MessageTemplate {

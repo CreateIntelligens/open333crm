@@ -43,14 +43,12 @@ export default async function automationRoutes(app: FastifyInstance) {
         tenantId,
         name: data.name,
         description: data.description ?? null,
-        enabled: data.enabled ?? true,
-        eventType: data.eventType,
+        isActive: data.enabled ?? data.isActive ?? true,
+        trigger: data.eventType ? { type: data.eventType } : (data.trigger ?? {}),
         priority: data.priority ?? 0,
-        stopProcessing: data.stopProcessing ?? false,
-        scopeType: data.scopeType || "TENANT",
-        scopeId: data.scopeId ?? null,
-        conditionsJson: data.conditionsJson ?? {},
-        actionsJson: data.actionsJson ?? [],
+        stopOnMatch: data.stopProcessing ?? data.stopOnMatch ?? false,
+        conditions: data.conditionsJson ?? data.conditions ?? {},
+        actions: data.actionsJson ?? data.actions ?? [],
       },
     });
 
@@ -78,19 +76,28 @@ export default async function automationRoutes(app: FastifyInstance) {
         ...(data.description !== undefined && {
           description: data.description,
         }),
-        ...(data.enabled !== undefined && { enabled: data.enabled }),
-        ...(data.eventType !== undefined && { eventType: data.eventType }),
+        ...(data.enabled !== undefined && { isActive: data.enabled }),
+        ...(data.isActive !== undefined && { isActive: data.isActive }),
+        ...(data.eventType !== undefined && { trigger: { type: data.eventType } }),
+        ...(data.trigger !== undefined && { trigger: data.trigger }),
         ...(data.priority !== undefined && { priority: data.priority }),
         ...(data.stopProcessing !== undefined && {
-          stopProcessing: data.stopProcessing,
+          stopOnMatch: data.stopProcessing,
         }),
-        ...(data.scopeType !== undefined && { scopeType: data.scopeType }),
-        ...(data.scopeId !== undefined && { scopeId: data.scopeId }),
+        ...(data.stopOnMatch !== undefined && {
+          stopOnMatch: data.stopOnMatch,
+        }),
         ...(data.conditionsJson !== undefined && {
-          conditionsJson: data.conditionsJson,
+          conditions: data.conditionsJson,
+        }),
+        ...(data.conditions !== undefined && {
+          conditions: data.conditions,
         }),
         ...(data.actionsJson !== undefined && {
-          actionsJson: data.actionsJson,
+          actions: data.actionsJson,
+        }),
+        ...(data.actions !== undefined && {
+          actions: data.actions,
         }),
       },
     });
@@ -119,7 +126,8 @@ export default async function automationRoutes(app: FastifyInstance) {
   app.patch("/rules/:id/toggle", async (request) => {
     const tenantId = (request.user as any)?.tenantId || "default-tenant";
     const { id } = request.params as { id: string };
-    const { enabled } = request.body as { enabled: boolean };
+    const body = request.body as { enabled?: boolean; isActive?: boolean };
+    const isActive = body.enabled ?? body.isActive;
 
     const existing = await prisma.automationRule.findFirst({
       where: { id, tenantId },
@@ -131,7 +139,7 @@ export default async function automationRoutes(app: FastifyInstance) {
 
     const rule = await prisma.automationRule.update({
       where: { id },
-      data: { enabled },
+      data: { isActive },
     });
 
     return { rule };

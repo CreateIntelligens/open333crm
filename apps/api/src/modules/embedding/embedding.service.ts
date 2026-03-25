@@ -8,7 +8,7 @@ import { getConfig } from '../../config/env.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-interface ArticleSearchResult {
+export interface ArticleSearchResult {
   id: string;
   title: string;
   summary: string;

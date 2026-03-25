@@ -6,6 +6,13 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(10),
   JWT_EXPIRES_IN: z.string().default('7d'),
   API_PORT: z.coerce.number().int().positive().default(3001),
+  PORT: z.coerce.number().int().positive().default(3001),
+  CORS_ORIGIN: z.string().default('*'),
+  LICENSE_KEY: z.string().default('dev-license-key'),
+  CACHE_DRIVER: z.string().default('memory'),
+  CACHE_SEGMENT: z.string().default('open333crm'),
+  CACHE_REDIS_DB: z.coerce.number().int().optional(),
+  CACHE_EXPIRES_IN: z.coerce.number().int().optional(),
   LINE_LOGIN_CHANNEL_ID: z.string().optional(),
   LINE_LOGIN_CHANNEL_SECRET: z.string().optional(),
   LINE_LOGIN_CALLBACK_URL: z.string().optional(),
@@ -56,3 +63,12 @@ export function getConfig(): EnvConfig {
   }
   return _config;
 }
+
+// Lazy proxy for GitHub-side code that imports { env }
+// Defers loadEnvConfig() until first property access, allowing main.ts to load dotenv first.
+export const env: EnvConfig = new Proxy({} as EnvConfig, {
+  get(_target, prop: string) {
+    const config = loadEnvConfig();
+    return (config as Record<string, unknown>)[prop];
+  },
+});
