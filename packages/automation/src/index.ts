@@ -1,3 +1,10 @@
-import { AutomationEngine } from './engine.js';
-export * from './facts.js';
+import { AutomationEngine } from "./engine.js";
+export * from "./facts.js";
+export * from "./types.js";
+export * from "./fact-builder/index.js";
+export * from "./action-registry/index.js";
+export * from "./services/rule-service.js";
+export * from "./services/execution-service.js";
+export * from "./dispatcher/index.js";
+export * from "./listeners/index.js";
 export { AutomationEngine };

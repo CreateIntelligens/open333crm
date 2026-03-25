@@ -1,11 +1,13 @@
-import { prisma, CaseStatus, Priority } from '@open333crm/database';
-import { Queue, Worker } from 'bullmq';
-import { redis } from '../redis/client';
-import { logger } from '../logger';
-import { EventBus } from '../event-bus/event-bus';
+import { prisma, CaseStatus, Priority } from "@open333crm/database";
+import { Queue, Worker } from "bullmq";
+import { redis } from "../redis/client";
+import { logger } from "../logger";
+import { EventBus } from "../event-bus/event-bus";
 
 export class CaseService {
-  private static slaQueue = new Queue('sla-monitoring', { connection: redis as any });
+  private static slaQueue = new Queue("sla-monitoring", {
+    connection: redis as any,
+  });
 
   static async create(data: {
     tenantId: string;
@@ -34,56 +36,82 @@ export class CaseService {
       await prisma.caseEvent.create({
         data: {
           caseId: newCase.id,
-          actorType: 'system',
-          eventType: 'created',
+          actorType: "system",
+          eventType: "created",
           payload: { title: data.title },
         },
       });
 
       // Schedule SLA check (e.g. in 2 hours if not handled)
       await this.slaQueue.add(
-        'check-sla',
+        "check-sla",
         { caseId: newCase.id, tenantId: data.tenantId },
-        { delay: 2 * 60 * 60 * 1000, jobId: `sla-${newCase.id}` }
+        { delay: 2 * 60 * 60 * 1000, jobId: `sla-${newCase.id}` },
       );
 
       // Publish event
       await EventBus.publish({
         tenantId: data.tenantId,
-        type: 'case.created',
+        type: "case.created",
         payload: { caseId: newCase.id },
         timestamp: Date.now(),
       });
 
       return newCase;
     } catch (err) {
-      logger.error('Failed to create case:', err);
+      logger.error("Failed to create case:", err);
       throw err;
     }
   }
 
-  static async updateStatus(caseId: string, status: CaseStatus, actorId?: string) {
+  static async updateStatus(
+    caseId: string,
+    status: CaseStatus,
+    actorId?: string,
+  ) {
     const existing = await prisma.case.findUnique({ where: { id: caseId } });
-    if (!existing) throw new Error('Case not found');
+    if (!existing) throw new Error("Case not found");
 
     const validTransitions: Record<CaseStatus, CaseStatus[]> = {
-      OPEN: [CaseStatus.IN_PROGRESS, CaseStatus.PENDING, CaseStatus.RESOLVED, CaseStatus.CLOSED],
-      IN_PROGRESS: [CaseStatus.PENDING, CaseStatus.RESOLVED, CaseStatus.ESCALATED, CaseStatus.CLOSED],
+      OPEN: [
+        CaseStatus.IN_PROGRESS,
+        CaseStatus.PENDING,
+        CaseStatus.RESOLVED,
+        CaseStatus.CLOSED,
+      ],
+      IN_PROGRESS: [
+        CaseStatus.PENDING,
+        CaseStatus.RESOLVED,
+        CaseStatus.ESCALATED,
+        CaseStatus.CLOSED,
+      ],
       PENDING: [CaseStatus.IN_PROGRESS, CaseStatus.RESOLVED, CaseStatus.CLOSED],
       RESOLVED: [CaseStatus.CLOSED, CaseStatus.OPEN], // Can reopen
-      ESCALATED: [CaseStatus.IN_PROGRESS, CaseStatus.RESOLVED, CaseStatus.CLOSED],
+      ESCALATED: [
+        CaseStatus.IN_PROGRESS,
+        CaseStatus.RESOLVED,
+        CaseStatus.CLOSED,
+      ],
       CLOSED: [CaseStatus.OPEN], // Can reopen
     };
 
-    if (existing.status !== status && !validTransitions[existing.status].includes(status)) {
-      throw new Error(`Invalid transition from ${existing.status} to ${status}`);
+    if (
+      existing.status !== status &&
+      !validTransitions[existing.status].includes(status)
+    ) {
+      throw new Error(
+        `Invalid transition from ${existing.status} to ${status}`,
+      );
     }
 
     const updatedCase = await prisma.case.update({
       where: { id: caseId },
       data: {
         status,
-        resolvedAt: status === CaseStatus.RESOLVED && !existing.resolvedAt ? new Date() : existing.resolvedAt,
+        resolvedAt:
+          status === CaseStatus.RESOLVED && !existing.resolvedAt
+            ? new Date()
+            : existing.resolvedAt,
         closedAt: status === CaseStatus.CLOSED ? new Date() : undefined,
       },
     });
@@ -91,25 +119,50 @@ export class CaseService {
     await prisma.caseEvent.create({
       data: {
         caseId,
-        actorType: actorId ? 'agent' : 'system',
+        actorType: actorId ? "agent" : "system",
         actorId,
-        eventType: 'status_changed',
+        eventType: "status_changed",
         payload: { oldStatus: existing.status, newStatus: status },
       },
+    });
+
+    await EventBus.publish({
+      tenantId: existing.tenantId,
+      type: "case.status_changed",
+      payload: {
+        caseId,
+        oldStatus: existing.status,
+        newStatus: status,
+        priority: existing.priority,
+        assigneeId: existing.assigneeId,
+      },
+      timestamp: Date.now(),
     });
 
     return updatedCase;
   }
 
-  static async mergeCases(tenantId: string, sourceId: string, targetId: string, actorId?: string) {
-    if (sourceId === targetId) throw new Error('Cannot merge a case into itself');
+  static async mergeCases(
+    tenantId: string,
+    sourceId: string,
+    targetId: string,
+    actorId?: string,
+  ) {
+    if (sourceId === targetId)
+      throw new Error("Cannot merge a case into itself");
 
     return prisma.$transaction(async (tx) => {
-      const source = await tx.case.findUnique({ where: { id: sourceId, tenantId } });
-      const target = await tx.case.findUnique({ where: { id: targetId, tenantId } });
+      const source = await tx.case.findUnique({
+        where: { id: sourceId, tenantId },
+      });
+      const target = await tx.case.findUnique({
+        where: { id: targetId, tenantId },
+      });
 
-      if (!source || !target) throw new Error('Source or target case not found');
-      if (source.status === CaseStatus.CLOSED) throw new Error('Source case is already closed');
+      if (!source || !target)
+        throw new Error("Source or target case not found");
+      if (source.status === CaseStatus.CLOSED)
+        throw new Error("Source case is already closed");
 
       // Update source to mark it merged and closed
       await tx.case.update({
@@ -136,9 +189,9 @@ export class CaseService {
       await tx.caseEvent.create({
         data: {
           caseId: targetId,
-          actorType: actorId ? 'agent' : 'system',
+          actorType: actorId ? "agent" : "system",
           actorId,
-          eventType: 'merged',
+          eventType: "merged",
           payload: { sourceCaseId: sourceId },
         },
       });
@@ -147,19 +200,27 @@ export class CaseService {
     });
   }
 
-  static async assignToLeastLoadedAgent(tenantId: string, caseId: string, targetTeamId?: string) {
+  static async assignToLeastLoadedAgent(
+    tenantId: string,
+    caseId: string,
+    targetTeamId?: string,
+  ) {
     // 1. Find all eligible agents
     const agents = await prisma.agent.findMany({
       where: {
         tenantId,
         isActive: true,
-        ...(targetTeamId ? { teams: { some: { teamId: targetTeamId } } } : {})
+        ...(targetTeamId ? { teams: { some: { teamId: targetTeamId } } } : {}),
       },
       include: {
         assignedCases: {
-          where: { status: { in: [CaseStatus.OPEN, CaseStatus.IN_PROGRESS, CaseStatus.PENDING] } }
-        }
-      }
+          where: {
+            status: {
+              in: [CaseStatus.OPEN, CaseStatus.IN_PROGRESS, CaseStatus.PENDING],
+            },
+          },
+        },
+      },
     });
 
     if (agents.length === 0) return null; // No available agents
@@ -174,15 +235,15 @@ export class CaseService {
       data: {
         assigneeId: selectedAgent.id,
         teamId: targetTeamId,
-        status: CaseStatus.IN_PROGRESS
-      }
+        status: CaseStatus.IN_PROGRESS,
+      },
     });
 
     await prisma.caseEvent.create({
       data: {
         caseId,
-        actorType: 'system',
-        eventType: 'assigned',
+        actorType: "system",
+        eventType: "assigned",
         payload: { assigneeId: selectedAgent.id, teamId: targetTeamId },
       },
     });
@@ -193,27 +254,34 @@ export class CaseService {
 
 // SLA Worker (for demonstration, would typically run in a separate worker process)
 export const slaWorker = new Worker(
-  'sla-monitoring',
+  "sla-monitoring",
   async (job) => {
-    const { caseId, tenantId, type = 'first_response' } = job.data;
+    const { caseId, tenantId, type = "first_response" } = job.data;
     const c = await prisma.case.findUnique({ where: { id: caseId } });
 
     if (!c) return;
-    if (c.status === CaseStatus.RESOLVED || c.status === CaseStatus.CLOSED) return;
+    if (c.status === CaseStatus.RESOLVED || c.status === CaseStatus.CLOSED)
+      return;
 
-    if (type === 'first_response' && c.status === CaseStatus.OPEN && !c.assigneeId) {
-      logger.info(`SLA First-Response Breach for case ${caseId}, escalating...`);
+    if (
+      type === "first_response" &&
+      c.status === CaseStatus.OPEN &&
+      !c.assigneeId
+    ) {
+      logger.info(
+        `SLA First-Response Breach for case ${caseId}, escalating...`,
+      );
       await prisma.case.update({
         where: { id: caseId },
         data: { priority: Priority.HIGH },
       });
       await EventBus.publish({
         tenantId,
-        type: 'case.sla_breach',
-        payload: { caseId, breachType: 'first_response' },
+        type: "case.sla_breach",
+        payload: { caseId, breachType: "first_response" },
         timestamp: Date.now(),
       });
-    } else if (type === 'resolution') {
+    } else if (type === "resolution") {
       logger.warn(`SLA Resolution Breach for case ${caseId}`);
       await prisma.case.update({
         where: { id: caseId },
@@ -221,11 +289,11 @@ export const slaWorker = new Worker(
       });
       await EventBus.publish({
         tenantId,
-        type: 'case.sla_breach',
-        payload: { caseId, breachType: 'resolution' },
+        type: "case.sla_breach",
+        payload: { caseId, breachType: "resolution" },
         timestamp: Date.now(),
       });
     }
   },
-  { connection: redis as any }
+  { connection: redis as any },
 );

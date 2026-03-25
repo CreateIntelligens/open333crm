@@ -13,6 +13,12 @@
     "json-rules-engine": "^6.5.0"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
     "typescript": "^5.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/node": "^20.11.0"
+    }
   }
 }
