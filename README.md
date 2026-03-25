@@ -1,42 +1,38 @@
-# open333CRM — Lite CRM 架構
+# open333CRM — Lite CRM & Automation Platform
 
-> 版本：v0.1.0-alpha    更新：2026-03-18    下一版計畫：[v0.2.0 multi-channel-billing](./openspec/changes/multi-channel-billing/proposal.md)
+> 版本：v0.2.0-beta    更新：2026-03-25
 
 ## 什麼是 open333CRM？
 
-open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 多渠道訊息管理平台**，
+open333CRM 是一套為**中小型企業**設計的 **Lite CRM + 事件驅動自動化平台**，
 以取代舊有高耦合、單渠道的 LINE OA 後台方案。
 
 核心設計原則：
-- 🔌 **Plugin 優先** — 渠道、AI 功能、行銷模組皆以插件概念載入
-- 🌐 **多渠道統一** — LINE OA、FB Messenger、Web Chat、未來：Telegram、Threads、WhatsApp
-- 📁 **真正的 CRM** — Case 開/處理/關閉、聯繫人管理、事件升級
-- 🤖 **LLM 輔助** — KM 知識庫 + LLM 建議回覆，非硬核 chatbot
-- 🧩 **集團共享模式 (B-1)** — 全集團聯絡人共享，跨部門對話與案件隔離
-- 🚦 **Channel 多部門授權** — 一個渠道可授權多個部門共用，各有獨立 Credit 額度
-- 🏦 **單租戶託管** — 每個客戶獨立實例，由太上皇 License Server 遠端計費控管
+- 🔌 **事件驅動中樞** — 以 Automation Engine 為核心，所有模組透過事件互動。
+- 🤖 **AI Copilot 輔助** — AI 提供回覆建議與生圖素材，由人工審核「採用」，明確責任歸屬。
+- 🔔 **即時通知中心** — 透過小鈴鐺與 WebSocket，讓客服人員即時掌握案件指派、SLA 預警與客戶評價。
+- 🌐 **多渠道統一** — LINE OA、FB Messenger、Web Chat、未來：Telegram、WhatsApp。
+- 📁 **真正的 CRM** — Case 管理、聯繫人屬性、多部門權限隔離。
+- 🏦 **遠端授權計費** — 由 License Server 遠端控管功能開關與 AI 點數。
 
 ## 專案進度 (Status)
 
-- [x] **Phase 1: 基礎建設** — Monorepo, Docker, 數據庫簡化實作完成
-- [x] **Phase 2: 太上皇計費系統** — License 控制與點數機制框架完成
-- [ ] **Phase 3: 多渠道擴充 (v0.2.0)** — Telegram/Threads Plugin + Channel-Team 授權 + 計費機制 _(OpenSpec 進行中)_
-- [x] **Phase 3.1: LINE OA Plugin (v0.3.0)** — 完整 LinePlugin 實作：5 種發送策略、Rich Menu、Narrowcast Audience、Insight Sync、LIFF、Account Link ✅
-- [x] **Phase 4: Case & Conversation 管理** — 核心 InboxService, CaseService 與 SLA 監控框架完成 (v0.4.0) ✅
-- [x] **Phase 5: AI 與自動化** — KM 與 Rule Engine 核心整合完成，支持事件驅動 (v0.4.0) ✅
+- [x] **Phase 1: 基礎建設** — Monorepo, Docker, 數據庫。
+- [x] **Phase 2: 事件驅動核心** — Automation Engine 與 Redis Streams 事件匯流排。
+- [x] **Phase 3: AI Copilot & 計費** — AI 輔助建議、生圖與 License 點數扣除。
+- [x] **Phase 4: 完整文件化** — 完成 00-23 號系統設計文件細化。
+- [ ] **Phase 5: 前端實作** — 根據 UI Wireframes 進行開發。
 
 ## 文件索引 (Partial)
 
 | 文件 | 說明 |
 |------|------|
-| [📋 PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) | **專案規劃：里程碑 / 工時預估** |
-| [03_CHANNEL_PLUGIN.md](./docs/03_CHANNEL_PLUGIN.md) | 多渠道 Plugin 架構、Extension 介面定義 |
-| [03_CHANNEL_PLUGINS/LINE_OA.md](./docs/03_CHANNEL_PLUGINS/LINE_OA.md) | **LINE OA 官方 API 完整參考（16 章節）** |
-| [09_API_DESIGN.md](./docs/09_API_DESIGN.md) | 對外 REST API 規格、頻道授權、錯誤碼 |
+| [18_BOT_AUTOROUTER.md](./docs/18_BOT_AUTOROUTER.md) | **AI Copilot** 輔助模式與責任邊界 |
+| [20_NOTIFICATION.md](./docs/20_NOTIFICATION.md) | **小鈴鐺通知中心** 事件與優先級設計 |
+| [06_AUTOMATION_AND_EVENT.md](./docs/06_AUTOMATION_AND_EVENT.md) | **自動化引擎** 與事件驅動架構 |
 | [14_BILLING_AND_LICENSE.md](./docs/14_BILLING_AND_LICENSE.md) | 平台授權 & Billing 控制（太上皇層）|
 | [16_DB_SCHEMA.md](./docs/16_DB_SCHEMA.md) | CRM 完整資料庫 Schema（Prisma + pgvector）|
-| [📦 line-oa-channel-plugin OpenSpec](./openspec/changes/line-oa-channel-plugin/proposal.md) | **v0.3.0：LINE OA Plugin 完整實作規格** |
-| [📦 multi-channel-billing OpenSpec](./openspec/changes/multi-channel-billing/proposal.md) | **v0.2.0 計畫：Telegram/Threads + 多部門授權 + 計費** |
+| [17_UI_WIREFRAMES.md](./docs/17_UI_WIREFRAMES.md) | 企業後台 UI ASCII Wireframe |
 
 ## 快速了解系統邊界
 \`\`\`
