@@ -35,7 +35,7 @@
   ├── Channel Secret
   └── Channel Access Token（Long-lived）
 
-步驟 3：本系統後台 → 新增 LINE OA → 貼入上方資料 → 儲存
+步驟 3：本系統後台 → 新增 LINE OA → 貼入上方資料 → **選擇授權部門 (Authorized Teams)**
 
 步驟 4：系統自動顯示 Webhook URL（如下）
   https://your-domain.com/webhooks/line/{channelId}
@@ -47,20 +47,23 @@
   → 系統發送 LINE Verification Request → 確認成功 ✅
 ```
 
-### 系統後端自動化完成的事
+### 系統後端自動化完成的事 (Security Flow)
 
 ```typescript
 async function activateLineChannel(channelConfig: CreateLineChannelDto) {
-  // 1. 儲存憑證（加密存入 DB）
+  // 1. 儲存憑證（加密存入 DB）與授權部門
   const channel = await channelRepo.create({
     ...channelConfig,
     credentials: await encrypt(channelConfig.credentials),
+    authorizedTeamIds: channelConfig.teamIds, // 授權特定部門存取
   });
 
   // 2. 產生 Webhook URL（用 channel.id 當路由參數）
   const webhookUrl = `${process.env.BASE_URL}/webhooks/line/${channel.id}`;
 
-  // 3. 呼叫 LINE API 設定 Webhook URL（自動化！免人工）
+  // 3. 系統隨機生成強強度 Verify Token 並與渠道 ID 綁定，防止 Webhook 偽造
+
+  // 4. 呼叫 LINE API 設定 Webhook URL（自動化！免人工）
   await lineClient.setWebhook(channelConfig.credentials.channelAccessToken, webhookUrl);
 
   // 4. 呼叫 LINE API 驗證 Webhook

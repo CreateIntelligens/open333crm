@@ -1,18 +1,25 @@
 {
   "name": "open333crm",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "db:generate": "pnpm --filter @open333crm/db exec prisma generate",
     "db:migrate": "pnpm --filter @open333crm/db prisma migrate dev",
     "db:seed": "pnpm --filter @open333crm/db prisma db seed",
-    "db:studio": "pnpm --filter @open333crm/db prisma studio"
+    "db:studio": "pnpm --filter @open333crm/db prisma studio",
+    "ci:local": "CI=true pnpm install --frozen-lockfile && pnpm lint --filter='!./apps/web' --filter='!./apps/widget' && pnpm build --filter='!./apps/web' --filter='!./apps/widget'"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
-    "typescript": "^5.4.0"
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^9",
+    "prettier": "^3.0.0",
+    "turbo": "latest"
   },
   "packageManager": "pnpm@9.0.0"
 }

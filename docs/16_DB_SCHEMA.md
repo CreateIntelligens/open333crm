@@ -236,6 +236,8 @@ model Conversation {
   assignedToId  String?            @db.Uuid
   caseId        String?            @db.Uuid @unique
   unreadCount   Int                @default(0)
+  botRepliesCount Int              @default(0)   // 記錄 Bot 連續回覆次數
+  handoffReason String?            // 升人工原因
   lastMessageAt DateTime?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
@@ -576,6 +578,27 @@ CREATE INDEX km_articles_embedding_idx
 
 `Conversation.caseId` 加 `@unique`，保證一個對話只能開一個 Case。
 若需要跨對話的 Case，透過 Case 本身可關聯多個 Conversation（未來擴展）。
+
+### 2. AutomationRule 的 trigger / conditions / actions 存 JSONB
+
+規則結構靈活多變，用 JSONB 比多張中間表更彈性。
+查詢時 Automation Worker 撈出 JSON 在 application layer 評估，不在 DB 內計算。
+
+### 3. ChannelIdentity 的唯一鍵
+
+`@@unique([channelId, uid])` — 同一個渠道同一個 uid 只能對應一個 Contact。
+支援 Contact 合併：合併時把舊 Contact 的 ChannelIdentities 移轉到新 Contact。
+
+### 4. Message.content 存 JSONB
+
+每種 contentType（text / flex / image）的 content 結構不同，
+用 JSONB 統一欄位，由 application layer 根據 contentType 反序列化。
+
+### 5. SLA Policy 鬆耦合
+
+`Case.slaPolicy` 只存 Policy 的 id（字串），不做 FK。
+允許 Policy 刪除後，歷史 Case 的 SLA 記錄不被連帶影響。
+Conversation（未來擴展）。
 
 ### 2. AutomationRule 的 trigger / conditions / actions 存 JSONB
 

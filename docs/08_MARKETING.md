@@ -10,7 +10,56 @@
 
 ---
 
+## 行銷與自動化閉環 (Marketing-Automation Loop)
+
+行銷活動不再只是單向推播，而是透過 **Automation Engine** 捕捉客戶行為並即時反應。
+
+### 事件觸發 (Triggers)
+| 事件名稱 | 說明 | Payload 範例 |
+|----------|------|--------------|
+| `marketing.link.clicked` | 客戶點擊訊息內的追蹤連結 | `{ campaignId: "...", url: "...", utm: "..." }` |
+| `marketing.postback.received` | 客戶點擊卡片按鈕 (LINE/FB) | `{ action: "register", campaignId: "..." }` |
+| `marketing.broadcast.done` | 單次廣播任務發送完成 | `{ total: 1500, success: 1480 }` |
+
+### 執行動作 (Actions)
+| 動作名稱 | 說明 | 參數 |
+|----------|------|------|
+| `marketing.send_template` | 發送特定模板給聯繫人 | `{ templateId: "...", variables: { ... } }` |
+| `marketing.add_to_segment` | 將聯繫人加入受眾分群 | `{ segmentId: "..." }` |
+| `marketing.tag_campaign_interest` | 自動貼上活動興趣標籤 | `{ campaignId: "...", tag: "..." }` |
+
+### 自動化情境 (Scenarios)
+- **情境 A**: 當客戶點擊「冷氣保養」廣播連結 (`marketing.link.clicked`) -> **Automation** 貼標 `interested_ac_service` -> 3 天後發送專屬優惠碼。
+- **情境 B**: 當客戶點擊「報名活動」按鈕 (`marketing.postback.received`) -> **Automation** 自動建立 `Case` (預約) -> 指派給對應部門。
+
+---
+
+## 訊息模板與動態變數 (Template Mapping)
+
+### 模板變數映射
+系統支援將 `Contact` 及其屬性動態填入模板。
+
+| 變數語法 | 來源說明 | 範例結果 |
+|----------|----------|----------|
+| `{{contact.name}}` | 聯繫人姓名 | 王小明 |
+| `{{attr.brand}}` | 自訂屬性 (家電品牌) | Samsung |
+| `{{attr.warranty_end}}` | 自訂屬性 (保固日期) | 2025-12-31 |
+| `{{channel.name}}` | 來源渠道名稱 | LINE 客服中心 |
+
+### 範例：保固提醒 Flex Message
+```json
+{
+  "body": "親愛的 {{contact.name}}，您的 {{attr.brand}} {{attr.model}} 保固將於 {{attr.warranty_end}} 到期，是否需要延長？",
+  "actions": [
+    { "type": "postback", "label": "我要延保", "data": "action=extend&item={{attr.model}}" }
+  ]
+}
+```
+
+---
+
 ## 廣播（Broadcast）
+... (其餘內容保持不變)
 
 ### 廣播類型
 

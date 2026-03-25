@@ -89,6 +89,25 @@ interface KnowledgeArticle {
 
 ---
 
+## 自動化中樞整合 (Automation Integration)
+
+KM 模組除了給客服建議外，也會將檢索結果發送至 **Automation Engine** 以觸發自動化流程。
+
+### 事件觸發 (Triggers)
+| 事件名稱 | 觸發條件 | Payload 範例 |
+|----------|----------|--------------|
+| `km.search.hit` | 信心度 > 0.85 | `{ articleId: "...", confidence: 0.92, content: "..." }` |
+| `km.search.partial` | 信心度 0.5 ~ 0.85 | `{ suggestions: [...], topConfidence: 0.72 }` |
+| `km.search.miss` | 信心度 < 0.5 | `{ query: "..." }` |
+
+### 執行動作 (Actions)
+| 動作名稱 | 說明 | 參數 |
+|----------|----------|------|
+| `ai.generate_reply` | 根據文章生成回覆草稿供客服採用 | `{ articleId: "...", tone: "professional" }` |
+| `ai.classify_intent` | 自動為聯繫人貼上意圖標籤 | `{ model: "gpt-4o-mini" }` |
+
+---
+
 ## Prompt 設計
 
 ### System Prompt 模板

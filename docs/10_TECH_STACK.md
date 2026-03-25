@@ -4,16 +4,49 @@
 
 | 層級 | 選擇 | 理由 |
 |------|------|------|
-| **後端 API** | Node.js + Fastify | 高效能 I/O、豐富的 LINEOA/FB SDK 生態、TypeScript 支援佳 |
-| **前端** | Next.js (App Router) | React 生態、SSR/SSG、API Routes 方便整合 |
-| **資料庫** | PostgreSQL | 穩定、強大 JSON 支援（JSONB）、pgvector 向量搜尋 |
-| **向量搜尋** | pgvector | 直接在 PostgreSQL，不需額外服務；Lite 版優先 |
-| **快取/佇列** | Redis | Session、Rate Limit、事件佇列（Bull/BullMQ）|
-| **WebSocket** | Socket.io | 成熟、自動 fallback、客服室廣播支援 |
-| **任務佇列** | BullMQ | Redis-based，支援 delayed jobs（如自動關閉 Case）|
-| **物件儲存** | MinIO（本地）/ AWS S3 | 媒體檔案，MinIO 相容 S3 API |
-| **容器化** | Docker + Docker Compose | 單機部署簡單；未來 k8s 升級平滑 |
+| **後端 API** | Node.js + Fastify | 高效能 I/O、豐富的 LINEOA/FB SDK 生態 |
+| **前端** | Next.js (App Router) | React 生態、SSR/SSG、API Routes |
+| **資料庫** | PostgreSQL | 穩定、強大 JSON 支援（JSONB） |
+| **快取/佇列** | Redis | Session、Rate Limit、事件匯流排 (Streams) |
+| **內部事件匯流排** | **Redis Streams** | **支援多消費者、持久化事件流，作為 Automation 的神經網路** |
+| **向量搜尋 (KM)** | **LanceDB** | **Serverless/本地檔案型，適合大規模產品知識庫，搜尋極快** |
+| **向量搜尋 (LTM)** | **pgvector** | **PostgreSQL 內嵌，方便與聯繫人資料 Join，適合長期記憶** |
+| **任務佇列** | BullMQ | Redis-based，處理廣播與定時任務 (Delayed Jobs) |
+| **WebSocket** | Socket.io | 客服室廣播、即時訊息通知 |
 | **反向代理** | Caddy | 自動 HTTPS、設定簡單 |
+
+---
+
+## 系統架構圖 (Event-Driven Architecture)
+
+```ascii
+[ 外部事件 ] (Webhooks, Integration API)
+      │
+      ▼
+[ Fastify API ] ──▶ [ Redis Streams ] ──▶ [ Automation Worker ]
+                          │                       │
+                          │                       ├─▶ [ Action: Send Message ]
+                          │                       ├─▶ [ Action: Open Case ]
+                          │                       └─▶ [ Action: Update DB ]
+                          ▼
+                  [ BullMQ Workers ] ──▶ [ Broadcast / SLA Jobs ]
+```
+
+---
+
+## 向量資料庫策略 (Vector Strategy)
+
+為了平衡效能與關聯性，系統採用雙軌向量存儲：
+
+1. **LanceDB (KM 知識庫)**
+   - **用途**: 儲存集團產品手冊、技術文件、Q&A。
+   - **優點**: 支援 `Hybrid Search` (Vector + BM25)，且搜尋不佔用 PostgreSQL 連線資源。
+   - **儲存**: 儲存於 `apps/api/workspace/vectors/km/`。
+
+2. **pgvector (LTM 長期記憶)**
+   - **用途**: 儲存聯繫人的歷史對話摘要與行為特徵。
+   - **優點**: 可直接在 SQL 中進行 `JOIN contacts` 查詢，過濾特定租戶或聯繫人的記憶。
+   - **儲存**: PostgreSQL `vector` 欄位。
 
 ---
 

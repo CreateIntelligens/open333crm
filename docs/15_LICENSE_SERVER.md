@@ -127,26 +127,19 @@ CREATE TABLE license_signature_secrets (
 
 ---
 
-## License Server API
-
-### Tenant 端（對外公開，需要 License Key 鑑權）
+### 扣點 API (Deduction API)
 
 ```
-GET /v1/licenses/:licenseKey
-  Header: X-License-Key: {licenseKey}
-  → 回傳當前 License JSON（含 features + credits + remoteServices）
-  → Response 含 X-Signature: sha256-hmac:{hex}
-
 POST /v1/usage/deduct
-  Header: X-License-Key: {licenseKey}
-  Body: { "creditType": "llm_tokens", "amount": 1253, "note": "suggest-reply" }
-  → 扣點，回傳最新 remaining
-  → 若 remaining <= 0 回傳 402
-
-GET /v1/licenses/:licenseKey/status
-  → 輕量版（只回傳 plan, expiresAt, credits remaining），供 Tenant 後台 Admin 顯示
-  → 不包含 API Key 等機密資訊
+Header: X-License-Key: {licenseKey}
+Body: { "creditType": "llmTokens" | "imageGen", "amount": 1253 }
 ```
+
+**業務邏輯 (Business Logic)**:
+1. **即時性**: 每次 API 呼叫 (AI 建議生成或生圖) 成功後，立即回報。
+2. **原子性**: `UPDATE credits SET remaining = remaining - $amount WHERE remaining >= $amount`。
+3. **事件反饋**: 若 `UPDATE` 影響行數為 0，則 License Server 回傳 402，Tenant 實例隨即觸發 `credits.depleted` 自動化事件。
+
 
 ### BD Admin API（內部，需 Admin JWT）
 

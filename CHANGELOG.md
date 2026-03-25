@@ -2,6 +2,24 @@
 
 All notable changes to the **open333CRM** project will be documented in this file.
 
+## [v0.2.0] - 2026-03-25
+
+### Added
+- **AI Copilot & Material Assistant**: AI 定位從全自動回覆轉為「副駕駛」，提供建議由人工「採用」。新增 AI 生成行銷素材（Banner、圖文選單）功能。
+- **Notification Bell System (小鈴鐺)**: 新增類 FB 的即時通知中心，透過 WebSocket 推送案件指派、SLA 預警、CSAT 差評等事件。
+- **Credit Depletion Automation**: 當 AI 點數不足時，系統會自動觸發 `credits.depleted` 事件，並即時在前端禁用 AI 功能與顯示警告。
+- **Team-based Channel Access**: 渠道綁定流程新增「部門授權」步驟，實現更精細的資料權限隔離。
+- **AI Adoption Analytics**: 新增「AI 採用率」與「客服修正率」報表，用於評估 AI 建議品質。
+
+### Changed
+- **Documentation Refinement (07-23)**: 全面細化 `docs/` 文件，將「事件驅動」與「AI Copilot」原則貫穿所有模組設計。
+- **Bot Autorouter Logic**: 辦公時間內的 AI 從「自動回覆」改為「僅建議」，明確客服的責任邊界。
+- **DB Schema (`Message`)**: 新增 `isAiSuggested`, `isAdopted`, `originalSuggestion` 等欄位，用於追蹤 AI 建議的生命週期。
+- **DB Schema (`Notification`)**: 新增 `Notification` 模型，用於持久化儲存小鈴鐺通知。
+- **UI Wireframes**: 加入「小鈴鐺下拉選單」與「AI Copilot 建議面板」的 ASCII 設計。
+
+---
+
 ## [Unreleased] — 0.4.0 (docs-01-02-architecture)
 
 > **狀態**：完成核心架構實作與多租戶隔離。變更由 `openspec/changes/docs-01-02-architecture` 管理並已封存。

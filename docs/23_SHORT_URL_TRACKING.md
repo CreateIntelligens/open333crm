@@ -126,7 +126,7 @@ Response:
 
 ---
 
-## Click Handler Logic / 點擊處理邏輯
+## Click Handler Logic & Automation / 點擊處理邏輯與自動化
 
 ```typescript
 async function handleClick(slug: string, liffData?: LiffClickData, refToken?: string) {
@@ -155,6 +155,8 @@ async function handleClick(slug: string, liffData?: LiffClickData, refToken?: st
       await tagService.addTag(contact.id, tagName, 'link_click');
     }
     await contactService.updateAttribute(contact.id, 'lastClickedLink', link.name);
+    
+    // --- 觸發自動化 ---
     await eventBus.publish('link.clicked', {
       contactId: contact.id, linkId: link.id, linkName: link.name, tags: link.tags,
     });
@@ -164,6 +166,11 @@ async function handleClick(slug: string, liffData?: LiffClickData, refToken?: st
   return { redirect: appendUtm(link.targetUrl, link) };
 }
 ```
+
+**自動化範例**:
+- **觸發**: `link.clicked` (linkName: "春季空調優惠")
+- **條件**: Contact 標籤包含 `VIP`
+- **動作**: 立即發送「小鈴鐺」通知給該客戶的專屬業務。
 
 ---
 

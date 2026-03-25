@@ -611,7 +611,7 @@ GET    /api/v1/api-keys/:id/usage        # 呼叫量統計
 ### Integration Scope 補充
 
 ```
-write:integration_events    # 推播外部事件
+write:integration_events    # 推播外部事件 (IoT/ERP) 觸發 Automation
 write:contacts_batch        # 批量更新聯繫人（ERP 同步用）
 write:device_events         # IoT 設備事件推播
 read:webhooks               # 查詢 Webhook 訂閱
@@ -637,6 +637,19 @@ HTTP 200（不報錯，防止外部系統誤判重試）
 | Starter | 1,000 calls/天 | 3 |
 | Professional | 50,000 calls/天 | 10 |
 | Enterprise | 無限制 | 無限制 |
+
+超出上限回傳 `429 RATE_LIMITED`，可購買額外 API 流量包（Credits 計費）。
+
+---
+
+### 開發者文件（自動產生）
+
+使用 **Scalar**（基於 OpenAPI）自動產生互動式 API 文件：
+
+```
+https://your-domain.com/api/docs
+```
+限制 |
 
 超出上限回傳 `429 RATE_LIMITED`，可購買額外 API 流量包（Credits 計費）。
 
