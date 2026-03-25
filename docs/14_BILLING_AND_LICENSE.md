@@ -245,23 +245,35 @@ export function requireCredits(creditType: string, estimatedAmount: number = 1) 
     }
     done();
   };
-}
+## 餘額不足自動化通知鏈 (Credit Depletion Automation)
 
-// 使用範例
-fastify.post('/api/v1/ai/suggest-reply',
-  { preHandler: [requireFeature('ai.llmSuggestReply'), requireCredits('llmTokens', 2000)] },
-  aiController.suggestReply
-);
+當 License Service 拒絕扣點（如 Token 用罄）時，系統將觸發降級流程。
 
-fastify.post('/api/v1/ai/generate-image',
-  { preHandler: [requireFeature('ai.imageGeneration'), requireCredits('imageGen', 1)] },
-  aiController.generateImage
-);
-```
+### 1. 觸發事件 (Events)
+- `license.credits.depleted`: 點數不足事件。Payload 包含 `creditType` (llmTokens/imageGen)。
+
+### 2. 系統回應動作 (Actions)
+- **前端即時通知 (`internal.push_ui_notification`)**:
+    - 客服 Inbox 彈出紅色提示：「⚠️ 點數不足，AI 建議回覆已暫停。」
+    - 禁用「AI 建議」與「AI 素材生圖」按鈕。
+- **自動標記**: 可透過 Automation 將相關對話標記為「需人工優先處理」。
 
 ---
 
-## LLM 用量計費流程
+## 計費與點數核算邏輯 (Deduction)
+
+### 1. AI 建議回覆 (llmTokens)
+- **時機**: 當客服點擊「取得建議」且系統成功返回內容時。
+- **模式**: Copilot (輔助) 模式，由人工審核「採用」。
+
+### 2. 素材生圖 (imageGen)
+- **時機**: 當管理員在模板或 Rich Menu 編輯器中點擊「生成圖片」成功後。
+
+---
+
+## 授權 Guard 實作 (Middleware)
+... (其餘不變)
+
 
 ```
 客服觸發「AI 建議回覆」
