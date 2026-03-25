@@ -1,0 +1,50 @@
+{
+  "name": "@open333crm/channel-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./line": {
+      "import": "./dist/line/index.js",
+      "types": "./dist/line/index.d.ts"
+    },
+    "./fb": {
+      "import": "./dist/fb/index.js",
+      "types": "./dist/fb/index.d.ts"
+    },
+    "./webchat": {
+      "import": "./dist/webchat/index.js",
+      "types": "./dist/webchat/index.d.ts"
+    },
+    "./telegram": {
+      "import": "./dist/telegram.js",
+      "types": "./dist/telegram.d.ts"
+    },
+    "./threads": {
+      "import": "./dist/threads.js",
+      "types": "./dist/threads.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@open333crm/types": "workspace:*",
+    "@open333crm/database": "workspace:*",
+    "@open333crm/core": "workspace:*",
+    "@line/bot-sdk": "^9.3.0",
+    "bullmq": "^5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
