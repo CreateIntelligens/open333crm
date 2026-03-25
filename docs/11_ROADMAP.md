@@ -56,29 +56,25 @@ v2.0         → 多租戶 SaaS
 
 ---
 
-## v0.2 — LLM + 知識庫（4週）
+## v0.2 — AI 副駕駛 (Copilot) 與素材助手 (4週)
 
-- [ ] KM 文章 CRUD
-- [ ] pgvector 向量搜尋
-- [ ] OpenAI / Ollama Embedding
-- [ ] RAG 建議回覆 API
-- [ ] 前端：AI 建議回覆面板
-- [ ] 對話摘要功能
-- [ ] 問題自動分類功能
-- [ ] KM 管理頁面
+- [ ] AI 建議回覆面板（Copilot：建議 -> 編輯 -> 採用）
+- [ ] 聯繫人對話歷史摘要（點擊後自動生成）
+- [ ] AI 自動分類問題 (意圖識別)
+- [ ] AI 生成行銷素材 (生圖：Banner / LINE Rich Menu)
+- [ ] KM 語義搜尋 (LanceDB 整合)
+- [ ] License Server 點數與授權對接
 
 ---
 
-## v0.3 — 自動化 + 行銷（4週）
+## v0.3 — 自動化中樞 + 行銷廣播（4週）
 
-- [ ] Automation Rule CRUD
-- [ ] Event Bus（Redis Streams）
-- [ ] Automation Worker（條件評估 + 動作執行）
-- [ ] 基礎 Trigger 支援（followed / keyword / case 事件）
-- [ ] 廣播系統（LINE / FB）
-- [ ] Segment 受眾分群
-- [ ] 行銷模板管理
-- [ ] 廣播任務排程（BullMQ）
+- [ ] Automation Rule Engine (事件驅動：Redis Streams)
+- [ ] Integration Gateway (外部事件與 CRM 自動化對齊)
+- [ ] 廣播系統（LINE / FB / 素材 AI 輔助）
+- [ ] Segment 受眾分群（動態屬性匹配）
+- [ ] 行銷模板管理 (含 Flex Message 動態變數)
+- [ ] 餘額不足的自動降級與前端即時通知
 
 ---
 
