@@ -9,42 +9,30 @@
 
 ---
 
-## 通知渠道（依緊急程度）
+## 通知中心 (Notification Bell) 設計
 
-```
-緊急程度  高 ──────────────────────────────── 低
-          ⬇
-          瀏覽器推播（Web Push）
-          in-app 通知（右上角 🔔 鈴鐺）
-          Email（SMTP）
-          LINE 通知（給 Supervisor，Optional）
-```
+### 1. UI 互動
+- **右上角鈴鐺**: 顯示未讀數字。
+- **下拉列表**: 
+    - 顯示最新 10 筆通知。
+    - 點擊通知跳轉到對應頁面。
+- **即時彈窗 (Toast)**: URGENT 級別通知會在螢幕右上角彈出。
 
----
+### 2. 事件類型與優先級
 
-## 通知類型清單
+| 事件 | 優先級 | 通知對象 | 內容範例 |
+|------|--------|----------|----------|
+| `case.assigned_to_me` | NORMAL | Agent | 「案件 #1087 已指派給您」|
+| `sla.warning` | HIGH | Agent | 「⚠️ 案件 #1089 SLA 剩 15 分鐘」 |
+| `sla.breach` | URGENT | Agent, Supervisor | 「🔴 案件 #1087 已超時」 |
+| `csat.low_score` | HIGH | Agent, Supervisor | 「😡 客戶給了 1 星評價」 |
+| `note.mentioned` | NORMAL | Agent | 「李助理在案件 #1087 @了你」 |
+| `credits.low` | URGENT | Admin | 「⚠️ AI 點數低於 10%」 |
 
-### Agent 接收的通知
-
-| 事件 | 通知方式 | 內容 |
-|------|---------|------|
-| 新對話指派給我 | Push + in-app | 「王小美 (LINE) 傳了新訊息」|
-| 對話有新訊息（已指派給我）| in-app + 標題列未讀數 | 訊息預覽 |
-| Case 被指派給我 | Push + in-app | 「案件 #1087 已指派給您（優先：高）」|
-| SLA 即將到期（30分鐘）| Push + in-app | 「⚠️ 案件 #1087 SLA 剩 30 分鐘」|
-| Case 被重新指派 | in-app | 「案件 #1087 已轉派給 李助理」|
-| Case 有新備註 | in-app | 「王客服 在案件 #1087 新增備註」|
-
-### Supervisor / Admin 接收的通知
-
-| 事件 | 通知方式 | 說明 |
-|------|---------|------|
-| SLA 違規 | Push + Email | 案件 #XXXX 已超時 |
-| 低 CSAT（≤2分）| Push + Email | 客戶對案件 #XXXX 評1分 |
-| 未指派案件堆積 | in-app（每小時彙總）| 目前有 5 個未指派案件 |
-| 客服全部離線 | Email | 目前無在線客服，客戶訊息無人接手 |
-| 渠道連線異常 | Email + in-app | LINE OA Webhook 驗證失敗 |
-| License Credits < 20% | in-app | Token 餘額低於 20% |
+### 3. 技術實作
+- **後端**: `NotificationService` 接收內部事件，建立 `Notification` 記錄。
+- **即時推送**: 使用 **WebSocket (Socket.io)** `notification.new` 事件推送到前端。
+- **前端**: 監聽 WebSocket，更新鈴鐺數字與列表。
 
 ---
 
