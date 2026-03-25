@@ -10,6 +10,9 @@ import {
   Zap,
   BookOpen,
   Send,
+  Trophy,
+  Link2,
+  BarChart3,
   Settings,
   LogOut,
 } from 'lucide-react';
@@ -59,6 +62,21 @@ export function Sidebar() {
       label: '行銷',
       href: '/dashboard/marketing',
       icon: <Send className="h-5 w-5" />,
+    },
+    {
+      label: '粉絲活動',
+      href: '/dashboard/portal',
+      icon: <Trophy className="h-5 w-5" />,
+    },
+    {
+      label: '短連結',
+      href: '/dashboard/shortlinks',
+      icon: <Link2 className="h-5 w-5" />,
+    },
+    {
+      label: '報表',
+      href: '/dashboard/analytics',
+      icon: <BarChart3 className="h-5 w-5" />,
     },
     {
       label: '設定',

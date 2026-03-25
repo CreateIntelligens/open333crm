@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { format } from 'date-fns';
-import { Loader2, Send, Edit, Trash2 } from 'lucide-react';
+import { Loader2, Send, Edit, Trash2, Copy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -25,6 +25,7 @@ interface TemplateListProps {
   isLoading: boolean;
   onEdit: (template: Template) => void;
   onDelete: (id: string) => void;
+  onDuplicate?: (template: Template) => void;
 }
 
 const channelTypeLabel: Record<string, string> = {
@@ -40,6 +41,7 @@ export function TemplateList({
   isLoading,
   onEdit,
   onDelete,
+  onDuplicate,
 }: TemplateListProps) {
   if (isLoading) {
     return (
@@ -129,6 +131,16 @@ export function TemplateList({
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">
+                  {onDuplicate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDuplicate(template)}
+                      title="複製"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  )}
                   {!template.isSystem && (
                     <>
                       <Button

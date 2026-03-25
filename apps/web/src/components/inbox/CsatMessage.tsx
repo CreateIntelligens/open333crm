@@ -3,21 +3,33 @@
 import React, { useState } from 'react';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import api from '@/lib/api';
 
 interface CsatMessageProps {
   score?: number;
   readonly?: boolean;
+  caseId?: string;
   onRate?: (score: number) => void;
 }
 
-export function CsatMessage({ score: initialScore, readonly, onRate }: CsatMessageProps) {
+export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: CsatMessageProps) {
   const [hovered, setHovered] = useState(0);
   const [selected, setSelected] = useState(initialScore || 0);
+  const [submitted, setSubmitted] = useState(!!initialScore);
 
-  const handleClick = (star: number) => {
-    if (readonly) return;
+  const handleClick = async (star: number) => {
+    if (readonly || submitted) return;
     setSelected(star);
+    setSubmitted(true);
     onRate?.(star);
+
+    if (caseId) {
+      try {
+        await api.post(`/cases/${caseId}/csat`, { score: star });
+      } catch (err) {
+        console.error('Failed to submit CSAT:', err);
+      }
+    }
   };
 
   const displayScore = hovered || selected;
@@ -27,19 +39,21 @@ export function CsatMessage({ score: initialScore, readonly, onRate }: CsatMessa
   return (
     <div className="flex justify-center py-3">
       <div className="rounded-xl bg-muted px-6 py-4 text-center">
-        <p className="mb-2 text-sm font-medium">請評價此次服務體驗</p>
+        <p className="mb-2 text-sm font-medium">
+          {submitted ? '感謝您的評價！' : '請評價此次服務體驗'}
+        </p>
         <div className="flex items-center justify-center gap-1">
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
-              onMouseEnter={() => !readonly && setHovered(star)}
-              onMouseLeave={() => !readonly && setHovered(0)}
+              onMouseEnter={() => !readonly && !submitted && setHovered(star)}
+              onMouseLeave={() => !readonly && !submitted && setHovered(0)}
               onClick={() => handleClick(star)}
-              disabled={readonly}
+              disabled={readonly || submitted}
               className={cn(
                 'transition-transform',
-                !readonly && 'hover:scale-110 cursor-pointer',
-                readonly && 'cursor-default'
+                !readonly && !submitted && 'hover:scale-110 cursor-pointer',
+                (readonly || submitted) && 'cursor-default'
               )}
             >
               <Star

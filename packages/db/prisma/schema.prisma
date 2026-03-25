@@ -66,6 +66,19 @@ enum TagType {
   CHANNEL
 }
 
+enum PortalActivityType {
+  POLL
+  FORM
+  QUIZ
+}
+
+enum PortalActivityStatus {
+  DRAFT
+  PUBLISHED
+  ENDED
+  ARCHIVED
+}
+
 enum TagScope {
   CONTACT
   CONVERSATION
@@ -97,6 +110,7 @@ model Agent {
   assignedCases Case[]            @relation("AssignedAgent")
   caseEvents    CaseEvent[]
   sentMessages  Message[]
+  notifications Notification[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -168,6 +182,8 @@ model Contact {
   relationsTo       ContactRelation[]  @relation("ToContact")
   conversations     Conversation[]
   cases             Case[]
+  portalSubmissions PortalSubmission[]
+  pointTransactions PointTransaction[]
 
   @@index([tenantId])
   @@index([tenantId, phone])
@@ -320,8 +336,11 @@ model Case {
   firstResponseAt DateTime?
   resolvedAt      DateTime?
   closedAt        DateTime?
-  csatScore      Int?
-  createdAt      DateTime   @default(now())
+  csatScore       Int?
+  csatComment     String?
+  csatRespondedAt DateTime?
+  csatSentAt      DateTime?
+  createdAt       DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   contact      Contact       @relation(fields: [contactId], references: [id])
@@ -461,4 +480,306 @@ model MessageTemplate {
 
   @@index([tenantId])
   @@map("message_templates")
+}
+
+model Notification {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @db.Uuid
+  agentId   String    @db.Uuid
+  type      String
+  title     String
+  body      String
+  clickUrl  String?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([agentId, isRead])
+  @@index([agentId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model DailyStat {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @db.Uuid
+  date        DateTime @db.Date
+  statType    String   // 'overview' | 'channel' | 'agent' | 'case' | 'contact'
+  dimensionId String?
+  data        Json
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, date, statType, dimensionId])
+  @@index([tenantId, statType, date])
+  @@map("daily_stats")
+}
+
+model TenantSettings {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @unique @db.Uuid
+  timezone    String   @default("Asia/Taipei")
+  officeHours Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("tenant_settings")
+}
+
+// ─── Marketing ────────────────────────────────────────────────────────────────
+
+model Segment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @db.Uuid
+  name         String
+  description  String?
+  rules        Json     // { conditions: [{ field, operator, value }], logic: 'AND'|'OR' }
+  contactCount Int      @default(0)
+  createdById  String   @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  broadcasts Broadcast[]
+
+  @@index([tenantId])
+  @@map("segments")
+}
+
+model Campaign {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
+  name        String
+  description String?
+  status      String    @default("draft") // draft | active | completed | cancelled
+  startDate   DateTime?
+  endDate     DateTime?
+  metrics     Json      @default("{}")    // { totalSent, delivered, replied, casesOpened }
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  broadcasts Broadcast[]
+
+  @@index([tenantId, status])
+  @@map("campaigns")
+}
+
+model Broadcast {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  campaignId   String?   @db.Uuid
+  segmentId    String?   @db.Uuid
+  templateId   String    @db.Uuid
+  channelId    String    @db.Uuid
+  name         String
+  status       String    @default("draft") // draft | scheduled | sending | completed | failed | cancelled
+  targetType   String    @default("all")   // all | segment | tags | contacts
+  targetConfig Json      @default("{}")    // { tagIds?, contactIds? }
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+  totalCount   Int       @default(0)
+  successCount Int       @default(0)
+  failedCount  Int       @default(0)
+  createdById  String    @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  campaign   Campaign?            @relation(fields: [campaignId], references: [id])
+  segment    Segment?             @relation(fields: [segmentId], references: [id])
+  recipients BroadcastRecipient[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, campaignId])
+  @@index([status, scheduledAt])
+  @@map("broadcasts")
+}
+
+model BroadcastRecipient {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  broadcastId    String    @db.Uuid
+  contactId      String    @db.Uuid
+  deliveryStatus String    @default("sent")  // sent | failed
+  replied        Boolean   @default(false)
+  firstReplyAt   DateTime?
+  caseId         String?   @db.Uuid
+  caseCreatedAt  DateTime?
+  sentAt         DateTime  @default(now())
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  @@unique([broadcastId, contactId])
+  @@index([contactId, sentAt])
+  @@map("broadcast_recipients")
+}
+
+// ─── Webhook Subscriptions ────────────────────────────────────────────────────
+
+model WebhookSubscription {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  url       String
+  events    String[] // e.g. ["case.created", "message.received"]
+  secret    String   // HMAC signing secret
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId, isActive])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId String   @db.Uuid
+  eventName      String
+  payload        Json
+  statusCode     Int?
+  attempts       Int      @default(0)
+  success        Boolean  @default(false)
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt(sort: Desc)])
+  @@map("webhook_deliveries")
+}
+
+// ─── Fan Portal ──────────────────────────────────────────────────────────────
+
+model PortalActivity {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String               @db.Uuid
+  type        PortalActivityType
+  status      PortalActivityStatus @default(DRAFT)
+  title       String
+  description String?
+  coverImage  String?
+  settings    Json                 @default("{}")
+  startsAt    DateTime?
+  endsAt      DateTime?
+  publishedAt DateTime?
+  createdById String               @db.Uuid
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  options     PortalOption[]
+  fields      PortalField[]
+  submissions PortalSubmission[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@map("portal_activities")
+}
+
+model PortalOption {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId String @db.Uuid
+  label      String
+  imageUrl   String?
+  sortOrder  Int    @default(0)
+  isCorrect  Boolean @default(false)
+
+  activity PortalActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@map("portal_options")
+}
+
+model PortalField {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId String  @db.Uuid
+  fieldKey   String
+  label      String
+  fieldType  String  @default("text")
+  options    Json    @default("[]")
+  isRequired Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  activity PortalActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@map("portal_fields")
+}
+
+model PortalSubmission {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId   String  @db.Uuid
+  contactId    String  @db.Uuid
+  tenantId     String  @db.Uuid
+  answers      Json    @default("{}")
+  score        Int?
+  isWinner     Boolean @default(false)
+  pointsEarned Int     @default(0)
+  createdAt    DateTime @default(now())
+
+  activity PortalActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  contact  Contact        @relation(fields: [contactId], references: [id])
+
+  @@index([activityId, contactId])
+  @@map("portal_submissions")
+}
+
+model PointTransaction {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  contactId String   @db.Uuid
+  amount    Int
+  balance   Int
+  type      String
+  refId     String?  @db.Uuid
+  note      String?
+  createdAt DateTime @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id])
+
+  @@index([tenantId, contactId])
+  @@index([contactId, createdAt(sort: Desc)])
+  @@map("point_transactions")
+}
+
+// ─── Short Links ─────────────────────────────────────────────────────────────
+
+model ShortLink {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  slug         String    @unique
+  targetUrl    String
+  title        String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  utmContent   String?
+  utmTerm      String?
+  tagOnClick   String?   @db.Uuid
+  isActive     Boolean   @default(true)
+  expiresAt    DateTime?
+  totalClicks  Int       @default(0)
+  uniqueClicks Int       @default(0)
+  createdById  String    @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  clickLogs ClickLog[]
+
+  @@index([tenantId])
+  @@index([slug])
+  @@map("short_links")
+}
+
+model ClickLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shortLinkId String   @db.Uuid
+  contactId   String?  @db.Uuid
+  ip          String?
+  userAgent   String?
+  referer     String?
+  country     String?
+  createdAt   DateTime @default(now())
+
+  shortLink ShortLink @relation(fields: [shortLinkId], references: [id], onDelete: Cascade)
+
+  @@index([shortLinkId, createdAt(sort: Desc)])
+  @@index([contactId])
+  @@map("click_logs")
 }

@@ -7,3 +7,6 @@ dist/
 .turbo/
 .DS_Store
 coverage/
+docs/
+packages/db/full-backup.sql
+settings.local.json

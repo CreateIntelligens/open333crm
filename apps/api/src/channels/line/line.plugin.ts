@@ -33,7 +33,8 @@ export class LinePlugin implements ChannelPlugin {
     const body = JSON.parse(rawBody.toString());
     const events = body.events ?? [];
 
-    return events
+    // Parse message events
+    const messageResults = events
       .filter((e: any) => e.type === 'message')
       .map((e: any) => {
         const msg = e.message;
@@ -84,6 +85,20 @@ export class LinePlugin implements ChannelPlugin {
           rawPayload: e,
         };
       });
+
+    // Parse postback events (e.g. CSAT button presses)
+    const postbacks = events
+      .filter((e: any) => e.type === 'postback')
+      .map((e: any) => ({
+        channelMsgId: undefined,
+        contactUid: e.source?.userId ?? '',
+        timestamp: new Date(e.timestamp ?? Date.now()),
+        contentType: 'text' as const,
+        content: { text: e.postback?.data ?? '' },
+        rawPayload: e,
+      }));
+
+    return [...messageResults, ...postbacks];
   }
 
   async getProfile(
@@ -173,6 +188,13 @@ export class LinePlugin implements ChannelPlugin {
     switch (contentType) {
       case 'text':
         return [{ type: 'text', text: (content.text as string) ?? '' }];
+      case 'flex':
+        // Flex Message: content should contain { type, altText, contents }
+        return [{
+          type: 'flex',
+          altText: (content.altText as string) ?? '訊息',
+          contents: content.contents,
+        }];
       default:
         return [{ type: 'text', text: (content.text as string) ?? '' }];
     }

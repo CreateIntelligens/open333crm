@@ -21,6 +21,7 @@ import type { Server } from 'socket.io';
 import { attemptKbAutoReply } from '../../ai/kb-autoreply.service.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { generateReply, CRM_REPLY_SYSTEM_PROMPT } from '../../ai/llm.service.js';
+import { autoAssignCase } from '../../case/assignment.service.js';
 
 export interface ActionPayload {
   type: string;
@@ -172,6 +173,12 @@ export async function executeActions(
 
         case 'escalate_case': {
           const result = await handleEscalateCase(prisma, io, context, action.params);
+          results.push({ action: action.type, success: true, data: result });
+          break;
+        }
+
+        case 'auto_assign': {
+          const result = await handleAutoAssign(prisma, io, context, action.params);
           results.push({ action: action.type, success: true, data: result });
           break;
         }
@@ -786,4 +793,30 @@ async function handleEscalateCase(
     newStatus: 'ESCALATED',
     newPriority,
   };
+}
+
+async function handleAutoAssign(
+  prisma: PrismaClient,
+  io: Server,
+  context: ActionContext,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const caseId = (params.caseId as string) || context.caseId;
+  if (!caseId) {
+    throw new Error('Cannot auto-assign: no caseId in params or context');
+  }
+
+  const caseRecord = await prisma.case.findFirst({
+    where: { id: caseId, tenantId: context.tenantId },
+    select: { id: true, teamId: true },
+  });
+
+  if (!caseRecord) {
+    throw new Error(`Case ${caseId} not found`);
+  }
+
+  const teamId = (params.teamId as string) || caseRecord.teamId;
+  const assigned = await autoAssignCase(prisma, io, caseId, context.tenantId, teamId);
+
+  return { caseId, assigned };
 }

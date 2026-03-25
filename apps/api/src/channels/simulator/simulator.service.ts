@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
+import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
 
 export interface SimulatorMessageInput {
   channelType: string;
@@ -136,7 +137,10 @@ export async function simulateInboundMessage(
     },
   });
 
-  // 6. Emit WS events
+  // 6. Track broadcast reply (non-blocking)
+  trackBroadcastReply(prisma, contactId).catch(() => {});
+
+  // 7. Emit WS events
   const wsPayload = {
     conversationId: conversation.id,
     message: {
@@ -175,7 +179,7 @@ export async function simulateInboundMessage(
     io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
   }
 
-  // 7. Publish to EventBus for automation (KB auto-reply, etc.)
+  // 8. Publish to EventBus for automation (KB auto-reply, etc.)
   eventBus.publish({
     name: 'message.received',
     tenantId,

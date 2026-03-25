@@ -13,6 +13,7 @@ import {
   updateCase,
   getCaseStats,
 } from './case.service.js';
+import { recordCsatScore } from '../csat/csat.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
@@ -65,6 +66,11 @@ const escalateSchema = z.object({
 const addNoteSchema = z.object({
   content: z.string().min(1),
   isInternal: z.boolean().default(true),
+});
+
+const csatSchema = z.object({
+  score: z.number().int().min(1).max(5),
+  comment: z.string().max(500).optional(),
 });
 
 const createCaseFromConvSchema = z.object({
@@ -240,6 +246,28 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     );
 
     return reply.send(success(caseRecord));
+  });
+
+  // POST /api/v1/cases/:id/csat — Record CSAT score (WebChat / manual)
+  fastify.post<{ Params: { id: string } }>('/:id/csat', async (request, reply) => {
+    const data = csatSchema.parse(request.body);
+
+    const recorded = await recordCsatScore(
+      fastify.prisma,
+      fastify.io,
+      request.params.id,
+      data.score,
+      data.comment,
+    );
+
+    if (!recorded) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Unable to record CSAT score. Case may not exist or already rated.' },
+      });
+    }
+
+    return reply.send(success({ score: data.score, comment: data.comment }));
   });
 
   // POST /api/v1/cases/from-conversation/:conversationId

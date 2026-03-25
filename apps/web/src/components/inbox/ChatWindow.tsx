@@ -219,7 +219,9 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               // Render CSAT survey card for csat messages
               if (msg.contentType === 'csat') {
                 const score = typeof msg.metadata?.csatScore === 'number' ? msg.metadata.csatScore : undefined;
-                return <CsatMessage key={msg.id} score={score} readonly={isClosed} />;
+                const msgContent = typeof msg.content === 'object' ? msg.content : {};
+                const csatCaseId = (msg.metadata?.caseId as string) || (msgContent as Record<string, unknown>).caseId as string | undefined;
+                return <CsatMessage key={msg.id} score={score} readonly={isClosed || !!score} caseId={csatCaseId} />;
               }
               return <MessageBubble key={msg.id} message={msg} />;
             })}

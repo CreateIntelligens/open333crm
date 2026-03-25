@@ -12,6 +12,7 @@ import {
   Check,
   Settings,
   Globe,
+  Bot,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,15 @@ import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useChannels } from '@/hooks/useChannels';
 import { ChannelFormDialog } from './ChannelFormDialog';
+import { ChannelWizard } from './ChannelWizard';
+import { BotConfigForm } from './BotConfigForm';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 const WEBHOOK_BASE_URL_KEY = 'open333crm_webhook_base_url';
 
@@ -32,6 +42,7 @@ interface Channel {
   isActive: boolean;
   webhookUrl?: string;
   lastVerifiedAt?: string;
+  settings?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -44,6 +55,10 @@ export function ChannelManagement() {
     Record<string, { success: boolean; message?: string }>
   >({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [botConfigChannel, setBotConfigChannel] = useState<Channel | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [embedCodeDialog, setEmbedCodeDialog] = useState<{ open: boolean; code: string }>({ open: false, code: '' });
+  const [channelStatuses, setChannelStatuses] = useState<Record<string, { tokenWarning?: string }>>({});
 
   // Webhook base URL state
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
@@ -127,6 +142,32 @@ export function ChannelManagement() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleShowEmbedCode = async (channelId: string) => {
+    try {
+      const res = await api.get(`/channels/${channelId}/embed-code`);
+      setEmbedCodeDialog({ open: true, code: res.data?.data?.html || '' });
+    } catch {
+      setEmbedCodeDialog({ open: true, code: '無法取得嵌入碼' });
+    }
+  };
+
+  // Load FB token status for FB channels
+  useEffect(() => {
+    if (!channels || channels.length === 0) return;
+    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === 'FB');
+    for (const ch of fbChannels) {
+      api.get(`/channels/${ch.id}/status`).then((res) => {
+        const tokenStatus = res.data?.data?.tokenStatus;
+        if (tokenStatus?.warning) {
+          setChannelStatuses((prev) => ({
+            ...prev,
+            [ch.id]: { tokenWarning: tokenStatus.warning },
+          }));
+        }
+      }).catch(() => {});
+    }
+  }, [channels]);
+
   return (
     <div className="mt-4 space-y-6">
       {/* Webhook Base URL Setting */}
@@ -184,10 +225,15 @@ export function ChannelManagement() {
             管理您的訊息渠道連線
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowAddDialog(true)}>
-          <Plus className="mr-1 h-4 w-4" />
-          新增渠道
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowWizard(true)}>
+            設定精靈
+          </Button>
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            新增渠道
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -248,6 +294,25 @@ export function ChannelManagement() {
                         </p>
                       )}
 
+                      {/* FB Token warning */}
+                      {channelStatuses[ch.id]?.tokenWarning && (
+                        <p className="mt-0.5 text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                          {channelStatuses[ch.id].tokenWarning}
+                        </p>
+                      )}
+
+                      {/* WebChat embed button */}
+                      {ch.channelType === 'WEBCHAT' && (
+                        <Button
+                          size="sm"
+                          variant="link"
+                          className="mt-0.5 h-auto p-0 text-xs"
+                          onClick={() => handleShowEmbedCode(ch.id)}
+                        >
+                          取得嵌入碼
+                        </Button>
+                      )}
+
                       {/* Verify result message */}
                       {verifyResult[ch.id] && !verifyResult[ch.id].success && (
                         <p className="mt-1 text-xs text-destructive">
@@ -282,6 +347,15 @@ export function ChannelManagement() {
                       ) : (
                         '測試連線'
                       )}
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setBotConfigChannel(ch)}
+                      title="Bot 設定"
+                    >
+                      <Bot className="h-4 w-4" />
                     </Button>
 
                     <Button
@@ -325,6 +399,48 @@ export function ChannelManagement() {
           mutate();
         }}
       />
+
+      {/* Channel Setup Wizard */}
+      <ChannelWizard
+        open={showWizard}
+        onOpenChange={setShowWizard}
+        webhookBaseUrl={webhookBaseUrl}
+        onComplete={() => mutate()}
+      />
+
+      {/* Bot Config Dialog */}
+      <BotConfigForm
+        open={!!botConfigChannel}
+        onOpenChange={(v) => { if (!v) setBotConfigChannel(null); }}
+        channel={botConfigChannel}
+        onSaved={() => { setBotConfigChannel(null); mutate(); }}
+      />
+
+      {/* Embed Code Dialog */}
+      <Dialog open={embedCodeDialog.open} onOpenChange={(v) => setEmbedCodeDialog({ ...embedCodeDialog, open: v })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>WebChat 嵌入碼</DialogTitle>
+          </DialogHeader>
+          <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+            {embedCodeDialog.code}
+          </pre>
+          <p className="text-xs text-muted-foreground">
+            將此程式碼貼入您網站的 {'<body>'} 標籤中即可啟用聊天功能。
+          </p>
+          <DialogFooter>
+            <Button
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(embedCodeDialog.code);
+              }}
+            >
+              <Copy className="mr-1 h-4 w-4" />
+              複製
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

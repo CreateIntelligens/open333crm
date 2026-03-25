@@ -29,6 +29,7 @@ interface ConversationListItemProps {
     updatedAt: string;
     caseId?: string | null;
     csatScore?: number | null;
+    lastMessageSentiment?: string;
   };
   isSelected: boolean;
   onClick: () => void;
@@ -99,6 +100,12 @@ export function ConversationListItem({
             <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
               Bot 中
             </span>
+          )}
+          {conversation.lastMessageSentiment === 'positive' && (
+            <span className="inline-block h-2 w-2 rounded-full bg-green-500" title="正面情緒" />
+          )}
+          {conversation.lastMessageSentiment === 'negative' && (
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500" title="負面情緒" />
           )}
           {conversation.caseId && (
             <FileText className="h-3 w-3 text-orange-500" />

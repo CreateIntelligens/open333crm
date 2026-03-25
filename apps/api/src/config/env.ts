@@ -14,9 +14,15 @@ const envSchema = z.object({
   FB_LOGIN_CALLBACK_URL: z.string().optional(),
   OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
   OLLAMA_EMBED_MODEL: z.string().default('bge-m3'),
-  OLLAMA_CHAT_MODEL: z.string().default('qwen2.5:1.5b'),
+  OLLAMA_CHAT_MODEL: z.string().default('qwen2.5:3b'),
   KB_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.72),
   KB_AUTO_REPLY_ENABLED: z.string().transform((v) => v === 'true').default('true'),
+  S3_ENDPOINT: z.string().default('http://localhost:9000'),
+  S3_ACCESS_KEY: z.string().default('minioadmin'),
+  S3_SECRET_KEY: z.string().default('minioadmin'),
+  S3_BUCKET: z.string().default('open333crm'),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_PUBLIC_URL: z.string().default('http://localhost:9000'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

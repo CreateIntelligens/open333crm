@@ -108,7 +108,7 @@ export function CaseList({ cases, isLoading }: CaseListProps) {
               <td className="px-4 py-3 text-sm">
                 {c.contact?.displayName || c.contact?.name || '-'}
               </td>
-              <td className="px-4 py-3 text-sm">{c.category || '-'}</td>
+              <td className="px-4 py-3 text-sm">{c.category ? `🤖 ${c.category}` : '-'}</td>
               <td className="px-4 py-3">
                 <CasePriorityBadge priority={c.priority} />
               </td>

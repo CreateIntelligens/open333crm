@@ -37,9 +37,25 @@ import aiRoutes from './modules/ai/ai.routes.js';
 import slaRoutes from './modules/sla/sla.routes.js';
 import lineLoginRoutes from './modules/line-login/line-login.routes.js';
 import fbLoginRoutes from './modules/fb-login/fb-login.routes.js';
+import notificationRoutes from './modules/notification/notification.routes.js';
+import analyticsRoutes from './modules/analytics/analytics.routes.js';
+import settingsRoutes from './modules/settings/settings.routes.js';
+import storageRoutes from './modules/storage/storage.routes.js';
+import { ensureBucket } from './modules/storage/storage.service.js';
+import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-subscription.routes.js';
+import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
+import portalRoutes from './modules/portal/portal.routes.js';
+import portalPublicRoutes from './modules/portal/portal-public.routes.js';
+import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
+import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 
 // Import automation worker
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
+import { setupNotificationWorker } from './modules/notification/notification.worker.js';
+import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
+import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
+import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
+import { setupSlaWorker } from './modules/sla/sla.worker.js';
 
 // Import channel plugins
 import { registerChannelPlugin } from './channels/registry.js';
@@ -105,11 +121,41 @@ async function bootstrap() {
   await app.register(slaRoutes, { prefix: '/api/v1/sla-policies' });
   await app.register(lineLoginRoutes, { prefix: '/api/v1/auth/line' });
   await app.register(fbLoginRoutes, { prefix: '/api/v1/auth/fb' });
+  await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
+  await app.register(analyticsRoutes, { prefix: '/api/v1/analytics' });
+  await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
+  await app.register(storageRoutes, { prefix: '/api/v1/files' });
+  await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
+  await app.register(portalRoutes, { prefix: '/api/v1/portal' });
+  await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
+  await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });
+  await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
 
   // 7. Setup automation event-bus worker
   setupAutomationWorker(app.prisma, app.io);
 
-  // 8. Start server
+  // 8. Setup notification event-bus worker
+  setupNotificationWorker(app.prisma, app.io);
+
+  // 9. Setup analytics daily aggregation scheduler
+  setupAnalyticsScheduler(app.prisma);
+
+  // 10. Setup broadcast scheduler (polls for scheduled broadcasts)
+  setupBroadcastScheduler(app.prisma, app.io);
+
+  // 11. Setup CSAT scheduler (send surveys + auto-close)
+  setupCsatScheduler(app.prisma, app.io);
+
+  // 12. Setup SLA worker (warnings, breaches, first response timeouts)
+  setupSlaWorker(app.prisma, app.io);
+
+  // 13. Ensure S3/MinIO bucket exists (non-blocking)
+  ensureBucket().catch((err) => app.log.warn('MinIO bucket init skipped:', err.message));
+
+  // 14. Setup webhook dispatcher (outbound webhook subscriptions)
+  setupWebhookDispatcher(app.prisma);
+
+  // 15. Start server
   try {
     await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
     app.log.info(`open333CRM API running on port ${config.API_PORT}`);

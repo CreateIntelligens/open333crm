@@ -13,8 +13,9 @@ interface MessageInputProps {
   onOpenTemplates?: () => void;
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ACCEPTED_TYPES = 'image/jpeg,image/png,application/pdf';
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const ACCEPTED_TYPES = 'image/jpeg,image/png,image/gif,image/webp,application/pdf';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 export function MessageInput({
   onSend,
@@ -69,15 +70,35 @@ export function MessageInput({
     if (!file) return;
 
     if (file.size > MAX_FILE_SIZE) {
-      alert('檔案大小超過 10MB 限制');
+      alert('檔案大小超過 20MB 限制');
       return;
     }
 
     setSending(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      // Upload to storage service via FormData
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API_URL}/files/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        // Fallback to base64 if storage service unavailable
+        const dataUrl = await readFileAsDataUrl(file);
+        const contentType = file.type.startsWith('image/') ? 'image' : 'file';
+        await onSend(dataUrl, contentType, { url: dataUrl, fileName: file.name, mimeType: file.type });
+        return;
+      }
+
+      const json = await res.json();
+      const { url, key, mimeType } = json.data;
       const contentType = file.type.startsWith('image/') ? 'image' : 'file';
-      await onSend(dataUrl, contentType, { url: dataUrl, fileName: file.name, mimeType: file.type });
+      await onSend(url, contentType, { url, key, fileName: file.name, mimeType: mimeType || file.type });
     } catch (err) {
       console.error('Failed to send file:', err);
     } finally {

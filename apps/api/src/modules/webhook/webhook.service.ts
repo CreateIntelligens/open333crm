@@ -4,6 +4,14 @@ import { getChannelPlugin } from '../../channels/registry.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import type { ParsedWebhookMessage } from '../../channels/base.plugin.js';
+import { trackBroadcastReply } from '../marketing/broadcast.tracking.js';
+import { recordCsatScore } from '../csat/csat.service.js';
+import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
+import { deliverToChannel } from '../conversation/conversation.service.js';
+
+// Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
+const outsideHoursReplyCache = new Map<string, number>();
+const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
 
 export async function processWebhookEvent(
   prisma: PrismaClient,
@@ -126,13 +134,29 @@ async function processInboundMessage(
   });
 
   if (!conversation) {
+    // Determine initial conversation status based on channel botConfig
+    let initialStatus: 'BOT_HANDLED' | 'AGENT_HANDLED' = 'BOT_HANDLED';
+    try {
+      const fullChannel = await prisma.channel.findFirst({
+        where: { id: channel.id },
+        select: { settings: true },
+      });
+      const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
+      const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
+      if (botConfig.botMode === 'off') {
+        initialStatus = 'AGENT_HANDLED';
+      }
+    } catch {
+      // fallback to BOT_HANDLED
+    }
+
     conversation = await prisma.conversation.create({
       data: {
         tenantId,
         contactId,
         channelId: channel.id,
         channelType: channel.channelType as any,
-        status: 'BOT_HANDLED',
+        status: initialStatus,
         unreadCount: 0,
       },
     });
@@ -168,6 +192,33 @@ async function processInboundMessage(
     },
   });
 
+  // 3b. Download LINE media content and store in S3 (non-blocking)
+  if (channel.channelType === 'LINE' && content.contentId && ['image', 'video', 'audio', 'file'].includes(contentType)) {
+    (async () => {
+      try {
+        const { downloadAndStoreLineMedia } = await import('../storage/line-media.service.js');
+        const stored = await downloadAndStoreLineMedia(
+          prisma,
+          channel.id,
+          tenantId,
+          content.contentId as string,
+          contentType,
+          conversation.id,
+        );
+        if (stored) {
+          // Update message content with S3 URL
+          const updatedContent = { ...(message.content as Record<string, unknown>), url: stored.url, storageKey: stored.storageKey };
+          await prisma.message.update({
+            where: { id: message.id },
+            data: { content: updatedContent as any },
+          });
+        }
+      } catch (err) {
+        console.error('[Webhook] LINE media download error (non-blocking):', err);
+      }
+    })();
+  }
+
   // 4. Update Conversation
   await prisma.conversation.update({
     where: { id: conversation.id },
@@ -177,7 +228,25 @@ async function processInboundMessage(
     },
   });
 
-  // 5. Emit WebSocket events
+  // 5. Intercept CSAT postback responses
+  const textContent = (content as Record<string, unknown>).text as string || '';
+  const postbackData = (parsed as any).rawPayload?.postback?.data || '';
+  const csatMatch = textContent.match(/^csat:(\d):([a-f0-9-]+)$/i)
+    || postbackData.match(/^csat:(\d):([a-f0-9-]+)$/i);
+
+  if (csatMatch) {
+    const score = parseInt(csatMatch[1], 10);
+    const csatCaseId = csatMatch[2];
+    if (score >= 1 && score <= 5) {
+      await recordCsatScore(prisma, io, csatCaseId, score);
+      return; // Don't publish message.received to avoid triggering automations
+    }
+  }
+
+  // 6. Track broadcast reply (non-blocking)
+  trackBroadcastReply(prisma, contactId).catch(() => {});
+
+  // 7. Emit WebSocket events
   const wsPayload = {
     conversationId: conversation.id,
     message: {
@@ -212,7 +281,7 @@ async function processInboundMessage(
     io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
   }
 
-  // 6. Publish to EventBus for automation
+  // 8. Publish to EventBus for automation
   eventBus.publish({
     name: 'message.received',
     tenantId,
@@ -227,4 +296,69 @@ async function processInboundMessage(
       messageContent: (content.text as string) ?? '',
     },
   });
+
+  // 9. Outside office hours auto-reply (30 min dedup per contact)
+  try {
+    let outsideMsg = await getOutsideHoursMessage(prisma, tenantId);
+
+    // Use channel-specific offline greeting if available
+    if (outsideMsg) {
+      try {
+        const fullChannel = await prisma.channel.findFirst({
+          where: { id: channel.id },
+          select: { settings: true },
+        });
+        const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
+        const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
+        if (botConfig.offlineGreeting && typeof botConfig.offlineGreeting === 'string') {
+          outsideMsg = botConfig.offlineGreeting;
+        }
+      } catch {
+        // use default outsideMsg
+      }
+    }
+    if (outsideMsg) {
+      const lastReply = outsideHoursReplyCache.get(contactId);
+      if (!lastReply || now.getTime() - lastReply > OUTSIDE_HOURS_DEDUP_MS) {
+        outsideHoursReplyCache.set(contactId, now.getTime());
+
+        const autoReply = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            senderType: 'SYSTEM',
+            contentType: 'text',
+            content: { text: outsideMsg },
+            metadata: { source: 'office_hours_auto_reply' },
+          },
+        });
+
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessageAt: new Date() },
+        });
+
+        const autoReplyPayload = {
+          conversationId: conversation.id,
+          message: {
+            id: autoReply.id,
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            senderType: 'SYSTEM',
+            contentType: 'text',
+            content: { text: outsideMsg },
+            createdAt: autoReply.createdAt.toISOString(),
+          },
+        };
+
+        io.to(`conversation:${conversation.id}`).emit('message.new', autoReplyPayload);
+        io.to(`tenant:${tenantId}`).emit('message.new', autoReplyPayload);
+
+        // Deliver to external channel
+        await deliverToChannel(prisma, conversation.id, outsideMsg);
+      }
+    }
+  } catch (err) {
+    console.error('[Webhook] Office hours auto-reply error:', err);
+  }
 }

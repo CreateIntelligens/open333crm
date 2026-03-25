@@ -47,9 +47,14 @@ const PRIORITY_OPTIONS = [
 
 const CATEGORY_OPTIONS = [
   { value: '', label: '未分類' },
-  { value: '維修', label: '維修' },
-  { value: '查詢', label: '查詢' },
-  { value: '投訴', label: '投訴' },
+  { value: '產品諮詢', label: '產品諮詢' },
+  { value: '訂單問題', label: '訂單問題' },
+  { value: '退換貨', label: '退換貨' },
+  { value: '帳號問題', label: '帳號問題' },
+  { value: '技術支援', label: '技術支援' },
+  { value: '投訴建議', label: '投訴建議' },
+  { value: '付款問題', label: '付款問題' },
+  { value: '物流配送', label: '物流配送' },
   { value: '其他', label: '其他' },
 ];
 
@@ -259,6 +264,9 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             options={CATEGORY_OPTIONS}
             className="max-w-xs"
           />
+          {caseData.category && (
+            <p className="mt-1 text-[11px] text-muted-foreground">🤖 AI 自動分類</p>
+          )}
         </div>
 
         <Separator />

@@ -11,10 +11,24 @@ import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { triggerAutomation } from './automation.service.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
+import { analyzeSentiment } from '../ai/sentiment.service.js';
+import { classifyIssue } from '../ai/classify.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 
-const MAX_BOT_REPLIES_BEFORE_HANDOFF = 5;
-const HANDOFF_KEYWORDS = ['真人', '人工', '客服', '轉接'];
+interface BotConfig {
+  botMode: 'keyword' | 'llm' | 'keyword_then_llm' | 'off';
+  maxBotReplies: number;
+  handoffKeywords: string[];
+  handoffMessage: string;
+  offlineGreeting?: string;
+}
+
+const DEFAULT_BOT_CONFIG: BotConfig = {
+  botMode: 'keyword_then_llm',
+  maxBotReplies: 5,
+  handoffKeywords: ['真人', '人工', '客服', '轉接'],
+  handoffMessage: '稍等，正在為您轉接客服人員',
+};
 
 async function checkAutoHandoff(
   prisma: PrismaClient,
@@ -27,24 +41,33 @@ async function checkAutoHandoff(
   try {
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
+      include: { channel: { select: { settings: true } } },
     });
 
-    if (!conversation) return; // Not a BOT_HANDLED conversation
+    if (!conversation) return;
+
+    // Read bot config from channel settings
+    const channelSettings = (conversation.channel?.settings || {}) as Record<string, unknown>;
+    const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
+    const botConfig: BotConfig = {
+      ...DEFAULT_BOT_CONFIG,
+      ...rawBotConfig,
+    };
 
     let shouldHandoff = false;
     let reason = '';
 
     // Check 1: Bot replies count exceeded threshold
-    if (conversation.botRepliesCount >= MAX_BOT_REPLIES_BEFORE_HANDOFF) {
+    if (conversation.botRepliesCount >= botConfig.maxBotReplies) {
       shouldHandoff = true;
-      reason = `Bot 回覆次數已達上限 (${conversation.botRepliesCount})`;
+      reason = `Bot 回覆次數已達上限 (${conversation.botRepliesCount}/${botConfig.maxBotReplies})`;
     }
 
     // Check 2: Keyword match for human agent request
-    if (!shouldHandoff && messageContent) {
+    if (!shouldHandoff && messageContent && botConfig.handoffKeywords.length > 0) {
       const lowerContent = messageContent.toLowerCase();
-      for (const keyword of HANDOFF_KEYWORDS) {
-        if (lowerContent.includes(keyword)) {
+      for (const keyword of botConfig.handoffKeywords) {
+        if (lowerContent.includes(keyword.toLowerCase())) {
           shouldHandoff = true;
           reason = `客戶要求轉接真人 (關鍵字: ${keyword})`;
           break;
@@ -59,6 +82,16 @@ async function checkAutoHandoff(
     }
 
     if (shouldHandoff) {
+      // Generate conversation summary before handoff
+      let summary = '';
+      try {
+        const { summarizeConversation } = await import('../ai/ai.service.js');
+        const summaryResult = await summarizeConversation(prisma, conversationId);
+        summary = summaryResult.summary;
+      } catch (err) {
+        console.error('[AutoHandoff] Failed to generate summary:', err);
+      }
+
       // Auto-handoff: change status to AGENT_HANDLED
       await prisma.conversation.update({
         where: { id: conversationId },
@@ -68,16 +101,20 @@ async function checkAutoHandoff(
         },
       });
 
-      // Send system message
+      // Send system message with summary
       const now = new Date();
+      const systemText = summary
+        ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
+        : `自動轉接人工客服：${reason}`;
+
       const systemMessage = await prisma.message.create({
         data: {
           conversationId,
           direction: 'OUTBOUND',
           senderType: 'SYSTEM',
           contentType: 'system',
-          content: { text: `自動轉接人工客服：${reason}` },
-          metadata: { type: 'auto_handoff', reason },
+          content: { text: systemText },
+          metadata: { type: 'auto_handoff', reason, summary: summary || undefined },
           isRead: true,
           createdAt: now,
         },
@@ -88,9 +125,21 @@ async function checkAutoHandoff(
         data: { lastMessageAt: now },
       });
 
-      // Deliver handoff notification to channel (LINE/FB)
-      const handoffText = `自動轉接人工客服：${reason}`;
-      await deliverToChannel(prisma, conversationId, handoffText);
+      // Deliver configurable handoff message to channel
+      await deliverToChannel(prisma, conversationId, botConfig.handoffMessage);
+
+      // Publish conversation.handoff event
+      eventBus.publish({
+        name: 'conversation.handoff',
+        tenantId,
+        timestamp: now,
+        payload: {
+          conversationId,
+          reason,
+          summary,
+          previousStatus: 'BOT_HANDLED',
+        },
+      });
 
       // Emit WebSocket events
       const wsPayload = {
@@ -198,9 +247,10 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── message.received ────────────────────────────────────────────────────
   eventBus.subscribe('message.received', async (event: AppEvent) => {
     try {
-      const { contactId, conversationId, messageContent, content, contentType } = event.payload as {
+      const { contactId, conversationId, messageId, messageContent, content, contentType } = event.payload as {
         contactId?: string;
         conversationId?: string;
+        messageId?: string;
         messageContent?: string;
         content?: { text?: string };
         contentType?: string;
@@ -220,6 +270,43 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
           await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text);
         } catch (err) {
           console.error('[AutomationWorker] KB auto-reply error:', err);
+        }
+      }
+
+      // Sentiment analysis on inbound messages
+      if (text && messageId) {
+        try {
+          const sentimentResult = await analyzeSentiment(text);
+          // Update message metadata with sentiment result
+          const existingMessage = await prisma.message.findUnique({
+            where: { id: messageId },
+            select: { metadata: true },
+          });
+          const existingMetadata = (existingMessage?.metadata as Record<string, unknown>) ?? {};
+          await prisma.message.update({
+            where: { id: messageId },
+            data: {
+              metadata: { ...existingMetadata, sentiment: sentimentResult },
+            },
+          });
+          console.log(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
+
+          // If negative sentiment with high confidence, publish event
+          if (sentimentResult.sentiment === 'negative' && sentimentResult.confidence >= 0.6) {
+            eventBus.publish({
+              name: 'sentiment.negative',
+              tenantId: event.tenantId,
+              timestamp: new Date(),
+              payload: {
+                conversationId,
+                messageId,
+                contactId,
+                sentiment: sentimentResult,
+              },
+            });
+          }
+        } catch (err) {
+          console.error('[AutomationWorker] Sentiment analysis error:', err);
         }
       }
 
@@ -275,6 +362,28 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         conversationId: conversationId as string | undefined,
         caseId: caseId as string | undefined,
       });
+
+      // Auto-classify issue based on latest inbound message
+      if (caseId && conversationId) {
+        try {
+          const latestMessage = await prisma.message.findFirst({
+            where: { conversationId, direction: 'INBOUND' },
+            orderBy: { createdAt: 'desc' },
+            select: { content: true },
+          });
+          const messageText = (latestMessage?.content as Record<string, unknown>)?.text as string | undefined;
+          if (messageText) {
+            const classification = await classifyIssue(messageText);
+            await prisma.case.update({
+              where: { id: caseId },
+              data: { category: classification.category },
+            });
+            console.log(`[AutomationWorker] Case ${caseId} auto-classified: ${classification.category} (confidence=${classification.confidence})`);
+          }
+        } catch (err) {
+          console.error('[AutomationWorker] Auto-classification error:', err);
+        }
+      }
     } catch (err) {
       console.error('[AutomationWorker] Error handling case.created:', err);
     }
@@ -331,6 +440,40 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
     }
   });
 
-  console.log('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.tagged, case.escalated');
-  console.log('[AutomationWorker] Auto-handoff enabled: max bot replies =', MAX_BOT_REPLIES_BEFORE_HANDOFF, ', keywords =', HANDOFF_KEYWORDS.join(', '));
+  // ── portal.activity.submitted ──────────────────────────────────────────
+  eventBus.subscribe('portal.activity.submitted', async (event: AppEvent) => {
+    try {
+      const { contactId, activityId } = event.payload as {
+        contactId?: string;
+        activityId?: string;
+      };
+
+      await triggerAutomation(prisma, io, event.tenantId, 'portal.activity.submitted', {
+        contactId: contactId as string | undefined,
+        activityId: activityId as string | undefined,
+      });
+    } catch (err) {
+      console.error('[AutomationWorker] Error handling portal.activity.submitted:', err);
+    }
+  });
+
+  // ── link.clicked ──────────────────────────────────────────────────────────
+  eventBus.subscribe('link.clicked', async (event: AppEvent) => {
+    try {
+      const { contactId, shortLinkId } = event.payload as {
+        contactId?: string;
+        shortLinkId?: string;
+      };
+
+      await triggerAutomation(prisma, io, event.tenantId, 'link.clicked', {
+        contactId: contactId as string | undefined,
+        shortLinkId: shortLinkId as string | undefined,
+      });
+    } catch (err) {
+      console.error('[AutomationWorker] Error handling link.clicked:', err);
+    }
+  });
+
+  console.log('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
+  console.log('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
 }

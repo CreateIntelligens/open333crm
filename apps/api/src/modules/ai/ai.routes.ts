@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { suggestReply, summarizeConversation } from './ai.service.js';
+import { analyzeSentiment } from './sentiment.service.js';
+import { classifyIssue } from './classify.service.js';
 import { success } from '../../shared/utils/response.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
@@ -23,6 +25,26 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .parse(request.body);
 
     const result = await summarizeConversation(fastify.prisma, conversationId);
+    return reply.send(success(result));
+  });
+
+  // POST /api/v1/ai/analyze-sentiment
+  fastify.post('/analyze-sentiment', async (request, reply) => {
+    const { text } = z
+      .object({ text: z.string().min(1) })
+      .parse(request.body);
+
+    const result = await analyzeSentiment(text);
+    return reply.send(success(result));
+  });
+
+  // POST /api/v1/ai/classify
+  fastify.post('/classify', async (request, reply) => {
+    const { text } = z
+      .object({ text: z.string().min(1) })
+      .parse(request.body);
+
+    const result = await classifyIssue(text);
     return reply.send(success(result));
   });
 }

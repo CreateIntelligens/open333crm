@@ -10,6 +10,9 @@ import {
   updateWebhookBaseUrl,
 } from './channel.service.js';
 import { success } from '../../shared/utils/response.js';
+import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
+import { checkFbTokenStatus } from './fb-token-monitor.service.js';
+import { generateEmbedCode } from './webchat-embed.service.js';
 
 const lineCredentialsSchema = z.object({
   channelSecret: z.string().min(1),
@@ -136,6 +139,57 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       data.baseUrl,
     );
 
+    return reply.send(success(result));
+  });
+
+  // POST /api/v1/channels/:id/setup-webhook — LINE auto webhook setup
+  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', async (request, reply) => {
+    const result = await autoSetupLineWebhook(
+      fastify.prisma,
+      request.params.id,
+      request.agent.tenantId,
+    );
+    return reply.send(success(result));
+  });
+
+  // GET /api/v1/channels/:id/status — channel health status
+  fastify.get<{ Params: { id: string } }>('/:id/status', async (request, reply) => {
+    const channel = await fastify.prisma.channel.findFirst({
+      where: { id: request.params.id, tenantId: request.agent.tenantId },
+    });
+
+    if (!channel) {
+      return reply.status(404).send({ error: { message: 'Channel not found' } });
+    }
+
+    if (channel.channelType === 'FB') {
+      const tokenStatus = await checkFbTokenStatus(
+        fastify.prisma,
+        request.params.id,
+        request.agent.tenantId,
+      );
+      return reply.send(success({
+        channelType: channel.channelType,
+        isActive: channel.isActive,
+        lastVerifiedAt: channel.lastVerifiedAt,
+        tokenStatus,
+      }));
+    }
+
+    return reply.send(success({
+      channelType: channel.channelType,
+      isActive: channel.isActive,
+      lastVerifiedAt: channel.lastVerifiedAt,
+    }));
+  });
+
+  // GET /api/v1/channels/:id/embed-code — WebChat embed code
+  fastify.get<{ Params: { id: string } }>('/:id/embed-code', async (request, reply) => {
+    const result = await generateEmbedCode(
+      fastify.prisma,
+      request.params.id,
+      request.agent.tenantId,
+    );
     return reply.send(success(result));
   });
 }

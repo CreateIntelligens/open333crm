@@ -231,6 +231,8 @@ export interface TriggerContext {
   conversationId?: string;
   messageContent?: string;
   caseId?: string;
+  activityId?: string;
+  shortLinkId?: string;
 }
 
 export interface TriggerResult {

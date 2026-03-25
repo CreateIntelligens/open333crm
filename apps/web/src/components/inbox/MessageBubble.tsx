@@ -47,6 +47,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const confidence = typeof metadata.confidence === 'number' ? metadata.confidence : null;
   const triggerType = metadata.triggerType as string | undefined;
   const knowledgeRefs = (metadata.knowledgeRefs || metadata.kmRefs) as Array<{ id: string; title: string; url?: string }> | undefined;
+  const sentiment = metadata.sentiment as { sentiment: string; score: number; confidence: number } | undefined;
 
   if (isSystem) {
     return (
@@ -91,6 +92,23 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       fallback: '預設回覆',
     };
     return labels[type] || type;
+  };
+
+  // Sentiment helpers
+  const getSentimentColor = (s: string) => {
+    if (s === 'positive') return 'bg-green-100 text-green-700';
+    if (s === 'negative') return 'bg-red-100 text-red-700';
+    return 'bg-gray-100 text-gray-600';
+  };
+  const getSentimentEmoji = (s: string) => {
+    if (s === 'positive') return '😊';
+    if (s === 'negative') return '😟';
+    return '😐';
+  };
+  const getSentimentLabel = (s: string) => {
+    if (s === 'positive') return '正面';
+    if (s === 'negative') return '負面';
+    return '中性';
   };
 
   return (
@@ -154,6 +172,20 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 {ref.title}
               </a>
             ))}
+          </div>
+        )}
+
+        {/* Sentiment badge for inbound messages */}
+        {isInbound && !isBot && sentiment && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium', getSentimentColor(sentiment.sentiment))}>
+              {getSentimentEmoji(sentiment.sentiment)} {getSentimentLabel(sentiment.sentiment)}
+            </span>
+            {sentiment.confidence != null && (
+              <span className="text-[10px] text-muted-foreground">
+                信心值 {Math.round(sentiment.confidence * 100)}%
+              </span>
+            )}
           </div>
         )}
 

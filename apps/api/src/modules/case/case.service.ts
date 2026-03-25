@@ -6,6 +6,8 @@ import { addMinutes } from 'date-fns';
 import { validateTransition } from './case-state-machine.js';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
+import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
+import { autoAssignCase } from './assignment.service.js';
 
 export interface CaseFilters {
   status?: string;
@@ -309,6 +311,16 @@ export async function createCase(
     },
   });
 
+  // Track broadcast → case attribution (non-blocking)
+  trackBroadcastCase(prisma, data.contactId, caseRecord.id).catch(() => {});
+
+  // Auto-assign if no assignee specified and teamId is set
+  if (!data.assigneeId && caseRecord.teamId) {
+    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
+      console.error(`[createCase] Auto-assign failed for case ${caseRecord.id}:`, err);
+    });
+  }
+
   return caseRecord;
 }
 
@@ -396,6 +408,14 @@ export async function assignCase(
 
   io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
 
+  // Publish case.assigned event for notifications
+  eventBus.publish({
+    name: 'case.assigned',
+    tenantId,
+    timestamp: new Date(),
+    payload: { caseId, assigneeId, title: updated.title },
+  });
+
   return updated;
 }
 
@@ -471,6 +491,39 @@ export async function transitionCase(
   };
 
   io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
+
+  // Publish case.resolved / case.closed events for CSAT and automation
+  if (toStatus === 'RESOLVED') {
+    eventBus.publish({
+      name: 'case.resolved',
+      tenantId,
+      timestamp: now,
+      payload: {
+        caseId: updated.id,
+        contactId: caseRecord.contactId,
+        channelId: caseRecord.channelId,
+        conversationId: caseRecord.conversationId,
+        assigneeId: caseRecord.assigneeId,
+        title: caseRecord.title,
+      },
+    });
+  }
+
+  if (toStatus === 'CLOSED') {
+    eventBus.publish({
+      name: 'case.closed',
+      tenantId,
+      timestamp: now,
+      payload: {
+        caseId: updated.id,
+        contactId: caseRecord.contactId,
+        channelId: caseRecord.channelId,
+        conversationId: caseRecord.conversationId,
+        assigneeId: caseRecord.assigneeId,
+        title: caseRecord.title,
+      },
+    });
+  }
 
   return updated;
 }

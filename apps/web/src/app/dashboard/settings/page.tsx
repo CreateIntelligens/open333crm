@@ -7,12 +7,14 @@ import { AgentManagement } from '@/components/settings/AgentManagement';
 import { TagManagement } from '@/components/settings/TagManagement';
 import { SlaManagement } from '@/components/settings/SlaManagement';
 import { GeneralSettings } from '@/components/settings/GeneralSettings';
+import { OfficeHoursSettings } from '@/components/settings/OfficeHoursSettings';
 
 const SETTINGS_TABS = [
   { key: 'channels', label: '渠道管理' },
   { key: 'agents', label: '人員與權限' },
   { key: 'tags', label: '標籤管理' },
   { key: 'sla', label: 'SLA 政策' },
+  { key: 'office-hours', label: '營業時間' },
   { key: 'general', label: '一般設定' },
 ] as const;
 
@@ -52,6 +54,7 @@ export default function SettingsPage() {
           {activeTab === 'agents' && <AgentManagement />}
           {activeTab === 'tags' && <TagManagement />}
           {activeTab === 'sla' && <SlaManagement />}
+          {activeTab === 'office-hours' && <OfficeHoursSettings />}
           {activeTab === 'general' && <GeneralSettings />}
         </div>
       </div>

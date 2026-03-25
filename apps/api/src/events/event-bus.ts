@@ -19,8 +19,12 @@ export type AppEventName =
   | 'contact.updated'
   | 'contact.tagged'
   | 'keyword.matched'
+  | 'sentiment.negative'
+  | 'conversation.handoff'
   | 'sla.warning'
-  | 'sla.breached';
+  | 'sla.breached'
+  | 'portal.activity.submitted'
+  | 'link.clicked';
 
 export interface AppEvent {
   name: AppEventName;
