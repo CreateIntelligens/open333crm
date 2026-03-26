@@ -2,6 +2,14 @@
 
 All notable changes to the **open333CRM** project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- **OpenSpec archives completed (2026-03-26)** — 已封存 `unified-interaction-canvas`、`crm-core-logic`、`channel-plugins-expansion` 三個 change。
+  - `unified-interaction-canvas`：已手動同步 main specs 後封存
+  - `crm-core-logic`：已手動同步 main specs 後封存
+  - `channel-plugins-expansion`：無 delta specs，帶 validation warning 封存
+
 ## [v0.2.0] - 2026-03-25
 
 ### Added
@@ -17,6 +25,27 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **DB Schema (`Message`)**: 新增 `isAiSuggested`, `isAdopted`, `originalSuggestion` 等欄位，用於追蹤 AI 建議的生命週期。
 - **DB Schema (`Notification`)**: 新增 `Notification` 模型，用於持久化儲存小鈴鐺通知。
 - **UI Wireframes**: 加入「小鈴鐺下拉選單」與「AI Copilot 建議面板」的 ASCII 設計。
+
+---
+
+## [Unreleased] — 0.5.0 (unified-interaction-canvas)
+
+> **狀態**：OpenSpec `opsx:apply` 任務已全數勾選，但實作仍在收尾中；目前已完成核心後端串接，尚未達到可封存狀態。變更由 `openspec/changes/unified-interaction-canvas` 管理。
+
+### Added
+- **Interaction Canvas backend skeleton** — 新增 `InteractionFlow`、`InteractionNode`、`FlowExecution`、`FlowLog`、`TemplateView`、`IdentityMap`、`MergeSuggestion` 等資料模型與對應後端程式碼。
+- **Canvas runtime wiring** — Webhook 進站現在可觸發 Canvas Flow；`WAIT` 節點已接上 resume poller；`canvas.send_message` / `canvas.action` 事件已有 API 端 consumer。
+- **Identity stitching runtime merge** — LINE / Facebook Login callback 現在會在同 tenant 同 email 命中時執行 contact merge，並回寫 `IdentityMap`。
+- **Canvas email delivery path** — 新增 email delivery service，支援 `EMAIL_DELIVERY_MODE=log|webhook`，Canvas email node 可渲染 HTML 並進入 delivery flow。
+
+### In Progress
+- **Integration testing** — `apps/api/src/__tests__/canvas-flow.test.ts` 目前仍為 mocked simulation，尚未升級為真實 webhook / DB / scheduler / delivery integration test。
+- **Email delivery provider** — 預設仍為 `log` 模式；若要實際送信，需配置 `EMAIL_WEBHOOK_URL` 或後續接入正式 provider。
+- **Identity stitching coverage** — 目前已補 webhook 與 LINE / FB login callback 的主要路徑，但 LIFF / 多入口的完整覆蓋仍待補齊。
+
+### Note for Ops
+- **Do not archive yet**: 雖然 OpenSpec 任務清單顯示完成，但整個 repo 仍存在既有 type/schema 漂移，需等 `unified-interaction-canvas` 相關整合測試補齊後再考慮封存。
+- **Canvas email env**: 若需實際送信，請配置 `EMAIL_DELIVERY_MODE=webhook`、`EMAIL_WEBHOOK_URL`，必要時再補 `EMAIL_WEBHOOK_AUTH_TOKEN` 與 `EMAIL_FROM`。
 
 ---
 

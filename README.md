@@ -2,6 +2,25 @@
 
 > 企業級 Omnichannel CRM 系統，整合 LINE、Facebook Messenger、WebChat 多渠道客服，提供智能自動化、數據分析、行銷活動與粉絲互動功能。
 
+## Current Status
+
+### OpenSpec 變更進度
+- `unified-interaction-canvas` 的 OpenSpec `opsx:apply` 任務清單目前已全部勾選，但實作狀態仍是「收尾中」，尚未建議 archive。
+
+### 已完成到可用的部分
+- Webhook 進站可觸發 Canvas Flow。
+- `WAIT` 節點已有 resume poller。
+- LINE / Facebook Login callback 已補入 contact merge 與 `IdentityMap` 回寫。
+- Canvas email node 已有 HTML render 與 delivery path，支援 `log` / `webhook` 模式。
+
+### 目前仍未完成的部分
+- `apps/api/src/__tests__/canvas-flow.test.ts` 仍是 mocked test，不是真正的 integration test。
+- Canvas email 預設只會 `log`，若需實際寄信必須配置 `EMAIL_DELIVERY_MODE=webhook` 與 `EMAIL_WEBHOOK_URL`。
+- `unified-interaction-canvas` 相關功能尚未完成完整前端管理與全入口 identity stitching 覆蓋。
+
+### 文件使用原則
+- 若 `CHANGELOG.md`、`README.md`、OpenSpec 任務清單之間有不一致，請以「程式碼實際整合狀態 + 本 README 的 Current Status」為準，不要僅依賴 tasks checkbox 判定功能已完整完成。
+
 ## 🌟 核心功能
 
 ### 📱 多渠道整合
@@ -189,6 +208,12 @@ LINE_CHANNEL_ACCESS_TOKEN=your-line-access-token
 
 # Facebook
 FB_APP_SECRET=your-fb-app-secret
+
+# Canvas Email Delivery
+EMAIL_DELIVERY_MODE=log
+# EMAIL_WEBHOOK_URL=https://your-mail-bridge.example/send
+# EMAIL_WEBHOOK_AUTH_TOKEN=optional-token
+# EMAIL_FROM=noreply@example.com
 ```
 
 **Web 環境變數** (`apps/web/.env`):

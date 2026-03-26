@@ -1,15 +1,22 @@
-## ADDED Requirements
+## Case Management Requirements
 
-### Requirement: Case Status Lifecycle
-The system SHALL support cases that progress through predefined statuses: open, in_progress, pending, resolved, closed.
+### Requirement: Case Creation
+The system SHALL support creating a case manually or automatically from a conversation.
 
-#### Scenario: Closing a resolved case
-- **WHEN** an agent marks a resolved case as closed
-- **THEN** the system records a `CaseEvent` and updates the `closed_at` timestamp
+#### Scenario: Auto-create case from keyword rule
+- **WHEN** an automation rule matches the keyword "complaint"
+- **THEN** a new Case is created and linked to the triggering Conversation
 
-### Requirement: SLA Monitoring
-The system SHALL track the SLA deadline for active cases and trigger escalation events if exceeded.
+### Requirement: Case Assignment
+The system SHALL allow assigning a case to an agent or team.
 
-#### Scenario: SLA Breach triggers escalation
-- **WHEN** a case remains unassigned past its SLA deadline
-- **THEN** the system updates its priority to urgent and triggers a `case.sla_warning` event
+#### Scenario: Assigning case to agent
+- **WHEN** a supervisor assigns Case `C-1001` to Agent `A-12`
+- **THEN** the case's `assignee_id` is updated and a `CaseEvent` is recorded
+
+### Requirement: Case Merge
+The system SHALL support merging duplicate or related cases.
+
+#### Scenario: Merging child cases
+- **WHEN** Agent merges Case `C-1002` into Case `C-1001`
+- **THEN** `C-1002` is marked as merged, and its events are preserved

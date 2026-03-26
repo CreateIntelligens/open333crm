@@ -8,6 +8,8 @@ import { trackBroadcastReply } from '../marketing/broadcast.tracking.js';
 import { recordCsatScore } from '../csat/csat.service.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
+import { resolveUidToContact } from '@open333crm/core';
 
 // Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
 const outsideHoursReplyCache = new Map<string, number>();
@@ -83,6 +85,35 @@ async function processInboundMessage(
   if (channelIdentity) {
     contactId = channelIdentity.contactId;
   } else {
+    const stitchedContactId = await resolveUidToContact(
+      tenantId,
+      channel.channelType as never,
+      contactUid,
+    );
+
+    if (stitchedContactId) {
+      const stitchedContact = await prisma.contact.findFirst({
+        where: { id: stitchedContactId, tenantId },
+      });
+
+      if (stitchedContact) {
+        contactId = stitchedContact.id;
+        channelIdentity = await prisma.channelIdentity.create({
+          data: {
+            contactId: stitchedContact.id,
+            channelId: channel.id,
+            channelType: channel.channelType as never,
+            uid: contactUid,
+            profileName: stitchedContact.displayName,
+            profilePic: stitchedContact.avatarUrl ?? null,
+          },
+          include: { contact: true },
+        });
+      }
+    }
+  }
+
+  if (!channelIdentity) {
     // Fetch real profile from channel API
     const plugin = getChannelPlugin(channel.channelType);
     let displayName = `${channel.channelType} User ${contactUid.slice(-6)}`;
@@ -297,6 +328,22 @@ async function processInboundMessage(
     },
   });
 
+  await handleWebhookFlowTrigger({
+    tenantId,
+    channelType: channel.channelType,
+    channelId: channel.id,
+    contactId,
+    eventType: normalizeCanvasEventType(parsed),
+    payload: {
+      contentType,
+      content,
+      channelMsgId,
+      rawPayload: (parsed as { rawPayload?: Record<string, unknown> }).rawPayload ?? {},
+      postbackData,
+      text: textContent,
+    },
+  });
+
   // 9. Outside office hours auto-reply (30 min dedup per contact)
   try {
     let outsideMsg = await getOutsideHoursMessage(prisma, tenantId);
@@ -361,4 +408,19 @@ async function processInboundMessage(
   } catch (err) {
     console.error('[Webhook] Office hours auto-reply error:', err);
   }
+}
+
+function normalizeCanvasEventType(parsed: ParsedWebhookMessage): string {
+  const rawType = (parsed as { eventType?: string; type?: string }).eventType
+    ?? (parsed as { eventType?: string; type?: string }).type;
+
+  if (typeof rawType === 'string' && rawType.length > 0) {
+    return rawType;
+  }
+
+  if (parsed.contentType === 'postback') {
+    return 'postback';
+  }
+
+  return 'message';
 }

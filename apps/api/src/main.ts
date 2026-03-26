@@ -48,6 +48,9 @@ import portalRoutes from './modules/portal/portal.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
+import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
+import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
+import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
 
 // Import automation worker
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
@@ -130,6 +133,8 @@ async function bootstrap() {
   await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
   await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });
   await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
+  await app.register(canvasRoutes, { prefix: '/api/v1/canvas' });
+  await app.register(identityRoutes, { prefix: '/api/v1/identity' });
 
   // 7. Setup automation event-bus worker
   setupAutomationWorker(app.prisma, app.io);
@@ -149,13 +154,17 @@ async function bootstrap() {
   // 12. Setup SLA worker (warnings, breaches, first response timeouts)
   setupSlaWorker(app.prisma, app.io);
 
-  // 13. Ensure S3/MinIO bucket exists (non-blocking)
-  ensureBucket().catch((err) => app.log.warn('MinIO bucket init skipped:', err.message));
+  // 13. Setup canvas runtime integrations
+  setupCanvasWorker(app.prisma, app.io);
+  setupCanvasScheduler(app.prisma);
 
-  // 14. Setup webhook dispatcher (outbound webhook subscriptions)
+  // 14. Ensure S3/MinIO bucket exists (non-blocking)
+  ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
+
+  // 15. Setup webhook dispatcher (outbound webhook subscriptions)
   setupWebhookDispatcher(app.prisma);
 
-  // 15. Start server
+  // 16. Start server
   try {
     await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
     app.log.info(`open333CRM API running on port ${config.API_PORT}`);

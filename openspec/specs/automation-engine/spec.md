@@ -1,15 +1,22 @@
-## ADDED Requirements
+## Automation Engine Requirements
 
-### Requirement: Event-Driven Rule Execution
-The system SHALL evaluate automation rules whenever a defined Trigger event (such as `message.received` or `contact.followed`) occurs.
+### Requirement: Event Trigger
+The system SHALL trigger automation rules when an event occurs, such as `message.received`.
 
-#### Scenario: Rule triggered by message
-- **WHEN** a `message.received` event is fired and a rule's conditions match the message keywords
-- **THEN** the engine executes the configured Action, such as sending an auto-reply
+#### Scenario: Trigger on inbound message
+- **WHEN** an inbound message is received in any channel
+- **THEN** matching automation rules are evaluated
 
-### Requirement: Automation Action Variety
-The system SHALL support multiple action types including tagging, assigning cases, and calling external webhooks.
+### Requirement: Rule Conditions
+The system SHALL support evaluating complex boolean conditions on message/contact attributes.
 
-#### Scenario: Auto-tagging a contact
-- **WHEN** an automation rule's action is `add_tag`
-- **THEN** the specified tag is added to the contact's profile
+#### Scenario: Matching VIP customer
+- **WHEN** a rule requires `contact.membership == "VIP"` and `message.sentiment == "negative"`
+- **THEN** the rule matches only if both conditions are true
+
+### Requirement: Actions
+The system SHALL support actions such as `add_tag`, `send_message`, and `create_case`.
+
+#### Scenario: Auto-tagging
+- **WHEN** a rule with `add_tag("hot_lead")` matches
+- **THEN** the `hot_lead` tag is attached to the contact

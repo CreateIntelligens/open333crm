@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { getConfig } from '../../config/env.js';
 
 // In-memory state store with TTL (10 minutes)
@@ -119,10 +119,13 @@ export async function updateContactEmail(
   email: string,
   channelId: string,
 ): Promise<{ contactId: string; updated: boolean }> {
-  // Find the ChannelIdentity matching this LINE user + channel
   const identity = await prisma.channelIdentity.findUnique({
     where: {
       channelId_uid: { channelId, uid: lineUid },
+    },
+    include: {
+      channel: { select: { tenantId: true, channelType: true } },
+      contact: { select: { id: true, email: true, avatarUrl: true } },
     },
   });
 
@@ -130,10 +133,130 @@ export async function updateContactEmail(
     throw new Error(`ChannelIdentity not found for uid=${lineUid}, channelId=${channelId}`);
   }
 
-  await prisma.contact.update({
-    where: { id: identity.contactId },
+  const contactId = await prisma.$transaction(async (tx) => {
+    const existing = await tx.contact.findFirst({
+      where: {
+        tenantId: identity.channel.tenantId,
+        email,
+      },
+      select: { id: true },
+    });
+
+    if (!existing || existing.id === identity.contactId) {
+      await tx.contact.update({
+        where: { id: identity.contactId },
+        data: { email },
+      });
+      return identity.contactId;
+    }
+
+    await mergeContactIntoTarget(tx, identity.contactId, existing.id, email);
+    await tx.channelIdentity.update({
+      where: { id: identity.id },
+      data: { contactId: existing.id },
+    });
+
+    return existing.id;
+  });
+
+  await upsertIdentityMap(prisma, identity.channel.tenantId, contactId, identity.channel.channelType, lineUid);
+
+  return { contactId, updated: true };
+}
+
+async function upsertIdentityMap(
+  prisma: PrismaClient,
+  tenantId: string,
+  contactId: string,
+  channelType: string,
+  uid: string,
+) {
+  await prisma.identityMap.upsert({
+    where: {
+      tenantId_channelType_uid: {
+        tenantId,
+        channelType: channelType as never,
+        uid,
+      },
+    },
+    create: {
+      tenantId,
+      contactId,
+      channelType: channelType as never,
+      uid,
+      source: 'LIFF_COOKIE',
+      confidence: 0.85,
+    },
+    update: {
+      contactId,
+      source: 'LIFF_COOKIE',
+      mergedAt: new Date(),
+    },
+  });
+}
+
+async function mergeContactIntoTarget(
+  tx: Prisma.TransactionClient,
+  sourceContactId: string,
+  targetContactId: string,
+  email: string,
+) {
+  await tx.conversation.updateMany({
+    where: { contactId: sourceContactId },
+    data: { contactId: targetContactId },
+  });
+
+  await tx.case.updateMany({
+    where: { contactId: sourceContactId },
+    data: { contactId: targetContactId },
+  });
+
+  await tx.longTermMemory.updateMany({
+    where: { contactId: sourceContactId },
+    data: { contactId: targetContactId },
+  });
+
+  await tx.identityMap.updateMany({
+    where: { contactId: sourceContactId },
+    data: { contactId: targetContactId },
+  });
+
+  const tags = await tx.contactTag.findMany({ where: { contactId: sourceContactId } });
+  for (const tag of tags) {
+    await tx.contactTag.upsert({
+      where: { contactId_tagId: { contactId: targetContactId, tagId: tag.tagId } },
+      create: {
+        contactId: targetContactId,
+        tagId: tag.tagId,
+        addedBy: tag.addedBy,
+        addedById: tag.addedById,
+        addedAt: tag.addedAt,
+        expiresAt: tag.expiresAt,
+      },
+      update: {},
+    });
+  }
+
+  const attributes = await tx.contactAttribute.findMany({ where: { contactId: sourceContactId } });
+  for (const attribute of attributes) {
+    await tx.contactAttribute.upsert({
+      where: { contactId_key: { contactId: targetContactId, key: attribute.key } },
+      create: {
+        contactId: targetContactId,
+        key: attribute.key,
+        value: attribute.value,
+        dataType: attribute.dataType,
+      },
+      update: {},
+    });
+  }
+
+  await tx.contact.update({
+    where: { id: targetContactId },
     data: { email },
   });
 
-  return { contactId: identity.contactId, updated: true };
+  await tx.contact.delete({
+    where: { id: sourceContactId },
+  });
 }

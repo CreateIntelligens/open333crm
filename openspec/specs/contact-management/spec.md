@@ -1,15 +1,16 @@
-## ADDED Requirements
+## Contact Management Requirements
 
-### Requirement: Cross-Channel Identity Resolution
-The system SHALL support linking multiple channel-specific identities (like a LINE UID and FB PSID) to a single Contact entity.
+### Requirement: Identity Resolution
+The system SHALL automatically link channel identities based on common identifiers (phone/email).
 
-#### Scenario: Merging identities
-- **WHEN** a user is identified as the same person across two different channels
-- **THEN** their channel histories are merged under a single `Contact` record
+#### Scenario: Linking LINE user via Phone
+- **GIVEN** an existing Contact with phone `0912345678`
+- **WHEN** a new LINE message arrives from a user who has previously shared their phone `0912345678` in a lead form
+- **THEN** the LINE identity is linked to the existing Contact instead of creating a new one
 
-### Requirement: Custom Attributes
-The system SHALL allow attaching arbitrary key-value JSON attributes to a contact profile.
+### Requirement: Contact Merging
+The system SHALL support manual merging of two contact records.
 
-#### Scenario: Setting custom attribute
-- **WHEN** an automation rule or agent updates a contact's "membership_tier" attribute
-- **THEN** the attribute is stored in the `attributes` JSONB column of the contact record
+#### Scenario: Merging duplicates
+- **WHEN** a supervisor selects Contact A to be merged into Contact B
+- **THEN** all tags, attributes, and channel identities from A are moved to B, and A is deleted
