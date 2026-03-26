@@ -1,6 +1,7 @@
 {
   "name": "@open333crm/brain",
   "version": "0.1.0",
+  "license": "GPL-3.0-only",
   "description": "KM Brain for open333CRM using LanceDB and BM25",
   "type": "module",
   "main": "./dist/index.js",

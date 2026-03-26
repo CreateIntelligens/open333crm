@@ -1,9 +1,10 @@
 {
   "name": "@open333crm/shared",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "dist/index.js",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"

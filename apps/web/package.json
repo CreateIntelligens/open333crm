@@ -1,6 +1,7 @@
 {
   "name": "@open333crm/web",
   "version": "0.0.1",
+  "license": "GPL-3.0-only",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",

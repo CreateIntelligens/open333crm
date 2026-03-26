@@ -608,7 +608,7 @@ const systemPrompt = `你是一個專業的客服助理...`;
 
 ## 📄 授權
 
-本專案採用 MIT 授權條款 - 詳見 [LICENSE](LICENSE) 檔案
+本專案採用 GNU General Public License v3.0 授權條款 - 詳見 [LICENSE](LICENSE) 檔案
 
 ## 🙏 致謝
 
