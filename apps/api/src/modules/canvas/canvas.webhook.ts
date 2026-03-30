@@ -6,6 +6,7 @@
 import { prisma } from '@open333crm/database';
 import { logger } from '@open333crm/core';
 import { FlowRunner } from '@open333crm/core';
+import type { Prisma } from '@prisma/client';
 
 export interface WebhookTriggerEvent {
   tenantId: string;
@@ -64,12 +65,14 @@ export async function handleWebhookFlowTrigger(event: WebhookTriggerEvent): Prom
           contactId,
           tenantId,
           status: 'RUNNING',
-          contextVars: { contact: {}, ext: {}, webhook: payload },
+          contextVars: JSON.parse(
+            JSON.stringify({ contact: {}, ext: {}, webhook: payload }),
+          ) as Prisma.InputJsonValue,
         },
       });
 
       // Run non-blocking
-      FlowRunner.run(execution.id).catch((err) => {
+      FlowRunner.run(execution.id).catch((err: unknown) => {
         logger.error(`[CanvasWebhook] FlowRunner error for execution ${execution.id}:`, err);
       });
     } catch (err) {

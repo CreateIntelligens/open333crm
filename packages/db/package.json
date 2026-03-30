@@ -11,24 +11,16 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "dev": "tsc --watch"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0"
+    "@open333crm/database": "workspace:*"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.0",
     "@types/node": "^20.0.0",
-    "bcryptjs": "^2.4.3",
-    "prisma": "^6.0.0",
-    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }
 }

@@ -26,9 +26,11 @@ export async function scheduleWaitNode(executionId: string, resumeAt: Date): Pro
     const { Queue } = await import('bullmq').catch(() => ({ Queue: null }));
 
     if (Queue) {
-      // Redis connection config — reads from env; falls back to localhost
-      const redisHost = process.env.REDIS_HOST ?? 'localhost';
-      const redisPort = Number(process.env.REDIS_PORT ?? 6379);
+      // Redis connection config — prefers REDIS_URL, falls back to docker-compose local ports.
+      const redisUrl = process.env.REDIS_URL;
+      const parsedUrl = redisUrl ? new URL(redisUrl) : null;
+      const redisHost = process.env.REDIS_HOST ?? parsedUrl?.hostname ?? 'localhost';
+      const redisPort = Number(process.env.REDIS_PORT ?? parsedUrl?.port ?? 6380);
 
       const queue = new Queue(FLOW_RESUME_JOB, {
         connection: { host: redisHost, port: redisPort },

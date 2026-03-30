@@ -37,18 +37,29 @@ export default async function automationRoutes(app: FastifyInstance) {
   app.post("/rules", async (request, reply) => {
     const tenantId = (request.user as any)?.tenantId || "default-tenant";
     const data = request.body as any;
+    const trigger = data.eventType ? { type: data.eventType } : (data.trigger ?? {});
+    const conditions = data.conditionsJson ?? data.conditions ?? {};
+    const actions = data.actionsJson ?? data.actions ?? [];
+    const isActive = data.enabled ?? data.isActive ?? true;
+    const stopOnMatch = data.stopProcessing ?? data.stopOnMatch ?? false;
 
     const rule = await prisma.automationRule.create({
       data: {
         tenantId,
         name: data.name,
         description: data.description ?? null,
-        isActive: data.enabled ?? data.isActive ?? true,
-        trigger: data.eventType ? { type: data.eventType } : (data.trigger ?? {}),
+        enabled: isActive,
+        isActive,
+        eventType: String(trigger.type ?? ''),
+        scopeType: "TENANT",
+        trigger,
         priority: data.priority ?? 0,
-        stopOnMatch: data.stopProcessing ?? data.stopOnMatch ?? false,
-        conditions: data.conditionsJson ?? data.conditions ?? {},
-        actions: data.actionsJson ?? data.actions ?? [],
+        stopProcessing: stopOnMatch,
+        stopOnMatch,
+        conditionsJson: conditions,
+        conditions,
+        actionsJson: actions,
+        actions,
       },
     });
 
@@ -76,27 +87,33 @@ export default async function automationRoutes(app: FastifyInstance) {
         ...(data.description !== undefined && {
           description: data.description,
         }),
-        ...(data.enabled !== undefined && { isActive: data.enabled }),
-        ...(data.isActive !== undefined && { isActive: data.isActive }),
-        ...(data.eventType !== undefined && { trigger: { type: data.eventType } }),
-        ...(data.trigger !== undefined && { trigger: data.trigger }),
+        ...(data.enabled !== undefined && { enabled: data.enabled, isActive: data.enabled }),
+        ...(data.isActive !== undefined && { enabled: data.isActive, isActive: data.isActive }),
+        ...(data.eventType !== undefined && { eventType: data.eventType, trigger: { type: data.eventType } }),
+        ...(data.trigger !== undefined && { eventType: String(data.trigger.type ?? ''), trigger: data.trigger }),
         ...(data.priority !== undefined && { priority: data.priority }),
         ...(data.stopProcessing !== undefined && {
+          stopProcessing: data.stopProcessing,
           stopOnMatch: data.stopProcessing,
         }),
         ...(data.stopOnMatch !== undefined && {
+          stopProcessing: data.stopOnMatch,
           stopOnMatch: data.stopOnMatch,
         }),
         ...(data.conditionsJson !== undefined && {
+          conditionsJson: data.conditionsJson,
           conditions: data.conditionsJson,
         }),
         ...(data.conditions !== undefined && {
+          conditionsJson: data.conditions,
           conditions: data.conditions,
         }),
         ...(data.actionsJson !== undefined && {
+          actionsJson: data.actionsJson,
           actions: data.actionsJson,
         }),
         ...(data.actions !== undefined && {
+          actionsJson: data.actions,
           actions: data.actions,
         }),
       },

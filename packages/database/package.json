@@ -14,14 +14,24 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@open333crm/db": "workspace:*",
     "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.0",
     "@types/node": "^25.5.0",
+    "bcryptjs": "^2.4.3",
+    "prisma": "^6.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }
 }

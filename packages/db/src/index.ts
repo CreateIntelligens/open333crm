@@ -1,2 +1,1 @@
-export * from '@prisma/client';
-export { prisma } from './client.js';
+export * from '@open333crm/database';

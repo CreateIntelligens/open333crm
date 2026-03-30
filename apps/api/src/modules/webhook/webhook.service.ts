@@ -80,7 +80,7 @@ async function processInboundMessage(
     include: { contact: true },
   });
 
-  let contactId: string;
+  let contactId: string | null = null;
 
   if (channelIdentity) {
     contactId = channelIdentity.contactId;
@@ -151,6 +151,10 @@ async function processInboundMessage(
       },
       include: { contact: true },
     });
+  }
+
+  if (!contactId) {
+    throw new Error(`Failed to resolve contact for channel uid ${contactUid}`);
   }
 
   // 2. Find or create Conversation

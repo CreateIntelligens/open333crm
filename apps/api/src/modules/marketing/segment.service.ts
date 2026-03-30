@@ -54,6 +54,7 @@ export async function createSegment(
       name: data.name,
       description: data.description || null,
       rules: data.rules as any,
+      conditions: data.rules.conditions as any,
       contactCount: contactIds.length,
       createdById: agentId,
     },
@@ -77,6 +78,7 @@ export async function updateSegment(
   if (data.description !== undefined) updateData.description = data.description;
   if (data.rules !== undefined) {
     updateData.rules = data.rules;
+    updateData.conditions = data.rules.conditions;
     const { contactIds } = await calculateSegmentContacts(prisma, tenantId, data.rules);
     updateData.contactCount = contactIds.length;
   }

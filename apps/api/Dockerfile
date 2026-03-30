@@ -31,7 +31,8 @@ COPY apps/api ./apps/api
 COPY packages ./packages
 
 # Generate Prisma client at build time (no DB needed), then build database package
-RUN pnpm --filter @open333crm/database run generate
+RUN pnpm --filter @open333crm/database exec prisma generate
+RUN pnpm --filter @open333crm/database build
 
 EXPOSE 3000 5555
 

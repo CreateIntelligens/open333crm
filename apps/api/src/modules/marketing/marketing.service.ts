@@ -516,6 +516,10 @@ export async function executeBroadcast(
   });
 
   try {
+    if (!broadcast.templateId || !broadcast.channelId || !broadcast.tenantId || !broadcast.createdById) {
+      throw new AppError('Broadcast data is incomplete', 'INVALID_STATE', 400);
+    }
+
     // Get template
     const template = await prisma.messageTemplate.findFirst({
       where: {

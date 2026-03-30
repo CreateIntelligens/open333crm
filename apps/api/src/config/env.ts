@@ -69,7 +69,7 @@ export function getConfig(): EnvConfig {
 }
 
 // Lazy proxy for GitHub-side code that imports { env }
-// Defers loadEnvConfig() until first property access, allowing main.ts to load dotenv first.
+// Defers loadEnvConfig() until first property access, allowing index.ts to load dotenv first.
 export const env: EnvConfig = new Proxy({} as EnvConfig, {
   get(_target, prop: string) {
     const config = loadEnvConfig();

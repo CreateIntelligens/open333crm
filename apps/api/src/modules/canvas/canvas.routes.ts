@@ -19,7 +19,7 @@ import {
   listSuggestions,
   approveMerge,
   rejectMerge,
-} from '@open333crm/core/identity/merge-suggestion-service.js';
+} from '@open333crm/core';
 import { success, paginated } from '../../shared/utils/response.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────

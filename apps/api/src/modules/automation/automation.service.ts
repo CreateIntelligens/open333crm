@@ -97,15 +97,22 @@ export async function createRule(
     actions: Array<Record<string, unknown>>;
   },
 ) {
+  const eventType = String(data.trigger.type ?? '');
   const rule = await prisma.automationRule.create({
     data: {
       tenantId,
       name: data.name,
       description: data.description,
+      enabled: true,
       priority: data.priority ?? 0,
+      eventType,
+      scopeType: 'TENANT',
+      stopProcessing: data.stopOnMatch ?? false,
       stopOnMatch: data.stopOnMatch ?? false,
       trigger: data.trigger as any,
+      conditionsJson: data.conditions as any,
       conditions: data.conditions as any,
+      actionsJson: data.actions as any,
       actions: data.actions as any,
       isActive: true,
     },
@@ -141,11 +148,26 @@ export async function updateRule(
   if (data.name !== undefined) updateData.name = data.name;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.priority !== undefined) updateData.priority = data.priority;
-  if (data.stopOnMatch !== undefined) updateData.stopOnMatch = data.stopOnMatch;
-  if (data.isActive !== undefined) updateData.isActive = data.isActive;
-  if (data.trigger !== undefined) updateData.trigger = data.trigger as any;
-  if (data.conditions !== undefined) updateData.conditions = data.conditions as any;
-  if (data.actions !== undefined) updateData.actions = data.actions as any;
+  if (data.stopOnMatch !== undefined) {
+    updateData.stopOnMatch = data.stopOnMatch;
+    updateData.stopProcessing = data.stopOnMatch;
+  }
+  if (data.isActive !== undefined) {
+    updateData.isActive = data.isActive;
+    updateData.enabled = data.isActive;
+  }
+  if (data.trigger !== undefined) {
+    updateData.trigger = data.trigger as any;
+    updateData.eventType = String(data.trigger.type ?? '');
+  }
+  if (data.conditions !== undefined) {
+    updateData.conditions = data.conditions as any;
+    updateData.conditionsJson = data.conditions as any;
+  }
+  if (data.actions !== undefined) {
+    updateData.actions = data.actions as any;
+    updateData.actionsJson = data.actions as any;
+  }
 
   const rule = await prisma.automationRule.update({
     where: { id },

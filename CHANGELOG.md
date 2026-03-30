@@ -9,6 +9,13 @@ All notable changes to the **open333CRM** project will be documented in this fil
   - `unified-interaction-canvas`：已手動同步 main specs 後封存
   - `crm-core-logic`：已手動同步 main specs 後封存
   - `channel-plugins-expansion`：無 delta specs，帶 validation warning 封存
+- **API bootstrap source of truth moved back to `apps/api/src/index.ts` (2026-03-30)** — 現行 Fastify bootstrap、channel plugin registration、workers/schedulers、dev/start scripts 已收斂回 `index.ts`，`main.ts` 降為相容 delegate。
+- **Local runtime config aligned with docker-compose ports (2026-03-30)** — root `.env.example`、`apps/api/.env.example`、README 與 Redis fallback 已對齊 Postgres `5433` / Redis `6380`，避免 bootstrap 已切回 `index.ts` 後仍沿用錯誤本機埠。
+- **Database source of truth restored to `packages/database` (2026-03-30)** — root `db:*` scripts、Docker build、API wiring 全數切回 `packages/database`，`packages/db` 改為相容 alias，不再作為主要 Prisma schema 來源。
+- **Schema reconciliation completed for API runtime (2026-03-30)** — 以 `packages/database/prisma/schema.prisma` 為主，併回 Daniel 線上已被 API 使用的相容模型與欄位（如 automation legacy fields、notifications、daily stats、campaign/broadcast recipient、portal、shortlink 等），同時保留 Tenant / Identity / Canvas 架構。
+
+### Fixed
+- **API build recovered after schema split** — 補齊 Prisma client regenerate、`packages/core` / `packages/shared` rebuild、canvas/webhook 型別與 import 修正，`pnpm --filter @open333crm/api build` 已恢復成功。
 
 ## [v0.2.0] - 2026-03-25
 

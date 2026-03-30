@@ -96,9 +96,25 @@ export async function updateFlow(
     status?: string;
   },
 ) {
+  const updateData: {
+    name?: string;
+    description?: string;
+    triggerType?: string;
+    triggerConfig?: object;
+    maxStepLimit?: number;
+    status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  } = {
+    ...(data.name !== undefined ? { name: data.name } : {}),
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    ...(data.triggerType !== undefined ? { triggerType: data.triggerType } : {}),
+    ...(data.triggerConfig !== undefined ? { triggerConfig: data.triggerConfig } : {}),
+    ...(data.maxStepLimit !== undefined ? { maxStepLimit: data.maxStepLimit } : {}),
+    ...(data.status !== undefined ? { status: data.status as 'DRAFT' | 'ACTIVE' | 'ARCHIVED' } : {}),
+  };
+
   return prisma.interactionFlow.update({
     where: { id, tenantId },
-    data,
+    data: updateData,
     include: { nodes: true },
   });
 }

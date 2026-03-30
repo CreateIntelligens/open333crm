@@ -172,14 +172,16 @@ docker compose ps
 ### 4. 設定環境變數
 
 ```bash
-# API 環境變數
-cp apps/api/.env.example apps/api/.env
+# 根目錄環境變數
+cp .env.example .env
 
 # Web 環境變數
 cp apps/web/.env.example apps/web/.env
 ```
 
-**API 主要環境變數** (`apps/api/.env`):
+`apps/api/src/index.ts` 會先載入**專案根目錄**的 `.env`。如果你只改 `apps/api/.env`，目前不會被 API bootstrap 讀到。
+
+**API 主要環境變數** (`.env`):
 ```env
 # 資料庫（注意：port 5433）
 DATABASE_URL=postgresql://crm:crmpassword@localhost:5433/open333crm
@@ -225,15 +227,15 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 
 ```bash
 # 生成 Prisma Client
-pnpm --filter @open333crm/db exec prisma generate
+pnpm db:generate
 
 # 執行 Migrations
-pnpm --filter @open333crm/db exec prisma migrate deploy
+pnpm --filter @open333crm/database exec prisma migrate deploy
 
 # 載入種子資料（包含 demo 帳號）
-pnpm --filter @open333crm/db exec prisma db seed
+pnpm db:seed
 
-# 載入示範資料（可選）
+# 載入示範資料（可選；demo SQL 目前仍放在 legacy alias package）
 docker exec -i open333crm-postgres psql -U crm open333crm < packages/db/demo-data.sql
 ```
 
@@ -264,16 +266,16 @@ pnpm --filter @open333crm/web dev     # Web: http://localhost:3000
 
 ```bash
 # 生成 Prisma Client
-pnpm --filter @open333crm/db exec prisma generate
+pnpm db:generate
 
 # 創建新 Migration
-pnpm --filter @open333crm/db exec prisma migrate dev --name your_migration_name
+pnpm db:migrate -- --name your_migration_name
 
 # 重置資料庫（危險！會清空所有資料）
-pnpm --filter @open333crm/db exec prisma migrate reset
+pnpm --filter @open333crm/database exec prisma migrate reset
 
 # 打開 Prisma Studio（資料庫 GUI）
-pnpm --filter @open333crm/db exec prisma studio
+pnpm db:studio
 ```
 
 ### Docker 常用指令
@@ -521,17 +523,17 @@ pnpm test:coverage
 - **portal_activities** - 粉絲活動
 - **short_links** - 短連結
 
-完整 Schema 請參考 [`packages/db/prisma/schema.prisma`](packages/db/prisma/schema.prisma)
+完整 Schema 請參考 [`packages/database/prisma/schema.prisma`](packages/database/prisma/schema.prisma)
 
 ## 🐛 故障排除
 
 ### 常見問題
 
-#### Q: PostgreSQL 連線失敗（port 5432）
-A: 本專案使用 **port 5433**（避免與本機 PostgreSQL 衝突），請確認 `DATABASE_URL` 設定正確。
+#### Q: PostgreSQL 連線失敗（顯示 5432）
+A: `docker-compose.yml` 對外發布的是 **5433**。如果錯誤訊息還顯示 `localhost:5432`，代表你的 `.env` 仍是舊設定，請改成 `DATABASE_URL=postgresql://crm:crmpassword@localhost:5433/open333crm`。
 
-#### Q: Redis 連線失敗（port 6379）
-A: 本專案使用 **port 6380**，請確認 `REDIS_URL` 設定正確。
+#### Q: Redis 連線失敗（顯示 6379）
+A: `docker-compose.yml` 對外發布的是 **6380**。如果錯誤訊息還顯示 `localhost:6379`，代表你的 `.env` 或 fallback 還沒對齊，請改成 `REDIS_URL=redis://localhost:6380`。
 
 #### Q: Docker 指令找不到
 A: macOS 用戶請確保 Docker 在 PATH 中：
@@ -542,7 +544,7 @@ export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
 #### Q: Prisma Client 找不到
 A: 執行以下指令重新生成：
 ```bash
-pnpm --filter @open333crm/db exec prisma generate
+pnpm db:generate
 ```
 
 #### Q: ESM import 錯誤
@@ -604,7 +606,7 @@ const systemPrompt = `你是一個專業的客服助理...`;
 
 1. 在 `apps/api/src/channels/` 新增渠道資料夾
 2. 實作 `ChannelPlugin` 介面
-3. 註冊到 `main.ts`
+3. 註冊到 `apps/api/src/index.ts`
 
 ## 🤝 貢獻指南
 
