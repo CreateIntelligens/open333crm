@@ -18,6 +18,6 @@
 
 ## 4. Verify and Document
 
-- [ ] 4.1 Build the API and verify startup succeeds from the consolidated `index.ts` entrypoint
-- [ ] 4.2 Smoke-check that route registration, channel webhook handling, and background workers remain reachable after consolidation
+- [x] 4.1 Build the API and verify startup succeeds from the consolidated `index.ts` entrypoint
+- [x] 4.2 Smoke-check that route registration, channel webhook handling, and background workers remain reachable after consolidation
 - [x] 4.3 Update README, changelog, or contributor guidance to state that `index.ts` is the single bootstrap owner
