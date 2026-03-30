@@ -33,9 +33,9 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **DB Schema (`Notification`)**: 新增 `Notification` 模型，用於持久化儲存小鈴鐺通知。
 - **UI Wireframes**: 加入「小鈴鐺下拉選單」與「AI Copilot 建議面板」的 ASCII 設計。
 
----
+## OpenSpec Change Notes
 
-## [Unreleased] — 0.5.0 (unified-interaction-canvas)
+### unified-interaction-canvas (target 0.5.0, not released)
 
 > **狀態**：OpenSpec `opsx:apply` 任務已全數勾選，但實作仍在收尾中；目前已完成核心後端串接，尚未達到可封存狀態。變更由 `openspec/changes/unified-interaction-canvas` 管理。
 
@@ -54,9 +54,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **Do not archive yet**: 雖然 OpenSpec 任務清單顯示完成，但整個 repo 仍存在既有 type/schema 漂移，需等 `unified-interaction-canvas` 相關整合測試補齊後再考慮封存。
 - **Canvas email env**: 若需實際送信，請配置 `EMAIL_DELIVERY_MODE=webhook`、`EMAIL_WEBHOOK_URL`，必要時再補 `EMAIL_WEBHOOK_AUTH_TOKEN` 與 `EMAIL_FROM`。
 
----
-
-## [Unreleased] — 0.4.0 (docs-01-02-architecture)
+### docs-01-02-architecture (target 0.4.0, archived)
 
 > **狀態**：完成核心架構實作與多租戶隔離。變更由 `openspec/changes/docs-01-02-architecture` 管理並已封存。
 
@@ -77,9 +75,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ### Fixed
 - **Monorepo 編譯依賴** — 修復 `packages/database` 與 `packages/channel-plugins` 的 TypeScript 編譯設定與 Redis 型別轉換問題。
 
----
-
-## [Unreleased] — 0.3.0 (line-oa-channel-plugin)
+### line-oa-channel-plugin (target 0.3.0, archived)
 
 > **狀態**：OpenSpec 實作完成，測試（11.x）待補。變更由 `openspec/changes/line-oa-channel-plugin` 管理。
 
@@ -111,12 +107,9 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **Workers**: 需配置並啟動 `media-download`, `narrowcast-progress`, `insight-sync` 三個 BullMQ Workers 以支援媒體轉存與分析同步。
 - **Credentials**: 確保 LINE Channel 憑證中包含 `channelAccessToken` 與 `channelSecret`。
 
----
+### multi-channel-billing (planned)
 
-## [Unreleased] — 0.2.0 (multi-channel-billing)
-
-
-> **\u72c0\u614b**\uff1aOpenSpec \u958b\u653e\u4e2d\uff0c\u5be6\u4f5c\u9707\u524d\u3002\u8b8a\u66f4\u7531 `openspec/changes/multi-channel-billing` \u7ba1\u7406\u3002
+> **狀態**：OpenSpec 開放中，尚未開始實作。變更由 `openspec/changes/multi-channel-billing` 管理。
 
 ### Planned: Added
 - **Telegram Channel Plugin** \u2014 \u652f\u63f4\u6587\u5b57\u3001\u5716\u7247\u3001\u8cbc\u5716\u3001\u4f4d\u7f6e\u3001Callback Query\uff08\u6309\u9215\uff09\u6536\u767c
@@ -137,8 +130,6 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **New**: `channel_team_accesses` \u8868\uff08Channel \u591a\u5c0d\u591a Team\uff09
 - **New**: `channel_usages` \u8868\uff08\u8a0a\u606f\u8a08\u8cbb\u8a18\u9304\uff09
 - **Modified**: `teams` \u8868\u65b0\u589e `licenseTeamId` \u6b04\u4f4d\uff08\u5c0d\u61c9 License JSON teamId\uff09
-
----
 
 ## [0.1.0] - 2026-03-18
 
