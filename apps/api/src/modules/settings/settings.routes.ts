@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { getOfficeHours, updateOfficeHours } from './office-hours.service.js';
+import { requireSupervisor } from '../../guards/rbac.guard.js';
 
 const dayScheduleSchema = z.object({
   start: z.string().regex(/^\d{2}:\d{2}$/),
@@ -28,6 +29,7 @@ const officeHoursSchema = z.object({
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
+  fastify.addHook('preHandler', requireSupervisor());
 
   // GET /api/v1/settings/office-hours
   fastify.get('/office-hours', async (request, reply) => {

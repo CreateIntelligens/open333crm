@@ -11,6 +11,7 @@ import {
   exportCsv,
 } from './analytics.service.js';
 import { success } from '../../shared/utils/response.js';
+import { requireSupervisor } from '../../guards/rbac.guard.js';
 
 const dateRangeSchema = z.object({
   from: z.coerce.date().default(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
@@ -38,6 +39,7 @@ const exportSchema = z.object({
 
 export default async function analyticsRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
+  fastify.addHook('preHandler', requireSupervisor());
 
   // GET /analytics/overview
   fastify.get('/overview', async (request, reply) => {

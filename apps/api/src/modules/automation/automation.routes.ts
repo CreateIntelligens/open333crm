@@ -17,6 +17,7 @@ import {
   listLogs,
 } from './automation.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
+import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
 
 // ── Validation schemas ──────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // ── GET /api/v1/automation/rules ────────────────────────────────────────
-  fastify.get('/rules', async (request, reply) => {
+  fastify.get('/rules', { preHandler: requireSupervisor() }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
@@ -107,7 +108,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── POST /api/v1/automation/rules ───────────────────────────────────────
-  fastify.post('/rules', async (request, reply) => {
+  fastify.post('/rules', { preHandler: requireAdmin() }, async (request, reply) => {
     const data = createRuleSchema.parse(request.body);
 
     const rule = await createRule(
@@ -120,7 +121,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── GET /api/v1/automation/rules/:id ────────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/rules/:id', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/rules/:id', { preHandler: requireSupervisor() }, async (request, reply) => {
     const rule = await getRule(
       fastify.prisma,
       request.params.id,
@@ -131,7 +132,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── PATCH /api/v1/automation/rules/:id ──────────────────────────────────
-  fastify.patch<{ Params: { id: string } }>('/rules/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/rules/:id', { preHandler: requireAdmin() }, async (request, reply) => {
     const data = updateRuleSchema.parse(request.body);
 
     const rule = await updateRule(
@@ -145,7 +146,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   });
 
   // ── DELETE /api/v1/automation/rules/:id ─────────────────────────────────
-  fastify.delete<{ Params: { id: string } }>('/rules/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/rules/:id', { preHandler: requireAdmin() }, async (request, reply) => {
     const rule = await deleteRule(
       fastify.prisma,
       request.params.id,

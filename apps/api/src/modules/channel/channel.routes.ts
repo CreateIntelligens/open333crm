@@ -10,6 +10,7 @@ import {
   updateWebhookBaseUrl,
 } from './channel.service.js';
 import { success } from '../../shared/utils/response.js';
+import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
@@ -68,13 +69,13 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/channels
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: requireSupervisor() }, async (request, reply) => {
     const channels = await listChannels(fastify.prisma, request.agent.tenantId);
     return reply.send(success(channels));
   });
 
   // POST /api/v1/channels
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: requireAdmin() }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
 
     const channel = await createChannel(fastify.prisma, request.agent.tenantId, data);
@@ -83,7 +84,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/channels/:id
-  fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requireSupervisor() }, async (request, reply) => {
     const channel = await getChannel(
       fastify.prisma,
       request.params.id,
@@ -94,7 +95,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/channels/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requireAdmin() }, async (request, reply) => {
     const data = updateChannelSchema.parse(request.body);
 
     const channel = await updateChannel(
@@ -108,7 +109,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/channels/:id
-  fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requireAdmin() }, async (request, reply) => {
     const result = await deleteChannel(
       fastify.prisma,
       request.params.id,

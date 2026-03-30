@@ -32,6 +32,7 @@ import {
   deleteCampaign,
 } from './campaign.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
+import { requireSupervisor } from '../../guards/rbac.guard.js';
 
 // --- Schemas ---
 
@@ -139,6 +140,7 @@ const createBroadcastSchema = z.object({
 export default async function marketingRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
+  fastify.addHook('preHandler', requireSupervisor());
 
   // ─── Templates ────────────────────────────────────────────────────────────
 
