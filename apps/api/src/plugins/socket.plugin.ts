@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import type { FastifyInstance } from 'fastify';
 import { Server as SocketIOServer } from 'socket.io';
+import IORedis from 'ioredis';
 import { getConfig } from '../config/env.js';
 
 declare module 'fastify' {
@@ -73,8 +74,25 @@ async function socketPlugin(fastify: FastifyInstance) {
 
   fastify.decorate('io', io);
 
+  // ── Redis pub/sub bridge — forward events from standalone workers ────────────
+  const socketBridgeSub = new IORedis(config.REDIS_URL);
+  await socketBridgeSub.subscribe('socket:emit');
+  socketBridgeSub.on('message', (_channel, message) => {
+    try {
+      const payload = JSON.parse(message) as { room?: string; event?: string; data?: unknown };
+      if (typeof payload.room !== 'string' || typeof payload.event !== 'string') {
+        fastify.log.warn({ message }, '[SocketBridge] Malformed message, discarding');
+        return;
+      }
+      io.to(payload.room).emit(payload.event as any, payload.data);
+    } catch (err) {
+      fastify.log.warn({ err }, '[SocketBridge] Failed to parse socket:emit message');
+    }
+  });
+
   fastify.addHook('onClose', async () => {
     io.close();
+    socketBridgeSub.disconnect();
     fastify.log.info('Socket.IO server closed');
   });
 }
