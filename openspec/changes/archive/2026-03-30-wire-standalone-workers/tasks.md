@@ -54,4 +54,4 @@
 - [ ] 7.3 Smoke-test the SLA worker: manually insert a conversation with an overdue SLA in the database and confirm the worker detects and updates it within 60 seconds
 - [ ] 7.4 Smoke-test the broadcast worker: create a scheduled broadcast campaign due in the past and confirm the worker executes it within 60 seconds
 - [ ] 7.5 Smoke-test the notification worker: trigger an action in the API that enqueues a notification job and confirm the standalone worker processes it and the UI receives the socket event
-- [ ] 7.6 Update `CHANGELOG.md` with an entry noting that the standalone worker process now executes SLA polling, broadcast scheduling, automation rule evaluation, and notification dispatch
+- [x] 7.6 Update `CHANGELOG.md` with an entry noting that the standalone worker process now executes SLA polling, broadcast scheduling, automation rule evaluation, and notification dispatch

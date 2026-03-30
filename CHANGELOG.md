@@ -5,6 +5,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ## [Unreleased]
 
 ### Changed
+- **Standalone BullMQ workers fully wired (2026-03-30)** — `apps/workers/` 獨立 worker 程序已從空殼升級為完整實作：SLA 輪詢、廣播排程以 BullMQ repeating job（每 60s）執行；Notification 與 Automation 改以 BullMQ job consumer 非同步消費。API 同步 enqueue 至 BullMQ 佇列（雙路徑，不影響現有 in-process 邏輯）。新增 Redis pub/sub socket bridge（`socket:emit` channel），worker 程序可透過 Redis 將 WebSocket 事件中繼至 API 的 Socket.IO clients。
 - **OpenSpec archives completed (2026-03-26)** — 已封存 `unified-interaction-canvas`、`crm-core-logic`、`channel-plugins-expansion` 三個 change。
   - `unified-interaction-canvas`：已手動同步 main specs 後封存
   - `crm-core-logic`：已手動同步 main specs 後封存
