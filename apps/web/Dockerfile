@@ -1,27 +1,47 @@
-FROM node:20-alpine
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-# Enable pnpm
 RUN corepack enable
 
-# Install dependencies (monorepo)
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
-COPY packages/channel-plugins/package.json packages/channel-plugins/package.json
-COPY packages/core/package.json packages/core/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/ui/package.json packages/ui/package.json
-RUN cat > pnpm-workspace.yaml <<'EOF_PNPM'
-packages:
-  - "apps/web"
-  - "packages/*"
-EOF_PNPM
-RUN pnpm install --frozen-lockfile
 
-# Copy source
-COPY . .
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
-EXPOSE 3001
+# ---- Builder ----
+FROM deps AS builder
 
-CMD ["pnpm", "--filter", "@open333crm/web", "dev"]
+COPY tsconfig.base.json ./
+COPY apps/web ./apps/web
+COPY packages/types ./packages/types
+COPY packages/ui ./packages/ui
+
+RUN pnpm --filter @open333crm/types build
+RUN pnpm --filter @open333crm/web build
+
+# ---- Runner ----
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+RUN corepack enable
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /app/apps/web/.next ./apps/web/.next
+COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
+COPY --from=builder /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=builder /app/packages/types ./packages/types
+COPY --from=builder /app/packages/ui ./packages/ui
+
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+CMD ["pnpm", "--filter", "@open333crm/web", "start"]
+

@@ -1,39 +1,60 @@
-FROM node:20-alpine
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-# Enable pnpm
 RUN corepack enable
 
-# Prisma engine runtime dependencies (Alpine)
+# Alpine deps for Prisma
 RUN apk add --no-cache openssl libc6-compat
 
-# Install dependencies (monorepo)
-COPY package.json pnpm-lock.yaml ./
+# Copy manifests for all workspace packages that api depends on
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/channel-plugins/package.json packages/channel-plugins/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/database/package.json packages/database/package.json
+COPY packages/shared/package.json packages/shared/package.json
 COPY packages/types/package.json packages/types/package.json
-COPY packages/ui/package.json packages/ui/package.json
-RUN cat > pnpm-workspace.yaml <<'EOF_PNPM'
-packages:
-  - "apps/api"
-  - "packages/*"
-EOF_PNPM
+
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# Copy base config
-COPY tsconfig.base.json ./
+# ---- Builder ----
+FROM deps AS builder
 
-# Copy only required source code
+COPY tsconfig.base.json ./
 COPY apps/api ./apps/api
 COPY packages ./packages
 
-# Generate Prisma client at build time (no DB needed), then build database package
+# Generate Prisma client, then build packages in dependency order
 RUN pnpm --filter @open333crm/database exec prisma generate
 RUN pnpm --filter @open333crm/database build
+RUN pnpm --filter @open333crm/types build
+RUN pnpm --filter @open333crm/shared build
+RUN pnpm --filter @open333crm/core build
+RUN pnpm --filter @open333crm/channel-plugins build
+RUN pnpm --filter @open333crm/api build
 
-EXPOSE 3000 5555
+# ---- Runner ----
+FROM node:20-alpine AS runner
 
-CMD ["pnpm", "--filter", "@open333crm/api", "dev"]
+WORKDIR /app
+
+RUN corepack enable
+RUN apk add --no-cache openssl libc6-compat
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/packages ./packages
+COPY apps/api/docker-entrypoint.sh ./apps/api/docker-entrypoint.sh
+RUN chmod +x apps/api/docker-entrypoint.sh
+
+ENV NODE_ENV=production
+
+EXPOSE 3001
+
+CMD ["sh", "apps/api/docker-entrypoint.sh"]
+

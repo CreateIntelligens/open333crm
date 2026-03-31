@@ -3,6 +3,9 @@ dist/
 .next/
 .env
 .env.local
+.env.api
+.env.workers
+.env.web
 *.log
 .turbo/
 .DS_Store

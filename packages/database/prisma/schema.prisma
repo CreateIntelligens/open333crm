@@ -576,7 +576,7 @@ model AutomationExecution {
 
   tenant Tenant          @relation(fields: [tenantId], references: [id])
   rule   AutomationRule? @relation(fields: [ruleId], references: [id])
-  ruleId String?
+  ruleId String?         @db.Uuid
 
   actionResults AutomationActionResult[]
 
