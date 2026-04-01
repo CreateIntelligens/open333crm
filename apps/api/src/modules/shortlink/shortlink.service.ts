@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
+import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -147,6 +148,7 @@ export async function handleClick(
   prisma: PrismaClient,
   slug: string,
   meta: { contactId?: string; ip?: string; userAgent?: string; referer?: string },
+  io?: SocketIOServer,
 ) {
   const link = await prisma.shortLink.findUnique({ where: { slug } });
   if (!link || !link.isActive) return null;
@@ -181,13 +183,23 @@ export async function handleClick(
       }
 
       // Increment counters
-      await prisma.shortLink.update({
+      const updated = await prisma.shortLink.update({
         where: { id: link.id },
         data: {
           totalClicks: { increment: 1 },
           ...(isUnique ? { uniqueClicks: { increment: 1 } } : {}),
         },
+        select: { totalClicks: true, uniqueClicks: true },
       });
+
+      // Notify frontend in real-time
+      if (io) {
+        io.to(`tenant:${link.tenantId}`).emit('link.stats.updated', {
+          shortLinkId: link.id,
+          totalClicks: updated.totalClicks,
+          uniqueClicks: updated.uniqueClicks,
+        });
+      }
 
       // Auto-tag contact
       if (meta.contactId && link.tagOnClick) {

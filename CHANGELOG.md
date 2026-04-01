@@ -5,6 +5,12 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ## [Unreleased]
 
 ### Added
+- **Shortlink real-time click stats via Socket.IO (2026-04-01)** — 短連結點擊後立即透過 Socket.IO 廣播 `link.stats.updated` 事件至同一 tenant 的所有連線者，前端 `useShortLinks`（列表頁）與 `useClickStats`（詳情頁）訂閱事件並即時 mutate，不再需要重新整理頁面。
+
+### Fixed
+- **Caddy WebSocket proxy missing `/socket.io/*` route (2026-04-01)** — `Caddyfile` 缺少 `/socket.io/*` 路由，導致所有 Socket.IO 流量被轉發至 `web:3000` 而非 `api:3001`，造成 `WebSocket connection failed: timeout` 並 fallback to polling 失敗。新增路由規則後 socket 連線恢復正常，`/socket.io/?transport=polling` 回傳 HTTP 200 並包含 `"upgrades":["websocket"]`。
+
+### Added
 - **RBAC guards implemented (2026-03-30)** — 新增 `apps/api/src/guards/rbac.guard.ts`，提供 `requireRole(allowedRoles)`、`requireAdmin()`、`requireSupervisor()` 三個 Fastify preHandler factory。權限矩陣：ADMIN 擁有全部操作；SUPERVISOR 可讀 channels/automation/analytics/settings/marketing/webhooks；AGENT 僅限 conversations 等不受限端點。已套用至 channel、automation、sla、settings、analytics、marketing、webhook-subscription、portal 等模組。資料層過濾（tenant scope 以外的 row-level security）延後實作。
 
 ### Changed

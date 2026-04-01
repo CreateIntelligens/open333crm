@@ -18,7 +18,7 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
       ip: request.ip,
       userAgent: request.headers['user-agent'],
       referer: request.headers.referer,
-    });
+    }, app.io);
 
     if (!redirectUrl) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Link not found or expired' } });
