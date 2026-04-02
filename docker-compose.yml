@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: crm
       POSTGRES_PASSWORD: crmpassword
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -29,6 +29,7 @@ services:
       timeout: 5s
       retries: 5
 
+  ## TODO : pull OLLAMA_CHAT_MODEL OLLAMA_EMBED_MODEL
   ollama:
     image: ollama/ollama
     container_name: open333crm-ollama

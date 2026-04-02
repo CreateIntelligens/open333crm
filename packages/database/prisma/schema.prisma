@@ -6,11 +6,175 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [pgvector(map: "vector"), pgcrypto]
+  extensions = [pgvector(map: "vector", schema: "public")]
 }
 
 // ─────────────────────────────────────────────
-// 基礎：Tenant（企業客戶）
+// Enums
+// ─────────────────────────────────────────────
+
+enum AgentRole {
+  ADMIN
+  SUPERVISOR
+  AGENT
+}
+
+enum ChannelType {
+  LINE
+  FB
+  WEBCHAT
+  WHATSAPP
+  TELEGRAM
+  THREADS
+}
+
+enum ConversationStatus {
+  ACTIVE
+  BOT_HANDLED
+  AGENT_HANDLED
+  CLOSED
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum SenderType {
+  CONTACT
+  AGENT
+  BOT
+  SYSTEM
+}
+
+enum CaseStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  ESCALATED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TagType {
+  MANUAL
+  AUTO
+  SYSTEM
+  CHANNEL
+}
+
+enum TagScope {
+  CONTACT
+  CONVERSATION
+  CASE
+}
+
+enum KmStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ScopeType {
+  TENANT
+  TEAM
+  CHANNEL
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ActionResultStatus {
+  SUCCESS
+  FAILED
+  ROLLED_BACK
+}
+
+enum ExecutionState {
+  RUNNING
+  WAITING
+  COMPLETED
+  FAILED
+}
+
+enum FlowStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum NodeType {
+  TRIGGER
+  MESSAGE
+  WAIT
+  CONDITION
+  API_FETCH
+  AI_GEN
+  ACTION
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum BroadcastStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum PortalActivityType {
+  POLL
+  FORM
+  QUIZ
+}
+
+enum PortalActivityStatus {
+  DRAFT
+  PUBLISHED
+  ENDED
+  ARCHIVED
+}
+
+enum TemplateViewStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum StitchSource {
+  LIFF_COOKIE
+  PHONE_MATCH
+  EMAIL_MATCH
+  MANUAL
+  OTP_VERIFIED
+}
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────────
+// Tenant
 // ─────────────────────────────────────────────
 
 model Tenant {
@@ -49,13 +213,13 @@ model Tenant {
 }
 
 // ─────────────────────────────────────────────
-// 基礎：Agent（客服人員）
+// Agent（客服人員）
 // ─────────────────────────────────────────────
 
 model Agent {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId     String    @db.Uuid
-  email        String    @unique
+  email        String
   name         String
   avatarUrl    String?
   role         AgentRole @default(AGENT)
@@ -73,18 +237,18 @@ model Agent {
   sentMessages  Message[]
   notifications Notification[]
 
-  @@map("agents")
   @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("agents")
 }
 
-enum AgentRole {
-  ADMIN
-  SUPERVISOR
-  AGENT
-}
+// ─────────────────────────────────────────────
+// Team
+// ─────────────────────────────────────────────
 
 model Team {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @db.Uuid
   name          String
   licenseTeamId String? // 對應 License JSON teams[].teamId（平台方分配字串）
   createdAt     DateTime @default(now())
@@ -95,21 +259,23 @@ model Team {
   channelAccesses ChannelTeamAccess[]
   channelUsages   ChannelUsage[]
 
+  @@index([tenantId])
   @@map("teams")
 }
 
 model AgentTeamMember {
   agentId String @db.Uuid
   teamId  String @db.Uuid
-  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  team    Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@id([agentId, teamId])
   @@map("agent_team_members")
 }
 
 // ─────────────────────────────────────────────
-// 渠道（Channel）
+// Channel（渠道）
 // ─────────────────────────────────────────────
 
 model Channel {
@@ -120,7 +286,7 @@ model Channel {
   isActive             Boolean     @default(true)
   credentialsEncrypted String // AES-256 加密後的 JSON
   settings             Json        @default("{}")
-  webhookUrl           String? // 系統自動填入
+  webhookUrl           String?
   lastVerifiedAt       DateTime?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
@@ -132,29 +298,21 @@ model Channel {
   teamAccesses      ChannelTeamAccess[]
   usages            ChannelUsage[]
 
+  @@index([tenantId])
   @@map("channels")
 }
 
-enum ChannelType {
-  LINE
-  FB
-  WEBCHAT
-  WHATSAPP
-  TELEGRAM
-  THREADS
-}
-
 // ─────────────────────────────────────────────
-// Channel 多部門授權（ChannelTeamAccess）
+// Channel 多部門授權
 // ─────────────────────────────────────────────
 
 model ChannelTeamAccess {
   channelId   String   @db.Uuid
   teamId      String   @db.Uuid
-  // full: 回覆+廣播 | reply_only: 僅回覆 | read_only: 僅讀入站
+  // full | reply_only | read_only
   accessLevel String   @default("full")
   grantedAt   DateTime @default(now())
-  grantedById String?  @db.Uuid // Agent.id
+  grantedById String?  @db.Uuid
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -165,17 +323,17 @@ model ChannelTeamAccess {
 }
 
 // ─────────────────────────────────────────────
-// 渠道計費記錄（ChannelUsage）
+// 渠道計費記錄
 // ─────────────────────────────────────────────
 
 model ChannelUsage {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   channelId    String    @db.Uuid
-  teamId       String?   @db.Uuid // 僅報表用，不影響 Credit 計算
-  direction    Direction // INBOUND | OUTBOUND
+  teamId       String?   @db.Uuid
+  direction    Direction
   messageCount Int       @default(1)
-  feeAmount    Float? // null = 免費渠道
-  feeCurrency  String? // USD | TWD | null
+  feeAmount    Float?
+  feeCurrency  String?
   recordedAt   DateTime  @default(now())
 
   channel Channel @relation(fields: [channelId], references: [id])
@@ -186,22 +344,23 @@ model ChannelUsage {
   @@map("channel_usages")
 }
 
-// 聯繫人（Contact）
+// ─────────────────────────────────────────────
+// Contact（聯繫人）
 // ─────────────────────────────────────────────
 
 model Contact {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String   @db.Uuid
-  displayName String
-  avatarUrl   String?
-  phone       String?
-  email       String?
-  language    String   @default("zh-TW")
-  isBlocked   Boolean  @default(false)
-  isArchived  Boolean  @default(false)
-  mergedIntoId String? @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @db.Uuid
+  displayName  String
+  avatarUrl    String?
+  phone        String?
+  email        String?
+  language     String   @default("zh-TW")
+  isBlocked    Boolean  @default(false)
+  isArchived   Boolean  @default(false)
+  mergedIntoId String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -217,8 +376,9 @@ model Contact {
   portalSubmissions PortalSubmission[]
   pointTransactions PointTransaction[]
 
-  @@index([phone])
-  @@index([email])
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
   @@map("contacts")
 }
 
@@ -227,7 +387,7 @@ model ChannelIdentity {
   contactId   String      @db.Uuid
   channelId   String      @db.Uuid
   channelType ChannelType
-  uid         String // LINE userId / FB psid / etc.
+  uid         String
   profileName String?
   profilePic  String?
   linkedAt    DateTime    @default(now())
@@ -243,9 +403,9 @@ model ChannelIdentity {
 model ContactAttribute {
   id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contactId String @db.Uuid
-  key       String // e.g. 'appliance_brand'
+  key       String
   value     String
-  dataType  String @default("string") // string | number | date | boolean
+  dataType  String @default("string")
 
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
@@ -257,7 +417,7 @@ model ContactRelation {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   fromContactId String   @db.Uuid
   toContactId   String   @db.Uuid
-  relationType  String // referrer / family / colleague
+  relationType  String
   notes         String?
   createdAt     DateTime @default(now())
 
@@ -269,7 +429,7 @@ model ContactRelation {
 }
 
 // ─────────────────────────────────────────────
-// 標籤（Tag）
+// Tag（標籤）
 // ─────────────────────────────────────────────
 
 model Tag {
@@ -288,24 +448,11 @@ model Tag {
   @@map("tags")
 }
 
-enum TagType {
-  MANUAL
-  AUTO
-  SYSTEM
-  CHANNEL
-}
-
-enum TagScope {
-  CONTACT
-  CONVERSATION
-  CASE
-}
-
 model ContactTag {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contactId String    @db.Uuid
   tagId     String    @db.Uuid
-  addedBy   String    @default("agent") // agent | system | automation
+  addedBy   String    @default("agent")
   addedById String?   @db.Uuid
   addedAt   DateTime  @default(now())
   expiresAt DateTime?
@@ -318,25 +465,25 @@ model ContactTag {
 }
 
 // ─────────────────────────────────────────────
-// 對話與訊息（Conversation & Message）
+// Conversation & Message
 // ─────────────────────────────────────────────
 
 model Conversation {
-  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId      String             @db.Uuid
-  contactId     String             @db.Uuid
-  channelId     String             @db.Uuid
-  teamId        String?            @db.Uuid
-  channelType   ChannelType
-  status        ConversationStatus @default(ACTIVE)
-  assignedToId  String?            @db.Uuid
-  caseId        String?            @unique @db.Uuid
-  unreadCount   Int                @default(0)
-  lastMessageAt DateTime?
-  botRepliesCount Int              @default(0)
-  handoffReason String?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String             @db.Uuid
+  contactId       String             @db.Uuid
+  channelId       String             @db.Uuid
+  teamId          String?            @db.Uuid
+  channelType     ChannelType
+  status          ConversationStatus @default(ACTIVE)
+  assignedToId    String?            @db.Uuid
+  caseId          String?            @unique @db.Uuid
+  unreadCount     Int                @default(0)
+  lastMessageAt   DateTime?
+  botRepliesCount Int                @default(0)
+  handoffReason   String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -347,17 +494,10 @@ model Conversation {
   case       Case?     @relation(fields: [caseId], references: [id])
   messages   Message[]
 
-  @@index([status])
-  @@index([contactId])
-  @@index([lastMessageAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@index([tenantId, contactId])
+  @@index([tenantId, lastMessageAt(sort: Desc)])
   @@map("conversations")
-}
-
-enum ConversationStatus {
-  ACTIVE
-  BOT_HANDLED
-  AGENT_HANDLED
-  CLOSED
 }
 
 model Message {
@@ -366,10 +506,10 @@ model Message {
   direction      Direction  @default(INBOUND)
   senderType     SenderType
   senderId       String?    @db.Uuid
-  contentType    String // text | image | file | flex | template | postback | ...
+  contentType    String
   content        Json
   metadata       Json       @default("{}")
-  channelMsgId   String? // 渠道原始 message ID
+  channelMsgId   String?
   isRead         Boolean    @default(false)
   createdAt      DateTime   @default(now())
 
@@ -380,49 +520,36 @@ model Message {
   @@map("messages")
 }
 
-enum Direction {
-  INBOUND
-  OUTBOUND
-}
-
-enum SenderType {
-  CONTACT
-  AGENT
-  BOT
-  SYSTEM
-}
-
 // ─────────────────────────────────────────────
-// 案件（Case）
+// Case（案件）
 // ─────────────────────────────────────────────
 
 model Case {
-  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String     @db.Uuid
-  contactId      String     @db.Uuid
-  channelId      String     @db.Uuid
-  conversationId String?    @db.Uuid
-  title          String
-  description    String?
-  status         CaseStatus @default(OPEN)
-  priority       Priority   @default(MEDIUM)
-  category       String?
-  assigneeId     String?    @db.Uuid
-  teamId         String?    @db.Uuid
-  slaPolicy      String? // SlaPolicy.id
-  slaDueAt       DateTime?
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String     @db.Uuid
+  contactId       String     @db.Uuid
+  channelId       String     @db.Uuid
+  conversationId  String?    @db.Uuid
+  title           String
+  description     String?
+  status          CaseStatus @default(OPEN)
+  priority        Priority   @default(MEDIUM)
+  category        String?
+  assigneeId      String?    @db.Uuid
+  teamId          String?    @db.Uuid
+  slaPolicy       String?
+  slaDueAt        DateTime?
   firstResponseAt DateTime?
-  resolvedAt     DateTime?
-  closedAt       DateTime?
-  csatScore      Int? // 1~5
-  csatComment    String?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  csatScore       Int?
+  csatComment     String?
   csatRespondedAt DateTime?
-  csatSentAt     DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-
-  mergedIntoId String? @db.Uuid
-  parentCaseId String? @db.Uuid
+  csatSentAt      DateTime?
+  mergedIntoId    String?    @db.Uuid
+  parentCaseId    String?    @db.Uuid
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   contact      Contact       @relation(fields: [contactId], references: [id])
@@ -441,34 +568,18 @@ model Case {
   events CaseEvent[]
   notes  CaseNote[]
 
-  @@index([status])
-  @@index([assigneeId])
-  @@index([slaDueAt])
+  @@index([tenantId, status])
+  @@index([tenantId, assigneeId])
+  @@index([tenantId, slaDueAt])
   @@map("cases")
-}
-
-enum CaseStatus {
-  OPEN
-  IN_PROGRESS
-  PENDING
-  RESOLVED
-  ESCALATED
-  CLOSED
-}
-
-enum Priority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
 }
 
 model CaseEvent {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   caseId    String   @db.Uuid
-  actorType String // agent | system | contact
+  actorType String
   actorId   String?  @db.Uuid
-  eventType String // created | assigned | status_changed | escalated | closed | ...
+  eventType String
   payload   Json     @default("{}")
   createdAt DateTime @default(now())
 
@@ -497,7 +608,7 @@ model CaseRelation {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   fromCaseId   String   @db.Uuid
   toCaseId     String   @db.Uuid
-  relationType String // relates_to, blocks, duplicates
+  relationType String // relates_to | blocks | duplicates
   createdAt    DateTime @default(now())
 
   fromCase Case @relation("FromCase", fields: [fromCaseId], references: [id], onDelete: Cascade)
@@ -510,7 +621,7 @@ model CaseRelation {
 
 model SlaPolicy {
   id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId             String?  @db.Uuid
+  tenantId             String   @db.Uuid
   name                 String
   priority             Priority
   firstResponseMinutes Int
@@ -524,7 +635,7 @@ model SlaPolicy {
 }
 
 // ─────────────────────────────────────────────
-// 自動化引擎（Automation Engine）
+// Automation Engine
 // ─────────────────────────────────────────────
 
 model AutomationRule {
@@ -541,9 +652,7 @@ model AutomationRule {
   scopeType      ScopeType @default(TENANT)
   scopeId        String?
   trigger        Json      @default("{}")
-  conditionsJson Json      @default("{}")
   conditions     Json      @default("{}")
-  actionsJson    Json      @default("[]")
   actions        Json      @default("[]")
   runCount       Int       @default(0)
   lastRunAt      DateTime?
@@ -555,7 +664,6 @@ model AutomationRule {
   executions AutomationExecution[]
   logs       AutomationLog[]
 
-  @@index([enabled])
   @@index([tenantId, isActive])
   @@index([eventType])
   @@map("automation_rules")
@@ -564,6 +672,7 @@ model AutomationRule {
 model AutomationExecution {
   id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String          @db.Uuid
+  ruleId           String?         @db.Uuid
   eventType        String
   eventId          String?
   factSnapshot     Json
@@ -574,12 +683,11 @@ model AutomationExecution {
   status           ExecutionStatus
   createdAt        DateTime        @default(now())
 
-  tenant Tenant          @relation(fields: [tenantId], references: [id])
-  rule   AutomationRule? @relation(fields: [ruleId], references: [id])
-  ruleId String?         @db.Uuid
-
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id])
+  rule          AutomationRule?         @relation(fields: [ruleId], references: [id])
   actionResults AutomationActionResult[]
 
+  @@index([tenantId])
   @@index([status])
   @@index([eventType])
   @@map("automation_executions")
@@ -606,29 +714,11 @@ model AutomationActionResult {
   @@map("automation_action_results")
 }
 
-enum ScopeType {
-  TENANT
-  TEAM
-  CHANNEL
-}
-
-enum ExecutionStatus {
-  SUCCESS
-  PARTIAL
-  FAILED
-}
-
-enum ActionResultStatus {
-  SUCCESS
-  FAILED
-  ROLLED_BACK
-}
-
 model AutomationLog {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ruleId     String   @db.Uuid
-  tenantId   String?  @db.Uuid
-  triggerRef String? // 觸發此規則的事件 ID
+  tenantId   String   @db.Uuid
+  triggerRef String?
   success    Boolean
   actionsRan Json     @default("[]")
   errorMsg   String?
@@ -638,7 +728,6 @@ model AutomationLog {
 
   @@index([ruleId])
   @@index([tenantId, createdAt(sort: Desc)])
-  @@index([createdAt(sort: Desc)])
   @@map("automation_logs")
 }
 
@@ -648,16 +737,16 @@ model AutomationLog {
 
 model KmArticle {
   id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String?                      @db.Uuid
+  tenantId       String                       @db.Uuid
   title          String
-  content        String // Markdown
+  content        String
   summary        String
   category       String
   tags           String[]
   status         KmStatus                     @default(DRAFT)
   version        String?                      @default("1.0")
   teamId         String?                      @db.Uuid
-  metadata       Json? // Any additional metadata
+  metadata       Json?
   embedding      Unsupported("vector(1536)")?
   embeddingModel String?
   viewCount      Int                          @default(0)
@@ -667,7 +756,6 @@ model KmArticle {
   createdAt      DateTime                     @default(now())
 
   @@index([tenantId, status])
-  @@index([status])
   @@index([teamId])
   @@map("km_articles")
 }
@@ -675,10 +763,10 @@ model KmArticle {
 model LongTermMemory {
   id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contactId      String                       @db.Uuid
-  content        String // Summarized content
+  content        String
   embedding      Unsupported("vector(1536)")?
   embeddingModel String?
-  metadata       Json? // { conversationId: string, topic: string, etc. }
+  metadata       Json?
   createdAt      DateTime                     @default(now())
 
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -687,14 +775,8 @@ model LongTermMemory {
   @@map("long_term_memories")
 }
 
-enum KmStatus {
-  DRAFT
-  PUBLISHED
-  ARCHIVED
-}
-
 // ─────────────────────────────────────────────
-// 訊息模板（Message Template）
+// Message Template
 // ─────────────────────────────────────────────
 
 model MessageTemplate {
@@ -703,10 +785,10 @@ model MessageTemplate {
   name            String
   description     String?
   category        String
-  channelType     String   @default("universal") // line | fb | universal
-  contentType     String // text | flex | quick_reply | fb_generic | fb_carousel
-  body            Json // TemplateBody（含 flexJson / text / quickReplies 等）
-  variables       Json     @default("[]") // TemplateVariable[]
+  channelType     String   @default("universal")
+  contentType     String
+  body            Json
+  variables       Json     @default("[]")
   previewImageUrl String?
   isActive        Boolean  @default(true)
   isSystem        Boolean  @default(false)
@@ -719,6 +801,30 @@ model MessageTemplate {
   @@index([tenantId])
   @@map("message_templates")
 }
+
+model TemplateView {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId  String             @db.Uuid
+  channelType String
+  contentType String
+  body        Json
+  variables   Json               @default("[]")
+  status      TemplateViewStatus @default(DRAFT)
+  reviewNotes String?
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  template MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, channelType])
+  @@map("template_views")
+}
+
+// ─────────────────────────────────────────────
+// Notification & Stats
+// ─────────────────────────────────────────────
 
 model Notification {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -744,7 +850,7 @@ model DailyStat {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String   @db.Uuid
   date        DateTime @db.Date
-  statType    String
+  statType    String // overview | channel | agent | case | contact
   dimensionId String?
   data        Json
   createdAt   DateTime @default(now())
@@ -773,31 +879,38 @@ model TenantSettings {
 // 行銷（Marketing）
 // ─────────────────────────────────────────────
 
-model MarketingCampaign {
-  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  description String?
-  status      CampaignStatus @default(DRAFT)
-  startDate   DateTime?
-  endDate     DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+model Segment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @db.Uuid
+  name         String
+  description  String?
+  rules        Json? // legacy segment rules
+  conditions   Json     @default("[]")
+  logic        String   @default("AND")
+  contactCount Int      @default(0)
+  createdById  String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  @@map("marketing_campaigns")
+  tenant     Tenant?     @relation(fields: [tenantId], references: [id])
+  broadcasts Broadcast[]
+
+  @@index([tenantId])
+  @@map("segments")
 }
 
 model Campaign {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String     @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
   name        String
   description String?
-  status      String     @default("draft")
+  status      String    @default("draft")
   startDate   DateTime?
   endDate     DateTime?
-  metrics     Json       @default("{}")
-  createdById String     @db.Uuid
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  metrics     Json      @default("{}")
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id])
   broadcasts Broadcast[]
@@ -806,55 +919,39 @@ model Campaign {
   @@map("campaigns")
 }
 
-enum CampaignStatus {
-  DRAFT
-  ACTIVE
-  COMPLETED
-  CANCELLED
-}
-
 model Broadcast {
-  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String          @db.Uuid
-  campaignId     String?         @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  campaignId     String?   @db.Uuid
+  segmentId      String?   @db.Uuid
+  templateId     String    @db.Uuid
+  channelId      String    @db.Uuid
   name           String
-  channelId      String          @db.Uuid
-  templateId     String          @db.Uuid
-  segmentId      String?         @db.Uuid
-  status         String          @default("draft")
-  targetType     String          @default("all")
-  targetConfig   Json            @default("{}")
+  status         String    @default("draft")
+  targetType     String    @default("all")
+  targetConfig   Json      @default("{}")
   scheduledAt    DateTime?
   sentAt         DateTime?
   startedAt      DateTime?
   completedAt    DateTime?
-  totalCount     Int             @default(0)
-  successCount   Int             @default(0)
-  failedCount    Int             @default(0)
-  totalSent      Int             @default(0)
-  totalDelivered Int             @default(0)
-  totalReplied   Int             @default(0)
-  createdById    String          @db.Uuid
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  totalCount     Int       @default(0)
+  successCount   Int       @default(0)
+  failedCount    Int       @default(0)
+  totalSent      Int       @default(0)
+  totalDelivered Int       @default(0)
+  totalReplied   Int       @default(0)
+  createdById    String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  campaign   Campaign? @relation(fields: [campaignId], references: [id])
-  segment    Segment?  @relation(fields: [segmentId], references: [id])
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  campaign   Campaign?           @relation(fields: [campaignId], references: [id])
+  segment    Segment?            @relation(fields: [segmentId], references: [id])
   recipients BroadcastRecipient[]
 
   @@index([tenantId, status])
-  @@index([status])
+  @@index([status, scheduledAt])
   @@map("broadcasts")
-}
-
-enum BroadcastStatus {
-  DRAFT
-  SCHEDULED
-  SENDING
-  COMPLETED
-  CANCELLED
-  FAILED
 }
 
 model BroadcastRecipient {
@@ -882,10 +979,10 @@ model BroadcastRecipient {
 model RichMenu {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   channelId      String   @db.Uuid
-  lineRichMenuId String // ID returned by LINE API
+  lineRichMenuId String
   name           String
   chatBarText    String
-  configJson     Json // Full rich menu config JSON
+  configJson     Json
   isDefault      Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -915,7 +1012,7 @@ model RichMenuAlias {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   richMenuId  String   @db.Uuid
   channelId   String   @db.Uuid
-  lineAliasId String // richMenuAliasId on LINE
+  lineAliasId String
   createdAt   DateTime @default(now())
 
   richMenu RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
@@ -925,16 +1022,16 @@ model RichMenuAlias {
 }
 
 // ─────────────────────────────────────────────
-// LINE OA — Audience Group (Narrowcast)
+// LINE OA — Audience Group
 // ─────────────────────────────────────────────
 
 model AudienceGroup {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   channelId           String   @db.Uuid
   segmentId           String?  @db.Uuid
-  lineAudienceGroupId String // ID returned by LINE API
+  lineAudienceGroupId String
   description         String
-  audienceType        String   @default("upload") // upload | click | impression
+  audienceType        String   @default("upload")
   size                Int      @default(0)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -944,7 +1041,7 @@ model AudienceGroup {
 }
 
 // ─────────────────────────────────────────────
-// LINE OA — Insight Snapshot (daily sync)
+// LINE OA — Insight Snapshot
 // ─────────────────────────────────────────────
 
 model InsightSnapshot {
@@ -954,32 +1051,12 @@ model InsightSnapshot {
   followers        Int      @default(0)
   blocks           Int      @default(0)
   targetedReaches  Int      @default(0)
-  demographicsJson Json? // raw demographics response
+  demographicsJson Json?
   createdAt        DateTime @default(now())
 
   @@unique([channelId, snapshotDate])
   @@index([channelId, snapshotDate(sort: Desc)])
   @@map("insight_snapshots")
-}
-
-model Segment {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String?  @db.Uuid
-  name       String
-  description String?
-  rules      Json? // legacy segment rules
-  conditions Json     @default("[]") // SegmentCondition[]
-  logic      String   @default("AND")
-  contactCount Int     @default(0)
-  createdById String?  @db.Uuid
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  tenant     Tenant?     @relation(fields: [tenantId], references: [id])
-  broadcasts Broadcast[]
-
-  @@index([tenantId])
-  @@map("segments")
 }
 
 // ─────────────────────────────────────────────
@@ -988,7 +1065,7 @@ model Segment {
 
 model WebhookSubscription {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId  String?  @db.Uuid
+  tenantId  String   @db.Uuid
   url       String
   events    String[]
   secret    String
@@ -996,7 +1073,7 @@ model WebhookSubscription {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant     Tenant?           @relation(fields: [tenantId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
   deliveries WebhookDelivery[]
 
   @@index([tenantId, isActive])
@@ -1020,18 +1097,9 @@ model WebhookDelivery {
   @@map("webhook_deliveries")
 }
 
-enum PortalActivityType {
-  POLL
-  FORM
-  QUIZ
-}
-
-enum PortalActivityStatus {
-  DRAFT
-  PUBLISHED
-  ENDED
-  ARCHIVED
-}
+// ─────────────────────────────────────────────
+// Fan Portal
+// ─────────────────────────────────────────────
 
 model PortalActivity {
   id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1060,12 +1128,12 @@ model PortalActivity {
 }
 
 model PortalOption {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  activityId String   @db.Uuid
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId String  @db.Uuid
   label      String
   imageUrl   String?
-  sortOrder  Int      @default(0)
-  isCorrect  Boolean  @default(false)
+  sortOrder  Int     @default(0)
+  isCorrect  Boolean @default(false)
 
   activity PortalActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 
@@ -1073,14 +1141,14 @@ model PortalOption {
 }
 
 model PortalField {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  activityId String   @db.Uuid
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  activityId String  @db.Uuid
   fieldKey   String
   label      String
-  fieldType  String   @default("text")
-  options    Json     @default("[]")
-  isRequired Boolean  @default(false)
-  sortOrder  Int      @default(0)
+  fieldType  String  @default("text")
+  options    Json    @default("[]")
+  isRequired Boolean @default(false)
+  sortOrder  Int     @default(0)
 
   activity PortalActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 
@@ -1125,6 +1193,10 @@ model PointTransaction {
   @@map("point_transactions")
 }
 
+// ─────────────────────────────────────────────
+// Short Links
+// ─────────────────────────────────────────────
+
 model ShortLink {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId     String    @db.Uuid
@@ -1145,7 +1217,7 @@ model ShortLink {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
   clickLogs ClickLog[]
 
   @@index([tenantId])
@@ -1171,7 +1243,7 @@ model ClickLog {
 }
 
 // ─────────────────────────────────────────────
-// 互動畫布（Interaction Canvas）
+// Interaction Canvas
 // ─────────────────────────────────────────────
 
 model InteractionFlow {
@@ -1180,7 +1252,7 @@ model InteractionFlow {
   name          String
   description   String?
   status        FlowStatus @default(DRAFT)
-  triggerType   String // webhook | schedule | manual | event
+  triggerType   String
   triggerConfig Json       @default("{}")
   maxStepLimit  Int        @default(100)
   createdAt     DateTime   @default(now())
@@ -1194,21 +1266,15 @@ model InteractionFlow {
   @@map("interaction_flows")
 }
 
-enum FlowStatus {
-  DRAFT
-  ACTIVE
-  ARCHIVED
-}
-
 model InteractionNode {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   flowId      String   @db.Uuid
   nodeType    NodeType
   label       String
-  config      Json     @default("{}") // node-specific config (message body, delay ms, API url, …)
-  position    Json     @default("{}") // { x: number, y: number } for canvas UI
-  nextNodeId  String?  @db.Uuid // default next node
-  falseNodeId String?  @db.Uuid // CONDITION false branch
+  config      Json     @default("{}")
+  position    Json     @default("{}")
+  nextNodeId  String?  @db.Uuid
+  falseNodeId String?  @db.Uuid
   sortOrder   Int      @default(0)
 
   flow InteractionFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
@@ -1217,20 +1283,6 @@ model InteractionNode {
   @@map("interaction_nodes")
 }
 
-enum NodeType {
-  TRIGGER
-  MESSAGE
-  WAIT
-  CONDITION
-  API_FETCH
-  AI_GEN
-  ACTION
-}
-
-// ─────────────────────────────────────────────
-// 流程執行記錄（Flow Execution）
-// ─────────────────────────────────────────────
-
 model FlowExecution {
   id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   flowId        String         @db.Uuid
@@ -1238,9 +1290,9 @@ model FlowExecution {
   tenantId      String         @db.Uuid
   status        ExecutionState @default(RUNNING)
   currentNodeId String?        @db.Uuid
-  contextVars   Json           @default("{}") // { ext: {…}, gen: {…}, contact: {…} }
+  contextVars   Json           @default("{}")
   stepCount     Int            @default(0)
-  resumeAt      DateTime? // set by WAIT nodes
+  resumeAt      DateTime?
   errorMessage  String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -1255,18 +1307,11 @@ model FlowExecution {
   @@map("flow_executions")
 }
 
-enum ExecutionState {
-  RUNNING
-  WAITING
-  COMPLETED
-  FAILED
-}
-
 model FlowLog {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   executionId String   @db.Uuid
   nodeId      String?  @db.Uuid
-  action      String // node_entered | message_sent | wait_scheduled | api_fetched | ai_generated | error
+  action      String
   result      Json     @default("{}")
   createdAt   DateTime @default(now())
 
@@ -1274,37 +1319,6 @@ model FlowLog {
 
   @@index([executionId])
   @@map("flow_logs")
-}
-
-// ─────────────────────────────────────────────
-// Template View（多通路模板版本）
-// ─────────────────────────────────────────────
-
-model TemplateView {
-  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  templateId  String             @db.Uuid
-  channelType String // email | line | fb | whatsapp | universal
-  contentType String // mjml_blocks | flex | quick_reply | hsm | text
-  body        Json // block JSON for email, flex JSON for LINE, etc.
-  variables   Json               @default("[]")
-  status      TemplateViewStatus @default(DRAFT)
-  reviewNotes String?
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-
-  template MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-
-  @@index([templateId, channelType])
-  @@map("template_views")
-}
-
-enum TemplateViewStatus {
-  DRAFT
-  PENDING_REVIEW
-  APPROVED
-  REJECTED
 }
 
 // ─────────────────────────────────────────────
@@ -1316,9 +1330,9 @@ model IdentityMap {
   tenantId    String       @db.Uuid
   contactId   String       @db.Uuid
   channelType ChannelType
-  uid         String // LINE UID / FB PSID / etc.
+  uid         String
   source      StitchSource
-  confidence  Float        @default(1.0) // 0.0–1.0
+  confidence  Float        @default(1.0)
   mergedAt    DateTime     @default(now())
   createdAt   DateTime     @default(now())
 
@@ -1330,21 +1344,13 @@ model IdentityMap {
   @@map("identity_maps")
 }
 
-enum StitchSource {
-  LIFF_COOKIE
-  PHONE_MATCH
-  EMAIL_MATCH
-  MANUAL
-  OTP_VERIFIED
-}
-
 model MergeSuggestion {
   id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String           @db.Uuid
   primaryContactId   String           @db.Uuid
   secondaryContactId String           @db.Uuid
-  reason             String // same_phone | same_email | ai_similarity
-  confidence         Float // 0.0–1.0
+  reason             String
+  confidence         Float
   status             SuggestionStatus @default(PENDING)
   reviewedById       String?          @db.Uuid
   reviewedAt         DateTime?
@@ -1354,10 +1360,4 @@ model MergeSuggestion {
 
   @@index([tenantId, status])
   @@map("merge_suggestions")
-}
-
-enum SuggestionStatus {
-  PENDING
-  APPROVED
-  REJECTED
 }

@@ -80,7 +80,7 @@
 - **json-rules-engine** - 規則引擎核心
 
 ### 資料庫與儲存
-- **PostgreSQL** - 主要資料庫（port 5433）
+- **PostgreSQL** - 主要資料庫（port 5432）
 - **Redis** - 快取與 Session（port 6380）
 - **MinIO** - S3 相容物件儲存（port 9000）
 
@@ -183,8 +183,8 @@ cp apps/web/.env.example apps/web/.env
 
 **API 主要環境變數** (`.env`):
 ```env
-# 資料庫（注意：port 5433）
-DATABASE_URL=postgresql://crm:crmpassword@localhost:5433/open333crm
+# 資料庫（注意：port 5432）
+DATABASE_URL=postgresql://crm:crmpassword@localhost:5432/open333crm
 
 # Redis（注意：port 6380）
 REDIS_URL=redis://localhost:6380
@@ -530,7 +530,7 @@ pnpm test:coverage
 ### 常見問題
 
 #### Q: PostgreSQL 連線失敗（顯示 5432）
-A: `docker-compose.yml` 對外發布的是 **5433**。如果錯誤訊息還顯示 `localhost:5432`，代表你的 `.env` 仍是舊設定，請改成 `DATABASE_URL=postgresql://crm:crmpassword@localhost:5433/open333crm`。
+A: `docker-compose.yml` 對外發布的是 **5432**。如果錯誤訊息還顯示 `localhost:5432`，代表你的 `.env` 仍是舊設定，請改成 `DATABASE_URL=postgresql://crm:crmpassword@localhost:5432/open333crm`。
 
 #### Q: Redis 連線失敗（顯示 6379）
 A: `docker-compose.yml` 對外發布的是 **6380**。如果錯誤訊息還顯示 `localhost:6379`，代表你的 `.env` 或 fallback 還沒對齊，請改成 `REDIS_URL=redis://localhost:6380`。

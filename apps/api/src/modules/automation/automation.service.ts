@@ -110,9 +110,7 @@ export async function createRule(
       stopProcessing: data.stopOnMatch ?? false,
       stopOnMatch: data.stopOnMatch ?? false,
       trigger: data.trigger as any,
-      conditionsJson: data.conditions as any,
       conditions: data.conditions as any,
-      actionsJson: data.actions as any,
       actions: data.actions as any,
       isActive: true,
     },
@@ -162,11 +160,9 @@ export async function updateRule(
   }
   if (data.conditions !== undefined) {
     updateData.conditions = data.conditions as any;
-    updateData.conditionsJson = data.conditions as any;
   }
   if (data.actions !== undefined) {
     updateData.actions = data.actions as any;
-    updateData.actionsJson = data.actions as any;
   }
 
   const rule = await prisma.automationRule.update({

@@ -56,9 +56,7 @@ export default async function automationRoutes(app: FastifyInstance) {
         priority: data.priority ?? 0,
         stopProcessing: stopOnMatch,
         stopOnMatch,
-        conditionsJson: conditions,
         conditions,
-        actionsJson: actions,
         actions,
       },
     });
@@ -101,19 +99,15 @@ export default async function automationRoutes(app: FastifyInstance) {
           stopOnMatch: data.stopOnMatch,
         }),
         ...(data.conditionsJson !== undefined && {
-          conditionsJson: data.conditionsJson,
           conditions: data.conditionsJson,
         }),
         ...(data.conditions !== undefined && {
-          conditionsJson: data.conditions,
           conditions: data.conditions,
         }),
         ...(data.actionsJson !== undefined && {
-          actionsJson: data.actionsJson,
           actions: data.actionsJson,
         }),
         ...(data.actions !== undefined && {
-          actionsJson: data.actions,
           actions: data.actions,
         }),
       },
