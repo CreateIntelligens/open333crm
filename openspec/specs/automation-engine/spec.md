@@ -8,18 +8,34 @@ The system SHALL trigger automation rules when an event occurs, such as `message
 - **THEN** matching automation rules are evaluated
 
 ### Requirement: Rule Conditions
-The system SHALL support evaluating complex boolean conditions on message/contact attributes.
+The system SHALL support evaluating complex boolean conditions on message/contact attributes. The system SHALL persist automation rule conditions using the `conditions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `conditionsJson` in database operations.
 
 #### Scenario: Matching VIP customer
 - **WHEN** a rule requires `contact.membership == "VIP"` and `message.sentiment == "negative"`
 - **THEN** the rule matches only if both conditions are true
 
+#### Scenario: Creating a rule with conditions
+- **WHEN** a new automation rule is created via the API
+- **THEN** the conditions are written to the `conditions` Prisma field only
+
+#### Scenario: Updating a rule's conditions
+- **WHEN** an automation rule is updated with new conditions
+- **THEN** the conditions are written to the `conditions` Prisma field only
+
 ### Requirement: Actions
-The system SHALL support actions such as `add_tag`, `send_message`, and `create_case`.
+The system SHALL support actions such as `add_tag`, `send_message`, and `create_case`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations.
 
 #### Scenario: Auto-tagging
 - **WHEN** a rule with `add_tag("hot_lead")` matches
 - **THEN** the `hot_lead` tag is attached to the contact
+
+#### Scenario: Creating a rule with actions
+- **WHEN** a new automation rule is created via the API
+- **THEN** the actions are written to the `actions` Prisma field only
+
+#### Scenario: Updating a rule's actions
+- **WHEN** an automation rule is updated with new actions
+- **THEN** the actions are written to the `actions` Prisma field only
 
 ---
 
