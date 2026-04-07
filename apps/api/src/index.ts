@@ -122,7 +122,7 @@ export async function bootstrap() {
   await app.register(identityRoutes, { prefix: '/api/v1/identity' });
 
   setupAutomationWorker(app.prisma, app.io);
-  setupNotificationWorker(app.prisma, app.io);
+  setupNotificationWorker(app.prisma);
   setupAnalyticsScheduler(app.prisma);
   setupBroadcastScheduler(app.prisma, app.io);
   setupCsatScheduler(app.prisma, app.io);
