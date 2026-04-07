@@ -3,7 +3,7 @@ import { createDecipheriv, scryptSync } from 'node:crypto';
 const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET ?? 'fallback-open333crm-key';
+  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY ?? 'fallback-open333crm-key';
   return scryptSync(secret, 'open333crm-credentials', 32) as Buffer;
 }
 

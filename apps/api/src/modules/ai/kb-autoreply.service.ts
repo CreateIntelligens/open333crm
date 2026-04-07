@@ -66,6 +66,7 @@ export async function attemptKbAutoReply(
     topK: 3,
     threshold: 0.3,
   });
+  console.log(`[KbAutoReply] searchSimilarArticles returned ${results.length} result(s) for conv ${conversationId}`);
   if (results.length === 0) return false;
 
   const topResult = results[0];

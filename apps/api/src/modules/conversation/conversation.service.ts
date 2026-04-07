@@ -474,15 +474,16 @@ export async function deliverToChannel(
       },
     });
 
-    if (!conv?.channel?.isActive) return;
+    if (!conv) { console.error('[deliverToChannel] Conversation not found:', conversationId); return; }
+    if (!conv.channel?.isActive) { console.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return; }
 
     const identity = conv.contact?.channelIdentities?.find(
       (ci) => ci.channelId === conv.channel.id,
     );
-    if (!identity) return;
+    if (!identity) { console.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return; }
 
     const plugin = getChannelPlugin(conv.channel.channelType);
-    if (!plugin) return;
+    if (!plugin) { console.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return; }
 
     let credentials: Record<string, unknown>;
     try {
@@ -492,11 +493,13 @@ export async function deliverToChannel(
       return;
     }
 
+    console.log(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid}`);
     await plugin.sendMessage(
       identity.uid,
       { contentType: 'text', content: { text } },
       credentials,
     );
+    console.log(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
   } catch (err) {
     console.error('[deliverToChannel] Error delivering to channel:', err);
   }
