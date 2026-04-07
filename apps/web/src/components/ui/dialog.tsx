@@ -11,6 +11,7 @@ interface DialogProps {
 
 function Dialog({ open, onOpenChange, children }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const lastClickTimeRef = useRef<number>(0);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -32,7 +33,11 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
       onClose={() => onOpenChange(false)}
       onClick={(e) => {
         if (e.target === dialogRef.current) {
-          onOpenChange(false);
+          const now = Date.now();
+          if (now - lastClickTimeRef.current < 300) {
+            onOpenChange(false);
+          }
+          lastClickTimeRef.current = now;
         }
       }}
     >
