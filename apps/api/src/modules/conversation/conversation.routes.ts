@@ -34,6 +34,7 @@ const sendMessageSchema = z.object({
 const messagesQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(50),
+  order: z.enum(['asc', 'desc']).default('desc'),
 });
 
 const createCaseFromConvSchema = z.object({
@@ -99,6 +100,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.params.id,
       query.page,
       query.limit,
+      query.order,
     );
 
     return reply.send(paginated(messages, total, query.page, query.limit));

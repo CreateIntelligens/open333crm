@@ -16,16 +16,20 @@ const fetcher = async (url: string) => {
 };
 
 export function useMessages(conversationId: string | null, filters: MessageFilters = {}) {
-  const { page = 1, limit = 100 } = filters;
+  const { page = 1, limit = 50 } = filters;
   const { socket } = useSocket();
   const [olderMessages, setOlderMessages] = useState<unknown[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const oldestRef = useRef<string | null>(null);
+  // Tracks the next page to fetch when loading older messages (page=1 is newest with order=desc)
+  const olderPageRef = useRef(1);
+  // Deduplicates rapid mutate calls (e.g. sendMessage + socket message.new firing together)
+  const lastMutateRef = useRef(0);
 
   const params = new URLSearchParams();
   params.set('page', String(page));
   params.set('limit', String(limit));
+  params.set('order', 'desc');
 
   const key = conversationId
     ? `/conversations/${conversationId}/messages?${params.toString()}`
@@ -33,20 +37,27 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
 
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);
 
+  const debouncedMutate = useCallback(() => {
+    const now = Date.now();
+    if (now - lastMutateRef.current < 500) return;
+    lastMutateRef.current = now;
+    mutate();
+  }, [mutate]);
+
   // Reset older messages when conversation changes
   useEffect(() => {
     setOlderMessages([]);
     setHasMore(true);
-    oldestRef.current = null;
+    olderPageRef.current = 1;
   }, [conversationId]);
 
-  // Listen for new messages
+  // Listen for new messages via WebSocket
   useEffect(() => {
     if (!socket || !conversationId) return;
 
     const handleNewMessage = (payload: { conversationId: string }) => {
       if (payload.conversationId === conversationId) {
-        mutate();
+        debouncedMutate();
       }
     };
 
@@ -55,42 +66,32 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
     return () => {
       socket.off('message.new', handleNewMessage);
     };
-  }, [socket, conversationId, mutate]);
+  }, [socket, conversationId, debouncedMutate]);
 
-  // Load older messages (cursor-based)
+  // Load older messages using page-based pagination (order=desc, so higher pages = older)
   const loadOlder = useCallback(async () => {
     if (!conversationId || loadingOlder || !hasMore) return;
 
-    const currentMessages = data?.data || [];
-    const allMessages = [...olderMessages, ...currentMessages];
-    const oldest = allMessages.length > 0
-      ? allMessages.reduce((min: { createdAt: string }, m: { createdAt: string }) =>
-          new Date(m.createdAt) < new Date(min.createdAt) ? m : min
-        )
-      : null;
-
-    if (!oldest || (oldest as { id?: string }).id === oldestRef.current) return;
-
     setLoadingOlder(true);
     try {
-      const beforeDate = (oldest as { createdAt: string }).createdAt;
-      const res = await api.get(`/conversations/${conversationId}/messages?limit=50&page=1`);
-      const older = (res.data.data || []).filter(
-        (m: { createdAt: string }) => new Date(m.createdAt) < new Date(beforeDate)
+      const nextPage = olderPageRef.current + 1;
+      const res = await api.get(
+        `/conversations/${conversationId}/messages?limit=${limit}&page=${nextPage}&order=desc`
       );
+      const older = res.data.data || [];
 
       if (older.length === 0) {
         setHasMore(false);
       } else {
         setOlderMessages((prev) => [...older, ...prev]);
-        oldestRef.current = (oldest as { id: string }).id;
+        olderPageRef.current = nextPage;
       }
     } catch (err) {
       console.error('Failed to load older messages:', err);
     } finally {
       setLoadingOlder(false);
     }
-  }, [conversationId, data, olderMessages, loadingOlder, hasMore]);
+  }, [conversationId, limit, loadingOlder, hasMore]);
 
   const sendMessage = useCallback(
     async (content: string, contentType: string = 'text') => {
@@ -101,7 +102,6 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
         content: contentType === 'text' ? { text: content } : { url: content },
       };
 
-      // Try to parse content as JSON for image/file types
       if (contentType !== 'text') {
         try {
           const parsed = JSON.parse(content);
@@ -112,12 +112,14 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
       }
 
       const res = await api.post(`/conversations/${conversationId}/messages`, body);
-      mutate();
+      debouncedMutate();
       return res.data;
     },
-    [conversationId, mutate]
+    [conversationId, debouncedMutate]
   );
 
+  // olderMessages are older pages (higher page numbers); data?.data is the latest page (page=1)
+  // Both are in desc order from API; sort ascending for display in ChatWindow
   const allMessages = [...olderMessages, ...(data?.data || [])];
 
   return {

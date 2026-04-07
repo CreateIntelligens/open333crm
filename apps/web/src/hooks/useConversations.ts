@@ -35,9 +35,7 @@ export function useConversations(filters: ConversationFilters = {}) {
 
   const key = `/conversations?${params.toString()}`;
 
-  const { data, error, isLoading, mutate } = useSWR(key, fetcher, {
-    refreshInterval: 30000,
-  });
+  const { data, error, isLoading, mutate } = useSWR(key, fetcher);
 
   // Listen for real-time updates
   useEffect(() => {

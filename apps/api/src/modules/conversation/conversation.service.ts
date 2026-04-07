@@ -189,11 +189,12 @@ export async function getMessages(
   conversationId: string,
   page: number,
   limit: number,
+  order: 'asc' | 'desc' = 'asc',
 ) {
   const [messages, total] = await Promise.all([
     prisma.message.findMany({
       where: { conversationId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: order },
       skip: (page - 1) * limit,
       take: limit,
       include: {

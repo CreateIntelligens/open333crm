@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import api from '@/lib/api';
 import { ConversationList } from '@/components/inbox/ConversationList';
 import { ChatWindow } from '@/components/inbox/ChatWindow';
@@ -14,39 +15,21 @@ export default function InboxPage() {
   const router = useRouter();
   const convId = searchParams.get('conv');
 
-  const [selectedConversation, setSelectedConversation] = useState<Record<string, unknown> | null>(null);
   const [showAiSuggest, setShowAiSuggest] = useState(false);
   const [showHandoffModal, setShowHandoffModal] = useState(false);
 
-  // Fetch selected conversation details
-  useEffect(() => {
-    if (!convId) {
-      setSelectedConversation(null);
-      return;
-    }
-
-    api
-      .get(`/conversations/${convId}`)
-      .then((res) => setSelectedConversation(res.data.data))
-      .catch((err) => {
-        console.error('Failed to fetch conversation:', err);
-        setSelectedConversation(null);
-      });
-  }, [convId]);
+  // Fetch selected conversation details via SWR so globalMutate from ChatWindow triggers re-render
+  const { data: convData, mutate: mutateConversation } = useSWR(
+    convId ? `/conversations/${convId}` : null,
+    (url: string) => api.get(url).then((res) => res.data.data)
+  );
+  const selectedConversation: Record<string, unknown> | null = convData ?? null;
 
   const handleSelectConversation = (id: string) => {
     setShowAiSuggest(false);
     setShowHandoffModal(false);
     router.push(`/dashboard/inbox?conv=${id}`, { scroll: false });
   };
-
-  const refreshConversation = useCallback(() => {
-    if (!convId) return;
-    api
-      .get(`/conversations/${convId}`)
-      .then((res) => setSelectedConversation(res.data.data))
-      .catch(() => {});
-  }, [convId]);
 
   const contact = selectedConversation?.contact as Record<string, unknown> | undefined;
   const caseData = selectedConversation?.case as Record<string, unknown> | undefined;
@@ -145,7 +128,7 @@ export default function InboxPage() {
             open={showHandoffModal}
             onClose={() => setShowHandoffModal(false)}
             conversationId={convId}
-            onConfirm={refreshConversation}
+            onConfirm={() => mutateConversation()}
           />
         )}
       </div>

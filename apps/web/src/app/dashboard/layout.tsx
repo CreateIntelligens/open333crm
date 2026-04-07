@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { SWRConfig } from 'swr';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { SocketProvider } from '@/providers/SocketProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -48,7 +49,9 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardShell>{children}</DashboardShell>
+      <SWRConfig value={{ revalidateOnFocus: false, revalidateOnReconnect: false }}>
+        <DashboardShell>{children}</DashboardShell>
+      </SWRConfig>
     </AuthProvider>
   );
 }
