@@ -7,6 +7,7 @@ import {
   updateTemplate,
   deleteTemplate,
   listTemplateCategories,
+  getAvailableVariables,
   previewTemplate,
   renderAndSendTemplate,
   broadcastMessage,
@@ -67,7 +68,6 @@ const updateTemplateSchema = z.object({
 const previewTemplateSchema = z.object({
   contactId: z.string().uuid().optional(),
   conversationId: z.string().uuid().optional(),
-  caseId: z.string().uuid().optional(),
   variables: z.record(z.string()).optional(),
   useSampleData: z.boolean().optional(),
 });
@@ -147,6 +147,12 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   // IMPORTANT: /templates/categories must be registered BEFORE /templates/:id
   fastify.get('/templates/categories', async (request, reply) => {
     const categories = await listTemplateCategories(fastify.prisma, request.agent.tenantId);
+    return reply.send(success(categories));
+  });
+
+  // GET /templates/available-variables — list of variables usable in templates
+  fastify.get('/templates/available-variables', async (request, reply) => {
+    const categories = await getAvailableVariables(fastify.prisma, request.agent.tenantId);
     return reply.send(success(categories));
   });
 

@@ -7,10 +7,38 @@
 
 import type { PrismaClient } from '@prisma/client';
 
+export interface VariableMeta {
+  key: string;
+  label: string;
+  example: string;
+}
+
+export interface VariableCategory {
+  category: string;
+  variables: VariableMeta[];
+}
+
+/** Static variable metadata shared between the API and sampleVariables(). */
+export const STATIC_VARIABLE_METADATA: VariableCategory[] = [
+  {
+    category: '聯絡人',
+    variables: [
+      { key: 'contact.name', label: '姓名', example: '陳小明' },
+      { key: 'contact.phone', label: '電話', example: '0912-345-678' },
+      { key: 'contact.email', label: 'Email', example: 'demo@example.com' },
+    ],
+  },
+  {
+    category: '系統',
+    variables: [
+      { key: 'storage.base_url', label: '儲存空間網址', example: 'https://storage.example.com' },
+    ],
+  },
+];
+
 interface ResolveContextOpts {
   contactId?: string;
   conversationId?: string;
-  caseId?: string;
   tenantId?: string;
 }
 
@@ -55,21 +83,6 @@ export async function resolveContext(
       for (const attr of contact.attributes) {
         vars[`attribute.${attr.key}`] = attr.value;
       }
-    }
-  }
-
-  // ── Case ────────────────────────────────────────────────────────────────────
-  if (opts.caseId) {
-    const caseRecord = await prisma.case.findUnique({
-      where: { id: opts.caseId },
-    });
-
-    if (caseRecord) {
-      vars['case.id'] = caseRecord.id;
-      vars['case.title'] = caseRecord.title;
-      vars['case.status'] = caseRecord.status;
-      vars['case.priority'] = caseRecord.priority;
-      if (caseRecord.category) vars['case.category'] = caseRecord.category;
     }
   }
 

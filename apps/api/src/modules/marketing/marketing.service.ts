@@ -11,7 +11,7 @@ import {
   sampleVariables,
   type TemplateVariable,
 } from './template-renderer.js';
-import { resolveContext } from './template-context.js';
+import { resolveContext, STATIC_VARIABLE_METADATA, type VariableCategory } from './template-context.js';
 
 // --- Template CRUD ---
 
@@ -180,6 +180,34 @@ export async function listTemplateCategories(prisma: PrismaClient, tenantId: str
   return rows.map((r) => r.category);
 }
 
+export async function getAvailableVariables(
+  prisma: PrismaClient,
+  tenantId: string,
+): Promise<VariableCategory[]> {
+  // Query distinct attribute keys used by this tenant's contacts
+  const attrRows = await prisma.contactAttribute.findMany({
+    where: { contact: { tenantId } },
+    select: { key: true },
+    distinct: ['key'],
+    orderBy: { key: 'asc' },
+  });
+
+  const categories: VariableCategory[] = [...STATIC_VARIABLE_METADATA];
+
+  if (attrRows.length > 0) {
+    categories.push({
+      category: '自訂屬性',
+      variables: attrRows.map((r) => ({
+        key: `attribute.${r.key}`,
+        label: r.key,
+        example: '',
+      })),
+    });
+  }
+
+  return categories;
+}
+
 // --- Template Preview & Render ---
 
 export async function previewTemplate(
@@ -189,7 +217,6 @@ export async function previewTemplate(
   opts: {
     contactId?: string;
     conversationId?: string;
-    caseId?: string;
     variables?: Record<string, string>;
     useSampleData?: boolean;
   },
@@ -201,11 +228,10 @@ export async function previewTemplate(
   // Build variables map
   let vars: Record<string, string> = {};
 
-  if (opts.contactId || opts.conversationId || opts.caseId) {
+  if (opts.contactId || opts.conversationId) {
     const ctx = await resolveContext(prisma, {
       contactId: opts.contactId,
       conversationId: opts.conversationId,
-      caseId: opts.caseId,
       tenantId,
     });
     vars = { ...vars, ...ctx };
@@ -684,7 +710,7 @@ async function resolveAudience(
   }
 
   const identities = await prisma.channelIdentity.findMany({
-    where: identityWhere as any,
+    where: identityWhere,
     select: {
       uid: true,
       contactId: true,

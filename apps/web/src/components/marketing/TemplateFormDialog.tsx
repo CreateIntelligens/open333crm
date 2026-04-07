@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, Plus, Trash2, Eye } from 'lucide-react';
 import api from '@/lib/api';
 import useSWR from 'swr';
@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { VariablePicker, type VariableCategory, type VariableMeta } from './VariablePicker';
 
 interface TemplateVariable {
   key: string;
@@ -174,12 +175,23 @@ export function TemplateFormDialog({
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
+  // Ref to the bodyText textarea for cursor-position tracking
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const cursorPosRef = useRef<number | null>(null);
+
   // Fetch categories for dropdown
   const { data: categoriesData } = useSWR(
     open ? '/marketing/templates/categories' : null,
     fetcher,
   );
   const existingCategories: string[] = categoriesData?.data || [];
+
+  // Fetch available variables for Variable Picker
+  const { data: availableVarsData } = useSWR(
+    open ? '/marketing/templates/available-variables' : null,
+    fetcher,
+  );
+  const availableVariableCategories: VariableCategory[] = availableVarsData?.data || [];
 
   useEffect(() => {
     if (template) {
@@ -345,6 +357,35 @@ export function TemplateFormDialog({
       v.map((item, i) => (i === idx ? { ...item, [field]: value } : item)),
     );
 
+  // Insert variable from picker into bodyText at cursor position
+  const handleInsertVariable = useCallback((v: VariableMeta) => {
+    const snippet = `{{${v.key}}}`;
+    const textarea = bodyTextareaRef.current;
+    const pos = cursorPosRef.current;
+
+    setForm((f) => {
+      const text = f.bodyText;
+      const insertAt = pos !== null && pos >= 0 ? pos : text.length;
+      const newText = text.slice(0, insertAt) + snippet + text.slice(insertAt);
+      // Restore cursor after React re-render
+      requestAnimationFrame(() => {
+        if (textarea) {
+          const newPos = insertAt + snippet.length;
+          textarea.focus();
+          textarea.setSelectionRange(newPos, newPos);
+          cursorPosRef.current = newPos;
+        }
+      });
+      return { ...f, bodyText: newText };
+    });
+
+    // Auto-append variable definition if not already present
+    setVariables((vars) => {
+      if (vars.some((item) => item.key === v.key)) return vars;
+      return [...vars, { key: v.key, label: v.label, defaultValue: v.example, required: false }];
+    });
+  }, []);
+
   // --- Quick reply list helpers ---
   const addQuickReply = () =>
     setForm((f) => ({
@@ -499,10 +540,26 @@ export function TemplateFormDialog({
 
             {/* Body Editor — dynamic by contentType */}
             <div>
-              <label className="mb-1.5 block text-sm font-medium">訊息內容</label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-sm font-medium">訊息內容</label>
+                {(form.contentType === 'text' || form.contentType === 'image' ||
+                  form.contentType === 'quick_reply') && (
+                  <VariablePicker
+                    categories={availableVariableCategories}
+                    onInsert={handleInsertVariable}
+                  />
+                )}
+              </div>
               <Textarea
+                ref={bodyTextareaRef}
                 value={form.bodyText}
-                onChange={(e) => setForm((f) => ({ ...f, bodyText: e.target.value }))}
+                onChange={(e) => {
+                  cursorPosRef.current = e.target.selectionStart;
+                  setForm((f) => ({ ...f, bodyText: e.target.value }));
+                }}
+                onSelect={(e) => {
+                  cursorPosRef.current = (e.target as HTMLTextAreaElement).selectionStart;
+                }}
                 placeholder="輸入訊息內容，可使用 {{變數名稱}} 作為動態內容"
                 rows={form.contentType === 'text' ? 6 : 3}
                 required={form.contentType !== 'flex' && form.contentType !== 'fb_generic' && form.contentType !== 'fb_carousel'}
