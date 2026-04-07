@@ -43,12 +43,12 @@ services:
     command:
       - |
         ollama serve &
-        until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do sleep 2; done
+        until ollama list > /dev/null 2>&1; do sleep 2; done
         ollama pull $$OLLAMA_CHAT_MODEL
         ollama pull $$OLLAMA_EMBED_MODEL
         wait
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD-SHELL", "ollama list || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
