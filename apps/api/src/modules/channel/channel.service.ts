@@ -7,7 +7,10 @@ import { AppError } from '../../shared/utils/response.js';
 const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET ?? 'fallback-open333crm-key';
+  const secret = process.env.CREDENTIAL_KEY;
+  if (!secret) {
+    throw new Error('CREDENTIAL_KEY environment variable is required');
+  }
   return scryptSync(secret, 'open333crm-credentials', 32);
 }
 
