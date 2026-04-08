@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../base.plugin.js';
+import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../webhook-adapter.js';
 
 export class LinePlugin implements ChannelPlugin {
   readonly channelType = 'LINE';
@@ -189,7 +189,6 @@ export class LinePlugin implements ChannelPlugin {
       case 'text':
         return [{ type: 'text', text: (content.text as string) ?? '' }];
       case 'flex':
-        // Flex Message: content should contain { type, altText, contents }
         return [{
           type: 'flex',
           altText: (content.altText as string) ?? '訊息',

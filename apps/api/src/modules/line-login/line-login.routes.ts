@@ -7,7 +7,7 @@ import {
   verifyIdToken,
   updateContactEmail,
 } from './line-login.service.js';
-import { getChannelPlugin } from '../../channels/registry.js';
+import { getChannelPlugin } from '@open333crm/channel-plugins/webhook';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { success } from '../../shared/utils/response.js';
 

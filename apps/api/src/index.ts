@@ -46,10 +46,7 @@ import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupSlaWorker } from './modules/sla/sla.worker.js';
-import { registerChannelPlugin } from './channels/registry.js';
-import { linePlugin } from './channels/line/line.plugin.js';
-import { fbPlugin } from './channels/fb/fb.plugin.js';
-import { webchatPlugin } from './channels/webchat/webchat.plugin.js';
+import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin } from '@open333crm/channel-plugins/webhook';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

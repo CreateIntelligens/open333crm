@@ -1,4 +1,4 @@
-import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../base.plugin.js';
+import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../webhook-adapter.js';
 
 export class WebchatPlugin implements ChannelPlugin {
   readonly channelType = 'WEBCHAT';
@@ -19,7 +19,6 @@ export class WebchatPlugin implements ChannelPlugin {
   ): Promise<ParsedWebhookMessage[]> {
     const body = JSON.parse(rawBody.toString());
 
-    // Webchat payload is simpler - a single message at a time
     return [
       {
         channelMsgId: body.messageId,
@@ -39,7 +38,6 @@ export class WebchatPlugin implements ChannelPlugin {
     uid: string,
     _credentials: Record<string, unknown>,
   ): Promise<{ uid: string; displayName: string; avatarUrl?: string }> {
-    // For webchat, the profile is typically provided by the visitor
     return {
       uid,
       displayName: `Visitor ${uid.slice(-6)}`,
@@ -52,8 +50,6 @@ export class WebchatPlugin implements ChannelPlugin {
     message: OutboundPayload,
     _credentials: Record<string, unknown>,
   ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
-    // For webchat, messages are pushed via Socket.IO to the visitor's session.
-    // The actual push happens in the calling code via io.to(room).
     console.log(`[WEBCHAT] Sending message to ${to}:`, JSON.stringify(message.content));
     return {
       success: true,

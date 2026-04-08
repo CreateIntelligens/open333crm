@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
-import { getChannelPlugin } from '../../channels/registry.js';
+import { getChannelPlugin } from '@open333crm/channel-plugins/webhook';
 import { decryptCredentials } from '../channel/channel.service.js';
 import {
   renderTemplateBody,

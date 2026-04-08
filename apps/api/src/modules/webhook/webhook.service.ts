@@ -1,9 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
-import { getChannelPlugin } from '../../channels/registry.js';
+import { getChannelPlugin } from '@open333crm/channel-plugins/webhook';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
-import type { ParsedWebhookMessage } from '../../channels/base.plugin.js';
+import type { ParsedWebhookMessage } from '@open333crm/channel-plugins/webhook';
 import { trackBroadcastReply } from '../marketing/broadcast.tracking.js';
 import { recordCsatScore } from '../csat/csat.service.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
