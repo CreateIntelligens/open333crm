@@ -5,14 +5,12 @@
 import * as crypto from 'node:crypto';
 import type {
   ChannelPlugin,
-  ChannelCredentials,
   ChannelUiExtension,
   ChannelAudienceExtension,
   ChannelAnalyticsExtension,
-  OutboundMessage,
-  SendResult,
+  ParsedWebhookMessage,
+  OutboundPayload,
 } from '../index.js';
-import type { UniversalMessage, ContactProfile } from '@open333crm/types';
 
 // ─────────────────────────────────────────────────────────────────
 // Credentials
@@ -89,10 +87,11 @@ async function linePut(path: string, token: string, body: unknown): Promise<unkn
 // Build LINE outbound message objects
 // ─────────────────────────────────────────────────────────────────
 
-function buildLineMessage(msg: OutboundMessage): unknown {
-  const quickReply = msg.quickReplies?.length
+function buildLineMessage(contentType: string, content: Record<string, unknown>): unknown {
+  const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string; imageUrl?: string }> | undefined;
+  const quickReply = quickReplies?.length
     ? {
-        items: msg.quickReplies.map((r) => ({
+        items: quickReplies.map((r) => ({
           type: 'action',
           ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
           action: r.postbackData
@@ -104,45 +103,45 @@ function buildLineMessage(msg: OutboundMessage): unknown {
 
   const base = quickReply ? { quickReply } : {};
 
-  switch (msg.type) {
+  switch (contentType) {
     case 'text':
-      return { type: 'text', text: msg.text ?? '', ...base };
+      return { type: 'text', text: content.text ?? '', ...base };
     case 'image':
       return {
         type: 'image',
-        originalContentUrl: msg.mediaUrl,
-        previewImageUrl: msg.previewUrl ?? msg.mediaUrl,
+        originalContentUrl: content.mediaUrl,
+        previewImageUrl: content.previewUrl ?? content.mediaUrl,
         ...base,
       };
     case 'video':
       return {
         type: 'video',
-        originalContentUrl: msg.mediaUrl,
-        previewImageUrl: msg.previewUrl ?? msg.mediaUrl,
-        ...(msg.trackingId ? { trackingId: msg.trackingId } : {}),
+        originalContentUrl: content.mediaUrl,
+        previewImageUrl: content.previewUrl ?? content.mediaUrl,
+        ...(content.trackingId ? { trackingId: content.trackingId } : {}),
         ...base,
       };
     case 'audio':
-      return { type: 'audio', originalContentUrl: msg.mediaUrl, duration: 0, ...base };
+      return { type: 'audio', originalContentUrl: content.mediaUrl, duration: 0, ...base };
     case 'location':
       return {
         type: 'location',
-        title: msg.text ?? 'Location',
-        address: msg.address ?? '',
-        latitude: msg.latitude ?? 0,
-        longitude: msg.longitude ?? 0,
+        title: content.text ?? 'Location',
+        address: content.address ?? '',
+        latitude: content.latitude ?? 0,
+        longitude: content.longitude ?? 0,
         ...base,
       };
     case 'sticker':
-      return { type: 'sticker', packageId: msg.packageId ?? '1', stickerId: msg.stickerId ?? '1', ...base };
+      return { type: 'sticker', packageId: content.packageId ?? '1', stickerId: content.stickerId ?? '1', ...base };
     case 'flex':
-      return { type: 'flex', altText: msg.text ?? 'Message', contents: msg.flexJson, ...base };
+      return { type: 'flex', altText: content.altText ?? content.text ?? 'Message', contents: content.flexJson ?? content.contents, ...base };
     case 'imagemap':
-      return { ...msg.imagemapJson, type: 'imagemap', ...base };
+      return { ...(content.imagemapJson as object ?? {}), type: 'imagemap', ...base };
     case 'template':
-      return { type: 'template', altText: msg.text ?? 'Message', template: msg.templateJson, ...base };
+      return { type: 'template', altText: content.text ?? 'Message', template: content.templateJson, ...base };
     default:
-      return { type: 'text', text: msg.text ?? '', ...base };
+      return { type: 'text', text: content.text ?? '', ...base };
   }
 }
 
@@ -163,87 +162,105 @@ export class LinePlugin implements ChannelPlugin {
     return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
   }
 
-  // ─── Task 2.2: parseWebhook ─────────────────────────────────────
-  async parseWebhook(rawBody: Buffer, _headers: Record<string, string>): Promise<UniversalMessage[]> {
+  // ─── parseWebhook ──────────────────────────────────────────────
+  async parseWebhook(rawBody: Buffer, _headers: Record<string, string>): Promise<ParsedWebhookMessage[]> {
     const payload = JSON.parse(rawBody.toString()) as LineWebhookPayload;
-    const results: UniversalMessage[] = [];
+    const results: ParsedWebhookMessage[] = [];
 
     for (const event of payload.events ?? []) {
-      const base: Omit<UniversalMessage, 'messageType' | 'content'> = {
-        id: crypto.randomUUID(),
-        channelType: 'LINE',
-        channelId: '',           // filled by webhook router from URL :channelId param
-        direction: 'inbound',
-        contactUid: event.source?.userId ?? event.source?.groupId ?? '',
-        timestamp: new Date(event.timestamp),
-        rawPayload: event,
-      };
+      const contactUid = event.source?.userId ?? event.source?.groupId ?? '';
+      const timestamp = new Date(event.timestamp);
 
       switch (event.type) {
         case 'message': {
           const m = event.message!;
+          let contentType = m.type;
+          let content: Record<string, unknown> = {};
+
           switch (m.type) {
             case 'text':
-              results.push({ ...base, messageType: 'text', content: { text: m.text } });
+              content = { text: m.text };
               break;
             case 'image':
             case 'video':
             case 'audio':
             case 'file':
-              // mediaUrl will be resolved by media-download BullMQ worker (Task 3.x)
-              results.push({ ...base, messageType: m.type as UniversalMessage['messageType'], content: { mediaUrl: `line-content:${m.id}` } });
+              content = {
+                text: `[${m.type === 'image' ? '圖片' : m.type === 'video' ? '影片' : m.type === 'audio' ? '語音' : '檔案'}]`,
+                contentId: m.id,
+                fileName: (m as any).fileName,
+                fileSize: (m as any).fileSize,
+                mediaUrl: `line-content:${m.id}`,
+              };
               break;
             case 'location':
-              results.push({ ...base, messageType: 'location', content: { text: `${m.latitude},${m.longitude}`, templateData: { address: m.address, title: m.title } } });
+              content = {
+                text: `[位置] ${(m as any).title ?? (m as any).address ?? ''}`.trim(),
+                title: (m as any).title,
+                address: (m as any).address,
+                latitude: (m as any).latitude,
+                longitude: (m as any).longitude,
+              };
               break;
             case 'sticker':
-              results.push({ ...base, messageType: 'sticker', content: { templateData: { packageId: m.packageId, stickerId: m.stickerId } } });
+              content = {
+                text: '[貼圖]',
+                packageId: (m as any).packageId,
+                stickerId: (m as any).stickerId,
+              };
               break;
             default:
-              results.push({ ...base, messageType: 'unknown', content: {} });
+              contentType = 'unknown';
+              content = { text: `[${m.type}]` };
           }
+
+          results.push({ channelMsgId: m.id, contactUid, timestamp, contentType, content, rawPayload: event });
           break;
         }
 
         case 'postback':
-          results.push({ ...base, messageType: 'postback', content: { postbackData: event.postback?.data } });
+          results.push({
+            channelMsgId: undefined,
+            contactUid,
+            timestamp,
+            contentType: 'postback',
+            content: { text: event.postback?.data ?? '' },
+            rawPayload: event,
+          });
           break;
 
-        // Tasks 2.3, 2.5, 2.6 — system events (returned as synthetic messages for event bus)
         case 'follow':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'follow' } } });
-          break;
         case 'unfollow':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'unfollow' } } });
-          break;
         case 'join':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'join' } } });
-          break;
         case 'leave':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'leave' } } });
+          results.push({ contactUid, timestamp, contentType: event.type, content: { systemEvent: event.type }, rawPayload: event });
           break;
+
         case 'memberJoined':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'memberJoined', members: event.joined?.members } } });
+          results.push({ contactUid, timestamp, contentType: 'memberJoined', content: { systemEvent: 'memberJoined', members: event.joined?.members }, rawPayload: event });
           break;
+
         case 'memberLeft':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'memberLeft', members: event.left?.members } } });
+          results.push({ contactUid, timestamp, contentType: 'memberLeft', content: { systemEvent: 'memberLeft', members: event.left?.members }, rawPayload: event });
           break;
+
         case 'unsend':
-          // Task 2.4: mark message recalled — embed original messageId for downstream handler
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'unsend', originalMessageId: event.unsend?.messageId } } });
+          results.push({ contactUid, timestamp, contentType: 'unsend', content: { systemEvent: 'unsend', originalMessageId: event.unsend?.messageId }, rawPayload: event });
           break;
+
         case 'videoPlayComplete':
-          // Task 2.5: Automation trigger
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'videoPlayComplete', trackingId: event.videoPlayComplete?.trackingId } } });
+          results.push({ contactUid, timestamp, contentType: 'videoPlayComplete', content: { systemEvent: 'videoPlayComplete', trackingId: event.videoPlayComplete?.trackingId }, rawPayload: event });
           break;
+
         case 'accountLink':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'accountLink', result: event.link?.result, nonce: event.link?.nonce } } });
+          results.push({ contactUid, timestamp, contentType: 'accountLink', content: { systemEvent: 'accountLink', result: event.link?.result, nonce: event.link?.nonce }, rawPayload: event });
           break;
+
         case 'beacon':
-          results.push({ ...base, messageType: 'unknown', content: { templateData: { systemEvent: 'beacon', hwid: event.beacon?.hwid, beaconType: event.beacon?.type } } });
+          results.push({ contactUid, timestamp, contentType: 'beacon', content: { systemEvent: 'beacon', hwid: event.beacon?.hwid, beaconType: event.beacon?.type }, rawPayload: event });
           break;
+
         default:
-          // Ignore unknown event types gracefully
           break;
       }
     }
@@ -251,37 +268,35 @@ export class LinePlugin implements ChannelPlugin {
     return results;
   }
 
-  // ─── Task 10.4: getProfile ──────────────────────────────────────
-  async getProfile(uid: string, credentials: ChannelCredentials): Promise<ContactProfile> {
-    const creds = credentials as LineChannelCredentials;
-    const data = await lineGet(`/v2/bot/profile/${uid}`, creds.channelAccessToken) as Record<string, string>;
+  // ─── getProfile ──────────────────────────────────────────────
+  async getProfile(uid: string, credentials: Record<string, unknown>): Promise<{ uid: string; displayName: string; avatarUrl?: string }> {
+    const token = credentials.channelAccessToken as string;
+    const data = await lineGet(`/v2/bot/profile/${uid}`, token) as Record<string, string>;
     return {
       uid: data.userId,
       displayName: data.displayName,
-      pictureUrl: data.pictureUrl,
-      language: data.language,
+      avatarUrl: data.pictureUrl,
     };
   }
 
-  // ─── Tasks 4.1–4.5: sendMessage ─────────────────────────────────
-  async sendMessage(to: string, message: OutboundMessage, credentials: ChannelCredentials): Promise<SendResult> {
-    const creds = credentials as LineChannelCredentials;
-    const token = creds.channelAccessToken;
-    const lineMsg = buildLineMessage(message);
+  // ─── sendMessage ─────────────────────────────────────────────
+  async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
+    const token = credentials.channelAccessToken as string;
+    const { contentType, content } = message;
+    const lineMsg = buildLineMessage(contentType, content);
     const messages = [lineMsg];
-    const strategy = message.strategy ?? 'push';
+    const strategy = (content.strategy as string) ?? 'push';
 
     try {
       switch (strategy) {
         case 'reply':
-          await linePost('/v2/bot/message/reply', token, { replyToken: message.replyToken, messages });
+          await linePost('/v2/bot/message/reply', token, { replyToken: content.replyToken, messages });
           break;
         case 'push':
           await linePost('/v2/bot/message/push', token, { to, messages });
           break;
         case 'multicast': {
-          // Task 4.4: batch into chunks of 500
-          const uids = message.recipientUids ?? [to];
+          const uids = (content.recipientUids as string[]) ?? [to];
           for (let i = 0; i < uids.length; i += 500) {
             await linePost('/v2/bot/message/multicast', token, { to: uids.slice(i, i + 500), messages });
           }
@@ -293,8 +308,8 @@ export class LinePlugin implements ChannelPlugin {
         case 'narrowcast':
           await linePost('/v2/bot/message/narrowcast', token, {
             messages,
-            ...(message.audienceGroupId
-              ? { recipient: { type: 'audienceGroup', audienceGroupId: Number(message.audienceGroupId) } }
+            ...(content.audienceGroupId
+              ? { recipient: { type: 'audienceGroup', audienceGroupId: Number(content.audienceGroupId) } }
               : {}),
           });
           break;
@@ -305,19 +320,16 @@ export class LinePlugin implements ChannelPlugin {
     }
   }
 
-  // ─── Task 10.3: setWebhook ──────────────────────────────────────
-  async setWebhook(webhookUrl: string, credentials: ChannelCredentials): Promise<void> {
-    const creds = credentials as LineChannelCredentials;
-    await linePut('/v2/bot/channel/webhook/endpoint', creds.channelAccessToken, { webhook: webhookUrl });
+  // ─── setWebhook ──────────────────────────────────────────────
+  async setWebhook(webhookUrl: string, credentials: Record<string, unknown>): Promise<void> {
+    const token = credentials.channelAccessToken as string;
+    await linePut('/v2/bot/channel/webhook/endpoint', token, { webhook: webhookUrl });
   }
 
   // ─── Extensions ─────────────────────────────────────────────────
   readonly extensions = {
-    // Tasks 5.1–5.6: Rich Menu Extension
     ui: richMenuExtension,
-    // Tasks 6.1–6.4: Audience Extension
     audience: audienceExtension,
-    // Tasks 7.1–7.3: Analytics Extension
     analytics: analyticsExtension,
   };
 }
@@ -586,3 +598,5 @@ interface LineEvent {
   joined?: { members: unknown[] };
   left?: { members: unknown[] };
 }
+
+export const linePlugin = new LinePlugin();

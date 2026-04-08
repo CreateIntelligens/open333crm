@@ -30,10 +30,6 @@
     "./threads": {
       "import": "./dist/threads.js",
       "types": "./dist/threads.d.ts"
-    },
-    "./webhook": {
-      "import": "./dist/webhook-adapter.js",
-      "types": "./dist/webhook-adapter.d.ts"
     }
   },
   "scripts": {

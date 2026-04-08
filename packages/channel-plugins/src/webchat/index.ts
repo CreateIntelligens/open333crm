@@ -1,4 +1,4 @@
-import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../webhook-adapter.js';
+import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
 
 export class WebchatPlugin implements ChannelPlugin {
   readonly channelType = 'WEBCHAT';
@@ -8,8 +8,7 @@ export class WebchatPlugin implements ChannelPlugin {
     _headers: Record<string, string>,
     _secret: string,
   ): boolean {
-    // Webchat messages are received via Socket.IO or our own API,
-    // so signature verification is handled by JWT auth.
+    // Webchat messages arrive via Socket.IO or our own API; JWT auth handles security.
     return true;
   }
 
@@ -18,7 +17,6 @@ export class WebchatPlugin implements ChannelPlugin {
     _headers: Record<string, string>,
   ): Promise<ParsedWebhookMessage[]> {
     const body = JSON.parse(rawBody.toString());
-
     return [
       {
         channelMsgId: body.messageId,
@@ -50,11 +48,9 @@ export class WebchatPlugin implements ChannelPlugin {
     message: OutboundPayload,
     _credentials: Record<string, unknown>,
   ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
+    // For webchat, messages are pushed via Socket.IO by the calling code.
     console.log(`[WEBCHAT] Sending message to ${to}:`, JSON.stringify(message.content));
-    return {
-      success: true,
-      channelMsgId: `webchat-msg-${Date.now()}`,
-    };
+    return { success: true, channelMsgId: `webchat-msg-${Date.now()}` };
   }
 }
 

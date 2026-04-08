@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { EventBus } from '@open333crm/core';
-import { getChannelPlugin } from '@open333crm/channel-plugins/webhook';
+import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { sendEmail } from '../email/email.service.js';
 

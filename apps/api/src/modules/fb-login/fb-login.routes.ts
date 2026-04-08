@@ -7,7 +7,7 @@ import {
   getUserEmail,
   updateContactEmail,
 } from './fb-login.service.js';
-import { getChannelPlugin } from '@open333crm/channel-plugins/webhook';
+import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { success } from '../../shared/utils/response.js';
 

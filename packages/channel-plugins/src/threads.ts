@@ -4,17 +4,16 @@
 
 import type {
   ChannelPlugin,
-  ChannelCredentials,
-  OutboundMessage,
-  SendResult,
+  ParsedWebhookMessage,
+  OutboundPayload,
 } from './index.js';
-import type { UniversalMessage, ContactProfile } from '@open333crm/types';
 import { createHmac } from 'node:crypto';
 
-interface ThreadsCredentials extends ChannelCredentials {
+interface ThreadsCredentials {
   appId: string;
   appSecret: string;
   pageAccessToken: string;
+  [key: string]: unknown;
 }
 
 const GRAPH_URL = 'https://graph.instagram.com/v21.0';
@@ -35,132 +34,90 @@ export class ThreadsPlugin implements ChannelPlugin {
     return sig === expected;
   }
 
-  // ─── Task 1.7: parseWebhook ───────────────────────────────────────
   async parseWebhook(
     rawBody: Buffer,
     _headers: Record<string, string>,
-  ): Promise<UniversalMessage[]> {
+  ): Promise<ParsedWebhookMessage[]> {
     const payload = JSON.parse(rawBody.toString()) as InstagramWebhookPayload;
-    const messages: UniversalMessage[] = [];
+    const messages: ParsedWebhookMessage[] = [];
 
     for (const entry of payload.entry ?? []) {
       for (const messaging of entry.messaging ?? []) {
-        const base: Omit<UniversalMessage, 'messageType' | 'content'> = {
-          id:          crypto.randomUUID(),
-          channelType: 'THREADS',
-          channelId:   '',
-          direction:   'inbound',
-          contactUid:  messaging.sender.id,
-          timestamp:   new Date(messaging.timestamp),
-          rawPayload:  messaging,
-        };
+        const contactUid = messaging.sender.id;
+        const timestamp = new Date(messaging.timestamp);
 
-        // Story reply
         if (messaging.message?.reply_to?.story) {
-          messages.push({
-            ...base,
-            messageType: 'text',
-            content: {
-              text: `[Story reply] ${messaging.message.text ?? ''}`,
-            },
-          });
+          messages.push({ contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
           continue;
         }
-
-        // Like / Heart reaction
         if (messaging.message?.attachments?.some((a) => a.type === 'like_heart')) {
-          messages.push({ ...base, messageType: 'sticker', content: { text: '❤️' } });
+          messages.push({ contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging });
           continue;
         }
-
-        // Image attachment
         if (messaging.message?.attachments?.some((a) => a.type === 'image')) {
           const img = messaging.message.attachments.find((a) => a.type === 'image');
-          messages.push({
-            ...base,
-            messageType: 'image',
-            content: { mediaUrl: img?.payload?.url },
-          });
+          messages.push({ contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url }, rawPayload: messaging });
           continue;
         }
-
-        // Text
         if (messaging.message?.text) {
-          messages.push({
-            ...base,
-            messageType: 'text',
-            content: { text: messaging.message.text },
-          });
+          messages.push({ contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging });
           continue;
         }
-
-        messages.push({ ...base, messageType: 'unknown', content: {} });
+        messages.push({ contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging });
       }
     }
 
     return messages;
   }
 
-  // ─── Task 1.8: getProfile ────────────────────────────────────────
-  async getProfile(uid: string, credentials: ChannelCredentials): Promise<ContactProfile> {
+  async getProfile(uid: string, credentials: Record<string, unknown>): Promise<{ uid: string; displayName: string; avatarUrl?: string }> {
     const creds = credentials as ThreadsCredentials;
     try {
-      const res = await fetch(
-        `${GRAPH_URL}/${uid}?fields=name,profile_pic&access_token=${creds.pageAccessToken}`,
-      );
+      const res = await fetch(`${GRAPH_URL}/${uid}?fields=name,profile_pic&access_token=${creds.pageAccessToken}`);
       const data = await res.json() as { name?: string; profile_pic?: string };
-      return {
-        uid,
-        displayName: data.name ?? `Instagram User ${uid}`,
-        pictureUrl:  data.profile_pic,
-      };
+      return { uid, displayName: data.name ?? `Instagram User ${uid}`, avatarUrl: data.profile_pic };
     } catch {
       return { uid, displayName: `Instagram User ${uid}` };
     }
   }
 
-  // ─── Task 1.9: sendMessage ───────────────────────────────────────
   async sendMessage(
     to: string,
-    message: OutboundMessage,
-    credentials: ChannelCredentials,
-  ): Promise<SendResult> {
+    message: OutboundPayload,
+    credentials: Record<string, unknown>,
+  ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
     const creds = credentials as ThreadsCredentials;
+    const { content } = message;
+    const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string }> | undefined;
 
     try {
       let body: Record<string, unknown>;
 
-      if (message.type === 'text' && message.quickReplies?.length) {
+      if (quickReplies?.length) {
         body = {
-          recipient:  { id: to },
+          recipient: { id: to },
           message: {
-            text:          message.text ?? '請選擇：',
-            quick_replies: message.quickReplies.map((r) => ({
+            text: content.text ?? '請選擇：',
+            quick_replies: quickReplies.map((r) => ({
               content_type: 'text',
-              title:        r.label,
-              payload:      r.postbackData ?? r.text ?? r.label,
+              title: r.label,
+              payload: r.postbackData ?? r.text ?? r.label,
             })),
           },
         };
       } else {
-        body = {
-          recipient: { id: to },
-          message:   { text: message.text ?? '' },
-        };
+        body = { recipient: { id: to }, message: { text: content.text ?? '' } };
       }
 
-      const res = await fetch(
-        `${GRAPH_URL}/me/messages?access_token=${creds.pageAccessToken}`,
-        {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(body),
-        },
-      );
+      const res = await fetch(`${GRAPH_URL}/me/messages?access_token=${creds.pageAccessToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
       const result = await res.json() as { message_id?: string; error?: { message: string } };
       if (result.error) return { success: false, error: result.error.message };
-      return { success: true, messageId: result.message_id };
+      return { success: true, channelMsgId: result.message_id };
     } catch (err) {
       return { success: false, error: String(err) };
     }

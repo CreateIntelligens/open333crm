@@ -1,26 +1,42 @@
 // Channel Plugin interface — all channel adapters implement this
 
-import type { UniversalMessage, ContactProfile, ChannelType } from '@open333crm/types';
+import type { ChannelType } from '@open333crm/types';
+
+// ── Webhook types ─────────────────────────────────────────────────
+
+export interface ParsedWebhookMessage {
+  channelMsgId?: string;
+  contactUid: string;
+  timestamp: Date;
+  contentType: string;
+  content: Record<string, unknown>;
+  rawPayload?: unknown;
+}
+
+export interface OutboundPayload {
+  contentType: string;
+  content: Record<string, unknown>;
+}
 
 // ── Base Interface ────────────────────────────────────────────────
 
 export interface ChannelPlugin {
-  readonly channelType: ChannelType;
+  readonly channelType: string;
 
   /** Verify incoming webhook signature */
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean;
 
-  /** Parse raw webhook payload into UniversalMessages */
-  parseWebhook(rawBody: Buffer, headers: Record<string, string>): Promise<UniversalMessage[]>;
+  /** Parse raw webhook payload into ParsedWebhookMessages */
+  parseWebhook(rawBody: Buffer, headers: Record<string, string>): Promise<ParsedWebhookMessage[]>;
 
   /** Fetch contact profile from the channel */
-  getProfile(uid: string, credentials: ChannelCredentials): Promise<ContactProfile>;
+  getProfile(uid: string, credentials: Record<string, unknown>): Promise<{ uid: string; displayName: string; avatarUrl?: string }>;
 
   /** Send a message to a contact */
-  sendMessage(to: string, message: OutboundMessage, credentials: ChannelCredentials): Promise<SendResult>;
+  sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }>;
 
   /** Set webhook URL on the channel (for auto-setup) */
-  setWebhook?(webhookUrl: string, credentials: ChannelCredentials): Promise<void>;
+  setWebhook?(webhookUrl: string, credentials: Record<string, unknown>): Promise<void>;
 
   /** Optional channel-specific capability extensions */
   readonly extensions?: {
@@ -34,87 +50,69 @@ export interface ChannelPlugin {
 
 /** Rich Menu / Channel UI management (LINE, etc.) */
 export interface ChannelUiExtension {
-  upsertMenu(menuConfig: unknown, credentials: ChannelCredentials): Promise<string>;
-  getMenu(menuId: string, credentials: ChannelCredentials): Promise<unknown>;
-  listMenus(credentials: ChannelCredentials): Promise<unknown[]>;
-  deleteMenu(menuId: string, credentials: ChannelCredentials): Promise<void>;
-  setDefaultMenu(menuId: string, credentials: ChannelCredentials): Promise<void>;
-  cancelDefaultMenu(credentials: ChannelCredentials): Promise<void>;
-  linkMenuToUser(uid: string, menuId: string, credentials: ChannelCredentials): Promise<void>;
-  unlinkMenuFromUser(uid: string, credentials: ChannelCredentials): Promise<void>;
-  linkMenuToUsers(uids: string[], menuId: string, credentials: ChannelCredentials): Promise<void>;
-  unlinkMenuFromUsers(uids: string[], credentials: ChannelCredentials): Promise<void>;
-  getUserMenu(uid: string, credentials: ChannelCredentials): Promise<string | null>;
-  uploadMenuImage(menuId: string, imageBuffer: Buffer, contentType: string, credentials: ChannelCredentials): Promise<void>;
-  createMenuAlias(aliasId: string, menuId: string, credentials: ChannelCredentials): Promise<void>;
-  updateMenuAlias(aliasId: string, menuId: string, credentials: ChannelCredentials): Promise<void>;
-  deleteMenuAlias(aliasId: string, credentials: ChannelCredentials): Promise<void>;
+  upsertMenu(menuConfig: unknown, credentials: Record<string, unknown>): Promise<string>;
+  getMenu(menuId: string, credentials: Record<string, unknown>): Promise<unknown>;
+  listMenus(credentials: Record<string, unknown>): Promise<unknown[]>;
+  deleteMenu(menuId: string, credentials: Record<string, unknown>): Promise<void>;
+  setDefaultMenu(menuId: string, credentials: Record<string, unknown>): Promise<void>;
+  cancelDefaultMenu(credentials: Record<string, unknown>): Promise<void>;
+  linkMenuToUser(uid: string, menuId: string, credentials: Record<string, unknown>): Promise<void>;
+  unlinkMenuFromUser(uid: string, credentials: Record<string, unknown>): Promise<void>;
+  linkMenuToUsers(uids: string[], menuId: string, credentials: Record<string, unknown>): Promise<void>;
+  unlinkMenuFromUsers(uids: string[], credentials: Record<string, unknown>): Promise<void>;
+  getUserMenu(uid: string, credentials: Record<string, unknown>): Promise<string | null>;
+  uploadMenuImage(menuId: string, imageBuffer: Buffer, contentType: string, credentials: Record<string, unknown>): Promise<void>;
+  createMenuAlias(aliasId: string, menuId: string, credentials: Record<string, unknown>): Promise<void>;
+  updateMenuAlias(aliasId: string, menuId: string, credentials: Record<string, unknown>): Promise<void>;
+  deleteMenuAlias(aliasId: string, credentials: Record<string, unknown>): Promise<void>;
 }
 
 /** Audience Group management for Narrowcast (LINE, etc.) */
 export interface ChannelAudienceExtension {
-  syncAudience(audienceId: string, uids: string[], credentials: ChannelCredentials): Promise<string>;
-  createInteractionAudience(requestId: string, type: 'click' | 'imp', credentials: ChannelCredentials): Promise<string>;
-  addUsersToAudience(audienceGroupId: string, uids: string[], credentials: ChannelCredentials): Promise<void>;
-  deleteAudience(audienceGroupId: string, credentials: ChannelCredentials): Promise<void>;
-  getNarrowcastProgress(requestId: string, credentials: ChannelCredentials): Promise<{ phase: string; successCount?: number; errorCount?: number }>;
-  cancelNarrowcast(requestId: string, credentials: ChannelCredentials): Promise<void>;
+  syncAudience(audienceId: string, uids: string[], credentials: Record<string, unknown>): Promise<string>;
+  createInteractionAudience(requestId: string, type: 'click' | 'imp', credentials: Record<string, unknown>): Promise<string>;
+  addUsersToAudience(audienceGroupId: string, uids: string[], credentials: Record<string, unknown>): Promise<void>;
+  deleteAudience(audienceGroupId: string, credentials: Record<string, unknown>): Promise<void>;
+  getNarrowcastProgress(requestId: string, credentials: Record<string, unknown>): Promise<{ phase: string; successCount?: number; errorCount?: number }>;
+  cancelNarrowcast(requestId: string, credentials: Record<string, unknown>): Promise<void>;
 }
 
 /** Platform Insight / Analytics (LINE, etc.) */
 export interface ChannelAnalyticsExtension {
-  getFollowerStats(date: string, credentials: ChannelCredentials): Promise<{ followers: number; blocks: number; targetedReaches?: number }>;
-  getDemographics(credentials: ChannelCredentials): Promise<unknown>;
-  getDeliveryStats(requestId: string, credentials: ChannelCredentials): Promise<{ delivered?: number; read?: number; clicked?: number }>;
-  getMessageQuota(credentials: ChannelCredentials): Promise<{ totalUsage: number; maxMessages?: number }>;
+  getFollowerStats(date: string, credentials: Record<string, unknown>): Promise<{ followers: number; blocks: number; targetedReaches?: number }>;
+  getDemographics(credentials: Record<string, unknown>): Promise<unknown>;
+  getDeliveryStats(requestId: string, credentials: Record<string, unknown>): Promise<{ delivered?: number; read?: number; clicked?: number }>;
+  getMessageQuota(credentials: Record<string, unknown>): Promise<{ totalUsage: number; maxMessages?: number }>;
 }
 
+/** @deprecated Use Record<string, unknown> directly */
 export interface ChannelCredentials {
   [key: string]: string;
 }
 
-export interface OutboundMessage {
-  type: 'text' | 'image' | 'video' | 'audio' | 'location' | 'sticker' | 'flex' | 'imagemap' | 'template' | 'quick_reply';
-  /** Sending strategy — defaults to 'push' */
-  strategy?: 'reply' | 'push' | 'multicast' | 'broadcast' | 'narrowcast';
-  /** Used for strategy: 'reply' */
-  replyToken?: string;
-  /** Used for strategy: 'multicast' — recipient user IDs */
-  recipientUids?: string[];
-  /** Used for strategy: 'narrowcast' — LINE audienceGroupId */
-  audienceGroupId?: string;
-  text?: string;
-  flexJson?: Record<string, unknown>;
-  imagemapJson?: Record<string, unknown>;
-  templateJson?: Record<string, unknown>;
-  mediaUrl?: string;
-  previewUrl?: string;
-  /** For video messages — enables VideoPlayComplete Webhook */
-  trackingId?: string;
-  latitude?: number;
-  longitude?: number;
-  address?: string;
-  /** LINE sticker package ID */
-  packageId?: string;
-  /** LINE sticker ID */
-  stickerId?: string;
-  quickReplies?: Array<{ label: string; text?: string; postbackData?: string; imageUrl?: string }>;
-}
-
-export interface SendResult {
-  success: boolean;
-  messageId?: string;
-  error?: string;
-}
-
 // ── Plugin Registry ───────────────────────────────────────────────
 
-const plugins = new Map<ChannelType, ChannelPlugin>();
+const plugins = new Map<string, ChannelPlugin>();
 
-export function registerPlugin(plugin: ChannelPlugin) {
+export function registerChannelPlugin(plugin: ChannelPlugin): void {
   plugins.set(plugin.channelType, plugin);
 }
 
+export function getChannelPlugin(channelType: string): ChannelPlugin | undefined {
+  return plugins.get(channelType);
+}
+
+export function getAllChannelPlugins(): ChannelPlugin[] {
+  return Array.from(plugins.values());
+}
+
+export function hasChannelPlugin(channelType: string): boolean {
+  return plugins.has(channelType);
+}
+
+/** @deprecated Use registerChannelPlugin */
+export const registerPlugin = registerChannelPlugin;
+/** @deprecated Use getChannelPlugin (returns undefined instead of throwing) */
 export function getPlugin(channelType: ChannelType): ChannelPlugin {
   const plugin = plugins.get(channelType);
   if (!plugin) throw new Error(`No plugin registered for channel: ${channelType}`);
@@ -124,11 +122,8 @@ export function getPlugin(channelType: ChannelType): ChannelPlugin {
 // ── Exports ───────────────────────────────────────────────────────
 
 export { TelegramPlugin } from './telegram/index.js';
-export { FbPlugin }       from './facebook/index.js';
+export { FbPlugin, fbPlugin } from './facebook/index.js';
 export { ThreadsPlugin }  from './threads.js';
-export { LinePlugin }     from './line/index.js';
-
-// Channel-specific plugin stubs (to be implemented)
-// export { WebChatPlugin } from './webchat/index.js';
-// export { WhatsAppPlugin } from './whatsapp/index.js';  // future
+export { LinePlugin, linePlugin } from './line/index.js';
+export { WebchatPlugin, webchatPlugin } from './webchat/index.js';
 

@@ -1,5 +1,5 @@
 import { ChannelType } from '@open333crm/types';
-import { OutboundMessage, getPlugin, SendResult } from '@open333crm/channel-plugins';
+import { OutboundPayload, getChannelPlugin } from '@open333crm/channel-plugins';
 import { licenseService } from './license.js';
 import { channelTeamAccessService } from './channel-team-access.js';
 
@@ -15,10 +15,10 @@ class MessageService {
    */
   async sendMessage(
     metadata: MessageMetadata,
-    message: OutboundMessage,
+    message: OutboundPayload,
     channelType: ChannelType,
     credentials: Record<string, string>
-  ): Promise<SendResult> {
+  ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
 
     // 1. Authorization check
     const { hasAccess, level } = await channelTeamAccessService.checkAccess({
@@ -44,7 +44,8 @@ class MessageService {
     }
 
     // 3. Delegate to Plugin
-    const plugin = getPlugin(channelType);
+    const plugin = getChannelPlugin(channelType);
+    if (!plugin) return { success: false, error: `No plugin for channel: ${channelType}` };
     const result = await plugin.sendMessage(metadata.contactUid, message, credentials);
 
     if (result.success) {

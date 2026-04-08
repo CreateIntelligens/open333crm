@@ -55,7 +55,7 @@ async function executeBroadcast(
 
       await plugin.sendMessage(
         identity.uid,
-        { type: 'text', text: templateBody as string },
+        { contentType: 'text', content: { text: templateBody as string } },
         credentials as Record<string, string>,
       );
       successCount++;

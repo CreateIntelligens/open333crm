@@ -2,8 +2,7 @@ import { Worker, Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
-import { LinePlugin } from '@open333crm/channel-plugins';
-import { FbPlugin } from '@open333crm/channel-plugins';
+import { linePlugin, fbPlugin } from '@open333crm/channel-plugins';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { handleSlaPoll } from './handlers/sla.handler.js';
 import { handleBroadcastPoll } from './handlers/broadcast.handler.js';
@@ -32,8 +31,6 @@ async function main() {
   // ── Channel plugin registry ──────────────────────────────────────────────────
   const pluginRegistry = new Map<string, ChannelPlugin>();
 
-  const linePlugin = new LinePlugin();
-  const fbPlugin = new FbPlugin();
   pluginRegistry.set(linePlugin.channelType, linePlugin);
   pluginRegistry.set(fbPlugin.channelType, fbPlugin);
 
