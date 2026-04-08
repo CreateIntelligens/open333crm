@@ -18,9 +18,13 @@ export async function generateEmbedCode(
     throw new AppError('WebChat channel not found', 'NOT_FOUND', 404);
   }
 
-  const apiUrl = channel.webhookUrl
-    ? channel.webhookUrl.replace(/\/api\/v1\/webhooks\/webchat\/.*$/, '')
-    : process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
+  const fallbackUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
+  const apiUrl = (() => {
+    if (!channel.webhookUrl) return fallbackUrl;
+    const stripped = channel.webhookUrl.replace(/\/api\/v1\/webhooks\/webchat\/.*$/, '');
+    // If nothing was stripped, the webhookUrl doesn't match the expected pattern — fall back
+    return stripped !== channel.webhookUrl ? stripped : fallbackUrl;
+  })();
 
   const html = `<!-- Open333CRM WebChat Widget -->
 <script>

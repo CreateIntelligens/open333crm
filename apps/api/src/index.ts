@@ -37,6 +37,8 @@ import portalRoutes from './modules/portal/portal.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
+import webchatRoutes from './modules/webchat/webchat.routes.js';
+import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
 import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
@@ -90,6 +92,16 @@ export async function bootstrap() {
     version: '0.0.1',
   }));
 
+  // Serve compiled webchat widget bundle
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const widgetPath = resolve(__dirname, '../../widget/dist/widget.js');
+  app.get('/webchat/widget.js', async (_req, reply) => {
+    const { readFile } = await import('node:fs/promises');
+    const content = await readFile(widgetPath);
+    return reply.header('Content-Type', 'application/javascript').send(content);
+  });
+
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(conversationRoutes, { prefix: '/api/v1/conversations' });
   await app.register(contactRoutes, { prefix: '/api/v1/contacts' });
@@ -117,6 +129,9 @@ export async function bootstrap() {
   await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
   await app.register(canvasRoutes, { prefix: '/api/v1/canvas' });
   await app.register(identityRoutes, { prefix: '/api/v1/identity' });
+  await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });
+
+  registerVisitorNamespace(app.io, app.prisma);
 
   setupAutomationWorker(app.prisma, app.io);
   setupNotificationWorker(app.prisma);

@@ -1,10 +1,12 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { Prisma } from '@prisma/client';
+import IORedis from 'ioredis';
 import { AppError } from '../../shared/utils/response.js';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { getConfig } from '../../config/env.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -321,6 +323,12 @@ export async function sendMessage(
           } else if (!result.success) {
             console.error(`[ChannelDelivery] Failed to send via ${channel.channelType}:`, result.error);
           }
+
+          // Push outbound message to visitor's widget in real time
+          if (channel.channelType === 'WEBCHAT') {
+            const room = `visitor:${channel.id}:${identity.uid}`;
+            io.of('/visitor').to(room).emit('agent:message', wsPayload.message);
+          }
         }
       }
     }
@@ -453,7 +461,20 @@ export async function handoffConversation(
 }
 
 /**
+ * Lazy Redis publisher for socket bridge (visitor push from bot/auto-reply).
+ * Created on first use to avoid connecting at module load time.
+ */
+let _redisPub: IORedis | null = null;
+function getRedisPub(): IORedis {
+  if (!_redisPub) {
+    _redisPub = new IORedis(getConfig().REDIS_URL);
+  }
+  return _redisPub;
+}
+
+/**
  * Deliver a text message to the external channel (LINE/FB/etc.) via plugin.
+ * For WEBCHAT, also pushes the message to the visitor's Socket.IO room via Redis bridge.
  * Non-fatal: errors are logged but not thrown.
  */
 export async function deliverToChannel(
@@ -494,12 +515,28 @@ export async function deliverToChannel(
     }
 
     console.log(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid}`);
-    await plugin.sendMessage(
+    const result = await plugin.sendMessage(
       identity.uid,
       { contentType: 'text', content: { text } },
       credentials,
     );
     console.log(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
+
+    // For WEBCHAT: push reply to visitor widget via Redis socket bridge
+    if (conv.channel.channelType === 'WEBCHAT') {
+      const room = `visitor:${conv.channel.id}:${identity.uid}`;
+      const msgPayload = {
+        contentType: 'text',
+        content: { text },
+        direction: 'OUTBOUND',
+        senderType: 'BOT',
+        channelMsgId: result?.channelMsgId,
+        createdAt: new Date().toISOString(),
+      };
+      getRedisPub()
+        .publish('socket:emit', JSON.stringify({ namespace: '/visitor', room, event: 'agent:message', data: msgPayload }))
+        .catch((err) => console.error('[deliverToChannel] Redis publish failed:', err));
+    }
   } catch (err) {
     console.error('[deliverToChannel] Error delivering to channel:', err);
   }

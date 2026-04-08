@@ -79,12 +79,13 @@ async function socketPlugin(fastify: FastifyInstance) {
   await socketBridgeSub.subscribe('socket:emit');
   socketBridgeSub.on('message', (_channel, message) => {
     try {
-      const payload = JSON.parse(message) as { room?: string; event?: string; data?: unknown };
+      const payload = JSON.parse(message) as { room?: string; event?: string; data?: unknown; namespace?: string };
       if (typeof payload.room !== 'string' || typeof payload.event !== 'string') {
         fastify.log.warn({ message }, '[SocketBridge] Malformed message, discarding');
         return;
       }
-      io.to(payload.room).emit(payload.event as any, payload.data);
+      const ns = typeof payload.namespace === 'string' ? io.of(payload.namespace) : io;
+      ns.to(payload.room).emit(payload.event as any, payload.data);
     } catch (err) {
       fastify.log.warn({ err }, '[SocketBridge] Failed to parse socket:emit message');
     }

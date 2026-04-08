@@ -13,6 +13,7 @@ import {
   Settings,
   Globe,
   Bot,
+  Eye,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useChannels } from '@/hooks/useChannels';
+import { useWebchat } from '@/hooks/useWebchat';
 import { ChannelFormDialog } from './ChannelFormDialog';
 import { ChannelWizard } from './ChannelWizard';
 import { BotConfigForm } from './BotConfigForm';
@@ -59,6 +61,9 @@ export function ChannelManagement() {
   const [showWizard, setShowWizard] = useState(false);
   const [embedCodeDialog, setEmbedCodeDialog] = useState<{ open: boolean; code: string }>({ open: false, code: '' });
   const [channelStatuses, setChannelStatuses] = useState<Record<string, { tokenWarning?: string }>>({});
+  const [previewChannelId, setPreviewChannelId] = useState<string | null>(null);
+
+  const { load: loadWidget, unload: unloadWidget } = useWebchat();
 
   // Webhook base URL state
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('');
@@ -148,6 +153,17 @@ export function ChannelManagement() {
       setEmbedCodeDialog({ open: true, code: res.data?.data?.html || '' });
     } catch {
       setEmbedCodeDialog({ open: true, code: '無法取得嵌入碼' });
+    }
+  };
+
+  const handlePreviewWidget = (channelId: string) => {
+    if (previewChannelId === channelId) {
+      // Toggle off
+      unloadWidget();
+      setPreviewChannelId(null);
+    } else {
+      loadWidget(channelId);
+      setPreviewChannelId(channelId);
     }
   };
 
@@ -303,14 +319,25 @@ export function ChannelManagement() {
 
                       {/* WebChat embed button */}
                       {ch.channelType === 'WEBCHAT' && (
-                        <Button
-                          size="sm"
-                          variant="link"
-                          className="mt-0.5 h-auto p-0 text-xs"
-                          onClick={() => handleShowEmbedCode(ch.id)}
-                        >
-                          取得嵌入碼
-                        </Button>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Button
+                            size="sm"
+                            variant="link"
+                            className="h-auto p-0 text-xs"
+                            onClick={() => handleShowEmbedCode(ch.id)}
+                          >
+                            取得嵌入碼
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={previewChannelId === ch.id ? 'default' : 'outline'}
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={() => handlePreviewWidget(ch.id)}
+                          >
+                            <Eye className="h-3 w-3" />
+                            {previewChannelId === ch.id ? '關閉預覽' : '預覽'}
+                          </Button>
+                        </div>
                       )}
 
                       {/* Verify result message */}

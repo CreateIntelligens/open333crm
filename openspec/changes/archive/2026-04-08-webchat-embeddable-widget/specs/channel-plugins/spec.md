@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Unified channel plugin interface
 The system SHALL provide a unified adapter interface for all external IM channels through a single `ChannelPlugin` interface in `packages/channel-plugins/src/index.ts`. The interface SHALL use `ParsedWebhookMessage[]` as the return type for `parseWebhook`, and `registerChannelPlugin`/`getChannelPlugin` as registry functions. Plugin implementations for LINE, Facebook, and Webchat SHALL live in their respective channel subdirectories (`line/`, `facebook/`, `webchat/`) — no duplicate `adapters/` folder SHALL exist. Both `apps/api` and `apps/workers` SHALL import from `@open333crm/channel-plugins` only.

@@ -60,7 +60,7 @@ export async function processWebhookEvent(
   }
 }
 
-async function processInboundMessage(
+export async function processInboundMessage(
   prisma: PrismaClient,
   io: SocketIOServer,
   credentials: Record<string, unknown>,
