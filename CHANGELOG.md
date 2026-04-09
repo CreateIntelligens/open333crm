@@ -5,15 +5,14 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ## [Unreleased]
 
 ### Added
+- **Embeddable WebChat widget + visitor namespace (2026-04-08)** — 建立 `apps/widget` IIFE bundle 並由 API 透過 `GET /webchat/widget.js` 提供，新增 `/api/v1/webchat/:channelId/sessions` 與 `/messages` 公開路由、`/visitor` Socket.IO namespace（Redis bridge）推播 agent/bot 回覆，每個 `sessionStorage` 分頁維護獨立 `visitorToken`，嵌入碼自動降級至 `API_BASE_URL`。
+- **Variable picker for marketing templates (2026-04-07)** — 新增 `GET /marketing/templates/available-variables` 回傳聯絡人/系統/attribute 分類的變數清單、`TemplateFormDialog` 顯示可搜尋的 `VariablePicker`，插入 `{{key}}` 後會自動補齊 `variables` 定義，減少手動輸入錯誤。
 - **Shortlink real-time click stats via Socket.IO (2026-04-01)** — 短連結點擊後立即透過 Socket.IO 廣播 `link.stats.updated` 事件至同一 tenant 的所有連線者，前端 `useShortLinks`（列表頁）與 `useClickStats`（詳情頁）訂閱事件並即時 mutate，不再需要重新整理頁面。
-
-### Fixed
-- **Caddy WebSocket proxy missing `/socket.io/*` route (2026-04-01)** — `Caddyfile` 缺少 `/socket.io/*` 路由，導致所有 Socket.IO 流量被轉發至 `web:3000` 而非 `api:3001`，造成 `WebSocket connection failed: timeout` 並 fallback to polling 失敗。新增路由規則後 socket 連線恢復正常，`/socket.io/?transport=polling` 回傳 HTTP 200 並包含 `"upgrades":["websocket"]`。
-
-### Added
 - **RBAC guards implemented (2026-03-30)** — 新增 `apps/api/src/guards/rbac.guard.ts`，提供 `requireRole(allowedRoles)`、`requireAdmin()`、`requireSupervisor()` 三個 Fastify preHandler factory。權限矩陣：ADMIN 擁有全部操作；SUPERVISOR 可讀 channels/automation/analytics/settings/marketing/webhooks；AGENT 僅限 conversations 等不受限端點。已套用至 channel、automation、sla、settings、analytics、marketing、webhook-subscription、portal 等模組。資料層過濾（tenant scope 以外的 row-level security）延後實作。
 
 ### Changed
+- **Channel plugins consolidated under `@open333crm/channel-plugins` (2026-04-08)** — 把 registry/interface/adapters 合併到 shared package、刪除 `apps/api/src/channels/{line,fb,webchat,...}` 與 `routes/webhooks.ts`，API/worker 透過 `registerChannelPlugin`/`getChannelPlugin` 使用單一 `ChannelPlugin`，並刪除重複的 `adapters/` 與 `webhook-adapter.ts`。
+- **Database embed dims + Ollama defaults aligned (2026-04-07)** — Prisma schema 的 `KmArticle.embedding` 與 `LongTermMemory.embedding` 改為 1024 維以對應 `bge-m3`，`.env` 範本文件改為 `OLLAMA_CHAT_MODEL=qwen2.5:0.5b`，`deliverToChannel` 加強 Webchat-side Redis 推播與日誌，同時 `WebchatPlugin.sendMessage` 回傳 `channelMsgId` 但實際交付由 service 端推播。
 - **Standalone BullMQ workers fully wired (2026-03-30)** — `apps/workers/` 獨立 worker 程序已從空殼升級為完整實作：SLA 輪詢、廣播排程以 BullMQ repeating job（每 60s）執行；Notification 與 Automation 改以 BullMQ job consumer 非同步消費。API 同步 enqueue 至 BullMQ 佇列（雙路徑，不影響現有 in-process 邏輯）。新增 Redis pub/sub socket bridge（`socket:emit` channel），worker 程序可透過 Redis 將 WebSocket 事件中繼至 API 的 Socket.IO clients。
 - **OpenSpec archives completed (2026-03-26)** — 已封存 `unified-interaction-canvas`、`crm-core-logic`、`channel-plugins-expansion` 三個 change。
   - `unified-interaction-canvas`：已手動同步 main specs 後封存
@@ -25,6 +24,12 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **Schema reconciliation completed for API runtime (2026-03-30)** — 以 `packages/database/prisma/schema.prisma` 為主，併回 Daniel 線上已被 API 使用的相容模型與欄位（如 automation legacy fields、notifications、daily stats、campaign/broadcast recipient、portal、shortlink 等），同時保留 Tenant / Identity / Canvas 架構。
 
 ### Fixed
+- **Inbox conversations now use SWR + paged message loading (2026-04-07)** — `InboxPage` 直接用 `useSWR(`/conversations/${convId}`)`，`ChatWindow` 的 `globalMutate` 能重新驗證資料，`useMessages` 改為 `order=desc`、基於頁碼載入舊訊息並防止 mutate 重複，所有 handoff/status/assignment UI 即時更新。
+- **Notification event-bus worker no longer duplicates dispatch (2026-04-07)** — API worker 僅 enqueue BullMQ job，DB 寫入與 socket 發送全部交給 standalone worker（`standalone-worker-runtime` spec 也更新）。
+- **Dialogs require a double-click on the backdrop (2026-04-07)** — 阻止單擊誤關閉 `Dialog`。
+- **Channel credential encryption uses `CREDENTIAL_ENCRYPTION_KEY` (2026-04-07)** — API 與 worker 都從 new env var 推導 AES 金鑰以避免「Unsupported state or unable to authenticate data」錯誤。
+- **Ollama container waits for `ollama list` + auto-pulls models (2026-04-07)** — Docker healthcheck 與 entrypoint 改用 `ollama list`（image 沒有 curl），啟動時自動 pull `OLLAMA_CHAT_MODEL`/`OLLAMA_EMBED_MODEL` 並在 `.env.example` 註記。
+- **Caddy WebSocket proxy missing `/socket.io/*` route (2026-04-01)** — `Caddyfile` 缺少 `/socket.io/*` 路由，導致所有 Socket.IO 流量被轉發至 `web:3000` 而非 `api:3001`，造成 `WebSocket connection failed: timeout` 並 fallback to polling 失敗。新增路由規則後 socket 連線恢復正常，`/socket.io/?transport=polling` 回傳 HTTP 200 並包含 `"upgrades":["websocket"]`。
 - **API build recovered after schema split** — 補齊 Prisma client regenerate、`packages/core` / `packages/shared` rebuild、canvas/webhook 型別與 import 修正，`pnpm --filter @open333crm/api build` 已恢復成功。
 
 ## [v0.2.0] - 2026-03-25
@@ -122,24 +127,66 @@ All notable changes to the **open333CRM** project will be documented in this fil
 > **狀態**：OpenSpec 開放中，尚未開始實作。變更由 `openspec/changes/multi-channel-billing` 管理。
 
 ### Planned: Added
-- **Telegram Channel Plugin** \u2014 \u652f\u63f4\u6587\u5b57\u3001\u5716\u7247\u3001\u8cbc\u5716\u3001\u4f4d\u7f6e\u3001Callback Query\uff08\u6309\u9215\uff09\u6536\u767c
-- **Threads Channel Plugin** \u2014 \u652f\u63f4 Instagram Threads / DM \u6587\u5b57\u3001\u5716\u7247\u3001Story Reply\u3001Like \u53cd\u61c9
-- **ChannelType enum** \u2014 \u65b0\u589e `TELEGRAM`\u3001`THREADS` \u5000\u8207 `packages/types`
-- **Channel-Team Access (ChannelTeamAccess)** \u2014 Channel \u591a\u90e8\u9580\u5171\u7528\u6388\u6b0a\uff0c\u652f\u63f4 `full` / `read_only` \u5b58\u53d6\u5c64\u7d1a
-- **Channel Billing** \u2014 License JSON \u6e20\u9053\u6578\u91cf\u9650\u5236\uff08`maxCount`\uff09\u3001\u6bcf\u5247\u8a0a\u606f\u8cbb\u7528\uff08`messageFee`\uff09\u8a55\u4f30
-- **Team License (multi-dept)** \u2014 License JSON \u652f\u63f4 `teams[]` \u96a3\u5217\uff0c\u5404\u90e8\u9580\u72ec\u7acb\u6e20\u9053\u984d\u5ea6\u8207 Credits
-- **ChannelUsage tracking** \u2014 \u6bcf\u5247\u8a0a\u606f\u8a08\u8cbb\u8a18\u9304\uff08\u6e20\u9053 / \u90e8\u9580 / \u65b9\u5411 / \u8cbb\u7528\uff09
-- **Channel Usage Report API** \u2014 \u6e20\u9053\u7528\u91cf / \u8cbb\u7528\u5206\u6524\u5831\u8868\u8207 CSV \u532f\u51fa
+- **Telegram Channel Plugin** — 支援文字、圖片、貼圖、位置、Callback Query（按鈕）收發
+- **Threads Channel Plugin** — 支援 Instagram Threads / DM 文字、圖片、Story Reply、Like 回應
+- **ChannelType enum** — 新增 `TELEGRAM`、`THREADS` 於 `packages/types`
+- **Channel-Team Access (ChannelTeamAccess)** — Channel 多部門共用授權，支援 `full` / `read_only` 存取層級
+- **Channel Billing** — License JSON 通道數量限制（`maxCount`），每則訊息費用（`messageFee`）評估
+- **Team License (multi-dept)** — License JSON 支援 `teams[]` 陣列，各部門獨立通道額度與 Credits
+- **ChannelUsage tracking** — 每則訊息計費記錄（通道 / 部門 / 方向 / 費用）
+- **Channel Usage Report API** — 通道用量 / 費用分攤報表與 CSV 匯出
 
 ### Planned: Changed
-- **LicenseService** \u2014 \u65b0\u589e `getTeamLicense()`, `isFeatureEnabledForTeam()`, `hasCreditsForTeam()`, `deductCreditsForTeam()` \u591a\u90e8\u9580\u65b9\u6cd5
-- **Channel creation API** \u2014 \u652f\u63f4 `defaultTeamId`\uff0c\u5efa\u7acb\u6642\u81ea\u52d5\u5efa\u7acb 1 \u7b46 ChannelTeamAccess
-- **Credits system** \u2014 \u6539\u70ba team-aware \u5224\u65b7\uff0c\u8cbb\u7528\u5f52\u5c6c\u5c0d\u61c9\u90e8\u9580
+- **LicenseService** — 新增 `getTeamLicense()`, `isFeatureEnabledForTeam()`, `hasCreditsForTeam()`, `deductCreditsForTeam()` 多部門方法
+- **Channel creation API** — 支援 `defaultTeamId`，建立時自動建立 1 筆 ChannelTeamAccess
+- **Credits system** — 改為 team-aware 判斷，費用歸屬對應部門
 
 ### Planned: DB Schema
-- **New**: `channel_team_accesses` \u8868\uff08Channel \u591a\u5c0d\u591a Team\uff09
-- **New**: `channel_usages` \u8868\uff08\u8a0a\u606f\u8a08\u8cbb\u8a18\u9304\uff09
-- **Modified**: `teams` \u8868\u65b0\u589e `licenseTeamId` \u6b04\u4f4d\uff08\u5c0d\u61c9 License JSON teamId\uff09
+- **New**: `channel_team_accesses` 表（Channel 多對多 Team）
+- **New**: `channel_usages` 表（訊息計費記錄）
+- **Modified**: `teams` 表新增 `licenseTeamId` 欄位（對應 License JSON teamId）
+
+### webchat-embeddable-widget (archived 2026-04-08)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-08-webchat-embeddable-widget` 管理。
+
+- `webchat-widget` spec 要求 widget 在 `sessionStorage` 每個 tab 生成獨立 `visitorToken`，呼叫 `/api/v1/webchat/:channelId/sessions` 取得 greeting，不再讀取歷史訊息，並透過 `/visitor` namespace 的 `agent:message` 接收 realtime 回覆。
+- Embed bundle 由 API 在 `GET /webchat/widget.js` 提供，`visitor` namespace 需驗證 `channelId` + `visitorToken`、將 visitor 加入 `visitor:${channelId}:${visitorToken}` 房間，agent/bot reply 透過 Redis `socket:emit` 發送。
+
+### unify-channel-plugin-interface (archived 2026-04-08)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-08-unify-channel-plugin-interface` 管理。
+
+- `channel-plugins` spec 更新：統一 interface 中 `parseWebhook` 回傳 `ParsedWebhookMessage[]`、`sendMessage` 採 `OutboundPayload`，`registerChannelPlugin`/`getChannelPlugin` 取代舊命名；`WebchatPlugin.sendMessage` 只回傳 `channelMsgId`，實際交付由 caller 在 `/visitor` namespace 發 `agent:message`。
+- 同步整理 `channel-plugins` 標準介面，刪除 `adapters/`、`webhook-adapter.ts`，保證所有 consumers 皆從同一套 type import。
+
+### migrate-channel-plugins (archived 2026-04-08)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/migrate-channel-plugins` 管理。
+
+- `channel-plugins` 規格要求 `ChannelPlugin` interface 與 registry 移入 shared package，`apps/api` 不再保留 `src/channels/{line,fb,webchat}`；API/worker 透過 `@open333crm/channel-plugins` 根目錄匯入（含 `registerChannelPlugin`/`getChannelPlugin`）。
+- 刪除 `apps/api/src/routes/webhooks.ts`，所有 webhook 程式碼改用 package 的 `linePlugin`/`fbPlugin`/`webchatPlugin` 實作。
+
+### fix-notification-worker-dedup (archived 2026-04-07)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-07-fix-notification-worker-dedup` 管理。
+
+- API event-bus worker `notification.worker.ts` 只 enqueue BullMQ job，移除 `createAndDispatch`，讓 standalone worker 成為 DB 與 socket emission 的唯一責任方。
+- `standalone-worker-runtime` spec 強調 API worker 不可直接寫入 `notification` 表或 emit socket，所有 dispatch 操作皆由 worker container 透過 Redis pub/sub 完成。
+
+### template-variable-picker (archived 2026-04-07)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-07-template-variable-picker` 管理。
+
+- `template-variable-picker` spec 規定 `GET /marketing/templates/available-variables` 回傳分類變數（contact、case、storage、attribute.*），前端需用 Variable Picker 插入 `{{key}}` 並自動補齊 `variables` 變數陣列。
+- `advanced-template-library` 規格補充：contentType 為 `text` 時顯示 Variable Picker，插入已存在的變數不重複新增、新變數附預設 defaultValue。
+
+### fix-inbox-realtime-rendering (archived 2026-04-07)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-07-fix-inbox-realtime-rendering` 管理。
+
+- `core-inbox` 規格加入 `InboxPage` 必須用 `useSWR('/conversations/:id')` 取對話資料，讓 `globalMutate('/conversations/:id')` 觸發即時 revalidation，handoff/status/assignment 變更立刻反映畫面。
+- 加入 `HandoffModal`、status/agent select 的 scenario，並明確規格 `convId` 為 null 時不發出 API 請求。
 
 ## [0.1.0] - 2026-03-18
 
