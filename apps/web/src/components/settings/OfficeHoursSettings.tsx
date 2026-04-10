@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { API_BASE_URL } from '@/lib/constants';
 
 interface DaySchedule {
   start: string;
@@ -27,8 +28,6 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 const DEFAULT_CONFIG: OfficeHoursConfig = {
   enabled: false,
@@ -59,7 +58,7 @@ export function OfficeHoursSettings() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/settings/office-hours`, {
+      const res = await fetch(`${API_BASE_URL}/settings/office-hours`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (res.ok) {
@@ -82,7 +81,7 @@ export function OfficeHoursSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/settings/office-hours`, {
+      const res = await fetch(`${API_BASE_URL}/settings/office-hours`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

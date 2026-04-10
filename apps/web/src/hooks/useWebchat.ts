@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { WS_URL } from '@/lib/constants';
+import { API_BASE_URL } from '@/lib/constants';
 
 declare global {
   interface Window {
-    Open333CRM?: { channelId: string; apiUrl: string };
+    Open333CRM?: { channelId: string; apiBaseUrl: string };
     __open333crmWidgetLoaded?: boolean;
   }
 }
@@ -43,14 +43,13 @@ export function useWebchat() {
 
       activeChannelId.current = channelId;
 
-      // Derive API base (strip /api/v1 suffix)
-      const apiUrl = WS_URL;
+      const widgetUrl = '/webchat/widget.js';
 
-      window.Open333CRM = { channelId, apiUrl };
+      window.Open333CRM = { channelId, apiBaseUrl: API_BASE_URL };
 
       const script = document.createElement('script');
       script.id = WIDGET_SCRIPT_ID;
-      script.src = `${apiUrl}/webchat/widget.js`;
+      script.src = widgetUrl;
       script.async = true;
       script.onload = () => {
         window.__open333crmWidgetLoaded = true;

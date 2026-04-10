@@ -1,5 +1,6 @@
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+import { getPublicRuntimeEndpoints } from '@open333crm/shared';
 
-export const WS_URL =
-  process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
+const publicRuntimeEndpoints = getPublicRuntimeEndpoints(process.env.NEXT_PUBLIC_API_URL);
+
+export const API_BASE_URL = publicRuntimeEndpoints.apiBaseUrl;
+export const REALTIME_ORIGIN = publicRuntimeEndpoints.realtimeOrigin;

@@ -2,10 +2,11 @@ import { initSession } from './session.js';
 import { connectVisitorSocket } from './socket.js';
 import { injectStyles, createLauncher, createPanel, appendMessage } from './ui.js';
 import type { Message } from './session.js';
+import { getRealtimeOrigin } from '@open333crm/shared';
 
 interface Open333CRMConfig {
   channelId: string;
-  apiUrl: string;
+  apiBaseUrl: string;
 }
 
 declare global {
@@ -16,17 +17,18 @@ declare global {
 
 async function boot(): Promise<void> {
   const config = window.Open333CRM;
-  if (!config?.channelId || !config?.apiUrl) {
-    console.warn('[Open333CRM] Missing channelId or apiUrl in window.Open333CRM');
+  if (!config?.channelId || !config?.apiBaseUrl) {
+    console.warn('[Open333CRM] Missing channelId or apiBaseUrl in window.Open333CRM');
     return;
   }
 
-  const { channelId, apiUrl } = config;
+  const { channelId, apiBaseUrl } = config;
+  const realtimeOrigin = getRealtimeOrigin(apiBaseUrl);
 
   // Init visitor session
   let session: Awaited<ReturnType<typeof initSession>>;
   try {
-    session = await initSession(apiUrl, channelId);
+    session = await initSession(apiBaseUrl, channelId);
   } catch (err) {
     console.error('[Open333CRM] Failed to init session:', err);
     return;
@@ -38,6 +40,7 @@ async function boot(): Promise<void> {
   const { panel, messagesEl, input, sendBtn } = createPanel('Chat with us');
 
   let panelOpen = false;
+  let isComposing = false;
   launcher.addEventListener('click', () => {
     panelOpen = !panelOpen;
     panel.classList.toggle('o333-hidden', !panelOpen);
@@ -56,7 +59,7 @@ async function boot(): Promise<void> {
   }
 
   // Connect Socket.IO for real-time replies
-  const sock = connectVisitorSocket(apiUrl, channelId, session.visitorToken);
+  const sock = connectVisitorSocket(realtimeOrigin, channelId, session.visitorToken);
   sock.onAgentMessage((msg) => {
     appendMessage(messagesEl, msg, true);
     if (!panelOpen) {
@@ -79,7 +82,7 @@ async function boot(): Promise<void> {
     input.value = '';
 
     try {
-      const res = await fetch(`${apiUrl}/api/v1/webchat/${channelId}/messages`, {
+      const res = await fetch(`${apiBaseUrl}/webchat/${channelId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -97,8 +100,14 @@ async function boot(): Promise<void> {
   }
 
   sendBtn.addEventListener('click', sendMessage);
+  input.addEventListener('compositionstart', () => {
+    isComposing = true;
+  });
+  input.addEventListener('compositionend', () => {
+    isComposing = false;
+  });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing && !e.isComposing) {
       e.preventDefault();
       sendMessage();
     }
@@ -112,8 +121,9 @@ async function boot(): Promise<void> {
 
 // Auto-boot when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => { boot(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    boot();
+  });
 } else {
   boot();
 }
-

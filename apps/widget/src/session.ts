@@ -23,10 +23,10 @@ function getOrCreateToken(): string {
   return token;
 }
 
-export async function initSession(apiUrl: string, channelId: string): Promise<SessionResult> {
+export async function initSession(apiBaseUrl: string, channelId: string): Promise<SessionResult> {
   const visitorToken = getOrCreateToken();
 
-  const res = await fetch(`${apiUrl}/api/v1/webchat/${channelId}/sessions`, {
+  const res = await fetch(`${apiBaseUrl}/webchat/${channelId}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ visitorToken }),

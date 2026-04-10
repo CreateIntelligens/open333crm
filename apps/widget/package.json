@@ -4,12 +4,13 @@
   "license": "GPL-3.0-only",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "dev": "pnpm --filter @open333crm/shared build && vite",
+    "build": "pnpm --filter @open333crm/shared build && tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@open333crm/shared": "workspace:*",
     "socket.io-client": "^4.7.0"
   },
   "devDependencies": {

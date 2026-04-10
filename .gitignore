@@ -13,3 +13,4 @@ coverage/
 docs/
 packages/db/full-backup.sql
 settings.local.json
+apps/web/public/webchat/

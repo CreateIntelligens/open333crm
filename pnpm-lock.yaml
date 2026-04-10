@@ -214,6 +214,9 @@ importers:
 
   apps/widget:
     dependencies:
+      '@open333crm/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       socket.io-client:
         specifier: ^4.7.0
         version: 4.8.3

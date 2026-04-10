@@ -3,10 +3,14 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
     "esModuleInterop": true,
+    "paths": {
+      "@open333crm/shared": ["../../packages/shared/dist/index.d.ts"]
+    },
     "resolveJsonModule": true,
     "strict": true,
     "skipLibCheck": true,

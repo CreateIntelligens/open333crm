@@ -92,16 +92,6 @@ export async function bootstrap() {
     version: '0.0.1',
   }));
 
-  // Serve compiled webchat widget bundle
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  const widgetPath = resolve(__dirname, '../../widget/dist/widget.js');
-  app.get('/webchat/widget.js', async (_req, reply) => {
-    const { readFile } = await import('node:fs/promises');
-    const content = await readFile(widgetPath);
-    return reply.header('Content-Type', 'application/javascript').send(content);
-  });
-
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(conversationRoutes, { prefix: '/api/v1/conversations' });
   await app.register(contactRoutes, { prefix: '/api/v1/contacts' });

@@ -28,7 +28,9 @@ function LinkList() {
     }).catch(() => {});
   }, []);
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin.replace(':3000', ':3001') : '';
+  const baseUrl = typeof window !== 'undefined'
+    ? window.location.origin.replace(/^http:\/\/localhost:3000$/, 'http://localhost')
+    : '';
 
   const handleCopy = (slug: string) => {
     const url = `${baseUrl}/s/${slug}`;

@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { WS_URL } from './constants';
+import { REALTIME_ORIGIN } from './constants';
 
 let socket: Socket | null = null;
 
@@ -8,7 +8,7 @@ export function getSocket(token: string): Socket {
     return socket;
   }
 
-  socket = io(WS_URL, {
+  socket = io(REALTIME_ORIGIN || undefined, {
     auth: { token },
     transports: ['websocket', 'polling'],
     autoConnect: true,

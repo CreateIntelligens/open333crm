@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { Send, Paperclip, LayoutTemplate } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { API_BASE_URL } from '@/lib/constants';
 
 interface MessageInputProps {
   onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>) => Promise<void>;
@@ -15,8 +16,6 @@ interface MessageInputProps {
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ACCEPTED_TYPES = 'image/jpeg,image/png,image/gif,image/webp,application/pdf';
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-
 export function MessageInput({
   onSend,
   disabled,
@@ -51,7 +50,12 @@ export function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (
+      e.key === 'Enter'
+      && !e.shiftKey
+      && !e.nativeEvent.isComposing
+      && e.nativeEvent.keyCode !== 229
+    ) {
       e.preventDefault();
       handleSend();
     }
@@ -81,7 +85,7 @@ export function MessageInput({
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`${API_URL}/files/upload`, {
+      const res = await fetch(`${API_BASE_URL}/files/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,

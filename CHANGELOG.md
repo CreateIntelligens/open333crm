@@ -11,6 +11,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **RBAC guards implemented (2026-03-30)** — 新增 `apps/api/src/guards/rbac.guard.ts`，提供 `requireRole(allowedRoles)`、`requireAdmin()`、`requireSupervisor()` 三個 Fastify preHandler factory。權限矩陣：ADMIN 擁有全部操作；SUPERVISOR 可讀 channels/automation/analytics/settings/marketing/webhooks；AGENT 僅限 conversations 等不受限端點。已套用至 channel、automation、sla、settings、analytics、marketing、webhook-subscription、portal 等模組。資料層過濾（tenant scope 以外的 row-level security）延後實作。
 
 ### Changed
+- **Public runtime routing stabilized for web, widget, and shortlinks (2026-04-10)** — 新增 `public-runtime-config` 與 `shortlink-routing` specs，browser runtime 以單一 `NEXT_PUBLIC_API_URL` 正規化 `apiBaseUrl`/realtime origin，web build 會把最新 widget bundle 同步到 `public/webchat/widget.js`，embed code 可用 `WEB_BASE_URL` 覆蓋 widget origin，`Caddyfile` 明確將 `/webchat/*` 導向 web runtime、`/s/*` 導向 API runtime，後台複製短連結時改用目前瀏覽器公開 origin 的 `/s/:slug`。
 - **Channel plugins consolidated under `@open333crm/channel-plugins` (2026-04-08)** — 把 registry/interface/adapters 合併到 shared package、刪除 `apps/api/src/channels/{line,fb,webchat,...}` 與 `routes/webhooks.ts`，API/worker 透過 `registerChannelPlugin`/`getChannelPlugin` 使用單一 `ChannelPlugin`，並刪除重複的 `adapters/` 與 `webhook-adapter.ts`。
 - **Database embed dims + Ollama defaults aligned (2026-04-07)** — Prisma schema 的 `KmArticle.embedding` 與 `LongTermMemory.embedding` 改為 1024 維以對應 `bge-m3`，`.env` 範本文件改為 `OLLAMA_CHAT_MODEL=qwen2.5:0.5b`，`deliverToChannel` 加強 Webchat-side Redis 推播與日誌，同時 `WebchatPlugin.sendMessage` 回傳 `channelMsgId` 但實際交付由 service 端推播。
 - **Standalone BullMQ workers fully wired (2026-03-30)** — `apps/workers/` 獨立 worker 程序已從空殼升級為完整實作：SLA 輪詢、廣播排程以 BullMQ repeating job（每 60s）執行；Notification 與 Automation 改以 BullMQ job consumer 非同步消費。API 同步 enqueue 至 BullMQ 佇列（雙路徑，不影響現有 in-process 邏輯）。新增 Redis pub/sub socket bridge（`socket:emit` channel），worker 程序可透過 Redis 將 WebSocket 事件中繼至 API 的 Socket.IO clients。
@@ -24,6 +25,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **Schema reconciliation completed for API runtime (2026-03-30)** — 以 `packages/database/prisma/schema.prisma` 為主，併回 Daniel 線上已被 API 使用的相容模型與欄位（如 automation legacy fields、notifications、daily stats、campaign/broadcast recipient、portal、shortlink 等），同時保留 Tenant / Identity / Canvas 架構。
 
 ### Fixed
+- **IME-safe Enter handling for inbox and widget inputs (2026-04-10)** — `core-inbox` 與 `webchat-widget` 規格已同步：中文/日文輸入法組字時按 Enter 只確認候選字，不會誤送出訊息；inbox 仍保留 `Shift+Enter` 換行。
 - **Inbox conversations now use SWR + paged message loading (2026-04-07)** — `InboxPage` 直接用 `useSWR(`/conversations/${convId}`)`，`ChatWindow` 的 `globalMutate` 能重新驗證資料，`useMessages` 改為 `order=desc`、基於頁碼載入舊訊息並防止 mutate 重複，所有 handoff/status/assignment UI 即時更新。
 - **Notification event-bus worker no longer duplicates dispatch (2026-04-07)** — API worker 僅 enqueue BullMQ job，DB 寫入與 socket 發送全部交給 standalone worker（`standalone-worker-runtime` spec 也更新）。
 - **Dialogs require a double-click on the backdrop (2026-04-07)** — 阻止單擊誤關閉 `Dialog`。
@@ -152,6 +154,14 @@ All notable changes to the **open333CRM** project will be documented in this fil
 
 - `webchat-widget` spec 要求 widget 在 `sessionStorage` 每個 tab 生成獨立 `visitorToken`，呼叫 `/api/v1/webchat/:channelId/sessions` 取得 greeting，不再讀取歷史訊息，並透過 `/visitor` namespace 的 `agent:message` 接收 realtime 回覆。
 - Embed bundle 由 API 在 `GET /webchat/widget.js` 提供，`visitor` namespace 需驗證 `channelId` + `visitorToken`、將 visitor 加入 `visitor:${channelId}:${visitorToken}` 房間，agent/bot reply 透過 Redis `socket:emit` 發送。
+
+### stabilize-public-runtime-routing (archived 2026-04-10)
+
+> **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-10-stabilize-public-runtime-routing` 管理。
+
+- `public-runtime-config` spec 新增：browser runtime 以單一 `NEXT_PUBLIC_API_URL` 正規化 API base 與 realtime origin，web build 需在 `next build` 時嵌入 public runtime config，並產出 `public/webchat/widget.js`。
+- `shortlink-routing` spec 新增：公開短連結固定走同一公開 origin 的 `/s/:slug`，edge proxy 將 `/s/*` 轉給 API；後台複製短連結時也以目前瀏覽器 origin 組 URL。
+- `core-inbox` 與 `webchat-widget` specs 補上 IME-safe Enter requirement，避免中文/日文輸入法組字時誤送訊息；widget embed bundle requirement 也改成由 web public runtime 提供並支援 `WEB_BASE_URL`。
 
 ### unify-channel-plugin-interface (archived 2026-04-08)
 

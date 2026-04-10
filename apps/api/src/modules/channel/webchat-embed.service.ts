@@ -18,13 +18,14 @@ export async function generateEmbedCode(
     throw new AppError('WebChat channel not found', 'NOT_FOUND', 404);
   }
 
-  const fallbackUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
-  const apiUrl = (() => {
-    if (!channel.webhookUrl) return fallbackUrl;
-    const stripped = channel.webhookUrl.replace(/\/api\/v1\/webhooks\/webchat\/.*$/, '');
-    // If nothing was stripped, the webhookUrl doesn't match the expected pattern — fall back
-    return stripped !== channel.webhookUrl ? stripped : fallbackUrl;
+  const fallbackApiOrigin = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
+  const fallbackApiBaseUrl = `${fallbackApiOrigin}/api/v1`;
+  const apiBaseUrl = (() => {
+    if (!channel.webhookUrl) return fallbackApiBaseUrl;
+    const stripped = channel.webhookUrl.replace(/\/webhooks\/webchat\/.*$/, '');
+    return stripped !== channel.webhookUrl ? stripped : fallbackApiBaseUrl;
   })();
+  const widgetBaseUrl = process.env.WEB_BASE_URL || apiBaseUrl.replace(/\/api\/v1$/, '');
 
   const html = `<!-- Open333CRM WebChat Widget -->
 <script>
@@ -32,9 +33,9 @@ export async function generateEmbedCode(
     var w = window;
     w.Open333CRM = w.Open333CRM || {};
     w.Open333CRM.channelId = '${channelId}';
-    w.Open333CRM.apiUrl = '${apiUrl}';
+    w.Open333CRM.apiBaseUrl = '${apiBaseUrl}';
     var s = document.createElement('script');
-    s.src = '${apiUrl}/webchat/widget.js';
+    s.src = '${widgetBaseUrl}/webchat/widget.js';
     s.async = true;
     document.head.appendChild(s);
   })();

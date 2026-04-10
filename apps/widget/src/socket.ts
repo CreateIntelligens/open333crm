@@ -7,11 +7,12 @@ export interface VisitorSocket {
 }
 
 export function connectVisitorSocket(
-  apiUrl: string,
+  realtimeOrigin: string,
   channelId: string,
   visitorToken: string,
 ): VisitorSocket {
-  const socket: Socket = io(`${apiUrl}/visitor`, {
+  const namespaceUrl = realtimeOrigin ? `${realtimeOrigin}/visitor` : '/visitor';
+  const socket: Socket = io(namespaceUrl, {
     auth: { visitorToken, channelId },
     transports: ['websocket', 'polling'],
     reconnection: true,
