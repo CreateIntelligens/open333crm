@@ -17,7 +17,7 @@ import { generateQrCode } from './qrcode.service.js';
 
 export default async function shortlinkRoutes(app: FastifyInstance) {
   // All routes require agent JWT
-  app.addHook('onRequest', app.authenticate);
+  app.addHook('preHandler', app.authenticate);
 
   app.get('/', async (request) => {
     const { isActive, q, page, limit } = request.query as Record<string, string>;
