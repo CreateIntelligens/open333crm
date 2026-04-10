@@ -5,6 +5,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ## [Unreleased]
 
 ### Added
+- **Agent management API + UI (2026-04-10)** — 新增人員管理完整功能：`POST /agents`（Admin/Supervisor 新增人員）、`PATCH /agents/:id/role`（指定角色，Supervisor 不可設為 ADMIN）、`PATCH /agents/me/password`（自行改密碼）、`PATCH /agents/:id/password`（Admin 重置他人密碼，無需舊密碼）、`DELETE /agents/:id`（Admin 停用帳號，`isActive=false`）。前端設定頁「人員與權限」新增「新增人員」Dialog、「編輯人員」Dialog（含角色變更、Admin 重設密碼、停用帳號），以及所有人可用的「修改密碼」Dialog；Email 衝突時顯示「Email 已被使用」。同步更新 `openspec/specs/agent-management/spec.md`（新規格）與 `openspec/specs/rbac/spec.md`（Supervisor 建立人員權限）。修正 `apps/web/src/lib/api.ts` 的 401 攔截器，在登入頁時直接顯示錯誤訊息而非強制跳轉。
 - **Embeddable WebChat widget + visitor namespace (2026-04-08)** — 建立 `apps/widget` IIFE bundle 並由 API 透過 `GET /webchat/widget.js` 提供，新增 `/api/v1/webchat/:channelId/sessions` 與 `/messages` 公開路由、`/visitor` Socket.IO namespace（Redis bridge）推播 agent/bot 回覆，每個 `sessionStorage` 分頁維護獨立 `visitorToken`，嵌入碼自動降級至 `API_BASE_URL`。
 - **Variable picker for marketing templates (2026-04-07)** — 新增 `GET /marketing/templates/available-variables` 回傳聯絡人/系統/attribute 分類的變數清單、`TemplateFormDialog` 顯示可搜尋的 `VariablePicker`，插入 `{{key}}` 後會自動補齊 `variables` 定義，減少手動輸入錯誤。
 - **Shortlink real-time click stats via Socket.IO (2026-04-01)** — 短連結點擊後立即透過 Socket.IO 廣播 `link.stats.updated` 事件至同一 tenant 的所有連線者，前端 `useShortLinks`（列表頁）與 `useClickStats`（詳情頁）訂閱事件並即時 mutate，不再需要重新整理頁面。
