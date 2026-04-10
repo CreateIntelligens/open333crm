@@ -73,7 +73,7 @@ When a role check fails, the API SHALL respond with HTTP 403 and a JSON body of 
 ---
 
 ### Requirement: Agent Management Access
-Creating, updating, and deleting Agents SHALL require the `ADMIN` role. Listing and viewing Agents is allowed for all authenticated roles (`AGENT`, `SUPERVISOR`, `ADMIN`).
+Creating, updating, and deleting Agents SHALL require the `ADMIN` or `SUPERVISOR` role. A `SUPERVISOR` SHALL NOT be permitted to create or assign agents with the `ADMIN` role. Listing and viewing Agents is allowed for all authenticated roles (`AGENT`, `SUPERVISOR`, `ADMIN`).
 
 #### Scenario: AGENT attempts to create an Agent
 - **GIVEN** a request is authenticated with role `AGENT`
@@ -85,9 +85,14 @@ Creating, updating, and deleting Agents SHALL require the `ADMIN` role. Listing 
 - **WHEN** `DELETE /agents/:id` is called
 - **THEN** the response SHALL be HTTP 403
 
-#### Scenario: SUPERVISOR attempts to create an Agent
+#### Scenario: SUPERVISOR creates an Agent with AGENT role
 - **GIVEN** a request is authenticated with role `SUPERVISOR`
-- **WHEN** `POST /agents` is called
+- **WHEN** `POST /agents` is called with `{ role: "AGENT" }` and a valid body
+- **THEN** the request SHALL reach the route handler (guard allows it)
+
+#### Scenario: SUPERVISOR attempts to create an ADMIN agent
+- **GIVEN** a request is authenticated with role `SUPERVISOR`
+- **WHEN** `POST /agents` is called with `{ role: "ADMIN" }`
 - **THEN** the response SHALL be HTTP 403
 
 #### Scenario: ADMIN creates an Agent

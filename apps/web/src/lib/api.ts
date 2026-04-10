@@ -28,6 +28,11 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
+        const onLoginPage = window.location.pathname === '/login';
+        if (onLoginPage) {
+          // Let the login page handle the error itself
+          return Promise.reject(error);
+        }
         localStorage.removeItem('token');
         window.location.href = '/login';
       }
