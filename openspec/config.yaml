@@ -1,13 +1,49 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  ## Project: Open333 CRM
+  Tech stack: TypeScript, React (Vite), Fastify, Prisma, PostgreSQL, Redis, BullMQ, Socket.IO
+  Monorepo managed with pnpm workspaces + Turborepo.
+  Apps: apps/api (Fastify), apps/web (React), apps/workers (BullMQ consumers)
+  Packages: packages/database (Prisma schema), @open333crm/core (shared utilities)
+
+  ## Socket Event Routing — CRITICAL RULE
+  There are two paths for emitting socket events to the frontend. Always choose the correct one:
+
+  ### Path A — API process direct emit (apps/api)
+  Use `fastify.io.to(room).emit(event, data)` when:
+  - The event is the primary result of the current HTTP request handler
+  - Data is already written to DB within this request
+  - The recipient room is already known (no extra DB queries needed)
+  - Latency matters — the emit should happen before the HTTP response returns
+  Examples: message.new, conversation.updated, case.created
+
+  ### Path B — Async queue via eventBus → BullMQ → apps/workers
+  Use `eventBus.publish(name, payload)` → `queue.add(job)` → worker handler → `publishSocketEvent(redis, room, event, data)` when:
+  - Finding the recipients requires additional DB queries (e.g., "all supervisors in this tenant")
+  - The work is a side-effect that must not block the HTTP response
+  - Multiple recipients need to be notified based on roles or assignment
+  - The event originates from a background job (SLA poll, automation rule)
+  Examples: case.assigned notification, sla.warning, sla.breached, automation side-effects
+
+  ### Workers cannot use fastify.io directly
+  apps/workers is a separate process with no access to the Fastify/Socket.IO instance.
+  Workers MUST emit socket events via Redis pub/sub: `redis.publish('socket:emit', JSON.stringify({ room, event, data }))`.
+  The API process subscribes to the 'socket:emit' channel and forwards to Socket.IO.
+
+  ## Event Bus
+  `eventBus` (apps/api/src/events/event-bus.ts) is a Node.js EventEmitter singleton.
+  It is in-process only — it has NO connection to Redis.
+  eventBus subscribers (e.g. notification.worker.ts, automation.worker.ts) run inside the API process
+  and enqueue BullMQ jobs when they receive events. The actual job processing happens in apps/workers.
+
+  ## RBAC
+  Roles: ADMIN > SUPERVISOR > AGENT. Guards: requireAdmin(), requireSupervisor() in apps/api/src/guards/rbac.guard.ts.
+  Use string literals for roles ('ADMIN', 'SUPERVISOR', 'AGENT') — do NOT import Prisma AgentRole enum.
+
+  ## Prisma client
+  The shared Prisma client is in packages/database. Import PrismaClient from '@open333crm/database', not '@prisma/client'.
+  Do not use Prisma-generated enum types (AgentRole etc.) — use string literals instead.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

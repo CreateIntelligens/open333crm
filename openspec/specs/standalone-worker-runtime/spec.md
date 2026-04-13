@@ -103,3 +103,36 @@ When a standalone worker needs to emit a WebSocket event to connected clients, i
 #### Scenario: API Redis subscriber is temporarily disconnected
 - **WHEN** the API's Redis subscriber disconnects and reconnects
 - **THEN** messages published during the disconnection window are lost (best-effort delivery); the subscriber resumes processing new messages after reconnection
+
+---
+
+### Requirement: Socket Event Routing Decision Rule
+When implementing any feature that needs to emit a socket event to the frontend, the implementor SHALL select the correct emission path based on the following criteria.
+
+**Path A — API process direct emit** (`fastify.io.to(room).emit(event, data)`)
+SHALL be used when ALL of the following are true:
+- The socket event is the primary real-time consequence of the current HTTP request
+- The data to be emitted is already persisted to the database within this request
+- The target room is known without any additional database queries
+- The emit must occur before the HTTP response is returned to the caller
+
+**Path B — Async queue** (`eventBus.publish` → BullMQ job → `apps/workers` → Redis pub/sub emit)
+SHALL be used when ANY of the following is true:
+- Determining the set of recipients requires additional database queries (e.g., look up all supervisors or admins in a tenant)
+- The notification is a side-effect that must not block or delay the HTTP response
+- The triggering event originates from a background job (SLA poll, automation rule, broadcast scheduler)
+- Multiple recipients with role-based or assignment-based targeting are involved
+
+Implementors SHALL NOT use Path A for notifications whose recipient list is determined dynamically at emit time. Implementors SHALL NOT use Path B when the socket event is an immediate, latency-sensitive consequence of a user action.
+
+#### Scenario: New inbound message notification
+- **WHEN** a new inbound message is received via webhook and saved to the database
+- **THEN** the `message.new` socket event SHALL be emitted via Path A (direct `fastify.io.to(room).emit`) because the target conversation room is already known and the emit is the primary real-time update for the request
+
+#### Scenario: Case assigned notification to agent
+- **WHEN** a case is assigned to an agent
+- **THEN** the notification to the assigned agent SHALL be dispatched via Path B (eventBus → BullMQ → workers) because it involves writing a `Notification` record and potentially querying supervisor IDs, which must not block the assignment HTTP response
+
+#### Scenario: SLA breach notification
+- **WHEN** the SLA poll detects a breached case
+- **THEN** the `sla.breached` event and the associated `notification.new` events SHALL be dispatched via Path B because the trigger originates from a background job in `apps/workers`, which has no access to the API's Socket.IO instance
