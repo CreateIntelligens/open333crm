@@ -2,7 +2,7 @@
 set -e
 
 echo "[entrypoint] Running database migrations..."
-/app/node_modules/.bin/prisma migrate deploy \
+/app/packages/database/node_modules/.bin/prisma migrate deploy \
   --schema /app/packages/database/prisma/schema.prisma
 echo "[entrypoint] Migrations complete."
 

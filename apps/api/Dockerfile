@@ -10,6 +10,7 @@ RUN apk add --no-cache openssl libc6-compat
 # Copy manifests for all workspace packages that api depends on
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
+COPY packages/automation/package.json packages/automation/package.json
 COPY packages/channel-plugins/package.json packages/channel-plugins/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/database/package.json packages/database/package.json
