@@ -1,11 +1,112 @@
-# Production: nginx reverse proxy + Let's Encrypt auto-SSL
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-#
-# Set DOMAIN and CERTBOT_EMAIL before running:
-#   DOMAIN=uat.open333crm.example.com
-#   CERTBOT_EMAIL=ops@example.com
+# Production — nginx + Let's Encrypt auto-SSL
+# Usage:
+#   1. cp .env.prod.example .env.prod
+#   2. Fill in DOMAIN and CERTBOT_EMAIL in .env.prod
+#   3. docker compose -f docker-compose.prod.yml up -d
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: open333crm-postgres
+    environment:
+      POSTGRES_DB: open333crm
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crmpassword
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d open333crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: open333crm-redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama
+    container_name: open333crm-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:0.5b}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-bge-m3}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list > /dev/null 2>&1; do sleep 2; done
+        ollama pull $$OLLAMA_CHAT_MODEL
+        ollama pull $$OLLAMA_EMBED_MODEL
+        wait
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    container_name: open333crm-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: open333crm-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.api
+    restart: unless-stopped
+
+  workers:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    container_name: open333crm-workers
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.workers
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: open333crm-web
+    depends_on:
+      - api
+    env_file:
+      - .env.web
+    restart: unless-stopped
+
   nginx:
     image: nginx:alpine
     container_name: open333crm-nginx
@@ -15,8 +116,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      DOMAIN: "${DOMAIN:?DOMAIN is required}"
+    env_file:
+      - .env.prod
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
       - ./nginx/entrypoint.sh:/entrypoint.sh:ro
@@ -28,9 +129,8 @@ services:
   certbot:
     image: certbot/certbot
     container_name: open333crm-certbot
-    environment:
-      DOMAIN: "${DOMAIN:?DOMAIN is required}"
-      CERTBOT_EMAIL: "${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}"
+    env_file:
+      - .env.prod
     volumes:
       - certbot_certs:/etc/letsencrypt
       - certbot_www:/var/www/certbot
@@ -40,5 +140,9 @@ services:
     restart: unless-stopped
 
 volumes:
+  pg_data:
+  redis_data:
+  ollama_data:
+  minio_data:
   certbot_certs:
   certbot_www:

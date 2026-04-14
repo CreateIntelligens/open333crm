@@ -112,9 +112,25 @@ services:
     ports:
       - "3000:3000"
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: open333crm-caddy
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
 volumes:
   pg_data:
   redis_data:
   ollama_data:
   minio_data:
+  caddy_data:
+  caddy_config:
 

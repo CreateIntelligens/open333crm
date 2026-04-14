@@ -6,6 +6,7 @@ dist/
 .env.api
 .env.workers
 .env.web
+.env.prod
 *.log
 .turbo/
 .DS_Store

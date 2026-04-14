@@ -420,38 +420,49 @@ socket.emit('typing:stop', { conversationId })
 - **Nginx** (反向代理)
 - **SSL 憑證** (生產環境必須)
 
-### Docker 生產部署
+### 本地開發
 
 ```bash
-# 1. 設定網域與憑證 email（在 docker-compose.yml 的 nginx/certbot environment 區塊填入）
-#    DOMAIN: "uat.open333crm.example.com"
-#    CERTBOT_EMAIL: "ops@example.com"
-#    ⚠️  確認 port 80 防火牆已開放（Let's Encrypt ACME challenge 需要）
-
-# 2. 啟動服務（首次啟動會自動申請 SSL 憑證）
 docker compose up -d
+# http://localhost
+```
 
-# 3. 確認服務狀態
-docker compose ps
+Caddy 反向代理跑在 port 80，無需設定 domain 或 SSL。
 
-# 4. 確認 SSL 憑證
-docker compose logs certbot
+### 線上部署（nginx + Let's Encrypt）
+
+```bash
+# 1. 建立 .env.prod（只需做一次）
+cp .env.prod.example .env.prod
+
+# 2. 填入網域與 email（vi 或任意編輯器）
+# DOMAIN=uat.open333crm.create360.ai
+# CERTBOT_EMAIL=ops@example.com
+
+# 3. 確認 port 80 防火牆已開放（Let's Encrypt ACME challenge 需要）
+
+# 4. 啟動（首次自動申請 SSL 憑證）
+docker compose -f docker-compose.prod.yml up -d
+
+# 5. 確認狀態
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs certbot
 ```
 
 ### SSL 自動續約
 
-certbot 容器每天 03:00 執行 `certbot renew`；
-nginx 容器每天 04:00 執行 `nginx -s reload` 載入新憑證。
+certbot 每天 **03:00** 執行 `certbot renew`；
+nginx 每天 **04:00** 執行 `nginx -s reload` 載入新憑證。
 無需手動操作。
 
-### 環境變數（nginx / certbot）
+### 環境變數檔案
 
-| 變數 | 說明 | 設定位置 |
-|------|------|---------|
-| `DOMAIN` | 公開網域名稱 | `docker-compose.yml` nginx & certbot `environment:` |
-| `CERTBOT_EMAIL` | Let's Encrypt 通知 email | `docker-compose.yml` certbot `environment:` |
-
-其他應用程式環境變數（API、Web、Workers）維持在各自的 `.env.*` 檔案，不受影響。
+| 檔案 | 用途 |
+|------|------|
+| `.env.api` | API 服務（DB、Redis、JWT 等） |
+| `.env.workers` | Workers 服務 |
+| `.env.web` | Web 前端 |
+| `.env.prod` | 線上部署用（`DOMAIN`、`CERTBOT_EMAIL`） |
 
 ### 環境變數檢查清單
 
@@ -464,46 +475,8 @@ nginx 容器每天 04:00 執行 `nginx -s reload` 載入新憑證。
 - [ ] `LINE_*` - 正式 LINE 憑證
 - [ ] `FB_APP_SECRET` - 正式 Facebook 憑證
 - [ ] `NEXT_PUBLIC_API_URL` - 正式 API 網址
-
-### Nginx 配置範例
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    # 前端
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # API
-    location /api {
-        proxy_pass http://localhost:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # WebSocket
-    location /socket.io {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
+- [ ] `DOMAIN` - 公開網域（`.env.prod`）
+- [ ] `CERTBOT_EMAIL` - Let's Encrypt 通知 email（`.env.prod`）
 
 ## 🧪 測試
 
