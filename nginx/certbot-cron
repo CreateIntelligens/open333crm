@@ -1,0 +1,3 @@
+# Run certbot renewal daily at 03:00
+# nginx reloads separately at 04:00 to pick up renewed certs
+0 3 * * * certbot renew --webroot -w /var/www/certbot --quiet

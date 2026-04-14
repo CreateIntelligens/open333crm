@@ -1,0 +1,44 @@
+# Production: nginx reverse proxy + Let's Encrypt auto-SSL
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Set DOMAIN and CERTBOT_EMAIL before running:
+#   DOMAIN=uat.open333crm.example.com
+#   CERTBOT_EMAIL=ops@example.com
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: open333crm-nginx
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN:?DOMAIN is required}"
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./nginx/entrypoint.sh:/entrypoint.sh:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot
+    container_name: open333crm-certbot
+    environment:
+      DOMAIN: "${DOMAIN:?DOMAIN is required}"
+      CERTBOT_EMAIL: "${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}"
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+      - ./nginx/certbot-entrypoint.sh:/entrypoint.sh:ro
+      - ./nginx/certbot-cron:/etc/crontabs/root:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: unless-stopped
+
+volumes:
+  certbot_certs:
+  certbot_www:

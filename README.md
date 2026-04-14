@@ -423,18 +423,35 @@ socket.emit('typing:stop', { conversationId })
 ### Docker 生產部署
 
 ```bash
-# 1. 構建生產映像
-docker compose -f docker-compose.prod.yml build
+# 1. 設定網域與憑證 email（在 docker-compose.yml 的 nginx/certbot environment 區塊填入）
+#    DOMAIN: "uat.open333crm.example.com"
+#    CERTBOT_EMAIL: "ops@example.com"
+#    ⚠️  確認 port 80 防火牆已開放（Let's Encrypt ACME challenge 需要）
 
-# 2. 啟動服務
-docker compose -f docker-compose.prod.yml up -d
+# 2. 啟動服務（首次啟動會自動申請 SSL 憑證）
+docker compose up -d
 
-# 3. 執行 Migrations
-docker compose -f docker-compose.prod.yml exec api pnpm prisma migrate deploy
+# 3. 確認服務狀態
+docker compose ps
 
-# 4. 檢查服務
-docker compose -f docker-compose.prod.yml ps
+# 4. 確認 SSL 憑證
+docker compose logs certbot
 ```
+
+### SSL 自動續約
+
+certbot 容器每天 03:00 執行 `certbot renew`；
+nginx 容器每天 04:00 執行 `nginx -s reload` 載入新憑證。
+無需手動操作。
+
+### 環境變數（nginx / certbot）
+
+| 變數 | 說明 | 設定位置 |
+|------|------|---------|
+| `DOMAIN` | 公開網域名稱 | `docker-compose.yml` nginx & certbot `environment:` |
+| `CERTBOT_EMAIL` | Let's Encrypt 通知 email | `docker-compose.yml` certbot `environment:` |
+
+其他應用程式環境變數（API、Web、Workers）維持在各自的 `.env.*` 檔案，不受影響。
 
 ### 環境變數檢查清單
 
