@@ -40,10 +40,10 @@ function encrypt(plain: Record<string, unknown>, key: Buffer): string {
 
 async function main() {
   const oldSecret = process.env.OLD_KEY ?? 'poc-dev-secret-change-in-production';
-  const newSecret = process.env.CREDENTIAL_KEY;
+  const newSecret = process.env.CREDENTIAL_KEY ?? process.env.CREDENTIAL_ENCRYPTION_KEY;
 
   if (!newSecret) {
-    console.error('❌ CREDENTIAL_KEY 環境變數未設定');
+    console.error('❌ CREDENTIAL_KEY 或 CREDENTIAL_ENCRYPTION_KEY 環境變數未設定');
     process.exit(1);
   }
 

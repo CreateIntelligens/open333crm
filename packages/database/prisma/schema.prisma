@@ -747,7 +747,7 @@ model KmArticle {
   version        String?                      @default("1.0")
   teamId         String?                      @db.Uuid
   metadata       Json?
-  embedding      Unsupported("vector(1536)")?
+  embedding      Unsupported("vector(1024)")?
   embeddingModel String?
   viewCount      Int                          @default(0)
   helpfulCount   Int                          @default(0)
@@ -764,7 +764,7 @@ model LongTermMemory {
   id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contactId      String                       @db.Uuid
   content        String
-  embedding      Unsupported("vector(1536)")?
+  embedding      Unsupported("vector(1024)")?
   embeddingModel String?
   metadata       Json?
   createdAt      DateTime                     @default(now())
