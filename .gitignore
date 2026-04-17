@@ -18,3 +18,7 @@ apps/web/public/webchat/
 
 # nginx SSL certs (handled by certbot Docker volume)
 nginx/certs/
+
+
+# Ignore Gemini CLI settings
+.gemini/
