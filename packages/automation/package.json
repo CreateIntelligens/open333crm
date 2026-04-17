@@ -11,10 +11,10 @@
     "dev": "tsc -w"
   },
   "dependencies": {
-    "json-rules-engine": "^6.5.0"
+    "json-rules-engine": "^7.3.1"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^24.12.2",
+    "typescript": "^6.0.3"
   }
 }

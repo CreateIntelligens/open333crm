@@ -42,11 +42,11 @@
     "@open333crm/types": "workspace:*",
     "@open333crm/database": "workspace:*",
     "@open333crm/core": "workspace:*",
-    "@line/bot-sdk": "^9.3.0",
-    "bullmq": "^5.0.0"
+    "@line/bot-sdk": "^11.0.0",
+    "bullmq": "^5.74.1"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "typescript": "^6.0.3",
+    "@types/node": "^24.12.2"
   }
 }
