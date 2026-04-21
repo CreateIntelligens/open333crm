@@ -27,3 +27,6 @@ nginx/certs/
 .mcp.json
 opencode.json
 config.toml
+CLAUDE.md
+GEMINI.md
+ai-docs
