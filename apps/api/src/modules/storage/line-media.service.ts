@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { uploadFile } from './storage.service.js';
+import { logger } from '@open333crm/core';
 
 const CONTENT_TYPE_MAP: Record<string, { ext: string; mime: string }> = {
   image: { ext: '.jpg', mime: 'image/jpeg' },
@@ -28,7 +29,7 @@ export async function downloadAndStoreLineMedia(
     });
 
     if (!channel) {
-      console.error('[LineMedia] Channel not found:', channelId);
+      logger.error('[LineMedia] Channel not found:', channelId);
       return null;
     }
 
@@ -36,7 +37,7 @@ export async function downloadAndStoreLineMedia(
     const accessToken = credentials.channelAccessToken as string;
 
     if (!accessToken) {
-      console.error('[LineMedia] No access token for channel:', channelId);
+      logger.error('[LineMedia] No access token for channel:', channelId);
       return null;
     }
 
@@ -47,7 +48,7 @@ export async function downloadAndStoreLineMedia(
     });
 
     if (!response.ok) {
-      console.error(`[LineMedia] LINE Content API failed (${response.status}):`, await response.text());
+      logger.error(`[LineMedia] LINE Content API failed (${response.status}):`, await response.text());
       return null;
     }
 
@@ -63,10 +64,10 @@ export async function downloadAndStoreLineMedia(
     // 5. Upload to S3 with organized path
     const result = await uploadFile(buffer, filename, mimeType, tenantId, 'media', conversationId);
 
-    console.log(`[LineMedia] Stored LINE content ${contentId} → ${result.key}`);
+    logger.info(`[LineMedia] Stored LINE content ${contentId} → ${result.key}`);
     return { url: result.url, storageKey: result.key };
   } catch (err) {
-    console.error('[LineMedia] Failed to download and store:', err);
+    logger.error('[LineMedia] Failed to download and store:', err);
     return null;
   }
 }

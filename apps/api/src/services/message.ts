@@ -2,6 +2,7 @@ import { ChannelType } from '@open333crm/types';
 import { OutboundPayload, getChannelPlugin } from '@open333crm/channel-plugins';
 import { licenseService } from './license.js';
 import { channelTeamAccessService } from './channel-team-access.js';
+import { logger } from '@open333crm/core';
 
 export interface MessageMetadata {
   channelId: string;
@@ -64,7 +65,7 @@ class MessageService {
 
   private async recordChannelUsage(usage: any) {
     // Mock logic: record usage in database
-    console.log(`[MessageService] Recording usage:`, usage);
+    logger.info(`[MessageService] Recording usage:`, usage);
     // In a real app: prisma.channelUsage.create({ data: usage })
   }
 }

@@ -10,6 +10,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -103,13 +104,13 @@ export function setupSlaWorker(prisma: PrismaClient, io: SocketIOServer) {
             },
           });
 
-          console.log(`[SlaWorker] SLA warning for case ${c.id}`);
+          logger.info(`[SlaWorker] SLA warning for case ${c.id}`);
         } catch (err) {
-          console.error(`[SlaWorker] Warning check failed for case ${c.id}:`, err);
+          logger.error(`[SlaWorker] Warning check failed for case ${c.id}:`, err);
         }
       }
     } catch (err) {
-      console.error('[SlaWorker] Poll SLA warning error:', err);
+      logger.error('[SlaWorker] Poll SLA warning error:', err);
     }
   }
 
@@ -197,13 +198,13 @@ export function setupSlaWorker(prisma: PrismaClient, io: SocketIOServer) {
             },
           });
 
-          console.log(`[SlaWorker] SLA breached for case ${c.id}, priority ${c.priority} → ${newPriority}`);
+          logger.info(`[SlaWorker] SLA breached for case ${c.id}, priority ${c.priority} → ${newPriority}`);
         } catch (err) {
-          console.error(`[SlaWorker] Breach check failed for case ${c.id}:`, err);
+          logger.error(`[SlaWorker] Breach check failed for case ${c.id}:`, err);
         }
       }
     } catch (err) {
-      console.error('[SlaWorker] Poll SLA breach error:', err);
+      logger.error('[SlaWorker] Poll SLA breach error:', err);
     }
   }
 
@@ -288,13 +289,13 @@ export function setupSlaWorker(prisma: PrismaClient, io: SocketIOServer) {
             },
           });
 
-          console.log(`[SlaWorker] First response breached for case ${c.id}`);
+          logger.info(`[SlaWorker] First response breached for case ${c.id}`);
         } catch (err) {
-          console.error(`[SlaWorker] First response check failed for case ${c.id}:`, err);
+          logger.error(`[SlaWorker] First response check failed for case ${c.id}:`, err);
         }
       }
     } catch (err) {
-      console.error('[SlaWorker] Poll first response timeout error:', err);
+      logger.error('[SlaWorker] Poll first response timeout error:', err);
     }
   }
 
@@ -308,5 +309,5 @@ export function setupSlaWorker(prisma: PrismaClient, io: SocketIOServer) {
   setTimeout(pollSlaBreach, 14_000);
   setTimeout(pollFirstResponseTimeout, 18_000);
 
-  console.log('[SlaWorker] Started — polling every 60s for SLA warnings, breaches, and first response timeouts');
+  logger.info('[SlaWorker] Started — polling every 60s for SLA warnings, breaches, and first response timeouts');
 }

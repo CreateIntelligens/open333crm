@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
 import { generateReply, CRM_REPLY_SYSTEM_PROMPT, SUMMARIZE_SYSTEM_PROMPT } from './llm.service.js';
+import { logger } from '@open333crm/core';
 
 export async function suggestReply(prisma: PrismaClient, conversationId: string) {
   // Fetch last few inbound messages for context
@@ -67,7 +68,7 @@ export async function suggestReply(prisma: PrismaClient, conversationId: string)
 
     return { suggestions };
   } catch (err) {
-    console.error('[AI] suggestReply error, returning empty:', err);
+    logger.error('[AI] suggestReply error, returning empty:', err);
     return { suggestions: [] };
   }
 }
@@ -115,7 +116,7 @@ export async function summarizeConversation(prisma: PrismaClient, conversationId
     return { summary };
   } catch (err) {
     // Fallback to static template if LLM fails
-    console.error('[AI] summarizeConversation LLM failed, using fallback:', err);
+    logger.error('[AI] summarizeConversation LLM failed, using fallback:', err);
     return {
       summary: `${contactName} 的對話共 ${msgCount} 則訊息，其中 Bot 回覆了 ${botMsgs} 則。客戶主要詢問了產品相關問題，Bot 提供了初步回覆但客戶可能需要更詳細的人工協助。建議確認客戶需求後提供具體解決方案。`,
     };

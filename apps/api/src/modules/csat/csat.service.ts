@@ -5,6 +5,7 @@ import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { createAndDispatch } from '../notification/notification.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 /**
  * Build CSAT channel-specific message payload for LINE / FB / WEBCHAT.
@@ -164,10 +165,10 @@ export async function sendCsatSurvey(
       );
     }
   } catch (err) {
-    console.error('[CsatService] Channel delivery error:', err);
+    logger.error('[CsatService] Channel delivery error:', err);
   }
 
-  console.log(`[CsatService] CSAT survey sent for case ${caseId}`);
+  logger.info(`[CsatService] CSAT survey sent for case ${caseId}`);
   return true;
 }
 
@@ -276,7 +277,7 @@ export async function recordCsatScore(
         });
       }
     } catch (err) {
-      console.error('[CsatService] Failed to notify supervisors:', err);
+      logger.error('[CsatService] Failed to notify supervisors:', err);
     }
   }
 
@@ -314,9 +315,9 @@ export async function recordCsatScore(
       assigneeId: caseRecord.assigneeId,
     });
   } catch (err) {
-    console.error('[CsatService] Failed to close case after CSAT:', err);
+    logger.error('[CsatService] Failed to close case after CSAT:', err);
   }
 
-  console.log(`[CsatService] CSAT recorded for case ${caseId}: score=${score}`);
+  logger.info(`[CsatService] CSAT recorded for case ${caseId}: score=${score}`);
   return true;
 }

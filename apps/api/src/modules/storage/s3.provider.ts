@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { StorageProvider, UploadResult, PresignResult } from './storage.provider.js';
+import { logger } from '@open333crm/core';
 
 export interface S3ProviderConfig {
   endpoint: string;
@@ -20,12 +21,14 @@ export interface S3ProviderConfig {
   secretAccessKey: string;
   bucket: string;
   publicUrl: string;
+  setAcl?: boolean;
 }
 
 export class S3StorageProvider implements StorageProvider {
   private client: S3Client;
   private bucket: string;
   private publicUrl: string;
+  private setAcl: boolean;
 
   constructor(config: S3ProviderConfig) {
     this.client = new S3Client({
@@ -39,6 +42,7 @@ export class S3StorageProvider implements StorageProvider {
     });
     this.bucket = config.bucket;
     this.publicUrl = config.publicUrl;
+    this.setAcl = config.setAcl ?? true;
   }
 
   async upload(buffer: Buffer, key: string, mimeType: string): Promise<UploadResult> {
@@ -48,6 +52,7 @@ export class S3StorageProvider implements StorageProvider {
         Key: key,
         Body: buffer,
         ContentType: mimeType,
+        ...(this.setAcl ? { ACL: 'public-read' } : {}),
       }),
     );
     const url = `${this.publicUrl}/${this.bucket}/${key}`;
@@ -84,9 +89,9 @@ export class S3StorageProvider implements StorageProvider {
     } catch {
       try {
         await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-        console.log(`[Storage] Created bucket: ${this.bucket}`);
+        logger.info(`[Storage] Created bucket: ${this.bucket}`);
       } catch (createErr) {
-        console.warn(`[Storage] Bucket creation warning:`, createErr);
+        logger.warn(`[Storage] Bucket creation warning:`, createErr);
       }
     }
   }

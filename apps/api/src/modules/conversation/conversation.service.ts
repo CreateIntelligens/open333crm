@@ -7,6 +7,7 @@ import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { getConfig } from '../../config/env.js';
+import { logger } from '@open333crm/core';
 
 export interface ConversationFilters {
   status?: string;
@@ -285,6 +286,7 @@ export async function sendMessage(
   io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
 
   // --- Channel Delivery: route outbound message through channel plugin ---
+  let delivery: { success: boolean; error?: string } | null = null;
   try {
     const convWithChannel = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -301,39 +303,61 @@ export async function sendMessage(
       },
     });
 
-    if (convWithChannel?.channel?.isActive) {
-      const channel = convWithChannel.channel;
-      const identity = convWithChannel.contact?.channelIdentities?.[0];
+    const channel = convWithChannel?.channel;
+    const identity = convWithChannel?.contact?.channelIdentities?.[0];
 
-      if (identity) {
-        const plugin = getChannelPlugin(channel.channelType);
-        if (plugin) {
-          const credentials = decryptCredentials(channel.credentialsEncrypted);
-          const result = await plugin.sendMessage(
-            identity.uid,
-            { contentType: data.contentType, content: data.content },
-            credentials,
-          );
+    logger.info('[ChannelDelivery] Resolving channel', {
+      channelType: channel?.channelType ?? 'none',
+      isActive: channel?.isActive,
+      identity: identity?.uid ?? 'none',
+    });
 
-          if (result.success && result.channelMsgId) {
-            await prisma.message.update({
-              where: { id: message.id },
-              data: { channelMsgId: result.channelMsgId },
-            });
-          } else if (!result.success) {
-            console.error(`[ChannelDelivery] Failed to send via ${channel.channelType}:`, result.error);
-          }
+    if (!channel?.isActive) {
+      logger.info('[ChannelDelivery] Skipped: channel inactive or missing', { conversationId });
+    } else if (!identity) {
+      logger.info('[ChannelDelivery] Skipped: no channelIdentity found for contact', { conversationId, channelType: channel.channelType });
+    } else {
+      const plugin = getChannelPlugin(channel.channelType);
+      if (!plugin) {
+        logger.warn('[ChannelDelivery] Skipped: no plugin for channel type', { channelType: channel.channelType });
+      } else {
+        const credentials = decryptCredentials(channel.credentialsEncrypted);
+        logger.info('[ChannelDelivery] Sending', {
+          channelType: channel.channelType,
+          to: identity.uid,
+          contentType: data.contentType,
+          content: data.content,
+        });
+        const result = await plugin.sendMessage(
+          identity.uid,
+          { contentType: data.contentType, content: data.content },
+          credentials,
+        );
 
-          // Push outbound message to visitor's widget in real time
-          if (channel.channelType === 'WEBCHAT') {
-            const room = `visitor:${channel.id}:${identity.uid}`;
-            io.of('/visitor').to(room).emit('agent:message', wsPayload.message);
-          }
+        delivery = { success: result.success, error: result.error };
+
+        if (result.success && result.channelMsgId) {
+          await prisma.message.update({
+            where: { id: message.id },
+            data: { channelMsgId: result.channelMsgId },
+          });
+          logger.info('[ChannelDelivery] OK', { channelType: channel.channelType, channelMsgId: result.channelMsgId });
+        } else if (!result.success) {
+          logger.error('[ChannelDelivery] Failed', { channelType: channel.channelType, error: result.error });
+        } else {
+          logger.info('[ChannelDelivery] OK (no channelMsgId)', { channelType: channel.channelType });
+        }
+
+        // Push outbound message to visitor's widget in real time
+        if (channel.channelType === 'WEBCHAT') {
+          const room = `visitor:${channel.id}:${identity.uid}`;
+          io.of('/visitor').to(room).emit('agent:message', wsPayload.message);
         }
       }
     }
   } catch (err) {
-    console.error('[ChannelDelivery] Error during channel delivery:', err);
+    logger.error('[ChannelDelivery] Unexpected error', { error: String(err) });
+    delivery = { success: false, error: String(err) };
   }
 
   // Publish to EventBus
@@ -348,7 +372,7 @@ export async function sendMessage(
     },
   });
 
-  return message;
+  return { message, delivery };
 }
 
 export async function handoffConversation(
@@ -495,32 +519,32 @@ export async function deliverToChannel(
       },
     });
 
-    if (!conv) { console.error('[deliverToChannel] Conversation not found:', conversationId); return; }
-    if (!conv.channel?.isActive) { console.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return; }
+    if (!conv) { logger.error('[deliverToChannel] Conversation not found:', conversationId); return; }
+    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return; }
 
     const identity = conv.contact?.channelIdentities?.find(
       (ci) => ci.channelId === conv.channel.id,
     );
-    if (!identity) { console.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return; }
+    if (!identity) { logger.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return; }
 
     const plugin = getChannelPlugin(conv.channel.channelType);
-    if (!plugin) { console.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return; }
+    if (!plugin) { logger.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return; }
 
     let credentials: Record<string, unknown>;
     try {
       credentials = decryptCredentials(conv.channel.credentialsEncrypted);
     } catch (err) {
-      console.error('[deliverToChannel] Failed to decrypt credentials:', err);
+      logger.error('[deliverToChannel] Failed to decrypt credentials:', err);
       return;
     }
 
-    console.log(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid}`);
+    logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid}`);
     const result = await plugin.sendMessage(
       identity.uid,
       { contentType: 'text', content: { text } },
       credentials,
     );
-    console.log(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
+    logger.info(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
 
     // For WEBCHAT: push reply to visitor widget via Redis socket bridge
     if (conv.channel.channelType === 'WEBCHAT') {
@@ -535,10 +559,10 @@ export async function deliverToChannel(
       };
       getRedisPub()
         .publish('socket:emit', JSON.stringify({ namespace: '/visitor', room, event: 'agent:message', data: msgPayload }))
-        .catch((err) => console.error('[deliverToChannel] Redis publish failed:', err));
+        .catch((err) => logger.error('[deliverToChannel] Redis publish failed:', err));
     }
   } catch (err) {
-    console.error('[deliverToChannel] Error delivering to channel:', err);
+    logger.error('[deliverToChannel] Error delivering to channel:', err);
   }
 }
 

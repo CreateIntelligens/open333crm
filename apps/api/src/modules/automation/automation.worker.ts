@@ -15,6 +15,7 @@ import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { classifyIssue } from '../ai/classify.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { logger } from '@open333crm/core';
 
 const automationQueue = new Queue('automation', {
   connection: { url: process.env.REDIS_URL! },
@@ -95,7 +96,7 @@ async function checkAutoHandoff(
         const summaryResult = await summarizeConversation(prisma, conversationId);
         summary = summaryResult.summary;
       } catch (err) {
-        console.error('[AutoHandoff] Failed to generate summary:', err);
+        logger.error('[AutoHandoff] Failed to generate summary:', err);
       }
 
       // Auto-handoff: change status to AGENT_HANDLED
@@ -170,10 +171,10 @@ async function checkAutoHandoff(
         },
       });
 
-      console.log(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
+      logger.info(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
     }
   } catch (err) {
-    console.error('[AutoHandoff] Error:', err);
+    logger.error('[AutoHandoff] Error:', err);
   }
 }
 
@@ -229,7 +230,7 @@ async function checkKeywordTriggers(
       }
 
       if (matched) {
-        console.log(`[AutomationWorker] keyword.matched: rule="${rule.name}", keywords=[${matchedKeywords.join(', ')}]`);
+        logger.info(`[AutomationWorker] keyword.matched: rule="${rule.name}", keywords=[${matchedKeywords.join(', ')}]`);
 
         eventBus.publish({
           name: 'keyword.matched',
@@ -245,7 +246,7 @@ async function checkKeywordTriggers(
       }
     }
   } catch (err) {
-    console.error('[AutomationWorker] Error checking keyword triggers:', err);
+    logger.error('[AutomationWorker] Error checking keyword triggers:', err);
   }
 }
 
@@ -275,7 +276,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         try {
           await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text);
         } catch (err) {
-          console.error('[AutomationWorker] KB auto-reply error:', err);
+          logger.error('[AutomationWorker] KB auto-reply error:', err);
         }
       }
 
@@ -295,7 +296,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
               metadata: JSON.parse(JSON.stringify({ ...existingMetadata, sentiment: sentimentResult })),
             },
           });
-          console.log(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
+          logger.info(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
 
           // If negative sentiment with high confidence, publish event
           if (sentimentResult.sentiment === 'negative' && sentimentResult.confidence >= 0.6) {
@@ -312,7 +313,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
             });
           }
         } catch (err) {
-          console.error('[AutomationWorker] Sentiment analysis error:', err);
+          logger.error('[AutomationWorker] Sentiment analysis error:', err);
         }
       }
 
@@ -326,7 +327,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'message.received',
         context: { contactId, conversationId, messageContent: text },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue message.received', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue message.received', err));
 
       // Check keyword triggers after message.received automation
       if (text) {
@@ -337,7 +338,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         });
       }
     } catch (err) {
-      console.error('[AutomationWorker] Error handling message.received:', err);
+      logger.error('[AutomationWorker] Error handling message.received:', err);
     }
   });
 
@@ -360,9 +361,9 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'keyword.matched',
         context: { contactId, conversationId, messageContent },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue keyword.matched', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue keyword.matched', err));
     } catch (err) {
-      console.error('[AutomationWorker] Error handling keyword.matched:', err);
+      logger.error('[AutomationWorker] Error handling keyword.matched:', err);
     }
   });
 
@@ -385,7 +386,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'case.created',
         context: { contactId, conversationId, caseId },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue case.created', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue case.created', err));
 
       // Auto-classify issue based on latest inbound message
       if (caseId && conversationId) {
@@ -402,14 +403,14 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
               where: { id: caseId },
               data: { category: classification.category },
             });
-            console.log(`[AutomationWorker] Case ${caseId} auto-classified: ${classification.category} (confidence=${classification.confidence})`);
+            logger.info(`[AutomationWorker] Case ${caseId} auto-classified: ${classification.category} (confidence=${classification.confidence})`);
           }
         } catch (err) {
-          console.error('[AutomationWorker] Auto-classification error:', err);
+          logger.error('[AutomationWorker] Auto-classification error:', err);
         }
       }
     } catch (err) {
-      console.error('[AutomationWorker] Error handling case.created:', err);
+      logger.error('[AutomationWorker] Error handling case.created:', err);
     }
   });
 
@@ -430,9 +431,9 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'conversation.created',
         context: { contactId, conversationId },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue conversation.created', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue conversation.created', err));
     } catch (err) {
-      console.error('[AutomationWorker] Error handling conversation.created:', err);
+      logger.error('[AutomationWorker] Error handling conversation.created:', err);
     }
   });
 
@@ -451,9 +452,9 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'contact.tagged',
         context: { contactId },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue contact.tagged', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue contact.tagged', err));
     } catch (err) {
-      console.error('[AutomationWorker] Error handling contact.tagged:', err);
+      logger.error('[AutomationWorker] Error handling contact.tagged:', err);
     }
   });
 
@@ -476,9 +477,9 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'case.escalated',
         context: { contactId, conversationId, caseId },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue case.escalated', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue case.escalated', err));
     } catch (err) {
-      console.error('[AutomationWorker] Error handling case.escalated:', err);
+      logger.error('[AutomationWorker] Error handling case.escalated:', err);
     }
   });
 
@@ -499,9 +500,9 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'portal.activity.submitted',
         context: { contactId, activityId },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue portal.activity.submitted', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue portal.activity.submitted', err));
     } catch (err) {
-      console.error('[AutomationWorker] Error handling portal.activity.submitted:', err);
+      logger.error('[AutomationWorker] Error handling portal.activity.submitted:', err);
     }
   });
 
@@ -522,12 +523,12 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         tenantId: event.tenantId,
         trigger: 'link.clicked',
         context: { contactId, shortLinkId },
-      }).catch((err) => console.error('[AutomationWorker] Failed to enqueue link.clicked', err));
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue link.clicked', err));
     } catch (err) {
-      console.error('[AutomationWorker] Error handling link.clicked:', err);
+      logger.error('[AutomationWorker] Error handling link.clicked:', err);
     }
   });
 
-  console.log('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
-  console.log('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
+  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
+  logger.info('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
 }

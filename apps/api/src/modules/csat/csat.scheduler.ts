@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { sendCsatSurvey } from './csat.service.js';
 import { eventBus } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 const CSAT_DELAY_MINUTES = 5; // POC: 5 minutes after resolution (design doc: 30 min)
@@ -35,14 +36,14 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
         try {
           const sent = await sendCsatSurvey(prisma, io, c.id);
           if (sent) {
-            console.log(`[CsatScheduler] Sent CSAT survey for case ${c.id}`);
+            logger.info(`[CsatScheduler] Sent CSAT survey for case ${c.id}`);
           }
         } catch (err) {
-          console.error(`[CsatScheduler] Failed to send CSAT for case ${c.id}:`, err);
+          logger.error(`[CsatScheduler] Failed to send CSAT for case ${c.id}:`, err);
         }
       }
     } catch (err) {
-      console.error('[CsatScheduler] Poll send error:', err);
+      logger.error('[CsatScheduler] Poll send error:', err);
     }
   }
 
@@ -97,13 +98,13 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
             assigneeId: c.assigneeId,
           });
 
-          console.log(`[CsatScheduler] Auto-closed case ${c.id} (no CSAT response after ${AUTO_CLOSE_HOURS}h)`);
+          logger.info(`[CsatScheduler] Auto-closed case ${c.id} (no CSAT response after ${AUTO_CLOSE_HOURS}h)`);
         } catch (err) {
-          console.error(`[CsatScheduler] Failed to auto-close case ${c.id}:`, err);
+          logger.error(`[CsatScheduler] Failed to auto-close case ${c.id}:`, err);
         }
       }
     } catch (err) {
-      console.error('[CsatScheduler] Poll auto-close error:', err);
+      logger.error('[CsatScheduler] Poll auto-close error:', err);
     }
   }
 
@@ -115,5 +116,5 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
   setTimeout(pollSendCsat, 8000);
   setTimeout(pollAutoClose, 12000);
 
-  console.log(`[CsatScheduler] Started — send delay: ${CSAT_DELAY_MINUTES}min, auto-close: ${AUTO_CLOSE_HOURS}h`);
+  logger.info(`[CsatScheduler] Started — send delay: ${CSAT_DELAY_MINUTES}min, auto-close: ${AUTO_CLOSE_HOURS}h`);
 }

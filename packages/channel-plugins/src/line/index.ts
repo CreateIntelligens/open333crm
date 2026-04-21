@@ -182,17 +182,24 @@ export class LinePlugin implements ChannelPlugin {
               content = { text: m.text };
               break;
             case 'image':
-            case 'video':
-            case 'audio':
-            case 'file':
-              content = {
-                text: `[${m.type === 'image' ? '圖片' : m.type === 'video' ? '影片' : m.type === 'audio' ? '語音' : '檔案'}]`,
-                contentId: m.id,
-                fileName: (m as any).fileName,
-                fileSize: (m as any).fileSize,
-                mediaUrl: `line-content:${m.id}`,
-              };
+            case 'video': {
+              const label = m.type === 'image' ? '圖片' : '影片';
+              const cp = (m as any).contentProvider as { type?: string; originalContentUrl?: string; previewImageUrl?: string } | undefined;
+              if (cp?.type === 'external' && cp.originalContentUrl) {
+                content = {
+                  text: `[${label}]`,
+                  url: cp.originalContentUrl,
+                  previewUrl: cp.previewImageUrl ?? cp.originalContentUrl,
+                };
+              } else {
+                content = {
+                  text: `[${label}]`,
+                  contentId: m.id,
+                  mediaUrl: `line-content:${m.id}`,
+                };
+              }
               break;
+            }
             case 'location':
               content = {
                 text: `[位置] ${(m as any).title ?? (m as any).address ?? ''}`.trim(),

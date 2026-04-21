@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { runDailyAggregation } from './analytics.aggregator.js';
+import { logger } from '@open333crm/core';
 
 const HARDCODED_TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
@@ -15,10 +16,10 @@ export function setupAnalyticsScheduler(prisma: PrismaClient) {
 
   runDailyAggregation(prisma, HARDCODED_TENANT_ID, yesterday)
     .then(() => {
-      console.log('[AnalyticsScheduler] Aggregation complete for', yesterday.toISOString().slice(0, 10));
+      logger.info('[AnalyticsScheduler] Aggregation complete for', yesterday.toISOString().slice(0, 10));
     })
     .catch((err) => {
-      console.error('[AnalyticsScheduler] Aggregation failed:', err);
+      logger.error('[AnalyticsScheduler] Aggregation failed:', err);
     });
 
   // Calculate ms until next 2:00 AM
@@ -40,14 +41,14 @@ export function setupAnalyticsScheduler(prisma: PrismaClient) {
         const yd = new Date();
         yd.setDate(yd.getDate() - 1);
         await runDailyAggregation(prisma, HARDCODED_TENANT_ID, yd);
-        console.log('[AnalyticsScheduler] Aggregation complete for', yd.toISOString().slice(0, 10));
+        logger.info('[AnalyticsScheduler] Aggregation complete for', yd.toISOString().slice(0, 10));
       } catch (err) {
-        console.error('[AnalyticsScheduler] Aggregation failed:', err);
+        logger.error('[AnalyticsScheduler] Aggregation failed:', err);
       }
       scheduleNext();
     }, ms);
   }
 
   scheduleNext();
-  console.log('[AnalyticsScheduler] Scheduled. Next run in', Math.round(msUntilNext2AM() / 60000), 'minutes');
+  logger.info('[AnalyticsScheduler] Scheduled. Next run in', Math.round(msUntilNext2AM() / 60000), 'minutes');
 }

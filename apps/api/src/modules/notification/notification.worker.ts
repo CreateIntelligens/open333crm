@@ -9,6 +9,7 @@ import type { PrismaClient } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 const notificationQueue = new Queue('notification', {
   connection: { url: process.env.REDIS_URL! },
@@ -48,11 +49,11 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         title: '工單已指派給您',
         body: title ? `工單「${title}」已指派給您處理` : '您有一張新的指派工單',
         clickUrl: `/dashboard/cases/${caseId}`,
-      }).catch((err) => console.error('[NotificationWorker] Failed to enqueue case.assigned', err));
+      }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue case.assigned', err));
 
-      console.log(`[NotificationWorker] case.assigned → agent ${assigneeId}`);
+      logger.info(`[NotificationWorker] case.assigned → agent ${assigneeId}`);
     } catch (err) {
-      console.error('[NotificationWorker] Error handling case.assigned:', err);
+      logger.error('[NotificationWorker] Error handling case.assigned:', err);
     }
   });
 
@@ -74,12 +75,12 @@ export function setupNotificationWorker(prisma: PrismaClient) {
           title: '工單已升級',
           body: reason ? `工單已升級：${reason}` : '有一張工單已升級，請注意處理',
           clickUrl: `/dashboard/cases/${caseId}`,
-        }).catch((err) => console.error('[NotificationWorker] Failed to enqueue case.escalated', err));
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue case.escalated', err));
       }
 
-      console.log(`[NotificationWorker] case.escalated → ${supervisorIds.length} supervisor(s)/admin(s)`);
+      logger.info(`[NotificationWorker] case.escalated → ${supervisorIds.length} supervisor(s)/admin(s)`);
     } catch (err) {
-      console.error('[NotificationWorker] Error handling case.escalated:', err);
+      logger.error('[NotificationWorker] Error handling case.escalated:', err);
     }
   });
 
@@ -101,11 +102,11 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         title: 'SLA 即將到期',
         body: title ? `工單「${title}」的 SLA 即將到期，請加速處理` : '您有一張工單的 SLA 即將到期',
         clickUrl: `/dashboard/cases/${caseId}`,
-      }).catch((err) => console.error('[NotificationWorker] Failed to enqueue sla.warning', err));
+      }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue sla.warning', err));
 
-      console.log(`[NotificationWorker] sla.warning → agent ${assigneeId}`);
+      logger.info(`[NotificationWorker] sla.warning → agent ${assigneeId}`);
     } catch (err) {
-      console.error('[NotificationWorker] Error handling sla.warning:', err);
+      logger.error('[NotificationWorker] Error handling sla.warning:', err);
     }
   });
 
@@ -135,12 +136,12 @@ export function setupNotificationWorker(prisma: PrismaClient) {
           title: 'SLA 已逾期',
           body: title ? `工單「${title}」的 SLA 已逾期，請立即處理` : '有一張工單的 SLA 已逾期',
           clickUrl: `/dashboard/cases/${caseId}`,
-        }).catch((err) => console.error('[NotificationWorker] Failed to enqueue sla.breached', err));
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue sla.breached', err));
       }
 
-      console.log(`[NotificationWorker] sla.breached → ${notifyIds.length} agent(s)`);
+      logger.info(`[NotificationWorker] sla.breached → ${notifyIds.length} agent(s)`);
     } catch (err) {
-      console.error('[NotificationWorker] Error handling sla.breached:', err);
+      logger.error('[NotificationWorker] Error handling sla.breached:', err);
     }
   });
 
@@ -153,24 +154,41 @@ export function setupNotificationWorker(prisma: PrismaClient) {
 
       if (!conversationId) return;
 
-      // Look up conversation to find assigned agent
       const conversation = await prisma.conversation.findFirst({
         where: { id: conversationId, tenantId: event.tenantId },
         select: { assignedToId: true, contactId: true, contact: { select: { displayName: true } } },
       });
 
-      if (!conversation?.assignedToId) return;
+      if (!conversation) return;
 
-      await notificationQueue.add('notification:dispatch', {
+      const contactName = conversation.contact.displayName;
+      const notifPayload = {
         tenantId: event.tenantId,
-        agentId: conversation.assignedToId,
         type: 'new_message',
         title: '收到新訊息',
-        body: `${conversation.contact.displayName} 傳來新訊息`,
+        body: `${contactName} 傳來新訊息`,
         clickUrl: `/dashboard/inbox?conversationId=${conversationId}`,
-      }).catch((err) => console.error('[NotificationWorker] Failed to enqueue message.received', err));
+      };
+
+      if (conversation.assignedToId) {
+        // Assigned → notify the assigned agent only
+        await notificationQueue.add('notification:dispatch', {
+          ...notifPayload,
+          agentId: conversation.assignedToId,
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received', err));
+      } else {
+        // Unassigned → notify all ADMIN and SUPERVISOR agents
+        const adminAndSupervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
+        for (const agentId of adminAndSupervisorIds) {
+          await notificationQueue.add('notification:dispatch', {
+            ...notifPayload,
+            agentId,
+          }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received (unassigned)', err));
+        }
+        logger.info(`[NotificationWorker] message.received (unassigned) → ${adminAndSupervisorIds.length} admin(s)/supervisor(s)`);
+      }
     } catch (err) {
-      console.error('[NotificationWorker] Error handling message.received:', err);
+      logger.error('[NotificationWorker] Error handling message.received:', err);
     }
   });
 
@@ -191,15 +209,15 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         title: '對話已指派給您',
         body: '您有一則新的對話指派',
         clickUrl: `/dashboard/inbox?conversationId=${conversationId}`,
-      }).catch((err) => console.error('[NotificationWorker] Failed to enqueue conversation.assigned', err));
+      }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue conversation.assigned', err));
 
-      console.log(`[NotificationWorker] conversation.assigned → agent ${assignedToId}`);
+      logger.info(`[NotificationWorker] conversation.assigned → agent ${assignedToId}`);
     } catch (err) {
-      console.error('[NotificationWorker] Error handling conversation.assigned:', err);
+      logger.error('[NotificationWorker] Error handling conversation.assigned:', err);
     }
   });
 
-  console.log(
+  logger.info(
     '[NotificationWorker] Subscribed to events: case.assigned, case.escalated, sla.warning, sla.breached, message.received, conversation.assigned',
   );
 }

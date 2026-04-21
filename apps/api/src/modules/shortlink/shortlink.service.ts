@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -230,7 +231,7 @@ export async function handleClick(
         },
       });
     } catch (err) {
-      console.error('[ShortLink] Click tracking error:', err);
+      logger.error('[ShortLink] Click tracking error:', err);
     }
   };
 

@@ -1,4 +1,5 @@
 import { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
+import { logger } from '@open333crm/core';
 
 export class TelegramPlugin implements ChannelPlugin {
   readonly channelType = 'TELEGRAM';
@@ -42,7 +43,7 @@ export class TelegramPlugin implements ChannelPlugin {
 
   async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
     const botToken = credentials.channelAccessToken as string;
-    console.log(`[TelegramPlugin] Executing sendMessage to ${to} with token ${botToken}`);
+    logger.info(`[TelegramPlugin] Executing sendMessage to ${to} with token ${botToken}`);
     return { success: true, channelMsgId: `msg_${Date.now()}` };
   }
 }

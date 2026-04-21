@@ -30,6 +30,7 @@ const envSchema = z.object({
   S3_BUCKET: z.string().default('open333crm'),
   S3_REGION: z.string().default('us-east-1'),
   S3_PUBLIC_URL: z.string().default('http://localhost:9000'),
+  S3_SET_ACL: z.coerce.number().int().min(0).max(1).default(1),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),

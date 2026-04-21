@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { processResumeQueue } from '@open333crm/core';
+import { processResumeQueue , logger } from '@open333crm/core';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -13,7 +13,7 @@ export function setupCanvasScheduler(prisma: PrismaClient) {
     try {
       await processResumeQueue();
     } catch (err) {
-      console.error('[CanvasScheduler] Failed to process resume queue:', err);
+      logger.error('[CanvasScheduler] Failed to process resume queue:', err);
     } finally {
       isPolling = false;
     }
@@ -22,7 +22,7 @@ export function setupCanvasScheduler(prisma: PrismaClient) {
   setInterval(pollResumeQueue, POLL_INTERVAL_MS);
   setTimeout(pollResumeQueue, 5000);
 
-  console.log(
+  logger.info(
     `[CanvasScheduler] Started WAIT resume poller (interval: ${Math.round(POLL_INTERVAL_MS / 1000)}s)`,
   );
 }

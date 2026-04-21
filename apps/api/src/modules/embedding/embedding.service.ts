@@ -5,6 +5,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { getConfig } from '../../config/env.js';
+import { logger } from '@open333crm/core';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -171,7 +172,7 @@ export async function bulkReembed(
       );
       succeeded++;
     } catch (err) {
-      console.error(`[Embedding] Failed to embed article ${article.id}:`, err);
+      logger.error(`[Embedding] Failed to embed article ${article.id}:`, err);
       failed++;
     }
   }

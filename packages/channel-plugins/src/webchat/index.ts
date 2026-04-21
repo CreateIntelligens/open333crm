@@ -1,4 +1,5 @@
 import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
+import { logger } from '@open333crm/core';
 
 export class WebchatPlugin implements ChannelPlugin {
   readonly channelType = 'WEBCHAT';
@@ -49,7 +50,7 @@ export class WebchatPlugin implements ChannelPlugin {
     _credentials: Record<string, unknown>,
   ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
     // For webchat, messages are pushed via Socket.IO by the calling code.
-    console.log(`[WEBCHAT] Sending message to ${to}:`, JSON.stringify(message.content));
+    logger.info(`[WEBCHAT] Sending message to ${to}:`, JSON.stringify(message.content));
     return { success: true, channelMsgId: `webchat-msg-${Date.now()}` };
   }
 }

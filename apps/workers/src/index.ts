@@ -113,6 +113,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Workers failed to start', err);
+  logger.error('Workers failed to start', err);
   process.exit(1);
 });

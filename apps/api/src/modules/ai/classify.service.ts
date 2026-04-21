@@ -3,6 +3,7 @@
  */
 
 import { generateReply } from './llm.service.js';
+import { logger } from '@open333crm/core';
 
 export interface ClassifyResult {
   category: string;
@@ -78,7 +79,7 @@ export async function classifyIssue(text: string): Promise<ClassifyResult> {
 
     return keywordFallback(text);
   } catch (err) {
-    console.error('[Classify] LLM classification failed, using keyword fallback:', err);
+    logger.error('[Classify] LLM classification failed, using keyword fallback:', err);
     return keywordFallback(text);
   }
 }

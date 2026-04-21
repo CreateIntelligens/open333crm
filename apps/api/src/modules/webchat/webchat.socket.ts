@@ -1,5 +1,6 @@
 import type { Server as SocketIOServer } from 'socket.io';
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '@open333crm/core';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,10 +42,10 @@ export function registerVisitorNamespace(io: SocketIOServer, prisma: PrismaClien
     const room = `visitor:${channelId}:${visitorToken}`;
 
     socket.join(room);
-    console.info(`[WebChat] Visitor connected: channel=${channelId} visitor=${visitorToken.slice(-6)}`);
+    logger.info(`[WebChat] Visitor connected: channel=${channelId} visitor=${visitorToken.slice(-6)}`);
 
     socket.on('disconnect', (reason) => {
-      console.info(`[WebChat] Visitor disconnected: visitor=${visitorToken.slice(-6)} reason=${reason}`);
+      logger.info(`[WebChat] Visitor disconnected: visitor=${visitorToken.slice(-6)} reason=${reason}`);
     });
   });
 }

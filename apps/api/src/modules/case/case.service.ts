@@ -8,6 +8,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
 import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
 import { autoAssignCase } from './assignment.service.js';
+import { logger } from '@open333crm/core';
 
 export interface CaseFilters {
   status?: string;
@@ -317,7 +318,7 @@ export async function createCase(
   // Auto-assign if no assignee specified and teamId is set
   if (!data.assigneeId && caseRecord.teamId) {
     autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
-      console.error(`[createCase] Auto-assign failed for case ${caseRecord.id}:`, err);
+      logger.error(`[createCase] Auto-assign failed for case ${caseRecord.id}:`, err);
     });
   }
 

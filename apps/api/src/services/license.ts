@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
-import type { 
+import { logger } from '@open333crm/core';
+import type {
   LicenseFeatures, 
   ChannelType, 
   CreditInfo, 
@@ -21,7 +22,7 @@ class LicenseService {
 
   async initialize() {
     try {
-      console.log(`[License] Initializing with key: ${env.LICENSE_KEY}`);
+      logger.info(`[License] Initializing with key: ${env.LICENSE_KEY}`);
       
       // Mocking the fetch based on v0.2.0 spec
       this.config = {
@@ -82,9 +83,9 @@ class LicenseService {
         }
       };
       
-      console.log('[License] Initialized successfully with v0.2.0 features');
+      logger.info('[License] Initialized successfully with v0.2.0 features');
     } catch (err) {
-      console.error('[License] Initialization failed:', err);
+      logger.error('[License] Initialization failed:', err);
     }
   }
 

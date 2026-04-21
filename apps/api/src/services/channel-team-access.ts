@@ -1,4 +1,5 @@
 import { ChannelType, ChannelTeamAccessLevel } from '@open333crm/types';
+import { logger } from '@open333crm/core';
 
 export interface ChannelTeamAccess {
   channelId: string;
@@ -40,7 +41,7 @@ class ChannelTeamAccessService {
       this.accessList.push(access);
     }
 
-    console.log(`[ChannelTeamAccess] Granted ${params.accessLevel} access for channel ${params.channelId} to team ${params.teamId}`);
+    logger.info(`[ChannelTeamAccess] Granted ${params.accessLevel} access for channel ${params.channelId} to team ${params.teamId}`);
     return access;
   }
 

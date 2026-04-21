@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
+import { logger } from '@open333crm/core';
 
 export interface TokenStatus {
   valid: boolean;
@@ -93,7 +94,7 @@ export async function checkFbTokenStatus(
         return { valid: true, expiresAt, daysRemaining, warning };
       }
     } catch (err) {
-      console.error('[FbTokenMonitor] debug_token request failed:', err);
+      logger.error('[FbTokenMonitor] debug_token request failed:', err);
     }
   }
 

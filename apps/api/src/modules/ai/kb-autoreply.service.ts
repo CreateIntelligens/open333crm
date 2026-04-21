@@ -15,6 +15,7 @@ import { getConfig } from '../../config/env.js';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
 import { generateReply, CRM_REPLY_SYSTEM_PROMPT } from './llm.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { logger } from '@open333crm/core';
 
 const HANDOFF_PROMPT = '需要真人客服協助嗎？請輸入「真人」或「客服」即可轉接。';
 
@@ -57,7 +58,7 @@ export async function attemptKbAutoReply(
   try {
     queryEmbedding = await generateEmbedding(messageText);
   } catch (err) {
-    console.error('[KbAutoReply] Failed to generate embedding:', err);
+    logger.error('[KbAutoReply] Failed to generate embedding:', err);
     return false;
   }
 
@@ -66,7 +67,7 @@ export async function attemptKbAutoReply(
     topK: 3,
     threshold: 0.3,
   });
-  console.log(`[KbAutoReply] searchSimilarArticles returned ${results.length} result(s) for conv ${conversationId}`);
+  logger.info(`[KbAutoReply] searchSimilarArticles returned ${results.length} result(s) for conv ${conversationId}`);
   if (results.length === 0) return false;
 
   const topResult = results[0];
@@ -87,7 +88,7 @@ export async function attemptKbAutoReply(
     }
   } catch (err) {
     // Fallback: use article content/summary directly if LLM fails
-    console.error('[KbAutoReply] LLM generation failed, falling back to article content:', err);
+    logger.error('[KbAutoReply] LLM generation failed, falling back to article content:', err);
     const fallbackText = topResult.content || topResult.summary || topResult.title;
     if (topResult.similarity >= 0.80) {
       replyText = fallbackText;
@@ -150,7 +151,7 @@ export async function attemptKbAutoReply(
   // 10. Deliver reply to actual channel via plugin
   await deliverToChannel(prisma, conversationId, replyText);
 
-  console.log(
+  logger.info(
     `[KbAutoReply] Replied to conversation ${conversationId} (confidence: ${topResult.similarity.toFixed(3)}, article: ${topResult.title})`,
   );
 

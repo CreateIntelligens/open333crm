@@ -25,6 +25,7 @@ import marketingRoutes from './modules/marketing/marketing.routes.js';
 import aiRoutes from './modules/ai/ai.routes.js';
 import slaRoutes from './modules/sla/sla.routes.js';
 import lineLoginRoutes from './modules/line-login/line-login.routes.js';
+import lineProfileRoutes from './modules/line/line-profile.routes.js';
 import fbLoginRoutes from './modules/fb-login/fb-login.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
@@ -107,6 +108,7 @@ export async function bootstrap() {
   await app.register(aiRoutes, { prefix: '/api/v1/ai' });
   await app.register(slaRoutes, { prefix: '/api/v1/sla-policies' });
   await app.register(lineLoginRoutes, { prefix: '/api/v1/auth/line' });
+  await app.register(lineProfileRoutes, { prefix: '/api/v1' });
   await app.register(fbLoginRoutes, { prefix: '/api/v1/auth/fb' });
   await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(analyticsRoutes, { prefix: '/api/v1/analytics' });

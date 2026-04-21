@@ -29,6 +29,7 @@
     "json-rules-engine": "^6.5.0",
     "minio": "^8.0.0",
     "winston": "^3.13.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {

@@ -13,10 +13,10 @@ function extractText(content: string | { text?: string } | unknown): string {
   return String(content ?? '');
 }
 
-function extractImageUrl(content: string | { url?: string; text?: string } | unknown): string | null {
+function extractMediaUrl(content: string | { url?: string; text?: string } | unknown): string | null {
   if (typeof content === 'object' && content !== null) {
     const obj = content as Record<string, unknown>;
-    if (obj.url && typeof obj.url === 'string') return obj.url;
+    if (obj.url && typeof obj.url === 'string') return obj.url as string;
   }
   const text = extractText(content);
   if (text.startsWith('data:image') || text.startsWith('http')) return text;
@@ -131,11 +131,34 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         {/* Content */}
         {message.contentType === 'image' ? (
-          <img
-            src={extractImageUrl(message.content) || textContent}
-            alt="Image message"
-            className="max-w-full rounded-lg"
-          />
+          (() => {
+            const url = extractMediaUrl(message.content);
+            return url ? (
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                <img
+                  src={url}
+                  alt="Image message"
+                  className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                />
+              </a>
+            ) : (
+              <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
+            );
+          })()
+        ) : message.contentType === 'video' ? (
+          (() => {
+            const url = extractMediaUrl(message.content);
+            return url ? (
+              <video
+                src={url}
+                controls
+                className="max-w-full rounded-lg"
+                style={{ maxHeight: '320px' }}
+              />
+            ) : (
+              <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
+            );
+          })()
         ) : (
           <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
         )}

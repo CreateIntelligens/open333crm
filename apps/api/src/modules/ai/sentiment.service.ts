@@ -3,6 +3,7 @@
  */
 
 import { generateReply } from './llm.service.js';
+import { logger } from '@open333crm/core';
 
 export interface SentimentResult {
   sentiment: 'positive' | 'neutral' | 'negative';
@@ -66,7 +67,7 @@ export async function analyzeSentiment(text: string): Promise<SentimentResult> {
     // LLM didn't return valid JSON, use keyword fallback
     return keywordFallback(text);
   } catch (err) {
-    console.error('[Sentiment] LLM analysis failed, using keyword fallback:', err);
+    logger.error('[Sentiment] LLM analysis failed, using keyword fallback:', err);
     return keywordFallback(text);
   }
 }

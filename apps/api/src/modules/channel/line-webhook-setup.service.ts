@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
+import { logger } from '@open333crm/core';
 
 export interface LineWebhookSetupResult {
   success: boolean;
@@ -86,7 +87,7 @@ export async function autoSetupLineWebhook(
     data: { lastVerifiedAt: new Date() },
   });
 
-  console.log(`[LineWebhookSetup] Channel ${channelId} webhook set to ${channel.webhookUrl}`);
+  logger.info(`[LineWebhookSetup] Channel ${channelId} webhook set to ${channel.webhookUrl}`);
 
   return {
     success: true,

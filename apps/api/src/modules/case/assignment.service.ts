@@ -9,6 +9,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 // In-memory round-robin index per tenant
 const rrIndex = new Map<string, number>();
@@ -85,7 +86,7 @@ export async function autoAssignCase(
 ): Promise<boolean> {
   const agent = await getNextAgent(prisma, tenantId, teamId);
   if (!agent) {
-    console.log(`[AutoAssign] No available agent for case ${caseId}`);
+    logger.info(`[AutoAssign] No available agent for case ${caseId}`);
     return false;
   }
 
@@ -134,6 +135,6 @@ export async function autoAssignCase(
     },
   });
 
-  console.log(`[AutoAssign] Case ${caseId} → agent ${agent.name} (${agent.id})`);
+  logger.info(`[AutoAssign] Case ${caseId} → agent ${agent.name} (${agent.id})`);
   return true;
 }

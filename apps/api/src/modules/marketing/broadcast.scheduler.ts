@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { executeBroadcast } from './marketing.service.js';
+import { logger } from '@open333crm/core';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 
@@ -22,13 +23,13 @@ export function setupBroadcastScheduler(prisma: PrismaClient, io: SocketIOServer
       for (const broadcast of due) {
         try {
           await executeBroadcast(prisma, io, broadcast.id);
-          console.log(`[BroadcastScheduler] Executed broadcast ${broadcast.id} (${broadcast.name})`);
+          logger.info(`[BroadcastScheduler] Executed broadcast ${broadcast.id} (${broadcast.name})`);
         } catch (err) {
-          console.error(`[BroadcastScheduler] Failed broadcast ${broadcast.id}:`, err);
+          logger.error(`[BroadcastScheduler] Failed broadcast ${broadcast.id}:`, err);
         }
       }
     } catch (err) {
-      console.error('[BroadcastScheduler] Poll error:', err);
+      logger.error('[BroadcastScheduler] Poll error:', err);
     }
   }
 
@@ -38,5 +39,5 @@ export function setupBroadcastScheduler(prisma: PrismaClient, io: SocketIOServer
   // Also run once on startup (with a short delay)
   setTimeout(pollScheduled, 5000);
 
-  console.log(`[BroadcastScheduler] Started, polling every ${POLL_INTERVAL_MS / 1000}s`);
+  logger.info(`[BroadcastScheduler] Started, polling every ${POLL_INTERVAL_MS / 1000}s`);
 }

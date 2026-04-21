@@ -1,4 +1,5 @@
 import { getConfig } from '../../config/env.js';
+import { logger } from '@open333crm/core';
 
 export interface SendEmailInput {
   to: string;
@@ -52,7 +53,7 @@ async function sendViaWebhook(input: SendEmailInput): Promise<void> {
 
 function logEmail(input: SendEmailInput) {
   void getConfig();
-  console.log(
+  logger.info(
     '[EmailService] Delivery mode=log',
     JSON.stringify(
       {

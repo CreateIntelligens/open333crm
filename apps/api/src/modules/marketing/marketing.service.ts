@@ -12,6 +12,7 @@ import {
   type TemplateVariable,
 } from './template-renderer.js';
 import { resolveContext, STATIC_VARIABLE_METADATA, type VariableCategory } from './template-context.js';
+import { logger } from '@open333crm/core';
 
 // --- Template CRUD ---
 
@@ -352,7 +353,7 @@ export async function renderAndSendTemplate(
             credentials,
           );
         } catch (err) {
-          console.error('[renderAndSendTemplate] Channel delivery failed:', err);
+          logger.error('[renderAndSendTemplate] Channel delivery failed:', err);
         }
       }
     }

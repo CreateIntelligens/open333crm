@@ -9,7 +9,7 @@ import { recordCsatScore } from '../csat/csat.service.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
-import { resolveUidToContact } from '@open333crm/core';
+import { resolveUidToContact , logger } from '@open333crm/core';
 
 // Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
 const outsideHoursReplyCache = new Map<string, number>();
@@ -247,9 +247,26 @@ export async function processInboundMessage(
             where: { id: message.id },
             data: { content: updatedContent as any },
           });
+
+          // Notify frontend that the media URL is now available
+          const mediaReadyPayload = {
+            conversationId: conversation.id,
+            message: {
+              id: message.id,
+              conversationId: message.conversationId,
+              direction: message.direction,
+              senderType: message.senderType,
+              senderId: message.senderId,
+              contentType: message.contentType,
+              content: updatedContent,
+              createdAt: message.createdAt.toISOString(),
+            },
+          };
+          io.to(`conversation:${conversation.id}`).emit('message.new', mediaReadyPayload);
+          io.to(`tenant:${tenantId}`).emit('message.new', mediaReadyPayload);
         }
       } catch (err) {
-        console.error('[Webhook] LINE media download error (non-blocking):', err);
+        logger.error('[Webhook] LINE media download error (non-blocking):', err);
       }
     })();
   }
@@ -410,7 +427,7 @@ export async function processInboundMessage(
       }
     }
   } catch (err) {
-    console.error('[Webhook] Office hours auto-reply error:', err);
+    logger.error('[Webhook] Office hours auto-reply error:', err);
   }
 }
 

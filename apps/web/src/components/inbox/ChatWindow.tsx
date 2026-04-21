@@ -236,6 +236,8 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       {/* Message Input */}
       <MessageInput
         onSend={handleSend}
+        conversationId={conversation.id}
+        channelType={conversation.channelType}
         disabled={isClosed}
         disabledReason={isClosed ? '對話已關閉，無法回覆' : undefined}
         isBotHandled={isBotHandled}

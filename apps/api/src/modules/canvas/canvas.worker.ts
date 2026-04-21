@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { EventBus } from '@open333crm/core';
+import { EventBus , logger } from '@open333crm/core';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { sendEmail } from '../email/email.service.js';
@@ -39,7 +39,7 @@ export function setupCanvasWorker(prisma: PrismaClient, io: SocketIOServerLike) 
     }
   });
 
-  console.log('[CanvasWorker] Subscribed to canvas event bus');
+  logger.info('[CanvasWorker] Subscribed to canvas event bus');
 }
 
 async function handleCanvasSendMessage(
@@ -51,7 +51,7 @@ async function handleCanvasSendMessage(
   const { contactId, channelType, templateId, text } = payload;
 
   if (!channelType) {
-    console.warn('[CanvasWorker] Missing channelType for canvas.send_message');
+    logger.warn('[CanvasWorker] Missing channelType for canvas.send_message');
     return;
   }
 
@@ -79,7 +79,7 @@ async function handleCanvasSendMessage(
   });
 
   if (!conversation?.channel?.isActive) {
-    console.warn(
+    logger.warn(
       `[CanvasWorker] No active conversation/channel for contact=${contactId}, channelType=${channelType}`,
     );
     return;
@@ -90,7 +90,7 @@ async function handleCanvasSendMessage(
   );
 
   if (!identity) {
-    console.warn(
+    logger.warn(
       `[CanvasWorker] No channel identity for contact=${contactId}, channelId=${conversation.channelId}`,
     );
     return;
@@ -98,7 +98,7 @@ async function handleCanvasSendMessage(
 
   const plugin = getChannelPlugin(conversation.channel.channelType);
   if (!plugin) {
-    console.warn(`[CanvasWorker] Missing channel plugin for ${conversation.channel.channelType}`);
+    logger.warn(`[CanvasWorker] Missing channel plugin for ${conversation.channel.channelType}`);
     return;
   }
 
@@ -111,7 +111,7 @@ async function handleCanvasSendMessage(
   );
 
   if (!sendResult.success) {
-    console.error('[CanvasWorker] Failed to send canvas message:', sendResult.error);
+    logger.error('[CanvasWorker] Failed to send canvas message:', sendResult.error);
     return;
   }
 
@@ -161,7 +161,7 @@ async function handleEmailSend(
   vars?: Record<string, unknown>,
 ) {
   if (!templateId) {
-    console.warn('[CanvasWorker] Email send skipped: missing templateId');
+    logger.warn('[CanvasWorker] Email send skipped: missing templateId');
     return;
   }
 
@@ -171,7 +171,7 @@ async function handleEmailSend(
   });
 
   if (!contact?.email) {
-    console.warn(`[CanvasWorker] Email send skipped: contact ${contactId} has no email`);
+    logger.warn(`[CanvasWorker] Email send skipped: contact ${contactId} has no email`);
     return;
   }
 
@@ -185,7 +185,7 @@ async function handleEmailSend(
   });
 
   if (!templateView) {
-    console.warn(`[CanvasWorker] Email send skipped: no email template view for template=${templateId}`);
+    logger.warn(`[CanvasWorker] Email send skipped: no email template view for template=${templateId}`);
     return;
   }
 
@@ -213,7 +213,7 @@ async function handleEmailSend(
       },
     });
   } catch (err) {
-    console.error('[CanvasWorker] Failed to render email template:', err);
+    logger.error('[CanvasWorker] Failed to render email template:', err);
   }
 }
 
@@ -228,7 +228,7 @@ async function handleCanvasAction(
 
   const tagId = typeof payload.params?.tagId === 'string' ? payload.params.tagId : null;
   if (!tagId) {
-    console.warn('[CanvasWorker] add_tag skipped: missing tagId');
+    logger.warn('[CanvasWorker] add_tag skipped: missing tagId');
     return;
   }
 
@@ -247,7 +247,7 @@ async function handleCanvasAction(
     update: {},
   });
 
-  console.log(
+  logger.info(
     `[CanvasWorker] Added tag ${tagId} to contact ${payload.contactId} (tenant ${tenantId})`,
   );
 }

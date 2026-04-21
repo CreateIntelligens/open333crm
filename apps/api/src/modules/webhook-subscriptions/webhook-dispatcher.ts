@@ -6,6 +6,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import { eventBus, type AppEvent } from '../../events/event-bus.js';
+import { logger } from '@open333crm/core';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 5000, 15000]; // 1s, 5s, 15s
@@ -139,13 +140,13 @@ export function setupWebhookDispatcher(prisma: PrismaClient) {
       // Dispatch in parallel (non-blocking)
       for (const sub of subscriptions) {
         dispatchWebhook(prisma, sub.id, sub.url, sub.secret, event.name, payload).catch(
-          (err) => console.error(`[WebhookDispatcher] Failed for subscription ${sub.id}:`, err),
+          (err) => logger.error(`[WebhookDispatcher] Failed for subscription ${sub.id}:`, err),
         );
       }
     } catch (err) {
-      console.error('[WebhookDispatcher] Error processing event:', err);
+      logger.error('[WebhookDispatcher] Error processing event:', err);
     }
   });
 
-  console.log('[WebhookDispatcher] Started — listening on eventBus wildcard');
+  logger.info('[WebhookDispatcher] Started — listening on eventBus wildcard');
 }

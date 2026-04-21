@@ -22,6 +22,7 @@ import { attemptKbAutoReply } from '../../ai/kb-autoreply.service.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { generateReply, CRM_REPLY_SYSTEM_PROMPT } from '../../ai/llm.service.js';
 import { autoAssignCase } from '../../case/assignment.service.js';
+import { logger } from '@open333crm/core';
 
 export interface ActionPayload {
   type: string;
@@ -74,7 +75,7 @@ export async function executeActions(
       },
     });
     if (recentCount >= RATE_LIMIT_MAX) {
-      console.log(`[ActionExecutor] Rate limit hit: rule=${ruleId}, contact=${context.contactId}, count=${recentCount}`);
+      logger.info(`[ActionExecutor] Rate limit hit: rule=${ruleId}, contact=${context.contactId}, count=${recentCount}`);
       return [{ action: 'rate_limit', success: false, error: `Rate limit exceeded: ${recentCount} executions in the last hour` }];
     }
   }
@@ -93,7 +94,7 @@ export async function executeActions(
     });
     if (optOutTags.length > 0) {
       contactOptedOut = true;
-      console.log(`[ActionExecutor] Contact ${context.contactId} has opt-out tag: ${optOutTags.map(t => t.tag.name).join(', ')}`);
+      logger.info(`[ActionExecutor] Contact ${context.contactId} has opt-out tag: ${optOutTags.map(t => t.tag.name).join(', ')}`);
     }
   }
 

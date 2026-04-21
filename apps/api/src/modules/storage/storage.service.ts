@@ -22,6 +22,7 @@ function getProvider(): StorageProvider {
     secretAccessKey: config.S3_SECRET_KEY,
     bucket: config.S3_BUCKET,
     publicUrl: config.S3_PUBLIC_URL,
+    setAcl: config.S3_SET_ACL === 1,
   });
   return _provider;
 }

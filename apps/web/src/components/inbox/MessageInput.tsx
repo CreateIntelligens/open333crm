@@ -7,6 +7,8 @@ import { API_BASE_URL } from '@/lib/constants';
 
 interface MessageInputProps {
   onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>) => Promise<void>;
+  conversationId: string;
+  channelType: string;
   disabled?: boolean;
   disabledReason?: string;
   isBotHandled?: boolean;
@@ -15,9 +17,11 @@ interface MessageInputProps {
 }
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-const ACCEPTED_TYPES = 'image/jpeg,image/png,image/gif,image/webp,application/pdf';
+const ACCEPTED_TYPES = 'image/png,image/jpeg';
 export function MessageInput({
   onSend,
+  conversationId,
+  channelType,
   disabled,
   disabledReason,
   isBotHandled,
@@ -73,6 +77,11 @@ export function MessageInput({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      alert('只支援 PNG / JPG 圖片');
+      return;
+    }
+
     if (file.size > MAX_FILE_SIZE) {
       alert('檔案大小超過 20MB 限制');
       return;
@@ -80,34 +89,30 @@ export function MessageInput({
 
     setSending(true);
     try {
-      // Upload to storage service via FormData
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const formData = new FormData();
-      formData.append('file', file);
 
-      const res = await fetch(`${API_BASE_URL}/files/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
+      if (channelType === 'LINE') {
+        // LINE: upload + push via dedicated endpoint; socket will deliver the new message
+        const formData = new FormData();
+        formData.append('file', file);
 
-      if (!res.ok) {
-        // Fallback to base64 if storage service unavailable
-        const dataUrl = await readFileAsDataUrl(file);
-        const contentType = file.type.startsWith('image/') ? 'image' : 'file';
-        await onSend(dataUrl, contentType, { url: dataUrl, fileName: file.name, mimeType: file.type });
-        return;
+        const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}/send-image`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`傳送失敗：${err.message ?? res.statusText}`);
+        }
+      } else {
+        alert('目前僅支援 LINE 聊天室傳送圖片');
       }
-
-      const json = await res.json();
-      const { url, key, mimeType } = json.data;
-      const contentType = file.type.startsWith('image/') ? 'image' : 'file';
-      await onSend(url, contentType, { url, key, fileName: file.name, mimeType: mimeType || file.type });
     } catch (err) {
-      console.error('Failed to send file:', err);
+      console.error('Failed to send image:', err);
     } finally {
       setSending(false);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -212,11 +217,3 @@ export function MessageInput({
   );
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}

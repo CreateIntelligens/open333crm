@@ -1,5 +1,6 @@
 import { UniversalMessage } from '@open333crm/types';
 import { channelTeamAccessService } from './channel-team-access.js';
+import { logger } from '@open333crm/core';
 
 export interface RoutingResult {
   teamId: string | null; // null means unassigned queue
@@ -37,14 +38,14 @@ class InboundRouterService {
 
   private async getExistingConversationTeamId(contactUid: string, channelId: string): Promise<string | null> {
     // Mock logic: check database for active conversation
-    console.log(`[InboundRouter] Checking existing conversation for contact ${contactUid} on channel ${channelId}`);
+    logger.info(`[InboundRouter] Checking existing conversation for contact ${contactUid} on channel ${channelId}`);
     // In a real app: return prisma.conversation.findFirst({ where: { contactUid, channelId, status: 'OPEN' } }).teamId
     return null; 
   }
 
   private async getChannelDefaultTeamId(channelId: string): Promise<string | null> {
     // Mock logic: get default team from channel settings
-    console.log(`[InboundRouter] Checking default team for channel ${channelId}`);
+    logger.info(`[InboundRouter] Checking default team for channel ${channelId}`);
     // In a real app: return prisma.channel.findUnique({ where: { id: channelId } }).defaultTeamId
     
     // For demonstration, if it's the mock channel, return mock team

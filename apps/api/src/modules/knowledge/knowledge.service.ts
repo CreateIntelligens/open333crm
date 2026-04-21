@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
+import { logger } from '@open333crm/core';
 import {
   embedArticle,
   generateEmbedding,
@@ -121,7 +122,7 @@ export async function createArticle(
 
   // Fire-and-forget embedding generation
   embedArticle(prisma, article.id).catch((err) => {
-    console.error(`[Knowledge] Failed to embed new article ${article.id}:`, err);
+    logger.error(`[Knowledge] Failed to embed new article ${article.id}:`, err);
   });
 
   return article;
@@ -162,7 +163,7 @@ export async function updateArticle(
   // Re-embed if title, content, or summary changed
   if (data.title !== undefined || data.content !== undefined || data.summary !== undefined) {
     embedArticle(prisma, id).catch((err) => {
-      console.error(`[Knowledge] Failed to re-embed article ${id}:`, err);
+      logger.error(`[Knowledge] Failed to re-embed article ${id}:`, err);
     });
   }
 
@@ -205,7 +206,7 @@ export async function publishArticle(prisma: PrismaClient, id: string, tenantId:
     try {
       await embedArticle(prisma, id);
     } catch (err) {
-      console.error(`[Knowledge] Could not generate embedding for publish (${id}):`, err);
+      logger.error(`[Knowledge] Could not generate embedding for publish (${id}):`, err);
       // Continue publishing even if embedding fails — not a blocker for POC
     }
   }
@@ -299,7 +300,7 @@ export async function batchImportArticles(
 
       // Fire-and-forget embedding
       embedArticle(prisma, article.id).catch((err) => {
-        console.error(`[Knowledge] Import embed failed for ${article.id}:`, err);
+        logger.error(`[Knowledge] Import embed failed for ${article.id}:`, err);
       });
 
       imported++;
