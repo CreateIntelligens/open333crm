@@ -22,3 +22,8 @@ nginx/certs/
 
 # Ignore Gemini CLI settings
 .gemini/
+
+# AI files
+.mcp.json
+opencode.json
+config.toml
