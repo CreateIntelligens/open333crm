@@ -7,7 +7,9 @@
     "sync:widget": "pnpm --filter @open333crm/shared build && pnpm --filter @open333crm/widget build && mkdir -p public/webchat && cp ../widget/dist/widget.js public/webchat/widget.js",
     "dev": "pnpm sync:widget && next dev --port 3000",
     "build": "pnpm sync:widget && next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "oxlint",
+    "format": "oxfmt --write src"
   },
   "dependencies": {
     "@open333crm/shared": "workspace:*",
@@ -30,6 +32,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
+    "oxfmt": "^0.46.0",
+    "oxlint": "^1.61.0",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.0",
     "typescript": "^6.0.3"
