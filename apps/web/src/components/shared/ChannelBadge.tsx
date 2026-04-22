@@ -2,25 +2,19 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import type { ChannelType } from '@open333crm/shared';
 
 interface ChannelBadgeProps {
-  channel: string;
+  channel: ChannelType | string;
   className?: string;
 }
 
 const channelConfig: Record<string, { bg: string; text: string; label: string }> = {
   LINE: { bg: 'bg-green-100', text: 'text-green-700', label: 'LINE' },
-  line: { bg: 'bg-green-100', text: 'text-green-700', label: 'LINE' },
-  FACEBOOK: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  facebook: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
   FB: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  fb: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
   WEBCHAT: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
-  webchat: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
-  WEB: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
-  web: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
+  WHATSAPP: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'WhatsApp' },
   EMAIL: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Email' },
-  email: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Email' },
 };
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {

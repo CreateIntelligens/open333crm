@@ -1,10 +1,11 @@
 import { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
 import crypto from 'crypto';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
 
 export class FbPlugin implements ChannelPlugin {
-  readonly channelType = 'FB';
+  readonly channelType = CHANNEL_TYPE.FB;
 
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
     const signature = headers['x-hub-signature-256'];

@@ -6,6 +6,7 @@ import type {
   ParsedWebhookMessage,
   OutboundPayload,
 } from './index.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface TelegramCredentials {
   botToken: string;
@@ -17,7 +18,7 @@ interface TelegramCredentials {
 const BASE_URL = 'https://api.telegram.org/bot';
 
 export class TelegramPlugin implements ChannelPlugin {
-  readonly channelType = 'TELEGRAM' as const;
+  readonly channelType = CHANNEL_TYPE.TELEGRAM;
 
   // ─── Task 1.4: verifySignature ────────────────────────────────────
   verifySignature(

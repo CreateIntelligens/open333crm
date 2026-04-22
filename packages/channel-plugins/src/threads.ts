@@ -8,6 +8,7 @@ import type {
   OutboundPayload,
 } from './index.js';
 import { createHmac } from 'node:crypto';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface ThreadsCredentials {
   appId: string;
@@ -19,7 +20,7 @@ interface ThreadsCredentials {
 const GRAPH_URL = 'https://graph.instagram.com/v21.0';
 
 export class ThreadsPlugin implements ChannelPlugin {
-  readonly channelType = 'THREADS' as const;
+  readonly channelType = CHANNEL_TYPE.THREADS;
 
   // ─── Task 1.5: verifySignature ────────────────────────────────────
   // Instagram uses X-Hub-Signature-256: sha256=<hmac>

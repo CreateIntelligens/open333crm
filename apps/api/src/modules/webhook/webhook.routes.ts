@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { processWebhookEvent } from './webhook.service.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
   // Override content type parser to get raw body for signature verification
@@ -37,7 +38,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         fastify.prisma,
         fastify.io,
         channelId,
-        'LINE',
+        CHANNEL_TYPE.LINE,
         rawBody,
         headers,
       ).catch((err) => {
@@ -73,7 +74,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
     // Load channel and verify the token matches
     try {
       const channel = await fastify.prisma.channel.findFirst({
-        where: { id: channelId, channelType: 'FB' },
+        where: { id: channelId, channelType: CHANNEL_TYPE.FB },
       });
 
       if (!channel) {
@@ -114,7 +115,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         fastify.prisma,
         fastify.io,
         channelId,
-        'FB',
+        CHANNEL_TYPE.FB,
         rawBody,
         headers,
       ).then(() => {

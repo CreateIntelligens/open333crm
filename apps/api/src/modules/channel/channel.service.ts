@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 // --- Credential Encryption ---
 
@@ -224,7 +225,7 @@ export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: 
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);
 
-  if (channel.channelType === 'LINE') {
+  if (channel.channelType === CHANNEL_TYPE.LINE) {
     const token = credentials.channelAccessToken as string;
 
     const response = await fetch('https://api.line.me/v2/bot/info', {
@@ -250,7 +251,7 @@ export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: 
     return { verified: true, botInfo };
   }
 
-  if (channel.channelType === 'FB') {
+  if (channel.channelType === CHANNEL_TYPE.FB) {
     const pageAccessToken = credentials.pageAccessToken as string;
 
     // Verify the page access token by calling the Graph API

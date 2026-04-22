@@ -8,6 +8,7 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export interface ConversationFilters {
   status?: string;
@@ -321,7 +322,9 @@ export async function sendMessage(
       if (!plugin) {
         logger.warn('[ChannelDelivery] Skipped: no plugin for channel type', { channelType: channel.channelType });
       } else {
-        const credentials = decryptCredentials(channel.credentialsEncrypted);
+        const credentials = channel.channelType === CHANNEL_TYPE.WEBCHAT
+          ? {}
+          : decryptCredentials(channel.credentialsEncrypted);
         logger.info('[ChannelDelivery] Sending', {
           channelType: channel.channelType,
           to: identity.uid,
@@ -349,7 +352,7 @@ export async function sendMessage(
         }
 
         // Push outbound message to visitor's widget in real time
-        if (channel.channelType === 'WEBCHAT') {
+        if (channel.channelType === CHANNEL_TYPE.WEBCHAT) {
           const room = `visitor:${channel.id}:${identity.uid}`;
           io.of('/visitor').to(room).emit('agent:message', wsPayload.message);
         }
@@ -547,7 +550,7 @@ export async function deliverToChannel(
     logger.info(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
 
     // For WEBCHAT: push reply to visitor widget via Redis socket bridge
-    if (conv.channel.channelType === 'WEBCHAT') {
+    if (conv.channel.channelType === CHANNEL_TYPE.WEBCHAT) {
       const room = `visitor:${conv.channel.id}:${identity.uid}`;
       const msgPayload = {
         contentType: 'text',

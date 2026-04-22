@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   listChannels,
   createChannel,
@@ -30,20 +31,20 @@ const fbCredentialsSchema = z.object({
 const webchatCredentialsSchema = z.record(z.unknown());
 
 const createChannelSchema = z.object({
-  channelType: z.enum(['LINE', 'FB', 'WEBCHAT', 'WHATSAPP']),
+  channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
   displayName: z.string().min(1).max(100),
   credentials: z.record(z.unknown()),
   settings: z.record(z.unknown()).optional(),
   webhookBaseUrl: z.string().url().optional(),
 }).superRefine((data, ctx) => {
-  if (data.channelType === 'LINE') {
+  if (data.channelType === CHANNEL_TYPE.LINE) {
     const result = lineCredentialsSchema.safeParse(data.credentials);
     if (!result.success) {
       result.error.issues.forEach((issue) => {
         ctx.addIssue({ ...issue, path: ['credentials', ...issue.path] });
       });
     }
-  } else if (data.channelType === 'FB') {
+  } else if (data.channelType === CHANNEL_TYPE.FB) {
     const result = fbCredentialsSchema.safeParse(data.credentials);
     if (!result.success) {
       result.error.issues.forEach((issue) => {
@@ -163,7 +164,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: { message: 'Channel not found' } });
     }
 
-    if (channel.channelType === 'FB') {
+    if (channel.channelType === CHANNEL_TYPE.FB) {
       const tokenStatus = await checkFbTokenStatus(
         fastify.prisma,
         request.params.id,

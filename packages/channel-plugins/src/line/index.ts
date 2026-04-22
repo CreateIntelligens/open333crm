@@ -12,6 +12,7 @@ import type {
   OutboundPayload,
   MediaUploadFn,
 } from '../index.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 // ─────────────────────────────────────────────────────────────────
 // Credentials
@@ -151,7 +152,7 @@ function buildLineMessage(contentType: string, content: Record<string, unknown>)
 // ─────────────────────────────────────────────────────────────────
 
 export class LinePlugin implements ChannelPlugin {
-  readonly channelType = 'LINE' as const;
+  readonly channelType = CHANNEL_TYPE.LINE;
 
   // ─── Task 2.1: verifySignature ───────────────────────────────────
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {

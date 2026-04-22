@@ -1,6 +1,7 @@
 import type { Server as SocketIOServer } from 'socket.io';
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,7 +22,7 @@ export function registerVisitorNamespace(io: SocketIOServer, prisma: PrismaClien
       }
 
       const channel = await prisma.channel.findFirst({
-        where: { id: channelId, channelType: 'WEBCHAT', isActive: true },
+        where: { id: channelId, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
         select: { id: true },
       });
 

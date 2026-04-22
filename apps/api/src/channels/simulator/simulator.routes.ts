@@ -2,9 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { simulateInboundMessage } from './simulator.service.js';
 import { success } from '../../shared/utils/response.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 const sendMessageSchema = z.object({
-  channelType: z.enum(['LINE', 'FB', 'WEBCHAT', 'WHATSAPP']),
+  channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
   channelId: z.string().uuid(),
   contactUid: z.string().min(1),
   contactName: z.string().optional(),

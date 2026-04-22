@@ -308,6 +308,9 @@ importers:
       '@open333crm/database':
         specifier: workspace:*
         version: link:../database
+      '@open333crm/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@open333crm/types':
         specifier: workspace:*
         version: link:../types

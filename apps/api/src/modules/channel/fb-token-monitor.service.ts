@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export interface TokenStatus {
   valid: boolean;
@@ -20,7 +21,7 @@ export async function checkFbTokenStatus(
   tenantId: string,
 ): Promise<TokenStatus> {
   const channel = await prisma.channel.findFirst({
-    where: { id: channelId, tenantId, channelType: 'FB' },
+    where: { id: channelId, tenantId, channelType: CHANNEL_TYPE.FB },
   });
 
   if (!channel) {

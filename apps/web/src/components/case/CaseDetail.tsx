@@ -90,7 +90,7 @@ interface CaseDetailProps {
 
 const CHANNEL_TYPE_LABELS: Record<string, string> = {
   LINE: 'LINE',
-  FACEBOOK: 'FB',
+  FB: 'Facebook',
   WEBCHAT: 'WebChat',
   EMAIL: 'Email',
   WHATSAPP: 'WhatsApp',

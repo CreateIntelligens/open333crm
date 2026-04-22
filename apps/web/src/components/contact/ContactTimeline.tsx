@@ -23,7 +23,7 @@ interface ContactTimelineProps {
 
 const CHANNEL_LABELS: Record<string, string> = {
   LINE: 'LINE',
-  FACEBOOK: 'Facebook',
+  FB: 'Facebook',
   WEBCHAT: 'WebChat',
   EMAIL: 'Email',
   WHATSAPP: 'WhatsApp',

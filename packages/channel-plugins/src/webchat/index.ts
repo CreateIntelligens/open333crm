@@ -1,8 +1,9 @@
 import type { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export class WebchatPlugin implements ChannelPlugin {
-  readonly channelType = 'WEBCHAT';
+  readonly channelType = CHANNEL_TYPE.WEBCHAT;
 
   verifySignature(
     _rawBody: Buffer,

@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   Dialog,
   DialogContent,
@@ -83,7 +84,7 @@ export function ChannelFormDialog({
           displayName,
         };
         // Build credentials based on channel type
-        if (channel!.channelType === 'FB') {
+        if (channel!.channelType === CHANNEL_TYPE.FB) {
           if (appSecret && pageAccessToken) {
             editPayload.credentials = {
               appId: appId || undefined,
@@ -106,7 +107,7 @@ export function ChannelFormDialog({
         // Create new channel
         let credentials: Record<string, unknown>;
 
-        if (channelType === 'FB') {
+        if (channelType === CHANNEL_TYPE.FB) {
           if (!appSecret || !pageAccessToken) {
             setError('請填寫 App Secret 和 Page Access Token');
             setSaving(false);
@@ -201,9 +202,9 @@ export function ChannelFormDialog({
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder={
-                  effectiveType === 'FB'
+                  effectiveType === CHANNEL_TYPE.FB
                     ? '例：XX 品牌粉絲專頁'
-                    : effectiveType === 'LINE'
+                    : effectiveType === CHANNEL_TYPE.LINE
                       ? '例：我的 LINE 官方帳號'
                       : '例：官網即時客服'
                 }
@@ -212,7 +213,7 @@ export function ChannelFormDialog({
             </div>
 
             {/* LINE Credentials */}
-            {effectiveType === 'LINE' && (
+            {effectiveType === CHANNEL_TYPE.LINE && (
               <>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
@@ -242,7 +243,7 @@ export function ChannelFormDialog({
             )}
 
             {/* FB Credentials */}
-            {effectiveType === 'FB' && (
+            {effectiveType === CHANNEL_TYPE.FB && (
               <>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
@@ -304,7 +305,7 @@ export function ChannelFormDialog({
             )}
 
             {/* WEBCHAT - minimal credentials */}
-            {effectiveType === 'WEBCHAT' && (
+            {effectiveType === CHANNEL_TYPE.WEBCHAT && (
               <>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
@@ -360,9 +361,9 @@ export function ChannelFormDialog({
                   </Button>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  {effectiveType === 'FB'
+                  {effectiveType === CHANNEL_TYPE.FB
                     ? '請在 Facebook App → Messenger → Webhooks 中設定此 URL，並填入系統產生的 Verify Token'
-                    : effectiveType === 'LINE'
+                    : effectiveType === CHANNEL_TYPE.LINE
                       ? '請在 LINE Developer Console 的 Messaging API 設定中，將此 URL 設為 Webhook URL'
                       : '此為系統內部使用的 Webhook URL'}
                 </p>
@@ -370,7 +371,7 @@ export function ChannelFormDialog({
             )}
 
             {/* FB-specific: show verify token info after creation */}
-            {isEditing && effectiveType === 'FB' && (
+            {isEditing && effectiveType === CHANNEL_TYPE.FB && (
               <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-3">
                 <p className="text-xs text-blue-800 dark:text-blue-200 font-medium mb-1">
                   Facebook Webhook 設定提示

@@ -11,6 +11,7 @@ import { deliverToChannel } from '../conversation/conversation.service.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { resolveUidToContact , logger } from '@open333crm/core';
 import { uploadFile } from '../storage/storage.service.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 // Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
 const outsideHoursReplyCache = new Map<string, number>();
@@ -79,7 +80,7 @@ export async function processWebhookEvent(
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);
   // LINE uses channelSecret, FB uses appSecret for signature verification
-  const secret = (channelType === 'FB'
+  const secret = (channelType === CHANNEL_TYPE.FB
     ? credentials.appSecret
     : credentials.channelSecret) as string;
 

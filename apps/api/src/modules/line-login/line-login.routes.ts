@@ -10,6 +10,7 @@ import {
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { success } from '../../shared/utils/response.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export default async function lineLoginRoutes(fastify: FastifyInstance) {
   // ─── GET /authorize ── Public: returns the LINE Login OAuth URL ──────────
@@ -111,7 +112,7 @@ export default async function lineLoginRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Conversation not found' } });
       }
 
-      if (conversation.channelType !== 'LINE') {
+      if (conversation.channelType !== CHANNEL_TYPE.LINE) {
         return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: '此功能僅支援 LINE 渠道' } });
       }
 
@@ -134,7 +135,7 @@ export default async function lineLoginRoutes(fastify: FastifyInstance) {
       }
 
       const credentials = decryptCredentials(channel.credentialsEncrypted);
-      const plugin = getChannelPlugin('LINE');
+      const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
 
       if (!plugin) {
         return reply.status(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'LINE plugin not found' } });

@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   Dialog,
   DialogContent,
@@ -81,7 +82,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     try {
       // Build credentials
       let credentials: Record<string, unknown>;
-      if (channelType === 'FB') {
+      if (channelType === CHANNEL_TYPE.FB) {
         if (!appSecret || !pageAccessToken) {
           setError('請填寫 App Secret 和 Page Access Token');
           setCreating(false);
@@ -94,7 +95,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
           pageId,
           verifyToken: `open333crm_${Date.now().toString(36)}`,
         };
-      } else if (channelType === 'WEBCHAT') {
+      } else if (channelType === CHANNEL_TYPE.WEBCHAT) {
         credentials = {
           channelSecret: channelSecret || `webchat_${Date.now().toString(36)}`,
           channelAccessToken: channelAccessToken || `webchat_token_${Date.now().toString(36)}`,
@@ -137,7 +138,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       }
 
       // For LINE: auto-setup webhook
-      if (channelType === 'LINE') {
+      if (channelType === CHANNEL_TYPE.LINE) {
         try {
           const setupRes = await api.post(`/channels/${newId}/setup-webhook`);
           const setupData = setupRes.data?.data;
@@ -157,7 +158,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
       }
 
       // For WEBCHAT: get embed code
-      if (channelType === 'WEBCHAT') {
+      if (channelType === CHANNEL_TYPE.WEBCHAT) {
         try {
           const embedRes = await api.get(`/channels/${newId}/embed-code`);
           setVerify((prev) => ({
@@ -239,9 +240,9 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder={
-                    channelType === 'FB'
+                    channelType === CHANNEL_TYPE.FB
                       ? '例：我的粉絲專頁'
-                      : channelType === 'LINE'
+                      : channelType === CHANNEL_TYPE.LINE
                         ? '例：我的 LINE 官方帳號'
                         : '例：官網即時客服'
                   }
@@ -253,7 +254,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
           {/* Step 2: Credentials */}
           {step === 'credentials' && (
             <div className="space-y-4">
-              {channelType === 'LINE' && (
+              {channelType === CHANNEL_TYPE.LINE && (
                 <>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium">Channel Secret</label>
@@ -282,7 +283,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 </>
               )}
 
-              {channelType === 'FB' && (
+              {channelType === CHANNEL_TYPE.FB && (
                 <>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium">App ID</label>
@@ -303,7 +304,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 </>
               )}
 
-              {channelType === 'WEBCHAT' && (
+              {channelType === CHANNEL_TYPE.WEBCHAT && (
                 <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-4">
                   <p className="text-sm text-blue-800 dark:text-blue-200">
                     WebChat 渠道不需要外部憑證，系統會自動產生。建立後即可取得嵌入碼。
@@ -335,7 +336,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 </p>
               </div>
 
-              {channelType === 'LINE' && verify.webhookSetup !== undefined && (
+              {channelType === CHANNEL_TYPE.LINE && verify.webhookSetup !== undefined && (
                 <div className={`rounded-md p-3 text-sm ${verify.webhookSetup ? 'bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-200' : 'bg-yellow-50 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200'}`}>
                   {verify.webhookSetup
                     ? 'LINE Webhook 已自動設定完成，無需手動配置。'
@@ -343,7 +344,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 </div>
               )}
 
-              {channelType === 'WEBCHAT' && verify.embedCode && (
+              {channelType === CHANNEL_TYPE.WEBCHAT && verify.embedCode && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">嵌入碼</p>
                   <div className="relative">

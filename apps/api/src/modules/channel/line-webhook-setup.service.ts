@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export interface LineWebhookSetupResult {
   success: boolean;
@@ -19,7 +20,7 @@ export async function autoSetupLineWebhook(
   tenantId: string,
 ): Promise<LineWebhookSetupResult> {
   const channel = await prisma.channel.findFirst({
-    where: { id: channelId, tenantId, channelType: 'LINE' },
+    where: { id: channelId, tenantId, channelType: CHANNEL_TYPE.LINE },
   });
 
   if (!channel) {

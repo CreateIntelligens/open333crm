@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export async function syncLineContactProfile(
   prisma: PrismaClient,
@@ -24,7 +25,7 @@ export async function syncLineContactProfile(
     throw new AppError('Channel not found or inactive', 'NOT_FOUND', 404);
   }
 
-  const plugin = getChannelPlugin('LINE');
+  const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
   if (!plugin) {
     throw new AppError('LINE plugin not available', 'INTERNAL_ERROR', 500);
   }

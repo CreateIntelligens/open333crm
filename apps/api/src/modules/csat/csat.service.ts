@@ -6,6 +6,7 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { createAndDispatch } from '../notification/notification.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 /**
  * Build CSAT channel-specific message payload for LINE / FB / WEBCHAT.
@@ -16,7 +17,7 @@ export function buildCsatChannelMessage(
 ): { contentType: string; content: Record<string, unknown> } {
   const question = '感謝您的耐心等候！請評價此次服務體驗（1-5 分）';
 
-  if (channelType === 'LINE') {
+  if (channelType === CHANNEL_TYPE.LINE) {
     // LINE Flex Message with postback buttons
     return {
       contentType: 'flex',
@@ -142,14 +143,14 @@ export async function sendCsatSurvey(
     const csatPayload = buildCsatChannelMessage(channelType, caseId);
 
     // For LINE, we need to send the Flex message via plugin directly
-    if (channelType === 'LINE' && conversation.channel?.isActive) {
+    if (channelType === CHANNEL_TYPE.LINE && conversation.channel?.isActive) {
       const channel = conversation.channel;
       const identity = await prisma.channelIdentity.findFirst({
         where: { contactId: caseRecord.contactId, channelId: channel.id },
       });
 
       if (identity) {
-        const plugin = getChannelPlugin('LINE');
+        const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
         if (plugin) {
           const credentials = decryptCredentials(channel.credentialsEncrypted);
           // Send Flex message (LINE plugin sendMessage handles it as raw JSON)

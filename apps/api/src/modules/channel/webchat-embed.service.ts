@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export async function generateEmbedCode(
   prisma: PrismaClient,
@@ -11,7 +12,7 @@ export async function generateEmbedCode(
   tenantId: string,
 ): Promise<{ html: string; channelId: string }> {
   const channel = await prisma.channel.findFirst({
-    where: { id: channelId, tenantId, channelType: 'WEBCHAT' },
+    where: { id: channelId, tenantId, channelType: CHANNEL_TYPE.WEBCHAT },
   });
 
   if (!channel) {

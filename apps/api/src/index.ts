@@ -76,7 +76,7 @@ export async function bootstrap() {
     },
   });
 
-  await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
+  await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } });
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(prismaPlugin);

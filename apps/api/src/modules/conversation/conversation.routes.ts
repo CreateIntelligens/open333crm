@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   listConversations,
   getConversation,
@@ -25,7 +26,7 @@ const SEND_IMAGE_CONFIG: MediaUploadConfig = {
   maxBytes: 20 * 1024 * 1024,
   contentType: 'image',
   displayText: '[圖片]',
-  allowedChannelTypes: ['LINE', 'FB'],
+  allowedChannelTypes: [CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT],
 };
 
 const SEND_VIDEO_CONFIG: MediaUploadConfig = {
@@ -33,7 +34,7 @@ const SEND_VIDEO_CONFIG: MediaUploadConfig = {
   maxBytes: 25 * 1024 * 1024,
   contentType: 'video',
   displayText: '[影片]',
-  allowedChannelTypes: ['LINE', 'FB'],
+  allowedChannelTypes: [CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT],
 };
 
 async function handleSendMedia(

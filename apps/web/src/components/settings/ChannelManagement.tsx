@@ -27,6 +27,7 @@ import { useWebchat } from '@/hooks/useWebchat';
 import { ChannelFormDialog } from './ChannelFormDialog';
 import { ChannelWizard } from './ChannelWizard';
 import { BotConfigForm } from './BotConfigForm';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   Dialog,
   DialogContent,
@@ -170,7 +171,7 @@ export function ChannelManagement() {
   // Load FB token status for FB channels
   useEffect(() => {
     if (!channels || channels.length === 0) return;
-    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === 'FB');
+    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB);
     for (const ch of fbChannels) {
       api.get(`/channels/${ch.id}/status`).then((res) => {
         const tokenStatus = res.data?.data?.tokenStatus;
@@ -318,7 +319,7 @@ export function ChannelManagement() {
                       )}
 
                       {/* WebChat embed button */}
-                      {ch.channelType === 'WEBCHAT' && (
+                      {ch.channelType === CHANNEL_TYPE.WEBCHAT && (
                         <div className="flex items-center gap-2 mt-0.5">
                           <Button
                             size="sm"

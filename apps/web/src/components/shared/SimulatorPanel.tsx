@@ -87,7 +87,7 @@ export function SimulatorPanel() {
                 onChange={(e) => setChannel(e.target.value)}
                 options={[
                   { value: 'LINE', label: 'LINE' },
-                  { value: 'FACEBOOK', label: 'Facebook' },
+                  { value: 'FB', label: 'Facebook' },
                   { value: 'WEBCHAT', label: 'WebChat' },
                 ]}
               />

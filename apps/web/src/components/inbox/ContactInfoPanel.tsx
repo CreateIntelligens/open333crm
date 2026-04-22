@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface ContactInfoPanelProps {
   conversation: {
@@ -256,7 +257,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
 
       {/* Actions */}
       <div className="p-4 space-y-2">
-        {(conversation.channelType === 'LINE' || conversation.channelType === 'FB') && !(c as Record<string, unknown>).email && (
+        {(conversation.channelType === CHANNEL_TYPE.LINE || conversation.channelType === CHANNEL_TYPE.FB) && !(c as Record<string, unknown>).email && (
           <Button
             variant="outline"
             className="w-full"
@@ -264,7 +265,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
             onClick={async () => {
               setRequestingEmail(true);
               try {
-                const endpoint = conversation.channelType === 'LINE'
+                const endpoint = conversation.channelType === CHANNEL_TYPE.LINE
                   ? '/auth/line/request-email'
                   : '/auth/fb/request-email';
                 await api.post(endpoint, {

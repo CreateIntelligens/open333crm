@@ -1,8 +1,9 @@
 import { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
 import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export class TelegramPlugin implements ChannelPlugin {
-  readonly channelType = 'TELEGRAM';
+  readonly channelType = CHANNEL_TYPE.TELEGRAM;
 
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
     const token = headers['x-telegram-bot-api-secret-token'];

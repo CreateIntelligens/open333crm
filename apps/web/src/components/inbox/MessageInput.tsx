@@ -4,11 +4,13 @@ import React, { useState, useRef } from 'react';
 import { Send, Paperclip, LayoutTemplate } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { API_BASE_URL } from '@/lib/constants';
+import type { ChannelType } from '@open333crm/shared';
+import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface MessageInputProps {
   onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>) => Promise<void>;
   conversationId: string;
-  channelType: string;
+  channelType: ChannelType | string;
   disabled?: boolean;
   disabledReason?: string;
   isBotHandled?: boolean;
@@ -91,8 +93,7 @@ export function MessageInput({
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
 
-      if (channelType === 'LINE') {
-        // LINE: upload + push via dedicated endpoint; socket will deliver the new message
+      if ([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT].includes(channelType as any)) {
         const formData = new FormData();
         formData.append('file', file);
 
@@ -107,7 +108,7 @@ export function MessageInput({
           alert(`傳送失敗：${err.message ?? res.statusText}`);
         }
       } else {
-        alert('目前僅支援 LINE 聊天室傳送圖片');
+        alert('目前僅支援 LINE / FB / Webchat 聊天室傳送圖片');
       }
     } catch (err) {
       console.error('Failed to send image:', err);

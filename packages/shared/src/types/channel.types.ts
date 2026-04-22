@@ -1,4 +1,13 @@
-export type ChannelType = 'LINE' | 'FB' | 'WEBCHAT' | 'WHATSAPP';
+export const CHANNEL_TYPE = {
+  LINE:     'LINE',
+  FB:       'FB',
+  WEBCHAT:  'WEBCHAT',
+  WHATSAPP: 'WHATSAPP',
+  TELEGRAM: 'TELEGRAM',
+  THREADS:  'THREADS',
+} as const;
+
+export type ChannelType = typeof CHANNEL_TYPE[keyof typeof CHANNEL_TYPE];
 
 export type MessageContentType =
   | 'text' | 'image' | 'video' | 'audio' | 'file'
