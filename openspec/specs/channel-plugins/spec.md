@@ -20,3 +20,16 @@ The system SHALL provide a unified adapter interface for all external IM channel
 #### Scenario: WebchatPlugin sendMessage returns success
 - **WHEN** `webchatPlugin.sendMessage(to, payload, credentials)` is called
 - **THEN** it returns `{ success: true, channelMsgId: "webchat-msg-<timestamp>" }` without performing any Socket.IO operation (delivery is the caller's responsibility)
+
+---
+
+### Requirement: Channel type values are defined as shared constants
+All channel type comparisons, Prisma where conditions, and plugin declarations SHALL reference the `CHANNEL_TYPE` const from `@open333crm/shared` rather than raw string literals. This ensures compile-time typo detection and autocomplete support.
+
+#### Scenario: Developer uses wrong channel type string
+- **WHEN** a developer writes `CHANNEL_TYPE.LIEN` instead of `CHANNEL_TYPE.LINE`
+- **THEN** TypeScript reports a compile-time error immediately
+
+#### Scenario: Developer adds a new channel type
+- **WHEN** a new value is added to `CHANNEL_TYPE` in `packages/shared`
+- **THEN** all existing comparisons and plugin declarations remain valid, and the new value is available for use with autocomplete
