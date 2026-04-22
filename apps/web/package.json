@@ -1,18 +1,19 @@
 {
   "name": "@open333crm/web",
   "version": "0.0.1",
-  "license": "GPL-3.0-only",
   "private": true,
+  "license": "GPL-3.0-only",
   "scripts": {
-    "sync:widget": "pnpm --filter @open333crm/shared build && pnpm --filter @open333crm/widget build && mkdir -p public/webchat && cp ../widget/dist/widget.js public/webchat/widget.js",
-    "dev": "pnpm sync:widget && next dev --port 3000",
     "build": "pnpm sync:widget && next build",
-    "start": "next start",
+    "dev": "pnpm sync:widget && next dev --port 3000",
+    "format": "oxfmt --write src",
     "lint": "oxlint",
-    "format": "oxfmt --write src"
+    "start": "next start",
+    "sync:widget": "pnpm --filter @open333crm/shared build && pnpm --filter @open333crm/widget build && mkdir -p public/webchat && cp ../widget/dist/widget.js public/webchat/widget.js"
   },
   "dependencies": {
     "@open333crm/shared": "workspace:*",
+    "@tailwindcss/postcss": "^4.2.4",
     "axios": "^1.15.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -35,7 +36,7 @@
     "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",
     "postcss": "^8.5.10",
-    "tailwindcss": "^3.4.0",
+    "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3"
   }
 }
