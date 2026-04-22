@@ -26,9 +26,13 @@ function DropdownMenu({ trigger, children, align = 'left', className }: Dropdown
 
   return (
     <div className={cn('relative inline-block', className)} ref={menuRef}>
-      <div onClick={() => setIsOpen(!isOpen)} className="cursor-pointer">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="cursor-pointer"
+      >
         {trigger}
-      </div>
+      </button>
       {isOpen && (
         <div
           className={cn(

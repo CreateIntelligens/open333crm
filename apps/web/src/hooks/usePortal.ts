@@ -10,8 +10,8 @@ const fetcher = async (url: string) => {
 
 export function useActivities(filters?: { type?: string; status?: string }) {
   const params = new URLSearchParams();
-  if (filters?.type) params.set('type', filters.type);
-  if (filters?.status) params.set('status', filters.status);
+  if (filters?.type) { params.set('type', filters.type); }
+  if (filters?.status) { params.set('status', filters.status); }
 
   const key = `/portal/activities?${params.toString()}`;
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);

@@ -55,9 +55,9 @@ function formatTimelineDescription(event: TimelineEvent): string {
         const to = STATUS_LABELS[payload.to as string] || payload.to;
         return `案件「${d.caseTitle || ''}」狀態：${from} → ${to}`;
       }
-      if (et === 'assigned') return `案件「${d.caseTitle || ''}」指派給 ${payload.assigneeName || ''}`;
-      if (et === 'escalated') return `案件「${d.caseTitle || ''}」已升級`;
-      if (et === 'created') return `案件「${d.caseTitle || ''}」已建立`;
+      if (et === 'assigned') { return `案件「${d.caseTitle || ''}」指派給 ${payload.assigneeName || ''}`; }
+      if (et === 'escalated') { return `案件「${d.caseTitle || ''}」已升級`; }
+      if (et === 'created') { return `案件「${d.caseTitle || ''}」已建立`; }
       return `案件事件：${et}`;
     }
     case 'tag':
@@ -104,7 +104,7 @@ export function ContactTimeline({ events }: ContactTimelineProps) {
         const eventId = (event.data?.id as string) || `${event.type}-${idx}`;
         const ts = event.timestamp;
         const dateObj = ts ? new Date(ts) : null;
-        const isValidDate = dateObj && !isNaN(dateObj.getTime());
+        const isValidDate = dateObj && !Number.isNaN(dateObj.getTime());
 
         return (
           <div key={eventId} className="relative flex gap-3 pb-4">

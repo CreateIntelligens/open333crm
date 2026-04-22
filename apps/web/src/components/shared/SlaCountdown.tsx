@@ -12,7 +12,7 @@ export function SlaCountdown({ deadline, className }: SlaCountdownProps) {
   const [remaining, setRemaining] = useState<number>(0);
 
   useEffect(() => {
-    if (!deadline) return;
+    if (!deadline) { return; }
 
     const target = new Date(deadline).getTime();
 

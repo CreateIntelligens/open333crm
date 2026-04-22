@@ -15,7 +15,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog) { return; }
 
     if (open) {
       if (!dialog.open) {
@@ -38,6 +38,11 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
             onOpenChange(false);
           }
           lastClickTimeRef.current = now;
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          onOpenChange(false);
         }
       }}
     >

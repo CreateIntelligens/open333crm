@@ -44,7 +44,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
 
   // Reset draft when opening
   React.useEffect(() => {
-    if (open) setDraft(values);
+    if (open) { setDraft(values); }
   }, [open, values]);
 
   const toggleStatus = (status: string) => {
@@ -81,7 +81,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
     <>
       {/* Backdrop */}
       {open && (
-        <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+        <button type="button" aria-label="關閉篩選" className="fixed inset-0 z-40 bg-black/20 cursor-default" onClick={onClose} />
       )}
 
       {/* Drawer */}

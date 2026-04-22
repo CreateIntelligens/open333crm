@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect } from 'react';
 import { Loader2, Plus, Pencil, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
@@ -169,7 +170,7 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!agent) return;
+    if (!agent) { return; }
     setSaving(true);
     setError('');
     try {
@@ -188,8 +189,8 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
   }
 
   async function handleDeactivate() {
-    if (!agent) return;
-    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？此操作無法從此介面復原。`)) return;
+    if (!agent) { return; }
+    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？此操作無法從此介面復原。`)) { return; }
     setDeactivating(true);
     setError('');
     try {
@@ -380,7 +381,7 @@ export function AgentManagement() {
   for (const agent of agents) {
     for (const membership of agent.teams) {
       const t = membership.team;
-      if (!teamMap.has(t.id)) teamMap.set(t.id, { id: t.id, name: t.name, members: [] });
+      if (!teamMap.has(t.id)) { teamMap.set(t.id, { id: t.id, name: t.name, members: [] }); }
       teamMap.get(t.id)!.members.push(agent.name);
     }
   }
@@ -518,7 +519,7 @@ export function AgentManagement() {
       <EditAgentDialog
         agent={editAgent}
         open={!!editAgent}
-        onOpenChange={(v) => { if (!v) setEditAgent(null); }}
+        onOpenChange={(v) => { if (!v) { setEditAgent(null); } }}
         currentRole={currentAgent?.role ?? ''}
         onUpdated={fetchAgents}
       />

@@ -90,7 +90,7 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
     q: search || undefined,
   });
 
-  if (!open) return null;
+  if (!open) { return null; }
 
   const handleSelectTemplate = (tpl: TemplateItem) => {
     const keys = extractKeys(tpl.body);
@@ -106,14 +106,14 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
     const defaults: Record<string, string> = {};
     if (Array.isArray(tpl.variables)) {
       for (const v of tpl.variables) {
-        if (v.defaultValue) defaults[v.key] = v.defaultValue;
+        if (v.defaultValue) { defaults[v.key] = v.defaultValue; }
       }
     }
     setVarValues(defaults);
   };
 
   const handleInsert = () => {
-    if (!selected) return;
+    if (!selected) { return; }
     const text = getBodyText(selected.body);
     const rendered = renderText(text, varValues);
     onSelect(rendered);
@@ -131,7 +131,7 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
   const getVarLabel = (key: string): string => {
     if (selected?.variables) {
       const def = selected.variables.find((v) => v.key === key);
-      if (def?.label) return def.label;
+      if (def?.label) { return def.label; }
     }
     return key;
   };

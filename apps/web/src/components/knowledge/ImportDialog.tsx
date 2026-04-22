@@ -42,19 +42,19 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
     setFileStatuses([]);
     setUploading(false);
     setDone(false);
-    if (fileRef.current) fileRef.current.value = '';
+    if (fileRef.current) { fileRef.current.value = ''; }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || []);
-    if (selected.length === 0) return;
+    if (selected.length === 0) { return; }
     setFiles(selected);
     setFileStatuses(selected.map((f) => ({ name: f.name, state: 'pending' })));
     setDone(false);
   };
 
   const handleUpload = async () => {
-    if (files.length === 0) return;
+    if (files.length === 0) { return; }
     setUploading(true);
     setDone(false);
 
@@ -132,7 +132,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v) reset();
+        if (!v) { reset(); }
         onOpenChange(v);
       }}
     >

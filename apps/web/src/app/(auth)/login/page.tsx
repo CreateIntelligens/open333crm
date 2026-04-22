@@ -60,8 +60,9 @@ function LoginForm() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">電子郵件</label>
+              <label htmlFor="login-email" className="mb-1 block text-sm font-medium">電子郵件</label>
               <Input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -71,8 +72,9 @@ function LoginForm() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">密碼</label>
+              <label htmlFor="login-password" className="mb-1 block text-sm font-medium">密碼</label>
               <Input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

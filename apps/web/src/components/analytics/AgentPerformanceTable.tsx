@@ -26,8 +26,8 @@ interface AgentPerformanceTableProps {
 type SortKey = 'casesHandled' | 'casesResolved' | 'avgFirstResponseMinutes' | 'csatAvg' | 'slaAchievementRate';
 
 function formatMinutes(minutes: number | null): string {
-  if (minutes === null) return '-';
-  if (minutes < 60) return `${Math.round(minutes)} 分`;
+  if (minutes === null) { return '-'; }
+  if (minutes < 60) { return `${Math.round(minutes)} 分`; }
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return `${h} 時 ${m} 分`;

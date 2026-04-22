@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ export function SearchInput({
   className,
 }: SearchInputProps) {
   const [internalValue, setInternalValue] = useState(controlledValue || '');
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (controlledValue !== undefined) {
@@ -28,22 +29,16 @@ export function SearchInput({
     }
   }, [controlledValue]);
 
-  const debounce = useCallback(
-    (fn: (val: string) => void, delay: number) => {
-      let timer: NodeJS.Timeout;
-      return (val: string) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn(val), delay);
-      };
-    },
-    []
-  );
-
   const debouncedSearch = useCallback(
-    debounce((val: string) => {
-      onSearch(val);
-    }, debounceMs),
-    [onSearch, debounceMs, debounce]
+    (val: string) => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => {
+        onSearch(val);
+      }, debounceMs);
+    },
+    [onSearch, debounceMs]
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -71,7 +71,7 @@ function ActivityList() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定刪除此活動？')) return;
+    if (!confirm('確定刪除此活動？')) { return; }
     try {
       await api.delete(`/portal/activities/${id}`);
       mutate();

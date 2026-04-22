@@ -8,8 +8,6 @@ import {
   Play,
   CheckCircle,
   XCircle,
-  Send,
-  BarChart3,
 } from 'lucide-react';
 import { useCampaign, useBroadcasts } from '@/hooks/useMarketing';
 import { Topbar } from '@/components/layout/Topbar';
@@ -38,7 +36,7 @@ export default function CampaignDetailPage() {
   const router = useRouter();
   const campaignId = params.campaignId as string;
   const { campaign, isLoading, mutate } = useCampaign(campaignId);
-  const { broadcasts } = useBroadcasts(campaignId);
+  useBroadcasts(campaignId); // Keep mounted for cache
 
   const handleStatusChange = async (newStatus: string) => {
     const labels: Record<string, string> = {
@@ -46,7 +44,7 @@ export default function CampaignDetailPage() {
       completed: '完成',
       cancelled: '取消',
     };
-    if (!confirm(`確定要${labels[newStatus] || newStatus}此活動嗎？`)) return;
+    if (!confirm(`確定要${labels[newStatus] || newStatus}此活動嗎？`)) { return; }
     try {
       await api.patch(`/marketing/campaigns/${campaignId}`, { status: newStatus });
       mutate();

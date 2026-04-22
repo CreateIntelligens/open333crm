@@ -113,7 +113,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
   const [submitting, setSubmitting] = useState(false);
 
   const handleAddNote = async () => {
-    if (!noteContent.trim()) return;
+    if (!noteContent.trim()) { return; }
     setSubmitting(true);
     try {
       await api.post(`/cases/${caseId}/notes`, {

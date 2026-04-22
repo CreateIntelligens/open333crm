@@ -37,7 +37,7 @@ export function MessageInput({
 
   const handleSend = async () => {
     const trimmed = message.trim();
-    if (!trimmed || isDisabled) return;
+    if (!trimmed || isDisabled) { return; }
 
     setSending(true);
     try {
@@ -75,7 +75,7 @@ export function MessageInput({
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) { return; }
 
     if (!['image/png', 'image/jpeg'].includes(file.type)) {
       alert('只支援 PNG / JPG 圖片');

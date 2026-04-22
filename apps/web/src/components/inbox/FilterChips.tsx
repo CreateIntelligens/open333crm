@@ -26,7 +26,7 @@ export function FilterChips({ filters, onChange, resultCount }: FilterChipsProps
   const hasFilters =
     filters.statuses.length > 0 || filters.channels.length > 0 || filters.assignee !== '';
 
-  if (!hasFilters) return null;
+  if (!hasFilters) { return null; }
 
   const removeStatus = (status: string) => {
     onChange({ ...filters, statuses: filters.statuses.filter((s) => s !== status) });

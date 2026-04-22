@@ -61,26 +61,26 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   ];
 
   const handleAssign = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!conversation) return;
+    if (!conversation) { return; }
     const value = e.target.value || null;
     await api.patch(`/conversations/${conversation.id}`, { assignedToId: value });
     globalMutate(`/conversations/${conversation.id}`);
   };
 
   const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!conversation) return;
+    if (!conversation) { return; }
     await api.patch(`/conversations/${conversation.id}`, { status: e.target.value });
     globalMutate(`/conversations/${conversation.id}`);
   };
 
   const handleReopen = async () => {
-    if (!conversation) return;
+    if (!conversation) { return; }
     await api.patch(`/conversations/${conversation.id}`, { status: 'ACTIVE' });
     globalMutate(`/conversations/${conversation.id}`);
   };
 
   const handleTakeover = async () => {
-    if (!conversation) return;
+    if (!conversation) { return; }
     try {
       await api.post(`/conversations/${conversation.id}/handoff`, {});
       globalMutate(`/conversations/${conversation.id}`);

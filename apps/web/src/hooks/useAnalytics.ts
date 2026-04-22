@@ -10,11 +10,11 @@ const fetcher = async (url: string) => {
 
 function buildParams(from?: Date, to?: Date, extra?: Record<string, string>) {
   const params = new URLSearchParams();
-  if (from) params.set('from', from.toISOString());
-  if (to) params.set('to', to.toISOString());
+  if (from) { params.set('from', from.toISOString()); }
+  if (to) { params.set('to', to.toISOString()); }
   if (extra) {
     for (const [k, v] of Object.entries(extra)) {
-      if (v) params.set(k, v);
+      if (v) { params.set(k, v); }
     }
   }
   return params.toString();
@@ -28,7 +28,7 @@ export function useOverviewStats(from?: Date, to?: Date) {
   return { data: data?.data, isLoading, error };
 }
 
-export function useMessageTrend(from?: Date, to?: Date, groupBy: string = 'day') {
+export function useMessageTrend(from?: Date, to?: Date, groupBy = 'day') {
   const qs = buildParams(from, to, { groupBy });
   const { data, error, isLoading } = useSWR(`/analytics/message-trend?${qs}`, fetcher, {
     refreshInterval: 60000,

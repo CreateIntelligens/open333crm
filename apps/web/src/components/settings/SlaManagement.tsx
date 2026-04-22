@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
@@ -40,10 +41,10 @@ const PRIORITY_OPTIONS = [
 ];
 
 function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} 分鐘`;
+  if (minutes < 60) { return `${minutes} 分鐘`; }
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
-  if (hours < 24) return mins > 0 ? `${hours} 小時 ${mins} 分` : `${hours} 小時`;
+  if (hours < 24) { return mins > 0 ? `${hours} 小時 ${mins} 分` : `${hours} 小時`; }
   const days = Math.floor(hours / 24);
   const remainHours = hours % 24;
   return remainHours > 0 ? `${days} 天 ${remainHours} 小時` : `${days} 天`;
@@ -137,7 +138,7 @@ export function SlaManagement() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除此 SLA 政策嗎？')) return;
+    if (!confirm('確定要刪除此 SLA 政策嗎？')) { return; }
     try {
       await api.delete(`/sla-policies/${id}`);
       fetchPolicies();

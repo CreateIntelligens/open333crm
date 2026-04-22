@@ -18,7 +18,7 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
   const [submitted, setSubmitted] = useState(!!initialScore);
 
   const handleClick = async (star: number) => {
-    if (readonly || submitted) return;
+    if (readonly || submitted) { return; }
     setSelected(star);
     setSubmitted(true);
     onRate?.(star);

@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -100,7 +101,7 @@ export function CaseCreateModal({
 
   // Load reference data when modal opens
   useEffect(() => {
-    if (!open) return;
+    if (!open) { return; }
     Promise.all([
       api.get('/agents').catch(() => ({ data: { data: [] } })),
       api.get('/sla-policies').catch(() => ({ data: { data: [] } })),
@@ -114,8 +115,8 @@ export function CaseCreateModal({
 
   // Update state when props change (inbox mode)
   useEffect(() => {
-    if (contactId) setSelectedContactId(contactId);
-    if (contactName) setSelectedContactName(contactName);
+    if (contactId) { setSelectedContactId(contactId); }
+    if (contactName) { setSelectedContactName(contactName); }
   }, [contactId, contactName]);
 
   // Contact search (debounced)
@@ -133,7 +134,7 @@ export function CaseCreateModal({
   }, []);
 
   useEffect(() => {
-    if (isFromInbox) return;
+    if (isFromInbox) { return; }
     const timer = setTimeout(() => searchContacts(contactSearch), 300);
     return () => clearTimeout(timer);
   }, [contactSearch, searchContacts, isFromInbox]);
@@ -244,7 +245,7 @@ export function CaseCreateModal({
     : null;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { resetForm(); } }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>建立案件</DialogTitle>
@@ -388,7 +389,7 @@ export function CaseCreateModal({
                   if (agentIdVal) {
                     const agent = agents.find((a) => a.id === agentIdVal);
                     const agentTeamId = agent?.teamId || agent?.team?.id;
-                    if (agentTeamId) setTeamId(agentTeamId);
+                    if (agentTeamId) { setTeamId(agentTeamId); }
                   }
                 }}
                 options={[

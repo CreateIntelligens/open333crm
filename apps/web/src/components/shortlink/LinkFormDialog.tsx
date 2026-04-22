@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -61,7 +62,7 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
   }, [editData, open]);
 
   const handleSave = async () => {
-    if (!targetUrl) return;
+    if (!targetUrl) { return; }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {

@@ -86,7 +86,7 @@ interface TabsContentProps {
 }
 
 function TabsContent({ value, children, className, activeValue }: TabsContentProps) {
-  if (activeValue !== value) return null;
+  if (activeValue !== value) { return null; }
   return (
     <div className={cn('mt-2 ring-offset-background focus-visible:outline-none', className)}>
       {children}

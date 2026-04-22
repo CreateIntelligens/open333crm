@@ -13,14 +13,14 @@ const fetcher = async (url: string) => {
 export function useShortLinks(filters?: { isActive?: string; q?: string }) {
   const { socket } = useSocket();
   const params = new URLSearchParams();
-  if (filters?.isActive) params.set('isActive', filters.isActive);
-  if (filters?.q) params.set('q', filters.q);
+  if (filters?.isActive) { params.set('isActive', filters.isActive); }
+  if (filters?.q) { params.set('q', filters.q); }
 
   const key = `/shortlinks?${params.toString()}`;
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) { return; }
     const handler = () => mutate();
     socket.on('link.stats.updated', handler);
     return () => {
@@ -59,7 +59,7 @@ export function useClickStats(id: string | null) {
   );
 
   useEffect(() => {
-    if (!socket || !id) return;
+    if (!socket || !id) { return; }
 
     const handler = (payload: { shortLinkId: string }) => {
       if (payload.shortLinkId === id) {

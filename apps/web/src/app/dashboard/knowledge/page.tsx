@@ -83,7 +83,7 @@ export default function KnowledgePage() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!confirm('確定要刪除這篇文章嗎？')) return;
+      if (!confirm('確定要刪除這篇文章嗎？')) { return; }
       try {
         await api.delete(`/knowledge/${id}`);
         mutate();
@@ -120,7 +120,7 @@ export default function KnowledgePage() {
   }, [mutate]);
 
   const handleSemanticSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) { return; }
     setSearching(true);
     setSearchError(null);
 

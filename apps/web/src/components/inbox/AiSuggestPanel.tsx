@@ -23,7 +23,7 @@ export function AiSuggestPanel({ open, onClose, conversationId, onAdopt }: AiSug
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { return; }
     setLoading(true);
     setSuggestions([]);
     api
@@ -33,7 +33,7 @@ export function AiSuggestPanel({ open, onClose, conversationId, onAdopt }: AiSug
       .finally(() => setLoading(false));
   }, [open, conversationId]);
 
-  if (!open) return null;
+  if (!open) { return null; }
 
   return (
     <div className="absolute right-0 top-14 z-20 w-80 rounded-lg border bg-background shadow-lg">

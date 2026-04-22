@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Copy, QrCode, BarChart3, Loader2, ExternalLink } from 'lucide-react';
+import { Plus, Copy, QrCode, Loader2, ExternalLink } from 'lucide-react';
 import { useShortLinks } from '@/hooks/useShortLinks';
 import { LinkFormDialog } from '@/components/shortlink/LinkFormDialog';
 import { ClickStatsView } from '@/components/shortlink/ClickStatsView';
@@ -40,7 +40,7 @@ function LinkList() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定刪除此短連結？')) return;
+    if (!confirm('確定刪除此短連結？')) { return; }
     try {
       await api.delete(`/shortlinks/${id}`);
       mutate();

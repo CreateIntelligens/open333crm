@@ -12,7 +12,7 @@ export function TypingIndicator({ conversationId }: TypingIndicatorProps) {
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!socket || !conversationId) return;
+    if (!socket || !conversationId) { return; }
 
     const handleStart = (payload: { conversationId: string; agentName?: string }) => {
       if (payload.conversationId === conversationId) {
@@ -35,7 +35,7 @@ export function TypingIndicator({ conversationId }: TypingIndicatorProps) {
     };
   }, [socket, conversationId]);
 
-  if (!typingAgent) return null;
+  if (!typingAgent) { return null; }
 
   return (
     <div className="flex items-center gap-2 px-4 py-2">

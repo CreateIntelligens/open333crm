@@ -4,7 +4,6 @@ import React from 'react';
 import { Phone, Mail } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { ChannelIdentityList } from './ChannelIdentityList';
 import { TagManager } from './TagManager';
 

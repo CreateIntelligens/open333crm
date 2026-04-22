@@ -36,7 +36,7 @@ export function TagManager({ contactId, tags, onUpdate }: TagManagerProps) {
   );
 
   const handleAddTag = async () => {
-    if (!selectedTagId) return;
+    if (!selectedTagId) { return; }
     setAdding(true);
     try {
       await api.post(`/contacts/${contactId}/tags`, { tagId: selectedTagId });

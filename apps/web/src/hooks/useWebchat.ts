@@ -35,10 +35,8 @@ export function useWebchat() {
 
   const load = useCallback(
     (channelId: string) => {
-      // If same channel already loaded, no-op
-      if (activeChannelId.current === channelId) return;
+      if (activeChannelId.current === channelId) { return; }
 
-      // Clean up any previous widget
       unload();
 
       activeChannelId.current = channelId;

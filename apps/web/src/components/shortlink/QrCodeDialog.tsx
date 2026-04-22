@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Loader2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,7 +38,7 @@ export function QrCodeDialog({ open, onClose, linkId, linkTitle }: QrCodeDialogP
   }, [open, linkId]);
 
   const handleDownload = () => {
-    if (!qrData?.qrcode) return;
+    if (!qrData?.qrcode) { return; }
     const a = document.createElement('a');
     a.href = qrData.qrcode;
     a.download = `qr-${linkTitle || 'shortlink'}.png`;
@@ -56,7 +57,7 @@ export function QrCodeDialog({ open, onClose, linkId, linkTitle }: QrCodeDialogP
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           ) : qrData ? (
             <>
-              <img src={qrData.qrcode} alt="QR Code" className="w-64 h-64" />
+              <Image src={qrData.qrcode} alt="QR Code" width={256} height={256} className="w-64 h-64" />
               <p className="text-sm text-muted-foreground break-all text-center">{qrData.url}</p>
             </>
           ) : null}

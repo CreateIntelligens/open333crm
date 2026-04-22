@@ -30,13 +30,13 @@ export function useCases(filters: CaseFilters = {}) {
   const { socket } = useSocket();
 
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (priority) params.set('priority', priority);
-  if (assigneeId) params.set('assigneeId', assigneeId);
-  if (category) params.set('category', category);
-  if (slaStatus) params.set('slaStatus', slaStatus);
-  if (sortBy) params.set('sortBy', sortBy);
-  if (sortOrder) params.set('sortOrder', sortOrder);
+  if (status) { params.set('status', status); }
+  if (priority) { params.set('priority', priority); }
+  if (assigneeId) { params.set('assigneeId', assigneeId); }
+  if (category) { params.set('category', category); }
+  if (slaStatus) { params.set('slaStatus', slaStatus); }
+  if (sortBy) { params.set('sortBy', sortBy); }
+  if (sortOrder) { params.set('sortOrder', sortOrder); }
   params.set('page', String(page));
   params.set('limit', String(limit));
 
@@ -47,7 +47,7 @@ export function useCases(filters: CaseFilters = {}) {
   });
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) { return; }
 
     const handleCaseUpdated = () => {
       mutate();
@@ -79,7 +79,7 @@ export function useCaseStats() {
   });
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) { return; }
 
     const handler = () => mutate();
     socket.on('case.updated', handler);

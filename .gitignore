@@ -30,3 +30,5 @@ config.toml
 CLAUDE.md
 GEMINI.md
 ai-docs
+
+tsconfig.tsbuildinfo

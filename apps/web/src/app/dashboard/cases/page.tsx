@@ -63,7 +63,7 @@ export default function CasesPage() {
   // Client-side search filter (only filter if >= 2 chars)
   const filteredCases = useMemo(() => {
     const trimmed = search.trim();
-    if (trimmed.length < 2) return cases;
+    if (trimmed.length < 2) { return cases; }
     const keyword = trimmed.toLowerCase();
     return cases.filter(
       (c: { title?: string; description?: string }) =>
@@ -79,7 +79,7 @@ export default function CasesPage() {
 
   // Compute tab count label
   const getTabCount = (tabValue: string): number | undefined => {
-    if (!statusCounts) return undefined;
+    if (!statusCounts) { return undefined; }
     if (tabValue === 'all') {
       return Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
     }

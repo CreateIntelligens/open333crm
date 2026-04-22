@@ -24,7 +24,7 @@ export function SimulatorPanel() {
   }
 
   const handleSend = async () => {
-    if (!message.trim()) return;
+    if (!message.trim()) { return; }
     setSending(true);
     setStatus(null);
 
@@ -79,10 +79,11 @@ export function SimulatorPanel() {
           {/* Body */}
           <div className="space-y-3 p-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label htmlFor="sim-channel" className="mb-1 block text-xs font-medium text-muted-foreground">
                 渠道
               </label>
               <Select
+                id="sim-channel"
                 value={channel}
                 onChange={(e) => setChannel(e.target.value)}
                 options={[
@@ -94,10 +95,11 @@ export function SimulatorPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label htmlFor="sim-contact-name" className="mb-1 block text-xs font-medium text-muted-foreground">
                 聯繫人名稱（選填）
               </label>
               <Input
+                id="sim-contact-name"
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
                 placeholder="例：王小明"
@@ -105,10 +107,11 @@ export function SimulatorPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label htmlFor="sim-external-id" className="mb-1 block text-xs font-medium text-muted-foreground">
                 外部 ID（選填）
               </label>
               <Input
+                id="sim-external-id"
                 value={externalId}
                 onChange={(e) => setExternalId(e.target.value)}
                 placeholder="e.g. U1234567890"
@@ -116,10 +119,11 @@ export function SimulatorPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label htmlFor="sim-message" className="mb-1 block text-xs font-medium text-muted-foreground">
                 訊息
               </label>
               <Textarea
+                id="sim-message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="輸入客戶訊息..."

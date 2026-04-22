@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -107,7 +108,7 @@ export default function AutomationRuleDetailPage() {
 
   // Hydrate form from SWR data
   useEffect(() => {
-    if (!rule) return;
+    if (!rule) { return; }
 
     // Read trigger data — backend stores trigger as { type, keywords?, match_mode? }
     const trigger = rule.trigger as { type?: string; keywords?: string[]; match_mode?: string } | undefined;
@@ -164,7 +165,7 @@ export default function AutomationRuleDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) { return; }
     setSaving(true);
     try {
       // Build trigger object for backend
@@ -203,7 +204,7 @@ export default function AutomationRuleDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('確定要刪除此規則嗎？')) return;
+    if (!confirm('確定要刪除此規則嗎？')) { return; }
     setDeleting(true);
     try {
       await api.delete(`/automation/rules/${ruleId}`);
@@ -383,7 +384,7 @@ export default function AutomationRuleDetailPage() {
                     type="number"
                     value={form.priority}
                     onChange={(e) =>
-                      updateField('priority', parseInt(e.target.value) || 0)
+                      updateField('priority', parseInt(e.target.value, 10) || 0)
                     }
                   />
                 </div>

@@ -1,14 +1,11 @@
 'use client';
+/* eslint-disable jsx-a11y/label-has-associated-control */
 
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Plus,
   Send,
   Loader2,
-  Megaphone,
-  Users,
-  Calendar,
-  BarChart3,
   Trash2,
   Play,
   XCircle,
@@ -25,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -68,7 +65,7 @@ function CampaignTab() {
   const [saving, setSaving] = useState(false);
 
   const handleCreate = async () => {
-    if (!formData.name) return;
+    if (!formData.name) { return; }
     setSaving(true);
     try {
       await api.post('/marketing/campaigns', {
@@ -88,7 +85,7 @@ function CampaignTab() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除這個行銷活動嗎？')) return;
+    if (!confirm('確定要刪除這個行銷活動嗎？')) { return; }
     try {
       await api.delete(`/marketing/campaigns/${id}`);
       mutate();
@@ -116,9 +113,9 @@ function CampaignTab() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {campaigns.map((c: any) => (
-            <div
+            <button
               key={c.id}
-              className="cursor-pointer rounded-lg border p-4 transition hover:shadow-md"
+              className="cursor-pointer rounded-lg border p-4 transition hover:shadow-md text-left w-full"
               onClick={() => router.push(`/dashboard/marketing/campaigns/${c.id}`)}
             >
               <div className="mb-2 flex items-center justify-between">
@@ -148,7 +145,7 @@ function CampaignTab() {
                   </Button>
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -244,11 +241,11 @@ function BroadcastTab() {
         channelId: formData.channelId,
         targetType: formData.targetType,
       };
-      if (formData.campaignId) payload.campaignId = formData.campaignId;
+      if (formData.campaignId) { payload.campaignId = formData.campaignId; }
       if (formData.targetType === 'segment' && formData.segmentId) {
         payload.segmentId = formData.segmentId;
       }
-      if (formData.scheduledAt) payload.scheduledAt = new Date(formData.scheduledAt).toISOString();
+      if (formData.scheduledAt) { payload.scheduledAt = new Date(formData.scheduledAt).toISOString(); }
 
       await api.post('/marketing/broadcasts', payload);
       setDialogOpen(false);
@@ -270,7 +267,7 @@ function BroadcastTab() {
   };
 
   const handleSend = async (id: string) => {
-    if (!confirm('確定要立即發送嗎？')) return;
+    if (!confirm('確定要立即發送嗎？')) { return; }
     try {
       await api.post(`/marketing/broadcasts/${id}/send`);
       mutate();
@@ -280,7 +277,7 @@ function BroadcastTab() {
   };
 
   const handleCancel = async (id: string) => {
-    if (!confirm('確定要取消嗎？')) return;
+    if (!confirm('確定要取消嗎？')) { return; }
     try {
       await api.post(`/marketing/broadcasts/${id}/cancel`);
       mutate();
@@ -359,7 +356,7 @@ function BroadcastTab() {
                           </Button>
                         </>
                       )}
-                    </div>
+</div>
                   </td>
                 </tr>
               ))}
@@ -394,7 +391,7 @@ function BroadcastTab() {
               />
               {formData.templateId && (() => {
                 const selectedTpl = templates.find((t: any) => t.id === formData.templateId);
-                if (!selectedTpl) return null;
+                if (!selectedTpl) { return null; }
                 const body = (selectedTpl as any).body;
                 return (
                   <div className="mt-2 rounded-md border bg-muted/50 p-3">
@@ -545,7 +542,7 @@ function SegmentTab() {
   };
 
   const handleCreate = async () => {
-    if (!formData.name) return;
+    if (!formData.name) { return; }
     setSaving(true);
     try {
       await api.post('/marketing/segments', {
@@ -570,7 +567,7 @@ function SegmentTab() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除這個分群嗎？')) return;
+    if (!confirm('確定要刪除這個分群嗎？')) { return; }
     try {
       await api.delete(`/marketing/segments/${id}`);
       mutate();
@@ -785,7 +782,7 @@ function QuickBroadcastTab() {
       alert('請選擇範本和渠道');
       return;
     }
-    if (!confirm('確定要發送群發訊息嗎？')) return;
+    if (!confirm('確定要發送群發訊息嗎？')) { return; }
 
     setBroadcasting(true);
     setBroadcastResult(null);
@@ -919,7 +916,7 @@ function TemplateTab() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!confirm('確定要刪除這個範本嗎？')) return;
+      if (!confirm('確定要刪除這個範本嗎？')) { return; }
       try {
         await api.delete(`/marketing/templates/${id}`);
         mutate();

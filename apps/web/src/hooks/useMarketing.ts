@@ -10,7 +10,7 @@ const fetcher = async (url: string) => {
 
 export function useCampaigns(status?: string) {
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
+  if (status) { params.set('status', status); }
 
   const key = `/marketing/campaigns?${params.toString()}`;
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);
@@ -52,7 +52,7 @@ export function useSegments() {
 
 export function useBroadcasts(campaignId?: string) {
   const params = new URLSearchParams();
-  if (campaignId) params.set('campaignId', campaignId);
+  if (campaignId) { params.set('campaignId', campaignId); }
 
   const key = `/marketing/broadcasts?${params.toString()}`;
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);

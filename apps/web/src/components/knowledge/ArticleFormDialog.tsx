@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2, Eye, Pencil } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -118,8 +118,9 @@ export function ArticleFormDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium">標題</label>
+              <label htmlFor="article-title" className="mb-1.5 block text-sm font-medium">標題</label>
               <Input
+                id="article-title"
                 value={form.title}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, title: e.target.value }))
@@ -130,8 +131,9 @@ export function ArticleFormDialog({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium">分類</label>
+              <label htmlFor="article-category" className="mb-1.5 block text-sm font-medium">分類</label>
               <Input
+                id="article-category"
                 value={form.category}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, category: e.target.value }))
@@ -141,8 +143,9 @@ export function ArticleFormDialog({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium">摘要</label>
+              <label htmlFor="article-summary" className="mb-1.5 block text-sm font-medium">摘要</label>
               <Textarea
+                id="article-summary"
                 value={form.summary}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, summary: e.target.value }))
@@ -154,7 +157,7 @@ export function ArticleFormDialog({
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-sm font-medium">內容</label>
+                <label htmlFor="article-content" className="text-sm font-medium">內容</label>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
@@ -173,6 +176,7 @@ export function ArticleFormDialog({
                 </div>
               ) : (
                 <Textarea
+                  id="article-content"
                   value={form.content}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, content: e.target.value }))
@@ -185,8 +189,9 @@ export function ArticleFormDialog({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium">標籤</label>
+              <label htmlFor="article-tags" className="mb-1.5 block text-sm font-medium">標籤</label>
               <Input
+                id="article-tags"
                 value={form.tags}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, tags: e.target.value }))

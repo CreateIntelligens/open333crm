@@ -37,15 +37,15 @@ interface ConversationListItemProps {
 }
 
 function formatMessagePreview(msg?: { content: string | { text?: string }; contentType?: string }): string {
-  if (!msg) return '尚無訊息';
+  if (!msg) { return '尚無訊息'; }
 
-  if (msg.contentType === 'image') return '[圖片]';
-  if (msg.contentType === 'file') return '[檔案]';
-  if (msg.contentType === 'flex' || msg.contentType === 'template') return '[卡片訊息]';
-  if (msg.contentType === 'sticker') return '[貼圖]';
-  if (msg.contentType === 'video') return '[影片]';
-  if (msg.contentType === 'audio') return '[語音]';
-  if (msg.contentType === 'location') return '[位置]';
+  if (msg.contentType === 'image') { return '[圖片]'; }
+  if (msg.contentType === 'file') { return '[檔案]'; }
+  if (msg.contentType === 'flex' || msg.contentType === 'template') { return '[卡片訊息]'; }
+  if (msg.contentType === 'sticker') { return '[貼圖]'; }
+  if (msg.contentType === 'video') { return '[影片]'; }
+  if (msg.contentType === 'audio') { return '[語音]'; }
+  if (msg.contentType === 'location') { return '[位置]'; }
 
   const rawContent = msg.content;
   if (typeof rawContent === 'object' && rawContent !== null) {

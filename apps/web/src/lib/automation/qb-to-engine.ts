@@ -7,11 +7,11 @@ import type { RuleGroupType, RuleType } from 'react-querybuilder';
  * - Everything else stays a string
  */
 function parseValue(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
+  if (typeof value !== 'string') { return value; }
+  if (value === 'true') { return true; }
+  if (value === 'false') { return false; }
   const num = Number(value);
-  if (!Number.isNaN(num) && value.trim() !== '') return num;
+  if (!Number.isNaN(num) && value.trim() !== '') { return num; }
   return value;
 }
 

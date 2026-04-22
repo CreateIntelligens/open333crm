@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState } from 'react';
 import { Search, Loader2, Coins } from 'lucide-react';
 import { usePoints, usePointBalance } from '@/hooks/usePortal';
@@ -30,7 +31,7 @@ export function PointsTab() {
   const [adjusting, setAdjusting] = useState(false);
 
   const handleSearch = async () => {
-    if (!searchTerm.trim()) return;
+    if (!searchTerm.trim()) { return; }
     setSearching(true);
     try {
       const res = await api.get(`/contacts?q=${encodeURIComponent(searchTerm)}&limit=1`);
@@ -50,7 +51,7 @@ export function PointsTab() {
   };
 
   const handleAdjust = async () => {
-    if (!contactId || !adjustAmount) return;
+    if (!contactId || !adjustAmount) { return; }
     setAdjusting(true);
     try {
       await api.post('/portal/points/adjust', {
@@ -151,8 +152,8 @@ export function PointsTab() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">調整金額（正數加、負數扣）</label>
-              <Input type="number" value={adjustAmount} onChange={(e) => setAdjustAmount(parseInt(e.target.value) || 0)} />
+              <label htmlFor="adjust-amount" className="text-sm font-medium">調整金額（正數加、負數扣）</label>
+              <Input id="adjust-amount" type="number" value={adjustAmount} onChange={(e) => setAdjustAmount(parseInt(e.target.value, 10) || 0)} />
             </div>
             <div>
               <label className="text-sm font-medium">備註</label>

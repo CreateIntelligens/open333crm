@@ -20,9 +20,9 @@ export function useTemplates(filters: TemplateFilters = {}) {
   const { category, channelType, q, page = 1, limit = 50 } = filters;
 
   const params = new URLSearchParams();
-  if (category) params.set('category', category);
-  if (channelType) params.set('channelType', channelType);
-  if (q) params.set('q', q);
+  if (category) { params.set('category', category); }
+  if (channelType) { params.set('channelType', channelType); }
+  if (q) { params.set('q', q); }
   params.set('page', String(page));
   params.set('limit', String(limit));
 

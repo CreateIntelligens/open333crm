@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, Plus, Trash2, Eye } from 'lucide-react';
 import api from '@/lib/api';
@@ -82,7 +83,7 @@ const fetcher = async (url: string) => {
 };
 
 function normalizeVariables(vars: unknown[]): TemplateVariable[] {
-  if (!Array.isArray(vars)) return [];
+  if (!Array.isArray(vars)) { return []; }
   return vars.map((v: any) => ({
     key: v.key || v.name || String(v),
     label: v.label || '',
@@ -93,7 +94,7 @@ function normalizeVariables(vars: unknown[]): TemplateVariable[] {
 
 function normalizeQuickReplies(body: Record<string, unknown>): QuickReplyItem[] {
   const qr = body.quickReplies as unknown[];
-  if (!Array.isArray(qr)) return [{ label: '', text: '', postbackData: '' }];
+  if (!Array.isArray(qr)) { return [{ label: '', text: '', postbackData: '' }]; }
   return qr.map((item: any) => ({
     label: item.label || '',
     text: item.text || '',
@@ -135,7 +136,7 @@ function clientRenderBody(body: Record<string, unknown>, vars: TemplateVariable[
         defaults[key] !== undefined ? defaults[key] : `{{${key}}}`,
       );
     }
-    if (Array.isArray(val)) return val.map(replaceVars);
+    if (Array.isArray(val)) { return val.map(replaceVars); }
     if (val !== null && typeof val === 'object') {
       const result: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
@@ -381,7 +382,7 @@ export function TemplateFormDialog({
 
     // Auto-append variable definition if not already present
     setVariables((vars) => {
-      if (vars.some((item) => item.key === v.key)) return vars;
+      if (vars.some((item) => item.key === v.key)) { return vars; }
       return [...vars, { key: v.key, label: v.label, defaultValue: v.example, required: false }];
     });
   }, []);
@@ -501,7 +502,7 @@ export function TemplateFormDialog({
                   <Select
                     value={existingCategories.includes(form.category) ? form.category : ''}
                     onChange={(e) => {
-                      if (e.target.value) setForm((f) => ({ ...f, category: e.target.value }));
+                      if (e.target.value) { setForm((f) => ({ ...f, category: e.target.value })); }
                     }}
                     options={[
                       { value: '', label: '— 選擇或輸入 —' },

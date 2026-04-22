@@ -37,7 +37,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
 
   // Load AI summary
   useEffect(() => {
-    if (!open) return;
+    if (!open) { return; }
     setSummaryLoading(true);
     setSummary(null);
     api
@@ -63,7 +63,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
     }
   };
 
-  if (!open) return null;
+  if (!open) { return null; }
 
   return (
     <>

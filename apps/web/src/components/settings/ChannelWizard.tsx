@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState } from 'react';
 import { Loader2, CheckCircle, XCircle, Copy, Check } from 'lucide-react';
 import api from '@/lib/api';
@@ -46,7 +47,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
   const [pageId, setPageId] = useState('');
 
   const [creating, setCreating] = useState(false);
-  const [createdChannelId, setCreatedChannelId] = useState<string | null>(null);
+  const [_createdChannelId, setCreatedChannelId] = useState<string | null>(null);
   const [verify, setVerify] = useState<VerifyState>({ status: 'idle' });
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -114,7 +115,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
         displayName: displayName || `My ${channelType} Channel`,
         credentials,
       };
-      if (webhookBaseUrl) payload.webhookBaseUrl = webhookBaseUrl;
+      if (webhookBaseUrl) { payload.webhookBaseUrl = webhookBaseUrl; }
 
       const createRes = await api.post('/channels', payload);
       const newChannel = createRes.data?.data;
@@ -201,7 +202,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { handleClose(); } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{stepLabels[step]}</DialogTitle>

@@ -67,8 +67,8 @@ interface CaseItem {
 /* -------------------------------------------------------------------------- */
 
 function extractMessageText(content: string | { text?: string } | null | undefined): string {
-  if (!content) return '尚無訊息';
-  if (typeof content === 'string') return content;
+  if (!content) { return '尚無訊息'; }
+  if (typeof content === 'string') { return content; }
   return content.text || '尚無訊息';
 }
 

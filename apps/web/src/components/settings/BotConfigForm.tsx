@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect } from 'react';
 import { Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
@@ -86,7 +87,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
   };
 
   const handleSave = async () => {
-    if (!channel) return;
+    if (!channel) { return; }
     setSaving(true);
     setError(null);
 
@@ -147,7 +148,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               min={1}
               max={50}
               value={maxBotReplies}
-              onChange={(e) => setMaxBotReplies(parseInt(e.target.value) || 5)}
+              onChange={(e) => setMaxBotReplies(parseInt(e.target.value, 10) || 5)}
             />
             <p className="mt-1 text-xs text-muted-foreground">
               超過此次數後自動轉接真人客服

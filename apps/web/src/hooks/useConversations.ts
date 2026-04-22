@@ -25,11 +25,11 @@ export function useConversations(filters: ConversationFilters = {}) {
   const { socket } = useSocket();
 
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (channelType) params.set('channelType', channelType);
-  if (assigneeId) params.set('assigneeId', assigneeId);
-  if (unread) params.set('unread', 'true');
-  if (closedAfter) params.set('closedAfter', closedAfter);
+  if (status) { params.set('status', status); }
+  if (channelType) { params.set('channelType', channelType); }
+  if (assigneeId) { params.set('assigneeId', assigneeId); }
+  if (unread) { params.set('unread', 'true'); }
+  if (closedAfter) { params.set('closedAfter', closedAfter); }
   params.set('page', String(page));
   params.set('limit', String(limit));
 
@@ -39,7 +39,7 @@ export function useConversations(filters: ConversationFilters = {}) {
 
   // Listen for real-time updates
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) { return; }
 
     const handleNewMessage = () => {
       mutate();

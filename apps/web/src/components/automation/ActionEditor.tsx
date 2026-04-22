@@ -44,12 +44,14 @@ interface ActionEditorProps {
 
 function PayloadField({
   label,
+  id,
   value,
   onChange,
   placeholder,
   type = 'text',
 }: {
   label: string;
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -57,10 +59,11 @@ function PayloadField({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+      <label htmlFor={id} className="mb-1 block text-xs font-medium text-muted-foreground">
         {label}
       </label>
       <Input
+        id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -127,6 +130,7 @@ function ActionParamsForm({
       return (
         <div className="space-y-2">
           <PayloadField
+            id="case-title"
             label="工單標題"
             value={(payload.title as string) || ''}
             onChange={(v) => updateParam('title', v)}
@@ -134,10 +138,11 @@ function ActionParamsForm({
           />
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label htmlFor="case-priority" className="mb-1 block text-xs font-medium text-muted-foreground">
                 優先級
               </label>
               <Select
+                id="case-priority"
                 options={CASE_PRIORITIES}
                 value={(payload.priority as string) || 'MEDIUM'}
                 onChange={(e) => updateParam('priority', e.target.value)}
@@ -145,6 +150,7 @@ function ActionParamsForm({
               />
             </div>
             <PayloadField
+              id="case-category"
               label="分類"
               value={(payload.category as string) || ''}
               onChange={(v) => updateParam('category', v)}
@@ -157,10 +163,11 @@ function ActionParamsForm({
     case 'update_case_status':
       return (
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label htmlFor="case-status" className="mb-1 block text-xs font-medium text-muted-foreground">
             目標狀態
           </label>
           <Select
+            id="case-status"
             options={CASE_STATUSES}
             value={(payload.status as string) || 'OPEN'}
             onChange={(e) => updateParam('status', e.target.value)}
@@ -173,16 +180,18 @@ function ActionParamsForm({
       return (
         <div className="space-y-2">
           <PayloadField
+            id="escalate-reason"
             label="升級原因"
             value={(payload.reason as string) || ''}
             onChange={(v) => updateParam('reason', v)}
             placeholder="升級原因..."
           />
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            <label htmlFor="escalate-priority" className="mb-1 block text-xs font-medium text-muted-foreground">
               新優先級
             </label>
             <Select
+              id="escalate-priority"
               options={CASE_PRIORITIES}
               value={(payload.newPriority as string) || ''}
               onChange={(e) => updateParam('newPriority', e.target.value)}
@@ -247,10 +256,11 @@ function JsonFallbackEditor({
 
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+      <label htmlFor="payload-json" className="mb-1 block text-xs font-medium text-muted-foreground">
         承載資料 (JSON)
       </label>
       <textarea
+        id="payload-json"
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -274,10 +284,11 @@ export function ActionEditor({ action, onChange, onRemove }: ActionEditorProps) 
     <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
       <div className="flex flex-1 flex-col gap-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label htmlFor="action-type" className="mb-1 block text-xs font-medium text-muted-foreground">
             動作類型
           </label>
           <Select
+            id="action-type"
             options={ACTION_TYPES}
             value={action.type}
             onChange={(e) => onChange({ type: e.target.value, payload: {} })}

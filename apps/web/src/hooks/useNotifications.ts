@@ -21,7 +21,7 @@ export function useNotifications(filters: NotificationFilters = {}) {
   const { socket } = useSocket();
 
   const params = new URLSearchParams();
-  if (isRead !== undefined) params.set('isRead', String(isRead));
+  if (isRead !== undefined) { params.set('isRead', String(isRead)); }
   params.set('page', String(page));
   params.set('limit', String(limit));
 
@@ -32,7 +32,7 @@ export function useNotifications(filters: NotificationFilters = {}) {
   });
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) { return; }
 
     const handleNew = () => {
       mutate();
@@ -64,7 +64,7 @@ export function useUnreadCount() {
   );
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) { return; }
 
     const handleNew = () => {
       mutate();

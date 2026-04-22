@@ -131,9 +131,9 @@ export default function NotificationsPage() {
                 const Icon = config.icon;
 
                 return (
-                  <div
+                  <button
                     key={n.id}
-                    className={`flex items-start gap-4 rounded-lg border p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
+                    className={`flex items-start gap-4 rounded-lg border p-4 cursor-pointer hover:bg-accent/50 transition-colors text-left w-full ${
                       !n.isRead ? 'bg-accent/20 border-accent' : ''
                     }`}
                     onClick={() => handleNotificationClick(n)}
@@ -170,7 +170,7 @@ export default function NotificationsPage() {
                         </>
                       )}
                     </div>
-                  </div>
+                  </button>
                 );
               },
             )}

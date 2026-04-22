@@ -20,9 +20,9 @@ export function useContacts(filters: ContactFilters = {}) {
   const { q, tag, channel, page = 1, limit = 50 } = filters;
 
   const params = new URLSearchParams();
-  if (q) params.set('q', q);
-  if (tag) params.set('tag', tag);
-  if (channel) params.set('channel', channel);
+  if (q) { params.set('q', q); }
+  if (tag) { params.set('tag', tag); }
+  if (channel) { params.set('channel', channel); }
   params.set('page', String(page));
   params.set('limit', String(limit));
 

@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState } from 'react';
 import { Award, Loader2 } from 'lucide-react';
 import { useActivities, useSubmissions } from '@/hooks/usePortal';
@@ -26,7 +27,7 @@ export function SubmissionsView() {
   const [winners, setWinners] = useState<Array<{ id: string; contact: { displayName: string } }>>([]);
 
   const handleDraw = async () => {
-    if (!selectedId) return;
+    if (!selectedId) { return; }
     setDrawing(true);
     try {
       const res = await api.post(`/portal/activities/${selectedId}/draw`, { count: drawCount });
@@ -118,7 +119,7 @@ export function SubmissionsView() {
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium">抽出人數</label>
-              <Input type="number" value={drawCount} onChange={(e) => setDrawCount(parseInt(e.target.value) || 1)} min={1} />
+              <Input type="number" value={drawCount} onChange={(e) => setDrawCount(parseInt(e.target.value, 10) || 1)} min={1} />
             </div>
             {winners.length > 0 && (
               <div>

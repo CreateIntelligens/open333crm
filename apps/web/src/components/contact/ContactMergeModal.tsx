@@ -141,7 +141,7 @@ export function ContactMergeModal({
 
   // Load preview when entering step 2
   const loadPreview = useCallback(async () => {
-    if (!selectedSecondary) return;
+    if (!selectedSecondary) { return; }
     setLoadingPreview(true);
     setError('');
     try {
@@ -169,12 +169,12 @@ export function ContactMergeModal({
   const handlePrevStep = () => {
     if (step > 0) {
       setStep(step - 1);
-      if (step === 2) setConfirmed(false);
+      if (step === 2) { setConfirmed(false); }
     }
   };
 
   const handleMerge = async () => {
-    if (!selectedSecondary || !confirmed) return;
+    if (!selectedSecondary || !confirmed) { return; }
     setMerging(true);
     setError('');
     try {
@@ -195,7 +195,7 @@ export function ContactMergeModal({
   const shortId = (id: string) => id.slice(0, 5).toUpperCase();
 
   const channelPills = (identities?: Array<{ channelType: string }>) => {
-    if (!identities || identities.length === 0) return null;
+    if (!identities || identities.length === 0) { return null; }
     const types = [...new Set(identities.map((ci) => ci.channelType))];
     return (
       <div className="mt-1.5 flex flex-wrap gap-1">

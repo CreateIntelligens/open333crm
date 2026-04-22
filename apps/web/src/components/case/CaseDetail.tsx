@@ -114,7 +114,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
   const teams = agents.reduce<Array<{ id: string; name: string }>>((acc, a) => {
     const t = a.team;
-    if (t && !acc.find((x) => x.id === t.id)) acc.push(t);
+    if (t && !acc.find((x) => x.id === t.id)) { acc.push(t); }
     return acc;
   }, []);
 
@@ -130,11 +130,11 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
   // SLA first response check
   const slaFirstResponseMet = (() => {
-    if (!caseData.slaPolicyData?.firstResponseMinutes || !caseData.events) return null;
+    if (!caseData.slaPolicyData?.firstResponseMinutes || !caseData.events) { return null; }
     const firstAgentEvent = [...caseData.events]
       .reverse()
       .find((e) => e.actorType === 'agent' && e.eventType !== 'created');
-    if (!firstAgentEvent) return null; // no agent response yet
+    if (!firstAgentEvent) { return null; } // no agent response yet
     const caseCreated = new Date(caseData.createdAt).getTime();
     const firstResponse = new Date(firstAgentEvent.createdAt).getTime();
     const diffMinutes = (firstResponse - caseCreated) / 60000;
@@ -195,8 +195,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value.slice(0, 100))}
                 onBlur={handleTitleBlur}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleTitleBlur(); if (e.key === 'Escape') { setTitleDraft(caseData.title); setEditingTitle(false); } }}
-                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') { handleTitleBlur(); } if (e.key === 'Escape') { setTitleDraft(caseData.title); setEditingTitle(false); } }}
                 maxLength={100}
               />
             ) : (

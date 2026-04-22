@@ -20,9 +20,9 @@ export function useKnowledge(filters: KnowledgeFilters = {}) {
   const { status, category, q, page = 1, limit = 50 } = filters;
 
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (category) params.set('category', category);
-  if (q) params.set('q', q);
+  if (status) { params.set('status', status); }
+  if (category) { params.set('category', category); }
+  if (q) { params.set('q', q); }
   params.set('page', String(page));
   params.set('limit', String(limit));
 

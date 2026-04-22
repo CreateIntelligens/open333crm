@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable jsx-a11y/label-has-associated-control */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
@@ -147,7 +148,7 @@ export function TagManagement() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除此標籤嗎？已套用的聯繫人標籤也會一併移除。')) return;
+    if (!confirm('確定要刪除此標籤嗎？已套用的聯繫人標籤也會一併移除。')) { return; }
     try {
       await api.delete(`/tags/${id}`);
       fetchTags();

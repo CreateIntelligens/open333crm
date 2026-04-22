@@ -1,12 +1,13 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Bot, ExternalLink } from 'lucide-react';
 
 function extractText(content: string | { text?: string } | unknown): string {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') { return content; }
   if (typeof content === 'object' && content !== null && 'text' in (content as Record<string, unknown>)) {
     return (content as { text: string }).text;
   }
@@ -16,10 +17,10 @@ function extractText(content: string | { text?: string } | unknown): string {
 function extractMediaUrl(content: string | { url?: string; text?: string } | unknown): string | null {
   if (typeof content === 'object' && content !== null) {
     const obj = content as Record<string, unknown>;
-    if (obj.url && typeof obj.url === 'string') return obj.url as string;
+    if (obj.url && typeof obj.url === 'string') { return obj.url as string; }
   }
   const text = extractText(content);
-  if (text.startsWith('data:image') || text.startsWith('http')) return text;
+  if (text.startsWith('data:image') || text.startsWith('http')) { return text; }
   return null;
 }
 
@@ -71,15 +72,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   };
 
   const getTimeClasses = () => {
-    if (isBot) return 'text-purple-500';
-    if (isInbound) return 'text-muted-foreground';
+    if (isBot) { return 'text-purple-500'; }
+    if (isInbound) { return 'text-muted-foreground'; }
     return 'text-primary-foreground/70';
   };
 
   // Confidence badge color
   const getConfidenceColor = (val: number) => {
-    if (val >= 0.8) return 'bg-green-100 text-green-700';
-    if (val >= 0.5) return 'bg-orange-100 text-orange-700';
+    if (val >= 0.8) { return 'bg-green-100 text-green-700'; }
+    if (val >= 0.5) { return 'bg-orange-100 text-orange-700'; }
     return 'bg-red-100 text-red-700';
   };
 
@@ -96,18 +97,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   // Sentiment helpers
   const getSentimentColor = (s: string) => {
-    if (s === 'positive') return 'bg-green-100 text-green-700';
-    if (s === 'negative') return 'bg-red-100 text-red-700';
+    if (s === 'positive') { return 'bg-green-100 text-green-700'; }
+    if (s === 'negative') { return 'bg-red-100 text-red-700'; }
     return 'bg-gray-100 text-gray-600';
   };
   const getSentimentEmoji = (s: string) => {
-    if (s === 'positive') return '😊';
-    if (s === 'negative') return '😟';
+    if (s === 'positive') { return '😊'; }
+    if (s === 'negative') { return '😟'; }
     return '😐';
   };
   const getSentimentLabel = (s: string) => {
-    if (s === 'positive') return '正面';
-    if (s === 'negative') return '負面';
+    if (s === 'positive') { return '正面'; }
+    if (s === 'negative') { return '負面'; }
     return '中性';
   };
 
@@ -134,11 +135,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           (() => {
             const url = extractMediaUrl(message.content);
             return url ? (
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                <img
+              <a href={url} target="_blank" rel="noopener noreferrer" className="block relative w-64 h-64">
+                <Image
                   src={url}
                   alt="Image message"
-                  className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  fill
+                  className="object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                 />
               </a>
             ) : (
@@ -154,7 +156,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 controls
                 className="max-w-full rounded-lg"
                 style={{ maxHeight: '320px' }}
-              />
+              >
+                <track kind="captions" />
+              </video>
             ) : (
               <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
             );

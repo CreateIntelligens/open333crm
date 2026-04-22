@@ -132,7 +132,7 @@ export function ChannelManagement() {
   };
 
   const handleDelete = async (channelId: string) => {
-    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。')) return;
+    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。')) { return; }
     try {
       await api.delete(`/channels/${channelId}`);
       mutate();
@@ -169,7 +169,7 @@ export function ChannelManagement() {
 
   // Load FB token status for FB channels
   useEffect(() => {
-    if (!channels || channels.length === 0) return;
+    if (!channels || channels.length === 0) { return; }
     const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === 'FB');
     for (const ch of fbChannels) {
       api.get(`/channels/${ch.id}/status`).then((res) => {
@@ -438,7 +438,7 @@ export function ChannelManagement() {
       {/* Bot Config Dialog */}
       <BotConfigForm
         open={!!botConfigChannel}
-        onOpenChange={(v) => { if (!v) setBotConfigChannel(null); }}
+        onOpenChange={(v) => { if (!v) { setBotConfigChannel(null); } }}
         channel={botConfigChannel}
         onSaved={() => { setBotConfigChannel(null); mutate(); }}
       />

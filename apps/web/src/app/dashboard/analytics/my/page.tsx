@@ -3,7 +3,7 @@
 import React from 'react';
 import { Loader2, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { useMyPerformance } from '@/hooks/useAnalytics';
 
 interface MetricCardProps {
@@ -52,8 +52,8 @@ function MetricCard({ label, value, target, unit = '', higherIsBetter = true, is
 }
 
 function formatMinutes(minutes: number | null): string {
-  if (minutes === null) return '-';
-  if (minutes < 60) return `${Math.round(minutes)} 分`;
+  if (minutes === null) { return '-'; }
+  if (minutes < 60) { return `${Math.round(minutes)} 分`; }
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return `${h} 時 ${m} 分`;

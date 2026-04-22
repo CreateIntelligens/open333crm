@@ -39,7 +39,7 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
 
   const debouncedMutate = useCallback(() => {
     const now = Date.now();
-    if (now - lastMutateRef.current < 500) return;
+    if (now - lastMutateRef.current < 500) { return; }
     lastMutateRef.current = now;
     mutate();
   }, [mutate]);
@@ -53,7 +53,7 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
 
   // Listen for new messages via WebSocket
   useEffect(() => {
-    if (!socket || !conversationId) return;
+    if (!socket || !conversationId) { return; }
 
     const handleNewMessage = (payload: { conversationId: string }) => {
       if (payload.conversationId === conversationId) {
@@ -70,7 +70,7 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
 
   // Load older messages using page-based pagination (order=desc, so higher pages = older)
   const loadOlder = useCallback(async () => {
-    if (!conversationId || loadingOlder || !hasMore) return;
+    if (!conversationId || loadingOlder || !hasMore) { return; }
 
     setLoadingOlder(true);
     try {
@@ -94,8 +94,8 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
   }, [conversationId, limit, loadingOlder, hasMore]);
 
   const sendMessage = useCallback(
-    async (content: string, contentType: string = 'text') => {
-      if (!conversationId) return;
+    async (content: string, contentType = 'text') => {
+      if (!conversationId) { return; }
 
       const body: { content: Record<string, unknown> | string; contentType: string } = {
         contentType,
