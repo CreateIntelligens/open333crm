@@ -167,7 +167,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         type: 'new_message',
         title: '收到新訊息',
         body: `${contactName} 傳來新訊息`,
-        clickUrl: `/dashboard/inbox?conversationId=${conversationId}`,
+        clickUrl: `/dashboard/inbox?conv=${conversationId}`,
       };
 
       if (conversation.assignedToId) {
@@ -208,7 +208,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         type: 'new_message',
         title: '對話已指派給您',
         body: '您有一則新的對話指派',
-        clickUrl: `/dashboard/inbox?conversationId=${conversationId}`,
+        clickUrl: `/dashboard/inbox?conv=${conversationId}`,
       }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue conversation.assigned', err));
 
       logger.info(`[NotificationWorker] conversation.assigned → agent ${assignedToId}`);
