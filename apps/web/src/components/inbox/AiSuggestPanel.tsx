@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { X, Loader2, Lightbulb, ExternalLink } from 'lucide-react';
+import { Loader2, Lightbulb, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 
@@ -35,75 +35,54 @@ export function AiSuggestPanel({ open, onClose, conversationId, onAdopt }: AiSug
 
   if (!open) { return null; }
 
+  const topSuggestion = suggestions[0];
+
   return (
-    <div className="absolute right-0 top-14 z-20 w-80 rounded-lg border bg-background shadow-lg">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <Lightbulb className="h-4 w-4 text-amber-500" />
-          <h3 className="text-sm font-semibold">AI 建議回覆</h3>
+    <div className="mx-4 mb-4 rounded-xl border border-[#cb74c1]/30 bg-[#f8eaf6] p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center justify-center rounded-full bg-[#cb74c1]/10 p-1.5">
+          <Lightbulb className="h-4 w-4 text-[#cb74c1]" />
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-          <X className="h-4 w-4" />
-        </button>
+        <h3 className="text-sm font-semibold text-[#1e2939]">AI 建議回覆</h3>
+        {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
       </div>
 
-      {/* Body */}
-      <div className="max-h-80 overflow-y-auto p-3 space-y-2.5">
-        {loading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : suggestions.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">無法取得建議</p>
-        ) : (
-          suggestions.map((sug, i) => (
-            <div key={i} className="rounded-md border p-3 space-y-2">
-              <p className="text-sm">{sug.text}</p>
+      {loading ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : !topSuggestion ? (
+        <p className="text-sm text-muted-foreground text-center py-3">無法取得建議</p>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm text-[#1e2939]">{topSuggestion.text}</p>
 
-              {/* Confidence */}
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                  sug.confidence >= 0.8
-                    ? 'bg-green-100 text-green-700'
-                    : sug.confidence >= 0.5
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-red-100 text-red-700'
-                }`}>
-                  {Math.round(sug.confidence * 100)}%
-                </span>
-
-                {/* KB refs */}
-                {sug.kmRefs && sug.kmRefs.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    {sug.kmRefs.map((ref) => (
-                      <a
-                        key={ref.id}
-                        href={ref.url || '#'}
-                        className="inline-flex items-center gap-0.5 text-[10px] text-blue-600 hover:underline"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-2.5 w-2.5" />
-                        {ref.title}
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full text-xs"
-                onClick={() => onAdopt(sug.text)}
-              >
-                採用
-              </Button>
+          {topSuggestion.kmRefs && topSuggestion.kmRefs.length > 0 && (
+            <div className="flex items-center gap-1">
+              {topSuggestion.kmRefs.map((ref) => (
+                <a
+                  key={ref.id}
+                  href={ref.url || '#'}
+                  className="inline-flex items-center gap-0.5 text-[10px] text-[#4a5565] hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-2.5 w-2.5" />
+                  {ref.title}
+                </a>
+              ))}
             </div>
-          ))
-        )}
-      </div>
+          )}
+
+          <Button
+            size="sm"
+            className="w-full bg-[#cb74c1] text-white hover:bg-[#cb74c1]/90 rounded-lg text-xs h-8"
+            onClick={() => onAdopt(topSuggestion.text)}
+          >
+            採用建議
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

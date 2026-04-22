@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, LayoutTemplate } from 'lucide-react';
+import { Send, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { API_BASE_URL } from '@/lib/constants';
 
@@ -141,13 +141,11 @@ export function MessageInput({
 
   return (
     <div className="border-t bg-background">
-      {/* Bot takeover CTA */}
       {isBotHandled && onTakeover && (
-        <div className="flex items-center justify-center border-b bg-purple-50/50 px-4 py-2">
+        <div className="flex items-center justify-center border-b bg-[#f8eaf6] px-4 py-2">
           <Button
             size="sm"
-            variant="default"
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            className="bg-[#cb74c1] hover:bg-[#cb74c1]/90 text-white"
             onClick={onTakeover}
           >
             接管對話
@@ -155,63 +153,45 @@ export function MessageInput({
         </div>
       )}
 
-      <div className="p-4">
-        <div className="flex items-end gap-2">
-          {/* Attachment button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={() => fileInputRef.current?.click()}
-            title="附件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_TYPES}
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+      <div className="flex h-[72px] items-center gap-2 px-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0"
+          disabled={isDisabled}
+          onClick={() => fileInputRef.current?.click()}
+          title="附件"
+        >
+          <Paperclip className="h-4 w-4" />
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
 
-          {/* Template button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={onOpenTemplates}
-            title="模板"
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </Button>
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onInput={handleInput}
+          placeholder={placeholder}
+          disabled={isDisabled}
+          rows={1}
+          className="flex-1 resize-none rounded-lg border border-[#e2e8f0] bg-[#f3f4f6] px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#cb74c1]/30 disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ minHeight: '44px', maxHeight: '120px' }}
+        />
 
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder={placeholder}
-            disabled={isDisabled}
-            rows={1}
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ minHeight: '40px', maxHeight: '120px' }}
-          />
-
-          {/* Send button */}
-          <Button
-            onClick={handleSend}
-            disabled={!message.trim() || isDisabled}
-            size="icon"
-            className="shrink-0"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button
+          onClick={handleSend}
+          disabled={!message.trim() || isDisabled}
+          className="shrink-0 h-10 w-10 rounded-lg bg-[#cb74c1] hover:bg-[#cb74c1]/90 text-white"
+        >
+          <Send className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );

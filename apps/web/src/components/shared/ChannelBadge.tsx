@@ -9,12 +9,12 @@ interface ChannelBadgeProps {
 }
 
 const channelConfig: Record<string, { bg: string; text: string; label: string }> = {
-  LINE: { bg: 'bg-green-100', text: 'text-green-700', label: 'LINE' },
-  line: { bg: 'bg-green-100', text: 'text-green-700', label: 'LINE' },
-  FACEBOOK: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  facebook: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  FB: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  fb: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
+  LINE: { bg: 'bg-[#eef5f0]', text: 'text-[#589e67]', label: 'LINE' },
+  line: { bg: 'bg-[#eef5f0]', text: 'text-[#589e67]', label: 'LINE' },
+  FACEBOOK: { bg: 'bg-[#edf2fe]', text: 'text-[#4976f4]', label: 'Facebook' },
+  facebook: { bg: 'bg-[#edf2fe]', text: 'text-[#4976f4]', label: 'Facebook' },
+  FB: { bg: 'bg-[#edf2fe]', text: 'text-[#4976f4]', label: 'Facebook' },
+  fb: { bg: 'bg-[#edf2fe]', text: 'text-[#4976f4]', label: 'Facebook' },
   WEBCHAT: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
   webchat: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
   WEB: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },

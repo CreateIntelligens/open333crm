@@ -63,18 +63,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   // Determine bubble color
   const getBubbleClasses = () => {
     if (isBot) {
-      return 'rounded-bl-md bg-purple-100 text-purple-900';
+      return 'rounded-bl-md bg-[#f8eaf6] text-[#1e2939]';
     }
     if (isInbound) {
-      return 'rounded-bl-md bg-muted text-foreground';
+      return 'rounded-bl-md bg-[#f3f4f6] text-[#1e2939]';
     }
-    return 'rounded-br-md bg-primary text-primary-foreground';
+    return 'rounded-br-md bg-[#cb74c1] text-white';
   };
 
   const getTimeClasses = () => {
-    if (isBot) { return 'text-purple-500'; }
+    if (isBot) { return 'text-[#cb74c1]/60'; }
     if (isInbound) { return 'text-muted-foreground'; }
-    return 'text-primary-foreground/70';
+    return 'text-white/70';
   };
 
   // Confidence badge color
@@ -120,8 +120,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {/* Bot label */}
         {isBot && (
           <div className="mb-1 flex items-center gap-1">
-            <Bot className="h-3 w-3 text-purple-600" />
-            <span className="text-[10px] font-medium text-purple-600">Bot</span>
+            <Bot className="h-3 w-3 text-[#cb74c1]" />
+            <span className="text-[10px] font-medium text-[#cb74c1]">Bot</span>
           </div>
         )}
 

@@ -4,10 +4,10 @@ import React, { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import api from '@/lib/api';
+import { InboxHeader } from '@/components/inbox/InboxHeader';
 import { ConversationList } from '@/components/inbox/ConversationList';
 import { ChatWindow } from '@/components/inbox/ChatWindow';
 import { ContactInfoPanel } from '@/components/inbox/ContactInfoPanel';
-import { AiSuggestPanel } from '@/components/inbox/AiSuggestPanel';
 import { HandoffModal } from '@/components/inbox/HandoffModal';
 
 export default function InboxPage() {
@@ -18,7 +18,6 @@ export default function InboxPage() {
   const [showAiSuggest, setShowAiSuggest] = useState(false);
   const [showHandoffModal, setShowHandoffModal] = useState(false);
 
-  // Fetch selected conversation details via SWR so globalMutate from ChatWindow triggers re-render
   const { data: convData, mutate: mutateConversation } = useSWR(
     convId ? `/conversations/${convId}` : null,
     (url: string) => api.get(url).then((res) => res.data.data)
@@ -92,50 +91,36 @@ export default function InboxPage() {
     : null;
 
   return (
-    <div className="flex h-full">
-      {/* Left panel - Conversation List */}
-      <div className="w-80 shrink-0 border-r">
-        <ConversationList
-          selectedId={convId}
-          onSelect={handleSelectConversation}
-        />
-      </div>
+    <div className="flex h-full flex-col">
+      <InboxHeader />
 
-      {/* Center panel - Chat Window */}
-      <div className="relative flex-1">
-        <ChatWindow
-          conversation={chatConversation}
-          onShowAiSuggest={() => setShowAiSuggest((v) => !v)}
-          showAiSuggest={showAiSuggest}
-        />
-        {/* AI Suggest Panel */}
-        {convId && (
-          <AiSuggestPanel
-            open={showAiSuggest}
-            onClose={() => setShowAiSuggest(false)}
-            conversationId={convId}
-            onAdopt={(text) => {
-              // We'll use a simple approach: set the text in MessageInput via state
-              setShowAiSuggest(false);
-              // Trigger a custom event for the MessageInput to pick up
-              window.dispatchEvent(new CustomEvent('ai-adopt', { detail: { text } }));
-            }}
+      <div className="flex h-[calc(100%-72px)]">
+        <div className="w-80 shrink-0 border-r">
+          <ConversationList
+            selectedId={convId}
+            onSelect={handleSelectConversation}
           />
-        )}
-        {/* Handoff Modal */}
-        {convId && (
-          <HandoffModal
-            open={showHandoffModal}
-            onClose={() => setShowHandoffModal(false)}
-            conversationId={convId}
-            onConfirm={() => mutateConversation()}
-          />
-        )}
-      </div>
+        </div>
 
-      {/* Right panel - Contact Info */}
-      <div className="w-72 shrink-0 border-l">
-        <ContactInfoPanel conversation={infoPanelConversation} />
+<div className="relative flex-1">
+          <ChatWindow
+            conversation={chatConversation}
+            showAiSuggest={showAiSuggest}
+            onAiSuggestToggle={() => setShowAiSuggest((v) => !v)}
+          />
+          {convId && (
+            <HandoffModal
+              open={showHandoffModal}
+              onClose={() => setShowHandoffModal(false)}
+              conversationId={convId}
+              onConfirm={() => mutateConversation()}
+            />
+          )}
+        </div>
+
+        <div className="w-[328px] shrink-0 border-l">
+          <ContactInfoPanel conversation={infoPanelConversation} />
+        </div>
       </div>
     </div>
   );

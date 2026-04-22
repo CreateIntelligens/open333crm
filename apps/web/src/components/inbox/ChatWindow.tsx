@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import { MessageSquare } from 'lucide-react';
+import { AiSuggestPanel } from './AiSuggestPanel';
 
 interface ChatWindowProps {
   conversation: {
@@ -30,12 +31,14 @@ interface ChatWindowProps {
     channelType: string;
     status: string;
     assignedToId?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
   } | null;
-  onShowAiSuggest?: () => void;
   showAiSuggest?: boolean;
+  onAiSuggestToggle?: () => void;
 }
 
-export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: ChatWindowProps) {
+export function ChatWindow({ conversation, showAiSuggest, onAiSuggestToggle }: ChatWindowProps) {
   const { messages, isLoading, sendMessage } = useMessages(
     conversation?.id || null
   );
@@ -147,54 +150,41 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
 
+  const timeAgo = (() => {
+  const ts = conversation.updatedAt || conversation.createdAt || new Date().toISOString();
+  const diff = Date.now() - new Date(ts).getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return '剛剛';
+  if (minutes < 60) return `${minutes}分鐘前`;
+  if (hours < 24) return `${hours}小時前`;
+  return `${days}天前`;
+})();
+
   return (
     <div className="relative flex h-full flex-col">
-      {/* Chat Header */}
       <div className="flex items-center gap-3 border-b px-4 py-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold">
-              {conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人'}
-            </h3>
-            <ChannelBadge channel={conversation.channelType} />
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                statusColor[conversation.status] || 'bg-green-100 text-green-700'
-              }`}
-            >
-              {statusLabel[conversation.status] || conversation.status}
-            </span>
-            <Select
-              className="h-8 w-36 text-xs"
-              options={agentOptions}
-              value={conversation.assignedToId || ''}
-              onChange={handleAssign}
-            />
-          </div>
+        <div className="flex flex-1 items-center gap-2">
+          <h3 className="font-semibold text-[#1e2939]">
+            {conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人'}
+          </h3>
+          <ChannelBadge channel={conversation.channelType} />
+          <span className="text-xs text-muted-foreground">{timeAgo}</span>
         </div>
-        <div className="flex items-center gap-2">
-          {/* AI Suggest button */}
-          {!isClosed && (
-            <Button
-              variant={showAiSuggest ? 'default' : 'ghost'}
-              size="icon"
-              className="h-8 w-8"
-              onClick={onShowAiSuggest}
-              title="AI 建議回覆"
-            >
-              <Lightbulb className="h-4 w-4" />
-            </Button>
-          )}
-          <Select
-            className="h-8 w-32 text-xs"
-            options={statusOptions}
-            value={conversation.status}
-            onChange={handleStatusChange}
-          />
-        </div>
+        {!isClosed && (
+          <Button
+            variant={showAiSuggest ? 'default' : 'ghost'}
+            size="icon"
+            className="h-8 w-8"
+            onClick={onAiSuggestToggle}
+            title="AI 建議回覆"
+          >
+            <Lightbulb className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
-      {/* Status Banner */}
       <StatusBanner
         status={conversation.status}
         onReopen={handleReopen}
@@ -232,6 +222,18 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           </div>
         )}
       </div>
+
+      {showAiSuggest && conversation && (
+        <AiSuggestPanel
+          open={showAiSuggest}
+          onClose={onAiSuggestToggle || (() => {})}
+          conversationId={conversation.id}
+          onAdopt={(text) => {
+            onAiSuggestToggle?.();
+            window.dispatchEvent(new CustomEvent('ai-adopt', { detail: { text } }));
+          }}
+        />
+      )}
 
       {/* Message Input */}
       <MessageInput
