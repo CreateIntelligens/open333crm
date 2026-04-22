@@ -351,7 +351,7 @@ export async function getAgentPerformance(
         FILTER (WHERE c."firstResponseAt" IS NOT NULL) AS avg_first_response,
       AVG(EXTRACT(EPOCH FROM (c."resolvedAt" - c."createdAt")) / 60)
         FILTER (WHERE c."resolvedAt" IS NOT NULL) AS avg_resolution,
-      AVG(c."csatScore")::float FILTER (WHERE c."csatScore" IS NOT NULL) AS csat_avg,
+      (AVG(c."csatScore") FILTER (WHERE c."csatScore" IS NOT NULL))::float AS csat_avg,
       COUNT(c.id) FILTER (WHERE c."slaDueAt" IS NOT NULL AND c."resolvedAt" IS NOT NULL)::bigint AS sla_total,
       COUNT(c.id) FILTER (WHERE c."slaDueAt" IS NOT NULL AND c."resolvedAt" IS NOT NULL AND c."resolvedAt" <= c."slaDueAt")::bigint AS sla_achieved
     FROM agents a

@@ -10,10 +10,42 @@ import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { resolveUidToContact , logger } from '@open333crm/core';
+import { uploadFile } from '../storage/storage.service.js';
 
 // Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
 const outsideHoursReplyCache = new Map<string, number>();
 const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
+
+function emitMediaReady(
+  io: SocketIOServer,
+  tenantId: string,
+  message: {
+    id: string;
+    conversationId: string;
+    direction: string;
+    senderType: string;
+    senderId: string | null;
+    contentType: string;
+    createdAt: Date;
+  },
+  updatedContent: Record<string, unknown>,
+) {
+  const payload = {
+    conversationId: message.conversationId,
+    message: {
+      id: message.id,
+      conversationId: message.conversationId,
+      direction: message.direction,
+      senderType: message.senderType,
+      senderId: message.senderId,
+      contentType: message.contentType,
+      content: updatedContent,
+      createdAt: message.createdAt.toISOString(),
+    },
+  };
+  io.to(`conversation:${message.conversationId}`).emit('message.new', payload);
+  io.to(`tenant:${tenantId}`).emit('message.new', payload);
+}
 
 export async function processWebhookEvent(
   prisma: PrismaClient,
@@ -23,20 +55,25 @@ export async function processWebhookEvent(
   rawBody: Buffer,
   headers: Record<string, string>,
 ) {
+  logger.info('[Webhook] Received', { channelId, channelType, bodyBytes: rawBody?.length ?? 0 });
+
   // 1. Load channel from DB
   const channel = await prisma.channel.findFirst({
     where: { id: channelId, isActive: true },
   });
 
   if (!channel) {
+    logger.warn('[Webhook] Channel not found or inactive', { channelId });
     throw new Error(`Channel not found or inactive: ${channelId}`);
   }
+  logger.info('[Webhook] Channel found', { channelId, channelType: channel.channelType, tenantId: channel.tenantId });
 
   const tenantId = channel.tenantId;
 
   // 2. Get plugin and decrypt credentials
   const plugin = getChannelPlugin(channelType);
   if (!plugin) {
+    logger.warn('[Webhook] No plugin registered for channel type', { channelType });
     throw new Error(`No plugin for channel type: ${channelType}`);
   }
 
@@ -46,13 +83,29 @@ export async function processWebhookEvent(
     ? credentials.appSecret
     : credentials.channelSecret) as string;
 
+  logger.info('[Webhook] Verifying signature', { channelId, channelType, hasSecret: !!secret });
+
   // 3. Verify signature
   if (!plugin.verifySignature(rawBody, headers, secret)) {
+    logger.warn('[Webhook] Signature verification failed', { channelId, channelType });
     throw new Error('Invalid webhook signature');
   }
+  logger.info('[Webhook] Signature OK', { channelId, channelType });
 
   // 4. Parse webhook into normalized messages
   const parsedMessages = await plugin.parseWebhook(rawBody, headers);
+
+  logger.info('[Webhook] Parsed', {
+    channelId,
+    channelType,
+    count: parsedMessages.length,
+    messages: parsedMessages.map(m => ({ contactUid: m.contactUid, contentType: m.contentType, channelMsgId: m.channelMsgId })),
+  });
+
+  if (parsedMessages.length === 0) {
+    logger.info('[Webhook] No actionable messages in payload', { channelId, channelType });
+    return;
+  }
 
   // 5. Process each message (same pattern as simulator.service.ts)
   for (const parsed of parsedMessages) {
@@ -71,6 +124,8 @@ export async function processInboundMessage(
   const { contactUid, contentType, content, channelMsgId } = parsed;
 
   if (!contactUid) return;
+
+  const plugin = getChannelPlugin(channel.channelType);
 
   // 1. Find or create ChannelIdentity + Contact
   let channelIdentity = await prisma.channelIdentity.findUnique({
@@ -115,7 +170,6 @@ export async function processInboundMessage(
 
   if (!channelIdentity) {
     // Fetch real profile from channel API
-    const plugin = getChannelPlugin(channel.channelType);
     let displayName = `${channel.channelType} User ${contactUid.slice(-6)}`;
     let avatarUrl: string | undefined;
 
@@ -227,46 +281,37 @@ export async function processInboundMessage(
     },
   });
 
-  // 3b. Download LINE media content and store in S3 (non-blocking)
-  if (channel.channelType === 'LINE' && content.contentId && ['image', 'video', 'audio', 'file'].includes(contentType)) {
+  logger.info('[Webhook] Message saved', {
+    messageId: message.id,
+    conversationId: conversation.id,
+    channelType: channel.channelType,
+    contactUid,
+    contentType,
+    channelMsgId: channelMsgId ?? null,
+  });
+
+  // 3b. Async media resolution — delegated to the plugin (non-blocking)
+  // Plugins that need to fetch binary content (e.g. LINE-hosted media) implement resolveInboundMedia.
+  // Plugins where the webhook already carries a usable URL (FB, LINE external) leave this unimplemented.
+  if (plugin?.resolveInboundMedia) {
     (async () => {
       try {
-        const { downloadAndStoreLineMedia } = await import('../storage/line-media.service.js');
-        const stored = await downloadAndStoreLineMedia(
-          prisma,
-          channel.id,
-          tenantId,
-          content.contentId as string,
+        const stored = await plugin.resolveInboundMedia!(
+          content,
           contentType,
-          conversation.id,
+          credentials,
+          (buffer, filename, mime) => uploadFile(buffer, filename, mime, tenantId, 'media', conversation.id),
         );
         if (stored) {
-          // Update message content with S3 URL
           const updatedContent = { ...(message.content as Record<string, unknown>), url: stored.url, storageKey: stored.storageKey };
           await prisma.message.update({
             where: { id: message.id },
             data: { content: updatedContent as any },
           });
-
-          // Notify frontend that the media URL is now available
-          const mediaReadyPayload = {
-            conversationId: conversation.id,
-            message: {
-              id: message.id,
-              conversationId: message.conversationId,
-              direction: message.direction,
-              senderType: message.senderType,
-              senderId: message.senderId,
-              contentType: message.contentType,
-              content: updatedContent,
-              createdAt: message.createdAt.toISOString(),
-            },
-          };
-          io.to(`conversation:${conversation.id}`).emit('message.new', mediaReadyPayload);
-          io.to(`tenant:${tenantId}`).emit('message.new', mediaReadyPayload);
+          emitMediaReady(io, tenantId, message, updatedContent);
         }
       } catch (err) {
-        logger.error('[Webhook] LINE media download error (non-blocking):', err);
+        logger.error('[Webhook] Media resolution error (non-blocking):', err);
       }
     })();
   }
@@ -313,6 +358,7 @@ export async function processInboundMessage(
     },
   };
 
+  logger.info('[Webhook] Emitting message.new', { messageId: message.id, conversationId: conversation.id, contentType });
   io.to(`conversation:${conversation.id}`).emit('message.new', wsPayload);
   io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
 

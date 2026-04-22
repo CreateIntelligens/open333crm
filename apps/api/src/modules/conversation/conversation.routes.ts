@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   listConversations,
@@ -11,6 +11,90 @@ import {
 import { createCaseFromConversation } from '../case/case.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { uploadFile } from '../storage/storage.service.js';
+
+interface MediaUploadConfig {
+  allowedMimes: readonly string[];
+  maxBytes: number;
+  contentType: 'image' | 'video';
+  displayText: string;
+  allowedChannelTypes: readonly string[];
+}
+
+const SEND_IMAGE_CONFIG: MediaUploadConfig = {
+  allowedMimes: ['image/png', 'image/jpeg'],
+  maxBytes: 20 * 1024 * 1024,
+  contentType: 'image',
+  displayText: '[圖片]',
+  allowedChannelTypes: ['LINE', 'FB'],
+};
+
+const SEND_VIDEO_CONFIG: MediaUploadConfig = {
+  allowedMimes: ['video/mp4', 'video/quicktime'],
+  maxBytes: 25 * 1024 * 1024,
+  contentType: 'video',
+  displayText: '[影片]',
+  allowedChannelTypes: ['LINE', 'FB'],
+};
+
+async function handleSendMedia(
+  fastify: FastifyInstance,
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+  config: MediaUploadConfig,
+): Promise<unknown> {
+  const file = await request.file();
+  if (!file) throw new AppError('No file uploaded', 'BAD_REQUEST', 400);
+
+  if (!config.allowedMimes.includes(file.mimetype)) {
+    throw new AppError(`Unsupported file type. Allowed: ${config.allowedMimes.join(', ')}`, 'BAD_REQUEST', 400);
+  }
+
+  const buffer = await file.toBuffer();
+  if (buffer.length > config.maxBytes) {
+    throw new AppError(`File exceeds ${Math.round(config.maxBytes / 1024 / 1024)} MB limit`, 'BAD_REQUEST', 400);
+  }
+
+  const conversationId = request.params.id;
+  const { tenantId, id: agentId } = (request as any).agent;
+
+  const conversation = await fastify.prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: { channel: true },
+  });
+
+  if (!conversation || conversation.tenantId !== tenantId) {
+    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+  }
+
+  const channelType = conversation.channel?.channelType ?? '';
+  if (!config.allowedChannelTypes.includes(channelType)) {
+    return reply.status(501).send({
+      code: 'NOT_IMPLEMENTED',
+      message: `${config.contentType} push not yet supported for this channel type`,
+    });
+  }
+
+  const uploaded = await uploadFile(buffer, file.filename, file.mimetype, tenantId, 'media', conversationId);
+
+  const { message, delivery } = await sendMessage(
+    fastify.prisma,
+    fastify.io,
+    conversationId,
+    agentId,
+    tenantId,
+    {
+      contentType: config.contentType,
+      content: {
+        url: uploaded.url,
+        mediaUrl: uploaded.url,
+        text: config.displayText,
+        storageKey: uploaded.key,
+      },
+    },
+  );
+
+  return reply.status(201).send(success({ ...message, delivery }));
+}
 
 const listQuerySchema = z.object({
   status: z.string().optional(),
@@ -174,63 +258,13 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     return reply.status(201).send(success(caseRecord));
   });
 
-  // POST /api/v1/conversations/:id/send-image — upload PNG and push to channel
-  fastify.post<{ Params: { id: string } }>('/:id/send-image', async (request, reply) => {
-    const file = await request.file();
+  // POST /api/v1/conversations/:id/send-image
+  fastify.post<{ Params: { id: string } }>('/:id/send-image', (request, reply) =>
+    handleSendMedia(fastify, request, reply, SEND_IMAGE_CONFIG),
+  );
 
-    if (!file) {
-      throw new AppError('No file uploaded', 'BAD_REQUEST', 400);
-    }
-
-    if (!['image/png', 'image/jpeg'].includes(file.mimetype)) {
-      throw new AppError('Only image/png and image/jpeg are supported', 'BAD_REQUEST', 400);
-    }
-
-    const buffer = await file.toBuffer();
-
-    if (buffer.length > 20 * 1024 * 1024) {
-      throw new AppError('File exceeds 20 MB limit', 'BAD_REQUEST', 400);
-    }
-
-    const conversationId = request.params.id;
-    const { tenantId, id: agentId } = request.agent;
-
-    const conversation = await fastify.prisma.conversation.findUnique({
-      where: { id: conversationId },
-      include: { channel: true },
-    });
-
-    if (!conversation || conversation.tenantId !== tenantId) {
-      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
-    }
-
-    // TODO: implement for WEBCHAT, FACEBOOK
-    if (conversation.channel?.channelType !== 'LINE') {
-      return reply.status(501).send({
-        code: 'NOT_IMPLEMENTED',
-        message: 'Image push not yet supported for this channel type',
-      });
-    }
-
-    const uploaded = await uploadFile(buffer, file.filename, file.mimetype, tenantId, 'media', conversationId);
-
-    const { message, delivery } = await sendMessage(
-      fastify.prisma,
-      fastify.io,
-      conversationId,
-      agentId,
-      tenantId,
-      {
-        contentType: 'image',
-        content: {
-          url: uploaded.url,
-          mediaUrl: uploaded.url,
-          text: '[圖片]',
-          storageKey: uploaded.key,
-        },
-      },
-    );
-
-    return reply.status(201).send(success({ ...message, delivery }));
-  });
+  // POST /api/v1/conversations/:id/send-video
+  fastify.post<{ Params: { id: string } }>('/:id/send-video', (request, reply) =>
+    handleSendMedia(fastify, request, reply, SEND_VIDEO_CONFIG),
+  );
 }

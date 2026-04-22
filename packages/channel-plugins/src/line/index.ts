@@ -10,6 +10,7 @@ import type {
   ChannelAnalyticsExtension,
   ParsedWebhookMessage,
   OutboundPayload,
+  MediaUploadFn,
 } from '../index.js';
 
 // ─────────────────────────────────────────────────────────────────
@@ -333,7 +334,34 @@ export class LinePlugin implements ChannelPlugin {
     await linePut('/v2/bot/channel/webhook/endpoint', token, { webhook: webhookUrl });
   }
 
-  // ─── Extensions ─────────────────────────────────────────────────
+  // ─── resolveInboundMedia ─────────────────────────────────────
+  // Called for LINE-hosted media (contentProvider.type === 'line').
+  // External-provider messages already carry a URL; they never have contentId, so this returns null for them.
+  async resolveInboundMedia(
+    content: Record<string, unknown>,
+    contentType: string,
+    credentials: Record<string, unknown>,
+    uploadFn: MediaUploadFn,
+  ): Promise<{ url: string; storageKey: string } | null> {
+    const contentId = content.contentId as string | undefined;
+    if (!contentId || !['image', 'video', 'audio', 'file'].includes(contentType)) return null;
+
+    const token = credentials.channelAccessToken as string;
+    const res = await fetch(`https://api-data.line.me/v2/bot/message/${contentId}/content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const mimeType = res.headers.get('content-type') || 'application/octet-stream';
+    const extMap: Record<string, string> = { image: '.jpg', video: '.mp4', audio: '.m4a', file: '' };
+    const filename = `line_${contentId}${extMap[contentType] ?? ''}`;
+
+    const result = await uploadFn(buffer, filename, mimeType);
+    return { url: result.url, storageKey: result.key };
+  }
+
+
   readonly extensions = {
     ui: richMenuExtension,
     audience: audienceExtension,

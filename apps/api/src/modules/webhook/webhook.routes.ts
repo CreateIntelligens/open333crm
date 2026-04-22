@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { processWebhookEvent } from './webhook.service.js';
 import { decryptCredentials } from '../channel/channel.service.js';
+import { logger } from '@open333crm/core';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
   // Override content type parser to get raw body for signature verification
@@ -40,7 +41,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         rawBody,
         headers,
       ).catch((err) => {
-        fastify.log.error({ err, channelId }, 'Webhook processing failed');
+        logger.error('[Webhook] LINE processing failed', { channelId, error: err?.message ?? String(err), stack: err?.stack });
       });
 
       return reply.status(200).send({ success: true });

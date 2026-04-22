@@ -18,6 +18,13 @@ export interface OutboundPayload {
   content: Record<string, unknown>;
 }
 
+/** Callback injected by the API layer to handle file storage. */
+export type MediaUploadFn = (
+  buffer: Buffer,
+  filename: string,
+  mimeType: string,
+) => Promise<{ url: string; key: string }>;
+
 // ── Base Interface ────────────────────────────────────────────────
 
 export interface ChannelPlugin {
@@ -37,6 +44,18 @@ export interface ChannelPlugin {
 
   /** Set webhook URL on the channel (for auto-setup) */
   setWebhook?(webhookUrl: string, credentials: Record<string, unknown>): Promise<void>;
+
+  /**
+   * Resolve inbound media that cannot be served directly from the webhook payload.
+   * Called non-blocking after the Message is written to DB.
+   * Return null when no resolution is needed (e.g. URL already present).
+   */
+  resolveInboundMedia?(
+    content: Record<string, unknown>,
+    contentType: string,
+    credentials: Record<string, unknown>,
+    uploadFn: MediaUploadFn,
+  ): Promise<{ url: string; storageKey: string } | null>;
 
   /** Optional channel-specific capability extensions */
   readonly extensions?: {
