@@ -7,8 +7,7 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
-  REFRESH_COOKIE_MAX_AGE: z.coerce.number().int().positive().default(2592000),
-  REMEMBER_ME_DAYS: z.coerce.number().int().positive().default(30),
+
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('*'),

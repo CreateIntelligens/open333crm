@@ -3,19 +3,34 @@ import { loginRequestSchema } from './auth.schema.js';
 import { login, getAgentById } from './auth.service.js';
 import { success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
+import { FastifyJWT } from '@fastify/jwt';
 
-interface TokenPayload {
-  agentId: string;
-  tenantId: string;
-  role: string;
-}
+type TokenPayload = FastifyJWT['payload'];
 
 function signAccessToken(fastify: FastifyInstance, payload: TokenPayload, config: EnvConfig): string {
   return fastify.jwt.sign(payload, { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN });
 }
 
-function signRefreshToken(fastify: FastifyInstance, payload: TokenPayload, config: EnvConfig): string {
-  return fastify.jwt.sign(payload, { expiresIn: config.REFRESH_TOKEN_EXPIRES_IN });
+function signRefreshToken(
+  fastify: FastifyInstance,
+  payload: TokenPayload,
+  config: EnvConfig,
+  rememberMe: boolean,
+): string {
+  return fastify.jwt.sign({ ...payload, rememberMe }, { expiresIn: config.REFRESH_TOKEN_EXPIRES_IN });
+}
+
+function parseDurationToSeconds(duration: string): number {
+  const match = duration.match(/^(\d+)(s|m|h|d)$/);
+  if (!match) return 0;
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  return value * multipliers[unit];
+}
+
+function cookieMaxAge(rememberMe: boolean, config: EnvConfig): number | undefined {
+  return rememberMe ? parseDurationToSeconds(config.REFRESH_TOKEN_EXPIRES_IN) : undefined;
 }
 
 function setRefreshCookie(reply: FastifyReply, token: string, maxAge?: number): void {
@@ -38,10 +53,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role };
     const accessToken = signAccessToken(fastify, payload, config);
-    const refreshToken = signRefreshToken(fastify, payload, config);
+    const refreshToken = signRefreshToken(fastify, payload, config, !!body.rememberMe);
 
-    const maxAge = body.rememberMe ? config.REMEMBER_ME_DAYS * 24 * 60 * 60 : undefined;
-    setRefreshCookie(reply, refreshToken, maxAge);
+    setRefreshCookie(reply, refreshToken, cookieMaxAge(!!body.rememberMe, config));
 
     return reply.send(
       success({
@@ -75,8 +89,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
       const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role };
 
       const accessToken = signAccessToken(fastify, tokenPayload, config);
-      const newRefreshToken = signRefreshToken(fastify, tokenPayload, config);
-      setRefreshCookie(reply, newRefreshToken, config.REFRESH_COOKIE_MAX_AGE);
+      const newRefreshToken = signRefreshToken(fastify, tokenPayload, config, !!payload.rememberMe);
+      setRefreshCookie(reply, newRefreshToken, cookieMaxAge(!!payload.rememberMe, config));
 
       return reply.send(success({ accessToken }));
     } catch {

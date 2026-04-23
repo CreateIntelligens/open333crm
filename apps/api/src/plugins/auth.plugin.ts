@@ -24,6 +24,7 @@ declare module '@fastify/jwt' {
       agentId: string;
       tenantId: string;
       role: string;
+      rememberMe?: boolean;
     };
     user: {
       agentId: string;

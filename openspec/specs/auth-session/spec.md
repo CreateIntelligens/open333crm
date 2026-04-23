@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Login issues Refresh Token via HttpOnly Cookie
-`POST /auth/login` 接受可選的 `rememberMe: boolean` 參數。登入成功後，除了回傳 Access Token 於 response body，必須在回應中設定 `refreshToken` HttpOnly Cookie（SameSite=Strict）。`rememberMe=true` 時 Cookie 帶 `Max-Age=2592000`（30 天）；`rememberMe` 未提供或為 `false` 時為 Session Cookie（無 Max-Age，關閉瀏覽器即失效）。
+`POST /auth/login` 接受可選的 `rememberMe: boolean` 參數。登入成功後，除了回傳 Access Token 於 response body，必須在回應中設定 `refreshToken` HttpOnly Cookie（SameSite=Strict）。`rememberMe` 的值會被編入 Refresh Token JWT payload，以便後續 rotation 時保持一致。`rememberMe=true` 時 Cookie 帶 `Max-Age`（由 `REFRESH_TOKEN_EXPIRES_IN` 推導，單位秒）；`rememberMe` 未提供或為 `false` 時為 Session Cookie（無 Max-Age，關閉瀏覽器即失效）。
 
 #### Scenario: Login with rememberMe true
 - **WHEN** 用戶以正確憑證登入並傳入 `rememberMe: true`
-- **THEN** response body 包含 `accessToken`（15 分鐘效期）及 `agent` 資訊，且 `Set-Cookie` header 包含 `refreshToken=...; HttpOnly; SameSite=Strict; Max-Age=2592000`
+- **THEN** response body 包含 `accessToken`（15 分鐘效期）及 `agent` 資訊，且 `Set-Cookie` header 包含 `refreshToken=...; HttpOnly; SameSite=Strict; Max-Age=<REFRESH_TOKEN_EXPIRES_IN 換算秒數>`
 
 #### Scenario: Login without rememberMe
 - **WHEN** 用戶以正確憑證登入，未傳入 `rememberMe` 或傳入 `false`
@@ -17,12 +17,12 @@
 
 ---
 
-### Requirement: Refresh endpoint renews Access Token from Cookie
-`POST /auth/refresh` 從 HttpOnly Cookie 中讀取 `refreshToken`，驗證有效後回傳新的 Access Token。此端點不需要 Bearer Authorization header。
+### Requirement: Refresh endpoint renews Access Token from Cookie (Refresh Token Rotation)
+`POST /auth/refresh` 從 HttpOnly Cookie 中讀取 `refreshToken`，驗證有效後回傳新的 Access Token，並同時簽發新的 Refresh Token（Refresh Token Rotation）。新 Refresh Token 繼承舊 token 中的 `rememberMe` 欄位，以保持 Cookie persistent/session 屬性不變。此端點不需要 Bearer Authorization header。
 
 #### Scenario: Valid refresh token in Cookie
 - **WHEN** 請求帶有有效的 `refreshToken` Cookie
-- **THEN** 回傳新的 `accessToken`（15 分鐘效期），HTTP 200
+- **THEN** 回傳新的 `accessToken`（15 分鐘效期），同時以新的 `refreshToken` 覆蓋舊 Cookie（保持原 rememberMe 屬性），HTTP 200
 
 #### Scenario: Missing or expired refresh token
 - **WHEN** 請求沒有 `refreshToken` Cookie，或 Cookie 中的 JWT 已過期
