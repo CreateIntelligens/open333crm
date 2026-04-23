@@ -23,6 +23,13 @@
       ["value-index", "type-index"]
     ]
   },
+  "experimentalTailwindcss": {
+    "stylesheet": "./src/app/globals.css",
+    "attributes": ["class", "className", "/data-.*/"],
+    "functions": ["clsx", "cn"],
+    "preserveDuplicates": false,
+    "preserveWhitespace": false
+  },
   "experimentalSortPackageJson": {
     "sortScripts": true
   },

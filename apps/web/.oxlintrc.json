@@ -24,8 +24,6 @@
     "curly": "warn",
     "prefer-rest-params": "warn",
     "no-else-return": "warn",
-    "max-depth": ["warn", 5],
-    "max-lines": ["warn", 500],
     "prefer-object-spread": "warn",
     "prefer-object-has-own": "warn",
     "prefer-promise-reject-errors": "warn",
@@ -80,8 +78,5 @@
     "typescript/unbound-method": "warn",
     "typescript/use-unknown-in-catch-callback-variable": "warn"
   },
-  "ignorePatterns": [
-    "node_modules/**/*",
-    "dist/**/*"
-  ]
+  "ignorePatterns": ["node_modules/**/*", "dist/**/*"]
 }
