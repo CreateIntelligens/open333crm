@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { Send, Paperclip, LayoutTemplate } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { API_BASE_URL } from '@/lib/constants';
+import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
@@ -91,27 +91,19 @@ export function MessageInput({
 
     setSending(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-
       if ([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT].includes(channelType as any)) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}/send-image`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
+        await api.post(`/conversations/${conversationId}/send-image`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          alert(`傳送失敗：${err.message ?? res.statusText}`);
-        }
       } else {
         alert('目前僅支援 LINE / FB / Webchat 聊天室傳送圖片');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to send image:', err);
+      alert(`傳送失敗：${err?.response?.data?.message ?? err?.message ?? '未知錯誤'}`);
     } finally {
       setSending(false);
       if (fileInputRef.current) {

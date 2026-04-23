@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 
 function LoginForm() {
@@ -12,6 +13,7 @@ function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState('admin@demo.com');
   const [password, setPassword] = useState('admin123');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -28,7 +30,7 @@ function LoginForm() {
     setSubmitting(true);
 
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { message?: string } } };
       setError(axiosError.response?.data?.message || '登入失敗，請確認您的帳號密碼。');
@@ -80,6 +82,16 @@ function LoginForm() {
                 required
                 autoComplete="current-password"
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="rememberMe"
+                checked={rememberMe}
+                onCheckedChange={(checked: boolean) => setRememberMe(checked)}
+              />
+              <label htmlFor="rememberMe" className="text-sm cursor-pointer select-none">
+                記住我
+              </label>
             </div>
             {error && (
               <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">

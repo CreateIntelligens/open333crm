@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { API_BASE_URL } from '@/lib/constants';
+import api from '@/lib/api';
 
 interface DaySchedule {
   start: string;
@@ -51,22 +51,12 @@ export function OfficeHoursSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const getToken = () => {
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('token') || '';
-  };
-
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/settings/office-hours`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const data = json.data;
-        setTimezone(data.timezone || 'Asia/Taipei');
-        setConfig(data.officeHours || DEFAULT_CONFIG);
-      }
+      const res = await api.get('/settings/office-hours');
+      const data = res.data.data;
+      setTimezone(data.timezone || 'Asia/Taipei');
+      setConfig(data.officeHours || DEFAULT_CONFIG);
     } catch (err) {
       console.error('Failed to fetch office hours:', err);
     } finally {
@@ -81,19 +71,8 @@ export function OfficeHoursSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/settings/office-hours`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({ timezone, officeHours: config }),
-      });
-      if (res.ok) {
-        alert('營業時間設定已儲存');
-      } else {
-        alert('儲存失敗');
-      }
+      await api.put('/settings/office-hours', { timezone, officeHours: config });
+      alert('營業時間設定已儲存');
     } catch (err) {
       console.error('Failed to save office hours:', err);
       alert('儲存失敗');

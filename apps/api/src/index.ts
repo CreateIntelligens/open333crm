@@ -6,6 +6,7 @@ import multipart from '@fastify/multipart';
 
 import { loadEnvConfig } from './config/env.js';
 import prismaPlugin from './plugins/prisma.plugin.js';
+import cookiePlugin from './plugins/cookie.plugin.js';
 import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
 import errorHandlerPlugin from './plugins/error-handler.plugin.js';
@@ -80,6 +81,7 @@ export async function bootstrap() {
   await app.register(corsPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(prismaPlugin);
+  await app.register(cookiePlugin);
   await app.register(authPlugin);
   await app.register(socketPlugin);
 

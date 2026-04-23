@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { getSocket, disconnectSocket } from '@/lib/socket';
-import { useAuth } from './AuthProvider';
+import { useAuth, getAccessToken } from './AuthProvider';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -16,12 +16,13 @@ const SocketContext = createContext<SocketContextType>({
 });
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
+  const { agent } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!token) {
+    const token = getAccessToken();
+    if (!agent || !token) {
       disconnectSocket();
       setSocket(null);
       setIsConnected(false);
@@ -55,7 +56,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       s.off('disconnect', onDisconnect);
       disconnectSocket();
     };
-  }, [token]);
+  }, [agent]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>

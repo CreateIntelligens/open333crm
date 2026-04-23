@@ -15,6 +15,7 @@ docs/
 packages/db/full-backup.sql
 settings.local.json
 apps/web/public/webchat/
+*.tsbuildinfo
 
 # nginx SSL certs (handled by certbot Docker volume)
 nginx/certs/

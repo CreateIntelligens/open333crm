@@ -39,7 +39,7 @@ async function authPlugin(fastify: FastifyInstance) {
   await fastify.register(fastifyJwt, {
     secret: config.JWT_SECRET,
     sign: {
-      expiresIn: config.JWT_EXPIRES_IN,
+      expiresIn: config.ACCESS_TOKEN_EXPIRES_IN,
     },
   });
 
