@@ -14,7 +14,7 @@
   "dependencies": {
     "@open333crm/shared": "workspace:*",
     "@tailwindcss/postcss": "^4.2.4",
-    "axios": "^1.15.1",
+    "axios": "^1.15.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -26,7 +26,7 @@
     "recharts": "^3.8.1",
     "socket.io-client": "^4.8.3",
     "swr": "^2.4.1",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
