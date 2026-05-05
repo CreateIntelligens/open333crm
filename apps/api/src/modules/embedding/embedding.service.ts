@@ -1,11 +1,14 @@
 /**
  * Embedding service — generates embeddings via Ollama BGE-M3
  * and performs vector similarity search using pgvector.
+ *
+ * Configuration is now per-tenant (TenantSettings.embeddingBaseUrl/Model).
+ * Callers must pass tenantId so we can load the right Ollama target/model.
  */
 
 import type { PrismaClient } from '@prisma/client';
-import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
+import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -26,15 +29,19 @@ interface SearchOptions {
 
 // ─── Embedding Generation ───────────────────────────────────────────────────
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const config = getConfig();
-  const url = `${config.OLLAMA_BASE_URL}/api/embed`;
+export async function generateEmbedding(
+  prisma: PrismaClient,
+  tenantId: string,
+  text: string,
+): Promise<number[]> {
+  const settings = await getEmbeddingSettings(prisma, tenantId);
+  const url = `${settings.baseUrl}/api/embed`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: config.OLLAMA_EMBED_MODEL,
+      model: settings.model,
       input: text,
     }),
   });
@@ -60,13 +67,19 @@ export function prepareArticleText(article: {
   tags: string[];
   summary: string;
   content: string;
+  spec?: unknown;
+  attachments?: { filename: string }[];
 }): string {
   const parts = [
     `標題: ${article.title}`,
     `分類: ${article.category}`,
     article.tags.length > 0 ? `標籤: ${article.tags.join(', ')}` : '',
+    article.spec ? `規格: ${JSON.stringify(article.spec)}` : '',
     `摘要: ${article.summary}`,
     `內容: ${article.content}`,
+    article.attachments && article.attachments.length > 0
+      ? `附件: ${article.attachments.map((a) => a.filename).join(', ')}`
+      : '',
   ].filter(Boolean);
 
   const combined = parts.join('\n');
@@ -82,7 +95,8 @@ export async function searchSimilarArticles(
   tenantId: string,
   options: SearchOptions = {},
 ): Promise<ArticleSearchResult[]> {
-  const { topK = 5, threshold = 0.3 } = options;
+  const settings = await getEmbeddingSettings(prisma, tenantId);
+  const { topK = settings.topK, threshold = settings.threshold } = options;
 
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
@@ -123,7 +137,16 @@ export async function embedArticle(
 ): Promise<void> {
   const article = await prisma.kmArticle.findUnique({
     where: { id: articleId },
-    select: { title: true, category: true, tags: true, summary: true, content: true },
+    select: {
+      tenantId: true,
+      title: true,
+      category: true,
+      tags: true,
+      summary: true,
+      content: true,
+      spec: true,
+      attachments: { select: { filename: true } },
+    },
   });
 
   if (!article) {
@@ -131,14 +154,14 @@ export async function embedArticle(
   }
 
   const text = prepareArticleText(article);
-  const embedding = await generateEmbedding(text);
+  const embedding = await generateEmbedding(prisma, article.tenantId, text);
   const vectorStr = `[${embedding.join(',')}]`;
-  const config = getConfig();
+  const settings = await getEmbeddingSettings(prisma, article.tenantId);
 
   await prisma.$executeRawUnsafe(
     `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid`,
     vectorStr,
-    config.OLLAMA_EMBED_MODEL,
+    settings.model,
     articleId,
   );
 }
@@ -151,23 +174,32 @@ export async function bulkReembed(
 ): Promise<{ total: number; succeeded: number; failed: number }> {
   const articles = await prisma.kmArticle.findMany({
     where: { tenantId, status: 'PUBLISHED' },
-    select: { id: true, title: true, category: true, tags: true, summary: true, content: true },
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      tags: true,
+      summary: true,
+      content: true,
+      spec: true,
+      attachments: { select: { filename: true } },
+    },
   });
 
   let succeeded = 0;
   let failed = 0;
-  const config = getConfig();
+  const settings = await getEmbeddingSettings(prisma, tenantId);
 
   for (const article of articles) {
     try {
       const text = prepareArticleText(article);
-      const embedding = await generateEmbedding(text);
+      const embedding = await generateEmbedding(prisma, tenantId, text);
       const vectorStr = `[${embedding.join(',')}]`;
 
       await prisma.$executeRawUnsafe(
         `UPDATE km_articles SET embedding = $1::vector, "embeddingModel" = $2 WHERE id = $3::uuid`,
         vectorStr,
-        config.OLLAMA_EMBED_MODEL,
+        settings.model,
         article.id,
       );
       succeeded++;
@@ -182,15 +214,18 @@ export async function bulkReembed(
 
 // ─── Health Check ───────────────────────────────────────────────────────────
 
-export async function checkOllamaHealth(): Promise<{
+export async function checkOllamaHealth(
+  prisma: PrismaClient,
+  tenantId: string,
+): Promise<{
   ok: boolean;
   model?: string;
   error?: string;
 }> {
-  const config = getConfig();
+  const settings = await getEmbeddingSettings(prisma, tenantId);
 
   try {
-    const response = await fetch(`${config.OLLAMA_BASE_URL}/api/tags`);
+    const response = await fetch(`${settings.baseUrl}/api/tags`);
     if (!response.ok) {
       return { ok: false, error: `Ollama returned ${response.status}` };
     }
@@ -201,13 +236,13 @@ export async function checkOllamaHealth(): Promise<{
 
     const models = data.models || [];
     const found = models.find(
-      (m) => m.name === config.OLLAMA_EMBED_MODEL || m.name.startsWith(`${config.OLLAMA_EMBED_MODEL}:`),
+      (m) => m.name === settings.model || m.name.startsWith(`${settings.model}:`),
     );
 
     if (!found) {
       return {
         ok: false,
-        error: `Model "${config.OLLAMA_EMBED_MODEL}" not found. Available: ${models.map((m) => m.name).join(', ') || 'none'}`,
+        error: `Model "${settings.model}" not found. Available: ${models.map((m) => m.name).join(', ') || 'none'}`,
       };
     }
 

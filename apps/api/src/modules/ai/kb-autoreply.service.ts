@@ -1,23 +1,35 @@
 /**
  * KB Auto-Reply Service
  *
- * When an inbound message arrives in a BOT_HANDLED conversation,
- * searches the knowledge base for similar articles and automatically
- * replies based on confidence tiers:
- *   >= 0.80  — direct reply with article summary
- *   0.50–0.80 — reply + human-handoff prompt
- *   < 0.50  — no reply (let automation or agent handle it)
+ * When an inbound message arrives in a BOT_HANDLED conversation, decide what
+ * to do based on KB similarity tiers:
+ *   >= 0.80               — direct LLM reply grounded in KB
+ *   threshold–0.80        — LLM reply grounded in KB + handoff prompt appended
+ *   < threshold (or no KB)— **clarify**: ask one question to gather more info,
+ *                           bounded by clarifyMaxAttempts (then handoff)
+ *
+ * The LLM now receives the recent conversation history (last 10 messages) so
+ * follow-up turns make sense and clarification questions don't repeat earlier
+ * answers.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { getConfig } from '../../config/env.js';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
-import { generateReply, CRM_REPLY_SYSTEM_PROMPT } from './llm.service.js';
+import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
+import { getChatSettings } from '../settings/chat-settings.service.js';
+import { generateReply, CLARIFY_SYSTEM_PROMPT } from './llm.service.js';
+import type { HistoryMessage } from './llm.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
 
 const HANDOFF_PROMPT = '需要真人客服協助嗎？請輸入「真人」或「客服」即可轉接。';
+const CLARIFY_HANDOFF_FALLBACK =
+  '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
+const HISTORY_LIMIT = 10;
+
+type ReplyKind = 'kb_high_confidence' | 'kb_with_handoff' | 'clarify' | 'clarify_handoff';
 
 export async function attemptKbAutoReply(
   prisma: PrismaClient,
@@ -28,7 +40,7 @@ export async function attemptKbAutoReply(
 ): Promise<boolean> {
   const config = getConfig();
 
-  // 1. Check if KB auto-reply is enabled
+  // 1. Global enable check
   if (!config.KB_AUTO_REPLY_ENABLED) return false;
 
   // 2. Only proceed for BOT_HANDLED conversations
@@ -45,59 +57,102 @@ export async function attemptKbAutoReply(
       },
     },
   });
-
   if (!conversation) return false;
 
-  // 3. Check channel botMode setting
-  const settings = (conversation.channel.settings || {}) as Record<string, unknown>;
-  const botMode = settings.botMode as string | undefined;
+  // 3. Channel botMode gating
+  const channelSettings = (conversation.channel.settings || {}) as Record<string, unknown>;
+  const botMode = channelSettings.botMode as string | undefined;
   if (botMode === 'off' || botMode === 'keyword') return false;
 
-  // 4. Generate embedding for inbound message
+  // 4. Load tenant chat settings (clarify thresholds + system prompts)
+  const chatSettings = await getChatSettings(prisma, tenantId);
+
+  // 5. Fetch conversation history (excluding the just-arrived message we're replying to)
+  const history = await loadHistory(prisma, conversationId);
+
+  // 6. Generate embedding for inbound message
   let queryEmbedding: number[];
   try {
-    queryEmbedding = await generateEmbedding(messageText);
+    queryEmbedding = await generateEmbedding(prisma, tenantId, messageText);
   } catch (err) {
     logger.error('[KbAutoReply] Failed to generate embedding:', err);
     return false;
   }
 
-  // 5. Search KB for similar articles
+  // 7. KB similarity search
+  const embeddingSettings = await getEmbeddingSettings(prisma, tenantId);
   const results = await searchSimilarArticles(prisma, queryEmbedding, tenantId, {
-    topK: 3,
-    threshold: 0.3,
+    topK: embeddingSettings.topK,
+    threshold: embeddingSettings.threshold,
   });
-  logger.info(`[KbAutoReply] searchSimilarArticles returned ${results.length} result(s) for conv ${conversationId}`);
-  if (results.length === 0) return false;
-
   const topResult = results[0];
+  const topSimilarity = topResult?.similarity ?? 0;
+  logger.info(
+    `[KbAutoReply] conv=${conversationId} kbResults=${results.length} topSim=${topSimilarity.toFixed(3)}`,
+  );
 
-  // 6. Build KB context from top results (truncate to avoid LLM timeout)
-  const kbContext = results
-    .map((r, i) => `【文章${i + 1}】${r.title}\n${(r.content || r.summary).slice(0, 1500)}`)
-    .join('\n\n');
-
+  // 8. Decide reply path
+  const needsClarify = !topResult || topSimilarity < chatSettings.clarifyThreshold;
   let replyText: string;
-  try {
-    const llmReply = await generateReply(CRM_REPLY_SYSTEM_PROMPT, messageText, kbContext);
-    if (topResult.similarity >= 0.80) {
-      replyText = llmReply;
+  let replyKind: ReplyKind;
+  let metadataExtras: Record<string, unknown> = {};
+
+  if (needsClarify) {
+    // Track clarify attempts in conversation.metadata to avoid loops
+    const convMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
+    const prevAttempts = Number(convMeta.clarifyAttempts ?? 0);
+    const nextAttempts = prevAttempts + 1;
+
+    if (prevAttempts >= chatSettings.clarifyMaxAttempts) {
+      replyText = CLARIFY_HANDOFF_FALLBACK;
+      replyKind = 'clarify_handoff';
+      metadataExtras = { clarifyAttempts: prevAttempts };
     } else {
-      // 0.50–0.80 range: append handoff prompt
-      replyText = `${llmReply}\n\n${HANDOFF_PROMPT}`;
+      try {
+        const overridePrompt =
+          chatSettings.clarifySystemPrompt || CLARIFY_SYSTEM_PROMPT;
+        const llmReply = await generateReply(prisma, tenantId, messageText, '', {
+          overrideSystemPrompt: overridePrompt,
+          history,
+        });
+        replyText = llmReply;
+        replyKind = 'clarify';
+        metadataExtras = { clarifyAttempts: nextAttempts };
+      } catch (err) {
+        logger.error('[KbAutoReply] Clarify generation failed, handing off:', err);
+        replyText = CLARIFY_HANDOFF_FALLBACK;
+        replyKind = 'clarify_handoff';
+        metadataExtras = { clarifyAttempts: prevAttempts };
+      }
     }
-  } catch (err) {
-    // Fallback: use article content/summary directly if LLM fails
-    logger.error('[KbAutoReply] LLM generation failed, falling back to article content:', err);
-    const fallbackText = topResult.content || topResult.summary || topResult.title;
-    if (topResult.similarity >= 0.80) {
-      replyText = fallbackText;
-    } else {
-      replyText = `${fallbackText}\n\n${HANDOFF_PROMPT}`;
+  } else {
+    // KB has a useful match — use it as grounded context
+    const kbContext = results
+      .map((r, i) => `【文章${i + 1}】${r.title}\n${(r.content || r.summary).slice(0, 1500)}`)
+      .join('\n\n');
+
+    try {
+      const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, { history });
+      if (topSimilarity >= 0.80) {
+        replyText = llmReply;
+        replyKind = 'kb_high_confidence';
+      } else {
+        replyText = `${llmReply}\n\n${HANDOFF_PROMPT}`;
+        replyKind = 'kb_with_handoff';
+      }
+      // Successful KB answer resets clarify attempts
+      metadataExtras = { clarifyAttempts: 0 };
+    } catch (err) {
+      logger.error('[KbAutoReply] LLM generation failed, falling back to article content:', err);
+      const fallbackText = topResult.content || topResult.summary || topResult.title;
+      replyText =
+        topSimilarity >= 0.80 ? fallbackText : `${fallbackText}\n\n${HANDOFF_PROMPT}`;
+      replyKind = topSimilarity >= 0.80 ? 'kb_high_confidence' : 'kb_with_handoff';
+      metadataExtras = { clarifyAttempts: 0 };
     }
   }
 
-  // 7. Create BOT message
+  // 9. Persist BOT message
   const now = new Date();
   const botMessage = await prisma.message.create({
     data: {
@@ -108,29 +163,28 @@ export async function attemptKbAutoReply(
       content: { text: replyText },
       metadata: {
         source: 'kb_auto_reply',
-        confidence: topResult.similarity,
-        articleId: topResult.id,
-        articleTitle: topResult.title,
-        allResults: results.map((r) => ({
-          id: r.id,
-          title: r.title,
-          similarity: r.similarity,
-        })),
+        replyKind,
+        confidence: topSimilarity,
+        articleId: topResult?.id,
+        articleTitle: topResult?.title,
+        allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
       },
       createdAt: now,
     },
   });
 
-  // 8. Update conversation
+  // 10. Update conversation (counters + clarifyAttempts)
+  const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
   await prisma.conversation.update({
     where: { id: conversationId },
     data: {
       botRepliesCount: { increment: 1 },
       lastMessageAt: now,
+      metadata: { ...existingMeta, ...metadataExtras } as Prisma.InputJsonValue,
     },
   });
 
-  // 9. Emit WebSocket events
+  // 11. Real-time
   const wsPayload = {
     conversationId,
     message: {
@@ -148,12 +202,44 @@ export async function attemptKbAutoReply(
   io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
   io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
 
-  // 10. Deliver reply to actual channel via plugin
+  // 12. Deliver to actual channel
   await deliverToChannel(prisma, conversationId, replyText);
 
   logger.info(
-    `[KbAutoReply] Replied to conversation ${conversationId} (confidence: ${topResult.similarity.toFixed(3)}, article: ${topResult.title})`,
+    `[KbAutoReply] conv=${conversationId} kind=${replyKind} sim=${topSimilarity.toFixed(3)}`,
   );
 
   return true;
+}
+
+/**
+ * Fetch the last HISTORY_LIMIT messages of the conversation as
+ * user/assistant turns. The just-arrived inbound message is excluded — we
+ * pass it separately via `userMessage`.
+ */
+async function loadHistory(
+  prisma: PrismaClient,
+  conversationId: string,
+): Promise<HistoryMessage[]> {
+  const rows = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: 'desc' },
+    take: HISTORY_LIMIT + 1,
+    select: { direction: true, senderType: true, content: true },
+  });
+  // Drop the most recent inbound (the one we're replying to right now).
+  const trimmed = rows.length > 0 && rows[0].direction === 'INBOUND' ? rows.slice(1) : rows;
+
+  return trimmed
+    .reverse()
+    .map((m) => {
+      const text =
+        typeof m.content === 'object' && m.content !== null
+          ? ((m.content as { text?: string }).text ?? '')
+          : '';
+      if (!text) return null;
+      const role: 'user' | 'assistant' = m.direction === 'INBOUND' ? 'user' : 'assistant';
+      return { role, content: text };
+    })
+    .filter((m): m is HistoryMessage => m !== null);
 }
