@@ -1,7 +1,8 @@
 /**
- * Sentiment Analysis Service — uses Ollama LLM to analyze message sentiment.
+ * Sentiment Analysis Service — uses tenant-configured LLM to analyze message sentiment.
  */
 
+import type { PrismaClient } from '@prisma/client';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
@@ -44,9 +45,15 @@ function keywordFallback(text: string): SentimentResult {
   return { sentiment: 'neutral', score: 0, confidence: 0.4 };
 }
 
-export async function analyzeSentiment(text: string): Promise<SentimentResult> {
+export async function analyzeSentiment(
+  prisma: PrismaClient,
+  tenantId: string,
+  text: string,
+): Promise<SentimentResult> {
   try {
-    const raw = await generateReply(SENTIMENT_SYSTEM_PROMPT, text, '');
+    const raw = await generateReply(prisma, tenantId, text, '', {
+      overrideSystemPrompt: SENTIMENT_SYSTEM_PROMPT,
+    });
 
     // Try to parse JSON from LLM response
     const jsonMatch = raw.match(/\{[\s\S]*?\}/);

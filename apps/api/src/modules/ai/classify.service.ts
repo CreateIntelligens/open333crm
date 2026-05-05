@@ -2,6 +2,7 @@
  * Issue Classification Service — uses Ollama LLM to categorize customer issues.
  */
 
+import type { PrismaClient } from '@prisma/client';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
@@ -57,9 +58,15 @@ function keywordFallback(text: string): ClassifyResult {
   return { category: '其他', confidence: 0.3 };
 }
 
-export async function classifyIssue(text: string): Promise<ClassifyResult> {
+export async function classifyIssue(
+  prisma: PrismaClient,
+  tenantId: string,
+  text: string,
+): Promise<ClassifyResult> {
   try {
-    const raw = await generateReply(CLASSIFY_SYSTEM_PROMPT, text, '');
+    const raw = await generateReply(prisma, tenantId, text, '', {
+      overrideSystemPrompt: CLASSIFY_SYSTEM_PROMPT,
+    });
 
     const jsonMatch = raw.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {

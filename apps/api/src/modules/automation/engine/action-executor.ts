@@ -20,7 +20,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { attemptKbAutoReply } from '../../ai/kb-autoreply.service.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
-import { generateReply, CRM_REPLY_SYSTEM_PROMPT } from '../../ai/llm.service.js';
+import { generateReply } from '../../ai/llm.service.js';
 import { autoAssignCase } from '../../case/assignment.service.js';
 import { logger } from '@open333crm/core';
 
@@ -614,15 +614,21 @@ async function handleLlmReply(
     })
     .join('\n');
 
-  // Use custom system prompt if provided, otherwise default
-  // Always append Traditional Chinese enforcement
-  const basePrompt = (params.systemPrompt as string) || CRM_REPLY_SYSTEM_PROMPT;
-  const systemPrompt = basePrompt.includes('繁體中文')
-    ? basePrompt
-    : basePrompt + ' 你必須全程使用繁體中文回覆。';
+  // If the rule overrides the system prompt, use it; otherwise fall back to
+  // tenant chat settings (which already default to CRM_REPLY_SYSTEM_PROMPT
+  // when not customized). Always append Traditional Chinese enforcement.
+  const customPrompt = params.systemPrompt as string | undefined;
+  let overrideSystemPrompt: string | undefined;
+  if (customPrompt) {
+    overrideSystemPrompt = customPrompt.includes('繁體中文')
+      ? customPrompt
+      : customPrompt + ' 你必須全程使用繁體中文回覆。';
+  }
 
-  // Generate reply using LLM
-  const replyText = await generateReply(systemPrompt, history, '');
+  // Generate reply using LLM (per-tenant provider/model/prompt)
+  const replyText = await generateReply(prisma, context.tenantId, history, '', {
+    overrideSystemPrompt,
+  });
 
   // Save as BOT message
   const message = await prisma.message.create({

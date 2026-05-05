@@ -34,7 +34,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ text: z.string().min(1) })
       .parse(request.body);
 
-    const result = await analyzeSentiment(text);
+    const result = await analyzeSentiment(fastify.prisma, request.agent.tenantId, text);
     return reply.send(success(result));
   });
 
@@ -44,7 +44,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ text: z.string().min(1) })
       .parse(request.body);
 
-    const result = await classifyIssue(text);
+    const result = await classifyIssue(fastify.prisma, request.agent.tenantId, text);
     return reply.send(success(result));
   });
 }

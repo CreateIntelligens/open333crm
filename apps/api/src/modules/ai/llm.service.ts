@@ -1,79 +1,21 @@
 /**
- * LLM Service — calls Ollama chat API for RAG-based reply generation.
+ * LLM Service — generates RAG replies via the per-tenant chat provider.
+ *
+ * Provider (Ollama / Gemini), model, temperature, max tokens, and system
+ * prompts are all loaded from TenantSettings at call time. Defaults below
+ * are used as fallback when a tenant's prompt fields are empty strings.
  */
 
-import { getConfig } from '../../config/env.js';
+import type { PrismaClient } from '@prisma/client';
+import { getChatProvider } from './providers/index.js';
+import type { HistoryMessage } from './providers/index.js';
+import { getChatSettings } from '../settings/chat-settings.service.js';
 
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-interface OllamaChatResponse {
-  message?: { content: string };
-}
-
-const LLM_TIMEOUT_MS = 120_000;
+export type { HistoryMessage } from './providers/index.js';
 
 /**
- * Generate a reply using Ollama chat model with KB context injected as system prompt.
- */
-export async function generateReply(
-  systemPrompt: string,
-  userMessage: string,
-  kbContext: string,
-): Promise<string> {
-  const config = getConfig();
-  const url = `${config.OLLAMA_BASE_URL}/api/chat`;
-
-  const fullSystemPrompt = kbContext
-    ? `${systemPrompt}\n\n以下是相關知識庫內容，請根據這些內容回答客戶問題：\n${kbContext}`
-    : systemPrompt;
-
-  const messages: ChatMessage[] = [
-    { role: 'system', content: fullSystemPrompt },
-    { role: 'user', content: userMessage },
-  ];
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: config.OLLAMA_CHAT_MODEL,
-        messages,
-        stream: false,
-        options: {
-          temperature: 0.3,
-          num_predict: 500,
-        },
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(`Ollama chat failed (${response.status}): ${errBody}`);
-    }
-
-    const data = (await response.json()) as OllamaChatResponse;
-    const text = data.message?.content?.trim();
-
-    if (!text) {
-      throw new Error('Ollama returned empty chat response');
-    }
-
-    return text;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * CRM customer service system prompt (used for auto-reply and suggest).
+ * Default CRM customer-service system prompt. Used when a tenant has not
+ * customized its chatSystemPrompt yet (empty string).
  */
 export const CRM_REPLY_SYSTEM_PROMPT =
   '你是「Open333」品牌的專業客服助手，負責回答客戶關於家電產品（冰箱、洗衣機、冷氣、電視等）的問題。\n' +
@@ -87,9 +29,68 @@ export const CRM_REPLY_SYSTEM_PROMPT =
   '7. 結尾可適當加上「還有其他需要幫忙的嗎？」';
 
 /**
- * System prompt for conversation summarization.
+ * Default conversation summarization system prompt.
  */
 export const SUMMARIZE_SYSTEM_PROMPT =
   '你是一位客服系統的對話分析助手。請根據以下對話記錄，用繁體中文產生簡潔的對話摘要。' +
   '摘要應包含：客戶的主要問題或需求、目前的處理狀態、以及後續建議的行動。' +
   '請用 2-4 句話完成摘要，不要超過 200 字。';
+
+/**
+ * Default system prompt used when KB confidence is too low to answer directly.
+ * The bot should ask a single clarifying question instead of guessing.
+ */
+export const CLARIFY_SYSTEM_PROMPT =
+  '你是「Open333」品牌的客服助手。客戶剛剛的訊息資訊不足，無法判斷他真正的問題。' +
+  '請參考前面的對話脈絡，用繁體中文禮貌地反問**一個**最關鍵的澄清問題以取得更多資訊。\n' +
+  '規則：\n' +
+  '1. 只問一個問題，不要連珠炮\n' +
+  '2. 問題要具體、可回答（避免「請問需要什麼幫助」這類空泛問句）\n' +
+  '3. 如果是家電問題，優先問：是哪個產品 / 故障狀況 / 型號\n' +
+  '4. 整體控制在 2 句話以內\n' +
+  '5. 不要編造或假設客戶的需求';
+
+type PromptKind = 'reply' | 'summarize';
+
+/**
+ * Generate a reply for a tenant. Uses tenant chat settings + system prompt.
+ *
+ * `promptKind` selects which system prompt to use:
+ *   - 'reply'     → tenant.chatSystemPrompt    (fallback CRM_REPLY_SYSTEM_PROMPT)
+ *   - 'summarize' → tenant.summarizeSystemPrompt (fallback SUMMARIZE_SYSTEM_PROMPT)
+ *
+ * `overrideSystemPrompt` lets callers (e.g. automation rules with custom
+ * prompts) inject their own prompt without touching tenant defaults.
+ */
+export async function generateReply(
+  prisma: PrismaClient,
+  tenantId: string,
+  userMessage: string,
+  kbContext = '',
+  options: {
+    promptKind?: PromptKind;
+    overrideSystemPrompt?: string;
+    history?: HistoryMessage[];
+  } = {},
+): Promise<string> {
+  const settings = await getChatSettings(prisma, tenantId);
+  const provider = getChatProvider(settings.provider);
+
+  const promptKind = options.promptKind ?? 'reply';
+  const systemPrompt =
+    options.overrideSystemPrompt ??
+    (promptKind === 'summarize'
+      ? settings.summarizeSystemPrompt || SUMMARIZE_SYSTEM_PROMPT
+      : settings.chatSystemPrompt || CRM_REPLY_SYSTEM_PROMPT);
+
+  return provider.generate({
+    systemPrompt,
+    userMessage,
+    kbContext,
+    history: options.history,
+    model: settings.model,
+    temperature: settings.temperature,
+    maxTokens: settings.maxTokens,
+    baseUrl: settings.baseUrl,
+  });
+}
