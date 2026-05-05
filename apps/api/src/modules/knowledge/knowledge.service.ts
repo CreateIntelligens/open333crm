@@ -54,6 +54,10 @@ export async function listArticles(
         createdById: true,
         createdAt: true,
         updatedAt: true,
+        externalDocId: true,
+        externalVer: true,
+        externalSource: true,
+        _count: { select: { attachments: true } },
       },
     }),
     prisma.kmArticle.count({ where: where as any }),
@@ -80,6 +84,19 @@ export async function listArticles(
 export async function getArticle(prisma: PrismaClient, id: string, tenantId: string) {
   const article = await prisma.kmArticle.findFirst({
     where: { id, tenantId },
+    include: {
+      attachments: {
+        select: {
+          id: true,
+          filename: true,
+          url: true,
+          mimeType: true,
+          sizeBytes: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
   });
 
   if (!article) {
@@ -259,7 +276,7 @@ export async function semanticSearch(
   query: string,
   options: { topK?: number; threshold?: number } = {},
 ) {
-  const queryEmbedding = await generateEmbedding(query);
+  const queryEmbedding = await generateEmbedding(prisma, tenantId, query);
   const results = await searchSimilarArticles(prisma, queryEmbedding, tenantId, options);
   return results;
 }

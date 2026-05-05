@@ -1,3 +1,27 @@
+import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import dotenv from 'dotenv';
+
+// Load env BEFORE any module that reads process.env at import time (e.g. BullMQ
+// queues constructed with `connection: { url: process.env.REDIS_URL }`).
+// Walk up from cwd until we find the monorepo root .env (covers both dev
+// where cwd=apps/workers and prod where it might be the package dir).
+function loadEnv(): void {
+  let dir = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    const candidate = resolve(dir, '.env');
+    if (existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      return;
+    }
+    const parent = resolve(dir, '..');
+    if (parent === dir) break;
+    dir = parent;
+  }
+  dotenv.config(); // fall back to default (cwd/.env)
+}
+loadEnv();
+
 import { Worker, Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@prisma/client';

@@ -4,7 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
-import { generateReply, CRM_REPLY_SYSTEM_PROMPT, SUMMARIZE_SYSTEM_PROMPT } from './llm.service.js';
+import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
 export async function suggestReply(prisma: PrismaClient, conversationId: string) {
@@ -37,11 +37,12 @@ export async function suggestReply(prisma: PrismaClient, conversationId: string)
   }
 
   try {
-    const queryEmbedding = await generateEmbedding(userText);
-    const results = await searchSimilarArticles(prisma, queryEmbedding, conversation.tenantId, {
-      topK: 3,
-      threshold: 0.3,
-    });
+    const queryEmbedding = await generateEmbedding(prisma, conversation.tenantId, userText);
+    const results = await searchSimilarArticles(
+      prisma,
+      queryEmbedding,
+      conversation.tenantId,
+    );
 
     if (results.length === 0) {
       return { suggestions: [] };
@@ -53,7 +54,7 @@ export async function suggestReply(prisma: PrismaClient, conversationId: string)
         const kbContext = `【${r.title}】\n${(r.content || r.summary).slice(0, 1500)}`;
         let text: string;
         try {
-          text = await generateReply(CRM_REPLY_SYSTEM_PROMPT, userText, kbContext);
+          text = await generateReply(prisma, conversation.tenantId, userText, kbContext);
         } catch {
           // Fallback to article content/summary if LLM fails
           text = r.content || r.summary || r.title;
@@ -112,7 +113,13 @@ export async function summarizeConversation(prisma: PrismaClient, conversationId
     .join('\n');
 
   try {
-    const summary = await generateReply(SUMMARIZE_SYSTEM_PROMPT, transcript, '');
+    const summary = await generateReply(
+      prisma,
+      conversation.tenantId,
+      transcript,
+      '',
+      { promptKind: 'summarize' },
+    );
     return { summary };
   } catch (err) {
     // Fallback to static template if LLM fails

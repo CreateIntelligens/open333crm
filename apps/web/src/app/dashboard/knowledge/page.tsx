@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Plus, RefreshCw, Upload, Search, Loader2, Brain } from 'lucide-react';
+import { Plus, Upload, Search, Loader2, Brain } from 'lucide-react';
 import { useKnowledge, useCategories } from '@/hooks/useKnowledge';
 import { ArticleList } from '@/components/knowledge/ArticleList';
 import { ArticleFormDialog } from '@/components/knowledge/ArticleFormDialog';
 import { ImportDialog } from '@/components/knowledge/ImportDialog';
+import { EmbeddingSettings } from '@/components/knowledge/EmbeddingSettings';
+import { ChatPromptSettings } from '@/components/knowledge/ChatPromptSettings';
 import { Topbar } from '@/components/layout/Topbar';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { Button } from '@/components/ui/button';
@@ -29,8 +31,7 @@ export default function KnowledgePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<any>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [bulkEmbedding, setBulkEmbedding] = useState(false);
-  const [pageTab, setPageTab] = useState<'articles' | 'search'>('articles');
+  const [pageTab, setPageTab] = useState<'articles' | 'search' | 'embedding' | 'chat'>('articles');
 
   // Semantic search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,20 +106,6 @@ export default function KnowledgePage() {
     setDialogOpen(true);
   }, []);
 
-  const handleBulkEmbed = useCallback(async () => {
-    setBulkEmbedding(true);
-    try {
-      const res = await api.post('/knowledge/bulk-embed');
-      const { total, succeeded, failed } = res.data.data;
-      alert(`向量化完成：共 ${total} 篇，成功 ${succeeded} 篇，失敗 ${failed} 篇`);
-      mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '向量化失敗');
-    } finally {
-      setBulkEmbedding(false);
-    }
-  }, [mutate]);
-
   const handleSemanticSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
@@ -146,10 +133,12 @@ export default function KnowledgePage() {
 
       {/* Top-level page tabs: articles vs semantic search */}
       <div className="border-b px-6 pt-2">
-        <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as 'articles' | 'search')}>
+        <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as 'articles' | 'search' | 'embedding' | 'chat')}>
           <TabsList>
             <TabsTrigger value="articles">文章管理</TabsTrigger>
             <TabsTrigger value="search">語義搜尋</TabsTrigger>
+            <TabsTrigger value="embedding">Embedding 設定</TabsTrigger>
+            <TabsTrigger value="chat">Chat & Prompt</TabsTrigger>
           </TabsList>
 
           {/* ── Articles Tab ──────────────────────────────────── */}
@@ -173,19 +162,6 @@ export default function KnowledgePage() {
                   <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                     <Upload className="mr-1.5 h-4 w-4" />
                     匯入文章
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleBulkEmbed}
-                    disabled={bulkEmbedding}
-                  >
-                    {bulkEmbedding ? (
-                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="mr-1.5 h-4 w-4" />
-                    )}
-                    重新向量化
                   </Button>
                   <Button onClick={handleNewArticle}>
                     <Plus className="mr-2 h-4 w-4" />
@@ -287,6 +263,20 @@ export default function KnowledgePage() {
                   輸入關鍵字進行語義搜尋，系統會根據向量相似度找到最相關的知識庫文章
                 </p>
               )}
+            </div>
+          </TabsContent>
+
+          {/* ── Embedding Settings Tab ────────────────────────── */}
+          <TabsContent value="embedding">
+            <div className="h-[calc(100vh-180px)] overflow-y-auto py-4 pr-2">
+              <EmbeddingSettings />
+            </div>
+          </TabsContent>
+
+          {/* ── Chat & Prompt Settings Tab ────────────────────── */}
+          <TabsContent value="chat">
+            <div className="h-[calc(100vh-180px)] overflow-y-auto py-4 pr-2">
+              <ChatPromptSettings />
             </div>
           </TabsContent>
         </Tabs>

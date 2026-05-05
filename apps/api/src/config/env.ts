@@ -27,6 +27,7 @@ const envSchema = z.object({
   OLLAMA_CHAT_MODEL: z.string().default('qwen2.5:3b'),
   KB_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.72),
   KB_AUTO_REPLY_ENABLED: z.string().transform((v) => v === 'true').default('true'),
+  GEMINI_API_KEY: z.string().optional(),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_ACCESS_KEY: z.string().default('minioadmin'),
   S3_SECRET_KEY: z.string().default('minioadmin'),

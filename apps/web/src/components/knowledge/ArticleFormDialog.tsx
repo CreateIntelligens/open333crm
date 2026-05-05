@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, Eye, Pencil } from 'lucide-react';
+import { Loader2, Eye, Pencil, Paperclip, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,8 +24,26 @@ interface ArticleFormDialogProps {
     content: string;
     category: string;
     tags: string[];
+    externalDocId?: string | null;
+    externalVer?: number;
+    externalSource?: string | null;
+    spec?: unknown;
+    importedAt?: string | null;
+    attachments?: {
+      id: string;
+      filename: string;
+      url: string;
+      mimeType: string;
+      sizeBytes: number;
+    }[];
   } | null;
   onSaved: () => void;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function ArticleFormDialog({
@@ -117,6 +135,65 @@ export function ArticleFormDialog({
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
+            {article?.externalDocId && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-xs">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="font-medium">合作方匯入</span>
+                  <code className="rounded bg-background px-1.5 py-0.5">
+                    DocID {article.externalDocId}
+                  </code>
+                  <code className="rounded bg-background px-1.5 py-0.5">
+                    v{article.externalVer ?? 0}
+                  </code>
+                  {article.externalSource && (
+                    <span className="text-muted-foreground">{article.externalSource}</span>
+                  )}
+                </div>
+                {article.importedAt && (
+                  <div className="text-muted-foreground">
+                    匯入時間：{new Date(article.importedAt).toLocaleString('zh-TW')}
+                  </div>
+                )}
+                {article.spec !== undefined && article.spec !== null && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      Spec
+                    </summary>
+                    <pre className="mt-2 max-h-40 overflow-auto rounded bg-background p-2 text-[10px]">
+                      {JSON.stringify(article.spec, null, 2)}
+                    </pre>
+                  </details>
+                )}
+                {article.attachments && article.attachments.length > 0 && (
+                  <div className="mt-2">
+                    <div className="mb-1 flex items-center gap-1 text-muted-foreground">
+                      <Paperclip className="h-3 w-3" />
+                      <span>附件 ({article.attachments.length})</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {article.attachments.map((a) => (
+                        <li key={a.id} className="flex items-center justify-between rounded border bg-background px-2 py-1">
+                          <span className="truncate">{a.filename}</span>
+                          <span className="ml-2 flex shrink-0 items-center gap-2 text-muted-foreground">
+                            <span>{formatBytes(a.sizeBytes)}</span>
+                            <a
+                              href={a.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center hover:text-foreground"
+                              title="開啟附件"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="mb-1.5 block text-sm font-medium">標題</label>
               <Input

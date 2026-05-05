@@ -283,7 +283,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       // Sentiment analysis on inbound messages
       if (text && messageId) {
         try {
-          const sentimentResult = await analyzeSentiment(text);
+          const sentimentResult = await analyzeSentiment(prisma, event.tenantId, text);
           // Update message metadata with sentiment result
           const existingMessage = await prisma.message.findUnique({
             where: { id: messageId },
@@ -398,7 +398,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
           });
           const messageText = (latestMessage?.content as Record<string, unknown>)?.text as string | undefined;
           if (messageText) {
-            const classification = await classifyIssue(messageText);
+            const classification = await classifyIssue(prisma, event.tenantId, messageText);
             await prisma.case.update({
               where: { id: caseId },
               data: { category: classification.category },

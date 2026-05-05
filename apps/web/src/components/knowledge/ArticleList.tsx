@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { format } from 'date-fns';
-import { Loader2, BookOpen, Edit, Globe, Archive, Trash2, Brain } from 'lucide-react';
+import { Loader2, BookOpen, Edit, Globe, Archive, Trash2, Brain, Paperclip } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -17,6 +17,9 @@ interface Article {
   viewCount: number;
   updatedAt: string;
   hasEmbedding?: boolean;
+  externalDocId?: string | null;
+  externalVer?: number;
+  _count?: { attachments: number };
 }
 
 interface ArticleListProps {
@@ -110,6 +113,22 @@ export function ArticleList({
                       <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
                         {article.summary}
                       </p>
+                    )}
+                    {(article.externalDocId || (article._count?.attachments ?? 0) > 0) && (
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {article.externalDocId && (
+                          <span>
+                            DocID {article.externalDocId}
+                            {article.externalVer ? ` · v${article.externalVer}` : ''}
+                          </span>
+                        )}
+                        {(article._count?.attachments ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <Paperclip className="h-3 w-3" />
+                            {article._count?.attachments}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

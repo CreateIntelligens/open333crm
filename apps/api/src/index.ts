@@ -1,6 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import dotenv from 'dotenv';
+
+// Load env BEFORE any module that captures process.env at import time
+// (e.g. BullMQ Queue constructed with `connection: { url: process.env.REDIS_URL }`
+// in notification.worker.ts / automation.worker.ts).
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: resolve(__dirname, '..', '..', '..', '.env') });
+
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 
@@ -51,12 +59,6 @@ import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupSlaWorker } from './modules/sla/sla.worker.js';
 import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin } from '@open333crm/channel-plugins';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envPath = resolve(__dirname, '..', '..', '..', '.env');
-
-dotenv.config({ path: envPath });
 
 export async function bootstrap() {
   const config = loadEnvConfig();

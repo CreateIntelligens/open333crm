@@ -16,6 +16,11 @@ import {
   embedArticle,
 } from './knowledge.service.js';
 import { parseFileToMarkdown } from './file-parser.service.js';
+import {
+  ingestPartnerDoc,
+  type PartnerAttachmentInput,
+} from './partner-ingest.service.js';
+import { requireSupervisor } from '../../guards/rbac.guard.js';
 import { success, paginated } from '../../shared/utils/response.js';
 
 const createArticleSchema = z.object({
@@ -134,6 +139,75 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     return reply.send(success({ uploaded, failed, results }));
   });
 
+  // POST /api/v1/knowledge/partner-ingest — 合作方單筆推送 (multipart/form-data)
+  // Fields: DocID, Ver, VerCreatTime, AI_Q, AI_A, Source/Soruce, Spec, IsAttached
+  // Files:  Attached (可多檔)
+  fastify.post(
+    '/partner-ingest',
+    { preHandler: [requireSupervisor()] },
+    async (request, reply) => {
+      const fields: Record<string, string> = {};
+      const attachments: PartnerAttachmentInput[] = [];
+
+      for await (const part of request.parts()) {
+        if (part.type === 'file') {
+          if (part.fieldname === 'Attached') {
+            const buffer = await part.toBuffer();
+            attachments.push({
+              buffer,
+              filename: part.filename,
+              mimeType: part.mimetype,
+            });
+          } else {
+            // Drain unrelated file fields so the stream doesn't hang
+            await part.toBuffer();
+          }
+        } else {
+          fields[part.fieldname] = String(part.value);
+        }
+      }
+
+      const docId = fields.DocID ?? '';
+      if (!docId) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'DocID is required' },
+        });
+      }
+
+      // Tolerate Stanley's typo: accept both Source and Soruce
+      const source = fields.Source ?? fields.Soruce ?? '';
+
+      try {
+        const result = await ingestPartnerDoc(
+          fastify.prisma,
+          request.agent.tenantId,
+          request.agent.id,
+          {
+            docId,
+            ver: Number(fields.Ver) || 0,
+            verCreatTime: fields.VerCreatTime ?? '',
+            aiQ: fields.AI_Q ?? '',
+            aiA: fields.AI_A ?? '',
+            source,
+            spec: fields.Spec,
+            isAttached: fields.IsAttached === 'true',
+            attachments,
+          },
+        );
+        return reply.send(success(result));
+      } catch (err) {
+        return reply.status(500).send({
+          success: false,
+          error: {
+            code: 'INGEST_FAILED',
+            message: (err as Error).message,
+          },
+        });
+      }
+    },
+  );
+
   // POST /api/v1/knowledge/bulk-embed — 重新向量化所有已發布文章
   fastify.post('/bulk-embed', async (request, reply) => {
     const result = await bulkReembed(fastify.prisma, request.agent.tenantId);
@@ -141,8 +215,8 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/knowledge/embedding-status — 嵌入服務健康檢查
-  fastify.get('/embedding-status', async (_request, reply) => {
-    const status = await checkOllamaHealth();
+  fastify.get('/embedding-status', async (request, reply) => {
+    const status = await checkOllamaHealth(fastify.prisma, request.agent.tenantId);
     return reply.send(success(status));
   });
 

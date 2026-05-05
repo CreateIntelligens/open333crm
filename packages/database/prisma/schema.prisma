@@ -482,6 +482,7 @@ model Conversation {
   lastMessageAt   DateTime?
   botRepliesCount Int                @default(0)
   handoffReason   String?
+  metadata        Json               @default("{}")
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -751,13 +752,37 @@ model KmArticle {
   embeddingModel String?
   viewCount      Int                          @default(0)
   helpfulCount   Int                          @default(0)
+  externalDocId  String?                      @db.VarChar(64)
+  externalVer    Int                          @default(0)
+  externalSource String?
+  spec           Json?
+  importedAt     DateTime?
   createdById    String                       @db.Uuid
   updatedAt      DateTime                     @updatedAt
   createdAt      DateTime                     @default(now())
 
+  attachments KmArticleAttachment[]
+
+  @@unique([tenantId, externalDocId])
   @@index([tenantId, status])
   @@index([teamId])
   @@map("km_articles")
+}
+
+model KmArticleAttachment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  articleId  String   @db.Uuid
+  filename   String
+  storageKey String
+  url        String
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  article KmArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@map("km_article_attachments")
 }
 
 model LongTermMemory {
@@ -863,12 +888,26 @@ model DailyStat {
 }
 
 model TenantSettings {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String   @unique @db.Uuid
-  timezone    String   @default("Asia/Taipei")
-  officeHours Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String   @unique @db.Uuid
+  timezone               String   @default("Asia/Taipei")
+  officeHours            Json     @default("{}")
+  embeddingBaseUrl       String   @default("http://localhost:11434")
+  embeddingModel         String   @default("bge-m3")
+  embeddingTopK          Int      @default(5)
+  embeddingThreshold     Float    @default(0.3)
+  chatProvider           String   @default("ollama")
+  chatModel              String   @default("qwen2.5:3b")
+  chatBaseUrl            String   @default("http://localhost:11434")
+  chatTemperature        Float    @default(0.3)
+  chatMaxTokens          Int      @default(500)
+  chatSystemPrompt       String   @default("")
+  summarizeSystemPrompt  String   @default("")
+  clarifySystemPrompt    String   @default("")
+  clarifyThreshold       Float    @default(0.5)
+  clarifyMaxAttempts     Int      @default(2)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
