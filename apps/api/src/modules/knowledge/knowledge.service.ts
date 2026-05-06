@@ -214,24 +214,25 @@ export async function publishArticle(prisma: PrismaClient, id: string, tenantId:
     throw new AppError('Article is already published', 'INVALID_STATE', 400);
   }
 
-  // Ensure embedding exists before publishing; generate if missing
+  // Update status FIRST so the HTTP response returns quickly. Embedding is
+  // a slow LLM call (Ollama pulls model into memory on first use, takes
+  // 30+ seconds and can trip Caddy's gateway timeout) so we fire-and-forget.
+  // Worst case: article shows as PUBLISHED but lacks embedding — operator
+  // can use "批次重新嵌入" to backfill.
+  const updated = await prisma.kmArticle.update({
+    where: { id },
+    data: { status: 'PUBLISHED' },
+  });
+
   const [embCheck] = await prisma.$queryRawUnsafe<{ has: boolean }[]>(
     `SELECT (embedding IS NOT NULL) AS has FROM km_articles WHERE id = $1::uuid`,
     id,
   );
   if (!embCheck?.has) {
-    try {
-      await embedArticle(prisma, id);
-    } catch (err) {
-      logger.error(`[Knowledge] Could not generate embedding for publish (${id}):`, err);
-      // Continue publishing even if embedding fails — not a blocker for POC
-    }
+    embedArticle(prisma, id).catch((err) => {
+      logger.error(`[Knowledge] Background embedding failed for ${id}:`, err);
+    });
   }
-
-  const updated = await prisma.kmArticle.update({
-    where: { id },
-    data: { status: 'PUBLISHED' },
-  });
 
   return updated;
 }
