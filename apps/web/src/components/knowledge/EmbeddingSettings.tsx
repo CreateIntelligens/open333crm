@@ -58,7 +58,7 @@ export function EmbeddingSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reembedding, setReembedding] = useState(false);
-  const [reembedResult, setReembedResult] = useState<{ total: number; succeeded: number; failed: number } | null>(null);
+  const [reembedResult, setReembedResult] = useState<{ started: boolean; total: number; message: string } | null>(null);
   const [confirmModelChange, setConfirmModelChange] = useState<{ from: string; to: string } | null>(null);
   const [customModel, setCustomModel] = useState(false);
 
@@ -129,11 +129,12 @@ export function EmbeddingSettings() {
     setReembedding(true);
     setReembedResult(null);
     try {
-      const res = await api.post<{ data: { total: number; succeeded: number; failed: number } }>(
+      const res = await api.post<{ data: { started: boolean; total: number; message: string } }>(
         '/knowledge/bulk-embed',
       );
       setReembedResult(res.data.data);
-      // refresh stats
+      // Stats will update over time as background job progresses; refetch
+      // current snapshot so the user sees something change immediately.
       const refresh = await api.get<{ data: SettingsResponse }>('/settings/embedding');
       setStats(refresh.data.data.stats);
     } catch (err) {
@@ -347,7 +348,7 @@ export function EmbeddingSettings() {
           </Button>
           {reembedResult && (
             <span className="text-xs text-muted-foreground">
-              共 {reembedResult.total} 篇，成功 {reembedResult.succeeded}，失敗 {reembedResult.failed}
+              {reembedResult.message}
             </span>
           )}
         </div>

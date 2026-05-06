@@ -209,9 +209,26 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   );
 
   // POST /api/v1/knowledge/bulk-embed — 重新向量化所有已發布文章
+  // Returns immediately with article count; embedding runs in the background
+  // to avoid Caddy gateway timeouts on cold-start Ollama (model loading +
+  // per-article inference can easily exceed 60s for any non-trivial KB).
   fastify.post('/bulk-embed', async (request, reply) => {
-    const result = await bulkReembed(fastify.prisma, request.agent.tenantId);
-    return reply.send(success(result));
+    const tenantId = request.agent.tenantId;
+    const total = await fastify.prisma.kmArticle.count({
+      where: { tenantId, status: 'PUBLISHED' },
+    });
+
+    bulkReembed(fastify.prisma, tenantId).catch((err) => {
+      fastify.log.error({ err }, '[Knowledge] Background bulk re-embed failed');
+    });
+
+    return reply.send(
+      success({
+        started: true,
+        total,
+        message: `已開始重新嵌入 ${total} 篇文章，請稍後刷新「服務狀態」查看進度。`,
+      }),
+    );
   });
 
   // GET /api/v1/knowledge/embedding-status — 嵌入服務健康檢查
