@@ -632,3 +632,80 @@ export async function updateConversation(
 
   return updated;
 }
+
+/**
+ * Close a conversation with optional reason.
+ *
+ * Sets status=CLOSED, persists `closeReason` + `closeSource` + `closedAt`
+ * into conversation.metadata (JSON), emits `conversation.updated` socket
+ * event, and publishes `conversation.closed` to the in-process event bus.
+ *
+ * Idempotent: closing an already-closed conversation is a no-op (returns
+ * existing row) so cron / CSAT / case-resolved cascades don't double-fire.
+ */
+export async function closeConversation(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  id: string,
+  tenantId: string,
+  options: {
+    reason?: string;
+    source: 'manual' | 'inactivity' | 'csat' | 'case_resolved';
+    closedById?: string;
+  },
+) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, tenantId },
+  });
+  if (!conversation) {
+    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+  }
+  if (conversation.status === 'CLOSED') {
+    return conversation;
+  }
+
+  const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
+  const now = new Date();
+
+  const updated = await prisma.conversation.update({
+    where: { id },
+    data: {
+      status: 'CLOSED',
+      metadata: {
+        ...existingMeta,
+        closeReason: options.reason ?? null,
+        closeSource: options.source,
+        closedAt: now.toISOString(),
+        closedById: options.closedById ?? null,
+      } as Prisma.InputJsonValue,
+    },
+    include: {
+      contact: { select: { id: true, displayName: true, avatarUrl: true } },
+      assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+    },
+  });
+
+  const wsPayload = {
+    id: updated.id,
+    status: updated.status,
+    assignedToId: updated.assignedToId,
+    unreadCount: updated.unreadCount,
+    lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+  };
+  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
+  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+
+  eventBus.publish({
+    name: 'conversation.closed',
+    tenantId,
+    timestamp: now,
+    payload: {
+      conversationId: id,
+      source: options.source,
+      reason: options.reason ?? null,
+      closedById: options.closedById ?? null,
+    },
+  });
+
+  return updated;
+}

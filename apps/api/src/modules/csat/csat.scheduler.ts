@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { sendCsatSurvey } from './csat.service.js';
+import { closeConversation } from '../conversation/conversation.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 
@@ -97,6 +98,22 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
             priority: c.priority,
             assigneeId: c.assigneeId,
           });
+
+          // Cascade: close the linked conversation too (if any). Idempotent
+          // — closeConversation returns early if already CLOSED.
+          if (c.conversationId) {
+            try {
+              await closeConversation(prisma, io, c.conversationId, c.tenantId, {
+                source: 'csat',
+                reason: `CSAT 未回覆，自動結案 (${AUTO_CLOSE_HOURS}h)`,
+              });
+            } catch (err) {
+              logger.error(
+                `[CsatScheduler] Failed to close conversation ${c.conversationId} after case ${c.id} auto-close:`,
+                err,
+              );
+            }
+          }
 
           logger.info(`[CsatScheduler] Auto-closed case ${c.id} (no CSAT response after ${AUTO_CLOSE_HOURS}h)`);
         } catch (err) {

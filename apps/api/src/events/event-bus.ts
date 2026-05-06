@@ -9,6 +9,7 @@ export type AppEventName =
   | 'conversation.created'
   | 'conversation.updated'
   | 'conversation.assigned'
+  | 'conversation.closed'
   | 'case.created'
   | 'case.updated'
   | 'case.assigned'
