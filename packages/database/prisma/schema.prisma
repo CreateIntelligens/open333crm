@@ -906,6 +906,7 @@ model TenantSettings {
   clarifySystemPrompt    String   @default("")
   clarifyThreshold       Float    @default(0.5)
   clarifyMaxAttempts     Int      @default(2)
+  inactivityCloseHours   Int      @default(72)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

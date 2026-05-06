@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader2, Lightbulb } from 'lucide-react';
+import { Loader2, Lightbulb, XCircle } from 'lucide-react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useMessages } from '@/hooks/useMessages';
 import { MessageBubble } from './MessageBubble';
@@ -14,6 +14,14 @@ import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { MessageSquare } from 'lucide-react';
 
@@ -42,6 +50,9 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateText, setTemplateText] = useState<string | null>(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState('');
+  const [closing, setClosing] = useState(false);
 
   // Agent list
   const { data: agentsData } = useSWR('/agents', (url: string) =>
@@ -86,6 +97,25 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       globalMutate(`/conversations/${conversation.id}`);
     } catch (err) {
       console.error('Handoff failed:', err);
+    }
+  };
+
+  const handleCloseConfirm = async () => {
+    if (!conversation) return;
+    setClosing(true);
+    try {
+      const body: { reason?: string } = {};
+      const trimmed = closeReason.trim();
+      if (trimmed) body.reason = trimmed;
+      await api.post(`/conversations/${conversation.id}/close`, body);
+      setCloseDialogOpen(false);
+      setCloseReason('');
+      globalMutate(`/conversations/${conversation.id}`);
+    } catch (err) {
+      console.error('Close conversation failed:', err);
+      alert('結案失敗，請稍後再試');
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -185,6 +215,18 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               <Lightbulb className="h-4 w-4" />
             </Button>
           )}
+          {!isClosed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setCloseDialogOpen(true)}
+              title="結案此對話"
+            >
+              <XCircle className="h-4 w-4" />
+              <span className="text-xs">結案</span>
+            </Button>
+          )}
           <Select
             className="h-8 w-32 text-xs"
             options={statusOptions}
@@ -252,6 +294,60 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
         onSelect={handleTemplateSelect}
         channelType={conversation.channelType}
       />
+
+      {/* Close Conversation Dialog */}
+      <Dialog
+        open={closeDialogOpen}
+        onOpenChange={(open) => {
+          if (!closing) setCloseDialogOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>結案此對話</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              結案後此對話將從 Inbox 列表移出。客戶若再次傳訊將自動開新對話。
+            </p>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium">
+                結案原因（選填）
+              </label>
+              <Textarea
+                value={closeReason}
+                onChange={(e) => setCloseReason(e.target.value)}
+                placeholder="例：問題已解決 / 客戶未回覆 / 重複對話..."
+                rows={3}
+                disabled={closing}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCloseDialogOpen(false)}
+              disabled={closing}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCloseConfirm}
+              disabled={closing}
+            >
+              {closing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  結案中…
+                </>
+              ) : (
+                '確認結案'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   getMessages,
   sendMessage,
   updateConversation,
+  closeConversation,
   handoffConversation,
 } from './conversation.service.js';
 import { createCaseFromConversation } from '../case/case.service.js';
@@ -206,6 +207,27 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     );
 
     return reply.status(201).send(success(message));
+  });
+
+  // POST /api/v1/conversations/:id/close - close conversation with optional reason
+  fastify.post<{ Params: { id: string } }>('/:id/close', async (request, reply) => {
+    const data = z.object({
+      reason: z.string().max(1000).optional(),
+    }).parse(request.body ?? {});
+
+    const conversation = await closeConversation(
+      fastify.prisma,
+      fastify.io,
+      request.params.id,
+      request.agent.tenantId,
+      {
+        reason: data.reason,
+        source: 'manual',
+        closedById: request.agent.id,
+      },
+    );
+
+    return reply.send(success(conversation));
   });
 
   // POST /api/v1/conversations/:id/handoff - handoff from bot to agent
