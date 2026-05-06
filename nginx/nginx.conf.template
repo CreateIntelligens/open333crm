@@ -31,6 +31,10 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
+    # Allow up to 25MB request body — matches @fastify/multipart fileSize limit
+    # for KB article uploads / partner-ingest attachments.
+    client_max_body_size 25M;
+
     # API routes
     location /api/ {
         proxy_pass http://api_upstream;
