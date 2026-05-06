@@ -64,6 +64,9 @@ export async function bootstrap() {
   const config = loadEnvConfig();
 
   const app = Fastify({
+    // 30MB top-level body limit. Must be ≥ multipart fileSize so the
+    // request isn't rejected before @fastify/multipart can stream-parse it.
+    bodyLimit: 30 * 1024 * 1024,
     logger: {
       level: 'info',
       transport:
