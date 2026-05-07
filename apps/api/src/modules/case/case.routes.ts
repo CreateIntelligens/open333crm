@@ -10,6 +10,8 @@ import {
   addNote,
   getCaseEvents,
   createCaseFromConversation,
+  deleteCase,
+  linkConversationToCase,
   updateCase,
   getCaseStats,
 } from './case.service.js';
@@ -153,6 +155,18 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     return reply.send(success(caseRecord));
   });
 
+  // DELETE /api/v1/cases/:id
+  fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    const deleted = await deleteCase(
+      fastify.prisma,
+      fastify.io,
+      request.params.id,
+      request.agent.tenantId,
+    );
+
+    return reply.send(success(deleted));
+  });
+
   // GET /api/v1/cases/:id/events
   fastify.get<{ Params: { id: string } }>('/:id/events', async (request, reply) => {
     const events = await getCaseEvents(fastify.prisma, request.params.id);
@@ -247,6 +261,23 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
     return reply.send(success(caseRecord));
   });
+
+  // POST /api/v1/cases/:id/conversations/:conversationId/link
+  fastify.post<{ Params: { id: string; conversationId: string } }>(
+    '/:id/conversations/:conversationId/link',
+    async (request, reply) => {
+      const linked = await linkConversationToCase(
+        fastify.prisma,
+        fastify.io,
+        request.params.id,
+        request.params.conversationId,
+        request.agent.tenantId,
+        request.agent.id,
+      );
+
+      return reply.send(success(linked));
+    },
+  );
 
   // POST /api/v1/cases/:id/csat — Record CSAT score (WebChat / manual)
   fastify.post<{ Params: { id: string } }>('/:id/csat', async (request, reply) => {

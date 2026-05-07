@@ -709,3 +709,71 @@ export async function closeConversation(
 
   return updated;
 }
+
+export async function closeConversationsForCase(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  caseId: string,
+  tenantId: string,
+  options: {
+    reason?: string;
+    source: 'csat' | 'case_resolved';
+    closedById?: string;
+  },
+) {
+  const conversations = await prisma.conversation.findMany({
+    where: {
+      tenantId,
+      caseId,
+      status: { not: 'CLOSED' },
+    },
+    select: {
+      id: true,
+      assignedToId: true,
+      unreadCount: true,
+      lastMessageAt: true,
+    },
+  });
+
+  if (conversations.length === 0) {
+    return 0;
+  }
+
+  await prisma.conversation.updateMany({
+    where: {
+      tenantId,
+      caseId,
+      status: { not: 'CLOSED' },
+    },
+    data: {
+      status: 'CLOSED',
+    },
+  });
+
+  const now = new Date();
+  for (const conversation of conversations) {
+    const wsPayload = {
+      id: conversation.id,
+      status: 'CLOSED' as const,
+      assignedToId: conversation.assignedToId,
+      unreadCount: conversation.unreadCount,
+      lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
+    };
+    io.to(`conversation:${conversation.id}`).emit('conversation.updated', wsPayload);
+    io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+
+    eventBus.publish({
+      name: 'conversation.closed',
+      tenantId,
+      timestamp: now,
+      payload: {
+        conversationId: conversation.id,
+        source: options.source,
+        reason: options.reason ?? null,
+        closedById: options.closedById ?? null,
+      },
+    });
+  }
+
+  return conversations.length;
+}

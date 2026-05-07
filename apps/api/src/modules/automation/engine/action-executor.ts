@@ -263,13 +263,31 @@ async function handleCreateCase(
       tenantId: context.tenantId,
       contactId: context.contactId,
       channelId: channelIdentity.channelId,
-      conversationId: context.conversationId ?? undefined,
       title,
       priority: priority as any,
       category,
       status: 'OPEN',
     },
   });
+
+  if (context.conversationId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: context.conversationId,
+        tenantId: context.tenantId,
+      },
+      select: {
+        caseId: true,
+      },
+    });
+
+    if (conversation && !conversation.caseId) {
+      await prisma.conversation.update({
+        where: { id: context.conversationId },
+        data: { caseId: caseRecord.id },
+      });
+    }
+  }
 
   // Emit WebSocket event
   io.to(`tenant:${context.tenantId}`).emit('case.created', {
