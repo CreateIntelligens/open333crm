@@ -14,7 +14,6 @@ export class CaseService {
     tenantId: string;
     contactId: string;
     channelId: string;
-    conversationId?: string;
     title: string;
     description?: string;
     priority?: Priority;
@@ -25,7 +24,6 @@ export class CaseService {
           tenantId: data.tenantId,
           contactId: data.contactId,
           channelId: data.channelId,
-          conversationId: data.conversationId,
           title: data.title,
           description: data.description,
           priority: data.priority || Priority.MEDIUM,

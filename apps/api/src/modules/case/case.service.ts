@@ -10,6 +10,8 @@ import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
 import { autoAssignCase } from './assignment.service.js';
 import { logger } from '@open333crm/core';
 
+type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
+
 export interface CaseFilters {
   status?: string;
   priority?: string;
@@ -176,7 +178,7 @@ export async function getCase(
       notes: {
         orderBy: { createdAt: 'desc' },
       },
-      conversation: {
+      conversations: {
         select: {
           id: true,
           channelType: true,
@@ -206,12 +208,15 @@ export async function getCase(
     });
   }
 
-  return { ...caseRecord, slaPolicyData };
+  return {
+    ...caseRecord,
+    conversation: caseRecord.conversations[0] ?? null,
+    slaPolicyData,
+  };
 }
 
-export async function createCase(
-  prisma: PrismaClient,
-  io: SocketIOServer,
+async function createCaseRecord(
+  prisma: PrismaExecutor,
   tenantId: string,
   agentId: string,
   data: {
@@ -271,7 +276,6 @@ export async function createCase(
     },
   });
 
-  // Create the 'created' event
   await prisma.caseEvent.create({
     data: {
       caseId: caseRecord.id,
@@ -286,6 +290,24 @@ export async function createCase(
     },
   });
 
+  return caseRecord;
+}
+
+function emitCaseCreated(
+  io: SocketIOServer,
+  tenantId: string,
+  caseRecord: {
+    id: string;
+    contactId: string;
+    channelId: string;
+    title: string;
+    status: string;
+    priority: string;
+    assigneeId: string | null;
+    teamId: string | null;
+  },
+  conversationId?: string | null,
+) {
   // Emit WebSocket event
   const wsPayload = {
     id: caseRecord.id,
@@ -304,13 +326,34 @@ export async function createCase(
     timestamp: new Date(),
     payload: {
       caseId: caseRecord.id,
-      contactId: data.contactId,
-      channelId: data.channelId,
+      contactId: caseRecord.contactId,
+      channelId: caseRecord.channelId,
       title: caseRecord.title,
       priority: caseRecord.priority,
       status: caseRecord.status,
+      ...(conversationId ? { conversationId } : {}),
     },
   });
+}
+
+export async function createCase(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  tenantId: string,
+  agentId: string,
+  data: {
+    contactId: string;
+    channelId: string;
+    title: string;
+    description?: string;
+    priority?: Priority;
+    category?: string;
+    assigneeId?: string;
+    teamId?: string;
+  },
+) {
+  const caseRecord = await createCaseRecord(prisma, tenantId, agentId, data);
+  emitCaseCreated(io, tenantId, caseRecord, null);
 
   // Track broadcast → case attribution (non-blocking)
   trackBroadcastCase(prisma, data.contactId, caseRecord.id).catch(() => {});
@@ -335,6 +378,13 @@ export async function assignCase(
 ) {
   const caseRecord = await prisma.case.findFirst({
     where: { id: caseId, tenantId },
+    include: {
+      conversations: {
+        select: {
+          id: true,
+        },
+      },
+    },
   });
 
   if (!caseRecord) {
@@ -430,6 +480,13 @@ export async function transitionCase(
 ) {
   const caseRecord = await prisma.case.findFirst({
     where: { id: caseId, tenantId },
+    include: {
+      conversations: {
+        select: {
+          id: true,
+        },
+      },
+    },
   });
 
   if (!caseRecord) {
@@ -495,6 +552,7 @@ export async function transitionCase(
 
   // Publish case.resolved / case.closed events for CSAT and automation
   if (toStatus === 'RESOLVED') {
+    const conversationId = caseRecord.conversations[0]?.id ?? null;
     eventBus.publish({
       name: 'case.resolved',
       tenantId,
@@ -503,14 +561,15 @@ export async function transitionCase(
         caseId: updated.id,
         contactId: caseRecord.contactId,
         channelId: caseRecord.channelId,
-        conversationId: caseRecord.conversationId,
         assigneeId: caseRecord.assigneeId,
         title: caseRecord.title,
+        ...(conversationId ? { conversationId } : {}),
       },
     });
   }
 
   if (toStatus === 'CLOSED') {
+    const conversationId = caseRecord.conversations[0]?.id ?? null;
     eventBus.publish({
       name: 'case.closed',
       tenantId,
@@ -519,9 +578,9 @@ export async function transitionCase(
         caseId: updated.id,
         contactId: caseRecord.contactId,
         channelId: caseRecord.channelId,
-        conversationId: caseRecord.conversationId,
         assigneeId: caseRecord.assigneeId,
         title: caseRecord.title,
+        ...(conversationId ? { conversationId } : {}),
       },
     });
   }
@@ -702,38 +761,151 @@ export async function createCaseFromConversation(
     teamId?: string;
   },
 ) {
-  // Find the conversation
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, tenantId },
-    include: {
-      contact: true,
-      channel: true,
+  const caseRecord = await prisma.$transaction(async (tx) => {
+    // Find the conversation
+    const conversation = await tx.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: {
+        contact: true,
+        channel: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    }
+
+    // Check if conversation already has a case
+    if (conversation.caseId) {
+      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+    }
+
+    const created = await createCaseRecord(tx, tenantId, agentId, {
+      contactId: conversation.contactId,
+      channelId: conversation.channelId,
+      ...caseData,
+    });
+
+    // Link conversation to case
+    await tx.conversation.update({
+      where: { id: conversationId },
+      data: { caseId: created.id },
+    });
+
+    return created;
+  });
+
+  emitCaseCreated(io, tenantId, caseRecord, conversationId);
+
+  // Track broadcast → case attribution (non-blocking)
+  trackBroadcastCase(prisma, caseRecord.contactId, caseRecord.id).catch(() => {});
+
+  // Auto-assign if no assignee specified and teamId is set
+  if (!caseData.assigneeId && caseRecord.teamId) {
+    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
+      logger.error(`[createCaseFromConversation] Auto-assign failed for case ${caseRecord.id}:`, err);
+    });
+  }
+
+  return caseRecord;
+}
+
+export async function linkConversationToCase(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  caseId: string,
+  conversationId: string,
+  tenantId: string,
+  agentId: string,
+) {
+  const updatedConversation = await prisma.$transaction(async (tx) => {
+    const [caseRecord, conversation] = await Promise.all([
+      tx.case.findFirst({ where: { id: caseId, tenantId } }),
+      tx.conversation.findFirst({ where: { id: conversationId, tenantId } }),
+    ]);
+
+    if (!caseRecord || !conversation) {
+      throw new AppError('Case or conversation not found', 'NOT_FOUND', 404);
+    }
+
+    if (conversation.caseId) {
+      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+    }
+
+    const linked = await tx.conversation.update({
+      where: { id: conversationId },
+      data: { caseId },
+      select: {
+        id: true,
+        caseId: true,
+        channelType: true,
+        status: true,
+        lastMessageAt: true,
+      },
+    });
+
+    await tx.caseEvent.create({
+      data: {
+        caseId,
+        actorType: 'agent',
+        actorId: agentId,
+        eventType: 'conversation_linked',
+        payload: { conversationId },
+      },
+    });
+
+    return linked;
+  });
+
+  io.to(`tenant:${tenantId}`).emit('case.updated', {
+    id: caseId,
+    conversationId,
+  });
+
+  return updatedConversation;
+}
+
+export async function deleteCase(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  caseId: string,
+  tenantId: string,
+) {
+  const caseRecord = await prisma.case.findFirst({
+    where: { id: caseId, tenantId },
+    select: {
+      id: true,
+      status: true,
+      priority: true,
+      assigneeId: true,
+      title: true,
     },
   });
 
-  if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+  if (!caseRecord) {
+    throw new AppError('Case not found', 'NOT_FOUND', 404);
   }
 
-  // Check if conversation already has a case
-  if (conversation.caseId) {
-    throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
-  }
+  await prisma.$transaction(async (tx) => {
+    await tx.conversation.updateMany({
+      where: { tenantId, caseId },
+      data: { caseId: null },
+    });
 
-  // Create the case
-  const caseRecord = await createCase(prisma, io, tenantId, agentId, {
-    contactId: conversation.contactId,
-    channelId: conversation.channelId,
-    ...caseData,
+    await tx.case.delete({
+      where: { id: caseId },
+    });
   });
 
-  // Link conversation to case
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { caseId: caseRecord.id },
+  io.to(`tenant:${tenantId}`).emit('case.deleted', {
+    id: caseRecord.id,
+    status: caseRecord.status,
+    priority: caseRecord.priority,
+    assigneeId: caseRecord.assigneeId,
+    title: caseRecord.title,
   });
 
-  return caseRecord;
+  return { id: caseRecord.id };
 }
 
 export async function getCaseStats(
