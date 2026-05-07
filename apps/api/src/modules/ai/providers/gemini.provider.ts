@@ -71,6 +71,11 @@ export const GeminiChatProvider: ChatProvider = {
           generationConfig: {
             temperature: opts.temperature,
             maxOutputTokens: opts.maxTokens,
+            // Gemini 2.5 系列預設啟用 thinking mode，會把大量 token 花在內
+            // 部推理，可見輸出常被截斷（觀察到 maxOutputTokens=500 但只回
+            // 30 字就斷）。客服回覆不需要鏈式推理，明確關閉 thinking 確
+            // 保 maxOutputTokens 全部留給輸出。
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
         signal: controller.signal,
@@ -82,14 +87,33 @@ export const GeminiChatProvider: ChatProvider = {
       }
 
       const data = (await response.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
+        candidates?: {
+          content?: { parts?: { text?: string }[] };
+          finishReason?: string;
+        }[];
+        usageMetadata?: {
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+          thoughtsTokenCount?: number;
+          totalTokenCount?: number;
+        };
       };
 
-      const text = data.candidates?.[0]?.content?.parts
+      const candidate = data.candidates?.[0];
+      const text = candidate?.content?.parts
         ?.map((p) => p.text ?? '')
         .join('')
         .trim();
 
+      // MAX_TOKENS = output truncated. Throw with diagnostic info so
+      // operators see why the user got a half sentence (raise chatMaxTokens
+      // or keep thinking disabled).
+      if (candidate?.finishReason === 'MAX_TOKENS') {
+        const usage = data.usageMetadata ?? {};
+        throw new Error(
+          `Gemini reply truncated by MAX_TOKENS (output=${usage.candidatesTokenCount ?? '?'} thoughts=${usage.thoughtsTokenCount ?? 0} max=${opts.maxTokens}). Increase chatMaxTokens or ensure thinkingConfig.thinkingBudget=0.`,
+        );
+      }
       if (!text) throw new Error('Gemini returned empty response');
       return text;
     } finally {
