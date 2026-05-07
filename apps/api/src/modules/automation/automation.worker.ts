@@ -12,7 +12,6 @@ import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { triggerAutomation } from './automation.service.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
-import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { classifyIssue } from '../ai/classify.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
@@ -280,42 +279,11 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         }
       }
 
-      // Sentiment analysis on inbound messages
-      if (text && messageId) {
-        try {
-          const sentimentResult = await analyzeSentiment(prisma, event.tenantId, text);
-          // Update message metadata with sentiment result
-          const existingMessage = await prisma.message.findUnique({
-            where: { id: messageId },
-            select: { metadata: true },
-          });
-          const existingMetadata = (existingMessage?.metadata as Record<string, unknown>) ?? {};
-          await prisma.message.update({
-            where: { id: messageId },
-            data: {
-              metadata: JSON.parse(JSON.stringify({ ...existingMetadata, sentiment: sentimentResult })),
-            },
-          });
-          logger.info(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
-
-          // If negative sentiment with high confidence, publish event
-          if (sentimentResult.sentiment === 'negative' && sentimentResult.confidence >= 0.6) {
-            eventBus.publish({
-              name: 'sentiment.negative',
-              tenantId: event.tenantId,
-              timestamp: new Date(),
-              payload: {
-                conversationId,
-                messageId,
-                contactId,
-                sentiment: sentimentResult,
-              },
-            });
-          }
-        } catch (err) {
-          logger.error('[AutomationWorker] Sentiment analysis error:', err);
-        }
-      }
+      // Sentiment analysis is now performed inside attemptKbAutoReply()
+      // (see kb-autoreply.service.ts) so it can drive the handoff prompt
+      // decision in the same call. Result is stored on the BOT message's
+      // metadata.userSentiment field. No subscriber currently consumes the
+      // `sentiment.negative` event, so the worker no longer publishes it.
 
       await triggerAutomation(prisma, io, event.tenantId, 'message.received', {
         contactId: contactId as string | undefined,
@@ -437,6 +405,25 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
     }
   });
 
+  // ── conversation.handoff ───────────────────────────────────────────────
+  // Triggered when a BOT_HANDLED conversation is escalated to a human agent
+  // (via keyword/maxBotReplies/sentiment). Allows tenants to define rules that
+  // auto-assign the conversation based on conditions (channel, tags, etc).
+  eventBus.subscribe('conversation.handoff', async (event: AppEvent) => {
+    try {
+      const { conversationId, reason } = event.payload as {
+        conversationId?: string;
+        reason?: string;
+      };
+      await triggerAutomation(prisma, io, event.tenantId, 'conversation.handoff', {
+        conversationId,
+        handoffReason: reason,
+      });
+    } catch (err) {
+      logger.error('[AutomationWorker] Error handling conversation.handoff:', err);
+    }
+  });
+
   // ── contact.tagged ──────────────────────────────────────────────────────
   eventBus.subscribe('contact.tagged', async (event: AppEvent) => {
     try {
@@ -529,6 +516,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
     }
   });
 
-  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
+  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, conversation.handoff, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
   logger.info('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
 }

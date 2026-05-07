@@ -251,6 +251,7 @@ export interface TriggerContext {
   caseId?: string;
   activityId?: string;
   shortLinkId?: string;
+  handoffReason?: string;
 }
 
 export interface TriggerResult {
@@ -300,7 +301,12 @@ export async function triggerAutomation(
     return trigger?.type === event;
   });
 
+  // Special case: when conversation.handoff has no matching rules at all, we
+  // still want to apply the tenant fallback (if configured) so the hand-off
+  // never silently leaves the conversation unassigned.
   if (matchingRules.length === 0) {
+    const fb = await applyHandoffFallback(prisma, io, tenantId, event, context);
+    if (fb) return fb;
     return { totalRulesEvaluated: 0, matchedRules: 0, results: [] };
   }
 
@@ -359,10 +365,82 @@ export async function triggerAutomation(
     });
   }
 
+  // Fallback path: handoff trigger had rules but none matched → apply fallback.
+  if (matched.length === 0) {
+    const fb = await applyHandoffFallback(prisma, io, tenantId, event, context);
+    if (fb) {
+      return {
+        totalRulesEvaluated: matchingRules.length,
+        matchedRules: 0,
+        results: fb.results,
+      };
+    }
+  }
+
   return {
     totalRulesEvaluated: matchingRules.length,
     matchedRules: matched.length,
     results,
+  };
+}
+
+/**
+ * Handoff fallback: when no AutomationRule matches a `conversation.handoff`
+ * event, apply the per-tenant fallback (specific agent or team round-robin)
+ * so the conversation doesn't silently sit unassigned.
+ *
+ * Returns null if the event isn't a handoff or no fallback is configured.
+ */
+async function applyHandoffFallback(
+  prisma: PrismaClient,
+  io: Server,
+  tenantId: string,
+  event: string,
+  context: TriggerContext,
+): Promise<TriggerResult | null> {
+  if (event !== 'conversation.handoff') return null;
+  if (!context.conversationId) return null;
+
+  const ts = await prisma.tenantSettings.findUnique({
+    where: { tenantId },
+    select: { handoffFallbackAgentId: true, handoffFallbackTeamId: true },
+  });
+  if (!ts) return null;
+
+  let synthAction: ActionPayload | null = null;
+  if (ts.handoffFallbackAgentId) {
+    synthAction = {
+      type: 'assign_agent',
+      params: { mode: 'specific_agent', agentId: ts.handoffFallbackAgentId },
+    };
+  } else if (ts.handoffFallbackTeamId) {
+    synthAction = {
+      type: 'assign_agent',
+      params: { mode: 'team_round_robin', teamId: ts.handoffFallbackTeamId },
+    };
+  }
+  if (!synthAction) return null;
+
+  const actionResults = await executeActions(
+    prisma,
+    io,
+    [synthAction],
+    { tenantId, contactId: context.contactId, conversationId: context.conversationId },
+    'handoff_fallback',
+  );
+
+  return {
+    totalRulesEvaluated: 0,
+    matchedRules: 0,
+    results: [
+      {
+        ruleId: 'handoff_fallback',
+        ruleName: 'Handoff Fallback',
+        matched: true,
+        actions: actionResults,
+        stoppedChain: true,
+      },
+    ],
   };
 }
 

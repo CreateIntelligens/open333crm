@@ -23,6 +23,10 @@ import {
   revokePartnerApiKey,
 } from '../auth/partner-api-key.service.js';
 import {
+  getBotInactivitySettings,
+  updateBotInactivitySettings,
+} from './bot-inactivity-settings.service.js';
+import {
   CRM_REPLY_SYSTEM_PROMPT,
   SUMMARIZE_SYSTEM_PROMPT,
   CLARIFY_SYSTEM_PROMPT,
@@ -162,6 +166,57 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     return reply.send(success(health));
   });
 
+  // ─── BOT Inactivity Auto-Close ───────────────────────────────────────────
+  // GET /api/v1/settings/bot-inactivity → { botInactivityMinutes }
+  fastify.get('/bot-inactivity', async (request, reply) => {
+    const result = await getBotInactivitySettings(fastify.prisma, request.agent.tenantId);
+    return reply.send(success(result));
+  });
+
+  // PUT /api/v1/settings/bot-inactivity body { botInactivityMinutes }
+  fastify.put('/bot-inactivity', async (request, reply) => {
+    const patch = botInactivitySchema.parse(request.body);
+    const result = await updateBotInactivitySettings(
+      fastify.prisma,
+      request.agent.tenantId,
+      patch,
+    );
+    return reply.send(success(result));
+  });
+
+  // ─── Handoff Fallback ────────────────────────────────────────────────────
+  // Default assignee when conversation.handoff fires but no rule matches.
+  fastify.get('/handoff-fallback', async (request, reply) => {
+    const tenantId = request.agent.tenantId;
+    let s = await fastify.prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!s) s = await fastify.prisma.tenantSettings.create({ data: { tenantId } });
+    return reply.send(success({
+      handoffFallbackAgentId: s.handoffFallbackAgentId,
+      handoffFallbackTeamId: s.handoffFallbackTeamId,
+    }));
+  });
+
+  fastify.put('/handoff-fallback', async (request, reply) => {
+    const patch = handoffFallbackSchema.parse(request.body);
+    const tenantId = request.agent.tenantId;
+    const updated = await fastify.prisma.tenantSettings.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        handoffFallbackAgentId: patch.handoffFallbackAgentId ?? null,
+        handoffFallbackTeamId: patch.handoffFallbackTeamId ?? null,
+      },
+      update: {
+        handoffFallbackAgentId: patch.handoffFallbackAgentId ?? null,
+        handoffFallbackTeamId: patch.handoffFallbackTeamId ?? null,
+      },
+    });
+    return reply.send(success({
+      handoffFallbackAgentId: updated.handoffFallbackAgentId,
+      handoffFallbackTeamId: updated.handoffFallbackTeamId,
+    }));
+  });
+
   // ─── Partner API Keys ────────────────────────────────────────────────────
   // GET /api/v1/settings/api-keys — list (masked)
   fastify.get('/api-keys', async (request, reply) => {
@@ -240,6 +295,23 @@ const chatSettingsSchema = z.object({
   clarifySystemPrompt: z.string().optional(),
   clarifyThreshold: z.number().min(0).max(1).optional(),
   clarifyMaxAttempts: z.number().int().min(0).max(5).optional(),
+  handoffOnNegativeSentiment: z.boolean().optional(),
+  negativeSentimentThreshold: z.number().min(0).max(1).optional(),
+  sentimentTriggersHandoff: z.boolean().optional(),
+});
+
+const handoffFallbackSchema = z.object({
+  // mutually exclusive: pick agent OR team (not both); both null disables fallback
+  handoffFallbackAgentId: z.string().uuid().nullable().optional(),
+  handoffFallbackTeamId: z.string().uuid().nullable().optional(),
+}).refine(
+  (data) => !(data.handoffFallbackAgentId && data.handoffFallbackTeamId),
+  { message: 'Pick either agent or team, not both' },
+);
+
+const botInactivitySchema = z.object({
+  // 60 min ~ 7 days (10080 min)
+  botInactivityMinutes: z.number().int().min(60).max(7 * 24 * 60),
 });
 
 const chatModelsQuery = z.object({
