@@ -59,8 +59,15 @@ const importSchema = z.object({
 });
 
 export default async function knowledgeRoutes(fastify: FastifyInstance) {
-  // All routes require authentication
-  fastify.addHook('preHandler', fastify.authenticate);
+  // Auth: most routes require agent JWT; partner-ingest additionally accepts
+  // long-lived Partner API keys (Authorization: Bearer pk_...).
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.url.includes('/partner-ingest')) {
+      await fastify.authenticateJwtOrPartnerKey(request, reply);
+    } else {
+      await fastify.authenticate(request, reply);
+    }
+  });
 
   // GET /api/v1/knowledge — 文章列表
   fastify.get('/', async (request, reply) => {

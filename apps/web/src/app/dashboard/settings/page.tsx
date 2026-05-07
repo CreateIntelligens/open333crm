@@ -8,6 +8,7 @@ import { TagManagement } from '@/components/settings/TagManagement';
 import { SlaManagement } from '@/components/settings/SlaManagement';
 import { GeneralSettings } from '@/components/settings/GeneralSettings';
 import { OfficeHoursSettings } from '@/components/settings/OfficeHoursSettings';
+import { ApiKeyManagement } from '@/components/settings/ApiKeyManagement';
 
 const SETTINGS_TABS = [
   { key: 'channels', label: '渠道管理' },
@@ -15,6 +16,7 @@ const SETTINGS_TABS = [
   { key: 'tags', label: '標籤管理' },
   { key: 'sla', label: 'SLA 政策' },
   { key: 'office-hours', label: '營業時間' },
+  { key: 'api-keys', label: 'API 金鑰' },
   { key: 'general', label: '一般設定' },
 ] as const;
 
@@ -55,6 +57,7 @@ export default function SettingsPage() {
           {activeTab === 'tags' && <TagManagement />}
           {activeTab === 'sla' && <SlaManagement />}
           {activeTab === 'office-hours' && <OfficeHoursSettings />}
+          {activeTab === 'api-keys' && <ApiKeyManagement />}
           {activeTab === 'general' && <GeneralSettings />}
         </div>
       </div>
