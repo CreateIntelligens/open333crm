@@ -39,6 +39,7 @@ const TRIGGER_EVENTS = [
   { value: 'contact.tagged', label: '聯繫人加標籤' },
   { value: 'contact.updated', label: '聯繫人更新' },
   { value: 'conversation.created', label: '新對話建立' },
+  { value: 'conversation.handoff', label: '對話轉真人客服' },
 ];
 
 const MATCH_MODES = [

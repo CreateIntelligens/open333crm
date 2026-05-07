@@ -908,6 +908,17 @@ model TenantSettings {
   clarifyThreshold       Float    @default(0.5)
   clarifyMaxAttempts     Int      @default(2)
   inactivityCloseHours   Int      @default(72)
+  // 偵測到使用者負面情感時，是否在 BOT 回覆後附加「需要真人客服協助嗎？」
+  handoffOnNegativeSentiment Boolean @default(true)
+  // 負面情感判定信心閾值 (0–1)，需 sentiment === 'negative' 且 confidence >= 此值
+  negativeSentimentThreshold Float   @default(0.6)
+  // BOT 對話閒置自動結束時數（小時）。前端 UI 用分鐘輸入，後端換算
+  botInactivityCloseHours    Int     @default(1)
+  // sentiment 偵測到負面時，是否一併把對話轉為 AGENT_HANDLED 並觸發指派規則
+  sentimentTriggersHandoff   Boolean @default(false)
+  // 沒有 handoff 規則匹配時的 fallback 指派目標（agent 優先於 team）
+  handoffFallbackAgentId     String? @db.Uuid
+  handoffFallbackTeamId      String? @db.Uuid
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

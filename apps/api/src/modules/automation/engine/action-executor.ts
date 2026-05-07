@@ -22,6 +22,8 @@ import { attemptKbAutoReply } from '../../ai/kb-autoreply.service.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { generateReply } from '../../ai/llm.service.js';
 import { autoAssignCase } from '../../case/assignment.service.js';
+import { autoAssignConversationByTeam } from '../../conversation/assignment.service.js';
+import { eventBus } from '../../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 
 export interface ActionPayload {
@@ -491,6 +493,20 @@ async function handleSendMessage(
   return { messageId: message.id };
 }
 
+/**
+ * assign_agent action — supports 3 modes (backward compatible with old
+ * payloads that only had `{ agentId }` — treated as `specific_agent`).
+ *
+ *   specific_agent     → assign to the chosen agent
+ *   team_round_robin   → least-load + tie-break round-robin within team
+ *   team_broadcast     → don't assign anyone, just notify the whole team
+ *
+ * In all 3 modes the conversation transitions to AGENT_HANDLED.
+ *
+ * Note: this function publishes `conversation.assigned` (or the broadcast
+ * variant) on the eventBus so notification.worker can react. Earlier the
+ * event was only socket-emitted, which bypassed the notification pipeline.
+ */
 async function handleAssignAgent(
   prisma: PrismaClient,
   io: Server,
@@ -501,38 +517,85 @@ async function handleAssignAgent(
     throw new Error('Cannot assign agent: no conversationId in context');
   }
 
-  const agentId = params.agentId as string;
-  if (!agentId) {
-    throw new Error('Cannot assign agent: agentId not specified');
-  }
+  const rawMode = params.mode as string | undefined;
+  const agentId = params.agentId as string | undefined;
+  const teamId = params.teamId as string | undefined;
+  const mode: 'specific_agent' | 'team_round_robin' | 'team_broadcast' =
+    (rawMode as any) ?? (agentId ? 'specific_agent' : 'specific_agent');
 
-  // Verify agent exists and belongs to the tenant
-  const agent = await prisma.agent.findFirst({
-    where: { id: agentId, tenantId: context.tenantId, isActive: true },
-    select: { id: true, name: true },
-  });
+  if (mode === 'specific_agent') {
+    if (!agentId) {
+      throw new Error('Cannot assign agent: agentId not specified for specific_agent mode');
+    }
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, tenantId: context.tenantId, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!agent) throw new Error(`Agent ${agentId} not found or inactive`);
 
-  if (!agent) {
-    throw new Error(`Agent ${agentId} not found or inactive`);
-  }
+    await prisma.conversation.update({
+      where: { id: context.conversationId },
+      data: { assignedToId: agentId, status: 'AGENT_HANDLED' },
+    });
 
-  await prisma.conversation.update({
-    where: { id: context.conversationId },
-    data: {
+    io.to(`tenant:${context.tenantId}`).emit('conversation.assigned', {
+      conversationId: context.conversationId,
       assignedToId: agentId,
-      status: 'AGENT_HANDLED',
-    },
-  });
+      assignedToName: agent.name,
+      source: 'automation',
+    });
 
-  // Emit WebSocket event
-  io.to(`tenant:${context.tenantId}`).emit('conversation.assigned', {
-    conversationId: context.conversationId,
-    assignedToId: agentId,
-    assignedToName: agent.name,
-    source: 'automation',
-  });
+    eventBus.publish({
+      name: 'conversation.assigned',
+      tenantId: context.tenantId,
+      timestamp: new Date(),
+      payload: {
+        conversationId: context.conversationId,
+        assignedToId: agentId,
+        assigneeName: agent.name,
+        method: 'specific_agent',
+      },
+    });
 
-  return { agentId, agentName: agent.name };
+    return { mode, agentId, agentName: agent.name };
+  }
+
+  if (mode === 'team_round_robin') {
+    if (!teamId) {
+      throw new Error('Cannot assign agent: teamId not specified for team_round_robin mode');
+    }
+    const agent = await autoAssignConversationByTeam(
+      prisma,
+      io,
+      context.conversationId,
+      context.tenantId,
+      teamId,
+    );
+    return { mode, teamId, agentId: agent?.id ?? null, agentName: agent?.name ?? null };
+  }
+
+  if (mode === 'team_broadcast') {
+    if (!teamId) {
+      throw new Error('Cannot assign agent: teamId not specified for team_broadcast mode');
+    }
+    // Don't update assignedToId; just transition to AGENT_HANDLED so the
+    // unassigned conversation is visible in the team's queue.
+    await prisma.conversation.update({
+      where: { id: context.conversationId },
+      data: { status: 'AGENT_HANDLED' },
+    });
+
+    eventBus.publish({
+      name: 'conversation.handoff.broadcast',
+      tenantId: context.tenantId,
+      timestamp: new Date(),
+      payload: { conversationId: context.conversationId, teamId },
+    });
+
+    return { mode, teamId };
+  }
+
+  throw new Error(`assign_agent: unknown mode "${mode}"`);
 }
 
 async function handleAssignBot(

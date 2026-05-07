@@ -25,6 +25,7 @@ import contactRoutes from './modules/contact/contact.routes.js';
 import caseRoutes from './modules/case/case.routes.js';
 import tagRoutes from './modules/tag/tag.routes.js';
 import agentRoutes from './modules/agent/agent.routes.js';
+import teamRoutes from './modules/team/team.routes.js';
 import simulatorRoutes from './channels/simulator/simulator.routes.js';
 import automationRoutes from './modules/automation/automation.routes.js';
 import channelRoutes from './modules/channel/channel.routes.js';
@@ -107,6 +108,7 @@ export async function bootstrap() {
   await app.register(caseRoutes, { prefix: '/api/v1/cases' });
   await app.register(tagRoutes, { prefix: '/api/v1/tags' });
   await app.register(agentRoutes, { prefix: '/api/v1/agents' });
+  await app.register(teamRoutes, { prefix: '/api/v1/teams' });
   await app.register(simulatorRoutes, { prefix: '/api/v1/simulator' });
   await app.register(automationRoutes, { prefix: '/api/v1/automation' });
   await app.register(channelRoutes, { prefix: '/api/v1/channels' });

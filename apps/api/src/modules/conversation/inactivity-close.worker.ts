@@ -1,11 +1,12 @@
 /**
- * Inactivity Close Worker — periodically closes conversations that have been
- * idle longer than the per-tenant `inactivityCloseHours` threshold.
+ * Inactivity Close Worker — periodically closes BOT_HANDLED conversations
+ * that have been idle longer than the per-tenant `botInactivityCloseHours`
+ * threshold (default 1h). AGENT_HANDLED conversations are not touched —
+ * agents may be working on them in the background.
  *
- * Polls every POLL_INTERVAL_MS, groups candidate conversations by tenant,
- * uses each tenant's TenantSettings.inactivityCloseHours (default 72h).
- * Skips conversations with status=CLOSED (idempotent) and empty
- * lastMessageAt (not yet started).
+ * Polls every POLL_INTERVAL_MS, groups candidates by tenant, uses each
+ * tenant's TenantSettings.botInactivityCloseHours. Skips closed conversations
+ * (idempotent) and conversations with empty lastMessageAt.
  */
 
 import type { PrismaClient } from '@prisma/client';
@@ -21,12 +22,12 @@ export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOSer
     try {
       // Group by tenant so each tenant's threshold applies independently.
       const tenantSettings = await prisma.tenantSettings.findMany({
-        select: { tenantId: true, inactivityCloseHours: true },
+        select: { tenantId: true, botInactivityCloseHours: true },
       });
 
       let closedCount = 0;
       for (const settings of tenantSettings) {
-        const hours = settings.inactivityCloseHours;
+        const hours = settings.botInactivityCloseHours;
         if (!Number.isFinite(hours) || hours <= 0) continue; // disabled
 
         const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
@@ -34,7 +35,7 @@ export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOSer
         const candidates = await prisma.conversation.findMany({
           where: {
             tenantId: settings.tenantId,
-            status: { not: 'CLOSED' },
+            status: 'BOT_HANDLED',
             lastMessageAt: { not: null, lt: cutoff },
           },
           select: { id: true },
@@ -44,7 +45,7 @@ export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOSer
           try {
             await closeConversation(prisma, io, c.id, settings.tenantId, {
               source: 'inactivity',
-              reason: `Auto-closed after ${hours}h of inactivity`,
+              reason: `Auto-closed after ${hours}h of BOT inactivity`,
             });
             closedCount++;
           } catch (err) {
@@ -54,7 +55,7 @@ export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOSer
       }
 
       if (closedCount > 0) {
-        logger.info(`[InactivityCloseWorker] Closed ${closedCount} inactive conversations`);
+        logger.info(`[InactivityCloseWorker] Closed ${closedCount} inactive BOT conversations`);
       }
     } catch (err) {
       logger.error('[InactivityCloseWorker] Poll error:', err);
@@ -64,5 +65,5 @@ export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOSer
   setInterval(pollInactivity, POLL_INTERVAL_MS);
   setTimeout(pollInactivity, STARTUP_DELAY_MS);
 
-  logger.info('[InactivityCloseWorker] Started — polling every 5min for inactive conversations');
+  logger.info('[InactivityCloseWorker] Started — polling every 5min for inactive BOT conversations');
 }

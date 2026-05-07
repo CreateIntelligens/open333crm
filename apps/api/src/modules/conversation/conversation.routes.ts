@@ -13,6 +13,7 @@ import {
 import { createCaseFromConversation } from '../case/case.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { uploadFile } from '../storage/storage.service.js';
+import { eventBus } from '../../events/event-bus.js';
 
 interface MediaUploadConfig {
   allowedMimes: readonly string[];
@@ -245,6 +246,67 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.agent.id,
       data,
     );
+
+    return reply.send(success(conversation));
+  });
+
+  // POST /api/v1/conversations/:id/claim - claim a broadcast handoff conversation
+  // Used by agents who receive a `conversation.handoff.broadcast` notification
+  // and want to take ownership. Conditional update prevents race conditions
+  // when two agents click "claim" simultaneously.
+  fastify.post<{ Params: { id: string } }>('/:id/claim', async (request, reply) => {
+    const conversationId = request.params.id;
+    const tenantId = request.agent.tenantId;
+    const agentId = request.agent.id;
+
+    // Atomic conditional update: only succeeds if assignedToId IS NULL
+    const result = await fastify.prisma.conversation.updateMany({
+      where: { id: conversationId, tenantId, assignedToId: null },
+      data: { assignedToId: agentId, status: 'AGENT_HANDLED' },
+    });
+    if (result.count === 0) {
+      // Either already claimed by someone else, or conversation not found
+      const exists = await fastify.prisma.conversation.findFirst({
+        where: { id: conversationId, tenantId },
+        select: { assignedToId: true },
+      });
+      if (!exists) {
+        throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+      }
+      throw new AppError('Conversation already claimed', 'ALREADY_CLAIMED', 409, {
+        assignedToId: exists.assignedToId,
+      });
+    }
+
+    // Refetch to get team for downstream notification
+    const conversation = await fastify.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      select: { id: true, assignedToId: true, teamId: true, status: true },
+    });
+
+    fastify.io.to(`tenant:${tenantId}`).emit('conversation.updated', {
+      id: conversationId,
+      status: 'AGENT_HANDLED',
+      assignedToId: agentId,
+      source: 'claim',
+    });
+
+    const claimer = await fastify.prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { name: true },
+    });
+
+    eventBus.publish({
+      name: 'conversation.claimed',
+      tenantId,
+      timestamp: new Date(),
+      payload: {
+        conversationId,
+        claimedBy: agentId,
+        claimedByName: claimer?.name,
+        teamId: conversation?.teamId,
+      },
+    });
 
     return reply.send(success(conversation));
   });

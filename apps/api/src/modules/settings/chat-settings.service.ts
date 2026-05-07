@@ -20,6 +20,9 @@ export interface ChatSettings {
   clarifySystemPrompt: string;
   clarifyThreshold: number;
   clarifyMaxAttempts: number;
+  handoffOnNegativeSentiment: boolean;
+  negativeSentimentThreshold: number;
+  sentimentTriggersHandoff: boolean;
 }
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
@@ -33,6 +36,9 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   clarifySystemPrompt: '',
   clarifyThreshold: 0.5,
   clarifyMaxAttempts: 2,
+  handoffOnNegativeSentiment: true,
+  negativeSentimentThreshold: 0.6,
+  sentimentTriggersHandoff: false,
 };
 
 export async function getChatSettings(
@@ -54,6 +60,9 @@ export async function getChatSettings(
     clarifySystemPrompt: s.clarifySystemPrompt,
     clarifyThreshold: s.clarifyThreshold,
     clarifyMaxAttempts: s.clarifyMaxAttempts,
+    handoffOnNegativeSentiment: s.handoffOnNegativeSentiment,
+    negativeSentimentThreshold: s.negativeSentimentThreshold,
+    sentimentTriggersHandoff: s.sentimentTriggersHandoff,
   };
 }
 
@@ -79,6 +88,9 @@ export async function updateChatSettings(
       clarifySystemPrompt: next.clarifySystemPrompt,
       clarifyThreshold: next.clarifyThreshold,
       clarifyMaxAttempts: next.clarifyMaxAttempts,
+      handoffOnNegativeSentiment: next.handoffOnNegativeSentiment,
+      negativeSentimentThreshold: next.negativeSentimentThreshold,
+      sentimentTriggersHandoff: next.sentimentTriggersHandoff,
     },
   });
 
@@ -94,6 +106,9 @@ export async function updateChatSettings(
       clarifySystemPrompt: updated.clarifySystemPrompt,
       clarifyThreshold: updated.clarifyThreshold,
       clarifyMaxAttempts: updated.clarifyMaxAttempts,
+      handoffOnNegativeSentiment: updated.handoffOnNegativeSentiment,
+      negativeSentimentThreshold: updated.negativeSentimentThreshold,
+      sentimentTriggersHandoff: updated.sentimentTriggersHandoff,
     },
     providerChanged,
     previousProvider: current.provider,

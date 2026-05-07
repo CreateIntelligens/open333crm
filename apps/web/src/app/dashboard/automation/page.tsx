@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { Loader2, Plus, Zap } from 'lucide-react';
@@ -11,9 +11,25 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAutomationRules } from '@/hooks/useAutomation';
 
+type FilterKey = 'all' | 'message' | 'case' | 'handoff';
+
+const FILTERS: { key: FilterKey; label: string; matches: (t?: string) => boolean }[] = [
+  { key: 'all', label: '全部', matches: () => true },
+  { key: 'message', label: '訊息', matches: (t) => !!t && (t === 'message.received' || t === 'keyword.matched') },
+  { key: 'case', label: '案件', matches: (t) => !!t && t.startsWith('case.') },
+  { key: 'handoff', label: '轉真人', matches: (t) => t === 'conversation.handoff' },
+];
+
 export default function AutomationPage() {
   const router = useRouter();
   const { rules, isLoading, mutate } = useAutomationRules();
+  const [filter, setFilter] = useState<FilterKey>('all');
+
+  const filteredRules = useMemo(() => {
+    const f = FILTERS.find((f) => f.key === filter);
+    if (!f) return rules;
+    return rules.filter((rule: any) => f.matches(rule.trigger?.type ?? rule.triggerEvent));
+  }, [rules, filter]);
 
   const toggleActive = async (
     e: React.MouseEvent,
@@ -43,12 +59,30 @@ export default function AutomationPage() {
         </Button>
       </Topbar>
 
+      <div className="border-b px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                filter === f.key
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : rules.length === 0 ? (
+        ) : filteredRules.length === 0 ? (
           <EmptyState
             icon={<Zap className="h-12 w-12" />}
             title="沒有自動化規則"
@@ -88,7 +122,7 @@ export default function AutomationPage() {
                 </tr>
               </thead>
               <tbody>
-                {rules.map((rule) => (
+                {filteredRules.map((rule: any) => (
                   <tr
                     key={rule.id}
                     className="cursor-pointer border-b transition-colors hover:bg-muted/50"

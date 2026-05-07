@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { MessageSquare } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ChatWindowProps {
   conversation: {
@@ -97,6 +98,23 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       globalMutate(`/conversations/${conversation.id}`);
     } catch (err) {
       console.error('Handoff failed:', err);
+    }
+  };
+
+  const handleClaim = async () => {
+    if (!conversation) return;
+    try {
+      await api.post(`/conversations/${conversation.id}/claim`);
+      toast.success('已認領該對話');
+      globalMutate(`/conversations/${conversation.id}`);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        toast.error('該對話已被其他成員認領');
+      } else {
+        toast.error('認領失敗');
+        console.error('Claim failed:', err);
+      }
+      globalMutate(`/conversations/${conversation.id}`);
     }
   };
 
@@ -200,6 +218,16 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               value={conversation.assignedToId || ''}
               onChange={handleAssign}
             />
+            {conversation.status === 'AGENT_HANDLED' && !conversation.assignedToId && (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-8"
+                onClick={handleClaim}
+              >
+                認領
+              </Button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

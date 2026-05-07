@@ -2,10 +2,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, AlertTriangle, MessageSquare, UserCheck, Clock, CheckCheck } from 'lucide-react';
+import { Bell, AlertTriangle, MessageSquare, UserCheck, UserPlus, Clock, CheckCheck, Check } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
+import { toast } from 'sonner';
 import { useNotifications, useUnreadCount, useNotificationActions } from '@/hooks/useNotifications';
+import { useSocket } from '@/providers/SocketProvider';
+import { useBrowserNotification } from '@/hooks/useBrowserNotification';
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
   case_assigned: { icon: UserCheck, color: 'text-blue-500' },
@@ -13,6 +16,9 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string }> = 
   sla_warning: { icon: Clock, color: 'text-yellow-500' },
   sla_breached: { icon: AlertTriangle, color: 'text-red-500' },
   new_message: { icon: MessageSquare, color: 'text-green-500' },
+  conversation_assigned: { icon: UserPlus, color: 'text-purple-500' },
+  conversation_claimed_by_other: { icon: Check, color: 'text-muted-foreground' },
+  handoff_unassigned: { icon: AlertTriangle, color: 'text-yellow-500' },
 };
 
 export function NotificationBell() {
@@ -24,6 +30,29 @@ export function NotificationBell() {
   const { notifications, mutate: mutateList } = useNotifications({ limit: 10 });
   const { markAsRead, markAllAsRead } = useNotificationActions();
   const { mutate: mutateCount } = useUnreadCount();
+  const { socket } = useSocket();
+  const browserNotify = useBrowserNotification();
+
+  // Toast + browser notification on socket push.
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: any) => {
+      const title = data?.title ?? '新通知';
+      const body = data?.body ?? '';
+      const clickUrl = data?.clickUrl;
+      toast(title, {
+        description: body,
+        action: clickUrl
+          ? { label: '查看', onClick: () => router.push(clickUrl) }
+          : undefined,
+      });
+      browserNotify(title, body, clickUrl);
+    };
+    socket.on('notification.new', handler);
+    return () => {
+      socket.off('notification.new', handler);
+    };
+  }, [socket, router, browserNotify]);
 
   // Close dropdown on click outside
   useEffect(() => {

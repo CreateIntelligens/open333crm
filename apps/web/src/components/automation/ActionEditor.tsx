@@ -5,6 +5,8 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { AgentPicker } from '@/components/common/AgentPicker';
+import { TeamPicker } from '@/components/common/TeamPicker';
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
@@ -193,15 +195,69 @@ function ActionParamsForm({
         </div>
       );
 
-    case 'assign_agent':
+    case 'assign_agent': {
+      // Backward compat: old rules with `{ agentId }` and no `mode` are
+      // treated as `specific_agent`.
+      const mode =
+        ((payload.mode as string) ||
+          (payload.agentId ? 'specific_agent' : 'specific_agent')) as
+          | 'specific_agent'
+          | 'team_round_robin'
+          | 'team_broadcast';
       return (
-        <PayloadField
-          label="Agent UUID"
-          value={(payload.agentId as string) || ''}
-          onChange={(v) => updateParam('agentId', v)}
-          placeholder="輸入客服 Agent ID..."
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">指派模式</label>
+            <Select
+              value={mode}
+              onChange={(e) => {
+                const newMode = e.target.value;
+                // Reset irrelevant fields when switching mode.
+                const next: Record<string, unknown> = { mode: newMode };
+                if (newMode === 'specific_agent') {
+                  next.agentId = payload.agentId;
+                } else {
+                  next.teamId = payload.teamId;
+                }
+                onChange(next);
+              }}
+              options={[
+                { value: 'specific_agent', label: '指派給某位客服' },
+                { value: 'team_round_robin', label: '依團隊輪流（負載最少）' },
+                { value: 'team_broadcast', label: '廣播給整個團隊（先收先贏）' },
+              ]}
+            />
+          </div>
+
+          {mode === 'specific_agent' && (
+            <div>
+              <label className="block text-sm font-medium mb-1.5">客服</label>
+              <AgentPicker
+                value={(payload.agentId as string) || ''}
+                onChange={(v) => updateParam('agentId', v)}
+                placeholder="選擇客服"
+              />
+            </div>
+          )}
+
+          {(mode === 'team_round_robin' || mode === 'team_broadcast') && (
+            <div>
+              <label className="block text-sm font-medium mb-1.5">團隊</label>
+              <TeamPicker
+                value={(payload.teamId as string) || ''}
+                onChange={(v) => updateParam('teamId', v)}
+                placeholder="選擇團隊"
+              />
+              {mode === 'team_broadcast' && (
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  系統不會直接指派，團隊所有成員會收到認領通知，先按下認領的成員會接手該對話。
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       );
+    }
 
     case 'notify':
     case 'notify_supervisor':

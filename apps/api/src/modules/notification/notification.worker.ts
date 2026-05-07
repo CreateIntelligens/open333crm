@@ -195,9 +195,10 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   // ── conversation.assigned ──────────────────────────────────────────────
   eventBus.subscribe('conversation.assigned', async (event: AppEvent) => {
     try {
-      const { conversationId, assignedToId } = event.payload as {
+      const { conversationId, assignedToId, method } = event.payload as {
         conversationId?: string;
         assignedToId?: string;
+        method?: string;
       };
 
       if (!assignedToId || !conversationId) return;
@@ -205,9 +206,11 @@ export function setupNotificationWorker(prisma: PrismaClient) {
       await notificationQueue.add('notification:dispatch', {
         tenantId: event.tenantId,
         agentId: assignedToId,
-        type: 'new_message',
+        type: 'conversation_assigned',
         title: '對話已指派給您',
-        body: '您有一則新的對話指派',
+        body: method === 'team_round_robin'
+          ? '系統依照規則自動指派給您一則對話'
+          : '您有一則新的對話指派',
         clickUrl: `/dashboard/inbox?conv=${conversationId}`,
       }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue conversation.assigned', err));
 
@@ -217,7 +220,107 @@ export function setupNotificationWorker(prisma: PrismaClient) {
     }
   });
 
+  // ── conversation.handoff.broadcast ─────────────────────────────────────
+  // Broadcast mode: notify every member of the team but don't assign anyone.
+  // First agent to claim wins.
+  eventBus.subscribe('conversation.handoff.broadcast', async (event: AppEvent) => {
+    try {
+      const { conversationId, teamId } = event.payload as {
+        conversationId?: string;
+        teamId?: string;
+      };
+      if (!conversationId || !teamId) return;
+
+      const members = await prisma.agentTeamMember.findMany({
+        where: { teamId },
+        select: { agentId: true },
+      });
+
+      for (const m of members) {
+        await notificationQueue.add('notification:dispatch', {
+          tenantId: event.tenantId,
+          agentId: m.agentId,
+          type: 'conversation_assigned',
+          title: '有新的轉真人對話待認領',
+          body: '請點選「認領」以接手此對話',
+          clickUrl: `/dashboard/inbox?conv=${conversationId}&claim=1`,
+          payload: { broadcast: true, conversationId, teamId },
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue handoff.broadcast', err));
+      }
+
+      logger.info(`[NotificationWorker] handoff.broadcast → ${members.length} team member(s) of team ${teamId}`);
+    } catch (err) {
+      logger.error('[NotificationWorker] Error handling conversation.handoff.broadcast:', err);
+    }
+  });
+
+  // ── conversation.claimed ───────────────────────────────────────────────
+  // Inform other team members that someone has claimed the broadcast convo.
+  eventBus.subscribe('conversation.claimed', async (event: AppEvent) => {
+    try {
+      const { conversationId, claimedBy, claimedByName, teamId } = event.payload as {
+        conversationId?: string;
+        claimedBy?: string;
+        claimedByName?: string;
+        teamId?: string;
+      };
+      if (!conversationId || !claimedBy) return;
+
+      const recipientIds = teamId
+        ? (await prisma.agentTeamMember.findMany({
+            where: { teamId, agentId: { not: claimedBy } },
+            select: { agentId: true },
+          })).map((m) => m.agentId)
+        : [];
+
+      for (const agentId of recipientIds) {
+        await notificationQueue.add('notification:dispatch', {
+          tenantId: event.tenantId,
+          agentId,
+          type: 'conversation_claimed_by_other',
+          title: '對話已被認領',
+          body: `${claimedByName ?? '其他成員'} 已認領該對話`,
+          clickUrl: `/dashboard/inbox?conv=${conversationId}`,
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue conversation.claimed', err));
+      }
+
+      logger.info(`[NotificationWorker] conversation.claimed → ${recipientIds.length} other team member(s)`);
+    } catch (err) {
+      logger.error('[NotificationWorker] Error handling conversation.claimed:', err);
+    }
+  });
+
+  // ── handoff.unassigned ─────────────────────────────────────────────────
+  // No agent could be auto-assigned (e.g. team empty); ping admins.
+  eventBus.subscribe('handoff.unassigned', async (event: AppEvent) => {
+    try {
+      const { conversationId, reason } = event.payload as {
+        conversationId?: string;
+        reason?: string;
+      };
+      if (!conversationId) return;
+
+      const supervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
+      for (const agentId of supervisorIds) {
+        await notificationQueue.add('notification:dispatch', {
+          tenantId: event.tenantId,
+          agentId,
+          type: 'handoff_unassigned',
+          title: '對話無法自動指派',
+          body: reason
+            ? `轉真人對話無法自動指派：${reason}`
+            : '有一則轉真人對話無法自動指派，請手動處理',
+          clickUrl: `/dashboard/inbox?conv=${conversationId}`,
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue handoff.unassigned', err));
+      }
+
+      logger.info(`[NotificationWorker] handoff.unassigned → ${supervisorIds.length} supervisor(s)/admin(s)`);
+    } catch (err) {
+      logger.error('[NotificationWorker] Error handling handoff.unassigned:', err);
+    }
+  });
+
   logger.info(
-    '[NotificationWorker] Subscribed to events: case.assigned, case.escalated, sla.warning, sla.breached, message.received, conversation.assigned',
+    '[NotificationWorker] Subscribed to events: case.assigned, case.escalated, sla.warning, sla.breached, message.received, conversation.assigned, conversation.handoff.broadcast, conversation.claimed, handoff.unassigned',
   );
 }
