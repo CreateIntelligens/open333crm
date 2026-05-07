@@ -80,24 +80,26 @@ export async function sendCsatSurvey(
   const caseRecord = await prisma.case.findUnique({
     where: { id: caseId },
     include: {
-      conversation: { include: { channel: true } },
+      conversations: {
+        include: { channel: true },
+        take: 1,
+      },
     },
   });
 
   if (!caseRecord) return false;
   if (caseRecord.status !== 'RESOLVED') return false;
   if (caseRecord.csatSentAt) return false; // already sent
-  if (!caseRecord.conversationId) return false;
-
-  const conversation = caseRecord.conversation;
-  if (!conversation) return false;
+  const conversation = caseRecord.conversations[0];
+  const conversationId = conversation?.id;
+  if (!conversationId) return false;
 
   const now = new Date();
 
   // Create CSAT system message in conversation
   const csatMessage = await prisma.message.create({
     data: {
-      conversationId: caseRecord.conversationId,
+      conversationId,
       direction: 'OUTBOUND',
       senderType: 'SYSTEM',
       contentType: 'csat',
@@ -116,13 +118,13 @@ export async function sendCsatSurvey(
 
   // Update conversation lastMessageAt
   await prisma.conversation.update({
-    where: { id: caseRecord.conversationId },
+    where: { id: conversationId },
     data: { lastMessageAt: now },
   });
 
   // Emit WebSocket
   const wsPayload = {
-    conversationId: caseRecord.conversationId,
+    conversationId,
     message: {
       id: csatMessage.id,
       conversationId: csatMessage.conversationId,
@@ -134,7 +136,7 @@ export async function sendCsatSurvey(
       sender: null,
     },
   };
-  io.to(`conversation:${caseRecord.conversationId}`).emit('message.new', wsPayload);
+  io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
   io.to(`tenant:${caseRecord.tenantId}`).emit('message.new', wsPayload);
 
   // Deliver to external channel
@@ -161,7 +163,7 @@ export async function sendCsatSurvey(
       // FB / WEBCHAT: fallback to text-based CSAT
       await deliverToChannel(
         prisma,
-        caseRecord.conversationId,
+        conversationId,
         '感謝您的耐心等候！請評價此次服務體驗（1-5 分），回覆 csat:分數 即可，例如 csat:5',
       );
     }
@@ -198,6 +200,12 @@ export async function recordCsatScore(
 ): Promise<boolean> {
   const caseRecord = await prisma.case.findUnique({
     where: { id: caseId },
+    include: {
+      conversations: {
+        select: { id: true },
+        take: 1,
+      },
+    },
   });
 
   if (!caseRecord) return false;
@@ -205,6 +213,7 @@ export async function recordCsatScore(
   if (score < 1 || score > 5) return false;
 
   const now = new Date();
+  const conversationId = caseRecord.conversations[0]?.id;
 
   // Update case with CSAT data
   await prisma.case.update({
@@ -219,11 +228,11 @@ export async function recordCsatScore(
   // Send follow-up message
   const followUp = getFollowUpMessage(score);
 
-  if (caseRecord.conversationId) {
+  if (conversationId) {
     // Create follow-up message in conversation
     const followUpMsg = await prisma.message.create({
       data: {
-        conversationId: caseRecord.conversationId,
+        conversationId,
         direction: 'OUTBOUND',
         senderType: 'SYSTEM',
         contentType: 'text',
@@ -235,13 +244,13 @@ export async function recordCsatScore(
     });
 
     await prisma.conversation.update({
-      where: { id: caseRecord.conversationId },
+      where: { id: conversationId },
       data: { lastMessageAt: now },
     });
 
     // Emit WebSocket
     const wsPayload = {
-      conversationId: caseRecord.conversationId,
+      conversationId,
       message: {
         id: followUpMsg.id,
         conversationId: followUpMsg.conversationId,
@@ -253,11 +262,11 @@ export async function recordCsatScore(
         sender: null,
       },
     };
-    io.to(`conversation:${caseRecord.conversationId}`).emit('message.new', wsPayload);
+    io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
     io.to(`tenant:${caseRecord.tenantId}`).emit('message.new', wsPayload);
 
     // Deliver follow-up to channel
-    deliverToChannel(prisma, caseRecord.conversationId, followUp).catch(() => {});
+    deliverToChannel(prisma, conversationId, followUp).catch(() => {});
   }
 
   // Low score: notify supervisor
@@ -301,7 +310,7 @@ export async function recordCsatScore(
         caseId,
         contactId: caseRecord.contactId,
         channelId: caseRecord.channelId,
-        conversationId: caseRecord.conversationId,
+        conversationId,
         assigneeId: caseRecord.assigneeId,
         title: caseRecord.title,
         csatScore: score,

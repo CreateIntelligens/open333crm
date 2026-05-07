@@ -478,7 +478,7 @@ model Conversation {
   channelType     ChannelType
   status          ConversationStatus @default(ACTIVE)
   assignedToId    String?            @db.Uuid
-  caseId          String?            @unique @db.Uuid
+  caseId          String?            @db.Uuid
   unreadCount     Int                @default(0)
   lastMessageAt   DateTime?
   botRepliesCount Int                @default(0)
@@ -498,6 +498,7 @@ model Conversation {
 
   @@index([tenantId, status])
   @@index([tenantId, contactId])
+  @@index([caseId])
   @@index([tenantId, lastMessageAt(sort: Desc)])
   @@map("conversations")
 }
@@ -531,7 +532,6 @@ model Case {
   tenantId        String     @db.Uuid
   contactId       String     @db.Uuid
   channelId       String     @db.Uuid
-  conversationId  String?    @db.Uuid
   title           String
   description     String?
   status          CaseStatus @default(OPEN)
@@ -557,7 +557,7 @@ model Case {
   contact      Contact       @relation(fields: [contactId], references: [id])
   assignee     Agent?        @relation("AssignedAgent", fields: [assigneeId], references: [id])
   team         Team?         @relation(fields: [teamId], references: [id])
-  conversation Conversation?
+  conversations Conversation[]
 
   mergedInto  Case?  @relation("MergedCases", fields: [mergedIntoId], references: [id])
   mergedCases Case[] @relation("MergedCases")

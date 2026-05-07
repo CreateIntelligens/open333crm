@@ -1,25 +1,22 @@
-## Purpose
-Define the Case Management API contract for case lifecycle operations, status transition validation, and conversation linking.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Case Deletion API
-The API SHALL provide an authenticated, tenant-scoped `DELETE /api/v1/cases/:id` endpoint to delete a Case by id.
+The system SHALL provide an authenticated, tenant-scoped API endpoint to delete a Case by id.
 
 #### Scenario: Delete an existing Case
 - **WHEN** an authenticated agent deletes a Case that belongs to the agent's tenant
-- **THEN** the system deletes the Case, unlinks related Conversations, emits `case.deleted` to the tenant room, and returns success
+- **THEN** the system removes the Case, removes dependent Case events and notes, unlinks related Conversations, emits `case.deleted` to the tenant room, and returns success
 
 #### Scenario: Delete a Case from another tenant
 - **WHEN** an authenticated agent attempts to delete a Case that does not belong to the agent's tenant
-- **THEN** the system returns not found and does not delete the Case
+- **THEN** the system rejects the request with a not found response and does not delete the Case
 
 ### Requirement: Case Status Transition Validation
-The system SHALL validate every public Case status change using the shared Case transition rules.
+The system SHALL validate every public Case status change using the shared Case status transition rules.
 
 #### Scenario: Reject closed to in progress transition
 - **WHEN** an authenticated agent attempts to change a Case from `CLOSED` directly to `IN_PROGRESS`
-- **THEN** the system rejects the request with an invalid transition error and leaves the Case unchanged
+- **THEN** the system rejects the request with an invalid transition error and leaves the Case status unchanged
 
 #### Scenario: Allow closed to open reopen transition
 - **WHEN** an authenticated agent reopens a Case from `CLOSED`
@@ -37,9 +34,9 @@ The system SHALL support linking multiple Conversations to one Case while ensuri
 - **THEN** the system rejects the request with a conflict response and does not create another Case
 
 #### Scenario: Link another Conversation to existing Case
-- **WHEN** an authenticated agent links an unlinked Conversation from the same tenant to an existing Case
-- **THEN** the system links the Conversation to that Case and the Case detail exposes the linked Conversations
+- **WHEN** an authenticated agent links a second unlinked Conversation from the same tenant to an existing Case
+- **THEN** the system links the Conversation to that Case and the Case detail exposes both linked Conversations
 
 #### Scenario: Reject cross-tenant Conversation link
 - **WHEN** an authenticated agent attempts to link a Conversation from another tenant to a Case
-- **THEN** the system rejects the request with not found and does not change either record
+- **THEN** the system rejects the request with a not found response and does not change either record
