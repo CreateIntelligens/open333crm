@@ -131,7 +131,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               onChange={(e) => setBotMode(e.target.value)}
               options={botModeOptions}
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               {botMode === 'off' ? '新對話將直接由真人客服處理' :
                botMode === 'keyword' ? '僅根據關鍵字觸發 KB 回覆' :
                botMode === 'llm' ? '使用 LLM 自動回覆所有訊息' :
@@ -149,7 +149,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               value={maxBotReplies}
               onChange={(e) => setMaxBotReplies(parseInt(e.target.value) || 5)}
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               超過此次數後自動轉接真人客服
             </p>
           </div>
@@ -166,7 +166,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
                   {kw}
                   <button
                     onClick={() => handleRemoveKeyword(kw)}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-ink-subtle hover:text-foreground"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -185,7 +185,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
                 新增
               </Button>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               客戶訊息包含這些關鍵字時，自動轉接真人
             </p>
           </div>
@@ -210,7 +210,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               placeholder="留空則使用系統預設的非營業時間回覆"
               rows={2}
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               非營業時間收到訊息時的自動回覆（留空使用系統預設）
             </p>
           </div>

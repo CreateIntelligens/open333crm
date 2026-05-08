@@ -74,9 +74,9 @@ export function VariablePicker({ categories, onInsert, disabled }: VariablePicke
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border bg-background shadow-lg">
-          <div className="p-2 border-b">
+          <div className="p-2 border-b border-surface-line">
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-ink-subtle" />
               <Input
                 autoFocus
                 value={search}
@@ -89,11 +89,11 @@ export function VariablePicker({ categories, onInsert, disabled }: VariablePicke
 
           <div className="max-h-64 overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">找不到符合的變數</p>
+              <p className="px-3 py-2 text-xs text-ink-subtle">找不到符合的變數</p>
             ) : (
               filtered.map((cat) => (
                 <div key={cat.category}>
-                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink-subtle">
                     {cat.category}
                   </p>
                   {cat.variables.map((v) => (
@@ -107,7 +107,7 @@ export function VariablePicker({ categories, onInsert, disabled }: VariablePicke
                       )}
                     >
                       <span className="font-medium">{v.label}</span>
-                      <span className="ml-2 text-[10px] text-muted-foreground font-mono truncate">
+                      <span className="ml-2 text-[10px] text-ink-subtle font-mono truncate">
                         {`{{${v.key}}}`}
                       </span>
                     </button>

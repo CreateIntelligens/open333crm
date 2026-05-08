@@ -217,7 +217,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 className={`h-1 flex-1 rounded-full ${
                   i <= ['type', 'credentials', 'verify', 'done'].indexOf(step)
                     ? 'bg-primary'
-                    : 'bg-muted'
+                    : 'bg-surface-canvas'
                 }`}
               />
             ))}
@@ -264,7 +264,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                       onChange={(e) => setChannelSecret(e.target.value)}
                       placeholder="從 LINE Developer Console 取得"
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-ink-subtle">
                       LINE Developer Console → Messaging API → Channel Secret
                     </p>
                   </div>
@@ -276,7 +276,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                       onChange={(e) => setChannelAccessToken(e.target.value)}
                       placeholder="從 LINE Developer Console 取得"
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-ink-subtle">
                       LINE Developer Console → Messaging API → Channel Access Token (long-lived)
                     </p>
                   </div>
@@ -318,7 +318,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
           {step === 'verify' && (
             <div className="flex flex-col items-center justify-center py-8 space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">正在驗證渠道連線...</p>
+              <p className="text-sm text-ink-subtle">正在驗證渠道連線...</p>
             </div>
           )}
 
@@ -348,7 +348,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 <div className="space-y-2">
                   <p className="text-sm font-medium">嵌入碼</p>
                   <div className="relative">
-                    <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+                    <pre className="rounded-md bg-surface-canvas p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
                       {verify.embedCode}
                     </pre>
                     <Button
@@ -360,7 +360,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-ink-subtle">
                     將此程式碼貼入您網站的 {'<body>'} 標籤中即可啟用聊天功能。
                   </p>
                 </div>

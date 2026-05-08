@@ -9,28 +9,30 @@ interface ChannelBadgeProps {
   className?: string;
 }
 
+// Per Figma "Tag / Channel" spec — paired bg + text colors
 const channelConfig: Record<string, { bg: string; text: string; label: string }> = {
-  LINE: { bg: 'bg-green-100', text: 'text-green-700', label: 'LINE' },
-  FB: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  WEBCHAT: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
-  WHATSAPP: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'WhatsApp' },
-  EMAIL: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Email' },
+  LINE: { bg: 'bg-[#EEF5F0]', text: 'text-[#008236]', label: 'LINE' },
+  FB: { bg: 'bg-[#EFF6FF]', text: 'text-[#378ADD]', label: 'FB' },
+  WEBCHAT: { bg: 'bg-neutral-30', text: 'text-ink-subtle', label: 'WebChat' },
+  WHATSAPP: { bg: 'bg-[#E8F8EE]', text: 'text-[#075E54]', label: 'WhatsApp' },
+  EMAIL: { bg: 'bg-brand-10', text: 'text-brand-80', label: 'Email' },
+  SMS: { bg: 'bg-f-orange-10', text: 'text-f-orange-80', label: 'SMS' },
 };
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
   const config = channelConfig[channel] || {
-    bg: 'bg-gray-100',
-    text: 'text-gray-700',
+    bg: 'bg-neutral-30',
+    text: 'text-ink-subtle',
     label: channel,
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center rounded-card px-2 py-0 text-[12px] font-semibold leading-5',
         config.bg,
         config.text,
-        className
+        className,
       )}
     >
       {config.label}

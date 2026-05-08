@@ -41,14 +41,14 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
   if (isLoading) {
     return (
       <div className="flex h-[300px] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-[300px] items-center justify-center text-sm text-ink-subtle">
         尚無資料
       </div>
     );
@@ -63,7 +63,7 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
         </CardHeader>
         <CardContent>
           {data.messagesByChannel.length === 0 ? (
-            <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">尚無資料</div>
+            <div className="flex h-[240px] items-center justify-center text-sm text-ink-subtle">尚無資料</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
@@ -95,7 +95,7 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
         </CardHeader>
         <CardContent>
           {data.botVsHuman.length === 0 ? (
-            <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">尚無資料</div>
+            <div className="flex h-[240px] items-center justify-center text-sm text-ink-subtle">尚無資料</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
@@ -127,7 +127,7 @@ export function ChannelDistributionChart({ data, isLoading }: ChannelDistributio
         </CardHeader>
         <CardContent>
           {data.conversationsByChannel.length === 0 ? (
-            <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">尚無資料</div>
+            <div className="flex h-[240px] items-center justify-center text-sm text-ink-subtle">尚無資料</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={data.conversationsByChannel}>

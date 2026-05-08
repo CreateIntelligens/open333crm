@@ -208,7 +208,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
                 {caseData.title}
               </CardTitle>
             )}
-            <p className="mt-1 text-sm text-muted-foreground font-mono">
+            <p className="mt-1 text-sm text-ink-subtle font-mono">
               #{caseData.id.slice(0, 8)}
             </p>
           </div>
@@ -219,7 +219,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         {/* Description */}
         {caseData.description && (
           <div>
-            <h4 className="mb-1 text-sm font-medium text-muted-foreground">描述</h4>
+            <h4 className="mb-1 text-sm font-medium text-ink-subtle">描述</h4>
             <p className="text-sm">{caseData.description}</p>
           </div>
         )}
@@ -228,7 +228,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
         {/* Status Dropdown */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">狀態</h4>
+          <h4 className="mb-2 text-sm font-medium text-ink-subtle">狀態</h4>
           <Select
             value={caseData.status}
             onChange={(e) => handleStatusChange(e.target.value)}
@@ -242,7 +242,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
         {/* Priority Dropdown */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">優先級</h4>
+          <h4 className="mb-2 text-sm font-medium text-ink-subtle">優先級</h4>
           <Select
             value={caseData.priority}
             onChange={(e) => handlePatch({ priority: e.target.value })}
@@ -256,7 +256,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
         {/* Category Dropdown */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">分類</h4>
+          <h4 className="mb-2 text-sm font-medium text-ink-subtle">分類</h4>
           <Select
             value={caseData.category || ''}
             onChange={(e) => handlePatch({ category: e.target.value })}
@@ -265,7 +265,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             className="max-w-xs"
           />
           {caseData.category && (
-            <p className="mt-1 text-[11px] text-muted-foreground">🤖 AI 自動分類</p>
+            <p className="mt-1 text-[11px] text-ink-subtle">🤖 AI 自動分類</p>
           )}
         </div>
 
@@ -273,7 +273,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
         {/* Assignee */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">負責人</h4>
+          <h4 className="mb-2 text-sm font-medium text-ink-subtle">負責人</h4>
           <Select
             value={caseData.assignee?.id || ''}
             onChange={(e) => handleAssign(e.target.value)}
@@ -290,7 +290,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
         {/* Team */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">團隊</h4>
+          <h4 className="mb-2 text-sm font-medium text-ink-subtle">團隊</h4>
           <Select
             value={caseData.team?.id || ''}
             onChange={(e) => handlePatch({ teamId: e.target.value || null })}
@@ -307,18 +307,18 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
         {/* SLA Block */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1">
+          <h4 className="mb-2 text-sm font-medium text-ink-subtle flex items-center gap-1">
             <Shield className="h-4 w-4" />
             SLA
           </h4>
           <div className="space-y-1.5 text-sm">
             {caseData.slaPolicy && (
-              <p className="text-muted-foreground">
+              <p className="text-ink-subtle">
                 政策：<span className="font-medium text-foreground">{caseData.slaPolicy}</span>
               </p>
             )}
             {caseData.slaPolicyData?.firstResponseMinutes != null && (
-              <p className="text-muted-foreground">
+              <p className="text-ink-subtle">
                 首次回應：
                 {slaFirstResponseMet === true && <span className="text-green-600 font-medium ml-1">已達 ✓</span>}
                 {slaFirstResponseMet === false && <span className="text-red-600 font-medium ml-1">未達 ✗</span>}
@@ -326,12 +326,12 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
               </p>
             )}
             {caseData.slaPolicyData?.resolutionMinutes != null && (
-              <p className="text-muted-foreground">
+              <p className="text-ink-subtle">
                 解決目標：<span className="font-medium text-foreground">{caseData.slaPolicyData.resolutionMinutes / 60} 小時</span>
               </p>
             )}
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
+              <Clock className="h-4 w-4 text-ink-subtle" />
               <SlaCountdown deadline={caseData.slaDueAt || null} />
             </div>
           </div>
@@ -343,7 +343,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         {caseData.conversationId && (
           <>
             <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">
+              <h4 className="mb-2 text-sm font-medium text-ink-subtle">
                 關聯對話
               </h4>
               <Link
@@ -362,9 +362,9 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         {caseData.contact && (
           <>
             <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">聯繫人</h4>
+              <h4 className="mb-2 text-sm font-medium text-ink-subtle">聯繫人</h4>
               <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
+                <User className="h-4 w-4 text-ink-subtle" />
                 <Link
                   href={`/dashboard/contacts/${caseData.contact.id}`}
                   className="text-sm font-medium text-primary hover:underline"
@@ -413,7 +413,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         )}
 
         {/* Timestamps */}
-        <div className="flex gap-6 text-xs text-muted-foreground">
+        <div className="flex gap-6 text-xs text-ink-subtle">
           <div>
             <span className="font-medium">建立時間：</span>{' '}
             {format(new Date(caseData.createdAt), 'MMM d, yyyy HH:mm')}
@@ -431,7 +431,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
           <DialogHeader>
             <DialogTitle>確認關閉案件</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             確定要關閉此案件嗎？關閉後可從已關閉清單重新開啟。
           </p>
           <DialogFooter>

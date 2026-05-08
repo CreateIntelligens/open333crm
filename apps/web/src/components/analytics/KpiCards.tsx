@@ -40,14 +40,14 @@ function KpiCard({ icon, title, value, subtitle, color, isLoading }: KpiCardProp
             {icon}
           </div>
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{title}</p>
+            <p className="text-sm text-ink-subtle">{title}</p>
             {isLoading ? (
-              <Loader2 className="mt-1 h-5 w-5 animate-spin text-muted-foreground" />
+              <Loader2 className="mt-1 h-5 w-5 animate-spin text-ink-subtle" />
             ) : (
               <>
                 <p className="text-2xl font-bold">{value ?? '-'}</p>
                 {subtitle && (
-                  <p className="text-xs text-muted-foreground">{subtitle}</p>
+                  <p className="text-xs text-ink-subtle">{subtitle}</p>
                 )}
               </>
             )}

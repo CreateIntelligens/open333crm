@@ -59,7 +59,7 @@ export default function AutomationPage() {
         </Button>
       </Topbar>
 
-      <div className="border-b px-4 py-3">
+      <div className="border-b border-surface-line px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           {FILTERS.map((f) => (
             <button
@@ -68,7 +68,7 @@ export default function AutomationPage() {
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 filter === f.key
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  : 'bg-surface-canvas text-ink-subtle hover:bg-neutral-30'
               }`}
             >
               {f.label}
@@ -80,7 +80,7 @@ export default function AutomationPage() {
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
           </div>
         ) : filteredRules.length === 0 ? (
           <EmptyState
@@ -100,23 +100,23 @@ export default function AutomationPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-muted/50 text-left">
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+                <tr className="border-b border-surface-line bg-neutral-20 text-left">
+                  <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
                     名稱
                   </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+                  <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
                     描述
                   </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+                  <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
                     優先級
                   </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+                  <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
                     啟用
                   </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+                  <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
                     命中後停止
                   </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+                  <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
                     執行次數
                   </th>
                 </tr>
@@ -125,7 +125,7 @@ export default function AutomationPage() {
                 {filteredRules.map((rule: any) => (
                   <tr
                     key={rule.id}
-                    className="cursor-pointer border-b transition-colors hover:bg-muted/50"
+                    className="cursor-pointer border-b border-surface-line transition-colors hover:bg-neutral-20"
                     onClick={() =>
                       router.push(`/dashboard/automation/${rule.id}`)
                     }
@@ -142,7 +142,7 @@ export default function AutomationPage() {
 
                     {/* Description */}
                     <td className="px-4 py-3">
-                      <p className="max-w-xs truncate text-sm text-muted-foreground">
+                      <p className="max-w-xs truncate text-sm text-ink-subtle">
                         {rule.description || '--'}
                       </p>
                     </td>
@@ -155,7 +155,7 @@ export default function AutomationPage() {
                       <button
                         onClick={(e) => toggleActive(e, rule.id, rule.isActive)}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          rule.isActive ? 'bg-primary' : 'bg-muted'
+                          rule.isActive ? 'bg-primary' : 'bg-surface-canvas'
                         }`}
                       >
                         <span
@@ -175,12 +175,12 @@ export default function AutomationPage() {
                           是
                         </Badge>
                       ) : (
-                        <span className="text-muted-foreground">否</span>
+                        <span className="text-ink-subtle">否</span>
                       )}
                     </td>
 
                     {/* Execution count */}
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                    <td className="px-4 py-3 text-sm text-ink-subtle">
                       {rule.runCount ?? 0}
                       {rule.lastRunAt && (
                         <span className="ml-2 text-xs">

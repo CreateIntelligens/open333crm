@@ -6,6 +6,7 @@ import { SWRConfig } from 'swr';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { SocketProvider } from '@/providers/SocketProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { LayoutTopbar } from '@/components/layout/LayoutTopbar';
 import { SimulatorPanel } from '@/components/shared/SimulatorPanel';
 import { Loader2 } from 'lucide-react';
 
@@ -35,7 +36,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <SocketProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-hidden">{children}</main>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <LayoutTopbar />
+          <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        </div>
       </div>
       <SimulatorPanel />
     </SocketProvider>

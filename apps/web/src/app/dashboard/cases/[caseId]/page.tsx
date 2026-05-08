@@ -40,7 +40,7 @@ export default function CaseDetailPage() {
       <div className="flex h-full flex-col">
         <Topbar title="工單詳情" />
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="h-8 w-8 animate-spin text-ink-subtle" />
         </div>
       </div>
     );
@@ -51,7 +51,7 @@ export default function CaseDetailPage() {
       <div className="flex h-full flex-col">
         <Topbar title="工單詳情" />
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-muted-foreground">找不到工單</p>
+          <p className="text-ink-subtle">找不到工單</p>
         </div>
       </div>
     );
@@ -151,8 +151,8 @@ export default function CaseDetailPage() {
       </Topbar>
 
       {/* Breadcrumb */}
-      <div className="border-b px-6 py-2">
-        <nav className="flex items-center text-sm text-muted-foreground">
+      <div className="border-b border-surface-line px-6 py-2">
+        <nav className="flex items-center text-sm text-ink-subtle">
           <Link href="/dashboard/cases" className="hover:text-foreground">
             案件
           </Link>

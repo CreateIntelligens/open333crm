@@ -65,7 +65,7 @@ export function SubmissionsView() {
       {selectedId && (
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted">
+            <thead className="bg-surface-canvas">
               <tr>
                 <th className="text-left p-3">聯繫人</th>
                 <th className="text-left p-3">提交時間</th>
@@ -88,7 +88,7 @@ export function SubmissionsView() {
                   <tr key={s.id as string} className="border-t">
                     <td className="p-3">{contact?.displayName as string}</td>
                     <td className="p-3">{new Date(s.createdAt as string).toLocaleString('zh-TW')}</td>
-                    <td className="p-3 text-muted-foreground">{answerSummary}</td>
+                    <td className="p-3 text-ink-subtle">{answerSummary}</td>
                     {selectedActivity?.type === 'QUIZ' && <td className="p-3">{s.score as number ?? '-'}</td>}
                     <td className="p-3">
                       {s.isWinner ? <Badge color="#22c55e">中獎</Badge> : '-'}
@@ -99,7 +99,7 @@ export function SubmissionsView() {
               })}
               {submissions.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="p-8 text-center text-ink-subtle">
                     尚無提交記錄
                   </td>
                 </tr>

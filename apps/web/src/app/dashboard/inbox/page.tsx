@@ -53,6 +53,7 @@ export default function InboxPage() {
         id: selectedConversation.id as string,
         status: selectedConversation.status as string,
         botRepliesCount: (selectedConversation.botRepliesCount as number) || 0,
+        assignedToId: (selectedConversation.assignedToId as string | undefined) || null,
         contact: contact ? {
           id: contact.id as string,
           name: (contact.name || contact.displayName) as string | undefined,
@@ -92,37 +93,36 @@ export default function InboxPage() {
     : null;
 
   return (
-    <div className="flex h-full">
-      {/* Left panel - Conversation List */}
-      <div className="w-80 shrink-0 border-r">
+    <div className="flex h-full min-h-0 overflow-hidden">
+      {/* Left panel - Conversation List (Figma fixed ~310px) */}
+      <div className="flex h-full min-h-0 w-[310px] shrink-0 flex-col border-r border-surface-line">
         <ConversationList
           selectedId={convId}
           onSelect={handleSelectConversation}
         />
       </div>
 
-      {/* Center panel - Chat Window */}
-      <div className="relative flex-1">
+      {/* Center panel - Chat Window (flex-1, takes remaining space) */}
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
         <ChatWindow
           conversation={chatConversation}
           onShowAiSuggest={() => setShowAiSuggest((v) => !v)}
           showAiSuggest={showAiSuggest}
+          aiSuggestSlot={
+            convId && showAiSuggest ? (
+              <AiSuggestPanel
+                open={showAiSuggest}
+                onClose={() => setShowAiSuggest(false)}
+                conversationId={convId}
+                inline
+                onAdopt={(text) => {
+                  setShowAiSuggest(false);
+                  window.dispatchEvent(new CustomEvent('ai-adopt', { detail: { text } }));
+                }}
+              />
+            ) : null
+          }
         />
-        {/* AI Suggest Panel */}
-        {convId && (
-          <AiSuggestPanel
-            open={showAiSuggest}
-            onClose={() => setShowAiSuggest(false)}
-            conversationId={convId}
-            onAdopt={(text) => {
-              // We'll use a simple approach: set the text in MessageInput via state
-              setShowAiSuggest(false);
-              // Trigger a custom event for the MessageInput to pick up
-              window.dispatchEvent(new CustomEvent('ai-adopt', { detail: { text } }));
-            }}
-          />
-        )}
-        {/* Handoff Modal */}
         {convId && (
           <HandoffModal
             open={showHandoffModal}
@@ -133,8 +133,8 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Right panel - Contact Info */}
-      <div className="w-72 shrink-0 border-l">
+      {/* Right panel - Customer Sidebar (Figma fixed ~328px) */}
+      <div className="flex h-full min-h-0 w-[328px] shrink-0 flex-col border-l border-surface-line">
         <ContactInfoPanel conversation={infoPanelConversation} />
       </div>
     </div>

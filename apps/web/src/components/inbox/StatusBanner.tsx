@@ -13,7 +13,7 @@ interface StatusBannerProps {
 export function StatusBanner({ status, onReopen, onTakeover }: StatusBannerProps) {
   if (status === 'BOT_HANDLED') {
     return (
-      <div className="flex items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
+      <div className="flex shrink-0 items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
         <div className="flex items-center gap-2 text-sm text-purple-700">
           <Bot className="h-4 w-4" />
           <span className="font-medium">Bot 自動處理中</span>
@@ -29,7 +29,7 @@ export function StatusBanner({ status, onReopen, onTakeover }: StatusBannerProps
 
   if (status === 'CLOSED') {
     return (
-      <div className="flex items-center justify-between bg-gray-50 px-4 py-2 border-b border-gray-200">
+      <div className="flex shrink-0 items-center justify-between bg-gray-50 px-4 py-2 border-b border-gray-200">
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Lock className="h-4 w-4" />
           <span className="font-medium">此對話已關閉</span>

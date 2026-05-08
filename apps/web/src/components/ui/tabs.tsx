@@ -37,7 +37,7 @@ function TabsList({ children, className, activeValue, onValueChange }: TabsListP
   return (
     <div
       className={cn(
-        'inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground',
+        'inline-flex h-10 items-center justify-start rounded-md bg-surface-canvas p-1 text-ink-subtle',
         className
       )}
     >

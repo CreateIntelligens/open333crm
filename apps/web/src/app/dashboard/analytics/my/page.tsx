@@ -29,9 +29,9 @@ function MetricCard({ label, value, target, unit = '', higherIsBetter = true, is
   return (
     <Card>
       <CardContent className="p-5">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-sm text-ink-subtle">{label}</p>
         {isLoading ? (
-          <Loader2 className="mt-2 h-5 w-5 animate-spin text-muted-foreground" />
+          <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-subtle" />
         ) : (
           <div className="mt-1 flex items-center gap-2">
             <p className="text-2xl font-bold">
@@ -42,7 +42,7 @@ function MetricCard({ label, value, target, unit = '', higherIsBetter = true, is
           </div>
         )}
         {target != null && (
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-ink-subtle">
             目標: {target}{unit}
           </p>
         )}

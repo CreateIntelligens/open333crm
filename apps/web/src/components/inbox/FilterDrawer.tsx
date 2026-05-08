@@ -93,9 +93,9 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
       >
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center justify-between border-b border-surface-line px-4 py-3">
             <h3 className="text-sm font-semibold">進階篩選</h3>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <button onClick={onClose} className="text-ink-subtle hover:text-foreground">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -104,7 +104,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
           <div className="flex-1 overflow-y-auto p-4 space-y-5">
             {/* Status */}
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+              <h4 className="mb-2 text-xs font-semibold uppercase text-ink-subtle">
                 對話狀態
               </h4>
               <div className="space-y-1.5">
@@ -124,7 +124,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
 
             {/* Channel */}
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+              <h4 className="mb-2 text-xs font-semibold uppercase text-ink-subtle">
                 渠道
               </h4>
               <div className="space-y-1.5">
@@ -144,7 +144,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
 
             {/* Assignee */}
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+              <h4 className="mb-2 text-xs font-semibold uppercase text-ink-subtle">
                 指派
               </h4>
               <select
@@ -162,7 +162,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
           </div>
 
           {/* Footer */}
-          <div className="border-t p-4 space-y-2">
+          <div className="border-t border-surface-line p-4 space-y-2">
             <Button className="w-full" size="sm" onClick={handleApply}>
               套用篩選
             </Button>

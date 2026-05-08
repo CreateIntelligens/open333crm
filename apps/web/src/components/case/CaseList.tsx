@@ -9,11 +9,11 @@ import { CasePriorityBadge } from './CasePriorityBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { EmptyState } from '@/components/shared/EmptyState';
 
-const PRIORITY_COLORS: Record<string, string> = {
-  URGENT: 'bg-red-500',
-  HIGH: 'bg-orange-500',
-  MEDIUM: 'bg-blue-500',
-  LOW: 'bg-gray-400',
+const PRIORITY_BAR: Record<string, string> = {
+  URGENT: 'bg-f-red-60',
+  HIGH: 'bg-f-orange-60',
+  MEDIUM: 'bg-f-lime-60',
+  LOW: 'bg-neutral-50',
 };
 
 interface CaseListProps {
@@ -38,7 +38,7 @@ export function CaseList({ cases, isLoading }: CaseListProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -57,33 +57,33 @@ export function CaseList({ cases, isLoading }: CaseListProps) {
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
-          <tr className="border-b bg-muted/50 text-left">
+          <tr className="border-b border-surface-line bg-surface-canvas text-left">
             <th className="w-1" />
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               ID
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               標題
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               聯繫人
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               分類
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               優先級
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               狀態
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               負責人
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               SLA
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               建立時間
             </th>
           </tr>
@@ -92,34 +92,47 @@ export function CaseList({ cases, isLoading }: CaseListProps) {
           {cases.map((c) => (
             <tr
               key={c.id}
-              className="cursor-pointer border-b transition-colors hover:bg-muted/50 relative"
+              className="cursor-pointer border-b border-surface-line transition-colors hover:bg-neutral-20"
               onClick={() => router.push(`/dashboard/cases/${c.id}`)}
             >
               {/* Priority color bar */}
               <td className="w-1 p-0">
-                <div className={`h-full w-1 ${PRIORITY_COLORS[c.priority] || 'bg-gray-300'}`} />
+                <div className={`h-full w-1 ${PRIORITY_BAR[c.priority.toUpperCase()] || 'bg-neutral-50'}`} />
               </td>
-              <td className="px-4 py-3 text-sm font-mono text-muted-foreground">
+              <td className="px-4 py-3 font-mono text-[13px] text-ink-subtle">
                 {c.id.slice(0, 8)}
               </td>
-              <td className="px-4 py-3 text-sm font-medium max-w-[200px] truncate" title={c.title}>
+              <td className="max-w-[240px] truncate px-4 py-3 text-[14px] font-medium text-ink" title={c.title}>
                 {c.title.length > 30 ? `${c.title.slice(0, 30)}…` : c.title}
               </td>
-              <td className="px-4 py-3 text-sm">
+              <td className="px-4 py-3 text-[14px] text-ink">
                 {c.contact?.displayName || c.contact?.name || '-'}
               </td>
-              <td className="px-4 py-3 text-sm">{c.category ? `🤖 ${c.category}` : '-'}</td>
+              <td className="px-4 py-3 text-[14px] text-ink-subtle">
+                {c.category ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span aria-hidden>🤖</span>
+                    {c.category}
+                  </span>
+                ) : (
+                  '-'
+                )}
+              </td>
               <td className="px-4 py-3">
                 <CasePriorityBadge priority={c.priority} />
               </td>
               <td className="px-4 py-3">
                 <CaseStatusBadge status={c.status} />
               </td>
-              <td className="px-4 py-3 text-sm">{c.assignee?.name || '未指派'}</td>
+              <td className="px-4 py-3 text-[14px] text-ink">
+                {c.assignee?.name || (
+                  <span className="text-ink-subtle">未指派</span>
+                )}
+              </td>
               <td className="px-4 py-3">
                 <SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} />
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-[13px] text-ink-subtle">
                 {format(new Date(c.createdAt), 'MMM d, HH:mm')}
               </td>
             </tr>

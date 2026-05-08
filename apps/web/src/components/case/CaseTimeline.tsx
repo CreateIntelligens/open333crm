@@ -204,7 +204,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
                   ? item.isInternal
                     ? 'bg-yellow-100 text-yellow-700'
                     : 'bg-blue-100 text-blue-700'
-                  : 'bg-muted text-muted-foreground'
+                  : 'bg-surface-canvas text-ink-subtle'
               )}
             >
               {eventIcons[item.type] || <Clock className="h-4 w-4" />}
@@ -218,11 +218,11 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
                     內部
                   </span>
                 )}
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-ink-subtle">
                   {format(new Date(item.createdAt), 'MMM d, HH:mm')}
                 </span>
               </div>
-              <p className="mt-0.5 text-sm text-muted-foreground">{item.content}</p>
+              <p className="mt-0.5 text-sm text-ink-subtle">{item.content}</p>
             </div>
           </div>
         ))}

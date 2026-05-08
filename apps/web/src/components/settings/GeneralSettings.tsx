@@ -80,7 +80,7 @@ export function GeneralSettings() {
 
   if (!agent) {
     return (
-      <div className="py-12 text-center text-muted-foreground">
+      <div className="py-12 text-center text-ink-subtle">
         載入中...
       </div>
     );
@@ -117,7 +117,7 @@ export function GeneralSettings() {
               value={agent.email}
               readOnly
               disabled
-              className="bg-muted"
+              className="bg-surface-canvas"
             />
           </div>
 
@@ -131,7 +131,7 @@ export function GeneralSettings() {
               value={roleLabels[agent.role] || agent.role}
               readOnly
               disabled
-              className="bg-muted"
+              className="bg-surface-canvas"
             />
           </div>
 
@@ -174,7 +174,7 @@ export function GeneralSettings() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-foreground"
                 onClick={() => setShowOldPassword(!showOldPassword)}
                 aria-label={showOldPassword ? '隱藏密碼' : '顯示密碼'}
               >
@@ -204,7 +204,7 @@ export function GeneralSettings() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-foreground"
                 onClick={() => setShowNewPassword(!showNewPassword)}
                 aria-label={showNewPassword ? '隱藏密碼' : '顯示密碼'}
               >
@@ -232,7 +232,7 @@ export function GeneralSettings() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-foreground"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? '隱藏密碼' : '顯示密碼'}
               >

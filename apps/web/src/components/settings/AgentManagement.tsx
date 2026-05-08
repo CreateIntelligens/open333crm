@@ -221,7 +221,7 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
           </div>
           {currentRole === 'ADMIN' && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">重設密碼 <span className="text-muted-foreground font-normal">（選填，留空表示不修改）</span></label>
+              <label className="text-sm font-medium">重設密碼 <span className="text-ink-subtle font-normal">（選填，留空表示不修改）</span></label>
               <Input
                 type="password"
                 value={newPassword}
@@ -389,7 +389,7 @@ export function AgentManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -406,7 +406,7 @@ export function AgentManagement() {
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                 filterRole === role
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  : 'bg-surface-canvas text-ink-subtle hover:bg-neutral-30'
               }`}
             >
               {role === 'ALL' ? '全部' : role} {counts[role]}
@@ -433,7 +433,7 @@ export function AgentManagement() {
 
       {/* Agent list */}
       <div className="rounded-lg border">
-        <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-surface-line px-4 py-2 text-xs font-medium text-ink-subtle">
           <span>姓名</span>
           <span className="w-24 text-center">角色</span>
           <span className="w-20 text-center">開啟案件</span>
@@ -444,13 +444,13 @@ export function AgentManagement() {
           return (
             <div
               key={agent.id}
-              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b px-4 py-3 last:border-b-0"
+              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-surface-line px-4 py-3 last:border-b-0"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar alt={agent.name} src={agent.avatarUrl} size="sm" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{agent.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{agent.email}</p>
+                  <p className="truncate text-xs text-ink-subtle">{agent.email}</p>
                 </div>
               </div>
               <div className="w-24 text-center">
@@ -470,14 +470,14 @@ export function AgentManagement() {
                     編輯
                   </button>
                 ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <span className="text-xs text-ink-subtle">—</span>
                 )}
               </div>
             </div>
           );
         })}
         {filtered.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
+          <div className="py-8 text-center text-sm text-ink-subtle">
             沒有符合條件的人員
           </div>
         )}
@@ -492,8 +492,8 @@ export function AgentManagement() {
               <Card key={team.id}>
                 <CardContent className="p-4">
                   <p className="font-semibold">{team.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{team.members.join('、')}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">共 {team.members.length} 人</p>
+                  <p className="mt-1 text-sm text-ink-subtle">{team.members.join('、')}</p>
+                  <p className="mt-1 text-xs text-ink-subtle">共 {team.members.length} 人</p>
                 </CardContent>
               </Card>
             ))}
@@ -502,7 +502,7 @@ export function AgentManagement() {
       )}
 
       {/* Role descriptions */}
-      <div className="rounded-lg border bg-muted/50 p-4 text-xs text-muted-foreground">
+      <div className="rounded-lg border bg-neutral-20 p-4 text-xs text-ink-subtle">
         <p><strong>Admin</strong>：完整設定權限，可新增任何角色</p>
         <p><strong>Supervisor</strong>：可查看所有對話/案件，可新增 Agent 與 Supervisor</p>
         <p><strong>Agent</strong>：只能看自己負責的對話/案件</p>

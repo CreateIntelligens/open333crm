@@ -32,10 +32,10 @@ export function CaseTrendChart({ data, isLoading }: CaseTrendChartProps) {
       <CardContent>
         {isLoading ? (
           <div className="flex h-[300px] items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
           </div>
         ) : data.length === 0 ? (
-          <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-[300px] items-center justify-center text-sm text-ink-subtle">
             尚無資料
           </div>
         ) : (

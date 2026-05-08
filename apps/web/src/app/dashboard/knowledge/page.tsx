@@ -132,7 +132,7 @@ export default function KnowledgePage() {
       <Topbar title="知識庫" />
 
       {/* Top-level page tabs: articles vs semantic search */}
-      <div className="border-b px-6 pt-2">
+      <div className="border-b border-surface-line px-6 pt-2">
         <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as 'articles' | 'search' | 'embedding' | 'chat')}>
           <TabsList>
             <TabsTrigger value="articles">文章管理</TabsTrigger>
@@ -143,7 +143,7 @@ export default function KnowledgePage() {
 
           {/* ── Articles Tab ──────────────────────────────────── */}
           <TabsContent value="articles">
-            <div className="border-b py-3">
+            <div className="border-b border-surface-line py-3">
               <div className="flex items-center gap-3">
                 <SearchInput
                   placeholder="搜尋文章..."
@@ -171,7 +171,7 @@ export default function KnowledgePage() {
               </div>
             </div>
 
-            <div className="border-b pt-2">
+            <div className="border-b border-surface-line pt-2">
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
                 <TabsList>
                   {statusTabs.map((tab) => (
@@ -227,7 +227,7 @@ export default function KnowledgePage() {
                   {searchResults.map((r: any) => (
                     <div
                       key={r.id}
-                      className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
+                      className="rounded-lg border p-4 transition-colors hover:bg-neutral-20"
                     >
                       <div className="flex items-center gap-2">
                         <Brain className="h-4 w-4 text-green-500" />
@@ -236,7 +236,7 @@ export default function KnowledgePage() {
                           {(r.similarity * 100).toFixed(1)}% 匹配
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{r.summary}</p>
+                      <p className="mt-1 text-sm text-ink-subtle">{r.summary}</p>
                       <div className="mt-2 flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">
                           {r.category}
@@ -253,13 +253,13 @@ export default function KnowledgePage() {
               )}
 
               {!searching && searchResults.length === 0 && searchQuery && (
-                <p className="text-center text-sm text-muted-foreground py-8">
+                <p className="text-center text-sm text-ink-subtle py-8">
                   沒有找到相關文章，請嘗試不同的查詢詞
                 </p>
               )}
 
               {!searching && !searchQuery && (
-                <p className="text-center text-sm text-muted-foreground py-8">
+                <p className="text-center text-sm text-ink-subtle py-8">
                   輸入關鍵字進行語義搜尋，系統會根據向量相似度找到最相關的知識庫文章
                 </p>
               )}

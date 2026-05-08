@@ -89,19 +89,23 @@ export default function CasesPage() {
   return (
     <div className="flex h-full flex-col">
       <Topbar title="工單">
-        <Button size="sm" onClick={() => setShowCreateModal(true)}>
-          <Plus className="mr-1 h-4 w-4" />
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="inline-flex items-center gap-1 rounded-card bg-[#378ADD] px-4 py-2 text-[14px] font-medium leading-5 text-white transition-colors hover:bg-[#2876C4]"
+        >
+          <Plus className="h-4 w-4" />
           建立案件
-        </Button>
+        </button>
       </Topbar>
 
       {/* Dashboard Stats */}
-      <div className="border-b px-6 py-4">
+      <div className="border-b border-surface-line px-6 py-4">
         <CaseDashboardStats />
       </div>
 
       {/* Search + Filters */}
-      <div className="border-b px-6 py-3 space-y-3">
+      <div className="space-y-3 border-b border-surface-line px-6 py-3">
         <SearchInput
           placeholder="搜尋工單標題或描述...（至少 2 個字）"
           onSearch={setSearch}
@@ -156,7 +160,7 @@ export default function CasesPage() {
       </div>
 
       {/* Status Tabs */}
-      <div className="border-b px-6 pt-2">
+      <div className="border-b border-surface-line px-6 pt-2">
         <Tabs value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <TabsList>
             {statusTabs.map((tab) => {
@@ -165,7 +169,7 @@ export default function CasesPage() {
                 <TabsTrigger key={tab.value} value={tab.value}>
                   {tab.label}
                   {count !== undefined && count > 0 && (
-                    <span className="ml-1 text-xs text-muted-foreground">({count})</span>
+                    <span className="ml-1 text-[12px] text-ink-subtle">({count})</span>
                   )}
                 </TabsTrigger>
               );
@@ -181,8 +185,8 @@ export default function CasesPage() {
 
       {/* Pagination */}
       {totalCount > 0 && (
-        <div className="border-t px-6 py-3 flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-surface-line px-6 py-3 text-[14px]">
+          <span className="text-ink-subtle">
             第 {rangeStart}-{rangeEnd} / 共 {totalCount} 筆
           </span>
           <div className="flex items-center gap-1">
@@ -194,7 +198,7 @@ export default function CasesPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="px-2 text-muted-foreground">
+            <span className="px-2 text-ink-subtle">
               {page} / {totalPages}
             </span>
             <Button

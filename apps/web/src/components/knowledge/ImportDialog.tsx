@@ -142,7 +142,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
         </DialogHeader>
 
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             支援格式：PDF、Word (.docx)、Excel (.xlsx/.csv)、HTML、Markdown、純文字、JSON
           </p>
 
@@ -160,7 +160,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
               onChange={handleFileChange}
             />
             {files.length > 0 && !done && (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-ink-subtle">
                 已選 {files.length} 個檔案
               </span>
             )}
@@ -171,7 +171,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
             <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border p-2">
               {fileStatuses.map((fs) => (
                 <div key={fs.name} className="flex items-center gap-2 text-sm">
-                  {fs.state === 'pending' && <FileText className="h-4 w-4 text-muted-foreground" />}
+                  {fs.state === 'pending' && <FileText className="h-4 w-4 text-ink-subtle" />}
                   {fs.state === 'uploading' && <Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
                   {fs.state === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                   {fs.state === 'error' && <XCircle className="h-4 w-4 text-destructive" />}

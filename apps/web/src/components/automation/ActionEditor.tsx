@@ -59,7 +59,7 @@ function PayloadField({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+      <label className="mb-1 block text-xs font-medium text-ink-subtle">
         {label}
       </label>
       <Input
@@ -111,7 +111,7 @@ function ActionParamsForm({
     case 'kb_auto_reply':
     case 'assign_bot':
       return (
-        <p className="text-xs text-muted-foreground">此動作無需額外參數</p>
+        <p className="text-xs text-ink-subtle">此動作無需額外參數</p>
       );
 
     case 'add_tag':
@@ -136,7 +136,7 @@ function ActionParamsForm({
           />
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label className="mb-1 block text-xs font-medium text-ink-subtle">
                 優先級
               </label>
               <Select
@@ -159,7 +159,7 @@ function ActionParamsForm({
     case 'update_case_status':
       return (
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label className="mb-1 block text-xs font-medium text-ink-subtle">
             目標狀態
           </label>
           <Select
@@ -181,7 +181,7 @@ function ActionParamsForm({
             placeholder="升級原因..."
           />
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+            <label className="mb-1 block text-xs font-medium text-ink-subtle">
               新優先級
             </label>
             <Select
@@ -249,7 +249,7 @@ function ActionParamsForm({
                 placeholder="選擇團隊"
               />
               {mode === 'team_broadcast' && (
-                <p className="text-xs text-muted-foreground mt-1.5">
+                <p className="text-xs text-ink-subtle mt-1.5">
                   系統不會直接指派，團隊所有成員會收到認領通知，先按下認領的成員會接手該對話。
                 </p>
               )}
@@ -303,7 +303,7 @@ function JsonFallbackEditor({
 
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+      <label className="mb-1 block text-xs font-medium text-ink-subtle">
         承載資料 (JSON)
       </label>
       <textarea
@@ -327,10 +327,10 @@ export function ActionEditor({ action, onChange, onRemove }: ActionEditorProps) 
   const payload = action.payload || (action as any).params || {};
 
   return (
-    <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
+    <div className="flex gap-3 rounded-md border border-input bg-surface-canvas p-3">
       <div className="flex flex-1 flex-col gap-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label className="mb-1 block text-xs font-medium text-ink-subtle">
             動作類型
           </label>
           <Select

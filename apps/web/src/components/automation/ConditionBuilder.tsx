@@ -19,7 +19,7 @@ export function ConditionBuilder({ value, onChange }: ConditionBuilderProps) {
         onQueryChange={onChange}
         controlClassnames={{
           queryBuilder:
-            'rounded-md border border-input bg-background p-4 [&_.ruleGroup]:border [&_.ruleGroup]:border-border [&_.ruleGroup]:rounded-md [&_.ruleGroup]:bg-muted/30 [&_.ruleGroup]:p-3 [&_.ruleGroup]:my-2',
+            'rounded-md border border-input bg-background p-4 [&_.ruleGroup]:border [&_.ruleGroup]:border-border [&_.ruleGroup]:rounded-md [&_.ruleGroup]:bg-surface-canvas [&_.ruleGroup]:p-3 [&_.ruleGroup]:my-2',
           header: 'flex items-center gap-2 mb-2',
           body: 'space-y-2',
           rule: 'flex items-center gap-2 flex-wrap',

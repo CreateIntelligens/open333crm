@@ -17,7 +17,7 @@ interface ChannelIdentityListProps {
 export function ChannelIdentityList({ identities }: ChannelIdentityListProps) {
   if (!identities || identities.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">沒有渠道身份</p>
+      <p className="text-sm text-ink-subtle">沒有渠道身份</p>
     );
   }
 
@@ -35,7 +35,7 @@ export function ChannelIdentityList({ identities }: ChannelIdentityListProps) {
                 {identity.displayName || identity.externalId}
               </p>
               {identity.displayName && (
-                <p className="text-xs text-muted-foreground">{identity.externalId}</p>
+                <p className="text-xs text-ink-subtle">{identity.externalId}</p>
               )}
             </div>
           </div>

@@ -33,7 +33,7 @@ function Avatar({ src, alt, fallback, className, size = 'md' }: AvatarProps) {
   return (
     <div
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-canvas',
         sizeClasses[size],
         className
       )}
@@ -46,7 +46,7 @@ function Avatar({ src, alt, fallback, className, size = 'md' }: AvatarProps) {
           onError={() => setImgError(true)}
         />
       ) : (
-        <span className="font-medium text-muted-foreground">{initials}</span>
+        <span className="font-medium text-ink-subtle">{initials}</span>
       )}
     </div>
   );

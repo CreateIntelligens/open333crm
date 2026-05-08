@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, Lightbulb, XCircle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { zhTW } from 'date-fns/locale';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useMessages } from '@/hooks/useMessages';
 import { MessageBubble } from './MessageBubble';
@@ -42,9 +44,11 @@ interface ChatWindowProps {
   } | null;
   onShowAiSuggest?: () => void;
   showAiSuggest?: boolean;
+  /** Optional inline AI Suggest panel rendered between message list and input */
+  aiSuggestSlot?: React.ReactNode;
 }
 
-export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: ChatWindowProps) {
+export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, aiSuggestSlot }: ChatWindowProps) {
   const { messages, isLoading, sendMessage } = useMessages(
     conversation?.id || null
   );
@@ -177,10 +181,10 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const isClosed = conversation.status === 'CLOSED';
 
   const statusColor: Record<string, string> = {
-    ACTIVE: 'bg-green-100 text-green-700',
-    BOT_HANDLED: 'bg-purple-100 text-purple-700',
-    AGENT_HANDLED: 'bg-blue-100 text-blue-700',
-    CLOSED: 'bg-gray-100 text-gray-700',
+    ACTIVE: 'bg-f-green-10 text-f-green-80',
+    BOT_HANDLED: 'bg-brand-10 text-brand-80',
+    AGENT_HANDLED: 'bg-surface-active text-link',
+    CLOSED: 'bg-neutral-30 text-ink-subtle',
   };
 
   const statusLabel: Record<string, string> = {
@@ -195,43 +199,50 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
 
+  const lastMessageTime = sortedMessages.length > 0
+    ? sortedMessages[sortedMessages.length - 1].createdAt
+    : null;
+
   return (
-    <div className="relative flex h-full flex-col">
-      {/* Chat Header */}
-      <div className="flex items-center gap-3 border-b px-4 py-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold">
-              {conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人'}
-            </h3>
+    <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
+      {/* Chat Header — Figma 909:31347, padding 12/16, bottom border */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-surface-line px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="truncate text-[20px] font-semibold leading-7 text-ink">
+            {conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人'}
+          </h3>
+          <div className="flex items-center gap-1 text-ink-subtle">
             <ChannelBadge channel={conversation.channelType} />
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                statusColor[conversation.status] || 'bg-green-100 text-green-700'
-              }`}
-            >
-              {statusLabel[conversation.status] || conversation.status}
-            </span>
-            <Select
-              className="h-8 w-36 text-xs"
-              options={agentOptions}
-              value={conversation.assignedToId || ''}
-              onChange={handleAssign}
-            />
-            {conversation.status === 'AGENT_HANDLED' && !conversation.assignedToId && (
-              <Button
-                size="sm"
-                variant="default"
-                className="h-8"
-                onClick={handleClaim}
-              >
-                認領
-              </Button>
+            <span className="text-[14px] leading-5 text-ink/60">．</span>
+            {lastMessageTime && (
+              <span className="text-[14px] leading-5 text-ink">
+                {formatDistanceToNow(new Date(lastMessageTime), { addSuffix: false, locale: zhTW })}前
+              </span>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* AI Suggest button */}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Status pill */}
+          <span
+            className={`inline-flex items-center rounded-chip px-2 py-0.5 text-[11px] font-semibold ${
+              statusColor[conversation.status] || 'bg-f-green-10 text-f-green-80'
+            }`}
+          >
+            {statusLabel[conversation.status] || conversation.status}
+          </span>
+
+          {/* Claim button only when needed */}
+          {conversation.status === 'AGENT_HANDLED' && !conversation.assignedToId && (
+            <Button
+              size="sm"
+              variant="default"
+              className="h-8"
+              onClick={handleClaim}
+            >
+              認領
+            </Button>
+          )}
+
           {!isClosed && (
             <Button
               variant={showAiSuggest ? 'default' : 'ghost'}
@@ -243,6 +254,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               <Lightbulb className="h-4 w-4" />
             </Button>
           )}
+
           {!isClosed && (
             <Button
               variant="ghost"
@@ -255,12 +267,6 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               <span className="text-xs">結案</span>
             </Button>
           )}
-          <Select
-            className="h-8 w-32 text-xs"
-            options={statusOptions}
-            value={conversation.status}
-            onChange={handleStatusChange}
-          />
         </div>
       </div>
 
@@ -272,10 +278,10 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-muted/30">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-surface-canvas">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
           </div>
         ) : sortedMessages.length === 0 ? (
           <EmptyState
@@ -284,7 +290,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
             className="h-full"
           />
         ) : (
-          <div className="py-4">
+          <div className="flex flex-col gap-4 p-4">
             {sortedMessages.map((msg: { id: string; direction: string; contentType: string; content: string | { text?: string }; senderType?: string; senderName?: string; createdAt: string; metadata?: Record<string, unknown> }) => {
               // Render CSAT survey card for csat messages
               if (msg.contentType === 'csat') {
@@ -293,7 +299,13 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
                 const csatCaseId = (msg.metadata?.caseId as string) || (msgContent as Record<string, unknown>).caseId as string | undefined;
                 return <CsatMessage key={msg.id} score={score} readonly={isClosed || !!score} caseId={csatCaseId} />;
               }
-              return <MessageBubble key={msg.id} message={msg} />;
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  contactName={conversation.contact?.name || conversation.contact?.displayName}
+                />
+              );
             })}
             {conversation && (
               <TypingIndicator conversationId={conversation.id} />
@@ -302,6 +314,9 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           </div>
         )}
       </div>
+
+      {/* AI Suggestion (inline, between messages and input) */}
+      {aiSuggestSlot}
 
       {/* Message Input */}
       <MessageInput
@@ -335,7 +350,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
             <DialogTitle>結案此對話</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground">
+            <p className="text-ink-subtle">
               結案後此對話將從 Inbox 列表移出。客戶若再次傳訊將自動開新對話。
             </p>
             <div>

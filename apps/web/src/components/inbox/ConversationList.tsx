@@ -6,11 +6,9 @@ import { useAuth } from '@/providers/AuthProvider';
 import { ConversationListItem } from './ConversationListItem';
 import { FilterDrawer, type FilterValues } from './FilterDrawer';
 import { FilterChips } from './FilterChips';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SearchInput } from '@/components/shared/SearchInput';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { MessageSquare, Loader2, SlidersHorizontal } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { MessageSquare, Loader2, Search, SlidersHorizontal } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -19,7 +17,7 @@ interface ConversationListProps {
 
 export function ConversationList({ selectedId, onSelect }: ConversationListProps) {
   const [mainTab, setMainTab] = useState<'active' | 'closed'>('active');
-  const [subTab, setSubTab] = useState('all');
+  const [subTab, setSubTab] = useState<'all' | 'unread' | 'mine'>('all');
   const [search, setSearch] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterValues, setFilterValues] = useState<FilterValues>({
@@ -27,13 +25,11 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     channels: [],
     assignee: '',
   });
-  const [closedRange, setClosedRange] = useState('30'); // days
+  const [closedRange, setClosedRange] = useState('30');
   const { agent } = useAuth();
 
-  // Build API filters
   const apiFilters = useMemo(() => {
     const f: Record<string, string | undefined> = {};
-
     if (mainTab === 'closed') {
       f.status = 'CLOSED';
       const days = parseInt(closedRange, 10);
@@ -41,41 +37,32 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
       date.setDate(date.getDate() - days);
       f.closedAfter = date.toISOString();
     } else {
-      // Active tab: default to non-closed unless filters override
       if (filterValues.statuses.length > 0) {
         f.status = filterValues.statuses.join(',');
       } else {
         f.status = '!CLOSED';
       }
     }
-
     if (filterValues.channels.length > 0) {
       f.channelType = filterValues.channels.join(',');
     }
-
     if (filterValues.assignee === 'mine' && agent?.id) {
       f.assigneeId = agent.id;
     } else if (filterValues.assignee === 'unassigned') {
       f.assigneeId = 'unassigned';
     }
-
     return f;
   }, [mainTab, filterValues, closedRange, agent?.id]);
 
   const { conversations, isLoading } = useConversations(apiFilters);
 
-  // Client-side filter for sub-tabs and search
   let filtered = conversations;
   if (mainTab === 'active') {
     if (subTab === 'unread') {
-      filtered = filtered.filter(
-        (c: { unreadCount?: number }) => (c.unreadCount || 0) > 0
-      );
+      filtered = filtered.filter((c: { unreadCount?: number }) => (c.unreadCount || 0) > 0);
     }
     if (subTab === 'mine') {
-      filtered = filtered.filter(
-        (c: { assignedToId?: string | null }) => c.assignedToId === agent?.id
-      );
+      filtered = filtered.filter((c: { assignedToId?: string | null }) => c.assignedToId === agent?.id);
     }
   }
   if (search) {
@@ -87,66 +74,112 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         const msgText = typeof rawContent === 'object' && rawContent !== null
           ? (rawContent as { text?: string }).text || ''
           : String(rawContent || '');
-        return contactName.toLowerCase().includes(lowerSearch) ||
-          msgText.toLowerCase().includes(lowerSearch);
-      }
+        return contactName.toLowerCase().includes(lowerSearch) || msgText.toLowerCase().includes(lowerSearch);
+      },
     );
   }
 
+  const totalCount = conversations.length;
+  const unreadCount = conversations.filter((c: { unreadCount?: number }) => (c.unreadCount || 0) > 0).length;
+  const myCount = conversations.filter((c: { assignedToId?: string | null }) => c.assignedToId === agent?.id).length;
+
+  const subTabs: Array<{ key: 'all' | 'unread' | 'mine'; label: string; count: number }> = [
+    { key: 'all', label: '全部', count: totalCount },
+    { key: 'unread', label: '未讀', count: unreadCount },
+    { key: 'mine', label: '我的', count: myCount },
+  ];
+
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b px-4 py-3">
-        <h2 className="text-lg font-semibold">收件匣</h2>
-
-        {/* Main tabs: Active / Closed */}
-        <div className="mt-2">
-          <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'active' | 'closed')}>
-            <TabsList className="w-full">
-              <TabsTrigger value="active" className="flex-1">進行中</TabsTrigger>
-              <TabsTrigger value="closed" className="flex-1">已關閉</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* Search + Filter */}
-        <div className="mt-2 flex items-center gap-2">
-          <div className="flex-1">
-            <SearchInput
-              placeholder="搜尋對話..."
-              onSearch={setSearch}
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 shrink-0"
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col bg-white">
+      {/* Sidebar Header — column gap 12, padding 16/16/0/16, shadow 0 1 4 */}
+      <div className="flex flex-col gap-3 border-b border-surface-line px-4 pb-0 pt-4 shadow-[0_1px_4px_0_rgba(0,0,0,0.05)]">
+        {/* Title row: 收件匣 + Filter button */}
+        <div className="flex items-center justify-between gap-8">
+          <h2 className="text-[20px] font-semibold leading-6 text-ink">收件匣</h2>
+          <button
+            type="button"
             onClick={() => setFilterOpen(true)}
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-[10px] text-ink-subtle transition-colors hover:bg-neutral-20 hover:text-ink"
+            aria-label="進階篩選"
+            title="進階篩選"
           >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
+            <SlidersHorizontal className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* Sub-tabs for active */}
+        {/* Segmented Control: 進行中 / 已關閉 */}
+        <div className="flex items-center gap-1 rounded-lg bg-surface-canvas p-1">
+          {(['active', 'closed'] as const).map((key) => {
+            const isActive = mainTab === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMainTab(key)}
+                className={cn(
+                  'flex flex-1 items-center justify-center rounded-lg px-4 py-1 text-[14px] leading-5 text-ink transition',
+                  isActive
+                    ? 'bg-white font-semibold shadow-[0_0_4px_0_rgba(0,0,0,0.1)]'
+                    : 'font-normal hover:bg-white/50',
+                )}
+              >
+                {key === 'active' ? '進行中' : '已關閉'}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Search bar */}
+        <div className="flex items-center gap-1 rounded-lg border border-surface-line bg-surface-canvas px-3 py-2">
+          <Search className="h-5 w-5 shrink-0 text-ink-subtle" strokeWidth={1.5} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜尋對話 ..."
+            className="flex-1 bg-transparent text-[14px] leading-6 text-ink placeholder:text-ink-subtle focus:outline-none"
+          />
+        </div>
+
+        {/* Sub Tabs (only for active) */}
         {mainTab === 'active' && (
-          <div className="mt-2">
-            <Tabs value={subTab} onValueChange={setSubTab}>
-              <TabsList className="w-full">
-                <TabsTrigger value="all">全部</TabsTrigger>
-                <TabsTrigger value="unread">未讀</TabsTrigger>
-                <TabsTrigger value="mine">我的</TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <div className="flex items-center">
+            {subTabs.map((tab) => {
+              const isActive = subTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setSubTab(tab.key)}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-2 px-3 py-3 text-[14px] leading-5 transition-colors',
+                    isActive
+                      ? 'border-b-2 border-[#378ADD] font-semibold text-[#378ADD]'
+                      : 'border-b-2 border-transparent font-medium text-ink-subtle hover:text-ink',
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      'inline-flex h-5 min-w-[20px] items-center justify-center rounded-2xl px-2 text-[12px] font-semibold leading-5',
+                      isActive ? 'bg-[#378ADD] text-white' : 'bg-surface-line text-ink-subtle',
+                    )}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
         {/* Closed range selector */}
         {mainTab === 'closed' && (
-          <div className="mt-2">
+          <div className="pb-3">
             <select
               value={closedRange}
               onChange={(e) => setClosedRange(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+              className="w-full rounded-lg border border-surface-line bg-white px-3 py-2 text-[14px] text-ink focus:outline-none"
             >
               <option value="7">最近 7 天</option>
               <option value="30">最近 30 天</option>
@@ -163,11 +196,11 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         resultCount={filtered.length}
       />
 
-      {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto">
+      {/* List Content */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState
@@ -176,7 +209,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
             description={mainTab === 'closed' ? '此時間範圍內沒有已關閉的對話' : '新對話將會顯示在這裡'}
           />
         ) : (
-          <div className="space-y-0.5 p-2">
+          <div className="flex flex-col">
             {filtered.map((conversation: { id: string; contact?: { id: string; name?: string; displayName?: string; avatar?: string; avatarUrl?: string }; channelType: string; lastMessage?: { content: string | { text?: string }; contentType?: string; createdAt: string; senderType?: string }; unreadCount?: number; status: string; updatedAt: string; assignedToId?: string | null; caseId?: string | null; csatScore?: number | null }) => (
               <ConversationListItem
                 key={conversation.id}

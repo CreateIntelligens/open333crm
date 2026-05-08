@@ -136,7 +136,7 @@ export function ArticleFormDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             {article?.externalDocId && (
-              <div className="rounded-lg border bg-muted/30 p-3 text-xs">
+              <div className="rounded-lg border bg-surface-canvas p-3 text-xs">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="font-medium">合作方匯入</span>
                   <code className="rounded bg-background px-1.5 py-0.5">
@@ -146,17 +146,17 @@ export function ArticleFormDialog({
                     v{article.externalVer ?? 0}
                   </code>
                   {article.externalSource && (
-                    <span className="text-muted-foreground">{article.externalSource}</span>
+                    <span className="text-ink-subtle">{article.externalSource}</span>
                   )}
                 </div>
                 {article.importedAt && (
-                  <div className="text-muted-foreground">
+                  <div className="text-ink-subtle">
                     匯入時間：{new Date(article.importedAt).toLocaleString('zh-TW')}
                   </div>
                 )}
                 {article.spec !== undefined && article.spec !== null && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                    <summary className="cursor-pointer text-ink-subtle hover:text-foreground">
                       Spec
                     </summary>
                     <pre className="mt-2 max-h-40 overflow-auto rounded bg-background p-2 text-[10px]">
@@ -166,7 +166,7 @@ export function ArticleFormDialog({
                 )}
                 {article.attachments && article.attachments.length > 0 && (
                   <div className="mt-2">
-                    <div className="mb-1 flex items-center gap-1 text-muted-foreground">
+                    <div className="mb-1 flex items-center gap-1 text-ink-subtle">
                       <Paperclip className="h-3 w-3" />
                       <span>附件 ({article.attachments.length})</span>
                     </div>
@@ -174,7 +174,7 @@ export function ArticleFormDialog({
                       {article.attachments.map((a) => (
                         <li key={a.id} className="flex items-center justify-between rounded border bg-background px-2 py-1">
                           <span className="truncate">{a.filename}</span>
-                          <span className="ml-2 flex shrink-0 items-center gap-2 text-muted-foreground">
+                          <span className="ml-2 flex shrink-0 items-center gap-2 text-ink-subtle">
                             <span>{formatBytes(a.sizeBytes)}</span>
                             <a
                               href={a.url}
@@ -234,7 +234,7 @@ export function ArticleFormDialog({
                 <label className="text-sm font-medium">內容</label>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                  className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-canvas"
                   onClick={() => setPreviewMode((p) => !p)}
                 >
                   {previewMode ? (
@@ -245,7 +245,7 @@ export function ArticleFormDialog({
                 </button>
               </div>
               {previewMode ? (
-                <div className="min-h-[200px] whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="min-h-[200px] whitespace-pre-wrap rounded-md border bg-surface-canvas p-3 text-sm">
                   {form.content || '（空白）'}
                 </div>
               ) : (

@@ -133,32 +133,32 @@ export default function AnalyticsPage() {
 
               {/* SLA violations table */}
               <div className="rounded-lg border">
-                <div className="border-b bg-muted/50 px-4 py-3">
+                <div className="border-b border-surface-line bg-neutral-20 px-4 py-3">
                   <h3 className="text-sm font-semibold">SLA 違規案件</h3>
                 </div>
                 {caseData.isLoading ? (
                   <div className="flex h-[100px] items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <Loader2 className="h-5 w-5 animate-spin text-ink-subtle" />
                   </div>
                 ) : (caseData.data?.slaViolations || []).length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="px-4 py-8 text-center text-sm text-ink-subtle">
                     無 SLA 違規案件
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="border-b bg-muted/30">
+                      <thead className="border-b border-surface-line bg-surface-canvas">
                         <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">標題</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">狀態</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">指派客服</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">聯繫人</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">SLA 到期</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-subtle">標題</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-subtle">狀態</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-subtle">指派客服</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-subtle">聯繫人</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-ink-subtle">SLA 到期</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {(caseData.data?.slaViolations || []).map((v: any) => (
-                          <tr key={v.id} className="hover:bg-muted/30">
+                          <tr key={v.id} className="hover:bg-surface-canvas">
                             <td className="px-4 py-2 font-medium">{v.title}</td>
                             <td className="px-4 py-2">{v.status}</td>
                             <td className="px-4 py-2">{v.assignee?.name || '-'}</td>
@@ -177,7 +177,7 @@ export default function AnalyticsPage() {
               {/* Escalation rate */}
               {caseData.data?.escalationRate != null && (
                 <div className="rounded-lg border p-4">
-                  <p className="text-sm text-muted-foreground">升級率</p>
+                  <p className="text-sm text-ink-subtle">升級率</p>
                   <p className="text-2xl font-bold">{caseData.data.escalationRate}%</p>
                 </div>
               )}

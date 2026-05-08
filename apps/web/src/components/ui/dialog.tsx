@@ -7,9 +7,11 @@ interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
+  /** When true, removes default <dialog> chrome (border/bg/radius/shadow) so child controls full appearance */
+  chromeless?: boolean;
 }
 
-function Dialog({ open, onOpenChange, children }: DialogProps) {
+function Dialog({ open, onOpenChange, children, chromeless }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const lastClickTimeRef = useRef<number>(0);
 
@@ -29,7 +31,12 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <dialog
       ref={dialogRef}
-      className="fixed inset-0 z-50 m-auto rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50"
+      className={cn(
+        'fixed inset-0 z-50 m-auto p-0 backdrop:bg-black/50',
+        chromeless
+          ? 'overflow-visible rounded-none border-0 bg-transparent shadow-none'
+          : 'rounded-lg border bg-background shadow-lg',
+      )}
       onClose={() => onOpenChange(false)}
       onClick={(e) => {
         if (e.target === dialogRef.current) {

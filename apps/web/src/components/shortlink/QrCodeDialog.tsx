@@ -53,11 +53,11 @@ export function QrCodeDialog({ open, onClose, linkId, linkTitle }: QrCodeDialogP
 
         <div className="flex flex-col items-center space-y-4">
           {loading ? (
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <Loader2 className="h-8 w-8 animate-spin text-ink-subtle" />
           ) : qrData ? (
             <>
               <img src={qrData.qrcode} alt="QR Code" className="w-64 h-64" />
-              <p className="text-sm text-muted-foreground break-all text-center">{qrData.url}</p>
+              <p className="text-sm text-ink-subtle break-all text-center">{qrData.url}</p>
             </>
           ) : null}
         </div>

@@ -75,7 +75,7 @@ export function FilterChips({ filters, onChange, resultCount }: FilterChipsProps
         )}
       </div>
       {resultCount !== undefined && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-[11px] text-ink-subtle">
           篩選結果：{resultCount} 個對話
         </p>
       )}

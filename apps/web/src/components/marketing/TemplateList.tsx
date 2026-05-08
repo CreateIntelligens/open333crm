@@ -46,7 +46,7 @@ export function TemplateList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -65,26 +65,26 @@ export function TemplateList({
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
-          <tr className="border-b bg-muted/50 text-left">
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <tr className="border-b border-surface-line bg-surface-canvas text-left">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               名稱
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               分類
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               渠道
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               類型
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               使用次數
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               更新時間
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-subtle">
               操作
             </th>
           </tr>
@@ -93,20 +93,20 @@ export function TemplateList({
           {templates.map((template) => (
             <tr
               key={template.id}
-              className="border-b transition-colors hover:bg-muted/50"
+              className="border-b border-surface-line transition-colors hover:bg-neutral-20"
             >
               <td className="px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium">
+                  <p className="text-[14px] font-medium text-ink">
                     {template.name}
                     {template.isSystem && (
-                      <Badge variant="outline" className="ml-2 text-xs">
+                      <Badge variant="outline" className="ml-2 text-[11px]">
                         系統
                       </Badge>
                     )}
                   </p>
                   {template.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
+                    <p className="mt-0.5 line-clamp-1 text-[12px] text-ink-subtle">
                       {template.description}
                     </p>
                   )}
@@ -120,13 +120,13 @@ export function TemplateList({
                   {channelTypeLabel[template.channelType] || template.channelType}
                 </Badge>
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-[14px] text-ink-subtle">
                 {template.contentType}
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-[14px] text-ink-subtle">
                 {template.usageCount}
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-[13px] text-ink-subtle">
                 {format(new Date(template.updatedAt), 'MMM d, HH:mm')}
               </td>
               <td className="px-4 py-3">

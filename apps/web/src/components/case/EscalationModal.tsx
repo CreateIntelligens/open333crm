@@ -142,9 +142,9 @@ export function EscalationModal({
 
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
           {/* Case Summary */}
-          <div className="rounded-lg bg-muted p-3 space-y-1">
+          <div className="rounded-lg bg-surface-canvas p-3 space-y-1">
             <p className="text-sm">
-              <span className="text-muted-foreground">案件編號：</span>
+              <span className="text-ink-subtle">案件編號：</span>
               <span className="font-mono">#{caseData.id.slice(0, 8)}</span>
             </p>
             <p className="text-sm font-medium">{caseData.title}</p>
@@ -190,7 +190,7 @@ export function EscalationModal({
                   className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
                     reason === r
                       ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-input hover:bg-muted'
+                      : 'border-input hover:bg-surface-canvas'
                   }`}
                 >
                   {r}
@@ -209,7 +209,7 @@ export function EscalationModal({
               rows={3}
               maxLength={500}
             />
-            <p className="mt-0.5 text-xs text-muted-foreground text-right">{note.length}/500</p>
+            <p className="mt-0.5 text-xs text-ink-subtle text-right">{note.length}/500</p>
           </div>
 
           {/* New Priority */}
@@ -224,7 +224,7 @@ export function EscalationModal({
                 options={higherPriorities}
                 className="flex-1"
               />
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
+              <span className="text-xs text-ink-subtle whitespace-nowrap">
                 原來：{PRIORITY_LABELS[caseData.priority] || caseData.priority}
               </span>
             </div>
@@ -245,7 +245,7 @@ export function EscalationModal({
               ]}
             />
             {!assigneeId && (
-              <p className="mt-1 text-xs text-muted-foreground">不選則維持原指派人</p>
+              <p className="mt-1 text-xs text-ink-subtle">不選則維持原指派人</p>
             )}
           </div>
 
