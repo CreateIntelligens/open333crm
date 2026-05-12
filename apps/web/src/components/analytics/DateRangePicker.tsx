@@ -49,7 +49,7 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
             'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
             activePreset === p.days
               ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent',
+              : 'bg-surface-canvas text-ink-subtle hover:bg-accent',
           )}
         >
           {p.label}
@@ -62,7 +62,7 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
           onChange={handleFromChange}
           className="h-8 rounded-md border bg-background px-2 text-xs"
         />
-        <span className="text-muted-foreground">~</span>
+        <span className="text-ink-subtle">~</span>
         <input
           type="date"
           value={to.toISOString().slice(0, 10)}

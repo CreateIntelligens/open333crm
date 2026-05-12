@@ -149,7 +149,7 @@ export function SlaManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -159,7 +159,7 @@ export function SlaManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">SLA 政策</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             設定不同優先級的服務等級承諾
           </p>
         </div>
@@ -171,7 +171,7 @@ export function SlaManagement() {
 
       {/* Policy table */}
       <div className="rounded-lg border">
-        <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4 border-b border-surface-line px-4 py-2 text-xs font-medium text-ink-subtle">
           <span>政策名稱</span>
           <span className="w-20 text-center">優先級</span>
           <span className="w-24 text-center">首回時間</span>
@@ -184,7 +184,7 @@ export function SlaManagement() {
           return (
             <div
               key={policy.id}
-              className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4 border-b px-4 py-3 last:border-b-0"
+              className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-4 border-b border-surface-line px-4 py-3 last:border-b-0"
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span className="truncate text-sm font-medium">{policy.name}</span>
@@ -225,7 +225,7 @@ export function SlaManagement() {
           );
         })}
         {policies.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
+          <div className="py-8 text-center text-sm text-ink-subtle">
             尚未建立 SLA 政策
           </div>
         )}

@@ -104,9 +104,9 @@ function StatCard({ icon, title, value, isLoading, color }: StatCardProps) {
             {icon}
           </div>
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">{title}</p>
+            <p className="text-sm text-ink-subtle">{title}</p>
             {isLoading ? (
-              <Loader2 className="mt-1 h-5 w-5 animate-spin text-muted-foreground" />
+              <Loader2 className="mt-1 h-5 w-5 animate-spin text-ink-subtle" />
             ) : (
               <p className="text-2xl font-bold">{value ?? '-'}</p>
             )}
@@ -259,7 +259,7 @@ export default function DashboardPage() {
               <CardTitle className="text-base font-semibold">最近對話</CardTitle>
               <Link
                 href="/dashboard/inbox"
-                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-sm text-ink-subtle hover:text-foreground transition-colors"
               >
                 查看全部
                 <ArrowRight className="h-4 w-4" />
@@ -269,10 +269,10 @@ export default function DashboardPage() {
             <CardContent className="p-0">
               {isLoadingConversations ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
                 </div>
               ) : conversations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center py-12 text-ink-subtle">
                   <MessageSquare className="mb-2 h-8 w-8" />
                   <p className="text-sm">暫無對話</p>
                 </div>
@@ -290,10 +290,10 @@ export default function DashboardPage() {
                       <li key={conv.id}>
                         <Link
                           href={`/dashboard/inbox?conv=${conv.id}`}
-                          className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-muted/50"
+                          className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-neutral-20"
                         >
                           {/* 聯繫人圖示 */}
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-canvas text-ink-subtle">
                             <User className="h-4 w-4" />
                           </div>
 
@@ -303,7 +303,7 @@ export default function DashboardPage() {
                               <span className="truncate text-sm font-medium">
                                 {contactName}
                               </span>
-                              <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                              <div className="flex shrink-0 items-center gap-1.5 text-xs text-ink-subtle">
                                 <Clock className="h-3 w-3" />
                                 {formatRelativeTime(timeStr)}
                               </div>
@@ -318,7 +318,7 @@ export default function DashboardPage() {
                                 </Badge>
                               )}
                             </div>
-                            <p className="mt-1 truncate text-xs text-muted-foreground">
+                            <p className="mt-1 truncate text-xs text-ink-subtle">
                               {messageText}
                             </p>
                           </div>
@@ -337,7 +337,7 @@ export default function DashboardPage() {
               <CardTitle className="text-base font-semibold">最近工單</CardTitle>
               <Link
                 href="/dashboard/cases"
-                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-sm text-ink-subtle hover:text-foreground transition-colors"
               >
                 查看全部
                 <ArrowRight className="h-4 w-4" />
@@ -347,10 +347,10 @@ export default function DashboardPage() {
             <CardContent className="p-0">
               {isLoadingCases ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
                 </div>
               ) : cases.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center py-12 text-ink-subtle">
                   <Briefcase className="mb-2 h-8 w-8" />
                   <p className="text-sm">暫無工單</p>
                 </div>
@@ -364,10 +364,10 @@ export default function DashboardPage() {
                       <li key={c.id}>
                         <Link
                           href={`/dashboard/cases/${c.id}`}
-                          className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-muted/50"
+                          className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-neutral-20"
                         >
                           {/* 工單圖示 */}
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-canvas text-ink-subtle">
                             <Briefcase className="h-4 w-4" />
                           </div>
 
@@ -377,7 +377,7 @@ export default function DashboardPage() {
                               <span className="truncate text-sm font-medium">
                                 {c.title}
                               </span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
+                              <span className="shrink-0 text-xs text-ink-subtle">
                                 {formatRelativeTime(c.createdAt)}
                               </span>
                             </div>
@@ -385,7 +385,7 @@ export default function DashboardPage() {
                               <CaseStatusBadge status={c.status} />
                               <CasePriorityBadge priority={c.priority} />
                             </div>
-                            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            <div className="mt-1 flex items-center gap-1 text-xs text-ink-subtle">
                               <User className="h-3 w-3" />
                               <span>{assigneeName}</span>
                             </div>

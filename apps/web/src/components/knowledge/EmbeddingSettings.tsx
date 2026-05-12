@@ -146,7 +146,7 @@ export function EmbeddingSettings() {
   };
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">載入中…</div>;
+    return <div className="text-sm text-ink-subtle">載入中…</div>;
   }
 
   const healthBadge = health?.ok ? (
@@ -163,7 +163,7 @@ export function EmbeddingSettings() {
     <div className="space-y-6 max-w-3xl">
       <div>
         <h2 className="text-lg font-semibold">AI / 向量設定</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-ink-subtle">
           設定知識庫向量化所使用的 Ollama 服務、模型，以及語意搜尋的 topK 與相似度門檻。
         </p>
       </div>
@@ -173,7 +173,7 @@ export function EmbeddingSettings() {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-sm font-semibold">Ollama 服務狀態</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               檢查 Ollama 是否可達，以及目前選擇的 embedding 模型是否已安裝。
             </p>
           </div>
@@ -183,12 +183,12 @@ export function EmbeddingSettings() {
         </div>
         <div className="mt-4 space-y-2 text-sm">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-20">狀態</span>
+            <span className="text-ink-subtle w-20">狀態</span>
             {healthBadge}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-20">目前模型</span>
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{health?.currentModel}</code>
+            <span className="text-ink-subtle w-20">目前模型</span>
+            <code className="rounded bg-surface-canvas px-1.5 py-0.5 text-xs">{health?.currentModel}</code>
             {health?.modelInstalled ? (
               <span className="text-xs text-green-600">已安裝</span>
             ) : (
@@ -206,8 +206,8 @@ export function EmbeddingSettings() {
       {/* ─── 模型設定 ────────────────────────── */}
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">模型設定</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          向量維度固定為 <code className="rounded bg-muted px-1 py-0.5">{vectorDim}</code>
+        <p className="mt-1 text-xs text-ink-subtle">
+          向量維度固定為 <code className="rounded bg-surface-canvas px-1 py-0.5">{vectorDim}</code>
           ，請選擇相同維度的模型（例：bge-m3、multilingual-e5-large）。切換模型後現有向量會失效，需要重新嵌入。
         </p>
 
@@ -255,7 +255,7 @@ export function EmbeddingSettings() {
               />
             )}
 
-            <p className="mt-1.5 text-xs text-muted-foreground">
+            <p className="mt-1.5 text-xs text-ink-subtle">
               {models.length > 0
                 ? `已偵測到 ${models.length} 個本地模型`
                 : '尚未偵測到本地模型，請確認 Ollama 已啟動或切換 Base URL'}
@@ -273,7 +273,7 @@ export function EmbeddingSettings() {
       {/* ─── 搜尋參數 ────────────────────────── */}
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">語意搜尋參數</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-ink-subtle">
           影響 KB 自動回覆與 RAG 檢索行為。topK 越大召回越多、threshold 越低越寬鬆。
         </p>
 
@@ -281,7 +281,7 @@ export function EmbeddingSettings() {
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <label className="font-medium">topK（取前幾筆）</label>
-              <span className="text-muted-foreground">{settings.topK}</span>
+              <span className="text-ink-subtle">{settings.topK}</span>
             </div>
             <input
               type="range"
@@ -292,7 +292,7 @@ export function EmbeddingSettings() {
               onChange={(e) => setSettings({ ...settings, topK: Number(e.target.value) })}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[10px] text-ink-subtle">
               <span>1</span>
               <span>10</span>
               <span>20</span>
@@ -301,7 +301,7 @@ export function EmbeddingSettings() {
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <label className="font-medium">相似度門檻</label>
-              <span className="text-muted-foreground">{settings.threshold.toFixed(2)}</span>
+              <span className="text-ink-subtle">{settings.threshold.toFixed(2)}</span>
             </div>
             <input
               type="range"
@@ -312,7 +312,7 @@ export function EmbeddingSettings() {
               onChange={(e) => setSettings({ ...settings, threshold: Number(e.target.value) })}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[10px] text-ink-subtle">
               <span>0.00 寬鬆</span>
               <span>0.50</span>
               <span>1.00 嚴格</span>
@@ -330,7 +330,7 @@ export function EmbeddingSettings() {
       {/* ─── 批次重新嵌入 ────────────────────────── */}
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">批次重新嵌入</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-ink-subtle">
           重新計算所有「已發布」文章的向量。切換模型後請執行這個。
         </p>
 
@@ -347,7 +347,7 @@ export function EmbeddingSettings() {
             {reembedding ? '處理中…（可能需要數分鐘）' : '重新嵌入全部已發布文章'}
           </Button>
           {reembedResult && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-ink-subtle">
               {reembedResult.message}
             </span>
           )}
@@ -359,10 +359,10 @@ export function EmbeddingSettings() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 max-w-md rounded-lg bg-background p-6 shadow-lg">
             <h3 className="text-base font-semibold">確認切換模型？</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              將從 <code className="rounded bg-muted px-1 py-0.5 text-xs">{confirmModelChange.from}</code>
+            <p className="mt-2 text-sm text-ink-subtle">
+              將從 <code className="rounded bg-surface-canvas px-1 py-0.5 text-xs">{confirmModelChange.from}</code>
               {' '}切換為{' '}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">{confirmModelChange.to}</code>
+              <code className="rounded bg-surface-canvas px-1 py-0.5 text-xs">{confirmModelChange.to}</code>
               。
             </p>
             <div className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800">
@@ -402,8 +402,8 @@ function StatBlock({
         ? 'text-amber-700'
         : 'text-foreground';
   return (
-    <div className="rounded-md border bg-muted/30 px-3 py-2.5">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+    <div className="rounded-md border bg-surface-canvas px-3 py-2.5">
+      <div className="text-[10px] text-ink-subtle">{label}</div>
       <div className={`mt-0.5 text-xl font-semibold ${toneClass}`}>{value}</div>
     </div>
   );

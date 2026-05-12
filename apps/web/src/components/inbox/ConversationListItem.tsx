@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday, formatDistanceToNowStrict } from 'date-fns';
+import { zhTW } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
@@ -38,7 +39,6 @@ interface ConversationListItemProps {
 
 function formatMessagePreview(msg?: { content: string | { text?: string }; contentType?: string }): string {
   if (!msg) return '尚無訊息';
-
   if (msg.contentType === 'image') return '[圖片]';
   if (msg.contentType === 'file') return '[檔案]';
   if (msg.contentType === 'flex' || msg.contentType === 'template') return '[卡片訊息]';
@@ -46,12 +46,21 @@ function formatMessagePreview(msg?: { content: string | { text?: string }; conte
   if (msg.contentType === 'video') return '[影片]';
   if (msg.contentType === 'audio') return '[語音]';
   if (msg.contentType === 'location') return '[位置]';
-
   const rawContent = msg.content;
   if (typeof rawContent === 'object' && rawContent !== null) {
     return (rawContent as { text?: string }).text || '尚無訊息';
   }
   return String(rawContent || '尚無訊息');
+}
+
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return format(d, 'HH:mm');
+  if (isYesterday(d)) return '昨天';
+  // Within last 7 days → relative
+  const diffDays = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays < 7) return formatDistanceToNowStrict(d, { addSuffix: false, locale: zhTW });
+  return format(d, 'MM/dd');
 }
 
 export function ConversationListItem({
@@ -64,71 +73,73 @@ export function ConversationListItem({
   const lastMessageContent = formatMessagePreview(conversation.lastMessage);
   const lastMessageTime = conversation.lastMessage?.createdAt || conversation.updatedAt;
   const unreadCount = conversation.unreadCount || 0;
+  const isUnread = unreadCount > 0;
   const isBotHandled = conversation.status === 'BOT_HANDLED';
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-start gap-3 rounded-md px-3 py-3 text-left transition-colors hover:bg-accent',
-        isSelected && 'bg-accent',
-        unreadCount > 0 && !isSelected && 'bg-blue-50/50'
+        'flex w-full items-start gap-3 py-5 pl-2 pr-4 text-left transition-colors',
+        isSelected
+          ? 'bg-surface-active hover:bg-surface-active'
+          : 'border-b border-surface-line/60 hover:bg-neutral-20',
       )}
     >
       <Avatar
         alt={contactName}
         src={conversation.contact?.avatar || conversation.contact?.avatarUrl}
         size="md"
+        className="h-10 w-10 shrink-0 ring-1 ring-neutral-30"
       />
-      <div className="flex-1 overflow-hidden">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'truncate text-sm',
-              unreadCount > 0 ? 'font-semibold' : 'font-medium'
-            )}
-          >
-            {contactName}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {formatDistanceToNow(new Date(lastMessageTime), { addSuffix: false })}
-          </span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          <ChannelBadge channel={conversation.channelType} />
-          {isBotHandled && (
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-              Bot 中
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* Header: name + channel chip + timestamp */}
+        <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="truncate text-[14px] font-medium leading-5 text-ink">
+              {contactName}
             </span>
-          )}
-          {conversation.lastMessageSentiment === 'positive' && (
-            <span className="inline-block h-2 w-2 rounded-full bg-green-500" title="正面情緒" />
-          )}
-          {conversation.lastMessageSentiment === 'negative' && (
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500" title="負面情緒" />
-          )}
-          {conversation.caseId && (
-            <FileText className="h-3 w-3 text-orange-500" />
-          )}
+            <ChannelBadge channel={conversation.channelType} />
+            {isBotHandled && (
+              <span className="inline-flex h-[18px] items-center rounded-chip bg-brand-10 px-2 text-[11px] font-medium text-brand-80">
+                Bot
+              </span>
+            )}
+          </div>
+          <span className="shrink-0 text-right text-[12px] leading-5 text-ink-subtle">
+            {formatTimestamp(lastMessageTime)}
+          </span>
         </div>
-        <div className="mt-1 flex items-center justify-between gap-2">
+
+        {/* Message preview + unread count badge */}
+        <div className="flex items-center gap-3">
           <p
             className={cn(
-              'truncate text-xs',
-              unreadCount > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
+              'flex-1 truncate text-[14px] leading-5',
+              isUnread || isSelected ? 'font-medium text-ink' : 'font-normal text-ink-subtle',
             )}
           >
             {lastMessageContent}
           </p>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
+            {conversation.lastMessageSentiment === 'positive' && (
+              <span className="inline-block h-2 w-2 rounded-full bg-f-green-60" title="正面情緒" />
+            )}
+            {conversation.lastMessageSentiment === 'negative' && (
+              <span className="inline-block h-2 w-2 rounded-full bg-f-red-60" title="負面情緒" />
+            )}
+            {conversation.caseId && (
+              <FileText className="h-3 w-3 text-f-orange-60" />
+            )}
             {showCsat && conversation.csatScore != null && (
-              <span className="flex items-center gap-0.5 text-[10px] text-amber-500">
-                <Star className="h-3 w-3 fill-amber-400" />
+              <span className="flex items-center gap-0.5 text-[11px] text-f-orange-60">
+                <Star className="h-3 w-3 fill-f-orange-60" />
                 {conversation.csatScore}
               </span>
             )}
-            {unreadCount > 0 && (
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+            {isUnread && (
+              <span className="inline-flex h-[18px] min-w-[24px] items-center justify-center rounded-chip bg-[#378ADD] px-2 text-[12px] font-semibold leading-5 text-white">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}

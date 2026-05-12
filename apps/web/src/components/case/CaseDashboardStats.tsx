@@ -2,19 +2,32 @@
 
 import React from 'react';
 import { useCaseStats } from '@/hooks/useCases';
+import { cn } from '@/lib/utils';
 
 interface StatCardProps {
   label: string;
   value: number;
-  color: string;
-  borderColor: string;
+  accent: 'link' | 'red' | 'orange' | 'green';
 }
 
-function StatCard({ label, value, color, borderColor }: StatCardProps) {
+const ACCENT_STYLE: Record<StatCardProps['accent'], { border: string; text: string }> = {
+  link: { border: 'border-l-link', text: 'text-link' },
+  red: { border: 'border-l-f-red-60', text: 'text-f-red-60' },
+  orange: { border: 'border-l-f-orange-60', text: 'text-f-orange-60' },
+  green: { border: 'border-l-f-green-60', text: 'text-f-green-60' },
+};
+
+function StatCard({ label, value, accent }: StatCardProps) {
+  const a = ACCENT_STYLE[accent];
   return (
-    <div className={`flex-1 rounded-lg border-l-4 bg-card p-4 shadow-sm ${borderColor}`}>
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
+    <div
+      className={cn(
+        'flex flex-1 flex-col gap-1 rounded-card border border-surface-line border-l-4 bg-white p-4 shadow-sm',
+        a.border,
+      )}
+    >
+      <p className="text-[12px] font-medium leading-4 text-ink-subtle">{label}</p>
+      <p className={cn('text-[24px] font-bold leading-7', a.text)}>{value}</p>
     </div>
   );
 }
@@ -24,30 +37,10 @@ export function CaseDashboardStats() {
 
   return (
     <div className="grid grid-cols-4 gap-4">
-      <StatCard
-        label="開啟中"
-        value={stats.openCount}
-        color="text-blue-600"
-        borderColor="border-blue-500"
-      />
-      <StatCard
-        label="SLA 違規"
-        value={stats.breachedCount}
-        color="text-red-600"
-        borderColor="border-red-500"
-      />
-      <StatCard
-        label="即將到期"
-        value={stats.warningCount}
-        color="text-orange-600"
-        borderColor="border-orange-500"
-      />
-      <StatCard
-        label="今日解決"
-        value={stats.resolvedTodayCount}
-        color="text-green-600"
-        borderColor="border-green-500"
-      />
+      <StatCard label="開啟中" value={stats.openCount} accent="link" />
+      <StatCard label="SLA 違規" value={stats.breachedCount} accent="red" />
+      <StatCard label="即將到期" value={stats.warningCount} accent="orange" />
+      <StatCard label="今日解決" value={stats.resolvedTodayCount} accent="green" />
     </div>
   );
 }

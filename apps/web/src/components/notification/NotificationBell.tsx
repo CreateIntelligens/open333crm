@@ -17,7 +17,7 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string }> = 
   sla_breached: { icon: AlertTriangle, color: 'text-red-500' },
   new_message: { icon: MessageSquare, color: 'text-green-500' },
   conversation_assigned: { icon: UserPlus, color: 'text-purple-500' },
-  conversation_claimed_by_other: { icon: Check, color: 'text-muted-foreground' },
+  conversation_claimed_by_other: { icon: Check, color: 'text-ink-subtle' },
   handoff_unassigned: { icon: AlertTriangle, color: 'text-yellow-500' },
 };
 
@@ -97,7 +97,7 @@ export function NotificationBell() {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        className="relative rounded-md p-2 text-ink-subtle hover:bg-accent hover:text-accent-foreground"
         onClick={() => setIsOpen(!isOpen)}
       >
         <Bell className="h-5 w-5" />
@@ -111,11 +111,11 @@ export function NotificationBell() {
       {isOpen && (
         <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border bg-background shadow-lg">
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center justify-between border-b border-surface-line px-4 py-3">
             <h3 className="text-sm font-semibold">通知</h3>
             {count > 0 && (
               <button
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                className="flex items-center gap-1 text-xs text-ink-subtle hover:text-foreground"
                 onClick={handleMarkAllAsRead}
               >
                 <CheckCheck className="h-3.5 w-3.5" />
@@ -127,7 +127,7 @@ export function NotificationBell() {
           {/* Notification List */}
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+              <div className="px-4 py-8 text-center text-sm text-ink-subtle">
                 目前沒有通知
               </div>
             ) : (
@@ -143,7 +143,7 @@ export function NotificationBell() {
                 }) => {
                   const config = TYPE_CONFIG[n.type] || {
                     icon: Bell,
-                    color: 'text-muted-foreground',
+                    color: 'text-ink-subtle',
                   };
                   const Icon = config.icon;
 
@@ -158,8 +158,8 @@ export function NotificationBell() {
                       <Icon className={`mt-0.5 h-4 w-4 flex-shrink-0 ${config.color}`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{n.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">{n.body}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="text-xs text-ink-subtle truncate">{n.body}</p>
+                        <p className="mt-1 text-xs text-ink-subtle">
                           {formatDistanceToNow(new Date(n.createdAt), {
                             addSuffix: true,
                             locale: zhTW,
@@ -179,7 +179,7 @@ export function NotificationBell() {
           {/* Footer */}
           <div className="border-t">
             <button
-              className="w-full px-4 py-2.5 text-center text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="w-full px-4 py-2.5 text-center text-xs text-ink-subtle hover:bg-accent hover:text-foreground"
               onClick={() => {
                 setIsOpen(false);
                 router.push('/dashboard/notifications');

@@ -59,7 +59,7 @@ export function AgentPerformanceTable({
 
   const display = limit ? sorted.slice(0, limit) : sorted;
 
-  const thClass = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground';
+  const thClass = 'px-3 py-2 text-left text-xs font-medium text-ink-subtle cursor-pointer select-none hover:text-foreground';
 
   return (
     <Card>
@@ -69,18 +69,18 @@ export function AgentPerformanceTable({
       <CardContent className="p-0">
         {isLoading ? (
           <div className="flex h-[200px] items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
           </div>
         ) : display.length === 0 ? (
-          <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-[200px] items-center justify-center text-sm text-ink-subtle">
             尚無資料
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b bg-muted/50">
+              <thead className="border-b border-surface-line bg-neutral-20">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">客服</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-ink-subtle">客服</th>
                   <th className={thClass} onClick={() => handleSort('casesHandled')}>
                     <span className="flex items-center gap-1">
                       處理案件 <ArrowUpDown className="h-3 w-3" />
@@ -110,11 +110,11 @@ export function AgentPerformanceTable({
               </thead>
               <tbody className="divide-y">
                 {display.map((agent) => (
-                  <tr key={agent.agentId} className="hover:bg-muted/30">
+                  <tr key={agent.agentId} className="hover:bg-surface-canvas">
                     <td className="px-3 py-2">
                       <div>
                         <p className="font-medium">{agent.name}</p>
-                        <p className="text-xs text-muted-foreground">{agent.role}</p>
+                        <p className="text-xs text-ink-subtle">{agent.role}</p>
                       </div>
                     </td>
                     <td className="px-3 py-2">{agent.casesHandled}</td>

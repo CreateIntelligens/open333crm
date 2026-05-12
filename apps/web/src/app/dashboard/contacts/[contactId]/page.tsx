@@ -55,7 +55,7 @@ export default function ContactDetailPage() {
       <div className="flex h-full flex-col">
         <Topbar title="聯繫人詳情" />
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="h-8 w-8 animate-spin text-ink-subtle" />
         </div>
       </div>
     );
@@ -66,7 +66,7 @@ export default function ContactDetailPage() {
       <div className="flex h-full flex-col">
         <Topbar title="聯繫人詳情" />
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-muted-foreground">找不到聯繫人</p>
+          <p className="text-ink-subtle">找不到聯繫人</p>
         </div>
       </div>
     );

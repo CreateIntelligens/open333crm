@@ -106,7 +106,7 @@ export function PointsTab() {
 
           <div className="border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-muted">
+              <thead className="bg-surface-canvas">
                 <tr>
                   <th className="text-left p-3">時間</th>
                   <th className="text-left p-3">類型</th>
@@ -126,13 +126,13 @@ export function PointsTab() {
                         {amount >= 0 ? '+' : ''}{amount}
                       </td>
                       <td className="p-3 text-right">{tx.balance as number}</td>
-                      <td className="p-3 text-muted-foreground">{(tx.note as string) || '-'}</td>
+                      <td className="p-3 text-ink-subtle">{(tx.note as string) || '-'}</td>
                     </tr>
                   );
                 })}
                 {transactions.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={5} className="p-8 text-center text-ink-subtle">
                       尚無交易記錄
                     </td>
                   </tr>

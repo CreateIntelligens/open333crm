@@ -90,7 +90,7 @@ function ActivityList() {
 
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -109,23 +109,23 @@ function ActivityList() {
 
                   <h3 className="font-medium">{a.title}</h3>
                   {a.description ? (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{a.description}</p>
+                    <p className="text-sm text-ink-subtle line-clamp-2">{a.description}</p>
                   ) : null}
 
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 text-sm text-ink-subtle">
                     <Users className="h-3.5 w-3.5" />
                     <span>{count} 人參加</span>
                   </div>
 
                   {(a.startsAt || a.endsAt) ? (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-ink-subtle">
                       {a.startsAt && new Date(a.startsAt).toLocaleDateString('zh-TW')}
                       {a.startsAt && a.endsAt && ' ~ '}
                       {a.endsAt && new Date(a.endsAt).toLocaleDateString('zh-TW')}
                     </p>
                   ) : null}
 
-                  <div className="flex items-center gap-2 pt-2 border-t">
+                  <div className="flex items-center gap-2 pt-2 border-t border-surface-line">
                     {a.status === 'DRAFT' && (
                       <>
                         <Button size="sm" variant="outline" onClick={() => handlePublish(a.id)} disabled={actioning === a.id}>
@@ -152,7 +152,7 @@ function ActivityList() {
             );
           })}
           {activities.length === 0 && (
-            <div className="col-span-full text-center py-12 text-muted-foreground">
+            <div className="col-span-full text-center py-12 text-ink-subtle">
               尚無活動，點擊「建立活動」開始
             </div>
           )}

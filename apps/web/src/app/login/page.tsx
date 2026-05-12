@@ -42,20 +42,20 @@ function LoginForm() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">載入中...</p>
+        <p className="text-ink-subtle">載入中...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-surface-canvas px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg">
             O3
           </div>
           <CardTitle className="text-2xl">open333CRM</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-ink-subtle mt-1">
             登入您的帳號
           </p>
         </CardHeader>

@@ -159,7 +159,7 @@ export function TagManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -169,7 +169,7 @@ export function TagManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">標籤管理</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             管理聯繫人、對話和案件的分類標籤
           </p>
         </div>
@@ -188,7 +188,7 @@ export function TagManagement() {
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               filterScope === scope
                 ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                : 'bg-surface-canvas text-ink-subtle hover:bg-neutral-30'
             }`}
           >
             {scope === 'ALL' ? '全部' : SCOPE_LABELS[scope]}{' '}
@@ -208,15 +208,15 @@ export function TagManagement() {
               <Badge color={tag.color} className="shrink-0">{tag.name}</Badge>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-[10px] text-ink-subtle">
                     {SCOPE_LABELS[tag.scope]}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-[10px] text-ink-subtle">
                     {TYPE_LABELS[tag.type]}
                   </span>
                 </div>
                 {tag.description && (
-                  <p className="truncate text-xs text-muted-foreground">
+                  <p className="truncate text-xs text-ink-subtle">
                     {tag.description}
                   </p>
                 )}
@@ -238,7 +238,7 @@ export function TagManagement() {
           </div>
         ))}
         {filtered.length === 0 && (
-          <div className="col-span-full py-8 text-center text-sm text-muted-foreground">
+          <div className="col-span-full py-8 text-center text-sm text-ink-subtle">
             尚未建立標籤
           </div>
         )}
@@ -318,7 +318,7 @@ export function TagManagement() {
 
             {/* Preview */}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">預覽：</span>
+              <span className="text-sm text-ink-subtle">預覽：</span>
               <Badge color={formColor}>{formName || '標籤名稱'}</Badge>
             </div>
 

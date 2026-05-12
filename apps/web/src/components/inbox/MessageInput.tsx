@@ -133,14 +133,14 @@ export function MessageInput({
     || (isBotHandled ? 'Bot 處理中，點擊「接管對話」以開始回覆' : '輸入訊息...（Enter 傳送，Shift+Enter 換行）');
 
   return (
-    <div className="border-t bg-background">
+    <div className="shrink-0 border-t border-surface-line bg-white">
       {/* Bot takeover CTA */}
       {isBotHandled && onTakeover && (
-        <div className="flex items-center justify-center border-b bg-purple-50/50 px-4 py-2">
+        <div className="flex items-center justify-center border-b border-surface-line bg-brand-10/40 px-4 py-2">
           <Button
             size="sm"
             variant="default"
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            className="bg-brand text-white hover:bg-brand-70"
             onClick={onTakeover}
           >
             接管對話
@@ -148,40 +148,39 @@ export function MessageInput({
         </div>
       )}
 
-      <div className="p-4">
-        <div className="flex items-end gap-2">
-          {/* Attachment button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={() => fileInputRef.current?.click()}
-            title="附件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_TYPES}
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+      {/* Input row — Figma 922:33188, padding 16, gap 8 */}
+      <div className="flex items-center gap-2 p-4">
+        {/* Template button (50x50 icon button) */}
+        <button
+          type="button"
+          onClick={onOpenTemplates}
+          disabled={isDisabled}
+          title="範本"
+          className="flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-card border border-surface-line bg-white text-ink transition-colors hover:bg-neutral-20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <LayoutTemplate className="h-5 w-5" />
+        </button>
 
-          {/* Template button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={onOpenTemplates}
-            title="模板"
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </Button>
+        {/* Attachment button */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isDisabled}
+          title="附件"
+          className="flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-card border border-surface-line bg-white text-ink transition-colors hover:bg-neutral-20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Paperclip className="h-5 w-5" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
 
-          {/* Textarea */}
+        {/* Input bar (#F8FAFC bg, border, radius 8, padding 12) */}
+        <div className="flex flex-1 items-center gap-1 rounded-lg border border-surface-line bg-surface-canvas px-3 py-2.5">
           <textarea
             ref={textareaRef}
             value={message}
@@ -191,20 +190,21 @@ export function MessageInput({
             placeholder={placeholder}
             disabled={isDisabled}
             rows={1}
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ minHeight: '40px', maxHeight: '120px' }}
+            className="w-full resize-none bg-transparent text-[14px] leading-6 text-ink placeholder:text-ink-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ minHeight: '24px', maxHeight: '120px' }}
           />
-
-          {/* Send button */}
-          <Button
-            onClick={handleSend}
-            disabled={!message.trim() || isDisabled}
-            size="icon"
-            className="shrink-0"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
         </div>
+
+        {/* Send button — primary blue 50x50 */}
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!message.trim() || isDisabled}
+          title="傳送"
+          className="flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-card bg-[#378ADD] text-white transition-colors hover:bg-[#2876C4] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Send className="h-5 w-5" />
+        </button>
       </div>
     </div>
   );

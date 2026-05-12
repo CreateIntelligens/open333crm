@@ -8,29 +8,33 @@ interface CaseStatusBadgeProps {
   className?: string;
 }
 
+// Figma case-status colours
+// Use direct hex for the IN_PROGRESS orange (#FFF0E4/#FF6E00) — sourced from CaseCard tag spec.
 const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-  open: { bg: 'bg-green-100', text: 'text-green-700', label: '開啟' },
-  in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', label: '處理中' },
-  pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '待處理' },
-  escalated: { bg: 'bg-orange-100', text: 'text-orange-700', label: '已升級' },
-  resolved: { bg: 'bg-purple-100', text: 'text-purple-700', label: '已解決' },
-  closed: { bg: 'bg-gray-100', text: 'text-gray-600', label: '已關閉' },
+  OPEN: { bg: 'bg-surface-active', text: 'text-link', label: 'OPEN' },
+  IN_PROGRESS: { bg: 'bg-[#FFF0E4]', text: 'text-[#FF6E00]', label: 'IN_PROGRESS' },
+  PENDING: { bg: 'bg-f-orange-10', text: 'text-f-orange-80', label: 'PENDING' },
+  ESCALATED: { bg: 'bg-f-red-10', text: 'text-f-red-80', label: 'ESCALATED' },
+  RESOLVED: { bg: 'bg-f-green-10', text: 'text-f-green-80', label: 'RESOLVED' },
+  CLOSED: { bg: 'bg-neutral-30', text: 'text-ink-subtle', label: 'CLOSED' },
 };
 
 export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
-  const config = statusConfig[status] || {
-    bg: 'bg-gray-100',
-    text: 'text-gray-700',
+  // Normalize to uppercase for lookup
+  const key = status.toUpperCase();
+  const config = statusConfig[key] || {
+    bg: 'bg-neutral-30',
+    text: 'text-ink-subtle',
     label: status,
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
+        'inline-flex items-center rounded-card px-2 py-0.5 text-[12px] font-semibold leading-5',
         config.bg,
         config.text,
-        className
+        className,
       )}
     >
       {config.label}

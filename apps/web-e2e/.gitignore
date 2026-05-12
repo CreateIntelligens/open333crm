@@ -1,0 +1,6 @@
+node_modules/
+playwright-report/
+test-results/
+test-results.json
+qa-report.html
+.last-run.json

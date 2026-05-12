@@ -38,7 +38,7 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
 
   return (
     <div className="flex justify-center py-3">
-      <div className="rounded-xl bg-muted px-6 py-4 text-center">
+      <div className="rounded-xl bg-surface-canvas px-6 py-4 text-center">
         <p className="mb-2 text-sm font-medium">
           {submitted ? '感謝您的評價！' : '請評價此次服務體驗'}
         </p>
@@ -68,7 +68,7 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
           ))}
         </div>
         {displayScore > 0 && (
-          <p className="mt-1 text-xs text-muted-foreground">{labels[displayScore]}</p>
+          <p className="mt-1 text-xs text-ink-subtle">{labels[displayScore]}</p>
         )}
       </div>
     </div>

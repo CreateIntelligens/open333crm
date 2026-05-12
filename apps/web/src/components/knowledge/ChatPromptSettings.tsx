@@ -146,7 +146,7 @@ export function ChatPromptSettings() {
     }
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground">載入中…</div>;
+  if (loading) return <div className="text-sm text-ink-subtle">載入中…</div>;
 
   const healthBadge = health?.ok ? (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
@@ -173,7 +173,7 @@ export function ChatPromptSettings() {
     <div className="space-y-6 max-w-3xl">
       <div>
         <h2 className="text-lg font-semibold">Chat & RAG 設定</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-ink-subtle">
           設定 KB 自動回覆與對話摘要使用的 LLM 提供者、模型、生成參數，以及系統提示詞。
         </p>
       </div>
@@ -183,7 +183,7 @@ export function ChatPromptSettings() {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-sm font-semibold">服務狀態</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               檢查所選 Provider 是否可達，以及目前模型是否可用。
             </p>
           </div>
@@ -193,16 +193,16 @@ export function ChatPromptSettings() {
         </div>
         <div className="mt-4 space-y-2 text-sm">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-20">狀態</span>
+            <span className="text-ink-subtle w-20">狀態</span>
             {healthBadge}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-20">Provider</span>
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{providerLabel}</code>
+            <span className="text-ink-subtle w-20">Provider</span>
+            <code className="rounded bg-surface-canvas px-1.5 py-0.5 text-xs">{providerLabel}</code>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-20">目前模型</span>
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{health?.currentModel}</code>
+            <span className="text-ink-subtle w-20">目前模型</span>
+            <code className="rounded bg-surface-canvas px-1.5 py-0.5 text-xs">{health?.currentModel}</code>
           </div>
           {health?.error && (
             <div className="mt-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{health.error}</div>
@@ -213,7 +213,7 @@ export function ChatPromptSettings() {
       {/* ─── Provider / 模型 ────────────────────────── */}
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">Provider 與模型</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-ink-subtle">
           切換 Provider 後請接著選擇對應模型；Gemini 共用平台 API key（管理員 .env 設定）。
         </p>
 
@@ -314,7 +314,7 @@ export function ChatPromptSettings() {
       {/* ─── 生成參數 ────────────────────────── */}
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">生成參數</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-ink-subtle">
           temperature 控制創意程度（越高越發散），max tokens 控制回覆長度上限。
         </p>
 
@@ -322,7 +322,7 @@ export function ChatPromptSettings() {
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <label className="font-medium">Temperature</label>
-              <span className="text-muted-foreground">{settings.temperature.toFixed(2)}</span>
+              <span className="text-ink-subtle">{settings.temperature.toFixed(2)}</span>
             </div>
             <input
               type="range"
@@ -333,7 +333,7 @@ export function ChatPromptSettings() {
               onChange={(e) => setSettings({ ...settings, temperature: Number(e.target.value) })}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[10px] text-ink-subtle">
               <span>0.00 嚴謹</span>
               <span>0.50</span>
               <span>1.00 發散</span>
@@ -343,7 +343,7 @@ export function ChatPromptSettings() {
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <label className="font-medium">Max Tokens（回覆長度上限）</label>
-              <span className="text-muted-foreground">{settings.maxTokens}</span>
+              <span className="text-ink-subtle">{settings.maxTokens}</span>
             </div>
             <input
               type="range"
@@ -354,7 +354,7 @@ export function ChatPromptSettings() {
               onChange={(e) => setSettings({ ...settings, maxTokens: Number(e.target.value) })}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[10px] text-ink-subtle">
               <span>50</span>
               <span>1000</span>
               <span>2000</span>
@@ -374,7 +374,7 @@ export function ChatPromptSettings() {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-sm font-semibold">客服回覆 System Prompt</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               用於 KB 自動回覆、Suggest Reply、自動化規則的 LLM Reply 動作。留空表示使用預設提示詞。
             </p>
           </div>
@@ -393,7 +393,7 @@ export function ChatPromptSettings() {
           placeholder={defaults.chatSystemPrompt}
         />
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-ink-subtle">
             {settings.chatSystemPrompt.length} 字
             {settings.chatSystemPrompt.length === 0 && '（將使用預設）'}
           </span>
@@ -408,7 +408,7 @@ export function ChatPromptSettings() {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-sm font-semibold">對話摘要 System Prompt</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-ink-subtle">
               用於 「AI 摘要對話」功能。留空表示使用預設提示詞。
             </p>
           </div>
@@ -429,7 +429,7 @@ export function ChatPromptSettings() {
           placeholder={defaults.summarizeSystemPrompt}
         />
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-ink-subtle">
             {settings.summarizeSystemPrompt.length} 字
             {settings.summarizeSystemPrompt.length === 0 && '（將使用預設）'}
           </span>
@@ -442,7 +442,7 @@ export function ChatPromptSettings() {
       {/* ─── 多輪追問（Clarify）────────────────────────── */}
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">多輪追問（Clarify）</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-ink-subtle">
           當客戶訊息資訊不足、知識庫信心低於門檻時，Bot 會用此提示詞反問一個澄清問題，
           而不是直接回覆或交給真人。達到追問次數上限後會自動轉接客服。
         </p>
@@ -451,7 +451,7 @@ export function ChatPromptSettings() {
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <label className="font-medium">觸發門檻（KB top similarity 低於此值就改用追問）</label>
-              <span className="text-muted-foreground">{settings.clarifyThreshold.toFixed(2)}</span>
+              <span className="text-ink-subtle">{settings.clarifyThreshold.toFixed(2)}</span>
             </div>
             <input
               type="range"
@@ -464,7 +464,7 @@ export function ChatPromptSettings() {
               }
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[10px] text-ink-subtle">
               <span>0.00（總是追問）</span>
               <span>0.50</span>
               <span>1.00（從不追問）</span>
@@ -474,7 +474,7 @@ export function ChatPromptSettings() {
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <label className="font-medium">最大追問次數（達到後自動 handoff）</label>
-              <span className="text-muted-foreground">{settings.clarifyMaxAttempts}</span>
+              <span className="text-ink-subtle">{settings.clarifyMaxAttempts}</span>
             </div>
             <input
               type="range"
@@ -487,7 +487,7 @@ export function ChatPromptSettings() {
               }
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[10px] text-ink-subtle">
               <span>0</span>
               <span>2（推薦）</span>
               <span>5</span>
@@ -515,7 +515,7 @@ export function ChatPromptSettings() {
               }
               placeholder={defaults.clarifySystemPrompt}
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-ink-subtle">
               {settings.clarifySystemPrompt.length} 字
               {settings.clarifySystemPrompt.length === 0 && '（將使用預設）'}
             </span>

@@ -81,7 +81,7 @@ export function TagManager({ contactId, tags, onUpdate }: TagManagerProps) {
             </Badge>
           ))
         ) : (
-          <span className="text-sm text-muted-foreground">沒有標籤</span>
+          <span className="text-sm text-ink-subtle">沒有標籤</span>
         )}
       </div>
 

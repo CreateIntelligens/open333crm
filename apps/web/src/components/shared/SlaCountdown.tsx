@@ -27,7 +27,7 @@ export function SlaCountdown({ deadline, className }: SlaCountdownProps) {
   }, [deadline]);
 
   if (!deadline) {
-    return <span className={cn('text-sm text-muted-foreground', className)}>無 SLA</span>;
+    return <span className={cn('text-sm text-ink-subtle', className)}>無 SLA</span>;
   }
 
   const isExpired = remaining <= 0;
@@ -37,11 +37,11 @@ export function SlaCountdown({ deadline, className }: SlaCountdownProps) {
 
   const twoHours = 2 * 60 * 60 * 1000;
 
-  let colorClass = 'text-green-600';
+  let colorClass = 'text-f-green-60';
   if (isExpired) {
-    colorClass = 'text-red-600 font-bold';
+    colorClass = 'font-bold text-f-red-60';
   } else if (remaining < twoHours) {
-    colorClass = 'text-orange-500 font-semibold';
+    colorClass = 'font-semibold text-f-orange-60';
   }
 
   const timeStr = `${isExpired ? '-' : ''}${hours}h ${minutes}m ${seconds}s`;

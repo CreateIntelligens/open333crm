@@ -254,7 +254,7 @@ export function ChannelFormDialog({
                     onChange={(e) => setAppId(e.target.value)}
                     placeholder={isEditing ? '留空表示不更新' : '從 Facebook Developer Console 取得'}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-ink-subtle">
                     Settings → Basic → App ID
                   </p>
                 </div>
@@ -269,7 +269,7 @@ export function ChannelFormDialog({
                     placeholder={isEditing ? '留空表示不更新' : '從 Facebook Developer Console 取得'}
                     required={!isEditing}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-ink-subtle">
                     Settings → Basic → App Secret（用於 Webhook 簽名驗證）
                   </p>
                 </div>
@@ -284,7 +284,7 @@ export function ChannelFormDialog({
                     placeholder={isEditing ? '留空表示不更新' : 'EAA... 開頭的長字串'}
                     required={!isEditing}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-ink-subtle">
                     Messenger → Settings → Token Generation → 選擇粉專 → Generate Token
                   </p>
                 </div>
@@ -297,7 +297,7 @@ export function ChannelFormDialog({
                     onChange={(e) => setPageId(e.target.value)}
                     placeholder="粉絲專頁數字 ID"
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-ink-subtle">
                     粉專設定 → 關於，或 Token Generation 頁面旁邊
                   </p>
                 </div>
@@ -344,7 +344,7 @@ export function ChannelFormDialog({
                   <Input
                     value={channel.webhookUrl}
                     readOnly
-                    className="bg-muted text-xs font-mono"
+                    className="bg-surface-canvas text-xs font-mono"
                   />
                   <Button
                     type="button"
@@ -360,7 +360,7 @@ export function ChannelFormDialog({
                     )}
                   </Button>
                 </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">
+                <p className="mt-1.5 text-xs text-ink-subtle">
                   {effectiveType === CHANNEL_TYPE.FB
                     ? '請在 Facebook App → Messenger → Webhooks 中設定此 URL，並填入系統產生的 Verify Token'
                     : effectiveType === CHANNEL_TYPE.LINE

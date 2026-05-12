@@ -37,7 +37,7 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -56,23 +56,23 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
-          <tr className="border-b bg-muted/50 text-left">
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <tr className="border-b border-surface-line bg-neutral-20 text-left">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               聯繫人
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               電話
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               電子郵件
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               渠道
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               標籤
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               最近活躍
             </th>
           </tr>
@@ -85,7 +85,7 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
             return (
               <tr
                 key={contact.id}
-                className="cursor-pointer border-b transition-colors hover:bg-muted/50"
+                className="cursor-pointer border-b border-surface-line transition-colors hover:bg-neutral-20"
                 onClick={() => router.push(`/dashboard/contacts/${contact.id}`)}
               >
                 <td className="px-4 py-3">
@@ -94,10 +94,10 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
                     <span className="text-sm font-medium">{contactName}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
+                <td className="px-4 py-3 text-sm text-ink-subtle">
                   {contact.phone || '-'}
                 </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
+                <td className="px-4 py-3 text-sm text-ink-subtle">
                   {contact.email || '-'}
                 </td>
                 <td className="px-4 py-3">
@@ -107,7 +107,7 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
                         <ChannelBadge key={ci.id} channel={ci.channelType} />
                       ))
                     ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
+                      <span className="text-xs text-ink-subtle">-</span>
                     )}
                   </div>
                 </td>
@@ -128,11 +128,11 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
                         );
                       })
                     ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
+                      <span className="text-xs text-ink-subtle">-</span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
+                <td className="px-4 py-3 text-sm text-ink-subtle">
                   {contact.lastActiveAt || contact.updatedAt
                     ? format(
                         new Date(contact.lastActiveAt || contact.updatedAt || ''),

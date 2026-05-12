@@ -66,11 +66,11 @@ export function SimulatorPanel() {
       {isOpen && (
         <div className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-background shadow-xl">
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center justify-between border-b border-surface-line px-4 py-3">
             <h3 className="text-sm font-semibold">訊息模擬器</h3>
             <button
               onClick={() => setIsOpen(false)}
-              className="rounded p-1 hover:bg-muted"
+              className="rounded p-1 hover:bg-surface-canvas"
             >
               <X className="h-4 w-4" />
             </button>
@@ -79,7 +79,7 @@ export function SimulatorPanel() {
           {/* Body */}
           <div className="space-y-3 p-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label className="mb-1 block text-xs font-medium text-ink-subtle">
                 渠道
               </label>
               <Select
@@ -94,7 +94,7 @@ export function SimulatorPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label className="mb-1 block text-xs font-medium text-ink-subtle">
                 聯繫人名稱（選填）
               </label>
               <Input
@@ -105,7 +105,7 @@ export function SimulatorPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label className="mb-1 block text-xs font-medium text-ink-subtle">
                 外部 ID（選填）
               </label>
               <Input
@@ -116,7 +116,7 @@ export function SimulatorPanel() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              <label className="mb-1 block text-xs font-medium text-ink-subtle">
                 訊息
               </label>
               <Textarea

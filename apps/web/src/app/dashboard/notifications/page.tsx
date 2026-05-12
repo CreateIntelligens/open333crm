@@ -103,11 +103,11 @@ export default function NotificationsPage() {
 
         {/* Notification List */}
         {isLoading ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">載入中...</div>
+          <div className="py-12 text-center text-sm text-ink-subtle">載入中...</div>
         ) : notifications.length === 0 ? (
           <div className="py-12 text-center">
-            <Bell className="mx-auto h-12 w-12 text-muted-foreground/30" />
-            <p className="mt-4 text-sm text-muted-foreground">
+            <Bell className="mx-auto h-12 w-12 text-ink-subtle/30" />
+            <p className="mt-4 text-sm text-ink-subtle">
               {tab === 'unread' ? '沒有未讀通知' : tab === 'read' ? '沒有已讀通知' : '目前沒有通知'}
             </p>
           </div>
@@ -146,7 +146,7 @@ export default function NotificationsPage() {
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${config.color}`}>
                           {config.label}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-ink-subtle">
                           {formatDistanceToNow(new Date(n.createdAt), {
                             addSuffix: true,
                             locale: zhTW,
@@ -154,14 +154,14 @@ export default function NotificationsPage() {
                         </span>
                       </div>
                       <p className="mt-1 text-sm font-medium">{n.title}</p>
-                      <p className="text-sm text-muted-foreground">{n.body}</p>
+                      <p className="text-sm text-ink-subtle">{n.body}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {!n.isRead && (
                         <>
                           <span className="h-2 w-2 rounded-full bg-blue-500" />
                           <button
-                            className="rounded-md p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                            className="rounded-md p-1 text-xs text-ink-subtle hover:bg-accent hover:text-foreground"
                             onClick={(e) => handleMarkSingleRead(e, n.id)}
                             title="標記已讀"
                           >
@@ -188,7 +188,7 @@ export default function NotificationsPage() {
               <ChevronLeft className="h-4 w-4" />
               上一頁
             </button>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-ink-subtle">
               第 {page} / {totalPages} 頁
             </span>
             <button

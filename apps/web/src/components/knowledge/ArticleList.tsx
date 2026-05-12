@@ -54,7 +54,7 @@ export function ArticleList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -73,33 +73,33 @@ export function ArticleList({
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
-          <tr className="border-b bg-muted/50 text-left">
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <tr className="border-b border-surface-line bg-neutral-20 text-left">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               標題
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               分類
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               狀態
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               標籤
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               瀏覽數
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               更新時間
             </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+            <th className="px-4 py-3 text-xs font-medium uppercase text-ink-subtle">
               操作
             </th>
           </tr>
         </thead>
         <tbody>
           {articles.map((article) => (
-            <tr key={article.id} className="border-b transition-colors hover:bg-muted/50">
+            <tr key={article.id} className="border-b border-surface-line transition-colors hover:bg-neutral-20">
               <td className="px-4 py-3">
                 <div className="flex items-start gap-1.5">
                   {article.hasEmbedding && (
@@ -110,12 +110,12 @@ export function ArticleList({
                   <div>
                     <p className="text-sm font-medium">{article.title}</p>
                     {article.summary && (
-                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
+                      <p className="mt-0.5 text-xs text-ink-subtle line-clamp-1">
                         {article.summary}
                       </p>
                     )}
                     {(article.externalDocId || (article._count?.attachments ?? 0) > 0) && (
-                      <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-ink-subtle">
                         {article.externalDocId && (
                           <span>
                             DocID {article.externalDocId}
@@ -149,16 +149,16 @@ export function ArticleList({
                     </Badge>
                   ))}
                   {article.tags.length > 3 && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-ink-subtle">
                       +{article.tags.length - 3}
                     </span>
                   )}
                 </div>
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-sm text-ink-subtle">
                 {article.viewCount}
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-sm text-ink-subtle">
                 {format(new Date(article.updatedAt), 'MMM d, HH:mm')}
               </td>
               <td className="px-4 py-3">

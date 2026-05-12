@@ -666,7 +666,7 @@ export function TemplateFormDialog({
                   {form.fbElements.map((el, elIdx) => (
                     <div key={elIdx} className="relative rounded-md border p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">
+                        <span className="text-xs font-medium text-ink-subtle">
                           卡片 {elIdx + 1}
                         </span>
                         {form.fbElements.length > 1 && (
@@ -704,7 +704,7 @@ export function TemplateFormDialog({
                 </Button>
               </div>
               {variables.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-ink-subtle">
                   尚未定義變數。在訊息內容中使用 {'{{變數名稱}}'} 語法，並在此定義變數屬性。
                 </p>
               ) : (
@@ -754,8 +754,8 @@ export function TemplateFormDialog({
 
             {/* Preview result */}
             {preview && (
-              <div className="rounded-md border bg-muted/50 p-3">
-                <h4 className="mb-1 text-xs font-medium text-muted-foreground">預覽結果</h4>
+              <div className="rounded-md border bg-neutral-20 p-3">
+                <h4 className="mb-1 text-xs font-medium text-ink-subtle">預覽結果</h4>
                 {typeof preview === 'object' && (preview as Record<string, unknown>).text ? (
                   <p className="mb-2 whitespace-pre-wrap text-sm">
                     {(preview as Record<string, unknown>).text as string}
@@ -765,7 +765,7 @@ export function TemplateFormDialog({
                   ((preview as Record<string, unknown>).flexJson ||
                     (preview as Record<string, unknown>).fbElements ||
                     (preview as Record<string, unknown>).quickReplies) ? (
-                  <pre className="whitespace-pre-wrap text-xs font-mono bg-muted rounded p-2 max-h-60 overflow-auto">
+                  <pre className="whitespace-pre-wrap text-xs font-mono bg-surface-canvas rounded p-2 max-h-60 overflow-auto">
                     {JSON.stringify(
                       (preview as Record<string, unknown>).flexJson ||
                       (preview as Record<string, unknown>).fbElements ||
@@ -871,7 +871,7 @@ function FbElementEditor({
       />
       <div>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-muted-foreground">按鈕</span>
+          <span className="text-xs text-ink-subtle">按鈕</span>
           <Button type="button" variant="outline" size="sm" onClick={() => onAddButton(index)}>
             <Plus className="mr-1 h-3 w-3" />
             新增按鈕

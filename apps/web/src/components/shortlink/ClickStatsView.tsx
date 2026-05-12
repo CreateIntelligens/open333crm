@@ -48,7 +48,7 @@ export function ClickStatsView() {
 
       {isLoading && selectedId && (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       )}
 
@@ -70,7 +70,7 @@ export function ClickStatsView() {
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+              <div className="flex items-center justify-center h-[300px] text-ink-subtle">
                 尚無點擊數據
               </div>
             )}
@@ -98,7 +98,7 @@ export function ClickStatsView() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+              <div className="flex items-center justify-center h-[300px] text-ink-subtle">
                 尚無來源數據
               </div>
             )}

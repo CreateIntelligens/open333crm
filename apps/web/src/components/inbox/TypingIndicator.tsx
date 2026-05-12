@@ -44,7 +44,7 @@ export function TypingIndicator({ conversationId }: TypingIndicatorProps) {
         <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '150ms' }} />
         <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '300ms' }} />
       </div>
-      <span className="text-xs text-muted-foreground">{typingAgent} 正在輸入...</span>
+      <span className="text-xs text-ink-subtle">{typingAgent} 正在輸入...</span>
     </div>
   );
 }

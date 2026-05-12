@@ -109,10 +109,10 @@ function CampaignTab() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : campaigns.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無行銷活動</p>
+        <p className="py-12 text-center text-ink-subtle">尚無行銷活動</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {campaigns.map((c: any) => (
@@ -126,9 +126,9 @@ function CampaignTab() {
                 <StatusBadge status={c.status} map={campaignStatusMap} />
               </div>
               {c.description && (
-                <p className="mb-2 text-sm text-muted-foreground line-clamp-2">{c.description}</p>
+                <p className="mb-2 text-sm text-ink-subtle line-clamp-2">{c.description}</p>
               )}
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="flex items-center justify-between text-xs text-ink-subtle">
                 <span>
                   {c._count?.broadcasts || 0} 次廣播
                 </span>
@@ -308,15 +308,15 @@ function BroadcastTab() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : broadcasts.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無廣播記錄</p>
+        <p className="py-12 text-center text-ink-subtle">尚無廣播記錄</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className="border-b border-surface-line text-left text-ink-subtle">
                 <th className="pb-2 font-medium">名稱</th>
                 <th className="pb-2 font-medium">狀態</th>
                 <th className="pb-2 font-medium">受眾</th>
@@ -329,18 +329,18 @@ function BroadcastTab() {
             </thead>
             <tbody>
               {broadcasts.map((b: any) => (
-                <tr key={b.id} className="border-b">
+                <tr key={b.id} className="border-b border-surface-line">
                   <td className="py-3 font-medium">{b.name}</td>
                   <td className="py-3">
                     <StatusBadge status={b.status} map={broadcastStatusMap} />
                   </td>
-                  <td className="py-3 text-muted-foreground">
+                  <td className="py-3 text-ink-subtle">
                     {b.targetType === 'all' ? '全部' : b.targetType === 'segment' ? '分群' : b.targetType}
                   </td>
                   <td className="py-3">{b.totalCount}</td>
                   <td className="py-3 text-green-600">{b.successCount}</td>
                   <td className="py-3 text-red-600">{b.failedCount}</td>
-                  <td className="py-3 text-muted-foreground">
+                  <td className="py-3 text-ink-subtle">
                     {b.sentAt
                       ? new Date(b.sentAt).toLocaleString('zh-TW')
                       : b.scheduledAt
@@ -397,8 +397,8 @@ function BroadcastTab() {
                 if (!selectedTpl) return null;
                 const body = (selectedTpl as any).body;
                 return (
-                  <div className="mt-2 rounded-md border bg-muted/50 p-3">
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">範本預覽</p>
+                  <div className="mt-2 rounded-md border bg-neutral-20 p-3">
+                    <p className="mb-1 text-xs font-medium text-ink-subtle">範本預覽</p>
                     <p className="whitespace-pre-wrap text-sm">
                       {body?.text || JSON.stringify(body, null, 2)}
                     </p>
@@ -605,15 +605,15 @@ function SegmentTab() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : segments.length === 0 ? (
-        <p className="py-12 text-center text-muted-foreground">尚無受眾分群</p>
+        <p className="py-12 text-center text-ink-subtle">尚無受眾分群</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
+              <tr className="border-b border-surface-line text-left text-ink-subtle">
                 <th className="pb-2 font-medium">名稱</th>
                 <th className="pb-2 font-medium">描述</th>
                 <th className="pb-2 font-medium">人數</th>
@@ -623,13 +623,13 @@ function SegmentTab() {
             </thead>
             <tbody>
               {segments.map((s: any) => (
-                <tr key={s.id} className="border-b">
+                <tr key={s.id} className="border-b border-surface-line">
                   <td className="py-3 font-medium">{s.name}</td>
-                  <td className="py-3 text-muted-foreground">{s.description || '-'}</td>
+                  <td className="py-3 text-ink-subtle">{s.description || '-'}</td>
                   <td className="py-3">
                     <Badge variant="secondary">{s.contactCount} 人</Badge>
                   </td>
-                  <td className="py-3 text-muted-foreground">
+                  <td className="py-3 text-ink-subtle">
                     {new Date(s.createdAt).toLocaleDateString('zh-TW')}
                   </td>
                   <td className="py-3">
@@ -849,7 +849,7 @@ function QuickBroadcastTab() {
       {selectedTemplate && (
         <div className="rounded-lg border p-4">
           <h4 className="mb-2 text-sm font-medium">訊息預覽</h4>
-          <div className="rounded-md bg-muted p-3 text-sm">
+          <div className="rounded-md bg-surface-canvas p-3 text-sm">
             {(selectedTemplate.body as any)?.text || JSON.stringify(selectedTemplate.body)}
           </div>
         </div>
@@ -877,15 +877,15 @@ function QuickBroadcastTab() {
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-2xl font-bold">{broadcastResult.total}</p>
-              <p className="text-xs text-muted-foreground">總計</p>
+              <p className="text-xs text-ink-subtle">總計</p>
             </div>
             <div>
               <p className="text-2xl font-bold text-green-600">{broadcastResult.success}</p>
-              <p className="text-xs text-muted-foreground">成功</p>
+              <p className="text-xs text-ink-subtle">成功</p>
             </div>
             <div>
               <p className="text-2xl font-bold text-red-600">{broadcastResult.failed}</p>
-              <p className="text-xs text-muted-foreground">失敗</p>
+              <p className="text-xs text-ink-subtle">失敗</p>
             </div>
           </div>
         </div>
@@ -943,7 +943,7 @@ function TemplateTab() {
 
   return (
     <div>
-      <div className="border-b px-6 py-3">
+      <div className="border-b border-surface-line px-6 py-3">
         <Button onClick={handleNewTemplate}>
           <Plus className="mr-2 h-4 w-4" />
           新增範本
@@ -975,7 +975,7 @@ export default function MarketingPage() {
     <div className="flex h-full flex-col">
       <Topbar title="行銷" />
 
-      <div className="border-b px-6 pt-2">
+      <div className="border-b border-surface-line px-6 pt-2">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="campaigns">行銷活動</TabsTrigger>

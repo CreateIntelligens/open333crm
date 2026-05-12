@@ -58,7 +58,7 @@ export default function CampaignDetailPage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-ink-subtle" />
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function CampaignDetailPage() {
   if (!campaign) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">找不到該行銷活動</p>
+        <p className="text-ink-subtle">找不到該行銷活動</p>
         <Button variant="outline" onClick={() => router.push('/dashboard/marketing')}>
           返回行銷
         </Button>
@@ -105,9 +105,9 @@ export default function CampaignDetailPage() {
                   <Badge color={statusInfo.color}>{statusInfo.label}</Badge>
                 </div>
                 {campaign.description && (
-                  <p className="mt-1 text-muted-foreground">{campaign.description}</p>
+                  <p className="mt-1 text-ink-subtle">{campaign.description}</p>
                 )}
-                <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
+                <div className="mt-2 flex gap-4 text-sm text-ink-subtle">
                   {campaign.startDate && (
                     <span>
                       開始：{new Date(campaign.startDate).toLocaleDateString('zh-TW')}
@@ -153,29 +153,29 @@ export default function CampaignDetailPage() {
           <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-lg border p-4 text-center">
               <p className="text-3xl font-bold">{metrics.totalSent ?? 0}</p>
-              <p className="text-sm text-muted-foreground">總發送</p>
+              <p className="text-sm text-ink-subtle">總發送</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
               <p className="text-3xl font-bold text-green-600">{metrics.delivered ?? 0}</p>
-              <p className="text-sm text-muted-foreground">成功送達</p>
+              <p className="text-sm text-ink-subtle">成功送達</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
               <p className="text-3xl font-bold text-red-600">{metrics.failed ?? 0}</p>
-              <p className="text-sm text-muted-foreground">失敗</p>
+              <p className="text-sm text-ink-subtle">失敗</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
               <p className="text-3xl font-bold text-blue-600">{metrics.deliveryRate ?? 0}%</p>
-              <p className="text-sm text-muted-foreground">送達率</p>
+              <p className="text-sm text-ink-subtle">送達率</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
               <p className="text-3xl font-bold text-purple-600">{metrics.replied ?? 0}</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-ink-subtle">
                 回覆 {metrics.replyRate ? `(${metrics.replyRate}%)` : ''}
               </p>
             </div>
             <div className="rounded-lg border p-4 text-center">
               <p className="text-3xl font-bold text-orange-600">{metrics.casesOpened ?? 0}</p>
-              <p className="text-sm text-muted-foreground">引發開案</p>
+              <p className="text-sm text-ink-subtle">引發開案</p>
             </div>
           </div>
 
@@ -186,14 +186,14 @@ export default function CampaignDetailPage() {
             </h3>
 
             {(campaign.broadcasts || []).length === 0 ? (
-              <p className="py-8 text-center text-muted-foreground">
+              <p className="py-8 text-center text-ink-subtle">
                 此活動尚無廣播記錄
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-left text-muted-foreground">
+                    <tr className="border-b border-surface-line text-left text-ink-subtle">
                       <th className="pb-2 font-medium">名稱</th>
                       <th className="pb-2 font-medium">狀態</th>
                       <th className="pb-2 font-medium">受眾</th>
@@ -210,12 +210,12 @@ export default function CampaignDetailPage() {
                         color: '#6b7280',
                       };
                       return (
-                        <tr key={b.id} className="border-b">
+                        <tr key={b.id} className="border-b border-surface-line">
                           <td className="py-3 font-medium">{b.name}</td>
                           <td className="py-3">
                             <Badge color={bStatus.color}>{bStatus.label}</Badge>
                           </td>
-                          <td className="py-3 text-muted-foreground">
+                          <td className="py-3 text-ink-subtle">
                             {b.targetType === 'all'
                               ? '全部'
                               : b.targetType === 'segment'
@@ -225,7 +225,7 @@ export default function CampaignDetailPage() {
                           <td className="py-3">{b.totalCount}</td>
                           <td className="py-3 text-green-600">{b.successCount}</td>
                           <td className="py-3 text-red-600">{b.failedCount}</td>
-                          <td className="py-3 text-muted-foreground">
+                          <td className="py-3 text-ink-subtle">
                             {b.sentAt
                               ? new Date(b.sentAt).toLocaleString('zh-TW')
                               : b.scheduledAt

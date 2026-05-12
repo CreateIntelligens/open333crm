@@ -1,63 +1,39 @@
 'use client';
 
 import React from 'react';
-import { LogOut } from 'lucide-react';
-import { useAuth } from '@/providers/AuthProvider';
-import { Avatar } from '@/components/ui/avatar';
-import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu';
-import { useSocket } from '@/providers/SocketProvider';
-import { NotificationBell } from '@/components/notification/NotificationBell';
+import { cn } from '@/lib/utils';
 
 interface TopbarProps {
-  title: string;
+  /** Page title shown on the left of the toolbar */
+  title?: string;
+  /** Right-side actions / search / tabs */
   children?: React.ReactNode;
+  className?: string;
 }
 
-export function Topbar({ title, children }: TopbarProps) {
-  const { agent, logout } = useAuth();
-  const { isConnected } = useSocket();
-
+/**
+ * Page-level toolbar (sub-header) shown beneath the global LayoutTopbar.
+ * Use this on each page to expose page title + page-specific actions (search, create button, etc.).
+ *
+ * The brand chip + connection status + notifications + user dropdown live in `LayoutTopbar`,
+ * which is mounted once in the dashboard layout.
+ */
+export function Topbar({ title, children, className }: TopbarProps) {
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-background px-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold">{title}</h1>
-        {children}
+    <header
+      className={cn(
+        'flex h-14 shrink-0 items-center justify-between gap-4 border-b border-surface-line bg-white px-6',
+        className,
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-4">
+        {title && (
+          <h1 className="truncate text-[18px] font-semibold leading-6 text-ink">{title}</h1>
+        )}
       </div>
 
-      <div className="flex items-center gap-3">
-        {/* Connection status indicator */}
-        <div className="flex items-center gap-1.5">
-          <div
-            className={`h-2 w-2 rounded-full ${
-              isConnected ? 'bg-green-500' : 'bg-red-500'
-            }`}
-          />
-          <span className="text-xs text-muted-foreground">
-            {isConnected ? '已連線' : '未連線'}
-          </span>
-        </div>
-
-        {/* Notifications */}
-        <NotificationBell />
-
-        {/* User dropdown */}
-        <DropdownMenu
-          align="right"
-          trigger={
-            <div className="flex items-center gap-2 cursor-pointer">
-              <Avatar alt={agent?.name || '使用者'} size="sm" />
-              <span className="text-sm font-medium hidden sm:inline">{agent?.name}</span>
-            </div>
-          }
-        >
-          <DropdownMenuItem>
-            <span className="text-sm text-muted-foreground">{agent?.email}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={logout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>登出</span>
-          </DropdownMenuItem>
-        </DropdownMenu>
+      <div className="flex shrink-0 items-center gap-2">
+        {children}
       </div>
     </header>
   );

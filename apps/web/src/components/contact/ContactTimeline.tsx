@@ -92,7 +92,7 @@ const eventColors: Record<string, string> = {
 export function ContactTimeline({ events }: ContactTimelineProps) {
   if (!events || events.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-muted-foreground">
+      <p className="py-8 text-center text-sm text-ink-subtle">
         尚無活動記錄
       </p>
     );
@@ -116,7 +116,7 @@ export function ContactTimeline({ events }: ContactTimelineProps) {
             <div
               className={cn(
                 'relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                eventColors[event.type] || 'bg-muted text-muted-foreground'
+                eventColors[event.type] || 'bg-surface-canvas text-ink-subtle'
               )}
             >
               {eventIcons[event.type] || <Clock className="h-4 w-4" />}
@@ -126,7 +126,7 @@ export function ContactTimeline({ events }: ContactTimelineProps) {
               <p className="text-sm">
                 {formatTimelineDescription(event)}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-ink-subtle">
                 {isValidDate ? format(dateObj, 'MMM d, yyyy HH:mm') : ''}
               </p>
             </div>

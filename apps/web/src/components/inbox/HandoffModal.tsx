@@ -74,9 +74,9 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="w-full max-w-lg rounded-lg bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-6 py-4">
+          <div className="flex items-center justify-between border-b border-surface-line px-6 py-4">
             <h2 className="text-lg font-semibold">接管 Bot 對話</h2>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={onClose} className="text-ink-subtle hover:text-foreground" aria-label="關閉">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -85,14 +85,14 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
           <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-4">
             {/* Summary */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Bot 對話摘要</h3>
+              <h3 className="mb-2 text-sm font-semibold text-ink-subtle">Bot 對話摘要</h3>
               {summaryLoading ? (
-                <div className="flex items-center gap-2 rounded-md bg-muted p-3">
+                <div className="flex items-center gap-2 rounded-md bg-surface-canvas p-3">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm text-muted-foreground">正在生成摘要...</span>
+                  <span className="text-sm text-ink-subtle">正在生成摘要...</span>
                 </div>
               ) : (
-                <div className="rounded-md bg-muted p-3 text-sm">
+                <div className="rounded-md bg-surface-canvas p-3 text-sm">
                   {summary}
                 </div>
               )}
@@ -100,12 +100,12 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
 
             {/* Bot message history */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+              <h3 className="mb-2 text-sm font-semibold text-ink-subtle">
                 Bot 回覆記錄（{botMessages.length} 則）
               </h3>
               <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
                 {botMessages.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">沒有 Bot 回覆記錄</p>
+                  <p className="text-xs text-ink-subtle">沒有 Bot 回覆記錄</p>
                 ) : (
                   botMessages.map((msg: { id: string; content: { text?: string } | string; createdAt: string }) => {
                     const text = typeof msg.content === 'object' && msg.content !== null
@@ -114,7 +114,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
                     return (
                       <div key={msg.id} className="flex items-start gap-2 text-xs">
                         <Bot className="mt-0.5 h-3 w-3 shrink-0 text-purple-500" />
-                        <p className="text-muted-foreground">{text}</p>
+                        <p className="text-ink-subtle">{text}</p>
                       </div>
                     );
                   })
@@ -125,8 +125,8 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
             {/* Assign agent */}
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-muted-foreground">指派客服</h3>
-                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                <h3 className="text-sm font-semibold text-ink-subtle">指派客服</h3>
+                <span className="text-[10px] text-ink-subtle bg-surface-canvas px-1.5 py-0.5 rounded">
                   指派策略：最少負荷
                 </span>
               </div>
@@ -144,7 +144,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
 
             {/* Handoff message */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-muted-foreground">銜接訊息</h3>
+              <h3 className="mb-2 text-sm font-semibold text-ink-subtle">銜接訊息</h3>
               <textarea
                 value={handoffMessage}
                 onChange={(e) => setHandoffMessage(e.target.value)}
@@ -156,7 +156,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 border-t px-6 py-4">
+          <div className="flex justify-end gap-2 border-t border-surface-line px-6 py-4">
             <Button variant="outline" onClick={onClose} disabled={submitting}>
               取消
             </Button>

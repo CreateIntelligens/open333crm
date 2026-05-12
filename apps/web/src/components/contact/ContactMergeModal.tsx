@@ -220,7 +220,7 @@ export function ContactMergeModal({
           {STEPS.map((label, i) => (
             <React.Fragment key={label}>
               {i > 0 && (
-                <div className={`h-px w-8 ${i <= step ? 'bg-primary' : 'bg-muted'}`} />
+                <div className={`h-px w-8 ${i <= step ? 'bg-primary' : 'bg-surface-canvas'}`} />
               )}
               <div className="flex items-center gap-1.5">
                 <div
@@ -229,14 +229,14 @@ export function ContactMergeModal({
                       ? 'bg-primary text-primary-foreground'
                       : i === step
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                        : 'bg-surface-canvas text-ink-subtle'
                   }`}
                 >
                   {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
                 </div>
                 <span
                   className={`text-xs ${
-                    i === step ? 'font-medium text-foreground' : 'text-muted-foreground'
+                    i === step ? 'font-medium text-foreground' : 'text-ink-subtle'
                   }`}
                 >
                   {label}
@@ -256,7 +256,7 @@ export function ContactMergeModal({
             <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4">
               {/* Primary contact card */}
               <div className="rounded-lg border p-4">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                <p className="mb-2 text-xs font-medium text-ink-subtle">
                   主要聯繫人（保留）
                 </p>
                 <div className="flex items-center gap-3">
@@ -269,11 +269,11 @@ export function ContactMergeModal({
                     <p className="truncate text-sm font-semibold">
                       {primaryContact.displayName}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-ink-subtle">
                       C-{shortId(primaryContact.id)}
                     </p>
                     {primaryContact.phone && (
-                      <p className="text-xs text-muted-foreground">{primaryContact.phone}</p>
+                      <p className="text-xs text-ink-subtle">{primaryContact.phone}</p>
                     )}
                     {channelPills(primaryContact.channelIdentities)}
                   </div>
@@ -282,12 +282,12 @@ export function ContactMergeModal({
 
               {/* Arrow */}
               <div className="flex h-full items-center pt-8">
-                <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                <ArrowRight className="h-5 w-5 text-ink-subtle" />
               </div>
 
               {/* Secondary contact card / search */}
               <div className="rounded-lg border p-4">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                <p className="mb-2 text-xs font-medium text-ink-subtle">
                   合併來源（資料保留，ID 刪除）
                 </p>
                 {selectedSecondary ? (
@@ -301,7 +301,7 @@ export function ContactMergeModal({
                       <p className="truncate text-sm font-semibold">
                         {selectedSecondary.displayName}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-ink-subtle">
                         C-{shortId(selectedSecondary.id)}
                         {primaryContact.phone &&
                           selectedSecondary.phone &&
@@ -309,7 +309,7 @@ export function ContactMergeModal({
                           '（相同電話）'}
                       </p>
                       {selectedSecondary.phone && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-ink-subtle">
                           {selectedSecondary.phone}
                         </p>
                       )}
@@ -330,7 +330,7 @@ export function ContactMergeModal({
                   </div>
                 ) : (
                   <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-ink-subtle" />
                     <Input
                       value={searchQuery}
                       onChange={(e) => {
@@ -348,7 +348,7 @@ export function ContactMergeModal({
                           <button
                             key={c.id}
                             type="button"
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted flex items-center gap-2"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-surface-canvas flex items-center gap-2"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                               setSelectedSecondary(c);
@@ -359,7 +359,7 @@ export function ContactMergeModal({
                             <Avatar alt={c.displayName} src={c.avatarUrl || undefined} size="sm" />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm">{c.displayName}</p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-ink-subtle">
                                 {c.phone || c.email || `C-${shortId(c.id)}`}
                                 {primaryContact.phone &&
                                   c.phone &&
@@ -372,7 +372,7 @@ export function ContactMergeModal({
                       </div>
                     )}
                     {showDropdown && searchQuery.length >= 2 && searchResults.length === 0 && (
-                      <div className="absolute z-50 mt-1 w-full rounded-md border bg-background p-3 text-sm text-muted-foreground shadow-lg">
+                      <div className="absolute z-50 mt-1 w-full rounded-md border bg-background p-3 text-sm text-ink-subtle shadow-lg">
                         找不到聯繫人
                       </div>
                     )}
@@ -397,13 +397,13 @@ export function ContactMergeModal({
           <div className="space-y-4">
             {loadingPreview ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
               </div>
             ) : preview ? (
               <div className="overflow-auto max-h-[50vh]">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b">
+                    <tr className="border-b border-surface-line">
                       <th className="py-2 text-left font-medium">項目</th>
                       <th className="py-2 text-left font-medium">主要（保留）</th>
                       <th className="py-2 text-left font-medium">來源（合併入）</th>
@@ -412,7 +412,7 @@ export function ContactMergeModal({
                   </thead>
                   <tbody>
                     {/* Channel Identities */}
-                    <tr className="border-b">
+                    <tr className="border-b border-surface-line">
                       <td className="py-3 font-medium">渠道身份</td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-1">
@@ -434,15 +434,15 @@ export function ContactMergeModal({
                               </Badge>
                             ))
                           ) : (
-                            <span className="text-xs text-muted-foreground">（無新增）</span>
+                            <span className="text-xs text-ink-subtle">（無新增）</span>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 text-right text-xs text-muted-foreground">合併</td>
+                      <td className="py-3 text-right text-xs text-ink-subtle">合併</td>
                     </tr>
 
                     {/* Conversations */}
-                    <tr className="border-b">
+                    <tr className="border-b border-surface-line">
                       <td className="py-3 font-medium">歷史對話</td>
                       <td className="py-3">{preview.primary.conversationsCount} 件</td>
                       <td className="py-3">
@@ -450,11 +450,11 @@ export function ContactMergeModal({
                           ? `${preview.secondary.conversationsCount} 件（合併入）= 共 ${preview.diff.totalConversations} 件`
                           : '0 件'}
                       </td>
-                      <td className="py-3 text-right text-xs text-muted-foreground">合併</td>
+                      <td className="py-3 text-right text-xs text-ink-subtle">合併</td>
                     </tr>
 
                     {/* Cases */}
-                    <tr className="border-b">
+                    <tr className="border-b border-surface-line">
                       <td className="py-3 font-medium">歷史案件</td>
                       <td className="py-3">{preview.primary.casesCount} 件</td>
                       <td className="py-3">
@@ -462,11 +462,11 @@ export function ContactMergeModal({
                           ? `${preview.secondary.casesCount} 件（合併入）= 共 ${preview.diff.totalCases} 件`
                           : '0 件'}
                       </td>
-                      <td className="py-3 text-right text-xs text-muted-foreground">合併</td>
+                      <td className="py-3 text-right text-xs text-ink-subtle">合併</td>
                     </tr>
 
                     {/* Tags */}
-                    <tr className="border-b">
+                    <tr className="border-b border-surface-line">
                       <td className="py-3 font-medium">標籤</td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-1">
@@ -476,7 +476,7 @@ export function ContactMergeModal({
                             </Badge>
                           ))}
                           {preview.primary.tags.length === 0 && (
-                            <span className="text-xs text-muted-foreground">（無）</span>
+                            <span className="text-xs text-ink-subtle">（無）</span>
                           )}
                         </div>
                       </td>
@@ -489,11 +489,11 @@ export function ContactMergeModal({
                               </Badge>
                             ))
                           ) : (
-                            <span className="text-xs text-muted-foreground">（無新增）</span>
+                            <span className="text-xs text-ink-subtle">（無新增）</span>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 text-right text-xs text-muted-foreground">合併</td>
+                      <td className="py-3 text-right text-xs text-ink-subtle">合併</td>
                     </tr>
 
                     {/* Attributes */}
@@ -507,7 +507,7 @@ export function ContactMergeModal({
                             </span>
                           ))}
                           {preview.primary.attributes.length === 0 && (
-                            <span className="text-xs text-muted-foreground">（無）</span>
+                            <span className="text-xs text-ink-subtle">（無）</span>
                           )}
                         </div>
                       </td>
@@ -520,11 +520,11 @@ export function ContactMergeModal({
                               </span>
                             ))
                           ) : (
-                            <span className="text-xs text-muted-foreground">（無新增）</span>
+                            <span className="text-xs text-ink-subtle">（無新增）</span>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 text-right text-xs text-muted-foreground">保留</td>
+                      <td className="py-3 text-right text-xs text-ink-subtle">保留</td>
                     </tr>
                   </tbody>
                 </table>

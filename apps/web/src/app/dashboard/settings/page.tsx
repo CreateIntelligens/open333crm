@@ -33,7 +33,7 @@ export default function SettingsPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar navigation */}
-        <nav className="w-48 shrink-0 border-r bg-muted/30 p-3 overflow-y-auto">
+        <nav className="w-48 shrink-0 border-r border-surface-line bg-surface-canvas p-3 overflow-y-auto">
           <ul className="space-y-0.5">
             {SETTINGS_TABS.map((tab) => (
               <li key={tab.key}>
@@ -42,7 +42,7 @@ export default function SettingsPage() {
                   className={`w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
                     activeTab === tab.key
                       ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      : 'text-ink-subtle hover:bg-surface-canvas hover:text-foreground'
                   }`}
                 >
                   {tab.label}

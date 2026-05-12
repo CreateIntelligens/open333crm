@@ -122,14 +122,14 @@ export function OfficeHoursSettings() {
   };
 
   if (loading) {
-    return <div className="p-4 text-muted-foreground">載入中...</div>;
+    return <div className="p-4 text-ink-subtle">載入中...</div>;
   }
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h2 className="text-lg font-semibold mb-4">營業時間設定</h2>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-sm text-ink-subtle mb-4">
           設定營業時間後，非營業時間收到的訊息將自動回覆提示訊息。
         </p>
       </div>
@@ -141,7 +141,7 @@ export function OfficeHoursSettings() {
           role="switch"
           aria-checked={config.enabled}
           onClick={() => setConfig((prev) => ({ ...prev, enabled: !prev.enabled }))}
-          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${config.enabled ? 'bg-primary' : 'bg-muted'}`}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${config.enabled ? 'bg-primary' : 'bg-surface-canvas'}`}
         >
           <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform ${config.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
         </button>
@@ -183,7 +183,7 @@ export function OfficeHoursSettings() {
                     role="switch"
                     aria-checked={isOn}
                     onClick={() => toggleDay(day)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isOn ? 'bg-primary' : 'bg-muted'}`}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isOn ? 'bg-primary' : 'bg-surface-canvas'}`}
                   >
                     <span className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${isOn ? 'translate-x-4' : 'translate-x-0'}`} />
                   </button>
@@ -196,7 +196,7 @@ export function OfficeHoursSettings() {
                         onChange={(e) => updateDayTime(day, 'start', e.target.value)}
                         className="w-32"
                       />
-                      <span className="text-muted-foreground">至</span>
+                      <span className="text-ink-subtle">至</span>
                       <Input
                         type="time"
                         value={schedule!.end}
@@ -205,7 +205,7 @@ export function OfficeHoursSettings() {
                       />
                     </div>
                   ) : (
-                    <span className="text-sm text-muted-foreground">休息</span>
+                    <span className="text-sm text-ink-subtle">休息</span>
                   )}
                 </div>
               );
@@ -231,12 +231,12 @@ export function OfficeHoursSettings() {
                 {config.holidays.map((date) => (
                   <span
                     key={date}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs"
+                    className="inline-flex items-center gap-1 rounded-md bg-surface-canvas px-2 py-1 text-xs"
                   >
                     {date}
                     <button
                       onClick={() => removeHoliday(date)}
-                      className="text-muted-foreground hover:text-foreground ml-1"
+                      className="text-ink-subtle hover:text-foreground ml-1"
                     >
                       &times;
                     </button>

@@ -79,8 +79,8 @@ export function ApiKeyManagement() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold">Partner API 金鑰</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            提供給合作方（產品 / 行銷 / 客服）長期使用的 API 金鑰，僅可呼叫 <code className="rounded bg-muted px-1.5 py-0.5 text-xs">POST /knowledge/partner-ingest</code> 推送知識庫文件。
+          <p className="mt-1 text-sm text-ink-subtle">
+            提供給合作方（產品 / 行銷 / 客服）長期使用的 API 金鑰，僅可呼叫 <code className="rounded bg-surface-canvas px-1.5 py-0.5 text-xs">POST /knowledge/partner-ingest</code> 推送知識庫文件。
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
@@ -91,13 +91,13 @@ export function ApiKeyManagement() {
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : keys.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
-          <Key className="mb-3 h-10 w-10 text-muted-foreground" />
+          <Key className="mb-3 h-10 w-10 text-ink-subtle" />
           <p className="text-sm font-medium">尚未建立任何金鑰</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-ink-subtle">
             點「建立金鑰」開始為合作方產生第一把
           </p>
         </div>
@@ -105,7 +105,7 @@ export function ApiKeyManagement() {
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full">
             <thead>
-              <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+              <tr className="border-b border-surface-line bg-neutral-20 text-left text-xs uppercase text-ink-subtle">
                 <th className="px-4 py-2.5 font-medium">名稱</th>
                 <th className="px-4 py-2.5 font-medium">金鑰</th>
                 <th className="px-4 py-2.5 font-medium">狀態</th>
@@ -117,10 +117,10 @@ export function ApiKeyManagement() {
             </thead>
             <tbody>
               {keys.map((k) => (
-                <tr key={k.id} className="border-b transition-colors hover:bg-muted/30">
+                <tr key={k.id} className="border-b border-surface-line transition-colors hover:bg-surface-canvas">
                   <td className="px-4 py-3 text-sm font-medium">{k.name}</td>
                   <td className="px-4 py-3">
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{k.masked}</code>
+                    <code className="rounded bg-surface-canvas px-1.5 py-0.5 text-xs">{k.masked}</code>
                   </td>
                   <td className="px-4 py-3">
                     {k.isActive ? (
@@ -133,13 +133,13 @@ export function ApiKeyManagement() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                  <td className="px-4 py-3 text-xs text-ink-subtle">
                     {k.lastUsedAt ? format(new Date(k.lastUsedAt), 'yyyy-MM-dd HH:mm') : '從未使用'}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                  <td className="px-4 py-3 text-xs text-ink-subtle">
                     {k.expiresAt ? format(new Date(k.expiresAt), 'yyyy-MM-dd') : '永不過期'}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                  <td className="px-4 py-3 text-xs text-ink-subtle">
                     {format(new Date(k.createdAt), 'yyyy-MM-dd HH:mm')}
                   </td>
                   <td className="px-4 py-3">
@@ -243,7 +243,7 @@ function CreateApiKeyDialog({
                 required
                 disabled={creating}
               />
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-ink-subtle">
                 用來識別這把金鑰是給誰用，方便日後管理
               </p>
             </div>
@@ -324,7 +324,7 @@ function CreatedApiKeyDialog({
             <div>
               <label className="mb-1.5 block text-xs font-medium">{keyData.name}</label>
               <div className="flex gap-2">
-                <code className="flex-1 overflow-x-auto rounded-md border bg-muted px-3 py-2.5 font-mono text-xs">
+                <code className="flex-1 overflow-x-auto rounded-md border bg-surface-canvas px-3 py-2.5 font-mono text-xs">
                   {keyData.key}
                 </code>
                 <Button onClick={handleCopy} variant="outline" size="default">
@@ -343,7 +343,7 @@ function CreatedApiKeyDialog({
               </div>
             </div>
 
-            <div className="rounded-md bg-muted/30 p-3 text-xs text-muted-foreground">
+            <div className="rounded-md bg-surface-canvas p-3 text-xs text-ink-subtle">
               <p className="font-medium text-foreground">使用方式</p>
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
 {`curl -X POST https://uat.open333crm.create360.ai/api/v1/knowledge/partner-ingest \\

@@ -166,7 +166,7 @@ export function BotChatSettings() {
   };
 
   if (chatLoading || inactivityLoading || fallbackLoading) {
-    return <div className="p-4 text-muted-foreground">載入中...</div>;
+    return <div className="p-4 text-ink-subtle">載入中...</div>;
   }
 
   const thresholdInvalid = threshold < 0 || threshold > 1 || Number.isNaN(threshold);
@@ -178,7 +178,7 @@ export function BotChatSettings() {
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold mb-1">智慧轉接提示</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             當系統偵測到使用者明顯不滿意 AI 回答時，BOT 會在回覆後加上「需要真人客服協助嗎？」轉接提示。
           </p>
         </div>
@@ -189,7 +189,7 @@ export function BotChatSettings() {
             role="switch"
             aria-checked={handoffEnabled}
             onClick={() => setHandoffEnabled((v) => !v)}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${handoffEnabled ? 'bg-primary' : 'bg-muted'}`}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${handoffEnabled ? 'bg-primary' : 'bg-surface-canvas'}`}
           >
             <span
               className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform ${handoffEnabled ? 'translate-x-5' : 'translate-x-0'}`}
@@ -213,7 +213,7 @@ export function BotChatSettings() {
               onChange={(e) => setThreshold(Number(e.target.value))}
               className="w-32"
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-ink-subtle">
               建議 0.5–0.8。值越高越嚴格（更不容易誤觸發轉接提示）。
             </span>
           </div>
@@ -226,7 +226,7 @@ export function BotChatSettings() {
             aria-checked={sentimentTriggersHandoff}
             disabled={!handoffEnabled}
             onClick={() => setSentimentTriggersHandoff((v) => !v)}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${sentimentTriggersHandoff && handoffEnabled ? 'bg-primary' : 'bg-muted'}`}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${sentimentTriggersHandoff && handoffEnabled ? 'bg-primary' : 'bg-surface-canvas'}`}
           >
             <span
               className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg transition-transform ${sentimentTriggersHandoff && handoffEnabled ? 'translate-x-5' : 'translate-x-0'}`}
@@ -236,7 +236,7 @@ export function BotChatSettings() {
             偵測到不滿時，自動轉真人並觸發指派規則
           </span>
         </div>
-        <p className="text-xs text-muted-foreground -mt-2 pl-14">
+        <p className="text-xs text-ink-subtle -mt-2 pl-14">
           開啟後，BOT 不會再回覆，對話會立即進入 AGENT_HANDLED，並依照指派規則 / Fallback 通知客服。
         </p>
 
@@ -251,7 +251,7 @@ export function BotChatSettings() {
       <section className="space-y-4 pt-6 border-t">
         <div>
           <h2 className="text-lg font-semibold mb-1">BOT 對話閒置自動結束</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             當 BOT 對話超過設定時間沒有新訊息，系統會自動結束該對話（不影響真人接手中的對話）。
           </p>
         </div>
@@ -266,7 +266,7 @@ export function BotChatSettings() {
             onChange={(e) => setInactivityMinutes(Number(e.target.value))}
             className="w-40"
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-ink-subtle">
             最小 60 分鐘起跳。儲存以小時為單位（會四捨五入到整點）。例如輸入 90 會以 2 小時儲存並顯示為 120 分鐘。
           </p>
         </div>
@@ -287,7 +287,7 @@ export function BotChatSettings() {
       <section className="space-y-4 pt-6 border-t">
         <div>
           <h2 className="text-lg font-semibold mb-1">轉真人 Fallback 指派</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             當對話轉真人但<strong className="text-foreground">沒有任何規則匹配</strong>時，由此設定決定預設指派對象。
             未設定時，對話會留在「未指派」狀態，須由主管手動處理。
           </p>

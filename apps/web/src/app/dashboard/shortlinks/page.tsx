@@ -59,12 +59,12 @@ function LinkList() {
 
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : (
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted">
+            <thead className="bg-surface-canvas">
               <tr>
                 <th className="text-left p-3">標題</th>
                 <th className="text-left p-3">短網址</th>
@@ -81,12 +81,12 @@ function LinkList() {
                 const isExpired = l.expiresAt && new Date(l.expiresAt as string) < new Date();
                 const isActive = l.isActive && !isExpired;
                 return (
-                  <tr key={l.id as string} className="border-t">
+                  <tr key={l.id as string} className="border-t border-surface-line">
                     <td className="p-3 font-medium">{(l.title as string) || '-'}</td>
                     <td className="p-3">
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">/s/{l.slug as string}</code>
+                      <code className="text-xs bg-surface-canvas px-1.5 py-0.5 rounded">/s/{l.slug as string}</code>
                     </td>
-                    <td className="p-3 max-w-[200px] truncate text-muted-foreground">
+                    <td className="p-3 max-w-[200px] truncate text-ink-subtle">
                       {l.targetUrl as string}
                     </td>
                     <td className="p-3 text-right">{l.totalClicks as number}</td>
@@ -96,7 +96,7 @@ function LinkList() {
                         {isActive ? '啟用' : isExpired ? '已過期' : '停用'}
                       </Badge>
                     </td>
-                    <td className="p-3 text-xs text-muted-foreground">
+                    <td className="p-3 text-xs text-ink-subtle">
                       {l.expiresAt ? new Date(l.expiresAt as string).toLocaleDateString('zh-TW') : '-'}
                     </td>
                     <td className="p-3">
@@ -141,7 +141,7 @@ function LinkList() {
               })}
               {links.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-ink-subtle">
                     尚無短連結，點擊「建立連結」開始
                   </td>
                 </tr>

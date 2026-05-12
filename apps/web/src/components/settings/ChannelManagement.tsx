@@ -191,11 +191,11 @@ export function ChannelManagement() {
       <Card>
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <Globe className="mt-0.5 h-5 w-5 text-muted-foreground shrink-0" />
+            <Globe className="mt-0.5 h-5 w-5 text-ink-subtle shrink-0" />
             <div className="flex-1 space-y-2">
               <div>
                 <p className="font-medium text-sm">Webhook 公開網址</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-ink-subtle">
                   填入 ngrok 或其他隧道工具產生的公開網址，系統會自動更新所有渠道的 Webhook URL
                 </p>
               </div>
@@ -238,7 +238,7 @@ export function ChannelManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">渠道管理</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-subtle">
             管理您的訊息渠道連線
           </p>
         </div>
@@ -255,7 +255,7 @@ export function ChannelManagement() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-subtle" />
         </div>
       ) : channels.length === 0 ? (
         <EmptyState
@@ -285,14 +285,14 @@ export function ChannelManagement() {
                       {/* Webhook URL */}
                       {ch.webhookUrl && (
                         <div className="mt-1 flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground truncate max-w-[400px] font-mono">
+                          <span className="text-xs text-ink-subtle truncate max-w-[400px] font-mono">
                             {ch.webhookUrl}
                           </span>
                           <button
                             onClick={() =>
                               handleCopyWebhook(ch.id, ch.webhookUrl!)
                             }
-                            className="shrink-0 text-muted-foreground hover:text-foreground"
+                            className="shrink-0 text-ink-subtle hover:text-foreground"
                           >
                             {copiedId === ch.id ? (
                               <Check className="h-3 w-3 text-green-500" />
@@ -305,7 +305,7 @@ export function ChannelManagement() {
 
                       {/* Last verified */}
                       {ch.lastVerifiedAt && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="mt-0.5 text-xs text-ink-subtle">
                           最後驗證:{' '}
                           {new Date(ch.lastVerifiedAt).toLocaleString('zh-TW')}
                         </p>
@@ -450,10 +450,10 @@ export function ChannelManagement() {
           <DialogHeader>
             <DialogTitle>WebChat 嵌入碼</DialogTitle>
           </DialogHeader>
-          <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+          <pre className="rounded-md bg-surface-canvas p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
             {embedCodeDialog.code}
           </pre>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-ink-subtle">
             將此程式碼貼入您網站的 {'<body>'} 標籤中即可啟用聊天功能。
           </p>
           <DialogFooter>

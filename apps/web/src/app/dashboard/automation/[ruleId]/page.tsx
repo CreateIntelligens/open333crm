@@ -249,7 +249,7 @@ export default function AutomationRuleDetailPage() {
       <div className="flex h-full flex-col">
         <Topbar title="自動化規則" />
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="h-8 w-8 animate-spin text-ink-subtle" />
         </div>
       </div>
     );
@@ -422,7 +422,7 @@ export default function AutomationRuleDetailPage() {
               <CardTitle className="text-lg">條件</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="mb-3 text-sm text-muted-foreground">
+              <p className="mb-3 text-sm text-ink-subtle">
                 定義觸發此規則所需滿足的條件。使用下方建構器組合 AND/OR 群組條件。
               </p>
               <ConditionBuilder value={query} onChange={setQuery} />
@@ -435,7 +435,7 @@ export default function AutomationRuleDetailPage() {
               <CardTitle className="text-lg">動作</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="mb-3 text-sm text-muted-foreground">
+              <p className="mb-3 text-sm text-ink-subtle">
                 定義當上述條件滿足時要執行的動作。動作將依序執行。
               </p>
               <ActionList actions={actions} onChange={setActions} />
@@ -449,7 +449,7 @@ export default function AutomationRuleDetailPage() {
                 <CardTitle className="text-lg">測試 / 模擬執行</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-ink-subtle">
                   提供範例 Facts（JSON 格式）並以模擬模式執行此規則，驗證觸發是否正確。
                 </p>
                 <textarea
@@ -457,7 +457,7 @@ export default function AutomationRuleDetailPage() {
                   onChange={(e) => setTestFactsText(e.target.value)}
                   rows={6}
                   spellCheck={false}
-                  className="w-full rounded-md border border-input bg-muted/50 p-3 font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full rounded-md border border-input bg-neutral-20 p-3 font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <Button
                   variant="secondary"
@@ -468,7 +468,7 @@ export default function AutomationRuleDetailPage() {
                   {testing ? '執行中...' : '執行測試'}
                 </Button>
                 {testResult && (
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">
+                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-surface-canvas p-3 text-xs">
                     {testResult}
                   </pre>
                 )}

@@ -33,7 +33,7 @@ export function ActionList({ actions, onChange }: ActionListProps) {
   return (
     <div className="space-y-3">
       {actions.length === 0 && (
-        <p className="py-4 text-center text-sm text-muted-foreground">
+        <p className="py-4 text-center text-sm text-ink-subtle">
           尚未設定動作。新增動作以定義條件滿足時的行為。
         </p>
       )}
