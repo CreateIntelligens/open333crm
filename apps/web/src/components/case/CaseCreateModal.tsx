@@ -323,7 +323,7 @@ export function CaseCreateModal({
                       onFocus={() => contactOptions.length > 0 && setShowContactDropdown(true)}
                       onBlur={() => setTimeout(() => setShowContactDropdown(false), 200)}
                       placeholder="搜尋聯繫人姓名..."
-                      className="w-full bg-transparent text-[14px] leading-5 text-ink placeholder:text-[#919191] focus:outline-none"
+                      className="w-full bg-transparent text-[14px] leading-5 text-ink placeholder:text-[#919191] focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                     />
                   </FieldInput>
                   {showContactDropdown && (
@@ -366,7 +366,7 @@ export function CaseCreateModal({
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="例如：客戶冰箱不冷"
                   maxLength={100}
-                  className="w-full bg-transparent text-[14px] leading-5 text-ink placeholder:text-[#919191] focus:outline-none"
+                  className="w-full bg-transparent text-[14px] leading-5 text-ink placeholder:text-[#919191] focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                 />
               </FieldInput>
             </FormField>
@@ -380,7 +380,7 @@ export function CaseCreateModal({
                   placeholder="描述問題詳情 ..."
                   rows={3}
                   maxLength={2000}
-                  className="w-full resize-none bg-transparent text-[14px] leading-5 text-ink placeholder:text-[#919191] focus:outline-none"
+                  className="w-full resize-none bg-transparent text-[14px] leading-5 text-ink placeholder:text-[#919191] focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                 />
               </div>
             </FormField>
@@ -393,7 +393,7 @@ export function CaseCreateModal({
                     <select
                       value={priority}
                       onChange={(e) => setPriority(e.target.value)}
-                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none"
+                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                     >
                       {PRIORITIES.map((p) => (
                         <option key={p.value} value={p.value}>{p.label}</option>
@@ -408,7 +408,7 @@ export function CaseCreateModal({
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none"
+                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                     >
                       <option value="">請選擇分類</option>
                       {CATEGORIES.map((c) => (
@@ -436,7 +436,7 @@ export function CaseCreateModal({
                           if (agentTeamId) setTeamId(agentTeamId);
                         }
                       }}
-                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none"
+                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                     >
                       <option value="">不指派</option>
                       {agents.map((a) => (
@@ -452,7 +452,7 @@ export function CaseCreateModal({
                     <select
                       value={teamId}
                       onChange={(e) => setTeamId(e.target.value)}
-                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none"
+                      className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                     >
                       <option value="">不指定</option>
                       {teams.map((t) => (
@@ -468,7 +468,7 @@ export function CaseCreateModal({
             <FormField label="SLA 政策">
               <FieldInput>
                 <select
-                  className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none"
+                  className="w-full bg-transparent text-[14px] leading-5 text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
                   defaultValue=""
                 >
                   <option value="">依優先級自動套用</option>

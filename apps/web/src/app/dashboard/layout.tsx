@@ -34,7 +34,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SocketProvider>
-      <div className="flex h-screen overflow-hidden">
+      <div className="fixed inset-0 flex overflow-hidden bg-white">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <LayoutTopbar />

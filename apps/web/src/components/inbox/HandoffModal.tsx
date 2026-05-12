@@ -76,7 +76,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
           {/* Header */}
           <div className="flex items-center justify-between border-b border-surface-line px-6 py-4">
             <h2 className="text-lg font-semibold">接管 Bot 對話</h2>
-            <button onClick={onClose} className="text-ink-subtle hover:text-foreground">
+            <button type="button" onClick={onClose} className="text-ink-subtle hover:text-foreground" aria-label="關閉">
               <X className="h-5 w-5" />
             </button>
           </div>

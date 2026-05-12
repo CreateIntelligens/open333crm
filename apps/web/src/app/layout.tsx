@@ -22,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-TW" className={inter.variable} suppressHydrationWarning>
-      <body className="h-screen overflow-hidden font-sans antialiased">
+      <body className="min-h-screen font-sans antialiased">
         {children}
         <Toaster richColors position="top-right" />
       </body>

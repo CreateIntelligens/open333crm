@@ -151,7 +151,7 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
             </button>
             <h3 className="text-sm font-semibold">{selected.name}</h3>
           </div>
-          <button onClick={onClose} className="text-ink-subtle hover:text-foreground">
+          <button type="button" onClick={onClose} className="text-ink-subtle hover:text-foreground" aria-label="關閉">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -201,7 +201,7 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
       {/* Header */}
       <div className="flex items-center justify-between border-b border-surface-line px-4 py-2">
         <h3 className="text-sm font-semibold">選擇模板</h3>
-        <button onClick={onClose} className="text-ink-subtle hover:text-foreground">
+        <button type="button" onClick={onClose} className="text-ink-subtle hover:text-foreground" aria-label="關閉">
           <X className="h-4 w-4" />
         </button>
       </div>

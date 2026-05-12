@@ -190,7 +190,7 @@ export function MessageInput({
             placeholder={placeholder}
             disabled={isDisabled}
             rows={1}
-            className="w-full resize-none bg-transparent text-[14px] leading-6 text-ink placeholder:text-ink-subtle focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full resize-none bg-transparent text-[14px] leading-6 text-ink placeholder:text-ink-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             style={{ minHeight: '24px', maxHeight: '120px' }}
           />
         </div>

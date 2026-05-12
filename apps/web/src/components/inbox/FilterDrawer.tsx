@@ -95,7 +95,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
           {/* Header */}
           <div className="flex items-center justify-between border-b border-surface-line px-4 py-3">
             <h3 className="text-sm font-semibold">進階篩選</h3>
-            <button onClick={onClose} className="text-ink-subtle hover:text-foreground">
+            <button type="button" onClick={onClose} className="text-ink-subtle hover:text-foreground" aria-label="關閉">
               <X className="h-4 w-4" />
             </button>
           </div>

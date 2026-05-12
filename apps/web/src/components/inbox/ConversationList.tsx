@@ -137,7 +137,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜尋對話 ..."
-            className="flex-1 bg-transparent text-[14px] leading-6 text-ink placeholder:text-ink-subtle focus:outline-none"
+            className="flex-1 bg-transparent text-[14px] leading-6 text-ink placeholder:text-ink-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
           />
         </div>
 
@@ -179,7 +179,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
             <select
               value={closedRange}
               onChange={(e) => setClosedRange(e.target.value)}
-              className="w-full rounded-lg border border-surface-line bg-white px-3 py-2 text-[14px] text-ink focus:outline-none"
+              className="w-full rounded-lg border border-surface-line bg-white px-3 py-2 text-[14px] text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-link/40 focus-visible:ring-offset-1"
             >
               <option value="7">最近 7 天</option>
               <option value="30">最近 30 天</option>
