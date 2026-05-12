@@ -1,20 +1,21 @@
 'use client';
 
 import React from 'react';
-import { QueryBuilder, type RuleGroupType } from 'react-querybuilder';
+import { QueryBuilder, type Field, type RuleGroupType } from 'react-querybuilder';
 import 'react-querybuilder/dist/query-builder.css';
 import { automationFields } from '@/lib/automation/fields';
 
 interface ConditionBuilderProps {
   value: RuleGroupType;
   onChange: (query: RuleGroupType) => void;
+  fields?: Field[];
 }
 
-export function ConditionBuilder({ value, onChange }: ConditionBuilderProps) {
+export function ConditionBuilder({ value, onChange, fields }: ConditionBuilderProps) {
   return (
     <div className="condition-builder">
       <QueryBuilder
-        fields={automationFields}
+        fields={fields ?? automationFields}
         query={value}
         onQueryChange={onChange}
         controlClassnames={{

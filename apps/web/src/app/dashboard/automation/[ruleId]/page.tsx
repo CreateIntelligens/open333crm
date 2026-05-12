@@ -12,7 +12,12 @@ import {
   Plus,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { RuleGroupType } from 'react-querybuilder';
+import type { Field, RuleGroupType } from 'react-querybuilder';
+import {
+  SLA_EVENT_DEFINITIONS,
+  getSlaConditionFactsForEvent,
+  isSlaEventName,
+} from '@open333crm/shared';
 import api from '@/lib/api';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
 import { useAutomationRule } from '@/hooks/useAutomation';
@@ -39,7 +44,47 @@ const TRIGGER_EVENTS = [
   { value: 'contact.tagged', label: '聯繫人加標籤' },
   { value: 'contact.updated', label: '聯繫人更新' },
   { value: 'conversation.created', label: '新對話建立' },
+  ...SLA_EVENT_DEFINITIONS.map((event) => ({
+    value: event.name,
+    label: `SLA - ${event.label}`,
+  })),
 ];
+
+const operatorLabels: Record<string, string> = {
+  equal: '等於',
+  notEqual: '不等於',
+  greaterThan: '大於',
+  greaterThanInclusive: '大於等於',
+  lessThan: '小於',
+  lessThanInclusive: '小於等於',
+  in: '包含於',
+  notIn: '不包含於',
+  contains: '包含',
+  containsAny: '包含任一',
+  containsAll: '包含全部',
+  notContains: '不包含',
+  exists: '有值',
+  notExists: '無值',
+};
+
+function slaFactsToFields(triggerType: string): Field[] | undefined {
+  if (!isSlaEventName(triggerType)) return undefined;
+
+  return getSlaConditionFactsForEvent(triggerType).map((fact) => ({
+    name: fact.key,
+    label: fact.label,
+    inputType: fact.type === 'number' ? 'number' : 'text',
+    valueEditorType: fact.values ? 'select' : undefined,
+    values: fact.values?.map((option) => ({
+      name: String(option.value),
+      label: option.label,
+    })),
+    operators: fact.operators.map((operator) => ({
+      name: operator,
+      label: operatorLabels[operator] ?? operator,
+    })),
+  }));
+}
 
 const MATCH_MODES = [
   { value: 'any', label: '任一命中' },
@@ -424,7 +469,11 @@ export default function AutomationRuleDetailPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 定義觸發此規則所需滿足的條件。使用下方建構器組合 AND/OR 群組條件。
               </p>
-              <ConditionBuilder value={query} onChange={setQuery} />
+              <ConditionBuilder
+                value={query}
+                onChange={setQuery}
+                fields={slaFactsToFields(form.triggerType)}
+              />
             </CardContent>
           </Card>
 

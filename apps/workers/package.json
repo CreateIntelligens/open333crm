@@ -10,8 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@open333crm/automation": "workspace:*",
     "@open333crm/channel-plugins": "workspace:*",
     "@open333crm/core": "workspace:*",
+    "@open333crm/shared": "workspace:*",
     "@open333crm/types": "workspace:*",
     "@prisma/client": "^6.0.0",
     "bullmq": "^5.7.0",

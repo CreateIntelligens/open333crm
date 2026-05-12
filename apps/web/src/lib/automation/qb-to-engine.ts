@@ -15,6 +15,24 @@ function parseValue(value: unknown): unknown {
   return value;
 }
 
+const qbToEngineOperator: Record<string, string> = {
+  '=': 'equal',
+  '!=': 'notEqual',
+  '<': 'lessThan',
+  '<=': 'lessThanInclusive',
+  '>': 'greaterThan',
+  '>=': 'greaterThanInclusive',
+};
+
+const engineToQbOperator: Record<string, string> = {
+  equal: '=',
+  notEqual: '!=',
+  lessThan: '<',
+  lessThanInclusive: '<=',
+  greaterThan: '>',
+  greaterThanInclusive: '>=',
+};
+
 /**
  * Convert a single json-rules-engine condition object back into either
  * a react-querybuilder RuleType or a nested RuleGroupType.
@@ -27,7 +45,7 @@ function convertRule(
   }
   return {
     field: item.fact as string,
-    operator: item.operator as string,
+    operator: engineToQbOperator[item.operator as string] ?? (item.operator as string),
     value: String(item.value ?? ''),
   };
 }
@@ -60,7 +78,7 @@ export function qbToEngine(query: RuleGroupType): Record<string, unknown> {
     const r = rule as RuleType;
     return {
       fact: r.field,
-      operator: r.operator,
+      operator: qbToEngineOperator[r.operator] ?? r.operator,
       value: parseValue(r.value),
     };
   });

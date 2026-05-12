@@ -1,11 +1,4 @@
-## Automation Engine Requirements
-
-### Requirement: Event Trigger
-The system SHALL trigger automation rules when an event occurs, such as `message.received`.
-
-#### Scenario: Trigger on inbound message
-- **WHEN** an inbound message is received in any channel
-- **THEN** matching automation rules are evaluated
+## MODIFIED Requirements
 
 ### Requirement: Rule Conditions
 The system SHALL support evaluating complex boolean conditions on message, contact, case, SLA, and event facts using `json-rules-engine`. The system SHALL persist automation rule conditions using the `conditions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `conditionsJson` in database operations. Conditions accepted from the frontend SHALL use the `json-rules-engine` top-level condition format and SHALL be validated before an active rule is saved or tested.
@@ -30,23 +23,6 @@ The system SHALL support evaluating complex boolean conditions on message, conta
 - **WHEN** the frontend submits a malformed condition tree for an active automation rule
 - **THEN** the API rejects the request with a validation error and does not activate the rule
 
-### Requirement: Actions
-The system SHALL support actions such as `add_tag`, `send_message`, and `create_case`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations.
-
-#### Scenario: Auto-tagging
-- **WHEN** a rule with `add_tag("hot_lead")` matches
-- **THEN** the `hot_lead` tag is attached to the contact
-
-#### Scenario: Creating a rule with actions
-- **WHEN** a new automation rule is created via the API
-- **THEN** the actions are written to the `actions` Prisma field only
-
-#### Scenario: Updating a rule's actions
-- **WHEN** an automation rule is updated with new actions
-- **THEN** the actions are written to the `actions` Prisma field only
-
----
-
 ### Requirement: Worker-Owned Automation Triggering
 The automation engine SHALL use the BullMQ worker path for event-triggered automation rule evaluation. When the API's EventBus automation subscriber fires, it SHALL enqueue a job on the `automation` BullMQ queue with the trigger event name and entity context as the job payload. The API process SHALL NOT call `triggerAutomation()` inline from event subscribers. The standalone worker process consumes this job, builds automation facts using its own `PrismaClient` instance, evaluates rule conditions with `json-rules-engine`, and executes actions only for matched rules.
 
@@ -65,6 +41,8 @@ The automation engine SHALL use the BullMQ worker path for event-triggered autom
 #### Scenario: Worker rule conditions do not match
 - **WHEN** the standalone worker receives an automation job for a rule whose conditions do not match the built facts
 - **THEN** the worker does not execute that rule's actions
+
+## ADDED Requirements
 
 ### Requirement: Package-Defined Rule Contract
 The system SHALL define SLA-only automation event names, condition facts, allowed operators, fact metadata, and rule authoring labels in packages that can be consumed by web, API, and worker code. The frontend SHALL compose rule JSON from this package-defined contract, the API SHALL validate rule CRUD payloads against it, and workers SHALL evaluate and dispatch events using the same contract. General CRM events such as inbound messages, CSAT, note mentions, and sentiment-analysis completion SHALL remain outside the SLA event catalog for this change.

@@ -7,4 +7,5 @@ export * from "./services/rule-service.js";
 export * from "./services/execution-service.js";
 export * from "./dispatcher/index.js";
 export * from "./listeners/index.js";
+export * from "./rules/index.js";
 export { AutomationEngine };

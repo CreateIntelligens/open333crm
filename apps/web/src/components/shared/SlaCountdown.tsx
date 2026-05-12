@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { getSlaState } from '@open333crm/shared';
 import { cn } from '@/lib/utils';
 
 interface SlaCountdownProps {
@@ -35,12 +36,12 @@ export function SlaCountdown({ deadline, className }: SlaCountdownProps) {
   const minutes = Math.floor((Math.abs(remaining) % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((Math.abs(remaining) % (1000 * 60)) / 1000);
 
-  const twoHours = 2 * 60 * 60 * 1000;
+  const state = getSlaState(new Date(deadline), 120);
 
   let colorClass = 'text-green-600';
-  if (isExpired) {
+  if (state === 'breached') {
     colorClass = 'text-red-600 font-bold';
-  } else if (remaining < twoHours) {
+  } else if (state === 'warning') {
     colorClass = 'text-orange-500 font-semibold';
   }
 
