@@ -18,10 +18,11 @@ import {
 import { parseFileToMarkdown } from './file-parser.service.js';
 import {
   ingestPartnerDoc,
+  parseCmd,
   type PartnerAttachmentInput,
 } from './partner-ingest.service.js';
 import { requireSupervisor } from '../../guards/rbac.guard.js';
-import { success, paginated } from '../../shared/utils/response.js';
+import { AppError, success, paginated } from '../../shared/utils/response.js';
 
 const createArticleSchema = z.object({
   title: z.string().min(1).max(200),
@@ -147,8 +148,10 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/partner-ingest — 合作方單筆推送 (multipart/form-data)
-  // Fields: DocID, Ver, VerCreatTime, AI_Q, AI_A, Source/Soruce, Spec, IsAttached
-  // Files:  Attached (可多檔)
+  // Fields: cmd (CREATE/UPDATE/DELETE), DocID, Ver, VerCreatTime,
+  //         AI_Q, AI_A, Source/Soruce, Spec, IsAttached
+  // Files:  Attached (可多檔；DELETE 時忽略)
+  // 行為矩陣見 openspec/changes/2026-05-13-partner-ingest-cmd/design.md
   fastify.post(
     '/partner-ingest',
     { preHandler: [requireSupervisor()] },
@@ -174,23 +177,23 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         }
       }
 
-      const docId = fields.DocID ?? '';
-      if (!docId) {
-        return reply.status(400).send({
-          success: false,
-          error: { code: 'BAD_REQUEST', message: 'DocID is required' },
-        });
-      }
-
-      // Tolerate Stanley's typo: accept both Source and Soruce
-      const source = fields.Source ?? fields.Soruce ?? '';
-
       try {
+        const cmd = parseCmd(fields.cmd);
+
+        const docId = fields.DocID ?? '';
+        if (!docId) {
+          throw new AppError('DocID is required', 'BAD_REQUEST', 400);
+        }
+
+        // Tolerate Stanley's typo: accept both Source and Soruce
+        const source = fields.Source ?? fields.Soruce ?? '';
+
         const result = await ingestPartnerDoc(
           fastify.prisma,
           request.agent.tenantId,
           request.agent.id,
           {
+            cmd,
             docId,
             ver: Number(fields.Ver) || 0,
             verCreatTime: fields.VerCreatTime ?? '',
@@ -199,11 +202,18 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
             source,
             spec: fields.Spec,
             isAttached: fields.IsAttached === 'true',
-            attachments,
+            attachments: cmd === 'DELETE' ? [] : attachments,
           },
         );
         return reply.send(success(result));
       } catch (err) {
+        if (err instanceof AppError) {
+          return reply.status(err.statusCode).send({
+            success: false,
+            error: { code: err.code, message: err.message },
+          });
+        }
+        request.log.error({ err }, '[PartnerIngest] unexpected failure');
         return reply.status(500).send({
           success: false,
           error: {
