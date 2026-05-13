@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -12,7 +12,13 @@ import {
   Plus,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { RuleGroupType } from 'react-querybuilder';
+import type { Field, RuleGroupType, ValueEditorType } from 'react-querybuilder';
+import {
+  AUTOMATION_EVENT_DEFINITIONS,
+  getAutomationActionOptionsForEvent,
+  getAutomationFieldOptionsForEvent,
+  type AutomationActionDefinition,
+} from '@open333crm/automation';
 import api from '@/lib/api';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
 import { useAutomationRule } from '@/hooks/useAutomation';
@@ -28,18 +34,28 @@ import { ActionList } from '@/components/automation/ActionList';
 
 // ---- constants ----
 
-const TRIGGER_EVENTS = [
-  { value: 'message.received', label: '收到訊息' },
-  { value: 'keyword.matched', label: '關鍵字命中' },
-  { value: 'case.created', label: '工單建立' },
-  { value: 'case.escalated', label: '工單升級' },
-  { value: 'case.updated', label: '工單更新' },
-  { value: 'case.closed', label: '工單關閉' },
-  { value: 'contact.created', label: '聯繫人建立' },
-  { value: 'contact.tagged', label: '聯繫人加標籤' },
-  { value: 'contact.updated', label: '聯繫人更新' },
-  { value: 'conversation.created', label: '新對話建立' },
-];
+const TRIGGER_EVENTS = AUTOMATION_EVENT_DEFINITIONS.map((event) => ({
+  value: event.name,
+  label: event.label,
+}));
+
+function contractFieldsToQueryBuilderFields(triggerType: string): Field[] {
+  return getAutomationFieldOptionsForEvent(triggerType).map((field) => ({
+    name: field.name,
+    label: field.label,
+    inputType: field.inputType === 'datetime-local' ? 'datetime-local' : field.inputType,
+    valueEditorType: (operator: string) => {
+      const operatorDef = field.operators.find((item) => item.name === operator);
+      if (operatorDef && !operatorDef.requiresValue) return null;
+      return (field.valueEditorType ?? 'text') as ValueEditorType;
+    },
+    values: field.values,
+    operators: field.operators.map((operator) => ({
+      name: operator.name,
+      label: operator.label,
+    })),
+  }));
+}
 
 const MATCH_MODES = [
   { value: 'any', label: '任一命中' },
@@ -105,6 +121,19 @@ export default function AutomationRuleDetailPage() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [newKeyword, setNewKeyword] = useState('');
 
+  const conditionFields = useMemo(
+    () => contractFieldsToQueryBuilderFields(form.triggerType),
+    [form.triggerType],
+  );
+
+  const actionDefinitions = useMemo(
+    () =>
+      getAutomationActionOptionsForEvent(form.triggerType).map(
+        (option) => option.definition,
+      ),
+    [form.triggerType],
+  );
+
   // Hydrate form from SWR data
   useEffect(() => {
     if (!rule) return;
@@ -150,6 +179,17 @@ export default function AutomationRuleDetailPage() {
     },
     []
   );
+
+  const handleTriggerTypeChange = (nextTriggerType: string) => {
+    updateField('triggerType', nextTriggerType);
+    setQuery(DEFAULT_QUERY);
+    setActions([]);
+  };
+
+  useEffect(() => {
+    const allowedTypes = new Set(actionDefinitions.map((action) => action.type));
+    setActions((current) => current.filter((action) => allowedTypes.has(action.type)));
+  }, [actionDefinitions]);
 
   const addKeyword = () => {
     const kw = newKeyword.trim();
@@ -306,7 +346,7 @@ export default function AutomationRuleDetailPage() {
                 <Select
                   options={TRIGGER_EVENTS}
                   value={form.triggerType}
-                  onChange={(e) => updateField('triggerType', e.target.value)}
+                  onChange={(e) => handleTriggerTypeChange(e.target.value)}
                 />
               </div>
 
@@ -424,7 +464,11 @@ export default function AutomationRuleDetailPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 定義觸發此規則所需滿足的條件。使用下方建構器組合 AND/OR 群組條件。
               </p>
-              <ConditionBuilder value={query} onChange={setQuery} />
+              <ConditionBuilder
+                value={query}
+                onChange={setQuery}
+                fields={conditionFields}
+              />
             </CardContent>
           </Card>
 
@@ -437,7 +481,11 @@ export default function AutomationRuleDetailPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 定義當上述條件滿足時要執行的動作。動作將依序執行。
               </p>
-              <ActionList actions={actions} onChange={setActions} />
+              <ActionList
+                actions={actions}
+                onChange={setActions}
+                actionDefinitions={actionDefinitions as AutomationActionDefinition[]}
+              />
             </CardContent>
           </Card>
 

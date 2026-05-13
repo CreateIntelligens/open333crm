@@ -1,10 +1,10 @@
 import type { Field } from 'react-querybuilder';
 
 export const automationFields: Field[] = [
-  { name: 'contact.name', label: 'Contact Name', inputType: 'text' },
+  { name: 'contact.name', label: '聯絡人名稱', inputType: 'text' },
   {
     name: 'contact.channel',
-    label: 'Contact Channel',
+    label: '聯絡人渠道',
     valueEditorType: 'select',
     values: [
       { name: 'LINE', label: 'LINE' },
@@ -12,22 +12,22 @@ export const automationFields: Field[] = [
       { name: 'WEBCHAT', label: 'WebChat' },
     ],
   },
-  { name: 'contact.tags', label: 'Contact Tags', inputType: 'text' },
-  { name: 'contact.language', label: 'Contact Language', inputType: 'text' },
-  { name: 'case.open.count', label: 'Open Case Count', inputType: 'number' },
-  { name: 'message.text', label: 'Message Text', inputType: 'text' },
+  { name: 'contact.tags', label: '聯絡人標籤', inputType: 'text' },
+  { name: 'contact.language', label: '聯絡人語言', inputType: 'text' },
+  { name: 'case.open.count', label: '開啟案件數', inputType: 'number' },
+  { name: 'message.text', label: '訊息內容', inputType: 'text' },
   {
     name: 'is_vip_customer',
-    label: 'Is VIP Customer',
+    label: '是否 VIP 客戶',
     valueEditorType: 'select',
     values: [
-      { name: 'true', label: 'Yes' },
-      { name: 'false', label: 'No' },
+      { name: 'true', label: '是' },
+      { name: 'false', label: '否' },
     ],
   },
   {
     name: 'conversation.channelType',
-    label: 'Conversation Channel',
+    label: '對話渠道',
     valueEditorType: 'select',
     values: [
       { name: 'LINE', label: 'LINE' },
@@ -37,12 +37,12 @@ export const automationFields: Field[] = [
   },
   {
     name: 'conversation.status',
-    label: 'Conversation Status',
+    label: '對話狀態',
     valueEditorType: 'select',
     values: [
-      { name: 'ACTIVE', label: 'Active' },
-      { name: 'PENDING', label: 'Pending' },
-      { name: 'CLOSED', label: 'Closed' },
+      { name: 'ACTIVE', label: '進行中' },
+      { name: 'PENDING', label: '等待中' },
+      { name: 'CLOSED', label: '已關閉' },
     ],
   },
 ];

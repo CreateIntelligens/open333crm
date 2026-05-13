@@ -41,6 +41,7 @@ const createCaseSchema = z.object({
   category: z.string().optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
+  slaPolicyId: z.string().uuid().optional(),
 });
 
 const updateCaseSchema = z.object({
@@ -82,6 +83,7 @@ const createCaseFromConvSchema = z.object({
   category: z.string().optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
+  slaPolicyId: z.string().uuid().optional(),
 });
 
 export default async function caseRoutes(fastify: FastifyInstance) {

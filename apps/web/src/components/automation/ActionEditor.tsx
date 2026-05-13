@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
+import type { AutomationActionDefinition } from '@open333crm/automation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -38,6 +39,7 @@ const CASE_PRIORITIES = [
 
 interface ActionEditorProps {
   action: { type: string; payload: Record<string, unknown> };
+  actionDefinitions?: AutomationActionDefinition[];
   onChange: (action: { type: string; payload: Record<string, unknown> }) => void;
   onRemove: () => void;
 }
@@ -75,15 +77,60 @@ function ActionParamsForm({
   type,
   payload: rawPayload,
   onChange,
+  definition,
 }: {
   type: string;
   payload: Record<string, unknown>;
   onChange: (payload: Record<string, unknown>) => void;
+  definition?: AutomationActionDefinition;
 }) {
   const payload = rawPayload || {};
   const updateParam = (key: string, value: unknown) => {
     onChange({ ...payload, [key]: value });
   };
+
+  if (definition?.params) {
+    return (
+      <div className="space-y-2">
+        {definition.params.map((param) => {
+          const value = String(payload[param.key] ?? '');
+          if (param.type === 'select') {
+            return (
+              <div key={param.key}>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {param.label}
+                </label>
+                <Select
+                  options={(param.values ?? []).map((option) => ({
+                    value: String(option.value),
+                    label: option.label,
+                  }))}
+                  value={value}
+                  onChange={(e) => updateParam(param.key, e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            );
+          }
+
+          return (
+            <PayloadField
+              key={param.key}
+              label={param.label}
+              value={value}
+              onChange={(v) => updateParam(param.key, v)}
+              placeholder={param.placeholder}
+              type={param.type === 'number' ? 'number' : 'text'}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (definition) {
+    return <p className="text-xs text-muted-foreground">此動作無需額外參數</p>;
+  }
 
   switch (type) {
     case 'send_message':
@@ -266,9 +313,18 @@ function JsonFallbackEditor({
   );
 }
 
-export function ActionEditor({ action, onChange, onRemove }: ActionEditorProps) {
+export function ActionEditor({
+  action,
+  actionDefinitions,
+  onChange,
+  onRemove,
+}: ActionEditorProps) {
   // Normalize: backend may use "params" instead of "payload"
   const payload = action.payload || (action as any).params || {};
+  const definition = actionDefinitions?.find((item) => item.type === action.type);
+  const actionTypeOptions =
+    actionDefinitions?.map((item) => ({ value: item.type, label: item.label })) ??
+    ACTION_TYPES;
 
   return (
     <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
@@ -278,7 +334,7 @@ export function ActionEditor({ action, onChange, onRemove }: ActionEditorProps) 
             動作類型
           </label>
           <Select
-            options={ACTION_TYPES}
+            options={actionTypeOptions}
             value={action.type}
             onChange={(e) => onChange({ type: e.target.value, payload: {} })}
             placeholder="選擇動作類型..."
@@ -288,6 +344,7 @@ export function ActionEditor({ action, onChange, onRemove }: ActionEditorProps) 
         <ActionParamsForm
           type={action.type}
           payload={payload}
+          definition={definition}
           onChange={(p) => onChange({ ...action, payload: p })}
         />
       </div>

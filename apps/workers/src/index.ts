@@ -32,6 +32,7 @@ import { handleSlaPoll } from './handlers/sla.handler.js';
 import { handleBroadcastPoll } from './handlers/broadcast.handler.js';
 import { handleNotificationJob } from './handlers/notification.handler.js';
 import { handleAutomationJob } from './handlers/automation.handler.js';
+import { closeNotificationQueue } from './lib/notification-queue.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ async function main() {
   const slaQueue = new Queue('sla', { connection });
   const broadcastQueue = new Queue('broadcast', { connection });
 
-  await slaQueue.add('sla:poll', {}, { repeat: { every: 60_000 }, jobId: 'sla:poll' });
+  await slaQueue.add('sla:poll', {}, { repeat: { every: 300_000 }, jobId: 'sla:poll' });
   await broadcastQueue.add('broadcast:poll', {}, { repeat: { every: 60_000 }, jobId: 'broadcast:poll' });
 
   // ── Workers ────────────────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ async function main() {
     ]);
     await slaQueue.close();
     await broadcastQueue.close();
+    await closeNotificationQueue();
     await prisma.$disconnect();
     connection.disconnect();
     redisPublisher.disconnect();

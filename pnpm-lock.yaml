@@ -150,6 +150,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@open333crm/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
       '@open333crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -236,12 +239,18 @@ importers:
 
   apps/workers:
     dependencies:
+      '@open333crm/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
       '@open333crm/channel-plugins':
         specifier: workspace:*
         version: link:../../packages/channel-plugins
       '@open333crm/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@open333crm/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@open333crm/types':
         specifier: workspace:*
         version: link:../../packages/types

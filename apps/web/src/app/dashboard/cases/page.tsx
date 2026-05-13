@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCases, useCaseStats } from '@/hooks/useCases';
 import { CaseList } from '@/components/case/CaseList';
 import { CaseDashboardStats } from '@/components/case/CaseDashboardStats';
-import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { Topbar } from '@/components/layout/Topbar';
 import { SearchInput } from '@/components/shared/SearchInput';
 import { Button } from '@/components/ui/button';
@@ -33,14 +32,15 @@ export default function CasesPage() {
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [slaFilter, setSlaFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     api.get('/agents').then((res) => setAgents(res.data.data || [])).catch(() => {});
   }, []);
 
-  const { stats } = useCaseStats();
+  const { stats, mutate: mutateStats } = useCaseStats();
   const statusCounts = (stats as Record<string, unknown>).statusCounts as Record<string, number> | undefined;
 
   // Reset page when filters change
@@ -48,7 +48,7 @@ export default function CasesPage() {
     setPage(1);
   }, [statusFilter, priorityFilter, categoryFilter, assigneeFilter, slaFilter]);
 
-  const { cases, meta, isLoading } = useCases({
+  const { cases, meta, isLoading, mutate: mutateCases } = useCases({
     status: statusFilter === 'all' ? undefined : statusFilter,
     priority: priorityFilter || undefined,
     category: categoryFilter || undefined,
@@ -86,14 +86,23 @@ export default function CasesPage() {
     return statusCounts[tabValue];
   };
 
+  const handleDeleteCase = async (caseId: string) => {
+    setDeletingCaseId(caseId);
+    setDeleteError('');
+    try {
+      await api.delete(`/cases/${caseId}`);
+      await Promise.all([mutateCases(), mutateStats()]);
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      setDeleteError(axiosError.response?.data?.message || '刪除工單失敗');
+    } finally {
+      setDeletingCaseId(null);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="工單">
-        <Button size="sm" onClick={() => setShowCreateModal(true)}>
-          <Plus className="mr-1 h-4 w-4" />
-          建立案件
-        </Button>
-      </Topbar>
+      <Topbar title="工單" />
 
       {/* Dashboard Stats */}
       <div className="border-b px-6 py-4">
@@ -176,7 +185,17 @@ export default function CasesPage() {
 
       {/* Case List */}
       <div className="flex-1 overflow-auto">
-        <CaseList cases={filteredCases} isLoading={isLoading} />
+        {deleteError && (
+          <div className="border-b bg-destructive/10 px-6 py-2 text-sm text-destructive">
+            {deleteError}
+          </div>
+        )}
+        <CaseList
+          cases={filteredCases}
+          isLoading={isLoading}
+          onDelete={handleDeleteCase}
+          deletingCaseId={deletingCaseId}
+        />
       </div>
 
       {/* Pagination */}
@@ -209,11 +228,6 @@ export default function CasesPage() {
         </div>
       )}
 
-      {/* Create Modal (standalone mode - no conversation) */}
-      <CaseCreateModal
-        open={showCreateModal}
-        onOpenChange={setShowCreateModal}
-      />
     </div>
   );
 }

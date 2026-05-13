@@ -1,8 +1,8 @@
 /**
  * Automation event-bus worker.
  *
- * Subscribes to application events and triggers automation rule evaluation.
- * Runs in-process alongside the API server (not a separate worker process).
+ * Subscribes to application events and enqueues automation rule evaluation.
+ * Actual rule evaluation and action execution are handled by apps/workers.
  */
 
 import type { PrismaClient } from '@prisma/client';
@@ -10,7 +10,6 @@ import type { Server } from 'socket.io';
 import { Queue } from 'bullmq';
 import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
-import { triggerAutomation } from './automation.service.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { classifyIssue } from '../ai/classify.service.js';
@@ -317,12 +316,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         }
       }
 
-      await triggerAutomation(prisma, io, event.tenantId, 'message.received', {
-        contactId: contactId as string | undefined,
-        conversationId: conversationId as string | undefined,
-        messageContent: text,
-      });
-
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'message.received',
@@ -351,12 +344,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         messageContent?: string;
       };
 
-      await triggerAutomation(prisma, io, event.tenantId, 'keyword.matched', {
-        contactId: contactId as string | undefined,
-        conversationId: conversationId as string | undefined,
-        messageContent: messageContent as string | undefined,
-      });
-
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'keyword.matched',
@@ -375,12 +362,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         conversationId?: string;
         caseId?: string;
       };
-
-      await triggerAutomation(prisma, io, event.tenantId, 'case.created', {
-        contactId: contactId as string | undefined,
-        conversationId: conversationId as string | undefined,
-        caseId: caseId as string | undefined,
-      });
 
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
@@ -422,11 +403,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         conversationId?: string;
       };
 
-      await triggerAutomation(prisma, io, event.tenantId, 'conversation.created', {
-        contactId: contactId as string | undefined,
-        conversationId: conversationId as string | undefined,
-      });
-
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'conversation.created',
@@ -443,10 +419,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       const { contactId } = event.payload as {
         contactId?: string;
       };
-
-      await triggerAutomation(prisma, io, event.tenantId, 'contact.tagged', {
-        contactId: contactId as string | undefined,
-      });
 
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
@@ -467,12 +439,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         caseId?: string;
       };
 
-      await triggerAutomation(prisma, io, event.tenantId, 'case.escalated', {
-        contactId: contactId as string | undefined,
-        conversationId: conversationId as string | undefined,
-        caseId: caseId as string | undefined,
-      });
-
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'case.escalated',
@@ -491,11 +457,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         activityId?: string;
       };
 
-      await triggerAutomation(prisma, io, event.tenantId, 'portal.activity.submitted', {
-        contactId: contactId as string | undefined,
-        activityId: activityId as string | undefined,
-      });
-
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'portal.activity.submitted',
@@ -513,11 +474,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         contactId?: string;
         shortLinkId?: string;
       };
-
-      await triggerAutomation(prisma, io, event.tenantId, 'link.clicked', {
-        contactId: contactId as string | undefined,
-        shortLinkId: shortLinkId as string | undefined,
-      });
 
       await automationQueue.add('automation:evaluate', {
         tenantId: event.tenantId,

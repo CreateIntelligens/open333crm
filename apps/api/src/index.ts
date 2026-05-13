@@ -57,7 +57,6 @@ import { setupNotificationWorker } from './modules/notification/notification.wor
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
-import { setupSlaWorker } from './modules/sla/sla.worker.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
 import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin } from '@open333crm/channel-plugins';
 
@@ -138,7 +137,6 @@ export async function bootstrap() {
   setupAnalyticsScheduler(app.prisma);
   setupBroadcastScheduler(app.prisma, app.io);
   setupCsatScheduler(app.prisma, app.io);
-  setupSlaWorker(app.prisma, app.io);
   setupInactivityCloseWorker(app.prisma, app.io);
   setupCanvasWorker(app.prisma, app.io);
   setupCanvasScheduler(app.prisma);
