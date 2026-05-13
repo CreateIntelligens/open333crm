@@ -31,6 +31,7 @@ RUN pnpm --filter @open333crm/database exec prisma generate
 RUN pnpm --filter @open333crm/database build
 RUN pnpm --filter @open333crm/types build
 RUN pnpm --filter @open333crm/shared build
+RUN pnpm --filter @open333crm/automation build
 RUN pnpm --filter @open333crm/core build
 RUN pnpm --filter @open333crm/channel-plugins build
 RUN pnpm --filter @open333crm/api build
