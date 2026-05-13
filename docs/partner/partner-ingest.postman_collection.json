@@ -1,0 +1,287 @@
+{
+  "info": {
+    "name": "open333CRM Partner Ingest API",
+    "description": "合作方推送知識點到 open333CRM 知識庫。詳細規格見 PARTNER_INGEST_API.md。\n\n使用前請在 Environment 設定：\n- baseUrl：API base URL（例 https://uat.open333crm.example.com）\n- partnerKey：Partner API Key（pk_ 開頭）",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://<your-api-host>",
+      "type": "string"
+    },
+    {
+      "key": "partnerKey",
+      "value": "pk_xxxxxxxxxxxxxxxxxxxx",
+      "type": "string"
+    },
+    {
+      "key": "docId",
+      "value": "DOC-TEST-001",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{partnerKey}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. CREATE 新 DocID",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "CREATE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" },
+            { "key": "Ver", "value": "1", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775703693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "請問電鍋保固多久？", "type": "text" },
+            { "key": "AI_A", "value": "本商品保固 12 個月，自購買日起算。", "type": "text" },
+            { "key": "Source", "value": "FAQ(消費者)-常見問答", "type": "text" },
+            { "key": "Spec", "value": "{\"產地\":\"台灣\",\"電壓\":\"110V\",\"保固期\":\"12個月\"}", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：200 + data.status=\"created\""
+      }
+    },
+    {
+      "name": "2. CREATE 同 DocID（衝突）",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "CREATE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" },
+            { "key": "Ver", "value": "2", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775703693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "Q", "type": "text" },
+            { "key": "AI_A", "value": "A", "type": "text" },
+            { "key": "Source", "value": "S", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：409 + error.code=\"DOCID_CONFLICT\""
+      }
+    },
+    {
+      "name": "3. UPDATE 較大 Ver",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "UPDATE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" },
+            { "key": "Ver", "value": "2", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775803693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "請問電鍋保固多久？", "type": "text" },
+            { "key": "AI_A", "value": "本商品保固 18 個月，含全機免費到府收送。", "type": "text" },
+            { "key": "Source", "value": "FAQ(消費者)-常見問答", "type": "text" },
+            { "key": "Spec", "value": "{\"產地\":\"台灣\",\"電壓\":\"110V\",\"保固期\":\"18個月\"}", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：200 + data.status=\"updated\""
+      }
+    },
+    {
+      "name": "4. UPDATE 較小 Ver（略過）",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "UPDATE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" },
+            { "key": "Ver", "value": "1", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775703693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "Q", "type": "text" },
+            { "key": "AI_A", "value": "A", "type": "text" },
+            { "key": "Source", "value": "S", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：200 + data.status=\"skipped\"（Ver 不夠大）"
+      }
+    },
+    {
+      "name": "5. UPDATE 不存在 DocID",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "UPDATE", "type": "text" },
+            { "key": "DocID", "value": "NOT-EXIST-DOC-999", "type": "text" },
+            { "key": "Ver", "value": "1", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775703693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "Q", "type": "text" },
+            { "key": "AI_A", "value": "A", "type": "text" },
+            { "key": "Source", "value": "S", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：404 + error.code=\"DOCID_NOT_FOUND\""
+      }
+    },
+    {
+      "name": "6. DELETE 既有 DocID",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "DELETE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：200 + data.status=\"deleted\"（軟刪 → ARCHIVED）"
+      }
+    },
+    {
+      "name": "7. DELETE 同一筆再送一次（idempotent）",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "DELETE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：200 + data.status=\"deleted\" + reason=\"already archived (idempotent)\""
+      }
+    },
+    {
+      "name": "8. CREATE 復活已刪除 DocID",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "CREATE", "type": "text" },
+            { "key": "DocID", "value": "{{docId}}", "type": "text" },
+            { "key": "Ver", "value": "3", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775903693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "復活後的問題", "type": "text" },
+            { "key": "AI_A", "value": "復活後的回答", "type": "text" },
+            { "key": "Source", "value": "FAQ(消費者)-常見問答", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：200 + data.status=\"revived\"（重新上架）"
+      }
+    },
+    {
+      "name": "9. 缺 cmd 欄位",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "DocID", "value": "{{docId}}", "type": "text" },
+            { "key": "Ver", "value": "1", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1)/", "type": "text" },
+            { "key": "AI_Q", "value": "Q", "type": "text" },
+            { "key": "AI_A", "value": "A", "type": "text" },
+            { "key": "Source", "value": "S", "type": "text" },
+            { "key": "IsAttached", "value": "false", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "預期：400 + error.code=\"INVALID_CMD\""
+      }
+    },
+    {
+      "name": "10. CREATE 帶多個附件",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "cmd", "value": "CREATE", "type": "text" },
+            { "key": "DocID", "value": "DOC-WITH-FILES-001", "type": "text" },
+            { "key": "Ver", "value": "1", "type": "text" },
+            { "key": "VerCreatTime", "value": "/Date(1775703693000)/", "type": "text" },
+            { "key": "AI_Q", "value": "電鍋產品介紹", "type": "text" },
+            { "key": "AI_A", "value": "產品手冊與規格如附件", "type": "text" },
+            { "key": "Source", "value": "商品資料庫-電鍋", "type": "text" },
+            { "key": "IsAttached", "value": "true", "type": "text" },
+            { "key": "Attached", "type": "file", "src": [] },
+            { "key": "Attached", "type": "file", "src": [] }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/knowledge/partner-ingest",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "knowledge", "partner-ingest"]
+        },
+        "description": "示範同一 DocID 帶多個附件（同欄位重複 Attached）。\n\n在 Postman UI 中要對兩列 Attached 各自挑選一個檔案。\n\n預期：200 + data.status=\"created\" + attachmentsLinked=2"
+      }
+    }
+  ]
+}
