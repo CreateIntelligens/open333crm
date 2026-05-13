@@ -84,6 +84,7 @@ export function CaseCreateModal({
   const [selectedContactId, setSelectedContactId] = useState(contactId || '');
   const [assigneeId, setAssigneeId] = useState('');
   const [teamId, setTeamId] = useState('');
+  const [selectedSlaPolicyId, setSelectedSlaPolicyId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -159,6 +160,7 @@ export function CaseCreateModal({
     }
     setAssigneeId('');
     setTeamId('');
+    setSelectedSlaPolicyId('');
     setError('');
     setContactSearch('');
     setContactOptions([]);
@@ -193,6 +195,7 @@ export function CaseCreateModal({
           category,
           assigneeId: assigneeId || undefined,
           teamId: teamId || undefined,
+          slaPolicyId: selectedSlaPolicyId || undefined,
         });
         caseId = res.data.data?.id;
       } else {
@@ -213,6 +216,7 @@ export function CaseCreateModal({
           category,
           assigneeId: assigneeId || undefined,
           teamId: teamId || undefined,
+          slaPolicyId: selectedSlaPolicyId || undefined,
         });
         caseId = res.data.data?.id;
       }
@@ -416,8 +420,8 @@ export function CaseCreateModal({
           <div>
             <label className="mb-1 block text-sm font-medium">SLA 政策</label>
             <Select
-              value=""
-              onChange={() => {}}
+              value={selectedSlaPolicyId}
+              onChange={(e) => setSelectedSlaPolicyId(e.target.value)}
               options={[
                 { value: '', label: '依優先級自動套用' },
                 ...slaPolicies.map((p) => ({ value: p.id, label: `${p.name} (${p.priority})` })),

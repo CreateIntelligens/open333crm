@@ -3,11 +3,12 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { Loader2, Briefcase } from 'lucide-react';
+import { Loader2, Briefcase, Trash2 } from 'lucide-react';
 import { CaseStatusBadge } from './CaseStatusBadge';
 import { CasePriorityBadge } from './CasePriorityBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Button } from '@/components/ui/button';
 
 const PRIORITY_COLORS: Record<string, string> = {
   URGENT: 'bg-red-500',
@@ -30,10 +31,22 @@ interface CaseListProps {
     createdAt: string;
   }>;
   isLoading: boolean;
+  onDelete?: (caseId: string) => Promise<void> | void;
+  deletingCaseId?: string | null;
 }
 
-export function CaseList({ cases, isLoading }: CaseListProps) {
+export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseListProps) {
   const router = useRouter();
+
+  const handleDeleteClick = async (
+    event: React.MouseEvent<HTMLButtonElement>,
+    caseRecord: CaseListProps['cases'][number],
+  ) => {
+    event.stopPropagation();
+    if (!onDelete) return;
+    if (!window.confirm(`確定要刪除此工單「${caseRecord.title}」嗎？`)) return;
+    await onDelete(caseRecord.id);
+  };
 
   if (isLoading) {
     return (
@@ -86,6 +99,11 @@ export function CaseList({ cases, isLoading }: CaseListProps) {
             <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
               建立時間
             </th>
+            {onDelete && (
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-muted-foreground">
+                操作
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -122,6 +140,25 @@ export function CaseList({ cases, isLoading }: CaseListProps) {
               <td className="px-4 py-3 text-sm text-muted-foreground">
                 {format(new Date(c.createdAt), 'MMM d, HH:mm')}
               </td>
+              {onDelete && (
+                <td className="px-4 py-3 text-right">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    disabled={deletingCaseId === c.id}
+                    onClick={(event) => handleDeleteClick(event, c)}
+                    aria-label={`刪除工單 ${c.title}`}
+                  >
+                    {deletingCaseId === c.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

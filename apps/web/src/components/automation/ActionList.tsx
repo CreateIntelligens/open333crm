@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Plus } from 'lucide-react';
+import type { AutomationActionDefinition } from '@open333crm/automation';
 import { Button } from '@/components/ui/button';
 import { ActionEditor } from './ActionEditor';
 
@@ -10,11 +11,13 @@ interface ActionListProps {
   onChange: (
     actions: Array<{ type: string; payload: Record<string, unknown> }>
   ) => void;
+  actionDefinitions?: AutomationActionDefinition[];
 }
 
-export function ActionList({ actions, onChange }: ActionListProps) {
+export function ActionList({ actions, onChange, actionDefinitions }: ActionListProps) {
   const handleAdd = () => {
-    onChange([...actions, { type: 'send_message', payload: {} }]);
+    const type = actionDefinitions?.[0]?.type ?? 'send_message';
+    onChange([...actions, { type, payload: {} }]);
   };
 
   const handleChange = (
@@ -41,6 +44,7 @@ export function ActionList({ actions, onChange }: ActionListProps) {
         <ActionEditor
           key={index}
           action={action}
+          actionDefinitions={actionDefinitions}
           onChange={(updated) => handleChange(index, updated)}
           onRemove={() => handleRemove(index)}
         />
@@ -50,6 +54,7 @@ export function ActionList({ actions, onChange }: ActionListProps) {
         variant="outline"
         size="sm"
         onClick={handleAdd}
+        disabled={actionDefinitions?.length === 0}
         className="w-full"
       >
         <Plus className="mr-1 h-4 w-4" />

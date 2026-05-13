@@ -8,7 +8,7 @@ The system SHALL trigger automation rules when an event occurs, such as `message
 - **THEN** matching automation rules are evaluated
 
 ### Requirement: Rule Conditions
-The system SHALL support evaluating complex boolean conditions on message, contact, case, SLA, and event facts using `json-rules-engine`. The system SHALL persist automation rule conditions using the `conditions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `conditionsJson` in database operations. Conditions accepted from the frontend SHALL use the `json-rules-engine` top-level condition format and SHALL be validated before an active rule is saved or tested.
+The system SHALL support evaluating complex boolean conditions on message, contact, conversation, case, SLA, and event facts using `json-rules-engine`. The system SHALL persist automation rule conditions using the `conditions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `conditionsJson` in database operations. Conditions accepted from the frontend SHALL use the `json-rules-engine` top-level condition format and SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested.
 
 #### Scenario: Matching VIP customer
 - **WHEN** a rule requires `contact.membership == "VIP"` and `message.sentiment == "negative"`
@@ -30,8 +30,12 @@ The system SHALL support evaluating complex boolean conditions on message, conta
 - **WHEN** the frontend submits a malformed condition tree for an active automation rule
 - **THEN** the API rejects the request with a validation error and does not activate the rule
 
+#### Scenario: Event-incompatible fact is rejected
+- **WHEN** the frontend or API submits a condition fact that is not allowed by the composed contract for the selected event
+- **THEN** the API rejects the rule with a validation error and does not persist the invalid condition
+
 ### Requirement: Actions
-The system SHALL support actions such as `add_tag`, `send_message`, and `create_case`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations.
+The system SHALL support automation actions such as `add_tag`, `send_message`, `create_case`, `update_case_status`, and `notify_supervisor`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations. Actions accepted from the frontend SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested.
 
 #### Scenario: Auto-tagging
 - **WHEN** a rule with `add_tag("hot_lead")` matches
@@ -44,6 +48,10 @@ The system SHALL support actions such as `add_tag`, `send_message`, and `create_
 #### Scenario: Updating a rule's actions
 - **WHEN** an automation rule is updated with new actions
 - **THEN** the actions are written to the `actions` Prisma field only
+
+#### Scenario: Event-incompatible action is rejected
+- **WHEN** the frontend or API submits an action whose required context is not available for the selected event
+- **THEN** the API rejects the rule with a validation error and does not persist the invalid action
 
 ---
 
@@ -67,23 +75,27 @@ The automation engine SHALL use the BullMQ worker path for event-triggered autom
 - **THEN** the worker does not execute that rule's actions
 
 ### Requirement: Package-Defined Rule Contract
-The system SHALL define SLA-only automation event names, condition facts, allowed operators, fact metadata, and rule authoring labels in packages that can be consumed by web, API, and worker code. The frontend SHALL compose rule JSON from this package-defined contract, the API SHALL validate rule CRUD payloads against it, and workers SHALL evaluate and dispatch events using the same contract. General CRM events such as inbound messages, CSAT, note mentions, and sentiment-analysis completion SHALL remain outside the SLA event catalog for this change.
+The system SHALL define automation event names, condition facts, allowed operators, fact metadata, action metadata, and rule authoring labels in package-level contracts that can be consumed by web, API, and worker code. The frontend SHALL compose rule JSON from this package-defined contract, the API SHALL validate rule CRUD payloads against it, and workers SHALL build facts and dispatch actions using the same fact and action identifiers. SLA events SHALL be part of the same automation contract surface rather than a separate frontend-only or API-only list.
 
-#### Scenario: Frontend composes SLA rule
-- **WHEN** the frontend renders SLA rule authoring controls
-- **THEN** it uses package-defined event and condition metadata instead of hard-coded local lists
+#### Scenario: Frontend composes event-specific rule
+- **WHEN** the frontend renders automation rule authoring controls for a selected event
+- **THEN** it uses package-defined event, condition, operator, and action metadata instead of hard-coded local lists
 
-#### Scenario: API validates SLA rule payload
-- **WHEN** the API receives an automation rule CRUD request for an SLA event
-- **THEN** it validates the event name, condition facts, operators, and `json-rules-engine` structure against the package-defined contract before persisting the rule
+#### Scenario: API validates event-specific rule payload
+- **WHEN** the API receives an automation rule CRUD request
+- **THEN** it validates the event name, condition facts, operators, action types, action params, and `json-rules-engine` structure against the composed contract before persisting the rule
 
-#### Scenario: Worker evaluates SLA rule payload
-- **WHEN** the worker evaluates SLA automation rules during an SLA scan
-- **THEN** it builds facts using the package-defined fact contract and evaluates conditions with `json-rules-engine`
+#### Scenario: Worker evaluates contract facts
+- **WHEN** the worker evaluates automation rules
+- **THEN** it builds facts using fact keys defined by the package-level contract and evaluates conditions with `json-rules-engine`
 
-#### Scenario: Non-SLA event is not part of SLA contract
-- **WHEN** the frontend renders SLA rule authoring controls
-- **THEN** it does not present raw events such as `message.received` or `sentiment.negative` as SLA events
+#### Scenario: Message event does not expose case-only fields
+- **WHEN** the frontend renders condition fields for a message event that does not explicitly resolve case context
+- **THEN** it does not present case-only fields such as `case.status` or `case.priority`
+
+#### Scenario: Case event does not expose message-only fields
+- **WHEN** the frontend renders condition fields for a case event
+- **THEN** it does not present message-only fields such as `message.text`
 
 ### Requirement: SLA Event Catalog
 The system SHALL provide an initial SLA event catalog with these worker-originated events: `sla.first_response.warning`, `sla.first_response.breached`, `sla.resolution.warning`, `sla.resolution.breached`, and `sla.customer_waiting.breached`. Each event SHALL define a label, description, allowed fact keys, and supported operators for frontend rule authoring and API validation.

@@ -9,10 +9,7 @@ import type { TopLevelCondition } from 'json-rules-engine';
 import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
 import { AppError } from '../../shared/utils/response.js';
-import {
-  isSlaRuleEvent,
-  validateSlaRuleConditionTree,
-} from '@open333crm/shared';
+import { validateAutomationRuleContract } from '@open333crm/automation';
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -96,7 +93,7 @@ export async function createRule(
   },
 ) {
   const eventType = String(data.trigger.type ?? '');
-  validateSlaRuleIfNeeded(eventType, data.conditions);
+  validateRuleContract(eventType, data.conditions, data.actions);
 
   const rule = await prisma.automationRule.create({
     data: {
@@ -147,7 +144,8 @@ export async function updateRule(
     data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',
   );
   const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
-  validateSlaRuleIfNeeded(nextEventType, nextConditions);
+  const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
+  validateRuleContract(nextEventType, nextConditions, nextActions);
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};
   if (data.name !== undefined) updateData.name = data.name;
@@ -180,13 +178,19 @@ export async function updateRule(
   return rule;
 }
 
-function validateSlaRuleIfNeeded(eventType: string, conditions: unknown): void {
-  if (!isSlaRuleEvent(eventType)) return;
-
-  const result = validateSlaRuleConditionTree(eventType, conditions);
+function validateRuleContract(
+  eventType: string,
+  conditions: unknown,
+  actions: unknown,
+): void {
+  const result = validateAutomationRuleContract({
+    eventName: eventType,
+    conditions,
+    actions,
+  });
   if (!result.valid) {
     throw new AppError(
-      `Invalid SLA rule conditions: ${result.errors.join('; ')}`,
+      `Invalid automation rule contract: ${result.errors.join('; ')}`,
       'VALIDATION_ERROR',
       400,
     );
@@ -233,6 +237,7 @@ export async function testRule(
 
   const conditions = rule.conditions as unknown as TopLevelCondition;
   const actions = rule.actions as unknown as ActionDefinition[];
+  validateRuleContract(rule.eventType, conditions, actions);
 
   const ruleInput: AutomationRuleInput = {
     id: rule.id,

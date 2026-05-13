@@ -7,12 +7,13 @@ import { enqueueNotification } from './notification-queue.js';
 
 export interface WorkerAutomationAction {
   type: string;
-  params: Record<string, unknown>;
+  params?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
 }
 
 export interface WorkerActionContext {
   tenantId: string;
-  caseId: string;
+  caseId?: string | null;
   assigneeId?: string | null;
   title?: string | null;
 }
@@ -40,9 +41,11 @@ export async function executeWorkerAutomationActions(
 ): Promise<void> {
   for (const action of actions) {
     try {
+      const params = action.params ?? action.payload ?? {};
+
       if (action.type === 'assign_agent') {
-        const agentId = action.params['agentId'];
-        if (typeof agentId === 'string' && agentId) {
+        const agentId = params['agentId'];
+        if (typeof agentId === 'string' && agentId && context.caseId) {
           await prisma.case.update({
             where: { id: context.caseId },
             data: { assigneeId: agentId },
@@ -57,8 +60,8 @@ export async function executeWorkerAutomationActions(
       }
 
       if (action.type === 'update_case_status') {
-        const status = action.params['status'];
-        if (typeof status === 'string' && status) {
+        const status = params['status'];
+        if (typeof status === 'string' && status && context.caseId) {
           await prisma.case.update({
             where: { id: context.caseId },
             data: { status: status as any },
@@ -73,13 +76,18 @@ export async function executeWorkerAutomationActions(
       }
 
       if (action.type === 'escalate_case' || action.type === 'set_case_priority') {
+        if (!context.caseId) {
+          logger.info(`[automation] Worker action "${action.type}" skipped: missing caseId`);
+          continue;
+        }
+
         const current = await prisma.case.findUnique({
           where: { id: context.caseId },
           select: { priority: true },
         });
         if (!current) continue;
 
-        const configuredPriority = action.params['newPriority'] ?? action.params['priority'];
+        const configuredPriority = params['newPriority'] ?? params['priority'];
         const newPriority =
           typeof configuredPriority === 'string' && configuredPriority
             ? configuredPriority
@@ -103,8 +111,8 @@ export async function executeWorkerAutomationActions(
           agentId: context.assigneeId,
           type: 'sla_rule',
           title: 'SLA rule matched',
-          body: String(action.params['message'] ?? 'A SLA rule matched.'),
-          clickUrl: `/dashboard/cases/${context.caseId}`,
+          body: String(params['message'] ?? 'A SLA rule matched.'),
+          clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
         });
         continue;
       }
@@ -117,8 +125,8 @@ export async function executeWorkerAutomationActions(
             agentId,
             type: 'sla_rule',
             title: 'SLA rule matched',
-            body: String(action.params['message'] ?? 'A SLA rule matched.'),
-            clickUrl: `/dashboard/cases/${context.caseId}`,
+            body: String(params['message'] ?? 'A SLA rule matched.'),
+            clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
           });
         }
         continue;

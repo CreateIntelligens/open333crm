@@ -1,7 +1,12 @@
 'use client';
 
 import React from 'react';
-import { QueryBuilder, type Field, type RuleGroupType } from 'react-querybuilder';
+import {
+  QueryBuilder,
+  type Field,
+  type RuleGroupType,
+  type ValueEditorType,
+} from 'react-querybuilder';
 import 'react-querybuilder/dist/query-builder.css';
 import { automationFields } from '@/lib/automation/fields';
 
@@ -18,6 +23,13 @@ export function ConditionBuilder({ value, onChange, fields }: ConditionBuilderPr
         fields={fields ?? automationFields}
         query={value}
         onQueryChange={onChange}
+        getValueEditorType={(_field, operator, { fieldData }) => {
+          const valueEditorType = fieldData.valueEditorType;
+          if (typeof valueEditorType === 'function') {
+            return valueEditorType(operator);
+          }
+          return (valueEditorType ?? 'text') as ValueEditorType;
+        }}
         controlClassnames={{
           queryBuilder:
             'rounded-md border border-input bg-background p-4 [&_.ruleGroup]:border [&_.ruleGroup]:border-border [&_.ruleGroup]:rounded-md [&_.ruleGroup]:bg-muted/30 [&_.ruleGroup]:p-3 [&_.ruleGroup]:my-2',

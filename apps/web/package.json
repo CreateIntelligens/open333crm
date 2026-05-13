@@ -10,6 +10,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@open333crm/automation": "workspace:*",
     "@open333crm/shared": "workspace:*",
     "axios": "^1.7.0",
     "class-variance-authority": "^0.7.0",

@@ -150,6 +150,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@open333crm/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
       '@open333crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared

@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { AUTOMATION_FACT_KEYS } from '@open333crm/automation';
 
 export interface AutomationFactContext {
   tenantId: string;
@@ -91,22 +92,24 @@ export async function buildAutomationFacts(
 
   return {
     ...context,
-    'contact.name': contact?.displayName ?? null,
-    'contact.channel': channelTypes,
-    'contact.tags': tagNames,
-    'contact.language': contact?.language ?? null,
-    'case.open.count': openCaseCount,
-    'message.text': context.messageContent ?? null,
+    [AUTOMATION_FACT_KEYS.CONTACT_NAME]: contact?.displayName ?? null,
+    [AUTOMATION_FACT_KEYS.CONTACT_CHANNEL]: channelTypes,
+    [AUTOMATION_FACT_KEYS.CONTACT_TAGS]: tagNames,
+    [AUTOMATION_FACT_KEYS.CONTACT_LANGUAGE]: contact?.language ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_OPEN_COUNT]: openCaseCount,
+    [AUTOMATION_FACT_KEYS.MESSAGE_TEXT]: context.messageContent ?? null,
     is_vip_customer: tagNames.includes('VIP'),
-    'conversation.channelType': conversation?.channelType ?? null,
-    'conversation.status': conversation?.status ?? null,
-    'conversation.assignedToId': conversation?.assignedToId ?? null,
+    [AUTOMATION_FACT_KEYS.CONTACT_IS_VIP]: tagNames.includes('VIP'),
+    [AUTOMATION_FACT_KEYS.CONVERSATION_CHANNEL_TYPE]: conversation?.channelType ?? null,
+    [AUTOMATION_FACT_KEYS.CONVERSATION_STATUS]: conversation?.status ?? null,
+    [AUTOMATION_FACT_KEYS.CONVERSATION_ASSIGNED_TO_ID]:
+      conversation?.assignedToId ?? null,
     caseId: effectiveCaseId ?? null,
-    'case.id': caseRecord?.id ?? effectiveCaseId ?? null,
-    'case.status': caseRecord?.status ?? null,
-    'case.priority': caseRecord?.priority ?? null,
-    'case.assigneeId': caseRecord?.assigneeId ?? null,
-    'case.teamId': caseRecord?.teamId ?? null,
-    'case.category': caseRecord?.category ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_ID]: caseRecord?.id ?? effectiveCaseId ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_STATUS]: caseRecord?.status ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_PRIORITY]: caseRecord?.priority ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_ASSIGNEE_ID]: caseRecord?.assigneeId ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_TEAM_ID]: caseRecord?.teamId ?? null,
+    [AUTOMATION_FACT_KEYS.CASE_CATEGORY]: caseRecord?.category ?? null,
   };
 }

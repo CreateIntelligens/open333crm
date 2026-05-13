@@ -25,12 +25,12 @@ const qbToEngineOperator: Record<string, string> = {
 };
 
 const engineToQbOperator: Record<string, string> = {
-  equal: '=',
-  notEqual: '!=',
-  lessThan: '<',
-  lessThanInclusive: '<=',
-  greaterThan: '>',
-  greaterThanInclusive: '>=',
+  equal: 'equal',
+  notEqual: 'notEqual',
+  lessThan: 'lessThan',
+  lessThanInclusive: 'lessThanInclusive',
+  greaterThan: 'greaterThan',
+  greaterThanInclusive: 'greaterThanInclusive',
 };
 
 /**

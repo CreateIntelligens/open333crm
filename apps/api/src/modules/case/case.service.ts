@@ -228,17 +228,28 @@ async function createCaseRecord(
     category?: string;
     assigneeId?: string;
     teamId?: string;
+    slaPolicyId?: string;
   },
 ) {
   const priority = data.priority ?? 'MEDIUM';
 
-  // Look up SLA policy for the given priority
-  const slaPolicy = await prisma.slaPolicy.findFirst({
-    where: {
-      tenantId,
-      priority,
-    },
-  });
+  const slaPolicy = data.slaPolicyId
+    ? await prisma.slaPolicy.findFirst({
+        where: {
+          id: data.slaPolicyId,
+          tenantId,
+        },
+      })
+    : await prisma.slaPolicy.findFirst({
+        where: {
+          tenantId,
+          priority,
+        },
+      });
+
+  if (data.slaPolicyId && !slaPolicy) {
+    throw new AppError('SLA policy not found', 'NOT_FOUND', 404);
+  }
 
   let slaDueAt: Date | null = null;
   if (slaPolicy) {
@@ -286,6 +297,7 @@ async function createCaseRecord(
         title: data.title,
         priority,
         category: data.category ?? null,
+        slaPolicyId: data.slaPolicyId ?? null,
       },
     },
   });
@@ -350,6 +362,7 @@ export async function createCase(
     category?: string;
     assigneeId?: string;
     teamId?: string;
+    slaPolicyId?: string;
   },
 ) {
   const caseRecord = await createCaseRecord(prisma, tenantId, agentId, data);
@@ -759,6 +772,7 @@ export async function createCaseFromConversation(
     category?: string;
     assigneeId?: string;
     teamId?: string;
+    slaPolicyId?: string;
   },
 ) {
   const caseRecord = await prisma.$transaction(async (tx) => {
