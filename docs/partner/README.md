@@ -2,27 +2,53 @@
 
 放置給外部合作方（partners）使用的 API 串接文件。
 
-## 索引
+## 文件清單
 
-| 文件 | 對象 | 內容 |
+| 檔案 | 格式 | 用途 |
 |---|---|---|
-| [`PARTNER_INGEST_API.md`](./PARTNER_INGEST_API.md) | Stanley / Chatbot 系統 | 知識點推送 API 完整規格、curl 範例、FAQ |
-| [`partner-ingest.postman_collection.json`](./partner-ingest.postman_collection.json) | Stanley | Postman v2.1 collection，9 個測試情境 |
+| [`openapi.yaml`](./openapi.yaml) | OpenAPI 3.1 | **規格 single source of truth**。可匯入 Swagger UI / Postman / Insomnia / IDE 套件 |
+| [`api.html`](./api.html) | Redoc 渲染靜態 HTML | 單檔離線文件。**直接 double-click 打開**就能看，不需網路與工具 |
+| [`partner-ingest.postman_collection.json`](./partner-ingest.postman_collection.json) | Postman v2.1 | 9 個測試情境，匯入 Postman 後可直接 send |
+| [`PARTNER_INGEST_API.md`](./PARTNER_INGEST_API.md) | Markdown | 補充說明（FAQ、整段 bash 測試腳本、給人讀） |
 
-## 給 Stanley 的快速指引
+## 對接資訊
 
-1. 讀 [`PARTNER_INGEST_API.md`](./PARTNER_INGEST_API.md) 第 1~6 章了解規格
-2. **環境**：`https://uat.open333crm.create360.ai`（POC 階段唯一環境）
-3. **API Key**：由 Daniel 透過 LINE 私訊提供，**不要寫進 git / email / 公開頻道**
-4. 匯入 Postman collection，環境變數已預設好 `baseUrl`，只需填 `partnerKey`
-5. 跑 collection 內 1~9 號 request，對照預期結果
-6. 整合到自己系統後，建議先連續跑兩三天觀察錯誤率再大量推
+| 項目 | 值 |
+|---|---|
+| 環境 | UAT（POC 階段唯一環境） |
+| Base URL | `https://uat.open333crm.create360.ai` |
+| Endpoint | `POST /api/v1/knowledge/partner-ingest` |
+| Content-Type | `multipart/form-data` |
+| 認證 | `Authorization: Bearer pk_xxx`（私訊取得） |
+
+## 給合作方的快速指引
+
+**最快路徑（不需任何工具）**
+1. 下載 [`api.html`](./api.html)，直接打開瀏覽器看
+2. 用 [`partner-ingest.postman_collection.json`](./partner-ingest.postman_collection.json) 匯入 Postman，填上 API Key 直接打
+
+**喜歡命令列的話**
+1. 看 [`openapi.yaml`](./openapi.yaml) 規格
+2. 跑 [`PARTNER_INGEST_API.md`](./PARTNER_INGEST_API.md) §7 的 bash 測試腳本（已預設 BASE_URL）
 
 ## 給內部維護者
 
-- 改 API 行為時，**先改 `openspec/specs/km-ingestion/spec.md`**（規格），再改 code，再回頭更新本文件
-- 變更歷史記在 [`PARTNER_INGEST_API.md`](./PARTNER_INGEST_API.md) §10
-- 給合作方的 API Key 是 partner 級別，建議：
-  - 每個合作方各自一把
-  - 不要寫進 git（即使是 example 也別寫真 key）
-  - 定期 rotate（每 6~12 個月）
+### 修改流程
+1. **先改 `openapi.yaml`**（規格 SOT）
+2. 同步改 `apps/api/src/modules/knowledge/partner-ingest.service.ts` 與 routes
+3. 同步改 `openspec/specs/km-ingestion/spec.md`
+4. **重新產生 `api.html`**：
+   ```bash
+   npx @redocly/cli@latest build-docs docs/partner/openapi.yaml \
+     --output docs/partner/api.html
+   ```
+5. **驗證 spec 合法**：
+   ```bash
+   npx @redocly/cli@latest lint docs/partner/openapi.yaml
+   ```
+
+### API Key 管理
+- 每個合作方各自一把 `pk_xxx`
+- 由 Daniel 透過 LINE 私訊提供
+- **絕不寫進** git / email / Slack / GitHub PR / 對話記錄
+- 建議定期 rotate（每 6~12 個月）

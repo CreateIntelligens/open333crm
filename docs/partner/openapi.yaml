@@ -1,0 +1,362 @@
+openapi: 3.1.0
+
+info:
+  title: open333CRM Partner Ingest API
+  version: 1.0.0
+  description: |
+    合作方系統將「問答型知識點」（含附件）推送到 open333CRM 知識庫（KB）的單一端點。
+
+    動作（建立 / 更新 / 移除）由必填欄位 `cmd` 顯式指定，採整批覆蓋與軟刪語意。
+    詳細決策見 [openspec design.md](https://github.com/CreateIntelligens/open333crm/blob/feat/partner-ingest-cmd-v2/openspec/changes/2026-05-13-partner-ingest-cmd/design.md)。
+
+    ## 認證
+
+    所有請求必須帶 `Authorization: Bearer pk_xxx`，API Key 由 open333CRM 維運方私下提供，**請勿提交進 git 或其他公開頻道**。
+
+    ## 設計原則
+
+    - **顯式語意**：動作由 `cmd` 明確指定，不靠 `Ver` 隱式推導
+    - **整批覆蓋**：UPDATE 與復活時附件「先刪後寫」
+    - **冪等（idempotent）**：DELETE 重複呼叫不報錯；UPDATE 收到舊版本不會倒退
+    - **軟刪**：DELETE 後 `status=ARCHIVED`，可由 CREATE 復活
+  contact:
+    name: Daniel Yang
+    email: daniel@create360.ai
+  license:
+    name: 內部對接文件
+    url: https://github.com/CreateIntelligens/open333crm
+
+servers:
+  - url: https://uat.open333crm.create360.ai
+    description: UAT（POC 階段唯一環境）
+
+tags:
+  - name: knowledge
+    description: 知識庫資料管理
+
+security:
+  - PartnerApiKey: []
+
+paths:
+  /api/v1/knowledge/partner-ingest:
+    post:
+      tags: [knowledge]
+      summary: 推送單筆知識點（CREATE / UPDATE / DELETE）
+      description: |
+        合作方系統將一筆問答推送到 open333CRM 知識庫。動作由必填欄位 `cmd` 指定：
+
+        | cmd | 用途 |
+        |---|---|
+        | `CREATE` | 新增；既有 PUBLISHED → 409；既有 ARCHIVED → 復活 |
+        | `UPDATE` | 整批覆蓋內容 + 附件；不存在或 ARCHIVED → 404 |
+        | `DELETE` | 軟刪（`status=ARCHIVED` + 清向量）；附件保留；冪等 |
+
+        `Ver` 仍需嚴格遞增（CREATE/UPDATE 收到舊版 → 200 `skipped`），避免亂序重送把新版蓋成舊版。
+      operationId: partnerIngest
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PartnerIngestRequest'
+            encoding:
+              Attached:
+                style: form
+                explode: true
+            examples:
+              create_new:
+                summary: CREATE — 新增 DocID + 兩個附件
+                value:
+                  cmd: CREATE
+                  DocID: DOC-1234
+                  Ver: 1
+                  VerCreatTime: /Date(1775703693000)/
+                  AI_Q: 請問電鍋保固多久？
+                  AI_A: 本商品保固 12 個月，自購買日起算。
+                  Source: FAQ(消費者)-常見問答
+                  Spec: '{"產地":"台灣","電壓":"110V","保固期":"12個月"}'
+                  IsAttached: true
+              update_existing:
+                summary: UPDATE — 更新既有 DocID
+                value:
+                  cmd: UPDATE
+                  DocID: DOC-1234
+                  Ver: 2
+                  VerCreatTime: /Date(1775803693000)/
+                  AI_Q: 請問電鍋保固多久？
+                  AI_A: 本商品保固 18 個月。
+                  Source: FAQ(消費者)-常見問答
+                  IsAttached: false
+              delete_soft:
+                summary: DELETE — 軟刪
+                value:
+                  cmd: DELETE
+                  DocID: DOC-1234
+      responses:
+        '200':
+          description: 成功；實際動作見 `data.status`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                created:
+                  summary: status=created（新建）
+                  value:
+                    success: true
+                    data:
+                      status: created
+                      articleId: 8f3a1b2c-1234-5678-9abc-def012345678
+                      externalDocId: DOC-1234
+                      externalVer: 1
+                      attachmentsLinked: 2
+                updated:
+                  summary: status=updated（整批覆蓋）
+                  value:
+                    success: true
+                    data:
+                      status: updated
+                      articleId: 8f3a1b2c-1234-5678-9abc-def012345678
+                      externalDocId: DOC-1234
+                      externalVer: 2
+                      attachmentsLinked: 1
+                deleted:
+                  summary: status=deleted（軟刪）
+                  value:
+                    success: true
+                    data:
+                      status: deleted
+                      articleId: 8f3a1b2c-1234-5678-9abc-def012345678
+                      externalDocId: DOC-1234
+                      externalVer: 2
+                      attachmentsLinked: 0
+                revived:
+                  summary: status=revived（對 ARCHIVED 送 CREATE）
+                  value:
+                    success: true
+                    data:
+                      status: revived
+                      articleId: 8f3a1b2c-1234-5678-9abc-def012345678
+                      externalDocId: DOC-1234
+                      externalVer: 3
+                      attachmentsLinked: 2
+                skipped:
+                  summary: status=skipped（Ver 不夠新）
+                  value:
+                    success: true
+                    data:
+                      status: skipped
+                      reason: incoming ver 2 ≤ existing ver 2
+                      articleId: 8f3a1b2c-1234-5678-9abc-def012345678
+                      externalDocId: DOC-1234
+                      externalVer: 2
+                      attachmentsLinked: 0
+                deleted_idempotent:
+                  summary: status=deleted（冪等 no-op）
+                  value:
+                    success: true
+                    data:
+                      status: deleted
+                      reason: already archived (idempotent)
+                      articleId: 8f3a1b2c-1234-5678-9abc-def012345678
+                      externalDocId: DOC-1234
+                      externalVer: 2
+                      attachmentsLinked: 0
+        '400':
+          description: 請求格式錯誤（`cmd` 缺值或 DocID 缺值）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_cmd:
+                  summary: cmd 缺值或非 CREATE/UPDATE/DELETE
+                  value:
+                    success: false
+                    error:
+                      code: INVALID_CMD
+                      message: cmd must be CREATE, UPDATE or DELETE (got "")
+                missing_docid:
+                  summary: DocID 缺值
+                  value:
+                    success: false
+                    error:
+                      code: BAD_REQUEST
+                      message: DocID is required
+        '401':
+          description: API Key 錯誤或過期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: UNAUTHORIZED
+                  message: Invalid API key
+        '404':
+          description: UPDATE 對不存在或已刪除的 DocID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: DOCID_NOT_FOUND
+                  message: DocID "DOC-1234" not found (use cmd=CREATE instead)
+        '409':
+          description: CREATE 對已存在且未刪除的 DocID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: DOCID_CONFLICT
+                  message: DocID "DOC-1234" already exists (use cmd=UPDATE instead)
+        '500':
+          description: 後端內部錯誤（DB / S3 異常）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: INGEST_FAILED
+                  message: Internal server error
+
+components:
+  securitySchemes:
+    PartnerApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: pk_xxx
+      description: |
+        合作方 API Key。請聯絡 open333CRM 維運方索取，並透過安全管道（如 LINE 私訊）取得。
+        **請勿提交進 git、Email、Slack 等可能被歸檔的頻道。**
+
+  schemas:
+    PartnerIngestRequest:
+      type: object
+      required: [cmd, DocID]
+      properties:
+        cmd:
+          type: string
+          enum: [CREATE, UPDATE, DELETE]
+          description: 動作（大小寫不拘，後端會 trim + 大寫化）
+          example: CREATE
+        DocID:
+          type: string
+          maxLength: 64
+          description: 合作方系統的文件編號，同一合作方下需唯一
+          example: DOC-1234
+        Ver:
+          type: integer
+          minimum: 1
+          description: |
+            文件版本，**必須嚴格遞增**。CREATE/UPDATE 收到 Ver ≤ 既有版本 → `skipped`。
+            DELETE 不檢查 Ver。
+          example: 1
+        VerCreatTime:
+          type: string
+          pattern: '^/Date\(\d+\)/$'
+          description: 版本建立時間，毫秒 epoch（.NET-style）。CREATE/UPDATE 必填
+          example: /Date(1775703693000)/
+        AI_Q:
+          type: string
+          description: AI 客服問題（對客戶端的問題文字）。CREATE/UPDATE 必填
+          example: 請問電鍋保固多久？
+        AI_A:
+          type: string
+          description: AI 客服回覆。CREATE/UPDATE 必填
+          example: 本商品保固 12 個月，自購買日起算。
+        Source:
+          type: string
+          description: |
+            文件分類來源。CREATE/UPDATE 必填。
+            **歷史相容**：後端同時接受 `Source` 與 `Soruce`（拼字錯誤），新對接請用正確拼字 `Source`。
+          example: FAQ(消費者)-常見問答
+        Spec:
+          type: string
+          description: 商品規格 / 活動說明的結構化資料；JSON 字串（合法 JSON）
+          example: '{"產地":"台灣","電壓":"110V","保固期":"12個月"}'
+        IsAttached:
+          type: boolean
+          description: 是否含附件。CREATE/UPDATE 必填
+          example: true
+        Attached:
+          type: array
+          description: |
+            附件檔案。**同一請求可重複出現多個 `Attached` 欄位**（multipart form 同名 part 可多個）。
+            DELETE 時送上來會被後端忽略。
+          items:
+            type: string
+            format: binary
+
+    SuccessResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [status, articleId, externalDocId, externalVer, attachmentsLinked]
+          properties:
+            status:
+              type: string
+              enum: [created, updated, deleted, revived, skipped]
+              description: |
+                實際發生的動作：
+                - `created` — 新建（CREATE 對不存在的 DocID）
+                - `updated` — 整批覆蓋（UPDATE 對既有 PUBLISHED）
+                - `revived` — 復活（CREATE 對既有 ARCHIVED）
+                - `deleted` — 軟刪或冪等 no-op（DELETE）
+                - `skipped` — Ver 不夠新，未動資料
+            reason:
+              type: string
+              description: 僅 `skipped` 與冪等 `deleted` 會出現，說明略過原因
+              example: incoming ver 2 ≤ existing ver 2
+            articleId:
+              type: string
+              format: uuid
+              description: 後端文件 UUID。DELETE 對不存在 DocID 時為空字串
+            externalDocId:
+              type: string
+              description: 回顯送來的 DocID
+            externalVer:
+              type: integer
+              description: 回顯送來的 Ver，或既有 Ver（視情境）
+            attachmentsLinked:
+              type: integer
+              minimum: 0
+              description: 本次成功上傳的附件數
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_CMD
+                - BAD_REQUEST
+                - UNAUTHORIZED
+                - DOCID_NOT_FOUND
+                - DOCID_CONFLICT
+                - INGEST_FAILED
+              description: 結構化錯誤碼，合作方系統可用於對帳與錯誤分類
+            message:
+              type: string
+              description: 人類可讀的錯誤訊息
