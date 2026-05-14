@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "open333CRM Partner Ingest API",
-    "description": "合作方推送知識點到 open333CRM 知識庫。詳細規格見 PARTNER_INGEST_API.md。\n\n使用前請在 Environment 設定：\n- baseUrl：API base URL（例 https://uat.open333crm.example.com）\n- partnerKey：Partner API Key（pk_ 開頭）",
+    "description": "合作方推送知識點到 open333CRM 知識庫。詳細規格見 PARTNER_INGEST_API.md。\n\n使用前請在 Environment 設定：\n- baseUrl：https://uat.open333crm.create360.ai（已預設）\n- partnerKey：Partner API Key（pk_ 開頭，由 Daniel 私訊提供）",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://<your-api-host>",
+      "value": "https://uat.open333crm.create360.ai",
       "type": "string"
     },
     {

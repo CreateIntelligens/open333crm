@@ -49,19 +49,18 @@ Authorization: Bearer pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ## 3. Endpoint
 
 ```
-POST  <API_BASE_URL>/api/v1/knowledge/partner-ingest
+POST  https://uat.open333crm.create360.ai/api/v1/knowledge/partner-ingest
 Content-Type: multipart/form-data
 Authorization: Bearer pk_xxx
 ```
 
 ### 3.1 環境位址
 
-| 環境 | API_BASE_URL |
-|---|---|
-| UAT（測試）| `https://<your-uat-host>` |
-| Production | `https://<your-prod-host>` |
+| 環境 | API_BASE_URL | 備註 |
+|---|---|---|
+| UAT / POC | `https://uat.open333crm.create360.ai` | 目前唯一環境，POC 階段測試與正式串接皆使用此位址 |
 
-（實際 URL 由 Daniel 提供）
+> 未來若另開 production 環境，會另行通知變更。本文件版本以 §10 變更歷史為準。
 
 ---
 
@@ -352,13 +351,13 @@ HTTP `200`，當作已刪除，不報錯。
 
 ## 7. 完整測試腳本（Bash）
 
-把 `<API_BASE_URL>` 跟 `<YOUR_KEY>` 替換成實際值後直接執行，可一次驗證所有情境。
+把 `<YOUR_KEY>` 替換成 Daniel 私訊給你的 API Key 後直接執行，可一次驗證所有情境。
 
 ```bash
 #!/bin/bash
 set -e
 
-BASE_URL='<API_BASE_URL>'
+BASE_URL='https://uat.open333crm.create360.ai'
 TOKEN='Bearer <YOUR_KEY>'
 DOC_ID="TEST-$(date +%s)"   # 用 timestamp 確保每次測試 DocID 不同
 ENDPOINT="$BASE_URL/api/v1/knowledge/partner-ingest"

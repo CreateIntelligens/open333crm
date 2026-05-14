@@ -12,12 +12,11 @@
 ## 給 Stanley 的快速指引
 
 1. 讀 [`PARTNER_INGEST_API.md`](./PARTNER_INGEST_API.md) 第 1~6 章了解規格
-2. 匯入 Postman collection，設定 environment：
-   - `baseUrl` = API 位址（向 Daniel 索取）
-   - `partnerKey` = 你的 `pk_xxx`（向 Daniel 索取，不要寫進 git）
-   - `docId` = 測試用 DocID（建議用 `TEST-` 開頭避免污染正式資料）
-3. 跑 collection 內 1~9 號 request，對照預期結果
-4. 整合到自己系統後，建議先在 UAT 環境跑兩三天觀察錯誤率，再切 production
+2. **環境**：`https://uat.open333crm.create360.ai`（POC 階段唯一環境）
+3. **API Key**：由 Daniel 透過 LINE 私訊提供，**不要寫進 git / email / 公開頻道**
+4. 匯入 Postman collection，環境變數已預設好 `baseUrl`，只需填 `partnerKey`
+5. 跑 collection 內 1~9 號 request，對照預期結果
+6. 整合到自己系統後，建議先連續跑兩三天觀察錯誤率再大量推
 
 ## 給內部維護者
 
