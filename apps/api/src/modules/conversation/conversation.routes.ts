@@ -11,6 +11,7 @@ import {
   handoffConversation,
 } from './conversation.service.js';
 import { createCaseFromConversation } from '../case/case.service.js';
+import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { uploadFile } from '../storage/storage.service.js';
 
@@ -118,6 +119,10 @@ const sendMessageSchema = z.object({
   content: z.record(z.unknown()),
 });
 
+const addTagSchema = z.object({
+  tagId: z.string().uuid(),
+});
+
 const messagesQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(50),
@@ -177,6 +182,35 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
 
     return reply.send(success(conversation));
   });
+
+  // POST /api/v1/conversations/:id/tags
+  fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
+    const body = addTagSchema.parse(request.body);
+    const conversationTag = await addTagToTarget(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      targetType: 'CONVERSATION',
+      targetId: request.params.id,
+      tagId: body.tagId,
+      agentId: request.agent.id,
+    });
+
+    return reply.status(201).send(success(conversationTag));
+  });
+
+  // DELETE /api/v1/conversations/:id/tags/:tagId
+  fastify.delete<{ Params: { id: string; tagId: string } }>(
+    '/:id/tags/:tagId',
+    async (request, reply) => {
+      const removed = await removeTagFromTarget(fastify.prisma, {
+        tenantId: request.agent.tenantId,
+        targetType: 'CONVERSATION',
+        targetId: request.params.id,
+        tagId: request.params.tagId,
+      });
+
+      return reply.send(success(removed));
+    },
+  );
 
   // GET /api/v1/conversations/:id/messages
   fastify.get<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
+import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
 
 const createTagSchema = z.object({
   name: z.string().min(1),
@@ -38,15 +39,9 @@ export default async function tagRoutes(fastify: FastifyInstance) {
   fastify.post('/', async (request, reply) => {
     const data = createTagSchema.parse(request.body);
 
-    const tag = await fastify.prisma.tag.create({
-      data: {
-        tenantId: request.agent.tenantId,
-        name: data.name,
-        color: data.color,
-        type: data.type,
-        scope: data.scope,
-        description: data.description,
-      },
+    const tag = await createTenantTag(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      ...data,
     });
 
     return reply.status(201).send(success(tag));
@@ -64,9 +59,10 @@ export default async function tagRoutes(fastify: FastifyInstance) {
       throw new AppError('Tag not found', 'NOT_FOUND', 404);
     }
 
-    const updated = await fastify.prisma.tag.update({
-      where: { id: request.params.id },
-      data,
+    const updated = await updateTenantTag(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      tagId: request.params.id,
+      ...data,
     });
 
     return reply.send(success(updated));
@@ -82,14 +78,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
       throw new AppError('Tag not found', 'NOT_FOUND', 404);
     }
 
-    // Delete all contact_tags referencing this tag first
-    await fastify.prisma.contactTag.deleteMany({
-      where: { tagId: request.params.id },
-    });
-
-    await fastify.prisma.tag.delete({
-      where: { id: request.params.id },
-    });
+    await deleteTenantTag(fastify.prisma, request.agent.tenantId, request.params.id);
 
     return reply.send(success({ deleted: true }));
   });

@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
-import { eventBus } from '../../events/event-bus.js';
+import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 
 export interface ContactFilters {
   q?: string;
@@ -260,51 +260,13 @@ export async function addContactTag(
   tagId: string,
   agentId: string,
 ) {
-  // Verify contact exists
-  const contact = await prisma.contact.findFirst({
-    where: { id: contactId, tenantId },
-  });
-  if (!contact) {
-    throw new AppError('Contact not found', 'NOT_FOUND', 404);
-  }
-
-  // Verify tag exists and belongs to tenant
-  const tag = await prisma.tag.findFirst({
-    where: { id: tagId, tenantId },
-  });
-  if (!tag) {
-    throw new AppError('Tag not found', 'NOT_FOUND', 404);
-  }
-
-  const contactTag = await prisma.contactTag.upsert({
-    where: {
-      contactId_tagId: { contactId, tagId },
-    },
-    update: {},
-    create: {
-      contactId,
-      tagId,
-      addedBy: 'agent',
-      addedById: agentId,
-    },
-    include: {
-      tag: true,
-    },
-  });
-
-  // Publish to EventBus for automation
-  eventBus.publish({
-    name: 'contact.tagged',
+  return addTagToTarget(prisma, {
     tenantId,
-    timestamp: new Date(),
-    payload: {
-      contactId,
-      tagId,
-      tagName: tag.name,
-    },
+    targetType: 'CONTACT',
+    targetId: contactId,
+    tagId,
+    agentId,
   });
-
-  return contactTag;
 }
 
 export async function removeContactTag(
@@ -313,31 +275,12 @@ export async function removeContactTag(
   tenantId: string,
   tagId: string,
 ) {
-  // Verify contact exists
-  const contact = await prisma.contact.findFirst({
-    where: { id: contactId, tenantId },
+  return removeTagFromTarget(prisma, {
+    tenantId,
+    targetType: 'CONTACT',
+    targetId: contactId,
+    tagId,
   });
-  if (!contact) {
-    throw new AppError('Contact not found', 'NOT_FOUND', 404);
-  }
-
-  const existing = await prisma.contactTag.findUnique({
-    where: {
-      contactId_tagId: { contactId, tagId },
-    },
-  });
-
-  if (!existing) {
-    throw new AppError('Contact tag not found', 'NOT_FOUND', 404);
-  }
-
-  await prisma.contactTag.delete({
-    where: {
-      contactId_tagId: { contactId, tagId },
-    },
-  });
-
-  return { success: true };
 }
 
 export interface TimelineEntry {

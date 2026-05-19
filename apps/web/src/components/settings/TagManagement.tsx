@@ -30,24 +30,10 @@ const SCOPE_OPTIONS = [
   { value: 'CASE', label: '案件' },
 ];
 
-const TYPE_OPTIONS = [
-  { value: 'MANUAL', label: '手動' },
-  { value: 'AUTO', label: '自動' },
-  { value: 'SYSTEM', label: '系統' },
-  { value: 'CHANNEL', label: '渠道' },
-];
-
 const SCOPE_LABELS: Record<string, string> = {
   CONTACT: '聯繫人',
   CONVERSATION: '對話',
   CASE: '案件',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  MANUAL: '手動',
-  AUTO: '自動',
-  SYSTEM: '系統',
-  CHANNEL: '渠道',
 };
 
 const COLOR_PRESETS = [
@@ -66,7 +52,6 @@ export function TagManagement() {
   // Form
   const [formName, setFormName] = useState('');
   const [formColor, setFormColor] = useState('#6366f1');
-  const [formType, setFormType] = useState('MANUAL');
   const [formScope, setFormScope] = useState('CONTACT');
   const [formDescription, setFormDescription] = useState('');
   const [saving, setSaving] = useState(false);
@@ -95,7 +80,6 @@ export function TagManagement() {
     setEditingTag(null);
     setFormName('');
     setFormColor('#6366f1');
-    setFormType('MANUAL');
     setFormScope('CONTACT');
     setFormDescription('');
     setError('');
@@ -106,7 +90,6 @@ export function TagManagement() {
     setEditingTag(tag);
     setFormName(tag.name);
     setFormColor(tag.color);
-    setFormType(tag.type);
     setFormScope(tag.scope);
     setFormDescription(tag.description || '');
     setError('');
@@ -132,7 +115,7 @@ export function TagManagement() {
         await api.post('/tags', {
           name: formName.trim(),
           color: formColor,
-          type: formType,
+          type: 'MANUAL',
           scope: formScope,
           description: formDescription.trim() || undefined,
         });
@@ -147,7 +130,7 @@ export function TagManagement() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除此標籤嗎？已套用的聯繫人標籤也會一併移除。')) return;
+    if (!confirm('確定要刪除此標籤嗎？已套用在聯繫人、對話和案件上的標籤也會一併移除。')) return;
     try {
       await api.delete(`/tags/${id}`);
       fetchTags();
@@ -210,9 +193,6 @@ export function TagManagement() {
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-muted-foreground">
                     {SCOPE_LABELS[tag.scope]}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {TYPE_LABELS[tag.type]}
                   </span>
                 </div>
                 {tag.description && (
@@ -287,22 +267,23 @@ export function TagManagement() {
             </div>
 
             {!editingTag && (
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">適用範圍</label>
+                <Select
+                  value={formScope}
+                  onChange={(e) => setFormScope(e.target.value)}
+                  options={SCOPE_OPTIONS}
+                />
+              </div>
+            )}
+
+            {editingTag && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">適用範圍</label>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium">適用範圍</label>
-                  <Select
-                    value={formScope}
-                    onChange={(e) => setFormScope(e.target.value)}
-                    options={SCOPE_OPTIONS}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">類型</label>
-                  <Select
-                    value={formType}
-                    onChange={(e) => setFormType(e.target.value)}
-                    options={TYPE_OPTIONS}
-                  />
+                  <span className="text-sm text-muted-foreground">
+                    {SCOPE_LABELS[formScope]}
+                  </span>
                 </div>
               </div>
             )}

@@ -177,6 +177,9 @@ export default function CaseDetailPage() {
                 category: caseData.category as string | undefined,
                 assignee: caseData.assignee as { id: string; name: string } | undefined,
                 team: caseData.team as { id: string; name: string } | undefined,
+                tags: caseData.tags as Array<{
+                  tag: { id: string; name: string; color?: string; type?: string; scope?: 'CASE' };
+                }> | undefined,
                 contact: caseData.contact as {
                   id: string;
                   displayName?: string;
