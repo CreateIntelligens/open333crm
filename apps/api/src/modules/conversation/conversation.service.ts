@@ -94,6 +94,19 @@ export async function listConversations(
             avatarUrl: true,
           },
         },
+        tags: {
+          include: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                type: true,
+                scope: true,
+              },
+            },
+          },
+        },
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -168,6 +181,19 @@ export async function getConversation(
           name: true,
           avatarUrl: true,
           role: true,
+        },
+      },
+      tags: {
+        include: {
+          tag: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              type: true,
+              scope: true,
+            },
+          },
         },
       },
       case: {

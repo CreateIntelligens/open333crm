@@ -103,6 +103,19 @@ export async function listCases(
             name: true,
           },
         },
+        tags: {
+          include: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                type: true,
+                scope: true,
+              },
+            },
+          },
+        },
       },
       orderBy,
       skip: (pagination.page - 1) * pagination.limit,
@@ -162,6 +175,19 @@ export async function getCase(
         select: {
           id: true,
           name: true,
+        },
+      },
+      tags: {
+        include: {
+          tag: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              type: true,
+              scope: true,
+            },
+          },
         },
       },
       events: {

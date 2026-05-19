@@ -11,15 +11,26 @@ interface Tag {
   id: string;
   name: string;
   color?: string;
+  type?: string;
+  scope?: TagTargetType;
 }
 
+type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
+
 interface TagManagerProps {
-  contactId: string;
+  targetType: TagTargetType;
+  targetId: string;
   tags: Tag[];
   onUpdate: () => void;
 }
 
-export function TagManager({ contactId, tags, onUpdate }: TagManagerProps) {
+const TARGET_ENDPOINTS: Record<TagTargetType, string> = {
+  CONTACT: 'contacts',
+  CASE: 'cases',
+  CONVERSATION: 'conversations',
+};
+
+export function TagManager({ targetType, targetId, tags, onUpdate }: TagManagerProps) {
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState('');
   const [adding, setAdding] = useState(false);
@@ -32,14 +43,16 @@ export function TagManager({ contactId, tags, onUpdate }: TagManagerProps) {
   }, []);
 
   const availableTags = allTags.filter(
-    (t) => !tags.some((ct) => ct.id === t.id)
+    (t) => t.scope === targetType && !tags.some((ct) => ct.id === t.id)
   );
+
+  const endpoint = `/${TARGET_ENDPOINTS[targetType]}/${targetId}/tags`;
 
   const handleAddTag = async () => {
     if (!selectedTagId) return;
     setAdding(true);
     try {
-      await api.post(`/contacts/${contactId}/tags`, { tagId: selectedTagId });
+      await api.post(endpoint, { tagId: selectedTagId });
       setSelectedTagId('');
       onUpdate();
     } catch (err) {
@@ -51,7 +64,7 @@ export function TagManager({ contactId, tags, onUpdate }: TagManagerProps) {
 
   const handleRemoveTag = async (tagId: string) => {
     try {
-      await api.delete(`/contacts/${contactId}/tags/${tagId}`);
+      await api.delete(`${endpoint}/${tagId}`);
       onUpdate();
     } catch (err) {
       console.error('Failed to remove tag:', err);

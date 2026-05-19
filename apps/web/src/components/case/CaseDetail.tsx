@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/components/ui/badge';
 import { CaseStatusBadge } from './CaseStatusBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
+import { TagManager } from '@/components/contact/TagManager';
 
 // Valid transitions per spec
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -68,6 +69,7 @@ interface CaseDetailProps {
     category?: string;
     assignee?: { id: string; name: string };
     team?: { id: string; name: string };
+    tags?: Array<{ tag: { id: string; name: string; color?: string; type?: string; scope?: 'CASE' } }>;
     contact?: {
       id: string;
       displayName?: string;
@@ -357,6 +359,23 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             <Separator />
           </>
         )}
+
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-muted-foreground">案件標籤</h4>
+          <TagManager
+            targetType="CASE"
+            targetId={caseData.id}
+            tags={(caseData.tags || []).map((ct) => ({
+              id: ct.tag.id,
+              name: ct.tag.name,
+              color: ct.tag.color,
+              type: ct.tag.type,
+              scope: ct.tag.scope,
+            }))}
+            onUpdate={onRefresh}
+          />
+        </div>
+        <Separator />
 
         {/* Contact Info */}
         {caseData.contact && (

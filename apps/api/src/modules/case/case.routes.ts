@@ -16,6 +16,7 @@ import {
   getCaseStats,
 } from './case.service.js';
 import { recordCsatScore } from '../csat/csat.service.js';
+import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
@@ -69,6 +70,10 @@ const escalateSchema = z.object({
 const addNoteSchema = z.object({
   content: z.string().min(1),
   isInternal: z.boolean().default(true),
+});
+
+const addTagSchema = z.object({
+  tagId: z.string().uuid(),
 });
 
 const csatSchema = z.object({
@@ -168,6 +173,35 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
     return reply.send(success(deleted));
   });
+
+  // POST /api/v1/cases/:id/tags
+  fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
+    const body = addTagSchema.parse(request.body);
+    const caseTag = await addTagToTarget(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      targetType: 'CASE',
+      targetId: request.params.id,
+      tagId: body.tagId,
+      agentId: request.agent.id,
+    });
+
+    return reply.status(201).send(success(caseTag));
+  });
+
+  // DELETE /api/v1/cases/:id/tags/:tagId
+  fastify.delete<{ Params: { id: string; tagId: string } }>(
+    '/:id/tags/:tagId',
+    async (request, reply) => {
+      const removed = await removeTagFromTarget(fastify.prisma, {
+        tenantId: request.agent.tenantId,
+        targetType: 'CASE',
+        targetId: request.params.id,
+        tagId: request.params.tagId,
+      });
+
+      return reply.send(success(removed));
+    },
+  );
 
   // GET /api/v1/cases/:id/events
   fastify.get<{ Params: { id: string } }>('/:id/events', async (request, reply) => {

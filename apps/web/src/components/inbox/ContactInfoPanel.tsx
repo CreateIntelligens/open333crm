@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
+import { TagManager } from '@/components/contact/TagManager';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface ContactInfoPanelProps {
@@ -43,6 +44,16 @@ interface ContactInfoPanelProps {
       }>;
     };
     channelType: string;
+    tags?: Array<{
+      id: string;
+      tag?: {
+        id: string;
+        name: string;
+        color?: string;
+        type?: string;
+        scope?: 'CONVERSATION';
+      };
+    }>;
     case?: {
       id: string;
       title: string;
@@ -54,9 +65,10 @@ interface ContactInfoPanelProps {
       closedAt?: string;
     };
   } | null;
+  onRefresh?: () => void;
 }
 
-export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
+export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelProps) {
   const [contact, setContact] = useState<Record<string, unknown> | null>(null);
   const [showCreateCase, setShowCreateCase] = useState(false);
   const [requestingEmail, setRequestingEmail] = useState(false);
@@ -92,7 +104,19 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     id: string;
     name: string;
     color?: string;
+    tag?: {
+      id: string;
+      name: string;
+      color?: string;
+    };
   }> | undefined;
+  const conversationTags = (conversation.tags || []).map((ct) => ({
+    id: ct.tag?.id || ct.id,
+    name: ct.tag?.name || '',
+    color: ct.tag?.color,
+    type: ct.tag?.type,
+    scope: ct.tag?.scope,
+  })).filter((tag) => tag.name);
   const attributes = (c as Record<string, unknown>).attributes as Array<{
     id: string;
     key: string;
@@ -210,27 +234,42 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
 
       <Separator />
 
-      {/* Tags */}
+      {/* Contact Tags */}
       <div className="p-4">
         <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-          標籤
+          聯繫人標籤
         </h4>
         <div className="flex flex-wrap gap-1.5">
           {tags && tags.length > 0 ? (
             tags.map((tag) => (
               <Badge
-                key={tag.id}
+                key={tag.tag?.id || tag.id}
                 variant="secondary"
-                color={tag.color}
+                color={tag.tag?.color || tag.color}
                 className="text-xs"
               >
-                {tag.name}
+                {tag.tag?.name || tag.name}
               </Badge>
             ))
           ) : (
             <span className="text-xs text-muted-foreground">沒有標籤</span>
           )}
         </div>
+      </div>
+
+      <Separator />
+
+      {/* Conversation Tags */}
+      <div className="p-4">
+        <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+          對話標籤
+        </h4>
+        <TagManager
+          targetType="CONVERSATION"
+          targetId={conversation.id}
+          tags={conversationTags}
+          onUpdate={() => onRefresh?.()}
+        />
       </div>
 
       <Separator />

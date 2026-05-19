@@ -97,7 +97,8 @@ export function ContactDetail({ contact, onUpdate }: ContactDetailProps) {
         </CardHeader>
         <CardContent>
           <TagManager
-            contactId={contact.id}
+            targetType="CONTACT"
+            targetId={contact.id}
             tags={contact.tags || []}
             onUpdate={onUpdate}
           />

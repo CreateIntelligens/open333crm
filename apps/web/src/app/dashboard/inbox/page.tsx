@@ -78,6 +78,16 @@ export default function InboxPage() {
           }> | undefined,
         } : undefined,
         channelType: selectedConversation.channelType as string,
+        tags: selectedConversation.tags as Array<{
+          id: string;
+          tag?: {
+            id: string;
+            name: string;
+            color?: string;
+            type?: string;
+            scope?: 'CONVERSATION';
+          };
+        }> | undefined,
         case: caseData ? {
           id: caseData.id as string,
           title: caseData.title as string,
@@ -135,7 +145,10 @@ export default function InboxPage() {
 
       {/* Right panel - Contact Info */}
       <div className="w-72 shrink-0 border-l">
-        <ContactInfoPanel conversation={infoPanelConversation} />
+        <ContactInfoPanel
+          conversation={infoPanelConversation}
+          onRefresh={() => mutateConversation()}
+        />
       </div>
     </div>
   );
