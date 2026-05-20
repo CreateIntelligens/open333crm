@@ -89,6 +89,8 @@ async function linePut(path: string, token: string, body: unknown): Promise<unkn
 // Build LINE outbound message objects
 // ─────────────────────────────────────────────────────────────────
 
+import { buildLineCarousel, buildLineImagemap, buildLineVideoWithEndCard } from './builders.js';
+
 function buildLineMessage(contentType: string, content: Record<string, unknown>): unknown {
   const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string; imageUrl?: string }> | undefined;
   const quickReply = quickReplies?.length
@@ -106,23 +108,31 @@ function buildLineMessage(contentType: string, content: Record<string, unknown>)
   const base = quickReply ? { quickReply } : {};
 
   switch (contentType) {
-    case 'text':
-      return { type: 'text', text: content.text ?? '', ...base };
-    case 'image':
+    // ─── 本 change 新增的 5 種 LINE 訊息類型 ───────────────────────
+    case 'line_text':
+      return { type: 'text', text: (content.text as string) ?? '', ...base };
+    case 'line_image':
       return {
         type: 'image',
         originalContentUrl: content.mediaUrl,
         previewImageUrl: content.previewUrl ?? content.mediaUrl,
         ...base,
       };
-    case 'video':
+    case 'line_video':
+      return { ...buildLineVideoWithEndCard(content), ...base };
+    case 'line_carousel':
+      return { ...buildLineCarousel(content), ...base };
+    case 'line_imagemap':
+      return { ...buildLineImagemap(content), ...base };
+    case 'line_flex_showcase':
       return {
-        type: 'video',
-        originalContentUrl: content.mediaUrl,
-        previewImageUrl: content.previewUrl ?? content.mediaUrl,
-        ...(content.trackingId ? { trackingId: content.trackingId } : {}),
+        type: 'flex',
+        altText: (content.altText as string) ?? 'Flex Message',
+        contents: content.contents,
         ...base,
       };
+
+    // ─── 既有 channel-native 訊息類型保留（供 channel plugin 內部直接調用） ───
     case 'audio':
       return { type: 'audio', originalContentUrl: content.mediaUrl, duration: 0, ...base };
     case 'location':
@@ -136,14 +146,10 @@ function buildLineMessage(contentType: string, content: Record<string, unknown>)
       };
     case 'sticker':
       return { type: 'sticker', packageId: content.packageId ?? '1', stickerId: content.stickerId ?? '1', ...base };
-    case 'flex':
-      return { type: 'flex', altText: content.altText ?? content.text ?? 'Message', contents: content.flexJson ?? content.contents, ...base };
-    case 'imagemap':
-      return { ...(content.imagemapJson as object ?? {}), type: 'imagemap', ...base };
-    case 'template':
-      return { type: 'template', altText: content.text ?? 'Message', template: content.templateJson, ...base };
+
+    // ─── default：當作純文字 ──────────────────────────────────────
     default:
-      return { type: 'text', text: content.text ?? '', ...base };
+      return { type: 'text', text: (content.text as string) ?? '', ...base };
   }
 }
 

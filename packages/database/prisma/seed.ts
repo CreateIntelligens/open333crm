@@ -1,5 +1,6 @@
-import { PrismaClient, AgentRole } from '@prisma/client';
+import { PrismaClient, AgentRole, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { systemTemplates } from './seed-data/system-templates.js';
 
 const prisma = new PrismaClient();
 
@@ -46,7 +47,44 @@ async function main() {
     });
   }
 
-  console.log('Seed complete: 1 tenant, 3 agents');
+  await seedSystemTemplates();
+
+  console.log(`Seed complete: 1 tenant, 3 agents, ${systemTemplates.length} system templates`);
+}
+
+async function seedSystemTemplates() {
+  for (const tpl of systemTemplates) {
+    const variablesJson = (tpl.variables ?? []) as unknown as Prisma.InputJsonValue;
+    await prisma.messageTemplate.upsert({
+      where: { id: tpl.id },
+      update: {
+        name: tpl.name,
+        description: tpl.description,
+        category: tpl.category,
+        channelType: tpl.channelType,
+        contentType: tpl.contentType,
+        body: tpl.body as Prisma.InputJsonValue,
+        variables: variablesJson,
+        previewImageUrl: tpl.previewImageUrl,
+        isSystem: true,
+        isActive: true,
+      },
+      create: {
+        id: tpl.id,
+        tenantId: null,
+        name: tpl.name,
+        description: tpl.description,
+        category: tpl.category,
+        channelType: tpl.channelType,
+        contentType: tpl.contentType,
+        body: tpl.body as Prisma.InputJsonValue,
+        variables: variablesJson,
+        previewImageUrl: tpl.previewImageUrl,
+        isSystem: true,
+        isActive: true,
+      },
+    });
+  }
 }
 
 main()

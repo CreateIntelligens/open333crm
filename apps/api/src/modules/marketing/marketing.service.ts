@@ -6,13 +6,10 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import {
   renderTemplateBody,
   extractVariables,
-  validateVariables,
   buildVariableMap,
-  sampleVariables,
   type TemplateVariable,
 } from './template-renderer.js';
-import { resolveContext, STATIC_VARIABLE_METADATA, type VariableCategory } from './template-context.js';
-import { logger } from '@open333crm/core';
+import { resolveContext } from './template-context.js';
 
 // --- Template CRUD ---
 
@@ -58,322 +55,6 @@ export async function listTemplates(
   return { templates, total, page, limit };
 }
 
-export async function getTemplate(prisma: PrismaClient, id: string, tenantId: string) {
-  const template = await prisma.messageTemplate.findFirst({
-    where: {
-      id,
-      OR: [{ tenantId }, { tenantId: null, isSystem: true }],
-    },
-  });
-
-  if (!template) {
-    throw new AppError('Template not found', 'NOT_FOUND', 404);
-  }
-
-  return template;
-}
-
-export async function createTemplate(
-  prisma: PrismaClient,
-  tenantId: string,
-  data: {
-    name: string;
-    description?: string;
-    category?: string;
-    channelType?: string;
-    contentType?: string;
-    body: Record<string, unknown>;
-    variables?: unknown[];
-  },
-) {
-  const template = await prisma.messageTemplate.create({
-    data: {
-      tenantId,
-      name: data.name,
-      description: data.description || null,
-      category: data.category || '一般',
-      channelType: data.channelType || 'universal',
-      contentType: data.contentType || 'text',
-      body: data.body as any,
-      variables: (data.variables || []) as any,
-    },
-  });
-
-  return template;
-}
-
-export async function updateTemplate(
-  prisma: PrismaClient,
-  id: string,
-  tenantId: string,
-  data: {
-    name?: string;
-    description?: string;
-    category?: string;
-    channelType?: string;
-    contentType?: string;
-    body?: Record<string, unknown>;
-    variables?: unknown[];
-    isActive?: boolean;
-  },
-) {
-  const template = await prisma.messageTemplate.findFirst({
-    where: { id, tenantId },
-  });
-
-  if (!template) {
-    throw new AppError('Template not found', 'NOT_FOUND', 404);
-  }
-
-  if (template.isSystem) {
-    throw new AppError('Cannot modify system templates', 'FORBIDDEN', 403);
-  }
-
-  const updateData: Record<string, unknown> = {};
-  if (data.name !== undefined) updateData.name = data.name;
-  if (data.description !== undefined) updateData.description = data.description;
-  if (data.category !== undefined) updateData.category = data.category;
-  if (data.channelType !== undefined) updateData.channelType = data.channelType;
-  if (data.contentType !== undefined) updateData.contentType = data.contentType;
-  if (data.body !== undefined) updateData.body = data.body;
-  if (data.variables !== undefined) updateData.variables = data.variables;
-  if (data.isActive !== undefined) updateData.isActive = data.isActive;
-
-  const updated = await prisma.messageTemplate.update({
-    where: { id },
-    data: updateData,
-  });
-
-  return updated;
-}
-
-export async function deleteTemplate(prisma: PrismaClient, id: string, tenantId: string) {
-  const template = await prisma.messageTemplate.findFirst({
-    where: { id, tenantId },
-  });
-
-  if (!template) {
-    throw new AppError('Template not found', 'NOT_FOUND', 404);
-  }
-
-  if (template.isSystem) {
-    throw new AppError('Cannot delete system templates', 'FORBIDDEN', 403);
-  }
-
-  await prisma.messageTemplate.delete({ where: { id } });
-
-  return { deleted: true };
-}
-
-// --- Template Categories ---
-
-export async function listTemplateCategories(prisma: PrismaClient, tenantId: string) {
-  const rows = await prisma.messageTemplate.findMany({
-    where: {
-      OR: [{ tenantId }, { tenantId: null, isSystem: true }],
-      isActive: true,
-    },
-    select: { category: true },
-    distinct: ['category'],
-    orderBy: { category: 'asc' },
-  });
-
-  return rows.map((r) => r.category);
-}
-
-export async function getAvailableVariables(
-  prisma: PrismaClient,
-  tenantId: string,
-): Promise<VariableCategory[]> {
-  // Query distinct attribute keys used by this tenant's contacts
-  const attrRows = await prisma.contactAttribute.findMany({
-    where: { contact: { tenantId } },
-    select: { key: true },
-    distinct: ['key'],
-    orderBy: { key: 'asc' },
-  });
-
-  const categories: VariableCategory[] = [...STATIC_VARIABLE_METADATA];
-
-  if (attrRows.length > 0) {
-    categories.push({
-      category: '自訂屬性',
-      variables: attrRows.map((r) => ({
-        key: `attribute.${r.key}`,
-        label: r.key,
-        example: '',
-      })),
-    });
-  }
-
-  return categories;
-}
-
-// --- Template Preview & Render ---
-
-export async function previewTemplate(
-  prisma: PrismaClient,
-  templateId: string,
-  tenantId: string,
-  opts: {
-    contactId?: string;
-    conversationId?: string;
-    variables?: Record<string, string>;
-    useSampleData?: boolean;
-  },
-) {
-  const template = await getTemplate(prisma, templateId, tenantId);
-  const body = template.body as Record<string, unknown>;
-  const templateVars = (template.variables || []) as unknown as TemplateVariable[];
-
-  // Build variables map
-  let vars: Record<string, string> = {};
-
-  if (opts.contactId || opts.conversationId) {
-    const ctx = await resolveContext(prisma, {
-      contactId: opts.contactId,
-      conversationId: opts.conversationId,
-      tenantId,
-    });
-    vars = { ...vars, ...ctx };
-  }
-
-  if (opts.useSampleData) {
-    const keys = extractVariables(body);
-    const samples = sampleVariables(keys);
-    // Sample data fills in anything not already resolved from DB
-    vars = { ...samples, ...vars };
-  }
-
-  if (opts.variables) {
-    vars = { ...vars, ...opts.variables };
-  }
-
-  // Apply defaults from template variable definitions
-  vars = buildVariableMap(templateVars, vars);
-
-  const rendered = renderTemplateBody(body, vars);
-
-  return {
-    original: body,
-    rendered,
-    variables: vars,
-    extractedKeys: extractVariables(body),
-  };
-}
-
-export async function renderAndSendTemplate(
-  prisma: PrismaClient,
-  io: SocketIOServer,
-  templateId: string,
-  tenantId: string,
-  agentId: string,
-  opts: {
-    conversationId: string;
-    variables?: Record<string, string>;
-  },
-) {
-  const template = await getTemplate(prisma, templateId, tenantId);
-  const body = template.body as Record<string, unknown>;
-  const templateVars = (template.variables || []) as unknown as TemplateVariable[];
-
-  // Resolve context from conversation
-  const conv = await prisma.conversation.findUnique({
-    where: { id: opts.conversationId },
-    include: {
-      channel: true,
-      contact: { include: { channelIdentities: true } },
-    },
-  });
-  if (!conv) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
-  }
-
-  // Build variables
-  const ctx = await resolveContext(prisma, {
-    contactId: conv.contactId,
-    conversationId: opts.conversationId,
-    tenantId,
-  });
-  let vars = buildVariableMap(templateVars, { ...ctx, ...(opts.variables || {}) });
-
-  // Validate required variables
-  const missing = validateVariables(templateVars, vars);
-  if (missing.length > 0) {
-    throw new AppError(
-      `Missing required variables: ${missing.join(', ')}`,
-      'VALIDATION_ERROR',
-      400,
-    );
-  }
-
-  const rendered = renderTemplateBody(body, vars);
-  const renderedText = typeof rendered === 'object' && rendered !== null
-    ? (rendered as Record<string, unknown>).text as string || JSON.stringify(rendered)
-    : String(rendered);
-
-  // Create Message record
-  const now = new Date();
-  const message = await prisma.message.create({
-    data: {
-      conversationId: opts.conversationId,
-      direction: 'OUTBOUND',
-      senderType: 'AGENT',
-      senderId: agentId,
-      contentType: template.contentType,
-      content: rendered as any,
-      metadata: { templateId: template.id, templateName: template.name },
-      isRead: true,
-      createdAt: now,
-    },
-    include: {
-      sender: { select: { id: true, name: true, avatarUrl: true } },
-    },
-  });
-
-  // Update conversation
-  await prisma.conversation.update({
-    where: { id: opts.conversationId },
-    data: { lastMessageAt: now },
-  });
-
-  // Deliver to channel
-  if (conv.channel?.isActive) {
-    const identity = conv.contact?.channelIdentities?.find(
-      (ci) => ci.channelId === conv.channelId,
-    );
-    if (identity) {
-      const plugin = getChannelPlugin(conv.channel.channelType);
-      if (plugin) {
-        try {
-          const credentials = decryptCredentials(conv.channel.credentialsEncrypted);
-          await plugin.sendMessage(
-            identity.uid,
-            { contentType: template.contentType, content: rendered },
-            credentials,
-          );
-        } catch (err) {
-          logger.error('[renderAndSendTemplate] Channel delivery failed:', err);
-        }
-      }
-    }
-  }
-
-  // Update template usage
-  await prisma.messageTemplate.update({
-    where: { id: template.id },
-    data: { usageCount: { increment: 1 } },
-  });
-
-  // Emit WebSocket events
-  io.to(`conversation:${opts.conversationId}`).emit('message.new', {
-    conversationId: opts.conversationId,
-    message,
-  });
-
-  return { message, rendered };
-}
-
 // --- Broadcast CRUD ---
 
 export async function listBroadcasts(
@@ -392,6 +73,9 @@ export async function listBroadcasts(
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
+      include: {
+        material: { select: { id: true, name: true, channelType: true, contentType: true } },
+      },
     }),
     prisma.broadcast.count({ where: where as any }),
   ]);
@@ -402,6 +86,9 @@ export async function listBroadcasts(
 export async function getBroadcast(prisma: PrismaClient, id: string, tenantId: string) {
   const broadcast = await prisma.broadcast.findFirst({
     where: { id, tenantId },
+    include: {
+      material: { select: { id: true, name: true, channelType: true, contentType: true } },
+    },
   });
   if (!broadcast) {
     throw new AppError('Broadcast not found', 'NOT_FOUND', 404);
@@ -431,7 +118,8 @@ export async function createBroadcast(
   agentId: string,
   data: {
     name: string;
-    templateId: string;
+    materialId?: string;
+    templateId?: string;
     channelId: string;
     campaignId?: string;
     segmentId?: string;
@@ -440,15 +128,28 @@ export async function createBroadcast(
     scheduledAt?: string;
   },
 ) {
-  // Validate template exists
-  const template = await prisma.messageTemplate.findFirst({
-    where: {
-      id: data.templateId,
-      OR: [{ tenantId }, { tenantId: null, isSystem: true }],
-    },
-  });
-  if (!template) {
-    throw new AppError('Template not found', 'NOT_FOUND', 404);
+  if (Boolean(data.materialId) === Boolean(data.templateId)) {
+    throw new AppError('Must provide exactly one of materialId or templateId', 'INVALID_INPUT', 400);
+  }
+
+  // 驗證來源（Material 或舊 Template）
+  if (data.materialId) {
+    const material = await prisma.material.findFirst({
+      where: { id: data.materialId, tenantId, isActive: true },
+    });
+    if (!material) {
+      throw new AppError('Material not found', 'NOT_FOUND', 404);
+    }
+  } else {
+    const template = await prisma.messageTemplate.findFirst({
+      where: {
+        id: data.templateId!,
+        OR: [{ tenantId }, { tenantId: null, isSystem: true }],
+      },
+    });
+    if (!template) {
+      throw new AppError('Template not found', 'NOT_FOUND', 404);
+    }
   }
 
   // Validate channel exists
@@ -485,7 +186,8 @@ export async function createBroadcast(
     data: {
       tenantId,
       name: data.name,
-      templateId: data.templateId,
+      materialId: data.materialId || null,
+      templateId: data.templateId || null,
       channelId: data.channelId,
       campaignId: data.campaignId || null,
       segmentId: data.segmentId || null,
@@ -543,22 +245,44 @@ export async function executeBroadcast(
   });
 
   try {
-    if (!broadcast.templateId || !broadcast.channelId || !broadcast.tenantId || !broadcast.createdById) {
+    if (!broadcast.channelId || !broadcast.tenantId || !broadcast.createdById) {
       throw new AppError('Broadcast data is incomplete', 'INVALID_STATE', 400);
     }
+    if (!broadcast.materialId && !broadcast.templateId) {
+      throw new AppError('Broadcast has no content source', 'INVALID_STATE', 400);
+    }
 
-    // Get template
-    const template = await prisma.messageTemplate.findFirst({
-      where: {
-        id: broadcast.templateId,
-        OR: [
-          { tenantId: broadcast.tenantId },
-          { tenantId: null, isSystem: true },
-        ],
-      },
-    });
-    if (!template) {
-      throw new AppError('Template not found', 'NOT_FOUND', 404);
+    // 取得內容來源：優先 Material，舊資料 fallback Template
+    let contentType: string;
+    let body: Record<string, unknown>;
+    let sourceVars: TemplateVariable[];
+
+    if (broadcast.materialId) {
+      const material = await prisma.material.findFirst({
+        where: { id: broadcast.materialId, tenantId: broadcast.tenantId },
+      });
+      if (!material) {
+        throw new AppError('Material not found', 'NOT_FOUND', 404);
+      }
+      contentType = material.contentType;
+      body = material.body as Record<string, unknown>;
+      sourceVars = (material.variables || []) as unknown as TemplateVariable[];
+    } else {
+      const template = await prisma.messageTemplate.findFirst({
+        where: {
+          id: broadcast.templateId!,
+          OR: [
+            { tenantId: broadcast.tenantId },
+            { tenantId: null, isSystem: true },
+          ],
+        },
+      });
+      if (!template) {
+        throw new AppError('Template not found', 'NOT_FOUND', 404);
+      }
+      contentType = template.contentType;
+      body = template.body as Record<string, unknown>;
+      sourceVars = (template.variables || []) as unknown as TemplateVariable[];
     }
 
     // Get channel + plugin
@@ -584,9 +308,6 @@ export async function executeBroadcast(
       data: { totalCount: identities.length },
     });
 
-    // Check if template has variables that need personalization
-    const body = template.body as Record<string, unknown>;
-    const templateVars = (template.variables || []) as unknown as TemplateVariable[];
     const extractedKeys = extractVariables(body);
     const needsPersonalization = extractedKeys.length > 0;
 
@@ -604,12 +325,12 @@ export async function executeBroadcast(
             contactId: identity.contactId,
             tenantId: broadcast.tenantId,
           });
-          const vars = buildVariableMap(templateVars, ctx);
+          const vars = buildVariableMap(sourceVars, ctx);
           personalizedBody = renderTemplateBody(body, vars);
         }
 
         const outbound = {
-          contentType: template.contentType,
+          contentType,
           content: personalizedBody,
         };
 
@@ -639,11 +360,18 @@ export async function executeBroadcast(
       }
     }
 
-    // Update template usage
-    await prisma.messageTemplate.update({
-      where: { id: template.id },
-      data: { usageCount: { increment: 1 } },
-    });
+    // 累計使用次數
+    if (broadcast.materialId) {
+      await prisma.material.update({
+        where: { id: broadcast.materialId },
+        data: { usageCount: { increment: 1 }, lastUsedAt: now },
+      });
+    } else if (broadcast.templateId) {
+      await prisma.messageTemplate.update({
+        where: { id: broadcast.templateId },
+        data: { usageCount: { increment: 1 } },
+      });
+    }
 
     // Final status
     const finalStatus = failedCount === identities.length ? 'failed' : 'completed';
@@ -721,30 +449,3 @@ async function resolveAudience(
   return identities;
 }
 
-// --- Legacy broadcast endpoint (backward compat) ---
-
-export async function broadcastMessage(
-  prisma: PrismaClient,
-  io: SocketIOServer,
-  tenantId: string,
-  agentId: string,
-  data: {
-    templateId: string;
-    channelId: string;
-    targetType: 'all' | 'tags' | 'contacts';
-    tagIds?: string[];
-    contactIds?: string[];
-  },
-) {
-  // Create a broadcast record, then execute immediately
-  const broadcast = await createBroadcast(prisma, tenantId, agentId, {
-    name: `Quick broadcast ${new Date().toISOString().slice(0, 16)}`,
-    templateId: data.templateId,
-    channelId: data.channelId,
-    targetType: data.targetType,
-    targetConfig: { tagIds: data.tagIds, contactIds: data.contactIds },
-  });
-
-  const result = await executeBroadcast(prisma, io, broadcast.id);
-  return result;
-}

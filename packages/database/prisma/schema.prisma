@@ -209,6 +209,8 @@ model Tenant {
   pointTransactions       PointTransaction[]
   shortLinks              ShortLink[]
   partnerApiKeys          PartnerApiKey[]
+  materials               Material[]
+  richMenus               RichMenu[]
 
   @@map("tenants")
 }
@@ -298,6 +300,7 @@ model Channel {
   conversations     Conversation[]
   teamAccesses      ChannelTeamAccess[]
   usages            ChannelUsage[]
+  richMenus         RichMenu[]
 
   @@index([tenantId])
   @@map("channels")
@@ -862,10 +865,40 @@ model MessageTemplate {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  views TemplateView[]
+  views     TemplateView[]
+  materials Material[]
 
   @@index([tenantId])
   @@map("message_templates")
+}
+
+model Material {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @db.Uuid
+  templateId      String?   @db.Uuid
+  name            String
+  description     String?
+  category        String?
+  channelType     String
+  contentType     String
+  body            Json
+  variables       Json      @default("[]")
+  targetChannels  String[]  @default([])
+  previewImageUrl String?
+  isActive        Boolean   @default(true)
+  usageCount      Int       @default(0)
+  lastUsedAt      DateTime?
+  createdById     String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  template   MessageTemplate? @relation(fields: [templateId], references: [id])
+  broadcasts Broadcast[]
+
+  @@index([tenantId, channelType])
+  @@index([tenantId, isActive])
+  @@map("materials")
 }
 
 model TemplateView {
@@ -1001,11 +1034,14 @@ model Campaign {
 }
 
 model Broadcast {
+  // templateId / materialId 二擇一（建立時 service 層強制驗證）
+  // 舊資料維持 templateId 不為 null；新建議走 materialId
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String    @db.Uuid
   campaignId     String?   @db.Uuid
   segmentId      String?   @db.Uuid
-  templateId     String    @db.Uuid
+  templateId     String?   @db.Uuid
+  materialId     String?   @db.Uuid
   channelId      String    @db.Uuid
   name           String
   status         String    @default("draft")
@@ -1028,6 +1064,7 @@ model Broadcast {
   tenant     Tenant              @relation(fields: [tenantId], references: [id])
   campaign   Campaign?           @relation(fields: [campaignId], references: [id])
   segment    Segment?            @relation(fields: [segmentId], references: [id])
+  material   Material?           @relation(fields: [materialId], references: [id])
   recipients BroadcastRecipient[]
 
   @@index([tenantId, status])
@@ -1054,52 +1091,40 @@ model BroadcastRecipient {
 }
 
 // ─────────────────────────────────────────────
-// LINE OA — Rich Menu
+// LINE OA — Rich Menu（聊天視窗底部固定選單草稿）
+// 本期僅做 CRUD 草稿；publish 到 LINE API 由後續迭代負責。
+// 留 lineRichMenuId / publishedAt 給 publish 流程接手寫入。
 // ─────────────────────────────────────────────
 
 model RichMenu {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  channelId      String   @db.Uuid
-  lineRichMenuId String
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  channelId      String    @db.Uuid
   name           String
+  // 使用者在 LINE 聊天列底部看到的按鈕文字（≤ 14 字，service 層驗）
   chatBarText    String
-  configJson     Json
-  isDefault      Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  // 版型尺寸 { width, height }，必為 10 種官方版型其中之一
+  size           Json
+  // 預設展開選單
+  selected       Boolean   @default(false)
+  // 區域陣列 [{ bounds: { x, y, width, height }, action: { type, ... } }]
+  areas          Json
+  // 背景圖（MinIO 公開 URL）
+  imageUrl       String
+  // status: draft / published / error；本期 service 層僅允許 draft
+  status         String    @default("draft")
+  // 以下兩欄留給後續 publish 流程寫入
+  lineRichMenuId String?
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  userBindings RichMenuUserBinding[]
-  aliases      RichMenuAlias[]
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  channel Channel @relation(fields: [channelId], references: [id])
 
-  @@index([channelId])
+  @@index([tenantId, channelId])
+  @@index([tenantId, status])
   @@map("rich_menus")
-}
-
-model RichMenuUserBinding {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  richMenuId String   @db.Uuid
-  channelId  String   @db.Uuid
-  lineUserId String
-  boundAt    DateTime @default(now())
-
-  richMenu RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
-
-  @@unique([channelId, lineUserId])
-  @@index([richMenuId])
-  @@map("rich_menu_user_bindings")
-}
-
-model RichMenuAlias {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  richMenuId  String   @db.Uuid
-  channelId   String   @db.Uuid
-  lineAliasId String
-  createdAt   DateTime @default(now())
-
-  richMenu RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
-
-  @@unique([channelId, lineAliasId])
-  @@map("rich_menu_aliases")
 }
 
 // ─────────────────────────────────────────────
@@ -1466,3 +1491,4 @@ model PartnerApiKey {
   @@index([keyPrefix])
   @@map("partner_api_keys")
 }
+
