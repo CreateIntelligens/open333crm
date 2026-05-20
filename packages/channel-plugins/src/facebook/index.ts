@@ -126,14 +126,82 @@ export class FbPlugin implements ChannelPlugin {
 
   private buildFbMessage(contentType: string, content: Record<string, unknown>): Record<string, unknown> {
     switch (contentType) {
+      // ─── 本 change 新增的 FB 基礎 3 種 ─────────────────────────
+      case 'fb_text':
+        return { text: (content.text as string) ?? '' };
+      case 'fb_image':
+        return { attachment: { type: 'image', payload: { url: (content.url ?? content.mediaUrl) as string, is_reusable: true } } };
+      case 'fb_video':
+        return { attachment: { type: 'video', payload: { url: (content.url ?? content.mediaUrl) as string, is_reusable: true } } };
+
+      // ─── FB 專屬版型 ─────────────────────────────────────
+      case 'fb_generic':
+        return {
+          attachment: {
+            type: 'template',
+            payload: {
+              template_type: 'generic',
+              elements: ((content.elements as unknown[]) ?? []).slice(0, 10),
+            },
+          },
+        };
+      case 'fb_button':
+        return {
+          attachment: {
+            type: 'template',
+            payload: {
+              template_type: 'button',
+              text: ((content.text as string) ?? '').slice(0, 640),
+              buttons: ((content.buttons as unknown[]) ?? []).slice(0, 3),
+            },
+          },
+        };
+      case 'fb_media': {
+        // Media template：須用 attachment_id 或 Facebook URL（外部 URL 不接受）
+        const element: Record<string, unknown> = {
+          media_type: (content.media_type as string) ?? 'image',
+        };
+        if (content.attachment_id) element.attachment_id = content.attachment_id;
+        else if (content.url) element.url = content.url;
+        if (content.buttons) element.buttons = (content.buttons as unknown[]).slice(0, 1);
+        return {
+          attachment: {
+            type: 'template',
+            payload: { template_type: 'media', elements: [element] },
+          },
+        };
+      }
+      case 'fb_coupon':
+        return {
+          attachment: {
+            type: 'template',
+            payload: { template_type: 'coupon', ...content },
+          },
+        };
+      case 'fb_receipt': {
+        // 直接把 content 當 payload body，只補 template_type
+        return {
+          attachment: {
+            type: 'template',
+            payload: { template_type: 'receipt', ...content },
+          },
+        };
+      }
+      case 'fb_feedback':
+        return {
+          attachment: {
+            type: 'template',
+            payload: { template_type: 'customer_feedback', ...content },
+          },
+        };
       case 'image':
-        return { attachment: { type: 'image', payload: { url: content.url as string, is_reusable: true } } };
+        return { attachment: { type: 'image', payload: { url: (content.url ?? content.mediaUrl) as string, is_reusable: true } } };
       case 'video':
-        return { attachment: { type: 'video', payload: { url: content.url as string, is_reusable: true } } };
+        return { attachment: { type: 'video', payload: { url: (content.url ?? content.mediaUrl) as string, is_reusable: true } } };
       case 'audio':
-        return { attachment: { type: 'audio', payload: { url: content.url as string, is_reusable: true } } };
+        return { attachment: { type: 'audio', payload: { url: (content.url ?? content.mediaUrl) as string, is_reusable: true } } };
       case 'file':
-        return { attachment: { type: 'file', payload: { url: content.url as string, is_reusable: true } } };
+        return { attachment: { type: 'file', payload: { url: (content.url ?? content.mediaUrl) as string, is_reusable: true } } };
       case 'text':
       default:
         return { text: (content.text as string) ?? '' };

@@ -1,31 +1,25 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
-  Send,
   Loader2,
-  Megaphone,
-  Users,
-  Calendar,
-  BarChart3,
   Trash2,
   Play,
   XCircle,
   Eye,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useTemplates } from '@/hooks/useTemplates';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useChannels } from '@/hooks/useChannels';
 import { useCampaigns, useSegments, useBroadcasts } from '@/hooks/useMarketing';
-import { TemplateList } from '@/components/marketing/TemplateList';
-import { TemplateFormDialog } from '@/components/marketing/TemplateFormDialog';
+import { useMaterials, type Material } from '@/hooks/useMaterials';
+import { MaterialPreview } from '@/components/materials/MaterialPreview';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import {
   Dialog,
   DialogContent,
@@ -213,7 +207,6 @@ function CampaignTab() {
 
 function BroadcastTab() {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
-  const { templates } = useTemplates();
   const { channels } = useChannels();
   const { campaigns } = useCampaigns();
   const { segments } = useSegments();
@@ -221,7 +214,7 @@ function BroadcastTab() {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    templateId: '',
+    materialId: '',
     channelId: '',
     campaignId: '',
     segmentId: '',
@@ -231,8 +224,23 @@ function BroadcastTab() {
 
   const activeChannels = channels.filter((c: any) => c.isActive);
 
+  // 依目前選擇的渠道過濾出對應的素材（line / fb）
+  const selectedChannel = activeChannels.find((c: any) => c.id === formData.channelId);
+  const channelKey = selectedChannel
+    ? selectedChannel.channelType === 'fb_messenger' || selectedChannel.channelType === 'facebook'
+      ? 'fb'
+      : selectedChannel.channelType === 'line'
+        ? 'line'
+        : ''
+    : '';
+  const { materials } = useMaterials({
+    channelType: channelKey || undefined,
+    isActive: true,
+    limit: 200,
+  });
+
   const handleCreate = async () => {
-    if (!formData.name || !formData.templateId || !formData.channelId) {
+    if (!formData.name || !formData.materialId || !formData.channelId) {
       alert('請填寫必填欄位');
       return;
     }
@@ -240,7 +248,7 @@ function BroadcastTab() {
     try {
       const payload: any = {
         name: formData.name,
-        templateId: formData.templateId,
+        materialId: formData.materialId,
         channelId: formData.channelId,
         targetType: formData.targetType,
       };
@@ -254,7 +262,7 @@ function BroadcastTab() {
       setDialogOpen(false);
       setFormData({
         name: '',
-        templateId: '',
+        materialId: '',
         channelId: '',
         campaignId: '',
         segmentId: '',
@@ -318,6 +326,7 @@ function BroadcastTab() {
             <thead>
               <tr className="border-b text-left text-muted-foreground">
                 <th className="pb-2 font-medium">名稱</th>
+                <th className="pb-2 font-medium">來源素材</th>
                 <th className="pb-2 font-medium">狀態</th>
                 <th className="pb-2 font-medium">受眾</th>
                 <th className="pb-2 font-medium">發送</th>
@@ -331,6 +340,9 @@ function BroadcastTab() {
               {broadcasts.map((b: any) => (
                 <tr key={b.id} className="border-b">
                   <td className="py-3 font-medium">{b.name}</td>
+                  <td className="py-3 text-xs text-muted-foreground">
+                    {b.material?.name ?? (b.templateId ? '（舊範本）' : '—')}
+                  </td>
                   <td className="py-3">
                     <StatusBadge status={b.status} map={broadcastStatusMap} />
                   </td>
@@ -383,34 +395,12 @@ function BroadcastTab() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">範本 *</label>
-              <Select
-                value={formData.templateId}
-                onChange={(e) => setFormData({ ...formData, templateId: e.target.value })}
-                options={[
-                  { value: '', label: '請選擇範本' },
-                  ...templates.map((t: any) => ({ value: t.id, label: t.name })),
-                ]}
-              />
-              {formData.templateId && (() => {
-                const selectedTpl = templates.find((t: any) => t.id === formData.templateId);
-                if (!selectedTpl) return null;
-                const body = (selectedTpl as any).body;
-                return (
-                  <div className="mt-2 rounded-md border bg-muted/50 p-3">
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">範本預覽</p>
-                    <p className="whitespace-pre-wrap text-sm">
-                      {body?.text || JSON.stringify(body, null, 2)}
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-            <div>
               <label className="mb-1 block text-sm font-medium">渠道 *</label>
               <Select
                 value={formData.channelId}
-                onChange={(e) => setFormData({ ...formData, channelId: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, channelId: e.target.value, materialId: '' })
+                }
                 options={[
                   { value: '', label: '請選擇渠道' },
                   ...activeChannels.map((c: any) => ({
@@ -419,6 +409,47 @@ function BroadcastTab() {
                   })),
                 ]}
               />
+              <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">素材 *</label>
+              <Select
+                value={formData.materialId}
+                onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
+                disabled={!formData.channelId}
+                options={[
+                  {
+                    value: '',
+                    label: !formData.channelId
+                      ? '請先選擇渠道'
+                      : materials.length === 0
+                        ? '此渠道尚無可用素材'
+                        : '請選擇素材',
+                  },
+                  ...materials.map((m: Material) => ({
+                    value: m.id,
+                    label: `${m.name}（${m.contentType}）`,
+                  })),
+                ]}
+              />
+              {formData.materialId && (() => {
+                const selected = materials.find((m: Material) => m.id === formData.materialId);
+                if (!selected) return null;
+                return (
+                  <div className="mt-2 rounded-md border bg-slate-50 p-3">
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">素材預覽</p>
+                    <div className="flex justify-center">
+                      <div style={{ transform: 'scale(0.7)', transformOrigin: 'top center' }}>
+                        <MaterialPreview
+                          channelType={selected.channelType}
+                          contentType={selected.contentType}
+                          body={selected.body}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">關聯活動</label>
@@ -470,7 +501,7 @@ function BroadcastTab() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={saving || !formData.name || !formData.templateId || !formData.channelId}
+              disabled={saving || !formData.name || !formData.materialId || !formData.channelId}
             >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
@@ -763,236 +794,38 @@ function SegmentTab() {
   );
 }
 
-// ─── Quick Broadcast Tab (legacy) ──────────────────────────────────────────
-
-function QuickBroadcastTab() {
-  const { templates, mutate } = useTemplates();
-  const { channels } = useChannels();
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [selectedChannelId, setSelectedChannelId] = useState('');
-  const [targetType, setTargetType] = useState('all');
-  const [broadcasting, setBroadcasting] = useState(false);
-  const [broadcastResult, setBroadcastResult] = useState<{
-    total: number;
-    success: number;
-    failed: number;
-  } | null>(null);
-
-  const activeChannels = channels.filter((c: any) => c.isActive);
-
-  const handleBroadcast = async () => {
-    if (!selectedTemplateId || !selectedChannelId) {
-      alert('請選擇範本和渠道');
-      return;
-    }
-    if (!confirm('確定要發送群發訊息嗎？')) return;
-
-    setBroadcasting(true);
-    setBroadcastResult(null);
-
-    try {
-      const res = await api.post('/marketing/broadcast', {
-        templateId: selectedTemplateId,
-        channelId: selectedChannelId,
-        targetType,
-      });
-      setBroadcastResult(res.data.data);
-      mutate();
-    } catch (err: any) {
-      alert(err.response?.data?.error?.message || '群發失敗');
-    } finally {
-      setBroadcasting(false);
-    }
-  };
-
-  const selectedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-
-  return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">選擇範本</label>
-        <Select
-          value={selectedTemplateId}
-          onChange={(e) => setSelectedTemplateId(e.target.value)}
-          options={[
-            { value: '', label: '請選擇範本' },
-            ...templates.map((t: any) => ({ value: t.id, label: t.name })),
-          ]}
-        />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">選擇渠道</label>
-        <Select
-          value={selectedChannelId}
-          onChange={(e) => setSelectedChannelId(e.target.value)}
-          options={[
-            { value: '', label: '請選擇渠道' },
-            ...activeChannels.map((c: any) => ({
-              value: c.id,
-              label: `${c.displayName} (${c.channelType})`,
-            })),
-          ]}
-        />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">選擇受眾</label>
-        <Select
-          value={targetType}
-          onChange={(e) => setTargetType(e.target.value)}
-          options={[
-            { value: 'all', label: '全部聯繫人' },
-            { value: 'tags', label: '依標籤篩選' },
-            { value: 'contacts', label: '手動選擇' },
-          ]}
-        />
-      </div>
-      {selectedTemplate && (
-        <div className="rounded-lg border p-4">
-          <h4 className="mb-2 text-sm font-medium">訊息預覽</h4>
-          <div className="rounded-md bg-muted p-3 text-sm">
-            {(selectedTemplate.body as any)?.text || JSON.stringify(selectedTemplate.body)}
-          </div>
-        </div>
-      )}
-      <Button
-        onClick={handleBroadcast}
-        disabled={broadcasting || !selectedTemplateId || !selectedChannelId}
-        className="w-full"
-      >
-        {broadcasting ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            發送中...
-          </>
-        ) : (
-          <>
-            <Send className="mr-2 h-4 w-4" />
-            發送群發訊息
-          </>
-        )}
-      </Button>
-      {broadcastResult && (
-        <div className="rounded-lg border p-4">
-          <h4 className="mb-3 text-sm font-medium">發送結果</h4>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-2xl font-bold">{broadcastResult.total}</p>
-              <p className="text-xs text-muted-foreground">總計</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-600">{broadcastResult.success}</p>
-              <p className="text-xs text-muted-foreground">成功</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-600">{broadcastResult.failed}</p>
-              <p className="text-xs text-muted-foreground">失敗</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Template Tab ──────────────────────────────────────────────────────────
-
-function TemplateTab() {
-  const { templates, isLoading, mutate } = useTemplates();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<any>(null);
-
-  const handleEdit = useCallback((template: any) => {
-    setEditingTemplate(template);
-    setDialogOpen(true);
-  }, []);
-
-  const handleDuplicate = useCallback((template: any) => {
-    // Pre-fill dialog with template data but remove id and add (副本) suffix
-    setEditingTemplate({
-      ...template,
-      id: undefined,
-      name: `${template.name} (副本)`,
-      isSystem: false,
-    });
-    setDialogOpen(true);
-  }, []);
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (!confirm('確定要刪除這個範本嗎？')) return;
-      try {
-        await api.delete(`/marketing/templates/${id}`);
-        mutate();
-      } catch (err: any) {
-        alert(err.response?.data?.error?.message || '刪除失敗');
-      }
-    },
-    [mutate],
-  );
-
-  const handleSaved = useCallback(() => {
-    setDialogOpen(false);
-    setEditingTemplate(null);
-    mutate();
-  }, [mutate]);
-
-  const handleNewTemplate = useCallback(() => {
-    setEditingTemplate(null);
-    setDialogOpen(true);
-  }, []);
-
-  return (
-    <div>
-      <div className="border-b px-6 py-3">
-        <Button onClick={handleNewTemplate}>
-          <Plus className="mr-2 h-4 w-4" />
-          新增範本
-        </Button>
-      </div>
-      <TemplateList
-        templates={templates}
-        isLoading={isLoading}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onDuplicate={handleDuplicate}
-      />
-      <TemplateFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        template={editingTemplate}
-        onSaved={handleSaved}
-      />
-    </div>
-  );
-}
 
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
+const VALID_TABS = ['campaigns', 'broadcasts', 'segments'];
+
 export default function MarketingPage() {
-  const [activeTab, setActiveTab] = useState('campaigns');
+  const searchParams = useSearchParams();
+  const initialTab = (() => {
+    const t = searchParams?.get('tab');
+    return t && VALID_TABS.includes(t) ? t : 'campaigns';
+  })();
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // 接 MarketingTabs 切換事件（materials 跳頁、其他切內部 state）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (VALID_TABS.includes(v)) setActiveTab(v);
+    };
+    window.addEventListener('marketing-tab-change', handler);
+    return () => window.removeEventListener('marketing-tab-change', handler);
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
       <Topbar title="行銷" />
-
-      <div className="border-b px-6 pt-2">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="campaigns">行銷活動</TabsTrigger>
-            <TabsTrigger value="broadcasts">廣播</TabsTrigger>
-            <TabsTrigger value="segments">受眾分群</TabsTrigger>
-            <TabsTrigger value="templates">範本管理</TabsTrigger>
-            <TabsTrigger value="quick-broadcast">群發訊息</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      <MarketingTabs active={activeTab} />
 
       <div className="flex-1 overflow-auto">
         {activeTab === 'campaigns' && <CampaignTab />}
         {activeTab === 'broadcasts' && <BroadcastTab />}
         {activeTab === 'segments' && <SegmentTab />}
-        {activeTab === 'templates' && <TemplateTab />}
-        {activeTab === 'quick-broadcast' && <QuickBroadcastTab />}
       </div>
     </div>
   );

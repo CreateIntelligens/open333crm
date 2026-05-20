@@ -15,6 +15,7 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  Smartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
@@ -62,6 +63,11 @@ export function Sidebar() {
       label: '行銷',
       href: '/dashboard/marketing',
       icon: <Send className="h-5 w-5" />,
+    },
+    {
+      label: 'LINE 管理',
+      href: '/dashboard/line/rich-menus',
+      icon: <Smartphone className="h-5 w-5" />,
     },
     {
       label: '粉絲活動',
