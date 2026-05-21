@@ -16,7 +16,7 @@ import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
-import { getFileUrl, uploadFile } from '../storage/storage.service.js';
+import { uploadFile } from '../storage/storage.service.js';
 
 const lineCredentialsSchema = z.object({
   channelSecret: z.string().min(1),
@@ -288,23 +288,6 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // GET /api/v1/channels/:id/chatbox-theme/background-preview — signed admin preview URL
-  fastify.get<{ Params: { id: string } }>(
-    '/:id/chatbox-theme/background-preview',
-    { preHandler: requireSupervisor() },
-    async (request, reply) => {
-      const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
-      const settings = (channel.settings || {}) as Record<string, unknown>;
-      const theme = (settings.chatboxTheme || {}) as Record<string, unknown>;
-      const key = typeof theme.backgroundImageKey === 'string' ? theme.backgroundImageKey : null;
-      if (!key || !key.startsWith(request.agent.tenantId)) {
-        return reply.status(404).send({ error: 'Background image not found' });
-      }
-
-      return reply.send(success({ previewUrl: await getFileUrl(key, 900) }));
-    },
-  );
-
   // POST /api/v1/channels/:id/chatbox-theme/background — upload tenant-owned background image
   fastify.post<{ Params: { id: string } }>(
     '/:id/chatbox-theme/background',
@@ -343,8 +326,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         data: { settings: { ...settings, chatboxTheme: updatedTheme } },
       });
 
-      const previewUrl = await getFileUrl(uploaded.key, 900);
-      return reply.status(201).send(success({ ...uploaded, previewUrl, chatboxTheme: updatedTheme }));
+      return reply.status(201).send(success({ ...uploaded, chatboxTheme: updatedTheme }));
     },
   );
 }

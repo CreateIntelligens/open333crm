@@ -261,7 +261,12 @@ export default function ChatboxPage() {
   }
 
   const background = config?.theme.backgroundImageUrl
-    ? { backgroundImage: `linear-gradient(rgba(255,255,255,.88), rgba(255,255,255,.94)), url(${config.theme.backgroundImageUrl})` }
+    ? {
+        backgroundImage: `linear-gradient(rgba(255,255,255,.88), rgba(255,255,255,.94)), url(${config.theme.backgroundImageUrl})`,
+        backgroundSize: config.theme.backgroundSize ?? 'cover',
+        backgroundPosition: config.theme.backgroundPosition ?? 'center',
+        backgroundRepeat: 'no-repeat',
+      }
     : undefined;
 
   if (loadState === 'loading') {

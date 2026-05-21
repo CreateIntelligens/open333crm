@@ -3,6 +3,11 @@ const STORAGE_KEY = 'open333crm_visitor';
 export interface SessionResult {
   visitorToken: string;
   greeting: string | null;
+  theme: {
+    backgroundImageUrl?: string | null;
+    backgroundSize?: 'cover' | 'contain';
+    backgroundPosition?: string;
+  };
 }
 
 export interface Message {
@@ -34,6 +39,11 @@ export async function initSession(apiBaseUrl: string, channelId: string): Promis
 
   if (!res.ok) throw new Error(`Session init failed: ${res.status}`);
 
-  const data = await res.json() as { data: { greeting: string | null } };
-  return { greeting: data.data.greeting, visitorToken };
+  const data = await res.json() as {
+    data: {
+      greeting: string | null;
+      theme?: SessionResult['theme'];
+    };
+  };
+  return { greeting: data.data.greeting, theme: data.data.theme ?? {}, visitorToken };
 }

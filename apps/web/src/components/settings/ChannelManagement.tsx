@@ -196,14 +196,9 @@ export function ChannelManagement() {
   const openThemeDialog = (channel: Channel) => {
     const theme = ((channel.settings || {}).chatboxTheme || {}) as Record<string, unknown>;
     setThemeChannel(channel);
-    setThemeUrl('');
+    setThemeUrl(typeof theme.backgroundImageUrl === 'string' ? theme.backgroundImageUrl : '');
     setThemePosition(typeof theme.backgroundPosition === 'string' ? theme.backgroundPosition : 'center');
     setThemeSize(theme.backgroundSize === 'contain' ? 'contain' : 'cover');
-    if (typeof theme.backgroundImageKey === 'string') {
-      api.get(`/channels/${channel.id}/chatbox-theme/background-preview`)
-        .then((res) => setThemeUrl(res.data?.data?.previewUrl || ''))
-        .catch(() => setThemeUrl(''));
-    }
   };
 
   const saveTheme = async () => {
@@ -230,7 +225,7 @@ export function ChannelManagement() {
       const res = await api.post(`/channels/${themeChannel.id}/chatbox-theme/background`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setThemeUrl(res.data?.data?.previewUrl || '');
+      setThemeUrl(res.data?.data?.url || '');
       mutate();
     } finally {
       setSavingTheme(false);

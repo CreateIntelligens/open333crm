@@ -57,7 +57,6 @@ function createChannel() {
       welcomeMessage: 'Hello',
       chatboxTheme: {
         backgroundImageUrl: 'https://example.test/bg.png',
-        backgroundImageKey: '22222222-2222-4222-8222-222222222222/media/chatbox-backgrounds/bg.png',
         backgroundSize: 'cover',
       },
     },
@@ -198,8 +197,7 @@ async function testBootstrapOmitsPersistedMessages() {
     },
   });
   assert.equal(result.config.greeting, 'Hello');
-  assert.match(result.config.theme.backgroundImageUrl || '', /^\/api\/v1\/chatbox\/theme\/background\?sessionId=/);
-  assert.equal(result.config.theme.backgroundImageUrl?.includes('example.test'), false);
+  assert.equal(result.config.theme.backgroundImageUrl, 'https://example.test/bg.png');
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'messages'), false);
 }
 
