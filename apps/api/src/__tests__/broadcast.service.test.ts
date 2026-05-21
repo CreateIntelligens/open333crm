@@ -52,8 +52,14 @@ interface SendRecord {
 
 /**
  * 工廠：建立 mock channel plugin，記錄每次 sendMessage 呼叫。
+ *
+ * behavior 可以是：
+ *   - 'success' / 'fail'：所有呼叫都一致
+ *   - 函式 (callIndex: number) => 'success' | 'fail'：依第幾次呼叫決定（partial fail 測試用）
  */
-function makeMockPlugin(channelType: string, behavior: 'success' | 'fail' = 'success'): ChannelPlugin & { sends: SendRecord[] } {
+type PluginBehavior = 'success' | 'fail' | ((callIndex: number) => 'success' | 'fail');
+
+function makeMockPlugin(channelType: string, behavior: PluginBehavior = 'success'): ChannelPlugin & { sends: SendRecord[] } {
   const sends: SendRecord[] = [];
   const plugin = {
     channelType,
@@ -63,7 +69,8 @@ function makeMockPlugin(channelType: string, behavior: 'success' | 'fail' = 'suc
     getProfile: async (uid: string) => ({ uid, displayName: uid }),
     sendMessage: async (to: string, message: OutboundPayload) => {
       sends.push({ to, payload: message });
-      return behavior === 'success'
+      const decision = typeof behavior === 'function' ? behavior(sends.length - 1) : behavior;
+      return decision === 'success'
         ? { success: true, channelMsgId: 'msg-' + sends.length }
         : { success: false, error: 'mock fail' };
     },
@@ -79,8 +86,8 @@ interface BroadcastFixture {
   identitiesCount: number;
   /** 內容是否含 {{var}} 變數 */
   hasVariable?: boolean;
-  /** plugin 是否要失敗 */
-  pluginBehavior?: 'success' | 'fail';
+  /** plugin 是否要失敗（可給函式做 per-call 控制） */
+  pluginBehavior?: PluginBehavior;
 }
 
 function setupFixture({
@@ -272,11 +279,11 @@ async function testZeroAudience() {
   assert.equal(f.plugin.sends.length, 0);
   assert.equal(result.total, 0);
   assert.equal(result.success, 0);
+  assert.equal(result.failed, 0);
 
-  // 全失敗條件 failedCount === identities.length 在 0===0 時為 true → status=failed
-  // 這是 edge case，目前實作就是這樣。確認行為固定即可。
+  // 0 受眾應該 early return 標 status=completed（避免「全員失敗」誤判）
   const finalUpdate = f.broadcastUpdates[f.broadcastUpdates.length - 1];
-  assert.ok(['completed', 'failed'].includes(finalUpdate.data.status as string));
+  assert.equal(finalUpdate.data.status, 'completed');
 }
 
 async function testPluginFailureMarksFailed() {
@@ -294,18 +301,54 @@ async function testPluginFailureMarksFailed() {
   assert.equal(finalUpdate.data.status, 'failed');
 }
 
-async function testMulticastBatchOver500() {
-  // 600 個受眾 — multicast 由 plugin 內部處理 500 一批的拆分，
-  // 我們的 service 只需呼叫一次 sendMessage 帶整批
+async function testMulticastChunking499() {
+  // 600 個受眾 → service 應自己拆批 499 / 101，呼叫 plugin 2 次
   const f = setupFixture({ channelType: 'LINE', identitiesCount: 600, hasVariable: false });
   const io = createIoMock();
 
   await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
 
-  // service 層仍只呼叫 1 次 sendMessage（拆批是 plugin 內部的事）
-  assert.equal(f.plugin.sends.length, 1);
-  const recipientUids = (f.plugin.sends[0].payload.content as Record<string, unknown>).recipientUids;
-  assert.equal((recipientUids as string[]).length, 600);
+  // 2 批：第 1 批 499 人，第 2 批 101 人
+  assert.equal(f.plugin.sends.length, 2, `expected 2 chunks, got ${f.plugin.sends.length}`);
+
+  const batch1 = (f.plugin.sends[0].payload.content as Record<string, unknown>).recipientUids as string[];
+  const batch2 = (f.plugin.sends[1].payload.content as Record<string, unknown>).recipientUids as string[];
+  assert.equal(batch1.length, 499, 'first chunk should be 499');
+  assert.equal(batch2.length, 101, 'second chunk should be 101');
+
+  // recipient createMany 也應該被呼叫 2 次（每批一次）
+  assert.equal(f.recipientCreateMany.length, 2);
+  assert.equal(f.recipientCreateMany[0].data.length, 499);
+  assert.equal(f.recipientCreateMany[1].data.length, 101);
+}
+
+async function testMulticastPartialFailure() {
+  // 600 人廣播：第 1 批 (499) 成功、第 2 批 (101) 失敗
+  // 預期：successCount=499, failedCount=101, status=completed（部分成功）
+  // 而非整批 600 都標 failed（之前的 bug）
+  const f = setupFixture({
+    channelType: 'LINE',
+    identitiesCount: 600,
+    hasVariable: false,
+    pluginBehavior: (callIdx) => (callIdx === 0 ? 'success' : 'fail'),
+  });
+  const io = createIoMock();
+
+  const result = await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+
+  assert.equal(result.total, 600);
+  assert.equal(result.success, 499, `expected 499 success, got ${result.success}`);
+  assert.equal(result.failed, 101, `expected 101 failed, got ${result.failed}`);
+
+  // status：有人成功 → completed（即使部分失敗）
+  const finalUpdate = f.broadcastUpdates[f.broadcastUpdates.length - 1];
+  assert.equal(finalUpdate.data.status, 'completed');
+
+  // recipient 標記：第 1 批 499 人標 sent、第 2 批 101 人標 failed
+  const batch1Recipients = f.recipientCreateMany[0].data as Array<Record<string, unknown>>;
+  const batch2Recipients = f.recipientCreateMany[1].data as Array<Record<string, unknown>>;
+  assert.equal(batch1Recipients[0].deliveryStatus, 'sent');
+  assert.equal(batch2Recipients[0].deliveryStatus, 'failed');
 }
 
 // ─── Runner ────────────────────────────────────────────────────────────
@@ -314,9 +357,10 @@ const tests: Array<[string, () => Promise<void>]> = [
   ['LINE multicast 當無變數', testLineMulticastWhenNoVariable],
   ['LINE for-loop 當有變數', testLineForLoopWhenHasVariable],
   ['FB 永遠 for-loop', testFbAlwaysForLoop],
-  ['0 受眾', testZeroAudience],
+  ['0 受眾 → status=completed', testZeroAudience],
   ['plugin 失敗 → status=failed', testPluginFailureMarksFailed],
-  ['multicast 600 人單次呼叫', testMulticastBatchOver500],
+  ['multicast 600 人拆批 499 / 101', testMulticastChunking499],
+  ['multicast 部分失敗：第 1 批成功、第 2 批失敗', testMulticastPartialFailure],
 ];
 
 async function main() {

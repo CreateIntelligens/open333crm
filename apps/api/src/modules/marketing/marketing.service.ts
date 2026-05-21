@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
+import { logger } from '@open333crm/core';
 import { decryptCredentials } from '../channel/channel.service.js';
 import {
   renderTemplateBody,
@@ -308,6 +309,15 @@ export async function executeBroadcast(
       data: { totalCount: identities.length },
     });
 
+    // ── 0 受眾 early return：避免 failedCount===length===0 落入 status=failed ──
+    if (identities.length === 0) {
+      await prisma.broadcast.update({
+        where: { id: broadcastId },
+        data: { status: 'completed', successCount: 0, failedCount: 0 },
+      });
+      return { total: 0, success: 0, failed: 0 };
+    }
+
     const extractedKeys = extractVariables(body);
     const needsPersonalization = extractedKeys.length > 0;
 
@@ -315,43 +325,49 @@ export async function executeBroadcast(
     let failedCount = 0;
     const now = new Date();
 
-    // ── LINE multicast 路徑：無需 per-recipient 個人化 → 一次 API call 發給最多 500 個 ──
+    // ── LINE multicast 路徑：無需 per-recipient 個人化 ──
     // 條件：LINE 渠道 + 訊息內無變數
-    // multicast 一次發給多人，全員看到完全相同的訊息（FB 無此 API）
+    // multicast 一次發給多人，全員看到完全相同的訊息（FB 無此 API）。
+    // service 層自己 chunk 為 499/批（LINE 官方限 500，留 1 個 buffer）。
+    // 每批單獨呼叫 plugin → 失敗只影響該批的 recipient 標 failed，前面批已成功不誤標。
     // 個人化分支仍走 for loop push（每人 body 不同）。
-    if (channel.channelType === 'LINE' && !needsPersonalization && identities.length > 0) {
-      const uids = identities.map((i) => i.uid);
-      const outbound = {
-        contentType,
-        content: { ...body, strategy: 'multicast', recipientUids: uids },
-      };
+    if (channel.channelType === 'LINE' && !needsPersonalization) {
+      const MULTICAST_CHUNK = 499;
+      for (let i = 0; i < identities.length; i += MULTICAST_CHUNK) {
+        const chunk = identities.slice(i, i + MULTICAST_CHUNK);
+        const uids = chunk.map((c) => c.uid);
+        const outbound = {
+          contentType,
+          content: { ...body, strategy: 'multicast', recipientUids: uids },
+        };
 
-      let multicastDelivered = false;
-      try {
-        const result = await plugin.sendMessage(uids[0], outbound, credentials);
-        multicastDelivered = result.success;
-        if (result.success) {
-          successCount = identities.length;
-        } else {
-          failedCount = identities.length;
+        let chunkDelivered = false;
+        try {
+          const result = await plugin.sendMessage(uids[0], outbound, credentials);
+          chunkDelivered = result.success;
+          if (result.success) {
+            successCount += chunk.length;
+          } else {
+            failedCount += chunk.length;
+          }
+        } catch {
+          failedCount += chunk.length;
         }
-      } catch {
-        failedCount = identities.length;
-      }
 
-      // 批次寫入 recipient 記錄（同樣狀態）
-      try {
-        await prisma.broadcastRecipient.createMany({
-          data: identities.map((identity) => ({
-            broadcastId,
-            contactId: identity.contactId,
-            deliveryStatus: multicastDelivered ? 'sent' : 'failed',
-            sentAt: now,
-          })),
-          skipDuplicates: true,
-        });
-      } catch (err) {
-        // 不致命：multicast 已送，只是 recipient 表沒寫進去
+        // 該批 recipient 記錄
+        try {
+          await prisma.broadcastRecipient.createMany({
+            data: chunk.map((identity) => ({
+              broadcastId,
+              contactId: identity.contactId,
+              deliveryStatus: chunkDelivered ? 'sent' : 'failed',
+              sentAt: now,
+            })),
+            skipDuplicates: true,
+          });
+        } catch (err) {
+          logger.warn(`[broadcast:${broadcastId}] recipient batch write failed (chunk ${i / MULTICAST_CHUNK + 1})`, { err });
+        }
       }
     } else {
       // ── per-recipient for loop（個人化 / FB / 其他渠道）──
@@ -415,7 +431,9 @@ export async function executeBroadcast(
     }
 
     // Final status
-    const finalStatus = failedCount === identities.length ? 'failed' : 'completed';
+    // failed：全員失敗（含 0 受眾的 case 已在前面 early return，此處 identities.length 必 > 0）
+    // completed：至少 1 人成功（含部分失敗）
+    const finalStatus = failedCount > 0 && failedCount === identities.length ? 'failed' : 'completed';
     await prisma.broadcast.update({
       where: { id: broadcastId },
       data: { status: finalStatus, successCount, failedCount },
