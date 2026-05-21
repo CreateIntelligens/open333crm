@@ -315,48 +315,89 @@ export async function executeBroadcast(
     let failedCount = 0;
     const now = new Date();
 
-    for (const identity of identities) {
-      let delivered = false;
+    // ── LINE multicast 路徑：無需 per-recipient 個人化 → 一次 API call 發給最多 500 個 ──
+    // 條件：LINE 渠道 + 訊息內無變數
+    // multicast 一次發給多人，全員看到完全相同的訊息（FB 無此 API）
+    // 個人化分支仍走 for loop push（每人 body 不同）。
+    if (channel.channelType === 'LINE' && !needsPersonalization && identities.length > 0) {
+      const uids = identities.map((i) => i.uid);
+      const outbound = {
+        contentType,
+        content: { ...body, strategy: 'multicast', recipientUids: uids },
+      };
+
+      let multicastDelivered = false;
       try {
-        // Per-recipient personalization
-        let personalizedBody = body;
-        if (needsPersonalization) {
-          const ctx = await resolveContext(prisma, {
-            contactId: identity.contactId,
-            tenantId: broadcast.tenantId,
-          });
-          const vars = buildVariableMap(sourceVars, ctx);
-          personalizedBody = renderTemplateBody(body, vars);
-        }
-
-        const outbound = {
-          contentType,
-          content: personalizedBody,
-        };
-
-        const result = await plugin.sendMessage(identity.uid, outbound, credentials);
+        const result = await plugin.sendMessage(uids[0], outbound, credentials);
+        multicastDelivered = result.success;
         if (result.success) {
-          successCount++;
-          delivered = true;
+          successCount = identities.length;
         } else {
-          failedCount++;
+          failedCount = identities.length;
         }
       } catch {
-        failedCount++;
+        failedCount = identities.length;
       }
 
-      // Create recipient record for tracking replies & cases
+      // 批次寫入 recipient 記錄（同樣狀態）
       try {
-        await prisma.broadcastRecipient.create({
-          data: {
+        await prisma.broadcastRecipient.createMany({
+          data: identities.map((identity) => ({
             broadcastId,
             contactId: identity.contactId,
-            deliveryStatus: delivered ? 'sent' : 'failed',
+            deliveryStatus: multicastDelivered ? 'sent' : 'failed',
             sentAt: now,
-          },
+          })),
+          skipDuplicates: true,
         });
-      } catch {
-        // Ignore duplicate (unique constraint on broadcastId+contactId)
+      } catch (err) {
+        // 不致命：multicast 已送，只是 recipient 表沒寫進去
+      }
+    } else {
+      // ── per-recipient for loop（個人化 / FB / 其他渠道）──
+      for (const identity of identities) {
+        let delivered = false;
+        try {
+          // Per-recipient personalization
+          let personalizedBody = body;
+          if (needsPersonalization) {
+            const ctx = await resolveContext(prisma, {
+              contactId: identity.contactId,
+              tenantId: broadcast.tenantId,
+            });
+            const vars = buildVariableMap(sourceVars, ctx);
+            personalizedBody = renderTemplateBody(body, vars);
+          }
+
+          const outbound = {
+            contentType,
+            content: personalizedBody,
+          };
+
+          const result = await plugin.sendMessage(identity.uid, outbound, credentials);
+          if (result.success) {
+            successCount++;
+            delivered = true;
+          } else {
+            failedCount++;
+          }
+        } catch {
+          failedCount++;
+        }
+
+        // Create recipient record for tracking replies & cases
+        try {
+          await prisma.broadcastRecipient.create({
+            data: {
+              broadcastId,
+              contactId: identity.contactId,
+              deliveryStatus: delivered ? 'sent' : 'failed',
+              sentAt: now,
+            },
+          });
+        } catch {
+          // Ignore duplicate (unique constraint on broadcastId+contactId)
+        }
       }
     }
 
