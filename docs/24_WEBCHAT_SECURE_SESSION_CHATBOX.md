@@ -347,12 +347,21 @@ and after session creation:
 /chatbox?channel=<publicChannelKey>&sessionId=<token>
 ```
 
+第一版實作使用 `channel` publicKey 作為 channel resolution 參數：
+
+```text
+/chatbox?channel=<publicChannelKey>
+/chatbox?channel=<publicChannelKey>&sessionId=<opaque-token>
+```
+
+如果 API 建立 session 時沒有收到 `channel` publicKey，會回傳 validation error。後端用 `channel` 解析 active WEBCHAT `Channel`，再由 `Channel.tenantId` 決定 tenant，避免 public route 在多租戶環境下猜錯渠道。設定頁的 Webhook 公開網址區塊會用目前 domain 產出 `{domain}/chatbox?channel=<publicKey>`。
+
 ### Public APIs
 
 ```text
 POST /api/v1/chatbox/sessions
-  body: { channelKey, fingerprint }
-  returns: { redirectUrl }
+  body: { channel, fingerprint }
+  returns: { redirectUrl, sessionId, expiresAt }
 
 POST /api/v1/chatbox/sessions/verify
   body: { sessionId, fingerprint }
@@ -617,4 +626,3 @@ define-secure-chatbox-session
 - `webchat-secure-session`
 - `webchat-message-contract`
 - `webchat-admin-theme`
-

@@ -9,12 +9,14 @@ import {
   deleteChannel,
   verifyChannel,
   updateWebhookBaseUrl,
+  ensureChannelPublicKey,
 } from './channel.service.js';
-import { success } from '../../shared/utils/response.js';
+import { AppError, success } from '../../shared/utils/response.js';
 import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
+import { uploadFile } from '../storage/storage.service.js';
 
 const lineCredentialsSchema = z.object({
   channelSecret: z.string().min(1),
@@ -58,12 +60,35 @@ const updateWebhookBaseUrlSchema = z.object({
   baseUrl: z.string().min(1),
 });
 
+const chatboxLinkSchema = z.object({
+  domain: z.string().url(),
+});
+
 const updateChannelSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
   isActive: z.boolean().optional(),
   credentials: z.record(z.unknown()).optional(),
   settings: z.record(z.unknown()).optional(),
 });
+
+const chatboxThemeSchema = z.object({
+  backgroundImageUrl: z.string().url().nullable().optional(),
+  backgroundImageKey: z.string().nullable().optional(),
+  backgroundSize: z.enum(['cover', 'contain']).optional(),
+  backgroundPosition: z.string().max(80).optional(),
+  foregroundColor: z.string().max(32).optional(),
+  accentColor: z.string().max(32).optional(),
+});
+
+async function getTenantWebchatChannel(fastify: FastifyInstance, id: string, tenantId: string) {
+  const channel = await fastify.prisma.channel.findFirst({
+    where: { id, tenantId, channelType: CHANNEL_TYPE.WEBCHAT },
+  });
+  if (!channel) {
+    throw new AppError('WEBCHAT channel not found', 'NOT_FOUND', 404);
+  }
+  return channel;
+}
 
 export default async function channelRoutes(fastify: FastifyInstance) {
   // All routes require authentication
@@ -194,4 +219,113 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     );
     return reply.send(success(result));
   });
+
+  // POST /api/v1/channels/:id/chatbox-link — WebChat standalone page link
+  fastify.post<{ Params: { id: string }; Body: unknown }>(
+    '/:id/chatbox-link',
+    { preHandler: requireSupervisor() },
+    async (request, reply) => {
+      const body = chatboxLinkSchema.parse(request.body);
+      const channel = await fastify.prisma.channel.findFirst({
+        where: {
+          id: request.params.id,
+          tenantId: request.agent.tenantId,
+          channelType: CHANNEL_TYPE.WEBCHAT,
+        },
+        select: { id: true, publicKey: true },
+      });
+
+      if (!channel) {
+        throw new AppError('WEBCHAT channel not found', 'NOT_FOUND', 404);
+      }
+
+      const { publicKey } = channel.publicKey
+        ? { publicKey: channel.publicKey }
+        : await ensureChannelPublicKey(fastify.prisma, channel.id, request.agent.tenantId);
+
+      if (!publicKey) {
+        throw new AppError('publicKey is required', 'BAD_REQUEST', 400);
+      }
+
+      const domain = body.domain.replace(/\/+$/, '');
+      return reply.send(success({
+        publicKey,
+        url: `${domain}/chatbox?channel=${encodeURIComponent(publicKey)}`,
+      }));
+    },
+  );
+
+  // PATCH /api/v1/channels/:id/chatbox-theme — WebChat chatbox public theme
+  fastify.patch<{ Params: { id: string }; Body: unknown }>(
+    '/:id/chatbox-theme',
+    { preHandler: requireAdmin() },
+    async (request, reply) => {
+      const body = chatboxThemeSchema.parse(request.body);
+      const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
+      const settings = (channel.settings || {}) as Record<string, unknown>;
+      const currentTheme = (settings.chatboxTheme || {}) as Record<string, unknown>;
+
+      if (body.backgroundImageKey && !body.backgroundImageKey.startsWith(request.agent.tenantId)) {
+        return reply.status(403).send({ error: 'Asset does not belong to tenant' });
+      }
+
+      const updated = await fastify.prisma.channel.update({
+        where: { id: channel.id },
+        data: {
+          settings: {
+            ...settings,
+            chatboxTheme: {
+              ...currentTheme,
+              ...body,
+            },
+          },
+        },
+        select: { id: true, settings: true },
+      });
+
+      return reply.send(success({ id: updated.id, chatboxTheme: (updated.settings as any).chatboxTheme ?? {} }));
+    },
+  );
+
+  // POST /api/v1/channels/:id/chatbox-theme/background — upload tenant-owned background image
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/chatbox-theme/background',
+    { preHandler: requireAdmin() },
+    async (request, reply) => {
+      const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
+      const file = await request.file();
+      if (!file) {
+        return reply.status(400).send({ error: 'No file uploaded' });
+      }
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) {
+        return reply.status(400).send({ error: 'Unsupported background image type' });
+      }
+
+      const buffer = await file.toBuffer();
+      const uploaded = await uploadFile(
+        buffer,
+        file.filename,
+        file.mimetype,
+        request.agent.tenantId,
+        'media',
+        'chatbox-backgrounds',
+      );
+      const settings = (channel.settings || {}) as Record<string, unknown>;
+      const currentTheme = (settings.chatboxTheme || {}) as Record<string, unknown>;
+      const updatedTheme = {
+        ...currentTheme,
+        backgroundImageUrl: uploaded.url,
+        backgroundImageKey: uploaded.key,
+        backgroundSize: currentTheme.backgroundSize ?? 'cover',
+        backgroundPosition: currentTheme.backgroundPosition ?? 'center',
+      };
+
+      await fastify.prisma.channel.update({
+        where: { id: channel.id },
+        data: { settings: { ...settings, chatboxTheme: updatedTheme } },
+      });
+
+      return reply.status(201).send(success({ ...uploaded, chatboxTheme: updatedTheme }));
+    },
+  );
 }

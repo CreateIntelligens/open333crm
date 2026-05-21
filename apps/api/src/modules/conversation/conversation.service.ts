@@ -261,6 +261,9 @@ export async function sendMessage(
   }
 
   const now = new Date();
+  const sequence = await prisma.message.count({
+    where: { conversationId },
+  }) + 1;
 
   const message = await prisma.message.create({
     data: {
@@ -270,6 +273,7 @@ export async function sendMessage(
       senderId: agentId,
       contentType: data.contentType,
       content: data.content as any,
+      sequence,
       isRead: true,
       createdAt: now,
     },
@@ -304,7 +308,10 @@ export async function sendMessage(
       senderId: message.senderId,
       contentType: message.contentType,
       content: message.content as Record<string, unknown>,
+      type: message.contentType,
+      payload: message.content as Record<string, unknown>,
       createdAt: message.createdAt.toISOString(),
+      sequence: message.sequence,
       sender: (message as any).sender,
     },
   };
@@ -581,6 +588,8 @@ export async function deliverToChannel(
       const msgPayload = {
         contentType: 'text',
         content: { text },
+        type: 'text',
+        payload: { text },
         direction: 'OUTBOUND',
         senderType: 'BOT',
         channelMsgId: result?.channelMsgId,

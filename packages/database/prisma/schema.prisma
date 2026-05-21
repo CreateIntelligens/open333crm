@@ -47,6 +47,13 @@ enum SenderType {
   SYSTEM
 }
 
+enum ChatboxSessionRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  REVOKED
+}
+
 enum CaseStatus {
   OPEN
   IN_PROGRESS
@@ -211,6 +218,7 @@ model Tenant {
   partnerApiKeys          PartnerApiKey[]
   materials               Material[]
   richMenus               RichMenu[]
+  chatboxSessions         ChatboxSession[]
 
   @@map("tenants")
 }
@@ -286,6 +294,7 @@ model Channel {
   tenantId             String      @db.Uuid
   channelType          ChannelType
   displayName          String
+  publicKey            String?     @unique
   isActive             Boolean     @default(true)
   credentialsEncrypted String // AES-256 加密後的 JSON
   settings             Json        @default("{}")
@@ -301,8 +310,10 @@ model Channel {
   teamAccesses      ChannelTeamAccess[]
   usages            ChannelUsage[]
   richMenus         RichMenu[]
+  chatboxSessions   ChatboxSession[]
 
   @@index([tenantId])
+  @@index([publicKey])
   @@map("channels")
 }
 
@@ -537,6 +548,7 @@ model Conversation {
   case       Case?     @relation(fields: [caseId], references: [id])
   messages   Message[]
   tags       ConversationTag[]
+  chatboxSession ChatboxSession?
 
   @@index([tenantId, status])
   @@index([tenantId, contactId])
@@ -555,6 +567,8 @@ model Message {
   content        Json
   metadata       Json       @default("{}")
   channelMsgId   String?
+  clientMessageId String?
+  sequence       Int?
   isRead         Boolean    @default(false)
   createdAt      DateTime   @default(now())
 
@@ -562,7 +576,36 @@ model Message {
   sender       Agent?       @relation(fields: [senderId], references: [id])
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, sequence])
+  @@unique([conversationId, clientMessageId])
   @@map("messages")
+}
+
+model ChatboxSession {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                  @db.Uuid
+  channelId          String                  @db.Uuid
+  conversationId     String                  @unique @db.Uuid
+  visitorToken       String                  @unique @db.Uuid
+  tokenDigest        String                  @unique
+  fingerprintHash    String
+  fingerprintVersion Int                     @default(1)
+  expiresAt          DateTime
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  riskLevel          ChatboxSessionRiskLevel @default(LOW)
+  metadata           Json                    @default("{}")
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel      Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, channelId])
+  @@index([expiresAt])
+  @@index([fingerprintHash])
+  @@map("chatbox_sessions")
 }
 
 // ─────────────────────────────────────────────
