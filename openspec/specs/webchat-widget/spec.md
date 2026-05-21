@@ -1,7 +1,10 @@
-## ADDED Requirements
+## Purpose
+Define embedded WebChat widget behavior and its boundaries relative to standalone chatbox sessions.
+
+## Requirements
 
 ### Requirement: Visitor session initialization
-On first load the widget SHALL generate a UUID v4 `visitorToken` and persist it in `sessionStorage` key `open333crm_visitor`. Each browser tab maintains its own independent token, ensuring separate conversations per tab. The widget SHALL call `POST /api/v1/webchat/:channelId/sessions` with the token to obtain a greeting message. No conversation history is fetched or displayed on load.
+On first load the embedded widget SHALL generate a UUID v4 `visitorToken` and persist it in `sessionStorage` key `open333crm_visitor`. Each browser tab maintains its own independent token, ensuring separate conversations per tab. The embedded widget SHALL call `POST /api/v1/webchat/:channelId/sessions` with the token to obtain a greeting message. No conversation history is fetched or displayed on load. Chatbox mode SHALL NOT use this visitor-token session contract; it SHALL use a verified `sessionId` and the chatbox session lifecycle instead.
 
 #### Scenario: First-time visitor loads widget
 - **WHEN** no `open333crm_visitor` key exists in `sessionStorage`
@@ -18,6 +21,10 @@ On first load the widget SHALL generate a UUID v4 `visitorToken` and persist it 
 #### Scenario: Session API returns greeting
 - **WHEN** the channel has a `welcomeMessage` in its settings
 - **THEN** the greeting message is displayed in the widget chat window on every fresh load
+
+#### Scenario: Chatbox mode uses session id instead of visitor token
+- **WHEN** a visitor opens the `/chatbox` public route
+- **THEN** the chatbox client uses the verified `sessionId` lifecycle instead of creating or sending an `open333crm_visitor` token
 
 ### Requirement: Visitor message sending
 The widget SHALL send visitor text messages via `POST /api/v1/webchat/:channelId/messages` with body `{ visitorToken, contentType: "text", content: { text } }`. The widget SHALL also send media messages via a two-step flow: first upload to `POST /api/v1/webchat/:channelId/media` (multipart), then send `{ visitorToken, contentType: "image"|"video", content: { url } }` to messages. All messages SHALL be persisted as INBOUND messages in the database and the conversation SHALL appear in the inbox.
@@ -107,3 +114,14 @@ The inbox `MessageInput` component's attachment button SHALL be enabled for `WEB
 #### Scenario: Agent clicks attachment in WEBCHAT conversation
 - **WHEN** the conversation `channelType` is `WEBCHAT` and the agent selects a PNG/JPEG file
 - **THEN** `POST /api/v1/conversations/:id/send-image` is called and the image appears in the conversation
+
+### Requirement: Chatbox client does not replay server history
+The chatbox client SHALL NOT request or render persisted server-side conversation history during bootstrap or refresh. It SHALL only render messages created or received during the current browser page lifetime.
+
+#### Scenario: Chatbox refresh
+- **WHEN** a visitor refreshes `/chatbox?sessionId=<valid>`
+- **THEN** the client verifies the session and keeps the same server-side conversation without receiving prior persisted messages
+
+#### Scenario: New inbound socket message
+- **WHEN** an agent sends a new message after the refreshed chatbox page connects
+- **THEN** the client renders that new socket message in the current page lifetime

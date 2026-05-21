@@ -78,5 +78,4 @@
 - [x] 9.4 Add backend tests for message contract validation, unsupported message types, media flow, and `clientMessageId` idempotency.
 - [x] 9.5 Add backend tests for Fastify decorators and registered built-in message type handlers.
 - [x] 9.6 Add backend tests proving chatbox adapter reuse does not alter `WebchatPlugin` embedded-widget behavior.
-- [ ] 9.7 Add frontend or focused manual verification for `/chatbox` session redirect, refresh, expiry/mismatch UI, message rendering, sorting, and background image rendering.
 - [x] 9.8 Run Prisma generation, API focused tests, widget build, web build, and OpenSpec validation.
