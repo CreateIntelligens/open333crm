@@ -6,6 +6,7 @@ import { success } from '../../shared/utils/response.js';
 import {
   bootstrapChatboxSession,
   createChatboxSession,
+  getChatboxThemeBackground,
   handleChatboxMessage,
   uploadChatboxMedia,
 } from './chatbox.service.js';
@@ -135,5 +136,17 @@ export default async function chatboxRoutes(app: FastifyInstance) {
     );
 
     return reply.send(success(result));
+  });
+
+  app.get<{ Querystring: { sessionId?: string } }>('/theme/background', async (req, reply) => {
+    if (!req.query.sessionId) {
+      return reply.status(400).send({ error: 'sessionId is required' });
+    }
+
+    const image = await getChatboxThemeBackground(req.server.prisma, req.query.sessionId);
+    return reply
+      .header('Content-Type', image.contentType)
+      .header('Cache-Control', image.cacheControl)
+      .send(image.buffer);
   });
 }

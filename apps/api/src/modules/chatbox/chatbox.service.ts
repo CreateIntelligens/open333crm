@@ -17,6 +17,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { AppError } from '../../shared/utils/response.js';
 import { processInboundMessage } from '../webhook/webhook.service.js';
 import { uploadVisitorMedia } from '../webchat/webchat.service.js';
+import { getFileUrl } from '../storage/storage.service.js';
 import type { ChatboxMessageRegistry } from './chatbox.registry.js';
 
 const TOKEN_VERSION = 'cb2';
@@ -192,10 +193,12 @@ function getSettings(settings: unknown): Record<string, unknown> {
     : {};
 }
 
-function buildPublicConfig(channel: VerifiedChatboxSession['channel']): ChatboxBootstrapConfig {
+function buildPublicConfig(channel: VerifiedChatboxSession['channel'], sessionId?: string): ChatboxBootstrapConfig {
   const settings = getSettings(channel.settings);
   const theme = getSettings(settings.chatboxTheme);
-  const backgroundImageUrl = typeof theme.backgroundImageUrl === 'string' ? theme.backgroundImageUrl : null;
+  const backgroundImageUrl = typeof theme.backgroundImageKey === 'string' && sessionId
+    ? `/api/v1/chatbox/theme/background?sessionId=${encodeURIComponent(sessionId)}`
+    : null;
 
   return {
     channelId: channel.id,
@@ -324,7 +327,7 @@ export async function createChatboxSession(
       channelType: channel.channelType,
       isActive: channel.isActive,
       settings: channel.settings,
-    }),
+    }, sessionId),
   };
 }
 
@@ -407,7 +410,61 @@ export async function bootstrapChatboxSession(
       expiresAt: session.expiresAt.toISOString(),
       lastSeenAt: session.lastSeenAt?.toISOString() ?? null,
     },
-    config: buildPublicConfig(session.channel),
+    config: buildPublicConfig(session.channel, input.sessionId),
+  };
+}
+
+export async function getChatboxThemeBackgroundKey(
+  prisma: PrismaClient,
+  sessionId: string,
+): Promise<string> {
+  const { tokenDigest } = verifyChatboxSessionId(sessionId);
+  const session = await prisma.chatboxSession.findUnique({
+    where: { tokenDigest },
+    include: { channel: true },
+  });
+
+  if (!session) throw new AppError('Invalid chatbox session', 'UNAUTHORIZED', 401);
+  if (session.revokedAt || session.riskLevel === 'REVOKED') {
+    throw new AppError('Chatbox session is revoked', 'FORBIDDEN', 403);
+  }
+  if (session.expiresAt.getTime() <= Date.now()) {
+    throw new AppError('Chatbox session is expired', 'UNAUTHORIZED', 401);
+  }
+  if (!session.channel.isActive || session.channel.channelType !== CHANNEL_TYPE.WEBCHAT) {
+    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+  }
+
+  const settings = getSettings(session.channel.settings);
+  const theme = getSettings(settings.chatboxTheme);
+  const key = typeof theme.backgroundImageKey === 'string' ? theme.backgroundImageKey : null;
+  if (!key || !key.startsWith(session.tenantId)) {
+    throw new AppError('Background image not found', 'NOT_FOUND', 404);
+  }
+
+  return key;
+}
+
+export async function getChatboxThemeBackground(
+  prisma: PrismaClient,
+  sessionId: string,
+): Promise<{ buffer: Buffer; contentType: string; cacheControl: string }> {
+  const key = await getChatboxThemeBackgroundKey(prisma, sessionId);
+  const url = await getFileUrl(key, 60);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new AppError('Unable to load background image', 'STORAGE_ERROR', response.status);
+  }
+
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
+  if (!contentType.startsWith('image/')) {
+    throw new AppError('Background asset is not an image', 'BAD_REQUEST', 400);
+  }
+
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType,
+    cacheControl: 'private, max-age=300',
   };
 }
 

@@ -16,7 +16,7 @@ import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
-import { uploadFile } from '../storage/storage.service.js';
+import { getFileUrl, uploadFile } from '../storage/storage.service.js';
 
 const lineCredentialsSchema = z.object({
   channelSecret: z.string().min(1),
@@ -72,8 +72,8 @@ const updateChannelSchema = z.object({
 });
 
 const chatboxThemeSchema = z.object({
-  backgroundImageUrl: z.string().url().nullable().optional(),
-  backgroundImageKey: z.string().nullable().optional(),
+  backgroundImageUrl: z.null().optional(),
+  backgroundImageKey: z.null().optional(),
   backgroundSize: z.enum(['cover', 'contain']).optional(),
   backgroundPosition: z.string().max(80).optional(),
   foregroundColor: z.string().max(32).optional(),
@@ -265,9 +265,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       const settings = (channel.settings || {}) as Record<string, unknown>;
       const currentTheme = (settings.chatboxTheme || {}) as Record<string, unknown>;
 
-      if (body.backgroundImageKey && !body.backgroundImageKey.startsWith(request.agent.tenantId)) {
-        return reply.status(403).send({ error: 'Asset does not belong to tenant' });
-      }
+      const themeUpdate = {
+        ...body,
+        ...(body.backgroundImageUrl === null ? { backgroundImageUrl: null, backgroundImageKey: null } : {}),
+      };
 
       const updated = await fastify.prisma.channel.update({
         where: { id: channel.id },
@@ -276,7 +277,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
             ...settings,
             chatboxTheme: {
               ...currentTheme,
-              ...body,
+              ...themeUpdate,
             },
           },
         },
@@ -284,6 +285,23 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send(success({ id: updated.id, chatboxTheme: (updated.settings as any).chatboxTheme ?? {} }));
+    },
+  );
+
+  // GET /api/v1/channels/:id/chatbox-theme/background-preview — signed admin preview URL
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/chatbox-theme/background-preview',
+    { preHandler: requireSupervisor() },
+    async (request, reply) => {
+      const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
+      const settings = (channel.settings || {}) as Record<string, unknown>;
+      const theme = (settings.chatboxTheme || {}) as Record<string, unknown>;
+      const key = typeof theme.backgroundImageKey === 'string' ? theme.backgroundImageKey : null;
+      if (!key || !key.startsWith(request.agent.tenantId)) {
+        return reply.status(404).send({ error: 'Background image not found' });
+      }
+
+      return reply.send(success({ previewUrl: await getFileUrl(key, 900) }));
     },
   );
 
@@ -325,7 +343,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         data: { settings: { ...settings, chatboxTheme: updatedTheme } },
       });
 
-      return reply.status(201).send(success({ ...uploaded, chatboxTheme: updatedTheme }));
+      const previewUrl = await getFileUrl(uploaded.key, 900);
+      return reply.status(201).send(success({ ...uploaded, previewUrl, chatboxTheme: updatedTheme }));
     },
   );
 }

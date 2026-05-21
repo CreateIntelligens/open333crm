@@ -196,9 +196,14 @@ export function ChannelManagement() {
   const openThemeDialog = (channel: Channel) => {
     const theme = ((channel.settings || {}).chatboxTheme || {}) as Record<string, unknown>;
     setThemeChannel(channel);
-    setThemeUrl(typeof theme.backgroundImageUrl === 'string' ? theme.backgroundImageUrl : '');
+    setThemeUrl('');
     setThemePosition(typeof theme.backgroundPosition === 'string' ? theme.backgroundPosition : 'center');
     setThemeSize(theme.backgroundSize === 'contain' ? 'contain' : 'cover');
+    if (typeof theme.backgroundImageKey === 'string') {
+      api.get(`/channels/${channel.id}/chatbox-theme/background-preview`)
+        .then((res) => setThemeUrl(res.data?.data?.previewUrl || ''))
+        .catch(() => setThemeUrl(''));
+    }
   };
 
   const saveTheme = async () => {
@@ -206,7 +211,6 @@ export function ChannelManagement() {
     setSavingTheme(true);
     try {
       await api.patch(`/channels/${themeChannel.id}/chatbox-theme`, {
-        backgroundImageUrl: themeUrl || null,
         backgroundSize: themeSize,
         backgroundPosition: themePosition || 'center',
       });
@@ -223,8 +227,10 @@ export function ChannelManagement() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await api.post(`/channels/${themeChannel.id}/chatbox-theme/background`, form);
-      setThemeUrl(res.data?.data?.url || '');
+      const res = await api.post(`/channels/${themeChannel.id}/chatbox-theme/background`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setThemeUrl(res.data?.data?.previewUrl || '');
       mutate();
     } finally {
       setSavingTheme(false);
@@ -597,15 +603,6 @@ export function ChannelManagement() {
             <DialogTitle>Chatbox 背景</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">背景圖片 URL</label>
-              <Input
-                value={themeUrl}
-                onChange={(event) => setThemeUrl(event.target.value)}
-                placeholder="https://..."
-                className="mt-1"
-              />
-            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="text-sm font-medium">尺寸</label>
