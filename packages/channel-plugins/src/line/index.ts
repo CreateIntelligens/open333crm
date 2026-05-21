@@ -311,10 +311,16 @@ export class LinePlugin implements ChannelPlugin {
           await linePost('/v2/bot/message/push', token, { to, messages });
           break;
         case 'multicast': {
+          // LINE 官方限 500/批；caller（service 層）已切到 ≤500，這裡只負責單次 API call。
+          // 若收到 > 500 視為呼叫端錯誤，直接 throw 由 caller 處理（不靜默拆批，避免部分失敗難追蹤）。
           const uids = (content.recipientUids as string[]) ?? [to];
-          for (let i = 0; i < uids.length; i += 500) {
-            await linePost('/v2/bot/message/multicast', token, { to: uids.slice(i, i + 500), messages });
+          if (uids.length === 0) {
+            throw new Error('multicast requires at least 1 recipient');
           }
+          if (uids.length > 500) {
+            throw new Error(`multicast batch exceeds LINE limit of 500 (got ${uids.length})`);
+          }
+          await linePost('/v2/bot/message/multicast', token, { to: uids, messages });
           break;
         }
         case 'broadcast':

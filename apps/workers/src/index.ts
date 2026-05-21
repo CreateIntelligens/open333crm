@@ -29,7 +29,8 @@ import { logger } from '@open333crm/core';
 import { linePlugin, fbPlugin } from '@open333crm/channel-plugins';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { handleSlaPoll } from './handlers/sla.handler.js';
-import { handleBroadcastPoll } from './handlers/broadcast.handler.js';
+// Broadcast 排程改由 apps/api 端負責（含完整 executeBroadcast 邏輯：變數替換 / multicast / recipient 記錄）。
+// Worker 端不再 polling broadcasts 避免雙發 race。
 import { handleNotificationJob } from './handlers/notification.handler.js';
 import { handleAutomationJob } from './handlers/automation.handler.js';
 import { closeNotificationQueue } from './lib/notification-queue.js';
@@ -63,10 +64,20 @@ async function main() {
 
   // ── Queues (register repeating jobs) ──────────────────────────────────────────
   const slaQueue = new Queue('sla', { connection });
-  const broadcastQueue = new Queue('broadcast', { connection });
 
   await slaQueue.add('sla:poll', {}, { repeat: { every: 300_000 }, jobId: 'sla:poll' });
-  await broadcastQueue.add('broadcast:poll', {}, { repeat: { every: 60_000 }, jobId: 'broadcast:poll' });
+
+  // 順手清掉舊的 broadcast repeatable job（如果之前 worker 跑過、Redis 仍有殘留）
+  const legacyBroadcastQueue = new Queue('broadcast', { connection });
+  try {
+    const repeatables = await legacyBroadcastQueue.getRepeatableJobs();
+    for (const r of repeatables) {
+      await legacyBroadcastQueue.removeRepeatableByKey(r.key);
+    }
+    await legacyBroadcastQueue.close();
+  } catch (err) {
+    logger.warn('[broadcast] Cleanup of legacy queue failed (safe to ignore)', { err });
+  }
 
   // ── Workers ────────────────────────────────────────────────────────────────────
 
@@ -78,19 +89,6 @@ async function main() {
         await handleSlaPoll(prisma, redisPublisher);
       } catch (err) {
         logger.error('[sla] Poll failed', { err });
-      }
-    },
-    { connection },
-  );
-
-  const broadcastWorker = new Worker(
-    'broadcast',
-    async (job) => {
-      logger.info(`[broadcast] Processing job ${job.id}: ${job.name}`);
-      try {
-        await handleBroadcastPoll(prisma, (type) => pluginRegistry.get(type));
-      } catch (err) {
-        logger.error('[broadcast] Poll failed', { err });
       }
     },
     { connection },
@@ -119,12 +117,10 @@ async function main() {
     logger.info('Shutting down workers...');
     await Promise.all([
       slaWorker.close(),
-      broadcastWorker.close(),
       notificationWorker.close(),
       automationWorker.close(),
     ]);
     await slaQueue.close();
-    await broadcastQueue.close();
     await closeNotificationQueue();
     await prisma.$disconnect();
     connection.disconnect();
@@ -135,7 +131,7 @@ async function main() {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
-  logger.info('Workers ready: sla (repeating), broadcast (repeating), notification, automation');
+  logger.info('Workers ready: sla (repeating), notification, automation');
 }
 
 main().catch((err) => {
