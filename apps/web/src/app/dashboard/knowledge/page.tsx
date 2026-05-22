@@ -156,8 +156,18 @@ export default function KnowledgePage() {
           </TabsList>
 
           {/* ── Articles Tab ──────────────────────────────────── */}
-          <TabsContent value="articles">
-            <div className="border-b py-3">
+          {/*
+            Dashboard layout uses h-screen + overflow-hidden so we must
+            size this tab to the viewport explicitly (otherwise the table
+            overflows and the pagination row gets clipped off-screen).
+            Layout: filters / status tabs (fixed) → list (flex-1 scroll)
+            → pagination (shrink-0, pinned to bottom).
+          */}
+          <TabsContent
+            value="articles"
+            className="flex h-[calc(100vh-130px)] flex-col"
+          >
+            <div className="border-b py-3 shrink-0">
               <div className="flex items-center gap-3">
                 <SearchInput
                   placeholder="搜尋文章..."
@@ -185,7 +195,7 @@ export default function KnowledgePage() {
               </div>
             </div>
 
-            <div className="border-b pt-2">
+            <div className="border-b pt-2 shrink-0">
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
                 <TabsList>
                   {statusTabs.map((tab) => (
@@ -197,16 +207,18 @@ export default function KnowledgePage() {
               </Tabs>
             </div>
 
-            <ArticleList
-              articles={articles}
-              isLoading={isLoading}
-              onEdit={handleEdit}
-              onPublish={handlePublish}
-              onArchive={handleArchive}
-              onDelete={handleDelete}
-            />
+            <div className="flex-1 min-h-0 overflow-auto">
+              <ArticleList
+                articles={articles}
+                isLoading={isLoading}
+                onEdit={handleEdit}
+                onPublish={handlePublish}
+                onArchive={handleArchive}
+                onDelete={handleDelete}
+              />
+            </div>
             {totalPages > 1 && (
-              <div className="flex items-center justify-between gap-4 border-t bg-background px-4 py-3">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-t bg-background px-4 py-3">
                 <span className="text-sm text-muted-foreground">
                   共 {total} 篇 · 第 {page} / {totalPages} 頁
                 </span>
