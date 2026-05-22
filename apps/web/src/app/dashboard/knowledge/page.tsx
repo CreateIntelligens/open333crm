@@ -10,6 +10,7 @@ import { EmbeddingSettings } from '@/components/knowledge/EmbeddingSettings';
 import { ChatPromptSettings } from '@/components/knowledge/ChatPromptSettings';
 import { Topbar } from '@/components/layout/Topbar';
 import { SearchInput } from '@/components/shared/SearchInput';
+import { Pagination } from '@/components/shared/Pagination';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -24,10 +25,13 @@ const statusTabs = [
   { value: 'ARCHIVED', label: '已封存' },
 ];
 
+const PAGE_SIZE = 50;
+
 export default function KnowledgePage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<any>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -39,11 +43,21 @@ export default function KnowledgePage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const { articles, isLoading, mutate } = useKnowledge({
+  const { articles, meta, isLoading, mutate } = useKnowledge({
     status: statusFilter === 'all' ? undefined : statusFilter,
     category: categoryFilter || undefined,
     q: search || undefined,
+    page,
+    limit: PAGE_SIZE,
   });
+
+  const totalPages = meta?.totalPages ?? 1;
+  const total = meta?.total ?? articles.length;
+
+  // Reset to page 1 whenever filters change
+  React.useEffect(() => {
+    setPage(1);
+  }, [statusFilter, categoryFilter, search]);
 
   const { categories } = useCategories();
 
@@ -192,6 +206,18 @@ export default function KnowledgePage() {
                 onArchive={handleArchive}
                 onDelete={handleDelete}
               />
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
+                  <span className="text-sm text-muted-foreground">
+                    共 {total} 篇 · 第 {page} / {totalPages} 頁
+                  </span>
+                  <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    onPageChange={setPage}
+                  />
+                </div>
+              )}
             </div>
           </TabsContent>
 
