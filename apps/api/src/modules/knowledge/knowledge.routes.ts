@@ -177,6 +177,50 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         }
       }
 
+      // Reject non-UTF-8 input early. multipart text fields without an
+      // explicit charset are decoded as UTF-8 strict; if the sender pushed
+      // e.g. Big5 bytes, every multi-byte char collapses to U+FFFD before we
+      // ever see it. Writing that to DB is destructive (raw bytes are lost),
+      // so we 400 the request instead and surface enough info for the sender
+      // to fix their client.
+      const REPLACEMENT_CHAR = '�';
+      const badFields: { name: string; preview: string; hex: string }[] = [];
+      for (const [name, value] of Object.entries(fields)) {
+        if (value.includes(REPLACEMENT_CHAR)) {
+          badFields.push({
+            name,
+            preview: value.slice(0, 80),
+            hex: Buffer.from(value, 'utf8').subarray(0, 80).toString('hex'),
+          });
+        }
+      }
+      for (const att of attachments) {
+        if (att.filename.includes(REPLACEMENT_CHAR)) {
+          badFields.push({
+            name: `Attached.filename(${att.filename.slice(0, 40)})`,
+            preview: att.filename,
+            hex: Buffer.from(att.filename, 'utf8').toString('hex'),
+          });
+        }
+      }
+      if (badFields.length > 0) {
+        request.log.warn(
+          { docId: fields.DocID, cmd: fields.cmd, badFields },
+          '[PartnerIngest] rejected: non-UTF-8 fields detected',
+        );
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'NON_UTF8_FIELDS',
+            message:
+              'One or more multipart fields are not valid UTF-8. ' +
+              'Likely your HTTP client is sending Big5/GBK bytes; ' +
+              'convert text to UTF-8 (and set Content-Type charset=utf-8) before sending.',
+            details: { fields: badFields.map((f) => f.name) },
+          },
+        });
+      }
+
       try {
         const cmd = parseCmd(fields.cmd);
 
