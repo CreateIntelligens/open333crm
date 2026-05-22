@@ -197,28 +197,26 @@ export default function KnowledgePage() {
               </Tabs>
             </div>
 
-            <div className="flex-1 overflow-auto">
-              <ArticleList
-                articles={articles}
-                isLoading={isLoading}
-                onEdit={handleEdit}
-                onPublish={handlePublish}
-                onArchive={handleArchive}
-                onDelete={handleDelete}
-              />
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
-                  <span className="text-sm text-muted-foreground">
-                    共 {total} 篇 · 第 {page} / {totalPages} 頁
-                  </span>
-                  <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    onPageChange={setPage}
-                  />
-                </div>
-              )}
-            </div>
+            <ArticleList
+              articles={articles}
+              isLoading={isLoading}
+              onEdit={handleEdit}
+              onPublish={handlePublish}
+              onArchive={handleArchive}
+              onDelete={handleDelete}
+            />
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-4 border-t bg-background px-4 py-3">
+                <span className="text-sm text-muted-foreground">
+                  共 {total} 篇 · 第 {page} / {totalPages} 頁
+                </span>
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
           </TabsContent>
 
           {/* ── Semantic Search Tab ───────────────────────────── */}
