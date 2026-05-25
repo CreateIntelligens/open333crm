@@ -6,37 +6,16 @@ import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { FileText, Star } from 'lucide-react';
+import type { ConversationRow } from '@/hooks/useConversations';
 
 interface ConversationListItemProps {
-  conversation: {
-    id: string;
-    contact?: {
-      id: string;
-      name?: string;
-      displayName?: string;
-      avatar?: string;
-      avatarUrl?: string;
-    };
-    channelType: string;
-    lastMessage?: {
-      content: string | { text?: string };
-      contentType?: string;
-      createdAt: string;
-      senderType?: string;
-    };
-    unreadCount?: number;
-    status: string;
-    updatedAt: string;
-    caseId?: string | null;
-    csatScore?: number | null;
-    lastMessageSentiment?: string;
-  };
+  conversation: ConversationRow;
   isSelected: boolean;
   onClick: () => void;
   showCsat?: boolean;
 }
 
-function formatMessagePreview(msg?: { content: string | { text?: string }; contentType?: string }): string {
+function formatMessagePreview(msg?: ConversationRow['lastMessage']): string {
   if (!msg) return '尚無訊息';
 
   if (msg.contentType === 'image') return '[圖片]';

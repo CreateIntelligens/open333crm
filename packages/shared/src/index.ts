@@ -2,6 +2,7 @@ export * from './types/channel.types.js';
 export * from './types/case.types.js';
 export * from './types/conversation.types.js';
 export * from './types/contact.types.js';
+export * from './types/chatbox.types.js';
 export * from './types/api.types.js';
 export * from './types/ws.types.js';
 export * from './constants/case-transitions.js';

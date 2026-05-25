@@ -1,6 +1,6 @@
 import { initSession } from './session.js';
 import { connectVisitorSocket } from './socket.js';
-import { injectStyles, createLauncher, createPanel, appendMessage } from './ui.js';
+import { injectStyles, createLauncher, createPanel, applyPanelTheme, appendMessage } from './ui.js';
 import type { Message } from './session.js';
 import { getRealtimeOrigin } from '@open333crm/shared';
 
@@ -43,6 +43,7 @@ async function boot(): Promise<void> {
   injectStyles();
   const launcher = createLauncher();
   const { panel, messagesEl, input, sendBtn, attachBtn, fileInput } = createPanel('Chat with us');
+  applyPanelTheme(panel, session.theme);
 
   let panelOpen = false;
   let isComposing = false;

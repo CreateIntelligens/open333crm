@@ -19,6 +19,7 @@ import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
 import errorHandlerPlugin from './plugins/error-handler.plugin.js';
 import socketPlugin from './plugins/socket.plugin.js';
+import chatboxPlugin from './plugins/chatbox.plugin.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import conversationRoutes from './modules/conversation/conversation.routes.js';
 import contactRoutes from './modules/contact/contact.routes.js';
@@ -50,6 +51,7 @@ import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 import webchatRoutes from './modules/webchat/webchat.routes.js';
+import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
@@ -91,6 +93,7 @@ export async function bootstrap() {
   await app.register(cookiePlugin);
   await app.register(authPlugin);
   await app.register(socketPlugin);
+  await app.register(chatboxPlugin);
 
   registerChannelPlugin(linePlugin);
   registerChannelPlugin(fbPlugin);
@@ -133,8 +136,9 @@ export async function bootstrap() {
   await app.register(canvasRoutes, { prefix: '/api/v1/canvas' });
   await app.register(identityRoutes, { prefix: '/api/v1/identity' });
   await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });
+  await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
 
-  registerVisitorNamespace(app.io, app.prisma);
+  registerVisitorNamespace(app.io, app.prisma, app.chatboxSessionVerifier);
 
   setupAutomationWorker(app.prisma, app.io);
   setupNotificationWorker(app.prisma);

@@ -8,7 +8,7 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, type ConversationUpdatedPayload } from '@open333crm/shared';
 
 export interface ConversationFilters {
   status?: string;
@@ -120,7 +120,7 @@ export async function listConversations(
           },
         },
       },
-      orderBy: { lastMessageAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       skip: (pagination.page - 1) * pagination.limit,
       take: pagination.limit,
     }),
@@ -214,6 +214,41 @@ export async function getConversation(
   return conversation;
 }
 
+export async function markConversationRead(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  id: string,
+  tenantId: string,
+) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, tenantId },
+    select: { id: true },
+  });
+
+  if (!conversation) {
+    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+  }
+
+  const updated = await prisma.conversation.update({
+    where: { id },
+    data: { unreadCount: 0 },
+  });
+
+  const wsPayload: ConversationUpdatedPayload = {
+    id: updated.id,
+    status: updated.status,
+    assignedToId: updated.assignedToId,
+    unreadCount: updated.unreadCount,
+    lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+    updatedAt: updated.updatedAt.toISOString(),
+  };
+
+  io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
+  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+
+  return updated;
+}
+
 export async function getMessages(
   prisma: PrismaClient,
   conversationId: string,
@@ -261,6 +296,9 @@ export async function sendMessage(
   }
 
   const now = new Date();
+  const sequence = await prisma.message.count({
+    where: { conversationId },
+  }) + 1;
 
   const message = await prisma.message.create({
     data: {
@@ -270,6 +308,7 @@ export async function sendMessage(
       senderId: agentId,
       contentType: data.contentType,
       content: data.content as any,
+      sequence,
       isRead: true,
       createdAt: now,
     },
@@ -304,7 +343,10 @@ export async function sendMessage(
       senderId: message.senderId,
       contentType: message.contentType,
       content: message.content as Record<string, unknown>,
+      type: message.contentType,
+      payload: message.content as Record<string, unknown>,
       createdAt: message.createdAt.toISOString(),
+      sequence: message.sequence,
       sender: (message as any).sender,
     },
   };
@@ -430,6 +472,7 @@ export async function handoffConversation(
   const updateData: Prisma.ConversationUpdateInput = {
     status: 'AGENT_HANDLED',
     handoffReason: 'manual_takeover',
+    lastMessageAt: now,
   };
 
   if (data.assignToId) {
@@ -466,22 +509,17 @@ export async function handoffConversation(
     },
   });
 
-  // Update lastMessageAt
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { lastMessageAt: now },
-  });
-
   // Deliver handoff notification to channel (LINE/FB)
   await deliverToChannel(prisma, conversationId, handoffText);
 
   // Emit WebSocket events
-  const wsPayload = {
+  const wsPayload: ConversationUpdatedPayload = {
     id: updated.id,
     status: updated.status,
     assignedToId: updated.assignedToId,
     unreadCount: updated.unreadCount,
     lastMessageAt: now.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
   };
   io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
   io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
@@ -581,6 +619,8 @@ export async function deliverToChannel(
       const msgPayload = {
         contentType: 'text',
         content: { text },
+        type: 'text',
+        payload: { text },
         direction: 'OUTBOUND',
         senderType: 'BOT',
         channelMsgId: result?.channelMsgId,
@@ -645,12 +685,13 @@ export async function updateConversation(
   });
 
   // Emit WebSocket event
-  const wsPayload = {
+  const wsPayload: ConversationUpdatedPayload = {
     id: updated.id,
     status: updated.status,
     assignedToId: updated.assignedToId,
     unreadCount: updated.unreadCount,
     lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+    updatedAt: updated.updatedAt.toISOString(),
   };
 
   io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
@@ -711,12 +752,13 @@ export async function closeConversation(
     },
   });
 
-  const wsPayload = {
+  const wsPayload: ConversationUpdatedPayload = {
     id: updated.id,
     status: updated.status,
     assignedToId: updated.assignedToId,
     unreadCount: updated.unreadCount,
     lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+    updatedAt: updated.updatedAt.toISOString(),
   };
   io.to(`conversation:${id}`).emit('conversation.updated', wsPayload);
   io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
@@ -778,12 +820,13 @@ export async function closeConversationsForCase(
 
   const now = new Date();
   for (const conversation of conversations) {
-    const wsPayload = {
+    const wsPayload: ConversationUpdatedPayload = {
       id: conversation.id,
       status: 'CLOSED' as const,
       assignedToId: conversation.assignedToId,
       unreadCount: conversation.unreadCount,
       lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
+      updatedAt: now.toISOString(),
     };
     io.to(`conversation:${conversation.id}`).emit('conversation.updated', wsPayload);
     io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);

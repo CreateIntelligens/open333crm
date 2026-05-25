@@ -1,11 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
 // --- Credential Encryption ---
 
 const ALGORITHM = 'aes-256-gcm';
+
+function generatePublicKey(): string {
+  return `ch_${randomUUID().replace(/-/g, '')}`;
+}
 
 function getEncryptionKey(): Buffer {
   const secret = process.env.CREDENTIAL_ENCRYPTION_KEY ?? 'fallback-open333crm-key';
@@ -45,6 +49,7 @@ export async function listChannels(prisma: PrismaClient, tenantId: string) {
       tenantId: true,
       channelType: true,
       displayName: true,
+      publicKey: true,
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
@@ -75,6 +80,7 @@ export async function createChannel(
       tenantId,
       channelType: data.channelType as any,
       displayName: data.displayName,
+      publicKey: generatePublicKey(),
       isActive: true,
       credentialsEncrypted: encrypted,
       settings: (data.settings ?? {}) as any,
@@ -94,6 +100,7 @@ export async function createChannel(
       tenantId: true,
       channelType: true,
       displayName: true,
+      publicKey: true,
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
@@ -114,6 +121,7 @@ export async function getChannel(prisma: PrismaClient, id: string, tenantId: str
       tenantId: true,
       channelType: true,
       displayName: true,
+      publicKey: true,
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
@@ -188,6 +196,7 @@ export async function updateChannel(
       tenantId: true,
       channelType: true,
       displayName: true,
+      publicKey: true,
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
@@ -212,6 +221,37 @@ export async function deleteChannel(prisma: PrismaClient, id: string, tenantId: 
   await prisma.channel.delete({ where: { id } });
 
   return { deleted: true };
+}
+
+export async function ensureChannelPublicKey(
+  prisma: PrismaClient,
+  id: string,
+  tenantId: string,
+): Promise<{ publicKey: string }> {
+  const channel = await prisma.channel.findFirst({
+    where: { id, tenantId },
+    select: { id: true, publicKey: true },
+  });
+
+  if (!channel) {
+    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+  }
+
+  if (channel.publicKey) {
+    return { publicKey: channel.publicKey };
+  }
+
+  const updated = await prisma.channel.update({
+    where: { id },
+    data: { publicKey: generatePublicKey() },
+    select: { publicKey: true },
+  });
+
+  if (!updated.publicKey) {
+    throw new AppError('Unable to generate channel public key', 'INTERNAL_ERROR', 500);
+  }
+
+  return { publicKey: updated.publicKey };
 }
 
 export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: string) {

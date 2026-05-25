@@ -11,7 +11,7 @@ import { deliverToChannel } from '../conversation/conversation.service.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { resolveUidToContact , logger } from '@open333crm/core';
 import { uploadFile } from '../storage/storage.service.js';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, type ConversationUpdatedPayload } from '@open333crm/shared';
 
 // Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
 const outsideHoursReplyCache = new Map<string, number>();
@@ -41,6 +41,8 @@ function emitMediaReady(
       senderId: message.senderId,
       contentType: message.contentType,
       content: updatedContent,
+      type: message.contentType,
+      payload: updatedContent,
       createdAt: message.createdAt.toISOString(),
     },
   };
@@ -121,6 +123,11 @@ export async function processInboundMessage(
   channel: { id: string; channelType: string },
   tenantId: string,
   parsed: ParsedWebhookMessage,
+  options: {
+    conversationId?: string;
+    clientMessageId?: string;
+    messageMetadata?: Record<string, unknown>;
+  } = {},
 ) {
   const { contactUid, contentType, content, channelMsgId } = parsed;
 
@@ -213,15 +220,25 @@ export async function processInboundMessage(
   }
 
   // 2. Find or create Conversation
-  let conversation = await prisma.conversation.findFirst({
-    where: {
-      tenantId,
-      contactId,
-      channelId: channel.id,
-      status: { not: 'CLOSED' },
-    },
-    orderBy: { lastMessageAt: 'desc' },
-  });
+  let conversation = options.conversationId
+    ? await prisma.conversation.findFirst({
+        where: {
+          id: options.conversationId,
+          tenantId,
+          contactId,
+          channelId: channel.id,
+          status: { not: 'CLOSED' },
+        },
+      })
+    : await prisma.conversation.findFirst({
+        where: {
+          tenantId,
+          contactId,
+          channelId: channel.id,
+          status: { not: 'CLOSED' },
+        },
+        orderBy: { lastMessageAt: 'desc' },
+      });
 
   if (!conversation) {
     // Determine initial conversation status based on channel botConfig
@@ -267,6 +284,25 @@ export async function processInboundMessage(
 
   const now = new Date();
 
+  if (options.clientMessageId) {
+    const existingMessage = await prisma.message.findUnique({
+      where: {
+        conversationId_clientMessageId: {
+          conversationId: conversation.id,
+          clientMessageId: options.clientMessageId,
+        },
+      },
+    });
+
+    if (existingMessage) {
+      return { conversation, message: existingMessage, duplicate: true };
+    }
+  }
+
+  const sequence = await prisma.message.count({
+    where: { conversationId: conversation.id },
+  }) + 1;
+
   // 3. Create Message (INBOUND)
   const message = await prisma.message.create({
     data: {
@@ -276,7 +312,10 @@ export async function processInboundMessage(
       senderId: null,
       contentType,
       content: content as any,
+      metadata: (options.messageMetadata ?? {}) as any,
       channelMsgId: channelMsgId ?? null,
+      clientMessageId: options.clientMessageId ?? null,
+      sequence,
       isRead: false,
       createdAt: now,
     },
@@ -355,7 +394,10 @@ export async function processInboundMessage(
       senderId: message.senderId,
       contentType: message.contentType,
       content: message.content as Record<string, unknown>,
+      type: message.contentType,
+      payload: message.content as Record<string, unknown>,
       createdAt: message.createdAt.toISOString(),
+      sequence: message.sequence,
     },
   };
 
@@ -368,12 +410,13 @@ export async function processInboundMessage(
   });
 
   if (updatedConv) {
-    const convPayload = {
+    const convPayload: ConversationUpdatedPayload = {
       id: updatedConv.id,
       status: updatedConv.status,
       assignedToId: updatedConv.assignedToId,
       unreadCount: updatedConv.unreadCount,
       lastMessageAt: updatedConv.lastMessageAt?.toISOString() ?? null,
+      updatedAt: updatedConv.updatedAt.toISOString(),
     };
 
     io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
@@ -462,6 +505,8 @@ export async function processInboundMessage(
             senderType: 'SYSTEM',
             contentType: 'text',
             content: { text: outsideMsg },
+            type: 'text',
+            payload: { text: outsideMsg },
             createdAt: autoReply.createdAt.toISOString(),
           },
         };
@@ -476,6 +521,8 @@ export async function processInboundMessage(
   } catch (err) {
     logger.error('[Webhook] Office hours auto-reply error:', err);
   }
+
+  return { conversation, message, duplicate: false };
 }
 
 function normalizeCanvasEventType(parsed: ParsedWebhookMessage): string {

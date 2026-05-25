@@ -5,6 +5,7 @@ import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { AppError } from '../../shared/utils/response.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import type { ChatboxThemeConfig } from '@open333crm/shared';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,7 +22,7 @@ export async function initVisitorSession(
   prisma: PrismaClient,
   channelId: string,
   visitorToken: string,
-): Promise<{ visitorToken: string; greeting: string | null }> {
+): Promise<{ visitorToken: string; greeting: string | null; theme: ChatboxThemeConfig }> {
   const channel = await prisma.channel.findFirst({
     where: { id: channelId, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
@@ -30,8 +31,25 @@ export async function initVisitorSession(
 
   const settings = (channel.settings ?? {}) as Record<string, unknown>;
   const greeting = (settings.welcomeMessage as string | undefined) ?? null;
+  const theme = getPublicWebchatTheme(settings);
 
-  return { visitorToken, greeting };
+  return { visitorToken, greeting, theme };
+}
+
+function getPublicWebchatTheme(settings: Record<string, unknown>): ChatboxThemeConfig {
+  const theme = (
+    settings.chatboxTheme && typeof settings.chatboxTheme === 'object' && !Array.isArray(settings.chatboxTheme)
+      ? settings.chatboxTheme
+      : {}
+  ) as Record<string, unknown>;
+
+  return {
+    backgroundImageUrl: typeof theme.backgroundImageUrl === 'string' ? theme.backgroundImageUrl : null,
+    backgroundSize: theme.backgroundSize === 'contain' ? 'contain' : 'cover',
+    backgroundPosition: typeof theme.backgroundPosition === 'string' ? theme.backgroundPosition : 'center',
+    foregroundColor: typeof theme.foregroundColor === 'string' ? theme.foregroundColor : undefined,
+    accentColor: typeof theme.accentColor === 'string' ? theme.accentColor : undefined,
+  };
 }
 
 export async function handleVisitorMessage(

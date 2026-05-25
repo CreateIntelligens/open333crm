@@ -14,6 +14,7 @@ import {
   Globe,
   Bot,
   Eye,
+  Image,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ interface Channel {
   id: string;
   channelType: string;
   displayName: string;
+  publicKey?: string | null;
   isActive: boolean;
   webhookUrl?: string;
   lastVerifiedAt?: string;
@@ -61,8 +63,14 @@ export function ChannelManagement() {
   const [botConfigChannel, setBotConfigChannel] = useState<Channel | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [embedCodeDialog, setEmbedCodeDialog] = useState<{ open: boolean; code: string }>({ open: false, code: '' });
+  const [chatboxLinkDialog, setChatboxLinkDialog] = useState<{ open: boolean; url: string }>({ open: false, url: '' });
   const [channelStatuses, setChannelStatuses] = useState<Record<string, { tokenWarning?: string }>>({});
   const [previewChannelId, setPreviewChannelId] = useState<string | null>(null);
+  const [themeChannel, setThemeChannel] = useState<Channel | null>(null);
+  const [themeUrl, setThemeUrl] = useState('');
+  const [themePosition, setThemePosition] = useState('center');
+  const [themeSize, setThemeSize] = useState<'cover' | 'contain'>('cover');
+  const [savingTheme, setSavingTheme] = useState(false);
 
   const { load: loadWidget, unload: unloadWidget } = useWebchat();
 
@@ -157,6 +165,23 @@ export function ChannelManagement() {
     }
   };
 
+  const getChatboxDomain = () => {
+    const configured = webhookBaseUrl || webhookBaseUrlInput;
+    return (configured || window.location.origin).replace(/\/+$/, '');
+  };
+
+  const handleShowChatboxLink = async (channel: Channel) => {
+    try {
+      const res = await api.post(`/channels/${channel.id}/chatbox-link`, {
+        domain: getChatboxDomain(),
+      });
+      setChatboxLinkDialog({ open: true, url: res.data?.data?.url || '' });
+      mutate();
+    } catch {
+      setChatboxLinkDialog({ open: true, url: '無法產生網頁版連結' });
+    }
+  };
+
   const handlePreviewWidget = (channelId: string) => {
     if (previewChannelId === channelId) {
       // Toggle off
@@ -165,6 +190,45 @@ export function ChannelManagement() {
     } else {
       loadWidget(channelId);
       setPreviewChannelId(channelId);
+    }
+  };
+
+  const openThemeDialog = (channel: Channel) => {
+    const theme = ((channel.settings || {}).chatboxTheme || {}) as Record<string, unknown>;
+    setThemeChannel(channel);
+    setThemeUrl(typeof theme.backgroundImageUrl === 'string' ? theme.backgroundImageUrl : '');
+    setThemePosition(typeof theme.backgroundPosition === 'string' ? theme.backgroundPosition : 'center');
+    setThemeSize(theme.backgroundSize === 'contain' ? 'contain' : 'cover');
+  };
+
+  const saveTheme = async () => {
+    if (!themeChannel) return;
+    setSavingTheme(true);
+    try {
+      await api.patch(`/channels/${themeChannel.id}/chatbox-theme`, {
+        backgroundSize: themeSize,
+        backgroundPosition: themePosition || 'center',
+      });
+      setThemeChannel(null);
+      mutate();
+    } finally {
+      setSavingTheme(false);
+    }
+  };
+
+  const uploadThemeBackground = async (file: File) => {
+    if (!themeChannel) return;
+    setSavingTheme(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await api.post(`/channels/${themeChannel.id}/chatbox-theme/background`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setThemeUrl(res.data?.data?.url || '');
+      mutate();
+    } finally {
+      setSavingTheme(false);
     }
   };
 
@@ -228,6 +292,33 @@ export function ChannelManagement() {
                 <p className="text-xs text-green-600">
                   目前使用：{webhookBaseUrl}
                 </p>
+              )}
+              {(channels as Channel[]).some((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT) && (
+                <div className="mt-3 space-y-2 border-t pt-3">
+                  <p className="text-xs font-medium text-muted-foreground">WebChat 網頁版連結</p>
+                  {(channels as Channel[])
+                    .filter((ch) => ch.channelType === CHANNEL_TYPE.WEBCHAT)
+                    .map((ch) => (
+                      <div key={ch.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{ch.displayName}</p>
+                          <p className="truncate font-mono text-xs text-muted-foreground">
+                            {ch.publicKey
+                              ? `${getChatboxDomain()}/chatbox?channel=${ch.publicKey}`
+                              : '尚未產生 publicKey'}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => handleShowChatboxLink(ch)}
+                        >
+                          {ch.publicKey ? '複製連結' : '產生連結'}
+                        </Button>
+                      </div>
+                    ))}
+                </div>
               )}
             </div>
           </div>
@@ -337,6 +428,15 @@ export function ChannelManagement() {
                           >
                             <Eye className="h-3 w-3" />
                             {previewChannelId === ch.id ? '關閉預覽' : '預覽'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs gap-1"
+                            onClick={() => openThemeDialog(ch)}
+                          >
+                            <Image className="h-3 w-3" />
+                            背景
                           </Button>
                         </div>
                       )}
@@ -465,6 +565,83 @@ export function ChannelManagement() {
             >
               <Copy className="mr-1 h-4 w-4" />
               複製
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={chatboxLinkDialog.open} onOpenChange={(v) => setChatboxLinkDialog({ ...chatboxLinkDialog, open: v })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>WebChat 網頁版連結</DialogTitle>
+          </DialogHeader>
+          <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+            {chatboxLinkDialog.url}
+          </pre>
+          <DialogFooter>
+            <Button
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(chatboxLinkDialog.url);
+              }}
+            >
+              <Copy className="mr-1 h-4 w-4" />
+              複製
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!themeChannel} onOpenChange={(v) => { if (!v) setThemeChannel(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chatbox 背景</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-sm font-medium">尺寸</label>
+                <select
+                  value={themeSize}
+                  onChange={(event) => setThemeSize(event.target.value === 'contain' ? 'contain' : 'cover')}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="cover">Cover</option>
+                  <option value="contain">Contain</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">位置</label>
+                <Input
+                  value={themePosition}
+                  onChange={(event) => setThemePosition(event.target.value)}
+                  placeholder="center"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            {themeUrl ? (
+              <div className="h-36 rounded-md border bg-cover bg-center" style={{ backgroundImage: `url(${themeUrl})` }} />
+            ) : null}
+            <label className="block">
+              <span className="text-sm font-medium">上傳背景圖片</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="mt-1 block w-full text-sm"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void uploadThemeBackground(file);
+                }}
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setThemeChannel(null)}>
+              取消
+            </Button>
+            <Button size="sm" onClick={saveTheme} disabled={savingTheme}>
+              {savingTheme ? <Loader2 className="h-4 w-4 animate-spin" /> : '儲存'}
             </Button>
           </DialogFooter>
         </DialogContent>

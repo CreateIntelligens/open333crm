@@ -1,5 +1,11 @@
 import type { Message } from './session.js';
 
+interface PanelTheme {
+  backgroundImageUrl?: string | null;
+  backgroundSize?: 'cover' | 'contain';
+  backgroundPosition?: string;
+}
+
 const STYLES = `
   #o333-launcher {
     position: fixed; bottom: 24px; right: 24px; z-index: 9999;
@@ -25,6 +31,7 @@ const STYLES = `
   #o333-messages {
     flex: 1; overflow-y: auto; padding: 12px;
     display: flex; flex-direction: column; gap: 8px;
+    background: transparent;
   }
   .o333-msg {
     max-width: 80%; padding: 8px 12px; border-radius: 12px;
@@ -115,6 +122,15 @@ export function createPanel(title: string): {
     attachBtn: panel.querySelector('#o333-attach') as HTMLButtonElement,
     fileInput: panel.querySelector('#o333-file') as HTMLInputElement,
   };
+}
+
+export function applyPanelTheme(panel: HTMLElement, theme: PanelTheme): void {
+  if (!theme.backgroundImageUrl) return;
+
+  panel.style.backgroundImage = `linear-gradient(rgba(255,255,255,.88), rgba(255,255,255,.94)), url(${theme.backgroundImageUrl})`;
+  panel.style.backgroundSize = theme.backgroundSize ?? 'cover';
+  panel.style.backgroundPosition = theme.backgroundPosition ?? 'center';
+  panel.style.backgroundRepeat = 'no-repeat';
 }
 
 export function appendMessage(container: HTMLElement, msg: Message, isOutbound: boolean): void {
