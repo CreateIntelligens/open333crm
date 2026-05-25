@@ -1,4 +1,12 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type {
@@ -23,6 +31,7 @@ const TOKEN_VERSION = 'cb2';
 const FINGERPRINT_VERSION = 1;
 const DEFAULT_SESSION_TTL_MINUTES = 24 * 60;
 const STRONG_MISMATCH_THRESHOLD = 3;
+const CLAIM_KEY_PREFIX = 'chatbox:session:claim';
 
 interface NormalizedFingerprint {
   browserFamily: string;
@@ -38,6 +47,7 @@ export interface VerifiedChatboxSession {
   channelId: string;
   conversationId: string;
   visitorToken: string;
+  tokenDigest: string;
   expiresAt: Date;
   lastSeenAt: Date | null;
   fingerprintHash: string;
@@ -54,9 +64,28 @@ export interface VerifiedChatboxSession {
 export interface ChatboxSessionVerifier {
   verify(input: {
     sessionId: string;
+    claimToken: string;
     fingerprint?: ChatboxFingerprintInput;
     userAgent?: string;
   }): Promise<VerifiedChatboxSession>;
+}
+
+export interface ChatboxClaimRedis {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, px: 'PX', ttlMs: number, nx: 'NX'): Promise<'OK' | null>;
+}
+
+interface ChatboxClaimValue {
+  sessionId: string;
+  claimTokenDigest: string;
+  claimedAt: string;
+}
+
+let defaultClaimRedis: Promise<ChatboxClaimRedis> | null = null;
+
+async function getDefaultClaimRedis(): Promise<ChatboxClaimRedis> {
+  defaultClaimRedis ??= import('@open333crm/core').then((core) => core.redis as ChatboxClaimRedis);
+  return defaultClaimRedis;
 }
 
 function getSessionSecret(): string {
@@ -75,6 +104,49 @@ function base64url(input: Buffer): string {
 
 function digestTokenMaterial(randomPart: string): string {
   return createHash('sha256').update(`${randomPart}.${getSessionSecret()}`).digest('hex');
+}
+
+function digestClaimToken(claimToken: string): string {
+  return createHmac('sha256', getSessionSecret()).update(claimToken).digest('hex');
+}
+
+function timingSafeEqualHex(left: string, right: string): boolean {
+  try {
+    const leftBuffer = Buffer.from(left, 'hex');
+    const rightBuffer = Buffer.from(right, 'hex');
+    return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+  } catch {
+    return false;
+  }
+}
+
+export function getChatboxClaimKey(tokenDigest: string): string {
+  return `${CLAIM_KEY_PREFIX}:${tokenDigest}`;
+}
+
+function generateClaimToken(): string {
+  return base64url(randomBytes(32));
+}
+
+function getClaimTtlMs(expiresAt: Date): number {
+  return expiresAt.getTime() - Date.now();
+}
+
+function parseClaimValue(raw: string | null): ChatboxClaimValue | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ChatboxClaimValue>;
+    if (
+      typeof parsed.sessionId === 'string'
+      && typeof parsed.claimTokenDigest === 'string'
+      && typeof parsed.claimedAt === 'string'
+    ) {
+      return parsed as ChatboxClaimValue;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function getSessionEncryptionKey(): Buffer {
@@ -130,6 +202,67 @@ export function verifyChatboxSessionId(sessionId: string): { tokenDigest: string
   }
 
   return { tokenDigest: digestTokenMaterial(payload.randomPart) };
+}
+
+export async function claimChatboxSession(
+  prisma: PrismaClient,
+  input: { sessionId: string; fingerprint?: ChatboxFingerprintInput; userAgent?: string },
+  claimRedis?: ChatboxClaimRedis,
+): Promise<{ session: VerifiedChatboxSession; claimToken: string }> {
+  const session = await verifyChatboxSession(prisma, input);
+  const ttlMs = getClaimTtlMs(session.expiresAt);
+  if (ttlMs <= 0) {
+    throw new AppError('Chatbox session is expired', 'UNAUTHORIZED', 401);
+  }
+
+  const claimToken = generateClaimToken();
+  const value: ChatboxClaimValue = {
+    sessionId: session.id,
+    claimTokenDigest: digestClaimToken(claimToken),
+    claimedAt: new Date().toISOString(),
+  };
+
+  try {
+    const redis = claimRedis ?? await getDefaultClaimRedis();
+    const created = await redis.set(getChatboxClaimKey(session.tokenDigest), JSON.stringify(value), 'PX', ttlMs, 'NX');
+    if (created !== 'OK') {
+      throw new AppError('Chatbox session is already in use', 'FORBIDDEN', 403);
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error('[Chatbox] Redis claim failed:', err);
+    throw new AppError('Chatbox session claim unavailable', 'SERVICE_UNAVAILABLE', 503);
+  }
+
+  return { session, claimToken };
+}
+
+export async function verifyClaimedChatboxSession(
+  prisma: PrismaClient,
+  input: { sessionId: string; claimToken?: string; fingerprint?: ChatboxFingerprintInput; userAgent?: string },
+  claimRedis?: ChatboxClaimRedis,
+): Promise<VerifiedChatboxSession> {
+  if (!input.claimToken) {
+    throw new AppError('Chatbox session claim is required', 'UNAUTHORIZED', 401);
+  }
+
+  const session = await verifyChatboxSession(prisma, input);
+  try {
+    const redis = claimRedis ?? await getDefaultClaimRedis();
+    const claim = parseClaimValue(await redis.get(getChatboxClaimKey(session.tokenDigest)));
+    if (!claim || claim.sessionId !== session.id) {
+      throw new AppError('Chatbox session claim is invalid', 'FORBIDDEN', 403);
+    }
+    if (!timingSafeEqualHex(claim.claimTokenDigest, digestClaimToken(input.claimToken))) {
+      throw new AppError('Chatbox session claim is invalid', 'FORBIDDEN', 403);
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error('[Chatbox] Redis claim verification failed:', err);
+    throw new AppError('Chatbox session claim unavailable', 'SERVICE_UNAVAILABLE', 503);
+  }
+
+  return session;
 }
 
 function detectBrowserFamily(userAgent: string): string {
@@ -383,6 +516,7 @@ export async function verifyChatboxSession(
     channelId: updated.channelId,
     conversationId: updated.conversationId,
     visitorToken: updated.visitorToken,
+    tokenDigest: updated.tokenDigest,
     expiresAt: updated.expiresAt,
     lastSeenAt: updated.lastSeenAt,
     fingerprintHash: updated.fingerprintHash,
@@ -400,13 +534,15 @@ export async function verifyChatboxSession(
 export async function bootstrapChatboxSession(
   prisma: PrismaClient,
   input: { sessionId: string; fingerprint?: ChatboxFingerprintInput; userAgent?: string },
+  claimRedis?: ChatboxClaimRedis,
 ): Promise<ChatboxSessionBootstrap> {
-  const session = await verifyChatboxSession(prisma, input);
+  const { session, claimToken } = await claimChatboxSession(prisma, input, claimRedis);
   return {
     session: {
       expiresAt: session.expiresAt.toISOString(),
       lastSeenAt: session.lastSeenAt?.toISOString() ?? null,
     },
+    claimToken,
     config: buildPublicConfig(session.channel),
   };
 }
@@ -451,8 +587,9 @@ export async function handleChatboxMessage(
   io: SocketIOServer,
   registry: ChatboxMessageRegistry,
   input: ChatboxMessageInput & { fingerprint?: ChatboxFingerprintInput; userAgent?: string },
+  claimRedis?: ChatboxClaimRedis,
 ): Promise<{ message: ChatboxMessageOutput; duplicate: boolean }> {
-  const session = await verifyChatboxSession(prisma, input);
+  const session = await verifyClaimedChatboxSession(prisma, input, claimRedis);
   const existing = await prisma.message.findUnique({
     where: {
       conversationId_clientMessageId: {

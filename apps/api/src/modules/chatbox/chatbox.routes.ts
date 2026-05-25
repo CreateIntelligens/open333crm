@@ -30,6 +30,7 @@ const verifySessionSchema = z.object({
 
 const messageSchema = z.object({
   sessionId: z.string().min(32),
+  claimToken: z.string().min(32),
   clientMessageId: z.string().min(1).max(128),
   type: z.enum(['text', 'image', 'video', 'file', 'emoji', 'system']),
   payload: z.record(z.unknown()),
@@ -83,7 +84,7 @@ export default async function chatboxRoutes(app: FastifyInstance) {
       sessionId: body.data.sessionId,
       fingerprint: body.data.fingerprint,
       userAgent: getUserAgent(req.server, req.headers),
-    });
+    }, req.server.chatboxClaimRedis);
     return reply.send(success(result));
   });
 
@@ -101,6 +102,7 @@ export default async function chatboxRoutes(app: FastifyInstance) {
         ...body.data,
         userAgent: getUserAgent(req.server, req.headers),
       } as unknown) as ChatboxMessageInput & { fingerprint?: typeof body.data.fingerprint; userAgent?: string },
+      req.server.chatboxClaimRedis,
     );
 
     return reply.send(success({ ok: true, duplicate: result.duplicate, message: result.message }));
@@ -116,11 +118,16 @@ export default async function chatboxRoutes(app: FastifyInstance) {
     if (!sessionId?.value) {
       return reply.status(400).send({ error: 'sessionId is required' });
     }
+    const claimToken = data.fields?.claimToken as { value?: string } | undefined;
+    if (!claimToken?.value) {
+      return reply.status(400).send({ error: 'claimToken is required' });
+    }
 
     const fingerprintField = data.fields?.fingerprint as { value?: string } | undefined;
     const fingerprint = fingerprintSchema.safeParse(parseJsonField(fingerprintField?.value));
     const session = await req.server.chatboxSessionVerifier.verify({
       sessionId: sessionId.value,
+      claimToken: claimToken.value,
       fingerprint: fingerprint.success ? fingerprint.data : undefined,
       userAgent: getUserAgent(req.server, req.headers),
     });

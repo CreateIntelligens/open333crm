@@ -39,6 +39,7 @@ export interface ChatboxFingerprintInput {
 
 export interface ChatboxMessageInput {
   sessionId: string;
+  claimToken: string;
   clientMessageId: string;
   type: ChatboxMessageType;
   payload: ChatboxMessagePayload;
@@ -78,5 +79,6 @@ export interface ChatboxSessionBootstrap {
     expiresAt: string;
     lastSeenAt: string | null;
   };
+  claimToken: string;
   config: ChatboxBootstrapConfig;
 }

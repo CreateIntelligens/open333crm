@@ -6,7 +6,7 @@ import {
   registerBuiltInChatboxMessageHandlers,
   type ChatboxMessageRegistry,
 } from '../modules/chatbox/chatbox.registry.js';
-import { verifyChatboxSession, type ChatboxSessionVerifier } from '../modules/chatbox/chatbox.service.js';
+import { verifyClaimedChatboxSession, type ChatboxClaimRedis, type ChatboxSessionVerifier } from '../modules/chatbox/chatbox.service.js';
 
 export interface ChatboxI18nRegistry {
   resolveLocale(locale?: string): string;
@@ -18,6 +18,7 @@ declare module 'fastify' {
     chatboxMessageRegistry: ChatboxMessageRegistry;
     chatboxSessionVerifier: ChatboxSessionVerifier;
     chatboxI18n: ChatboxI18nRegistry;
+    chatboxClaimRedis?: ChatboxClaimRedis;
   }
 }
 
@@ -53,8 +54,8 @@ async function chatboxPlugin(fastify: FastifyInstance) {
   fastify.decorate('chatboxMessageRegistry', registry);
   fastify.decorate('chatboxI18n', createI18nRegistry());
   fastify.decorate('chatboxSessionVerifier', {
-    verify(input: { sessionId: string; fingerprint?: ChatboxFingerprintInput; userAgent?: string }) {
-      return verifyChatboxSession(fastify.prisma, input);
+    verify(input: { sessionId: string; claimToken: string; fingerprint?: ChatboxFingerprintInput; userAgent?: string }) {
+      return verifyClaimedChatboxSession(fastify.prisma, input);
     },
   });
 }

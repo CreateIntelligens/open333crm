@@ -86,6 +86,7 @@ export default function ChatboxPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const fingerprintRef = useRef<ChatboxFingerprintInput | null>(null);
+  const claimTokenRef = useRef<string | null>(null);
   const sortedMessages = useMemo(() => sortMessages(messages), [messages]);
 
   useEffect(() => {
@@ -129,6 +130,12 @@ export default function ChatboxPage() {
         return;
       }
 
+      if (response.status === 403 && !cancelled) {
+        setLoadState('error');
+        setError('此聊天連結已被使用，請重新開啟新的聊天室。');
+        return;
+      }
+
       if (!response.ok) {
         throw new Error('SESSION_VERIFY_FAILED');
       }
@@ -137,6 +144,7 @@ export default function ChatboxPage() {
       if (cancelled) return;
 
       setSessionId(currentSessionId);
+      claimTokenRef.current = data.claimToken;
       setConfig(data.config);
       setMessages(data.config.greeting ? [{
         id: 'greeting',
@@ -151,7 +159,7 @@ export default function ChatboxPage() {
       setLoadState('ready');
 
       const socket = io(`${REALTIME_ORIGIN}/visitor`, {
-        auth: { sessionId: currentSessionId, fingerprint },
+        auth: { sessionId: currentSessionId, claimToken: data.claimToken, fingerprint },
         transports: ['websocket', 'polling'],
       });
       socketRef.current = socket;
@@ -178,7 +186,7 @@ export default function ChatboxPage() {
 
   async function sendText() {
     const text = input.trim();
-    if (!text || !sessionId || sending) return;
+    if (!text || !sessionId || !claimTokenRef.current || sending) return;
 
     const optimistic: ChatboxMessageOutput = {
       id: newClientMessageId(),
@@ -200,6 +208,7 @@ export default function ChatboxPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId,
+          claimToken: claimTokenRef.current,
           clientMessageId: optimistic.id,
           type: 'text',
           payload: { text },
@@ -224,9 +233,10 @@ export default function ChatboxPage() {
   }
 
   async function sendMedia(file: File) {
-    if (!sessionId) return;
+    if (!sessionId || !claimTokenRef.current) return;
     const formData = new FormData();
     formData.append('sessionId', sessionId);
+    formData.append('claimToken', claimTokenRef.current);
     formData.append('fingerprint', JSON.stringify(fingerprintRef.current));
     formData.append('file', file);
 
@@ -241,6 +251,7 @@ export default function ChatboxPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId,
+          claimToken: claimTokenRef.current,
           clientMessageId,
           type: data.contentType,
           payload: { url: data.url, filename: file.name, mimeType: file.type, sizeBytes: file.size },

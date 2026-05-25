@@ -35,7 +35,7 @@ export function registerVisitorNamespace(
         return next(new Error('Too many visitor socket connections'));
       }
 
-      const { visitorToken, channelId, sessionId, fingerprint } = socket.handshake.auth as Record<string, unknown>;
+      const { visitorToken, channelId, sessionId, claimToken, fingerprint } = socket.handshake.auth as Record<string, unknown>;
 
       if (typeof sessionId === 'string') {
         if (!chatboxSessionVerifier) {
@@ -43,6 +43,7 @@ export function registerVisitorNamespace(
         }
         const session = await chatboxSessionVerifier.verify({
           sessionId,
+          claimToken: typeof claimToken === 'string' ? claimToken : '',
           fingerprint: fingerprint && typeof fingerprint === 'object' ? fingerprint as any : undefined,
           userAgent: typeof socket.handshake.headers['user-agent'] === 'string'
             ? socket.handshake.headers['user-agent']
