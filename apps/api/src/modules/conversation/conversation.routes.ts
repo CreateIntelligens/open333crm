@@ -5,6 +5,7 @@ import {
   listConversations,
   getConversation,
   getMessages,
+  markConversationRead,
   sendMessage,
   updateConversation,
   closeConversation,
@@ -178,6 +179,18 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+    );
+
+    return reply.send(success(conversation));
+  });
+
+  // POST /api/v1/conversations/:id/read
+  fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
+    const conversation = await markConversationRead(
+      fastify.prisma,
+      fastify.io,
+      request.params.id,
+      request.agent.tenantId,
     );
 
     return reply.send(success(conversation));

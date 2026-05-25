@@ -11,7 +11,7 @@ import { deliverToChannel } from '../conversation/conversation.service.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { resolveUidToContact , logger } from '@open333crm/core';
 import { uploadFile } from '../storage/storage.service.js';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, type ConversationUpdatedPayload } from '@open333crm/shared';
 
 // Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
 const outsideHoursReplyCache = new Map<string, number>();
@@ -410,12 +410,13 @@ export async function processInboundMessage(
   });
 
   if (updatedConv) {
-    const convPayload = {
+    const convPayload: ConversationUpdatedPayload = {
       id: updatedConv.id,
       status: updatedConv.status,
       assignedToId: updatedConv.assignedToId,
       unreadCount: updatedConv.unreadCount,
       lastMessageAt: updatedConv.lastMessageAt?.toISOString() ?? null,
+      updatedAt: updatedConv.updatedAt.toISOString(),
     };
 
     io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);

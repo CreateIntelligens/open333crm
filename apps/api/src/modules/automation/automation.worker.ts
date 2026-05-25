@@ -7,6 +7,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
+import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { Queue } from 'bullmq';
 import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
@@ -126,7 +127,7 @@ async function checkAutoHandoff(
         },
       });
 
-      await prisma.conversation.update({
+      const updatedConversation = await prisma.conversation.update({
         where: { id: conversationId },
         data: { lastMessageAt: now },
       });
@@ -148,9 +149,13 @@ async function checkAutoHandoff(
       });
 
       // Emit WebSocket events
-      const wsPayload = {
-        id: conversationId,
-        status: 'AGENT_HANDLED',
+      const wsPayload: ConversationUpdatedPayload = {
+        id: updatedConversation.id,
+        status: updatedConversation.status,
+        assignedToId: updatedConversation.assignedToId,
+        unreadCount: updatedConversation.unreadCount,
+        lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
+        updatedAt: updatedConversation.updatedAt.toISOString(),
         handoffReason: reason,
       };
       io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);

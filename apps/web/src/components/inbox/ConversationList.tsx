@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { useConversations } from '@/hooks/useConversations';
+import { useConversations, type ConversationRow } from '@/hooks/useConversations';
 import { useAuth } from '@/providers/AuthProvider';
 import { ConversationListItem } from './ConversationListItem';
 import { FilterDrawer, type FilterValues } from './FilterDrawer';
@@ -62,7 +62,17 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     return f;
   }, [mainTab, filterValues, closedRange, agent?.id]);
 
-  const { conversations, isLoading } = useConversations(apiFilters);
+  const { conversations, isLoading, markConversationRead } = useConversations(apiFilters, {
+    selectedId,
+  });
+
+  const handleSelectConversation = (conversation: ConversationRow) => {
+    if ((conversation.unreadCount ?? 0) > 0) {
+      markConversationRead(conversation.id);
+    }
+
+    onSelect(conversation.id);
+  };
 
   // Client-side filter for sub-tabs and search
   let filtered = conversations;
@@ -81,7 +91,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
   if (search) {
     const lowerSearch = search.toLowerCase();
     filtered = filtered.filter(
-      (c: { contact?: { name?: string; displayName?: string }; lastMessage?: { content: string | { text?: string } } }) => {
+      (c: ConversationRow) => {
         const contactName = c.contact?.name || c.contact?.displayName || '';
         const rawContent = c.lastMessage?.content;
         const msgText = typeof rawContent === 'object' && rawContent !== null
@@ -177,12 +187,12 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
           />
         ) : (
           <div className="space-y-0.5 p-2">
-            {filtered.map((conversation: { id: string; contact?: { id: string; name?: string; displayName?: string; avatar?: string; avatarUrl?: string }; channelType: string; lastMessage?: { content: string | { text?: string }; contentType?: string; createdAt: string; senderType?: string }; unreadCount?: number; status: string; updatedAt: string; assignedToId?: string | null; caseId?: string | null; csatScore?: number | null }) => (
+            {filtered.map((conversation: ConversationRow) => (
               <ConversationListItem
                 key={conversation.id}
                 conversation={conversation}
                 isSelected={selectedId === conversation.id}
-                onClick={() => onSelect(conversation.id)}
+                onClick={() => handleSelectConversation(conversation)}
                 showCsat={mainTab === 'closed'}
               />
             ))}

@@ -1,3 +1,14 @@
+export interface ConversationUpdatedPayload {
+  id: string;
+  status?: string;
+  assignedToId?: string | null;
+  unreadCount?: number;
+  lastMessageAt?: string | null;
+  updatedAt: string;
+  handoffReason?: string;
+  source?: string;
+}
+
 export interface WsMessageNew {
   conversationId: string;
   message: {
@@ -12,13 +23,7 @@ export interface WsMessageNew {
   };
 }
 
-export interface WsConversationUpdated {
-  id: string;
-  status: string;
-  assignedToId?: string;
-  unreadCount: number;
-  lastMessageAt?: string;
-}
+export type WsConversationUpdated = ConversationUpdatedPayload;
 
 export interface WsCaseUpdated {
   id: string;

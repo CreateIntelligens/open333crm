@@ -18,6 +18,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
+import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { attemptKbAutoReply } from '../../ai/kb-autoreply.service.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { generateReply } from '../../ai/llm.service.js';
@@ -544,7 +545,7 @@ async function handleAssignBot(
     throw new Error('Cannot assign bot: no conversationId in context');
   }
 
-  await prisma.conversation.update({
+  const updatedConversation = await prisma.conversation.update({
     where: { id: context.conversationId },
     data: {
       status: 'BOT_HANDLED',
@@ -554,12 +555,17 @@ async function handleAssignBot(
   });
 
   // Emit WebSocket event
-  io.to(`tenant:${context.tenantId}`).emit('conversation.updated', {
-    id: context.conversationId,
-    status: 'BOT_HANDLED',
+  const wsPayload: ConversationUpdatedPayload = {
+    id: updatedConversation.id,
+    status: updatedConversation.status,
     assignedToId: null,
+    unreadCount: updatedConversation.unreadCount,
+    lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
+    updatedAt: updatedConversation.updatedAt.toISOString(),
     source: 'automation',
-  });
+  };
+  io.to(`conversation:${context.conversationId}`).emit('conversation.updated', wsPayload);
+  io.to(`tenant:${context.tenantId}`).emit('conversation.updated', wsPayload);
 
   return { status: 'BOT_HANDLED' };
 }

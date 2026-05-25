@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
+import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
@@ -167,12 +168,13 @@ export async function simulateInboundMessage(
   });
 
   if (updatedConv) {
-    const convPayload = {
+    const convPayload: ConversationUpdatedPayload = {
       id: updatedConv.id,
       status: updatedConv.status,
       assignedToId: updatedConv.assignedToId,
       unreadCount: updatedConv.unreadCount,
       lastMessageAt: updatedConv.lastMessageAt?.toISOString() ?? null,
+      updatedAt: updatedConv.updatedAt.toISOString(),
     };
 
     io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
