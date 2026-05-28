@@ -29,9 +29,10 @@ export async function recordKbFeedback(
     return;
   }
 
-  // 反查 bot 訊息（拿 conversation + metadata confidence + 回答快照）
+  // 反查 bot 訊息（拿 conversation + metadata confidence + 回答快照）。
+  // 透過 conversation.tenantId 限定租戶，避免跨租戶讀到他人對話內容。
   const botMsg = await prisma.message.findFirst({
-    where: { id: input.messageId },
+    where: { id: input.messageId, conversation: { tenantId } },
     select: {
       conversationId: true,
       content: true,

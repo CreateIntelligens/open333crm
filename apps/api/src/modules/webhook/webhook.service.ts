@@ -382,7 +382,10 @@ export async function processInboundMessage(
   }
 
   // 5b. Intercept KB feedback postback：kb_feedback:bad|good:{articleId|none}:{messageId}
-  const fbMatch = postbackData.match(/^kb_feedback:(bad|good):([a-f0-9-]+|none):([a-f0-9-]+)$/i);
+  // 同時比對 postbackData 與 textContent（仿 CSAT）— LINE 走 postback，
+  // 但 FB/WEBCHAT 點 quick reply 可能以文字回傳。
+  const fbPattern = /^kb_feedback:(bad|good):([a-f0-9-]+|none):([a-f0-9-]+)$/i;
+  const fbMatch = postbackData.match(fbPattern) || textContent.match(fbPattern);
   if (fbMatch) {
     const rating = fbMatch[1] as 'bad' | 'good';
     const articleId = fbMatch[2];

@@ -49,10 +49,10 @@ function validateItems(items: QuickReplyItem[]): void {
 }
 
 function validateName(name: string): void {
-  if (!name || name.length === 0) {
+  if (!name || name.trim().length === 0) {
     throw new AppError('名稱不能為空', 'INVALID_INPUT', 400);
   }
-  if (name.length > 100) {
+  if (name.trim().length > 100) {
     throw new AppError('名稱不能超過 100 字', 'INVALID_INPUT', 400);
   }
 }
@@ -80,7 +80,7 @@ export async function createPreset(
   return prisma.quickReplyPreset.create({
     data: {
       tenantId,
-      name: input.name,
+      name: input.name.trim(),
       items: input.items as unknown as Prisma.InputJsonValue,
     },
   });
@@ -97,7 +97,7 @@ export async function updatePreset(
   if (input.items !== undefined) validateItems(input.items);
 
   const data: Prisma.QuickReplyPresetUpdateInput = {};
-  if (input.name !== undefined) data.name = input.name;
+  if (input.name !== undefined) data.name = input.name.trim();
   if (input.items !== undefined) data.items = input.items as unknown as Prisma.InputJsonValue;
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
