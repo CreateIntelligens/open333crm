@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Plus, Upload, Search, Loader2, Brain } from 'lucide-react';
+import { Plus, Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
 import { useKnowledge, useCategories } from '@/hooks/useKnowledge';
+import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
 import { ArticleList } from '@/components/knowledge/ArticleList';
 import { ArticleFormDialog } from '@/components/knowledge/ArticleFormDialog';
 import { ImportDialog } from '@/components/knowledge/ImportDialog';
@@ -35,7 +36,29 @@ export default function KnowledgePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<any>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [pageTab, setPageTab] = useState<'articles' | 'search' | 'embedding' | 'chat'>('articles');
+  const [pageTab, setPageTab] = useState<'articles' | 'search' | 'feedback' | 'embedding' | 'chat'>('articles');
+
+  // KB 回報（調教）
+  const { feedback, isLoading: feedbackLoading, mutate: mutateFeedback } = useKbFeedbackList({ status: 'open' });
+
+  const handleResolveFeedback = useCallback(async (id: string) => {
+    try {
+      await resolveKbFeedback(id);
+      mutateFeedback();
+    } catch (err: any) {
+      alert(err.response?.data?.error?.message || '操作失敗');
+    }
+  }, [mutateFeedback]);
+
+  const handleEditFromFeedback = useCallback(async (articleId: string) => {
+    try {
+      const res = await api.get(`/knowledge/${articleId}`);
+      setEditingArticle(res.data.data);
+      setDialogOpen(true);
+    } catch {
+      alert('找不到此文章，可能已被刪除');
+    }
+  }, []);
 
   // Semantic search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,7 +136,8 @@ export default function KnowledgePage() {
     setDialogOpen(false);
     setEditingArticle(null);
     mutate();
-  }, [mutate]);
+    mutateFeedback();
+  }, [mutate, mutateFeedback]);
 
   const handleNewArticle = useCallback(() => {
     setEditingArticle(null);
@@ -147,10 +171,18 @@ export default function KnowledgePage() {
 
       {/* Top-level page tabs: articles vs semantic search */}
       <div className="border-b px-6 pt-2">
-        <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as 'articles' | 'search' | 'embedding' | 'chat')}>
+        <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as 'articles' | 'search' | 'feedback' | 'embedding' | 'chat')}>
           <TabsList>
             <TabsTrigger value="articles">文章管理</TabsTrigger>
             <TabsTrigger value="search">語義搜尋</TabsTrigger>
+            <TabsTrigger value="feedback">
+              回報調教
+              {feedback.length > 0 && (
+                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {feedback.length}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="embedding">Embedding 設定</TabsTrigger>
             <TabsTrigger value="chat">Chat & Prompt</TabsTrigger>
           </TabsList>
@@ -298,6 +330,81 @@ export default function KnowledgePage() {
                 <p className="text-center text-sm text-muted-foreground py-8">
                   輸入關鍵字進行語義搜尋，系統會根據向量相似度找到最相關的知識庫文章
                 </p>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* ── 回報調教 Tab ──────────────────────────────────── */}
+          <TabsContent value="feedback" className="flex h-[calc(100vh-130px)] flex-col">
+            <div className="border-b py-3 shrink-0">
+              <p className="text-sm text-muted-foreground">
+                使用者在 LINE 點「👎 沒幫到我」的回報。點「編輯文章」修正知識庫內容（存檔後自動重新嵌入），處理完點「標為已處理」。
+              </p>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto py-2">
+              {feedbackLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : feedback.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  目前沒有待處理的回報 🎉
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {feedback.map((f) => (
+                    <div key={f.id} className="rounded-lg border p-4">
+                      <div className="flex items-start gap-2">
+                        <ThumbsDown className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(f.createdAt).toLocaleString('zh-TW')}
+                            </span>
+                            {f.confidence != null && (
+                              <Badge variant="outline" className="text-[10px]">
+                                相似度 {(f.confidence * 100).toFixed(0)}%
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="mt-1.5 text-sm">
+                            <span className="font-medium text-slate-700">使用者問：</span>
+                            {f.userQuestion || <span className="text-muted-foreground">（無法取得問句）</span>}
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            <span className="font-medium">Bot 回答：</span>
+                            {f.botReply ? (f.botReply.length > 150 ? f.botReply.slice(0, 150) + '…' : f.botReply) : '—'}
+                          </div>
+                          <div className="mt-1.5 text-xs">
+                            <span className="text-muted-foreground">命中文章：</span>
+                            <span className="font-medium">{f.article?.title || f.articleId}</span>
+                            {f.article?.externalDocId && (
+                              <span className="ml-1 text-muted-foreground">(DocID {f.article.externalDocId})</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditFromFeedback(f.articleId)}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" />
+                            編輯文章
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleResolveFeedback(f.id)}
+                          >
+                            <Check className="mr-1 h-3 w-3" />
+                            標為已處理
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </TabsContent>

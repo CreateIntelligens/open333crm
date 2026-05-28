@@ -568,11 +568,20 @@ function getRedisPub(): IORedis {
  * For WEBCHAT, also pushes the message to the visitor's Socket.IO room via Redis bridge.
  * Non-fatal: errors are logged but not thrown.
  */
+/**
+ * 把訊息送出 channel。
+ * - 傳 string → 當純文字送
+ * - 傳 { contentType, content } → 用該 payload 送（例如素材：圖、影片、Flex、Carousel）
+ */
 export async function deliverToChannel(
   prisma: PrismaClient,
   conversationId: string,
-  text: string,
+  payload: string | { contentType: string; content: Record<string, unknown> },
 ): Promise<void> {
+  const outbound = typeof payload === 'string'
+    ? { contentType: 'text', content: { text: payload } as Record<string, unknown> }
+    : payload;
+
   try {
     const conv = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -605,10 +614,10 @@ export async function deliverToChannel(
       return;
     }
 
-    logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid}`);
+    logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid} contentType=${outbound.contentType}`);
     const result = await plugin.sendMessage(
       identity.uid,
-      { contentType: 'text', content: { text } },
+      outbound,
       credentials,
     );
     logger.info(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
@@ -617,10 +626,10 @@ export async function deliverToChannel(
     if (conv.channel.channelType === CHANNEL_TYPE.WEBCHAT) {
       const room = `visitor:${conv.channel.id}:${identity.uid}`;
       const msgPayload = {
-        contentType: 'text',
-        content: { text },
-        type: 'text',
-        payload: { text },
+        contentType: outbound.contentType,
+        content: outbound.content,
+        type: outbound.contentType,
+        payload: outbound.content,
         direction: 'OUTBOUND',
         senderType: 'BOT',
         channelMsgId: result?.channelMsgId,

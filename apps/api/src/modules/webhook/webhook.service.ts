@@ -6,6 +6,7 @@ import { eventBus } from '../../events/event-bus.js';
 import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { trackBroadcastReply } from '../marketing/broadcast.tracking.js';
 import { recordCsatScore } from '../csat/csat.service.js';
+import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
@@ -378,6 +379,26 @@ export async function processInboundMessage(
       await recordCsatScore(prisma, io, csatCaseId, score);
       return; // Don't publish message.received to avoid triggering automations
     }
+  }
+
+  // 5b. Intercept KB feedback postback：kb_feedback:bad|good:{articleId|none}:{messageId}
+  const fbMatch = postbackData.match(/^kb_feedback:(bad|good):([a-f0-9-]+|none):([a-f0-9-]+)$/i);
+  if (fbMatch) {
+    const rating = fbMatch[1] as 'bad' | 'good';
+    const articleId = fbMatch[2];
+    const fbMessageId = fbMatch[3];
+    try {
+      await recordKbFeedback(prisma, tenantId, {
+        rating,
+        articleId,
+        messageId: fbMessageId,
+        contactId: contactId ?? undefined,
+      });
+      await deliverToChannel(prisma, conversation.id, '感謝您的回報，我們會持續改善 🙏');
+    } catch (err) {
+      logger.error('[Webhook] KB feedback handling failed:', err);
+    }
+    return; // 不發 message.received，不觸發 automation（同 CSAT）
   }
 
   // 6. Track broadcast reply (non-blocking)

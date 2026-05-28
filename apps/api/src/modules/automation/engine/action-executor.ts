@@ -14,15 +14,17 @@
  *   llm_reply          – LLM-generated reply
  *   update_case_status – Update a case's status
  *   escalate_case      – Escalate a case (priority bump + ESCALATED status)
+ *   send_material      – Send a Material/Template (image, video, flex, carousel, ...)
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
 import type { Server } from 'socket.io';
 import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { attemptKbAutoReply } from '../../ai/kb-autoreply.service.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { generateReply } from '../../ai/llm.service.js';
 import { autoAssignCase } from '../../case/assignment.service.js';
+import { renderTemplateBody } from '../../marketing/template-renderer.js';
 import { logger } from '@open333crm/core';
 
 export interface ActionPayload {
@@ -45,7 +47,7 @@ export interface ActionContext {
 }
 
 // Actions that send outbound messages to the contact
-const OUTBOUND_ACTIONS = new Set(['send_message', 'llm_reply', 'kb_auto_reply']);
+const OUTBOUND_ACTIONS = new Set(['send_message', 'llm_reply', 'kb_auto_reply', 'send_material']);
 
 // Tags that indicate opt-out / do-not-disturb
 const OPT_OUT_TAGS = ['do_not_disturb', 'opt_out', '勿擾', '退訂'];
@@ -139,6 +141,12 @@ export async function executeActions(
 
         case 'send_message': {
           const result = await handleSendMessage(prisma, io, context, action.params);
+          results.push({ action: action.type, success: true, data: result });
+          break;
+        }
+
+        case 'send_material': {
+          const result = await handleSendMaterial(prisma, io, context, action.params);
           results.push({ action: action.type, success: true, data: result });
           break;
         }
@@ -490,6 +498,84 @@ async function handleSendMessage(
   await deliverToChannel(prisma, context.conversationId, text);
 
   return { messageId: message.id };
+}
+
+/**
+ * Send a Material/Template (image, video, flex, carousel, ...) as bot reply.
+ * params: { materialId: string, variables?: Record<string, string> }
+ *
+ * - materialId 來自 Material 表（marketing/materials 庫）
+ * - 若 material.body 含 {{key}} 變數，會用 params.variables map 渲染
+ * - contentType 沿用 material.contentType（line_text / line_image / line_carousel / ...）
+ */
+async function handleSendMaterial(
+  prisma: PrismaClient,
+  io: Server,
+  context: ActionContext,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (!context.conversationId) {
+    throw new Error('Cannot send material: no conversationId in context');
+  }
+  const materialId = params.materialId as string;
+  if (!materialId) {
+    throw new Error('Cannot send material: materialId not specified');
+  }
+
+  const material = await prisma.material.findFirst({
+    where: { id: materialId, tenantId: context.tenantId },
+    select: { id: true, contentType: true, body: true, channelType: true },
+  });
+  if (!material) {
+    throw new Error(`Material ${materialId} not found`);
+  }
+
+  const variables = (params.variables as Record<string, string> | undefined) ?? {};
+  const renderedBody = renderTemplateBody(
+    material.body as Record<string, unknown>,
+    variables,
+  );
+
+  // 1. 寫 outbound message 進 DB（給對話歷史看）
+  const message = await prisma.message.create({
+    data: {
+      conversationId: context.conversationId,
+      direction: 'OUTBOUND',
+      senderType: 'SYSTEM',
+      contentType: material.contentType,
+      content: renderedBody as unknown as Prisma.InputJsonValue,
+      metadata: { source: 'automation', materialId, source_type: 'send_material' },
+    },
+  });
+
+  await prisma.conversation.update({
+    where: { id: context.conversationId },
+    data: { lastMessageAt: new Date() },
+  });
+
+  // 2. WebSocket 推給 UI
+  const wsPayload = {
+    conversationId: context.conversationId,
+    message: {
+      id: message.id,
+      conversationId: context.conversationId,
+      direction: 'OUTBOUND',
+      senderType: 'SYSTEM',
+      contentType: material.contentType,
+      content: renderedBody,
+      createdAt: message.createdAt.toISOString(),
+    },
+  };
+  io.to(`conversation:${context.conversationId}`).emit('message.new', wsPayload);
+  io.to(`tenant:${context.tenantId}`).emit('message.new', wsPayload);
+
+  // 3. 送出 channel（image / flex / carousel 等都靠 plugin.sendMessage 處理）
+  await deliverToChannel(prisma, context.conversationId, {
+    contentType: material.contentType,
+    content: renderedBody,
+  });
+
+  return { messageId: message.id, materialId };
 }
 
 async function handleAssignAgent(

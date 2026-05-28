@@ -52,6 +52,21 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     mutates: ['conversation', 'message'],
   },
   {
+    type: 'send_material',
+    label: '傳送素材',
+    requires: ['contact', 'conversation'],
+    mutates: ['conversation', 'message'],
+    params: [
+      {
+        key: 'materialId',
+        label: '素材 ID',
+        type: 'string',
+        required: true,
+        placeholder: '從素材庫選擇要送出的素材',
+      },
+    ],
+  },
+  {
     type: 'create_case',
     label: '建立工單',
     requires: ['contact'],

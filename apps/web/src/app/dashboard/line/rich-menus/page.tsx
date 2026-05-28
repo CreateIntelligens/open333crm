@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Copy, Trash2, Edit, MoreHorizontal } from 'lucide-react';
+import { Plus, Copy, Trash2, Edit, MoreHorizontal, Send, Undo2 } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,8 @@ import {
   useRichMenus,
   deleteRichMenu,
   duplicateRichMenu,
+  publishRichMenu,
+  unpublishRichMenu,
   type RichMenu,
 } from '@/hooks/useRichMenus';
 
@@ -77,6 +79,28 @@ export default function RichMenusPage() {
     }
   };
 
+  const handlePublish = async (id: string) => {
+    if (!confirm('確定發布到 LINE？發布後將無法直接編輯，需先取消發布。')) return;
+    try {
+      await publishRichMenu(id);
+      mutate();
+    } catch (err: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      alert(((err as any)?.response?.data?.error?.message) ?? '發布失敗');
+    }
+  };
+
+  const handleUnpublish = async (id: string) => {
+    if (!confirm('確定取消發布？將從 LINE 移除此 Rich Menu。')) return;
+    try {
+      await unpublishRichMenu(id);
+      mutate();
+    } catch (err: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      alert(((err as any)?.response?.data?.error?.message) ?? '取消發布失敗');
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col bg-slate-50">
       <Topbar title="LINE 管理" />
@@ -93,7 +117,7 @@ export default function RichMenusPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Rich Menu</h1>
               <p className="mt-1 text-sm text-slate-500">
-                LINE 聊天視窗底部的固定選單。本期僅支援草稿管理，發布功能後續上線。
+                LINE 聊天視窗底部的固定選單。建立草稿後可直接發布到 LINE。
               </p>
             </div>
             {channelId && (
@@ -138,6 +162,8 @@ export default function RichMenusPage() {
                   onEdit={(id) => router.push(`/dashboard/line/rich-menus/${id}`)}
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
+                  onPublish={handlePublish}
+                  onUnpublish={handleUnpublish}
                 />
               ))}
             </div>
@@ -153,14 +179,20 @@ function RichMenuCard({
   onEdit,
   onDuplicate,
   onDelete,
+  onPublish,
+  onUnpublish,
 }: {
   richMenu: RichMenu;
   onEdit: (id: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onPublish: (id: string) => void;
+  onUnpublish: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const statusInfo = STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
+  const isPublished = richMenu.status === 'published';
+  const isDraft = richMenu.status === 'draft';
 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -188,7 +220,25 @@ function RichMenuCard({
         </div>
 
         <div className="flex items-center justify-end gap-1 pt-1">
-          <Button variant="ghost" size="sm" onClick={() => onEdit(richMenu.id)}>
+          {isDraft && (
+            <Button variant="default" size="sm" onClick={() => onPublish(richMenu.id)}>
+              <Send className="mr-1 h-3 w-3" />
+              發布
+            </Button>
+          )}
+          {isPublished && (
+            <Button variant="outline" size="sm" onClick={() => onUnpublish(richMenu.id)}>
+              <Undo2 className="mr-1 h-3 w-3" />
+              取消發布
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(richMenu.id)}
+            disabled={isPublished}
+            title={isPublished ? '已發布需先取消發布才能編輯' : undefined}
+          >
             <Edit className="mr-1 h-3 w-3" />
             編輯
           </Button>
@@ -207,7 +257,9 @@ function RichMenuCard({
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={isPublished}
+                  title={isPublished ? '已發布需先取消發布才能刪除' : undefined}
                   onClick={() => { setMenuOpen(false); onDelete(richMenu.id); }}
                 >
                   <Trash2 className="h-3 w-3" />刪除

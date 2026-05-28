@@ -38,6 +38,7 @@ import slaRoutes from './modules/sla/sla.routes.js';
 import lineLoginRoutes from './modules/line-login/line-login.routes.js';
 import lineProfileRoutes from './modules/line/line-profile.routes.js';
 import richMenuRoutes from './modules/line/rich-menu.routes.js';
+import quickReplyPresetRoutes from './modules/line/quick-reply-preset.routes.js';
 import fbLoginRoutes from './modules/fb-login/fb-login.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
@@ -123,6 +124,7 @@ export async function bootstrap() {
   await app.register(lineLoginRoutes, { prefix: '/api/v1/auth/line' });
   await app.register(lineProfileRoutes, { prefix: '/api/v1' });
   await app.register(richMenuRoutes, { prefix: '/api/v1/line/rich-menus' });
+  await app.register(quickReplyPresetRoutes, { prefix: '/api/v1/line/quick-reply-presets' });
   await app.register(fbLoginRoutes, { prefix: '/api/v1/auth/fb' });
   await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(analyticsRoutes, { prefix: '/api/v1/analytics' });

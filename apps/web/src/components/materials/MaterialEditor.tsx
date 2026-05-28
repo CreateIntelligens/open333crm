@@ -22,6 +22,7 @@ import { LineImagemapEditor } from './line/LineImagemapEditor';
 import { LineVideoEditor } from './line/LineVideoEditor';
 import { LineFlexShowcaseEditor } from './line/showcase/LineFlexShowcaseEditor';
 import { MaterialPreview } from './MaterialPreview';
+import { QuickReplyEditor, type QuickReplyItem } from './QuickReplyEditor';
 import type { MaterialVariable } from '@/hooks/useMaterials';
 
 export interface MaterialDraft {
@@ -148,6 +149,22 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
               <div className="text-xs text-slate-500">此版型暫無視覺化編輯器</div>
             )}
           </section>
+
+          {/* Quick Reply（LINE 專用） */}
+          {draft.channelType === 'line' && (
+            <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+              <div className="text-sm font-semibold">快速回覆按鈕（選填）</div>
+              <QuickReplyEditor
+                value={(draft.body.quickReplies as QuickReplyItem[] | undefined) ?? []}
+                onChange={(next) =>
+                  onChange({
+                    ...draft,
+                    body: { ...draft.body, quickReplies: next.length > 0 ? next : undefined },
+                  })
+                }
+              />
+            </section>
+          )}
         </div>
 
         {showPreview && (

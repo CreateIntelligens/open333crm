@@ -26,10 +26,15 @@ interface TemplateItem {
   variables: TemplateVariable[];
 }
 
+interface QuickReplyItem {
+  label: string;
+  text?: string;
+}
+
 interface TemplatePickerProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (text: string) => void;
+  onSelect: (text: string, extra?: { quickReplies?: QuickReplyItem[] }) => void;
   channelType?: string;
 }
 
@@ -92,11 +97,16 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
 
   if (!open) return null;
 
+  const extractQuickReplies = (tpl: TemplateItem): QuickReplyItem[] | undefined => {
+    const qr = (tpl.body as Record<string, unknown>).quickReplies;
+    return Array.isArray(qr) && qr.length > 0 ? (qr as QuickReplyItem[]) : undefined;
+  };
+
   const handleSelectTemplate = (tpl: TemplateItem) => {
     const keys = extractKeys(tpl.body);
     if (keys.length === 0) {
       // No variables — direct insert
-      onSelect(getBodyText(tpl.body));
+      onSelect(getBodyText(tpl.body), { quickReplies: extractQuickReplies(tpl) });
       onClose();
       return;
     }
@@ -116,7 +126,7 @@ export function TemplatePicker({ open, onClose, onSelect, channelType }: Templat
     if (!selected) return;
     const text = getBodyText(selected.body);
     const rendered = renderText(text, varValues);
-    onSelect(rendered);
+    onSelect(rendered, { quickReplies: extractQuickReplies(selected) });
     setSelected(null);
     setVarValues({});
     onClose();
