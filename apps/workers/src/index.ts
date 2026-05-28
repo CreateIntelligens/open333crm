@@ -107,7 +107,7 @@ async function main() {
     'automation',
     async (job) => {
       logger.info(`[automation] Processing job ${job.id}: ${job.name}`);
-      await handleAutomationJob(job, prisma, redisPublisher);
+      await handleAutomationJob(job, prisma, redisPublisher, pluginRegistry);
     },
     { connection },
   );

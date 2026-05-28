@@ -1,9 +1,11 @@
 import type { PrismaClient } from '@prisma/client';
 import type IORedis from 'ioredis';
+import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { bumpSlaPriority } from '@open333crm/shared';
 import { logger } from '@open333crm/core';
 import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
+import { deliverToChannelFromWorker, renderTemplateBody } from './channel-delivery.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -14,8 +16,11 @@ export interface WorkerAutomationAction {
 export interface WorkerActionContext {
   tenantId: string;
   caseId?: string | null;
+  conversationId?: string | null;
   assigneeId?: string | null;
   title?: string | null;
+  // 送 channel 訊息（send_message / send_material）需要 plugin registry + redis
+  pluginRegistry?: Map<string, ChannelPlugin>;
 }
 
 async function getSupervisorAndAdminIds(
@@ -129,6 +134,76 @@ export async function executeWorkerAutomationActions(
             clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
           });
         }
+        continue;
+      }
+
+      // ── OUTBOUND actions（需 conversationId + pluginRegistry，主要用於 keyword.matched 對話回覆）──
+
+      if (action.type === 'send_message') {
+        if (!context.conversationId || !context.pluginRegistry) {
+          logger.info('[automation] send_message skipped: missing conversationId/pluginRegistry');
+          continue;
+        }
+        const text = String(params['text'] ?? params['message'] ?? '');
+        if (!text) {
+          logger.info('[automation] send_message skipped: empty text');
+          continue;
+        }
+        await deliverToChannelFromWorker(
+          prisma,
+          redisPublisher,
+          context.pluginRegistry,
+          context.conversationId,
+          { contentType: 'text', content: { text } },
+        );
+        continue;
+      }
+
+      if (action.type === 'send_material') {
+        if (!context.conversationId || !context.pluginRegistry) {
+          logger.info('[automation] send_material skipped: missing conversationId/pluginRegistry');
+          continue;
+        }
+        const materialId = params['materialId'];
+        if (typeof materialId !== 'string' || !materialId) {
+          logger.info('[automation] send_material skipped: missing materialId');
+          continue;
+        }
+        const material = await prisma.material.findFirst({
+          where: { id: materialId, tenantId: context.tenantId },
+          select: { contentType: true, body: true, channelType: true },
+        });
+        if (!material) {
+          logger.warn(`[automation] send_material skipped: material ${materialId} not found`);
+          continue;
+        }
+
+        // channel 防呆：素材 channelType 與對話 channel 不符就 skip（避免 FB 對話送 line_* 空訊息）
+        const conv = await prisma.conversation.findFirst({
+          where: { id: context.conversationId, tenantId: context.tenantId },
+          include: { channel: { select: { channelType: true } } },
+        });
+        const convChannelType = conv?.channel?.channelType?.toLowerCase();
+        const matChannelType = material.channelType?.toLowerCase();
+        if (convChannelType && matChannelType && convChannelType !== matChannelType) {
+          logger.warn(
+            `[automation] send_material skipped: material channel "${matChannelType}" != conversation channel "${convChannelType}"`,
+          );
+          continue;
+        }
+
+        const variables = (params['variables'] as Record<string, string> | undefined) ?? {};
+        const renderedBody = renderTemplateBody(
+          material.body as Record<string, unknown>,
+          variables,
+        );
+        await deliverToChannelFromWorker(
+          prisma,
+          redisPublisher,
+          context.pluginRegistry,
+          context.conversationId,
+          { contentType: material.contentType, content: renderedBody },
+        );
         continue;
       }
 
