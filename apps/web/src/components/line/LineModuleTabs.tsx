@@ -3,24 +3,37 @@
 /**
  * LINE 管理模組共用 Tab 列
  *
- * 目前只實作 Rich Menu；其餘 tab 為占位（disabled，提示「敬請期待」）。
+ * 切換 tab 走 router push 到對應頁。歡迎訊息 / 加好友自動回應為占位（尚未實作）。
  */
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Props {
   active: string;
 }
 
+const TAB_TO_PATH: Record<string, string> = {
+  'rich-menus': '/dashboard/line/rich-menus',
+  'keyword-replies': '/dashboard/line/keyword-replies',
+};
+
 export function LineModuleTabs({ active }: Props) {
+  const router = useRouter();
+
+  const handleChange = (val: string) => {
+    const path = TAB_TO_PATH[val];
+    if (path && val !== active) router.push(path);
+  };
+
   return (
     <div className="border-b px-6 pt-2">
-      <Tabs value={active} onValueChange={() => undefined}>
+      <Tabs value={active} onValueChange={handleChange}>
         <TabsList>
           <TabsTrigger value="rich-menus">Rich Menu</TabsTrigger>
+          <TabsTrigger value="keyword-replies">關鍵字回覆</TabsTrigger>
           {/* 其餘 tab 用 placeholder 顯示「敬請期待」— Tabs 元件不支援 disabled，用樣式抑制 */}
-          <DisabledTab label="Quick Reply" />
           <DisabledTab label="歡迎訊息" />
           <DisabledTab label="加好友自動回應" />
         </TabsList>

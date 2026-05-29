@@ -21,6 +21,11 @@ import {
   parseCmd,
   type PartnerAttachmentInput,
 } from './partner-ingest.service.js';
+import {
+  listFeedback,
+  getFeedbackCounts,
+  resolveFeedback,
+} from './kb-feedback.service.js';
 import { requireSupervisor } from '../../guards/rbac.guard.js';
 import { AppError, success, paginated } from '../../shared/utils/response.js';
 
@@ -297,6 +302,34 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     const status = await checkOllamaHealth(fastify.prisma, request.agent.tenantId);
     return reply.send(success(status));
   });
+
+  // ── KB 回報（AI 回答品質回饋）────────────────────────────────────────────
+
+  // GET /api/v1/knowledge/feedback/counts — 各文章 open 回報數 map
+  fastify.get('/feedback/counts', async (request, reply) => {
+    const counts = await getFeedbackCounts(fastify.prisma, request.agent.tenantId);
+    return reply.send(success(counts));
+  });
+
+  // GET /api/v1/knowledge/feedback?articleId=&status=open — 回報明細
+  fastify.get('/feedback', async (request, reply) => {
+    const q = request.query as { articleId?: string; status?: string };
+    const list = await listFeedback(fastify.prisma, request.agent.tenantId, {
+      articleId: q.articleId,
+      status: q.status,
+    });
+    return reply.send(success(list));
+  });
+
+  // PATCH /api/v1/knowledge/feedback/:id/resolve — 標記已處理
+  fastify.patch<{ Params: { id: string } }>(
+    '/feedback/:id/resolve',
+    { preHandler: [requireSupervisor()] },
+    async (request, reply) => {
+      await resolveFeedback(fastify.prisma, request.params.id, request.agent.tenantId);
+      return reply.send(success({ resolved: true }));
+    },
+  );
 
   // ── Existing CRUD routes ──────────────────────────────────────────────────
 

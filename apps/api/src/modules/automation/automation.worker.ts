@@ -17,10 +17,18 @@ import { classifyIssue } from '../ai/classify.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
 
-const automationQueue = new Queue('automation', {
-  connection: { url: process.env.REDIS_URL! },
-  defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50 },
-});
+// Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
+// ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
+let _automationQueue: Queue | null = null;
+function automationQueue(): Queue {
+  if (!_automationQueue) {
+    _automationQueue = new Queue('automation', {
+      connection: { url: process.env.REDIS_URL! },
+      defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50 },
+    });
+  }
+  return _automationQueue;
+}
 
 interface BotConfig {
   botMode: 'keyword' | 'llm' | 'keyword_then_llm' | 'off';
@@ -183,6 +191,41 @@ async function checkAutoHandoff(
 }
 
 /**
+ * Pure check：訊息文字有沒有命中任何 active keyword.matched rule。
+ * 給 kb-autoreply 前置判斷用（命中就讓 keyword 規則處理，不走 KB）。
+ */
+export async function hasMatchingKeywordRule(
+  prisma: PrismaClient,
+  tenantId: string,
+  messageText: string,
+): Promise<boolean> {
+  if (!messageText) return false;
+  const rules = await prisma.automationRule.findMany({
+    where: { tenantId, isActive: true },
+  });
+  const keywordRules = rules.filter((rule) => {
+    const trigger = rule.trigger as Record<string, unknown>;
+    return trigger?.type === 'keyword.matched';
+  });
+  if (keywordRules.length === 0) return false;
+
+  const lowerText = messageText.toLowerCase();
+  for (const rule of keywordRules) {
+    const trigger = rule.trigger as Record<string, unknown>;
+    const keywords = (trigger.keywords as string[]) || [];
+    const matchMode = (trigger.match_mode as string) || 'any';
+    if (keywords.length === 0) continue;
+
+    const matched =
+      matchMode === 'all'
+        ? keywords.every((kw) => lowerText.includes(kw.toLowerCase()))
+        : keywords.some((kw) => lowerText.includes(kw.toLowerCase()));
+    if (matched) return true;
+  }
+  return false;
+}
+
+/**
  * Check if a message matches keyword.matched rules and publish events.
  */
 async function checkKeywordTriggers(
@@ -321,7 +364,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         }
       }
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'message.received',
         context: { contactId, conversationId, messageContent: text },
@@ -349,7 +392,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         messageContent?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'keyword.matched',
         context: { contactId, conversationId, messageContent },
@@ -368,7 +411,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         caseId?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'case.created',
         context: { contactId, conversationId, caseId },
@@ -408,7 +451,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         conversationId?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'conversation.created',
         context: { contactId, conversationId },
@@ -425,7 +468,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         contactId?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'contact.tagged',
         context: { contactId },
@@ -444,7 +487,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         caseId?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'case.escalated',
         context: { contactId, conversationId, caseId },
@@ -462,7 +505,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         activityId?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'portal.activity.submitted',
         context: { contactId, activityId },
@@ -480,7 +523,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         shortLinkId?: string;
       };
 
-      await automationQueue.add('automation:evaluate', {
+      await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'link.clicked',
         context: { contactId, shortLinkId },

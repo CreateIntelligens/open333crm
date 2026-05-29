@@ -11,9 +11,17 @@ import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 
-const notificationQueue = new Queue('notification', {
-  connection: { url: process.env.REDIS_URL! },
-});
+// Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
+// ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
+let _notificationQueue: Queue | null = null;
+function notificationQueue(): Queue {
+  if (!_notificationQueue) {
+    _notificationQueue = new Queue('notification', {
+      connection: { url: process.env.REDIS_URL! },
+    });
+  }
+  return _notificationQueue;
+}
 
 async function getSupervisorAndAdminIds(
   prisma: PrismaClient,
@@ -42,7 +50,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
 
       if (!assigneeId) return;
 
-      await notificationQueue.add('notification:dispatch', {
+      await notificationQueue().add('notification:dispatch', {
         tenantId: event.tenantId,
         agentId: assigneeId,
         type: 'case_assigned',
@@ -68,7 +76,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
       const supervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
 
       for (const agentId of supervisorIds) {
-        await notificationQueue.add('notification:dispatch', {
+        await notificationQueue().add('notification:dispatch', {
           tenantId: event.tenantId,
           agentId,
           type: 'case_escalated',
@@ -95,7 +103,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
 
       if (!assigneeId) return;
 
-      await notificationQueue.add('notification:dispatch', {
+      await notificationQueue().add('notification:dispatch', {
         tenantId: event.tenantId,
         agentId: assigneeId,
         type: 'sla_warning',
@@ -129,7 +137,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
       }
 
       for (const agentId of notifyIds) {
-        await notificationQueue.add('notification:dispatch', {
+        await notificationQueue().add('notification:dispatch', {
           tenantId: event.tenantId,
           agentId,
           type: 'sla_breached',
@@ -172,7 +180,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
 
       if (conversation.assignedToId) {
         // Assigned → notify the assigned agent only
-        await notificationQueue.add('notification:dispatch', {
+        await notificationQueue().add('notification:dispatch', {
           ...notifPayload,
           agentId: conversation.assignedToId,
         }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received', err));
@@ -180,7 +188,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         // Unassigned → notify all ADMIN and SUPERVISOR agents
         const adminAndSupervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
         for (const agentId of adminAndSupervisorIds) {
-          await notificationQueue.add('notification:dispatch', {
+          await notificationQueue().add('notification:dispatch', {
             ...notifPayload,
             agentId,
           }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received (unassigned)', err));
@@ -202,7 +210,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
 
       if (!assignedToId || !conversationId) return;
 
-      await notificationQueue.add('notification:dispatch', {
+      await notificationQueue().add('notification:dispatch', {
         tenantId: event.tenantId,
         agentId: assignedToId,
         type: 'new_message',

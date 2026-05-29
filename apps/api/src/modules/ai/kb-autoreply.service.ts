@@ -22,6 +22,7 @@ import { getChatSettings } from '../settings/chat-settings.service.js';
 import { generateReply, CLARIFY_SYSTEM_PROMPT } from './llm.service.js';
 import type { HistoryMessage } from './llm.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { hasMatchingKeywordRule } from '../automation/automation.worker.js';
 import { logger } from '@open333crm/core';
 
 const HANDOFF_PROMPT = '需要真人客服協助嗎？請輸入「真人」或「客服」即可轉接。';
@@ -42,6 +43,13 @@ export async function attemptKbAutoReply(
 
   // 1. Global enable check
   if (!config.KB_AUTO_REPLY_ENABLED) return false;
+
+  // 1.5 若有 keyword.matched 規則命中此訊息，讓步給 keyword 規則處理。
+  // 避免 KB 走 clarify_handoff 把對話改成 AGENT_HANDLED，後續 keyword rule 觸發後也無法回。
+  if (await hasMatchingKeywordRule(prisma, tenantId, messageText)) {
+    logger.info(`[KbAutoReply] conv=${conversationId} skipped: keyword rule will handle`);
+    return false;
+  }
 
   // 2. Only proceed for BOT_HANDLED conversations
   const conversation = await prisma.conversation.findFirst({
@@ -203,7 +211,25 @@ export async function attemptKbAutoReply(
   io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
 
   // 12. Deliver to actual channel
-  await deliverToChannel(prisma, conversationId, replyText);
+  // 命中 KB 的回答附「👎 沒幫到我」回報按鈕（quick reply postback），供調教 KB。
+  // clarify / clarify_handoff 那種沒命中 KB 的不附（沒對應文章可回報）。
+  const hitKb = replyKind === 'kb_high_confidence' || replyKind === 'kb_with_handoff';
+  if (hitKb && topResult?.id) {
+    await deliverToChannel(prisma, conversationId, {
+      contentType: 'text',
+      content: {
+        text: replyText,
+        quickReplies: [
+          {
+            label: '👎 沒幫到我',
+            postbackData: `kb_feedback:bad:${topResult.id}:${botMessage.id}`,
+          },
+        ],
+      },
+    });
+  } else {
+    await deliverToChannel(prisma, conversationId, replyText);
+  }
 
   logger.info(
     `[KbAutoReply] conv=${conversationId} kind=${replyKind} sim=${topSimilarity.toFixed(3)}`,

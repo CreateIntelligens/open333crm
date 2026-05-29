@@ -50,6 +50,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateText, setTemplateText] = useState<string | null>(null);
+  const [templateQuickReplies, setTemplateQuickReplies] = useState<Array<{ label: string; text?: string }> | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closeReason, setCloseReason] = useState('');
   const [closing, setClosing] = useState(false);
@@ -123,12 +124,20 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     if (contentType === 'image' || contentType === 'file') {
       await sendMessage(JSON.stringify({ url: contentData?.url, fileName: contentData?.fileName }), contentType);
     } else {
-      await sendMessage(content);
+      // 純文字訊息：可帶 quickReplies 等額外 content 欄位
+      const extra = contentData?.quickReplies
+        ? { quickReplies: contentData.quickReplies }
+        : undefined;
+      await sendMessage(content, 'text', extra);
     }
   }, [sendMessage]);
 
-  const handleTemplateSelect = (text: string) => {
+  const handleTemplateSelect = (
+    text: string,
+    extra?: { quickReplies?: Array<{ label: string; text?: string }> },
+  ) => {
     setTemplateText(text);
+    setTemplateQuickReplies(extra?.quickReplies ?? null);
   };
 
   // Auto-scroll on new messages
@@ -136,12 +145,19 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Clear template text after it's consumed
+  // Apply selected template into MessageInput (text + optional quick replies)
   useEffect(() => {
-    if (templateText !== null) {
-      setTemplateText(null);
+    if (templateText === null) return;
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      'textarea[data-message-input]',
+    );
+    const setter = textarea && (textarea as unknown as { __setMessage?: (t: string, q?: unknown) => void }).__setMessage;
+    if (setter) {
+      setter(templateText, templateQuickReplies ?? undefined);
     }
-  }, [templateText]);
+    setTemplateText(null);
+    setTemplateQuickReplies(null);
+  }, [templateText, templateQuickReplies]);
 
   if (!conversation) {
     return (

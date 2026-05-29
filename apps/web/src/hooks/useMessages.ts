@@ -94,7 +94,11 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
   }, [conversationId, limit, loadingOlder, hasMore]);
 
   const sendMessage = useCallback(
-    async (content: string, contentType: string = 'text') => {
+    async (
+      content: string,
+      contentType: string = 'text',
+      extraContent?: Record<string, unknown>,
+    ) => {
       if (!conversationId) return;
 
       const body: { content: Record<string, unknown> | string; contentType: string } = {
@@ -109,6 +113,11 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
         } catch {
           body.content = { url: content };
         }
+      }
+
+      // Merge extra content fields (e.g. quickReplies)，由呼叫者決定塞什麼
+      if (extraContent && typeof body.content === 'object' && body.content !== null) {
+        body.content = { ...(body.content as Record<string, unknown>), ...extraContent };
       }
 
       const res = await api.post(`/conversations/${conversationId}/messages`, body);

@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 import type IORedis from 'ioredis';
+import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { evaluateRules, validateAutomationRuleContract } from '@open333crm/automation';
 import { publishSocketEvent } from '../lib/socket-bridge.js';
@@ -19,6 +20,7 @@ export async function handleAutomationJob(
   job: Job,
   prisma: PrismaClient,
   redisPublisher: IORedis,
+  pluginRegistry?: Map<string, ChannelPlugin>,
 ): Promise<void> {
   const { tenantId, trigger, context } = job.data as AutomationJobData;
 
@@ -69,12 +71,17 @@ export async function handleAutomationJob(
           ? facts['case.id']
           : null;
 
+    const conversationId =
+      typeof context['conversationId'] === 'string' ? context['conversationId'] : null;
+
     await executeWorkerAutomationActions(prisma, redisPublisher, match.actions, {
       tenantId,
       caseId,
+      conversationId,
       assigneeId:
         typeof facts['case.assigneeId'] === 'string' ? facts['case.assigneeId'] : null,
       title: typeof context['title'] === 'string' ? context['title'] : null,
+      pluginRegistry,
     });
 
     await publishSocketEvent(

@@ -14,6 +14,8 @@ import {
   updateRichMenu,
   deleteRichMenu,
   duplicateRichMenu,
+  publishRichMenu,
+  unpublishRichMenu,
 } from './rich-menu.service.js';
 import { success } from '../../shared/utils/response.js';
 import { requireSupervisor } from '../../guards/rbac.guard.js';
@@ -119,5 +121,17 @@ export default async function richMenuRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/duplicate', async (request, reply) => {
     const menu = await duplicateRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
     return reply.code(201).send(success(menu));
+  });
+
+  // POST /api/v1/line/rich-menus/:id/publish
+  fastify.post<{ Params: { id: string } }>('/:id/publish', async (request, reply) => {
+    const menu = await publishRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    return reply.send(success(menu));
+  });
+
+  // POST /api/v1/line/rich-menus/:id/unpublish
+  fastify.post<{ Params: { id: string } }>('/:id/unpublish', async (request, reply) => {
+    const menu = await unpublishRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    return reply.send(success(menu));
   });
 }

@@ -219,6 +219,8 @@ model Tenant {
   materials               Material[]
   richMenus               RichMenu[]
   chatboxSessions         ChatboxSession[]
+  quickReplyPresets       QuickReplyPreset[]
+  kbArticleFeedback       KbArticleFeedback[]
 
   @@map("tenants")
 }
@@ -849,6 +851,7 @@ model KmArticle {
   createdAt      DateTime                     @default(now())
 
   attachments KmArticleAttachment[]
+  feedback    KbArticleFeedback[]
 
   @@unique([tenantId, externalDocId])
   @@index([tenantId, status])
@@ -1533,5 +1536,49 @@ model PartnerApiKey {
   @@index([tenantId, isActive])
   @@index([keyPrefix])
   @@map("partner_api_keys")
+}
+
+// ─────────────────────────────────────────────
+// Quick Reply Preset（LINE 客服可重用的快速回覆按鈕組）
+// ─────────────────────────────────────────────
+
+model QuickReplyPreset {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  items     Json
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, isActive])
+  @@map("quick_reply_presets")
+}
+
+// ─────────────────────────────────────────────
+// KB 文章回報（AI 回答品質回饋迴路：測試者/用戶回報答案不好 → 後台調教 KB）
+// ─────────────────────────────────────────────
+
+model KbArticleFeedback {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @db.Uuid
+  articleId    String   @db.Uuid
+  messageId    String?  @db.Uuid
+  userQuestion String?
+  botReply     String?
+  confidence   Float?
+  rating       String   @default("bad")
+  contactId    String?  @db.Uuid
+  status       String   @default("open")
+  createdAt    DateTime @default(now())
+
+  tenant  Tenant    @relation(fields: [tenantId], references: [id])
+  article KmArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, articleId])
+  @@index([tenantId, status])
+  @@map("kb_article_feedback")
 }
 

@@ -1,11 +1,21 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, LayoutTemplate } from 'lucide-react';
+import { Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { useQuickReplyPresets } from '@/hooks/useQuickReplyPresets';
+
+interface QuickReplyItem {
+  label: string;
+  text?: string;
+}
+
+// LINE 規格：最多 13 個 quick reply items；label ≤ 20 字
+const MAX_QUICK_REPLIES = 13;
+const QUICK_REPLY_LABEL_MAX = 20;
 
 interface MessageInputProps {
   onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>) => Promise<void>;
@@ -32,10 +42,25 @@ export function MessageInput({
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<QuickReplyItem[]>([]);
+  const [quickReplyEditorOpen, setQuickReplyEditorOpen] = useState(false);
+  const [draftLabel, setDraftLabel] = useState('');
+  const [draftText, setDraftText] = useState('');
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isDisabled = disabled || isBotHandled || sending;
+  const supportsQuickReply = channelType === CHANNEL_TYPE.LINE;
+
+  // 只在 LINE channel 載入 presets（避免其他 channel 多餘請求）
+  const { presets } = useQuickReplyPresets();
+
+  const handleApplyPreset = (preset: { items: QuickReplyItem[] }) => {
+    setQuickReplies(preset.items.slice(0, MAX_QUICK_REPLIES));
+    setPresetMenuOpen(false);
+    setQuickReplyEditorOpen(true);
+  };
 
   const handleSend = async () => {
     const trimmed = message.trim();
@@ -43,8 +68,10 @@ export function MessageInput({
 
     setSending(true);
     try {
-      await onSend(trimmed);
+      const contentData = quickReplies.length > 0 ? { quickReplies } : undefined;
+      await onSend(trimmed, 'text', contentData);
       setMessage('');
+      setQuickReplies([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -53,6 +80,20 @@ export function MessageInput({
     } finally {
       setSending(false);
     }
+  };
+
+  const handleAddQuickReply = () => {
+    const label = draftLabel.trim();
+    if (!label) return;
+    if (quickReplies.length >= MAX_QUICK_REPLIES) return;
+    const text = draftText.trim() || undefined;
+    setQuickReplies([...quickReplies, { label, text }]);
+    setDraftLabel('');
+    setDraftText('');
+  };
+
+  const handleRemoveQuickReply = (idx: number) => {
+    setQuickReplies(quickReplies.filter((_, i) => i !== idx));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -112,9 +153,13 @@ export function MessageInput({
     }
   };
 
-  // Fill message from template
-  const setMessageFromTemplate = (text: string) => {
+  // Fill message from template；可一併帶入 quick replies
+  const setMessageFromTemplate = (text: string, qrs?: QuickReplyItem[]) => {
     setMessage(text);
+    if (qrs && qrs.length > 0) {
+      setQuickReplies(qrs.slice(0, MAX_QUICK_REPLIES));
+      setQuickReplyEditorOpen(true);
+    }
     // Focus textarea
     setTimeout(() => {
       textareaRef.current?.focus();
@@ -149,6 +194,121 @@ export function MessageInput({
       )}
 
       <div className="p-4">
+        {/* Quick reply chips + editor (LINE only) */}
+        {supportsQuickReply && (quickReplies.length > 0 || quickReplyEditorOpen) && (
+          <div className="mb-2 rounded-md border border-dashed border-slate-300 bg-slate-50 p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="text-xs font-medium text-slate-600">
+                快速回覆按鈕（{quickReplies.length}/{MAX_QUICK_REPLIES}）
+              </div>
+              <div className="flex items-center gap-1">
+                {presets.length > 0 && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50"
+                      onClick={() => setPresetMenuOpen((v) => !v)}
+                    >
+                      <ListChecks className="h-3 w-3" />
+                      套用預設組
+                    </button>
+                    {presetMenuOpen && (
+                      <div className="absolute right-0 top-full z-20 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-md">
+                        {presets.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50"
+                            onClick={() => handleApplyPreset(p)}
+                            title={p.items.map((i) => i.label).join(' / ')}
+                          >
+                            <div className="truncate font-medium">{p.name}</div>
+                            <div className="truncate text-[10px] text-slate-400">
+                              {p.items.length} 個 · {p.items.slice(0, 3).map((i) => i.label).join(' / ')}
+                              {p.items.length > 3 ? ' …' : ''}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                  onClick={() => setQuickReplyEditorOpen((v) => !v)}
+                >
+                  {quickReplyEditorOpen ? '收合' : '展開'}
+                </button>
+              </div>
+            </div>
+            {quickReplies.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {quickReplies.map((qr, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs"
+                    title={qr.text ? `送出文字：${qr.text}` : `送出文字：${qr.label}`}
+                  >
+                    <span className="font-medium">{qr.label}</span>
+                    {qr.text && qr.text !== qr.label && (
+                      <span className="text-slate-400">→ {qr.text}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="ml-0.5 text-slate-400 hover:text-red-500"
+                      onClick={() => handleRemoveQuickReply(idx)}
+                      title="移除"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {quickReplyEditorOpen && quickReplies.length < MAX_QUICK_REPLIES && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <input
+                  type="text"
+                  value={draftLabel}
+                  onChange={(e) => setDraftLabel(e.target.value.slice(0, QUICK_REPLY_LABEL_MAX))}
+                  placeholder="按鈕文字"
+                  className="w-32 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddQuickReply();
+                    }
+                  }}
+                />
+                <input
+                  type="text"
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  placeholder="點擊後送出文字（可留空 = 同按鈕文字）"
+                  className="flex-1 min-w-[180px] rounded-md border border-input bg-background px-2 py-1 text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddQuickReply();
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={handleAddQuickReply}
+                  disabled={!draftLabel.trim()}
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  加入
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
           {/* Attachment button */}
           <Button
@@ -181,9 +341,24 @@ export function MessageInput({
             <LayoutTemplate className="h-4 w-4" />
           </Button>
 
+          {/* Quick reply button (LINE only) */}
+          {supportsQuickReply && (
+            <Button
+              variant={quickReplies.length > 0 ? 'default' : 'ghost'}
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              disabled={isDisabled}
+              onClick={() => setQuickReplyEditorOpen((v) => !v)}
+              title="加快速回覆按鈕"
+            >
+              <Zap className="h-4 w-4" />
+            </Button>
+          )}
+
           {/* Textarea */}
           <textarea
             ref={textareaRef}
+            data-message-input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}

@@ -121,3 +121,13 @@ export async function duplicateRichMenu(id: string): Promise<RichMenu> {
   const res = await api.post(`/line/rich-menus/${id}/duplicate`);
   return res.data.data;
 }
+
+export async function publishRichMenu(id: string): Promise<RichMenu> {
+  const res = await api.post(`/line/rich-menus/${id}/publish`);
+  return res.data.data;
+}
+
+export async function unpublishRichMenu(id: string): Promise<RichMenu> {
+  const res = await api.post(`/line/rich-menus/${id}/unpublish`);
+  return res.data.data;
+}
