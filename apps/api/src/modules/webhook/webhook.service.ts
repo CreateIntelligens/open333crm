@@ -404,6 +404,109 @@ export async function processInboundMessage(
     return; // 不發 message.received，不觸發 automation（同 CSAT）
   }
 
+  // 5c. Intercept handoff_request postback — 使用者按「💬 轉接客服」一鍵轉真人
+  // 仿 CSAT / kb_feedback 攔截模式：不發 message.received、不觸發 automation
+  const handoffPattern = /^handoff_request$/i;
+  if (handoffPattern.test(postbackData) || handoffPattern.test(textContent)) {
+    try {
+      const fullChannel = await prisma.channel.findFirst({
+        where: { id: channel.id },
+        select: { settings: true },
+      });
+      const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
+      const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
+      const handoffMessage =
+        (botConfig.handoffMessage as string | undefined) || '稍等，正在為您轉接客服人員';
+
+      if (conversation.status === 'AGENT_HANDLED') {
+        // 冪等：已是 AGENT_HANDLED，只回訊息、不改狀態、不重發 event
+        await deliverToChannel(prisma, conversation.id, handoffMessage);
+        logger.info('[Webhook] handoff_request on AGENT_HANDLED conv (idempotent)', {
+          conversationId: conversation.id,
+        });
+      } else if (conversation.status === 'BOT_HANDLED') {
+        const reason = 'user_requested_handoff';
+        // 寫 SYSTEM message 留軌跡（仿 automation.worker checkAutoHandoff）
+        const systemMessage = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            senderType: 'SYSTEM',
+            contentType: 'system',
+            content: { text: '使用者主動點按按鈕轉接人工客服' },
+            metadata: { type: 'user_requested_handoff', reason },
+            isRead: true,
+            createdAt: new Date(),
+          },
+        });
+
+        const updatedConversation = await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            status: 'AGENT_HANDLED',
+            handoffReason: reason,
+            lastMessageAt: new Date(),
+          },
+        });
+
+        await deliverToChannel(prisma, conversation.id, handoffMessage);
+
+        eventBus.publish({
+          name: 'conversation.handoff',
+          tenantId,
+          timestamp: new Date(),
+          payload: {
+            conversationId: conversation.id,
+            reason,
+            previousStatus: 'BOT_HANDLED',
+          },
+        });
+
+        // Emit conversation.updated 讓客服 UI 即時看到狀態切換 + unreadCount 修正
+        const convPayload: ConversationUpdatedPayload = {
+          id: updatedConversation.id,
+          status: updatedConversation.status,
+          assignedToId: updatedConversation.assignedToId,
+          unreadCount: updatedConversation.unreadCount,
+          lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
+          updatedAt: updatedConversation.updatedAt.toISOString(),
+          handoffReason: reason,
+        };
+        io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
+        io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
+
+        // Emit SYSTEM message 給客服 UI 看
+        io.to(`conversation:${conversation.id}`).emit('message.new', {
+          conversationId: conversation.id,
+          message: {
+            id: systemMessage.id,
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            senderType: 'SYSTEM',
+            contentType: 'system',
+            content: systemMessage.content,
+            metadata: systemMessage.metadata,
+            createdAt: systemMessage.createdAt.toISOString(),
+            sender: null,
+          },
+        });
+
+        logger.info('[Webhook] handoff_request → AGENT_HANDLED', {
+          conversationId: conversation.id,
+        });
+      } else {
+        // CLOSED / RESOLVED 或其他狀態：不接、靜默 log 警告
+        logger.warn('[Webhook] handoff_request ignored (unexpected status)', {
+          conversationId: conversation.id,
+          status: conversation.status,
+        });
+      }
+    } catch (err) {
+      logger.error('[Webhook] handoff_request handling failed:', err);
+    }
+    return; // 不發 message.received
+  }
+
   // 6. Track broadcast reply (non-blocking)
   trackBroadcastReply(prisma, contactId).catch(() => {});
 

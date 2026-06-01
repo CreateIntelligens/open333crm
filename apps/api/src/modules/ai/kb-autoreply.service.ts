@@ -22,10 +22,14 @@ import { getChatSettings } from '../settings/chat-settings.service.js';
 import { generateReply, CLARIFY_SYSTEM_PROMPT } from './llm.service.js';
 import type { HistoryMessage } from './llm.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { hasMatchingKeywordRule } from '../automation/automation.worker.js';
+import {
+  hasMatchingKeywordRule,
+  DEFAULT_BOT_CONFIG,
+  DEFAULT_HANDOFF_PROMPT_TEXT,
+  type BotConfig,
+} from '../automation/automation.worker.js';
 import { logger } from '@open333crm/core';
 
-const HANDOFF_PROMPT = '需要真人客服協助嗎？請輸入「真人」或「客服」即可轉接。';
 const CLARIFY_HANDOFF_FALLBACK =
   '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
 const HISTORY_LIMIT = 10;
@@ -67,10 +71,24 @@ export async function attemptKbAutoReply(
   });
   if (!conversation) return false;
 
-  // 3. Channel botMode gating
+  // 3. Channel botMode gating + 解析完整 botConfig（含 handoff prompt 設定）
+  // spread 對 undefined 才 fallback；空字串 / 不合法 enum 會覆蓋預設，需另外清理。
   const channelSettings = (conversation.channel.settings || {}) as Record<string, unknown>;
-  const botMode = channelSettings.botMode as string | undefined;
-  if (botMode === 'off' || botMode === 'keyword') return false;
+  const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
+  const merged: BotConfig = { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
+  const botConfig: BotConfig = {
+    ...merged,
+    handoffPromptStyle: (['text', 'button', 'both', 'none'] as const).includes(
+      merged.handoffPromptStyle,
+    )
+      ? merged.handoffPromptStyle
+      : DEFAULT_BOT_CONFIG.handoffPromptStyle,
+    handoffButtonLabel:
+      typeof merged.handoffButtonLabel === 'string' && merged.handoffButtonLabel.trim().length > 0
+        ? merged.handoffButtonLabel
+        : DEFAULT_BOT_CONFIG.handoffButtonLabel,
+  };
+  if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return false;
 
   // 4. Load tenant chat settings (clarify thresholds + system prompts)
   const chatSettings = await getChatSettings(prisma, tenantId);
@@ -141,24 +159,22 @@ export async function attemptKbAutoReply(
 
     try {
       const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, { history });
-      if (topSimilarity >= 0.80) {
-        replyText = llmReply;
-        replyKind = 'kb_high_confidence';
-      } else {
-        replyText = `${llmReply}\n\n${HANDOFF_PROMPT}`;
-        replyKind = 'kb_with_handoff';
-      }
+      replyText = llmReply;
+      replyKind = topSimilarity >= 0.80 ? 'kb_high_confidence' : 'kb_with_handoff';
       // Successful KB answer resets clarify attempts
       metadataExtras = { clarifyAttempts: 0 };
     } catch (err) {
       logger.error('[KbAutoReply] LLM generation failed, falling back to article content:', err);
-      const fallbackText = topResult.content || topResult.summary || topResult.title;
-      replyText =
-        topSimilarity >= 0.80 ? fallbackText : `${fallbackText}\n\n${HANDOFF_PROMPT}`;
+      replyText = topResult.content || topResult.summary || topResult.title;
       replyKind = topSimilarity >= 0.80 ? 'kb_high_confidence' : 'kb_with_handoff';
       metadataExtras = { clarifyAttempts: 0 };
     }
   }
+
+  // 8b. 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
+  const kbReply = buildKbReplyPayload({ replyText, replyKind, botConfig });
+  // 真正送 channel 的文字（可能多帶 text suffix）— DB 也存這份以利客服 UI 對齊
+  const finalText = kbReply.text;
 
   // 9. Persist BOT message
   const now = new Date();
@@ -168,7 +184,7 @@ export async function attemptKbAutoReply(
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text: replyText },
+      content: { text: finalText },
       metadata: {
         source: 'kb_auto_reply',
         replyKind,
@@ -201,7 +217,7 @@ export async function attemptKbAutoReply(
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text: replyText },
+      content: { text: finalText },
       metadata: botMessage.metadata,
       createdAt: now.toISOString(),
       sender: null,
@@ -212,30 +228,68 @@ export async function attemptKbAutoReply(
 
   // 12. Deliver to actual channel
   // 命中 KB 的回答附「👎 沒幫到我」回報按鈕（quick reply postback），供調教 KB。
-  // clarify / clarify_handoff 那種沒命中 KB 的不附（沒對應文章可回報）。
+  // 加上 handoff_request 按鈕（依 botConfig.handoffPromptStyle）給使用者一鍵轉接。
+  // clarify / clarify_handoff 那種沒命中 KB 的不附（沒對應文章可回報、也不附轉接按鈕）。
   const hitKb = replyKind === 'kb_high_confidence' || replyKind === 'kb_with_handoff';
+  const quickReplies: Array<{ label: string; postbackData: string }> = [];
   if (hitKb && topResult?.id) {
+    quickReplies.push({
+      label: '👎 沒幫到我',
+      postbackData: `kb_feedback:bad:${topResult.id}:${botMessage.id}`,
+    });
+  }
+  if (kbReply.includeHandoffButton) {
+    quickReplies.push({
+      label: botConfig.handoffButtonLabel,
+      postbackData: 'handoff_request',
+    });
+  }
+
+  if (quickReplies.length > 0) {
     await deliverToChannel(prisma, conversationId, {
       contentType: 'text',
-      content: {
-        text: replyText,
-        quickReplies: [
-          {
-            label: '👎 沒幫到我',
-            postbackData: `kb_feedback:bad:${topResult.id}:${botMessage.id}`,
-          },
-        ],
-      },
+      content: { text: finalText, quickReplies },
     });
   } else {
-    await deliverToChannel(prisma, conversationId, replyText);
+    await deliverToChannel(prisma, conversationId, finalText);
   }
 
   logger.info(
-    `[KbAutoReply] conv=${conversationId} kind=${replyKind} sim=${topSimilarity.toFixed(3)}`,
+    `[KbAutoReply] conv=${conversationId} kind=${replyKind} sim=${topSimilarity.toFixed(3)} handoffStyle=${botConfig.handoffPromptEnabled ? botConfig.handoffPromptStyle : 'disabled'}`,
   );
 
   return true;
+}
+
+/**
+ * 依 botConfig.handoffPromptEnabled / handoffPromptStyle 決定 KB 回答要不要附
+ * handoff 提示（文字 suffix 或 quick reply 按鈕）。
+ *
+ * - kb_high_confidence：不附（無論 botConfig 設定如何，高信心回答本身已足夠）
+ * - kb_with_handoff + enabled=true：依 style 決定（text / button / both / none）
+ * - enabled=false：完全不附
+ */
+function buildKbReplyPayload(input: {
+  replyText: string;
+  replyKind: ReplyKind;
+  botConfig: BotConfig;
+}): { text: string; includeHandoffButton: boolean } {
+  const { replyText, replyKind, botConfig } = input;
+
+  if (replyKind !== 'kb_with_handoff') {
+    return { text: replyText, includeHandoffButton: false };
+  }
+  if (!botConfig.handoffPromptEnabled) {
+    return { text: replyText, includeHandoffButton: false };
+  }
+
+  const style = botConfig.handoffPromptStyle;
+  const wantsText = style === 'text' || style === 'both';
+  const wantsButton = style === 'button' || style === 'both';
+  const text = wantsText
+    ? `${replyText}\n\n${DEFAULT_HANDOFF_PROMPT_TEXT}`
+    : replyText;
+  return { text, includeHandoffButton: wantsButton };
 }
 
 /**
