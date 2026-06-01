@@ -30,19 +30,30 @@ function automationQueue(): Queue {
   return _automationQueue;
 }
 
-interface BotConfig {
+export type HandoffPromptStyle = 'text' | 'button' | 'both' | 'none';
+
+export interface BotConfig {
   botMode: 'keyword' | 'llm' | 'keyword_then_llm' | 'off';
   maxBotReplies: number;
   handoffKeywords: string[];
   handoffMessage: string;
   offlineGreeting?: string;
+  handoffPromptEnabled: boolean;
+  handoffPromptStyle: HandoffPromptStyle;
+  handoffButtonLabel: string;
 }
 
-const DEFAULT_BOT_CONFIG: BotConfig = {
+export const DEFAULT_HANDOFF_PROMPT_TEXT =
+  '需要真人客服協助嗎？請輸入「真人」或「客服」即可轉接。';
+
+export const DEFAULT_BOT_CONFIG: BotConfig = {
   botMode: 'keyword_then_llm',
   maxBotReplies: 5,
   handoffKeywords: ['真人', '人工', '客服', '轉接'],
   handoffMessage: '稍等，正在為您轉接客服人員',
+  handoffPromptEnabled: true,
+  handoffPromptStyle: 'button',
+  handoffButtonLabel: '💬 轉接客服',
 };
 
 async function checkAutoHandoff(

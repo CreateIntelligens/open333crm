@@ -15,13 +15,29 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 
+type HandoffPromptStyle = 'text' | 'button' | 'both' | 'none';
+
 interface BotConfig {
   botMode: string;
   maxBotReplies: number;
   handoffKeywords: string[];
   handoffMessage: string;
   offlineGreeting?: string;
+  handoffPromptEnabled: boolean;
+  handoffPromptStyle: HandoffPromptStyle;
+  handoffButtonLabel: string;
 }
+
+const DEFAULT_HANDOFF_PROMPT_ENABLED = true;
+const DEFAULT_HANDOFF_PROMPT_STYLE: HandoffPromptStyle = 'button';
+const DEFAULT_HANDOFF_BUTTON_LABEL = '💬 轉接客服';
+
+const handoffPromptStyleOptions = [
+  { value: 'button', label: '快速回覆按鈕（推薦）' },
+  { value: 'text', label: '純文字提示' },
+  { value: 'both', label: '兩者都要（文字 + 按鈕）' },
+  { value: 'none', label: '關閉（不顯示提示）' },
+];
 
 interface BotConfigFormProps {
   open: boolean;
@@ -49,6 +65,10 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
   const [handoffMessage, setHandoffMessage] = useState('稍等，正在為您轉接客服人員');
   const [offlineGreeting, setOfflineGreeting] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
+  const [handoffPromptEnabled, setHandoffPromptEnabled] = useState(DEFAULT_HANDOFF_PROMPT_ENABLED);
+  const [handoffPromptStyle, setHandoffPromptStyle] =
+    useState<HandoffPromptStyle>(DEFAULT_HANDOFF_PROMPT_STYLE);
+  const [handoffButtonLabel, setHandoffButtonLabel] = useState(DEFAULT_HANDOFF_BUTTON_LABEL);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +81,9 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         setHandoffKeywords(bc.handoffKeywords ?? ['真人', '人工', '客服', '轉接']);
         setHandoffMessage(bc.handoffMessage ?? '稍等，正在為您轉接客服人員');
         setOfflineGreeting(bc.offlineGreeting ?? '');
+        setHandoffPromptEnabled(bc.handoffPromptEnabled ?? DEFAULT_HANDOFF_PROMPT_ENABLED);
+        setHandoffPromptStyle(bc.handoffPromptStyle ?? DEFAULT_HANDOFF_PROMPT_STYLE);
+        setHandoffButtonLabel(bc.handoffButtonLabel ?? DEFAULT_HANDOFF_BUTTON_LABEL);
       } else {
         // Reset to defaults
         setBotMode('keyword_then_llm');
@@ -68,6 +91,9 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         setHandoffKeywords(['真人', '人工', '客服', '轉接']);
         setHandoffMessage('稍等，正在為您轉接客服人員');
         setOfflineGreeting('');
+        setHandoffPromptEnabled(DEFAULT_HANDOFF_PROMPT_ENABLED);
+        setHandoffPromptStyle(DEFAULT_HANDOFF_PROMPT_STYLE);
+        setHandoffButtonLabel(DEFAULT_HANDOFF_BUTTON_LABEL);
       }
     }
     setError(null);
@@ -98,6 +124,9 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         handoffKeywords,
         handoffMessage,
         offlineGreeting: offlineGreeting || undefined,
+        handoffPromptEnabled,
+        handoffPromptStyle,
+        handoffButtonLabel,
       };
 
       await api.patch(`/channels/${channel.id}`, {
@@ -199,6 +228,65 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               placeholder="轉接時發送給客戶的訊息"
               rows={2}
             />
+          </div>
+
+          {/* Handoff Prompt (KB 回答後的轉接提示) */}
+          <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium" htmlFor="handoffPromptEnabled">
+                轉接真人提示
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  id="handoffPromptEnabled"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={handoffPromptEnabled}
+                  onChange={(e) => setHandoffPromptEnabled(e.target.checked)}
+                />
+                <span>{handoffPromptEnabled ? '已開啟' : '已關閉'}</span>
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              KB 中等信心回答（命中但不確定）下方是否提示可轉接真人
+            </p>
+
+            {handoffPromptEnabled && (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">提示方式</label>
+                  <Select
+                    value={handoffPromptStyle}
+                    onChange={(e) => setHandoffPromptStyle(e.target.value as HandoffPromptStyle)}
+                    options={handoffPromptStyleOptions}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {handoffPromptStyle === 'button'
+                      ? '回答下方顯示「轉接客服」快速回覆按鈕，使用者點按即轉接'
+                      : handoffPromptStyle === 'text'
+                      ? '回答尾部加一行「請輸入『真人』即可轉接」文字提示'
+                      : handoffPromptStyle === 'both'
+                      ? '同時顯示文字提示與快速回覆按鈕'
+                      : '不顯示任何提示。使用者仍可打「真人」「客服」等關鍵字觸發轉接'}
+                  </p>
+                </div>
+
+                {(handoffPromptStyle === 'button' || handoffPromptStyle === 'both') && (
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">按鈕文字</label>
+                    <Input
+                      value={handoffButtonLabel}
+                      onChange={(e) => setHandoffButtonLabel(e.target.value)}
+                      placeholder="💬 轉接客服"
+                      maxLength={20}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      LINE quick reply label 上限 20 字
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Offline Greeting */}

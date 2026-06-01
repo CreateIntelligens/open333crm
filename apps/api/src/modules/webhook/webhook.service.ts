@@ -404,6 +404,55 @@ export async function processInboundMessage(
     return; // 不發 message.received，不觸發 automation（同 CSAT）
   }
 
+  // 5c. Intercept handoff_request postback — 使用者按「💬 轉接客服」一鍵轉真人
+  // 仿 CSAT / kb_feedback 攔截模式：不發 message.received、不觸發 automation
+  const handoffPattern = /^handoff_request$/i;
+  if (handoffPattern.test(postbackData) || handoffPattern.test(textContent)) {
+    try {
+      const fullChannel = await prisma.channel.findFirst({
+        where: { id: channel.id },
+        select: { settings: true },
+      });
+      const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
+      const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
+      const handoffMessage =
+        (botConfig.handoffMessage as string | undefined) || '稍等，正在為您轉接客服人員';
+
+      if (conversation.status === 'AGENT_HANDLED') {
+        // 冪等：已是 AGENT_HANDLED，只回訊息、不改狀態、不重發 event
+        await deliverToChannel(prisma, conversation.id, handoffMessage);
+        logger.info('[Webhook] handoff_request on AGENT_HANDLED conv (idempotent)', {
+          conversationId: conversation.id,
+        });
+      } else if (conversation.status === 'BOT_HANDLED') {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            status: 'AGENT_HANDLED',
+            handoffReason: 'user_requested_handoff',
+          },
+        });
+        await deliverToChannel(prisma, conversation.id, handoffMessage);
+        eventBus.publish({
+          name: 'conversation.handoff',
+          tenantId,
+          timestamp: new Date(),
+          payload: {
+            conversationId: conversation.id,
+            reason: 'user_requested_handoff',
+            previousStatus: 'BOT_HANDLED',
+          },
+        });
+        logger.info('[Webhook] handoff_request → AGENT_HANDLED', {
+          conversationId: conversation.id,
+        });
+      }
+    } catch (err) {
+      logger.error('[Webhook] handoff_request handling failed:', err);
+    }
+    return; // 不發 message.received
+  }
+
   // 6. Track broadcast reply (non-blocking)
   trackBroadcastReply(prisma, contactId).catch(() => {});
 
