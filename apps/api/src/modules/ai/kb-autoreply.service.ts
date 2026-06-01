@@ -72,9 +72,22 @@ export async function attemptKbAutoReply(
   if (!conversation) return false;
 
   // 3. Channel botMode gating + 解析完整 botConfig（含 handoff prompt 設定）
+  // spread 對 undefined 才 fallback；空字串 / 不合法 enum 會覆蓋預設，需另外清理。
   const channelSettings = (conversation.channel.settings || {}) as Record<string, unknown>;
   const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
-  const botConfig: BotConfig = { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
+  const merged: BotConfig = { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
+  const botConfig: BotConfig = {
+    ...merged,
+    handoffPromptStyle: (['text', 'button', 'both', 'none'] as const).includes(
+      merged.handoffPromptStyle,
+    )
+      ? merged.handoffPromptStyle
+      : DEFAULT_BOT_CONFIG.handoffPromptStyle,
+    handoffButtonLabel:
+      typeof merged.handoffButtonLabel === 'string' && merged.handoffButtonLabel.trim().length > 0
+        ? merged.handoffButtonLabel
+        : DEFAULT_BOT_CONFIG.handoffButtonLabel,
+  };
   if (botConfig.botMode === 'off' || botConfig.botMode === 'keyword') return false;
 
   // 4. Load tenant chat settings (clarify thresholds + system prompts)
@@ -159,13 +172,7 @@ export async function attemptKbAutoReply(
   }
 
   // 8b. 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
-  const kbReply = buildKbReplyPayload({
-    replyText,
-    replyKind,
-    botConfig,
-    articleId: topResult?.id,
-    botMessageId: null, // 先佔位，存完 message 後再補
-  });
+  const kbReply = buildKbReplyPayload({ replyText, replyKind, botConfig });
   // 真正送 channel 的文字（可能多帶 text suffix）— DB 也存這份以利客服 UI 對齊
   const finalText = kbReply.text;
 
@@ -266,8 +273,6 @@ function buildKbReplyPayload(input: {
   replyText: string;
   replyKind: ReplyKind;
   botConfig: BotConfig;
-  articleId: string | undefined;
-  botMessageId: string | null;
 }): { text: string; includeHandoffButton: boolean } {
   const { replyText, replyKind, botConfig } = input;
 

@@ -425,26 +425,80 @@ export async function processInboundMessage(
           conversationId: conversation.id,
         });
       } else if (conversation.status === 'BOT_HANDLED') {
-        await prisma.conversation.update({
+        const reason = 'user_requested_handoff';
+        // 寫 SYSTEM message 留軌跡（仿 automation.worker checkAutoHandoff）
+        const systemMessage = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            senderType: 'SYSTEM',
+            contentType: 'system',
+            content: { text: '使用者主動點按按鈕轉接人工客服' },
+            metadata: { type: 'user_requested_handoff', reason },
+            isRead: true,
+            createdAt: new Date(),
+          },
+        });
+
+        const updatedConversation = await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
             status: 'AGENT_HANDLED',
-            handoffReason: 'user_requested_handoff',
+            handoffReason: reason,
+            lastMessageAt: new Date(),
           },
         });
+
         await deliverToChannel(prisma, conversation.id, handoffMessage);
+
         eventBus.publish({
           name: 'conversation.handoff',
           tenantId,
           timestamp: new Date(),
           payload: {
             conversationId: conversation.id,
-            reason: 'user_requested_handoff',
+            reason,
             previousStatus: 'BOT_HANDLED',
           },
         });
+
+        // Emit conversation.updated 讓客服 UI 即時看到狀態切換 + unreadCount 修正
+        const convPayload: ConversationUpdatedPayload = {
+          id: updatedConversation.id,
+          status: updatedConversation.status,
+          assignedToId: updatedConversation.assignedToId,
+          unreadCount: updatedConversation.unreadCount,
+          lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
+          updatedAt: updatedConversation.updatedAt.toISOString(),
+          handoffReason: reason,
+        };
+        io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
+        io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
+
+        // Emit SYSTEM message 給客服 UI 看
+        io.to(`conversation:${conversation.id}`).emit('message.new', {
+          conversationId: conversation.id,
+          message: {
+            id: systemMessage.id,
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            senderType: 'SYSTEM',
+            contentType: 'system',
+            content: systemMessage.content,
+            metadata: systemMessage.metadata,
+            createdAt: systemMessage.createdAt.toISOString(),
+            sender: null,
+          },
+        });
+
         logger.info('[Webhook] handoff_request → AGENT_HANDLED', {
           conversationId: conversation.id,
+        });
+      } else {
+        // CLOSED / RESOLVED 或其他狀態：不接、靜默 log 警告
+        logger.warn('[Webhook] handoff_request ignored (unexpected status)', {
+          conversationId: conversation.id,
+          status: conversation.status,
         });
       }
     } catch (err) {

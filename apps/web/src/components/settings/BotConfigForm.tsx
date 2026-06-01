@@ -118,6 +118,8 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
 
     try {
       const existingSettings = (channel.settings || {}) as Record<string, unknown>;
+      // 空字串會在後端 spread 覆蓋掉預設值 → LINE quick reply label 不可為空，trim 後若空就 fallback
+      const trimmedLabel = handoffButtonLabel.trim();
       const botConfig: BotConfig = {
         botMode,
         maxBotReplies,
@@ -126,7 +128,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         offlineGreeting: offlineGreeting || undefined,
         handoffPromptEnabled,
         handoffPromptStyle,
-        handoffButtonLabel,
+        handoffButtonLabel: trimmedLabel || DEFAULT_HANDOFF_BUTTON_LABEL,
       };
 
       await api.patch(`/channels/${channel.id}`, {
