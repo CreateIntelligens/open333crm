@@ -117,6 +117,6 @@
 
 ## 15. Spec Sync（at archive）
 
-- [ ] 15.1 把 `specs/material-system/spec.md`（本 change delta）合進主 spec
-- [ ] 15.2 `CHANGELOG.md` `[Unreleased]` `### Changed` 補本 change 的條目
-- [ ] 15.3 通知 Louis 新的 contentType 清單（影響他做 Broadcast / Inbox 整合的 dispatch 邏輯）
+- [x] 15.1 把 `specs/material-system/spec.md`（本 change delta）合進主 spec
+- [x] 15.2 `CHANGELOG.md` `[Unreleased]` `### Changed` 補本 change 的條目
+- [x] 15.3 通知 Louis 新的 contentType 清單（影響他做 Broadcast / Inbox 整合的 dispatch 邏輯）
