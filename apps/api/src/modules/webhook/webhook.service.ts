@@ -2,54 +2,29 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { eventBus } from '../../events/event-bus.js';
 import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
-import { trackBroadcastReply } from '../marketing/broadcast.tracking.js';
-import { recordCsatScore } from '../csat/csat.service.js';
-import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
-import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
-import { deliverToChannel } from '../conversation/conversation.service.js';
-import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
-import { resolveUidToContact , logger } from '@open333crm/core';
-import { uploadFile } from '../storage/storage.service.js';
-import { CHANNEL_TYPE, type ConversationUpdatedPayload } from '@open333crm/shared';
-
-// Dedup cache for outside-hours auto-replies: key = contactId, value = timestamp
-const outsideHoursReplyCache = new Map<string, number>();
-const OUTSIDE_HOURS_DEDUP_MS = 30 * 60 * 1000; // 30 minutes
-
-function emitMediaReady(
-  io: SocketIOServer,
-  tenantId: string,
-  message: {
-    id: string;
-    conversationId: string;
-    direction: string;
-    senderType: string;
-    senderId: string | null;
-    contentType: string;
-    createdAt: Date;
-  },
-  updatedContent: Record<string, unknown>,
-) {
-  const payload = {
-    conversationId: message.conversationId,
-    message: {
-      id: message.id,
-      conversationId: message.conversationId,
-      direction: message.direction,
-      senderType: message.senderType,
-      senderId: message.senderId,
-      contentType: message.contentType,
-      content: updatedContent,
-      type: message.contentType,
-      payload: updatedContent,
-      createdAt: message.createdAt.toISOString(),
-    },
-  };
-  io.to(`conversation:${message.conversationId}`).emit('message.new', payload);
-  io.to(`tenant:${tenantId}`).emit('message.new', payload);
-}
+import { logger } from '@open333crm/core';
+import { CHANNEL_TYPE } from '@open333crm/shared';
+import {
+  createInboundMessageContext,
+  type ProcessInboundMessageOptions,
+} from './inbound-message.types.js';
+import { resolveInboundContact } from './inbound-contact-resolver.js';
+import { resolveInboundConversation } from './inbound-conversation-resolver.js';
+import {
+  createInboundMessage,
+  findDuplicateInboundMessage,
+  updateConversationAfterInboundMessage,
+} from './inbound-message-writer.js';
+import { runInboundPostbackInterceptors } from './inbound-postback-interceptors.js';
+import {
+  emitInboundSocketEvents,
+  publishMessageReceived,
+  resolveInboundMediaAsync,
+  sendOutsideHoursAutoReply,
+  trackInboundBroadcastReply,
+  triggerWebhookFlow,
+} from './inbound-side-effects.js';
 
 export async function processWebhookEvent(
   prisma: PrismaClient,
@@ -124,545 +99,45 @@ export async function processInboundMessage(
   channel: { id: string; channelType: string },
   tenantId: string,
   parsed: ParsedWebhookMessage,
-  options: {
-    conversationId?: string;
-    clientMessageId?: string;
-    messageMetadata?: Record<string, unknown>;
-  } = {},
+  options: ProcessInboundMessageOptions = {},
 ) {
-  const { contactUid, contentType, content, channelMsgId } = parsed;
+  const ctx = createInboundMessageContext(prisma, io, credentials, channel, tenantId, parsed, options);
+  if (!ctx) return;
 
-  if (!contactUid) return;
+  await resolveInboundContact(ctx);
+  await resolveInboundConversation(ctx);
 
-  const plugin = getChannelPlugin(channel.channelType);
+  const duplicate = await findDuplicateInboundMessage(ctx);
+  if (duplicate) return duplicate;
 
-  // 1. Find or create ChannelIdentity + Contact
-  let channelIdentity = await prisma.channelIdentity.findUnique({
-    where: {
-      channelId_uid: { channelId: channel.id, uid: contactUid },
-    },
-    include: { contact: true },
-  });
+  await createInboundMessage(ctx);
 
-  let contactId: string | null = null;
-
-  if (channelIdentity) {
-    contactId = channelIdentity.contactId;
-  } else {
-    const stitchedContactId = await resolveUidToContact(
-      tenantId,
-      channel.channelType as never,
-      contactUid,
-    );
-
-    if (stitchedContactId) {
-      const stitchedContact = await prisma.contact.findFirst({
-        where: { id: stitchedContactId, tenantId },
-      });
-
-      if (stitchedContact) {
-        contactId = stitchedContact.id;
-        channelIdentity = await prisma.channelIdentity.create({
-          data: {
-            contactId: stitchedContact.id,
-            channelId: channel.id,
-            channelType: channel.channelType as never,
-            uid: contactUid,
-            profileName: stitchedContact.displayName,
-            profilePic: stitchedContact.avatarUrl ?? null,
-          },
-          include: { contact: true },
-        });
-      }
-    }
+  if (!ctx.conversation || !ctx.message) {
+    throw new Error('Inbound message processing did not resolve conversation and message');
   }
-
-  if (!channelIdentity) {
-    // Fetch real profile from channel API
-    let displayName = `${channel.channelType} User ${contactUid.slice(-6)}`;
-    let avatarUrl: string | undefined;
-
-    if (plugin) {
-      try {
-        const profile = await plugin.getProfile(contactUid, credentials);
-        displayName = profile.displayName;
-        avatarUrl = profile.avatarUrl;
-      } catch {
-        // Use fallback name
-      }
-    }
-
-    const newContact = await prisma.contact.create({
-      data: {
-        tenantId,
-        displayName,
-        avatarUrl: avatarUrl ?? null,
-        language: 'zh-TW',
-      },
-    });
-
-    contactId = newContact.id;
-
-    channelIdentity = await prisma.channelIdentity.create({
-      data: {
-        contactId: newContact.id,
-        channelId: channel.id,
-        channelType: channel.channelType as any,
-        uid: contactUid,
-        profileName: displayName,
-        profilePic: avatarUrl ?? null,
-      },
-      include: { contact: true },
-    });
-  }
-
-  if (!contactId) {
-    throw new Error(`Failed to resolve contact for channel uid ${contactUid}`);
-  }
-
-  // 2. Find or create Conversation
-  let conversation = options.conversationId
-    ? await prisma.conversation.findFirst({
-        where: {
-          id: options.conversationId,
-          tenantId,
-          contactId,
-          channelId: channel.id,
-          status: { not: 'CLOSED' },
-        },
-      })
-    : await prisma.conversation.findFirst({
-        where: {
-          tenantId,
-          contactId,
-          channelId: channel.id,
-          status: { not: 'CLOSED' },
-        },
-        orderBy: { lastMessageAt: 'desc' },
-      });
-
-  if (!conversation) {
-    // Determine initial conversation status based on channel botConfig
-    let initialStatus: 'BOT_HANDLED' | 'AGENT_HANDLED' = 'BOT_HANDLED';
-    try {
-      const fullChannel = await prisma.channel.findFirst({
-        where: { id: channel.id },
-        select: { settings: true },
-      });
-      const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
-      const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
-      if (botConfig.botMode === 'off') {
-        initialStatus = 'AGENT_HANDLED';
-      }
-    } catch {
-      // fallback to BOT_HANDLED
-    }
-
-    conversation = await prisma.conversation.create({
-      data: {
-        tenantId,
-        contactId,
-        channelId: channel.id,
-        channelType: channel.channelType as any,
-        status: initialStatus,
-        unreadCount: 0,
-      },
-    });
-
-    // Publish conversation.created event for automation
-    eventBus.publish({
-      name: 'conversation.created',
-      tenantId,
-      timestamp: new Date(),
-      payload: {
-        conversationId: conversation.id,
-        contactId,
-        channelId: channel.id,
-        channelType: channel.channelType,
-      },
-    });
-  }
-
-  const now = new Date();
-
-  if (options.clientMessageId) {
-    const existingMessage = await prisma.message.findUnique({
-      where: {
-        conversationId_clientMessageId: {
-          conversationId: conversation.id,
-          clientMessageId: options.clientMessageId,
-        },
-      },
-    });
-
-    if (existingMessage) {
-      return { conversation, message: existingMessage, duplicate: true };
-    }
-  }
-
-  const sequence = await prisma.message.count({
-    where: { conversationId: conversation.id },
-  }) + 1;
-
-  // 3. Create Message (INBOUND)
-  const message = await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      direction: 'INBOUND',
-      senderType: 'CONTACT',
-      senderId: null,
-      contentType,
-      content: content as any,
-      metadata: (options.messageMetadata ?? {}) as any,
-      channelMsgId: channelMsgId ?? null,
-      clientMessageId: options.clientMessageId ?? null,
-      sequence,
-      isRead: false,
-      createdAt: now,
-    },
-  });
 
   logger.info('[Webhook] Message saved', {
-    messageId: message.id,
-    conversationId: conversation.id,
-    channelType: channel.channelType,
-    contactUid,
-    contentType,
-    channelMsgId: channelMsgId ?? null,
+    messageId: ctx.message.id,
+    conversationId: ctx.conversation.id,
+    channelType: ctx.channel.channelType,
+    contactUid: ctx.contactUid,
+    contentType: ctx.contentType,
+    channelMsgId: ctx.channelMsgId ?? null,
   });
 
-  // 3b. Async media resolution — delegated to the plugin (non-blocking)
-  // Plugins that need to fetch binary content (e.g. LINE-hosted media) implement resolveInboundMedia.
-  // Plugins where the webhook already carries a usable URL (FB, LINE external) leave this unimplemented.
-  if (plugin?.resolveInboundMedia) {
-    (async () => {
-      try {
-        const stored = await plugin.resolveInboundMedia!(
-          content,
-          contentType,
-          credentials,
-          (buffer, filename, mime) => uploadFile(buffer, filename, mime, tenantId, 'media', conversation.id),
-        );
-        if (stored) {
-          const updatedContent = { ...(message.content as Record<string, unknown>), url: stored.url, storageKey: stored.storageKey };
-          await prisma.message.update({
-            where: { id: message.id },
-            data: { content: updatedContent as any },
-          });
-          emitMediaReady(io, tenantId, message, updatedContent);
-        }
-      } catch (err) {
-        logger.error('[Webhook] Media resolution error (non-blocking):', err);
-      }
-    })();
-  }
+  resolveInboundMediaAsync(ctx);
 
-  // 4. Update Conversation
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: {
-      lastMessageAt: now,
-      unreadCount: { increment: 1 },
-    },
-  });
+  await updateConversationAfterInboundMessage(ctx);
 
-  // 5. Intercept CSAT postback responses
-  const textContent = (content as Record<string, unknown>).text as string || '';
-  const postbackData = (parsed as any).rawPayload?.postback?.data || '';
-  const csatMatch = textContent.match(/^csat:(\d):([a-f0-9-]+)$/i)
-    || postbackData.match(/^csat:(\d):([a-f0-9-]+)$/i);
+  const intercepted = await runInboundPostbackInterceptors(ctx);
+  if (intercepted) return;
 
-  if (csatMatch) {
-    const score = parseInt(csatMatch[1], 10);
-    const csatCaseId = csatMatch[2];
-    if (score >= 1 && score <= 5) {
-      await recordCsatScore(prisma, io, csatCaseId, score);
-      return; // Don't publish message.received to avoid triggering automations
-    }
-  }
+  trackInboundBroadcastReply(ctx);
 
-  // 5b. Intercept KB feedback postback：kb_feedback:bad|good:{articleId|none}:{messageId}
-  // 同時比對 postbackData 與 textContent（仿 CSAT）— LINE 走 postback，
-  // 但 FB/WEBCHAT 點 quick reply 可能以文字回傳。
-  const fbPattern = /^kb_feedback:(bad|good):([a-f0-9-]+|none):([a-f0-9-]+)$/i;
-  const fbMatch = postbackData.match(fbPattern) || textContent.match(fbPattern);
-  if (fbMatch) {
-    const rating = fbMatch[1] as 'bad' | 'good';
-    const articleId = fbMatch[2];
-    const fbMessageId = fbMatch[3];
-    try {
-      await recordKbFeedback(prisma, tenantId, {
-        rating,
-        articleId,
-        messageId: fbMessageId,
-        contactId: contactId ?? undefined,
-      });
-      await deliverToChannel(prisma, conversation.id, '感謝您的回報，我們會持續改善 🙏');
-    } catch (err) {
-      logger.error('[Webhook] KB feedback handling failed:', err);
-    }
-    return; // 不發 message.received，不觸發 automation（同 CSAT）
-  }
+  await emitInboundSocketEvents(ctx);
+  publishMessageReceived(ctx);
+  await triggerWebhookFlow(ctx);
+  await sendOutsideHoursAutoReply(ctx);
 
-  // 5c. Intercept handoff_request postback — 使用者按「💬 轉接客服」一鍵轉真人
-  // 仿 CSAT / kb_feedback 攔截模式：不發 message.received、不觸發 automation
-  const handoffPattern = /^handoff_request$/i;
-  if (handoffPattern.test(postbackData) || handoffPattern.test(textContent)) {
-    try {
-      const fullChannel = await prisma.channel.findFirst({
-        where: { id: channel.id },
-        select: { settings: true },
-      });
-      const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
-      const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
-      const handoffMessage =
-        (botConfig.handoffMessage as string | undefined) || '稍等，正在為您轉接客服人員';
-
-      if (conversation.status === 'AGENT_HANDLED') {
-        // 冪等：已是 AGENT_HANDLED，只回訊息、不改狀態、不重發 event
-        await deliverToChannel(prisma, conversation.id, handoffMessage);
-        logger.info('[Webhook] handoff_request on AGENT_HANDLED conv (idempotent)', {
-          conversationId: conversation.id,
-        });
-      } else if (conversation.status === 'BOT_HANDLED') {
-        const reason = 'user_requested_handoff';
-        // 寫 SYSTEM message 留軌跡（仿 automation.worker checkAutoHandoff）
-        const systemMessage = await prisma.message.create({
-          data: {
-            conversationId: conversation.id,
-            direction: 'OUTBOUND',
-            senderType: 'SYSTEM',
-            contentType: 'system',
-            content: { text: '使用者主動點按按鈕轉接人工客服' },
-            metadata: { type: 'user_requested_handoff', reason },
-            isRead: true,
-            createdAt: new Date(),
-          },
-        });
-
-        const updatedConversation = await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: {
-            status: 'AGENT_HANDLED',
-            handoffReason: reason,
-            lastMessageAt: new Date(),
-          },
-        });
-
-        await deliverToChannel(prisma, conversation.id, handoffMessage);
-
-        eventBus.publish({
-          name: 'conversation.handoff',
-          tenantId,
-          timestamp: new Date(),
-          payload: {
-            conversationId: conversation.id,
-            reason,
-            previousStatus: 'BOT_HANDLED',
-          },
-        });
-
-        // Emit conversation.updated 讓客服 UI 即時看到狀態切換 + unreadCount 修正
-        const convPayload: ConversationUpdatedPayload = {
-          id: updatedConversation.id,
-          status: updatedConversation.status,
-          assignedToId: updatedConversation.assignedToId,
-          unreadCount: updatedConversation.unreadCount,
-          lastMessageAt: updatedConversation.lastMessageAt?.toISOString() ?? null,
-          updatedAt: updatedConversation.updatedAt.toISOString(),
-          handoffReason: reason,
-        };
-        io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
-        io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
-
-        // Emit SYSTEM message 給客服 UI 看
-        io.to(`conversation:${conversation.id}`).emit('message.new', {
-          conversationId: conversation.id,
-          message: {
-            id: systemMessage.id,
-            conversationId: conversation.id,
-            direction: 'OUTBOUND',
-            senderType: 'SYSTEM',
-            contentType: 'system',
-            content: systemMessage.content,
-            metadata: systemMessage.metadata,
-            createdAt: systemMessage.createdAt.toISOString(),
-            sender: null,
-          },
-        });
-
-        logger.info('[Webhook] handoff_request → AGENT_HANDLED', {
-          conversationId: conversation.id,
-        });
-      } else {
-        // CLOSED / RESOLVED 或其他狀態：不接、靜默 log 警告
-        logger.warn('[Webhook] handoff_request ignored (unexpected status)', {
-          conversationId: conversation.id,
-          status: conversation.status,
-        });
-      }
-    } catch (err) {
-      logger.error('[Webhook] handoff_request handling failed:', err);
-    }
-    return; // 不發 message.received
-  }
-
-  // 6. Track broadcast reply (non-blocking)
-  trackBroadcastReply(prisma, contactId).catch(() => {});
-
-  // 7. Emit WebSocket events
-  const wsPayload = {
-    conversationId: conversation.id,
-    message: {
-      id: message.id,
-      conversationId: message.conversationId,
-      direction: message.direction,
-      senderType: message.senderType,
-      senderId: message.senderId,
-      contentType: message.contentType,
-      content: message.content as Record<string, unknown>,
-      type: message.contentType,
-      payload: message.content as Record<string, unknown>,
-      createdAt: message.createdAt.toISOString(),
-      sequence: message.sequence,
-    },
-  };
-
-  logger.info('[Webhook] Emitting message.new', { messageId: message.id, conversationId: conversation.id, contentType });
-  io.to(`conversation:${conversation.id}`).emit('message.new', wsPayload);
-  io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
-
-  const updatedConv = await prisma.conversation.findUnique({
-    where: { id: conversation.id },
-  });
-
-  if (updatedConv) {
-    const convPayload: ConversationUpdatedPayload = {
-      id: updatedConv.id,
-      status: updatedConv.status,
-      assignedToId: updatedConv.assignedToId,
-      unreadCount: updatedConv.unreadCount,
-      lastMessageAt: updatedConv.lastMessageAt?.toISOString() ?? null,
-      updatedAt: updatedConv.updatedAt.toISOString(),
-    };
-
-    io.to(`conversation:${conversation.id}`).emit('conversation.updated', convPayload);
-    io.to(`tenant:${tenantId}`).emit('conversation.updated', convPayload);
-  }
-
-  // 8. Publish to EventBus for automation
-  eventBus.publish({
-    name: 'message.received',
-    tenantId,
-    timestamp: now,
-    payload: {
-      conversationId: conversation.id,
-      messageId: message.id,
-      contactId,
-      channelId: channel.id,
-      channelType: channel.channelType,
-      content,
-      messageContent: (content.text as string) ?? '',
-    },
-  });
-
-  await handleWebhookFlowTrigger({
-    tenantId,
-    channelType: channel.channelType,
-    channelId: channel.id,
-    contactId,
-    eventType: normalizeCanvasEventType(parsed),
-    payload: {
-      contentType,
-      content,
-      channelMsgId,
-      rawPayload: (parsed as { rawPayload?: Record<string, unknown> }).rawPayload ?? {},
-      postbackData,
-      text: textContent,
-    },
-  });
-
-  // 9. Outside office hours auto-reply (30 min dedup per contact)
-  try {
-    let outsideMsg = await getOutsideHoursMessage(prisma, tenantId);
-
-    // Use channel-specific offline greeting if available
-    if (outsideMsg) {
-      try {
-        const fullChannel = await prisma.channel.findFirst({
-          where: { id: channel.id },
-          select: { settings: true },
-        });
-        const channelSettings = (fullChannel?.settings || {}) as Record<string, unknown>;
-        const botConfig = (channelSettings.botConfig || {}) as Record<string, unknown>;
-        if (botConfig.offlineGreeting && typeof botConfig.offlineGreeting === 'string') {
-          outsideMsg = botConfig.offlineGreeting;
-        }
-      } catch {
-        // use default outsideMsg
-      }
-    }
-    if (outsideMsg) {
-      const lastReply = outsideHoursReplyCache.get(contactId);
-      if (!lastReply || now.getTime() - lastReply > OUTSIDE_HOURS_DEDUP_MS) {
-        outsideHoursReplyCache.set(contactId, now.getTime());
-
-        const autoReply = await prisma.message.create({
-          data: {
-            conversationId: conversation.id,
-            direction: 'OUTBOUND',
-            senderType: 'SYSTEM',
-            contentType: 'text',
-            content: { text: outsideMsg },
-            metadata: { source: 'office_hours_auto_reply' },
-          },
-        });
-
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { lastMessageAt: new Date() },
-        });
-
-        const autoReplyPayload = {
-          conversationId: conversation.id,
-          message: {
-            id: autoReply.id,
-            conversationId: conversation.id,
-            direction: 'OUTBOUND',
-            senderType: 'SYSTEM',
-            contentType: 'text',
-            content: { text: outsideMsg },
-            type: 'text',
-            payload: { text: outsideMsg },
-            createdAt: autoReply.createdAt.toISOString(),
-          },
-        };
-
-        io.to(`conversation:${conversation.id}`).emit('message.new', autoReplyPayload);
-        io.to(`tenant:${tenantId}`).emit('message.new', autoReplyPayload);
-
-        // Deliver to external channel
-        await deliverToChannel(prisma, conversation.id, outsideMsg);
-      }
-    }
-  } catch (err) {
-    logger.error('[Webhook] Office hours auto-reply error:', err);
-  }
-
-  return { conversation, message, duplicate: false };
-}
-
-function normalizeCanvasEventType(parsed: ParsedWebhookMessage): string {
-  const rawType = (parsed as { eventType?: string; type?: string }).eventType
-    ?? (parsed as { eventType?: string; type?: string }).type;
-
-  if (typeof rawType === 'string' && rawType.length > 0) {
-    return rawType;
-  }
-
-  if (parsed.contentType === 'postback') {
-    return 'postback';
-  }
-
-  return 'message';
+  return { conversation: ctx.conversation, message: ctx.message, duplicate: false };
 }
