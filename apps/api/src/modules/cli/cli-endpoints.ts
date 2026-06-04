@@ -1,3 +1,9 @@
+import {
+  CLI_ANALYTICS_READ_SCOPE,
+  CLI_APIS_SCOPE,
+  CLI_STATUS_SCOPE,
+} from '../auth/cli-session.service.js';
+
 export type CliEndpointMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 export interface CliEndpointParam {
@@ -28,7 +34,7 @@ export const cliCapabilities: CliCapability[] = [
   {
     name: 'identity',
     description: 'Server health and current CLI identity',
-    scopes: ['cli:status'],
+    scopes: [CLI_STATUS_SCOPE],
     endpoints: [
       {
         name: 'Health',
@@ -49,13 +55,68 @@ export const cliCapabilities: CliCapability[] = [
   {
     name: 'api-discovery',
     description: 'CLI API discovery metadata',
-    scopes: ['cli:apis'],
+    scopes: [CLI_APIS_SCOPE],
     endpoints: [
       {
         name: 'List CLI APIs',
         description: 'List endpoints and capability scopes available to the current CLI token',
         method: 'GET',
         path: '/api/v1/cli/apis',
+        params: {},
+      },
+    ],
+  },
+  {
+    name: 'statistics',
+    description: 'Read-only CRM analytics for CLI workflows',
+    scopes: [CLI_ANALYTICS_READ_SCOPE],
+    endpoints: [
+      {
+        name: 'Overview Statistics',
+        description: 'Get aggregate CRM message, case, SLA, and CSAT metrics',
+        method: 'GET',
+        path: '/api/v1/cli/analytics/overview',
+        params: {
+          from: { desc: 'Start date or timestamp for the reporting window', value: '2026-06-01' },
+          to: { desc: 'End date or timestamp for the reporting window', value: '2026-06-30' },
+        },
+      },
+      {
+        name: 'Message Trend',
+        description: 'Get grouped message counts by channel type',
+        method: 'GET',
+        path: '/api/v1/cli/analytics/message-trend',
+        params: {
+          from: { desc: 'Start date or timestamp for the reporting window', value: '2026-06-01' },
+          to: { desc: 'End date or timestamp for the reporting window', value: '2026-06-30' },
+          groupBy: { desc: 'Grouping granularity: day, week, or month', value: 'day' },
+        },
+      },
+      {
+        name: 'Case Statistics',
+        description: 'Get aggregate case trend, distribution, and SLA violation counts',
+        method: 'GET',
+        path: '/api/v1/cli/analytics/cases',
+        params: {
+          from: { desc: 'Start date or timestamp for the reporting window', value: '2026-06-01' },
+          to: { desc: 'End date or timestamp for the reporting window', value: '2026-06-30' },
+        },
+      },
+      {
+        name: 'Channel Analytics',
+        description: 'Get aggregate channel message, conversation, and contact counts',
+        method: 'GET',
+        path: '/api/v1/cli/analytics/channels',
+        params: {
+          from: { desc: 'Start date or timestamp for the reporting window', value: '2026-06-01' },
+          to: { desc: 'End date or timestamp for the reporting window', value: '2026-06-30' },
+        },
+      },
+      {
+        name: 'My Performance',
+        description: 'Get current CLI agent performance metrics',
+        method: 'GET',
+        path: '/api/v1/cli/analytics/my',
         params: {},
       },
     ],

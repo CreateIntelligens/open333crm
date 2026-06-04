@@ -9,7 +9,10 @@ const TOKEN_PREFIX_VISIBLE_HEX = 5;
 const TOKEN_SUFFIX_VISIBLE_HEX = 4;
 const DEFAULT_EXPIRES_DAYS = 30;
 
-export const DEFAULT_CLI_SCOPES = ['cli:status', 'cli:apis'] as const;
+export const CLI_STATUS_SCOPE = 'cli:status';
+export const CLI_APIS_SCOPE = 'cli:apis';
+export const CLI_ANALYTICS_READ_SCOPE = 'cli:analytics:read';
+export const DEFAULT_CLI_SCOPES = [CLI_STATUS_SCOPE, CLI_APIS_SCOPE] as const;
 
 export interface CreateCliSessionInput {
   tenantId: string;

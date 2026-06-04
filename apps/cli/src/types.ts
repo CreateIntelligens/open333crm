@@ -57,3 +57,66 @@ export interface CliApisResponse {
     endpoints: CliEndpoint[];
   }>;
 }
+
+export interface CliAnalyticsOverview {
+  totalMessages: number;
+  inboundMessages: number;
+  outboundMessages: number;
+  openCases: number;
+  newCases: number;
+  resolvedCases: number;
+  slaAchievementRate: number | null;
+  avgFirstResponseMinutes: number | null;
+  avgResolutionMinutes: number | null;
+  csatAvg: number | null;
+  csatPositiveRate: number | null;
+}
+
+export interface CliMessageTrendPoint {
+  date: string;
+  total: number;
+  [channel: string]: string | number;
+}
+
+export interface CliDistributionPoint {
+  name: string;
+  value: number;
+}
+
+export interface CliCaseStats {
+  trend: Array<{ date: string; opened: number; closed: number }>;
+  categoryDistribution: CliDistributionPoint[];
+  priorityDistribution: CliDistributionPoint[];
+  statusDistribution: CliDistributionPoint[];
+  escalationRate: number;
+  slaViolationCount: number;
+}
+
+export interface CliChannelAnalytics {
+  messagesByChannel: CliDistributionPoint[];
+  conversationsByChannel: CliDistributionPoint[];
+  botVsHuman: CliDistributionPoint[];
+  newContactsByChannel: CliDistributionPoint[];
+}
+
+export interface CliAgentPerformance {
+  agentId: string;
+  name: string;
+  role: string;
+  casesHandled: number;
+  casesResolved: number;
+  avgFirstResponseMinutes: number | null;
+  avgResolutionMinutes: number | null;
+  csatAvg: number | null;
+  slaAchievementRate: number | null;
+  pendingCases: number;
+  slaSoonExpiring: number;
+}
+
+export interface CliStatsResponse {
+  overview: CliAnalyticsOverview;
+  messageTrend: CliMessageTrendPoint[];
+  cases: CliCaseStats;
+  channels: CliChannelAnalytics;
+  my: CliAgentPerformance;
+}

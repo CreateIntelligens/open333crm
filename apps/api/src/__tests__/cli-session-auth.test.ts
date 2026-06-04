@@ -44,14 +44,73 @@ function createAgent(passwordHash: string) {
 
 function createPrismaMock(agent: ReturnType<typeof createAgent>) {
   const sessions: any[] = [];
+  const queryRawCalls: any[][] = [];
   const prisma = {
     _sessions: sessions,
+    _queryRawCalls: queryRawCalls,
+    $queryRaw: mockFn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      queryRawCalls.push([strings, ...values]);
+      const sql = Array.from(strings).join('?');
+      if (sql.includes('AVG(EXTRACT(EPOCH FROM')) {
+        return [{ avg_first_response: 12.3, avg_resolution: 45.6 }];
+      }
+      if (sql.includes('AVG("csatScore")')) {
+        return [{ avg_score: 4.2, total: 5n, positive: 4n }];
+      }
+      if (sql.includes('COUNT(*) FILTER (WHERE "resolvedAt" <= "slaDueAt")')) {
+        return [{ total: 4n, achieved: 3n }];
+      }
+      if (sql.includes('COUNT(*) FILTER (WHERE m.direction')) {
+        return [{ total: 10n, inbound: 6n, outbound: 4n }];
+      }
+      if (sql.includes('date_trunc') && sql.includes('FROM messages')) {
+        return [{ date: new Date('2026-06-01T00:00:00.000Z'), channel_type: 'LINE', count: 10n }];
+      }
+      if (sql.includes('date_trunc') && sql.includes('FROM cases')) {
+        return [{ date: new Date('2026-06-01T00:00:00.000Z'), opened: 3n, closed: 1n }];
+      }
+      if (sql.includes('COALESCE(category')) {
+        return [{ category: '查詢', count: 2n }];
+      }
+      if (sql.includes('SELECT priority')) {
+        return [{ priority: 'HIGH', count: 1n }];
+      }
+      if (sql.includes('SELECT status')) {
+        return [{ status: 'OPEN', count: 2n }];
+      }
+      if (sql.includes('c."channelType" AS channel_type')) {
+        return [{ channel_type: 'LINE', count: 10n }];
+      }
+      if (sql.includes('FROM conversations')) {
+        return [{ channel_type: 'LINE', count: 4n }];
+      }
+      if (sql.includes('FROM channel_identities')) {
+        return [{ channel_type: 'LINE', count: 2n }];
+      }
+      return [];
+    }),
     agent: {
       findUnique: mockFn(async () => agent),
       findFirst: mockFn(async () => {
         const { passwordHash: _passwordHash, ...publicAgent } = agent;
         return publicAgent;
       }),
+    },
+    case: {
+      count: mockFn(async ({ where }) => {
+        if (where?.status === 'ESCALATED') return 1;
+        if (where?.status?.in) return 2;
+        if (where?.resolvedAt) return 1;
+        if (where?.createdAt) return 3;
+        return 0;
+      }),
+      findMany: mockFn(async () => [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          contact: { id: '55555555-5555-4555-8555-555555555555', displayName: 'Sensitive Contact' },
+          assignee: { id: agent.id, name: agent.name },
+        },
+      ]),
     },
     cliSession: {
       create: mockFn(async ({ data }) => {
@@ -205,8 +264,82 @@ async function testCliAuthRoutes() {
   }
 }
 
+async function testCliAnalyticsRoutes() {
+  const agent = createAgent(await hashPassword('secret'));
+  const prisma = createPrismaMock(agent);
+  const app = await createApp(prisma);
+
+  try {
+    const { token } = await createCliSession(prisma as never, {
+      tenantId: agent.tenantId,
+      agentId: agent.id,
+      name: 'analytics-test',
+    });
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cli/analytics/overview',
+      headers: { authorization: 'Bearer cli_invalid' },
+    });
+    assert.equal(invalid.statusCode, 401);
+
+    const insufficient = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cli/analytics/overview',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(insufficient.statusCode, 403);
+    assert.equal(insufficient.json().error.code, 'INSUFFICIENT_SCOPE');
+
+    const hiddenDiscovery = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cli/apis',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(hiddenDiscovery.statusCode, 200);
+    assert.equal(
+      hiddenDiscovery.json().data.capabilities.some((capability: any) => capability.name === 'statistics'),
+      false,
+    );
+
+    prisma._sessions[0].scopes = ['cli:status', 'cli:apis', 'cli:analytics:read'];
+
+    const visibleDiscovery = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cli/apis',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(visibleDiscovery.statusCode, 200);
+    assert.equal(
+      visibleDiscovery.json().data.capabilities.some((capability: any) => capability.name === 'statistics'),
+      true,
+    );
+
+    const overview = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cli/analytics/overview?from=2026-06-01&to=2026-06-30',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(overview.statusCode, 200);
+    assert.equal(overview.json().data.totalMessages, 10);
+    assert.equal(overview.json().data.openCases, 2);
+
+    const cases = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cli/analytics/cases?from=2026-06-01&to=2026-06-30',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(cases.statusCode, 200);
+    assert.equal(cases.json().data.slaViolationCount, 1);
+    assert.equal('slaViolations' in cases.json().data, false);
+  } finally {
+    await app.close();
+  }
+}
+
 await testCliSessionServiceLifecycle();
 await testCliAuthRoutes();
+await testCliAnalyticsRoutes();
 
 console.log('cli-session-auth tests passed');
 process.exit(0);
