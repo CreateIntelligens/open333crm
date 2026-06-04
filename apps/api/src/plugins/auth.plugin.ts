@@ -3,6 +3,7 @@ import fastifyJwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getConfig } from '../config/env.js';
 import { verifyPartnerApiKey } from '../modules/auth/partner-api-key.service.js';
+import { verifyCliSession } from '../modules/auth/cli-session.service.js';
 
 export interface AgentPayload {
   id: string;
@@ -12,11 +13,30 @@ export interface AgentPayload {
   isPartnerKey?: boolean;
   /** PartnerApiKey row id, only present when isPartnerKey=true */
   apiKeyId?: string;
+  /** Set when authenticated via CLI session token. */
+  isCliSession?: boolean;
+  cliSession?: {
+    id: string;
+    name: string;
+    scopes: string[];
+    expiresAt: Date;
+    lastUsedAt: Date | null;
+    tokenPrefix: string;
+    tokenSuffix: string;
+  };
 }
 
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    authenticateCliSession: (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ) => Promise<void>;
+    authenticateJwtOrCliSession: (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ) => Promise<void>;
     authenticateJwtOrPartnerKey: (
       request: FastifyRequest,
       reply: FastifyReply,
@@ -25,6 +45,33 @@ declare module 'fastify' {
   interface FastifyRequest {
     agent: AgentPayload;
   }
+}
+
+function extractBearerToken(request: FastifyRequest): string | undefined {
+  const auth = request.headers.authorization ?? '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m?.[1];
+}
+
+function attachCliAgent(
+  request: FastifyRequest,
+  result: Extract<Awaited<ReturnType<typeof verifyCliSession>>, { ok: true }>,
+): void {
+  request.agent = {
+    id: result.agent.id,
+    tenantId: result.agent.tenantId,
+    role: result.agent.role,
+    isCliSession: true,
+    cliSession: {
+      id: result.session.id,
+      name: result.session.name,
+      scopes: result.scopes,
+      expiresAt: result.session.expiresAt,
+      lastUsedAt: result.session.lastUsedAt,
+      tokenPrefix: result.session.tokenPrefix,
+      tokenSuffix: result.session.tokenSuffix,
+    },
+  };
 }
 
 declare module '@fastify/jwt' {
@@ -73,6 +120,65 @@ async function authPlugin(fastify: FastifyInstance) {
     }
   });
 
+  fastify.decorate(
+    'authenticateCliSession',
+    async function (request: FastifyRequest, reply: FastifyReply) {
+      const token = extractBearerToken(request);
+      if (!token) {
+        reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Missing CLI token' },
+        });
+        return;
+      }
+
+      const result = await verifyCliSession(fastify.prisma, token);
+      if (!result.ok) {
+        reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: result.reason },
+        });
+        return;
+      }
+
+      attachCliAgent(request, result);
+    },
+  );
+
+  fastify.decorate(
+    'authenticateJwtOrCliSession',
+    async function (request: FastifyRequest, reply: FastifyReply) {
+      const token = extractBearerToken(request);
+      if (token?.startsWith('cli_')) {
+        const result = await verifyCliSession(fastify.prisma, token);
+        if (!result.ok) {
+          reply.status(401).send({
+            success: false,
+            error: { code: 'UNAUTHORIZED', message: result.reason },
+          });
+          return;
+        }
+        attachCliAgent(request, result);
+        return;
+      }
+
+      try {
+        await request.jwtVerify();
+        const payload = request.user;
+        request.agent = {
+          id: payload.agentId,
+          tenantId: payload.tenantId,
+          role: payload.role,
+        };
+      } catch {
+        reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },
+        });
+      }
+    },
+  );
+
   /**
    * Try Partner API key first (Authorization: Bearer pk_...), fall back to
    * agent JWT. Used by endpoints that accept either form (e.g. partner-ingest).
@@ -84,9 +190,7 @@ async function authPlugin(fastify: FastifyInstance) {
   fastify.decorate(
     'authenticateJwtOrPartnerKey',
     async function (request: FastifyRequest, reply: FastifyReply) {
-      const auth = request.headers.authorization ?? '';
-      const m = auth.match(/^Bearer\s+(.+)$/i);
-      const token = m?.[1];
+      const token = extractBearerToken(request);
 
       if (token && token.startsWith('pk_')) {
         const result = await verifyPartnerApiKey(fastify.prisma, token);

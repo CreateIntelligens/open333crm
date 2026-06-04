@@ -1,0 +1,60 @@
+{
+  "name": "@open333crm/cli",
+  "version": "0.1.0",
+  "description": "Open333 command line interface",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "open333": "dist/index.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "RELEASE.md",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "dev": "tsx src/index.ts",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "keywords": [
+    "open333",
+    "crm",
+    "cli",
+    "customer-service"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/open333crm/open333crm.git",
+    "directory": "apps/cli"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "oclif": {
+    "bin": "open333",
+    "commands": {
+      "strategy": "explicit",
+      "target": "./dist/commands.js"
+    }
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.3.3",
+    "@oclif/core": "^4.11.4",
+    "conf": "^13.1.0",
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -12,7 +12,10 @@
     "db:generate": "pnpm --filter @open333crm/database exec prisma generate",
     "db:migrate": "pnpm --filter @open333crm/database exec prisma migrate dev",
     "db:seed": "pnpm --filter @open333crm/database exec prisma db seed",
-    "db:studio": "pnpm --filter @open333crm/database exec prisma studio"
+    "db:studio": "pnpm --filter @open333crm/database exec prisma studio",
+    "cli:build": "pnpm --filter @open333crm/cli build",
+    "cli:dev": "pnpm --filter @open333crm/cli dev",
+    "cli:sandbox": "pnpm cli:build && mkdir -p /tmp/open333-npm-cache /tmp/open333-cli-sandbox && TARBALL=$(NPM_CONFIG_CACHE=/tmp/open333-npm-cache pnpm --silent --filter @open333crm/cli exec npm pack --pack-destination /tmp) && NPM_CONFIG_CACHE=/tmp/open333-npm-cache npm install --prefix /tmp/open333-cli-sandbox -g /tmp/$TARBALL && /tmp/open333-cli-sandbox/bin/open333 --help && /tmp/open333-cli-sandbox/bin/open333 login --help && /tmp/open333-cli-sandbox/bin/open333 status --help && /tmp/open333-cli-sandbox/bin/open333 apis --help"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.57.1",
