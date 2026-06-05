@@ -216,6 +216,7 @@ model Tenant {
   pointTransactions       PointTransaction[]
   shortLinks              ShortLink[]
   partnerApiKeys          PartnerApiKey[]
+  cliSessions             CliSession[]
   materials               Material[]
   richMenus               RichMenu[]
   chatboxSessions         ChatboxSession[]
@@ -249,6 +250,7 @@ model Agent {
   caseEvents    CaseEvent[]
   sentMessages  Message[]
   notifications Notification[]
+  cliSessions   CliSession[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1539,6 +1541,34 @@ model PartnerApiKey {
 }
 
 // ─────────────────────────────────────────────
+// CLI Sessions
+// ─────────────────────────────────────────────
+
+model CliSession {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
+  agentId     String    @db.Uuid
+  name        String
+  tokenHash   String
+  tokenPrefix String    @db.VarChar(9)
+  tokenSuffix String    @db.VarChar(4)
+  scopes      Json      @default("[]")
+  expiresAt   DateTime
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  agent  Agent  @relation(fields: [agentId], references: [id])
+
+  @@index([tokenPrefix])
+  @@index([tenantId, agentId])
+  @@index([tenantId, revokedAt, expiresAt])
+  @@map("cli_sessions")
+}
+
+// ─────────────────────────────────────────────
 // Quick Reply Preset（LINE 客服可重用的快速回覆按鈕組）
 // ─────────────────────────────────────────────
 
@@ -1581,4 +1611,3 @@ model KbArticleFeedback {
   @@index([tenantId, status])
   @@map("kb_article_feedback")
 }
-

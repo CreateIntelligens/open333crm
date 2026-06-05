@@ -1,9 +1,15 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { loginRequestSchema } from './auth.schema.js';
+import rateLimit from '@fastify/rate-limit';
+import { cliLoginRequestSchema, loginRequestSchema } from './auth.schema.js';
 import { login, getAgentById } from './auth.service.js';
 import { success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
 import { FastifyJWT } from '@fastify/jwt';
+import {
+  createCliSession,
+  parseCliScopes,
+  revokeCliSession,
+} from './cli-session.service.js';
 
 type TokenPayload = FastifyJWT['payload'];
 
@@ -44,6 +50,13 @@ function setRefreshCookie(reply: FastifyReply, token: string, maxAge?: number): 
 }
 
 export default async function authRoutes(fastify: FastifyInstance) {
+  await fastify.register(rateLimit, {
+    global: false,
+    max: 10,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.ip,
+  });
+
   // POST /api/v1/auth/login
   fastify.post('/login', async (request, reply) => {
     const config = getConfig();
@@ -70,6 +83,58 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       }),
     );
+  });
+
+  // POST /api/v1/auth/cli/login
+  fastify.post('/cli/login', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    const body = cliLoginRequestSchema.parse(request.body);
+    const agent = await login(fastify.prisma, body.email, body.password);
+    const { token, session } = await createCliSession(fastify.prisma, {
+      tenantId: agent.tenantId,
+      agentId: agent.id,
+      name: body.name ?? body.profile ?? 'Open333 CLI',
+    });
+
+    return reply.send(
+      success({
+        token,
+        session: {
+          id: session.id,
+          name: session.name,
+          tokenPrefix: session.tokenPrefix,
+          tokenSuffix: session.tokenSuffix,
+          scopes: parseCliScopes(session.scopes),
+          expiresAt: session.expiresAt.toISOString(),
+          lastUsedAt: session.lastUsedAt?.toISOString() ?? null,
+        },
+        agent: {
+          id: agent.id,
+          email: agent.email,
+          name: agent.name,
+          role: agent.role,
+          avatarUrl: agent.avatarUrl,
+          tenantId: agent.tenantId,
+        },
+      }),
+    );
+  });
+
+  // POST /api/v1/auth/cli/logout
+  fastify.post('/cli/logout', {
+    preHandler: [fastify.authenticateCliSession],
+  }, async (request, reply) => {
+    const session = request.agent.cliSession;
+    if (session) {
+      await revokeCliSession(fastify.prisma, session.id, request.agent.tenantId);
+    }
+    return reply.send(success({ loggedOut: true }));
   });
 
   // POST /api/v1/auth/refresh — reads refreshToken from HttpOnly Cookie
@@ -109,7 +174,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/auth/me
   fastify.get('/me', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticateJwtOrCliSession],
   }, async (request, reply) => {
     const agent = await getAgentById(
       fastify.prisma,

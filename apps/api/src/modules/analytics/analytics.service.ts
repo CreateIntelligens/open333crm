@@ -452,10 +452,12 @@ export async function getChannelAnalytics(
   const contactRows = await prisma.$queryRaw<
     { channel_type: string; count: bigint }[]
   >`
-    SELECT "channelType" AS channel_type, COUNT(*)::bigint AS count
-    FROM channel_identities
-    WHERE "linkedAt" >= ${from}
-      AND "linkedAt" <= ${to}
+    SELECT ci."channelType" AS channel_type, COUNT(*)::bigint AS count
+    FROM channel_identities ci
+    JOIN contacts c ON c.id = ci."contactId"
+    WHERE c."tenantId" = ${tenantId}::uuid
+      AND ci."linkedAt" >= ${from}
+      AND ci."linkedAt" <= ${to}
     GROUP BY 1
   `;
 

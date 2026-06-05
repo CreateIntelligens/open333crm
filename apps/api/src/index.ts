@@ -53,6 +53,7 @@ import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 import webchatRoutes from './modules/webchat/webchat.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
+import cliRoutes from './modules/cli/cli.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
@@ -139,6 +140,7 @@ export async function bootstrap() {
   await app.register(identityRoutes, { prefix: '/api/v1/identity' });
   await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });
   await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
+  await app.register(cliRoutes, { prefix: '/api/v1/cli' });
 
   registerVisitorNamespace(app.io, app.prisma, app.chatboxSessionVerifier);
 
