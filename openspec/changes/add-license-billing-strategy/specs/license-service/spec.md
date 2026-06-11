@@ -1,9 +1,5 @@
-# license-service Specification
+## MODIFIED Requirements
 
-## Purpose
-Define how Open333CRM resolves local license, feature, limit, credit, and channel billing decisions before a remote license server exists.
-
-## Requirements
 ### Requirement: Centralized License Validation
 The system SHALL resolve license and billing state through a centralized LicenseService backed by a selectable provider strategy. The system SHALL NOT require a remote license server to boot or allow feature access during this phase.
 
@@ -47,6 +43,8 @@ The system SHALL consult the LicenseService before allowing access to gated feat
 - **WHEN** a strict provider cannot resolve a feature path
 - **THEN** the LicenseService SHALL return the provider's configured default decision
 - **AND** the decision SHALL be represented consistently to callers
+
+## ADDED Requirements
 
 ### Requirement: Strategy Provider Selection
 The system SHALL select exactly one license provider strategy at startup from configuration.

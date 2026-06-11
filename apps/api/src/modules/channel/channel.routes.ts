@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { ChannelType } from '@open333crm/types';
+import type { ChannelType as PrismaChannelType } from '@prisma/client';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   listChannels,
@@ -13,6 +15,7 @@ import {
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
+import { licenseService } from '../../services/license.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
@@ -103,6 +106,29 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels
   fastify.post('/', { preHandler: requireAdmin() }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
+    const currentCount = await fastify.prisma.channel.count({
+      where: {
+        tenantId: request.agent.tenantId,
+        channelType: data.channelType as PrismaChannelType,
+        isActive: true,
+      },
+    });
+    const decision = await licenseService.checkChannelCreation(data.channelType as ChannelType, currentCount, {
+      tenantId: request.agent.tenantId,
+      agentId: request.agent.id,
+    });
+    if (!decision.allowed) {
+      return reply.status(decision.statusCode ?? 402).send({
+        success: false,
+        error: {
+          code: decision.code,
+          message: decision.message,
+          channelType: decision.channelType,
+          limit: decision.limit,
+          current: decision.current,
+        },
+      });
+    }
 
     const channel = await createChannel(fastify.prisma, request.agent.tenantId, data);
 

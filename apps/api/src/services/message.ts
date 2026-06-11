@@ -33,10 +33,10 @@ class MessageService {
     }
 
     // 2. Billing check (Q2: Pre-deduct)
-    const fee = licenseService.getMessageFee(channelType);
+    const fee = await licenseService.getMessageFee(channelType);
     if (fee) {
-      const hasCredits = licenseService.hasCredits('broadcastMessages', fee.amount);
-      if (!hasCredits) {
+      const creditDecision = await licenseService.checkCredits('broadcastMessages', fee.amount);
+      if (!creditDecision.allowed) {
         return { success: false, error: 'INSUFFICIENT_CREDITS' };
       }
 

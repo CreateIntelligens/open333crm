@@ -54,6 +54,7 @@ import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.rout
 import webchatRoutes from './modules/webchat/webchat.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
 import cliRoutes from './modules/cli/cli.routes.js';
+import { licenseService } from './services/license.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
@@ -68,6 +69,7 @@ import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin } from '@ope
 
 export async function bootstrap() {
   const config = loadEnvConfig();
+  await licenseService.initialize();
 
   const app = Fastify({
     // 30MB top-level body limit. Must be ≥ multipart fileSize so the
