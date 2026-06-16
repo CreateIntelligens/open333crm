@@ -43,7 +43,7 @@ export const GeminiChatProvider: ChatProvider = {
     const url = `${GEMINI_BASE}/models/${encodeURIComponent(opts.model)}:generateContent`;
 
     const fullSystemPrompt = opts.kbContext
-      ? `${opts.systemPrompt}\n\n以下是相關知識庫內容，請根據這些內容回答客戶問題：\n${opts.kbContext}`
+      ? `${opts.systemPrompt}\n\n以下是「唯一可用」的知識庫內容。你的回答只能基於以下內容，超出這些內容範圍的資訊（尤其是型號、規格、電話、地址等具體事實）一律不可回答，請改為轉接專人：\n${opts.kbContext}`
       : opts.systemPrompt;
 
     const controller = new AbortController();
@@ -59,6 +59,22 @@ export const GeminiChatProvider: ChatProvider = {
         { role: 'user', parts: [{ text: opts.userMessage }] },
       ];
 
+      // Gemini 2.5 Pro 強制啟用 thinking mode，傳 thinkingBudget:0 會直接
+      // 回 400「Budget 0 is invalid. This model only works in thinking mode」。
+      // 其餘 2.5 系列（flash/flash-lite）預設也開 thinking，會把 token 花在
+      // 內部推理導致可見輸出被截斷，故對「非 pro」明確關閉 thinking。
+      const isProModel = /gemini.*-pro/i.test(opts.model);
+
+      const generationConfig: Record<string, unknown> = {
+        temperature: opts.temperature,
+        // Pro 開著 thinking 會先吃掉一部分 token 做推理，maxTokens 太小會讓
+        // 可見回覆被截光，故 pro 給一個較高的下限保底。
+        maxOutputTokens: isProModel ? Math.max(opts.maxTokens, 2048) : opts.maxTokens,
+      };
+      if (!isProModel) {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      }
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -68,15 +84,7 @@ export const GeminiChatProvider: ChatProvider = {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: fullSystemPrompt }] },
           contents,
-          generationConfig: {
-            temperature: opts.temperature,
-            maxOutputTokens: opts.maxTokens,
-            // Gemini 2.5 系列預設啟用 thinking mode，會把大量 token 花在內
-            // 部推理，可見輸出常被截斷（觀察到 maxOutputTokens=500 但只回
-            // 30 字就斷）。客服回覆不需要鏈式推理，明確關閉 thinking 確
-            // 保 maxOutputTokens 全部留給輸出。
-            thinkingConfig: { thinkingBudget: 0 },
-          },
+          generationConfig,
         }),
         signal: controller.signal,
       });
