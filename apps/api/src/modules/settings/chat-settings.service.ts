@@ -26,7 +26,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   provider: 'ollama',
   model: 'qwen2.5:3b',
   baseUrl: 'http://localhost:11434',
-  temperature: 0.3,
+  // 客服場景重視回答準確、降低編造，故偏低（原 0.3 → 0.2）
+  temperature: 0.2,
   maxTokens: 500,
   chatSystemPrompt: '',
   summarizeSystemPrompt: '',

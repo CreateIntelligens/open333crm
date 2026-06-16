@@ -16,7 +16,7 @@ export const OllamaChatProvider: ChatProvider = {
     const url = `${baseUrl}/api/chat`;
 
     const fullSystemPrompt = opts.kbContext
-      ? `${opts.systemPrompt}\n\n以下是相關知識庫內容，請根據這些內容回答客戶問題：\n${opts.kbContext}`
+      ? `${opts.systemPrompt}\n\n以下是「唯一可用」的知識庫內容。你的回答只能基於以下內容，超出這些內容範圍的資訊（尤其是型號、規格、電話、地址等具體事實）一律不可回答，請改為轉接專人：\n${opts.kbContext}`
       : opts.systemPrompt;
 
     const controller = new AbortController();
