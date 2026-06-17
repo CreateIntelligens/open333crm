@@ -18,6 +18,7 @@ export interface ChatSettings {
   chatSystemPrompt: string;
   summarizeSystemPrompt: string;
   clarifySystemPrompt: string;
+  modelGuideSystemPrompt: string;
   clarifyThreshold: number;
   clarifyMaxAttempts: number;
 }
@@ -32,6 +33,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   chatSystemPrompt: '',
   summarizeSystemPrompt: '',
   clarifySystemPrompt: '',
+  modelGuideSystemPrompt: '',
   clarifyThreshold: 0.5,
   clarifyMaxAttempts: 2,
 };
@@ -53,6 +55,7 @@ export async function getChatSettings(
     chatSystemPrompt: s.chatSystemPrompt,
     summarizeSystemPrompt: s.summarizeSystemPrompt,
     clarifySystemPrompt: s.clarifySystemPrompt,
+    modelGuideSystemPrompt: s.modelGuideSystemPrompt,
     clarifyThreshold: s.clarifyThreshold,
     clarifyMaxAttempts: s.clarifyMaxAttempts,
   };
@@ -78,6 +81,7 @@ export async function updateChatSettings(
       chatSystemPrompt: next.chatSystemPrompt,
       summarizeSystemPrompt: next.summarizeSystemPrompt,
       clarifySystemPrompt: next.clarifySystemPrompt,
+      modelGuideSystemPrompt: next.modelGuideSystemPrompt,
       clarifyThreshold: next.clarifyThreshold,
       clarifyMaxAttempts: next.clarifyMaxAttempts,
     },
@@ -93,6 +97,7 @@ export async function updateChatSettings(
       chatSystemPrompt: updated.chatSystemPrompt,
       summarizeSystemPrompt: updated.summarizeSystemPrompt,
       clarifySystemPrompt: updated.clarifySystemPrompt,
+      modelGuideSystemPrompt: updated.modelGuideSystemPrompt,
       clarifyThreshold: updated.clarifyThreshold,
       clarifyMaxAttempts: updated.clarifyMaxAttempts,
     },

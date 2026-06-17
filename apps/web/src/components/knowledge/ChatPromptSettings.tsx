@@ -15,6 +15,7 @@ interface ChatSettingsData {
   chatSystemPrompt: string;
   summarizeSystemPrompt: string;
   clarifySystemPrompt: string;
+  modelGuideSystemPrompt: string;
   clarifyThreshold: number;
   clarifyMaxAttempts: number;
 }
@@ -49,6 +50,7 @@ interface SettingsResponse {
     chatSystemPrompt: string;
     summarizeSystemPrompt: string;
     clarifySystemPrompt: string;
+    modelGuideSystemPrompt: string;
   };
 }
 
@@ -61,6 +63,7 @@ const DEFAULT_SETTINGS: ChatSettingsData = {
   chatSystemPrompt: '',
   summarizeSystemPrompt: '',
   clarifySystemPrompt: '',
+  modelGuideSystemPrompt: '',
   clarifyThreshold: 0.5,
   clarifyMaxAttempts: 2,
 };
@@ -74,6 +77,7 @@ export function ChatPromptSettings() {
     chatSystemPrompt: '',
     summarizeSystemPrompt: '',
     clarifySystemPrompt: '',
+    modelGuideSystemPrompt: '',
   });
 
   const [loading, setLoading] = useState(true);
@@ -134,6 +138,22 @@ export function ChatPromptSettings() {
       alert('儲存失敗');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const refreshModelRegistry = async () => {
+    setRefreshingModels(true);
+    try {
+      const res = await api.post<{ data: { total: number; message: string } }>(
+        '/knowledge/models/refresh',
+      );
+      alert(res.data.data.message ?? '已重新整理型號清單');
+    } catch (err) {
+      console.error('Failed to refresh model registry:', err);
+      alert('刷新型號清單失敗');
+    } finally {
+      setRefreshingModels(false);
     }
   };
 
@@ -436,6 +456,61 @@ export function ChatPromptSettings() {
           <Button onClick={() => persistSettings(settings)} disabled={saving}>
             {saving ? '儲存中…' : '儲存'}
           </Button>
+        </div>
+      </section>
+
+      {/* ─── System Prompt：型號守門引導 ────────────────────────── */}
+      <section className="rounded-lg border bg-card p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">型號引導 System Prompt</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              當客戶提到「知識庫查不到的產品型號」（可能打錯/記錯）時，Bot 會用此提示詞引導客戶
+              從相近型號清單確認正確型號，而不是拿相似型號的資料硬答。留空表示使用預設提示詞。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setSettings({ ...settings, modelGuideSystemPrompt: defaults.modelGuideSystemPrompt })
+            }
+          >
+            還原預設
+          </Button>
+        </div>
+        <textarea
+          className="mt-3 min-h-[160px] w-full rounded-md border bg-background p-3 font-mono text-xs"
+          value={settings.modelGuideSystemPrompt}
+          onChange={(e) => setSettings({ ...settings, modelGuideSystemPrompt: e.target.value })}
+          placeholder={defaults.modelGuideSystemPrompt}
+        />
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {settings.modelGuideSystemPrompt.length} 字
+            {settings.modelGuideSystemPrompt.length === 0 && '（將使用預設）'}
+          </span>
+          <Button onClick={() => persistSettings(settings)} disabled={saving}>
+            {saving ? '儲存中…' : '儲存'}
+          </Button>
+        </div>
+
+        {/* 型號白名單刷新 */}
+        <div className="mt-4 rounded-md bg-muted/50 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              型號清單會自動從知識庫文章標題抽取（約每 10 分鐘刷新）。新增型號文章後若想立即生效，
+              可手動刷新。
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshModelRegistry}
+              disabled={refreshingModels}
+            >
+              {refreshingModels ? '刷新中…' : '立即刷新型號清單'}
+            </Button>
+          </div>
         </div>
       </section>
 

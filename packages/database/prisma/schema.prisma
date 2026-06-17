@@ -1026,6 +1026,7 @@ model TenantSettings {
   chatSystemPrompt       String   @default("")
   summarizeSystemPrompt  String   @default("")
   clarifySystemPrompt    String   @default("")
+  modelGuideSystemPrompt String   @default("")
   clarifyThreshold       Float    @default(0.5)
   clarifyMaxAttempts     Int      @default(2)
   inactivityCloseHours   Int      @default(72)
