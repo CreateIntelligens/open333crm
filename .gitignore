@@ -30,3 +30,5 @@ nginx/certs/
 .mcp.json
 opencode.json
 config.toml
+# DB 同步備份（含 UAT/正式資料，勿進版控）
+backups/
