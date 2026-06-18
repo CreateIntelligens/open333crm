@@ -37,6 +37,34 @@ const CLARIFY_HANDOFF_FALLBACK =
 const HISTORY_LIMIT = 10;
 
 /**
+ * kbContext 字數預算：避免單篇硬截把答案尾段切掉，同時控制總長不撐爆 LLM context。
+ * 單篇上限提高到 3000（原本 1500），全部文章合計不超過 8000。
+ */
+const KB_PER_ARTICLE_LIMIT = 3000;
+const KB_TOTAL_CONTEXT_LIMIT = 8000;
+
+/**
+ * 把 KB 檢索結果組成 grounding context（總預算制）。
+ * 逐篇加入，單篇截到 KB_PER_ARTICLE_LIMIT，累計到 KB_TOTAL_CONTEXT_LIMIT 為止。
+ */
+function buildKbContext(
+  results: Array<{ title: string; content: string; summary: string }>,
+): string {
+  const parts: string[] = [];
+  let used = 0;
+  for (let i = 0; i < results.length; i++) {
+    if (used >= KB_TOTAL_CONTEXT_LIMIT) break;
+    const r = results[i];
+    const body = (r.content || r.summary || '').slice(0, KB_PER_ARTICLE_LIMIT);
+    const remaining = KB_TOTAL_CONTEXT_LIMIT - used;
+    const clipped = body.slice(0, remaining);
+    parts.push(`【文章${i + 1}】${r.title}\n${clipped}`);
+    used += clipped.length;
+  }
+  return parts.join('\n\n');
+}
+
+/**
  * 型號守門「高相似度豁免」門檻。
  * 客戶提到的型號雖不在白名單，但若 KB 相似度 >= 此值，視為「白名單可能慢半拍、
  * 但 KB 其實有對應文章」，仍放行走正常 KB 回答，避免誤擋剛新增的型號。
@@ -225,10 +253,10 @@ export async function attemptKbAutoReply(
       }
     }
   } else {
-    // KB has a useful match — use it as grounded context
-    const kbContext = results
-      .map((r, i) => `【文章${i + 1}】${r.title}\n${(r.content || r.summary).slice(0, 1500)}`)
-      .join('\n\n');
+    // KB has a useful match — use it as grounded context.
+    // 採「總預算制」：單篇上限 PER_ARTICLE_LIMIT，全部合計上限 TOTAL_CONTEXT_LIMIT。
+    // 避免單篇硬截 1500 字把答案尾段（如客服電話、操作步驟）切掉。
+    const kbContext = buildKbContext(results);
 
     try {
       const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, { history });
