@@ -26,6 +26,7 @@ import {
   CRM_REPLY_SYSTEM_PROMPT,
   SUMMARIZE_SYSTEM_PROMPT,
   CLARIFY_SYSTEM_PROMPT,
+  MODEL_GUIDE_SYSTEM_PROMPT,
 } from '../ai/llm.service.js';
 import { requireSupervisor } from '../../guards/rbac.guard.js';
 
@@ -132,6 +133,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
           chatSystemPrompt: CRM_REPLY_SYSTEM_PROMPT,
           summarizeSystemPrompt: SUMMARIZE_SYSTEM_PROMPT,
           clarifySystemPrompt: CLARIFY_SYSTEM_PROMPT,
+          modelGuideSystemPrompt: MODEL_GUIDE_SYSTEM_PROMPT,
         },
       }),
     );
@@ -238,6 +240,7 @@ const chatSettingsSchema = z.object({
   chatSystemPrompt: z.string().optional(),
   summarizeSystemPrompt: z.string().optional(),
   clarifySystemPrompt: z.string().optional(),
+  modelGuideSystemPrompt: z.string().optional(),
   clarifyThreshold: z.number().min(0).max(1).optional(),
   clarifyMaxAttempts: z.number().int().min(0).max(5).optional(),
 });

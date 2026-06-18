@@ -19,8 +19,10 @@ import { getConfig } from '../../config/env.js';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
-import { generateReply, CLARIFY_SYSTEM_PROMPT } from './llm.service.js';
+import { generateReply, CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
 import type { HistoryMessage } from './llm.service.js';
+import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
+import { getKnownModelKeys } from './model-registry.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import {
   hasMatchingKeywordRule,
@@ -34,7 +36,19 @@ const CLARIFY_HANDOFF_FALLBACK =
   '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
 const HISTORY_LIMIT = 10;
 
-type ReplyKind = 'kb_high_confidence' | 'kb_with_handoff' | 'clarify' | 'clarify_handoff';
+/**
+ * 型號守門「高相似度豁免」門檻。
+ * 客戶提到的型號雖不在白名單，但若 KB 相似度 >= 此值，視為「白名單可能慢半拍、
+ * 但 KB 其實有對應文章」，仍放行走正常 KB 回答，避免誤擋剛新增的型號。
+ */
+const MODEL_GUARD_EXEMPT_SIMILARITY = 0.85;
+
+type ReplyKind =
+  | 'kb_high_confidence'
+  | 'kb_with_handoff'
+  | 'clarify'
+  | 'clarify_handoff'
+  | 'model_not_found';
 
 export async function attemptKbAutoReply(
   prisma: PrismaClient,
@@ -117,11 +131,70 @@ export async function attemptKbAutoReply(
     `[KbAutoReply] conv=${conversationId} kbResults=${results.length} topSim=${topSimilarity.toFixed(3)}`,
   );
 
-  // 8. Decide reply path
-  const needsClarify = !topResult || topSimilarity < chatSettings.clarifyThreshold;
+  // 7.5 型號守門：客戶提到的型號若不在知識庫白名單，且 KB 相似度不夠高，
+  //     代表這可能是「查無此型號（打錯/記錯）」。此時不要拿相近型號的資料硬答，
+  //     改為引導客戶從相近型號清單中確認正確型號。
+  //     高相似度（>= MODEL_GUARD_EXEMPT_SIMILARITY）豁免，避免誤擋剛新增的型號。
   let replyText: string;
   let replyKind: ReplyKind;
   let metadataExtras: Record<string, unknown> = {};
+
+  const modelGuard = await checkModelGuard(
+    prisma,
+    tenantId,
+    messageText,
+    topSimilarity,
+  );
+
+  if (modelGuard) {
+    // 命中守門 → 引導選型號
+    const relatedList = modelGuard.relatedModels;
+    const guideContext =
+      relatedList.length > 0
+        ? `相近型號清單：\n${relatedList.join('\n')}`
+        : '';
+    try {
+      replyText = await generateReply(prisma, tenantId, messageText, guideContext, {
+        overrideSystemPrompt: chatSettings.modelGuideSystemPrompt || MODEL_GUIDE_SYSTEM_PROMPT,
+        history,
+      });
+    } catch (err) {
+      logger.error('[KbAutoReply] Model-guide generation failed, using fallback:', err);
+      replyText =
+        relatedList.length > 0
+          ? `不好意思，「${modelGuard.unknownModel}」這個型號我這邊查不到資料。` +
+            `想再幫您確認一下，您的產品是不是以下其中一款呢？\n${relatedList.join('\n')}\n` +
+            `型號通常印在產品本體底部標籤或外箱貼紙上，可以幫您對照看看。`
+          : `不好意思，「${modelGuard.unknownModel}」這個型號我這邊查不到資料，` +
+            `方便請您確認一下產品本體底部標籤或外箱貼紙上的正確型號嗎？`;
+    }
+    replyKind = 'model_not_found';
+    // 守門不應重置 clarify 計數，但也不該累加；維持原值即可（不寫入 metadataExtras）。
+    metadataExtras = {
+      modelGuard: {
+        unknownModel: modelGuard.unknownModel,
+        relatedModels: relatedList,
+        topSimilarity,
+      },
+    };
+    return await persistAndDeliver({
+      prisma,
+      io,
+      tenantId,
+      conversationId,
+      conversation,
+      botConfig,
+      replyText,
+      replyKind,
+      topResult,
+      results,
+      topSimilarity,
+      metadataExtras,
+    });
+  }
+
+  // 8. Decide reply path
+  const needsClarify = !topResult || topSimilarity < chatSettings.clarifyThreshold;
 
   if (needsClarify) {
     // Track clarify attempts in conversation.metadata to avoid loops
@@ -171,12 +244,102 @@ export async function attemptKbAutoReply(
     }
   }
 
-  // 8b. 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
+  return await persistAndDeliver({
+    prisma,
+    io,
+    tenantId,
+    conversationId,
+    conversation,
+    botConfig,
+    replyText,
+    replyKind,
+    topResult,
+    results,
+    topSimilarity,
+    metadataExtras,
+  });
+}
+
+/**
+ * 型號守門檢查：判斷訊息是否提到「知識庫查無的型號」，需要引導使用者選型號。
+ *
+ * 回傳 null = 不攔截（沒提型號 / 型號已知 / KB 相似度夠高可豁免）。
+ * 回傳物件 = 攔截，附上查無的型號與相近型號清單。
+ *
+ * 只針對「第一個查無的型號」攔截（通常客戶一次問一台）。
+ */
+async function checkModelGuard(
+  prisma: PrismaClient,
+  tenantId: string,
+  messageText: string,
+  topSimilarity: number,
+): Promise<{ unknownModel: string; relatedModels: string[] } | null> {
+  const detected = detectModels(messageText);
+  if (detected.length === 0) return null;
+
+  // 高相似度豁免：KB 其實找到很像的文章，可能是白名單慢半拍，放行。
+  if (topSimilarity >= MODEL_GUARD_EXEMPT_SIMILARITY) return null;
+
+  let knownKeys: ReadonlySet<string>;
+  try {
+    knownKeys = await getKnownModelKeys(prisma, tenantId, Date.now());
+  } catch (err) {
+    // 白名單載入失敗時不要擋人，退回原本流程。
+    logger.error('[KbAutoReply] Failed to load model registry, skipping model guard:', err);
+    return null;
+  }
+
+  for (const model of detected) {
+    if (!isKnownModel(model, knownKeys)) {
+      const relatedModels = findRelatedModels(model, knownKeys);
+      logger.info(
+        `[KbAutoReply] model guard hit: "${model.raw}" (key=${model.key}) not in registry, ${relatedModels.length} related`,
+      );
+      return { unknownModel: model.raw, relatedModels };
+    }
+  }
+  return null;
+}
+
+/**
+ * 共用的「儲存 BOT 訊息 → 更新對話 → WebSocket 推送 → 送往 channel」流程。
+ * KB 正常回答路徑與型號守門路徑共用此函式。
+ */
+async function persistAndDeliver(input: {
+  prisma: PrismaClient;
+  io: Server;
+  tenantId: string;
+  conversationId: string;
+  conversation: { metadata: Prisma.JsonValue };
+  botConfig: BotConfig;
+  replyText: string;
+  replyKind: ReplyKind;
+  topResult: { id: string; title: string } | undefined;
+  results: Array<{ id: string; title: string; similarity: number }>;
+  topSimilarity: number;
+  metadataExtras: Record<string, unknown>;
+}): Promise<boolean> {
+  const {
+    prisma,
+    io,
+    tenantId,
+    conversationId,
+    conversation,
+    botConfig,
+    replyText,
+    replyKind,
+    topResult,
+    results,
+    topSimilarity,
+    metadataExtras,
+  } = input;
+
+  // 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
   const kbReply = buildKbReplyPayload({ replyText, replyKind, botConfig });
   // 真正送 channel 的文字（可能多帶 text suffix）— DB 也存這份以利客服 UI 對齊
   const finalText = kbReply.text;
 
-  // 9. Persist BOT message
+  // Persist BOT message
   const now = new Date();
   const botMessage = await prisma.message.create({
     data: {
@@ -192,12 +355,13 @@ export async function attemptKbAutoReply(
         articleId: topResult?.id,
         articleTitle: topResult?.title,
         allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
+        ...metadataExtras,
       },
       createdAt: now,
     },
   });
 
-  // 10. Update conversation (counters + clarifyAttempts)
+  // Update conversation (counters + clarifyAttempts / modelGuard)
   const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
   await prisma.conversation.update({
     where: { id: conversationId },
@@ -208,7 +372,7 @@ export async function attemptKbAutoReply(
     },
   });
 
-  // 11. Real-time
+  // Real-time
   const wsPayload = {
     conversationId,
     message: {
@@ -226,10 +390,10 @@ export async function attemptKbAutoReply(
   io.to(`conversation:${conversationId}`).emit('message.new', wsPayload);
   io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
 
-  // 12. Deliver to actual channel
+  // Deliver to actual channel
   // 命中 KB 的回答附「👎 沒幫到我」回報按鈕（quick reply postback），供調教 KB。
   // 加上 handoff_request 按鈕（依 botConfig.handoffPromptStyle）給使用者一鍵轉接。
-  // clarify / clarify_handoff 那種沒命中 KB 的不附（沒對應文章可回報、也不附轉接按鈕）。
+  // clarify / clarify_handoff / model_not_found 沒命中 KB 文章，不附「沒幫到我」按鈕。
   const hitKb = replyKind === 'kb_high_confidence' || replyKind === 'kb_with_handoff';
   const quickReplies: Array<{ label: string; postbackData: string }> = [];
   if (hitKb && topResult?.id) {

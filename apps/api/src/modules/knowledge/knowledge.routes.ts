@@ -26,6 +26,7 @@ import {
   getFeedbackCounts,
   resolveFeedback,
 } from './kb-feedback.service.js';
+import { refreshModelKeys, getKnownModelKeys } from '../ai/model-registry.service.js';
 import { requireSupervisor } from '../../guards/rbac.guard.js';
 import { AppError, success, paginated } from '../../shared/utils/response.js';
 
@@ -302,6 +303,28 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     const status = await checkOllamaHealth(fastify.prisma, request.agent.tenantId);
     return reply.send(success(status));
   });
+
+  // ── 型號白名單（型號守門用）────────────────────────────────────────────────
+
+  // GET /api/v1/knowledge/models — 目前知識庫已知型號清單（快取，供診斷）
+  fastify.get('/models', async (request, reply) => {
+    const keys = await getKnownModelKeys(fastify.prisma, request.agent.tenantId, Date.now());
+    const models = [...keys].sort();
+    return reply.send(success({ total: models.length, models }));
+  });
+
+  // POST /api/v1/knowledge/models/refresh — 立即重抽型號白名單（清快取後重建）
+  // 客服新增型號文章後不想等 TTL（10 分鐘）自動刷新時使用。
+  fastify.post(
+    '/models/refresh',
+    { preHandler: [requireSupervisor()] },
+    async (request, reply) => {
+      const keys = await refreshModelKeys(fastify.prisma, request.agent.tenantId, Date.now());
+      return reply.send(
+        success({ refreshed: true, total: keys.size, message: `已重新整理型號清單，共 ${keys.size} 個型號。` }),
+      );
+    },
+  );
 
   // ── KB 回報（AI 回答品質回饋）────────────────────────────────────────────
 
