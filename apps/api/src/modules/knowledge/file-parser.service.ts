@@ -101,6 +101,72 @@ function parsePlainText(buffer: Buffer): string {
   return buffer.toString('utf-8').trim();
 }
 
+/** 拆列匯入用：一列 QA = 一篇文章。 */
+export interface QaRow {
+  title: string;
+  content: string;
+}
+
+/** 可辨識為「問題欄」的表頭關鍵字（大小寫不拘）。 */
+const QUESTION_HEADERS = ['ai_q', 'question', '問題', '問', 'q', 'title', '標題'];
+/** 可辨識為「答案欄」的表頭關鍵字。 */
+const ANSWER_HEADERS = ['ai_a', 'answer', '答案', '答', 'a', 'content', '內容', '回覆'];
+
+function normalizeHeader(h: string): string {
+  return String(h ?? '').trim().toLowerCase();
+}
+
+/**
+ * 偵測試算表是否為「QA 表格」並回傳問/答欄的索引。
+ * 找不到可辨識的問答欄則回傳 null（代表不該拆，照單篇處理）。
+ */
+function detectQaColumns(header: string[]): { qIdx: number; aIdx: number } | null {
+  const norm = header.map(normalizeHeader);
+  const qIdx = norm.findIndex((h) => QUESTION_HEADERS.includes(h));
+  const aIdx = norm.findIndex((h) => ANSWER_HEADERS.includes(h));
+  if (qIdx === -1 || aIdx === -1 || qIdx === aIdx) return null;
+  return { qIdx, aIdx };
+}
+
+/**
+ * 嘗試把 xlsx/csv 拆成「一列一篇 QA」。
+ * - 掃所有 sheet，找出有 QA 欄的表頭
+ * - 每資料列以問欄為 title、答欄為 content
+ * - 兩欄皆空的列略過；跨 sheet 同 Q+A 去重
+ * 回傳 null 代表「偵測不到 QA 結構」→ 呼叫端應改走單篇匯入。
+ */
+export function parseSpreadsheetToQaRows(buffer: Buffer): QaRow[] | null {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const rows: QaRow[] = [];
+  const seen = new Set<string>();
+  let detectedAnySheet = false;
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const grid: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+    if (grid.length < 2) continue;
+
+    const header = grid[0].map((c) => String(c ?? ''));
+    const cols = detectQaColumns(header);
+    if (!cols) continue;
+    detectedAnySheet = true;
+
+    for (let i = 1; i < grid.length; i++) {
+      const cells = grid[i] ?? [];
+      const q = String(cells[cols.qIdx] ?? '').replace(/&nbsp;/g, ' ').trim();
+      const a = String(cells[cols.aIdx] ?? '').replace(/&nbsp;/g, ' ').trim();
+      if (!q || !a) continue;
+      const key = q + '||' + a;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ title: q.slice(0, 200), content: a });
+    }
+  }
+
+  if (!detectedAnySheet) return null; // 沒有任何 sheet 像 QA 表
+  return rows;
+}
+
 export async function parseFileToMarkdown(
   buffer: Buffer,
   mimetype: string,

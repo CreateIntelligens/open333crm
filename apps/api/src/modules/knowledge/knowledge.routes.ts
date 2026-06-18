@@ -15,7 +15,7 @@ import {
   checkOllamaHealth,
   embedArticle,
 } from './knowledge.service.js';
-import { parseFileToMarkdown } from './file-parser.service.js';
+import { parseFileToMarkdown, parseSpreadsheetToQaRows } from './file-parser.service.js';
 import {
   ingestPartnerDoc,
   parseCmd,
@@ -133,6 +133,32 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     for await (const part of parts) {
       const buffer = await part.toBuffer();
       try {
+        // xlsx/csv 若偵測到 QA 表結構（有問/答欄），自動拆成「一列一篇」，
+        // 避免整張表變成單篇大文章（答案被埋沒、無法檢索）。
+        const isSheet =
+          /spreadsheetml|csv/.test(part.mimetype) ||
+          /\.(xlsx|csv)$/i.test(part.filename);
+        if (isSheet) {
+          const qaRows = parseSpreadsheetToQaRows(buffer);
+          if (qaRows && qaRows.length > 0) {
+            const result = await batchImportArticles(
+              fastify.prisma,
+              request.agent.tenantId,
+              request.agent.id,
+              qaRows.map((r) => ({ title: r.title, content: r.content, status: 'PUBLISHED' })),
+            );
+            uploaded += result.imported;
+            failed += result.failed;
+            results.push({
+              title: `${part.filename}（QA 表自動拆成 ${result.imported} 篇）`,
+              success: result.failed === 0,
+              error: result.errors[0],
+            });
+            continue;
+          }
+          // 偵測不到 QA 欄 → 落到下方單篇匯入
+        }
+
         const parsed = await parseFileToMarkdown(buffer, part.mimetype, part.filename);
         await createArticle(fastify.prisma, request.agent.tenantId, request.agent.id, {
           title: parsed.title,
