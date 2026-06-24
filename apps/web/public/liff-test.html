@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LIFF Permission Test</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; padding: 16px; color: #334155; }
+  h3 { margin: 0 0 8px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px;
+        white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height: 1.6; }
+  button { margin-top: 10px; padding: 10px 20px; font-size: 16px; background: #06c755;
+           color: #fff; border: 0; border-radius: 8px; }
+</style>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+<h3>LIFF Permission Test</h3>
+<p style="font-size:13px;color:#64748b">用法：<code>?liffId=你的liffId</code>。回報每個 scope 狀態：granted / prompt / unavailable(=沒設定)。</p>
+<pre id="out">…</pre>
+<script>
+  var out = document.getElementById('out');
+  var lines = [];
+  function log() {
+    var parts = [];
+    for (var i = 0; i < arguments.length; i++) {
+      var a = arguments[i];
+      parts.push(typeof a === 'string' ? a : (function () { try { return JSON.stringify(a); } catch (e) { return String(a); } })());
+    }
+    lines.push(parts.join(' '));
+    out.textContent = lines.join('\n');
+  }
+  function errStr(e) {
+    if (!e) return String(e);
+    var code = e.code ? '[' + e.code + '] ' : '';
+    return (e.name || 'Error') + ': ' + code + (e.message || String(e));
+  }
+
+  (async function () {
+    var liffId = new URLSearchParams(location.search).get('liffId');
+    log('liffId =', liffId || '(缺！請加 ?liffId=...)');
+    if (!liffId) return;
+
+    try {
+      await liff.init({ liffId: liffId });
+      log('init OK; version =', liff.getVersion());
+      log('isInClient =', liff.isInClient(), '| isLoggedIn =', liff.isLoggedIn(), '| OS =', liff.getOS());
+      try { log('context =', liff.getContext()); } catch (e) { log('getContext err:', errStr(e)); }
+
+      var scopes = ['profile', 'openid', 'email', 'chat_message.write'];
+      for (var i = 0; i < scopes.length; i++) {
+        var p = scopes[i];
+        try { var r = await liff.permission.query(p); log('scope', p, '=', r.state); }
+        catch (e) { log('scope', p, 'query err:', errStr(e)); }
+      }
+
+      if (!liff.isLoggedIn()) {
+        log('未登入 → 點下方按鈕做 liff.login() 後再試 getProfile');
+        var b = document.createElement('button');
+        b.textContent = '▶ liff.login()';
+        b.onclick = function () { liff.login(); };
+        document.body.appendChild(b);
+        return;
+      }
+      try { var prof = await liff.getProfile(); log('getProfile OK; userId =', prof.userId); }
+      catch (e) { log('❌ getProfile FAILED:', errStr(e)); }
+    } catch (e) {
+      log('❌ init FAILED:', errStr(e));
+    }
+  })();
+</script>
+</body>
+</html>

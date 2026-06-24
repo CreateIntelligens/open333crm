@@ -7,11 +7,43 @@ import { randomBytes } from 'node:crypto';
 import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import { scrapeOg } from './og-scraper.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function generateSlug(length = 6): string {
   return randomBytes(length).toString('base64url').slice(0, length);
+}
+
+/** Ensure a lineChannelId belongs to this tenant and is a LINE channel. */
+async function assertLineChannel(prisma: PrismaClient, tenantId: string, channelId: string): Promise<void> {
+  const channel = await prisma.channel.findFirst({
+    where: { id: channelId, tenantId, channelType: 'LINE' },
+    select: { id: true },
+  });
+  if (!channel) throw new Error('lineChannelId 必須是本租戶的 LINE 渠道');
+}
+
+/**
+ * Background OG snapshot: when no OG values were supplied manually, scrape the
+ * target URL and patch the link. Fire-and-forget — never blocks create/update.
+ */
+function maybeScrapeOg(
+  prisma: PrismaClient,
+  linkId: string,
+  targetUrl: string,
+  provided: { ogTitle?: string; ogDescription?: string; ogImage?: string },
+): void {
+  if (provided.ogTitle || provided.ogDescription || provided.ogImage) return;
+  void scrapeOg(targetUrl)
+    .then(async (og) => {
+      if (!og.ogTitle && !og.ogDescription && !og.ogImage) return;
+      await prisma.shortLink.update({
+        where: { id: linkId },
+        data: { ogTitle: og.ogTitle, ogDescription: og.ogDescription, ogImage: og.ogImage },
+      });
+    })
+    .catch((err) => logger.warn('[ShortLink] OG snapshot update failed:', (err as Error).message));
 }
 
 // ─── CRUD ───────────────────────────────────────────────────────────────────
@@ -59,6 +91,10 @@ export async function createShortLink(
     targetUrl: string;
     title?: string;
     slug?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+    lineChannelId?: string | null;
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
@@ -82,13 +118,21 @@ export async function createShortLink(
     if (existing) throw new Error('Slug already in use');
   }
 
-  return prisma.shortLink.create({
+  if (data.lineChannelId) {
+    await assertLineChannel(prisma, tenantId, data.lineChannelId);
+  }
+
+  const link = await prisma.shortLink.create({
     data: {
       tenantId,
       createdById,
       slug: slug!,
       targetUrl: data.targetUrl,
       title: data.title,
+      ogTitle: data.ogTitle,
+      ogDescription: data.ogDescription,
+      ogImage: data.ogImage,
+      lineChannelId: data.lineChannelId || null,
       utmSource: data.utmSource,
       utmMedium: data.utmMedium,
       utmCampaign: data.utmCampaign,
@@ -98,6 +142,10 @@ export async function createShortLink(
       expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
     },
   });
+
+  maybeScrapeOg(prisma, link.id, link.targetUrl, data);
+
+  return link;
 }
 
 export async function updateShortLink(
@@ -107,6 +155,10 @@ export async function updateShortLink(
   data: {
     targetUrl?: string;
     title?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+    lineChannelId?: string | null;
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
@@ -120,11 +172,19 @@ export async function updateShortLink(
   const link = await prisma.shortLink.findFirst({ where: { id, tenantId } });
   if (!link) return null;
 
-  return prisma.shortLink.update({
+  if (data.lineChannelId) {
+    await assertLineChannel(prisma, tenantId, data.lineChannelId);
+  }
+
+  const updated = await prisma.shortLink.update({
     where: { id },
     data: {
       targetUrl: data.targetUrl,
       title: data.title,
+      ogTitle: data.ogTitle,
+      ogDescription: data.ogDescription,
+      ogImage: data.ogImage,
+      lineChannelId: data.lineChannelId === undefined ? undefined : data.lineChannelId || null,
       utmSource: data.utmSource,
       utmMedium: data.utmMedium,
       utmCampaign: data.utmCampaign,
@@ -135,6 +195,13 @@ export async function updateShortLink(
       expiresAt: data.expiresAt === null ? null : data.expiresAt ? new Date(data.expiresAt) : undefined,
     },
   });
+
+  // Re-snapshot OG when the target changed and no OG was supplied manually.
+  if (data.targetUrl) {
+    maybeScrapeOg(prisma, updated.id, updated.targetUrl, data);
+  }
+
+  return updated;
 }
 
 export async function deleteShortLink(prisma: PrismaClient, id: string, tenantId: string) {
@@ -143,47 +210,112 @@ export async function deleteShortLink(prisma: PrismaClient, id: string, tenantId
   return prisma.shortLink.delete({ where: { id } });
 }
 
-// ─── Click Tracking ─────────────────────────────────────────────────────────
+// ─── Redirect resolution (read-only — no tracking) ───────────────────────────
 
-export async function handleClick(
+function buildTargetUrl(link: {
+  targetUrl: string;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
+}): string {
+  const url = new URL(link.targetUrl);
+  if (link.utmSource) url.searchParams.set('utm_source', link.utmSource);
+  if (link.utmMedium) url.searchParams.set('utm_medium', link.utmMedium);
+  if (link.utmCampaign) url.searchParams.set('utm_campaign', link.utmCampaign);
+  if (link.utmContent) url.searchParams.set('utm_content', link.utmContent);
+  if (link.utmTerm) url.searchParams.set('utm_term', link.utmTerm);
+  return url.toString();
+}
+
+function isLive(link: { isActive: boolean; expiresAt: Date | null }): boolean {
+  if (!link.isActive) return false;
+  if (link.expiresAt && link.expiresAt < new Date()) return false;
+  return true;
+}
+
+/**
+ * Read-only resolution for the GET redirect handler. Returns the link record
+ * and the resolved target URL (with UTM), or null if missing/inactive/expired.
+ * Records NOTHING — the click is only counted later by `trackClick`.
+ */
+export async function getLinkForRedirect(prisma: PrismaClient, slug: string) {
+  const link = await prisma.shortLink.findUnique({ where: { slug } });
+  if (!link || !isLive(link)) return null;
+  return { link, targetUrl: buildTargetUrl(link) };
+}
+
+/** Resolve the LIFF app id bound to a LINE channel (from its settings JSON). */
+export async function getChannelLiffId(prisma: PrismaClient, channelId: string): Promise<string | null> {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: { settings: true },
+  });
+  const settings = (channel?.settings ?? {}) as { liffConfig?: { liffId?: string } };
+  return settings.liffConfig?.liffId || null;
+}
+
+/** Resolve a contact from a lineUid via ChannelIdentity under the bound LINE channel. */
+export async function resolveContactByLineUid(
+  prisma: PrismaClient,
+  channelId: string,
+  lineUid: string,
+): Promise<string | null> {
+  const identity = await prisma.channelIdentity.findUnique({
+    where: { channelId_uid: { channelId, uid: lineUid } },
+    select: { contactId: true },
+  });
+  return identity?.contactId ?? null;
+}
+
+// ─── Click Tracking (the single authoritative count) ─────────────────────────
+
+/**
+ * Record one click. This is the ONLY place a click is counted — invoked by the
+ * front-end beacon/fetch to `POST /s/track`, never by the GET redirect handler.
+ * Returns the resolved target URL (with UTM) so the LIFF page can complete the
+ * redirect, or null if the link is missing/inactive/expired.
+ */
+export async function trackClick(
   prisma: PrismaClient,
   slug: string,
-  meta: { contactId?: string; ip?: string; userAgent?: string; referer?: string },
+  meta: { contactId?: string; lineUid?: string; ip?: string; userAgent?: string; referer?: string },
   io?: SocketIOServer,
-) {
+): Promise<string | null> {
   const link = await prisma.shortLink.findUnique({ where: { slug } });
-  if (!link || !link.isActive) return null;
-  if (link.expiresAt && link.expiresAt < new Date()) return null;
+  if (!link || !isLive(link)) return null;
 
-  // Async: create click log, increment counters, auto-tag
+  // Who actually clicked: the lineUid's contact wins; otherwise the cid from the URL.
+  let contactId = meta.contactId;
+  if (meta.lineUid && link.lineChannelId) {
+    const resolved = await resolveContactByLineUid(prisma, link.lineChannelId, meta.lineUid);
+    if (resolved) contactId = resolved;
+  }
+
   const doAsync = async () => {
     try {
-      // Create click log
       await prisma.clickLog.create({
         data: {
           shortLinkId: link.id,
-          contactId: meta.contactId,
+          contactId,
+          lineUid: meta.lineUid,
           ip: meta.ip,
           userAgent: meta.userAgent,
           referer: meta.referer,
         },
       });
 
-      // Check uniqueness (by contactId or ip)
-      let isUnique = false;
-      if (meta.contactId) {
-        const existing = await prisma.clickLog.count({
-          where: { shortLinkId: link.id, contactId: meta.contactId },
-        });
-        isUnique = existing <= 1; // current click is already counted
-      } else if (meta.ip) {
-        const existing = await prisma.clickLog.count({
-          where: { shortLinkId: link.id, ip: meta.ip },
-        });
+      // totalClicks always +1. uniqueClicks is +1 by default, UNLESS we have a
+      // lineUid — then dedup by lineUid only (stable across network changes, so
+      // the same LINE user stays a single unique). No lineUid (external browser,
+      // or LIFF failed) → every click counts as a new unique.
+      let isUnique = true;
+      if (meta.lineUid) {
+        const existing = await prisma.clickLog.count({ where: { shortLinkId: link.id, lineUid: meta.lineUid } });
         isUnique = existing <= 1;
       }
 
-      // Increment counters
       const updated = await prisma.shortLink.update({
         where: { id: link.id },
         data: {
@@ -193,7 +325,6 @@ export async function handleClick(
         select: { totalClicks: true, uniqueClicks: true },
       });
 
-      // Notify frontend in real-time
       if (io) {
         io.to(`tenant:${link.tenantId}`).emit('link.stats.updated', {
           shortLinkId: link.id,
@@ -202,23 +333,18 @@ export async function handleClick(
         });
       }
 
-      // Auto-tag contact
-      if (meta.contactId && link.tagOnClick) {
+      // Auto-tag the resolved (actual) clicker.
+      if (contactId && link.tagOnClick) {
         const existing = await prisma.contactTag.findFirst({
-          where: { contactId: meta.contactId, tagId: link.tagOnClick },
+          where: { contactId, tagId: link.tagOnClick },
         });
         if (!existing) {
           await prisma.contactTag.create({
-            data: {
-              contactId: meta.contactId,
-              tagId: link.tagOnClick,
-              addedBy: 'system',
-            },
+            data: { contactId, tagId: link.tagOnClick, addedBy: 'system' },
           });
         }
       }
 
-      // Publish event
       eventBus.publish({
         name: 'link.clicked',
         tenantId: link.tenantId,
@@ -226,7 +352,8 @@ export async function handleClick(
         payload: {
           shortLinkId: link.id,
           slug: link.slug,
-          contactId: meta.contactId,
+          contactId,
+          lineUid: meta.lineUid,
           isUnique,
         },
       });
@@ -235,18 +362,10 @@ export async function handleClick(
     }
   };
 
-  // Fire-and-forget
+  // Fire-and-forget the writes; the target URL is computed synchronously.
   doAsync();
 
-  // Build redirect URL with UTM params
-  const url = new URL(link.targetUrl);
-  if (link.utmSource) url.searchParams.set('utm_source', link.utmSource);
-  if (link.utmMedium) url.searchParams.set('utm_medium', link.utmMedium);
-  if (link.utmCampaign) url.searchParams.set('utm_campaign', link.utmCampaign);
-  if (link.utmContent) url.searchParams.set('utm_content', link.utmContent);
-  if (link.utmTerm) url.searchParams.set('utm_term', link.utmTerm);
-
-  return url.toString();
+  return buildTargetUrl(link);
 }
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
@@ -265,7 +384,7 @@ export async function getClickStats(
 
   const clickLogs = await prisma.clickLog.findMany({
     where: { shortLinkId, createdAt: { gte: thirtyDaysAgo } },
-    select: { createdAt: true, contactId: true, referer: true },
+    select: { id: true, createdAt: true, contactId: true, lineUid: true, referer: true },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -277,8 +396,9 @@ export async function getClickStats(
     const dateKey = log.createdAt.toISOString().slice(0, 10);
     if (!dailyMap[dateKey]) dailyMap[dateKey] = { total: 0, unique: new Set() };
     dailyMap[dateKey].total++;
-    const identifier = log.contactId || 'anonymous';
-    dailyMap[dateKey].unique.add(identifier);
+    // Matches trackClick: dedup by lineUid when present; every click without a
+    // lineUid is its own unique (the row id is a distinct per-click key).
+    dailyMap[dateKey].unique.add(log.lineUid || log.id);
 
     const ref = log.referer || 'direct';
     refererMap[ref] = (refererMap[ref] || 0) + 1;
@@ -293,7 +413,7 @@ export async function getClickStats(
     .slice(0, 10)
     .map(([source, count]) => ({ source, count }));
 
-  const identifiedClicks = clickLogs.filter((l) => l.contactId).length;
+  const identifiedClicks = clickLogs.filter((l) => l.contactId || l.lineUid).length;
   const identificationRate = clickLogs.length > 0 ? identifiedClicks / clickLogs.length : 0;
 
   return {

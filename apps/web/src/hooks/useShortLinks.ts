@@ -10,6 +10,39 @@ const fetcher = async (url: string) => {
   return res.data;
 };
 
+export interface ShortLink {
+  id: string;
+  slug: string;
+  targetUrl: string;
+  title?: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  ogImage?: string | null;
+  lineChannelId?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
+  tagOnClick?: string | null;
+  isActive: boolean;
+  expiresAt?: string | null;
+  totalClicks: number;
+  uniqueClicks: number;
+  createdAt: string;
+}
+
+export interface ClickLog {
+  id: string;
+  shortLinkId: string;
+  contactId?: string | null;
+  lineUid?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  referer?: string | null;
+  createdAt: string;
+}
+
 export function useShortLinks(filters?: { isActive?: string; q?: string }) {
   const { socket } = useSocket();
   const params = new URLSearchParams();
