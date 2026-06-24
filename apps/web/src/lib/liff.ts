@@ -10,13 +10,7 @@ export interface LiffSdk {
   init(config: { liffId: string }): Promise<void>;
   isLoggedIn(): boolean;
   login(config?: { redirectUri?: string }): void;
-  logout?: () => void;
   getProfile(): Promise<{ userId: string; displayName?: string; pictureUrl?: string }>;
-  getVersion?: () => string;
-  getContext?: () => { type?: string; [k: string]: unknown } | null;
-  permission?: {
-    query: (permission: string) => Promise<{ state: 'granted' | 'prompt' | 'unavailable' }>;
-  };
 }
 
 declare global {
@@ -110,29 +104,6 @@ export function initLiff(liffId: string): Promise<LiffSdk> {
     })();
   }
   return initPromise;
-}
-
-/**
- * Debug switch: when true, the LIFF pages do NOT auto-navigate. Every redirect /
- * login becomes a button so the on-screen log stays readable (essential when
- * debugging inside the LINE app on a phone). Flip to false for normal flow.
- */
-export const LIFF_DEBUG_PAUSE = true;
-
-/** Format any thrown value into a readable string (Error message/name/code, or JSON). */
-export function fmtErr(e: unknown): string {
-  if (e instanceof Error) {
-    const code = (e as { code?: unknown }).code;
-    return `${e.name}${code != null ? `[${String(code)}]` : ''}: ${e.message || '(empty message)'}`;
-  }
-  if (e && typeof e === 'object') {
-    try {
-      return JSON.stringify(e);
-    } catch {
-      return String(e);
-    }
-  }
-  return String(e);
 }
 
 /** Reject if `promise` doesn't settle within `ms` — so a stuck SDK never hangs the page. */

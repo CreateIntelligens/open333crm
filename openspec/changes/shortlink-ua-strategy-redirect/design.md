@@ -18,7 +18,7 @@ app.get('/:slug', async (request, reply) => {
 - `ChannelIdentity (channelId_uid)`、`IdentityMap (tenantId, channelType, uid)` 與 `identity-stitching-engine`（`packages/core/src/identity/identity-stitcher.ts`）— `lineUid → contact` 的對應與後補關聯。
 - `line-liff` capability（LIFF app CRUD，`packages/channel-plugins/src/line`）— 管理 LIFF app、取得 `liffId`。
 - `Channel.settings` JSON（`schema.prisma:304`）— 放 LINE 渠道的 `liffId`，免 migration（同 `botConfig` 模式）。
-- `apps/web` 為 Next.js（非 CLAUDE.md 寫的 Vite），`/line-login/result` 這類公開頁已存在 → LIFF 兩頁放這裡。
+- `apps/web` 為 Next.js（非 CLAUDE.md 寫的 Vite），`/line-login/result` 這類公開頁已存在 → LIFF endpoint 頁放這裡。
 
 ## Goals / Non-Goals
 
@@ -59,14 +59,18 @@ interface RedirectStrategy { render(ctx): { status, headers, html } }
 **理由**：要支援「活動自訂預覽卡」（與目標頁 OG 不同），且維持「任何來源都不 302」的一致設計。
 **代價**：OG 必須有人/系統填，否則卡片空白 → 故採 **建立/更新時背景抓 targetUrl OG 存快照 + 可手動覆寫**（decision 6）。
 
-### 4. LINE 走 LIFF 兩頁，callback 才計數
-**選**：進入點頁 `/liff/redirect`（不計數）→ callback 頁 `/liff/callback`（唯一計數）。
-**沒選**：單頁用 flag 防重複計數。
-**理由**：LINE 登入會整頁跳轉，單頁需小心防重複；用「只有 callback 會計數」的結構，登入循環無論怎麼跑都只計一次。
+### 4. LINE 走 LIFF **單頁 endpoint**，「已登入」那一次才計數
+**選**：單一 endpoint 頁 `/liff/redirect` 做完 init → login → getProfile → `/s/track` → replace。
+**沒選**：兩頁（entry + callback，callback 計數）—— 原本設計，後因 LIFF 路徑限制改掉。
+**理由**：
+- LIFF 規定 `liff.init()` 只能在「**等於或低於 endpoint URL**」的頁面呼叫。`/liff/callback` 不在 `/liff/redirect` 之下 → 會 warning 且 `getProfile` 被降級擋（`FORBIDDEN: permission not in scope`）。單頁讓所有 `liff.*` 都跑在 endpoint 上。
+- 計數只在「已登入」那一次發生（未登入那次只做 `liff.login`、**不**打 `/s/track`），所以登入循環不會重複計數，不需要兩頁。
 **眉角**：
-- 已登入回頭客不會觸發 `liff.login` 跳轉 → 進入點頁須在 `liff.isLoggedIn()` 為真時**自己 `replace` 到 callback**，否則停在進入點不計數。
-- `liff.login({ redirectUri })` 的 `redirectUri` 必須與 LIFF 註冊 endpoint **同網域**，且帶上 `s`(slug)/`cid`/`lid`(liffId) 以免回來掉參數。
-- scope 只要 `profile`（取 `userId`=lineUid），降低同意摩擦；要 email 才需 `openid`（非本 change）。
+- `liff.login` 的 `redirectUri` 必須是 **endpoint URL 本身**（用 `window.location.href`）。指到別的路徑（如 `/liff/callback`）LINE 會回 `invalid url`。
+- LINE webview 在 `liff.init` 時會消化 `liff.state` 並 reload，網址參數會掉 → 用 **`sessionStorage`** 在第一次拿到參數時存起來、reload/登入回來再還原（`resolveLiffParams`）。
+- `initLiff` memoize `liff.init`（dev 的 React StrictMode 會雙呼叫 effect，重複 init 會卡死）。
+- scope 只要 `profile`（取 `userId`=lineUid）；若登入 token 是舊的（profile 未授權）getProfile 會 FORBIDDEN → 失敗時 fallback 成「無 lineUid」照樣跳目標。
+- `/liff/callback` 保留為**不碰 SDK 的保險導向頁**（萬一被開到就轉回 endpoint）。
 
 ### 5. `slug → lineChannelId → liffId/channelId` 的解析鏈（多 slug 共用）
 **選**：`ShortLink.lineChannelId`(nullable FK→Channel)；該 channel 的 `settings.liffConfig.liffId` 決定走哪個 LIFF。多條 slug 可共用同一個 channel。
@@ -75,7 +79,7 @@ interface RedirectStrategy { render(ctx): { status, headers, html } }
 - 組 LIFF URL（GET 階段）：`slug → ShortLink.lineChannelId → channel.liffId → liff.line.me/{liffId}`。
 - 解析身份（`/s/track` 階段）：`slug → ShortLink.lineChannelId(channelId) → ChannelIdentity(channelId, lineUid) → Contact`。
 - `lineChannelId` 為 null = 不走 LIFF（退化成外部瀏覽器）。表單上的「LIFF 開關」即是「選哪個 LINE 渠道」的下拉。
-- LIFF endpoint 頁需要 `liffId` 才能 `liff.init`，故 GET 組 URL 時把 `liffId` 一併帶在 query（`&lid=`），endpoint/callback 頁讀 `lid` 後 `liff.init({ liffId: lid })`；多個 channel 的 LIFF app 可共用同一個註冊 endpoint URL。
+- LIFF endpoint 頁需要 `liffId` 才能 `liff.init`，故 GET 組 URL 時把 `liffId` 一併帶在 query（`&lid=`），endpoint 頁讀 `lid` 後 `liff.init({ liffId: lid })`；多個 channel 的 LIFF app 可共用同一個註冊 endpoint URL。
 
 ### 6. OG 快照在 create/update 時抓取、可覆寫
 **選**：建立/更新短連結時背景 fetch `targetUrl`、parse `og:*` 存快照；表單欄位預填、可手動覆寫。
@@ -101,7 +105,7 @@ interface RedirectStrategy { render(ctx): { status, headers, html } }
 | LINE 預覽爬蟲 vs LINE 真人 webview 的 UA 都帶 LINE 味，判斷錯整條 LINE 流程壞 | 偵測器**先比 BOT token**（`line-poker`/`facebookexternalhit`）再比 `Line/`；bot 清單可設定，並以真實 log 驗證實際 UA 字串 |
 | 改 200 HTML 後 LINE 預覽需要我們自存 OG，否則卡片空白（相對舊 302「自動有圖」是退化） | create/update 自動抓 targetUrl OG 存快照 + 可覆寫；抓取失敗則退回 `title` |
 | 會執行 JS 的特殊爬蟲造成少量假點擊 | 接受；UA 過濾為第一道、`/s/track` 的 JS 觸發為第二道，已大幅優於現狀 |
-| LIFF 登入循環造成重複計數 | 兩頁設計：只有 callback 計數；進入點頁已登入時自行 replace 到 callback |
+| LIFF 登入循環造成重複計數 | 單頁：計數只在「已登入」那一次（未登入那次只 `liff.login`、不打 `/s/track`） |
 | `lineUid` 對不到既有 contact | `contactId=null`、`lineUid` 照存，交給 identity-stitcher 後補；不硬建幽靈 contact |
 | `sendBeacon` 在 `location.replace` 前未送出 | 先 `sendBeacon` 再 `replace`；beacon 設計即為頁面卸載仍送達 |
 | `/s/track` 被偽造灌點 | 接受 v1 風險；可後續加 slug 短時 token / rate-limit（Open Question） |
@@ -112,8 +116,9 @@ interface RedirectStrategy { render(ctx): { status, headers, html } }
 ## Migration Plan
 
 1. `prisma migrate`：`ShortLink` 加 `lineChannelId`/`ogTitle`/`ogDescription`/`ogImage`、`ClickLog` 加 `lineUid`（皆 nullable）。
-2. 部署 API（新 GET 分流 + `POST /s/track` + CORS）與 web（LIFF 兩頁 + 表單）。
-3. 在 LINE console 註冊 LIFF app 的 endpoint URL 指向 `https://<web>/liff/redirect`（沿用 `line-liff`），把 `liffId` 填入對應 LINE 渠道設定。
+2. 部署 API（新 GET 分流 + `POST /s/track` + CORS）與 web（LIFF endpoint 頁 + 表單）。
+3. 在 LINE console：LIFF app 的 **Endpoint URL 指向 `https://<web>/liff/redirect`**、**Scopes 勾 `profile`**、且 LIFF 與 messaging channel **同 provider**；把 `liffId` 填入對應 LINE 渠道設定。
+   - 注意：免費 ngrok 的攔截頁會在 LINE webview 擋掉 JS chunk → 用正式網域或無攔截頁的 tunnel（如 Cloudflare Tunnel）測真機。
 4. **不需** backfill：既有連結 `lineChannelId=null` → LINE webview 自動走外部瀏覽器分支；`og*` 為空 → 退回 `title`。
 5. **Rollback**：revert 後 `/s/:slug` 回 302；多出的 nullable 欄位無害。
 
@@ -126,6 +131,6 @@ interface RedirectStrategy { render(ctx): { status, headers, html } }
 ## Open Questions
 
 - `/s/track` 是否需要防偽（slug 短時 token / rate-limit / Origin 檢查）？v1 先不做，視灌點狀況再加。
-- LIFF callback 重新整理會再計一次（與舊 302 重整一致）；是否要加短時冪等 token？暫不做。
+- LIFF endpoint 頁重新整理會再計一次（與舊 302 重整一致）；是否要加短時冪等 token？暫不做。
 - OG 抓取要不要排程定期刷新（targetUrl OG 會變）？v1 只在 create/update 抓一次。
 - FB webview（Phase 2）落地行為：要不要也走某種 OAuth 收 FB id？待定。

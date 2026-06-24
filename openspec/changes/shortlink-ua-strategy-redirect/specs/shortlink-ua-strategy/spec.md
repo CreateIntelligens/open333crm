@@ -51,7 +51,7 @@ For an `EXTERNAL_BROWSER` source on an active link, the system SHALL return HTTP
 - **THEN** the system returns a friendly "link expired" HTML page instead of redirecting
 
 ### Requirement: LINE webview routes through LIFF when a channel is bound
-For a `LINE_WEBVIEW` source, the system SHALL look up `ShortLink.lineChannelId` and the bound LINE channel's `settings.liffConfig.liffId`. When a `liffId` exists, the `GET /s/:slug` response SHALL be HTML that replaces the location to `https://liff.line.me/{liffId}?s={slug}&cid={cid}&lid={liffId}`. When the link has no `lineChannelId` or the channel has no `liffId`, the system SHALL fall back to the external browser behavior. The LIFF flow SHALL use two pages: an entry page that performs `liff.init` and login/forwarding but records no click, and a callback page that is the only place a click is recorded.
+For a `LINE_WEBVIEW` source, the system SHALL look up `ShortLink.lineChannelId` and the bound LINE channel's `settings.liffConfig.liffId`. When a `liffId` exists, the `GET /s/:slug` response SHALL be HTML that replaces the location to `https://liff.line.me/{liffId}?s={slug}&cid={cid}&lid={liffId}`. When the link has no `lineChannelId` or the channel has no `liffId`, the system SHALL fall back to the external browser behavior. The LIFF flow SHALL run entirely on the SINGLE registered endpoint page (`/liff/redirect`) so that every `liff.*` call executes on the endpoint URL: `liff.init` → (if not logged in) `liff.login` with `redirectUri` set to the endpoint page itself → `liff.getProfile` → `POST /s/track` → replace to the target. A click is recorded only on the logged-in pass, so the login round-trip does not double-count. URL params (`s`/`cid`/`lid`) SHALL be persisted to `sessionStorage` and restored, because the LINE in-app webview consumes `liff.state` and reloads the endpoint without query params.
 
 #### Scenario: LINE webview on a link bound to a LIFF-configured channel
 - **WHEN** a LINE in-app webview requests `/s/:slug?cid=C1` and the link's bound LINE channel has `liffId = "1660-abc"`
@@ -61,13 +61,21 @@ For a `LINE_WEBVIEW` source, the system SHALL look up `ShortLink.lineChannelId` 
 - **WHEN** a LINE in-app webview requests `/s/:slug` for a link whose `lineChannelId` is null (or the channel has no `liffId`)
 - **THEN** the system serves the external-browser zero-click page (no LIFF, no `lineUid` collection)
 
-#### Scenario: LIFF entry page never counts and forwards to callback
-- **WHEN** the LIFF entry page loads and the user is already logged in to the LIFF
-- **THEN** the entry page records no click and replaces the location to the callback page carrying `s`/`cid`/`lid`
+#### Scenario: LIFF endpoint requires login then continues on return
+- **WHEN** the LIFF endpoint page loads and `liff.isLoggedIn()` is false
+- **THEN** it calls `liff.login({ redirectUri: <the endpoint page URL> })` and records no click; after login it returns to the endpoint page (now logged in) and continues
 
-#### Scenario: LIFF callback page counts exactly once with lineUid
-- **WHEN** the LIFF callback page loads after login, obtains `lineUid` via `liff.getProfile()`
+#### Scenario: LIFF endpoint counts exactly once with lineUid
+- **WHEN** the LIFF endpoint page is logged in and obtains `lineUid` via `liff.getProfile()`
 - **THEN** it calls `POST /s/track` with `{ slug, cid, lineUid }` exactly once, receives `{ targetUrl }`, and replaces the location with the target URL
+
+#### Scenario: Params survive the LINE webview reload
+- **WHEN** the LINE webview reloads the endpoint after `liff.init` and the URL has lost `s`/`lid` (consumed into `liff.state`)
+- **THEN** the page restores `s`/`cid`/`lid` from `sessionStorage` and proceeds instead of aborting
+
+#### Scenario: getProfile fails (e.g. permission/stale token)
+- **WHEN** `liff.getProfile()` throws (no `profile` permission, hang, etc.)
+- **THEN** the page still calls `POST /s/track` WITHOUT a `lineUid` and redirects to the target, so the user is never stranded
 
 ### Requirement: Tracking endpoint records the single authoritative click
 The system SHALL expose `POST /s/track` accepting `{ slug, cid?, lineUid? }` (parsing both `sendBeacon` `text/plain` and `fetch` JSON bodies). For an active link it SHALL create a `ClickLog` (including `lineUid` when present), increment `totalClicks` on every click, and increment `uniqueClicks` by default on every click EXCEPT when a `lineUid` is present that has already been recorded for this link (a `lineUid` dedups across network changes; IP/contactId are NOT used for uniqueness). A click without a `lineUid` always counts as a new unique. It SHALL apply `tagOnClick`, publish `link.clicked` on the eventBus, emit `link.stats.updated` via Socket.IO, and return the resolved target URL (with UTM) as `{ targetUrl }`. The endpoint SHALL allow CORS from the web origin without credentials. For an inactive or expired link it SHALL NOT record a click and SHALL NOT return a target URL.
@@ -76,7 +84,7 @@ The system SHALL expose `POST /s/track` accepting `{ slug, cid?, lineUid? }` (pa
 - **WHEN** `POST /s/track` receives `{ slug, cid: 'C1' }` (no `lineUid`) for an active link
 - **THEN** a `ClickLog` is created with `contactId = C1`, and BOTH `totalClicks` and `uniqueClicks` increment by 1 (no `lineUid` → always a new unique), and `link.clicked` / `link.stats.updated` are emitted
 
-#### Scenario: LIFF callback records a click with lineUid and returns the target
+#### Scenario: LIFF endpoint records a click with lineUid and returns the target
 - **WHEN** `POST /s/track` receives `{ slug, cid: 'C1', lineUid: 'U123' }` for an active link the first time
 - **THEN** a `ClickLog` is created carrying `lineUid = U123`, `totalClicks` and `uniqueClicks` both increment by 1, and the response body is `{ targetUrl }` with UTM params applied
 

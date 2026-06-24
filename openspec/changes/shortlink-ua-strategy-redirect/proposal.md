@@ -16,7 +16,7 @@
   - **LINE webview**（UA 含 `Line/`）→ 若該連結綁定的 LINE 渠道有 `liffId`，回 HTML `location.replace` 到 `https://liff.line.me/{liffId}?s={slug}&cid=&lid={liffId}`；否則退化成外部瀏覽器行為。
   - **FB webview** → Phase 2（策略模式預留）。
 - **新增 `POST /s/track`**（唯一計數點）：接受 `{ slug, cid?, lineUid? }`，建立 `ClickLog`、累加 `totalClicks/uniqueClicks`（唯一鍵優先序 `lineUid > cid > ip`）、自動貼標、發 eventBus / socket 事件，並**回傳解析後的 `targetUrl`（含 UTM）**供 LIFF 頁使用。對 web origin 開 CORS。
-- **LINE LIFF 兩頁流程**（Next.js）：進入點頁 `/liff/redirect`（不計數，負責 `liff.init` + 登入跳轉/補跳）→ callback 頁 `/liff/callback`（唯一計數點，`getProfile` 取 `lineUid` → `POST /s/track` → `replace(target)`）。兩頁皆收斂到 callback、只計一次。
+- **LINE LIFF 單頁流程**（Next.js）：單一 endpoint 頁 `/liff/redirect` 完成 `liff.init` → 未登入 `liff.login`（`redirectUri` = endpoint 自己）→ `getProfile` 取 `lineUid` → `POST /s/track` → `replace(target)`。計數只在「已登入」那一次，登入循環不重複計。參數用 `sessionStorage` 持久化以撐過 LINE webview 的 `liff.state` reload／登入來回。`/liff/callback` 保留為不碰 SDK 的保險導向頁。
 - **身份解析**：`/s/track` 收到 `lineUid` 時，用 `ChannelIdentity(channelId, lineUid)`（channelId 由 `slug → ShortLink.lineChannelId` 取得）回推 contact；對不到則 `contactId=null`、`lineUid` 照存，留給既有 identity-stitcher 之後補關聯。
 - **OG 快照**：建立/更新短連結時背景抓取 `targetUrl` 的 OG（`og:title/description/image`）存快照、可手動覆寫；抓取器限 http/https、加逾時與 SSRF（私網 IP）防護。
 - **資料模型**：`ShortLink` 加 `lineChannelId`(nullable FK)、`ogTitle`、`ogDescription`、`ogImage`；`ClickLog` 加 `lineUid`；LINE 渠道 `settings.liffConfig.liffId`（JSON，無 migration）。
@@ -35,7 +35,7 @@
 **程式碼**
 - 後端（新增）：`apps/api/src/modules/shortlink/source-detector.ts`、`strategies/{bot,external-browser,line-webview}.strategy.ts`、`og-scraper.ts`
 - 後端（改寫）：`shortlink-redirect.routes.ts`（GET 分流 + 新增 `POST /track`）、`shortlink.service.ts`（`handleClick` 計數邏輯抽出成 `trackClick`、新增 `resolveContactByLineUid` 與 OG 寫入）、`shortlink.routes.ts`（create/update 接 `lineChannelId`/`og*` 並觸發抓取）
-- 前端（新增）：`apps/web/src/app/liff/redirect/page.tsx`、`apps/web/src/app/liff/callback/page.tsx`
+- 前端（新增）：`apps/web/src/app/liff/redirect/page.tsx`（單頁 endpoint 完整流程）、`apps/web/src/app/liff/callback/page.tsx`（不碰 SDK 的保險導向）、`apps/web/src/lib/liff.ts`
 - 前端（改寫）：`components/shortlink/LinkFormDialog.tsx`、`hooks/useShortLinks.ts`、LINE 渠道設定頁（`liffId`）
 - CORS：`/s/track` 需允許 web origin（不帶 credentials）
 
@@ -45,6 +45,6 @@
 
 **外部依賴**：LINE LIFF SDK（前端 `https://static.line-scdn.net/liff/edge/2/sdk.js`）；LIFF app 的 endpoint URL 需在 LINE console 註冊指向 `/liff/redirect`（與既有 `line-liff` capability 一致）。
 
-**部署影響**：需跑 `prisma migrate deploy`；前端新增兩頁；LINE channel 需設定 `liffId`（未設定者 LINE webview 自動退化成外部瀏覽器、不壞）。
+**部署影響**：需跑 `prisma migrate deploy`；前端新增 LIFF endpoint 頁；LINE channel 需設定 `liffId`（未設定者 LINE webview 自動退化成外部瀏覽器、不壞）。
 
 **相容性**：既有 `?cid=` 廣播追蹤照常運作；QR code 仍指向 `/s/:slug`（外部瀏覽器分支）。**行為變更**：依賴 `/s/:slug` 回 302 的外部監控/整合需重新確認（現在回 200 HTML）。

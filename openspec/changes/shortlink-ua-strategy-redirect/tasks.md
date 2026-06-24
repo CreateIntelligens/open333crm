@@ -40,12 +40,12 @@
 - [x] 6.1 沿用既有 `PATCH /channels/:id`（已接受 `settings`）+ 前端 merge 模式（同 `BotConfigForm`）寫 `settings.liffConfig.liffId`，無新 endpoint
 - [x] 6.2 服務層 `assertLineChannel`：`lineChannelId` 必須是本租戶 `channelType=LINE` 的渠道，否則 throw（route 轉 400）
 
-## 7. 前端 — LIFF 兩頁（Next.js）
+## 7. 前端 — LIFF 單頁 endpoint（Next.js）
 
-- [x] 7.1 LIFF SDK 動態載入器 `apps/web/src/lib/liff.ts`（CDN `sdk.js`，無 npm 依賴）
-- [x] 7.2 新增 `apps/web/src/app/liff/redirect/page.tsx`（進入點，不計數）：讀 `s`/`cid`/`lid` → `liff.init({ liffId: lid })` → 未登入 `liff.login({ redirectUri: '/liff/callback?s=&cid=&lid=' })`；已登入則自行 `location.replace('/liff/callback?...')`
-- [x] 7.3 新增 `apps/web/src/app/liff/callback/page.tsx`（唯一計數）：`liff.init` → `getProfile()` 取 `userId`(lineUid) → `fetch POST ${REALTIME_ORIGIN}/s/track {slug, cid, lineUid}` → 取回 `{ targetUrl }` → `window.location.replace(targetUrl)`
-- [x] 7.4 失敗/取消處理：`getProfile`/init 失敗時，仍 `fetch /s/track {slug, cid}`（無 lineUid）後跳轉（不卡死）
+- [x] 7.1 LIFF SDK 工具 `apps/web/src/lib/liff.ts`：CDN `sdk.js` 載入器、`initLiff` memoize `liff.init`（防 StrictMode 雙呼叫卡死）、`withTimeout` 防卡、`resolveLiffParams` 用 `sessionStorage` 撐過 LINE webview 的 `liff.state` reload/login 掉參數
+- [x] 7.2 `apps/web/src/app/liff/redirect/page.tsx`（**單一 endpoint 頁、完整流程**）：讀 `s`/`cid`/`lid` → `liff.init({ liffId: lid })` → 未登入 `liff.login({ redirectUri: window.location.href })`（必須回 endpoint 自己）→ `getProfile()` 取 `lineUid` → `POST /s/track {slug, cid, lineUid}` → `window.location.replace(targetUrl)`。**計數只在「已登入」那一次** → 登入循環不重複計
+- [x] 7.3 `apps/web/src/app/liff/callback/page.tsx` 改為**不碰 SDK 的保險導向頁**（轉回 endpoint，避免在非 endpoint 頁 `liff.init` 造成 warning/降級 FORBIDDEN）
+- [x] 7.4 失敗/逾時 fallback：init/getProfile 失敗或逾時，仍 `POST /s/track`（無 lineUid）後跳轉，使用者不卡死
 
 ## 8. 前端 — 短連結表單 + 型別
 
