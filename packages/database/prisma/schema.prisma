@@ -315,6 +315,7 @@ model Channel {
   usages            ChannelUsage[]
   richMenus         RichMenu[]
   chatboxSessions   ChatboxSession[]
+  shortLinks        ShortLink[]         @relation("ShortLinkLineChannel")
 
   @@index([tenantId])
   @@index([publicKey])
@@ -486,12 +487,12 @@ model ContactTag {
 }
 
 model CaseTag {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  caseId    String   @db.Uuid
-  tagId     String   @db.Uuid
-  addedBy   String   @default("agent")
-  addedById String?  @db.Uuid
-  addedAt   DateTime @default(now())
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId    String    @db.Uuid
+  tagId     String    @db.Uuid
+  addedBy   String    @default("agent")
+  addedById String?   @db.Uuid
+  addedAt   DateTime  @default(now())
   expiresAt DateTime?
 
   case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
@@ -504,12 +505,12 @@ model CaseTag {
 }
 
 model ConversationTag {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  conversationId String   @db.Uuid
-  tagId          String   @db.Uuid
-  addedBy        String   @default("agent")
-  addedById      String?  @db.Uuid
-  addedAt        DateTime @default(now())
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String    @db.Uuid
+  tagId          String    @db.Uuid
+  addedBy        String    @default("agent")
+  addedById      String?   @db.Uuid
+  addedAt        DateTime  @default(now())
   expiresAt      DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -545,13 +546,13 @@ model Conversation {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  contact    Contact   @relation(fields: [contactId], references: [id])
-  channel    Channel   @relation(fields: [channelId], references: [id])
-  team       Team?     @relation(fields: [teamId], references: [id])
-  assignedTo Agent?    @relation("AssignedAgent", fields: [assignedToId], references: [id])
-  case       Case?     @relation(fields: [caseId], references: [id])
-  messages   Message[]
-  tags       ConversationTag[]
+  contact        Contact           @relation(fields: [contactId], references: [id])
+  channel        Channel           @relation(fields: [channelId], references: [id])
+  team           Team?             @relation(fields: [teamId], references: [id])
+  assignedTo     Agent?            @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  case           Case?             @relation(fields: [caseId], references: [id])
+  messages       Message[]
+  tags           ConversationTag[]
   chatboxSession ChatboxSession?
 
   @@index([tenantId, status])
@@ -562,26 +563,26 @@ model Conversation {
 }
 
 model Message {
-  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  conversationId String     @db.Uuid
-  direction      Direction  @default(INBOUND)
-  senderType     SenderType
-  senderId       String?    @db.Uuid
-  contentType    String
-  content        Json
-  metadata       Json       @default("{}")
-  channelMsgId   String?
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId  String     @db.Uuid
+  direction       Direction  @default(INBOUND)
+  senderType      SenderType
+  senderId        String?    @db.Uuid
+  contentType     String
+  content         Json
+  metadata        Json       @default("{}")
+  channelMsgId    String?
   clientMessageId String?
-  sequence       Int?
-  isRead         Boolean    @default(false)
-  createdAt      DateTime   @default(now())
+  sequence        Int?
+  isRead          Boolean    @default(false)
+  createdAt       DateTime   @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       Agent?       @relation(fields: [senderId], references: [id])
 
+  @@unique([conversationId, clientMessageId])
   @@index([conversationId, createdAt])
   @@index([conversationId, sequence])
-  @@unique([conversationId, clientMessageId])
   @@map("messages")
 }
 
@@ -642,10 +643,10 @@ model Case {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  contact      Contact       @relation(fields: [contactId], references: [id])
-  assignee     Agent?        @relation("AssignedAgent", fields: [assigneeId], references: [id])
-  team         Team?         @relation(fields: [teamId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  contact       Contact        @relation(fields: [contactId], references: [id])
+  assignee      Agent?         @relation("AssignedAgent", fields: [assigneeId], references: [id])
+  team          Team?          @relation(fields: [teamId], references: [id])
   conversations Conversation[]
 
   mergedInto  Case?  @relation("MergedCases", fields: [mergedIntoId], references: [id])
@@ -775,8 +776,8 @@ model AutomationExecution {
   status           ExecutionStatus
   createdAt        DateTime        @default(now())
 
-  tenant        Tenant                  @relation(fields: [tenantId], references: [id])
-  rule          AutomationRule?         @relation(fields: [ruleId], references: [id])
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id])
+  rule          AutomationRule?          @relation(fields: [ruleId], references: [id])
   actionResults AutomationActionResult[]
 
   @@index([tenantId])
@@ -1110,10 +1111,10 @@ model Broadcast {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant     Tenant              @relation(fields: [tenantId], references: [id])
-  campaign   Campaign?           @relation(fields: [campaignId], references: [id])
-  segment    Segment?            @relation(fields: [segmentId], references: [id])
-  material   Material?           @relation(fields: [materialId], references: [id])
+  tenant     Tenant               @relation(fields: [tenantId], references: [id])
+  campaign   Campaign?            @relation(fields: [campaignId], references: [id])
+  segment    Segment?             @relation(fields: [segmentId], references: [id])
+  material   Material?            @relation(fields: [materialId], references: [id])
   recipients BroadcastRecipient[]
 
   @@index([tenantId, status])
@@ -1353,30 +1354,36 @@ model PointTransaction {
 // ─────────────────────────────────────────────
 
 model ShortLink {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String    @db.Uuid
-  slug         String    @unique
-  targetUrl    String
-  title        String?
-  utmSource    String?
-  utmMedium    String?
-  utmCampaign  String?
-  utmContent   String?
-  utmTerm      String?
-  tagOnClick   String?   @db.Uuid
-  isActive     Boolean   @default(true)
-  expiresAt    DateTime?
-  totalClicks  Int       @default(0)
-  uniqueClicks Int       @default(0)
-  createdById  String    @db.Uuid
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @db.Uuid
+  slug          String    @unique
+  targetUrl     String
+  title         String?
+  ogTitle       String?
+  ogDescription String?
+  ogImage       String?
+  lineChannelId String?   @db.Uuid
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  utmTerm       String?
+  tagOnClick    String?   @db.Uuid
+  isActive      Boolean   @default(true)
+  expiresAt     DateTime?
+  totalClicks   Int       @default(0)
+  uniqueClicks  Int       @default(0)
+  createdById   String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  clickLogs ClickLog[]
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  lineChannel Channel?   @relation("ShortLinkLineChannel", fields: [lineChannelId], references: [id])
+  clickLogs   ClickLog[]
 
   @@index([tenantId])
   @@index([slug])
+  @@index([lineChannelId])
   @@map("short_links")
 }
 
@@ -1384,6 +1391,7 @@ model ClickLog {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   shortLinkId String   @db.Uuid
   contactId   String?  @db.Uuid
+  lineUid     String?
   ip          String?
   userAgent   String?
   referer     String?
@@ -1394,6 +1402,7 @@ model ClickLog {
 
   @@index([shortLinkId, createdAt(sort: Desc)])
   @@index([contactId])
+  @@index([lineUid])
   @@map("click_logs")
 }
 
@@ -1516,6 +1525,7 @@ model MergeSuggestion {
   @@index([tenantId, status])
   @@map("merge_suggestions")
 }
+
 // ─────────────────────────────────────────────
 // Partner API Keys
 // ─────────────────────────────────────────────

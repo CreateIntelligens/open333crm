@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { useChannels } from '@/hooks/useChannels';
 
 interface LinkFormDialogProps {
   open: boolean;
@@ -33,6 +34,15 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
   const [utmTerm, setUtmTerm] = useState('');
   const [tagOnClick, setTagOnClick] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [lineChannelId, setLineChannelId] = useState('');
+  const [ogTitle, setOgTitle] = useState('');
+  const [ogDescription, setOgDescription] = useState('');
+  const [ogImage, setOgImage] = useState('');
+
+  const { channels } = useChannels();
+  const lineChannels = (channels as Array<{ id: string; displayName: string; channelType: string }>).filter(
+    (c) => c.channelType === 'LINE',
+  );
 
   useEffect(() => {
     if (editData) {
@@ -46,6 +56,10 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
       setUtmTerm((editData.utmTerm as string) || '');
       setTagOnClick((editData.tagOnClick as string) || '');
       setExpiresAt(editData.expiresAt ? (editData.expiresAt as string).slice(0, 16) : '');
+      setLineChannelId((editData.lineChannelId as string) || '');
+      setOgTitle((editData.ogTitle as string) || '');
+      setOgDescription((editData.ogDescription as string) || '');
+      setOgImage((editData.ogImage as string) || '');
     } else {
       setTargetUrl('');
       setTitle('');
@@ -57,6 +71,10 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
       setUtmTerm('');
       setTagOnClick('');
       setExpiresAt('');
+      setLineChannelId('');
+      setOgTitle('');
+      setOgDescription('');
+      setOgImage('');
     }
   }, [editData, open]);
 
@@ -74,6 +92,10 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         utmTerm: utmTerm || undefined,
         tagOnClick: tagOnClick || undefined,
         expiresAt: expiresAt || undefined,
+        lineChannelId: lineChannelId || null,
+        ogTitle: ogTitle || undefined,
+        ogDescription: ogDescription || undefined,
+        ogImage: ogImage || undefined,
       };
 
       if (!editData && slug) {
@@ -148,6 +170,35 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
             <label className="text-sm font-medium">到期時間</label>
             <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
           </div>
+
+          <div>
+            <label className="text-sm font-medium">LINE 渠道（LIFF 收集身份）</label>
+            <select
+              value={lineChannelId}
+              onChange={(e) => setLineChannelId(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">不使用 LIFF（LINE 內點擊比照外部瀏覽器）</option>
+              {lineChannels.map((c) => (
+                <option key={c.id} value={c.id}>{c.displayName}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              選擇後，於 LINE App 內點擊會經該渠道的 LIFF 取得 LINE 身份再背景計數；外部瀏覽器與 Bot 不受影響。
+            </p>
+          </div>
+
+          <details className="group">
+            <summary className="text-sm font-medium cursor-pointer">社群預覽（OG，留空自動抓取目標頁）</summary>
+            <div className="mt-2 space-y-2">
+              <Input value={ogTitle} onChange={(e) => setOgTitle(e.target.value)} placeholder="og:title" />
+              <Input value={ogDescription} onChange={(e) => setOgDescription(e.target.value)} placeholder="og:description" />
+              <Input value={ogImage} onChange={(e) => setOgImage(e.target.value)} placeholder="og:image URL" />
+              <p className="text-xs text-muted-foreground">
+                全部留空時，系統會在背景抓取目標頁的 OG 並存為快照；填寫則以手動值為準。
+              </p>
+            </div>
+          </details>
         </div>
 
         <DialogFooter>

@@ -69,6 +69,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
   const [handoffPromptStyle, setHandoffPromptStyle] =
     useState<HandoffPromptStyle>(DEFAULT_HANDOFF_PROMPT_STYLE);
   const [handoffButtonLabel, setHandoffButtonLabel] = useState(DEFAULT_HANDOFF_BUTTON_LABEL);
+  const [liffId, setLiffId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,6 +97,10 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         setHandoffButtonLabel(DEFAULT_HANDOFF_BUTTON_LABEL);
       }
     }
+    const liffCfg = (channel?.settings as Record<string, unknown> | undefined)?.liffConfig as
+      | { liffId?: string }
+      | undefined;
+    setLiffId(liffCfg?.liffId ?? '');
     setError(null);
   }, [channel, open]);
 
@@ -131,8 +136,10 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         handoffButtonLabel: trimmedLabel || DEFAULT_HANDOFF_BUTTON_LABEL,
       };
 
+      const liffConfig = { liffId: liffId.trim() };
+
       await api.patch(`/channels/${channel.id}`, {
-        settings: { ...existingSettings, botConfig },
+        settings: { ...existingSettings, botConfig, liffConfig },
       });
 
       onSaved();
@@ -302,6 +309,20 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
             />
             <p className="mt-1 text-xs text-muted-foreground">
               非營業時間收到訊息時的自動回覆（留空使用系統預設）
+            </p>
+          </div>
+
+          {/* LIFF App ID (短連結 LINE 身份收集) */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">LIFF App ID（短連結身份收集）</label>
+            <Input
+              value={liffId}
+              onChange={(e) => setLiffId(e.target.value)}
+              placeholder="例：1660xxxxxx-xxxxxxxx（留空則短連結不走 LIFF）"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              短連結若綁定本渠道，LINE App 內點擊會經此 LIFF 取得 LINE 身份。LIFF endpoint 請在 LINE
+              console 指向 <code>/liff/redirect</code>，且須與本渠道同一 provider。
             </p>
           </div>
 
