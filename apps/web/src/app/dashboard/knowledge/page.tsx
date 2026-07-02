@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Plus, Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
-import { useKnowledge, useCategories } from '@/hooks/useKnowledge';
+import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
 import { ArticleList } from '@/components/knowledge/ArticleList';
 import { ArticleFormDialog } from '@/components/knowledge/ArticleFormDialog';
@@ -31,6 +31,8 @@ const PAGE_SIZE = 50;
 export default function KnowledgePage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -69,6 +71,8 @@ export default function KnowledgePage() {
   const { articles, meta, isLoading, mutate } = useKnowledge({
     status: statusFilter === 'all' ? undefined : statusFilter,
     category: categoryFilter || undefined,
+    source: sourceFilter || undefined,
+    tag: tagFilter || undefined,
     q: search || undefined,
     page,
     limit: PAGE_SIZE,
@@ -80,9 +84,10 @@ export default function KnowledgePage() {
   // Reset to page 1 whenever filters change
   React.useEffect(() => {
     setPage(1);
-  }, [statusFilter, categoryFilter, search]);
+  }, [statusFilter, categoryFilter, sourceFilter, tagFilter, search]);
 
   const { categories } = useCategories();
+  const { sources } = useSources();
 
   const handleEdit = useCallback(async (article: any) => {
     try {
@@ -165,6 +170,12 @@ export default function KnowledgePage() {
     ...categories.map((c) => ({ value: c, label: c })),
   ];
 
+  const sourceOptions = [
+    { value: '', label: '全部來源' },
+    { value: '__manual__', label: '手動建立' },
+    ...sources.map((s) => ({ value: s, label: s })),
+  ];
+
   return (
     <div className="flex h-full flex-col">
       <Topbar title="知識庫" />
@@ -214,6 +225,24 @@ export default function KnowledgePage() {
                     className="w-40"
                   />
                 )}
+                {sources.length > 0 && (
+                  <Select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    options={sourceOptions}
+                    className="w-48"
+                  />
+                )}
+                {tagFilter && (
+                  <Badge
+                    variant="default"
+                    className="cursor-pointer gap-1"
+                    onClick={() => setTagFilter('')}
+                    title="點擊清除 tag 篩選"
+                  >
+                    Tag: {tagFilter} ✕
+                  </Badge>
+                )}
                 <div className="ml-auto flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                     <Upload className="mr-1.5 h-4 w-4" />
@@ -247,6 +276,7 @@ export default function KnowledgePage() {
                 onPublish={handlePublish}
                 onArchive={handleArchive}
                 onDelete={handleDelete}
+                onTagClick={setTagFilter}
               />
             </div>
             {totalPages > 1 && (

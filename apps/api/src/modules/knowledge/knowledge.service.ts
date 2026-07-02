@@ -17,21 +17,30 @@ export async function listArticles(
   filters: {
     status?: string;
     category?: string;
+    source?: string;
+    tag?: string;
     q?: string;
     page?: number;
     limit?: number;
   } = {},
 ) {
-  const { status, category, q, page = 1, limit = 50 } = filters;
+  const { status, category, source, tag, q, page = 1, limit = 50 } = filters;
 
   const where: Record<string, unknown> = { tenantId };
   if (status) where.status = status;
   if (category) where.category = category;
+  if (tag) where.tags = { has: tag };
+  // source: '__manual__' 代表手動建立（externalSource 為空），其餘為精確比對
+  if (source) {
+    where.externalSource = source === '__manual__' ? null : source;
+  }
   if (q) {
     where.OR = [
       { title: { contains: q, mode: 'insensitive' } },
       { summary: { contains: q, mode: 'insensitive' } },
       { content: { contains: q, mode: 'insensitive' } },
+      // tag 為陣列元素精確比對（輸入完整 tag 名稱才會命中）
+      { tags: { has: q } },
     ];
   }
 
@@ -267,6 +276,17 @@ export async function listCategories(prisma: PrismaClient, tenantId: string) {
   });
 
   return results.map((r) => r.category);
+}
+
+export async function listSources(prisma: PrismaClient, tenantId: string) {
+  const results = await prisma.kmArticle.findMany({
+    where: { tenantId, externalSource: { not: null } },
+    select: { externalSource: true },
+    distinct: ['externalSource'],
+    orderBy: { externalSource: 'asc' },
+  });
+
+  return results.map((r) => r.externalSource).filter(Boolean) as string[];
 }
 
 // ─── Semantic Search ────────────────────────────────────────────────────────

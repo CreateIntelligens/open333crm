@@ -19,6 +19,7 @@ interface Article {
   hasEmbedding?: boolean;
   externalDocId?: string | null;
   externalVer?: number;
+  externalSource?: string | null;
   _count?: { attachments: number };
 }
 
@@ -29,6 +30,7 @@ interface ArticleListProps {
   onPublish: (id: string) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 const statusLabel: Record<string, string> = {
@@ -50,6 +52,7 @@ export function ArticleList({
   onPublish,
   onArchive,
   onDelete,
+  onTagClick,
 }: ArticleListProps) {
   if (isLoading) {
     return (
@@ -114,8 +117,13 @@ export function ArticleList({
                         {article.summary}
                       </p>
                     )}
-                    {(article.externalDocId || (article._count?.attachments ?? 0) > 0) && (
+                    {(article.externalSource || article.externalDocId || (article._count?.attachments ?? 0) > 0) && (
                       <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {article.externalSource && (
+                          <Badge variant="outline" className="px-1 py-0 text-[10px] font-normal">
+                            {article.externalSource}
+                          </Badge>
+                        )}
                         {article.externalDocId && (
                           <span>
                             DocID {article.externalDocId}
@@ -144,7 +152,13 @@ export function ArticleList({
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
                   {article.tags.slice(0, 3).map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
+                    <Badge
+                      key={tag}
+                      variant="secondary"
+                      className={onTagClick ? 'cursor-pointer text-xs hover:bg-primary hover:text-primary-foreground' : 'text-xs'}
+                      onClick={() => onTagClick?.(tag)}
+                      title={onTagClick ? `篩選 tag：${tag}` : undefined}
+                    >
                       {tag}
                     </Badge>
                   ))}

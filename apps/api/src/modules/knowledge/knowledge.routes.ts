@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   listArticles,
+  listSources,
   getArticle,
   createArticle,
   updateArticle,
@@ -85,12 +86,20 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     const result = await listArticles(fastify.prisma, request.agent.tenantId, {
       status: query.status || undefined,
       category: query.category || undefined,
+      source: query.source || undefined,
+      tag: query.tag || undefined,
       q: query.q || undefined,
       page,
       limit,
     });
 
     return reply.send(paginated(result.articles, result.total, result.page, result.limit));
+  });
+
+  // GET /api/v1/knowledge/sources — 來源列表（externalSource 去重）
+  fastify.get('/sources', async (request, reply) => {
+    const sources = await listSources(fastify.prisma, request.agent.tenantId);
+    return reply.send(success(sources));
   });
 
   // GET /api/v1/knowledge/categories — 分類列表
