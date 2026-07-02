@@ -1,0 +1,9 @@
+# 原始逐字稿與所有中間產物都含 PII（客戶姓名/電話/地址），一律不進 git
+data/
+dist/
+*.jsonl
+*.progress
+04-articles.csv
+04-articles.reviewed.csv
+report-*.csv
+report-*.md

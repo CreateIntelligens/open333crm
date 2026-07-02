@@ -1,0 +1,26 @@
+{
+  "name": "@open333crm/kb-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "description": "離線批次管線：把大同客服電話逐字稿轉成 KB（KmArticle）資料 + 問題分布/缺料驗證報告",
+  "scripts": {
+    "scan": "tsx src/01-scan.ts",
+    "prefilter": "tsx src/02-prefilter.ts",
+    "extract": "tsx src/03-extract.ts",
+    "cluster": "tsx src/04-cluster.ts",
+    "report": "tsx src/05-report.ts",
+    "import": "tsx src/06-import.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open333crm/database": "workspace:*",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
