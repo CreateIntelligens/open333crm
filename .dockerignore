@@ -1,0 +1,21 @@
+# Dependencies are reinstalled inside the image via `pnpm install --frozen-lockfile`.
+# Keeping node_modules out of the build context speeds transfers and avoids
+# xattr/permission errors on host-only files.
+**/node_modules
+
+# VCS
+.git
+.gitignore
+
+# Build outputs / caches (all regenerated inside the image)
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+coverage
+
+# OS / editor junk
+.DS_Store
+**/*.log
+
+# NOTE: do NOT ignore .env* — apps/web/Dockerfile copies .env.web into the build.
