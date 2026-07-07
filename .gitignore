@@ -16,6 +16,8 @@ docs/
 packages/db/full-backup.sql
 settings.local.json
 apps/web/public/webchat/
+apps/web/public/toys/
+apps/web/public/playcaptcha.svg
 apps/web-e2e/
 *.tsbuildinfo
 

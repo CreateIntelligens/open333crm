@@ -1,12 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
+import { LOGIN_CAPTCHA_ENABLED } from '@/lib/constants';
+import 'playcaptcha/clawcaptcha.css';
+
+// 夾娃娃機小遊戲關卡使用瀏覽器 API，僅在 client 端載入以避免 SSR 錯誤。
+const ClawCaptcha = dynamic(
+  () => import('playcaptcha').then((m) => m.ClawCaptcha),
+  { ssr: false },
+);
 
 function LoginForm() {
   const { login, agent, isLoading } = useAuth();
@@ -16,6 +25,9 @@ function LoginForm() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // 停用 CAPTCHA 時初始即視為已通過；啟用時需先完成夾娃娃機小遊戲。
+  // 登入失敗不會重置此狀態，避免使用者因打錯密碼被迫重玩。
+  const [captchaVerified, setCaptchaVerified] = useState(!LOGIN_CAPTCHA_ENABLED);
 
   // If already logged in, redirect
   useEffect(() => {
@@ -26,6 +38,10 @@ function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (LOGIN_CAPTCHA_ENABLED && !captchaVerified) {
+      setError('請先完成夾娃娃機小遊戲以繼續登入。');
+      return;
+    }
     setError('');
     setSubmitting(true);
 
@@ -60,6 +76,12 @@ function LoginForm() {
           </p>
         </CardHeader>
         <CardContent>
+          {/* CAPTCHA 置於 form 之外：小遊戲內部按鈕無 type，避免誤觸表單提交 */}
+          {LOGIN_CAPTCHA_ENABLED && !captchaVerified && (
+            <div className="mb-4">
+              <ClawCaptcha onVerify={() => setCaptchaVerified(true)} />
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">電子郵件</label>
@@ -98,8 +120,12 @@ function LoginForm() {
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? '登入中...' : '登入'}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={submitting || !captchaVerified}
+            >
+              {submitting ? '登入中...' : !captchaVerified ? '請先完成小遊戲' : '登入'}
             </Button>
           </form>
         </CardContent>
