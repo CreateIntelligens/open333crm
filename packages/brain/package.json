@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.11.0",
-    "axios": "^1.7.7",
+    "axios": "^1.16.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
