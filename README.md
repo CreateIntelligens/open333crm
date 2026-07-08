@@ -5,60 +5,71 @@
 ## Current Status
 
 ### OpenSpec 變更進度
+
 - `unified-interaction-canvas` 的 OpenSpec `opsx:apply` 任務清單目前已全部勾選，但實作狀態仍是「收尾中」，尚未建議 archive。
 
 ### 已完成到可用的部分
+
 - Webhook 進站可觸發 Canvas Flow。
 - `WAIT` 節點已有 resume poller。
 - LINE / Facebook Login callback 已補入 contact merge 與 `IdentityMap` 回寫。
 - Canvas email node 已有 HTML render 與 delivery path，支援 `log` / `webhook` 模式。
 
 ### 目前仍未完成的部分
+
 - `apps/api/src/__tests__/canvas-flow.test.ts` 仍是 mocked test，不是真正的 integration test。
 - Canvas email 預設只會 `log`，若需實際寄信必須配置 `EMAIL_DELIVERY_MODE=webhook` 與 `EMAIL_WEBHOOK_URL`。
 - `unified-interaction-canvas` 相關功能尚未完成完整前端管理與全入口 identity stitching 覆蓋。
 
 ### 文件使用原則
+
 - 若 `CHANGELOG.md`、`README.md`、OpenSpec 任務清單之間有不一致，請以「程式碼實際整合狀態 + 本 README 的 Current Status」為準，不要僅依賴 tasks checkbox 判定功能已完整完成。
 
 ## 🌟 核心功能
 
 ### 📱 多渠道整合
+
 - **LINE Official Account** - LINE 官方帳號整合
 - **Facebook Messenger** - Facebook 粉絲專頁訊息
 - **WebChat** - 網站即時客服小工具
 - 統一收件箱管理所有渠道對話
 
 ### 🤖 智能自動化
+
 - **規則引擎** - 基於事件觸發的自動化流程（12種動作類型）
 - **LLM 整合** - 情緒分析、問題分類、智能回覆
 - **知識庫** - 自動回答常見問題
 - **Bot 路由** - 可配置的 Bot/人工交接策略
 
 ### 📊 數據分析
+
 - **儀表板** - 即時業務數據總覽
 - **績效追蹤** - 客服人員、渠道、案件統計
 - **趨勢分析** - 訊息量、案件量時間序列圖表
 - **CSV 匯出** - 支援報表下載
 
 ### 📢 行銷系統
+
 - **客群分眾** - 基於標籤、渠道、時間的動態分群
 - **活動管理** - 行銷活動追蹤與 ROI 分析
 - **訊息廣播** - 排程發送、個人化變數替換
 - **模板系統** - 12+ 系統模板，支援多種訊息類型
 
 ### ⭐ 客戶體驗
+
 - **CSAT 調查** - 自動發送滿意度調查（1-5分）
 - **SLA 監控** - 首次回應、解決時間追蹤
 - **辦公時間** - 可配置營業時間與自動回覆
 - **案件管理** - 完整的 Ticket 生命週期管理
 
 ### 🎮 粉絲互動
+
 - **粉絲活動** - 投票、表單、抽獎活動
 - **積分系統** - 粉絲積分累積與追蹤
-- **短連結** - URL 縮短、QR Code、點擊追蹤
+- **短連結** - URL 縮短、QR Code、點擊追蹤、GA4/Meta Pixel 追蹤注入
 
 ### 🔐 權限管理
+
 - **多租戶架構** - 支援多組織隔離
 - **角色權限** - ADMIN / SUPERVISOR / AGENT 三級權限
 - **團隊管理** - 客服團隊分組與工作分派
@@ -66,6 +77,7 @@
 ## 🏗️ 技術架構
 
 ### 前端
+
 - **Next.js 14** - React App Router
 - **shadcn/ui** - 現代化 UI 組件庫
 - **Tailwind CSS** - 實用優先的 CSS 框架
@@ -73,6 +85,7 @@
 - **Socket.io Client** - 即時訊息推送
 
 ### 後端
+
 - **Fastify** - 高效能 Node.js Web 框架
 - **TypeScript** - 型別安全
 - **Prisma ORM** - 現代化資料庫工具
@@ -80,17 +93,20 @@
 - **json-rules-engine** - 規則引擎核心
 
 ### 資料庫與儲存
+
 - **PostgreSQL** - 主要資料庫（port 5432）
 - **Redis** - 快取與 Session（port 6380）
 - **MinIO** - S3 相容物件儲存（port 9000）
 
 ### AI & 整合
+
 - **Ollama** - 本地 LLM 推論引擎（port 11434）
 - **qwen2.5:7b** - 中文語言模型
 - **LINE Messaging API** - LINE Bot 整合
 - **Facebook Graph API** - Messenger 整合
 
 ### 開發工具
+
 - **pnpm** - 高效能套件管理器
 - **Turborepo** - Monorepo 構建系統
 - **Docker Compose** - 容器化開發環境
@@ -182,6 +198,7 @@ cp apps/web/.env.example apps/web/.env
 `apps/api/src/index.ts` 會先載入**專案根目錄**的 `.env`。如果你只改 `apps/api/.env`，目前不會被 API bootstrap 讀到。
 
 **API 主要環境變數** (`.env`):
+
 ```env
 # 資料庫（注意：port 5432）
 DATABASE_URL=postgresql://crm:crmpassword@localhost:5432/open333crm
@@ -219,6 +236,7 @@ EMAIL_DELIVERY_MODE=log
 ```
 
 **Web 環境變數** (`apps/web/.env`):
+
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
@@ -254,11 +272,11 @@ pnpm --filter @open333crm/web dev     # Web: http://localhost:3000
 
 訪問 http://localhost:3000，使用以下帳號登入：
 
-| 角色 | Email | 密碼 |
-|------|-------|------|
-| 管理員 | admin@demo.com | admin123 |
-| 主管 | supervisor@demo.com | admin123 |
-| 客服 | agent1@demo.com | admin123 |
+| 角色   | Email               | 密碼     |
+| ------ | ------------------- | -------- |
+| 管理員 | admin@demo.com      | admin123 |
+| 主管   | supervisor@demo.com | admin123 |
+| 客服   | agent1@demo.com     | admin123 |
 
 ## 🔧 開發指南
 
@@ -322,54 +340,68 @@ docker exec -i open333crm-postgres psql -U crm open333crm < backup.sql
 ### 主要端點
 
 #### 認證
+
 - `POST /auth/login` - 登入
 - `POST /auth/register` - 註冊
 - `GET /auth/me` - 取得當前用戶資訊
 
 #### 對話管理
+
 - `GET /conversations` - 取得對話列表
 - `GET /conversations/:id` - 取得對話詳情
 - `POST /conversations/:id/messages` - 發送訊息
 - `PATCH /conversations/:id/assign` - 分配對話
 
 #### 案件管理
+
 - `GET /cases` - 取得案件列表
 - `POST /cases` - 建立案件
 - `PATCH /cases/:id` - 更新案件
 - `POST /cases/:id/csat` - 記錄 CSAT 評分
 
 #### 聯絡人
+
 - `GET /contacts` - 取得聯絡人列表
 - `POST /contacts` - 建立聯絡人
 - `PATCH /contacts/:id` - 更新聯絡人
 - `POST /contacts/:id/tags` - 新增標籤
 
 #### 自動化
+
 - `GET /automation/rules` - 取得規則列表
 - `POST /automation/rules` - 建立規則
 - `PATCH /automation/rules/:id` - 更新規則
 
 #### 分析
+
 - `GET /analytics/overview` - 總覽數據
 - `GET /analytics/message-trend` - 訊息趨勢
 - `GET /analytics/cases` - 案件統計
 - `POST /analytics/export` - 匯出報表
 
 #### 行銷
+
 - `GET /marketing/campaigns` - 活動列表
 - `POST /marketing/broadcasts` - 建立廣播
 - `GET /marketing/segments` - 分群列表
 - `GET /marketing/templates` - 模板列表
 
 #### 粉絲活動
+
 - `GET /portal/activities` - 活動列表
 - `POST /portal/activities` - 建立活動
 - `GET /portal/submissions` - 提交記錄
 
 #### 短連結
+
 - `GET /shortlinks` - 短連結列表
 - `POST /shortlinks` - 建立短連結
 - `GET /shortlinks/:id/stats` - 點擊統計
+
+#### 追蹤設定
+
+- `GET /settings/tracking` - 取得追蹤設定（GA4 ID、Meta Pixel ID）
+- `PUT /settings/tracking` - 更新追蹤設定
 
 完整 API 文件請參考：[API 端點列表](docs/api-endpoints.md)（109+ 端點）
 
@@ -381,33 +413,33 @@ docker exec -i open333crm-postgres psql -U crm open333crm < backup.sql
 
 ```typescript
 // 新訊息
-socket.on('message:new', (data: { conversationId, message }) => {})
+socket.on("message:new", (data: { conversationId; message }) => {});
 
 // 對話更新
-socket.on('conversation:updated', (data: { conversation }) => {})
+socket.on("conversation:updated", (data: { conversation }) => {});
 
 // 案件更新
-socket.on('case:updated', (data: { case }) => {})
+socket.on("case:updated", (data: { case }) => {});
 
 // 通知
-socket.on('notification', (data: { type, title, message }) => {})
+socket.on("notification", (data: { type; title; message }) => {});
 
 // 用戶狀態變更
-socket.on('user:status', (data: { userId, status }) => {})
+socket.on("user:status", (data: { userId; status }) => {});
 ```
 
 ### 客戶端發送事件
 
 ```typescript
 // 加入對話房間
-socket.emit('conversation:join', { conversationId })
+socket.emit("conversation:join", { conversationId });
 
 // 離開對話房間
-socket.emit('conversation:leave', { conversationId })
+socket.emit("conversation:leave", { conversationId });
 
 // 正在輸入
-socket.emit('typing:start', { conversationId })
-socket.emit('typing:stop', { conversationId })
+socket.emit("typing:start", { conversationId });
+socket.emit("typing:stop", { conversationId });
 ```
 
 ## 🎯 部署指南
@@ -457,12 +489,12 @@ nginx 每天 **04:00** 執行 `nginx -s reload` 載入新憑證。
 
 ### 環境變數檔案
 
-| 檔案 | 用途 |
-|------|------|
-| `.env.api` | API 服務（DB、Redis、JWT 等） |
-| `.env.workers` | Workers 服務 |
-| `.env.web` | Web 前端 |
-| `.env.prod` | 線上部署用（`DOMAIN`、`CERTBOT_EMAIL`） |
+| 檔案           | 用途                                    |
+| -------------- | --------------------------------------- |
+| `.env.api`     | API 服務（DB、Redis、JWT 等）           |
+| `.env.workers` | Workers 服務                            |
+| `.env.web`     | Web 前端                                |
+| `.env.prod`    | 線上部署用（`DOMAIN`、`CERTBOT_EMAIL`） |
 
 ### 環境變數檢查清單
 
@@ -520,28 +552,37 @@ pnpm test:coverage
 ### 常見問題
 
 #### Q: PostgreSQL 連線失敗（顯示 5432）
+
 A: `docker-compose.yml` 對外發布的是 **5432**。如果錯誤訊息還顯示 `localhost:5432`，代表你的 `.env` 仍是舊設定，請改成 `DATABASE_URL=postgresql://crm:crmpassword@localhost:5432/open333crm`。
 
 #### Q: Redis 連線失敗（顯示 6379）
+
 A: `docker-compose.yml` 對外發布的是 **6380**。如果錯誤訊息還顯示 `localhost:6379`，代表你的 `.env` 或 fallback 還沒對齊，請改成 `REDIS_URL=redis://localhost:6380`。
 
 #### Q: Docker 指令找不到
+
 A: macOS 用戶請確保 Docker 在 PATH 中：
+
 ```bash
 export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
 ```
 
 #### Q: Prisma Client 找不到
+
 A: 執行以下指令重新生成：
+
 ```bash
 pnpm db:generate
 ```
 
 #### Q: ESM import 錯誤
+
 A: 確保 workspace packages 的 `package.json` 中有 `"type": "module"` 和正確的 `"exports"` 設定。
 
 #### Q: LINE/Facebook Webhook 無法接收訊息
+
 A: 確保：
+
 1. 使用公開 URL（可用 ngrok）
 2. Webhook URL 格式正確：`https://your-domain.com/api/v1/channels/line/webhook`
 3. Channel 已正確設定並啟用
@@ -648,4 +689,4 @@ const systemPrompt = `你是一個專業的客服助理...`;
 
 **Built with ❤️ by CreateIntelligens Team**
 
-*最後更新：2026-03-25*
+_最後更新：2026-03-25_

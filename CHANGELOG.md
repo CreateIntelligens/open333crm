@@ -5,6 +5,8 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ## [Unreleased]
 
 ### Added
+
+- **Tenant-level tracking pixels for shortlinks (2026-07-08)** — 短連結 redirect 後台新增「追蹤設定」分頁，支援租戶層級設定 Google Analytics 4 Measurement ID 與 Meta Pixel ID。設定後所有短連結的 redirect 微頁面會自動注入對應追蹤腳本（GA4 gtag.js + Meta Pixel base code），BOT 爬蟲不注入。`TenantSettings` 新增 `gaId` / `metaPixelId` 欄位，API 新增 `GET/PUT /api/v1/settings/tracking` 端點。對應 openspec change `add-tenant-tracking-pixels`。
 - **Partner ingest cmd-based mutation (2026-05-13)** — `POST /api/v1/knowledge/partner-ingest` 改為由必填欄位 `cmd` (CREATE/UPDATE/DELETE) 顯式指定動作，取代「靠 `Ver` 隱式推導」的舊行為：CREATE 新建或復活已 ARCHIVED 文章（`status="revived"`）、UPDATE 整批覆蓋內容+附件+重算向量、DELETE 採軟刪（`status` → `ARCHIVED` + `embedding` 清空，附件保留供稽核）。新增結構化錯誤碼 400 `INVALID_CMD` / 404 `DOCID_NOT_FOUND` / 409 `DOCID_CONFLICT`，DELETE 對不存在或已 ARCHIVED 的 DocID 為 idempotent (200 `status=deleted`)。`Ver` 嚴格遞增保護保留以防亂序重送。`semanticSearch`/`bulkReembed` 本來就 `WHERE status='PUBLISHED'`，ARCHIVED 自動排除於 RAG 之外。對應 openspec change `2026-05-13-partner-ingest-cmd`，同步更新 `km-ingestion` spec。
 - **Automation contract composer (2026-05-13)** — 已封存 `openspec/changes/archive/2026-05-13-define-automation-contract-composer`。新增 `packages/automation` 的事件/條件/動作 contract catalog、composer、operator metadata 與 validation helpers；`/dashboard/automation/[ruleId]` 改由選定事件動態產生可用條件欄位與動作選項，切換事件時會重置或移除不相容條件/動作；API create/update/test 會拒絕 event-incompatible facts/actions；worker/API fact builders 對齊 package-defined fact keys。新增 `automation-contract-composer` spec，並同步更新 `automation-engine` spec。
 - **Agent management API + UI (2026-04-10)** — 新增人員管理完整功能：`POST /agents`（Admin/Supervisor 新增人員）、`PATCH /agents/:id/role`（指定角色，Supervisor 不可設為 ADMIN）、`PATCH /agents/me/password`（自行改密碼）、`PATCH /agents/:id/password`（Admin 重置他人密碼，無需舊密碼）、`DELETE /agents/:id`（Admin 停用帳號，`isActive=false`）。前端設定頁「人員與權限」新增「新增人員」Dialog、「編輯人員」Dialog（含角色變更、Admin 重設密碼、停用帳號），以及所有人可用的「修改密碼」Dialog；Email 衝突時顯示「Email 已被使用」。同步更新 `openspec/specs/agent-management/spec.md`（新規格）與 `openspec/specs/rbac/spec.md`（Supervisor 建立人員權限）。修正 `apps/web/src/lib/api.ts` 的 401 攔截器，在登入頁時直接顯示錯誤訊息而非強制跳轉。
@@ -14,6 +16,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **RBAC guards implemented (2026-03-30)** — 新增 `apps/api/src/guards/rbac.guard.ts`，提供 `requireRole(allowedRoles)`、`requireAdmin()`、`requireSupervisor()` 三個 Fastify preHandler factory。權限矩陣：ADMIN 擁有全部操作；SUPERVISOR 可讀 channels/automation/analytics/settings/marketing/webhooks；AGENT 僅限 conversations 等不受限端點。已套用至 channel、automation、sla、settings、analytics、marketing、webhook-subscription、portal 等模組。資料層過濾（tenant scope 以外的 row-level security）延後實作。
 
 ### Changed
+
 - **LINE/FB material system split (2026-06-02)** — 已封存 `openspec/changes/archive/2026-06-02-add-line-fb-split-materials`。Material 建立流程改為先選 channel 再選原生 contentType；LINE 支援 `line_text`、`line_image`、`line_carousel`、`line_imagemap`、`line_video`，FB 支援 `fb_text`、`fb_image`、`fb_video` 與既有 6 種 FB 類型。`templateId` 改為 optional，system templates seed 清空；移除 universal / `line_flex_*` / legacy fallback contentTypes 與 universal converter，並新增 `material-system` 主 spec。
 - **Figma design system alignment for inbox + e2e suite (2026-05-08~05-12)** — `apps/web` 完成首波 Figma 設計系統對齊（dashboard layout、case create modal、inbox conversation list / filter drawer / handoff modal / message input / template picker 等元件視覺收尾），同步加入 `apps/web-e2e` Playwright 測試套件（13 spec 覆蓋 auth / inbox / cases / contacts / knowledge / automation / marketing / analytics / notifications / portal / shortlinks / settings / dashboard，含 auth/screenshot helpers 與 QA report 產生器）。對應 PR #113。
 - **Automation rule authoring constrained by event context (2026-05-13)** — 自動化規則的事件、條件、動作現在由 shared contract 組裝：message 事件不顯示 case-only 條件，case 事件不顯示 message-only 條件，動作也依 required scopes 過濾；`notify_supervisor` 等 tenant-level 動作可在沒有 case context 的 worker automation job 中執行，case 類動作則仍需 `caseId`。
@@ -31,6 +34,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **Schema reconciliation completed for API runtime (2026-03-30)** — 以 `packages/database/prisma/schema.prisma` 為主，併回 Daniel 線上已被 API 使用的相容模型與欄位（如 automation legacy fields、notifications、daily stats、campaign/broadcast recipient、portal、shortlink 等），同時保留 Tenant / Identity / Canvas 架構。
 
 ### Fixed
+
 - **Cases dashboard deletion and inbox SLA policy select (2026-05-13)** — 已封存 `openspec/changes/archive/2026-05-13-fix-case-delete-and-sla-policy-select`。`/dashboard/cases` 移除 standalone 建立案件按鈕與 modal，新增 row-level 刪除動作並阻止 row navigation、成功後刷新 cases/stats、失敗時顯示錯誤；`CaseCreateModal` 的 SLA policy dropdown 改為 controlled state，inbox 與 standalone case creation 送出時可帶 `slaPolicyId`，未選時維持依優先級自動套用。同步更新 `case-management` 與 `core-inbox` specs。
 - **IME-safe Enter handling for inbox and widget inputs (2026-04-10)** — `core-inbox` 與 `webchat-widget` 規格已同步：中文/日文輸入法組字時按 Enter 只確認候選字，不會誤送出訊息；inbox 仍保留 `Shift+Enter` 換行。
 - **Inbox conversations now use SWR + paged message loading (2026-04-07)** — `InboxPage` 直接用 `useSWR(`/conversations/${convId}`)`，`ChatWindow` 的 `globalMutate` 能重新驗證資料，`useMessages` 改為 `order=desc`、基於頁碼載入舊訊息並防止 mutate 重複，所有 handoff/status/assignment UI 即時更新。
@@ -44,6 +48,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 ## [v0.2.0] - 2026-03-25
 
 ### Added
+
 - **AI Copilot & Material Assistant**: AI 定位從全自動回覆轉為「副駕駛」，提供建議由人工「採用」。新增 AI 生成行銷素材（Banner、圖文選單）功能。
 - **Notification Bell System (小鈴鐺)**: 新增類 FB 的即時通知中心，透過 WebSocket 推送案件指派、SLA 預警、CSAT 差評等事件。
 - **Credit Depletion Automation**: 當 AI 點數不足時，系統會自動觸發 `credits.depleted` 事件，並即時在前端禁用 AI 功能與顯示警告。
@@ -51,6 +56,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **AI Adoption Analytics**: 新增「AI 採用率」與「客服修正率」報表，用於評估 AI 建議品質。
 
 ### Changed
+
 - **Documentation Refinement (07-23)**: 全面細化 `docs/` 文件，將「事件驅動」與「AI Copilot」原則貫穿所有模組設計。
 - **Bot Autorouter Logic**: 辦公時間內的 AI 從「自動回覆」改為「僅建議」，明確客服的責任邊界。
 - **DB Schema (`Message`)**: 新增 `isAiSuggested`, `isAdopted`, `originalSuggestion` 等欄位，用於追蹤 AI 建議的生命週期。
@@ -64,17 +70,20 @@ All notable changes to the **open333CRM** project will be documented in this fil
 > **狀態**：OpenSpec `opsx:apply` 任務已全數勾選，但實作仍在收尾中；目前已完成核心後端串接，尚未達到可封存狀態。變更由 `openspec/changes/unified-interaction-canvas` 管理。
 
 ### Added
+
 - **Interaction Canvas backend skeleton** — 新增 `InteractionFlow`、`InteractionNode`、`FlowExecution`、`FlowLog`、`TemplateView`、`IdentityMap`、`MergeSuggestion` 等資料模型與對應後端程式碼。
 - **Canvas runtime wiring** — Webhook 進站現在可觸發 Canvas Flow；`WAIT` 節點已接上 resume poller；`canvas.send_message` / `canvas.action` 事件已有 API 端 consumer。
 - **Identity stitching runtime merge** — LINE / Facebook Login callback 現在會在同 tenant 同 email 命中時執行 contact merge，並回寫 `IdentityMap`。
 - **Canvas email delivery path** — 新增 email delivery service，支援 `EMAIL_DELIVERY_MODE=log|webhook`，Canvas email node 可渲染 HTML 並進入 delivery flow。
 
 ### In Progress
+
 - **Integration testing** — `apps/api/src/__tests__/canvas-flow.test.ts` 目前仍為 mocked simulation，尚未升級為真實 webhook / DB / scheduler / delivery integration test。
 - **Email delivery provider** — 預設仍為 `log` 模式；若要實際送信，需配置 `EMAIL_WEBHOOK_URL` 或後續接入正式 provider。
 - **Identity stitching coverage** — 目前已補 webhook 與 LINE / FB login callback 的主要路徑，但 LIFF / 多入口的完整覆蓋仍待補齊。
 
 ### Note for Ops
+
 - **Do not archive yet**: 雖然 OpenSpec 任務清單顯示完成，但整個 repo 仍存在既有 type/schema 漂移，需等 `unified-interaction-canvas` 相關整合測試補齊後再考慮封存。
 - **Canvas email env**: 若需實際送信，請配置 `EMAIL_DELIVERY_MODE=webhook`、`EMAIL_WEBHOOK_URL`，必要時再補 `EMAIL_WEBHOOK_AUTH_TOKEN` 與 `EMAIL_FROM`。
 
@@ -83,20 +92,22 @@ All notable changes to the **open333CRM** project will be documented in this fil
 > **狀態**：完成核心架構實作與多租戶隔離。變更由 `openspec/changes/docs-01-02-architecture` 管理並已封存。
 
 ### Added
+
 - **多租戶隔離 (Multi-tenancy)** — 在 Prisma Schema 中導入 `Tenant` 模型，並完成所有核心實體的 `tenantId` 範圍限制（Agent, Contact, Case, Conversation, AutomationRule）。
 - **核心業務服務 (`packages/core`)** — 建立並實作五大基礎服務模組：
-    - `InboxService`：統一訊息攝入與事件分發。
-    - `ContactService`：跨渠道身份識別與聯絡人管理。
-    - `CaseService`：案件生命週期管理，整合 BullMQ 進行 SLA 延遲任務監控。
-    - `AutomationEngine`：響應式自動化引擎，基於 Event Bus 觸發標籤、案件與訊息動作。
-    - `ChannelAdapter`：標準化渠道介入介面。
-- **平台基礎設施** — 
-    - `EventBus`：基於 Redis 的內部分發機制。
-    - `StorageLayer`：抽象儲存層，支援 MinIO 物件儲存。
-    - `LicenseService`：租戶授權與功能旗標管控中心。
+  - `InboxService`：統一訊息攝入與事件分發。
+  - `ContactService`：跨渠道身份識別與聯絡人管理。
+  - `CaseService`：案件生命週期管理，整合 BullMQ 進行 SLA 延遲任務監控。
+  - `AutomationEngine`：響應式自動化引擎，基於 Event Bus 觸發標籤、案件與訊息動作。
+  - `ChannelAdapter`：標準化渠道介入介面。
+- **平台基礎設施** —
+  - `EventBus`：基於 Redis 的內部分發機制。
+  - `StorageLayer`：抽象儲存層，支援 MinIO 物件儲存。
+  - `LicenseService`：租戶授權與功能旗標管控中心。
 - **API Gateway 路由註冊** — 在 `apps/api` 完成 `contacts`、`cases` 路由註冊與 Webhook 轉接邏輯。
 
 ### Fixed
+
 - **Monorepo 編譯依賴** — 修復 `packages/database` 與 `packages/channel-plugins` 的 TypeScript 編譯設定與 Redis 型別轉換問題。
 
 ### line-oa-channel-plugin (target 0.3.0, archived)
@@ -104,6 +115,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 > **狀態**：OpenSpec 實作完成，測試（11.x）待補。變更由 `openspec/changes/line-oa-channel-plugin` 管理。
 
 ### Added
+
 - **LINE OA Channel Plugin** (`packages/channel-plugins/src/line/`) — 完整實作 `LinePlugin`：
   - HMAC-SHA256 Webhook 簽名驗證
   - 解析 11 種 LINE Webhook 事件（`message`, `postback`, `follow`, `unfollow`, `join`, `leave`, `memberJoined`, `memberLeft`, `unsend`, `videoPlayComplete`, `accountLink`）
@@ -123,10 +135,12 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **`docs/03_CHANNEL_PLUGINS/LINE_OA.md`** — LINE 官方 API 完整參考文件（16 個章節，覆蓋全部 Webhook 事件、訊息類型、發送策略、Rich Menu、Insight、LIFF、Account Link）
 
 ### Changed
+
 - **`OutboundMessage`** — 新增 `strategy`、`recipientUids`、`audienceGroupId`、`mediaUrl`、`trackingId`、`quickReplies.imageUrl` 等 LINE 發送所需欄位
 - **`packages/channel-plugins/package.json`** — 新增 `bullmq ^5.0.0` 依賴
 
 ### Note for Ops
+
 - **DB Migration**: 需執行 `npx prisma migrate dev --name add-line-oa-models` 以套用 5 個新模型。
 - **Workers**: 需配置並啟動 `media-download`, `narrowcast-progress`, `insight-sync` 三個 BullMQ Workers 以支援媒體轉存與分析同步。
 - **Credentials**: 確保 LINE Channel 憑證中包含 `channelAccessToken` 與 `channelSecret`。
@@ -136,6 +150,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 > **狀態**：OpenSpec 開放中，尚未開始實作。變更由 `openspec/changes/multi-channel-billing` 管理。
 
 ### Planned: Added
+
 - **Telegram Channel Plugin** — 支援文字、圖片、貼圖、位置、Callback Query（按鈕）收發
 - **Threads Channel Plugin** — 支援 Instagram Threads / DM 文字、圖片、Story Reply、Like 回應
 - **ChannelType enum** — 新增 `TELEGRAM`、`THREADS` 於 `packages/types`
@@ -146,11 +161,13 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **Channel Usage Report API** — 通道用量 / 費用分攤報表與 CSV 匯出
 
 ### Planned: Changed
+
 - **LicenseService** — 新增 `getTeamLicense()`, `isFeatureEnabledForTeam()`, `hasCreditsForTeam()`, `deductCreditsForTeam()` 多部門方法
 - **Channel creation API** — 支援 `defaultTeamId`，建立時自動建立 1 筆 ChannelTeamAccess
 - **Credits system** — 改為 team-aware 判斷，費用歸屬對應部門
 
 ### Planned: DB Schema
+
 - **New**: `channel_team_accesses` 表（Channel 多對多 Team）
 - **New**: `channel_usages` 表（訊息計費記錄）
 - **Modified**: `teams` 表新增 `licenseTeamId` 欄位（對應 License JSON teamId）
@@ -195,7 +212,7 @@ All notable changes to the **open333CRM** project will be documented in this fil
 
 > **狀態**：Spec-driven change 已封存。`openspec/changes/archive/2026-04-07-template-variable-picker` 管理。
 
-- `template-variable-picker` spec 規定 `GET /marketing/templates/available-variables` 回傳分類變數（contact、case、storage、attribute.*），前端需用 Variable Picker 插入 `{{key}}` 並自動補齊 `variables` 變數陣列。
+- `template-variable-picker` spec 規定 `GET /marketing/templates/available-variables` 回傳分類變數（contact、case、storage、attribute.\*），前端需用 Variable Picker 插入 `{{key}}` 並自動補齊 `variables` 變數陣列。
 - `advanced-template-library` 規格補充：contentType 為 `text` 時顯示 Variable Picker，插入已存在的變數不重複新增、新變數附預設 defaultValue。
 
 ### fix-inbox-realtime-rendering (archived 2026-04-07)
@@ -207,8 +224,8 @@ All notable changes to the **open333CRM** project will be documented in this fil
 
 ## [0.1.0] - 2026-03-18
 
-
 ### Added
+
 - **Brain Module**: New `@open333crm/brain` package for KM and LTM logic.
 - **Hybrid Search**: Implemented LanceDB + BM25 FTS for semantic and keyword search.
 - **Multimodal Ingestion**: Integrated `markitdown` (Python) and `Whisper` for PDF/Docx/Audio to Markdown conversion.
@@ -224,10 +241,12 @@ All notable changes to the **open333CRM** project will be documented in this fil
 - **CI Pipeline**: GitHub Actions for automated linting and building.
 
 ### Changed
+
 - **Architectural Pivot**: Moved from record-level multi-tenancy (`tenantId` per row) to a **Single-tenant Group Mode**.
 - **Schema Evolution**: Added `KmArticle` versioning, `teamId` isolation, and a new `LongTermMemory` model.
 - **Schema Simplification**: Removed all `tenantId` fields; added `teamId` to `Conversation` for departmental isolation (B-1 Option).
 
 ### Fixed
+
 - **ESM Support**: Resolved module resolution issues for top-level await and `.js` extensions in imports.
 - **Turbo 2.0 Compatibility**: Updated `turbo.json` with correct task syntax.
