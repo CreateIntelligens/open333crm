@@ -2,11 +2,11 @@
 
 All notable changes to the **open333CRM** project will be documented in this file.
 
-## [Unreleased]
+## [v0.3.0] - 2026-07-08
 
 ### Added
 
-- **Tenant-level tracking pixels for shortlinks (2026-07-08)** — 短連結 redirect 後台新增「追蹤設定」分頁，支援租戶層級設定 Google Analytics 4 Measurement ID 與 Meta Pixel ID。設定後所有短連結的 redirect 微頁面會自動注入對應追蹤腳本（GA4 gtag.js + Meta Pixel base code），BOT 爬蟲不注入。`TenantSettings` 新增 `gaId` / `metaPixelId` 欄位，API 新增 `GET/PUT /api/v1/settings/tracking` 端點。對應 openspec change `add-tenant-tracking-pixels`。
+- **Tenant-level tracking pixels for shortlinks** — 短連結 redirect 後台新增「追蹤設定」分頁，支援租戶層級設定 Google Analytics 4 Measurement ID 與 Meta Pixel ID。設定後所有短連結的 redirect 微頁面會自動注入對應追蹤腳本（GA4 gtag.js + Meta Pixel base code），BOT 爬蟲不注入。`TenantSettings` 新增 `gaId` / `metaPixelId` 欄位，API 新增 `GET/PUT /api/v1/settings/tracking` 端點。對應 openspec change `add-tenant-tracking-pixels`。
 - **Partner ingest cmd-based mutation (2026-05-13)** — `POST /api/v1/knowledge/partner-ingest` 改為由必填欄位 `cmd` (CREATE/UPDATE/DELETE) 顯式指定動作，取代「靠 `Ver` 隱式推導」的舊行為：CREATE 新建或復活已 ARCHIVED 文章（`status="revived"`）、UPDATE 整批覆蓋內容+附件+重算向量、DELETE 採軟刪（`status` → `ARCHIVED` + `embedding` 清空，附件保留供稽核）。新增結構化錯誤碼 400 `INVALID_CMD` / 404 `DOCID_NOT_FOUND` / 409 `DOCID_CONFLICT`，DELETE 對不存在或已 ARCHIVED 的 DocID 為 idempotent (200 `status=deleted`)。`Ver` 嚴格遞增保護保留以防亂序重送。`semanticSearch`/`bulkReembed` 本來就 `WHERE status='PUBLISHED'`，ARCHIVED 自動排除於 RAG 之外。對應 openspec change `2026-05-13-partner-ingest-cmd`，同步更新 `km-ingestion` spec。
 - **Automation contract composer (2026-05-13)** — 已封存 `openspec/changes/archive/2026-05-13-define-automation-contract-composer`。新增 `packages/automation` 的事件/條件/動作 contract catalog、composer、operator metadata 與 validation helpers；`/dashboard/automation/[ruleId]` 改由選定事件動態產生可用條件欄位與動作選項，切換事件時會重置或移除不相容條件/動作；API create/update/test 會拒絕 event-incompatible facts/actions；worker/API fact builders 對齊 package-defined fact keys。新增 `automation-contract-composer` spec，並同步更新 `automation-engine` spec。
 - **Agent management API + UI (2026-04-10)** — 新增人員管理完整功能：`POST /agents`（Admin/Supervisor 新增人員）、`PATCH /agents/:id/role`（指定角色，Supervisor 不可設為 ADMIN）、`PATCH /agents/me/password`（自行改密碼）、`PATCH /agents/:id/password`（Admin 重置他人密碼，無需舊密碼）、`DELETE /agents/:id`（Admin 停用帳號，`isActive=false`）。前端設定頁「人員與權限」新增「新增人員」Dialog、「編輯人員」Dialog（含角色變更、Admin 重設密碼、停用帳號），以及所有人可用的「修改密碼」Dialog；Email 衝突時顯示「Email 已被使用」。同步更新 `openspec/specs/agent-management/spec.md`（新規格）與 `openspec/specs/rbac/spec.md`（Supervisor 建立人員權限）。修正 `apps/web/src/lib/api.ts` 的 401 攔截器，在登入頁時直接顯示錯誤訊息而非強制跳轉。
