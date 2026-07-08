@@ -6,21 +6,26 @@
  * configured), fall back to the plain external-browser zero-click behavior.
  */
 
-import type { RedirectStrategy, RenderContext, RenderResult } from './types.js';
-import { escapeHtmlAttr, jsonForScript, NO_STORE_HEADERS } from './render-utils.js';
-import { externalBrowserStrategy } from './external-browser.strategy.js';
+import type { RedirectStrategy, RenderContext, RenderResult } from "./types.js";
+import {
+  escapeHtmlAttr,
+  jsonForScript,
+  NO_STORE_HEADERS,
+} from "./render-utils.js";
+import { externalBrowserStrategy } from "./external-browser.strategy.js";
+import { buildTrackingSnippets } from "./tracking-snippet.js";
 
 function buildLiffUrl(liffId: string, slug: string, cid?: string): string {
   const params = new URLSearchParams();
-  params.set('s', slug);
-  if (cid) params.set('cid', cid);
-  params.set('lid', liffId);
+  params.set("s", slug);
+  if (cid) params.set("cid", cid);
+  params.set("lid", liffId);
   return `https://liff.line.me/${encodeURIComponent(liffId)}?${params.toString()}`;
 }
 
 export const lineWebviewStrategy: RedirectStrategy = {
   render(ctx: RenderContext): RenderResult {
-    const { link, liffId, cid } = ctx;
+    const { link, liffId, cid, gaId, metaPixelId } = ctx;
 
     // No LIFF configured for this link → behave like an external browser.
     if (!liffId) {
@@ -28,6 +33,7 @@ export const lineWebviewStrategy: RedirectStrategy = {
     }
 
     const liffUrl = buildLiffUrl(liffId, link.slug, cid);
+    const trackingSnippets = buildTrackingSnippets(gaId, metaPixelId);
 
     const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -37,6 +43,7 @@ export const lineWebviewStrategy: RedirectStrategy = {
 <title>Redirecting…</title>
 </head>
 <body>
+${trackingSnippets}
 <script>
 (function () { window.location.replace(${jsonForScript(liffUrl)}); })();
 </script>

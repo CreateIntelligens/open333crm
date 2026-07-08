@@ -6,16 +6,24 @@
  * GET response itself records nothing.
  */
 
-import type { RedirectStrategy, RenderContext, RenderResult } from './types.js';
-import { escapeHtmlAttr, jsonForScript, NO_STORE_HEADERS } from './render-utils.js';
+import type { RedirectStrategy, RenderContext, RenderResult } from "./types.js";
+import {
+  escapeHtmlAttr,
+  jsonForScript,
+  NO_STORE_HEADERS,
+} from "./render-utils.js";
+import { buildTrackingSnippets } from "./tracking-snippet.js";
 
 export const externalBrowserStrategy: RedirectStrategy = {
   render(ctx: RenderContext): RenderResult {
-    const { link, targetUrl, cid, trackPath } = ctx;
+    const { link, targetUrl, cid, trackPath, gaId, metaPixelId } = ctx;
 
     const target = jsonForScript(targetUrl);
-    const beaconBody = jsonForScript(JSON.stringify({ slug: link.slug, cid: cid ?? null }));
+    const beaconBody = jsonForScript(
+      JSON.stringify({ slug: link.slug, cid: cid ?? null }),
+    );
     const trackUrl = jsonForScript(trackPath);
+    const trackingSnippets = buildTrackingSnippets(gaId, metaPixelId);
 
     const html = `<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -26,6 +34,7 @@ export const externalBrowserStrategy: RedirectStrategy = {
 <title>Redirecting…</title>
 </head>
 <body>
+${trackingSnippets}
 <script>
 (function () {
   var target = ${target};

@@ -1,7 +1,7 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { success } from '../../shared/utils/response.js';
-import { getOfficeHours, updateOfficeHours } from './office-hours.service.js';
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { success } from "../../shared/utils/response.js";
+import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
 import {
   getEmbeddingSettings,
   updateEmbeddingSettings,
@@ -9,34 +9,36 @@ import {
   listOllamaModels,
   getEmbeddingStats,
   EMBEDDING_VECTOR_DIM,
-} from './embedding-settings.service.js';
+} from "./embedding-settings.service.js";
 import {
   getChatSettings,
   updateChatSettings,
   listChatModels,
   checkChatHealth,
   getProviderList,
-} from './chat-settings.service.js';
+} from "./chat-settings.service.js";
 import {
   createPartnerApiKey,
   listPartnerApiKeys,
   revokePartnerApiKey,
-} from '../auth/partner-api-key.service.js';
+} from "../auth/partner-api-key.service.js";
 import {
   CRM_REPLY_SYSTEM_PROMPT,
   SUMMARIZE_SYSTEM_PROMPT,
   CLARIFY_SYSTEM_PROMPT,
   MODEL_GUIDE_SYSTEM_PROMPT,
-} from '../ai/llm.service.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+} from "../ai/llm.service.js";
+import { requireSupervisor } from "../../guards/rbac.guard.js";
 
-const dayScheduleSchema = z.object({
-  start: z.string().regex(/^\d{2}:\d{2}$/),
-  end: z.string().regex(/^\d{2}:\d{2}$/),
-}).nullable();
+const dayScheduleSchema = z
+  .object({
+    start: z.string().regex(/^\d{2}:\d{2}$/),
+    end: z.string().regex(/^\d{2}:\d{2}$/),
+  })
+  .nullable();
 
 const officeHoursSchema = z.object({
-  timezone: z.string().default('Asia/Taipei'),
+  timezone: z.string().default("Asia/Taipei"),
   officeHours: z.object({
     enabled: z.boolean(),
     schedule: z.object({
@@ -49,22 +51,24 @@ const officeHoursSchema = z.object({
       sun: dayScheduleSchema.optional(),
     }),
     holidays: z.array(z.string()).default([]),
-    outsideHoursMessage: z.string().default('您好！目前為非營業時間，我們將在營業時間內盡速回覆您。'),
+    outsideHoursMessage: z
+      .string()
+      .default("您好！目前為非營業時間，我們將在營業時間內盡速回覆您。"),
   }),
 });
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', fastify.authenticate);
-  fastify.addHook('preHandler', requireSupervisor());
+  fastify.addHook("preHandler", fastify.authenticate);
+  fastify.addHook("preHandler", requireSupervisor());
 
   // GET /api/v1/settings/office-hours
-  fastify.get('/office-hours', async (request, reply) => {
+  fastify.get("/office-hours", async (request, reply) => {
     const result = await getOfficeHours(fastify.prisma, request.agent.tenantId);
     return reply.send(success(result));
   });
 
   // PUT /api/v1/settings/office-hours
-  fastify.put('/office-hours', async (request, reply) => {
+  fastify.put("/office-hours", async (request, reply) => {
     const data = officeHoursSchema.parse(request.body);
     const result = await updateOfficeHours(
       fastify.prisma,
@@ -75,9 +79,46 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     return reply.send(success(result));
   });
 
+  // ─── Tracking Settings ──────────────────────────────────────────────────
+  // GET /api/v1/settings/tracking
+  fastify.get("/tracking", async (request, reply) => {
+    const tenantId = request.agent.tenantId;
+    let settings = await fastify.prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { gaId: true, metaPixelId: true },
+    });
+    if (!settings) {
+      settings = await fastify.prisma.tenantSettings.create({
+        data: { tenantId },
+        select: { gaId: true, metaPixelId: true },
+      });
+    }
+    return reply.send(success(settings));
+  });
+
+  // PUT /api/v1/settings/tracking
+  fastify.put("/tracking", async (request, reply) => {
+    const data = trackingSettingsSchema.parse(request.body);
+    const tenantId = request.agent.tenantId;
+    const settings = await fastify.prisma.tenantSettings.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        gaId: data.gaId ?? null,
+        metaPixelId: data.metaPixelId ?? null,
+      },
+      update: {
+        gaId: data.gaId ?? null,
+        metaPixelId: data.metaPixelId ?? null,
+      },
+      select: { gaId: true, metaPixelId: true },
+    });
+    return reply.send(success(settings));
+  });
+
   // ─── Embedding Settings ──────────────────────────────────────────────────
   // GET /api/v1/settings/embedding — settings + Ollama health + models + stats
-  fastify.get('/embedding', async (request, reply) => {
+  fastify.get("/embedding", async (request, reply) => {
     const tenantId = request.agent.tenantId;
     const settings = await getEmbeddingSettings(fastify.prisma, tenantId);
     const [health, models, stats] = await Promise.all([
@@ -97,7 +138,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // PUT /api/v1/settings/embedding — update settings (returns modelChanged hint)
-  fastify.put('/embedding', async (request, reply) => {
+  fastify.put("/embedding", async (request, reply) => {
     const patch = embeddingSettingsSchema.parse(request.body);
     const result = await updateEmbeddingSettings(
       fastify.prisma,
@@ -108,15 +149,18 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/settings/embedding/health — re-check health on demand
-  fastify.post('/embedding/health', async (request, reply) => {
-    const settings = await getEmbeddingSettings(fastify.prisma, request.agent.tenantId);
+  fastify.post("/embedding/health", async (request, reply) => {
+    const settings = await getEmbeddingSettings(
+      fastify.prisma,
+      request.agent.tenantId,
+    );
     const health = await checkOllamaHealth(settings.baseUrl, settings.model);
     return reply.send(success(health));
   });
 
   // ─── Chat Settings ───────────────────────────────────────────────────────
   // GET /api/v1/settings/chat — settings + provider list + models + health + prompt defaults
-  fastify.get('/chat', async (request, reply) => {
+  fastify.get("/chat", async (request, reply) => {
     const tenantId = request.agent.tenantId;
     const settings = await getChatSettings(fastify.prisma, tenantId);
     const [models, health] = await Promise.all([
@@ -140,7 +184,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // PUT /api/v1/settings/chat — update settings
-  fastify.put('/chat', async (request, reply) => {
+  fastify.put("/chat", async (request, reply) => {
     const patch = chatSettingsSchema.parse(request.body);
     const result = await updateChatSettings(
       fastify.prisma,
@@ -151,23 +195,33 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/settings/chat/models?provider=gemini&baseUrl=...
-  fastify.get('/chat/models', async (request, reply) => {
+  fastify.get("/chat/models", async (request, reply) => {
     const q = chatModelsQuery.parse(request.query);
     const models = await listChatModels(q.provider, q.baseUrl);
     return reply.send(success({ models }));
   });
 
   // POST /api/v1/settings/chat/health — re-check health on demand
-  fastify.post('/chat/health', async (request, reply) => {
-    const settings = await getChatSettings(fastify.prisma, request.agent.tenantId);
-    const health = await checkChatHealth(settings.provider, settings.model, settings.baseUrl);
+  fastify.post("/chat/health", async (request, reply) => {
+    const settings = await getChatSettings(
+      fastify.prisma,
+      request.agent.tenantId,
+    );
+    const health = await checkChatHealth(
+      settings.provider,
+      settings.model,
+      settings.baseUrl,
+    );
     return reply.send(success(health));
   });
 
   // ─── Partner API Keys ────────────────────────────────────────────────────
   // GET /api/v1/settings/api-keys — list (masked)
-  fastify.get('/api-keys', async (request, reply) => {
-    const rows = await listPartnerApiKeys(fastify.prisma, request.agent.tenantId);
+  fastify.get("/api-keys", async (request, reply) => {
+    const rows = await listPartnerApiKeys(
+      fastify.prisma,
+      request.agent.tenantId,
+    );
     return reply.send(
       success(
         rows.map((r) => ({
@@ -184,7 +238,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/settings/api-keys — create (returns raw key once)
-  fastify.post('/api-keys', async (request, reply) => {
+  fastify.post("/api-keys", async (request, reply) => {
     const body = createApiKeySchema.parse(request.body);
     const expiresAt = body.expiresInDays
       ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
@@ -212,11 +266,23 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/settings/api-keys/:id — revoke (soft-delete; isActive=false)
-  fastify.delete<{ Params: { id: string } }>('/api-keys/:id', async (request, reply) => {
-    await revokePartnerApiKey(fastify.prisma, request.agent.tenantId, request.params.id);
-    return reply.send(success({ revoked: true }));
-  });
+  fastify.delete<{ Params: { id: string } }>(
+    "/api-keys/:id",
+    async (request, reply) => {
+      await revokePartnerApiKey(
+        fastify.prisma,
+        request.agent.tenantId,
+        request.params.id,
+      );
+      return reply.send(success({ revoked: true }));
+    },
+  );
 }
+
+const trackingSettingsSchema = z.object({
+  gaId: z.string().nullable().optional(),
+  metaPixelId: z.string().nullable().optional(),
+});
 
 const createApiKeySchema = z.object({
   name: z.string().min(1).max(100),
@@ -232,7 +298,7 @@ const embeddingSettingsSchema = z.object({
 });
 
 const chatSettingsSchema = z.object({
-  provider: z.enum(['ollama', 'gemini']).optional(),
+  provider: z.enum(["ollama", "gemini"]).optional(),
   model: z.string().min(1).optional(),
   baseUrl: z.string().url().optional(),
   temperature: z.number().min(0).max(2).optional(),
@@ -246,6 +312,6 @@ const chatSettingsSchema = z.object({
 });
 
 const chatModelsQuery = z.object({
-  provider: z.enum(['ollama', 'gemini']),
+  provider: z.enum(["ollama", "gemini"]),
   baseUrl: z.string().url().optional(),
 });

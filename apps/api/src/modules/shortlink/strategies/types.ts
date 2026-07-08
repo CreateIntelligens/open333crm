@@ -25,6 +25,10 @@ export interface RenderContext {
   liffId?: string | null;
   /** Path the client beacon/fetch posts the click to. */
   trackPath: string;
+  /** Tenant GA4 Measurement ID (null = not configured). */
+  gaId?: string | null;
+  /** Tenant Meta Pixel ID (null = not configured). */
+  metaPixelId?: string | null;
 }
 
 export interface RenderResult {
