@@ -21,7 +21,20 @@ jobs:
             --exclude '.next' \
             --exclude 'dist' \
             --exclude '*.tar.gz' \
+            --exclude '.env.*' \
             . /srv/open333crm/
+
+      - name: Verify env files exist
+        working-directory: /srv/open333crm
+        run: |
+          for f in .env.web .env.api .env.workers; do
+            if [ -f "$f" ]; then
+              echo "✓ $f exists"
+            else
+              echo "⚠ $f missing - please create it on the server"
+              exit 1
+            fi
+          done
 
       - name: Build Docker images
         working-directory: /srv/open333crm
