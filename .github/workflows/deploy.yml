@@ -36,6 +36,14 @@ jobs:
             fi
           done
 
+      - name: Free port 80 if needed
+        run: |
+          if sudo ss -tlnp | grep -q ':80 '; then
+            echo "Port 80 in use, stopping nginx..."
+            sudo systemctl stop nginx 2>/dev/null || true
+            sudo systemctl disable nginx 2>/dev/null || true
+          fi
+
       - name: Build Docker images
         working-directory: /srv/open333crm
         run: docker compose build
@@ -48,4 +56,8 @@ jobs:
 
       - name: Verify deployment
         working-directory: /srv/open333crm
-        run: docker compose ps
+        run: |
+          docker compose ps
+          sleep 5
+          curl -sf http://localhost:3000 > /dev/null && echo "✓ Web OK" || echo "✗ Web failed"
+          curl -sf http://localhost:80 > /dev/null && echo "✓ Caddy OK" || echo "✗ Caddy failed"
