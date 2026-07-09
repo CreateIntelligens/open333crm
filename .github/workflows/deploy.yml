@@ -1,0 +1,38 @@
+name: Deploy to UAT
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, arm64, uat]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync code to /srv/open333crm
+        run: |
+          sudo rsync -av --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude '*.tar.gz' \
+            . /srv/open333crm/
+
+      - name: Build Docker images
+        working-directory: /srv/open333crm
+        run: docker compose build
+
+      - name: Restart containers
+        working-directory: /srv/open333crm
+        run: |
+          docker compose up -d
+          docker image prune -f
+
+      - name: Verify deployment
+        working-directory: /srv/open333crm
+        run: docker compose ps
