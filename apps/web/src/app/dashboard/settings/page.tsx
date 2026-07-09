@@ -10,6 +10,7 @@ import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { OfficeHoursSettings } from "@/components/settings/OfficeHoursSettings";
 import { ApiKeyManagement } from "@/components/settings/ApiKeyManagement";
 import { TrackingSettings } from "@/components/settings/TrackingSettings";
+import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
 
 const SETTINGS_TABS = [
   { key: "channels", label: "渠道管理" },
@@ -19,6 +20,7 @@ const SETTINGS_TABS = [
   { key: "office-hours", label: "營業時間" },
   { key: "tracking", label: "追蹤設定" },
   { key: "api-keys", label: "API 金鑰" },
+  { key: "cli-sessions", label: "CLI 連線" },
   { key: "general", label: "一般設定" },
 ] as const;
 
@@ -61,6 +63,7 @@ export default function SettingsPage() {
           {activeTab === "office-hours" && <OfficeHoursSettings />}
           {activeTab === "tracking" && <TrackingSettings />}
           {activeTab === "api-keys" && <ApiKeyManagement />}
+          {activeTab === "cli-sessions" && <CliSessionManagement />}
           {activeTab === "general" && <GeneralSettings />}
         </div>
       </div>

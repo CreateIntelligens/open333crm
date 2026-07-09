@@ -2,6 +2,23 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [v0.3.2] - 2026-07-09
+
+### Added
+
+- **CLI 連線管理** — 設定頁新增「CLI 連線」分頁，支援：
+  - 產生 CLI token 給 LLM 或 `open333` CLI 使用
+  - 指定 token 名稱與過期時間（7/30/90/365 天或永不過期）
+  - 列表顯示所有 token、最後使用時間、權限範圍
+  - 一鍵撤銷 token，立即失效
+- **LLM Skill 文件** — `public/skill.md` 供 LLM 自動探索可用 API
+- **Skill 快捷按鈕** — Topbar 右上角「Skill」按鈕，快速開啟 Skill 文件
+- **GitHub Actions CI/CD** — push to main 自動部署至 UAT 伺服器（self-hosted ARM64 runner）
+
+### Changed
+
+- README 新增「LLM / CLI 連線」使用說明
+
 ## [v0.3.1] - 2026-07-09
 
 ### Added

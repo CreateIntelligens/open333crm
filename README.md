@@ -65,6 +65,45 @@ open333 apis --json
 - 能力缺口分析（20+ 系統功能待 CLI 包覆）：[docs/cli/references/capability-gap.md](docs/cli/references/capability-gap.md)
 - 新指令 Scaffold：`tsx docs/cli/scripts/scaffold-command.ts <name> <desc>`
 
+## LLM / CLI 連線
+
+讓 LLM（Claude、ChatGPT 等）或 `open333` CLI 直接操作本系統。
+
+### 產生 Token
+
+1. 登入後台 → **設定** → **CLI 連線**
+2. 點「產生 Token」，填名稱（例：`Claude Code`）、選過期時間
+3. 複製完整 token（只會顯示一次）
+
+### 給 LLM 使用
+
+將 token 貼給 LLM，並附上以下資訊：
+
+```
+API Base URL: https://uat.open333crm.create360.ai
+Bearer Token: <token>
+
+在 Headers 中加上：
+Authorization: Bearer <token>
+```
+
+或參考 Skill 文件：`https://uat.open333crm.create360.ai/skill.md`
+
+### 給 CLI 使用
+
+```bash
+open333 login --host https://uat.open333crm.create360.ai
+# 貼上 token
+open333 status --json
+open333 stats --from 2026-07-01 --json
+open333 apis --json
+```
+
+### 管理 Token
+
+- 在 **設定** → **CLI 連線** 列出所有 token，可查看最後使用時間
+- 不需要的 token 可直接撤銷，使用該 token 的 LLM/CLI 會立即失效
+
 ## 快速開始
 
 ### 前置需求
