@@ -489,16 +489,14 @@ export function ChannelManagement() {
                       <Bot className="h-4 w-4" />
                     </Button>
 
-                    {ch.channelType === CHANNEL_TYPE.LINE && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDownstreamChannel(ch)}
-                        title="下游 Webhook 轉發"
-                      >
-                        <Webhook className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDownstreamChannel(ch)}
+                      title="下游 Webhook 轉發"
+                    >
+                      <Webhook className="h-4 w-4" />
+                    </Button>
 
                     <Button
                       size="sm"

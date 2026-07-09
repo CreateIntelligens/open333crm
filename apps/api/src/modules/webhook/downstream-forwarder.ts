@@ -1,13 +1,13 @@
 /**
- * Downstream webhook forwarding for LINE channels.
+ * Downstream webhook forwarding (any channel).
  *
- * Forwards the *original* inbound webhook (raw body + LINE headers) to a single
- * admin-configured downstream URL. Best-effort, fire-and-forget: one request
- * with a timeout, no retries, and the downstream response/outcome is ignored
- * entirely. See openspec change `line-downstream-webhook`.
+ * Forwards the *original* inbound webhook (raw body + original request headers,
+ * unchanged) to a single admin-configured downstream URL. Best-effort,
+ * fire-and-forget: one request with a timeout, no retries, and the downstream
+ * response/outcome is ignored entirely. See openspec change
+ * `line-downstream-webhook`.
  */
 
-import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { z } from 'zod';
 import { logger } from '@open333crm/core';
@@ -21,8 +21,6 @@ export const downstreamWebhookConfigSchema = z.object({
     .url()
     .refine((u) => u.startsWith('https://'), { message: 'url must use https' }),
   mode: z.enum(['immediate', 'after']),
-  forwardHeaders: z.boolean().optional().default(true),
-  secret: z.string().min(1).optional(),
   timeoutMs: z.number().int().positive().max(60000).optional(),
 });
 
@@ -116,10 +114,18 @@ export async function isBlockedUrl(rawUrl: string): Promise<boolean> {
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
+// Transport-level headers undici must set for the new target; forwarding the
+// inbound values verbatim would produce an invalid request to a different host.
+const STRIP_HEADERS = new Set(['host', 'content-length']);
+
 /**
  * Forward the original raw webhook to the downstream URL. Best-effort,
  * fire-and-forget: single request, timeout only (no retry), downstream
  * response and outcome are ignored. Never throws.
+ *
+ * The original request headers and body are relayed **unchanged** — no added
+ * headers, no signing, no content-type rewriting — so the downstream receives
+ * the platform's request as-is (and can verify its original signature header).
  */
 export async function forwardToDownstream(
   config: DownstreamWebhookConfig,
@@ -135,25 +141,14 @@ export async function forwardToDownstream(
     return;
   }
 
-  const forwardHeaders = config.forwardHeaders !== false;
-  const outHeaders: Record<string, string> = {
-    'Content-Type':
-      forwardHeaders && headers['content-type'] ? headers['content-type'] : 'application/json',
-    'X-Open333-Channel-Id': channel.id,
-    'X-Open333-Forward-Mode': config.mode,
-  };
-  if (forwardHeaders && headers['x-line-signature']) {
-    outHeaders['x-line-signature'] = headers['x-line-signature'];
-  }
-  if (config.secret) {
-    outHeaders['X-Open333-Signature'] =
-      'sha256=' + createHmac('sha256', config.secret).update(rawBody).digest('hex');
+  const outHeaders: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (!STRIP_HEADERS.has(k.toLowerCase())) outHeaders[k] = v;
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
-    // Original bytes preserved so downstream can verify the LINE signature.
     await fetch(config.url, {
       method: 'POST',
       headers: outHeaders,

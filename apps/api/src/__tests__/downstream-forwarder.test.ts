@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
 import {
   downstreamWebhookConfigSchema,
   getDownstreamWebhookConfig,
@@ -22,7 +21,7 @@ async function testConfigParsing() {
   });
   assert.ok(cfg);
   assert.equal(cfg.mode, 'after');
-  assert.equal(cfg.forwardHeaders, true);
+  assert.equal(cfg.url, PUBLIC_URL);
 
   // disabled → null
   assert.equal(
@@ -75,16 +74,9 @@ async function withFetchStub(
   }
 }
 
-async function testForwardPreservesRawBodyAndSignature() {
+async function testForwardPassesOriginalHeaders() {
   const rawBody = Buffer.from(JSON.stringify({ events: [{ type: 'message' }] }));
-  const secret = 'shared-secret';
-  const cfg: DownstreamWebhookConfig = {
-    enabled: true,
-    url: PUBLIC_URL,
-    mode: 'immediate',
-    forwardHeaders: true,
-    secret,
-  };
+  const cfg: DownstreamWebhookConfig = { enabled: true, url: PUBLIC_URL, mode: 'immediate' };
   let captured: { url: string; init: RequestInit } | null = null;
 
   await withFetchStub(
@@ -92,22 +84,38 @@ async function testForwardPreservesRawBodyAndSignature() {
       captured = { url, init };
       return new Response(null, { status: 500 }); // non-ok → must be ignored
     },
-    () => forwardToDownstream(cfg, rawBody, { 'content-type': 'application/json', 'x-line-signature': 'sig-abc' }, { id: 'chan-1' }),
+    () =>
+      forwardToDownstream(
+        cfg,
+        rawBody,
+        {
+          'content-type': 'application/json',
+          'x-line-signature': 'sig-abc',
+          host: 'our.domain',
+          'content-length': '999',
+        },
+        { id: 'chan-1' },
+      ),
   );
 
   assert.ok(captured, 'fetch was called');
   assert.equal(captured!.url, PUBLIC_URL);
   assert.equal(captured!.init.body, rawBody, 'forwards original raw body bytes unchanged');
   const h = captured!.init.headers as Record<string, string>;
-  assert.equal(h['x-line-signature'], 'sig-abc', 'forwards original LINE signature');
-  assert.equal(h['X-Open333-Forward-Mode'], 'immediate');
-  assert.equal(h['X-Open333-Channel-Id'], 'chan-1');
-  const expectedSig = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
-  assert.equal(h['X-Open333-Signature'], expectedSig, 'adds our HMAC when secret set');
+  // original headers relayed unchanged
+  assert.equal(h['content-type'], 'application/json', 'original content-type kept');
+  assert.equal(h['x-line-signature'], 'sig-abc', 'original signature header passed through');
+  // transport-level headers stripped (undici sets them for the new target)
+  assert.equal(h['host'], undefined, 'host stripped');
+  assert.equal(h['content-length'], undefined, 'content-length stripped');
+  // nothing added, no signing, no forward-mode header
+  assert.equal(h['X-Open333-Channel-Id'], undefined);
+  assert.equal(h['X-Open333-Forward-Mode'], undefined);
+  assert.equal(h['X-Open333-Signature'], undefined);
 }
 
 async function testForwardBlocksSsrfTarget() {
-  const cfg: DownstreamWebhookConfig = { enabled: true, url: 'https://127.0.0.1/hook', mode: 'immediate', forwardHeaders: true };
+  const cfg: DownstreamWebhookConfig = { enabled: true, url: 'https://127.0.0.1/hook', mode: 'immediate' };
   let called = false;
   await withFetchStub(
     async () => {
@@ -120,7 +128,7 @@ async function testForwardBlocksSsrfTarget() {
 }
 
 async function testForwardIsBestEffortOnThrow() {
-  const cfg: DownstreamWebhookConfig = { enabled: true, url: PUBLIC_URL, mode: 'after', forwardHeaders: true };
+  const cfg: DownstreamWebhookConfig = { enabled: true, url: PUBLIC_URL, mode: 'after' };
   await withFetchStub(
     async () => {
       throw new Error('connection refused');
@@ -167,13 +175,16 @@ async function testLoopGuardBreaksLoop() {
     'mixed seen+new → forward',
   );
   assert.equal(await claimForForward('c2', payload, store), true, 'per-channel isolation');
-  assert.equal(await claimForForward('c1', lineBody([]), store), true, 'no ids → fail-open forward');
+  // event-less payload → dedup on body hash (verbatim loopback still caught, any channel)
+  const noEvents = lineBody([]);
+  assert.equal(await claimForForward('c1', noEvents, store), true, 'first event-less sighting → forward');
+  assert.equal(await claimForForward('c1', noEvents, store), false, 'event-less verbatim loopback → do NOT forward');
 }
 
 await testConfigParsing();
 await testSchemaValidation();
 await testSsrfGuard();
-await testForwardPreservesRawBodyAndSignature();
+await testForwardPassesOriginalHeaders();
 await testForwardBlocksSsrfTarget();
 await testForwardIsBestEffortOnThrow();
 await testExtractEventIds();

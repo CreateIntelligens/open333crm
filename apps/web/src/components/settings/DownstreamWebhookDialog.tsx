@@ -36,18 +36,16 @@ export function DownstreamWebhookDialog({
   const [enabled, setEnabled] = useState(false);
   const [url, setUrl] = useState('');
   const [mode, setMode] = useState<ForwardMode>('after');
-  const [secret, setSecret] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const dsw = (channel?.settings as Record<string, unknown> | undefined)?.downstreamWebhook as
-      | { enabled?: boolean; url?: string; mode?: ForwardMode; secret?: string }
+      | { enabled?: boolean; url?: string; mode?: ForwardMode }
       | undefined;
     setEnabled(dsw?.enabled ?? false);
     setUrl(dsw?.url ?? '');
     setMode(dsw?.mode === 'immediate' ? 'immediate' : 'after');
-    setSecret(dsw?.secret ?? '');
     setError(null);
   }, [channel, open]);
 
@@ -69,12 +67,7 @@ export function DownstreamWebhookDialog({
       // Omit the key entirely when no URL is set (empty url would fail the
       // backend https validation, and means "not configured").
       if (trimmedUrl) {
-        settingsPayload.downstreamWebhook = {
-          enabled,
-          url: trimmedUrl,
-          mode,
-          ...(secret.trim() ? { secret: secret.trim() } : {}),
-        };
+        settingsPayload.downstreamWebhook = { enabled, url: trimmedUrl, mode };
       } else {
         delete settingsPayload.downstreamWebhook;
       }
@@ -98,7 +91,7 @@ export function DownstreamWebhookDialog({
 
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
           <p className="text-xs text-muted-foreground">
-            將收到的 LINE webhook 原封轉發到下游系統（保留原始 <code>x-line-signature</code>）。轉發為背景送出、不追蹤結果，不影響對 LINE 的即時回應。
+            將此渠道收到的 webhook 原封轉發到下游系統（原始 header 與 body 不做任何變更）。轉發為背景送出、不追蹤結果，不影響對來源平台的即時回應。
           </p>
 
           {/* Enable */}
@@ -125,7 +118,7 @@ export function DownstreamWebhookDialog({
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://downstream.example.com/line-hook"
+              placeholder="https://downstream.example.com/hook"
             />
             <p className="mt-1 text-xs text-muted-foreground">
               必須為 https，且不可指向內網／保留位址。清空並儲存即移除設定。
@@ -139,29 +132,14 @@ export function DownstreamWebhookDialog({
               value={mode}
               onChange={(e) => setMode(e.target.value as ForwardMode)}
               options={[
-                { value: 'after', label: '最後轉發（CRM 照常處理，處理後再轉發一份）' },
-                { value: 'immediate', label: '立即轉發（下游接手，CRM 不再處理）' },
+                { value: 'after', label: '最後轉發（本系統照常處理，處理後再轉發一份）' },
+                { value: 'immediate', label: '立即轉發（下游接手，本系統不再處理）' },
               ]}
             />
             <p className="mt-1 text-xs text-muted-foreground">
               {mode === 'immediate'
-                ? '收到即背景轉發並短路：不建立訊息、不觸發 CRM 後續動作。'
-                : 'CRM 照常建立訊息與後續動作，處理完再背景轉發一份給下游。'}
-            </p>
-          </div>
-
-          {/* Secret */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">簽章密鑰（選填）</label>
-            <Input
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="留空則不加簽"
-              autoComplete="off"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              設定後轉發會帶 <code>X-Open333-Signature</code>（HMAC-SHA256 of raw body）供下游驗證。
+                ? '收到即背景轉發並短路：不建立訊息、不觸發後續動作。'
+                : '本系統照常建立訊息與後續動作，處理完再背景轉發一份給下游。'}
             </p>
           </div>
 

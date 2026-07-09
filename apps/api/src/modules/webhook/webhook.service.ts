@@ -73,9 +73,8 @@ export async function processWebhookEvent(
   }
   logger.info('[Webhook] Signature OK', { channelId, channelType });
 
-  // 3b. Downstream webhook forwarding (LINE only). See openspec `line-downstream-webhook`.
-  const downstream =
-    channelType === CHANNEL_TYPE.LINE ? getDownstreamWebhookConfig(channel.settings) : null;
+  // 3b. Downstream webhook forwarding (any channel). See openspec `line-downstream-webhook`.
+  const downstream = getDownstreamWebhookConfig(channel.settings);
   if (downstream && downstream.mode === 'immediate') {
     // Immediate mode: forward the original payload, then short-circuit —
     // skip parse + CRM inbound processing (downstream takes over).

@@ -1,7 +1,7 @@
 /**
- * Loop guard for LINE downstream webhook forwarding.
+ * Loop guard for downstream webhook forwarding (any channel).
  *
- * We forward the *verbatim* raw body (with the valid `x-line-signature`) to a
+ * We forward the *verbatim* raw body (with its valid signature header) to a
  * downstream URL. If that downstream ever posts the payload back to our webhook
  * endpoint it re-passes signature verification and would be forwarded again —
  * an infinite loop / amplification. To break it we record each event's id
@@ -9,12 +9,13 @@
  * refuse to forward a payload whose events we have all already seen.
  */
 
+import { createHash } from 'node:crypto';
 import IORedis from 'ioredis';
 import { logger } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 
-const LOOP_GUARD_TTL_SECONDS = 600; // 10 min: long enough to break relay loops, keys auto-expire
-const KEY_PREFIX = 'line-downstream:seen';
+const LOOP_GUARD_TTL_SECONDS = 86400; // 1 day: dedup window for loop breaking; keys auto-expire
+const KEY_PREFIX = 'downstream-webhook:seen';
 
 /** Minimal Redis surface used here (injectable for testing). */
 export interface LoopGuardStore {
@@ -61,21 +62,26 @@ export function extractEventIds(rawBody: Buffer): string[] {
 }
 
 /**
- * Claim a webhook payload for downstream forwarding. Records each event id in
- * the store with a TTL (SET NX). Returns true when at least one event is new
- * (safe to forward), false when every event was already seen — i.e. our own
+ * Claim a webhook payload for downstream forwarding. Records each dedup key in
+ * the store with a TTL (SET NX). Returns true when at least one key is new
+ * (safe to forward), false when every key was already seen — i.e. our own
  * forward was shot back (loop), so the caller MUST NOT forward again.
  *
- * Fails open (returns true) when there are no dedup ids or the store errors,
- * so an unavailable Redis never silently disables forwarding.
+ * Keys are per-event ids for LINE payloads, falling back to a hash of the exact
+ * body bytes for any other channel (so a verbatim loopback is still caught).
+ * Fails open (returns true) only when the store errors, so an unavailable Redis
+ * never silently disables forwarding.
  */
 export async function claimForForward(
   channelId: string,
   rawBody: Buffer,
   store: LoopGuardStore = getRedis(),
 ): Promise<boolean> {
-  const ids = extractEventIds(rawBody);
-  if (ids.length === 0) return true; // nothing to dedup on → best-effort forward
+  let ids = extractEventIds(rawBody);
+  if (ids.length === 0) {
+    // Non-LINE / event-less payloads: dedup on the exact body bytes.
+    ids = ['body:' + createHash('sha256').update(rawBody).digest('hex')];
+  }
   try {
     let anyNew = false;
     for (const id of ids) {
