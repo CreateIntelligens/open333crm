@@ -22,8 +22,13 @@ jobs:
             --exclude 'dist' \
             --exclude '*.tar.gz' \
             --exclude '.env.*' \
-            --exclude 'Caddyfile.local' \
             . /srv/open333crm/
+
+      - name: Fix caddy port for UAT (nginx uses 80)
+        working-directory: /srv/open333crm
+        run: |
+          sed -i 's/"80:80"/"8888:80"/' docker-compose.yml
+          echo "Caddy port fixed to 8888:80"
 
       - name: Verify env files exist
         working-directory: /srv/open333crm
@@ -32,7 +37,7 @@ jobs:
             if [ -f "$f" ]; then
               echo "✓ $f exists"
             else
-              echo "⚠ $f missing - please create it on the server"
+              echo "⚠ $f missing"
               exit 1
             fi
           done
