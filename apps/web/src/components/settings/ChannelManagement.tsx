@@ -15,6 +15,7 @@ import {
   Bot,
   Eye,
   Image,
+  Webhook,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,7 @@ import { useWebchat } from '@/hooks/useWebchat';
 import { ChannelFormDialog } from './ChannelFormDialog';
 import { ChannelWizard } from './ChannelWizard';
 import { BotConfigForm } from './BotConfigForm';
+import { DownstreamWebhookDialog } from './DownstreamWebhookDialog';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
   Dialog,
@@ -61,6 +63,7 @@ export function ChannelManagement() {
   >({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [botConfigChannel, setBotConfigChannel] = useState<Channel | null>(null);
+  const [downstreamChannel, setDownstreamChannel] = useState<Channel | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [embedCodeDialog, setEmbedCodeDialog] = useState<{ open: boolean; code: string }>({ open: false, code: '' });
   const [chatboxLinkDialog, setChatboxLinkDialog] = useState<{ open: boolean; url: string }>({ open: false, url: '' });
@@ -489,6 +492,15 @@ export function ChannelManagement() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      onClick={() => setDownstreamChannel(ch)}
+                      title="下游 Webhook 轉發"
+                    >
+                      <Webhook className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       onClick={() => setEditingChannel(ch)}
                     >
                       <Pencil className="h-4 w-4" />
@@ -542,6 +554,14 @@ export function ChannelManagement() {
         onOpenChange={(v) => { if (!v) setBotConfigChannel(null); }}
         channel={botConfigChannel}
         onSaved={() => { setBotConfigChannel(null); mutate(); }}
+      />
+
+      {/* Downstream Webhook Dialog (LINE) */}
+      <DownstreamWebhookDialog
+        open={!!downstreamChannel}
+        onOpenChange={(v) => { if (!v) setDownstreamChannel(null); }}
+        channel={downstreamChannel}
+        onSaved={() => { setDownstreamChannel(null); mutate(); }}
       />
 
       {/* Embed Code Dialog */}

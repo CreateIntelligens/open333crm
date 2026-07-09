@@ -17,6 +17,26 @@ import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
 import { uploadFile } from '../storage/storage.service.js';
+import { downstreamWebhookConfigSchema } from '../webhook/downstream-forwarder.js';
+
+/**
+ * Validate `settings.downstreamWebhook` shape when present (LINE downstream
+ * webhook). No-op when the key is absent so other settings pass through.
+ */
+function validateDownstreamWebhookSettings(
+  settings: Record<string, unknown> | undefined,
+  ctx: z.RefinementCtx,
+): void {
+  if (!settings || settings.downstreamWebhook === undefined || settings.downstreamWebhook === null) {
+    return;
+  }
+  const result = downstreamWebhookConfigSchema.safeParse(settings.downstreamWebhook);
+  if (!result.success) {
+    result.error.issues.forEach((issue) => {
+      ctx.addIssue({ ...issue, path: ['settings', 'downstreamWebhook', ...issue.path] });
+    });
+  }
+}
 
 const lineCredentialsSchema = z.object({
   channelSecret: z.string().min(1),
@@ -54,6 +74,7 @@ const createChannelSchema = z.object({
       });
     }
   }
+  validateDownstreamWebhookSettings(data.settings, ctx);
 });
 
 const updateWebhookBaseUrlSchema = z.object({
@@ -64,12 +85,16 @@ const chatboxLinkSchema = z.object({
   domain: z.string().url(),
 });
 
-const updateChannelSchema = z.object({
-  displayName: z.string().min(1).max(100).optional(),
-  isActive: z.boolean().optional(),
-  credentials: z.record(z.unknown()).optional(),
-  settings: z.record(z.unknown()).optional(),
-});
+const updateChannelSchema = z
+  .object({
+    displayName: z.string().min(1).max(100).optional(),
+    isActive: z.boolean().optional(),
+    credentials: z.record(z.unknown()).optional(),
+    settings: z.record(z.unknown()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    validateDownstreamWebhookSettings(data.settings, ctx);
+  });
 
 const chatboxThemeSchema = z.object({
   backgroundImageUrl: z.null().optional(),
