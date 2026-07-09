@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { LogOut } from 'lucide-react';
-import { useAuth } from '@/providers/AuthProvider';
-import { Avatar } from '@/components/ui/avatar';
-import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu';
-import { useSocket } from '@/providers/SocketProvider';
-import { NotificationBell } from '@/components/notification/NotificationBell';
+import React from "react";
+import { LogOut, Bot } from "lucide-react";
+import { useAuth } from "@/providers/AuthProvider";
+import { Avatar } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { useSocket } from "@/providers/SocketProvider";
+import { NotificationBell } from "@/components/notification/NotificationBell";
 
 interface TopbarProps {
   title: string;
@@ -29,13 +29,25 @@ export function Topbar({ title, children }: TopbarProps) {
         <div className="flex items-center gap-1.5">
           <div
             className={`h-2 w-2 rounded-full ${
-              isConnected ? 'bg-green-500' : 'bg-red-500'
+              isConnected ? "bg-green-500" : "bg-red-500"
             }`}
           />
           <span className="text-xs text-muted-foreground">
-            {isConnected ? '已連線' : '未連線'}
+            {isConnected ? "已連線" : "未連線"}
           </span>
         </div>
+
+        {/* Skill URL for LLM */}
+        <a
+          href="https://raw.githubusercontent.com/CreateIntelligens/open333crm/main/docs/cli/SKILL.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          title="LLM Skill 文件：可直接用 CLI 或 LLM 操作本系統"
+        >
+          <Bot className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Skill</span>
+        </a>
 
         {/* Notifications */}
         <NotificationBell />
@@ -45,13 +57,17 @@ export function Topbar({ title, children }: TopbarProps) {
           align="right"
           trigger={
             <div className="flex items-center gap-2 cursor-pointer">
-              <Avatar alt={agent?.name || '使用者'} size="sm" />
-              <span className="text-sm font-medium hidden sm:inline">{agent?.name}</span>
+              <Avatar alt={agent?.name || "使用者"} size="sm" />
+              <span className="text-sm font-medium hidden sm:inline">
+                {agent?.name}
+              </span>
             </div>
           }
         >
           <DropdownMenuItem>
-            <span className="text-sm text-muted-foreground">{agent?.email}</span>
+            <span className="text-sm text-muted-foreground">
+              {agent?.email}
+            </span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={logout}>
             <LogOut className="mr-2 h-4 w-4" />
