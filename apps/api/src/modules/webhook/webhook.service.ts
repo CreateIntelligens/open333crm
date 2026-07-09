@@ -25,6 +25,8 @@ import {
   trackInboundBroadcastReply,
   triggerWebhookFlow,
 } from './inbound-side-effects.js';
+import { forwardToDownstream, getDownstreamWebhookConfig } from './downstream-forwarder.js';
+import { claimForForward } from './downstream-loop-guard.js';
 
 export async function processWebhookEvent(
   prisma: PrismaClient,
@@ -71,6 +73,22 @@ export async function processWebhookEvent(
   }
   logger.info('[Webhook] Signature OK', { channelId, channelType });
 
+  // 3b. Downstream webhook forwarding (LINE only). See openspec `line-downstream-webhook`.
+  const downstream =
+    channelType === CHANNEL_TYPE.LINE ? getDownstreamWebhookConfig(channel.settings) : null;
+  if (downstream && downstream.mode === 'immediate') {
+    // Immediate mode: forward the original payload, then short-circuit —
+    // skip parse + CRM inbound processing (downstream takes over).
+    // Loop guard: if the downstream shot our own forward back, drop it.
+    if (await claimForForward(channelId, rawBody)) {
+      logger.info('[Webhook] Downstream immediate — forwarding and short-circuiting', { channelId });
+      void forwardToDownstream(downstream, rawBody, headers, channel);
+    } else {
+      logger.warn('[Webhook] Downstream loopback detected — dropping (immediate)', { channelId });
+    }
+    return;
+  }
+
   // 4. Parse webhook into normalized messages
   const parsedMessages = await plugin.parseWebhook(rawBody, headers);
 
@@ -83,12 +101,21 @@ export async function processWebhookEvent(
 
   if (parsedMessages.length === 0) {
     logger.info('[Webhook] No actionable messages in payload', { channelId, channelType });
-    return;
   }
 
   // 5. Process each message (same pattern as simulator.service.ts)
   for (const parsed of parsedMessages) {
     await processInboundMessage(prisma, io, credentials, channel, tenantId, parsed);
+  }
+
+  // 6. Downstream "after" mode: CRM processing done, now forward a copy.
+  //    Loop guard: skip forwarding a payload the downstream shot back at us.
+  if (downstream && downstream.mode === 'after') {
+    if (await claimForForward(channelId, rawBody)) {
+      void forwardToDownstream(downstream, rawBody, headers, channel);
+    } else {
+      logger.warn('[Webhook] Downstream loopback detected — skip forward (after)', { channelId });
+    }
   }
 }
 

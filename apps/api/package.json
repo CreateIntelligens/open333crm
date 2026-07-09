@@ -9,6 +9,7 @@
     "build": "tsc",
     "test:case": "tsx src/__tests__/case.service.test.ts",
     "test:broadcast": "tsx src/__tests__/broadcast.service.test.ts",
+    "test:downstream": "tsx src/__tests__/downstream-forwarder.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
