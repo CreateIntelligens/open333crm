@@ -12,7 +12,8 @@ logs/
 .turbo/
 .DS_Store
 coverage/
-docs/
+# docs/ - track CLI skill docs
+!docs/cli/
 packages/db/full-backup.sql
 settings.local.json
 apps/web/public/webchat/

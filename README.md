@@ -47,6 +47,24 @@ packages/
   kb-ingest/  # 知識庫擷取管線
 ```
 
+## CLI 工具 (`open333`)
+
+安裝：`npm install -g @open333crm/cli` 或專案內 `pnpm --filter @open333crm/cli dev -- <command>`
+
+```bash
+open333 login --host https://api.example.com --email me@company.com --profile prod
+open333 status --json
+open333 stats --from 2026-07-01 --to 2026-07-08 --json
+open333 apis --json
+```
+
+完整 CLI 文件與擴充指南：[docs/cli/SKILL.md](docs/cli/SKILL.md)
+
+- 現有指令：`login`、`status`、`stats`、`apis`
+- 快速參考卡：[docs/cli/references/quick-ref.md](docs/cli/references/quick-ref.md)
+- 能力缺口分析（20+ 系統功能待 CLI 包覆）：[docs/cli/references/capability-gap.md](docs/cli/references/capability-gap.md)
+- 新指令 Scaffold：`tsx docs/cli/scripts/scaffold-command.ts <name> <desc>`
+
 ## 快速開始
 
 ### 前置需求

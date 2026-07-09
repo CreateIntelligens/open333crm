@@ -2,6 +2,23 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [v0.3.1] - 2026-07-09
+
+### Added
+
+- **CLI 技能文件** — 新增 `@open333crm/cli` 完整技能文件 (`docs/cli/`) 供 LLM 代理使用：
+  - `SKILL.md`：架構、現有 4 指令、類型、擴充模式
+  - `references/quick-ref.md`：每日速查卡
+  - `references/capability-gap.md`：20+ 系統功能對應 CLI 指令缺口分析
+  - `references/capability-map.md`：優先級實作路線圖與 Checklist
+  - `scripts/scaffold-command.ts`：新指令自動生成腳本
+  - `assets/`：Command / API 端點模板
+- **README 新增 CLI 區段** — 文件連結、使用範例、擴充指南
+
+### Changed
+
+- CLI 專案文件完整化，方便 LLM 代理直接上手擴充指令
+
 ## [v0.3.0] - 2026-07-08
 
 ### Added
