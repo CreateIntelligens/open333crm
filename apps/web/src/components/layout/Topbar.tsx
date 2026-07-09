@@ -39,7 +39,7 @@ export function Topbar({ title, children }: TopbarProps) {
 
         {/* Skill URL for LLM */}
         <a
-          href="https://raw.githubusercontent.com/CreateIntelligens/open333crm/main/docs/cli/SKILL.md"
+          href="/skill.md"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
