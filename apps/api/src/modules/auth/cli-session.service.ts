@@ -12,7 +12,7 @@ const DEFAULT_EXPIRES_DAYS = 30;
 export const CLI_STATUS_SCOPE = 'cli:status';
 export const CLI_APIS_SCOPE = 'cli:apis';
 export const CLI_ANALYTICS_READ_SCOPE = 'cli:analytics:read';
-export const DEFAULT_CLI_SCOPES = [CLI_STATUS_SCOPE, CLI_APIS_SCOPE] as const;
+export const DEFAULT_CLI_SCOPES = [CLI_STATUS_SCOPE, CLI_APIS_SCOPE, CLI_ANALYTICS_READ_SCOPE] as const;
 
 export interface CreateCliSessionInput {
   tenantId: string;
