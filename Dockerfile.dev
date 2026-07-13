@@ -1,0 +1,27 @@
+# Dockerfile.dev — shared dev image for the whole monorepo.
+#
+# This image intentionally does NOT own the source or node_modules at runtime:
+#   - source      → bind-mounted from the host (edit on host, reflected instantly)
+#   - node_modules → installed at runtime by the `deps` service into named volumes
+#                    (see docker-compose.dev.yml). We do NOT rely on the image's
+#                    node_modules, because a bind-mount over /app masks the image's
+#                    /app/node_modules and Docker can't seed nested volumes from it.
+#
+# What the image DOES provide: the toolchain + a warm pnpm store so the runtime
+# `pnpm install` is fast (it links from the store instead of re-downloading).
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN corepack enable
+RUN apk add --no-cache openssl libc6-compat bash
+
+# Warm the pnpm content-addressable store (kept OUTSIDE /app so the bind-mount
+# doesn't mask it). node_modules/dist/.next are excluded via .dockerignore.
+COPY . .
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+ENV NODE_ENV=development
+
+# Each service in docker-compose.dev.yml overrides this with its own dev command.
+CMD ["node", "--version"]

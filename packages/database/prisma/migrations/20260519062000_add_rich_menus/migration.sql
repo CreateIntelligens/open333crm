@@ -1,3 +1,12 @@
+-- Reconcile the legacy rich menu tables created in 20260402041711 (old design:
+-- rich_menus.configJson/isDefault + rich_menu_user_bindings + rich_menu_aliases).
+-- They are absent from the Prisma schema and unused by application code, so drop
+-- them before recreating rich_menus with the current design. IF EXISTS + CASCADE
+-- keeps this safe on databases where they were already removed.
+DROP TABLE IF EXISTS "rich_menu_aliases" CASCADE;
+DROP TABLE IF EXISTS "rich_menu_user_bindings" CASCADE;
+DROP TABLE IF EXISTS "rich_menus" CASCADE;
+
 -- CreateTable
 CREATE TABLE "rich_menus" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),

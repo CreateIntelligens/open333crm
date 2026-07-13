@@ -1,0 +1,202 @@
+# docker-compose.dev.yml — full hot-reload dev stack.
+#
+# Model: the ENTIRE repo is bind-mounted (edit any file on the host → reflected in
+# the container instantly). The ONLY things kept container-side are node_modules and
+# build caches, because:
+#   1. host is macOS/arm64, container is linux — native binaries (esbuild, prisma,
+#      next-swc) are per-platform and would crash if shared.
+#   2. a bind-mount over /app masks the image's node_modules, so we install at
+#      RUNTIME (the `deps` service) into named volumes instead of relying on the image.
+#
+# First run (installs deps + builds packages, a few minutes):
+#   docker compose -f docker-compose.dev.yml up --build
+# Day-to-day:
+#   docker compose -f docker-compose.dev.yml up
+# Nuke node_modules volumes and reinstall clean:
+#   docker compose -f docker-compose.dev.yml down -v && docker compose -f docker-compose.dev.yml up --build
+#
+# What hot-reloads:
+#   packages/*   → tsc --watch rebuilds dist → cascades into api/workers
+#   apps/api     → tsx watch reloads
+#   apps/workers → tsx watch reloads
+#   apps/web     → next dev Fast Refresh
+# (Web ↔ package reload: add packages to `transpilePackages` in apps/web/next.config.*)
+
+name: open333crm-dev
+
+# ---- Shared build config ----
+x-dev-image: &dev-image
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+
+# ---- Shared mounts ----
+# Whole repo bind-mounted + every node_modules shadowed by a NAMED volume so the
+# linux-native deps installed by `deps` are shared across all services.
+x-dev-mounts: &dev-mounts
+  - .:/app
+  - nm_root:/app/node_modules
+  - nm_api:/app/apps/api/node_modules
+  - nm_cli:/app/apps/cli/node_modules
+  - nm_videoworker:/app/apps/video-worker/node_modules
+  - nm_web:/app/apps/web/node_modules
+  - nm_widget:/app/apps/widget/node_modules
+  - nm_workers:/app/apps/workers/node_modules
+  - nm_automation:/app/packages/automation/node_modules
+  - nm_brain:/app/packages/brain/node_modules
+  - nm_channelplugins:/app/packages/channel-plugins/node_modules
+  - nm_core:/app/packages/core/node_modules
+  - nm_database:/app/packages/database/node_modules
+  - nm_kbingest:/app/packages/kb-ingest/node_modules
+  - nm_shared:/app/packages/shared/node_modules
+  - nm_types:/app/packages/types/node_modules
+  - nm_ui:/app/packages/ui/node_modules
+  - nm_webnext:/app/apps/web/.next
+
+services:
+  # ---- One-shot: install deps into the volumes + generate Prisma client ----
+  # Runs at RUNTIME (after mounts exist) so it populates the node_modules volumes
+  # correctly. Fast after the first time because the volumes persist.
+  deps:
+    <<: *dev-image
+    command: >
+      sh -c "pnpm install --frozen-lockfile &&
+             pnpm --filter @open333crm/database exec prisma generate"
+    volumes: *dev-mounts
+    restart: "no"
+
+  # ---- Infrastructure ----
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: open333crm
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crmpassword
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d open333crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # ---- Package watcher ----
+  # Builds all packages once (topological order), then tsc --watch each. dist is
+  # written to the bind-mounted host tree, so api/workers pick up the changes.
+  # Healthcheck gates the apps so they never start before dist exists.
+  packages:
+    <<: *dev-image
+    command: >
+      sh -c "pnpm -r --filter './packages/*' build &&
+             pnpm -r --parallel --filter './packages/*' run dev"
+    volumes: *dev-mounts
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f packages/core/dist/index.js && test -f packages/shared/dist/index.js && test -f packages/types/dist/index.js
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # ---- Apps ----
+  api:
+    <<: *dev-image
+    command: >
+      sh -c "pnpm --filter @open333crm/database exec prisma migrate deploy --schema prisma/schema.prisma &&
+             (pnpm --filter @open333crm/database exec prisma db seed || echo '[dev] seed skipped') &&
+             pnpm --filter @open333crm/api dev"
+    env_file:
+      - .env.api
+    ports:
+      - "3001:3001"
+    volumes: *dev-mounts
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      packages:
+        condition: service_healthy
+
+  workers:
+    <<: *dev-image
+    command: pnpm --filter @open333crm/workers dev
+    env_file:
+      - .env.workers
+    volumes: *dev-mounts
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      packages:
+        condition: service_healthy
+
+  web:
+    <<: *dev-image
+    command: pnpm --filter @open333crm/web dev
+    env_file:
+      - .env.web
+    ports:
+      - "3000:3000"
+    volumes: *dev-mounts
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      packages:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+  nm_root:
+  nm_api:
+  nm_cli:
+  nm_videoworker:
+  nm_web:
+  nm_widget:
+  nm_workers:
+  nm_automation:
+  nm_brain:
+  nm_channelplugins:
+  nm_core:
+  nm_database:
+  nm_kbingest:
+  nm_shared:
+  nm_types:
+  nm_ui:
+  nm_webnext:
