@@ -350,7 +350,8 @@ export async function executeBroadcast(
           } else {
             failedCount += chunk.length;
           }
-        } catch {
+        } catch (err) {
+          logger.error(`[broadcast:${broadcastId}] multicast chunk send failed (chunk ${i / MULTICAST_CHUNK + 1})`, { err });
           failedCount += chunk.length;
         }
 
