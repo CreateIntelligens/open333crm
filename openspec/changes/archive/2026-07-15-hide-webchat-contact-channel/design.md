@@ -8,11 +8,9 @@ The contacts list endpoint is already paginated, but the frontend currently call
 
 **Goals:**
 
-- Add a contact list filter that excludes `WEBCHAT` identities from list results without removing the contact row.
+- Add a contact list filter that excludes WebChat-only contacts from list results and excludes `WEBCHAT` identities from returned contact rows.
 - Have `/dashboard/contacts` call `/api/v1/contacts` with that filter.
 - Add pagination state and controls to `/dashboard/contacts`.
-- Keep contacts visible even when all of their identities are WebChat identities.
-- Show the existing empty placeholder when no non-WebChat identities remain for a contact.
 - Preserve LINE, Facebook, WhatsApp, Email, and other non-WebChat channel provider display.
 
 **Non-Goals:**
@@ -25,13 +23,13 @@ The contacts list endpoint is already paginated, but the frontend currently call
 
 1. Add an API list filter for excluding channel identities from the returned `channelIdentities` payload.
 
-   Rationale: The dashboard should call `/api/v1/contacts` with filters instead of hiding items in the table. Filtering the included `channelIdentities` payload keeps the contact list server-driven while preserving contact rows and pagination counts.
+   Rationale: The dashboard should call `/api/v1/contacts` with filters instead of hiding items in the table. Applying the same exclusion to the parent contact query and included `channelIdentities` payload keeps rows, displayed identities, and pagination counts aligned.
 
-   Alternative considered: Filter rows where any identity is WebChat. That would hide WebChat-only contacts entirely, which is not the desired behavior. Another alternative was UI-only filtering, but that duplicates display policy in the table and ignores the existing contacts API filter path.
+   Alternative considered: UI-only filtering. That duplicates display policy in the table and ignores the existing contacts API filter path. Another alternative was filtering only the included identity payload, but that can leave WebChat-only contacts in the list with no useful channel signal.
 
 2. Implement the filter as an opt-in query parameter such as `excludeChannelType=WEBCHAT`.
 
-   Rationale: Existing `channelType` filters which contacts are returned. The exclusion filter has a different purpose: it filters which channel identities are included in each returned contact. Keeping it opt-in avoids changing other contact list consumers.
+   Rationale: Existing `channelType` filters which contacts are returned by an included channel type. The exclusion filter has a different purpose: it removes contacts that have no remaining non-excluded identity and filters which channel identities are included in each returned contact. Keeping it opt-in avoids changing other contact list consumers.
 
    Alternative considered: Reuse `channelType` with a special negation syntax. That is harder to validate and less explicit than a dedicated exclusion filter.
 
@@ -43,12 +41,12 @@ The contacts list endpoint is already paginated, but the frontend currently call
 
 4. Keep `ContactList` simple and render the channel identities it receives.
 
-   Rationale: Once `/dashboard/contacts` requests filtered data, the table does not need WebChat-specific filtering logic. A contact with only WebChat identities receives an empty `channelIdentities` list for this page and naturally shows the `-` placeholder.
+   Rationale: Once `/dashboard/contacts` requests filtered data, the table does not need WebChat-specific filtering logic. A contact with only WebChat identities is excluded by the API list query.
 
    Alternative considered: Keep both API filtering and UI filtering. That is redundant and makes future channel policy changes harder to reason about.
 
 ## Risks / Trade-offs
 
-- [Risk] Consumers may confuse contact row filtering with identity payload filtering. -> Mitigation: Use an explicit exclusion filter name and keep `channelType` row filtering unchanged.
-- [Risk] The channel column could show `-` for WebChat-only contacts. -> Mitigation: This is the requested behavior for hiding WebChat channels while preserving the contact row.
+- [Risk] Consumers may confuse `channelType` inclusion filtering with `excludeChannelType` exclusion filtering. -> Mitigation: Keep the query names explicit and apply the exclusion consistently to `findMany` and `count`.
+- [Risk] WebChat-only contacts disappear from the dashboard contacts list. -> Mitigation: This is limited to the list request that opts into `excludeChannelType=WEBCHAT`; contact detail APIs keep WebChat identity data.
 - [Risk] Pagination state can become stale after search changes. -> Mitigation: Reset page to 1 when the search query changes.

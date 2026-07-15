@@ -6,9 +6,9 @@ The contacts dashboard channel column is meant to help operators identify custom
 
 - Add a `/api/v1/contacts` filter that can omit `WEBCHAT` identities from the returned list payload.
 - Call `/api/v1/contacts` from `/dashboard/contacts` with the WebChat-exclusion filter instead of hiding WebChat in table rendering.
-- Keep contacts with WebChat identities visible in the contacts list.
+- Keep contacts with at least one non-WebChat identity visible in the contacts list.
+- Remove WebChat-only contacts from the contacts list response when the exclusion filter is active.
 - Keep WebChat identities available in API payloads and contact detail views; this is display-only filtering for the contacts list.
-- When a contact has only WebChat identities, show the existing empty channel placeholder (`-`) in the contacts list.
 - Preserve non-WebChat channel display, including provider type and provider name when available.
 - Add visible pagination controls to `/dashboard/contacts` using the existing paginated `/api/v1/contacts` response metadata.
 
@@ -20,7 +20,7 @@ The contacts dashboard channel column is meant to help operators identify custom
 
 ### Modified Capabilities
 
-- `contact-management`: The contacts dashboard list requests filtered contact list data that excludes WebChat channel identities, preserves contact visibility and non-WebChat provider display, and exposes pagination controls.
+- `contact-management`: The contacts dashboard list requests filtered contact list data that excludes WebChat-only contacts and WebChat channel identities, preserves non-WebChat provider display, and exposes pagination controls.
 
 ## Impact
 

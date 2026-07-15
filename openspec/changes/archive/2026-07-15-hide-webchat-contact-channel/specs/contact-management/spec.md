@@ -1,12 +1,13 @@
 ## ADDED Requirements
 
 ### Requirement: Contact List WebChat Channel Visibility
-The system SHALL support requesting contact list results whose channel identity payload excludes WebChat identities without removing contacts from the list.
+The system SHALL support requesting contact list results that exclude WebChat-only contacts and omit WebChat identities from returned contact channel identity payloads.
 
-#### Scenario: Contact list API excludes WebChat identities from payload
+#### Scenario: Contact list API excludes WebChat-only contacts and WebChat identities
 - **WHEN** an authenticated user requests `/api/v1/contacts` with a filter that excludes `WEBCHAT` channel identities
-- **THEN** returned contacts omit `WEBCHAT` identities from each contact's `channelIdentities` array
-- **AND** contacts are not removed solely because they have WebChat identities
+- **THEN** returned contacts include only contacts that have at least one non-WebChat channel identity
+- **AND** returned contacts omit `WEBCHAT` identities from each contact's `channelIdentities` array
+- **AND** pagination counts are calculated from the same WebChat-excluding contact filter
 
 #### Scenario: Contacts dashboard requests WebChat-excluded results
 - **WHEN** `/dashboard/contacts` loads the contacts list
@@ -14,9 +15,9 @@ The system SHALL support requesting contact list results whose channel identity 
 - **AND** the channel column displays only the channel identities returned by the API
 
 #### Scenario: Contact has only WebChat identities
-- **WHEN** `/dashboard/contacts` renders a contact whose filtered `channelIdentities` array is empty because all identities were `WEBCHAT`
-- **THEN** the contact row remains visible
-- **AND** the channel column displays the empty channel placeholder
+- **WHEN** a contact has only WebChat channel identities
+- **THEN** `/dashboard/contacts` does not include that contact in the contacts list response
+- **AND** the contact can still be accessed through non-list contact detail APIs when addressed directly
 
 #### Scenario: Contact details keep WebChat identity data
 - **WHEN** a user opens or requests a contact detail view for a contact with WebChat identities

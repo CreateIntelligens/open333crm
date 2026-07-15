@@ -1,14 +1,14 @@
 ## 1. API Contact Filters
 
-- [x] 1.1 Add an opt-in contact list query filter for excluding a channel type from returned `channelIdentities`.
-- [x] 1.2 Update `listContacts` so `excludeChannelType=WEBCHAT` removes WebChat identities from each returned contact while keeping contact rows and pagination counts unchanged.
-- [x] 1.3 Add or update focused API coverage for the excluded channel identity payload shape.
+- [x] 1.1 Add an opt-in contact list query filter for excluding a channel type from contact list results and returned `channelIdentities`.
+- [x] 1.2 Update `listContacts` so `excludeChannelType=WEBCHAT` returns only contacts with at least one non-WebChat identity and removes WebChat identities from each returned contact payload.
+- [x] 1.3 Add or update focused API coverage for the excluded channel identity query shape used by both `findMany` and `count`.
 
 ## 2. Contacts Dashboard Request
 
 - [x] 2.1 Update `useContacts` to pass supported `/api/v1/contacts` filters (`tagId`, `channelType`, `excludeChannelType`, `page`, `limit`) using API parameter names.
 - [x] 2.2 Update `/dashboard/contacts` to request contacts with `excludeChannelType=WEBCHAT`.
-- [x] 2.3 Verify `ContactList` remains API-driven and has no WebChat-specific filtering for this change.
+- [x] 2.3 Verify `ContactList` remains API-driven and has no WebChat-specific filtering or row filtering for this change.
 
 ## 3. Contacts Dashboard Pagination
 
