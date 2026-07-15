@@ -5,8 +5,9 @@ import api from '@/lib/api';
 
 interface ContactFilters {
   q?: string;
-  tag?: string;
-  channel?: string;
+  tagId?: string;
+  channelType?: string;
+  excludeChannelType?: string;
   page?: number;
   limit?: number;
 }
@@ -17,12 +18,13 @@ const fetcher = async (url: string) => {
 };
 
 export function useContacts(filters: ContactFilters = {}) {
-  const { q, tag, channel, page = 1, limit = 50 } = filters;
+  const { q, tagId, channelType, excludeChannelType, page = 1, limit = 20 } = filters;
 
   const params = new URLSearchParams();
   if (q) params.set('q', q);
-  if (tag) params.set('tag', tag);
-  if (channel) params.set('channel', channel);
+  if (tagId) params.set('tagId', tagId);
+  if (channelType) params.set('channelType', channelType);
+  if (excludeChannelType) params.set('excludeChannelType', excludeChannelType);
   params.set('page', String(page));
   params.set('limit', String(limit));
 

@@ -8,11 +8,26 @@ export interface ContactFilters {
   q?: string;
   tagId?: string;
   channelType?: string;
+  excludeChannelType?: string;
 }
 
 export interface PaginationParams {
   page: number;
   limit: number;
+}
+
+function parseExcludedChannelTypes(channelType?: string) {
+  return new Set(
+    channelType
+      ?.split(',')
+      .map((type) => type.trim().toUpperCase())
+      .filter(Boolean) ?? [],
+  );
+}
+
+function combineChannelIdentityFilters(filters: Prisma.ChannelIdentityWhereInput[]) {
+  if (filters.length === 1) return filters[0];
+  return { AND: filters };
 }
 
 export async function listContacts(
@@ -46,16 +61,44 @@ export async function listContacts(
     };
   }
 
+  const excludedChannelTypes = parseExcludedChannelTypes(filters.excludeChannelType);
+  const excludedChannelTypeValues = Array.from(excludedChannelTypes);
+  const channelIdentityWhere = excludedChannelTypeValues.length > 0
+    ? {
+        AND: [
+          { channelType: { notIn: excludedChannelTypeValues as any } },
+          { channel: { is: { channelType: { notIn: excludedChannelTypeValues as any } } } },
+        ],
+      }
+    : undefined;
+
+  if (channelIdentityWhere) {
+    where.channelIdentities = {
+      some: combineChannelIdentityFilters([
+        ...(filters.channelType ? [{ channelType: filters.channelType as any }] : []),
+        channelIdentityWhere,
+      ]),
+    };
+  }
+
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({
       where,
       include: {
         channelIdentities: {
+          ...(channelIdentityWhere ? { where: channelIdentityWhere } : {}),
           select: {
             id: true,
             channelType: true,
             uid: true,
             profileName: true,
+            channel: {
+              select: {
+                id: true,
+                displayName: true,
+                channelType: true,
+              },
+            },
           },
         },
         tags: {

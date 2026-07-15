@@ -8,6 +8,17 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { cn } from '@/lib/utils';
+
+interface ContactChannelIdentity {
+  id: string;
+  channelType: string;
+  channel?: {
+    id: string;
+    displayName: string;
+    channelType: string;
+  } | null;
+}
 
 interface ContactListProps {
   contacts: Array<{
@@ -18,7 +29,7 @@ interface ContactListProps {
     email?: string;
     avatarUrl?: string;
     avatar?: string;
-    channelIdentities?: Array<{ id: string; channelType: string }>;
+    channelIdentities?: ContactChannelIdentity[];
     tags?: Array<{
       id: string;
       name?: string;
@@ -29,6 +40,28 @@ interface ContactListProps {
     updatedAt?: string;
   }>;
   isLoading: boolean;
+}
+
+function ChannelProviderPill({ identity }: { identity: ContactChannelIdentity }) {
+  const providerType = identity.channel?.channelType || identity.channelType;
+  const providerName = identity.channel?.displayName;
+
+  if (!providerName) {
+    return <ChannelBadge channel={providerType} />;
+  }
+
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-[12rem] items-center gap-1.5 rounded-md border border-border bg-background px-1.5 py-1',
+        'text-xs text-foreground'
+      )}
+      title={`${providerType} - ${providerName}`}
+    >
+      <ChannelBadge channel={providerType} className="shrink-0" />
+      <span className="truncate">{providerName}</span>
+    </span>
+  );
 }
 
 export function ContactList({ contacts, isLoading }: ContactListProps) {
@@ -104,7 +137,7 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
                   <div className="flex flex-wrap gap-1">
                     {contact.channelIdentities && contact.channelIdentities.length > 0 ? (
                       contact.channelIdentities.map((ci) => (
-                        <ChannelBadge key={ci.id} channel={ci.channelType} />
+                        <ChannelProviderPill key={ci.id} identity={ci} />
                       ))
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>

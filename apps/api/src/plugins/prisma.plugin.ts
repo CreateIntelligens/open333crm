@@ -10,7 +10,13 @@ declare module 'fastify' {
 
 async function prismaPlugin(fastify: FastifyInstance) {
   const prisma = new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    log: process.env.NODE_ENV === 'development'
+      ? [
+        { emit: 'event', level: 'query' },   // 不自動印，要 $on 才印
+        { emit: 'stdout', level: 'error' },
+        { emit: 'stdout', level: 'warn' },
+      ]
+      : [{ emit: 'stdout', level: 'error' }],   // prod 只印 error
   });
 
   await prisma.$connect();
