@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { unmountWebTalk } from '@/lib/webtalk';
 
 interface Agent {
   id: string;
@@ -73,6 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    unmountWebTalk();
+
     try {
       await api.post('/auth/logout');
     } catch {
