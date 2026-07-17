@@ -23,9 +23,18 @@ export async function handleAutomationJob(
   pluginRegistry?: Map<string, ChannelPlugin>,
 ): Promise<void> {
   const { tenantId, trigger, context } = job.data as AutomationJobData;
+  const matchedKeywordRuleId =
+    trigger === 'keyword.matched' && typeof context.ruleId === 'string'
+      ? context.ruleId
+      : undefined;
 
   const rules = await prisma.automationRule.findMany({
-    where: { tenantId, eventType: trigger, isActive: true },
+    where: {
+      tenantId,
+      eventType: trigger,
+      isActive: true,
+      ...(matchedKeywordRuleId ? { id: matchedKeywordRuleId } : {}),
+    },
   });
 
   if (rules.length === 0) return;

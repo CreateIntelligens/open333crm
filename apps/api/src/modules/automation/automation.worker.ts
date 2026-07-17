@@ -397,16 +397,19 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── keyword.matched ─────────────────────────────────────────────────────
   eventBus.subscribe('keyword.matched', async (event: AppEvent) => {
     try {
-      const { contactId, conversationId, messageContent } = event.payload as {
+      const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageContent?: string;
+        ruleId?: string;
+        matchedKeywords?: string[];
+        matchMode?: string;
       };
 
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'keyword.matched',
-        context: { contactId, conversationId, messageContent },
+        context: { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue keyword.matched', err));
     } catch (err) {
       logger.error('[AutomationWorker] Error handling keyword.matched:', err);
