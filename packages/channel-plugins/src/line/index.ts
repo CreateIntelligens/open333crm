@@ -13,6 +13,7 @@ import type {
   MediaUploadFn,
 } from '../index.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { logger } from '@open333crm/core';
 
 // ─────────────────────────────────────────────────────────────────
 // Credentials
@@ -108,7 +109,7 @@ function buildLineMessage(contentType: string, content: Record<string, unknown>)
   const base = quickReply ? { quickReply } : {};
 
   switch (contentType) {
-    // ─── 本 change 新增的 5 種 LINE 訊息類型 ───────────────────────
+    // ─── Material LINE 訊息類型 ───────────────────────
     case 'line_text':
       return { type: 'text', text: (content.text as string) ?? '', ...base };
     case 'line_image':
@@ -131,6 +132,17 @@ function buildLineMessage(contentType: string, content: Record<string, unknown>)
         contents: content.contents,
         ...base,
       };
+    case 'line_flex_template': {
+      const {
+        quickReplies: _quickReplies,
+        strategy: _strategy,
+        replyToken: _replyToken,
+        recipientUids: _recipientUids,
+        audienceGroupId: _audienceGroupId,
+        ...message
+      } = content;
+      return { ...message, ...base };
+    }
 
     // ─── 既有 channel-native 訊息類型保留（供 channel plugin 內部直接調用） ───
     case 'audio':
@@ -301,10 +313,11 @@ export class LinePlugin implements ChannelPlugin {
     const lineMsg = buildLineMessage(contentType, content);
     const messages = [lineMsg];
     const strategy = (content.strategy as string) ?? 'push';
-
+    // logger.info(`strategy: ${strategy}`);
     try {
       switch (strategy) {
         case 'reply':
+          // logger.info('[LinePlugin] messages reply', { messages });
           await linePost('/v2/bot/message/reply', token, { replyToken: content.replyToken, messages });
           break;
         case 'push':

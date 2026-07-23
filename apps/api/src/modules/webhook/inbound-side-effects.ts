@@ -91,6 +91,9 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
     throw new Error('Contact, conversation, and message must be resolved before EventBus publication');
   }
 
+  const rawPayload = (ctx.parsed as { rawPayload?: { replyToken?: unknown } }).rawPayload;
+  const replyToken = typeof rawPayload?.replyToken === 'string' ? rawPayload.replyToken : undefined;
+
   eventBus.publish({
     name: 'message.received',
     tenantId: ctx.tenantId,
@@ -103,6 +106,7 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
       channelType: ctx.channel.channelType,
       content: ctx.content,
       messageContent: (ctx.content.text as string) ?? '',
+      replyToken,
     },
   });
 }

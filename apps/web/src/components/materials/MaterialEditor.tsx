@@ -21,6 +21,7 @@ import { LineCarouselEditor } from './line/LineCarouselEditor';
 import { LineImagemapEditor } from './line/LineImagemapEditor';
 import { LineVideoEditor } from './line/LineVideoEditor';
 import { LineFlexShowcaseEditor } from './line/showcase/LineFlexShowcaseEditor';
+import { LineFlexTemplateEditor } from './line/LineFlexTemplateEditor';
 import { MaterialPreview } from './MaterialPreview';
 import { QuickReplyEditor, type QuickReplyItem } from './QuickReplyEditor';
 import type { MaterialVariable } from '@/hooks/useMaterials';
@@ -59,6 +60,7 @@ const CONTENT_TYPE_LABEL: Record<string, string> = {
   line_carousel: 'LINE 多頁訊息',
   line_imagemap: 'LINE 圖文訊息',
   line_flex_showcase: 'LINE 精選範本',
+  line_flex_template: 'LINE Flex 匯入素材',
   // FB
   fb_text: 'FB 純文字',
   fb_image: 'FB 單張圖片',
@@ -80,6 +82,7 @@ function bodyEditorFor(contentType: string) {
   if (contentType === 'line_carousel') return LineCarouselEditor;
   if (contentType === 'line_imagemap') return LineImagemapEditor;
   if (contentType === 'line_flex_showcase') return LineFlexShowcaseEditor;
+  if (contentType === 'line_flex_template') return LineFlexTemplateEditor;
   // FB
   if (contentType === 'fb_text') return FbTextEditor;
   if (contentType === 'fb_image') return FbImageEditor;
@@ -96,6 +99,13 @@ function bodyEditorFor(contentType: string) {
 export function MaterialEditor({ draft, templateName, saving, onChange, onSave, onCancel }: Props) {
   const BodyEditor = useMemo(() => bodyEditorFor(draft.contentType), [draft.contentType]);
   const [showPreview, setShowPreview] = useState(true);
+  const handleBodyChange = (nextBody: Record<string, unknown>) => {
+    onChange({
+      ...draft,
+      body: nextBody,
+      variables: variablesForBody(draft.contentType, nextBody, draft.variables),
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -144,7 +154,7 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
             <div className="text-sm font-semibold">內容</div>
             {BodyEditor ? (
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              <BodyEditor body={draft.body as any} onChange={(next: any) => onChange({ ...draft, body: next })} />
+              <BodyEditor body={draft.body as any} onChange={(next: any) => handleBodyChange(next)} />
             ) : (
               <div className="text-xs text-slate-500">此版型暫無視覺化編輯器</div>
             )}
@@ -178,4 +188,13 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
       </div>
     </div>
   );
+}
+
+function variablesForBody(
+  contentType: string,
+  body: Record<string, unknown>,
+  fallback: MaterialVariable[],
+): MaterialVariable[] {
+  if (contentType !== 'line_flex_template') return fallback;
+  return [];
 }

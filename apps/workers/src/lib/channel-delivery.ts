@@ -18,6 +18,10 @@ import { publishSocketEvent } from './socket-bridge.js';
 export interface DeliverPayload {
   contentType: string;
   content: Record<string, unknown>;
+  delivery?: {
+    strategy?: 'reply' | 'push';
+    replyToken?: string;
+  };
 }
 
 /**
@@ -75,7 +79,25 @@ export async function deliverToChannelFromWorker(
   // 1. 呼叫 channel plugin 送出
   let channelMsgId: string | undefined;
   try {
-    const result = await plugin.sendMessage(identity.uid, payload, credentials);
+    const shouldReply =
+      conv.channel.channelType === 'LINE' &&
+      payload.delivery?.strategy === 'reply' &&
+      typeof payload.delivery.replyToken === 'string' &&
+      payload.delivery.replyToken.length > 0;
+    const pluginPayload = shouldReply
+      ? {
+          contentType: payload.contentType,
+          content: {
+            ...payload.content,
+            strategy: 'reply',
+            replyToken: payload.delivery!.replyToken,
+          },
+        }
+      : {
+          contentType: payload.contentType,
+          content: payload.content,
+        };
+    const result = await plugin.sendMessage(identity.uid, pluginPayload, credentials);
     if (!result.success) {
       logger.error('[worker:deliver] plugin.sendMessage failed:', result.error);
       return false;

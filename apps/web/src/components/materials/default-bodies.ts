@@ -115,6 +115,40 @@ export const DEFAULT_BODY_FOR_TYPE: Record<string, Record<string, unknown>> = {
     },
   },
 
+  line_flex_template: {
+    type: 'flex',
+    altText: '新品優惠',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '新品優惠', weight: 'bold', size: 'xl', wrap: true },
+          {
+            type: 'text',
+            text: '請先在 LINE Flex Simulator 編輯完成，再貼上 Flex JSON。',
+            size: 'sm',
+            color: '#666666',
+            wrap: true,
+            margin: 'md',
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            action: { type: 'uri', label: '查看活動', uri: 'https://example.com' },
+          },
+        ],
+      },
+    },
+  },
+
   // ─── FB ─────────────────────────────────────
   fb_text: {
     text: '您好，這是一則 FB Messenger 訊息範例。',

@@ -312,13 +312,15 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── message.received ────────────────────────────────────────────────────
   eventBus.subscribe('message.received', async (event: AppEvent) => {
     try {
-      const { contactId, conversationId, messageId, messageContent, content, contentType } = event.payload as {
+      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageId?: string;
         messageContent?: string;
         content?: { text?: string };
         contentType?: string;
+        channelType?: string;
+        replyToken?: string;
       };
 
       // Extract message text from either direct messageContent or content.text
@@ -378,7 +380,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'message.received',
-        context: { contactId, conversationId, messageContent: text },
+        context: { contactId, conversationId, messageContent: text, channelType, replyToken },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue message.received', err));
 
       // Check keyword triggers after message.received automation
@@ -387,6 +389,8 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
           contactId,
           conversationId,
           messageContent: text,
+          channelType,
+          replyToken,
         });
       }
     } catch (err) {
@@ -397,19 +401,21 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── keyword.matched ─────────────────────────────────────────────────────
   eventBus.subscribe('keyword.matched', async (event: AppEvent) => {
     try {
-      const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode } = event.payload as {
+      const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageContent?: string;
         ruleId?: string;
         matchedKeywords?: string[];
         matchMode?: string;
+        channelType?: string;
+        replyToken?: string;
       };
 
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'keyword.matched',
-        context: { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode },
+        context: { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue keyword.matched', err));
     } catch (err) {
       logger.error('[AutomationWorker] Error handling keyword.matched:', err);

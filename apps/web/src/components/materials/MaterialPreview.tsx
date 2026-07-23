@@ -1,14 +1,19 @@
 'use client';
 
 /**
- * MaterialPreview — 把 rendered body 視覺化（LINE Flex / FB Generic / 基礎類型皆覆蓋）
+ * MaterialPreview — 把 rendered body 視覺化。
  *
- * 注意：這是「示意預覽」非實際 LINE / FB 渲染引擎。複雜結構（Flex 嵌套 box）
- * 簡化呈現 hero / title / subtitle / footer。實際發送由 channel plugin 處理。
+ * LINE Flex 預覽統一交給 line-flex-message-renderer；其他 LINE / FB 素材仍使用
+ * 本地簡易預覽元件。實際發送由 channel plugin 處理。
  */
 
 import React from 'react';
 import { Image as ImageIcon, Video as VideoIcon, MapPin, Clock, Phone } from 'lucide-react';
+import {
+  FlexMessagePreview,
+  LineChatFrame,
+  type FlexContainer,
+} from 'line-flex-message-renderer';
 
 interface Props {
   channelType: string;
@@ -45,11 +50,12 @@ function PreviewBody({ contentType, body }: { contentType: string; body: Record<
   if (contentType === 'line_imagemap') {
     return <MediaCard kind="image" url={b.baseImageUrl} />;
   }
-  if (contentType === 'line_flex_showcase') {
-    if (!b.contents) {
-      return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-400">尚未選擇範本</div>;
+  if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') {
+    const flex = b.type === 'flex' ? b.contents : b.contents ?? b;
+    if (!flex || (flex.type !== 'bubble' && flex.type !== 'carousel')) {
+      return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-400">尚未匯入 Flex JSON</div>;
     }
-    return <FlexPreview flex={b.contents} />;
+    return <FlexPreview flex={flex} />;
   }
   // FB
   if (contentType === 'fb_text') return <BubbleText text={b.text ?? ''} />;
@@ -150,351 +156,21 @@ function ButtonsPreview({ text, buttons }: { text?: string; buttons: any[] }) {
   );
 }
 
-// ─── Flex 預覽（對齊 LINE Flex spec） ──────────────────────────────────
-//
-// 涵蓋規格：
-//   bubble / carousel
-//   box (vertical / horizontal / baseline) + spacing / margin / padding
-//   text size (xxs/xs/sm/md/lg/xl/xxl/3xl/4xl/5xl)、weight、color、wrap、decoration、align
-//   image url / aspectRatio / aspectMode (cover/fit) / size
-//   icon url / size（與 baseline 對齊）
-//   button style (primary/secondary/link) / color / action.label
-//   separator
-//   filler
-//   span（inline 文字片段）
-//   absolute position（offsetTop/Start/End/Bottom）
-//   backgroundColor / cornerRadius / borderColor / borderWidth
-//
-// 預覽寬度固定 260px（接近真實 LINE 渲染寬度），不要被父容器壓扁。
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function FlexPreview({ flex }: { flex: any }) {
-  if (flex?.type === 'carousel') {
+  if (!flex || (flex.type !== 'bubble' && flex.type !== 'carousel')) {
     return (
-      <div className="flex gap-2 pb-2">
-        {(flex.contents ?? []).map((b: unknown, idx: number) => (
-          <FlexBubble key={idx} bubble={b} />
-        ))}
-      </div>
-    );
-  }
-  return <FlexBubble bubble={flex} />;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexBubble({ bubble }: { bubble: any }) {
-  if (!bubble) return null;
-  const size = (bubble.size as string) ?? 'mega';
-  // 對齊 LINE Flex 真實 bubble 寬度
-  const widthMap: Record<string, number> = { nano: 120, micro: 160, deca: 200, hecto: 241, kilo: 260, mega: 300, giga: 386 };
-  const width = widthMap[size] ?? 300;
-
-  return (
-    <div
-      className="overflow-hidden bg-white text-[14px] leading-snug text-[#444] flex-shrink-0"
-      style={{
-        width,
-        minWidth: width,
-        maxWidth: width,
-        borderRadius: 13,
-        boxShadow: '0 0 0 1px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.08)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {bubble.header && <FlexBox box={bubble.header} role="header" parentLayout="vertical" defaultPadding="20px" />}
-      {bubble.hero && <FlexHero hero={bubble.hero} />}
-      {bubble.body && <FlexBox box={bubble.body} role="body" parentLayout="vertical" defaultPadding="20px" />}
-      {bubble.footer && <FlexBox box={bubble.footer} role="footer" parentLayout="vertical" defaultPadding="20px" defaultSpacing="sm" />}
-    </div>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexHero({ hero }: { hero: any }) {
-  if (hero.type === 'image') return <FlexImageEl image={hero} parentLayout="vertical" />;
-  if (hero.type === 'box') return <FlexBox box={hero} role="hero" />;
-  return null;
-}
-
-// ─── box 容器 ────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexBox({ box, role, parentLayout, defaultPadding, defaultSpacing }: { box: any; role?: string; parentLayout?: string; defaultPadding?: string; defaultSpacing?: string }) {
-  const layout = (box.layout as string) ?? 'vertical';
-  const isPositioned = box.position === 'absolute';
-  const isInHorizontalParent = parentLayout === 'horizontal' || parentLayout === 'baseline';
-
-  // box.flex 預設值：水平/baseline parent 為 1，垂直 parent 為 0
-  const flexValue: number | undefined =
-    typeof box.flex === 'number'
-      ? box.flex
-      : isInHorizontalParent
-        ? 1
-        : 0;
-
-  // padding 邏輯：paddingAll 是全部、paddingTop/Bottom/Start/End 是個別覆蓋
-  const padAll = cssLen(box.paddingAll) ?? defaultPadding;
-  const padTop = cssLen(box.paddingTop) ?? padAll;
-  const padBottom = cssLen(box.paddingBottom) ?? padAll;
-  const padLeft = cssLen(box.paddingStart) ?? padAll;
-  const padRight = cssLen(box.paddingEnd) ?? padAll;
-
-  const style: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: layout === 'horizontal' || layout === 'baseline' ? 'row' : 'column',
-    alignItems: layout === 'baseline' ? 'baseline' : undefined,
-    backgroundColor: box.backgroundColor,
-    borderRadius: cssLen(box.cornerRadius),
-    borderWidth: cssLen(box.borderWidth),
-    borderStyle: box.borderWidth ? 'solid' : undefined,
-    borderColor: box.borderColor,
-    paddingTop: padTop,
-    paddingBottom: padBottom,
-    paddingLeft: padLeft,
-    paddingRight: padRight,
-    gap: spacingPx(box.spacing ?? defaultSpacing),
-    width: cssLen(box.width),
-    height: cssLen(box.height),
-    justifyContent: box.justifyContent,
-    flexGrow: isPositioned ? undefined : flexValue,
-    flexShrink: 1,
-    flexBasis: isPositioned ? undefined : (flexValue === 0 ? 'auto' : 0),
-    minWidth: 0,
-    // box.margin 是相對 sibling 的距離（依 parent layout 方向）
-    marginTop: !isPositioned && parentLayout !== 'horizontal' && parentLayout !== 'baseline' ? marginPx(box.margin) : undefined,
-    marginLeft: !isPositioned && (parentLayout === 'horizontal' || parentLayout === 'baseline') ? marginPx(box.margin) : undefined,
-    position: isPositioned ? 'absolute' : (role === 'hero' || role === 'header' || role === 'body' || role === 'footer' ? 'relative' : undefined),
-    top: isPositioned ? cssLen(box.offsetTop) : undefined,
-    bottom: isPositioned ? cssLen(box.offsetBottom) : undefined,
-    left: isPositioned ? cssLen(box.offsetStart) : undefined,
-    right: isPositioned ? cssLen(box.offsetEnd) : undefined,
-    overflow: box.cornerRadius ? 'hidden' : undefined,
-  };
-
-  return (
-    <div style={style}>
-      {(box.contents ?? []).map((c: unknown, i: number) => (
-        <FlexNode key={i} node={c} parentLayout={layout} />
-      ))}
-    </div>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexNode({ node, parentLayout }: { node: any; parentLayout: string }) {
-  if (!node || typeof node !== 'object') return null;
-  if (node.type === 'box') return <FlexBox box={node} parentLayout={parentLayout} />;
-  if (node.type === 'text') return <FlexText text={node} parentLayout={parentLayout} />;
-  if (node.type === 'image') return <FlexImageEl image={node} parentLayout={parentLayout} />;
-  if (node.type === 'icon') return <FlexIconEl icon={node} />;
-  if (node.type === 'button') return <FlexButtonEl button={node} />;
-  if (node.type === 'separator') return <FlexSeparator separator={node} parentLayout={parentLayout} />;
-  if (node.type === 'filler') return <div style={{ flex: 1 }} />;
-  if (node.type === 'span') return <FlexSpan span={node} />;
-  return null;
-}
-
-// ─── text ─────────────────────────────────────
-
-const TEXT_SIZE: Record<string, number> = {
-  xxs: 11, xs: 13, sm: 14, md: 16, lg: 19, xl: 22, xxl: 27, '3xl': 33, '4xl': 40, '5xl': 48,
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexText({ text, parentLayout }: { text: any; parentLayout: string }) {
-  // LINE Flex 規範：
-  //   horizontal / baseline box 內，子元件未指定 flex 時預設 1
-  //   vertical box 內，子元件未指定 flex 時預設 0（佔自身內容寬度）
-  //
-  // text 元件特殊：horizontal/baseline 內若沒指定 flex，預設 1，但會被內容自動 sizing
-  const flexValue: number | undefined =
-    typeof text.flex === 'number'
-      ? text.flex
-      : parentLayout === 'baseline' || parentLayout === 'horizontal'
-        ? 1
-        : 0;
-
-  const style: React.CSSProperties = {
-    fontSize: TEXT_SIZE[text.size as string] ?? 14,
-    fontWeight: text.weight === 'bold' ? 700 : 400,
-    fontStyle: text.style === 'italic' ? 'italic' : undefined,
-    color: text.color ?? '#444',
-    textAlign: text.align as React.CSSProperties['textAlign'],
-    textDecoration: text.decoration === 'line-through' ? 'line-through' : text.decoration === 'underline' ? 'underline' : undefined,
-    flexGrow: flexValue,
-    flexShrink: 1,
-    flexBasis: flexValue === 0 ? 'auto' : 0,
-    marginTop: parentLayout === 'vertical' ? marginPx(text.margin) : undefined,
-    marginLeft: parentLayout === 'horizontal' || parentLayout === 'baseline' ? marginPx(text.margin) : undefined,
-    whiteSpace: text.wrap ? 'normal' : 'nowrap',
-    overflow: text.wrap ? undefined : 'hidden',
-    textOverflow: text.wrap ? undefined : 'ellipsis',
-    wordBreak: text.wrap ? 'break-word' : undefined,
-    lineHeight: 1.4,
-    minWidth: 0,
-  };
-
-  // 若 contents 是 span 陣列就 render span 們，否則用 text 屬性
-  if (Array.isArray(text.contents) && text.contents.length > 0) {
-    return (
-      <div style={style}>
-        {text.contents.map((s: unknown, i: number) => (
-          <FlexSpan key={i} span={s} />
-        ))}
-      </div>
-    );
-  }
-  return <div style={style}>{text.text ?? ''}</div>;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexSpan({ span }: { span: any }) {
-  const style: React.CSSProperties = {
-    fontSize: TEXT_SIZE[span.size as string],
-    fontWeight: span.weight === 'bold' ? 700 : undefined,
-    color: span.color,
-    textDecoration: span.decoration === 'line-through' ? 'line-through' : undefined,
-  };
-  return <span style={style}>{span.text ?? ''}</span>;
-}
-
-// ─── image / icon ─────────────────────────
-
-const IMAGE_SIZE: Record<string, string> = {
-  xxs: '40px', xs: '60px', sm: '80px', md: '100px', lg: '120px', xl: '140px', xxl: '160px',
-  '3xl': '180px', '4xl': '200px', '5xl': '220px', full: '100%',
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexImageEl({ image, parentLayout }: { image: any; parentLayout: string }) {
-  const aspectMode = image.aspectMode ?? 'fit';
-  const aspectRatio = image.aspectRatio ?? '1:1';
-  const [w, h] = String(aspectRatio).split(':').map(Number);
-  const size = IMAGE_SIZE[image.size as string] ?? IMAGE_SIZE.md;
-
-  const style: React.CSSProperties = {
-    width: size,
-    aspectRatio: `${w}/${h}`,
-    objectFit: aspectMode === 'cover' ? 'cover' : 'contain',
-    backgroundColor: image.backgroundColor ?? '#f0f0f0',
-    display: 'block',
-    flex: typeof image.flex === 'number' ? image.flex : (parentLayout === 'horizontal' ? 1 : undefined),
-  };
-
-  // 若沒 URL，顯示 placeholder 而非破圖
-  if (!image.url) {
-    return (
-      <div style={{ ...style, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
-        <ImageIcon className="h-8 w-8" />
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-400">
+        Flex JSON 格式不支援預覽
       </div>
     );
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={image.url}
-      alt=""
-      style={style}
-      onError={(e) => {
-        e.currentTarget.style.opacity = '0.3';
-      }}
-    />
+    <LineChatFrame accountName="LINE" width={340}>
+      <FlexMessagePreview json={flex as FlexContainer} />
+    </LineChatFrame>
   );
-}
-
-const ICON_SIZE: Record<string, number> = {
-  xxs: 10, xs: 12, sm: 14, md: 16, lg: 18, xl: 20, xxl: 22, '3xl': 24, '4xl': 28, '5xl': 32,
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexIconEl({ icon }: { icon: any }) {
-  const size = ICON_SIZE[icon.size as string] ?? 14;
-  if (!icon.url) return null;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={icon.url}
-      alt=""
-      style={{
-        width: size,
-        height: size,
-        flexShrink: 0,
-        flexGrow: 0,
-        display: 'inline-block',
-        verticalAlign: 'middle',
-        marginLeft: marginPx(icon.margin),
-      }}
-    />
-  );
-}
-
-// ─── button ──────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexButtonEl({ button }: { button: any }) {
-  const style = (button.style as string) ?? 'link';
-  const color = button.color as string | undefined;
-  const action = button.action ?? {};
-  const height = button.height === 'sm' ? 40 : 52;
-
-  let bg = 'transparent';
-  let text = color ?? '#42659a';
-  let border = 'none';
-  if (style === 'primary') {
-    bg = color ?? '#17c950';
-    text = '#ffffff';
-  } else if (style === 'secondary') {
-    bg = color ?? '#dcdfe5';
-    text = '#111';
-  }
-  // link style 文字色用 color，否則用預設藍
-  if (style === 'link' && color) text = color;
-
-  const btnStyle: React.CSSProperties = {
-    height,
-    background: bg,
-    color: text,
-    border,
-    borderRadius: 6,
-    fontWeight: 700,
-    fontSize: 16,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    marginTop: marginPx(button.margin),
-    flex: typeof button.flex === 'number' ? button.flex : undefined,
-  };
-
-  return <div style={btnStyle}>{action.label ?? ''}</div>;
-}
-
-// ─── separator ─────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function FlexSeparator({ separator, parentLayout }: { separator: any; parentLayout: string }) {
-  if (parentLayout === 'horizontal' || parentLayout === 'baseline') {
-    return <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: separator.color ?? '#dcdfe5', marginLeft: marginPx(separator.margin) }} />;
-  }
-  return <div style={{ height: 1, width: '100%', backgroundColor: separator.color ?? '#dcdfe5', marginTop: marginPx(separator.margin) }} />;
-}
-
-// ─── 工具 ─────────────────────────
-
-const SPACING: Record<string, number> = { none: 0, xs: 2, sm: 4, md: 8, lg: 12, xl: 16, xxl: 20 };
-function spacingPx(s?: string): number | undefined {
-  if (!s) return undefined;
-  return SPACING[s] ?? undefined;
-}
-function marginPx(m?: string): number | undefined {
-  if (!m) return undefined;
-  return SPACING[m] ?? undefined;
-}
-function cssLen(v?: string): string | undefined {
-  if (!v) return undefined;
-  return v;
 }
 
 // ─── FB Coupon / Receipt / Feedback 簡易預覽 ─────────────────────────

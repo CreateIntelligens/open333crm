@@ -9,6 +9,8 @@ import {
   duplicateMaterial,
   previewMaterial,
   listMaterialCategories,
+  validateLineFlexDraft,
+  importLineFlexMaterial,
 } from './material.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { requireSupervisor } from '../../guards/rbac.guard.js';
@@ -23,6 +25,7 @@ const CONTENT_TYPE_VALUES = [
   'line_carousel',
   'line_imagemap',
   'line_flex_showcase',
+  'line_flex_template',
   // FB 9 種
   'fb_text',
   'fb_image',
@@ -131,6 +134,20 @@ const previewMaterialSchema = z.object({
   variables: z.record(z.string()).optional(),
 });
 
+const lineFlexValidateSchema = z.object({
+  payload: z.unknown(),
+  altText: z.string().max(400).optional(),
+});
+
+const lineFlexImportSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+  category: z.string().max(100).optional(),
+  payload: z.unknown(),
+  altText: z.string().max(400).optional(),
+  previewImageUrl: z.string().url().optional(),
+});
+
 // ─── Routes ───────────────────────────────────────────────────────────
 
 export default async function materialRoutes(fastify: FastifyInstance) {
@@ -162,6 +179,30 @@ export default async function materialRoutes(fastify: FastifyInstance) {
     const data = createMaterialSchema.parse(request.body);
     const material = await createMaterial(fastify.prisma, request.agent.tenantId, {
       ...data,
+      createdById: request.agent.id,
+    });
+    return reply.code(201).send(success(material));
+  });
+
+  // POST /materials/line-flex/validate
+  fastify.post('/materials/line-flex/validate', async (request, reply) => {
+    const data = lineFlexValidateSchema.parse(request.body);
+    const result = await validateLineFlexDraft(fastify.prisma, request.agent.tenantId, data.payload, {
+      altText: data.altText,
+    });
+    return reply.send(success(result));
+  });
+
+  // POST /materials/line-flex/import
+  fastify.post('/materials/line-flex/import', async (request, reply) => {
+    const data = lineFlexImportSchema.parse(request.body);
+    const material = await importLineFlexMaterial(fastify.prisma, request.agent.tenantId, {
+      name: data.name,
+      description: data.description,
+      category: data.category,
+      payload: data.payload,
+      altText: data.altText,
+      previewImageUrl: data.previewImageUrl,
       createdById: request.agent.id,
     });
     return reply.code(201).send(success(material));

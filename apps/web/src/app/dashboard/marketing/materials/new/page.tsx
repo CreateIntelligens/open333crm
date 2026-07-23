@@ -18,6 +18,7 @@ const TYPE_LABEL: Record<string, string> = {
   line_carousel: 'LINE 多頁訊息',
   line_imagemap: 'LINE 圖文訊息',
   line_flex_showcase: 'LINE 精選範本',
+  line_flex_template: 'LINE Flex 匯入素材',
   fb_text: 'FB 純文字',
   fb_image: 'FB 單張圖片',
   fb_video: 'FB 影片',
@@ -36,11 +37,12 @@ export default function NewMaterialPage() {
   const [error, setError] = useState<string | null>(null);
 
   const handlePick = (channelType: 'line' | 'fb', contentType: string) => {
+    const body = DEFAULT_BODY_FOR_TYPE[contentType] ?? {};
     setDraft({
       name: `新${TYPE_LABEL[contentType] ?? '素材'}`,
       channelType,
       contentType,
-      body: DEFAULT_BODY_FOR_TYPE[contentType] ?? {},
+      body,
       variables: [],
     });
   };

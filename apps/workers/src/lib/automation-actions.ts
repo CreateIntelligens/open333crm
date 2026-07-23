@@ -17,10 +17,18 @@ export interface WorkerActionContext {
   tenantId: string;
   caseId?: string | null;
   conversationId?: string | null;
+  trigger?: string | null;
+  replyToken?: string | null;
   assigneeId?: string | null;
   title?: string | null;
   // 送 channel 訊息（send_message / send_material）需要 plugin registry + redis
   pluginRegistry?: Map<string, ChannelPlugin>;
+}
+
+function keywordReplyDelivery(context: WorkerActionContext) {
+  return context.trigger === 'keyword.matched' && context.replyToken
+    ? { strategy: 'reply' as const, replyToken: context.replyToken }
+    : undefined;
 }
 
 async function getSupervisorAndAdminIds(
@@ -154,7 +162,7 @@ export async function executeWorkerAutomationActions(
           redisPublisher,
           context.pluginRegistry,
           context.conversationId,
-          { contentType: 'text', content: { text } },
+          { contentType: 'text', content: { text }, delivery: keywordReplyDelivery(context) },
         );
         continue;
       }
@@ -202,7 +210,7 @@ export async function executeWorkerAutomationActions(
           redisPublisher,
           context.pluginRegistry,
           context.conversationId,
-          { contentType: material.contentType, content: renderedBody },
+          { contentType: material.contentType, content: renderedBody, delivery: keywordReplyDelivery(context) },
         );
         continue;
       }

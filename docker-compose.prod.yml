@@ -105,6 +105,8 @@ services:
       - api
     env_file:
       - .env.web
+    environment:
+      NODE_ENV: production
     restart: unless-stopped
 
   nginx:

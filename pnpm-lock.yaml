@@ -204,6 +204,9 @@ importers:
       date-fns:
         specifier: ^3.6.0
         version: 3.6.0
+      line-flex-message-renderer:
+        specifier: ^1.2.3
+        version: 1.2.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       lucide-react:
         specifier: ^0.400.0
         version: 0.400.0(react@19.2.4)
@@ -3292,6 +3295,12 @@ packages:
   lilconfig@3.1.3:
     resolution: {integrity: sha512-/vlFKAoH5Cgt3Ie+JLhRbwOsCQePABiU3tJ1egGvyQ+33R/vcwM2Zl2QR/LzjsBeItPt3oSVXapn+m4nQDvpzw==}
     engines: {node: '>=14'}
+
+  line-flex-message-renderer@1.2.3:
+    resolution: {integrity: sha512-bIefGlpBpwQwe7tgBboTXjrsnPxH7/7sxKe9ZZDo4ddK8qsp5/m5BMyH5AUdMg9p1K9w3hq6mhjL0CSw9qo00w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
@@ -7494,6 +7503,11 @@ snapshots:
       set-cookie-parser: 2.7.2
 
   lilconfig@3.1.3: {}
+
+  line-flex-message-renderer@1.2.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
 
   lines-and-columns@1.2.4: {}
 

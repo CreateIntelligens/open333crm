@@ -28,7 +28,7 @@ COPY packages/ui ./packages/ui
 
 RUN pnpm --filter @open333crm/types build
 RUN pnpm --filter @open333crm/automation build
-RUN set -a && . ./.env.web && set +a && pnpm --filter @open333crm/web build
+RUN set -a && . ./.env.web && set +a && NODE_ENV=production pnpm --filter @open333crm/web build
 
 # ---- Runner ----
 FROM node:20-alpine AS runner

@@ -17,6 +17,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.6.0",
+    "line-flex-message-renderer": "^1.2.3",
     "lucide-react": "^0.400.0",
     "next": "^15.5.18",
     "playcaptcha": "^0.1.0",

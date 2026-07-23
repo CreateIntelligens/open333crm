@@ -37,10 +37,17 @@ export function ShowcasePickerDialog({ open, onClose, onSelect }: Props) {
         </DialogHeader>
         <div className="grid grid-cols-3 gap-4 py-3 max-h-[70vh] overflow-y-auto">
           {SHOWCASE_SAMPLES.map((sample) => (
-            <button
+            <div
               key={sample.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setSelectedId(sample.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setSelectedId(sample.id);
+                }
+              }}
               className={`overflow-hidden rounded-lg border bg-white text-left transition-all ${
                 selectedId === sample.id
                   ? 'border-emerald-500 ring-2 ring-emerald-200'
@@ -63,7 +70,7 @@ export function ShowcasePickerDialog({ open, onClose, onSelect }: Props) {
                 <div className="text-sm font-semibold text-slate-900">{sample.name}</div>
                 <div className="mt-0.5 text-[11px] text-slate-500 line-clamp-2">{sample.description}</div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
         <DialogFooter>

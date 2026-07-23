@@ -82,11 +82,15 @@ export async function handleAutomationJob(
 
     const conversationId =
       typeof context['conversationId'] === 'string' ? context['conversationId'] : null;
+    const replyToken =
+      typeof context['replyToken'] === 'string' ? context['replyToken'] : null;
 
     await executeWorkerAutomationActions(prisma, redisPublisher, match.actions, {
       tenantId,
       caseId,
       conversationId,
+      trigger,
+      replyToken,
       assigneeId:
         typeof facts['case.assigneeId'] === 'string' ? facts['case.assigneeId'] : null,
       title: typeof context['title'] === 'string' ? context['title'] : null,

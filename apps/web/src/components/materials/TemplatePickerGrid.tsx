@@ -41,6 +41,7 @@ const LINE_TYPES: ContentTypeOption[] = [
   { value: 'line_carousel', label: '多頁訊息', desc: '多張卡片輪播（商品 / 地點 / 人物 / 圖文）' },
   { value: 'line_imagemap', label: '圖文訊息', desc: '一張大圖切割成多個可點擊區域' },
   { value: 'line_flex_showcase', label: '精選範本', desc: '直接套用官方設計範本（餐廳 / 服飾 / 房地產 / 票券 ...）' },
+  { value: 'line_flex_template', label: '匯入 Flex JSON', desc: '貼上 LINE Flex Simulator 產出的 JSON' },
 ];
 
 const FB_TYPES: ContentTypeOption[] = [
@@ -117,10 +118,17 @@ export function TemplatePickerGrid({ onPick }: Props) {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-3">
         {types.map((t) => (
-          <button
+          <div
             key={t.value}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => onPick(channel!, t.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onPick(channel!, t.value);
+              }
+            }}
             className="group overflow-hidden rounded-lg border border-slate-200 bg-white text-left transition-all hover:border-slate-900 hover:shadow-md"
           >
             <TemplateThumb contentType={t.value} />
@@ -128,7 +136,7 @@ export function TemplatePickerGrid({ onPick }: Props) {
               <div className="text-sm font-semibold text-slate-900">{t.label}</div>
               <div className="mt-1 line-clamp-2 text-xs text-slate-500">{t.desc}</div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
     </div>

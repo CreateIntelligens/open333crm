@@ -109,6 +109,8 @@ services:
       - api
     env_file:
       - .env.web
+    environment:
+      NODE_ENV: production
     ports:
       - "3000:3000"
 
@@ -133,4 +135,3 @@ volumes:
   minio_data:
   caddy_data:
   caddy_config:
-

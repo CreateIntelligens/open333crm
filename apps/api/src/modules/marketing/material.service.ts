@@ -16,6 +16,14 @@ import {
   type TemplateVariable,
 } from './template-renderer.js';
 import { resolveContext } from './template-context.js';
+import {
+  LINE_FLEX_TEMPLATE_CONTENT_TYPE,
+  LineFlexTemplateError,
+  normalizeLineFlexMessageBody,
+  validateLineFlexMessageBody,
+  type LineFlexMessageBody,
+} from '@open333crm/shared';
+import { decryptCredentials } from '../channel/channel.service.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -53,6 +61,16 @@ export interface ListMaterialsFilter {
   limit?: number;
 }
 
+export interface ImportLineFlexMaterialInput {
+  name: string;
+  description?: string;
+  category?: string;
+  payload: unknown;
+  altText?: string;
+  previewImageUrl?: string;
+  createdById?: string;
+}
+
 const ALLOWED_CHANNEL_TYPES = ['line', 'fb'];
 
 function validateChannelContentTypeConsistency(channelType: string, contentType: string) {
@@ -68,6 +86,129 @@ function validateChannelContentTypeConsistency(channelType: string, contentType:
       `contentType ${contentType} requires channelType=fb`,
       'INVALID_CHANNEL_CONTENT_TYPE',
       400,
+    );
+  }
+}
+
+function flexErrorToAppError(error: unknown): AppError {
+  if (error instanceof LineFlexTemplateError) {
+    return new AppError(error.message, error.code, 400);
+  }
+  if (error instanceof AppError) return error;
+  return new AppError(
+    error instanceof Error ? error.message : 'Invalid LINE Flex template',
+    'INVALID_LINE_FLEX_TEMPLATE',
+    400,
+  );
+}
+
+function assertLineFlexMessageBody(body: unknown): LineFlexMessageBody {
+  const normalized = normalizeLineFlexMessageBody(body);
+  const result = validateLineFlexMessageBody(normalized);
+  if (!result.valid) {
+    const first = result.errors[0];
+    throw new AppError(first.message, first.code, 400);
+  }
+  return normalized;
+}
+
+function buildLineQuickReply(quickReplies: unknown) {
+  if (!Array.isArray(quickReplies) || quickReplies.length === 0) return undefined;
+  return {
+    items: quickReplies.map((reply) => {
+      const item = reply as Record<string, unknown>;
+      const label = typeof item.label === 'string' ? item.label : '';
+      const text = typeof item.text === 'string' ? item.text : undefined;
+      const postbackData = typeof item.postbackData === 'string' ? item.postbackData : undefined;
+      const imageUrl = typeof item.imageUrl === 'string' ? item.imageUrl : undefined;
+      return {
+        type: 'action',
+        ...(imageUrl ? { imageUrl } : {}),
+        action: postbackData
+          ? { type: 'postback', label, data: postbackData, displayText: text }
+          : { type: 'message', label, text: text ?? label },
+      };
+    }),
+  };
+}
+
+function toLineFlexValidateMessage(body: LineFlexMessageBody): Record<string, unknown> {
+  const quickReply = buildLineQuickReply(body.quickReplies);
+  return {
+    type: 'flex',
+    altText: body.altText,
+    contents: body.contents,
+    ...(quickReply ? { quickReply } : {}),
+  };
+}
+
+function formatLineValidateError(status: number, body: unknown): string {
+  if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    const message = typeof record.message === 'string' ? record.message : undefined;
+    const details = Array.isArray(record.details)
+      ? record.details
+          .map((detail) => {
+            if (!detail || typeof detail !== 'object') return undefined;
+            const item = detail as Record<string, unknown>;
+            const property = typeof item.property === 'string' ? item.property : undefined;
+            const detailMessage = typeof item.message === 'string' ? item.message : undefined;
+            if (property && detailMessage) return `${property}: ${detailMessage}`;
+            return detailMessage;
+          })
+          .filter(Boolean)
+          .join('; ')
+      : undefined;
+    return [message, details].filter(Boolean).join(' - ') || `LINE validate API failed (${status})`;
+  }
+  return `LINE validate API failed (${status})`;
+}
+
+async function getLineChannelAccessToken(prisma: PrismaClient, tenantId: string): Promise<string> {
+  const channel = await prisma.channel.findFirst({
+    where: { tenantId, channelType: 'LINE', isActive: true },
+    orderBy: { createdAt: 'desc' },
+    select: { credentialsEncrypted: true },
+  });
+  if (!channel) {
+    throw new AppError('找不到啟用中的 LINE channel，無法使用 LINE validate API', 'LINE_CHANNEL_NOT_FOUND', 400);
+  }
+
+  const credentials = decryptCredentials(channel.credentialsEncrypted);
+  const token = credentials.channelAccessToken;
+  if (typeof token !== 'string' || !token) {
+    throw new AppError('LINE channelAccessToken 未設定，無法使用 LINE validate API', 'LINE_CHANNEL_TOKEN_MISSING', 400);
+  }
+  return token;
+}
+
+async function validateLineFlexMessageWithLineApi(
+  prisma: PrismaClient,
+  tenantId: string,
+  body: LineFlexMessageBody,
+): Promise<void> {
+  const token = await getLineChannelAccessToken(prisma, tenantId);
+  const response = await fetch('https://api.line.me/v2/bot/message/validate/reply', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: [toLineFlexValidateMessage(body)],
+    }),
+  });
+
+  const responseBody = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new AppError(
+      formatLineValidateError(response.status, responseBody),
+      'LINE_FLEX_VALIDATE_FAILED',
+      400,
+      {
+        status: response.status,
+        line: responseBody,
+      },
     );
   }
 }
@@ -152,6 +293,12 @@ export async function createMaterial(
     throw new AppError(`channelType must be one of ${ALLOWED_CHANNEL_TYPES.join(', ')}`, 'INVALID_CHANNEL_TYPE', 400);
   }
   validateChannelContentTypeConsistency(channelType, contentType);
+  let body = input.body ?? (template?.body as Record<string, unknown> | undefined) ?? {};
+  let variables = input.variables ?? (template?.variables as unknown as TemplateVariable[] | undefined) ?? [];
+  if (contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE) {
+    body = assertLineFlexMessageBody(body) as unknown as Record<string, unknown>;
+    variables = [];
+  }
 
   const material = await prisma.material.create({
     data: {
@@ -162,8 +309,8 @@ export async function createMaterial(
       category: input.category ?? template?.category ?? null,
       channelType,
       contentType,
-      body: (input.body ?? (template?.body as Record<string, unknown> | undefined) ?? {}) as Prisma.InputJsonValue,
-      variables: (input.variables ?? (template?.variables as unknown as TemplateVariable[] | undefined) ?? []) as unknown as Prisma.InputJsonValue,
+      body: body as Prisma.InputJsonValue,
+      variables: variables as unknown as Prisma.InputJsonValue,
       targetChannels: input.targetChannels ?? [],
       previewImageUrl: input.previewImageUrl ?? template?.previewImageUrl ?? null,
       createdById: input.createdById ?? null,
@@ -180,14 +327,21 @@ export async function updateMaterial(
   input: UpdateMaterialInput,
 ) {
   // 先 ensure 存在且屬於本 tenant
-  await getMaterial(prisma, id, tenantId);
+  const existing = await getMaterial(prisma, id, tenantId);
 
   const data: Record<string, unknown> = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.description !== undefined) data.description = input.description;
   if (input.category !== undefined) data.category = input.category;
-  if (input.body !== undefined) data.body = input.body;
+  if (input.body !== undefined) {
+    data.body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
+      ? assertLineFlexMessageBody(input.body)
+      : input.body;
+  }
   if (input.variables !== undefined) data.variables = input.variables;
+  if (existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE && input.body !== undefined) {
+    data.variables = [];
+  }
   if (input.targetChannels !== undefined) data.targetChannels = input.targetChannels;
   if (input.previewImageUrl !== undefined) data.previewImageUrl = input.previewImageUrl;
   if (input.isActive !== undefined) data.isActive = input.isActive;
@@ -198,6 +352,59 @@ export async function updateMaterial(
     data: data as any,
   });
   return updated;
+}
+
+// ─── LINE Flex Template Import ──────────────────────────────────────────
+
+export async function validateLineFlexDraft(
+  prisma: PrismaClient,
+  tenantId: string,
+  payload: unknown,
+  options: { altText?: string } = {},
+) {
+  try {
+    const body = normalizeLineFlexMessageBody(payload, { altText: options.altText });
+    const validation = validateLineFlexMessageBody(body);
+    if (!validation.valid) {
+      const first = validation.errors[0];
+      throw new AppError(first.message, first.code, 400);
+    }
+    await validateLineFlexMessageWithLineApi(prisma, tenantId, body);
+    return { body, validation };
+  } catch (error) {
+    throw flexErrorToAppError(error);
+  }
+}
+
+export async function importLineFlexMaterial(
+  prisma: PrismaClient,
+  tenantId: string,
+  input: ImportLineFlexMaterialInput,
+) {
+  try {
+    const body = normalizeLineFlexMessageBody(input.payload, {
+      altText: input.altText ?? input.name,
+    });
+    const validation = validateLineFlexMessageBody(body);
+    if (!validation.valid) {
+      const first = validation.errors[0];
+      throw new AppError(first.message, first.code, 400);
+    }
+
+    return createMaterial(prisma, tenantId, {
+      name: input.name,
+      description: input.description,
+      category: input.category,
+      channelType: 'line',
+      contentType: LINE_FLEX_TEMPLATE_CONTENT_TYPE,
+      body: body as unknown as Record<string, unknown>,
+      variables: [],
+      previewImageUrl: input.previewImageUrl,
+      createdById: input.createdById,
+    });
+  } catch (error) {
+    throw flexErrorToAppError(error);
+  }
 }
 
 export async function deleteMaterial(prisma: PrismaClient, id: string, tenantId: string) {
@@ -239,6 +446,20 @@ export async function previewMaterial(
   options: { contactId?: string; variables?: Record<string, string> } = {},
 ) {
   const material = await getMaterial(prisma, id, tenantId);
+  if (material.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE) {
+    const rendered = assertLineFlexMessageBody(material.body);
+    return {
+      material: {
+        id: material.id,
+        name: material.name,
+        channelType: material.channelType,
+        contentType: material.contentType,
+      },
+      rendered,
+      variables: {},
+      detectedKeys: [],
+    };
+  }
 
   const definedVars = (material.variables as unknown as TemplateVariable[]) ?? [];
   const detectedKeys = extractVariables(material.body);
@@ -293,6 +514,14 @@ export async function getMaterialForSend(
     : {};
   const provided = { ...contextValues, ...(options.variables ?? {}) };
   const variables = buildVariableMap(definedVars, provided);
+  if (material.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE) {
+    return {
+      channelType: material.channelType,
+      contentType: material.contentType,
+      renderedBody: assertLineFlexMessageBody(material.body) as unknown as Record<string, unknown>,
+      materialId: material.id,
+    };
+  }
   const renderedBody = renderTemplateBody(material.body as Record<string, unknown>, variables);
 
   return {
