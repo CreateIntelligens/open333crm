@@ -10,7 +10,7 @@ The system SHALL recognize a fixed enumeration of `contentType` values, organize
 
 | Category | Values |
 |---|---|
-| LINE | `line_text`, `line_image`, `line_carousel`, `line_imagemap`, `line_video` |
+| LINE | `line_text`, `line_image`, `line_carousel`, `line_imagemap`, `line_video`, `line_flex_template` |
 | FB | `fb_text`, `fb_image`, `fb_video`, `fb_generic`, `fb_button`, `fb_media`, `fb_coupon`, `fb_receipt`, `fb_feedback` |
 
 A Material's `channelType` MUST match its `contentType` prefix:
@@ -23,7 +23,7 @@ The following legacy contentTypes are no longer supported:
 - `line_flex_restaurant`, `line_flex_apparel`, `line_flex_hotel`, `line_flex_local_search`, `line_flex_real_estate`, `line_flex_social`, `line_flex_todo`, `line_flex_transit`, `line_flex_receipt`, `line_flex_shopping`, `line_flex_menu`, `line_flex_ticket`
 - legacy fallbacks `flex`, `quick_reply`, `fb_carousel`, `template`
 
-`line_imagemap` is supported only with the structure defined in this spec.
+`line_imagemap` is supported only with the structure defined in this spec. `line_flex_template` is supported only as imported LINE Flex Message JSON using the `line-flex-material-import` capability.
 
 #### Scenario: Reject deprecated contentType
 - **WHEN** a user POSTs a Material with `contentType: "line_flex_restaurant"` or `contentType: "universal_card"`
@@ -32,6 +32,14 @@ The following legacy contentTypes are no longer supported:
 #### Scenario: Accept new LINE-specific contentType
 - **WHEN** a user POSTs `{ channelType: "line", contentType: "line_carousel", body: {...} }`
 - **THEN** the Material is created successfully
+
+#### Scenario: Accept imported LINE Flex template contentType
+- **WHEN** a user POSTs `{ channelType: "line", contentType: "line_flex_template", body: { "type": "flex", "altText": "Sale", "contents": {...} } }`
+- **THEN** the Material is created successfully after LINE Flex import validation passes
+
+#### Scenario: Reject LINE Flex template with FB channel
+- **WHEN** a user POSTs `{ channelType: "fb", contentType: "line_flex_template", body: {...} }`
+- **THEN** the API returns HTTP 400 with `error.code="INVALID_CHANNEL_CONTENT_TYPE"`
 
 ### Requirement: Material as Reusable Sendable Content Unit
 
@@ -165,10 +173,11 @@ The `MessageTemplate` model and `materials.templateId` FK remain in the schema f
 - **THEN** the user selects channel and content type directly
 - **AND** no system template is required
 
-### Requirement: Visual Material Editor for line_flex Types Is Removed
+### Requirement: Legacy Preset Flex Editors Are Removed
 
-The system SHALL NOT expose the structure-tree editor for `line_flex_*` contentTypes. Users build LINE rich content via `line_carousel` or `line_imagemap`.
+The system SHALL NOT expose legacy preset structure-tree editors for `line_flex_*` contentTypes. Users build predefined LINE rich content via `line_carousel` or `line_imagemap`, or import finished LINE Flex Simulator JSON via `line_flex_template`.
 
-#### Scenario: line_flex editor unavailable
+#### Scenario: legacy line_flex preset editors unavailable
 - **WHEN** a user opens the Material creation flow
-- **THEN** no `line_flex_*` content type is offered
+- **THEN** legacy preset content types such as `line_flex_restaurant` and `line_flex_apparel` are not offered
+- **AND** `line_flex_template` remains available for imported Flex JSON

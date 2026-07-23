@@ -19,7 +19,7 @@ The following legacy contentTypes are no longer supported:
 - `line_flex_restaurant`, `line_flex_apparel`, `line_flex_hotel`, `line_flex_local_search`, `line_flex_real_estate`, `line_flex_social`, `line_flex_todo`, `line_flex_transit`, `line_flex_receipt`, `line_flex_shopping`, `line_flex_menu`, `line_flex_ticket`
 - legacy fallbacks `flex`, `quick_reply`, `fb_carousel`, `template`
 
-`line_imagemap` is supported only with the structure defined in this spec. `line_flex_template` is supported only with imported LINE Flex Message JSON and the field-hole structure defined by the `line-flex-material-import` capability.
+`line_imagemap` is supported only with the structure defined in this spec. `line_flex_template` is supported only as imported LINE Flex Message JSON using the `line-flex-material-import` capability.
 
 #### Scenario: Reject deprecated contentType
 - **WHEN** a user POSTs a Material with `contentType: "line_flex_restaurant"` or `contentType: "universal_card"`
@@ -30,8 +30,8 @@ The following legacy contentTypes are no longer supported:
 - **THEN** the Material is created successfully
 
 #### Scenario: Accept imported LINE Flex template contentType
-- **WHEN** a user POSTs `{ channelType: "line", contentType: "line_flex_template", body: { altText, contents, fields, editableContainers } }`
-- **THEN** the Material is created successfully after import-template validation passes
+- **WHEN** a user POSTs `{ channelType: "line", contentType: "line_flex_template", body: { "type": "flex", "altText": "Sale", "contents": {...} } }`
+- **THEN** the Material is created successfully after LINE Flex import validation passes
 
 #### Scenario: Reject LINE Flex template with FB channel
 - **WHEN** a user POSTs `{ channelType: "fb", contentType: "line_flex_template", body: {...} }`
