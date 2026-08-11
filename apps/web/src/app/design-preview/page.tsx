@@ -286,6 +286,45 @@ export default function DesignPreviewPage() {
             </div>
           </section>
 
+          {/* 階段 4：Sidebar 選中態示意 */}
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">階段 4 · Sidebar 導覽（選中態示意）</h2>
+            <div className="inline-flex flex-col gap-1 rounded-xl border border-border bg-card p-3 shadow-soft" style={{ width: 220 }}>
+              {[
+                { label: '收件匣', active: true, badge: 12 },
+                { label: '工單', active: false, badge: 3 },
+                { label: '聯繫人', active: false },
+                { label: '自動化', active: false },
+                { label: '報表', active: false },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className={
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ' +
+                    (item.active
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground')
+                  }
+                >
+                  <span className="h-4 w-4 rounded bg-current opacity-70" />
+                  <span>{item.label}</span>
+                  {item.badge && (
+                    <span
+                      className={
+                        'ml-auto min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-xs font-semibold ' +
+                        (item.active
+                          ? 'bg-primary-foreground/20 text-primary-foreground'
+                          : 'bg-destructive text-destructive-foreground')
+                      }
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
           {/* 字體 */}
           <section className="space-y-3">
             <h2 className="text-lg font-semibold">字體 Typography（Inter + Noto Sans TC）</h2>

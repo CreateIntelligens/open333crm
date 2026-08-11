@@ -29,7 +29,7 @@ export function Topbar({ title, children }: TopbarProps) {
         <div className="flex items-center gap-1.5">
           <div
             className={`h-2 w-2 rounded-full ${
-              isConnected ? "bg-green-500" : "bg-red-500"
+              isConnected ? "bg-success" : "bg-destructive"
             }`}
           />
           <span className="text-xs text-muted-foreground">
