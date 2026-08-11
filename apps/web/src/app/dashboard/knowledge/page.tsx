@@ -189,7 +189,7 @@ export default function KnowledgePage() {
             <TabsTrigger value="feedback">
               回報調教
               {feedback.length > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
                   {feedback.length}
                 </span>
               )}
@@ -328,7 +328,7 @@ export default function KnowledgePage() {
                       className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
                     >
                       <div className="flex items-center gap-2">
-                        <Brain className="h-4 w-4 text-green-500" />
+                        <Brain className="h-4 w-4 text-success" />
                         <h3 className="text-sm font-medium">{r.title}</h3>
                         <Badge variant="secondary" className="ml-auto text-xs">
                           {(r.similarity * 100).toFixed(1)}% 匹配
@@ -385,7 +385,7 @@ export default function KnowledgePage() {
                   {feedback.map((f) => (
                     <div key={f.id} className="rounded-lg border p-4">
                       <div className="flex items-start gap-2">
-                        <ThumbsDown className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                        <ThumbsDown className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">
@@ -398,7 +398,7 @@ export default function KnowledgePage() {
                             )}
                           </div>
                           <div className="mt-1.5 text-sm">
-                            <span className="font-medium text-slate-700">使用者問：</span>
+                            <span className="font-medium text-foreground">使用者問：</span>
                             {f.userQuestion || <span className="text-muted-foreground">（無法取得問句）</span>}
                           </div>
                           <div className="mt-1 text-sm text-muted-foreground">

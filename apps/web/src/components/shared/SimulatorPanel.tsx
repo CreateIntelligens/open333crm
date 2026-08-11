@@ -131,7 +131,7 @@ export function SimulatorPanel() {
               <p
                 className={cn(
                   'text-xs',
-                  status.type === 'success' ? 'text-green-600' : 'text-destructive'
+                  status.type === 'success' ? 'text-success' : 'text-destructive'
                 )}
               >
                 {status.text}

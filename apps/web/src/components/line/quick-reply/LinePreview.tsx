@@ -23,7 +23,7 @@ export function LinePreview({ message = '請選擇：', items }: Props) {
       {/* LINE OA 頭像 + bubble */}
       <div className="flex items-start gap-2">
         <div className="h-8 w-8 shrink-0 rounded-full bg-white shadow-sm" />
-        <div className="max-w-[80%] rounded-2xl bg-white px-3 py-2 text-sm text-slate-900 shadow-sm">
+        <div className="max-w-[80%] rounded-2xl bg-white px-3 py-2 text-sm text-foreground shadow-sm">
           {message}
         </div>
       </div>

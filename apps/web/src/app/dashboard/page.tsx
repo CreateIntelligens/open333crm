@@ -208,28 +208,28 @@ export default function DashboardPage() {
   /* ---- Stat card definitions ---- */
   const statCards = [
     {
-      icon: <MessageSquare className="h-6 w-6 text-blue-600" />,
+      icon: <MessageSquare className="h-6 w-6 text-primary" />,
       title: '未讀對話',
       value: stats.unreadConversations,
-      color: 'bg-blue-100',
+      color: 'bg-primary-subtle',
     },
     {
-      icon: <Briefcase className="h-6 w-6 text-orange-600" />,
+      icon: <Briefcase className="h-6 w-6 text-warning" />,
       title: '開啟中工單',
       value: stats.openCases,
-      color: 'bg-orange-100',
+      color: 'bg-warning-subtle',
     },
     {
-      icon: <Users className="h-6 w-6 text-emerald-600" />,
+      icon: <Users className="h-6 w-6 text-success" />,
       title: '聯繫人總數',
       value: stats.totalContacts,
-      color: 'bg-emerald-100',
+      color: 'bg-success-subtle',
     },
     {
-      icon: <Zap className="h-6 w-6 text-purple-600" />,
+      icon: <Zap className="h-6 w-6 text-ai" />,
       title: '活躍自動化規則',
       value: stats.activeRules,
-      color: 'bg-purple-100',
+      color: 'bg-ai-subtle',
     },
   ];
 

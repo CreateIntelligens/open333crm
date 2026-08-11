@@ -283,7 +283,7 @@ export function ChannelManagement() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : baseUrlSaved ? (
                     <>
-                      <Check className="mr-1 h-4 w-4 text-green-500" />
+                      <Check className="mr-1 h-4 w-4 text-success" />
                       已更新
                     </>
                   ) : (
@@ -292,7 +292,7 @@ export function ChannelManagement() {
                 </Button>
               </div>
               {webhookBaseUrl && (
-                <p className="text-xs text-green-600">
+                <p className="text-xs text-success">
                   目前使用：{webhookBaseUrl}
                 </p>
               )}
@@ -389,7 +389,7 @@ export function ChannelManagement() {
                             className="shrink-0 text-muted-foreground hover:text-foreground"
                           >
                             {copiedId === ch.id ? (
-                              <Check className="h-3 w-3 text-green-500" />
+                              <Check className="h-3 w-3 text-success" />
                             ) : (
                               <Copy className="h-3 w-3" />
                             )}
@@ -407,7 +407,7 @@ export function ChannelManagement() {
 
                       {/* FB Token warning */}
                       {channelStatuses[ch.id]?.tokenWarning && (
-                        <p className="mt-0.5 text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                        <p className="mt-0.5 text-xs text-warning dark:text-warning font-medium">
                           {channelStatuses[ch.id].tokenWarning}
                         </p>
                       )}
@@ -460,11 +460,11 @@ export function ChannelManagement() {
                     </Badge>
 
                     {verifyResult[ch.id]?.success && (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-success" />
                     )}
                     {verifyResult[ch.id] &&
                       !verifyResult[ch.id].success && (
-                        <XCircle className="h-4 w-4 text-red-500" />
+                        <XCircle className="h-4 w-4 text-destructive" />
                       )}
 
                     <Button

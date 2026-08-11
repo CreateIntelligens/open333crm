@@ -102,7 +102,7 @@ export default function RichMenusPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
 
       <div className="border-b bg-white px-6 py-3">
@@ -116,7 +116,7 @@ export default function RichMenusPage() {
           <header className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Rich Menu</h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 LINE 聊天視窗底部的固定選單。建立草稿後可直接發布到 LINE。
               </p>
             </div>
@@ -131,18 +131,18 @@ export default function RichMenusPage() {
           </header>
 
           {!channelId && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
-              <div className="text-sm text-slate-500">請先選擇 LINE 官方帳號</div>
+            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
+              <div className="text-sm text-muted-foreground">請先選擇 LINE 官方帳號</div>
             </div>
           )}
 
           {channelId && isLoading && (
-            <div className="py-12 text-center text-sm text-slate-500">載入中…</div>
+            <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>
           )}
 
           {channelId && !isLoading && richMenus.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
-              <div className="text-sm text-slate-500">尚未建立任何 Rich Menu</div>
+            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
+              <div className="text-sm text-muted-foreground">尚未建立任何 Rich Menu</div>
               <Button
                 className="mt-3"
                 onClick={() => router.push(`/dashboard/line/rich-menus/new?channelId=${channelId}`)}
@@ -195,27 +195,27 @@ function RichMenuCard({
   const isDraft = richMenu.status === 'draft';
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
       {/* 縮圖：背景圖（高度比例壓縮，避免大選單把卡片撐爆） */}
-      <div className="relative aspect-[2500/843] w-full overflow-hidden bg-slate-100">
+      <div className="relative aspect-[2500/843] w-full overflow-hidden bg-muted">
         {richMenu.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={richMenu.imageUrl} alt={richMenu.name} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-slate-400">無背景圖</div>
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">無背景圖</div>
         )}
       </div>
 
       <div className="space-y-2 p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="truncate font-semibold text-slate-900">{richMenu.name}</div>
-            <div className="mt-0.5 text-xs text-slate-500">{richMenu.chatBarText}</div>
+            <div className="truncate font-semibold text-foreground">{richMenu.name}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{richMenu.chatBarText}</div>
           </div>
           <Badge color={statusInfo.color}>{statusInfo.label}</Badge>
         </div>
 
-        <div className="text-[11px] text-slate-400">
+        <div className="text-[11px] text-muted-foreground">
           {richMenu.areas.length} 區域 · {new Date(richMenu.updatedAt).toISOString().slice(0, 10)}
         </div>
 
@@ -247,17 +247,17 @@ function RichMenuCard({
               <MoreHorizontal className="h-3 w-3" />
             </Button>
             {menuOpen && (
-              <div className="absolute right-0 top-full z-10 mt-1 w-28 rounded-md border border-slate-200 bg-white py-1 shadow-md">
+              <div className="absolute right-0 top-full z-10 mt-1 w-28 rounded-md border border-border bg-white py-1 shadow-md">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-slate-50"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
                   onClick={() => { setMenuOpen(false); onDuplicate(richMenu.id); }}
                 >
                   <Copy className="h-3 w-3" />複製
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-destructive hover:bg-destructive-subtle disabled:opacity-40 disabled:cursor-not-allowed"
                   disabled={isPublished}
                   title={isPublished ? '已發布需先取消發布才能刪除' : undefined}
                   onClick={() => { setMenuOpen(false); onDelete(richMenu.id); }}

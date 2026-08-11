@@ -21,7 +21,7 @@ export function LayoutPicker({ onPick }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">大選單（2500 × 1686）</h2>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">大選單（2500 × 1686）</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {large.map((l) => (
             <LayoutCard key={l.id} layout={l} onClick={() => onPick(l)} />
@@ -30,7 +30,7 @@ export function LayoutPicker({ onPick }: Props) {
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">小選單（2500 × 843）</h2>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">小選單（2500 × 843）</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {compact.map((l) => (
             <LayoutCard key={l.id} layout={l} onClick={() => onPick(l)} />
@@ -49,10 +49,10 @@ function LayoutCard({ layout, onClick }: { layout: RichMenuLayout; onClick: () =
     <button
       type="button"
       onClick={onClick}
-      className="group rounded-lg border border-slate-200 bg-white p-3 text-left transition-all hover:border-emerald-400 hover:shadow-md"
+      className="group rounded-lg border border-border bg-white p-3 text-left transition-all hover:border-success hover:shadow-md"
     >
       <div
-        className="relative w-full overflow-hidden rounded-md bg-slate-100"
+        className="relative w-full overflow-hidden rounded-md bg-muted"
         style={{ aspectRatio: cardAspect }}
       >
         {layout.defaultAreas.map((area, idx) => {
@@ -63,7 +63,7 @@ function LayoutCard({ layout, onClick }: { layout: RichMenuLayout; onClick: () =
           return (
             <div
               key={idx}
-              className="absolute flex items-center justify-center border border-slate-400 bg-white/70 text-[10px] font-medium text-slate-600 group-hover:border-emerald-400 group-hover:text-emerald-700"
+              className="absolute flex items-center justify-center border border-input bg-white/70 text-[10px] font-medium text-muted-foreground group-hover:border-success group-hover:text-success"
               style={{
                 left: `${left}%`,
                 top: `${top}%`,
@@ -77,8 +77,8 @@ function LayoutCard({ layout, onClick }: { layout: RichMenuLayout; onClick: () =
         })}
       </div>
       <div className="mt-2">
-        <div className="text-sm font-semibold text-slate-900">{layout.label}</div>
-        <div className="mt-0.5 text-[11px] text-slate-500">{layout.description}</div>
+        <div className="text-sm font-semibold text-foreground">{layout.label}</div>
+        <div className="mt-0.5 text-[11px] text-muted-foreground">{layout.description}</div>
       </div>
     </button>
   );

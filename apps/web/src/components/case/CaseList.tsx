@@ -11,10 +11,10 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
 
 const PRIORITY_COLORS: Record<string, string> = {
-  URGENT: 'bg-red-500',
-  HIGH: 'bg-orange-500',
-  MEDIUM: 'bg-blue-500',
-  LOW: 'bg-gray-400',
+  URGENT: 'bg-destructive',
+  HIGH: 'bg-warning',
+  MEDIUM: 'bg-primary',
+  LOW: 'bg-muted-foreground',
 };
 
 interface CaseListProps {
@@ -115,7 +115,7 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
             >
               {/* Priority color bar */}
               <td className="w-1 p-0">
-                <div className={`h-full w-1 ${PRIORITY_COLORS[c.priority] || 'bg-gray-300'}`} />
+                <div className={`h-full w-1 ${PRIORITY_COLORS[c.priority] || 'bg-border'}`} />
               </td>
               <td className="px-4 py-3 text-sm font-mono text-muted-foreground">
                 {c.id.slice(0, 8)}

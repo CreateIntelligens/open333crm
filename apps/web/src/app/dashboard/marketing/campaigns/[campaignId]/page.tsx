@@ -156,25 +156,25 @@ export default function CampaignDetailPage() {
               <p className="text-sm text-muted-foreground">總發送</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <p className="text-3xl font-bold text-green-600">{metrics.delivered ?? 0}</p>
+              <p className="text-3xl font-bold text-success">{metrics.delivered ?? 0}</p>
               <p className="text-sm text-muted-foreground">成功送達</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <p className="text-3xl font-bold text-red-600">{metrics.failed ?? 0}</p>
+              <p className="text-3xl font-bold text-destructive">{metrics.failed ?? 0}</p>
               <p className="text-sm text-muted-foreground">失敗</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <p className="text-3xl font-bold text-blue-600">{metrics.deliveryRate ?? 0}%</p>
+              <p className="text-3xl font-bold text-primary">{metrics.deliveryRate ?? 0}%</p>
               <p className="text-sm text-muted-foreground">送達率</p>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <p className="text-3xl font-bold text-purple-600">{metrics.replied ?? 0}</p>
+              <p className="text-3xl font-bold text-ai">{metrics.replied ?? 0}</p>
               <p className="text-sm text-muted-foreground">
                 回覆 {metrics.replyRate ? `(${metrics.replyRate}%)` : ''}
               </p>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <p className="text-3xl font-bold text-orange-600">{metrics.casesOpened ?? 0}</p>
+              <p className="text-3xl font-bold text-warning">{metrics.casesOpened ?? 0}</p>
               <p className="text-sm text-muted-foreground">引發開案</p>
             </div>
           </div>
@@ -223,8 +223,8 @@ export default function CampaignDetailPage() {
                                 : b.targetType}
                           </td>
                           <td className="py-3">{b.totalCount}</td>
-                          <td className="py-3 text-green-600">{b.successCount}</td>
-                          <td className="py-3 text-red-600">{b.failedCount}</td>
+                          <td className="py-3 text-success">{b.successCount}</td>
+                          <td className="py-3 text-destructive">{b.failedCount}</td>
                           <td className="py-3 text-muted-foreground">
                             {b.sentAt
                               ? new Date(b.sentAt).toLocaleString('zh-TW')

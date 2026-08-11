@@ -114,7 +114,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
                       type="checkbox"
                       checked={draft.statuses.includes(opt.value)}
                       onChange={() => toggleStatus(opt.value)}
-                      className="rounded border-gray-300"
+                      className="rounded border-input"
                     />
                     {opt.label}
                   </label>
@@ -134,7 +134,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
                       type="checkbox"
                       checked={draft.channels.includes(opt.value)}
                       onChange={() => toggleChannel(opt.value)}
-                      className="rounded border-gray-300"
+                      className="rounded border-input"
                     />
                     {opt.label}
                   </label>

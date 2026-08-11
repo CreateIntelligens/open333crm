@@ -37,8 +37,8 @@ function MetricCard({ label, value, target, unit = '', higherIsBetter = true, is
             <p className="text-2xl font-bold">
               {value ?? '-'}{unit}
             </p>
-            {status === 'ok' && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
-            {status === 'warning' && <AlertTriangle className="h-5 w-5 text-amber-500" />}
+            {status === 'ok' && <CheckCircle2 className="h-5 w-5 text-success" />}
+            {status === 'warning' && <AlertTriangle className="h-5 w-5 text-warning" />}
           </div>
         )}
         {target != null && (
@@ -68,28 +68,28 @@ export default function MyPerformancePage() {
       <div className="flex-1 overflow-auto p-6">
         {/* Alert cards */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Card className="border-orange-200 bg-orange-50">
+          <Card className="border-warning/30 bg-warning-subtle">
             <CardContent className="flex items-center gap-4 p-5">
-              <Clock className="h-8 w-8 text-orange-500" />
+              <Clock className="h-8 w-8 text-warning" />
               <div>
-                <p className="text-sm font-medium text-orange-700">待處理案件</p>
+                <p className="text-sm font-medium text-warning">待處理案件</p>
                 {isLoading ? (
-                  <Loader2 className="mt-1 h-5 w-5 animate-spin text-orange-400" />
+                  <Loader2 className="mt-1 h-5 w-5 animate-spin text-warning" />
                 ) : (
-                  <p className="text-2xl font-bold text-orange-800">{data?.pendingCases ?? 0}</p>
+                  <p className="text-2xl font-bold text-warning">{data?.pendingCases ?? 0}</p>
                 )}
               </div>
             </CardContent>
           </Card>
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border-destructive/30 bg-destructive-subtle">
             <CardContent className="flex items-center gap-4 p-5">
-              <AlertTriangle className="h-8 w-8 text-red-500" />
+              <AlertTriangle className="h-8 w-8 text-destructive" />
               <div>
-                <p className="text-sm font-medium text-red-700">SLA 即將到期</p>
+                <p className="text-sm font-medium text-destructive">SLA 即將到期</p>
                 {isLoading ? (
-                  <Loader2 className="mt-1 h-5 w-5 animate-spin text-red-400" />
+                  <Loader2 className="mt-1 h-5 w-5 animate-spin text-destructive" />
                 ) : (
-                  <p className="text-2xl font-bold text-red-800">{data?.slaSoonExpiring ?? 0}</p>
+                  <p className="text-2xl font-bold text-destructive">{data?.slaSoonExpiring ?? 0}</p>
                 )}
               </div>
             </CardContent>

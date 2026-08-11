@@ -79,14 +79,14 @@ const eventIcons: Record<string, React.ReactNode> = {
 };
 
 const eventColors: Record<string, string> = {
-  conversation: 'bg-blue-100 text-blue-700',
-  case: 'bg-purple-100 text-purple-700',
-  case_event: 'bg-purple-50 text-purple-600',
-  tag: 'bg-green-100 text-green-700',
-  tag_added: 'bg-green-100 text-green-700',
-  tag_removed: 'bg-red-100 text-red-700',
-  created: 'bg-gray-100 text-gray-700',
-  message: 'bg-blue-100 text-blue-700',
+  conversation: 'bg-primary-subtle text-primary',
+  case: 'bg-ai-subtle text-ai',
+  case_event: 'bg-ai-subtle text-ai',
+  tag: 'bg-success-subtle text-success',
+  tag_added: 'bg-success-subtle text-success',
+  tag_removed: 'bg-destructive-subtle text-destructive',
+  created: 'bg-muted text-foreground',
+  message: 'bg-primary-subtle text-primary',
 };
 
 export function ContactTimeline({ events }: ContactTimelineProps) {

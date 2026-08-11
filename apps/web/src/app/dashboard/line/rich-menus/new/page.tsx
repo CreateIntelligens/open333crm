@@ -31,10 +31,10 @@ export default function NewRichMenuPage() {
   // 沒帶 channelId → 顯示提示
   if (!channelId) {
     return (
-      <div className="flex h-screen flex-col bg-slate-50">
+      <div className="flex h-screen flex-col bg-muted">
         <Topbar title="LINE 管理" />
         <main className="flex-1 overflow-y-auto p-6">
-          <div className="mx-auto max-w-4xl rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mx-auto max-w-4xl rounded-lg border border-warning/30 bg-warning-subtle p-4 text-sm text-warning">
             缺少 channelId，請從列表頁點「建立 Rich Menu」按鈕進入。
             <Button className="mt-2 block" onClick={() => router.push('/dashboard/line/rich-menus')}>
               回到列表
@@ -80,7 +80,7 @@ export default function NewRichMenuPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
       <LineModuleTabs active="rich-menus" />
 
@@ -105,7 +105,7 @@ export default function NewRichMenuPage() {
             <div>
               <header className="mb-4">
                 <h1 className="text-2xl font-bold tracking-tight">選擇版型</h1>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-muted-foreground">
                   從 10 種官方版型挑一個，下一步再填內容。
                 </p>
               </header>
@@ -116,7 +116,7 @@ export default function NewRichMenuPage() {
           {draft && (
             <div className="space-y-4">
               {error && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
                   {error}
                 </div>
               )}

@@ -107,7 +107,7 @@ export function ArticleList({
                 <div className="flex items-start gap-1.5">
                   {article.hasEmbedding && (
                     <span title="已向量化">
-                      <Brain className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" />
+                      <Brain className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
                     </span>
                   )}
                   <div>

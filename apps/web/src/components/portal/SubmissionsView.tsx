@@ -126,7 +126,7 @@ export function SubmissionsView() {
                 <ul className="mt-2 space-y-1">
                   {winners.map((w) => (
                     <li key={w.id} className="flex items-center gap-2">
-                      <Award className="h-4 w-4 text-yellow-500" />
+                      <Award className="h-4 w-4 text-warning" />
                       <span>{w.contact.displayName}</span>
                     </li>
                   ))}

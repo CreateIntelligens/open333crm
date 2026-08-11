@@ -113,7 +113,7 @@ export function HandoffModal({ open, onClose, conversationId, onConfirm }: Hando
                       : String(msg.content);
                     return (
                       <div key={msg.id} className="flex items-start gap-2 text-xs">
-                        <Bot className="mt-0.5 h-3 w-3 shrink-0 text-purple-500" />
+                        <Bot className="mt-0.5 h-3 w-3 shrink-0 text-ai" />
                         <p className="text-muted-foreground">{text}</p>
                       </div>
                     );

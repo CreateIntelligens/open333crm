@@ -172,8 +172,8 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
               {fileStatuses.map((fs) => (
                 <div key={fs.name} className="flex items-center gap-2 text-sm">
                   {fs.state === 'pending' && <FileText className="h-4 w-4 text-muted-foreground" />}
-                  {fs.state === 'uploading' && <Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
-                  {fs.state === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                  {fs.state === 'uploading' && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                  {fs.state === 'success' && <CheckCircle2 className="h-4 w-4 text-success" />}
                   {fs.state === 'error' && <XCircle className="h-4 w-4 text-destructive" />}
                   <span className="flex-1 truncate">{fs.name}</span>
                   {fs.error && (
@@ -186,7 +186,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
 
           {/* Summary */}
           {done && (
-            <div className="rounded-md bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-300">
+            <div className="rounded-md bg-success-subtle p-3 text-sm text-success">
               上傳完成：成功 {successCount} 個，失敗 {errorCount} 個
             </div>
           )}

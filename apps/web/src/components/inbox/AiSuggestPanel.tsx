@@ -40,7 +40,7 @@ export function AiSuggestPanel({ open, onClose, conversationId, onAdopt }: AiSug
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-2.5">
         <div className="flex items-center gap-1.5">
-          <Lightbulb className="h-4 w-4 text-amber-500" />
+          <Lightbulb className="h-4 w-4 text-warning" />
           <h3 className="text-sm font-semibold">AI 建議回覆</h3>
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -65,10 +65,10 @@ export function AiSuggestPanel({ open, onClose, conversationId, onAdopt }: AiSug
               <div className="flex items-center gap-2">
                 <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                   sug.confidence >= 0.8
-                    ? 'bg-green-100 text-green-700'
+                    ? 'bg-success-subtle text-success'
                     : sug.confidence >= 0.5
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-red-100 text-red-700'
+                      ? 'bg-warning-subtle text-warning'
+                      : 'bg-destructive-subtle text-destructive'
                 }`}>
                   {Math.round(sug.confidence * 100)}%
                 </span>
@@ -80,7 +80,7 @@ export function AiSuggestPanel({ open, onClose, conversationId, onAdopt }: AiSug
                       <a
                         key={ref.id}
                         href={ref.url || '#'}
-                        className="inline-flex items-center gap-0.5 text-[10px] text-blue-600 hover:underline"
+                        className="inline-flex items-center gap-0.5 text-[10px] text-primary hover:underline"
                         target="_blank"
                         rel="noopener noreferrer"
                       >

@@ -29,12 +29,12 @@ export function OaSwitcher({ value, onChange }: Props) {
   );
 
   if (isLoading) {
-    return <div className="text-sm text-slate-400">載入中…</div>;
+    return <div className="text-sm text-muted-foreground">載入中…</div>;
   }
 
   if (lineChannels.length === 0) {
     return (
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
         尚未設定任何 LINE 官方帳號。請先到「設定 &gt; 渠道」新增 LINE 渠道。
       </div>
     );
@@ -42,7 +42,7 @@ export function OaSwitcher({ value, onChange }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      <label className="text-xs font-medium text-slate-600">選擇官方帳號：</label>
+      <label className="text-xs font-medium text-muted-foreground">選擇官方帳號：</label>
       <Select
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}

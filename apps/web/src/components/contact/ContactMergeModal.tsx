@@ -545,15 +545,15 @@ export function ContactMergeModal({
         {/* Step 3: Confirm merge */}
         {step === 2 && selectedSecondary && (
           <div className="space-y-4">
-            <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 dark:border-yellow-700 dark:bg-yellow-950">
+            <div className="rounded-lg border border-warning/40 bg-warning-subtle p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning dark:text-warning" />
                 <div className="text-sm">
-                  <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                  <p className="font-medium text-warning">
                     合併後 {selectedSecondary.displayName} (C-{shortId(selectedSecondary.id)})
                     將永久封存，此操作無法復原，請確認後再執行。
                   </p>
-                  <p className="mt-2 text-yellow-700 dark:text-yellow-300">
+                  <p className="mt-2 text-warning">
                     所有渠道身份、對話、案件、標籤和自訂屬性將轉移至{' '}
                     {primaryContact.displayName} (C-{shortId(primaryContact.id)})。
                   </p>
@@ -566,7 +566,7 @@ export function ContactMergeModal({
                 type="checkbox"
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-input"
               />
               <span className="text-sm">我已確認並瞭解</span>
             </label>
@@ -582,7 +582,7 @@ export function ContactMergeModal({
                 type="button"
                 disabled={!confirmed || merging}
                 onClick={handleMerge}
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="bg-success hover:bg-success/90 text-white"
               >
                 {merging ? (
                   <>

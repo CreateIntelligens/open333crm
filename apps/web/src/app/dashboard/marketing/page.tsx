@@ -138,7 +138,7 @@ function CampaignTab() {
                       handleDelete(c.id);
                     }}
                   >
-                    <Trash2 className="h-4 w-4 text-red-500" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               )}
@@ -350,8 +350,8 @@ function BroadcastTab() {
                     {b.targetType === 'all' ? '全部' : b.targetType === 'segment' ? '分群' : b.targetType}
                   </td>
                   <td className="py-3">{b.totalCount}</td>
-                  <td className="py-3 text-green-600">{b.successCount}</td>
-                  <td className="py-3 text-red-600">{b.failedCount}</td>
+                  <td className="py-3 text-success">{b.successCount}</td>
+                  <td className="py-3 text-destructive">{b.failedCount}</td>
                   <td className="py-3 text-muted-foreground">
                     {b.sentAt
                       ? new Date(b.sentAt).toLocaleString('zh-TW')
@@ -367,7 +367,7 @@ function BroadcastTab() {
                             <Play className="h-4 w-4" />
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleCancel(b.id)} title="取消">
-                            <XCircle className="h-4 w-4 text-red-500" />
+                            <XCircle className="h-4 w-4 text-destructive" />
                           </Button>
                         </>
                       )}
@@ -436,7 +436,7 @@ function BroadcastTab() {
                 const selected = materials.find((m: Material) => m.id === formData.materialId);
                 if (!selected) return null;
                 return (
-                  <div className="mt-2 rounded-md border bg-slate-50 p-3">
+                  <div className="mt-2 rounded-md border bg-muted p-3">
                     <p className="mb-2 text-xs font-medium text-muted-foreground">素材預覽</p>
                     <div className="flex justify-center">
                       <div style={{ transform: 'scale(0.7)', transformOrigin: 'top center' }}>
@@ -665,7 +665,7 @@ function SegmentTab() {
                   </td>
                   <td className="py-3">
                     <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </td>
                 </tr>
@@ -754,7 +754,7 @@ function SegmentTab() {
                     onClick={() => removeCondition(idx)}
                     disabled={formData.conditions.length <= 1}
                   >
-                    <Trash2 className="h-4 w-4 text-red-500" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               ))}

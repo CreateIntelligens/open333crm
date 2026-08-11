@@ -322,9 +322,9 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             {caseData.slaPolicyData?.firstResponseMinutes != null && (
               <p className="text-muted-foreground">
                 首次回應：
-                {slaFirstResponseMet === true && <span className="text-green-600 font-medium ml-1">已達 ✓</span>}
-                {slaFirstResponseMet === false && <span className="text-red-600 font-medium ml-1">未達 ✗</span>}
-                {slaFirstResponseMet === null && <span className="text-yellow-600 ml-1">待回應</span>}
+                {slaFirstResponseMet === true && <span className="text-success font-medium ml-1">已達 ✓</span>}
+                {slaFirstResponseMet === false && <span className="text-destructive font-medium ml-1">未達 ✗</span>}
+                {slaFirstResponseMet === null && <span className="text-warning ml-1">待回應</span>}
               </p>
             )}
             {caseData.slaPolicyData?.resolutionMinutes != null && (
@@ -405,7 +405,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
               {caseData.contact.channelIdentities && caseData.contact.channelIdentities.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {caseData.contact.channelIdentities.map((ci) => (
-                    <Badge key={ci.id} className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200">
+                    <Badge key={ci.id} className="text-xs bg-primary-subtle text-primary hover:bg-primary-subtle">
                       {CHANNEL_TYPE_LABELS[ci.channelType] || ci.channelType}
                     </Badge>
                   ))}

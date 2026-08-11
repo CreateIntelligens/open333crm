@@ -176,7 +176,7 @@ export function CliSessionManagement() {
                       {s.scopes.map((scope) => (
                         <span
                           key={scope}
-                          className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                          className="inline-flex items-center rounded-full bg-primary-subtle px-2 py-0.5 text-[10px] font-medium text-primary"
                         >
                           {scope}
                         </span>
@@ -370,7 +370,7 @@ function CreatedCliSessionDialog({
 
         {sessionData && (
           <div className="mt-2 space-y-4">
-            <div className="rounded-md border-2 border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="rounded-md border-2 border-warning/40 bg-warning-subtle p-3 text-xs text-warning">
               ⚠️ <strong>請立刻複製並妥善保存</strong>
               。關閉視窗後將無法再次查看完整 token，列表只會顯示前後遮罩。
             </div>
@@ -386,7 +386,7 @@ function CreatedCliSessionDialog({
                 <Button onClick={handleCopy} variant="outline" size="default">
                   {copied ? (
                     <>
-                      <Check className="mr-1.5 h-4 w-4 text-green-600" />
+                      <Check className="mr-1.5 h-4 w-4 text-success" />
                       已複製
                     </>
                   ) : (
