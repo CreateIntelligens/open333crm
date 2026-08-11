@@ -46,10 +46,10 @@ export function FilterChips({ filters, onChange, resultCount }: FilterChipsProps
         {filters.statuses.map((s) => (
           <span
             key={s}
-            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+            className="inline-flex items-center gap-1 rounded-lg bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary"
           >
             {STATUS_LABELS[s] || s}
-            <button onClick={() => removeStatus(s)} className="hover:text-blue-900">
+            <button onClick={() => removeStatus(s)} className="hover:opacity-70">
               <X className="h-3 w-3" />
             </button>
           </span>
@@ -57,18 +57,18 @@ export function FilterChips({ filters, onChange, resultCount }: FilterChipsProps
         {filters.channels.map((c) => (
           <span
             key={c}
-            className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700"
+            className="inline-flex items-center gap-1 rounded-lg bg-success-subtle px-2 py-0.5 text-xs font-medium text-success"
           >
             {c}
-            <button onClick={() => removeChannel(c)} className="hover:text-green-900">
+            <button onClick={() => removeChannel(c)} className="hover:opacity-70">
               <X className="h-3 w-3" />
             </button>
           </span>
         ))}
         {filters.assignee && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-700">
+          <span className="inline-flex items-center gap-1 rounded-lg bg-ai-subtle px-2 py-0.5 text-xs font-medium text-ai">
             {ASSIGNEE_LABELS[filters.assignee] || '指定客服'}
-            <button onClick={removeAssignee} className="hover:text-purple-900">
+            <button onClick={removeAssignee} className="hover:opacity-70">
               <X className="h-3 w-3" />
             </button>
           </span>

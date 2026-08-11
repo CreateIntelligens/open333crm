@@ -3,33 +3,35 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
+/**
+ * CaseStatusBadge — 對齊 Figma「Tag / CaseStatus」(1070:9047)
+ * 語意色「淺底深字」、圓角 12px。
+ */
 interface CaseStatusBadgeProps {
   status: string;
   className?: string;
 }
 
-const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-  open: { bg: 'bg-green-100', text: 'text-green-700', label: '開啟' },
-  in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', label: '處理中' },
-  pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '待處理' },
-  escalated: { bg: 'bg-orange-100', text: 'text-orange-700', label: '已升級' },
-  resolved: { bg: 'bg-purple-100', text: 'text-purple-700', label: '已解決' },
-  closed: { bg: 'bg-gray-100', text: 'text-gray-600', label: '已關閉' },
+const statusConfig: Record<string, { className: string; label: string }> = {
+  open: { className: 'bg-primary-subtle text-primary', label: '開啟' },
+  in_progress: { className: 'bg-warning-subtle text-warning', label: '處理中' },
+  pending: { className: 'bg-primary-subtle text-primary', label: '待處理' },
+  escalated: { className: 'bg-destructive-subtle text-destructive', label: '已升級' },
+  resolved: { className: 'bg-success-subtle text-success', label: '已解決' },
+  closed: { className: 'bg-muted text-muted-foreground', label: '已關閉' },
 };
 
 export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
   const config = statusConfig[status] || {
-    bg: 'bg-gray-100',
-    text: 'text-gray-700',
+    className: 'bg-muted text-muted-foreground',
     label: status,
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-        config.bg,
-        config.text,
+        'inline-flex items-center rounded-lg px-2.5 py-0.5 text-xs font-semibold',
+        config.className,
         className
       )}
     >

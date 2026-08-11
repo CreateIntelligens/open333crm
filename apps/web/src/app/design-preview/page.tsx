@@ -13,6 +13,11 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar } from '@/components/ui/avatar';
+import { MessageBubble } from '@/components/inbox/MessageBubble';
+import { CaseStatusBadge } from '@/components/case/CaseStatusBadge';
+import { CasePriorityBadge } from '@/components/case/CasePriorityBadge';
+import { ChannelBadge } from '@/components/shared/ChannelBadge';
+import { CsatMessage } from '@/components/inbox/CsatMessage';
 
 function PillTabsDemo() {
   const [tab, setTab] = useState('ongoing');
@@ -237,6 +242,47 @@ export default function DesignPreviewPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          {/* 階段 3：CRM 專屬元件 */}
+          <section className="space-y-5 rounded-xl border border-ai-border bg-ai-subtle/20 p-6">
+            <h2 className="text-lg font-semibold text-ai">階段 3 · CRM 專屬元件（真實元件）</h2>
+
+            {/* 狀態 / 優先級 / 通道標籤 */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-muted-foreground">案件狀態 / 優先級 / 通道標籤</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <CaseStatusBadge status="in_progress" />
+                <CaseStatusBadge status="resolved" />
+                <CaseStatusBadge status="pending" />
+                <CaseStatusBadge status="escalated" />
+                <CaseStatusBadge status="closed" />
+                <span className="mx-1 text-border">|</span>
+                <CasePriorityBadge priority="urgent" />
+                <CasePriorityBadge priority="high" />
+                <CasePriorityBadge priority="low" />
+                <span className="mx-1 text-border">|</span>
+                <ChannelBadge channel="LINE" />
+                <ChannelBadge channel="FB" />
+                <ChannelBadge channel="WEBCHAT" />
+              </div>
+            </div>
+
+            {/* 聊天泡泡 (真實 MessageBubble) */}
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-muted-foreground">聊天泡泡 MessageBubble（含 Bot AI 回覆）</p>
+              <div className="rounded-xl border border-border bg-background py-2">
+                <MessageBubble message={{ id: '1', direction: 'inbound', contentType: 'text', content: '冰箱不製冷了，可以幫我安排維修嗎？', senderName: '陳小芳', createdAt: new Date('2026-01-01T10:32:00').toISOString() }} />
+                <MessageBubble message={{ id: '2', direction: 'outbound', contentType: 'text', content: '好的，已為您安排維修師傅到府。', createdAt: new Date('2026-01-01T10:33:00').toISOString() }} />
+                <MessageBubble message={{ id: '3', direction: 'outbound', contentType: 'text', content: '已為您建立案件工單，維修師傅今日 14-18 時到府，請您留意時間，謝謝。', senderType: 'BOT', createdAt: new Date('2026-01-01T10:33:00').toISOString(), metadata: { confidence: 0.92, triggerType: 'semantic' } }} />
+              </div>
+            </div>
+
+            {/* CSAT 評分卡 */}
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-muted-foreground">CSAT 滿意度評分卡</p>
+              <CsatMessage score={4} readonly />
             </div>
           </section>
 

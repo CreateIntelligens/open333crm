@@ -49,9 +49,9 @@ export function ConversationListItem({
     <button
       onClick={onClick}
       className={cn(
-        'flex w-full items-start gap-3 rounded-md px-3 py-3 text-left transition-colors hover:bg-accent',
-        isSelected && 'bg-accent',
-        unreadCount > 0 && !isSelected && 'bg-blue-50/50'
+        'flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-accent',
+        isSelected && 'bg-primary-subtle ring-1 ring-primary-border',
+        unreadCount > 0 && !isSelected && 'bg-primary-subtle/40'
       )}
     >
       <Avatar
@@ -76,18 +76,18 @@ export function ConversationListItem({
         <div className="mt-0.5 flex items-center gap-1.5">
           <ChannelBadge channel={conversation.channelType} />
           {isBotHandled && (
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+            <span className="inline-flex items-center rounded-md bg-ai-subtle px-1.5 py-0.5 text-[10px] font-medium text-ai">
               Bot 中
             </span>
           )}
           {conversation.lastMessageSentiment === 'positive' && (
-            <span className="inline-block h-2 w-2 rounded-full bg-green-500" title="正面情緒" />
+            <span className="inline-block h-2 w-2 rounded-full bg-success" title="正面情緒" />
           )}
           {conversation.lastMessageSentiment === 'negative' && (
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500" title="負面情緒" />
+            <span className="inline-block h-2 w-2 rounded-full bg-destructive" title="負面情緒" />
           )}
           {conversation.caseId && (
-            <FileText className="h-3 w-3 text-orange-500" />
+            <FileText className="h-3 w-3 text-warning" />
           )}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
@@ -101,8 +101,8 @@ export function ConversationListItem({
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
             {showCsat && conversation.csatScore != null && (
-              <span className="flex items-center gap-0.5 text-[10px] text-amber-500">
-                <Star className="h-3 w-3 fill-amber-400" />
+              <span className="flex items-center gap-0.5 text-[10px] text-warning">
+                <Star className="h-3 w-3 fill-warning" />
                 {conversation.csatScore}
               </span>
             )}
