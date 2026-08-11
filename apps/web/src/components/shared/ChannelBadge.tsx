@@ -4,32 +4,34 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import type { ChannelType } from '@open333crm/shared';
 
+/**
+ * ChannelBadge — 對齊 Figma「Tag / Metadata」通道徽章
+ * 保留各通道品牌識別色，圓角 12px。
+ */
 interface ChannelBadgeProps {
   channel: ChannelType | string;
   className?: string;
 }
 
-const channelConfig: Record<string, { bg: string; text: string; label: string }> = {
-  LINE: { bg: 'bg-green-100', text: 'text-green-700', label: 'LINE' },
-  FB: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Facebook' },
-  WEBCHAT: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'WebChat' },
-  WHATSAPP: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'WhatsApp' },
-  EMAIL: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Email' },
+const channelConfig: Record<string, { className: string; label: string }> = {
+  LINE: { className: 'bg-success-subtle text-success', label: 'LINE' },
+  FB: { className: 'bg-primary-subtle text-primary', label: 'Facebook' },
+  WEBCHAT: { className: 'bg-muted text-muted-foreground', label: 'WebChat' },
+  WHATSAPP: { className: 'bg-success-subtle text-success', label: 'WhatsApp' },
+  EMAIL: { className: 'bg-ai-subtle text-ai', label: 'Email' },
 };
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
   const config = channelConfig[channel] || {
-    bg: 'bg-gray-100',
-    text: 'text-gray-700',
+    className: 'bg-muted text-muted-foreground',
     label: channel,
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        config.bg,
-        config.text,
+        'inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium',
+        config.className,
         className
       )}
     >

@@ -45,7 +45,7 @@ export function LineModuleTabs({ active }: Props) {
 function DisabledTab({ label }: { label: string }) {
   return (
     <span
-      className="inline-flex h-9 cursor-not-allowed items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-slate-400 opacity-60"
+      className="inline-flex h-9 cursor-not-allowed items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground opacity-60"
       title="敬請期待"
     >
       {label}

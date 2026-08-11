@@ -37,9 +37,9 @@ export function AreaActionEditor({ action, onChange }: Props) {
   };
 
   return (
-    <div className="space-y-2 rounded-md bg-slate-50 p-3">
+    <div className="space-y-2 rounded-md bg-muted p-3">
       <div>
-        <label className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">動作類型</label>
+        <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">動作類型</label>
         <Select
           value={action.type}
           onChange={(e) => handleTypeChange(e.target.value as RichMenuActionType)}
@@ -48,7 +48,7 @@ export function AreaActionEditor({ action, onChange }: Props) {
       </div>
 
       <div>
-        <label className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">標籤（≤ 20 字，選填）</label>
+        <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">標籤（≤ 20 字，選填）</label>
         <Input
           value={action.label ?? ''}
           onChange={(e) => onChange({ ...action, label: e.target.value })}
@@ -129,7 +129,7 @@ export function AreaActionEditor({ action, onChange }: Props) {
 
       {action.type === 'richmenuswitch' && (
         <>
-          <div className="flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+          <div className="flex items-start gap-2 rounded-md bg-warning-subtle px-2 py-1.5 text-[11px] text-warning">
             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
             <span>目標 Rich Menu 需先 publish 並設 alias 後此 action 才會生效。</span>
           </div>
@@ -151,5 +151,5 @@ export function AreaActionEditor({ action, onChange }: Props) {
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="mt-1 mb-1 block text-[11px] uppercase tracking-wide text-slate-500">{children}</label>;
+  return <label className="mt-1 mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">{children}</label>;
 }

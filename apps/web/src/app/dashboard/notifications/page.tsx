@@ -19,11 +19,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNotifications, useUnreadCount, useNotificationActions } from '@/hooks/useNotifications';
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
-  case_assigned: { icon: UserCheck, color: 'bg-blue-100 text-blue-700', label: '工單指派' },
-  case_escalated: { icon: AlertTriangle, color: 'bg-orange-100 text-orange-700', label: '工單升級' },
-  sla_warning: { icon: Clock, color: 'bg-yellow-100 text-yellow-700', label: 'SLA 警告' },
-  sla_breached: { icon: AlertTriangle, color: 'bg-red-100 text-red-700', label: 'SLA 逾期' },
-  new_message: { icon: MessageSquare, color: 'bg-green-100 text-green-700', label: '新訊息' },
+  case_assigned: { icon: UserCheck, color: 'bg-primary-subtle text-primary', label: '工單指派' },
+  case_escalated: { icon: AlertTriangle, color: 'bg-warning-subtle text-warning', label: '工單升級' },
+  sla_warning: { icon: Clock, color: 'bg-warning-subtle text-warning', label: 'SLA 警告' },
+  sla_breached: { icon: AlertTriangle, color: 'bg-destructive-subtle text-destructive', label: 'SLA 逾期' },
+  new_message: { icon: MessageSquare, color: 'bg-success-subtle text-success', label: '新訊息' },
 };
 
 type TabFilter = 'all' | 'unread' | 'read';
@@ -125,7 +125,7 @@ export default function NotificationsPage() {
               }) => {
                 const config = TYPE_CONFIG[n.type] || {
                   icon: Bell,
-                  color: 'bg-gray-100 text-gray-700',
+                  color: 'bg-muted text-foreground',
                   label: '通知',
                 };
                 const Icon = config.icon;
@@ -159,7 +159,7 @@ export default function NotificationsPage() {
                     <div className="flex items-center gap-2">
                       {!n.isRead && (
                         <>
-                          <span className="h-2 w-2 rounded-full bg-blue-500" />
+                          <span className="h-2 w-2 rounded-full bg-primary" />
                           <button
                             className="rounded-md p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                             onClick={(e) => handleMarkSingleRead(e, n.id)}

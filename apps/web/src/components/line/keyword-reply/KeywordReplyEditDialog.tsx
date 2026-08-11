@@ -83,11 +83,11 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
             <h2 className="text-base font-semibold">
               {reply ? '編輯關鍵字回覆' : '建立關鍵字回覆'}
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               當用戶在 LINE 傳訊息中出現指定關鍵字，自動回覆對應素材
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700">
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -95,7 +95,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
         <div className="space-y-5 overflow-y-auto p-5">
           {/* 規則名稱 */}
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
+            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
               規則名稱 *
             </label>
             <Input
@@ -103,25 +103,25 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
               onChange={(e) => setName(e.target.value.slice(0, 200))}
               placeholder="例：詢問營業時間、預約諮詢、產品 DM"
             />
-            <p className="mt-1 text-[11px] text-slate-500">只給管理用，用戶不會看到</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">只給管理用，用戶不會看到</p>
           </div>
 
           {/* 關鍵字 */}
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
+            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
               關鍵字 *
             </label>
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
               {keywords.map((k, idx) => (
                 <span
                   key={idx}
-                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-900"
+                  className="inline-flex items-center gap-1 rounded-full border border-primary-border bg-primary-subtle px-2.5 py-1 text-xs text-primary"
                 >
                   {k}
                   <button
                     type="button"
                     onClick={() => handleRemoveKeyword(idx)}
-                    className="text-blue-400 hover:text-red-500"
+                    className="text-primary hover:text-destructive"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -156,7 +156,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
             {/* match mode */}
             {keywords.length > 1 && (
               <div className="mt-3 space-y-1">
-                <div className="text-xs font-medium text-slate-600">比對方式</div>
+                <div className="text-xs font-medium text-muted-foreground">比對方式</div>
                 <div className="flex gap-3 text-xs">
                   <label className="inline-flex items-center gap-1.5 cursor-pointer">
                     <input
@@ -181,7 +181,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
 
           {/* 素材選擇 */}
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
+            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
               回覆素材 *
             </label>
             <select
@@ -197,26 +197,26 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
               ))}
             </select>
             {selectedMaterial && (
-              <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+              <div className="mt-2 rounded border border-border bg-muted px-3 py-2 text-xs">
                 <div className="font-medium">{selectedMaterial.name}</div>
-                <div className="text-slate-500">
+                <div className="text-muted-foreground">
                   類型：{selectedMaterial.contentType}
                   {selectedMaterial.category ? ` · 分類：${selectedMaterial.category}` : ''}
                 </div>
                 {selectedMaterial.variables && selectedMaterial.variables.length > 0 && (
-                  <div className="mt-1 text-amber-700">
+                  <div className="mt-1 text-warning">
                     ⚠️ 此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join(', ')}），會以預設值送出
                   </div>
                 )}
               </div>
             )}
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               素材在「行銷 → 素材庫」建立，這裡只列 LINE 渠道的素材
             </p>
           </div>
 
           {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
               {error}
             </div>
           )}

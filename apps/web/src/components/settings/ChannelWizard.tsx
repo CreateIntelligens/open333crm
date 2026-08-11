@@ -305,8 +305,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
               )}
 
               {channelType === CHANNEL_TYPE.WEBCHAT && (
-                <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-4">
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                <div className="rounded-md bg-primary-subtle p-4">
+                  <p className="text-sm text-primary">
                     WebChat 渠道不需要外部憑證，系統會自動產生。建立後即可取得嵌入碼。
                   </p>
                 </div>
@@ -327,9 +327,9 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 {verify.status === 'success' ? (
-                  <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                  <CheckCircle className="h-5 w-5 text-success shrink-0" />
                 ) : (
-                  <XCircle className="h-5 w-5 text-yellow-500 shrink-0" />
+                  <XCircle className="h-5 w-5 text-warning shrink-0" />
                 )}
                 <p className="text-sm font-medium">
                   {verify.message || '渠道已建立'}
@@ -337,7 +337,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
               </div>
 
               {channelType === CHANNEL_TYPE.LINE && verify.webhookSetup !== undefined && (
-                <div className={`rounded-md p-3 text-sm ${verify.webhookSetup ? 'bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-200' : 'bg-yellow-50 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-200'}`}>
+                <div className={`rounded-md p-3 text-sm ${verify.webhookSetup ? 'bg-success-subtle text-success ' : 'bg-warning-subtle text-warning '}`}>
                   {verify.webhookSetup
                     ? 'LINE Webhook 已自動設定完成，無需手動配置。'
                     : 'Webhook 自動設定失敗，請手動到 LINE Developer Console 設定 Webhook URL。'}

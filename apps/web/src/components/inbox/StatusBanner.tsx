@@ -13,13 +13,13 @@ interface StatusBannerProps {
 export function StatusBanner({ status, onReopen, onTakeover }: StatusBannerProps) {
   if (status === 'BOT_HANDLED') {
     return (
-      <div className="flex items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
-        <div className="flex items-center gap-2 text-sm text-purple-700">
+      <div className="flex items-center justify-between border-b border-ai-border bg-ai-subtle px-4 py-2">
+        <div className="flex items-center gap-2 text-sm text-ai">
           <Bot className="h-4 w-4" />
           <span className="font-medium">Bot 自動處理中</span>
         </div>
         {onTakeover && (
-          <Button size="sm" variant="outline" className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100" onClick={onTakeover}>
+          <Button size="sm" variant="outline" className="h-7 border-ai-border text-xs text-ai hover:bg-ai-subtle" onClick={onTakeover}>
             接管對話
           </Button>
         )}
@@ -29,8 +29,8 @@ export function StatusBanner({ status, onReopen, onTakeover }: StatusBannerProps
 
   if (status === 'CLOSED') {
     return (
-      <div className="flex items-center justify-between bg-gray-50 px-4 py-2 border-b border-gray-200">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
+      <div className="flex items-center justify-between border-b border-border bg-muted px-4 py-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Lock className="h-4 w-4" />
           <span className="font-medium">此對話已關閉</span>
         </div>

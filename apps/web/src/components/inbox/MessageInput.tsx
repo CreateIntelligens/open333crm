@@ -181,11 +181,11 @@ export function MessageInput({
     <div className="border-t bg-background">
       {/* Bot takeover CTA */}
       {isBotHandled && onTakeover && (
-        <div className="flex items-center justify-center border-b bg-purple-50/50 px-4 py-2">
+        <div className="flex items-center justify-center border-b bg-ai-subtle/50 px-4 py-2">
           <Button
             size="sm"
             variant="default"
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            className="bg-ai hover:bg-ai/90 text-white"
             onClick={onTakeover}
           >
             接管對話
@@ -196,9 +196,9 @@ export function MessageInput({
       <div className="p-4">
         {/* Quick reply chips + editor (LINE only) */}
         {supportsQuickReply && (quickReplies.length > 0 || quickReplyEditorOpen) && (
-          <div className="mb-2 rounded-md border border-dashed border-slate-300 bg-slate-50 p-2">
+          <div className="mb-2 rounded-md border border-dashed border-input bg-muted p-2">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-slate-600">
+              <div className="text-xs font-medium text-muted-foreground">
                 快速回覆按鈕（{quickReplies.length}/{MAX_QUICK_REPLIES}）
               </div>
               <div className="flex items-center gap-1">
@@ -206,24 +206,24 @@ export function MessageInput({
                   <div className="relative">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1 rounded border border-input bg-white px-2 py-0.5 text-xs text-foreground hover:bg-muted"
                       onClick={() => setPresetMenuOpen((v) => !v)}
                     >
                       <ListChecks className="h-3 w-3" />
                       套用預設組
                     </button>
                     {presetMenuOpen && (
-                      <div className="absolute right-0 top-full z-20 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-md">
+                      <div className="absolute right-0 top-full z-20 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-border bg-white py-1 shadow-md">
                         {presets.map((p) => (
                           <button
                             key={p.id}
                             type="button"
-                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50"
+                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
                             onClick={() => handleApplyPreset(p)}
                             title={p.items.map((i) => i.label).join(' / ')}
                           >
                             <div className="truncate font-medium">{p.name}</div>
-                            <div className="truncate text-[10px] text-slate-400">
+                            <div className="truncate text-[10px] text-muted-foreground">
                               {p.items.length} 個 · {p.items.slice(0, 3).map((i) => i.label).join(' / ')}
                               {p.items.length > 3 ? ' …' : ''}
                             </div>
@@ -235,7 +235,7 @@ export function MessageInput({
                 )}
                 <button
                   type="button"
-                  className="text-xs text-slate-500 hover:text-slate-700"
+                  className="text-xs text-muted-foreground hover:text-foreground"
                   onClick={() => setQuickReplyEditorOpen((v) => !v)}
                 >
                   {quickReplyEditorOpen ? '收合' : '展開'}
@@ -247,16 +247,16 @@ export function MessageInput({
                 {quickReplies.map((qr, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs"
+                    className="inline-flex items-center gap-1 rounded-full border border-input bg-white px-2.5 py-1 text-xs"
                     title={qr.text ? `送出文字：${qr.text}` : `送出文字：${qr.label}`}
                   >
                     <span className="font-medium">{qr.label}</span>
                     {qr.text && qr.text !== qr.label && (
-                      <span className="text-slate-400">→ {qr.text}</span>
+                      <span className="text-muted-foreground">→ {qr.text}</span>
                     )}
                     <button
                       type="button"
-                      className="ml-0.5 text-slate-400 hover:text-red-500"
+                      className="ml-0.5 text-muted-foreground hover:text-destructive"
                       onClick={() => handleRemoveQuickReply(idx)}
                       title="移除"
                     >

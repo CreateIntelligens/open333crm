@@ -49,7 +49,7 @@ export default function EditMaterialPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-muted">
       <Topbar title="行銷" />
       <MarketingTabs active="materials" />
       <main className="flex-1 overflow-y-auto p-6">
@@ -58,8 +58,8 @@ export default function EditMaterialPage() {
             <ArrowLeft className="mr-1 h-4 w-4" />回到素材列表
           </Button>
 
-          {isLoading && <div className="py-12 text-center text-sm text-slate-500">載入中…</div>}
-          {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+          {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
+          {error && <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-4 py-3 text-sm text-destructive">{error}</div>}
           {draft && !isLoading && (
             <MaterialEditor
               draft={draft}

@@ -292,7 +292,7 @@ export function SlaManagement() {
                     type="checkbox"
                     checked={formIsDefault}
                     onChange={(e) => setFormIsDefault(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
+                    className="h-4 w-4 rounded border-input"
                   />
                   <span className="text-sm">設為此優先級預設</span>
                 </label>

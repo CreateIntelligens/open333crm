@@ -114,17 +114,24 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
               {item.icon}
               <span className="hidden lg:inline">{item.label}</span>
               {item.badge !== undefined && item.badge > 0 && (
-                <span className="ml-auto hidden rounded-full bg-destructive px-2 py-0.5 text-xs text-destructive-foreground lg:inline">
-                  {item.badge}
+                <span
+                  className={cn(
+                    'ml-auto hidden min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-xs font-semibold lg:inline',
+                    isActive
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-destructive text-destructive-foreground'
+                  )}
+                >
+                  {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}
             </Link>

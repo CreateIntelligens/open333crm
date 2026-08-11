@@ -157,10 +157,29 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
+  // 依事件語意決定圖示配色 (對齊 Figma Timeline/Item：Warning/Danger/Default)
+  const getEventIconClass = (type: string, isNote: boolean, isInternal: boolean) => {
+    if (isNote) {
+      return isInternal ? 'bg-warning-subtle text-warning' : 'bg-primary-subtle text-primary';
+    }
+    switch (type) {
+      case 'escalated':
+      case 'closed':
+        return 'bg-destructive-subtle text-destructive';
+      case 'resolved':
+        return 'bg-success-subtle text-success';
+      case 'assigned':
+      case 'reopened':
+        return 'bg-primary-subtle text-primary';
+      default:
+        return 'bg-muted text-muted-foreground';
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Add Note Form */}
-      <div className="rounded-lg border p-4">
+      <div className="rounded-xl border p-4">
         <h4 className="mb-2 text-sm font-semibold">新增備註</h4>
         <Textarea
           value={noteContent}
@@ -200,11 +219,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
             <div
               className={cn(
                 'relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                item.isNote
-                  ? item.isInternal
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-blue-100 text-blue-700'
-                  : 'bg-muted text-muted-foreground'
+                getEventIconClass(item.type, item.isNote, item.isInternal)
               )}
             >
               {eventIcons[item.type] || <Clock className="h-4 w-4" />}
@@ -214,7 +229,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{item.author}</span>
                 {item.isNote && item.isInternal && (
-                  <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-700">
+                  <span className="rounded-md bg-warning-subtle px-1.5 py-0.5 text-[10px] font-medium text-warning">
                     內部
                   </span>
                 )}

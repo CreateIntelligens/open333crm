@@ -169,12 +169,12 @@ export function ChatPromptSettings() {
   if (loading) return <div className="text-sm text-muted-foreground">載入中…</div>;
 
   const healthBadge = health?.ok ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-      <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> 連線正常
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-success-subtle px-2.5 py-0.5 text-xs font-medium text-success">
+      <span className="h-1.5 w-1.5 rounded-full bg-success" /> 連線正常
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-      <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> 異常
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive-subtle px-2.5 py-0.5 text-xs font-medium text-destructive">
+      <span className="h-1.5 w-1.5 rounded-full bg-destructive" /> 異常
     </span>
   );
 
@@ -225,7 +225,7 @@ export function ChatPromptSettings() {
             <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{health?.currentModel}</code>
           </div>
           {health?.error && (
-            <div className="mt-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{health.error}</div>
+            <div className="mt-2 rounded-md bg-destructive-subtle p-2 text-xs text-destructive">{health.error}</div>
           )}
         </div>
       </section>

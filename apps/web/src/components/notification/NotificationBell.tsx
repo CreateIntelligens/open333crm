@@ -8,11 +8,11 @@ import { zhTW } from 'date-fns/locale';
 import { useNotifications, useUnreadCount, useNotificationActions } from '@/hooks/useNotifications';
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
-  case_assigned: { icon: UserCheck, color: 'text-blue-500' },
-  case_escalated: { icon: AlertTriangle, color: 'text-orange-500' },
-  sla_warning: { icon: Clock, color: 'text-yellow-500' },
-  sla_breached: { icon: AlertTriangle, color: 'text-red-500' },
-  new_message: { icon: MessageSquare, color: 'text-green-500' },
+  case_assigned: { icon: UserCheck, color: 'text-primary' },
+  case_escalated: { icon: AlertTriangle, color: 'text-warning' },
+  sla_warning: { icon: Clock, color: 'text-warning' },
+  sla_breached: { icon: AlertTriangle, color: 'text-destructive' },
+  new_message: { icon: MessageSquare, color: 'text-success' },
 };
 
 export function NotificationBell() {
@@ -73,7 +73,7 @@ export function NotificationBell() {
       >
         <Bell className="h-5 w-5" />
         {count > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
             {displayCount}
           </span>
         )}
@@ -138,7 +138,7 @@ export function NotificationBell() {
                         </p>
                       </div>
                       {!n.isRead && (
-                        <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />
+                        <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
                       )}
                     </button>
                   );

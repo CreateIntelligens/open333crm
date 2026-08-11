@@ -32,11 +32,11 @@ function ResultContent() {
   const info = messages[status] || messages.error;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-lg">
         <div className="mb-4 text-5xl">{info.emoji}</div>
-        <h1 className="mb-3 text-xl font-bold text-gray-900">{info.title}</h1>
-        <p className="text-sm leading-relaxed text-gray-600">{info.description}</p>
+        <h1 className="mb-3 text-xl font-bold text-foreground">{info.title}</h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">{info.description}</p>
       </div>
     </div>
   );
@@ -47,7 +47,7 @@ export default function LineLoginResultPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <p className="text-gray-500">載入中...</p>
+          <p className="text-muted-foreground">載入中...</p>
         </div>
       }
     >

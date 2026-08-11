@@ -38,8 +38,8 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
 
   return (
     <div className="flex justify-center py-3">
-      <div className="rounded-xl bg-muted px-6 py-4 text-center">
-        <p className="mb-2 text-sm font-medium">
+      <div className="rounded-xl border border-border bg-card px-6 py-4 text-center shadow-soft">
+        <p className="mb-2 text-sm font-semibold text-primary">
           {submitted ? '感謝您的評價！' : '請評價此次服務體驗'}
         </p>
         <div className="flex items-center justify-center gap-1">
@@ -60,8 +60,8 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
                 className={cn(
                   'h-7 w-7 transition-colors',
                   star <= displayScore
-                    ? 'fill-amber-400 text-amber-400'
-                    : 'text-gray-300'
+                    ? 'fill-warning text-warning'
+                    : 'text-muted-foreground/30'
                 )}
               />
             </button>

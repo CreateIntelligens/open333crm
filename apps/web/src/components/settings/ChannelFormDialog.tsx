@@ -354,7 +354,7 @@ export function ChannelFormDialog({
                     className="shrink-0"
                   >
                     {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-success" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}
@@ -372,15 +372,15 @@ export function ChannelFormDialog({
 
             {/* FB-specific: show verify token info after creation */}
             {isEditing && effectiveType === CHANNEL_TYPE.FB && (
-              <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-3">
-                <p className="text-xs text-blue-800 dark:text-blue-200 font-medium mb-1">
+              <div className="rounded-md bg-primary-subtle p-3">
+                <p className="text-xs text-primary font-medium mb-1">
                   Facebook Webhook 設定提示
                 </p>
-                <p className="text-xs text-blue-700 dark:text-blue-300">
+                <p className="text-xs text-primary">
                   1. 到 Facebook App → Messenger → Settings → Webhooks{'\n'}
                   2. 點 &quot;Edit Callback URL&quot;{'\n'}
                   3. 貼入上方 Webhook URL{'\n'}
-                  4. Verify Token 填入：<code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">open333crm_{channel!.id.slice(0, 8)}</code>{'\n'}
+                  4. Verify Token 填入：<code className="bg-primary-subtle px-1 rounded">open333crm_{channel!.id.slice(0, 8)}</code>{'\n'}
                   5. 訂閱：messages, messaging_postbacks
                 </p>
               </div>

@@ -124,11 +124,11 @@ export function ApiKeyManagement() {
                   </td>
                   <td className="px-4 py-3">
                     {k.isActive ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-success-subtle px-2 py-0.5 text-xs font-medium text-success">
                         啟用中
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
                         已撤銷
                       </span>
                     )}
@@ -317,7 +317,7 @@ function CreatedApiKeyDialog({
 
         {keyData && (
           <div className="mt-2 space-y-4">
-            <div className="rounded-md border-2 border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="rounded-md border-2 border-warning/40 bg-warning-subtle p-3 text-xs text-warning">
               ⚠️ <strong>請立刻複製並妥善保存</strong>。關閉視窗後將無法再次查看完整金鑰，列表只會顯示遮罩末 4 碼。
             </div>
 
@@ -330,7 +330,7 @@ function CreatedApiKeyDialog({
                 <Button onClick={handleCopy} variant="outline" size="default">
                   {copied ? (
                     <>
-                      <Check className="mr-1.5 h-4 w-4 text-green-600" />
+                      <Check className="mr-1.5 h-4 w-4 text-success" />
                       已複製
                     </>
                   ) : (

@@ -150,12 +150,12 @@ export function EmbeddingSettings() {
   }
 
   const healthBadge = health?.ok ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
-      <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> 連線正常
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-success-subtle px-2.5 py-0.5 text-xs font-medium text-success">
+      <span className="h-1.5 w-1.5 rounded-full bg-success" /> 連線正常
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
-      <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> 異常
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive-subtle px-2.5 py-0.5 text-xs font-medium text-destructive">
+      <span className="h-1.5 w-1.5 rounded-full bg-destructive" /> 異常
     </span>
   );
 
@@ -190,13 +190,13 @@ export function EmbeddingSettings() {
             <span className="text-muted-foreground w-20">目前模型</span>
             <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{health?.currentModel}</code>
             {health?.modelInstalled ? (
-              <span className="text-xs text-green-600">已安裝</span>
+              <span className="text-xs text-success">已安裝</span>
             ) : (
-              <span className="text-xs text-red-600">未安裝</span>
+              <span className="text-xs text-destructive">未安裝</span>
             )}
           </div>
           {health?.error && (
-            <div className="mt-2 rounded-md bg-red-50 p-2 text-xs text-red-700">
+            <div className="mt-2 rounded-md bg-destructive-subtle p-2 text-xs text-destructive">
               {health.error}
             </div>
           )}
@@ -365,7 +365,7 @@ export function EmbeddingSettings() {
               <code className="rounded bg-muted px-1 py-0.5 text-xs">{confirmModelChange.to}</code>
               。
             </p>
-            <div className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="mt-3 rounded-md bg-warning-subtle p-3 text-xs text-warning">
               <strong>注意：</strong>
               不同模型產生的向量空間不相容。儲存後{' '}
               <strong>所有現有向量將失效</strong>
@@ -397,9 +397,9 @@ function StatBlock({
 }) {
   const toneClass =
     tone === 'success'
-      ? 'text-green-700'
+      ? 'text-success'
       : tone === 'warning'
-        ? 'text-amber-700'
+        ? 'text-warning'
         : 'text-foreground';
   return (
     <div className="rounded-md border bg-muted/30 px-3 py-2.5">

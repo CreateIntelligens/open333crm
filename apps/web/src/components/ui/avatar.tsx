@@ -9,9 +9,11 @@ interface AvatarProps {
   fallback?: string;
   className?: string;
   size?: 'sm' | 'md' | 'lg';
+  /** bot=紫底機器人頭像 (對齊 Figma State=bot Avatar) */
+  variant?: 'user' | 'bot';
 }
 
-function Avatar({ src, alt, fallback, className, size = 'md' }: AvatarProps) {
+function Avatar({ src, alt, fallback, className, size = 'md', variant = 'user' }: AvatarProps) {
   const [imgError, setImgError] = useState(false);
 
   const sizeClasses = {
@@ -19,6 +21,9 @@ function Avatar({ src, alt, fallback, className, size = 'md' }: AvatarProps) {
     md: 'h-10 w-10 text-sm',
     lg: 'h-14 w-14 text-lg',
   };
+
+  const variantClasses =
+    variant === 'bot' ? 'bg-ai text-ai-foreground' : 'bg-muted text-muted-foreground';
 
   const initials = fallback
     || (alt
@@ -33,7 +38,8 @@ function Avatar({ src, alt, fallback, className, size = 'md' }: AvatarProps) {
   return (
     <div
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full',
+        variantClasses,
         sizeClasses[size],
         className
       )}
@@ -46,7 +52,7 @@ function Avatar({ src, alt, fallback, className, size = 'md' }: AvatarProps) {
           onError={() => setImgError(true)}
         />
       ) : (
-        <span className="font-medium text-muted-foreground">{initials}</span>
+        <span className="font-medium">{initials}</span>
       )}
     </div>
   );

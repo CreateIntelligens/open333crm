@@ -281,13 +281,13 @@ export default function ChatboxPage() {
     : undefined;
 
   if (loadState === 'loading') {
-    return <main className="flex min-h-screen items-center justify-center bg-zinc-50 text-sm text-zinc-600">開啟聊天室中...</main>;
+    return <main className="flex min-h-screen items-center justify-center bg-muted text-sm text-muted-foreground">開啟聊天室中...</main>;
   }
 
   if (loadState === 'error') {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
-        <div className="flex max-w-sm items-center gap-3 rounded-md border border-red-200 bg-white p-4 text-sm text-red-700 shadow-sm">
+      <main className="flex min-h-screen items-center justify-center bg-muted px-4">
+        <div className="flex max-w-sm items-center gap-3 rounded-md border border-destructive/30 bg-white p-4 text-sm text-destructive shadow-sm">
           <XCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -296,11 +296,11 @@ export default function ChatboxPage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-zinc-100" style={background}>
+    <main className="flex min-h-screen bg-muted" style={background}>
       <section className="mx-auto flex min-h-screen w-full max-w-3xl flex-col bg-white/95 shadow-sm backdrop-blur">
-        <header className="border-b border-zinc-200 px-5 py-4">
-          <h1 className="text-base font-semibold text-zinc-950">{config?.displayName ?? 'Chatbox'}</h1>
-          <p className="text-xs text-zinc-500">線上客服</p>
+        <header className="border-b border-border px-5 py-4">
+          <h1 className="text-base font-semibold text-foreground">{config?.displayName ?? 'Chatbox'}</h1>
+          <p className="text-xs text-muted-foreground">線上客服</p>
         </header>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
@@ -309,22 +309,22 @@ export default function ChatboxPage() {
           ))}
         </div>
 
-        {error ? <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">{error}</div> : null}
+        {error ? <div className="border-t border-warning/30 bg-warning-subtle px-4 py-2 text-xs text-warning">{error}</div> : null}
 
-        <footer className="border-t border-zinc-200 bg-white p-3">
+        <footer className="border-t border-border bg-white p-3">
           <div className="flex items-end gap-2">
             <button
               type="button"
               aria-label="Attach file"
               title="Attach file"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted"
               onClick={() => fileInputRef.current?.click()}
               disabled={sending}
             >
               <Paperclip className="h-4 w-4" />
             </button>
             <textarea
-              className="min-h-10 flex-1 resize-none rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+              className="min-h-10 flex-1 resize-none rounded-md border border-input px-3 py-2 text-sm outline-none focus:border-primary"
               rows={1}
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -339,7 +339,7 @@ export default function ChatboxPage() {
               type="button"
               aria-label="Send message"
               title="Send message"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-zinc-950 text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-foreground text-white hover:bg-foreground/90 disabled:opacity-50"
               onClick={() => void sendText()}
               disabled={sending || !input.trim()}
             >
@@ -366,9 +366,9 @@ function MessageBubble({ message }: { message: ChatboxMessageOutput }) {
   const inbound = message.direction === 'INBOUND';
   return (
     <div className={`flex ${inbound ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[78%] rounded-md px-3 py-2 text-sm shadow-sm ${inbound ? 'bg-zinc-950 text-white' : 'bg-zinc-100 text-zinc-950'}`}>
+      <div className={`max-w-[78%] rounded-md px-3 py-2 text-sm shadow-sm ${inbound ? 'bg-foreground text-white' : 'bg-muted text-foreground'}`}>
         <MessageContent message={message} />
-        <div className={`mt-1 text-[11px] ${inbound ? 'text-zinc-300' : 'text-zinc-500'}`}>
+        <div className={`mt-1 text-[11px] ${inbound ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
           {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           {message.deliveryStatus === 'expired' ? ' · 此聊天已過期' : ''}
           {message.deliveryStatus === 'failed' ? ' · 傳送失敗' : ''}

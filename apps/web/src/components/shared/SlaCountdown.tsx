@@ -38,11 +38,11 @@ export function SlaCountdown({ deadline, className }: SlaCountdownProps) {
 
   const state = getSlaState(new Date(deadline), 120);
 
-  let colorClass = 'text-green-600';
+  let colorClass = 'text-success';
   if (state === 'breached') {
-    colorClass = 'text-red-600 font-bold';
+    colorClass = 'text-destructive font-bold';
   } else if (state === 'warning') {
-    colorClass = 'text-orange-500 font-semibold';
+    colorClass = 'text-warning font-semibold';
   }
 
   const timeStr = `${isExpired ? '-' : ''}${hours}h ${minutes}m ${seconds}s`;

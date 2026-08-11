@@ -122,7 +122,7 @@ export function PointsTab() {
                     <tr key={tx.id as string} className="border-t">
                       <td className="p-3">{new Date(tx.createdAt as string).toLocaleString('zh-TW')}</td>
                       <td className="p-3">{typeLabels[tx.type as string] || (tx.type as string)}</td>
-                      <td className={`p-3 text-right font-medium ${amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <td className={`p-3 text-right font-medium ${amount >= 0 ? 'text-success' : 'text-destructive'}`}>
                         {amount >= 0 ? '+' : ''}{amount}
                       </td>
                       <td className="p-3 text-right">{tx.balance as number}</td>

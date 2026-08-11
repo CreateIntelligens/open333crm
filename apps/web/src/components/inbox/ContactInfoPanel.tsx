@@ -158,13 +158,13 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
         <>
           <div className="p-4">
             <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground">
-              <Bot className="h-3.5 w-3.5 text-purple-500" />
+              <Bot className="h-3.5 w-3.5 text-ai" />
               Bot 狀態
             </h4>
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">模式</span>
-                <span className="font-medium text-purple-600">自動回覆</span>
+                <span className="font-medium text-ai">自動回覆</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">已回覆次數</span>
@@ -193,7 +193,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
                       <Star
                         key={star}
                         className={`h-3.5 w-3.5 ${
-                          star <= (caseData.csatScore || 0) ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+                          star <= (caseData.csatScore || 0) ? 'fill-warning text-warning' : 'text-muted-foreground/60'
                         }`}
                       />
                     ))}

@@ -175,10 +175,10 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const isClosed = conversation.status === 'CLOSED';
 
   const statusColor: Record<string, string> = {
-    ACTIVE: 'bg-green-100 text-green-700',
-    BOT_HANDLED: 'bg-purple-100 text-purple-700',
-    AGENT_HANDLED: 'bg-blue-100 text-blue-700',
-    CLOSED: 'bg-gray-100 text-gray-700',
+    ACTIVE: 'bg-success-subtle text-success',
+    BOT_HANDLED: 'bg-ai-subtle text-ai',
+    AGENT_HANDLED: 'bg-primary-subtle text-primary',
+    CLOSED: 'bg-muted text-foreground',
   };
 
   const statusLabel: Record<string, string> = {
@@ -205,7 +205,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
             <ChannelBadge channel={conversation.channelType} />
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                statusColor[conversation.status] || 'bg-green-100 text-green-700'
+                statusColor[conversation.status] || 'bg-success-subtle text-success'
               }`}
             >
               {statusLabel[conversation.status] || conversation.status}

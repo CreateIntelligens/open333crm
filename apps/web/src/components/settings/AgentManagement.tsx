@@ -299,7 +299,7 @@ function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps)
         </DialogHeader>
         {success ? (
           <div className="space-y-4">
-            <p className="text-sm text-green-600">密碼已成功修改！</p>
+            <p className="text-sm text-success">密碼已成功修改！</p>
             <DialogFooter>
               <Button onClick={() => onOpenChange(false)}>關閉</Button>
             </DialogFooter>

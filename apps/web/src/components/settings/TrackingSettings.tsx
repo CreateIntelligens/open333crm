@@ -95,7 +95,7 @@ export function TrackingSettings() {
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "儲存中..." : "儲存設定"}
         </Button>
-        {saved && <span className="text-sm text-green-600">已儲存</span>}
+        {saved && <span className="text-sm text-success">已儲存</span>}
       </div>
     </div>
   );

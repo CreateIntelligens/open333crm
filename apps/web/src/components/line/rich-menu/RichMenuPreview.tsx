@@ -25,7 +25,7 @@ export function RichMenuPreview({ imageUrl, size, areas, containerWidth = 360 }:
 
   return (
     <div
-      className="relative overflow-hidden rounded-md border border-slate-300 bg-slate-100"
+      className="relative overflow-hidden rounded-md border border-input bg-muted"
       style={{ width: containerWidth, height: containerHeight }}
     >
       {imageUrl ? (
@@ -37,7 +37,7 @@ export function RichMenuPreview({ imageUrl, size, areas, containerWidth = 360 }:
           draggable={false}
         />
       ) : (
-        <div className="flex h-full items-center justify-center text-xs text-slate-400">尚未上傳背景圖</div>
+        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">尚未上傳背景圖</div>
       )}
 
       {areas.map((area, idx) => {
@@ -54,8 +54,8 @@ export function RichMenuPreview({ imageUrl, size, areas, containerWidth = 360 }:
             className={
               'absolute flex items-center justify-center border-2 transition-colors ' +
               (isHover
-                ? 'border-emerald-500 bg-emerald-500/30'
-                : 'border-blue-400 bg-blue-400/10')
+                ? 'border-success bg-success/30'
+                : 'border-primary bg-primary/10')
             }
             style={{ left, top, width, height }}
           >

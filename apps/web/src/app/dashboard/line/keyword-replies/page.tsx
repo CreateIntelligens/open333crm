@@ -65,7 +65,7 @@ export default function KeywordRepliesPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
       <LineModuleTabs active="keyword-replies" />
 
@@ -74,7 +74,7 @@ export default function KeywordRepliesPage() {
           <header className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">關鍵字回覆</h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 用戶在 LINE 傳訊息中出現指定關鍵字時，系統自動回覆對應素材（圖片 / Flex / 輪播 / 圖文等）。
               </p>
             </div>
@@ -85,28 +85,28 @@ export default function KeywordRepliesPage() {
           </header>
 
           {/* 說明 */}
-          <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <section className="rounded-lg border border-border bg-white p-4">
             <div className="flex items-center gap-1.5 text-sm font-semibold">
-              <Info className="h-4 w-4 text-blue-500" />
+              <Info className="h-4 w-4 text-primary" />
               怎麼用？
             </div>
-            <ol className="ml-1 mt-2 list-decimal space-y-1 pl-4 text-sm text-slate-600">
-              <li>先到「<a href="/dashboard/marketing/materials" className="text-blue-600 underline">行銷 → 素材庫</a>」建立你要回覆的內容（純文字、圖片、Flex、輪播都行）</li>
+            <ol className="ml-1 mt-2 list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
+              <li>先到「<a href="/dashboard/marketing/materials" className="text-primary underline">行銷 → 素材庫</a>」建立你要回覆的內容（純文字、圖片、Flex、輪播都行）</li>
               <li>回來這頁按「建立關鍵字回覆」，輸入規則名稱、關鍵字（一個或多個）、選素材</li>
               <li>用戶在 LINE 傳訊息含關鍵字 → bot 自動回覆對應素材</li>
             </ol>
-            <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+            <div className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-1.5 text-xs text-warning">
               ⚙️ 這條規則跑在 bot 模式（BOT_HANDLED 狀態的對話）才會觸發。已被客服接管的對話不會自動回。每個聯絡人對同一條規則 1 小時最多觸發 3 次（防轟炸）。
             </div>
           </section>
 
           {isLoading && (
-            <div className="py-12 text-center text-sm text-slate-500">載入中…</div>
+            <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>
           )}
 
           {!isLoading && replies.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
-              <div className="text-sm text-slate-500">尚未建立任何關鍵字回覆</div>
+            <div className="rounded-lg border border-dashed border-input bg-white py-16 text-center">
+              <div className="text-sm text-muted-foreground">尚未建立任何關鍵字回覆</div>
               <Button className="mt-3" onClick={handleOpenCreate}>
                 <Plus className="mr-1 h-4 w-4" />
                 建立第一條
@@ -115,9 +115,9 @@ export default function KeywordRepliesPage() {
           )}
 
           {!isLoading && replies.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <div className="overflow-hidden rounded-lg border border-border bg-white">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-500">
+                <thead className="bg-muted text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">狀態</th>
                     <th className="px-4 py-2 text-left font-medium">規則名稱</th>
@@ -126,7 +126,7 @@ export default function KeywordRepliesPage() {
                     <th className="px-4 py-2 text-right font-medium">動作</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border">
                   {replies.map((r) => {
                     const mat = materialMap.get(r.materialId);
                     return (
@@ -138,8 +138,8 @@ export default function KeywordRepliesPage() {
                             title={r.isActive ? '已啟用（點擊停用）' : '已停用（點擊啟用）'}
                             className={
                               r.isActive
-                                ? 'inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700'
-                                : 'inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500'
+                                ? 'inline-flex items-center gap-1 rounded-full bg-success-subtle px-2 py-0.5 text-xs text-success'
+                                : 'inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground'
                             }
                           >
                             {r.isActive ? <Power className="h-3 w-3" /> : <PowerOff className="h-3 w-3" />}
@@ -152,16 +152,16 @@ export default function KeywordRepliesPage() {
                             {r.keywords.slice(0, 5).map((k, idx) => (
                               <span
                                 key={idx}
-                                className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-900"
+                                className="inline-flex rounded-full border border-primary-border bg-primary-subtle px-2 py-0.5 text-[11px] text-primary"
                               >
                                 {k}
                               </span>
                             ))}
                             {r.keywords.length > 5 && (
-                              <span className="text-[11px] text-slate-400">+{r.keywords.length - 5}</span>
+                              <span className="text-[11px] text-muted-foreground">+{r.keywords.length - 5}</span>
                             )}
                             {r.keywords.length > 1 && (
-                              <span className="text-[11px] text-slate-400">
+                              <span className="text-[11px] text-muted-foreground">
                                 ({r.matchMode === 'all' ? '全部' : '任一'})
                               </span>
                             )}
@@ -171,10 +171,10 @@ export default function KeywordRepliesPage() {
                           {mat ? (
                             <div>
                               <div className="text-xs font-medium">{mat.name}</div>
-                              <div className="text-[11px] text-slate-500">{mat.contentType}</div>
+                              <div className="text-[11px] text-muted-foreground">{mat.contentType}</div>
                             </div>
                           ) : (
-                            <span className="text-xs text-red-500">素材已被刪除（id: {r.materialId.slice(0, 8)}…）</span>
+                            <span className="text-xs text-destructive">素材已被刪除（id: {r.materialId.slice(0, 8)}…）</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -184,7 +184,7 @@ export default function KeywordRepliesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            className="text-destructive hover:bg-destructive-subtle hover:text-destructive"
                             onClick={() => handleDelete(r.id)}
                           >
                             <Trash2 className="mr-1 h-3 w-3" />刪除

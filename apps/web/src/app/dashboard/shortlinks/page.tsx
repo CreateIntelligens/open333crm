@@ -107,7 +107,7 @@ function LinkList() {
                           onClick={() => handleCopy(l.slug as string)}
                           title="複製 URL"
                         >
-                          <Copy className={`h-3.5 w-3.5 ${copied === l.slug ? 'text-green-500' : ''}`} />
+                          <Copy className={`h-3.5 w-3.5 ${copied === l.slug ? 'text-success' : ''}`} />
                         </Button>
                         <Button
                           size="sm"

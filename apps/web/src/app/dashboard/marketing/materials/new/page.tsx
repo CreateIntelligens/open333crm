@@ -63,7 +63,7 @@ export default function NewMaterialPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div className="flex h-screen flex-col bg-muted">
       <Topbar title="行銷" />
       <MarketingTabs active="materials" />
       <main className="flex-1 overflow-y-auto p-6">
@@ -83,14 +83,14 @@ export default function NewMaterialPage() {
             <div className="space-y-4">
               <header>
                 <h1 className="text-2xl font-bold tracking-tight">選擇訊息類型</h1>
-                <p className="mt-1 text-sm text-slate-500">先挑要建立哪種訊息，再填內容。</p>
+                <p className="mt-1 text-sm text-muted-foreground">先挑要建立哪種訊息，再填內容。</p>
               </header>
               <TemplatePickerGrid onPick={handlePick} />
             </div>
           )}
 
           {draft && error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-4 py-3 text-sm text-destructive">{error}</div>
           )}
 
           {draft && (
