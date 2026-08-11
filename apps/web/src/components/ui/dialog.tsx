@@ -29,7 +29,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <dialog
       ref={dialogRef}
-      className="fixed inset-0 z-50 m-auto rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50"
+      className="fixed inset-0 z-50 m-auto rounded-xl border bg-background p-0 shadow-dropdown backdrop:bg-black/50"
       onClose={() => onOpenChange(false)}
       onClick={(e) => {
         if (e.target === dialogRef.current) {

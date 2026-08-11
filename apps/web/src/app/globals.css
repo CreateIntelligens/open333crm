@@ -2,26 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * open333CRM 設計系統 Design Tokens
+ * 對齊 Figma「OPEN333．CRM Design System」(WJmEgRptkvoTFIBNWdHwpW)
+ * 主色 #378ADD、文字 #37404C、AI/Bot 紫，中大圓角，柔和陰影。
+ * 色值以 HSL 表示，搭配 Tailwind 的 hsl(var(--x)) 架構。
+ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    /* 基礎背景 / 文字 */
+    --background: 0 0% 100%;              /* #FFFFFF */
+    --foreground: 215 16% 25%;           /* #37404C 深藍灰主要文字 */
+
+    /* 卡片 */
+    --card: 0 0% 100%;                    /* #FFFFFF */
+    --card-foreground: 215 16% 25%;      /* #37404C */
+
+    /* 浮層 (dropdown / popover) */
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 16% 25%;
+
+    /* 主色 (品牌藍) */
+    --primary: 210 71% 54%;              /* #378ADD */
+    --primary-foreground: 0 0% 100%;     /* 白字 */
+    --primary-hover: 211 66% 46%;        /* #2876C4 hover 深藍 */
+    --primary-subtle: 214 100% 97%;      /* #EFF6FF 淡藍底 (selected/我方泡泡) */
+    --primary-border: 225 100% 88%;      /* #C4D2FF 藍邊 */
+
+    /* 次要 (淺灰藍底 + 深字) */
+    --secondary: 210 40% 96%;            /* #F1F5F9 近 #F8FAFC */
+    --secondary-foreground: 215 25% 27%; /* 深藍灰 */
+
+    /* 靜音 / 弱化 */
+    --muted: 210 40% 98%;                /* #F8FAFC 極淺灰底 */
+    --muted-foreground: 215 15% 51%;     /* #707E93 次要文字灰藍 */
+
+    /* 強調 (hover 底) */
+    --accent: 210 40% 96%;               /* #F1F5F9 */
+    --accent-foreground: 215 25% 27%;
+
+    /* 破壞 / 錯誤 (紅) */
+    --destructive: 359 84% 56%;          /* #EE3134 */
+    --destructive-foreground: 0 0% 100%;
+    --destructive-subtle: 356 100% 96%;  /* #FFECED 淺紅底 */
+
+    /* 成功 (綠) */
+    --success: 149 100% 26%;             /* #008236 */
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 140 26% 95%;       /* #EEF5F0 淺綠底 */
+
+    /* 警告 (橘) */
+    --warning: 26 100% 50%;              /* #FF6E00 */
+    --warning-foreground: 0 0% 100%;
+    --warning-subtle: 28 100% 95%;       /* #FFF0E4 淺橘底 */
+
+    /* AI / Bot / 自動化 (紫) — 這套設計的識別色 */
+    --ai: 276 96% 52%;                   /* #9810FA */
+    --ai-foreground: 0 0% 100%;
+    --ai-subtle: 276 100% 97%;           /* #F8EEFF 淺紫底 */
+    --ai-border: 271 100% 91%;           /* #EDD4FF 紫邊 */
+
+    /* 邊框 / 輸入框 / focus ring */
+    --border: 214 32% 91%;               /* #E2E8F0 */
+    --input: 214 32% 91%;                /* #E2E8F0 */
+    --ring: 210 71% 54%;                 /* #378ADD focus */
+
+    /* 圓角 (Figma 主力 12px = 0.75rem；按鈕 8px 用 md) */
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* 依亮色推導的暗色主題 (Figma 只設計亮色，此為對應延伸) */
+    --background: 222 20% 11%;           /* 深藍灰底 */
+    --foreground: 210 30% 92%;           /* 近白文字 */
+
+    --card: 222 18% 15%;
+    --card-foreground: 210 30% 92%;
+
+    --popover: 222 18% 15%;
+    --popover-foreground: 210 30% 92%;
+
+    /* 主色在暗底提亮以維持對比 */
+    --primary: 210 80% 62%;              /* 提亮的 #378ADD */
+    --primary-foreground: 222 20% 11%;
+    --primary-hover: 210 80% 70%;
+    --primary-subtle: 210 60% 20%;       /* 暗底的淡藍區塊 */
+    --primary-border: 210 50% 35%;
+
+    --secondary: 217 19% 22%;
+    --secondary-foreground: 210 30% 92%;
+
+    --muted: 217 19% 20%;
+    --muted-foreground: 215 15% 65%;
+
+    --accent: 217 19% 24%;
+    --accent-foreground: 210 30% 92%;
+
+    --destructive: 359 74% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-subtle: 359 40% 24%;
+
+    --success: 149 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 149 40% 20%;
+
+    --warning: 26 90% 58%;
+    --warning-foreground: 222 20% 11%;
+    --warning-subtle: 26 50% 24%;
+
+    --ai: 276 90% 68%;
+    --ai-foreground: 222 20% 11%;
+    --ai-subtle: 276 45% 24%;
+    --ai-border: 276 45% 40%;
+
+    --border: 217 19% 27%;
+    --input: 217 19% 27%;
+    --ring: 210 80% 62%;
   }
 }
 
@@ -31,5 +128,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+  /* 表格 / 數字對齊：對應 Figma 的 LNUM/TNUM */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums lining-nums;
   }
 }
