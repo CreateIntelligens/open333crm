@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>短連結 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=3">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">09 · 短連結</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 功能總覽</a>
+    <a href="#p2"><span class="n">2</span> 連結管理</a>
+    <a href="#p3"><span class="n">3</span> 建立短連結</a>
+    <a href="#p4"><span class="n">4</span> 點擊怎麼被計算</a>
+    <a href="#p5"><span class="n">5</span> QR Code</a>
+    <a href="#p6"><span class="n">6</span> 統計分析</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 09 · 行銷與活動</div>
+        <h1>短連結</h1>
+        <p>把長網址縮成可追蹤的短網址，支援 UTM 參數、點擊自動貼標、到期時間與 LINE 身份收集，並產生 QR Code、分析點擊來源與成效。</p>
+      </div>
+    </section>
+
+    <section class="doc" id="p1">
+      <h2><span class="idx">1</span> 功能總覽</h2>
+      <p>短連結把長網址縮成 <code>/s/{代碼}</code> 的短網址。它不只是縮短——每次有人點，系統會記錄「誰點的、從哪來、點幾次」，還能在點擊時自動幫這個人貼標籤。兩個分頁：<b>連結管理</b>、<b>統計分析</b>。</p>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 連結管理</h2>
+      <p>「連結管理」以表格列出所有短連結。</p>
+      <figure class="shot">
+        <img src="uploads/shots/page-shortlinks.png" alt="短連結管理頁（目標網址欄已模糊）" loading="lazy">
+        <figcaption>連結管理：短網址、點擊數、狀態、到期。（目標 URL 欄已模糊處理）</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>標題 / 短網址</td><td>連結描述與 <code>/s/{代碼}</code>（可一鍵複製完整網址）</td></tr>
+          <tr><td>目標 URL</td><td>導向的原始網址</td></tr>
+          <tr><td>總點擊 / 唯一</td><td>總點擊數與去重後的唯一點擊數（差異見第 4 節）</td></tr>
+          <tr><td>狀態 / 到期</td><td>啟用 / 已過期 / 停用；到期時間</td></tr>
+          <tr><td>操作</td><td>複製 URL、QR Code、編輯、刪除</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> 建立短連結</h2>
+      <p>點「建立連結」開啟對話框。只有「目標 URL」是必填，其餘都是強化追蹤與行銷的選項。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/dlg-shortlink-create.png" alt="建立短連結對話框：目標 URL、標題、Slug、UTM、貼標、到期、LIFF、OG" loading="lazy">
+        <figcaption>建立短連結：填目標 URL，可設 UTM、自動貼標、到期、LINE 身份收集與社群預覽。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>必填</th><th>說明與運作方式</th></tr></thead>
+        <tbody>
+          <tr><td>目標 URL</td><td>✓</td><td>要縮短的原始網址</td></tr>
+          <tr><td>標題</td><td></td><td>只給自己看的描述</td></tr>
+          <tr><td>自訂 Slug</td><td></td><td>只有新建時可填，留空系統自動產生；撞號會提示已被使用</td></tr>
+          <tr><td>UTM 參數</td><td></td><td>五個參數（source/medium/campaign/content/term），跳轉時自動接到目標網址，讓 GA/廣告後台分辨流量來源</td></tr>
+          <tr><td>點擊時自動貼標</td><td></td><td>選一個標籤，<b>系統認得出點擊者身份時</b>才會貼到該客戶身上（同標籤不重複貼）</td></tr>
+          <tr><td>到期時間</td><td></td><td>過期後連結失效，點擊會看到過期頁</td></tr>
+          <tr><td>LINE 渠道（LIFF）</td><td></td><td>選了後，在 LINE App 內點擊會取得 LINE 身份再計數（需該渠道已設 LIFF App ID）</td></tr>
+          <tr><td>社群預覽（OG）</td><td></td><td>三個全空時系統自動抓目標頁的預覽；填了就用手填值</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>「社群預覽」控制的是：把短連結貼到 LINE / FB 時，聊天室跑出的那張預覽卡（標題、描述、縮圖）。留空會自動抓目標頁，填了以手填為準。</div></div>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 點擊怎麼被計算</h2>
+      <p>這是短連結最需要理解的部分——<b>不是每次打開都算一次點擊</b>。系統會依「誰在打開」分四種情況處理：</p>
+      <table>
+        <thead><tr><th>情況</th><th>怎麼處理</th></tr></thead>
+        <tbody>
+          <tr><td><b>社群預覽爬蟲</b><br>（LINE/FB 產生預覽卡）</td><td><b>不算點擊、不記錄</b>——你把連結貼到群組、對方還沒點只是出現預覽卡，那次不算</td></tr>
+          <tr><td><b>一般瀏覽器</b></td><td>背景計一次點擊後，幾乎無感地秒跳目標頁</td></tr>
+          <tr><td><b>LINE App 內開</b></td><td>若連結綁的 LINE 渠道有設 LIFF，會取得 LINE 身份再計數（認得出是誰）；沒設 LIFF 就比照一般瀏覽器</td></tr>
+          <tr><td><b>FB/IG 內開</b></td><td>目前比照一般瀏覽器</td></tr>
+        </tbody>
+      </table>
+      <h3>總點擊 vs 唯一點擊</h3>
+      <ul>
+        <li><b>總點擊</b>：每次點都 +1。</li>
+        <li><b>唯一點擊</b>：認得出身份時（有 LINE 身份）用身份去重——<b>同一個 LINE 用戶不管點幾次都只算一個唯一</b>；認不出身份時，每次點都算一個新的唯一（因為無法辨識是不是同一人）。</li>
+      </ul>
+      <div class="tip-ai"><span>✨</span><div>想讓「唯一點擊」和「自動貼標」真的準，關鍵是<b>透過 LINE LIFF 收集身份</b>——建立連結時選 LINE 渠道，並確保該渠道在設定裡填了 LIFF App ID。這樣才認得出「誰點了」，統計的「識別率」才會高。</div></div>
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> QR Code</h2>
+      <p>每個短連結都可產生 QR Code。在列表點 QR Code 圖示開啟對話框，系統會產一張 400×400 的黑白 PNG，可「下載」成 <code>qr-{標題}.png</code>，用於印刷文宣、海報。掃描 QR Code 等同點短連結，一樣會計入統計。</p>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 統計分析</h2>
+      <p>「統計分析」分頁選一個連結後，顯示三個指標：</p>
+      <table>
+        <thead><tr><th>指標</th><th>意義</th></tr></thead>
+        <tbody>
+          <tr><td>總點擊 / 唯一點擊</td><td>如第 4 節說明</td></tr>
+          <tr><td><b>識別率</b></td><td>認得出是誰的點擊佔全部的比例——代表「多少比例的點擊我知道是哪位客戶」</td></tr>
+        </tbody>
+      </table>
+      <p>並有兩張圖：<b>每日點擊趨勢</b>（總點擊 vs 唯一點擊，近 30 天）、<b>來源分布</b>（依來源分組，取前 10 名；沒有來源的算「direct」）。</p>
+      <div class="info"><span>ℹ️</span><div>短連結的點擊數據可同步到 <b>GA4 與 Meta Pixel</b>——只要在「設定 → 追蹤設定」填入對應 ID，短連結的中轉頁就會自動注入追蹤腳本（見「<a href="ch11-settings.html">11 · 系統設定</a>」）。</div></div>
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch07-line.html">← 07 · LINE 管理</a></span>
+      <span>下一章：<a href="ch10-analytics.html">10 · 數據報表 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var y=window.scrollY+120;var idx=0;secs.forEach(function(s,i){if(s&&s.offsetTop<=y)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>

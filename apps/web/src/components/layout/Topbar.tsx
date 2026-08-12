@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LogOut, Bot } from "lucide-react";
+import { LogOut, Bot, BookOpen } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Avatar } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -36,6 +36,18 @@ export function Topbar({ title, children }: TopbarProps) {
             {isConnected ? "已連線" : "未連線"}
           </span>
         </div>
+
+        {/* 操作說明手冊 */}
+        <a
+          href="/manual/index.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          title="操作說明：開啟系統使用手冊"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">操作說明</span>
+        </a>
 
         {/* Skill URL for LLM */}
         <a
