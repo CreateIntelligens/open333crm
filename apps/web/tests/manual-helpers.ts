@@ -53,6 +53,40 @@ export async function sanitize(page: Page) {
 }
 
 /**
+ * 發布級去識別化（公開手冊用最高標準）：
+ * 在一般 sanitize 之上，額外糊化所有可能含個資的視覺元素——
+ * 頭像圖片、對話列表姓名、聊天訊息泡泡、表格姓名欄、表單已填值。
+ * 用於任何要公開發布、且可能含真實客戶/內部資料的頁面。
+ */
+export async function sanitizePublish(page: Page) {
+  await sanitize(page);
+  // JS 就地糊化：用結構特徵找出可能含個資的節點
+  await page.evaluate(() => {
+    const blur = (el: Element | null) => { if (el) (el as HTMLElement).style.filter = 'blur(6px)'; };
+    // 1. 所有頭像圖片 / 字母縮寫頭像容器
+    document.querySelectorAll('img, [class*="avatar" i]').forEach((el) => blur(el));
+    // 2. 對話列表項目的姓名（span.truncate）
+    document.querySelectorAll('aside span.truncate, main aside span.truncate').forEach(blur);
+    // 3. 聊天訊息泡泡（含客戶訊息內容）
+    document.querySelectorAll('[class*="bubble" i], [class*="message" i] p, [class*="Message" i] p').forEach(blur);
+    // 4. 聊天視窗表頭聯繫人名（h3.font-semibold 且短文字）
+    document.querySelectorAll('h3.font-semibold').forEach((el) => {
+      if ((el.textContent || '').length < 30) blur(el);
+    });
+    // 5. 表單已填值（input/textarea 有 value 的）與 select 選中文字——避免預填個資外洩
+    document.querySelectorAll('input, textarea').forEach((el) => {
+      const v = (el as HTMLInputElement).value;
+      if (v && v.trim() && !/^https?:/.test(v)) (el as HTMLElement).style.filter = 'blur(4px)';
+    });
+  });
+  // CSS 補強：確保所有頭像類都糊到
+  await page.addStyleTag({
+    content: `img{filter:blur(6px)!important} [class*="avatar" i]{filter:blur(6px)!important}`,
+  });
+  await page.waitForTimeout(300);
+}
+
+/**
  * 強力去識別化：模糊所有頭像圖片 + 糊化指定選擇器（姓名欄等）。
  * 用於聯繫人 / 工單這類會露真人名與頭像的頁面。
  * blurSelectors：要整塊模糊的 CSS 選擇器（如表格第一欄的姓名 cell）。
