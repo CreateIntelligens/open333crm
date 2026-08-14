@@ -29,7 +29,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <dialog
       ref={dialogRef}
-      className="fixed inset-0 z-50 m-auto rounded-xl border bg-background p-0 shadow-dropdown backdrop:bg-black/50"
+      className="fixed inset-0 z-50 m-auto w-fit rounded-xl border bg-background p-0 shadow-dropdown backdrop:bg-black/50"
       onClose={() => onOpenChange(false)}
       onClick={(e) => {
         if (e.target === dialogRef.current) {
@@ -54,7 +54,7 @@ function DialogContent({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn('w-full max-w-lg p-6', className)}>
+    <div className={cn('w-[calc(100vw-2rem)] max-w-lg p-6', className)}>
       {children}
     </div>
   );
