@@ -127,4 +127,78 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       return reply.status(200).send('EVENT_RECEIVED');
     },
   );
+
+  // GET /api/v1/webhooks/threads/:channelId
+  // Instagram(Threads) Webhook Verification Challenge（機制同 FB）
+  fastify.get<{
+    Params: { channelId: string };
+    Querystring: {
+      'hub.mode'?: string;
+      'hub.verify_token'?: string;
+      'hub.challenge'?: string;
+    };
+  }>('/threads/:channelId', async (request, reply) => {
+    const { channelId } = request.params;
+    const mode = request.query['hub.mode'];
+    const token = request.query['hub.verify_token'];
+    const challenge = request.query['hub.challenge'];
+
+    if (mode !== 'subscribe' || !token || !challenge) {
+      return reply.status(403).send('Forbidden');
+    }
+
+    try {
+      const channel = await fastify.prisma.channel.findFirst({
+        where: { id: channelId, channelType: CHANNEL_TYPE.THREADS },
+      });
+
+      if (!channel) {
+        fastify.log.warn({ channelId }, 'IG webhook verify: channel not found');
+        return reply.status(404).send('Channel not found');
+      }
+
+      const credentials = decryptCredentials(channel.credentialsEncrypted);
+      const expectedVerifyToken = credentials.verifyToken as string;
+
+      if (token === expectedVerifyToken) {
+        fastify.log.info({ channelId }, 'IG webhook verified successfully');
+        return reply.status(200).type('text/plain').send(challenge);
+      }
+
+      fastify.log.warn({ channelId }, 'IG webhook verify: token mismatch');
+      return reply.status(403).send('Verify token mismatch');
+    } catch (err) {
+      fastify.log.error({ err, channelId }, 'IG webhook verification failed');
+      return reply.status(500).send('Internal error');
+    }
+  });
+
+  // POST /api/v1/webhooks/threads/:channelId
+  // Receives Instagram Direct messages
+  fastify.post<{ Params: { channelId: string } }>(
+    '/threads/:channelId',
+    async (request, reply) => {
+      const { channelId } = request.params;
+      const body = request.body as Record<string, unknown>;
+      const rawBody = (body as any).__rawBody as Buffer;
+      const headers = request.headers as Record<string, string>;
+
+      // 立即回 200，非同步處理（避免 Meta 重試 / webhook 自動停用）
+      fastify.log.info({ channelId, hasRawBody: !!rawBody }, 'IG webhook received, starting async processing');
+      processWebhookEvent(
+        fastify.prisma,
+        fastify.io,
+        channelId,
+        CHANNEL_TYPE.THREADS,
+        rawBody,
+        headers,
+      ).then(() => {
+        fastify.log.info({ channelId }, 'IG webhook processed successfully');
+      }).catch((err) => {
+        fastify.log.error({ err: err?.message ?? err, stack: err?.stack, channelId }, 'IG webhook processing failed');
+      });
+
+      return reply.status(200).send('EVENT_RECEIVED');
+    },
+  );
 }

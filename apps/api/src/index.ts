@@ -64,7 +64,7 @@ import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
-import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin } from '@open333crm/channel-plugins';
+import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
 
 export async function bootstrap() {
   const config = loadEnvConfig();
@@ -100,6 +100,7 @@ export async function bootstrap() {
   registerChannelPlugin(linePlugin);
   registerChannelPlugin(fbPlugin);
   registerChannelPlugin(webchatPlugin);
+  registerChannelPlugin(threadsPlugin);
 
   app.get('/health', async () => ({
     status: 'ok',

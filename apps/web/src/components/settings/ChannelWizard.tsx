@@ -95,6 +95,19 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
           pageId,
           verifyToken: `open333crm_${Date.now().toString(36)}`,
         };
+      } else if (channelType === CHANNEL_TYPE.THREADS) {
+        // IG(Threads) 走 IG Login 路線，憑證同 FB（appSecret 驗簽、pageAccessToken 收發）
+        if (!appSecret || !pageAccessToken) {
+          setError('請填寫 App Secret 和 Page Access Token');
+          setCreating(false);
+          return;
+        }
+        credentials = {
+          appId,
+          appSecret,
+          pageAccessToken,
+          verifyToken: `open333crm_${Date.now().toString(36)}`,
+        };
       } else if (channelType === CHANNEL_TYPE.WEBCHAT) {
         credentials = {
           channelSecret: channelSecret || `webchat_${Date.now().toString(36)}`,
@@ -191,6 +204,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
   const channelTypeOptions = [
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook Messenger' },
+    { value: 'THREADS', label: 'Instagram (私訊)' },
     { value: 'WEBCHAT', label: 'WebChat (網頁聊天)' },
   ];
 
@@ -300,6 +314,23 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                   <div>
                     <label className="mb-1.5 block text-sm font-medium">Page ID</label>
                     <Input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="粉絲專頁數字 ID（選填）" />
+                  </div>
+                </>
+              )}
+
+              {channelType === CHANNEL_TYPE.THREADS && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">App ID</label>
+                    <Input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="Meta App ID" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">App Secret</label>
+                    <Input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="用於 webhook 簽章驗證" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">Page Access Token</label>
+                    <Input type="password" value={pageAccessToken} onChange={(e) => setPageAccessToken(e.target.value)} placeholder="IGQ... 開頭的 Token（IG 專業帳號授權後取得）" />
                   </div>
                 </>
               )}

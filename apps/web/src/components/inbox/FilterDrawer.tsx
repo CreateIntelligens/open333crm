@@ -29,6 +29,7 @@ const STATUS_OPTIONS = [
 const CHANNEL_OPTIONS = [
   { value: 'LINE', label: 'LINE' },
   { value: 'FB', label: 'Facebook' },
+  { value: 'THREADS', label: 'Instagram' },
   { value: 'WEBCHAT', label: 'WebChat' },
   { value: 'WHATSAPP', label: 'WhatsApp' },
 ];

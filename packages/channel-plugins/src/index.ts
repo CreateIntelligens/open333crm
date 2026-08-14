@@ -142,7 +142,7 @@ export function getPlugin(channelType: ChannelType): ChannelPlugin {
 
 export { TelegramPlugin } from './telegram/index.js';
 export { FbPlugin, fbPlugin } from './facebook/index.js';
-export { ThreadsPlugin }  from './threads.js';
+export { ThreadsPlugin, threadsPlugin }  from './threads.js';
 export { LinePlugin, linePlugin } from './line/index.js';
 export { WebchatPlugin, webchatPlugin } from './webchat/index.js';
 

@@ -46,25 +46,27 @@ export class ThreadsPlugin implements ChannelPlugin {
       for (const messaging of entry.messaging ?? []) {
         const contactUid = messaging.sender.id;
         const timestamp = new Date(messaging.timestamp);
+        // IG 訊息 id（mid），供 inbound 管線去重（Meta 可能重送同一事件）
+        const channelMsgId = messaging.message?.mid;
 
         if (messaging.message?.reply_to?.story) {
-          messages.push({ contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'like_heart')) {
-          messages.push({ contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'image')) {
           const img = messaging.message.attachments.find((a) => a.type === 'image');
-          messages.push({ contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.text) {
-          messages.push({ contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging });
           continue;
         }
-        messages.push({ contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging });
+        messages.push({ channelMsgId, contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging });
       }
     }
 
@@ -90,11 +92,19 @@ export class ThreadsPlugin implements ChannelPlugin {
     const creds = credentials as ThreadsCredentials;
     const { content } = message;
     const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string }> | undefined;
+    // 圖片 URL（send-image 出口帶 mediaUrl；相容 content.url）
+    const imageUrl = (content.mediaUrl ?? content.url) as string | undefined;
 
     try {
       let body: Record<string, unknown>;
 
-      if (quickReplies?.length) {
+      if (message.contentType === 'image' && imageUrl) {
+        // IG 發圖：attachment image（同 FB 格式），限 PNG/JPEG、8MB
+        body = {
+          recipient: { id: to },
+          message: { attachment: { type: 'image', payload: { url: imageUrl } } },
+        };
+      } else if (quickReplies?.length) {
         body = {
           recipient: { id: to },
           message: {
@@ -125,6 +135,9 @@ export class ThreadsPlugin implements ChannelPlugin {
   }
   // Note: Threads/Instagram does not support auto-setWebhook (manual webhook setup required)
 }
+
+// 對齊 fbPlugin / linePlugin：export 一個可註冊的 plugin 實例
+export const threadsPlugin = new ThreadsPlugin();
 
 // ── Internal Instagram Webhook types (minimal) ─────────────────────
 

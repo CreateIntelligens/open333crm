@@ -320,6 +320,35 @@ export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: 
     return { verified: true, pageInfo };
   }
 
+  if (channel.channelType === CHANNEL_TYPE.THREADS) {
+    const pageAccessToken = credentials.pageAccessToken as string;
+
+    // 走 IG Login 路線，用 Instagram Graph API 驗證 token 有效
+    const response = await fetch(
+      `https://graph.instagram.com/v21.0/me?fields=id&access_token=${pageAccessToken}`,
+    );
+
+    if (!response.ok) {
+      const errBody = (await response.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      throw new AppError(
+        errBody.error?.message ?? `Instagram API 驗證失敗 (${response.status})`,
+        'CHANNEL_VERIFY_FAILED',
+        400,
+      );
+    }
+
+    const igInfo = (await response.json()) as Record<string, unknown>;
+
+    await prisma.channel.update({
+      where: { id },
+      data: { lastVerifiedAt: new Date() },
+    });
+
+    return { verified: true, pageInfo: igInfo };
+  }
+
   throw new AppError(`不支援的渠道類型: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
 }
 

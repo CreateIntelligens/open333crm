@@ -132,7 +132,7 @@ export function MessageInput({
 
     setSending(true);
     try {
-      if ([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT].includes(channelType as any)) {
+      if ([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT].includes(channelType as any)) {
         const formData = new FormData();
         formData.append('file', file);
 
