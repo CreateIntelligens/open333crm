@@ -2,7 +2,30 @@ import type { PrismaClient } from '@prisma/client';
 import { runDailyAggregation } from './analytics.aggregator.js';
 import { logger } from '@open333crm/core';
 
-const HARDCODED_TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
+/**
+ * 對所有啟用中的租戶各跑一次當日聚合。
+ * 單一租戶失敗不影響其他租戶（逐一 try/catch）。
+ */
+async function aggregateAllTenants(prisma: PrismaClient, date: Date) {
+  const day = date.toISOString().slice(0, 10);
+  const tenants = await prisma.tenant.findMany({
+    where: { isActive: true },
+    select: { id: true },
+  });
+
+  logger.info(`[AnalyticsScheduler] Aggregating ${day} for ${tenants.length} active tenant(s)`);
+
+  for (const { id: tenantId } of tenants) {
+    try {
+      await runDailyAggregation(prisma, tenantId, date);
+    } catch (err) {
+      // 單一租戶失敗只記 log，不中斷其他租戶的聚合
+      logger.error(`[AnalyticsScheduler] Aggregation failed for tenant ${tenantId} (${day}):`, err);
+    }
+  }
+
+  logger.info(`[AnalyticsScheduler] Aggregation complete for ${day}`);
+}
 
 /**
  * Simple scheduler that runs daily aggregation.
@@ -10,17 +33,13 @@ const HARDCODED_TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
  * - Every day at 2:00 AM: aggregate previous day
  */
 export function setupAnalyticsScheduler(prisma: PrismaClient) {
-  // Run yesterday's aggregation on startup
+  // Run yesterday's aggregation on startup（所有啟用租戶）
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
 
-  runDailyAggregation(prisma, HARDCODED_TENANT_ID, yesterday)
-    .then(() => {
-      logger.info('[AnalyticsScheduler] Aggregation complete for', yesterday.toISOString().slice(0, 10));
-    })
-    .catch((err) => {
-      logger.error('[AnalyticsScheduler] Aggregation failed:', err);
-    });
+  aggregateAllTenants(prisma, yesterday).catch((err) => {
+    logger.error('[AnalyticsScheduler] Startup aggregation failed:', err);
+  });
 
   // Calculate ms until next 2:00 AM
   function msUntilNext2AM(): number {
@@ -37,14 +56,12 @@ export function setupAnalyticsScheduler(prisma: PrismaClient) {
   function scheduleNext() {
     const ms = msUntilNext2AM();
     setTimeout(async () => {
-      try {
-        const yd = new Date();
-        yd.setDate(yd.getDate() - 1);
-        await runDailyAggregation(prisma, HARDCODED_TENANT_ID, yd);
-        logger.info('[AnalyticsScheduler] Aggregation complete for', yd.toISOString().slice(0, 10));
-      } catch (err) {
-        logger.error('[AnalyticsScheduler] Aggregation failed:', err);
-      }
+      const yd = new Date();
+      yd.setDate(yd.getDate() - 1);
+      // 對所有啟用租戶各跑一次（aggregateAllTenants 內已逐租戶 try/catch）
+      await aggregateAllTenants(prisma, yd).catch((err) => {
+        logger.error('[AnalyticsScheduler] Daily aggregation failed:', err);
+      });
       scheduleNext();
     }, ms);
   }

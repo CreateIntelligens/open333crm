@@ -41,7 +41,8 @@ async function main() {
   for (const { id, password, ...data } of agents) {
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.agent.upsert({
-      where: { tenantId_email: { tenantId: TENANT_ID, email: data.email } },
+      // email 全域唯一，直接用 email 當 where（複合鍵 tenantId_email 已移除）
+      where: { email: data.email },
       update: { name: data.name, role: data.role, passwordHash, isActive: true },
       create: { id, tenantId: TENANT_ID, ...data, passwordHash, isActive: true },
     });

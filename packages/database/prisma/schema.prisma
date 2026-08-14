@@ -252,7 +252,8 @@ model Agent {
   notifications Notification[]
   cliSessions   CliSession[]
 
-  @@unique([tenantId, email])
+  // email 全域唯一：一個 email 只能屬於一個租戶（多租戶登入靠 email 解析租戶）
+  @@unique([email])
   @@index([tenantId])
   @@map("agents")
 }

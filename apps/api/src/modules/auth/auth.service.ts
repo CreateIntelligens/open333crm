@@ -1,16 +1,12 @@
 import type { PrismaClient } from '@prisma/client';
-import { DEFAULT_TENANT_ID } from '@open333crm/shared';
 import { verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 
 export async function login(prisma: PrismaClient, email: string, password: string) {
+  // email 全域唯一：直接用 email 查出 agent，agent.tenantId 即為登入者所屬租戶
+  // （後續 JWT 帶 tenantId、每個 request 從 token 解租戶，整條鏈路自動多租戶正確）
   const agent = await prisma.agent.findUnique({
-    where: {
-      tenantId_email: {
-        tenantId: DEFAULT_TENANT_ID,
-        email,
-      },
-    },
+    where: { email },
     select: {
       id: true,
       tenantId: true,
@@ -20,6 +16,10 @@ export async function login(prisma: PrismaClient, email: string, password: strin
       avatarUrl: true,
       passwordHash: true,
       isActive: true,
+      // 一併載入所屬租戶的啟用狀態，停用租戶不得登入
+      tenant: {
+        select: { isActive: true },
+      },
     },
   });
 
@@ -31,12 +31,20 @@ export async function login(prisma: PrismaClient, email: string, password: strin
     throw new AppError('Account is disabled', 'ACCOUNT_DISABLED', 403);
   }
 
+  // 租戶被停用（例如欠費停權）時，即使帳號本身有效也擋下登入。
+  // 用 optional chaining 防孤兒列（tenant 被繞過 Prisma 刪除時 agent.tenant 可能為 null），
+  // 並把「租戶缺失」一併視為停用擋下。
+  if (!agent.tenant?.isActive) {
+    throw new AppError('Tenant is disabled', 'TENANT_DISABLED', 403);
+  }
+
   const valid = await verifyPassword(password, agent.passwordHash);
   if (!valid) {
     throw new AppError('Invalid email or password', 'INVALID_CREDENTIALS', 401);
   }
 
-  const { passwordHash: _, ...agentData } = agent;
+  // 移除 passwordHash 與 join 進來的 tenant 物件，只回傳 agent 本身欄位
+  const { passwordHash: _, tenant: __, ...agentData } = agent;
   return agentData;
 }
 

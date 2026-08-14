@@ -19,8 +19,10 @@ export async function createAgent(
   tenantId: string,
   data: CreateAgentInput,
 ) {
-  const existing = await prisma.agent.findFirst({
-    where: { tenantId, email: data.email },
+  // email 全域唯一：跨租戶檢查是否已被使用（不限本租戶），
+  // 否則跨租戶撞 email 會在 create 時冒 P2002 → 500，而非乾淨的 409
+  const existing = await prisma.agent.findUnique({
+    where: { email: data.email },
   });
 
   if (existing) {
