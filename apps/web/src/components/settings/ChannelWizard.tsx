@@ -128,7 +128,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
         displayName: displayName || `My ${channelType} Channel`,
         credentials,
       };
-      if (webhookBaseUrl) payload.webhookBaseUrl = webhookBaseUrl;
+      if (webhookBaseUrl?.trim()) payload.webhookBaseUrl = webhookBaseUrl.trim();
 
       const createRes = await api.post('/channels', payload);
       const newChannel = createRes.data?.data;
