@@ -49,10 +49,13 @@ export class ThreadsPlugin implements ChannelPlugin {
         // echo：商業帳號自己發出的訊息會被 Meta 回送（sender = entry.id 或 is_echo）。
         // 不濾掉會讓 Bot 把自己的回覆當客戶訊息，形成自問自答迴圈。
         if (messaging.sender.id === entry.id || messaging.message?.is_echo) continue;
+        // 非訊息互動事件（已讀 seen、reaction 按愛心、postback 等）沒有 message.mid，
+        // 建成空訊息只會在收件匣產生噪音氣泡並觸發 Bot 空跑；真訊息必有 mid，一律要求。
+        if (!messaging.message?.mid) continue;
         const contactUid = messaging.sender.id;
         const timestamp = new Date(messaging.timestamp);
         // IG 訊息 id（mid），供 inbound 管線去重（Meta 可能重送同一事件）
-        const channelMsgId = messaging.message?.mid;
+        const channelMsgId = messaging.message.mid;
 
         if (messaging.message?.reply_to?.story) {
           messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
@@ -64,7 +67,10 @@ export class ThreadsPlugin implements ChannelPlugin {
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'image')) {
           const img = messaging.message.attachments.find((a) => a.type === 'image');
-          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url }, rawPayload: messaging });
+          // 同時帶 mediaUrl（各 plugin 慣例）與 url（對齊 FB、前端相容）。
+          // 不放 text 佔位字：否則 message.received 的 text 守門會讓 Bot 拿「[圖片]」去做
+          // KB 檢索並回覆不相關內容。純圖片訊息不應觸發 Bot 自動回覆。
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url, url: img?.payload?.url }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.text) {

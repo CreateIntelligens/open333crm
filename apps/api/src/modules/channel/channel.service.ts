@@ -185,17 +185,17 @@ export async function updateChannel(
     updateData.isActive = data.isActive;
   }
   if (data.credentials) {
-    // 更新憑證未帶 verifyToken 時沿用舊值，避免換掉 Meta 後台已綁定的驗證權杖
+    // 部分更新：先合併舊憑證，再以本次明確提供（非 undefined）的欄位覆蓋，
+    // 避免編輯表單沒填的 appId/pageId/verifyToken 等既有欄位被洗掉
     let nextCredentials = data.credentials;
-    if (nextCredentials.verifyToken === undefined) {
-      try {
-        const oldCreds = decryptCredentials(channel.credentialsEncrypted);
-        if (oldCreds.verifyToken !== undefined) {
-          nextCredentials = { ...nextCredentials, verifyToken: oldCreds.verifyToken };
-        }
-      } catch {
-        /* 舊憑證解不開（跨環境金鑰不符）就直接用新憑證 */
-      }
+    try {
+      const oldCreds = decryptCredentials(channel.credentialsEncrypted);
+      const provided = Object.fromEntries(
+        Object.entries(data.credentials).filter(([, v]) => v !== undefined),
+      );
+      nextCredentials = { ...oldCreds, ...provided };
+    } catch {
+      /* 舊憑證解不開（跨環境金鑰不符）就直接用新憑證 */
     }
     updateData.credentialsEncrypted = encryptCredentials(nextCredentials);
   }
@@ -339,8 +339,10 @@ export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: 
     const pageAccessToken = credentials.pageAccessToken as string;
 
     // 走 IG Login 路線，用 Instagram Graph API 驗證 token 有效
+    // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄，也免去編碼問題
     const response = await fetch(
-      `https://graph.instagram.com/v21.0/me?fields=id&access_token=${pageAccessToken}`,
+      'https://graph.instagram.com/v21.0/me?fields=id',
+      { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
     if (!response.ok) {
