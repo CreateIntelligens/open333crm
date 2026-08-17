@@ -146,7 +146,11 @@ export async function processInboundMessage(
   const duplicate = await findDuplicateInboundMessage(ctx);
   if (duplicate) return duplicate;
 
-  await createInboundMessage(ctx);
+  // 併發競態下撞 unique 約束（平台同一 webhook 幾乎同時重投）→ 視為重複，提早結束
+  const created = await createInboundMessage(ctx);
+  if (!created) {
+    return { conversation: ctx.conversation!, message: ctx.message!, duplicate: true };
+  }
 
   if (!ctx.conversation || !ctx.message) {
     throw new Error('Inbound message processing did not resolve conversation and message');

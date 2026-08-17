@@ -37,6 +37,8 @@ interface ChannelGuide {
   /** 前置說明 / 前往連結 */
   intro: string;
   consoleUrl?: string;
+  /** 前往連結的顯示文字（各渠道不同後台，避免 FB 指引也寫成 LINE） */
+  consoleLabel?: string;
   fields: FieldStep[];
 }
 
@@ -55,6 +57,7 @@ const GUIDES: Record<string, ChannelGuide> = {
     intro:
       '這些欄位在 Meta for Developers 後台的 App 底下。請先建立 App 並加入 Messenger 產品、連結你的粉絲專頁。',
     consoleUrl: 'https://developers.facebook.com/apps/',
+    consoleLabel: '前往 Meta for Developers',
     fields: [
       {
         field: 'App ID / App Secret',
@@ -98,6 +101,7 @@ const GUIDES: Record<string, ChannelGuide> = {
     intro:
       '兩個欄位都在 LINE Developers Console 的 Messaging API channel 底下。請先登入並進入你的 channel。',
     consoleUrl: 'https://developers.line.biz/console/',
+    consoleLabel: '前往 LINE Developers Console',
     fields: [
       {
         field: 'Channel Secret',
@@ -160,7 +164,7 @@ export function ChannelFieldGuide({ open, onOpenChange, channelType, values = {}
                     rel="noopener noreferrer"
                     className="font-medium underline underline-offset-2"
                   >
-                    前往 LINE Developers Console ↗
+                    {guide.consoleLabel ?? '前往開發者後台'} ↗
                   </a>
                 </>
               )}

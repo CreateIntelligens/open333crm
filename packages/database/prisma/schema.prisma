@@ -582,6 +582,8 @@ model Message {
   sender       Agent?       @relation(fields: [senderId], references: [id])
 
   @@unique([conversationId, clientMessageId])
+  // 平台訊息 id 去重：IG/FB 等會重複投遞同一 webhook，靠此約束擋掉併發重複建立
+  @@unique([conversationId, channelMsgId])
   @@index([conversationId, createdAt])
   @@index([conversationId, sequence])
   @@map("messages")
