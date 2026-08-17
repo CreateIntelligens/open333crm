@@ -88,3 +88,68 @@ IG（`THREADS`）對話 SHALL 在收件匣及相關頁面正確顯示為 Instagr
 #### Scenario: Text and quick replies still work after adding image support
 - **WHEN** 對 IG 對話送出純文字或帶 quick replies 的訊息
 - **THEN** 既有文字/quick_replies 行為不受影響（image 分支不覆蓋 text 分支）
+
+---
+
+### Requirement: Inbound webhook event filtering
+系統 SHALL 只把「真正的訊息事件」送進 inbound 管線。Meta 的 `read`（已讀回條）/`reaction`/`seen` 等非訊息事件雖帶 `sender`，但無 `message.mid`；`echo`（商業帳號自己發出、被 Meta 回送）則帶 `is_echo` 或 `sender.id` 等於 entry id。`ThreadsPlugin.parseWebhook` MUST 跳過這兩類事件，不建立訊息。
+
+#### Scenario: Read/seen/reaction events are skipped
+- **WHEN** Meta 送來一則無 `message.mid` 的事件（已讀回條、reaction、seen 等）
+- **THEN** `parseWebhook` 跳過該事件、不建立任何訊息，webhook 處理不因缺 sender/message 欄位而崩潰
+
+#### Scenario: Echo messages do not loop the bot
+- **WHEN** 商業帳號自己發出的訊息被 Meta 以 webhook 回送（`message.is_echo` 為真，或 `sender.id` 等於 entry id）
+- **THEN** `parseWebhook` 跳過該 echo，Bot 不會把自己的回覆當成客戶訊息再次回覆（不形成自問自答迴圈）
+
+---
+
+### Requirement: Non-text inbound messages do not trigger KB auto-reply
+系統 SHALL 只對純文字 inbound 訊息執行 KB 語意檢索自動回覆。圖片/貼圖/檔案等非文字訊息（即使帶「[圖片]」等佔位文字）MUST NOT 被拿去做 KB 檢索。`message.received` 事件 MUST 帶 `contentType`，automation worker MUST 據此守門（僅 `contentType` 為 text 或未帶時才呼叫 KB 自動回覆）。
+
+#### Scenario: Image message does not get a KB reply
+- **WHEN** 客戶對已接 Bot 的 IG 對話傳送一張圖片
+- **THEN** 系統不對該圖片做 KB 檢索、不回不相關的 KB 內容；圖片改由 auto-handoff 轉真人處理
+
+#### Scenario: Text message still gets a KB reply
+- **WHEN** 客戶對已接 Bot 的 IG 對話傳送純文字問題
+- **THEN** 系統正常做 KB 檢索並自動回覆
+
+---
+
+### Requirement: Inbound message deduplication by platform message id
+系統 SHALL 以平台訊息 id（`channelMsgId`）對 inbound 訊息去重，防止 Meta 重複投遞同一 webhook 事件造成重複訊息與 Bot 重複回覆。`messages` 表 MUST 有 `(conversationId, channelMsgId)` unique 約束；建立 inbound 訊息時 MUST 先以應用層查重（擋先後到達的重複），並以 P2002 處理 unique 衝突（擋幾乎同時的併發）。撞重複時 MUST NOT 觸發 Bot / socket。
+
+#### Scenario: Duplicate webhook redelivery is ignored
+- **WHEN** Meta 對同一則訊息（相同 `channelMsgId`）重複投遞 webhook
+- **THEN** 第二筆被辨識為重複、不建立第二則訊息、不觸發第二次 Bot 回覆
+
+#### Scenario: Concurrent redelivery hits the unique constraint
+- **WHEN** 兩個相同 `channelMsgId` 的請求幾乎同時進入、皆通過應用層查重
+- **THEN** 後建立者撞 `(conversationId, channelMsgId)` unique 約束（P2002），被視為重複、提早結束，不建立重複訊息
+
+---
+
+### Requirement: Inbound image renders in the inbox
+IG（`THREADS`）inbound 圖片 SHALL 在收件匣正確顯示。plugin inbound 圖片以 `mediaUrl`（並相容 `url`）儲存，前端 `extractMediaUrl` MUST 同時辨識 `mediaUrl` 與 `url`。無法解析內容的 unknown 訊息 MUST NOT 顯示為 `[object Object]`。
+
+#### Scenario: IG inbound image displays as an image
+- **WHEN** 收件匣顯示一則 `contentType: image` 的 IG inbound 訊息（content 帶 `mediaUrl`）
+- **THEN** 前端解析出圖片 URL 並以 `<img>` 顯示，而非顯示不出來或退化為文字
+
+#### Scenario: Unknown content type shows a friendly placeholder
+- **WHEN** 收件匣顯示一則無可解析文字的 unknown 訊息
+- **THEN** 顯示「[不支援的訊息類型]」而非 `[object Object]`
+
+---
+
+### Requirement: Verify token and callback URL are visible in the admin UI
+系統 SHALL 讓管理者在後台看到 IG/FB 渠道的 Callback URL 與驗證權杖（verifyToken），以便貼到 Meta 後台設定 webhook。`getChannel` 回傳憑證時 MUST 對非機密欄位（`verifyToken` / `appId` / `pageId`）回傳完整值（不遮罩）；渠道建立完成頁與編輯視窗 MUST 顯示實際的 Callback URL 與 verifyToken。更新憑證時，未提交的既有欄位（含 verifyToken）MUST 被保留（合併而非覆蓋）。
+
+#### Scenario: Admin reads the verify token to configure Meta webhook
+- **WHEN** 管理者建立或編輯一個 IG/FB 渠道
+- **THEN** UI 顯示可複製的 Callback URL 與實際 verifyToken，供貼到 Meta 後台完成 webhook 驗證
+
+#### Scenario: Partial credential edit preserves other fields
+- **WHEN** 管理者只更新部分憑證欄位（例如只改 appSecret）並儲存
+- **THEN** 未提交的既有欄位（appId / pageId / verifyToken 等）不被洗掉，仍保留原值

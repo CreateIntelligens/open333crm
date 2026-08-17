@@ -56,7 +56,36 @@
 
 - [x] 9.1 typecheck：channel-plugins / api / web 皆過
 - [x] 9.2 本機：建一個 THREADS channel（可用假憑證），確認 webhookUrl 動態產生為 `.../webhooks/threads/{id}`、後台 wizard 能選 IG 並存憑證；收件匣 badge/篩選器正確顯示 IG
-- [ ] 9.3 UAT 端到端（需真實 IG 專業帳號 + Meta App 設定）：Meta 後台訂閱 `messages`、設 callback URL、發測試私訊 → 確認進 inbox（badge 顯示 Instagram、可篩選）+ AI 回覆送回 IG。用 [[reference_facebook_developers_skill]] 排查心法驗證
+- [x] 9.3 端到端驗收（2026-08-17，真實 IG 專業帳號 swee.tcathome + Meta App test333-IG）：真人私訊 → 進 inbox（badge/篩選正確）→ Bot AI 回覆送回 IG。文字/圖片/echo/read 皆驗證正確。詳見第 11 節「實測發現與修正」與 [[project_ig_threads_channel]]
+
+## 11. 端到端實測發現與修正（2026-08-17，規劃時未預料）
+
+> 上線接通後真人實測，發現一批規劃階段沒想到的問題，逐一修正。這些多數是「跨渠道通用缺口」被 IG 首次觸發暴露出來，修正對 FB/LINE 亦受益。
+
+### 11.1 建立/憑證體驗
+- [x] 11.1.1 `createChannelSchema`（channel.routes.ts）與 simulator schema 的 `channelType` enum **漏列 THREADS** → 新增 IG 渠道 / 模擬 IG inbound 都被 Zod 擋成 400。補上 THREADS。
+- [x] 11.1.2 **驗證權杖（verifyToken）可見化**：權杖建立時隨機產生後加密存 DB、渠道詳情又遮罩，UI 無處可見；編輯視窗教學還寫死「渠道 ID 前 8 碼」公式與實際不符。改：`getChannel` 憑證遮罩加白名單（verifyToken/appId/pageId 完整回傳），wizard 完成頁 + 編輯視窗顯示實際 Callback URL 與驗證權杖（FB/IG 皆有）。
+- [x] 11.1.3 編輯 THREADS 渠道原走 LINE 分支導致憑證存不進去 → 補 THREADS 分支。
+- [x] 11.1.4 **憑證部分更新合併**（回應 code review）：更新憑證時先解密舊憑證合併，本次只覆蓋有明確提供（非 undefined）的欄位，避免編輯表單沒填的 appId/pageId/verifyToken 被洗掉（原本只保 verifyToken）。
+- [x] 11.1.5 `updateWebhookBaseUrl` 對 baseUrl 加 `trim`，結尾空格不再產生無效 webhook URL（實際踩到 ngrok URL 帶尾空格）。
+- [x] 11.1.6 欄位說明連結標籤：ChannelGuide 加 `consoleLabel`，FB 指引不再誤顯示「前往 LINE Developers Console」（回應 code review）。
+
+### 11.2 Webhook 事件正確性
+- [x] 11.2.1 **非訊息事件不建空訊息**：Meta 的 `read`（已讀回條）/`reaction`/`seen` 等事件有 sender 但無 `message.mid`，原本 `messaging.sender.id` 直接 TypeError 讓整個 webhook 處理失敗；改為 `!messaging.message?.mid` 一律跳過。
+- [x] 11.2.2 **echo 迴圈防護**：商業帳號自己發的訊息會被 Meta 回送（sender = entry.id 或 message.is_echo），不濾掉會讓 Bot 把自己的回覆當客戶訊息無限自問自答（實測發生一輪）。加 echo 過濾。
+- [x] 11.2.3 驗簽密鑰釐清（文件層，非改碼）：IG Login 路線 webhook 用**「Instagram 應用程式密鑰」**簽 X-Hub-Signature-256，**不是** FB App Secret。App Secret 填錯驗簽永遠失敗。
+
+### 11.3 收訊 → Bot 管線
+- [x] 11.3.1 **圖片訊息不觸發 KB 自動回覆**：圖片無文字內容，但 FB/threads 會塞「[圖片]」佔位字，Bot 拿去做 KB 語意檢索回不相關內容（如 KB 空文章標題「(DocID 6443)」）。根因是 `message.received` 事件**漏帶 contentType**，worker 的文字守門形同虛設。修：inbound-side-effects 補傳 contentType；automation.worker 只對純文字訊息做 KB 檢索。圖片改由 auto-handoff 轉真人。
+- [x] 11.3.2 **inbound 去重補 channelMsgId**：原本只認 clientMessageId（IG/FB 無此欄位故完全跳過去重），Meta 重複投遞同一 webhook 時建兩筆、Bot 回兩次。加 `(conversationId, channelMsgId)` **DB unique 約束 + migration**，`createInboundMessage` 以 P2002 catch 處理併發（回應 code review 的原子性要求）；應用層 findFirst 擋先後到達的重複、DB 約束擋幾乎同時的併發。
+- [x] 11.3.3 新聯繫人首則訊息併發 race：兩則併發解析同一新聯繫人時後到者 create channelIdentity 撞 P2002 整筆丟失 → 改撞鍵時改用先到者的 identity 並回收孤兒 contact。
+
+### 11.4 圖片顯示
+- [x] 11.4.1 IG 圖片收件匣顯示不出來：各 plugin inbound 圖片存 `mediaUrl`，但前端 `extractMediaUrl` 只認 `url`。前端補認 `mediaUrl`；threads 圖片同時帶 `mediaUrl`/`url`。
+- [x] 11.4.2 收件匣 unknown 訊息顯示 `[object Object]`：`extractText` 對無 text 的物件 fallback `String(content)`。改顯示「[不支援的訊息類型]」。
+
+### 11.5 Meta 平台前提（實測血淚，非程式）
+- [x] 11.5.1 **App 必須「已發佈(Live)」才收 message webhook**。開發模式下 Meta 只送 read 等 metadata，永遠收不到 message——跟測試人員、訂閱、密鑰全對也一樣。發佈需先完成商家驗證。這是耗費最多時間才確認的坑，詳見 [[project_ig_threads_channel]]。
 
 ## 10. 非本變更範圍（登記）
 
