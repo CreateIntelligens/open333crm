@@ -4,20 +4,37 @@ export async function findDuplicateInboundMessage(
   ctx: InboundMessageContext,
 ): Promise<InboundMessageResult | null> {
   if (!ctx.conversation) throw new Error('Conversation must be resolved before duplicate check');
-  if (!ctx.options.clientMessageId) return null;
 
-  const existingMessage = await ctx.prisma.message.findUnique({
-    where: {
-      conversationId_clientMessageId: {
-        conversationId: ctx.conversation.id,
-        clientMessageId: ctx.options.clientMessageId,
+  // clientMessageId 去重（樂觀更新 / WebChat 場景）
+  if (ctx.options.clientMessageId) {
+    const existingMessage = await ctx.prisma.message.findUnique({
+      where: {
+        conversationId_clientMessageId: {
+          conversationId: ctx.conversation.id,
+          clientMessageId: ctx.options.clientMessageId,
+        },
       },
-    },
-  });
+    });
+    if (existingMessage) {
+      return { conversation: ctx.conversation, message: existingMessage, duplicate: true };
+    }
+  }
 
-  if (!existingMessage) return null;
+  // channelMsgId 去重（IG/FB 等平台會重複投遞同一 webhook 事件；channelMsgId = 平台訊息 id）
+  // channelMsgId 無 DB unique 約束，這裡以應用層查重擋掉重複建立與重複觸發 Bot。
+  if (ctx.channelMsgId) {
+    const existingByChannelMsg = await ctx.prisma.message.findFirst({
+      where: {
+        conversationId: ctx.conversation.id,
+        channelMsgId: ctx.channelMsgId,
+      },
+    });
+    if (existingByChannelMsg) {
+      return { conversation: ctx.conversation, message: existingByChannelMsg, duplicate: true };
+    }
+  }
 
-  return { conversation: ctx.conversation, message: existingMessage, duplicate: true };
+  return null;
 }
 
 export async function createInboundMessage(ctx: InboundMessageContext): Promise<void> {

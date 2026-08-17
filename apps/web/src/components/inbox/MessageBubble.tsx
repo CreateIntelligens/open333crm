@@ -15,10 +15,12 @@ function extractText(content: string | { text?: string } | unknown): string {
   return String(content ?? '');
 }
 
-function extractMediaUrl(content: string | { url?: string; text?: string } | unknown): string | null {
+function extractMediaUrl(content: string | { url?: string; mediaUrl?: string; text?: string } | unknown): string | null {
   if (typeof content === 'object' && content !== null) {
     const obj = content as Record<string, unknown>;
-    if (obj.url && typeof obj.url === 'string') return obj.url as string;
+    // 後端各 plugin inbound 圖片統一存 mediaUrl；url 為相容舊資料
+    if (typeof obj.mediaUrl === 'string' && obj.mediaUrl) return obj.mediaUrl;
+    if (typeof obj.url === 'string' && obj.url) return obj.url;
   }
   const text = extractText(content);
   if (text.startsWith('data:image') || text.startsWith('http')) return text;

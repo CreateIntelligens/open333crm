@@ -332,7 +332,10 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       }
 
       // Attempt KB auto-reply for BOT_HANDLED conversations
-      if (conversationId && text) {
+      // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
+      // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
+      const isTextMessage = !contentType || contentType === 'text';
+      if (conversationId && text && isTextMessage) {
         try {
           await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text);
         } catch (err) {
