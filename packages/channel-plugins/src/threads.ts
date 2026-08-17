@@ -44,6 +44,8 @@ export class ThreadsPlugin implements ChannelPlugin {
 
     for (const entry of payload.entry ?? []) {
       for (const messaging of entry.messaging ?? []) {
+        // 非訊息事件（read 已讀回條、reaction、echo 等）沒有 sender，跳過避免 TypeError
+        if (!messaging?.sender?.id) continue;
         const contactUid = messaging.sender.id;
         const timestamp = new Date(messaging.timestamp);
         // IG 訊息 id（mid），供 inbound 管線去重（Meta 可能重送同一事件）
