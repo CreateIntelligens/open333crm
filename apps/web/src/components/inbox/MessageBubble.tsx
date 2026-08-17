@@ -10,6 +10,8 @@ function extractText(content: string | { text?: string } | unknown): string {
   if (typeof content === 'object' && content !== null && 'text' in (content as Record<string, unknown>)) {
     return (content as { text: string }).text;
   }
+  // 物件但沒有 text（如 IG 貼圖/互動等 unknown 型別），避免顯示 [object Object]
+  if (typeof content === 'object' && content !== null) return '[不支援的訊息類型]';
   return String(content ?? '');
 }
 

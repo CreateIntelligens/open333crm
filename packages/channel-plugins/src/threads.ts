@@ -44,8 +44,11 @@ export class ThreadsPlugin implements ChannelPlugin {
 
     for (const entry of payload.entry ?? []) {
       for (const messaging of entry.messaging ?? []) {
-        // 非訊息事件（read 已讀回條、reaction、echo 等）沒有 sender，跳過避免 TypeError
+        // 非訊息事件（read 已讀回條、reaction 等）沒有 sender，跳過避免 TypeError
         if (!messaging?.sender?.id) continue;
+        // echo：商業帳號自己發出的訊息會被 Meta 回送（sender = entry.id 或 is_echo）。
+        // 不濾掉會讓 Bot 把自己的回覆當客戶訊息，形成自問自答迴圈。
+        if (messaging.sender.id === entry.id || messaging.message?.is_echo) continue;
         const contactUid = messaging.sender.id;
         const timestamp = new Date(messaging.timestamp);
         // IG 訊息 id（mid），供 inbound 管線去重（Meta 可能重送同一事件）
@@ -159,6 +162,7 @@ interface InstagramMessaging {
   message?: {
     mid?:   string;
     text?:  string;
+    is_echo?: boolean;
     reply_to?: { story?: { url: string; id: string } };
     attachments?: Array<{
       type:    string;
