@@ -137,6 +137,8 @@ export async function getChannel(prisma: PrismaClient, id: string, tenantId: str
   }
 
   // Return with masked credentials
+  // 非機密欄位完整回傳：verifyToken 要貼到 Meta 後台做 webhook 驗證、ID 類本來就非機密
+  const PLAIN_CREDENTIAL_KEYS = new Set(['verifyToken', 'appId', 'pageId']);
   const { credentialsEncrypted, ...rest } = channel;
   let maskedCredentials: Record<string, string> = {};
   try {
@@ -144,6 +146,7 @@ export async function getChannel(prisma: PrismaClient, id: string, tenantId: str
     maskedCredentials = Object.fromEntries(
       Object.entries(creds).map(([k, v]) => {
         const val = String(v);
+        if (PLAIN_CREDENTIAL_KEYS.has(k)) return [k, val];
         return [k, val.length > 8 ? `${val.slice(0, 4)}...${val.slice(-4)}` : '****'];
       }),
     );
@@ -182,7 +185,19 @@ export async function updateChannel(
     updateData.isActive = data.isActive;
   }
   if (data.credentials) {
-    updateData.credentialsEncrypted = encryptCredentials(data.credentials);
+    // 更新憑證未帶 verifyToken 時沿用舊值，避免換掉 Meta 後台已綁定的驗證權杖
+    let nextCredentials = data.credentials;
+    if (nextCredentials.verifyToken === undefined) {
+      try {
+        const oldCreds = decryptCredentials(channel.credentialsEncrypted);
+        if (oldCreds.verifyToken !== undefined) {
+          nextCredentials = { ...nextCredentials, verifyToken: oldCreds.verifyToken };
+        }
+      } catch {
+        /* 舊憑證解不開（跨環境金鑰不符）就直接用新憑證 */
+      }
+    }
+    updateData.credentialsEncrypted = encryptCredentials(nextCredentials);
   }
   if (data.settings !== undefined) {
     updateData.settings = data.settings;
@@ -357,8 +372,8 @@ export async function updateWebhookBaseUrl(
   tenantId: string,
   baseUrl: string,
 ) {
-  // Remove trailing slash
-  const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+  // Remove surrounding whitespace and trailing slash（結尾空格會產生無效的 webhook URL）
+  const cleanBaseUrl = baseUrl.trim().replace(/\/+$/, '');
 
   const channels = await prisma.channel.findMany({
     where: { tenantId },

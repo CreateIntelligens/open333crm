@@ -105,6 +105,7 @@ export function ChannelFormDialog({
           displayName,
         };
         // Build credentials based on channel type
+        // verifyToken 不在此帶入——後端會沿用舊值，避免換掉 Meta 後台已綁定的權杖
         if (channel!.channelType === CHANNEL_TYPE.FB) {
           if (appSecret && pageAccessToken) {
             editPayload.credentials = {
@@ -112,7 +113,14 @@ export function ChannelFormDialog({
               appSecret,
               pageAccessToken,
               pageId: pageId || undefined,
-              verifyToken: `open333crm_${channel!.id.slice(0, 8)}`,
+            };
+          }
+        } else if (channel!.channelType === CHANNEL_TYPE.THREADS) {
+          if (appSecret && pageAccessToken) {
+            editPayload.credentials = {
+              appId: appId || undefined,
+              appSecret,
+              pageAccessToken,
             };
           }
         } else {
@@ -481,8 +489,23 @@ export function ChannelFormDialog({
                   1. 到 Facebook App → Messenger → Settings → Webhooks{'\n'}
                   2. 點 &quot;Edit Callback URL&quot;{'\n'}
                   3. 貼入上方 Webhook URL{'\n'}
-                  4. Verify Token 填入：<code className="bg-primary-subtle px-1 rounded">open333crm_{channel!.id.slice(0, 8)}</code>{'\n'}
+                  4. 驗證權杖（Verify Token）填入：<code className="bg-primary-subtle px-1 rounded">{savedCredentials.verifyToken || '（讀取中，稍候重開此視窗）'}</code>{'\n'}
                   5. 訂閱：messages, messaging_postbacks
+                </p>
+              </div>
+            )}
+
+            {/* IG(Threads)-specific: show verify token info after creation */}
+            {isEditing && effectiveType === CHANNEL_TYPE.THREADS && (
+              <div className="rounded-md bg-primary-subtle p-3">
+                <p className="text-xs text-primary font-medium mb-1">
+                  Instagram Webhook 設定提示
+                </p>
+                <p className="text-xs text-primary">
+                  1. 到 Meta App → Instagram → API 設定 → Webhooks{'\n'}
+                  2. 回呼網址（Callback URL）貼入上方 Webhook URL{'\n'}
+                  3. 驗證權杖（Verify Token）填入：<code className="bg-primary-subtle px-1 rounded">{savedCredentials.verifyToken || '（讀取中，稍候重開此視窗）'}</code>{'\n'}
+                  4. 訂閱欄位：messages
                 </p>
               </div>
             )}
