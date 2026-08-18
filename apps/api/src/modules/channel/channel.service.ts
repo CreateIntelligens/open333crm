@@ -310,8 +310,10 @@ export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: 
     const pageAccessToken = credentials.pageAccessToken as string;
 
     // Verify the page access token by calling the Graph API
+    // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄
     const response = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${pageAccessToken}`,
+      'https://graph.facebook.com/v21.0/me?fields=id,name',
+      { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
     if (!response.ok) {

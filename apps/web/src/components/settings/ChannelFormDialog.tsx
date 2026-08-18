@@ -105,22 +105,24 @@ export function ChannelFormDialog({
           displayName,
         };
         // Build credentials based on channel type
-        // verifyToken 不在此帶入——後端會沿用舊值，避免換掉 Meta 後台已綁定的權杖
+        // verifyToken 不在此帶入——後端會沿用舊值，避免換掉 Meta 後台已綁定的權杖。
+        // 只送出實際填寫的欄位（未填帶 undefined），讓後端合併既有憑證，
+        // 支援只輪替單一憑證（例如只換 pageAccessToken）而不需重填全部。
         if (channel!.channelType === CHANNEL_TYPE.FB) {
-          if (appSecret && pageAccessToken) {
+          if (appId || appSecret || pageAccessToken || pageId) {
             editPayload.credentials = {
               appId: appId || undefined,
-              appSecret,
-              pageAccessToken,
+              appSecret: appSecret || undefined,
+              pageAccessToken: pageAccessToken || undefined,
               pageId: pageId || undefined,
             };
           }
         } else if (channel!.channelType === CHANNEL_TYPE.THREADS) {
-          if (appSecret && pageAccessToken) {
+          if (appId || appSecret || pageAccessToken) {
             editPayload.credentials = {
               appId: appId || undefined,
-              appSecret,
-              pageAccessToken,
+              appSecret: appSecret || undefined,
+              pageAccessToken: pageAccessToken || undefined,
             };
           }
         } else {

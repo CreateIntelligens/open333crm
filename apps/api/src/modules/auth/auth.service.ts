@@ -31,16 +31,18 @@ export async function login(prisma: PrismaClient, email: string, password: strin
     throw new AppError('Account is disabled', 'ACCOUNT_DISABLED', 403);
   }
 
-  // 租戶被停用（例如欠費停權）時，即使帳號本身有效也擋下登入。
-  // 用 optional chaining 防孤兒列（tenant 被繞過 Prisma 刪除時 agent.tenant 可能為 null），
-  // 並把「租戶缺失」一併視為停用擋下。
-  if (!agent.tenant?.isActive) {
-    throw new AppError('Tenant is disabled', 'TENANT_DISABLED', 403);
-  }
-
   const valid = await verifyPassword(password, agent.passwordHash);
   if (!valid) {
     throw new AppError('Invalid email or password', 'INVALID_CREDENTIALS', 401);
+  }
+
+  // 租戶被停用（例如欠費停權）時，即使帳號本身有效也擋下登入。
+  // 用 optional chaining 防孤兒列（tenant 被繞過 Prisma 刪除時 agent.tenant 可能為 null），
+  // 並把「租戶缺失」一併視為停用擋下。
+  // 放在密碼驗證之後：避免未通過驗證者藉由 403(TENANT_DISABLED) 與 401 的差異
+  // 枚舉出某 email 是否屬於被停用的租戶。
+  if (!agent.tenant?.isActive) {
+    throw new AppError('Tenant is disabled', 'TENANT_DISABLED', 403);
   }
 
   // 移除 passwordHash 與 join 進來的 tenant 物件，只回傳 agent 本身欄位

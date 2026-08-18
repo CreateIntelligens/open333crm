@@ -85,7 +85,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     try {
       // Build credentials
       let credentials: Record<string, unknown>;
-      const metaVerifyToken = `open333crm_${Date.now().toString(36)}`;
+      // 用加密安全隨機值，避免 webhook 驗證權杖被猜測（Date.now() 可預測）
+      const metaVerifyToken = `open333crm_${crypto.randomUUID()}`;
       if (channelType === CHANNEL_TYPE.FB) {
         if (!appSecret || !pageAccessToken) {
           setError('請填寫 App Secret 和 Page Access Token');
