@@ -1,16 +1,16 @@
 ## 1. 盤點與前置
 
-- [ ] 1.1 盤點現行所有掛 `requireAdmin` / `requireSupervisor` 的路由，產出「路由 → 現行最低角色」對照表（作為預設權限歸屬與遷移零中斷的依據）
-- [ ] 1.2 依對照表定義完整權限點清單（`resource.action`），標註 group、dependsOn、implies、label、description，**並標註每個權限點的所屬平台 feature**（見 ARCH-PLATFORM-LAYER §0.1；每個權限點必須恰好歸屬一個 feature，供平台 entitlement 天花板對應）
-- [ ] 1.3 為三個 system role（admin/supervisor/agent）定義預設 RolePermission 對照表，確保能力 = 現行三角色能力（逐條核對 1.1）
+- [x] 1.1 盤點現行所有掛 `requireAdmin` / `requireSupervisor` 的路由，產出「路由 → 現行最低角色」對照表（作為預設權限歸屬與遷移零中斷的依據）— 見 SPEC.md §4/§8
+- [x] 1.2 依對照表定義完整權限點清單（`resource.action`），標註 group、dependsOn、implies、label、description、所屬平台 feature — 落成 packages/core/src/rbac/permissions.ts（49 個權限點）
+- [ ] 1.3 為三個 system role（admin/supervisor/agent）定義預設 RolePermission 對照表，確保能力 = 現行三角色能力（逐條核對 1.1）— SPEC.md §5 已列，待落成 seed
 
 ## 2. 權限 Registry（permission-model）
 
-- [ ] 2.1 建立 `PERMISSIONS` registry 模組（code/group/label/description/dependsOn?/implies?），填入 1.2 的清單
-- [ ] 2.2 實作 registry 啟動驗證：重複 code、dependsOn/implies 懸空參照、implies 成環、同一對不可同時出現在 dependsOn 與 implies
-- [ ] 2.3 實作 route-to-registry 一致性檢查（掃描 `requirePermission(code)` 斷言 code 存在於 registry），接進啟動或 CI
-- [ ] 2.3b 【平台對應】建立 `FEATURE` registry（feature module → 涵蓋的權限點），並加啟動驗證：每個權限點恰好歸屬一個 feature、feature 宣告的 code 都存在於權限 registry（見 ARCH-PLATFORM-LAYER §0.1）——保證平台可控功能與租戶可授權限一一對應
-- [ ] 2.4 為 registry 驗證與一致性檢查補單元測試
+- [x] 2.1 建立 `PERMISSIONS` registry 模組（code/group/label/description/dependsOn?/implies?/feature）— packages/core/src/rbac/permissions.ts
+- [x] 2.2 實作 registry 啟動驗證：重複 code、dependsOn/implies 懸空參照、implies 成環、同一對不可同時出現在 dependsOn 與 implies — registry.ts validatePermissionRegistry()
+- [x] 2.3 實作 route-to-registry 一致性檢查（validateRouteCodes）— registry.ts；接進啟動待階段 4 隨 guard 一起
+- [x] 2.3b 【平台對應】建立 `FEATURE` registry + feature↔權限點對應驗證 — features.ts + registry.ts
+- [x] 2.4 為 registry 驗證與一致性檢查補測試 — apps/api/src/__tests__/rbac-registry.test.ts（11 項驗證全過）
 
 ## 3. 資料庫（packages/database）
 
