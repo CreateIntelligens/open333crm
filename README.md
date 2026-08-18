@@ -4,11 +4,12 @@
 
 ## 核心功能
 
-- **多渠道整合** — LINE OA、Facebook Messenger、WebChat 統一收件箱
+- **多渠道整合** — LINE OA、Facebook Messenger、Instagram (DM/Threads)、WebChat 統一收件箱
 - **智能自動化** — 規則引擎（12 種動作類型）、LLM 情緒分析/分類/智能回覆、知識庫
 - **數據分析** — 即時儀表板、績效追蹤、趨勢圖表、CSV 匯出
-- **行銷系統** — 客群分眾、活動管理、廣播排程、模板變數替換
+- **行銷系統** — 客群分眾、活動管理、廣播排程、模板變數替換、LINE Flex 素材匯入與編輯
 - **案件管理** — Ticket 生命週期、SLA 監控、CSAT 調查
+- **下游 Webhook** — CRM 接收的 Webhook 可即時轉發至自訂第三方系統
 - **短連結** — URL 縮短、QR Code、點擊追蹤、GA4/Meta Pixel 追蹤注入
 - **權限管理** — 多租戶架構、ADMIN / SUPERVISOR / AGENT 三級 RBAC
 
@@ -198,6 +199,8 @@ Base URL: `http://localhost:3001/api/v1`，JWT Bearer Token 認證。
 | 行銷     | `GET /marketing/campaigns`、`POST /marketing/broadcasts` |
 | 短連結   | `GET /shortlinks`、`POST /shortlinks`                    |
 | 追蹤設定 | `GET /settings/tracking`、`PUT /settings/tracking`       |
+| 渠道管理 | `GET /channels`、`POST /channels`、`PUT /channels/:id`    |
+| Webhook  | `GET /webhooks`、`POST /webhooks`、`DELETE /webhooks/:id` |
 
 完整 API 文件：[docs/api-endpoints.md](docs/api-endpoints.md)（109+ 端點）
 
