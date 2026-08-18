@@ -104,6 +104,7 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
       contactId: ctx.contactId,
       channelId: ctx.channel.id,
       channelType: ctx.channel.channelType,
+      contentType: ctx.contentType,
       content: ctx.content,
       messageContent: (ctx.content.text as string) ?? '',
       replyToken,

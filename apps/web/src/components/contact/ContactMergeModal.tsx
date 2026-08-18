@@ -75,6 +75,7 @@ interface MergePreview {
 const CHANNEL_LABELS: Record<string, string> = {
   LINE: 'LINE',
   FB: 'Facebook',
+  THREADS: 'Instagram',
   WEBCHAT: 'WebChat',
   WHATSAPP: 'WhatsApp',
 };

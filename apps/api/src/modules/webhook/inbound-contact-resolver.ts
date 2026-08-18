@@ -67,17 +67,32 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
 
     contactId = newContact.id;
 
-    channelIdentity = await ctx.prisma.channelIdentity.create({
-      data: {
-        contactId: newContact.id,
-        channelId: ctx.channel.id,
-        channelType: ctx.channel.channelType as any,
-        uid: ctx.contactUid,
-        profileName: displayName,
-        profilePic: avatarUrl ?? null,
-      },
-      include: { contact: true },
-    });
+    try {
+      channelIdentity = await ctx.prisma.channelIdentity.create({
+        data: {
+          contactId: newContact.id,
+          channelId: ctx.channel.id,
+          channelType: ctx.channel.channelType as any,
+          uid: ctx.contactUid,
+          profileName: displayName,
+          profilePic: avatarUrl ?? null,
+        },
+        include: { contact: true },
+      });
+    } catch (err) {
+      // 同一新聯繫人的兩則訊息（或平台重複投遞）併發進來時，另一請求可能已先建立
+      // 同 (channelId, uid) 的 identity → 撞 P2002。改用對方建立的，回收本次孤兒 contact。
+      if ((err as { code?: string }).code !== 'P2002') throw err;
+      channelIdentity = await ctx.prisma.channelIdentity.findUnique({
+        where: { channelId_uid: { channelId: ctx.channel.id, uid: ctx.contactUid } },
+        include: { contact: true },
+      });
+      if (!channelIdentity) throw err;
+      contactId = channelIdentity.contactId;
+      await ctx.prisma.contact.delete({ where: { id: newContact.id } }).catch(() => {
+        /* 孤兒 contact 清不掉不影響主流程 */
+      });
+    }
   }
 
   if (!contactId) {

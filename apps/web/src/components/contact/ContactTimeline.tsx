@@ -27,7 +27,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   WEBCHAT: 'WebChat',
   EMAIL: 'Email',
   WHATSAPP: 'WhatsApp',
-  INSTAGRAM: 'Instagram',
+  THREADS: 'Instagram',
   API: 'API',
 };
 

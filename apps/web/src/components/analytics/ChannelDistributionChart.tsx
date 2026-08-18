@@ -31,6 +31,7 @@ interface ChannelDistributionChartProps {
 const CHANNEL_COLORS: Record<string, string> = {
   LINE: '#06C755',
   FB: '#1877F2',
+  THREADS: '#E4405F',
   WEBCHAT: '#6B7280',
   WHATSAPP: '#25D366',
 };

@@ -44,27 +44,40 @@ export class ThreadsPlugin implements ChannelPlugin {
 
     for (const entry of payload.entry ?? []) {
       for (const messaging of entry.messaging ?? []) {
+        // 非訊息事件（read 已讀回條、reaction 等）沒有 sender，跳過避免 TypeError
+        if (!messaging?.sender?.id) continue;
+        // echo：商業帳號自己發出的訊息會被 Meta 回送（sender = entry.id 或 is_echo）。
+        // 不濾掉會讓 Bot 把自己的回覆當客戶訊息，形成自問自答迴圈。
+        if (messaging.sender.id === entry.id || messaging.message?.is_echo) continue;
+        // 非訊息互動事件（已讀 seen、reaction 按愛心、postback 等）沒有 message.mid，
+        // 建成空訊息只會在收件匣產生噪音氣泡並觸發 Bot 空跑；真訊息必有 mid，一律要求。
+        if (!messaging.message?.mid) continue;
         const contactUid = messaging.sender.id;
         const timestamp = new Date(messaging.timestamp);
+        // IG 訊息 id（mid），供 inbound 管線去重（Meta 可能重送同一事件）
+        const channelMsgId = messaging.message.mid;
 
         if (messaging.message?.reply_to?.story) {
-          messages.push({ contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'like_heart')) {
-          messages.push({ contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'image')) {
           const img = messaging.message.attachments.find((a) => a.type === 'image');
-          messages.push({ contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url }, rawPayload: messaging });
+          // 同時帶 mediaUrl（各 plugin 慣例）與 url（對齊 FB、前端相容）。
+          // 不放 text 佔位字：否則 message.received 的 text 守門會讓 Bot 拿「[圖片]」去做
+          // KB 檢索並回覆不相關內容。純圖片訊息不應觸發 Bot 自動回覆。
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url, url: img?.payload?.url }, rawPayload: messaging });
           continue;
         }
         if (messaging.message?.text) {
-          messages.push({ contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging });
           continue;
         }
-        messages.push({ contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging });
+        messages.push({ channelMsgId, contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging });
       }
     }
 
@@ -90,11 +103,19 @@ export class ThreadsPlugin implements ChannelPlugin {
     const creds = credentials as ThreadsCredentials;
     const { content } = message;
     const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string }> | undefined;
+    // 圖片 URL（send-image 出口帶 mediaUrl；相容 content.url）
+    const imageUrl = (content.mediaUrl ?? content.url) as string | undefined;
 
     try {
       let body: Record<string, unknown>;
 
-      if (quickReplies?.length) {
+      if (message.contentType === 'image' && imageUrl) {
+        // IG 發圖：attachment image（同 FB 格式），限 PNG/JPEG、8MB
+        body = {
+          recipient: { id: to },
+          message: { attachment: { type: 'image', payload: { url: imageUrl } } },
+        };
+      } else if (quickReplies?.length) {
         body = {
           recipient: { id: to },
           message: {
@@ -126,6 +147,9 @@ export class ThreadsPlugin implements ChannelPlugin {
   // Note: Threads/Instagram does not support auto-setWebhook (manual webhook setup required)
 }
 
+// 對齊 fbPlugin / linePlugin：export 一個可註冊的 plugin 實例
+export const threadsPlugin = new ThreadsPlugin();
+
 // ── Internal Instagram Webhook types (minimal) ─────────────────────
 
 interface InstagramWebhookPayload {
@@ -144,6 +168,7 @@ interface InstagramMessaging {
   message?: {
     mid?:   string;
     text?:  string;
+    is_echo?: boolean;
     reply_to?: { story?: { url: string; id: string } };
     attachments?: Array<{
       type:    string;

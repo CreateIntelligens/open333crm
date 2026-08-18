@@ -53,7 +53,7 @@ const fbCredentialsSchema = z.object({
 const webchatCredentialsSchema = z.record(z.unknown());
 
 const createChannelSchema = z.object({
-  channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
+  channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
   displayName: z.string().min(1).max(100),
   credentials: z.record(z.unknown()),
   settings: z.record(z.unknown()).optional(),
@@ -66,7 +66,8 @@ const createChannelSchema = z.object({
         ctx.addIssue({ ...issue, path: ['credentials', ...issue.path] });
       });
     }
-  } else if (data.channelType === CHANNEL_TYPE.FB) {
+  } else if (data.channelType === CHANNEL_TYPE.FB || data.channelType === CHANNEL_TYPE.THREADS) {
+    // THREADS(IG 私訊) 憑證結構同 FB：appSecret 驗簽、pageAccessToken 收發
     const result = fbCredentialsSchema.safeParse(data.credentials);
     if (!result.success) {
       result.error.issues.forEach((issue) => {

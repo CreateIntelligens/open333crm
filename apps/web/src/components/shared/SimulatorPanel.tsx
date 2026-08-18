@@ -88,6 +88,7 @@ export function SimulatorPanel() {
                 options={[
                   { value: 'LINE', label: 'LINE' },
                   { value: 'FB', label: 'Facebook' },
+                  { value: 'THREADS', label: 'Instagram' },
                   { value: 'WEBCHAT', label: 'WebChat' },
                 ]}
               />

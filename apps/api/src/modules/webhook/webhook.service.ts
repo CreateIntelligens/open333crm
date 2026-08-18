@@ -38,14 +38,23 @@ export async function processWebhookEvent(
 ) {
   logger.info('[Webhook] Received', { channelId, channelType, bodyBytes: rawBody?.length ?? 0 });
 
-  // 1. Load channel from DB
+  // 1. Load channel from DB（一併載入所屬租戶的啟用狀態）
   const channel = await prisma.channel.findFirst({
     where: { id: channelId, isActive: true },
+    include: { tenant: { select: { isActive: true } } },
   });
 
   if (!channel) {
     logger.warn('[Webhook] Channel not found or inactive', { channelId });
     throw new Error(`Channel not found or inactive: ${channelId}`);
+  }
+
+  // 租戶被停用（例如欠費停權）時，即使 channel 本身 active 也不處理其 inbound 訊息。
+  // 這是預期內情況（非錯誤）：route 早已回 200，此處安靜 return 丟棄即可，
+  // 用 throw 會冒 error 級堆疊噪音、看起來像故障。用 optional chaining 防孤兒列。
+  if (!channel.tenant?.isActive) {
+    logger.warn('[Webhook] Tenant is disabled, dropping event', { channelId, tenantId: channel.tenantId });
+    return;
   }
   logger.info('[Webhook] Channel found', { channelId, channelType: channel.channelType, tenantId: channel.tenantId });
 
@@ -59,8 +68,9 @@ export async function processWebhookEvent(
   }
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);
-  // LINE uses channelSecret, FB uses appSecret for signature verification
-  const secret = (channelType === CHANNEL_TYPE.FB
+  // 簽章驗證用的 secret：FB 與 IG(THREADS) 用 App Secret（X-Hub-Signature-256），
+  // LINE 等其餘用 channelSecret。THREADS 若誤用 channelSecret 會永遠驗簽失敗。
+  const secret = (channelType === CHANNEL_TYPE.FB || channelType === CHANNEL_TYPE.THREADS
     ? credentials.appSecret
     : credentials.channelSecret) as string;
 
@@ -136,7 +146,11 @@ export async function processInboundMessage(
   const duplicate = await findDuplicateInboundMessage(ctx);
   if (duplicate) return duplicate;
 
-  await createInboundMessage(ctx);
+  // 併發競態下撞 unique 約束（平台同一 webhook 幾乎同時重投）→ 視為重複，提早結束
+  const created = await createInboundMessage(ctx);
+  if (!created) {
+    return { conversation: ctx.conversation!, message: ctx.message!, duplicate: true };
+  }
 
   if (!ctx.conversation || !ctx.message) {
     throw new Error('Inbound message processing did not resolve conversation and message');

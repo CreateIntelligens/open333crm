@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Copy, Check } from 'lucide-react';
+import { Loader2, Copy, Check, HelpCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { ChannelFieldGuide } from './ChannelFieldGuide';
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,9 @@ export function ChannelFormDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showFieldGuide, setShowFieldGuide] = useState(false);
+  // 編輯時，該渠道已儲存的憑證（後端回傳的遮罩版，如 5582...ac1a），供欄位說明對照顯示
+  const [savedCredentials, setSavedCredentials] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (channel) {
@@ -69,8 +73,25 @@ export function ChannelFormDialog({
     setAppSecret('');
     setPageAccessToken('');
     setPageId('');
+    setSavedCredentials({});
     setError(null);
     setCopied(false);
+
+    // 編輯模式：取該渠道已存的遮罩憑證，供欄位說明顯示「目前設定值」
+    if (channel && open) {
+      api
+        .get(`/channels/${channel.id}`)
+        .then((res) => {
+          const creds = res.data?.data?.credentials ?? res.data?.credentials;
+          // 過濾掉解密失敗的情況（例如跨環境金鑰不符），只保留可顯示的遮罩值
+          if (creds && typeof creds === 'object' && !creds.error) {
+            setSavedCredentials(creds);
+          }
+        })
+        .catch(() => {
+          /* 拿不到就不顯示，不影響編輯 */
+        });
+    }
   }, [channel, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -84,14 +105,24 @@ export function ChannelFormDialog({
           displayName,
         };
         // Build credentials based on channel type
+        // verifyToken 不在此帶入——後端會沿用舊值，避免換掉 Meta 後台已綁定的權杖。
+        // 只送出實際填寫的欄位（未填帶 undefined），讓後端合併既有憑證，
+        // 支援只輪替單一憑證（例如只換 pageAccessToken）而不需重填全部。
         if (channel!.channelType === CHANNEL_TYPE.FB) {
-          if (appSecret && pageAccessToken) {
+          if (appId || appSecret || pageAccessToken || pageId) {
             editPayload.credentials = {
               appId: appId || undefined,
-              appSecret,
-              pageAccessToken,
+              appSecret: appSecret || undefined,
+              pageAccessToken: pageAccessToken || undefined,
               pageId: pageId || undefined,
-              verifyToken: `open333crm_${channel!.id.slice(0, 8)}`,
+            };
+          }
+        } else if (channel!.channelType === CHANNEL_TYPE.THREADS) {
+          if (appId || appSecret || pageAccessToken) {
+            editPayload.credentials = {
+              appId: appId || undefined,
+              appSecret: appSecret || undefined,
+              pageAccessToken: pageAccessToken || undefined,
             };
           }
         } else {
@@ -121,6 +152,19 @@ export function ChannelFormDialog({
             pageAccessToken,
             pageId,
             verifyToken,
+          };
+        } else if (channelType === CHANNEL_TYPE.THREADS) {
+          // IG(Threads)走 IG Login 路線，憑證同 FB（appSecret 驗簽、pageAccessToken 收發）
+          if (!appSecret || !pageAccessToken) {
+            setError('請填寫 App Secret 和 Page Access Token');
+            setSaving(false);
+            return;
+          }
+          credentials = {
+            appId,
+            appSecret,
+            pageAccessToken,
+            verifyToken: `open333crm_${Date.now().toString(36)}`,
           };
         } else {
           if (!channelSecret || !channelAccessToken) {
@@ -166,12 +210,14 @@ export function ChannelFormDialog({
   const channelTypeOptions = [
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook' },
+    { value: 'THREADS', label: 'Instagram (私訊)' },
     { value: 'WEBCHAT', label: 'WebChat' },
   ];
 
   const effectiveType = isEditing ? channel!.channelType : channelType;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
@@ -215,6 +261,14 @@ export function ChannelFormDialog({
             {/* LINE Credentials */}
             {effectiveType === CHANNEL_TYPE.LINE && (
               <>
+                <button
+                  type="button"
+                  onClick={() => setShowFieldGuide(true)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  欄位說明：這些值要去哪裡取得？
+                </button>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
                     Channel Secret
@@ -245,6 +299,14 @@ export function ChannelFormDialog({
             {/* FB Credentials */}
             {effectiveType === CHANNEL_TYPE.FB && (
               <>
+                <button
+                  type="button"
+                  onClick={() => setShowFieldGuide(true)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  欄位說明：這些值要去哪裡取得？
+                </button>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
                     App ID
@@ -299,6 +361,55 @@ export function ChannelFormDialog({
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
                     粉專設定 → 關於，或 Token Generation 頁面旁邊
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Instagram(Threads)- IG Login 路線，憑證同 FB */}
+            {effectiveType === CHANNEL_TYPE.THREADS && (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    App ID
+                  </label>
+                  <Input
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
+                    placeholder={isEditing ? '留空表示不更新' : 'Meta App ID'}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Meta App → Settings → Basic → App ID
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    App Secret
+                  </label>
+                  <Input
+                    type="password"
+                    value={appSecret}
+                    onChange={(e) => setAppSecret(e.target.value)}
+                    placeholder={isEditing ? '留空表示不更新' : 'Meta App Secret'}
+                    required={!isEditing}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Settings → Basic → App Secret（用於 Webhook 簽名驗證）
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Page Access Token
+                  </label>
+                  <Input
+                    type="password"
+                    value={pageAccessToken}
+                    onChange={(e) => setPageAccessToken(e.target.value)}
+                    placeholder={isEditing ? '留空表示不更新' : 'IGQ... 開頭的 Token'}
+                    required={!isEditing}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    IG 專業帳號授權後取得（graph.instagram.com）
                   </p>
                 </div>
               </>
@@ -380,8 +491,23 @@ export function ChannelFormDialog({
                   1. 到 Facebook App → Messenger → Settings → Webhooks{'\n'}
                   2. 點 &quot;Edit Callback URL&quot;{'\n'}
                   3. 貼入上方 Webhook URL{'\n'}
-                  4. Verify Token 填入：<code className="bg-primary-subtle px-1 rounded">open333crm_{channel!.id.slice(0, 8)}</code>{'\n'}
+                  4. 驗證權杖（Verify Token）填入：<code className="bg-primary-subtle px-1 rounded">{savedCredentials.verifyToken || '（讀取中，稍候重開此視窗）'}</code>{'\n'}
                   5. 訂閱：messages, messaging_postbacks
+                </p>
+              </div>
+            )}
+
+            {/* IG(Threads)-specific: show verify token info after creation */}
+            {isEditing && effectiveType === CHANNEL_TYPE.THREADS && (
+              <div className="rounded-md bg-primary-subtle p-3">
+                <p className="text-xs text-primary font-medium mb-1">
+                  Instagram Webhook 設定提示
+                </p>
+                <p className="text-xs text-primary">
+                  1. 到 Meta App → Instagram → API 設定 → Webhooks{'\n'}
+                  2. 回呼網址（Callback URL）貼入上方 Webhook URL{'\n'}
+                  3. 驗證權杖（Verify Token）填入：<code className="bg-primary-subtle px-1 rounded">{savedCredentials.verifyToken || '（讀取中，稍候重開此視窗）'}</code>{'\n'}
+                  4. 訂閱欄位：messages
                 </p>
               </div>
             )}
@@ -417,5 +543,22 @@ export function ChannelFormDialog({
         </form>
       </DialogContent>
     </Dialog>
+
+    <ChannelFieldGuide
+      open={showFieldGuide}
+      onOpenChange={setShowFieldGuide}
+      channelType={effectiveType}
+      values={{
+        // 編輯時先帶已存的遮罩憑證，使用者若在表單重新輸入則以輸入值覆蓋
+        ...savedCredentials,
+        ...(channelSecret ? { channelSecret } : {}),
+        ...(channelAccessToken ? { channelAccessToken } : {}),
+        ...(appId ? { appId } : {}),
+        ...(appSecret ? { appSecret } : {}),
+        ...(pageAccessToken ? { pageAccessToken } : {}),
+        ...(pageId ? { pageId } : {}),
+      }}
+    />
+    </>
   );
 }

@@ -48,6 +48,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
 
   const [creating, setCreating] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string | null>(null);
+  // FB/IG 建立後要貼到 Meta 後台的 webhook 資訊（verifyToken 只在建立當下拿得到明碼）
+  const [createdWebhookInfo, setCreatedWebhookInfo] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
   const [verify, setVerify] = useState<VerifyState>({ status: 'idle' });
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -64,6 +66,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     setPageId('');
     setCreating(false);
     setCreatedChannelId(null);
+    setCreatedWebhookInfo(null);
     setVerify({ status: 'idle' });
     setError(null);
     setCopied(false);
@@ -82,6 +85,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     try {
       // Build credentials
       let credentials: Record<string, unknown>;
+      // 用加密安全隨機值，避免 webhook 驗證權杖被猜測（Date.now() 可預測）
+      const metaVerifyToken = `open333crm_${crypto.randomUUID()}`;
       if (channelType === CHANNEL_TYPE.FB) {
         if (!appSecret || !pageAccessToken) {
           setError('請填寫 App Secret 和 Page Access Token');
@@ -93,7 +98,20 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
           appSecret,
           pageAccessToken,
           pageId,
-          verifyToken: `open333crm_${Date.now().toString(36)}`,
+          verifyToken: metaVerifyToken,
+        };
+      } else if (channelType === CHANNEL_TYPE.THREADS) {
+        // IG(Threads) 走 IG Login 路線，憑證同 FB（appSecret 驗簽、pageAccessToken 收發）
+        if (!appSecret || !pageAccessToken) {
+          setError('請填寫 App Secret 和 Page Access Token');
+          setCreating(false);
+          return;
+        }
+        credentials = {
+          appId,
+          appSecret,
+          pageAccessToken,
+          verifyToken: metaVerifyToken,
         };
       } else if (channelType === CHANNEL_TYPE.WEBCHAT) {
         credentials = {
@@ -115,12 +133,15 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
         displayName: displayName || `My ${channelType} Channel`,
         credentials,
       };
-      if (webhookBaseUrl) payload.webhookBaseUrl = webhookBaseUrl;
+      if (webhookBaseUrl?.trim()) payload.webhookBaseUrl = webhookBaseUrl.trim();
 
       const createRes = await api.post('/channels', payload);
       const newChannel = createRes.data?.data;
       const newId = newChannel?.id;
       setCreatedChannelId(newId);
+      if (channelType === CHANNEL_TYPE.FB || channelType === CHANNEL_TYPE.THREADS) {
+        setCreatedWebhookInfo({ webhookUrl: newChannel?.webhookUrl, verifyToken: metaVerifyToken });
+      }
 
       // Move to verify step
       setStep('verify');
@@ -191,6 +212,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
   const channelTypeOptions = [
     { value: 'LINE', label: 'LINE' },
     { value: 'FB', label: 'Facebook Messenger' },
+    { value: 'THREADS', label: 'Instagram (私訊)' },
     { value: 'WEBCHAT', label: 'WebChat (網頁聊天)' },
   ];
 
@@ -304,6 +326,23 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                 </>
               )}
 
+              {channelType === CHANNEL_TYPE.THREADS && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">App ID</label>
+                    <Input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="Meta App ID" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">App Secret</label>
+                    <Input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="用於 webhook 簽章驗證" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">Page Access Token</label>
+                    <Input type="password" value={pageAccessToken} onChange={(e) => setPageAccessToken(e.target.value)} placeholder="IGQ... 開頭的 Token（IG 專業帳號授權後取得）" />
+                  </div>
+                </>
+              )}
+
               {channelType === CHANNEL_TYPE.WEBCHAT && (
                 <div className="rounded-md bg-primary-subtle p-4">
                   <p className="text-sm text-primary">
@@ -341,6 +380,30 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                   {verify.webhookSetup
                     ? 'LINE Webhook 已自動設定完成，無需手動配置。'
                     : 'Webhook 自動設定失敗，請手動到 LINE Developer Console 設定 Webhook URL。'}
+                </div>
+              )}
+
+              {(channelType === CHANNEL_TYPE.FB || channelType === CHANNEL_TYPE.THREADS) && createdWebhookInfo && (
+                <div className="space-y-2 rounded-md bg-primary-subtle p-3">
+                  <p className="text-xs text-primary font-medium">
+                    請到 Meta App 後台設定 Webhook（{channelType === CHANNEL_TYPE.FB ? 'Messenger → Webhooks' : 'Instagram → Webhooks'}）
+                  </p>
+                  <div>
+                    <p className="text-xs text-primary mb-1">回呼網址（Callback URL）</p>
+                    <code className="block rounded bg-muted p-2 text-xs font-mono break-all select-all">
+                      {createdWebhookInfo.webhookUrl || '（建立後於渠道列表查看）'}
+                    </code>
+                  </div>
+                  <div>
+                    <p className="text-xs text-primary mb-1">驗證權杖（Verify Token）</p>
+                    <code className="block rounded bg-muted p-2 text-xs font-mono break-all select-all">
+                      {createdWebhookInfo.verifyToken}
+                    </code>
+                  </div>
+                  <p className="text-xs text-primary">
+                    訂閱欄位：{channelType === CHANNEL_TYPE.FB ? 'messages, messaging_postbacks' : 'messages'}。
+                    之後也可在「編輯渠道」視窗查看此權杖。
+                  </p>
                 </div>
               )}
 
