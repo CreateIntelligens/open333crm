@@ -45,6 +45,9 @@ context: |
   The shared Prisma client is in packages/database. Import PrismaClient from '@open333crm/database', not '@prisma/client'.
   Do not use Prisma-generated enum types (AgentRole etc.) — use string literals instead.
 
+  ## Changelog Maintenance — MANDATORY RULE
+  Whenever implementing a feature, bug fix, or completing/archiving an OpenSpec change, you MUST update `CHANGELOG.md` under the latest release section.
+
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
 # Example:
