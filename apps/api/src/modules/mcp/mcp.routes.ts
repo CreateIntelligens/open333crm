@@ -40,15 +40,27 @@ async function sendWebResponse(
   }
 
   const reader = response.body.getReader();
+  let streamCompleted = false;
   try {
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
       reply.raw.write(chunk.value);
     }
+    streamCompleted = true;
+  } catch (error) {
+    // Once headers are sent, an HTTP error body cannot replace a partial
+    // response. Close the connection so MCP clients can detect truncation
+    // and retry instead of treating it as a successful response.
+    if (reply.raw.headersSent && !reply.raw.destroyed) {
+      reply.raw.destroy();
+    }
+    throw error;
   } finally {
     reader.releaseLock();
-    reply.raw.end();
+    if (streamCompleted && !reply.raw.destroyed && !reply.raw.writableEnded) {
+      reply.raw.end();
+    }
   }
 }
 
