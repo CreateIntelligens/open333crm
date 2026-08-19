@@ -41,6 +41,11 @@ jobs:
               exit 1
             fi
           done
+          if ! grep -qE '^MCP_ALLOWED_ORIGINS=[^[:space:]]' .env.api; then
+            echo "✗ MCP_ALLOWED_ORIGINS must be configured in .env.api"
+            exit 1
+          fi
+          echo "✓ MCP_ALLOWED_ORIGINS configured"
 
       - name: Build Docker images
         working-directory: /srv/open333crm

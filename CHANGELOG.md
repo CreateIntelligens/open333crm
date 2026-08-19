@@ -26,7 +26,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **MCP Streamable HTTP endpoint** — 新增受認證的 `/mcp` endpoint，提供 CRM 唯讀工具給外部 LLM / MCP client：
   - 支援 `initialize`、`tools/list`、`tools/call` 與 JSON response transport
   - 提供目前客服、聯絡人、案件、分析等 tenant-scoped 唯讀工具
-  - CLI Token 可選擇授予 `mcp:read` scope，並加入 Origin 驗證與反向代理路由
+  - CLI Token 可選擇授予 `mcp:read` scope，並加入明確 allowed origins、BigInt-safe response serialization 與反向代理路由
 - **LLM Skill 快捷按鈕** — Topbar 右上角新增「Skill」按鈕，快速開啟 LLM Skill 文件
 
 ### Changed

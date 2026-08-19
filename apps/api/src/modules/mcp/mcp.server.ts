@@ -18,7 +18,7 @@ export interface McpAgentContext {
 
 function serialize(value: unknown): string {
   return JSON.stringify(value, (_key, nestedValue: unknown) =>
-    typeof nestedValue === "bigint" ? Number(nestedValue) : nestedValue,
+    typeof nestedValue === "bigint" ? String(nestedValue) : nestedValue,
   );
 }
 

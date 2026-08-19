@@ -6,10 +6,7 @@ import { MCP_READ_SCOPE } from "./mcp.constants.js";
 import { createMcpServer } from "./mcp.server.js";
 
 function toWebRequest(request: FastifyRequest): Request {
-  const forwardedProto = request.headers["x-forwarded-proto"];
-  const protocol = Array.isArray(forwardedProto)
-    ? forwardedProto[0]
-    : forwardedProto?.split(",")[0]?.trim() || request.protocol;
+  const protocol = request.protocol;
   const host = request.headers.host ?? request.hostname;
   const headers = new Headers();
 
@@ -76,14 +73,7 @@ function isAllowedOrigin(request: FastifyRequest): boolean {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  if (configuredOrigins.includes(origin)) return true;
-
-  const forwardedProto = request.headers["x-forwarded-proto"];
-  const protocol = Array.isArray(forwardedProto)
-    ? forwardedProto[0]
-    : forwardedProto?.split(",")[0]?.trim() || request.protocol;
-  const host = request.headers.host;
-  return Boolean(host && origin === `${protocol}://${host}`);
+  return configuredOrigins.includes(origin);
 }
 
 async function authenticateMcp(
