@@ -22,6 +22,7 @@
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.0.0",
     "@fastify/websocket": "^11.2.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@open333crm/automation": "workspace:*",
     "@open333crm/channel-plugins": "workspace:*",
     "@open333crm/core": "workspace:*",
