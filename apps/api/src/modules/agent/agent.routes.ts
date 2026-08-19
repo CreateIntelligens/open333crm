@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { success, AppError } from '../../shared/utils/response.js';
-import { requireSupervisor, requireAdmin } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 import {
   createAgentSchema,
   updateAgentRoleSchema,
@@ -20,7 +20,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/agents
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: [requirePermission('agent.view')] }, async (request, reply) => {
     const agents = await fastify.prisma.agent.findMany({
       where: {
         tenantId: request.agent.tenantId,
@@ -55,12 +55,13 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success(agents));
   });
 
-  // POST /api/v1/agents — Admin or Supervisor only
+  // POST /api/v1/agents — 需 agent.manage
   fastify.post('/', {
-    preHandler: [requireSupervisor()],
+    preHandler: [requirePermission('agent.manage')],
   }, async (request, reply) => {
     const body = createAgentSchema.parse(request.body);
 
+    // TODO(rbac 階段 6.2): 以「越權防護」取代此 inline 規則（不可建立權限超出自身的角色）
     if (request.agent.role === 'SUPERVISOR' && body.role === 'ADMIN') {
       throw new AppError('Supervisors cannot create ADMIN agents', 'FORBIDDEN', 403);
     }
@@ -77,13 +78,14 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success({ message: 'Password updated' }));
   });
 
-  // PATCH /api/v1/agents/:id/role — Admin or Supervisor only
+  // PATCH /api/v1/agents/:id/role — 需 agent.manage
   fastify.patch('/:id/role', {
-    preHandler: [requireSupervisor()],
+    preHandler: [requirePermission('agent.manage')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateAgentRoleSchema.parse(request.body);
 
+    // TODO(rbac 階段 6.2): 以「越權防護」取代此 inline 規則（不可指派權限超出自身的角色）
     if (request.agent.role === 'SUPERVISOR' && body.role === 'ADMIN') {
       throw new AppError('Supervisors cannot assign ADMIN role', 'FORBIDDEN', 403);
     }
@@ -92,9 +94,9 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success(agent));
   });
 
-  // PATCH /api/v1/agents/:id/password — Admin only (reset another agent's password)
+  // PATCH /api/v1/agents/:id/password — 需 agent.password.reset (reset another agent's password)
   fastify.patch('/:id/password', {
-    preHandler: [requireAdmin()],
+    preHandler: [requirePermission('agent.password.reset')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = resetPasswordSchema.parse(request.body);
@@ -102,9 +104,9 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success({ message: 'Password reset' }));
   });
 
-  // DELETE /api/v1/agents/:id — Admin only (deactivate agent)
+  // DELETE /api/v1/agents/:id — 需 agent.delete (deactivate agent)
   fastify.delete('/:id', {
-    preHandler: [requireAdmin()],
+    preHandler: [requirePermission('agent.delete')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     await deactivateAgent(fastify.prisma, request.agent.tenantId, id);

@@ -13,7 +13,7 @@ import {
   importLineFlexMaterial,
 } from './material.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 // ─── ContentType / ChannelType enums ───────────────────────────────────
 
@@ -152,7 +152,7 @@ const lineFlexImportSchema = z.object({
 
 export default async function materialRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
-  fastify.addHook('preHandler', requireSupervisor());
+  fastify.addHook('preHandler', requirePermission('marketing.view'));
 
   // GET /materials/categories
   fastify.get('/materials/categories', async (request, reply) => {

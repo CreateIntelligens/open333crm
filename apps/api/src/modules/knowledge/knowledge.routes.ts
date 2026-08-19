@@ -28,7 +28,7 @@ import {
   resolveFeedback,
 } from './kb-feedback.service.js';
 import { refreshModelKeys, getKnownModelKeys } from '../ai/model-registry.service.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 import { AppError, success, paginated } from '../../shared/utils/response.js';
 
 const createArticleSchema = z.object({
@@ -195,7 +195,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // 行為矩陣見 openspec/changes/2026-05-13-partner-ingest-cmd/design.md
   fastify.post(
     '/partner-ingest',
-    { preHandler: [requireSupervisor()] },
+    { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
       const fields: Record<string, string> = {};
       const attachments: PartnerAttachmentInput[] = [];
@@ -352,7 +352,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // 客服新增型號文章後不想等 TTL（10 分鐘）自動刷新時使用。
   fastify.post(
     '/models/refresh',
-    { preHandler: [requireSupervisor()] },
+    { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
       const keys = await refreshModelKeys(fastify.prisma, request.agent.tenantId, Date.now());
       return reply.send(
@@ -382,7 +382,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/knowledge/feedback/:id/resolve — 標記已處理
   fastify.patch<{ Params: { id: string } }>(
     '/feedback/:id/resolve',
-    { preHandler: [requireSupervisor()] },
+    { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
       await resolveFeedback(fastify.prisma, request.params.id, request.agent.tenantId);
       return reply.send(success({ resolved: true }));

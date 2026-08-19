@@ -42,6 +42,7 @@
 - [ ] 6.1 把 channel / automation / settings / analytics / marketing / agent 等模組的 `requireAdmin/requireSupervisor` 逐條換成對應 `requirePermission(...)`
 - [ ] 6.2 為 agent 管理補越權指派檢查（取代舊「SUPERVISOR 不能建 ADMIN」inline 邏輯）
 - [ ] 6.3 全域回歸：確認每條原本受保護路由在新權限下對三 system role 的可達性與舊行為一致
+- [ ] 6.4 analytics `/my` 放寬為 `analytics.view.self`（讓 agent 看自己數據）——需把 analytics 整模組 addHook 改逐路由，本階段先維持整模組 analytics.view(零中斷)，此為後續優化
 
 ## 7. 前端資料層與權限閘門（apps/web）
 

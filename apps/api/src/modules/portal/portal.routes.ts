@@ -20,12 +20,12 @@ import {
   addPointTransaction,
   getPointBalance,
 } from './points.service.js';
-import { requireAdmin } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 export default async function portalRoutes(app: FastifyInstance) {
   // All routes require agent JWT
   app.addHook('preHandler', app.authenticate);
-  app.addHook('preHandler', requireAdmin());
+  app.addHook('preHandler', requirePermission('portal.view'));
 
   // ── Activities ────────────────────────────────────────────────────────────
 

@@ -24,7 +24,7 @@ import {
   deleteCampaign,
 } from './campaign.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 // --- Schemas ---
 
@@ -92,7 +92,7 @@ const createBroadcastSchema = z
 export default async function marketingRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
-  fastify.addHook('preHandler', requireSupervisor());
+  fastify.addHook('preHandler', requirePermission('marketing.view'));
 
   // ─── Templates (read-only) ────────────────────────────────────────────────
   //   範本管理 UI 與 QuickBroadcast 已下線（改用 Material 系統 + 統一的 Broadcast）。

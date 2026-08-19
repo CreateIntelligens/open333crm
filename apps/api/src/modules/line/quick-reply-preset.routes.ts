@@ -14,7 +14,7 @@ import {
   deletePreset,
 } from './quick-reply-preset.service.js';
 import { success } from '../../shared/utils/response.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 const itemSchema = z.object({
   label: z.string().min(1).max(20),
@@ -42,7 +42,7 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
   });
 
   // 以下寫操作限 SUPERVISOR
-  fastify.post('/', { preHandler: [requireSupervisor()] }, async (request, reply) => {
+  fastify.post('/', { preHandler: [requirePermission('quickreply.manage')] }, async (request, reply) => {
     const data = createSchema.parse(request.body);
     const preset = await createPreset(fastify.prisma, request.agent.tenantId, data);
     return reply.code(201).send(success(preset));
@@ -50,7 +50,7 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string } }>(
     '/:id',
-    { preHandler: [requireSupervisor()] },
+    { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
       const data = updateSchema.parse(request.body);
       const preset = await updatePreset(
@@ -65,7 +65,7 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     '/:id',
-    { preHandler: [requireSupervisor()] },
+    { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
       const result = await deletePreset(
         fastify.prisma,
