@@ -61,8 +61,25 @@ open333 login
 | `cli:status`         | `CLI_STATUS_SCOPE`         | Health check + current agent identity       |
 | `cli:apis`           | `CLI_APIS_SCOPE`           | List available CLI endpoints & capabilities |
 | `cli:analytics:read` | `CLI_ANALYTICS_READ_SCOPE` | Read-only analytics endpoints               |
+| `mcp:read`           | `MCP_READ_SCOPE`           | Read-only CRM tools through `/mcp`          |
 
 **Default scopes**: `cli:status`, `cli:apis` (granted on login unless overridden)
+
+### MCP endpoint
+
+Open333CRM exposes a read-only MCP Streamable HTTP endpoint at `/mcp`.
+
+- Transport: Streamable HTTP with JSON responses
+- Authentication: `Authorization: Bearer <CLI token>` or an authenticated JWT
+- Required CLI scope: `mcp:read`
+- Available tools: current agent, contacts, cases, and analytics
+- Generate a token with MCP read access from **Settings → CLI / LLM Connections**
+
+Example MCP server URL:
+
+```text
+https://your-crm-host.example/mcp
+```
 
 ---
 
