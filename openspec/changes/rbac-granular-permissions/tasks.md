@@ -46,23 +46,23 @@
 
 ## 7. 前端資料層與權限閘門（apps/web）
 
-- [ ] 7.1 登入後載入 `/me/permissions`，實作 `usePermission(code)` hook 與權限 context（沿用 `AuthProvider` 慣例）
-- [ ] 7.2 Sidebar 選單項目依權限動態顯示（取代靜態全顯示）
+- [x] 7.1 登入後載入 `/me/permissions`，實作 `usePermission(code)` hook 與權限 context（沿用 `AuthProvider` 慣例）
+- [x] 7.2 Sidebar 選單項目依權限動態顯示（取代靜態全顯示）
 - [ ] 7.3 各頁關鍵按鈕（建立/刪除/派工/匯出/發送等）依權限顯示
-- [ ] 7.4 在 `SETTINGS_TABS` 新增「角色與權限」分頁，內容區掛 `<RolePermissionMatrix />`（沿用 `settings/page.tsx` sidebar 佈局）
+- [x] 7.4 在 `SETTINGS_TABS` 新增「角色與權限」分頁，內容區掛 `<RolePermissionMatrix />`（沿用 `settings/page.tsx` sidebar 佈局）
 
 ## 8. 角色權限設定頁 UI（apps/web）
 
 - [ ] 8.1 抽共用元件：把 `OfficeHoursSettings` 的 `role="switch"` 開關抽成 `ui/switch.tsx`（整組開關用）；權限說明暫用原生 `title=`
-- [ ] 8.2 左欄角色清單：system role 標「內建」徽章、custom role 可改名/刪除、底部「＋ 新增角色」；選中態沿用 `bg-primary text-primary-foreground`
-- [ ] 8.3 右欄權限清單：依 `group` 折疊分區（`{open && ...}` 慣例），每 group 標題顯示「已開 N / 全部 M」+ 整組開關；每列 `ui/checkbox` + label + description 小字
-- [ ] 8.4 頂部權限搜尋框 + 「只看已開/未開」過濾；無結果空狀態
-- [ ] 8.5 dependsOn 連動：勾選自動補勾前置並顯示「自動開啟」提示；取消前置時就地確認會連帶關閉的相依項
-- [ ] 8.6 implies 唯讀說明：在觸發隱含的權限旁放 info 圖示 + `title` 說明「啟用時一併需要 X，系統自動處理」，不作可勾選格
-- [ ] 8.7 狀態視覺化（見 design D9 表）：越權 disabled + 說明、system role 鎖定核心權限 🔒 disabled、自身角色 role.manage 防自鎖 ⚠ disabled
-- [ ] 8.8 編輯緩衝 + sticky footer「未儲存變更／儲存／放棄」；儲存成功 `text-success`、失敗 `text-destructive` 並保留變更
-- [ ] 8.9 新增/編輯/刪除自訂角色 Dialog（沿用 `TagManagement` CRUD 樣板）：新增只問名稱→建立空白角色（0 權限）→直接進編輯自行勾選；刪除仍被指派角色時彈窗列出「N 位成員使用中，請先改派」
-- [ ] 8.10 無 `role.manage` 時整頁 render 為唯讀（checkbox 與編輯控制 disabled）
+- [x] 8.2 左欄角色清單：system role 標「內建」徽章、custom role 可改名/刪除、底部「＋ 新增角色」；選中態沿用 `bg-primary text-primary-foreground`
+- [x] 8.3 右欄權限清單：依 `group` 折疊分區（`{open && ...}` 慣例），每 group 標題顯示「已開 N / 全部 M」+ 整組開關；每列 `ui/checkbox` + label + description 小字
+- [x] 8.4 頂部權限搜尋框 + 「只看已開/未開」過濾；無結果空狀態
+- [x] 8.5 dependsOn 連動：勾選自動補勾前置並顯示「自動開啟」提示；取消前置時就地確認會連帶關閉的相依項
+- [x] 8.6 implies 唯讀說明：在觸發隱含的權限旁放 info 圖示 + `title` 說明「啟用時一併需要 X，系統自動處理」，不作可勾選格
+- [x] 8.7 狀態視覺化（見 design D9 表）：越權 disabled + 說明、system role 鎖定核心權限 🔒 disabled、自身角色 role.manage 防自鎖 ⚠ disabled
+- [x] 8.8 編輯緩衝 + sticky footer「未儲存變更／儲存／放棄」；儲存成功 `text-success`、失敗 `text-destructive` 並保留變更
+- [x] 8.9 新增/編輯/刪除自訂角色 Dialog（沿用 `TagManagement` CRUD 樣板）：新增只問名稱→建立空白角色（0 權限）→直接進編輯自行勾選；刪除仍被指派角色時彈窗列出「N 位成員使用中，請先改派」
+- [x] 8.10 無 `role.manage` 時整頁 render 為唯讀（checkbox 與編輯控制 disabled）
 - [ ] 8.11 確認深淺色主題：全頁只用語意 Tailwind token，於 light/dark 皆檢查對比與可讀性
 
 ## 9. 遷移、驗證與收尾

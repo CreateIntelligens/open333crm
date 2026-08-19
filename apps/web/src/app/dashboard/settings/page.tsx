@@ -11,10 +11,13 @@ import { OfficeHoursSettings } from "@/components/settings/OfficeHoursSettings";
 import { ApiKeyManagement } from "@/components/settings/ApiKeyManagement";
 import { TrackingSettings } from "@/components/settings/TrackingSettings";
 import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
+import { RolePermissionMatrix } from "@/components/settings/RolePermissionMatrix";
+import { usePermission } from "@/providers/AuthProvider";
 
 const SETTINGS_TABS = [
   { key: "channels", label: "渠道管理" },
   { key: "agents", label: "人員與權限" },
+  { key: "roles", label: "角色與權限", perm: "role.view" },
   { key: "tags", label: "標籤管理" },
   { key: "sla", label: "SLA 政策" },
   { key: "office-hours", label: "營業時間" },
@@ -28,6 +31,10 @@ type SettingsTab = (typeof SETTINGS_TABS)[number]["key"];
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("channels");
+  const canViewRoles = usePermission("role.view");
+  const visibleTabs = SETTINGS_TABS.filter(
+    (t) => !("perm" in t) || t.perm !== "role.view" || canViewRoles
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -37,7 +44,7 @@ export default function SettingsPage() {
         {/* Left sidebar navigation */}
         <nav className="w-48 shrink-0 border-r bg-muted/30 p-3 overflow-y-auto">
           <ul className="space-y-0.5">
-            {SETTINGS_TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <li key={tab.key}>
                 <button
                   onClick={() => setActiveTab(tab.key)}
@@ -58,6 +65,7 @@ export default function SettingsPage() {
         <div className="flex-1 overflow-auto p-6">
           {activeTab === "channels" && <ChannelManagement />}
           {activeTab === "agents" && <AgentManagement />}
+          {activeTab === "roles" && <RolePermissionMatrix />}
           {activeTab === "tags" && <TagManagement />}
           {activeTab === "sla" && <SlaManagement />}
           {activeTab === "office-hours" && <OfficeHoursSettings />}
