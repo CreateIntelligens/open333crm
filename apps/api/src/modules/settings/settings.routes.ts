@@ -26,7 +26,9 @@ import {
   createCliSession,
   revokeCliSession,
   parseCliScopes,
+  DEFAULT_CLI_SCOPES,
 } from "../auth/cli-session.service.js";
+import { MCP_READ_SCOPE } from "../mcp/mcp.constants.js";
 import {
   CRM_REPLY_SYSTEM_PROMPT,
   SUMMARIZE_SYSTEM_PROMPT,
@@ -324,7 +326,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       tenantId: request.agent.tenantId,
       agentId: request.agent.id,
       name: body.name,
-      scopes: body.scopes,
+      scopes: body.mcpRead
+        ? [...new Set([...(body.scopes ?? DEFAULT_CLI_SCOPES), MCP_READ_SCOPE])]
+        : body.scopes,
       expiresAt,
     });
 
@@ -398,5 +402,6 @@ const chatModelsQuery = z.object({
 const createCliSessionSchema = z.object({
   name: z.string().min(1).max(100),
   scopes: z.array(z.string()).optional(),
+  mcpRead: z.boolean().default(false),
   expiresInDays: z.number().int().positive().nullable().optional(),
 });

@@ -11,6 +11,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('*'),
+  MCP_ALLOWED_ORIGINS: z.string().default(''),
   LICENSE_KEY: z.string().default('dev-license-key'),
   CACHE_DRIVER: z.string().default('memory'),
   CACHE_SEGMENT: z.string().default('open333crm'),
@@ -60,6 +61,15 @@ export function loadEnvConfig(): EnvConfig {
       })
       .join('\n');
     throw new Error(`Environment validation failed:\n${messages}`);
+  }
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !result.data.MCP_ALLOWED_ORIGINS.trim()
+  ) {
+    throw new Error(
+      'Environment validation failed:\n  MCP_ALLOWED_ORIGINS: required in production',
+    );
   }
 
   _config = result.data;
