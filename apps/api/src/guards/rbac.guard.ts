@@ -14,6 +14,10 @@ import { getEffectivePermissions } from '../services/permission.service.js';
 // 收集所有被 requirePermission 引用的權限碼，供啟動時做 route-to-registry 一致性檢查。
 export const usedPermissionCodes = new Set<string>();
 
+// Partner API key（合成 agent，無 roleId）允許放行的權限碼白名單。
+// 只有明確列在此的碼才對 Partner key 放行——避免日後新增 partner 路由時無條件繞過權限。
+const PARTNER_KEY_ALLOWED = new Set<string>(['knowledge.admin']);
+
 /**
  * 權限點 guard：當前 agent 的有效權限集合不含 `code` 時回 403。
  *
@@ -23,9 +27,14 @@ export const usedPermissionCodes = new Set<string>();
 export const requirePermission = (code: string) => {
   usedPermissionCodes.add(code);
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    // Partner API key / CLI session 走各自 scope 機制，不套用角色權限判斷
-    if (request.agent?.isPartnerKey || request.agent?.isCliSession) {
-      return; // 交由既有 scope 檢查（若有）；此處不阻擋
+    // Partner API key：只對白名單權限碼放行，其餘一律擋（避免無條件繞過）
+    if (request.agent?.isPartnerKey) {
+      if (PARTNER_KEY_ALLOWED.has(code)) return;
+      return reply.status(403).send({ code: 'FORBIDDEN', message: 'Insufficient permission' });
+    }
+    // CLI session 走自身 scope 機制（cli.routes），不經 requirePermission 路由；防禦性放行
+    if (request.agent?.isCliSession) {
+      return;
     }
     const roleId = request.agent?.roleId;
     const eff = await getEffectivePermissions(request.server.prisma, roleId);

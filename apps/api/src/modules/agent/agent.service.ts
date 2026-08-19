@@ -3,6 +3,28 @@ import { AppError } from '../../shared/utils/response.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 
+// legacy enum role → system role slug（與 granular RBAC 雙寫的橋樑）
+const ENUM_TO_SLUG: Record<string, string> = {
+  ADMIN: 'admin',
+  SUPERVISOR: 'supervisor',
+  AGENT: 'agent',
+};
+
+/** 依 enum role 查該租戶對應 system role 的 roleId（雙寫用；查無回 null）。 */
+async function resolveRoleId(
+  prisma: PrismaClient,
+  tenantId: string,
+  role: string,
+): Promise<string | null> {
+  const slug = ENUM_TO_SLUG[role];
+  if (!slug) return null;
+  const r = await prisma.role.findFirst({
+    where: { tenantId, slug, isSystem: true },
+    select: { id: true },
+  });
+  return r?.id ?? null;
+}
+
 const agentSelect = {
   id: true,
   name: true,
@@ -30,6 +52,8 @@ export async function createAgent(
   }
 
   const passwordHash = await hashPassword(data.password);
+  // 雙寫：legacy role enum + granular roleId（指向該租戶對應 system role）
+  const roleId = await resolveRoleId(prisma, tenantId, data.role);
 
   const agent = await prisma.agent.create({
     data: {
@@ -37,6 +61,7 @@ export async function createAgent(
       name: data.name,
       email: data.email,
       role: data.role,
+      roleId,
       passwordHash,
     },
     select: agentSelect,
@@ -59,9 +84,12 @@ export async function updateAgentRole(
     throw new AppError('Agent not found', 'NOT_FOUND', 404);
   }
 
+  // 雙寫：改 legacy role 同時更新 granular roleId
+  const roleId = await resolveRoleId(prisma, tenantId, role);
+
   const agent = await prisma.agent.update({
     where: { id: agentId },
-    data: { role },
+    data: { role, roleId },
     select: agentSelect,
   });
 

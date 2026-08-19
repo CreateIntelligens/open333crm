@@ -93,6 +93,7 @@ export async function deleteRole(prisma: PrismaClient, roleId: string, tenantId:
     });
   }
   await prisma.role.delete({ where: { id: roleId } }); // RolePermission 隨 Cascade 刪除
+  await invalidateRolePermissions(roleId); // 清掉已刪角色的殘留快取
   return { deleted: true };
 }
 
