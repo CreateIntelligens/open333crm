@@ -17,15 +17,16 @@
 set -euo pipefail
 
 # ─── 設定 ─────────────────────────────────────────────────────────────────────
-UAT_SSH="ec2-user@uat.open333crm.create360.ai"
-UAT_CONTAINER="open333crm-postgres"
-UAT_DB="open333crm"
-UAT_USER="crm"
+# 各項可用環境變數覆寫（本機 container 名可能不同，如 dev compose 的 open333crm-dev-postgres-1）
+UAT_SSH="${UAT_SSH:-ec2-user@uat.open333crm.create360.ai}"
+UAT_CONTAINER="${UAT_CONTAINER:-open333crm-postgres}"
+UAT_DB="${UAT_DB:-open333crm}"
+UAT_USER="${UAT_USER:-crm}"
 
-LOCAL_CONTAINER="open333crm-postgres"
-LOCAL_DB="open333crm"
-LOCAL_USER="crm"
-LOCAL_PORT="5433"   # 本機對外 port（容器內仍是 5432）
+LOCAL_CONTAINER="${LOCAL_CONTAINER:-open333crm-postgres}"
+LOCAL_DB="${LOCAL_DB:-open333crm}"
+LOCAL_USER="${LOCAL_USER:-crm}"
+LOCAL_PORT="${LOCAL_PORT:-5433}"   # 本機對外 port（容器內仍是 5432）
 
 # Docker 完整路徑（本機 Docker Desktop）
 export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
