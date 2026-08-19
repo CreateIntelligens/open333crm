@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { cliLoginRequestSchema, loginRequestSchema } from './auth.schema.js';
 import { login, getAgentById } from './auth.service.js';
+import { getEffectivePermissions } from '../../services/permission.service.js';
 import { success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
 import { FastifyJWT } from '@fastify/jwt';
@@ -64,7 +65,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const agent = await login(fastify.prisma, body.email, body.password);
 
-    const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role };
+    const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role, roleId: agent.roleId };
     const accessToken = signAccessToken(fastify, payload, config);
     const refreshToken = signRefreshToken(fastify, payload, config, !!body.rememberMe);
 
@@ -151,7 +152,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     try {
       const payload = fastify.jwt.verify<TokenPayload>(token);
-      const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role };
+      const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role, roleId: payload.roleId };
 
       const accessToken = signAccessToken(fastify, tokenPayload, config);
       const newRefreshToken = signRefreshToken(fastify, tokenPayload, config, !!payload.rememberMe);
@@ -183,5 +184,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
     );
 
     return reply.send(success(agent));
+  });
+
+  // GET /api/v1/auth/me/permissions — 當前使用者的有效權限碼清單（前端 gating 用）
+  fastify.get('/me/permissions', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const eff = await getEffectivePermissions(fastify.prisma, request.agent.roleId);
+    return reply.send(success({ permissions: [...eff] }));
   });
 }

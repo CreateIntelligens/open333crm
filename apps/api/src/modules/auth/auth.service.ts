@@ -13,6 +13,7 @@ export async function login(prisma: PrismaClient, email: string, password: strin
       email: true,
       name: true,
       role: true,
+      roleId: true,
       avatarUrl: true,
       passwordHash: true,
       isActive: true,
