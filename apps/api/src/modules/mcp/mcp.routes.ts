@@ -31,7 +31,6 @@ async function sendWebResponse(
   reply: FastifyReply,
   response: Response,
 ): Promise<void> {
-  reply.hijack();
   reply.raw.statusCode = response.status;
   response.headers.forEach((value, key) => reply.raw.setHeader(key, value));
 
@@ -125,6 +124,7 @@ export default async function mcpRoutes(fastify: FastifyInstance) {
     });
 
     try {
+      reply.hijack();
       await server.connect(transport);
       const response = await transport.handleRequest(toWebRequest(request));
       await sendWebResponse(reply, response);

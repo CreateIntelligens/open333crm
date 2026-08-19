@@ -31,6 +31,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **MCP/CI hardening** — MCP route now claims Fastify response ownership before transport setup, and GitHub Actions uses Node.js 24-compatible action majors.
 - **前端 UI 全面改版（對齊 Figma 設計系統）** — 86 個前端元件與頁面全面重構：
   - 統一 Tailwind 設計 Token、按鈕、分頁、卡片、狀態標籤、對話框與側邊欄樣式
   - 新增 `/design-preview` 設計系統預覽頁面
