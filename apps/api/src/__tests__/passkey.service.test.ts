@@ -9,6 +9,7 @@ import {
 import {
   passkeyAuthenticationOptionsSchema,
   passkeyAuthenticationVerifySchema,
+  passkeyRenameSchema,
   passkeyRegistrationVerifySchema,
 } from '../modules/auth/auth.schema.js';
 
@@ -120,6 +121,7 @@ function testPasskeyNameIsTrimmedAndDefaultsForLegacyClients() {
     passkeyRegistrationVerifySchema.parse({ challengeId, response }).name,
     'Passkey',
   );
+  assert.equal(passkeyRenameSchema.parse({ name: '  iPhone  ' }).name, 'iPhone');
 }
 
 await testChallengeIsStoredWithTtlAndConsumedOnce();

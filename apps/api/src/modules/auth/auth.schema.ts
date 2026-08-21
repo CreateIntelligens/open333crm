@@ -55,6 +55,7 @@ export const cliLoginResponseSchema = z.object({
 export type CliLoginResponse = z.infer<typeof cliLoginResponseSchema>;
 
 const base64UrlSchema = z.string().min(1).max(4096).regex(/^[A-Za-z0-9_-]+$/);
+export const passkeyNameSchema = z.string().trim().min(1).max(80);
 
 const webAuthnCredentialBaseSchema = z.object({
   id: base64UrlSchema,
@@ -94,8 +95,12 @@ export const passkeyAuthenticationOptionsSchema = z.object({
 });
 
 export const passkeyRegistrationVerifySchema = passkeyChallengeIdSchema.extend({
-  name: z.string().trim().min(1).max(80).default('Passkey'),
+  name: passkeyNameSchema.default('Passkey'),
   response: passkeyRegistrationResponseSchema,
+});
+
+export const passkeyRenameSchema = z.object({
+  name: passkeyNameSchema,
 });
 
 export const passkeyAuthenticationVerifySchema = passkeyChallengeIdSchema.extend({

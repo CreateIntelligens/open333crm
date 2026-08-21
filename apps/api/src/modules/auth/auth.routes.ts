@@ -6,6 +6,7 @@ import {
   passkeyAuthenticationOptionsSchema,
   passkeyAuthenticationVerifySchema,
   passkeyIdParamsSchema,
+  passkeyRenameSchema,
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
@@ -463,6 +464,27 @@ export default async function authRoutes(fastify: FastifyInstance) {
     });
 
     return reply.send(success(credentials));
+  });
+
+  // DELETE /api/v1/auth/passkeys/:id
+  fastify.patch('/passkeys/:id', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = passkeyIdParamsSchema.parse(request.params);
+    const { name } = passkeyRenameSchema.parse(request.body);
+    const result = await fastify.prisma.passkeyCredential.updateMany({
+      where: {
+        id,
+        tenantId: request.agent.tenantId,
+        agentId: request.agent.id,
+        revokedAt: null,
+      },
+      data: { name },
+    });
+    if (result.count !== 1) {
+      throw new AppError('Passkey not found', 'NOT_FOUND', 404);
+    }
+    return reply.send(success({ renamed: true }));
   });
 
   // DELETE /api/v1/auth/passkeys/:id

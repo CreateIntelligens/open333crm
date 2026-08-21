@@ -136,7 +136,7 @@ Redis 需支援 `GETDEL`；專案 Docker Compose 使用 Redis 7。
 
 **設定 → Passkey 登入 → 綁定 Passkey**
 
-Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `MacBook Touch ID` 或 `iPhone`），清單會顯示名稱、裝置類型與備份狀態，並可撤銷既有 Passkey。登入頁的「使用 Passkey 登入」會使用已綁定的 credential；Passkey 流程要求 User Verification，並使用獨立的 rate limit 與一次性 challenge 防護。
+Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `MacBook Touch ID` 或 `iPhone`），清單會顯示名稱、裝置類型與備份狀態，也可重新命名或撤銷既有 Passkey。登入頁的「使用 Passkey 登入」會使用已綁定的 credential；Passkey 流程要求 User Verification，並使用獨立的 rate limit 與一次性 challenge 防護。
 
 ### Passkey API
 
@@ -149,6 +149,7 @@ Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `Mac
 | `POST` | `/passkeys/authentication/options` | 取得登入 challenge |
 | `POST` | `/passkeys/authentication/verify` | 驗證 Passkey 並核發現有 JWT Session |
 | `GET` | `/passkeys` | 列出目前 Agent 的 Passkey |
+| `PATCH` | `/passkeys/:id` | 重新命名 Passkey |
 | `DELETE` | `/passkeys/:id` | 撤銷 Passkey（soft revoke） |
 
 ## 快速開始
