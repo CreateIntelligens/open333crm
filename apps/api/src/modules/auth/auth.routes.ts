@@ -6,7 +6,6 @@ import {
   passkeyAuthenticationOptionsSchema,
   passkeyAuthenticationVerifySchema,
   passkeyIdParamsSchema,
-  passkeyRegistrationResponseSchema,
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
