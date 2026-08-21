@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Fingerprint, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Fingerprint, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,9 @@ export function PasskeyManagement() {
   const [registering, setRegistering] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [passkeyName, setPasskeyName] = useState('');
+  const [renameCredential, setRenameCredential] = useState<PasskeyCredential | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState('');
 
   const fetchCredentials = useCallback(async () => {
@@ -81,6 +84,25 @@ export function PasskeyManagement() {
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: { message?: string } } } };
       setError(axiosError.response?.data?.error?.message || '撤銷 Passkey 失敗。');
+    }
+  };
+
+  const handleRename = async () => {
+    const name = renameName.trim();
+    if (!renameCredential || !name) return;
+
+    setError('');
+    setRenaming(true);
+    try {
+      await api.patch(`/auth/passkeys/${renameCredential.id}`, { name });
+      setRenameCredential(null);
+      setRenameName('');
+      await fetchCredentials();
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(axiosError.response?.data?.error?.message || '重新命名 Passkey 失敗。');
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -149,6 +171,56 @@ export function PasskeyManagement() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={renameCredential !== null}
+        onOpenChange={(open) => {
+          if (!renaming && !open) {
+            setRenameCredential(null);
+            setRenameName('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重新命名 Passkey</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              名稱只用來協助辨識裝置，不會改變 Passkey 的登入權限。
+            </p>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="rename-passkey-name" className="text-sm font-medium">
+              裝置名稱
+            </label>
+            <Input
+              id="rename-passkey-name"
+              value={renameName}
+              onChange={(event) => setRenameName(event.target.value)}
+              maxLength={80}
+              autoFocus
+              disabled={renaming}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setRenameCredential(null)}
+              disabled={renaming}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={handleRename}
+              loading={renaming}
+              disabled={!renameName.trim()}
+            >
+              儲存名稱
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {error && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
@@ -200,14 +272,27 @@ export function PasskeyManagement() {
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`撤銷 ${credential.name}`}
-                  onClick={() => handleRevoke(credential)}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`重新命名 ${credential.name}`}
+                    onClick={() => {
+                      setRenameCredential(credential);
+                      setRenameName(credential.name);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`撤銷 ${credential.name}`}
+                    onClick={() => handleRevoke(credential)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
               </div>
             ))}
           </CardContent>

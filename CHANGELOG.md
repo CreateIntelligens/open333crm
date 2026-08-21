@@ -11,7 +11,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Changed
 
 - Passkey 註冊端點新增 rate limit；未設定 WebAuthn 的部署不再顯示無法使用的登入與綁定控制項。
-- Passkey 綁定流程新增裝置名稱輸入，已綁定清單顯示自訂名稱、裝置類型與備份狀態，方便辨識多個 credential。
+- Passkey 綁定流程新增裝置名稱輸入與既有 credential 重新命名功能；已綁定清單顯示自訂名稱、裝置類型與備份狀態，方便辨識多個 credential。
 
 ## [v0.4.0] - 2026-08-18
 
