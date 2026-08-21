@@ -17,7 +17,7 @@ interface PasskeyCredential {
 }
 
 export function PasskeyManagement() {
-  const { registerPasskey } = useAuth();
+  const { registerPasskey, passkeyEnabled } = useAuth();
   const [credentials, setCredentials] = useState<PasskeyCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
@@ -37,8 +37,12 @@ export function PasskeyManagement() {
   }, []);
 
   useEffect(() => {
+    if (!passkeyEnabled) {
+      setLoading(false);
+      return;
+    }
     void fetchCredentials();
-  }, [fetchCredentials]);
+  }, [fetchCredentials, passkeyEnabled]);
 
   const handleRegister = async () => {
     setError('');
@@ -74,7 +78,7 @@ export function PasskeyManagement() {
             使用 Touch ID、Face ID、Windows Hello 或裝置 PIN 登入，不需要輸入密碼。
           </p>
         </div>
-        <Button onClick={handleRegister} loading={registering}>
+        <Button onClick={handleRegister} loading={registering} disabled={!passkeyEnabled}>
           <Plus className="h-4 w-4" />
           綁定 Passkey
         </Button>
@@ -86,11 +90,19 @@ export function PasskeyManagement() {
         </div>
       )}
 
-      {loading ? (
+      {!passkeyEnabled && (
+        <Card>
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+            Passkey 尚未啟用，請先在 API 環境設定 WEBAUTHN_RP_ID 與 WEBAUTHN_ORIGIN。
+          </CardContent>
+        </Card>
+      )}
+
+      {passkeyEnabled && loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : credentials.length === 0 ? (
+      ) : passkeyEnabled && credentials.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-12 text-center">
             <Fingerprint className="mb-3 h-10 w-10 text-muted-foreground" />
@@ -100,7 +112,7 @@ export function PasskeyManagement() {
             </p>
           </CardContent>
         </Card>
-      ) : (
+      ) : passkeyEnabled ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">已綁定的裝置</CardTitle>
@@ -132,7 +144,7 @@ export function PasskeyManagement() {
             ))}
           </CardContent>
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }

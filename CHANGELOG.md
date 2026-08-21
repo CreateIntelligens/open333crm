@@ -8,6 +8,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **Passkey / WebAuthn authentication** — 新增 Agent Passkey 憑證模型、Redis challenge 防重放、註冊/登入/撤銷 API 與嚴格 RP ID、origin、User Verification 驗證。
 
+### Changed
+
+- Passkey 註冊端點新增 rate limit；未設定 WebAuthn 的部署不再顯示無法使用的登入與綁定控制項。
+
 ## [v0.4.0] - 2026-08-18
 
 ### Added

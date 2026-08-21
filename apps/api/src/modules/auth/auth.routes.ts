@@ -147,7 +147,26 @@ export default async function authRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/auth/passkeys/register/options
+  fastify.get('/passkeys/capability', async (_request, reply) => {
+    try {
+      getPasskeyConfig();
+      return reply.send(success({ enabled: true }));
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'SERVICE_UNAVAILABLE') {
+        return reply.send(success({ enabled: false }));
+      }
+      throw error;
+    }
+  });
+
+  // POST /api/v1/auth/passkeys/register/options
   fastify.post('/passkeys/register/options', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const config = getPasskeyConfig();
@@ -196,6 +215,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/auth/passkeys/register/verify
   fastify.post('/passkeys/register/verify', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const body = passkeyRegistrationVerifySchema.parse(request.body);
@@ -225,7 +250,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
         requireUserPresence: true,
         requireUserVerification: true,
       });
-    } catch {
+    } catch (error) {
+      request.log.warn({ err: error }, 'Passkey registration verification rejected');
       throw invalidPasskeyError();
     }
 
@@ -344,6 +370,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
           publicKey: true,
           counter: true,
           transports: true,
+          revokedAt: true,
         },
       })
       : await fastify.prisma.passkeyCredential.findUnique({
@@ -381,7 +408,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
           transports: normalizeTransports(credential.transports),
         },
       });
-    } catch {
+    } catch (error) {
+      request.log.warn({ err: error }, 'Passkey authentication verification rejected');
       throw invalidPasskeyError();
     }
 

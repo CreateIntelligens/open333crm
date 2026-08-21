@@ -18,7 +18,7 @@ const ClawCaptcha = dynamic(
 );
 
 function LoginForm() {
-  const { login, loginWithPasskey, agent, isLoading } = useAuth();
+  const { login, loginWithPasskey, passkeyEnabled, agent, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('admin@demo.com');
   const [password, setPassword] = useState('admin123');
@@ -147,22 +147,26 @@ function LoginForm() {
             >
               {submitting ? '登入中...' : !captchaVerified ? '請先完成小遊戲' : '登入'}
             </Button>
-            <div className="relative py-1 text-center text-xs text-muted-foreground">
-              <span className="relative z-10 bg-card px-2">或</span>
-              <div className="absolute inset-x-0 top-1/2 border-t" />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={handlePasskeyLogin}
-              disabled={submitting || passkeySubmitting}
-            >
-              {passkeySubmitting ? '驗證中...' : '使用 Passkey 登入'}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Passkey 會使用此裝置的 Touch ID、Face ID、Windows Hello 或裝置 PIN。
-            </p>
+            {passkeyEnabled && (
+              <>
+                <div className="relative py-1 text-center text-xs text-muted-foreground">
+                  <span className="relative z-10 bg-card px-2">或</span>
+                  <div className="absolute inset-x-0 top-1/2 border-t" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handlePasskeyLogin}
+                  disabled={submitting || passkeySubmitting}
+                >
+                  {passkeySubmitting ? '驗證中...' : '使用 Passkey 登入'}
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Passkey 會使用此裝置的 Touch ID、Face ID、Windows Hello 或裝置 PIN。
+                </p>
+              </>
+            )}
           </form>
         </CardContent>
       </Card>
