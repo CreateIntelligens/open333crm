@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { unmountWebTalk } from '@/lib/webtalk';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 interface Agent {
   id: string;
@@ -18,6 +19,8 @@ interface AuthContextType {
   agent: Agent | null;
   isLoading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  loginWithPasskey: (email?: string, rememberMe?: boolean) => Promise<void>;
+  registerPasskey: () => Promise<void>;
   logout: () => void;
 }
 
@@ -73,6 +76,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [router]
   );
 
+  const loginWithPasskey = useCallback(
+    async (email?: string, rememberMe = false) => {
+      const optionsResponse = await api.post('/auth/passkeys/authentication/options', {
+        ...(email ? { email } : {}),
+        rememberMe,
+      });
+      const { challengeId, options } = optionsResponse.data.data;
+      const response = await startAuthentication({ optionsJSON: options });
+      const verifyResponse = await api.post('/auth/passkeys/authentication/verify', {
+        challengeId,
+        response,
+      });
+      const { accessToken, agent: agentData } = verifyResponse.data.data;
+      setAccessToken(accessToken);
+      setAgent(agentData);
+      router.push('/dashboard/inbox');
+    },
+    [router],
+  );
+
+  const registerPasskey = useCallback(async () => {
+    const optionsResponse = await api.post('/auth/passkeys/register/options');
+    const { challengeId, options } = optionsResponse.data.data;
+    const response = await startRegistration({ optionsJSON: options });
+    await api.post('/auth/passkeys/register/verify', { challengeId, response });
+  }, []);
+
   const logout = useCallback(async () => {
     unmountWebTalk();
 
@@ -87,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ agent, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ agent, isLoading, login, loginWithPasskey, registerPasskey, logout }}>
       {children}
     </AuthContext.Provider>
   );
