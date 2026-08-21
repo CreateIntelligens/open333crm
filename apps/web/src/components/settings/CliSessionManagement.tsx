@@ -242,12 +242,14 @@ function CreateCliSessionDialog({
 }) {
   const [name, setName] = useState("");
   const [expiry, setExpiry] = useState("30");
+  const [mcpRead, setMcpRead] = useState(false);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setName("");
       setExpiry("30");
+      setMcpRead(false);
     }
   }, [open]);
 
@@ -257,8 +259,13 @@ function CreateCliSessionDialog({
     setCreating(true);
     try {
       const days = parseInt(expiry, 10);
-      const body: { name: string; expiresInDays?: number | null } = {
+      const body: {
+        name: string;
+        mcpRead: boolean;
+        expiresInDays?: number | null;
+      } = {
         name: name.trim(),
+        mcpRead,
       };
       if (days > 0) body.expiresInDays = days;
 
@@ -310,6 +317,23 @@ function CreateCliSessionDialog({
                 options={EXPIRY_OPTIONS}
                 disabled={creating}
               />
+            </div>
+
+            <div className="flex items-start gap-2">
+              <input
+                id="mcp-read"
+                type="checkbox"
+                checked={mcpRead}
+                onChange={(e) => setMcpRead(e.target.checked)}
+                disabled={creating}
+                className="mt-0.5 h-4 w-4 rounded border-input"
+              />
+              <label htmlFor="mcp-read" className="text-sm">
+                授予 MCP 唯讀權限
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  允許 LLM 透過 MCP 查詢 CRM 資料，不包含寫入操作
+                </span>
+              </label>
             </div>
           </div>
 

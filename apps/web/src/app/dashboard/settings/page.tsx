@@ -13,6 +13,7 @@ import { TrackingSettings } from "@/components/settings/TrackingSettings";
 import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
 import { RolePermissionMatrix } from "@/components/settings/RolePermissionMatrix";
 import { usePermission } from "@/providers/AuthProvider";
+import { PasskeyManagement } from "@/components/settings/PasskeyManagement";
 
 const SETTINGS_TABS = [
   { key: "channels", label: "渠道管理" },
@@ -24,6 +25,7 @@ const SETTINGS_TABS = [
   { key: "tracking", label: "追蹤設定" },
   { key: "api-keys", label: "API 金鑰" },
   { key: "cli-sessions", label: "CLI 連線" },
+  { key: "passkeys", label: "Passkey 登入" },
   { key: "general", label: "一般設定" },
 ] as const;
 
@@ -72,6 +74,7 @@ export default function SettingsPage() {
           {activeTab === "tracking" && <TrackingSettings />}
           {activeTab === "api-keys" && <ApiKeyManagement />}
           {activeTab === "cli-sessions" && <CliSessionManagement />}
+          {activeTab === "passkeys" && <PasskeyManagement />}
           {activeTab === "general" && <GeneralSettings />}
         </div>
       </div>

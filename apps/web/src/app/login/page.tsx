@@ -18,13 +18,14 @@ const ClawCaptcha = dynamic(
 );
 
 function LoginForm() {
-  const { login, agent, isLoading } = useAuth();
+  const { login, loginWithPasskey, passkeyEnabled, agent, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('admin@demo.com');
   const [password, setPassword] = useState('admin123');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [passkeySubmitting, setPasskeySubmitting] = useState(false);
   // 停用 CAPTCHA 時初始即視為已通過；啟用時需先完成夾娃娃機小遊戲。
   // 登入失敗不會重置此狀態，避免使用者因打錯密碼被迫重玩。
   const [captchaVerified, setCaptchaVerified] = useState(!LOGIN_CAPTCHA_ENABLED);
@@ -52,6 +53,25 @@ function LoginForm() {
       setError(axiosError.response?.data?.message || '登入失敗，請確認您的帳號密碼。');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setError('');
+    setPasskeySubmitting(true);
+    try {
+      await loginWithPasskey(email || undefined, rememberMe);
+    } catch (err: unknown) {
+      const axiosError = err as {
+        response?: { data?: { error?: { message?: string }; message?: string } };
+      };
+      setError(
+        axiosError.response?.data?.error?.message
+        || axiosError.response?.data?.message
+        || 'Passkey 登入失敗，請改用帳號密碼登入。',
+      );
+    } finally {
+      setPasskeySubmitting(false);
     }
   };
 
@@ -123,10 +143,30 @@ function LoginForm() {
             <Button
               type="submit"
               className="w-full"
-              disabled={submitting || !captchaVerified}
+              disabled={submitting || passkeySubmitting || !captchaVerified}
             >
               {submitting ? '登入中...' : !captchaVerified ? '請先完成小遊戲' : '登入'}
             </Button>
+            {passkeyEnabled && (
+              <>
+                <div className="relative py-1 text-center text-xs text-muted-foreground">
+                  <span className="relative z-10 bg-card px-2">或</span>
+                  <div className="absolute inset-x-0 top-1/2 border-t" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handlePasskeyLogin}
+                  disabled={submitting || passkeySubmitting}
+                >
+                  {passkeySubmitting ? '驗證中...' : '使用 Passkey 登入'}
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Passkey 會使用此裝置的 Touch ID、Face ID、Windows Hello 或裝置 PIN。
+                </p>
+              </>
+            )}
           </form>
         </CardContent>
       </Card>

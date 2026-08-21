@@ -10,7 +10,7 @@ You MUST follow these rules when reading, modifying, or generating code.
 
 - **Monorepo**: pnpm workspaces + Turborepo
 - **API**: Fastify + TypeScript (`apps/api`)
-- **Frontend**: React + Vite + TypeScript (`apps/web`)
+- **Frontend**: **Next.js 15** + React 19 + Tailwind (`apps/web`)
 - **Background workers**: BullMQ consumers (`apps/workers`)
 - **Database**: PostgreSQL via Prisma (`packages/database`)
 - **Real-time**: Socket.IO (mounted on Fastify)
@@ -130,6 +130,7 @@ fastify.patch('/agents/:id/role', { preHandler: [requireSupervisor()] }, handler
 
 ## Conventions
 
+- **CHANGELOG Maintenance (MANDATORY)**: Whenever implementing a feature (`feat`), bug fix (`fix`), architecture change, or completing an OpenSpec change/PR, you **MUST update `CHANGELOG.md`** under the latest release section (categorized into `Added`, `Changed`, `Fixed`, etc.). Never submit code changes without keeping `CHANGELOG.md` updated.
 - Use **Zod** for input validation in API route handlers
 - Errors: throw `new AppError(code, message, httpStatus)` — do not return raw error objects
 - All tenants are isolated — every query must include `tenantId` in the `where` clause
