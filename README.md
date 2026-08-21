@@ -105,6 +105,52 @@ open333 apis --json
 - 在 **設定** → **CLI 連線** 列出所有 token，可查看最後使用時間
 - 不需要的 token 可直接撤銷，使用該 token 的 LLM/CLI 會立即失效
 
+## Passkey / WebAuthn 登入
+
+Passkey 提供 Agent 使用 Touch ID、Face ID、Windows Hello、裝置 PIN 或安全金鑰登入。密碼登入仍保留作為復原方式。
+
+### 啟用設定
+
+API 使用專案根目錄的 `.env`。正式環境必須使用 HTTPS，且 `WEBAUTHN_RP_ID` 不可包含 protocol、port 或 path：
+
+```env
+WEBAUTHN_RP_ID=crm.example.com
+WEBAUTHN_RP_NAME=open333CRM
+WEBAUTHN_ORIGIN=https://crm.example.com
+WEBAUTHN_CHALLENGE_TTL_SECONDS=120
+```
+
+本機測試可使用：
+
+```env
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_RP_NAME=open333CRM
+WEBAUTHN_ORIGIN=http://localhost:3000
+```
+
+Redis 需支援 `GETDEL`；專案 Docker Compose 使用 Redis 7。
+
+### 綁定與管理位置
+
+登入後台後，進入：
+
+**設定 → Passkey 登入 → 綁定 Passkey**
+
+Agent 可在此綁定多個裝置，並查看或撤銷既有 Passkey。登入頁的「使用 Passkey 登入」會使用已綁定的 credential；Passkey 流程要求 User Verification，並使用獨立的 rate limit 與一次性 challenge 防護。
+
+### Passkey API
+
+所有端點都在 `/api/v1/auth` 底下：
+
+| 方法 | 端點 | 用途 |
+| ---- | ---- | ---- |
+| `POST` | `/passkeys/register/options` | 已登入 Agent 取得註冊選項 |
+| `POST` | `/passkeys/register/verify` | 驗證並儲存 Passkey public key |
+| `POST` | `/passkeys/authentication/options` | 取得登入 challenge |
+| `POST` | `/passkeys/authentication/verify` | 驗證 Passkey 並核發現有 JWT Session |
+| `GET` | `/passkeys` | 列出目前 Agent 的 Passkey |
+| `DELETE` | `/passkeys/:id` | 撤銷 Passkey（soft revoke） |
+
 ## 快速開始
 
 ### 前置需求
