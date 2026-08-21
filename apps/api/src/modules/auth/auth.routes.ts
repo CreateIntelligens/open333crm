@@ -1,10 +1,35 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { cliLoginRequestSchema, loginRequestSchema } from './auth.schema.js';
-import { login, getAgentById } from './auth.service.js';
-import { success } from '../../shared/utils/response.js';
+import {
+  cliLoginRequestSchema,
+  loginRequestSchema,
+  passkeyAuthenticationOptionsSchema,
+  passkeyAuthenticationVerifySchema,
+  passkeyIdParamsSchema,
+  passkeyRegistrationResponseSchema,
+  passkeyRegistrationVerifySchema,
+} from './auth.schema.js';
+import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
+import { AppError, success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
 import { FastifyJWT } from '@fastify/jwt';
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from '@simplewebauthn/server';
+import type {
+  AuthenticatorTransportFuture,
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
+import {
+  createPasskeyChallengeId,
+  getPasskeyConfig,
+  storePasskeyChallenge,
+  takePasskeyChallenge,
+} from './passkey.service.js';
 import {
   createCliSession,
   parseCliScopes,
@@ -49,6 +74,61 @@ function setRefreshCookie(reply: FastifyReply, token: string, maxAge?: number): 
   });
 }
 
+type SessionAgent = {
+  id: string;
+  tenantId: string;
+  email: string;
+  name: string;
+  role: string;
+  avatarUrl: string | null;
+};
+
+function issueAgentSession(
+  fastify: FastifyInstance,
+  reply: FastifyReply,
+  agent: SessionAgent,
+  config: EnvConfig,
+  rememberMe: boolean,
+) {
+  const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role };
+  const accessToken = signAccessToken(fastify, payload, config);
+  const refreshToken = signRefreshToken(fastify, payload, config, rememberMe);
+
+  setRefreshCookie(reply, refreshToken, cookieMaxAge(rememberMe, config));
+
+  return {
+    accessToken,
+    agent: {
+      id: agent.id,
+      email: agent.email,
+      name: agent.name,
+      role: agent.role,
+      avatarUrl: agent.avatarUrl,
+      tenantId: agent.tenantId,
+    },
+  };
+}
+
+function normalizeTransports(value: unknown): AuthenticatorTransportFuture[] {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set<AuthenticatorTransportFuture>([
+    'ble',
+    'cable',
+    'hybrid',
+    'internal',
+    'nfc',
+    'smart-card',
+    'usb',
+  ]);
+  return value.filter((item): item is AuthenticatorTransportFuture => (
+    typeof item === 'string' && allowed.has(item as AuthenticatorTransportFuture)
+  ));
+}
+
+function invalidPasskeyError(): Error {
+  return new AppError('Invalid passkey response', 'UNAUTHORIZED', 401);
+}
+
 export default async function authRoutes(fastify: FastifyInstance) {
   await fastify.register(rateLimit, {
     global: false,
@@ -64,25 +144,317 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const agent = await login(fastify.prisma, body.email, body.password);
 
-    const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role };
-    const accessToken = signAccessToken(fastify, payload, config);
-    const refreshToken = signRefreshToken(fastify, payload, config, !!body.rememberMe);
+    return reply.send(success(issueAgentSession(fastify, reply, agent, config, !!body.rememberMe)));
+  });
 
-    setRefreshCookie(reply, refreshToken, cookieMaxAge(!!body.rememberMe, config));
-
-    return reply.send(
-      success({
-        accessToken,
-        agent: {
-          id: agent.id,
-          email: agent.email,
-          name: agent.name,
-          role: agent.role,
-          avatarUrl: agent.avatarUrl,
-          tenantId: agent.tenantId,
-        },
-      }),
+  // POST /api/v1/auth/passkeys/register/options
+  fastify.post('/passkeys/register/options', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const config = getPasskeyConfig();
+    const agent = await getActiveAgentForAuth(
+      fastify.prisma,
+      request.agent.id,
+      request.agent.tenantId,
     );
+    const existingCredentials = await fastify.prisma.passkeyCredential.findMany({
+      where: {
+        tenantId: request.agent.tenantId,
+        agentId: request.agent.id,
+        revokedAt: null,
+      },
+      select: { credentialId: true, transports: true },
+    });
+
+    const options = await generateRegistrationOptions({
+      rpName: config.rpName,
+      rpID: config.rpID,
+      userID: Buffer.from(agent.id),
+      userName: agent.email,
+      userDisplayName: agent.name,
+      attestationType: 'none',
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'required',
+      },
+      excludeCredentials: existingCredentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: normalizeTransports(credential.transports),
+      })),
+    });
+    const challengeId = createPasskeyChallengeId();
+
+    await storePasskeyChallenge({
+      challengeId,
+      challenge: options.challenge,
+      purpose: 'registration',
+      tenantId: request.agent.tenantId,
+      agentId: request.agent.id,
+    });
+
+    return reply.send(success({ challengeId, options }));
+  });
+
+  // POST /api/v1/auth/passkeys/register/verify
+  fastify.post('/passkeys/register/verify', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const body = passkeyRegistrationVerifySchema.parse(request.body);
+    const challenge = await takePasskeyChallenge(body.challengeId);
+
+    if (
+      challenge.purpose !== 'registration'
+      || challenge.agentId !== request.agent.id
+      || challenge.tenantId !== request.agent.tenantId
+    ) {
+      throw invalidPasskeyError();
+    }
+
+    const agent = await getActiveAgentForAuth(
+      fastify.prisma,
+      request.agent.id,
+      request.agent.tenantId,
+    );
+    const config = getPasskeyConfig();
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: body.response as RegistrationResponseJSON,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: config.origin,
+        expectedRPID: config.rpID,
+        requireUserPresence: true,
+        requireUserVerification: true,
+      });
+    } catch {
+      throw invalidPasskeyError();
+    }
+
+    if (!verification.verified) throw invalidPasskeyError();
+
+    try {
+      const registration = verification.registrationInfo;
+      await fastify.prisma.passkeyCredential.create({
+        data: {
+          tenantId: agent.tenantId,
+          agentId: agent.id,
+          credentialId: registration.credential.id,
+          publicKey: Buffer.from(registration.credential.publicKey),
+          counter: BigInt(registration.credential.counter),
+          transports: body.response.response.transports ?? [],
+          deviceType: registration.credentialDeviceType,
+          backedUp: registration.credentialBackedUp,
+        },
+      });
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+        throw new AppError('Passkey is already registered', 'CONFLICT', 409);
+      }
+      throw error;
+    }
+
+    return reply.send(success({ registered: true }));
+  });
+
+  // POST /api/v1/auth/passkeys/authentication/options
+  fastify.post('/passkeys/authentication/options', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    const body = passkeyAuthenticationOptionsSchema.parse(request.body);
+    const config = getPasskeyConfig();
+    let agentId: string | undefined;
+    let tenantId: string | undefined;
+    let allowCredentials: Array<{ id: string; transports?: AuthenticatorTransportFuture[] }> = [];
+
+    if (body.email) {
+      const agent = await fastify.prisma.agent.findFirst({
+        where: {
+          email: body.email,
+          isActive: true,
+          tenant: { isActive: true },
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          passkeyCredentials: {
+            where: { revokedAt: null },
+            select: { credentialId: true, transports: true },
+          },
+        },
+      });
+      if (agent) {
+        agentId = agent.id;
+        tenantId = agent.tenantId;
+        allowCredentials = agent.passkeyCredentials.map((credential) => ({
+          id: credential.credentialId,
+          transports: normalizeTransports(credential.transports),
+        }));
+      }
+    }
+
+    const options = await generateAuthenticationOptions({
+      rpID: config.rpID,
+      allowCredentials: allowCredentials.length > 0 ? allowCredentials : undefined,
+      userVerification: 'required',
+    });
+    const challengeId = createPasskeyChallengeId();
+
+    await storePasskeyChallenge({
+      challengeId,
+      challenge: options.challenge,
+      purpose: 'authentication',
+      tenantId,
+      agentId,
+      rememberMe: body.rememberMe,
+    });
+
+    return reply.send(success({ challengeId, options }));
+  });
+
+  // POST /api/v1/auth/passkeys/authentication/verify
+  fastify.post('/passkeys/authentication/verify', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
+    const body = passkeyAuthenticationVerifySchema.parse(request.body);
+    const challenge = await takePasskeyChallenge(body.challengeId);
+    if (challenge.purpose !== 'authentication') throw invalidPasskeyError();
+
+    const credential = challenge.tenantId
+      ? await fastify.prisma.passkeyCredential.findFirst({
+        where: {
+          credentialId: body.response.id,
+          tenantId: challenge.tenantId,
+          ...(challenge.agentId ? { agentId: challenge.agentId } : {}),
+          revokedAt: null,
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          agentId: true,
+          credentialId: true,
+          publicKey: true,
+          counter: true,
+          transports: true,
+        },
+      })
+      : await fastify.prisma.passkeyCredential.findUnique({
+        where: { credentialId: body.response.id },
+        select: {
+          id: true,
+          tenantId: true,
+          agentId: true,
+          credentialId: true,
+          publicKey: true,
+          counter: true,
+          transports: true,
+          revokedAt: true,
+        },
+      });
+
+    if (!credential || ('revokedAt' in credential && credential.revokedAt)) {
+      throw invalidPasskeyError();
+    }
+
+    const agent = await getActiveAgentForAuth(fastify.prisma, credential.agentId, credential.tenantId);
+    const config = getPasskeyConfig();
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: body.response as AuthenticationResponseJSON,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: config.origin,
+        expectedRPID: config.rpID,
+        requireUserVerification: true,
+        credential: {
+          id: credential.credentialId,
+          publicKey: new Uint8Array(credential.publicKey),
+          counter: Number(credential.counter),
+          transports: normalizeTransports(credential.transports),
+        },
+      });
+    } catch {
+      throw invalidPasskeyError();
+    }
+
+    if (!verification.verified) throw invalidPasskeyError();
+
+    const updated = await fastify.prisma.passkeyCredential.updateMany({
+      where: {
+        id: credential.id,
+        tenantId: credential.tenantId,
+        agentId: credential.agentId,
+        revokedAt: null,
+        counter: credential.counter,
+      },
+      data: {
+        counter: BigInt(verification.authenticationInfo.newCounter),
+        lastUsedAt: new Date(),
+      },
+    });
+    if (updated.count !== 1) throw invalidPasskeyError();
+
+    const session = issueAgentSession(
+      fastify,
+      reply,
+      agent,
+      getConfig(),
+      challenge.rememberMe === true,
+    );
+    return reply.send(success(session));
+  });
+
+  // GET /api/v1/auth/passkeys
+  fastify.get('/passkeys', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const credentials = await fastify.prisma.passkeyCredential.findMany({
+      where: {
+        tenantId: request.agent.tenantId,
+        agentId: request.agent.id,
+        revokedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        deviceType: true,
+        backedUp: true,
+        lastUsedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return reply.send(success(credentials));
+  });
+
+  // DELETE /api/v1/auth/passkeys/:id
+  fastify.delete('/passkeys/:id', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = passkeyIdParamsSchema.parse(request.params);
+    const result = await fastify.prisma.passkeyCredential.updateMany({
+      where: {
+        id,
+        tenantId: request.agent.tenantId,
+        agentId: request.agent.id,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+    if (result.count !== 1) {
+      throw new AppError('Passkey not found', 'NOT_FOUND', 404);
+    }
+    return reply.send(success({ revoked: true }));
   });
 
   // POST /api/v1/auth/cli/login
