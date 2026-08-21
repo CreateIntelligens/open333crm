@@ -14,7 +14,7 @@ import type { HistoryMessage } from './providers/index.js';
 import type { TokenUsage } from './providers/types.js';
 import { getPricing, calcCostUsd } from './pricing.service.js';
 import { resolveGeminiKey } from './ai-key.service.js';
-import { isMonthlyTokenExceeded } from '../trial/token-quota.service.js';
+import { isMonthlyTokenExceeded, incrMonthlyTokens } from '../trial/token-quota.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
 
@@ -95,6 +95,14 @@ async function recordAiUsage(
       caseId: input.meta?.caseId,
     },
   });
+
+  // Redis 即時額度累加：只計成功、platform key 的 token（BYOK 租戶自付不計額度）
+  const totalTokens = usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens;
+  if (input.success && !isByok && totalTokens > 0) {
+    incrMonthlyTokens(prisma, input.tenantId, totalTokens).catch((e) =>
+      logger.error('[TokenQuota] incr failed:', e),
+    );
+  }
 }
 
 /**
