@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **Passkey / WebAuthn authentication foundation** — 新增 Agent Passkey 憑證資料模型與可選 WebAuthn 設定，為後續安全登入流程提供基礎。
 - **Instagram / Threads 渠道支援** — 整合 Meta Graph API 與 Webhook，支援 Instagram Direct Message 訊息收發與渠道管理：
   - 支援 IG 訊息接收、真人私訊收發與 Bot 自動化回應
   - 渠道設定新增 **憑證設定指南（`ChannelFieldGuide`）**，提供 Meta for Developers / LINE Developers 圖文設定指引

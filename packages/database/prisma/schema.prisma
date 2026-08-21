@@ -220,6 +220,7 @@ model Tenant {
   materials               Material[]
   richMenus               RichMenu[]
   chatboxSessions         ChatboxSession[]
+  passkeyCredentials      PasskeyCredential[]
   quickReplyPresets       QuickReplyPreset[]
   kbArticleFeedback       KbArticleFeedback[]
 
@@ -244,13 +245,14 @@ model Agent {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  teams         AgentTeamMember[]
-  assignedConvs Conversation[]    @relation("AssignedAgent")
-  assignedCases Case[]            @relation("AssignedAgent")
-  caseEvents    CaseEvent[]
-  sentMessages  Message[]
-  notifications Notification[]
-  cliSessions   CliSession[]
+  teams              AgentTeamMember[]
+  assignedConvs      Conversation[]      @relation("AssignedAgent")
+  assignedCases      Case[]              @relation("AssignedAgent")
+  caseEvents         CaseEvent[]
+  sentMessages       Message[]
+  notifications      Notification[]
+  cliSessions        CliSession[]
+  passkeyCredentials PasskeyCredential[]
 
   // email 全域唯一：一個 email 只能屬於一個租戶（多租戶登入靠 email 解析租戶）
   @@unique([email])
@@ -1582,6 +1584,33 @@ model CliSession {
   @@index([tenantId, agentId])
   @@index([tenantId, revokedAt, expiresAt])
   @@map("cli_sessions")
+}
+
+// ─────────────────────────────────────────────
+// Passkey Credentials
+// ─────────────────────────────────────────────
+
+model PasskeyCredential {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  agentId      String    @db.Uuid
+  credentialId String    @unique @db.VarChar(1024)
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   Json      @default("[]")
+  deviceType   String?
+  backedUp     Boolean   @default(false)
+  name         String    @default("Passkey")
+  lastUsedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  agent  Agent  @relation(fields: [agentId], references: [id])
+
+  @@index([tenantId, agentId, revokedAt])
+  @@map("passkey_credentials")
 }
 
 // ─────────────────────────────────────────────

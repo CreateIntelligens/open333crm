@@ -30,6 +30,7 @@
     "@open333crm/shared": "workspace:*",
     "@open333crm/types": "workspace:*",
     "@prisma/client": "^6.0.0",
+    "@simplewebauthn/server": "13.3.2",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.0.0",
     "date-fns": "^3.6.0",
