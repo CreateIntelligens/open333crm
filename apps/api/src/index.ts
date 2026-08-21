@@ -59,6 +59,7 @@ import platformRoutes from './modules/platform/platform.routes.js';
 import trialRoutes from './modules/trial/trial.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
 import cliRoutes from './modules/cli/cli.routes.js';
+import mcpRoutes from './modules/mcp/mcp.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
@@ -157,6 +158,7 @@ export async function bootstrap() {
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
   await app.register(platformRoutes, { prefix: '/api/v1/platform' });
   await app.register(trialRoutes, { prefix: '/api/v1/trial' });
+  await app.register(mcpRoutes);
 
   registerVisitorNamespace(app.io, app.prisma, app.chatboxSessionVerifier);
 

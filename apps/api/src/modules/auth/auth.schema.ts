@@ -54,6 +54,66 @@ export const cliLoginResponseSchema = z.object({
 
 export type CliLoginResponse = z.infer<typeof cliLoginResponseSchema>;
 
+const base64UrlSchema = z.string().min(1).max(4096).regex(/^[A-Za-z0-9_-]+$/);
+export const passkeyNameSchema = z.string().trim().min(1).max(80);
+
+const webAuthnCredentialBaseSchema = z.object({
+  id: base64UrlSchema,
+  rawId: base64UrlSchema,
+  type: z.literal('public-key'),
+  authenticatorAttachment: z.string().optional(),
+  clientExtensionResults: z.record(z.unknown()),
+});
+
+export const passkeyRegistrationResponseSchema = webAuthnCredentialBaseSchema.extend({
+  response: z.object({
+    clientDataJSON: base64UrlSchema,
+    attestationObject: base64UrlSchema,
+    authenticatorData: base64UrlSchema.optional(),
+    transports: z.array(z.enum(['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'])).optional(),
+    publicKeyAlgorithm: z.number().int().optional(),
+    publicKey: base64UrlSchema.optional(),
+  }),
+});
+
+export const passkeyAuthenticationResponseSchema = webAuthnCredentialBaseSchema.extend({
+  response: z.object({
+    clientDataJSON: base64UrlSchema,
+    authenticatorData: base64UrlSchema,
+    signature: base64UrlSchema,
+    userHandle: base64UrlSchema.optional(),
+  }),
+});
+
+export const passkeyChallengeIdSchema = z.object({
+  challengeId: z.string().uuid(),
+});
+
+export const passkeyAuthenticationOptionsSchema = z.object({
+  email: z.string().email('Invalid email format').optional(),
+  rememberMe: z.boolean().optional().default(false),
+});
+
+export const passkeyRegistrationVerifySchema = passkeyChallengeIdSchema.extend({
+  name: passkeyNameSchema.default('Passkey'),
+  response: passkeyRegistrationResponseSchema,
+});
+
+export const passkeyRenameSchema = z.object({
+  name: passkeyNameSchema,
+});
+
+export const passkeyAuthenticationVerifySchema = passkeyChallengeIdSchema.extend({
+  response: passkeyAuthenticationResponseSchema,
+});
+
+export const passkeyIdParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export type PasskeyRegistrationResponse = z.infer<typeof passkeyRegistrationResponseSchema>;
+export type PasskeyAuthenticationResponse = z.infer<typeof passkeyAuthenticationResponseSchema>;
+
 const cliEndpointSchema = z.object({
   name: z.string(),
   description: z.string(),

@@ -80,6 +80,7 @@ await redisPublisher.publish(
 
 ## Conventions
 
+- **CHANGELOG Maintenance (MANDATORY)**: Whenever implementing a feature (`feat`), bug fix (`fix`), architecture change, or completing an OpenSpec change/PR, you **MUST update `CHANGELOG.md`** under the latest release section (categorized into `Added`, `Changed`, `Fixed`, etc.). Never submit code changes without keeping `CHANGELOG.md` updated.
 - **Validation**: Zod in API route handlers
 - **Errors**: `throw new AppError(code, message, httpStatus)` — no raw error returns
 - **Multi-tenancy**: every query must include `tenantId` in `where` clause
@@ -120,6 +121,7 @@ packages/
 ## OpenSpec Workflow
 
 Changes are tracked in `openspec/`. Use the OpenSpec skills for propose/apply/archive cycles. Archived changes: `openspec/changes/archive/`.
+**CRITICAL**: When completing or archiving an OpenSpec change, always ensure that `CHANGELOG.md` is updated with all user-facing features, improvements, and fixes.
 
 ## Other Instruction Files
 

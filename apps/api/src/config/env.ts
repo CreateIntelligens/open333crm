@@ -10,12 +10,17 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
+  WEBAUTHN_RP_ID: z.string().optional(),
+  WEBAUTHN_RP_NAME: z.string().default('open333CRM'),
+  WEBAUTHN_ORIGIN: z.string().url().optional(),
+  WEBAUTHN_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(30).max(300).default(120),
 
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('*'),
   // 前端 base URL（試用驗證信連結用）
   WEB_BASE_URL: z.string().default('http://localhost:3000'),
+  MCP_ALLOWED_ORIGINS: z.string().default(''),
   LICENSE_KEY: z.string().default('dev-license-key'),
   CACHE_DRIVER: z.string().default('memory'),
   CACHE_SEGMENT: z.string().default('open333crm'),
@@ -82,6 +87,15 @@ export function loadEnvConfig(): EnvConfig {
       })
       .join('\n');
     throw new Error(`Environment validation failed:\n${messages}`);
+  }
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !result.data.MCP_ALLOWED_ORIGINS.trim()
+  ) {
+    throw new Error(
+      'Environment validation failed:\n  MCP_ALLOWED_ORIGINS: required in production',
+    );
   }
 
   _config = result.data;

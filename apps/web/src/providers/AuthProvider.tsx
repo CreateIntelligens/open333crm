@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { unmountWebTalk } from '@/lib/webtalk';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 interface Agent {
   id: string;
@@ -21,7 +22,10 @@ interface AuthContextType {
   permissions: Set<string>;
   /** 判斷是否擁有某權限 */
   hasPermission: (code: string) => boolean;
+  passkeyEnabled: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  loginWithPasskey: (email?: string, rememberMe?: boolean) => Promise<void>;
+  registerPasskey: (name: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -40,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [passkeyEnabled, setPasskeyEnabled] = useState(false);
   const router = useRouter();
 
   // 載入當前使用者有效權限（登入後 / restore session 後）
@@ -79,6 +84,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
   }, [loadPermissions]);
 
+  useEffect(() => {
+    api.get('/auth/passkeys/capability')
+      .then((res) => {
+        setPasskeyEnabled(res.data.data.enabled === true);
+      })
+      .catch(() => {
+        setPasskeyEnabled(false);
+      });
+  }, []);
+
   const login = useCallback(
     async (email: string, password: string, rememberMe = false) => {
       const res = await api.post('/auth/login', { email, password, rememberMe });
@@ -90,6 +105,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [router, loadPermissions]
   );
+
+  const loginWithPasskey = useCallback(
+    async (email?: string, rememberMe = false) => {
+      const optionsResponse = await api.post('/auth/passkeys/authentication/options', {
+        ...(email ? { email } : {}),
+        rememberMe,
+      });
+      const { challengeId, options } = optionsResponse.data.data;
+      const response = await startAuthentication({ optionsJSON: options });
+      const verifyResponse = await api.post('/auth/passkeys/authentication/verify', {
+        challengeId,
+        response,
+      });
+      const { accessToken, agent: agentData } = verifyResponse.data.data;
+      setAccessToken(accessToken);
+      setAgent(agentData);
+      router.push('/dashboard/inbox');
+    },
+    [router],
+  );
+
+  const registerPasskey = useCallback(async (name: string) => {
+    const optionsResponse = await api.post('/auth/passkeys/register/options');
+    const { challengeId, options } = optionsResponse.data.data;
+    const response = await startRegistration({ optionsJSON: options });
+    await api.post('/auth/passkeys/register/verify', { challengeId, response, name });
+  }, []);
 
   const logout = useCallback(async () => {
     unmountWebTalk();
@@ -111,7 +153,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ agent, isLoading, permissions, hasPermission, login, logout }}>
+    <AuthContext.Provider value={{ agent, isLoading, permissions, hasPermission, passkeyEnabled, login, loginWithPasskey, registerPasskey, logout }}>
+
       {children}
     </AuthContext.Provider>
   );
