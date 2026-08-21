@@ -94,6 +94,7 @@ export const passkeyAuthenticationOptionsSchema = z.object({
 });
 
 export const passkeyRegistrationVerifySchema = passkeyChallengeIdSchema.extend({
+  name: z.string().trim().min(1).max(80).default('Passkey'),
   response: passkeyRegistrationResponseSchema,
 });
 

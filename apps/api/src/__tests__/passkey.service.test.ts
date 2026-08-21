@@ -9,6 +9,7 @@ import {
 import {
   passkeyAuthenticationOptionsSchema,
   passkeyAuthenticationVerifySchema,
+  passkeyRegistrationVerifySchema,
 } from '../modules/auth/auth.schema.js';
 
 class FakePasskeyRedis implements PasskeyChallengeRedis {
@@ -98,9 +99,33 @@ function testPasskeyRequestSchemasRejectMalformedCredentialData() {
   );
 }
 
+function testPasskeyNameIsTrimmedAndDefaultsForLegacyClients() {
+  const response = {
+    id: 'credential-id',
+    rawId: 'raw-id',
+    type: 'public-key' as const,
+    clientExtensionResults: {},
+    response: {
+      clientDataJSON: 'client-data',
+      attestationObject: 'attestation-object',
+    },
+  };
+  const challengeId = '11111111-1111-4111-8111-111111111111';
+
+  assert.equal(
+    passkeyRegistrationVerifySchema.parse({ challengeId, response, name: '  MacBook Touch ID  ' }).name,
+    'MacBook Touch ID',
+  );
+  assert.equal(
+    passkeyRegistrationVerifySchema.parse({ challengeId, response }).name,
+    'Passkey',
+  );
+}
+
 await testChallengeIsStoredWithTtlAndConsumedOnce();
 await testChallengeCannotBeOverwrittenBeforeConsumption();
 await testMalformedChallengeIsRejected();
 testPasskeyRequestSchemasRejectMalformedCredentialData();
+testPasskeyNameIsTrimmedAndDefaultsForLegacyClients();
 
 console.log('passkey.service.test.ts passed');
