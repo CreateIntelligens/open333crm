@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@open333crm/database';
 import { verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 
@@ -72,6 +72,40 @@ export async function getAgentById(prisma: PrismaClient, agentId: string, tenant
 
   if (!agent) {
     throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  }
+
+  return agent;
+}
+
+/**
+ * Load an agent for an authentication flow while enforcing both account and
+ * tenant activation. The tenantId must come from the authenticated request or
+ * the passkey credential challenge, never from a client-controlled profile.
+ */
+export async function getActiveAgentForAuth(
+  prisma: PrismaClient,
+  agentId: string,
+  tenantId: string,
+) {
+  const agent = await prisma.agent.findFirst({
+    where: {
+      id: agentId,
+      tenantId,
+      isActive: true,
+      tenant: { isActive: true },
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      email: true,
+      name: true,
+      role: true,
+      avatarUrl: true,
+    },
+  });
+
+  if (!agent) {
+    throw new AppError('Account is disabled or unavailable', 'UNAUTHORIZED', 401);
   }
 
   return agent;
