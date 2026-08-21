@@ -9,7 +9,8 @@
 ## What Changes
 
 - **新增平台控制平面**：獨立認證路徑（平台 superuser，跨租戶身分，與租戶 JWT 完全分離）、獨立 `/admin` 前端與 `/api/v1/platform` API、平台稽核 log。租戶**永不登入平台層**。
-- **Entitlement（租戶可用功能）**：以 feature module 為單位的 `Plan`（Free/Pro/Enterprise）+ 單租戶 override（加購/關閉）。有效權限 = 角色權限 ∩ entitlement 天花板（後端強制交集）。
+- **Entitlement（租戶可用功能）**：以 feature module 為單位的 `Plan`（輕量版/標準版/專業版/企業版四階）+ 單租戶 override（加購/關閉）。有效權限 = 角色權限 ∩ entitlement 天花板（後端強制交集）。
+- **數值上限參數化（plan-limits）**：客服人數、分眾標籤數、AI 額度等上限存 `Plan.limits`（+ 單租戶 `limitOverrides`），平台後台可改**非寫死**；達上限建立時硬擋。
 - **Feature registry + 強制對應**：定義 feature module → 權限點對照，啟動驗證「每個權限點恰好歸屬一個 feature」，杜絕平台管不到的權限。
 - **用量統計與計費**：跨租戶 + 單租戶的用量/計費/健康度三類指標與圖表；複用既有 `DailyStat`/`aggregateAllTenants` 骨架。
 - **AI token 記錄（前置工程）**：現況 provider 介面層就丟棄 token，須從 `ChatProvider` 介面補起，新增 `AiUsage` 表逐次落地——這是計費、額度硬擋、成本統計的共同前提。
@@ -27,6 +28,7 @@
 - `platform-usage`: AI token 記錄（AiUsage + provider 介面改造）、用量/計費/健康度指標彙總、跨租戶與單租戶統計 API、圖表資料契約。
 - `ai-key-management`: per-tenant AI key 加密儲存、三層 fallback、BYOK、provider 收租戶 key、遮罩回應、平台代管與稽核。
 - `token-quota`: 每租戶 token 月額度、Redis 即時計數器、超量硬擋、分級預警、BYOK 例外。
+- `plan-limits`: 數值上限參數化（Plan.limits + Tenant.limitOverrides，平台後台可改非寫死）——客服人數、分眾標籤數等 count 型上限的建立時硬擋，null=無上限。
 - `plan-change-request`: 升級/加購申請單、租戶發起、平台審核、核准後生效（改 plan / 提高額度 / 解除硬擋）。
 - `tenant-billing-view`: 租戶站內方案與用量頁（唯讀 + AI key 自選 + 發起申請）的資料契約。
 
