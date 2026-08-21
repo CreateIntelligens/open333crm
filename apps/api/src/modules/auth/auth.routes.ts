@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { cliLoginRequestSchema, loginRequestSchema } from './auth.schema.js';
 import { login, getAgentById } from './auth.service.js';
-import { getEffectivePermissions } from '../../services/permission.service.js';
+import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
+import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
 import { success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
 import { FastifyJWT } from '@fastify/jwt';
@@ -190,7 +191,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.get('/me/permissions', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    const eff = await getEffectivePermissions(fastify.prisma, request.agent.roleId);
+    // 前端 gating 用「使用者實際可用權限」= 角色權限 ∩ 方案天花板
+    const planId = await getTenantPlanId(fastify.prisma, request.agent.tenantId);
+    const eff = await getEffectiveTenantPermissions(fastify.prisma, request.agent.roleId, planId);
     return reply.send(success({ permissions: [...eff] }));
   });
 }

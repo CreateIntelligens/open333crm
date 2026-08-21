@@ -24,12 +24,32 @@ export interface ChatGenerateOptions {
   baseUrl?: string;
 }
 
+/**
+ * 單次呼叫的 token 用量（供計費/額度統計）。
+ * 各欄位缺項一律補 0；provider 完全拿不到用量時整個 usage 為 undefined。
+ */
+export interface TokenUsage {
+  /** 輸入 token（含快取命中部分） */
+  promptTokens: number;
+  /** 輸入中命中 context cache 的部分（promptTokens 的子集） */
+  cachedTokens: number;
+  /** 模型輸出（回覆本文） */
+  candidatesTokens: number;
+  /** thinking token（計費上按 output 價） */
+  thoughtsTokens: number;
+}
+
+export interface ChatGenerateResult {
+  text: string;
+  usage?: TokenUsage;
+}
+
 export interface ChatProvider {
   readonly id: 'ollama' | 'gemini';
   readonly label: string;
 
   /** Generate a reply. Throws on failure. */
-  generate(opts: ChatGenerateOptions): Promise<string>;
+  generate(opts: ChatGenerateOptions): Promise<ChatGenerateResult>;
 
   /** List available chat-capable models. Returns [] on failure. */
   listModels(opts: { baseUrl?: string }): Promise<ChatModelInfo[]>;

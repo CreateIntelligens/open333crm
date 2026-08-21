@@ -1,6 +1,7 @@
 import type {
   ChatProvider,
   ChatGenerateOptions,
+  ChatGenerateResult,
   ChatModelInfo,
   ChatProviderHealth,
 } from './types.js';
@@ -11,7 +12,7 @@ export const OllamaChatProvider: ChatProvider = {
   id: 'ollama',
   label: 'Ollama (local)',
 
-  async generate(opts: ChatGenerateOptions): Promise<string> {
+  async generate(opts: ChatGenerateOptions): Promise<ChatGenerateResult> {
     const baseUrl = opts.baseUrl ?? 'http://localhost:11434';
     const url = `${baseUrl}/api/chat`;
 
@@ -49,10 +50,25 @@ export const OllamaChatProvider: ChatProvider = {
         throw new Error(`Ollama chat failed (${response.status}): ${errBody}`);
       }
 
-      const data = (await response.json()) as { message?: { content: string } };
+      const data = (await response.json()) as {
+        message?: { content: string };
+        prompt_eval_count?: number;
+        eval_count?: number;
+      };
       const text = data.message?.content?.trim();
       if (!text) throw new Error('Ollama returned empty chat response');
-      return text;
+
+      // Ollama 非串流回應帶 prompt_eval_count / eval_count；舊版可能缺欄位。
+      const usage =
+        data.prompt_eval_count !== undefined || data.eval_count !== undefined
+          ? {
+              promptTokens: data.prompt_eval_count ?? 0,
+              cachedTokens: 0,
+              candidatesTokens: data.eval_count ?? 0,
+              thoughtsTokens: 0,
+            }
+          : undefined;
+      return { text, usage };
     } finally {
       clearTimeout(timer);
     }

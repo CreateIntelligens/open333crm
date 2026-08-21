@@ -185,6 +185,7 @@ export async function attemptKbAutoReply(
       replyText = await generateReply(prisma, tenantId, messageText, guideContext, {
         overrideSystemPrompt: chatSettings.modelGuideSystemPrompt || MODEL_GUIDE_SYSTEM_PROMPT,
         history,
+        meta: { feature: 'kb-autoreply', conversationId },
       });
     } catch (err) {
       logger.error('[KbAutoReply] Model-guide generation failed, using fallback:', err);
@@ -241,6 +242,7 @@ export async function attemptKbAutoReply(
         const llmReply = await generateReply(prisma, tenantId, messageText, '', {
           overrideSystemPrompt: overridePrompt,
           history,
+          meta: { feature: 'kb-autoreply', conversationId },
         });
         replyText = llmReply;
         replyKind = 'clarify';
@@ -259,7 +261,10 @@ export async function attemptKbAutoReply(
     const kbContext = buildKbContext(results);
 
     try {
-      const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, { history });
+      const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, {
+        history,
+        meta: { feature: 'kb-autoreply', conversationId },
+      });
       replyText = llmReply;
       replyKind = topSimilarity >= 0.80 ? 'kb_high_confidence' : 'kb_with_handoff';
       // Successful KB answer resets clarify attempts

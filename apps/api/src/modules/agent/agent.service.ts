@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
+import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 
 // legacy enum role → system role slug（與 granular RBAC 雙寫的橋樑）
 const ENUM_TO_SLUG: Record<string, string> = {
@@ -49,6 +50,20 @@ export async function createAgent(
 
   if (existing) {
     throw new AppError('Email already in use', 'CONFLICT', 409);
+  }
+
+  // 方案人數上限硬擋（建立時 count 檢查；無上限 = null 時跳過）。
+  // 在權限檢查之後、實際建立之前，正交於 RBAC。
+  const maxAgents = await getEffectiveLimit(prisma, tenantId, 'maxAgents');
+  if (maxAgents !== null) {
+    const activeCount = await prisma.agent.count({ where: { tenantId, isActive: true } });
+    if (activeCount >= maxAgents) {
+      throw new AppError('已達方案客服人數上限，請升級方案', 'PLAN_LIMIT_EXCEEDED', 403, {
+        limitKey: 'maxAgents',
+        current: activeCount,
+        max: maxAgents,
+      });
+    }
   }
 
   const passwordHash = await hashPassword(data.password);

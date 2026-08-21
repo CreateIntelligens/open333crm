@@ -4,6 +4,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   JWT_SECRET: z.string().min(10),
+  // 平台 superuser 專屬 JWT secret（與租戶 JWT 完全分離）。未設時平台路由回 503。
+  PLATFORM_JWT_SECRET: z.string().min(10).optional(),
+  PLATFORM_JWT_EXPIRES_IN: z.string().default('2h'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
@@ -11,6 +14,8 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('*'),
+  // 前端 base URL（試用驗證信連結用）
+  WEB_BASE_URL: z.string().default('http://localhost:3000'),
   LICENSE_KEY: z.string().default('dev-license-key'),
   CACHE_DRIVER: z.string().default('memory'),
   CACHE_SEGMENT: z.string().default('open333crm'),
@@ -35,10 +40,23 @@ const envSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
   S3_PUBLIC_URL: z.string().default('http://localhost:9000'),
   S3_SET_ACL: z.coerce.number().int().min(0).max(1).default(1),
-  EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook']).default('log'),
+  EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+}).superRefine((cfg, ctx) => {
+  if (cfg.EMAIL_DELIVERY_MODE === 'smtp' && !cfg.SMTP_HOST) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SMTP_HOST'],
+      message: 'SMTP_HOST is required when EMAIL_DELIVERY_MODE=smtp',
+    });
+  }
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

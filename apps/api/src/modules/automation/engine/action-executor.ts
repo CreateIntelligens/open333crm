@@ -738,6 +738,7 @@ async function handleLlmReply(
   // Generate reply using LLM (per-tenant provider/model/prompt)
   const replyText = await generateReply(prisma, context.tenantId, history, '', {
     overrideSystemPrompt,
+    meta: { feature: 'automation', conversationId: context.conversationId },
   });
 
   // Save as BOT message

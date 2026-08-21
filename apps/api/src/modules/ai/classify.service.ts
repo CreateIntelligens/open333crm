@@ -66,6 +66,7 @@ export async function classifyIssue(
   try {
     const raw = await generateReply(prisma, tenantId, text, '', {
       overrideSystemPrompt: CLASSIFY_SYSTEM_PROMPT,
+      meta: { feature: 'classify' },
     });
 
     const jsonMatch = raw.match(/\{[\s\S]*?\}/);

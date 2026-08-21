@@ -53,6 +53,7 @@ export async function analyzeSentiment(
   try {
     const raw = await generateReply(prisma, tenantId, text, '', {
       overrideSystemPrompt: SENTIMENT_SYSTEM_PROMPT,
+      meta: { feature: 'sentiment' },
     });
 
     // Try to parse JSON from LLM response

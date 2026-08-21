@@ -54,7 +54,9 @@ export async function suggestReply(prisma: PrismaClient, conversationId: string)
         const kbContext = `【${r.title}】\n${(r.content || r.summary).slice(0, 1500)}`;
         let text: string;
         try {
-          text = await generateReply(prisma, conversation.tenantId, userText, kbContext);
+          text = await generateReply(prisma, conversation.tenantId, userText, kbContext, {
+            meta: { feature: 'suggestion', conversationId },
+          });
         } catch {
           // Fallback to article content/summary if LLM fails
           text = r.content || r.summary || r.title;
@@ -118,7 +120,7 @@ export async function summarizeConversation(prisma: PrismaClient, conversationId
       conversation.tenantId,
       transcript,
       '',
-      { promptKind: 'summarize' },
+      { promptKind: 'summarize', meta: { feature: 'summary', conversationId } },
     );
     return { summary };
   } catch (err) {

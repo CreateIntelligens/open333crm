@@ -7,13 +7,19 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
-import { redis, resolveImplied } from '@open333crm/core';
+import { redis, resolveImplied, permsForFeatures, CORE_FEATURE } from '@open333crm/core';
 
 const CACHE_PREFIX = 'perms:role:';
+const TENANT_CACHE_PREFIX = 'perms:tenant:';
 const CACHE_TTL_SEC = 600; // 10 分鐘
 
 function cacheKey(roleId: string): string {
   return `${CACHE_PREFIX}${roleId}`;
+}
+
+// 交集結果與 (roleId, planId) 相關 → 快取 key 帶兩者
+function tenantCacheKey(roleId: string, planId: string | null): string {
+  return `${TENANT_CACHE_PREFIX}${roleId}:${planId ?? 'none'}`;
 }
 
 /**
@@ -68,7 +74,73 @@ export async function roleHasPermission(
 export async function invalidateRolePermissions(roleId: string): Promise<void> {
   try {
     await redis.del(cacheKey(roleId));
+    // 角色權限變更也影響其套天花板後的結果 → 一併清該角色的 tenant 交集快取
+    await delByPattern(`${TENANT_CACHE_PREFIX}${roleId}:*`);
   } catch {
     /* 失效失敗靠 TTL 兜底 */
   }
+}
+
+/**
+ * 有效「租戶內」權限 = 角色權限 ∩ 方案功能天花板。
+ * 供 guard（requirePermission）與 /me/permissions 使用——這是使用者實際可用的權限。
+ * planId 為 null（租戶無方案）時不套天花板，回角色權限本身（既有租戶零影響）。
+ *
+ * 注意：與 getEffectivePermissions（角色原始權限，越權檢查用）語意不同，勿混用。
+ */
+export async function getEffectiveTenantPermissions(
+  prisma: PrismaClient,
+  roleId: string | null | undefined,
+  planId: string | null | undefined,
+): Promise<Set<string>> {
+  if (!roleId) return new Set();
+
+  // 無方案 → 不設天花板，直接回角色權限
+  if (!planId) return getEffectivePermissions(prisma, roleId);
+
+  const key = tenantCacheKey(roleId, planId);
+  try {
+    const cached = await redis.get(key);
+    if (cached) return new Set(JSON.parse(cached) as string[]);
+  } catch {
+    /* 快取失敗回退計算 */
+  }
+
+  const roleEff = await getEffectivePermissions(prisma, roleId);
+  const plan = await prisma.plan.findUnique({ where: { id: planId }, select: { features: true } });
+  const features = new Set<string>((plan?.features as string[]) ?? []);
+  features.add(CORE_FEATURE); // core 恆開
+  const ceiling = permsForFeatures(features);
+
+  const effective = new Set<string>();
+  for (const code of roleEff) if (ceiling.has(code)) effective.add(code);
+
+  try {
+    await redis.set(key, JSON.stringify([...effective]), 'EX', CACHE_TTL_SEC);
+  } catch {
+    /* 寫入失敗不阻斷 */
+  }
+  return effective;
+}
+
+/** 失效某方案所有租戶的天花板交集快取（改 plan.features 後呼叫）。 */
+export async function invalidatePlanPermissions(
+  _prisma: PrismaClient,
+  planId: string,
+): Promise<void> {
+  try {
+    await delByPattern(`${TENANT_CACHE_PREFIX}*:${planId}`);
+  } catch {
+    /* 失效失敗靠 TTL 兜底 */
+  }
+}
+
+/** 以 SCAN 逐批刪除符合 pattern 的 key（避免 KEYS 阻塞）。 */
+async function delByPattern(pattern: string): Promise<void> {
+  let cursor = '0';
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    cursor = next;
+    if (keys.length) await redis.del(...keys);
+  } while (cursor !== '0');
 }

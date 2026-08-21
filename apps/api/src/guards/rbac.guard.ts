@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { getEffectivePermissions } from '../services/permission.service.js';
+import { getEffectiveTenantPermissions } from '../services/permission.service.js';
+import { getTenantPlanId } from '../services/tenant-plan.cache.js';
 
 /**
  * RBAC guards.
@@ -37,7 +38,9 @@ export const requirePermission = (code: string) => {
       return;
     }
     const roleId = request.agent?.roleId;
-    const eff = await getEffectivePermissions(request.server.prisma, roleId);
+    // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
+    const planId = await getTenantPlanId(request.server.prisma, request.agent?.tenantId);
+    const eff = await getEffectiveTenantPermissions(request.server.prisma, roleId, planId);
     if (!eff.has(code)) {
       return reply.status(403).send({
         code: 'FORBIDDEN',
