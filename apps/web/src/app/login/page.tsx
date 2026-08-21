@@ -128,6 +128,12 @@ function LoginForm() {
               {submitting ? '登入中...' : !captchaVerified ? '請先完成小遊戲' : '登入'}
             </Button>
           </form>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            還沒有帳號？{' '}
+            <a href="/trial" className="text-primary underline">
+              免費試用
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>
