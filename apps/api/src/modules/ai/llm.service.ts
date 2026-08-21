@@ -13,6 +13,7 @@ import { getChatProvider } from './providers/index.js';
 import type { HistoryMessage } from './providers/index.js';
 import type { TokenUsage } from './providers/types.js';
 import { getPricing, calcCostUsd } from './pricing.service.js';
+import { resolveGeminiKey } from './ai-key.service.js';
 import { isMonthlyTokenExceeded } from '../trial/token-quota.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
@@ -52,6 +53,7 @@ async function recordAiUsage(
     tenantId: string;
     provider: string;
     model: string;
+    keySource?: string;
     meta?: AiUsageMeta;
     usage?: TokenUsage;
     success: boolean;
@@ -59,14 +61,17 @@ async function recordAiUsage(
   },
 ): Promise<void> {
   const usage = input.usage ?? ZERO_USAGE;
-  // Ollama 本機模型成本恆 0，不查價目表
+  const isByok = input.keySource === 'byok';
+  // Ollama 本機模型 + BYOK（租戶自付）成本恆 0，不查價目表 / 不計平台成本
   const pricing =
-    input.success && input.usage && input.provider !== 'ollama'
+    input.success && input.usage && input.provider !== 'ollama' && !isByok
       ? await getPricing(prisma, input.model)
       : null;
-  const costUsd = input.success && input.usage ? calcCostUsd(usage, pricing) : null;
-  const usageMissing = !input.usage || (input.success && input.provider !== 'ollama' && !pricing);
-  if (input.success && input.usage && input.provider !== 'ollama' && !pricing) {
+  const costUsd = input.success && input.usage && !isByok ? calcCostUsd(usage, pricing) : null;
+  // BYOK 不查價目、不視為 usageMissing（成本本就不歸平台）
+  const usageMissing =
+    !input.usage || (input.success && input.provider !== 'ollama' && !isByok && !pricing);
+  if (input.success && input.usage && input.provider !== 'ollama' && !isByok && !pricing) {
     logger.warn(`[AiUsage] no pricing found for model=${input.model}, costUsd recorded as 0`);
   }
 
@@ -76,6 +81,7 @@ async function recordAiUsage(
       provider: input.provider,
       model: input.model,
       feature: input.meta?.feature ?? 'unknown',
+      keySource: input.keySource ?? 'platform',
       promptTokens: usage.promptTokens,
       cachedTokens: usage.cachedTokens,
       candidatesTokens: usage.candidatesTokens,
@@ -192,6 +198,12 @@ export async function generateReply(
   const settings = await getChatSettings(prisma, tenantId);
   const provider = getChatProvider(settings.provider);
 
+  // BYOK：gemini 才需 key；取租戶自備 key（無則退回平台 env）
+  const { key: apiKey, source: keySource } =
+    provider.id === 'gemini'
+      ? await resolveGeminiKey(prisma, tenantId)
+      : { key: undefined, source: 'platform' as const };
+
   const promptKind = options.promptKind ?? 'reply';
   const systemPrompt =
     options.overrideSystemPrompt ??
@@ -203,6 +215,7 @@ export async function generateReply(
     tenantId,
     provider: provider.id,
     model: settings.model,
+    keySource,
     meta: options.meta,
   };
 
@@ -217,6 +230,7 @@ export async function generateReply(
       temperature: settings.temperature,
       maxTokens: settings.maxTokens,
       baseUrl: settings.baseUrl,
+      apiKey,
     });
   } catch (err) {
     // 失敗呼叫也留帳（成本 0），並原樣 rethrow 保持既有錯誤行為

@@ -1090,6 +1090,8 @@ model TenantSettings {
   clarifyThreshold       Float    @default(0.5)
   clarifyMaxAttempts     Int      @default(2)
   inactivityCloseHours   Int      @default(72)
+  // BYOK：租戶自備 Gemini API key（AES-256-GCM 加密後存密文；null=用平台/env key）
+  geminiApiKeyEnc        String?
   gaId                   String?
   metaPixelId            String?
   createdAt              DateTime @default(now())
@@ -1732,6 +1734,8 @@ model AiUsage {
   success          Boolean  @default(true)
   // provider 未回傳用量或查無價目時為 true（token/cost 為 0 非真實值）
   usageMissing     Boolean  @default(false)
+  // key 來源：platform（平台/env key，成本歸平台）| byok（租戶自備，成本不歸平台）
+  keySource        String   @default("platform")
   errorCode        String?
   // soft reference：刻意不設 FK，避免刪對話/案件連坐刪用量帳
   conversationId   String?  @db.Uuid

@@ -22,6 +22,8 @@ export interface ChatGenerateOptions {
   maxTokens: number;
   // Provider-specific connection (Ollama needs baseUrl; Gemini reads global API key)
   baseUrl?: string;
+  // BYOK：租戶自備 API key（Gemini 用）；未傳則 provider 退回全域 env
+  apiKey?: string;
 }
 
 /**

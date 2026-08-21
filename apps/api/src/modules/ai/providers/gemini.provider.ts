@@ -30,8 +30,9 @@ const CURATED_CHAT_MODELS: { id: string; label: string; tier: ChatModelInfo['tie
   { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', tier: 'preview' },
 ];
 
-function getApiKey(): string {
-  const key = getConfig().GEMINI_API_KEY;
+// BYOK：優先用傳入的租戶 key，否則退回全域 env
+function getApiKey(override?: string): string {
+  const key = override ?? getConfig().GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not configured in environment');
   return key;
 }
@@ -41,7 +42,7 @@ export const GeminiChatProvider: ChatProvider = {
   label: 'Google Gemini',
 
   async generate(opts: ChatGenerateOptions): Promise<ChatGenerateResult> {
-    const apiKey = getApiKey();
+    const apiKey = getApiKey(opts.apiKey);
     const url = `${GEMINI_BASE}/models/${encodeURIComponent(opts.model)}:generateContent`;
 
     const fullSystemPrompt = opts.kbContext
