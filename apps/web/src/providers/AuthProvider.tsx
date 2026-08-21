@@ -18,6 +18,7 @@ interface Agent {
 interface AuthContextType {
   agent: Agent | null;
   isLoading: boolean;
+  passkeyEnabled: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   loginWithPasskey: (email?: string, rememberMe?: boolean) => Promise<void>;
   registerPasskey: () => Promise<void>;
@@ -38,6 +39,7 @@ export function setAccessToken(token: string | null): void {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [passkeyEnabled, setPasskeyEnabled] = useState(false);
   const router = useRouter();
 
   // On mount: restore session
@@ -62,6 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .finally(() => {
         setIsLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    api.get('/auth/passkeys/capability')
+      .then((res) => {
+        setPasskeyEnabled(res.data.data.enabled === true);
+      })
+      .catch(() => {
+        setPasskeyEnabled(false);
       });
   }, []);
 
@@ -117,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ agent, isLoading, login, loginWithPasskey, registerPasskey, logout }}>
+    <AuthContext.Provider value={{ agent, isLoading, passkeyEnabled, login, loginWithPasskey, registerPasskey, logout }}>
       {children}
     </AuthContext.Provider>
   );
