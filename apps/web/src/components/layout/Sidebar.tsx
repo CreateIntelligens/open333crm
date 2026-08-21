@@ -16,6 +16,7 @@ import {
   Settings,
   LogOut,
   Smartphone,
+  CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
@@ -92,6 +93,12 @@ export function Sidebar() {
       href: '/dashboard/analytics',
       icon: <BarChart3 className="h-5 w-5" />,
       perm: 'analytics.view',
+    },
+    {
+      label: '方案',
+      href: '/dashboard/plan',
+      icon: <CreditCard className="h-5 w-5" />,
+      perm: 'settings.manage',
     },
     {
       label: '設定',

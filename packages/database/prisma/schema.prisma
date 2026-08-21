@@ -234,6 +234,7 @@ model Tenant {
   quickReplyPresets       QuickReplyPreset[]
   kbArticleFeedback       KbArticleFeedback[]
   aiUsages                AiUsage[]
+  planChangeRequests      PlanChangeRequest[]
 
   @@map("tenants")
 }
@@ -1853,4 +1854,30 @@ model TrialSignup {
   updatedAt            DateTime  @updatedAt
 
   @@map("trial_signups")
+}
+
+// 方案升級/加購申請（租戶發起 → 平台審核核准）。
+model PlanChangeRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  // upgrade（升級方案）| token_topup（加購 token）
+  type           String
+  // upgrade 用：目標方案 slug
+  targetPlanSlug String?
+  // token_topup 用：加購 token 數
+  topupTokens    Int?
+  note           String? // 租戶備註
+  // pending | approved | rejected
+  status         String    @default("pending")
+  reviewNote     String? // 平台審核備註
+  reviewedBy     String?   @db.Uuid // platformUserId
+  reviewedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+  @@map("plan_change_requests")
 }

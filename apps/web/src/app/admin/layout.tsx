@@ -9,6 +9,7 @@ const NAV = [
   { href: '/admin/plans', label: '方案與上限' },
   { href: '/admin/tenants', label: '租戶管理' },
   { href: '/admin/usage', label: '用量統計' },
+  { href: '/admin/plan-changes', label: '升級申請' },
   { href: '/admin/trial', label: '試用管理' },
 ];
 

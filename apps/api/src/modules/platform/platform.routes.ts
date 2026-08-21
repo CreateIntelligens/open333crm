@@ -20,6 +20,11 @@ import {
   resendVerification,
   markSignupFailed,
 } from './trial-admin.service.js';
+import {
+  listPendingRequests,
+  approveRequest,
+  rejectRequest,
+} from './plan-change.service.js';
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 const updatePlanSchema = z.object({
@@ -188,6 +193,34 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { tenantId: string } }>('/usage/tenants/:tenantId', guard, async (request) => {
     const q = rangeSchema.parse(request.query);
     return success(await getTenantUsageDetail(fastify.prisma, request.params.tenantId, q));
+  });
+
+  // ── 方案升級/加購申請審核 ──
+  fastify.get('/plan-change-requests', guard, async () => {
+    return success(await listPendingRequests(fastify.prisma));
+  });
+  fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/approve', guard, async (request) => {
+    const { note } = z.object({ note: z.string().optional() }).parse(request.body ?? {});
+    const result = await approveRequest(fastify.prisma, request.params.id, request.platformUser!.id, note);
+    await writePlatformAudit(fastify.prisma, {
+      platformUserId: request.platformUser!.id,
+      action: 'plan_change.approve',
+      targetType: 'plan_change_request',
+      targetId: result.id,
+      payload: { type: result.type },
+    });
+    return success(result);
+  });
+  fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/reject', guard, async (request) => {
+    const { note } = z.object({ note: z.string().optional() }).parse(request.body ?? {});
+    const result = await rejectRequest(fastify.prisma, request.params.id, request.platformUser!.id, note);
+    await writePlatformAudit(fastify.prisma, {
+      platformUserId: request.platformUser!.id,
+      action: 'plan_change.reject',
+      targetType: 'plan_change_request',
+      targetId: result.id,
+    });
+    return success(result);
   });
 
   // Platform settings (KV)
