@@ -99,17 +99,22 @@ export async function approveRequest(
     });
     const overrides = (tenant?.limitOverrides ?? {}) as Record<string, number | null>;
     const planLimits = (tenant?.plan?.limits ?? {}) as Record<string, number | null>;
-    // 現有有效額度 = override ?? plan（null=無上限，加購無意義）
-    const current = overrides.monthlyTokens ?? planLimits.monthlyTokens ?? null;
-    if (current !== null) {
-      overrides.monthlyTokens = current + (req.topupTokens ?? 0);
-      await prisma.tenant.update({
-        where: { id: req.tenantId },
-        data: { limitOverrides: overrides as Prisma.InputJsonValue },
-      });
-      invalidateTenantPlan(req.tenantId);
-      await clearTokenQuotaCache(req.tenantId); // 讓硬擋重讀新額度
+    // 現有有效額度 = override ?? plan
+    const current =
+      overrides.monthlyTokens !== undefined
+        ? overrides.monthlyTokens
+        : planLimits.monthlyTokens ?? null;
+    // 無上限時加購無意義：擋核准並提示，避免管理員誤以為加購已生效
+    if (current === null) {
+      throw new AppError('此租戶方案 AI 額度已為無上限，無需加購', 'TOPUP_UNLIMITED', 400);
     }
+    overrides.monthlyTokens = current + (req.topupTokens ?? 0);
+    await prisma.tenant.update({
+      where: { id: req.tenantId },
+      data: { limitOverrides: overrides as Prisma.InputJsonValue },
+    });
+    invalidateTenantPlan(req.tenantId);
+    await clearTokenQuotaCache(req.tenantId); // 讓硬擋重讀新額度
   }
 
   return prisma.planChangeRequest.update({
