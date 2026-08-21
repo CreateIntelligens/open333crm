@@ -91,14 +91,14 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
   });
 }
 
-/** 重寄驗證信（平台側觸發；沿用 trial.service 的節流邏輯）。 */
+/** 重寄驗證信（平台側觸發；繞過使用者節流，避免管理員操作靜默失敗）。 */
 export async function resendVerification(prisma: PrismaClient, signupId: string) {
   const row = await prisma.trialSignup.findUnique({ where: { id: signupId }, select: { email: true, status: true } });
   if (!row) throw new AppError('Signup not found', 'NOT_FOUND', 404);
   if (row.status !== 'pending_verification') {
     throw new AppError('此申請非待驗證狀態', 'BAD_REQUEST', 400);
   }
-  await resendTrial(prisma, row.email);
+  await resendTrial(prisma, row.email, { bypassThrottle: true });
   return { ok: true };
 }
 

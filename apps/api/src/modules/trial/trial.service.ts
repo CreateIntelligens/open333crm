@@ -101,14 +101,20 @@ export async function requestTrial(
 }
 
 /** 重寄驗證信（節流）。防枚舉：一律成功回應，內部依狀態/節流決定是否真寄。 */
-export async function resendTrial(prisma: PrismaClient, rawEmail: string): Promise<void> {
+export async function resendTrial(
+  prisma: PrismaClient,
+  rawEmail: string,
+  opts: { bypassThrottle?: boolean } = {},
+): Promise<void> {
   const { email, normalized } = normalizeEmail(rawEmail);
   const row = await prisma.trialSignup.findUnique({ where: { emailNormalized: normalized } });
   if (!row || row.status !== 'pending_verification') return; // 靜默
 
-  // 節流：冷卻 + 次數上限
-  if (row.lastVerifySentAt && Date.now() - row.lastVerifySentAt.getTime() < RESEND_COOLDOWN_MS) return;
-  if (row.verifySentCount >= RESEND_MAX) return;
+  // 節流：冷卻 + 次數上限（平台管理員手動重寄時繞過，避免使用者達上限後管理員操作靜默失敗）
+  if (!opts.bypassThrottle) {
+    if (row.lastVerifySentAt && Date.now() - row.lastVerifySentAt.getTime() < RESEND_COOLDOWN_MS) return;
+    if (row.verifySentCount >= RESEND_MAX) return;
+  }
 
   const policy = await getTrialPolicy(prisma);
   const { token, hash } = newToken();

@@ -46,7 +46,11 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  // 注意：z.coerce.boolean() 對 'false' 會轉成 true（非空字串皆 truthy），故明確解析字串
+  SMTP_SECURE: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
 }).superRefine((cfg, ctx) => {

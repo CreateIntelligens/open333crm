@@ -29,19 +29,19 @@ let _transporter: import('nodemailer').Transporter | null = null;
 async function getTransporter() {
   if (_transporter) return _transporter;
   const nodemailer = await import('nodemailer');
+  // 用 getConfig() 取強型別、已驗證的設定（SMTP_PORT 已 coerce number、SMTP_SECURE 已正確解析）
+  const config = getConfig();
   _transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_SECURE === '1',
-    ...(process.env.SMTP_USER
-      ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }
-      : {}),
+    host: config.SMTP_HOST,
+    port: config.SMTP_PORT,
+    secure: config.SMTP_SECURE,
+    ...(config.SMTP_USER ? { auth: { user: config.SMTP_USER, pass: config.SMTP_PASS } } : {}),
   });
   return _transporter;
 }
 
 async function sendViaSmtp(input: SendEmailInput): Promise<void> {
-  const from = process.env.EMAIL_FROM ?? 'noreply@open333crm.local';
+  const from = getConfig().EMAIL_FROM ?? 'noreply@open333crm.local';
   const transporter = await getTransporter();
   await transporter.sendMail({
     from,
