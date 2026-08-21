@@ -4,6 +4,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Fingerprint, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useAuth } from '@/providers/AuthProvider';
 import api from '@/lib/api';
 
@@ -21,6 +29,8 @@ export function PasskeyManagement() {
   const [credentials, setCredentials] = useState<PasskeyCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [passkeyName, setPasskeyName] = useState('');
   const [error, setError] = useState('');
 
   const fetchCredentials = useCallback(async () => {
@@ -45,10 +55,15 @@ export function PasskeyManagement() {
   }, [fetchCredentials, passkeyEnabled]);
 
   const handleRegister = async () => {
+    const name = passkeyName.trim();
+    if (!name) return;
+
     setError('');
     setRegistering(true);
     try {
-      await registerPasskey();
+      await registerPasskey(name);
+      setRegisterOpen(false);
+      setPasskeyName('');
       await fetchCredentials();
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: { message?: string } } } };
@@ -78,11 +93,61 @@ export function PasskeyManagement() {
             使用 Touch ID、Face ID、Windows Hello 或裝置 PIN 登入，不需要輸入密碼。
           </p>
         </div>
-        <Button onClick={handleRegister} loading={registering} disabled={!passkeyEnabled}>
+        <Button onClick={() => setRegisterOpen(true)} disabled={!passkeyEnabled}>
           <Plus className="h-4 w-4" />
           綁定 Passkey
         </Button>
       </div>
+
+      <Dialog
+        open={registerOpen}
+        onOpenChange={(open) => {
+          if (!registering) setRegisterOpen(open);
+          if (!open && !registering) setPasskeyName('');
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>命名這個 Passkey</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              請輸入容易辨識的名稱，例如「MacBook Touch ID」或「iPhone」。完成後會立即進入裝置驗證。
+            </p>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="passkey-name" className="text-sm font-medium">
+              裝置名稱
+            </label>
+            <Input
+              id="passkey-name"
+              value={passkeyName}
+              onChange={(event) => setPasskeyName(event.target.value)}
+              placeholder="例如：MacBook Touch ID"
+              maxLength={80}
+              autoFocus
+              disabled={registering}
+            />
+            <p className="text-xs text-muted-foreground">最多 80 個字元。名稱只用來協助你辨識已綁定的裝置。</p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setRegisterOpen(false)}
+              disabled={registering}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={handleRegister}
+              loading={registering}
+              disabled={!passkeyName.trim()}
+            >
+              繼續綁定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {error && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -125,6 +190,9 @@ export function PasskeyManagement() {
                   <div>
                     <p className="text-sm font-medium">{credential.name}</p>
                     <p className="text-xs text-muted-foreground">
+                      {credential.deviceType === 'multiDevice' ? '同步式 Passkey' : '單一裝置 Passkey'}
+                      {credential.backedUp ? ' · 已備份' : ''}
+                      {' · '}
                       綁定於 {new Date(credential.createdAt).toLocaleString()}
                       {credential.lastUsedAt
                         ? ` · 最後使用 ${new Date(credential.lastUsedAt).toLocaleString()}`

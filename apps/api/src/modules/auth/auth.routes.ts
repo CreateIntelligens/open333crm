@@ -269,6 +269,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
           transports: body.response.response.transports ?? [],
           deviceType: registration.credentialDeviceType,
           backedUp: registration.credentialBackedUp,
+          name: body.name,
         },
       });
     } catch (error) {

@@ -21,7 +21,7 @@ interface AuthContextType {
   passkeyEnabled: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   loginWithPasskey: (email?: string, rememberMe?: boolean) => Promise<void>;
-  registerPasskey: () => Promise<void>;
+  registerPasskey: (name: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -108,11 +108,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [router],
   );
 
-  const registerPasskey = useCallback(async () => {
+  const registerPasskey = useCallback(async (name: string) => {
     const optionsResponse = await api.post('/auth/passkeys/register/options');
     const { challengeId, options } = optionsResponse.data.data;
     const response = await startRegistration({ optionsJSON: options });
-    await api.post('/auth/passkeys/register/verify', { challengeId, response });
+    await api.post('/auth/passkeys/register/verify', { challengeId, response, name });
   }, []);
 
   const logout = useCallback(async () => {
