@@ -7,6 +7,10 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
+  WEBAUTHN_RP_ID: z.string().optional(),
+  WEBAUTHN_RP_NAME: z.string().default('open333CRM'),
+  WEBAUTHN_ORIGIN: z.string().url().optional(),
+  WEBAUTHN_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(30).max(300).default(120),
 
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
