@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, Plus, Pencil, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
-import { useAuth } from '@/providers/AuthProvider';
+import { useAuth, usePermission } from '@/providers/AuthProvider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
@@ -23,10 +23,24 @@ interface Agent {
   name: string;
   email: string;
   role: string;
+  // 後端 GET /agents 會回 legacy role（enum）＋ granular roleId ＋關聯 roleRef（角色詳情）。
+  // 清單/編輯預選優先用 roleRef / roleId，不再依賴 /roles 清單載入成功。
+  roleId?: string | null;
+  roleRef?: { id: string; name: string; slug: string; isSystem: boolean } | null;
   avatarUrl?: string;
   isActive: boolean;
   teams: Array<{ team: { id: string; name: string } }>;
   _count: { assignedCases: number };
+}
+
+/** 租戶角色（GET /roles 回傳項目）。 */
+interface RoleItem {
+  id: string;
+  slug: string;
+  name: string;
+  isSystem: boolean;
+  permissionCount: number;
+  agentCount: number;
 }
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -35,47 +49,93 @@ const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
   AGENT: { label: 'Agent', color: '#6b7280' },
 };
 
-const ROLE_OPTIONS = [
-  { value: 'AGENT', label: 'Agent' },
-  { value: 'SUPERVISOR', label: 'Supervisor' },
-  { value: 'ADMIN', label: 'Admin' },
-];
+// system role slug → legacy enum role（送出建立/變更角色時，system 角色改送 legacy role）
+const SLUG_TO_ENUM: Record<string, 'ADMIN' | 'SUPERVISOR' | 'AGENT'> = {
+  admin: 'ADMIN',
+  supervisor: 'SUPERVISOR',
+  agent: 'AGENT',
+};
+
+/** 依角色 slug 給自訂角色 Badge 一個穩定顏色。 */
+const CUSTOM_ROLE_COLOR = '#7c3aed';
+
+/**
+ * 把使用者選的角色轉成後端要收的 body。
+ * - system 角色：送對應 legacy `role`（後端會自動雙寫回填 roleId），roleId 不帶。
+ * - custom 角色：送該角色的 `roleId` + legacy `role='AGENT'` 作為回填值（契約要求 role required）。
+ */
+function buildRolePayload(role: RoleItem): { role: 'ADMIN' | 'SUPERVISOR' | 'AGENT'; roleId?: string } {
+  if (role.isSystem && SLUG_TO_ENUM[role.slug]) {
+    return { role: SLUG_TO_ENUM[role.slug] };
+  }
+  return { role: 'AGENT', roleId: role.id };
+}
+
+/** 統一解析 API 錯誤成友善訊息（含 ROLE_ESCALATION 特例）。 */
+function resolveApiError(err: unknown, fallback: string): string {
+  const error = (err as { response?: { data?: { error?: { code?: string; message?: string; details?: { escalatedPermissions?: string[] } } } } })
+    ?.response?.data?.error;
+  if (!error) return fallback;
+  switch (error.code) {
+    case 'CONFLICT':
+      return 'Email 已被使用，請換一個電子信箱';
+    case 'ROLE_ESCALATION':
+      return '無法指派權限高於您自己的角色，請選擇權限範圍不超過您的角色';
+    case 'NOT_FOUND':
+      return '找不到指定的角色，請重新整理後再試';
+    case 'FORBIDDEN':
+      return '您沒有權限執行此操作';
+    default:
+      return error.message || fallback;
+  }
+}
 
 // ─── Create Agent Dialog ──────────────────────────────────────────────────────
 
 interface CreateDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  currentRole: string;
+  roles: RoleItem[];
   onCreated: () => void;
 }
 
-function CreateAgentDialog({ open, onOpenChange, currentRole, onCreated }: CreateDialogProps) {
-  const [form, setForm] = useState({ name: '', email: '', role: 'AGENT', password: '' });
+function CreateAgentDialog({ open, onOpenChange, roles, onCreated }: CreateDialogProps) {
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  // 以角色 id 作為下拉選取值（涵蓋 system + custom）
+  const [selectedRoleId, setSelectedRoleId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const availableRoles = currentRole === 'ADMIN'
-    ? ROLE_OPTIONS
-    : ROLE_OPTIONS.filter((r) => r.value !== 'ADMIN');
+  // 對話開啟時預設選 agent 角色
+  useEffect(() => {
+    if (open) {
+      const agentRole = roles.find((r) => r.isSystem && r.slug === 'agent');
+      setSelectedRoleId(agentRole?.id ?? roles[0]?.id ?? '');
+      setForm({ name: '', email: '', password: '' });
+      setError('');
+    }
+  }, [open, roles]);
+
+  const roleOptions = useMemo(
+    () => roles.map((r) => ({ value: r.id, label: r.isSystem ? r.name : `${r.name}（自訂）` })),
+    [roles],
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const selected = roles.find((r) => r.id === selectedRoleId);
+    if (!selected) {
+      setError('請選擇角色');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      await api.post('/agents', form);
+      await api.post('/agents', { ...form, ...buildRolePayload(selected) });
       onCreated();
       onOpenChange(false);
-      setForm({ name: '', email: '', role: 'AGENT', password: '' });
     } catch (err: unknown) {
-      const error = (err as any)?.response?.data?.error;
-
-      if (error?.code === 'CONFLICT') {
-        setError('Email 已被使用，請換一個電子信箱');
-      } else {
-        setError(error?.message || '建立失敗，請再試一次');
-      }
+      setError(resolveApiError(err, '建立失敗，請再試一次'));
     } finally {
       setSaving(false);
     }
@@ -110,9 +170,9 @@ function CreateAgentDialog({ open, onOpenChange, currentRole, onCreated }: Creat
           <div className="space-y-1.5">
             <label className="text-sm font-medium">角色</label>
             <Select
-              options={availableRoles}
-              value={form.role}
-              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+              options={roleOptions}
+              value={selectedRoleId}
+              onChange={(e) => setSelectedRoleId(e.target.value)}
             />
           </div>
           <div className="space-y-1.5">
@@ -148,24 +208,46 @@ interface EditAgentDialogProps {
   agent: Agent | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  currentRole: string;
+  roles: RoleItem[];
+  /** 是否可指派角色（agent.role.assign）；否則角色下拉停用 */
+  canAssignRole: boolean;
+  /** 是否可重設他人密碼 / 停用帳號（agent.password.reset / agent.delete） */
+  canManageAccount: boolean;
   onUpdated: () => void;
 }
 
-function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: EditAgentDialogProps) {
-  const [role, setRole] = useState('');
+function EditAgentDialog({
+  agent,
+  open,
+  onOpenChange,
+  roles,
+  canAssignRole,
+  canManageAccount,
+  onUpdated,
+}: EditAgentDialogProps) {
+  // 以角色 id 作為下拉選取值
+  const [selectedRoleId, setSelectedRoleId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (agent) { setRole(agent.role); setNewPassword(''); setError(''); }
-  }, [agent]);
+  const roleOptions = useMemo(
+    () => roles.map((r) => ({ value: r.id, label: r.isSystem ? r.name : `${r.name}（自訂）` })),
+    [roles],
+  );
 
-  const availableRoles = currentRole === 'ADMIN'
-    ? ROLE_OPTIONS
-    : ROLE_OPTIONS.filter((r) => r.value !== 'ADMIN');
+  useEffect(() => {
+    if (agent) {
+      // 有 roleId 就精準預選該角色；否則（舊資料無 roleId）用 legacy role 對到 system 角色
+      const match = agent.roleId
+        ? roles.find((r) => r.id === agent.roleId)
+        : roles.find((r) => r.isSystem && SLUG_TO_ENUM[r.slug] === agent.role);
+      setSelectedRoleId(match?.id ?? '');
+      setNewPassword('');
+      setError('');
+    }
+  }, [agent, roles]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -173,15 +255,22 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
     setSaving(true);
     setError('');
     try {
-      await api.patch(`/agents/${agent.id}/role`, { role });
-      if (currentRole === 'ADMIN' && newPassword) {
+      if (canAssignRole) {
+        const selected = roles.find((r) => r.id === selectedRoleId);
+        if (!selected) {
+          setError('請選擇角色');
+          setSaving(false);
+          return;
+        }
+        await api.patch(`/agents/${agent.id}/role`, buildRolePayload(selected));
+      }
+      if (canManageAccount && newPassword) {
         await api.patch(`/agents/${agent.id}/password`, { newPassword });
       }
       onUpdated();
       onOpenChange(false);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg || '更新失敗，請再試一次');
+      setError(resolveApiError(err, '更新失敗，請再試一次'));
     } finally {
       setSaving(false);
     }
@@ -197,8 +286,7 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
       onUpdated();
       onOpenChange(false);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg || '停用失敗，請再試一次');
+      setError(resolveApiError(err, '停用失敗，請再試一次'));
     } finally {
       setDeactivating(false);
     }
@@ -214,12 +302,16 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">角色</label>
             <Select
-              options={availableRoles}
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              options={roleOptions}
+              value={selectedRoleId}
+              onChange={(e) => setSelectedRoleId(e.target.value)}
+              disabled={!canAssignRole}
             />
+            {!canAssignRole && (
+              <p className="text-xs text-muted-foreground">您沒有指派角色的權限</p>
+            )}
           </div>
-          {currentRole === 'ADMIN' && (
+          {canManageAccount && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">重設密碼 <span className="text-muted-foreground font-normal">（選填，留空表示不修改）</span></label>
               <Input
@@ -233,7 +325,7 @@ function EditAgentDialog({ agent, open, onOpenChange, currentRole, onUpdated }: 
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter className="flex-row items-center justify-between sm:justify-between">
-            {currentRole === 'ADMIN' && (
+            {canManageAccount && (
               <Button
                 type="button"
                 variant="destructive"
@@ -284,8 +376,7 @@ function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps)
       setSuccess(true);
       setForm({ currentPassword: '', newPassword: '' });
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg || '修改失敗，請再試一次');
+      setError(resolveApiError(err, '修改失敗，請再試一次'));
     } finally {
       setSaving(false);
     }
@@ -347,15 +438,23 @@ function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps)
 
 export function AgentManagement() {
   const { agent: currentAgent } = useAuth();
+  // 權限 gating（前端 UX；後端 requirePermission 為權威）
+  const canCreate = usePermission('agent.manage');
+  const canAssignRole = usePermission('agent.role.assign');
+  const canResetPassword = usePermission('agent.password.reset');
+  const canDelete = usePermission('agent.delete');
+  const canManageAccount = canResetPassword || canDelete;
+  // 開啟「編輯」對話的條件：至少能指派角色，或能管理帳號
+  const canEdit = canAssignRole || canManageAccount;
+
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>('ALL');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-
-  const canManage = currentAgent?.role === 'ADMIN' || currentAgent?.role === 'SUPERVISOR';
 
   function fetchAgents() {
     setLoading(true);
@@ -365,7 +464,40 @@ export function AgentManagement() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchAgents(); }, []);
+  // 載入租戶角色清單（system + custom）。需 role.view 權限；失敗則靜默退回僅 legacy 角色。
+  function fetchRoles() {
+    api.get('/roles')
+      .then((res) => setRoles(res.data.data.roles || []))
+      .catch(() => setRoles([]));
+  }
+
+  useEffect(() => { fetchAgents(); fetchRoles(); }, []);
+
+  // 若 /roles 因權限不足而拿不到，退回 legacy 三角色，確保下拉仍可用
+  const effectiveRoles: RoleItem[] = useMemo(() => {
+    if (roles.length > 0) return roles;
+    return (['admin', 'supervisor', 'agent'] as const).map((slug) => ({
+      id: `legacy-${slug}`,
+      slug,
+      name: ROLE_CONFIG[SLUG_TO_ENUM[slug]].label,
+      isSystem: true,
+      permissionCount: 0,
+      agentCount: 0,
+    }));
+  }, [roles]);
+
+  // 依成員資料推導顯示的角色名稱與 Badge 顏色。
+  // 優先用後端關聯 roleRef（system + custom 皆有）：直接顯示其 name，custom 用紫色、system 依 legacy 對照配色；
+  // 沒有 roleRef 才 fallback 到 legacy role 對照 ROLE_CONFIG。不再依賴 /roles 清單載入成功。
+  function roleBadgeForAgent(agent: Agent): { label: string; color: string } {
+    const ref = agent.roleRef;
+    if (ref) {
+      if (!ref.isSystem) return { label: ref.name, color: CUSTOM_ROLE_COLOR };
+      const rc = ROLE_CONFIG[SLUG_TO_ENUM[ref.slug]] || ROLE_CONFIG.AGENT;
+      return { label: ref.name, color: rc.color };
+    }
+    return ROLE_CONFIG[agent.role] || ROLE_CONFIG.AGENT;
+  }
 
   const filtered = filterRole === 'ALL' ? agents : agents.filter((a) => a.role === filterRole);
 
@@ -422,7 +554,7 @@ export function AgentManagement() {
             <KeyRound className="mr-1.5 h-4 w-4" />
             修改密碼
           </Button>
-          {canManage && (
+          {canCreate && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-1.5 h-4 w-4" />
               新增人員
@@ -440,7 +572,7 @@ export function AgentManagement() {
           <span className="w-16 text-center">操作</span>
         </div>
         {filtered.map((agent) => {
-          const rc = ROLE_CONFIG[agent.role] || ROLE_CONFIG.AGENT;
+          const rc = roleBadgeForAgent(agent);
           return (
             <div
               key={agent.id}
@@ -460,7 +592,7 @@ export function AgentManagement() {
                 {agent._count.assignedCases > 0 ? `${agent._count.assignedCases} 件` : '—'}
               </div>
               <div className="w-16 flex justify-center">
-                {canManage ? (
+                {canEdit ? (
                   <button
                     title="編輯角色"
                     onClick={() => setEditAgent(agent)}
@@ -506,20 +638,23 @@ export function AgentManagement() {
         <p><strong>Admin</strong>：完整設定權限，可新增任何角色</p>
         <p><strong>Supervisor</strong>：可查看所有對話/案件，可新增 Agent 與 Supervisor</p>
         <p><strong>Agent</strong>：只能看自己負責的對話/案件</p>
+        <p className="mt-1">自訂角色可於「角色與權限」設定，並於此指派給成員。</p>
       </div>
 
       {/* Dialogs */}
       <CreateAgentDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        currentRole={currentAgent?.role ?? ''}
+        roles={effectiveRoles}
         onCreated={fetchAgents}
       />
       <EditAgentDialog
         agent={editAgent}
         open={!!editAgent}
         onOpenChange={(v) => { if (!v) setEditAgent(null); }}
-        currentRole={currentAgent?.role ?? ''}
+        roles={effectiveRoles}
+        canAssignRole={canAssignRole}
+        canManageAccount={canManageAccount}
         onUpdated={fetchAgents}
       />
       <ChangePasswordDialog
@@ -529,4 +664,3 @@ export function AgentManagement() {
     </div>
   );
 }
-
