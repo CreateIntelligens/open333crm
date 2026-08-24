@@ -60,6 +60,10 @@ export function RolePermissionMatrix() {
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
+  // 逐角色權限載入失敗旗標：避免用「舊角色」的 draft/baseline 誤存到「新角色」
+  const [permLoadError, setPermLoadError] = useState(false);
+  const [permLoading, setPermLoading] = useState(false);
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'on' | 'off'>('all');
@@ -95,11 +99,24 @@ export function RolePermissionMatrix() {
   const loadRolePerms = useCallback((roleId: string) => {
     setError(null);
     setOkMsg(null);
-    api.get(`/roles/${roleId}/permissions`).then((res) => {
-      const perms = new Set<string>(res.data.data.permissions);
-      setDraft(new Set(perms));
-      setBaseline(new Set(perms));
-    });
+    setPermLoadError(false);
+    setPermLoading(true);
+    api
+      .get(`/roles/${roleId}/permissions`)
+      .then((res) => {
+        const perms = new Set<string>(res.data.data.permissions);
+        setDraft(new Set(perms));
+        setBaseline(new Set(perms));
+      })
+      .catch(() => {
+        // 關鍵：載入失敗時清空 draft/baseline，避免沿用「上一個角色」的權限，
+        // 否則使用者以為在編輯新角色、按下儲存會把新角色權限覆蓋成錯的集合。
+        setDraft(new Set());
+        setBaseline(new Set());
+        setPermLoadError(true);
+        setError('載入角色權限失敗，請重試');
+      })
+      .finally(() => setPermLoading(false));
   }, []);
 
   useEffect(() => {
@@ -130,6 +147,8 @@ export function RolePermissionMatrix() {
 
   function togglePerm(code: string, want: boolean) {
     if (!canManage) return;
+    // 載入中或載入失敗時 draft 不可信，禁止編輯
+    if (permLoadError || permLoading) return;
     const next = new Set(draft);
     const def = codeToDef.get(code);
     if (want) {
@@ -151,6 +170,7 @@ export function RolePermissionMatrix() {
 
   function toggleGroup(g: MatrixGroup, turnOn: boolean) {
     if (!canManage) return;
+    if (permLoadError || permLoading) return;
     const next = new Set(draft);
     g.permissions.forEach((p) => {
       if (isBlocked(p)) return;
@@ -175,6 +195,8 @@ export function RolePermissionMatrix() {
 
   async function save() {
     if (!selectedId) return;
+    // 載入失敗時 draft/baseline 已被清空，禁止儲存以免把角色權限覆寫成空集合
+    if (permLoadError || permLoading) return;
     setSaving(true);
     setError(null);
     setOkMsg(null);
@@ -374,6 +396,23 @@ export function RolePermissionMatrix() {
             </div>
           </div>
 
+          {/* 逐角色權限載入失敗：明確提示 + 重試（避免靜默沿用舊角色權限） */}
+          {permLoadError && (
+            <div className="m-2 flex items-center gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+              <span className="flex-1">
+                無法載入此角色的權限，為避免存到錯誤資料，已停用儲存。請重試。
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => selectedId && loadRolePerms(selectedId)}
+                disabled={permLoading}
+              >
+                重試
+              </Button>
+            </div>
+          )}
+
           <div className="p-2">
             {matrix.map((g) => {
               const visible = g.permissions.filter((p) => {
@@ -428,7 +467,7 @@ export function RolePermissionMatrix() {
                         const adminLocked = isAdminLocked(p);
                         const autoOn =
                           on && p.dependsOn.some((d) => draft.has(d)) && p.dependsOn.length > 0;
-                        const disabled = !canManage || adminLocked;
+                        const disabled = !canManage || adminLocked || permLoadError || permLoading;
                         return (
                           <div
                             key={p.code}
@@ -490,7 +529,7 @@ export function RolePermissionMatrix() {
           <Button variant="outline" size="sm" onClick={discard} disabled={saving}>
             放棄
           </Button>
-          <Button size="sm" onClick={save} loading={saving}>
+          <Button size="sm" onClick={save} loading={saving} disabled={permLoadError || permLoading}>
             儲存變更
           </Button>
         </div>

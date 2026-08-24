@@ -23,6 +23,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **角色指派越權防護（安全性）** — 指派角色時比對指派者角色的有效權限集合，若目標角色含指派者本身沒有的權限即擋下（`ROLE_ESCALATION` 403），取代舊有僅擋「SUPERVISOR 指派 ADMIN」的 inline 硬規則；admin system role 指派者不受限。同時 `PATCH /agents/:id/role` 的權限碼由誤用的 `agent.manage` 改為專用的 `agent.role.assign`（`agent.manage` 保留給建立/編輯成員）。
 - 修正一般專員（AGENT）開「我的績效」頁被 403：`GET /analytics/my` 原受 module-level `requirePermission('analytics.view')` 攔截，但預設 AGENT 只有 `analytics.view.self`（`analytics.view` 為 SUPERVISOR 以上），導致個人數據頁打不開、`analytics.view.self` 形同死碼。新增 `requireAnyPermission` guard，module-level 改為 `analytics.view` 或 `analytics.view.self` 任一即放行，其餘完整報表路由（overview/message-trend/cases/agents/channels/contacts/csat）各自補回 per-route `requirePermission('analytics.view')` 嚴格把關，確保只有 `view.self` 的 AGENT 僅能看 `/my`、打不到其他 analytics 端點。
 - **降權延遲視窗修補（安全性）** — `POST /auth/refresh` 先前原封沿用舊 refresh token 內的 `roleId`／`role` 重簽 access token，導致管理員降權某成員後，該成員可靠 refresh 續命舊角色達 refresh token TTL（可能 30 天）。現改為 refresh 時從 DB 重讀該成員當前 `role`／`roleId`（帶 `tenantId` 且要求 `isActive`、租戶亦須啟用），停用者不再核發新 token。
+- **角色權限矩陣切換角色載入失敗造成跨角色權限污染（資料完整性）** — `RolePermissionMatrix` 逐角色載入權限的 `api.get('/roles/:id/permissions')` 只有 `.then` 沒有 `.catch`，網路瞬斷或 403 時失敗完全靜默，draft/baseline 仍留著「上一個角色」的權限，使用者以為在編輯新角色、按下儲存會把新角色權限覆寫成錯的集合。現補上 `.catch`：載入失敗時清空 draft/baseline、設 `permLoadError` 旗標停用儲存與編輯、顯示明確錯誤與「重試」按鈕，並以 `finally` 收尾載入狀態。
 
 ## [v0.4.0] - 2026-08-18
 
