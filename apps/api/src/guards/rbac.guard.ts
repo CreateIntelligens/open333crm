@@ -50,6 +50,40 @@ export const requirePermission = (code: string) => {
   };
 };
 
+/**
+ * 權限點 guard（任一命中即放行）：當前 agent 的有效權限集合「不含任何一個」`codes` 時回 403。
+ *
+ * 用於同一條路由可被多種權限點滿足的情境
+ * （例如 /analytics/my 只要有 analytics.view 或 analytics.view.self 其一即可）。
+ *
+ * @example
+ * fastify.addHook('preHandler', requireAnyPermission(['analytics.view', 'analytics.view.self']));
+ */
+export const requireAnyPermission = (codes: string[]) => {
+  codes.forEach((c) => usedPermissionCodes.add(c));
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    // Partner API key：任一碼在白名單即放行，其餘一律擋
+    if (request.agent?.isPartnerKey) {
+      if (codes.some((c) => PARTNER_KEY_ALLOWED.has(c))) return;
+      return reply.status(403).send({ code: 'FORBIDDEN', message: 'Insufficient permission' });
+    }
+    // CLI session 走自身 scope 機制，不經 requirePermission 路由；防禦性放行
+    if (request.agent?.isCliSession) {
+      return;
+    }
+    const roleId = request.agent?.roleId;
+    // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
+    const planId = await getTenantPlanId(request.server.prisma, request.agent?.tenantId);
+    const eff = await getEffectiveTenantPermissions(request.server.prisma, roleId, planId);
+    if (!codes.some((c) => eff.has(c))) {
+      return reply.status(403).send({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permission',
+      });
+    }
+  };
+};
+
 // ── 過渡 shim：舊角色白名單 guard（新路由勿用）──
 
 export const requireRole = (allowedRoles: string[]) => {

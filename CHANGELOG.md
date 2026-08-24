@@ -21,6 +21,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - 平台側試用轉付費（`convertToPaid`）改 `planId` 後未失效方案快取，導致 RBAC guard 在 60 秒內仍沿用舊試用天花板、誤將剛付費租戶的新功能擋成 403；現改方案後一併失效權限天花板與租戶 plan 快取（比照升級審核路徑）。
 - **自訂角色可經 API 指派給成員** — `POST /agents` 與 `PATCH /agents/:id/role` 新增 optional `roleId`（uuid）欄位，與 legacy `role` enum 並存（提供 `roleId` 時以其為準）；roleId 經 `loadTenantRole` 驗證屬同租戶（跨租戶回 404），並依角色 slug 反填 legacy `role`（system role 對映 enum、custom role 沿用既有值）。修正先前前端建立的自訂角色無法指派給任何成員（只能改 DB）的缺陷。
 - **角色指派越權防護（安全性）** — 指派角色時比對指派者角色的有效權限集合，若目標角色含指派者本身沒有的權限即擋下（`ROLE_ESCALATION` 403），取代舊有僅擋「SUPERVISOR 指派 ADMIN」的 inline 硬規則；admin system role 指派者不受限。同時 `PATCH /agents/:id/role` 的權限碼由誤用的 `agent.manage` 改為專用的 `agent.role.assign`（`agent.manage` 保留給建立/編輯成員）。
+- 修正一般專員（AGENT）開「我的績效」頁被 403：`GET /analytics/my` 原受 module-level `requirePermission('analytics.view')` 攔截，但預設 AGENT 只有 `analytics.view.self`（`analytics.view` 為 SUPERVISOR 以上），導致個人數據頁打不開、`analytics.view.self` 形同死碼。新增 `requireAnyPermission` guard，module-level 改為 `analytics.view` 或 `analytics.view.self` 任一即放行，其餘完整報表路由（overview/message-trend/cases/agents/channels/contacts/csat）各自補回 per-route `requirePermission('analytics.view')` 嚴格把關，確保只有 `view.self` 的 AGENT 僅能看 `/my`、打不到其他 analytics 端點。
 
 ## [v0.4.0] - 2026-08-18
 
