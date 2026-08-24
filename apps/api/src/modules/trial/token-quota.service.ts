@@ -63,10 +63,15 @@ export async function incrMonthlyTokens(prisma: PrismaClient, tenantId: string, 
   try {
     const exists = await redis.exists(key);
     if (!exists) {
-      // 先回填 DB 值（避免計數器從 0 起算漏掉本月已累積）再累加
+      // 計數器不存在（月初 / Redis 重啟 / key 過期）時從 DB 回填。
+      // 呼叫端（recordAiUsage）已先 await prisma.aiUsage.create() 寫入本次用量，
+      // dbMonthlyTokens 的加總「已包含本次 tokens」，因此這裡只 set 回填值、
+      // 不可再 incrby，否則本次 tokens 會被算兩次（計數器灌水、額度提前誤擋）。
       const dbTotal = await dbMonthlyTokens(prisma, tenantId);
       await redis.set(key, dbTotal, 'PXAT', nextMonthStart().getTime());
+      return;
     }
+    // 計數器已存在：正常即時累加本次 tokens。
     await redis.incrby(key, tokens);
   } catch (err) {
     logger.warn('[TokenQuota] redis incr failed (額度仍靠 DB 兜底):', err);

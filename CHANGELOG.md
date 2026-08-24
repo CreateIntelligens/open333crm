@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **RBAC 寫入權限退化修補（安全性）** — 修正細粒度權限 migration 的系統性疏漏：知識庫、粉絲活動（portal）、行銷（marketing/material）、渠道（channel）、分析報表（analytics）等模組的一批寫入／有副作用路由，先前僅受 module-level `.view` 或群組 authenticate 保護，導致 registry 定義的 `.manage` / `.broadcast` / `.export` 等寫入權限點形同死碼、寫入保護退化為「只要能檢視即可寫入」。現為各寫入路由補上對應的 `requirePermission` per-route preHandler（建/改/刪、publish/archive/end、import/upload/embed、抽獎、點數調整補 `*.manage`；群發 send/cancel 補 `marketing.broadcast`；渠道 verify/setup-webhook/webhook-base-url 補 `channel.update`；`analytics/export` 補 `analytics.export`），GET 唯讀維持 `.view`。
+- 修正月額度 Redis 計數器雙重計數：計數器冷 key（月初 / Redis 重啟 / key 過期）回填時，DB 加總已含剛寫入的本次用量，卻又額外 incrby 一次，導致付費租戶月用量灌水、`isMonthlyTokenExceeded` 在約半量時就誤擋 AI 回覆（`PLAN_LIMIT_EXCEEDED`）。回填分支改為只 set DB 值並保留月底過期，僅在 key 已存在時才 incrby。
 
 ## [v0.4.0] - 2026-08-18
 
