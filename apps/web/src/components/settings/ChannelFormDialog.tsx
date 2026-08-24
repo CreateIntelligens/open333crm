@@ -145,7 +145,7 @@ export function ChannelFormDialog({
             return;
           }
           // Generate a verify token for FB webhook verification
-          const verifyToken = `open333crm_${Date.now().toString(36)}`;
+          const verifyToken = `open333crm_${crypto.randomUUID()}`;
           credentials = {
             appId,
             appSecret,
@@ -164,7 +164,7 @@ export function ChannelFormDialog({
             appId,
             appSecret,
             pageAccessToken,
-            verifyToken: `open333crm_${Date.now().toString(36)}`,
+            verifyToken: `open333crm_${crypto.randomUUID()}`,
           };
         } else {
           if (!channelSecret || !channelAccessToken) {

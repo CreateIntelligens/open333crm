@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@open333crm/database";
 import { z } from "zod";
 
 import { getAgentById } from "../auth/auth.service.js";

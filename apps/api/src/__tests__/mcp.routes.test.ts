@@ -36,7 +36,10 @@ function createPrismaMock() {
   };
 }
 
-async function createApp(options?: { scopes?: string[] }) {
+async function createApp(options?: {
+  scopes?: string[];
+  authentication?: "cli" | "jwt";
+}) {
   const app = Fastify();
   app.decorate("prisma", createPrismaMock());
   app.decorate(
@@ -53,16 +56,20 @@ async function createApp(options?: { scopes?: string[] }) {
         id: AGENT_ID,
         tenantId: TENANT_ID,
         role: "ADMIN",
-        isCliSession: true,
-        cliSession: {
-          id: "33333333-3333-4333-8333-333333333333",
-          name: "MCP test",
-          scopes: options?.scopes ?? [MCP_READ_SCOPE],
-          expiresAt: new Date(Date.now() + 60_000),
-          lastUsedAt: null,
-          tokenPrefix: "cli_test",
-          tokenSuffix: "test",
-        },
+        ...(options?.authentication !== "jwt"
+          ? {
+              isCliSession: true,
+              cliSession: {
+                id: "33333333-3333-4333-8333-333333333333",
+                name: "MCP test",
+                scopes: options?.scopes ?? [MCP_READ_SCOPE],
+                expiresAt: new Date(Date.now() + 60_000),
+                lastUsedAt: null,
+                tokenPrefix: "cli_test",
+                tokenSuffix: "test",
+              },
+            }
+          : {}),
       };
     },
   );
@@ -231,6 +238,46 @@ async function testRejectsCliTokenWithoutMcpScope() {
   }
 }
 
+async function testRejectsJwtWithoutMcpScope() {
+  const { app, address } = await createApp({ authentication: "jwt" });
+  try {
+    const response = await requestMcp(address, {
+      authorization: "Bearer jwt_test",
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+    });
+
+    assert.equal(response.status, 403);
+    const body = (await response.json()) as { error: { code: string } };
+    assert.equal(body.error.code, "INSUFFICIENT_SCOPE");
+  } finally {
+    await app.close();
+  }
+}
+
+async function testAllowsSameOriginInDevelopmentWithoutConfiguredOrigins() {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousOrigins = process.env.MCP_ALLOWED_ORIGINS;
+  process.env.NODE_ENV = "development";
+  delete process.env.MCP_ALLOWED_ORIGINS;
+
+  const { app, address } = await createApp();
+  try {
+    const origin = new URL(address).origin;
+    const response = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      origin,
+      body: initializeRequest,
+    });
+    assert.equal(response.status, 200);
+  } finally {
+    await app.close();
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousOrigins === undefined) delete process.env.MCP_ALLOWED_ORIGINS;
+    else process.env.MCP_ALLOWED_ORIGINS = previousOrigins;
+  }
+}
+
 async function testRejectsCookieOnlyAuthentication() {
   const { app, address } = await createApp();
   try {
@@ -317,5 +364,7 @@ await testListsReadOnlyTools();
 await testCallsSearchContactsAndPreservesBigInt();
 await testRejectsInvalidToolInput();
 await testRejectsCliTokenWithoutMcpScope();
+await testRejectsJwtWithoutMcpScope();
+await testAllowsSameOriginInDevelopmentWithoutConfiguredOrigins();
 console.log("mcp.routes.test.ts passed");
 process.exit(0);

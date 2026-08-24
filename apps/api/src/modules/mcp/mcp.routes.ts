@@ -84,6 +84,15 @@ function isAllowedOrigin(request: FastifyRequest): boolean {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+  if (configuredOrigins.length === 0) {
+    if (process.env.NODE_ENV === "production") return false;
+    const host = request.headers.host ?? request.hostname;
+    return (
+      origin === `${request.protocol}://${host}` ||
+      origin === "http://localhost:3000" ||
+      origin === "http://127.0.0.1:3000"
+    );
+  }
   return configuredOrigins.includes(origin);
 }
 
@@ -96,12 +105,12 @@ async function authenticateMcp(
   if (reply.sent) return false;
 
   const cliSession = request.agent.cliSession;
-  if (cliSession && !hasCliScope(cliSession.scopes, MCP_READ_SCOPE)) {
+  if (!cliSession || !hasCliScope(cliSession.scopes, MCP_READ_SCOPE)) {
     reply.status(403).send({
       success: false,
       error: {
         code: "INSUFFICIENT_SCOPE",
-        message: `MCP token requires ${MCP_READ_SCOPE} scope`,
+        message: `MCP access requires a CLI token with ${MCP_READ_SCOPE} scope`,
       },
     });
     return false;
