@@ -26,13 +26,31 @@ function verifyUrl(token: string): string {
   return `${getConfig().WEB_BASE_URL}/trial/verify?token=${token}`;
 }
 
-/** 是否已是任一租戶的 Agent（大小寫不敏感查一次）。 */
+/**
+ * 是否已是任一租戶的 Agent。
+ *
+ * 以「正規化 email」比對（去 gmail 點/+tag），避免 gmail 別名（foo.bar 與 foobar）
+ * 繞過此檢查申請到第二個試用租戶。因 Agent 表未存 normalized 欄位，無法在 SQL 端
+ * 正規化比對，故先以同網域候選撈出（gmail 別名一定同網域），再於應用層逐一比對
+ * 正規化值。候選集受單一網域限制、非全表掃描，量級可接受。
+ */
 async function emailIsAgent(prisma: PrismaClient, email: string): Promise<boolean> {
-  const agent = await prisma.agent.findFirst({
-    where: { email: { equals: email, mode: 'insensitive' } },
-    select: { id: true },
+  const { normalized } = normalizeEmail(email);
+  const at = normalized.lastIndexOf('@');
+  const canonicalDomain = at >= 0 ? normalized.slice(at + 1) : '';
+
+  // 撈同網域候選（gmail 與 googlemail 皆正規化為 gmail.com，兩者都要撈）。
+  const domainFilters =
+    canonicalDomain === 'gmail.com'
+      ? [{ email: { endsWith: '@gmail.com', mode: 'insensitive' as const } }, { email: { endsWith: '@googlemail.com', mode: 'insensitive' as const } }]
+      : [{ email: { endsWith: `@${canonicalDomain}`, mode: 'insensitive' as const } }];
+
+  const candidates = await prisma.agent.findMany({
+    where: { OR: domainFilters },
+    select: { email: true },
   });
-  return !!agent;
+
+  return candidates.some((a) => normalizeEmail(a.email).normalized === normalized);
 }
 
 /**

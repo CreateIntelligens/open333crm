@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **試用防濫用去重漏洞：Agent 檢查未正規化 email，gmail 別名可繞過（安全性）** — 試用申請的「是否已是某租戶 Agent」檢查 `emailIsAgent` 原以原始 email（僅 trim/lowercase）比對，gmail 別名（`foo.bar@gmail.com` 與 `foobar@gmail.com` 為同一 Google 帳號）被視為不同 email 而查無，讓已被平台手動開通成 Agent（從未走 trial、`TrialSignup.emailNormalized` 無紀錄）的真人得以申請到第二個試用租戶。改為以正規化值（去 gmail 點/+tag）比對：先撈同網域候選 Agent，再於應用層逐一比對正規化 email。
 - **方案數值上限輸入非數字被靜默解除（資料完整性）** — 平台方案編輯頁 `setLimit` 對非純數字輸入（如 `abc`）以 `parseInt` 得到 `NaN`，經 `JSON.stringify` 後 `NaN` 序列化成 `null`，被後端誤解為「無上限」，平台管理員打錯字即可靜默解除 `maxAgents`／`monthlyTokens` 等上限。前端改為 `NaN` 時不更新該欄（維持原值），僅明確空字串／`∞` 才視為 `null`；後端 `updatePlanSchema` 的 `limits` 值改用 `z.number().int().nonnegative().nullable()` 作第二道防線，怪值一律回 422 而非靜默寫入。
 - 修正月額度硬擋在解析 `keySource` 之前執行、誤擋 BYOK 租戶：`generateReply` 原先在得知 key 來源前就呼叫 `isMonthlyTokenExceeded`，導致租戶先用 platform key 累計到接近上限、之後切換成 BYOK（自備 Gemini key）仍被舊 platform 累計量擋成 `PLAN_LIMIT_EXCEEDED`。現將額度硬擋移到 `resolveGeminiKey` 解析 `keySource` 之後，且僅在 `keySource === 'platform'` 時執行，與 `incrMonthlyTokens` 只累加 platform 的設計一致（BYOK 略過額度檢查、成本租戶自付）。
 - 修正月額度 Redis 計數器初始化的併發 lost-update：`getMonthlyTokens` 與 `incrMonthlyTokens` 冷 key 回填原用無條件 `SET` 覆寫，高併發下會蓋掉另一路徑已建立並累加的計數器（計數器低估、`isMonthlyTokenExceeded` fail-open 少擋）。改為原子 `SET NX + PXAT`（只在 key 不存在時寫入、保留月底過期）；`incrMonthlyTokens` 若 NX 沒搶到（別人剛建好 key，其初始值不含本次）補做一次 `incrby(tokens)`，搶到則初始值已含本次不再累加，確保各路徑本次 tokens 恰好計一次。
