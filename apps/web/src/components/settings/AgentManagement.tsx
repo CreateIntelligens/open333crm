@@ -22,7 +22,7 @@ interface Agent {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: 'ADMIN' | 'SUPERVISOR' | 'AGENT';
   // 後端 GET /agents 會回 legacy role（enum）＋ granular roleId ＋關聯 roleRef（角色詳情）。
   // 清單/編輯預選優先用 roleRef / roleId，不再依賴 /roles 清單載入成功。
   roleId?: string | null;
@@ -62,13 +62,18 @@ const CUSTOM_ROLE_COLOR = '#7c3aed';
 /**
  * 把使用者選的角色轉成後端要收的 body。
  * - system 角色：送對應 legacy `role`（後端會自動雙寫回填 roleId），roleId 不帶。
- * - custom 角色：送該角色的 `roleId` + legacy `role='AGENT'` 作為回填值（契約要求 role required）。
+ * - custom 角色：送該角色的 `roleId` + legacy `role` 作為回填值（契約要求 role required）。
+ *   legacy role 保留成員當前值（currentRole）以免無謂降級（例如原 SUPERVISOR 被覆寫成 AGENT，
+ *   影響仍讀 legacy role enum 的舊功能）；建立新成員時無當前值，退回 'AGENT'。
  */
-function buildRolePayload(role: RoleItem): { role: 'ADMIN' | 'SUPERVISOR' | 'AGENT'; roleId?: string } {
+function buildRolePayload(
+  role: RoleItem,
+  currentRole?: 'ADMIN' | 'SUPERVISOR' | 'AGENT',
+): { role: 'ADMIN' | 'SUPERVISOR' | 'AGENT'; roleId?: string } {
   if (role.isSystem && SLUG_TO_ENUM[role.slug]) {
     return { role: SLUG_TO_ENUM[role.slug] };
   }
-  return { role: 'AGENT', roleId: role.id };
+  return { role: currentRole ?? 'AGENT', roleId: role.id };
 }
 
 /** 統一解析 API 錯誤成友善訊息（含 ROLE_ESCALATION 特例）。 */
@@ -262,7 +267,7 @@ function EditAgentDialog({
           setSaving(false);
           return;
         }
-        await api.patch(`/agents/${agent.id}/role`, buildRolePayload(selected));
+        await api.patch(`/agents/${agent.id}/role`, buildRolePayload(selected, agent.role));
       }
       if (canManageAccount && newPassword) {
         await api.patch(`/agents/${agent.id}/password`, { newPassword });

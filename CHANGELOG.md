@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **指派自訂角色不再無謂降級 legacy role** — 前端 `buildRolePayload` 對 custom role 固定送 `role: 'AGENT'`，會把成員原本的 legacy role（如 SUPERVISOR）覆寫成 AGENT，影響仍讀 legacy role enum 的舊功能（實際權限走 roleId 不受影響）。變更角色時改用成員當前 role 作為 legacy 回填值；並將 `Agent.role` 型別收窄為 enum union。（PR review bot 提出，經確認採納。）
 - **試用信件模板未轉義使用者輸入（XSS 加固）** — trial 信件的 `{{siteName}}` 等變數來自申請時使用者自填（`siteName` 僅限長度、不限字元），原樣經 `renderTemplateBody` 字串替換進 email HTML 未轉義，可注入惡意 HTML。於 `trial-emails.ts` 的 `render()` 對所有變數值先做 HTML escape 再替換（不動共用 `renderTemplateBody`，避免影響行銷 LINE Flex 模板）。（PR review bot 提出，經確認 `siteName` 確為使用者可控故採納。）
 - **新租戶儲存 BYOK Gemini key 失敗（P2025/404）** — `setTenantGeminiKey` 用 `prisma.tenantSettings.update`，但 `TenantSettings` 為延遲建立，新開通、尚未動過任何設定的租戶還沒有此列，直接呼叫 `PUT /settings/gemini-key` 會拋 P2025（回 404）導致 key 存不進去。改用 `upsert`（無列則建立、有列則更新），與本檔其他 TenantSettings 寫入一致。
 - **角色指派健壯性：租戶缺系統角色時不再用 null 覆蓋既有 roleId（資料完整性）** — `resolveRoleAssignment` 走 legacy role 路徑時，若該租戶缺對應 system role，`resolveRoleId` 回 `null` 會被寫入 `agent.roleId`，使成員 `getEffectivePermissions(null)` 得空集合而被鎖在系統外（且與 legacy role 雙寫不一致）。現改為此情況直接拋 `SYSTEM_ROLE_MISSING` 錯誤（fail-loud），不再靜默用 null 覆蓋既有有效 roleId。正常 seed/provision 一定建齊三個 system role，不受影響；僅資料未正確初始化的租戶會明確報錯以利修復。
