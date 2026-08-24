@@ -101,10 +101,18 @@ async function resolveRoleAssignment(
   // 只給 legacy role：解析對應 system role 的 roleId（既有雙寫）
   const role = input.role ?? fallbackRole;
   const roleId = await resolveRoleId(prisma, tenantId, role);
-  // legacy 路徑同樣做越權防護（例：SUPERVISOR 不可指派 ADMIN），取代舊 inline 硬規則
-  if (roleId) {
-    await assertNoRoleEscalation(prisma, tenantId, assignerRoleId, roleId);
+  // 該租戶缺對應 system role → 資料未正確初始化，直接擋下而非用 null 覆蓋既有 roleId
+  // （否則成員 roleId 會被清空，getEffectivePermissions(null) 回空集合把人鎖死）。
+  if (!roleId) {
+    throw new AppError(
+      '租戶缺少對應的系統角色，請重新初始化角色設定',
+      'SYSTEM_ROLE_MISSING',
+      500,
+      { role },
+    );
   }
+  // legacy 路徑同樣做越權防護（例：SUPERVISOR 不可指派 ADMIN），取代舊 inline 硬規則
+  await assertNoRoleEscalation(prisma, tenantId, assignerRoleId, roleId);
   return { role, roleId };
 }
 
