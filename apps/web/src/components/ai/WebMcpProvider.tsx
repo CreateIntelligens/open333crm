@@ -38,6 +38,7 @@ export function WebMcpProvider() {
     if (!modelContext) return undefined;
 
     const controller = new AbortController();
+    // WebMCP uses the registration signal as the official unregister mechanism.
     void registerCrmWebMcpTools(modelContext, authenticatedApi, {
       signal: controller.signal,
     }).catch((error: unknown) => {
@@ -47,7 +48,7 @@ export function WebMcpProvider() {
     });
 
     return () => controller.abort();
-  }, [agent, isLoading]);
+  }, [agent?.id, isLoading]);
 
   return null;
 }
