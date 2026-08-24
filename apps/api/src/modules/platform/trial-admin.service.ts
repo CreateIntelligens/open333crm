@@ -5,6 +5,8 @@
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { resendTrial } from '../trial/trial.service.js';
+import { invalidatePlanPermissions } from '../../services/permission.service.js';
+import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 
 /** 列試用租戶（trialEndsAt 非 null），含剩餘天數與狀態。 */
 export async function listTrialTenants(prisma: PrismaClient) {
@@ -80,7 +82,7 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
   const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
   if (!t) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
 
-  return prisma.tenant.update({
+  const updated = await prisma.tenant.update({
     where: { id: tenantId },
     data: {
       planId: plan.id,
@@ -89,6 +91,14 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
     },
     select: { id: true, name: true, plan: { select: { name: true } } },
   });
+
+  // 方案變動 → 失效權限天花板快取 + 租戶 plan 快取（比照 plan-change.service 升級路徑）。
+  // 未失效的話 guard 會在 60s 內沿用舊 trial 天花板，把剛付費租戶的新功能誤擋 403。
+  // update 非 transaction，直接在成功寫入後失效即可。
+  await invalidatePlanPermissions(prisma, plan.id);
+  invalidateTenantPlan(tenantId);
+
+  return updated;
 }
 
 /** 重寄驗證信（平台側觸發；繞過使用者節流，避免管理員操作靜默失敗）。 */
