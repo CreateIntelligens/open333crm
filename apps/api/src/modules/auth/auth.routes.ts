@@ -576,7 +576,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     try {
       const payload = fastify.jwt.verify<TokenPayload>(token);
-      const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role, roleId: payload.roleId };
+
+      // 安全性：不沿用 token 內的舊 role/roleId，改從 DB 重讀當前值（帶 tenantId + 仍 isActive）。
+      // 否則 admin 降權某成員後，該成員可靠 refresh 續命舊角色達 refresh TTL（可能 30 天）。
+      // 停用（或租戶停用）者不給 refresh，直接視為失效。
+      const current = await getActiveAgentForAuth(fastify.prisma, payload.agentId, payload.tenantId);
+
+      const tokenPayload: TokenPayload = {
+        agentId: current.id,
+        tenantId: current.tenantId,
+        role: current.role,
+        roleId: current.roleId,
+      };
 
       const accessToken = signAccessToken(fastify, tokenPayload, config);
       const newRefreshToken = signRefreshToken(fastify, tokenPayload, config, !!payload.rememberMe);
