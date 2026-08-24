@@ -50,9 +50,13 @@ export async function setTenantGeminiKey(
   tenantId: string,
   plainKey: string | null,
 ): Promise<void> {
-  await prisma.tenantSettings.update({
+  // upsert：TenantSettings 為延遲建立，新開通、尚未動過設定的租戶可能還沒有此列，
+  // 用 update 會拋 P2025（回 404）導致 BYOK key 存不進去 → 改 upsert。
+  const enc = plainKey ? encryptApiKey(plainKey) : null;
+  await prisma.tenantSettings.upsert({
     where: { tenantId },
-    data: { geminiApiKeyEnc: plainKey ? encryptApiKey(plainKey) : null },
+    create: { tenantId, geminiApiKeyEnc: enc },
+    update: { geminiApiKeyEnc: enc },
   });
 }
 
