@@ -113,8 +113,21 @@ const EXPIRED_HTML = wrap({
     p('如需恢復並繼續使用，歡迎聯絡我們升級為正式方案。'),
 });
 
+/** HTML 轉義：變數值可能含使用者輸入（如 siteName 為申請時自填），
+ *  塞進 email HTML 前必須轉義，避免 HTML/XSS 注入。URL（& 轉 &amp;）不受影響。 */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function render(template: string, vars: Record<string, string>): string {
-  return renderTemplateBody(template, vars);
+  const escaped: Record<string, string> = {};
+  for (const [k, v] of Object.entries(vars)) escaped[k] = escapeHtml(String(v ?? ''));
+  return renderTemplateBody(template, escaped);
 }
 
 async function safeSend(to: string, subject: string, html: string, metadata: Record<string, unknown>): Promise<void> {
