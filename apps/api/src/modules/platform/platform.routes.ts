@@ -30,7 +30,9 @@ const loginSchema = z.object({ email: z.string().email(), password: z.string().m
 const updatePlanSchema = z.object({
   name: z.string().optional(),
   features: z.array(z.string()).optional(),
-  limits: z.record(z.number().nullable()).optional(),
+  // 上限皆為非負整數（人數/標籤數/token 數），null 代表無上限；
+  // 擋前端誤送的小數、負數或 NaN→null 以外的怪值
+  limits: z.record(z.number().int().nonnegative().nullable()).optional(),
   priceMonthly: z.number().nullable().optional(),
   isActive: z.boolean().optional(),
 });

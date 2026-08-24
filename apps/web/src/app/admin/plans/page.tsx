@@ -49,7 +49,18 @@ export default function PlansPage() {
   };
 
   const setLimit = (planId: string, key: string, raw: string) => {
-    const value = raw.trim() === '' || raw.trim() === '∞' ? null : parseInt(raw.replace(/[,\s]/g, ''), 10);
+    const trimmed = raw.trim();
+    // 明確空字串或 ∞ 才視為 null（無上限）
+    if (trimmed === '' || trimmed === '∞') {
+      setPlans((prev) =>
+        prev.map((p) => (p.id === planId ? { ...p, limits: { ...p.limits, [key]: null } } : p)),
+      );
+      return;
+    }
+    const value = parseInt(trimmed.replace(/[,\s]/g, ''), 10);
+    // 非數字（如 'abc'）→ parseInt 得 NaN，序列化後會變 null 而誤解成無上限；
+    // 此時不更新該欄，維持原值，避免靜默解除上限
+    if (Number.isNaN(value)) return;
     setPlans((prev) =>
       prev.map((p) => (p.id === planId ? { ...p, limits: { ...p.limits, [key]: value } } : p)),
     );
