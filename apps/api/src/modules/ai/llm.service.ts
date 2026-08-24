@@ -198,11 +198,6 @@ export async function generateReply(
     meta?: AiUsageMeta;
   } = {},
 ): Promise<string> {
-  // 方案 token 月額度硬擋：達上限則擋 AI 回覆（真人回覆不受影響）
-  if (await isMonthlyTokenExceeded(prisma, tenantId)) {
-    throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
-  }
-
   const settings = await getChatSettings(prisma, tenantId);
   const provider = getChatProvider(settings.provider);
 
@@ -211,6 +206,16 @@ export async function generateReply(
     provider.id === 'gemini'
       ? await resolveGeminiKey(prisma, tenantId)
       : { key: undefined, source: 'platform' as const };
+
+  // 方案 token 月額度硬擋：達上限則擋 AI 回覆（真人回覆不受影響）。
+  // 只在 keySource==='platform' 時檢查——與 incrMonthlyTokens 只累加 platform 的設計一致：
+  // BYOK（租戶自備 key）成本租戶自付，不計額度也不擋；否則若租戶先前用 platform key
+  // 累計到接近上限，之後切換成 BYOK 仍會被舊 platform 累計量誤擋。
+  // 註：ollama 雖成本 0，但其 keySource 仍為 'platform' 且會被計入計數器，故此處一併受擋，
+  // 保持與 dbMonthlyTokens/incrMonthlyTokens 的計數範圍一致。
+  if (keySource === 'platform' && (await isMonthlyTokenExceeded(prisma, tenantId))) {
+    throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
+  }
 
   const promptKind = options.promptKind ?? 'reply';
   const systemPrompt =
