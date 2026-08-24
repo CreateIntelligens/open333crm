@@ -8,6 +8,7 @@ import { SocketProvider } from '@/providers/SocketProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { SimulatorPanel } from '@/components/shared/SimulatorPanel';
 import { WebTalkGlobal } from '@/components/webtalk/WebTalkGlobal';
+import { WebMcpProvider } from '@/components/ai/WebMcpProvider';
 import { Loader2 } from 'lucide-react';
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       </div>
       <SimulatorPanel />
       <WebTalkGlobal />
+      <WebMcpProvider />
     </SocketProvider>
   );
 }
