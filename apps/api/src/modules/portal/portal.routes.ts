@@ -40,7 +40,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
-  app.post('/activities', async (request) => {
+  app.post('/activities', { preHandler: requirePermission('portal.manage') }, async (request) => {
     const body = request.body as Record<string, unknown>;
     const activity = await createActivity(app.prisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createActivity>[3]);
     return { success: true, data: activity };
@@ -53,7 +53,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     return { success: true, data: activity };
   });
 
-  app.patch('/activities/:id', async (request, reply) => {
+  app.patch('/activities/:id', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Record<string, unknown>;
     try {
@@ -65,7 +65,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     }
   });
 
-  app.delete('/activities/:id', async (request, reply) => {
+  app.delete('/activities/:id', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       const result = await deleteActivity(app.prisma, id, request.agent.tenantId);
@@ -76,7 +76,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post('/activities/:id/publish', async (request, reply) => {
+  app.post('/activities/:id/publish', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       const activity = await publishActivity(app.prisma, id, request.agent.tenantId);
@@ -87,7 +87,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post('/activities/:id/end', async (request, reply) => {
+  app.post('/activities/:id/end', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       const activity = await endActivity(app.prisma, id, request.agent.tenantId);
@@ -107,7 +107,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
-  app.post('/activities/:id/draw', async (request, reply) => {
+  app.post('/activities/:id/draw', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { count } = request.body as { count: number };
     if (!count || count < 1) return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'count is required' } });
@@ -124,7 +124,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
-  app.post('/points/adjust', async (request, reply) => {
+  app.post('/points/adjust', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { contactId, amount, note } = request.body as { contactId: string; amount: number; note?: string };
     if (!contactId || amount === undefined) return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'contactId and amount required' } });
     const tx = await addPointTransaction(app.prisma, {

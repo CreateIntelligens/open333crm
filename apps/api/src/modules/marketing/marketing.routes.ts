@@ -125,7 +125,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(paginated(result.segments, result.total, result.page, result.limit));
   });
 
-  fastify.post('/segments', async (request, reply) => {
+  fastify.post('/segments', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createSegmentSchema.parse(request.body);
     const segment = await createSegment(
       fastify.prisma,
@@ -145,7 +145,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(success(segment));
   });
 
-  fastify.patch<{ Params: { id: string } }>('/segments/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/segments/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = updateSegmentSchema.parse(request.body);
     const segment = await updateSegment(
       fastify.prisma,
@@ -156,7 +156,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(success(segment));
   });
 
-  fastify.delete<{ Params: { id: string } }>('/segments/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/segments/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const result = await deleteSegment(
       fastify.prisma,
       request.params.id,
@@ -191,7 +191,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(paginated(result.campaigns, result.total, result.page, result.limit));
   });
 
-  fastify.post('/campaigns', async (request, reply) => {
+  fastify.post('/campaigns', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createCampaignSchema.parse(request.body);
     const campaign = await createCampaign(
       fastify.prisma,
@@ -211,7 +211,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(success(campaign));
   });
 
-  fastify.patch<{ Params: { id: string } }>('/campaigns/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/campaigns/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = updateCampaignSchema.parse(request.body);
     const campaign = await updateCampaign(
       fastify.prisma,
@@ -222,7 +222,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(success(campaign));
   });
 
-  fastify.delete<{ Params: { id: string } }>('/campaigns/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/campaigns/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const result = await deleteCampaign(
       fastify.prisma,
       request.params.id,
@@ -247,7 +247,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     return reply.send(paginated(result.broadcasts, result.total, result.page, result.limit));
   });
 
-  fastify.post('/broadcasts', async (request, reply) => {
+  fastify.post('/broadcasts', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createBroadcastSchema.parse(request.body);
     const broadcast = await createBroadcast(
       fastify.prisma,
@@ -268,7 +268,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   });
 
   // POST /broadcasts/:id/send — manually trigger broadcast execution
-  fastify.post<{ Params: { id: string } }>('/broadcasts/:id/send', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/broadcasts/:id/send', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
     const broadcast = await getBroadcast(
       fastify.prisma,
       request.params.id,
@@ -279,7 +279,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   });
 
   // POST /broadcasts/:id/cancel — cancel a draft/scheduled broadcast
-  fastify.post<{ Params: { id: string } }>('/broadcasts/:id/cancel', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/broadcasts/:id/cancel', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
     const result = await cancelBroadcast(
       fastify.prisma,
       request.params.id,

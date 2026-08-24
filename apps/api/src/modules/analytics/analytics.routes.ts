@@ -144,7 +144,7 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /analytics/export
-  fastify.post('/export', async (request, reply) => {
+  fastify.post('/export', { preHandler: requirePermission('analytics.export') }, async (request, reply) => {
     const { reportType, from, to } = exportSchema.parse(request.body);
     const csv = await exportCsv(
       fastify.prisma,

@@ -13,6 +13,10 @@ All notable changes to **open333CRM** will be documented in this file.
 - Passkey 註冊端點新增 rate limit；未設定 WebAuthn 的部署不再顯示無法使用的登入與綁定控制項。
 - Passkey 綁定流程新增裝置名稱輸入與既有 credential 重新命名功能；已綁定清單顯示自訂名稱、裝置類型與備份狀態，方便辨識多個 credential。
 
+### Fixed
+
+- **RBAC 寫入權限退化修補（安全性）** — 修正細粒度權限 migration 的系統性疏漏：知識庫、粉絲活動（portal）、行銷（marketing/material）、渠道（channel）、分析報表（analytics）等模組的一批寫入／有副作用路由，先前僅受 module-level `.view` 或群組 authenticate 保護，導致 registry 定義的 `.manage` / `.broadcast` / `.export` 等寫入權限點形同死碼、寫入保護退化為「只要能檢視即可寫入」。現為各寫入路由補上對應的 `requirePermission` per-route preHandler（建/改/刪、publish/archive/end、import/upload/embed、抽獎、點數調整補 `*.manage`；群發 send/cancel 補 `marketing.broadcast`；渠道 verify/setup-webhook/webhook-base-url 補 `channel.update`；`analytics/export` 補 `analytics.export`），GET 唯讀維持 `.view`。
+
 ## [v0.4.0] - 2026-08-18
 
 ### Added

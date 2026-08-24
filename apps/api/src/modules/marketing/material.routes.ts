@@ -175,7 +175,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   });
 
   // POST /materials
-  fastify.post('/materials', async (request, reply) => {
+  fastify.post('/materials', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createMaterialSchema.parse(request.body);
     const material = await createMaterial(fastify.prisma, request.agent.tenantId, {
       ...data,
@@ -194,7 +194,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   });
 
   // POST /materials/line-flex/import
-  fastify.post('/materials/line-flex/import', async (request, reply) => {
+  fastify.post('/materials/line-flex/import', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = lineFlexImportSchema.parse(request.body);
     const material = await importLineFlexMaterial(fastify.prisma, request.agent.tenantId, {
       name: data.name,
@@ -216,7 +216,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /materials/:id
-  fastify.patch('/materials/:id', async (request, reply) => {
+  fastify.patch('/materials/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateMaterialSchema.parse(request.body);
     const material = await updateMaterial(fastify.prisma, id, request.agent.tenantId, data);
@@ -224,14 +224,14 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /materials/:id (soft delete)
-  fastify.delete('/materials/:id', async (request, reply) => {
+  fastify.delete('/materials/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const result = await deleteMaterial(fastify.prisma, id, request.agent.tenantId);
     return reply.send(success(result));
   });
 
   // POST /materials/:id/duplicate
-  fastify.post('/materials/:id/duplicate', async (request, reply) => {
+  fastify.post('/materials/:id/duplicate', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const copy = await duplicateMaterial(fastify.prisma, id, request.agent.tenantId);
     return reply.code(201).send(success(copy));

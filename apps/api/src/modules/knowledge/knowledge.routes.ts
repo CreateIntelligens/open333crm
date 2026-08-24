@@ -121,7 +121,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/import — 批量匯入
-  fastify.post('/import', async (request, reply) => {
+  fastify.post('/import', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const body = importSchema.parse(request.body);
     const result = await batchImportArticles(
       fastify.prisma,
@@ -133,7 +133,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/upload — 多格式檔案上傳
-  fastify.post('/upload', async (request, reply) => {
+  fastify.post('/upload', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const parts = request.files();
     const results: { title: string; success: boolean; error?: string }[] = [];
     let uploaded = 0;
@@ -314,7 +314,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // Returns immediately with article count; embedding runs in the background
   // to avoid Caddy gateway timeouts on cold-start Ollama (model loading +
   // per-article inference can easily exceed 60s for any non-trivial KB).
-  fastify.post('/bulk-embed', async (request, reply) => {
+  fastify.post('/bulk-embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const tenantId = request.agent.tenantId;
     const total = await fastify.prisma.kmArticle.count({
       where: { tenantId, status: 'PUBLISHED' },
@@ -392,7 +392,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // ── Existing CRUD routes ──────────────────────────────────────────────────
 
   // POST /api/v1/knowledge — 新建文章
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const data = createArticleSchema.parse(request.body);
     const article = await createArticle(
       fastify.prisma,
@@ -414,7 +414,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/knowledge/:id — 更新文章
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const data = updateArticleSchema.parse(request.body);
     const article = await updateArticle(
       fastify.prisma,
@@ -426,7 +426,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/knowledge/:id — 刪除文章
-  fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const result = await deleteArticle(
       fastify.prisma,
       request.params.id,
@@ -436,7 +436,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/:id/publish — 發布文章
-  fastify.post<{ Params: { id: string } }>('/:id/publish', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/publish', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const article = await publishArticle(
       fastify.prisma,
       request.params.id,
@@ -446,7 +446,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/:id/archive — 封存文章
-  fastify.post<{ Params: { id: string } }>('/:id/archive', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/archive', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const article = await archiveArticle(
       fastify.prisma,
       request.params.id,
@@ -456,7 +456,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/knowledge/:id/embed — 強制重新向量化單篇文章
-  fastify.post<{ Params: { id: string } }>('/:id/embed', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     await embedArticle(fastify.prisma, request.params.id);
     return reply.send(success({ embedded: true }));
   });
