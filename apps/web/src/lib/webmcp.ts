@@ -26,6 +26,7 @@ export interface WebMcpModelContext {
 
 interface ToolOptions {
   signal?: AbortSignal;
+  onRegistrationError?: (toolName: string, error: unknown) => void;
 }
 
 const DEFAULT_PAGE = 1;
@@ -269,7 +270,20 @@ export async function registerCrmWebMcpTools(
   api: WebMcpApiClient,
   options: ToolOptions = {},
 ): Promise<void> {
+  const onRegistrationError =
+    options.onRegistrationError ??
+    ((toolName: string, error: unknown) => {
+      console.error(`[WebMCP] Failed to register tool: ${toolName}`, error);
+    });
+
   for (const tool of createTools(api)) {
-    await modelContext.registerTool(tool, options);
+    if (options.signal?.aborted) return;
+
+    try {
+      await modelContext.registerTool(tool, options);
+    } catch (error) {
+      if (options.signal?.aborted) return;
+      onRegistrationError(tool.name, error);
+    }
   }
 }

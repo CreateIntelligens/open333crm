@@ -22,15 +22,11 @@ const authenticatedApi: WebMcpApiClient = {
     api.get(url, config).then((response) => ({ data: response.data })),
 };
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
 export function WebMcpProvider() {
-  const { agent, isLoading } = useAuth();
+  const { agent } = useAuth();
 
   useEffect(() => {
-    if (isLoading || !agent) return undefined;
+    if (!agent) return undefined;
 
     const modelContext =
       (document as WebMcpDocument).modelContext ??
@@ -41,14 +37,18 @@ export function WebMcpProvider() {
     // WebMCP uses the registration signal as the official unregister mechanism.
     void registerCrmWebMcpTools(modelContext, authenticatedApi, {
       signal: controller.signal,
+      onRegistrationError: (toolName, error) => {
+        console.error(
+          `[WebMCP] Failed to register CRM tool: ${toolName}`,
+          error,
+        );
+      },
     }).catch((error: unknown) => {
-      if (!isAbortError(error)) {
-        console.error("[WebMCP] Failed to register CRM tools", error);
-      }
+      console.error("[WebMCP] Failed to initialize CRM tools", error);
     });
 
     return () => controller.abort();
-  }, [agent?.id, isLoading]);
+  }, [agent?.id]);
 
   return null;
 }

@@ -114,3 +114,35 @@ test("uses the current CRM API endpoints without accepting a token as tool input
   });
   assert.deepEqual(calls, [{ url: "/cases/case-1" }]);
 });
+
+test("continues registering later tools when one tool registration fails", async () => {
+  const registered: string[] = [];
+  const errors: Array<{ toolName: string; error: unknown }> = [];
+  const modelContext: WebMcpModelContext = {
+    async registerTool(tool) {
+      if (tool.name === "crm_list_cases") {
+        throw new Error("simulated registration failure");
+      }
+      registered.push(tool.name);
+    },
+  };
+  const api: WebMcpApiClient = {
+    async get() {
+      return { data: { data: [] } };
+    },
+  };
+
+  await registerCrmWebMcpTools(modelContext, api, {
+    onRegistrationError: (toolName, error) => errors.push({ toolName, error }),
+  });
+
+  assert.deepEqual(registered, [
+    "crm_search_contacts",
+    "crm_get_case",
+    "crm_get_contact",
+    "crm_get_analytics_overview",
+    "crm_get_current_agent",
+  ]);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.toolName, "crm_list_cases");
+});
