@@ -172,7 +172,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/channels/:id/verify
-  fastify.post<{ Params: { id: string } }>('/:id/verify', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
     const result = await verifyChannel(
       fastify.prisma,
       request.params.id,
@@ -183,7 +183,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/channels/webhook-base-url — 批次更新所有渠道的 Webhook URL
-  fastify.post('/webhook-base-url', async (request, reply) => {
+  fastify.post('/webhook-base-url', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
     const data = updateWebhookBaseUrlSchema.parse(request.body);
 
     const result = await updateWebhookBaseUrl(
@@ -196,7 +196,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/channels/:id/setup-webhook — LINE auto webhook setup
-  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
     const result = await autoSetupLineWebhook(
       fastify.prisma,
       request.params.id,

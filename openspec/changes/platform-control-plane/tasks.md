@@ -14,7 +14,9 @@
 - [ ] 2.3 建 `FEATURE` registry（feature→權限點對照）+ 啟動驗證（每權限點恰好歸屬一 feature、feature 的 code 都存在於權限 registry）
 - [ ] 2.4 實作 entitlement 解析（plan.features ∪ grant \ revoke ∪ core；core 恆開）+ 快取 `entitlement:tenant:{id}`（TTL≤10min）
 - [ ] 2.5 把 `licenseService` 從 mock 單例改成依 tenant 查 DB plan；`requireFeature` guard 呼叫端不動
-- [ ] 2.6 seed 預設三方案（Free/Pro/Enterprise）與其 features
+- [ ] 2.6 seed 預設四方案（輕量版/標準版/專業版/企業版）與其 features + limits（maxAgents/maxTags/monthlyTokens，企業版 null=無上限）；`Tenant` 加 `limitOverrides` Json
+- [ ] 2.7 【plan-limits】實作有效上限解析 `limitOverrides[key] ?? plan.limits[key]`（null=無上限）+ 平台後台改 Plan.limits/Tenant.limitOverrides API
+- [ ] 2.8 【plan-limits】數量上限硬擋：createAgent 前檢查 maxAgents(count active agent)、createTag 前檢查 maxTags；達上限回 `PLAN_LIMIT_EXCEEDED`(含 key/當前/上限)；在權限+entitlement 檢查後執行；補測試
 
 ## 3. 平台認證 + 控制平面骨架
 

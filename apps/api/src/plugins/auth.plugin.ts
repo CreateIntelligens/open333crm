@@ -43,9 +43,14 @@ declare module 'fastify' {
       request: FastifyRequest,
       reply: FastifyReply,
     ) => Promise<void>;
+    authenticatePlatformSuperuser: (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ) => Promise<void>;
   }
   interface FastifyRequest {
     agent: AgentPayload;
+    platformUser?: { id: string; role: 'PLATFORM_SUPERUSER' };
   }
 }
 
@@ -103,6 +108,44 @@ async function authPlugin(fastify: FastifyInstance) {
       expiresIn: config.ACCESS_TOKEN_EXPIRES_IN,
     },
   });
+
+  // 平台 superuser JWT：獨立 secret + namespace，與租戶 JWT 完全分離
+  // （租戶 JWT 永遠簽不出、也驗不過平台 token）。secret 未設時平台功能停用。
+  if (config.PLATFORM_JWT_SECRET) {
+    await fastify.register(fastifyJwt, {
+      secret: config.PLATFORM_JWT_SECRET,
+      namespace: 'platform',
+      sign: { expiresIn: config.PLATFORM_JWT_EXPIRES_IN },
+    });
+  }
+
+  fastify.decorate(
+    'authenticatePlatformSuperuser',
+    async function (request: FastifyRequest, reply: FastifyReply) {
+      if (!config.PLATFORM_JWT_SECRET) {
+        return reply.status(503).send({
+          success: false,
+          error: { code: 'PLATFORM_DISABLED', message: 'Platform control plane not configured' },
+        });
+      }
+      try {
+        // @ts-expect-error namespace 方法由 @fastify/jwt 動態掛載
+        const payload = await request.platformJwtVerify();
+        if (payload.role !== 'PLATFORM_SUPERUSER') {
+          return reply.status(403).send({
+            success: false,
+            error: { code: 'FORBIDDEN', message: 'Not a platform superuser' },
+          });
+        }
+        request.platformUser = { id: payload.platformUserId, role: 'PLATFORM_SUPERUSER' };
+      } catch {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Invalid or expired platform token' },
+        });
+      }
+    },
+  );
 
   fastify.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
     try {

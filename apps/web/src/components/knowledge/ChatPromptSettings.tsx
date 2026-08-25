@@ -83,6 +83,10 @@ export function ChatPromptSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [customModel, setCustomModel] = useState(false);
+  // BYOK：租戶自備 Gemini key 狀態
+  const [byokStatus, setByokStatus] = useState<{ configured: boolean; masked: string | null }>({ configured: false, masked: null });
+  const [byokInput, setByokInput] = useState('');
+  const [byokSaving, setByokSaving] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -93,6 +97,9 @@ export function ChatPromptSettings() {
       setModels(d.models);
       setHealth(d.health);
       setDefaults(d.defaults);
+      // 載入 BYOK key 狀態（遮罩）
+      const keyRes = await api.get<{ data: { configured: boolean; masked: string | null } }>('/settings/gemini-key');
+      setByokStatus(keyRes.data.data);
     } catch (err) {
       console.error('Failed to fetch chat settings:', err);
     } finally {
@@ -103,6 +110,19 @@ export function ChatPromptSettings() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  const saveByokKey = async (apiKey: string | null) => {
+    setByokSaving(true);
+    try {
+      const res = await api.put<{ data: { configured: boolean; masked: string | null } }>('/settings/gemini-key', { apiKey });
+      setByokStatus(res.data.data);
+      setByokInput('');
+    } catch (err) {
+      console.error('Failed to save gemini key:', err);
+    } finally {
+      setByokSaving(false);
+    }
+  };
 
   // Reload model list when provider or baseUrl changes (after debounce on URL)
   const reloadModels = useCallback(
@@ -234,7 +254,7 @@ export function ChatPromptSettings() {
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">Provider 與模型</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          切換 Provider 後請接著選擇對應模型；Gemini 共用平台 API key（管理員 .env 設定）。
+          切換 Provider 後請接著選擇對應模型。Gemini 可自備 API key（BYOK），或留空使用平台提供的 key。
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4">
@@ -256,6 +276,46 @@ export function ChatPromptSettings() {
                 onBlur={() => reloadModels(settings.provider, settings.baseUrl)}
                 placeholder="http://localhost:11434"
               />
+            </div>
+          )}
+
+          {settings.provider === 'gemini' && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium">Gemini API Key（BYOK，選填）</label>
+              {byokStatus.configured ? (
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-mono">{byokStatus.masked}</span>
+                  <span className="text-xs text-green-600">✓ 使用自備金鑰</span>
+                  <button
+                    type="button"
+                    onClick={() => saveByokKey(null)}
+                    disabled={byokSaving}
+                    className="ml-auto text-xs text-destructive hover:underline"
+                  >
+                    移除
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    value={byokInput}
+                    onChange={(e) => setByokInput(e.target.value)}
+                    placeholder="貼上 AIza… 金鑰（留空則用平台金鑰）"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => byokInput.trim() && saveByokKey(byokInput.trim())}
+                    disabled={byokSaving || !byokInput.trim()}
+                    className="whitespace-nowrap rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                  >
+                    {byokSaving ? '儲存中…' : '儲存'}
+                  </button>
+                </div>
+              )}
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                自備金鑰時，AI 費用直接進您的雲帳號，平台只記錄用量、不計成本。
+              </p>
             </div>
           )}
 

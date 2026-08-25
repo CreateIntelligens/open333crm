@@ -35,6 +35,7 @@ import {
   CLARIFY_SYSTEM_PROMPT,
   MODEL_GUIDE_SYSTEM_PROMPT,
 } from "../ai/llm.service.js";
+import { getTenantGeminiKeyStatus, setTenantGeminiKey } from "../ai/ai-key.service.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
 
 const dayScheduleSchema = z
@@ -199,6 +200,22 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       patch,
     );
     return reply.send(success(result));
+  });
+
+  // GET /api/v1/settings/gemini-key — 查 BYOK key 狀態（遮罩，不回明文）
+  fastify.get("/gemini-key", async (request, reply) => {
+    const status = await getTenantGeminiKeyStatus(fastify.prisma, request.agent.tenantId);
+    return reply.send(success(status));
+  });
+
+  // PUT /api/v1/settings/gemini-key — 設定/清除 BYOK key（body: { apiKey: string | null }）
+  fastify.put("/gemini-key", async (request, reply) => {
+    const { apiKey } = z
+      .object({ apiKey: z.string().min(1).nullable() })
+      .parse(request.body);
+    await setTenantGeminiKey(fastify.prisma, request.agent.tenantId, apiKey);
+    const status = await getTenantGeminiKeyStatus(fastify.prisma, request.agent.tenantId);
+    return reply.send(success(status));
   });
 
   // GET /api/v1/settings/chat/models?provider=gemini&baseUrl=...

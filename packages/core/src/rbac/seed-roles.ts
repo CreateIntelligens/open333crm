@@ -6,11 +6,12 @@
  * 回傳 slug → roleId 對映，供回填 agent.roleId。
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { SYSTEM_ROLE_SLUGS, SYSTEM_ROLE_NAMES, DEFAULT_ROLE_PERMISSIONS } from './default-roles';
 
+// 收 TransactionClient（介面相容 PrismaClient），讓開通流程能與其他寫入同 transaction。
 export async function seedRolesForTenant(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   tenantId: string,
 ): Promise<Record<string, string>> {
   const slugToId: Record<string, string> = {};

@@ -168,6 +168,12 @@ function LoginForm() {
               </>
             )}
           </form>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            還沒有帳號？{' '}
+            <a href="/trial" className="text-primary underline">
+              免費試用
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>

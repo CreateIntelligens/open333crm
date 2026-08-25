@@ -1,7 +1,9 @@
+import { logger } from '@open333crm/core';
 import { getConfig } from '../../../config/env.js';
 import type {
   ChatProvider,
   ChatGenerateOptions,
+  ChatGenerateResult,
   ChatModelInfo,
   ChatProviderHealth,
 } from './types.js';
@@ -28,8 +30,9 @@ const CURATED_CHAT_MODELS: { id: string; label: string; tier: ChatModelInfo['tie
   { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', tier: 'preview' },
 ];
 
-function getApiKey(): string {
-  const key = getConfig().GEMINI_API_KEY;
+// BYOK：優先用傳入的租戶 key，否則退回全域 env
+function getApiKey(override?: string): string {
+  const key = override ?? getConfig().GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not configured in environment');
   return key;
 }
@@ -38,8 +41,8 @@ export const GeminiChatProvider: ChatProvider = {
   id: 'gemini',
   label: 'Google Gemini',
 
-  async generate(opts: ChatGenerateOptions): Promise<string> {
-    const apiKey = getApiKey();
+  async generate(opts: ChatGenerateOptions): Promise<ChatGenerateResult> {
+    const apiKey = getApiKey(opts.apiKey);
     const url = `${GEMINI_BASE}/models/${encodeURIComponent(opts.model)}:generateContent`;
 
     const fullSystemPrompt = opts.kbContext
@@ -101,6 +104,7 @@ export const GeminiChatProvider: ChatProvider = {
         }[];
         usageMetadata?: {
           promptTokenCount?: number;
+          cachedContentTokenCount?: number;
           candidatesTokenCount?: number;
           thoughtsTokenCount?: number;
           totalTokenCount?: number;
@@ -123,7 +127,27 @@ export const GeminiChatProvider: ChatProvider = {
         );
       }
       if (!text) throw new Error('Gemini returned empty response');
-      return text;
+
+      const um = data.usageMetadata;
+      let usage: ChatGenerateResult['usage'];
+      if (um) {
+        usage = {
+          promptTokens: um.promptTokenCount ?? 0,
+          cachedTokens: um.cachedContentTokenCount ?? 0,
+          candidatesTokens: um.candidatesTokenCount ?? 0,
+          thoughtsTokens: um.thoughtsTokenCount ?? 0,
+        };
+        // 與 totalTokenCount 交叉檢查：某些 preview 模型會漏回個別欄位，
+        // 偏差過大代表 usage 不可信，log 供對帳時排查（仍照實記錄）。
+        const sum = usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens;
+        const total = um.totalTokenCount ?? 0;
+        if (total > 0 && Math.abs(total - sum) / total > 0.1) {
+          logger.warn(
+            `[gemini] usageMetadata mismatch: totalTokenCount=${total} but parts sum=${sum} (model=${opts.model})`,
+          );
+        }
+      }
+      return { text, usage };
     } finally {
       clearTimeout(timer);
     }

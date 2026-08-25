@@ -6,12 +6,104 @@
  * are used as fallback when a tenant's prompt fields are empty strings.
  */
 
+import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '@open333crm/core';
 import { getChatProvider } from './providers/index.js';
 import type { HistoryMessage } from './providers/index.js';
+import type { TokenUsage } from './providers/types.js';
+import { getPricing, calcCostUsd } from './pricing.service.js';
+import { resolveGeminiKey } from './ai-key.service.js';
+import { isMonthlyTokenExceeded, incrMonthlyTokens } from '../trial/token-quota.service.js';
+import { AppError } from '../../shared/utils/response.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
 
 export type { HistoryMessage } from './providers/index.js';
+
+/** AI 呼叫來源標記（AiUsage.feature） */
+export type AiFeature =
+  | 'kb-autoreply'
+  | 'suggestion'
+  | 'summary'
+  | 'classify'
+  | 'sentiment'
+  | 'automation'
+  | 'unknown';
+
+export interface AiUsageMeta {
+  feature: AiFeature;
+  conversationId?: string;
+  caseId?: string;
+}
+
+const ZERO_USAGE: TokenUsage = {
+  promptTokens: 0,
+  cachedTokens: 0,
+  candidatesTokens: 0,
+  thoughtsTokens: 0,
+};
+
+/**
+ * 寫入一筆 AiUsage（fire-and-forget 的實體）。
+ * 用量記錄是計費輔助非金流帳本：任何失敗只 log、絕不影響 AI 回覆主流程。
+ */
+async function recordAiUsage(
+  prisma: PrismaClient,
+  input: {
+    tenantId: string;
+    provider: string;
+    model: string;
+    keySource?: string;
+    meta?: AiUsageMeta;
+    usage?: TokenUsage;
+    success: boolean;
+    errorCode?: string;
+  },
+): Promise<void> {
+  const usage = input.usage ?? ZERO_USAGE;
+  const isByok = input.keySource === 'byok';
+  // Ollama 本機模型 + BYOK（租戶自付）成本恆 0，不查價目表 / 不計平台成本
+  const pricing =
+    input.success && input.usage && input.provider !== 'ollama' && !isByok
+      ? await getPricing(prisma, input.model)
+      : null;
+  const costUsd = input.success && input.usage && !isByok ? calcCostUsd(usage, pricing) : null;
+  // BYOK 不查價目、不視為 usageMissing（成本本就不歸平台）
+  const usageMissing =
+    !input.usage || (input.success && input.provider !== 'ollama' && !isByok && !pricing);
+  if (input.success && input.usage && input.provider !== 'ollama' && !isByok && !pricing) {
+    logger.warn(`[AiUsage] no pricing found for model=${input.model}, costUsd recorded as 0`);
+  }
+
+  await prisma.aiUsage.create({
+    data: {
+      tenantId: input.tenantId,
+      provider: input.provider,
+      model: input.model,
+      feature: input.meta?.feature ?? 'unknown',
+      keySource: input.keySource ?? 'platform',
+      promptTokens: usage.promptTokens,
+      cachedTokens: usage.cachedTokens,
+      candidatesTokens: usage.candidatesTokens,
+      thoughtsTokens: usage.thoughtsTokens,
+      totalTokens: usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens,
+      costUsd: costUsd ?? new Prisma.Decimal(0),
+      success: input.success,
+      usageMissing: input.success ? usageMissing : false,
+      errorCode: input.errorCode,
+      conversationId: input.meta?.conversationId,
+      caseId: input.meta?.caseId,
+    },
+  });
+
+  // Redis 即時額度累加：只計成功、platform key 的 token（BYOK 租戶自付不計額度）
+  const totalTokens = usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens;
+  if (input.success && !isByok && totalTokens > 0) {
+    incrMonthlyTokens(prisma, input.tenantId, totalTokens).catch((e) =>
+      logger.error('[TokenQuota] incr failed:', e),
+    );
+  }
+}
 
 /**
  * Default CRM customer-service system prompt. Used when a tenant has not
@@ -102,10 +194,28 @@ export async function generateReply(
     promptKind?: PromptKind;
     overrideSystemPrompt?: string;
     history?: HistoryMessage[];
+    /** 用量記錄的來源標記與關聯（未傳 feature 記為 unknown） */
+    meta?: AiUsageMeta;
   } = {},
 ): Promise<string> {
   const settings = await getChatSettings(prisma, tenantId);
   const provider = getChatProvider(settings.provider);
+
+  // BYOK：gemini 才需 key；取租戶自備 key（無則退回平台 env）
+  const { key: apiKey, source: keySource } =
+    provider.id === 'gemini'
+      ? await resolveGeminiKey(prisma, tenantId)
+      : { key: undefined, source: 'platform' as const };
+
+  // 方案 token 月額度硬擋：達上限則擋 AI 回覆（真人回覆不受影響）。
+  // 只在 keySource==='platform' 時檢查——與 incrMonthlyTokens 只累加 platform 的設計一致：
+  // BYOK（租戶自備 key）成本租戶自付，不計額度也不擋；否則若租戶先前用 platform key
+  // 累計到接近上限，之後切換成 BYOK 仍會被舊 platform 累計量誤擋。
+  // 註：ollama 雖成本 0，但其 keySource 仍為 'platform' 且會被計入計數器，故此處一併受擋，
+  // 保持與 dbMonthlyTokens/incrMonthlyTokens 的計數範圍一致。
+  if (keySource === 'platform' && (await isMonthlyTokenExceeded(prisma, tenantId))) {
+    throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
+  }
 
   const promptKind = options.promptKind ?? 'reply';
   const systemPrompt =
@@ -114,14 +224,41 @@ export async function generateReply(
       ? settings.summarizeSystemPrompt || SUMMARIZE_SYSTEM_PROMPT
       : settings.chatSystemPrompt || CRM_REPLY_SYSTEM_PROMPT);
 
-  return provider.generate({
-    systemPrompt,
-    userMessage,
-    kbContext,
-    history: options.history,
+  const usageBase = {
+    tenantId,
+    provider: provider.id,
     model: settings.model,
-    temperature: settings.temperature,
-    maxTokens: settings.maxTokens,
-    baseUrl: settings.baseUrl,
-  });
+    keySource,
+    meta: options.meta,
+  };
+
+  let result;
+  try {
+    result = await provider.generate({
+      systemPrompt,
+      userMessage,
+      kbContext,
+      history: options.history,
+      model: settings.model,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+      baseUrl: settings.baseUrl,
+      apiKey,
+    });
+  } catch (err) {
+    // 失敗呼叫也留帳（成本 0），並原樣 rethrow 保持既有錯誤行為
+    recordAiUsage(prisma, {
+      ...usageBase,
+      success: false,
+      errorCode: (err as Error).message?.slice(0, 200),
+    }).catch((e) => logger.error('[AiUsage] failed to record error usage:', e));
+    throw err;
+  }
+
+  // fire-and-forget：不 await、不阻塞回覆，寫入失敗只 log
+  recordAiUsage(prisma, { ...usageBase, usage: result.usage, success: true }).catch((e) =>
+    logger.error('[AiUsage] failed to record usage:', e),
+  );
+
+  return result.text;
 }

@@ -55,12 +55,16 @@ import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 import webchatRoutes from './modules/webchat/webchat.routes.js';
+import platformRoutes from './modules/platform/platform.routes.js';
+import trialRoutes from './modules/trial/trial.routes.js';
+import planChangeRoutes from './modules/platform/plan-change.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
 import cliRoutes from './modules/cli/cli.routes.js';
 import mcpRoutes from './modules/mcp/mcp.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
+import { setupTrialScheduler } from './modules/trial/trial.scheduler.js';
 import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
 import { setupNotificationWorker } from './modules/notification/notification.worker.js';
@@ -153,6 +157,9 @@ export async function bootstrap() {
   await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });
   await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
+  await app.register(platformRoutes, { prefix: '/api/v1/platform' });
+  await app.register(trialRoutes, { prefix: '/api/v1/trial' });
+  await app.register(planChangeRoutes, { prefix: '/api/v1/plan-change' });
   await app.register(mcpRoutes);
 
   registerVisitorNamespace(app.io, app.prisma, app.chatboxSessionVerifier);
@@ -165,6 +172,7 @@ export async function bootstrap() {
   setupInactivityCloseWorker(app.prisma, app.io);
   setupCanvasWorker(app.prisma, app.io);
   setupCanvasScheduler(app.prisma);
+  setupTrialScheduler(app.prisma);
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
   setupWebhookDispatcher(app.prisma);
 

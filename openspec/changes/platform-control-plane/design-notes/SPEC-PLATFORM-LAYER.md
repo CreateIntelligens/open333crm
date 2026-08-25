@@ -57,11 +57,27 @@
 
 ### 2.2 Plan（方案）
 
+四階方案（對應業務方案表）：**輕量版 / 標準版 / 專業版 / 企業版**。
+
 | 欄位 | 說明 |
 |---|---|
-| `id` / `slug` | `free` / `pro` / `enterprise`（平台層全域，非租戶私有） |
-| `name` | 顯示名稱 |
+| `id` / `slug` | `light` / `standard` / `professional` / `enterprise`（平台層全域，非租戶私有） |
+| `name` | 顯示名稱（輕量版/標準版/專業版/企業版） |
 | `features` | 此方案預設含哪些 feature module（string[]） |
+| `limits` | **數值上限 Json（全部平台後台可改，非寫死）**，見下 |
+| `priceMonthly` / `priceYearly` | 月繳/年繳價（顯示用，不接金流） |
+
+**`limits` 結構——這是「參數化上限」的核心，每個數字平台後台可改**：
+
+| limit key | 意義 | 輕量 | 標準 | 專業 | 企業 |
+|---|---|---|---|---|---|
+| `maxAgents` | 客服人數上限 | 5 | 10 | 20 | null（無上限） |
+| `maxTags` | 分眾標籤數上限 | 100 | 500 | 1000 | null（無上限） |
+| `monthlyTokens` | AI 月額度 | 1500000 | 3000000 | 8000000 | null（依需求/無上限） |
+
+- **`null` = 無上限**（企業版「無上限/依需求」）。
+- 這些數字**存 DB（`Plan.limits` Json），非程式碼常數**——平台方在後台改數字即改該方案所有租戶的上限，零改碼。
+- limits 可擴充：日後要加「渠道數上限」「broadcast 月上限」等，只是 Json 多一個 key + 一處建立時檢查，不改結構。
 
 Plan 是**平台層全域資料**（不帶 tenantId）——這是本 codebase 第一個真正的全域業務表，設計時明確標示（現有全域表只有 `Tenant` 本身）。
 
@@ -77,6 +93,16 @@ entitlement(tenant) = (plan.features ∪ tenant.featureOverrides.grant) \ tenant
 - `revoke`：關閉——平台對此租戶關掉方案內某 feature（如試用到期、違規）。
 - `core` 一律併入，永不被 revoke。
 
+**數值上限同樣支援 per-tenant override**（單租戶客製，不用改整個方案）：
+
+```
+有效上限(tenant, key) = tenant.limitOverrides[key] ?? plan.limits[key]
+```
+
+- `Tenant.limitOverrides` Json（如 `{ maxAgents: 15 }`）——某租戶特別加人數，不動方案。
+- 平台後台可設「方案預設上限」（改 Plan.limits）與「單租戶上限」（改 Tenant.limitOverrides）兩層，都不改碼。
+- `null` override 可用來對單租戶解除上限（給無上限）。
+
 ---
 
 ## 3. 資料模型
@@ -86,9 +112,11 @@ entitlement(tenant) = (plan.features ∪ tenant.featureOverrides.grant) \ tenant
 | 欄位 | 型別 | 說明 |
 |---|---|---|
 | `id` | uuid PK | |
-| `slug` | string @unique | `free`/`pro`/`enterprise`，全域唯一 |
+| `slug` | string @unique | `light`/`standard`/`professional`/`enterprise`，全域唯一 |
 | `name` | string | |
 | `features` | string[]（或 Json）| 方案預設 feature module slug 清單 |
+| `limits` | Json | 數值上限（maxAgents/maxTags/monthlyTokens…；null=無上限）——**平台後台可改** |
+| `priceMonthly` / `priceYearly` | int? | 月繳/年繳價（顯示用，不接金流；企業版可 null=客製報價） |
 | `isActive` | boolean | 停售方案軟下架 |
 
 > 這是全域表，無先例；schema 需在檔案明確註解「平台層全域資料，刻意不帶 tenantId」。

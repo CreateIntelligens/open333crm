@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { success, AppError } from '../../shared/utils/response.js';
+import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import {
   createAgentSchema,
@@ -31,6 +31,16 @@ export default async function agentRoutes(fastify: FastifyInstance) {
         name: true,
         email: true,
         role: true,
+        roleId: true,
+        // 帶出指派的角色資訊，供前端顯示自訂角色名與精準預選
+        roleRef: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            isSystem: true,
+          },
+        },
         avatarUrl: true,
         isActive: true,
         teams: {
@@ -55,18 +65,19 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success(agents));
   });
 
-  // POST /api/v1/agents — 需 agent.manage
+  // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護）
   fastify.post('/', {
     preHandler: [requirePermission('agent.manage')],
   }, async (request, reply) => {
     const body = createAgentSchema.parse(request.body);
 
-    // TODO(rbac 階段 6.2): 以「越權防護」取代此 inline 規則（不可建立權限超出自身的角色）
-    if (request.agent.role === 'SUPERVISOR' && body.role === 'ADMIN') {
-      throw new AppError('Supervisors cannot create ADMIN agents', 'FORBIDDEN', 403);
-    }
-
-    const agent = await createAgent(fastify.prisma, request.agent.tenantId, body);
+    // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403
+    const agent = await createAgent(
+      fastify.prisma,
+      request.agent.tenantId,
+      body,
+      request.agent.roleId,
+    );
     return reply.status(201).send(success(agent));
   });
 
@@ -78,19 +89,21 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success({ message: 'Password updated' }));
   });
 
-  // PATCH /api/v1/agents/:id/role — 需 agent.manage
+  // PATCH /api/v1/agents/:id/role — 需 agent.role.assign（指派角色專用權限；越權防護在 service 層）
   fastify.patch('/:id/role', {
-    preHandler: [requirePermission('agent.manage')],
+    preHandler: [requirePermission('agent.role.assign')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateAgentRoleSchema.parse(request.body);
 
-    // TODO(rbac 階段 6.2): 以「越權防護」取代此 inline 規則（不可指派權限超出自身的角色）
-    if (request.agent.role === 'SUPERVISOR' && body.role === 'ADMIN') {
-      throw new AppError('Supervisors cannot assign ADMIN role', 'FORBIDDEN', 403);
-    }
-
-    const agent = await updateAgentRole(fastify.prisma, request.agent.tenantId, id, body.role);
+    // 越權防護：不可指派權限超出自身有效權限的角色 → ROLE_ESCALATION 403
+    const agent = await updateAgentRole(
+      fastify.prisma,
+      request.agent.tenantId,
+      id,
+      { role: body.role, roleId: body.roleId },
+      request.agent.roleId,
+    );
     return reply.send(success(agent));
   });
 

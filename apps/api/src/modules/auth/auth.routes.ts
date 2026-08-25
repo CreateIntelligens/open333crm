@@ -10,7 +10,8 @@ import {
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
-import { getEffectivePermissions } from '../../services/permission.service.js';
+import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
+import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
 import { FastifyJWT } from '@fastify/jwt';
@@ -587,7 +588,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     try {
       const payload = fastify.jwt.verify<TokenPayload>(token);
-      const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role, roleId: payload.roleId };
+
+      // 安全性：不沿用 token 內的舊 role/roleId，改從 DB 重讀當前值（帶 tenantId + 仍 isActive）。
+      // 否則 admin 降權某成員後，該成員可靠 refresh 續命舊角色達 refresh TTL（可能 30 天）。
+      // 停用（或租戶停用）者不給 refresh，直接視為失效。
+      const current = await getActiveAgentForAuth(fastify.prisma, payload.agentId, payload.tenantId);
+
+      const tokenPayload: TokenPayload = {
+        agentId: current.id,
+        tenantId: current.tenantId,
+        role: current.role,
+        roleId: current.roleId,
+      };
 
       const accessToken = signAccessToken(fastify, tokenPayload, config);
       const newRefreshToken = signRefreshToken(fastify, tokenPayload, config, !!payload.rememberMe);
@@ -625,7 +637,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.get('/me/permissions', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    const eff = await getEffectivePermissions(fastify.prisma, request.agent.roleId);
+    // 前端 gating 用「使用者實際可用權限」= 角色權限 ∩ 方案天花板
+    const planId = await getTenantPlanId(fastify.prisma, request.agent.tenantId);
+    const eff = await getEffectiveTenantPermissions(fastify.prisma, request.agent.roleId, planId);
     return reply.send(success({ permissions: [...eff] }));
   });
 }
