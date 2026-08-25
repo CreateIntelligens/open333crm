@@ -20,3 +20,4 @@ export * from "./templates/button-action-parser";
 export * from "./templates/whatsapp-hsm";
 export * from "./identity/identity-stitcher";
 export * from "./identity/merge-suggestion-service";
+export * from "./rbac";

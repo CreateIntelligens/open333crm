@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 const createSlaSchema = z.object({
   name: z.string().min(1),
@@ -24,7 +24,7 @@ const updateSlaSchema = z.object({
 
 export default async function slaRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
-  fastify.addHook('preHandler', requireSupervisor());
+  fastify.addHook('preHandler', requirePermission('sla.manage'));
 
   // GET /api/v1/sla-policies
   fastify.get('/', async (request, reply) => {

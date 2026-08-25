@@ -13,6 +13,7 @@ export async function login(prisma: PrismaClient, email: string, password: strin
       email: true,
       name: true,
       role: true,
+      roleId: true,
       avatarUrl: true,
       passwordHash: true,
       isActive: true,
@@ -100,6 +101,7 @@ export async function getActiveAgentForAuth(
       email: true,
       name: true,
       role: true,
+      roleId: true, // RBAC：JWT 需帶 roleId 做細粒度權限判斷
       avatarUrl: true,
     },
   });

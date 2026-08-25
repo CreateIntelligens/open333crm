@@ -2,7 +2,7 @@
  * Rich Menu CRUD routes
  *
  * 路由前綴：/api/v1/line/rich-menus
- * 權限：SUPERVISOR 以上（沿用既有 requireSupervisor preHandler）
+ * 權限：richmenu.manage（整模組 requirePermission preHandler）
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -18,7 +18,7 @@ import {
   unpublishRichMenu,
 } from './rich-menu.service.js';
 import { success } from '../../shared/utils/response.js';
-import { requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 // ─── Schemas ───────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ const listQuerySchema = z.object({
 
 export default async function richMenuRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
-  fastify.addHook('preHandler', requireSupervisor());
+  fastify.addHook('preHandler', requirePermission('richmenu.manage'));
 
   // GET /api/v1/line/rich-menus?channelId=<uuid>
   fastify.get('/', async (request, reply) => {

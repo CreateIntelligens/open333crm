@@ -1,6 +1,9 @@
 import { PrismaClient, AgentRole, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { systemTemplates } from './seed-data/system-templates.js';
+// 注意：database 套件不可 import @open333crm/core（會與 core→database 循環依賴）。
+// 正式的 seedRolesForTenant 在 core（供 API 用）；此處為 demo seed 的內嵌等效版。
+import { seedDemoRoles } from './seed-data/rbac-roles.js';
 
 const prisma = new PrismaClient();
 
@@ -38,19 +41,25 @@ async function main() {
     create: { id: TENANT_ID, name: 'Demo Tenant', isActive: true },
   });
 
+  // RBAC: 為 demo 租戶建三 system role + 種預設權限，取得 slug→roleId 對映
+  const slugToRoleId = await seedDemoRoles(prisma, TENANT_ID);
+
   for (const { id, password, ...data } of agents) {
     const passwordHash = await bcrypt.hash(password, 10);
+    // 依 enum 對映到 system role slug，回填 roleId
+    const slug = { ADMIN: 'admin', SUPERVISOR: 'supervisor', AGENT: 'agent' }[data.role];
+    const roleId = slug ? slugToRoleId[slug] : null;
     await prisma.agent.upsert({
       // email 全域唯一，直接用 email 當 where（複合鍵 tenantId_email 已移除）
       where: { email: data.email },
-      update: { name: data.name, role: data.role, passwordHash, isActive: true },
-      create: { id, tenantId: TENANT_ID, ...data, passwordHash, isActive: true },
+      update: { name: data.name, role: data.role, roleId, passwordHash, isActive: true },
+      create: { id, tenantId: TENANT_ID, ...data, roleId, passwordHash, isActive: true },
     });
   }
 
   await seedSystemTemplates();
 
-  console.log(`Seed complete: 1 tenant, 3 agents, ${systemTemplates.length} system templates`);
+  console.log(`Seed complete: 1 tenant, 3 agents (with roleId), 3 system roles, ${systemTemplates.length} system templates`);
 }
 
 async function seedSystemTemplates() {

@@ -9,6 +9,8 @@ export interface AgentPayload {
   id: string;
   tenantId: string;
   role: string;
+  /** 細粒度 RBAC：指向 Role 表；過渡期可能為 null（尚未回填）。權限判斷用。 */
+  roleId?: string | null;
   /** Set when authenticated via partner API key (not a real human agent). */
   isPartnerKey?: boolean;
   /** PartnerApiKey row id, only present when isPartnerKey=true */
@@ -80,12 +82,14 @@ declare module '@fastify/jwt' {
       agentId: string;
       tenantId: string;
       role: string;
+      roleId?: string | null;
       rememberMe?: boolean;
     };
     user: {
       agentId: string;
       tenantId: string;
       role: string;
+      roleId?: string | null;
     };
   }
 }
@@ -108,6 +112,7 @@ async function authPlugin(fastify: FastifyInstance) {
         id: payload.agentId,
         tenantId: payload.tenantId,
         role: payload.role,
+        roleId: payload.roleId ?? null,
       };
     } catch (err) {
       reply.status(401).send({

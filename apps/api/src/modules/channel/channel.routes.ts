@@ -12,7 +12,7 @@ import {
   ensureChannelPublicKey,
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
-import { requireAdmin, requireSupervisor } from '../../guards/rbac.guard.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
@@ -121,13 +121,13 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/channels
-  fastify.get('/', { preHandler: requireSupervisor() }, async (request, reply) => {
+  fastify.get('/', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
     const channels = await listChannels(fastify.prisma, request.agent.tenantId);
     return reply.send(success(channels));
   });
 
   // POST /api/v1/channels
-  fastify.post('/', { preHandler: requireAdmin() }, async (request, reply) => {
+  fastify.post('/', { preHandler: requirePermission('channel.create') }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
 
     const channel = await createChannel(fastify.prisma, request.agent.tenantId, data);
@@ -136,7 +136,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/channels/:id
-  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requireSupervisor() }, async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
     const channel = await getChannel(
       fastify.prisma,
       request.params.id,
@@ -147,7 +147,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/channels/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requireAdmin() }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
     const data = updateChannelSchema.parse(request.body);
 
     const channel = await updateChannel(
@@ -161,7 +161,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/channels/:id
-  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requireAdmin() }, async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.delete') }, async (request, reply) => {
     const result = await deleteChannel(
       fastify.prisma,
       request.params.id,
@@ -249,7 +249,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels/:id/chatbox-link — WebChat standalone page link
   fastify.post<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-link',
-    { preHandler: requireSupervisor() },
+    { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
       const body = chatboxLinkSchema.parse(request.body);
       const channel = await fastify.prisma.channel.findFirst({
@@ -284,7 +284,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/channels/:id/chatbox-theme — WebChat chatbox public theme
   fastify.patch<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-theme',
-    { preHandler: requireAdmin() },
+    { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
       const body = chatboxThemeSchema.parse(request.body);
       const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
@@ -317,7 +317,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels/:id/chatbox-theme/background — upload tenant-owned background image
   fastify.post<{ Params: { id: string } }>(
     '/:id/chatbox-theme/background',
-    { preHandler: requireAdmin() },
+    { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
       const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
       const file = await request.file();

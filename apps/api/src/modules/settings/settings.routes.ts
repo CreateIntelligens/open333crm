@@ -35,7 +35,7 @@ import {
   CLARIFY_SYSTEM_PROMPT,
   MODEL_GUIDE_SYSTEM_PROMPT,
 } from "../ai/llm.service.js";
-import { requireSupervisor } from "../../guards/rbac.guard.js";
+import { requirePermission } from "../../guards/rbac.guard.js";
 
 const dayScheduleSchema = z
   .object({
@@ -66,7 +66,7 @@ const officeHoursSchema = z.object({
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
-  fastify.addHook("preHandler", requireSupervisor());
+  fastify.addHook("preHandler", requirePermission("settings.manage"));
 
   // GET /api/v1/settings/office-hours
   fastify.get("/office-hours", async (request, reply) => {

@@ -193,6 +193,7 @@ model Tenant {
   updatedAt   DateTime @updatedAt
 
   agents                  Agent[]
+  roles                   Role[]
   channels                Channel[]
   contacts                Contact[]
   conversations           Conversation[]
@@ -238,12 +239,15 @@ model Agent {
   name         String
   avatarUrl    String?
   role         AgentRole @default(AGENT)
+  // 細粒度 RBAC：指向 Role 表；過渡期 nullable，與 role enum 雙寫，最終移除 enum
+  roleId       String?   @db.Uuid
   isActive     Boolean   @default(true)
   passwordHash String
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant  Tenant @relation(fields: [tenantId], references: [id])
+  roleRef Role?  @relation(fields: [roleId], references: [id])
 
   teams              AgentTeamMember[]
   assignedConvs      Conversation[]      @relation("AssignedAgent")
@@ -257,7 +261,47 @@ model Agent {
   // email 全域唯一：一個 email 只能屬於一個租戶（多租戶登入靠 email 解析租戶）
   @@unique([email])
   @@index([tenantId])
+  @@index([roleId])
   @@map("agents")
+}
+
+// ─────────────────────────────────────────────
+// RBAC: Role / RolePermission（細粒度權限，見 rbac-granular-permissions）
+// ─────────────────────────────────────────────
+
+model Role {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  // system role: admin/supervisor/agent（不可刪、slug 不可改）；custom role 自訂
+  slug      String
+  name      String
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  permissions RolePermission[]
+  agents      Agent[]
+
+  // 角色 slug 於租戶內唯一（比照 Tag 等租戶內唯一慣例，非全域）
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model RolePermission {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId         String   @db.Uuid
+  // 對應 permissions registry 的 code（registry 在程式碼，不設 DB FK；寫入時驗證存在）
+  permissionCode String
+  createdAt      DateTime @default(now())
+
+  // 隨所屬 Role 一起刪除；本身不帶 tenantId，靠 Role 間接隔離（比照 CaseTag）
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionCode])
+  @@index([roleId])
+  @@map("role_permissions")
 }
 
 // ─────────────────────────────────────────────

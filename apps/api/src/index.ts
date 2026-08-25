@@ -12,6 +12,8 @@ dotenv.config({ path: resolve(__dirname, '..', '..', '..', '.env') });
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 
+import { validatePermissionRegistry, validateRouteCodes } from '@open333crm/core';
+import { usedPermissionCodes } from './guards/rbac.guard.js';
 import { loadEnvConfig } from './config/env.js';
 import prismaPlugin from './plugins/prisma.plugin.js';
 import cookiePlugin from './plugins/cookie.plugin.js';
@@ -26,6 +28,7 @@ import contactRoutes from './modules/contact/contact.routes.js';
 import caseRoutes from './modules/case/case.routes.js';
 import tagRoutes from './modules/tag/tag.routes.js';
 import agentRoutes from './modules/agent/agent.routes.js';
+import roleRoutes from './modules/role/role.routes.js';
 import simulatorRoutes from './channels/simulator/simulator.routes.js';
 import automationRoutes from './modules/automation/automation.routes.js';
 import channelRoutes from './modules/channel/channel.routes.js';
@@ -69,6 +72,12 @@ import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin, threadsPlug
 
 export async function bootstrap() {
   const config = loadEnvConfig();
+
+  // RBAC: 啟動即驗證權限 registry 完整性（重複/懸空/成環/feature 缺失），有錯即拒絕啟動
+  const registryErrors = validatePermissionRegistry();
+  if (registryErrors.length) {
+    throw new Error(`權限 registry 驗證失敗：\n  - ${registryErrors.join('\n  - ')}`);
+  }
 
   const app = Fastify({
     // 30MB top-level body limit. Must be ≥ multipart fileSize so the
@@ -115,6 +124,7 @@ export async function bootstrap() {
   await app.register(caseRoutes, { prefix: '/api/v1/cases' });
   await app.register(tagRoutes, { prefix: '/api/v1/tags' });
   await app.register(agentRoutes, { prefix: '/api/v1/agents' });
+  await app.register(roleRoutes, { prefix: '/api/v1/roles' });
   await app.register(simulatorRoutes, { prefix: '/api/v1/simulator' });
   await app.register(automationRoutes, { prefix: '/api/v1/automation' });
   await app.register(channelRoutes, { prefix: '/api/v1/channels' });
@@ -157,6 +167,12 @@ export async function bootstrap() {
   setupCanvasScheduler(app.prisma);
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
   setupWebhookDispatcher(app.prisma);
+
+  // RBAC: 路由都註冊完後，驗證所有 requirePermission(code) 的 code 都存在於 registry
+  const routeErrors = validateRouteCodes(usedPermissionCodes);
+  if (routeErrors.length) {
+    throw new Error(`路由權限碼驗證失敗：\n  - ${routeErrors.join('\n  - ')}`);
+  }
 
   const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   for (const signal of signals) {

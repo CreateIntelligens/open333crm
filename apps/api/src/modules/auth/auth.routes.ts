@@ -10,6 +10,7 @@ import {
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
+import { getEffectivePermissions } from '../../services/permission.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { getConfig, type EnvConfig } from '../../config/env.js';
 import { FastifyJWT } from '@fastify/jwt';
@@ -80,6 +81,7 @@ type SessionAgent = {
   email: string;
   name: string;
   role: string;
+  roleId: string | null; // RBAC：細粒度權限判斷用，進 JWT
   avatarUrl: string | null;
 };
 
@@ -90,7 +92,7 @@ function issueAgentSession(
   config: EnvConfig,
   rememberMe: boolean,
 ) {
-  const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role };
+  const payload: TokenPayload = { agentId: agent.id, tenantId: agent.tenantId, role: agent.role, roleId: agent.roleId };
   const accessToken = signAccessToken(fastify, payload, config);
   const refreshToken = signRefreshToken(fastify, payload, config, rememberMe);
 
@@ -585,7 +587,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     try {
       const payload = fastify.jwt.verify<TokenPayload>(token);
-      const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role };
+      const tokenPayload: TokenPayload = { agentId: payload.agentId, tenantId: payload.tenantId, role: payload.role, roleId: payload.roleId };
 
       const accessToken = signAccessToken(fastify, tokenPayload, config);
       const newRefreshToken = signRefreshToken(fastify, tokenPayload, config, !!payload.rememberMe);
@@ -617,5 +619,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
     );
 
     return reply.send(success(agent));
+  });
+
+  // GET /api/v1/auth/me/permissions — 當前使用者的有效權限碼清單（前端 gating 用）
+  fastify.get('/me/permissions', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const eff = await getEffectivePermissions(fastify.prisma, request.agent.roleId);
+    return reply.send(success({ permissions: [...eff] }));
   });
 }

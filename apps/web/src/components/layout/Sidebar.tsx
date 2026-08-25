@@ -27,13 +27,15 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   badge?: number;
+  /** 需要的權限碼；未設代表登入即可 */
+  perm?: string;
 }
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { agent, logout } = useAuth();
+  const { agent, logout, hasPermission } = useAuth();
 
-  const navItems: NavItem[] = [
+  const allNavItems: NavItem[] = [
     {
       label: '收件匣',
       href: '/dashboard/inbox',
@@ -53,36 +55,43 @@ export function Sidebar() {
       label: '自動化',
       href: '/dashboard/automation',
       icon: <Zap className="h-5 w-5" />,
+      perm: 'automation.view',
     },
     {
       label: '知識庫',
       href: '/dashboard/knowledge',
       icon: <BookOpen className="h-5 w-5" />,
+      perm: 'knowledge.view',
     },
     {
       label: '行銷',
       href: '/dashboard/marketing',
       icon: <Send className="h-5 w-5" />,
+      perm: 'marketing.view',
     },
     {
       label: 'LINE 管理',
       href: '/dashboard/line/rich-menus',
       icon: <Smartphone className="h-5 w-5" />,
+      perm: 'richmenu.manage',
     },
     {
       label: '粉絲活動',
       href: '/dashboard/portal',
       icon: <Trophy className="h-5 w-5" />,
+      perm: 'portal.view',
     },
     {
       label: '短連結',
       href: '/dashboard/shortlinks',
       icon: <Link2 className="h-5 w-5" />,
+      perm: 'shortlink.view',
     },
     {
       label: '報表',
       href: '/dashboard/analytics',
       icon: <BarChart3 className="h-5 w-5" />,
+      perm: 'analytics.view',
     },
     {
       label: '設定',
@@ -90,6 +99,9 @@ export function Sidebar() {
       icon: <Settings className="h-5 w-5" />,
     },
   ];
+
+  // 依權限過濾：無 perm 一律顯示；有 perm 需持有該權限
+  const navItems = allNavItems.filter((item) => !item.perm || hasPermission(item.perm));
 
   return (
     <aside className="flex h-screen w-16 flex-col items-center border-r bg-background py-4 lg:w-56 lg:items-stretch">
