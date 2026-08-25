@@ -21,6 +21,7 @@ import {
   rejectMerge,
 } from '@open333crm/core';
 import { success, paginated } from '../../shared/utils/response.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,8 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // ── GET /api/v1/canvas ──────────────────────────────────────────────────
-  fastify.get('/', async (request, reply) => {
+  // registry 無 canvas.view，讀取端點一律以 canvas.use 守門
+  fastify.get('/', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, status } = query;
 
@@ -87,33 +89,33 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   });
 
   // ── POST /api/v1/canvas ─────────────────────────────────────────────────
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const data = createFlowSchema.parse(request.body);
     const flow = await createFlow(fastify.prisma, request.agent.tenantId, data as never);
     return reply.status(201).send(success(flow));
   });
 
   // ── GET /api/v1/canvas/:id ──────────────────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const flow = await getFlow(fastify.prisma, request.params.id, request.agent.tenantId);
     return reply.send(success(flow));
   });
 
   // ── PATCH /api/v1/canvas/:id ────────────────────────────────────────────
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const data = updateFlowSchema.parse(request.body);
     const flow = await updateFlow(fastify.prisma, request.params.id, request.agent.tenantId, data);
     return reply.send(success(flow));
   });
 
   // ── POST /api/v1/canvas/:id/activate ───────────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/:id/activate', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/activate', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const flow = await activateFlow(fastify.prisma, request.params.id, request.agent.tenantId);
     return reply.send(success(flow));
   });
 
   // ── POST /api/v1/canvas/:id/trigger ────────────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/:id/trigger', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/trigger', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const { contactId, vars } = triggerFlowSchema.parse(request.body);
     const executionId = await triggerFlow(
       fastify.prisma,
@@ -126,7 +128,7 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   });
 
   // ── GET /api/v1/canvas/:id/analytics ───────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/:id/analytics', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/analytics', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const analytics = await getFlowAnalytics(
       fastify.prisma,
       request.params.id,
@@ -136,7 +138,7 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   });
 
   // ── GET /api/v1/canvas/:id/executions ──────────────────────────────────
-  fastify.get<{ Params: { id: string } }>('/:id/executions', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/executions', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, status } = query;
 
@@ -157,7 +159,8 @@ export async function identityRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
 
   // ── GET /api/v1/identity/suggestions ───────────────────────────────────
-  fastify.get('/suggestions', async (request, reply) => {
+  // registry 無 identity.view，讀取端點一律以 identity.review 守門
+  fastify.get('/suggestions', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
     const query = suggestionQuerySchema.parse(request.query);
     const { status, page, limit } = query;
 
@@ -171,13 +174,13 @@ export async function identityRoutes(fastify: FastifyInstance) {
   });
 
   // ── POST /api/v1/identity/suggestions/:id/approve ──────────────────────
-  fastify.post<{ Params: { id: string } }>('/suggestions/:id/approve', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/suggestions/:id/approve', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
     await approveMerge(request.params.id, request.agent.id);
     return reply.send(success({ merged: true }));
   });
 
   // ── POST /api/v1/identity/suggestions/:id/reject ───────────────────────
-  fastify.post<{ Params: { id: string } }>('/suggestions/:id/reject', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/suggestions/:id/reject', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
     await rejectMerge(request.params.id, request.agent.id);
     return reply.send(success({ rejected: true }));
   });
