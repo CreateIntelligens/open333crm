@@ -8,6 +8,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **人員管理支援指派自訂角色** — 前端新增/編輯人員的角色下拉改為列出租戶所有角色（內建 + 自訂），選內建角色送 legacy `role`、選自訂角色送 `roleId`；成員清單以 `roleRef` 顯示角色名（自訂角色紫色 Badge）；並依 `agent.role.assign` 權限 gating、友善呈現 `ROLE_ESCALATION` 等錯誤。
 - **Passkey / WebAuthn authentication** — 新增 Agent Passkey 憑證模型、Redis challenge 防重放、註冊/登入/撤銷 API 與嚴格 RP ID、origin、User Verification 驗證。
+- **WebMCP 唯讀 CRM 工具** — 登入後的 CRM dashboard 若瀏覽器支援 WebMCP，會以目前登入 Agent 的 JWT 提供聯絡人、案件、分析與目前客服資訊查詢工具；不支援 WebMCP 的瀏覽器維持原有功能。
 
 ### Changed
 
@@ -71,6 +72,12 @@ All notable changes to **open333CRM** will be documented in this file.
 - **Watch 模式** — 開發環境支援檔案變更自動重載
 
 ### Fixed
+
+- **MCP 權限與開發環境 Origin** — `/mcp` 僅接受具 `mcp:read` scope 的 CLI token；開發環境未設定 allowed origins 時保留本機同源/localhost MCP 存取。
+- **Webhook identity 併發競態** — stitched contact 建立 `channelIdentity` 遇到 P2002 時改用並發請求已建立的 identity，並以 `isArchived` 保留孤兒 contact 的 soft-delete 語意。
+- **Passkey 管理端點防護** — passkey rename 與 revoke endpoint 補上 rate limit。
+- **Webhook verify token 隨機性** — Channel 編輯表單改用 `crypto.randomUUID()` 產生 Meta webhook verify token。
+- **MCP Prisma 型別來源** — MCP server 改由 `@open333crm/database` 提供 PrismaClient 型別。
 
 - **MCP 串流錯誤處理** — response stream 中途失敗且已送出 headers 時主動關閉連線，讓 MCP client 能辨識截斷回應並重試，避免誤判為成功。
 - **Webhook Echo 迴圈防護** — 過濾 Meta Webhook 發送者為自身的 Echo 訊息，防止 Bot 自問自答死迴圈

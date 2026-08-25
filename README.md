@@ -105,6 +105,29 @@ open333 apis --json
 - 在 **設定** → **CLI 連線** 列出所有 token，可查看最後使用時間
 - 不需要的 token 可直接撤銷，使用該 token 的 LLM/CLI 會立即失效
 
+### 瀏覽器 WebMCP
+
+登入後的 dashboard 支援 WebMCP。當瀏覽器提供 `document.modelContext` 時，CRM 會向瀏覽器代理註冊唯讀工具；不支援 WebMCP 的瀏覽器不會影響原有功能。
+
+WebMCP 工具會使用目前登入頁面的 access JWT 呼叫既有 API，JWT 不會列為工具參數，也不會回傳給模型。後端仍會執行 JWT 驗證、tenant isolation 與 RBAC。
+
+目前提供：
+
+- `crm_search_contacts` — 搜尋聯絡人
+- `crm_list_cases` — 篩選案件與 SLA 狀態
+- `crm_get_case` — 查詢單一案件
+- `crm_get_contact` — 查詢單一聯絡人
+- `crm_get_analytics_overview` — 查詢分析總覽（依既有角色權限）
+- `crm_get_current_agent` — 查詢目前登入客服
+
+本機驗收：
+
+1. 使用 Chrome 開啟 `chrome://flags/#enable-webmcp-testing`，啟用 WebMCP testing 後重新啟動瀏覽器。
+2. 登入 CRM dashboard。
+3. 使用 [Chrome Model Context Tool Inspector](https://developer.chrome.com/docs/ai/webmcp?hl=zh-tw#use_the_inspector_extension_to_simulate_an_agent_conversation) 查看並呼叫工具。
+
+WebMCP 仍是實驗性 Web API，詳細 API 請參考 [Chrome WebMCP 文件](https://developer.chrome.com/docs/ai/webmcp?hl=zh-tw)。遠端 LLM / CLI 整合仍使用上方的 `/mcp` 與 CLI token 流程。
+
 ## Passkey / WebAuthn 登入
 
 Passkey 提供 Agent 使用 Touch ID、Face ID、Windows Hello、裝置 PIN 或安全金鑰登入。密碼登入仍保留作為復原方式。

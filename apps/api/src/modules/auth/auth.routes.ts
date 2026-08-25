@@ -150,7 +150,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     return reply.send(success(issueAgentSession(fastify, reply, agent, config, !!body.rememberMe)));
   });
 
-  // POST /api/v1/auth/passkeys/register/options
+  // GET /api/v1/auth/passkeys/capability
   fastify.get('/passkeys/capability', async (_request, reply) => {
     try {
       getPasskeyConfig();
@@ -469,8 +469,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
     return reply.send(success(credentials));
   });
 
-  // DELETE /api/v1/auth/passkeys/:id
+  // PATCH /api/v1/auth/passkeys/:id
   fastify.patch('/passkeys/:id', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const { id } = passkeyIdParamsSchema.parse(request.params);
@@ -492,6 +498,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/auth/passkeys/:id
   fastify.delete('/passkeys/:id', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const { id } = passkeyIdParamsSchema.parse(request.params);

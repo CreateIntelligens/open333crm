@@ -26,18 +26,31 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
       });
 
       if (stitchedContact) {
-        contactId = stitchedContact.id;
-        channelIdentity = await ctx.prisma.channelIdentity.create({
-          data: {
-            contactId: stitchedContact.id,
-            channelId: ctx.channel.id,
-            channelType: ctx.channel.channelType as never,
-            uid: ctx.contactUid,
-            profileName: stitchedContact.displayName,
-            profilePic: stitchedContact.avatarUrl ?? null,
-          },
-          include: { contact: true },
-        });
+        try {
+          channelIdentity = await ctx.prisma.channelIdentity.create({
+            data: {
+              contactId: stitchedContact.id,
+              channelId: ctx.channel.id,
+              channelType: ctx.channel.channelType as never,
+              uid: ctx.contactUid,
+              profileName: stitchedContact.displayName,
+              profilePic: stitchedContact.avatarUrl ?? null,
+            },
+            include: { contact: true },
+          });
+        } catch (err) {
+          // 兩則訊息同時解析到同一 stitched contact 時，另一請求可能已先建立 identity。
+          if ((err as { code?: string }).code !== 'P2002') throw err;
+          channelIdentity = await ctx.prisma.channelIdentity.findUnique({
+            where: { channelId_uid: { channelId: ctx.channel.id, uid: ctx.contactUid } },
+            include: { contact: true },
+          });
+          if (!channelIdentity) throw err;
+        }
+        if (!channelIdentity) {
+          throw new Error(`Failed to resolve stitched identity for channel uid ${ctx.contactUid}`);
+        }
+        contactId = channelIdentity.contactId;
       }
     }
   }
@@ -72,7 +85,7 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
         data: {
           contactId: newContact.id,
           channelId: ctx.channel.id,
-          channelType: ctx.channel.channelType as any,
+          channelType: ctx.channel.channelType as never,
           uid: ctx.contactUid,
           profileName: displayName,
           profilePic: avatarUrl ?? null,
@@ -89,8 +102,11 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
       });
       if (!channelIdentity) throw err;
       contactId = channelIdentity.contactId;
-      await ctx.prisma.contact.delete({ where: { id: newContact.id } }).catch(() => {
-        /* 孤兒 contact 清不掉不影響主流程 */
+      await ctx.prisma.contact.update({
+        where: { id: newContact.id },
+        data: { isArchived: true },
+      }).catch(() => {
+        /* 孤兒 contact 標記失敗不影響主流程 */
       });
     }
   }
