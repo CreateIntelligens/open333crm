@@ -97,12 +97,14 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const body = updateAgentRoleSchema.parse(request.body);
 
     // 越權防護：不可指派權限超出自身有效權限的角色 → ROLE_ESCALATION 403
+    // 傳操作者本人 agentId（request.agent.id）供 service 做自我降級守門 → SELF_LOCK 422
     const agent = await updateAgentRole(
       fastify.prisma,
       request.agent.tenantId,
       id,
       { role: body.role, roleId: body.roleId },
       request.agent.roleId,
+      request.agent.id,
     );
     return reply.send(success(agent));
   });

@@ -40,6 +40,9 @@ jobs:
         env:
           SKIP_ENV_VALIDATION: true
 
+      - name: 租戶隔離檢查（漏帶 tenantId 的跨租戶洩漏防護）
+        run: node scripts/check-tenant-scoping.mjs --strict
+
       - name: Test (skip for now)
         run: echo "Tests skipped - add tests in future"
         continue-on-error: true

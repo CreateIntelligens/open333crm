@@ -1,10 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
+import { PERMISSIONS } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import { loadTenantRole } from '../role/role.service.js';
 import { getEffectivePermissions } from '../../services/permission.service.js';
+
+// 防自鎖的權限碼（registry 動態抽 selfLock:true，比照 role.service.setRolePermissions）：
+// 含 role.manage。用於「自我降級」守門，避免寫死單一權限碼。
+const SELF_LOCK_CODES = PERMISSIONS.filter((p) => p.selfLock).map((p) => p.code);
 
 // legacy enum role → system role slug（與 granular RBAC 雙寫的橋樑）
 const ENUM_TO_SLUG: Record<string, string> = {
@@ -188,6 +193,7 @@ export async function updateAgentRole(
   agentId: string,
   input: { role?: AgentRoleValue; roleId?: string },
   assignerRoleId: string | null | undefined,
+  selfAgentId: string | null | undefined,
 ) {
   const existing = await prisma.agent.findFirst({
     where: { id: agentId, tenantId },
@@ -207,6 +213,22 @@ export async function updateAgentRole(
     existing.role as AgentRoleValue,
     assignerRoleId,
   );
+
+  // 防自我降級（self-demotion）：操作者不可把「自己」改成不含 selfLock 權限（如 role.manage）
+  // 的角色，否則該租戶將失去所有能管理角色/權限的人，只能手動改 DB 復原。
+  // 僅在「目標即操作者本人」時檢查；改別人一律放行。
+  if (selfAgentId && agentId === selfAgentId && SELF_LOCK_CODES.length) {
+    const newEff = await getEffectivePermissions(prisma, roleId);
+    const retainsSelfLock = SELF_LOCK_CODES.some((c) => newEff.has(c));
+    if (!retainsSelfLock) {
+      throw new AppError(
+        `無法將自己改為此角色：改後你將失去管理角色權限的能力（缺少: ${SELF_LOCK_CODES.join(', ')}）`,
+        'SELF_LOCK',
+        422,
+        { selfLockPermissions: SELF_LOCK_CODES },
+      );
+    }
+  }
 
   const agent = await prisma.agent.update({
     where: { id: agentId },

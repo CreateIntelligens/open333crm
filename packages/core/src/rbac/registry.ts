@@ -92,6 +92,13 @@ export function validatePermissionRegistry(): string[] {
   const cycleErr = detectImpliesCycle();
   if (cycleErr) errors.push(cycleErr);
 
+  // 6. self-lock 完整性：至少需一個 selfLock:true 權限（如 role.manage）。
+  //    否則 agent.service 的「防自我降級鎖死」守門（SELF_LOCK_CODES 為空時整段跳過）
+  //    會無聲失效（fail-open）→ 最後一位管理者可把自己降級鎖死租戶。fail-loud 擋在啟動。
+  if (!PERMISSIONS.some((p) => p.selfLock)) {
+    errors.push('registry 缺少任何 selfLock:true 權限點：防自我降級鎖死守門將失效，請保留至少一個（如 role.manage）');
+  }
+
   return errors;
 }
 

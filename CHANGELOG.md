@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **租戶隔離 CI 檢查（`scripts/check-tenant-scoping.mjs`）** — 靜態掃描所有對 41 個「含 tenantId 欄位」租戶表的 Prisma query，抓出 where 完全未帶 tenantId 的跨租戶洩漏風險；排除平台層/scheduler/認證入口等合法跨租戶查詢，where 為變數時往上追其定義。`--strict` 模式在偵測到疑似漏帶時 exit 1，已接入 CI（Build 後）作回歸防護。目前 codebase 掃描結果 0 洩漏。
 - **人員管理支援指派自訂角色** — 前端新增/編輯人員的角色下拉改為列出租戶所有角色（內建 + 自訂），選內建角色送 legacy `role`、選自訂角色送 `roleId`；成員清單以 `roleRef` 顯示角色名（自訂角色紫色 Badge）；並依 `agent.role.assign` 權限 gating、友善呈現 `ROLE_ESCALATION` 等錯誤。
 - **Passkey / WebAuthn authentication** — 新增 Agent Passkey 憑證模型、Redis challenge 防重放、註冊/登入/撤銷 API 與嚴格 RP ID、origin、User Verification 驗證。
 - **WebMCP 唯讀 CRM 工具** — 登入後的 CRM dashboard 若瀏覽器支援 WebMCP，會以目前登入 Agent 的 JWT 提供聯絡人、案件、分析與目前客服資訊查詢工具；不支援 WebMCP 的瀏覽器維持原有功能。
@@ -17,6 +18,9 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **啟動驗證加固：registry 必須保留 selfLock 權限** — `validatePermissionRegistry()` 新增第 6 項檢查：registry 若無任何 `selfLock:true` 權限點即啟動失敗（fail-loud）。避免未來重構誤刪 `role.manage` 的 selfLock 導致 agent.service 的「防自我降級鎖死」守門（`SELF_LOCK_CODES` 為空時整段跳過）無聲失效。（PR review bot 提出的邊界條件，加保險。）
+- **自我降級鎖死租戶修補（RBAC self-demotion，安全性）** — `PATCH /agents/:id/role` 先前只擋「向上指派超出自身的角色」（`ROLE_ESCALATION`），降級一律放行，且 route 未傳操作者本人 agentId，使最後一位持有 `role.manage`（`selfLock`）的成員可把「自己」改成不含該權限的角色，令整個租戶失去所有能管理角色/權限的人，角色 CRUD 與權限矩陣頁全 403、只能手動改 DB 復原。現 route 將 `request.agent.id` 傳入 `updateAgentRole`；service 在解析出目標 roleId 後，若目標即操作者本人且新角色的有效權限不含任何 registry 標記 `selfLock:true` 的權限碼（動態抽取，非寫死 `role.manage`），即拋 `SELF_LOCK` 422。管理員改別人角色、或把自己改為仍含 `role.manage` 的角色皆不受影響。
+- **RBAC 寫入權限退化修補（canvas / identity）（安全性）** — 延續細粒度權限 migration 的系統性疏漏排查：自動化畫布（canvas）與識別建議審核（identity）兩組路由先前僅有 module-level `authenticate`，完全未掛 `requirePermission`，使 registry 的 `canvas.use`、`identity.review` 權限點形同死碼、任何登入者皆可操作。現為 canvas 全部端點（GET 清單/詳情/analytics/executions、POST 建立/activate/trigger、PATCH 更新）補 `requirePermission('canvas.use')`，identity 全部端點（GET suggestions、POST approve/reject）補 `requirePermission('identity.review')`；registry 未定義獨立 view 權限，故讀取端點一併沿用同一 code 守門。預設 supervisor/agent 角色本就具備此兩權限，既有可用角色不受影響。
 - **指派自訂角色不再無謂降級 legacy role** — 前端 `buildRolePayload` 對 custom role 固定送 `role: 'AGENT'`，會把成員原本的 legacy role（如 SUPERVISOR）覆寫成 AGENT，影響仍讀 legacy role enum 的舊功能（實際權限走 roleId 不受影響）。變更角色時改用成員當前 role 作為 legacy 回填值；並將 `Agent.role` 型別收窄為 enum union。（PR review bot 提出，經確認採納。）
 - **試用信件模板未轉義使用者輸入（XSS 加固）** — trial 信件的 `{{siteName}}` 等變數來自申請時使用者自填（`siteName` 僅限長度、不限字元），原樣經 `renderTemplateBody` 字串替換進 email HTML 未轉義，可注入惡意 HTML。於 `trial-emails.ts` 的 `render()` 對所有變數值先做 HTML escape 再替換（不動共用 `renderTemplateBody`，避免影響行銷 LINE Flex 模板）。（PR review bot 提出，經確認 `siteName` 確為使用者可控故採納。）
 - **新租戶儲存 BYOK Gemini key 失敗（P2025/404）** — `setTenantGeminiKey` 用 `prisma.tenantSettings.update`，但 `TenantSettings` 為延遲建立，新開通、尚未動過任何設定的租戶還沒有此列，直接呼叫 `PUT /settings/gemini-key` 會拋 P2025（回 404）導致 key 存不進去。改用 `upsert`（無列則建立、有列則更新），與本檔其他 TenantSettings 寫入一致。
