@@ -10,6 +10,13 @@ import { getEffectivePermissions } from '../../services/permission.service.js';
 // 防自鎖的權限碼（registry 動態抽 selfLock:true，比照 role.service.setRolePermissions）：
 // 含 role.manage。用於「自我降級」守門，避免寫死單一權限碼。
 const SELF_LOCK_CODES = PERMISSIONS.filter((p) => p.selfLock).map((p) => p.code);
+// module-load 斷言：registry 至少要有一個 selfLock 權限，否則下方自我降級守門會被
+// `&& SELF_LOCK_CODES.length` 短路整段跳過而 fail-open。與 core registry 啟動驗證並存（縱深防禦）。
+if (SELF_LOCK_CODES.length === 0) {
+  throw new Error(
+    'FATAL: registry 無任何 selfLock 權限 → 防自我降級守門將失效。請確保至少一個權限標記 selfLock:true（如 role.manage）。',
+  );
+}
 
 // legacy enum role → system role slug（與 granular RBAC 雙寫的橋樑）
 const ENUM_TO_SLUG: Record<string, string> = {
@@ -217,7 +224,7 @@ export async function updateAgentRole(
   // 防自我降級（self-demotion）：操作者不可把「自己」改成不含 selfLock 權限（如 role.manage）
   // 的角色，否則該租戶將失去所有能管理角色/權限的人，只能手動改 DB 復原。
   // 僅在「目標即操作者本人」時檢查；改別人一律放行。
-  if (selfAgentId && agentId === selfAgentId && SELF_LOCK_CODES.length) {
+  if (selfAgentId && agentId === selfAgentId) {
     const newEff = await getEffectivePermissions(prisma, roleId);
     const retainsSelfLock = SELF_LOCK_CODES.some((c) => newEff.has(c));
     if (!retainsSelfLock) {
