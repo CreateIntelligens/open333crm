@@ -82,9 +82,11 @@ export async function createChannel(
       plan: { select: { limits: true, allowedChannelTypes: true } },
     },
   });
+  // fail-loud：查不到租戶就報錯，而非靜默跳過所有方案限制（fail-open）
+  if (!tenant) throw new AppError('租戶不存在', 'NOT_FOUND', 404);
 
   // 渠道 provider 白名單硬擋：白名單非空且此類型不在內 → 擋。空陣列 = 不限制。只擋新建。
-  const allowed = (tenant?.plan?.allowedChannelTypes ?? []) as string[];
+  const allowed = (tenant.plan?.allowedChannelTypes ?? []) as string[];
   if (Array.isArray(allowed) && allowed.length > 0 && !allowed.includes(data.channelType)) {
     throw new AppError('此方案不允許建立該渠道類型，請升級方案或改用其他渠道', 'CHANNEL_TYPE_NOT_ALLOWED', 403, {
       channelType: data.channelType,
@@ -93,7 +95,7 @@ export async function createChannel(
   }
 
   // 渠道數上限硬擋（建立時 count 檢查；無上限 = null 時跳過）。只算 isActive，比照 maxAgents。
-  const maxChannels = tenant ? resolveEffectiveLimit(tenant, 'maxChannels') : null;
+  const maxChannels = resolveEffectiveLimit(tenant, 'maxChannels');
   if (maxChannels !== null) {
     const activeCount = await prisma.channel.count({ where: { tenantId, isActive: true } });
     if (activeCount >= maxChannels) {
