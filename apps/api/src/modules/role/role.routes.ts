@@ -11,6 +11,7 @@ import {
   setRolePermissions,
   getPermissionMatrix,
 } from './role.service.js';
+import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const nameSchema = z.object({ name: z.string().min(1).max(20) });
 const permsSchema = z.object({ permissions: z.array(z.string()) });
@@ -69,6 +70,16 @@ export default async function roleRoutes(fastify: FastifyInstance) {
       permissions,
       request.agent.roleId,
     );
+    // 稽核：更新角色權限（payload 記角色與最終權限碼清單，權限碼非 PII）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'role.permission.update',
+      targetType: 'role',
+      targetId: id,
+      payload: { permissions: result.permissions },
+      ip: request.ip,
+    });
     return reply.send(success(result));
   });
 }

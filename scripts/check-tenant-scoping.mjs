@@ -33,7 +33,7 @@ const TENANT_MODELS = new Set([
   'portalActivity', 'portalSubmission', 'pointTransaction', 'shortLink', 'interactionFlow',
   'flowExecution', 'identityMap', 'mergeSuggestion', 'partnerApiKey', 'cliSession',
   'passkeyCredential', 'quickReplyPreset', 'kbArticleFeedback', 'aiUsage', 'trialSignup',
-  'planChangeRequest',
+  'planChangeRequest', 'tenantAuditLog', 'dataExportRequest', 'dataErasureRequest',
 ]);
 
 // query 方法（會回傳/影響多列、需 tenantId 限定的）

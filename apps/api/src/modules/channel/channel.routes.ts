@@ -18,6 +18,7 @@ import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { downstreamWebhookConfigSchema } from '../webhook/downstream-forwarder.js';
+import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -132,6 +133,17 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
     const channel = await createChannel(fastify.prisma, request.agent.tenantId, data);
 
+    // 稽核：建立渠道（只放型別與顯示名，絕不放 credentials 憑證）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'channel.create',
+      targetType: 'channel',
+      targetId: channel.id,
+      payload: { channelType: data.channelType, displayName: data.displayName },
+      ip: request.ip,
+    });
+
     return reply.status(201).send(success(channel));
   });
 
@@ -167,6 +179,16 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
     );
+
+    // 稽核：刪除渠道
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'channel.delete',
+      targetType: 'channel',
+      targetId: request.params.id,
+      ip: request.ip,
+    });
 
     return reply.send(success(result));
   });

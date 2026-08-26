@@ -14,6 +14,7 @@ import {
   resetAgentPassword,
   deactivateAgent,
 } from './agent.service.js';
+import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 export default async function agentRoutes(fastify: FastifyInstance) {
   // All routes require authentication
@@ -78,6 +79,16 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       body,
       request.agent.roleId,
     );
+    // 稽核：建立成員（payload 只放非 PII 摘要——email 不入 payload，改用 targetId 對應 agent）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.create',
+      targetType: 'agent',
+      targetId: agent.id,
+      payload: { role: agent.role },
+      ip: request.ip,
+    });
     return reply.status(201).send(success(agent));
   });
 
@@ -106,6 +117,16 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       request.agent.roleId,
       request.agent.id,
     );
+    // 稽核：指派/變更成員角色
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.role.assign',
+      targetType: 'agent',
+      targetId: id,
+      payload: { role: agent.role, roleId: body.roleId ?? null },
+      ip: request.ip,
+    });
     return reply.send(success(agent));
   });
 
@@ -116,6 +137,15 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = resetPasswordSchema.parse(request.body);
     await resetAgentPassword(fastify.prisma, request.agent.tenantId, id, body.newPassword);
+    // 稽核：重設他人密碼（絕不記錄密碼明文，只記操作事實）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.password.reset',
+      targetType: 'agent',
+      targetId: id,
+      ip: request.ip,
+    });
     return reply.send(success({ message: 'Password reset' }));
   });
 
@@ -125,6 +155,15 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     await deactivateAgent(fastify.prisma, request.agent.tenantId, id);
+    // 稽核：停用（軟刪）成員
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.delete',
+      targetType: 'agent',
+      targetId: id,
+      ip: request.ip,
+    });
     return reply.status(204).send();
   });
 }

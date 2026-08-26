@@ -18,6 +18,7 @@ import {
 import { recordCsatScore } from '../csat/csat.service.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
+import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
 
@@ -170,6 +171,16 @@ export default async function caseRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
     );
+
+    // 稽核：刪除案件
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'case.delete',
+      targetType: 'case',
+      targetId: request.params.id,
+      ip: request.ip,
+    });
 
     return reply.send(success(deleted));
   });
