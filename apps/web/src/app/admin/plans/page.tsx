@@ -43,7 +43,10 @@ export default function PlansPage() {
   useEffect(() => {
     load();
     // 動態載入功能清單（單一資料源＝後端 core registry）
-    platformApi.get('/registry').then((r) => setFeatures(r.data.data.features)).catch(() => {});
+    platformApi
+      .get('/registry')
+      .then((r) => setFeatures(r.data.data.features))
+      .catch(() => setMsg('功能清單載入失敗，請重新整理'));
   }, []);
 
   const toggleFeature = (planId: string, feature: string) => {

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
+import { ChannelType } from '@prisma/client';
 import { buildPlatformRegistry } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
@@ -73,11 +74,12 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   // ── 以下皆需平台 superuser ──
   const guard = { preHandler: [fastify.authenticatePlatformSuperuser] };
 
-  // 功能 registry（方案設定頁動態載入用，單一資料源＝core FEATURES + permissions + ChannelType enum）
+  // 功能 registry（方案設定頁動態載入用，單一資料源＝core FEATURES + permissions + Prisma ChannelType enum）
   fastify.get('/registry', guard, async () =>
     success({
       features: buildPlatformRegistry(),
-      channelTypes: ['LINE', 'FB', 'WEBCHAT', 'WHATSAPP', 'TELEGRAM', 'THREADS'],
+      // 動態取 Prisma ChannelType enum 值（非寫死，未來加新渠道類型自動出現）
+      channelTypes: Object.values(ChannelType),
     }),
   );
 
