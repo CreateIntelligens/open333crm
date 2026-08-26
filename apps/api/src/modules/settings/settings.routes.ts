@@ -37,6 +37,7 @@ import {
 } from "../ai/llm.service.js";
 import { getTenantGeminiKeyStatus, setTenantGeminiKey } from "../ai/ai-key.service.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
+import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 
 const dayScheduleSchema = z
   .object({
@@ -84,6 +85,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       data.timezone,
       data.officeHours as any,
     );
+    // 稽核：變更系統設定（只記變更的設定區塊，不放敏感值）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: "settings.update",
+      targetType: "settings",
+      payload: { section: "office-hours" },
+      ip: request.ip,
+    });
     return reply.send(success(result));
   });
 
@@ -121,6 +131,19 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       },
       select: { gaId: true, metaPixelId: true },
     });
+    // 稽核：變更追蹤設定（只記有無設定 GA/Pixel，不放 ID 值）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId,
+      actorId: request.agent.id,
+      action: "settings.update",
+      targetType: "settings",
+      payload: {
+        section: "tracking",
+        gaIdSet: Boolean(data.gaId),
+        metaPixelIdSet: Boolean(data.metaPixelId),
+      },
+      ip: request.ip,
+    });
     return reply.send(success(settings));
   });
 
@@ -153,6 +176,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       patch,
     );
+    // 稽核：變更 Embedding 設定（只記變更的欄位名，不放 baseUrl 等值）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: "settings.update",
+      targetType: "settings",
+      payload: { section: "embedding", keys: Object.keys(patch) },
+      ip: request.ip,
+    });
     return reply.send(success(result));
   });
 
@@ -199,6 +231,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       patch,
     );
+    // 稽核：變更 Chat/LLM 設定（只記變更的欄位名，不放 prompt/model 明文）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: "settings.update",
+      targetType: "settings",
+      payload: { section: "chat", keys: Object.keys(patch) },
+      ip: request.ip,
+    });
     return reply.send(success(result));
   });
 
@@ -214,6 +255,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       .object({ apiKey: z.string().min(1).nullable() })
       .parse(request.body);
     await setTenantGeminiKey(fastify.prisma, request.agent.tenantId, apiKey);
+    // 稽核：設定/清除 BYOK 金鑰（絕不記金鑰明文，只記「設定」或「清除」動作）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: "settings.update",
+      targetType: "settings",
+      payload: { section: "gemini-key", operation: apiKey ? "set" : "clear" },
+      ip: request.ip,
+    });
     const status = await getTenantGeminiKeyStatus(fastify.prisma, request.agent.tenantId);
     return reply.send(success(status));
   });

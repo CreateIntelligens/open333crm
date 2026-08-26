@@ -185,25 +185,25 @@ enum SuggestionStatus {
 // ─────────────────────────────────────────────
 
 model Tenant {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  description        String?
+  isActive           Boolean   @default(true)
   // 平台層方案（nullable：既有租戶為 null = 不設功能天花板、無數值上限）
-  planId      String?  @db.Uuid
+  planId             String?   @db.Uuid
   // 單租戶數值上限覆寫（有效上限 = limitOverrides[key] ?? plan.limits[key]）
-  limitOverrides Json  @default("{}")
+  limitOverrides     Json      @default("{}")
   // 試用到期時間（null = 非試用；轉正式時清 null）
-  trialEndsAt DateTime?
+  trialEndsAt        DateTime?
   // 已寄出的到期提醒天數檔位（如 [7]），冪等閘避免重寄
-  trialRemindersSent Json @default("[]")
+  trialRemindersSent Json      @default("[]")
   // 合約起訖日（純記錄，供平台方管理；nullable，MUST NOT 觸發任何自動生命週期行為，與 trialEndsAt 區隔）
-  contractStartDate DateTime?
-  contractEndDate   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  contractStartDate  DateTime?
+  contractEndDate    DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  plan                    Plan?    @relation(fields: [planId], references: [id])
+  plan                    Plan?                    @relation(fields: [planId], references: [id])
   agents                  Agent[]
   roles                   Role[]
   channels                Channel[]
@@ -238,6 +238,9 @@ model Tenant {
   kbArticleFeedback       KbArticleFeedback[]
   aiUsages                AiUsage[]
   planChangeRequests      PlanChangeRequest[]
+  tenantAuditLogs         TenantAuditLog[]
+  dataExportRequests      DataExportRequest[]
+  dataErasureRequests     DataErasureRequest[]
 
   @@map("tenants")
 }
@@ -263,14 +266,17 @@ model Agent {
   tenant  Tenant @relation(fields: [tenantId], references: [id])
   roleRef Role?  @relation(fields: [roleId], references: [id])
 
-  teams              AgentTeamMember[]
-  assignedConvs      Conversation[]      @relation("AssignedAgent")
-  assignedCases      Case[]              @relation("AssignedAgent")
-  caseEvents         CaseEvent[]
-  sentMessages       Message[]
-  notifications      Notification[]
-  cliSessions        CliSession[]
-  passkeyCredentials PasskeyCredential[]
+  teams               AgentTeamMember[]
+  assignedConvs       Conversation[]       @relation("AssignedAgent")
+  assignedCases       Case[]               @relation("AssignedAgent")
+  caseEvents          CaseEvent[]
+  sentMessages        Message[]
+  notifications       Notification[]
+  cliSessions         CliSession[]
+  passkeyCredentials  PasskeyCredential[]
+  auditLogs           TenantAuditLog[]
+  dataExportRequests  DataExportRequest[]
+  dataErasureRequests DataErasureRequest[]
 
   // email 全域唯一：一個 email 只能屬於一個租戶（多租戶登入靠 email 解析租戶）
   @@unique([email])
@@ -1779,19 +1785,19 @@ model ModelPricing {
 
 // 方案（平台全域）。features = 功能天花板；limits = 數值上限 Json（null=無上限）。
 model Plan {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug         String   @unique // trial | light | standard | professional | enterprise
-  name         String
-  features     Json     @default("[]") // string[]：方案含的 feature module slug
-  limits       Json     @default("{}") // { maxAgents, maxTags, monthlyTokens, maxChannels, ... }；值 null=無上限
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                String   @unique // trial | light | standard | professional | enterprise
+  name                String
+  features            Json     @default("[]") // string[]：方案含的 feature module slug
+  limits              Json     @default("{}") // { maxAgents, maxTags, monthlyTokens, maxChannels, ... }；值 null=無上限
   // ChannelType[] 白名單：方案可用的渠道類型。空陣列 [] = 不限制（可用全部）。只擋新建，不影響既有渠道。
-  allowedChannelTypes Json @default("[]")
+  allowedChannelTypes Json     @default("[]")
   // 功能點細分：從 feature 天花板再扣掉的權限碼。形狀 { deny: string[] }。deny 高階不連坐低階。
-  permissionOverrides Json @default("{}")
-  priceMonthly Int? // 顯示用，不接金流；企業版可 null
-  isActive     Boolean  @default(true) // 停售軟下架
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  permissionOverrides Json     @default("{}")
+  priceMonthly        Int? // 顯示用，不接金流；企業版可 null
+  isActive            Boolean  @default(true) // 停售軟下架
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   tenants Tenant[]
 
@@ -1828,6 +1834,73 @@ model PlatformAuditLog {
 
   @@index([platformUserId, createdAt])
   @@map("platform_audit_logs")
+}
+
+// 租戶層操作稽核。記錄租戶內敏感操作（改設定/刪聯絡人/匯出名單/改權限等），租戶 ADMIN 可查。
+// 與 PlatformAuditLog（平台方看）區隔：本表 tenantId scoped、租戶自己可讀。
+model TenantAuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @db.Uuid
+  actorId    String?  @db.Uuid // 操作者 agent（系統/排程觸發時可為 null）
+  action     String // e.g. settings.update | contact.delete | marketing.list.export
+  targetType String? // contact | agent | role | channel | setting | ...
+  targetId   String?
+  payload    Json? // 變更摘要（不放 PII/敏感明文）
+  ip         String? // 來源 IP（可稽核）
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  Agent? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action, createdAt])
+  @@index([tenantId, actorId, createdAt])
+  @@map("tenant_audit_logs")
+}
+
+// 資料匯出請求（GDPR Art.20 可攜權）。非同步走 worker 產檔存 MinIO。
+model DataExportRequest {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @db.Uuid
+  requestedBy   String    @db.Uuid // 發起 agent
+  status        String    @default("pending") // pending | processing | completed | failed | expired
+  scope         Json? // 匯出範圍（哪些資料類型）；null=全部
+  fileKey       String? // MinIO 物件 key
+  fileSizeBytes Int?
+  downloadCount Int       @default(0)
+  error         String?
+  expiresAt     DateTime? // 下載連結/檔案保留到期
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requester Agent  @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("data_export_requests")
+}
+
+// 資料刪除請求（GDPR Art.17 被遺忘權）。聯絡人粒度：匿名化或硬刪。
+model DataErasureRequest {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
+  requestedBy String    @db.Uuid
+  contactId   String    @db.Uuid // 目標聯絡人（刪除後此欄仍留存於稽核用途）
+  mode        String    @default("anonymize") // anonymize | hard_delete
+  status      String    @default("pending") // pending | processing | completed | failed
+  reason      String?
+  affected    Json? // 連鎖影響計數（不含 PII）
+  error       String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requester Agent  @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("data_erasure_requests")
 }
 
 // 平台全域設定（KV）。承載 trial.* 政策參數等。

@@ -110,6 +110,11 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   { code: 'role.view', group: '人員與權限', feature: 'core', label: '檢視角色權限', description: '開啟角色權限設定頁' },
   { code: 'role.manage', group: '人員與權限', feature: 'core', label: '管理角色權限', description: '角色 CRUD、RolePermission 指派', dependsOn: ['role.view'], adminLock: true, selfLock: true },
   { code: 'billing.view', group: '人員與權限', feature: 'core', label: '檢視方案與用量', description: '租戶站內方案/用量頁' },
+
+  // ── 稽核與合規（feature: core）──
+  { code: 'audit.view', group: '稽核與合規', feature: 'core', label: '檢視操作稽核', description: '租戶操作稽核日誌查詢' },
+  { code: 'data.export', group: '稽核與合規', feature: 'core', label: '匯出租戶資料', description: 'GDPR 可攜權：匯出聯絡人/案件/對話等' },
+  { code: 'data.erase', group: '稽核與合規', feature: 'core', label: '刪除聯絡人資料', description: 'GDPR 被遺忘權：匿名化或硬刪聯絡人', dependsOn: ['contact.view'] },
 ] as const;
 
 /** 所有權限碼集合（快速查詢用） */

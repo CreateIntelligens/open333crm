@@ -33,6 +33,11 @@ import { handleSlaPoll } from './handlers/sla.handler.js';
 // Worker 端不再 polling broadcasts 避免雙發 race。
 import { handleNotificationJob } from './handlers/notification.handler.js';
 import { handleAutomationJob } from './handlers/automation.handler.js';
+import { handleDataErasureJob } from './handlers/data-erasure.handler.js';
+import {
+  handleDataExportJob,
+  handleDataExportCleanup,
+} from './handlers/data-export.handler.js';
 import { closeNotificationQueue } from './lib/notification-queue.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -66,6 +71,14 @@ async function main() {
   const slaQueue = new Queue('sla', { connection });
 
   await slaQueue.add('sla:poll', {}, { repeat: { every: 300_000 }, jobId: 'sla:poll' });
+
+  // 資料匯出保留期清理：每小時掃一次，把到期的 completed 轉 expired 並刪 MinIO 物件
+  const dataExportCleanupQueue = new Queue('data-export-cleanup', { connection });
+  await dataExportCleanupQueue.add(
+    'data-export:cleanup',
+    {},
+    { repeat: { every: 3_600_000 }, jobId: 'data-export:cleanup' },
+  );
 
   // 順手清掉舊的 broadcast repeatable job（如果之前 worker 跑過、Redis 仍有殘留）
   const legacyBroadcastQueue = new Queue('broadcast', { connection });
@@ -112,6 +125,37 @@ async function main() {
     { connection },
   );
 
+  const dataErasureWorker = new Worker(
+    'data-erasure',
+    async (job) => {
+      logger.info(`[data-erasure] Processing job ${job.id}: ${job.name}`);
+      await handleDataErasureJob(job, prisma, redisPublisher);
+    },
+    { connection },
+  );
+
+  const dataExportWorker = new Worker(
+    'data-export',
+    async (job) => {
+      logger.info(`[data-export] Processing job ${job.id}: ${job.name}`);
+      await handleDataExportJob(job, prisma, redisPublisher);
+    },
+    { connection },
+  );
+
+  const dataExportCleanupWorker = new Worker(
+    'data-export-cleanup',
+    async (job) => {
+      logger.info(`[data-export-cleanup] Processing job ${job.id}: ${job.name}`);
+      try {
+        await handleDataExportCleanup(prisma);
+      } catch (err) {
+        logger.error('[data-export-cleanup] Cleanup failed', { err });
+      }
+    },
+    { connection },
+  );
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────────
   const shutdown = async () => {
     logger.info('Shutting down workers...');
@@ -119,8 +163,12 @@ async function main() {
       slaWorker.close(),
       notificationWorker.close(),
       automationWorker.close(),
+      dataErasureWorker.close(),
+      dataExportWorker.close(),
+      dataExportCleanupWorker.close(),
     ]);
     await slaQueue.close();
+    await dataExportCleanupQueue.close();
     await closeNotificationQueue();
     await prisma.$disconnect();
     connection.disconnect();
@@ -131,7 +179,9 @@ async function main() {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
-  logger.info('Workers ready: sla (repeating), notification, automation');
+  logger.info(
+    'Workers ready: sla (repeating), notification, automation, data-erasure, data-export, data-export-cleanup (repeating)',
+  );
 }
 
 main().catch((err) => {

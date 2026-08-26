@@ -13,6 +13,7 @@ import {
   mergeContacts,
 } from './contact.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
+import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const listQuerySchema = z.object({
   q: z.string().optional(),
@@ -95,6 +96,17 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       body.primaryContactId,
       body.secondaryContactId,
     );
+
+    // 稽核：合併聯絡人（只放兩造 id，不放姓名/電話等 PII 明文）
+    await writeTenantAudit(fastify.prisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'contact.merge',
+      targetType: 'contact',
+      targetId: body.primaryContactId,
+      payload: { primaryContactId: body.primaryContactId, secondaryContactId: body.secondaryContactId },
+      ip: request.ip,
+    });
 
     return reply.send(success(result));
   });
