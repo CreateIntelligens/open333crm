@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
+import { buildPlatformRegistry } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
@@ -71,6 +72,14 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // ── 以下皆需平台 superuser ──
   const guard = { preHandler: [fastify.authenticatePlatformSuperuser] };
+
+  // 功能 registry（方案設定頁動態載入用，單一資料源＝core FEATURES + permissions + ChannelType enum）
+  fastify.get('/registry', guard, async () =>
+    success({
+      features: buildPlatformRegistry(),
+      channelTypes: ['LINE', 'FB', 'WEBCHAT', 'WHATSAPP', 'TELEGRAM', 'THREADS'],
+    }),
+  );
 
   // Plans
   fastify.get('/plans', guard, async () => success(await listPlans(fastify.prisma)));

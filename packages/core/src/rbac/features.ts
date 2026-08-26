@@ -14,19 +14,21 @@ export interface FeatureDef {
   slug: string;
   /** 顯示名稱（使用者語言） */
   label: string;
+  /** 功能說明：涵蓋哪些能力（給平台方案設定頁對照用；單一資料源，前端不再另維護） */
+  desc?: string;
   /** 核心 feature：恆開、不可被 entitlement 關閉 */
   core?: boolean;
 }
 
 export const FEATURES: readonly FeatureDef[] = [
-  { slug: 'inbox', label: '客服收發' },
-  { slug: 'channels', label: '渠道管理' },
-  { slug: 'automation', label: '自動化' },
-  { slug: 'marketing', label: '行銷群發' },
-  { slug: 'analytics', label: '分析報表' },
-  { slug: 'knowledge', label: '知識庫' },
-  { slug: 'portal', label: '粉絲活動' },
-  { slug: 'core', label: '帳號 · 角色 · 設定', core: true },
+  { slug: 'inbox', label: '客服收發', desc: '收件匣對話、案件（工單）、聯絡人、標籤、短連結' },
+  { slug: 'channels', label: '渠道管理', desc: 'LINE／FB／IG／WebChat 渠道、圖文選單、快速回覆' },
+  { slug: 'automation', label: '自動化', desc: '自動化規則、對話流程畫布、身分識別建議' },
+  { slug: 'marketing', label: '行銷群發', desc: '分眾名單、行銷活動、群發、素材與模板' },
+  { slug: 'analytics', label: '分析報表', desc: '各維度數據報表、個人績效、報表匯出' },
+  { slug: 'knowledge', label: '知識庫', desc: '知識文章、語意搜尋、批次匯入' },
+  { slug: 'portal', label: '粉絲活動', desc: '活動頁、抽獎、會員點數' },
+  { slug: 'core', label: '帳號 · 角色 · 設定', desc: '成員與角色權限、系統設定、SLA、Webhook、方案用量（核心功能，恆開）', core: true },
 ] as const;
 
 /** 所有 feature slug 集合 */

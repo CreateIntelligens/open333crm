@@ -3,29 +3,6 @@
 import { useEffect, useState } from 'react';
 import { platformApi } from '../lib/platform-api';
 
-const ALL_FEATURES = ['inbox', 'channels', 'automation', 'marketing', 'analytics', 'knowledge', 'portal', 'core'];
-// 功能代碼 → 中文顯示（對齊 @open333crm/core 的 features 定義；代碼本身傳後端不變，只換顯示）
-const FEATURE_LABELS: Record<string, string> = {
-  inbox: '客服收發',
-  channels: '渠道管理',
-  automation: '自動化',
-  marketing: '行銷群發',
-  analytics: '分析報表',
-  knowledge: '知識庫',
-  portal: '粉絲活動',
-  core: '帳號 · 角色 · 設定',
-};
-// 功能對照說明（依 RBAC 權限點整理成人話，供頁首對照表；勾選該功能 = 該方案租戶可用這些）
-const FEATURE_DESC: Record<string, string> = {
-  inbox: '收件匣對話、案件（工單）、聯絡人、標籤、短連結',
-  channels: 'LINE／FB／IG／WebChat 渠道、圖文選單、快速回覆',
-  automation: '自動化規則、對話流程畫布、身分識別建議',
-  marketing: '分眾名單、行銷活動、群發、素材與模板',
-  analytics: '各維度數據報表、個人績效、報表匯出',
-  knowledge: '知識文章、語意搜尋、批次匯入',
-  portal: '活動頁、抽獎、會員點數',
-  core: '成員與角色權限、系統設定、SLA、Webhook、方案用量（核心功能，恆開）',
-};
 const LIMIT_KEYS: { key: string; label: string }[] = [
   { key: 'maxAgents', label: '客服人數' },
   { key: 'maxTags', label: '分眾標籤數' },
@@ -42,8 +19,19 @@ interface Plan {
   isActive: boolean;
 }
 
+// 功能 registry（由後端 /platform/registry 動態提供，非前端寫死；
+// 未來於 @open333crm/core 加 feature/權限點即自動出現在此頁）
+interface FeatureReg {
+  slug: string;
+  label: string;
+  desc?: string;
+  core: boolean;
+  perms: { code: string; label: string }[];
+}
+
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [features, setFeatures] = useState<FeatureReg[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [showGuide, setShowGuide] = useState(false); // 功能對照表展開
@@ -54,6 +42,8 @@ export default function PlansPage() {
   };
   useEffect(() => {
     load();
+    // 動態載入功能清單（單一資料源＝後端 core registry）
+    platformApi.get('/registry').then((r) => setFeatures(r.data.data.features)).catch(() => {});
   }, []);
 
   const toggleFeature = (planId: string, feature: string) => {
@@ -124,10 +114,10 @@ export default function PlansPage() {
         </button>
         {showGuide && (
           <div style={{ padding: '4px 0' }}>
-            {ALL_FEATURES.map((f) => (
-              <div key={f} style={{ display: 'flex', gap: 10, padding: '7px 14px', borderTop: '1px solid #f0f3f7', fontSize: 13 }}>
-                <span style={{ minWidth: 96, fontWeight: 600, color: '#0d9488' }}>{FEATURE_LABELS[f] ?? f}</span>
-                <span style={{ color: '#66707f' }}>{FEATURE_DESC[f] ?? ''}</span>
+            {features.map((f) => (
+              <div key={f.slug} style={{ display: 'flex', gap: 10, padding: '7px 14px', borderTop: '1px solid #f0f3f7', fontSize: 13 }}>
+                <span style={{ minWidth: 96, fontWeight: 600, color: '#0d9488' }}>{f.label}</span>
+                <span style={{ color: '#66707f' }}>{f.desc ?? ''}</span>
               </div>
             ))}
           </div>
@@ -152,15 +142,15 @@ export default function PlansPage() {
             <div style={{ marginBottom: 12 }}>
               <div style={label}>功能</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {ALL_FEATURES.map((f) => (
-                  <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+                {features.map((fr) => (
+                  <label key={fr.slug} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
                     <input
                       type="checkbox"
-                      checked={plan.features.includes(f)}
-                      disabled={f === 'core'}
-                      onChange={() => toggleFeature(plan.id, f)}
+                      checked={plan.features.includes(fr.slug)}
+                      disabled={fr.core}
+                      onChange={() => toggleFeature(plan.id, fr.slug)}
                     />
-                    {FEATURE_LABELS[f] ?? f}
+                    {fr.label}
                   </label>
                 ))}
               </div>
