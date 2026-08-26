@@ -43,6 +43,7 @@ export default function PlansPage() {
   useEffect(() => {
     load();
     // 動態載入功能清單（單一資料源＝後端 core registry）
+    setMsg(''); // 載入前先清，避免與既有訊息堆疊
     platformApi
       .get('/registry')
       .then((r) => setFeatures(r.data.data.features))
