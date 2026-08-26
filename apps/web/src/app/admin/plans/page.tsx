@@ -5,6 +5,7 @@ import { platformApi } from '../lib/platform-api';
 
 const LIMIT_KEYS: { key: string; label: string }[] = [
   { key: 'maxAgents', label: '客服人數' },
+  { key: 'maxChannels', label: '渠道數' },
   { key: 'maxTags', label: '分眾標籤數' },
   { key: 'monthlyTokens', label: 'AI 月額度 token' },
 ];
@@ -15,6 +16,8 @@ interface Plan {
   name: string;
   features: string[];
   limits: Record<string, number | null>;
+  allowedChannelTypes: string[]; // 渠道 provider 白名單；空陣列 = 不限制
+  permissionOverrides: { deny?: string[] }; // 功能點細分：從天花板扣掉的權限碼
   priceMonthly: number | null;
   isActive: boolean;
 }
@@ -32,9 +35,11 @@ interface FeatureReg {
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [features, setFeatures] = useState<FeatureReg[]>([]);
+  const [channelTypes, setChannelTypes] = useState<string[]>([]); // 可選渠道類型（registry 動態）
   const [saving, setSaving] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [showGuide, setShowGuide] = useState(false); // 功能對照表展開
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // planId:feature → 權限點展開
 
   const load = async () => {
     const res = await platformApi.get('/plans');
@@ -46,7 +51,10 @@ export default function PlansPage() {
     setMsg(''); // 載入前先清，避免與既有訊息堆疊
     platformApi
       .get('/registry')
-      .then((r) => setFeatures(r.data.data.features))
+      .then((r) => {
+        setFeatures(r.data.data.features);
+        setChannelTypes(r.data.data.channelTypes ?? []);
+      })
       .catch(() => setMsg('功能清單載入失敗，請重新整理'));
   }, []);
 
@@ -62,6 +70,33 @@ export default function PlansPage() {
             }
           : p,
       ),
+    );
+  };
+
+  const toggleChannelType = (planId: string, ct: string) => {
+    setPlans((prev) =>
+      prev.map((p) =>
+        p.id === planId
+          ? {
+              ...p,
+              allowedChannelTypes: p.allowedChannelTypes.includes(ct)
+                ? p.allowedChannelTypes.filter((c) => c !== ct)
+                : [...p.allowedChannelTypes, ct],
+            }
+          : p,
+      ),
+    );
+  };
+
+  // 切換某權限碼的 deny 狀態（在 deny 清單內 = 被扣掉；不在 = 允許）
+  const togglePermDeny = (planId: string, code: string) => {
+    setPlans((prev) =>
+      prev.map((p) => {
+        if (p.id !== planId) return p;
+        const deny = p.permissionOverrides?.deny ?? [];
+        const next = deny.includes(code) ? deny.filter((c) => c !== code) : [...deny, code];
+        return { ...p, permissionOverrides: { deny: next } };
+      }),
     );
   };
 
@@ -90,6 +125,8 @@ export default function PlansPage() {
       await platformApi.patch(`/plans/${plan.id}`, {
         features: plan.features,
         limits: plan.limits,
+        allowedChannelTypes: plan.allowedChannelTypes,
+        permissionOverrides: { deny: plan.permissionOverrides?.deny ?? [] },
       });
       setMsg(`✓ 已更新「${plan.name}」——該方案所有租戶即時生效`);
       await load();
@@ -144,19 +181,52 @@ export default function PlansPage() {
               </span>
             </div>
             <div style={{ marginBottom: 12 }}>
-              <div style={label}>功能</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {features.map((fr) => (
-                  <label key={fr.slug} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
-                    <input
-                      type="checkbox"
-                      checked={plan.features.includes(fr.slug)}
-                      disabled={fr.core}
-                      onChange={() => toggleFeature(plan.id, fr.slug)}
-                    />
-                    {fr.label}
-                  </label>
-                ))}
+              <div style={label}>功能（可展開細分權限點）</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {features.map((fr) => {
+                  const on = plan.features.includes(fr.slug);
+                  const expKey = `${plan.id}:${fr.slug}`;
+                  const isExp = !!expanded[expKey];
+                  const deny = plan.permissionOverrides?.deny ?? [];
+                  return (
+                    <div key={fr.slug}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={fr.core}
+                            onChange={() => toggleFeature(plan.id, fr.slug)}
+                          />
+                          {fr.label}
+                        </label>
+                        {on && fr.perms.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpanded((e) => ({ ...e, [expKey]: !e[expKey] }))}
+                            style={{ background: 'none', border: 'none', color: '#0d9488', cursor: 'pointer', fontSize: 12, padding: 0 }}
+                          >
+                            {isExp ? '▲ 收合權限' : `▼ 細分權限（${fr.perms.length}）`}
+                          </button>
+                        )}
+                      </div>
+                      {on && isExp && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '6px 0 6px 22px' }}>
+                          {fr.perms.map((pm) => (
+                            <label key={pm.code} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#66707f' }}>
+                              <input
+                                type="checkbox"
+                                checked={!deny.includes(pm.code)}
+                                onChange={() => togglePermDeny(plan.id, pm.code)}
+                              />
+                              {pm.label}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div style={{ marginBottom: 12 }}>
@@ -172,6 +242,21 @@ export default function PlansPage() {
                       style={{ width: 120, border: '1px solid #e3e8ef', borderRadius: 6, padding: '5px 8px' }}
                     />
                   </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={label}>可用渠道類型（全不勾 = 不限制，可用全部）</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {channelTypes.map((ct) => (
+                  <label key={ct} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={plan.allowedChannelTypes.includes(ct)}
+                      onChange={() => toggleChannelType(plan.id, ct)}
+                    />
+                    {ct}
+                  </label>
                 ))}
               </div>
             </div>

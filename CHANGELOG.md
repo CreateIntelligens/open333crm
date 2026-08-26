@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **方案細粒度分級（功能點 deny／渠道數量／渠道 provider 白名單）** — 平台後台「方案與上限」頁擴充三塊管控，全部即時生效、對既有無方案租戶零影響：(1) **功能點細分** — 每個已勾選功能可展開列出其權限點，逐點取消勾選＝`deny`，`Plan.permissionOverrides { deny: string[] }`；有效天花板＝`permsForFeatures(features)` 減去 deny（deny 高階不連坐低階，如 deny `channel.create` 仍保留 `channel.view`）；改動會失效該方案所有租戶的權限快取。(2) **渠道數量上限** — 新增 `maxChannels` 數值上限，`channel.service.createChannel` 建立時 count 硬擋（達上限 `PLAN_LIMIT_EXCEEDED` 403），只算 isActive、比照 `maxAgents`。(3) **渠道 provider 白名單** — `Plan.allowedChannelTypes`（ChannelType[]），非空且欲建類型不在內即 `CHANNEL_TYPE_NOT_ALLOWED` 403；空陣列＝不限制、只擋新建不影響既有渠道。route schema 以 Prisma ChannelType enum 與 core `PERMISSION_CODES` 驗證輸入合法。兩個新 Plan 欄位皆 migration 非破壞性（有 default）。
 - **平台方案設定功能清單動態化（可擴展性）** — 平台後台「方案與上限」頁的功能清單先前寫死於前端，後端新增 feature/權限點不會自動反映。改為由後端 `GET /platform/registry` 動態提供（單一資料源＝`@open333crm/core` 的 FEATURES + permissions registry + ChannelType）：`FEATURES` 加 `desc` 欄位、新增 `buildPlatformRegistry()`；前端方案頁改動態載入。未來於 core 新增功能即自動出現在方案設定，無需改前端。
 - **平台層租戶合約日期記錄** — 平台後台租戶管理頁可為每個租戶設定與查看合約起訖日（`contractStartDate` / `contractEndDate`），純記錄供平台方管理，不觸發任何自動生命週期行為（與 `trialEndsAt` 的到期自動停用明確區隔）；受平台 superuser 認證保護、變更寫 PlatformAuditLog；迄日不可早於起日（422）。`Tenant` 加兩個 nullable 欄位（migration 非破壞性、對既有租戶零影響）。
 - **租戶隔離 CI 檢查（`scripts/check-tenant-scoping.mjs`）** — 靜態掃描所有對 41 個「含 tenantId 欄位」租戶表的 Prisma query，抓出 where 完全未帶 tenantId 的跨租戶洩漏風險；排除平台層/scheduler/認證入口等合法跨租戶查詢，where 為變數時往上追其定義。`--strict` 模式在偵測到疑似漏帶時 exit 1，已接入 CI（Build 後）作回歸防護。目前 codebase 掃描結果 0 洩漏。

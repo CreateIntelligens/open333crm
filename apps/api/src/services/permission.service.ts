@@ -107,10 +107,17 @@ export async function getEffectiveTenantPermissions(
   }
 
   const roleEff = await getEffectivePermissions(prisma, roleId);
-  const plan = await prisma.plan.findUnique({ where: { id: planId }, select: { features: true } });
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+    select: { features: true, permissionOverrides: true },
+  });
   const features = new Set<string>((plan?.features as string[]) ?? []);
   features.add(CORE_FEATURE); // core 恆開
   const ceiling = permsForFeatures(features);
+
+  // 功能點細分：從天花板再扣掉方案 deny 的權限碼（deny 高階不連坐低階）
+  const overrides = (plan?.permissionOverrides ?? {}) as { deny?: string[] };
+  for (const code of overrides.deny ?? []) ceiling.delete(code);
 
   const effective = new Set<string>();
   for (const code of roleEff) if (ceiling.has(code)) effective.add(code);

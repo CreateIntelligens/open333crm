@@ -17,6 +17,8 @@ export async function updatePlan(
     name?: string;
     features?: string[];
     limits?: Record<string, number | null>;
+    allowedChannelTypes?: string[];
+    permissionOverrides?: { deny: string[] };
     priceMonthly?: number | null;
     isActive?: boolean;
   },
@@ -30,13 +32,19 @@ export async function updatePlan(
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.features !== undefined ? { features: data.features as Prisma.InputJsonValue } : {}),
       ...(data.limits !== undefined ? { limits: data.limits as Prisma.InputJsonValue } : {}),
+      ...(data.allowedChannelTypes !== undefined
+        ? { allowedChannelTypes: data.allowedChannelTypes as Prisma.InputJsonValue }
+        : {}),
+      ...(data.permissionOverrides !== undefined
+        ? { permissionOverrides: data.permissionOverrides as Prisma.InputJsonValue }
+        : {}),
       ...(data.priceMonthly !== undefined ? { priceMonthly: data.priceMonthly } : {}),
       ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
     },
   });
 
-  // features 變更 → 天花板變動 → 失效該方案所有租戶的權限快取
-  if (data.features !== undefined) {
+  // features 或 permissionOverrides 變更 → 天花板變動 → 失效該方案所有租戶的權限快取
+  if (data.features !== undefined || data.permissionOverrides !== undefined) {
     await invalidatePlanPermissions(prisma, id);
   }
   return plan;

@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
 
 // --- Credential Encryption ---
 
@@ -73,6 +74,37 @@ export async function createChannel(
     webhookBaseUrl?: string;
   },
 ) {
+  // 方案層渠道管控（一次查 tenant+plan，供白名單與數量上限共用）。
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      limitOverrides: true,
+      plan: { select: { limits: true, allowedChannelTypes: true } },
+    },
+  });
+
+  // 渠道 provider 白名單硬擋：白名單非空且此類型不在內 → 擋。空陣列 = 不限制。只擋新建。
+  const allowed = (tenant?.plan?.allowedChannelTypes ?? []) as string[];
+  if (Array.isArray(allowed) && allowed.length > 0 && !allowed.includes(data.channelType)) {
+    throw new AppError('此方案不允許建立該渠道類型，請升級方案或改用其他渠道', 'CHANNEL_TYPE_NOT_ALLOWED', 403, {
+      channelType: data.channelType,
+      allowed,
+    });
+  }
+
+  // 渠道數上限硬擋（建立時 count 檢查；無上限 = null 時跳過）。只算 isActive，比照 maxAgents。
+  const maxChannels = tenant ? resolveEffectiveLimit(tenant, 'maxChannels') : null;
+  if (maxChannels !== null) {
+    const activeCount = await prisma.channel.count({ where: { tenantId, isActive: true } });
+    if (activeCount >= maxChannels) {
+      throw new AppError('已達方案渠道數上限，請升級方案', 'PLAN_LIMIT_EXCEEDED', 403, {
+        limitKey: 'maxChannels',
+        current: activeCount,
+        max: maxChannels,
+      });
+    }
+  }
+
   const encrypted = encryptCredentials(data.credentials);
 
   const channel = await prisma.channel.create({

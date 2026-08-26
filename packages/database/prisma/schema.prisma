@@ -1783,7 +1783,11 @@ model Plan {
   slug         String   @unique // trial | light | standard | professional | enterprise
   name         String
   features     Json     @default("[]") // string[]：方案含的 feature module slug
-  limits       Json     @default("{}") // { maxAgents, maxTags, monthlyTokens, ... }；值 null=無上限
+  limits       Json     @default("{}") // { maxAgents, maxTags, monthlyTokens, maxChannels, ... }；值 null=無上限
+  // ChannelType[] 白名單：方案可用的渠道類型。空陣列 [] = 不限制（可用全部）。只擋新建，不影響既有渠道。
+  allowedChannelTypes Json @default("[]")
+  // 功能點細分：從 feature 天花板再扣掉的權限碼。形狀 { deny: string[] }。deny 高階不連坐低階。
+  permissionOverrides Json @default("{}")
   priceMonthly Int? // 顯示用，不接金流；企業版可 null
   isActive     Boolean  @default(true) // 停售軟下架
   createdAt    DateTime @default(now())

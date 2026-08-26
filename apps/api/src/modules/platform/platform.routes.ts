@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { ChannelType } from '@prisma/client';
-import { buildPlatformRegistry } from '@open333crm/core';
+import { buildPlatformRegistry, PERMISSION_CODES } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
@@ -30,12 +30,21 @@ import {
 } from './plan-change.service.js';
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const channelTypeValues = Object.values(ChannelType) as [string, ...string[]];
 const updatePlanSchema = z.object({
   name: z.string().optional(),
   features: z.array(z.string()).optional(),
-  // 上限皆為非負整數（人數/標籤數/token 數），null 代表無上限；
+  // 上限皆為非負整數（人數/渠道數/標籤數/token 數），null 代表無上限；
   // 擋前端誤送的小數、負數或 NaN→null 以外的怪值
   limits: z.record(z.number().int().nonnegative().nullable()).optional(),
+  // 渠道 provider 白名單：值須為合法 ChannelType；空陣列 = 不限制
+  allowedChannelTypes: z.array(z.enum(channelTypeValues)).optional(),
+  // 功能點細分：deny 一組權限碼（須為 registry 內合法碼）。{ deny: [] } = 無 override
+  permissionOverrides: z
+    .object({
+      deny: z.array(z.string().refine((c) => PERMISSION_CODES.has(c), { message: '未知的權限碼' })),
+    })
+    .optional(),
   priceMonthly: z.number().nullable().optional(),
   isActive: z.boolean().optional(),
 });
