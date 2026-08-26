@@ -14,7 +14,13 @@ import type { HistoryMessage } from './providers/index.js';
 import type { TokenUsage } from './providers/types.js';
 import { getPricing, calcCostUsd } from './pricing.service.js';
 import { resolveGeminiKey } from './ai-key.service.js';
-import { isMonthlyTokenExceeded, incrMonthlyTokens } from '../trial/token-quota.service.js';
+import {
+  isMonthlyTokenExceeded,
+  incrMonthlyTokens,
+  checkQuotaThresholdCrossing,
+} from '../trial/token-quota.service.js';
+import { eventBus } from '../../events/event-bus.js';
+import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
 
@@ -99,9 +105,26 @@ async function recordAiUsage(
   // Redis 即時額度累加：只計成功、platform key 的 token（BYOK 租戶自付不計額度）
   const totalTokens = usage.promptTokens + usage.candidatesTokens + usage.thoughtsTokens;
   if (input.success && !isByok && totalTokens > 0) {
-    incrMonthlyTokens(prisma, input.tenantId, totalTokens).catch((e) =>
-      logger.error('[TokenQuota] incr failed:', e),
-    );
+    // 累加後偵測是否剛跨越告警門檻（80%/100%），跨越則發事件；全程 fire-and-forget 不阻塞回覆
+    incrMonthlyTokens(prisma, input.tenantId, totalTokens)
+      .then(async (after) => {
+        if (after === null || getConfig().USAGE_QUOTA_ALERTS_ENABLED !== 1) return;
+        const crossed = await checkQuotaThresholdCrossing(prisma, input.tenantId, totalTokens, after);
+        for (const c of crossed) {
+          eventBus.publish({
+            name: 'usage.quota.threshold',
+            tenantId: input.tenantId,
+            timestamp: new Date(),
+            payload: {
+              level: c.level,
+              usedTokens: c.usedTokens,
+              limitTokens: c.limitTokens,
+              monthKey: c.monthKey,
+            },
+          });
+        }
+      })
+      .catch((e) => logger.error('[TokenQuota] incr/alert failed:', e));
   }
 }
 

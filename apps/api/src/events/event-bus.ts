@@ -25,7 +25,8 @@ export type AppEventName =
   | 'sla.warning'
   | 'sla.breached'
   | 'portal.activity.submitted'
-  | 'link.clicked';
+  | 'link.clicked'
+  | 'usage.quota.threshold';
 
 export interface AppEvent {
   name: AppEventName;

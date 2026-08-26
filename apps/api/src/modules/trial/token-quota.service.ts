@@ -12,6 +12,14 @@ import type { PrismaClient } from '@prisma/client';
 import { redis, logger } from '@open333crm/core';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 
+/** 用量告警門檻：達額度百分比時各發一次通知。critical=100%（已耗盡）。 */
+export const QUOTA_ALERT_THRESHOLDS = [
+  { level: 'warning', pct: 0.8 },
+  { level: 'critical', pct: 1.0 },
+] as const;
+
+export type QuotaAlertLevel = (typeof QUOTA_ALERT_THRESHOLDS)[number]['level'];
+
 function monthKey(): string {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -64,9 +72,16 @@ async function getMonthlyTokens(prisma: PrismaClient, tenantId: string): Promise
   }
 }
 
-/** 成功呼叫後即時累加（只累加 platform key；BYOK 不計）。fire-and-forget。 */
-export async function incrMonthlyTokens(prisma: PrismaClient, tenantId: string, tokens: number): Promise<void> {
-  if (tokens <= 0) return;
+/**
+ * 成功呼叫後即時累加（只累加 platform key；BYOK 不計）。fire-and-forget。
+ * 回傳累加後的計數器總量（供告警門檻偵測）；Redis 不可用或 tokens<=0 時回 null（跳過偵測）。
+ */
+export async function incrMonthlyTokens(
+  prisma: PrismaClient,
+  tenantId: string,
+  tokens: number,
+): Promise<number | null> {
+  if (tokens <= 0) return null;
   const key = counterKey(tenantId);
   try {
     const exists = await redis.exists(key);
@@ -83,16 +98,17 @@ export async function incrMonthlyTokens(prisma: PrismaClient, tenantId: string, 
       const setResult = await redis.set(key, dbTotal, 'PXAT', nextMonthStart().getTime(), 'NX');
       if (setResult === null) {
         // NX 沒搶到 → 別人剛建好計數器；其初始值不含「本次 tokens」（本次可能還沒進對方的 DB
-        // 加總），故補做一次 incrby(tokens) 才不會漏算。
-        await redis.incrby(key, tokens);
+        // 加總），故補做一次 incrby(tokens) 才不會漏算。incrby 回傳累加後總量。
+        return await redis.incrby(key, tokens);
       }
       // NX 搶到（key 原本不存在）→ dbTotal 已含本次 tokens，不再 incrby，避免雙重計數。
-      return;
+      return dbTotal;
     }
-    // 計數器已存在：正常即時累加本次 tokens。
-    await redis.incrby(key, tokens);
+    // 計數器已存在：正常即時累加本次 tokens。incrby 回傳累加後總量。
+    return await redis.incrby(key, tokens);
   } catch (err) {
     logger.warn('[TokenQuota] redis incr failed (額度仍靠 DB 兜底):', err);
+    return null;
   }
 }
 
@@ -104,10 +120,72 @@ export async function isMonthlyTokenExceeded(prisma: PrismaClient, tenantId: str
   return used >= limit;
 }
 
+/** 用量告警旗標 key：aiquota-alert:{tenantId}:{YYYY-MM}:{level}。 */
+function alertFlagKey(tenantId: string, level: QuotaAlertLevel): string {
+  return `aiquota-alert:${tenantId}:${monthKey()}:${level}`;
+}
+
+/** 剛跨越的告警門檻（已搶到冪等旗標，代表本月本 level 尚未發過）。 */
+export interface CrossedThreshold {
+  level: QuotaAlertLevel;
+  limitTokens: number;
+  usedTokens: number;
+  monthKey: string;
+}
+
+/**
+ * 偵測本次累加是否「剛跨越」任一告警門檻，並以 Redis 旗標做冪等（每租戶每月每 level 僅一次）。
+ * after=累加後總量、tokensAdded=本次量 → before=after-tokensAdded；門檻判斷 before<門檻 && after>=門檻。
+ * 無上限（limit===null）回 []；單次巨量可同時跨越 warning 與 critical，皆回傳（不漏門檻）。
+ */
+export async function checkQuotaThresholdCrossing(
+  prisma: PrismaClient,
+  tenantId: string,
+  tokensAdded: number,
+  after: number,
+): Promise<CrossedThreshold[]> {
+  const limit = await getEffectiveLimit(prisma, tenantId, 'monthlyTokens');
+  if (limit === null) return [];
+  const before = after - tokensAdded;
+  const crossed: CrossedThreshold[] = [];
+  for (const { level, pct } of QUOTA_ALERT_THRESHOLDS) {
+    const thresholdTokens = Math.ceil(limit * pct);
+    if (before < thresholdTokens && after >= thresholdTokens) {
+      // 冪等搶佔：SET NX + 月底過期（跨月自動重置）。僅搶到者納入回傳。
+      try {
+        const ok = await redis.set(
+          alertFlagKey(tenantId, level),
+          '1',
+          'PXAT',
+          nextMonthStart().getTime(),
+          'NX',
+        );
+        if (ok === 'OK') {
+          crossed.push({ level, limitTokens: limit, usedTokens: after, monthKey: monthKey() });
+        }
+      } catch (err) {
+        logger.warn('[TokenQuota] alert flag set failed, skip:', err);
+      }
+    }
+  }
+  return crossed;
+}
+
 /** 測試用：清某租戶當月計數器。 */
 export async function clearTokenQuotaCache(tenantId?: string): Promise<void> {
   try {
     if (tenantId) await redis.del(counterKey(tenantId));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 測試用：清某租戶當月所有告警旗標（供整合測試重跑）。 */
+export async function clearQuotaAlertFlags(tenantId: string): Promise<void> {
+  try {
+    await Promise.all(
+      QUOTA_ALERT_THRESHOLDS.map(({ level }) => redis.del(alertFlagKey(tenantId, level))),
+    );
   } catch {
     /* 忽略 */
   }
