@@ -8,6 +8,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { AppError } from '../../shared/utils/response.js';
+import { logger } from '@open333crm/core';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 export type ErasureMode = 'anonymize' | 'hard_delete';
@@ -97,14 +98,22 @@ export async function requestErasure(prisma: PrismaClient, input: RequestErasure
     payload: { contactId, mode },
   });
 
-  // 4. 入列 BullMQ job
-  await enqueueImpl({
-    requestId: erasure.id,
-    tenantId,
-    contactId,
-    mode: mode as ErasureMode,
-    requestedBy,
-  });
+  // 4. 入列 BullMQ job。入列失敗（如 Redis 不可用）時把請求標 failed 並拋，避免永久卡 pending。
+  try {
+    await enqueueImpl({
+      requestId: erasure.id,
+      tenantId,
+      contactId,
+      mode: mode as ErasureMode,
+      requestedBy,
+    });
+  } catch (err) {
+    logger.error(`[data-erasure] enqueue failed for request ${erasure.id}:`, err);
+    await prisma.dataErasureRequest
+      .update({ where: { id: erasure.id }, data: { status: 'failed', error: '入列失敗，請重試' } })
+      .catch((e) => logger.error('[data-erasure] mark failed also failed:', e));
+    throw new AppError('刪除請求入列失敗，請稍後重試', 'ENQUEUE_FAILED', 503);
+  }
 
   return erasure;
 }

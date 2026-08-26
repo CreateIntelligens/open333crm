@@ -1862,7 +1862,7 @@ model TenantAuditLog {
 model DataExportRequest {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String    @db.Uuid
-  requestedBy   String    @db.Uuid // 發起 agent
+  requestedBy   String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
   status        String    @default("pending") // pending | processing | completed | failed | expired
   scope         Json? // 匯出範圍（哪些資料類型）；null=全部
   fileKey       String? // MinIO 物件 key
@@ -1874,7 +1874,7 @@ model DataExportRequest {
   createdAt     DateTime  @default(now())
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  requester Agent  @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  requester Agent? @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
@@ -1885,7 +1885,7 @@ model DataExportRequest {
 model DataErasureRequest {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String    @db.Uuid
-  requestedBy String    @db.Uuid
+  requestedBy String?   @db.Uuid // 發起 agent（nullable：刪 agent 時保留合規記錄，見 requester SetNull）
   contactId   String    @db.Uuid // 目標聯絡人（刪除後此欄仍留存於稽核用途）
   mode        String    @default("anonymize") // anonymize | hard_delete
   status      String    @default("pending") // pending | processing | completed | failed
@@ -1896,7 +1896,7 @@ model DataErasureRequest {
   createdAt   DateTime  @default(now())
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  requester Agent  @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  requester Agent? @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])

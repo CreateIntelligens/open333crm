@@ -9,6 +9,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { AppError } from '../../shared/utils/response.js';
+import { logger } from '@open333crm/core';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { getFileUrl } from '../storage/storage.service.js';
 
@@ -72,12 +73,21 @@ export async function requestExport(prisma: PrismaClient, input: RequestExportIn
     ip: input.ip,
   });
 
-  // 入列非同步 job（Path B：worker 撈資料 + 打包 + 上傳）
-  await exportQueue().add('data-export:generate', {
-    requestId: req.id,
-    tenantId: input.tenantId,
-    requestedBy: input.requestedBy,
-  });
+  // 入列非同步 job（Path B：worker 撈資料 + 打包 + 上傳）。
+  // 入列失敗（如 Redis 不可用）時把請求標 failed 並拋，避免永久卡 pending。
+  try {
+    await exportQueue().add('data-export:generate', {
+      requestId: req.id,
+      tenantId: input.tenantId,
+      requestedBy: input.requestedBy,
+    });
+  } catch (err) {
+    logger.error(`[data-export] enqueue failed for request ${req.id}:`, err);
+    await prisma.dataExportRequest
+      .update({ where: { id: req.id }, data: { status: 'failed', error: '入列失敗，請重試' } })
+      .catch((e) => logger.error('[data-export] mark failed also failed:', e));
+    throw new AppError('匯出請求入列失敗，請稍後重試', 'ENQUEUE_FAILED', 503);
+  }
 
   return req;
 }

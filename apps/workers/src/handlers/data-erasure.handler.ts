@@ -210,22 +210,24 @@ async function hardDelete(
   tenantId: string,
   contactId: string,
 ): Promise<Record<string, number>> {
-  // 先在 transaction 外收集 storageKey（transaction 內不做 IO）
-  const conversations = await prisma.conversation.findMany({
-    where: { contactId, tenantId },
-    select: { id: true },
-  });
-  const convIds = conversations.map((c) => c.id);
-  const mediaMessages =
-    convIds.length > 0
-      ? await prisma.message.findMany({
-          where: { conversationId: { in: convIds } },
-          select: { content: true },
-        })
-      : [];
-  const storageKeys = collectStorageKeys(mediaMessages);
-
+  // storageKey 收集移進 transaction 內：與後續刪除共用同一交易快照，避免「收集後、刪除前」
+  // 期間新增的對話/訊息其 MinIO 物件漏收（媒體洩漏）。DB 讀取在交易內、MinIO 刪除留到交易外。
+  let storageKeys: string[] = [];
   const affected = await prisma.$transaction(async (tx) => {
+    const conversations = await tx.conversation.findMany({
+      where: { contactId, tenantId },
+      select: { id: true },
+    });
+    const convIds = conversations.map((c) => c.id);
+    const mediaMessages =
+      convIds.length > 0
+        ? await tx.message.findMany({
+            where: { conversationId: { in: convIds } },
+            select: { content: true },
+          })
+        : [];
+    storageKeys = collectStorageKeys(mediaMessages);
+
     // 先算 affected 計數（刪除前）
     const [
       messageCount,
