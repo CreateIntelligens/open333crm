@@ -180,15 +180,13 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // 設定租戶合約起訖日（純記錄，不觸發任何自動行為）。null=清除、缺=不動、date=設值。
   fastify.patch<{ Params: { id: string } }>('/tenants/:id/contract', guard, async (request) => {
+    // 日期先後屬業務規則（非格式），交由 service 檢查並回 422 CONTRACT_DATE_INVALID；
+    // service 會合併現有值比對（傳單一日期也擋），比在此 Zod refine 更周全。
     const body = z
       .object({
         contractStartDate: z.coerce.date().nullable().optional(),
         contractEndDate: z.coerce.date().nullable().optional(),
       })
-      .refine(
-        (v) => !(v.contractStartDate && v.contractEndDate) || v.contractEndDate >= v.contractStartDate,
-        { message: '合約迄日不可早於起日', path: ['contractEndDate'] },
-      )
       .parse(request.body);
     const result = await updateTenantContract(fastify.prisma, request.params.id, body);
     await writePlatformAudit(fastify.prisma, {
