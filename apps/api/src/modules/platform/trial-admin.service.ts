@@ -52,7 +52,8 @@ export async function listTrialTenants(prisma: PrismaClient) {
 /**
  * 更新租戶合約起訖日（純記錄，不觸發任何自動生命週期行為）。
  * 兩者皆 optional：傳 undefined 不動該欄、傳 null 清除、傳 Date 設值。
- * 若更新後兩者皆有值，迄日 MUST >= 起日（呼叫前已由 Zod 驗證，此處為第二道防線）。
+ * 若更新後兩者皆有值，迄日 MUST >= 起日（於此擋並回 422 CONTRACT_DATE_INVALID，
+ * 合併現有值比對——傳單一日期也會跟 DB 現值檢查；route 不再另做 Zod refine）。
  */
 export async function updateTenantContract(
   prisma: PrismaClient,
