@@ -44,6 +44,11 @@ export default function TenantsPage() {
   const saveContract = async () => {
     if (!editing) return;
     setMsg('');
+    // 前端即時擋：迄日早於起日（後端亦有驗證，此處省一趟往返並即時回饋）
+    if (editing.start && editing.end && editing.end < editing.start) {
+      setMsg('合約迄日不可早於起日');
+      return;
+    }
     try {
       await platformApi.patch(`/tenants/${editing.id}/contract`, {
         contractStartDate: editing.start || null,

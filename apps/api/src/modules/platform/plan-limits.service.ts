@@ -4,7 +4,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 
-type LimitKey = 'maxAgents' | 'maxTags' | 'monthlyTokens';
+type LimitKey = 'maxAgents' | 'maxTags' | 'monthlyTokens' | 'maxChannels';
 
 /** 給定已載入的 tenant（含 plan）解析有效上限，避免重複查詢。 */
 export function resolveEffectiveLimit(

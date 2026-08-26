@@ -11,7 +11,7 @@
  */
 
 import { PERMISSIONS, PERMISSION_BY_CODE, type PermissionDef } from './permissions';
-import { FEATURE_SLUGS } from './features';
+import { FEATURE_SLUGS, FEATURES } from './features';
 
 /** feature slug → 該 feature 涵蓋的權限碼陣列 */
 export function buildFeaturePerms(): Map<string, string[]> {
@@ -22,6 +22,32 @@ export function buildFeaturePerms(): Map<string, string[]> {
     m.set(p.feature, arr);
   }
   return m;
+}
+
+/**
+ * 平台方案設定用的功能 registry（單一資料源）。
+ * 供平台後台方案頁動態載入，不再前端寫死；未來於此加 feature/權限點即自動出現。
+ * channelTypes 由呼叫端（api，依 Prisma enum）補上——core 不依賴 database 層。
+ */
+export interface PlatformFeatureRegistry {
+  slug: string;
+  label: string;
+  desc?: string;
+  core: boolean;
+  perms: { code: string; label: string }[];
+}
+export function buildPlatformRegistry(): PlatformFeatureRegistry[] {
+  const featurePerms = buildFeaturePerms();
+  return FEATURES.map((f) => ({
+    slug: f.slug,
+    label: f.label,
+    desc: f.desc,
+    core: !!f.core,
+    perms: (featurePerms.get(f.slug) ?? []).map((code) => ({
+      code,
+      label: PERMISSION_BY_CODE.get(code)?.label ?? code,
+    })),
+  }));
 }
 
 /** 一組 feature slug 展開成權限碼天花板集合 */
