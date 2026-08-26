@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { CliSession, Prisma, PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { logger } from '@open333crm/core';
 
@@ -65,7 +66,7 @@ export function hasCliScope(scopes: string[], requiredScope: string): boolean {
 }
 
 export async function createCliSession(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   input: CreateCliSessionInput,
 ): Promise<CreateCliSessionResult> {
   const random = randomBytes(TOKEN_RANDOM_BYTES).toString('hex');
@@ -91,7 +92,7 @@ export async function createCliSession(
 }
 
 export async function verifyCliSession(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   rawToken: string,
 ): Promise<VerifyCliSessionResult> {
   if (!rawToken.startsWith(TOKEN_PREFIX)) {
@@ -147,7 +148,7 @@ export async function verifyCliSession(
   return { ok: false, reason: 'Invalid CLI token' };
 }
 
-export function touchCliSessionLastUsedAt(prisma: PrismaClient, id: string): void {
+export function touchCliSessionLastUsedAt(prisma: TenantDb, id: string): void {
   prisma.cliSession
     .update({ where: { id }, data: { lastUsedAt: new Date() } })
     .catch((err) =>
@@ -156,7 +157,7 @@ export function touchCliSessionLastUsedAt(prisma: PrismaClient, id: string): voi
 }
 
 export async function revokeCliSession(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ): Promise<void> {

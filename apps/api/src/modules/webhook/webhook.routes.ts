@@ -5,6 +5,9 @@ import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export default async function webhookRoutes(fastify: FastifyInstance) {
+  // TODO(rls): 本檔皆為公開（無 JWT）入站 webhook 端點，無認證租戶身分，
+  // 無法用 request.tenantPrisma（會拋）；tenant 由 channelId 反查解析，
+  // 故一律使用 fastify.prisma（未套 RLS）。
   // Override content type parser to get raw body for signature verification
   // This is scoped to this plugin only (Fastify encapsulation)
   fastify.addContentTypeParser(

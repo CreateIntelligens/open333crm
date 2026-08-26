@@ -28,6 +28,8 @@ import {
 import { forwardToDownstream, getDownstreamWebhookConfig } from './downstream-forwarder.js';
 import { claimForForward } from './downstream-loop-guard.js';
 
+// TODO(rls): 入站 webhook 為公開端點（無認證租戶），tenant 由 channel 反查得出，
+// 且下游 resolver / InboundMessageContext 皆以 PrismaClient 型別串接，故此路徑不套 RLS，維持 PrismaClient。
 export async function processWebhookEvent(
   prisma: PrismaClient,
   io: SocketIOServer,

@@ -180,7 +180,7 @@ async function authPlugin(fastify: FastifyInstance) {
         return;
       }
 
-      const result = await verifyCliSession(fastify.prisma, token);
+      const result = await verifyCliSession(fastify.prismaAdmin, token);
       if (!result.ok) {
         reply.status(401).send({
           success: false,
@@ -198,7 +198,7 @@ async function authPlugin(fastify: FastifyInstance) {
     async function (request: FastifyRequest, reply: FastifyReply) {
       const token = extractBearerToken(request);
       if (token?.startsWith('cli_')) {
-        const result = await verifyCliSession(fastify.prisma, token);
+        const result = await verifyCliSession(fastify.prismaAdmin, token);
         if (!result.ok) {
           reply.status(401).send({
             success: false,
@@ -241,7 +241,7 @@ async function authPlugin(fastify: FastifyInstance) {
       const token = extractBearerToken(request);
 
       if (token && token.startsWith('pk_')) {
-        const result = await verifyPartnerApiKey(fastify.prisma, token);
+        const result = await verifyPartnerApiKey(fastify.prismaAdmin, token);
         if (!result.ok) {
           reply.status(401).send({
             success: false,

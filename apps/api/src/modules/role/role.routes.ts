@@ -21,7 +21,7 @@ export default async function roleRoutes(fastify: FastifyInstance) {
 
   // GET /roles — 角色列表（含權限/成員數）
   fastify.get('/', { preHandler: [requirePermission('role.view')] }, async (request, reply) => {
-    const roles = await listRoles(fastify.prisma, request.agent.tenantId);
+    const roles = await listRoles(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success({ roles }));
   });
 
@@ -33,14 +33,14 @@ export default async function roleRoutes(fastify: FastifyInstance) {
   // GET /roles/:id/permissions
   fastify.get('/:id/permissions', { preHandler: [requirePermission('role.view')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const permissions = await getRolePermissions(fastify.prisma, id, request.agent.tenantId);
+    const permissions = await getRolePermissions(request.tenantPrisma, id, request.agent.tenantId);
     return reply.send(success({ roleId: id, permissions }));
   });
 
   // POST /roles — 建立自訂角色（空白）
   fastify.post('/', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { name } = nameSchema.parse(request.body);
-    const role = await createRole(fastify.prisma, request.agent.tenantId, name);
+    const role = await createRole(request.tenantPrisma, request.agent.tenantId, name);
     return reply.status(201).send(success(role));
   });
 
@@ -48,14 +48,14 @@ export default async function roleRoutes(fastify: FastifyInstance) {
   fastify.patch('/:id', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { name } = nameSchema.parse(request.body);
-    const role = await renameRole(fastify.prisma, id, request.agent.tenantId, name);
+    const role = await renameRole(request.tenantPrisma, id, request.agent.tenantId, name);
     return reply.send(success(role));
   });
 
   // DELETE /roles/:id — 刪除自訂角色（阻擋 system / 仍被指派）
   fastify.delete('/:id', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const result = await deleteRole(fastify.prisma, id, request.agent.tenantId);
+    const result = await deleteRole(request.tenantPrisma, id, request.agent.tenantId);
     return reply.send(success(result));
   });
 
@@ -63,6 +63,7 @@ export default async function roleRoutes(fastify: FastifyInstance) {
   fastify.put('/:id/permissions', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { permissions } = permsSchema.parse(request.body);
+    // TODO(rls): 交易 service，待改造為 withTenant
     const result = await setRolePermissions(
       fastify.prisma,
       id,
@@ -71,7 +72,7 @@ export default async function roleRoutes(fastify: FastifyInstance) {
       request.agent.roleId,
     );
     // 稽核：更新角色權限（payload 記角色與最終權限碼清單，權限碼非 PII）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'role.permission.update',

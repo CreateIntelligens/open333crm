@@ -168,19 +168,21 @@ export async function bootstrap() {
   await app.register(planChangeRoutes, { prefix: '/api/v1/plan-change' });
   await app.register(mcpRoutes);
 
-  registerVisitorNamespace(app.io, app.prisma, app.chatboxSessionVerifier);
+  // 背景任務（scheduler/worker/visitor namespace）皆跨租戶或以 tenantId 自行 scope，
+  // 屬 RLS 白名單基礎設施，用 prismaAdmin（BYPASSRLS）連線，避免 FORCE 後 fail-closed。
+  registerVisitorNamespace(app.io, app.prismaAdmin, app.chatboxSessionVerifier);
 
-  setupAutomationWorker(app.prisma, app.io);
-  setupNotificationWorker(app.prisma);
-  setupAnalyticsScheduler(app.prisma);
-  setupBroadcastScheduler(app.prisma, app.io);
-  setupCsatScheduler(app.prisma, app.io);
-  setupInactivityCloseWorker(app.prisma, app.io);
-  setupCanvasWorker(app.prisma, app.io);
-  setupCanvasScheduler(app.prisma);
-  setupTrialScheduler(app.prisma);
+  setupAutomationWorker(app.prismaAdmin, app.io);
+  setupNotificationWorker(app.prismaAdmin);
+  setupAnalyticsScheduler(app.prismaAdmin);
+  setupBroadcastScheduler(app.prismaAdmin, app.io);
+  setupCsatScheduler(app.prismaAdmin, app.io);
+  setupInactivityCloseWorker(app.prismaAdmin, app.io);
+  setupCanvasWorker(app.prismaAdmin, app.io);
+  setupCanvasScheduler(app.prismaAdmin);
+  setupTrialScheduler(app.prismaAdmin);
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
-  setupWebhookDispatcher(app.prisma);
+  setupWebhookDispatcher(app.prismaAdmin);
 
   // RBAC: 路由都註冊完後，驗證所有 requirePermission(code) 的 code 都存在於 registry
   const routeErrors = validateRouteCodes(usedPermissionCodes);

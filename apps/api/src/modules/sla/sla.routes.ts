@@ -28,7 +28,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/sla-policies
   fastify.get('/', async (request, reply) => {
-    const policies = await fastify.prisma.slaPolicy.findMany({
+    const policies = await request.tenantPrisma.slaPolicy.findMany({
       where: { tenantId: request.agent.tenantId },
       orderBy: { priority: 'asc' },
     });
@@ -42,7 +42,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
 
     // If setting as default, unset other defaults for same priority
     if (data.isDefault) {
-      await fastify.prisma.slaPolicy.updateMany({
+      await request.tenantPrisma.slaPolicy.updateMany({
         where: {
           tenantId: request.agent.tenantId,
           priority: data.priority,
@@ -52,7 +52,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const policy = await fastify.prisma.slaPolicy.create({
+    const policy = await request.tenantPrisma.slaPolicy.create({
       data: {
         tenantId: request.agent.tenantId,
         ...data,
@@ -66,7 +66,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateSlaSchema.parse(request.body);
 
-    const policy = await fastify.prisma.slaPolicy.findFirst({
+    const policy = await request.tenantPrisma.slaPolicy.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
 
@@ -77,7 +77,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
     // If setting as default, unset other defaults for same priority
     if (data.isDefault) {
       const targetPriority = data.priority || policy.priority;
-      await fastify.prisma.slaPolicy.updateMany({
+      await request.tenantPrisma.slaPolicy.updateMany({
         where: {
           tenantId: request.agent.tenantId,
           priority: targetPriority,
@@ -88,7 +88,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const updated = await fastify.prisma.slaPolicy.update({
+    const updated = await request.tenantPrisma.slaPolicy.update({
       where: { id: request.params.id },
       data,
     });
@@ -98,7 +98,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/sla-policies/:id
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const policy = await fastify.prisma.slaPolicy.findFirst({
+    const policy = await request.tenantPrisma.slaPolicy.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
 
@@ -106,7 +106,7 @@ export default async function slaRoutes(fastify: FastifyInstance) {
       throw new AppError('SLA policy not found', 'NOT_FOUND', 404);
     }
 
-    await fastify.prisma.slaPolicy.delete({
+    await request.tenantPrisma.slaPolicy.delete({
       where: { id: request.params.id },
     });
 

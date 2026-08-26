@@ -87,51 +87,51 @@ export default async function richMenuRoutes(fastify: FastifyInstance) {
   // GET /api/v1/line/rich-menus?channelId=<uuid>
   fastify.get('/', async (request, reply) => {
     const { channelId } = listQuerySchema.parse(request.query);
-    const list = await listRichMenus(fastify.prisma, request.agent.tenantId, channelId);
+    const list = await listRichMenus(request.tenantPrisma, request.agent.tenantId, channelId);
     return reply.send(success(list));
   });
 
   // GET /api/v1/line/rich-menus/:id
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const menu = await getRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    const menu = await getRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus
   fastify.post('/', async (request, reply) => {
     const data = createSchema.parse(request.body);
-    const menu = await createRichMenu(fastify.prisma, request.agent.tenantId, data);
+    const menu = await createRichMenu(request.tenantPrisma, request.agent.tenantId, data);
     return reply.code(201).send(success(menu));
   });
 
   // PATCH /api/v1/line/rich-menus/:id
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateSchema.parse(request.body);
-    const menu = await updateRichMenu(fastify.prisma, request.params.id, request.agent.tenantId, data);
+    const menu = await updateRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId, data);
     return reply.send(success(menu));
   });
 
   // DELETE /api/v1/line/rich-menus/:id
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const result = await deleteRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    const result = await deleteRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(result));
   });
 
   // POST /api/v1/line/rich-menus/:id/duplicate
   fastify.post<{ Params: { id: string } }>('/:id/duplicate', async (request, reply) => {
-    const menu = await duplicateRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    const menu = await duplicateRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.code(201).send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus/:id/publish
   fastify.post<{ Params: { id: string } }>('/:id/publish', async (request, reply) => {
-    const menu = await publishRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    const menu = await publishRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(menu));
   });
 
   // POST /api/v1/line/rich-menus/:id/unpublish
   fastify.post<{ Params: { id: string } }>('/:id/unpublish', async (request, reply) => {
-    const menu = await unpublishRichMenu(fastify.prisma, request.params.id, request.agent.tenantId);
+    const menu = await unpublishRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(menu));
   });
 }

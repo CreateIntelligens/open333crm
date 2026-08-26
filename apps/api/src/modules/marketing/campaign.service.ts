@@ -1,8 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 
 export async function listCampaigns(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: { status?: string; page?: number; limit?: number } = {},
 ) {
@@ -26,7 +27,7 @@ export async function listCampaigns(
   return { campaigns, total, page, limit };
 }
 
-export async function getCampaign(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getCampaign(prisma: TenantDb, id: string, tenantId: string) {
   const campaign = await prisma.campaign.findFirst({
     where: { id, tenantId },
     include: {
@@ -71,7 +72,7 @@ export async function getCampaign(prisma: PrismaClient, id: string, tenantId: st
 }
 
 export async function createCampaign(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   data: {
@@ -95,7 +96,7 @@ export async function createCampaign(
 }
 
 export async function updateCampaign(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -143,7 +144,7 @@ export async function updateCampaign(
   return campaign;
 }
 
-export async function deleteCampaign(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteCampaign(prisma: TenantDb, id: string, tenantId: string) {
   const existing = await prisma.campaign.findFirst({ where: { id, tenantId } });
   if (!existing) {
     throw new AppError('Campaign not found', 'NOT_FOUND', 404);

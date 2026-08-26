@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { PERMISSIONS } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
@@ -247,7 +248,7 @@ export async function updateAgentRole(
 }
 
 export async function changeOwnPassword(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   agentId: string,
   currentPassword: string,
   newPassword: string,
@@ -274,7 +275,7 @@ export async function changeOwnPassword(
 }
 
 export async function resetAgentPassword(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   newPassword: string,
@@ -295,7 +296,7 @@ export async function resetAgentPassword(
 }
 
 export async function deactivateAgent(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
 ) {

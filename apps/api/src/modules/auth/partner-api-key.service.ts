@@ -8,6 +8,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { PrismaClient, PartnerApiKey } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { logger } from '@open333crm/core';
 
@@ -34,7 +35,7 @@ export interface CreateApiKeyResult {
  * and the row.
  */
 export async function createPartnerApiKey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   input: CreateApiKeyInput,
 ): Promise<CreateApiKeyResult> {
   const random = randomBytes(KEY_RANDOM_BYTES).toString('hex');
@@ -61,7 +62,7 @@ export async function createPartnerApiKey(
 }
 
 export async function listPartnerApiKeys(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<PartnerApiKey[]> {
   return prisma.partnerApiKey.findMany({
@@ -71,7 +72,7 @@ export async function listPartnerApiKeys(
 }
 
 export async function revokePartnerApiKey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   id: string,
 ): Promise<void> {
@@ -94,7 +95,7 @@ export type VerifyResult =
  * batch (almost always exactly 1 candidate).
  */
 export async function verifyPartnerApiKey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   rawKey: string,
 ): Promise<VerifyResult> {
   if (!rawKey.startsWith(KEY_PREFIX)) {

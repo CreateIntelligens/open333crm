@@ -19,6 +19,7 @@ import { generateEmbedCode } from './webchat-embed.service.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { downstreamWebhookConfigSchema } from '../webhook/downstream-forwarder.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -107,8 +108,8 @@ const chatboxThemeSchema = z.object({
   accentColor: z.string().max(32).optional(),
 });
 
-async function getTenantWebchatChannel(fastify: FastifyInstance, id: string, tenantId: string) {
-  const channel = await fastify.prisma.channel.findFirst({
+async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: string) {
+  const channel = await prisma.channel.findFirst({
     where: { id, tenantId, channelType: CHANNEL_TYPE.WEBCHAT },
   });
   if (!channel) {
@@ -123,7 +124,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/channels
   fastify.get('/', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
-    const channels = await listChannels(fastify.prisma, request.agent.tenantId);
+    const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(channels));
   });
 
@@ -131,10 +132,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: requirePermission('channel.create') }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
 
-    const channel = await createChannel(fastify.prisma, request.agent.tenantId, data);
+    const channel = await createChannel(request.tenantPrisma, request.agent.tenantId, data);
 
     // 稽核：建立渠道（只放型別與顯示名，絕不放 credentials 憑證）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'channel.create',
@@ -150,7 +151,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // GET /api/v1/channels/:id
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
     const channel = await getChannel(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -163,7 +164,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const data = updateChannelSchema.parse(request.body);
 
     const channel = await updateChannel(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -175,13 +176,13 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // DELETE /api/v1/channels/:id
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.delete') }, async (request, reply) => {
     const result = await deleteChannel(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
 
     // 稽核：刪除渠道
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'channel.delete',
@@ -196,7 +197,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels/:id/verify
   fastify.post<{ Params: { id: string } }>('/:id/verify', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
     const result = await verifyChannel(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -209,7 +210,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const data = updateWebhookBaseUrlSchema.parse(request.body);
 
     const result = await updateWebhookBaseUrl(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       data.baseUrl,
     );
@@ -220,7 +221,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // POST /api/v1/channels/:id/setup-webhook — LINE auto webhook setup
   fastify.post<{ Params: { id: string } }>('/:id/setup-webhook', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
     const result = await autoSetupLineWebhook(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -229,7 +230,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/channels/:id/status — channel health status
   fastify.get<{ Params: { id: string } }>('/:id/status', async (request, reply) => {
-    const channel = await fastify.prisma.channel.findFirst({
+    const channel = await request.tenantPrisma.channel.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
 
@@ -239,7 +240,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
     if (channel.channelType === CHANNEL_TYPE.FB) {
       const tokenStatus = await checkFbTokenStatus(
-        fastify.prisma,
+        request.tenantPrisma,
         request.params.id,
         request.agent.tenantId,
       );
@@ -261,7 +262,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   // GET /api/v1/channels/:id/embed-code — WebChat embed code
   fastify.get<{ Params: { id: string } }>('/:id/embed-code', async (request, reply) => {
     const result = await generateEmbedCode(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -274,7 +275,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
       const body = chatboxLinkSchema.parse(request.body);
-      const channel = await fastify.prisma.channel.findFirst({
+      const channel = await request.tenantPrisma.channel.findFirst({
         where: {
           id: request.params.id,
           tenantId: request.agent.tenantId,
@@ -289,7 +290,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
       const { publicKey } = channel.publicKey
         ? { publicKey: channel.publicKey }
-        : await ensureChannelPublicKey(fastify.prisma, channel.id, request.agent.tenantId);
+        : await ensureChannelPublicKey(request.tenantPrisma, channel.id, request.agent.tenantId);
 
       if (!publicKey) {
         throw new AppError('publicKey is required', 'BAD_REQUEST', 400);
@@ -309,7 +310,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
       const body = chatboxThemeSchema.parse(request.body);
-      const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
+      const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
       const settings = (channel.settings || {}) as Record<string, unknown>;
       const currentTheme = (settings.chatboxTheme || {}) as Record<string, unknown>;
 
@@ -318,7 +319,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         ...(body.backgroundImageUrl === null ? { backgroundImageUrl: null, backgroundImageKey: null } : {}),
       };
 
-      const updated = await fastify.prisma.channel.update({
+      const updated = await request.tenantPrisma.channel.update({
         where: { id: channel.id },
         data: {
           settings: {
@@ -341,7 +342,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     '/:id/chatbox-theme/background',
     { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
-      const channel = await getTenantWebchatChannel(fastify, request.params.id, request.agent.tenantId);
+      const channel = await getTenantWebchatChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
       const file = await request.file();
       if (!file) {
         return reply.status(400).send({ error: 'No file uploaded' });
@@ -369,7 +370,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         backgroundPosition: currentTheme.backgroundPosition ?? 'center',
       };
 
-      await fastify.prisma.channel.update({
+      await request.tenantPrisma.channel.update({
         where: { id: channel.id },
         data: { settings: { ...settings, chatboxTheme: updatedTheme } },
       });

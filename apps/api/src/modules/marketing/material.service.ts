@@ -7,6 +7,7 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import {
   renderTemplateBody,
@@ -164,7 +165,7 @@ function formatLineValidateError(status: number, body: unknown): string {
   return `LINE validate API failed (${status})`;
 }
 
-async function getLineChannelAccessToken(prisma: PrismaClient, tenantId: string): Promise<string> {
+async function getLineChannelAccessToken(prisma: TenantDb, tenantId: string): Promise<string> {
   const channel = await prisma.channel.findFirst({
     where: { tenantId, channelType: 'LINE', isActive: true },
     orderBy: { createdAt: 'desc' },
@@ -183,7 +184,7 @@ async function getLineChannelAccessToken(prisma: PrismaClient, tenantId: string)
 }
 
 async function validateLineFlexMessageWithLineApi(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   body: LineFlexMessageBody,
 ): Promise<void> {
@@ -216,7 +217,7 @@ async function validateLineFlexMessageWithLineApi(
 // ─── CRUD ───────────────────────────────────────────────────────────────
 
 export async function listMaterials(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filter: ListMaterialsFilter = {},
 ) {
@@ -248,7 +249,7 @@ export async function listMaterials(
   return { items, total, page, limit };
 }
 
-export async function getMaterial(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getMaterial(prisma: TenantDb, id: string, tenantId: string) {
   const material = await prisma.material.findUnique({
     where: { id },
     include: { template: true },
@@ -260,7 +261,7 @@ export async function getMaterial(prisma: PrismaClient, id: string, tenantId: st
 }
 
 export async function createMaterial(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   input: CreateMaterialInput,
 ) {
@@ -321,7 +322,7 @@ export async function createMaterial(
 }
 
 export async function updateMaterial(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   input: UpdateMaterialInput,
@@ -357,7 +358,7 @@ export async function updateMaterial(
 // ─── LINE Flex Template Import ──────────────────────────────────────────
 
 export async function validateLineFlexDraft(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   payload: unknown,
   options: { altText?: string } = {},
@@ -377,7 +378,7 @@ export async function validateLineFlexDraft(
 }
 
 export async function importLineFlexMaterial(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   input: ImportLineFlexMaterialInput,
 ) {
@@ -407,7 +408,7 @@ export async function importLineFlexMaterial(
   }
 }
 
-export async function deleteMaterial(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteMaterial(prisma: TenantDb, id: string, tenantId: string) {
   await getMaterial(prisma, id, tenantId);
   await prisma.material.update({
     where: { id },
@@ -416,7 +417,7 @@ export async function deleteMaterial(prisma: PrismaClient, id: string, tenantId:
   return { deleted: true };
 }
 
-export async function duplicateMaterial(prisma: PrismaClient, id: string, tenantId: string) {
+export async function duplicateMaterial(prisma: TenantDb, id: string, tenantId: string) {
   const source = await getMaterial(prisma, id, tenantId);
   const copy = await prisma.material.create({
     data: {
@@ -440,7 +441,7 @@ export async function duplicateMaterial(prisma: PrismaClient, id: string, tenant
 // ─── Preview & Send Helpers ─────────────────────────────────────────────
 
 export async function previewMaterial(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   options: { contactId?: string; variables?: Record<string, string> } = {},
@@ -498,7 +499,7 @@ export async function previewMaterial(
  * 回傳 channelType / contentType / renderedBody，呼叫端可直接交給 channel plugin sendMessage。
  */
 export async function getMaterialForSend(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   materialId: string,
   tenantId: string,
   options: { contactId?: string; variables?: Record<string, string> } = {},
@@ -534,7 +535,7 @@ export async function getMaterialForSend(
 
 // ─── Categories ─────────────────────────────────────────────────────────
 
-export async function listMaterialCategories(prisma: PrismaClient, tenantId: string) {
+export async function listMaterialCategories(prisma: TenantDb, tenantId: string) {
   const rows = await prisma.material.findMany({
     where: { tenantId, isActive: true, category: { not: null } },
     select: { category: true },

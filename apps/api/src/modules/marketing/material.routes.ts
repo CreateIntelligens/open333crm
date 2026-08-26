@@ -156,14 +156,14 @@ export default async function materialRoutes(fastify: FastifyInstance) {
 
   // GET /materials/categories
   fastify.get('/materials/categories', async (request, reply) => {
-    const categories = await listMaterialCategories(fastify.prisma, request.agent.tenantId);
+    const categories = await listMaterialCategories(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(categories));
   });
 
   // GET /materials
   fastify.get('/materials', async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
-    const result = await listMaterials(fastify.prisma, request.agent.tenantId, {
+    const result = await listMaterials(request.tenantPrisma, request.agent.tenantId, {
       channelType: q.channelType,
       category: q.category,
       q: q.q,
@@ -177,7 +177,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   // POST /materials
   fastify.post('/materials', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createMaterialSchema.parse(request.body);
-    const material = await createMaterial(fastify.prisma, request.agent.tenantId, {
+    const material = await createMaterial(request.tenantPrisma, request.agent.tenantId, {
       ...data,
       createdById: request.agent.id,
     });
@@ -187,7 +187,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   // POST /materials/line-flex/validate
   fastify.post('/materials/line-flex/validate', async (request, reply) => {
     const data = lineFlexValidateSchema.parse(request.body);
-    const result = await validateLineFlexDraft(fastify.prisma, request.agent.tenantId, data.payload, {
+    const result = await validateLineFlexDraft(request.tenantPrisma, request.agent.tenantId, data.payload, {
       altText: data.altText,
     });
     return reply.send(success(result));
@@ -196,7 +196,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   // POST /materials/line-flex/import
   fastify.post('/materials/line-flex/import', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = lineFlexImportSchema.parse(request.body);
-    const material = await importLineFlexMaterial(fastify.prisma, request.agent.tenantId, {
+    const material = await importLineFlexMaterial(request.tenantPrisma, request.agent.tenantId, {
       name: data.name,
       description: data.description,
       category: data.category,
@@ -211,7 +211,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   // GET /materials/:id
   fastify.get('/materials/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const material = await getMaterial(fastify.prisma, id, request.agent.tenantId);
+    const material = await getMaterial(request.tenantPrisma, id, request.agent.tenantId);
     return reply.send(success(material));
   });
 
@@ -219,21 +219,21 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   fastify.patch('/materials/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateMaterialSchema.parse(request.body);
-    const material = await updateMaterial(fastify.prisma, id, request.agent.tenantId, data);
+    const material = await updateMaterial(request.tenantPrisma, id, request.agent.tenantId, data);
     return reply.send(success(material));
   });
 
   // DELETE /materials/:id (soft delete)
   fastify.delete('/materials/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const result = await deleteMaterial(fastify.prisma, id, request.agent.tenantId);
+    const result = await deleteMaterial(request.tenantPrisma, id, request.agent.tenantId);
     return reply.send(success(result));
   });
 
   // POST /materials/:id/duplicate
   fastify.post('/materials/:id/duplicate', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const copy = await duplicateMaterial(fastify.prisma, id, request.agent.tenantId);
+    const copy = await duplicateMaterial(request.tenantPrisma, id, request.agent.tenantId);
     return reply.code(201).send(success(copy));
   });
 
@@ -241,7 +241,7 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   fastify.post('/materials/:id/preview', async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = previewMaterialSchema.parse(request.body ?? {});
-    const result = await previewMaterial(fastify.prisma, id, request.agent.tenantId, data);
+    const result = await previewMaterial(request.tenantPrisma, id, request.agent.tenantId, data);
     return reply.send(success(result));
   });
 }

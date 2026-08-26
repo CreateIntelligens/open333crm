@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
 
@@ -12,7 +13,7 @@ export interface CreateNotificationInput {
 }
 
 export async function createAndDispatch(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   input: CreateNotificationInput,
 ) {
@@ -34,7 +35,7 @@ export async function createAndDispatch(
 }
 
 export async function listNotifications(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   agentId: string,
   tenantId: string,
   filters: { isRead?: boolean },
@@ -63,7 +64,7 @@ export async function listNotifications(
 }
 
 export async function getUnreadCount(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   agentId: string,
   tenantId: string,
 ) {
@@ -74,7 +75,7 @@ export async function getUnreadCount(
 }
 
 export async function markAsRead(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   agentId: string,
   tenantId: string,
@@ -96,7 +97,7 @@ export async function markAsRead(
 }
 
 export async function markAllAsRead(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   agentId: string,
   tenantId: string,
 ) {

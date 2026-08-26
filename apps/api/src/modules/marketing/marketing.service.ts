@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
@@ -15,7 +16,7 @@ import { resolveContext } from './template-context.js';
 // --- Template CRUD ---
 
 export async function listTemplates(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: {
     category?: string;
@@ -59,7 +60,7 @@ export async function listTemplates(
 // --- Broadcast CRUD ---
 
 export async function listBroadcasts(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: { campaignId?: string; status?: string; page?: number; limit?: number } = {},
 ) {
@@ -84,7 +85,7 @@ export async function listBroadcasts(
   return { broadcasts, total, page, limit };
 }
 
-export async function getBroadcast(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getBroadcast(prisma: TenantDb, id: string, tenantId: string) {
   const broadcast = await prisma.broadcast.findFirst({
     where: { id, tenantId },
     include: {
@@ -114,7 +115,7 @@ export async function getBroadcast(prisma: PrismaClient, id: string, tenantId: s
 }
 
 export async function createBroadcast(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   data: {
@@ -203,7 +204,7 @@ export async function createBroadcast(
   return broadcast;
 }
 
-export async function cancelBroadcast(prisma: PrismaClient, id: string, tenantId: string) {
+export async function cancelBroadcast(prisma: TenantDb, id: string, tenantId: string) {
   const broadcast = await prisma.broadcast.findFirst({
     where: { id, tenantId },
   });
@@ -225,7 +226,7 @@ export async function cancelBroadcast(prisma: PrismaClient, id: string, tenantId
  * Execute a broadcast: resolve audience, send personalized messages, update stats.
  */
 export async function executeBroadcast(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   broadcastId: string,
 ) {
@@ -454,7 +455,7 @@ export async function executeBroadcast(
  * Resolve audience for a broadcast based on targetType.
  */
 async function resolveAudience(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   broadcast: {
     tenantId: string;
     channelId: string;

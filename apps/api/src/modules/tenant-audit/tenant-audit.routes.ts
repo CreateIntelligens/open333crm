@@ -19,7 +19,7 @@ export default async function tenantAuditRoutes(fastify: FastifyInstance) {
   // 租戶操作稽核查詢（分頁 + 篩選，一律 tenantId scoped）
   fastify.get('/', { preHandler: [requirePermission('audit.view')] }, async (request) => {
     const q = listQuerySchema.parse(request.query);
-    const result = await listTenantAudit(fastify.prisma, {
+    const result = await listTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       action: q.action,
       actorId: q.actorId,

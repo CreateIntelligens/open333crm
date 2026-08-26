@@ -6,6 +6,9 @@ import { classifyIssue } from './classify.service.js';
 import { success } from '../../shared/utils/response.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
+  // TODO(rls): 本模組服務（suggestReply/summarize/analyzeSentiment/classify）會把 prisma
+  // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
+  // 再一併改走 request.tenantPrisma。目前維持 fastify.prisma。
   fastify.addHook('preHandler', fastify.authenticate);
 
   // POST /api/v1/ai/suggest-reply

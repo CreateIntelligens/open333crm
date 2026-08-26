@@ -98,7 +98,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     const { page, limit, ...filters } = query;
 
     const { rules, total } = await listRules(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
@@ -112,7 +112,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     const data = createRuleSchema.parse(request.body);
 
     const rule = await createRule(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       data,
     );
@@ -123,7 +123,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   // ── GET /api/v1/automation/rules/:id ────────────────────────────────────
   fastify.get<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.view') }, async (request, reply) => {
     const rule = await getRule(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -136,7 +136,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     const data = updateRuleSchema.parse(request.body);
 
     const rule = await updateRule(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -148,7 +148,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
   // ── DELETE /api/v1/automation/rules/:id ─────────────────────────────────
   fastify.delete<{ Params: { id: string } }>('/rules/:id', { preHandler: requirePermission('automation.manage') }, async (request, reply) => {
     const rule = await deleteRule(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -161,7 +161,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     const data = testRuleSchema.parse(request.body);
 
     const result = await testRule(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.params.id,
       data.facts,
@@ -176,7 +176,7 @@ export default async function automationRoutes(fastify: FastifyInstance) {
     const { page, limit, ...filters } = query;
 
     const { logs, total } = await listLogs(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       { page, limit },
       filters,

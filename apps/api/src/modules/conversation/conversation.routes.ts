@@ -61,7 +61,7 @@ async function handleSendMedia(
   const conversationId = request.params.id;
   const { tenantId, id: agentId } = (request as any).agent;
 
-  const conversation = await fastify.prisma.conversation.findUnique({
+  const conversation = await request.tenantPrisma.conversation.findUnique({
     where: { id: conversationId },
     include: { channel: true },
   });
@@ -81,7 +81,7 @@ async function handleSendMedia(
   const uploaded = await uploadFile(buffer, file.filename, file.mimetype, tenantId, 'media', conversationId);
 
   const { message, delivery } = await sendMessage(
-    fastify.prisma,
+    request.tenantPrisma,
     fastify.io,
     conversationId,
     agentId,
@@ -149,7 +149,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const { page, limit, ...filters } = query;
 
     const { conversations, total } = await listConversations(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
@@ -161,7 +161,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // GET /api/v1/conversations/:id
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const conversation = await getConversation(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -174,7 +174,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const data = updateConversationSchema.parse(request.body);
 
     const conversation = await updateConversation(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -187,7 +187,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/read
   fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
     const conversation = await markConversationRead(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -199,7 +199,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/tags
   fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
     const body = addTagSchema.parse(request.body);
-    const conversationTag = await addTagToTarget(fastify.prisma, {
+    const conversationTag = await addTagToTarget(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       targetType: 'CONVERSATION',
       targetId: request.params.id,
@@ -214,7 +214,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string; tagId: string } }>(
     '/:id/tags/:tagId',
     async (request, reply) => {
-      const removed = await removeTagFromTarget(fastify.prisma, {
+      const removed = await removeTagFromTarget(request.tenantPrisma, {
         tenantId: request.agent.tenantId,
         targetType: 'CONVERSATION',
         targetId: request.params.id,
@@ -230,7 +230,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const query = messagesQuerySchema.parse(request.query);
 
     const { messages, total } = await getMessages(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       query.page,
       query.limit,
@@ -245,7 +245,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const data = sendMessageSchema.parse(request.body);
 
     const { message } = await sendMessage(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.id,
@@ -263,7 +263,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     }).parse(request.body ?? {});
 
     const conversation = await closeConversation(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -285,7 +285,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     }).parse(request.body);
 
     const conversation = await handoffConversation(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -316,6 +316,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/case', async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
 
+    // TODO(rls): 交易 service，待改造為 withTenant
     const caseRecord = await createCaseFromConversation(
       fastify.prisma,
       fastify.io,

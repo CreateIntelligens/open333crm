@@ -81,7 +81,7 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, status } = query;
 
-    const { flows, total } = await listFlows(fastify.prisma, request.agent.tenantId, {
+    const { flows, total } = await listFlows(request.tenantPrisma, request.agent.tenantId, {
       page, limit, status,
     });
 
@@ -91,26 +91,26 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   // ── POST /api/v1/canvas ─────────────────────────────────────────────────
   fastify.post('/', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const data = createFlowSchema.parse(request.body);
-    const flow = await createFlow(fastify.prisma, request.agent.tenantId, data as never);
+    const flow = await createFlow(request.tenantPrisma, request.agent.tenantId, data as never);
     return reply.status(201).send(success(flow));
   });
 
   // ── GET /api/v1/canvas/:id ──────────────────────────────────────────────
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const flow = await getFlow(fastify.prisma, request.params.id, request.agent.tenantId);
+    const flow = await getFlow(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(flow));
   });
 
   // ── PATCH /api/v1/canvas/:id ────────────────────────────────────────────
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const data = updateFlowSchema.parse(request.body);
-    const flow = await updateFlow(fastify.prisma, request.params.id, request.agent.tenantId, data);
+    const flow = await updateFlow(request.tenantPrisma, request.params.id, request.agent.tenantId, data);
     return reply.send(success(flow));
   });
 
   // ── POST /api/v1/canvas/:id/activate ───────────────────────────────────
   fastify.post<{ Params: { id: string } }>('/:id/activate', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
-    const flow = await activateFlow(fastify.prisma, request.params.id, request.agent.tenantId);
+    const flow = await activateFlow(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(flow));
   });
 
@@ -118,7 +118,7 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/trigger', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const { contactId, vars } = triggerFlowSchema.parse(request.body);
     const executionId = await triggerFlow(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       contactId,
       request.agent.tenantId,
@@ -130,7 +130,7 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
   // ── GET /api/v1/canvas/:id/analytics ───────────────────────────────────
   fastify.get<{ Params: { id: string } }>('/:id/analytics', { preHandler: [requirePermission('canvas.use')] }, async (request, reply) => {
     const analytics = await getFlowAnalytics(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -143,7 +143,7 @@ export default async function canvasRoutes(fastify: FastifyInstance) {
     const { page, limit, status } = query;
 
     const result = await listExecutions(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       { page, limit, status },

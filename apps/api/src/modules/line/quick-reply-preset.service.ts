@@ -4,6 +4,7 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 
 export interface QuickReplyItem {
@@ -57,21 +58,21 @@ function validateName(name: string): void {
   }
 }
 
-export async function listPresets(prisma: PrismaClient, tenantId: string) {
+export async function listPresets(prisma: TenantDb, tenantId: string) {
   return prisma.quickReplyPreset.findMany({
     where: { tenantId, isActive: true },
     orderBy: { createdAt: 'desc' },
   });
 }
 
-export async function getPreset(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getPreset(prisma: TenantDb, id: string, tenantId: string) {
   const preset = await prisma.quickReplyPreset.findFirst({ where: { id, tenantId } });
   if (!preset) throw new AppError('預設組不存在', 'NOT_FOUND', 404);
   return preset;
 }
 
 export async function createPreset(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   input: CreatePresetInput,
 ) {
@@ -87,7 +88,7 @@ export async function createPreset(
 }
 
 export async function updatePreset(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   input: UpdatePresetInput,
@@ -104,7 +105,7 @@ export async function updatePreset(
   return prisma.quickReplyPreset.update({ where: { id }, data });
 }
 
-export async function deletePreset(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deletePreset(prisma: TenantDb, id: string, tenantId: string) {
   await getPreset(prisma, id, tenantId);
   await prisma.quickReplyPreset.delete({ where: { id } });
   return { deleted: true };

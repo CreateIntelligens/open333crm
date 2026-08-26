@@ -145,7 +145,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     const config = getConfig();
     const body = loginRequestSchema.parse(request.body);
 
-    const agent = await login(fastify.prisma, body.email, body.password);
+    const agent = await login(fastify.prismaAdmin, body.email, body.password);
 
     return reply.send(success(issueAgentSession(fastify, reply, agent, config, !!body.rememberMe)));
   });
@@ -175,11 +175,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const config = getPasskeyConfig();
     const agent = await getActiveAgentForAuth(
-      fastify.prisma,
+      fastify.prismaAdmin,
       request.agent.id,
       request.agent.tenantId,
     );
-    const existingCredentials = await fastify.prisma.passkeyCredential.findMany({
+    const existingCredentials = await fastify.prismaAdmin.passkeyCredential.findMany({
       where: {
         tenantId: request.agent.tenantId,
         agentId: request.agent.id,
@@ -239,7 +239,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     const agent = await getActiveAgentForAuth(
-      fastify.prisma,
+      fastify.prismaAdmin,
       request.agent.id,
       request.agent.tenantId,
     );
@@ -263,7 +263,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     try {
       const registration = verification.registrationInfo;
-      await fastify.prisma.passkeyCredential.create({
+      await fastify.prismaAdmin.passkeyCredential.create({
         data: {
           tenantId: agent.tenantId,
           agentId: agent.id,
@@ -302,7 +302,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     let allowCredentials: Array<{ id: string; transports?: AuthenticatorTransportFuture[] }> = [];
 
     if (body.email) {
-      const agent = await fastify.prisma.agent.findFirst({
+      const agent = await fastify.prismaAdmin.agent.findFirst({
         where: {
           email: body.email,
           isActive: true,
@@ -360,7 +360,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     if (challenge.purpose !== 'authentication') throw invalidPasskeyError();
 
     const credential = challenge.tenantId
-      ? await fastify.prisma.passkeyCredential.findFirst({
+      ? await fastify.prismaAdmin.passkeyCredential.findFirst({
         where: {
           credentialId: body.response.id,
           tenantId: challenge.tenantId,
@@ -378,7 +378,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
           revokedAt: true,
         },
       })
-      : await fastify.prisma.passkeyCredential.findUnique({
+      : await fastify.prismaAdmin.passkeyCredential.findUnique({
         where: { credentialId: body.response.id },
         select: {
           id: true,
@@ -396,7 +396,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       throw invalidPasskeyError();
     }
 
-    const agent = await getActiveAgentForAuth(fastify.prisma, credential.agentId, credential.tenantId);
+    const agent = await getActiveAgentForAuth(fastify.prismaAdmin, credential.agentId, credential.tenantId);
     const config = getPasskeyConfig();
     let verification;
     try {
@@ -420,7 +420,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     if (!verification.verified) throw invalidPasskeyError();
 
-    const updated = await fastify.prisma.passkeyCredential.updateMany({
+    const updated = await fastify.prismaAdmin.passkeyCredential.updateMany({
       where: {
         id: credential.id,
         tenantId: credential.tenantId,
@@ -449,7 +449,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.get('/passkeys', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    const credentials = await fastify.prisma.passkeyCredential.findMany({
+    const credentials = await fastify.prismaAdmin.passkeyCredential.findMany({
       where: {
         tenantId: request.agent.tenantId,
         agentId: request.agent.id,
@@ -481,7 +481,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = passkeyIdParamsSchema.parse(request.params);
     const { name } = passkeyRenameSchema.parse(request.body);
-    const result = await fastify.prisma.passkeyCredential.updateMany({
+    const result = await fastify.prismaAdmin.passkeyCredential.updateMany({
       where: {
         id,
         tenantId: request.agent.tenantId,
@@ -507,7 +507,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const { id } = passkeyIdParamsSchema.parse(request.params);
-    const result = await fastify.prisma.passkeyCredential.updateMany({
+    const result = await fastify.prismaAdmin.passkeyCredential.updateMany({
       where: {
         id,
         tenantId: request.agent.tenantId,
@@ -532,8 +532,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     const body = cliLoginRequestSchema.parse(request.body);
-    const agent = await login(fastify.prisma, body.email, body.password);
-    const { token, session } = await createCliSession(fastify.prisma, {
+    const agent = await login(fastify.prismaAdmin, body.email, body.password);
+    const { token, session } = await createCliSession(fastify.prismaAdmin, {
       tenantId: agent.tenantId,
       agentId: agent.id,
       name: body.name ?? body.profile ?? 'Open333 CLI',
@@ -569,7 +569,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const session = request.agent.cliSession;
     if (session) {
-      await revokeCliSession(fastify.prisma, session.id, request.agent.tenantId);
+      await revokeCliSession(fastify.prismaAdmin, session.id, request.agent.tenantId);
     }
     return reply.send(success({ loggedOut: true }));
   });
@@ -592,7 +592,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       // 安全性：不沿用 token 內的舊 role/roleId，改從 DB 重讀當前值（帶 tenantId + 仍 isActive）。
       // 否則 admin 降權某成員後，該成員可靠 refresh 續命舊角色達 refresh TTL（可能 30 天）。
       // 停用（或租戶停用）者不給 refresh，直接視為失效。
-      const current = await getActiveAgentForAuth(fastify.prisma, payload.agentId, payload.tenantId);
+      const current = await getActiveAgentForAuth(fastify.prismaAdmin, payload.agentId, payload.tenantId);
 
       const tokenPayload: TokenPayload = {
         agentId: current.id,
@@ -625,7 +625,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticateJwtOrCliSession],
   }, async (request, reply) => {
     const agent = await getAgentById(
-      fastify.prisma,
+      fastify.prismaAdmin,
       request.agent.id,
       request.agent.tenantId,
     );
@@ -638,8 +638,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     // 前端 gating 用「使用者實際可用權限」= 角色權限 ∩ 方案天花板
-    const planId = await getTenantPlanId(fastify.prisma, request.agent.tenantId);
-    const eff = await getEffectiveTenantPermissions(fastify.prisma, request.agent.roleId, planId);
+    const planId = await getTenantPlanId(fastify.prismaAdmin, request.agent.tenantId);
+    const eff = await getEffectiveTenantPermissions(fastify.prismaAdmin, request.agent.roleId, planId);
     return reply.send(success({ permissions: [...eff] }));
   });
 }

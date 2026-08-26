@@ -49,21 +49,21 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   // GET /analytics/overview
   fastify.get('/overview', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getOverviewStats(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getOverviewStats(request.tenantPrisma, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/message-trend
   fastify.get('/message-trend', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to, groupBy } = messageTrendSchema.parse(request.query);
-    const data = await getMessageTrend(fastify.prisma, request.agent.tenantId, from, to, groupBy);
+    const data = await getMessageTrend(request.tenantPrisma, request.agent.tenantId, from, to, groupBy);
     return reply.send(success(data));
   });
 
   // GET /analytics/cases
   fastify.get('/cases', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = caseStatsSchema.parse(request.query);
-    const data = await getCaseStats(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getCaseStats(request.tenantPrisma, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 
@@ -71,7 +71,7 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   fastify.get('/agents', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to, agentId } = agentSchema.parse(request.query);
     const data = await getAgentPerformance(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       from,
       to,
@@ -83,14 +83,14 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   // GET /analytics/channels
   fastify.get('/channels', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getChannelAnalytics(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getChannelAnalytics(request.tenantPrisma, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 
   // GET /analytics/contacts
   fastify.get('/contacts', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getContactAnalytics(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getContactAnalytics(request.tenantPrisma, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 
@@ -98,7 +98,7 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   // 靠 module-level 的 requireAnyPermission 放行（analytics.view.self 即可，一般專員也看得到）。
   fastify.get('/my', async (request, reply) => {
     const data = await getMyPerformance(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
     );
@@ -110,7 +110,7 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
     const { from, to } = dateRangeSchema.parse(request.query);
     const tenantId = request.agent.tenantId;
 
-    const cases = await fastify.prisma.case.findMany({
+    const cases = await request.tenantPrisma.case.findMany({
       where: {
         tenantId,
         csatSentAt: { gte: from, lte: to },
@@ -153,7 +153,7 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   fastify.post('/export', { preHandler: requirePermission('analytics.export') }, async (request, reply) => {
     const { reportType, from, to } = exportSchema.parse(request.body);
     const csv = await exportCsv(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       reportType,
       from,

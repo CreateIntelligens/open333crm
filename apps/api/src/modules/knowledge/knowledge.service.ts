@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import {
@@ -12,7 +13,7 @@ import {
 // --- Article CRUD ---
 
 export async function listArticles(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: {
     status?: string;
@@ -90,7 +91,7 @@ export async function listArticles(
   return { articles, total, page, limit };
 }
 
-export async function getArticle(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getArticle(prisma: TenantDb, id: string, tenantId: string) {
   const article = await prisma.kmArticle.findFirst({
     where: { id, tenantId },
     include: {
@@ -122,7 +123,7 @@ export async function getArticle(prisma: PrismaClient, id: string, tenantId: str
 }
 
 export async function createArticle(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   data: {
@@ -155,7 +156,7 @@ export async function createArticle(
 }
 
 export async function updateArticle(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -196,7 +197,7 @@ export async function updateArticle(
   return updated;
 }
 
-export async function deleteArticle(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteArticle(prisma: TenantDb, id: string, tenantId: string) {
   const article = await prisma.kmArticle.findFirst({
     where: { id, tenantId },
   });
@@ -210,7 +211,7 @@ export async function deleteArticle(prisma: PrismaClient, id: string, tenantId: 
   return { deleted: true };
 }
 
-export async function publishArticle(prisma: PrismaClient, id: string, tenantId: string) {
+export async function publishArticle(prisma: TenantDb, id: string, tenantId: string) {
   const article = await prisma.kmArticle.findFirst({
     where: { id, tenantId },
   });
@@ -246,7 +247,7 @@ export async function publishArticle(prisma: PrismaClient, id: string, tenantId:
   return updated;
 }
 
-export async function archiveArticle(prisma: PrismaClient, id: string, tenantId: string) {
+export async function archiveArticle(prisma: TenantDb, id: string, tenantId: string) {
   const article = await prisma.kmArticle.findFirst({
     where: { id, tenantId },
   });
@@ -267,7 +268,7 @@ export async function archiveArticle(prisma: PrismaClient, id: string, tenantId:
   return updated;
 }
 
-export async function listCategories(prisma: PrismaClient, tenantId: string) {
+export async function listCategories(prisma: TenantDb, tenantId: string) {
   const results = await prisma.kmArticle.findMany({
     where: { tenantId },
     select: { category: true },
@@ -278,7 +279,7 @@ export async function listCategories(prisma: PrismaClient, tenantId: string) {
   return results.map((r) => r.category);
 }
 
-export async function listSources(prisma: PrismaClient, tenantId: string) {
+export async function listSources(prisma: TenantDb, tenantId: string) {
   const results = await prisma.kmArticle.findMany({
     where: { tenantId, externalSource: { not: null } },
     select: { externalSource: true },
@@ -292,7 +293,7 @@ export async function listSources(prisma: PrismaClient, tenantId: string) {
 // ─── Semantic Search ────────────────────────────────────────────────────────
 
 export async function semanticSearch(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   query: string,
   options: { topK?: number; threshold?: number } = {},
@@ -305,7 +306,7 @@ export async function semanticSearch(
 // ─── Batch Import ───────────────────────────────────────────────────────────
 
 export async function batchImportArticles(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   articles: {

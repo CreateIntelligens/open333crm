@@ -11,6 +11,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { logger } from '@open333crm/core';
 
 export interface EmbeddingSettings {
@@ -54,7 +55,7 @@ export const EMBEDDING_VECTOR_DIM = 1024;
 // ─── Settings CRUD ──────────────────────────────────────────────────────────
 
 export async function getEmbeddingSettings(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<EmbeddingSettings> {
   let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
@@ -80,7 +81,7 @@ export async function getEmbeddingSettings(
 }
 
 export async function updateEmbeddingSettings(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   patch: Partial<EmbeddingSettings>,
 ): Promise<{ settings: EmbeddingSettings; modelChanged: boolean; previousModel: string }> {
@@ -167,7 +168,7 @@ export async function checkOllamaHealth(
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
 export async function getEmbeddingStats(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<EmbeddingStats> {
   const total = await prisma.kmArticle.count({

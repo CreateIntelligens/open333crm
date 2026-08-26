@@ -6,6 +6,7 @@
  * 三層 fallback 取 key：租戶自填 → 平台代設（暫同 env）→ 全域 env GEMINI_API_KEY。
  */
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { encryptCredentials, decryptCredentials } from '../channel/channel.service.js';
 import { getConfig } from '../../config/env.js';
 
@@ -25,7 +26,7 @@ export function decryptApiKey(enc: string): string {
  * 來源：byok（租戶自填）| platform（env fallback）。
  */
 export async function resolveGeminiKey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<{ key: string | undefined; source: 'byok' | 'platform' }> {
   const settings = await prisma.tenantSettings.findUnique({
@@ -46,7 +47,7 @@ export async function resolveGeminiKey(
 
 /** 儲存/清除租戶 BYOK key（傳 null 清除）。 */
 export async function setTenantGeminiKey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   plainKey: string | null,
 ): Promise<void> {
@@ -62,7 +63,7 @@ export async function setTenantGeminiKey(
 
 /** 回傳遮罩後的 key 狀態（不外洩明文）。 */
 export async function getTenantGeminiKeyStatus(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<{ configured: boolean; masked: string | null }> {
   const settings = await prisma.tenantSettings.findUnique({

@@ -7,6 +7,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import {
   PERMISSIONS,
   PERMISSION_BY_CODE,
@@ -23,14 +24,14 @@ const ADMIN_LOCKED = PERMISSIONS.filter((p) => p.adminLock).map((p) => p.code);
  * 【租戶隔離—必做】以 tenantId 驗證 role 屬於本租戶，找不到丟 404。
  * 任何碰 RolePermission 的操作前都必須先過這道關。
  */
-export async function loadTenantRole(prisma: PrismaClient, roleId: string, tenantId: string) {
+export async function loadTenantRole(prisma: TenantDb, roleId: string, tenantId: string) {
   const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
   if (!role) throw new AppError('Role not found', 'NOT_FOUND', 404);
   return role;
 }
 
 /** 列出租戶所有角色（含權限數）。 */
-export async function listRoles(prisma: PrismaClient, tenantId: string) {
+export async function listRoles(prisma: TenantDb, tenantId: string) {
   const roles = await prisma.role.findMany({
     where: { tenantId },
     orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }],
@@ -47,7 +48,7 @@ export async function listRoles(prisma: PrismaClient, tenantId: string) {
 }
 
 /** 取得某角色的權限碼清單（明確授予，不含 implies）。 */
-export async function getRolePermissions(prisma: PrismaClient, roleId: string, tenantId: string) {
+export async function getRolePermissions(prisma: TenantDb, roleId: string, tenantId: string) {
   await loadTenantRole(prisma, roleId, tenantId);
   const rows = await prisma.rolePermission.findMany({
     where: { roleId },
@@ -57,7 +58,7 @@ export async function getRolePermissions(prisma: PrismaClient, roleId: string, t
 }
 
 /** 建立自訂角色（空白，0 權限）。 */
-export async function createRole(prisma: PrismaClient, tenantId: string, name: string) {
+export async function createRole(prisma: TenantDb, tenantId: string, name: string) {
   const trimmed = name.trim();
   if (!trimmed) throw new AppError('角色名稱不可為空', 'VALIDATION_ERROR', 422);
   // slug 用隨機值（custom），確保租戶內唯一
@@ -72,7 +73,7 @@ export async function createRole(prisma: PrismaClient, tenantId: string, name: s
 }
 
 /** 改角色名稱（system role 可改 name 不可改 slug）。 */
-export async function renameRole(prisma: PrismaClient, roleId: string, tenantId: string, name: string) {
+export async function renameRole(prisma: TenantDb, roleId: string, tenantId: string, name: string) {
   await loadTenantRole(prisma, roleId, tenantId);
   const trimmed = name.trim();
   if (!trimmed) throw new AppError('角色名稱不可為空', 'VALIDATION_ERROR', 422);
@@ -83,7 +84,7 @@ export async function renameRole(prisma: PrismaClient, roleId: string, tenantId:
 }
 
 /** 刪除自訂角色（system role 不可刪；仍被指派則阻擋）。 */
-export async function deleteRole(prisma: PrismaClient, roleId: string, tenantId: string) {
+export async function deleteRole(prisma: TenantDb, roleId: string, tenantId: string) {
   const role = await loadTenantRole(prisma, roleId, tenantId);
   if (role.isSystem) throw new AppError('內建角色不可刪除', 'FORBIDDEN', 403);
   const agentCount = await prisma.agent.count({ where: { roleId, tenantId } });

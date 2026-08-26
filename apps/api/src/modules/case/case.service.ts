@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { CaseStatus, Priority } from '@open333crm/shared';
@@ -28,7 +29,7 @@ export interface PaginationParams {
 }
 
 export async function listCases(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: CaseFilters,
   pagination: PaginationParams,
@@ -128,7 +129,7 @@ export async function listCases(
 }
 
 export async function getCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -408,7 +409,7 @@ export async function createCase(
 }
 
 export async function assignCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -510,7 +511,7 @@ export async function assignCase(
 }
 
 export async function transitionCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -628,7 +629,7 @@ export async function transitionCase(
 }
 
 export async function escalateCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -747,7 +748,7 @@ export async function escalateCase(
 }
 
 export async function addNote(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   caseId: string,
   agentId: string,
   content: string,
@@ -766,7 +767,7 @@ export async function addNote(
 }
 
 export async function getCaseEvents(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   caseId: string,
 ) {
   const events = await prisma.caseEvent.findMany({
@@ -949,7 +950,7 @@ export async function deleteCase(
 }
 
 export async function getCaseStats(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ) {
   const now = new Date();
@@ -983,11 +984,13 @@ export async function getCaseStats(
         resolvedAt: { gte: todayStart },
       },
     }),
-    prisma.case.groupBy({
+    // groupBy 在 TenantDb 聯集型別下 TS 無法解析多載（union of overloads 限制），
+    // 這裡對 delegate 做局部 cast；執行語意不變、仍走 RLS 注入的 tenantPrisma。
+    (prisma.case as any).groupBy({
       by: ['status'],
       where: { tenantId },
       _count: true,
-    }),
+    }) as Promise<Array<{ status: string; _count: number }>>,
   ]);
 
   const statusCounts: Record<string, number> = {};
@@ -999,7 +1002,7 @@ export async function getCaseStats(
 }
 
 export async function updateCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   id: string,
   tenantId: string,

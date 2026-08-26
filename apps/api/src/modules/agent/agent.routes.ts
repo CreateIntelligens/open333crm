@@ -22,7 +22,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/agents
   fastify.get('/', { preHandler: [requirePermission('agent.view')] }, async (request, reply) => {
-    const agents = await fastify.prisma.agent.findMany({
+    const agents = await request.tenantPrisma.agent.findMany({
       where: {
         tenantId: request.agent.tenantId,
         isActive: true,
@@ -73,6 +73,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const body = createAgentSchema.parse(request.body);
 
     // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403
+    // TODO(rls): 交易 service，待改造為 withTenant（依賴 getEffectiveLimit/getEffectivePermissions 等收 PrismaClient 的跨模組 helper）
     const agent = await createAgent(
       fastify.prisma,
       request.agent.tenantId,
@@ -80,7 +81,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       request.agent.roleId,
     );
     // 稽核：建立成員（payload 只放非 PII 摘要——email 不入 payload，改用 targetId 對應 agent）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'agent.create',
@@ -96,7 +97,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   // Must be defined before /:id routes to avoid route conflict
   fastify.patch('/me/password', async (request, reply) => {
     const body = changePasswordSchema.parse(request.body);
-    await changeOwnPassword(fastify.prisma, request.agent.id, body.currentPassword, body.newPassword);
+    await changeOwnPassword(request.tenantPrisma, request.agent.id, body.currentPassword, body.newPassword);
     return reply.send(success({ message: 'Password updated' }));
   });
 
@@ -109,6 +110,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     // 越權防護：不可指派權限超出自身有效權限的角色 → ROLE_ESCALATION 403
     // 傳操作者本人 agentId（request.agent.id）供 service 做自我降級守門 → SELF_LOCK 422
+    // TODO(rls): 交易 service，待改造為 withTenant（依賴 getEffectivePermissions 等收 PrismaClient 的跨模組 helper）
     const agent = await updateAgentRole(
       fastify.prisma,
       request.agent.tenantId,
@@ -118,7 +120,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       request.agent.id,
     );
     // 稽核：指派/變更成員角色
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'agent.role.assign',
@@ -136,9 +138,9 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = resetPasswordSchema.parse(request.body);
-    await resetAgentPassword(fastify.prisma, request.agent.tenantId, id, body.newPassword);
+    await resetAgentPassword(request.tenantPrisma, request.agent.tenantId, id, body.newPassword);
     // 稽核：重設他人密碼（絕不記錄密碼明文，只記操作事實）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'agent.password.reset',
@@ -154,9 +156,9 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('agent.delete')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    await deactivateAgent(fastify.prisma, request.agent.tenantId, id);
+    await deactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
     // 稽核：停用（軟刪）成員
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'agent.delete',
