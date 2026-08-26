@@ -15,6 +15,8 @@ export async function listTenants(prisma: PrismaClient) {
       name: true,
       isActive: true,
       createdAt: true,
+      contractStartDate: true,
+      contractEndDate: true,
       plan: { select: { slug: true, name: true } },
       _count: { select: { agents: true } },
     },

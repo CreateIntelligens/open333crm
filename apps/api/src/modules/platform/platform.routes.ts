@@ -17,6 +17,7 @@ import {
   listTrialTenants,
   extendTrial,
   convertToPaid,
+  updateTenantContract,
   resendVerification,
   markSignupFailed,
 } from './trial-admin.service.js';
@@ -153,6 +154,29 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetType: 'tenant',
       targetId: result.id,
       payload: { planSlug },
+    });
+    return success(result);
+  });
+
+  // 設定租戶合約起訖日（純記錄，不觸發任何自動行為）。null=清除、缺=不動、date=設值。
+  fastify.patch<{ Params: { id: string } }>('/tenants/:id/contract', guard, async (request) => {
+    const body = z
+      .object({
+        contractStartDate: z.coerce.date().nullable().optional(),
+        contractEndDate: z.coerce.date().nullable().optional(),
+      })
+      .refine(
+        (v) => !(v.contractStartDate && v.contractEndDate) || v.contractEndDate >= v.contractStartDate,
+        { message: '合約迄日不可早於起日', path: ['contractEndDate'] },
+      )
+      .parse(request.body);
+    const result = await updateTenantContract(fastify.prisma, request.params.id, body);
+    await writePlatformAudit(fastify.prisma, {
+      platformUserId: request.platformUser!.id,
+      action: 'tenant.contract.update',
+      targetType: 'tenant',
+      targetId: result.id,
+      payload: { contractStartDate: result.contractStartDate, contractEndDate: result.contractEndDate },
     });
     return success(result);
   });

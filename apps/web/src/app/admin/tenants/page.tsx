@@ -8,8 +8,15 @@ interface Tenant {
   name: string;
   isActive: boolean;
   createdAt: string;
+  contractStartDate: string | null;
+  contractEndDate: string | null;
   plan: { slug: string; name: string } | null;
   _count: { agents: number };
+}
+
+/** ISO datetime → yyyy-MM-dd（date input 用）；null → '' */
+function toDateInput(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : '';
 }
 
 export default function TenantsPage() {
@@ -29,6 +36,27 @@ export default function TenantsPage() {
   const toggleActive = async (t: Tenant) => {
     await platformApi.patch(`/tenants/${t.id}/active`, { isActive: !t.isActive });
     await load();
+  };
+
+  // 合約日期 inline 編輯：記錄「正在編輯的租戶 id + 起訖日草稿」
+  const [editing, setEditing] = useState<{ id: string; start: string; end: string } | null>(null);
+
+  const saveContract = async () => {
+    if (!editing) return;
+    setMsg('');
+    try {
+      await platformApi.patch(`/tenants/${editing.id}/contract`, {
+        contractStartDate: editing.start || null,
+        contractEndDate: editing.end || null,
+      });
+      setEditing(null);
+      await load();
+    } catch (err: unknown) {
+      setMsg(
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
+          '合約日期儲存失敗',
+      );
+    }
   };
 
   const provision = async (e: React.FormEvent) => {
@@ -67,6 +95,7 @@ export default function TenantsPage() {
               <th style={th}>租戶</th>
               <th style={th}>方案</th>
               <th style={th}>客服數</th>
+              <th style={th}>合約期間</th>
               <th style={th}>狀態</th>
               <th style={th}></th>
             </tr>
@@ -78,14 +107,39 @@ export default function TenantsPage() {
                 <td style={td}>{t.plan?.name ?? '（無方案）'}</td>
                 <td style={td}>{t._count.agents}</td>
                 <td style={td}>
+                  {editing?.id === t.id ? (
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <input type="date" value={editing.start} onChange={(e) => setEditing({ ...editing, start: e.target.value })} style={dateInp} />
+                      <span style={{ color: '#97a0ae' }}>~</span>
+                      <input type="date" value={editing.end} onChange={(e) => setEditing({ ...editing, end: e.target.value })} style={dateInp} />
+                    </span>
+                  ) : t.contractStartDate || t.contractEndDate ? (
+                    <span>{toDateInput(t.contractStartDate) || '—'} ~ {toDateInput(t.contractEndDate) || '—'}</span>
+                  ) : (
+                    <span style={{ color: '#97a0ae' }}>未設定</span>
+                  )}
+                </td>
+                <td style={td}>
                   <span style={{ color: t.isActive ? '#17935b' : '#d1443e' }}>
                     {t.isActive ? '啟用' : '停用'}
                   </span>
                 </td>
                 <td style={td}>
-                  <button onClick={() => toggleActive(t)} style={miniBtn}>
-                    {t.isActive ? '停用' : '啟用'}
-                  </button>
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    {editing?.id === t.id ? (
+                      <>
+                        <button onClick={saveContract} style={{ ...miniBtn, background: '#0d9488', color: '#fff', border: 'none' }}>儲存</button>
+                        <button onClick={() => setEditing(null)} style={miniBtn}>取消</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setEditing({ id: t.id, start: toDateInput(t.contractStartDate), end: toDateInput(t.contractEndDate) })} style={miniBtn}>合約</button>
+                        <button onClick={() => toggleActive(t)} style={miniBtn}>
+                          {t.isActive ? '停用' : '啟用'}
+                        </button>
+                      </>
+                    )}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -119,4 +173,5 @@ const th: React.CSSProperties = { padding: '8px 10px', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '10px' };
 const miniBtn: React.CSSProperties = { border: '1px solid #cdd5e0', background: '#fff', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 const inp: React.CSSProperties = { border: '1px solid #e3e8ef', borderRadius: 8, padding: '9px 11px', fontSize: 14 };
+const dateInp: React.CSSProperties = { border: '1px solid #cdd5e0', borderRadius: 6, padding: '3px 6px', fontSize: 12 };
 const saveBtn: React.CSSProperties = { background: '#0d9488', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
