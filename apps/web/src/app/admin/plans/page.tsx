@@ -4,6 +4,28 @@ import { useEffect, useState } from 'react';
 import { platformApi } from '../lib/platform-api';
 
 const ALL_FEATURES = ['inbox', 'channels', 'automation', 'marketing', 'analytics', 'knowledge', 'portal', 'core'];
+// 功能代碼 → 中文顯示（對齊 @open333crm/core 的 features 定義；代碼本身傳後端不變，只換顯示）
+const FEATURE_LABELS: Record<string, string> = {
+  inbox: '客服收發',
+  channels: '渠道管理',
+  automation: '自動化',
+  marketing: '行銷群發',
+  analytics: '分析報表',
+  knowledge: '知識庫',
+  portal: '粉絲活動',
+  core: '帳號 · 角色 · 設定',
+};
+// 功能對照說明（依 RBAC 權限點整理成人話，供頁首對照表；勾選該功能 = 該方案租戶可用這些）
+const FEATURE_DESC: Record<string, string> = {
+  inbox: '收件匣對話、案件（工單）、聯絡人、標籤、短連結',
+  channels: 'LINE／FB／IG／WebChat 渠道、圖文選單、快速回覆',
+  automation: '自動化規則、對話流程畫布、身分識別建議',
+  marketing: '分眾名單、行銷活動、群發、素材與模板',
+  analytics: '各維度數據報表、個人績效、報表匯出',
+  knowledge: '知識文章、語意搜尋、批次匯入',
+  portal: '活動頁、抽獎、會員點數',
+  core: '成員與角色權限、系統設定、SLA、Webhook、方案用量（核心功能，恆開）',
+};
 const LIMIT_KEYS: { key: string; label: string }[] = [
   { key: 'maxAgents', label: '客服人數' },
   { key: 'maxTags', label: '分眾標籤數' },
@@ -24,6 +46,7 @@ export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const [showGuide, setShowGuide] = useState(false); // 功能對照表展開
 
   const load = async () => {
     const res = await platformApi.get('/plans');
@@ -87,8 +110,30 @@ export default function PlansPage() {
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>方案與上限</h1>
       <p style={{ color: '#66707f', fontSize: 13, marginBottom: 20 }}>
-        改 features = 改功能天花板；改 limits = 改數值上限。儲存後該方案所有租戶即時生效，零改碼。
+        勾選功能 = 調整該方案的功能天花板；填數值上限 = 限制客服人數/標籤數/AI 額度。儲存後該方案所有租戶即時生效，無需改程式。
       </p>
+
+      {/* 功能對照表：說明每個功能模組對應 open333 的哪些功能 */}
+      <div style={{ border: '1px solid #e3e8ef', borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
+        <button
+          onClick={() => setShowGuide((v) => !v)}
+          style={{ width: '100%', textAlign: 'left', background: '#f7f9fb', border: 'none', padding: '10px 14px', fontSize: 13, fontWeight: 600, color: '#1a2230', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <span>功能說明 — 每個功能模組包含哪些能力</span>
+          <span style={{ color: '#66707f' }}>{showGuide ? '▲ 收合' : '▼ 展開'}</span>
+        </button>
+        {showGuide && (
+          <div style={{ padding: '4px 0' }}>
+            {ALL_FEATURES.map((f) => (
+              <div key={f} style={{ display: 'flex', gap: 10, padding: '7px 14px', borderTop: '1px solid #f0f3f7', fontSize: 13 }}>
+                <span style={{ minWidth: 96, fontWeight: 600, color: '#0d9488' }}>{FEATURE_LABELS[f] ?? f}</span>
+                <span style={{ color: '#66707f' }}>{FEATURE_DESC[f] ?? ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {msg && (
         <div style={{ background: '#e4f5ec', color: '#17935b', padding: '8px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
           {msg}
@@ -115,7 +160,7 @@ export default function PlansPage() {
                       disabled={f === 'core'}
                       onChange={() => toggleFeature(plan.id, f)}
                     />
-                    {f}
+                    {FEATURE_LABELS[f] ?? f}
                   </label>
                 ))}
               </div>
