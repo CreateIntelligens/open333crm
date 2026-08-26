@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
@@ -31,7 +32,7 @@ function combineChannelIdentityFilters(filters: Prisma.ChannelIdentityWhereInput
 }
 
 export async function listContacts(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: ContactFilters,
   pagination: PaginationParams,
@@ -126,7 +127,7 @@ export async function listContacts(
 }
 
 export async function getContact(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -161,7 +162,7 @@ export async function getContact(
 }
 
 export async function updateContact(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -204,7 +205,7 @@ export async function updateContact(
 }
 
 export async function getContactConversations(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
   tenantId: string,
   page: number,
@@ -264,7 +265,7 @@ export async function getContactConversations(
 }
 
 export async function getContactCases(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
   tenantId: string,
   page: number,
@@ -297,7 +298,7 @@ export async function getContactCases(
 }
 
 export async function addContactTag(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
   tenantId: string,
   tagId: string,
@@ -313,7 +314,7 @@ export async function addContactTag(
 }
 
 export async function removeContactTag(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
   tenantId: string,
   tagId: string,
@@ -333,7 +334,7 @@ export interface TimelineEntry {
 }
 
 export async function getContactTimeline(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
   tenantId: string,
 ) {
@@ -459,7 +460,7 @@ export async function getContactTimeline(
 }
 
 export async function getMergePreview(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   primaryId: string,
   secondaryId: string,

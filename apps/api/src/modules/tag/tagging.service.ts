@@ -1,11 +1,12 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { eventBus } from '../../events/event-bus.js';
 import { AppError } from '../../shared/utils/response.js';
+import type { TenantScopedClient } from '../../lib/tenant-db.js';
 
 export type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
 type TagKind = 'MANUAL' | 'AUTO' | 'SYSTEM' | 'CHANNEL';
 
-type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
+type PrismaExecutor = PrismaClient | Prisma.TransactionClient | TenantScopedClient;
 
 interface TargetInput {
   tenantId: string;

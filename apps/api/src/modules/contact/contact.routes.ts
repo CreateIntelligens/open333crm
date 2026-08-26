@@ -61,7 +61,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const { page, limit, ...filters } = query;
 
     const { contacts, total } = await listContacts(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
@@ -76,7 +76,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const query = mergePreviewQuerySchema.parse(request.query);
 
     const preview = await getMergePreview(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       query.primaryId,
       query.secondaryId,
@@ -98,7 +98,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     );
 
     // 稽核：合併聯絡人（只放兩造 id，不放姓名/電話等 PII 明文）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'contact.merge',
@@ -114,7 +114,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // GET /api/v1/contacts/:id
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const contact = await getContact(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -127,7 +127,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const data = updateContactSchema.parse(request.body);
 
     const contact = await updateContact(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -141,7 +141,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const query = paginationQuerySchema.parse(request.query);
 
     const { conversations, total } = await getContactConversations(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       query.page,
@@ -156,7 +156,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const query = paginationQuerySchema.parse(request.query);
 
     const { cases, total } = await getContactCases(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       query.page,
@@ -171,7 +171,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     const body = addTagSchema.parse(request.body);
 
     const contactTag = await addContactTag(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       body.tagId,
@@ -186,7 +186,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     '/:id/tags/:tagId',
     async (request, reply) => {
       await removeContactTag(
-        fastify.prisma,
+        request.tenantPrisma,
         request.params.id,
         request.agent.tenantId,
         request.params.tagId,
@@ -199,7 +199,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // GET /api/v1/contacts/:id/timeline
   fastify.get<{ Params: { id: string } }>('/:id/timeline', async (request, reply) => {
     const timeline = await getContactTimeline(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );

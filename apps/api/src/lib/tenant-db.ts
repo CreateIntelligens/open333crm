@@ -65,3 +65,11 @@ export function tenantScopedClient(base: PrismaClient, tenantId: string) {
 }
 
 export type TenantScopedClient = ReturnType<typeof tenantScopedClient>;
+
+/**
+ * service 層 prisma 參數的共用型別：可接受一般 PrismaClient、交易 client、或租戶綁定的
+ * extended client。三者對 model 操作（findMany/create/update…）簽名一致；不含 $transaction
+ * 等頂層方法，故用此型別的 service MUST 只用 model 操作。
+ * 需要 $transaction 的 service 仍收 PrismaClient（走 withTenant 或 admin 連線）。
+ */
+export type TenantDb = PrismaClient | Prisma.TransactionClient | TenantScopedClient;

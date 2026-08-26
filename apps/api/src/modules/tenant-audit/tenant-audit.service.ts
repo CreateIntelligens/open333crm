@@ -4,8 +4,9 @@
  *
  * writeTenantAudit 非阻斷：寫入失敗只 log，絕不影響主操作。
  */
-import type { PrismaClient, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { logger } from '@open333crm/core';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 export interface TenantAuditInput {
   tenantId: string;
@@ -18,7 +19,7 @@ export interface TenantAuditInput {
 }
 
 /** 寫一筆租戶稽核（非阻斷：失敗只 log）。 */
-export async function writeTenantAudit(prisma: PrismaClient, input: TenantAuditInput): Promise<void> {
+export async function writeTenantAudit(prisma: TenantDb, input: TenantAuditInput): Promise<void> {
   try {
     await prisma.tenantAuditLog.create({
       data: {
@@ -47,7 +48,7 @@ export interface ListAuditParams {
 }
 
 /** 查租戶稽核（分頁 + action/actor/日期篩選，一律 tenantId scoped）。 */
-export async function listTenantAudit(prisma: PrismaClient, params: ListAuditParams) {
+export async function listTenantAudit(prisma: TenantDb, params: ListAuditParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
   const where: Prisma.TenantAuditLogWhereInput = {
