@@ -10,6 +10,7 @@ import { Queue } from 'bullmq';
 import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import { sendQuotaWarningEmail, sendQuotaCriticalEmail } from '../trial/usage-alert-emails.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -225,7 +226,71 @@ export function setupNotificationWorker(prisma: PrismaClient) {
     }
   });
 
+  // ── usage.quota.threshold（AI 用量達 80%/100% 告警給租戶 ADMIN）──────────
+  eventBus.subscribe('usage.quota.threshold', async (event: AppEvent) => {
+    try {
+      const { level, usedTokens, limitTokens, monthKey } = event.payload as {
+        level: 'warning' | 'critical';
+        usedTokens: number;
+        limitTokens: number;
+        monthKey: string;
+      };
+
+      // 查該租戶 ADMIN（id+email）+ 租戶名（email 標題用）
+      const [admins, tenant] = await Promise.all([
+        prisma.agent.findMany({
+          where: { tenantId: event.tenantId, role: 'ADMIN', isActive: true },
+          select: { id: true, email: true },
+        }),
+        prisma.tenant.findUnique({ where: { id: event.tenantId }, select: { name: true } }),
+      ]);
+      if (admins.length === 0) {
+        logger.warn(`[NotificationWorker] usage.quota.threshold: tenant ${event.tenantId} 無 ADMIN，跳過`);
+        return;
+      }
+
+      const siteName = tenant?.name ?? '您的站台';
+      const isCritical = level === 'critical';
+      const emailVars = {
+        siteName,
+        usedTokens: usedTokens.toLocaleString(),
+        limitTokens: limitTokens.toLocaleString(),
+        monthKey,
+        usageUrl: '/dashboard/plan',
+      };
+
+      // 逐 ADMIN 隔離：站內通知 + email，任一失敗不影響其他
+      for (const admin of admins) {
+        // 站內通知（複用既有 notification:dispatch job/handler）
+        await notificationQueue()
+          .add('notification:dispatch', {
+            tenantId: event.tenantId,
+            agentId: admin.id,
+            type: isCritical ? 'usage_quota_critical' : 'usage_quota_warning',
+            title: isCritical ? 'AI 用量已達上限' : 'AI 用量已達 80%',
+            body: isCritical
+              ? `本月 AI 用量已達上限（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），AI 自動回覆暫停，真人回覆不受影響。`
+              : `本月 AI 用量已達 80%（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），額度用盡後 AI 自動回覆將暫停。`,
+            clickUrl: '/dashboard/plan',
+          })
+          .catch((err) => logger.error('[NotificationWorker] Failed to enqueue usage.quota notification', err));
+
+        // email（fire-and-forget，失敗只 log）
+        const sendEmailFn = isCritical ? sendQuotaCriticalEmail : sendQuotaWarningEmail;
+        sendEmailFn(admin.email, emailVars).catch((err) =>
+          logger.error('[NotificationWorker] usage.quota email failed', err),
+        );
+      }
+
+      logger.info(
+        `[NotificationWorker] usage.quota.threshold(${level}) → ${admins.length} admin(s) of tenant ${event.tenantId}`,
+      );
+    } catch (err) {
+      logger.error('[NotificationWorker] Error handling usage.quota.threshold:', err);
+    }
+  });
+
   logger.info(
-    '[NotificationWorker] Subscribed to events: case.assigned, case.escalated, sla.warning, sla.breached, message.received, conversation.assigned',
+    '[NotificationWorker] Subscribed to events: case.assigned, case.escalated, sla.warning, sla.breached, message.received, conversation.assigned, usage.quota.threshold',
   );
 }

@@ -45,6 +45,8 @@ const envSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
   S3_PUBLIC_URL: z.string().default('http://localhost:9000'),
   S3_SET_ACL: z.coerce.number().int().min(0).max(1).default(1),
+  // 用量告警灰度開關：預設開；上線初期可設 0 快速停用（不影響 token 硬擋）
+  USAGE_QUOTA_ALERTS_ENABLED: z.coerce.number().int().min(0).max(1).default(1),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),
