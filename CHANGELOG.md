@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **平台層租戶合約日期記錄** — 平台後台租戶管理頁可為每個租戶設定與查看合約起訖日（`contractStartDate` / `contractEndDate`），純記錄供平台方管理，不觸發任何自動生命週期行為（與 `trialEndsAt` 的到期自動停用明確區隔）；受平台 superuser 認證保護、變更寫 PlatformAuditLog；迄日不可早於起日（422）。`Tenant` 加兩個 nullable 欄位（migration 非破壞性、對既有租戶零影響）。
 - **租戶隔離 CI 檢查（`scripts/check-tenant-scoping.mjs`）** — 靜態掃描所有對 41 個「含 tenantId 欄位」租戶表的 Prisma query，抓出 where 完全未帶 tenantId 的跨租戶洩漏風險；排除平台層/scheduler/認證入口等合法跨租戶查詢，where 為變數時往上追其定義。`--strict` 模式在偵測到疑似漏帶時 exit 1，已接入 CI（Build 後）作回歸防護。目前 codebase 掃描結果 0 洩漏。
 - **人員管理支援指派自訂角色** — 前端新增/編輯人員的角色下拉改為列出租戶所有角色（內建 + 自訂），選內建角色送 legacy `role`、選自訂角色送 `roleId`；成員清單以 `roleRef` 顯示角色名（自訂角色紫色 Badge）；並依 `agent.role.assign` 權限 gating、友善呈現 `ROLE_ESCALATION` 等錯誤。
 - **Passkey / WebAuthn authentication** — 新增 Agent Passkey 憑證模型、Redis challenge 防重放、註冊/登入/撤銷 API 與嚴格 RP ID、origin、User Verification 驗證。

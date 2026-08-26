@@ -49,6 +49,39 @@ export async function listTrialTenants(prisma: PrismaClient) {
   });
 }
 
+/**
+ * 更新租戶合約起訖日（純記錄，不觸發任何自動生命週期行為）。
+ * 兩者皆 optional：傳 undefined 不動該欄、傳 null 清除、傳 Date 設值。
+ * 若更新後兩者皆有值，迄日 MUST >= 起日（呼叫前已由 Zod 驗證，此處為第二道防線）。
+ */
+export async function updateTenantContract(
+  prisma: PrismaClient,
+  tenantId: string,
+  input: { contractStartDate?: Date | null; contractEndDate?: Date | null },
+) {
+  const t = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, contractStartDate: true, contractEndDate: true },
+  });
+  if (!t) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+
+  // 合併「傳入值」與「現有值」後檢查起訖合理性（undefined 表示不動）
+  const start = input.contractStartDate === undefined ? t.contractStartDate : input.contractStartDate;
+  const end = input.contractEndDate === undefined ? t.contractEndDate : input.contractEndDate;
+  if (start && end && end < start) {
+    throw new AppError('合約迄日不可早於起日', 'CONTRACT_DATE_INVALID', 422);
+  }
+
+  return prisma.tenant.update({
+    where: { id: tenantId },
+    data: {
+      ...(input.contractStartDate !== undefined ? { contractStartDate: input.contractStartDate } : {}),
+      ...(input.contractEndDate !== undefined ? { contractEndDate: input.contractEndDate } : {}),
+    },
+    select: { id: true, name: true, contractStartDate: true, contractEndDate: true },
+  });
+}
+
 /** 延長試用：把 trialEndsAt 往後推 N 天（從現有到期日或今天取較晚者起算，避免縮短）。 */
 export async function extendTrial(prisma: PrismaClient, tenantId: string, addDays: number) {
   if (addDays <= 0) throw new AppError('addDays 必須為正整數', 'BAD_REQUEST', 400);

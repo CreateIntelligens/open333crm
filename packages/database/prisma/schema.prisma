@@ -197,6 +197,9 @@ model Tenant {
   trialEndsAt DateTime?
   // 已寄出的到期提醒天數檔位（如 [7]），冪等閘避免重寄
   trialRemindersSent Json @default("[]")
+  // 合約起訖日（純記錄，供平台方管理；nullable，MUST NOT 觸發任何自動生命週期行為，與 trialEndsAt 區隔）
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
