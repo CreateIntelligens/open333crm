@@ -39,8 +39,8 @@ export const requirePermission = (code: string) => {
     }
     const roleId = request.agent?.roleId;
     // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
-    const planId = await getTenantPlanId(request.server.prisma, request.agent?.tenantId);
-    const eff = await getEffectiveTenantPermissions(request.server.prisma, roleId, planId);
+    const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
+    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
     if (!eff.has(code)) {
       return reply.status(403).send({
         code: 'FORBIDDEN',
@@ -73,8 +73,8 @@ export const requireAnyPermission = (codes: string[]) => {
     }
     const roleId = request.agent?.roleId;
     // 有效權限 = 角色權限 ∩ 方案功能天花板（無方案則不設天花板）
-    const planId = await getTenantPlanId(request.server.prisma, request.agent?.tenantId);
-    const eff = await getEffectiveTenantPermissions(request.server.prisma, roleId, planId);
+    const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
+    const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
     if (!codes.some((c) => eff.has(c))) {
       return reply.status(403).send({
         code: 'FORBIDDEN',

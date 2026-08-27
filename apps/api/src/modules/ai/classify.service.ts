@@ -3,6 +3,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
@@ -59,7 +60,7 @@ function keywordFallback(text: string): ClassifyResult {
 }
 
 export async function classifyIssue(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   text: string,
 ): Promise<ClassifyResult> {

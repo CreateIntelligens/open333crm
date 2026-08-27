@@ -6,6 +6,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { getChatProvider, listChatProviders } from '../ai/providers/index.js';
 import type { ChatModelInfo, ChatProviderHealth } from '../ai/providers/index.js';
 
@@ -39,7 +40,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
 };
 
 export async function getChatSettings(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<ChatSettings> {
   let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
@@ -62,7 +63,7 @@ export async function getChatSettings(
 }
 
 export async function updateChatSettings(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   patch: Partial<ChatSettings>,
 ): Promise<{ settings: ChatSettings; providerChanged: boolean; previousProvider: string }> {

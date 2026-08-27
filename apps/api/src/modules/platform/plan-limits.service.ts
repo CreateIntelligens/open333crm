@@ -3,6 +3,7 @@
  * 回傳 null 代表無上限（值為 null、租戶無 plan、或 plan 未定義該 key）。
  */
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 type LimitKey = 'maxAgents' | 'maxTags' | 'monthlyTokens' | 'maxChannels';
 
@@ -22,7 +23,7 @@ export function resolveEffectiveLimit(
 
 /** 查 DB 後解析有效上限。 */
 export async function getEffectiveLimit(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   key: LimitKey,
 ): Promise<number | null> {

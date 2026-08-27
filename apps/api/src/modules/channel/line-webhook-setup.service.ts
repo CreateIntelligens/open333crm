@@ -2,7 +2,7 @@
  * LINE Webhook Auto-Setup Service — automatically configures LINE webhook endpoint.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
@@ -15,7 +15,7 @@ export interface LineWebhookSetupResult {
 }
 
 export async function autoSetupLineWebhook(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   channelId: string,
   tenantId: string,
 ): Promise<LineWebhookSetupResult> {

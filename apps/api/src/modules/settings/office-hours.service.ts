@@ -6,6 +6,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 export interface DaySchedule {
   start: string; // "HH:mm"
@@ -48,7 +49,7 @@ const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
  * Get office hours settings for a tenant (upsert if not exists).
  */
 export async function getOfficeHours(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<{ timezone: string; officeHours: OfficeHoursConfig }> {
   let settings = await prisma.tenantSettings.findUnique({
@@ -77,7 +78,7 @@ export async function getOfficeHours(
  * Update office hours settings for a tenant.
  */
 export async function updateOfficeHours(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   timezone: string,
   officeHours: OfficeHoursConfig,
@@ -105,7 +106,7 @@ export async function updateOfficeHours(
  * Check if the current time is within office hours for the given tenant.
  */
 export async function isWithinOfficeHours(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<boolean> {
   const { timezone, officeHours } = await getOfficeHours(prisma, tenantId);
@@ -155,7 +156,7 @@ export async function isWithinOfficeHours(
  * Returns null if office hours are not enabled or currently within hours.
  */
 export async function getOutsideHoursMessage(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<string | null> {
   const { officeHours } = await getOfficeHours(prisma, tenantId);

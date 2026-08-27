@@ -2,7 +2,7 @@
  * Facebook Token Monitor Service — checks FB page access token health.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
@@ -16,7 +16,7 @@ export interface TokenStatus {
 }
 
 export async function checkFbTokenStatus(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   channelId: string,
   tenantId: string,
 ): Promise<TokenStatus> {

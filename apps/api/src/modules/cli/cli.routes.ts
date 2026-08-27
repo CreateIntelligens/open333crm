@@ -93,7 +93,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getOverviewStats(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getOverviewStats(fastify.prismaAdmin, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 
@@ -105,7 +105,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to, groupBy } = messageTrendSchema.parse(request.query);
-    const data = await getMessageTrend(fastify.prisma, request.agent.tenantId, from, to, groupBy);
+    const data = await getMessageTrend(fastify.prismaAdmin, request.agent.tenantId, from, to, groupBy);
     return reply.send(success(data));
   });
 
@@ -117,7 +117,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getCaseStats(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getCaseStats(fastify.prismaAdmin, request.agent.tenantId, from, to);
     return reply.send(success(summarizeCaseStats(data)));
   });
 
@@ -129,7 +129,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const { from, to } = dateRangeSchema.parse(request.query);
-    const data = await getChannelAnalytics(fastify.prisma, request.agent.tenantId, from, to);
+    const data = await getChannelAnalytics(fastify.prismaAdmin, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 
@@ -141,7 +141,7 @@ export default async function cliRoutes(fastify: FastifyInstance) {
     }
 
     const data = await getMyPerformance(
-      fastify.prisma,
+      fastify.prismaAdmin,
       request.agent.tenantId,
       request.agent.id,
     );

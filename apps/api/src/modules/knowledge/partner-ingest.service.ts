@@ -13,6 +13,7 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { embedArticle } from '../embedding/embedding.service.js';
 import { logger } from '@open333crm/core';
@@ -93,7 +94,7 @@ function deriveSummary(content: string, max = 200): string {
 }
 
 export async function ingestPartnerDoc(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   input: PartnerDocInput,
@@ -145,7 +146,7 @@ export async function ingestPartnerDoc(
 }
 
 async function handleDelete(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   input: PartnerDocInput,
   existing: { id: string; externalVer: number; status: string } | null,
 ): Promise<PartnerIngestResult> {
@@ -195,7 +196,7 @@ async function handleDelete(
 }
 
 async function writeArticle(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   input: PartnerDocInput,

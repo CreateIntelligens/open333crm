@@ -5,7 +5,7 @@
  * returns a flat `Record<string, string>` ready for the template renderer.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 export interface VariableMeta {
   key: string;
@@ -46,7 +46,7 @@ interface ResolveContextOpts {
  * Resolve context variables from DB entities.
  */
 export async function resolveContext(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   opts: ResolveContextOpts,
 ): Promise<Record<string, string>> {
   const vars: Record<string, string> = {};

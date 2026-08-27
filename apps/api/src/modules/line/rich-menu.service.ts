@@ -6,6 +6,7 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { isValidRichMenuSize } from './rich-menu.layouts.js';
@@ -125,7 +126,7 @@ function validateAreas(areas: RichMenuArea[], size: { width: number; height: num
 }
 
 async function assertChannelBelongsToTenant(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   channelId: string,
   tenantId: string,
 ): Promise<void> {
@@ -144,7 +145,7 @@ async function assertChannelBelongsToTenant(
 // ─── CRUD ──────────────────────────────────────────────────────────────
 
 export async function listRichMenus(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   channelId: string,
 ) {
@@ -156,7 +157,7 @@ export async function listRichMenus(
 }
 
 export async function getRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -166,7 +167,7 @@ export async function getRichMenu(
 }
 
 export async function createRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   input: CreateRichMenuInput,
 ) {
@@ -202,7 +203,7 @@ export async function createRichMenu(
 }
 
 export async function updateRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   input: UpdateRichMenuInput,
@@ -242,7 +243,7 @@ export async function updateRichMenu(
 }
 
 export async function deleteRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -259,7 +260,7 @@ export async function deleteRichMenu(
 }
 
 export async function duplicateRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -286,7 +287,7 @@ const LINE_DATA_API_BASE = 'https://api-data.line.me';
 const MAX_IMAGE_BYTES = 1024 * 1024; // 1 MB
 
 async function getLineAccessToken(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   channelId: string,
   tenantId: string,
 ): Promise<string> {
@@ -367,7 +368,7 @@ async function fetchAndValidateImage(
  * 時要先讓出位置，避免 set default 時與舊的衝突。
  */
 async function unsetCurrentDefault(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   channelId: string,
   accessToken: string,
@@ -402,7 +403,7 @@ async function unsetCurrentDefault(
 }
 
 export async function publishRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -499,7 +500,7 @@ export async function publishRichMenu(
 }
 
 export async function unpublishRichMenu(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {

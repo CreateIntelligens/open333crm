@@ -8,6 +8,7 @@
 
 import { Prisma } from '@prisma/client';
 import type { PrismaClient, ModelPricing } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { TokenUsage } from './providers/types.js';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -16,7 +17,7 @@ const pricingCache = new Map<string, { value: ModelPricing | null; expiresAt: nu
 const MILLION = new Prisma.Decimal(1_000_000);
 
 export async function getPricing(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   model: string,
 ): Promise<ModelPricing | null> {
   const cached = pricingCache.get(model);

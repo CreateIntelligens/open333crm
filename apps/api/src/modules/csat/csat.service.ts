@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
@@ -73,7 +74,7 @@ export function buildCsatChannelMessage(
  * Send CSAT survey for a resolved case.
  */
 export async function sendCsatSurvey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
 ): Promise<boolean> {
@@ -192,7 +193,7 @@ function getFollowUpMessage(score: number): string {
  * Record CSAT score and handle follow-up actions.
  */
 export async function recordCsatScore(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   score: number,

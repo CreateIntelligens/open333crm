@@ -6,6 +6,7 @@ import { classifyIssue } from './classify.service.js';
 import { success } from '../../shared/utils/response.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
+  // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
   fastify.addHook('preHandler', fastify.authenticate);
 
   // POST /api/v1/ai/suggest-reply
@@ -14,7 +15,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ conversationId: z.string().uuid() })
       .parse(request.body);
 
-    const result = await suggestReply(fastify.prisma, conversationId);
+    const result = await suggestReply(request.tenantPrisma, conversationId);
     return reply.send(success(result));
   });
 
@@ -24,7 +25,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ conversationId: z.string().uuid() })
       .parse(request.body);
 
-    const result = await summarizeConversation(fastify.prisma, conversationId);
+    const result = await summarizeConversation(request.tenantPrisma, conversationId);
     return reply.send(success(result));
   });
 
@@ -34,7 +35,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ text: z.string().min(1) })
       .parse(request.body);
 
-    const result = await analyzeSentiment(fastify.prisma, request.agent.tenantId, text);
+    const result = await analyzeSentiment(request.tenantPrisma, request.agent.tenantId, text);
     return reply.send(success(result));
   });
 
@@ -44,7 +45,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ text: z.string().min(1) })
       .parse(request.body);
 
-    const result = await classifyIssue(fastify.prisma, request.agent.tenantId, text);
+    const result = await classifyIssue(request.tenantPrisma, request.agent.tenantId, text);
     return reply.send(success(result));
   });
 }

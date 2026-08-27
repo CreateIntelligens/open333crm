@@ -12,6 +12,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { logger } from '@open333crm/core';
 import { detectModels } from './model-matcher.js';
 
@@ -37,7 +38,7 @@ const cache = new Map<string, CacheEntry>();
  * @param now 目前時間戳（epoch ms）。由呼叫端傳入以利測試（沙箱禁用 Date.now）。
  */
 export async function getKnownModelKeys(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   now: number,
 ): Promise<ReadonlySet<string>> {
@@ -53,7 +54,7 @@ export async function getKnownModelKeys(
  * 供 getKnownModelKeys 內部用，也供「手動刷新」API 直接呼叫。
  */
 export async function refreshModelKeys(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   now: number,
 ): Promise<ReadonlySet<string>> {

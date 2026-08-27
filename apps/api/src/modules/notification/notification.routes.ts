@@ -24,7 +24,7 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
   // GET /api/v1/notifications/unread-count (static path before :id)
   fastify.get('/unread-count', async (request, reply) => {
     const count = await getUnreadCount(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.id,
       request.agent.tenantId,
     );
@@ -37,7 +37,7 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
     const { page, limit, isRead } = query;
 
     const { notifications, total } = await listNotifications(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.id,
       request.agent.tenantId,
       { isRead },
@@ -50,7 +50,7 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/notifications/:id/read
   fastify.patch<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
     const notification = await markAsRead(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.id,
       request.agent.tenantId,
@@ -61,7 +61,7 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/notifications/read-all
   fastify.post('/read-all', async (request, reply) => {
     const count = await markAllAsRead(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.id,
       request.agent.tenantId,
     );

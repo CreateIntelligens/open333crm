@@ -7,6 +7,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../lib/tenant-db.js';
 import { redis, resolveImplied, permsForFeatures, CORE_FEATURE } from '@open333crm/core';
 
 const CACHE_PREFIX = 'perms:role:';
@@ -27,7 +28,7 @@ function tenantCacheKey(roleId: string, planId: string | null): string {
  * roleId 為 null（過渡期未回填）時回空集合。
  */
 export async function getEffectivePermissions(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   roleId: string | null | undefined,
 ): Promise<Set<string>> {
   if (!roleId) return new Set();
@@ -62,7 +63,7 @@ export async function getEffectivePermissions(
 
 /** 某角色是否擁有某權限（含 implies）。 */
 export async function roleHasPermission(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   roleId: string | null | undefined,
   code: string,
 ): Promise<boolean> {
@@ -89,7 +90,7 @@ export async function invalidateRolePermissions(roleId: string): Promise<void> {
  * 注意：與 getEffectivePermissions（角色原始權限，越權檢查用）語意不同，勿混用。
  */
 export async function getEffectiveTenantPermissions(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   roleId: string | null | undefined,
   planId: string | null | undefined,
 ): Promise<Set<string>> {

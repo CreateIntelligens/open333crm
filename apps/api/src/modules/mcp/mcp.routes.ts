@@ -138,6 +138,8 @@ export default async function mcpRoutes(fastify: FastifyInstance) {
   fastify.post("/mcp", { preHandler }, async (request, reply) => {
     if (reply.sent) return reply;
 
+    // TODO(rls): createMcpServer 為跨服務聚合器，會把 prisma 傳入 getCase/getAgentById 等
+    // 尚未改造為 TenantDb 的服務；待相依服務全數放寬後，再一併改走 request.tenantPrisma。
     const server = createMcpServer(fastify.prisma, request.agent);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

@@ -31,20 +31,20 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
 
   // GET /api/v1/webhook-subscriptions
   fastify.get('/', { preHandler: requirePermission('webhook.view') }, async (request, reply) => {
-    const subs = await listSubscriptions(fastify.prisma, request.agent.tenantId);
+    const subs = await listSubscriptions(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(subs));
   });
 
   // GET /api/v1/webhook-subscriptions/:id
   fastify.get<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.view') }, async (request, reply) => {
-    const sub = await getSubscription(fastify.prisma, request.params.id, request.agent.tenantId);
+    const sub = await getSubscription(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(sub));
   });
 
   // POST /api/v1/webhook-subscriptions
   fastify.post('/', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const data = createSchema.parse(request.body);
-    const sub = await createSubscription(fastify.prisma, request.agent.tenantId, data);
+    const sub = await createSubscription(request.tenantPrisma, request.agent.tenantId, data);
     return reply.status(201).send(success(sub));
   });
 
@@ -52,7 +52,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const data = updateSchema.parse(request.body);
     const sub = await updateSubscription(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -63,7 +63,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   // DELETE /api/v1/webhook-subscriptions/:id
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const result = await deleteSubscription(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -77,7 +77,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
     async (request, reply) => {
       const limit = parseInt(request.query.limit || '50', 10);
       const deliveries = await listDeliveries(
-        fastify.prisma,
+        request.tenantPrisma,
         request.params.id,
         request.agent.tenantId,
         limit,
@@ -88,7 +88,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
 
   // POST /api/v1/webhook-subscriptions/:id/test — send a test event
   fastify.post<{ Params: { id: string } }>('/:id/test', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
-    const sub = await getSubscription(fastify.prisma, request.params.id, request.agent.tenantId);
+    const sub = await getSubscription(request.tenantPrisma, request.params.id, request.agent.tenantId);
 
     const testPayload = {
       event: 'webhook.test',
@@ -98,7 +98,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
     };
 
     const result = await dispatchWebhook(
-      fastify.prisma,
+      request.tenantPrisma,
       sub.id,
       sub.url,
       sub.secret,

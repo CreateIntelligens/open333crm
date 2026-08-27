@@ -6,7 +6,7 @@
  * Callers must pass tenantId so we can load the right Ollama target/model.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { logger } from '@open333crm/core';
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
 
@@ -30,7 +30,7 @@ interface SearchOptions {
 // ─── Embedding Generation ───────────────────────────────────────────────────
 
 export async function generateEmbedding(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   text: string,
 ): Promise<number[]> {
@@ -90,7 +90,7 @@ export function prepareArticleText(article: {
 // ─── Similarity Search ──────────────────────────────────────────────────────
 
 export async function searchSimilarArticles(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   queryEmbedding: number[],
   tenantId: string,
   options: SearchOptions = {},
@@ -132,7 +132,7 @@ export async function searchSimilarArticles(
 // ─── Embed Single Article ───────────────────────────────────────────────────
 
 export async function embedArticle(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   articleId: string,
 ): Promise<void> {
   const article = await prisma.kmArticle.findUnique({
@@ -169,7 +169,7 @@ export async function embedArticle(
 // ─── Bulk Re-embed ──────────────────────────────────────────────────────────
 
 export async function bulkReembed(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<{ total: number; succeeded: number; failed: number }> {
   const articles = await prisma.kmArticle.findMany({
@@ -215,7 +215,7 @@ export async function bulkReembed(
 // ─── Health Check ───────────────────────────────────────────────────────────
 
 export async function checkOllamaHealth(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<{
   ok: boolean;

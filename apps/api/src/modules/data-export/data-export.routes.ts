@@ -23,7 +23,7 @@ export default async function dataExportRoutes(fastify: FastifyInstance) {
   // 發起資料匯出（建 pending + 寫稽核 + 入列 job）
   fastify.post('/', { preHandler: [requirePermission('data.export')] }, async (request) => {
     const body = createBodySchema.parse(request.body ?? {});
-    const req = await requestExport(fastify.prisma, {
+    const req = await requestExport(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       requestedBy: request.agent.id,
       scope: body.scope,
@@ -35,7 +35,7 @@ export default async function dataExportRoutes(fastify: FastifyInstance) {
   // 查匯出請求狀態
   fastify.get('/:id', { preHandler: [requirePermission('data.export')] }, async (request) => {
     const { id } = idParamSchema.parse(request.params);
-    const req = await getExportRequest(fastify.prisma, request.agent.tenantId, id);
+    const req = await getExportRequest(request.tenantPrisma, request.agent.tenantId, id);
     return success(req);
   });
 
@@ -45,7 +45,7 @@ export default async function dataExportRoutes(fastify: FastifyInstance) {
     { preHandler: [requirePermission('data.export')] },
     async (request) => {
       const { id } = idParamSchema.parse(request.params);
-      const result = await getExportDownload(fastify.prisma, request.agent.tenantId, id);
+      const result = await getExportDownload(request.tenantPrisma, request.agent.tenantId, id);
       return success(result);
     },
   );

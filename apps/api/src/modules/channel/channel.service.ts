@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
@@ -41,7 +42,7 @@ export function decryptCredentials(encrypted: string): Record<string, unknown> {
 
 // --- Channel CRUD ---
 
-export async function listChannels(prisma: PrismaClient, tenantId: string) {
+export async function listChannels(prisma: TenantDb, tenantId: string) {
   const channels = await prisma.channel.findMany({
     where: { tenantId },
     orderBy: { createdAt: 'desc' },
@@ -64,7 +65,7 @@ export async function listChannels(prisma: PrismaClient, tenantId: string) {
 }
 
 export async function createChannel(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   data: {
     channelType: string;
@@ -147,7 +148,7 @@ export async function createChannel(
   return updated;
 }
 
-export async function getChannel(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({
     where: { id, tenantId },
     select: {
@@ -192,7 +193,7 @@ export async function getChannel(prisma: PrismaClient, id: string, tenantId: str
 }
 
 export async function updateChannel(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -258,7 +259,7 @@ export async function updateChannel(
   return updated;
 }
 
-export async function deleteChannel(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({
     where: { id, tenantId },
   });
@@ -273,7 +274,7 @@ export async function deleteChannel(prisma: PrismaClient, id: string, tenantId: 
 }
 
 export async function ensureChannelPublicKey(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ): Promise<{ publicKey: string }> {
@@ -303,7 +304,7 @@ export async function ensureChannelPublicKey(
   return { publicKey: updated.publicKey };
 }
 
-export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: string) {
+export async function verifyChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({
     where: { id, tenantId },
   });
@@ -406,7 +407,7 @@ export async function verifyChannel(prisma: PrismaClient, id: string, tenantId: 
 }
 
 export async function updateWebhookBaseUrl(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   baseUrl: string,
 ) {

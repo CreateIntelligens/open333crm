@@ -5,6 +5,7 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { TopLevelCondition } from 'json-rules-engine';
 import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
@@ -24,7 +25,7 @@ export interface PaginationParams {
 }
 
 export async function listRules(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: RuleFilters,
   pagination: PaginationParams,
@@ -58,7 +59,7 @@ export async function listRules(
 }
 
 export async function getRule(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -80,7 +81,7 @@ export async function getRule(
 }
 
 export async function createRule(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   data: {
     name: string;
@@ -117,7 +118,7 @@ export async function createRule(
 }
 
 export async function updateRule(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -198,7 +199,7 @@ function validateRuleContract(
 }
 
 export async function deleteRule(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -222,7 +223,7 @@ export async function deleteRule(
 // ── Test (dry run) ──────────────────────────────────────────────────────────
 
 export async function testRule(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   ruleId: string,
   testFacts?: Record<string, unknown>,
@@ -270,7 +271,7 @@ export async function testRule(
 // ── Logs ────────────────────────────────────────────────────────────────────
 
 export async function listLogs(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   pagination: PaginationParams,
   filters?: { ruleId?: string; success?: boolean },

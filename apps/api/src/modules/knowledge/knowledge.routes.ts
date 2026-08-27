@@ -83,7 +83,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     const page = parseInt(query.page || '1', 10);
     const limit = parseInt(query.limit || '50', 10);
 
-    const result = await listArticles(fastify.prisma, request.agent.tenantId, {
+    const result = await listArticles(request.tenantPrisma, request.agent.tenantId, {
       status: query.status || undefined,
       category: query.category || undefined,
       source: query.source || undefined,
@@ -98,13 +98,13 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/knowledge/sources — 來源列表（externalSource 去重）
   fastify.get('/sources', async (request, reply) => {
-    const sources = await listSources(fastify.prisma, request.agent.tenantId);
+    const sources = await listSources(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(sources));
   });
 
   // GET /api/v1/knowledge/categories — 分類列表
   fastify.get('/categories', async (request, reply) => {
-    const categories = await listCategories(fastify.prisma, request.agent.tenantId);
+    const categories = await listCategories(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(categories));
   });
 
@@ -113,7 +113,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // POST /api/v1/knowledge/search — 語義搜尋
   fastify.post('/search', async (request, reply) => {
     const body = searchSchema.parse(request.body);
-    const results = await semanticSearch(fastify.prisma, request.agent.tenantId, body.query, {
+    const results = await semanticSearch(request.tenantPrisma, request.agent.tenantId, body.query, {
       topK: body.topK,
       threshold: body.threshold,
     });
@@ -124,7 +124,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   fastify.post('/import', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const body = importSchema.parse(request.body);
     const result = await batchImportArticles(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       body.articles,
@@ -151,7 +151,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
           const qaRows = parseSpreadsheetToQaRows(buffer);
           if (qaRows && qaRows.length > 0) {
             const result = await batchImportArticles(
-              fastify.prisma,
+              request.tenantPrisma,
               request.agent.tenantId,
               request.agent.id,
               qaRows.map((r) => ({ title: r.title, content: r.content, status: 'PUBLISHED' })),
@@ -169,7 +169,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         }
 
         const parsed = await parseFileToMarkdown(buffer, part.mimetype, part.filename);
-        await createArticle(fastify.prisma, request.agent.tenantId, request.agent.id, {
+        await createArticle(request.tenantPrisma, request.agent.tenantId, request.agent.id, {
           title: parsed.title,
           content: parsed.content,
         });
@@ -274,7 +274,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
         const source = fields.Source ?? fields.Soruce ?? '';
 
         const result = await ingestPartnerDoc(
-          fastify.prisma,
+          request.tenantPrisma,
           request.agent.tenantId,
           request.agent.id,
           {
@@ -316,11 +316,11 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // per-article inference can easily exceed 60s for any non-trivial KB).
   fastify.post('/bulk-embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const tenantId = request.agent.tenantId;
-    const total = await fastify.prisma.kmArticle.count({
+    const total = await request.tenantPrisma.kmArticle.count({
       where: { tenantId, status: 'PUBLISHED' },
     });
 
-    bulkReembed(fastify.prisma, tenantId).catch((err) => {
+    bulkReembed(request.tenantPrisma, tenantId).catch((err) => {
       fastify.log.error({ err }, '[Knowledge] Background bulk re-embed failed');
     });
 
@@ -335,7 +335,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/knowledge/embedding-status — 嵌入服務健康檢查
   fastify.get('/embedding-status', async (request, reply) => {
-    const status = await checkOllamaHealth(fastify.prisma, request.agent.tenantId);
+    const status = await checkOllamaHealth(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(status));
   });
 
@@ -343,7 +343,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/knowledge/models — 目前知識庫已知型號清單（快取，供診斷）
   fastify.get('/models', async (request, reply) => {
-    const keys = await getKnownModelKeys(fastify.prisma, request.agent.tenantId, Date.now());
+    const keys = await getKnownModelKeys(request.tenantPrisma, request.agent.tenantId, Date.now());
     const models = [...keys].sort();
     return reply.send(success({ total: models.length, models }));
   });
@@ -354,7 +354,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     '/models/refresh',
     { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
-      const keys = await refreshModelKeys(fastify.prisma, request.agent.tenantId, Date.now());
+      const keys = await refreshModelKeys(request.tenantPrisma, request.agent.tenantId, Date.now());
       return reply.send(
         success({ refreshed: true, total: keys.size, message: `已重新整理型號清單，共 ${keys.size} 個型號。` }),
       );
@@ -365,14 +365,14 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/knowledge/feedback/counts — 各文章 open 回報數 map
   fastify.get('/feedback/counts', async (request, reply) => {
-    const counts = await getFeedbackCounts(fastify.prisma, request.agent.tenantId);
+    const counts = await getFeedbackCounts(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(counts));
   });
 
   // GET /api/v1/knowledge/feedback?articleId=&status=open — 回報明細
   fastify.get('/feedback', async (request, reply) => {
     const q = request.query as { articleId?: string; status?: string };
-    const list = await listFeedback(fastify.prisma, request.agent.tenantId, {
+    const list = await listFeedback(request.tenantPrisma, request.agent.tenantId, {
       articleId: q.articleId,
       status: q.status,
     });
@@ -384,7 +384,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     '/feedback/:id/resolve',
     { preHandler: [requirePermission('knowledge.admin')] },
     async (request, reply) => {
-      await resolveFeedback(fastify.prisma, request.params.id, request.agent.tenantId);
+      await resolveFeedback(request.tenantPrisma, request.params.id, request.agent.tenantId);
       return reply.send(success({ resolved: true }));
     },
   );
@@ -395,7 +395,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const data = createArticleSchema.parse(request.body);
     const article = await createArticle(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       data,
@@ -406,7 +406,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // GET /api/v1/knowledge/:id — 文章詳情
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const article = await getArticle(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -417,7 +417,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const data = updateArticleSchema.parse(request.body);
     const article = await updateArticle(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -428,7 +428,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // DELETE /api/v1/knowledge/:id — 刪除文章
   fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const result = await deleteArticle(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -438,7 +438,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // POST /api/v1/knowledge/:id/publish — 發布文章
   fastify.post<{ Params: { id: string } }>('/:id/publish', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const article = await publishArticle(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -448,7 +448,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
   // POST /api/v1/knowledge/:id/archive — 封存文章
   fastify.post<{ Params: { id: string } }>('/:id/archive', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
     const article = await archiveArticle(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -457,7 +457,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/knowledge/:id/embed — 強制重新向量化單篇文章
   fastify.post<{ Params: { id: string } }>('/:id/embed', { preHandler: [requirePermission('knowledge.manage')] }, async (request, reply) => {
-    await embedArticle(fastify.prisma, request.params.id);
+    await embedArticle(request.tenantPrisma, request.params.id);
     return reply.send(success({ embedded: true }));
   });
 }

@@ -16,6 +16,7 @@ import {
   getCaseStats,
 } from './case.service.js';
 import { recordCsatScore } from '../csat/csat.service.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
@@ -103,7 +104,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/cases/stats
   fastify.get('/stats', async (request, reply) => {
-    const stats = await getCaseStats(fastify.prisma, request.agent.tenantId);
+    const stats = await getCaseStats(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(stats));
   });
 
@@ -113,7 +114,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const { page, limit, ...filters } = query;
 
     const { cases, total } = await listCases(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
@@ -127,7 +128,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = createCaseSchema.parse(request.body);
 
     const caseRecord = await createCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.agent.tenantId,
       request.agent.id,
@@ -140,7 +141,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // GET /api/v1/cases/:id
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const caseRecord = await getCase(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -153,7 +154,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = updateCaseSchema.parse(request.body);
 
     const caseRecord = await updateCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -165,15 +166,12 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/cases/:id
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const deleted = await deleteCase(
-      fastify.prisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
+    const deleted = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      deleteCase(tx, fastify.io, request.params.id, request.agent.tenantId),
     );
 
     // 稽核：刪除案件
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'case.delete',
@@ -188,7 +186,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/tags
   fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
     const body = addTagSchema.parse(request.body);
-    const caseTag = await addTagToTarget(fastify.prisma, {
+    const caseTag = await addTagToTarget(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       targetType: 'CASE',
       targetId: request.params.id,
@@ -203,7 +201,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string; tagId: string } }>(
     '/:id/tags/:tagId',
     async (request, reply) => {
-      const removed = await removeTagFromTarget(fastify.prisma, {
+      const removed = await removeTagFromTarget(request.tenantPrisma, {
         tenantId: request.agent.tenantId,
         targetType: 'CASE',
         targetId: request.params.id,
@@ -216,7 +214,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/cases/:id/events
   fastify.get<{ Params: { id: string } }>('/:id/events', async (request, reply) => {
-    const events = await getCaseEvents(fastify.prisma, request.params.id);
+    const events = await getCaseEvents(request.tenantPrisma, request.params.id);
     return reply.send(success(events));
   });
 
@@ -225,7 +223,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = addNoteSchema.parse(request.body);
 
     const note = await addNote(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.id,
       data.content,
@@ -240,7 +238,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = assignSchema.parse(request.body);
 
     const caseRecord = await assignCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -254,7 +252,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/resolve
   fastify.post<{ Params: { id: string } }>('/:id/resolve', async (request, reply) => {
     const caseRecord = await transitionCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -268,7 +266,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/close
   fastify.post<{ Params: { id: string } }>('/:id/close', async (request, reply) => {
     const caseRecord = await transitionCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -282,7 +280,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/reopen
   fastify.post<{ Params: { id: string } }>('/:id/reopen', async (request, reply) => {
     const caseRecord = await transitionCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -298,7 +296,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const body = escalateSchema.parse(request.body);
 
     const caseRecord = await escalateCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       request.agent.tenantId,
@@ -313,13 +311,15 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string; conversationId: string } }>(
     '/:id/conversations/:conversationId/link',
     async (request, reply) => {
-      const linked = await linkConversationToCase(
-        fastify.prisma,
-        fastify.io,
-        request.params.id,
-        request.params.conversationId,
-        request.agent.tenantId,
-        request.agent.id,
+      const linked = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+        linkConversationToCase(
+          tx,
+          fastify.io,
+          request.params.id,
+          request.params.conversationId,
+          request.agent.tenantId,
+          request.agent.id,
+        ),
       );
 
       return reply.send(success(linked));
@@ -331,7 +331,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const data = csatSchema.parse(request.body);
 
     const recorded = await recordCsatScore(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       data.score,
@@ -354,6 +354,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = createCaseFromConvSchema.parse(request.body);
 
+      // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
       const caseRecord = await createCaseFromConversation(
         fastify.prisma,
         fastify.io,

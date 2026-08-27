@@ -2,12 +2,12 @@
  * WebChat Embed Code Generator — generates embeddable widget code.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
 export async function generateEmbedCode(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   channelId: string,
   tenantId: string,
 ): Promise<{ html: string; channelId: string }> {

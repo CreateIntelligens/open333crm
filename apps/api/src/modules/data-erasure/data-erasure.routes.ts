@@ -28,7 +28,7 @@ export default async function dataErasureRoutes(fastify: FastifyInstance) {
   // 建立刪除請求（非同步走 worker）
   fastify.post('/', { preHandler: [requirePermission('data.erase')] }, async (request) => {
     const body = createSchema.parse(request.body);
-    const erasure = await requestErasure(fastify.prisma, {
+    const erasure = await requestErasure(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       requestedBy: request.agent.id,
       contactId: body.contactId,
@@ -41,7 +41,7 @@ export default async function dataErasureRoutes(fastify: FastifyInstance) {
   // 查刪除請求狀態
   fastify.get('/:id', { preHandler: [requirePermission('data.erase')] }, async (request) => {
     const { id } = idParamSchema.parse(request.params);
-    const erasure = await getErasureRequest(fastify.prisma, request.agent.tenantId, id);
+    const erasure = await getErasureRequest(request.tenantPrisma, request.agent.tenantId, id);
     if (!erasure) {
       throw new AppError('刪除請求不存在', 'ERASURE_REQUEST_NOT_FOUND', 404);
     }

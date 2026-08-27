@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import IORedis from 'ioredis';
@@ -24,7 +25,7 @@ export interface PaginationParams {
 }
 
 export async function listConversations(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: ConversationFilters,
   pagination: PaginationParams,
@@ -140,7 +141,7 @@ export async function listConversations(
 }
 
 export async function getConversation(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -215,7 +216,7 @@ export async function getConversation(
 }
 
 export async function markConversationRead(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   id: string,
   tenantId: string,
@@ -250,7 +251,7 @@ export async function markConversationRead(
 }
 
 export async function getMessages(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   conversationId: string,
   page: number,
   limit: number,
@@ -279,7 +280,7 @@ export async function getMessages(
 }
 
 export async function sendMessage(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   conversationId: string,
   agentId: string,
@@ -447,7 +448,7 @@ export async function sendMessage(
 }
 
 export async function handoffConversation(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   conversationId: string,
   tenantId: string,
@@ -574,7 +575,7 @@ function getRedisPub(): IORedis {
  * - 傳 { contentType, content } → 用該 payload 送（例如素材：圖、影片、Flex、Carousel）
  */
 export async function deliverToChannel(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   conversationId: string,
   payload: string | { contentType: string; content: Record<string, unknown> },
 ): Promise<void> {
@@ -645,7 +646,7 @@ export async function deliverToChannel(
 }
 
 export async function updateConversation(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   id: string,
   tenantId: string,
@@ -720,7 +721,7 @@ export async function updateConversation(
  * existing row) so cron / CSAT / case-resolved cascades don't double-fire.
  */
 export async function closeConversation(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   id: string,
   tenantId: string,

@@ -25,12 +25,12 @@ export default async function planChangeRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/plan-change — 查自己的申請
   fastify.get('/', async (request) => {
-    return success(await listTenantPlanChangeRequests(fastify.prisma, request.agent.tenantId));
+    return success(await listTenantPlanChangeRequests(fastify.prismaAdmin, request.agent.tenantId));
   });
 
   // POST /api/v1/plan-change — 發起申請
   fastify.post('/', async (request) => {
     const body = createSchema.parse(request.body);
-    return success(await createPlanChangeRequest(fastify.prisma, request.agent.tenantId, body));
+    return success(await createPlanChangeRequest(fastify.prismaAdmin, request.agent.tenantId, body));
   });
 }

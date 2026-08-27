@@ -72,7 +72,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/settings/office-hours
   fastify.get("/office-hours", async (request, reply) => {
-    const result = await getOfficeHours(fastify.prisma, request.agent.tenantId);
+    const result = await getOfficeHours(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(result));
   });
 
@@ -80,13 +80,13 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.put("/office-hours", async (request, reply) => {
     const data = officeHoursSchema.parse(request.body);
     const result = await updateOfficeHours(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       data.timezone,
       data.officeHours as any,
     );
     // 稽核：變更系統設定（只記變更的設定區塊，不放敏感值）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: "settings.update",
@@ -101,12 +101,12 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/tracking
   fastify.get("/tracking", async (request, reply) => {
     const tenantId = request.agent.tenantId;
-    let settings = await fastify.prisma.tenantSettings.findUnique({
+    let settings = await request.tenantPrisma.tenantSettings.findUnique({
       where: { tenantId },
       select: { gaId: true, metaPixelId: true },
     });
     if (!settings) {
-      settings = await fastify.prisma.tenantSettings.create({
+      settings = await request.tenantPrisma.tenantSettings.create({
         data: { tenantId },
         select: { gaId: true, metaPixelId: true },
       });
@@ -118,7 +118,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.put("/tracking", async (request, reply) => {
     const data = trackingSettingsSchema.parse(request.body);
     const tenantId = request.agent.tenantId;
-    const settings = await fastify.prisma.tenantSettings.upsert({
+    const settings = await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
       create: {
         tenantId,
@@ -132,7 +132,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       select: { gaId: true, metaPixelId: true },
     });
     // 稽核：變更追蹤設定（只記有無設定 GA/Pixel，不放 ID 值）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId,
       actorId: request.agent.id,
       action: "settings.update",
@@ -151,11 +151,11 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/embedding — settings + Ollama health + models + stats
   fastify.get("/embedding", async (request, reply) => {
     const tenantId = request.agent.tenantId;
-    const settings = await getEmbeddingSettings(fastify.prisma, tenantId);
+    const settings = await getEmbeddingSettings(request.tenantPrisma, tenantId);
     const [health, models, stats] = await Promise.all([
       checkOllamaHealth(settings.baseUrl, settings.model),
       listOllamaModels(settings.baseUrl),
-      getEmbeddingStats(fastify.prisma, tenantId),
+      getEmbeddingStats(request.tenantPrisma, tenantId),
     ]);
     return reply.send(
       success({
@@ -172,12 +172,12 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.put("/embedding", async (request, reply) => {
     const patch = embeddingSettingsSchema.parse(request.body);
     const result = await updateEmbeddingSettings(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       patch,
     );
     // 稽核：變更 Embedding 設定（只記變更的欄位名，不放 baseUrl 等值）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: "settings.update",
@@ -191,7 +191,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // POST /api/v1/settings/embedding/health — re-check health on demand
   fastify.post("/embedding/health", async (request, reply) => {
     const settings = await getEmbeddingSettings(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
     );
     const health = await checkOllamaHealth(settings.baseUrl, settings.model);
@@ -202,7 +202,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/chat — settings + provider list + models + health + prompt defaults
   fastify.get("/chat", async (request, reply) => {
     const tenantId = request.agent.tenantId;
-    const settings = await getChatSettings(fastify.prisma, tenantId);
+    const settings = await getChatSettings(request.tenantPrisma, tenantId);
     const [models, health] = await Promise.all([
       listChatModels(settings.provider, settings.baseUrl),
       checkChatHealth(settings.provider, settings.model, settings.baseUrl),
@@ -227,12 +227,12 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.put("/chat", async (request, reply) => {
     const patch = chatSettingsSchema.parse(request.body);
     const result = await updateChatSettings(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       patch,
     );
     // 稽核：變更 Chat/LLM 設定（只記變更的欄位名，不放 prompt/model 明文）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: "settings.update",
@@ -245,7 +245,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/settings/gemini-key — 查 BYOK key 狀態（遮罩，不回明文）
   fastify.get("/gemini-key", async (request, reply) => {
-    const status = await getTenantGeminiKeyStatus(fastify.prisma, request.agent.tenantId);
+    const status = await getTenantGeminiKeyStatus(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(status));
   });
 
@@ -254,9 +254,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     const { apiKey } = z
       .object({ apiKey: z.string().min(1).nullable() })
       .parse(request.body);
-    await setTenantGeminiKey(fastify.prisma, request.agent.tenantId, apiKey);
+    await setTenantGeminiKey(request.tenantPrisma, request.agent.tenantId, apiKey);
     // 稽核：設定/清除 BYOK 金鑰（絕不記金鑰明文，只記「設定」或「清除」動作）
-    await writeTenantAudit(fastify.prisma, {
+    await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: "settings.update",
@@ -264,7 +264,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       payload: { section: "gemini-key", operation: apiKey ? "set" : "clear" },
       ip: request.ip,
     });
-    const status = await getTenantGeminiKeyStatus(fastify.prisma, request.agent.tenantId);
+    const status = await getTenantGeminiKeyStatus(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(status));
   });
 
@@ -278,7 +278,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // POST /api/v1/settings/chat/health — re-check health on demand
   fastify.post("/chat/health", async (request, reply) => {
     const settings = await getChatSettings(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
     );
     const health = await checkChatHealth(
@@ -293,7 +293,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // GET /api/v1/settings/api-keys — list (masked)
   fastify.get("/api-keys", async (request, reply) => {
     const rows = await listPartnerApiKeys(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
     );
     return reply.send(
@@ -318,7 +318,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
       : null;
 
-    const result = await createPartnerApiKey(fastify.prisma, {
+    const result = await createPartnerApiKey(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       createdById: request.agent.id,
       name: body.name,
@@ -344,7 +344,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     "/api-keys/:id",
     async (request, reply) => {
       await revokePartnerApiKey(
-        fastify.prisma,
+        request.tenantPrisma,
         request.agent.tenantId,
         request.params.id,
       );
@@ -355,7 +355,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // ─── CLI Sessions ──────────────────────────────────────────────────────
   // GET /api/v1/settings/cli-sessions — list CLI sessions for current tenant
   fastify.get("/cli-sessions", async (request, reply) => {
-    const rows = await fastify.prisma.cliSession.findMany({
+    const rows = await request.tenantPrisma.cliSession.findMany({
       where: {
         tenantId: request.agent.tenantId,
         revokedAt: null,
@@ -389,7 +389,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
       : undefined;
 
-    const { token, session } = await createCliSession(fastify.prisma, {
+    const { token, session } = await createCliSession(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       agentId: request.agent.id,
       name: body.name,
@@ -420,7 +420,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     "/cli-sessions/:id",
     async (request, reply) => {
       await revokeCliSession(
-        fastify.prisma,
+        request.tenantPrisma,
         request.params.id,
         request.agent.tenantId,
       );

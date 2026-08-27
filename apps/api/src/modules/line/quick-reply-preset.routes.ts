@@ -37,14 +37,14 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/line/quick-reply-presets — 任何登入 agent 可讀
   fastify.get('/', async (request, reply) => {
-    const list = await listPresets(fastify.prisma, request.agent.tenantId);
+    const list = await listPresets(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(list));
   });
 
   // 以下寫操作限 SUPERVISOR
   fastify.post('/', { preHandler: [requirePermission('quickreply.manage')] }, async (request, reply) => {
     const data = createSchema.parse(request.body);
-    const preset = await createPreset(fastify.prisma, request.agent.tenantId, data);
+    const preset = await createPreset(request.tenantPrisma, request.agent.tenantId, data);
     return reply.code(201).send(success(preset));
   });
 
@@ -54,7 +54,7 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = updateSchema.parse(request.body);
       const preset = await updatePreset(
-        fastify.prisma,
+        request.tenantPrisma,
         request.params.id,
         request.agent.tenantId,
         data,
@@ -68,7 +68,7 @@ export default async function quickReplyPresetRoutes(fastify: FastifyInstance) {
     { preHandler: [requirePermission('quickreply.manage')] },
     async (request, reply) => {
       const result = await deletePreset(
-        fastify.prisma,
+        request.tenantPrisma,
         request.params.id,
         request.agent.tenantId,
       );

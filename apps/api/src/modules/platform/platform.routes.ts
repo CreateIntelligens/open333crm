@@ -74,7 +74,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       });
     }
     const body = loginSchema.parse(request.body);
-    const user = await platformLogin(fastify.prisma, body.email, body.password);
+    const user = await platformLogin(fastify.prismaAdmin, body.email, body.password);
     // @ts-expect-error namespace sign 由 @fastify/jwt 動態掛載
     const token = await reply.platformJwtSign({ platformUserId: user.id, role: 'PLATFORM_SUPERUSER' });
     return reply.send(success({ token, user }));
@@ -93,11 +93,11 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   );
 
   // Plans
-  fastify.get('/plans', guard, async () => success(await listPlans(fastify.prisma)));
+  fastify.get('/plans', guard, async () => success(await listPlans(fastify.prismaAdmin)));
   fastify.patch<{ Params: { id: string } }>('/plans/:id', guard, async (request) => {
     const body = updatePlanSchema.parse(request.body);
-    const plan = await updatePlan(fastify.prisma, request.params.id, body);
-    await writePlatformAudit(fastify.prisma, {
+    const plan = await updatePlan(fastify.prismaAdmin, request.params.id, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan.update',
       targetType: 'plan',
@@ -108,11 +108,11 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   });
 
   // Tenants
-  fastify.get('/tenants', guard, async () => success(await listTenants(fastify.prisma)));
+  fastify.get('/tenants', guard, async () => success(await listTenants(fastify.prismaAdmin)));
   fastify.patch<{ Params: { id: string } }>('/tenants/:id/active', guard, async (request) => {
     const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
-    const tenant = await setTenantActive(fastify.prisma, request.params.id, isActive);
-    await writePlatformAudit(fastify.prisma, {
+    const tenant = await setTenantActive(fastify.prismaAdmin, request.params.id, isActive);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: isActive ? 'tenant.enable' : 'tenant.disable',
       targetType: 'tenant',
@@ -122,8 +122,8 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   });
   fastify.post('/tenants', guard, async (request) => {
     const body = provisionSchema.parse(request.body);
-    const result = await provisionTenantViaApi(fastify.prisma, body);
-    await writePlatformAudit(fastify.prisma, {
+    const result = await provisionTenantViaApi(fastify.prismaAdmin, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.provision',
       targetType: 'tenant',
@@ -135,7 +135,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // Trial signups 列表（排查用）
   fastify.get('/trial-signups', guard, async () => {
-    const rows = await fastify.prisma.trialSignup.findMany({
+    const rows = await fastify.prismaAdmin.trialSignup.findMany({
       select: {
         id: true, email: true, siteName: true, status: true, tenantId: true,
         provisionedAt: true, failureReason: true, createdAt: true,
@@ -148,13 +148,13 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // ── 試用用戶管理 ──
   // 試用租戶列表（含到期倒數與狀態）
-  fastify.get('/trial-tenants', guard, async () => success(await listTrialTenants(fastify.prisma)));
+  fastify.get('/trial-tenants', guard, async () => success(await listTrialTenants(fastify.prismaAdmin)));
 
   // 延長試用
   fastify.patch<{ Params: { id: string } }>('/trial-tenants/:id/extend', guard, async (request) => {
     const { days } = z.object({ days: z.number().int().positive() }).parse(request.body);
-    const result = await extendTrial(fastify.prisma, request.params.id, days);
-    await writePlatformAudit(fastify.prisma, {
+    const result = await extendTrial(fastify.prismaAdmin, request.params.id, days);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.trial.extend',
       targetType: 'tenant',
@@ -167,8 +167,8 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   // 轉正式方案
   fastify.patch<{ Params: { id: string } }>('/trial-tenants/:id/convert', guard, async (request) => {
     const { planSlug } = z.object({ planSlug: z.string().min(1) }).parse(request.body);
-    const result = await convertToPaid(fastify.prisma, request.params.id, planSlug);
-    await writePlatformAudit(fastify.prisma, {
+    const result = await convertToPaid(fastify.prismaAdmin, request.params.id, planSlug);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.trial.convert',
       targetType: 'tenant',
@@ -188,8 +188,8 @@ export default async function platformRoutes(fastify: FastifyInstance) {
         contractEndDate: z.coerce.date().nullable().optional(),
       })
       .parse(request.body);
-    const result = await updateTenantContract(fastify.prisma, request.params.id, body);
-    await writePlatformAudit(fastify.prisma, {
+    const result = await updateTenantContract(fastify.prismaAdmin, request.params.id, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'tenant.contract.update',
       targetType: 'tenant',
@@ -201,14 +201,14 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // 申請記錄：重寄驗證信
   fastify.post<{ Params: { id: string } }>('/trial-signups/:id/resend', guard, async (request) => {
-    return success(await resendVerification(fastify.prisma, request.params.id));
+    return success(await resendVerification(fastify.prismaAdmin, request.params.id));
   });
 
   // 申請記錄：標記 failed
   fastify.patch<{ Params: { id: string } }>('/trial-signups/:id/fail', guard, async (request) => {
     const { reason } = z.object({ reason: z.string().optional() }).parse(request.body ?? {});
-    const result = await markSignupFailed(fastify.prisma, request.params.id, reason ?? '');
-    await writePlatformAudit(fastify.prisma, {
+    const result = await markSignupFailed(fastify.prismaAdmin, request.params.id, reason ?? '');
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'trial.signup.fail',
       targetType: 'trial_signup',
@@ -226,27 +226,27 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   // 跨租戶總覽
   fastify.get('/usage/overview', guard, async (request) => {
     const q = rangeSchema.parse(request.query);
-    return success(await getUsageOverview(fastify.prisma, q));
+    return success(await getUsageOverview(fastify.prismaAdmin, q));
   });
   // 各租戶排行
   fastify.get('/usage/tenants', guard, async (request) => {
     const q = rangeSchema.parse(request.query);
-    return success(await getTenantUsageRanking(fastify.prisma, q));
+    return success(await getTenantUsageRanking(fastify.prismaAdmin, q));
   });
   // 單租戶鑽取
   fastify.get<{ Params: { tenantId: string } }>('/usage/tenants/:tenantId', guard, async (request) => {
     const q = rangeSchema.parse(request.query);
-    return success(await getTenantUsageDetail(fastify.prisma, request.params.tenantId, q));
+    return success(await getTenantUsageDetail(fastify.prismaAdmin, request.params.tenantId, q));
   });
 
   // ── 方案升級/加購申請審核 ──
   fastify.get('/plan-change-requests', guard, async () => {
-    return success(await listPendingRequests(fastify.prisma));
+    return success(await listPendingRequests(fastify.prismaAdmin));
   });
   fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/approve', guard, async (request) => {
     const { note } = z.object({ note: z.string().optional() }).parse(request.body ?? {});
-    const result = await approveRequest(fastify.prisma, request.params.id, request.platformUser!.id, note);
-    await writePlatformAudit(fastify.prisma, {
+    const result = await approveRequest(fastify.prismaAdmin, request.params.id, request.platformUser!.id, note);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan_change.approve',
       targetType: 'plan_change_request',
@@ -257,8 +257,8 @@ export default async function platformRoutes(fastify: FastifyInstance) {
   });
   fastify.patch<{ Params: { id: string } }>('/plan-change-requests/:id/reject', guard, async (request) => {
     const { note } = z.object({ note: z.string().optional() }).parse(request.body ?? {});
-    const result = await rejectRequest(fastify.prisma, request.params.id, request.platformUser!.id, note);
-    await writePlatformAudit(fastify.prisma, {
+    const result = await rejectRequest(fastify.prismaAdmin, request.params.id, request.platformUser!.id, note);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'plan_change.reject',
       targetType: 'plan_change_request',
@@ -269,12 +269,12 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // Platform settings (KV)
   fastify.get<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
-    return success(await getPlatformSetting(fastify.prisma, request.params.key));
+    return success(await getPlatformSetting(fastify.prismaAdmin, request.params.key));
   });
   fastify.put<{ Params: { key: string } }>('/settings/:key', guard, async (request) => {
     const { value } = z.object({ value: z.unknown() }).parse(request.body);
-    await setPlatformSetting(fastify.prisma, request.params.key, value);
-    await writePlatformAudit(fastify.prisma, {
+    await setPlatformSetting(fastify.prismaAdmin, request.params.key, value);
+    await writePlatformAudit(fastify.prismaAdmin, {
       platformUserId: request.platformUser!.id,
       action: 'setting.update',
       targetType: 'setting',

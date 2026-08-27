@@ -17,7 +17,7 @@ export default async function lineProfileRoutes(fastify: FastifyInstance) {
         })
         .parse(request.params);
 
-      const updated = await syncLineContactProfile(fastify.prisma, channelId, lineUid);
+      const updated = await syncLineContactProfile(fastify.prismaAdmin, channelId, lineUid);
 
       return reply.send(success(updated));
     },

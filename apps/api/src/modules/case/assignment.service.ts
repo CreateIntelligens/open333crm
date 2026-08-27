@@ -7,6 +7,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
@@ -20,7 +21,7 @@ const rrIndex = new Map<string, number>();
  * On tie, use round-robin index.
  */
 export async function getNextAgent(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   teamId?: string | null,
 ): Promise<{ id: string; name: string } | null> {
@@ -78,7 +79,7 @@ export async function getNextAgent(
  * Updates case, creates CaseEvent, publishes events, emits WebSocket.
  */
 export async function autoAssignCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,

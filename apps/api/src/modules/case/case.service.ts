@@ -1,4 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
+import { withTenant, tenantScopedClient } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { CaseStatus, Priority } from '@open333crm/shared';
@@ -10,7 +12,7 @@ import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
 import { autoAssignCase } from './assignment.service.js';
 import { logger } from '@open333crm/core';
 
-type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
+type PrismaExecutor = TenantDb;
 
 export interface CaseFilters {
   status?: string;
@@ -28,7 +30,7 @@ export interface PaginationParams {
 }
 
 export async function listCases(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: CaseFilters,
   pagination: PaginationParams,
@@ -128,7 +130,7 @@ export async function listCases(
 }
 
 export async function getCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -375,7 +377,7 @@ function emitCaseCreated(
 }
 
 export async function createCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   tenantId: string,
   agentId: string,
@@ -408,7 +410,7 @@ export async function createCase(
 }
 
 export async function assignCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -510,7 +512,7 @@ export async function assignCase(
 }
 
 export async function transitionCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -628,7 +630,7 @@ export async function transitionCase(
 }
 
 export async function escalateCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -747,7 +749,7 @@ export async function escalateCase(
 }
 
 export async function addNote(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   caseId: string,
   agentId: string,
   content: string,
@@ -766,7 +768,7 @@ export async function addNote(
 }
 
 export async function getCaseEvents(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   caseId: string,
 ) {
   const events = await prisma.caseEvent.findMany({
@@ -785,6 +787,9 @@ export async function getCaseEvents(
   return events;
 }
 
+// 收 base PrismaClient：DB 寫入包在 withTenant 交易內（RLS + 原子），
+// fire-and-forget 副作用（trackBroadcastCase/autoAssignCase）在交易「之後」用 base client
+// 執行——它們未 await，若用交易內的 tx 會在 commit 後才跑而 tx 連線已關（"Transaction closed"）。
 export async function createCaseFromConversation(
   prisma: PrismaClient,
   io: SocketIOServer,
@@ -801,48 +806,36 @@ export async function createCaseFromConversation(
     slaPolicyId?: string;
   },
 ) {
-  const caseRecord = await prisma.$transaction(async (tx) => {
-    // Find the conversation
+  const caseRecord = await withTenant(prisma, tenantId, async (tx) => {
     const conversation = await tx.conversation.findFirst({
       where: { id: conversationId, tenantId },
-      include: {
-        contact: true,
-        channel: true,
-      },
+      include: { contact: true, channel: true },
     });
-
     if (!conversation) {
       throw new AppError('Conversation not found', 'NOT_FOUND', 404);
     }
-
-    // Check if conversation already has a case
     if (conversation.caseId) {
       throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
     }
-
     const created = await createCaseRecord(tx, tenantId, agentId, {
       contactId: conversation.contactId,
       channelId: conversation.channelId,
       ...caseData,
     });
-
-    // Link conversation to case
     await tx.conversation.update({
       where: { id: conversationId },
       data: { caseId: created.id },
     });
-
     return created;
   });
 
   emitCaseCreated(io, tenantId, caseRecord, conversationId);
 
-  // Track broadcast → case attribution (non-blocking)
-  trackBroadcastCase(prisma, caseRecord.contactId, caseRecord.id).catch(() => {});
-
-  // Auto-assign if no assignee specified and teamId is set
+  // 交易外執行副作用（用 base prisma，長連線）——各自綁定租戶（tenantScopedClient 自動）
+  const bg = tenantScopedClient(prisma, tenantId);
+  trackBroadcastCase(bg, caseRecord.contactId, caseRecord.id).catch(() => {});
   if (!caseData.assigneeId && caseRecord.teamId) {
-    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
+    autoAssignCase(bg, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
       logger.error(`[createCaseFromConversation] Auto-assign failed for case ${caseRecord.id}:`, err);
     });
   }
@@ -851,50 +844,47 @@ export async function createCaseFromConversation(
 }
 
 export async function linkConversationToCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   conversationId: string,
   tenantId: string,
   agentId: string,
 ) {
-  const updatedConversation = await prisma.$transaction(async (tx) => {
-    const [caseRecord, conversation] = await Promise.all([
-      tx.case.findFirst({ where: { id: caseId, tenantId } }),
-      tx.conversation.findFirst({ where: { id: conversationId, tenantId } }),
-    ]);
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
+  const [caseRecord, conversation] = await Promise.all([
+    prisma.case.findFirst({ where: { id: caseId, tenantId } }),
+    prisma.conversation.findFirst({ where: { id: conversationId, tenantId } }),
+  ]);
 
-    if (!caseRecord || !conversation) {
-      throw new AppError('Case or conversation not found', 'NOT_FOUND', 404);
-    }
+  if (!caseRecord || !conversation) {
+    throw new AppError('Case or conversation not found', 'NOT_FOUND', 404);
+  }
 
-    if (conversation.caseId) {
-      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
-    }
+  if (conversation.caseId) {
+    throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+  }
 
-    const linked = await tx.conversation.update({
-      where: { id: conversationId },
-      data: { caseId },
-      select: {
-        id: true,
-        caseId: true,
-        channelType: true,
-        status: true,
-        lastMessageAt: true,
-      },
-    });
+  const updatedConversation = await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { caseId },
+    select: {
+      id: true,
+      caseId: true,
+      channelType: true,
+      status: true,
+      lastMessageAt: true,
+    },
+  });
 
-    await tx.caseEvent.create({
-      data: {
-        caseId,
-        actorType: 'agent',
-        actorId: agentId,
-        eventType: 'conversation_linked',
-        payload: { conversationId },
-      },
-    });
-
-    return linked;
+  await prisma.caseEvent.create({
+    data: {
+      caseId,
+      actorType: 'agent',
+      actorId: agentId,
+      eventType: 'conversation_linked',
+      payload: { conversationId },
+    },
   });
 
   io.to(`tenant:${tenantId}`).emit('case.updated', {
@@ -905,8 +895,9 @@ export async function linkConversationToCase(
   return updatedConversation;
 }
 
+// 收 TenantDb：呼叫端以 withTenant 包在綁定租戶交易內；內部依序解除關聯+刪除即為原子。
 export async function deleteCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -926,16 +917,12 @@ export async function deleteCase(
     throw new AppError('Case not found', 'NOT_FOUND', 404);
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.conversation.updateMany({
-      where: { tenantId, caseId },
-      data: { caseId: null },
-    });
-
-    await tx.case.delete({
-      where: { id: caseId },
-    });
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
+  await prisma.conversation.updateMany({
+    where: { tenantId, caseId },
+    data: { caseId: null },
   });
+  await prisma.case.delete({ where: { id: caseId } });
 
   io.to(`tenant:${tenantId}`).emit('case.deleted', {
     id: caseRecord.id,
@@ -949,7 +936,7 @@ export async function deleteCase(
 }
 
 export async function getCaseStats(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ) {
   const now = new Date();
@@ -983,11 +970,13 @@ export async function getCaseStats(
         resolvedAt: { gte: todayStart },
       },
     }),
-    prisma.case.groupBy({
+    // groupBy 在 TenantDb 聯集型別下 TS 無法解析多載（union of overloads 限制），
+    // 這裡對 delegate 做局部 cast；執行語意不變、仍走 RLS 注入的 tenantPrisma。
+    (prisma.case as any).groupBy({
       by: ['status'],
       where: { tenantId },
       _count: true,
-    }),
+    }) as Promise<Array<{ status: string; _count: number }>>,
   ]);
 
   const statusCounts: Record<string, number> = {};
@@ -999,7 +988,7 @@ export async function getCaseStats(
 }
 
 export async function updateCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   id: string,
   tenantId: string,

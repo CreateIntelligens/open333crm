@@ -103,7 +103,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = parseInt(query.page || '1', 10);
     const limit = parseInt(query.limit || '50', 10);
 
-    const result = await listTemplates(fastify.prisma, request.agent.tenantId, {
+    const result = await listTemplates(request.tenantPrisma, request.agent.tenantId, {
       category: query.category || undefined,
       channelType: query.channelType || undefined,
       q: query.q || undefined,
@@ -121,14 +121,14 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = parseInt(query.page || '1', 10);
     const limit = parseInt(query.limit || '50', 10);
 
-    const result = await listSegments(fastify.prisma, request.agent.tenantId, page, limit);
+    const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit);
     return reply.send(paginated(result.segments, result.total, result.page, result.limit));
   });
 
   fastify.post('/segments', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createSegmentSchema.parse(request.body);
     const segment = await createSegment(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       data,
@@ -138,7 +138,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>('/segments/:id', async (request, reply) => {
     const segment = await getSegment(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -148,7 +148,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.patch<{ Params: { id: string } }>('/segments/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = updateSegmentSchema.parse(request.body);
     const segment = await updateSegment(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -158,7 +158,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>('/segments/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const result = await deleteSegment(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -169,7 +169,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.post('/segments/preview', async (request, reply) => {
     const data = segmentRulesSchema.parse(request.body);
     const result = await calculateSegmentContacts(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       data,
     );
@@ -183,7 +183,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = parseInt(query.page || '1', 10);
     const limit = parseInt(query.limit || '50', 10);
 
-    const result = await listCampaigns(fastify.prisma, request.agent.tenantId, {
+    const result = await listCampaigns(request.tenantPrisma, request.agent.tenantId, {
       status: query.status || undefined,
       page,
       limit,
@@ -194,7 +194,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.post('/campaigns', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createCampaignSchema.parse(request.body);
     const campaign = await createCampaign(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       data,
@@ -204,7 +204,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>('/campaigns/:id', async (request, reply) => {
     const campaign = await getCampaign(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -214,7 +214,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.patch<{ Params: { id: string } }>('/campaigns/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = updateCampaignSchema.parse(request.body);
     const campaign = await updateCampaign(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
       data,
@@ -224,7 +224,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>('/campaigns/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const result = await deleteCampaign(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -238,7 +238,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     const page = parseInt(query.page || '1', 10);
     const limit = parseInt(query.limit || '50', 10);
 
-    const result = await listBroadcasts(fastify.prisma, request.agent.tenantId, {
+    const result = await listBroadcasts(request.tenantPrisma, request.agent.tenantId, {
       campaignId: query.campaignId || undefined,
       status: query.status || undefined,
       page,
@@ -250,7 +250,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   fastify.post('/broadcasts', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const data = createBroadcastSchema.parse(request.body);
     const broadcast = await createBroadcast(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       request.agent.id,
       data,
@@ -260,7 +260,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get<{ Params: { id: string } }>('/broadcasts/:id', async (request, reply) => {
     const broadcast = await getBroadcast(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
@@ -270,18 +270,18 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
   // POST /broadcasts/:id/send — manually trigger broadcast execution
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/send', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
     const broadcast = await getBroadcast(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
-    const result = await executeBroadcast(fastify.prisma, fastify.io, broadcast.id);
+    const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id);
     return reply.send(success(result));
   });
 
   // POST /broadcasts/:id/cancel — cancel a draft/scheduled broadcast
   fastify.post<{ Params: { id: string } }>('/broadcasts/:id/cancel', { preHandler: requirePermission('marketing.broadcast') }, async (request, reply) => {
     const result = await cancelBroadcast(
-      fastify.prisma,
+      request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );

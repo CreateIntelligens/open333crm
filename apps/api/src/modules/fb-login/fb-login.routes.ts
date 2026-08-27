@@ -62,7 +62,7 @@ export default async function fbLoginRoutes(fastify: FastifyInstance) {
 
       // Update Contact email in DB
       const result = await updateContactEmail(
-        fastify.prisma,
+        fastify.prismaAdmin,
         stateData.psid,
         email,
         stateData.channelId,
@@ -95,7 +95,7 @@ export default async function fbLoginRoutes(fastify: FastifyInstance) {
       const agentId = request.agent.id;
 
       // 1. Load conversation with channel + contact identity
-      const conversation = await fastify.prisma.conversation.findFirst({
+      const conversation = await fastify.prismaAdmin.conversation.findFirst({
         where: { id: conversationId, tenantId },
         include: {
           channel: true,
@@ -155,7 +155,7 @@ export default async function fbLoginRoutes(fastify: FastifyInstance) {
 
       // 5. Record the outbound message in the conversation
       const now = new Date();
-      const message = await fastify.prisma.message.create({
+      const message = await fastify.prismaAdmin.message.create({
         data: {
           conversationId,
           direction: 'OUTBOUND',
@@ -176,7 +176,7 @@ export default async function fbLoginRoutes(fastify: FastifyInstance) {
       });
 
       // Update conversation lastMessageAt
-      await fastify.prisma.conversation.update({
+      await fastify.prismaAdmin.conversation.update({
         where: { id: conversationId },
         data: { lastMessageAt: now },
       });

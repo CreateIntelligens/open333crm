@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
+import { withTenant } from '../../lib/tenant-db.js';
 
 const createTagSchema = z.object({
   name: z.string().min(1),
@@ -24,7 +25,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/tags
   fastify.get('/', async (request, reply) => {
-    const tags = await fastify.prisma.tag.findMany({
+    const tags = await request.tenantPrisma.tag.findMany({
       where: { tenantId: request.agent.tenantId },
       orderBy: [
         { scope: 'asc' },
@@ -39,7 +40,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
   fastify.post('/', async (request, reply) => {
     const data = createTagSchema.parse(request.body);
 
-    const tag = await createTenantTag(fastify.prisma, {
+    const tag = await createTenantTag(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       ...data,
     });
@@ -51,7 +52,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateTagSchema.parse(request.body);
 
-    const tag = await fastify.prisma.tag.findFirst({
+    const tag = await request.tenantPrisma.tag.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
 
@@ -59,7 +60,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
       throw new AppError('Tag not found', 'NOT_FOUND', 404);
     }
 
-    const updated = await updateTenantTag(fastify.prisma, {
+    const updated = await updateTenantTag(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       tagId: request.params.id,
       ...data,
@@ -70,7 +71,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/tags/:id
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const tag = await fastify.prisma.tag.findFirst({
+    const tag = await request.tenantPrisma.tag.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });
 
@@ -78,7 +79,10 @@ export default async function tagRoutes(fastify: FastifyInstance) {
       throw new AppError('Tag not found', 'NOT_FOUND', 404);
     }
 
-    await deleteTenantTag(fastify.prisma, request.agent.tenantId, request.params.id);
+    // 連鎖刪除包在綁定租戶的交易內（RLS + 原子性）
+    await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      deleteTenantTag(tx, request.agent.tenantId, request.params.id),
+    );
 
     return reply.send(success({ deleted: true }));
   });

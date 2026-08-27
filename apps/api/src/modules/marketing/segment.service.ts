@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 
 export interface SegmentRules {
@@ -11,7 +12,7 @@ export interface SegmentRules {
 }
 
 export async function listSegments(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   page = 1,
   limit = 50,
@@ -29,7 +30,7 @@ export async function listSegments(
   return { segments, total, page, limit };
 }
 
-export async function getSegment(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getSegment(prisma: TenantDb, id: string, tenantId: string) {
   const segment = await prisma.segment.findFirst({
     where: { id, tenantId },
   });
@@ -40,7 +41,7 @@ export async function getSegment(prisma: PrismaClient, id: string, tenantId: str
 }
 
 export async function createSegment(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   data: { name: string; description?: string; rules: SegmentRules },
@@ -63,7 +64,7 @@ export async function createSegment(
 }
 
 export async function updateSegment(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: { name?: string; description?: string; rules?: SegmentRules },
@@ -90,7 +91,7 @@ export async function updateSegment(
   return segment;
 }
 
-export async function deleteSegment(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteSegment(prisma: TenantDb, id: string, tenantId: string) {
   const existing = await prisma.segment.findFirst({ where: { id, tenantId } });
   if (!existing) {
     throw new AppError('Segment not found', 'NOT_FOUND', 404);
@@ -108,7 +109,7 @@ export async function deleteSegment(prisma: PrismaClient, id: string, tenantId: 
  *  - createdBefore: contact created before date (value = ISO date string)
  */
 export async function calculateSegmentContacts(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   rules: SegmentRules,
 ): Promise<{ count: number; contactIds: string[] }> {

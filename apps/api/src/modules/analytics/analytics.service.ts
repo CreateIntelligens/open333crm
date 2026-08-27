@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -25,7 +26,7 @@ function groupByClause(groupBy: string) {
 /* -------------------------------------------------------------------------- */
 
 export async function getOverviewStats(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   from: Date,
   to: Date,
@@ -150,7 +151,7 @@ export async function getOverviewStats(
 /* -------------------------------------------------------------------------- */
 
 export async function getMessageTrend(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   from: Date,
   to: Date,
@@ -198,7 +199,7 @@ export async function getMessageTrend(
 /* -------------------------------------------------------------------------- */
 
 export async function getCaseStats(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   from: Date,
   to: Date,
@@ -319,7 +320,7 @@ export async function getCaseStats(
 /* -------------------------------------------------------------------------- */
 
 export async function getAgentPerformance(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   from: Date,
   to: Date,
@@ -390,7 +391,7 @@ export async function getAgentPerformance(
 /* -------------------------------------------------------------------------- */
 
 export async function getChannelAnalytics(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   from: Date,
   to: Date,
@@ -479,7 +480,7 @@ export async function getChannelAnalytics(
 /* -------------------------------------------------------------------------- */
 
 export async function getContactAnalytics(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   from: Date,
   to: Date,
@@ -552,7 +553,7 @@ export async function getContactAnalytics(
 /* -------------------------------------------------------------------------- */
 
 export async function getMyPerformance(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
 ) {
@@ -610,7 +611,7 @@ export async function getMyPerformance(
 /* -------------------------------------------------------------------------- */
 
 export async function exportCsv(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   reportType: string,
   from: Date,

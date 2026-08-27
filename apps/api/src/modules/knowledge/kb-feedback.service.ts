@@ -6,6 +6,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 
@@ -20,7 +21,7 @@ export interface RecordFeedbackInput {
  * 記錄一筆回報。會從 messageId 反查 bot 回覆 + 往前抓最近一則 inbound 當問句。
  */
 export async function recordKbFeedback(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   input: RecordFeedbackInput,
 ): Promise<void> {
@@ -95,7 +96,7 @@ export async function recordKbFeedback(
  * 列出回報（後台用）。可依 articleId / status 過濾。
  */
 export async function listFeedback(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filter: { articleId?: string; status?: string } = {},
 ) {
@@ -117,10 +118,12 @@ export async function listFeedback(
  * 回傳 { [articleId]: openCount }
  */
 export async function getFeedbackCounts(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
 ): Promise<Record<string, number>> {
-  const rows = await prisma.kbArticleFeedback.groupBy({
+  // groupBy 的多載在 TenantDb 聯集型別下無法解析（TS 限制），此處縮回 PrismaClient
+  // 供型別檢查用；執行期 TenantScopedClient 仍會走 RLS 注入，行為不變。
+  const rows = await (prisma as PrismaClient).kbArticleFeedback.groupBy({
     by: ['articleId'],
     where: { tenantId, status: 'open' },
     _count: { _all: true },
@@ -136,7 +139,7 @@ export async function getFeedbackCounts(
  * 標記回報為已處理。
  */
 export async function resolveFeedback(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ): Promise<void> {

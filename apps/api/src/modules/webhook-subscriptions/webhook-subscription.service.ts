@@ -3,10 +3,11 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { randomBytes } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
 
-export async function listSubscriptions(prisma: PrismaClient, tenantId: string) {
+export async function listSubscriptions(prisma: TenantDb, tenantId: string) {
   return prisma.webhookSubscription.findMany({
     where: { tenantId },
     orderBy: { createdAt: 'desc' },
@@ -18,7 +19,7 @@ export async function listSubscriptions(prisma: PrismaClient, tenantId: string) 
   });
 }
 
-export async function getSubscription(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getSubscription(prisma: TenantDb, id: string, tenantId: string) {
   const sub = await prisma.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
@@ -27,7 +28,7 @@ export async function getSubscription(prisma: PrismaClient, id: string, tenantId
 }
 
 export async function createSubscription(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   data: {
     url: string;
@@ -50,7 +51,7 @@ export async function createSubscription(
 }
 
 export async function updateSubscription(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -71,7 +72,7 @@ export async function updateSubscription(
   });
 }
 
-export async function deleteSubscription(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteSubscription(prisma: TenantDb, id: string, tenantId: string) {
   const sub = await prisma.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
@@ -82,7 +83,7 @@ export async function deleteSubscription(prisma: PrismaClient, id: string, tenan
 }
 
 export async function listDeliveries(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   subscriptionId: string,
   tenantId: string,
   limit = 50,

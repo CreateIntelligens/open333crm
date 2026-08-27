@@ -4,6 +4,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { createHmac } from 'node:crypto';
 import { eventBus, type AppEvent } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
@@ -22,7 +23,7 @@ function computeSignature(payload: string, secret: string): string {
  * Dispatch a single webhook delivery with retries.
  */
 export async function dispatchWebhook(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   subscriptionId: string,
   url: string,
   secret: string,

@@ -3,13 +3,14 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 // FlowRunner is imported from the barrel after `pnpm build` of @open333crm/core
 import { FlowRunner } from '@open333crm/core';
 
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
 export async function listFlows(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   opts: { page: number; limit: number; status?: string },
 ) {
@@ -30,7 +31,7 @@ export async function listFlows(
   return { flows, total };
 }
 
-export async function getFlow(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getFlow(prisma: TenantDb, id: string, tenantId: string) {
   const flow = await prisma.interactionFlow.findFirstOrThrow({
     where: { id, tenantId },
     include: { nodes: { orderBy: { sortOrder: 'asc' } } },
@@ -39,7 +40,7 @@ export async function getFlow(prisma: PrismaClient, id: string, tenantId: string
 }
 
 export async function createFlow(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   data: {
     name: string;
@@ -84,7 +85,7 @@ export async function createFlow(
 }
 
 export async function updateFlow(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -120,7 +121,7 @@ export async function updateFlow(
 }
 
 export async function activateFlow(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
 ) {
@@ -145,7 +146,7 @@ export interface NodeAnalytics {
  * Calculate per-node entry, exit, and drop-off rates for a flow.
  */
 export async function getFlowAnalytics(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   flowId: string,
   tenantId: string,
 ): Promise<{ nodes: NodeAnalytics[]; totalExecutions: number; completionRate: number }> {
@@ -155,7 +156,10 @@ export async function getFlowAnalytics(
   });
 
   // Aggregate node entry counts from FlowLog
-  const entryCounts = await prisma.flowLog.groupBy({
+  // 註：Prisma 的 groupBy 過載型別無法在 TenantDb union 上解析（各成員簽名互不相容 →
+  // 呼叫式被判定 not callable）。此處把 client 以 as PrismaClient 收斂僅供型別檢查用；
+  // 執行期仍是傳入的 tenantPrisma、查詢受 RLS 約束。
+  const entryCounts = await (prisma as PrismaClient).flowLog.groupBy({
     by: ['nodeId'],
     where: {
       execution: { flowId, tenantId },
@@ -199,7 +203,7 @@ export async function getFlowAnalytics(
 // ── Execution management ───────────────────────────────────────────────────
 
 export async function listExecutions(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   flowId: string,
   tenantId: string,
   opts: { page: number; limit: number; status?: string },
@@ -224,7 +228,7 @@ export async function listExecutions(
  * Manually trigger a flow for a specific contact (for testing / manual invocation).
  */
 export async function triggerFlow(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   flowId: string,
   contactId: string,
   tenantId: string,
