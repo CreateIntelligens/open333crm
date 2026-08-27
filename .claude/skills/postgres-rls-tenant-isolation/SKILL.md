@@ -71,11 +71,12 @@ index.ts 白名單接線清單見該檔 `// RLS 白名單基礎設施` 註解區
    `USING ("conversationId" IN (SELECT id FROM conversations WHERE "tenantId" = current_setting('app.current_tenant', true)::uuid))`。凡是「無 tenantId 靠外鍵間接隔離」的表都要這樣。
 2. **交易 service 不能收 tenantPrisma**（$extends 打散交易，失去原子性）。含 `$transaction` 的函式參數維持 `PrismaClient`，route 保留 `fastify.prisma` + `// TODO(rls)`；正解是改造為 `withTenant(prisma, tid, tx => service(tx, ...))`。用 `grep -n '\$transaction' <service>` 找出。
 3. **`groupBy` 在 TenantDb union 型別下 TS 報 "union of overloads not callable"**（`count`/`findMany` 無此問題）。局部 cast：`(prisma.case as PrismaClient).groupBy(...)` 或 `(prisma.x as any).groupBy(...)`，執行期仍走 RLS。
-4. **`$queryRawUnsafe`/`$executeRawUnsafe` 不被 $extends 包進 RLS 交易**（$allOperations 只涵蓋 model 操作）。knowledge/embedding/partner-ingest 的 raw query 仍**只靠 app-layer where tenantId**——RLS 對它們無效。加新 raw query 碰租戶表時要特別注意，或用 withTenant 明確包。
-5. **跨模組 helper 收 bare `PrismaClient`**（如 getEffectiveLimit/getEffectivePermissions）→ 呼叫它的 service 也不能乾淨吃 TenantScopedClient，保留 fastify.prisma + TODO。
-6. **FORCE 必要**：只 ENABLE 不 FORCE 時 table owner／superuser 會繞過 policy。用 `ALTER TABLE x FORCE ROW LEVEL SECURITY`。
-7. **fail-closed 的副作用**：白名單路徑漏接 admin → FORCE 後碰租戶表回空/關聯 null → 查詢崩（如 analytics scheduler 用 fastify.prisma 碰 contacts）。這是「好的吵」——立刻暴露漏接。
-8. **tenant 表本身不納入 RLS**（它的租戶識別是 `id` 非 tenantId，且由 admin 查）。
+4. **raw query（$queryRaw/$executeRaw/Unsafe）已解決**：`$allOperations` 只攔 model 操作，故另在 `tenantScopedClient` 的 **`client` 區塊覆寫這 4 個 raw 方法**，走 withTenant 在綁定交易內執行（tx 重發、保留泛型 `<T>`）。所以 analytics/knowledge/embedding 的 raw query 會自動綁定租戶、受 RLS 覆蓋，**零改動**。⚠️ 但若有人用 base `fastify.prisma.$queryRaw`（非 tenantPrisma）仍不綁定——碰租戶表的 raw 要走 tenantPrisma 或明確 withTenant。
+5. **policy 空字串轉型錯（重要）**：`current_setting('app.current_tenant', true)` 在**未設定**時回**空字串（非 NULL）**，直接 `''::uuid` 拋 `22P02 invalid uuid` 而非 fail-closed。policy **必須用 `NULLIF(current_setting(...), '')::uuid`** → 空字串轉 NULL → `tenantId = NULL` 無列（正確 fail-closed 不拋錯）。所有 policy（含 subquery）都要這樣寫。
+6. **跨模組 helper 收 bare `PrismaClient`**（如 getEffectiveLimit/getEffectivePermissions）→ 呼叫它的 service 也不能乾淨吃 TenantScopedClient，保留 fastify.prisma + TODO。
+7. **FORCE 必要**：只 ENABLE 不 FORCE 時 table owner／superuser 會繞過 policy。用 `ALTER TABLE x FORCE ROW LEVEL SECURITY`。
+8. **fail-closed 的副作用**：白名單路徑漏接 admin → FORCE 後碰租戶表回空/關聯 null → 查詢崩（如 analytics scheduler 用 fastify.prisma 碰 contacts）。這是「好的吵」——立刻暴露漏接。
+9. **tenant 表本身不納入 RLS**（它的租戶識別是 `id` 非 tenantId，且由 admin 查）。
 
 ## RLS 相關的除錯：「查詢突然回空 / 403」
 
