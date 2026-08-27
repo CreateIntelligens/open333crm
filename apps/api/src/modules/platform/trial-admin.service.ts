@@ -17,6 +17,7 @@ export async function listTrialTenants(prisma: PrismaClient) {
       name: true,
       isActive: true,
       trialEndsAt: true,
+      purgedAt: true,
       createdAt: true,
       plan: { select: { slug: true, name: true } },
       _count: { select: { agents: true } },
@@ -29,9 +30,10 @@ export async function listTrialTenants(prisma: PrismaClient) {
     const daysLeft = t.trialEndsAt
       ? Math.ceil((t.trialEndsAt.getTime() - now) / 86400_000)
       : null;
-    // 狀態：停用=已到期停用；否則依剩餘天數
-    let status: 'active' | 'expiring' | 'expired' | 'disabled';
-    if (!t.isActive) status = 'disabled';
+    // 狀態：已軟刪=purged；停用=已到期停用；否則依剩餘天數
+    let status: 'active' | 'expiring' | 'expired' | 'disabled' | 'purged';
+    if (t.purgedAt) status = 'purged';
+    else if (!t.isActive) status = 'disabled';
     else if (daysLeft !== null && daysLeft <= 0) status = 'expired';
     else if (daysLeft !== null && daysLeft <= 3) status = 'expiring';
     else status = 'active';
@@ -41,12 +43,31 @@ export async function listTrialTenants(prisma: PrismaClient) {
       name: t.name,
       isActive: t.isActive,
       trialEndsAt: t.trialEndsAt,
+      purgedAt: t.purgedAt,
       daysLeft,
       status,
       planName: t.plan?.name ?? null,
       agentCount: t._count.agents,
     };
   });
+}
+
+/**
+ * 復原已軟刪的試用租戶：清 purgedAt（不動 isActive，仍維持停用）。
+ * 業務資料本就未真刪（軟刪只標記），復原即讓平台方重新看到其非「已清除」狀態。
+ * 稽核由呼叫端（route）以 writePlatformAudit 記錄（含 platformUserId），此處不重複寫。
+ */
+export async function restorePurgedTenant(prisma: PrismaClient, tenantId: string) {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, purgedAt: true } });
+  if (!t) throw new AppError('租戶不存在', 'NOT_FOUND', 404);
+  if (!t.purgedAt) throw new AppError('該租戶未被軟刪，無需復原', 'NOT_PURGED', 422);
+
+  const updated = await prisma.tenant.update({
+    where: { id: tenantId },
+    data: { purgedAt: null },
+    select: { id: true, name: true, purgedAt: true, isActive: true },
+  });
+  return updated;
 }
 
 /**

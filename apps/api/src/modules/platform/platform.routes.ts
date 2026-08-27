@@ -20,6 +20,7 @@ import {
   extendTrial,
   convertToPaid,
   updateTenantContract,
+  restorePurgedTenant,
   resendVerification,
   markSignupFailed,
 } from './trial-admin.service.js';
@@ -195,6 +196,18 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       targetType: 'tenant',
       targetId: result.id,
       payload: { contractStartDate: result.contractStartDate, contractEndDate: result.contractEndDate },
+    });
+    return success(result);
+  });
+
+  // 復原已軟刪（purged）的試用租戶：清 purgedAt（業務資料本就未真刪）
+  fastify.patch<{ Params: { id: string } }>('/tenants/:id/restore', guard, async (request) => {
+    const result = await restorePurgedTenant(fastify.prismaAdmin, request.params.id);
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: 'tenant.trial.restore',
+      targetType: 'tenant',
+      targetId: result.id,
     });
     return success(result);
   });
