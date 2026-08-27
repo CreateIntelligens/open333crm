@@ -78,7 +78,8 @@ test('⑥ WITH CHECK：綁 A 時 INSERT B 租戶的列被擋', async () => {
     withTenant(tenantDb, TENANT_A, (tx) =>
       tx.$executeRawUnsafe(
         `INSERT INTO contacts (id, "tenantId", "displayName", "createdAt", "updatedAt")
-         VALUES (gen_random_uuid(), '${TENANT_B}', 'RLS-CI-越權', now(), now())`,
+         VALUES (gen_random_uuid(), $1::uuid, 'RLS-CI-越權', now(), now())`,
+        TENANT_B,
       ),
     ),
     /row-level security|violates/i,
@@ -98,5 +99,6 @@ test.after(async () => {
     .catch(() => {});
   await tenantDb.$disconnect();
   await adminDb.$disconnect();
-  process.exit(0);
+  // 不呼叫 process.exit：讓 node test runner 依測試結果自行決定退出碼，
+  // 否則失敗會被 exit(0) 掩蓋、CI 誤判為通過。
 });
