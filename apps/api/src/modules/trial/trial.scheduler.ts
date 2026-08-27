@@ -2,6 +2,8 @@
  * 試用生命週期排程：每小時 + 啟動即跑一次。
  * - 提醒：剩餘天數到達 reminderDaysBefore 檔位且未寄過 → 寄該租戶 ADMIN → 標記（DB 冪等）
  * - 到期：trialEndsAt < now 且仍 active → isActive=false + 到期信 + 稽核
+ * - 軟刪：已停用試用租戶，trialEndsAt 距今 > dataRetentionDays 天且 purgedAt=null →
+ *   設 purgedAt=now（標記，不真刪 DB，可復原）+ 稽核
  * 逐租戶 try/catch，單一失敗不影響其他。DB 掃描每輪讀最新 trialEndsAt 與 policy。
  */
 import type { PrismaClient, Prisma } from '@prisma/client';
@@ -70,6 +72,31 @@ export async function runTrialLifecycle(prisma: PrismaClient): Promise<void> {
       }
     } catch (err) {
       logger.error(`[TrialScheduler] failed for tenant ${t.id}:`, err);
+    }
+  }
+
+  // ── 軟刪：已停用試用租戶超過保留期 → 標記 purgedAt（不真刪 DB）──
+  const retentionMs = policy.dataRetentionDays * DAY_MS;
+  const purgeCandidates = await prisma.tenant.findMany({
+    where: { isActive: false, trialEndsAt: { not: null }, purgedAt: null },
+    select: { id: true, name: true, trialEndsAt: true },
+  });
+  for (const t of purgeCandidates) {
+    try {
+      // 保留期基準用 trialEndsAt（非停用時間）：到期後滿 dataRetentionDays 天才軟刪
+      if (t.trialEndsAt!.getTime() + retentionMs > now) continue;
+      await prisma.tenant.update({ where: { id: t.id }, data: { purgedAt: new Date(now) } });
+      await prisma.platformAuditLog
+        .create({
+          // platformUserId 省略 = 系統排程動作
+          data: { action: 'tenant.trial.purge', targetType: 'tenant', targetId: t.id },
+        })
+        .catch(() => {
+          /* 稽核失敗不阻斷軟刪 */
+        });
+      logger.info(`[TrialScheduler] tenant ${t.id} data-retention expired → purged (soft)`);
+    } catch (err) {
+      logger.error(`[TrialScheduler] purge failed for tenant ${t.id}:`, err);
     }
   }
 }

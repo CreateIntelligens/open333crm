@@ -18,8 +18,9 @@ interface TrialTenant {
   name: string;
   isActive: boolean;
   trialEndsAt: string | null;
+  purgedAt: string | null;
   daysLeft: number | null;
-  status: 'active' | 'expiring' | 'expired' | 'disabled';
+  status: 'active' | 'expiring' | 'expired' | 'disabled' | 'purged';
   planName: string | null;
   agentCount: number;
 }
@@ -45,6 +46,7 @@ const STATUS_META: Record<TrialTenant['status'], { label: string; color: string 
   expiring: { label: '即將到期', color: '#b7791f' },
   expired: { label: '已到期', color: '#d1443e' },
   disabled: { label: '已停用', color: '#97a0ae' },
+  purged: { label: '已清除', color: '#6b7280' },
 };
 
 export default function TrialAdminPage() {
@@ -99,6 +101,14 @@ export default function TrialAdminPage() {
     await platformApi.patch(`/trial-tenants/${t.id}/convert`, { planSlug });
     await loadTenants();
     flash(`✓ 已將「${t.name}」轉為正式方案`);
+  };
+
+  // 復原已軟刪（已清除）的試用租戶：清 purgedAt（業務資料本就未真刪，仍維持停用）
+  const restore = async (t: TrialTenant) => {
+    if (!window.confirm(`復原「${t.name}」的已清除標記？資料未曾真刪，復原後恢復可見（仍為停用狀態）。`)) return;
+    await platformApi.patch(`/tenants/${t.id}/restore`, {});
+    await loadTenants();
+    flash(`✓ 已復原「${t.name}」`);
   };
 
   const resend = async (s: Signup) => {
@@ -181,15 +191,23 @@ export default function TrialAdminPage() {
                   </td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <button style={miniBtn} onClick={() => extend(t)}>延長</button>
-                      <select
-                        defaultValue=""
-                        onChange={(e) => { convert(t, e.target.value); e.target.value = ''; }}
-                        style={{ ...miniBtn, cursor: 'pointer' }}
-                      >
-                        <option value="" disabled>轉正式…</option>
-                        {PAID_PLANS.map((p) => <option key={p.slug} value={p.slug}>{p.label}</option>)}
-                      </select>
+                      {t.purgedAt ? (
+                        <button style={{ ...miniBtn, color: '#0d9488' }} onClick={() => restore(t)}>
+                          復原
+                        </button>
+                      ) : (
+                        <>
+                          <button style={miniBtn} onClick={() => extend(t)}>延長</button>
+                          <select
+                            defaultValue=""
+                            onChange={(e) => { convert(t, e.target.value); e.target.value = ''; }}
+                            style={{ ...miniBtn, cursor: 'pointer' }}
+                          >
+                            <option value="" disabled>轉正式…</option>
+                            {PAID_PLANS.map((p) => <option key={p.slug} value={p.slug}>{p.label}</option>)}
+                          </select>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
