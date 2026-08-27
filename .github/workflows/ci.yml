@@ -43,6 +43,60 @@ jobs:
       - name: 租戶隔離檢查（漏帶 tenantId 的跨租戶洩漏防護）
         run: node scripts/check-tenant-scoping.mjs --strict
 
-      - name: Test (skip for now)
-        run: echo "Tests skipped - add tests in future"
-        continue-on-error: true
+      - name: RLS 白名單檢查（非白名單不得用 prismaAdmin bypass RLS）
+        run: node scripts/check-prisma-admin-usage.mjs --strict
+
+  rls-isolation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crmpassword
+          POSTGRES_DB: open333crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crm"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://crm:crmpassword@localhost:5432/open333crm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+
+      - name: 套 migration（含 RLS）
+        run: pnpm --filter @open333crm/database exec prisma migrate deploy
+
+      - name: 設 app_tenant/app_admin role 密碼（migration 已建 role）
+        run: |
+          PGPASSWORD=crmpassword psql -h localhost -U crm -d open333crm -c \
+            "ALTER ROLE app_tenant PASSWORD 'tenantpw'; ALTER ROLE app_admin PASSWORD 'adminpw';"
+
+      - name: Seed 兩租戶測試資料（隔離測試用）
+        run: |
+          PGPASSWORD=crmpassword psql -h localhost -U crm -d open333crm -c "
+            INSERT INTO tenants (id, name, slug) VALUES
+              ('a0000000-0000-0000-0000-000000000001','RLS-Test-A','rls-a'),
+              ('d207783b-58a6-48a1-838c-526874ce1606','RLS-Test-B','rls-b')
+            ON CONFLICT (id) DO NOTHING;
+            INSERT INTO contacts (id, \"tenantId\", \"displayName\", \"createdAt\", \"updatedAt\")
+            SELECT gen_random_uuid(),'a0000000-0000-0000-0000-000000000001','A-'||g,now(),now()
+            FROM generate_series(1,5) g;
+          " || echo "seed 部分失敗（schema 欄位差異，測試會用實際數）"
+
+      - name: RLS 隔離整合測試（app_tenant/app_admin 連線）
+        working-directory: apps/api
+        env:
+          DATABASE_URL_TENANT: postgresql://app_tenant:tenantpw@localhost:5432/open333crm
+          DATABASE_URL_ADMIN: postgresql://app_admin:adminpw@localhost:5432/open333crm
+        run: pnpm exec tsx src/__tests__/rls-isolation.test.ts

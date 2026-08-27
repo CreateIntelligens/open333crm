@@ -19,7 +19,7 @@
 - [x] 3.3 API：白名單服務改用 `prismaAdmin`（app_admin 連線）——`modules/platform/*`、`auth.service`、`partner-api-key`、`auth.plugin`、`*.scheduler.*`、`platform-tenant.service`、`chatbox.service`、`modules/trial/*`、`inbound-router`
 - [x] 3.4 scheduler：先用 admin 取租戶清單，對單租戶寫入時改用 `withTenant` 綁定該租戶（縮小 bypass 面積）
 - [x] 3.5 Workers：`apps/workers/src/index.ts` job handler 依 `payload.tenantId` 呼叫 `withTenant`；跨租戶 job（若有）用 admin 連線
-- [ ] 3.6 （建議）加 CI 檢查：非白名單檔案不得 import `prismaAdmin`，防 bypass 擴散
+- [x] 3.6 （建議）加 CI 檢查：非白名單檔案不得 import `prismaAdmin`，防 bypass 擴散
 - [x] 3.7 部署階段 0 並確認現況功能全部照舊（此時 RLS 未開，set_config 無副作用）
 
 ## 4. Migration — 階段 1（ENABLE + 觀察）
@@ -41,8 +41,8 @@
 - [x] 6.3 整合測試（WITH CHECK）：試圖 INSERT/UPDATE 成別租戶 tenantId MUST 被拒
 - [x] 6.4 整合測試（連線池不殘留）：連續兩個交易分別綁 A、B，第二個只見 B（驗 SET LOCAL 語意）
 - [x] 6.5 整合測試（白名單）：BYPASSRLS 連線的登入 email 全域解析 / 平台跨租戶統計 MUST 通過不被誤擋
-- [ ] 6.6 覆蓋完整性檢查：自動比對「所有含 tenantId 的表」皆有 RLS policy，遺漏則 fail（可併入 CI）
-- [ ] 6.7 CI：起帶 app_tenant/app_admin role 的 Postgres 容器跑上述整合測試
+- [x] 6.6 覆蓋完整性檢查：自動比對「所有含 tenantId 的表」皆有 RLS policy，遺漏則 fail（可併入 CI）
+- [x] 6.7 CI：起帶 app_tenant/app_admin role 的 Postgres 容器跑上述整合測試
 - [x] 6.8 typecheck（api + workers）EXIT 0；`check-tenant-scoping.mjs --strict` 仍 pass（app-layer 防線保留）
 
 ## 7. 回滾預案與文件
