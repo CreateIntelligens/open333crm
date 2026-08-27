@@ -3,11 +3,12 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
-export async function suggestReply(prisma: PrismaClient, conversationId: string) {
+export async function suggestReply(prisma: TenantDb, conversationId: string) {
   // Fetch last few inbound messages for context
   const messages = await prisma.message.findMany({
     where: { conversationId },
@@ -76,7 +77,7 @@ export async function suggestReply(prisma: PrismaClient, conversationId: string)
   }
 }
 
-export async function summarizeConversation(prisma: PrismaClient, conversationId: string) {
+export async function summarizeConversation(prisma: TenantDb, conversationId: string) {
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
     include: {

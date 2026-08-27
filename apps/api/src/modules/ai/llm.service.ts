@@ -8,6 +8,7 @@
 
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { logger } from '@open333crm/core';
 import { getChatProvider } from './providers/index.js';
 import type { HistoryMessage } from './providers/index.js';
@@ -54,7 +55,7 @@ const ZERO_USAGE: TokenUsage = {
  * 用量記錄是計費輔助非金流帳本：任何失敗只 log、絕不影響 AI 回覆主流程。
  */
 async function recordAiUsage(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   input: {
     tenantId: string;
     provider: string;
@@ -209,7 +210,7 @@ type PromptKind = 'reply' | 'summarize';
  * prompts) inject their own prompt without touching tenant defaults.
  */
 export async function generateReply(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   userMessage: string,
   kbContext = '',

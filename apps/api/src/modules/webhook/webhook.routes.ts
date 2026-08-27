@@ -7,7 +7,7 @@ import { CHANNEL_TYPE } from '@open333crm/shared';
 export default async function webhookRoutes(fastify: FastifyInstance) {
   // TODO(rls): 本檔皆為公開（無 JWT）入站 webhook 端點，無認證租戶身分，
   // 無法用 request.tenantPrisma（會拋）；tenant 由 channelId 反查解析，
-  // 故一律使用 fastify.prisma（未套 RLS）。
+  // 故一律使用 fastify.prismaAdmin（未套 RLS）。
   // Override content type parser to get raw body for signature verification
   // This is scoped to this plugin only (Fastify encapsulation)
   fastify.addContentTypeParser(
@@ -38,7 +38,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       // Respond 200 immediately - LINE expects quick responses
       // Process asynchronously
       processWebhookEvent(
-        fastify.prisma,
+        fastify.prismaAdmin,
         fastify.io,
         channelId,
         CHANNEL_TYPE.LINE,
@@ -76,7 +76,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
     // Load channel and verify the token matches
     try {
-      const channel = await fastify.prisma.channel.findFirst({
+      const channel = await fastify.prismaAdmin.channel.findFirst({
         where: { id: channelId, channelType: CHANNEL_TYPE.FB },
       });
 
@@ -115,7 +115,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       // Respond 200 immediately - Facebook expects quick responses
       fastify.log.info({ channelId, hasRawBody: !!rawBody, bodyKeys: Object.keys(body).filter(k => k !== '__rawBody') }, 'FB webhook received, starting async processing');
       processWebhookEvent(
-        fastify.prisma,
+        fastify.prismaAdmin,
         fastify.io,
         channelId,
         CHANNEL_TYPE.FB,
@@ -151,7 +151,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const channel = await fastify.prisma.channel.findFirst({
+      const channel = await fastify.prismaAdmin.channel.findFirst({
         where: { id: channelId, channelType: CHANNEL_TYPE.THREADS },
       });
 
@@ -189,7 +189,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       // 立即回 200，非同步處理（避免 Meta 重試 / webhook 自動停用）
       fastify.log.info({ channelId, hasRawBody: !!rawBody }, 'IG webhook received, starting async processing');
       processWebhookEvent(
-        fastify.prisma,
+        fastify.prismaAdmin,
         fastify.io,
         channelId,
         CHANNEL_TYPE.THREADS,

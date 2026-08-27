@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { withTenant, tenantScopedClient } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { CaseStatus, Priority } from '@open333crm/shared';
@@ -786,8 +787,11 @@ export async function getCaseEvents(
   return events;
 }
 
+// 收 base PrismaClient：DB 寫入包在 withTenant 交易內（RLS + 原子），
+// fire-and-forget 副作用（trackBroadcastCase/autoAssignCase）在交易「之後」用 base client
+// 執行——它們未 await，若用交易內的 tx 會在 commit 後才跑而 tx 連線已關（"Transaction closed"）。
 export async function createCaseFromConversation(
-  prisma: TenantDb,
+  prisma: PrismaClient,
   io: SocketIOServer,
   conversationId: string,
   tenantId: string,
@@ -802,44 +806,36 @@ export async function createCaseFromConversation(
     slaPolicyId?: string;
   },
 ) {
-  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, tenantId },
-    include: {
-      contact: true,
-      channel: true,
-    },
-  });
-
-  if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
-  }
-
-  // Check if conversation already has a case
-  if (conversation.caseId) {
-    throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
-  }
-
-  const caseRecord = await createCaseRecord(prisma, tenantId, agentId, {
-    contactId: conversation.contactId,
-    channelId: conversation.channelId,
-    ...caseData,
-  });
-
-  // Link conversation to case
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { caseId: caseRecord.id },
+  const caseRecord = await withTenant(prisma, tenantId, async (tx) => {
+    const conversation = await tx.conversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { contact: true, channel: true },
+    });
+    if (!conversation) {
+      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    }
+    if (conversation.caseId) {
+      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+    }
+    const created = await createCaseRecord(tx, tenantId, agentId, {
+      contactId: conversation.contactId,
+      channelId: conversation.channelId,
+      ...caseData,
+    });
+    await tx.conversation.update({
+      where: { id: conversationId },
+      data: { caseId: created.id },
+    });
+    return created;
   });
 
   emitCaseCreated(io, tenantId, caseRecord, conversationId);
 
-  // Track broadcast → case attribution (non-blocking)
-  trackBroadcastCase(prisma, caseRecord.contactId, caseRecord.id).catch(() => {});
-
-  // Auto-assign if no assignee specified and teamId is set
+  // 交易外執行副作用（用 base prisma，長連線）——各自綁定租戶（tenantScopedClient 自動）
+  const bg = tenantScopedClient(prisma, tenantId);
+  trackBroadcastCase(bg, caseRecord.contactId, caseRecord.id).catch(() => {});
   if (!caseData.assigneeId && caseRecord.teamId) {
-    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
+    autoAssignCase(bg, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
       logger.error(`[createCaseFromConversation] Auto-assign failed for case ${caseRecord.id}:`, err);
     });
   }

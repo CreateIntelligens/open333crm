@@ -77,6 +77,10 @@ index.ts 白名單接線清單見該檔 `// RLS 白名單基礎設施` 註解區
 7. **FORCE 必要**：只 ENABLE 不 FORCE 時 table owner／superuser 會繞過 policy。用 `ALTER TABLE x FORCE ROW LEVEL SECURITY`。
 8. **fail-closed 的副作用**：白名單路徑漏接 admin → FORCE 後碰租戶表回空/關聯 null → 查詢崩（如 analytics scheduler 用 fastify.prisma 碰 contacts）。這是「好的吵」——立刻暴露漏接。
 9. **tenant 表本身不納入 RLS**（它的租戶識別是 `id` 非 tenantId，且由 admin 查）。
+10. **fire-and-forget 副作用不可用交易 tx**：若 service 收 `withTenant` 的 tx，其**未 await 的** fire-and-forget 呼叫（如 `autoAssignCase(tx,...).catch()`）會在交易 commit、連線關閉「之後」才執行 → `Transaction already closed`（副作用靜默失效，被 .catch 吞掉）。正解：交易 service 收 **base PrismaClient**，DB 寫入包 `withTenant`，副作用在 withTenant 之後用 `tenantScopedClient(prisma, tid)`（各自短交易綁定）。收 tenantPrisma（非交易）的 service 則無此問題（每 op 各自綁定）。見 createCaseFromConversation。
+11. **雙 FK 子表要驗兩個父參照**：case_relations(from/toCaseId)、contact_relations(from/toContactId) 若 policy 只驗一個 FK，可寫出「一端本租戶、另一端他租戶」的關聯（WITH CHECK fail-open）。policy 要 `fromX IN(...) AND toX IN(...)`。
+12. **$extends 每 op 開獨立交易**：tenantScopedClient 的每個 model 操作各開 BEGIN→set_config→op→COMMIT。`Promise.all` 扇出（如 analytics 多個 count 並發）會同時佔多條連線——注意連線池上限（Prisma 預設 connection_limit）。效能敏感的並發查詢考慮改用單一 `withTenant` 包整組。
+13. **逃逸口**：TenantScopedClient 仍暴露 `$transaction`（其內 tx 不經 $extends 覆寫、不 set_config）與 `$queryRawTyped`（未覆寫）——直接用它們會落未綁定連線。碰租戶表的這類操作要明確 withTenant。
 
 ## RLS 相關的除錯：「查詢突然回空 / 403」
 

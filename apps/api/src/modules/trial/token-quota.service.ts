@@ -9,6 +9,7 @@
  * 故計數器只累加 keySource=platform 的呼叫（見 incrMonthlyTokens 的呼叫端）。
  */
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { redis, logger } from '@open333crm/core';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 
@@ -37,7 +38,7 @@ function nextMonthStart(): Date {
 }
 
 /** DB 當月 platform key token 加總（Redis miss / 初始化用）。 */
-async function dbMonthlyTokens(prisma: PrismaClient, tenantId: string): Promise<number> {
+async function dbMonthlyTokens(prisma: TenantDb, tenantId: string): Promise<number> {
   const agg = await prisma.aiUsage.aggregate({
     where: { tenantId, success: true, keySource: 'platform', createdAt: { gte: monthStart() } },
     _sum: { totalTokens: true },
@@ -49,7 +50,7 @@ async function dbMonthlyTokens(prisma: PrismaClient, tenantId: string): Promise<
  * 取當月已用 token（優先 Redis 計數器）。
  * Redis 無此 key 時從 DB 回填並設月底過期；Redis 掛掉時直接回 DB 值。
  */
-async function getMonthlyTokens(prisma: PrismaClient, tenantId: string): Promise<number> {
+async function getMonthlyTokens(prisma: TenantDb, tenantId: string): Promise<number> {
   const key = counterKey(tenantId);
   try {
     const cached = await redis.get(key);
@@ -77,7 +78,7 @@ async function getMonthlyTokens(prisma: PrismaClient, tenantId: string): Promise
  * 回傳累加後的計數器總量（供告警門檻偵測）；Redis 不可用或 tokens<=0 時回 null（跳過偵測）。
  */
 export async function incrMonthlyTokens(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   tokens: number,
 ): Promise<number | null> {
@@ -113,7 +114,7 @@ export async function incrMonthlyTokens(
 }
 
 /** 若超過月額度回 true（呼叫端據此擋 AI）。無上限或無 plan 一律回 false。 */
-export async function isMonthlyTokenExceeded(prisma: PrismaClient, tenantId: string): Promise<boolean> {
+export async function isMonthlyTokenExceeded(prisma: TenantDb, tenantId: string): Promise<boolean> {
   const limit = await getEffectiveLimit(prisma, tenantId, 'monthlyTokens');
   if (limit === null) return false;
   const used = await getMonthlyTokens(prisma, tenantId);
@@ -139,7 +140,7 @@ export interface CrossedThreshold {
  * 無上限（limit===null）回 []；單次巨量可同時跨越 warning 與 critical，皆回傳（不漏門檻）。
  */
 export async function checkQuotaThresholdCrossing(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   tokensAdded: number,
   after: number,

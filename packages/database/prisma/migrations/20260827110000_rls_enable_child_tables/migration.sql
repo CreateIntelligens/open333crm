@@ -13,14 +13,14 @@ DECLARE specs text[][] := ARRAY[
   ARRAY['broadcast_recipients','broadcastId','broadcasts'],
   ARRAY['case_events','caseId','cases'],
   ARRAY['case_notes','caseId','cases'],
-  ARRAY['case_relations','fromCaseId','cases'],
   ARRAY['case_tags','caseId','cases'],
+  ARRAY['audience_groups','channelId','channels'],
+  ARRAY['insight_snapshots','channelId','channels'],
   ARRAY['channel_identities','contactId','contacts'],
   ARRAY['channel_team_accesses','channelId','channels'],
   ARRAY['channel_usages','channelId','channels'],
   ARRAY['click_logs','shortLinkId','short_links'],
   ARRAY['contact_attributes','contactId','contacts'],
-  ARRAY['contact_relations','fromContactId','contacts'],
   ARRAY['contact_tags','contactId','contacts'],
   ARRAY['conversation_tags','conversationId','conversations'],
   ARRAY['flow_logs','executionId','flow_executions'],
@@ -50,3 +50,19 @@ BEGIN
     );
   END LOOP;
 END $$;
+
+-- 雙 FK 子表：兩個父參照都須屬當前租戶（否則可寫出「一端本租戶、另一端他租戶」的關聯，
+-- WITH CHECK fail-open）。case_relations(from/toCaseId→cases)、contact_relations(from/toContactId→contacts)。
+ALTER TABLE case_relations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE case_relations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON case_relations;
+CREATE POLICY tenant_isolation ON case_relations
+  USING ("fromCaseId" IN (SELECT id FROM cases) AND "toCaseId" IN (SELECT id FROM cases))
+  WITH CHECK ("fromCaseId" IN (SELECT id FROM cases) AND "toCaseId" IN (SELECT id FROM cases));
+
+ALTER TABLE contact_relations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contact_relations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON contact_relations;
+CREATE POLICY tenant_isolation ON contact_relations
+  USING ("fromContactId" IN (SELECT id FROM contacts) AND "toContactId" IN (SELECT id FROM contacts))
+  WITH CHECK ("fromContactId" IN (SELECT id FROM contacts) AND "toContactId" IN (SELECT id FROM contacts));

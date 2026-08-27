@@ -354,15 +354,14 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = createCaseFromConvSchema.parse(request.body);
 
-      const caseRecord = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
-        createCaseFromConversation(
-          tx,
-          fastify.io,
-          request.params.conversationId,
-          request.agent.tenantId,
-          request.agent.id,
-          data,
-        ),
+      // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
+      const caseRecord = await createCaseFromConversation(
+        fastify.prisma,
+        fastify.io,
+        request.params.conversationId,
+        request.agent.tenantId,
+        request.agent.id,
+        data,
       );
 
       return reply.status(201).send(success(caseRecord));

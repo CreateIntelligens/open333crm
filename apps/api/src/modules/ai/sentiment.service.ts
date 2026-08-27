@@ -3,6 +3,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
@@ -46,7 +47,7 @@ function keywordFallback(text: string): SentimentResult {
 }
 
 export async function analyzeSentiment(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   text: string,
 ): Promise<SentimentResult> {
