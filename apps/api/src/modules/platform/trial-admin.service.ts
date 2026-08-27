@@ -53,8 +53,9 @@ export async function listTrialTenants(prisma: PrismaClient) {
 }
 
 /**
- * 復原已軟刪的試用租戶：清 purgedAt（不動 isActive，仍維持停用）。寫稽核。
+ * 復原已軟刪的試用租戶：清 purgedAt（不動 isActive，仍維持停用）。
  * 業務資料本就未真刪（軟刪只標記），復原即讓平台方重新看到其非「已清除」狀態。
+ * 稽核由呼叫端（route）以 writePlatformAudit 記錄（含 platformUserId），此處不重複寫。
  */
 export async function restorePurgedTenant(prisma: PrismaClient, tenantId: string) {
   const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, purgedAt: true } });
@@ -66,11 +67,6 @@ export async function restorePurgedTenant(prisma: PrismaClient, tenantId: string
     data: { purgedAt: null },
     select: { id: true, name: true, purgedAt: true, isActive: true },
   });
-  await prisma.platformAuditLog
-    .create({ data: { action: 'tenant.trial.restore', targetType: 'tenant', targetId: tenantId } })
-    .catch(() => {
-      /* 稽核失敗不阻斷復原 */
-    });
   return updated;
 }
 
