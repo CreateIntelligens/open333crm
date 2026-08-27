@@ -14,6 +14,7 @@ import {
 import { createCaseFromConversation } from '../case/case.service.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
 
 interface MediaUploadConfig {
@@ -316,14 +317,15 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/case', async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
 
-    // TODO(rls): 交易 service，待改造為 withTenant
-    const caseRecord = await createCaseFromConversation(
-      fastify.prisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
-      request.agent.id,
-      data,
+    const caseRecord = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      createCaseFromConversation(
+        tx,
+        fastify.io,
+        request.params.id,
+        request.agent.tenantId,
+        request.agent.id,
+        data,
+      ),
     );
 
     return reply.status(201).send(success(caseRecord));

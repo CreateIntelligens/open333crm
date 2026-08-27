@@ -16,6 +16,7 @@ import {
   getCaseStats,
 } from './case.service.js';
 import { recordCsatScore } from '../csat/csat.service.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
@@ -126,9 +127,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.post('/', async (request, reply) => {
     const data = createCaseSchema.parse(request.body);
 
-    // TODO(rls): 交易 service，待改造為 withTenant（createCaseRecord/autoAssignCase/trackBroadcastCase 收 PrismaClient）
     const caseRecord = await createCase(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.agent.tenantId,
       request.agent.id,
@@ -166,12 +166,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/cases/:id
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    // TODO(rls): 交易 service，待改造為 withTenant
-    const deleted = await deleteCase(
-      fastify.prisma,
-      fastify.io,
-      request.params.id,
-      request.agent.tenantId,
+    const deleted = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      deleteCase(tx, fastify.io, request.params.id, request.agent.tenantId),
     );
 
     // 稽核：刪除案件
@@ -315,14 +311,15 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string; conversationId: string } }>(
     '/:id/conversations/:conversationId/link',
     async (request, reply) => {
-      // TODO(rls): 交易 service，待改造為 withTenant
-      const linked = await linkConversationToCase(
-        fastify.prisma,
-        fastify.io,
-        request.params.id,
-        request.params.conversationId,
-        request.agent.tenantId,
-        request.agent.id,
+      const linked = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+        linkConversationToCase(
+          tx,
+          fastify.io,
+          request.params.id,
+          request.params.conversationId,
+          request.agent.tenantId,
+          request.agent.id,
+        ),
       );
 
       return reply.send(success(linked));
@@ -333,9 +330,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/csat', async (request, reply) => {
     const data = csatSchema.parse(request.body);
 
-    // TODO(rls): 交易 service，待改造為 withTenant（recordCsatScore 收 PrismaClient）
     const recorded = await recordCsatScore(
-      fastify.prisma,
+      request.tenantPrisma,
       fastify.io,
       request.params.id,
       data.score,
@@ -358,14 +354,15 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const data = createCaseFromConvSchema.parse(request.body);
 
-      // TODO(rls): 交易 service，待改造為 withTenant
-      const caseRecord = await createCaseFromConversation(
-        fastify.prisma,
-        fastify.io,
-        request.params.conversationId,
-        request.agent.tenantId,
-        request.agent.id,
-        data,
+      const caseRecord = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+        createCaseFromConversation(
+          tx,
+          fastify.io,
+          request.params.conversationId,
+          request.agent.tenantId,
+          request.agent.id,
+          data,
+        ),
       );
 
       return reply.status(201).send(success(caseRecord));

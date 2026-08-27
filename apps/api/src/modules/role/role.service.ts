@@ -103,8 +103,10 @@ export async function deleteRole(prisma: TenantDb, roleId: string, tenantId: str
  * 驗證：dependsOn 前置、admin 核心鎖定、防自鎖、越權防護。
  * @param editorRoleId 編輯者自身角色（越權/自鎖判斷）
  */
+// 收 TenantDb：呼叫端以 withTenant 包在綁定租戶交易內（roles/role_permissions 均綁定當前租戶）。
+// 內部依序刪除+建立即為原子（外層交易保證），不自開 $transaction 避免巢狀。
 export async function setRolePermissions(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   roleId: string,
   tenantId: string,
   codes: string[],
@@ -161,14 +163,12 @@ export async function setRolePermissions(
     }
   }
 
-  // 寫入：清空重建（同一交易）
-  await prisma.$transaction([
-    prisma.rolePermission.deleteMany({ where: { roleId } }),
-    prisma.rolePermission.createMany({
-      data: [...wanted].map((permissionCode) => ({ roleId, permissionCode })),
-      skipDuplicates: true,
-    }),
-  ]);
+  // 寫入：清空重建（外層 withTenant 交易保證原子）
+  await prisma.rolePermission.deleteMany({ where: { roleId } });
+  await prisma.rolePermission.createMany({
+    data: [...wanted].map((permissionCode) => ({ roleId, permissionCode })),
+    skipDuplicates: true,
+  });
 
   await invalidateRolePermissions(roleId);
   return { roleId, permissions: [...wanted] };
@@ -197,7 +197,7 @@ export function getPermissionMatrix() {
   };
 }
 
-async function isAdminRole(prisma: PrismaClient, roleId: string | null | undefined, tenantId: string) {
+async function isAdminRole(prisma: TenantDb, roleId: string | null | undefined, tenantId: string) {
   if (!roleId) return false;
   const r = await prisma.role.findFirst({ where: { id: roleId, tenantId }, select: { slug: true, isSystem: true } });
   return !!r && r.isSystem && r.slug === 'admin';

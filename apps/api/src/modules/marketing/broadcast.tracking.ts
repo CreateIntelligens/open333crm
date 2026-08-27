@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 const TRACKING_WINDOW_HOURS = 48;
 
@@ -7,7 +8,7 @@ const TRACKING_WINDOW_HOURS = 48;
  * Only marks the most recent un-replied recipient within the tracking window.
  */
 export async function trackBroadcastReply(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
 ) {
   const cutoff = new Date(Date.now() - TRACKING_WINDOW_HOURS * 60 * 60 * 1000);
@@ -33,7 +34,7 @@ export async function trackBroadcastReply(
  * When a case is created for a contact, link it to the most recent broadcast recipient.
  */
 export async function trackBroadcastCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   contactId: string,
   caseId: string,
 ) {

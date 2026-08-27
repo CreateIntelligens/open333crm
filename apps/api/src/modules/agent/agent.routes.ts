@@ -73,9 +73,8 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     const body = createAgentSchema.parse(request.body);
 
     // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403
-    // TODO(rls): 交易 service，待改造為 withTenant（依賴 getEffectiveLimit/getEffectivePermissions 等收 PrismaClient 的跨模組 helper）
     const agent = await createAgent(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       body,
       request.agent.roleId,
@@ -110,9 +109,8 @@ export default async function agentRoutes(fastify: FastifyInstance) {
 
     // 越權防護：不可指派權限超出自身有效權限的角色 → ROLE_ESCALATION 403
     // 傳操作者本人 agentId（request.agent.id）供 service 做自我降級守門 → SELF_LOCK 422
-    // TODO(rls): 交易 service，待改造為 withTenant（依賴 getEffectivePermissions 等收 PrismaClient 的跨模組 helper）
     const agent = await updateAgentRole(
-      fastify.prisma,
+      request.tenantPrisma,
       request.agent.tenantId,
       id,
       { role: body.role, roleId: body.roleId },

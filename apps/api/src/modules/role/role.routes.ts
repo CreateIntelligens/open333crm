@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import {
   listRoles,
   getRolePermissions,
@@ -63,13 +64,9 @@ export default async function roleRoutes(fastify: FastifyInstance) {
   fastify.put('/:id/permissions', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { permissions } = permsSchema.parse(request.body);
-    // TODO(rls): 交易 service，待改造為 withTenant
-    const result = await setRolePermissions(
-      fastify.prisma,
-      id,
-      request.agent.tenantId,
-      permissions,
-      request.agent.roleId,
+    // 權限清空重建包在綁定租戶交易內（RLS + 原子）
+    const result = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      setRolePermissions(tx, id, request.agent.tenantId, permissions, request.agent.roleId),
     );
     // 稽核：更新角色權限（payload 記角色與最終權限碼清單，權限碼非 PII）
     await writeTenantAudit(request.tenantPrisma, {

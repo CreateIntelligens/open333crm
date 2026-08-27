@@ -35,7 +35,7 @@ const SLUG_TO_ENUM: Record<string, AgentRoleValue> = {
 
 /** 依 enum role 查該租戶對應 system role 的 roleId（雙寫用；查無回 null）。 */
 async function resolveRoleId(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   role: string,
 ): Promise<string | null> {
@@ -57,7 +57,7 @@ async function resolveRoleId(
  * @param targetRoleId   欲指派給成員的目標角色 id（已驗證屬同租戶）
  */
 async function assertNoRoleEscalation(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   assignerRoleId: string | null | undefined,
   targetRoleId: string,
@@ -93,7 +93,7 @@ async function assertNoRoleEscalation(
  * @param assignerRoleId 指派者角色（越權防護用；null/undefined 表示不做越權檢查，如離線工具）
  */
 async function resolveRoleAssignment(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   input: { role?: AgentRoleValue; roleId?: string },
   fallbackRole: AgentRoleValue,
@@ -141,7 +141,7 @@ const agentSelect = {
 } as const;
 
 export async function createAgent(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   data: CreateAgentInput,
   assignerRoleId: string | null | undefined,
@@ -196,7 +196,7 @@ export async function createAgent(
 }
 
 export async function updateAgentRole(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   agentId: string,
   input: { role?: AgentRoleValue; roleId?: string },

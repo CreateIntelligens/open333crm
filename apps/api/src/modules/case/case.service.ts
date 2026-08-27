@@ -11,7 +11,7 @@ import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
 import { autoAssignCase } from './assignment.service.js';
 import { logger } from '@open333crm/core';
 
-type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
+type PrismaExecutor = TenantDb;
 
 export interface CaseFilters {
   status?: string;
@@ -376,7 +376,7 @@ function emitCaseCreated(
 }
 
 export async function createCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   tenantId: string,
   agentId: string,
@@ -787,7 +787,7 @@ export async function getCaseEvents(
 }
 
 export async function createCaseFromConversation(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   conversationId: string,
   tenantId: string,
@@ -802,38 +802,34 @@ export async function createCaseFromConversation(
     slaPolicyId?: string;
   },
 ) {
-  const caseRecord = await prisma.$transaction(async (tx) => {
-    // Find the conversation
-    const conversation = await tx.conversation.findFirst({
-      where: { id: conversationId, tenantId },
-      include: {
-        contact: true,
-        channel: true,
-      },
-    });
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId },
+    include: {
+      contact: true,
+      channel: true,
+    },
+  });
 
-    if (!conversation) {
-      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
-    }
+  if (!conversation) {
+    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+  }
 
-    // Check if conversation already has a case
-    if (conversation.caseId) {
-      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
-    }
+  // Check if conversation already has a case
+  if (conversation.caseId) {
+    throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+  }
 
-    const created = await createCaseRecord(tx, tenantId, agentId, {
-      contactId: conversation.contactId,
-      channelId: conversation.channelId,
-      ...caseData,
-    });
+  const caseRecord = await createCaseRecord(prisma, tenantId, agentId, {
+    contactId: conversation.contactId,
+    channelId: conversation.channelId,
+    ...caseData,
+  });
 
-    // Link conversation to case
-    await tx.conversation.update({
-      where: { id: conversationId },
-      data: { caseId: created.id },
-    });
-
-    return created;
+  // Link conversation to case
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { caseId: caseRecord.id },
   });
 
   emitCaseCreated(io, tenantId, caseRecord, conversationId);
@@ -852,50 +848,47 @@ export async function createCaseFromConversation(
 }
 
 export async function linkConversationToCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   conversationId: string,
   tenantId: string,
   agentId: string,
 ) {
-  const updatedConversation = await prisma.$transaction(async (tx) => {
-    const [caseRecord, conversation] = await Promise.all([
-      tx.case.findFirst({ where: { id: caseId, tenantId } }),
-      tx.conversation.findFirst({ where: { id: conversationId, tenantId } }),
-    ]);
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
+  const [caseRecord, conversation] = await Promise.all([
+    prisma.case.findFirst({ where: { id: caseId, tenantId } }),
+    prisma.conversation.findFirst({ where: { id: conversationId, tenantId } }),
+  ]);
 
-    if (!caseRecord || !conversation) {
-      throw new AppError('Case or conversation not found', 'NOT_FOUND', 404);
-    }
+  if (!caseRecord || !conversation) {
+    throw new AppError('Case or conversation not found', 'NOT_FOUND', 404);
+  }
 
-    if (conversation.caseId) {
-      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
-    }
+  if (conversation.caseId) {
+    throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+  }
 
-    const linked = await tx.conversation.update({
-      where: { id: conversationId },
-      data: { caseId },
-      select: {
-        id: true,
-        caseId: true,
-        channelType: true,
-        status: true,
-        lastMessageAt: true,
-      },
-    });
+  const updatedConversation = await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { caseId },
+    select: {
+      id: true,
+      caseId: true,
+      channelType: true,
+      status: true,
+      lastMessageAt: true,
+    },
+  });
 
-    await tx.caseEvent.create({
-      data: {
-        caseId,
-        actorType: 'agent',
-        actorId: agentId,
-        eventType: 'conversation_linked',
-        payload: { conversationId },
-      },
-    });
-
-    return linked;
+  await prisma.caseEvent.create({
+    data: {
+      caseId,
+      actorType: 'agent',
+      actorId: agentId,
+      eventType: 'conversation_linked',
+      payload: { conversationId },
+    },
   });
 
   io.to(`tenant:${tenantId}`).emit('case.updated', {
@@ -906,8 +899,9 @@ export async function linkConversationToCase(
   return updatedConversation;
 }
 
+// 收 TenantDb：呼叫端以 withTenant 包在綁定租戶交易內；內部依序解除關聯+刪除即為原子。
 export async function deleteCase(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   caseId: string,
   tenantId: string,
@@ -927,16 +921,12 @@ export async function deleteCase(
     throw new AppError('Case not found', 'NOT_FOUND', 404);
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.conversation.updateMany({
-      where: { tenantId, caseId },
-      data: { caseId: null },
-    });
-
-    await tx.case.delete({
-      where: { id: caseId },
-    });
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
+  await prisma.conversation.updateMany({
+    where: { tenantId, caseId },
+    data: { caseId: null },
   });
+  await prisma.case.delete({ where: { id: caseId } });
 
   io.to(`tenant:${tenantId}`).emit('case.deleted', {
     id: caseRecord.id,
