@@ -44,8 +44,9 @@ export function withTenant<T>(
  * set_config 讀不到、fail-closed 回空）。改為在 withTenant 的 tx 上以
  * `tx[model][operation](args)` 重發，確保同交易同連線。已用 POC 對真實 RLS 驗證生效。
  *
- * 限制：$allOperations 只涵蓋 model 操作，不涵蓋 $queryRaw/$executeRaw（raw 需在白名單/
- * 明確 withTenant 內處理）；生產路徑的 raw query 已於前置調查確認無碰租戶表的漏網。
+ * raw query（$queryRaw/$executeRaw 及 Unsafe 版）另以 client-level 覆寫包進 withTenant，
+ * 讓 raw 也在設好 app.current_tenant 的交易內執行（否則 raw 落 base 連線、FORCE 下 fail-closed
+ * 回空或轉型失敗）。已 POC 驗證：覆寫後 raw query 正確走到租戶。
  */
 export function tenantScopedClient(base: PrismaClient, tenantId: string) {
   return base.$extends({
@@ -60,6 +61,24 @@ export function tenantScopedClient(base: PrismaClient, tenantId: string) {
           });
         },
       },
+    },
+    client: {
+      // 覆寫 raw query，使其在綁定租戶的交易內執行（tx 上重發同名方法）。
+      // 保留泛型 <T>，讓呼叫端 $queryRaw<{...}[]> 的回傳型別不退化為 unknown。
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      $queryRaw<T = unknown>(this: any, ...a: any[]): Promise<T> {
+        return withTenant(base, tenantId, (tx: any) => (tx.$queryRaw as any)(...a)) as Promise<T>;
+      },
+      $queryRawUnsafe<T = unknown>(this: any, ...a: any[]): Promise<T> {
+        return withTenant(base, tenantId, (tx: any) => (tx.$queryRawUnsafe as any)(...a)) as Promise<T>;
+      },
+      $executeRaw(this: any, ...a: any[]): Promise<number> {
+        return withTenant(base, tenantId, (tx: any) => (tx.$executeRaw as any)(...a)) as Promise<number>;
+      },
+      $executeRawUnsafe(this: any, ...a: any[]): Promise<number> {
+        return withTenant(base, tenantId, (tx: any) => (tx.$executeRawUnsafe as any)(...a)) as Promise<number>;
+      },
+      /* eslint-enable @typescript-eslint/no-explicit-any */
     },
   });
 }

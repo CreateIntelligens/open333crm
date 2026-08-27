@@ -3,6 +3,10 @@
 -- policy 依 session 變數 app.current_tenant（app_tenant 連線在交易內 set_config 注入）。
 -- app_admin（BYPASSRLS）連線不受影響——白名單/scheduler/認證授權查詢仍跨租戶。
 --
+-- ⚠️ 用 NULLIF(current_setting(...), '')::uuid：current_setting(name, true) 在「未設定」時
+-- 回**空字串**（非 NULL），直接 ''::uuid 會拋 22P02（invalid uuid），而非 fail-closed。
+-- NULLIF 把空字串轉 NULL → 「tenantId = NULL」結果為 NULL → 無列（正確 fail-closed 且不拋錯）。
+--
 -- 回滾：見對應 down（DISABLE ROW LEVEL SECURITY / DROP POLICY）。
 
 -- ── contacts / conversations / cases：有 tenantId 欄位，標準 policy ──
@@ -16,8 +20,8 @@ BEGIN
     EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
     EXECUTE format(
       'CREATE POLICY tenant_isolation ON %I '
-      'USING ("tenantId" = current_setting(''app.current_tenant'', true)::uuid) '
-      'WITH CHECK ("tenantId" = current_setting(''app.current_tenant'', true)::uuid)',
+      'USING ("tenantId" = NULLIF(current_setting(''app.current_tenant'', true), '''')::uuid) '
+      'WITH CHECK ("tenantId" = NULLIF(current_setting(''app.current_tenant'', true), '''')::uuid)',
       t
     );
   END LOOP;
@@ -31,12 +35,12 @@ CREATE POLICY tenant_isolation ON messages
   USING (
     "conversationId" IN (
       SELECT id FROM conversations
-      WHERE "tenantId" = current_setting('app.current_tenant', true)::uuid
+      WHERE "tenantId" = NULLIF(current_setting('app.current_tenant', true), '')::uuid
     )
   )
   WITH CHECK (
     "conversationId" IN (
       SELECT id FROM conversations
-      WHERE "tenantId" = current_setting('app.current_tenant', true)::uuid
+      WHERE "tenantId" = NULLIF(current_setting('app.current_tenant', true), '')::uuid
     )
   );
