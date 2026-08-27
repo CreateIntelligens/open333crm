@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { eventBus } from '../../events/event-bus.js';
 import { AppError } from '../../shared/utils/response.js';
-import type { TenantScopedClient } from '../../lib/tenant-db.js';
+import type { TenantScopedClient, TenantDb } from '../../lib/tenant-db.js';
 
 export type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
 type TagKind = 'MANUAL' | 'AUTO' | 'SYSTEM' | 'CHANNEL';
@@ -246,8 +246,10 @@ export async function updateTenantTag(
   });
 }
 
+// 收 TenantDb：呼叫端以 withTenant(prisma, tid, tx => deleteTenantTag(tx, ...)) 包在
+// 綁定租戶的交易內，故此處依序刪除即為原子（不自開 $transaction，避免與外層巢狀）。
 export async function deleteTenantTag(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   tagId: string,
 ) {
@@ -260,20 +262,10 @@ export async function deleteTenantTag(
     throw new AppError('Tag not found', 'NOT_FOUND', 404);
   }
 
-  await prisma.$transaction([
-    prisma.contactTag.deleteMany({
-      where: { tagId },
-    }),
-    prisma.caseTag.deleteMany({
-      where: { tagId },
-    }),
-    prisma.conversationTag.deleteMany({
-      where: { tagId },
-    }),
-    prisma.tag.delete({
-      where: { id: tagId },
-    }),
-  ]);
+  await prisma.contactTag.deleteMany({ where: { tagId } });
+  await prisma.caseTag.deleteMany({ where: { tagId } });
+  await prisma.conversationTag.deleteMany({ where: { tagId } });
+  await prisma.tag.delete({ where: { id: tagId } });
 
   return { deleted: true };
 }

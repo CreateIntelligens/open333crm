@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
+import { withTenant } from '../../lib/tenant-db.js';
 
 const createTagSchema = z.object({
   name: z.string().min(1),
@@ -78,8 +79,10 @@ export default async function tagRoutes(fastify: FastifyInstance) {
       throw new AppError('Tag not found', 'NOT_FOUND', 404);
     }
 
-    // TODO(rls): 交易 service，待改造為 withTenant
-    await deleteTenantTag(fastify.prisma, request.agent.tenantId, request.params.id);
+    // 連鎖刪除包在綁定租戶的交易內（RLS + 原子性）
+    await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      deleteTenantTag(tx, request.agent.tenantId, request.params.id),
+    );
 
     return reply.send(success({ deleted: true }));
   });
