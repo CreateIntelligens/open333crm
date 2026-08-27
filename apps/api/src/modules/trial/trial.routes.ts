@@ -30,7 +30,7 @@ export default async function trialRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = signupSchema.parse(request.body);
       try {
-        await requestTrial(fastify.prisma, {
+        await requestTrial(fastify.prismaAdmin, {
           email: body.email,
           siteName: body.siteName,
           password: body.password,
@@ -55,7 +55,7 @@ export default async function trialRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const body = resendSchema.parse(request.body);
       try {
-        await resendTrial(fastify.prisma, body.email);
+        await resendTrial(fastify.prismaAdmin, body.email);
       } catch (err) {
         fastify.log.error(err);
       }
@@ -70,7 +70,7 @@ export default async function trialRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const token = request.query.token;
       if (!token) throw new AppError('缺少 token', 'BAD_REQUEST', 400);
-      const result = await verifyAndProvision(fastify.prisma, token);
+      const result = await verifyAndProvision(fastify.prismaAdmin, token);
       return reply.send(success(result));
     },
   );

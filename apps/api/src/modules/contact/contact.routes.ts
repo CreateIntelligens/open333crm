@@ -12,6 +12,7 @@ import {
   getMergePreview,
   mergeContacts,
 } from './contact.service.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -89,12 +90,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.post('/merge', async (request, reply) => {
     const body = mergeBodySchema.parse(request.body);
 
-    const result = await mergeContacts(
-      fastify.prisma,
-      fastify.io,
-      request.agent.tenantId,
-      body.primaryContactId,
-      body.secondaryContactId,
+    const result = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
+      mergeContacts(tx, fastify.io, request.agent.tenantId, body.primaryContactId, body.secondaryContactId),
     );
 
     // 稽核：合併聯絡人（只放兩造 id，不放姓名/電話等 PII 明文）

@@ -6,6 +6,7 @@
  * 實際刪除動作在 apps/workers 的 data-erasure.handler.ts 非同步執行。
  */
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { Queue } from 'bullmq';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
@@ -64,7 +65,7 @@ export function setEnqueueErasureJob(
  * @param input tenantId / requestedBy / contactId / mode / reason
  * @returns 建立的 DataErasureRequest（含 id/status）
  */
-export async function requestErasure(prisma: PrismaClient, input: RequestErasureInput) {
+export async function requestErasure(prisma: TenantDb, input: RequestErasureInput) {
   const { tenantId, requestedBy, contactId, mode, reason } = input;
 
   // 1. 先驗目標聯絡人同租戶——避免跨租戶刪除他人資料
@@ -123,7 +124,7 @@ export async function requestErasure(prisma: PrismaClient, input: RequestErasure
  *
  * @returns DataErasureRequest 或 null（不存在/非本租戶）
  */
-export async function getErasureRequest(prisma: PrismaClient, tenantId: string, id: string) {
+export async function getErasureRequest(prisma: TenantDb, tenantId: string, id: string) {
   return prisma.dataErasureRequest.findFirst({
     where: { id, tenantId },
   });

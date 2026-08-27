@@ -7,6 +7,7 @@
  * 所有查詢一律帶 tenantId，確保跨租戶隔離。
  */
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { Queue } from 'bullmq';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
@@ -46,7 +47,7 @@ export interface RequestExportInput {
  * 發起匯出：建 pending 請求 + 寫稽核 + 入列 job。
  * 立即回傳請求（pending 狀態），不阻塞於實際打包。
  */
-export async function requestExport(prisma: PrismaClient, input: RequestExportInput) {
+export async function requestExport(prisma: TenantDb, input: RequestExportInput) {
   const req = await prisma.dataExportRequest.create({
     data: {
       tenantId: input.tenantId,
@@ -93,7 +94,7 @@ export async function requestExport(prisma: PrismaClient, input: RequestExportIn
 }
 
 /** 查單筆匯出請求狀態（tenantId scoped）。 */
-export async function getExportRequest(prisma: PrismaClient, tenantId: string, id: string) {
+export async function getExportRequest(prisma: TenantDb, tenantId: string, id: string) {
   const req = await prisma.dataExportRequest.findFirst({
     where: { id, tenantId },
     select: {
@@ -118,7 +119,7 @@ export async function getExportRequest(prisma: PrismaClient, tenantId: string, i
  * 取得下載資訊：驗 completed + 未過期 + 同租戶，產短時效下載連結並 downloadCount++。
  * 跨租戶（findFirst 帶 tenantId 找不到）→ 404；未完成/已過期 → 400/410。
  */
-export async function getExportDownload(prisma: PrismaClient, tenantId: string, id: string) {
+export async function getExportDownload(prisma: TenantDb, tenantId: string, id: string) {
   const req = await prisma.dataExportRequest.findFirst({
     where: { id, tenantId },
     select: {

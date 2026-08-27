@@ -544,17 +544,17 @@ export async function getMergePreview(
 }
 
 export async function mergeContacts(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   io: SocketIOServer,
   tenantId: string,
   primaryContactId: string,
   secondaryContactId: string,
 ) {
-  return prisma.$transaction(async (tx) => {
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
     // 1. Validate both contacts exist, same tenant, secondary not archived
     const [primary, secondary] = await Promise.all([
-      tx.contact.findFirst({ where: { id: primaryContactId, tenantId } }),
-      tx.contact.findFirst({ where: { id: secondaryContactId, tenantId } }),
+      prisma.contact.findFirst({ where: { id: primaryContactId, tenantId } }),
+      prisma.contact.findFirst({ where: { id: secondaryContactId, tenantId } }),
     ]);
 
     if (!primary) throw new AppError('Primary contact not found', 'NOT_FOUND', 404);
@@ -563,35 +563,35 @@ export async function mergeContacts(
     if (primaryContactId === secondaryContactId) throw new AppError('Cannot merge a contact with itself', 'BAD_REQUEST', 400);
 
     // 2. Move channel identities
-    await tx.channelIdentity.updateMany({
+    await prisma.channelIdentity.updateMany({
       where: { contactId: secondaryContactId },
       data: { contactId: primaryContactId },
     });
 
     // 3. Move conversations
-    await tx.conversation.updateMany({
+    await prisma.conversation.updateMany({
       where: { contactId: secondaryContactId },
       data: { contactId: primaryContactId },
     });
 
     // 4. Move cases
-    await tx.case.updateMany({
+    await prisma.case.updateMany({
       where: { contactId: secondaryContactId },
       data: { contactId: primaryContactId },
     });
 
     // 5. Merge tags (skip duplicates)
-    const secondaryTags = await tx.contactTag.findMany({
+    const secondaryTags = await prisma.contactTag.findMany({
       where: { contactId: secondaryContactId },
     });
-    const primaryTagIds = await tx.contactTag.findMany({
+    const primaryTagIds = await prisma.contactTag.findMany({
       where: { contactId: primaryContactId },
       select: { tagId: true },
     });
     const existingTagIds = new Set(primaryTagIds.map((t) => t.tagId));
     for (const st of secondaryTags) {
       if (!existingTagIds.has(st.tagId)) {
-        await tx.contactTag.create({
+        await prisma.contactTag.create({
           data: {
             contactId: primaryContactId,
             tagId: st.tagId,
@@ -602,22 +602,22 @@ export async function mergeContacts(
       }
     }
     // Remove secondary's tags to avoid FK issues
-    await tx.contactTag.deleteMany({
+    await prisma.contactTag.deleteMany({
       where: { contactId: secondaryContactId },
     });
 
     // 6. Merge attributes (skip duplicate keys)
-    const secondaryAttrs = await tx.contactAttribute.findMany({
+    const secondaryAttrs = await prisma.contactAttribute.findMany({
       where: { contactId: secondaryContactId },
     });
-    const primaryAttrKeys = await tx.contactAttribute.findMany({
+    const primaryAttrKeys = await prisma.contactAttribute.findMany({
       where: { contactId: primaryContactId },
       select: { key: true },
     });
     const existingKeys = new Set(primaryAttrKeys.map((a) => a.key));
     for (const sa of secondaryAttrs) {
       if (!existingKeys.has(sa.key)) {
-        await tx.contactAttribute.create({
+        await prisma.contactAttribute.create({
           data: {
             contactId: primaryContactId,
             key: sa.key,
@@ -627,46 +627,46 @@ export async function mergeContacts(
         });
       }
     }
-    await tx.contactAttribute.deleteMany({
+    await prisma.contactAttribute.deleteMany({
       where: { contactId: secondaryContactId },
     });
 
     // 7. Merge contact relations
-    const relationsFrom = await tx.contactRelation.findMany({
+    const relationsFrom = await prisma.contactRelation.findMany({
       where: { fromContactId: secondaryContactId },
     });
     for (const rel of relationsFrom) {
       const targetId = rel.toContactId === secondaryContactId ? primaryContactId : rel.toContactId;
       if (targetId === primaryContactId && rel.fromContactId === secondaryContactId) {
         // Would create self-reference or duplicate, skip
-        const existing = await tx.contactRelation.findFirst({
+        const existing = await prisma.contactRelation.findFirst({
           where: { fromContactId: primaryContactId, toContactId: targetId, relationType: rel.relationType },
         });
         if (!existing && primaryContactId !== targetId) {
-          await tx.contactRelation.update({
+          await prisma.contactRelation.update({
             where: { id: rel.id },
             data: { fromContactId: primaryContactId },
           });
         }
       }
     }
-    const relationsTo = await tx.contactRelation.findMany({
+    const relationsTo = await prisma.contactRelation.findMany({
       where: { toContactId: secondaryContactId },
     });
     for (const rel of relationsTo) {
       if (rel.fromContactId === primaryContactId) continue; // Would become self-reference
-      const existing = await tx.contactRelation.findFirst({
+      const existing = await prisma.contactRelation.findFirst({
         where: { fromContactId: rel.fromContactId, toContactId: primaryContactId, relationType: rel.relationType },
       });
       if (!existing) {
-        await tx.contactRelation.update({
+        await prisma.contactRelation.update({
           where: { id: rel.id },
           data: { toContactId: primaryContactId },
         });
       }
     }
     // Clean up any remaining relations pointing to secondary
-    await tx.contactRelation.deleteMany({
+    await prisma.contactRelation.deleteMany({
       where: {
         OR: [
           { fromContactId: secondaryContactId },
@@ -676,7 +676,7 @@ export async function mergeContacts(
     });
 
     // 8. Archive the secondary contact
-    await tx.contact.update({
+    await prisma.contact.update({
       where: { id: secondaryContactId },
       data: {
         isArchived: true,
@@ -692,11 +692,10 @@ export async function mergeContacts(
       secondaryName: secondary.displayName,
     });
 
-    return {
-      primaryContactId,
-      secondaryContactId,
-      primaryName: primary.displayName,
-      secondaryName: secondary.displayName,
-    };
-  });
+  return {
+    primaryContactId,
+    secondaryContactId,
+    primaryName: primary.displayName,
+    secondaryName: secondary.displayName,
+  };
 }
