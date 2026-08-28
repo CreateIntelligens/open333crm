@@ -4,6 +4,7 @@ import {
   build2mdRequestUrl,
   normalizeSearchResponse,
   readBoundedText,
+  readThrough2md,
 } from '../modules/ai/agent/web-client.js';
 
 assert.equal(assertSafePublicHttpUrl('https://example.com/a?x=1').hostname, 'example.com');
@@ -37,4 +38,14 @@ const body = new ReadableStream<Uint8Array>({
 const result = await readBoundedText(body, 6);
 assert.equal(result.text, '123456');
 assert.equal(result.truncated, true);
+
+let readerCalls = 0;
+const readResult = await readThrough2md('https://example.com', async () => {
+  readerCalls += 1;
+  return readerCalls === 1
+    ? new Response(JSON.stringify({ unexpected: true }), { status: 200 })
+    : new Response(JSON.stringify({ data: { content: '# Example' } }), { status: 200 });
+});
+assert.equal(readerCalls, 2);
+assert.equal(readResult.content, '# Example');
 console.log('agent-web-client tests passed');

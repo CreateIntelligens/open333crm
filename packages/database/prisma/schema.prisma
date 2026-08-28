@@ -1814,26 +1814,26 @@ model AiUsage {
 
 // Agent 執行記錄：暫存上下文與工具 trace 預設建立後 3 天過期。
 model AgentRun {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String   @db.Uuid
-  conversationId String?  @db.Uuid
-  initiatedById  String?  @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  conversationId String?   @db.Uuid
+  initiatedById  String?   @db.Uuid
   provider       String
   model          String
-  userMessage    String   @db.Text
-  finalText      String?  @db.Text
-  status         String   @default("RUNNING")
+  userMessage    String    @db.Text
+  finalText      String?   @db.Text
+  status         String    @default("RUNNING")
   stopReason     String?
-  turnCount      Int      @default(0)
-  toolCallCount  Int      @default(0)
+  turnCount      Int       @default(0)
+  toolCallCount  Int       @default(0)
   expiresAt      DateTime
   completedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  toolCalls    AgentToolCall[]
-  reportDraft  AgentReportDraft?
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  toolCalls   AgentToolCall[]
+  reportDraft AgentReportDraft?
 
   @@index([tenantId, createdAt])
   @@index([tenantId, expiresAt])
@@ -1863,16 +1863,16 @@ model AgentToolCall {
 }
 
 model AgentReportDraft {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String   @db.Uuid
-  runId      String   @unique @db.Uuid
-  path       String
-  markdown   String?  @db.Text
-  status     String   @default("DRAFT")
-  shareUrl   String?
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  runId     String   @unique @db.Uuid
+  path      String
+  markdown  String?  @db.Text
+  status    String   @default("DRAFT")
+  shareUrl  String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run    AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)

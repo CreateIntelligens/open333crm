@@ -202,7 +202,9 @@ export async function readThrough2md(
         body: JSON.stringify({ url: safeUrl }),
       }, fetchImpl);
       const payload = decodeResponse(response.text);
-      const content = extractReadableContent(payload) || response.text;
+      const extracted = extractReadableContent(payload);
+      if (!extracted && typeof payload !== 'string') throw new Error('invalid reader response');
+      const content = extracted || response.text;
       if (content.trim()) return { content: content.slice(0, WEB_CONTENT_LIMIT), source: base, truncated: response.truncated || content.length > WEB_CONTENT_LIMIT };
       throw new Error('empty reader response');
     } catch (error) {

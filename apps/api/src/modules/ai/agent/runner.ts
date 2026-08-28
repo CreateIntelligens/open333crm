@@ -57,12 +57,15 @@ export async function runAgent(input: RunAgentInput): Promise<AgentRunResult> {
   const maxToolCalls = Math.max(1, input.maxToolCalls ?? AGENT_DEFAULT_MAX_TOOL_CALLS);
   const maxRepeatedCalls = Math.max(1, input.maxRepeatedCalls ?? AGENT_DEFAULT_MAX_REPEATED_CALLS);
   const maxTotalTokens = Math.max(1, input.maxTotalTokens ?? AGENT_DEFAULT_MAX_TOTAL_TOKENS);
+  const startedAt = Date.now();
   const messages: AgentMessage[] = [...(input.history ?? []), { role: 'user', content: input.userMessage }];
   const repeatedCalls = new Map<string, number>();
   let totalTokens = 0;
   let toolCalls = 0;
 
   for (let turn = 1; turn <= maxTurns; turn += 1) {
+    const remainingMs = (input.timeoutMs ?? AGENT_DEFAULT_TIMEOUT_MS) - (Date.now() - startedAt);
+    if (remainingMs <= 0) return await finish(input.store, { status: 'failed', stopReason: 'timeout', turns: turn - 1, toolCalls });
     let response: ToolTurnResult;
     try {
       response = await withTimeout(input.provider.generateToolTurn({
@@ -74,7 +77,7 @@ export async function runAgent(input: RunAgentInput): Promise<AgentRunResult> {
         maxTokens: input.maxTokens ?? 1_000,
         baseUrl: input.baseUrl,
         apiKey: input.apiKey,
-      }), input.timeoutMs ?? AGENT_DEFAULT_TIMEOUT_MS);
+      }), remainingMs);
     } catch {
       return await finish(input.store, { status: 'failed', stopReason: 'provider_error', turns: turn, toolCalls });
     }
