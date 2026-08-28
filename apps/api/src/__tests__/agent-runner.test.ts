@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { runAgent, type AgentRunStore } from '../modules/ai/agent/runner.js';
-import type { AgentMessage, ChatProvider, ToolCall, ToolDefinition, ToolTurnOptions, ToolTurnResult } from '../modules/ai/providers/types.js';
+import type { ChatProvider, ToolCall, ToolDefinition, ToolTurnOptions, ToolTurnResult } from '../modules/ai/providers/types.js';
 
 const tool: ToolDefinition = { name: 'search_web', description: 'search', parameters: { type: 'object' } };
 

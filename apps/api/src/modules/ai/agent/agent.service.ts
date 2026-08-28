@@ -112,7 +112,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
       canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH,
       wikiApiToken: config.WIKI_API_TOKEN,
       prisma,
-      onWikiPublished: async ({ path, markdown, shareUrl }) => {
+      onWikiPublished: async ({ path, shareUrl }) => {
         await prisma.agentReportDraft.upsert({
           where: { runId: run.id },
           create: { tenantId: input.tenantId, runId: run.id, path, markdown: null, status: 'PUBLISHED', shareUrl, expiresAt },
