@@ -24,6 +24,8 @@ export interface AgentReplyInput {
   conversationId?: string;
   initiatedById?: string;
   canPublishWiki?: boolean;
+  replyToken?: string;
+  receivedAt?: string;
   deliver?: boolean;
   io?: Server;
 }
@@ -133,7 +135,10 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
   });
   const output = { ...result, handled: result.status === 'completed', runId: run.id };
   if (output.handled && input.deliver && input.conversationId && input.io) {
-    await persistAndDeliverAgentReply(prisma, input.tenantId, input.conversationId, output.text, output.runId, input.io);
+    await persistAndDeliverAgentReply(prisma, input.tenantId, input.conversationId, output.text, output.runId, input.io, {
+      replyToken: input.replyToken,
+      receivedAt: input.receivedAt,
+    });
   }
   return output;
 }
@@ -145,6 +150,7 @@ async function persistAndDeliverAgentReply(
   text: string,
   runId: string,
   io: Server,
+  delivery: { replyToken?: string; receivedAt?: string },
 ): Promise<void> {
   const now = new Date();
   const message = await prisma.message.create({
@@ -178,7 +184,7 @@ async function persistAndDeliverAgentReply(
   };
   io.to(`conversation:${conversationId}`).emit('message.new', payload);
   io.to(`tenant:${tenantId}`).emit('message.new', payload);
-  await deliverToChannel(prisma, conversationId, text);
+  await deliverToChannel(prisma, conversationId, { contentType: 'text', content: { text }, delivery });
 }
 
 async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string): Promise<HistoryMessage[]> {

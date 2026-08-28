@@ -9,7 +9,7 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
-import { CHANNEL_TYPE, type ConversationUpdatedPayload } from '@open333crm/shared';
+import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 
 export interface ConversationFilters {
   status?: string;
@@ -22,6 +22,12 @@ export interface ConversationFilters {
 export interface PaginationParams {
   page: number;
   limit: number;
+}
+
+export interface ChannelDeliveryOptions {
+  strategy?: 'reply' | 'push';
+  replyToken?: string;
+  receivedAt?: string;
 }
 
 export async function listConversations(
@@ -577,7 +583,7 @@ function getRedisPub(): IORedis {
 export async function deliverToChannel(
   prisma: TenantDb,
   conversationId: string,
-  payload: string | { contentType: string; content: Record<string, unknown> },
+  payload: string | { contentType: string; content: Record<string, unknown>; delivery?: ChannelDeliveryOptions },
 ): Promise<void> {
   const outbound = typeof payload === 'string'
     ? { contentType: 'text', content: { text: payload } as Record<string, unknown> }
@@ -616,11 +622,33 @@ export async function deliverToChannel(
     }
 
     logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid} contentType=${outbound.contentType}`);
-    const result = await plugin.sendMessage(
-      identity.uid,
-      outbound,
-      credentials,
-    );
+    const safeStrategy = conv.channel.channelType === CHANNEL_TYPE.LINE && outbound.delivery
+      ? selectSafeLineStrategy({ replyToken: outbound.delivery.replyToken, receivedAt: outbound.delivery.receivedAt })
+      : undefined;
+    const strategy = safeStrategy ?? (outbound.content.strategy as 'reply' | 'push' | undefined);
+    const send = async (selectedStrategy: 'reply' | 'push') => {
+      const content = {
+        ...outbound.content,
+        strategy: selectedStrategy,
+        ...(selectedStrategy === 'reply' && outbound.delivery?.replyToken
+          ? { replyToken: outbound.delivery.replyToken }
+          : {}),
+      };
+      const result = await plugin.sendMessage(identity.uid, { contentType: outbound.contentType, content }, credentials);
+      if (!result.success) throw new Error(result.error || `channel ${selectedStrategy} delivery failed`);
+      return result;
+    };
+    let result;
+    try {
+      result = await send(strategy ?? 'push');
+    } catch (error) {
+      if (strategy === 'reply') {
+        logger.warn('[SafeReply] LINE reply failed; falling back to push', { conversationId, error });
+        result = await send('push');
+      } else {
+        throw error;
+      }
+    }
     logger.info(`[deliverToChannel] Sent successfully to uid=${identity.uid}`);
 
     // For WEBCHAT: push reply to visitor widget via Redis socket bridge

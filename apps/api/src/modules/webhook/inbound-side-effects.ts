@@ -108,6 +108,7 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
       content: ctx.content,
       messageContent: (ctx.content.text as string) ?? '',
       replyToken,
+      receivedAt: ctx.now.toISOString(),
     },
   });
 }

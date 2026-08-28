@@ -16,6 +16,11 @@ export interface ParsedWebhookMessage {
 export interface OutboundPayload {
   contentType: string;
   content: Record<string, unknown>;
+  delivery?: {
+    strategy?: 'reply' | 'push';
+    replyToken?: string;
+    receivedAt?: string;
+  };
 }
 
 /** Callback injected by the API layer to handle file storage. */
@@ -145,4 +150,3 @@ export { FbPlugin, fbPlugin } from './facebook/index.js';
 export { ThreadsPlugin, threadsPlugin }  from './threads.js';
 export { LinePlugin, linePlugin, buildLineMessage } from './line/index.js';
 export { WebchatPlugin, webchatPlugin } from './webchat/index.js';
-

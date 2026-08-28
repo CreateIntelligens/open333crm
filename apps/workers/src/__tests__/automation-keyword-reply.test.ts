@@ -84,6 +84,7 @@ async function testKeywordMatchedLineSendMessageUsesReplyToken() {
       conversationId: 'conversation-1',
       trigger: 'keyword.matched',
       replyToken: 'reply-token-1',
+      receivedAt: new Date(Date.now() - 1_000).toISOString(),
       pluginRegistry: new Map([['LINE', plugin]]),
     },
   );
@@ -104,8 +105,46 @@ async function testKeywordMatchedLineSendMessageUsesReplyToken() {
   assert.deepEqual(createdMessages[0].data.content, { text: '命中回覆' });
 }
 
+async function testReplyFailureFallsBackToPush() {
+  const sends: OutboundPayload[] = [];
+  const plugin: ChannelPlugin = {
+    channelType: 'LINE',
+    verifySignature: () => true,
+    parseWebhook: async () => [],
+    getProfile: async (uid: string) => ({ uid, displayName: uid }),
+    sendMessage: async (_to, payload) => {
+      sends.push(payload);
+      return sends.length === 1 ? { success: false, error: 'reply token expired' } : { success: true, channelMsgId: 'push-1' };
+    },
+  };
+  const prisma = {
+    conversation: {
+      async findUnique() {
+        return {
+          id: 'conversation-1', tenantId: 'tenant-1',
+          channel: { id: 'channel-1', channelType: 'LINE', isActive: true, credentialsEncrypted: encryptCredentials({ channelAccessToken: 'line-token' }) },
+          contact: { channelIdentities: [{ channelId: 'channel-1', uid: 'line-user-1' }] },
+        };
+      },
+      async update() { return {}; },
+    },
+    message: {
+      async create(args: { data: { content: Record<string, unknown> } }) {
+        return { id: 'message-1', conversationId: 'conversation-1', direction: 'OUTBOUND', senderType: 'SYSTEM', contentType: 'text', content: args.data.content, createdAt: new Date() };
+      },
+    },
+  };
+  await executeWorkerAutomationActions(prisma as any, { async publish() { return 1; } } as any, [{ type: 'send_message', params: { text: 'fallback' } }], {
+    tenantId: 'tenant-1', conversationId: 'conversation-1', trigger: 'keyword.matched', replyToken: 'reply-token-1', receivedAt: new Date(Date.now() - 1_000).toISOString(), pluginRegistry: new Map([['LINE', plugin]]),
+  });
+  assert.equal(sends.length, 2);
+  assert.equal(sends[0].content.strategy, 'reply');
+  assert.equal(sends[1].content.strategy, 'push');
+}
+
 async function main() {
   await testKeywordMatchedLineSendMessageUsesReplyToken();
+  await testReplyFailureFallsBackToPush();
   console.log('automation-keyword-reply tests passed');
   process.exit(0);
 }

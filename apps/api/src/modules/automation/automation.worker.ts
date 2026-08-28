@@ -313,7 +313,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── message.received ────────────────────────────────────────────────────
   eventBus.subscribe('message.received', async (event: AppEvent) => {
     try {
-      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken } = event.payload as {
+      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageId?: string;
@@ -322,6 +322,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         contentType?: string;
         channelType?: string;
         replyToken?: string;
+        receivedAt?: string;
       };
 
       // Extract message text from either direct messageContent or content.text
@@ -344,6 +345,8 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
               tenantId: event.tenantId,
               conversationId,
               userMessage: text,
+              replyToken,
+              receivedAt,
               deliver: true,
               io,
             });
@@ -354,7 +357,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         }
         if (!agentHandled) {
           try {
-            await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text);
+            await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt });
           } catch (err) {
             logger.error('[AutomationWorker] KB auto-reply error:', err);
           }
@@ -401,7 +404,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'message.received',
-        context: { contactId, conversationId, messageContent: text, channelType, replyToken },
+        context: { contactId, conversationId, messageContent: text, channelType, replyToken, receivedAt },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue message.received', err));
 
       // Check keyword triggers after message.received automation
@@ -412,6 +415,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
           messageContent: text,
           channelType,
           replyToken,
+          receivedAt,
         });
       }
     } catch (err) {
@@ -422,7 +426,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── keyword.matched ─────────────────────────────────────────────────────
   eventBus.subscribe('keyword.matched', async (event: AppEvent) => {
     try {
-      const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken } = event.payload as {
+      const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken, receivedAt } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageContent?: string;
@@ -431,12 +435,13 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         matchMode?: string;
         channelType?: string;
         replyToken?: string;
+        receivedAt?: string;
       };
 
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'keyword.matched',
-        context: { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken },
+        context: { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken, receivedAt },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue keyword.matched', err));
     } catch (err) {
       logger.error('[AutomationWorker] Error handling keyword.matched:', err);
