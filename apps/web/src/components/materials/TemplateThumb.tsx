@@ -15,23 +15,20 @@ interface Props {
   contentType: string;
 }
 
-const LINE_CHAT_BG = '#8CABD8';
-
 export function TemplateThumb({ contentType }: Props) {
   const isLine = contentType.startsWith('line_');
   const isFb = contentType.startsWith('fb_');
   const body = DEFAULT_BODY_FOR_TYPE[contentType] ?? {};
   const channelType = isLine ? 'line' : isFb ? 'fb' : '';
-  const bgColor = isLine ? LINE_CHAT_BG : '#ffffff';
 
+  // 方案 A：去掉刺眼的 LINE 藍大色塊，改用柔和漸層聊天底（亮暗色皆自然）；
+  // 預覽放大到 scale(0.58) 讓縮圖更飽滿、不再小小浮中央。
+  // 內容從頂部對齊（items-start）：較高的版型（商品卡/showcase）上緣才不會被裁切。
   return (
-    <div
-      className="relative flex h-44 items-center justify-center overflow-hidden"
-      style={{ backgroundColor: bgColor }}
-    >
+    <div className="relative flex h-36 items-start justify-center overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 px-3 pt-3 dark:from-slate-800 dark:to-slate-900">
       <div
-        className="origin-center pointer-events-none"
-        style={{ transform: 'scale(0.45)', transformOrigin: 'center center' }}
+        className="pointer-events-none origin-top"
+        style={{ transform: 'scale(0.58)', transformOrigin: 'top center' }}
       >
         <MaterialPreviewWithoutFrame
           channelType={channelType}
