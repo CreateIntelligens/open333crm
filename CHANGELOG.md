@@ -2,7 +2,7 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
-## [Unreleased]
+## [2026-08-28]
 
 ### Security
 
