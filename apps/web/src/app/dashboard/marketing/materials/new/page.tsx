@@ -8,8 +8,15 @@ import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import { Button } from '@/components/ui/button';
 import { TemplatePickerGrid } from '@/components/materials/TemplatePickerGrid';
 import { MaterialEditor, type MaterialDraft } from '@/components/materials/MaterialEditor';
+import { MaterialGovernancePanel } from '@/components/materials/MaterialGovernancePanel';
 import { createMaterial } from '@/hooks/useMaterials';
 import { DEFAULT_BODY_FOR_TYPE } from '@/components/materials/default-bodies';
+
+interface GovernanceState {
+  categoryId: string | null;
+  tags: string[];
+  status: string;
+}
 
 const TYPE_LABEL: Record<string, string> = {
   line_text: 'LINE 純文字',
@@ -33,6 +40,7 @@ const TYPE_LABEL: Record<string, string> = {
 export default function NewMaterialPage() {
   const router = useRouter();
   const [draft, setDraft] = useState<MaterialDraft | null>(null);
+  const [gov, setGov] = useState<GovernanceState>({ categoryId: null, tags: [], status: 'draft' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +53,7 @@ export default function NewMaterialPage() {
       body,
       variables: [],
     });
+    setGov({ categoryId: null, tags: [], status: 'draft' });
   };
 
   const handleSave = async () => {
@@ -52,7 +61,12 @@ export default function NewMaterialPage() {
     if (!draft.name.trim()) { setError('素材名稱必填'); return; }
     setSaving(true);
     try {
-      const m = await createMaterial(draft);
+      const m = await createMaterial({
+        ...draft,
+        categoryId: gov.categoryId,
+        tags: gov.tags,
+        status: gov.status,
+      });
       router.push(`/dashboard/marketing/materials/${m.id}`);
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,14 +108,17 @@ export default function NewMaterialPage() {
           )}
 
           {draft && (
-            <MaterialEditor
-              draft={draft}
-              templateName={TYPE_LABEL[draft.contentType]}
-              saving={saving}
-              onChange={setDraft}
-              onSave={handleSave}
-              onCancel={() => router.push('/dashboard/marketing/materials')}
-            />
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
+              <MaterialEditor
+                draft={draft}
+                templateName={TYPE_LABEL[draft.contentType]}
+                saving={saving}
+                onChange={setDraft}
+                onSave={handleSave}
+                onCancel={() => router.push('/dashboard/marketing/materials')}
+              />
+              <MaterialGovernancePanel value={gov} onChange={setGov} />
+            </div>
           )}
         </div>
       </main>
