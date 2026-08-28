@@ -157,7 +157,7 @@ export function TemplatePickerGrid({ onPick }: Props) {
             <div className="pt-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               {GROUP_LABEL[group]}
             </div>
-            <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               {groupTypes.map((t) => (
                 <div
                   key={t.value}
