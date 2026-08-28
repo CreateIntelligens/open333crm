@@ -7,7 +7,15 @@ import { Topbar } from '@/components/layout/Topbar';
 import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import { Button } from '@/components/ui/button';
 import { MaterialEditor, type MaterialDraft } from '@/components/materials/MaterialEditor';
+import { MaterialGovernancePanel } from '@/components/materials/MaterialGovernancePanel';
+import { MaterialVersionHistory } from '@/components/materials/MaterialVersionHistory';
 import { useMaterial, updateMaterial } from '@/hooks/useMaterials';
+
+interface GovernanceState {
+  categoryId: string | null;
+  tags: string[];
+  status: string;
+}
 
 export default function EditMaterialPage() {
   const router = useRouter();
@@ -16,6 +24,7 @@ export default function EditMaterialPage() {
   const { material, isLoading, mutate } = useMaterial(id);
 
   const [draft, setDraft] = useState<MaterialDraft | null>(null);
+  const [gov, setGov] = useState<GovernanceState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +40,11 @@ export default function EditMaterialPage() {
       variables: material.variables ?? [],
       targetChannels: material.targetChannels,
     });
+    setGov({
+      categoryId: material.categoryId,
+      tags: material.tags ?? [],
+      status: material.status ?? 'draft',
+    });
   }, [material]);
 
   const handleSave = async () => {
@@ -38,7 +52,12 @@ export default function EditMaterialPage() {
     if (!draft.name.trim()) { setError('素材名稱必填'); return; }
     setSaving(true);
     try {
-      await updateMaterial(id, draft as any);
+      await updateMaterial(id, {
+        ...(draft as any),
+        categoryId: gov?.categoryId ?? null,
+        tags: gov?.tags ?? [],
+        status: gov?.status ?? 'draft',
+      });
       await mutate();
       setError(null);
     } catch (err: any) {
@@ -60,15 +79,21 @@ export default function EditMaterialPage() {
 
           {isLoading && <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>}
           {error && <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-4 py-3 text-sm text-destructive">{error}</div>}
-          {draft && !isLoading && (
-            <MaterialEditor
-              draft={draft}
-              templateName={material?.template?.name}
-              saving={saving}
-              onChange={setDraft}
-              onSave={handleSave}
-              onCancel={() => router.push('/dashboard/marketing/materials')}
-            />
+          {draft && gov && !isLoading && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
+              <MaterialEditor
+                draft={draft}
+                templateName={material?.template?.name}
+                saving={saving}
+                onChange={setDraft}
+                onSave={handleSave}
+                onCancel={() => router.push('/dashboard/marketing/materials')}
+              />
+              <div className="space-y-5">
+                <MaterialGovernancePanel value={gov} onChange={setGov} />
+                <MaterialVersionHistory materialId={id} onRestored={() => mutate()} />
+              </div>
+            </div>
           )}
         </div>
       </main>
