@@ -21,14 +21,18 @@ export function TemplateThumb({ contentType }: Props) {
   const body = DEFAULT_BODY_FOR_TYPE[contentType] ?? {};
   const channelType = isLine ? 'line' : isFb ? 'fb' : '';
 
-  // 方案 A：去掉刺眼的 LINE 藍大色塊，改用柔和漸層聊天底（亮暗色皆自然）；
-  // 預覽放大到 scale(0.58) 讓縮圖更飽滿、不再小小浮中央。
-  // 內容從頂部對齊（items-start）：較高的版型（商品卡/showcase）上緣才不會被裁切。
+  // 方案 A：柔和漸層聊天底（亮暗色皆自然）+ 顯示「完整」縮圖不裁切。
+  //
+  // 關鍵：用 `zoom`（會縮放盒模型、影響版面高度）而非 `transform: scale`
+  // （scale 不改變佔位空間，會導致固定高度容器裁切內容）。容器不設固定高度，
+  // 高度自然 = 內容高度 × zoom → 較高的版型(商品卡/showcase/flex)完整呈現、
+  // 較矮的(純文字/小圖)則卡片較矮，同列不等高但都不裁切、不留白。
   return (
-    <div className="relative flex h-36 items-start justify-center overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 px-3 pt-3 dark:from-slate-800 dark:to-slate-900">
+    <div className="relative flex justify-center overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 p-3 dark:from-slate-800 dark:to-slate-900">
       <div
-        className="pointer-events-none origin-top"
-        style={{ transform: 'scale(0.58)', transformOrigin: 'top center' }}
+        className="pointer-events-none"
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        style={{ zoom: 0.55 } as any}
       >
         <MaterialPreviewWithoutFrame
           channelType={channelType}
