@@ -133,6 +133,7 @@ await redisPublisher.publish(
 ## Conventions
 
 - **CHANGELOG Maintenance (MANDATORY)**: Whenever implementing a feature (`feat`), bug fix (`fix`), architecture change, or completing an OpenSpec change/PR, you **MUST update `CHANGELOG.md`** under the latest release section (categorized into `Added`, `Changed`, `Fixed`, etc.). Never submit code changes without keeping `CHANGELOG.md` updated.
+- **CHANGELOG Date Format (CRITICAL / MANDATORY)**: Every new or updated release section **MUST** use the date-only heading format `## [YYYY-MM-DD]`. **Never create or restore `## [Unreleased]`**. Keep existing historical version headings unchanged unless the user explicitly requests a history rewrite.
 - **Validation**: Zod in API route handlers
 - **Errors**: `throw new AppError(code, message, httpStatus)` (`apps/api/src/shared/utils/response.ts`) — no raw error returns
 - **Multi-tenancy**: see the two-layer section above — both layers are mandatory
