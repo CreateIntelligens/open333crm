@@ -47,6 +47,14 @@ jobs:
           fi
           echo "✓ MCP_ALLOWED_ORIGINS configured"
 
+      - name: Prune stale Docker build cache (avoid disk fill)
+        run: |
+          # 每次 build 會疊一層 next/webpack build cache 從不清，累積會把 40G 根分割區塞爆
+          # （曾 100% 滿導致 next build ENOSPC）。清 48h 前的 cache，保留當日增量以維持 build 速度。
+          echo "Before prune:"; df -h / | tail -1
+          docker builder prune -af --filter until=48h
+          echo "After prune:"; df -h / | tail -1
+
       - name: Build Docker images
         working-directory: /srv/open333crm
         run: docker compose build
