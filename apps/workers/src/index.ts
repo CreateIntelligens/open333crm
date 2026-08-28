@@ -40,6 +40,7 @@ import {
   handleDataExportCleanup,
 } from './handlers/data-export.handler.js';
 import { closeNotificationQueue } from './lib/notification-queue.js';
+import { handleAgentRetentionCleanup } from './handlers/agent-retention.handler.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,13 @@ async function main() {
     'data-export:cleanup',
     {},
     { repeat: { every: 3_600_000 }, jobId: 'data-export:cleanup' },
+  );
+
+  const agentRetentionQueue = new Queue('agent-retention-cleanup', { connection });
+  await agentRetentionQueue.add(
+    'agent:retention-cleanup',
+    {},
+    { repeat: { every: 3_600_000 }, jobId: 'agent:retention-cleanup' },
   );
 
   // 順手清掉舊的 broadcast repeatable job（如果之前 worker 跑過、Redis 仍有殘留）
@@ -166,6 +174,19 @@ async function main() {
     { connection },
   );
 
+  const agentRetentionWorker = new Worker(
+    'agent-retention-cleanup',
+    async (job) => {
+      logger.info(`[agent-retention-cleanup] Processing job ${job.id}: ${job.name}`);
+      try {
+        await handleAgentRetentionCleanup(prisma);
+      } catch (err) {
+        logger.error('[agent-retention-cleanup] Cleanup failed', { err });
+      }
+    },
+    { connection },
+  );
+
   // ── Graceful shutdown ──────────────────────────────────────────────────────────
   const shutdown = async () => {
     logger.info('Shutting down workers...');
@@ -177,9 +198,11 @@ async function main() {
       dataErasureWorker.close(),
       dataExportWorker.close(),
       dataExportCleanupWorker.close(),
+      agentRetentionWorker.close(),
     ]);
     await slaQueue.close();
     await dataExportCleanupQueue.close();
+    await agentRetentionQueue.close();
     await closeNotificationQueue();
     await prisma.$disconnect();
     connection.disconnect();
@@ -191,7 +214,7 @@ async function main() {
   process.on('SIGINT', shutdown);
 
   logger.info(
-    'Workers ready: sla (repeating), notification, automation, data-erasure, data-export, data-export-cleanup (repeating)',
+    'Workers ready: sla (repeating), notification, automation, data-erasure, data-export, data-export-cleanup (repeating), agent-retention-cleanup (repeating)',
   );
 }
 

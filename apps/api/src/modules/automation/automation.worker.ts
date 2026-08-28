@@ -14,6 +14,7 @@ import type { AppEvent } from '../../events/event-bus.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { classifyIssue } from '../ai/classify.service.js';
+import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
 
@@ -335,11 +336,28 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
       // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
       const isTextMessage = !contentType || contentType === 'text';
+      let agentHandled = false;
       if (conversationId && text && isTextMessage) {
-        try {
-          await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text);
-        } catch (err) {
-          logger.error('[AutomationWorker] KB auto-reply error:', err);
+        if (isAgentEnabled()) {
+          try {
+            const agentResult = await runAgentReply(prisma, {
+              tenantId: event.tenantId,
+              conversationId,
+              userMessage: text,
+              deliver: true,
+              io,
+            });
+            agentHandled = agentResult.handled;
+          } catch (err) {
+            logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
+          }
+        }
+        if (!agentHandled) {
+          try {
+            await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text);
+          } catch (err) {
+            logger.error('[AutomationWorker] KB auto-reply error:', err);
+          }
         }
       }
 

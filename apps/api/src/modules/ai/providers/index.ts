@@ -8,6 +8,12 @@ export type {
   ChatModelInfo,
   ChatProviderHealth,
   HistoryMessage,
+  AgentMessage,
+  JsonSchema,
+  ToolCall,
+  ToolDefinition,
+  ToolTurnOptions,
+  ToolTurnResult,
 } from './types.js';
 
 const PROVIDERS: Record<string, ChatProvider> = {

@@ -47,6 +47,13 @@ const envSchema = z.object({
   S3_SET_ACL: z.coerce.number().int().min(0).max(1).default(1),
   // 用量告警灰度開關：預設開；上線初期可設 0 快速停用（不影響 token 硬擋）
   USAGE_QUOTA_ALERTS_ENABLED: z.coerce.number().int().min(0).max(1).default(1),
+  AGENTIC_LLM_ENABLED: z.string().transform((v) => v === 'true').default('false'),
+  AGENT_MAX_TURNS: z.coerce.number().int().min(1).max(100).default(100),
+  AGENT_MAX_TOOL_CALLS: z.coerce.number().int().min(1).max(200).default(30),
+  AGENT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(900_000).default(120_000),
+  AGENT_MAX_TOTAL_TOKENS: z.coerce.number().int().min(1_000).max(1_000_000).default(100_000),
+  AGENT_WIKI_AUTO_PUBLISH: z.string().transform((v) => v === 'true').default('false'),
+  WIKI_API_TOKEN: z.string().optional(),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),

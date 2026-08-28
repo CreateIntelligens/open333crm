@@ -1,9 +1,13 @@
 import type {
+  AgentMessage,
   ChatProvider,
   ChatGenerateOptions,
   ChatGenerateResult,
   ChatModelInfo,
   ChatProviderHealth,
+  ToolCall,
+  ToolTurnOptions,
+  ToolTurnResult,
 } from './types.js';
 
 const TIMEOUT_MS = 120_000;
@@ -74,6 +78,55 @@ export const OllamaChatProvider: ChatProvider = {
     }
   },
 
+  async generateToolTurn(opts: ToolTurnOptions): Promise<ToolTurnResult> {
+    const baseUrl = opts.baseUrl ?? 'http://localhost:11434';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const messages: Array<Record<string, unknown>> = [
+      { role: 'system', content: opts.systemPrompt },
+      ...opts.messages.map(toOllamaMessage),
+    ];
+    try {
+      const response = await fetch(`${baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: opts.model,
+          messages,
+          stream: false,
+          tools: opts.tools.map((tool) => ({
+            type: 'function',
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+            },
+          })),
+          options: { temperature: opts.temperature, num_predict: opts.maxTokens },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Ollama tool call failed (${response.status}): ${await response.text()}`);
+      const data = (await response.json()) as {
+        message?: { content?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: unknown } }> };
+        prompt_eval_count?: number;
+        eval_count?: number;
+      };
+      const toolCalls = (data.message?.tool_calls ?? []).flatMap((call, index): ToolCall[] => {
+        const fn = call.function;
+        if (!fn?.name) return [];
+        const args = parseToolArguments(fn.arguments);
+        return [{ id: `ollama-${Date.now()}-${index}`, name: fn.name, arguments: args }];
+      });
+      const usage = data.prompt_eval_count !== undefined || data.eval_count !== undefined
+        ? { promptTokens: data.prompt_eval_count ?? 0, cachedTokens: 0, candidatesTokens: data.eval_count ?? 0, thoughtsTokens: 0 }
+        : undefined;
+      return { text: data.message?.content?.trim() ?? '', toolCalls, usage };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   async listModels({ baseUrl }): Promise<ChatModelInfo[]> {
     const url = `${baseUrl ?? 'http://localhost:11434'}/api/tags`;
     try {
@@ -128,3 +181,32 @@ export const OllamaChatProvider: ChatProvider = {
     }
   },
 };
+
+function toOllamaMessage(message: AgentMessage): Record<string, unknown> {
+  if (message.role === 'assistant') {
+    return {
+      role: 'assistant',
+      content: message.content,
+      ...(message.toolCalls?.length
+        ? { tool_calls: message.toolCalls.map((call) => ({ type: 'function', function: { name: call.name, arguments: call.arguments } })) }
+        : {}),
+    };
+  }
+  if (message.role === 'tool') {
+    return { role: 'tool', tool_name: message.toolName, content: message.content };
+  }
+  return { role: 'user', content: message.content };
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      // Invalid provider arguments are handled by the Agent registry validator.
+    }
+  }
+  return {};
+}

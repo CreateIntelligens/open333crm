@@ -1,11 +1,15 @@
 import { logger } from '@open333crm/core';
 import { getConfig } from '../../../config/env.js';
 import type {
+  AgentMessage,
   ChatProvider,
   ChatGenerateOptions,
   ChatGenerateResult,
   ChatModelInfo,
   ChatProviderHealth,
+  ToolCall,
+  ToolTurnOptions,
+  ToolTurnResult,
 } from './types.js';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -153,6 +157,49 @@ export const GeminiChatProvider: ChatProvider = {
     }
   },
 
+  async generateToolTurn(opts: ToolTurnOptions): Promise<ToolTurnResult> {
+    const apiKey = getApiKey(opts.apiKey);
+    const url = `${GEMINI_BASE}/models/${encodeURIComponent(opts.model)}:generateContent`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: opts.systemPrompt }] },
+          contents: opts.messages.map(toGeminiContent),
+          tools: [{ functionDeclarations: opts.tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })) }],
+          generationConfig: { temperature: opts.temperature, maxOutputTokens: opts.maxTokens },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Gemini tool call failed (${response.status}): ${await response.text()}`);
+      const data = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string; functionCall?: { name?: string; args?: unknown } }> } }>;
+        usageMetadata?: { promptTokenCount?: number; cachedContentTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+      };
+      const parts = data.candidates?.[0]?.content?.parts ?? [];
+      const toolCalls = parts.flatMap((part, index): ToolCall[] => {
+        const call = part.functionCall;
+        if (!call?.name) return [];
+        return [{ id: `gemini-${Date.now()}-${index}`, name: call.name, arguments: parseGeminiArguments(call.args) }];
+      });
+      const text = parts.map((part) => part.text ?? '').join('').trim();
+      const um = data.usageMetadata;
+      const usage = um ? {
+        promptTokens: um.promptTokenCount ?? 0,
+        cachedTokens: um.cachedContentTokenCount ?? 0,
+        candidatesTokens: um.candidatesTokenCount ?? 0,
+        thoughtsTokens: um.thoughtsTokenCount ?? 0,
+      } : undefined;
+      if (!text && toolCalls.length === 0) throw new Error('Gemini returned neither text nor tool call');
+      return { text, toolCalls, usage };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
   async listModels(): Promise<ChatModelInfo[]> {
     // We always return the curated list (UI dropdown); the live API call only
     // serves as a key-validity check and is not used to drive UI options.
@@ -205,3 +252,35 @@ export const GeminiChatProvider: ChatProvider = {
     }
   },
 };
+
+function toGeminiContent(message: AgentMessage): Record<string, unknown> {
+  if (message.role === 'tool') {
+    return {
+      role: 'user',
+      parts: [{ functionResponse: { name: message.toolName, response: parseToolContent(message.content) } }],
+    };
+  }
+  if (message.role === 'assistant' && message.toolCalls?.length) {
+    return {
+      role: 'model',
+      parts: [
+        ...(message.content ? [{ text: message.content }] : []),
+        ...message.toolCalls.map((call) => ({ functionCall: { name: call.name, args: call.arguments } })),
+      ],
+    };
+  }
+  return { role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] };
+}
+
+function parseToolContent(content: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : { result: parsed };
+  } catch {
+    return { result: content };
+  }
+}
+
+function parseGeminiArguments(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
