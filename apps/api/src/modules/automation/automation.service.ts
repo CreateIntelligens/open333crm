@@ -140,13 +140,23 @@ export async function updateRule(
     throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
   }
 
-  const existingTrigger = existing.trigger as Record<string, unknown>;
-  const nextEventType = String(
-    data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',
-  );
-  const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
-  const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
-  validateRuleContract(nextEventType, nextConditions, nextActions);
+  // 只在 caller 實際改動 trigger / conditions / actions 時才驗證 contract。
+  // 純改 isActive / name / priority 等 metadata 不該被既有不合法的 actions 卡住
+  // （contract 規則會演進，舊資料可能不合新版規則，但不該因此連停用都不能做）。
+  const touchesContract =
+    data.trigger !== undefined ||
+    data.conditions !== undefined ||
+    data.actions !== undefined;
+
+  if (touchesContract) {
+    const existingTrigger = existing.trigger as Record<string, unknown>;
+    const nextEventType = String(
+      data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',
+    );
+    const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
+    const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
+    validateRuleContract(nextEventType, nextConditions, nextActions);
+  }
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};
   if (data.name !== undefined) updateData.name = data.name;
