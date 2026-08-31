@@ -541,15 +541,16 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── link.clicked ──────────────────────────────────────────────────────────
   eventBus.subscribe('link.clicked', async (event: AppEvent) => {
     try {
-      const { contactId, shortLinkId } = event.payload as {
+      const { contactId, shortLinkId, slug } = event.payload as {
         contactId?: string;
         shortLinkId?: string;
+        slug?: string;
       };
 
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'link.clicked',
-        context: { contactId, shortLinkId },
+        context: { contactId, shortLinkId, slug },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue link.clicked', err));
     } catch (err) {
       logger.error('[AutomationWorker] Error handling link.clicked:', err);

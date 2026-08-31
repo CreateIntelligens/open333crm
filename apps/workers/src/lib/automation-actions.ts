@@ -17,6 +17,7 @@ export interface WorkerActionContext {
   tenantId: string;
   caseId?: string | null;
   conversationId?: string | null;
+  contactId?: string | null;
   trigger?: string | null;
   replyToken?: string | null;
   assigneeId?: string | null;
@@ -68,6 +69,39 @@ export async function executeWorkerAutomationActions(
             assigneeId: agentId,
             source: 'sla_worker',
           });
+        }
+        continue;
+      }
+
+      if (action.type === 'add_tag') {
+        // 對觸發對象（聯絡人）加標籤。支援 config.tagId（優先）；缺 contactId 則安全跳過。
+        const tagId = params['tagId'];
+        if (typeof tagId !== 'string' || !tagId) {
+          logger.info('[automation] Worker action "add_tag" skipped: missing tagId');
+          continue;
+        }
+        if (!context.contactId) {
+          logger.info('[automation] Worker action "add_tag" skipped: no contact in context');
+          continue;
+        }
+        // 驗證 tag 屬於本租戶（避免跨租戶貼標）
+        const tag = await prisma.tag.findFirst({
+          where: { id: tagId, tenantId: context.tenantId },
+          select: { id: true },
+        });
+        if (!tag) {
+          logger.info(`[automation] Worker action "add_tag" skipped: tag ${tagId} not in tenant`);
+          continue;
+        }
+        // 冪等：已有該 tag 不重複（比照 shortlink 直接路徑）
+        const existing = await prisma.contactTag.findFirst({
+          where: { contactId: context.contactId, tagId },
+        });
+        if (!existing) {
+          await prisma.contactTag.create({
+            data: { contactId: context.contactId, tagId, addedBy: 'automation' },
+          });
+          logger.info(`[automation] add_tag: tagged contact ${context.contactId} with ${tagId}`);
         }
         continue;
       }

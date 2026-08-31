@@ -14,6 +14,7 @@ export const AUTOMATION_EVENT_NAMES = {
   CONTACT_CREATED: 'contact.created',
   CONTACT_UPDATED: 'contact.updated',
   CONTACT_TAGGED: 'contact.tagged',
+  LINK_CLICKED: 'link.clicked',
   SLA_FIRST_RESPONSE_WARNING: 'sla.first_response.warning',
   SLA_FIRST_RESPONSE_BREACHED: 'sla.first_response.breached',
   SLA_RESOLUTION_WARNING: 'sla.resolution.warning',
@@ -106,6 +107,13 @@ export const AUTOMATION_EVENT_DEFINITIONS: readonly AutomationEventDefinition[] 
   {
     name: AUTOMATION_EVENT_NAMES.CONTACT_TAGGED,
     label: '聯繫人加標籤',
+    category: 'contact',
+    provides: contactScopes,
+  },
+  {
+    name: AUTOMATION_EVENT_NAMES.LINK_CLICKED,
+    label: '短連結被點擊',
+    description: '聯繫人點擊短連結時觸發；facts 含 shortLinkId / slug 可判斷是哪一條連結',
     category: 'contact',
     provides: contactScopes,
   },
