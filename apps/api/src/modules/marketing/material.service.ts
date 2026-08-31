@@ -826,13 +826,28 @@ export async function getMaterialStats(prisma: TenantDb, materialId: string, ten
     ]);
   }
 
+  // 素材級點擊歸因：經該素材產生的短連結（ShortLink.materialId）聚合點擊數。
+  const materialShortLinks = await prisma.shortLink.findMany({
+    where: { materialId, tenantId },
+    select: { totalClicks: true },
+  });
+  const hasClickAttribution = materialShortLinks.length > 0;
+  const clickCount = materialShortLinks.reduce((sum, l) => sum + (l.totalClicks ?? 0), 0);
+
+  // 點擊率 = 點擊數 ÷ 送出數。無短連結歸因資料或未送出 → null（不假造 0）。
+  const clickThroughRate =
+    hasClickAttribution && material.usageCount > 0
+      ? Math.round((clickCount / material.usageCount) * 100)
+      : null;
+
   return {
     materialId,
     usageCount: material.usageCount,
     lastUsedAt: material.lastUsedAt,
     replyCount,
     casesOpened,
-    // 點擊率：目前無短連結層級歸因資料 → null（UI 顯示「暫無資料」）。
-    clickThroughRate: null as number | null,
+    clickCount: hasClickAttribution ? clickCount : null,
+    // 點擊率基於廣播發送（%）。無資料回 null（UI 顯示「暫無資料」）。
+    clickThroughRate,
   };
 }

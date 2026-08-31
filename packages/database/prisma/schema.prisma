@@ -1022,6 +1022,7 @@ model Material {
   materialCategory MaterialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   broadcasts Broadcast[]
   versions   MaterialVersion[]
+  shortLinks ShortLink[]
 
   @@index([tenantId, channelType])
   @@index([tenantId, isActive])
@@ -1488,6 +1489,7 @@ model ShortLink {
   utmContent    String?
   utmTerm       String?
   tagOnClick    String?   @db.Uuid
+  materialId    String?   @db.Uuid
   isActive      Boolean   @default(true)
   expiresAt     DateTime?
   totalClicks   Int       @default(0)
@@ -1498,11 +1500,13 @@ model ShortLink {
 
   tenant      Tenant     @relation(fields: [tenantId], references: [id])
   lineChannel Channel?   @relation("ShortLinkLineChannel", fields: [lineChannelId], references: [id])
+  material    Material?  @relation(fields: [materialId], references: [id], onDelete: SetNull)
   clickLogs   ClickLog[]
 
   @@index([tenantId])
   @@index([slug])
   @@index([lineChannelId])
+  @@index([materialId])
   @@map("short_links")
 }
 

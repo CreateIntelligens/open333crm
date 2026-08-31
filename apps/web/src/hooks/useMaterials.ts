@@ -65,6 +65,7 @@ export interface MaterialStats {
   lastUsedAt: string | null;
   replyCount: number;
   casesOpened: number;
+  clickCount: number | null;
   clickThroughRate: number | null;
 }
 

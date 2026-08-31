@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { MaterialEditor, type MaterialDraft } from '@/components/materials/MaterialEditor';
 import { MaterialGovernancePanel } from '@/components/materials/MaterialGovernancePanel';
 import { MaterialVersionHistory } from '@/components/materials/MaterialVersionHistory';
+import { MaterialStatsPanel } from '@/components/materials/MaterialStatsPanel';
 import { useMaterial, updateMaterial } from '@/hooks/useMaterials';
 
 interface GovernanceState {
@@ -91,6 +92,7 @@ export default function EditMaterialPage() {
               />
               <div className="space-y-5">
                 <MaterialGovernancePanel value={gov} onChange={setGov} />
+                <MaterialStatsPanel materialId={id} />
                 <MaterialVersionHistory materialId={id} onRestored={() => mutate()} />
               </div>
             </div>

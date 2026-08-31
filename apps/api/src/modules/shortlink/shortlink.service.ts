@@ -101,6 +101,7 @@ export async function createShortLink(
     utmContent?: string;
     utmTerm?: string;
     tagOnClick?: string;
+    materialId?: string;
     expiresAt?: string;
   },
 ) {
@@ -139,6 +140,7 @@ export async function createShortLink(
       utmContent: data.utmContent,
       utmTerm: data.utmTerm,
       tagOnClick: data.tagOnClick,
+      materialId: data.materialId ?? null,
       expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
     },
   });
@@ -146,6 +148,48 @@ export async function createShortLink(
   maybeScrapeOg(prisma, link.id, link.targetUrl, data);
 
   return link;
+}
+
+/** 短連結對外網址（供發送時把素材 URL 換成可追蹤連結）。 */
+export function shortLinkPublicUrl(slug: string): string {
+  const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
+  return `${baseUrl}/s/${slug}`;
+}
+
+/** 判斷 URL 是否已是本站短連結（避免二次包裝）。 */
+export function isOwnShortLink(url: string): boolean {
+  const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
+  return url.startsWith(`${baseUrl}/s/`) || /\/s\/[A-Za-z0-9_-]+$/.test(url);
+}
+
+/**
+ * 取得或建立「素材短連結」：同 (materialId, targetUrl) 已有就複用，無則建。
+ * 用於廣播發送時把素材 body 的外部 URL 換成帶 materialId 的可追蹤短連結（素材層共用）。
+ * 回傳短連結對外網址；建立失敗（例如 URL 已是短連結）則回原 URL。
+ */
+export async function findOrCreateMaterialShortLink(
+  prisma: PrismaClient,
+  tenantId: string,
+  createdById: string,
+  params: { materialId: string; targetUrl: string; lineChannelId?: string | null },
+): Promise<string> {
+  const { materialId, targetUrl, lineChannelId } = params;
+  // 已是本站短連結 → 不二次包裝
+  if (isOwnShortLink(targetUrl)) return targetUrl;
+
+  // 複用同素材同目標的既有短連結
+  const existing = await prisma.shortLink.findFirst({
+    where: { tenantId, materialId, targetUrl, isActive: true },
+    select: { slug: true },
+  });
+  if (existing) return shortLinkPublicUrl(existing.slug);
+
+  const link = await createShortLink(prisma, tenantId, createdById, {
+    targetUrl,
+    materialId,
+    lineChannelId: lineChannelId ?? null,
+  });
+  return shortLinkPublicUrl(link.slug);
 }
 
 export async function updateShortLink(
