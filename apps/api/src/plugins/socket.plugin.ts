@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { Server as SocketIOServer } from 'socket.io';
 import IORedis from 'ioredis';
 import { getConfig } from '../config/env.js';
+import { eventBus } from '../events/event-bus.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -91,9 +92,34 @@ async function socketPlugin(fastify: FastifyInstance) {
     }
   });
 
+  // ── Domain event bridge — workers 發的 domain 事件轉成 in-process eventBus ──
+  // worker（獨立 process）無法直接發 api 的 in-process eventBus（automation 規則訂閱的）。
+  // 這裡收 redis 'domain:event' → 轉發成 eventBus 事件（如 worker add_tag 的 contact.tagged）。
+  const domainEventSub = new IORedis(config.REDIS_URL);
+  await domainEventSub.subscribe('domain:event');
+  domainEventSub.on('message', (_channel, message) => {
+    try {
+      const msg = JSON.parse(message) as { name?: string; tenantId?: string; payload?: Record<string, unknown> };
+      if (typeof msg.name !== 'string' || typeof msg.tenantId !== 'string') {
+        fastify.log.warn({ message }, '[DomainEventBridge] Malformed message, discarding');
+        return;
+      }
+      eventBus.publish({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        name: msg.name as any,
+        tenantId: msg.tenantId,
+        timestamp: new Date(),
+        payload: msg.payload ?? {},
+      });
+    } catch (err) {
+      fastify.log.warn({ err }, '[DomainEventBridge] Failed to parse domain:event message');
+    }
+  });
+
   fastify.addHook('onClose', async () => {
     io.close();
     socketBridgeSub.disconnect();
+    domainEventSub.disconnect();
     fastify.log.info('Socket.IO server closed');
   });
 }

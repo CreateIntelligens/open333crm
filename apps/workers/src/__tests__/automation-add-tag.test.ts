@@ -33,22 +33,31 @@ function makePrisma(state: FakeState) {
       },
     },
     contactTag: {
-      async findFirst({ where }: { where: { contactId: string; tagId: string } }) {
-        return (
-          state.contactTags.find((ct) => ct.contactId === where.contactId && ct.tagId === where.tagId) ?? null
-        );
-      },
-      async create({ data }: { data: { contactId: string; tagId: string; addedBy: string } }) {
-        state.contactTags.push(data);
-        return data;
+      // 冪等 upsert（對齊實作改用 upsert）：已存在則不新增
+      async upsert({ where, create }: {
+        where: { contactId_tagId: { contactId: string; tagId: string } };
+        create: { contactId: string; tagId: string; addedBy: string };
+      }) {
+        const key = where.contactId_tagId;
+        const exist = state.contactTags.find((ct) => ct.contactId === key.contactId && ct.tagId === key.tagId);
+        if (!exist) state.contactTags.push(create);
+        return exist ?? create;
       },
     },
   };
 }
 
-const redisPublisher = { async publish() { return 1; } };
+// 記錄 worker 發出的 domain event（contact.tagged 橋接）
+let published: Array<{ channel: string; msg: any }> = [];
+const redisPublisher = {
+  async publish(channel: string, message: string) {
+    published.push({ channel, msg: JSON.parse(message) });
+    return 1;
+  },
+};
 
 async function run(state: FakeState, action: Record<string, unknown>, ctx: Record<string, unknown>) {
+  published = [];
   await executeWorkerAutomationActions(
     makePrisma(state) as any,
     redisPublisher as any,
@@ -67,6 +76,12 @@ async function testAddTagByTagIdSuccess() {
   assert.equal(state.contactTags.length, 1);
   assert.equal(state.contactTags[0].tagId, 'tag-vip');
   assert.equal(state.contactTags[0].addedBy, 'automation');
+  // 貼標後橋接發 contact.tagged（source automation）到 domain:event
+  const evt = published.find((p) => p.channel === 'domain:event');
+  assert.ok(evt, '應發 domain:event');
+  assert.equal(evt!.msg.name, 'contact.tagged');
+  assert.equal(evt!.msg.payload.source, 'automation');
+  assert.equal(evt!.msg.payload.tagId, 'tag-vip');
 }
 
 async function testAddTagIdempotent() {

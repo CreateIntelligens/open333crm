@@ -14,9 +14,15 @@ interface TargetInput {
   targetId: string;
 }
 
+/** 貼標來源：人工 / 短連結點擊 / 自動化規則。影響 addedBy 與 contact.tagged 的 source（迴圈防護用）。 */
+export type TagSource = 'agent' | 'system' | 'automation';
+
 interface AddTagInput extends TargetInput {
   tagId: string;
-  agentId: string;
+  /** 人工路徑帶操作者；非人工路徑（system/automation）可省略。 */
+  agentId?: string;
+  /** 預設 'agent'（既有人工呼叫者不受影響）。 */
+  addedBy?: TagSource;
 }
 
 interface RemoveTagInput extends TargetInput {
@@ -114,6 +120,7 @@ export async function addTagToTarget(
 
   switch (input.targetType) {
     case 'CONTACT': {
+      const source = input.addedBy ?? 'agent';
       const assignment = await prisma.contactTag.upsert({
         where: {
           contactId_tagId: {
@@ -125,8 +132,8 @@ export async function addTagToTarget(
         create: {
           contactId: input.targetId,
           tagId: input.tagId,
-          addedBy: 'agent',
-          addedById: input.agentId,
+          addedBy: source,
+          addedById: input.agentId ?? null,
         },
         include: { tag: { select: TAG_SELECT } },
       });
@@ -139,6 +146,7 @@ export async function addTagToTarget(
           contactId: input.targetId,
           tagId: input.tagId,
           tagName: tag.name,
+          source,
         },
       });
 

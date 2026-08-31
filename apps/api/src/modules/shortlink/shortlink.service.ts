@@ -8,6 +8,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 import { scrapeOg } from './og-scraper.js';
+import { addTagToTarget } from '../tag/tagging.service.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -377,16 +378,16 @@ export async function trackClick(
         });
       }
 
-      // Auto-tag the resolved (actual) clicker.
+      // 點擊自動貼標：收斂到共用 tagging.service（冪等 + 發 contact.tagged，
+      // 讓「以貼標為觸發」的自動化也能被點擊路徑喚起）。source='system'。
       if (contactId && link.tagOnClick) {
-        const existing = await prisma.contactTag.findFirst({
-          where: { contactId, tagId: link.tagOnClick },
-        });
-        if (!existing) {
-          await prisma.contactTag.create({
-            data: { contactId, tagId: link.tagOnClick, addedBy: 'system' },
-          });
-        }
+        await addTagToTarget(prisma, {
+          tenantId: link.tenantId,
+          targetType: 'CONTACT',
+          targetId: contactId,
+          tagId: link.tagOnClick,
+          addedBy: 'system',
+        }).catch((err) => logger.warn('[ShortLink] auto-tag failed:', err));
       }
 
       eventBus.publish({
