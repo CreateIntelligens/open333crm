@@ -13,6 +13,13 @@
 
 export type FlexFieldKind = 'text' | 'image' | 'icon' | 'button_label' | 'button_uri' | 'button_text' | 'button_data';
 
+/**
+ * 業務區塊語彙（給填空 UI 分組用，取代技術術語 box/contents）。
+ * 依欄位在 Flex 樹的位置推斷（hero→主圖、body 首 text→標題…）；
+ * 範本可透過 slots meta 覆寫得更精準（見 buildFieldGroup）。
+ */
+export type FlexFieldGroup = '主圖' | '標題與內文' | '按鈕' | '其他';
+
 export interface FlexField {
   /** JSON Pointer 路徑，如 "/body/contents/0/text" */
   path: string;
@@ -21,6 +28,22 @@ export interface FlexField {
   label: string;
   /** 當下值 */
   value: string;
+  /** 業務區塊（填空 UI 分組用） */
+  group: FlexFieldGroup;
+}
+
+/** 依欄位 kind + 所在 slot（hero/body/footer）推斷業務區塊語彙。 */
+function inferGroup(kind: FlexFieldKind, slot: string): FlexFieldGroup {
+  if (kind === 'image' || kind === 'icon') return slot === 'hero' ? '主圖' : '主圖';
+  if (kind === 'text') return '標題與內文';
+  // 各種 button_* 都歸「按鈕」
+  return '按鈕';
+}
+
+/** 從 JSON Pointer 路徑取出最上層 slot 名（hero/body/footer/header）。 */
+function slotOf(path: string): string {
+  const seg = path.split('/')[1];
+  return seg ?? '';
 }
 
 export interface FlexContainer {
@@ -72,13 +95,16 @@ function decodeJsonPointerSegment(s: string): string {
 
 // ─── 掃出所有欄位 ─────────────────────────────────────────
 
+type RawField = Omit<FlexField, 'group'>;
+
 export function extractFields(json: unknown): FlexField[] {
-  const fields: FlexField[] = [];
-  walk(json, '', '', fields);
-  return fields;
+  const raw: RawField[] = [];
+  walk(json, '', '', raw);
+  // 依位置推斷業務區塊語彙（填空 UI 分組用）。範本 slots meta 覆寫另在上層處理。
+  return raw.map((f) => ({ ...f, group: inferGroup(f.kind, slotOf(f.path)) }));
 }
 
-function walk(node: unknown, path: string, parentLabel: string, fields: FlexField[]): void {
+function walk(node: unknown, path: string, parentLabel: string, fields: RawField[]): void {
   if (node === null || node === undefined) return;
   if (Array.isArray(node)) {
     node.forEach((item, idx) => walk(item, `${path}/${idx}`, parentLabel, fields));

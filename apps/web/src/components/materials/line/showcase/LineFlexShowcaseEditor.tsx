@@ -26,8 +26,19 @@ import {
   removeItemFromContainer,
   type FlexField,
   type FlexContainer,
+  type FlexFieldGroup,
 } from './flex-fields';
 import { SHOWCASE_SAMPLES, type ShowcaseSample } from './samples';
+
+/** 業務區塊顯示順序（主圖 → 標題內文 → 按鈕 → 其他）。 */
+const groupOrder: FlexFieldGroup[] = ['主圖', '標題與內文', '按鈕', '其他'];
+
+function GroupIcon({ group }: { group: FlexFieldGroup }) {
+  if (group === '主圖') return <ImageIcon className="h-4 w-4 text-slate-400" />;
+  if (group === '標題與內文') return <Type className="h-4 w-4 text-slate-400" />;
+  if (group === '按鈕') return <LinkIcon className="h-4 w-4 text-slate-400" />;
+  return <Type className="h-4 w-4 text-slate-400" />;
+}
 
 export interface ShowcaseBody {
   sampleId?: string;
@@ -111,23 +122,33 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
         />
       </div>
 
-      {/* 欄位列表 */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">編輯欄位</label>
-          <span className="text-[11px] text-slate-400">{fields.length} 個欄位</span>
-        </div>
-        <div className="space-y-2">
-          {fields.map((field) => (
-            <FieldRow key={field.path} field={field} onChange={(v) => handleFieldChange(field.path, v)} />
-          ))}
-        </div>
+      {/* 欄位依業務區塊分組（主圖 / 標題與內文 / 按鈕），取代平鋪技術欄位列表 */}
+      <div className="space-y-3">
+        {groupOrder.map((group) => {
+          const groupFields = fields.filter((f) => f.group === group);
+          if (groupFields.length === 0) return null;
+          return (
+            <div key={group} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <GroupIcon group={group} />
+                {group}
+              </div>
+              <div className="space-y-2">
+                {groupFields.map((field) => (
+                  <FieldRow key={field.path} field={field} onChange={(v) => handleFieldChange(field.path, v)} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* 容器列表（可新增 / 刪除元件） */}
-      <div>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2 block">新增 / 刪除元件</label>
-        <div className="space-y-2">
+      {/* 進階：新增 / 刪除元件（收摺，多數填空使用者不需要動結構） */}
+      <details className="rounded-lg border border-slate-200 bg-slate-50">
+        <summary className="cursor-pointer px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          ⚙ 進階：新增 / 刪除元件
+        </summary>
+        <div className="space-y-2 px-3 pb-3">
           {containers.map((container) => (
             <ContainerRow
               key={container.path}
@@ -138,7 +159,7 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
             />
           ))}
         </div>
-      </div>
+      </details>
 
       <ShowcasePickerDialog open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={selectSample} />
     </div>
@@ -151,13 +172,9 @@ function FieldRow({ field, onChange }: { field: FlexField; onChange: (v: string)
   const isImage = field.kind === 'image' || field.kind === 'icon';
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-3">
-      <div className="mb-1.5 flex items-center gap-2 text-[11px] text-slate-500">
-        <FieldKindIcon kind={field.kind} />
-        <span>{kindLabel(field.kind)}</span>
-        <span className="text-slate-300">·</span>
-        <span className="font-mono text-slate-400 truncate">{field.label}</span>
-      </div>
+    <div>
+      {/* 業務語彙標籤（不露 JSON path / box 術語） */}
+      <label className="mb-1 block text-xs text-slate-500">{kindLabel(field.kind)}</label>
       {isImage ? (
         <CompactImageField value={field.value} onChange={onChange} />
       ) : (
@@ -165,12 +182,6 @@ function FieldRow({ field, onChange }: { field: FlexField; onChange: (v: string)
       )}
     </div>
   );
-}
-
-function FieldKindIcon({ kind }: { kind: FlexField['kind'] }) {
-  if (kind === 'image' || kind === 'icon') return <ImageIcon className="h-3 w-3" />;
-  if (kind === 'text') return <Type className="h-3 w-3" />;
-  return <LinkIcon className="h-3 w-3" />;
 }
 
 function kindLabel(kind: FlexField['kind']): string {
