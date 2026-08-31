@@ -74,34 +74,43 @@ export async function executeWorkerAutomationActions(
       }
 
       if (action.type === 'add_tag') {
-        // 對觸發對象（聯絡人）加標籤。支援 config.tagId（優先）；缺 contactId 則安全跳過。
-        const tagId = params['tagId'];
-        if (typeof tagId !== 'string' || !tagId) {
-          logger.info('[automation] Worker action "add_tag" skipped: missing tagId');
+        // 對觸發對象（聯絡人）加標籤。前端存 tagName（標籤名稱），也相容 tagId。
+        // 缺 contactId 或標籤資訊則安全跳過。
+        const rawTagId = params['tagId'];
+        const rawTagName = params['tagName'];
+        const tagId = typeof rawTagId === 'string' && rawTagId ? rawTagId : null;
+        const tagName = typeof rawTagName === 'string' && rawTagName.trim() ? rawTagName.trim() : null;
+        if (!tagId && !tagName) {
+          logger.info('[automation] Worker action "add_tag" skipped: missing tagId/tagName');
           continue;
         }
         if (!context.contactId) {
           logger.info('[automation] Worker action "add_tag" skipped: no contact in context');
           continue;
         }
-        // 驗證 tag 屬於本租戶（避免跨租戶貼標）
-        const tag = await prisma.tag.findFirst({
-          where: { id: tagId, tenantId: context.tenantId },
-          select: { id: true },
-        });
+        // 解析出本租戶的 tag：優先用 tagId，否則依名稱找、找不到則建立（同租戶自動化常態）
+        let tag = tagId
+          ? await prisma.tag.findFirst({ where: { id: tagId, tenantId: context.tenantId }, select: { id: true } })
+          : await prisma.tag.findFirst({ where: { name: tagName!, tenantId: context.tenantId }, select: { id: true } });
+        if (!tag && tagName) {
+          tag = await prisma.tag.create({
+            data: { tenantId: context.tenantId, name: tagName },
+            select: { id: true },
+          });
+        }
         if (!tag) {
-          logger.info(`[automation] Worker action "add_tag" skipped: tag ${tagId} not in tenant`);
+          logger.info('[automation] Worker action "add_tag" skipped: tag not found in tenant');
           continue;
         }
         // 冪等：已有該 tag 不重複（比照 shortlink 直接路徑）
         const existing = await prisma.contactTag.findFirst({
-          where: { contactId: context.contactId, tagId },
+          where: { contactId: context.contactId, tagId: tag.id },
         });
         if (!existing) {
           await prisma.contactTag.create({
-            data: { contactId: context.contactId, tagId, addedBy: 'automation' },
+            data: { contactId: context.contactId, tagId: tag.id, addedBy: 'automation' },
           });
-          logger.info(`[automation] add_tag: tagged contact ${context.contactId} with ${tagId}`);
+          logger.info(`[automation] add_tag: tagged contact ${context.contactId} with ${tag.id}`);
         }
         continue;
       }

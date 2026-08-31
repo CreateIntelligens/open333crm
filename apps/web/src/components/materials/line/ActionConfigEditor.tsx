@@ -27,10 +27,19 @@ interface Props {
   optional?: boolean;
   /** 顯示在 label 欄位的最大字數限制（多頁訊息 15 / 圖文 imagemap 不限） */
   labelLimit?: number;
+  /**
+   * 可用的 action 型別白名單。imagemap 傳入不含 'postback' 的清單——
+   * LINE imagemap 官方只支援 uri/message/clipboard，postback 會被降級，故不給選。
+   * 未傳則全部可選。
+   */
+  allowedTypes?: Array<ActionConfig['type']>;
 }
 
-export function ActionConfigEditor({ action, onChange, optional, labelLimit = 20 }: Props) {
+export function ActionConfigEditor({ action, onChange, optional, labelLimit = 20, allowedTypes }: Props) {
   const cur = action ?? ({ type: 'uri', label: '', uri: '' } as ActionConfig);
+  const typeOptions = allowedTypes
+    ? ACTION_TYPE_OPTIONS.filter((o) => allowedTypes.includes(o.value))
+    : ACTION_TYPE_OPTIONS;
 
   const updateType = (type: ActionConfig['type']) => {
     if (type === 'message') onChange({ type: 'message', label: cur.label, text: '' });
@@ -63,7 +72,7 @@ export function ActionConfigEditor({ action, onChange, optional, labelLimit = 20
           onChange={(e) => updateType(e.target.value as ActionConfig['type'])}
           className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
         >
-          {ACTION_TYPE_OPTIONS.map((opt) => (
+          {typeOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>

@@ -250,7 +250,12 @@ function AreaCard({
       )}
 
       {/* 動作 */}
-      <ActionConfigEditor action={area.action} onChange={(action) => onUpdate({ action })} />
+      {/* imagemap 官方只支援 uri/message，不支援 postback（會被降級）→ 不給選 */}
+      <ActionConfigEditor
+        action={area.action}
+        onChange={(action) => onUpdate({ action })}
+        allowedTypes={['uri', 'message']}
+      />
     </div>
   );
 }
