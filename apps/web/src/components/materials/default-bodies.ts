@@ -7,17 +7,18 @@
  *     （直接用 MaterialPreview 渲染，所見即所得）
  */
 
-// 預設展示用圖片（picsum.photos 公開 CDN，依 seed 固定回同樣圖）
+// 預設展示用圖片（AI 生成的情境示範圖，放在 public/material-samples/；
+// 使用者新建素材、圖片欄位未填時自動帶入，一進來即有貼合情境的示範，上傳自己的圖後覆蓋）。
 const DEMO = {
-  cafe: 'https://picsum.photos/seed/cafe/800/520',
-  shop: 'https://picsum.photos/seed/shop/800/520',
-  product: 'https://picsum.photos/seed/product/800/420',
-  place: 'https://picsum.photos/seed/place/800/520',
-  person: 'https://picsum.photos/seed/person/800/520',
-  imagemap: 'https://picsum.photos/seed/imagemap/1040/1040',
-  videoCover: 'https://picsum.photos/seed/video/800/450',
-  endCard: 'https://picsum.photos/seed/endcard/800/450',
-  coupon: 'https://picsum.photos/seed/coupon/800/420',
+  cafe: '/material-samples/cafe.jpeg',
+  shop: '/material-samples/shop.jpeg',
+  product: '/material-samples/product.jpeg',
+  place: '/material-samples/place.jpeg',
+  person: '/material-samples/person.jpeg',
+  imagemap: '/material-samples/promo-banner.jpeg',
+  videoCover: '/material-samples/promo-banner.jpeg',
+  endCard: '/material-samples/promo-banner.jpeg',
+  coupon: '/material-samples/coupon.jpeg',
 };
 
 export const DEFAULT_BODY_FOR_TYPE: Record<string, Record<string, unknown>> = {
@@ -56,25 +57,26 @@ export const DEFAULT_BODY_FOR_TYPE: Record<string, Record<string, unknown>> = {
     ],
   },
 
+  // 預設用橫長 1040×700 左右 2 區，比例貼合示範底圖（promo-banner 橫幅）
   line_imagemap: {
     baseImageUrl: DEMO.imagemap,
-    layoutId: 'sq_2_h',
+    layoutId: 'lo_700_2v',
     width: 1040,
-    height: 1040,
+    height: 700,
     areas: [
       {
         x: 0,
         y: 0,
-        width: 1040,
-        height: 520,
-        action: { type: 'uri', label: '上半區', uri: 'https://example.com/top' },
+        width: 520,
+        height: 700,
+        action: { type: 'uri', label: '左半區', uri: 'https://example.com/left' },
       },
       {
-        x: 0,
-        y: 520,
-        width: 1040,
-        height: 520,
-        action: { type: 'message', label: '下半區', text: '我點了下半區' },
+        x: 520,
+        y: 0,
+        width: 520,
+        height: 700,
+        action: { type: 'message', label: '右半區', text: '我點了右半區' },
       },
     ],
   },

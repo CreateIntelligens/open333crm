@@ -23,11 +23,6 @@ interface Props {
   onChange: (next: GovernanceState) => void;
 }
 
-const STATUS_OPTIONS = [
-  { value: 'draft', label: '草稿' },
-  { value: 'approved', label: '已核准' },
-];
-
 /** 把分類樹攤平成含深度的清單，供 select 縮排顯示。 */
 function flattenTree(cats: MaterialCategoryNode[]): { cat: MaterialCategoryNode; depth: number }[] {
   const out: { cat: MaterialCategoryNode; depth: number }[] = [];
@@ -107,28 +102,6 @@ export function MaterialGovernancePanel({ value, onChange }: Props) {
             <Plus className="h-4 w-4" />
           </button>
         </div>
-      </div>
-
-      {/* 狀態 */}
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-muted-foreground">狀態</label>
-        <div className="flex gap-2">
-          {STATUS_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => onChange({ ...value, status: o.value })}
-              className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                value.status === o.value
-                  ? 'border-transparent bg-primary/10 font-medium text-primary'
-                  : 'border-border text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground/70">送審核准流程為後續功能，目前為手動標記。</p>
       </div>
     </div>
   );

@@ -17,9 +17,33 @@ interface Props {
   value: string;
   onChange: (url: string) => void;
   placeholder?: string;
+  /** 建議圖片比例/尺寸提示（如「建議 20:13（1024×665），過寬過高會被裁切」），顯示於欄位下方 */
+  hint?: string;
+  /**
+   * 要求上傳圖片的寬高比例必須符合此比例（如 imagemap 版型 { width:1040, height:700 }）。
+   * 傳入時，上傳前先讀圖實際尺寸比對，比例不符（超過容差）則擋下、不寫入、顯示錯誤。
+   */
+  requireAspectRatio?: { width: number; height: number };
 }
 
-export function CompactImageField({ value, onChange, placeholder }: Props) {
+/** 讀取本機圖片檔的實際像素寬高。 */
+function readImageSize(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('無法讀取圖片'));
+    };
+    img.src = url;
+  });
+}
+
+export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +52,21 @@ export function CompactImageField({ value, onChange, placeholder }: Props) {
     setUploading(true);
     setError(null);
     try {
+      // 版型比例驗證：上傳前讀圖實際尺寸，比例不符（容差 3%）則擋下。
+      if (requireAspectRatio) {
+        const { width, height } = await readImageSize(file);
+        const expected = requireAspectRatio.width / requireAspectRatio.height;
+        const actual = width / height;
+        // 相對誤差容差 3%，吸收縮放/邊緣像素差異，但擋掉明顯比例不符的圖。
+        if (Math.abs(actual - expected) / expected > 0.03) {
+          setError(
+            `圖片比例與版型不符：版型需 ${requireAspectRatio.width}:${requireAspectRatio.height}` +
+              `（如 ${requireAspectRatio.width}×${requireAspectRatio.height}），此圖為 ${width}×${height}。請裁成正確比例再上傳。`,
+          );
+          setUploading(false);
+          return;
+        }
+      }
       const formData = new FormData();
       formData.append('file', file);
       const res = await api.post('/files/upload', formData, {
@@ -81,6 +120,7 @@ export function CompactImageField({ value, onChange, placeholder }: Props) {
           </Button>
         )}
       </div>
+      {hint && <div className="text-[11px] text-slate-400">{hint}</div>}
       {error && <div className="text-[11px] text-red-600">{error}</div>}
       <input
         ref={fileRef}

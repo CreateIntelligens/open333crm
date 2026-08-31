@@ -44,6 +44,8 @@ interface Props {
   onChange: (next: MaterialDraft) => void;
   onSave: () => void;
   onCancel: () => void;
+  /** 右欄預覽下方的額外內容（如分類/標籤/狀態治理面板），一起收進 sticky 右欄 */
+  rightPanelExtra?: React.ReactNode;
 }
 
 // channel / contentType 對使用者顯示的中文名稱
@@ -56,8 +58,8 @@ const CONTENT_TYPE_LABEL: Record<string, string> = {
   // LINE
   line_text: 'LINE 純文字',
   line_image: 'LINE 單張圖片',
-  line_video: 'LINE 進階影片',
-  line_carousel: 'LINE 多頁訊息',
+  line_video: 'LINE 影片',
+  line_carousel: 'LINE 卡片訊息',
   line_imagemap: 'LINE 圖文訊息',
   line_flex_showcase: 'LINE 精選範本',
   line_flex_template: 'LINE Flex 匯入素材',
@@ -96,7 +98,7 @@ function bodyEditorFor(contentType: string) {
   return null;
 }
 
-export function MaterialEditor({ draft, templateName, saving, onChange, onSave, onCancel }: Props) {
+export function MaterialEditor({ draft, templateName, saving, onChange, onSave, onCancel, rightPanelExtra }: Props) {
   const BodyEditor = useMemo(() => bodyEditorFor(draft.contentType), [draft.contentType]);
   const [showPreview, setShowPreview] = useState(true);
   const handleBodyChange = (nextBody: Record<string, unknown>) => {
@@ -108,18 +110,17 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
-        <div className="flex-1">
+    <div>
+      {/* 頂部操作列：標題 + 渠道 chip 左，操作按鈕右 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+        <div className="flex items-center gap-2.5">
           <h1 className="text-lg font-bold">編輯素材{templateName ? `．${templateName}` : ''}</h1>
-          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-            <span className="rounded bg-slate-100 px-2 py-0.5">
-              {CHANNEL_LABEL[draft.channelType] ?? draft.channelType}．{CONTENT_TYPE_LABEL[draft.contentType] ?? draft.contentType}
-            </span>
-          </div>
+          <span className="rounded-md bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary ring-1 ring-primary-border">
+            {CHANNEL_LABEL[draft.channelType] ?? draft.channelType}．{CONTENT_TYPE_LABEL[draft.contentType] ?? draft.contentType}
+          </span>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onCancel}>取消</Button>
+          <Button variant="ghost" onClick={onCancel}>取消</Button>
           <Button variant="outline" onClick={() => setShowPreview((v) => !v)}>
             <Eye className="mr-1 h-4 w-4" />{showPreview ? '隱藏預覽' : '顯示預覽'}
           </Button>
@@ -129,41 +130,47 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
         </div>
       </div>
 
-      <div className={`grid gap-6 ${showPreview ? 'lg:grid-cols-[1fr,360px]' : ''}`}>
-        <div className="space-y-5">
+      {/* 二欄：左編輯流（細分隔線分區，不用灰底卡）+ 右預覽/治理 sticky */}
+      <div className={`grid gap-8 pt-5 ${showPreview ? 'lg:grid-cols-[1fr_360px]' : ''}`}>
+        <div>
           {/* 基本資訊 */}
-          <section className="space-y-3 rounded-lg border border-slate-200 p-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">素材名稱 *</label>
-              <Input value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} placeholder="如：母親節新品推播" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <section className="border-b border-border/60 pb-6">
+            <div className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">基本資訊</div>
+            <div className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">分類</label>
-                <Input value={draft.category ?? ''} onChange={(e) => onChange({ ...draft, category: e.target.value })} placeholder="行銷類 / 服務類 …" />
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">素材名稱 <span className="text-primary">*</span></label>
+                <Input value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} placeholder="如：母親節新品推播" />
               </div>
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">描述</label>
-                <Input value={draft.description ?? ''} onChange={(e) => onChange({ ...draft, description: e.target.value })} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-foreground">分類</label>
+                  <Input value={draft.category ?? ''} onChange={(e) => onChange({ ...draft, category: e.target.value })} placeholder="行銷類 / 服務類 …" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-foreground">描述 <span className="font-normal text-muted-foreground">（選填）</span></label>
+                  <Input value={draft.description ?? ''} onChange={(e) => onChange({ ...draft, description: e.target.value })} placeholder="簡短描述用途" />
+                </div>
               </div>
             </div>
           </section>
 
           {/* 內容編輯 */}
-          <section className="space-y-3 rounded-lg border border-slate-200 p-4">
-            <div className="text-sm font-semibold">內容</div>
+          <section className="border-b border-border/60 py-6">
+            <div className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">訊息內容</div>
             {BodyEditor ? (
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               <BodyEditor body={draft.body as any} onChange={(next: any) => handleBodyChange(next)} />
             ) : (
-              <div className="text-xs text-slate-500">此版型暫無視覺化編輯器</div>
+              <div className="text-xs text-muted-foreground">此版型暫無視覺化編輯器</div>
             )}
           </section>
 
           {/* Quick Reply（LINE 專用） */}
           {draft.channelType === 'line' && (
-            <section className="space-y-3 rounded-lg border border-slate-200 p-4">
-              <div className="text-sm font-semibold">快速回覆按鈕（選填）</div>
+            <section className="pt-6">
+              <div className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                快速回覆按鈕 <span className="font-normal normal-case tracking-normal text-muted-foreground">（選填）</span>
+              </div>
               <QuickReplyEditor
                 value={(draft.body.quickReplies as QuickReplyItem[] | undefined) ?? []}
                 onChange={(next) =>
@@ -178,10 +185,13 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
         </div>
 
         {showPreview && (
-          <aside className="space-y-3">
-            <div className="sticky top-4">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">即時預覽</div>
-              <MaterialPreview channelType={draft.channelType} contentType={draft.contentType} body={draft.body} />
+          <aside>
+            <div className="sticky top-4 space-y-5">
+              <div>
+                <div className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">即時預覽</div>
+                <MaterialPreview channelType={draft.channelType} contentType={draft.contentType} body={draft.body} />
+              </div>
+              {rightPanelExtra}
             </div>
           </aside>
         )}
