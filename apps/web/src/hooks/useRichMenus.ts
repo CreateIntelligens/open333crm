@@ -131,3 +131,20 @@ export async function unpublishRichMenu(id: string): Promise<RichMenu> {
   const res = await api.post(`/line/rich-menus/${id}/unpublish`);
   return res.data.data;
 }
+
+/** 綁定受眾（segment 或 tag）到已發布的 Rich Menu；回傳已入列的使用者數。 */
+export async function bindRichMenuAudience(
+  id: string,
+  audience: { segmentId?: string; tagId?: string },
+): Promise<{ queued: number }> {
+  const res = await api.post(`/line/rich-menus/${id}/bind-audience`, audience);
+  return res.data.data;
+}
+
+export async function unbindRichMenuAudience(
+  id: string,
+  audience: { segmentId?: string; tagId?: string },
+): Promise<{ queued: number }> {
+  const res = await api.post(`/line/rich-menus/${id}/unbind-audience`, audience);
+  return res.data.data;
+}

@@ -10,12 +10,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Copy, Trash2, Edit, MoreHorizontal, Send, Undo2 } from 'lucide-react';
+import { Plus, Copy, Trash2, Edit, MoreHorizontal, Send, Undo2, Users } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { OaSwitcher } from '@/components/line/OaSwitcher';
 import { LineModuleTabs } from '@/components/line/LineModuleTabs';
+import { RichMenuBindDialog } from '@/components/line/rich-menu/RichMenuBindDialog';
 import {
   useRichMenus,
   deleteRichMenu,
@@ -190,6 +191,7 @@ function RichMenuCard({
   onUnpublish: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bindOpen, setBindOpen] = useState(false);
   const statusInfo = STATUS_LABELS[richMenu.status] || { label: richMenu.status, color: '#6b7280' };
   const isPublished = richMenu.status === 'published';
   const isDraft = richMenu.status === 'draft';
@@ -224,6 +226,12 @@ function RichMenuCard({
             <Button variant="default" size="sm" onClick={() => onPublish(richMenu.id)}>
               <Send className="mr-1 h-3 w-3" />
               發布
+            </Button>
+          )}
+          {isPublished && (
+            <Button variant="outline" size="sm" onClick={() => setBindOpen(true)}>
+              <Users className="mr-1 h-3 w-3" />
+              綁定受眾
             </Button>
           )}
           {isPublished && (
@@ -269,6 +277,14 @@ function RichMenuCard({
           </div>
         </div>
       </div>
+
+      {bindOpen && (
+        <RichMenuBindDialog
+          richMenuId={richMenu.id}
+          richMenuName={richMenu.name}
+          onClose={() => setBindOpen(false)}
+        />
+      )}
     </div>
   );
 }
