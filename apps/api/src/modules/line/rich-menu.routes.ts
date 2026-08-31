@@ -16,6 +16,8 @@ import {
   duplicateRichMenu,
   publishRichMenu,
   unpublishRichMenu,
+  bindRichMenuToAudience,
+  unbindRichMenuFromAudience,
 } from './rich-menu.service.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -134,4 +136,28 @@ export default async function richMenuRoutes(fastify: FastifyInstance) {
     const menu = await unpublishRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(menu));
   });
+
+  // POST /api/v1/line/rich-menus/:id/bind-audience — 綁定受眾（segment 或 tag）
+  fastify.post<{ Params: { id: string }; Body: { segmentId?: string; tagId?: string } }>(
+    '/:id/bind-audience',
+    async (request, reply) => {
+      const { segmentId, tagId } = request.body ?? {};
+      const result = await bindRichMenuToAudience(
+        request.tenantPrisma, request.params.id, request.agent.tenantId, { segmentId, tagId },
+      );
+      return reply.send(success(result));
+    },
+  );
+
+  // POST /api/v1/line/rich-menus/:id/unbind-audience
+  fastify.post<{ Params: { id: string }; Body: { segmentId?: string; tagId?: string } }>(
+    '/:id/unbind-audience',
+    async (request, reply) => {
+      const { segmentId, tagId } = request.body ?? {};
+      const result = await unbindRichMenuFromAudience(
+        request.tenantPrisma, request.params.id, request.agent.tenantId, { segmentId, tagId },
+      );
+      return reply.send(success(result));
+    },
+  );
 }

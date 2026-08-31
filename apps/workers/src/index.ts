@@ -33,6 +33,7 @@ import { handleSlaPoll } from './handlers/sla.handler.js';
 // Worker 端不再 polling broadcasts 避免雙發 race。
 import { handleNotificationJob } from './handlers/notification.handler.js';
 import { handleAutomationJob } from './handlers/automation.handler.js';
+import { handleRichMenuBindJob } from './handlers/rich-menu-bind.handler.js';
 import { handleDataErasureJob } from './handlers/data-erasure.handler.js';
 import {
   handleDataExportJob,
@@ -125,6 +126,15 @@ async function main() {
     { connection },
   );
 
+  const richMenuBindWorker = new Worker(
+    'rich-menu-bind',
+    async (job) => {
+      logger.info(`[rich-menu-bind] Processing job ${job.id}: ${job.name}`);
+      await handleRichMenuBindJob(job, prisma, pluginRegistry);
+    },
+    { connection },
+  );
+
   const dataErasureWorker = new Worker(
     'data-erasure',
     async (job) => {
@@ -163,6 +173,7 @@ async function main() {
       slaWorker.close(),
       notificationWorker.close(),
       automationWorker.close(),
+      richMenuBindWorker.close(),
       dataErasureWorker.close(),
       dataExportWorker.close(),
       dataExportCleanupWorker.close(),
