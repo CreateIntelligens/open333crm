@@ -23,6 +23,7 @@ import {
 } from './material.service.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { generateFlexFromPrompt } from '../ai/flex-ai.service.js';
 
 // ─── ContentType / ChannelType enums ───────────────────────────────────
 
@@ -171,6 +172,10 @@ const lineFlexValidateSchema = z.object({
   altText: z.string().max(400).optional(),
 });
 
+const lineFlexAiGenerateSchema = z.object({
+  prompt: z.string().min(1).max(500),
+});
+
 const lineFlexImportSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(500).optional(),
@@ -270,6 +275,13 @@ export default async function materialRoutes(fastify: FastifyInstance) {
     const result = await validateLineFlexDraft(request.tenantPrisma, request.agent.tenantId, data.payload, {
       altText: data.altText,
     });
+    return reply.send(success(result));
+  });
+
+  // POST /materials/line-flex/ai-generate — 一句話描述 → AI 產合法 Flex body（進填空編輯器微調）
+  fastify.post('/materials/line-flex/ai-generate', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+    const data = lineFlexAiGenerateSchema.parse(request.body);
+    const result = await generateFlexFromPrompt(request.tenantPrisma, request.agent.tenantId, data.prompt);
     return reply.send(success(result));
   });
 

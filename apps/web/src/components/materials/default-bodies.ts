@@ -80,40 +80,8 @@ export const DEFAULT_BODY_FOR_TYPE: Record<string, Record<string, unknown>> = {
   },
 
   // 精選範本進入後彈出 dialog 選擇，這裡放一個預設範本好讓縮圖有內容
-  line_flex_showcase: {
-    sampleId: 'restaurant',
-    altText: 'Restaurant',
-    contents: {
-      type: 'bubble',
-      hero: {
-        type: 'image',
-        url: 'https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png',
-        size: 'full',
-        aspectRatio: '20:13',
-        aspectMode: 'cover',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          { type: 'text', text: 'Brown Cafe', weight: 'bold', size: 'xl' },
-          {
-            type: 'box',
-            layout: 'baseline',
-            margin: 'md',
-            contents: [
-              { type: 'icon', size: 'sm', url: 'https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png' },
-              { type: 'icon', size: 'sm', url: 'https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png' },
-              { type: 'icon', size: 'sm', url: 'https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png' },
-              { type: 'icon', size: 'sm', url: 'https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png' },
-              { type: 'icon', size: 'sm', url: 'https://developers-resource.landpress.line.me/fx/img/review_gray_star_28.png' },
-              { type: 'text', text: '4.0', size: 'sm', color: '#999999', margin: 'md', flex: 0 },
-            ],
-          },
-        ],
-      },
-    },
-  },
+  // 空 body：一進來走 LineFlexShowcaseEditor 空狀態，讓使用者選「AI 描述生成」或「精選範本」
+  line_flex_showcase: {},
 
   line_flex_template: {
     type: 'flex',

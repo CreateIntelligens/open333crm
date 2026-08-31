@@ -13,9 +13,10 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2, Image as ImageIcon, Type, Link as LinkIcon } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon, Type, Link as LinkIcon, Sparkles, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import api from '@/lib/api';
 import { CompactImageField } from '../../CompactImageField';
 import { ShowcasePickerDialog } from './ShowcasePickerDialog';
 import {
@@ -45,6 +46,8 @@ export interface ShowcaseBody {
   /** 完整 Flex JSON（type=bubble 或 type=carousel） */
   contents?: Record<string, unknown>;
   altText?: string;
+  /** 內容來源：'ai' 表 AI 生成（無 sampleId），供辨識與後續分析 */
+  source?: 'ai';
 }
 
 interface Props {
@@ -54,8 +57,28 @@ interface Props {
 
 export function LineFlexShowcaseEditor({ body, onChange }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const sample = body.sampleId ? SHOWCASE_SAMPLES.find((s) => s.id === body.sampleId) : undefined;
   const contents = body.contents;
+
+  // 一句話描述 → AI 產合法 Flex → 載入同一個填空編輯器微調（body 標 source:'ai'、無 sampleId）
+  const handleAiGenerate = async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt || aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await api.post('/marketing/materials/line-flex/ai-generate', { prompt });
+      const data = res.data.data as { contents: Record<string, unknown>; altText: string };
+      onChange({ contents: data.contents, altText: data.altText, source: 'ai' });
+    } catch (error: unknown) {
+      setAiError(apiErrorMessage(error, 'AI 生成失敗，請調整描述或改用精選範本。'));
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const fields = useMemo<FlexField[]>(() => (contents ? extractFields(contents) : []), [contents]);
   const containers = useMemo<FlexContainer[]>(() => (contents ? extractContainers(contents) : []), [contents]);
@@ -81,15 +104,48 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
     onChange({ ...body, contents: removeItemFromContainer(contents, containerPath, idx) });
   };
 
-  // 沒選範本時：顯示提示與選擇按鈕
-  if (!sample || !contents) {
+  // 尚無內容（未選範本、也未 AI 生成）時：顯示兩種起手方式
+  if (!contents) {
     return (
       <>
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-          <div className="text-sm text-slate-600">尚未選擇範本</div>
-          <Button className="mt-3" onClick={() => setPickerOpen(true)}>
-            從範本建立
-          </Button>
+        <div className="space-y-4">
+          {/* 起手方式一：AI 描述生成 */}
+          <div className="rounded-lg border border-violet-200 bg-violet-50 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-violet-900">
+              <Sparkles className="h-4 w-4" />
+              用 AI 描述生成
+            </div>
+            <div className="mb-2 text-xs text-violet-700">
+              用一句話描述想要的卡片，AI 產出草稿後可直接進填空編輯器微調。
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleAiGenerate();
+                  }
+                }}
+                disabled={aiLoading}
+                placeholder="如：一張咖啡廳新品促銷卡，含圖片、價格與「立即訂購」按鈕"
+                maxLength={500}
+              />
+              <Button onClick={() => void handleAiGenerate()} disabled={aiLoading || !aiPrompt.trim()}>
+                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '生成'}
+              </Button>
+            </div>
+            {aiError && <div className="mt-2 text-xs text-red-600">{aiError}</div>}
+          </div>
+
+          {/* 起手方式二：精選範本 */}
+          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+            <div className="text-sm text-slate-600">或直接套用官方設計範本</div>
+            <Button variant="outline" className="mt-3" onClick={() => setPickerOpen(true)}>
+              從範本建立
+            </Button>
+          </div>
         </div>
         <ShowcasePickerDialog open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={selectSample} />
       </>
@@ -98,11 +154,23 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 範本資訊 + 切換按鈕 */}
+      {/* 範本資訊 / AI 來源 + 切換按鈕 */}
       <div className="flex items-center justify-between rounded-md border border-slate-200 p-3">
         <div>
-          <div className="text-sm font-semibold">{sample.name}</div>
-          <div className="text-xs text-slate-500">{sample.description}</div>
+          {sample ? (
+            <>
+              <div className="text-sm font-semibold">{sample.name}</div>
+              <div className="text-xs text-slate-500">{sample.description}</div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-violet-900">
+                <Sparkles className="h-3.5 w-3.5" />
+                AI 生成草稿
+              </div>
+              <div className="text-xs text-slate-500">可直接微調各欄位，或重新選擇範本</div>
+            </>
+          )}
         </div>
         <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
           重新選擇範本
@@ -168,17 +236,86 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
 
 // ─── 單一欄位列 ─────────────────────────────────────────
 
+/** 可做 AI 潤稿的文字類欄位（image/icon/uri/data 不潤稿）。 */
+function isRewritable(kind: FlexField['kind']): boolean {
+  return kind === 'text' || kind === 'button_label' || kind === 'button_text';
+}
+
 function FieldRow({ field, onChange }: { field: FlexField; onChange: (v: string) => void }) {
   const isImage = field.kind === 'image' || field.kind === 'icon';
 
+  if (isImage) {
+    return (
+      <div>
+        <label className="mb-1 block text-xs text-slate-500">{kindLabel(field.kind)}</label>
+        <CompactImageField value={field.value} onChange={onChange} />
+      </div>
+    );
+  }
+
   return (
     <div>
-      {/* 業務語彙標籤（不露 JSON path / box 術語） */}
       <label className="mb-1 block text-xs text-slate-500">{kindLabel(field.kind)}</label>
-      {isImage ? (
-        <CompactImageField value={field.value} onChange={onChange} />
-      ) : (
+      <div className="flex items-center gap-2">
         <Input value={field.value} onChange={(e) => onChange(e.target.value)} />
+        {isRewritable(field.kind) && <RewriteButton text={field.value} onRewritten={onChange} />}
+      </div>
+    </div>
+  );
+}
+
+// ─── AI 潤稿鈕（文字欄位用） ─────────────────────────────
+
+const REWRITE_ACTIONS: { action: 'polish' | 'shorten' | 'tone'; label: string }[] = [
+  { action: 'polish', label: '潤飾' },
+  { action: 'shorten', label: '縮短' },
+  { action: 'tone', label: '換語氣' },
+];
+
+function RewriteButton({ text, onRewritten }: { text: string; onRewritten: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const run = async (action: 'polish' | 'shorten' | 'tone') => {
+    setOpen(false);
+    if (!text.trim() || loading) return;
+    setLoading(true);
+    try {
+      const res = await api.post('/ai/rewrite', { text, action });
+      const next = (res.data.data as { text: string }).text;
+      if (next) onRewritten(next);
+    } catch {
+      // 潤稿失敗不阻斷編輯，靜默略過（欄位維持原值）
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative shrink-0">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={loading || !text.trim()}
+        onClick={() => setOpen((v) => !v)}
+        title="AI 潤稿"
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-violet-500" />}
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full z-10 mt-1 w-24 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+          {REWRITE_ACTIONS.map((a) => (
+            <button
+              key={a.action}
+              type="button"
+              onClick={() => void run(a.action)}
+              className="block w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -193,6 +330,15 @@ function kindLabel(kind: FlexField['kind']): string {
   if (kind === 'button_text') return '按鈕訊息';
   if (kind === 'button_data') return '按鈕資料';
   return kind;
+}
+
+/** 取 axios 錯誤的後端訊息（success/error wrapper），無則回 fallback。 */
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const response = (error as { response?: { data?: { error?: { message?: string; code?: string } } } }).response;
+    return response?.data?.error?.message ?? response?.data?.error?.code ?? fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
 }
 
 // ─── 容器列（顯示子元件、可加可減） ────────────────────

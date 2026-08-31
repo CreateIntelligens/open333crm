@@ -35,6 +35,8 @@ export type AiFeature =
   | 'classify'
   | 'sentiment'
   | 'automation'
+  | 'flex-generate'
+  | 'ai-rewrite'
   | 'unknown';
 
 export interface AiUsageMeta {
