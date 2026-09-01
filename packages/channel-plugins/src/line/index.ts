@@ -92,7 +92,7 @@ async function linePut(path: string, token: string, body: unknown): Promise<unkn
 
 import { buildLineCarousel, buildLineImagemap, buildLineVideoWithEndCard } from './builders.js';
 
-function buildLineMessage(contentType: string, content: Record<string, unknown>): unknown {
+export function buildLineMessage(contentType: string, content: Record<string, unknown>): unknown {
   const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string; imageUrl?: string }> | undefined;
   const quickReply = quickReplies?.length
     ? {

@@ -366,7 +366,18 @@ export async function executeBroadcast(
     if (!plugin) {
       throw new AppError(`No plugin for channel type: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
     }
-    const credentials = decryptCredentials(channel.credentialsEncrypted);
+    // 憑證解密：金鑰不符（如從其他環境 sync 來的 token）會拋原生錯，
+    // 包成友善 AppError 避免冒成裸 500「An unexpected error occurred」。
+    let credentials: Record<string, unknown>;
+    try {
+      credentials = decryptCredentials(channel.credentialsEncrypted);
+    } catch {
+      throw new AppError(
+        '此渠道的憑證無法解密（金鑰不符，常見於從其他環境同步過來的資料）。請到渠道設定重新填入 Access Token 後再發送。',
+        'CHANNEL_CREDENTIAL_DECRYPT_FAILED',
+        400,
+      );
+    }
 
     // Resolve audience
     const identities = await resolveAudience(prisma, broadcast);
@@ -377,13 +388,19 @@ export async function executeBroadcast(
       data: { totalCount: identities.length },
     });
 
-    // ── 0 受眾 early return：避免 failedCount===length===0 落入 status=failed ──
+    // 0 受眾：手動挑選/標籤/分群卻解析不到任何可發送對象時，回明確錯誤而非默默「完成」，
+    // 避免使用者以為發成功了其實沒發（如手動挑選未選人、或選的人在此渠道沒有身分）。
     if (identities.length === 0) {
-      await prisma.broadcast.update({
-        where: { id: broadcastId },
-        data: { status: 'completed', successCount: 0, failedCount: 0 },
-      });
-      return { total: 0, success: 0, failed: 0 };
+      const reason =
+        broadcast.targetType === 'contacts'
+          ? '未選擇任何發送對象，或所選對象在此渠道沒有可發送的身分。請先挑選有加入此渠道的對象。'
+          : broadcast.targetType === 'tags'
+            ? '所選標籤下沒有可在此渠道發送的對象。'
+            : broadcast.targetType === 'segment'
+              ? '所選分群目前沒有可在此渠道發送的對象。'
+              : '此渠道目前沒有可發送的對象。';
+      // 拋出後由外層 catch 統一標 failed（0 受眾＝送不出去，算失敗）。
+      throw new AppError(reason, 'BROADCAST_NO_RECIPIENTS', 400);
     }
 
     const extractedKeys = extractVariables(body);

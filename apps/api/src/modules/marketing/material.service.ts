@@ -25,6 +25,7 @@ import {
   type LineFlexMessageBody,
 } from '@open333crm/shared';
 import { decryptCredentials } from '../channel/channel.service.js';
+import { buildLineMessage } from '@open333crm/channel-plugins';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -230,6 +231,54 @@ async function validateLineFlexMessageWithLineApi(
   }
 }
 
+/**
+ * 儲存時跟 LINE 檢核素材格式（所有 LINE 版型通用）。
+ * 用「與實際發送相同的組裝邏輯」(buildLineMessage) 組出 LINE message，
+ * 打 LINE validate/push API；不符時擋下並回詳細說明（哪個 property 不符 + LINE 的訊息）。
+ *
+ * 只驗真的能組成 LINE message 的版型；圖片/影片等含 URL 的仍會被 LINE 檢查結構，
+ * 但本機相對路徑圖（/material-samples/...）LINE 抓不到 → 這類 URL 錯誤在儲存時不強制
+ * （素材可先存，發送到有公開域名的環境才需真實可達 URL），只擋「結構/欄位」層級的格式錯誤。
+ */
+async function validateLineMaterialWithLineApi(
+  prisma: TenantDb,
+  tenantId: string,
+  contentType: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  // 只驗 LINE 版型；flex_showcase / flex_template 已有專屬 validate（import 時），這裡涵蓋其餘。
+  if (!contentType.startsWith('line_')) return;
+  if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
+
+  let message: unknown;
+  try {
+    message = buildLineMessage(contentType, body);
+  } catch (err) {
+    throw new AppError(
+      `素材內容無法組成 LINE 訊息：${err instanceof Error ? err.message : String(err)}`,
+      'LINE_MATERIAL_BUILD_FAILED',
+      400,
+    );
+  }
+
+  const token = await getLineChannelAccessToken(prisma, tenantId);
+  const response = await fetch('https://api.line.me/v2/bot/message/validate/push', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [message] }),
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.json().catch(() => ({}));
+    throw new AppError(
+      `素材格式不符合 LINE 規範：${formatLineValidateError(response.status, responseBody)}`,
+      'LINE_MATERIAL_VALIDATE_FAILED',
+      400,
+      { status: response.status, line: responseBody },
+    );
+  }
+}
+
 // ─── CRUD ───────────────────────────────────────────────────────────────
 
 export async function listMaterials(
@@ -347,6 +396,9 @@ export async function createMaterial(
     await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
   }
 
+  // 儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
+  await validateLineMaterialWithLineApi(prisma, tenantId, contentType, body);
+
   const material = await prisma.material.create({
     data: {
       tenantId,
@@ -409,6 +461,11 @@ export async function updateMaterial(
   if (input.targetChannels !== undefined) data.targetChannels = input.targetChannels;
   if (input.previewImageUrl !== undefined) data.previewImageUrl = input.previewImageUrl;
   if (input.isActive !== undefined) data.isActive = input.isActive;
+
+  // body 有更新時，儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
+  if (input.body !== undefined) {
+    await validateLineMaterialWithLineApi(prisma, tenantId, existing.contentType, data.body as Record<string, unknown>);
+  }
 
   const updated = await prisma.material.update({
     where: { id },

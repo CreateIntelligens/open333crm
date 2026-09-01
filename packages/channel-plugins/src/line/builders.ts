@@ -89,16 +89,23 @@ function carouselPageToBubble(pageType: string, page: CarouselPage): Record<stri
     };
   }
 
-  // 標籤（最上方有色塊文字）
+  // 標籤（最上方有色塊文字）。用 horizontal 外框 + 色塊 flex:0 讓標籤只佔內容寬（靠左），
+  // 而非用 LINE Flex 不支援的 alignSelf（會被 LINE API 擋為 unknown field）。
   if (page.label?.text) {
     bodyContents.push({
       type: 'box',
-      layout: 'vertical',
-      contents: [{ type: 'text', text: page.label.text, color: '#ffffff', weight: 'bold', size: 'xs' }],
-      backgroundColor: page.label.bgColor ?? '#27272a',
-      paddingAll: '4px',
-      cornerRadius: '4px',
-      alignSelf: 'flex-start',
+      layout: 'horizontal',
+      contents: [
+        {
+          type: 'box',
+          layout: 'vertical',
+          contents: [{ type: 'text', text: page.label.text, color: '#ffffff', weight: 'bold', size: 'xs' }],
+          backgroundColor: page.label.bgColor ?? '#27272a',
+          paddingAll: '4px',
+          cornerRadius: '4px',
+          flex: 0,
+        },
+      ],
     });
   }
 
@@ -107,7 +114,8 @@ function carouselPageToBubble(pageType: string, page: CarouselPage): Record<stri
     bodyContents.push({ type: 'text', text: page.name, weight: 'bold', size: 'xl' });
   }
 
-  // 人物特點 tags
+  // 人物特點 tags。底色/圓角/padding 是 box 屬性（text 不支援，LINE API 會擋 unknown field），
+  // 故每個 tag 用一個帶底色的 box 包住 text。
   if (pageType === 'person' && page.tags && page.tags.length > 0) {
     bodyContents.push({
       type: 'box',
@@ -115,14 +123,13 @@ function carouselPageToBubble(pageType: string, page: CarouselPage): Record<stri
       spacing: 'xs',
       margin: 'sm',
       contents: page.tags.slice(0, 3).map((tag) => ({
-        type: 'text',
-        text: tag.text,
-        color: '#ffffff',
-        size: 'xs',
+        type: 'box',
+        layout: 'vertical',
         backgroundColor: tag.color ?? '#27272a',
         paddingAll: '2px',
         cornerRadius: '2px',
         flex: 0,
+        contents: [{ type: 'text', text: tag.text, color: '#ffffff', size: 'xs' }],
       })),
     });
   }
