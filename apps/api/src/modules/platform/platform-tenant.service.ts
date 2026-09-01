@@ -5,8 +5,10 @@
  */
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { seedRolesForTenant } from '@open333crm/core';
+import { getConfig } from '../../config/env.js';
 import { hashPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
+import { sendManualProvisionedEmail } from '../trial/trial-emails.js';
 
 export async function listTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
@@ -70,11 +72,11 @@ export async function provisionTenant(
   return { tenantId: tenant.id, adminAgentId: agent.id };
 }
 
-/** 平台手動開通 API 用：先查 plan slug、檢查 email 唯一，再於 transaction 內開通。 */
+/** 平台手動開通 API 用：先查 plan slug、檢查 email 唯一，再於 transaction 內開通，成功後寄開通信。 */
 export async function provisionTenantViaApi(
   prisma: PrismaClient,
   input: { name: string; planSlug: string; adminEmail: string; adminName: string; adminPassword: string },
-): Promise<{ tenantId: string; adminAgentId: string }> {
+): Promise<{ tenantId: string; adminAgentId: string; loginUrl: string }> {
   const plan = await prisma.plan.findUnique({ where: { slug: input.planSlug }, select: { id: true } });
   if (!plan) throw new AppError('Plan not found', 'NOT_FOUND', 404);
 
@@ -83,11 +85,21 @@ export async function provisionTenantViaApi(
   if (existing) throw new AppError('Email already in use', 'CONFLICT', 409);
 
   const passwordHash = await hashPassword(input.adminPassword);
-  return prisma.$transaction((tx) =>
+  const result = await prisma.$transaction((tx) =>
     provisionTenant(tx, {
       name: input.name,
       planId: plan.id,
       admin: { email: input.adminEmail, name: input.adminName, passwordHash },
     }),
   );
+
+  // 開通信不帶密碼（平台方設定，線下轉交）；fire-and-forget，寄信失敗不影響開通結果
+  const loginUrl = `${getConfig().WEB_BASE_URL}/login`;
+  void sendManualProvisionedEmail(input.adminEmail, {
+    siteName: input.name,
+    loginUrl,
+    adminEmail: input.adminEmail,
+  });
+
+  return { ...result, loginUrl };
 }
