@@ -172,23 +172,29 @@ export async function findOrCreateMaterialShortLink(
   prisma: PrismaClient,
   tenantId: string,
   createdById: string,
-  params: { materialId: string; targetUrl: string; lineChannelId?: string | null },
+  params: { materialId: string; targetUrl: string; lineChannelId?: string | null; tagOnClick?: string | null },
 ): Promise<string> {
-  const { materialId, targetUrl, lineChannelId } = params;
+  const { materialId, targetUrl, lineChannelId, tagOnClick } = params;
   // 已是本站短連結 → 不二次包裝
   if (isOwnShortLink(targetUrl)) return targetUrl;
 
-  // 複用同素材同目標的既有短連結
+  // 複用同素材同目標的既有短連結；tagOnClick 有指定則同步更新（同 uri 取本次設定的標籤）
   const existing = await prisma.shortLink.findFirst({
     where: { tenantId, materialId, targetUrl, isActive: true },
-    select: { slug: true },
+    select: { id: true, slug: true, tagOnClick: true },
   });
-  if (existing) return shortLinkPublicUrl(existing.slug);
+  if (existing) {
+    if (tagOnClick !== undefined && existing.tagOnClick !== tagOnClick) {
+      await prisma.shortLink.update({ where: { id: existing.id }, data: { tagOnClick: tagOnClick ?? null } });
+    }
+    return shortLinkPublicUrl(existing.slug);
+  }
 
   const link = await createShortLink(prisma, tenantId, createdById, {
     targetUrl,
     materialId,
     lineChannelId: lineChannelId ?? null,
+    tagOnClick: tagOnClick ?? undefined,
   });
   return shortLinkPublicUrl(link.slug);
 }

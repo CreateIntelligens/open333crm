@@ -247,12 +247,16 @@ async function convertBodyUrlsToShortLinks(
     if (node && typeof node === 'object') {
       const obj = node as Record<string, unknown>;
       // LINE Flex 的連結按鈕是 action.uri；本地版型是 {type:'uri', uri}。兩種都攔。
+      // action 上若有 tagOnClick（點擊後貼標），一併灌進短連結，並從 body 移除
+      // （tagOnClick 是內部欄位，若留在 flex button action 會流進 LINE payload 被擋 unknown field）。
       if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri) {
         obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
           materialId,
           targetUrl: obj.uri,
           lineChannelId,
+          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
         });
+        delete obj.tagOnClick;
       }
       // imagemap 轉出的 linkUri（builders 用 linkUri），也一併處理
       if (typeof obj.linkUri === 'string' && obj.linkUri) {
@@ -260,7 +264,9 @@ async function convertBodyUrlsToShortLinks(
           materialId,
           targetUrl: obj.linkUri,
           lineChannelId,
+          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
         });
+        delete obj.tagOnClick;
       }
       for (const key of Object.keys(obj)) await walk(obj[key]);
     }

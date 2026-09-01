@@ -8,11 +8,19 @@
 
 import React from 'react';
 import { Input } from '@/components/ui/input';
+import { useContactTags } from '@/hooks/useContactTags';
 
 export type ActionConfig =
   | { type: 'message'; label: string; text: string }
-  | { type: 'uri'; label: string; uri: string; altUriDesktop?: string }
+  // uri 的 tagOnClick：點擊後貼標的 tagId（送出時灌進素材短連結，不進 LINE payload）
+  | { type: 'uri'; label: string; uri: string; altUriDesktop?: string; tagOnClick?: string }
   | { type: 'postback'; label: string; data: string; displayText?: string };
+
+/** 從 postback data 反解「點擊後貼標」的 tagId（格式 tag:<uuid>）。 */
+function tagIdFromPostbackData(data: string): string {
+  const m = data.match(/^tag:([0-9a-f-]{36})$/i);
+  return m ? m[1] : '';
+}
 
 const ACTION_TYPE_OPTIONS: Array<{ value: ActionConfig['type']; label: string }> = [
   { value: 'message', label: '文字訊息' },
@@ -78,6 +86,8 @@ export function ActionConfigEditor({ action, onChange, optional, labelLimit = 20
         </select>
       </div>
       <ActionContentInput action={cur} onChange={onChange} />
+      {/* 點擊後貼標籤：postback（寫 data=tag:id）與 uri（寫 tagOnClick）支援；message 型不支援 */}
+      {cur.type !== 'message' && <TagOnClickSelect action={cur} onChange={onChange} />}
       {optional && action && (
         <button
           type="button"
@@ -86,6 +96,48 @@ export function ActionConfigEditor({ action, onChange, optional, labelLimit = 20
         >
           移除此動作
         </button>
+      )}
+    </div>
+  );
+}
+
+/** 「點擊後貼標籤」下拉。postback 型 → data=tag:<id>；uri 型 → action.tagOnClick。 */
+function TagOnClickSelect({ action, onChange }: { action: ActionConfig; onChange: (next: ActionConfig) => void }) {
+  const { tags, isLoading } = useContactTags();
+
+  // 目前選中的 tagId：postback 從 data 反解、uri 讀 tagOnClick
+  const currentTagId =
+    action.type === 'postback'
+      ? tagIdFromPostbackData(action.data)
+      : action.type === 'uri'
+        ? action.tagOnClick ?? ''
+        : '';
+
+  const setTag = (tagId: string) => {
+    if (action.type === 'postback') {
+      // 選標籤即接管 postback data
+      onChange({ ...action, data: tagId ? `tag:${tagId}` : '' });
+    } else if (action.type === 'uri') {
+      onChange({ ...action, tagOnClick: tagId || undefined });
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-16 text-slate-500">點擊後貼標</span>
+      <select
+        value={currentTagId}
+        onChange={(e) => setTag(e.target.value)}
+        disabled={isLoading}
+        className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+      >
+        <option value="">不貼標</option>
+        {tags.map((t) => (
+          <option key={t.id} value={t.id}>{t.name}</option>
+        ))}
+      </select>
+      {action.type === 'postback' && currentTagId && (
+        <span className="w-24 text-[10px] text-slate-400">（接管回傳資料）</span>
       )}
     </div>
   );

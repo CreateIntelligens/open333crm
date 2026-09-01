@@ -13,7 +13,9 @@
 
 export type ActionConfig =
   | { type: 'message'; label: string; text: string }
-  | { type: 'uri'; label: string; uri: string; altUriDesktop?: string }
+  // tagOnClick：素材編輯器的「點擊後貼標」內部欄位；送出前由 marketing 消化進短連結，
+  // 不進 LINE payload（actionToLine 只挑 type/label/uri，不帶此欄位）。
+  | { type: 'uri'; label: string; uri: string; altUriDesktop?: string; tagOnClick?: string }
   | { type: 'postback'; label: string; data: string; displayText?: string };
 
 function actionToLine(action: ActionConfig | undefined | null): Record<string, unknown> | null {
