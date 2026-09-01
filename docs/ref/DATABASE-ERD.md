@@ -25,7 +25,7 @@ Mermaid 關聯符號的意思：
 | `\|\|--o\|`  | 一對一，右端可以不存在     |
 | `\|\|--\|\|` | 一對一，兩端都必定存在     |
 
-有 5 張資料表完全沒有外鍵關聯，因此不出現在任何 ERD 圖上，只在領域表格中說明。`audience_groups` 與 `insight_snapshots` 靠鬆耦合欄位連到 `channels`。`model_pricings`、`platform_settings`、`trial_signups` 則是獨立的設定或流水資料。
+有 6 張資料表完全沒有外鍵關聯，因此不出現在任何 ERD 圖上，只在領域表格中說明。`audience_groups` 與 `insight_snapshots` 靠鬆耦合欄位連到 `channels`；`sla_policies` 靠鬆耦合的 `tenant_id` 歸屬租戶。`model_pricings`、`platform_settings`、`trial_signups` 則是獨立的設定或流水資料。
 
 ---
 
@@ -46,7 +46,7 @@ erDiagram
     contacts ||--o{ conversations : "發起"
     channels ||--o{ conversations : "來源"
     conversations ||--o{ messages : "訊息"
-    conversations ||--o| cases : "升級為案件"
+    cases ||--o{ conversations : "升級為案件"
     contacts ||--o{ cases : "案件當事人"
     agents ||--o{ conversations : "指派"
     agents ||--o{ cases : "指派"
@@ -203,7 +203,6 @@ erDiagram
     agents ||--o{ case_events : "操作者"
     cases ||--o{ case_notes : "備註"
     cases ||--o{ case_relations : "案件關聯(來源)"
-    tenants ||--o{ sla_policies : "SLA 政策"
 ```
 
 | 資料表           | Prisma model   | 儲存什麼                                                                                  | 關鍵欄位型別                                                                                  |
@@ -403,7 +402,7 @@ erDiagram
 
 資料庫層另外用 Postgres RLS 強制隔離租戶資料。RLS 的接線規則、新增資料表時的必要步驟、以及排查方式，都寫在 `postgres-rls-tenant-isolation` skill，本文件不重複說明。
 
-**注意**：以下 6 張資料表有 `tenant_id` 欄位，但在 Prisma schema 裡**沒有**宣告對 `Tenant` 的關聯，因此資料庫層也沒有對應的外鍵約束：
+**注意**：以下 7 張資料表有 `tenant_id` 欄位，但在 Prisma schema 裡**沒有**宣告對 `Tenant` 的關聯，因此資料庫層也沒有對應的外鍵約束：
 
 | 資料表              | Prisma model                       |
 | ------------------- | ---------------------------------- |
@@ -413,6 +412,7 @@ erDiagram
 | `km_articles`       | `KmArticle`                        |
 | `message_templates` | `MessageTemplate`（欄位可為 null） |
 | `automation_logs`   | `AutomationLog`                    |
+| `trial_signups`     | `TrialSignup`（開通後回填的 soft ref，欄位可為 null） |
 
 刪除租戶時，資料庫不會對這 6 張資料表執行級聯刪除，也不會阻擋刪除。應用層必須自行清理這些資料。
 
