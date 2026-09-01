@@ -34,7 +34,8 @@ export interface FlexField {
 
 /** 依欄位 kind + 所在 slot（hero/body/footer）推斷業務區塊語彙。 */
 function inferGroup(kind: FlexFieldKind, slot: string): FlexFieldGroup {
-  if (kind === 'image' || kind === 'icon') return slot === 'hero' ? '主圖' : '主圖';
+  // hero 的圖歸「主圖」；body 內的 icon/裝飾圖（如評分星）歸「其他」，不混進主圖。
+  if (kind === 'image' || kind === 'icon') return slot === 'hero' ? '主圖' : '其他';
   if (kind === 'text') return '標題與內文';
   // 各種 button_* 都歸「按鈕」
   return '按鈕';

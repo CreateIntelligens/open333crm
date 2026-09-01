@@ -121,13 +121,16 @@ export async function generateFlexFromPrompt(
   try {
     return await attempt(prompt);
   } catch (firstError) {
-    // 解析或驗證失敗 → 把錯誤訊息餵回 AI 修正一次
+    // 額度用盡等致命錯誤：不重試（浪費請求）、不掩蓋，直接往外拋原始錯誤。
+    if (firstError instanceof AppError && firstError.code === 'PLAN_LIMIT_EXCEEDED') throw firstError;
+    // 其餘（解析/驗證失敗）→ 把錯誤訊息餵回 AI 修正一次
     const reason = firstError instanceof AppError ? firstError.message : String(firstError);
     try {
       return await attempt(
         `${prompt}\n\n（上一版產出不合法，錯誤：${reason}。請依此修正後重新輸出合法的 Flex bubble JSON。）`,
       );
-    } catch {
+    } catch (secondError) {
+      if (secondError instanceof AppError && secondError.code === 'PLAN_LIMIT_EXCEEDED') throw secondError;
       throw new AppError(
         'AI 產出的 Flex 內容無法通過 LINE 驗證，請調整描述或改用精選範本。',
         'FLEX_AI_GENERATE_FAILED',

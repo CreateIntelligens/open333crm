@@ -96,6 +96,10 @@ async function socketPlugin(fastify: FastifyInstance) {
   // worker（獨立 process）無法直接發 api 的 in-process eventBus（automation 規則訂閱的）。
   // 這裡收 redis 'domain:event' → 轉發成 eventBus 事件（如 worker add_tag 的 contact.tagged）。
   const domainEventSub = new IORedis(config.REDIS_URL);
+  // 必須註冊 error listener：IORedis 無 error listener 時，連線中斷會拋 uncaught error 使整個 API crash。
+  domainEventSub.on('error', (err) => {
+    fastify.log.error({ err }, '[DomainEventBridge] Redis subscriber error');
+  });
   await domainEventSub.subscribe('domain:event');
   domainEventSub.on('message', (_channel, message) => {
     try {

@@ -261,7 +261,21 @@ async function validateLineMaterialWithLineApi(
     );
   }
 
-  const token = await getLineChannelAccessToken(prisma, tenantId);
+  // 無啟用中的 LINE channel / 未設 token 的租戶：無從呼叫 LINE validate，
+  // 跳過格式檢核（不擋存草稿）。素材仍可存、待設好 channel 後發送時才會用到。
+  let token: string;
+  try {
+    token = await getLineChannelAccessToken(prisma, tenantId);
+  } catch (err) {
+    if (
+      err instanceof AppError &&
+      (err.code === 'LINE_CHANNEL_NOT_FOUND' || err.code === 'LINE_CHANNEL_TOKEN_MISSING')
+    ) {
+      return; // 沒 channel/token → 略過驗證
+    }
+    throw err;
+  }
+
   const response = await fetch('https://api.line.me/v2/bot/message/validate/push', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -876,10 +890,12 @@ export async function getMaterialStats(prisma: TenantDb, materialId: string, ten
 
   let replyCount = 0;
   let casesOpened = 0;
+  let totalRecipients = 0;
   if (broadcastIds.length > 0) {
-    [replyCount, casesOpened] = await Promise.all([
+    [replyCount, casesOpened, totalRecipients] = await Promise.all([
       prisma.broadcastRecipient.count({ where: { broadcastId: { in: broadcastIds }, replied: true } }),
       prisma.broadcastRecipient.count({ where: { broadcastId: { in: broadcastIds }, caseId: { not: null } } }),
+      prisma.broadcastRecipient.count({ where: { broadcastId: { in: broadcastIds } } }),
     ]);
   }
 
@@ -891,10 +907,11 @@ export async function getMaterialStats(prisma: TenantDb, materialId: string, ten
   const hasClickAttribution = materialShortLinks.length > 0;
   const clickCount = materialShortLinks.reduce((sum, l) => sum + (l.totalClicks ?? 0), 0);
 
-  // 點擊率 = 點擊數 ÷ 送出數。無短連結歸因資料或未送出 → null（不假造 0）。
+  // 點擊率 = 點擊數 ÷ 總發送收件人數（非廣播次數 usageCount，否則 CTR 會暴增）。
+  // 無短連結歸因資料或未送出 → null（不假造 0）。
   const clickThroughRate =
-    hasClickAttribution && material.usageCount > 0
-      ? Math.round((clickCount / material.usageCount) * 100)
+    hasClickAttribution && totalRecipients > 0
+      ? Math.round((clickCount / totalRecipients) * 100)
       : null;
 
   return {
