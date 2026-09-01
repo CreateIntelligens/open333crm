@@ -469,7 +469,7 @@ schema 裡有一批 `xxxId` 欄位只存 ID，沒有宣告 Prisma 關聯，因�
 | Enum                                          | 用在哪                                                             | 值                             |
 | --------------------------------------------- | ------------------------------------------------------------------ | ------------------------------ |
 | `AgentRole`                                   | `agents.role`                                                      | ADMIN、SUPERVISOR、AGENT       |
-| `ChannelType`                                 | `channels`、`conversations`、`channel_identities`、`identity_maps` | LINE、FB、IG、WEBCHAT 等       |
+| `ChannelType`                                 | `channels`、`conversations`、`channel_identities`、`identity_maps` | LINE、FB、WEBCHAT、WHATSAPP、TELEGRAM、THREADS |
 | `ConversationStatus`                          | `conversations.status`                                             | 對話開啟、處理中、關閉等狀態   |
 | `Direction`                                   | `messages`、`channel_usages`                                       | INBOUND、OUTBOUND              |
 | `SenderType`                                  | `messages.senderType`                                              | 區分聯絡人、客服、機器人、系統 |
