@@ -24,6 +24,10 @@ interface Props {
    * 傳入時，上傳前先讀圖實際尺寸比對，比例不符（超過容差）則擋下、不寫入、顯示錯誤。
    */
   requireAspectRatio?: { width: number; height: number };
+  /** 自訂上傳端點（預設 /files/upload；imagemap 底圖走 /files/imagemap-upload 產多尺寸）。 */
+  uploadEndpoint?: string;
+  /** 從上傳回應取出要存的 URL（預設取 data.url；imagemap 取 data.baseUrl）。 */
+  extractUrl?: (data: Record<string, unknown>) => string;
 }
 
 /** 讀取本機圖片檔的實際像素寬高。 */
@@ -43,7 +47,7 @@ function readImageSize(file: File): Promise<{ width: number; height: number }> {
   });
 }
 
-export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio }: Props) {
+export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio, uploadEndpoint, extractUrl }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,10 +73,11 @@ export function CompactImageField({ value, onChange, placeholder, hint, requireA
       }
       const formData = new FormData();
       formData.append('file', file);
-      const res = await api.post('/files/upload', formData, {
+      const res = await api.post(uploadEndpoint ?? '/files/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      onChange(res.data?.data?.url ?? '');
+      const data = res.data?.data ?? {};
+      onChange(extractUrl ? extractUrl(data) : (data.url ?? ''));
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setError(((err as any)?.response?.data?.error?.message) ?? '上傳失敗');
