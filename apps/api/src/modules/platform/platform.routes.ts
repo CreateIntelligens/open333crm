@@ -8,7 +8,15 @@ import { success } from '../../shared/utils/response.js';
 import { platformLogin } from './platform-auth.service.js';
 import { writePlatformAudit } from './platform-audit.service.js';
 import { listPlans, updatePlan } from './plan.service.js';
-import { listTenants, setTenantActive, provisionTenantViaApi } from './platform-tenant.service.js';
+import {
+  listTenants,
+  setTenantActive,
+  provisionTenantViaApi,
+  getTenantDetail,
+  updateTenant,
+  updateTenantAgentEmail,
+  resendWelcomeEmail,
+} from './platform-tenant.service.js';
 import { getPlatformSetting, setPlatformSetting } from './platform-setting.service.js';
 import {
   getUsageOverview,
@@ -110,6 +118,63 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
   // Tenants
   fastify.get('/tenants', guard, async () => success(await listTenants(fastify.prismaAdmin)));
+  fastify.get<{ Params: { id: string } }>('/tenants/:id', guard, async (request) =>
+    success(await getTenantDetail(fastify.prismaAdmin, request.params.id)),
+  );
+  fastify.patch<{ Params: { id: string } }>('/tenants/:id', guard, async (request) => {
+    const body = z
+      .object({
+        name: z.string().min(1).max(100).optional(),
+        planSlug: z.string().min(1).optional(),
+      })
+      .refine((b) => b.name !== undefined || b.planSlug !== undefined, { message: '至少提供一個欄位' })
+      .parse(request.body);
+    const tenant = await updateTenant(fastify.prismaAdmin, request.params.id, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: 'tenant.update',
+      targetType: 'tenant',
+      targetId: tenant.id,
+      payload: body,
+    });
+    return success(tenant);
+  });
+  fastify.patch<{ Params: { id: string; agentId: string } }>(
+    '/tenants/:id/agents/:agentId',
+    guard,
+    async (request) => {
+      const { email } = z.object({ email: z.string().email() }).parse(request.body);
+      const agent = await updateTenantAgentEmail(
+        fastify.prismaAdmin,
+        request.params.id,
+        request.params.agentId,
+        email,
+      );
+      await writePlatformAudit(fastify.prismaAdmin, {
+        platformUserId: request.platformUser!.id,
+        action: 'tenant.agent.email.update',
+        targetType: 'agent',
+        targetId: agent.id,
+        payload: { tenantId: request.params.id, email },
+      });
+      return success(agent);
+    },
+  );
+  fastify.post<{ Params: { id: string; agentId: string } }>(
+    '/tenants/:id/agents/:agentId/resend-welcome',
+    guard,
+    async (request) => {
+      const result = await resendWelcomeEmail(fastify.prismaAdmin, request.params.id, request.params.agentId);
+      await writePlatformAudit(fastify.prismaAdmin, {
+        platformUserId: request.platformUser!.id,
+        action: 'tenant.agent.resend_welcome',
+        targetType: 'agent',
+        targetId: request.params.agentId,
+        payload: { tenantId: request.params.id },
+      });
+      return success(result);
+    },
+  );
   fastify.patch<{ Params: { id: string } }>('/tenants/:id/active', guard, async (request) => {
     const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
     const tenant = await setTenantActive(fastify.prismaAdmin, request.params.id, isActive);

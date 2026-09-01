@@ -9,6 +9,8 @@ import { getConfig } from '../../config/env.js';
 import { hashPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { sendManualProvisionedEmail } from '../trial/trial-emails.js';
+import { invalidatePlanPermissions } from '../../services/permission.service.js';
+import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 
 export async function listTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
@@ -24,6 +26,105 @@ export async function listTenants(prisma: PrismaClient) {
     },
     orderBy: { createdAt: 'desc' },
   });
+}
+
+/** 平台租戶詳細：基本資料 + 成員清單 + 各類資料量統計。 */
+export async function getTenantDetail(prisma: PrismaClient, id: string) {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      createdAt: true,
+      trialEndsAt: true,
+      purgedAt: true,
+      contractStartDate: true,
+      contractEndDate: true,
+      plan: { select: { id: true, slug: true, name: true } },
+      agents: {
+        select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      },
+      _count: { select: { agents: true, channels: true, contacts: true, conversations: true, cases: true } },
+    },
+  });
+  if (!tenant) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+  return tenant;
+}
+
+/** 平台編輯租戶基本資料：名稱、方案。方案變更需失效權限天花板/租戶方案快取（比照 convertToPaid）。 */
+export async function updateTenant(
+  prisma: PrismaClient,
+  id: string,
+  input: { name?: string; planSlug?: string },
+) {
+  const existing = await prisma.tenant.findUnique({ where: { id }, select: { id: true, planId: true } });
+  if (!existing) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+
+  const data: Prisma.TenantUpdateInput = {};
+  if (input.name !== undefined) data.name = input.name;
+
+  let planChangedTo: string | null = null;
+  if (input.planSlug !== undefined) {
+    const plan = await prisma.plan.findUnique({ where: { slug: input.planSlug }, select: { id: true } });
+    if (!plan) throw new AppError('Plan not found', 'NOT_FOUND', 404);
+    if (plan.id !== existing.planId) {
+      data.plan = { connect: { id: plan.id } };
+      planChangedTo = plan.id;
+    }
+  }
+
+  const updated = await prisma.tenant.update({
+    where: { id },
+    data,
+    select: { id: true, name: true, isActive: true, plan: { select: { slug: true, name: true } } },
+  });
+
+  if (planChangedTo) {
+    await invalidatePlanPermissions(prisma, planChangedTo);
+    invalidateTenantPlan(id);
+  }
+  return updated;
+}
+
+/** 平台修改租戶成員 email（即登入帳號）。email 全域唯一，衝突回 409。 */
+export async function updateTenantAgentEmail(
+  prisma: PrismaClient,
+  tenantId: string,
+  agentId: string,
+  email: string,
+) {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, tenantId },
+    select: { id: true, email: true },
+  });
+  if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  if (agent.email === email) return { id: agent.id, email: agent.email };
+
+  const dup = await prisma.agent.findUnique({ where: { email }, select: { id: true } });
+  if (dup) throw new AppError('Email already in use', 'CONFLICT', 409);
+
+  return prisma.agent.update({ where: { id: agentId }, data: { email }, select: { id: true, email: true } });
+}
+
+/** 重寄開通信給指定成員（帶登入網址、不含密碼；寄送失敗只 log 不拋錯）。 */
+export async function resendWelcomeEmail(prisma: PrismaClient, tenantId: string, agentId: string) {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, tenantId },
+    select: { email: true },
+  });
+  if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+  if (!tenant) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+
+  const loginUrl = `${getConfig().WEB_BASE_URL}/login`;
+  await sendManualProvisionedEmail(agent.email, {
+    siteName: tenant.name,
+    loginUrl,
+    adminEmail: agent.email,
+  });
+  return { ok: true, email: agent.email };
 }
 
 export async function setTenantActive(prisma: PrismaClient, id: string, isActive: boolean) {

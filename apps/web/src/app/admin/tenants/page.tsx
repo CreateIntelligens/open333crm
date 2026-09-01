@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { platformApi } from '../lib/platform-api';
 
 interface Tenant {
@@ -113,7 +114,11 @@ export default function TenantsPage() {
           <tbody>
             {tenants.map((t) => (
               <tr key={t.id} style={{ borderTop: '1px solid #eef1f5' }}>
-                <td style={td}>{t.name}</td>
+                <td style={td}>
+                  <Link href={`/admin/tenants/${t.id}`} style={{ color: '#0d9488', fontWeight: 600, textDecoration: 'none' }}>
+                    {t.name}
+                  </Link>
+                </td>
                 <td style={td}>{t.plan?.name ?? '（無方案）'}</td>
                 <td style={td}>{t._count.agents}</td>
                 <td style={td}>
