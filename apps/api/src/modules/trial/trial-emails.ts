@@ -95,6 +95,18 @@ const PROVISIONED_HTML = wrap({
     button('{{loginUrl}}', '前往登入'),
 });
 
+// 平台手動開通用：密碼由開通人員設定，信裡不能帶密碼，註明請洽開通人員
+const MANUAL_PROVISIONED_HTML = wrap({
+  emoji: '🎉',
+  heading: '站台已開通完成',
+  bodyHtml:
+    p('「<strong>{{siteName}}</strong>」站台已為您開通完成。') +
+    p('請使用本信箱（<strong>{{adminEmail}}</strong>）登入：') +
+    button('{{loginUrl}}', '前往登入') +
+    small('登入密碼由開通人員為您設定，請向開通人員索取；登入後建議立即修改密碼。') +
+    infobox('按鈕無法點擊？請複製以下連結至瀏覽器開啟：<br><a href="{{loginUrl}}" style="color:' + BRAND + ';">{{loginUrl}}</a>'),
+});
+
 const REMINDER_HTML = wrap({
   emoji: '⏰',
   heading: '試用即將到期',
@@ -157,6 +169,15 @@ export async function sendProvisionedEmail(
 ): Promise<void> {
   const html = render(PROVISIONED_HTML, vars);
   await safeSend(to, `【open333】試用站台已開通：${vars.siteName}`, html, { loginUrl: vars.loginUrl });
+}
+
+/** 平台手動開通信：不帶密碼（密碼由開通人員線下轉交），只帶登入網址。 */
+export async function sendManualProvisionedEmail(
+  to: string,
+  vars: { siteName: string; loginUrl: string; adminEmail: string },
+): Promise<void> {
+  const html = render(MANUAL_PROVISIONED_HTML, vars);
+  await safeSend(to, `【open333】站台已開通：${vars.siteName}`, html, { loginUrl: vars.loginUrl });
 }
 
 export async function sendReminderEmail(
