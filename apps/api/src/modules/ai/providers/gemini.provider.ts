@@ -159,10 +159,11 @@ export const GeminiChatProvider: ChatProvider = {
     return CURATED_CHAT_MODELS.map((m) => ({ ...m }));
   },
 
-  async health({ model }): Promise<ChatProviderHealth> {
+  async health({ model, apiKey: apiKeyOverride }): Promise<ChatProviderHealth> {
     let apiKey: string;
     try {
-      apiKey = getApiKey();
+      // 走三層 fallback：優先用呼叫端傳入的租戶 BYOK key，其次才退回全域 env。
+      apiKey = getApiKey(apiKeyOverride);
     } catch (err) {
       return {
         ok: false,
