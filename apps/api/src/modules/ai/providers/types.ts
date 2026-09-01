@@ -57,7 +57,7 @@ export interface ChatProvider {
   listModels(opts: { baseUrl?: string }): Promise<ChatModelInfo[]>;
 
   /** Quick health check — does this provider currently work? */
-  health(opts: { baseUrl?: string; model: string }): Promise<ChatProviderHealth>;
+  health(opts: { baseUrl?: string; model: string; apiKey?: string }): Promise<ChatProviderHealth>;
 }
 
 export interface ChatModelInfo {

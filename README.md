@@ -165,71 +165,68 @@ Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `Mac
 
 所有端點都在 `/api/v1/auth` 底下：
 
-| 方法 | 端點 | 用途 |
-| ---- | ---- | ---- |
-| `POST` | `/passkeys/register/options` | 已登入 Agent 取得註冊選項 |
-| `POST` | `/passkeys/register/verify` | 驗證並儲存 Passkey public key |
-| `POST` | `/passkeys/authentication/options` | 取得登入 challenge |
-| `POST` | `/passkeys/authentication/verify` | 驗證 Passkey 並核發現有 JWT Session |
-| `GET` | `/passkeys` | 列出目前 Agent 的 Passkey |
-| `PATCH` | `/passkeys/:id` | 重新命名 Passkey |
-| `DELETE` | `/passkeys/:id` | 撤銷 Passkey（soft revoke） |
+| 方法     | 端點                               | 用途                                |
+| -------- | ---------------------------------- | ----------------------------------- |
+| `POST`   | `/passkeys/register/options`       | 已登入 Agent 取得註冊選項           |
+| `POST`   | `/passkeys/register/verify`        | 驗證並儲存 Passkey public key       |
+| `POST`   | `/passkeys/authentication/options` | 取得登入 challenge                  |
+| `POST`   | `/passkeys/authentication/verify`  | 驗證 Passkey 並核發現有 JWT Session |
+| `GET`    | `/passkeys`                        | 列出目前 Agent 的 Passkey           |
+| `PATCH`  | `/passkeys/:id`                    | 重新命名 Passkey                    |
+| `DELETE` | `/passkeys/:id`                    | 撤銷 Passkey（soft revoke）         |
 
 ## 快速開始
 
 ### 前置需求
 
-- Node.js >= 18、pnpm >= 8、Docker & Docker Compose
+- Docker & Docker Compose（推薦路徑唯一需求）
+- 或本機安裝 Node.js >= 20、pnpm 9（透過 corepack 管理）
 
-### 啟動
+### 啟動（推薦：全容器化開發環境，支援 hot reload）
 
 ```bash
 git clone git@github.com:CreateIntelligens/open333crm.git
 cd open333crm
+
+cp .env.api.example .env.api
+cp .env.web.example .env.web
+cp .env.workers.example .env.workers
+
+# 第一次啟動：build image、安裝依賴、跑 migration/seed（需要幾分鐘）
+docker compose -f docker-compose.dev.yml up --build
+
+# 之後日常啟動
+docker compose -f docker-compose.dev.yml up
+```
+
+- Web：`http://localhost:3000`　API：`http://localhost:3001`
+- 整個 repo 掛載為 bind mount。你修改 `apps/*` 或 `packages/*` 下的任何檔案，容器會立即套用變更：`apps/api`、`apps/workers` 用 `tsx watch` 自動重啟，`apps/web` 用 Next.js Fast Refresh 熱更新，`packages/*` 用 `tsc --watch` 重新編譯。詳細機制請見 `docker-compose.dev.yml` 內的註解
+- Postgres 對外 **5433**、Redis 對外 **6380**、MinIO 對外 **9000**（console 為 **9001**）
+
+### 另一種方式：本機直接跑 app（Docker 只跑基礎設施）
+
+```bash
 pnpm install
-docker compose up -d
-```
+docker compose up -d postgres redis minio
 
-### 環境變數
+cp apps/api/.env.example .env         # 根目錄，API 讀這個
+cp .env.web.example apps/web/.env.local
+# 把 apps/web/.env.local 內的 NEXT_PUBLIC_API_URL 改成 http://localhost:3001/api
 
-```bash
-cp .env.example .env              # 根目錄（API 讀這個）
-cp apps/web/.env.example apps/web/.env
-```
-
-主要變數：
-
-```env
-DATABASE_URL=postgresql://crm:crmpassword@localhost:5432/open333crm
-REDIS_URL=redis://localhost:6380
-JWT_SECRET=your-jwt-secret
-S3_ENDPOINT=http://localhost:9000
-S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin
-S3_BUCKET=open333crm
-```
-
-> API 從**專案根目錄**的 `.env` 讀取，不是 `apps/api/.env`。
-
-### 初始化資料庫
-
-```bash
 pnpm db:generate
 pnpm --filter @open333crm/database exec prisma migrate deploy
 pnpm db:seed
-```
 
-### 啟動開發伺服器
-
-```bash
 pnpm dev                              # 同時啟動 API + Web
 pnpm --filter @open333crm/api dev     # 僅 API
 pnpm --filter @open333crm/web dev     # 僅 Web
 ```
 
+> API 從**專案根目錄**的 `.env` 讀取，不是 `apps/api/.env`。
+
 ### 登入
 
-seed 後可使用預設帳號登入。密碼請查看 `packages/database/prisma/seed.ts`。
+資料庫 seed 完成後，你可以用預設帳號登入。密碼請查看 `packages/database/prisma/seed.ts`。
 
 ## 常用指令
 
@@ -258,17 +255,17 @@ Base URL: `http://localhost:3001/api/v1`，JWT Bearer Token 認證。
 
 主要端點：
 
-| 模組     | 端點                                                     |
-| -------- | -------------------------------------------------------- |
-| 認證     | `POST /auth/login`、`GET /auth/me`                       |
-| 對話     | `GET /conversations`、`POST /conversations/:id/messages` |
-| 案件     | `GET /cases`、`POST /cases`                              |
-| 聯絡人   | `GET /contacts`、`POST /contacts`                        |
-| 自動化   | `GET /automation/rules`、`POST /automation/rules`        |
-| 分析     | `GET /analytics/overview`、`POST /analytics/export`      |
-| 行銷     | `GET /marketing/campaigns`、`POST /marketing/broadcasts` |
-| 短連結   | `GET /shortlinks`、`POST /shortlinks`                    |
-| 追蹤設定 | `GET /settings/tracking`、`PUT /settings/tracking`       |
+| 模組     | 端點                                                      |
+| -------- | --------------------------------------------------------- |
+| 認證     | `POST /auth/login`、`GET /auth/me`                        |
+| 對話     | `GET /conversations`、`POST /conversations/:id/messages`  |
+| 案件     | `GET /cases`、`POST /cases`                               |
+| 聯絡人   | `GET /contacts`、`POST /contacts`                         |
+| 自動化   | `GET /automation/rules`、`POST /automation/rules`         |
+| 分析     | `GET /analytics/overview`、`POST /analytics/export`       |
+| 行銷     | `GET /marketing/campaigns`、`POST /marketing/broadcasts`  |
+| 短連結   | `GET /shortlinks`、`POST /shortlinks`                     |
+| 追蹤設定 | `GET /settings/tracking`、`PUT /settings/tracking`        |
 | 渠道管理 | `GET /channels`、`POST /channels`、`PUT /channels/:id`    |
 | Webhook  | `GET /webhooks`、`POST /webhooks`、`DELETE /webhooks/:id` |
 
@@ -305,12 +302,13 @@ SSL 由 certbot 自動續約，無需手動操作。
 
 ### 環境變數檔案
 
-| 檔案            | 用途                              |
-| --------------- | --------------------------------- |
-| `.env`          | API（DB、Redis、JWT 等）          |
-| `.env.workers`  | Workers                           |
-| `apps/web/.env` | Web 前端                          |
-| `.env.prod`     | 線上部署（DOMAIN、CERTBOT_EMAIL） |
+| 檔案                   | 用途                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `.env.api`             | API（DB、Redis、JWT 等，`docker-compose*.yml` 讀這個）                                                        |
+| `.env.workers`         | Workers                                                                                                       |
+| `.env.web`             | Web 前端（`docker-compose*.yml` 讀這個）                                                                      |
+| `.env.prod`            | 線上部署（DOMAIN、CERTBOT_EMAIL）                                                                             |
+| `.env`（根目錄，選用） | 只有本機直接執行 `pnpm --filter @open333crm/api dev`（不透過 Docker）時才需要。API 會從專案根目錄讀取這個檔案 |
 
 ### 生產環境必須修改
 
