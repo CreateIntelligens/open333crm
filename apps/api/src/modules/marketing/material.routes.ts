@@ -11,9 +11,19 @@ import {
   listMaterialCategories,
   validateLineFlexDraft,
   importLineFlexMaterial,
+  listMaterialCategoryTree,
+  createMaterialCategory,
+  updateMaterialCategory,
+  deleteMaterialCategory,
+  listMaterialTags,
+  listMaterialVersions,
+  restoreMaterialVersion,
+  getMaterialStats,
+  type MaterialSort,
 } from './material.service.js';
-import { success, paginated } from '../../shared/utils/response.js';
+import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { generateFlexFromPrompt } from '../ai/flex-ai.service.js';
 
 // ─── ContentType / ChannelType enums ───────────────────────────────────
 
@@ -105,11 +115,17 @@ const variableSchema = z.object({
   required: z.boolean().optional(),
 });
 
+const MATERIAL_STATUS_VALUES = ['draft', 'approved'] as const;
+const tagsSchema = z.array(z.string().min(1).max(40)).max(20);
+
 const createMaterialSchema = z.object({
   templateId: z.string().uuid().optional(),
   name: z.string().min(1).max(200),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+  tags: tagsSchema.optional(),
+  status: z.enum(MATERIAL_STATUS_VALUES).optional(),
   channelType: z.enum(CHANNEL_TYPE_VALUES).optional(),
   contentType: z.enum(CONTENT_TYPE_VALUES).optional(),
   body: z.record(z.unknown()).optional(),
@@ -122,11 +138,28 @@ const updateMaterialSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+  tags: tagsSchema.optional(),
+  status: z.enum(MATERIAL_STATUS_VALUES).optional(),
   body: z.record(z.unknown()).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
   previewImageUrl: z.string().url().optional(),
   isActive: z.boolean().optional(),
+});
+
+const SORT_VALUES = ['recent_used', 'most_used', 'updated', 'name'] as const;
+
+const createCategorySchema = z.object({
+  name: z.string().min(1).max(100),
+  parentId: z.string().uuid().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+const updateCategorySchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  parentId: z.string().uuid().nullable().optional(),
+  sortOrder: z.number().int().optional(),
 });
 
 const previewMaterialSchema = z.object({
@@ -137,6 +170,10 @@ const previewMaterialSchema = z.object({
 const lineFlexValidateSchema = z.object({
   payload: z.unknown(),
   altText: z.string().max(400).optional(),
+});
+
+const lineFlexAiGenerateSchema = z.object({
+  prompt: z.string().min(1).max(500),
 });
 
 const lineFlexImportSchema = z.object({
@@ -154,24 +191,72 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
   fastify.addHook('preHandler', requirePermission('marketing.view'));
 
-  // GET /materials/categories
+  // GET /materials/categories — legacy 字串分類（過渡保留）
   fastify.get('/materials/categories', async (request, reply) => {
     const categories = await listMaterialCategories(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success(categories));
   });
 
+  // GET /materials/category-tree — 巢狀分類樹（含素材數）
+  fastify.get('/materials/category-tree', async (request, reply) => {
+    const tree = await listMaterialCategoryTree(request.tenantPrisma, request.agent.tenantId);
+    return reply.send(success(tree));
+  });
+
+  // POST /materials/categories — 建立分類
+  fastify.post('/materials/categories', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+    const data = createCategorySchema.parse(request.body);
+    const cat = await createMaterialCategory(request.tenantPrisma, request.agent.tenantId, data);
+    return reply.code(201).send(success(cat));
+  });
+
+  // PATCH /materials/categories/:id — 改名 / 搬移（擋循環）
+  fastify.patch('/materials/categories/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = updateCategorySchema.parse(request.body);
+    const cat = await updateMaterialCategory(request.tenantPrisma, id, request.agent.tenantId, data);
+    return reply.send(success(cat));
+  });
+
+  // DELETE /materials/categories/:id — 刪分類（其下素材 categoryId 設 null，不刪素材）
+  fastify.delete('/materials/categories/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await deleteMaterialCategory(request.tenantPrisma, id, request.agent.tenantId);
+    return reply.send(success(result));
+  });
+
+  // GET /materials/tags — 聚合租戶標籤
+  fastify.get('/materials/tags', async (request, reply) => {
+    const tags = await listMaterialTags(request.tenantPrisma, request.agent.tenantId);
+    return reply.send(success(tags));
+  });
+
   // GET /materials
   fastify.get('/materials', async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
+    const sort = SORT_VALUES.includes(q.sort as MaterialSort) ? (q.sort as MaterialSort) : undefined;
+    // tags 支援逗號分隔多值
+    const tags = q.tags ? q.tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined;
     const result = await listMaterials(request.tenantPrisma, request.agent.tenantId, {
       channelType: q.channelType,
       category: q.category,
+      categoryId: q.categoryId,
+      tags,
+      status: q.status,
+      sort,
       q: q.q,
       isActive: q.isActive === undefined ? true : q.isActive === 'true',
       page: q.page ? Number(q.page) : 1,
       limit: q.limit ? Number(q.limit) : 50,
     });
-    return reply.send(paginated(result.items, result.total, result.page, result.limit));
+    // 用量長條正規化基準（跨頁一致）併入 meta，前端計算長條寬度用。
+    const base = success(result.items, {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: Math.ceil(result.total / result.limit),
+    });
+    return reply.send({ ...base, meta: { ...base.meta!, maxUsageCount: result.maxUsageCount } });
   });
 
   // POST /materials
@@ -190,6 +275,13 @@ export default async function materialRoutes(fastify: FastifyInstance) {
     const result = await validateLineFlexDraft(request.tenantPrisma, request.agent.tenantId, data.payload, {
       altText: data.altText,
     });
+    return reply.send(success(result));
+  });
+
+  // POST /materials/line-flex/ai-generate — 一句話描述 → AI 產合法 Flex body（進填空編輯器微調）
+  fastify.post('/materials/line-flex/ai-generate', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
+    const data = lineFlexAiGenerateSchema.parse(request.body);
+    const result = await generateFlexFromPrompt(request.tenantPrisma, request.agent.tenantId, data.prompt);
     return reply.send(success(result));
   });
 
@@ -219,7 +311,10 @@ export default async function materialRoutes(fastify: FastifyInstance) {
   fastify.patch('/materials/:id', { preHandler: requirePermission('marketing.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = updateMaterialSchema.parse(request.body);
-    const material = await updateMaterial(request.tenantPrisma, id, request.agent.tenantId, data);
+    const material = await updateMaterial(request.tenantPrisma, id, request.agent.tenantId, {
+      ...data,
+      editedById: request.agent.id,
+    });
     return reply.send(success(material));
   });
 
@@ -243,5 +338,36 @@ export default async function materialRoutes(fastify: FastifyInstance) {
     const data = previewMaterialSchema.parse(request.body ?? {});
     const result = await previewMaterial(request.tenantPrisma, id, request.agent.tenantId, data);
     return reply.send(success(result));
+  });
+
+  // GET /materials/:id/versions — 版本歷史（新到舊）
+  fastify.get('/materials/:id/versions', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const versions = await listMaterialVersions(request.tenantPrisma, id, request.agent.tenantId);
+    return reply.send(success(versions));
+  });
+
+  // POST /materials/:id/versions/:versionNo/restore — 還原指定版（產生新版）
+  fastify.post(
+    '/materials/:id/versions/:versionNo/restore',
+    { preHandler: requirePermission('marketing.manage') },
+    async (request, reply) => {
+      const { id, versionNo } = request.params as { id: string; versionNo: string };
+      const n = Number(versionNo);
+      if (!Number.isInteger(n) || n < 1) {
+        return reply.code(400).send({ error: { code: 'INVALID_VERSION', message: 'versionNo 必須為正整數' } });
+      }
+      const material = await restoreMaterialVersion(
+        request.tenantPrisma, id, n, request.agent.tenantId, request.agent.id,
+      );
+      return reply.send(success(material));
+    },
+  );
+
+  // GET /materials/:id/stats — 素材級成效
+  fastify.get('/materials/:id/stats', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const stats = await getMaterialStats(request.tenantPrisma, id, request.agent.tenantId);
+    return reply.send(success(stats));
   });
 }

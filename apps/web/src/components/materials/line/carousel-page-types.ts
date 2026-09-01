@@ -60,8 +60,26 @@ export const PAGE_TYPE_OPTIONS: Array<{ value: CarouselPageType; label: string; 
   { value: 'image_text', label: '圖文', desc: '簡易圖文卡，含標題、文字、按鈕' },
 ];
 
+/**
+ * 各頁面類型的預設示範圖（AI 生成情境圖，public/material-samples/）。
+ * 新增頁面 / 切換頁面類型時自動帶入，讓使用者一進來即有貼合情境的圖可看，
+ * 上傳自己的圖後覆蓋。與 default-bodies 的 DEMO 對應一致。
+ */
+const SAMPLE_IMAGE_FOR_PAGE: Record<CarouselPageType, string> = {
+  product: '/material-samples/product.jpeg',
+  location: '/material-samples/place.jpeg',
+  person: '/material-samples/person.jpeg',
+  image_text: '/material-samples/cafe.jpeg',
+};
+
+/** 判斷某 imageUrl 是否為內建示範圖（非使用者自己上傳的）。 */
+function isSampleImage(url: string | undefined): boolean {
+  if (!url) return true;
+  return Object.values(SAMPLE_IMAGE_FOR_PAGE).includes(url);
+}
+
 export function createEmptyPage(pageType: CarouselPageType): CarouselPage {
-  const base: CarouselPage = {};
+  const base: CarouselPage = { imageUrl: SAMPLE_IMAGE_FOR_PAGE[pageType] };
   if (pageType === 'product') {
     base.price = { currency: 'NT$', amount: '' };
   }
@@ -72,6 +90,32 @@ export function createEmptyPage(pageType: CarouselPageType): CarouselPage {
     base.tags = [];
   }
   return base;
+}
+
+/**
+ * 切換頁面類型時保留共用欄位（label / title / description / action1 / action2），
+ * 只重設類型專屬欄位（price / address+extraInfo / name+tags），不清空、不需確認框。
+ * 圖片：若目前是內建示範圖則換成新類型的示範圖；使用者自己上傳的圖則保留。
+ */
+export function switchPageType(page: CarouselPage, newType: CarouselPageType): CarouselPage {
+  const next: CarouselPage = {
+    label: page.label,
+    imageUrl: isSampleImage(page.imageUrl) ? SAMPLE_IMAGE_FOR_PAGE[newType] : page.imageUrl,
+    title: page.title,
+    description: page.description,
+    action1: page.action1,
+    action2: page.action2,
+  };
+  if (newType === 'product') {
+    next.price = { currency: 'NT$', amount: '' };
+  }
+  if (newType === 'location') {
+    next.extraInfo = { type: '時間', value: '' };
+  }
+  if (newType === 'person') {
+    next.tags = [];
+  }
+  return next;
 }
 
 export function defaultCarouselBody(pageType: CarouselPageType = 'product'): CarouselBody {

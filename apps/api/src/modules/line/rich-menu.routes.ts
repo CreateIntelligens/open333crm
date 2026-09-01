@@ -16,6 +16,8 @@ import {
   duplicateRichMenu,
   publishRichMenu,
   unpublishRichMenu,
+  bindRichMenuToAudience,
+  unbindRichMenuFromAudience,
 } from './rich-menu.service.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -78,6 +80,12 @@ const listQuerySchema = z.object({
   channelId: z.string().uuid(),
 });
 
+// 綁定受眾：segment 或 tag 擇一（皆選填，service 內判斷至少一個）
+const audienceBindSchema = z.object({
+  segmentId: z.string().uuid().optional(),
+  tagId: z.string().uuid().optional(),
+});
+
 // ─── Routes ────────────────────────────────────────────────────────────
 
 export default async function richMenuRoutes(fastify: FastifyInstance) {
@@ -134,4 +142,29 @@ export default async function richMenuRoutes(fastify: FastifyInstance) {
     const menu = await unpublishRichMenu(request.tenantPrisma, request.params.id, request.agent.tenantId);
     return reply.send(success(menu));
   });
+
+  // POST /api/v1/line/rich-menus/:id/bind-audience — 綁定受眾（segment 或 tag）
+  // RBAC 由模組級 addHook requirePermission('richmenu.manage') 保護（見檔頭）。
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/bind-audience',
+    async (request, reply) => {
+      const { segmentId, tagId } = audienceBindSchema.parse(request.body ?? {});
+      const result = await bindRichMenuToAudience(
+        request.tenantPrisma, request.params.id, request.agent.tenantId, { segmentId, tagId },
+      );
+      return reply.send(success(result));
+    },
+  );
+
+  // POST /api/v1/line/rich-menus/:id/unbind-audience
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/unbind-audience',
+    async (request, reply) => {
+      const { segmentId, tagId } = audienceBindSchema.parse(request.body ?? {});
+      const result = await unbindRichMenuFromAudience(
+        request.tenantPrisma, request.params.id, request.agent.tenantId, { segmentId, tagId },
+      );
+      return reply.send(success(result));
+    },
+  );
 }

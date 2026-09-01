@@ -7,10 +7,29 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { Queue } from 'bullmq';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { isValidRichMenuSize } from './rich-menu.layouts.js';
 import { decryptCredentials } from '../channel/channel.service.js';
+import { calculateSegmentContacts } from '../marketing/segment.service.js';
+
+/** Rich Menu 分眾綁定的背景 queue（與 apps/workers 端消費者一致）。 */
+export const RICH_MENU_BIND_QUEUE = 'rich-menu-bind';
+
+let _bindQueue: Queue | null = null;
+function richMenuBindQueue(): Queue {
+  if (!_bindQueue) {
+    _bindQueue = new Queue(RICH_MENU_BIND_QUEUE, { connection: { url: process.env.REDIS_URL! } });
+  }
+  return _bindQueue;
+}
+
+export async function closeRichMenuBindQueue(): Promise<void> {
+  if (!_bindQueue) return;
+  await _bindQueue.close();
+  _bindQueue = null;
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -550,4 +569,98 @@ export async function unpublishRichMenu(
   });
   logger.info(`[RichMenu] unpublished id=${id}`);
   return updated;
+}
+
+// ─── 分眾綁定 ───────────────────────────────────────────────────────────
+
+/**
+ * 解析受眾（segment 或 tag）成該 channel 的 LINE uid 清單（去重）。
+ * segment → calculateSegmentContacts；tag → 直接篩 contactTag。再經 ChannelIdentity 取 LINE uid。
+ */
+async function resolveAudienceLineUids(
+  prisma: TenantDb,
+  tenantId: string,
+  channelId: string,
+  audience: { segmentId?: string; tagId?: string },
+): Promise<string[]> {
+  let contactIds: string[] = [];
+
+  if (audience.segmentId) {
+    const segment = await prisma.segment.findFirst({
+      where: { id: audience.segmentId, tenantId },
+    });
+    if (!segment) throw new AppError('受眾分群不存在', 'SEGMENT_NOT_FOUND', 404);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await calculateSegmentContacts(prisma, tenantId, segment.rules as any);
+    contactIds = res.contactIds;
+  } else if (audience.tagId) {
+    const rows = await prisma.contactTag.findMany({
+      where: { tagId: audience.tagId, contact: { tenantId } },
+      select: { contactId: true },
+    });
+    contactIds = [...new Set(rows.map((r) => r.contactId))];
+  } else {
+    throw new AppError('需指定 segmentId 或 tagId', 'AUDIENCE_REQUIRED', 400);
+  }
+
+  if (contactIds.length === 0) return [];
+
+  // contactIds → 該 channel 的 LINE uid（去重）。
+  // 租戶隔離已由 contactIds（前面經 tenantId 篩）+ channelId（本租戶 menu 的 channel）保證；
+  // ChannelIdentity 本身無 tenantId 欄位，靠這兩個外鍵即足夠。
+  const identities = await prisma.channelIdentity.findMany({
+    where: { contactId: { in: contactIds }, channelType: 'LINE', channelId },
+    select: { uid: true },
+  });
+  return [...new Set(identities.map((i) => i.uid))];
+}
+
+/**
+ * 把已發布的 Rich Menu 綁定給某受眾（不同受眾看不同 menu）。
+ * 解析出 uid → 入背景 queue（bulk link 每批 500 + rate limit，不阻塞 API）。回 { queued }。
+ */
+export async function bindRichMenuToAudience(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  audience: { segmentId?: string; tagId?: string },
+): Promise<{ queued: number }> {
+  const menu = await getRichMenu(prisma, id, tenantId);
+  if (menu.status !== 'published' || !menu.lineRichMenuId) {
+    throw new AppError('請先發布此 Rich Menu 才能綁定受眾', 'NOT_PUBLISHED', 400);
+  }
+  const uids = await resolveAudienceLineUids(prisma, tenantId, menu.channelId, audience);
+  if (uids.length === 0) return { queued: 0 };
+
+  await richMenuBindQueue().add('bind', {
+    tenantId,
+    channelId: menu.channelId,
+    lineRichMenuId: menu.lineRichMenuId,
+    uids,
+    op: 'link',
+  });
+  logger.info(`[RichMenu] queued bind menu=${id} to ${uids.length} users`);
+  return { queued: uids.length };
+}
+
+/** 對某受眾解除綁定（回到全體 default）。 */
+export async function unbindRichMenuFromAudience(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  audience: { segmentId?: string; tagId?: string },
+): Promise<{ queued: number }> {
+  const menu = await getRichMenu(prisma, id, tenantId);
+  const uids = await resolveAudienceLineUids(prisma, tenantId, menu.channelId, audience);
+  if (uids.length === 0) return { queued: 0 };
+
+  await richMenuBindQueue().add('unbind', {
+    tenantId,
+    channelId: menu.channelId,
+    lineRichMenuId: menu.lineRichMenuId,
+    uids,
+    op: 'unlink',
+  });
+  logger.info(`[RichMenu] queued unbind menu=${id} from ${uids.length} users`);
+  return { queued: uids.length };
 }

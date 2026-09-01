@@ -4,6 +4,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { recordCsatScore } from '../csat/csat.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
+import { addTagToTarget } from '../tag/tagging.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig } from './inbound-message.types.js';
 import {
@@ -13,10 +14,39 @@ import {
 } from './inbound-socket-presenter.js';
 
 export async function runInboundPostbackInterceptors(ctx: InboundMessageContext): Promise<boolean> {
+  // 點擊貼標：附加語意，不短路（貼完標仍讓該 postback 走後續 CSAT/KB/handoff 與正常訊息流程）。
+  await handleTagOnClick(ctx);
+
   if (await handleCsatResponse(ctx)) return true;
   if (await handleKbFeedback(ctx)) return true;
   if (await handleHandoffRequest(ctx)) return true;
   return false;
+}
+
+/**
+ * 素材 action 點擊後貼標：postback data（或 fallback textContent）為 `tag:<tagId>` 時，
+ * 對點擊者（contact）貼上該 CONTACT-scope 標籤。fire-and-forget——標籤不存在/scope 不符/
+ * 缺 contactId 都靜默略過，絕不中斷後續 postback 處理。貼標會發 contact.tagged（迴圈防護內建），
+ * 既有訂閱該事件的自動化自動被觸發。
+ */
+async function handleTagOnClick(ctx: InboundMessageContext): Promise<void> {
+  const source = ctx.postbackData || ctx.textContent || '';
+  const match = source.match(/^tag:([0-9a-f-]{36})$/i);
+  if (!match) return;
+  if (!ctx.contactId) return;
+
+  try {
+    await addTagToTarget(ctx.prisma, {
+      tenantId: ctx.tenantId,
+      targetType: 'CONTACT',
+      targetId: ctx.contactId,
+      tagId: match[1],
+      addedBy: 'system',
+    });
+  } catch (err) {
+    // 標籤已刪/scope 不符/其他 → 靜默略過，不影響此 postback 的其他處理。
+    logger.debug('[Webhook] tag-on-click 貼標略過:', err);
+  }
 }
 
 async function handleCsatResponse(ctx: InboundMessageContext): Promise<boolean> {

@@ -102,8 +102,17 @@ export function LineImagemapEditor({ body, onChange }: Props) {
             value={body.baseImageUrl ?? ''}
             onChange={(baseImageUrl) => onChange({ ...body, baseImageUrl })}
             placeholder={`寬 ${layout.width}px × 高 ${layout.height}px${layout.id === 'custom' ? '（高度 520-2080）' : ''}`}
+            // 自訂版型高度可變（520-2080），不做固定比例驗證；其餘版型要求比例符合。
+            requireAspectRatio={layout.id === 'custom' ? undefined : { width: layout.width, height: layout.height }}
+            // imagemap 底圖走專用端點：後端 sharp 產 5 尺寸，回不含副檔名的 baseUrl（LINE 規範）。
+            uploadEndpoint="/files/imagemap-upload"
+            extractUrl={(data) => (data.baseUrl as string) ?? ''}
           />
-          <div className="mt-1 text-[11px] text-slate-500">圖片需符合所選版型的尺寸；JPEG / PNG 格式，建議 ≤ 1MB</div>
+          <div className="mt-1 text-[11px] text-slate-500">
+            {layout.id === 'custom'
+              ? '底圖寬 1040px、高 520-2080px；JPEG / PNG 格式，建議 ≤ 1MB'
+              : `底圖需為 ${layout.width}:${layout.height} 比例（如 ${layout.width}×${layout.height}），比例不符會被擋下；JPEG / PNG，建議 ≤ 1MB`}
+          </div>
         </div>
       )}
 
@@ -250,7 +259,12 @@ function AreaCard({
       )}
 
       {/* 動作 */}
-      <ActionConfigEditor action={area.action} onChange={(action) => onUpdate({ action })} />
+      {/* imagemap 官方只支援 uri/message，不支援 postback（會被降級）→ 不給選 */}
+      <ActionConfigEditor
+        action={area.action}
+        onChange={(action) => onUpdate({ action })}
+        allowedTypes={['uri', 'message']}
+      />
     </div>
   );
 }

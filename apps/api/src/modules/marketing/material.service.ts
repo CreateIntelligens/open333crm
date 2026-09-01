@@ -25,6 +25,7 @@ import {
   type LineFlexMessageBody,
 } from '@open333crm/shared';
 import { decryptCredentials } from '../channel/channel.service.js';
+import { buildLineMessage } from '@open333crm/channel-plugins';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -33,6 +34,9 @@ export interface CreateMaterialInput {
   name: string;
   description?: string;
   category?: string;
+  categoryId?: string | null;
+  tags?: string[];
+  status?: string;
   channelType?: string;
   contentType?: string;
   body?: Record<string, unknown>;
@@ -46,21 +50,34 @@ export interface UpdateMaterialInput {
   name?: string;
   description?: string;
   category?: string;
+  categoryId?: string | null;
+  tags?: string[];
+  status?: string;
   body?: Record<string, unknown>;
   variables?: TemplateVariable[];
   targetChannels?: string[];
   previewImageUrl?: string;
   isActive?: boolean;
+  /** 觸發版本快照的編輯者（updateMaterial 內用；createMaterial 用 createdById）。 */
+  editedById?: string | null;
 }
+
+export type MaterialSort = 'recent_used' | 'most_used' | 'updated' | 'name';
 
 export interface ListMaterialsFilter {
   channelType?: string;
   category?: string;
+  categoryId?: string;
+  tags?: string[];
+  status?: string;
+  sort?: MaterialSort;
   q?: string;
   isActive?: boolean;
   page?: number;
   limit?: number;
 }
+
+const MATERIAL_STATUSES = ['draft', 'approved'];
 
 export interface ImportLineFlexMaterialInput {
   name: string;
@@ -214,6 +231,68 @@ async function validateLineFlexMessageWithLineApi(
   }
 }
 
+/**
+ * 儲存時跟 LINE 檢核素材格式（所有 LINE 版型通用）。
+ * 用「與實際發送相同的組裝邏輯」(buildLineMessage) 組出 LINE message，
+ * 打 LINE validate/push API；不符時擋下並回詳細說明（哪個 property 不符 + LINE 的訊息）。
+ *
+ * 只驗真的能組成 LINE message 的版型；圖片/影片等含 URL 的仍會被 LINE 檢查結構，
+ * 但本機相對路徑圖（/material-samples/...）LINE 抓不到 → 這類 URL 錯誤在儲存時不強制
+ * （素材可先存，發送到有公開域名的環境才需真實可達 URL），只擋「結構/欄位」層級的格式錯誤。
+ */
+async function validateLineMaterialWithLineApi(
+  prisma: TenantDb,
+  tenantId: string,
+  contentType: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  // 只驗 LINE 版型；flex_showcase / flex_template 已有專屬 validate（import 時），這裡涵蓋其餘。
+  if (!contentType.startsWith('line_')) return;
+  if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
+
+  let message: unknown;
+  try {
+    message = buildLineMessage(contentType, body);
+  } catch (err) {
+    throw new AppError(
+      `素材內容無法組成 LINE 訊息：${err instanceof Error ? err.message : String(err)}`,
+      'LINE_MATERIAL_BUILD_FAILED',
+      400,
+    );
+  }
+
+  // 無啟用中的 LINE channel / 未設 token 的租戶：無從呼叫 LINE validate，
+  // 跳過格式檢核（不擋存草稿）。素材仍可存、待設好 channel 後發送時才會用到。
+  let token: string;
+  try {
+    token = await getLineChannelAccessToken(prisma, tenantId);
+  } catch (err) {
+    if (
+      err instanceof AppError &&
+      (err.code === 'LINE_CHANNEL_NOT_FOUND' || err.code === 'LINE_CHANNEL_TOKEN_MISSING')
+    ) {
+      return; // 沒 channel/token → 略過驗證
+    }
+    throw err;
+  }
+
+  const response = await fetch('https://api.line.me/v2/bot/message/validate/push', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [message] }),
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.json().catch(() => ({}));
+    throw new AppError(
+      `素材格式不符合 LINE 規範：${formatLineValidateError(response.status, responseBody)}`,
+      'LINE_MATERIAL_VALIDATE_FAILED',
+      400,
+      { status: response.status, line: responseBody },
+    );
+  }
+}
+
 // ─── CRUD ───────────────────────────────────────────────────────────────
 
 export async function listMaterials(
@@ -221,11 +300,17 @@ export async function listMaterials(
   tenantId: string,
   filter: ListMaterialsFilter = {},
 ) {
-  const { channelType, category, q, isActive = true, page = 1, limit = 50 } = filter;
+  const {
+    channelType, category, categoryId, tags, status, sort = 'updated',
+    q, isActive = true, page = 1, limit = 50,
+  } = filter;
 
   const where: Record<string, unknown> = { tenantId, isActive };
   if (channelType) where.channelType = channelType;
   if (category) where.category = category;
+  if (categoryId) where.categoryId = categoryId;
+  if (status) where.status = status;
+  if (tags && tags.length > 0) where.tags = { hasSome: tags }; // 有任一標籤即命中
   if (q) {
     where.OR = [
       { name: { contains: q, mode: 'insensitive' } },
@@ -233,20 +318,37 @@ export async function listMaterials(
     ];
   }
 
-  const [items, total] = await Promise.all([
+  // 排序：最近使用 / 最常用 / 更新時間 / 名稱。
+  // recent_used：未使用（lastUsedAt = null）排最後，故 nulls: 'last'。
+  const orderBy: Record<string, unknown> =
+    sort === 'recent_used' ? { lastUsedAt: { sort: 'desc', nulls: 'last' } }
+    : sort === 'most_used' ? { usageCount: 'desc' }
+    : sort === 'name' ? { name: 'asc' }
+    : { updatedAt: 'desc' };
+
+  const [items, total, maxUsage] = await Promise.all([
     prisma.material.findMany({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: where as any,
-      include: { template: { select: { id: true, name: true, category: true } } },
-      orderBy: { updatedAt: 'desc' },
+      include: {
+        template: { select: { id: true, name: true, category: true } },
+        materialCategory: { select: { id: true, name: true } },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      orderBy: orderBy as any,
       skip: (page - 1) * limit,
       take: limit,
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     prisma.material.count({ where: where as any }),
+    // 用量長條正規化基準：租戶內（作用中）最大 usageCount。
+    prisma.material.aggregate({
+      where: { tenantId, isActive: true },
+      _max: { usageCount: true },
+    }),
   ]);
 
-  return { items, total, page, limit };
+  return { items, total, page, limit, maxUsageCount: maxUsage._max.usageCount ?? 0 };
 }
 
 export async function getMaterial(prisma: TenantDb, id: string, tenantId: string) {
@@ -301,6 +403,16 @@ export async function createMaterial(
     variables = [];
   }
 
+  if (input.status !== undefined && !MATERIAL_STATUSES.includes(input.status)) {
+    throw new AppError(`status must be one of ${MATERIAL_STATUSES.join(', ')}`, 'INVALID_STATUS', 400);
+  }
+  if (input.categoryId) {
+    await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
+  }
+
+  // 儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
+  await validateLineMaterialWithLineApi(prisma, tenantId, contentType, body);
+
   const material = await prisma.material.create({
     data: {
       tenantId,
@@ -308,6 +420,9 @@ export async function createMaterial(
       name: input.name,
       description: input.description ?? null,
       category: input.category ?? template?.category ?? null,
+      categoryId: input.categoryId ?? null,
+      tags: input.tags ?? [],
+      status: input.status ?? 'draft',
       channelType,
       contentType,
       body: body as Prisma.InputJsonValue,
@@ -317,6 +432,9 @@ export async function createMaterial(
       createdById: input.createdById ?? null,
     },
   });
+
+  // 首建即記 v1 快照（版本歷史從建立起算）。
+  await writeMaterialVersion(prisma, material, input.createdById ?? null);
 
   return material;
 }
@@ -334,6 +452,17 @@ export async function updateMaterial(
   if (input.name !== undefined) data.name = input.name;
   if (input.description !== undefined) data.description = input.description;
   if (input.category !== undefined) data.category = input.category;
+  if (input.categoryId !== undefined) {
+    if (input.categoryId) await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
+    data.categoryId = input.categoryId;
+  }
+  if (input.tags !== undefined) data.tags = input.tags;
+  if (input.status !== undefined) {
+    if (!MATERIAL_STATUSES.includes(input.status)) {
+      throw new AppError(`status must be one of ${MATERIAL_STATUSES.join(', ')}`, 'INVALID_STATUS', 400);
+    }
+    data.status = input.status;
+  }
   if (input.body !== undefined) {
     data.body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
       ? assertLineFlexMessageBody(input.body)
@@ -347,11 +476,22 @@ export async function updateMaterial(
   if (input.previewImageUrl !== undefined) data.previewImageUrl = input.previewImageUrl;
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
+  // body 有更新時，儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
+  if (input.body !== undefined) {
+    await validateLineMaterialWithLineApi(prisma, tenantId, existing.contentType, data.body as Record<string, unknown>);
+  }
+
   const updated = await prisma.material.update({
     where: { id },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: data as any,
   });
+
+  // 每次編輯（name / body 有異動時）記一版快照。只改 status/tags/category 等中繼資料
+  // 不算內容變更、不產版本，避免版本表被中繼欄位灌爆。
+  if (input.name !== undefined || input.body !== undefined) {
+    await writeMaterialVersion(prisma, updated, input.editedById ?? null);
+  }
   return updated;
 }
 
@@ -533,7 +673,7 @@ export async function getMaterialForSend(
   };
 }
 
-// ─── Categories ─────────────────────────────────────────────────────────
+// ─── Legacy string categories（過渡保留，前端已改用分類樹） ──────────────
 
 export async function listMaterialCategories(prisma: TenantDb, tenantId: string) {
   const rows = await prisma.material.findMany({
@@ -543,4 +683,245 @@ export async function listMaterialCategories(prisma: TenantDb, tenantId: string)
     orderBy: { category: 'asc' },
   });
   return rows.map((r) => r.category).filter(Boolean);
+}
+
+// ─── Governance: Version snapshot helpers ───────────────────────────────
+
+/** 寫一筆版本快照：versionNo = 該素材現有最大版號 + 1（首建為 1）。 */
+async function writeMaterialVersion(
+  prisma: TenantDb,
+  material: { id: string; tenantId: string; name: string; body: unknown },
+  editedById: string | null,
+) {
+  const last = await prisma.materialVersion.findFirst({
+    where: { materialId: material.id },
+    orderBy: { versionNo: 'desc' },
+    select: { versionNo: true },
+  });
+  const nextNo = (last?.versionNo ?? 0) + 1;
+  await prisma.materialVersion.create({
+    data: {
+      tenantId: material.tenantId,
+      materialId: material.id,
+      versionNo: nextNo,
+      name: material.name,
+      body: material.body as Prisma.InputJsonValue,
+      editedById,
+    },
+  });
+}
+
+/** 確認分類存在且屬於本租戶（RLS 已擋跨租戶，這裡再給明確 404）。 */
+async function assertCategoryBelongsToTenant(prisma: TenantDb, categoryId: string, tenantId: string) {
+  const cat = await prisma.materialCategory.findUnique({ where: { id: categoryId } });
+  if (!cat || cat.tenantId !== tenantId) {
+    throw new AppError('Category not found', 'CATEGORY_NOT_FOUND', 404);
+  }
+  return cat;
+}
+
+// ─── Governance: Category tree CRUD ─────────────────────────────────────
+
+/** 回傳租戶分類樹（含每分類的作用中素材數）。單層 parent→child 呈現。 */
+export async function listMaterialCategoryTree(prisma: TenantDb, tenantId: string) {
+  const [cats, counts] = await Promise.all([
+    prisma.materialCategory.findMany({
+      where: { tenantId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    }),
+    // groupBy 在 TenantDb union 型別下 TS 報 union-not-callable（見 RLS skill 陷阱 #3）；
+    // 局部 cast，執行期仍走 RLS 綁定。
+    (prisma.material as PrismaClient['material']).groupBy({
+      by: ['categoryId'],
+      where: { tenantId, isActive: true, categoryId: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+  const countMap = new Map(
+    counts.map((c: { categoryId: string | null; _count: { _all: number } }) => [c.categoryId, c._count._all]),
+  );
+  return cats.map((c) => ({ ...c, materialCount: countMap.get(c.id) ?? 0 }));
+}
+
+export async function createMaterialCategory(
+  prisma: TenantDb,
+  tenantId: string,
+  input: { name: string; parentId?: string | null; sortOrder?: number },
+) {
+  if (input.parentId) {
+    await assertCategoryBelongsToTenant(prisma, input.parentId, tenantId);
+  }
+  return prisma.materialCategory.create({
+    data: {
+      tenantId,
+      name: input.name,
+      parentId: input.parentId ?? null,
+      sortOrder: input.sortOrder ?? 0,
+    },
+  });
+}
+
+export async function updateMaterialCategory(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  input: { name?: string; parentId?: string | null; sortOrder?: number },
+) {
+  await assertCategoryBelongsToTenant(prisma, id, tenantId);
+
+  // 搬移：擋自我循環（不可把分類移到自己或自己的子孫下）。
+  if (input.parentId !== undefined && input.parentId !== null) {
+    if (input.parentId === id) {
+      throw new AppError('分類不可移到自己底下', 'CATEGORY_CYCLE', 400);
+    }
+    await assertCategoryBelongsToTenant(prisma, input.parentId, tenantId);
+    const descendants = await collectDescendantIds(prisma, tenantId, id);
+    if (descendants.has(input.parentId)) {
+      throw new AppError('分類不可移到自己的子分類底下', 'CATEGORY_CYCLE', 400);
+    }
+  }
+
+  const data: Record<string, unknown> = {};
+  if (input.name !== undefined) data.name = input.name;
+  if (input.parentId !== undefined) data.parentId = input.parentId;
+  if (input.sortOrder !== undefined) data.sortOrder = input.sortOrder;
+  return prisma.materialCategory.update({ where: { id }, data: data as Prisma.MaterialCategoryUpdateInput });
+}
+
+/** 蒐集某分類的所有子孫 id（BFS）。租戶內全撈避免多次查詢。 */
+async function collectDescendantIds(prisma: TenantDb, tenantId: string, rootId: string): Promise<Set<string>> {
+  const all = await prisma.materialCategory.findMany({
+    where: { tenantId },
+    select: { id: true, parentId: true },
+  });
+  const childrenOf = new Map<string, string[]>();
+  for (const c of all) {
+    if (!c.parentId) continue;
+    const arr = childrenOf.get(c.parentId) ?? [];
+    arr.push(c.id);
+    childrenOf.set(c.parentId, arr);
+  }
+  const out = new Set<string>();
+  const queue = [rootId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const child of childrenOf.get(cur) ?? []) {
+      if (!out.has(child)) { out.add(child); queue.push(child); }
+    }
+  }
+  return out;
+}
+
+/** 刪分類：其下素材 categoryId 由 FK ON DELETE SET NULL 自動歸零（不刪素材）。 */
+export async function deleteMaterialCategory(prisma: TenantDb, id: string, tenantId: string) {
+  await assertCategoryBelongsToTenant(prisma, id, tenantId);
+  await prisma.materialCategory.delete({ where: { id } });
+  return { deleted: true };
+}
+
+// ─── Governance: Tags ───────────────────────────────────────────────────
+
+/** 聚合租戶所有作用中素材的 distinct 標籤（無標籤表，即時彙總）。 */
+export async function listMaterialTags(prisma: TenantDb, tenantId: string): Promise<string[]> {
+  const rows = await prisma.material.findMany({
+    where: { tenantId, isActive: true },
+    select: { tags: true },
+  });
+  const set = new Set<string>();
+  for (const r of rows) for (const t of r.tags) set.add(t);
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// ─── Governance: Version history & restore ──────────────────────────────
+
+export async function listMaterialVersions(prisma: TenantDb, materialId: string, tenantId: string) {
+  await getMaterial(prisma, materialId, tenantId); // ensure 屬本租戶
+  return prisma.materialVersion.findMany({
+    where: { materialId },
+    orderBy: { versionNo: 'desc' },
+  });
+}
+
+/**
+ * 還原到指定版本：把該版 name/body 寫回 Material，並產生一個新版（還原＝一次新編輯，
+ * 線性歷史不破壞）。
+ */
+export async function restoreMaterialVersion(
+  prisma: TenantDb,
+  materialId: string,
+  versionNo: number,
+  tenantId: string,
+  editedById: string | null,
+) {
+  const material = await getMaterial(prisma, materialId, tenantId);
+  const version = await prisma.materialVersion.findUnique({
+    where: { materialId_versionNo: { materialId, versionNo } },
+  });
+  if (!version) {
+    throw new AppError('Version not found', 'VERSION_NOT_FOUND', 404);
+  }
+  const updated = await prisma.material.update({
+    where: { id: materialId },
+    data: {
+      name: version.name,
+      body: version.body as Prisma.InputJsonValue,
+    },
+  });
+  // 還原本身記為新版（快照的是還原後＝該舊版的內容）。
+  await writeMaterialVersion(prisma, updated, editedById);
+  return updated;
+}
+
+// ─── Governance: Per-material performance stats ─────────────────────────
+
+/**
+ * 素材成效：使用次數 / 最後使用 / 回覆數 / 開案數（由 BroadcastRecipient 歸因回素材）。
+ * 點擊率若無歸因資料（無短連結）回 null，UI 顯示「暫無資料」而非 0。
+ */
+export async function getMaterialStats(prisma: TenantDb, materialId: string, tenantId: string) {
+  const material = await getMaterial(prisma, materialId, tenantId);
+
+  // 該素材的所有廣播 → 其 recipients 的 replied / caseId 聚合。
+  const broadcasts = await prisma.broadcast.findMany({
+    where: { materialId, tenantId },
+    select: { id: true },
+  });
+  const broadcastIds = broadcasts.map((b) => b.id);
+
+  let replyCount = 0;
+  let casesOpened = 0;
+  let totalRecipients = 0;
+  if (broadcastIds.length > 0) {
+    [replyCount, casesOpened, totalRecipients] = await Promise.all([
+      prisma.broadcastRecipient.count({ where: { broadcastId: { in: broadcastIds }, replied: true } }),
+      prisma.broadcastRecipient.count({ where: { broadcastId: { in: broadcastIds }, caseId: { not: null } } }),
+      prisma.broadcastRecipient.count({ where: { broadcastId: { in: broadcastIds } } }),
+    ]);
+  }
+
+  // 素材級點擊歸因：經該素材產生的短連結（ShortLink.materialId）聚合點擊數。
+  const materialShortLinks = await prisma.shortLink.findMany({
+    where: { materialId, tenantId },
+    select: { totalClicks: true },
+  });
+  const hasClickAttribution = materialShortLinks.length > 0;
+  const clickCount = materialShortLinks.reduce((sum, l) => sum + (l.totalClicks ?? 0), 0);
+
+  // 點擊率 = 點擊數 ÷ 總發送收件人數（非廣播次數 usageCount，否則 CTR 會暴增）。
+  // 無短連結歸因資料或未送出 → null（不假造 0）。
+  const clickThroughRate =
+    hasClickAttribution && totalRecipients > 0
+      ? Math.round((clickCount / totalRecipients) * 100)
+      : null;
+
+  return {
+    materialId,
+    usageCount: material.usageCount,
+    lastUsedAt: material.lastUsedAt,
+    replyCount,
+    casesOpened,
+    clickCount: hasClickAttribution ? clickCount : null,
+    // 點擊率基於廣播發送（%）。無資料回 null（UI 顯示「暫無資料」）。
+    clickThroughRate,
+  };
 }

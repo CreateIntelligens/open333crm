@@ -233,6 +233,8 @@ model Tenant {
   partnerApiKeys          PartnerApiKey[]
   cliSessions             CliSession[]
   materials               Material[]
+  materialCategories      MaterialCategory[]
+  materialVersions        MaterialVersion[]
   richMenus               RichMenu[]
   chatboxSessions         ChatboxSession[]
   passkeyCredentials      PasskeyCredential[]
@@ -998,7 +1000,10 @@ model Material {
   templateId      String?   @db.Uuid
   name            String
   description     String?
-  category        String?
+  category        String? // 舊字串分類，過渡保留（新走 categoryId），見 improve-material-library-governance
+  categoryId      String?   @db.Uuid
+  tags            String[]  @default([])
+  status          String    @default("draft") // 顯示用：draft / approved（送審狀態機另開 change）
   channelType     String
   contentType     String
   body            Json
@@ -1012,13 +1017,53 @@ model Material {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  tenant     Tenant           @relation(fields: [tenantId], references: [id])
-  template   MessageTemplate? @relation(fields: [templateId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  template   MessageTemplate?  @relation(fields: [templateId], references: [id])
+  materialCategory MaterialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   broadcasts Broadcast[]
+  versions   MaterialVersion[]
+  shortLinks ShortLink[]
 
   @@index([tenantId, channelType])
   @@index([tenantId, isActive])
+  @@index([tenantId, categoryId])
   @@map("materials")
+}
+
+model MaterialCategory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  parentId  String?  @db.Uuid
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id])
+  parent    MaterialCategory?  @relation("MaterialCategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  MaterialCategory[] @relation("MaterialCategoryTree")
+  materials Material[]
+
+  @@index([tenantId, parentId])
+  @@map("material_categories")
+}
+
+model MaterialVersion {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @db.Uuid
+  materialId String   @db.Uuid
+  versionNo  Int
+  name       String
+  body       Json
+  editedById String?  @db.Uuid
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, versionNo])
+  @@index([materialId, versionNo])
+  @@map("material_versions")
 }
 
 model TemplateView {
@@ -1444,6 +1489,7 @@ model ShortLink {
   utmContent    String?
   utmTerm       String?
   tagOnClick    String?   @db.Uuid
+  materialId    String?   @db.Uuid
   isActive      Boolean   @default(true)
   expiresAt     DateTime?
   totalClicks   Int       @default(0)
@@ -1454,11 +1500,13 @@ model ShortLink {
 
   tenant      Tenant     @relation(fields: [tenantId], references: [id])
   lineChannel Channel?   @relation("ShortLinkLineChannel", fields: [lineChannelId], references: [id])
+  material    Material?  @relation(fields: [materialId], references: [id], onDelete: SetNull)
   clickLogs   ClickLog[]
 
   @@index([tenantId])
   @@index([slug])
   @@index([lineChannelId])
+  @@index([materialId])
   @@map("short_links")
 }
 

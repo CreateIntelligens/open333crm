@@ -12,6 +12,7 @@ import {
   type TemplateVariable,
 } from './template-renderer.js';
 import { resolveContext } from './template-context.js';
+import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js';
 
 // --- Template CRUD ---
 
@@ -223,6 +224,59 @@ export async function cancelBroadcast(prisma: TenantDb, id: string, tenantId: st
 }
 
 /**
+ * 遞迴走訪素材 body，把所有 `{ type:'uri', uri }` 動作的 uri 換成帶 materialId 的短連結，
+ * 讓廣播點擊可歸因回素材（素材層共用一條，非 per-recipient）。
+ * 涵蓋所有版型（carousel action1/2、imagemap area.action、video endCard、flex button）——
+ * 靠遞迴找 type==='uri' 物件，不綁死結構。回傳深拷貝後的新 body（不改原素材）。
+ */
+async function convertBodyUrlsToShortLinks(
+  prisma: PrismaClient,
+  tenantId: string,
+  createdById: string,
+  materialId: string,
+  lineChannelId: string | null,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const clone: unknown = JSON.parse(JSON.stringify(body));
+
+  async function walk(node: unknown): Promise<void> {
+    if (Array.isArray(node)) {
+      for (const item of node) await walk(item);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+      // LINE Flex 的連結按鈕是 action.uri；本地版型是 {type:'uri', uri}。兩種都攔。
+      // action 上若有 tagOnClick（點擊後貼標），一併灌進短連結，並從 body 移除
+      // （tagOnClick 是內部欄位，若留在 flex button action 會流進 LINE payload 被擋 unknown field）。
+      if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri) {
+        obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
+          materialId,
+          targetUrl: obj.uri,
+          lineChannelId,
+          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
+        });
+        delete obj.tagOnClick;
+      }
+      // imagemap 轉出的 linkUri（builders 用 linkUri），也一併處理
+      if (typeof obj.linkUri === 'string' && obj.linkUri) {
+        obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
+          materialId,
+          targetUrl: obj.linkUri,
+          lineChannelId,
+          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
+        });
+        delete obj.tagOnClick;
+      }
+      for (const key of Object.keys(obj)) await walk(obj[key]);
+    }
+  }
+
+  await walk(clone);
+  return clone as Record<string, unknown>;
+}
+
+/**
  * Execute a broadcast: resolve audience, send personalized messages, update stats.
  */
 export async function executeBroadcast(
@@ -269,6 +323,25 @@ export async function executeBroadcast(
       contentType = material.contentType;
       body = material.body as Record<string, unknown>;
       sourceVars = (material.variables || []) as unknown as TemplateVariable[];
+
+      // 素材級點擊歸因：把 body 內的外部連結換成帶 materialId 的短連結（素材層共用，
+      // 所有收件人同一條）。失敗不阻斷發送——退回原 body。
+      if (broadcast.createdById) {
+        try {
+          // lineChannelId 傳 null：它只影響短連結的 UA 轉址策略，與素材點擊歸因無關；
+          // 且此處未載入 channel 型別，傳 channelId 可能觸發 assertLineChannel 對 FB channel 報錯。
+          body = await convertBodyUrlsToShortLinks(
+            prisma as PrismaClient,
+            broadcast.tenantId,
+            broadcast.createdById,
+            material.id,
+            null,
+            body,
+          );
+        } catch (err) {
+          logger.error('[Broadcast] URL→shortlink conversion failed, sending original body:', err);
+        }
+      }
     } else {
       const template = await prisma.messageTemplate.findFirst({
         where: {
@@ -299,7 +372,18 @@ export async function executeBroadcast(
     if (!plugin) {
       throw new AppError(`No plugin for channel type: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
     }
-    const credentials = decryptCredentials(channel.credentialsEncrypted);
+    // 憑證解密：金鑰不符（如從其他環境 sync 來的 token）會拋原生錯，
+    // 包成友善 AppError 避免冒成裸 500「An unexpected error occurred」。
+    let credentials: Record<string, unknown>;
+    try {
+      credentials = decryptCredentials(channel.credentialsEncrypted);
+    } catch {
+      throw new AppError(
+        '此渠道的憑證無法解密（金鑰不符，常見於從其他環境同步過來的資料）。請到渠道設定重新填入 Access Token 後再發送。',
+        'CHANNEL_CREDENTIAL_DECRYPT_FAILED',
+        400,
+      );
+    }
 
     // Resolve audience
     const identities = await resolveAudience(prisma, broadcast);
@@ -310,13 +394,19 @@ export async function executeBroadcast(
       data: { totalCount: identities.length },
     });
 
-    // ── 0 受眾 early return：避免 failedCount===length===0 落入 status=failed ──
+    // 0 受眾：手動挑選/標籤/分群卻解析不到任何可發送對象時，回明確錯誤而非默默「完成」，
+    // 避免使用者以為發成功了其實沒發（如手動挑選未選人、或選的人在此渠道沒有身分）。
     if (identities.length === 0) {
-      await prisma.broadcast.update({
-        where: { id: broadcastId },
-        data: { status: 'completed', successCount: 0, failedCount: 0 },
-      });
-      return { total: 0, success: 0, failed: 0 };
+      const reason =
+        broadcast.targetType === 'contacts'
+          ? '未選擇任何發送對象，或所選對象在此渠道沒有可發送的身分。請先挑選有加入此渠道的對象。'
+          : broadcast.targetType === 'tags'
+            ? '所選標籤下沒有可在此渠道發送的對象。'
+            : broadcast.targetType === 'segment'
+              ? '所選分群目前沒有可在此渠道發送的對象。'
+              : '此渠道目前沒有可發送的對象。';
+      // 拋出後由外層 catch 統一標 failed（0 受眾＝送不出去，算失敗）。
+      throw new AppError(reason, 'BROADCAST_NO_RECIPIENTS', 400);
     }
 
     const extractedKeys = extractVariables(body);

@@ -487,9 +487,16 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── contact.tagged ──────────────────────────────────────────────────────
   eventBus.subscribe('contact.tagged', async (event: AppEvent) => {
     try {
-      const { contactId } = event.payload as {
+      const { contactId, source } = event.payload as {
         contactId?: string;
+        source?: string;
       };
+
+      // 迴圈防護：automation 規則貼標產生的 contact.tagged 不再觸發評估，
+      // 避免「貼標→規則→又貼標」無限迴圈。人工(agent)/點擊(system)貼標才觸發。
+      if (source === 'automation') {
+        return;
+      }
 
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
@@ -541,15 +548,16 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   // ── link.clicked ──────────────────────────────────────────────────────────
   eventBus.subscribe('link.clicked', async (event: AppEvent) => {
     try {
-      const { contactId, shortLinkId } = event.payload as {
+      const { contactId, shortLinkId, slug } = event.payload as {
         contactId?: string;
         shortLinkId?: string;
+        slug?: string;
       };
 
       await automationQueue().add('automation:evaluate', {
         tenantId: event.tenantId,
         trigger: 'link.clicked',
-        context: { contactId, shortLinkId },
+        context: { contactId, shortLinkId, slug },
       }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue link.clicked', err));
     } catch (err) {
       logger.error('[AutomationWorker] Error handling link.clicked:', err);

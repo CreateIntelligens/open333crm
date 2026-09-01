@@ -21,6 +21,7 @@ import {
   PAGE_TYPE_OPTIONS,
   LABEL_COLORS,
   createEmptyPage,
+  switchPageType,
   type CarouselBody,
   type CarouselPage,
   type CarouselPageType,
@@ -74,9 +75,8 @@ export function LineCarouselEditor({ body, onChange }: Props) {
 
   const changePageType = (newType: CarouselPageType) => {
     if (newType === body.pageType) return;
-    if (!confirm('切換頁面類型會清空目前所有頁面內容，確定嗎？')) return;
-    onChange({ pageType: newType, pages: [createEmptyPage(newType)] });
-    setCurrentIdx(0);
+    // 保留共用欄位（圖片/標題/文字/動作），只重設類型專屬欄位；不清空、不需確認框。
+    onChange({ pageType: newType, pages: body.pages.map((p) => switchPageType(p, newType)) });
   };
 
   return (
@@ -176,7 +176,11 @@ function PageFieldsEditor({ pageType, page, onChange }: { pageType: CarouselPage
 
       {/* 圖片（共用，必選） */}
       <FieldRow label="圖片">
-        <CompactImageField value={page.imageUrl ?? ''} onChange={(imageUrl) => onChange({ ...page, imageUrl: imageUrl || undefined })} />
+        <CompactImageField
+          value={page.imageUrl ?? ''}
+          onChange={(imageUrl) => onChange({ ...page, imageUrl: imageUrl || undefined })}
+          hint="建議比例 20:13（如 1024×665）；LINE 以此比例置中裁切填滿，過寬或過高會被裁掉。"
+        />
       </FieldRow>
 
       {/* 人物：姓名（必填） */}
@@ -494,7 +498,11 @@ function EndPageEditor({ body, onChange }: { body: CarouselBody; onChange: (next
       {body.endPage && (
         <div className="mt-4 space-y-4">
           <FieldRow label="圖片">
-            <CompactImageField value={body.endPage.imageUrl ?? ''} onChange={(url) => onChange({ ...body, endPage: { ...body.endPage!, imageUrl: url || undefined } })} />
+            <CompactImageField
+              value={body.endPage.imageUrl ?? ''}
+              onChange={(url) => onChange({ ...body, endPage: { ...body.endPage!, imageUrl: url || undefined } })}
+              hint="建議比例 20:13（如 1024×665）；以此比例置中裁切填滿。"
+            />
           </FieldRow>
           <FieldRow label="CTA 按鈕文字">
             <CountedInput

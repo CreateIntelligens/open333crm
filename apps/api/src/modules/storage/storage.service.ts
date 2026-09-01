@@ -27,7 +27,7 @@ function getProvider(): StorageProvider {
   return _provider;
 }
 
-export type StorageDirectory = 'media' | 'templates' | 'exports' | 'avatars';
+export type StorageDirectory = 'media' | 'templates' | 'exports' | 'avatars' | 'imagemap';
 
 /**
  * Build an organized storage key: {tenantId}/{directory}/{subPath?}/{uuid}.{ext}
@@ -105,4 +105,49 @@ export async function presignUpload(
 ): Promise<{ key: string; uploadUrl: string }> {
   const key = buildStorageKey(tenantId, directory, filename, subPath);
   return getProvider().presignUpload(key, mimeType);
+}
+
+/** 取出物件內容為 Buffer（供公開圖端 route 代理讀取）。找不到回 null。 */
+export async function getObject(key: string): Promise<{ buffer: Buffer; contentType?: string } | null> {
+  return getProvider().getObject(key);
+}
+
+// ─── LINE imagemap 多尺寸底圖 ─────────────────────────────────────
+
+/** LINE imagemap 要求底圖提供的 5 種寬度（LINE 依裝置抓對應解析度）。 */
+export const IMAGEMAP_WIDTHS = [240, 300, 460, 700, 1040] as const;
+
+/** imagemap 一組多尺寸圖的 MinIO key 前綴（不含尺寸）：{tenantId}/imagemap/{imageId}/ */
+export function imagemapKeyPrefix(tenantId: string, imageId: string): string {
+  return `${tenantId}/imagemap/${imageId}`;
+}
+
+/** 單一尺寸的 key：{tenantId}/imagemap/{imageId}/{width}（刻意不含副檔名，對齊 LINE baseUrl/{width} 規範）。 */
+export function imagemapSizeKey(tenantId: string, imageId: string, width: number): string {
+  return `${imagemapKeyPrefix(tenantId, imageId)}/${width}`;
+}
+
+/**
+ * 上傳 imagemap 底圖：用 sharp 把原圖產生 5 種寬度（等比縮放，只縮不放大），
+ * 每個尺寸存成一個不含副檔名的 MinIO key。回傳 imageId 供組 baseUrl。
+ * LINE 抓圖走公開 route `/line-imagemap/{tenantId}/{imageId}/{width}`。
+ */
+export async function uploadImagemapBase(
+  buffer: Buffer,
+  tenantId: string,
+): Promise<{ imageId: string }> {
+  const { default: sharp } = await import('sharp');
+  const imageId = randomUUID();
+
+  await Promise.all(
+    IMAGEMAP_WIDTHS.map(async (width) => {
+      const resized = await sharp(buffer)
+        .resize({ width, withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      await getProvider().upload(resized, imagemapSizeKey(tenantId, imageId, width), 'image/jpeg');
+    }),
+  );
+
+  return { imageId };
 }

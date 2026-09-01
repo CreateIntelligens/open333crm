@@ -50,6 +50,7 @@ import notificationRoutes from './modules/notification/notification.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
 import storageRoutes from './modules/storage/storage.routes.js';
+import lineImagemapRoutes from './modules/storage/line-imagemap.routes.js';
 import { ensureBucket } from './modules/storage/storage.service.js';
 import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-subscription.routes.js';
 import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
@@ -158,6 +159,7 @@ export async function bootstrap() {
   await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
   await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });
   await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
+  await app.register(lineImagemapRoutes, { prefix: '/line-imagemap' });
   await app.register(canvasRoutes, { prefix: '/api/v1/canvas' });
   await app.register(identityRoutes, { prefix: '/api/v1/identity' });
   await app.register(webchatRoutes, { prefix: '/api/v1/webchat' });

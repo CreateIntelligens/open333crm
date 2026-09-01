@@ -74,6 +74,22 @@ export class S3StorageProvider implements StorageProvider {
     return `${this.publicUrl}/${this.bucket}/${key}`;
   }
 
+  async getObject(key: string): Promise<{ buffer: Buffer; contentType?: string } | null> {
+    try {
+      const res = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      if (!res.Body) return null;
+      const bytes = await res.Body.transformToByteArray();
+      return { buffer: Buffer.from(bytes), contentType: res.ContentType };
+    } catch (err) {
+      // 找不到物件（NoSuchKey）或其他讀取錯誤 → 回 null，由呼叫端回 404。
+      if ((err as { name?: string })?.name === 'NoSuchKey') return null;
+      logger.warn(`[Storage] getObject failed for key ${key}:`, err);
+      return null;
+    }
+  }
+
   async delete(key: string): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({
