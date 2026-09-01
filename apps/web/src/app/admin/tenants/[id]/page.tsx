@@ -73,7 +73,11 @@ export default function TenantDetailPage() {
     setSaving(true);
     setMsg('');
     try {
-      await platformApi.patch(`/tenants/${tenant.id}`, { name: form.name, planSlug: form.planSlug });
+      // 無方案租戶 planSlug 為空字串，送出會被後端 zod min(1) 擋 → 空值時整個欄位省略
+      await platformApi.patch(`/tenants/${tenant.id}`, {
+        name: form.name.trim(),
+        planSlug: form.planSlug || undefined,
+      });
       setMsgOk(true);
       setMsg('✓ 基本資料已儲存');
       await load();
