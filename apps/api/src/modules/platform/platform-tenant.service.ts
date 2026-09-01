@@ -88,6 +88,45 @@ export async function updateTenant(
   return updated;
 }
 
+/** 平台修改租戶成員 email（即登入帳號）。email 全域唯一，衝突回 409。 */
+export async function updateTenantAgentEmail(
+  prisma: PrismaClient,
+  tenantId: string,
+  agentId: string,
+  email: string,
+) {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, tenantId },
+    select: { id: true, email: true },
+  });
+  if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  if (agent.email === email) return { id: agent.id, email: agent.email };
+
+  const dup = await prisma.agent.findUnique({ where: { email }, select: { id: true } });
+  if (dup) throw new AppError('Email already in use', 'CONFLICT', 409);
+
+  return prisma.agent.update({ where: { id: agentId }, data: { email }, select: { id: true, email: true } });
+}
+
+/** 重寄開通信給指定成員（帶登入網址、不含密碼；寄送失敗只 log 不拋錯）。 */
+export async function resendWelcomeEmail(prisma: PrismaClient, tenantId: string, agentId: string) {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, tenantId },
+    select: { email: true },
+  });
+  if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+  if (!tenant) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+
+  const loginUrl = `${getConfig().WEB_BASE_URL}/login`;
+  await sendManualProvisionedEmail(agent.email, {
+    siteName: tenant.name,
+    loginUrl,
+    adminEmail: agent.email,
+  });
+  return { ok: true, email: agent.email };
+}
+
 export async function setTenantActive(prisma: PrismaClient, id: string, isActive: boolean) {
   const existing = await prisma.tenant.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw new AppError('Tenant not found', 'NOT_FOUND', 404);

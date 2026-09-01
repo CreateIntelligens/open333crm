@@ -109,6 +109,41 @@ export default function TenantDetailPage() {
     }
   };
 
+  // 成員 email inline 編輯：記錄「正在編輯的成員 id + email 草稿」
+  const [editingAgent, setEditingAgent] = useState<{ id: string; email: string } | null>(null);
+
+  const saveAgentEmail = async () => {
+    if (!tenant || !editingAgent) return;
+    setSaving(true);
+    setMsg('');
+    try {
+      await platformApi.patch(`/tenants/${tenant.id}/agents/${editingAgent.id}`, { email: editingAgent.email });
+      setMsgOk(true);
+      setMsg(`✓ 成員 Email 已改為 ${editingAgent.email}（登入帳號同步變更）`);
+      setEditingAgent(null);
+      await load();
+    } catch (err: unknown) {
+      showError(err, '成員 Email 儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resendWelcome = async (agentId: string, email: string) => {
+    if (!tenant) return;
+    setSaving(true);
+    setMsg('');
+    try {
+      await platformApi.post(`/tenants/${tenant.id}/agents/${agentId}/resend-welcome`);
+      setMsgOk(true);
+      setMsg(`✓ 開通信已重寄至 ${email}（信中不含密碼，密碼請自行轉交）`);
+    } catch (err: unknown) {
+      showError(err, '開通信重寄失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleActive = async () => {
     if (!tenant) return;
     setSaving(true);
@@ -246,18 +281,57 @@ export default function TenantDetailPage() {
               <th style={th}>角色</th>
               <th style={th}>狀態</th>
               <th style={th}>建立時間</th>
+              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
             {tenant.agents.map((a) => (
               <tr key={a.id} style={{ borderTop: '1px solid #eef1f5' }}>
                 <td style={td}>{a.name}</td>
-                <td style={td}>{a.email}</td>
+                <td style={td}>
+                  {editingAgent?.id === a.id ? (
+                    <input
+                      type="email"
+                      value={editingAgent.email}
+                      onChange={(e) => setEditingAgent({ ...editingAgent, email: e.target.value })}
+                      style={{ ...inp, width: 240, padding: '5px 8px', fontSize: 13 }}
+                    />
+                  ) : (
+                    a.email
+                  )}
+                </td>
                 <td style={td}>{a.role}</td>
                 <td style={td}>
                   <span style={{ color: a.isActive ? '#17935b' : '#d1443e' }}>{a.isActive ? '啟用' : '停用'}</span>
                 </td>
                 <td style={td}>{fmtDate(a.createdAt)}</td>
+                <td style={td}>
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    {editingAgent?.id === a.id ? (
+                      <>
+                        <button
+                          onClick={saveAgentEmail}
+                          disabled={saving || !editingAgent.email.trim()}
+                          style={{ ...rowBtn, background: '#0d9488', color: '#fff', border: 'none' }}
+                        >
+                          儲存
+                        </button>
+                        <button onClick={() => setEditingAgent(null)} style={rowBtn}>
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setEditingAgent({ id: a.id, email: a.email })} style={rowBtn}>
+                          改 Email
+                        </button>
+                        <button onClick={() => resendWelcome(a.id, a.email)} disabled={saving} style={rowBtn}>
+                          重寄開通信
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -279,6 +353,14 @@ const inp: React.CSSProperties = {
   fontSize: 14,
   width: '100%',
   boxSizing: 'border-box',
+};
+const rowBtn: React.CSSProperties = {
+  border: '1px solid #cdd5e0',
+  background: '#fff',
+  borderRadius: 6,
+  padding: '4px 10px',
+  cursor: 'pointer',
+  fontSize: 12,
 };
 const miniBtn: React.CSSProperties = {
   border: '1px solid #cdd5e0',
