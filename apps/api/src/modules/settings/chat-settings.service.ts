@@ -119,9 +119,10 @@ export async function checkChatHealth(
   providerId: string,
   model: string,
   baseUrl?: string,
+  apiKey?: string,
 ): Promise<ChatProviderHealth> {
   const provider = getChatProvider(providerId);
-  return provider.health({ baseUrl, model });
+  return provider.health({ baseUrl, model, apiKey });
 }
 
 export function getProviderList(): { id: string; label: string }[] {
