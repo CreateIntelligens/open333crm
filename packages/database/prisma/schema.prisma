@@ -525,7 +525,9 @@ model ContactRelation {
 
 model Tag {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String?  @db.Uuid
+  // tenantId 收緊為 NOT NULL：系統共用標籤（tenantId=null）從未實作，schema 預留能力移除。
+  // 這也讓 @@unique([tenantId, name, scope]) 對所有列真正生效（Postgres 不把多個 NULL 視為重複）。
+  tenantId    String   @db.Uuid
   name        String
   color       String   @default("#6366f1")
   type        TagType  @default(MANUAL)
