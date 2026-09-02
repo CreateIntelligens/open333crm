@@ -45,8 +45,6 @@ flowchart LR
   cb --> routes["42 個路由模組"]
 ```
 
-同一家族的架構還有 VS Code 的 extension host、Eclipse RCP 與 Webpack 的 loader 機制。
-
 ---
 
 ## 第 2 層 — 控制反轉
@@ -55,9 +53,10 @@ flowchart LR
 
 ```ts
 async function prismaPlugin(fastify: FastifyInstance) {
-  await prisma.$connect();                    // 啟動時執行，時機由 Fastify 決定
-  fastify.decorate('prisma', prisma);
-  fastify.addHook('onClose', async () => {    // 關閉時執行，由 Fastify 回呼
+  await prisma.$connect(); // 啟動時執行，時機由 Fastify 決定
+  fastify.decorate("prisma", prisma);
+  fastify.addHook("onClose", async () => {
+    // 關閉時執行，由 Fastify 回呼
     await prisma.$disconnect();
   });
 }
@@ -83,22 +82,23 @@ async function prismaPlugin(fastify: FastifyInstance) {
 | `socket`        | `io`                                                              | 無                      | 訂閱 `socket:emit` 與 `domain:event`；`onClose` 收尾 |
 | `chatbox`       | `chatboxMessageRegistry`、`chatboxI18n`、`chatboxSessionVerifier` | 無                      | 無                                                   |
 
-### 這是服務定位器，不是建構子注入
+### 依賴的取得方向
 
-兩者的差別在於取得依賴的方向：
+`apps/api` 的程式不是被動接收依賴，而是主動從實例上按名字取用：
 
-|          | 服務定位器（Fastify）        | 建構子注入（NestJS、Spring）       |
-| -------- | ---------------------------- | ---------------------------------- |
-| 取得方式 | 程式主動跟容器要一個名字     | 容器主動把依賴傳進建構子           |
-| 漏註冊時 | 執行期才發現值是 `undefined` | 容器啟動時就報錯                   |
-| 額外成本 | 幾乎沒有                     | 需要 decorator metadata 與容器設定 |
+```ts
+const rows = await fastify.prisma.case.findMany(...);  // 從 root 實例取
+const db = request.tenantPrisma;                       // 從當前 request 取
+```
+
+這個方向帶來一個具體後果：**漏註冊要到執行期才會發現**。假如 `prisma` plugin 沒有註冊，`fastify.prisma` 就是 `undefined`，錯誤會在第一次查詢時才浮現，而不是在 `bootstrap()` 階段。下一節的做法就是用來補這個洞。
 
 ### 型別安全靠 declaration merging 補回
 
 服務定位器在編譯期抓不到「忘了註冊」。Fastify 用 TypeScript 的介面合併補這個洞。每個 plugin 頂端都有一段：
 
 ```ts
-declare module 'fastify' {
+declare module "fastify" {
   interface FastifyInstance {
     prisma: PrismaClient;
     prismaAdmin: PrismaClient;
@@ -112,7 +112,7 @@ declare module 'fastify' {
 
 ## 第 4 層 — 封裝情境
 
-這是 Fastify 與 Express 差最多的一層。
+這一層決定了 `apps/api` 每個 hook 的作用範圍。
 
 `register()` 建立一個**子實例**，子實例用原型鏈繼承父實例。在子實例上裝的東西，父實例與兄弟實例看不到。`fastify-plugin`（慣例縮寫 `fp`）的作用是**打破這層封裝**，把裝飾提升到父層。
 
@@ -140,7 +140,7 @@ flowchart TD
 
 ```ts
 export default async function caseRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', fastify.authenticate);
+  fastify.addHook("preHandler", fastify.authenticate);
   // ...
 }
 ```
@@ -184,35 +184,24 @@ sequenceDiagram
 
 ### 責任鏈 — hook 管線
 
-`onRequest` → `preHandler` → handler → `onSend` → `onResponse` 是一條責任鏈。Express 的 middleware 是同一個模式的簡化版：只有一條鏈，沒有作用域概念。
+`onRequest` → `preHandler` → handler → `onSend` → `onResponse` 是一條責任鏈。`apps/api` 用到其中三個位置：`prisma` 在 `onRequest` 掛 `tenantPrisma` 的 getter，34 個路由模組在 `preHandler` 掛各自的驗證器，`prisma` 與 `socket` 在 `onClose` 收尾。
 
 ### 虛擬代理 — `tenantPrisma` 的延遲建立
 
 `prisma.plugin.ts` 的 `onRequest` hook 早於 `auth` 的 `preHandler`，掛 hook 的當下 `request.agent` 還不存在。解法是掛一個 getter，把建立時機延後到第一次取用：
 
 ```ts
-Object.defineProperty(request, 'tenantPrisma', {
+Object.defineProperty(request, "tenantPrisma", {
   configurable: true,
   get() {
     const tid = request.agent?.tenantId;
-    if (!tid) throw new Error('tenantPrisma 需要已認證的租戶身分');
+    if (!tid) throw new Error("tenantPrisma 需要已認證的租戶身分");
     return tenantScopedClient(prisma, tid);
   },
 });
 ```
 
 這是虛擬代理模式：物件在第一次被存取之前不真正建立。它繞開了註冊順序造成的時間差，也讓未認證的路徑在取用時明確拋錯，而不是安靜地拿到一個沒有租戶約束的 client。
-
----
-
-## 與其他框架的對照
-
-| 框架        | 模式組合                       | 主要差別                                                         |
-| ----------- | ------------------------------ | ---------------------------------------------------------------- |
-| **Fastify** | 微核心 + 服務定位器 + 封裝情境 | 作用域用原型鏈實作，執行期成本低；型別安全靠 declaration merging |
-| NestJS      | IoC 容器 + 建構子注入          | 有真正的 DI 容器與 decorator metadata，啟動期就能檢查相依        |
-| Express     | 純 middleware 管線             | 只有責任鏈，沒有依賴注入，也沒有作用域                           |
-| Spring      | IoC 容器                       | NestJS 的思路來源                                                |
 
 ---
 
