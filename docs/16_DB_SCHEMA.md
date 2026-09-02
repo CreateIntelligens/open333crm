@@ -73,15 +73,19 @@
 
 接線規則、新增資料表時的必要步驟與排查方式，寫在 `postgres-rls-tenant-isolation` skill，本文件不重複說明。
 
-### 7. 有 7 張資料表帶 `tenant_id` 但不建外鍵
+### 7. `trial_signups.tenantId` 是 soft ref，刻意不建外鍵
 
-`teams`、`tags`、`sla_policies`、`km_articles`、`message_templates`、`automation_logs`、`trial_signups` 有 `tenant_id` 欄位，卻沒有宣告對 `Tenant` 的關聯。其中 `trial_signups.tenantId` 是試用開通後才回填的 soft ref，schema 註解已明示不設 FK。刪除租戶時，資料庫不會對這 7 張資料表執行級聯刪除，應用層必須自行清理。完整清單與其他鬆耦合欄位，見 `docs/ref/DATABASE-ERD.md`。
+使用者送出試用申請時，系統還沒有建立租戶。系統在試用開通成功之後，才把租戶 id 回填到 `trial_signups.tenantId`。因此這個欄位是 soft ref，`schema.prisma` 的註解已明示不設 FK。
+
+`trial_signups` 同時排除在 RLS 之外。試用防濫用流程需要跨租戶查詢候選資料，該路徑走 `prismaAdmin` 白名單（見 `20260827100000_rls_enable_tenantid_tables` migration 的註解）。
+
+另有 6 張資料表帶 `tenant_id` 卻沒有外鍵。那 6 張不是設計決策，是改造遺漏，寫在下方「已知落差」第 3 項。完整清單與其他鬆耦合欄位，見 `docs/ref/DATABASE-ERD.md`。
 
 ---
 
 ## 已知落差
 
-以下兩項是 schema 宣告與實際資料庫不一致的地方，已在本機資料庫上實測確認。兩項都尚未修復。
+以下三項都尚未修復。第 1、2 項是 schema 宣告與實際資料庫不一致的地方，已在本機資料庫上實測確認。第 3 項是 schema 本身的缺口，從 migration 歷史與應用層程式碼確認。
 
 ### 1. embedding 欄位維度不符：schema 寫 1024，資料庫實際是 1536
 
@@ -116,6 +120,25 @@ CREATE INDEX km_articles_embedding_idx
 ```
 
 也就是說，知識庫的語意檢索目前對整張表做順序掃描。文章數量少的時候，影響並不明顯；文章數量成長之後，這個缺少的索引會成為效能瓶頸。
+
+### 3. 有 6 張租戶資料表缺少指向 `tenants` 的外鍵
+
+`teams`、`tags`、`sla_policies`、`km_articles`、`message_templates`、`automation_logs` 都有 `tenant_id` 欄位，但是 Prisma schema 沒有宣告對 `Tenant` 的關聯，資料庫也就沒有對應的外鍵約束。
+
+repo 裡沒有任何設計文件或 commit 說明記載這 6 張表為什麼不建外鍵。migration 歷史顯示這是 2026-04-02 多租戶改造的遺漏：
+
+1. `20260323021754_init` 建立這 6 張表。當時系統還是單租戶設計，這 6 張表都沒有 `tenant_id` 欄位。
+2. `20260402040324` 一次替 15 張表補上 `tenant_id` 欄位。這 6 張表都在名單內。
+3. `20260402041711` 一次替 24 張表補上指向 `tenants` 的外鍵。這 6 張表都不在名單內。
+4. 上述兩份 migration 屬於同一個 commit `e26e53a`。該 commit 的訊息只描述 automation 欄位修正，沒有提到多租戶改造。
+5. 2026-04-02 之後新增的每一張租戶資料表都建了外鍵。專案慣例是「資料表有 `tenant_id` 就建外鍵」，這 6 張表是例外。
+
+以下兩項常被當成不建外鍵的理由，但是都不成立：
+
+- **「`tags` 與 `message_templates` 的 `tenant_id` 可為 null」**：這兩張表用 null 代表系統共用列。Postgres 的外鍵允許欄位值為 null，因此建了外鍵之後，系統共用列仍然可以存在。
+- **「避免刪除租戶時發生級聯刪除」**：現有指向 `tenants` 的外鍵，只有 `chatbox_sessions`、`tenant_audit_logs`、`data_export_requests`、`data_erasure_requests` 這 4 條使用 `ON DELETE CASCADE`，其餘都使用 `ON DELETE RESTRICT`。
+
+**目前的實際影響**：應用程式沒有任何硬刪除租戶的路徑。`apps/api/src/modules/trial/trial.scheduler.ts` 的 purge 只寫入 `purgedAt` 做軟刪除，不刪資料列。因此級聯刪除不是眼前的問題。缺少外鍵造成的實際缺口在寫入端：這 6 張表可以寫入一個不存在的 `tenant_id`，資料庫不會擋下來。RLS 的 `WITH CHECK` 只阻擋跨租戶寫入，不驗證該租戶是否存在。
 
 ---
 

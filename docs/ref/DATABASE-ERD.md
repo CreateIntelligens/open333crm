@@ -402,7 +402,15 @@ erDiagram
 
 資料庫層另外用 Postgres RLS 強制隔離租戶資料。RLS 的接線規則、新增資料表時的必要步驟、以及排查方式，都寫在 `postgres-rls-tenant-isolation` skill，本文件不重複說明。
 
-**注意**：以下 7 張資料表有 `tenant_id` 欄位，但在 Prisma schema 裡**沒有**宣告對 `Tenant` 的關聯，因此資料庫層也沒有對應的外鍵約束：
+**注意**：以下 7 張資料表有 `tenant_id` 欄位，但是 Prisma schema **沒有**宣告對 `Tenant` 的關聯，資料庫層也就沒有對應的外鍵約束。這 7 張分成兩類。
+
+**第 1 類：刻意不建外鍵（1 張）**
+
+| 資料表          | Prisma model                   | 原因                                                                                                  |
+| --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `trial_signups` | `TrialSignup`（欄位可為 null） | 使用者送出試用申請時，租戶還不存在。系統在開通成功後才回填 `tenantId`。schema 註解已明示這是 soft ref。 |
+
+**第 2 類：缺少外鍵，原因未記載（6 張）**
 
 | 資料表              | Prisma model                       |
 | ------------------- | ---------------------------------- |
@@ -412,9 +420,8 @@ erDiagram
 | `km_articles`       | `KmArticle`                        |
 | `message_templates` | `MessageTemplate`（欄位可為 null） |
 | `automation_logs`   | `AutomationLog`                    |
-| `trial_signups`     | `TrialSignup`（開通後回填的 soft ref，欄位可為 null） |
 
-刪除租戶時，資料庫不會對這 7 張資料表執行級聯刪除，也不會阻擋刪除。應用層必須自行清理這些資料。
+第 2 類的 6 張表是 2026-04-02 多租戶改造的遺漏，不是設計決策。migration 證據、兩項不成立的常見理由，以及目前的實際影響，寫在 `docs/16_DB_SCHEMA.md` 的「已知落差」第 3 項。
 
 ---
 
