@@ -1,138 +1,29 @@
-# CLAUDE.md — Open333 CRM AI Agent Instructions
+# CLAUDE.md — Claude Code supplement
 
-This file defines **project-wide conventions and architecture rules** for AI coding agents (including Claude) working in this repository.
+**Read [`AGENTS.md`](../AGENTS.md) first. It is the single source of truth** for this repo:
+tech stack, multi-tenancy and RLS rules, which Prisma client to use, socket event routing,
+CI gates, conventions, environment gotchas, and monorepo layout.
 
-You MUST follow these rules when reading, modifying, or generating code.
+This file adds **only what is specific to Claude Code**. Do not copy project facts here.
+A second copy diverges from the first, and then the two files contradict each other.
 
----
+## Skills in this repo
 
-## Tech Stack
+Available under `.claude/skills/`:
 
-- **Monorepo**: pnpm workspaces + Turborepo
-- **API**: Fastify + TypeScript (`apps/api`)
-- **Frontend**: **Next.js 15** + React 19 + Tailwind (`apps/web`)
-- **Background workers**: BullMQ consumers (`apps/workers`)
-- **Database**: PostgreSQL via Prisma (`packages/database`)
-- **Real-time**: Socket.IO (mounted on Fastify)
-- **Queue**: Redis + BullMQ
+| Skill | Use when |
+| ----- | -------- |
+| `postgres-rls-tenant-isolation` | You work on Postgres RLS: you add a table, you wire a route or service to the correct Prisma client, or you debug a query that returns empty or 403. **This skill exists only here, not in the other tool directories.** |
+| `simplified-technical-chinese` | You write or revise a Traditional Chinese technical document. Apply it before you finalize the text. |
+| `open333crm-cli` | You build, test or extend the `open333` CLI (`apps/cli`). |
+| `openspec-propose` / `openspec-apply-change` / `openspec-archive-change` / `openspec-explore` | You run the OpenSpec propose, apply or archive cycle. |
 
----
+`.claude/commands/opsx/` contains the slash commands for the same OpenSpec cycle:
+`/opsx:propose`, `/opsx:apply`, `/opsx:archive`, `/opsx:explore`.
 
-## Socket Event Routing — CRITICAL ARCHITECTURE RULE
+## Working style in this repo
 
-There are **two paths** for emitting socket events to the frontend. Always choose the correct one:
-
-### Path A — API process direct emit
-
-```ts
-fastify.io.to(room).emit(event, data)
-```
-
-**Use when:**
-- The event is the direct result of the current HTTP request handler
-- Data is already written to DB within this request (no extra queries needed)
-- The recipient room is already known (conversation ID, tenant ID, agent ID)
-- Latency matters — the emit should happen inline, before the response returns
-
-**Examples:** `message.new`, `conversation.updated`, `case.created`, `contact.merged`
-
----
-
-### Path B — Async queue (eventBus → BullMQ → apps/workers)
-
-```ts
-// Step 1 (API): publish to in-process event bus
-eventBus.publish('case.assigned', { tenantId, payload })
-
-// Step 2 (API): event-bus worker bridges to BullMQ
-notificationQueue.add('notification:dispatch', jobPayload)
-
-// Step 3 (apps/workers): consume job and emit via Redis bridge
-await publishSocketEvent(redisPublisher, `agent:${agentId}`, 'notification.new', notification)
-```
-
-**Use when:**
-- Finding recipients requires **additional DB queries** (e.g., look up all supervisors)
-- The work is a **side-effect** that must not block or delay the HTTP response
-- Multiple recipients need to be notified based on roles or dynamic assignment
-- The event originates from a background job (SLA poll, automation rule, broadcast)
-
-**Examples:** `case.assigned` notification, `sla.warning`, `sla.breached`, automation side-effects
-
----
-
-### Workers cannot use `fastify.io` directly
-
-`apps/workers` is a **separate process** with no access to the API's Fastify/Socket.IO instance.  
-Workers MUST emit socket events through the Redis pub/sub bridge:
-
-```ts
-// In apps/workers — correct
-await redisPublisher.publish('socket:emit', JSON.stringify({ room, event, data }))
-
-// In apps/api — correct (direct)
-fastify.io.to(room).emit(event, data)
-
-// NEVER do this in apps/workers — wrong
-import { io } from '../../../apps/api/src/...'  // does not work cross-process
-```
-
-The API's `socket.plugin.ts` subscribes to the `socket:emit` Redis channel and forwards messages to Socket.IO.
-
----
-
-## Event Bus
-
-`eventBus` (`apps/api/src/events/event-bus.ts`) is a **Node.js EventEmitter singleton**.
-
-- It is **in-process only** — it has **no connection to Redis**
-- Subscribers (e.g. `notification.worker.ts`, `automation.worker.ts`) run inside the API process
-- They enqueue BullMQ jobs when they receive events
-- The actual job processing happens in `apps/workers`
-
-```
-eventBus.publish('case.assigned', ...)
-  └→ notification.worker.ts (API process, EventEmitter subscriber)
-       └→ notificationQueue.add(job)  → Redis/BullMQ
-            └→ apps/workers consumes job → DB write → Redis pub/sub → frontend socket
-```
-
----
-
-## Prisma Client
-
-- The shared Prisma schema is in `packages/database`
-- **Import `PrismaClient` from `@open333crm/database`**, not `@prisma/client`
-- **Do NOT import Prisma-generated enum types** (`AgentRole`, etc.) — use string literals instead:
-
-```ts
-// Correct
-role: { in: ['ADMIN', 'SUPERVISOR'] }
-
-// Wrong — causes TS2305 error
-import { AgentRole } from '@prisma/client'
-role: { in: [AgentRole.ADMIN, AgentRole.SUPERVISOR] }
-```
-
----
-
-## RBAC
-
-- Roles: `ADMIN` > `SUPERVISOR` > `AGENT`
-- Guards: `requireAdmin()`, `requireSupervisor()` in `apps/api/src/guards/rbac.guard.ts`
-- Register guards as Fastify `preHandler`:
-
-```ts
-fastify.patch('/agents/:id/role', { preHandler: [requireSupervisor()] }, handler)
-```
-
----
-
-## Conventions
-
-- **CHANGELOG Maintenance (MANDATORY)**: Whenever implementing a feature (`feat`), bug fix (`fix`), architecture change, or completing an OpenSpec change/PR, you **MUST update `CHANGELOG.md`** under the latest release section (categorized into `Added`, `Changed`, `Fixed`, etc.). Never submit code changes without keeping `CHANGELOG.md` updated.
-- Use **Zod** for input validation in API route handlers
-- Errors: throw `new AppError(code, message, httpStatus)` — do not return raw error objects
-- All tenants are isolated — every query must include `tenantId` in the `where` clause
-- Soft-delete via `isActive: false`, not hard `DELETE` (for agents, channels, etc.)
-- Use conventional commits (`feat:`, `fix:`, `chore:`, etc.)
+- Traditional Chinese technical documents must pass through the `simplified-technical-chinese`
+  skill before you finalize them. This covers READMEs, design documents, PR descriptions, code
+  review comments and OpenSpec documents.
+- `CHANGELOG.md` is mandatory for every `feat` / `fix` / architecture change — see AGENTS.md.
