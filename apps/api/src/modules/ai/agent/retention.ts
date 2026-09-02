@@ -19,7 +19,7 @@ export async function cleanupExpiredAgentData(store: AgentRetentionStore, now = 
   const expiresAt = { lte: now };
   const [runs, toolCalls, drafts] = await Promise.all([
     store.agentRun.updateMany({ where: { expiresAt, status: { not: 'EXPIRED' } }, data: { status: 'EXPIRED', finalText: null } }),
-    store.agentToolCall.updateMany({ where: { expiresAt }, data: { arguments: {}, result: null, status: 'EXPIRED' } }),
+    store.agentToolCall.updateMany({ where: { expiresAt, status: { not: 'EXPIRED' } }, data: { arguments: {}, result: null, status: 'EXPIRED' } }),
     store.agentReportDraft.updateMany({ where: { expiresAt, status: 'DRAFT' }, data: { markdown: null, status: 'EXPIRED' } }),
   ]);
   return { runs: runs.count, toolCalls: toolCalls.count, drafts: drafts.count };

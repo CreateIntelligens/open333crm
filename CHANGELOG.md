@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **Cloudflare security audit findings** — 修正 authenticated Socket.IO 任意 room 訂閱越權；visitor socket 改為只接受 server-issued Chatbox session/claim；legacy WebChat visitor-token session route 改為安全停用/遷移路徑，message/media 加入 secure contract、3 天 session 上限、payload/檔案/IP/session/channel 限流；`xlsx` 替換為 `@e965/xlsx`，並更新 Engine.IO、Socket.IO parser、sharp、PostCSS 等 production-reachable 依賴。
 - **Socket 訂閱限流與 RLS CI 修正** — 訂閱/取消訂閱限制改為每條連線每 60 秒 rolling window；Socket plugin 的 `prismaAdmin` 使用補上明確租戶/資源授權白名單，通過 strict RLS 白名單檢查。
 - **Gemini 多工具回覆格式修正** — 連續的 tool responses 合併為同一個 Gemini `user` turn，避免多工具呼叫時產生不符合 API 規範的連續 user turns。
+- **Agent retention 冪等清理** — 清理工具呼叫暫存資料時排除已標記為 `EXPIRED` 的資料，避免重複更新。
 
 ## [2026-08-28]
 

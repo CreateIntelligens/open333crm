@@ -15,6 +15,7 @@ const result = await cleanupExpiredAgentData(store, new Date('2026-09-01T00:00:0
 assert.deepEqual(result, { runs: 2, toolCalls: 4, drafts: 1 });
 assert.equal(calls.length, 3);
 assert.match(calls[0], /EXPIRED/);
+assert.match(calls[1], /"status":\{"not":"EXPIRED"\}/);
 assert.match(calls[1], /"result":null/);
 assert.match(calls[2], /"markdown":null/);
 
