@@ -623,7 +623,7 @@ export async function deliverToChannel(
 
     logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid} contentType=${outbound.contentType}`);
     const safeStrategy = conv.channel.channelType === CHANNEL_TYPE.LINE && outbound.delivery
-      ? selectSafeLineStrategy({ replyToken: outbound.delivery.replyToken, receivedAt: outbound.delivery.receivedAt })
+      ? selectSafeLineStrategy({ strategy: outbound.content.strategy, replyToken: outbound.delivery.replyToken, receivedAt: outbound.delivery.receivedAt })
       : undefined;
     const strategy = safeStrategy ?? (outbound.content.strategy as 'reply' | 'push' | undefined);
     const send = async (selectedStrategy: 'reply' | 'push') => {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { success } from '../../shared/utils/response.js';
+import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import {
   listSubscriptions,
@@ -46,7 +46,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   fastify.post('/', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const data = createSchema.parse(request.body);
     if (await isBlockedUrl(data.url)) {
-      return reply.status(400).send({ code: 'INVALID_WEBHOOK_URL', message: 'Webhook URL must resolve to a public HTTPS host' });
+      throw new AppError('Webhook URL must resolve to a public HTTPS host', 'INVALID_WEBHOOK_URL', 400);
     }
     const sub = await createSubscription(request.tenantPrisma, request.agent.tenantId, data);
     return reply.status(201).send(success(sub));
@@ -56,7 +56,7 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const data = updateSchema.parse(request.body);
     if (data.url && await isBlockedUrl(data.url)) {
-      return reply.status(400).send({ code: 'INVALID_WEBHOOK_URL', message: 'Webhook URL must resolve to a public HTTPS host' });
+      throw new AppError('Webhook URL must resolve to a public HTTPS host', 'INVALID_WEBHOOK_URL', 400);
     }
     const sub = await updateSubscription(
       request.tenantPrisma,

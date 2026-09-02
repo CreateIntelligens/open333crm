@@ -65,6 +65,19 @@ function isUnsafeHostname(hostname: string): boolean {
     );
   }
   if (ipVersion === 6) {
+    if (hostname.startsWith('::ffff:')) {
+      const mappedPart = hostname.slice('::ffff:'.length);
+      const mappedIpv4 = mappedPart.includes('.')
+        ? mappedPart
+        : (() => {
+          const segments = mappedPart.split(':');
+          if (segments.length !== 2 || segments.some((segment) => !/^[0-9a-f]{1,4}$/i.test(segment))) return '';
+          const high = Number.parseInt(segments[0], 16);
+          const low = Number.parseInt(segments[1], 16);
+          return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+        })();
+      return isIP(mappedIpv4) === 4 && isUnsafeHostname(mappedIpv4);
+    }
     return (
       hostname === '::1' ||
       hostname === '::' ||
@@ -74,10 +87,7 @@ function isUnsafeHostname(hostname: string): boolean {
       hostname.startsWith('fe9') ||
       hostname.startsWith('fea') ||
       hostname.startsWith('feb') ||
-      hostname.startsWith('ff') ||
-      hostname.startsWith('::ffff:127.') ||
-      hostname.startsWith('::ffff:10.') ||
-      hostname.startsWith('::ffff:192.168.')
+      hostname.startsWith('ff')
     );
   }
   return false;

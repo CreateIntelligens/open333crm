@@ -4,10 +4,12 @@ export const LINE_REPLY_SAFE_WINDOW_MS = 30_000;
 export type LineDeliveryStrategy = 'reply' | 'push';
 
 export function selectSafeLineStrategy(input: {
+  strategy?: unknown;
   replyToken?: unknown;
   receivedAt?: unknown;
   now?: Date;
 }): LineDeliveryStrategy {
+  if (input.strategy === 'push') return 'push';
   if (typeof input.replyToken !== 'string' || input.replyToken.length === 0) return 'push';
   if (typeof input.receivedAt !== 'string' && !(input.receivedAt instanceof Date)) return 'push';
   const receivedAt = input.receivedAt instanceof Date ? input.receivedAt : new Date(input.receivedAt);
