@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **Worker RLS fail-closed** — standalone workers 若未設定 `DATABASE_URL_ADMIN` 會在啟動時明確失敗，避免 forced RLS 讓 retention/scheduler 靜默變成 no-op。
 - **PR review follow-up** — public WebChat 限流改讀 trusted reverse-proxy client IP；Agent 回覆寫入前以 `BOT_HANDLED` 條件 claim 對話；workers 範例改用已 provision 的 `app_admin` role。
 - **Chatbox / Agent RLS race 修正** — public Chatbox 改用明確 admin client；Agent bot reply 以交易內條件 claim `BOT_HANDLED` 對話後才建立訊息，避免人工接管後仍送出 bot 回覆。
+- **Open channel room 相容性** — 未設定 team access 的 channel 維持租戶內客服可存取；有明確 team 綁定時則嚴格依 team membership 授權。
 
 ## [2026-08-28]
 

@@ -79,11 +79,18 @@ async function canAccessChannel(
       id: channelId,
       tenantId: context.tenantId,
       isActive: true,
-      teamAccesses: {
-        some: {
-          team: { tenantId: context.tenantId, members: { some: { agentId: context.agentId } } },
+      OR: [
+        // Legacy channels without explicit team bindings remain open to
+        // agents in the same tenant.
+        { teamAccesses: { none: {} } },
+        {
+          teamAccesses: {
+            some: {
+              team: { tenantId: context.tenantId, members: { some: { agentId: context.agentId } } },
+            },
+          },
         },
-      },
+      ],
     },
     select: { id: true },
   }));
