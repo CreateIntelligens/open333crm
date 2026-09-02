@@ -346,6 +346,8 @@ multipart → cors → errorHandler → prisma → cookie → auth → socket �
 | `services/` | 跨模組服務，例如 `inbound-router.ts`、`permission.service.ts` |
 | `events/`   | `event-bus.ts`，行程內的 EventEmitter                         |
 
+外掛機制本身的設計模式、封裝情境的運作方式，以及請求生命週期的細節，請看 [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md)。
+
 `bootstrap()` 在啟動時呼叫 `validatePermissionRegistry()` 與 `validateRouteCodes()`。權限註冊表若與路由對不上，API 會在啟動階段就失敗，不會等到執行時才發現。
 
 ### `workers` — 獨立的佇列消費程序
