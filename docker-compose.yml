@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: crm
       POSTGRES_PASSWORD: crmpassword
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
     image: redis:7-alpine
     container_name: open333crm-redis
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,7 +33,7 @@ services:
     image: ollama/ollama
     container_name: open333crm-ollama
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -61,8 +61,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -84,7 +84,7 @@ services:
     env_file:
       - .env.api
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
 
   workers:
     build:
@@ -112,7 +112,7 @@ services:
     environment:
       NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
   caddy:
     image: caddy:2-alpine
@@ -121,7 +121,7 @@ services:
       - api
       - web
     ports:
-      - "80:80"
+      - "127.0.0.1:8888:80"
     volumes:
       - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
