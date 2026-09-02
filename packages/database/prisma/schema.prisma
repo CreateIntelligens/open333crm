@@ -245,6 +245,12 @@ model Tenant {
   tenantAuditLogs         TenantAuditLog[]
   dataExportRequests      DataExportRequest[]
   dataErasureRequests     DataErasureRequest[]
+  teams                   Team[]
+  tags                    Tag[]
+  slaPolicies             SlaPolicy[]
+  kmArticles              KmArticle[]
+  messageTemplates        MessageTemplate[]
+  automationLogs          AutomationLog[]
 
   @@map("tenants")
 }
@@ -339,6 +345,7 @@ model Team {
   licenseTeamId String? // 對應 License JSON teams[].teamId（平台方分配字串）
   createdAt     DateTime @default(now())
 
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   members         AgentTeamMember[]
   cases           Case[]
   conversations   Conversation[]
@@ -535,6 +542,7 @@ model Tag {
   description String?
   createdAt   DateTime @default(now())
 
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   contactTags      ContactTag[]
   caseTags         CaseTag[]
   conversationTags ConversationTag[]
@@ -798,6 +806,8 @@ model SlaPolicy {
   isDefault            Boolean  @default(false)
   createdAt            DateTime @default(now())
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@map("sla_policies")
 }
@@ -892,7 +902,8 @@ model AutomationLog {
   errorMsg   String?
   createdAt  DateTime @default(now())
 
-  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  rule   AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([ruleId])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -928,6 +939,7 @@ model KmArticle {
   updatedAt      DateTime                     @updatedAt
   createdAt      DateTime                     @default(now())
 
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   attachments KmArticleAttachment[]
   feedback    KbArticleFeedback[]
 
@@ -989,6 +1001,8 @@ model MessageTemplate {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // tenantId 可為 null（系統共用模板，目前休眠），故關聯為 optional
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   views     TemplateView[]
   materials Material[]
 
