@@ -55,7 +55,18 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function main() {
-  const prisma = new PrismaClient();
+  const databaseAdminUrl = process.env.DATABASE_URL_ADMIN;
+  if (!databaseAdminUrl) {
+    throw new Error('DATABASE_URL_ADMIN is required for cross-tenant workers');
+  }
+  const prisma = new PrismaClient({
+    datasources: {
+      // Retention and other standalone workers are cross-tenant infrastructure.
+      // Require the explicit BYPASSRLS connection so forced RLS cannot silently
+      // turn cleanup and scheduler jobs into no-ops.
+      db: { url: databaseAdminUrl },
+    },
+  });
 
   // Redis connections: one for BullMQ workers, one for pub/sub publishing
   const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
