@@ -168,7 +168,7 @@ export const GeminiChatProvider: ChatProvider = {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: opts.systemPrompt }] },
-          contents: opts.messages.map(toGeminiContent),
+          contents: toGeminiContents(opts.messages),
           tools: [{ functionDeclarations: opts.tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })) }],
           generationConfig: { temperature: opts.temperature, maxOutputTokens: opts.maxTokens },
         }),
@@ -270,6 +270,25 @@ function toGeminiContent(message: AgentMessage): Record<string, unknown> {
     };
   }
   return { role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] };
+}
+
+function toGeminiContents(messages: AgentMessage[]): Array<{ role: 'user' | 'model'; parts: Array<Record<string, unknown>> }> {
+  const contents: Array<{ role: 'user' | 'model'; parts: Array<Record<string, unknown>> }> = [];
+
+  for (const message of messages) {
+    const converted = toGeminiContent(message) as {
+      role: 'user' | 'model';
+      parts: Array<Record<string, unknown>>;
+    };
+    const previous = contents[contents.length - 1];
+    if (message.role === 'tool' && previous?.role === 'user') {
+      previous.parts.push(...converted.parts);
+    } else {
+      contents.push(converted);
+    }
+  }
+
+  return contents;
 }
 
 function parseToolContent(content: string): Record<string, unknown> {
