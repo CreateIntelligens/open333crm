@@ -4,6 +4,8 @@ import { decryptCredentials, encryptCredentials } from '../modules/channel/chann
 const originalKey = process.env.CREDENTIAL_ENCRYPTION_KEY;
 delete process.env.CREDENTIAL_ENCRYPTION_KEY;
 assert.throws(() => encryptCredentials({ channelAccessToken: 'secret' }), /CREDENTIAL_ENCRYPTION_KEY/);
+process.env.CREDENTIAL_ENCRYPTION_KEY = 'too-short';
+assert.throws(() => encryptCredentials({ channelAccessToken: 'secret' }), /32 characters/);
 
 process.env.CREDENTIAL_ENCRYPTION_KEY = 'test-credential-encryption-key-32-bytes!!';
 const encrypted = encryptCredentials({ channelAccessToken: 'secret' });

@@ -14,8 +14,8 @@ function generatePublicKey(): string {
 
 function getEncryptionKey(): Buffer {
   const secret = process.env.CREDENTIAL_ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error('CREDENTIAL_ENCRYPTION_KEY must be set');
+  if (!secret || secret.length < 32) {
+    throw new Error('CREDENTIAL_ENCRYPTION_KEY must be set to at least 32 characters');
   }
   return scryptSync(secret, 'open333crm-credentials', 32);
 }

@@ -18,6 +18,7 @@ The security audit found two exploitable public paths: authenticated Socket.IO c
 - `security/socket-room-authorization`: Tenant- and resource-scoped authorization for Socket.IO room subscriptions.
 - `security/legacy-webchat-abuse-controls`: Server-bound public WebChat access, bounded request handling, and abuse controls for legacy routes during migration and retirement.
 - `security/dependency-vulnerability-management`: Repeatable triage, remediation, and verification rules for production-reachable dependency advisories.
+- `security/credential-and-webhook-hardening`: Fail-closed credential encryption configuration and SSRF-safe webhook subscriptions and delivery.
 
 ### Modified Capabilities
 

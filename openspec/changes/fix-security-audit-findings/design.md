@@ -57,6 +57,14 @@ Alternative considered: add blanket package-manager overrides immediately. Rejec
 
 API-originated events continue to use the direct Socket.IO path when the room is already known and authorized. Worker-originated events continue through Redis pub/sub. The remediation changes room admission and visitor authentication; it does not let workers access `fastify.io` or move authorization into an untrusted event producer.
 
+### 6. Fail closed for credential encryption and webhook egress
+
+Credential encryption will require `CREDENTIAL_ENCRYPTION_KEY` at least 32 characters long and will stop using the source-controlled fallback. Deployment templates provide a placeholder only; real environments must provision a unique secret and rotate stored credentials as an operational follow-up.
+
+Webhook create/update validation and dispatch validation will reuse the existing DNS/IP guard. Both layers require HTTPS, reject private and metadata destinations, block DNS failures, and disable redirect following so a public URL cannot redirect the dispatcher into an unvalidated network. Revalidating at dispatch covers existing database rows and DNS changes after creation.
+
+Alternative considered: validate only when a subscription is saved. Rejected because DNS can change after validation and existing rows can predate the guard.
+
 ## Risks / Trade-offs
 
 - **[Risk]** Existing clients send raw room strings or visitor tokens and will fail after enforcement. → **Mitigation:** deploy the secure widget first, emit deprecation telemetry, provide a short feature-flagged overlap, then retire the old contract with a documented response.

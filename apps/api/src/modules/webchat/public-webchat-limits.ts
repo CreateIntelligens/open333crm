@@ -29,6 +29,9 @@ export function consumePublicWebchatLimit(
   }
 
   const current = buckets.get(key);
+  if (!current && buckets.size >= 10_000) {
+    return { allowed: false, retryAfterSeconds: 60 };
+  }
   if (!current || current.resetAt <= now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, retryAfterSeconds: 0 };
