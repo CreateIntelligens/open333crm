@@ -23,6 +23,7 @@ const STRICT = process.argv.includes('--strict');
 const WHITELIST = [
   /plugins\/prisma\.plugin/,        // 定義 prismaAdmin 本身
   /plugins\/auth\.plugin/,          // CLI/partner 認證入口
+  /plugins\/socket\.plugin/,        // authenticated socket room authorization with explicit tenant/resource scope
   /guards\/rbac\.guard/,            // 授權查詢（角色/方案天花板）
   /modules\/platform\//,            // 平台層跨租戶
   /modules\/auth\//,                // 登入 email 全域解析、passkey
