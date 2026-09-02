@@ -1,6 +1,6 @@
 # API 外掛架構 — apps/api 的設計模式
 
-本文件說明 `apps/api` 為什麼寫成現在這個樣子：Fastify 5 的外掛機制屬於哪些設計模式、每一層模式解決什麼問題，以及這個寫法帶來哪些限制。
+本文件說明 `apps/api` 採用的架構模式。內容分三部分：Fastify 5 的外掛機制包含哪些設計模式、每一層模式解決什麼問題、這個寫法帶來哪些限制。
 
 - **資料來源**：`apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`、`apps/api/src/modules/*/*.routes.ts`
 - **圖表格式**：Mermaid 的 `flowchart` 與 `sequenceDiagram`。GitHub 直接渲染，讀者不需要安裝額外工具。
@@ -13,7 +13,7 @@
 
 ## 四層模式總覽
 
-Fastify 的外掛機制不是單一一種模式，而是四層疊在一起。四層都出現在 `apps/api`：
+Fastify 的外掛機制不是單一一種模式，而是四層模式組合而成。這四層都出現在 `apps/api`：
 
 | 層  | 模式                              | 在程式碼中的體現                                              |
 | --- | --------------------------------- | ------------------------------------------------------------- |
@@ -28,7 +28,7 @@ Fastify 的外掛機制不是單一一種模式，而是四層疊在一起。四
 
 ## 第 1 層 — 微核心架構
 
-Fastify 核心只提供路由與生命週期，其他能力全部由外掛裝進去。核心不認識任何具體功能，功能反過來註冊進核心。
+Fastify 核心只提供路由與生命週期，其他能力全部由外掛提供。核心不包含任何具體功能，各項功能反過來註冊進核心。
 
 `apps/api/src/index.ts` 的 `bootstrap()` 就是組裝過程。註冊順序如下：
 
@@ -62,7 +62,7 @@ async function prismaPlugin(fastify: FastifyInstance) {
 }
 ```
 
-連線與斷線的時機都不由這段程式控制。外掛只宣告「在這兩個時間點要做什麼」。
+這段程式不決定連線與斷線的時機。外掛只宣告在這兩個時間點要執行什麼動作。
 
 ---
 
@@ -91,11 +91,11 @@ const rows = await fastify.prisma.case.findMany(...);  // 從 root 實例取
 const db = request.tenantPrisma;                       // 從當前 request 取
 ```
 
-這個方向帶來一個具體後果：**漏註冊要到執行期才會發現**。假如 `prisma` plugin 沒有註冊，`fastify.prisma` 就是 `undefined`，錯誤會在第一次查詢時才浮現，而不是在 `bootstrap()` 階段。下一節的做法就是用來補這個洞。
+這個方向帶來一個具體後果：**漏註冊要到執行期才會發現**。假如 `prisma` plugin 沒有註冊，`fastify.prisma` 的值就是 `undefined`，錯誤會在第一次查詢時才出現，不會在 `bootstrap()` 階段出現。下一節的做法補上編譯期的檢查。
 
 ### 型別安全靠 declaration merging 補回
 
-服務定位器在編譯期抓不到「忘了註冊」。Fastify 用 TypeScript 的介面合併補這個洞。每個 plugin 頂端都有一段：
+服務定位器無法在編譯期檢查出漏註冊。Fastify 用 TypeScript 的介面合併補上這項檢查。每個 plugin 頂端都有一段：
 
 ```ts
 declare module "fastify" {
@@ -106,7 +106,7 @@ declare module "fastify" {
 }
 ```
 
-這是**型別層的 decorate**，與執行期的 `decorate()` 成對出現。只寫其中一邊會出問題：只寫型別會編譯通過但執行時取到 `undefined`；只寫執行期則型別檢查不過。
+這是**型別層的 decorate**，與執行期的 `decorate()` 成對出現。只寫其中一邊會產生兩種錯誤之一：只寫型別會通過編譯，但執行時取到 `undefined`；只寫執行期則無法通過型別檢查。
 
 ---
 
@@ -114,9 +114,9 @@ declare module "fastify" {
 
 這一層決定了 `apps/api` 每個 hook 的作用範圍。
 
-`register()` 建立一個**子實例**，子實例用原型鏈繼承父實例。在子實例上裝的東西，父實例與兄弟實例看不到。`fastify-plugin`（慣例縮寫 `fp`）的作用是**打破這層封裝**，把裝飾提升到父層。
+`register()` 建立一個**子實例**，子實例用原型鏈繼承父實例。在子實例上註冊的裝飾，父實例與兄弟實例讀不到。`fastify-plugin`（慣例縮寫 `fp`）的作用是**打破這層封裝**，把裝飾提升到父層。
 
-`apps/api` 的用法分成兩種，而且分得很乾淨：
+`apps/api` 把外掛分成兩類，兩類的處理方式不同：
 
 |                 | 是否包 `fp` | 數量 | 效果                        |
 | --------------- | ----------- | ---- | --------------------------- |
@@ -136,7 +136,7 @@ flowchart TD
   m1 -.-x|"hook 不會外洩到兄弟作用域"| m2
 ```
 
-封裝情境的實際用途，看 `case.routes.ts` 這一行：
+`case.routes.ts` 的這一行示範封裝情境的實際用途：
 
 ```ts
 export default async function caseRoutes(fastify: FastifyInstance) {
@@ -147,13 +147,13 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
 這個 `preHandler` **只作用在本模組的路由上**，不會影響 `/api/v1/contacts`。全專案有 34 個路由模組用這個寫法各自掛驗證。如果路由模組也包了 `fp`，這些 hook 會全部提升到 root，變成每一條路由都要驗證，包括本來就該公開的 webhook 端點。
 
-「基礎設施包 `fp` 提升，路由不包 `fp` 保持隔離」是 Fastify 的慣用分工。
+「基礎設施包 `fp` 提升到 root，路由模組不包 `fp` 保持隔離」這個分工，讓基礎設施在全域可用，同時讓每個路由模組的 hook 維持在自己的作用域內。
 
 ---
 
 ## 請求的生命週期
 
-把上述四層合起來，一個請求會這樣走。特別注意 `tenantPrisma` 的建立時機：
+下圖把上述四層合起來，畫出一個請求的完整路徑。閱讀重點是 `tenantPrisma` 的建立時機：
 
 ```mermaid
 sequenceDiagram
@@ -201,7 +201,7 @@ Object.defineProperty(request, "tenantPrisma", {
 });
 ```
 
-這是虛擬代理模式：物件在第一次被存取之前不真正建立。它繞開了註冊順序造成的時間差，也讓未認證的路徑在取用時明確拋錯，而不是安靜地拿到一個沒有租戶約束的 client。
+這是虛擬代理模式：物件在第一次被存取之前不建立。這個寫法達成兩件事。第一，它繞開註冊順序造成的時間差。第二，未認證的路徑在取用時會明確拋錯，不會取得一個沒有租戶約束的 client。
 
 ---
 
@@ -211,9 +211,9 @@ Object.defineProperty(request, "tenantPrisma", {
 
 7 個基礎設施 plugin 全部包了 `fp`，所有裝飾都提升到 root。對單體 API 而言這是合理選擇，否則每個路由模組都要重新註冊資料庫連線。
 
-代價是 `declare module 'fastify'` 的型別增補也是全域的。因此 `fastify.prismaAdmin` 在**每一個**檔案都看得到、都可以呼叫，而它是 `BYPASSRLS` 的連線。型別系統擋不住這件事。
+代價是 `declare module 'fastify'` 的型別增補也是全域的。因此**每一個**檔案都讀得到 `fastify.prismaAdmin`，也都可以呼叫它，而這是一條 `BYPASSRLS` 的連線。型別系統無法限制這個呼叫。
 
-這正是 `scripts/check-prisma-admin-usage.mjs` 必須存在的原因：架構上開放的東西，只能用自訂檢查在 CI 擋下。這個檢查在 `.github/workflows/ci.yml` 以 `--strict` 執行，非白名單檔案使用 `prismaAdmin` 會讓建置失敗。
+這正是 `scripts/check-prisma-admin-usage.mjs` 必須存在的原因：架構上無法限制的用法，只能用自訂檢查在 CI 擋下。這個檢查在 `.github/workflows/ci.yml` 以 `--strict` 執行，非白名單檔案使用 `prismaAdmin` 會讓建置失敗。
 
 ### 相依宣告不一致
 
@@ -225,10 +225,16 @@ Object.defineProperty(request, "tenantPrisma", {
 | `auth`    | 用 `fastify.prismaAdmin`   | **否**                  |
 | 其餘 5 個 | 沒有用到                   | 不需要                  |
 
-兩者的用法其實一樣，都是在 handler 閉包內取用，執行時機在請求階段而非註冊階段。因此即使調換註冊順序，兩者都不會在啟動時失敗。差別只在 `chatbox` 多做了一層防護：如果有人刪掉 `prisma` plugin，`chatbox` 會在啟動時就報錯，`auth` 則要等到第一個帶 CLI token 或 partner key 的請求進來才失敗。
+兩者的用法相同，都是在 handler 閉包內取用，執行時機在請求階段，不在註冊階段。因此即使調換註冊順序，兩者都不會在啟動時失敗。差別只在 `chatbox` 多一層防護：如果有人移除 `prisma` plugin，`chatbox` 會在啟動時就報錯，`auth` 則要等到第一個帶 CLI token 或 partner key 的請求進來才失敗。
 
-補上 `dependencies: ['prisma']` 到 `auth.plugin.ts` 可以讓兩者一致，代價只有一行。
+在 `auth.plugin.ts` 補上 `dependencies: ['prisma']` 可以讓兩者一致，代價是一行程式碼。
 
 ### 註冊順序目前靠 `index.ts` 的呼叫順序維持
 
-由於只有一個外掛宣告相依，實際順序完全取決於 `bootstrap()` 裡 `register()` 的先後。這段順序有其道理：`error-handler` 要早於會拋錯的外掛，`prisma` 要早於用到資料庫的外掛，`auth` 要早於需要身分的外掛。這些理由目前寫在本文件，程式碼中沒有記錄。
+由於只有一個外掛宣告相依，實際順序完全取決於 `bootstrap()` 裡 `register()` 的先後。這段順序有三個理由：
+
+1. `error-handler` 要早於任何會拋錯的外掛，否則錯誤不會被統一處理。
+2. `prisma` 要早於任何用到資料庫的外掛。
+3. `auth` 要早於任何需要身分的外掛。
+
+這三個理由目前只寫在本文件，程式碼中沒有記錄。
