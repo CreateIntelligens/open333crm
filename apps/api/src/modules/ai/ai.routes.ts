@@ -63,6 +63,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
 
     const result = await rewriteText(request.tenantPrisma, request.agent.tenantId, text, action);
     return reply.send(success({ text: result }));
+  });
 
   // POST /api/v1/ai/agent/run — manually run the tenant-scoped Agent.
   fastify.post('/agent/run', { preHandler: requirePermission('inbox.reply') }, async (request, reply) => {
