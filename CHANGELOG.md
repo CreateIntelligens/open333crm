@@ -12,6 +12,8 @@ All notable changes to **open333CRM** will be documented in this file.
 - **Gemini 多工具回覆格式修正** — 連續的 tool responses 合併為同一個 Gemini `user` turn，避免多工具呼叫時產生不符合 API 規範的連續 user turns。
 - **Agent retention 冪等清理** — 清理工具呼叫暫存資料時排除已標記為 `EXPIRED` 的資料，避免重複更新。
 - **PR review 安全修補** — 修正 public Chatbox 的 RLS client、舊版 WebChat embed 相容性、team-scoped conversation room 授權、Agent bot mode/Wiki 權限/feature flag、Agent timeout 與 inbound history 重複，以及 workers retention 清理條件。
+- **Agent retention RLS 與敏感內容清理** — standalone worker 優先使用 `DATABASE_URL_ADMIN` 執行跨租戶 retention；過期 AgentRun 會同步清除 user prompt，避免客戶上下文繞過三天保留政策。
+- **Worker RLS fail-closed** — standalone workers 若未設定 `DATABASE_URL_ADMIN` 會在啟動時明確失敗，避免 forced RLS 讓 retention/scheduler 靜默變成 no-op。
 
 ## [2026-08-28]
 

@@ -18,7 +18,7 @@ export interface AgentRetentionStore {
 export async function cleanupExpiredAgentData(store: AgentRetentionStore, now = new Date()) {
   const expiresAt = { lte: now };
   const [runs, toolCalls, drafts] = await Promise.all([
-    store.agentRun.updateMany({ where: { expiresAt, status: { not: 'EXPIRED' } }, data: { status: 'EXPIRED', finalText: null } }),
+    store.agentRun.updateMany({ where: { expiresAt, status: { not: 'EXPIRED' } }, data: { status: 'EXPIRED', userMessage: '[REDACTED]', finalText: null } }),
     store.agentToolCall.updateMany({ where: { expiresAt, status: { not: 'EXPIRED' } }, data: { arguments: {}, result: null, status: 'EXPIRED' } }),
     store.agentReportDraft.updateMany({ where: { expiresAt, status: 'DRAFT' }, data: { markdown: null, status: 'EXPIRED' } }),
   ]);
