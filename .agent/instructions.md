@@ -11,6 +11,5 @@ each other.
 ## Assets in this directory
 
 - `.agent/workflows/` — OpenSpec workflows (`opsx-propose`, `opsx-apply`, `opsx-archive`, `opsx-explore`).
-- `.agent/skills/` — the four OpenSpec skills. The `postgres-rls-tenant-isolation` and
-  `open333crm-cli` skills exist only under `.claude/skills/`. To work on RLS or the CLI, read that
-  skill directory directly.
+- `.agent/skills/` — the four OpenSpec skills. `.claude/skills/` holds further project skills
+  that this directory does not mirror. Read that directory as well before you start work.

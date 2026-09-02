@@ -18,9 +18,8 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ## Copilot assets in this repo
 
 - `.github/prompts/` — OpenSpec prompt files (`opsx-propose`, `opsx-apply`, `opsx-archive`, `opsx-explore`).
-- `.github/skills/` — the four OpenSpec skills. The `postgres-rls-tenant-isolation` and
-  `open333crm-cli` skills exist only under `.claude/skills/`. To work on RLS or the CLI, read that
-  skill directory directly.
+- `.github/skills/` — the four OpenSpec skills. `.claude/skills/` holds further project skills
+  that this directory does not mirror. Read that directory as well before you start work.
 
 ## CI
 
