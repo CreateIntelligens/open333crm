@@ -6,10 +6,10 @@
 
 ## 2. Authenticated Socket.IO room authorization
 
-- [ ] 2.1 Define and validate the subscription request and acknowledgement error contract for tenant, agent, team, channel, and conversation targets; verify malformed and unknown targets never reach room-join logic
-- [ ] 2.2 Implement server-side authorization for canonical tenant and agent rooms using the socket identity and role; verify an agent cannot join another tenant or another agent's private room
-- [ ] 2.3 Implement tenant-scoped authorization for team, channel, and conversation subscriptions using the authenticated agent's access scope; verify authorized resources join their canonical rooms and unauthorized resources return the same safe denial contract
-- [ ] 2.4 Apply the same target validation to unsubscribe and enforce the per-connection subscription-attempt limit; verify denied or rate-limited requests leave existing authorized memberships unchanged
+- [x] 2.1 Define and validate the subscription request and acknowledgement error contract for tenant, agent, team, channel, and conversation targets; verify malformed and unknown targets never reach room-join logic
+- [x] 2.2 Implement server-side authorization for canonical tenant and agent rooms using the socket identity and role; verify an agent cannot join another tenant or another agent's private room
+- [x] 2.3 Implement tenant-scoped authorization for team, channel, and conversation subscriptions using the authenticated agent's access scope; verify authorized resources join their canonical rooms and unauthorized resources return the same safe denial contract
+- [x] 2.4 Apply the same target validation to unsubscribe and enforce the per-connection subscription-attempt limit; verify denied or rate-limited requests leave existing authorized memberships unchanged
 - [ ] 2.5 Add Socket.IO integration tests covering cross-tenant, cross-team, malformed, repeated, and successful subscriptions; verify `pnpm --filter @open333crm/api test:case` passes for the security cases
 
 ## 3. Secure embedded WebChat migration

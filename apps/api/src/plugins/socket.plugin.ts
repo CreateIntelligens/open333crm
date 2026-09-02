@@ -4,6 +4,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import IORedis from 'ioredis';
 import { getConfig } from '../config/env.js';
 import { eventBus } from '../events/event-bus.js';
+import { authorizeSocketRoom } from '../modules/socket/socket-room-authorization.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -57,15 +58,63 @@ async function socketPlugin(fastify: FastifyInstance) {
     socket.join(`tenant:${tenantId}`);
     socket.join(`agent:${agentId}`);
 
-    // Subscribe to conversation/inbox rooms
-    socket.on('subscribe', (room: string) => {
-      fastify.log.info({ agentId, room }, 'Socket subscribing to room');
-      socket.join(room);
+    let subscriptionAttempts = 0;
+    const maxSubscriptionAttempts = 60;
+    const authorize = async (input: unknown) => authorizeSocketRoom(
+      fastify.prismaAdmin,
+      { agentId, tenantId, role: socket.data.role },
+      input,
+    );
+
+    // Subscribe to conversation/inbox rooms only after server-side authorization.
+    socket.on('subscribe', async (input: unknown, ack?: (response: unknown) => void) => {
+      subscriptionAttempts += 1;
+      if (subscriptionAttempts > maxSubscriptionAttempts) {
+        fastify.log.warn({ agentId }, 'Socket subscription rate limit exceeded');
+        ack?.({ ok: false, code: 'RATE_LIMITED' });
+        return;
+      }
+
+      try {
+        const result = await authorize(input);
+        if (!result.ok) {
+          fastify.log.warn({ agentId, code: result.code }, 'Socket subscription rejected');
+          ack?.(result);
+          return;
+        }
+
+        fastify.log.info({ agentId, room: result.room }, 'Socket subscribing to room');
+        await socket.join(result.room);
+        ack?.(result);
+      } catch (err) {
+        fastify.log.warn({ agentId, err }, 'Socket subscription authorization failed');
+        ack?.({ ok: false, code: 'FORBIDDEN' });
+      }
     });
 
-    socket.on('unsubscribe', (room: string) => {
-      fastify.log.info({ agentId, room }, 'Socket unsubscribing from room');
-      socket.leave(room);
+    socket.on('unsubscribe', async (input: unknown, ack?: (response: unknown) => void) => {
+      subscriptionAttempts += 1;
+      if (subscriptionAttempts > maxSubscriptionAttempts) {
+        fastify.log.warn({ agentId }, 'Socket unsubscription rate limit exceeded');
+        ack?.({ ok: false, code: 'RATE_LIMITED' });
+        return;
+      }
+
+      try {
+        const result = await authorize(input);
+        if (!result.ok) {
+          fastify.log.warn({ agentId, code: result.code }, 'Socket unsubscription rejected');
+          ack?.(result);
+          return;
+        }
+
+        fastify.log.info({ agentId, room: result.room }, 'Socket unsubscribing from room');
+        await socket.leave(result.room);
+        ack?.(result);
+      } catch (err) {
+        fastify.log.warn({ agentId, err }, 'Socket unsubscription authorization failed');
+        ack?.({ ok: false, code: 'FORBIDDEN' });
+      }
     });
 
     socket.on('disconnect', (reason) => {
