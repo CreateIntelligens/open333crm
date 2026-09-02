@@ -7,6 +7,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **AI route merge syntax** — 修正最新分支同步時 `/api/v1/ai/rewrite` 路由缺少結束括號，避免 API TypeScript 編譯失敗。
+- **Cloudflare security audit findings** — 修正 authenticated Socket.IO 任意 room 訂閱越權；visitor socket 改為只接受 server-issued Chatbox session/claim；legacy WebChat visitor-token session route 改為安全停用/遷移路徑，message/media 加入 secure contract、3 天 session 上限、payload/檔案/IP/session/channel 限流；`xlsx` 替換為 `@e965/xlsx`，並更新 Engine.IO、Socket.IO parser、sharp、PostCSS 等 production-reachable 依賴。
 
 ## [2026-08-28]
 

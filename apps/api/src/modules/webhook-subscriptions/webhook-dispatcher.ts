@@ -8,6 +8,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { createHmac } from 'node:crypto';
 import { eventBus, type AppEvent } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import { isBlockedUrl } from '../webhook/downstream-forwarder.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 5000, 15000]; // 1s, 5s, 15s
@@ -44,6 +45,19 @@ export async function dispatchWebhook(
     },
   });
 
+  if (await isBlockedUrl(url)) {
+    await prisma.webhookDelivery.update({
+      where: { id: delivery.id },
+      data: {
+        attempts: 1,
+        success: false,
+        errorMessage: 'Blocked webhook target',
+      },
+    });
+    logger.warn('Blocked webhook SSRF target', { subscriptionId, deliveryId: delivery.id });
+    return { success: false, error: 'Blocked webhook target', deliveryId: delivery.id };
+  }
+
   let lastStatusCode: number | undefined;
   let lastError: string | undefined;
 
@@ -66,6 +80,7 @@ export async function dispatchWebhook(
         },
         body,
         signal: controller.signal,
+        redirect: 'error',
       });
 
       clearTimeout(timeout);

@@ -8,6 +8,8 @@ import {
 } from '../modules/marketing/material.service.js';
 import { encryptCredentials } from '../modules/channel/channel.service.js';
 
+process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
+
 type StoredMaterial = Record<string, any>;
 
 function createPrismaMock() {

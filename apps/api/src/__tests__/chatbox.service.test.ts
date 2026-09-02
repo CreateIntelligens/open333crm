@@ -597,8 +597,23 @@ async function testVisitorSocketRequiresAndAcceptsClaimToken() {
   const rejectedError = await new Promise<Error | undefined>((resolve) => {
     void middleware?.(rejectedSocket, resolve);
   });
-  assert.equal(verifier.verify.calls[0][0].claimToken, '');
-  assert.equal(rejectedError?.message, 'Auth failed');
+  assert.equal(rejectedError?.message, 'Secure Chatbox session required');
+
+  const legacySocket = {
+    handshake: {
+      address: '127.0.0.12',
+      auth: {
+        visitorToken: '33333333-3333-4333-8333-333333333333',
+        channelId: '11111111-1111-4111-8111-111111111111',
+      },
+      headers: {},
+    },
+    data: {},
+  };
+  const legacyError = await new Promise<Error | undefined>((resolve) => {
+    void middleware?.(legacySocket, resolve);
+  });
+  assert.equal(legacyError?.message, 'Secure Chatbox session required');
 }
 
 async function testWebchatPluginContractRemainsUnchanged() {

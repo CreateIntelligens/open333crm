@@ -11,6 +11,7 @@ import {
   listDeliveries,
 } from './webhook-subscription.service.js';
 import { dispatchWebhook } from './webhook-dispatcher.js';
+import { isBlockedUrl } from '../webhook/downstream-forwarder.js';
 
 const createSchema = z.object({
   url: z.string().url(),
@@ -44,6 +45,9 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   // POST /api/v1/webhook-subscriptions
   fastify.post('/', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const data = createSchema.parse(request.body);
+    if (await isBlockedUrl(data.url)) {
+      return reply.status(400).send({ code: 'INVALID_WEBHOOK_URL', message: 'Webhook URL must resolve to a public HTTPS host' });
+    }
     const sub = await createSubscription(request.tenantPrisma, request.agent.tenantId, data);
     return reply.status(201).send(success(sub));
   });
@@ -51,6 +55,9 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   // PATCH /api/v1/webhook-subscriptions/:id
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const data = updateSchema.parse(request.body);
+    if (data.url && await isBlockedUrl(data.url)) {
+      return reply.status(400).send({ code: 'INVALID_WEBHOOK_URL', message: 'Webhook URL must resolve to a public HTTPS host' });
+    }
     const sub = await updateSubscription(
       request.tenantPrisma,
       request.params.id,

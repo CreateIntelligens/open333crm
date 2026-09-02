@@ -18,6 +18,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('*'),
+  CREDENTIAL_ENCRYPTION_KEY: z.string().min(32),
   // 前端 base URL（試用驗證信連結用）
   WEB_BASE_URL: z.string().default('http://localhost:3000'),
   MCP_ALLOWED_ORIGINS: z.string().default(''),
@@ -53,6 +54,8 @@ const envSchema = z.object({
   AGENT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(900_000).default(120_000),
   AGENT_MAX_TOTAL_TOKENS: z.coerce.number().int().min(1_000).max(1_000_000).default(100_000),
   AGENT_WIKI_AUTO_PUBLISH: z.string().transform((v) => v === 'true').default('false'),
+  CHATBOX_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(3 * 24 * 60).default(3 * 24 * 60),
+  WEBCHAT_LEGACY_ROUTES_ENABLED: z.string().transform((v) => v === 'true').default('false'),
   WIKI_API_TOKEN: z.string().optional(),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),

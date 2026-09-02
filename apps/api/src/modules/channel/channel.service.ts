@@ -1,4 +1,3 @@
-import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
@@ -14,7 +13,10 @@ function generatePublicKey(): string {
 }
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY ?? 'fallback-open333crm-key';
+  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error('CREDENTIAL_ENCRYPTION_KEY must be set');
+  }
   return scryptSync(secret, 'open333crm-credentials', 32);
 }
 

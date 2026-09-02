@@ -45,7 +45,7 @@ async function socketPlugin(fastify: FastifyInstance) {
       socket.data.role = decoded.role;
 
       next();
-    } catch (err) {
+    } catch {
       next(new Error('Invalid or expired token'));
     }
   });
