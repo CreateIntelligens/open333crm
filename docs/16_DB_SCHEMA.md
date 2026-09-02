@@ -73,9 +73,9 @@
 
 接線規則、新增資料表時的必要步驟與排查方式，寫在 `postgres-rls-tenant-isolation` skill，本文件不重複說明。
 
-### 7. 有 6 張資料表帶 `tenant_id` 但不建外鍵
+### 7. 有 7 張資料表帶 `tenant_id` 但不建外鍵
 
-`teams`、`tags`、`sla_policies`、`km_articles`、`message_templates`、`automation_logs` 有 `tenant_id` 欄位，卻沒有宣告對 `Tenant` 的關聯。刪除租戶時，資料庫不會對這 6 張資料表執行級聯刪除，應用層必須自行清理。完整清單與其他鬆耦合欄位，見 `docs/ref/DATABASE-ERD.md`。
+`teams`、`tags`、`sla_policies`、`km_articles`、`message_templates`、`automation_logs`、`trial_signups` 有 `tenant_id` 欄位，卻沒有宣告對 `Tenant` 的關聯。其中 `trial_signups.tenantId` 是試用開通後才回填的 soft ref，schema 註解已明示不設 FK。刪除租戶時，資料庫不會對這 7 張資料表執行級聯刪除，應用層必須自行清理。完整清單與其他鬆耦合欄位，見 `docs/ref/DATABASE-ERD.md`。
 
 ---
 

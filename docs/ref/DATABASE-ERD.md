@@ -414,7 +414,7 @@ erDiagram
 | `automation_logs`   | `AutomationLog`                    |
 | `trial_signups`     | `TrialSignup`（開通後回填的 soft ref，欄位可為 null） |
 
-刪除租戶時，資料庫不會對這 6 張資料表執行級聯刪除，也不會阻擋刪除。應用層必須自行清理這些資料。
+刪除租戶時，資料庫不會對這 7 張資料表執行級聯刪除，也不會阻擋刪除。應用層必須自行清理這些資料。
 
 ---
 
