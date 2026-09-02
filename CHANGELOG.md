@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **UAT 對外暴露面收斂（docs/27 S0 / P1）** — `docker-compose.yml` 所有服務 port 發布改綁 `127.0.0.1`（postgres 5433 / redis 6380 / ollama 11434 / minio 9000-9001 / api 3001 / web 3000 / caddy 8888），對外流量一律走主機 nginx（80/443）；caddy 直接寫 `127.0.0.1:8888:80`，deploy.yml 原 sed 改埠步驟自然失效（no-op）。搭配 AWS Security Group 只留 22/80/443 為雙保險。主機側另已清除 `/tmp` 含密碼的 env 備份、啟用 fail2ban（sshd jail）。
+
 ### Added
 
 - **平台租戶詳細頁（點租戶往下鑽 + 編輯）** — 平台後台租戶管理的租戶名稱改為可點擊，進入 `/admin/tenants/[id]` 詳細頁：資料量統計（客服/渠道/聯絡人/對話/案件）、基本資料編輯（站台名稱、方案切換——方案變更即時失效權限天花板與租戶方案快取，比照 convertToPaid）、啟用/停用、合約期間編輯、成員清單（姓名/Email/角色/狀態）＋成員操作：**修改成員 Email**（即登入帳號，全域唯一衝突回 409）與**重寄開通信**（複用手動開通信模板，不含密碼）。新端點 `GET /platform/tenants/:id`、`PATCH /platform/tenants/:id`、`PATCH /platform/tenants/:id/agents/:agentId`、`POST /platform/tenants/:id/agents/:agentId/resend-welcome`（zod 驗證、寫 PlatformAuditLog）。
