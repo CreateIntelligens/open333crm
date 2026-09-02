@@ -14,6 +14,8 @@ All notable changes to **open333CRM** will be documented in this file.
 - **PR review 安全修補** — 修正 public Chatbox 的 RLS client、舊版 WebChat embed 相容性、team-scoped conversation room 授權、Agent bot mode/Wiki 權限/feature flag、Agent timeout 與 inbound history 重複，以及 workers retention 清理條件。
 - **Agent retention RLS 與敏感內容清理** — standalone worker 優先使用 `DATABASE_URL_ADMIN` 執行跨租戶 retention；過期 AgentRun 會同步清除 user prompt，避免客戶上下文繞過三天保留政策。
 - **Worker RLS fail-closed** — standalone workers 若未設定 `DATABASE_URL_ADMIN` 會在啟動時明確失敗，避免 forced RLS 讓 retention/scheduler 靜默變成 no-op。
+- **PR review follow-up** — public WebChat 限流改讀 trusted reverse-proxy client IP；Agent 回覆寫入前以 `BOT_HANDLED` 條件 claim 對話；workers 範例改用已 provision 的 `app_admin` role。
+- **Chatbox / Agent RLS race 修正** — public Chatbox 改用明確 admin client；Agent bot reply 以交易內條件 claim `BOT_HANDLED` 對話後才建立訊息，避免人工接管後仍送出 bot 回覆。
 
 ## [2026-08-28]
 

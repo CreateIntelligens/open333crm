@@ -88,6 +88,9 @@ export async function bootstrap() {
   }
 
   const app = Fastify({
+    // API is exposed through the local reverse proxy; use the forwarded client
+    // address for per-IP public WebChat limits.
+    trustProxy: true,
     // 30MB top-level body limit. Must be ≥ multipart fileSize so the
     // request isn't rejected before @fastify/multipart can stream-parse it.
     bodyLimit: 30 * 1024 * 1024,

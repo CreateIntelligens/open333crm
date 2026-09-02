@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
+  DATABASE_URL_ADMIN: z.string().url().optional(),
   REDIS_URL: z.string().url(),
   JWT_SECRET: z.string().min(10),
   // 平台 superuser 專屬 JWT secret（與租戶 JWT 完全分離）。未設時平台路由回 503。

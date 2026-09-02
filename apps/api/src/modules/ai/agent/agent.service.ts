@@ -1,4 +1,5 @@
 import type { TenantDb } from '../../../lib/tenant-db.js';
+import type { Prisma } from '@open333crm/database';
 import type { Server } from 'socket.io';
 import { getConfig } from '../../../config/env.js';
 import { getChatSettings } from '../../settings/chat-settings.service.js';
@@ -156,21 +157,34 @@ async function persistAndDeliverAgentReply(
   delivery: { replyToken?: string; receivedAt?: string },
 ): Promise<void> {
   const now = new Date();
-  const message = await prisma.message.create({
-    data: {
-      conversationId,
-      direction: 'OUTBOUND',
-      senderType: 'BOT',
-      contentType: 'text',
-      content: { text },
-      metadata: { source: 'agentic_llm', agentRunId: runId },
-      createdAt: now,
-    },
-  });
-  await prisma.conversation.updateMany({
-    where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-    data: { botRepliesCount: { increment: 1 }, lastMessageAt: now },
-  });
+  type PersistedAgentMessage = { id: string; metadata: unknown };
+  const persist = async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
+    const claimed = await db.conversation.updateMany({
+      where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
+      data: { botRepliesCount: { increment: 1 }, lastMessageAt: now },
+    });
+    if (claimed.count !== 1) return null;
+
+    return db.message.create({
+      data: {
+        conversationId,
+        direction: 'OUTBOUND',
+        senderType: 'BOT',
+        contentType: 'text',
+        content: { text },
+        metadata: { source: 'agentic_llm', agentRunId: runId },
+        createdAt: now,
+      },
+      select: { id: true, metadata: true },
+    }) as unknown as PersistedAgentMessage;
+  };
+  type TransactionRunner = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
+  const transaction = (prisma as unknown as { $transaction?: TransactionRunner }).$transaction;
+  const message: PersistedAgentMessage | null = transaction
+    ? await transaction.call(prisma, persist) as PersistedAgentMessage | null
+    : await persist(prisma as unknown as Prisma.TransactionClient);
+  if (!message) return;
+
   const payload = {
     conversationId,
     message: {
