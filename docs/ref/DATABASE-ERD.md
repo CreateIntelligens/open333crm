@@ -150,15 +150,15 @@ erDiagram
     tenants ||--o{ merge_suggestions : "合併建議"
 ```
 
-| 資料表               | Prisma model       | 儲存什麼                                                      | 關鍵欄位型別                                                     |
-| -------------------- | ------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `contacts`           | `Contact`          | 聯絡人主檔：顯示名稱、頭像、電話、email、語言、封鎖與封存狀態 | `mergedIntoId` 指向合併後的主聯絡人，是鬆耦合欄位                |
-| `contact_attributes` | `ContactAttribute` | 聯絡人的自訂 key-value 屬性，附帶型別註記                     | `dataType` 為字串，標示 `value` 該怎麼解讀                       |
-| `contact_relations`  | `ContactRelation`  | 聯絡人之間的關係（例如同一公司、家庭成員），雙向自我參照      | 同時有 `fromContactId` 與 `toContactId` 兩條 FK                  |
-| `channel_identities` | `ChannelIdentity`  | 聯絡人在特定渠道的身分：外部 uid、渠道側暱稱與頭像            | `uid` 為渠道方的使用者 ID；與 `channelId` 組成唯一鍵             |
-| `identity_maps`      | `IdentityMap`      | 身分縫合結果：哪個外部 uid 被歸戶到哪個聯絡人、來源與信心值   | `source` 為 `StitchSource` enum；`confidence` 為 `Float`         |
-| `merge_suggestions`  | `MergeSuggestion`  | 系統推測應該合併的聯絡人配對，待人工審核                      | `status` 為 `SuggestionStatus` enum；兩個 contact 欄位都是鬆耦合 |
-| `long_term_memories` | `LongTermMemory`   | 聯絡人的長期記憶片段，供 AI 回覆時檢索                        | `embedding` schema 宣告為 `vector(1024)`，資料庫實際為 `vector(1536)`（見 `docs/16_DB_SCHEMA.md` 已知落差）                        |
+| 資料表               | Prisma model       | 儲存什麼                                                      | 關鍵欄位型別                                                                                                |
+| -------------------- | ------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `contacts`           | `Contact`          | 聯絡人主檔：顯示名稱、頭像、電話、email、語言、封鎖與封存狀態 | `mergedIntoId` 指向合併後的主聯絡人，是鬆耦合欄位                                                           |
+| `contact_attributes` | `ContactAttribute` | 聯絡人的自訂 key-value 屬性，附帶型別註記                     | `dataType` 為字串，標示 `value` 該怎麼解讀                                                                  |
+| `contact_relations`  | `ContactRelation`  | 聯絡人之間的關係（例如同一公司、家庭成員），雙向自我參照      | 同時有 `fromContactId` 與 `toContactId` 兩條 FK                                                             |
+| `channel_identities` | `ChannelIdentity`  | 聯絡人在特定渠道的身分：外部 uid、渠道側暱稱與頭像            | `uid` 為渠道方的使用者 ID；與 `channelId` 組成唯一鍵                                                        |
+| `identity_maps`      | `IdentityMap`      | 身分縫合結果：哪個外部 uid 被歸戶到哪個聯絡人、來源與信心值   | `source` 為 `StitchSource` enum；`confidence` 為 `Float`                                                    |
+| `merge_suggestions`  | `MergeSuggestion`  | 系統推測應該合併的聯絡人配對，待人工審核                      | `status` 為 `SuggestionStatus` enum；兩個 contact 欄位都是鬆耦合                                            |
+| `long_term_memories` | `LongTermMemory`   | 聯絡人的長期記憶片段，供 AI 回覆時檢索                        | `embedding` schema 宣告為 `vector(1024)`，資料庫實際為 `vector(1536)`（見 `docs/16_DB_SCHEMA.md` 已知落差） |
 
 ---
 
@@ -279,12 +279,12 @@ erDiagram
     tenants ||--o{ ai_usages : "AI 用量"
 ```
 
-| 資料表                   | Prisma model          | 儲存什麼                                                           | 關鍵欄位型別                                                                                                                         |
-| ------------------------ | --------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 資料表                   | Prisma model          | 儲存什麼                                                           | 關鍵欄位型別                                                                                                                                                                                                 |
+| ------------------------ | --------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `km_articles`            | `KmArticle`           | 知識庫文章：標題、內文、摘要、分類、標籤、狀態、向量、外部同步來源 | `embedding` schema 宣告為 `vector(1024)`，資料庫實際為 `vector(1536)`，且目前沒有向量索引（見 `docs/16_DB_SCHEMA.md` 已知落差）；`tags` 為 `String[]`；`metadata`／`spec` 為 `Json?`；`tenantId` **沒有** FK |
-| `km_article_attachments` | `KmArticleAttachment` | 文章附件：檔名、儲存 key、網址、MIME 類型、大小                    | `sizeBytes` 為 `Int`                                                                                                                 |
-| `kb_article_feedback`    | `KbArticleFeedback`   | AI 回覆品質回饋：使用者問題、機器人回覆、信心值、評分              | `confidence` 為 `Float?`；`messageId`／`contactId` **沒有** FK                                                                       |
-| `ai_usages`              | `AiUsage`             | 逐次 LLM 呼叫的 token 用量與成本，可歸戶到對話或案件               | 各 token 欄位為 `Int`；`costUsd` 為 `Decimal`；`conversationId`／`caseId` **沒有** FK                                                |
+| `km_article_attachments` | `KmArticleAttachment` | 文章附件：檔名、儲存 key、網址、MIME 類型、大小                    | `sizeBytes` 為 `Int`                                                                                                                                                                                         |
+| `kb_article_feedback`    | `KbArticleFeedback`   | AI 回覆品質回饋：使用者問題、機器人回覆、信心值、評分              | `confidence` 為 `Float?`；`messageId`／`contactId` **沒有** FK                                                                                                                                               |
+| `ai_usages`              | `AiUsage`             | 逐次 LLM 呼叫的 token 用量與成本，可歸戶到對話或案件               | 各 token 欄位為 `Int`；`costUsd` 為 `Decimal`；`conversationId`／`caseId` **沒有** FK                                                                                                                        |
 
 ---
 
@@ -406,8 +406,8 @@ erDiagram
 
 **第 1 類：刻意不建外鍵（1 張）**
 
-| 資料表          | Prisma model                   | 原因                                                                                                  |
-| --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| 資料表          | Prisma model                   | 原因                                                                                                    |
+| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `trial_signups` | `TrialSignup`（欄位可為 null） | 使用者送出試用申請時，租戶還不存在。系統在開通成功後才回填 `tenantId`。schema 註解已明示這是 soft ref。 |
 
 **第 2 類：缺少外鍵，原因未記載（6 張）**
@@ -458,42 +458,42 @@ schema 裡有一批 `xxxId` 欄位只存 ID，沒有宣告 Prisma 關聯，因�
 
 ## 特殊資料型別
 
-| 型別               | 用途                                | 使用範例                                                                             |
-| ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------ |
-| `Json`（JSONB）    | 結構會隨渠道或設定變動的內容        | `messages.content`、`automation_rules.conditions`、`materials.body`、`plans.limits`  |
+| 型別               | 用途                                                                               | 使用範例                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `Json`（JSONB）    | 結構會隨渠道或設定變動的內容                                                       | `messages.content`、`automation_rules.conditions`、`materials.body`、`plans.limits`  |
 | `vector`           | pgvector 語意檢索向量。schema 宣告 1024 維，資料庫實際 1536 維，且尚未建立向量索引 | `km_articles.embedding`、`long_term_memories.embedding`                              |
-| `Decimal`          | 金額，避免浮點誤差                  | `ai_usages.costUsd`、`model_pricings.inputPer1M`                                     |
-| `String[]`         | 原生陣列，省去中介表                | `km_articles.tags`、`materials.targetChannels`、`webhook_subscriptions.events`       |
-| `Bytes`            | 二進位資料                          | `passkey_credentials.publicKey`                                                      |
-| `BigInt`           | 超過 32 位元的計數器                | `passkey_credentials.counter`                                                        |
-| `String`（加密後） | 敏感憑證，加密後才落地              | `channels.credentialsEncrypted`、`tenant_settings.geminiApiKeyEnc`                   |
-| `String`（雜湊後） | token 與金鑰，只存雜湊，明文不落地  | `cli_sessions.tokenHash`、`partner_api_keys.keyHash`、`chatbox_sessions.tokenDigest` |
+| `Decimal`          | 金額，避免浮點誤差                                                                 | `ai_usages.costUsd`、`model_pricings.inputPer1M`                                     |
+| `String[]`         | 原生陣列，省去中介表                                                               | `km_articles.tags`、`materials.targetChannels`、`webhook_subscriptions.events`       |
+| `Bytes`            | 二進位資料                                                                         | `passkey_credentials.publicKey`                                                      |
+| `BigInt`           | 超過 32 位元的計數器                                                               | `passkey_credentials.counter`                                                        |
+| `String`（加密後） | 敏感憑證，加密後才落地                                                             | `channels.credentialsEncrypted`、`tenant_settings.geminiApiKeyEnc`                   |
+| `String`（雜湊後） | token 與金鑰，只存雜湊，明文不落地                                                 | `cli_sessions.tokenHash`、`partner_api_keys.keyHash`、`chatbox_sessions.tokenDigest` |
 
 ---
 
 ## Enum 一覽
 
-| Enum                                          | 用在哪                                                             | 值                             |
-| --------------------------------------------- | ------------------------------------------------------------------ | ------------------------------ |
-| `AgentRole`                                   | `agents.role`                                                      | ADMIN、SUPERVISOR、AGENT       |
+| Enum                                          | 用在哪                                                             | 值                                             |
+| --------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------- |
+| `AgentRole`                                   | `agents.role`                                                      | ADMIN、SUPERVISOR、AGENT                       |
 | `ChannelType`                                 | `channels`、`conversations`、`channel_identities`、`identity_maps` | LINE、FB、WEBCHAT、WHATSAPP、TELEGRAM、THREADS |
-| `ConversationStatus`                          | `conversations.status`                                             | 對話開啟、處理中、關閉等狀態   |
-| `Direction`                                   | `messages`、`channel_usages`                                       | INBOUND、OUTBOUND              |
-| `SenderType`                                  | `messages.senderType`                                              | 區分聯絡人、客服、機器人、系統 |
-| `ChatboxSessionRiskLevel`                     | `chatbox_sessions.riskLevel`                                       | WebChat 訪客風險等級           |
-| `CaseStatus`                                  | `cases.status`                                                     | 案件生命週期狀態               |
-| `Priority`                                    | `cases`、`sla_policies`                                            | 優先度                         |
-| `TagType` / `TagScope`                        | `tags`                                                             | 標籤類型與適用範圍             |
-| `KmStatus`                                    | `km_articles.status`                                               | 知識庫文章狀態                 |
-| `ScopeType`                                   | `automation_rules.scopeType`                                       | 規則作用範圍                   |
-| `ExecutionStatus` / `ActionResultStatus`      | `automation_executions`、`automation_action_results`               | 自動化執行與動作結果狀態       |
-| `ExecutionState`                              | `flow_executions.status`                                           | 互動流程執行狀態               |
-| `FlowStatus` / `NodeType`                     | `interaction_flows`、`interaction_nodes`                           | 流程狀態與節點類型             |
-| `CampaignStatus` / `BroadcastStatus`          | 行銷活動與廣播                                                     | 活動與廣播狀態                 |
-| `PortalActivityType` / `PortalActivityStatus` | `portal_activities`                                                | 粉絲活動類型與狀態             |
-| `TemplateViewStatus`                          | `template_views.status`                                            | 模板審核狀態                   |
-| `StitchSource`                                | `identity_maps.source`                                             | 身分縫合來源                   |
-| `SuggestionStatus`                            | `merge_suggestions.status`                                         | 合併建議審核狀態               |
+| `ConversationStatus`                          | `conversations.status`                                             | 對話開啟、處理中、關閉等狀態                   |
+| `Direction`                                   | `messages`、`channel_usages`                                       | INBOUND、OUTBOUND                              |
+| `SenderType`                                  | `messages.senderType`                                              | 區分聯絡人、客服、機器人、系統                 |
+| `ChatboxSessionRiskLevel`                     | `chatbox_sessions.riskLevel`                                       | WebChat 訪客風險等級                           |
+| `CaseStatus`                                  | `cases.status`                                                     | 案件生命週期狀態                               |
+| `Priority`                                    | `cases`、`sla_policies`                                            | 優先度                                         |
+| `TagType` / `TagScope`                        | `tags`                                                             | 標籤類型與適用範圍                             |
+| `KmStatus`                                    | `km_articles.status`                                               | 知識庫文章狀態                                 |
+| `ScopeType`                                   | `automation_rules.scopeType`                                       | 規則作用範圍                                   |
+| `ExecutionStatus` / `ActionResultStatus`      | `automation_executions`、`automation_action_results`               | 自動化執行與動作結果狀態                       |
+| `ExecutionState`                              | `flow_executions.status`                                           | 互動流程執行狀態                               |
+| `FlowStatus` / `NodeType`                     | `interaction_flows`、`interaction_nodes`                           | 流程狀態與節點類型                             |
+| `CampaignStatus` / `BroadcastStatus`          | 行銷活動與廣播                                                     | 活動與廣播狀態                                 |
+| `PortalActivityType` / `PortalActivityStatus` | `portal_activities`                                                | 粉絲活動類型與狀態                             |
+| `TemplateViewStatus`                          | `template_views.status`                                            | 模板審核狀態                                   |
+| `StitchSource`                                | `identity_maps.source`                                             | 身分縫合來源                                   |
+| `SuggestionStatus`                            | `merge_suggestions.status`                                         | 合併建議審核狀態                               |
 
 完整的 enum 值請直接看 `packages/database/prisma/schema.prisma` 第 16 至 186 行。
 
