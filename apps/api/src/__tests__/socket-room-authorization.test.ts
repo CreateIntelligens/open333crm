@@ -69,10 +69,26 @@ async function testRejectsConversationOutsideScope() {
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 }
 
+async function testTeamScopedConversationDoesNotFallBackToChannelAccess() {
+  const prisma = createPrisma();
+  prisma.conversation.findFirst = async () => ({
+    id: conversationA,
+    teamId: teamA,
+    assignedToId: null,
+    channelId: channelA,
+  });
+  prisma.team.findFirst = async () => null;
+
+  const result = await authorizeSocketRoom(prisma as never, agentContext, `conversation:${conversationA}`);
+
+  assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
+}
+
 await testRejectsArbitraryRoomNames();
 await testRejectsAnotherTenant();
 await testRejectsAnotherAgentPrivateRoom();
 await testAllowsAuthorizedConversation();
 await testRejectsConversationOutsideScope();
+await testTeamScopedConversationDoesNotFallBackToChannelAccess();
 
 console.log('socket room authorization tests passed');

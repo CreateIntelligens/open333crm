@@ -82,7 +82,7 @@ export default async function chatboxRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: body.error.flatten() });
     }
 
-    const result = await createChatboxSession(req.server.prisma, req.server.io, {
+    const result = await createChatboxSession(req.server.prismaAdmin, req.server.io, {
       channelPublicKey: body.data.channel,
       fingerprint: body.data.fingerprint,
       userAgent: getUserAgent(req.server, req.headers),
@@ -97,7 +97,7 @@ export default async function chatboxRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: body.error.flatten() });
     }
 
-    const result = await bootstrapChatboxSession(req.server.prisma, {
+    const result = await bootstrapChatboxSession(req.server.prismaAdmin, {
       sessionId: body.data.sessionId,
       fingerprint: body.data.fingerprint,
       userAgent: getUserAgent(req.server, req.headers),
@@ -134,7 +134,7 @@ export default async function chatboxRoutes(app: FastifyInstance) {
     ])) return;
 
     const result = await handleChatboxMessage(
-      req.server.prisma,
+      req.server.prismaAdmin,
       req.server.io,
       req.server.chatboxMessageRegistry,
       ({
@@ -183,7 +183,7 @@ export default async function chatboxRoutes(app: FastifyInstance) {
 
     const buffer = await data.toBuffer();
     const result = await uploadChatboxMedia(
-      req.server.prisma,
+      req.server.prismaAdmin,
       session,
       buffer,
       data.filename,

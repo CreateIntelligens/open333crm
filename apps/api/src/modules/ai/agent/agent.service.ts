@@ -22,6 +22,7 @@ export interface AgentReplyInput {
   tenantId: string;
   userMessage: string;
   conversationId?: string;
+  messageId?: string;
   initiatedById?: string;
   canPublishWiki?: boolean;
   replyToken?: string;
@@ -101,7 +102,9 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     },
   };
 
-  const history = input.conversationId ? await loadAgentHistory(prisma, input.tenantId, input.conversationId) : [];
+  const history = input.conversationId
+    ? await loadAgentHistory(prisma, input.tenantId, input.conversationId, input.messageId)
+    : [];
   const result = await runAgent({
     provider,
     systemPrompt: settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
@@ -187,9 +190,13 @@ async function persistAndDeliverAgentReply(
   await deliverToChannel(prisma, conversationId, { contentType: 'text', content: { text }, delivery });
 }
 
-async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string): Promise<HistoryMessage[]> {
+async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string, excludeMessageId?: string): Promise<HistoryMessage[]> {
   const rows = await prisma.message.findMany({
-    where: { conversationId, conversation: { tenantId } },
+    where: {
+      conversationId,
+      conversation: { tenantId },
+      ...(excludeMessageId ? { id: { not: excludeMessageId } } : {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: 10,
     select: { direction: true, content: true },

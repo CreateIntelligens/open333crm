@@ -489,6 +489,7 @@ async function testSessionVerifyRouteClaimsAndRejectsDuplicate() {
   };
   const app = Fastify();
   app.decorate('prisma', prisma);
+  app.decorate('prismaAdmin', prisma);
   app.decorate('chatboxClaimRedis', redis);
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof AppError) {

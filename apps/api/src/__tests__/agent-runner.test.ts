@@ -37,6 +37,17 @@ assert.equal(completed.text, '完成回答');
 assert.equal(completed.turns, 2);
 assert.equal(completedStore.toolCalls, 1);
 
+const timeoutStore = store();
+const timeoutStartedAt = Date.now();
+const timedOut = await runAgent({
+  provider: fakeProvider([{ text: '', toolCalls: [call] }]),
+  systemPrompt: 'system', userMessage: 'timeout', tools: [tool], store: timeoutStore,
+  timeoutMs: 20,
+  executeTool: async () => new Promise((resolve) => setTimeout(() => resolve('late result'), 100)),
+});
+assert.equal(timedOut.stopReason, 'timeout');
+assert.equal(Date.now() - timeoutStartedAt < 80, true);
+
 const limitStore = store();
 const limited = await runAgent({
   provider: fakeProvider([{ text: '', toolCalls: [call] }]),

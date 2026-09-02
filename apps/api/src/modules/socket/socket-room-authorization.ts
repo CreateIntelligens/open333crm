@@ -102,7 +102,7 @@ async function canAccessConversation(
   if (isElevatedRole(context.role)) return true;
   if (conversation.assignedToId === context.agentId) return true;
 
-  if (conversation.teamId && await canAccessTeam(prisma, context, conversation.teamId)) return true;
+  if (conversation.teamId) return canAccessTeam(prisma, context, conversation.teamId);
   return canAccessChannel(prisma, context, conversation.channelId);
 }
 

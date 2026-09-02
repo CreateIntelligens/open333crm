@@ -152,7 +152,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
       ])) return;
 
       const result = await handleChatboxMessage(
-        req.server.prisma,
+        req.server.prismaAdmin,
         req.server.io,
         req.server.chatboxMessageRegistry,
         ({ ...body.data, userAgent } as unknown) as ChatboxMessageInput & {
@@ -209,7 +209,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
 
       const buffer = await data.toBuffer();
       const result = await uploadChatboxMedia(
-        req.server.prisma,
+        req.server.prismaAdmin,
         session,
         buffer,
         data.filename,

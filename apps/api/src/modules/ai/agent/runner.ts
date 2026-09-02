@@ -101,18 +101,26 @@ export async function runAgent(input: RunAgentInput): Promise<AgentRunResult> {
       const key = `${call.name}:${stableJson(call.arguments)}`;
       const repetition = (repeatedCalls.get(key) ?? 0) + 1;
       repeatedCalls.set(key, repetition);
-      const startedAt = Date.now();
+      const toolStartedAt = Date.now();
       let status: 'success' | 'failed' = 'success';
       let result: string;
+      let toolTimedOut = false;
       try {
-        result = serializeToolResult(await input.executeTool(call.name, call.arguments));
+        const toolRemainingMs = (input.timeoutMs ?? AGENT_DEFAULT_TIMEOUT_MS) - (Date.now() - startedAt);
+        if (toolRemainingMs <= 0) {
+          toolTimedOut = true;
+          throw new Error('Agent turn timed out');
+        }
+        result = serializeToolResult(await withTimeout(input.executeTool(call.name, call.arguments), toolRemainingMs));
       } catch (error) {
         status = 'failed';
+        toolTimedOut = error instanceof Error && error.message === 'Agent turn timed out';
         result = JSON.stringify({ error: error instanceof Error ? error.message.slice(0, 500) : 'Tool execution failed' });
       }
       toolCalls += 1;
-      await input.store.recordToolCall({ turn, call: { ...call, arguments: sanitizeArgs(call.arguments) }, status, result: result.slice(0, 30_000), durationMs: Date.now() - startedAt });
+      await input.store.recordToolCall({ turn, call: { ...call, arguments: sanitizeArgs(call.arguments) }, status, result: result.slice(0, 30_000), durationMs: Date.now() - toolStartedAt });
       messages.push({ role: 'tool', toolName: call.name, content: result.slice(0, 30_000) });
+      if (toolTimedOut) return await finish(input.store, { status: 'failed', stopReason: 'timeout', turns: turn, toolCalls });
       if (repetition >= maxRepeatedCalls) return await finish(input.store, { status: 'failed', stopReason: 'repeated_tool_call', turns: turn, toolCalls });
     }
   }

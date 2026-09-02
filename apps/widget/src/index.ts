@@ -11,7 +11,7 @@ const ALLOWED_VIDEO_MIMES = ['video/mp4', 'video/quicktime'];
 
 interface Open333CRMConfig {
   channelId: string;
-  channelPublicKey: string;
+  channelPublicKey?: string;
   apiBaseUrl: string;
 }
 
@@ -23,8 +23,8 @@ declare global {
 
 async function boot(): Promise<void> {
   const config = window.Open333CRM;
-  if (!config?.channelId || !config.channelPublicKey || !config.apiBaseUrl) {
-    console.warn('[Open333CRM] Missing channelId, channelPublicKey, or apiBaseUrl in window.Open333CRM');
+  if (!config?.channelId || !config.apiBaseUrl) {
+    console.warn('[Open333CRM] Missing channelId or apiBaseUrl in window.Open333CRM');
     return;
   }
 
@@ -35,7 +35,7 @@ async function boot(): Promise<void> {
   // Init visitor session
   let session: Awaited<ReturnType<typeof initSession>>;
   try {
-    session = await initSession(apiBaseUrl, config.channelPublicKey, fingerprint);
+    session = await initSession(apiBaseUrl, config.channelPublicKey ?? channelId, fingerprint);
   } catch (err) {
     console.error('[Open333CRM] Failed to init session:', err);
     return;

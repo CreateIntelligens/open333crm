@@ -57,6 +57,28 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   handoffButtonLabel: '💬 轉接客服',
 };
 
+export function shouldRunAgentReply(botMode: BotConfig['botMode']): boolean {
+  return botMode === 'llm' || botMode === 'keyword_then_llm';
+}
+
+function getBotConfig(settings: unknown): BotConfig {
+  const channelSettings = (settings || {}) as Record<string, unknown>;
+  const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
+  return { ...DEFAULT_BOT_CONFIG, ...rawBotConfig };
+}
+
+async function getConversationBotConfig(
+  prisma: PrismaClient,
+  tenantId: string,
+  conversationId: string,
+): Promise<BotConfig | null> {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
+    include: { channel: { select: { settings: true } } },
+  });
+  return conversation ? getBotConfig(conversation.channel?.settings) : null;
+}
+
 async function checkAutoHandoff(
   prisma: PrismaClient,
   io: Server,
@@ -74,12 +96,7 @@ async function checkAutoHandoff(
     if (!conversation) return;
 
     // Read bot config from channel settings
-    const channelSettings = (conversation.channel?.settings || {}) as Record<string, unknown>;
-    const rawBotConfig = (channelSettings.botConfig || {}) as Partial<BotConfig>;
-    const botConfig: BotConfig = {
-      ...DEFAULT_BOT_CONFIG,
-      ...rawBotConfig,
-    };
+    const botConfig = getBotConfig(conversation.channel?.settings);
 
     let shouldHandoff = false;
     let reason = '';
@@ -333,17 +350,22 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         await checkAutoHandoff(prisma, io, event.tenantId, conversationId, text, contentType);
       }
 
+      const botConfig = conversationId
+        ? await getConversationBotConfig(prisma, event.tenantId, conversationId)
+        : null;
+
       // Attempt KB auto-reply for BOT_HANDLED conversations
       // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
       // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
       const isTextMessage = !contentType || contentType === 'text';
       let agentHandled = false;
-      if (conversationId && text && isTextMessage) {
-        if (isAgentEnabled()) {
+      if (conversationId && text && isTextMessage && botConfig) {
+        if (isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
           try {
             const agentResult = await runAgentReply(prisma, {
               tenantId: event.tenantId,
               conversationId,
+              messageId,
               userMessage: text,
               replyToken,
               receivedAt,

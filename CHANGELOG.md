@@ -11,6 +11,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **Socket 訂閱限流與 RLS CI 修正** — 訂閱/取消訂閱限制改為每條連線每 60 秒 rolling window；Socket plugin 的 `prismaAdmin` 使用補上明確租戶/資源授權白名單，通過 strict RLS 白名單檢查。
 - **Gemini 多工具回覆格式修正** — 連續的 tool responses 合併為同一個 Gemini `user` turn，避免多工具呼叫時產生不符合 API 規範的連續 user turns。
 - **Agent retention 冪等清理** — 清理工具呼叫暫存資料時排除已標記為 `EXPIRED` 的資料，避免重複更新。
+- **PR review 安全修補** — 修正 public Chatbox 的 RLS client、舊版 WebChat embed 相容性、team-scoped conversation room 授權、Agent bot mode/Wiki 權限/feature flag、Agent timeout 與 inbound history 重複，以及 workers retention 清理條件。
 
 ## [2026-08-28]
 

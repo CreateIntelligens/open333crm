@@ -63,3 +63,4 @@ try {
 }
 
 console.log('agent-provider-tools tests passed');
+process.exit(0);

@@ -34,6 +34,7 @@ const DEFAULT_SESSION_TTL_MINUTES = MAX_SESSION_TTL_MINUTES;
 export const MAX_CHATBOX_SESSION_TTL_MS = MAX_SESSION_TTL_MINUTES * 60 * 1000;
 const STRONG_MISMATCH_THRESHOLD = 3;
 const CLAIM_KEY_PREFIX = 'chatbox:session:claim';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface NormalizedFingerprint {
   browserFamily: string;
@@ -355,8 +356,11 @@ export async function resolveChatboxChannel(prisma: PrismaClient, publicKey: str
     throw new AppError('channel publicKey is required', 'BAD_REQUEST', 400);
   }
 
+  const identifiers: Array<{ publicKey: string } | { id: string }> = [{ publicKey }];
+  if (UUID_RE.test(publicKey)) identifiers.push({ id: publicKey });
+
   const channel = await prisma.channel.findFirst({
-    where: { publicKey, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
+    where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
   if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
   return channel;

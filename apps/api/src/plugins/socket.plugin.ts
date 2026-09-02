@@ -5,6 +5,11 @@ import IORedis from 'ioredis';
 import { getConfig } from '../config/env.js';
 import { eventBus } from '../events/event-bus.js';
 import { authorizeSocketRoom } from '../modules/socket/socket-room-authorization.js';
+import {
+  consumeSocketSubscriptionAttempt,
+  SOCKET_SUBSCRIPTION_RATE_WINDOW_MS,
+  type SocketSubscriptionRateLimitState,
+} from '../modules/socket/socket-subscription-rate-limit.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -58,8 +63,10 @@ async function socketPlugin(fastify: FastifyInstance) {
     socket.join(`tenant:${tenantId}`);
     socket.join(`agent:${agentId}`);
 
-    let subscriptionAttempts = 0;
-    const maxSubscriptionAttempts = 60;
+    let subscriptionRateState: SocketSubscriptionRateLimitState = {
+      count: 0,
+      resetAt: Date.now() + SOCKET_SUBSCRIPTION_RATE_WINDOW_MS,
+    };
     const authorize = async (input: unknown) => authorizeSocketRoom(
       fastify.prismaAdmin,
       { agentId, tenantId, role: socket.data.role },
@@ -68,8 +75,9 @@ async function socketPlugin(fastify: FastifyInstance) {
 
     // Subscribe to conversation/inbox rooms only after server-side authorization.
     socket.on('subscribe', async (input: unknown, ack?: (response: unknown) => void) => {
-      subscriptionAttempts += 1;
-      if (subscriptionAttempts > maxSubscriptionAttempts) {
+      const rateResult = consumeSocketSubscriptionAttempt(subscriptionRateState);
+      subscriptionRateState = rateResult.state;
+      if (!rateResult.allowed) {
         fastify.log.warn({ agentId }, 'Socket subscription rate limit exceeded');
         ack?.({ ok: false, code: 'RATE_LIMITED' });
         return;
@@ -93,8 +101,9 @@ async function socketPlugin(fastify: FastifyInstance) {
     });
 
     socket.on('unsubscribe', async (input: unknown, ack?: (response: unknown) => void) => {
-      subscriptionAttempts += 1;
-      if (subscriptionAttempts > maxSubscriptionAttempts) {
+      const rateResult = consumeSocketSubscriptionAttempt(subscriptionRateState);
+      subscriptionRateState = rateResult.state;
+      if (!rateResult.allowed) {
         fastify.log.warn({ agentId }, 'Socket unsubscription rate limit exceeded');
         ack?.({ ok: false, code: 'RATE_LIMITED' });
         return;

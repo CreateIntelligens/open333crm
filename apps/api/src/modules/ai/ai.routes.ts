@@ -7,6 +7,8 @@ import { rewriteText } from './flex-ai.service.js';
 import { success } from '../../shared/utils/response.js';
 import { runAgentReply } from './agent/agent.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { getConfig } from '../../config/env.js';
+import { AppError } from '../../shared/utils/response.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
   // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
@@ -67,17 +69,20 @@ export default async function aiRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/ai/agent/run — manually run the tenant-scoped Agent.
   fastify.post('/agent/run', { preHandler: requirePermission('inbox.reply') }, async (request, reply) => {
+    const config = getConfig();
+    if (!config.AGENTIC_LLM_ENABLED) {
+      throw new AppError('Agentic LLM is disabled', 'SERVICE_UNAVAILABLE', 503);
+    }
     const data = z.object({
       userMessage: z.string().trim().min(1).max(20_000),
       conversationId: z.string().uuid().optional(),
-      publishWiki: z.boolean().optional(),
     }).parse(request.body);
     const result = await runAgentReply(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       userMessage: data.userMessage,
       conversationId: data.conversationId,
       initiatedById: request.agent.id,
-      canPublishWiki: data.publishWiki === true,
+      canPublishWiki: config.AGENT_WIKI_AUTO_PUBLISH,
     });
     return reply.send(success(result));
   });
