@@ -3,7 +3,7 @@
 本文件用心智圖描述 open333CRM 的整體結構。心智圖上的每個節點對應原始碼中的一個實體：一個容器、一個 app、一個 package，或一個外部服務。
 
 - **資料來源**：`docker-compose*.yml`、`Dockerfile*`、`pnpm-workspace.yaml`、各 `package.json`
-- **圖表格式**：Mermaid 的 `mindmap` 與 `flowchart`。GitHub 直接渲染這兩種圖，讀者不需要安裝額外工具。
+- **圖表格式**：Mermaid 的 `mindmap`、`flowchart` 與 `sequenceDiagram`。GitHub 直接渲染這三種圖，讀者不需要安裝額外工具。
 - **與其他文件的分工**：
   - 本文件說明系統由哪些元件組成，以及元件之間如何連接。
   - 資料表關聯請看 [`DATABASE-ERD.md`](./DATABASE-ERD.md)。
@@ -368,22 +368,37 @@ multipart → cors → errorHandler → prisma → cookie → auth → socket �
 
 ### 訊息流
 
-以「外部渠道進來一則訊息，最後推到客服畫面」為例：
+以「外部渠道進來一則訊息，最後推到客服畫面」為例。`AGENTS.md` 把推送分成兩條路徑，下圖用 `alt` 同時畫出兩者：
 
 ```mermaid
-flowchart LR
-  ext["外部渠道<br/>LINE / FB / Threads"] -->|webhook| proxy["Caddy / Nginx"]
-  browser["客服瀏覽器"] --> proxy
-  proxy -->|"/api/*"| api["api<br/>Fastify"]
-  proxy -->|"其餘"| web["web<br/>Next.js"]
-  api -->|"BullMQ 派工"| redis[("Redis")]
-  redis -->|"消費"| workers["workers"]
-  workers -->|"寫入"| pg[("PostgreSQL")]
-  workers -->|"publish socket:emit"| redis
-  redis -->|"subscribe"| api
-  api -->|"Socket.IO"| browser
-  api -->|"直接查詢"| pg
+sequenceDiagram
+    autonumber
+    participant EXT as 外部渠道 LINE / FB / Threads
+    participant PX as Caddy / Nginx
+    participant API as api（Fastify）
+    participant PG as PostgreSQL
+    participant RD as Redis
+    participant WK as workers
+    participant BR as 客服瀏覽器
+
+    EXT->>PX: webhook
+    PX->>API: 依路徑轉給 /api/*
+    API->>PG: 寫入訊息
+    alt Path A — 資料已在手上，房間已知
+        API-->>BR: 直接 emit Socket.IO 事件
+    else Path B — 需要查詢收件者或背景處理
+        API->>RD: BullMQ 派工
+        RD->>WK: workers 消費工作
+        WK->>PG: 查詢收件者並寫入結果
+        WK->>RD: publish 到 socket:emit
+        RD-->>API: api 訂閱後收到
+        API-->>BR: emit Socket.IO 事件
+    end
 ```
+
+圖上 Redis 的生命線被穿越兩次：第 5 步收 BullMQ 的派工，第 9 步收 pub/sub 的發布。這兩次用途不同，`workers` 也為此開兩條連線。
+
+客服瀏覽器載入頁面走的是另一條路徑：反向代理把不是 `/api/*` 的請求轉給 `web:3000`，與上圖的訊息推送無關。
 
 ### `web` — 兩套後台在同一個 Next.js 應用內
 
@@ -588,14 +603,28 @@ export { prisma } from "./client.js";
 
 #### `kb-ingest` — 離線的 6 階段管線
 
-每個階段是一個獨立 script，用 `pnpm --filter @open333crm/kb-ingest <階段>` 執行：
+每個階段是一個獨立 script，用 `pnpm --filter @open333crm/kb-ingest <階段>` 執行。六個階段依序串成一條線，只有第 3 與第 4 階段呼叫 LLM，只有第 6 階段寫入資料庫：
+
+```mermaid
+flowchart LR
+  s01["01 scan<br/>本機掃描"] --> s02["02 prefilter<br/>規則粗篩"]
+  s02 --> s03["03 extract<br/>LLM 抽取問答"]
+  s03 --> s04["04 cluster<br/>LLM 去重與聚合"]
+  s04 --> s05["05 report<br/>產出分析報告"]
+  s05 --> s06["06 import<br/>人工審核後匯入"]
+  s03 -.-> llm(["LLM 供應商"])
+  s04 -.-> llm
+  s06 -.-> db[("PostgreSQL<br/>寫成 DRAFT")]
+```
+
+各階段的用途：
 
 | 階段 | script      | 用途                                   |
 | ---- | ----------- | -------------------------------------- |
 | 01   | `scan`      | 純本機掃描，不呼叫 LLM                 |
 | 02   | `prefilter` | 規則粗篩，降低 LLM 成本                |
 | 03   | `extract`   | 用 LLM 抽取問答對，是成本最高的一步    |
-| 04   | `cluster`   | 去重與聚合，把碎片合併成文章           |
+| 04   | `cluster`   | 用 LLM 去重與聚合，把碎片合併成文章    |
 | 05   | `report`    | 產出分析報告，不寫入資料庫             |
 | 06   | `import`    | 人工審核後匯入知識庫，一律寫成 `DRAFT` |
 
