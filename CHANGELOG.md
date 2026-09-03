@@ -32,6 +32,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **API 外掛架構文件改為請求導向** — 將原本以六種設計模式為主線的說明，改為依序解釋 API 組裝、租戶請求生命週期、外掛作用域、依賴提供與註冊順序；設計模式名稱移至附錄，並修正外掛數量、易失效的路由統計、declaration merging 能力邊界，以及 `onClose` 與 HTTP 請求生命週期混用的說法。
 - **系統現況文件改為分層導覽** — 將單一 `SYSTEM-MINDMAP.md` 拆成 `docs/ref/system/` 文件組：首頁只保留系統執行圖、核心元件與閱讀入口，部署、應用與套件、基礎設施、開發交付、實作落差分開維護；並集中執行時驗證紀錄，減少總覽中的重複資訊與閱讀尺度切換。
 - Passkey 註冊端點新增 rate limit；未設定 WebAuthn 的部署不再顯示無法使用的登入與綁定控制項。
 - Passkey 綁定流程新增裝置名稱輸入與既有 credential 重新命名功能；已綁定清單顯示自訂名稱、裝置類型與備份狀態，方便辨識多個 credential。
