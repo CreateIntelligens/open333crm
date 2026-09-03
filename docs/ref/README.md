@@ -6,11 +6,11 @@
 
 ## 本 repo 的現況文件
 
-| 文件                                                         | 內容                                                                               | 資料來源                                                        |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`system/`](./system/)                                      | 系統總覽，以及部署、元件、基礎設施、交付與實作落差的分層文件                       | Compose、workspace 設定、各 `package.json` 與執行時驗證       |
-| [`DATABASE-ERD.md`](./DATABASE-ERD.md)                       | 資料表關聯與每張表儲存的資料類型                                                   | `packages/database/prisma/schema.prisma`                        |
-| [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md) | `apps/api` 的 Fastify 外掛架構屬於哪些設計模式，以及這個寫法的取捨                 | `apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`            |
+| 文件                                                         | 內容                                                               | 資料來源                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------- |
+| [`system/`](./system/)                                       | 系統總覽，以及部署、元件、基礎設施、交付與實作落差的分層文件       | Compose、workspace 設定、各 `package.json` 與執行時驗證 |
+| [`DATABASE-ERD.md`](./DATABASE-ERD.md)                       | 資料表關聯與每張表儲存的資料類型                                   | `packages/database/prisma/schema.prisma`                |
+| [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md) | `apps/api` 如何註冊外掛、隔離路由作用域，以及建立租戶資料庫 client | `apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`    |
 
 ## 外部系統的參考文件
 
