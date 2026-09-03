@@ -79,7 +79,7 @@ export default function TenantDetailPage() {
         planSlug: form.planSlug || undefined,
       });
       setMsgOk(true);
-      setMsg('✓ 基本資料已儲存');
+      setMsg('基本資料已儲存');
       await load();
     } catch (err: unknown) {
       showError(err, '儲存失敗');
@@ -104,7 +104,7 @@ export default function TenantDetailPage() {
         contractEndDate: contract.end || null,
       });
       setMsgOk(true);
-      setMsg('✓ 合約期間已儲存');
+      setMsg('合約期間已儲存');
       await load();
     } catch (err: unknown) {
       showError(err, '合約日期儲存失敗');
@@ -123,7 +123,7 @@ export default function TenantDetailPage() {
     try {
       await platformApi.patch(`/tenants/${tenant.id}/agents/${editingAgent.id}`, { email: editingAgent.email });
       setMsgOk(true);
-      setMsg(`✓ 成員 Email 已改為 ${editingAgent.email}（登入帳號同步變更）`);
+      setMsg(`成員 Email 已改為 ${editingAgent.email}（登入帳號同步變更）`);
       setEditingAgent(null);
       await load();
     } catch (err: unknown) {
@@ -140,7 +140,7 @@ export default function TenantDetailPage() {
     try {
       await platformApi.post(`/tenants/${tenant.id}/agents/${agentId}/resend-welcome`);
       setMsgOk(true);
-      setMsg(`✓ 開通信已重寄至 ${email}（信中不含密碼，密碼請自行轉交）`);
+      setMsg(`開通信已重寄至 ${email}（信中不含密碼，密碼請自行轉交）`);
     } catch (err: unknown) {
       showError(err, '開通信重寄失敗');
     } finally {
@@ -155,7 +155,7 @@ export default function TenantDetailPage() {
     try {
       await platformApi.patch(`/tenants/${tenant.id}/active`, { isActive: !tenant.isActive });
       setMsgOk(true);
-      setMsg(tenant.isActive ? '✓ 已停用租戶' : '✓ 已啟用租戶');
+      setMsg(tenant.isActive ? '已停用租戶' : '已啟用租戶');
       await load();
     } catch (err: unknown) {
       showError(err, '狀態切換失敗');

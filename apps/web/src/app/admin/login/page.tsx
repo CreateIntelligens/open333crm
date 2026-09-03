@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { platformApi, setPlatformToken } from '../lib/platform-api';
+import { platformApi, setPlatformToken, setMustChangePassword } from '../lib/platform-api';
+import { AuthShell } from '../lib/AuthShell';
+import { C, input, label, focusRing, btnPrimary, primaryHover } from '../lib/ui';
 
 export default function PlatformLoginPage() {
   const router = useRouter();
@@ -18,7 +20,13 @@ export default function PlatformLoginPage() {
     try {
       const res = await platformApi.post('/auth/login', { email, password });
       setPlatformToken(res.data.data.token);
-      router.replace('/admin/plans');
+      if (res.data.data.user?.mustChangePassword) {
+        setMustChangePassword(true);
+        router.replace('/admin/change-password?forced=1');
+      } else {
+        setMustChangePassword(false);
+        router.replace('/admin/plans');
+      }
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
@@ -30,69 +38,39 @@ export default function PlatformLoginPage() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#0d9488',
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
-      <form
-        onSubmit={submit}
-        style={{ background: '#fff', padding: 32, borderRadius: 12, width: 360, boxShadow: '0 8px 30px rgba(0,0,0,.2)' }}
-      >
-        <h1 style={{ margin: '0 0 4px', fontSize: 20 }}>平台控制台</h1>
-        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#66707f' }}>平台方 superuser 登入</p>
-        <label style={{ fontSize: 13, fontWeight: 600 }}>Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={inputStyle}
-        />
-        <label style={{ fontSize: 13, fontWeight: 600 }}>密碼</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={inputStyle}
-        />
-        {error && <div style={{ color: '#d1443e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+    <AuthShell title="平台控制台" subtitle="平台方管理員登入">
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <label style={label}>Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={input} {...focusRing} />
+        </div>
+        <div>
+          <label style={label}>密碼</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={input}
+            {...focusRing}
+          />
+        </div>
+        {error && <div style={{ color: C.danger, fontSize: 13, margin: '-4px 0 0' }}>{error}</div>}
         <button
           type="submit"
           disabled={submitting}
-          style={{
-            width: '100%',
-            background: '#0d9488',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            padding: '10px',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: submitting ? 'default' : 'pointer',
-            opacity: submitting ? 0.6 : 1,
-          }}
+          style={{ ...btnPrimary, width: '100%', padding: '11px', opacity: submitting ? 0.6 : 1 }}
+          {...primaryHover}
         >
           {submitting ? '登入中…' : '登入'}
         </button>
+        <a
+          href="/admin/forgot-password"
+          style={{ textAlign: 'center', fontSize: 13, color: C.muted, textDecoration: 'none' }}
+        >
+          忘記密碼？
+        </a>
       </form>
-    </div>
+    </AuthShell>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  border: '1px solid #e3e8ef',
-  borderRadius: 8,
-  padding: '9px 11px',
-  fontSize: 14,
-  marginTop: 4,
-  marginBottom: 14,
-  boxSizing: 'border-box',
-};

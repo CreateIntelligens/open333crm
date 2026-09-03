@@ -128,7 +128,7 @@ export default function PlansPage() {
         allowedChannelTypes: plan.allowedChannelTypes,
         permissionOverrides: { deny: plan.permissionOverrides?.deny ?? [] },
       });
-      setMsg(`✓ 已更新「${plan.name}」——該方案所有租戶即時生效`);
+      setMsg(`已更新「${plan.name}」——該方案所有租戶即時生效`);
       await load();
     } catch {
       setMsg('儲存失敗');

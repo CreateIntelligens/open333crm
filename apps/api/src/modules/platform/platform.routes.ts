@@ -9,6 +9,20 @@ import { platformLogin } from './platform-auth.service.js';
 import { writePlatformAudit } from './platform-audit.service.js';
 import { listPlans, updatePlan } from './plan.service.js';
 import {
+  listPlatformUsers,
+  getPlatformUser,
+  createPlatformUser,
+  updatePlatformUser,
+  setPlatformUserActive,
+  resendPlatformUserWelcomeEmail,
+  getPlatformUserAuditLogs,
+} from './platform-user.service.js';
+import {
+  changeOwnPassword,
+  requestPasswordReset,
+  resetPasswordWithToken,
+} from './platform-password-recovery.service.js';
+import {
   listTenants,
   setTenantActive,
   provisionTenantViaApi,
@@ -64,6 +78,22 @@ const provisionSchema = z.object({
   adminName: z.string().min(1),
   adminPassword: z.string().min(8),
 });
+const createPlatformUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+});
+const updatePlatformUserSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    email: z.string().email().optional(),
+  })
+  .refine((b) => b.name !== undefined || b.email !== undefined, { message: '至少提供一個欄位' });
+const changePasswordSchema = z.object({
+  oldPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(8) });
 
 export default async function platformRoutes(fastify: FastifyInstance) {
   await fastify.register(rateLimit, {
@@ -89,8 +119,113 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     return reply.send(success({ token, user }));
   });
 
+  // ── 忘記密碼（公開，防枚舉：無論 email 是否存在皆回相同結果）──
+  fastify.post(
+    '/auth/forgot-password',
+    { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
+    async (request, reply) => {
+      const { email } = forgotPasswordSchema.parse(request.body);
+      await requestPasswordReset(fastify.prismaAdmin, email);
+      return reply.status(202).send(success({ message: '若此 email 存在，重設信已寄出，請至信箱查收。' }));
+    },
+  );
+
+  // ── 忘記密碼：用 token 設定新密碼（公開）──
+  fastify.post(
+    '/auth/reset-password',
+    { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (request) => {
+      const { token, newPassword } = resetPasswordSchema.parse(request.body);
+      await resetPasswordWithToken(fastify.prismaAdmin, token, newPassword);
+      return success({ ok: true });
+    },
+  );
+
   // ── 以下皆需平台 superuser ──
-  const guard = { preHandler: [fastify.authenticatePlatformSuperuser] };
+  // mustChangePassword=true 時，除「自助改密碼」外一律擋，逼使用系統寄的臨時密碼登入後先改密碼
+  const blockIfMustChangePassword = async (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => {
+    if (request.platformUser?.mustChangePassword) {
+      return reply.status(403).send({
+        success: false,
+        error: { code: 'MUST_CHANGE_PASSWORD', message: '請先修改密碼後再繼續使用' },
+      });
+    }
+  };
+  const guard = { preHandler: [fastify.authenticatePlatformSuperuser, blockIfMustChangePassword] };
+  // 只驗證身分，不擋 mustChangePassword（僅供改密碼路由使用）
+  const authOnlyGuard = { preHandler: [fastify.authenticatePlatformSuperuser] };
+
+  // 已登入自助改密碼
+  fastify.post('/auth/change-password', authOnlyGuard, async (request) => {
+    const body = changePasswordSchema.parse(request.body);
+    await changeOwnPassword(fastify.prismaAdmin, request.platformUser!.id, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: 'platform_user.change_password',
+      targetType: 'platform_user',
+      targetId: request.platformUser!.id,
+    });
+    return success({ ok: true });
+  });
+
+  // ── 平台帳號管理 ──
+  fastify.get('/platform-users', guard, async () => success(await listPlatformUsers(fastify.prismaAdmin)));
+  fastify.get<{ Params: { id: string } }>('/platform-users/:id', guard, async (request) =>
+    success(await getPlatformUser(fastify.prismaAdmin, request.params.id)),
+  );
+  fastify.post('/platform-users', guard, async (request) => {
+    const body = createPlatformUserSchema.parse(request.body);
+    const result = await createPlatformUser(fastify.prismaAdmin, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: 'platform_user.provision',
+      targetType: 'platform_user',
+      targetId: result.id,
+      payload: { email: result.email, name: result.name },
+    });
+    return success(result);
+  });
+  fastify.patch<{ Params: { id: string } }>('/platform-users/:id', guard, async (request) => {
+    const body = updatePlatformUserSchema.parse(request.body);
+    const result = await updatePlatformUser(fastify.prismaAdmin, request.params.id, body);
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: 'platform_user.update',
+      targetType: 'platform_user',
+      targetId: result.id,
+      payload: body,
+    });
+    return success(result);
+  });
+  fastify.patch<{ Params: { id: string } }>('/platform-users/:id/active', guard, async (request) => {
+    const { isActive } = z.object({ isActive: z.boolean() }).parse(request.body);
+    const result = await setPlatformUserActive(
+      fastify.prismaAdmin,
+      request.params.id,
+      isActive,
+      request.platformUser!.id,
+    );
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: isActive ? 'platform_user.enable' : 'platform_user.disable',
+      targetType: 'platform_user',
+      targetId: result.id,
+    });
+    return success(result);
+  });
+  fastify.post<{ Params: { id: string } }>('/platform-users/:id/resend-welcome', guard, async (request) => {
+    const result = await resendPlatformUserWelcomeEmail(fastify.prismaAdmin, request.params.id);
+    await writePlatformAudit(fastify.prismaAdmin, {
+      platformUserId: request.platformUser!.id,
+      action: 'platform_user.resend_welcome',
+      targetType: 'platform_user',
+      targetId: request.params.id,
+    });
+    return success(result);
+  });
+  fastify.get<{ Params: { id: string } }>('/platform-users/:id/audit-logs', guard, async (request) =>
+    success(await getPlatformUserAuditLogs(fastify.prismaAdmin, request.params.id)),
+  );
 
   // 功能 registry（方案設定頁動態載入用，單一資料源＝core FEATURES + permissions + Prisma ChannelType enum）
   fastify.get('/registry', guard, async () =>

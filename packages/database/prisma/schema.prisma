@@ -1872,14 +1872,17 @@ model Plan {
 
 // 平台 superuser（跨租戶身分，與 Agent 完全分離）。
 model PlatformUser {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique
-  name         String
-  passwordHash String
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String    @unique
+  name                 String
+  passwordHash         String
+  isActive             Boolean   @default(true)
+  lastLoginAt          DateTime?
+  resetTokenHash       String?   @unique // sha256(32-byte random)；明文只出現在信裡
+  resetTokenExpiresAt  DateTime?
+  mustChangePassword   Boolean   @default(false) // 開通/重寄開通信時系統產生臨時密碼會設 true，改密碼成功後清除
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   auditLogs PlatformAuditLog[]
 

@@ -31,7 +31,7 @@ export default function PlanChangesPage() {
     if (!window.confirm(`確定${verb}「${r.tenantName}」的申請？`)) return;
     await platformApi.patch(`/plan-change-requests/${r.id}/${action}`);
     await load();
-    setMsg(`✓ 已${verb}「${r.tenantName}」的申請`);
+    setMsg(`已${verb}「${r.tenantName}」的申請`);
     setTimeout(() => setMsg(''), 3000);
   };
 

@@ -50,7 +50,7 @@ declare module 'fastify' {
   }
   interface FastifyRequest {
     agent: AgentPayload;
-    platformUser?: { id: string; role: 'PLATFORM_SUPERUSER' };
+    platformUser?: { id: string; role: 'PLATFORM_SUPERUSER'; mustChangePassword: boolean };
   }
 }
 
@@ -137,7 +137,23 @@ async function authPlugin(fastify: FastifyInstance) {
             error: { code: 'FORBIDDEN', message: 'Not a platform superuser' },
           });
         }
-        request.platformUser = { id: payload.platformUserId, role: 'PLATFORM_SUPERUSER' };
+        // mustChangePassword 即時查 DB（非信任 JWT payload 快照）：改密碼後立即生效，
+        // 不需等舊 token 過期或重新登入。
+        const user = await fastify.prismaAdmin.platformUser.findUnique({
+          where: { id: payload.platformUserId },
+          select: { mustChangePassword: true },
+        });
+        if (!user) {
+          return reply.status(401).send({
+            success: false,
+            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired platform token' },
+          });
+        }
+        request.platformUser = {
+          id: payload.platformUserId,
+          role: 'PLATFORM_SUPERUSER',
+          mustChangePassword: user.mustChangePassword,
+        };
       } catch {
         return reply.status(401).send({
           success: false,

@@ -82,7 +82,7 @@ export default function TrialAdminPage() {
   const saveSetting = async (key: string, value: unknown) => {
     await platformApi.put(`/settings/${key}`, { value });
     setValues((v) => ({ ...v, [key]: value }));
-    flash(`✓ 已更新 ${key}`);
+    flash(`已更新 ${key}`);
   };
 
   const extend = async (t: TrialTenant) => {
@@ -92,7 +92,7 @@ export default function TrialAdminPage() {
     if (isNaN(days) || days <= 0) return flash('請輸入正整數天數');
     await platformApi.patch(`/trial-tenants/${t.id}/extend`, { days });
     await loadTenants();
-    flash(`✓ 已延長「${t.name}」試用 ${days} 天`);
+    flash(`已延長「${t.name}」試用 ${days} 天`);
   };
 
   const convert = async (t: TrialTenant, planSlug: string) => {
@@ -100,7 +100,7 @@ export default function TrialAdminPage() {
     if (!window.confirm(`確定將「${t.name}」轉為正式方案？此後脫離試用、不再到期。`)) return;
     await platformApi.patch(`/trial-tenants/${t.id}/convert`, { planSlug });
     await loadTenants();
-    flash(`✓ 已將「${t.name}」轉為正式方案`);
+    flash(`已將「${t.name}」轉為正式方案`);
   };
 
   // 復原已軟刪（已清除）的試用租戶：清 purgedAt（業務資料本就未真刪，仍維持停用）
@@ -108,18 +108,18 @@ export default function TrialAdminPage() {
     if (!window.confirm(`復原「${t.name}」的已清除標記？資料未曾真刪，復原後恢復可見（仍為停用狀態）。`)) return;
     await platformApi.patch(`/tenants/${t.id}/restore`, {});
     await loadTenants();
-    flash(`✓ 已復原「${t.name}」`);
+    flash(`已復原「${t.name}」`);
   };
 
   const resend = async (s: Signup) => {
     await platformApi.post(`/trial-signups/${s.id}/resend`);
-    flash(`✓ 已重寄驗證信給 ${s.email}`);
+    flash(`已重寄驗證信給 ${s.email}`);
   };
   const markFailed = async (s: Signup) => {
     if (!window.confirm(`確定將 ${s.email} 的申請標記為作廢？`)) return;
     await platformApi.patch(`/trial-signups/${s.id}/fail`, { reason: '平台手動作廢' });
     await loadSignups();
-    flash('✓ 已標記為作廢');
+    flash('已標記為作廢');
   };
 
   return (
