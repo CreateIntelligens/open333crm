@@ -164,6 +164,17 @@ Object.defineProperty(request, "tenantPrisma", {
 
 外掛的實際註冊順序寫在 `bootstrap()`。`fastify-plugin` 也支援 `dependencies`，可在啟動時檢查具名外掛是否已經註冊。
 
+目前的順序不是任意的，其中兩項相依可以直接從原始碼確認：
+
+| 約束 | 依據 |
+| --- | --- |
+| `prisma` 早於 `auth` 與 `chatbox` | `auth` 的認證函式使用 `fastify.prismaAdmin`；`chatbox` 的 session verifier 使用 `fastify.prisma` |
+| `auth` 早於 `socket` | `socket` 驗證連線時呼叫 `fastify.jwt.verify()`，這個裝飾由 `auth` 註冊 `@fastify/jwt` 時提供 |
+
+這兩項相依都在 handler 或連線回呼內解析，不在註冊階段解析。因此調換順序不會讓啟動立即失敗，而是等到對應的請求或連線進入後才出錯。
+
+`error-handler` 排在最前面幾個位置，是為了讓它涵蓋後續註冊的內容。這一項屬於慣例，本文件沒有驗證改變它的實際影響。
+
 目前只有 `chatbox` 明確宣告 `dependencies: ["prisma"]`。`auth` 會在認證函式內使用 `fastify.prismaAdmin`，但沒有宣告對 `prisma` 的相依。
 
 因此目前存在兩種保護程度：
