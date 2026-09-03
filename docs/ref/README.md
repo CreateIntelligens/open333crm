@@ -8,7 +8,7 @@
 
 | 文件                                                         | 內容                                                                               | 資料來源                                                        |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`SYSTEM-MINDMAP.md`](./SYSTEM-MINDMAP.md)                   | 系統由哪些元件組成、元件之間如何連接。7 個階段的心智圖，附落差清單與執行時驗證結果 | `docker-compose*.yml`、`pnpm-workspace.yaml`、各 `package.json` |
+| [`system/`](./system/)                                      | 系統總覽，以及部署、元件、基礎設施、交付與實作落差的分層文件                       | Compose、workspace 設定、各 `package.json` 與執行時驗證       |
 | [`DATABASE-ERD.md`](./DATABASE-ERD.md)                       | 資料表關聯與每張表儲存的資料類型                                                   | `packages/database/prisma/schema.prisma`                        |
 | [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md) | `apps/api` 的 Fastify 外掛架構屬於哪些設計模式，以及這個寫法的取捨                 | `apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`            |
 

@@ -32,6 +32,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **系統現況文件改為分層導覽** — 將單一 `SYSTEM-MINDMAP.md` 拆成 `docs/ref/system/` 文件組：首頁只保留系統執行圖、核心元件與閱讀入口，部署、應用與套件、基礎設施、開發交付、實作落差分開維護；並集中執行時驗證紀錄，減少總覽中的重複資訊與閱讀尺度切換。
 - Passkey 註冊端點新增 rate limit；未設定 WebAuthn 的部署不再顯示無法使用的登入與綁定控制項。
 - Passkey 綁定流程新增裝置名稱輸入與既有 credential 重新命名功能；已綁定清單顯示自訂名稱、裝置類型與備份狀態，方便辨識多個 credential。
 

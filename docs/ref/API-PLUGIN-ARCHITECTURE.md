@@ -5,7 +5,7 @@
 - **資料來源**：`apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`、`apps/api/src/modules/*/*.routes.ts`
 - **圖表格式**：Mermaid 的 `flowchart` 與 `sequenceDiagram`。GitHub 直接渲染，讀者不需要安裝額外工具。
 - **與其他文件的分工**：
-  - 系統整體結構請看 [`SYSTEM-MINDMAP.md`](./SYSTEM-MINDMAP.md)。
+  - 系統整體結構請看 [`system/README.md`](./system/README.md)。
   - 多租戶與 RLS 的接線規則請看 [`../../AGENTS.md`](../../AGENTS.md) 與 `postgres-rls-tenant-isolation` skill。
   - 本文件只談**架構模式**，不重複那兩份的內容。
 
