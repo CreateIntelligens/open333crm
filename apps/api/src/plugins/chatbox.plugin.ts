@@ -55,7 +55,7 @@ async function chatboxPlugin(fastify: FastifyInstance) {
   fastify.decorate('chatboxI18n', createI18nRegistry());
   fastify.decorate('chatboxSessionVerifier', {
     verify(input: { sessionId: string; claimToken: string; fingerprint?: ChatboxFingerprintInput; userAgent?: string }) {
-      return verifyClaimedChatboxSession(fastify.prisma, input);
+      return verifyClaimedChatboxSession(fastify.prismaAdmin, input);
     },
   });
 }

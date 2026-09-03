@@ -23,6 +23,8 @@ const STRICT = process.argv.includes('--strict');
 const WHITELIST = [
   /plugins\/prisma\.plugin/,        // 定義 prismaAdmin 本身
   /plugins\/auth\.plugin/,          // CLI/partner 認證入口
+  /plugins\/socket\.plugin/,        // authenticated socket room authorization with explicit tenant/resource scope
+  /plugins\/chatbox\.plugin/,       // public Chatbox session verification with channel/session ownership checks
   /guards\/rbac\.guard/,            // 授權查詢（角色/方案天花板）
   /modules\/platform\//,            // 平台層跨租戶
   /modules\/auth\//,                // 登入 email 全域解析、passkey
@@ -32,6 +34,7 @@ const WHITELIST = [
   /modules\/fb-login\//,            // OAuth 回調
   /modules\/line\/line-profile/,    // LINE profile（認證相關）
   /modules\/webhook\//,             // 公開入站 webhook（無 JWT，channel 反查）
+  /modules\/chatbox\/chatbox\.routes/, // public Chatbox routes use validated session/channel scope
   /\.scheduler\./,                  // scheduler 掃全租戶
   /\.worker\./,                     // worker 以 payload.tenantId 自 scope
   /index\.ts$/,                     // bootstrap 接線 scheduler/worker

@@ -20,6 +20,7 @@ export interface WorkerActionContext {
   contactId?: string | null;
   trigger?: string | null;
   replyToken?: string | null;
+  receivedAt?: string | null;
   assigneeId?: string | null;
   title?: string | null;
   // 送 channel 訊息（send_message / send_material）需要 plugin registry + redis
@@ -28,7 +29,7 @@ export interface WorkerActionContext {
 
 function keywordReplyDelivery(context: WorkerActionContext) {
   return context.trigger === 'keyword.matched' && context.replyToken
-    ? { strategy: 'reply' as const, replyToken: context.replyToken }
+    ? { strategy: 'reply' as const, replyToken: context.replyToken, receivedAt: context.receivedAt ?? undefined }
     : undefined;
 }
 

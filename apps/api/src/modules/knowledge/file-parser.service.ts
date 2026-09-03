@@ -2,7 +2,7 @@ import path from 'node:path';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import TurndownService from 'turndown';
-import * as XLSX from 'xlsx';
+import * as XLSX from '@e965/xlsx';
 
 export interface ParsedFile {
   title: string;

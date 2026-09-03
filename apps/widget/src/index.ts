@@ -1,4 +1,4 @@
-import { initSession } from './session.js';
+import { getBrowserFingerprint, initSession } from './session.js';
 import { connectVisitorSocket } from './socket.js';
 import { injectStyles, createLauncher, createPanel, applyPanelTheme, appendMessage } from './ui.js';
 import type { Message } from './session.js';
@@ -11,6 +11,7 @@ const ALLOWED_VIDEO_MIMES = ['video/mp4', 'video/quicktime'];
 
 interface Open333CRMConfig {
   channelId: string;
+  channelPublicKey?: string;
   apiBaseUrl: string;
 }
 
@@ -22,18 +23,19 @@ declare global {
 
 async function boot(): Promise<void> {
   const config = window.Open333CRM;
-  if (!config?.channelId || !config?.apiBaseUrl) {
+  if (!config?.channelId || !config.apiBaseUrl) {
     console.warn('[Open333CRM] Missing channelId or apiBaseUrl in window.Open333CRM');
     return;
   }
 
   const { channelId, apiBaseUrl } = config;
   const realtimeOrigin = getRealtimeOrigin(apiBaseUrl);
+  const fingerprint = getBrowserFingerprint();
 
   // Init visitor session
   let session: Awaited<ReturnType<typeof initSession>>;
   try {
-    session = await initSession(apiBaseUrl, channelId);
+    session = await initSession(apiBaseUrl, config.channelPublicKey ?? channelId, fingerprint);
   } catch (err) {
     console.error('[Open333CRM] Failed to init session:', err);
     return;
@@ -65,7 +67,7 @@ async function boot(): Promise<void> {
   }
 
   // Connect Socket.IO for real-time replies
-  const sock = connectVisitorSocket(realtimeOrigin, channelId, session.visitorToken);
+  const sock = connectVisitorSocket(realtimeOrigin, session.sessionId, session.claimToken, fingerprint);
   sock.onAgentMessage((msg) => {
     appendMessage(messagesEl, msg, true);
     if (!panelOpen) {
@@ -92,9 +94,12 @@ async function boot(): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          visitorToken: session.visitorToken,
-          contentType: 'text',
-          content: { text },
+          sessionId: session.sessionId,
+          claimToken: session.claimToken,
+          clientMessageId: crypto.randomUUID(),
+          type: 'text',
+          payload: { text },
+          fingerprint,
         }),
       });
       if (!res.ok) {
@@ -132,7 +137,9 @@ async function boot(): Promise<void> {
 
     try {
       const formData = new FormData();
-      formData.append('visitorToken', session.visitorToken);
+      formData.append('sessionId', session.sessionId);
+      formData.append('claimToken', session.claimToken);
+      formData.append('fingerprint', JSON.stringify(fingerprint));
       formData.append('file', file);
 
       const uploadRes = await fetch(`${apiBaseUrl}/webchat/${channelId}/media`, {
@@ -152,9 +159,12 @@ async function boot(): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          visitorToken: session.visitorToken,
-          contentType: data.contentType,
-          content: { url: data.url },
+          sessionId: session.sessionId,
+          claimToken: session.claimToken,
+          clientMessageId: crypto.randomUUID(),
+          type: data.contentType,
+          payload: { url: data.url },
+          fingerprint,
         }),
       });
 

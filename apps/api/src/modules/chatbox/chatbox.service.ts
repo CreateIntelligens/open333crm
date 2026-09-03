@@ -29,9 +29,12 @@ import type { ChatboxMessageRegistry } from './chatbox.registry.js';
 
 const TOKEN_VERSION = 'cb2';
 const FINGERPRINT_VERSION = 1;
-const DEFAULT_SESSION_TTL_MINUTES = 24 * 60;
+const MAX_SESSION_TTL_MINUTES = 3 * 24 * 60;
+const DEFAULT_SESSION_TTL_MINUTES = MAX_SESSION_TTL_MINUTES;
+export const MAX_CHATBOX_SESSION_TTL_MS = MAX_SESSION_TTL_MINUTES * 60 * 1000;
 const STRONG_MISMATCH_THRESHOLD = 3;
 const CLAIM_KEY_PREFIX = 'chatbox:session:claim';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface NormalizedFingerprint {
   browserFamily: string;
@@ -92,10 +95,10 @@ function getSessionSecret(): string {
   return process.env.CHATBOX_SESSION_SECRET || getConfig().JWT_SECRET;
 }
 
-function getSessionTtlMs(): number {
+export function getChatboxSessionTtlMs(): number {
   const raw = Number(process.env.CHATBOX_SESSION_TTL_MINUTES ?? DEFAULT_SESSION_TTL_MINUTES);
   const minutes = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_SESSION_TTL_MINUTES;
-  return minutes * 60 * 1000;
+  return Math.min(minutes, MAX_SESSION_TTL_MINUTES) * 60 * 1000;
 }
 
 function base64url(input: Buffer): string {
@@ -187,10 +190,14 @@ function decryptSessionPayload(sessionId: string): { randomPart: string; expires
   }
 }
 
-export function issueChatboxSessionId(expiresAt = new Date(Date.now() + getSessionTtlMs())): { sessionId: string; tokenDigest: string } {
+export function issueChatboxSessionId(expiresAt = new Date(Date.now() + getChatboxSessionTtlMs())): { sessionId: string; tokenDigest: string } {
   const randomPart = base64url(randomBytes(32));
+  const cappedExpiresAt = new Date(Math.min(
+    expiresAt.getTime(),
+    Date.now() + MAX_CHATBOX_SESSION_TTL_MS,
+  ));
   return {
-    sessionId: encryptSessionPayload({ randomPart, expiresAt: expiresAt.getTime() }),
+    sessionId: encryptSessionPayload({ randomPart, expiresAt: cappedExpiresAt.getTime() }),
     tokenDigest: digestTokenMaterial(randomPart),
   };
 }
@@ -349,8 +356,11 @@ export async function resolveChatboxChannel(prisma: PrismaClient, publicKey: str
     throw new AppError('channel publicKey is required', 'BAD_REQUEST', 400);
   }
 
+  const identifiers: Array<{ publicKey: string } | { id: string }> = [{ publicKey }];
+  if (UUID_RE.test(publicKey)) identifiers.push({ id: publicKey });
+
   const channel = await prisma.channel.findFirst({
-    where: { publicKey, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
+    where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
   if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
   return channel;
@@ -364,7 +374,7 @@ export async function createChatboxSession(
   const channel = await resolveChatboxChannel(prisma, input.channelPublicKey);
   const settings = getSettings(channel.settings);
   const visitorToken = randomUUID();
-  const expiresAt = new Date(Date.now() + getSessionTtlMs());
+  const expiresAt = new Date(Date.now() + getChatboxSessionTtlMs());
   const { sessionId, tokenDigest } = issueChatboxSessionId(expiresAt);
   const fingerprint = normalizeChatboxFingerprint(input.fingerprint, input.userAgent);
   const fingerprintHash = hashChatboxFingerprint(fingerprint);

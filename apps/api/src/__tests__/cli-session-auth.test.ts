@@ -10,6 +10,8 @@ import errorHandlerPlugin from '../plugins/error-handler.plugin.js';
 import authRoutes from '../modules/auth/auth.routes.js';
 import cliRoutes from '../modules/cli/cli.routes.js';
 import { loadEnvConfig } from '../config/env.js';
+
+process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 import {
   createCliSession,
   verifyCliSession,

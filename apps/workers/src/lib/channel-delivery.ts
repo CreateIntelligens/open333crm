@@ -12,6 +12,7 @@ import type { PrismaClient } from '@prisma/client';
 import type IORedis from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
+import { selectSafeLineStrategy } from '@open333crm/shared';
 import { decryptCredentials } from './credentials.js';
 import { publishSocketEvent } from './socket-bridge.js';
 
@@ -21,6 +22,7 @@ export interface DeliverPayload {
   delivery?: {
     strategy?: 'reply' | 'push';
     replyToken?: string;
+    receivedAt?: string;
   };
 }
 
@@ -79,28 +81,32 @@ export async function deliverToChannelFromWorker(
   // 1. 呼叫 channel plugin 送出
   let channelMsgId: string | undefined;
   try {
-    const shouldReply =
-      conv.channel.channelType === 'LINE' &&
-      payload.delivery?.strategy === 'reply' &&
-      typeof payload.delivery.replyToken === 'string' &&
-      payload.delivery.replyToken.length > 0;
-    const pluginPayload = shouldReply
-      ? {
-          contentType: payload.contentType,
-          content: {
-            ...payload.content,
-            strategy: 'reply',
-            replyToken: payload.delivery!.replyToken,
-          },
-        }
-      : {
-          contentType: payload.contentType,
-          content: payload.content,
-        };
-    const result = await plugin.sendMessage(identity.uid, pluginPayload, credentials);
-    if (!result.success) {
-      logger.error('[worker:deliver] plugin.sendMessage failed:', result.error);
-      return false;
+    const safeStrategy = conv.channel.channelType === 'LINE' && payload.delivery
+      ? selectSafeLineStrategy(payload.delivery)
+      : undefined;
+    const strategy = safeStrategy ?? (payload.delivery?.strategy ?? 'push');
+    const send = async (selectedStrategy: 'reply' | 'push') => {
+      const content = {
+        ...payload.content,
+        strategy: selectedStrategy,
+        ...(selectedStrategy === 'reply' && payload.delivery?.replyToken
+          ? { replyToken: payload.delivery.replyToken }
+          : {}),
+      };
+      const result = await plugin.sendMessage(identity.uid, { contentType: payload.contentType, content }, credentials);
+      if (!result.success) throw new Error(result.error || `channel ${selectedStrategy} delivery failed`);
+      return result;
+    };
+    let result;
+    try {
+      result = await send(strategy);
+    } catch (error) {
+      if (strategy === 'reply') {
+        logger.warn('[SafeReply] worker LINE reply failed; falling back to push', { conversationId, error });
+        result = await send('push');
+      } else {
+        throw error;
+      }
     }
     channelMsgId = result.channelMsgId;
   } catch (err) {

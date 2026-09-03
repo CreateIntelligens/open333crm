@@ -46,12 +46,53 @@ export interface ChatGenerateResult {
   usage?: TokenUsage;
 }
 
+export type JsonSchema = Record<string, unknown>;
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: JsonSchema;
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface AgentMessage {
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+  toolCalls?: ToolCall[];
+  toolName?: string;
+}
+
+export interface ToolTurnOptions {
+  systemPrompt: string;
+  messages: AgentMessage[];
+  tools: ToolDefinition[];
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+export interface ToolTurnResult {
+  text: string;
+  toolCalls: ToolCall[];
+  usage?: TokenUsage;
+}
+
 export interface ChatProvider {
   readonly id: 'ollama' | 'gemini';
   readonly label: string;
 
   /** Generate a reply. Throws on failure. */
   generate(opts: ChatGenerateOptions): Promise<ChatGenerateResult>;
+
+  /** Generate one Agent turn. Tool execution remains the caller's responsibility. */
+  generateToolTurn(opts: ToolTurnOptions): Promise<ToolTurnResult>;
 
   /** List available chat-capable models. Returns [] on failure. */
   listModels(opts: { baseUrl?: string }): Promise<ChatModelInfo[]>;

@@ -6,6 +6,8 @@ import type {
 } from '@open333crm/shared';
 import { AppError } from '../../shared/utils/response.js';
 
+const MAX_CHATBOX_TEXT_LENGTH = 4_000;
+
 export interface ChatboxParsedMessage {
   contentType: ChatboxMessageType;
   content: Record<string, unknown>;
@@ -97,7 +99,13 @@ export function createChatboxMessageRegistry(): ChatboxMessageRegistry {
 }
 
 export function registerBuiltInChatboxMessageHandlers(registry: ChatboxMessageRegistry): void {
-  registry.register(createHandler('text', (payload) => ({ text: assertString(payload.text, 'payload.text') })));
+  registry.register(createHandler('text', (payload) => {
+    const text = assertString(payload.text, 'payload.text');
+    if (text.length > MAX_CHATBOX_TEXT_LENGTH) {
+      throw new AppError(`payload.text must be at most ${MAX_CHATBOX_TEXT_LENGTH} characters`, 'BAD_REQUEST', 400);
+    }
+    return { text };
+  }));
   registry.register(createHandler('image', validateMediaPayload));
   registry.register(createHandler('video', validateMediaPayload));
   registry.register(createHandler('file', validateMediaPayload));

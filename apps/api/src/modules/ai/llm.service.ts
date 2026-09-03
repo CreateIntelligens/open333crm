@@ -34,6 +34,7 @@ export type AiFeature =
   | 'summary'
   | 'classify'
   | 'sentiment'
+  | 'agent'
   | 'automation'
   | 'flex-generate'
   | 'ai-rewrite'
@@ -56,7 +57,7 @@ const ZERO_USAGE: TokenUsage = {
  * 寫入一筆 AiUsage（fire-and-forget 的實體）。
  * 用量記錄是計費輔助非金流帳本：任何失敗只 log、絕不影響 AI 回覆主流程。
  */
-async function recordAiUsage(
+export async function recordAiUsage(
   prisma: TenantDb,
   input: {
     tenantId: string;

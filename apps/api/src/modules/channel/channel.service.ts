@@ -1,4 +1,3 @@
-import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
@@ -8,14 +7,22 @@ import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
 // --- Credential Encryption ---
 
 const ALGORITHM = 'aes-256-gcm';
+let cachedEncryptionSecret: string | undefined;
+let cachedEncryptionKey: Buffer | undefined;
 
 function generatePublicKey(): string {
   return `ch_${randomUUID().replace(/-/g, '')}`;
 }
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY ?? 'fallback-open333crm-key';
-  return scryptSync(secret, 'open333crm-credentials', 32);
+  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY;
+  if (!secret || secret.length < 32) {
+    throw new Error('CREDENTIAL_ENCRYPTION_KEY must be set to at least 32 characters');
+  }
+  if (cachedEncryptionKey && cachedEncryptionSecret === secret) return cachedEncryptionKey;
+  cachedEncryptionSecret = secret;
+  cachedEncryptionKey = scryptSync(secret, 'open333crm-credentials', 32);
+  return cachedEncryptionKey;
 }
 
 export function encryptCredentials(plain: Record<string, unknown>): string {

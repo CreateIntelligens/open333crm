@@ -84,6 +84,7 @@ export async function attemptKbAutoReply(
   tenantId: string,
   conversationId: string,
   messageText: string,
+  delivery: { replyToken?: string; receivedAt?: string } = {},
 ): Promise<boolean> {
   const config = getConfig();
 
@@ -219,6 +220,7 @@ export async function attemptKbAutoReply(
       results,
       topSimilarity,
       metadataExtras,
+      delivery,
     });
   }
 
@@ -290,6 +292,7 @@ export async function attemptKbAutoReply(
     results,
     topSimilarity,
     metadataExtras,
+    delivery,
   });
 }
 
@@ -351,6 +354,7 @@ async function persistAndDeliver(input: {
   results: Array<{ id: string; title: string; similarity: number }>;
   topSimilarity: number;
   metadataExtras: Record<string, unknown>;
+  delivery?: { replyToken?: string; receivedAt?: string };
 }): Promise<boolean> {
   const {
     prisma,
@@ -365,6 +369,7 @@ async function persistAndDeliver(input: {
     results,
     topSimilarity,
     metadataExtras,
+    delivery,
   } = input;
 
   // 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
@@ -446,9 +451,14 @@ async function persistAndDeliver(input: {
     await deliverToChannel(prisma, conversationId, {
       contentType: 'text',
       content: { text: finalText, quickReplies },
+      delivery,
     });
   } else {
-    await deliverToChannel(prisma, conversationId, finalText);
+    await deliverToChannel(prisma, conversationId, {
+      contentType: 'text',
+      content: { text: finalText },
+      delivery,
+    });
   }
 
   logger.info(

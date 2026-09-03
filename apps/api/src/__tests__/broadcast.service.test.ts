@@ -21,6 +21,8 @@ import {
 import { encryptCredentials } from '../modules/channel/channel.service.js';
 import { executeBroadcast } from '../modules/marketing/marketing.service.js';
 
+process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
+
 // ─── Mock helpers ──────────────────────────────────────────────────────
 
 type MockFn<TArgs extends unknown[] = unknown[], TReturn = unknown> =

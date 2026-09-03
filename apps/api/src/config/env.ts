@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
+  DATABASE_URL_ADMIN: z.string().url().optional(),
   REDIS_URL: z.string().url(),
   JWT_SECRET: z.string().min(10),
   // 平台 superuser 專屬 JWT secret（與租戶 JWT 完全分離）。未設時平台路由回 503。
@@ -18,6 +19,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().default('*'),
+  CREDENTIAL_ENCRYPTION_KEY: z.string().min(32),
   // 前端 base URL（試用驗證信連結用）
   WEB_BASE_URL: z.string().default('http://localhost:3000'),
   MCP_ALLOWED_ORIGINS: z.string().default(''),
@@ -47,6 +49,15 @@ const envSchema = z.object({
   S3_SET_ACL: z.coerce.number().int().min(0).max(1).default(1),
   // 用量告警灰度開關：預設開；上線初期可設 0 快速停用（不影響 token 硬擋）
   USAGE_QUOTA_ALERTS_ENABLED: z.coerce.number().int().min(0).max(1).default(1),
+  AGENTIC_LLM_ENABLED: z.string().transform((v) => v === 'true').default('false'),
+  AGENT_MAX_TURNS: z.coerce.number().int().min(1).max(100).default(100),
+  AGENT_MAX_TOOL_CALLS: z.coerce.number().int().min(1).max(200).default(30),
+  AGENT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(900_000).default(120_000),
+  AGENT_MAX_TOTAL_TOKENS: z.coerce.number().int().min(1_000).max(1_000_000).default(100_000),
+  AGENT_WIKI_AUTO_PUBLISH: z.string().transform((v) => v === 'true').default('false'),
+  CHATBOX_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(3 * 24 * 60).default(3 * 24 * 60),
+  WEBCHAT_LEGACY_ROUTES_ENABLED: z.string().transform((v) => v === 'true').default('false'),
+  WIKI_API_TOKEN: z.string().optional(),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),
