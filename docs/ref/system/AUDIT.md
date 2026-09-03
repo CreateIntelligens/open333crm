@@ -119,6 +119,14 @@ CI 目前只執行 RLS 隔離測試。其他 API 測試沒有統一入口，也�
 
 測試檔使用 Vitest API，卻由 `tsx` 個別執行。專案無法使用 Vitest 的統一執行、覆蓋率及 watch mode。
 
+## 已查證後排除的項目
+
+以下項目在盤點時看起來像落差，查證後確認是刻意的設計，記錄於此避免重複回報。
+
+### `broadcast` 佇列不是遺留物
+
+`apps/workers/src/index.ts` 建立了一個 `broadcast` 佇列，但沒有對應的 consumer。這段程式的用途是清除 Redis 中殘留的 repeatable job：取得所有 repeatable job、逐一移除、然後關閉佇列。清理失敗時只記錄 warning，不影響啟動。原始碼的註解已說明這個意圖。
+
 ## 已核對的資料庫基線
 
 2026-09-02 在開發環境核對以下資料：

@@ -24,6 +24,15 @@
 3. 註冊渠道外掛。
 4. 掛載 `/api/v1` 下的功能路由。
 
+啟動流程有兩道驗證，任一道失敗都會讓 `bootstrap()` 拋錯，API 不會進入服務狀態：
+
+| 檢查 | 執行時機 | 檢查內容 |
+| --- | --- | --- |
+| `validatePermissionRegistry()` | 註冊 plugin 之前 | 權限註冊表本身是否有效 |
+| `validateRouteCodes()` | 掛載路由之後 | 路由使用的權限碼是否都存在於註冊表 |
+
+權限設定錯誤因此在啟動階段就會顯示，不會等到請求進來才失敗。
+
 
 Plugin 註冊順序如下。後面的 plugin 依賴前面的能力。
 
@@ -76,7 +85,16 @@ API 中的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue p
 
 `widget` 打包為 IIFE 單檔 `widget.js`，由 `web` 的 `/webchat/widget.js` 提供。它是終端訪客使用的 Web Chat，不是客服工作台。
 
-`cli` 提供 `login`、`status`、`apis`、`stats`。CLI 不匯入 workspace package，只透過 HTTP 與 API 溝通。
+`cli` 提供四個指令：
+
+| 指令 | 用途 |
+| --- | --- |
+| `login` | 登入並儲存 CLI 專用 token |
+| `status` | 檢查伺服器健康狀態與目前身分 |
+| `apis` | 列出該 token 可用的端點與能力 |
+| `stats` | 顯示目前 profile 的唯讀統計資料 |
+
+CLI 不匯入 workspace package，只透過 HTTP 與 API 溝通。
 
 ## 共用套件
 
@@ -153,7 +171,7 @@ flowchart LR
 
 - `core`：Inbox、案件、聯絡人、Canvas、範本、RBAC、身分縫合、Storage、License、Logger、Redis 與 event bus。
 - `automation`：包裝 `json-rules-engine`，並定義事件、Facts、Operators、Actions 與 UI 描述。
-- `channel-plugins`：提供 LINE、Facebook、WebChat、Telegram 與 Threads 轉接器。LINE 另有專用背景工作。
+- `channel-plugins`：提供 LINE、Facebook、WebChat、Telegram 與 Threads 轉接器。只有 LINE 附帶專用背景工作，位於 `src/line/`：`worker-insight-sync`、`worker-media-download`、`worker-narrowcast-progress`。
 - `database`：`src/` 是 Prisma 的薄封裝；主要內容位於 `prisma/schema.prisma` 與 migrations。應用程式必須遵守 `AGENTS.md` 的 Prisma client 規則。
 - `brain`：包含 LanceDB、BM25、混合檢索、記憶、摘要與語音轉文字服務，目前沒有 app 匯入。
 - `ui`：目前只有空匯出。
