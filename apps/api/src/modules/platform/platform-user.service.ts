@@ -7,6 +7,7 @@ import { getConfig } from '../../config/env.js';
 import { hashPassword } from '../../shared/utils/password.js';
 import { generateTempPassword } from '../../shared/utils/temp-password.js';
 import { AppError } from '../../shared/utils/response.js';
+import { normalizeEmail } from '../../shared/utils/email.js';
 import { sendPlatformUserProvisionedEmail } from './platform-user-emails.js';
 
 const PUBLIC_SELECT = {
@@ -41,18 +42,19 @@ export async function createPlatformUser(
   prisma: PrismaClient,
   input: { email: string; name: string },
 ): Promise<{ id: string; email: string; name: string; isActive: boolean; loginUrl: string }> {
-  const existing = await prisma.platformUser.findUnique({ where: { email: input.email }, select: { id: true } });
+  const email = normalizeEmail(input.email);
+  const existing = await prisma.platformUser.findUnique({ where: { email }, select: { id: true } });
   if (existing) throw new AppError('Email already in use', 'CONFLICT', 409);
 
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
   const user = await prisma.platformUser.create({
-    data: { email: input.email, name: input.name, passwordHash, mustChangePassword: true },
+    data: { email, name: input.name, passwordHash, mustChangePassword: true },
     select: { id: true, email: true, name: true, isActive: true },
   });
 
   const loginUrl = `${getConfig().WEB_BASE_URL}/admin/login`;
-  void sendPlatformUserProvisionedEmail(input.email, { name: input.name, loginUrl, tempPassword });
+  void sendPlatformUserProvisionedEmail(email, { name: input.name, loginUrl, tempPassword });
 
   return { ...user, loginUrl };
 }
@@ -66,8 +68,9 @@ export async function updatePlatformUser(
   const existing = await prisma.platformUser.findUnique({ where: { id }, select: { id: true, email: true } });
   if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
 
-  if (input.email !== undefined && input.email !== existing.email) {
-    const dup = await prisma.platformUser.findUnique({ where: { email: input.email }, select: { id: true } });
+  const email = input.email !== undefined ? normalizeEmail(input.email) : undefined;
+  if (email !== undefined && email !== existing.email) {
+    const dup = await prisma.platformUser.findUnique({ where: { email }, select: { id: true } });
     if (dup) throw new AppError('Email already in use', 'CONFLICT', 409);
   }
 
@@ -75,7 +78,7 @@ export async function updatePlatformUser(
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.email !== undefined ? { email: input.email } : {}),
+      ...(email !== undefined ? { email } : {}),
     },
     select: PUBLIC_SELECT,
   });

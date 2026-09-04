@@ -42,6 +42,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **平台帳號 email 未正規化（大小寫/空白可能繞過唯一檢查或登入失敗）** — `PlatformUser` 的開通/編輯/登入/忘記密碼查詢皆直接用原始 email 比對，而 Postgres text 欄位大小寫敏感：以 `Admin@X.com` 開通、之後用 `admin@x.com` 登入會查無而失敗，或以不同大小寫繞過唯一檢查建出重複帳號。修法：平台帳號 email 於 zod schema 層統一 `.trim().toLowerCase()` 後再驗格式（登入/開通/編輯/忘記密碼四處共用 `platformEmail`），service 層另加 `normalizeEmail`（`shared/utils/email.ts`）作為雙保險。本機實測：全大寫、前後帶空白的 email 皆能正確命中既有小寫帳號、錯密碼仍擋。範圍僅平台帳號鏈路（租戶端 agent 登入沿用未正規化的既有行為，全系統一致，若收斂需配既有資料 migration，另議）。（bot review 於 PR #170 指出）
+
 - **平台帳號「至少保留 1 個啟用帳號」防呆有併發競態** — `setPlatformUserActive` 原本先 `count({ where: { isActive: true } })` 再 `update`，兩步驟未在同一交易中，若兩位平台管理員同時停用最後兩組啟用帳號，兩邊的 count 皆讀到 2 而各自放行，導致啟用帳號歸零、沒人能登入平台後台。修法：把 count 檢查與 update 包進同一 `$transaction` 並用 `Serializable` 隔離級別，併發時第二個交易因序列化衝突 abort，防呆確實生效。本機實測正常停用/啟用與「停用自己」防呆均不受影響。（bot review 於 PR #170 指出）
 
 - **粉絲門戶功能在 RLS 上線後完全失效（CM-172）** — 與 CM-171 同族根因：`portal.routes.ts` 全部 12 處端點沿用未綁定租戶的 `app.prisma` 連線，活動 CRUD/發布/結束/抽獎/提交紀錄/積分查詢調整整個模組被 RLS 擋下。修法：路由改用 `request.tenantPrisma`；service 層（`portal.service.ts`/`points.service.ts`）簽章收斂為 `TenantDb`；`updateActivity` 因內部原本自開 `$transaction`（RLS 交易不可巢狀）特別改為呼叫端先 `withTenant(app.prisma, tenantId, tx => updateActivity(tx, ...))` 開好綁定交易、函式內直接用傳入的 `tx` 操作；公開端點（`portal-public.routes.ts`，粉絲 JWT 身分）用到的 `submitActivity`/`getActivityResult` 維持 `PrismaClient` 不變。Wave 5 E2E 測試（tenant-misc.spec.ts）建立測試活動時發現。

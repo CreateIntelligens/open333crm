@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import { getConfig } from '../../config/env.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
+import { normalizeEmail } from '../../shared/utils/email.js';
 import { sendPlatformPasswordResetEmail } from './platform-user-emails.js';
 
 const RESET_TOKEN_TTL_MINUTES = 60;
@@ -42,7 +43,7 @@ export async function changeOwnPassword(
  */
 export async function requestPasswordReset(prisma: PrismaClient, email: string): Promise<void> {
   const user = await prisma.platformUser.findUnique({
-    where: { email },
+    where: { email: normalizeEmail(email) },
     select: { id: true, name: true, isActive: true },
   });
   if (!user || !user.isActive) return; // 靜默，不洩漏帳號存在與否

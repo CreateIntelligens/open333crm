@@ -52,7 +52,14 @@ import {
   rejectRequest,
 } from './plan-change.service.js';
 
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+// 平台帳號 email 統一在 schema 層正規化（去空白 + 轉小寫）再驗格式，避免大小寫/空白
+// 造成唯一檢查繞過或登入比對失敗；service 層另有 normalizeEmail 作為雙保險。
+const platformEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.string().email());
+const loginSchema = z.object({ email: platformEmail, password: z.string().min(1) });
 const channelTypeValues = Object.values(ChannelType) as [string, ...string[]];
 const updatePlanSchema = z.object({
   name: z.string().optional(),
@@ -79,20 +86,20 @@ const provisionSchema = z.object({
   adminPassword: z.string().min(8),
 });
 const createPlatformUserSchema = z.object({
-  email: z.string().email(),
+  email: platformEmail,
   name: z.string().min(1),
 });
 const updatePlatformUserSchema = z
   .object({
     name: z.string().min(1).max(100).optional(),
-    email: z.string().email().optional(),
+    email: platformEmail.optional(),
   })
   .refine((b) => b.name !== undefined || b.email !== undefined, { message: '至少提供一個欄位' });
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1),
   newPassword: z.string().min(8),
 });
-const forgotPasswordSchema = z.object({ email: z.string().email() });
+const forgotPasswordSchema = z.object({ email: platformEmail });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(8) });
 
 export default async function platformRoutes(fastify: FastifyInstance) {
