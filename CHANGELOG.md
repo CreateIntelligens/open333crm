@@ -42,6 +42,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **粉絲門戶功能在 RLS 上線後完全失效（CM-172）** — 與 CM-171 同族根因：`portal.routes.ts` 全部 12 處端點沿用未綁定租戶的 `app.prisma` 連線，活動 CRUD/發布/結束/抽獎/提交紀錄/積分查詢調整整個模組被 RLS 擋下。修法：路由改用 `request.tenantPrisma`；service 層（`portal.service.ts`/`points.service.ts`）簽章收斂為 `TenantDb`；`updateActivity` 因內部原本自開 `$transaction`（RLS 交易不可巢狀）特別改為呼叫端先 `withTenant(app.prisma, tenantId, tx => updateActivity(tx, ...))` 開好綁定交易、函式內直接用傳入的 `tx` 操作；公開端點（`portal-public.routes.ts`，粉絲 JWT 身分）用到的 `submitActivity`/`getActivityResult` 維持 `PrismaClient` 不變。Wave 5 E2E 測試（tenant-misc.spec.ts）建立測試活動時發現。
+
 - **短連結功能在 RLS 上線後完全失效（CM-171）** — `shortlink.routes.ts` 全部端點沿用未綁定租戶的 `app.prisma` 連線（未設定 `app.current_tenant` session 變數），Postgres RLS policy 的 `tenantId = NULL` 比較永遠為 false，導致建立短連結直接 500（RLS policy violation）、列表查詢則靜默回空陣列（回 200，不報錯，UI 顯示「目前沒有短連結」）——比報錯更隱蔽。修法：路由改用 `request.tenantPrisma`（每次操作自動綁定租戶 RLS context），service 層對應函式簽章由 `PrismaClient` 收斂為 `TenantDb` 聯集型別；公開重定向端點（`/s/:slug`，無租戶身分）沿用的 `getLinkForRedirect`/`getChannelLiffId`/`trackClick` 維持 `PrismaClient` 不變。Wave 5 E2E 測試（tenant-misc.spec.ts）建立測試短連結時發現。
 
 - **儀表板「開啟中案件」統計卡默默壞掉（CM-163）** — 首頁載入時前端送小寫 `status=open`，cases list API 用 `z.string()` 放行後直塞 Prisma enum（合法值大寫 `OPEN`）炸 400；前端 `Promise.allSettled` 吞錯，畫面看似正常但統計卡永遠拿不到資料。修法雙保險：API list schema 的 `status`/`priority` 改為「轉大寫再驗 enum」（亂值回明確 400 而非 Prisma 內部錯）；前端改送 `OPEN`。UAT E2E smoke（console error 檢查）抓到的第一隻 bug。

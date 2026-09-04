@@ -3,13 +3,14 @@
  */
 
 import type { PrismaClient, Prisma } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { eventBus } from '../../events/event-bus.js';
 import { addPointTransaction } from './points.service.js';
 
 // ─── Activity CRUD ──────────────────────────────────────────────────────────
 
 export async function listActivities(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: { type?: string; status?: string; page?: number; limit?: number },
 ) {
@@ -34,7 +35,7 @@ export async function listActivities(
   return { items, total, page, limit };
 }
 
-export async function getActivity(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getActivity(prisma: TenantDb, id: string, tenantId: string) {
   return prisma.portalActivity.findFirst({
     where: { id, tenantId },
     include: {
@@ -46,7 +47,7 @@ export async function getActivity(prisma: PrismaClient, id: string, tenantId: st
 }
 
 export async function createActivity(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   createdById: string,
   data: {
@@ -86,8 +87,10 @@ export async function createActivity(
   });
 }
 
+// ⚠️ 呼叫端須先用 withTenant(fastify.prisma, tenantId, tx => updateActivity(tx, ...)) 開好
+// 綁定 RLS 的交易，本函式在該 tx 內直接操作（不可再自開 $transaction，交易不可巢狀）。
 export async function updateActivity(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -106,60 +109,58 @@ export async function updateActivity(
   if (activity.status !== 'DRAFT') throw new Error('Only DRAFT activities can be updated');
 
   // Replace options and fields if provided
-  return prisma.$transaction(async (tx) => {
-    if (data.options) {
-      await tx.portalOption.deleteMany({ where: { activityId: id } });
-      await tx.portalOption.createMany({
-        data: data.options.map((o, i) => ({
-          activityId: id,
-          label: o.label,
-          imageUrl: o.imageUrl,
-          sortOrder: o.sortOrder ?? i,
-          isCorrect: o.isCorrect ?? false,
-        })),
-      });
-    }
-    if (data.fields) {
-      await tx.portalField.deleteMany({ where: { activityId: id } });
-      await tx.portalField.createMany({
-        data: data.fields.map((f, i) => ({
-          activityId: id,
-          fieldKey: f.fieldKey,
-          label: f.label,
-          fieldType: f.fieldType ?? 'text',
-          options: (f.options ?? []) as Prisma.InputJsonValue,
-          isRequired: f.isRequired ?? false,
-          sortOrder: f.sortOrder ?? i,
-        })),
-      });
-    }
-
-    return tx.portalActivity.update({
-      where: { id },
-      data: {
-        title: data.title,
-        description: data.description,
-        coverImage: data.coverImage,
-        settings: data.settings as Prisma.InputJsonValue | undefined,
-        startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-        endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
-      },
-      include: {
-        options: { orderBy: { sortOrder: 'asc' } },
-        fields: { orderBy: { sortOrder: 'asc' } },
-      },
+  if (data.options) {
+    await prisma.portalOption.deleteMany({ where: { activityId: id } });
+    await prisma.portalOption.createMany({
+      data: data.options.map((o, i) => ({
+        activityId: id,
+        label: o.label,
+        imageUrl: o.imageUrl,
+        sortOrder: o.sortOrder ?? i,
+        isCorrect: o.isCorrect ?? false,
+      })),
     });
+  }
+  if (data.fields) {
+    await prisma.portalField.deleteMany({ where: { activityId: id } });
+    await prisma.portalField.createMany({
+      data: data.fields.map((f, i) => ({
+        activityId: id,
+        fieldKey: f.fieldKey,
+        label: f.label,
+        fieldType: f.fieldType ?? 'text',
+        options: (f.options ?? []) as Prisma.InputJsonValue,
+        isRequired: f.isRequired ?? false,
+        sortOrder: f.sortOrder ?? i,
+      })),
+    });
+  }
+
+  return prisma.portalActivity.update({
+    where: { id },
+    data: {
+      title: data.title,
+      description: data.description,
+      coverImage: data.coverImage,
+      settings: data.settings as Prisma.InputJsonValue | undefined,
+      startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
+      endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+    },
+    include: {
+      options: { orderBy: { sortOrder: 'asc' } },
+      fields: { orderBy: { sortOrder: 'asc' } },
+    },
   });
 }
 
-export async function deleteActivity(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteActivity(prisma: TenantDb, id: string, tenantId: string) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new Error('Only DRAFT activities can be deleted');
   return prisma.portalActivity.delete({ where: { id } });
 }
 
-export async function publishActivity(prisma: PrismaClient, id: string, tenantId: string) {
+export async function publishActivity(prisma: TenantDb, id: string, tenantId: string) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new Error('Only DRAFT activities can be published');
@@ -169,7 +170,7 @@ export async function publishActivity(prisma: PrismaClient, id: string, tenantId
   });
 }
 
-export async function endActivity(prisma: PrismaClient, id: string, tenantId: string) {
+export async function endActivity(prisma: TenantDb, id: string, tenantId: string) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'PUBLISHED') throw new Error('Only PUBLISHED activities can be ended');
@@ -182,7 +183,7 @@ export async function endActivity(prisma: PrismaClient, id: string, tenantId: st
 // ─── Submissions ────────────────────────────────────────────────────────────
 
 export async function listSubmissions(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   activityId: string,
   tenantId: string,
   page = 1,
@@ -277,7 +278,7 @@ export async function submitActivity(
 // ─── Draw (random winners) ──────────────────────────────────────────────────
 
 export async function drawWinners(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   activityId: string,
   tenantId: string,
   count: number,
