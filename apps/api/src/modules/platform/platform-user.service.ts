@@ -95,18 +95,19 @@ export async function setPlatformUserActive(
   isActive: boolean,
   callerId: string,
 ) {
-  const existing = await prisma.platformUser.findUnique({ where: { id }, select: { id: true, isActive: true } });
-  if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
-
+  // 「不可停用自己」不依賴 DB 狀態（callerId 來自已驗證 token），交易外先擋即可。
   if (!isActive && id === callerId) {
     throw new AppError('Cannot disable your own account', 'CANNOT_DISABLE_SELF', 400);
   }
 
-  // 「啟用中帳號歸零」防呆必須把 count 檢查與 update 放進同一交易，並用 Serializable
-  // 隔離級別；否則兩位管理者同時停用最後兩組帳號時，兩邊的 count 都會讀到 2 而各自放行，
-  // 導致啟用帳號歸零、沒人能登入平台後台（bot review CM-... race condition）。
+  // 目標帳號的存在性/isActive 讀取、count 檢查、update 全部放進同一 Serializable 交易，
+  // 讓整個判斷鏈在同一快照內——否則兩位管理者同時停用最後兩組帳號時，兩邊的 count 都
+  // 讀到 2 而各自放行，導致啟用帳號歸零、沒人能登入平台後台（bot review race condition）。
   return prisma.$transaction(
     async (tx) => {
+      const existing = await tx.platformUser.findUnique({ where: { id }, select: { isActive: true } });
+      if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+
       if (!isActive && existing.isActive) {
         const activeCount = await tx.platformUser.count({ where: { isActive: true } });
         if (activeCount <= 1) {
