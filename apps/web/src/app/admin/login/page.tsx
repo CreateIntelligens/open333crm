@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { platformApi, setPlatformToken, setMustChangePassword } from '../lib/platform-api';
 import { AuthShell } from '../lib/AuthShell';
@@ -64,12 +65,12 @@ export default function PlatformLoginPage() {
         >
           {submitting ? '登入中…' : '登入'}
         </button>
-        <a
+        <Link
           href="/admin/forgot-password"
           style={{ textAlign: 'center', fontSize: 13, color: C.muted, textDecoration: 'none' }}
         >
           忘記密碼？
-        </a>
+        </Link>
       </form>
     </AuthShell>
   );
