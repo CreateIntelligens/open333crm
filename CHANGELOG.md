@@ -42,6 +42,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **[安全] 已停用平台帳號仍能用未過期 JWT 存取平台 API（授權繞過）** — `authenticatePlatformSuperuser` guard 即時查 DB 只取 `mustChangePassword`，未查 `isActive`，導致管理員停用某平台帳號後，該帳號手上未過期的 JWT（TTL 2 小時）仍可呼叫所有平台 API，停用形同虛設。修法：guard 查詢一併 select `isActive`，停用帳號直接回 401 `PLATFORM_USER_DISABLED`（即時失效，不需等 token 過期）。本機端到端實測：token 原可用 → DB 設 isActive=false → 同一 token 立即被 401 擋 → 復原後恢復。（bot review 於 PR #170 標為 security concern）
+
 - **對已停用平台帳號重寄開通信無意義卻仍執行** — `resendPlatformUserWelcomeEmail` 未檢查 `isActive`，對已停用帳號重寄會換掉臨時密碼、寄出信，但該用戶登入仍被 `isActive=false` 擋下，白做且讓管理員誤以為對方已能登入。修法：加 `isActive` 檢查，停用帳號重寄回 400 `PLATFORM_USER_DISABLED`（需先啟用再重寄）。（bot review 於 PR #170 指出）
 
 - **平台帳號 email 未正規化（大小寫/空白可能繞過唯一檢查或登入失敗）** — `PlatformUser` 的開通/編輯/登入/忘記密碼查詢皆直接用原始 email 比對，而 Postgres text 欄位大小寫敏感：以 `Admin@X.com` 開通、之後用 `admin@x.com` 登入會查無而失敗，或以不同大小寫繞過唯一檢查建出重複帳號。修法：平台帳號 email 於 zod schema 層統一 `.trim().toLowerCase()` 後再驗格式（登入/開通/編輯/忘記密碼四處共用 `platformEmail`），service 層另加 `normalizeEmail`（`shared/utils/email.ts`）作為雙保險。本機實測：全大寫、前後帶空白的 email 皆能正確命中既有小寫帳號、錯密碼仍擋。範圍僅平台帳號鏈路（租戶端 agent 登入沿用未正規化的既有行為，全系統一致，若收斂需配既有資料 migration，另議）。（bot review 於 PR #170 指出）
