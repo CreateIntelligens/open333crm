@@ -21,7 +21,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
 
   app.get('/', async (request) => {
     const { isActive, q, page, limit } = request.query as Record<string, string>;
-    const result = await listShortLinks(app.prisma, request.agent.tenantId, {
+    const result = await listShortLinks(request.tenantPrisma, request.agent.tenantId, {
       isActive,
       q,
       page: page ? parseInt(page) : undefined,
@@ -33,7 +33,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.post('/', async (request, reply) => {
     const body = request.body as Record<string, unknown>;
     try {
-      const link = await createShortLink(app.prisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createShortLink>[3]);
+      const link = await createShortLink(request.tenantPrisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createShortLink>[3]);
       return { success: true, data: link };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });
@@ -42,7 +42,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
 
   app.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const link = await getShortLink(app.prisma, id, request.agent.tenantId);
+    const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
     return { success: true, data: link };
   });
@@ -50,21 +50,21 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.patch('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Record<string, unknown>;
-    const link = await updateShortLink(app.prisma, id, request.agent.tenantId, body as Parameters<typeof updateShortLink>[3]);
+    const link = await updateShortLink(request.tenantPrisma, id, request.agent.tenantId, body as Parameters<typeof updateShortLink>[3]);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
     return { success: true, data: link };
   });
 
   app.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const result = await deleteShortLink(app.prisma, id, request.agent.tenantId);
+    const result = await deleteShortLink(request.tenantPrisma, id, request.agent.tenantId);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
     return { success: true };
   });
 
   app.get('/:id/stats', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const stats = await getClickStats(app.prisma, id, request.agent.tenantId);
+    const stats = await getClickStats(request.tenantPrisma, id, request.agent.tenantId);
     if (!stats) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
     return { success: true, data: stats };
   });
@@ -72,14 +72,14 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.get('/:id/clicks', async (request) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
-    const result = await getClickLogs(app.prisma, id, request.agent.tenantId, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
+    const result = await getClickLogs(request.tenantPrisma, id, request.agent.tenantId, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
     if (!result) return { success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } };
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
   app.get('/:id/qrcode', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const link = await getShortLink(app.prisma, id, request.agent.tenantId);
+    const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
 
     const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
