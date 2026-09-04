@@ -140,7 +140,7 @@ export default function DashboardPage() {
       try {
         const [unreadRes, casesRes, contactsRes, rulesRes] = await Promise.allSettled([
           api.get('/conversations', { params: { unread: true, limit: 1 } }),
-          api.get('/cases', { params: { status: 'open', limit: 1 } }),
+          api.get('/cases', { params: { status: 'OPEN', limit: 1 } }),
           api.get('/contacts', { params: { limit: 1 } }),
           api.get('/automation/rules', { params: { limit: 1 } }),
         ]);

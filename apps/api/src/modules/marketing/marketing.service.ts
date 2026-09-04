@@ -30,7 +30,7 @@ export async function listTemplates(
   const { category, channelType, q, page = 1, limit = 50 } = filters;
 
   const where: Record<string, unknown> = {
-    OR: [{ tenantId }, { tenantId: null, isSystem: true }],
+    tenantId,
   };
   if (category) where.category = category;
   if (channelType) where.channelType = channelType;
@@ -147,7 +147,7 @@ export async function createBroadcast(
     const template = await prisma.messageTemplate.findFirst({
       where: {
         id: data.templateId!,
-        OR: [{ tenantId }, { tenantId: null, isSystem: true }],
+        tenantId,
       },
     });
     if (!template) {
@@ -346,10 +346,7 @@ export async function executeBroadcast(
       const template = await prisma.messageTemplate.findFirst({
         where: {
           id: broadcast.templateId!,
-          OR: [
-            { tenantId: broadcast.tenantId },
-            { tenantId: null, isSystem: true },
-          ],
+          tenantId: broadcast.tenantId,
         },
       });
       if (!template) {

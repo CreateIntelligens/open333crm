@@ -4,9 +4,10 @@
 import type { PrismaClient } from '@prisma/client';
 import { verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
+import { normalizeEmail } from '../../shared/utils/email.js';
 
 export async function platformLogin(prisma: PrismaClient, email: string, password: string) {
-  const user = await prisma.platformUser.findUnique({ where: { email } });
+  const user = await prisma.platformUser.findUnique({ where: { email: normalizeEmail(email) } });
   // 帳號不存在時仍跑一次 verifyPassword（對假 hash）以抹平時間差、避免帳號枚舉
   const hash = user?.passwordHash ?? '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinva';
   const ok = await verifyPassword(password, hash);
@@ -17,5 +18,5 @@ export async function platformLogin(prisma: PrismaClient, email: string, passwor
     where: { id: user.id },
     data: { lastLoginAt: new Date() },
   });
-  return { id: user.id, email: user.email, name: user.name };
+  return { id: user.id, email: user.email, name: user.name, mustChangePassword: user.mustChangePassword };
 }

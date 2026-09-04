@@ -192,7 +192,8 @@ async function seedSystemTemplates() {
       },
       create: {
         id: tpl.id,
-        tenantId: null,
+        // 不寫 tenantId=null：RLS policy（"tenantId" = uuid）讀不到 null 列，
+        // 系統共用模板須改用其他機制。日後重啟系統模板時勿還原此欄位（CM-155 問題 2）。
         name: tpl.name,
         description: tpl.description,
         category: tpl.category,

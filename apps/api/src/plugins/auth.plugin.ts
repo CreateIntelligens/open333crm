@@ -50,7 +50,7 @@ declare module 'fastify' {
   }
   interface FastifyRequest {
     agent: AgentPayload;
-    platformUser?: { id: string; role: 'PLATFORM_SUPERUSER' };
+    platformUser?: { id: string; role: 'PLATFORM_SUPERUSER'; mustChangePassword: boolean };
   }
 }
 
@@ -137,7 +137,30 @@ async function authPlugin(fastify: FastifyInstance) {
             error: { code: 'FORBIDDEN', message: 'Not a platform superuser' },
           });
         }
-        request.platformUser = { id: payload.platformUserId, role: 'PLATFORM_SUPERUSER' };
+        // isActive/mustChangePassword 即時查 DB（非信任 JWT payload 快照）：帳號停用或改密碼
+        // 後立即生效，不需等舊 token 過期或重新登入。
+        const user = await fastify.prismaAdmin.platformUser.findUnique({
+          where: { id: payload.platformUserId },
+          select: { isActive: true, mustChangePassword: true },
+        });
+        if (!user) {
+          return reply.status(401).send({
+            success: false,
+            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired platform token' },
+          });
+        }
+        // 帳號被停用後，手上未過期的 JWT 必須立即失效，否則等同授權繞過（停用形同虛設）。
+        if (!user.isActive) {
+          return reply.status(401).send({
+            success: false,
+            error: { code: 'PLATFORM_USER_DISABLED', message: 'This platform account has been disabled' },
+          });
+        }
+        request.platformUser = {
+          id: payload.platformUserId,
+          role: 'PLATFORM_SUPERUSER',
+          mustChangePassword: user.mustChangePassword,
+        };
       } catch {
         return reply.status(401).send({
           success: false,

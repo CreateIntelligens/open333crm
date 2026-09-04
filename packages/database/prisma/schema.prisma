@@ -248,6 +248,12 @@ model Tenant {
   tenantAuditLogs         TenantAuditLog[]
   dataExportRequests      DataExportRequest[]
   dataErasureRequests     DataErasureRequest[]
+  teams                   Team[]
+  tags                    Tag[]
+  slaPolicies             SlaPolicy[]
+  kmArticles              KmArticle[]
+  messageTemplates        MessageTemplate[]
+  automationLogs          AutomationLog[]
 
   @@map("tenants")
 }
@@ -342,6 +348,7 @@ model Team {
   licenseTeamId String? // 對應 License JSON teams[].teamId（平台方分配字串）
   createdAt     DateTime @default(now())
 
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   members         AgentTeamMember[]
   cases           Case[]
   conversations   Conversation[]
@@ -528,7 +535,9 @@ model ContactRelation {
 
 model Tag {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String?  @db.Uuid
+  // tenantId 收緊為 NOT NULL：系統共用標籤（tenantId=null）從未實作，schema 預留能力移除。
+  // 這也讓 @@unique([tenantId, name, scope]) 對所有列真正生效（Postgres 不把多個 NULL 視為重複）。
+  tenantId    String   @db.Uuid
   name        String
   color       String   @default("#6366f1")
   type        TagType  @default(MANUAL)
@@ -536,6 +545,7 @@ model Tag {
   description String?
   createdAt   DateTime @default(now())
 
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   contactTags      ContactTag[]
   caseTags         CaseTag[]
   conversationTags ConversationTag[]
@@ -799,6 +809,8 @@ model SlaPolicy {
   isDefault            Boolean  @default(false)
   createdAt            DateTime @default(now())
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([tenantId])
   @@map("sla_policies")
 }
@@ -893,7 +905,8 @@ model AutomationLog {
   errorMsg   String?
   createdAt  DateTime @default(now())
 
-  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  rule   AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([ruleId])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -929,6 +942,7 @@ model KmArticle {
   updatedAt      DateTime                     @updatedAt
   createdAt      DateTime                     @default(now())
 
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   attachments KmArticleAttachment[]
   feedback    KbArticleFeedback[]
 
@@ -990,6 +1004,8 @@ model MessageTemplate {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // tenantId 可為 null（系統共用模板，目前休眠），故關聯為 optional
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   views     TemplateView[]
   materials Material[]
 
@@ -1929,14 +1945,17 @@ model Plan {
 
 // 平台 superuser（跨租戶身分，與 Agent 完全分離）。
 model PlatformUser {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique
-  name         String
-  passwordHash String
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String    @unique
+  name                 String
+  passwordHash         String
+  isActive             Boolean   @default(true)
+  lastLoginAt          DateTime?
+  resetTokenHash       String?   @unique // sha256(32-byte random)；明文只出現在信裡
+  resetTokenExpiresAt  DateTime?
+  mustChangePassword   Boolean   @default(false) // 開通/重寄開通信時系統產生臨時密碼會設 true，改密碼成功後清除
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   auditLogs PlatformAuditLog[]
 

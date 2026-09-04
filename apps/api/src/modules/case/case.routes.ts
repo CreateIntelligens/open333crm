@@ -23,9 +23,13 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
 
+// 篩選值正規化為大寫再驗證，避免呼叫端送小寫（如 status=open）直塞 Prisma enum 炸 400
+const caseStatusEnum = z.enum(['OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED']);
+const casePriorityEnum = z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+
 const listQuerySchema = z.object({
-  status: z.string().optional(),
-  priority: z.string().optional(),
+  status: z.string().transform((s) => s.toUpperCase()).pipe(caseStatusEnum).optional(),
+  priority: z.string().transform((s) => s.toUpperCase()).pipe(casePriorityEnum).optional(),
   assigneeId: z.string().uuid().optional(),
   category: z.string().optional(),
   slaStatus: z.enum(['normal', 'warning', 'breached']).optional(),

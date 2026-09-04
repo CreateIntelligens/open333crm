@@ -3,6 +3,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { randomBytes } from 'node:crypto';
 import type { Server as SocketIOServer } from 'socket.io';
 import { eventBus } from '../../events/event-bus.js';
@@ -17,7 +18,7 @@ function generateSlug(length = 6): string {
 }
 
 /** Ensure a lineChannelId belongs to this tenant and is a LINE channel. */
-async function assertLineChannel(prisma: PrismaClient, tenantId: string, channelId: string): Promise<void> {
+async function assertLineChannel(prisma: TenantDb, tenantId: string, channelId: string): Promise<void> {
   const channel = await prisma.channel.findFirst({
     where: { id: channelId, tenantId, channelType: 'LINE' },
     select: { id: true },
@@ -30,7 +31,7 @@ async function assertLineChannel(prisma: PrismaClient, tenantId: string, channel
  * target URL and patch the link. Fire-and-forget — never blocks create/update.
  */
 function maybeScrapeOg(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   linkId: string,
   targetUrl: string,
   provided: { ogTitle?: string; ogDescription?: string; ogImage?: string },
@@ -50,7 +51,7 @@ function maybeScrapeOg(
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
 export async function listShortLinks(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   filters: { isActive?: string; q?: string; page?: number; limit?: number },
 ) {
@@ -80,12 +81,12 @@ export async function listShortLinks(
   return { items, total, page, limit };
 }
 
-export async function getShortLink(prisma: PrismaClient, id: string, tenantId: string) {
+export async function getShortLink(prisma: TenantDb, id: string, tenantId: string) {
   return prisma.shortLink.findFirst({ where: { id, tenantId } });
 }
 
 export async function createShortLink(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   createdById: string,
   data: {
@@ -169,7 +170,7 @@ export function isOwnShortLink(url: string): boolean {
  * 回傳短連結對外網址；建立失敗（例如 URL 已是短連結）則回原 URL。
  */
 export async function findOrCreateMaterialShortLink(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   createdById: string,
   params: { materialId: string; targetUrl: string; lineChannelId?: string | null; tagOnClick?: string | null },
@@ -200,7 +201,7 @@ export async function findOrCreateMaterialShortLink(
 }
 
 export async function updateShortLink(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   id: string,
   tenantId: string,
   data: {
@@ -255,7 +256,7 @@ export async function updateShortLink(
   return updated;
 }
 
-export async function deleteShortLink(prisma: PrismaClient, id: string, tenantId: string) {
+export async function deleteShortLink(prisma: TenantDb, id: string, tenantId: string) {
   const link = await prisma.shortLink.findFirst({ where: { id, tenantId } });
   if (!link) return null;
   return prisma.shortLink.delete({ where: { id } });
@@ -309,7 +310,7 @@ export async function getChannelLiffId(prisma: PrismaClient, channelId: string):
 
 /** Resolve a contact from a lineUid via ChannelIdentity under the bound LINE channel. */
 export async function resolveContactByLineUid(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   channelId: string,
   lineUid: string,
 ): Promise<string | null> {
@@ -422,7 +423,7 @@ export async function trackClick(
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
 export async function getClickStats(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   shortLinkId: string,
   tenantId: string,
 ) {
@@ -478,7 +479,7 @@ export async function getClickStats(
 }
 
 export async function getClickLogs(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   shortLinkId: string,
   tenantId: string,
   page = 1,
