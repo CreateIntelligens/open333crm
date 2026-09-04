@@ -73,7 +73,7 @@ export default function TenantsPage() {
       const res = await platformApi.post('/tenants', form);
       const loginUrl: string | undefined = res.data.data?.loginUrl;
       setMsg(
-        `✓ 已開通「${form.name}」，開通信已寄至 ${form.adminEmail}` +
+        `已開通「${form.name}」，開通信已寄至 ${form.adminEmail}` +
           (loginUrl ? `；登入網址：${loginUrl}` : '') +
           '（密碼請自行轉交給管理員）',
       );

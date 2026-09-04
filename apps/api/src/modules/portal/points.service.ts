@@ -2,12 +2,12 @@
  * Points ledger service — manages contact point balances via append-only transactions.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { TenantDb } from '../../lib/tenant-db.js';
 
 /**
  * Get current point balance for a contact.
  */
-export async function getPointBalance(prisma: PrismaClient, contactId: string): Promise<number> {
+export async function getPointBalance(prisma: TenantDb, contactId: string): Promise<number> {
   const latest = await prisma.pointTransaction.findFirst({
     where: { contactId },
     orderBy: { createdAt: 'desc' },
@@ -21,7 +21,7 @@ export async function getPointBalance(prisma: PrismaClient, contactId: string): 
  * Returns the new transaction record.
  */
 export async function addPointTransaction(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   data: {
     tenantId: string;
     contactId: string;
@@ -51,7 +51,7 @@ export async function addPointTransaction(
  * List point transactions for a contact (paginated, newest first).
  */
 export async function listPointTransactions(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   tenantId: string,
   contactId: string,
   page = 1,

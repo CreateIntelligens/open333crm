@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **平台帳號開通與自助管理（platform-user-management）** — 平台後台新增「平台帳號」管理頁，平台管理員可直接開通新的 `PlatformUser` 帳號（不再只能靠手動 SQL），涵蓋完整生命週期：**開通只需輸入 email/name，密碼由系統隨機產生**（高熵英數混合、排除易混淆字元）並寄信告知，帳號標記 `mustChangePassword: true`——**新帳號首次登入後，除「自助改密碼」外的所有平台 API 一律被擋（403 `MUST_CHANGE_PASSWORD`）**，直到改密碼成功、旗標清除為止；列表、編輯（name/email）、停用/啟用（防呆：不可停用自己、至少保留 1 個啟用帳號）、重寄開通信（會產生新臨時密碼取代舊值、重新要求改密碼），帳號詳細頁可查詢該帳號相關的 `PlatformAuditLog` 操作紀錄。同時補上系統原本完全沒有的密碼重設機制：已登入自助改密碼（需驗證舊密碼，成功後清除 `mustChangePassword`）＋忘記密碼自助重設（`resetTokenHash`/`resetTokenExpiresAt` 時效 token、sha256 雜湊、單次使用、防枚舉，比照 `TrialSignup.verifyTokenHash` 模式，成功後同樣清除 `mustChangePassword`）。新端點皆掛 `authenticatePlatformSuperuser` guard（公開的 forgot/reset-password 另加 IP rate limit），寫入操作皆記 `PlatformAuditLog`（不含明文密碼）。新增 `platform-user.service.ts`、`platform-password-recovery.service.ts`、`platform-user-emails.ts`（開通信/重設信模板，純 HTML inline-style，不走 MJML）、`shared/utils/temp-password.ts`（臨時密碼產生工具）；前端新增 `/admin/platform-users`（列表+開通表單，不含密碼欄位）、`/admin/platform-users/[id]`（詳細頁，顯示是否已改密碼）、`/admin/change-password`（支援 `?forced=1` 強制模式，不顯示側邊欄）、`/admin/forgot-password`、`/admin/reset-password`；登入頁與 API 攔截器偵測 `mustChangePassword`/`MUST_CHANGE_PASSWORD` 自動導向。OpenSpec change `platform-user-management`。
 - **平台租戶詳細頁（點租戶往下鑽 + 編輯）** — 平台後台租戶管理的租戶名稱改為可點擊，進入 `/admin/tenants/[id]` 詳細頁：資料量統計（客服/渠道/聯絡人/對話/案件）、基本資料編輯（站台名稱、方案切換——方案變更即時失效權限天花板與租戶方案快取，比照 convertToPaid）、啟用/停用、合約期間編輯、成員清單（姓名/Email/角色/狀態）＋成員操作：**修改成員 Email**（即登入帳號，全域唯一衝突回 409）與**重寄開通信**（複用手動開通信模板，不含密碼）。新端點 `GET /platform/tenants/:id`、`PATCH /platform/tenants/:id`、`PATCH /platform/tenants/:id/agents/:agentId`、`POST /platform/tenants/:id/agents/:agentId/resend-welcome`（zod 驗證、寫 PlatformAuditLog）。
 - **平台手動開通租戶寄開通信 + 顯示登入網址** — 補上手動開通後「不知道要去哪登入」的斷點：`provisionTenantViaApi` 開通成功後比照 trial 自動寄開通信給管理員 Email（新模板 `sendManualProvisionedEmail`，帶 `${WEB_BASE_URL}/login` 登入按鈕；**不帶密碼**——密碼由開通人員設定，信中註明請洽開通人員並建議登入後改密碼；fire-and-forget 寄信失敗不影響開通）；API 回傳加 `loginUrl`，平台後台開通成功訊息同步顯示登入網址與「已寄信／密碼請自行轉交」提示。
 
@@ -40,6 +41,18 @@ All notable changes to **open333CRM** will be documented in this file.
 - Passkey 綁定流程新增裝置名稱輸入與既有 credential 重新命名功能；已綁定清單顯示自訂名稱、裝置類型與備份狀態，方便辨識多個 credential。
 
 ### Fixed
+
+- **[安全] 已停用平台帳號仍能用未過期 JWT 存取平台 API（授權繞過）** — `authenticatePlatformSuperuser` guard 即時查 DB 只取 `mustChangePassword`，未查 `isActive`，導致管理員停用某平台帳號後，該帳號手上未過期的 JWT（TTL 2 小時）仍可呼叫所有平台 API，停用形同虛設。修法：guard 查詢一併 select `isActive`，停用帳號直接回 401 `PLATFORM_USER_DISABLED`（即時失效，不需等 token 過期）。本機端到端實測：token 原可用 → DB 設 isActive=false → 同一 token 立即被 401 擋 → 復原後恢復。（bot review 於 PR #170 標為 security concern）
+
+- **對已停用平台帳號重寄開通信無意義卻仍執行** — `resendPlatformUserWelcomeEmail` 未檢查 `isActive`，對已停用帳號重寄會換掉臨時密碼、寄出信，但該用戶登入仍被 `isActive=false` 擋下，白做且讓管理員誤以為對方已能登入。修法：加 `isActive` 檢查，停用帳號重寄回 400 `PLATFORM_USER_DISABLED`（需先啟用再重寄）。（bot review 於 PR #170 指出）
+
+- **平台帳號 email 未正規化（大小寫/空白可能繞過唯一檢查或登入失敗）** — `PlatformUser` 的開通/編輯/登入/忘記密碼查詢皆直接用原始 email 比對，而 Postgres text 欄位大小寫敏感：以 `Admin@X.com` 開通、之後用 `admin@x.com` 登入會查無而失敗，或以不同大小寫繞過唯一檢查建出重複帳號。修法：平台帳號 email 於 zod schema 層統一 `.trim().toLowerCase()` 後再驗格式（登入/開通/編輯/忘記密碼四處共用 `platformEmail`），service 層另加 `normalizeEmail`（`shared/utils/email.ts`）作為雙保險。本機實測：全大寫、前後帶空白的 email 皆能正確命中既有小寫帳號、錯密碼仍擋。範圍僅平台帳號鏈路（租戶端 agent 登入沿用未正規化的既有行為，全系統一致，若收斂需配既有資料 migration，另議）。（bot review 於 PR #170 指出）
+
+- **平台帳號「至少保留 1 個啟用帳號」防呆有併發競態** — `setPlatformUserActive` 原本先 `count({ where: { isActive: true } })` 再 `update`，兩步驟未在同一交易中，若兩位平台管理員同時停用最後兩組啟用帳號，兩邊的 count 皆讀到 2 而各自放行，導致啟用帳號歸零、沒人能登入平台後台。修法：把目標帳號存在性/isActive 讀取、count 檢查與 update **全部**包進同一 `$transaction` 並用 `Serializable` 隔離級別（整個判斷鏈在同一快照，交易外只留不依賴 DB 狀態的「不可停用自己」比對），併發時第二個交易因序列化衝突 abort，防呆確實生效。本機實測正常停用/啟用、「停用自己」、不存在帳號防呆均正確。（bot review 於 PR #170 指出併發競態與交易內狀態一致性）
+
+- **粉絲門戶功能在 RLS 上線後完全失效（CM-172）** — 與 CM-171 同族根因：`portal.routes.ts` 全部 12 處端點沿用未綁定租戶的 `app.prisma` 連線，活動 CRUD/發布/結束/抽獎/提交紀錄/積分查詢調整整個模組被 RLS 擋下。修法：路由改用 `request.tenantPrisma`；service 層（`portal.service.ts`/`points.service.ts`）簽章收斂為 `TenantDb`；`updateActivity` 因內部原本自開 `$transaction`（RLS 交易不可巢狀）特別改為呼叫端先 `withTenant(app.prisma, tenantId, tx => updateActivity(tx, ...))` 開好綁定交易、函式內直接用傳入的 `tx` 操作；公開端點（`portal-public.routes.ts`，粉絲 JWT 身分）用到的 `submitActivity`/`getActivityResult` 維持 `PrismaClient` 不變。Wave 5 E2E 測試（tenant-misc.spec.ts）建立測試活動時發現。
+
+- **短連結功能在 RLS 上線後完全失效（CM-171）** — `shortlink.routes.ts` 全部端點沿用未綁定租戶的 `app.prisma` 連線（未設定 `app.current_tenant` session 變數），Postgres RLS policy 的 `tenantId = NULL` 比較永遠為 false，導致建立短連結直接 500（RLS policy violation）、列表查詢則靜默回空陣列（回 200，不報錯，UI 顯示「目前沒有短連結」）——比報錯更隱蔽。修法：路由改用 `request.tenantPrisma`（每次操作自動綁定租戶 RLS context），service 層對應函式簽章由 `PrismaClient` 收斂為 `TenantDb` 聯集型別；公開重定向端點（`/s/:slug`，無租戶身分）沿用的 `getLinkForRedirect`/`getChannelLiffId`/`trackClick` 維持 `PrismaClient` 不變。Wave 5 E2E 測試（tenant-misc.spec.ts）建立測試短連結時發現。
 
 - **儀表板「開啟中案件」統計卡默默壞掉（CM-163）** — 首頁載入時前端送小寫 `status=open`，cases list API 用 `z.string()` 放行後直塞 Prisma enum（合法值大寫 `OPEN`）炸 400；前端 `Promise.allSettled` 吞錯，畫面看似正常但統計卡永遠拿不到資料。修法雙保險：API list schema 的 `status`/`priority` 改為「轉大寫再驗 enum」（亂值回明確 400 而非 Prisma 內部錯）；前端改送 `OPEN`。UAT E2E smoke（console error 檢查）抓到的第一隻 bug。
 
