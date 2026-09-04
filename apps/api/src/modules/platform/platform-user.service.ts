@@ -126,8 +126,13 @@ export async function setPlatformUserActive(
 
 /** 重寄開通信：產生新的臨時密碼取代舊值（舊臨時密碼隨即失效），重新標記 mustChangePassword=true。 */
 export async function resendPlatformUserWelcomeEmail(prisma: PrismaClient, id: string) {
-  const user = await prisma.platformUser.findUnique({ where: { id }, select: { email: true, name: true } });
+  const user = await prisma.platformUser.findUnique({ where: { id }, select: { email: true, name: true, isActive: true } });
   if (!user) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+  // 對已停用帳號重寄開通信沒有意義：換了臨時密碼、寄了信，該用戶登入仍會被 isActive=false 擋下。
+  // 擋在這裡，避免管理員誤以為重寄後對方就能登入。需要的話請先啟用帳號再重寄。
+  if (!user.isActive) {
+    throw new AppError('Cannot resend welcome email to a disabled account', 'PLATFORM_USER_DISABLED', 400);
+  }
 
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);

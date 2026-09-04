@@ -58,7 +58,8 @@ export default async function portalRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = request.body as Record<string, unknown>;
     try {
-      // updateActivity 內部自開 $transaction，須走 withTenant（見該函式註解）
+      // updateActivity 內部有多筆 delete/create（選項、欄位），需在單一綁定租戶的交易內原子完成；
+      // RLS 下交易不可巢狀，故由呼叫端用 withTenant 開好交易再把 tx 傳入（函式本身只用傳入的 tx）。
       const activity = await withTenant(app.prisma, request.agent.tenantId, (tx) =>
         updateActivity(tx, id, request.agent.tenantId, body as Parameters<typeof updateActivity>[3]),
       );
