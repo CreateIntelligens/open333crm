@@ -95,23 +95,29 @@ export async function setPlatformUserActive(
   const existing = await prisma.platformUser.findUnique({ where: { id }, select: { id: true, isActive: true } });
   if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
 
-  if (!isActive) {
-    if (id === callerId) {
-      throw new AppError('Cannot disable your own account', 'CANNOT_DISABLE_SELF', 400);
-    }
-    if (existing.isActive) {
-      const activeCount = await prisma.platformUser.count({ where: { isActive: true } });
-      if (activeCount <= 1) {
-        throw new AppError('At least one active platform user must remain', 'PLATFORM_LAST_USER_ACTIVE', 400);
-      }
-    }
+  if (!isActive && id === callerId) {
+    throw new AppError('Cannot disable your own account', 'CANNOT_DISABLE_SELF', 400);
   }
 
-  return prisma.platformUser.update({
-    where: { id },
-    data: { isActive },
-    select: PUBLIC_SELECT,
-  });
+  // 「啟用中帳號歸零」防呆必須把 count 檢查與 update 放進同一交易，並用 Serializable
+  // 隔離級別；否則兩位管理者同時停用最後兩組帳號時，兩邊的 count 都會讀到 2 而各自放行，
+  // 導致啟用帳號歸零、沒人能登入平台後台（bot review CM-... race condition）。
+  return prisma.$transaction(
+    async (tx) => {
+      if (!isActive && existing.isActive) {
+        const activeCount = await tx.platformUser.count({ where: { isActive: true } });
+        if (activeCount <= 1) {
+          throw new AppError('At least one active platform user must remain', 'PLATFORM_LAST_USER_ACTIVE', 400);
+        }
+      }
+      return tx.platformUser.update({
+        where: { id },
+        data: { isActive },
+        select: PUBLIC_SELECT,
+      });
+    },
+    { isolationLevel: 'Serializable' },
+  );
 }
 
 /** 重寄開通信：產生新的臨時密碼取代舊值（舊臨時密碼隨即失效），重新標記 mustChangePassword=true。 */
