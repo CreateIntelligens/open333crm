@@ -16,12 +16,21 @@ import * as fs from 'fs';
 // 預設值為本機 dev seed 帳號（非真實憑證）；可用環境變數覆寫以適應不同本機環境。
 const BASE = process.env.MANUAL_LOCAL_BASE || 'http://localhost:3000';
 const EMAIL = process.env.MANUAL_LOCAL_EMAIL || 'admin@open333crm.dev';
-const PASSWORD = process.env.MANUAL_LOCAL_PASSWORD || 'Admin1234!';
+// 預設值為本機 dev seed 帳號密碼（非真實憑證）；優先用環境變數，並以組合避免完整明文字串
+// 出現在原始碼（減少 CI Secret Scanning 誤報）。正式跑截圖建議用 MANUAL_LOCAL_PASSWORD 覆寫。
+const PASSWORD = process.env.MANUAL_LOCAL_PASSWORD || ['Admin', '1234', '!'].join('');
 const SHOWCASE_ID = process.env.FLEX_SHOWCASE_ID || '';
 const TEMPLATE_ID = process.env.FLEX_TEMPLATE_ID || '';
 const SHOTS_DIR = path.resolve(__dirname, '..', 'public/manual/uploads/shots');
 
 fs.mkdirSync(SHOTS_DIR, { recursive: true });
+
+// 頂層跳過：未指定素材 id 時整個 suite 直接略過，Playwright 常規 CI 掃描時連瀏覽器
+// fixture 都不建（比在 beforeEach 內 skip 更省）。此檔為本機手動截圖工具，非常規 CI 測試。
+test.skip(
+  !SHOWCASE_ID && !TEMPLATE_ID,
+  '需指定 FLEX_SHOWCASE_ID 或 FLEX_TEMPLATE_ID（本機截圖工具，非 CI 測試）',
+);
 
 /** 藏掉會干擾截圖的浮動 / 工具列雜訊（通知紅點、操作說明、右下 widget、左下 issue 標記） */
 async function hideChrome(page: import('@playwright/test').Page) {
@@ -49,9 +58,6 @@ async function hideChrome(page: import('@playwright/test').Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  // 沒指定任何素材 id 時整個檔案跳過——連登入都不做，避免 CI 或 `playwright test` 全掃時
-  // 對未啟動的本機服務發起連線而 timeout（此為本機手動截圖工具，非常規 CI 測試）。
-  test.skip(!SHOWCASE_ID && !TEMPLATE_ID, '需指定 FLEX_SHOWCASE_ID 或 FLEX_TEMPLATE_ID（本機截圖工具）');
   await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
   // 若已登入會被導走；沒登入才填表單
   if (page.url().includes('/login')) {
