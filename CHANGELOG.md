@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **建立不合法 body 的 `line_flex_template` 素材回 500 而非 400** — `assertLineFlexMessageBody` 呼叫 `normalizeLineFlexMessageBody` 時未接住其對不合法 body（如空物件、contents 非 bubble/carousel）拋出的 `LineFlexTemplateError`，導致冒泡成 500 `INTERNAL_ERROR`。修法：用既有的 `flexErrorToAppError` 把該錯誤轉成明確 400，並對 `validateLineFlexMessageBody` 的 `errors[0]` 加防禦性 fallback。本機實測：空 body 回 400 `INVALID_LINE_FLEX_PAYLOAD`、合法 body 仍 201 建立成功。（撰寫 Flex 操作手冊、建測試素材時發現）
 - **AI route merge syntax** — 修正最新分支同步時 `/api/v1/ai/rewrite` 路由缺少結束括號，避免 API TypeScript 編譯失敗。
 - **Cloudflare security audit findings** — 修正 authenticated Socket.IO 任意 room 訂閱越權；visitor socket 改為只接受 server-issued Chatbox session/claim；legacy WebChat visitor-token session route 改為安全停用/遷移路徑，message/media 加入 secure contract、3 天 session 上限、payload/檔案/IP/session/channel 限流；`xlsx` 替換為 `@e965/xlsx`，並更新 Engine.IO、Socket.IO parser、sharp、PostCSS 等 production-reachable 依賴。
 - **Socket 訂閱限流與 RLS CI 修正** — 訂閱/取消訂閱限制改為每條連線每 60 秒 rolling window；Socket plugin 的 `prismaAdmin` 使用補上明確租戶/資源授權白名單，通過 strict RLS 白名單檢查。
