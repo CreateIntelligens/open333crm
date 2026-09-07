@@ -57,6 +57,15 @@ function createPrismaMock() {
           return next;
         },
       },
+      // 版本快照：service 於 create/update 後寫版本，測試僅需 no-op 讓流程走完。
+      materialVersion: {
+        async findFirst() {
+          return null;
+        },
+        async create(args: { data: StoredMaterial }) {
+          return { id: `ver-${nextId++}`, ...args.data };
+        },
+      },
       channel: {
         async findFirst() {
           return {
@@ -248,11 +257,34 @@ async function testSendHelperReturnsPureFlexBody() {
   assert.deepEqual(result.renderedBody, material.body);
 }
 
+// 迴歸測試：建立不合法 body 的 line_flex_template 素材必須拋 400（曾因 normalize throw
+// 未被接住而冒泡成 500）。涵蓋空物件與 contents 非 bubble/carousel 兩種不合法 body。
+async function testCreateRejectsInvalidFlexBodyWith400() {
+  for (const badBody of [{}, { type: 'flex', altText: 'x', contents: { type: 'not-bubble' } }]) {
+    const { prisma } = createPrismaMock();
+    await assert.rejects(
+      () =>
+        createMaterial(prisma as any, 'tenant-1', {
+          name: 'Invalid Flex',
+          channelType: 'line',
+          contentType: 'line_flex_template',
+          body: badBody as Record<string, unknown>,
+        }),
+      (error: any) => {
+        assert.equal(error.statusCode, 400, `不合法 body 應回 400，實際 ${error.statusCode}`);
+        assert.ok(typeof error.code === 'string' && error.code.length > 0);
+        return true;
+      },
+    );
+  }
+}
+
 await testImportCompleteAndRawFlexPayloads();
 await testValidateRejectsInvalidRoot();
 await testValidateCallsLineValidateApi();
 await testValidateSurfacesLineApiErrors();
 await testCreateAndUpdateNormalizePureFlexPayload();
 await testSendHelperReturnsPureFlexBody();
+await testCreateRejectsInvalidFlexBodyWith400();
 
 console.log('material-line-flex-import tests passed');

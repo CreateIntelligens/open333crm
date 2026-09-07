@@ -121,10 +121,18 @@ function flexErrorToAppError(error: unknown): AppError {
 }
 
 function assertLineFlexMessageBody(body: unknown): LineFlexMessageBody {
-  const normalized = normalizeLineFlexMessageBody(body);
+  let normalized: LineFlexMessageBody;
+  try {
+    // normalizeLineFlexMessageBody 對不合法 body（如空物件、contents 非 bubble/carousel）會
+    // 直接 throw LineFlexTemplateError，若不接住會冒泡成 500。用 flexErrorToAppError 轉成 400。
+    normalized = normalizeLineFlexMessageBody(body);
+  } catch (error) {
+    throw flexErrorToAppError(error);
+  }
   const result = validateLineFlexMessageBody(normalized);
   if (!result.valid) {
-    const first = result.errors[0];
+    // errors 理論上非空，但防禦性處理避免 errors[0] 為 undefined 再次炸成 500。
+    const first = result.errors[0] ?? { message: 'Invalid LINE Flex message body', code: 'INVALID_LINE_FLEX_BODY' };
     throw new AppError(first.message, first.code, 400);
   }
   return normalized;
