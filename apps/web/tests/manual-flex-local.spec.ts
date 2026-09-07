@@ -13,9 +13,10 @@ import * as fs from 'fs';
  *   npx playwright test --config=playwright.shots.config.ts tests/manual-flex-local.spec.ts
  */
 
-const BASE = 'http://localhost:3000';
-const EMAIL = 'admin@open333crm.dev';
-const PASSWORD = 'Admin1234!';
+// 預設值為本機 dev seed 帳號（非真實憑證）；可用環境變數覆寫以適應不同本機環境。
+const BASE = process.env.MANUAL_LOCAL_BASE || 'http://localhost:3000';
+const EMAIL = process.env.MANUAL_LOCAL_EMAIL || 'admin@open333crm.dev';
+const PASSWORD = process.env.MANUAL_LOCAL_PASSWORD || 'Admin1234!';
 const SHOWCASE_ID = process.env.FLEX_SHOWCASE_ID || '';
 const TEMPLATE_ID = process.env.FLEX_TEMPLATE_ID || '';
 const SHOTS_DIR = path.resolve(__dirname, '..', 'public/manual/uploads/shots');
