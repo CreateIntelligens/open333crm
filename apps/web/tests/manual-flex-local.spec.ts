@@ -49,6 +49,9 @@ async function hideChrome(page: import('@playwright/test').Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  // 沒指定任何素材 id 時整個檔案跳過——連登入都不做，避免 CI 或 `playwright test` 全掃時
+  // 對未啟動的本機服務發起連線而 timeout（此為本機手動截圖工具，非常規 CI 測試）。
+  test.skip(!SHOWCASE_ID && !TEMPLATE_ID, '需指定 FLEX_SHOWCASE_ID 或 FLEX_TEMPLATE_ID（本機截圖工具）');
   await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
   // 若已登入會被導走；沒登入才填表單
   if (page.url().includes('/login')) {
