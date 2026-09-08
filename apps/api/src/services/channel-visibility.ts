@@ -20,6 +20,7 @@ import type { FastifyRequest } from 'fastify';
 import type { TenantDb } from '../lib/tenant-db.js';
 import { getEffectiveTenantPermissions } from './permission.service.js';
 import { getTenantPlanId } from './tenant-plan.cache.js';
+import { AppError } from '../shared/utils/response.js';
 
 /** 總店（channel.view_all）不受渠道限制的哨兵值。 */
 export const ALL_CHANNELS = Symbol('ALL_CHANNELS');
@@ -106,4 +107,26 @@ export async function resolveChannelVisibility(
     agentId,
     hasViewAll: eff.has('channel.view_all'),
   });
+}
+
+/**
+ * 操作守門：assert 當前 agent 對某對話的渠道有可見性，否則丟 403。
+ * 用於「回覆/指派/關閉/轉真人」等對話操作端點——不可見渠道的對話不得操作。
+ * 找不到對話時不在此丟（交給後續 service 的 404），只擋「可見但無權操作」。
+ */
+export async function assertConversationChannelVisible(
+  request: FastifyRequest,
+  conversationId: string,
+): Promise<void> {
+  const accessible = await resolveChannelVisibility(request);
+  if (accessible === ALL_CHANNELS) return;
+  const conv = await request.tenantPrisma.conversation.findFirst({
+    where: { id: conversationId, tenantId: request.agent.tenantId },
+    select: { channelId: true },
+  });
+  // 對話不存在 → 放行，讓下游回 404（不在此洩漏存在與否以外資訊）
+  if (!conv) return;
+  if (!accessible.has(conv.channelId)) {
+    throw new AppError('Forbidden: channel not accessible', 'FORBIDDEN', 403);
+  }
 }

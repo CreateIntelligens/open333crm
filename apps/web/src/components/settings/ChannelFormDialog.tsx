@@ -3,11 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Copy, Check, HelpCircle } from 'lucide-react';
 import api from '@/lib/api';
+import { usePermission } from '@/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { ChannelFieldGuide } from './ChannelFieldGuide';
+import { ChannelTeamAssignment } from './ChannelTeamAssignment';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,8 @@ export function ChannelFormDialog({
   onSaved,
 }: ChannelFormDialogProps) {
   const isEditing = !!channel;
+  // 是否可指派渠道給團隊（channel.assign_team）；否則不顯示指派區塊
+  const canAssignTeam = usePermission('channel.assign_team');
 
   const [channelType, setChannelType] = useState('LINE');
   const [displayName, setDisplayName] = useState('');
@@ -509,6 +513,13 @@ export function ChannelFormDialog({
                   3. 驗證權杖（Verify Token）填入：<code className="bg-primary-subtle px-1 rounded">{savedCredentials.verifyToken || '（讀取中，稍候重開此視窗）'}</code>{'\n'}
                   4. 訂閱欄位：messages
                 </p>
+              </div>
+            )}
+
+            {/* 指派團隊（CM-173）：僅編輯既有渠道時顯示，且需 channel.assign_team 權限 */}
+            {isEditing && canAssignTeam && channel && (
+              <div className="border-t pt-4">
+                <ChannelTeamAssignment channelId={channel.id} />
               </div>
             )}
 

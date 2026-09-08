@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useChannels } from '@/hooks/useChannels';
+import { usePermission } from '@/providers/AuthProvider';
 
 export interface FilterValues {
   statuses: string[];
@@ -26,13 +28,15 @@ const STATUS_OPTIONS = [
   { value: 'CLOSED', label: '已關閉' },
 ];
 
-const CHANNEL_OPTIONS = [
-  { value: 'LINE', label: 'LINE' },
-  { value: 'FB', label: 'Facebook' },
-  { value: 'THREADS', label: 'Instagram' },
-  { value: 'WEBCHAT', label: 'WebChat' },
-  { value: 'WHATSAPP', label: 'WhatsApp' },
-];
+// 渠道類型 → 顯示名稱（對應 GET /channels 回傳的 channelType）
+const CHANNEL_TYPE_LABEL: Record<string, string> = {
+  LINE: 'LINE',
+  FB: 'Facebook',
+  THREADS: 'Instagram',
+  WEBCHAT: 'WebChat',
+  WHATSAPP: 'WhatsApp',
+  EMAIL: 'Email',
+};
 
 const ASSIGNEE_OPTIONS = [
   { value: '', label: '所有' },
@@ -42,6 +46,28 @@ const ASSIGNEE_OPTIONS = [
 
 export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerProps) {
   const [draft, setDraft] = useState<FilterValues>(values);
+
+  // 是否為「總店」（可看所有渠道）；決定無可見渠道時要不要顯示空狀態提示
+  const hasViewAll = usePermission('channel.view_all');
+  // 只顯示當前 agent 可見的渠道。
+  // TODO(CM-173): GET /channels 目前回傳租戶全部渠道，尚未依 agent 可見性過濾；
+  // 待後端在渠道列表套用可見性後，此處即自動只剩可見渠道。
+  const { channels } = useChannels();
+
+  // 從可見渠道彙整出現的渠道類型（去重），作為篩選選項
+  const channelOptions = useMemo(() => {
+    const types = new Set<string>();
+    for (const ch of (channels as Array<{ channelType?: string }>) || []) {
+      if (ch.channelType) types.add(ch.channelType);
+    }
+    return Array.from(types, (type) => ({
+      value: type,
+      label: CHANNEL_TYPE_LABEL[type] ?? type,
+    }));
+  }, [channels]);
+
+  // 非總店且沒有任何可見渠道 → 顯示空狀態提示
+  const showNoChannelsHint = !hasViewAll && channelOptions.length === 0;
 
   // Reset draft when opening
   React.useEffect(() => {
@@ -128,19 +154,27 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
               <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
                 渠道
               </h4>
-              <div className="space-y-1.5">
-                {CHANNEL_OPTIONS.map((opt) => (
-                  <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={draft.channels.includes(opt.value)}
-                      onChange={() => toggleChannel(opt.value)}
-                      className="rounded border-input"
-                    />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
+              {showNoChannelsHint ? (
+                <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                  尚未被指派任何渠道，請聯繫管理員
+                </p>
+              ) : channelOptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">尚無可用渠道</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {channelOptions.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={draft.channels.includes(opt.value)}
+                        onChange={() => toggleChannel(opt.value)}
+                        className="rounded border-input"
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Assignee */}

@@ -14,7 +14,7 @@ import {
 import { createCaseFromConversation } from '../case/case.service.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
-import { resolveChannelVisibility, isChannelAccessible } from '../../services/channel-visibility.js';
+import { resolveChannelVisibility, isChannelAccessible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
@@ -192,6 +192,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/conversations/:id
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateConversationSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
 
     const conversation = await updateConversation(
       request.tenantPrisma,
@@ -263,6 +264,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/messages
   fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
     const data = sendMessageSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
 
     const { message } = await sendMessage(
       request.tenantPrisma,
@@ -281,6 +283,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const data = z.object({
       reason: z.string().max(1000).optional(),
     }).parse(request.body ?? {});
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
 
     const conversation = await closeConversation(
       request.tenantPrisma,
@@ -303,6 +306,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       assignToId: z.string().uuid().optional(),
       handoffMessage: z.string().optional(),
     }).parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
 
     const conversation = await handoffConversation(
       request.tenantPrisma,

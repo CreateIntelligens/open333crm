@@ -10,8 +10,15 @@ const channelA = '66666666-6666-4666-8666-666666666666';
 const conversationA = '77777777-7777-4777-8777-777777777777';
 const conversationB = '88888888-8888-4888-8888-888888888888';
 
+// 總店判定改由 channel.view_all 權限驅動（取代舊 ADMIN/SUPERVISOR 白名單）。
+// 這裡的 mock 讓租戶無方案（planId: null），context 帶 roleId: null，
+// 使 getEffectiveTenantPermissions 回空集合 → hasViewAll = false，
+// 對應「一般 AGENT、非總店」的既有情境。
 function createPrisma() {
   return {
+    tenant: {
+      findUnique: async () => ({ planId: null }),
+    },
     agent: {
       findFirst: async ({ where }: { where: { id: string; tenantId: string } }) => (
         where.id === agentB && where.tenantId === tenantA ? { id: agentB } : null
@@ -37,7 +44,7 @@ function createPrisma() {
   };
 }
 
-const agentContext = { agentId: agentA, tenantId: tenantA, role: 'AGENT' } as const;
+const agentContext = { agentId: agentA, tenantId: tenantA, role: 'AGENT', roleId: null } as const;
 
 async function testRejectsArbitraryRoomNames() {
   const result = await authorizeSocketRoom(createPrisma() as never, agentContext, 'tenant:arbitrary-room');

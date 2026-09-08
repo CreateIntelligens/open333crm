@@ -1,4 +1,6 @@
 import type { PrismaClient } from '@open333crm/database';
+import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
+import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROOM_TYPES = new Set(['tenant', 'agent', 'team', 'channel', 'conversation']);
@@ -7,6 +9,8 @@ export interface SocketAuthorizationContext {
   agentId: string;
   tenantId: string;
   role: string;
+  /** 當前 agent 的角色 ID，供 channel.view_all 權限判斷（總店）。JWT 帶入。 */
+  roleId: string | null;
 }
 
 export interface SocketRoomTarget {
@@ -36,16 +40,30 @@ function parseTarget(input: unknown): SocketRoomTarget | null {
   return { type: target.type as SocketRoomTarget['type'], id: target.id };
 }
 
-function isElevatedRole(role: string): boolean {
-  return role === 'ADMIN' || role === 'SUPERVISOR';
+/**
+ * 判斷當前 agent 是否持有 `channel.view_all`（總店）。
+ * 判定方式比照 requirePermission guard：有效權限 = 角色權限 ∩ 方案功能天花板。
+ * 取代舊的角色白名單（ADMIN/SUPERVISOR），改由 RBAC 權限點驅動總店可見全部。
+ *
+ * 注意：socket plugin 傳入的是 prismaAdmin，權限/方案查詢需以 admin client 執行
+ * （與 rbac.guard、channel-visibility 一致），故此處直接沿用同一個 prisma 參數。
+ */
+async function resolveHasViewAll(
+  prisma: PrismaClient,
+  context: SocketAuthorizationContext,
+): Promise<boolean> {
+  const planId = await getTenantPlanId(prisma, context.tenantId);
+  const eff = await getEffectiveTenantPermissions(prisma, context.roleId, planId);
+  return eff.has('channel.view_all');
 }
 
 async function canAccessTeam(
   prisma: PrismaClient,
   context: SocketAuthorizationContext,
+  hasViewAll: boolean,
   teamId: string,
 ): Promise<boolean> {
-  if (isElevatedRole(context.role)) {
+  if (hasViewAll) {
     return Boolean(await prisma.team.findFirst({
       where: { id: teamId, tenantId: context.tenantId },
       select: { id: true },
@@ -65,9 +83,10 @@ async function canAccessTeam(
 async function canAccessChannel(
   prisma: PrismaClient,
   context: SocketAuthorizationContext,
+  hasViewAll: boolean,
   channelId: string,
 ): Promise<boolean> {
-  if (isElevatedRole(context.role)) {
+  if (hasViewAll) {
     return Boolean(await prisma.channel.findFirst({
       where: { id: channelId, tenantId: context.tenantId, isActive: true },
       select: { id: true },
@@ -99,6 +118,7 @@ async function canAccessChannel(
 async function canAccessConversation(
   prisma: PrismaClient,
   context: SocketAuthorizationContext,
+  hasViewAll: boolean,
   conversationId: string,
 ): Promise<boolean> {
   const conversation = await prisma.conversation.findFirst({
@@ -106,16 +126,17 @@ async function canAccessConversation(
     select: { id: true, teamId: true, assignedToId: true, channelId: true },
   });
   if (!conversation) return false;
-  if (isElevatedRole(context.role)) return true;
+  if (hasViewAll) return true;
   if (conversation.assignedToId === context.agentId) return true;
 
-  if (conversation.teamId) return canAccessTeam(prisma, context, conversation.teamId);
-  return canAccessChannel(prisma, context, conversation.channelId);
+  if (conversation.teamId) return canAccessTeam(prisma, context, hasViewAll, conversation.teamId);
+  return canAccessChannel(prisma, context, hasViewAll, conversation.channelId);
 }
 
 async function isAuthorized(
   prisma: PrismaClient,
   context: SocketAuthorizationContext,
+  hasViewAll: boolean,
   target: SocketRoomTarget,
 ): Promise<boolean> {
   switch (target.type) {
@@ -123,16 +144,16 @@ async function isAuthorized(
       return target.id === context.tenantId;
     case 'agent':
       if (target.id === context.agentId) return true;
-      return isElevatedRole(context.role) && Boolean(await prisma.agent.findFirst({
+      return hasViewAll && Boolean(await prisma.agent.findFirst({
         where: { id: target.id, tenantId: context.tenantId },
         select: { id: true },
       }));
     case 'team':
-      return canAccessTeam(prisma, context, target.id);
+      return canAccessTeam(prisma, context, hasViewAll, target.id);
     case 'channel':
-      return canAccessChannel(prisma, context, target.id);
+      return canAccessChannel(prisma, context, hasViewAll, target.id);
     case 'conversation':
-      return canAccessConversation(prisma, context, target.id);
+      return canAccessConversation(prisma, context, hasViewAll, target.id);
   }
 }
 
@@ -143,7 +164,10 @@ export async function authorizeSocketRoom(
 ): Promise<SocketRoomAuthorizationResult> {
   const target = parseTarget(input);
   if (!target) return { ok: false, code: 'INVALID_TARGET' };
-  if (!await isAuthorized(prisma, context, target)) return { ok: false, code: 'FORBIDDEN' };
+  // 總店判定：一次解析 channel.view_all 權限，往下傳給各 helper（取代舊角色白名單）。
+  // tenant/agent(自己) 房間其實不需要此判斷，但集中在此解析可讓各 case 一致取用。
+  const hasViewAll = await resolveHasViewAll(prisma, context);
+  if (!await isAuthorized(prisma, context, hasViewAll, target)) return { ok: false, code: 'FORBIDDEN' };
 
   return { ok: true, room: `${target.type}:${target.id}` };
 }
