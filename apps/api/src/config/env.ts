@@ -58,6 +58,7 @@ const envSchema = z.object({
   CHATBOX_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(3 * 24 * 60).default(3 * 24 * 60),
   WEBCHAT_LEGACY_ROUTES_ENABLED: z.string().transform((v) => v === 'true').default('false'),
   WIKI_API_TOKEN: z.string().optional(),
+  UPLOAD_CONTENT_DETECTION_ENABLED: z.string().transform((v) => v !== 'false').default('true'),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp', 'resend']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),

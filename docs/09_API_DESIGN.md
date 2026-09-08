@@ -340,13 +340,17 @@ DELETE /api/v1/storage                     # 刪除（by key）
 
 GET    /api/v1/storage/signed-url/:key     # Private 檔案取 presigned URL（1小時有效）
 
-POST   /api/v1/storage/presign-upload      # 取得前端直傳 URL（避免大檔走 API Server）
+POST   /api/v1/files/presign-upload       # 取得前端直傳 URL（避免大檔走 API Server）
   Body: { "filename": "banner.jpg", "contentType": "image/jpeg", "folder": "templates" }
-  Response: { "uploadUrl": "https://minio/...", "publicUrl": "https://...", "key": "..." }
+  Response: { "uploadUrl": "https://minio/...", "key": "{tenantId}/quarantine/..." }
+
+POST   /api/v1/files/complete-upload       # 直傳完成後偵測並 promote
+  Body: { "key": "{tenantId}/quarantine/...", "filename": "banner.jpg", "mimeType": "image/jpeg", "directory": "templates" }
+  Response: { "key": "{tenantId}/templates/...", "url": "https://...", "detectedMime": "image/jpeg" }
 ```
 
 > **LINE 注意**：Flex Message 內圖片必須為公開 HTTPS URL。
-> 所有上傳到 `/templates` 資料夾的圖片預設為 public ACL，直接用 `publicUrl` 填入 Flex JSON。
+> presigned PUT 完成後必須呼叫 `complete-upload`；只有 promote 後回傳的 `url` 才可填入 Flex JSON。
 
 ---
 

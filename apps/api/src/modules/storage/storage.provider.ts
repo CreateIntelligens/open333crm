@@ -17,7 +17,7 @@ export interface StorageProvider {
   getSignedUrl(key: string, expiresInSeconds?: number): Promise<string>;
   getPublicUrl(key: string): string;
   /** 取出物件內容為 Buffer（供 API route 內部代理讀取，如 imagemap 公開圖端）。找不到回 null。 */
-  getObject(key: string): Promise<{ buffer: Buffer; contentType?: string } | null>;
+  getObject(key: string, maxBytes?: number): Promise<{ buffer: Buffer; contentType?: string } | null>;
   delete(key: string): Promise<void>;
   ensureBucket(): Promise<void>;
   presignUpload(key: string, mimeType: string, expiresInSeconds?: number): Promise<PresignResult>;

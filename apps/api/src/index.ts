@@ -77,9 +77,12 @@ import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
 import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
+import { preloadUploadContentDetector } from './modules/upload/upload-content-detector.js';
 
 export async function bootstrap() {
   const config = loadEnvConfig();
+
+  await preloadUploadContentDetector();
 
   // RBAC: 啟動即驗證權限 registry 完整性（重複/懸空/成環/feature 缺失），有錯即拒絕啟動
   const registryErrors = validatePermissionRegistry();

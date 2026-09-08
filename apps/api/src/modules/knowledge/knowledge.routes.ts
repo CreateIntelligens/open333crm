@@ -30,6 +30,8 @@ import {
 import { refreshModelKeys, getKnownModelKeys } from '../ai/model-registry.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { AppError, success, paginated } from '../../shared/utils/response.js';
+import { assertUploadContent } from '../upload/upload-validation.js';
+import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 const createArticleSchema = z.object({
   title: z.string().min(1).max(200),
@@ -142,10 +144,15 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
     for await (const part of parts) {
       const buffer = await part.toBuffer();
       try {
+        const detected = await assertUploadContent(
+          { buffer, filename: part.filename, clientMime: part.mimetype },
+          UPLOAD_POLICIES.knowledge,
+        );
+        const detectedMime = detected.detectedMime ?? part.mimetype;
         // xlsx/csv 若偵測到 QA 表結構（有問/答欄），自動拆成「一列一篇」，
         // 避免整張表變成單篇大文章（答案被埋沒、無法檢索）。
         const isSheet =
-          /spreadsheetml|csv/.test(part.mimetype) ||
+          /spreadsheetml|csv/.test(detectedMime) ||
           /\.(xlsx|csv)$/i.test(part.filename);
         if (isSheet) {
           const qaRows = parseSpreadsheetToQaRows(buffer);
@@ -168,7 +175,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
           // 偵測不到 QA 欄 → 落到下方單篇匯入
         }
 
-        const parsed = await parseFileToMarkdown(buffer, part.mimetype, part.filename);
+        const parsed = await parseFileToMarkdown(buffer, detectedMime, part.filename);
         await createArticle(request.tenantPrisma, request.agent.tenantId, request.agent.id, {
           title: parsed.title,
           content: parsed.content,

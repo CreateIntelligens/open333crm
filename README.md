@@ -27,6 +27,24 @@
 | 建構        | pnpm workspaces + Turborepo                      |
 | 容器        | Docker Compose                                   |
 
+### 上傳檔案內容偵測
+
+API 會在檔案進入 storage 或文件 parser 前，以檔案 bytes 驗證內容類型。系統在 Docker image 內固定包含 Magika model/config，API 啟動時 preload；執行期間只讀本地模型，不從 GitHub 或其他外部 URL 下載。偵測能力預設開啟：
+
+```env
+UPLOAD_CONTENT_DETECTION_ENABLED=true
+```
+
+此功能可在偵測器故障時暫時關閉作為緊急回退：
+
+```env
+UPLOAD_CONTENT_DETECTION_ENABLED=false
+```
+
+關閉後 API 會在啟動 log 發出 warning，且上傳只代表通過既有路由/MIME 流程，不代表檔案已完成內容驗證。修復問題後請改回 `true` 並重啟 API。內容類型偵測不是病毒掃描器；若需要 malware protection，必須另接隔離式 scanner。
+
+Magika assets 使用固定的 `standard_v3_3` model/config，checksum 記錄在 `apps/api/assets/magika/standard_v3_3/SHA256SUMS`。大型檔案的 presigned upload 必須先 PUT 到 quarantine key，再呼叫 authenticated `POST /api/v1/files/complete-upload` 完成偵測與 promote；未完成的 object 不可直接供業務流程使用。
+
 ## 專案結構
 
 ```

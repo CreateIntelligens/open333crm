@@ -18,6 +18,8 @@ import { uploadFile } from '../storage/storage.service.js';
 import { embedArticle } from '../embedding/embedding.service.js';
 import { logger } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
+import { assertUploadContent } from '../upload/upload-validation.js';
+import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 export type PartnerCmd = 'CREATE' | 'UPDATE' | 'DELETE';
 
@@ -254,10 +256,15 @@ async function writeArticle(
   if (input.isAttached && input.attachments.length > 0) {
     for (const att of input.attachments) {
       try {
+        const detected = await assertUploadContent(
+          { buffer: att.buffer, filename: att.filename, clientMime: att.mimeType },
+          UPLOAD_POLICIES.partnerAttachment,
+        );
+        const detectedMime = detected.detectedMime ?? att.mimeType;
         const { key, url } = await uploadFile(
           att.buffer,
           att.filename,
-          att.mimeType,
+          detectedMime,
           tenantId,
           'media',
           `kb/${input.docId}`,
@@ -268,7 +275,7 @@ async function writeArticle(
             filename: att.filename,
             storageKey: key,
             url,
-            mimeType: att.mimeType,
+            mimeType: detectedMime,
             sizeBytes: att.buffer.length,
           },
         });

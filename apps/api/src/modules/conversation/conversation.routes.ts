@@ -16,6 +16,8 @@ import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
+import { assertUploadContent } from '../upload/upload-validation.js';
+import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 interface MediaUploadConfig {
   allowedMimes: readonly string[];
@@ -59,6 +61,12 @@ async function handleSendMedia(
     throw new AppError(`File exceeds ${Math.round(config.maxBytes / 1024 / 1024)} MB limit`, 'BAD_REQUEST', 400);
   }
 
+  const detected = await assertUploadContent(
+    { buffer, filename: file.filename, clientMime: file.mimetype },
+    config.contentType === 'image' ? UPLOAD_POLICIES.conversationImage : UPLOAD_POLICIES.conversationVideo,
+  );
+  const detectedMime = detected.detectedMime ?? file.mimetype;
+
   const conversationId = request.params.id;
   const { tenantId, id: agentId } = (request as any).agent;
 
@@ -79,7 +87,7 @@ async function handleSendMedia(
     });
   }
 
-  const uploaded = await uploadFile(buffer, file.filename, file.mimetype, tenantId, 'media', conversationId);
+  const uploaded = await uploadFile(buffer, file.filename, detectedMime, tenantId, 'media', conversationId);
 
   const { message, delivery } = await sendMessage(
     request.tenantPrisma,

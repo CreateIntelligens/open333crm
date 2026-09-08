@@ -20,6 +20,8 @@ import { uploadFile } from '../storage/storage.service.js';
 import { downstreamWebhookConfigSchema } from '../webhook/downstream-forwarder.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { assertUploadContent } from '../upload/upload-validation.js';
+import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -352,10 +354,15 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       }
 
       const buffer = await file.toBuffer();
+      const detected = await assertUploadContent(
+        { buffer, filename: file.filename, clientMime: file.mimetype },
+        UPLOAD_POLICIES.imagemap,
+      );
+      const detectedMime = detected.detectedMime ?? file.mimetype;
       const uploaded = await uploadFile(
         buffer,
         file.filename,
-        file.mimetype,
+        detectedMime,
         request.agent.tenantId,
         'media',
         'chatbox-backgrounds',

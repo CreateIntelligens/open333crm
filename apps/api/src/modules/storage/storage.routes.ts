@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
-import { uploadFile, deleteFile, presignUpload, uploadImagemapBase } from './storage.service.js';
+import { completePresignedUpload, uploadFile, deleteFile, presignUpload, uploadImagemapBase } from './storage.service.js';
+import { assertUploadContent } from '../upload/upload-validation.js';
+import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 /** API 對外可達的 base URL（imagemap baseUrl 用；隧道測試時設 API_PUBLIC_URL 指向 ngrok）。 */
 function apiPublicUrl(): string {
@@ -20,10 +22,15 @@ export default async function storageRoutes(fastify: FastifyInstance) {
     }
 
     const buffer = await file.toBuffer();
+    const detected = await assertUploadContent(
+      { buffer, filename: file.filename, clientMime: file.mimetype },
+      UPLOAD_POLICIES.generic,
+    );
+    const detectedMime = detected.detectedMime ?? file.mimetype;
     const result = await uploadFile(
       buffer,
       file.filename,
-      file.mimetype,
+      detectedMime,
       request.agent.tenantId,
     );
 
@@ -32,7 +39,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
         key: result.key,
         url: result.url,
         filename: file.filename,
-        mimeType: file.mimetype,
+        mimeType: detectedMime,
         size: buffer.length,
       }),
     );
@@ -49,6 +56,10 @@ export default async function storageRoutes(fastify: FastifyInstance) {
       throw new AppError('底圖需為 JPEG / PNG / WebP 格式', 'BAD_REQUEST', 400);
     }
     const buffer = await file.toBuffer();
+    await assertUploadContent(
+      { buffer, filename: file.filename, clientMime: file.mimetype },
+      UPLOAD_POLICIES.imagemap,
+    );
     const { imageId } = await uploadImagemapBase(buffer, request.agent.tenantId);
     const baseUrl = `${apiPublicUrl()}/line-imagemap/${request.agent.tenantId}/${imageId}`;
 
@@ -76,6 +87,25 @@ export default async function storageRoutes(fastify: FastifyInstance) {
     );
 
     return reply.send(success(result));
+  });
+
+  // POST /api/v1/files/complete-upload — scan quarantine object and promote it
+  fastify.post('/complete-upload', async (request, reply) => {
+    const body = z.object({
+      key: z.string().min(1),
+      filename: z.string().min(1),
+      mimeType: z.string().min(1),
+      directory: z.enum(['media', 'templates', 'exports', 'avatars']).optional(),
+    }).parse(request.body);
+
+    const result = await completePresignedUpload(
+      request.agent.tenantId,
+      body.key,
+      body.filename,
+      body.mimeType,
+      body.directory,
+    );
+    return reply.status(201).send(success(result));
   });
 
   // DELETE /api/v1/files/:key — delete a file

@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **上傳檔案內容類型偵測** — multipart upload 會在 storage/parser 前以 magic bytes 與 Magika 驗證真實類型；presigned upload 改為 quarantine → `complete-upload` scan/promote，並提供 `UPLOAD_CONTENT_DETECTION_ENABLED`（預設開啟）作緊急回退開關。此功能只做內容類型驗證，不代表病毒掃描。
 - **Resend Email API 寄信支援** — 新增 `EMAIL_DELIVERY_MODE=resend`，使用 server-side `RESEND_API_KEY` 與已驗證的 `EMAIL_FROM` 發送試用、平台帳號、用量告警與畫布 Email；保留 `log`、`webhook` 與 SMTP rollback 模式。
 
 ### Fixed

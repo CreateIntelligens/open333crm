@@ -9,6 +9,7 @@ import {
   HeadBucketCommand,
   CreateBucketCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { StorageProvider, UploadResult, PresignResult } from './storage.provider.js';
@@ -74,8 +75,14 @@ export class S3StorageProvider implements StorageProvider {
     return `${this.publicUrl}/${this.bucket}/${key}`;
   }
 
-  async getObject(key: string): Promise<{ buffer: Buffer; contentType?: string } | null> {
+  async getObject(key: string, maxBytes?: number): Promise<{ buffer: Buffer; contentType?: string } | null> {
     try {
+      if (maxBytes !== undefined) {
+        const head = await this.client.send(
+          new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        );
+        if (head.ContentLength !== undefined && head.ContentLength > maxBytes) return null;
+      }
       const res = await this.client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
       );

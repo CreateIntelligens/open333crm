@@ -324,10 +324,16 @@ DELETE /api/v1/storage/:key                # 刪除
 GET    /api/v1/storage/signed-url/:key     # 取 presigned URL（private 檔案）
 
 # 前端直傳支援（減少 API server 流量）
-POST /api/v1/storage/presign-upload        # 取得前端直傳 URL
+POST /api/v1/files/presign-upload          # 取得前端直傳 URL
   Body: { filename, contentType, folder }
-  Response: { uploadUrl, publicUrl, key }
+  Response: { uploadUrl, key }             # key 位於 tenant-scoped quarantine
+
+POST /api/v1/files/complete-upload          # PUT 成功後必須呼叫
+  Body: { key, filename, mimeType, directory }
+  Response: { key, url, detectedMime }      # 只有此 url 可供業務流程使用
 ```
+
+所有 multipart 與 presigned upload 都會在進入正式 storage/parser 前執行內容類型偵測。API image 內建固定版本的 Magika model/config（`standard_v3_3`），API 啟動時 preload 本地檔案；runtime 不從外部 URL 下載。`UPLOAD_CONTENT_DETECTION_ENABLED` 預設為 `true`，只可在偵測器故障時暫時設為 `false`，並在修復後重啟 API 恢復。
 
 ---
 

@@ -9,6 +9,10 @@ import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { S3StorageProvider } from './s3.provider.js';
 import type { StorageProvider } from './storage.provider.js';
+import { assertUploadContent } from '../upload/upload-validation.js';
+import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
+import { AppError } from '../../shared/utils/response.js';
+import { logger } from '@open333crm/core';
 
 let _provider: StorageProvider | null = null;
 
@@ -28,6 +32,8 @@ function getProvider(): StorageProvider {
 }
 
 export type StorageDirectory = 'media' | 'templates' | 'exports' | 'avatars' | 'imagemap';
+export type QuarantineDirectory = StorageDirectory | 'knowledge';
+export const MAX_QUARANTINE_BYTES = 25 * 1024 * 1024;
 
 /**
  * Build an organized storage key: {tenantId}/{directory}/{subPath?}/{uuid}.{ext}
@@ -43,6 +49,28 @@ export function buildStorageKey(
   if (subPath) parts.push(subPath);
   parts.push(`${randomUUID()}${ext}`);
   return parts.join('/');
+}
+
+export function buildQuarantineKey(
+  tenantId: string,
+  filename: string,
+  directory: QuarantineDirectory = 'media',
+): string {
+  if (!/^[a-z0-9-]+$/i.test(directory)) {
+    throw new AppError('Invalid quarantine directory', 'BAD_REQUEST', 400);
+  }
+  return `${tenantId}/quarantine/${directory}/${randomUUID()}${extname(filename) || ''}`;
+}
+
+export function isTenantQuarantineKey(key: string, tenantId: string): boolean {
+  const parts = key.split('/');
+  return (
+    parts.length === 4 &&
+    parts[0] === tenantId &&
+    parts[1] === 'quarantine' &&
+    /^[a-z0-9-]+$/i.test(parts[2]) &&
+    /^[0-9a-f-]{36}(?:\.[a-z0-9]+)?$/i.test(parts[3])
+  );
 }
 
 /**
@@ -101,15 +129,48 @@ export async function presignUpload(
   filename: string,
   mimeType: string,
   directory: StorageDirectory = 'media',
-  subPath?: string,
 ): Promise<{ key: string; uploadUrl: string }> {
-  const key = buildStorageKey(tenantId, directory, filename, subPath);
+  const key = buildQuarantineKey(tenantId, filename, directory);
   return getProvider().presignUpload(key, mimeType);
 }
 
+export async function completePresignedUpload(
+  tenantId: string,
+  key: string,
+  filename: string,
+  mimeType: string,
+  directory: StorageDirectory = 'media',
+): Promise<{ key: string; url: string; detectedMime?: string }> {
+  if (!isTenantQuarantineKey(key, tenantId)) {
+    throw new AppError('Invalid quarantine object', 'FORBIDDEN', 403);
+  }
+
+  const object = await getProvider().getObject(key, MAX_QUARANTINE_BYTES);
+  if (!object) {
+    throw new AppError('Quarantine object not found or exceeds size limit', 'NOT_FOUND', 404);
+  }
+
+  let promotedKey: string | undefined;
+  try {
+    const detected = await assertUploadContent(
+      { buffer: object.buffer, filename, clientMime: mimeType },
+      UPLOAD_POLICIES.generic,
+    );
+    const detectedMime = detected.detectedMime ?? mimeType;
+    const promoted = await uploadFile(object.buffer, filename, detectedMime, tenantId, directory);
+    promotedKey = promoted.key;
+    await deleteFile(key);
+    return { ...promoted, detectedMime };
+  } catch (error) {
+    if (promotedKey) await deleteFile(promotedKey).catch((cleanupError) => logger.warn('[Storage] failed to clean promoted object', cleanupError));
+    await deleteFile(key).catch((cleanupError) => logger.warn('[Storage] failed to clean quarantine object', cleanupError));
+    throw error;
+  }
+}
+
 /** 取出物件內容為 Buffer（供公開圖端 route 代理讀取）。找不到回 null。 */
-export async function getObject(key: string): Promise<{ buffer: Buffer; contentType?: string } | null> {
-  return getProvider().getObject(key);
+export async function getObject(key: string, maxBytes?: number): Promise<{ buffer: Buffer; contentType?: string } | null> {
+  return getProvider().getObject(key, maxBytes);
 }
 
 // ─── LINE imagemap 多尺寸底圖 ─────────────────────────────────────
