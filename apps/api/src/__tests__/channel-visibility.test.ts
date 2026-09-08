@@ -25,12 +25,15 @@ const teamA = '55555555-5555-4555-8555-555555555555';
 const teamB = '66666666-6666-4666-8666-666666666666';
 const CH_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; // 授權給 teamA
 const CH_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; // 授權給 teamB
-const CH_LEGACY = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'; // 無任何 teamAccesses
+const CH_LEGACY = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'; // 無任何綁定（team 或 agent）
+const CH_DIRECT = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'; // 直綁給 agentNone（AgentChannelAccess）
 
 /**
- * fixture 渠道與其團隊授權/團隊成員關係。
+ * fixture 渠道與其團隊授權/團隊成員/agent 直綁關係。
  * agentTeams：某 agent 屬於哪些 team（模擬 AgentTeamMember）。
- * channelTeams：某 channel 被授權給哪些 team（模擬 ChannelTeamAccess）。空陣列＝legacy。
+ * channelTeams：某 channel 被授權給哪些 team（模擬 ChannelTeamAccess）。
+ * channelAgents：某 channel 直綁給哪些 agent（模擬 AgentChannelAccess）。
+ * 兩者皆空＝legacy（全租戶可見）。
  */
 const agentTeams: Record<string, string[]> = {
   [agentSolo]: [teamA],
@@ -41,13 +44,22 @@ const channelTeams: Record<string, string[]> = {
   [CH_A]: [teamA],
   [CH_B]: [teamB],
   [CH_LEGACY]: [],
+  [CH_DIRECT]: [],
+};
+const channelAgents: Record<string, string[]> = {
+  [CH_A]: [],
+  [CH_B]: [],
+  [CH_LEGACY]: [],
+  [CH_DIRECT]: [agentNone],
 };
 
 /**
  * 建立 mock prisma。channel.findMany 會解析被測程式送進來的 where.OR：
- *   - { teamAccesses: { none: {} } } → legacy 渠道（channelTeams 為空）
+ *   - { AND: [{teamAccesses:{none:{}}}, {agentAccesses:{none:{}}}] } → legacy
+ *     渠道（channelTeams 與 channelAgents 皆空）
  *   - { teamAccesses: { some: { team: { members: { some: { agentId } } } } } }
  *     → 該渠道有授權團隊，且 agent 屬於其中之一
+ *   - { agentAccesses: { some: { agentId } } } → agent 直綁此渠道
  * 讓測試實際跑過 OR 過濾語意，而非硬回固定清單。
  */
 function createPrisma() {
@@ -57,24 +69,38 @@ function createPrisma() {
         assert.equal(where.tenantId, tenantId, 'findMany 必須帶當前 tenantId');
         const orClauses: any[] = where.OR ?? [];
 
-        // 從 some 子句抽出被測程式要比對的 agentId
-        let queriedAgentId: string | undefined;
+        // 從 team some 子句抽出被測程式要比對的 agentId
+        let teamAgentId: string | undefined;
+        // 從 agent 直綁 some 子句抽出 agentId
+        let directAgentId: string | undefined;
+        // legacy 子句：AND 內同時含 teamAccesses.none 與 agentAccesses.none
+        let allowLegacy = false;
         for (const clause of orClauses) {
-          const agentIdCond =
-            clause?.teamAccesses?.some?.team?.members?.some?.agentId;
-          if (typeof agentIdCond === 'string') queriedAgentId = agentIdCond;
+          const t = clause?.teamAccesses?.some?.team?.members?.some?.agentId;
+          if (typeof t === 'string') teamAgentId = t;
+          const d = clause?.agentAccesses?.some?.agentId;
+          if (typeof d === 'string') directAgentId = d;
+          const andArr: any[] = clause?.AND ?? [];
+          const hasTeamNone = andArr.some((a) => a?.teamAccesses?.none !== undefined);
+          const hasAgentNone = andArr.some((a) => a?.agentAccesses?.none !== undefined);
+          if (hasTeamNone && hasAgentNone) allowLegacy = true;
         }
-        const allowLegacy = orClauses.some(
-          (c) => c?.teamAccesses?.none !== undefined,
-        );
 
-        const matched = Object.entries(channelTeams).filter(([, teams]) => {
-          if (teams.length === 0) return allowLegacy; // legacy 渠道
-          if (!queriedAgentId) return false;
-          const myTeams = agentTeams[queriedAgentId] ?? [];
-          return teams.some((t) => myTeams.includes(t));
+        const matched = Object.keys(channelTeams).filter((ch) => {
+          const teams = channelTeams[ch] ?? [];
+          const agents = channelAgents[ch] ?? [];
+          // legacy：兩種綁定皆空
+          if (teams.length === 0 && agents.length === 0) return allowLegacy;
+          // team 授權命中
+          if (teamAgentId) {
+            const myTeams = agentTeams[teamAgentId] ?? [];
+            if (teams.some((t) => myTeams.includes(t))) return true;
+          }
+          // agent 直綁命中
+          if (directAgentId && agents.includes(directAgentId)) return true;
+          return false;
         });
-        return matched.map(([id]) => ({ id }));
+        return matched.map((id) => ({ id }));
       },
     },
   };
@@ -96,6 +122,7 @@ async function testBranchAgentSeesOwnChannel() {
   assert.ok(set.has(CH_A), '應看得到自己團隊的 CH-A');
   assert.ok(set.has(CH_LEGACY), '應看得到 legacy 渠道');
   assert.ok(!set.has(CH_B), '不應看到別團隊的 CH-B');
+  assert.ok(!set.has(CH_DIRECT), '不應看到直綁給別人的 CH-DIRECT');
 }
 
 // 案例 2：屬多 team（teamA + teamB）→ 取聯集（CH-A ∪ CH-B ∪ legacy）
@@ -197,11 +224,36 @@ function testChannelIdWhereFilter() {
   assert.deepEqual(empty, { in: [] }, '空集合應回 { in: [] }');
 }
 
+// 案例 7：agent 直綁渠道（CM-173 延伸）——直綁者可見、未綁者不可見，與 team 授權取聯集
+async function testAgentDirectBinding() {
+  // agentNone 不屬任何 team，但直綁了 CH_DIRECT → 可見 CH_DIRECT + legacy
+  const accessible = await getAccessibleChannelIds(createPrisma() as never, {
+    tenantId,
+    agentId: agentNone,
+    hasViewAll: false,
+  });
+  const set = asSet(accessible);
+  assert.ok(set.has(CH_DIRECT), '直綁的 agent 應看得到 CH-DIRECT');
+  assert.ok(set.has(CH_LEGACY), '仍應看得到 legacy 渠道');
+  assert.ok(!set.has(CH_A), '未經 team/直綁授權的 CH-A 不可見');
+
+  // agentSolo（屬 teamA、無直綁）→ 看得到 CH_A，但看不到 CH_DIRECT（已被綁定＝限縮）
+  const soloSet = asSet(
+    await getAccessibleChannelIds(createPrisma() as never, {
+      tenantId,
+      agentId: agentSolo,
+      hasViewAll: false,
+    }),
+  );
+  assert.ok(soloSet.has(CH_A) && !soloSet.has(CH_DIRECT), 'team 授權與 agent 直綁互不越界');
+}
+
 await testBranchAgentSeesOwnChannel();
 await testMultiTeamUnion();
 await testViewAllReturnsSentinel();
 await testLegacyChannelVisibleToAll();
 await testFailClosedEmptySet();
 testChannelIdWhereFilter();
+await testAgentDirectBinding();
 
 console.log('channel visibility tests passed');

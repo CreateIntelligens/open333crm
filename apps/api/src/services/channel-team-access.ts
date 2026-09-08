@@ -8,6 +8,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
+import { withTenant } from '../lib/tenant-db.js';
 import { AppError } from '../shared/utils/response.js';
 
 export type ChannelTeamAccessLevel = 'read_only' | 'reply_only' | 'full';
@@ -114,4 +115,64 @@ export async function checkChannelTeamAccess(
     }
   }
   return { hasAccess: true, level };
+}
+
+// ─── Agent 直綁渠道（AgentChannelAccess，CM-173 延伸）────────────────────────
+// 「一個帳號＝一個分店」場景：人員設定直接勾選可用渠道，跳過 team 中介。
+
+export interface AgentChannelAccessRow {
+  channelId: string;
+  agentId: string;
+  accessLevel: ChannelTeamAccessLevel;
+  grantedAt: Date;
+  grantedById: string | null;
+}
+
+/** 某 agent 直綁了哪些渠道。 */
+export async function listChannelsForAgent(
+  prisma: TenantDb,
+  tenantId: string,
+  agentId: string,
+): Promise<AgentChannelAccessRow[]> {
+  const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { id: true } });
+  if (!agent) return [];
+  const rows = await prisma.agentChannelAccess.findMany({ where: { agentId } });
+  return rows as AgentChannelAccessRow[];
+}
+
+/**
+ * 整組替換某 agent 的直綁渠道（交易內 deleteMany + createMany）。
+ * channelIds 全數須屬本租戶，否則整筆拒絕（RLS 的雙 FK WITH CHECK 亦會擋跨租戶）。
+ * 需交易故收 PrismaClient，內部走 withTenant 綁 RLS session（比照 purgeAgent）。
+ */
+export async function setAgentChannels(
+  prisma: PrismaClient,
+  tenantId: string,
+  agentId: string,
+  channelIds: string[],
+  grantedById?: string,
+): Promise<{ count: number }> {
+  return withTenant(prisma, tenantId, async (tx) => {
+    const agent = await tx.agent.findFirst({ where: { id: agentId, tenantId }, select: { id: true } });
+    if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+
+    if (channelIds.length > 0) {
+      const owned = await tx.channel.count({ where: { id: { in: channelIds }, tenantId } });
+      if (owned !== new Set(channelIds).size) {
+        throw new AppError('One or more channels not found in tenant', 'BAD_REQUEST', 400);
+      }
+    }
+
+    await tx.agentChannelAccess.deleteMany({ where: { agentId } });
+    if (channelIds.length === 0) return { count: 0 };
+    const res = await tx.agentChannelAccess.createMany({
+      data: Array.from(new Set(channelIds)).map((channelId) => ({
+        channelId,
+        agentId,
+        accessLevel: 'full',
+        grantedById: grantedById ?? null,
+      })),
+    });
+    return { count: res.count };
+  });
 }

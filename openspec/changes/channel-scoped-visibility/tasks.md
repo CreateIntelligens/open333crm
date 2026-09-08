@@ -61,3 +61,13 @@
 - [ ] 9.1 Q3：case 依 channelId 過濾已定，contact（可能跨渠道身分）可見性是否延伸——確認範圍
 - [ ] 9.2 Q1：本期是否只做 `full`（可見）、read-only 留後續——確認
 - [ ] 9.3 Q4：回填「預設團隊」策略與客戶溝通方式——確認
+
+## 10. Agent 直綁渠道（延伸，2026-09-08 使用者決策：人員設定直接選渠道）
+
+- [x] 10.1 schema 新增 `AgentChannelAccess`（agent×channel）+ 正式 migration 20260908120000（含雙 FK RLS policy，比照 case_relations）
+- [x] 10.2 `getAccessibleChannelIds` 加 agent 直綁來源；legacy 改「無 team 綁定且無 agent 直綁才全租戶可見」；socket canAccessChannel 同步
+- [x] 10.3 service：listChannelsForAgent / setAgentChannels（withTenant 交易整組替換、租戶邊界檢查）
+- [x] 10.4 API：GET/PUT /agents/:id/channels（channel.assign_team、稽核 agent.channels.set）
+- [x] 10.5 前端：人員編輯彈窗「可使用的渠道」勾選（usePermission channel.assign_team）
+- [x] 10.6 測試：channel-visibility.test.ts 更新 mock 解析新 OR 形狀 + 案例 7（直綁可見/未綁不可見/與 team 聯集），7 案例全過
+- [x] 10.7 決策記錄：team 那套保留（一分店多店員/派單/報表用）；主要路徑為 agent 直綁

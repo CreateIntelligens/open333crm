@@ -99,9 +99,14 @@ async function canAccessChannel(
       tenantId: context.tenantId,
       isActive: true,
       OR: [
-        // Legacy channels without explicit team bindings remain open to
-        // agents in the same tenant.
-        { teamAccesses: { none: {} } },
+        // Legacy：未綁任何 team「且」未直綁任何 agent 的渠道 → 全租戶可見
+        // （與 channel-visibility.ts 的 getAccessibleChannelIds 語意一致）
+        {
+          AND: [
+            { teamAccesses: { none: {} } },
+            { agentAccesses: { none: {} } },
+          ],
+        },
         {
           teamAccesses: {
             some: {
@@ -109,6 +114,8 @@ async function canAccessChannel(
             },
           },
         },
+        // agent 直綁（CM-173 延伸）
+        { agentAccesses: { some: { agentId: context.agentId } } },
       ],
     },
     select: { id: true },

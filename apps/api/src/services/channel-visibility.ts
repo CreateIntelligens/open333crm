@@ -48,9 +48,14 @@ export async function getAccessibleChannelIds(
     where: {
       tenantId: ctx.tenantId,
       OR: [
-        // legacy：未指派任何團隊的渠道 → 全租戶可見（向後相容）
-        { teamAccesses: { none: {} } },
-        // 已指派：agent 所屬 team 有被授權此渠道
+        // legacy：未指派任何團隊「且」未直綁任何 agent 的渠道 → 全租戶可見（向後相容）
+        {
+          AND: [
+            { teamAccesses: { none: {} } },
+            { agentAccesses: { none: {} } },
+          ],
+        },
+        // team 授權：agent 所屬 team 有被授權此渠道
         {
           teamAccesses: {
             some: {
@@ -61,6 +66,8 @@ export async function getAccessibleChannelIds(
             },
           },
         },
+        // agent 直綁：人員設定直接勾選的可用渠道（CM-173 延伸，與 team 授權取聯集）
+        { agentAccesses: { some: { agentId: ctx.agentId } } },
       ],
     },
     select: { id: true },
