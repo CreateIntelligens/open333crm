@@ -54,7 +54,7 @@ presign 產生 tenant-scoped quarantine key，並新增 authenticated complete/s
 
 ### D8. Node 24 LTS with Debian slim runtime
 
-API、Web、Workers 與 dev image 統一使用 `node:24-bookworm-slim`。Node 20 已 EOL，且 Magika 的 `@tensorflow/tfjs-node` 是 native dependency；Debian slim 提供 glibc，較適合 production image。API Docker build 保持全域 `--ignore-scripts`，只對 `@tensorflow/tfjs-node` 做 targeted rebuild，確保 native addon 存在。Node 24 的 `tfjs-node` 仍會引用已移除的 `util.isNullOrUndefined`，因此 Magika dynamic import 前保留限定的 compatibility shim，並以 Node 24 實際 preload/inference 測試守住。
+API、Web、Workers 與 dev image 統一使用 `node:24-bookworm-slim`。Node 20 已 EOL，且 Magika 的 `@tensorflow/tfjs-node` 是 native dependency；Debian slim 提供 glibc，較適合 production image。API Docker build 保持全域 `--ignore-scripts`，只在 API builder 內明確執行 `@tensorflow/tfjs-node/scripts/install.js`，確保 native addon 存在。Node 24 的 `tfjs-node` 仍會引用已移除的 `util.isNullOrUndefined`，因此 Magika dynamic import 前保留限定的 compatibility shim，並以 Node 24 實際 preload/inference 測試守住。
 
 ## Risks / Trade-offs
 
