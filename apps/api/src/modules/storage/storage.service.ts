@@ -31,6 +31,11 @@ function getProvider(): StorageProvider {
   return _provider;
 }
 
+/** Test-only provider override so quarantine lifecycle tests do not need MinIO. */
+export function setStorageProviderForTests(provider: StorageProvider | null): void {
+  _provider = provider;
+}
+
 export type StorageDirectory = 'media' | 'templates' | 'exports' | 'avatars' | 'imagemap';
 export type QuarantineDirectory = StorageDirectory | 'knowledge';
 export const MAX_QUARANTINE_BYTES = 25 * 1024 * 1024;
