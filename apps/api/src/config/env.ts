@@ -58,10 +58,11 @@ const envSchema = z.object({
   CHATBOX_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(3 * 24 * 60).default(3 * 24 * 60),
   WEBCHAT_LEGACY_ROUTES_ENABLED: z.string().transform((v) => v === 'true').default('false'),
   WIKI_API_TOKEN: z.string().optional(),
-  EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp']).default('log'),
+  EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp', 'resend']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),
   EMAIL_WEBHOOK_AUTH_TOKEN: z.string().optional(),
-  EMAIL_FROM: z.string().optional(),
+  EMAIL_FROM: z.string().min(1).optional(),
+  RESEND_API_KEY: z.string().min(1).optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   // 注意：z.coerce.boolean() 對 'false' 會轉成 true（非空字串皆 truthy），故明確解析字串
@@ -79,16 +80,26 @@ const envSchema = z.object({
       message: 'SMTP_HOST is required when EMAIL_DELIVERY_MODE=smtp',
     });
   }
+  if (cfg.EMAIL_DELIVERY_MODE === 'resend' && !cfg.RESEND_API_KEY) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['RESEND_API_KEY'],
+      message: 'RESEND_API_KEY is required when EMAIL_DELIVERY_MODE=resend',
+    });
+  }
+  if (cfg.EMAIL_DELIVERY_MODE === 'resend' && !cfg.EMAIL_FROM) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['EMAIL_FROM'],
+      message: 'EMAIL_FROM is required when EMAIL_DELIVERY_MODE=resend',
+    });
+  }
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
 
-let _config: EnvConfig | null = null;
-
-export function loadEnvConfig(): EnvConfig {
-  if (_config) return _config;
-
-  const result = envSchema.safeParse(process.env);
+export function parseEnvConfig(input: NodeJS.ProcessEnv): EnvConfig {
+  const result = envSchema.safeParse(input);
 
   if (!result.success) {
     const formatted = result.error.format();
@@ -102,16 +113,26 @@ export function loadEnvConfig(): EnvConfig {
     throw new Error(`Environment validation failed:\n${messages}`);
   }
 
+  return result.data;
+}
+
+let _config: EnvConfig | null = null;
+
+export function loadEnvConfig(): EnvConfig {
+  if (_config) return _config;
+
+  const config = parseEnvConfig(process.env);
+
   if (
     process.env.NODE_ENV === 'production' &&
-    !result.data.MCP_ALLOWED_ORIGINS.trim()
+    !config.MCP_ALLOWED_ORIGINS.trim()
   ) {
     throw new Error(
       'Environment validation failed:\n  MCP_ALLOWED_ORIGINS: required in production',
     );
   }
 
-  _config = result.data;
+  _config = config;
   return _config;
 }
 

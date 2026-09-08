@@ -193,11 +193,17 @@ OLLAMA_ENDPOINT=http://localhost:11434
 EMBEDDING_PROVIDER=openai       # openai | ollama
 EMBEDDING_MODEL=text-embedding-3-small
 
-# SMTP（可選，Email 通知用）
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your@gmail.com
-SMTP_PASS=your-app-password
+# Email（正式環境使用 Resend API；寄件網域須先在 Resend 驗證）
+EMAIL_DELIVERY_MODE=resend
+RESEND_API_KEY=re_your_server_side_api_key
+EMAIL_FROM=open333CRM <noreply@aitago.tw>
+
+# SMTP（可選，僅作 rollback fallback）
+# EMAIL_DELIVERY_MODE=smtp
+# SMTP_HOST=smtp.example.com
+# SMTP_PORT=587
+# SMTP_USER=your-user
+# SMTP_PASS=your-password
 ```
 
 ---

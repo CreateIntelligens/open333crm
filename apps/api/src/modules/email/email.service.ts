@@ -1,5 +1,6 @@
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
+import { Resend } from 'resend';
 
 export interface SendEmailInput {
   to: string;
@@ -10,7 +11,7 @@ export interface SendEmailInput {
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
-  const mode = process.env.EMAIL_DELIVERY_MODE ?? 'log';
+  const mode = getConfig().EMAIL_DELIVERY_MODE;
 
   if (mode === 'webhook') {
     await sendViaWebhook(input);
@@ -20,12 +21,17 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     await sendViaSmtp(input);
     return;
   }
+  if (mode === 'resend') {
+    await sendViaResend(input);
+    return;
+  }
 
   logEmail(input);
 }
 
 // nodemailer transporter 模組級 lazy singleton（首次寄信才建）
 let _transporter: import('nodemailer').Transporter | null = null;
+let _resendClient: Resend | null = null;
 async function getTransporter() {
   if (_transporter) return _transporter;
   const nodemailer = await import('nodemailer');
@@ -52,19 +58,68 @@ async function sendViaSmtp(input: SendEmailInput): Promise<void> {
   });
 }
 
+function getResendClient(): Resend {
+  if (_resendClient) return _resendClient;
+
+  const apiKey = getConfig().RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is required when EMAIL_DELIVERY_MODE=resend');
+  }
+
+  _resendClient = new Resend(apiKey);
+  return _resendClient;
+}
+
+async function sendViaResend(input: SendEmailInput): Promise<void> {
+  const config = getConfig();
+  if (!config.EMAIL_FROM) {
+    throw new Error('EMAIL_FROM is required when EMAIL_DELIVERY_MODE=resend');
+  }
+
+  try {
+    const { data, error } = await getResendClient().emails.send({
+      from: config.EMAIL_FROM,
+      to: [input.to],
+      subject: input.subject,
+      html: input.html,
+      ...(input.text !== undefined ? { text: input.text } : {}),
+    });
+
+    if (error || !data?.id) {
+      const providerError = error
+        ? `${error.name ?? 'provider_error'} (${error.statusCode ?? 'unknown'}): ${error.message}`
+        : 'provider returned no message ID';
+      throw new Error(`Resend email failed: ${providerError}`);
+    }
+
+    logger.info(
+      `[EmailService] Delivery mode=resend ${JSON.stringify({
+        to: input.to,
+        subject: input.subject,
+        providerMessageId: data.id,
+      })}`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 300) : 'unknown error';
+    logger.error(`[EmailService] Resend delivery failed: ${message}`);
+    throw error;
+  }
+}
+
 async function sendViaWebhook(input: SendEmailInput): Promise<void> {
-  const url = process.env.EMAIL_WEBHOOK_URL;
+  const config = getConfig();
+  const url = config.EMAIL_WEBHOOK_URL;
   if (!url) {
     throw new Error('EMAIL_WEBHOOK_URL is required when EMAIL_DELIVERY_MODE=webhook');
   }
 
-  const from = process.env.EMAIL_FROM ?? 'noreply@open333crm.local';
+  const from = config.EMAIL_FROM ?? 'noreply@open333crm.local';
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(process.env.EMAIL_WEBHOOK_AUTH_TOKEN
-        ? { Authorization: `Bearer ${process.env.EMAIL_WEBHOOK_AUTH_TOKEN}` }
+      ...(config.EMAIL_WEBHOOK_AUTH_TOKEN
+        ? { Authorization: `Bearer ${config.EMAIL_WEBHOOK_AUTH_TOKEN}` }
         : {}),
     },
     body: JSON.stringify({

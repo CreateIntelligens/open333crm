@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-09-02]
 
+### Added
+
+- **Resend Email API 寄信支援** — 新增 `EMAIL_DELIVERY_MODE=resend`，使用 server-side `RESEND_API_KEY` 與已驗證的 `EMAIL_FROM` 發送試用、平台帳號、用量告警與畫布 Email；保留 `log`、`webhook` 與 SMTP rollback 模式。
+
 ### Fixed
 
 - **建立不合法 body 的 `line_flex_template` 素材回 500 而非 400** — `assertLineFlexMessageBody` 呼叫 `normalizeLineFlexMessageBody` 時未接住其對不合法 body（如空物件、contents 非 bubble/carousel）拋出的 `LineFlexTemplateError`，導致冒泡成 500 `INTERNAL_ERROR`。修法：用既有的 `flexErrorToAppError` 把該錯誤轉成明確 400，並對 `validateLineFlexMessageBody` 的 `errors[0]` 加防禦性 fallback。本機實測：空 body 回 400 `INVALID_LINE_FLEX_PAYLOAD`、合法 body 仍 201 建立成功。（撰寫 Flex 操作手冊、建測試素材時發現）

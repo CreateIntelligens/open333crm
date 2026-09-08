@@ -151,19 +151,27 @@ socket.on('notification.new', (notification) => { ... })
 
 ## Email 通知設計
 
-Email 使用 SMTP 發送，適用於：不在線的 Supervisor 接收重要告警。
+Email 正式環境使用 Resend API 發送，適用於不在線的 Supervisor 接收重要告警。API server 從 `RESEND_API_KEY` 讀取 server-side secret，`EMAIL_FROM` 必須使用已在 Resend 驗證的寄件網域。
 
 ```typescript
 interface EmailNotificationConfig {
-  smtp: {
-    host: string; port: number; secure: boolean;
-    user: string; pass: string;
-  };
+  deliveryMode: 'resend' | 'log' | 'webhook' | 'smtp';
+  resendApiKey?: string;      // server-side only
   senderName: string;        // 'open333CRM 系統通知'
-  senderEmail: string;       // 'noreply@your-crm.com'
+  senderEmail: string;       // must belong to a verified Resend domain
   supervisorEmails: string[]; // 接收告警的 Email 清單
 }
 ```
+
+部署設定：
+
+```env
+EMAIL_DELIVERY_MODE=resend
+RESEND_API_KEY=re_your_server_side_api_key
+EMAIL_FROM=open333CRM <noreply@aitago.tw>
+```
+
+若 Resend 暫時不可用，回退時將 `EMAIL_DELIVERY_MODE` 改為 `smtp`，並確認既有 `SMTP_*` 設定仍存在。Resend API key 不可放入 `NEXT_PUBLIC_*`、前端程式碼或 log。
 
 ### Email 模板（HTML）
 

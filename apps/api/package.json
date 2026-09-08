@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test:email": "tsx src/__tests__/email-delivery.test.ts",
     "test:case": "tsx src/__tests__/case.service.test.ts",
     "test:broadcast": "tsx src/__tests__/broadcast.service.test.ts",
     "test:downstream": "tsx src/__tests__/downstream-forwarder.test.ts",
@@ -47,6 +48,7 @@
     "nodemailer": "^9.0.5",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
+    "resend": "^6.26.0",
     "sharp": "^0.35.4",
     "socket.io": "^4.8.3",
     "turndown": "^7.2.2",
