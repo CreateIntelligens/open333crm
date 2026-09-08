@@ -1,7 +1,6 @@
 import { ChannelType } from '@open333crm/types';
 import { OutboundPayload, getChannelPlugin } from '@open333crm/channel-plugins';
 import { licenseService } from './license.js';
-import { channelTeamAccessService } from './channel-team-access.js';
 import { logger } from '@open333crm/core';
 
 export interface MessageMetadata {
@@ -21,16 +20,8 @@ class MessageService {
     credentials: Record<string, string>
   ): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
 
-    // 1. Authorization check
-    const { hasAccess, level } = await channelTeamAccessService.checkAccess({
-      channelId: metadata.channelId,
-      teamId: metadata.teamId,
-      requiredLevel: 'reply_only' // reply_only is enough for single reply
-    });
-
-    if (!hasAccess) {
-      return { success: false, error: 'ACCESS_LEVEL_INSUFFICIENT' };
-    }
+    // 1. Authorization check — 渠道級可見性授權已移至 route 層（channel-visibility.ts）。
+    //    此 MessageService 為未接線的 mock 原型（真 outbound 走 conversation.service.ts）。
 
     // 2. Billing check (Q2: Pre-deduct)
     const fee = licenseService.getMessageFee(channelType);

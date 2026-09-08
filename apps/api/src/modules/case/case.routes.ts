@@ -18,7 +18,8 @@ import {
 import { recordCsatScore } from '../csat/csat.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
-import { success, paginated } from '../../shared/utils/response.js';
+import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { resolveChannelVisibility, isChannelAccessible, ALL_CHANNELS } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
@@ -117,11 +118,15 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
+    // CM-173 渠道級可見性：只回可見渠道的案件（總店 view_all 不過濾）
+    const accessible = await resolveChannelVisibility(request);
+
     const { cases, total } = await listCases(
       request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
+      accessible,
     );
 
     return reply.send(paginated(cases, total, page, limit));
@@ -144,6 +149,18 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/cases/:id
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    // CM-173：先確認此案件的渠道在可見集合，否則視為不存在（404）
+    const accessible = await resolveChannelVisibility(request);
+    if (accessible !== ALL_CHANNELS) {
+      const row = await request.tenantPrisma.case.findFirst({
+        where: { id: request.params.id, tenantId: request.agent.tenantId },
+        select: { channelId: true },
+      });
+      if (!row || !isChannelAccessible(accessible, row.channelId)) {
+        throw new AppError('Case not found', 'NOT_FOUND', 404);
+      }
+    }
+
     const caseRecord = await getCase(
       request.tenantPrisma,
       request.params.id,

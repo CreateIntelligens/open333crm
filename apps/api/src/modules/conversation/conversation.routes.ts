@@ -14,6 +14,7 @@ import {
 import { createCaseFromConversation } from '../case/case.service.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { resolveChannelVisibility, isChannelAccessible } from '../../services/channel-visibility.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
@@ -157,11 +158,15 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
+    // CM-173 渠道級可見性：只回當前 agent 可見渠道的對話（總店 view_all 不過濾）
+    const accessible = await resolveChannelVisibility(request);
+
     const { conversations, total } = await listConversations(
       request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
+      accessible,
     );
 
     return reply.send(paginated(conversations, total, page, limit));
@@ -174,6 +179,12 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
     );
+
+    // CM-173：渠道不在可見集合 → 視為不存在（404），不洩漏他店資料
+    const accessible = await resolveChannelVisibility(request);
+    if (!isChannelAccessible(accessible, conversation.channelId)) {
+      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    }
 
     return reply.send(success(conversation));
   });
