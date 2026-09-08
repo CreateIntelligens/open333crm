@@ -28,6 +28,7 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
+import { resolveChannelVisibility } from '../../services/channel-visibility.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -138,7 +139,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/channels
   fastify.get('/', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
-    const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
+    // CM-173：渠道列表只回可見渠道（總店 view_all 不過濾）
+    const accessible = await resolveChannelVisibility(request);
+    const channels = await listChannels(request.tenantPrisma, request.agent.tenantId, accessible);
     return reply.send(success(channels));
   });
 
