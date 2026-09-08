@@ -1,0 +1,71 @@
+name: Deploy to UAT
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, arm64, uat]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Sync code to /srv/open333crm
+        run: |
+          sudo rsync -av --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude '*.tar.gz' \
+            --exclude '.env.*' \
+            . /srv/open333crm/
+
+      - name: Fix caddy port for UAT (nginx uses 80)
+        working-directory: /srv/open333crm
+        run: |
+          sed -i 's/"80:80"/"8888:80"/' docker-compose.yml
+          echo "Caddy port fixed to 8888:80"
+
+      - name: Verify env files exist
+        working-directory: /srv/open333crm
+        run: |
+          for f in .env.web .env.api .env.workers; do
+            if [ -f "$f" ]; then
+              echo "✓ $f exists"
+            else
+              echo "⚠ $f missing"
+              exit 1
+            fi
+          done
+          if ! grep -qE '^MCP_ALLOWED_ORIGINS=[^[:space:]]' .env.api; then
+            echo "✗ MCP_ALLOWED_ORIGINS must be configured in .env.api"
+            exit 1
+          fi
+          echo "✓ MCP_ALLOWED_ORIGINS configured"
+
+      - name: Prune stale Docker build cache (avoid disk fill)
+        run: |
+          echo "Before prune:"; df -h / | tail -1
+          docker builder prune -af --filter until=48h
+          echo "After prune:"; df -h / | tail -1
+
+      - name: Build Docker images
+        working-directory: /srv/open333crm
+        run: docker compose build
+
+      - name: Restart containers
+        working-directory: /srv/open333crm
+        run: |
+          docker compose up -d
+          docker image prune -f
+
+      - name: Verify deployment
+        working-directory: /srv/open333crm
+        run: |
+          docker compose ps
+          sleep 5
+          curl -sk https://uat.open333crm.create360.ai/ > /dev/null && echo "✓ HTTPS OK" || echo "✗ HTTPS failed"
