@@ -19,8 +19,10 @@ COPY packages/types/package.json packages/types/package.json
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 # Magika uses a TensorFlow native addon. Keep the dependency install script
-# surface narrow, but rebuild only pending native scripts for this package.
-RUN pnpm rebuild --pending @tensorflow/tfjs-node
+# surface narrow, but install this one prebuilt N-API binding explicitly.
+RUN cd /app/apps/api/node_modules/@tensorflow/tfjs-node \
+  && /app/node_modules/.pnpm/node_modules/.bin/node-pre-gyp install --fallback-to-build
+RUN test -f /app/apps/api/node_modules/@tensorflow/tfjs-node/lib/napi-v8/tfjs_binding.node
 
 # ---- Builder ----
 FROM deps AS builder

@@ -47,10 +47,10 @@ jobs:
           fi
           echo "✓ MCP_ALLOWED_ORIGINS configured"
 
-      - name: Prune stale Docker build cache (avoid disk fill)
+      - name: Prune unused Docker build cache (avoid disk fill)
         run: |
           echo "Before prune:"; df -h / | tail -1
-          docker builder prune -af --filter until=48h
+          docker builder prune -af
           echo "After prune:"; df -h / | tail -1
 
       - name: Build Docker images
@@ -67,5 +67,17 @@ jobs:
         working-directory: /srv/open333crm
         run: |
           docker compose ps
-          sleep 5
-          curl -sk https://uat.open333crm.create360.ai/ > /dev/null && echo "✓ HTTPS OK" || echo "✗ HTTPS failed"
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/health > /dev/null; then
+              echo "✓ API health OK"
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -fsS http://127.0.0.1:3001/health > /dev/null; then
+            echo "✗ API health failed"
+            docker compose logs --tail=100 api
+            exit 1
+          fi
+          curl -fsk https://uat.open333crm.create360.ai/ > /dev/null
+          echo "✓ HTTPS OK"
