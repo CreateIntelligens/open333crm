@@ -6,7 +6,7 @@ RUN corepack enable
 
 # Alpine deps for Prisma
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  openssl ca-certificates python3 make g++ \
+  openssl ca-certificates curl python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests for all workspace packages that api depends on
@@ -20,11 +20,20 @@ COPY packages/shared/package.json packages/shared/package.json
 COPY packages/types/package.json packages/types/package.json
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
-# Magika uses a TensorFlow native addon. Keep the dependency install script
-# surface narrow, but install this one prebuilt N-API binding explicitly.
-RUN cd /app/apps/api/node_modules/@tensorflow/tfjs-node \
-  && /app/node_modules/.pnpm/node_modules/.bin/node-pre-gyp install --fallback-to-build
-RUN test -f /app/apps/api/node_modules/@tensorflow/tfjs-node/lib/napi-v8/tfjs_binding.node
+# Magika uses a TensorFlow native addon. Node 24 ARM64 has no prebuilt tfjs-node
+# binary, so fetch the matching TensorFlow C library/header at build time and
+# compile just this addon. Runtime uses only the resulting local artifacts.
+RUN TFJS_NODE_DIR="$(realpath /app/apps/api/node_modules/@tensorflow/tfjs-node)" \
+  && case "$(dpkg --print-architecture)" in \
+    arm64) TF_LIB_URL="https://storage.googleapis.com/tf-builds/libtensorflow_r2_7_linux_arm64.tar.gz" ;; \
+    amd64) TF_LIB_URL="https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-cpu-linux-x86_64-2.9.1.tar.gz" ;; \
+    *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac \
+  && mkdir -p "$TFJS_NODE_DIR/deps" \
+  && curl -fsSL "$TF_LIB_URL" | tar -xz -C "$TFJS_NODE_DIR/deps" \
+  && cd "$TFJS_NODE_DIR" \
+  && /app/node_modules/.pnpm/node_modules/.bin/node-pre-gyp install --build-from-source \
+  && test -f "$TFJS_NODE_DIR/lib/napi-v8/tfjs_binding.node"
 
 # ---- Builder ----
 FROM deps AS builder
@@ -49,7 +58,9 @@ FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 
 RUN corepack enable
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  openssl ca-certificates libstdc++6 \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
