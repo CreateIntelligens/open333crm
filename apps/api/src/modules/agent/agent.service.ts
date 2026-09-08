@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import { PERMISSIONS } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
@@ -311,5 +312,37 @@ export async function deactivateAgent(
   await prisma.agent.update({
     where: { id: agentId },
     data: { isActive: false },
+  });
+}
+
+/**
+ * 永久刪除人員並釋放 email（不可復原）。
+ *
+ * email 全域唯一（agents.@@unique([email])，多租戶登入靠 email 解析租戶），
+ * 停用不會釋放 email——只有真刪除記錄才行。刪除前須清理對 agents 為
+ * RESTRICT 的關聯（notifications / cli_sessions / passkey_credentials），
+ * 否則外鍵會擋下刪除；CASCADE（agent_team_members）與 SET NULL（cases /
+ * conversations / messages 等指派欄位）由資料庫自理，歷史資料保留。
+ * 全程於單一交易內執行，任一步失敗則整體回滾。
+ */
+export async function purgeAgent(
+  prisma: PrismaClient,
+  tenantId: string,
+  agentId: string,
+) {
+  // 交易內先設好 RLS 租戶 session，再於同交易清關聯 + 刪 Agent（同連線=SET LOCAL 有效）
+  await withTenant(prisma, tenantId, async (tx) => {
+    const existing = await tx.agent.findFirst({
+      where: { id: agentId, tenantId },
+    });
+    if (!existing) {
+      throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    }
+    // 先清 RESTRICT 關聯（有資料會擋刪）
+    await tx.notification.deleteMany({ where: { agentId } });
+    await tx.cliSession.deleteMany({ where: { agentId } });
+    await tx.passkeyCredential.deleteMany({ where: { agentId } });
+    // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
+    await tx.agent.delete({ where: { id: agentId } });
   });
 }

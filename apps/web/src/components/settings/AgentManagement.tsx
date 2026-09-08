@@ -216,8 +216,12 @@ interface EditAgentDialogProps {
   roles: RoleItem[];
   /** 是否可指派角色（agent.role.assign）；否則角色下拉停用 */
   canAssignRole: boolean;
-  /** 是否可重設他人密碼 / 停用帳號（agent.password.reset / agent.delete） */
+  /** 是否可重設他人密碼 / 停用 / 刪除帳號（任一） */
   canManageAccount: boolean;
+  /** 是否可停用帳號（agent.deactivate） */
+  canDeactivate: boolean;
+  /** 是否可永久刪除帳號並釋放 email（agent.purge） */
+  canPurge: boolean;
   onUpdated: () => void;
 }
 
@@ -228,6 +232,8 @@ function EditAgentDialog({
   roles,
   canAssignRole,
   canManageAccount,
+  canDeactivate,
+  canPurge,
   onUpdated,
 }: EditAgentDialogProps) {
   // 以角色 id 作為下拉選取值
@@ -235,6 +241,7 @@ function EditAgentDialog({
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [error, setError] = useState('');
 
   const roleOptions = useMemo(
@@ -283,17 +290,38 @@ function EditAgentDialog({
 
   async function handleDeactivate() {
     if (!agent) return;
-    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？此操作無法從此介面復原。`)) return;
+    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？帳號可日後再啟用；此 email 仍會被佔用，若要在其他地方重用請改用「刪除」。`)) return;
     setDeactivating(true);
     setError('');
     try {
-      await api.delete(`/agents/${agent.id}`);
+      await api.post(`/agents/${agent.id}/deactivate`);
       onUpdated();
       onOpenChange(false);
     } catch (err: unknown) {
       setError(resolveApiError(err, '停用失敗，請再試一次'));
     } finally {
       setDeactivating(false);
+    }
+  }
+
+  async function handlePurge() {
+    if (!agent) return;
+    if (!confirm(
+      `確定要永久刪除「${agent.name}」的帳號嗎？\n\n` +
+      `此操作不可復原，將會：\n` +
+      `・釋放此 email（${agent.email}），使其可在其他地方重新加入\n` +
+      `・解除其對話與案件的指派（歷史記錄保留）\n`
+    )) return;
+    setPurging(true);
+    setError('');
+    try {
+      await api.delete(`/agents/${agent.id}`);
+      onUpdated();
+      onOpenChange(false);
+    } catch (err: unknown) {
+      setError(resolveApiError(err, '刪除失敗，請再試一次'));
+    } finally {
+      setPurging(false);
     }
   }
 
@@ -330,18 +358,32 @@ function EditAgentDialog({
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter className="flex-row items-center justify-between sm:justify-between">
-            {canManageAccount && (
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                disabled={deactivating}
-                onClick={handleDeactivate}
-              >
-                {deactivating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                停用帳號
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {canDeactivate && agent?.isActive && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={deactivating}
+                  onClick={handleDeactivate}
+                >
+                  {deactivating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  停用
+                </Button>
+              )}
+              {canPurge && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={purging}
+                  onClick={handlePurge}
+                >
+                  {purging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  刪除
+                </Button>
+              )}
+            </div>
             <div className="flex gap-2 ml-auto">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 取消
@@ -447,8 +489,9 @@ export function AgentManagement() {
   const canCreate = usePermission('agent.manage');
   const canAssignRole = usePermission('agent.role.assign');
   const canResetPassword = usePermission('agent.password.reset');
-  const canDelete = usePermission('agent.delete');
-  const canManageAccount = canResetPassword || canDelete;
+  const canDeactivate = usePermission('agent.deactivate');
+  const canPurge = usePermission('agent.purge');
+  const canManageAccount = canResetPassword || canDeactivate || canPurge;
   // 開啟「編輯」對話的條件：至少能指派角色，或能管理帳號
   const canEdit = canAssignRole || canManageAccount;
 
@@ -586,8 +629,16 @@ export function AgentManagement() {
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar alt={agent.name} src={agent.avatarUrl} size="sm" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{agent.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{agent.email}</p>
+                  <p className="truncate text-sm font-medium">
+                    {agent.name}
+                    {!agent.isActive && (
+                      <Badge color="gray" className="ml-2 align-middle">已停用</Badge>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {agent.email}
+                    {!agent.isActive && <span className="ml-1">・email 仍被佔用</span>}
+                  </p>
                 </div>
               </div>
               <div className="w-24 text-center">
@@ -660,6 +711,8 @@ export function AgentManagement() {
         roles={effectiveRoles}
         canAssignRole={canAssignRole}
         canManageAccount={canManageAccount}
+        canDeactivate={canDeactivate}
+        canPurge={canPurge}
         onUpdated={fetchAgents}
       />
       <ChangePasswordDialog

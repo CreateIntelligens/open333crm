@@ -13,6 +13,7 @@ import {
   changeOwnPassword,
   resetAgentPassword,
   deactivateAgent,
+  purgeAgent,
 } from './agent.service.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -149,17 +150,34 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success({ message: 'Password reset' }));
   });
 
-  // DELETE /api/v1/agents/:id — 需 agent.delete (deactivate agent)
-  fastify.delete('/:id', {
-    preHandler: [requirePermission('agent.delete')],
+  // POST /api/v1/agents/:id/deactivate — 需 agent.deactivate (停用，可再啟用、保留 email)
+  fastify.post('/:id/deactivate', {
+    preHandler: [requirePermission('agent.deactivate')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     await deactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
-    // 稽核：停用（軟刪）成員
     await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
-      action: 'agent.delete',
+      action: 'agent.deactivate',
+      targetType: 'agent',
+      targetId: id,
+      ip: request.ip,
+    });
+    return reply.status(204).send();
+  });
+
+  // DELETE /api/v1/agents/:id — 需 agent.purge (永久刪除、釋放 email、不可復原)
+  fastify.delete('/:id', {
+    preHandler: [requirePermission('agent.purge')],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    // purgeAgent 需交易（withTenant）綁 RLS，故收 fastify.prisma 而非 request.tenantPrisma
+    await purgeAgent(fastify.prisma, request.agent.tenantId, id);
+    await writeTenantAudit(request.tenantPrisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.purge',
       targetType: 'agent',
       targetId: id,
       ip: request.ip,

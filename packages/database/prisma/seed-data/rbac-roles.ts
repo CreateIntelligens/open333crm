@@ -42,6 +42,7 @@ const ADMIN_ONLY = [
   'channel.create', 'channel.update', 'channel.delete',
   'automation.manage', 'portal.view', 'portal.manage',
   'webhook.manage', 'agent.password.reset', 'agent.delete',
+  'agent.deactivate', 'agent.purge',
   'role.view', 'role.manage',
 ];
 const ADMIN_CODES = Array.from(new Set([...SUPERVISOR_CODES, ...ADMIN_ONLY]));

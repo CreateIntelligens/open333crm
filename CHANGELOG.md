@@ -2,6 +2,16 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-09-08]
+
+### Added
+
+- **人員管理拆分「停用」與「刪除」兩個動作（CM-174）** — 後台人員編輯彈窗新增獨立的「停用」與「刪除」入口。停用（`POST /agents/:id/deactivate`，權限 `agent.deactivate`）維持原行為：設 `isActive=false`、可再啟用、保留 email 佔用。刪除（`DELETE /agents/:id`，權限 `agent.purge`）為新功能：於交易內先清理對 `agents` 為 RESTRICT 的關聯（`notifications`/`cli_sessions`/`passkey_credentials`）再永久刪除 Agent，釋放 email 使其可在其他租戶重新加入（不可復原，前端加二次確認）。列表對停用中的人員顯示「已停用・email 仍被佔用」提示。新增權限點 `agent.deactivate`、`agent.purge`（部署後需跑 `scripts/reconcile-system-role-permissions.mjs` 並清權限快取）。
+
+### Changed
+
+- **`DELETE /agents/:id` 語義變更** — 由原本的「停用（軟刪，僅 `isActive=false`）」改為「永久刪除並釋放 email」，權限由 `agent.delete` 改為 `agent.purge`。停用改用新端點 `POST /agents/:id/deactivate`。`agent.delete` 權限點保留但標記淘汰。
+
 ## [2026-09-02]
 
 ### Added
