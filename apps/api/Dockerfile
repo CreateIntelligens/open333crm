@@ -5,7 +5,9 @@ WORKDIR /app
 RUN corepack enable
 
 # Alpine deps for Prisma
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  openssl ca-certificates python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests for all workspace packages that api depends on
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
