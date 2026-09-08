@@ -1,5 +1,5 @@
 import { fileTypeFromBuffer } from 'file-type';
-import { MagikaNode } from 'magika/node';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
@@ -93,6 +93,17 @@ export const UPLOAD_POLICIES = {
 
 let magikaClientPromise: Promise<UploadMagikaClient> | null = null;
 
+function patchTensorflowNodeUtilForNode24(): void {
+  const nodeUtil = createRequire(import.meta.url)('node:util') as {
+    isNullOrUndefined?: (value: unknown) => boolean;
+  };
+  // @tensorflow/tfjs-node 4.22 still references this removed Node util helper.
+  // Patch the CommonJS util object before Magika dynamically imports tfjs-node.
+  if (!nodeUtil.isNullOrUndefined) {
+    nodeUtil.isNullOrUndefined = (value) => value === null || value === undefined;
+  }
+}
+
 export async function preloadUploadContentDetector(): Promise<void> {
   if (!getConfig().UPLOAD_CONTENT_DETECTION_ENABLED) {
     logger.warn('[UploadDetection] disabled by UPLOAD_CONTENT_DETECTION_ENABLED=false');
@@ -105,10 +116,14 @@ export async function preloadUploadContentDetector(): Promise<void> {
 
 async function getMagikaClient(): Promise<UploadMagikaClient> {
   if (!magikaClientPromise) {
-    magikaClientPromise = MagikaNode.create({
-      modelPath: fileURLToPath(new URL('model.json', MAGIKA_MODEL_DIR)),
-      modelConfigPath: fileURLToPath(new URL('config.min.json', MAGIKA_MODEL_DIR)),
-    });
+    magikaClientPromise = (async () => {
+      patchTensorflowNodeUtilForNode24();
+      const { MagikaNode } = await import('magika/node');
+      return MagikaNode.create({
+        modelPath: fileURLToPath(new URL('model.json', MAGIKA_MODEL_DIR)),
+        modelConfigPath: fileURLToPath(new URL('config.min.json', MAGIKA_MODEL_DIR)),
+      });
+    })();
   }
   return magikaClientPromise;
 }

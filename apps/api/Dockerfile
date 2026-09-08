@@ -1,11 +1,11 @@
-FROM node:20-alpine AS deps
+FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app
 
 RUN corepack enable
 
 # Alpine deps for Prisma
-RUN apk add --no-cache openssl libc6-compat
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests for all workspace packages that api depends on
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -37,12 +37,12 @@ RUN pnpm --filter @open333crm/channel-plugins build
 RUN pnpm --filter @open333crm/api build
 
 # ---- Runner ----
-FROM node:20-alpine AS runner
+FROM node:24-bookworm-slim AS runner
 
 WORKDIR /app
 
 RUN corepack enable
-RUN apk add --no-cache openssl libc6-compat
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json

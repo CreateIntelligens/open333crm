@@ -1,9 +1,9 @@
-FROM node:20-alpine AS builder
+FROM node:24-bookworm-slim AS builder
 
 WORKDIR /app
 
 RUN corepack enable
-RUN apk add --no-cache openssl libc6-compat
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/workers/package.json apps/workers/package.json
@@ -33,4 +33,3 @@ RUN pnpm --filter @open333crm/workers build
 ENV NODE_ENV=production
 
 CMD ["node", "apps/workers/dist/index.js"]
-

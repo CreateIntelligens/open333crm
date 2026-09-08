@@ -4,6 +4,7 @@
 - [ ] 1.2 Add the pinned Magika model/config assets to the API image with documented checksums, preload them during API startup, and verify runtime does not fetch model files
 - [x] 1.3 Define the supported canonical type and route allowlists for media, imagemap, knowledge documents, partner attachments, and generic storage; verify unsupported executable/archive types are rejected by policy tests
 - [x] 1.4 Add `UPLOAD_CONTENT_DETECTION_ENABLED` to environment examples with default enabled and verify false mode emits a startup warning and is documented as emergency-only
+- [ ] 1.5 Upgrade API, Web, Workers, CLI engine, and dev images to Node 24 LTS/bookworm-slim, and verify all runtime references no longer target Node 20
 
 ## 2. Content detector
 

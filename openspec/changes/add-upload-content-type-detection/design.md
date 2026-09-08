@@ -52,6 +52,10 @@ presign 產生 tenant-scoped quarantine key，並新增 authenticated complete/s
 
 採用 `UPLOAD_CONTENT_DETECTION_ENABLED`，預設 `true`。關閉只作為偵測器故障時的暫時 rollback，啟動時以 warning 暴露狀態，README 必須提供重新啟用指令與風險說明。另一方案是完全不可關閉，安全性較強但不利於現場救援；本專案選擇可回退但高可見度告警。
 
+### D8. Node 24 LTS with Debian slim runtime
+
+API、Web、Workers 與 dev image 統一使用 `node:24-bookworm-slim`。Node 20 已 EOL，且 Magika 的 `@tensorflow/tfjs-node` 是 native dependency；Debian slim 提供 glibc，較適合 production image。Node 24 的 `tfjs-node` 仍會引用已移除的 `util.isNullOrUndefined`，因此 Magika dynamic import 前保留限定的 compatibility shim，並以 Node 24 實際 preload/inference 測試守住。
+
 ## Risks / Trade-offs
 
 - **[Risk] Magika model/TFJS 增加 image 大小與啟動時間/記憶體。** → 只在 API process 建立一個 singleton，固定本地 model，記錄 startup 與 steady-state 指標；若超出預算，再評估 Rust/Python sidecar。

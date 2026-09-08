@@ -9,6 +9,7 @@
 - 對 client MIME、副檔名與實際偵測結果不一致的檔案拒絕，回傳可識別的檔案類型錯誤；不把完整檔案內容寫入 log。
 - **BREAKING**：presigned upload 改為 quarantine → complete/scan → promote 流程；未完成偵測的物件不得作為可用檔案回傳或被業務流程使用。
 - Magika model 在 API image 內固定部署並於 API 啟動時 preload；request runtime 只使用本地已初始化的 singleton，不從外部網站下載。
+- API、Web、Workers 與本機開發 image 統一升級至 Node 24 LTS/bookworm-slim，以符合目前支援週期並降低 TensorFlow native module 的 Alpine/musl 相容性風險。
 - 新增 `UPLOAD_CONTENT_DETECTION_ENABLED` 環境開關，預設開啟；可在偵測器故障時暫時關閉，並在啟動 log 明確警告目前處於未防護模式。
 - 在 README 文件記錄模型部署、環境變數、預設值、關閉風險與重新啟用方式。
 - 保留既有路由的大小限制、租戶隔離、檔名不信任與既有 parser 行為；本 change 不提供病毒掃描或惡意程式清除。

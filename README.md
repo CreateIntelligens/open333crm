@@ -198,7 +198,7 @@ Agent 可在此綁定多個裝置；綁定前會輸入裝置名稱（例如 `Mac
 ### 前置需求
 
 - Docker & Docker Compose（推薦路徑唯一需求）
-- 或本機安裝 Node.js >= 20、pnpm 9（透過 corepack 管理）
+- 或本機安裝 Node.js 24 LTS、pnpm 9（透過 corepack 管理）
 
 ### 啟動（推薦：全容器化開發環境，支援 hot reload）
 

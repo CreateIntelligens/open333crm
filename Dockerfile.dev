@@ -9,12 +9,12 @@
 #
 # What the image DOES provide: the toolchain + a warm pnpm store so the runtime
 # `pnpm install` is fast (it links from the store instead of re-downloading).
-FROM node:20-alpine
+FROM node:24-bookworm-slim
 
 WORKDIR /app
 
 RUN corepack enable
-RUN apk add --no-cache openssl libc6-compat bash
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates bash && rm -rf /var/lib/apt/lists/*
 
 # Warm the pnpm content-addressable store (kept OUTSIDE /app so the bind-mount
 # doesn't mask it). node_modules/dist/.next are excluded via .dockerignore.
