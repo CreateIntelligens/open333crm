@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { success } from '../../shared/utils/response.js';
+import { success, AppError } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import {
   createAgentSchema,
@@ -155,6 +155,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('agent.deactivate')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    // 防呆：不可停用自己（避免自我鎖定）
+    if (request.agent.id === id) {
+      throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
+    }
     await deactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
     await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
@@ -172,6 +176,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('agent.purge')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    // 防呆：不可刪除自己（自我鎖定；且刪除後 writeTenantAudit 以已刪 actorId 寫入會撞 FK → 500）
+    if (request.agent.id === id) {
+      throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
+    }
     // purgeAgent 需交易（withTenant）綁 RLS，故收 fastify.prisma 而非 request.tenantPrisma
     await purgeAgent(fastify.prisma, request.agent.tenantId, id);
     await writeTenantAudit(request.tenantPrisma, {

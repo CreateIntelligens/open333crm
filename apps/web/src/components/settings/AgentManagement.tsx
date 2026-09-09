@@ -222,6 +222,8 @@ interface EditAgentDialogProps {
   canDeactivate: boolean;
   /** 是否可永久刪除帳號並釋放 email（agent.purge） */
   canPurge: boolean;
+  /** 編輯對象是否為操作者本人（本人不可停用/刪除自己，避免自我鎖定） */
+  isSelf: boolean;
   onUpdated: () => void;
 }
 
@@ -234,6 +236,7 @@ function EditAgentDialog({
   canManageAccount,
   canDeactivate,
   canPurge,
+  isSelf,
   onUpdated,
 }: EditAgentDialogProps) {
   // 以角色 id 作為下拉選取值
@@ -359,7 +362,7 @@ function EditAgentDialog({
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter className="flex-row items-center justify-between sm:justify-between">
             <div className="flex gap-2">
-              {canDeactivate && agent?.isActive && (
+              {canDeactivate && !isSelf && agent?.isActive && (
                 <Button
                   type="button"
                   variant="outline"
@@ -371,7 +374,7 @@ function EditAgentDialog({
                   停用
                 </Button>
               )}
-              {canPurge && (
+              {canPurge && !isSelf && (
                 <Button
                   type="button"
                   variant="destructive"
@@ -713,6 +716,7 @@ export function AgentManagement() {
         canManageAccount={canManageAccount}
         canDeactivate={canDeactivate}
         canPurge={canPurge}
+        isSelf={editAgent?.id === currentAgent?.id}
         onUpdated={fetchAgents}
       />
       <ChangePasswordDialog
