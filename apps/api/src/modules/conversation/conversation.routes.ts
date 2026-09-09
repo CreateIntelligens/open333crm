@@ -80,6 +80,12 @@ async function handleSendMedia(
     throw new AppError('Conversation not found', 'NOT_FOUND', 404);
   }
 
+  // CM-173：渠道不在可見集合 → 不可送媒體（403）
+  const accessible = await resolveChannelVisibility(request);
+  if (!isChannelAccessible(accessible, conversation.channelId)) {
+    throw new AppError('Forbidden: channel not accessible', 'FORBIDDEN', 403);
+  }
+
   const channelType = conversation.channel?.channelType ?? '';
   if (!config.allowedChannelTypes.includes(channelType)) {
     return reply.status(501).send({
@@ -220,6 +226,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/tags
   fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
     const body = addTagSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
     const conversationTag = await addTagToTarget(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       targetType: 'CONVERSATION',
@@ -235,6 +242,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string; tagId: string } }>(
     '/:id/tags/:tagId',
     async (request, reply) => {
+      await assertConversationChannelVisible(request, request.params.id); // CM-173
       const removed = await removeTagFromTarget(request.tenantPrisma, {
         tenantId: request.agent.tenantId,
         targetType: 'CONVERSATION',
@@ -339,6 +347,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/case - create case from conversation
   fastify.post<{ Params: { id: string } }>('/:id/case', async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
 
     // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
     const caseRecord = await createCaseFromConversation(
