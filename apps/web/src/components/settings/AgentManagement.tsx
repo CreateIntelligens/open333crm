@@ -279,7 +279,8 @@ function EditAgentDialog({
       // CM-173：載入租戶渠道清單 + 此成員目前直綁的渠道
       if (canAssignChannels) {
         Promise.all([
-          api.get('/channels'),
+          // 指派用全量清單（不套操作者可見性）：避免無 view_all 的操作者整組替換時洗掉他店直綁
+          api.get('/channels/assignable'),
           api.get(`/agents/${agent.id}/channels`),
         ])
           .then(([chRes, bindRes]) => {

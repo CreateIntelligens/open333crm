@@ -493,6 +493,18 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /api/v1/channels/assignable — 指派用渠道全量清單（不套操作者可見性過濾）
+  // 補 PR review：GET /channels 已依可見性過濾；具 channel.assign_team 但無 view_all 的
+  // 操作者若用過濾後清單做「整組替換」指派，會誤洗成員在他店的既有直綁。
+  fastify.get(
+    '/assignable',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
+      return reply.send(success(channels));
+    },
+  );
+
   // GET /api/v1/channels/teams — 租戶團隊清單（指派 UI 用；含尚無成員的空團隊）
   // 補 PR review：前端原從 GET /agents 彙整團隊，空團隊選不到、名稱退回 raw UUID
   fastify.get(
