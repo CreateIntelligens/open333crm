@@ -144,10 +144,16 @@ async function canAccessConversation(
   });
   if (!conversation) return false;
   if (hasViewAll) return true;
-  if (conversation.assignedToId === context.agentId) return true;
 
+  // 渠道可見為前提（PR review：與 REST 授權邊界一致）——被指派人/團隊成員
+  // 也必須先通過渠道可見性，否則 socket 收得到、REST 卻 404/403 會不一致。
+  const channelOk = await canAccessChannel(prisma, context, false, conversation.channelId);
+  if (!channelOk) return false;
+
+  if (conversation.assignedToId === context.agentId) return true;
   if (conversation.teamId) return canAccessTeam(prisma, context, hasViewAll, conversation.teamId);
-  return canAccessChannel(prisma, context, hasViewAll, conversation.channelId);
+  // 無 teamId 綁定：渠道可見即可
+  return true;
 }
 
 async function isAuthorized(
