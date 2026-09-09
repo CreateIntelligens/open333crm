@@ -492,4 +492,19 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       return reply.send(success(rows));
     },
   );
+
+  // GET /api/v1/channels/teams — 租戶團隊清單（指派 UI 用；含尚無成員的空團隊）
+  // 補 PR review：前端原從 GET /agents 彙整團隊，空團隊選不到、名稱退回 raw UUID
+  fastify.get(
+    '/teams',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const teams = await request.tenantPrisma.team.findMany({
+        where: { tenantId: request.agent.tenantId },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      return reply.send(success(teams));
+    },
+  );
 }

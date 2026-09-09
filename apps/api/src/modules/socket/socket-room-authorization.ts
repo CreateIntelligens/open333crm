@@ -52,8 +52,18 @@ async function resolveHasViewAll(
   prisma: PrismaClient,
   context: SocketAuthorizationContext,
 ): Promise<boolean> {
+  // roleId 相容 fallback（PR review）：部署切換窗口內，舊 JWT 可能不含 roleId；
+  // 缺失時以 agentId 查 DB 補齊，避免 admin/supervisor 的總店可見性被誤判為 false。
+  let roleId = context.roleId;
+  if (!roleId) {
+    const agent = await prisma.agent.findFirst({
+      where: { id: context.agentId, tenantId: context.tenantId },
+      select: { roleId: true },
+    });
+    roleId = agent?.roleId ?? null;
+  }
   const planId = await getTenantPlanId(prisma, context.tenantId);
-  const eff = await getEffectiveTenantPermissions(prisma, context.roleId, planId);
+  const eff = await getEffectiveTenantPermissions(prisma, roleId, planId);
   return eff.has('channel.view_all');
 }
 

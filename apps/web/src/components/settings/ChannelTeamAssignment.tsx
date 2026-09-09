@@ -59,19 +59,12 @@ export function ChannelTeamAssignment({ channelId }: ChannelTeamAssignmentProps)
   // 正在撤銷的 teamId（顯示 spinner 用）
   const [removingTeamId, setRemovingTeamId] = useState<string | null>(null);
 
-  // 載入租戶團隊清單（從 /agents 彙整去重）
+  // 載入租戶團隊清單（專用端點，含尚無成員的空團隊；名稱不會退回 raw UUID）
   const fetchTeams = useCallback(async () => {
     try {
-      const res = await api.get('/agents');
-      const agents: Array<{ teams?: Array<{ team: { id: string; name: string } }> }> =
-        res.data?.data || [];
-      const map = new Map<string, string>();
-      for (const agent of agents) {
-        for (const membership of agent.teams || []) {
-          if (membership?.team) map.set(membership.team.id, membership.team.name);
-        }
-      }
-      setAllTeams(Array.from(map, ([id, name]) => ({ id, name })));
+      const res = await api.get('/channels/teams');
+      const teams: Array<{ id: string; name: string }> = res.data?.data || [];
+      setAllTeams(teams);
     } catch {
       // 拿不到就留空，不影響已存在的指派顯示
       setAllTeams([]);
