@@ -183,6 +183,11 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
     );
 
+    // 查無此對話（或非本租戶）→ 404，避免下方存取 channelId 觸發 500
+    if (!conversation) {
+      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    }
+
     // CM-173：渠道不在可見集合 → 視為不存在（404），不洩漏他店資料
     const accessible = await resolveChannelVisibility(request);
     if (!isChannelAccessible(accessible, conversation.channelId)) {

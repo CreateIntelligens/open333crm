@@ -157,12 +157,26 @@ export function channelIdWhereFilter(
  * 再解析其可見渠道集合。查詢層一行呼叫即可。
  * 權限判斷比照 requirePermission guard：角色權限 ∩ 方案天花板。
  */
+/**
+ * roleId 相容 fallback（與 socket-room-authorization.ts 對齊）：部署切換窗口內，舊 JWT
+ * 可能不含 roleId；缺失時以 agentId 查 DB 補齊，避免總店管理員的 `channel.view_all`
+ * 被誤判為 false（進而誤縮可見渠道）。
+ */
+async function resolveRoleId(request: FastifyRequest): Promise<string | null> {
+  if (request.agent.roleId) return request.agent.roleId;
+  const agent = await request.server.prismaAdmin.agent.findFirst({
+    where: { id: request.agent.id, tenantId: request.agent.tenantId },
+    select: { roleId: true },
+  });
+  return agent?.roleId ?? null;
+}
+
 export async function resolveChannelVisibility(
   request: FastifyRequest,
 ): Promise<AccessibleChannels> {
   const tenantId = request.agent.tenantId;
   const agentId = request.agent.id;
-  const roleId = request.agent.roleId;
+  const roleId = await resolveRoleId(request);
   const planId = await getTenantPlanId(request.server.prismaAdmin, tenantId);
   const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
   return getAccessibleChannelIds(request.tenantPrisma, {
@@ -175,8 +189,9 @@ export async function resolveChannelVisibility(
 /** request 層取 hasViewAll + agentId/tenantId，供層級解析用。 */
 async function visibilityCtxFromRequest(request: FastifyRequest): Promise<VisibilityContext> {
   const tenantId = request.agent.tenantId;
+  const roleId = await resolveRoleId(request);
   const planId = await getTenantPlanId(request.server.prismaAdmin, tenantId);
-  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.agent.roleId, planId);
+  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
   return { tenantId, agentId: request.agent.id, hasViewAll: eff.has('channel.view_all') };
 }
 
