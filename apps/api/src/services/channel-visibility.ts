@@ -64,7 +64,8 @@ export async function resolveChannelAccessLevel(
         select: { accessLevel: true },
       },
       teamAccesses: {
-        where: { team: { members: { some: { agentId: ctx.agentId } } } },
+        // 加 team.tenantId 與 getAccessibleChannelIds / socket-room-authorization 一致（defense-in-depth）
+        where: { team: { tenantId: ctx.tenantId, members: { some: { agentId: ctx.agentId } } } },
         select: { accessLevel: true },
       },
     },
@@ -216,8 +217,10 @@ export async function assertConversationChannelVisible(
   // 對話不存在 → 放行，讓下游回 404（不在此洩漏存在與否以外資訊）
   if (!conv) return;
   const level = await resolveChannelAccessLevel(request.tenantPrisma, ctx, conv.channelId);
+  // 渠道完全不可見 → 視為不存在（404），與 GET /conversations/:id 一致，
+  // 避免 403/404 差異讓人員枚舉 ID 推斷他店對話是否存在（跨店存在性洩漏）。
   if (level === null) {
-    throw new AppError('Forbidden: channel not accessible', 'FORBIDDEN', 403);
+    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
   }
   if (!levelMeets(level, requiredLevel)) {
     throw new AppError(
