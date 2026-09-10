@@ -267,7 +267,9 @@ function EditAgentDialog({
   );
 
   useEffect(() => {
-    if (agent) {
+    // open 納入依賴＋gate（PR review）：同一成員「勾選→取消關窗→再開」時，
+    // agent 參考未變不會重跑 effect，會殘留取消前的髒勾選狀態
+    if (agent && open) {
       // 有 roleId 就精準預選該角色；否則（舊資料無 roleId）用 legacy role 對到 system 角色
       const match = agent.roleId
         ? roles.find((r) => r.id === agent.roleId)
@@ -295,7 +297,7 @@ function EditAgentDialog({
           });
       }
     }
-  }, [agent, roles, canAssignChannels]);
+  }, [agent, roles, canAssignChannels, open]);
 
   function toggleChannel(channelId: string) {
     setChannelsDirty(true);
