@@ -216,8 +216,8 @@ interface EditAgentDialogProps {
   roles: RoleItem[];
   /** 是否可指派角色（agent.role.assign）；否則角色下拉停用 */
   canAssignRole: boolean;
-  /** 是否可重設他人密碼 / 停用 / 刪除帳號（任一） */
-  canManageAccount: boolean;
+  /** 是否可重設他人密碼（agent.password.reset）；控制重設密碼欄位顯示與送出 */
+  canResetPassword: boolean;
   /** 是否可停用帳號（agent.deactivate） */
   canDeactivate: boolean;
   /** 是否可永久刪除帳號並釋放 email（agent.purge） */
@@ -233,7 +233,7 @@ function EditAgentDialog({
   onOpenChange,
   roles,
   canAssignRole,
-  canManageAccount,
+  canResetPassword,
   canDeactivate,
   canPurge,
   isSelf,
@@ -279,7 +279,7 @@ function EditAgentDialog({
         }
         await api.patch(`/agents/${agent.id}/role`, buildRolePayload(selected, agent.role));
       }
-      if (canManageAccount && newPassword) {
+      if (canResetPassword && newPassword) {
         await api.patch(`/agents/${agent.id}/password`, { newPassword });
       }
       onUpdated();
@@ -347,7 +347,7 @@ function EditAgentDialog({
               <p className="text-xs text-muted-foreground">您沒有指派角色的權限</p>
             )}
           </div>
-          {canManageAccount && (
+          {canResetPassword && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">重設密碼 <span className="text-muted-foreground font-normal">（選填，留空表示不修改）</span></label>
               <Input
@@ -713,7 +713,7 @@ export function AgentManagement() {
         onOpenChange={(v) => { if (!v) setEditAgent(null); }}
         roles={effectiveRoles}
         canAssignRole={canAssignRole}
-        canManageAccount={canManageAccount}
+        canResetPassword={canResetPassword}
         canDeactivate={canDeactivate}
         canPurge={canPurge}
         isSelf={editAgent?.id === currentAgent?.id}
