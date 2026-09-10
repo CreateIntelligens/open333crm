@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@open333crm/database';
 import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
 import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
+import { resolveChannelAccessLevel } from '../../services/channel-visibility.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROOM_TYPES = new Set(['tenant', 'agent', 'team', 'channel', 'conversation']);
@@ -97,39 +98,22 @@ async function canAccessChannel(
   channelId: string,
 ): Promise<boolean> {
   if (hasViewAll) {
+    // 總店：仍需確認渠道存在且啟用（resolveChannelAccessLevel 的 hasViewAll 短路不查 DB，
+    // 故這裡顯式查一次，維持「停用渠道不可見」與非總店路徑一致）。
     return Boolean(await prisma.channel.findFirst({
       where: { id: channelId, tenantId: context.tenantId, isActive: true },
       select: { id: true },
     }));
   }
 
-  return Boolean(await prisma.channel.findFirst({
-    where: {
-      id: channelId,
-      tenantId: context.tenantId,
-      isActive: true,
-      OR: [
-        // Legacy：未綁任何 team「且」未直綁任何 agent 的渠道 → 全租戶可見
-        // （與 channel-visibility.ts 的 getAccessibleChannelIds 語意一致）
-        {
-          AND: [
-            { teamAccesses: { none: {} } },
-            { agentAccesses: { none: {} } },
-          ],
-        },
-        {
-          teamAccesses: {
-            some: {
-              team: { tenantId: context.tenantId, members: { some: { agentId: context.agentId } } },
-            },
-          },
-        },
-        // agent 直綁（CM-173 延伸）
-        { agentAccesses: { some: { agentId: context.agentId } } },
-      ],
-    },
-    select: { id: true },
-  }));
+  // 共用 REST 的單一事實來源解析器（legacy/team/agent 直綁/isActive 全邏輯集中於此），
+  // 不再於 socket 複製一份 OR 查詢，避免兩層語意漂移（CM-173 review altitude）。
+  const level = await resolveChannelAccessLevel(prisma, {
+    tenantId: context.tenantId,
+    agentId: context.agentId,
+    hasViewAll, // 此分支 hasViewAll=false；resolveChannelAccessLevel 會走完整 legacy/team/agent 解析
+  }, channelId);
+  return level !== null;
 }
 
 async function canAccessConversation(
@@ -145,12 +129,13 @@ async function canAccessConversation(
   if (!conversation) return false;
   if (hasViewAll) return true;
 
-  // 渠道可見為前提（PR review：與 REST 授權邊界一致）——被指派人/團隊成員
-  // 也必須先通過渠道可見性，否則 socket 收得到、REST 卻 404/403 會不一致。
+  // 渠道可見為前提（與 REST 授權邊界一致）——被指派人/團隊成員也必須先通過渠道可見性。
   const channelOk = await canAccessChannel(prisma, context, false, conversation.channelId);
   if (!channelOk) return false;
 
   if (conversation.assignedToId === context.agentId) return true;
+  // team-scoped 對話嚴格限 team 成員（即使渠道可見亦不回退到渠道存取）——
+  // REST assertConversationChannelVisible 亦採同一 team gate，兩層一致。
   if (conversation.teamId) return canAccessTeam(prisma, context, hasViewAll, conversation.teamId);
   // 無 teamId 綁定：渠道可見即可
   return true;

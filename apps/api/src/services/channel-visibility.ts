@@ -56,7 +56,7 @@ export async function resolveChannelAccessLevel(
   if (ctx.hasViewAll) return 'full';
 
   const channel = await prisma.channel.findFirst({
-    where: { id: channelId, tenantId: ctx.tenantId },
+    where: { id: channelId, tenantId: ctx.tenantId, isActive: true }, // 停用渠道視為不可見，與 socket 一致
     select: {
       _count: { select: { teamAccesses: true, agentAccesses: true } },
       agentAccesses: {
@@ -104,6 +104,7 @@ export async function getAccessibleChannelIds(
   const channels = await prisma.channel.findMany({
     where: {
       tenantId: ctx.tenantId,
+      isActive: true, // 停用渠道不納入可見集合，與 socket canAccessChannel 一致
       OR: [
         // legacy：未指派任何團隊「且」未直綁任何 agent 的渠道 → 全租戶可見（向後相容）
         {
@@ -197,11 +198,39 @@ async function visibilityCtxFromRequest(request: FastifyRequest): Promise<Visibi
 }
 
 /**
- * 操作守門：assert 當前 agent 對某對話的渠道有「達到 requiredLevel」的存取，否則丟 403。
+ * 操作守門核心：assert 當前 agent 對某實體（對話/工單）所屬渠道有「達到 requiredLevel」的存取。
+ * - 實體不存在 → 放行，讓下游 service 回 404（不在此洩漏存在與否以外資訊）。
+ * - 渠道完全不可見（level===null）→ 視為不存在（404），與 GET 單筆一致，避免 403/404
+ *   差異讓人員枚舉 ID 推斷他店實體是否存在（跨店存在性洩漏）。
+ * - 渠道可見但層級不足 → 403（實體本可見、僅操作權限不足，不涉存在性洩漏）。
+ */
+async function assertEntityChannelVisible(
+  request: FastifyRequest,
+  channelId: string | null | undefined,
+  requiredLevel: ChannelAccessLevel,
+  notFoundMessage: string,
+  ctx: VisibilityContext,
+): Promise<void> {
+  // 實體不存在（caller 傳 null/undefined channelId）→ 放行讓下游回 404
+  if (!channelId) return;
+  const level = await resolveChannelAccessLevel(request.tenantPrisma, ctx, channelId);
+  if (level === null) {
+    throw new AppError(notFoundMessage, 'NOT_FOUND', 404);
+  }
+  if (!levelMeets(level, requiredLevel)) {
+    throw new AppError(
+      `Forbidden: channel access level insufficient（需 ${requiredLevel}，實為 ${level}）`,
+      'CHANNEL_ACCESS_LEVEL_INSUFFICIENT',
+      403,
+    );
+  }
+}
+
+/**
+ * 操作守門：assert 當前 agent 對某對話的渠道有「達到 requiredLevel」的存取，否則丟 403/404。
  * 用於對話操作端點——不可見（或層級不足）的渠道對話不得操作。
- * 找不到對話時不在此丟（交給後續 service 的 404），只擋「渠道不可見／層級不足」。
  *
- * @param requiredLevel 預設 'reply_only'（回覆/送媒體/貼標）；管理操作（關閉/轉接/建工單/改狀態）傳 'full'。
+ * @param requiredLevel 預設 'reply_only'（回覆/送媒體/貼標）；管理操作（關閉/轉接/建工單/改狀態）傳 'full'；純讀傳 'read_only'。
  */
 export async function assertConversationChannelVisible(
   request: FastifyRequest,
@@ -212,21 +241,39 @@ export async function assertConversationChannelVisible(
   if (ctx.hasViewAll) return;
   const conv = await request.tenantPrisma.conversation.findFirst({
     where: { id: conversationId, tenantId: ctx.tenantId },
+    select: { channelId: true, teamId: true, assignedToId: true },
+  });
+  await assertEntityChannelVisible(request, conv?.channelId, requiredLevel, 'Conversation not found', ctx);
+  if (!conv) return;
+  // team-scoped 對話嚴格限 team 成員：對話綁了 team 且 agent 非被指派人、非該 team 成員
+  // （且非總店，前已 return）→ 403，即使渠道可見亦不回退。與 socket canAccessConversation 一致。
+  if (conv.teamId && conv.assignedToId !== ctx.agentId) {
+    const member = await request.tenantPrisma.agentTeamMember.findFirst({
+      where: { teamId: conv.teamId, agentId: ctx.agentId },
+      select: { agentId: true },
+    });
+    if (!member) {
+      throw new AppError('Forbidden: not a member of the conversation team', 'FORBIDDEN', 403);
+    }
+  }
+}
+
+/**
+ * 操作守門：assert 當前 agent 對某工單的渠道有「達到 requiredLevel」的存取，否則丟 403/404。
+ * 用於 case 操作端點——與對話端點對稱，避免分店 agent 讀/改他店工單。
+ *
+ * @param requiredLevel 'read_only'（讀 events）／'reply_only'（加註/貼標）／'full'（指派/關閉/轉接/結案等管理操作）。
+ */
+export async function assertCaseChannelVisible(
+  request: FastifyRequest,
+  caseId: string,
+  requiredLevel: ChannelAccessLevel = 'reply_only',
+): Promise<void> {
+  const ctx = await visibilityCtxFromRequest(request);
+  if (ctx.hasViewAll) return;
+  const row = await request.tenantPrisma.case.findFirst({
+    where: { id: caseId, tenantId: ctx.tenantId },
     select: { channelId: true },
   });
-  // 對話不存在 → 放行，讓下游回 404（不在此洩漏存在與否以外資訊）
-  if (!conv) return;
-  const level = await resolveChannelAccessLevel(request.tenantPrisma, ctx, conv.channelId);
-  // 渠道完全不可見 → 視為不存在（404），與 GET /conversations/:id 一致，
-  // 避免 403/404 差異讓人員枚舉 ID 推斷他店對話是否存在（跨店存在性洩漏）。
-  if (level === null) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
-  }
-  if (!levelMeets(level, requiredLevel)) {
-    throw new AppError(
-      `Forbidden: channel access level insufficient（需 ${requiredLevel}，實為 ${level}）`,
-      'CHANNEL_ACCESS_LEVEL_INSUFFICIENT',
-      403,
-    );
-  }
+  await assertEntityChannelVisible(request, row?.channelId, requiredLevel, 'Case not found', ctx);
 }

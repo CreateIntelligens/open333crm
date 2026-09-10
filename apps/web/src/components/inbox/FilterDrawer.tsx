@@ -50,7 +50,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
   // 是否為「總店」（可看所有渠道）；決定無可見渠道時要不要顯示空狀態提示
   const hasViewAll = usePermission('channel.view_all');
   // 只顯示當前 agent 可見的渠道（GET /channels 已依可見性過濾，CM-173）。
-  const { channels } = useChannels();
+  const { channels, isLoading: channelsLoading } = useChannels();
 
   // 從可見渠道彙整出現的渠道類型（去重），作為篩選選項
   const channelOptions = useMemo(() => {
@@ -64,8 +64,9 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
     }));
   }, [channels]);
 
-  // 非總店且沒有任何可見渠道 → 顯示空狀態提示
-  const showNoChannelsHint = !hasViewAll && channelOptions.length === 0;
+  // 非總店且沒有任何可見渠道 → 顯示空狀態提示。
+  // 載入中不顯示，避免 useChannels 尚未 resolve 時對「其實有渠道」的人誤報空狀態。
+  const showNoChannelsHint = !hasViewAll && !channelsLoading && channelOptions.length === 0;
 
   // Reset draft when opening
   React.useEffect(() => {

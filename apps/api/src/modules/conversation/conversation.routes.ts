@@ -215,6 +215,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/conversations/:id/read
   fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
+    await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得改已讀狀態
     const conversation = await markConversationRead(
       request.tenantPrisma,
       fastify.io,
@@ -259,6 +260,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // GET /api/v1/conversations/:id/messages
   fastify.get<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
     const query = messagesQuerySchema.parse(request.query);
+    await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得讀訊息歷史
 
     const { messages, total } = await getMessages(
       request.tenantPrisma,
@@ -335,6 +337,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const { action } = z.object({
       action: z.enum(['start', 'stop']),
     }).parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id, 'reply_only'); // CM-173：typing 伴隨回覆行為，渠道需達 reply_only
 
     const conversationId = request.params.id;
     const event = action === 'start' ? 'typing.start' : 'typing.stop';

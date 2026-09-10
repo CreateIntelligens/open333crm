@@ -19,7 +19,7 @@ import { recordCsatScore } from '../csat/csat.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
-import { resolveChannelVisibility, isChannelAccessible } from '../../services/channel-visibility.js';
+import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
@@ -173,6 +173,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/cases/:id
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateCaseSchema.parse(request.body);
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：改工單為管理操作
 
     const caseRecord = await updateCase(
       request.tenantPrisma,
@@ -187,6 +188,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/cases/:id
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：刪工單為管理操作
     const deleted = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
       deleteCase(tx, fastify.io, request.params.id, request.agent.tenantId),
     );
@@ -207,6 +209,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/tags
   fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
     const body = addTagSchema.parse(request.body);
+    await assertCaseChannelVisible(request, request.params.id); // CM-173：貼標為 reply_only
     const caseTag = await addTagToTarget(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       targetType: 'CASE',
@@ -222,6 +225,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string; tagId: string } }>(
     '/:id/tags/:tagId',
     async (request, reply) => {
+      await assertCaseChannelVisible(request, request.params.id); // CM-173：移除標籤為 reply_only
       const removed = await removeTagFromTarget(request.tenantPrisma, {
         tenantId: request.agent.tenantId,
         targetType: 'CASE',
@@ -235,6 +239,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/cases/:id/events
   fastify.get<{ Params: { id: string } }>('/:id/events', async (request, reply) => {
+    await assertCaseChannelVisible(request, request.params.id, 'read_only'); // CM-173：讀工單時間軸需渠道可見
     const events = await getCaseEvents(request.tenantPrisma, request.params.id);
     return reply.send(success(events));
   });
@@ -242,6 +247,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/notes
   fastify.post<{ Params: { id: string } }>('/:id/notes', async (request, reply) => {
     const data = addNoteSchema.parse(request.body);
+    await assertCaseChannelVisible(request, request.params.id); // CM-173：加註為 reply_only
 
     const note = await addNote(
       request.tenantPrisma,
@@ -257,6 +263,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/assign
   fastify.post<{ Params: { id: string } }>('/:id/assign', async (request, reply) => {
     const data = assignSchema.parse(request.body);
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：指派為管理操作
 
     const caseRecord = await assignCase(
       request.tenantPrisma,
@@ -272,6 +279,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/cases/:id/resolve
   fastify.post<{ Params: { id: string } }>('/:id/resolve', async (request, reply) => {
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：結案轉換為管理操作
     const caseRecord = await transitionCase(
       request.tenantPrisma,
       fastify.io,
@@ -286,6 +294,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/cases/:id/close
   fastify.post<{ Params: { id: string } }>('/:id/close', async (request, reply) => {
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：關閉轉換為管理操作
     const caseRecord = await transitionCase(
       request.tenantPrisma,
       fastify.io,
@@ -300,6 +309,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/cases/:id/reopen
   fastify.post<{ Params: { id: string } }>('/:id/reopen', async (request, reply) => {
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：重啟轉換為管理操作
     const caseRecord = await transitionCase(
       request.tenantPrisma,
       fastify.io,
@@ -315,6 +325,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/escalate
   fastify.post<{ Params: { id: string } }>('/:id/escalate', async (request, reply) => {
     const body = escalateSchema.parse(request.body);
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：升級為管理操作
 
     const caseRecord = await escalateCase(
       request.tenantPrisma,
@@ -332,6 +343,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string; conversationId: string } }>(
     '/:id/conversations/:conversationId/link',
     async (request, reply) => {
+      await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：連結對話到工單為管理操作
       const linked = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
         linkConversationToCase(
           tx,
@@ -350,6 +362,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases/:id/csat — Record CSAT score (WebChat / manual)
   fastify.post<{ Params: { id: string } }>('/:id/csat', async (request, reply) => {
     const data = csatSchema.parse(request.body);
+    await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：記錄 CSAT 為管理操作
 
     const recorded = await recordCsatScore(
       request.tenantPrisma,

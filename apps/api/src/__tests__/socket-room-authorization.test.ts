@@ -30,8 +30,13 @@ function createPrisma() {
       ),
     },
     channel: {
+      // canAccessChannel 現共用 resolveChannelAccessLevel（CM-173 review altitude），
+      // 其 select 需 _count + agentAccesses + teamAccesses。channelA 無任何綁定
+      // → legacy → 全租戶可見（對應原測試「channelA 對 agentA 可見」語意）。
       findFirst: async ({ where }: { where: { id: string; tenantId: string } }) => (
-        where.id === channelA && where.tenantId === tenantA ? { id: channelA } : null
+        where.id === channelA && where.tenantId === tenantA
+          ? { _count: { teamAccesses: 0, agentAccesses: 0 }, agentAccesses: [], teamAccesses: [] }
+          : null
       ),
     },
     conversation: {
