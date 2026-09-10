@@ -280,21 +280,32 @@ function EditAgentDialog({
       setChannelsDirty(false);
       // CM-173：載入租戶渠道清單 + 此成員目前直綁的渠道
       if (canAssignChannels) {
+        // 載入前先清空，避免快速切換成員時短暫殘留前一位的勾選
+        setChannelOptions([]);
+        setSelectedChannelIds([]);
+        // active flag（PR review）：快速切換成員或網路延遲時，前一位成員的
+        // 非同步回應可能 late-resolve 覆蓋當前成員的渠道狀態 → cleanup 置 false 擋掉。
+        let active = true;
         Promise.all([
           // 指派用全量清單（不套操作者可見性）：避免無 view_all 的操作者整組替換時洗掉他店直綁
           api.get('/channels/assignable'),
           api.get(`/agents/${agent.id}/channels`),
         ])
           .then(([chRes, bindRes]) => {
+            if (!active) return;
             const chs = (chRes.data.data ?? []) as ChannelOption[];
             setChannelOptions(chs.map((c) => ({ id: c.id, displayName: c.displayName, channelType: c.channelType })));
             const bound = (bindRes.data.data ?? []) as Array<{ channelId: string }>;
             setSelectedChannelIds(bound.map((b) => b.channelId));
           })
           .catch(() => {
+            if (!active) return;
             setChannelOptions([]);
             setSelectedChannelIds([]);
           });
+        return () => {
+          active = false;
+        };
       }
     }
   }, [agent, roles, canAssignChannels, open]);

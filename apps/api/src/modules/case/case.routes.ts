@@ -19,7 +19,7 @@ import { recordCsatScore } from '../csat/csat.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
-import { resolveChannelVisibility, isChannelAccessible, ALL_CHANNELS } from '../../services/channel-visibility.js';
+import { resolveChannelVisibility, isChannelAccessible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
@@ -149,23 +149,23 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/cases/:id
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    // CM-173：先確認此案件的渠道在可見集合，否則視為不存在（404）
-    const accessible = await resolveChannelVisibility(request);
-    if (accessible !== ALL_CHANNELS) {
-      const row = await request.tenantPrisma.case.findFirst({
-        where: { id: request.params.id, tenantId: request.agent.tenantId },
-        select: { channelId: true },
-      });
-      if (!row || !isChannelAccessible(accessible, row.channelId)) {
-        throw new AppError('Case not found', 'NOT_FOUND', 404);
-      }
-    }
-
+    // 先取案件（單次查詢），再做渠道可見性檢查，避免先前「findFirst 取 channelId + getCase」
+    // 的重複查詢；比照 conversation.routes.ts GET /:id 的寫法。
     const caseRecord = await getCase(
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
     );
+    if (!caseRecord) {
+      throw new AppError('Case not found', 'NOT_FOUND', 404);
+    }
+
+    // CM-173：案件所屬渠道不在可見集合 → 視為不存在（404）。
+    // 總店（ALL_CHANNELS）時 isChannelAccessible 直接回 true。
+    const accessible = await resolveChannelVisibility(request);
+    if (!isChannelAccessible(accessible, caseRecord.channelId)) {
+      throw new AppError('Case not found', 'NOT_FOUND', 404);
+    }
 
     return reply.send(success(caseRecord));
   });
