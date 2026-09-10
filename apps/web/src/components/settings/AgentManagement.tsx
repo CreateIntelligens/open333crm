@@ -367,7 +367,7 @@ function EditAgentDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={deactivating}
+                  disabled={deactivating || purging || saving}
                   onClick={handleDeactivate}
                 >
                   {deactivating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -379,7 +379,7 @@ function EditAgentDialog({
                   type="button"
                   variant="destructive"
                   size="sm"
-                  disabled={purging}
+                  disabled={deactivating || purging || saving}
                   onClick={handlePurge}
                 >
                   {purging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -391,7 +391,7 @@ function EditAgentDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || deactivating || purging}>
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 儲存
               </Button>
