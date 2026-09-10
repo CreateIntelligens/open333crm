@@ -14,6 +14,8 @@ import {
   channelIdWhereFilter,
   isChannelAccessible,
   ALL_CHANNELS,
+  levelMeets,
+  resolveChannelAccessLevel,
 } from '../services/channel-visibility.js';
 
 // 固定 UUID（僅 [0-9a-f]，比照既有測試風格）
@@ -255,5 +257,59 @@ await testLegacyChannelVisibleToAll();
 await testFailClosedEmptySet();
 testChannelIdWhereFilter();
 await testAgentDirectBinding();
+
+// 案例 8：存取層級——levelMeets 排序 + resolveChannelAccessLevel 多來源取最高/legacy/總店
+function testLevelMeets() {
+  assert.ok(levelMeets('full', 'reply_only'), 'full 滿足 reply_only');
+  assert.ok(levelMeets('reply_only', 'reply_only'), 'reply_only 滿足 reply_only');
+  assert.ok(!levelMeets('read_only', 'reply_only'), 'read_only 不滿足 reply_only');
+  assert.ok(!levelMeets('reply_only', 'full'), 'reply_only 不滿足 full');
+  assert.ok(levelMeets('read_only', 'read_only'), 'read_only 滿足 read_only');
+}
+
+// mock：channel.findFirst 回傳 _count + 命中的 agent/team accessLevel
+function levelPrisma(opts: {
+  teamCount: number; agentCount: number;
+  agentLevels?: string[]; teamLevels?: string[];
+}) {
+  return {
+    channel: {
+      findFirst: async () => ({
+        _count: { teamAccesses: opts.teamCount, agentAccesses: opts.agentCount },
+        agentAccesses: (opts.agentLevels ?? []).map((accessLevel) => ({ accessLevel })),
+        teamAccesses: (opts.teamLevels ?? []).map((accessLevel) => ({ accessLevel })),
+      }),
+    },
+  };
+}
+const lctx = (hasViewAll = false) => ({ tenantId, agentId: agentSolo, hasViewAll });
+
+async function testResolveLevel() {
+  // 總店 → full（不查 DB）
+  assert.equal(await resolveChannelAccessLevel({} as never, lctx(true), CH_A), 'full', '總店回 full');
+  // legacy（無任何綁定）→ full
+  assert.equal(
+    await resolveChannelAccessLevel(levelPrisma({ teamCount: 0, agentCount: 0 }) as never, lctx(), CH_LEGACY),
+    'full', 'legacy 回 full');
+  // 多來源取最高：team read_only + agent reply_only → reply_only
+  assert.equal(
+    await resolveChannelAccessLevel(
+      levelPrisma({ teamCount: 1, agentCount: 1, teamLevels: ['read_only'], agentLevels: ['reply_only'] }) as never,
+      lctx(), CH_A),
+    'reply_only', '多來源取最高');
+  // 有綁定但此 agent 不含 → null（不可見）
+  assert.equal(
+    await resolveChannelAccessLevel(
+      levelPrisma({ teamCount: 1, agentCount: 0 }) as never, lctx(), CH_B),
+    null, '有綁定但未授權此 agent → null');
+  // 純 read_only → read_only
+  assert.equal(
+    await resolveChannelAccessLevel(
+      levelPrisma({ teamCount: 0, agentCount: 1, agentLevels: ['read_only'] }) as never, lctx(), CH_A),
+    'read_only', '純 read_only');
+}
+
+testLevelMeets();
+await testResolveLevel();
 
 console.log('channel visibility tests passed');

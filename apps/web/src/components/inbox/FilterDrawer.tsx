@@ -49,9 +49,7 @@ export function FilterDrawer({ open, onClose, values, onChange }: FilterDrawerPr
 
   // 是否為「總店」（可看所有渠道）；決定無可見渠道時要不要顯示空狀態提示
   const hasViewAll = usePermission('channel.view_all');
-  // 只顯示當前 agent 可見的渠道。
-  // TODO(CM-173): GET /channels 目前回傳租戶全部渠道，尚未依 agent 可見性過濾；
-  // 待後端在渠道列表套用可見性後，此處即自動只剩可見渠道。
+  // 只顯示當前 agent 可見的渠道（GET /channels 已依可見性過濾，CM-173）。
   const { channels } = useChannels();
 
   // 從可見渠道彙整出現的渠道類型（去重），作為篩選選項

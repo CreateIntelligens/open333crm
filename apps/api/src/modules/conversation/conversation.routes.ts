@@ -80,11 +80,8 @@ async function handleSendMedia(
     throw new AppError('Conversation not found', 'NOT_FOUND', 404);
   }
 
-  // CM-173：渠道不在可見集合 → 不可送媒體（403）
-  const accessible = await resolveChannelVisibility(request);
-  if (!isChannelAccessible(accessible, conversation.channelId)) {
-    throw new AppError('Forbidden: channel not accessible', 'FORBIDDEN', 403);
-  }
+  // CM-173：送媒體屬回覆類操作，需 reply_only 以上（渠道不可見或層級不足 → 403）
+  await assertConversationChannelVisible(request, conversationId, 'reply_only');
 
   const channelType = conversation.channel?.channelType ?? '';
   if (!config.allowedChannelTypes.includes(channelType)) {
@@ -198,7 +195,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // PATCH /api/v1/conversations/:id
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateConversationSchema.parse(request.body);
-    await assertConversationChannelVisible(request, request.params.id); // CM-173
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：改狀態/指派為管理操作
 
     const conversation = await updateConversation(
       request.tenantPrisma,
@@ -291,7 +288,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const data = z.object({
       reason: z.string().max(1000).optional(),
     }).parse(request.body ?? {});
-    await assertConversationChannelVisible(request, request.params.id); // CM-173
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：關閉為管理操作
 
     const conversation = await closeConversation(
       request.tenantPrisma,
@@ -314,7 +311,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       assignToId: z.string().uuid().optional(),
       handoffMessage: z.string().optional(),
     }).parse(request.body);
-    await assertConversationChannelVisible(request, request.params.id); // CM-173
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：轉接為管理操作
 
     const conversation = await handoffConversation(
       request.tenantPrisma,
@@ -347,7 +344,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/case - create case from conversation
   fastify.post<{ Params: { id: string } }>('/:id/case', async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
-    await assertConversationChannelVisible(request, request.params.id); // CM-173
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：建工單為管理操作
 
     // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
     const caseRecord = await createCaseFromConversation(

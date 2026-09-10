@@ -27,6 +27,62 @@ export const ALL_CHANNELS = Symbol('ALL_CHANNELS');
 
 export type AccessibleChannels = typeof ALL_CHANNELS | Set<string>;
 
+/**
+ * 渠道存取層級（由低到高）：
+ *   read_only  只看（列表/讀取）
+ *   reply_only 可回覆訊息（含送媒體/貼標）
+ *   full       可回覆＋管理操作（關閉/轉接/建工單/改狀態）
+ */
+export type ChannelAccessLevel = 'read_only' | 'reply_only' | 'full';
+const LEVEL_RANK: Record<ChannelAccessLevel, number> = { read_only: 0, reply_only: 1, full: 2 };
+
+/** level 是否達到 required（含以上）。 */
+export function levelMeets(level: ChannelAccessLevel, required: ChannelAccessLevel): boolean {
+  return LEVEL_RANK[level] >= LEVEL_RANK[required];
+}
+
+/**
+ * 解析 agent 對某渠道的「有效存取層級」（多來源取最高）：
+ *   - 總店 view_all → full
+ *   - agent 直綁（AgentChannelAccess）與所屬 team 授權（ChannelTeamAccess）各自層級取最高
+ *   - 兩者皆無綁定的 legacy 渠道 → full（向後相容，維持原本全租戶可讀寫）
+ *   - 完全無授權（非 legacy、非直綁、非 team）→ null（不可見）
+ */
+export async function resolveChannelAccessLevel(
+  prisma: TenantDb,
+  ctx: VisibilityContext,
+  channelId: string,
+): Promise<ChannelAccessLevel | null> {
+  if (ctx.hasViewAll) return 'full';
+
+  const channel = await prisma.channel.findFirst({
+    where: { id: channelId, tenantId: ctx.tenantId },
+    select: {
+      _count: { select: { teamAccesses: true, agentAccesses: true } },
+      agentAccesses: {
+        where: { agentId: ctx.agentId },
+        select: { accessLevel: true },
+      },
+      teamAccesses: {
+        where: { team: { members: { some: { agentId: ctx.agentId } } } },
+        select: { accessLevel: true },
+      },
+    },
+  });
+  if (!channel) return null;
+
+  // legacy：完全未綁定 → full（相容）
+  if (channel._count.teamAccesses === 0 && channel._count.agentAccesses === 0) return 'full';
+
+  const levels = [
+    ...channel.agentAccesses.map((a) => a.accessLevel),
+    ...channel.teamAccesses.map((t) => t.accessLevel),
+  ].filter((l): l is ChannelAccessLevel => l === 'read_only' || l === 'reply_only' || l === 'full');
+
+  if (levels.length === 0) return null; // 有綁定但都不含此 agent → 不可見
+  return levels.reduce((best, l) => (LEVEL_RANK[l] > LEVEL_RANK[best] ? l : best), 'read_only');
+}
+
 export interface VisibilityContext {
   tenantId: string;
   agentId: string;
@@ -116,24 +172,43 @@ export async function resolveChannelVisibility(
   });
 }
 
+/** request 層取 hasViewAll + agentId/tenantId，供層級解析用。 */
+async function visibilityCtxFromRequest(request: FastifyRequest): Promise<VisibilityContext> {
+  const tenantId = request.agent.tenantId;
+  const planId = await getTenantPlanId(request.server.prismaAdmin, tenantId);
+  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, request.agent.roleId, planId);
+  return { tenantId, agentId: request.agent.id, hasViewAll: eff.has('channel.view_all') };
+}
+
 /**
- * 操作守門：assert 當前 agent 對某對話的渠道有可見性，否則丟 403。
- * 用於「回覆/指派/關閉/轉真人」等對話操作端點——不可見渠道的對話不得操作。
- * 找不到對話時不在此丟（交給後續 service 的 404），只擋「可見但無權操作」。
+ * 操作守門：assert 當前 agent 對某對話的渠道有「達到 requiredLevel」的存取，否則丟 403。
+ * 用於對話操作端點——不可見（或層級不足）的渠道對話不得操作。
+ * 找不到對話時不在此丟（交給後續 service 的 404），只擋「渠道不可見／層級不足」。
+ *
+ * @param requiredLevel 預設 'reply_only'（回覆/送媒體/貼標）；管理操作（關閉/轉接/建工單/改狀態）傳 'full'。
  */
 export async function assertConversationChannelVisible(
   request: FastifyRequest,
   conversationId: string,
+  requiredLevel: ChannelAccessLevel = 'reply_only',
 ): Promise<void> {
-  const accessible = await resolveChannelVisibility(request);
-  if (accessible === ALL_CHANNELS) return;
+  const ctx = await visibilityCtxFromRequest(request);
+  if (ctx.hasViewAll) return;
   const conv = await request.tenantPrisma.conversation.findFirst({
-    where: { id: conversationId, tenantId: request.agent.tenantId },
+    where: { id: conversationId, tenantId: ctx.tenantId },
     select: { channelId: true },
   });
   // 對話不存在 → 放行，讓下游回 404（不在此洩漏存在與否以外資訊）
   if (!conv) return;
-  if (!accessible.has(conv.channelId)) {
+  const level = await resolveChannelAccessLevel(request.tenantPrisma, ctx, conv.channelId);
+  if (level === null) {
     throw new AppError('Forbidden: channel not accessible', 'FORBIDDEN', 403);
+  }
+  if (!levelMeets(level, requiredLevel)) {
+    throw new AppError(
+      `Forbidden: channel access level insufficient（需 ${requiredLevel}，實為 ${level}）`,
+      'CHANNEL_ACCESS_LEVEL_INSUFFICIENT',
+      403,
+    );
   }
 }
