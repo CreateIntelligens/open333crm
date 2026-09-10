@@ -108,9 +108,10 @@ const updateChannelSchema = z
     validateDownstreamWebhookSettings(data.settings, ctx);
   });
 
-// 渠道↔團隊指派 body 驗證（CM-173）：teamId 必填、accessLevel 三選一
+// 渠道↔團隊指派 body 驗證（CM-173）：teamId 需為 UUID、accessLevel 三選一
+// teamId 以 uuid() 驗證，非法格式在路由層回 400，避免傳進 Prisma 型別轉換爆 500
 const channelTeamAssignSchema = z.object({
-  teamId: z.string().min(1),
+  teamId: z.string().uuid(),
   accessLevel: z.enum(['full', 'reply_only', 'read_only']),
 });
 

@@ -567,8 +567,8 @@ export function AgentManagement() {
   const canPurge = usePermission('agent.purge');
   const canAssignChannels = usePermission('channel.assign_team');
   const canManageAccount = canResetPassword || canDeactivate || canPurge;
-  // 開啟「編輯」對話的條件：至少能指派角色，或能管理帳號
-  const canEdit = canAssignRole || canManageAccount;
+  // 開啟「編輯」對話的條件：至少能指派角色、管理帳號，或設定成員可用渠道
+  const canEdit = canAssignRole || canManageAccount || canAssignChannels;
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
