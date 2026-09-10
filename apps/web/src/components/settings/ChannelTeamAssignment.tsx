@@ -151,7 +151,7 @@ export function ChannelTeamAssignment({ channelId }: ChannelTeamAssignmentProps)
       <div>
         <p className="text-sm font-medium">指派團隊</p>
         <p className="text-xs text-muted-foreground">
-          選擇哪些團隊能在收件匣看到此渠道的對話，並設定各團隊的存取層級。未指派任何團隊時，只有具「總店（可看所有渠道）」權限的人員能看到。
+          選擇哪些團隊能在收件匣看到此渠道的對話，並設定各團隊的存取層級。未指派任何團隊或成員時，此渠道維持全租戶公開（向後相容）；一旦指派，即限縮為僅授權對象（及具「總店」權限者）可見。
         </p>
       </div>
 
