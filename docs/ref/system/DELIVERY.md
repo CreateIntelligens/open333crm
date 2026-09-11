@@ -35,14 +35,11 @@ tsx apps/api/src/__tests__/smoke.test.ts
 
 ## CI
 
-`.github/workflows/ci.yml` 在推送到 `main` 或建立 Pull Request 時執行兩個 job：
+目前沒有 CI workflow 執行建置、測試、lint 或租戶隔離檢查。`.github/workflows/` 只有 `deploy.yml`，這個 workflow 只負責部署。
 
-| job | 內容 |
-| --- | --- |
-| `build` | 安裝依賴、Prisma generate、建置、嚴格 tenant scoping 檢查、嚴格 `prismaAdmin` 使用檢查 |
-| RLS 隔離測試 | 啟動 PostgreSQL、套用 migration、建立資料庫角色、Seed 兩個租戶，再驗證 RLS |
+原本的 `ci.yml` 執行兩個租戶隔離靜態檢查與 RLS 隔離測試，之後有 commit 刪除了這個檔案。刪除經過見 `AGENTS.md` 的「CI gates」一節。
 
-兩個靜態檢查使用 `--strict`，違規會使 CI 失敗：
+在 `ci.yml` 恢復之前，開發者必須在建立 Pull Request 前手動執行兩個靜態檢查：
 
 ```bash
 node scripts/check-tenant-scoping.mjs --strict
