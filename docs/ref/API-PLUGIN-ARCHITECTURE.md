@@ -194,7 +194,7 @@ HTTP 請求完成後會經過 `onSend`、`onResponse` 等請求 Hook。這些 Ho
 
 Prisma 外掛使用 `fp`，所以所有路由模組都能讀取 `fastify.prismaAdmin`。這條連線具有 `BYPASSRLS`，TypeScript 無法限制哪些檔案可以呼叫它。
 
-CI 使用 `scripts/check-prisma-admin-usage.mjs --strict` 彌補這個限制。非白名單檔案使用 `prismaAdmin` 時，檢查會失敗。
+`scripts/check-prisma-admin-usage.mjs --strict` 彌補這個限制。非白名單檔案使用 `prismaAdmin` 時，檢查會失敗。目前沒有 CI workflow 執行這個檢查，開發者必須在建立 Pull Request 前手動執行，詳見 `AGENTS.md` 的「CI gates」一節。
 
 ### 部分相依只靠註冊順序
 

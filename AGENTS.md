@@ -3,8 +3,8 @@
 Omnichannel CRM monorepo. TypeScript end-to-end.
 
 > **This file is the single source of truth for AI coding agents.**
-> `.claude/CLAUDE.md`, `.github/copilot-instructions.md` and `.agent/instructions.md` are small,
-> tool-specific supplements. Each one refers to this file. Do **not** copy project facts into them.
+> The files under [Tool-Specific Files](#tool-specific-files) are small, tool-specific supplements.
+> Each one refers to this file. Do **not** copy project facts into them.
 > Two copies of one fact diverge, and then the two files contradict each other.
 > Put project-wide rules in this file only.
 
@@ -15,7 +15,7 @@ pnpm install                        # install deps
 pnpm dev                            # turbo dev (api + web + workers)
 pnpm --filter @open333crm/api dev   # API only (port 3001, tsx watch)
 pnpm --filter @open333crm/web dev   # Web only (port 3000, needs sync:widget first)
-pnpm build                          # turbo build (set SKIP_ENV_VALIDATION=true in CI)
+pnpm build                          # turbo build
 pnpm lint                           # turbo lint (ESLint 9 flat config) — NOT enforced in CI yet
 pnpm db:generate                    # prisma generate
 pnpm db:migrate -- --name <name>    # create migration
@@ -62,19 +62,25 @@ therefore cannot leak to the next request on a pooled connection. Queries inside
 the `tx` that `withTenant` passes in. An outer client uses a different connection. On that
 connection the variable is unset, so RLS returns no rows (fail-closed).
 
-The `postgres-rls-tenant-isolation` skill (`.claude/skills/`) contains the wiring rules, the steps
+The `postgres-rls-tenant-isolation` skill (`.agents/skills/`) contains the wiring rules, the steps
 to add a table, and the troubleshooting guide. Do not restate them here.
 
-### CI gates that fail the build
+### CI gates
 
-Both run with `--strict` in `.github/workflows/ci.yml` and fail the build:
+Two scripts check tenant isolation. With `--strict`, each script exits with code 1 when it finds a violation:
 
 | Script | Rejects |
 | ------ | ------- |
 | `scripts/check-tenant-scoping.mjs` | a query on a tenant table with no `tenantId` reachable in scope |
 | `scripts/check-prisma-admin-usage.mjs` | `prismaAdmin` used from a file outside the whitelist |
 
-Run them locally without `--strict` to get a report instead of a failure.
+Run them without `--strict` to get a report instead of a failure.
+
+> **No CI workflow runs these checks now.** `.github/workflows/ci.yml` ran both scripts with
+> `--strict`, and also ran the RLS integration test `apps/api/src/__tests__/rls-isolation.test.ts`.
+> Commit `4b384b7` deleted `ci.yml`. Commit `323deeb` restored only `deploy.yml`, which runs none
+> of these checks. Until `ci.yml` is restored, run both scripts with `--strict` before you open a
+> pull request.
 
 ## Architecture: Socket Event Routing (Critical)
 
@@ -157,7 +163,6 @@ await redisPublisher.publish(
 - **`PLATFORM_JWT_SECRET` enables the platform control plane (`/admin/*`).** Without that variable,
   `/api/v1/platform/auth/login` returns 503 `PLATFORM_DISABLED`.
 - **Web dev requires pre-sync**: `pnpm --filter @open333crm/web dev` runs `sync:widget` and `sync:playcaptcha` automatically via its `dev` script
-- **CI build needs**: `SKIP_ENV_VALIDATION=true` env var
 - **Docker on macOS**: `export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"`
 
 ## Monorepo Layout
@@ -197,11 +202,15 @@ Changes are tracked in `openspec/`. Use the OpenSpec skills for propose/apply/ar
 
 ## Tool-Specific Files
 
-These add only what is specific to one tool. Project-wide rules belong in this file.
+These paths hold tool-specific instructions and skills. Project-wide rules belong in this file.
 
-| File | Scope |
-| ---- | ----- |
-| `.claude/CLAUDE.md` | Claude Code — skills and slash commands under `.claude/` |
-| `.github/copilot-instructions.md` | GitHub Copilot — commit trailer, `.github/prompts/` |
-| `.agent/instructions.md` | Generic agent runners — `.agent/workflows/` |
+| Path | Contents |
+| ---- | -------- |
+| `.agent/instructions.md` | Generic agent runners — `.agent/workflows/`, `.agent/skills/` |
+| `.agents/skills/`, `.agents/workflows/` | OpenSpec skills and workflows, and the `postgres-rls-tenant-isolation` skill |
+| `.codex/skills/` | Codex — OpenSpec skills and the `open333crm-cli` skill |
 | `openspec/config.yaml` | OpenSpec context |
+
+The repository has no Claude Code file. Claude Code reads neither `AGENTS.md` nor `.agents/skills/`
+by default. To use them, create a `CLAUDE.md` that imports `@AGENTS.md`, and symlink each skill
+directory into `.claude/skills/`.
