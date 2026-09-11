@@ -98,6 +98,7 @@ sequenceDiagram
 | [基礎設施與外部整合](./INFRASTRUCTURE.md) | PostgreSQL、Redis、MinIO、LLM 與渠道如何接線？ |
 | [開發與交付](./DELIVERY.md) | 專案如何建置、測試、執行 CI 及部署？ |
 | [實作落差與驗證紀錄](./AUDIT.md) | 哪些實作與設定不一致？哪些問題已在執行時重現？ |
+| [實作落差複查紀錄](./AUDIT-REVIEWS.md) | 哪次複查發現哪些落差已修正？複查的範圍與方法是什麼？ |
 
 資料表關聯請看 [`../DATABASE-ERD.md`](../DATABASE-ERD.md)。API 外掛模式請看 [`../API-PLUGIN-ARCHITECTURE.md`](../API-PLUGIN-ARCHITECTURE.md)。開發規則請看 [`../../../AGENTS.md`](../../../AGENTS.md)。
 
