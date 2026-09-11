@@ -3,7 +3,8 @@
 本文件集中記錄系統盤點時發現的實作落差。其他系統文件只描述主要結構，不重複問題細節。
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
-- **最近驗證日期**：2026-09-02
+- **執行時驗證日期**：2026-09-02
+- **靜態複查日期**：2026-09-11，結果見[複查紀錄](#複查紀錄)。
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
 
 ## 摘要
@@ -26,9 +27,9 @@
 | DB-01 | Database | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
-| SEC-01 | Security | 渠道加密金鑰有硬編碼備援值 | 靜態確認 |
-| CI-01 | CI | CI 未執行大部分 API 測試 | 靜態確認 |
-| CI-02 | CI | CI 未執行 lint | 靜態確認 |
+| SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
+| CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
+| CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
 | CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
 
 ## 部署與應用程式
@@ -103,21 +104,43 @@ Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embeddi
 
 ### SEC-01：渠道加密金鑰備援值
 
-`channel.service.ts` 在缺少 `CREDENTIAL_ENCRYPTION_KEY` 時使用公開在原始碼中的備援字串。設定缺失不會讓 API 啟動失敗。
+盤點時，API 的 `channel.service.ts` 與 Workers 的 `apps/workers/src/lib/credentials.ts` 都有同一個備援字串。缺少 `CREDENTIAL_ENCRYPTION_KEY` 時，兩個檔案都改用這個公開在原始碼中的字串。
+
+Commit `f507fe1` 修正了 API 端：
+
+- `channel.service.ts` 在金鑰缺少或長度不足時拋出錯誤。
+- API 啟動時的環境變數驗證要求這個變數，設定缺失會讓 API 啟動失敗。
+
+Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失不會讓 Workers 啟動失敗。Workers 只用這把金鑰解密，因此不會用備援值加密新資料。Workers 缺少金鑰時，這項設定錯誤要到 Workers 解密渠道憑證時才會出現。
 
 ## CI 與測試
 
-### CI-01：測試覆蓋不足
+盤點時，`.github/workflows/ci.yml` 只執行 RLS 隔離測試，lint 步驟只輸出略過訊息。之後有 commit 刪除了 `ci.yml`，刪除經過見 `AGENTS.md` 的「CI gates」一節。目前唯一的 workflow 是 `deploy.yml`，它只負責部署到 UAT，不執行測試或 lint。
 
-CI 目前只執行 RLS 隔離測試。其他 API 測試沒有統一入口，也沒有進入 CI。
+### CI-01：沒有 CI 執行 API 測試
 
-### CI-02：Lint 未進入 CI
+沒有任何 CI workflow 執行 API 測試。API 測試也沒有統一入口。
 
-`eslint.config.js` 與 `pnpm lint` 已存在，但 CI 的 lint 步驟只輸出略過訊息。
+### CI-02：沒有 CI 執行 lint
+
+`eslint.config.js` 與 `pnpm lint` 已存在，但沒有任何 CI workflow 執行 lint。
 
 ### CI-03：測試工具未整合
 
 測試檔使用 Vitest API，卻由 `tsx` 個別執行。專案無法使用 Vitest 的統一執行、覆蓋率及 watch mode。
+
+## 複查紀錄
+
+### 2026-09-11：所有分支的靜態複查
+
+複查範圍是所有本地與遠端分支的最新 commit。複查方式是用 `git grep` 比對每個項目的程式碼與設定，不啟動容器。比對規則先在盤點時的 commit `c6c4eff` 上執行，確認所有項目都判定為存在。
+
+結果：
+
+- SEC-01：包含 commit `f507fe1` 的分支已修正 API 端。Workers 端在每個分支上都仍存在。
+- CI-01、CI-02：包含 commit `4b384b7` 的分支已沒有 `ci.yml`。本文件已依這個現況改寫兩個項目的描述。
+- 其他項目：每個分支上都仍判定為存在。
+- LIC-01 補充：未合併的分支 `feat/add-license-billing-strategy` 把 API 的 `LicenseService` 改成可切換的 provider，不再寫死授權資料。該分支仍不連線到授權伺服器，也沒有改動 Core 的 `LicenseService`。
 
 ## 已查證後排除的項目
 
