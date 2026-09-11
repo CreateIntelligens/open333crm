@@ -74,6 +74,8 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   { code: 'channel.create', group: '渠道管理', feature: 'channels', label: '新增渠道', description: '建立新的訊息渠道', dependsOn: ['channel.view'] },
   { code: 'channel.update', group: '渠道管理', feature: 'channels', label: '編輯渠道', description: '改設定、setup-webhook、verify', dependsOn: ['channel.view'] },
   { code: 'channel.delete', group: '渠道管理', feature: 'channels', label: '刪除渠道', description: '刪除渠道', dependsOn: ['channel.view'] },
+  { code: 'channel.view_all', group: '渠道管理', feature: 'channels', label: '檢視所有渠道（總店）', description: '不受團隊渠道指派限制，可見/操作租戶內全部渠道的對話與案件', dependsOn: ['channel.view'] },
+  { code: 'channel.assign_team', group: '渠道管理', feature: 'channels', label: '指派渠道給團隊', description: '設定哪些團隊可見哪些渠道（分店可見性）', dependsOn: ['channel.view'] },
   { code: 'richmenu.manage', group: '渠道管理', feature: 'channels', label: '管理圖文選單', description: 'LINE rich-menu CRUD/publish', dependsOn: ['channel.view'] },
   { code: 'quickreply.manage', group: '渠道管理', feature: 'channels', label: '管理快速回覆', description: 'quick-reply-preset 寫入' },
 

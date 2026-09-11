@@ -43,11 +43,14 @@ async function socketPlugin(fastify: FastifyInstance) {
         agentId: string;
         tenantId: string;
         role: string;
+        roleId?: string | null;
       }>(token);
 
       socket.data.agentId = decoded.agentId;
       socket.data.tenantId = decoded.tenantId;
       socket.data.role = decoded.role;
+      // roleId 供房間授權判斷 channel.view_all（總店可見全部）
+      socket.data.roleId = decoded.roleId ?? null;
 
       next();
     } catch {
@@ -69,7 +72,7 @@ async function socketPlugin(fastify: FastifyInstance) {
     };
     const authorize = async (input: unknown) => authorizeSocketRoom(
       fastify.prismaAdmin,
-      { agentId, tenantId, role: socket.data.role },
+      { agentId, tenantId, role: socket.data.role, roleId: socket.data.roleId ?? null },
       input,
     );
 

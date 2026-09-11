@@ -6,6 +6,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **人員直綁可用渠道（CM-173 延伸）** — 「一個帳號＝一個分店」場景：人員編輯彈窗新增「可使用的渠道」勾選，直接指定該帳號能看到/操作哪些渠道，跳過 team 中介。新增 `AgentChannelAccess`（`agent_channel_accesses`，正式 migration 含雙 FK RLS policy，比照 `case_relations`）。可見性解析取「agent 直綁 ∪ team 授權」聯集；legacy 語意調整為「未綁任何 team『且』未直綁任何 agent 的渠道才全租戶可見」（渠道一旦被任一種方式綁定即限縮）。新增 API `GET/PUT /agents/:id/channels`（權限 `channel.assign_team`、含稽核、交易內整組替換）。socket 授權同步此語意。team 那套（ChannelTeamAccess/指派 API/UI）保留，供未來「一分店多店員/派單/報表」使用。
+
+- **總店/分店渠道級可見性（CM-173）** — 單一租戶內依帳號控制可見/操作哪些渠道（LINE/FB/IG）來的對話與案件。新增權限點 `channel.view_all`（總店，看全部渠道，給 admin/supervisor）與 `channel.assign_team`（指派渠道給團隊，給 admin）。核心解析 `channel-visibility.ts`（`getAccessibleChannelIds`：agent→teams→ChannelTeamAccess→channelId，未指派團隊的 legacy 渠道維持全租戶可見、無授權則 fail-closed 回空）。對話/案件列表依可見渠道過濾、單筆讀取不可見渠道回 404、對話操作（回覆/指派/關閉/轉真人）不可見回 403。`ChannelTeamAccess` 由 in-memory mock 改 Prisma 真 DB，新增渠道↔團隊指派 API（`GET/POST/DELETE /channels/:channelId/teams`）。socket room 授權的「總店」判定由寫死 ADMIN/SUPERVISOR 改為 `channel.view_all` 權限點。前端渠道編輯彈窗新增「指派團隊」區塊、收件匣渠道篩選改用可見渠道並加空狀態提示。與 Postgres RLS 分層（RLS 管跨租戶、本功能管租戶內渠道）。新增權限點部署後需跑 reconcile + 清權限快取。
+
 - **人員管理拆分「停用」與「刪除」兩個動作（CM-174）** — 後台人員編輯彈窗新增獨立的「停用」與「刪除」入口。停用（`POST /agents/:id/deactivate`，權限 `agent.deactivate`）維持原行為：設 `isActive=false`、可再啟用、保留 email 佔用。刪除（`DELETE /agents/:id`，權限 `agent.purge`）為新功能：於交易內先清理對 `agents` 為 RESTRICT 的關聯（`notifications`/`cli_sessions`/`passkey_credentials`）再永久刪除 Agent，釋放 email 使其可在其他租戶重新加入（不可復原，前端加二次確認）。列表對停用中的人員顯示「已停用・email 仍被佔用」提示。新增權限點 `agent.deactivate`、`agent.purge`（部署後需跑 `scripts/reconcile-system-role-permissions.mjs` 並清權限快取）。
 
 ### Changed
