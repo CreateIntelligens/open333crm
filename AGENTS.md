@@ -15,7 +15,7 @@ pnpm install                        # install deps
 pnpm dev                            # turbo dev (api + web + workers)
 pnpm --filter @open333crm/api dev   # API only (port 3001, tsx watch)
 pnpm --filter @open333crm/web dev   # Web only (port 3000, needs sync:widget first)
-pnpm build                          # turbo build (set SKIP_ENV_VALIDATION=true in CI)
+pnpm build                          # turbo build
 pnpm lint                           # turbo lint (ESLint 9 flat config) — NOT enforced in CI yet
 pnpm db:generate                    # prisma generate
 pnpm db:migrate -- --name <name>    # create migration
@@ -163,7 +163,6 @@ await redisPublisher.publish(
 - **`PLATFORM_JWT_SECRET` enables the platform control plane (`/admin/*`).** Without that variable,
   `/api/v1/platform/auth/login` returns 503 `PLATFORM_DISABLED`.
 - **Web dev requires pre-sync**: `pnpm --filter @open333crm/web dev` runs `sync:widget` and `sync:playcaptcha` automatically via its `dev` script
-- **CI build needs**: `SKIP_ENV_VALIDATION=true` env var
 - **Docker on macOS**: `export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"`
 
 ## Monorepo Layout

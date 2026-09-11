@@ -20,8 +20,6 @@ pnpm db:migrate -- --name <name>
 pnpm db:seed
 ```
 
-CI 建置必須設定 `SKIP_ENV_VALIDATION=true`。
-
 ## 測試
 
 API 測試檔使用 Vitest 的 API，但目前由 `tsx` 個別執行。專案沒有 Vitest 設定檔，也沒有根層級 `pnpm test`。
