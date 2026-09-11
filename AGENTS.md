@@ -62,7 +62,7 @@ therefore cannot leak to the next request on a pooled connection. Queries inside
 the `tx` that `withTenant` passes in. An outer client uses a different connection. On that
 connection the variable is unset, so RLS returns no rows (fail-closed).
 
-The `postgres-rls-tenant-isolation` skill (`.claude/skills/`) contains the wiring rules, the steps
+The `postgres-rls-tenant-isolation` skill (`.agents/skills/`) contains the wiring rules, the steps
 to add a table, and the troubleshooting guide. Do not restate them here.
 
 ### CI gates that fail the build
