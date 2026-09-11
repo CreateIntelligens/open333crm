@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import IORedis from 'ioredis';
@@ -35,10 +36,18 @@ export async function listConversations(
   tenantId: string,
   filters: ConversationFilters,
   pagination: PaginationParams,
+  /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空集合＝fail-closed 回空）。 */
+  accessibleChannels?: AccessibleChannels,
 ) {
   const where: Prisma.ConversationWhereInput = {
     tenantId,
   };
+
+  // 渠道可見性過濾（總店 ALL 時 filter 為 undefined、不加條件）
+  if (accessibleChannels !== undefined) {
+    const filter = channelIdWhereFilter(accessibleChannels);
+    if (filter) where.channelId = filter;
+  }
 
   if (filters.status) {
     if (filters.status === '!CLOSED') {

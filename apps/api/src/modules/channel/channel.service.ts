@@ -1,4 +1,5 @@
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
@@ -49,9 +50,19 @@ export function decryptCredentials(encrypted: string): Record<string, unknown> {
 
 // --- Channel CRUD ---
 
-export async function listChannels(prisma: TenantDb, tenantId: string) {
+export async function listChannels(
+  prisma: TenantDb,
+  tenantId: string,
+  /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空＝fail-closed）。 */
+  accessibleChannels?: AccessibleChannels,
+) {
+  const where: { tenantId: string; id?: { in: string[] } } = { tenantId };
+  if (accessibleChannels !== undefined) {
+    const filter = channelIdWhereFilter(accessibleChannels);
+    if (filter) where.id = filter;
+  }
   const channels = await prisma.channel.findMany({
-    where: { tenantId },
+    where,
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

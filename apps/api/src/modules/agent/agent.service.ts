@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import { PERMISSIONS } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
@@ -295,6 +296,47 @@ export async function resetAgentPassword(
   });
 }
 
+// admin 判定條件（legacy enum 或 granular system role 其一即算）：last-admin 守門用
+const ADMIN_WHERE = {
+  OR: [
+    { role: 'ADMIN' as const },
+    { roleRef: { is: { slug: 'admin', isSystem: true } } },
+  ],
+};
+
+/**
+ * Last-admin 守門：目標若為「啟用中的管理員」且是租戶最後一位，擋下停用/刪除。
+ * 否則租戶將失去所有管理權限（無人能再指派角色/調整設定），只能手動改 DB 復原。
+ * 目標已停用（isActive=false）時不影響啟用中 admin 數，不在此擋。
+ */
+async function assertNotLastActiveAdmin(
+  prisma: TenantDb,
+  tenantId: string,
+  target: { isActive: boolean; role: string; roleId: string | null },
+): Promise<void> {
+  if (!target.isActive) return;
+  const targetIsAdmin =
+    target.role === 'ADMIN' ||
+    (target.roleId
+      ? Boolean(await prisma.role.findFirst({
+          where: { id: target.roleId, tenantId, slug: 'admin', isSystem: true },
+          select: { id: true },
+        }))
+      : false);
+  if (!targetIsAdmin) return;
+
+  const activeAdmins = await prisma.agent.count({
+    where: { tenantId, isActive: true, ...ADMIN_WHERE },
+  });
+  if (activeAdmins <= 1) {
+    throw new AppError(
+      '不可停用/刪除租戶最後一位啟用中的管理員',
+      'LAST_ADMIN_PROTECTED',
+      422,
+    );
+  }
+}
+
 export async function deactivateAgent(
   prisma: TenantDb,
   tenantId: string,
@@ -302,14 +344,53 @@ export async function deactivateAgent(
 ) {
   const existing = await prisma.agent.findFirst({
     where: { id: agentId, tenantId },
+    select: { id: true, isActive: true, role: true, roleId: true },
   });
 
   if (!existing) {
     throw new AppError('Agent not found', 'NOT_FOUND', 404);
   }
 
+  // 防呆：不可停用最後一位啟用中的管理員（租戶會被鎖死）
+  await assertNotLastActiveAdmin(prisma, tenantId, existing);
+
   await prisma.agent.update({
     where: { id: agentId },
     data: { isActive: false },
+  });
+}
+
+/**
+ * 永久刪除人員並釋放 email（不可復原）。
+ *
+ * email 全域唯一（agents.@@unique([email])，多租戶登入靠 email 解析租戶），
+ * 停用不會釋放 email——只有真刪除記錄才行。刪除前須清理對 agents 為
+ * RESTRICT 的關聯（notifications / cli_sessions / passkey_credentials），
+ * 否則外鍵會擋下刪除；CASCADE（agent_team_members）與 SET NULL（cases /
+ * conversations / messages 等指派欄位）由資料庫自理，歷史資料保留。
+ * 全程於單一交易內執行，任一步失敗則整體回滾。
+ */
+export async function purgeAgent(
+  prisma: PrismaClient,
+  tenantId: string,
+  agentId: string,
+) {
+  // 交易內先設好 RLS 租戶 session，再於同交易清關聯 + 刪 Agent（同連線=SET LOCAL 有效）
+  await withTenant(prisma, tenantId, async (tx) => {
+    const existing = await tx.agent.findFirst({
+      where: { id: agentId, tenantId },
+      select: { id: true, isActive: true, role: true, roleId: true },
+    });
+    if (!existing) {
+      throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    }
+    // 防呆：不可刪除最後一位啟用中的管理員（租戶會被鎖死）
+    await assertNotLastActiveAdmin(tx, tenantId, existing);
+    // 先清 RESTRICT 關聯（有資料會擋刪）
+    await tx.notification.deleteMany({ where: { agentId } });
+    await tx.cliSession.deleteMany({ where: { agentId } });
+    await tx.passkeyCredential.deleteMany({ where: { agentId } });
+    // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
+    await tx.agent.delete({ where: { id: agentId } });
   });
 }

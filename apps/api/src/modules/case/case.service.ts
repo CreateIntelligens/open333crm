@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { withTenant, tenantScopedClient } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
@@ -34,11 +35,18 @@ export async function listCases(
   tenantId: string,
   filters: CaseFilters,
   pagination: PaginationParams,
+  /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空＝fail-closed）。 */
+  accessibleChannels?: AccessibleChannels,
 ) {
   const now = new Date();
   const where: Prisma.CaseWhereInput = {
     tenantId,
   };
+
+  if (accessibleChannels !== undefined) {
+    const filter = channelIdWhereFilter(accessibleChannels);
+    if (filter) where.channelId = filter;
+  }
 
   if (filters.status) {
     where.status = filters.status as any;

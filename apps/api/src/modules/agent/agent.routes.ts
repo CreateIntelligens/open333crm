@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { success } from '../../shared/utils/response.js';
+import { z } from 'zod';
+import { success, AppError } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { listChannelsForAgent, setAgentChannels } from '../../services/channel-team-access.js';
 import {
   createAgentSchema,
   updateAgentRoleSchema,
@@ -13,6 +15,7 @@ import {
   changeOwnPassword,
   resetAgentPassword,
   deactivateAgent,
+  purgeAgent,
 } from './agent.service.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -149,21 +152,84 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(success({ message: 'Password reset' }));
   });
 
-  // DELETE /api/v1/agents/:id — 需 agent.delete (deactivate agent)
-  fastify.delete('/:id', {
-    preHandler: [requirePermission('agent.delete')],
+  // POST /api/v1/agents/:id/deactivate — 需 agent.deactivate (停用，可再啟用、保留 email)
+  fastify.post('/:id/deactivate', {
+    preHandler: [requirePermission('agent.deactivate')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    // 防呆：不可停用自己（避免自我鎖定）
+    if (request.agent.id === id) {
+      throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
+    }
     await deactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
-    // 稽核：停用（軟刪）成員
     await writeTenantAudit(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
-      action: 'agent.delete',
+      action: 'agent.deactivate',
       targetType: 'agent',
       targetId: id,
       ip: request.ip,
     });
     return reply.status(204).send();
+  });
+
+  // DELETE /api/v1/agents/:id — 需 agent.purge (永久刪除、釋放 email、不可復原)
+  fastify.delete('/:id', {
+    preHandler: [requirePermission('agent.purge')],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    // 防呆：不可刪除自己（自我鎖定；且刪除後 writeTenantAudit 以已刪 actorId 寫入會撞 FK → 500）
+    if (request.agent.id === id) {
+      throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
+    }
+    // purgeAgent 需交易（withTenant）綁 RLS，故收 fastify.prisma 而非 request.tenantPrisma
+    await purgeAgent(fastify.prisma, request.agent.tenantId, id);
+    await writeTenantAudit(request.tenantPrisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.purge',
+      targetType: 'agent',
+      targetId: id,
+      ip: request.ip,
+    });
+    return reply.status(204).send();
+  });
+
+  // ─── Agent 直綁渠道（CM-173 延伸）─────────────────────────────────────────
+  // 「一個帳號＝一個分店」：人員設定直接勾選可用渠道，可見性與 team 授權取聯集。
+
+  // GET /api/v1/agents/:id/channels — 該成員直綁的渠道
+  fastify.get('/:id/channels', {
+    preHandler: [requirePermission('channel.assign_team')],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const rows = await listChannelsForAgent(request.tenantPrisma, request.agent.tenantId, id);
+    return reply.send(success(rows));
+  });
+
+  // PUT /api/v1/agents/:id/channels — 整組替換該成員的可用渠道
+  fastify.put('/:id/channels', {
+    preHandler: [requirePermission('channel.assign_team')],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = z.object({ channelIds: z.array(z.string().uuid()).max(200) }).parse(request.body);
+    // setAgentChannels 需交易（withTenant）綁 RLS，故收 fastify.prisma
+    const result = await setAgentChannels(
+      fastify.prisma,
+      request.agent.tenantId,
+      id,
+      body.channelIds,
+      request.agent.id,
+    );
+    await writeTenantAudit(request.tenantPrisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.channels.set',
+      targetType: 'agent',
+      targetId: id,
+      payload: { count: result.count },
+      ip: request.ip,
+    });
+    return reply.send(success(result));
   });
 }

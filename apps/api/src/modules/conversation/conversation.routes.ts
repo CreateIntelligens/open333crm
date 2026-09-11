@@ -14,6 +14,7 @@ import {
 import { createCaseFromConversation } from '../case/case.service.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { resolveChannelVisibility, isChannelAccessible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
@@ -78,6 +79,9 @@ async function handleSendMedia(
   if (!conversation || conversation.tenantId !== tenantId) {
     throw new AppError('Conversation not found', 'NOT_FOUND', 404);
   }
+
+  // CM-173：送媒體屬回覆類操作，需 reply_only 以上（渠道不可見或層級不足 → 403）
+  await assertConversationChannelVisible(request, conversationId, 'reply_only');
 
   const channelType = conversation.channel?.channelType ?? '';
   if (!config.allowedChannelTypes.includes(channelType)) {
@@ -157,11 +161,15 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
+    // CM-173 渠道級可見性：只回當前 agent 可見渠道的對話（總店 view_all 不過濾）
+    const accessible = await resolveChannelVisibility(request);
+
     const { conversations, total } = await listConversations(
       request.tenantPrisma,
       request.agent.tenantId,
       filters,
       { page, limit },
+      accessible,
     );
 
     return reply.send(paginated(conversations, total, page, limit));
@@ -175,12 +183,24 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
     );
 
+    // 查無此對話（或非本租戶）→ 404，避免下方存取 channelId 觸發 500
+    if (!conversation) {
+      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    }
+
+    // CM-173：渠道不在可見集合 → 視為不存在（404），不洩漏他店資料
+    const accessible = await resolveChannelVisibility(request);
+    if (!isChannelAccessible(accessible, conversation.channelId)) {
+      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    }
+
     return reply.send(success(conversation));
   });
 
   // PATCH /api/v1/conversations/:id
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateConversationSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：改狀態/指派為管理操作
 
     const conversation = await updateConversation(
       request.tenantPrisma,
@@ -195,6 +215,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/conversations/:id/read
   fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
+    await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得改已讀狀態
     const conversation = await markConversationRead(
       request.tenantPrisma,
       fastify.io,
@@ -208,6 +229,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/tags
   fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
     const body = addTagSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
     const conversationTag = await addTagToTarget(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       targetType: 'CONVERSATION',
@@ -223,6 +245,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string; tagId: string } }>(
     '/:id/tags/:tagId',
     async (request, reply) => {
+      await assertConversationChannelVisible(request, request.params.id); // CM-173
       const removed = await removeTagFromTarget(request.tenantPrisma, {
         tenantId: request.agent.tenantId,
         targetType: 'CONVERSATION',
@@ -237,6 +260,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // GET /api/v1/conversations/:id/messages
   fastify.get<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
     const query = messagesQuerySchema.parse(request.query);
+    await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得讀訊息歷史
 
     const { messages, total } = await getMessages(
       request.tenantPrisma,
@@ -252,6 +276,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/messages
   fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
     const data = sendMessageSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id); // CM-173
 
     const { message } = await sendMessage(
       request.tenantPrisma,
@@ -270,6 +295,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const data = z.object({
       reason: z.string().max(1000).optional(),
     }).parse(request.body ?? {});
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：關閉為管理操作
 
     const conversation = await closeConversation(
       request.tenantPrisma,
@@ -292,6 +318,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       assignToId: z.string().uuid().optional(),
       handoffMessage: z.string().optional(),
     }).parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：轉接為管理操作
 
     const conversation = await handoffConversation(
       request.tenantPrisma,
@@ -310,6 +337,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
     const { action } = z.object({
       action: z.enum(['start', 'stop']),
     }).parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id, 'reply_only'); // CM-173：typing 伴隨回覆行為，渠道需達 reply_only
 
     const conversationId = request.params.id;
     const event = action === 'start' ? 'typing.start' : 'typing.stop';
@@ -324,6 +352,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   // POST /api/v1/conversations/:id/case - create case from conversation
   fastify.post<{ Params: { id: string } }>('/:id/case', async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：建工單為管理操作
 
     // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
     const caseRecord = await createCaseFromConversation(

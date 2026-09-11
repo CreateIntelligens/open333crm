@@ -280,6 +280,7 @@ model Agent {
   roleRef Role?  @relation(fields: [roleId], references: [id])
 
   teams               AgentTeamMember[]
+  channelAccesses     AgentChannelAccess[]
   assignedConvs       Conversation[]       @relation("AssignedAgent")
   assignedCases       Case[]               @relation("AssignedAgent")
   caseEvents          CaseEvent[]
@@ -393,6 +394,7 @@ model Channel {
   channelIdentities ChannelIdentity[]
   conversations     Conversation[]
   teamAccesses      ChannelTeamAccess[]
+  agentAccesses     AgentChannelAccess[]
   usages            ChannelUsage[]
   richMenus         RichMenu[]
   chatboxSessions   ChatboxSession[]
@@ -421,6 +423,25 @@ model ChannelTeamAccess {
   @@id([channelId, teamId])
   @@index([teamId])
   @@map("channel_team_accesses")
+}
+
+// Channel 個人授權（CM-173 延伸）：agent 直綁渠道，跳過 team 中介。
+// 「一個帳號＝一個分店」場景用；與 ChannelTeamAccess 並存，可見性取聯集。
+// RLS：雙 FK 子表（比照 case_relations），policy 要求 channelId 與 agentId 兩端都屬當前租戶。
+model AgentChannelAccess {
+  channelId   String   @db.Uuid
+  agentId     String   @db.Uuid
+  // full | reply_only | read_only
+  accessLevel String   @default("full")
+  grantedAt   DateTime @default(now())
+  grantedById String?  @db.Uuid
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, agentId])
+  @@index([agentId])
+  @@map("agent_channel_accesses")
 }
 
 // ─────────────────────────────────────────────

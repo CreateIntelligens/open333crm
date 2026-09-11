@@ -13,6 +13,12 @@ import {
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import {
+  grantChannelTeamAccess,
+  revokeChannelTeamAccess,
+  listTeamsForChannel,
+  listChannelsForTeam,
+} from '../../services/channel-team-access.js';
 import { autoSetupLineWebhook } from './line-webhook-setup.service.js';
 import { checkFbTokenStatus } from './fb-token-monitor.service.js';
 import { generateEmbedCode } from './webchat-embed.service.js';
@@ -22,6 +28,7 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
+import { resolveChannelVisibility } from '../../services/channel-visibility.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -101,6 +108,13 @@ const updateChannelSchema = z
     validateDownstreamWebhookSettings(data.settings, ctx);
   });
 
+// 渠道↔團隊指派 body 驗證（CM-173）：teamId 需為 UUID、accessLevel 三選一
+// teamId 以 uuid() 驗證，非法格式在路由層回 400，避免傳進 Prisma 型別轉換爆 500
+const channelTeamAssignSchema = z.object({
+  teamId: z.string().uuid(),
+  accessLevel: z.enum(['full', 'reply_only', 'read_only']),
+});
+
 const chatboxThemeSchema = z.object({
   backgroundImageUrl: z.null().optional(),
   backgroundImageKey: z.null().optional(),
@@ -126,7 +140,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/channels
   fastify.get('/', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
-    const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
+    // CM-173：渠道列表只回可見渠道（總店 view_all 不過濾）
+    const accessible = await resolveChannelVisibility(request);
+    const channels = await listChannels(request.tenantPrisma, request.agent.tenantId, accessible);
     return reply.send(success(channels));
   });
 
@@ -383,6 +399,125 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       });
 
       return reply.status(201).send(success({ ...uploaded, chatboxTheme: updatedTheme }));
+    },
+  );
+
+  // ── 渠道↔團隊指派（CM-173，總店/分店渠道級可見性）──────────────────────
+
+  // GET /api/v1/channels/:channelId/teams — 列出某渠道被指派給哪些團隊
+  fastify.get<{ Params: { channelId: string } }>(
+    '/:channelId/teams',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const rows = await listTeamsForChannel(
+        request.tenantPrisma,
+        request.agent.tenantId,
+        request.params.channelId,
+      );
+      return reply.send(success(rows));
+    },
+  );
+
+  // POST /api/v1/channels/:channelId/teams — 指派渠道給團隊
+  fastify.post<{ Params: { channelId: string }; Body: unknown }>(
+    '/:channelId/teams',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const body = channelTeamAssignSchema.parse(request.body);
+      const row = await grantChannelTeamAccess(
+        request.tenantPrisma,
+        request.agent.tenantId,
+        {
+          channelId: request.params.channelId,
+          teamId: body.teamId,
+          accessLevel: body.accessLevel,
+          grantedById: request.agent.id,
+        },
+      );
+
+      // 稽核：指派渠道給團隊
+      await writeTenantAudit(request.tenantPrisma, {
+        tenantId: request.agent.tenantId,
+        actorId: request.agent.id,
+        action: 'channel.assign_team',
+        targetType: 'channel',
+        targetId: request.params.channelId,
+        payload: { teamId: body.teamId, accessLevel: body.accessLevel },
+        ip: request.ip,
+      });
+
+      return reply.status(201).send(success(row));
+    },
+  );
+
+  // DELETE /api/v1/channels/:channelId/teams/:teamId — 撤銷指派
+  fastify.delete<{ Params: { channelId: string; teamId: string } }>(
+    '/:channelId/teams/:teamId',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const removed = await revokeChannelTeamAccess(
+        request.tenantPrisma,
+        request.agent.tenantId,
+        request.params.channelId,
+        request.params.teamId,
+      );
+      if (!removed) {
+        throw new AppError('Channel team assignment not found', 'NOT_FOUND', 404);
+      }
+
+      // 稽核：撤銷渠道團隊指派
+      await writeTenantAudit(request.tenantPrisma, {
+        tenantId: request.agent.tenantId,
+        actorId: request.agent.id,
+        action: 'channel.revoke_team',
+        targetType: 'channel',
+        targetId: request.params.channelId,
+        payload: { teamId: request.params.teamId },
+        ip: request.ip,
+      });
+
+      return reply.status(204).send();
+    },
+  );
+
+  // GET /api/v1/channels/teams/:teamId/channels — 某團隊可見哪些渠道
+  fastify.get<{ Params: { teamId: string } }>(
+    '/teams/:teamId/channels',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const rows = await listChannelsForTeam(
+        request.tenantPrisma,
+        request.agent.tenantId,
+        request.params.teamId,
+      );
+      return reply.send(success(rows));
+    },
+  );
+
+  // GET /api/v1/channels/assignable — 指派用渠道全量清單（不套操作者可見性過濾）
+  // 補 PR review：GET /channels 已依可見性過濾；具 channel.assign_team 但無 view_all 的
+  // 操作者若用過濾後清單做「整組替換」指派，會誤洗成員在他店的既有直綁。
+  fastify.get(
+    '/assignable',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
+      return reply.send(success(channels));
+    },
+  );
+
+  // GET /api/v1/channels/teams — 租戶團隊清單（指派 UI 用；含尚無成員的空團隊）
+  // 補 PR review：前端原從 GET /agents 彙整團隊，空團隊選不到、名稱退回 raw UUID
+  fastify.get(
+    '/teams',
+    { preHandler: requirePermission('channel.assign_team') },
+    async (request, reply) => {
+      const teams = await request.tenantPrisma.team.findMany({
+        where: { tenantId: request.agent.tenantId },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      return reply.send(success(teams));
     },
   );
 }

@@ -17,7 +17,7 @@ const SUPERVISOR_CODES = [
   'shortlink.view', 'shortlink.manage',
   'canvas.use', 'identity.review',
   'automation.view',
-  'channel.view', 'richmenu.manage', 'quickreply.manage',
+  'channel.view', 'channel.view_all', 'richmenu.manage', 'quickreply.manage',
   'marketing.view', 'marketing.manage', 'marketing.broadcast',
   'analytics.view', 'analytics.view.self', 'analytics.export',
   'settings.manage', 'sla.manage', 'webhook.view',
@@ -39,9 +39,10 @@ const AGENT_CODES = [
 
 // admin = 全部權限（含平台鎖定核心）；此處用 SUPERVISOR ∪ 剩餘 admin-only 補齊
 const ADMIN_ONLY = [
-  'channel.create', 'channel.update', 'channel.delete',
+  'channel.create', 'channel.update', 'channel.delete', 'channel.assign_team',
   'automation.manage', 'portal.view', 'portal.manage',
   'webhook.manage', 'agent.password.reset', 'agent.delete',
+  'agent.deactivate', 'agent.purge',
   'role.view', 'role.manage',
 ];
 const ADMIN_CODES = Array.from(new Set([...SUPERVISOR_CODES, ...ADMIN_ONLY]));

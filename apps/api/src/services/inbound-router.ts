@@ -1,5 +1,4 @@
 import { UniversalMessage } from '@open333crm/types';
-import { channelTeamAccessService } from './channel-team-access.js';
 import { logger } from '@open333crm/core';
 
 export interface RoutingResult {

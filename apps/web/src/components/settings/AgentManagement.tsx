@@ -216,9 +216,24 @@ interface EditAgentDialogProps {
   roles: RoleItem[];
   /** 是否可指派角色（agent.role.assign）；否則角色下拉停用 */
   canAssignRole: boolean;
-  /** 是否可重設他人密碼 / 停用帳號（agent.password.reset / agent.delete） */
-  canManageAccount: boolean;
+  /** 是否可重設他人密碼（agent.password.reset）；控制重設密碼欄位顯示與送出 */
+  canResetPassword: boolean;
+  /** 是否可停用帳號（agent.deactivate） */
+  canDeactivate: boolean;
+  /** 是否可永久刪除帳號並釋放 email（agent.purge） */
+  canPurge: boolean;
+  /** 編輯對象是否為操作者本人（本人不可停用/刪除自己，避免自我鎖定） */
+  isSelf: boolean;
+  /** 是否可設定成員可用渠道（channel.assign_team，CM-173 agent 直綁） */
+  canAssignChannels: boolean;
   onUpdated: () => void;
+}
+
+/** 渠道選項（agent 直綁用） */
+interface ChannelOption {
+  id: string;
+  displayName: string;
+  channelType: string;
 }
 
 function EditAgentDialog({
@@ -227,7 +242,11 @@ function EditAgentDialog({
   onOpenChange,
   roles,
   canAssignRole,
-  canManageAccount,
+  canResetPassword,
+  canDeactivate,
+  canPurge,
+  isSelf,
+  canAssignChannels,
   onUpdated,
 }: EditAgentDialogProps) {
   // 以角色 id 作為下拉選取值
@@ -235,7 +254,12 @@ function EditAgentDialog({
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [error, setError] = useState('');
+  // CM-173 agent 直綁渠道：勾選此帳號可使用的渠道
+  const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [channelsDirty, setChannelsDirty] = useState(false);
 
   const roleOptions = useMemo(
     () => roles.map((r) => ({ value: r.id, label: r.isSystem ? r.name : `${r.name}（自訂）` })),
@@ -243,7 +267,9 @@ function EditAgentDialog({
   );
 
   useEffect(() => {
-    if (agent) {
+    // open 納入依賴＋gate（PR review）：同一成員「勾選→取消關窗→再開」時，
+    // agent 參考未變不會重跑 effect，會殘留取消前的髒勾選狀態
+    if (agent && open) {
       // 有 roleId 就精準預選該角色；否則（舊資料無 roleId）用 legacy role 對到 system 角色
       const match = agent.roleId
         ? roles.find((r) => r.id === agent.roleId)
@@ -251,8 +277,45 @@ function EditAgentDialog({
       setSelectedRoleId(match?.id ?? '');
       setNewPassword('');
       setError('');
+      setChannelsDirty(false);
+      // CM-173：載入租戶渠道清單 + 此成員目前直綁的渠道
+      if (canAssignChannels) {
+        // 載入前先清空，避免快速切換成員時短暫殘留前一位的勾選
+        setChannelOptions([]);
+        setSelectedChannelIds([]);
+        // active flag（PR review）：快速切換成員或網路延遲時，前一位成員的
+        // 非同步回應可能 late-resolve 覆蓋當前成員的渠道狀態 → cleanup 置 false 擋掉。
+        let active = true;
+        Promise.all([
+          // 指派用全量清單（不套操作者可見性）：避免無 view_all 的操作者整組替換時洗掉他店直綁
+          api.get('/channels/assignable'),
+          api.get(`/agents/${agent.id}/channels`),
+        ])
+          .then(([chRes, bindRes]) => {
+            if (!active) return;
+            const chs = (chRes.data.data ?? []) as ChannelOption[];
+            setChannelOptions(chs.map((c) => ({ id: c.id, displayName: c.displayName, channelType: c.channelType })));
+            const bound = (bindRes.data.data ?? []) as Array<{ channelId: string }>;
+            setSelectedChannelIds(bound.map((b) => b.channelId));
+          })
+          .catch(() => {
+            if (!active) return;
+            setChannelOptions([]);
+            setSelectedChannelIds([]);
+          });
+        return () => {
+          active = false;
+        };
+      }
     }
-  }, [agent, roles]);
+  }, [agent, roles, canAssignChannels, open]);
+
+  function toggleChannel(channelId: string) {
+    setChannelsDirty(true);
+    setSelectedChannelIds((prev) =>
+      prev.includes(channelId) ? prev.filter((id) => id !== channelId) : [...prev, channelId],
+    );
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -269,8 +332,12 @@ function EditAgentDialog({
         }
         await api.patch(`/agents/${agent.id}/role`, buildRolePayload(selected, agent.role));
       }
-      if (canManageAccount && newPassword) {
+      if (canResetPassword && newPassword) {
         await api.patch(`/agents/${agent.id}/password`, { newPassword });
+      }
+      // CM-173：可用渠道有變動才送（整組替換）
+      if (canAssignChannels && channelsDirty) {
+        await api.put(`/agents/${agent.id}/channels`, { channelIds: selectedChannelIds });
       }
       onUpdated();
       onOpenChange(false);
@@ -283,17 +350,38 @@ function EditAgentDialog({
 
   async function handleDeactivate() {
     if (!agent) return;
-    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？此操作無法從此介面復原。`)) return;
+    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？帳號可日後再啟用；此 email 仍會被佔用，若要在其他地方重用請改用「刪除」。`)) return;
     setDeactivating(true);
     setError('');
     try {
-      await api.delete(`/agents/${agent.id}`);
+      await api.post(`/agents/${agent.id}/deactivate`);
       onUpdated();
       onOpenChange(false);
     } catch (err: unknown) {
       setError(resolveApiError(err, '停用失敗，請再試一次'));
     } finally {
       setDeactivating(false);
+    }
+  }
+
+  async function handlePurge() {
+    if (!agent) return;
+    if (!confirm(
+      `確定要永久刪除「${agent.name}」的帳號嗎？\n\n` +
+      `此操作不可復原，將會：\n` +
+      `・釋放此 email（${agent.email}），使其可在其他地方重新加入\n` +
+      `・解除其對話與案件的指派（歷史記錄保留）\n`
+    )) return;
+    setPurging(true);
+    setError('');
+    try {
+      await api.delete(`/agents/${agent.id}`);
+      onUpdated();
+      onOpenChange(false);
+    } catch (err: unknown) {
+      setError(resolveApiError(err, '刪除失敗，請再試一次'));
+    } finally {
+      setPurging(false);
     }
   }
 
@@ -316,7 +404,7 @@ function EditAgentDialog({
               <p className="text-xs text-muted-foreground">您沒有指派角色的權限</p>
             )}
           </div>
-          {canManageAccount && (
+          {canResetPassword && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">重設密碼 <span className="text-muted-foreground font-normal">（選填，留空表示不修改）</span></label>
               <Input
@@ -328,25 +416,64 @@ function EditAgentDialog({
               />
             </div>
           )}
+          {canAssignChannels && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">可使用的渠道 <span className="text-muted-foreground font-normal">（CM-173 分店可見性）</span></label>
+              <p className="text-xs text-muted-foreground">
+                勾選此帳號能看到/操作哪些渠道的對話。全不勾＝不直綁（依團隊授權與未綁定的公用渠道決定）。
+              </p>
+              {channelOptions.length === 0 ? (
+                <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">尚無渠道</p>
+              ) : (
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {channelOptions.map((ch) => (
+                    <label key={ch.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedChannelIds.includes(ch.id)}
+                        onChange={() => toggleChannel(ch.id)}
+                      />
+                      <span className="truncate">{ch.displayName}</span>
+                      <span className="text-xs text-muted-foreground">{ch.channelType}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter className="flex-row items-center justify-between sm:justify-between">
-            {canManageAccount && (
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                disabled={deactivating}
-                onClick={handleDeactivate}
-              >
-                {deactivating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                停用帳號
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {canDeactivate && !isSelf && agent?.isActive && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={deactivating || purging || saving}
+                  onClick={handleDeactivate}
+                >
+                  {deactivating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  停用
+                </Button>
+              )}
+              {canPurge && !isSelf && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={deactivating || purging || saving}
+                  onClick={handlePurge}
+                >
+                  {purging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  刪除
+                </Button>
+              )}
+            </div>
             <div className="flex gap-2 ml-auto">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || deactivating || purging}>
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 儲存
               </Button>
@@ -447,10 +574,12 @@ export function AgentManagement() {
   const canCreate = usePermission('agent.manage');
   const canAssignRole = usePermission('agent.role.assign');
   const canResetPassword = usePermission('agent.password.reset');
-  const canDelete = usePermission('agent.delete');
-  const canManageAccount = canResetPassword || canDelete;
-  // 開啟「編輯」對話的條件：至少能指派角色，或能管理帳號
-  const canEdit = canAssignRole || canManageAccount;
+  const canDeactivate = usePermission('agent.deactivate');
+  const canPurge = usePermission('agent.purge');
+  const canAssignChannels = usePermission('channel.assign_team');
+  const canManageAccount = canResetPassword || canDeactivate || canPurge;
+  // 開啟「編輯」對話的條件：至少能指派角色、管理帳號，或設定成員可用渠道
+  const canEdit = canAssignRole || canManageAccount || canAssignChannels;
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -586,8 +715,16 @@ export function AgentManagement() {
               <div className="flex items-center gap-3 min-w-0">
                 <Avatar alt={agent.name} src={agent.avatarUrl} size="sm" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{agent.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{agent.email}</p>
+                  <p className="truncate text-sm font-medium">
+                    {agent.name}
+                    {!agent.isActive && (
+                      <Badge color="gray" className="ml-2 align-middle">已停用</Badge>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {agent.email}
+                    {!agent.isActive && <span className="ml-1">・email 仍被佔用</span>}
+                  </p>
                 </div>
               </div>
               <div className="w-24 text-center">
@@ -659,7 +796,11 @@ export function AgentManagement() {
         onOpenChange={(v) => { if (!v) setEditAgent(null); }}
         roles={effectiveRoles}
         canAssignRole={canAssignRole}
-        canManageAccount={canManageAccount}
+        canResetPassword={canResetPassword}
+        canDeactivate={canDeactivate}
+        canPurge={canPurge}
+        isSelf={editAgent?.id === currentAgent?.id}
+        canAssignChannels={canAssignChannels}
         onUpdated={fetchAgents}
       />
       <ChangePasswordDialog
