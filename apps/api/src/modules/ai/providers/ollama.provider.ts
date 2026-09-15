@@ -17,11 +17,14 @@ export const OllamaChatProvider: ChatProvider = {
   label: 'Ollama (local)',
 
   async generate(opts: ChatGenerateOptions): Promise<ChatGenerateResult> {
-    const baseUrl = opts.baseUrl ?? 'http://localhost:11434';
+    const baseUrl =
+      (opts.baseUrl && opts.baseUrl !== 'http://localhost:11434' ? opts.baseUrl : process.env.OLLAMA_BASE_URL) ??
+      opts.baseUrl ??
+      'http://localhost:11434';
     const url = `${baseUrl}/api/chat`;
 
     const fullSystemPrompt = opts.kbContext
-      ? `${opts.systemPrompt}\n\n以下是「唯一可用」的知識庫內容。你的回答只能基於以下內容，超出這些內容範圍的資訊（尤其是型號、規格、電話、地址等具體事實）一律不可回答，請改為轉接專人：\n${opts.kbContext}`
+      ? `${opts.systemPrompt}\n\n以下是知識庫參考內容。請優先根據此內容回答；若需要外部資訊或處理無法確認的事項，請適當說明或引導專人協助：\n${opts.kbContext}`
       : opts.systemPrompt;
 
     const controller = new AbortController();
@@ -79,7 +82,10 @@ export const OllamaChatProvider: ChatProvider = {
   },
 
   async generateToolTurn(opts: ToolTurnOptions): Promise<ToolTurnResult> {
-    const baseUrl = opts.baseUrl ?? 'http://localhost:11434';
+    const baseUrl =
+      (opts.baseUrl && opts.baseUrl !== 'http://localhost:11434' ? opts.baseUrl : process.env.OLLAMA_BASE_URL) ??
+      opts.baseUrl ??
+      'http://localhost:11434';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     const messages: Array<Record<string, unknown>> = [

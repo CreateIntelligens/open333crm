@@ -28,6 +28,8 @@ try {
   assert.equal(geminiResult.toolCalls[0]?.name, 'search_web');
   assert.ok(Array.isArray(geminiBody?.tools));
   assert.ok(geminiBody?.contents);
+  const funcDecl = (geminiBody?.tools as any)[0].functionDeclarations[0];
+  assert.equal(funcDecl.parameters.type, 'OBJECT');
 
   globalThis.fetch = async (_input, init) => {
     geminiBody = JSON.parse(String(init?.body)) as Record<string, unknown>;

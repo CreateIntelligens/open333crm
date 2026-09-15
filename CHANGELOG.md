@@ -21,6 +21,9 @@ All notable changes to **open333CRM** will be documented in this file.
 - **解除 Agentic LLM 預設關閉與舊版知識庫底層死鎖** — 
   - `AGENTIC_LLM_ENABLED` 於 `env.ts` 與 `.env.api.example` 改為預設啟用（`true`），並在 UAT `deploy.yml` 自動將伺服器配置校正為 `true`，使收件匣對話正常進入 Agent 工具調用迴圈（可使用 `ocr_image`、`parse_document`、`search_web` 等感知工具）。
   - 修訂 `llm.service.ts` 中的預設提示詞 `CRM_REPLY_SYSTEM_PROMPT`，移除死板硬編碼的「家電產品限定」與「未查獲即強迫回覆轉接專人」話術，恢復為通用的親切客服助理。
+  - **Gemini 函式宣告結構相容化（`toGeminiParameters`）**：過濾 OpenAPI 3.0 的 `minLength` / `maxLength` 與不支援的 `format: 'uri'`，並將型別統一映射為大寫（`OBJECT` / `STRING`），解決 Google Gemini 嚴格 Schema 驗證拋 400 導致 Agent 靜默失敗而降級至 KB 的問題。
+  - **Ollama 容器網路位址適應（`resolveOllamaBaseUrl`）**：在 Docker 容器化環境下，若租戶 DB 預設存有 `http://localhost:11434`，自動優先回退至 `process.env.OLLAMA_BASE_URL`（`http://ollama:11434`），防止連線拒絕。
+  - 修訂 `gemini.provider.ts` 與 `ollama.provider.ts` 內嵌之 `kbContext` 提示詞模板，去除強硬的「超出範圍一律拒答轉接專人」文字，並在 `runner.ts` 捕獲 `generateToolTurn` 錯誤時印出詳細日誌。
 
 ## [2026-09-08]
 

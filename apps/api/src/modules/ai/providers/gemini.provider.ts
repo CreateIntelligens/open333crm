@@ -50,7 +50,7 @@ export const GeminiChatProvider: ChatProvider = {
     const url = `${GEMINI_BASE}/models/${encodeURIComponent(opts.model)}:generateContent`;
 
     const fullSystemPrompt = opts.kbContext
-      ? `${opts.systemPrompt}\n\n以下是「唯一可用」的知識庫內容。你的回答只能基於以下內容，超出這些內容範圍的資訊（尤其是型號、規格、電話、地址等具體事實）一律不可回答，請改為轉接專人：\n${opts.kbContext}`
+      ? `${opts.systemPrompt}\n\n以下是知識庫參考內容。請優先根據此內容回答；若需要外部資訊或處理無法確認的事項，請適當說明或引導專人協助：\n${opts.kbContext}`
       : opts.systemPrompt;
 
     const controller = new AbortController();
@@ -169,7 +169,7 @@ export const GeminiChatProvider: ChatProvider = {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: opts.systemPrompt }] },
           contents: toGeminiContents(opts.messages),
-          tools: [{ functionDeclarations: opts.tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })) }],
+          tools: [{ functionDeclarations: opts.tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: toGeminiParameters(tool.parameters as Record<string, unknown>) })) }],
           generationConfig: { temperature: opts.temperature, maxOutputTokens: opts.maxTokens },
         }),
         signal: controller.signal,
@@ -302,4 +302,33 @@ function parseToolContent(content: string): Record<string, unknown> {
 
 function parseGeminiArguments(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function toGeminiParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (schema.type) {
+    result.type = typeof schema.type === 'string' ? schema.type.toUpperCase() : schema.type;
+  }
+  if (schema.description && typeof schema.description === 'string') {
+    result.description = schema.description;
+  }
+  if (Array.isArray(schema.enum)) {
+    result.enum = schema.enum;
+  }
+  if (schema.properties && typeof schema.properties === 'object') {
+    const props: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(schema.properties as Record<string, unknown>)) {
+      if (v && typeof v === 'object') {
+        props[k] = toGeminiParameters(v as Record<string, unknown>);
+      }
+    }
+    result.properties = props;
+  }
+  if (Array.isArray(schema.required)) {
+    result.required = schema.required;
+  }
+  if (schema.items && typeof schema.items === 'object') {
+    result.items = toGeminiParameters(schema.items as Record<string, unknown>);
+  }
+  return result;
 }

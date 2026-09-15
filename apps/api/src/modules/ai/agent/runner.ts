@@ -78,7 +78,8 @@ export async function runAgent(input: RunAgentInput): Promise<AgentRunResult> {
         baseUrl: input.baseUrl,
         apiKey: input.apiKey,
       }), remainingMs);
-    } catch {
+    } catch (err) {
+      console.error('[AgentRunner] generateToolTurn failed:', err);
       return await finish(input.store, { status: 'failed', stopReason: 'provider_error', turns: turn, toolCalls });
     }
 
