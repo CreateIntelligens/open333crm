@@ -1,9 +1,9 @@
 import { Engine } from "json-rules-engine";
 import { prisma } from "@open333crm/database";
-import { EventBus, BaseEvent } from "../event-bus/event-bus";
-import { logger } from "../logger";
-import { ContactService } from "../contacts/contact-service";
-import { CaseService } from "../cases/case-service";
+import { EventBus, BaseEvent } from "../event-bus/event-bus.js";
+import { logger } from "../logger/index.js";
+import { ContactService } from "../contacts/contact-service.js";
+import { CaseService } from "../cases/case-service.js";
 
 export class AutomationEngine {
   static async start() {

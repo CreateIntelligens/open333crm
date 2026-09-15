@@ -1,6 +1,6 @@
 import { prisma, Direction, SenderType, ConversationStatus } from '@open333crm/database';
-import { EventBus } from '../event-bus/event-bus';
-import { logger } from '../logger';
+import { EventBus } from '../event-bus/event-bus.js';
+import { logger } from '../logger/index.js';
 
 export interface IngestMessage {
   tenantId: string;

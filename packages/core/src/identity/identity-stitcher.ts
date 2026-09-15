@@ -3,9 +3,16 @@
  * Handles cross-channel identity linking for LINE UID, FB PSID, Email, and Phone.
  */
 
-import { prisma } from '@open333crm/database';
 import { logger } from '../logger/index.js';
-import type { ChannelType } from '@prisma/client';
+import type { ChannelType, Prisma, PrismaClient } from '@prisma/client';
+
+/**
+ * 由呼叫端注入的 Prisma 執行器。
+ *
+ * 刻意不在此模組持有套件層級的 prisma 單例：該單例未綁定租戶，在 Postgres RLS 下
+ * 會讀不到資料或被政策擋下（同 CM-171／CM-172 病因）。呼叫端一律傳入已綁租戶的連線。
+ */
+export type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -22,6 +29,7 @@ import type { ChannelType } from '@prisma/client';
  * @returns Contact ID if stitched, null if no match found
  */
 export async function stitchByLiffCookie(
+  db: PrismaExecutor,
   tenantId: string,
   channelType: ChannelType,
   uid: string,
@@ -29,7 +37,7 @@ export async function stitchByLiffCookie(
 ): Promise<string | null> {
   if (!cookieEmail) return null;
 
-  const contact = await prisma.contact.findFirst({
+  const contact = await db.contact.findFirst({
     where: { tenantId, email: cookieEmail },
   });
 
@@ -38,7 +46,7 @@ export async function stitchByLiffCookie(
     return null;
   }
 
-  await upsertIdentityMap(tenantId, contact.id, channelType, uid, 'LIFF_COOKIE');
+  await upsertIdentityMap(db, tenantId, contact.id, channelType, uid, 'LIFF_COOKIE');
 
   logger.info(`[IdentityStitcher] Stitched ${channelType} uid=${uid} to contact=${contact.id} via LIFF cookie`);
   return contact.id;
@@ -58,6 +66,7 @@ export async function stitchByLiffCookie(
  * @returns Contact ID if merged, null if no match found
  */
 export async function stitchByPhone(
+  db: PrismaExecutor,
   tenantId: string,
   channelType: ChannelType,
   uid: string,
@@ -67,7 +76,7 @@ export async function stitchByPhone(
   const normalizedPhone = normalizePhone(phone);
   if (!normalizedPhone) return null;
 
-  const contact = await prisma.contact.findFirst({
+  const contact = await db.contact.findFirst({
     where: { tenantId, phone: normalizedPhone },
   });
 
@@ -77,7 +86,7 @@ export async function stitchByPhone(
   }
 
   const source = isOtpVerified ? 'OTP_VERIFIED' : 'PHONE_MATCH';
-  await upsertIdentityMap(tenantId, contact.id, channelType, uid, source);
+  await upsertIdentityMap(db, tenantId, contact.id, channelType, uid, source);
 
   logger.info(
     `[IdentityStitcher] Stitched ${channelType} uid=${uid} to contact=${contact.id} via ${source}`,
@@ -90,11 +99,12 @@ export async function stitchByPhone(
  * Used at webhook entry to resolve an anonymous UID to a known contact.
  */
 export async function resolveUidToContact(
+  db: PrismaExecutor,
   tenantId: string,
   channelType: ChannelType,
   uid: string,
 ): Promise<string | null> {
-  const identityMap = await prisma.identityMap.findUnique({
+  const identityMap = await db.identityMap.findUnique({
     where: {
       tenantId_channelType_uid: { tenantId, channelType, uid },
     },
@@ -108,9 +118,9 @@ export async function resolveUidToContact(
  *
  * Run as a background job (e.g. daily cron) or after a new stitchByPhone event.
  */
-export async function detectPhoneDuplicates(tenantId: string): Promise<number> {
+export async function detectPhoneDuplicates(db: PrismaExecutor, tenantId: string): Promise<number> {
   // Find all contacts with the same phone in this tenant (not null)
-  const contacts = await prisma.contact.findMany({
+  const contacts = await db.contact.findMany({
     where: { tenantId, phone: { not: null } },
     select: { id: true, phone: true },
   });
@@ -128,7 +138,7 @@ export async function detectPhoneDuplicates(tenantId: string): Promise<number> {
     if (ids.length < 2) continue;
     // Create suggestion for first pair (primary = oldest/lower id, secondary = newer)
     const [primary, secondary] = ids;
-    const existing = await prisma.mergeSuggestion.findFirst({
+    const existing = await db.mergeSuggestion.findFirst({
       where: {
         tenantId,
         primaryContactId: primary,
@@ -137,7 +147,7 @@ export async function detectPhoneDuplicates(tenantId: string): Promise<number> {
       },
     });
     if (!existing) {
-      await prisma.mergeSuggestion.create({
+      await db.mergeSuggestion.create({
         data: {
           tenantId,
           primaryContactId: primary,
@@ -158,13 +168,14 @@ export async function detectPhoneDuplicates(tenantId: string): Promise<number> {
 // ── Internal helpers ───────────────────────────────────────────────────────
 
 async function upsertIdentityMap(
+  db: PrismaExecutor,
   tenantId: string,
   contactId: string,
   channelType: ChannelType,
   uid: string,
   source: 'LIFF_COOKIE' | 'PHONE_MATCH' | 'EMAIL_MATCH' | 'MANUAL' | 'OTP_VERIFIED',
 ): Promise<void> {
-  await prisma.identityMap.upsert({
+  await db.identityMap.upsert({
     where: {
       tenantId_channelType_uid: { tenantId, channelType, uid },
     },

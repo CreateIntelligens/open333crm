@@ -1,4 +1,4 @@
-import { IngestMessage } from '../inbox/inbox-service';
+import { IngestMessage } from '../inbox/inbox-service.js';
 
 export interface ChannelAdapter {
   /**

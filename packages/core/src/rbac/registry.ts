@@ -10,8 +10,8 @@
  * ARCH-PLATFORM-LAYER §0.1（feature 對應驗證）。
  */
 
-import { PERMISSIONS, PERMISSION_BY_CODE, type PermissionDef } from './permissions';
-import { FEATURE_SLUGS, FEATURES } from './features';
+import { PERMISSIONS, PERMISSION_BY_CODE, type PermissionDef } from './permissions.js';
+import { FEATURE_SLUGS, FEATURES } from './features.js';
 
 /** feature slug → 該 feature 涵蓋的權限碼陣列 */
 export function buildFeaturePerms(): Map<string, string[]> {

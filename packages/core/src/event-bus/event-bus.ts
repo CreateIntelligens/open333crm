@@ -1,5 +1,5 @@
-import { redis } from '../redis/client';
-import { logger } from '../logger';
+import { redis } from '../redis/client.js';
+import { logger } from '../logger/index.js';
 
 export interface BaseEvent {
   tenantId: string;
@@ -24,7 +24,7 @@ export class EventBus {
   static subscribe(callback: (event: BaseEvent) => void) {
     const sub = redis.duplicate();
     sub.subscribe(this.CHANNEL);
-    sub.on('message', (channel, message) => {
+    sub.on('message', (channel: string, message: string) => {
       if (channel === this.CHANNEL) {
         try {
           const event = JSON.parse(message) as BaseEvent;

@@ -7,7 +7,7 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { SYSTEM_ROLE_SLUGS, SYSTEM_ROLE_NAMES, DEFAULT_ROLE_PERMISSIONS } from './default-roles';
+import { SYSTEM_ROLE_SLUGS, SYSTEM_ROLE_NAMES, DEFAULT_ROLE_PERMISSIONS } from './default-roles.js';
 
 // 收 TransactionClient（介面相容 PrismaClient），讓開通流程能與其他寫入同 transaction。
 export async function seedRolesForTenant(

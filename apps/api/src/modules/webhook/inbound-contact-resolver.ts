@@ -15,6 +15,7 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
     contactId = channelIdentity.contactId;
   } else {
     const stitchedContactId = await resolveUidToContact(
+      ctx.prisma,
       ctx.tenantId,
       ctx.channel.channelType as never,
       ctx.contactUid,

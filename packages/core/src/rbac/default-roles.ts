@@ -9,7 +9,7 @@
  * - 遷移：agent.role enum → roleId 對映（ADMIN→admin, SUPERVISOR→supervisor, AGENT→agent）
  */
 
-import { PERMISSIONS } from './permissions';
+import { PERMISSIONS } from './permissions.js';
 
 /** 三個 system role 的 slug（固定、不可改） */
 export const SYSTEM_ROLE_SLUGS = ['admin', 'supervisor', 'agent'] as const;
