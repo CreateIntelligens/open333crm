@@ -13,6 +13,7 @@
  *   2. 既有身分命中 → isFirstContact 不為 true，不發布事件
  *   3. 併發撞 P2002 → isFirstContact 不為 true（對方才是首次）
  *   4. stitched 聯絡人首次在此渠道出現 → 視為首次
+ *   5. 推送失敗後平台重試 → 不重複發送招呼語
  */
 
 import assert from 'node:assert/strict';
@@ -179,7 +180,97 @@ async function run() {
     cap.stop();
   }
 
-  console.log('✔ inbound-first-contact-resolver：4 組情境全部通過（CM-176）');
+  // ── 5. 推送失敗後平台重試 → 不重複發送招呼語 ──────────────────────────
+  //
+  // deliverToChannel 內部自帶 try/catch 會吞掉推送錯誤，因此訊息記錄可能已入庫
+  // 而實際未送達。此時平台（LINE/Meta）重投同一則 webhook，必須不能再發一次。
+  // 保障來自 identity 已於首輪建立 → 重試走既有身分快路徑 → isFirstContact 為 false。
+  {
+    const sentTexts: string[] = [];
+    const fakeDeliver = (async (_p: unknown, _c: string, t: string) => {
+      sentTexts.push(t);
+    }) as never;
+
+    let identityRow: AnyRecord | null = null;
+    const db: AnyRecord = {
+      channelIdentity: {
+        async findUnique() {
+          return identityRow;
+        },
+        async create({ data }: AnyRecord) {
+          identityRow = { ...data, contact: { displayName: '小明' } };
+          return identityRow;
+        },
+      },
+      identityMap: {
+        async findUnique() {
+          return null;
+        },
+      },
+      contact: {
+        async findFirst() {
+          return null;
+        },
+        async create({ data }: AnyRecord) {
+          return { ...data, id: 'contact-retry' };
+        },
+        async update({ data }: AnyRecord) {
+          return data;
+        },
+      },
+      channel: {
+        async findFirst() {
+          return { settings: { firstContactGreeting: '歡迎！' } };
+        },
+      },
+      message: {
+        async create({ data }: AnyRecord) {
+          return { ...data, id: 'msg-retry', createdAt: new Date() };
+        },
+      },
+      conversation: {
+        async update({ data }: AnyRecord) {
+          return data;
+        },
+      },
+    };
+
+    const mkCtx = () =>
+      ({
+        prisma: db,
+        io: { to: () => ({ emit: () => {} }) },
+        tenantId: 'tenant-1',
+        contactUid: 'U-retry-0001',
+        channel: { id: 'channel-1', channelType: 'LINE' },
+        plugin: undefined,
+        now: new Date('2026-09-15T10:00:00Z'),
+        conversation: { id: 'conv-retry' },
+      }) as AnyRecord;
+
+    const { sendFirstContactGreeting } = await import(
+      '../modules/webhook/inbound-side-effects.js'
+    );
+
+    // 首輪：建立 identity 並送出招呼語（模擬送出後推送實際失敗）
+    const first = mkCtx();
+    await resolveInboundContact(first as never);
+    assert.equal(first.isFirstContact, true, '首輪應標記為首次');
+    await sendFirstContactGreeting(first as never, fakeDeliver);
+    assert.equal(sentTexts.length, 1, '首輪應送出一次招呼語');
+
+    // 平台重投同一則 webhook
+    const retry = mkCtx();
+    await resolveInboundContact(retry as never);
+    assert.notEqual(
+      retry.isFirstContact,
+      true,
+      '重試時 ChannelIdentity 已存在，走既有身分快路徑，不得標記為首次',
+    );
+    await sendFirstContactGreeting(retry as never, fakeDeliver);
+    assert.equal(sentTexts.length, 1, '平台重試不得重複送出招呼語');
+  }
+
+  console.log('✔ inbound-first-contact-resolver：5 組情境全部通過（CM-176）');
 }
 
 run()
