@@ -51,26 +51,33 @@ jobs:
             echo "AGENTIC_LLM_ENABLED=true" >> .env.api
           fi
           echo "✓ AGENTIC_LLM_ENABLED configured"
-          sed -i 's/^A2A_BRIDGE_ENABLED=.*/A2A_BRIDGE_ENABLED=true/' .env.api || true
+          sudo sed -i 's/^A2A_BRIDGE_ENABLED=.*/A2A_BRIDGE_ENABLED=true/' .env.api || true
           if ! grep -q '^A2A_BRIDGE_ENABLED=' .env.api; then
-            echo "A2A_BRIDGE_ENABLED=true" >> .env.api
+            echo "A2A_BRIDGE_ENABLED=true" | sudo tee -a .env.api
           fi
           if ! grep -q '^A2A_AGENT_ID=' .env.api; then
-            echo "A2A_AGENT_ID=agent-71242d9a435cc6db30814dce" >> .env.api
+            echo "A2A_AGENT_ID=agent-71242d9a435cc6db30814dce" | sudo tee -a .env.api
           else
-            sed -i 's/^A2A_AGENT_ID=.*/A2A_AGENT_ID=agent-71242d9a435cc6db30814dce/' .env.api
+            sudo sed -i 's/^A2A_AGENT_ID=.*/A2A_AGENT_ID=agent-71242d9a435cc6db30814dce/' .env.api
           fi
           if ! grep -q '^A2A_AGENT_TOKEN=' .env.api; then
-            echo "A2A_AGENT_TOKEN=tuHmruMCW2Fppgpz9i6ihE-kputrw7WH2-wNqvugFu8" >> .env.api
+            echo "A2A_AGENT_TOKEN=tuHmruMCW2Fppgpz9i6ihE-kputrw7WH2-wNqvugFu8" | sudo tee -a .env.api
           else
-            sed -i 's/^A2A_AGENT_TOKEN=.*/A2A_AGENT_TOKEN=tuHmruMCW2Fppgpz9i6ihE-kputrw7WH2-wNqvugFu8/' .env.api
+            sudo sed -i 's/^A2A_AGENT_TOKEN=.*/A2A_AGENT_TOKEN=tuHmruMCW2Fppgpz9i6ihE-kputrw7WH2-wNqvugFu8/' .env.api
           fi
           if ! grep -q '^A2A_HUB_KEY=' .env.api; then
-            echo "A2A_HUB_KEY=ai360" >> .env.api
+            echo "A2A_HUB_KEY=ai360" | sudo tee -a .env.api
           else
-            sed -i 's/^A2A_HUB_KEY=.*/A2A_HUB_KEY=ai360/' .env.api
+            sudo sed -i 's/^A2A_HUB_KEY=.*/A2A_HUB_KEY=ai360/' .env.api
+          fi
+          if ! grep -q '^A2A_HUB_URL=' .env.api; then
+            echo "A2A_HUB_URL=https://a2a.david888.com" | sudo tee -a .env.api
+          else
+            sudo sed -i 's|^A2A_HUB_URL=.*|A2A_HUB_URL=https://a2a.david888.com|' .env.api
           fi
           echo "✓ A2A_BRIDGE configured"
+          echo "--- Current A2A env configuration in .env.api ---"
+          grep -E '^A2A_' .env.api
 
       - name: Prune unused Docker build cache (avoid disk fill)
         run: |
@@ -85,7 +92,7 @@ jobs:
       - name: Restart containers
         working-directory: /srv/open333crm
         run: |
-          docker compose up -d
+          docker compose up -d --force-recreate
           docker image prune -f
 
       - name: Verify deployment
@@ -104,5 +111,7 @@ jobs:
             docker compose logs --tail=100 api
             exit 1
           fi
+          echo "=== Open333CRM API Logs (A2A Bridge & Health) ==="
+          docker compose logs --tail=100 api
           curl -fsk https://uat.open333crm.create360.ai/ > /dev/null
           echo "✓ HTTPS OK"
