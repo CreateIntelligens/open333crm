@@ -39,24 +39,56 @@ const STRICT = process.argv.includes('--strict');
 
 const WORKSPACE_DIRS = ['packages', 'apps'];
 
-/** 蒐集某套件 src/index.ts 中以「轉出式 re-export」匯出的符號名。 */
-function collectRiskySymbols(pkgDir) {
-  const index = join(pkgDir, 'src', 'index.ts');
-  if (!existsSync(index)) return new Set();
-  let src;
-  try {
-    src = readFileSync(index, 'utf8');
-  } catch {
-    return new Set();
+/**
+ * 從 package.json 的 exports 推導出所有進入點對應的 src 檔案。
+ * 套件可能有多個子路徑入口（例如 channel-plugins 有 6 個），只掃 index.ts 會漏。
+ */
+function entrySourceFiles(pkgDir, pkgJson) {
+  const files = new Set();
+  const addFromDist = (distPath) => {
+    if (typeof distPath !== 'string') return;
+    // ./dist/line/index.js → src/line/index.ts；./dist/telegram.js → src/telegram.ts
+    const rel = distPath.replace(/^\.\//, '').replace(/^dist\//, '').replace(/\.js$/, '.ts');
+    files.add(join(pkgDir, 'src', rel));
+  };
+
+  const exp = pkgJson.exports;
+  if (exp && typeof exp === 'object') {
+    for (const value of Object.values(exp)) {
+      if (typeof value === 'string') addFromDist(value);
+      else if (value && typeof value === 'object') {
+        addFromDist(value.import ?? value.default ?? value.require);
+      }
+    }
   }
+  if (typeof pkgJson.main === 'string') addFromDist(pkgJson.main);
+  // 後備：至少掃 src/index.ts
+  files.add(join(pkgDir, 'src', 'index.ts'));
+
+  return [...files].filter((f) => existsSync(f));
+}
+
+/** 蒐集某套件所有進入點中以「轉出式 re-export」匯出的符號名。 */
+function collectRiskySymbols(pkgDir, pkgJson) {
   const symbols = new Set();
-  // export { a, b as c } from './x.js'  ← 這種在 CJS require 下會遺失
-  const re = /export\s*\{([^}]+)\}\s*from\s*['"][^'"]+['"]/g;
-  let m;
-  while ((m = re.exec(src))) {
-    for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/).pop()?.trim();
-      if (name) symbols.add(name);
+  for (const entry of entrySourceFiles(pkgDir, pkgJson)) {
+    let src;
+    try {
+      src = readFileSync(entry, 'utf8');
+    } catch {
+      continue;
+    }
+    // export { a, b as c } from './x.js'  ← 這種在 CJS require 下會遺失
+    // 刻意不匹配 export * from（實測可正常取得）與 export type（不影響執行期）
+    const re = /export\s*\{([^}]+)\}\s*from\s*['"][^'"]+['"]/g;
+    let m;
+    while ((m = re.exec(src))) {
+      for (const part of m[1].split(',')) {
+        const cleaned = part.trim().replace(/^type\s+/, '');
+        if (!cleaned) continue;
+        const name = cleaned.split(/\s+as\s+/).pop()?.trim();
+        if (name) symbols.add(name);
+      }
     }
   }
   return symbols;
@@ -83,6 +115,7 @@ function listPackages() {
         dir: pkgDir,
         name: json.name,
         isEsm: json.type === 'module',
+        json,
       });
     }
   }
@@ -114,7 +147,7 @@ const esmPackages = packages.filter((p) => p.isEsm && p.name);
 // 建立「ESM 套件名 → 其轉出式 re-export 符號集合」
 const riskyExports = new Map();
 for (const pkg of esmPackages) {
-  const symbols = collectRiskySymbols(pkg.dir);
+  const symbols = collectRiskySymbols(pkg.dir, pkg.json);
   if (symbols.size > 0) riskyExports.set(pkg.name, symbols);
 }
 
