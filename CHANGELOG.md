@@ -18,6 +18,9 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **新客第一則訊息全部靜默掉失（CM-175，P0）** — `packages/core` 缺少 `"type": "module"` 被編成 CJS，而 `@open333crm/database` 是純 ESM。在 Node 24（UAT 執行環境）下，CJS `require()` 純 ESM 套件時，`export * from` 的符號可正常取得，但 `export { prisma } from './client.js'` 這類「轉出式 re-export」的符號會遺失，使 `identity-stitcher` 取到的 `prisma` 為 `undefined`，於 `resolveUidToContact` 存取 `.identityMap` 時拋 TypeError。影響面是「尚未建立 IdentityMap 的渠道 UID」——即每位新客的第一則訊息：webhook 進站、驗簽通過、訊息解析成功，但聯絡人建不出來、訊息不落地、收件匣完全看不到，且因 webhook 仍回 200 而無任何外部徵兆。已綁定身分的聯絡人走快路徑不受影響，因此表面上系統看似正常。修法：`packages/core` 補上 `"type": "module"`（產物轉為 ESM，並補齊相對匯入副檔名）；`identity-stitcher` 改為由呼叫端注入 Prisma executor，不再依賴套件層級的全域 `prisma` 單例——此舉同時消除未綁租戶連線在 Postgres RLS 下的隱患（同 CM-171／CM-172 病因）。
+- **解除 Agentic LLM 預設關閉與舊版知識庫底層死鎖** — 
+  - `AGENTIC_LLM_ENABLED` 於 `env.ts` 與 `.env.api.example` 改為預設啟用（`true`），並在 UAT `deploy.yml` 自動將伺服器配置校正為 `true`，使收件匣對話正常進入 Agent 工具調用迴圈（可使用 `ocr_image`、`parse_document`、`search_web` 等感知工具）。
+  - 修訂 `llm.service.ts` 中的預設提示詞 `CRM_REPLY_SYSTEM_PROMPT`，移除死板硬編碼的「家電產品限定」與「未查獲即強迫回覆轉接專人」話術，恢復為通用的親切客服助理。
 
 ## [2026-09-08]
 

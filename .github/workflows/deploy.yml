@@ -46,6 +46,11 @@ jobs:
             exit 1
           fi
           echo "✓ MCP_ALLOWED_ORIGINS configured"
+          sed -i 's/^AGENTIC_LLM_ENABLED=false/AGENTIC_LLM_ENABLED=true/' .env.api || true
+          if ! grep -q '^AGENTIC_LLM_ENABLED=' .env.api; then
+            echo "AGENTIC_LLM_ENABLED=true" >> .env.api
+          fi
+          echo "✓ AGENTIC_LLM_ENABLED configured"
 
       - name: Prune unused Docker build cache (avoid disk fill)
         run: |
