@@ -43,13 +43,31 @@ const WORKSPACE_DIRS = ['packages', 'apps'];
  * 從 package.json 的 exports 推導出所有進入點對應的 src 檔案。
  * 套件可能有多個子路徑入口（例如 channel-plugins 有 6 個），只掃 index.ts 會漏。
  */
-function entrySourceFiles(pkgDir, pkgJson) {
+function entrySourceFiles(pkgDir, pkgJson, unresolved) {
   const files = new Set();
   const addFromDist = (distPath) => {
     if (typeof distPath !== 'string') return;
     // ./dist/line/index.js → src/line/index.ts；./dist/telegram.js → src/telegram.ts
-    const rel = distPath.replace(/^\.\//, '').replace(/^dist\//, '').replace(/\.js$/, '.ts');
-    files.add(join(pkgDir, 'src', rel));
+    // 允許 dist/ 前綴有無 "./"，副檔名涵蓋 .js/.mjs/.cjs（TS 以 NodeNext 編譯時可能產出這些）
+    const rel = distPath
+      .replace(/^\.\//, '')
+      .replace(/^dist\//, '')
+      .replace(/\.(js|mjs|cjs)$/, '.ts');
+    const abs = join(pkgDir, 'src', rel);
+    if (existsSync(abs)) {
+      files.add(abs);
+      return;
+    }
+    // 對應不到來源檔時，試 .tsx 再退而求其次找同名目錄的 index.ts
+    for (const candidate of [abs.replace(/\.ts$/, '.tsx'), join(abs.replace(/\.ts$/, ''), 'index.ts')]) {
+      if (existsSync(candidate)) {
+        files.add(candidate);
+        return;
+      }
+    }
+    // 仍推導不出來 → 記錄下來讓使用者知道這個入口沒被掃到，
+    // 而不是靜默跳過（靜默跳過正是 CM-175 那種「守門看似通過其實沒檢查」的模式）
+    unresolved.push(`${relative(ROOT, pkgDir)} → ${distPath}`);
   };
 
   const exp = pkgJson.exports;
@@ -65,13 +83,13 @@ function entrySourceFiles(pkgDir, pkgJson) {
   // 後備：至少掃 src/index.ts
   files.add(join(pkgDir, 'src', 'index.ts'));
 
-  return [...files].filter((f) => existsSync(f));
+  return [...files];
 }
 
 /** 蒐集某套件所有進入點中以「轉出式 re-export」匯出的符號名。 */
-function collectRiskySymbols(pkgDir, pkgJson) {
+function collectRiskySymbols(pkgDir, pkgJson, unresolved) {
   const symbols = new Set();
-  for (const entry of entrySourceFiles(pkgDir, pkgJson)) {
+  for (const entry of entrySourceFiles(pkgDir, pkgJson, unresolved)) {
     let src;
     try {
       src = readFileSync(entry, 'utf8');
@@ -146,8 +164,9 @@ const esmPackages = packages.filter((p) => p.isEsm && p.name);
 
 // 建立「ESM 套件名 → 其轉出式 re-export 符號集合」
 const riskyExports = new Map();
+const unresolvedEntries = [];
 for (const pkg of esmPackages) {
-  const symbols = collectRiskySymbols(pkg.dir, pkg.json);
+  const symbols = collectRiskySymbols(pkg.dir, pkg.json, unresolvedEntries);
   if (symbols.size > 0) riskyExports.set(pkg.name, symbols);
 }
 
@@ -184,6 +203,14 @@ for (const pkg of packages) {
       }
     }
   }
+}
+
+// 入口推導不出來源檔時要出聲：守門「看似通過」卻其實沒掃到那個入口，
+// 正是 CM-175 那種靜默失效的模式。
+if (unresolvedEntries.length > 0) {
+  console.warn(`⚠️  有 ${unresolvedEntries.length} 個 exports 入口對應不到 src 來源檔，未納入掃描：`);
+  for (const u of unresolvedEntries) console.warn('  ' + u);
+  console.warn('  （若該入口確實無對應來源檔可忽略；若有，請調整 entrySourceFiles 的路徑推導）\n');
 }
 
 if (violations.length === 0) {
