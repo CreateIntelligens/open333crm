@@ -2,25 +2,23 @@
 
 See `proposal.md` for motivation and scope. The current project has a bounded
 Agent runner under `apps/api/src/modules/ai/agent`, existing tenant-aware
-database helpers, BullMQ/Redis infrastructure, and a separate worker process.
-It has no A2A client, stream supervisor, Agent credential store, or A2A tenant
-binding.
+database helpers, BullMQ/Redis infrastructure, and an existing Open333 CLI.
+It has no CRM adapter for the official 888a2a-lite bridge.
 
-The hosted service exposes a standard A2A HTTP+JSON interface from its Agent
-Card, while registration is a separate Hub bootstrap operation. Its live
-system card currently reports standard A2A enabled but also reports a pending
-CI gate. The bridge therefore needs a strict standard capability preflight and
-must fail closed when the advertised standard interface is not usable.
+The official `a2a_bridge.py` / `a2a bridge` already owns Hub registration,
+`/hub/v1/agents/{id}/inbox/stream`, durable local enqueue, Instant ACK,
+reconnect, anti-echo handling, and standard A2A task update correlation. The
+CRM integration must therefore expose a local prompt/backend contract and must
+not duplicate the bridge's transport implementation.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Make Open333CRM a standard A2A HTTP+JSON participant.
-- Keep a logically always-on connection through a supervised long-lived stream
-  with automatic reconnect and task reconciliation.
-- Preserve at-least-once delivery without duplicate LLM execution or duplicate
-  task results.
+- Make Open333CRM callable as the LLM backend of the official A2A bridge.
+- Keep the logically always-on Hub connection owned by the official bridge.
+- Preserve at-least-once delivery without duplicate Agent execution or
+  duplicate standard A2A task results.
 - Reuse the existing bounded Agent execution and audit rules.
 - Keep tenant mapping explicit and enforce the existing two-layer tenant
   isolation model.
@@ -29,7 +27,7 @@ must fail closed when the advertised standard interface is not usable.
 
 - Serving, compiling, deploying, or operating an A2A Hub.
 - Copying, serving, or periodically synchronizing `llms.txt`.
-- Using legacy `/hub/v1` inbox/task routes for standard data-plane traffic.
+- Reimplementing the bridge's `/hub/v1` inbox/SSE transport in this repo.
 - Treating A2A as a new public CRM channel in the first implementation.
 - Allowing peer messages to grant shell execution, admin access, or new tools.
 - Supporting non-text A2A parts until the Gateway contract and local handling
@@ -37,35 +35,29 @@ must fail closed when the advertised standard interface is not usable.
 
 ## Decisions
 
-### D1. Standard Gateway data plane with Hub registration bootstrap
+### D1. Official bridge owns the A2A transport
 
-Use the Agent Card's advertised standard HTTP+JSON interface for discovery,
-message sending, streaming, and task observation. Use the Hub registration
-endpoint only to create or rotate the Agent identity. The Hub key is injected
-at runtime as `A2A_HUB_KEY` from `.env` in local development or a deployment
-secret manager in production. It is never used as a normal request token.
+The official bridge remains the only Hub transport process. It uses the Hub key
+for registration, then uses its issued Agent credentials for the persistent
+inbox SSE, ACK, reconnect, and standard task result correlation. Open333CRM
+does not implement or expose a competing Hub SSE client.
 
-**Alternative considered:** use the legacy `/hub/v1` inbox and task endpoints
-because they document SSE and ACK in more detail. Rejected because this change
-explicitly requires the standard A2A protocol; any missing standard behavior
-must be resolved with the Gateway contract rather than silently switching
-protocols.
+**Alternative considered:** implement a second HTTP/SSE client inside
+Open333CRM. Rejected because it duplicates durable receipt and reconnect logic,
+and can create competing connection owners.
 
-### D2. Dedicated long-running bridge process
+### D2. Local backend adapter contract
 
-Run the persistent stream supervisor in a dedicated bridge runtime, with a
-reusable client package for HTTP+JSON and SSE/task subscription behavior. The
-Fastify request lifecycle is not suitable for a connection that must survive
-individual requests, and the existing API event bus is process-local.
+Open333CRM exposes a local, authenticated execution adapter for the bridge. The
+first adapter is an `open333 a2a:execute` CLI command that reads one bounded
+prompt from stdin or an explicit argument, invokes the existing authenticated
+Agent API, and writes only the final text result to stdout. The bridge's
+CommandBackend supplies peer context and anti-echo instructions; Open333CRM
+treats that input as untrusted user content.
 
-The bridge owns connection state, queue handoff, reconnect backoff, task
-reconciliation, and result retry. It communicates with Open333CRM through a
-private authenticated application boundary or a shared service module whose
-database access is explicitly tenant-scoped.
-
-**Alternative considered:** put the stream in `apps/api`. Rejected because API
-replicas would create competing listeners and because a request process restart
-would couple A2A availability to HTTP traffic.
+The CLI uses an existing Open333 CLI session, so tenant identity and RBAC are
+resolved by the API rather than by a Hub-provided tenant field. No A2A key or
+Agent Token is passed to the CRM adapter.
 
 ### D3. Durable queue before Agent execution
 
@@ -79,7 +71,7 @@ implementation may reuse the repository's Redis/BullMQ deployment, but it must
 not use the cross-tenant admin client as a substitute for tenant-scoped Agent
 execution.
 
-### D4. Logical permanent connection, not an unbreakable socket
+### D4. Logical permanent connection is delegated to the official bridge
 
 “永久連線” means a continuously supervised connection lifecycle:
 
@@ -91,9 +83,10 @@ DISCONNECTED → DISCOVERING → CONNECTING → STREAMING
                                   └──── backoff ← RECONCILING
 ```
 
-The bridge uses bounded exponential backoff with jitter, keepalive detection,
-controlled cancellation, and standard task get/list/subscribe reconciliation.
-No implementation may busy-loop or assume one TCP connection lasts forever.
+The official bridge uses bounded reconnect behavior, keepalive detection,
+controlled cancellation, durable local work, Instant ACK, and standard A2A
+task correlation. Open333CRM treats each local backend invocation as a bounded,
+retryable request and does not assume one TCP connection lasts forever.
 
 ### D5. One explicit tenant binding per bridge identity
 
@@ -102,13 +95,90 @@ must reject startup when the mapping is absent or ambiguous. Multi-tenant
 operation requires a later design for one identity per tenant or a trusted
 platform dispatcher; a shared `X-Hub-Key` circle is not a tenant boundary.
 
-### D6. A2A tasks are Agent runs, not CRM channel messages
+### D6. A2A tasks are bridge prompts and Agent runs, not CRM channel messages
 
-An inbound A2A text task invokes the existing Agent runtime with a tenant
-context and produces an A2A result. It does not create a synthetic contact,
-conversation, or channel in the initial implementation. If CRM history or
-customer-channel delivery is required later, it needs a separate channel and
-conversation design with its own idempotency and authorization rules.
+The bridge converts an inbound A2A task into a prompt for the Open333CRM CLI
+adapter. The adapter invokes the existing Agent runtime under the authenticated
+CLI session tenant and returns only generated text/failure. The bridge converts
+that result into the correlated standard A2A outcome. The initial integration
+does not create a synthetic contact, conversation, or channel.
+
+### D7. Replace feature tabs with a route-first tree menu
+
+The dashboard's primary navigation will be a permission-aware tree. The tree
+will expose modules and feature destinations as links, and the URL will be the
+source of truth for the selected destination. The tree will expand the active
+ancestor path and support a responsive mobile drawer.
+
+The initial route inventory is:
+
+```text
+收件匣
+工單
+聯繫人
+自動化
+知識庫
+├─ 文章管理
+├─ 語義搜尋
+├─ 回報調教
+└─ AI 設定
+   ├─ Embedding
+   └─ Chat & Prompt
+行銷
+├─ 行銷活動
+├─ 廣播
+├─ 受眾分群
+└─ 素材庫
+渠道
+└─ LINE
+   ├─ Rich Menu
+   ├─ 關鍵字回覆
+   └─ 快速回覆
+粉絲活動
+短連結
+報表
+├─ 總覽
+└─ 我的績效
+方案／帳務
+設定
+├─ 組織與一般設定
+├─ 渠道管理
+├─ 人員與角色權限
+├─ 標籤與 SLA
+├─ 營業時間與追蹤
+├─ API／CLI／Passkey
+└─ 整合
+   └─ A2A
+```
+
+The inventory also covers detail routes for cases, contacts, campaigns,
+materials, automation rules, Rich Menus, notifications, and any current route
+not shown in the primary tree. Detail routes inherit the selected parent; they
+do not become an unbounded list of tree items.
+
+Module-level tabs such as Knowledge Base's five tabs, Marketing's four tabs,
+LINE's module tabs, and Settings' local tab state become route destinations.
+Tabs used only for filtering or comparing data, such as Inbox status and
+Analytics views, remain local where they preserve one coherent task context.
+
+**Alternative considered:** keep the current module pages and add more tab
+labels or a second tab row. Rejected because it increases hidden depth and
+does not create stable deep links or a complete information architecture.
+
+### D8. A2A UI is status-oriented and secret-free
+
+The A2A settings destination is an operational status view. Runtime secrets
+remain deployment configuration. The browser may show masked identity,
+connection state, tenant binding, last handshake, reconnect count, and safe
+error details, but never the Hub key or Agent Token.
+
+### D9. UI inventory is a required pre-implementation artifact
+
+Before changing routes or components, implementation must produce a checked
+route matrix covering current paths, canonical paths, tree parent, permission,
+legacy redirect, mobile behavior, and whether the existing Tabs control is
+removed or retained as a data filter. This prevents partial migration where a
+feature remains available only through an undocumented path.
 
 ## Risks / Trade-offs
 
@@ -135,11 +205,10 @@ conversation design with its own idempotency and authorization rules.
 
 ## Resolved Pre-Implementation Decisions
 
-- The standard Gateway's exact task-subscription event schema and task-result
-  submission shape SHALL be pinned from the live Agent Card and its referenced
-  standard source contract before implementation. The implementation MUST NOT
-  infer those fields from the legacy `/hub/v1` API. This is an explicit first
-  implementation task and a prerequisite for enabling the bridge.
+- The official bridge's local backend invocation contract and standard A2A
+  capability flags SHALL be pinned from its source contract before adapter
+  implementation. Open333CRM SHALL consume the bridge-local prompt contract
+  and SHALL not duplicate Hub transport parsing.
 - Registration SHALL be a controlled one-shot bootstrap operation. It may use
   `A2A_HUB_KEY` to create or rotate the Agent identity, then the operator SHALL
   place the returned `A2A_AGENT_ID` and `A2A_AGENT_TOKEN` in the deployment

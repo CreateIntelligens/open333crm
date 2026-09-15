@@ -6,7 +6,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Plus, Search, Copy, Trash2, MoreHorizontal, Edit, X, FolderCog } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
-import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,7 +86,6 @@ export default function MaterialsListPage() {
   return (
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="行銷" />
-      <MarketingTabs active="materials" />
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">
           <header className="flex items-start justify-between">

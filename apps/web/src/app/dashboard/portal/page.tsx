@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Plus, Play, Square, Loader2, Users } from 'lucide-react';
 import { useActivities } from '@/hooks/usePortal';
 import { ActivityFormDialog } from '@/components/portal/ActivityFormDialog';
@@ -10,7 +11,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
 
 interface ActivityItem {
@@ -170,18 +171,14 @@ function ActivityList() {
 }
 
 export default function PortalPage() {
-  const [tab, setTab] = useState('activities');
+  const section = usePathname().split('/').at(-1);
+  const tab = section === 'submissions' || section === 'points' ? section : 'activities';
 
   return (
     <div className="flex flex-1 flex-col">
       <Topbar title="粉絲活動" />
       <div className="flex-1 overflow-auto p-6">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="activities">活動管理</TabsTrigger>
-            <TabsTrigger value="submissions">提交紀錄</TabsTrigger>
-            <TabsTrigger value="points">積分管理</TabsTrigger>
-          </TabsList>
+        <Tabs value={tab} onValueChange={() => undefined}>
 
           <TabsContent value="activities" className="mt-4">
             <ActivityList />

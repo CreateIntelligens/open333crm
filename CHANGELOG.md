@@ -6,6 +6,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **888a2a-lite A2A Bridge 整合與 dashboard Tree Navigation** — 新增 `open333 a2a:execute` CLI backend，供官方 `a2a bridge` 透過既有 CLI session 將 A2A prompt 交給 Open333CRM Agent；Hub key 僅由 bridge 以 runtime secret (`A2A_HUB_KEY`) 用於 registration/rotation，不進入 CRM adapter、瀏覽器或 repo。CLI 實作 Single-Flight 請求合併與短暫記憶體防重（Idempotency），避免重連時 duplicate delivery 重複觸發 LLM；加入 `SIGINT`/`SIGTERM` 優雅中斷處理（Graceful Shutdown），確保進程終止時非零退出由 bridge 保留任務重試。Dashboard 導覽升級為權限感知的階層式 tree，修正父子節點雙重選中樣式，並使 Knowledge Base、Marketing、LINE、Portal、Shortlinks、Settings 各子模組皆可直達 canonical routes（如 `/dashboard/settings/a2a`、`/dashboard/knowledge/chat-prompt`）。新增 A2A 狀態 API/UI，嚴格遮罩 Agent ID 且完全不暴露金鑰。提供 bridge 獨立守護進程（Systemd 與 Docker Compose）運行手冊。
+
 - **首次進站招呼語（CM-176）** — 粉絲首次加入或第一次來訊時自動送出一則歡迎訊息，三渠道統一（LINE 的 `follow` 加好友事件亦觸發，不必等對方先開口）。招呼語為**真實訊息**：寫入對話紀錄、推播至後台收件匣、並經既有發送管線推送至該渠道（有別於 WEBCHAT 既有的 `welcomeMessage`，後者僅是前端顯示用的 greeting，兩者並存互不影響）。支援 `{{contact.name}}` / `{{contact.phone}}` / `{{contact.email}}` 變數，解析失敗時退回原字串不擋發送。設定存於 `channel.settings.firstContactGreeting`（**無 schema 變更**），留空即關閉，功能預設關閉。「只送一次」的保證來自 `ChannelIdentity` 的 `@@unique([channelId, uid])`——只有成功建立身分的請求會被標記為首次，併發或平台重複投遞的另一方撞 P2002 而不觸發；**刻意不用記憶體快取**，因本專案多實例部署會導致每個實例各送一次。整段 try/catch 隔離，招呼語失敗不影響 inbound 訊息落地（CM-175 教訓）。設定入口在渠道的「機器人設定」彈窗。
 - **`contact.created` 事件補上發布點（CM-176）** — 該事件在 `packages/automation` 早有完整的型別、fact-builder 與 listener 支援，但 `apps/api` 從未發布過，自動化規則因此永遠等不到這個觸發點。現於首次建立渠道身分時發布，並在 `automation.worker` 接上訂閱轉為 `automation:evaluate` job。
 - **ESM interop 守門（`scripts/check-workspace-esm.mjs`）** — 掃描 CJS 套件是否匯入了 ESM 套件的「轉出式 re-export」符號。此類退化編譯期完全不報錯（副檔名補齊後拿掉 `"type": "module"` 仍可編譯成功，產物只是默默退回 CJS），typecheck 也攔不到，故需獨立守門。`--strict` 供 CI 使用。

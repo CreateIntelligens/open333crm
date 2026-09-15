@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Plus, Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
 import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
@@ -38,7 +39,19 @@ export default function KnowledgePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<any>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [pageTab, setPageTab] = useState<'articles' | 'search' | 'feedback' | 'embedding' | 'chat'>('articles');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const section = pathname.split('/').at(-1);
+  const legacyTab = searchParams.get('tab');
+  const pageTab = section === 'search' || legacyTab === 'search'
+    ? 'search'
+    : section === 'feedback' || legacyTab === 'feedback'
+      ? 'feedback'
+      : section === 'embedding' || legacyTab === 'embedding'
+        ? 'embedding'
+        : section === 'chat-prompt' || legacyTab === 'chat'
+          ? 'chat'
+          : 'articles';
 
   // KB 回報（調教）
   const { feedback, isLoading: feedbackLoading, mutate: mutateFeedback } = useKbFeedbackList({ status: 'open' });
@@ -178,25 +191,11 @@ export default function KnowledgePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="知識庫" />
+      <Topbar title={pageTab === 'chat' ? 'Chat & Prompt' : pageTab === 'embedding' ? 'Embedding 設定' : pageTab === 'search' ? '語義搜尋' : pageTab === 'feedback' ? '回報調教' : '文章管理'} />
 
       {/* Top-level page tabs: articles vs semantic search */}
-      <div className="border-b px-6 pt-2">
-        <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as 'articles' | 'search' | 'feedback' | 'embedding' | 'chat')}>
-          <TabsList>
-            <TabsTrigger value="articles">文章管理</TabsTrigger>
-            <TabsTrigger value="search">語義搜尋</TabsTrigger>
-            <TabsTrigger value="feedback">
-              回報調教
-              {feedback.length > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
-                  {feedback.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="embedding">Embedding 設定</TabsTrigger>
-            <TabsTrigger value="chat">Chat & Prompt</TabsTrigger>
-          </TabsList>
+      <div className="flex-1 overflow-hidden px-6">
+        <Tabs value={pageTab} onValueChange={() => undefined}>
 
           {/* ── Articles Tab ──────────────────────────────────── */}
           {/*

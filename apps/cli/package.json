@@ -20,7 +20,8 @@
     "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
     "dev": "tsx src/index.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "pack:dry-run": "npm pack --dry-run"
+    "pack:dry-run": "npm pack --dry-run",
+    "test:a2a": "tsx src/__tests__/a2a-execute.test.ts"
   },
   "keywords": [
     "open333",

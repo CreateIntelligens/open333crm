@@ -11,7 +11,6 @@ import React, { useState } from 'react';
 import { Plus, Edit, Trash2, Info } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
-import { LineModuleTabs } from '@/components/line/LineModuleTabs';
 import { PresetEditDialog } from '@/components/line/quick-reply/PresetEditDialog';
 import { LinePreview } from '@/components/line/quick-reply/LinePreview';
 import {
@@ -60,8 +59,6 @@ export default function QuickReplyPresetsPage() {
   return (
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
-      <LineModuleTabs active="quick-replies" />
-
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">
           <header className="flex items-start justify-between">

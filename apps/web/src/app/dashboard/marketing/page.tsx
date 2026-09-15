@@ -9,7 +9,7 @@ import {
   XCircle,
   Eye,
 } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useChannels } from '@/hooks/useChannels';
 import { useCampaigns, useSegments, useBroadcasts } from '@/hooks/useMarketing';
 import { useMaterials, type Material } from '@/hooks/useMaterials';
@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import {
   Dialog,
   DialogContent,
@@ -800,28 +799,19 @@ function SegmentTab() {
 const VALID_TABS = ['campaigns', 'broadcasts', 'segments'];
 
 export default function MarketingPage() {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const routeSection = pathname.split('/').at(-1);
   const initialTab = (() => {
+    if (routeSection && VALID_TABS.includes(routeSection)) return routeSection;
     const t = searchParams?.get('tab');
     return t && VALID_TABS.includes(t) ? t : 'campaigns';
   })();
-  const [activeTab, setActiveTab] = useState(initialTab);
-
-  // 接 MarketingTabs 切換事件（materials 跳頁、其他切內部 state）
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const v = (e as CustomEvent<string>).detail;
-      if (VALID_TABS.includes(v)) setActiveTab(v);
-    };
-    window.addEventListener('marketing-tab-change', handler);
-    return () => window.removeEventListener('marketing-tab-change', handler);
-  }, []);
+  const activeTab = initialTab;
 
   return (
     <div className="flex h-full flex-col">
       <Topbar title="行銷" />
-      <MarketingTabs active={activeTab} />
-
       <div className="flex-1 overflow-auto">
         {activeTab === 'campaigns' && <CampaignTab />}
         {activeTab === 'broadcasts' && <BroadcastTab />}

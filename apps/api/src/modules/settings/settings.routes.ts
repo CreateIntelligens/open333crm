@@ -38,6 +38,8 @@ import {
 import { getTenantGeminiKeyStatus, setTenantGeminiKey, resolveGeminiKey } from "../ai/ai-key.service.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
 import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
+import { getConfig } from "../../config/env.js";
+import { buildA2AStatus } from "./a2a-status.service.js";
 
 const dayScheduleSchema = z
   .object({
@@ -69,6 +71,11 @@ const officeHoursSchema = z.object({
 export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
   fastify.addHook("preHandler", requirePermission("settings.manage"));
+
+  // GET /api/v1/settings/a2a — safe bridge status only; credentials never leave deployment secrets.
+  fastify.get("/a2a", async (_request, reply) => {
+    return reply.send(success(buildA2AStatus(getConfig())));
+  });
 
   // GET /api/v1/settings/office-hours
   fastify.get("/office-hours", async (request, reply) => {

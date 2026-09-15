@@ -11,7 +11,6 @@ import React, { useState } from 'react';
 import { Plus, Edit, Trash2, Power, PowerOff, Info } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
-import { LineModuleTabs } from '@/components/line/LineModuleTabs';
 import { KeywordReplyEditDialog } from '@/components/line/keyword-reply/KeywordReplyEditDialog';
 import { useMaterials } from '@/hooks/useMaterials';
 import {
@@ -67,8 +66,6 @@ export default function KeywordRepliesPage() {
   return (
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
-      <LineModuleTabs active="keyword-replies" />
-
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">
           <header className="flex items-start justify-between">

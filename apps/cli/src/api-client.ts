@@ -30,28 +30,37 @@ export class ApiClient {
     return this.requestRaw('/health');
   }
 
-  async get<T>(path: string): Promise<T> {
-    return this.requestJson<T>('GET', path);
+  async get<T>(path: string, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.requestJson<T>('GET', path, undefined, options);
   }
 
-  async post<T>(path: string, body?: unknown): Promise<T> {
-    return this.requestJson<T>('POST', path, body);
+  async post<T>(path: string, body?: unknown, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.requestJson<T>('POST', path, body, options);
   }
 
-  private async requestRaw(path: string): Promise<unknown> {
-    const response = await this.fetch(path, { method: 'GET' });
+  private async requestRaw(path: string, options?: { signal?: AbortSignal }): Promise<unknown> {
+    const response = await this.fetch(path, { method: 'GET' }, options);
     if (!response.ok) {
       throw new CliError(`Server health check failed (${response.status})`, 'HEALTH_FAILED', response.status);
     }
     return response.json().catch(() => ({}));
   }
 
-  private async requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await this.fetch(path, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+  private async requestJson<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    options?: { signal?: AbortSignal },
+  ): Promise<T> {
+    const response = await this.fetch(
+      path,
+      {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+      options,
+    );
     const payload = (await response.json().catch(() => ({}))) as Open333Response<T>;
 
     if (!response.ok || payload.success === false) {
@@ -65,9 +74,17 @@ export class ApiClient {
     return payload.data;
   }
 
-  private async fetch(path: string, init: RequestInit): Promise<Response> {
+  private async fetch(path: string, init: RequestInit, options?: { signal?: AbortSignal }): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const onExternalAbort = () => controller.abort();
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+    }
     try {
       const headers = new Headers(init.headers);
       if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
@@ -77,12 +94,18 @@ export class ApiClient {
         signal: controller.signal,
       });
     } catch (err) {
+      if (options?.signal?.aborted) {
+        throw new CliError('Request aborted by signal', 'REQUEST_ABORTED', 130);
+      }
       if (err instanceof Error && err.name === 'AbortError') {
         throw new CliError(`Request timed out after ${this.timeoutMs}ms`, 'REQUEST_TIMEOUT');
       }
       throw new CliError(`Cannot reach Open333 host ${this.host}`, 'HOST_UNREACHABLE');
     } finally {
       clearTimeout(timer);
+      if (options?.signal) {
+        options.signal.removeEventListener('abort', onExternalAbort);
+      }
     }
   }
 }

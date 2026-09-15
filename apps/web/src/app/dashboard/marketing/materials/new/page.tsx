@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
-import { MarketingTabs } from '@/components/marketing/MarketingTabs';
 import { Button } from '@/components/ui/button';
 import { TemplatePickerGrid } from '@/components/materials/TemplatePickerGrid';
 import { MaterialEditor, type MaterialDraft } from '@/components/materials/MaterialEditor';
@@ -110,7 +109,6 @@ export default function NewMaterialPage() {
         </div>
       )}
       <Topbar title="行銷" />
-      <MarketingTabs active="materials" />
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">
           <Button

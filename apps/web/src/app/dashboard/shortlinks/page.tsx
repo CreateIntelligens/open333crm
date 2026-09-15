@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Plus, Copy, QrCode, BarChart3, Loader2, ExternalLink } from 'lucide-react';
 import { useShortLinks } from '@/hooks/useShortLinks';
 import { LinkFormDialog } from '@/components/shortlink/LinkFormDialog';
@@ -9,7 +10,7 @@ import { QrCodeDialog } from '@/components/shortlink/QrCodeDialog';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
 
 function LinkList() {
@@ -170,17 +171,14 @@ function LinkList() {
 }
 
 export default function ShortLinksPage() {
-  const [tab, setTab] = useState('links');
+  const section = usePathname().split('/').at(-1);
+  const tab = section === 'stats' ? 'stats' : 'links';
 
   return (
     <div className="flex flex-1 flex-col">
       <Topbar title="短連結" />
       <div className="flex-1 overflow-auto p-6">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="links">連結管理</TabsTrigger>
-            <TabsTrigger value="stats">統計分析</TabsTrigger>
-          </TabsList>
+        <Tabs value={tab} onValueChange={() => undefined}>
 
           <TabsContent value="links" className="mt-4">
             <LinkList />

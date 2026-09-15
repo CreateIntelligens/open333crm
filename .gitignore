@@ -8,6 +8,7 @@ dist/
 .env.workers
 .env.web
 .env.prod
+.env.a2a
 *.log
 logs/
 .turbo/

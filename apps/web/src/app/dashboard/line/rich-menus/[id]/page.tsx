@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Send, Undo2 } from 'lucide-react';
 import { Topbar } from '@/components/layout/Topbar';
-import { LineModuleTabs } from '@/components/line/LineModuleTabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RichMenuEditor, type RichMenuDraft } from '@/components/line/rich-menu/RichMenuEditor';
@@ -109,7 +108,6 @@ export default function EditRichMenuPage() {
   return (
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
-      <LineModuleTabs active="rich-menus" />
 
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">

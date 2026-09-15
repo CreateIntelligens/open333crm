@@ -15,7 +15,6 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { OaSwitcher } from '@/components/line/OaSwitcher';
-import { LineModuleTabs } from '@/components/line/LineModuleTabs';
 import { RichMenuBindDialog } from '@/components/line/rich-menu/RichMenuBindDialog';
 import {
   useRichMenus,
@@ -109,8 +108,6 @@ export default function RichMenusPage() {
       <div className="border-b bg-white px-6 py-3">
         <OaSwitcher value={channelId} onChange={handleOaChange} />
       </div>
-
-      <LineModuleTabs active="rich-menus" />
 
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">
