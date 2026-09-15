@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define multi-modal document ingestion, automated vectorization, and partner document mutation commands for open333CRM knowledge management.
+
+## Requirements
 
 ### Requirement: Multi-modal Ingestion via Markitdown
 The system SHALL support converting PDF, Docx, and Audio files to Markdown using the Markitdown library (or equivalent utility) to ensure a standardized text format for the RAG pipeline.

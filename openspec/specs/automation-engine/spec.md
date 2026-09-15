@@ -1,4 +1,8 @@
-## Automation Engine Requirements
+## Purpose
+
+Define automation rule triggers, conditions evaluation, action execution, and SLA contracts for open333CRM.
+
+## Requirements
 
 ### Requirement: Event Trigger
 The system SHALL trigger automation rules when an event occurs, such as `message.received`.
@@ -161,3 +165,112 @@ SLA status names, SLA-only event names, condition metadata, priority bump semant
 #### Scenario: Package metadata changes
 - **WHEN** a new SLA event or condition fact is added to the package-defined contract
 - **THEN** frontend authoring, API validation, and worker evaluation can consume the new definition without maintaining three independent lists
+
+### Requirement: Unified Contact Tagging Emits contact.tagged
+
+All contact-tagging write paths — manual tagging, short-link click auto-tag, and automation `add_tag` — SHALL result in a `contact.tagged` event being emitted, so that automation rules triggered by tagging fire consistently regardless of which path added the tag. Tagging SHALL remain idempotent (adding an existing tag SHALL NOT duplicate). The `contact.tagged` event SHALL carry a `source` field ('agent' | 'system' | 'automation') indicating which path added it.
+
+#### Scenario: Short-link click auto-tag emits event
+
+- **WHEN** a contact clicks a short link with `tagOnClick` set
+- **THEN** the tag is added (idempotently) and a `contact.tagged` event with source 'system' is emitted
+
+#### Scenario: Automation add_tag emits event
+
+- **WHEN** an automation `add_tag` action tags a contact
+- **THEN** a `contact.tagged` event with source 'automation' is emitted (bridged from the worker process to the API event bus)
+
+#### Scenario: Manual tagging still emits event
+
+- **WHEN** an agent manually tags a contact
+- **THEN** a `contact.tagged` event with source 'agent' is emitted (existing behaviour preserved)
+
+### Requirement: Tagging Write Path Is Shared Where Possible
+
+Within the API process, contact-tagging SHALL go through a single shared function (`addTagToTarget`) rather than duplicated find-then-create logic. The shared function SHALL accept a tag source ('agent' | 'system' | 'automation'), defaulting to 'agent' so existing callers are unaffected; agent id SHALL be optional (non-agent sources have no agent).
+
+#### Scenario: Click path uses the shared tagging function
+
+- **WHEN** the short-link click path adds a tag
+- **THEN** it calls the shared `addTagToTarget` with source 'system', not its own create logic
+
+#### Scenario: Existing manual callers unaffected
+
+- **WHEN** an existing manual-tagging caller invokes `addTagToTarget` without specifying source
+- **THEN** the source defaults to 'agent' and behaviour is unchanged
+
+### Requirement: Tagging Loop Protection
+
+The system SHALL prevent infinite tagging loops. A `contact.tagged` event whose source is 'automation' SHALL NOT itself trigger further automation `add_tag` actions (self-triggering is broken). Human ('agent') and click ('system') tagging MAY trigger automation.
+
+#### Scenario: Automation-sourced tag does not re-trigger tagging
+
+- **WHEN** an automation rule adds a tag, emitting `contact.tagged` with source 'automation'
+- **THEN** that event does not trigger another add_tag, preventing an infinite loop
+
+#### Scenario: Human/click tag can trigger automation
+
+- **WHEN** a tag is added by an agent or by a short-link click
+- **THEN** the resulting `contact.tagged` may trigger automation rules
+
+### Requirement: Short Link Click Trigger Event
+
+The automation engine SHALL recognize `link.clicked` as a valid trigger event, emitted when a short link is clicked. The event SHALL be selectable as a rule trigger in the automation UI and pass contract validation. The event SHALL provide `tenant` and `contact` scopes; when the click cannot be resolved to a contact (anonymous click), contact-scoped actions SHALL be skipped without failing the rule.
+
+#### Scenario: link.clicked is a valid trigger
+
+- **WHEN** an automation rule is composed with trigger `link.clicked`
+- **THEN** contract validation accepts it (does not reject as unknown event)
+- **AND** the automation UI lists "短連結被點擊" as a selectable trigger
+
+#### Scenario: Rule fires on short link click
+
+- **WHEN** a contact clicks a short link that resolves to a known contact
+- **THEN** the `link.clicked` event fires and any matching automation rule executes
+
+#### Scenario: Anonymous click does not break the rule
+
+- **WHEN** a short link click cannot be resolved to a contact
+- **THEN** the rule's contact-scoped actions are skipped and the rule does not error
+
+### Requirement: Short Link Click Facts
+
+The `link.clicked` event SHALL provide facts including `shortLinkId`, `slug`, and (when available) `contactId`, so rule conditions can target which specific short link was clicked.
+
+#### Scenario: Condition on specific short link
+
+- **WHEN** a rule condition is "slug equals a specific value"
+- **THEN** the rule only executes for clicks on that short link, not others
+
+### Requirement: Add Tag Worker Action
+
+The worker-side automation action executor SHALL support an `add_tag` action that adds a tag to the triggering contact. The action SHALL be idempotent (adding an already-present tag SHALL NOT create a duplicate). When no contact is available in context, the action SHALL be skipped with a log entry and SHALL NOT error. The tag write SHALL go through the tenant-bound connection (SHALL NOT bypass RLS).
+
+#### Scenario: Add tag to contact on rule execution
+
+- **WHEN** a rule with an `add_tag` action executes for a contact
+- **THEN** the specified tag is added to that contact
+
+#### Scenario: Adding an existing tag is idempotent
+
+- **WHEN** an `add_tag` action targets a contact that already has the tag
+- **THEN** no duplicate tag association is created
+
+#### Scenario: Missing contact skips gracefully
+
+- **WHEN** an `add_tag` action executes with no contact in context
+- **THEN** the action is skipped with a log entry and the rule does not fail
+
+### Requirement: End-to-End Click-to-Tag Rule Path
+
+The system SHALL support the full path: a short link click emits `link.clicked` → a matching automation rule runs → an `add_tag` action tags the clicking contact. This path SHALL coexist with the existing direct `tagOnClick` field on short links; both may apply to the same click, and idempotent tagging SHALL prevent duplicates.
+
+#### Scenario: Click-to-tag via automation rule
+
+- **WHEN** a contact clicks a short link and a rule with trigger `link.clicked` + action `add_tag` exists
+- **THEN** the contact receives the tag via the rule path
+
+#### Scenario: Direct path and rule path coexist
+
+- **WHEN** a short link has both `tagOnClick` set and a matching `link.clicked` rule
+- **THEN** both paths run and the contact ends with the tag(s) without duplicates

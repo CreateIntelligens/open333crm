@@ -8,15 +8,16 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **首次進站招呼語（CM-176）** — 粉絲首次加入或第一次來訊時自動送出一則歡迎訊息，三渠道統一（LINE 的 `follow` 加好友事件亦觸發，不必等對方先開口）。招呼語為**真實訊息**：寫入對話紀錄、推播至後台收件匣、並經既有發送管線推送至該渠道（有別於 WEBCHAT 既有的 `welcomeMessage`，後者僅是前端顯示用的 greeting，兩者並存互不影響）。支援 `{{contact.name}}` / `{{contact.phone}}` / `{{contact.email}}` 變數，解析失敗時退回原字串不擋發送。設定存於 `channel.settings.firstContactGreeting`（**無 schema 變更**），留空即關閉，功能預設關閉。「只送一次」的保證來自 `ChannelIdentity` 的 `@@unique([channelId, uid])`——只有成功建立身分的請求會被標記為首次，併發或平台重複投遞的另一方撞 P2002 而不觸發；**刻意不用記憶體快取**，因本專案多實例部署會導致每個實例各送一次。整段 try/catch 隔離，招呼語失敗不影響 inbound 訊息落地（CM-175 教訓）。設定入口在渠道的「機器人設定」彈窗。
 - **`contact.created` 事件補上發布點（CM-176）** — 該事件在 `packages/automation` 早有完整的型別、fact-builder 與 listener 支援，但 `apps/api` 從未發布過，自動化規則因此永遠等不到這個觸發點。現於首次建立渠道身分時發布，並在 `automation.worker` 接上訂閱轉為 `automation:evaluate` job。
+- **ESM interop 守門（`scripts/check-workspace-esm.mjs`）** — 掃描 CJS 套件是否匯入了 ESM 套件的「轉出式 re-export」符號。此類退化編譯期完全不報錯（副檔名補齊後拿掉 `"type": "module"` 仍可編譯成功，產物只是默默退回 CJS），typecheck 也攔不到，故需獨立守門。`--strict` 供 CI 使用。
+- **inbound 聯絡人解析防迴歸測試（`apps/api` `test:inbound-contact`）** — 五組情境：注入式 executor 生效、未綁定 UID 回 null 不拋錯、新 UID 首次進站建檔、既有身分歸戶不重複建檔、跨租戶相同 UID 互不污染。
+- **LLM 2md 感知能力與防驚群容錯架構（integrate-2md-grounding-capabilities）** —
+  - **防驚群與節點健康追蹤（Anti-Thundering-Herd & Circuit Breaker）**：在 `web-client.ts` 引入 `SingleFlightManager`，並發請求相同網址、搜尋詞或文檔/圖片 hash 時合併為單一 Promise 執行；加入 `BoundedMemoryCache` 提供短暫 TTL 快取；實作節點健康狀態機（Circuit Breaker），當節點連續失敗達到閥值自動進入冷卻狀態（OPEN）並以隨機抖動（Jitter）容錯切換至備援節點，避免瀑布式崩潰。
+  - **多模態感知工具（Agent Multimodal Tools）**：在 `tool-registry.ts` 新增 `ocr_image`（呼叫 2md PP-OCRv4 引擎辨識截圖、收據與發票）與 `parse_document`（呼叫 2md AnyDoc 引擎將 PDF/DOCX/XLSX/CSV 解析為 Markdown），皆具備嚴格的 SSRF 防護、大小限制（10MB/20MB）與輸出字元上限。
+  - **知識庫文檔解析現代化（KM Ingestion AnyDoc Modernization）**：重構 `packages/brain` 的 `MarkitdownService`，優先以 2md AnyDoc HTTP API 進行多節點文檔轉換，移除容器化環境對本地 Python `.venv` 的硬性依賴。
 
 ### Fixed
 
 - **新客第一則訊息全部靜默掉失（CM-175，P0）** — `packages/core` 缺少 `"type": "module"` 被編成 CJS，而 `@open333crm/database` 是純 ESM。在 Node 24（UAT 執行環境）下，CJS `require()` 純 ESM 套件時，`export * from` 的符號可正常取得，但 `export { prisma } from './client.js'` 這類「轉出式 re-export」的符號會遺失，使 `identity-stitcher` 取到的 `prisma` 為 `undefined`，於 `resolveUidToContact` 存取 `.identityMap` 時拋 TypeError。影響面是「尚未建立 IdentityMap 的渠道 UID」——即每位新客的第一則訊息：webhook 進站、驗簽通過、訊息解析成功，但聯絡人建不出來、訊息不落地、收件匣完全看不到，且因 webhook 仍回 200 而無任何外部徵兆。已綁定身分的聯絡人走快路徑不受影響，因此表面上系統看似正常。修法：`packages/core` 補上 `"type": "module"`（產物轉為 ESM，並補齊相對匯入副檔名）；`identity-stitcher` 改為由呼叫端注入 Prisma executor，不再依賴套件層級的全域 `prisma` 單例——此舉同時消除未綁租戶連線在 Postgres RLS 下的隱患（同 CM-171／CM-172 病因）。
-
-### Added
-
-- **ESM interop 守門（`scripts/check-workspace-esm.mjs`）** — 掃描 CJS 套件是否匯入了 ESM 套件的「轉出式 re-export」符號。此類退化編譯期完全不報錯（副檔名補齊後拿掉 `"type": "module"` 仍可編譯成功，產物只是默默退回 CJS），typecheck 也攔不到，故需獨立守門。`--strict` 供 CI 使用。
-- **inbound 聯絡人解析防迴歸測試（`apps/api` `test:inbound-contact`）** — 五組情境：注入式 executor 生效、未綁定 UID 回 null 不拋錯、新 UID 首次進站建檔、既有身分歸戶不重複建檔、跨租戶相同 UID 互不污染。
 
 ## [2026-09-08]
 

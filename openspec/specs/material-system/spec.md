@@ -181,3 +181,189 @@ The system SHALL NOT expose legacy preset structure-tree editors for `line_flex_
 - **WHEN** a user opens the Material creation flow
 - **THEN** legacy preset content types such as `line_flex_restaurant` and `line_flex_apparel` are not offered
 - **AND** `line_flex_template` remains available for imported Flex JSON
+
+### Requirement: Nested Material Categories
+
+The system SHALL provide tenant-scoped, hierarchical material categories via a `MaterialCategory` entity supporting a single parent (`parentId`, nullable) so categories form a tree. Materials reference a category via `categoryId` (nullable). Categories and materials SHALL be freely re-assignable (movable) between categories. Moving a category under one of its own descendants SHALL be rejected to prevent cycles.
+
+#### Scenario: Create a child category
+
+- **WHEN** a user with `marketing.manage` creates a category "雙11檔期" with parent "行銷活動"
+- **THEN** the category is created tenant-scoped with `parentId` set to the parent category
+- **AND** it appears nested under its parent in the category tree
+
+#### Scenario: Move a material to another category
+
+- **WHEN** a user changes a material's `categoryId` to a different category
+- **THEN** the material is re-assigned and appears under the new category in the list
+
+#### Scenario: Reject moving a category into its own descendant
+
+- **WHEN** a user attempts to set a category's `parentId` to one of its own descendant categories
+- **THEN** the system rejects the move with a validation error and the tree is unchanged
+
+#### Scenario: Deleting a category does not delete its materials
+
+- **WHEN** a category containing materials is deleted
+- **THEN** the category is removed and each affected material's `categoryId` is set to null (materials are retained, not deleted)
+
+#### Scenario: Category is tenant-isolated
+
+- **WHEN** tenant A queries the category tree
+- **THEN** only tenant A's categories are returned and tenant B's categories are never visible
+
+### Requirement: Material Tags
+
+The system SHALL support multiple free-form tags per material stored as `Material.tags` (string array). The set of available tenant tags SHALL be derived by aggregating distinct tags across that tenant's materials (no separate tag table). Tags are tenant-scoped and orthogonal to categories.
+
+#### Scenario: Tag a material
+
+- **WHEN** a user with `marketing.manage` adds tags ["促銷", "會員"] to a material
+- **THEN** the material stores both tags and they become selectable filters for that tenant
+
+#### Scenario: Aggregate tenant tag list
+
+- **WHEN** the tag list endpoint is queried
+- **THEN** it returns the distinct union of tags across the tenant's materials
+
+### Requirement: Material List Filtering and Sorting
+
+The list endpoint SHALL support composite filtering by `categoryId`, `tags` (match materials having any of the given tags), `channelType`, `status`, and a name/description keyword, combinable in a single query. It SHALL support a `sort` selection among: most-recently-used (`lastUsedAt`), most-used (`usageCount`), recently-updated (`updatedAt`), and name.
+
+#### Scenario: Filter by category and tag together
+
+- **WHEN** a user filters by category "行銷活動" and tag "促銷"
+- **THEN** only materials in that category (or its subtree, per implementation) that carry the tag are returned
+
+#### Scenario: Sort by most-recently-used
+
+- **WHEN** a user selects the "最近使用" sort
+- **THEN** materials are ordered by `lastUsedAt` descending, with never-used materials ordered last
+
+### Requirement: Material Last-Used Display
+
+The material list SHALL surface each material's existing `lastUsedAt` value. Materials never used SHALL display an explicit "—" (not a fabricated timestamp).
+
+#### Scenario: Show last-used time
+
+- **WHEN** a material was last sent 2 hours ago
+- **THEN** the list row shows a relative "2 小時前" (or equivalent) for that material
+
+#### Scenario: Never-used material
+
+- **WHEN** a material has null `lastUsedAt`
+- **THEN** the list row shows "—" in the last-used column
+
+### Requirement: Material Version History
+
+The system SHALL retain a version snapshot each time a material is created or updated, via a `MaterialVersion` entity storing a monotonically increasing `versionNo`, a snapshot of `name` and `body`, the editing agent, and a timestamp. Users SHALL be able to view the version history and restore a prior version. Restoring SHALL write the selected version's `name`/`body` back onto the material AND create a new version entry (restore is itself an edit; linear history is preserved).
+
+#### Scenario: Snapshot on update
+
+- **WHEN** a user updates a material's body
+- **THEN** a new `MaterialVersion` is written with the next `versionNo` capturing the submitted `name`/`body`
+
+#### Scenario: View version history
+
+- **WHEN** a user opens a material's version history
+- **THEN** all versions are listed newest-first with `versionNo`, editor, and timestamp
+
+#### Scenario: Restore a prior version
+
+- **WHEN** a user restores version 2 of a material currently at version 5
+- **THEN** the material's `name`/`body` are set to version 2's snapshot
+- **AND** a new version 6 is created recording the restore
+
+#### Scenario: Version history is tenant-isolated
+
+- **WHEN** tenant A queries a material's versions
+- **THEN** only versions belonging to tenant A's material are returned
+
+### Requirement: Material-Level Performance Attribution
+
+The system SHALL attribute usage and, where available, interaction outcomes to individual materials. Usage count and last-used time SHALL be surfaced per material. Interaction outcomes (e.g. reply count, cases opened) SHALL be derived by attributing broadcast recipient outcomes back to the source material. Where an interaction metric has no attributable data (e.g. no shortlink for click-through), the system SHALL display "暫無資料" rather than a fabricated zero.
+
+#### Scenario: Show usage in list
+
+- **WHEN** the material list renders
+- **THEN** each row shows the material's usage count with a bar normalized against the tenant's maximum usage
+
+#### Scenario: Attribute replies to a material
+
+- **WHEN** a broadcast built from material M receives replies
+- **THEN** material M's stats reflect the attributed reply count
+
+#### Scenario: No attributable click data
+
+- **WHEN** a material has no shortlink-based click attribution
+- **THEN** the click-through metric displays "暫無資料", not 0
+
+### Requirement: Material Display Status
+
+The system SHALL provide a `Material.status` field (default `draft`) used for display and manual setting by `marketing.manage` users, with values `draft` and `approved` at minimum. This requirement covers display and manual state only; it does NOT define a submission/approval workflow (reviewer assignment, notifications, approve/reject actions), which is deferred to a separate change.
+
+#### Scenario: Manually mark a material approved
+
+- **WHEN** a user with `marketing.manage` sets a material's status to `approved`
+- **THEN** the material's status is updated and the list shows an "已核准" badge
+
+#### Scenario: Default status on creation
+
+- **WHEN** a material is created without an explicit status
+- **THEN** its status defaults to `draft` and the list shows a "草稿" badge
+
+### Requirement: Material-Level Click Attribution
+
+The system SHALL attribute short-link clicks back to the material that produced them, via a `materialId` reference on short links. `getMaterialStats` SHALL report click count and click-through rate for a material, derived from `ClickLog` records whose short link carries that material's id. When a material has no attributable click data (no material-tagged short links, or zero sends), the click-through rate SHALL be `null` (displayed as "暫無資料"), never a fabricated `0`.
+
+#### Scenario: Clicks attributed to a material
+
+- **WHEN** a broadcast built from material M sends a message whose URL was converted to a material-tagged short link, and a recipient clicks it
+- **THEN** material M's stats reflect the click count
+
+#### Scenario: Click-through rate computed from sends
+
+- **WHEN** material M has 100 sends and 24 attributed clicks
+- **THEN** its click-through rate is reported as 24%
+
+#### Scenario: No attributable clicks returns null
+
+- **WHEN** material M has no material-tagged short links or zero sends
+- **THEN** click-through rate is `null`, shown as "暫無資料", not 0
+
+### Requirement: Send-Time URL-to-Short-Link Conversion
+
+When a broadcast sends a material, the system SHALL convert external action URLs in the material body into short links carrying the material's id, so clicks are attributable. Conversion SHALL be at the material level (one short link per material+URL, shared across recipients), SHALL reuse an existing short link for the same material+target URL rather than creating a new one each broadcast, and SHALL skip URLs that are already this system's short links (no double-wrapping). Materials without external URLs SHALL be unaffected.
+
+#### Scenario: URL converted to material short link on broadcast
+
+- **WHEN** a broadcast sends a material whose button action points to an external URL
+- **THEN** the sent message's URL is a short link tagged with the material's id
+
+#### Scenario: Existing short link reused
+
+- **WHEN** the same material+target URL already has a short link
+- **THEN** the broadcast reuses it rather than creating a duplicate
+
+#### Scenario: Already-short URL not double-wrapped
+
+- **WHEN** a material URL is already this system's short link
+- **THEN** it is sent as-is, not wrapped again
+
+### Requirement: LINE Imagemap Postback Limitation Is Explicit
+
+The system SHALL make explicit (in the imagemap editor UI) that LINE imagemap actions support only uri / message / clipboard action types, not postback. When a postback-type action is configured on an imagemap area, the system currently degrades it to a message action; this degradation SHALL be surfaced to the user rather than applied silently.
+
+#### Scenario: Imagemap editor states postback is unsupported
+
+- **WHEN** a user edits an imagemap area's action
+- **THEN** the editor indicates postback is not available for imagemap (only uri / message / clipboard)
+
+### Requirement: LINE Video End-Card Is Documented Best-Effort
+
+The system SHALL document that LINE native video messages do not include CTA buttons, and that the `line_video` end-card CTA is delivered as a best-effort wrapper (an additional message following the video). This behavior SHALL be preserved; the requirement only clarifies the documented intent so future maintainers do not treat it as a native video capability.
+
+#### Scenario: End-card behavior is documented
+
+- **WHEN** a maintainer reads the line_video send-conversion code
+- **THEN** a comment explains the end-card is a best-effort wrapper, not native LINE video CTA

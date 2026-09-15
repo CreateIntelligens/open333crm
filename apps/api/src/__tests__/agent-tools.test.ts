@@ -5,7 +5,7 @@ import { validateWikiPath } from '../modules/ai/agent/wiki.js';
 import { publishWikiReport } from '../modules/ai/agent/wiki.js';
 
 const names = getAgentToolDefinitions().map((tool) => tool.name);
-assert.deepEqual(names, ['search_web', 'read_web_page', 'get_live_weather', 'publish_wiki_report']);
+assert.deepEqual(names, ['search_web', 'read_web_page', 'ocr_image', 'parse_document', 'get_live_weather', 'publish_wiki_report']);
 await assert.rejects(() => executeAgentTool('read_web_page', { url: 'http://127.0.0.1' }, {
   tenantId: 'tenant', runId: 'run', canPublishWiki: false,
 }), /unsafe URL/);
