@@ -1,5 +1,5 @@
 import { prisma, Prisma } from '@open333crm/database';
-import { logger } from '../logger';
+import { logger } from '../logger/index.js';
 
 export class ContactService {
   static async findOrCreateByIdentity(

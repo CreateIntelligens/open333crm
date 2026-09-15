@@ -140,7 +140,14 @@ await redisPublisher.publish(
 - **Soft-delete**: `isActive: false`, not hard DELETE (agents, channels, etc.)
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
 - **RBAC**: `ADMIN` > `SUPERVISOR` > `AGENT` — guards in `apps/api/src/guards/rbac.guard.ts`
-- **ESM**: all packages have `"type": "module"`
+- **ESM**: all packages have `"type": "module"` — enforced by `node scripts/check-workspace-esm.mjs --strict`.
+  A package missing it compiles to CJS **without any error**, and Node's CJS→ESM interop then drops
+  forwarded re-exports (`export { x } from './y.js'`) — they resolve to `undefined` at runtime.
+  This caused CM-175 (every new contact's first message was silently dropped).
+- **Prisma in shared packages**: never use the module-level `prisma` singleton from
+  `@open333crm/database` inside `packages/*`. It is not tenant-bound (RLS — see CM-171/CM-172) and is
+  the symbol lost by the interop issue above. Shared functions take a Prisma executor from the caller
+  (`identity-stitcher.ts`, `tagging.service.ts`).
 
 ## Environment Gotchas
 

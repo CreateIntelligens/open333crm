@@ -43,6 +43,17 @@ context: |
 
   ## Prisma client
   The shared Prisma client is in packages/database. Import PrismaClient from '@open333crm/database', not '@prisma/client'.
+
+  ## Prisma in shared packages — CRITICAL (CM-175)
+  Inside packages/* (core, channel-plugins, ...), do NOT depend on the module-level `prisma`
+  singleton re-exported by @open333crm/database. Two reasons:
+  1. It is not tenant-bound — under Postgres RLS it reads nothing or gets blocked (CM-171/CM-172).
+  2. If the consuming package is CJS, `export { prisma } from './client.js'` (a forwarded
+     re-export) is dropped by Node's CJS→ESM interop and resolves to `undefined` at runtime —
+     the TypeScript compiler does not catch this.
+  Shared functions that need DB access MUST receive a Prisma executor from the caller
+  (see identity-stitcher.ts / tagging.service.ts). Every workspace package must declare
+  `"type": "module"`; `scripts/check-workspace-esm.mjs --strict` guards this in CI.
   Do not use Prisma-generated enum types (AgentRole etc.) — use string literals instead.
 
   ## Changelog Maintenance — MANDATORY RULE

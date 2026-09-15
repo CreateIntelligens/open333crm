@@ -1,9 +1,9 @@
 import { prisma, CaseStatus, Priority, Prisma } from "@open333crm/database";
 import type { Agent, Case as PrismaCase } from "@open333crm/database";
 import { Queue, Worker } from "bullmq";
-import { redis } from "../redis/client";
-import { logger } from "../logger";
-import { EventBus } from "../event-bus/event-bus";
+import { redis } from "../redis/client.js";
+import { logger } from "../logger/index.js";
+import { EventBus } from "../event-bus/event-bus.js";
 
 export class CaseService {
   private static slaQueue = new Queue("sla-monitoring", {

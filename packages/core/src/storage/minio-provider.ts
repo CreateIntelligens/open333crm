@@ -1,6 +1,6 @@
 import * as Minio from 'minio';
-import { StorageProvider } from './index';
-import { logger } from '../logger';
+import { StorageProvider } from './index.js';
+import { logger } from '../logger/index.js';
 
 export class MinioStorageProvider implements StorageProvider {
   private client: Minio.Client;

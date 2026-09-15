@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { logger } from '../logger';
-import { redis } from '../redis/client';
+import { logger } from '../logger/index.js';
+import { redis } from '../redis/client.js';
 
 export interface LicenseData {
   licenseKey: string;
