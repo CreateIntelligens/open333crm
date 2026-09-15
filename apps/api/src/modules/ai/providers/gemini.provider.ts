@@ -49,10 +49,6 @@ export const GeminiChatProvider: ChatProvider = {
     const apiKey = getApiKey(opts.apiKey);
     const url = `${GEMINI_BASE}/models/${encodeURIComponent(opts.model)}:generateContent`;
 
-    const fullSystemPrompt = opts.kbContext
-      ? `${opts.systemPrompt}\n\n以下是知識庫參考內容。請優先根據此內容回答；若需要外部資訊或處理無法確認的事項，請適當說明或引導專人協助：\n${opts.kbContext}`
-      : opts.systemPrompt;
-
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -89,7 +85,7 @@ export const GeminiChatProvider: ChatProvider = {
           'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: fullSystemPrompt }] },
+          systemInstruction: { parts: [{ text: opts.systemPrompt }] },
           contents,
           generationConfig,
         }),

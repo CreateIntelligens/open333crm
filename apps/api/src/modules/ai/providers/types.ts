@@ -11,10 +11,14 @@ export interface HistoryMessage {
 }
 
 export interface ChatGenerateOptions {
+  /**
+   * 已組裝完成的完整 system prompt。知識庫約束與內容一律由上層
+   * （llm.service 的 buildSystemPrompt）拼好再傳入，provider 不得自行加工——
+   * 否則租戶自訂的 chatSystemPrompt 會被蓋掉，且同一段邏輯會在各 provider 重複。
+   */
   systemPrompt: string;
   /** Latest user turn (will be appended after history). */
   userMessage: string;
-  kbContext?: string;
   /** Prior conversation turns (oldest → newest), excluding the current userMessage. */
   history?: HistoryMessage[];
   model: string;

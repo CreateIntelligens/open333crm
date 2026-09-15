@@ -23,16 +23,12 @@ export const OllamaChatProvider: ChatProvider = {
       'http://localhost:11434';
     const url = `${baseUrl}/api/chat`;
 
-    const fullSystemPrompt = opts.kbContext
-      ? `${opts.systemPrompt}\n\n以下是知識庫參考內容。請優先根據此內容回答；若需要外部資訊或處理無法確認的事項，請適當說明或引導專人協助：\n${opts.kbContext}`
-      : opts.systemPrompt;
-
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
       const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-        { role: 'system', content: fullSystemPrompt },
+        { role: 'system', content: opts.systemPrompt },
         ...(opts.history ?? []).map((m) => ({ role: m.role, content: m.content })),
         { role: 'user', content: opts.userMessage },
       ];
