@@ -137,13 +137,42 @@ export async function recordAiUsage(
  * customized its chatSystemPrompt yet (empty string).
  */
 export const CRM_REPLY_SYSTEM_PROMPT =
-  '你是 Open333CRM 的專業客服助手，使用繁體中文親切且專業地回答客戶問題。\n' +
+  '你是一位專業的客服助手，使用繁體中文親切且專業地回答客戶問題。\n' +
   '請遵守以下原則：\n' +
   '1. 優先參考知識庫內容與對話歷史回答客戶問題。\n' +
   '2. 對於客戶提供的連結、圖片或詢問，盡力提供清晰、客觀且有幫助的資訊；若遇到無法確認的具體細節，可友善引導或說明。\n' +
   '3. 回覆簡潔扼要（約 3-5 句話），避免冗長。\n' +
   '4. 遇到客訴或需要人工核銷處理的問題，可主動建議為客戶轉接專人客服。\n' +
   '5. 結尾可適當加上「還有其他需要幫忙的嗎？」。';
+
+/**
+ * 知識庫約束模板：有 kbContext 時接在 system prompt 之後。
+ * `{{KB_CONTEXT}}` 會被實際知識庫內容取代。
+ *
+ * 這段先前寫死在各 provider 內，導致租戶自訂的 chatSystemPrompt 被無條件
+ * 覆寫、且兩支 provider 各抄一份（CM-178）。現統一由 buildSystemPrompt 組裝；
+ * 之後要開放租戶自訂，只需把常數換成讀 settings.kbGroundingPrompt。
+ */
+export const DEFAULT_KB_GROUNDING_PROMPT =
+  '以下是知識庫參考內容。請優先依據此內容回答；' +
+  '若客戶詢問的具體事實（規格、價格、聯絡方式、地址等）未記載於其中，' +
+  '請據實說明無法確認，並依情境引導後續協助，不可自行推測或編造：\n{{KB_CONTEXT}}';
+
+/**
+ * 把知識庫內容組進 system prompt。provider 只會收到這個函式的輸出。
+ *
+ * @param base 基礎 system prompt（租戶自訂或預設值）
+ * @param kbContext 知識庫內容；空字串代表本次未命中知識庫
+ * @param template 約束模板，需含 `{{KB_CONTEXT}}` 佔位符
+ */
+export function buildSystemPrompt(
+  base: string,
+  kbContext: string,
+  template: string = DEFAULT_KB_GROUNDING_PROMPT,
+): string {
+  if (!kbContext) return base;
+  return `${base}\n\n${template.replace('{{KB_CONTEXT}}', kbContext)}`;
+}
 
 /**
  * Default conversation summarization system prompt.
@@ -158,15 +187,15 @@ export const SUMMARIZE_SYSTEM_PROMPT =
  * The bot should ask a single clarifying question instead of guessing.
  */
 export const CLARIFY_SYSTEM_PROMPT =
-  '你是「Open333」品牌的客服助手。客戶剛剛的訊息資訊不足，無法判斷他真正的問題。' +
+  '你是一位專業的客服助手。客戶剛剛的訊息資訊不足，無法判斷他真正的問題。' +
   '請參考前面的對話脈絡，用繁體中文禮貌地反問**一個**最關鍵的澄清問題以取得更多資訊。\n' +
   '規則：\n' +
-  '1. **反問前必須先檢視整段對話歷史**。客戶已經提供過的資訊（型號、故障狀況、購買管道、購買日期等），' +
+  '1. **反問前必須先檢視整段對話歷史**。客戶已經提供過的資訊，' +
   '絕對不可再次詢問——重複詢問已知資訊會嚴重影響客戶體驗。\n' +
-  '2. 若關鍵資訊其實都已具備，就不要再澄清，改為回覆「我幫您轉接專人為您服務」。\n' +
+  '2. 若關鍵資訊其實都已具備，就不要再澄清，改為說明將協助客戶進一步處理。\n' +
   '3. 只問一個問題，不要連珠炮\n' +
   '4. 問題要具體、可回答（避免「請問需要什麼幫助」這類空泛問句）\n' +
-  '5. 如果是家電問題，且客戶「尚未」提供，才詢問：是哪個產品 / 故障狀況 / 型號\n' +
+  '5. 只詢問客戶「尚未」提供、且對釐清問題最關鍵的那一項資訊\n' +
   '6. 整體控制在 2 句話以內\n' +
   '7. 不要編造或假設客戶的需求';
 
@@ -180,13 +209,12 @@ export const CLARIFY_SYSTEM_PROMPT =
  * 相近型號清單會以 kbContext 的形式傳入（每行一個型號）。
  */
 export const MODEL_GUIDE_SYSTEM_PROMPT =
-  '你是「Open333」品牌的客服助手。客戶提到的產品「型號」在知識庫中查不到，' +
+  '你是一位專業的客服助手。客戶提到的產品「型號」在知識庫中查不到，' +
   '可能是輸入有誤或記錯型號。請用繁體中文引導客戶確認正確型號，規則如下：\n' +
   '1. 先客氣告知：這個型號我這邊查不到資料，想再幫您確認一下。\n' +
-  '2. 若下方提供了「相近型號清單」，請把清單中的型號列出來，詢問客戶實際是哪一台' +
-  '（例如：「我們的 11 人份電鍋有這些型號，您的是哪一台呢？」）。\n' +
-  '3. 提醒客戶：型號通常印在產品本體底部的標籤，或外箱貼紙上，可以對照確認。\n' +
-  '4. 絕對不可自行假設客戶是清單中的某一台、也不可拿相近型號的規格直接回答。\n' +
+  '2. 若下方提供了「相近型號清單」，請把清單中的型號列出來，詢問客戶實際是哪一項。\n' +
+  '3. 提醒客戶：型號通常印在產品本體或外包裝的標籤上，可以對照確認。\n' +
+  '4. 絕對不可自行假設客戶是清單中的某一項、也不可拿相近型號的規格直接回答。\n' +
   '5. 不要編造清單以外的型號。若清單為空，只需請客戶提供／確認正確型號即可。\n' +
   '6. 語氣親切，整體控制在 3-4 句話內。';
 
@@ -252,9 +280,9 @@ export async function generateReply(
   let result;
   try {
     result = await provider.generate({
-      systemPrompt,
+      // 知識庫約束在此組裝完成，provider 只負責傳輸（CM-178）
+      systemPrompt: buildSystemPrompt(systemPrompt, kbContext),
       userMessage,
-      kbContext,
       history: options.history,
       model: settings.model,
       temperature: settings.temperature,

@@ -16,6 +16,7 @@
     "test:downstream": "tsx src/__tests__/downstream-forwarder.test.ts",
     "test:data-export": "tsx src/__tests__/data-export.test.ts",
     "test:erasure": "tsx src/__tests__/data-erasure.test.ts",
+    "test:llm-prompt": "tsx src/__tests__/llm-system-prompt.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
