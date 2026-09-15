@@ -27,9 +27,11 @@ import {
 
   // Successful OCR extraction
   const mockOcrFetch: typeof fetch = async (url, init) => {
+    if (url.toString() === 'https://example.com/receipt.jpg') {
+      return new Response(Buffer.from('fake-image-bytes'), { status: 200 });
+    }
     assert.ok(url.toString().includes('/api/ocr'));
-    const body = JSON.parse(init?.body as string);
-    assert.equal(body.url, 'https://example.com/receipt.jpg');
+    assert.ok(init?.body instanceof FormData);
     return new Response(JSON.stringify({
       data: { content: 'Total: $120.00\nDate: 2026-09-15' },
     }), { status: 200 });
@@ -79,6 +81,9 @@ import {
     canPublishWiki: false,
     fetchImpl: async (url, init) => {
       const urlStr = url.toString();
+      if (urlStr === 'https://example.com/screen.png') {
+        return new Response(Buffer.from('fake-image-bytes'), { status: 200 });
+      }
       if (urlStr.includes('/api/ocr')) {
         return new Response(JSON.stringify({ text: 'OCR extracted text' }), { status: 200 });
       }

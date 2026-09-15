@@ -551,15 +551,16 @@ export async function ocrThrough2md(
   const isUrl = typeof imageInput === 'string' && (imageInput.startsWith('http://') || imageInput.startsWith('https://'));
   let safeUrl = '';
   let bufferHash = '';
+  let imageBuffer: Buffer | null = null;
 
   if (isUrl) {
     safeUrl = assertSafePublicHttpUrl(imageInput as string).toString();
   } else {
-    const buf = typeof imageInput === 'string' ? Buffer.from(imageInput, 'base64') : Buffer.from(imageInput);
-    if (buf.byteLength > MAX_IMAGE_SIZE_BYTES) {
+    imageBuffer = typeof imageInput === 'string' ? Buffer.from(imageInput, 'base64') : Buffer.from(imageInput);
+    if (imageBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
       throw new Error(`Image size exceeds limit of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
     }
-    bufferHash = createHash('sha256').update(buf).digest('hex');
+    bufferHash = createHash('sha256').update(imageBuffer).digest('hex');
   }
 
   const cacheKey = `ocr:${isUrl ? safeUrl : bufferHash}`;
@@ -575,6 +576,16 @@ export async function ocrThrough2md(
       if (cached) return cached;
     }
 
+    if (isUrl && !imageBuffer) {
+      const imgRes = await fetchImpl(safeUrl);
+      if (!imgRes.ok) throw new Error(`Failed to fetch image from URL: ${imgRes.status}`);
+      const arrayBuf = await imgRes.arrayBuffer();
+      if (arrayBuf.byteLength > MAX_IMAGE_SIZE_BYTES) {
+        throw new Error(`Image size exceeds limit of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
+      }
+      imageBuffer = Buffer.from(arrayBuf);
+    }
+
     const health = options.healthTracker ?? globalNodeHealthTracker;
     const baseList = options.baseUrls ?? TWO_MD_BASE_URLS;
     const prioritized = health.getPrioritizedNodes(baseList);
@@ -587,25 +598,15 @@ export async function ocrThrough2md(
       }
       try {
         const ocrUrl = build2mdRequestUrl(base, 'api/ocr');
-        let requestInit: RequestInit;
-
-        if (isUrl) {
-          requestInit = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Preset': 'agent' },
-            body: JSON.stringify({ url: safeUrl }),
-          };
-        } else {
-          const buf = typeof imageInput === 'string' ? Buffer.from(imageInput, 'base64') : Buffer.from(imageInput);
-          const formData = new FormData();
-          const filename = options.filename || 'image.png';
-          formData.append('file', new Blob([buf]), filename);
-          requestInit = {
-            method: 'POST',
-            headers: { Accept: 'application/json', 'X-Preset': 'agent' },
-            body: formData,
-          };
-        }
+        const buf = imageBuffer!;
+        const formData = new FormData();
+        const filename = options.filename || (isUrl ? safeUrl.split('/').pop()?.split('?')[0] || 'image.png' : 'image.png');
+        formData.append('file', new Blob([buf]), filename);
+        const requestInit: RequestInit = {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'X-Preset': 'agent' },
+          body: formData,
+        };
 
         const response = await fetchText(ocrUrl, requestInit, fetchImpl);
         const payload = decodeResponse(response.text);
