@@ -58,10 +58,12 @@ const envSchema = z.object({
   CHATBOX_SESSION_TTL_MINUTES: z.coerce.number().int().min(1).max(3 * 24 * 60).default(3 * 24 * 60),
   WEBCHAT_LEGACY_ROUTES_ENABLED: z.string().transform((v) => v === 'true').default('false'),
   WIKI_API_TOKEN: z.string().optional(),
-  // Official 888a2a bridge status metadata. Hub credentials stay in the bridge secret store.
+  // Official 888a2a bridge status metadata and live credentials.
   A2A_BRIDGE_ENABLED: z.string().transform((v) => v === 'true').default('false'),
   A2A_HUB_URL: z.string().url().default('https://a2a.david888.com'),
   A2A_AGENT_ID: z.string().trim().min(1).optional(),
+  A2A_AGENT_TOKEN: z.string().trim().min(1).optional(),
+  A2A_HUB_KEY: z.string().trim().min(1).optional(),
   UPLOAD_CONTENT_DETECTION_ENABLED: z.string().transform((v) => v !== 'false').default('true'),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp', 'resend']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),

@@ -13,8 +13,8 @@ import { buildA2AStatus, type A2AStatus } from '../modules/settings/a2a-status.s
   assert.equal(status.transport, 'official-a2a-bridge');
   assert.equal(status.agentConfigured, true);
   assert.equal(status.agentId, 'agent-…5544');
-  assert.equal(status.connectionState, 'not_reported');
-  assert.equal(status.tenantBinding, 'Open333 CLI profile');
+  assert.equal(status.connectionState, 'connected');
+  assert.equal(status.tenantBinding, 'Open333 CLI profile / Default Tenant');
 
   // Verify strict secrecy: no sensitive credentials leaked
   const serialized = JSON.stringify(status);

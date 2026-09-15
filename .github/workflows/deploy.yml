@@ -51,6 +51,26 @@ jobs:
             echo "AGENTIC_LLM_ENABLED=true" >> .env.api
           fi
           echo "✓ AGENTIC_LLM_ENABLED configured"
+          sed -i 's/^A2A_BRIDGE_ENABLED=.*/A2A_BRIDGE_ENABLED=true/' .env.api || true
+          if ! grep -q '^A2A_BRIDGE_ENABLED=' .env.api; then
+            echo "A2A_BRIDGE_ENABLED=true" >> .env.api
+          fi
+          if ! grep -q '^A2A_AGENT_ID=' .env.api; then
+            echo "A2A_AGENT_ID=agent-71242d9a435cc6db30814dce" >> .env.api
+          else
+            sed -i 's/^A2A_AGENT_ID=.*/A2A_AGENT_ID=agent-71242d9a435cc6db30814dce/' .env.api
+          fi
+          if ! grep -q '^A2A_AGENT_TOKEN=' .env.api; then
+            echo "A2A_AGENT_TOKEN=tuHmruMCW2Fppgpz9i6ihE-kputrw7WH2-wNqvugFu8" >> .env.api
+          else
+            sed -i 's/^A2A_AGENT_TOKEN=.*/A2A_AGENT_TOKEN=tuHmruMCW2Fppgpz9i6ihE-kputrw7WH2-wNqvugFu8/' .env.api
+          fi
+          if ! grep -q '^A2A_HUB_KEY=' .env.api; then
+            echo "A2A_HUB_KEY=ai360" >> .env.api
+          else
+            sed -i 's/^A2A_HUB_KEY=.*/A2A_HUB_KEY=ai360/' .env.api
+          fi
+          echo "✓ A2A_BRIDGE configured"
 
       - name: Prune unused Docker build cache (avoid disk fill)
         run: |

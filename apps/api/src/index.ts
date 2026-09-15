@@ -54,6 +54,7 @@ import lineImagemapRoutes from './modules/storage/line-imagemap.routes.js';
 import { ensureBucket } from './modules/storage/storage.service.js';
 import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-subscription.routes.js';
 import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
+import { startA2ABridgeWorker } from './modules/settings/a2a-bridge.worker.js';
 import portalRoutes from './modules/portal/portal.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
@@ -191,6 +192,7 @@ export async function bootstrap() {
   setupTrialScheduler(app.prismaAdmin);
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
   setupWebhookDispatcher(app.prismaAdmin);
+  startA2ABridgeWorker(app).catch((err) => app.log.warn({ err }, '[A2A] Bridge worker start failed'));
 
   // RBAC: 路由都註冊完後，驗證所有 requirePermission(code) 的 code 都存在於 registry
   const routeErrors = validateRouteCodes(usedPermissionCodes);

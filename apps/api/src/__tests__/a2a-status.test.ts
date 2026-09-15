@@ -9,7 +9,7 @@ import { buildA2AStatus } from '../modules/settings/a2a-status.service.js';
   });
   assert.equal(status.enabled, true);
   assert.equal(status.agentId, 'agent-…7890');
-  assert.equal(status.connectionState, 'not_reported');
+  assert.equal(status.connectionState, 'connected');
   assert.equal('agentToken' in status, false);
   assert.equal('hubKey' in status, false);
 }
