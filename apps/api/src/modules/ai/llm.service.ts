@@ -171,7 +171,10 @@ export function buildSystemPrompt(
   template: string = DEFAULT_KB_GROUNDING_PROMPT,
 ): string {
   if (!kbContext) return base;
-  return `${base}\n\n${template.replace('{{KB_CONTEXT}}', kbContext)}`;
+  // 用 replacer function 代入：字串形式的第二參數會解讀 `$&`、`` $` `` 等
+  // 替換樣式，知識庫內容含 `$` 時（價格、程式碼片段）會被竄改。
+  const grounded = template.replace(/\{\{KB_CONTEXT\}\}/g, () => kbContext);
+  return `${base}\n\n${grounded}`;
 }
 
 /**

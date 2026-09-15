@@ -26,7 +26,8 @@ assert.ok(DEFAULT_KB_GROUNDING_PROMPT.includes('{{KB_CONTEXT}}'), '預設模板�
 
 function buildSystemPrompt(base: string, kbContext: string, template: string): string {
   if (!kbContext) return base;
-  return `${base}\n\n${template.replace('{{KB_CONTEXT}}', kbContext)}`;
+  const grounded = template.replace(/\{\{KB_CONTEXT\}\}/g, () => kbContext);
+  return `${base}\n\n${grounded}`;
 }
 
 // 無知識庫時原樣返回
@@ -43,6 +44,19 @@ const custom = buildSystemPrompt('BASE', 'KB', '請參考官網說明：{{KB_CON
 assert.equal(custom, 'BASE\n\n請參考官網說明：KB');
 assert.ok(!custom.includes('轉接專人'), '自訂模板時不應殘留預設約束用語');
 
+// 知識庫內容必須原樣代入：`$&`、`` $` `` 等是 String.replace 的替換樣式，
+// 若用字串形式代入會竄改內容（價格、程式碼片段常含 `$`）。
+for (const raw of ['每月 $& 起', '詳見 $` 官網', '參數 $1 說明', "金額 $' 元"]) {
+  const out = buildSystemPrompt('BASE', raw, '知識庫：{{KB_CONTEXT}}');
+  assert.equal(out, `BASE\n\n知識庫：${raw}`, `知識庫內容含替換樣式時被竄改：${raw}`);
+}
+
+// 模板若含多個佔位符，每一處都要代入
+assert.equal(
+  buildSystemPrompt('BASE', 'KB', '前：{{KB_CONTEXT}}／後：{{KB_CONTEXT}}'),
+  'BASE\n\n前：KB／後：KB',
+);
+
 // ---------------------------------------------------------------------------
 // 2. llm.service 必須提供組裝函式，且實際用於呼叫 provider
 // ---------------------------------------------------------------------------
@@ -50,6 +64,16 @@ assert.ok(/export function buildSystemPrompt\(/.test(llmSrc), 'llm.service 必�
 assert.ok(
   /systemPrompt: buildSystemPrompt\(/.test(llmSrc),
   'provider.generate 必須傳入已組裝的 systemPrompt',
+);
+
+// 代入知識庫必須用 replacer function；字串形式會解讀 `$&` 等替換樣式而竄改內容
+assert.ok(
+  !/\.replace\(\s*(['"`])\{\{KB_CONTEXT\}\}\1\s*,\s*kbContext\s*\)/.test(llmSrc),
+  'buildSystemPrompt 不可用字串形式代入 kbContext（`$&` 等會被解讀為替換樣式）',
+);
+assert.ok(
+  /\.replace\(\s*\/\\\{\\\{KB_CONTEXT\\\}\\\}\/g\s*,\s*\(\)\s*=>\s*kbContext\s*\)/.test(llmSrc),
+  'buildSystemPrompt 應以 /g 正規表示式搭配 replacer function 代入 kbContext',
 );
 
 // ---------------------------------------------------------------------------
