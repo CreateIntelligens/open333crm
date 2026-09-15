@@ -553,6 +553,21 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
     }
   });
 
+  // ── contact.created ─────────────────────────────────────────────────────
+  eventBus.subscribe('contact.created', async (event: AppEvent) => {
+    try {
+      const { contactId } = event.payload as { contactId?: string };
+
+      await automationQueue().add('automation:evaluate', {
+        tenantId: event.tenantId,
+        trigger: 'contact.created',
+        context: { contactId },
+      }).catch((err) => logger.error('[AutomationWorker] Failed to enqueue contact.created', err));
+    } catch (err) {
+      logger.error('[AutomationWorker] Error handling contact.created:', err);
+    }
+  });
+
   // ── case.escalated ──────────────────────────────────────────────────────
   eventBus.subscribe('case.escalated', async (event: AppEvent) => {
     try {
@@ -609,6 +624,6 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
     }
   });
 
-  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
+  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
   logger.info('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
 }

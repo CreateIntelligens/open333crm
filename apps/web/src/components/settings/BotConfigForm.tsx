@@ -64,6 +64,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
   const [handoffKeywords, setHandoffKeywords] = useState<string[]>(['真人', '人工', '客服', '轉接']);
   const [handoffMessage, setHandoffMessage] = useState('稍等，正在為您轉接客服人員');
   const [offlineGreeting, setOfflineGreeting] = useState('');
+  const [firstContactGreeting, setFirstContactGreeting] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
   const [handoffPromptEnabled, setHandoffPromptEnabled] = useState(DEFAULT_HANDOFF_PROMPT_ENABLED);
   const [handoffPromptStyle, setHandoffPromptStyle] =
@@ -75,6 +76,11 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
 
   useEffect(() => {
     if (channel?.settings) {
+      // 招呼語存在 settings 頂層（與 botConfig 同層），故在 botConfig 分支外讀取——
+      // 否則渠道尚未設定過 botConfig 時會讀不到既有招呼語。
+      const rawGreeting = (channel.settings as Record<string, unknown>).firstContactGreeting;
+      setFirstContactGreeting(typeof rawGreeting === 'string' ? rawGreeting : '');
+
       const bc = (channel.settings as Record<string, unknown>).botConfig as Partial<BotConfig> | undefined;
       if (bc) {
         setBotMode(bc.botMode || 'keyword_then_llm');
@@ -139,7 +145,14 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
       const liffConfig = { liffId: liffId.trim() };
 
       await api.patch(`/channels/${channel.id}`, {
-        settings: { ...existingSettings, botConfig, liffConfig },
+        settings: {
+          ...existingSettings,
+          botConfig,
+          liffConfig,
+          // 存在 settings 頂層而非 botConfig 內：招呼語與 bot 是否開啟無關，
+          // 即使 botMode 為 off（直接人工）仍應該打招呼。
+          firstContactGreeting: firstContactGreeting.trim(),
+        },
       });
 
       onSaved();
@@ -296,6 +309,23 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
                 )}
               </>
             )}
+          </div>
+
+          {/* First Contact Greeting */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">首次進站招呼語</label>
+            <Textarea
+              value={firstContactGreeting}
+              onChange={(e) => setFirstContactGreeting(e.target.value)}
+              placeholder="留空則不發送"
+              rows={2}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              粉絲首次加入或第一次來訊時自動發送，每人每渠道只發一次。可用變數：
+              <code className="mx-0.5">{'{{contact.name}}'}</code>
+              <code className="mx-0.5">{'{{contact.phone}}'}</code>
+              <code className="mx-0.5">{'{{contact.email}}'}</code>
+            </p>
           </div>
 
           {/* Offline Greeting */}

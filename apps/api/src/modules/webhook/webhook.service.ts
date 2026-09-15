@@ -22,6 +22,7 @@ import {
   publishMessageReceived,
   resolveInboundMediaAsync,
   sendOutsideHoursAutoReply,
+  sendFirstContactGreeting,
   trackInboundBroadcastReply,
   triggerWebhookFlow,
 } from './inbound-side-effects.js';
@@ -170,6 +171,10 @@ export async function processInboundMessage(
   resolveInboundMediaAsync(ctx);
 
   await updateConversationAfterInboundMessage(ctx);
+
+  // 招呼語放在 postback 攔截之前：攔截命中（CSAT/KB 回饋/轉真人）會提早 return，
+  // 那些情境雖不太可能是首次進站，但招呼語沒有理由被它們跳過。
+  await sendFirstContactGreeting(ctx);
 
   const intercepted = await runInboundPostbackInterceptors(ctx);
   if (intercepted) return;
