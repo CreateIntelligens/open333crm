@@ -9,6 +9,8 @@
     "build": "tsc",
     "test:email": "tsx src/__tests__/email-delivery.test.ts",
     "test:inbound-contact": "tsx src/__tests__/inbound-contact-resolution.test.ts",
+    "test:first-contact": "tsx src/__tests__/first-contact-greeting.test.ts",
+    "test:first-contact-resolver": "tsx src/__tests__/inbound-first-contact-resolver.test.ts",
     "test:case": "tsx src/__tests__/case.service.test.ts",
     "test:broadcast": "tsx src/__tests__/broadcast.service.test.ts",
     "test:downstream": "tsx src/__tests__/downstream-forwarder.test.ts",

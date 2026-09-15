@@ -6,7 +6,8 @@ import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
-import { getBotConfig } from './inbound-message.types.js';
+import { getBotConfig, getChannelSettings } from './inbound-message.types.js';
+import { renderTemplateBody } from '../marketing/template-renderer.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
@@ -200,4 +201,84 @@ function normalizeCanvasEventType(ctx: InboundMessageContext): string {
   }
 
   return 'message';
+}
+
+/**
+ * 首次進站招呼語（CM-176）。
+ *
+ * 粉絲在此渠道首次被建立身分時，送出一則歡迎訊息。觸發判定由
+ * resolveInboundContact 設定的 ctx.isFirstContact 決定 —— 該旗標源自
+ * ChannelIdentity 的 @@unique([channelId, uid])：只有成功建立身分的那次
+ * 請求為 true，併發／平台重複投遞會撞 P2002 而維持 false。
+ *
+ * 刻意不用 outsideHoursReplyCache 那種記憶體 Map 去重：本專案多實例部署
+ * （見 PR #157），記憶體快取會讓每個實例各送一次。outside-hours 用得上是
+ * 因為它是「30 分鐘內去重」的寬鬆語意，重複一次可接受；招呼語是「一輩子
+ * 只送一次」，必須靠 DB 唯一約束。
+ *
+ * 整段 try/catch 隔離：招呼語失敗不得影響 inbound 訊息落地（CM-175 的教訓）。
+ */
+export async function sendFirstContactGreeting(
+  ctx: InboundMessageContext,
+  // 發送函式以參數注入，預設走真實管線；測試可替換以驗證行為（ESM module 物件唯讀，無法猴子補丁）
+  deliver: typeof deliverToChannel = deliverToChannel,
+): Promise<void> {
+  if (!ctx.isFirstContact) return;
+
+  try {
+    if (!ctx.conversation || !ctx.contactId) return;
+
+    const channelSettings = await getChannelSettings(ctx);
+    const raw = channelSettings.firstContactGreeting;
+    const template = typeof raw === 'string' ? raw.trim() : '';
+    if (!template) return; // 未設定 = 功能關閉，維持現狀
+
+    // 變數替換失敗不擋發送，退回原字串。
+    let greeting = template;
+    try {
+      const contact = ctx.channelIdentity?.contact as
+        | { displayName?: string | null; phone?: string | null; email?: string | null }
+        | undefined;
+
+      greeting = renderTemplateBody(template, {
+        'contact.name': contact?.displayName ?? '',
+        'contact.phone': contact?.phone ?? '',
+        'contact.email': contact?.email ?? '',
+      });
+    } catch (err) {
+      logger.warn('[Webhook] First-contact greeting variable render failed, sending raw template', err);
+    }
+
+    const message = await ctx.prisma.message.create({
+      data: {
+        conversationId: ctx.conversation.id,
+        direction: 'OUTBOUND',
+        senderType: 'SYSTEM',
+        contentType: 'text',
+        content: { text: greeting },
+        metadata: { source: 'first_contact_greeting' },
+      },
+    });
+
+    await ctx.prisma.conversation.update({
+      where: { id: ctx.conversation.id },
+      data: { lastMessageAt: new Date() },
+    });
+
+    const payload = buildMessageNewPayload(message, {
+      content: { text: greeting },
+      includeTypePayload: true,
+    });
+    emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', payload);
+
+    await deliver(ctx.prisma, ctx.conversation.id, greeting);
+
+    logger.info('[Webhook] First-contact greeting sent', {
+      conversationId: ctx.conversation.id,
+      contactId: ctx.contactId,
+      channelType: ctx.channel.channelType,
+    });
+  } catch (err) {
+    logger.error('[Webhook] First-contact greeting error:', err);
+  }
 }

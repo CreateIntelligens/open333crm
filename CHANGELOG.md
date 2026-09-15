@@ -4,6 +4,11 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-09-15]
 
+### Added
+
+- **首次進站招呼語（CM-176）** — 粉絲首次加入或第一次來訊時自動送出一則歡迎訊息，三渠道統一（LINE 的 `follow` 加好友事件亦觸發，不必等對方先開口）。招呼語為**真實訊息**：寫入對話紀錄、推播至後台收件匣、並經既有發送管線推送至該渠道（有別於 WEBCHAT 既有的 `welcomeMessage`，後者僅是前端顯示用的 greeting，兩者並存互不影響）。支援 `{{contact.name}}` / `{{contact.phone}}` / `{{contact.email}}` 變數，解析失敗時退回原字串不擋發送。設定存於 `channel.settings.firstContactGreeting`（**無 schema 變更**），留空即關閉，功能預設關閉。「只送一次」的保證來自 `ChannelIdentity` 的 `@@unique([channelId, uid])`——只有成功建立身分的請求會被標記為首次，併發或平台重複投遞的另一方撞 P2002 而不觸發；**刻意不用記憶體快取**，因本專案多實例部署會導致每個實例各送一次。整段 try/catch 隔離，招呼語失敗不影響 inbound 訊息落地（CM-175 教訓）。設定入口在渠道的「機器人設定」彈窗。
+- **`contact.created` 事件補上發布點（CM-176）** — 該事件在 `packages/automation` 早有完整的型別、fact-builder 與 listener 支援，但 `apps/api` 從未發布過，自動化規則因此永遠等不到這個觸發點。現於首次建立渠道身分時發布，並在 `automation.worker` 接上訂閱轉為 `automation:evaluate` job。
+
 ### Fixed
 
 - **新客第一則訊息全部靜默掉失（CM-175，P0）** — `packages/core` 缺少 `"type": "module"` 被編成 CJS，而 `@open333crm/database` 是純 ESM。在 Node 24（UAT 執行環境）下，CJS `require()` 純 ESM 套件時，`export * from` 的符號可正常取得，但 `export { prisma } from './client.js'` 這類「轉出式 re-export」的符號會遺失，使 `identity-stitcher` 取到的 `prisma` 為 `undefined`，於 `resolveUidToContact` 存取 `.identityMap` 時拋 TypeError。影響面是「尚未建立 IdentityMap 的渠道 UID」——即每位新客的第一則訊息：webhook 進站、驗簽通過、訊息解析成功，但聯絡人建不出來、訊息不落地、收件匣完全看不到，且因 webhook 仍回 200 而無任何外部徵兆。已綁定身分的聯絡人走快路徑不受影響，因此表面上系統看似正常。修法：`packages/core` 補上 `"type": "module"`（產物轉為 ESM，並補齊相對匯入副檔名）；`identity-stitcher` 改為由呼叫端注入 Prisma executor，不再依賴套件層級的全域 `prisma` 單例——此舉同時消除未綁租戶連線在 Postgres RLS 下的隱患（同 CM-171／CM-172 病因）。

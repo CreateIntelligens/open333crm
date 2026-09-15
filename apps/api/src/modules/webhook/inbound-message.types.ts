@@ -33,6 +33,14 @@ export interface InboundMessageContext {
   channelSettings?: Record<string, unknown>;
   botConfig?: Record<string, unknown>;
   contactId?: string;
+  /**
+   * 本次請求是否為「該渠道 uid 首次建立身分」。
+   *
+   * 由 resolveInboundContact 設定：只有成功建立 ChannelIdentity 的那一次請求為 true。
+   * 併發或平台重複投遞時，另一請求會撞 @@unique([channelId, uid]) 的 P2002 而維持 false，
+   * 因此首次進站招呼語在多實例部署下也只會送出一次。
+   */
+  isFirstContact?: boolean;
   channelIdentity?: {
     contactId: string;
     contact?: unknown;
