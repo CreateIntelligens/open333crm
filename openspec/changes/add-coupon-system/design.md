@@ -92,7 +92,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 | 客服對話發券 | `push` | 座席主動挑券，當下通常已無有效 `replyToken` |
 | 分眾群發 | `multicast` | service 層已處理 500/批切分 |
 
-發券只需組出券卡的 `OutboundPayload` 並指定 `strategy`，交給既有 `deliverToChannel`。SafeReply 降級已內建，reply 失敗自動改 push，不會漏發。
+發券只需組出一則帶 LIFF 連結的 `OutboundPayload` 並指定 `strategy`，交給既有 `deliverToChannel`。**券的內容在 LIFF 頁，訊息本身只是入口**。SafeReply 降級已內建，reply 失敗自動改 push，不會漏發。
 
 ### D8：fan auth 必須補 LIFF id_token 驗證
 
@@ -110,7 +110,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 
 ⚠️ **這是系統的新安全面**：目前 codebase 對使用者輸入一律全 escape（`escapeHtml` 在四處各自實作），沒有「允許部分 HTML」的既有機制，也沒有引入消毒套件。實作時需選定並引入一套成熟的 HTML sanitizer，不可自行以正則實作白名單 —— 正則式的 HTML 過濾幾乎必然有繞過方式。
 
-**顯示位置**：券詳情頁（LIFF 內）。Flex 訊息卡不支援 HTML，該處仍以純文字呈現（消毒後去除標記）。
+**顯示位置**：券詳情頁（LIFF 內）。這是條款唯一的呈現位置 —— 對話中的發券訊息只帶連結，不含條款內容。
 
 ## Risks / Trade-offs
 

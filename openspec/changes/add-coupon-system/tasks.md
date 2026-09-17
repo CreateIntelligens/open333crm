@@ -1,6 +1,6 @@
-> **建議順序**：A1 → A2 → A7 → B1 → B2 先打通「建券 → 對話發券 → 顧客收到券卡」最短閉環
-> （此時券碼直接顯示在 Flex 卡上，**尚不需要券夾**）。驗證商業價值後再做 A3／A4 的 LIFF 票券頁，
-> A5 會員綁定可與之並行。
+> **建議順序**：A1 → A2 → A3 → A4 → A7 → B1 → B2 打通「建券 → 對話發券 → 顧客點連結進 LIFF
+> → 看券 → 核銷」完整閉環。券的內容都在 LIFF，所以 A3（LIFF 票券頁）與 A4（fan auth 驗證）
+> 是必要前置，不能延後。A5 會員綁定可與之並行。
 
 ## A1. 資料模型
 
@@ -74,13 +74,14 @@
 - [ ] 6.4 券成效報表頁（掛進既有 analytics）
 - [ ] 6.5 UI 不放 emoji、成功訊息不加勾勾（依專案慣例）
 
-## A7. LINE Flex 券卡版型
+## A7. 發券訊息（帶 LIFF 連結）
 
-- [ ] 7.1 `material.routes.ts` 的 `CONTENT_TYPE_VALUES` 加入 `line_coupon`
-- [ ] 7.2 `packages/channel-plugins/src/line/builders.ts` 新增 `buildLineCoupon()`
-- [ ] 7.3 `line/index.ts` 的 `switch (contentType)` 加入對應 case
-- [ ] 7.4 前端五處：`MaterialEditor`（標籤字典 + editor 分支）、`MaterialPreview`、`TemplatePickerGrid`、`TemplateThumb`、`default-bodies`
-- [ ] 7.5 確認 `validateLineMaterialWithLineApi` 對此版型的處理（走驗證或加白名單）
+> 券的內容（券夾／券詳情／核銷）全部呈現在 LIFF 頁，**不做專屬的 Flex 券卡版型**。
+> 對話中送出的只是一則帶連結的訊息，讓顧客點進 LIFF 看券。
+
+- [ ] 7.1 組出發券訊息：使用既有訊息型別（文字或既有 Flex 版型），內容含券名、面額與 LIFF 連結
+- [ ] 7.2 連結帶 `liff.state` 參數指向該張券的詳情頁
+- [ ] 7.3 連結沿用短網址以取得點擊歸因
 
 ## B1. Inbox 對話發券
 
