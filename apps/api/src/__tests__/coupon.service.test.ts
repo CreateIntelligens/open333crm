@@ -310,7 +310,7 @@ async function main() {
       tx.couponCode.deleteMany({ where: { couponId: importCouponId, tenantId, status: 'AVAILABLE' } }));
     const r = await issueCoupons(prisma, tenantId, importCouponId, { contactIds: [contactB], requireClaim: false });
     assert.equal(r.issued.length, 0);
-    assert.ok(r.skipped[0]?.reason.includes('用罄'), `預期回報用罄，實得 ${JSON.stringify(r.skipped)}`);
+    assert.equal(r.skipped[0]?.reason, 'CODES_EXHAUSTED', `預期回報序號用罄，實得 ${JSON.stringify(r.skipped)}`);
   });
 
   // ── 成效統計 ──
