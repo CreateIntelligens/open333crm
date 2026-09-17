@@ -9,39 +9,39 @@
 
 ## A1. 資料模型
 
-- [ ] 1.1 `Coupon` model：名稱、說明、**使用條款（支援有限 HTML）**、券面圖、券型（`discount_amount`/`discount_percent`/`gift`/`exchange`）、用途分類（`marketing`/`service`）
-- [ ] 1.2 `Coupon` 效期欄位：`validityMode`（`fixed`/`after_claim`/`after_open`）+ `startAt`/`endAt`/`afterClaimDays`/`afterOpenMinutes`
-- [ ] 1.3 `Coupon` 序號欄位：`codeMode`（`shared_code`/`unique_code`/`imported_codes`）+ `sharedCode`
-- [ ] 1.4 `Coupon` 發行控制：`totalLimit`、`perContactLimit`、`claimTagId`、`status`（`draft`/`active`/`paused`/`ended`）
-- [ ] 1.4a `Coupon` 核銷方式：`redeemMode`（`staff_code`/`staff_scan`/`self`，預設 `staff_code`）+ `staffCode`
-- [ ] 1.5 `CouponInstance` model：`couponId`/`contactId`/`code`/`status`/各時間戳/`issuedVia`/`issuedRefId`/`redeemedBy`/`redeemChannel`
-- [ ] 1.5a `CouponInstance` 領取憑證欄位：`claimToken`（唯一、可為 null）+ `claimTokenExpiresAt`（供 FB／IG 與公開領券的「待領取」券歸戶，見 design D10）
-- [ ] 1.6 `CouponCode` model（序號包庫存）：`couponId`/`code`/`status`/`instanceId`
-- [ ] 1.7 唯一約束：券碼在租戶內唯一；`CouponInstance` 依 `(couponId, contactId)` 配合每人上限查核
-- [ ] 1.8 產出正式 migration（**不可只用 db push**）
-- [ ] 1.9 **RLS policy migration**（三張新表，比照 `20260828091000_rls_agentic_llm`）
-- [ ] 1.10 `prisma generate` 並確認 `@open333crm/database` build 通過
+- [x] 1.1 `Coupon` model：名稱、說明、**使用條款（支援有限 HTML）**、券面圖、券型（`discount_amount`/`discount_percent`/`gift`/`exchange`）、用途分類（`marketing`/`service`）
+- [x] 1.2 `Coupon` 效期欄位：`validityMode`（`fixed`/`after_claim`/`after_open`）+ `startAt`/`endAt`/`afterClaimDays`/`afterOpenMinutes`
+- [x] 1.3 `Coupon` 序號欄位：`codeMode`（`shared_code`/`unique_code`/`imported_codes`）+ `sharedCode`
+- [x] 1.4 `Coupon` 發行控制：`totalLimit`、`perContactLimit`、`claimTagId`、`status`（`draft`/`active`/`paused`/`ended`）
+- [x] 1.4a `Coupon` 核銷方式：`redeemMode`（`staff_code`/`staff_scan`/`self`，預設 `staff_code`）+ `staffCode`
+- [x] 1.5 `CouponInstance` model：`couponId`/`contactId`/`code`/`status`/各時間戳/`issuedVia`/`issuedRefId`/`redeemedBy`/`redeemChannel`
+- [x] 1.5a `CouponInstance` 領取憑證欄位：`claimToken`（唯一、可為 null）+ `claimTokenExpiresAt`（供 FB／IG 與公開領券的「待領取」券歸戶，見 design D10）
+- [x] 1.6 `CouponCode` model（序號包庫存）：`couponId`/`code`/`status`/`instanceId`
+- [x] 1.7 唯一約束：券碼在租戶內唯一；`CouponInstance` 依 `(couponId, contactId)` 配合每人上限查核
+- [x] 1.8 產出正式 migration（**不可只用 db push**）
+- [x] 1.9 **RLS policy migration**（三張新表，比照 `20260828091000_rls_agentic_llm`）
+- [x] 1.10 `prisma generate` 並確認 `@open333crm/database` build 通過
 
 ## A2. 券 API 模組
 
-- [ ] 2.1 建立 `apps/api/src/modules/coupon/`（routes + service，比照既有 module 結構）
-- [ ] 2.2 券 CRUD：建立／更新／發布／暫停／結束；發布前驗證（序號包模式須有庫存、效期欄位齊備）
-- [ ] 2.2a **使用條款 HTML 消毒**：選定並引入成熟 sanitizer（**不可自行以正則實作**）；白名單允許斷行／段落／連結／粗體／清單；禁 script／style／iframe／event handler 屬性／`javascript:` 連結；**儲存時消毒一次**
-- [ ] 2.3 發券 API：檢查發行總量與每人上限 → 配發券碼（依三種 codeMode）→ 建立 `CouponInstance`
-- [ ] 2.3a 券碼產生器（`unique_code`）：可設前綴、避開易混淆字元（0/O、1/I/l）、租戶內唯一
+- [x] 2.1 建立 `apps/api/src/modules/coupon/`（routes + service，比照既有 module 結構）
+- [x] 2.2 券 CRUD：建立／更新／發布／暫停／結束；發布前驗證（序號包模式須有庫存、效期欄位齊備）
+- [x] 2.2a **使用條款 HTML 消毒**：選定並引入成熟 sanitizer（**不可自行以正則實作**）；白名單允許斷行／段落／連結／粗體／清單；禁 script／style／iframe／event handler 屬性／`javascript:` 連結；**儲存時消毒一次**
+- [x] 2.3 發券 API：檢查發行總量與每人上限 → 配發券碼（依三種 codeMode）→ 建立 `CouponInstance`
+- [x] 2.3a 券碼產生器（`unique_code`）：可設前綴、避開易混淆字元（0/O、1/I/l）、租戶內唯一
 - [ ] 2.3b 序號匯入：支援**貼上文字**與**上傳檔案**兩種輸入；逐筆檢查格式、清單內重複、與既有券碼衝突
 - [ ] 2.3c 匯入結果回報：成功筆數、因重複略過、因衝突拒絕，各自列出
 - [ ] 2.3d 序號庫存追加：已發布的券可補充序號，不影響已配發者
-- [ ] 2.4 領取 API：狀態轉 `claimed`，依效期模式計算 `expiresAt` 落地
-- [ ] 2.4a **憑證換券 API**（`POST /api/v1/fan/coupons/claim`）：交易內條件式更新（`WHERE claimToken=? AND status='issued' AND claimTokenExpiresAt > now()`）→ `contactId` 改為已驗證身分、狀態轉 `claimed`、憑證清空；受影響列數 0 即回報
-- [ ] 2.4b 換券失敗分類回報：憑證已被領取／已過期／不存在，不可只回泛稱失敗
-- [ ] 2.4c 發券時依渠道決定初始狀態：LINE 直接建 `claimed`；FB／IG 與公開連結建 `issued` + 憑證
-- [ ] 2.5 核銷 API：**DB transaction 內條件式更新搶狀態**（`WHERE status='claimed'`），受影響列數 0 即回報已使用
-- [ ] 2.5a 失敗分類回報：已使用／已過期／尚未生效／查無此券，不可只回泛稱失敗
-- [ ] 2.5b 粉絲端自助核銷端點：**僅當該券 `redeemMode='self'` 時開放**，其他模式回 403
+- [x] 2.4 領取 API：狀態轉 `claimed`，依效期模式計算 `expiresAt` 落地
+- [x] 2.4a **憑證換券 API**（`POST /api/v1/fan/coupons/claim`）：交易內條件式更新（`WHERE claimToken=? AND status='issued' AND claimTokenExpiresAt > now()`）→ `contactId` 改為已驗證身分、狀態轉 `claimed`、憑證清空；受影響列數 0 即回報
+- [x] 2.4b 換券失敗分類回報：憑證已被領取／已過期／不存在，不可只回泛稱失敗
+- [x] 2.4c 發券時依渠道決定初始狀態：LINE 直接建 `claimed`；FB／IG 與公開連結建 `issued` + 憑證
+- [x] 2.5 核銷 API：**DB transaction 內條件式更新搶狀態**（`WHERE status='claimed'`），受影響列數 0 即回報已使用
+- [x] 2.5a 失敗分類回報：已使用／已過期／尚未生效／查無此券，不可只回泛稱失敗
+- [x] 2.5b 粉絲端自助核銷端點：**僅當該券 `redeemMode='self'` 時開放**，其他模式回 403
 - [ ] 2.6 券成效查詢：發送／領取／開封／核銷／核銷率五指標
 - [ ] 2.7 領取名單匯出（CSV，沿用 analytics 既有做法）
-- [ ] 2.8 所有 route 使用租戶綁定連線（`TenantDb`），不得用 `prismaAdmin`
+- [x] 2.8 所有 route 使用租戶綁定連線（`TenantDb`），不得用 `prismaAdmin`
 
 ## A3. 票券頁（第一階段為一般網頁，LIFF 為第二階段）
 
