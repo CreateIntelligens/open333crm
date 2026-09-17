@@ -254,6 +254,10 @@ model Tenant {
   kmArticles              KmArticle[]
   messageTemplates        MessageTemplate[]
   automationLogs          AutomationLog[]
+  coupons         Coupon[]
+  couponInstances CouponInstance[]
+  couponCodes     CouponCode[]
+
 
   @@map("tenants")
 }
@@ -489,6 +493,7 @@ model Contact {
   channelIdentities ChannelIdentity[]
   attributes        ContactAttribute[]
   tags              ContactTag[]
+  couponInstances   CouponInstance[]
   relationsFrom     ContactRelation[]  @relation("FromContact")
   relationsTo       ContactRelation[]  @relation("ToContact")
   conversations     Conversation[]
@@ -2123,4 +2128,191 @@ model PlanChangeRequest {
   @@index([tenantId, status])
   @@index([status, createdAt])
   @@map("plan_change_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 優惠券系統（OpenSpec change: add-coupon-system）
+// ─────────────────────────────────────────────────────────────────
+
+/// 券型。決定券面呈現與核銷時的金額計算。
+enum CouponType {
+  DISCOUNT_AMOUNT // 折抵定額
+  DISCOUNT_PERCENT // 折抵百分比
+  GIFT // 贈品
+  EXCHANGE // 兌換
+}
+
+/// 用途分類。marketing 走行銷發放，service 供客服補償挑選。
+enum CouponPurpose {
+  MARKETING
+  SERVICE
+}
+
+/// 效期模式。fixed 為絕對區間；after_claim／after_open 於各該時點起算。
+enum CouponValidityMode {
+  FIXED
+  AFTER_CLAIM
+  AFTER_OPEN
+}
+
+/// 券碼來源。shared_code 全券共用一組；unique_code 系統產生；imported_codes 走序號包庫存。
+enum CouponCodeMode {
+  SHARED_CODE
+  UNIQUE_CODE
+  IMPORTED_CODES
+}
+
+/// 核銷方式，由商家於券層級選擇（design D-核銷）。
+enum CouponRedeemMode {
+  STAFF_CODE // 店員輸入驗證碼
+  STAFF_SCAN // 店員掃碼
+  SELF // 顧客自助（需滑動確認）
+}
+
+enum CouponStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+/// 單張券的生命週期狀態。issued → claimed → opened → redeemed，另有終態 expired／revoked。
+enum CouponInstanceStatus {
+  ISSUED // 已發放，尚未歸戶（帶 claimToken，見 design D10）
+  CLAIMED // 已領取並歸戶至 contactId
+  OPENED // 已開啟（after_open 效期模式由此起算）
+  REDEEMED // 已核銷
+  EXPIRED
+  REVOKED
+}
+
+/// 序號包中單一券碼的狀態。
+enum CouponCodeStatus {
+  AVAILABLE
+  ASSIGNED
+}
+
+/// 券主檔（設定）。實際發出去的每一張券見 CouponInstance。
+model Coupon {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String        @db.Uuid
+  name        String
+  description String?
+  /// 使用條款，支援有限 HTML；⚠️ 寫入前須經伺服器端 sanitizer 消毒（design D9）
+  terms       String?
+  imageUrl    String?
+  couponType  CouponType
+  purpose     CouponPurpose @default(MARKETING)
+
+  /// 折抵金額（DISCOUNT_AMOUNT）或折抵百分比（DISCOUNT_PERCENT）
+  discountAmount  Int?
+  discountPercent Int?
+
+  validityMode     CouponValidityMode @default(FIXED)
+  startAt          DateTime?
+  endAt            DateTime?
+  afterClaimDays   Int?
+  afterOpenMinutes Int?
+
+  codeMode   CouponCodeMode @default(UNIQUE_CODE)
+  sharedCode String?
+  /// UNIQUE_CODE 模式的券碼前綴
+  codePrefix String?
+
+  redeemMode CouponRedeemMode @default(STAFF_CODE)
+  /// 店員核銷驗證碼（STAFF_CODE 模式）
+  staffCode  String?
+
+  /// 發行總量上限；null 為不限
+  totalLimit      Int?
+  /// 每位顧客可持有上限
+  perContactLimit Int     @default(1)
+  /// 領取後自動貼上的標籤
+  claimTagId      String? @db.Uuid
+
+  status      CouponStatus @default(DRAFT)
+  createdById String       @db.Uuid
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  instances CouponInstance[]
+  codes     CouponCode[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, purpose, status])
+  @@map("coupons")
+}
+
+/// 每一張實際發出的券。核銷防重複的狀態機集中在此（design D3）。
+model CouponInstance {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String @db.Uuid
+  couponId String @db.Uuid
+
+  /// 持有者。ISSUED 階段記發放對象（可能是 FB／IG 聯絡人），領取後改為完成身分驗證的聯絡人
+  contactId String? @db.Uuid
+  /// 此張券的券碼
+  code      String
+
+  status CouponInstanceStatus @default(ISSUED)
+
+  /// 一次性領取憑證（design D10）。FB／IG 與公開領券用；LINE 直接發 CLAIMED 者為 null
+  claimToken          String?   @unique
+  claimTokenExpiresAt DateTime?
+
+  /// 效期落地值。依 validityMode 於發放或領取時計算寫入
+  expiresAt DateTime?
+
+  issuedAt   DateTime  @default(now())
+  claimedAt  DateTime?
+  openedAt   DateTime?
+  redeemedAt DateTime?
+
+  /// 發放來源，供成效歸因；領取歸戶後不變更
+  issuedVia   String?
+  issuedRefId String?
+
+  /// 核銷者（店員模式為座席 id；自助模式為 null）
+  redeemedBy    String?           @db.Uuid
+  /// 核銷當下的方式，與 Coupon.redeemMode 分開存，避免事後改設定影響既有紀錄
+  redeemMode    CouponRedeemMode?
+  redeemChannel String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  coupon  Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, contactId, status])
+  @@index([couponId, status])
+  @@index([tenantId, status, expiresAt])
+  @@map("coupon_instances")
+}
+
+/// 序號包庫存，僅 IMPORTED_CODES 模式使用。
+model CouponCode {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String @db.Uuid
+  couponId String @db.Uuid
+  code     String
+
+  status CouponCodeStatus @default(AVAILABLE)
+  /// 配發後對應的 CouponInstance
+  instanceId String?       @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([couponId, status])
+  @@map("coupon_codes")
 }

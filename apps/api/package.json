@@ -17,11 +17,13 @@
     "test:data-export": "tsx src/__tests__/data-export.test.ts",
     "test:erasure": "tsx src/__tests__/data-erasure.test.ts",
     "test:llm-prompt": "tsx src/__tests__/llm-system-prompt.test.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test:coupon": "tsx src/__tests__/coupon.service.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
+    "@e965/xlsx": "^0.20.3",
     "@fastify/caching": "^9.0.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.0.0",
@@ -56,10 +58,10 @@
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "resend": "^6.26.0",
+    "sanitize-html": "^2.17.7",
     "sharp": "^0.35.4",
     "socket.io": "^4.8.3",
     "turndown": "^7.2.2",
-    "@e965/xlsx": "^0.20.3",
     "zod": "^3.22.0"
   },
   "devDependencies": {
@@ -68,6 +70,7 @@
     "@types/node": "^20.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.6",
+    "@types/sanitize-html": "^2.16.1",
     "@types/turndown": "^5.0.6",
     "pino-pretty": "^11.0.0",
     "tsx": "^4.7.0",

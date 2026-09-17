@@ -57,6 +57,7 @@ import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-
 import { startA2ABridgeWorker } from './modules/settings/a2a-bridge.worker.js';
 import portalRoutes from './modules/portal/portal.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
+import couponRoutes from './modules/coupon/coupon.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 import webchatRoutes from './modules/webchat/webchat.routes.js';
@@ -164,6 +165,7 @@ export async function bootstrap() {
   await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
   await app.register(portalRoutes, { prefix: '/api/v1/portal' });
   await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
+  await app.register(couponRoutes, { prefix: '/api/v1/coupons' });
   await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });
   await app.register(shortlinkRedirectRoutes, { prefix: '/s' });
   await app.register(lineImagemapRoutes, { prefix: '/line-imagemap' });

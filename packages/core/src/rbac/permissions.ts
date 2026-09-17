@@ -93,6 +93,12 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   { code: 'shortlink.view', group: '短連結', feature: 'inbox', label: '檢視短連結', description: '列表、stats、clicks、qrcode' },
   { code: 'shortlink.manage', group: '短連結', feature: 'inbox', label: '管理短連結', description: '建/改/刪短連結', dependsOn: ['shortlink.view'] },
 
+  // ── 優惠券（feature: marketing）──
+  { code: 'coupon.view', group: '優惠券', feature: 'marketing', label: '檢視優惠券', description: '券列表、券詳情、成效報表' },
+  { code: 'coupon.manage', group: '優惠券', feature: 'marketing', label: '管理優惠券', description: '建/改/刪券、發布、暫停、結束、匯入序號', dependsOn: ['coupon.view'] },
+  { code: 'coupon.issue', group: '優惠券', feature: 'marketing', label: '發放優惠券', description: '於對話或分眾發券給顧客', dependsOn: ['coupon.view'], implies: ['contact.view'] },
+  { code: 'coupon.redeem', group: '優惠券', feature: 'marketing', label: '核銷優惠券', description: '核銷台掃碼或輸入券號核銷', dependsOn: ['coupon.view'] },
+
   // ── 粉絲活動（feature: portal）──
   { code: 'portal.view', group: '粉絲活動', feature: 'portal', label: '檢視粉絲活動', description: '活動、submissions、點數' },
   { code: 'portal.manage', group: '粉絲活動', feature: 'portal', label: '管理粉絲活動', description: '建/改/刪、publish/end、抽獎、點數調整', dependsOn: ['portal.view'] },
