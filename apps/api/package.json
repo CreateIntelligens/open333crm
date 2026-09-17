@@ -22,7 +22,8 @@
     "test:fan-auth": "tsx src/__tests__/fan-auth.test.ts",
     "test:coupon-delivery": "tsx src/__tests__/coupon-delivery.test.ts",
     "test:member-binding": "tsx src/__tests__/member-binding.test.ts",
-    "test:tag-expiry": "tsx src/__tests__/tag-expiry.test.ts"
+    "test:tag-expiry": "tsx src/__tests__/tag-expiry.test.ts",
+    "test:member-binding-guard": "tsx src/__tests__/member-binding-guard.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

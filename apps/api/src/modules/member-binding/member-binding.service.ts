@@ -7,6 +7,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
+import { encryptCredentials, decryptCredentials } from '../channel/channel.service.js';
 import { addTagToTarget } from '../tag/tagging.service.js';
 import { lookupMember } from './member-lookup.service.js';
 import type {
@@ -18,16 +19,45 @@ import type {
 /** 預設的會員編號 attribute key。 */
 const DEFAULT_ATTRIBUTE_KEY = 'member_id';
 
-/** 設定存於 TenantSettings.memberBinding（JSON 欄位）。 */
+/**
+ * 設定存於 TenantSettings.memberBinding（JSON 欄位）。
+ *
+ * ⚠️ 認證憑證是客戶的 API 金鑰，**加密後才入庫**（沿用 channel 的 AES-256-GCM），
+ * 與其他渠道憑證一致。DB 被讀走時不應直接拿到可用的金鑰。
+ */
+type StoredConfig = Omit<MemberBindingConfig, 'auth'> & {
+  auth?: { type: MemberBindingConfig['auth']['type']; headerName?: string; credentialEnc?: string };
+};
+
 export async function getBindingConfig(
   prisma: PrismaClient,
   tenantId: string,
 ): Promise<MemberBindingConfig | null> {
   const settings = await withTenant(prisma, tenantId, (tx) =>
     tx.tenantSettings.findUnique({ where: { tenantId }, select: { memberBinding: true } }));
-  const config = settings?.memberBinding as MemberBindingConfig | undefined;
+  const stored = settings?.memberBinding as StoredConfig | undefined;
   // 空物件（欄位預設值）視為未設定
-  return config && Object.keys(config).length > 0 ? config : null;
+  if (!stored || Object.keys(stored).length === 0) return null;
+
+  let credential: string | undefined;
+  if (stored.auth?.credentialEnc) {
+    try {
+      credential = decryptCredentials(stored.auth.credentialEnc).value as string;
+    } catch (err) {
+      // 金鑰輪替或資料損毀：視為未設定憑證，讓呼叫端得到明確的認證失敗，
+      // 而不是拿著壞掉的字串去打對方 API
+      logger.error('[MemberBinding] 憑證解密失敗', { tenantId, error: (err as Error).message });
+    }
+  }
+
+  return {
+    ...(stored as unknown as MemberBindingConfig),
+    auth: {
+      type: stored.auth?.type ?? 'none',
+      headerName: stored.auth?.headerName,
+      credential,
+    },
+  };
 }
 
 export async function saveBindingConfig(
@@ -35,11 +65,21 @@ export async function saveBindingConfig(
   tenantId: string,
   config: MemberBindingConfig,
 ): Promise<void> {
+  const { auth, ...rest } = config;
+  const stored: StoredConfig = {
+    ...rest,
+    auth: {
+      type: auth?.type ?? 'none',
+      headerName: auth?.headerName,
+      credentialEnc: auth?.credential ? encryptCredentials({ value: auth.credential }) : undefined,
+    },
+  };
+
   await withTenant(prisma, tenantId, (tx) =>
     tx.tenantSettings.upsert({
       where: { tenantId },
-      create: { tenantId, memberBinding: config as unknown as Prisma.InputJsonValue },
-      update: { memberBinding: config as unknown as Prisma.InputJsonValue },
+      create: { tenantId, memberBinding: stored as unknown as Prisma.InputJsonValue },
+      update: { memberBinding: stored as unknown as Prisma.InputJsonValue },
     }));
 }
 
