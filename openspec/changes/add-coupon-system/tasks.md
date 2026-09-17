@@ -1,6 +1,11 @@
-> **建議順序**：A1 → A2 → A3 → A4 → A7 → B1 → B2 打通「建券 → 對話發券 → 顧客點連結進 LIFF
-> → 看券 → 核銷」完整閉環。券的內容都在 LIFF，所以 A3（LIFF 票券頁）與 A4（fan auth 驗證）
-> 是必要前置，不能延後。A5 會員綁定可與之並行。
+> **建議順序**：A1 → A2 → A3 → A4a → A7 → B1 → B2 打通「建券 → 對話發券 → 顧客點連結
+> → 看券 → 核銷」完整閉環。券的內容都在票券頁（不在訊息裡），所以 A3（票券頁）與
+> A4a（fan auth 驗證）是必要前置，不能延後。A5 會員綁定可與之並行。
+>
+> ⚠️ **票券頁的載體分兩階段**（design D11）：客戶短期內無法取得 LINE Login channel，
+> 故 LIFF 不可用。**第一階段票券頁是一般網頁**，身分走 Account Link（A4a）；
+> 待 Login channel 到位再改走 LIFF（A4b）。A3 的頁面本身兩階段共用，
+> 僅認證入口與開啟環境不同。
 
 ## A1. 資料模型
 
@@ -10,6 +15,7 @@
 - [ ] 1.4 `Coupon` 發行控制：`totalLimit`、`perContactLimit`、`claimTagId`、`status`（`draft`/`active`/`paused`/`ended`）
 - [ ] 1.4a `Coupon` 核銷方式：`redeemMode`（`staff_code`/`staff_scan`/`self`，預設 `staff_code`）+ `staffCode`
 - [ ] 1.5 `CouponInstance` model：`couponId`/`contactId`/`code`/`status`/各時間戳/`issuedVia`/`issuedRefId`/`redeemedBy`/`redeemChannel`
+- [ ] 1.5a `CouponInstance` 領取憑證欄位：`claimToken`（唯一、可為 null）+ `claimTokenExpiresAt`（供 FB／IG 與公開領券的「待領取」券歸戶，見 design D10）
 - [ ] 1.6 `CouponCode` model（序號包庫存）：`couponId`/`code`/`status`/`instanceId`
 - [ ] 1.7 唯一約束：券碼在租戶內唯一；`CouponInstance` 依 `(couponId, contactId)` 配合每人上限查核
 - [ ] 1.8 產出正式 migration（**不可只用 db push**）
@@ -27,6 +33,9 @@
 - [ ] 2.3c 匯入結果回報：成功筆數、因重複略過、因衝突拒絕，各自列出
 - [ ] 2.3d 序號庫存追加：已發布的券可補充序號，不影響已配發者
 - [ ] 2.4 領取 API：狀態轉 `claimed`，依效期模式計算 `expiresAt` 落地
+- [ ] 2.4a **憑證換券 API**（`POST /api/v1/fan/coupons/claim`）：交易內條件式更新（`WHERE claimToken=? AND status='issued' AND claimTokenExpiresAt > now()`）→ `contactId` 改為已驗證身分、狀態轉 `claimed`、憑證清空；受影響列數 0 即回報
+- [ ] 2.4b 換券失敗分類回報：憑證已被領取／已過期／不存在，不可只回泛稱失敗
+- [ ] 2.4c 發券時依渠道決定初始狀態：LINE 直接建 `claimed`；FB／IG 與公開連結建 `issued` + 憑證
 - [ ] 2.5 核銷 API：**DB transaction 內條件式更新搶狀態**（`WHERE status='claimed'`），受影響列數 0 即回報已使用
 - [ ] 2.5a 失敗分類回報：已使用／已過期／尚未生效／查無此券，不可只回泛稱失敗
 - [ ] 2.5b 粉絲端自助核銷端點：**僅當該券 `redeemMode='self'` 時開放**，其他模式回 403
@@ -34,23 +43,51 @@
 - [ ] 2.7 領取名單匯出（CSV，沿用 analytics 既有做法）
 - [ ] 2.8 所有 route 使用租戶綁定連線（`TenantDb`），不得用 `prismaAdmin`
 
-## A3. LIFF 票券頁
+## A3. 票券頁（第一階段為一般網頁，LIFF 為第二階段）
 
-- [ ] 3.1 LIFF Gateway：處理 `liff.state` 參數導流（參照 aitago `LiffGatewayController`）
+> 頁面與元件兩階段共用；差別僅在認證入口（A4a／A4b）與是否在 LINE webview 內開啟。
+> **勿把版面寫死在 LIFF 假設上**（如必為 LINE 內開、必有 `liff.state`）。
+
+- [ ] 3.1 路由與導流：第一階段以一般網址進入；**LIFF Gateway（`liff.state` 導流，參照 aitago `LiffGatewayController`）屬 A4b 階段**
 - [ ] 3.2 券夾頁：三分頁（可使用／已使用／已失效）、券卡列表、空狀態
 - [ ] 3.3 券詳情頁：券面、券號（含未生效遮蔽）、**使用條款（呈現消毒後的 HTML）**、狀態相應的動作按鈕
 - [ ] 3.4 核銷確認頁（店員模式）：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用
 - [ ] 3.4a 核銷確認頁（自助模式）：**滑動確認**而非按鈕（少了店員這道關卡，需以持續動作提高誤觸成本）
 - [ ] 3.5 核銷完成頁：金額、時間、店員碼（店員需在一個手臂距離外可辨識）
+- [ ] 3.5a 領取頁（`/coupon/claim/{claimToken}`）：身分驗證後自動換券，成功導向券詳情；失敗依原因顯示對應說明
 - [ ] 3.6 券夾 API 掛於既有 `/api/v1/fan` 前綴
-- [ ] 3.7 深色模式：LIFF 在 LINE App 內開啟會吃到系統深色設定，兩套主題皆須可讀
+- [ ] 3.7 深色模式：LINE App 內與一般瀏覽器皆會吃到系統深色設定，兩套主題皆須可讀
 
-## A4. fan auth 補 LIFF id_token 驗證
+## A4a. fan auth 過渡：Account Link 驗證（不需 LINE Login channel）
 
-- [ ] 4.1 `POST /api/v1/fan/auth` 改為要求 LIFF `id_token`，以 `line-login` 的 `verifyIdToken` 驗證
-- [ ] 4.2 驗證通過後以 LINE userId 對應聯絡人，再簽發 fan token
-- [ ] 4.3 移除「僅憑 contactId 即發 token」的舊路徑
-- [ ] 4.4 確認既有粉絲活動／點數功能不因此中斷（回歸測試）
+> **為何拆**：LIFF 須建於 LINE Login channel 之下，客戶短期內無法取得（design D11）。
+> 現況 fan auth 零驗證，不可作為過渡。本組先以 Account Link 補上身分驗證，**A4b 到位前這是唯一合法入口**。
+
+- [ ] 4a.1 nonce 產生：CSPRNG、≥128 bit、Base64（**不可用 Math.random 或時間戳**）
+- [ ] 4a.2 nonce → contactId 對應存放，含 TTL 與**一次性消費**（比照 `line-login.service.ts` 的 stateStore，但需考量多實例部署 → 用 Redis 而非行程內 Map）
+- [ ] 4a.3 發起綁定端點：呼叫既有 `issueAccountLinkToken()`（`channel-plugins/src/line/index.ts:613`），組 `https://access.line.me/dialog/bot/accountLink?linkToken=&nonce=` 連結並以 `reply`／`push` 送出
+- [ ] 4a.4 webhook 接 `accountLink` 事件：**事件已解析完成**（同檔 `:282`，帶 `result`／`nonce`），本項只補業務邏輯
+- [ ] 4a.5 `result === 'ok'` → 以 nonce 反查 contactId，寫入 `ContactAttribute`（沿用 D4 機制，**不新建表**），簽發 fan token
+- [ ] 4a.6 `result === 'failed'` → 不簽發、不寫入，記錄事件供稽核；顧客端提示重新操作
+- [ ] 4a.7 nonce 失效／查無 → 與驗證失敗**分別回報**，不可只回泛稱失敗
+- [ ] 4a.8 **不寫死 linkToken 10 分鐘效期**（官方註明可能變動）；過期以「請重新點選領取」引導重試
+- [ ] 4a.9 **移除「僅憑 contactId 即發 token」的舊路徑**（此項為上線阻斷，A4a／A4b 皆適用）
+- [ ] 4a.10 券夾頁在**一般瀏覽器**可用（非 LIFF webview），以 fan token 認身分
+- [ ] 4a.11 確認既有粉絲活動／點數功能不因此中斷（回歸測試）
+
+## A4b. fan auth 正式：LIFF id_token 驗證（待 LINE Login channel 到位）
+
+> **前置**：客戶取得 LINE Login channel 並建立 LIFF app。
+> 到位後與 A4a 並存一段時間再收斂；`CouponInstance` 結構不變，僅替換認證入口。
+
+- [ ] 4b.1 `POST /api/v1/fan/auth` 支援 LIFF `id_token`，以 `line-login` 的 `verifyIdToken` 驗證
+- [ ] 4b.2 驗證通過後以 LINE userId 對應聯絡人，再簽發 fan token
+- [ ] 4b.3 **Login channel 憑證改 per-tenant**：現況 `LINE_LOGIN_CHANNEL_ID`／`SECRET` 是全域 env（`config/env.ts:31`），多租戶下壞掉
+- [ ] 4b.4 **驗證 id_token 的 `aud` 對應該租戶的 Login channel ID** —— 不驗 `aud` 等同容許跨租戶身分偽造（租戶隔離守門）
+- [ ] 4b.5 LIFF endpoint 為固定 URL，**租戶識別一律自 `aud` 反解，不得信任 URL 參數**
+- [ ] 4b.6 LIFF ID 沿用既有 `Channel.settings.liffConfig.liffId`（後台已有輸入欄位，**不新增設定處**）
+- [ ] 4b.7 前端沿用既有 `apps/web/src/lib/liff.ts`（含 `liff.state` 解析與 sessionStorage 參數保存）
+- [ ] 4b.8 A4a 的 Account Link 路徑保留或下線，依屆時客戶渠道狀況決定
 
 ## A5. 會員綁定（產品層）
 
@@ -95,6 +132,8 @@
 - [ ] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
 - [ ] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
 - [ ] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
+- [ ] B2.5 **FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」
+- [ ] B2.6 後台發券介面對高價值券標示 FB／IG 的轉發風險，讓商家自行決定是否開放該渠道
 
 ## B3. 觸發入口
 
