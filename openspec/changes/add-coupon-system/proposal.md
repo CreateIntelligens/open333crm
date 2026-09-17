@@ -22,7 +22,7 @@ LINE 官方帳號內建的優惠券雖然能發，但**拿不回資料**。查�
 
 ### 架構決策：LINE LIFF 為主場，FB／IG 導流回 LINE
 
-券只活在 LINE：券卡（Flex）、券夾、券詳情、核銷全在 LIFF 內完成，身分用 LIFF `id_token`（平台簽發，可信度最高）。FB／IG 以卡片加 `web_url` 按鈕連到帶 `liff.state` 的網址，使用者點擊即跳轉 LINE 開券。
+券只活在 LINE：**券的內容全部呈現在 LIFF 頁**（券夾、券詳情、核銷），身分用 LIFF `id_token`（平台簽發，可信度最高）。對話中送出的只是一則帶 LIFF 連結的訊息，**不需要為券做專屬的 Flex 版型**。FB／IG 以卡片加 `web_url` 按鈕連到帶 `liff.state` 的網址，使用者點擊即跳轉 LINE 開券。
 
 此決策的效果：
 - **不需要**跨渠道歸戶（券只有一個渠道，沒有券夾要合併）
@@ -49,6 +49,7 @@ LINE 官方帳號內建的優惠券雖然能發，但**拿不回資料**。查�
 - **抽獎模式**（中獎機率／名額）：非本次需求範圍。LINE 原生 API 雖已內建，本系統暫不實作。
 - **互動遊戲**（轉盤／刮刮樂）、MGM 推薦券、POS／Partner API 核銷、點數換券：後續 change。
 - **FB／IG 原生 coupon template**：改走導流，不使用。
+- **LINE Flex 券卡版型**：券的內容在 LIFF 頁呈現，對話中只需帶連結的訊息，不做專屬版型。
 
 ## Capabilities
 
@@ -65,7 +66,6 @@ LINE 官方帳號內建的優惠券雖然能發，但**拿不回資料**。查�
 - **資料模型**（`packages/database`）：新增 `Coupon`／`CouponInstance`／`CouponCode` 三表，含正式 migration 與 **RLS policy migration**（比照 `rls_agentic_llm`）。會員編號對應沿用既有 `ContactAttribute`（`key`/`value` + 唯一約束），**不新建表**。
 - **API**（`apps/api`）：新增 `modules/coupon/`；`/api/v1/fan` 前綴下新增券夾端點；`POST /api/v1/fan/auth` 改為驗證 LIFF `id_token`（**現況只憑 contactId 即發 24h token，券帶金錢價值後屬上線阻斷**）。
 - **前端**（`apps/web`）：新增 LIFF 票券頁（券夾／券詳情／核銷確認）與 LIFF Gateway；後台券管理頁、建立券表單、核銷台（mobile-first）；Inbox 對話發券面板。
-- **素材**（`packages/channel-plugins`）：新增 `line_coupon` Flex 版型（builder + editor + preview + thumb + default body）。
 - **RBAC**：新增券相關權限點（現有 57 個）。**部署後必須執行 `scripts/reconcile-system-role-permissions.mjs` 並清除權限快取**，否則既有租戶會 403。
 - **CI**：新 route 須通過 `check-tenant-scoping.mjs` 與 `check-prisma-admin-usage.mjs`。
 - **不受影響**：發送層（`push`／`reply`／`multicast`／`broadcast`／`narrowcast` 與 SafeReply 降級）、`tagging.service`、短網址、關鍵字回覆、Rich Menu 均直接沿用。
