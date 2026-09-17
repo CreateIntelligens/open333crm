@@ -92,11 +92,11 @@
 ## A5. 會員綁定（產品層）
 
 - [ ] 5.1 LIFF 綁定頁：引導使用者完成平台身分驗證
-- [ ] 5.2 綁定成功寫入 `ContactAttribute`（key 為會員編號欄位名，**不新建表**）
-- [ ] 5.3 綁定成功自動貼標（沿用 `addTagToTarget`）
-- [ ] 5.4 **設定驅動的對外 API 介面**：後台可填端點、認證方式、請求／回應格式、欄位對應
-- [ ] 5.5 以 `executeApiFetchNode` 執行外部呼叫
-- [ ] 5.6 錯誤處理：外部無回應／回傳錯誤／查無會員 三種情況分別回報，且不建立不完整綁定
+- [x] 5.2 綁定成功寫入 `ContactAttribute`（key 為會員編號欄位名，**不新建表**）
+- [x] 5.3 綁定成功自動貼標（沿用 `addTagToTarget`）
+- [x] 5.4 **設定驅動的對外 API 介面**：後台可填端點、認證方式、請求／回應格式、欄位對應
+- [x] 5.5 以 `executeApiFetchNode` 執行外部呼叫
+- [x] 5.6 錯誤處理：外部無回應／回傳錯誤／查無會員 三種情況分別回報，且不建立不完整綁定
 - [ ] 5.7 介面設計前先蒐集 2–3 個真實客戶的 API 規格，驗證涵蓋度
 
 ## A6. 後台券管理頁
@@ -137,15 +137,20 @@
 
 ## B3. 觸發入口
 
-- [ ] B3.1 圖文選單按鈕可指向領券／綁定頁
-- [ ] B3.2 關鍵字回覆可觸發發券
-- [ ] B3.3 卡片訊息按鈕可指向券頁
-- [ ] B3.4 短網址帶歸因（沿用既有 `tagOnClick` 與 `link.clicked`）
+> **實查結果**：B3.1／B3.3／B3.4 皆為**既有能力，無需開發** —— Rich Menu 已支援
+> `uri` action（`line/rich-menu.service.ts:36`）、短網址已有 `tagOnClick` 接到
+> `addTagToTarget`（`shortlink.service.ts:12`）。券頁就是一個網址，設定即可指向。
+> 這幾項屬**設定作業**，列在此供上線時檢核，不是開發項目。
+
+- [x] B3.1 圖文選單按鈕可指向領券／綁定頁（既有 `uri` action，設定即可）
+- [x] B3.2 關鍵字回覆可觸發發券（新增 `issue_coupon` automation action）
+- [x] B3.3 卡片訊息按鈕可指向券頁（既有 uri 按鈕，設定即可）
+- [x] B3.4 短網址帶歸因（既有 `tagOnClick`；券連結改走短網址即可）
 
 ## B4. 領券自動貼標
 
-- [ ] B4.1 領取時呼叫 `addTagToTarget`，`addedBy` 標記為 `system`
-- [ ] B4.2 支援時效標籤（`ContactTag.expiresAt`）
+- [x] B4.1 領取時呼叫 `addTagToTarget`，`addedBy` 標記為 `system`
+- [x] B4.2 支援時效標籤（`ContactTag.expiresAt`）
 
 ## B5. FB／IG 導流
 
