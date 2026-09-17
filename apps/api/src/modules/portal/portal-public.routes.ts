@@ -6,6 +6,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import { signFanToken, verifyFanToken, type FanPayload } from './portal-auth.service.js';
+import { consumeAuthTicket } from '../fan-auth/auth-ticket.service.js';
 import { submitActivity, getActivityResult } from './portal.service.js';
 import { getPointBalance, listPointTransactions } from './points.service.js';
 
@@ -37,18 +38,48 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
 
   // ── Auth (no JWT required) ────────────────────────────────────────────────
 
+  /**
+   * 以綁定票據換取 fan token。
+   *
+   * ⚠️ 舊版此端點僅憑 contactId + tenantId 即簽發 24 小時 token，**無任何身分驗證** ——
+   * 取得或猜到他人 contactId 即可存取其資料。券帶金錢價值後屬上線阻斷，故已移除。
+   * 現行流程：顧客於 LINE 完成 Account Link → LINE 平台驗證身分 → webhook 收到
+   * result=ok → 簽發一次性 ticket → 顧客端持 ticket 換 token（design D11）。
+   */
   app.post('/auth', async (request, reply) => {
-    const { contactId, tenantId } = request.body as { contactId: string; tenantId: string };
-    if (!contactId || !tenantId) {
-      return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'contactId and tenantId required' } });
+    const { ticket } = request.body as { ticket?: string };
+    if (!ticket) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: '需要綁定票據' },
+      });
     }
-    // Verify contact exists
-    const contact = await prisma.contact.findFirst({ where: { id: contactId, tenantId } });
+
+    const claimed = await consumeAuthTicket(ticket);
+    if (!claimed) {
+      // 票據查無／已使用／已過期——三者對顧客而言處理方式相同：重新操作
+      return reply.status(401).send({
+        success: false,
+        error: { code: 'TICKET_INVALID', message: '票據無效或已過期，請重新點選連結' },
+      });
+    }
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: claimed.contactId, tenantId: claimed.tenantId },
+      select: { id: true },
+    });
     if (!contact) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Contact not found' } });
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: '查無此聯絡人' },
+      });
     }
-    const token = signFanToken(contactId, tenantId);
-    return { success: true, data: { token, contactId, tenantId } };
+
+    const token = signFanToken(claimed.contactId, claimed.tenantId);
+    return {
+      success: true,
+      data: { token, contactId: claimed.contactId, tenantId: claimed.tenantId },
+    };
   });
 
   // ── Protected routes (fan JWT) ────────────────────────────────────────────

@@ -28,6 +28,9 @@ import {
 } from './inbound-side-effects.js';
 import { forwardToDownstream, getDownstreamWebhookConfig } from './downstream-forwarder.js';
 import { claimForForward } from './downstream-loop-guard.js';
+import { completeBinding } from '../fan-auth/fan-binding.service.js';
+import { issueAuthTicket } from '../fan-auth/auth-ticket.service.js';
+import { storeBindingTicket, storeBindingFailure } from '../fan-auth/binding-ticket-store.js';
 
 // TODO(rls): 入站 webhook 為公開端點（無認證租戶），tenant 由 channel 反查得出，
 // 且下游 resolver / InboundMessageContext 皆以 PrismaClient 型別串接，故此路徑不套 RLS，維持 PrismaClient。
@@ -117,6 +120,12 @@ export async function processWebhookEvent(
 
   // 5. Process each message (same pattern as simulator.service.ts)
   for (const parsed of parsedMessages) {
+    // accountLink 是身分驗證結果，不是對話訊息——不建 conversation／message，
+    // 直接交給綁定流程處理（design D11）。
+    if (parsed.contentType === 'accountLink') {
+      await handleAccountLinkEvent(prisma, tenantId, parsed);
+      continue;
+    }
     await processInboundMessage(prisma, io, credentials, channel, tenantId, parsed);
   }
 
@@ -128,6 +137,54 @@ export async function processWebhookEvent(
     } else {
       logger.warn('[Webhook] Downstream loopback detected — skip forward (after)', { channelId });
     }
+  }
+}
+
+/**
+ * 處理 LINE 的 accountLink 事件。事件已於 plugin 解析完成（帶 result／nonce），
+ * 此處只做業務邏輯：驗證通過則寫入標記並備妥認證票據。
+ *
+ * ⚠️ 不可在此拋錯——webhook 已回 200，拋錯只會製造噪音且無法讓 LINE 重送。
+ */
+async function handleAccountLinkEvent(
+  prisma: PrismaClient,
+  tenantId: string,
+  parsed: ParsedWebhookMessage,
+): Promise<void> {
+  const content = parsed.content as { nonce?: string; result?: string };
+  const nonce = content.nonce;
+  if (!nonce) {
+    logger.warn('[Webhook] accountLink 事件缺少 nonce', { tenantId });
+    return;
+  }
+
+  try {
+    const result = await completeBinding(prisma, {
+      nonce,
+      result: content.result ?? 'failed',
+      lineUid: parsed.contactUid,
+    });
+
+    if (!result.ok) {
+      logger.warn('[Webhook] 帳號綁定未完成', { tenantId, reason: result.reason });
+      // 寫入失敗原因，讓等待中的顧客端立即得知，而非輪詢到逾時（4a.6／4a.7）
+      await storeBindingFailure(nonce, result.reason);
+      return;
+    }
+
+    // 驗證通過：發一次性票據，供顧客端換取 fan token
+    const ticket = await issueAuthTicket({
+      tenantId: result.tenantId,
+      contactId: result.contactId,
+    });
+    await storeBindingTicket(nonce, ticket);
+
+    logger.info('[Webhook] 帳號綁定完成', { tenantId, contactId: result.contactId });
+  } catch (err) {
+    logger.error('[Webhook] 處理 accountLink 事件失敗', {
+      tenantId,
+      error: (err as Error).message,
+    });
   }
 }
 
