@@ -67,6 +67,21 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     ],
   },
   {
+    type: 'issue_coupon',
+    label: '發送優惠券',
+    requires: ['contact', 'conversation'],
+    mutates: ['conversation', 'message'],
+    params: [
+      {
+        key: 'couponId',
+        label: '優惠券',
+        type: 'string',
+        required: true,
+        placeholder: '從優惠券列表選擇要發放的券',
+      },
+    ],
+  },
+  {
     type: 'create_case',
     label: '建立工單',
     requires: ['contact'],

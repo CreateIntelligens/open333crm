@@ -19,7 +19,8 @@
     "test:llm-prompt": "tsx src/__tests__/llm-system-prompt.test.ts",
     "start": "node dist/index.js",
     "test:coupon": "tsx src/__tests__/coupon.service.test.ts",
-    "test:fan-auth": "tsx src/__tests__/fan-auth.test.ts"
+    "test:fan-auth": "tsx src/__tests__/fan-auth.test.ts",
+    "test:coupon-delivery": "tsx src/__tests__/coupon-delivery.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

@@ -18,6 +18,7 @@ import {
 import { changeStatus } from './coupon-lifecycle.service.js';
 import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
+import { sendCouponMessage, requiresClaimToken } from './coupon-delivery.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 import {
   getCouponStats,
@@ -149,6 +150,95 @@ export default async function couponRoutes(app: FastifyInstance) {
         requireClaim: body.requireClaim,
       });
       return { success: true, data: result };
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  /**
+   * 對話中發券（B1／B2.1）。發券 + 送訊息一次完成，座席不需分兩步。
+   *
+   * 策略固定為 push —— 座席主動挑券時，該對話的 replyToken 多半已失效
+   * 或根本不存在（design D7）。
+   */
+  app.post('/:id/issue-to-conversation', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { conversationId?: string };
+    const tenantId = request.agent.tenantId;
+
+    if (!body.conversationId) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: '缺少對話識別' },
+      });
+    }
+
+    // 從對話反查聯絡人與渠道——不接受請求指定 contactId，避免發券給非對話對象
+    const conversation = await request.tenantPrisma.conversation.findFirst({
+      where: { id: body.conversationId, tenantId },
+      select: {
+        contactId: true,
+        channel: { select: { channelType: true } },
+      },
+    });
+    if (!conversation?.contactId || !conversation.channel) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: '查無此對話' },
+      });
+    }
+
+    const channelType = conversation.channel.channelType;
+    // LINE 已知身分可直接歸戶；FB／IG 需帶領取憑證（design D10）
+    const requireClaim = requiresClaimToken(channelType);
+
+    try {
+      const result = await issueCoupons(app.prisma, tenantId, id, {
+        contactIds: [conversation.contactId],
+        issuedVia: 'inbox',
+        issuedRefId: request.agent.id,
+        requireClaim,
+      });
+
+      if (result.issued.length === 0) {
+        const reason = result.skipped[0]?.reason ?? 'UNKNOWN';
+        const messages: Record<string, string> = {
+          PER_CONTACT_LIMIT_REACHED: '此顧客已達該券的領取上限',
+          TOTAL_LIMIT_REACHED: '此券已達發行總量上限',
+          CODES_EXHAUSTED: '此券的序號已用罄，請先補充庫存',
+          SHARED_CODE_MISSING: '此券未設定共用券碼',
+          CODE_GENERATION_FAILED: '券碼產生失敗，請重試',
+          CODE_ALLOCATION_CONFLICT: '序號配發衝突，請重試',
+        };
+        return reply.status(409).send({
+          success: false,
+          error: { code: reason, message: messages[reason] ?? reason },
+        });
+      }
+
+      const instance = result.issued[0];
+      const coupon = await getCoupon(request.tenantPrisma, tenantId, id);
+
+      const delivery = await sendCouponMessage(app.prisma, {
+        tenantId,
+        conversationId: body.conversationId,
+        couponName: coupon?.name ?? '優惠券',
+        claimToken: instance.claimToken,
+        instanceId: instance.id,
+        channelType,
+        strategy: 'push',
+      });
+
+      // 券已入庫即視為成功；訊息沒送出另外標示，讓座席知道要不要補發連結
+      return {
+        success: true,
+        data: {
+          instanceId: instance.id,
+          code: instance.code,
+          messageSent: delivery.sent,
+          ...(delivery.sent ? {} : { deliveryError: delivery.reason }),
+        },
+      };
     } catch (err) {
       return handleError(err, reply);
     }

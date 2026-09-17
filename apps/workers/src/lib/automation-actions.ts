@@ -6,6 +6,8 @@ import { logger } from '@open333crm/core';
 import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, renderTemplateBody } from './channel-delivery.js';
+import { issueInstances } from '@open333crm/core';
+import { buildCouponMessage, requiresCouponClaimToken } from './coupon-message.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -259,6 +261,86 @@ export async function executeWorkerAutomationActions(
           context.pluginRegistry,
           context.conversationId,
           { contentType: material.contentType, content: renderedBody, delivery: keywordReplyDelivery(context) },
+        );
+        continue;
+      }
+
+      /**
+       * 自動發券（design D7：關鍵字／加好友觸發用 reply，免費且 replyToken 效期短）。
+       *
+       * ⚠️ worker 走 DATABASE_URL_ADMIN（BYPASSRLS），RLS 不會兜底，
+       * 因此每個 query 都必須自行帶 tenantId——這裡是租戶隔離的唯一防線。
+       */
+      if (action.type === 'issue_coupon') {
+        if (!context.contactId || !context.conversationId || !context.pluginRegistry) {
+          logger.info('[automation] issue_coupon skipped: missing contactId/conversationId/pluginRegistry');
+          continue;
+        }
+        const couponId = params['couponId'];
+        if (typeof couponId !== 'string' || !couponId) {
+          logger.info('[automation] issue_coupon skipped: missing couponId');
+          continue;
+        }
+
+        const coupon = await prisma.coupon.findFirst({
+          where: { id: couponId, tenantId: context.tenantId },
+        });
+        if (!coupon) {
+          logger.warn(`[automation] issue_coupon skipped: coupon ${couponId} not found`);
+          continue;
+        }
+        if (coupon.status !== 'ACTIVE') {
+          logger.info(`[automation] issue_coupon skipped: coupon ${couponId} is ${coupon.status}`);
+          continue;
+        }
+
+        const conv = await prisma.conversation.findFirst({
+          where: { id: context.conversationId, tenantId: context.tenantId },
+          include: { channel: { select: { channelType: true } } },
+        });
+        const channelType = conv?.channel?.channelType;
+        if (!channelType) {
+          logger.warn('[automation] issue_coupon skipped: conversation channel not found');
+          continue;
+        }
+
+        // FB／IG 無可信平台身分，發出的券需帶領取憑證（design D10）
+        const requireClaim = requiresCouponClaimToken(channelType);
+
+        // 交易內完成配額檢查與建立，避免併發超發
+        const outcome = await prisma.$transaction((tx) =>
+          issueInstances(tx, {
+            tenantId: context.tenantId,
+            coupon,
+            contactIds: [context.contactId as string],
+            issuedVia: context.trigger ?? 'automation',
+            issuedRefId: couponId,
+            requireClaim,
+          }));
+
+        if (outcome.issued.length === 0) {
+          logger.info('[automation] issue_coupon 未發出', { reason: outcome.skipped[0]?.reason });
+          continue;
+        }
+
+        const instance = outcome.issued[0];
+        await deliverToChannelFromWorker(
+          prisma,
+          redisPublisher,
+          context.pluginRegistry,
+          context.conversationId,
+          {
+            contentType: 'text',
+            content: {
+              text: buildCouponMessage({
+                couponName: coupon.name,
+                claimToken: instance.claimToken,
+                instanceId: instance.id,
+              }),
+            },
+            // keyword.matched 帶 replyToken 時走 reply（免費）；否則自動落 push
+            delivery: keywordReplyDelivery(context),
+          },
         );
         continue;
       }

@@ -123,16 +123,16 @@
 ## B1. Inbox 對話發券
 
 - [ ] B1.1 對話視窗新增「發送優惠券」入口（**參照 `TemplatePicker.tsx`，287 行可大幅照抄**）
-- [ ] B1.2 挑券後呼叫發券 API，`issuedVia` 記為 `inbox`、`issuedRefId` 記座席 id
-- [ ] B1.3 僅列出用途分類為「客服補償」且狀態為 active 的券
+- [x] B1.2 挑券後呼叫發券 API，`issuedVia` 記為 `inbox`、`issuedRefId` 記座席 id
+- [x] B1.3 僅列出用途分類為「客服補償」且狀態為 active 的券
 
 ## B2. 發送策略接線
 
-- [ ] B2.1 客服發券用 `push`
-- [ ] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
-- [ ] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
-- [ ] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
-- [ ] B2.5 **FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」
+- [x] B2.1 客服發券用 `push`
+- [x] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
+- [x] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
+- [x] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
+- [x] B2.5 **FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」
 - [ ] B2.6 後台發券介面對高價值券標示 FB／IG 的轉發風險，讓商家自行決定是否開放該渠道
 
 ## B3. 觸發入口
