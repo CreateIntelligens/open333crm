@@ -183,6 +183,20 @@ async function main() {
     assert.equal(Number(rows[0].n), 0, '查無會員竟寫入了 attribute');
   });
 
+  await t('憑證加密入庫，DB 中不存明文', async () => {
+    const rows = await prisma.$queryRawUnsafe<Array<{ mb: unknown }>>(
+      `SELECT "memberBinding" AS mb FROM tenant_settings WHERE "tenantId" = $1::uuid`, tenantId);
+    const raw = JSON.stringify(rows[0].mb);
+    assert.ok(!raw.includes('secret'), 'DB 中竟存有明文憑證');
+    assert.ok(raw.includes('credentialEnc'), '未使用加密欄位');
+  });
+
+  await t('讀回設定時憑證可正確解密', async () => {
+    const { getBindingConfig } = await import('../modules/member-binding/member-binding.service.js');
+    const c = await getBindingConfig(prisma, tenantId);
+    assert.equal(c?.auth.credential, 'secret', '憑證未能正確解密還原');
+  });
+
   await t('解除綁定移除會員欄位', async () => {
     const r = await unbindMember(prisma, tenantId, contactA);
     assert.ok(r.removed > 0, '未移除任何欄位');

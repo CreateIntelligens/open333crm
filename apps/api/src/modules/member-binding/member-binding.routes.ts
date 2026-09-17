@@ -13,6 +13,7 @@ import {
   getBinding,
   unbindMember,
 } from './member-binding.service.js';
+import { testConnection } from './member-lookup.service.js';
 import type { MemberBindingConfig, BindingFailureReason } from './member-binding.types.js';
 
 /** 對顧客的說明。技術細節留在 detail 欄位供後台排查，不外露。 */
@@ -79,6 +80,47 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
       auth: { ...(body.auth ?? { type: 'none' }), credential },
     });
     return { success: true };
+  });
+
+  /**
+   * 連線測試。存檔後可立刻驗證設定是否正確，而不是等顧客去踩雷。
+   *
+   * 用已存檔的憑證 + 請求帶的測試輸入。不接受請求直接帶憑證——
+   * 否則此端點會變成用我們的伺服器對任意位址發送任意金鑰的跳板。
+   */
+  app.post('/test', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
+    const body = request.body as { input?: Record<string, string> };
+    const config = await getBindingConfig(app.prisma, request.agent.tenantId);
+    if (!config) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'NOT_CONFIGURED', message: '尚未儲存會員綁定設定' },
+      });
+    }
+
+    // 測試時忽略 enabled，讓管理員可以先測通再啟用
+    const result = await testConnection({ ...config, enabled: true }, body.input ?? {});
+    if (!result.ok) {
+      return reply.status(200).send({
+        success: true,
+        data: {
+          ok: false,
+          reason: result.reason,
+          message: FAILURE_MESSAGES[result.reason],
+          // 測試端點回 detail——這是給管理員排查用的，非顧客端
+          detail: result.detail,
+        },
+      });
+    }
+    return {
+      success: true,
+      data: {
+        ok: true,
+        memberId: result.memberId,
+        // 回傳取到的欄位，讓管理員確認 fieldMapping 對不對
+        attributes: result.attributes,
+      },
+    };
   });
 
   /** 後台代顧客綁定（客服協助情境）。 */
