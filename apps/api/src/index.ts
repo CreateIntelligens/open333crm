@@ -56,6 +56,7 @@ import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-s
 import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
 import { startA2ABridgeWorker } from './modules/settings/a2a-bridge.worker.js';
 import portalRoutes from './modules/portal/portal.routes.js';
+import memberBindingRoutes, { memberBindingFanRoutes } from './modules/member-binding/member-binding.routes.js';
 import couponFanRoutes from './modules/coupon/coupon-fan.routes.js';
 import fanAuthRoutes from './modules/fan-auth/fan-auth.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
@@ -167,6 +168,8 @@ export async function bootstrap() {
   await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
   await app.register(portalRoutes, { prefix: '/api/v1/portal' });
   await app.register(couponFanRoutes, { prefix: '/api/v1/fan/coupons' });
+  await app.register(memberBindingRoutes, { prefix: '/api/v1/member-binding' });
+  await app.register(memberBindingFanRoutes, { prefix: '/api/v1/fan/member-binding' });
   await app.register(fanAuthRoutes, { prefix: '/api/v1/fan/binding' });
   await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
   await app.register(couponRoutes, { prefix: '/api/v1/coupons' });

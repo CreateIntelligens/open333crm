@@ -23,6 +23,11 @@ interface AddTagInput extends TargetInput {
   agentId?: string;
   /** 預設 'agent'（既有人工呼叫者不受影響）。 */
   addedBy?: TagSource;
+  /**
+   * 時效標籤的到期時間。到期後由 `filterActiveContactTags` 視為不存在，
+   * 並由排程清理實體列。未給則為永久標籤（既有行為不變）。
+   */
+  expiresAt?: Date | null;
 }
 
 interface RemoveTagInput extends TargetInput {
@@ -128,12 +133,14 @@ export async function addTagToTarget(
             tagId: input.tagId,
           },
         },
-        update: {},
+        // 重複貼標時刷新效期：續期比「已存在就不動」更符合預期
+        update: input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {},
         create: {
           contactId: input.targetId,
           tagId: input.tagId,
           addedBy: source,
           addedById: input.agentId ?? null,
+          expiresAt: input.expiresAt ?? null,
         },
         include: { tag: { select: TAG_SELECT } },
       });

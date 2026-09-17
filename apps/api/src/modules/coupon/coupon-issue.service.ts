@@ -8,9 +8,11 @@
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
  * TenantDb 不含 $transaction，故此處收 PrismaClient（見 lib/tenant-db.ts 註解）。
  */
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
+import { logger } from '@open333crm/core';
 import { issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
+import { addTagToTarget } from '../tag/tagging.service.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export type { IssuedInstance };
@@ -52,14 +54,52 @@ export async function issueCoupons(
       throw new CouponValidationError('僅能發放進行中的券');
     }
 
-    return issueInstances(tx, {
+    const requireClaim = opts.requireClaim ?? false;
+    const outcome = await issueInstances(tx, {
       tenantId,
       coupon,
       contactIds: opts.contactIds,
       issuedVia: opts.issuedVia,
       issuedRefId: opts.issuedRefId,
-      requireClaim: opts.requireClaim ?? false,
+      requireClaim,
       claimTokenHours: opts.claimTokenHours,
     });
+
+    // 直接歸戶者（LINE）不會經過 claimByToken，貼標要在此補上；
+    // 待領取者（FB／IG）於實際領取時才貼，避免沒領的人也被貼標
+    if (!requireClaim && coupon.claimTagId) {
+      for (const instance of outcome.issued) {
+        if (instance.contactId) {
+          await applyClaimTag(tx, tenantId, instance.contactId, coupon.claimTagId);
+        }
+      }
+    }
+
+    return outcome;
   });
+}
+
+/** 貼標失敗不影響發券——標籤是行銷輔助，券才是顧客要的東西。 */
+async function applyClaimTag(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  contactId: string,
+  tagId: string,
+): Promise<void> {
+  try {
+    await addTagToTarget(tx, {
+      tenantId,
+      targetType: 'CONTACT',
+      targetId: contactId,
+      tagId,
+      addedBy: 'system',
+    });
+  } catch (err) {
+    logger.warn('[Coupon] 發券貼標失敗（不影響發券）', {
+      tenantId,
+      contactId,
+      tagId,
+      error: (err as Error).message,
+    });
+  }
 }

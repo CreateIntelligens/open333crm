@@ -1196,6 +1196,9 @@ model TenantSettings {
   geminiApiKeyEnc        String?
   gaId                   String?
   metaPixelId            String?
+  /// 會員綁定的設定驅動介面（端點／認證／欄位對應），見 MemberBindingConfig。
+  /// 用 JSON 是因為各客戶的 API 格式差異大，開成欄位會無止盡增加。
+  memberBinding          Json     @default("{}")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

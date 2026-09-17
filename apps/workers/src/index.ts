@@ -41,6 +41,7 @@ import {
 } from './handlers/data-export.handler.js';
 import { closeNotificationQueue } from './lib/notification-queue.js';
 import { handleAgentRetentionCleanup } from './handlers/agent-retention.handler.js';
+import { handleTagExpiryCleanup } from './handlers/tag-expiry.handler.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,15 @@ async function main() {
     'data-export:cleanup',
     {},
     { repeat: { every: 3_600_000 }, jobId: 'data-export:cleanup' },
+  );
+
+  // 時效標籤清理：每小時掃一次，刪掉 expiresAt 已過的 contact_tags。
+  // 用刪列而非查詢時過濾——標籤讀取點過多，逐一加條件必然會漏。
+  const tagExpiryQueue = new Queue('tag-expiry-cleanup', { connection });
+  await tagExpiryQueue.add(
+    'tag:expiry-cleanup',
+    {},
+    { repeat: { every: 3_600_000 }, jobId: 'tag:expiry-cleanup' },
   );
 
   const agentRetentionQueue = new Queue('agent-retention-cleanup', { connection });
@@ -185,6 +195,19 @@ async function main() {
     { connection },
   );
 
+  const tagExpiryWorker = new Worker(
+    'tag-expiry-cleanup',
+    async (job) => {
+      logger.info(`[tag-expiry-cleanup] Processing job ${job.id}: ${job.name}`);
+      try {
+        await handleTagExpiryCleanup(prisma);
+      } catch (err) {
+        logger.error('[tag-expiry-cleanup] Cleanup failed', { err });
+      }
+    },
+    { connection },
+  );
+
   const agentRetentionWorker = new Worker(
     'agent-retention-cleanup',
     async (job) => {
@@ -203,6 +226,7 @@ async function main() {
     logger.info('Shutting down workers...');
     await Promise.all([
       slaWorker.close(),
+      tagExpiryWorker.close(),
       notificationWorker.close(),
       automationWorker.close(),
       richMenuBindWorker.close(),
