@@ -18,6 +18,13 @@ import {
 import { changeStatus } from './coupon-lifecycle.service.js';
 import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
+import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
+import {
+  getCouponStats,
+  listInstances,
+  exportInstancesCsv,
+  getBulkRedeemCounts,
+} from './coupon-stats.service.js';
 
 /** 驗證錯誤轉 400 並帶可讀訊息；其餘往上拋，交給全域錯誤處理回 500。 */
 function handleError(err: unknown, reply: { status: (n: number) => { send: (b: unknown) => unknown } }) {
@@ -145,6 +152,85 @@ export default async function couponRoutes(app: FastifyInstance) {
     } catch (err) {
       return handleError(err, reply);
     }
+  });
+
+  // ── 序號包匯入 ──
+
+  app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+    const body = request.body as { codes?: string };
+    try {
+      const result = await previewImport(app.prisma, request.agent.tenantId, body.codes ?? '');
+      return { success: true, data: result };
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  app.post('/:id/codes', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { codes?: string };
+    try {
+      const result = await importCodes(app.prisma, request.agent.tenantId, id, body.codes ?? '');
+      return { success: true, data: result };
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  app.delete('/:id/codes/:code', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+    const { id, code } = request.params as { id: string; code: string };
+    const result = await removeAvailableCode(app.prisma, request.agent.tenantId, id, code);
+    if (!result.removed) {
+      if (result.reason === 'NOT_FOUND') {
+        return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此序號' } });
+      }
+      return reply.status(409).send({
+        success: false,
+        error: { code: 'ALREADY_ASSIGNED', message: '此序號已配發給顧客，無法移除' },
+      });
+    }
+    return { success: true };
+  });
+
+  // ── 成效與名單 ──
+
+  app.get('/:id/stats', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const stats = await getCouponStats(request.tenantPrisma, request.agent.tenantId, id);
+    if (!stats) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
+    }
+    return { success: true, data: stats };
+  });
+
+  app.get('/:id/instances', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
+    const { id } = request.params as { id: string };
+    const { status, page, limit } = request.query as Record<string, string>;
+    const result = await listInstances(request.tenantPrisma, request.agent.tenantId, id, {
+      status,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    return {
+      success: true,
+      data: result.items,
+      meta: { total: result.total, page: result.page, limit: result.limit },
+    };
+  });
+
+  app.get('/:id/instances/export', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const coupon = await getCoupon(request.tenantPrisma, request.agent.tenantId, id);
+    if (!coupon) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
+    }
+    const csv = await exportInstancesCsv(request.tenantPrisma, request.agent.tenantId, id);
+    // 檔名只保留安全字元，避免券名中的引號或路徑符號破壞 header
+    const safeName = coupon.name.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 40);
+    return reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="coupon_${safeName}.csv"`)
+      .send(csv);
   });
 
   // 核銷台。掃碼或手動輸入券號皆走此端點
