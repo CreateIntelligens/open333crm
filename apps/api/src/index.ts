@@ -58,6 +58,8 @@ import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-s
 import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
 import { startA2ABridgeWorker } from './modules/settings/a2a-bridge.worker.js';
 import portalRoutes from './modules/portal/portal.routes.js';
+import couponFanRoutes from './modules/coupon/coupon-fan.routes.js';
+import fanAuthRoutes from './modules/fan-auth/fan-auth.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import emailRegistrationRoutes from './modules/identity-binding/email-registration.routes.js';
 import phoneRegistrationRoutes from './modules/identity-binding/phone-registration.routes.js';
@@ -186,6 +188,8 @@ export async function bootstrap() {
   await app.register(storageRoutes, { prefix: '/api/v1/files' });
   await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
   await app.register(portalRoutes, { prefix: '/api/v1/portal' });
+  await app.register(couponFanRoutes, { prefix: '/api/v1/fan/coupons' });
+  await app.register(fanAuthRoutes, { prefix: '/api/v1/fan/binding' });
   await app.register(portalPublicRoutes, { prefix: '/api/v1/fan' });
   await app.register(emailRegistrationRoutes, { prefix: '/api/v1/public/email-registration' });
   await app.register(phoneRegistrationRoutes, { prefix: '/api/v1/public/phone-registration' });
