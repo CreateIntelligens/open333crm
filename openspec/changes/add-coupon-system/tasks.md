@@ -4,10 +4,11 @@
 
 ## A1. 資料模型
 
-- [ ] 1.1 `Coupon` model：名稱、說明、券面圖、券型（`discount_amount`/`discount_percent`/`gift`/`exchange`）、用途分類（`marketing`/`service`）
+- [ ] 1.1 `Coupon` model：名稱、說明、**使用條款（支援有限 HTML）**、券面圖、券型（`discount_amount`/`discount_percent`/`gift`/`exchange`）、用途分類（`marketing`/`service`）
 - [ ] 1.2 `Coupon` 效期欄位：`validityMode`（`fixed`/`after_claim`/`after_open`）+ `startAt`/`endAt`/`afterClaimDays`/`afterOpenMinutes`
 - [ ] 1.3 `Coupon` 序號欄位：`codeMode`（`shared_code`/`unique_code`/`imported_codes`）+ `sharedCode`
 - [ ] 1.4 `Coupon` 發行控制：`totalLimit`、`perContactLimit`、`claimTagId`、`status`（`draft`/`active`/`paused`/`ended`）
+- [ ] 1.4a `Coupon` 核銷方式：`redeemMode`（`staff_code`/`staff_scan`/`self`，預設 `staff_code`）+ `staffCode`
 - [ ] 1.5 `CouponInstance` model：`couponId`/`contactId`/`code`/`status`/各時間戳/`issuedVia`/`issuedRefId`/`redeemedBy`/`redeemChannel`
 - [ ] 1.6 `CouponCode` model（序號包庫存）：`couponId`/`code`/`status`/`instanceId`
 - [ ] 1.7 唯一約束：券碼在租戶內唯一；`CouponInstance` 依 `(couponId, contactId)` 配合每人上限查核
@@ -19,6 +20,7 @@
 
 - [ ] 2.1 建立 `apps/api/src/modules/coupon/`（routes + service，比照既有 module 結構）
 - [ ] 2.2 券 CRUD：建立／更新／發布／暫停／結束；發布前驗證（序號包模式須有庫存、效期欄位齊備）
+- [ ] 2.2a **使用條款 HTML 消毒**：選定並引入成熟 sanitizer（**不可自行以正則實作**）；白名單允許斷行／段落／連結／粗體／清單；禁 script／style／iframe／event handler 屬性／`javascript:` 連結；**儲存時消毒一次**
 - [ ] 2.3 發券 API：檢查發行總量與每人上限 → 配發券碼（依三種 codeMode）→ 建立 `CouponInstance`
 - [ ] 2.3a 券碼產生器（`unique_code`）：可設前綴、避開易混淆字元（0/O、1/I/l）、租戶內唯一
 - [ ] 2.3b 序號匯入：支援**貼上文字**與**上傳檔案**兩種輸入；逐筆檢查格式、清單內重複、與既有券碼衝突
@@ -26,6 +28,8 @@
 - [ ] 2.3d 序號庫存追加：已發布的券可補充序號，不影響已配發者
 - [ ] 2.4 領取 API：狀態轉 `claimed`，依效期模式計算 `expiresAt` 落地
 - [ ] 2.5 核銷 API：**DB transaction 內條件式更新搶狀態**（`WHERE status='claimed'`），受影響列數 0 即回報已使用
+- [ ] 2.5a 失敗分類回報：已使用／已過期／尚未生效／查無此券，不可只回泛稱失敗
+- [ ] 2.5b 粉絲端自助核銷端點：**僅當該券 `redeemMode='self'` 時開放**，其他模式回 403
 - [ ] 2.6 券成效查詢：發送／領取／開封／核銷／核銷率五指標
 - [ ] 2.7 領取名單匯出（CSV，沿用 analytics 既有做法）
 - [ ] 2.8 所有 route 使用租戶綁定連線（`TenantDb`），不得用 `prismaAdmin`
@@ -34,8 +38,9 @@
 
 - [ ] 3.1 LIFF Gateway：處理 `liff.state` 參數導流（參照 aitago `LiffGatewayController`）
 - [ ] 3.2 券夾頁：三分頁（可使用／已使用／已失效）、券卡列表、空狀態
-- [ ] 3.3 券詳情頁：券面、券號（含未生效遮蔽）、使用條款、狀態相應的動作按鈕
-- [ ] 3.4 核銷確認頁：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用
+- [ ] 3.3 券詳情頁：券面、券號（含未生效遮蔽）、**使用條款（呈現消毒後的 HTML）**、狀態相應的動作按鈕
+- [ ] 3.4 核銷確認頁（店員模式）：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用
+- [ ] 3.4a 核銷確認頁（自助模式）：**滑動確認**而非按鈕（少了店員這道關卡，需以持續動作提高誤觸成本）
 - [ ] 3.5 核銷完成頁：金額、時間、店員碼（店員需在一個手臂距離外可辨識）
 - [ ] 3.6 券夾 API 掛於既有 `/api/v1/fan` 前綴
 - [ ] 3.7 深色模式：LIFF 在 LINE App 內開啟會吃到系統深色設定，兩套主題皆須可讀
@@ -63,6 +68,8 @@
 - [ ] 6.2 建立／編輯券表單：**券型四選一、效期三模式、序號三式的欄位連動顯示隱藏**
 - [ ] 6.2a 序號區依模式切換：一人一碼→前綴設定；共用碼→單一輸入框；序號包→貼上文字框 + 檔案上傳
 - [ ] 6.2b 共用碼模式須提示「無法追蹤個別顧客、無法防轉發」
+- [ ] 6.2c 核銷方式三選一，選 `self` 時提示代價（顧客可自行核銷、無法歸因店員），並建議於條款揭露「誤按即失效」
+- [ ] 6.2d 使用條款輸入框支援格式輸入，並說明可用的標記
 - [ ] 6.3 核銷台頁（**mobile-first**，店員用手機開）：掃碼取景框、手動輸入券號、明確的成功／失敗狀態
 - [ ] 6.4 券成效報表頁（掛進既有 analytics）
 - [ ] 6.5 UI 不放 emoji、成功訊息不加勾勾（依專案慣例）
@@ -123,6 +130,8 @@
 - [ ] C3.3 效期三模式的到期判定邊界
 - [ ] C3.4 發行總量與每人上限的拒絕行為
 - [ ] C3.5 未生效券不露碼
+- [ ] C3.7 使用條款消毒：危險標記被移除、允許的格式保留、`javascript:` 連結被擋
+- [ ] C3.8 自助核銷：非 `self` 模式的券呼叫粉絲端核銷端點應回 403
 - [ ] C3.6 跨租戶隔離：A 租戶無法存取 B 租戶的券
 
 ## C4. 收尾
