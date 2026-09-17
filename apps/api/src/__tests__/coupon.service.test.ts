@@ -14,6 +14,8 @@ import { changeStatus } from '../modules/coupon/coupon-lifecycle.service.js';
 import { issueCoupons } from '../modules/coupon/coupon-issue.service.js';
 import { claimByToken, redeemCoupon, openInstance } from '../modules/coupon/coupon-redeem.service.js';
 import { sanitizeTerms } from '../modules/coupon/terms-sanitizer.js';
+import { importCodes, previewImport, removeAvailableCode } from '../modules/coupon/coupon-import.service.js';
+import { getCouponStats, exportInstancesCsv } from '../modules/coupon/coupon-stats.service.js';
 import { generateCouponCode, parseCodeList } from '../modules/coupon/coupon-code.service.js';
 
 const prisma = new PrismaClient();
@@ -231,6 +233,131 @@ async function main() {
     assert.equal(before?.expiresAt, null, '未開啟前不應有到期時間');
     const opened = await openInstance(prisma, tenantId, inst.id, contactA);
     assert.ok(opened.ok && opened.expiresAt, '開啟後未設定到期時間');
+  });
+
+  // ── 序號包匯入 ──
+  let importCouponId = '';
+  await t('建立序號包模式的券', async () => {
+    const c = await withTenant(prisma, tenantId, (tx) =>
+      createCoupon(tx, tenantId, agentId, {
+        name: '序號包券', couponType: 'EXCHANGE', codeMode: 'IMPORTED_CODES',
+        redeemMode: 'SELF', perContactLimit: 10,
+        validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
+      }));
+    importCouponId = c.id;
+  });
+
+  await t('無庫存的序號包券不可發布', async () => {
+    await assert.rejects(
+      () => withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, importCouponId, 'ACTIVE')),
+      /序號/,
+    );
+  });
+
+  await t('匯入前試算不寫入資料', async () => {
+    const r = await previewImport(prisma, tenantId, 'AAAA1111\nBBBB2222\nAAAA1111\nZZ');
+    assert.equal(r.willImport, 2);
+    assert.deepEqual(r.duplicatesInInput, ['AAAA1111']);
+    assert.deepEqual(r.invalid, ['ZZ']);
+    const stored = await withTenant(prisma, tenantId, (tx) =>
+      tx.couponCode.count({ where: { couponId: importCouponId, tenantId } }));
+    assert.equal(stored, 0, '試算竟寫入了資料');
+  });
+
+  await t('匯入序號並分類回報', async () => {
+    const r = await importCodes(prisma, tenantId, importCouponId, 'AAAA1111\nBBBB2222\nAAAA1111\nZZ');
+    assert.equal(r.imported, 2, `應匯入 2 筆，實得 ${r.imported}`);
+    assert.deepEqual(r.duplicatesInInput, ['AAAA1111']);
+    assert.deepEqual(r.invalid, ['ZZ']);
+    assert.equal(r.availableTotal, 2);
+  });
+
+  await t('再次匯入相同券碼須回報衝突而非重複寫入', async () => {
+    const r = await importCodes(prisma, tenantId, importCouponId, 'AAAA1111\nCCCC3333');
+    assert.deepEqual(r.conflicts, ['AAAA1111']);
+    assert.equal(r.imported, 1);
+    assert.equal(r.availableTotal, 3);
+  });
+
+  await t('有庫存後可發布，且發券會消耗序號', async () => {
+    const pub = await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, importCouponId, 'ACTIVE'));
+    assert.ok(pub.ok, `發布失敗：${JSON.stringify(pub)}`);
+    const r = await issueCoupons(prisma, tenantId, importCouponId, { contactIds: [contactA], requireClaim: false });
+    assert.equal(r.issued.length, 1);
+    assert.ok(['AAAA1111', 'BBBB2222', 'CCCC3333'].includes(r.issued[0].code), `發出的券碼不在庫存中：${r.issued[0].code}`);
+    const remaining = await withTenant(prisma, tenantId, (tx) =>
+      tx.couponCode.count({ where: { couponId: importCouponId, tenantId, status: 'AVAILABLE' } }));
+    assert.equal(remaining, 2, `庫存應剩 2，實得 ${remaining}`);
+  });
+
+  await t('已配發的序號不可移除', async () => {
+    const assigned = await withTenant(prisma, tenantId, (tx) =>
+      tx.couponCode.findFirst({ where: { couponId: importCouponId, tenantId, status: 'ASSIGNED' } }));
+    const r = await removeAvailableCode(prisma, tenantId, importCouponId, assigned!.code);
+    assert.ok(!r.removed && r.reason === 'ALREADY_ASSIGNED', `預期擋下，實得 ${JSON.stringify(r)}`);
+  });
+
+  await t('未配發的序號可移除', async () => {
+    const avail = await withTenant(prisma, tenantId, (tx) =>
+      tx.couponCode.findFirst({ where: { couponId: importCouponId, tenantId, status: 'AVAILABLE' } }));
+    const r = await removeAvailableCode(prisma, tenantId, importCouponId, avail!.code);
+    assert.ok(r.removed, '未配發的序號竟無法移除');
+  });
+
+  await t('序號用罄時發券須回報而非拋錯中斷', async () => {
+    // 清掉剩餘庫存後再發
+    await withTenant(prisma, tenantId, (tx) =>
+      tx.couponCode.deleteMany({ where: { couponId: importCouponId, tenantId, status: 'AVAILABLE' } }));
+    const r = await issueCoupons(prisma, tenantId, importCouponId, { contactIds: [contactB], requireClaim: false });
+    assert.equal(r.issued.length, 0);
+    assert.ok(r.skipped[0]?.reason.includes('用罄'), `預期回報用罄，實得 ${JSON.stringify(r.skipped)}`);
+  });
+
+  // ── 成效統計 ──
+  await t('成效指標的累積口徑正確', async () => {
+    const stats = await withTenant(prisma, tenantId, (tx) => getCouponStats(tx, tenantId, couponId));
+    assert.ok(stats, '查無統計');
+    // 已核銷者也算曾經領取過，claimed 須 >= redeemed
+    assert.ok(stats!.claimed >= stats!.redeemed, `claimed(${stats!.claimed}) 應 >= redeemed(${stats!.redeemed})`);
+    assert.ok(stats!.issued >= stats!.claimed, `issued(${stats!.issued}) 應 >= claimed(${stats!.claimed})`);
+    assert.ok(stats!.redeemed > 0, '先前已核銷過，redeemed 不應為 0');
+  });
+
+  await t('無人領取時核銷率為 null 而非 0', async () => {
+    const c = await withTenant(prisma, tenantId, (tx) =>
+      createCoupon(tx, tenantId, agentId, { name: '零領取券', couponType: 'GIFT' }));
+    const stats = await withTenant(prisma, tenantId, (tx) => getCouponStats(tx, tenantId, c.id));
+    assert.equal(stats!.redeemRate, null, '沒有分母時不應回 0');
+    assert.equal(stats!.claimRate, null);
+  });
+
+  await t('CSV 匯出含 BOM 且不外洩領取憑證', async () => {
+    const csv = await withTenant(prisma, tenantId, (tx) => exportInstancesCsv(tx, tenantId, couponId));
+    assert.ok(csv.startsWith('\uFEFF'), '缺少 BOM，Excel 開啟會亂碼');
+    assert.ok(csv.includes('券號'), '缺少標題列');
+    assert.ok(!/claimToken/i.test(csv), 'CSV 竟含 claimToken 欄位');
+    // 憑證值本身也不可出現
+    const withToken = await withTenant(prisma, tenantId, (tx) =>
+      tx.couponInstance.findFirst({ where: { tenantId, claimToken: { not: null } } }));
+    if (withToken?.claimToken) {
+      assert.ok(!csv.includes(withToken.claimToken), 'CSV 外洩了有效的領取憑證');
+    }
+  });
+
+  await t('CSV 欄位含逗號時不破壞格式', async () => {
+    const c = await withTenant(prisma, tenantId, (tx) =>
+      createCoupon(tx, tenantId, agentId, {
+        name: '含,逗號"引號的券', couponType: 'GIFT', perContactLimit: 5,
+        validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
+        redeemMode: 'SELF',
+      }));
+    await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'));
+    await issueCoupons(prisma, tenantId, c.id, { contactIds: [contactA], requireClaim: false });
+    const csv = await withTenant(prisma, tenantId, (tx) => exportInstancesCsv(tx, tenantId, c.id));
+    const lines = csv.split('\n');
+    // 每列欄位數須一致（用引號包住後，逗號不會被誤判為分隔）
+    const countCells = (line: string) => (line.match(/","/g) ?? []).length;
+    assert.equal(countCells(lines[1]), countCells(lines[0]), '資料列欄位數與標題列不符');
   });
 
   // ── 租戶隔離 ──
