@@ -2,11 +2,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
+import api from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Save, Check, Eye, EyeOff } from 'lucide-react';
+
+/** 與後端 changePasswordSchema 的 min(8) 對齊，避免前端放行後端才擋 */
+const MIN_PASSWORD_LENGTH = 8;
+
+/** 從 axios 錯誤取出後端的中文訊息，取不到才用預設文案 */
+function extractApiError(err: unknown, fallback: string): string {
+  const res = (err as { response?: { data?: { error?: { message?: string } } } })?.response;
+  return res?.data?.error?.message || fallback;
+}
 
 /** 角色顯示名稱對應表 */
 const roleLabels: Record<string, string> = {
@@ -32,9 +42,9 @@ export function GeneralSettings() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // 儲存狀態
-  const [profileSaved, setProfileSaved] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
 
   // 初始化姓名欄位
   useEffect(() => {
@@ -43,26 +53,31 @@ export function GeneralSettings() {
     }
   }, [agent?.name]);
 
-  /** 儲存個人資料（POC：模擬成功） */
-  const handleSaveProfile = () => {
-    setProfileSaved(true);
-    setTimeout(() => setProfileSaved(false), 2000);
-  };
+  // 個人資料目前沒有對應的後端端點（agent.routes.ts 只有 PATCH /me/password
+  // 與管理員用的 /:id/role、/:id/password），原本的 handleSaveProfile 只 setState
+  // 卻顯示「儲存成功」，會讓使用者以為姓名改掉了。在後端補上
+  // 「更新自己的個人資料」端點之前，姓名欄位一律唯讀，不提供假的儲存按鈕。
 
-  /** 儲存密碼（POC：前端驗證後模擬成功） */
-  const handleSavePassword = () => {
+  /** 儲存密碼：呼叫 PATCH /agents/me/password */
+  const handleSavePassword = async () => {
     setPasswordError('');
 
     if (!oldPassword) {
-      setPasswordError('請輸入舊密碼');
+      setPasswordError('請輸入目前密碼');
       return;
     }
     if (!newPassword) {
       setPasswordError('請輸入新密碼');
       return;
     }
-    if (newPassword.length < 6) {
-      setPasswordError('新密碼至少需要 6 個字元');
+    // 與後端 changePasswordSchema 的 min(8) 對齊；
+    // 原本前端寫 6 會讓 7 字密碼在前端過關、送出後才被後端退回。
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setPasswordError(`新密碼至少需要 ${MIN_PASSWORD_LENGTH} 個字元`);
+      return;
+    }
+    if (newPassword === oldPassword) {
+      setPasswordError('新密碼不可與目前密碼相同');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -70,12 +85,22 @@ export function GeneralSettings() {
       return;
     }
 
-    // POC：模擬儲存成功
-    setPasswordSaved(true);
-    setOldPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setTimeout(() => setPasswordSaved(false), 2000);
+    setSavingPassword(true);
+    try {
+      await api.patch('/agents/me/password', {
+        currentPassword: oldPassword,
+        newPassword,
+      });
+      setPasswordSaved(true);
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordSaved(false), 2000);
+    } catch (err) {
+      setPasswordError(extractApiError(err, '密碼更新失敗，請稍後再試'));
+    } finally {
+      setSavingPassword(false);
+    }
   };
 
   if (!agent) {
@@ -94,7 +119,7 @@ export function GeneralSettings() {
           <CardTitle>個人資料</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 姓名 */}
+          {/* 姓名（唯讀：後端尚無「更新自己的個人資料」端點） */}
           <div className="space-y-2">
             <label htmlFor="profile-name" className="text-sm font-medium">
               姓名
@@ -102,8 +127,9 @@ export function GeneralSettings() {
             <Input
               id="profile-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="輸入姓名"
+              readOnly
+              disabled
+              className="bg-muted"
             />
           </div>
 
@@ -135,21 +161,9 @@ export function GeneralSettings() {
             />
           </div>
 
-          <div className="flex items-center gap-3 pt-2">
-            <Button onClick={handleSaveProfile} disabled={!name.trim()}>
-              {profileSaved ? (
-                <>
-                  <Check className="mr-2 h-4 w-4" />
-                  儲存成功
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  儲存資料
-                </>
-              )}
-            </Button>
-          </div>
+          <p className="pt-1 text-sm text-muted-foreground">
+            個人資料由管理員於「成員管理」維護，如需修改請洽您的管理員。
+          </p>
         </CardContent>
       </Card>
 
@@ -251,7 +265,7 @@ export function GeneralSettings() {
           )}
 
           <div className="flex items-center gap-3 pt-2">
-            <Button onClick={handleSavePassword}>
+            <Button onClick={handleSavePassword} disabled={savingPassword}>
               {passwordSaved ? (
                 <>
                   <Check className="mr-2 h-4 w-4" />
@@ -260,7 +274,7 @@ export function GeneralSettings() {
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  更新密碼
+                  {savingPassword ? '更新中…' : '更新密碼'}
                 </>
               )}
             </Button>
