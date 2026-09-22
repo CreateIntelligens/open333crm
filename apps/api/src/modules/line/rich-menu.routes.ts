@@ -21,6 +21,7 @@ import {
 } from './rich-menu.service.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { lineUriSchema } from '../../shared/utils/url-schemes.js';
 
 // ─── Schemas ───────────────────────────────────────────────────────────
 
@@ -43,8 +44,10 @@ const actionSchema = z.object({
   data: z.string().max(300).optional(),
   displayText: z.string().max(300).optional(),
   text: z.string().max(300).optional(),
-  uri: z.string().optional(),
-  altUri: z.object({ desktop: z.string().optional() }).optional(),
+  // publishRichMenu 會把 areas 原樣轉送給 LINE，LINE 只收 http/https/line/tel，
+  // 其他 scheme 會被退 400——在存草稿時就擋下，而不是拖到「按發布」才報錯。
+  uri: lineUriSchema.optional(),
+  altUri: z.object({ desktop: lineUriSchema.optional() }).optional(),
   mode: z.enum(['date', 'time', 'datetime']).optional(),
   initial: z.string().optional(),
   min: z.string().optional(),

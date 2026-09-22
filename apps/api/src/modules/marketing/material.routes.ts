@@ -25,6 +25,7 @@ import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { generateFlexFromPrompt } from '../ai/flex-ai.service.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
+import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 
 // ─── ContentType / ChannelType enums ───────────────────────────────────
 
@@ -132,7 +133,8 @@ const createMaterialSchema = z.object({
   body: z.record(z.unknown()).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
-  previewImageUrl: z.string().url().optional(),
+  // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
+  previewImageUrl: httpUrlSchema.optional(),
 });
 
 const updateMaterialSchema = z.object({
@@ -145,7 +147,8 @@ const updateMaterialSchema = z.object({
   body: z.record(z.unknown()).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
-  previewImageUrl: z.string().url().optional(),
+  // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
+  previewImageUrl: httpUrlSchema.optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -183,7 +186,8 @@ const lineFlexImportSchema = z.object({
   category: z.string().max(100).optional(),
   payload: z.unknown(),
   altText: z.string().max(400).optional(),
-  previewImageUrl: z.string().url().optional(),
+  // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
+  previewImageUrl: httpUrlSchema.optional(),
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────

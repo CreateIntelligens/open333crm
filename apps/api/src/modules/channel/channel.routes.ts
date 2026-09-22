@@ -30,6 +30,7 @@ import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -69,7 +70,8 @@ const createChannelSchema = z.object({
   displayName: z.string().min(1).max(100),
   credentials: z.record(z.unknown()),
   settings: z.record(z.unknown()).optional(),
-  webhookBaseUrl: z.string().url().optional(),
+  // 會被串成對外 webhook 位址；原本 ftp:/x、javascript: 都能通過
+  webhookBaseUrl: httpUrlSchema.optional(),
 }).superRefine((data, ctx) => {
   if (data.channelType === CHANNEL_TYPE.LINE) {
     const result = lineCredentialsSchema.safeParse(data.credentials);
