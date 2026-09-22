@@ -15,6 +15,10 @@ import type {
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { logger } from '@open333crm/core';
 
+export { LINE_DELIVERY_METADATA_KEYS } from './delivery-metadata.js';
+export { LINE_RETRY_KEY_TTL_MS, isLineRetryKeyExpired } from './delivery-metadata.js';
+export type { LineDeliveryStatus } from './delivery-metadata.js';
+
 // ─────────────────────────────────────────────────────────────────
 // Credentials
 // ─────────────────────────────────────────────────────────────────
@@ -36,6 +40,24 @@ export interface LineChannelCredentials {
 const API = 'https://api.line.me';
 const LIFF_API = 'https://api.line.me/liff/v1';
 
+export interface LineApiResponse<T = unknown> {
+  data: T;
+  requestId?: string;
+  retryAccepted?: boolean;
+}
+
+export class LineApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly statusText: string,
+    public readonly responseBody: string,
+    public readonly requestId?: string,
+  ) {
+    super(`LINE API error: ${status} ${statusText} — ${responseBody}`);
+    this.name = 'LineApiError';
+  }
+}
+
 function lineHeaders(token: string): Record<string, string> {
   return {
     'Content-Type': 'application/json',
@@ -43,47 +65,62 @@ function lineHeaders(token: string): Record<string, string> {
   };
 }
 
-async function linePost(path: string, token: string, body: unknown): Promise<unknown> {
+async function lineRequest(
+  method: string,
+  path: string,
+  token: string,
+  body?: unknown,
+  options?: { retryKey?: string },
+): Promise<LineApiResponse> {
+  const headers: Record<string, string> = {
+    ...lineHeaders(token),
+    ...(options?.retryKey ? { 'X-Line-Retry-Key': options.retryKey } : {}),
+  };
   const res = await fetch(`${API}${path}`, {
-    method: 'POST',
-    headers: lineHeaders(token),
-    body: JSON.stringify(body),
+    method,
+    headers,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  const responseHeaders = res.headers ?? new Headers();
+  const requestId = responseHeaders.get('x-line-request-id') ?? undefined;
+  const acceptedRequestId = responseHeaders.get('x-line-accepted-request-id') ?? undefined;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`LINE API POST ${path} failed: ${JSON.stringify(data)}`);
-  return data;
+
+  if (res.status === 409 && options?.retryKey) {
+    return {
+      data,
+      requestId: acceptedRequestId ?? requestId,
+      retryAccepted: true,
+    };
+  }
+
+  if (!res.ok) {
+    const responseBody = typeof data === 'string' ? data : JSON.stringify(data);
+    throw new LineApiError(res.status, res.statusText, responseBody, requestId);
+  }
+
+  return { data, requestId };
+}
+
+async function linePost(
+  path: string,
+  token: string,
+  body: unknown,
+  options?: { retryKey?: string },
+): Promise<unknown> {
+  return (await lineRequest('POST', path, token, body, options)).data;
 }
 
 async function lineGet(path: string, token: string): Promise<unknown> {
-  const res = await fetch(`${API}${path}`, {
-    method: 'GET',
-    headers: lineHeaders(token),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`LINE API GET ${path} failed: ${JSON.stringify(data)}`);
-  return data;
+  return (await lineRequest('GET', path, token)).data;
 }
 
 async function lineDelete(path: string, token: string): Promise<void> {
-  const res = await fetch(`${API}${path}`, {
-    method: 'DELETE',
-    headers: lineHeaders(token),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(`LINE API DELETE ${path} failed: ${JSON.stringify(data)}`);
-  }
+  await lineRequest('DELETE', path, token);
 }
 
 async function linePut(path: string, token: string, body: unknown): Promise<unknown> {
-  const res = await fetch(`${API}${path}`, {
-    method: 'PUT',
-    headers: lineHeaders(token),
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`LINE API PUT ${path} failed: ${JSON.stringify(data)}`);
-  return data;
+  return (await lineRequest('PUT', path, token, body)).data;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -307,22 +344,24 @@ export class LinePlugin implements ChannelPlugin {
   }
 
   // ─── sendMessage ─────────────────────────────────────────────
-  async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
+  async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; requestId?: string; error?: string }> {
     const token = credentials.channelAccessToken as string;
     const { contentType, content } = message;
     const lineMsg = buildLineMessage(contentType, content);
     const messages = [lineMsg];
     const strategy = (content.strategy as string) ?? 'push';
+    const retryKey = message.delivery?.retryKey;
     // logger.info(`strategy: ${strategy}`);
     try {
       switch (strategy) {
         case 'reply':
           // logger.info('[LinePlugin] messages reply', { messages });
-          await linePost('/v2/bot/message/reply', token, { replyToken: content.replyToken, messages });
+          await lineRequest('POST', '/v2/bot/message/reply', token, { replyToken: content.replyToken, messages });
           break;
-        case 'push':
-          await linePost('/v2/bot/message/push', token, { to, messages });
-          break;
+        case 'push': {
+          const result = await lineRequest('POST', '/v2/bot/message/push', token, { to, messages }, { retryKey });
+          return { success: true, requestId: result.requestId };
+        }
         case 'multicast': {
           // LINE 官方限 500/批；caller（service 層）已切到 ≤500，這裡只負責單次 API call。
           // 若收到 > 500 視為呼叫端錯誤，直接 throw 由 caller 處理（不靜默拆批，避免部分失敗難追蹤）。
@@ -333,20 +372,22 @@ export class LinePlugin implements ChannelPlugin {
           if (uids.length > 500) {
             throw new Error(`multicast batch exceeds LINE limit of 500 (got ${uids.length})`);
           }
-          await linePost('/v2/bot/message/multicast', token, { to: uids, messages });
-          break;
+          const result = await lineRequest('POST', '/v2/bot/message/multicast', token, { to: uids, messages }, { retryKey });
+          return { success: true, requestId: result.requestId };
         }
-        case 'broadcast':
-          await linePost('/v2/bot/message/broadcast', token, { messages });
-          break;
-        case 'narrowcast':
-          await linePost('/v2/bot/message/narrowcast', token, {
+        case 'broadcast': {
+          const result = await lineRequest('POST', '/v2/bot/message/broadcast', token, { messages }, { retryKey });
+          return { success: true, requestId: result.requestId };
+        }
+        case 'narrowcast': {
+          const result = await lineRequest('POST', '/v2/bot/message/narrowcast', token, {
             messages,
             ...(content.audienceGroupId
               ? { recipient: { type: 'audienceGroup', audienceGroupId: Number(content.audienceGroupId) } }
               : {}),
-          });
-          break;
+          }, { retryKey });
+          return { success: true, requestId: result.requestId };
+        }
       }
       return { success: true };
     } catch (err) {

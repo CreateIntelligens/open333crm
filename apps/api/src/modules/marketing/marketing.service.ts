@@ -1,8 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
+import { randomUUID } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
-import { getChannelPlugin } from '@open333crm/channel-plugins';
+import { getChannelPlugin, isLineRetryKeyExpired } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { decryptCredentials } from '../channel/channel.service.js';
 import {
@@ -212,7 +213,7 @@ export async function cancelBroadcast(prisma: TenantDb, id: string, tenantId: st
   if (!broadcast) {
     throw new AppError('Broadcast not found', 'NOT_FOUND', 404);
   }
-  if (!['draft', 'scheduled'].includes(broadcast.status)) {
+  if (!['draft', 'scheduled', 'sending', 'failed'].includes(broadcast.status)) {
     throw new AppError('Can only cancel draft or scheduled broadcasts', 'INVALID_STATUS', 400);
   }
 
@@ -290,7 +291,7 @@ export async function executeBroadcast(
   if (!broadcast) {
     throw new AppError('Broadcast not found', 'NOT_FOUND', 404);
   }
-  if (!['draft', 'scheduled'].includes(broadcast.status)) {
+  if (!['draft', 'scheduled', 'sending', 'failed'].includes(broadcast.status)) {
     throw new AppError('Broadcast is not in a sendable state', 'INVALID_STATUS', 400);
   }
 
@@ -429,17 +430,61 @@ export async function executeBroadcast(
           content: { ...body, strategy: 'multicast', recipientUids: uids },
         };
 
-        let chunkDelivered = false;
+        const batchIndex = Math.floor(i / MULTICAST_CHUNK);
+        let attempt = await prisma.broadcastDeliveryAttempt.findFirst({
+          where: { tenantId: broadcast.tenantId, broadcastId, batchIndex },
+        });
+        if (!attempt) {
+          attempt = await prisma.broadcastDeliveryAttempt.create({
+            data: {
+              tenantId: broadcast.tenantId,
+              broadcastId,
+              batchIndex,
+              retryKey: randomUUID(),
+              status: 'pending',
+            },
+          });
+        } else if (attempt.status !== 'accepted' && isLineRetryKeyExpired(attempt.updatedAt)) {
+          const rotatedRetryKey = randomUUID();
+          await prisma.broadcastDeliveryAttempt.updateMany({
+            where: { id: attempt.id, tenantId: broadcast.tenantId },
+            data: {
+              retryKey: rotatedRetryKey,
+              status: 'pending',
+              lineRequestId: null,
+              errorCode: null,
+              errorMessage: null,
+            },
+          });
+          attempt = { ...attempt, retryKey: rotatedRetryKey, status: 'pending' };
+        }
+
+        let chunkDelivered = attempt.status === 'accepted';
         try {
-          const result = await plugin.sendMessage(uids[0], outbound, credentials);
-          chunkDelivered = result.success;
-          if (result.success) {
-            successCount += chunk.length;
-          } else {
-            failedCount += chunk.length;
+          if (!chunkDelivered) {
+            const result = await plugin.sendMessage(
+              uids[0],
+              { ...outbound, delivery: { retryKey: attempt.retryKey } },
+              credentials,
+            );
+            chunkDelivered = result.success;
+            await prisma.broadcastDeliveryAttempt.updateMany({
+              where: { id: attempt.id, tenantId: broadcast.tenantId },
+              data: {
+                status: result.success ? 'accepted' : 'failed',
+                lineRequestId: result.requestId ?? null,
+                errorMessage: result.error ?? null,
+              },
+            });
           }
+          if (chunkDelivered) successCount += chunk.length;
+          else failedCount += chunk.length;
         } catch (err) {
           logger.error(`[broadcast:${broadcastId}] multicast chunk send failed (chunk ${i / MULTICAST_CHUNK + 1})`, { err });
+          await prisma.broadcastDeliveryAttempt.updateMany({
+            where: { id: attempt.id, tenantId: broadcast.tenantId },
+            data: { status: 'failed', errorMessage: String(err) },
+          });
           failedCount += chunk.length;
         }
 
@@ -596,4 +641,3 @@ async function resolveAudience(
 
   return identities;
 }
-

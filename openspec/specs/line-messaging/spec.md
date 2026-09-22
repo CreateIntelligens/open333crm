@@ -1,4 +1,10 @@
-## ADDED Requirements
+# line-messaging
+
+## Purpose
+
+Enables outbound LINE messaging capabilities including message types, sending strategies, quick replies, and sending quota checks for LINE Official Account integration.
+
+## Requirements
 
 ### Requirement: LINE outbound message types
 The system SHALL support sending the following LINE message types: `text`, `image`, `video`, `audio`, `location`, `sticker`, `flex`, `imagemap`.
@@ -10,8 +16,6 @@ The system SHALL support sending the following LINE message types: `text`, `imag
 #### Scenario: Flex message sent
 - **WHEN** an outbound message with `type: 'flex'` and `content.flexJson` is dispatched
 - **THEN** the system wraps it in a `FlexMessage` object and sends to LINE API
-
----
 
 ### Requirement: Five sending strategies
 The system SHALL support Reply, Push, Multicast, Broadcast, and Narrowcast sending strategies for LINE.
@@ -32,16 +36,12 @@ The system SHALL support Reply, Push, Multicast, Broadcast, and Narrowcast sendi
 - **WHEN** a Narrowcast is sent with an `audienceGroupId`
 - **THEN** the system posts to `/v2/bot/message/narrowcast` with the `recipient` object and stores the returned `requestId` for progress tracking
 
----
-
 ### Requirement: Quick Reply support
 The system SHALL attach Quick Reply buttons to any outbound LINE message when `content.quickReplies` is present.
 
 #### Scenario: Quick Reply rendered
 - **WHEN** an outbound message has `quickReplies` items
 - **THEN** the LINE API payload includes a `quickReply.items` array mapped from the standard `QuickReply[]` type
-
----
 
 ### Requirement: Sending quota check
 The system SHALL check the monthly sending quota before dispatching Broadcast or Narrowcast messages.

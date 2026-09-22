@@ -20,6 +20,7 @@ export interface OutboundPayload {
     strategy?: 'reply' | 'push';
     replyToken?: string;
     receivedAt?: string;
+    retryKey?: string;
   };
 }
 
@@ -45,7 +46,12 @@ export interface ChannelPlugin {
   getProfile(uid: string, credentials: Record<string, unknown>): Promise<{ uid: string; displayName: string; avatarUrl?: string }>;
 
   /** Send a message to a contact */
-  sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }>;
+  sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{
+    success: boolean;
+    channelMsgId?: string;
+    requestId?: string;
+    error?: string;
+  }>;
 
   /** Set webhook URL on the channel (for auto-setup) */
   setWebhook?(webhookUrl: string, credentials: Record<string, unknown>): Promise<void>;
@@ -148,5 +154,13 @@ export function getPlugin(channelType: ChannelType): ChannelPlugin {
 export { TelegramPlugin } from './telegram/index.js';
 export { FbPlugin, fbPlugin } from './facebook/index.js';
 export { ThreadsPlugin, threadsPlugin }  from './threads.js';
-export { LinePlugin, linePlugin, buildLineMessage } from './line/index.js';
+export {
+  LinePlugin,
+  linePlugin,
+  buildLineMessage,
+  LINE_DELIVERY_METADATA_KEYS,
+  LINE_RETRY_KEY_TTL_MS,
+  isLineRetryKeyExpired,
+} from './line/index.js';
+export type { LineDeliveryStatus } from './line/index.js';
 export { WebchatPlugin, webchatPlugin } from './webchat/index.js';

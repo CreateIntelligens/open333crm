@@ -1,13 +1,63 @@
 import assert from "node:assert/strict";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import { registerChannelPlugin } from "@open333crm/channel-plugins";
+import { encryptCredentials } from "../modules/channel/channel.service.js";
 
 import mcpRoutes from "../modules/mcp/mcp.routes.js";
-import { MCP_READ_SCOPE } from "../modules/mcp/mcp.constants.js";
+import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from "../modules/mcp/mcp.constants.js";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
 
 function createPrismaMock() {
+  const conversation = {
+    id: "55555555-5555-4555-8555-555555555555",
+    tenantId: TENANT_ID,
+    channelId: "66666666-6666-4666-8666-666666666666",
+    channel: {
+      id: "66666666-6666-4666-8666-666666666666",
+      channelType: "LINE",
+      displayName: "Test LINE",
+      isActive: true,
+      credentialsEncrypted: encryptCredentials({ channelAccessToken: "test-token" }),
+    },
+    contact: {
+      id: "77777777-7777-4777-8777-777777777777",
+      displayName: "LINE Contact",
+      channelIdentities: [{
+        id: "99999999-9999-4999-8999-999999999999",
+        channelId: "66666666-6666-4666-8666-666666666666",
+        uid: "U-test-contact",
+      }],
+      tags: [],
+    },
+    messages: [],
+  };
+  const message = {
+    id: "88888888-8888-4888-8888-888888888888",
+    conversationId: conversation.id,
+    direction: "OUTBOUND",
+    senderType: "AGENT",
+    senderId: AGENT_ID,
+    contentType: "text",
+    content: { text: "hello" },
+    metadata: {},
+    createdAt: new Date(),
+    sequence: 1,
+    sender: null,
+  };
+  const broadcast = {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    tenantId: TENANT_ID,
+    channelId: conversation.channelId,
+    status: "draft",
+    targetType: "all",
+    targetConfig: {},
+    totalCount: 0,
+    successCount: 0,
+    failedCount: 0,
+    material: null,
+  };
   return {
     agent: {
       findFirst: async () => ({
@@ -33,6 +83,31 @@ function createPrismaMock() {
       ],
       count: async () => 1,
     },
+    conversation: {
+      findMany: async () => [conversation],
+      findFirst: async (args: { where?: { id?: string } }) =>
+        args.where?.id && args.where.id !== conversation.id ? null : conversation,
+      findUnique: async () => conversation,
+      count: async () => 1,
+      update: async () => conversation,
+    },
+    channel: {
+      findFirst: async () => conversation.channel,
+    },
+    broadcast: {
+      findFirst: async () => broadcast,
+    },
+    broadcastRecipient: {
+      count: async () => 0,
+    },
+    message: {
+      count: async () => 0,
+      create: async () => message,
+      update: async () => message,
+    },
+    tenantAuditLog: {
+      create: async () => ({}),
+    },
   };
 }
 
@@ -41,7 +116,24 @@ async function createApp(options?: {
   authentication?: "cli" | "jwt";
 }) {
   const app = Fastify();
+  process.env.JWT_SECRET = process.env.JWT_SECRET || "test-mcp-confirmation-secret";
+  process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || "test-credential-encryption-key-32-bytes!!";
   app.decorate("prisma", createPrismaMock());
+  app.decorate("io", { to: () => ({ emit() {} }) });
+  registerChannelPlugin({
+    channelType: "LINE",
+    parseWebhook: async () => [],
+    getProfile: async (uid: string) => ({ uid, displayName: uid }),
+    sendMessage: async () => ({ success: true, channelMsgId: "line-msg-1", requestId: "line-request-1" }),
+    extensions: {
+      analytics: {
+        getMessageQuota: async () => ({ totalUsage: 10, maxMessages: 10 }),
+        getFollowerStats: async () => ({ followers: 0, blocks: 0 }),
+        getDemographics: async () => ({}),
+        getDeliveryStats: async () => ({}),
+      },
+    },
+  });
   app.decorate(
     "authenticateJwtOrCliSession",
     async (request: FastifyRequest, reply: FastifyReply) => {
@@ -71,6 +163,7 @@ async function createApp(options?: {
             }
           : {}),
       };
+      (request as FastifyRequest & { tenantPrisma: ReturnType<typeof createPrismaMock> }).tenantPrisma = createPrismaMock();
     },
   );
   await app.register(mcpRoutes);
@@ -214,6 +307,12 @@ async function testListsReadOnlyTools() {
       "crm_get_contact",
       "crm_get_analytics_overview",
       "crm_get_case_statistics",
+      "crm_line_list_conversations",
+      "crm_line_get_conversation",
+      "crm_line_search_contacts",
+      "crm_line_get_broadcast",
+      "crm_line_direct_send",
+      "crm_line_broadcast_initiate",
     ]);
   } finally {
     await app.close();
@@ -355,6 +454,196 @@ async function testRejectsInvalidToolInput() {
   }
 }
 
+async function testConfirmedLineDirectSend() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, MCP_LINE_SEND_SCOPE],
+  });
+  try {
+    const previewResponse = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: {
+          name: "crm_line_direct_send",
+          arguments: {
+            conversationId: "55555555-5555-4555-8555-555555555555",
+            contentType: "text",
+            content: { text: "hello" },
+          },
+        },
+      },
+    });
+    assert.equal(previewResponse.status, 200);
+    const previewBody = JSON.parse(await previewResponse.text()) as {
+      result: { content: Array<{ text: string }> };
+    };
+    const preview = JSON.parse(previewBody.result.content[0]!.text) as {
+      status: string;
+      confirmationToken: string;
+    };
+    assert.equal(preview.status, "preview");
+    assert.ok(preview.confirmationToken);
+
+    const confirmedResponse = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: {
+          name: "crm_line_direct_send",
+          arguments: {
+            confirmation: true,
+            confirmationToken: preview.confirmationToken,
+          },
+        },
+      },
+    });
+    assert.equal(confirmedResponse.status, 200);
+    const confirmedBody = JSON.parse(await confirmedResponse.text()) as {
+      result: { content: Array<{ text: string }> };
+    };
+    const confirmed = JSON.parse(confirmedBody.result.content[0]!.text) as {
+      status: string;
+      messageId: string;
+    };
+    assert.equal(confirmed.status, "dispatched");
+    assert.equal(confirmed.messageId, "88888888-8888-4888-8888-888888888888");
+  } finally {
+    await app.close();
+  }
+}
+
+async function testRejectsLineDirectSendWithoutScope() {
+  const { app, address } = await createApp({ scopes: [MCP_READ_SCOPE] });
+  try {
+    const response = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 15,
+        method: "tools/call",
+        params: {
+          name: "crm_line_direct_send",
+          arguments: {
+            conversationId: "55555555-5555-4555-8555-555555555555",
+            contentType: "text",
+            content: { text: "should reject" },
+          },
+        },
+      },
+    });
+    assert.equal(response.status, 403);
+    const body = await response.json() as { error: { code: string } };
+    assert.equal(body.error.code, "INSUFFICIENT_SCOPE");
+  } finally {
+    await app.close();
+  }
+}
+
+async function testRejectsForeignLineConversation() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, MCP_LINE_SEND_SCOPE],
+  });
+  try {
+    const response = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 16,
+        method: "tools/call",
+        params: {
+          name: "crm_line_direct_send",
+          arguments: {
+            conversationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            contentType: "text",
+            content: { text: "should not leak" },
+          },
+        },
+      },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.equal(body.includes("LINE Contact"), false);
+  } finally {
+    await app.close();
+  }
+}
+
+async function testListsLineConversationsWithTenantScope() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE],
+  });
+  try {
+    const response = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 14,
+        method: "tools/call",
+        params: {
+          name: "crm_line_list_conversations",
+          arguments: { page: 1, limit: 20 },
+        },
+      },
+    });
+    assert.equal(response.status, 200);
+    const body = JSON.parse(await response.text()) as { result: { content: Array<{ text: string }> } };
+    const result = JSON.parse(body.result.content[0]!.text) as { total: number; conversations: unknown[] };
+    assert.equal(result.total, 1);
+    assert.equal(result.conversations.length, 1);
+  } finally {
+    await app.close();
+  }
+}
+
+async function testConfirmedLineBroadcastRejectsQuota() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, "mcp:line:broadcast"],
+  });
+  try {
+    const previewResponse = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: {
+          name: "crm_line_broadcast_initiate",
+          arguments: { broadcastId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+        },
+      },
+    });
+    assert.equal(previewResponse.status, 200);
+    const previewBody = JSON.parse(await previewResponse.text()) as { result: { content: Array<{ text: string }> } };
+    const preview = JSON.parse(previewBody.result.content[0]!.text) as { confirmationToken: string };
+    assert.ok(preview.confirmationToken);
+
+    const confirmedResponse = await requestMcp(address, {
+      authorization: "Bearer cli_test",
+      body: {
+        jsonrpc: "2.0",
+        id: 13,
+        method: "tools/call",
+        params: {
+          name: "crm_line_broadcast_initiate",
+          arguments: { confirmation: true, confirmationToken: preview.confirmationToken },
+        },
+      },
+    });
+    assert.equal(confirmedResponse.status, 200);
+    const confirmedBody = JSON.parse(await confirmedResponse.text()) as {
+      result: { isError?: boolean; content: Array<{ text: string }> };
+    };
+    assert.equal(confirmedBody.result.isError, true);
+    assert.match(confirmedBody.result.content[0]?.text ?? "", /QUOTA_EXCEEDED/);
+  } finally {
+    await app.close();
+  }
+}
+
 await testRejectsMissingAuthentication();
 await testRejectsCookieOnlyAuthentication();
 await testInitializesMcpServer();
@@ -363,6 +652,11 @@ await testAllowsConfiguredOriginOnly();
 await testListsReadOnlyTools();
 await testCallsSearchContactsAndPreservesBigInt();
 await testRejectsInvalidToolInput();
+await testConfirmedLineDirectSend();
+await testRejectsLineDirectSendWithoutScope();
+await testRejectsForeignLineConversation();
+await testListsLineConversationsWithTenantScope();
+await testConfirmedLineBroadcastRejectsQuota();
 await testRejectsCliTokenWithoutMcpScope();
 await testRejectsJwtWithoutMcpScope();
 await testAllowsSameOriginInDevelopmentWithoutConfiguredOrigins();

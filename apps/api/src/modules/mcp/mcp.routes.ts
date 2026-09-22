@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { hasCliScope } from "../auth/cli-session.service.js";
-import { MCP_READ_SCOPE } from "./mcp.constants.js";
+import { MCP_READ_SCOPE, requiredMcpScopeForTool } from "./mcp.constants.js";
 import { createMcpServer } from "./mcp.server.js";
 
 function toWebRequest(request: FastifyRequest): Request {
@@ -119,6 +119,12 @@ async function authenticateMcp(
   return true;
 }
 
+function requestedToolName(request: FastifyRequest): string | undefined {
+  const body = request.body as { method?: string; params?: { name?: string } } | undefined;
+  if (body?.method !== "tools/call") return undefined;
+  return body.params?.name;
+}
+
 export default async function mcpRoutes(fastify: FastifyInstance) {
   const preHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!isAllowedOrigin(request)) {
@@ -132,15 +138,29 @@ export default async function mcpRoutes(fastify: FastifyInstance) {
       return;
     }
 
-    await authenticateMcp(fastify, request, reply);
+    if (!(await authenticateMcp(fastify, request, reply))) return;
+
+    const requiredScope = requiredMcpScopeForTool(requestedToolName(request) ?? "");
+    const scopes = request.agent.cliSession?.scopes ?? [];
+    if (requiredScope && !hasCliScope(scopes, requiredScope)) {
+      reply.status(403).send({
+        success: false,
+        error: {
+          code: "INSUFFICIENT_SCOPE",
+          message: `MCP access requires a CLI token with ${requiredScope} scope`,
+        },
+      });
+    }
   };
 
   fastify.post("/mcp", { preHandler }, async (request, reply) => {
     if (reply.sent) return reply;
 
-    // TODO(rls): createMcpServer 為跨服務聚合器，會把 prisma 傳入 getCase/getAgentById 等
-    // 尚未改造為 TenantDb 的服務；待相依服務全數放寬後，再一併改走 request.tenantPrisma。
-    const server = createMcpServer(fastify.prisma, request.agent);
+    const server = createMcpServer(request.tenantPrisma, {
+      ...request.agent,
+      scopes: request.agent.cliSession?.scopes ?? [],
+      cliSessionId: request.agent.cliSession?.id ?? "",
+    }, fastify.io);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

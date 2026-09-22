@@ -225,6 +225,7 @@ model Tenant {
   campaigns               Campaign[]
   segments                Segment[]
   broadcasts              Broadcast[]
+  broadcastDeliveryAttempts BroadcastDeliveryAttempt[]
   webhookSubscriptions    WebhookSubscription[]
   portalActivities        PortalActivity[]
   portalSubmissions       PortalSubmission[]
@@ -1276,6 +1277,7 @@ model Broadcast {
   segment    Segment?             @relation(fields: [segmentId], references: [id])
   material   Material?            @relation(fields: [materialId], references: [id])
   recipients BroadcastRecipient[]
+  deliveryAttempts BroadcastDeliveryAttempt[]
 
   @@index([tenantId, status])
   @@index([status, scheduledAt])
@@ -1298,6 +1300,28 @@ model BroadcastRecipient {
   @@unique([broadcastId, contactId])
   @@index([contactId, sentAt])
   @@map("broadcast_recipients")
+}
+
+model BroadcastDeliveryAttempt {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @db.Uuid
+  broadcastId   String   @db.Uuid
+  batchIndex    Int
+  retryKey      String   @unique @db.Uuid
+  lineRequestId String?
+  status        String   @default("pending")
+  errorCode     String?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  @@unique([broadcastId, batchIndex])
+  @@index([tenantId, broadcastId])
+  @@index([tenantId, status])
+  @@map("broadcast_delivery_attempts")
 }
 
 // ─────────────────────────────────────────────

@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-09-22]
+
+### Added
+
+- **LINE delivery resilience 與 tenant-scoped MCP 操作** — LINE Push/Multicast/Broadcast/Narrowcast 發送新增 retry key、409 accepted 去重、request ID 與 BroadcastDeliveryAttempt 持久化，直接訊息將 delivery metadata 寫入 Message；新增 `crm_line_list_conversations`、`crm_line_get_conversation`、`crm_line_search_contacts`、`crm_line_get_broadcast` 唯讀工具，以及具 2-phase signed confirmation、scope/RBAC、quota gate、tenant audit 的 `crm_line_direct_send` 與 `crm_line_broadcast_initiate`。MCP 改用 request tenant Prisma，維持 RLS 隔離。
+
 ## [2026-09-15]
 
 ### Added
