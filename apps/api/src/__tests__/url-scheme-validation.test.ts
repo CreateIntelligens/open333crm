@@ -173,5 +173,47 @@ t('短連結 targetUrl 已限 http(s)（轉址頁會 window.location.replace 它
   );
 });
 
+// ── PR Agent review 2026-09-22 的回應（david360see 於 commit 54aa112）──
+
+t('[中] lineUriSchema 擋下只有 scheme、沒有內容的畸形值', () => {
+  // 原本只比對前綴，這些會通過，錯誤要到 LINE publish 才爆
+  for (const v of ['https:', 'http:invalid', 'line:', 'tel:', 'http://', 'line://']) {
+    assert.equal(
+      lineUriSchema.safeParse(v).success, false,
+      `畸形 URI 應被擋下：${JSON.stringify(v)}`,
+    );
+  }
+});
+
+t('[中] lineUriSchema 不誤擋合法的 LINE URI', () => {
+  for (const v of ['https://example.com/path', 'http://example.com',
+                   'line://ti/p/@example', 'tel:+886912345678', 'tel:0912345678']) {
+    assert.equal(lineUriSchema.safeParse(v).success, true, `合法 URI 不應被擋：${v}`);
+  }
+});
+
+t('[高] httpUrlSchema 是 scheme 白名單，不是 SSRF 防護（刻意的分層）', () => {
+  // 這裡斷言「內網位址會通過」不是漏洞，是分界：
+  // 目的地檢查由 downstream-forwarder 的 isBlockedUrl() 負責
+  // （另有 __tests__/webhook-ssrf.test.ts 涵蓋）。
+  // 此測試用來釘住這條界線——若有人日後誤以為本 schema 能防 SSRF
+  // 而省略目的地檢查，這段會提醒他。
+  for (const v of ['http://127.0.0.1:8080', 'http://localhost',
+                   'http://169.254.169.254/latest/meta-data/']) {
+    assert.equal(
+      httpUrlSchema.safeParse(v).success, true,
+      `httpUrlSchema 只驗 scheme，內網位址應通過（由 isBlockedUrl 擋）：${v}`,
+    );
+  }
+});
+
+t('危險 scheme 仍確實被擋（本次修改未破壞原有防護）', () => {
+  for (const v of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)',
+                   'data:text/html,<script>', 'file:///etc/passwd']) {
+    assert.equal(httpUrlSchema.safeParse(v).success, false, `危險 scheme 應被擋：${v}`);
+    assert.equal(isSafeHttpUrl(v), false, `isSafeHttpUrl 應回 false：${v}`);
+  }
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
