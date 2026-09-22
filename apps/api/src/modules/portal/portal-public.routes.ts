@@ -33,7 +33,14 @@ async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export default async function portalPublicRoutes(app: FastifyInstance) {
-  const prisma: PrismaClient = app.prisma;
+  // 粉絲門戶是公開端點（訪客持 fanToken，非租戶客服登入），請求沒有 tenant
+  // context，用 app.prisma 會被 RLS fail-closed 擋掉每一筆查詢（實測
+  // POST /api/v1/fan/auth 對存在的 contact 一律回 404）。故走 prismaAdmin。
+  //
+  // ⚠️ 走 BYPASSRLS 後租戶隔離不再由 RLS 兜底，改由查詢條件自行保證：
+  // 本檔所有查詢都明確帶 tenantId，且該值一律取自已驗簽的 fanToken
+  // （signFanToken 簽入、authenticateFan 驗出），呼叫端無法指定他人租戶。
+  const prisma: PrismaClient = app.prismaAdmin;
 
   // ── Auth (no JWT required) ────────────────────────────────────────────────
 
@@ -93,8 +100,10 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
     if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
 
     // Check if fan has already submitted
+    // 明確帶 tenantId：不倚賴上方 activity 查詢的前置檢查順序，
+    // 讓租戶邊界在本查詢自身即成立（深度防禦）。
     const mySubmission = await prisma.portalSubmission.findFirst({
-      where: { activityId: id, contactId: fan.contactId },
+      where: { activityId: id, contactId: fan.contactId, tenantId: fan.tenantId },
     });
 
     return { success: true, data: { ...activity, mySubmission } };
@@ -113,8 +122,9 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
   });
 
   app.get('/activities/:id/result', { preHandler: authenticateFan }, async (request, reply) => {
+    const fan = request.fan!;
     const { id } = request.params as { id: string };
-    const result = await getActivityResult(prisma, id);
+    const result = await getActivityResult(prisma, id, fan.tenantId);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
     return { success: true, data: result };
   });

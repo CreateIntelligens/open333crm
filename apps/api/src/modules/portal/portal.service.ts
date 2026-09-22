@@ -310,15 +310,22 @@ export async function drawWinners(
 
 // ─── Activity result stats (public) ─────────────────────────────────────────
 
-export async function getActivityResult(prisma: PrismaClient, activityId: string) {
+export async function getActivityResult(
+  prisma: PrismaClient,
+  activityId: string,
+  tenantId: string,
+) {
+  // tenantId 為必填：本函式的唯一呼叫端是公開的粉絲門戶（走 prismaAdmin
+  // 繞過 RLS），若不在查詢條件內限定租戶，任何粉絲都能拿活動 id 讀到
+  // 其他租戶的投票／問卷結果。
   const activity = await prisma.portalActivity.findFirst({
-    where: { id: activityId },
+    where: { id: activityId, tenantId },
     include: { options: { orderBy: { sortOrder: 'asc' } } },
   });
   if (!activity) return null;
 
   const submissions = await prisma.portalSubmission.findMany({
-    where: { activityId },
+    where: { activityId, tenantId },
     select: { answers: true, score: true },
   });
 
