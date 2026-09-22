@@ -185,7 +185,7 @@ async function testCliSessionServiceLifecycle() {
 
   prisma._sessions[0].expiresAt = new Date(Date.now() - 1_000);
   const expired = await verifyCliSession(prisma as never, token);
-  assert.deepEqual(expired, { ok: false, reason: 'CLI token expired' });
+  assert.deepEqual(expired, { ok: false, reason: 'CLI 權杖已過期，請重新執行 open333 login' });
 
   prisma._sessions[0].expiresAt = new Date(Date.now() + 60_000);
   prisma._sessions[0].revokedAt = new Date();

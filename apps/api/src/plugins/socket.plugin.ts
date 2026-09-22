@@ -54,7 +54,7 @@ async function socketPlugin(fastify: FastifyInstance) {
 
       next();
     } catch {
-      next(new Error('Invalid or expired token'));
+      next(new Error('登入已過期，請重新登入'));
     }
   });
 

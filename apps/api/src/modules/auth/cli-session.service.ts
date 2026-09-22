@@ -96,12 +96,12 @@ export async function verifyCliSession(
   rawToken: string,
 ): Promise<VerifyCliSessionResult> {
   if (!rawToken.startsWith(TOKEN_PREFIX)) {
-    return { ok: false, reason: 'Malformed CLI token' };
+    return { ok: false, reason: 'CLI 權杖格式不正確，請重新執行 open333 login' };
   }
 
   const random = rawToken.slice(TOKEN_PREFIX.length);
   if (random.length < TOKEN_PREFIX_VISIBLE_HEX + TOKEN_SUFFIX_VISIBLE_HEX) {
-    return { ok: false, reason: 'Malformed CLI token' };
+    return { ok: false, reason: 'CLI 權杖格式不正確，請重新執行 open333 login' };
   }
 
   const { tokenPrefix } = visibleParts(random);
@@ -127,13 +127,13 @@ export async function verifyCliSession(
     if (!matches) continue;
 
     if (candidate.revokedAt) {
-      return { ok: false, reason: 'CLI token revoked' };
+      return { ok: false, reason: 'CLI 權杖已被撤銷，請重新執行 open333 login' };
     }
     if (candidate.expiresAt.getTime() < Date.now()) {
-      return { ok: false, reason: 'CLI token expired' };
+      return { ok: false, reason: 'CLI 權杖已過期，請重新執行 open333 login' };
     }
     if (!candidate.agent.isActive) {
-      return { ok: false, reason: 'Agent account disabled' };
+      return { ok: false, reason: '此帳號已被停用，請聯繫管理員' };
     }
 
     touchCliSessionLastUsedAt(prisma, candidate.id);
@@ -145,7 +145,7 @@ export async function verifyCliSession(
     };
   }
 
-  return { ok: false, reason: 'Invalid CLI token' };
+  return { ok: false, reason: 'CLI 權杖無效，請重新執行 open333 login' };
 }
 
 export function touchCliSessionLastUsedAt(prisma: TenantDb, id: string): void {
