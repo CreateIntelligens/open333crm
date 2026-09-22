@@ -25,13 +25,37 @@ const PARTNER_KEY_ALLOWED = new Set<string>(['knowledge.admin']);
  * @example
  * fastify.post('/', { preHandler: [fastify.authenticate, requirePermission('channel.create')] }, handler);
  */
+/**
+ * 403 回應。
+ *
+ * ⚠️ 先前這五處直接送 `{ code, message }`，與全站慣例
+ * `{ success, error: { code, message } }` 不一致——前端讀 `error.message` 會讀不到，
+ * 導致權限不足時畫面一片空白、使用者不知道發生什麼事。
+ *
+ * `requiredPermission` 放 details 而非 message：「新增權限點後沒跑 reconcile 就 403」
+ * 是本專案反覆踩到的坑，讓維運能直接從回應看出缺哪一個權限碼，
+ * 但終端使用者的畫面上不顯示技術代碼。
+ */
+function sendForbidden(
+  reply: FastifyReply,
+  message: string,
+  details?: Record<string, unknown>,
+) {
+  return reply.status(403).send({
+    success: false,
+    error: { code: 'FORBIDDEN', message, ...(details ? { details } : {}) },
+  });
+}
+
+const PERMISSION_DENIED = '權限不足，無法執行此操作。如需使用請聯繫管理員。';
+
 export const requirePermission = (code: string) => {
   usedPermissionCodes.add(code);
   return async (request: FastifyRequest, reply: FastifyReply) => {
     // Partner API key：只對白名單權限碼放行，其餘一律擋（避免無條件繞過）
     if (request.agent?.isPartnerKey) {
       if (PARTNER_KEY_ALLOWED.has(code)) return;
-      return reply.status(403).send({ code: 'FORBIDDEN', message: 'Insufficient permission' });
+      return sendForbidden(reply, PERMISSION_DENIED, { requiredPermission: code });
     }
     // CLI session 走自身 scope 機制（cli.routes），不經 requirePermission 路由；防禦性放行
     if (request.agent?.isCliSession) {
@@ -42,10 +66,7 @@ export const requirePermission = (code: string) => {
     const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
     const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
     if (!eff.has(code)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permission',
-      });
+      return sendForbidden(reply, PERMISSION_DENIED, { requiredPermission: code });
     }
   };
 };
@@ -65,7 +86,7 @@ export const requireAnyPermission = (codes: string[]) => {
     // Partner API key：任一碼在白名單即放行，其餘一律擋
     if (request.agent?.isPartnerKey) {
       if (codes.some((c) => PARTNER_KEY_ALLOWED.has(c))) return;
-      return reply.status(403).send({ code: 'FORBIDDEN', message: 'Insufficient permission' });
+      return sendForbidden(reply, PERMISSION_DENIED, { requiredAnyOf: codes });
     }
     // CLI session 走自身 scope 機制，不經 requirePermission 路由；防禦性放行
     if (request.agent?.isCliSession) {
@@ -76,10 +97,7 @@ export const requireAnyPermission = (codes: string[]) => {
     const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent?.tenantId);
     const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
     if (!codes.some((c) => eff.has(c))) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient permission',
-      });
+      return sendForbidden(reply, PERMISSION_DENIED, { requiredAnyOf: codes });
     }
   };
 };
@@ -90,10 +108,7 @@ export const requireRole = (allowedRoles: string[]) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const role = request.agent?.role;
     if (!role || !allowedRoles.includes(role)) {
-      return reply.status(403).send({
-        code: 'FORBIDDEN',
-        message: 'Insufficient role',
-      });
+      return sendForbidden(reply, '您的角色沒有權限執行此操作', { allowedRoles });
     }
   };
 };

@@ -47,10 +47,11 @@ export default async function portalRoutes(app: FastifyInstance) {
     return { success: true, data: activity };
   });
 
-  app.get('/activities/:id', async (request) => {
+  app.get('/activities/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const activity = await getActivity(request.tenantPrisma, id, request.agent.tenantId);
-    if (!activity) return { success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } };
+    // 先前漏了 reply.status，NOT_FOUND 實際以 HTTP 200 送出，前端判斷不到失敗
+    if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
     return { success: true, data: activity };
   });
 
@@ -63,7 +64,7 @@ export default async function portalRoutes(app: FastifyInstance) {
       const activity = await withTenant(app.prisma, request.agent.tenantId, (tx) =>
         updateActivity(tx, id, request.agent.tenantId, body as Parameters<typeof updateActivity>[3]),
       );
-      if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } });
+      if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true, data: activity };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });
@@ -74,7 +75,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     try {
       const result = await deleteActivity(request.tenantPrisma, id, request.agent.tenantId);
-      if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } });
+      if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });
@@ -85,7 +86,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     try {
       const activity = await publishActivity(request.tenantPrisma, id, request.agent.tenantId);
-      if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } });
+      if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true, data: activity };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });
@@ -96,7 +97,7 @@ export default async function portalRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     try {
       const activity = await endActivity(request.tenantPrisma, id, request.agent.tenantId);
-      if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } });
+      if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
       return { success: true, data: activity };
     } catch (err: unknown) {
       return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: (err as Error).message } });

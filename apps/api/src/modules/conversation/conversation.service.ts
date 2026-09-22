@@ -443,8 +443,9 @@ export async function sendMessage(
       }
     }
   } catch (err) {
+    // 原始例外（可能含第三方 API 原文、堆疊）只寫 log；回給前端的是可讀說明
     logger.error('[ChannelDelivery] Unexpected error', { error: String(err) });
-    delivery = { success: false, error: String(err) };
+    delivery = { success: false, error: '訊息未能送出，請稍後重試；若持續失敗請確認渠道設定與額度' };
   }
 
   // Publish to EventBus
@@ -644,7 +645,17 @@ export async function deliverToChannel(
           : {}),
       };
       const result = await plugin.sendMessage(identity.uid, { contentType: outbound.contentType, content }, credentials);
-      if (!result.success) throw new Error(result.error || `channel ${selectedStrategy} delivery failed`);
+      if (!result.success) {
+        // 第三方回報的原文寫 log 供排查，不併入對外訊息
+        logger.error('[deliverToChannel] 渠道回報送出失敗', {
+          conversationId, strategy: selectedStrategy, upstream: result.error,
+        });
+        throw new AppError(
+          '訊息未能送出，請稍後重試；若持續失敗請確認渠道設定與額度',
+          'CHANNEL_DELIVERY_FAILED',
+          502,
+        );
+      }
       return result;
     };
     let result;

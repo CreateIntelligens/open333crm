@@ -90,7 +90,7 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
         _count: { select: { submissions: true } },
       },
     });
-    if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } });
+    if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
 
     // Check if fan has already submitted
     const mySubmission = await prisma.portalSubmission.findFirst({
@@ -115,7 +115,7 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
   app.get('/activities/:id/result', { preHandler: authenticateFan }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const result = await getActivityResult(prisma, id);
-    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Activity not found' } });
+    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已結束或被下架' } });
     return { success: true, data: result };
   });
 

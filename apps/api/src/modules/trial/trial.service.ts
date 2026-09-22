@@ -191,7 +191,7 @@ export async function verifyAndProvision(
         data: { status: 'provisioning' },
       });
       if (claimed.count === 0) {
-        throw new AppError('ALREADY_CLAIMED', 'ALREADY_CLAIMED', 409);
+        throw new AppError('此試用方案已經領取過了', 'ALREADY_CLAIMED', 409);
       }
 
       const { tenantId } = await provisionTenant(tx, {

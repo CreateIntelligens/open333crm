@@ -17,7 +17,8 @@
     "test:data-export": "tsx src/__tests__/data-export.test.ts",
     "test:erasure": "tsx src/__tests__/data-erasure.test.ts",
     "test:llm-prompt": "tsx src/__tests__/llm-system-prompt.test.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test:error-messages": "tsx src/__tests__/error-messages.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

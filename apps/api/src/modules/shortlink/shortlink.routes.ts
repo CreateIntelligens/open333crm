@@ -43,7 +43,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
-    if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
+    if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: link };
   });
 
@@ -51,36 +51,37 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = request.body as Record<string, unknown>;
     const link = await updateShortLink(request.tenantPrisma, id, request.agent.tenantId, body as Parameters<typeof updateShortLink>[3]);
-    if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
+    if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: link };
   });
 
   app.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const result = await deleteShortLink(request.tenantPrisma, id, request.agent.tenantId);
-    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
+    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true };
   });
 
   app.get('/:id/stats', async (request, reply) => {
     const { id } = request.params as { id: string };
     const stats = await getClickStats(request.tenantPrisma, id, request.agent.tenantId);
-    if (!stats) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
+    if (!stats) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: stats };
   });
 
-  app.get('/:id/clicks', async (request) => {
+  app.get('/:id/clicks', async (request, reply) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
     const result = await getClickLogs(request.tenantPrisma, id, request.agent.tenantId, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
-    if (!result) return { success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } };
+    // 先前漏了 reply.status，NOT_FOUND 實際以 HTTP 200 送出，前端判斷不到失敗
+    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
   app.get('/:id/qrcode', async (request, reply) => {
     const { id } = request.params as { id: string };
     const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
-    if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Short link not found' } });
+    if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
 
     const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
     const shortUrl = `${baseUrl}/s/${link.slug}`;
