@@ -20,7 +20,8 @@
     "start": "node dist/index.js",
     "test:error-messages": "tsx src/__tests__/error-messages.test.ts",
     "test:pagination": "tsx src/__tests__/pagination.test.ts",
-    "test:keyword-trigger": "tsx src/__tests__/keyword-trigger-validation.test.ts"
+    "test:keyword-trigger": "tsx src/__tests__/keyword-trigger-validation.test.ts",
+    "test:trim": "tsx src/__tests__/trim-validation.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

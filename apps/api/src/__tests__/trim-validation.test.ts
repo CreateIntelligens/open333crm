@@ -122,16 +122,24 @@ t('chatBarText 有 trim（LINE 選單列真實可見的按鈕文字）', () => {
 });
 
 t('原本沒有長度上限的欄位已補上（Wave 6 實測可存超長值）', () => {
+  // 取「欄位名 → 該行結尾」整行來看有無 .max(——
+  // 不能用 [^,]* 截斷，因為 min(1, '訊息') 的錯誤訊息本身就含逗號。
+  const lineOf = (code: string, field: string): string => {
+    const line = code.split('\n').find((l) => new RegExp(`^\\s*${field}:\\s*z\\.string\\(\\)`).test(l));
+    assert.ok(line, `找不到 ${field} 的定義`);
+    return line as string;
+  };
+
   const caseCode = src('modules/case/case.routes.ts');
-  assert.ok(/reason:[^,]*\.max\(/.test(caseCode), 'escalate reason 仍無長度上限（實測 10000 字可寫入）');
-  assert.ok(/content:[^,]*\.max\(/.test(caseCode), '工單備註 content 仍無長度上限（實測 50000 字可寫入）');
+  assert.ok(lineOf(caseCode, 'reason').includes('.max('), 'escalate reason 仍無長度上限（實測 10000 字可寫入）');
+  assert.ok(lineOf(caseCode, 'content').includes('.max('), '工單備註 content 仍無長度上限（實測 50000 字可寫入）');
 
   const tagCode = src('modules/tag/tag.routes.ts');
-  assert.ok(/name:[^,]*\.max\(/.test(tagCode), '標籤 name 仍無長度上限（實測 500 字可寫入）');
+  assert.ok(lineOf(tagCode, 'name').includes('.max('), '標籤 name 仍無長度上限（實測 500 字可寫入）');
 
   const contactCode = src('modules/contact/contact.routes.ts');
   assert.ok(
-    /displayName:[^,]*\.max\(/.test(contactCode),
+    lineOf(contactCode, 'displayName').includes('.max('),
     '聯繫人 displayName 仍無長度上限（實測 10000 字可寫入）',
   );
 });
