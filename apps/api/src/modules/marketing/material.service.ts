@@ -168,6 +168,14 @@ function toLineFlexValidateMessage(body: LineFlexMessageBody): Record<string, un
   };
 }
 
+/**
+ * 把 LINE 的 Flex 驗證錯誤整理成「屬性: 說明」。
+ *
+ * ⚠️ 此處**刻意保留 LINE 原文**，與其他第三方錯誤的處理方式不同：
+ * 這是版型編輯器的回饋，使用者需要知道是哪個屬性不合規才能修正。
+ * 隱藏細節會讓此功能失去價值。LINE 的驗證回應只含版型結構資訊，
+ * 不含帳號或系統內部資料。
+ */
 function formatLineValidateError(status: number, body: unknown): string {
   if (body && typeof body === 'object') {
     const record = body as Record<string, unknown>;

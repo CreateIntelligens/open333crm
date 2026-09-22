@@ -454,9 +454,11 @@ export async function publishRichMenu(
     const body = await createResp.text();
     await prisma.richMenu.update({ where: { id }, data: { status: 'error' } });
     throw new AppError(
-      `LINE 建立 Rich Menu 失敗 (${createResp.status}): ${body}`,
+      'LINE 無法建立圖文選單，請確認版型與渠道設定後重試',
       'LINE_API_ERROR',
       400,
+      // 管理員主動發布：LINE 原文放 details 供排查，不併進 message
+      { upstream: body, status: createResp.status },
     );
   }
   const { richMenuId } = (await createResp.json()) as { richMenuId: string };
@@ -482,9 +484,10 @@ export async function publishRichMenu(
     }).catch(() => {});
     await prisma.richMenu.update({ where: { id }, data: { status: 'error' } });
     throw new AppError(
-      `LINE 上傳背景圖失敗 (${uploadResp.status}): ${body}`,
+      'LINE 無法接受此背景圖，請確認圖片尺寸與格式後重試',
       'LINE_API_ERROR',
       400,
+      { upstream: body, status: uploadResp.status },
     );
   }
 
@@ -552,9 +555,10 @@ export async function unpublishRichMenu(
     if (!deleteResp.ok && deleteResp.status !== 404) {
       const body = await deleteResp.text();
       throw new AppError(
-        `LINE 刪除 Rich Menu 失敗 (${deleteResp.status}): ${body}`,
+        'LINE 無法刪除此圖文選單，請稍後重試',
         'LINE_API_ERROR',
         400,
+        { upstream: body, status: deleteResp.status },
       );
     }
   }

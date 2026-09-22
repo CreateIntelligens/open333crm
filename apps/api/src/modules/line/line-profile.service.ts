@@ -36,8 +36,15 @@ export async function syncLineContactProfile(
   try {
     profile = await plugin.getProfile(lineUid, credentials);
   } catch (err) {
+    // 管理員主動觸發的同步：原文放 details 供其排查（token 失效／額度用罄等），
+    // message 維持可讀說明，不把第三方原文當成使用者訊息。
     const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError(`LINE API error: ${msg}`, 'UPSTREAM_ERROR', 502);
+    throw new AppError(
+      '無法取得 LINE 使用者資料，請稍後重試；若持續失敗請確認渠道權杖是否有效',
+      'UPSTREAM_ERROR',
+      502,
+      { upstream: msg },
+    );
   }
 
   const updated = await prisma.channelIdentity.update({

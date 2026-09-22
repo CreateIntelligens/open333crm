@@ -100,6 +100,76 @@ t('deliverToChannel 送出失敗改用 AppError 502', () => {
   assert.ok(/'CHANNEL_DELIVERY_FAILED',\s*502/.test(s.replace(/\s+/g, ' ')), '狀態碼應為 502（上游失敗）');
 });
 
+// ── 外洩 1：全域錯誤處理 ──
+t('error-handler 不再回傳 Prisma／Fastify 原文', () => {
+  const s = src('plugins/error-handler.plugin.ts');
+  // 只允許 AppError 分支使用 error.message（那是我們自己寫的訊息）
+  const lines = s.split('\n').filter((l) =>
+    /message: error\.message/.test(l) && !/\/\//.test(l));
+  assert.equal(lines.length, 1, `仍有 ${lines.length} 處回傳原文（應僅剩 AppError 分支）`);
+});
+
+t('P2002 不外洩資料庫欄位名', () => {
+  const s = src('plugins/error-handler.plugin.ts');
+  assert.ok(!/same \$\{target\.join/.test(s), '仍把欄位名拼進訊息');
+  assert.ok(s.includes('UNIQUE_FIELD_LABELS'), '缺少欄位對照表');
+  assert.ok(s.includes('資料重複，已有相同的記錄存在'), '缺少未收錄欄位的通用說法');
+});
+
+t('全域錯誤處理各分支皆為中文', () => {
+  const s = src('plugins/error-handler.plugin.ts');
+  for (const m of ['輸入內容有誤', '找不到指定的資料', '資料處理失敗',
+                   '提供的資料格式不正確', '找不到此頁面或資源', '系統發生未預期的錯誤']) {
+    assert.ok(s.includes(m), `缺少訊息：${m}`);
+  }
+});
+
+// ── 外洩 2：Partner 端點 ──
+t('knowledge Partner 端點不外送內部例外原文', () => {
+  const s = src('modules/knowledge/knowledge.routes.ts');
+  assert.ok(!/code: 'INGEST_FAILED',\s*message: \(err as Error\)\.message/.test(s.replace(/\n/g,' ')),
+    '仍把例外原文送給外部 Partner');
+  assert.ok(s.includes('Ingest failed due to an internal error'), '缺少通用英文說明');
+});
+
+// ── 外洩 3：第三方原文分情境處理 ──
+t('管理員操作：原文移到 details.upstream，message 為中文', () => {
+  const cases: Array<[string, string]> = [
+    ['modules/channel/channel.service.ts', 'LINE 驗證失敗，請確認 Channel Secret'],
+    ['modules/channel/line-webhook-setup.service.ts', 'LINE Webhook 自動設定失敗'],
+    ['modules/line/rich-menu.service.ts', 'LINE 無法建立圖文選單'],
+    ['modules/line/line-profile.service.ts', '無法取得 LINE 使用者資料'],
+  ];
+  for (const [f, msg] of cases) {
+    const s = src(f);
+    assert.ok(s.includes(msg), `${f} 缺少中文訊息`);
+    assert.ok(s.includes('upstream:'), `${f} 未把原文放進 details.upstream`);
+  }
+});
+
+t('第三方原文不再被串進 message 字串', () => {
+  for (const f of ['modules/line/rich-menu.service.ts',
+                   'modules/channel/line-webhook-setup.service.ts',
+                   'modules/line/line-profile.service.ts']) {
+    const s = src(f);
+    // 樣式：`...${body}` 或 `LINE API error: ${msg}` 這種把原文串進訊息的寫法
+    assert.ok(!/`[^`]*\$\{(body|errBody|msg)\}`,\s*\n?\s*'[A-Z_]+'/.test(s),
+      `${f} 仍把原文串進 message`);
+  }
+});
+
+t('Flex 版型驗證刻意保留細節（編輯器回饋，非外洩）', () => {
+  const s = src('modules/marketing/material.service.ts');
+  assert.ok(s.includes('刻意保留 LINE 原文'), '缺少說明此處為何與其他處不同');
+  assert.ok(s.includes('formatLineValidateError'), '格式化函式應保留');
+});
+
+// ── Zod 中文化 ──
+t('Zod 全域 errorMap 已在 bootstrap 註冊', () => {
+  const s = src('index.ts');
+  assert.ok(s.includes('installZodChineseLocale()'), '未於啟動時註冊');
+});
+
 // ── AppError 本身的行為 ──
 t('AppError 預設值與傳入值正確', () => {
   const e = new AppError('測試訊息', 'TEST_CODE', 409, { k: 'v' });

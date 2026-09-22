@@ -342,10 +342,13 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     if (!response.ok) {
       const errBody = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      // 管理員按「驗證」時主動觸發：他正是要知道 LINE 為何拒絕。
+      // message 用可讀說明，平台原文放 details 供排查（常見為權杖失效／密鑰不符）。
       throw new AppError(
-        (errBody.message as string) ?? `LINE API 驗證失敗 (${response.status})`,
+        'LINE 驗證失敗，請確認 Channel Secret 與 Access Token 是否正確且未過期',
         'CHANNEL_VERIFY_FAILED',
         400,
+        { upstream: errBody.message ?? null, status: response.status },
       );
     }
 
@@ -374,9 +377,10 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
         error?: { message?: string };
       };
       throw new AppError(
-        errBody.error?.message ?? `Facebook API 驗證失敗 (${response.status})`,
+        'Facebook 驗證失敗，請確認粉絲專頁權杖是否正確且未過期',
         'CHANNEL_VERIFY_FAILED',
         400,
+        { upstream: errBody.error?.message ?? null, status: response.status },
       );
     }
 
@@ -405,9 +409,10 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
         error?: { message?: string };
       };
       throw new AppError(
-        errBody.error?.message ?? `Instagram API 驗證失敗 (${response.status})`,
+        'Instagram 驗證失敗，請確認帳號權杖與應用程式密鑰是否正確',
         'CHANNEL_VERIFY_FAILED',
         400,
+        { upstream: errBody.error?.message ?? null, status: response.status },
       );
     }
 

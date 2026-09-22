@@ -50,10 +50,12 @@ export async function autoSetupLineWebhook(
 
   if (!setResponse.ok) {
     const errBody = await setResponse.text();
+    // 管理員新增渠道時自動觸發：原文放 details 供排查，message 維持可讀
     throw new AppError(
-      `LINE Webhook 設定失敗 (${setResponse.status}): ${errBody}`,
+      'LINE Webhook 自動設定失敗，可改至 LINE 後台手動貼上網址',
       'CHANNEL_SETUP_FAILED',
       400,
+      { upstream: errBody, status: setResponse.status },
     );
   }
 

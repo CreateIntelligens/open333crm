@@ -15,6 +15,7 @@ import multipart from '@fastify/multipart';
 import { validatePermissionRegistry, validateRouteCodes } from '@open333crm/core';
 import { usedPermissionCodes } from './guards/rbac.guard.js';
 import { loadEnvConfig } from './config/env.js';
+import { installZodChineseLocale } from './config/zod-locale.js';
 import prismaPlugin from './plugins/prisma.plugin.js';
 import cookiePlugin from './plugins/cookie.plugin.js';
 import authPlugin from './plugins/auth.plugin.js';
@@ -82,6 +83,9 @@ import { preloadUploadContentDetector } from './modules/upload/upload-content-de
 
 export async function bootstrap() {
   const config = loadEnvConfig();
+
+  // Zod 驗證訊息中文化。須在任何 schema 被使用前設定（errorMap 是全域單例）
+  installZodChineseLocale();
 
   await preloadUploadContentDetector();
 

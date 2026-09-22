@@ -305,12 +305,15 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
             error: { code: err.code, message: err.message },
           });
         }
+        // ⚠️ 原本回 (err as Error).message，會把內部例外原文送給外部 Partner 系統。
+        // 上一行已記錄原文供排查；對外只回通用說明。
+        // 此端點對 Partner 機器，依既定原則維持英文。
         request.log.error({ err }, '[PartnerIngest] unexpected failure');
         return reply.status(500).send({
           success: false,
           error: {
             code: 'INGEST_FAILED',
-            message: (err as Error).message,
+            message: 'Ingest failed due to an internal error. Please contact support.',
           },
         });
       }
