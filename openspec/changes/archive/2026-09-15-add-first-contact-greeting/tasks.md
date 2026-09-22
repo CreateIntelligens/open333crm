@@ -59,6 +59,6 @@
 ## 8. 收尾
 
 - [x] 8.1 `pnpm build` 與相關套件 `typecheck` 全綠
-- [ ] 8.2 本機以 WEBCHAT 渠道驗證（LINE/FB 本機收不到 webhook，見專案既有限制）— 待本機環境啟動
+- [x] 8.2 本機以 WEBCHAT 渠道驗證（LINE/FB 本機收不到 webhook，見專案既有限制）
 - [x] 8.3 更新 `CHANGELOG.md`（`Added` 分類，date-only heading `## [YYYY-MM-DD]`）
-- [ ] 8.4 部署 UAT 後以真實 LINE 帳號驗證：加好友即收到招呼語、後續訊息不重複
+- [x] 8.4 部署 UAT 後以真實 LINE 帳號驗證：加好友即收到招呼語、後續訊息不重複
