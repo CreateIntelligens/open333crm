@@ -173,7 +173,7 @@ export function CaseCreateModal({
       return;
     }
     if (!selectedContactId && !isFromInbox) {
-      setError('請選擇聯繫人');
+      setError('請選擇聯絡人');
       return;
     }
     if (!category) {
@@ -265,7 +265,7 @@ export function CaseCreateModal({
           {/* Contact */}
           <div>
             <label className="mb-1 block text-sm font-medium">
-              聯繫人 <span className="text-destructive">*</span>
+              聯絡人 <span className="text-destructive">*</span>
             </label>
             {isFromInbox ? (
               <Input value={selectedContactName} disabled />
@@ -281,7 +281,7 @@ export function CaseCreateModal({
                   }}
                   onFocus={() => contactOptions.length > 0 && setShowContactDropdown(true)}
                   onBlur={() => setTimeout(() => setShowContactDropdown(false), 200)}
-                  placeholder="搜尋聯繫人姓名..."
+                  placeholder="搜尋聯絡人姓名..."
                 />
                 {showContactDropdown && (
                   <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow-lg max-h-40 overflow-auto">
@@ -305,7 +305,7 @@ export function CaseCreateModal({
                       ))
                     ) : contactSearch.length >= 2 ? (
                       <div className="px-3 py-2 text-sm text-muted-foreground">
-                        找不到聯繫人
+                        找不到聯絡人
                         <button
                           type="button"
                           className="ml-1 text-primary hover:underline font-medium"
@@ -315,7 +315,7 @@ export function CaseCreateModal({
                             window.open('/dashboard/contacts?action=create', '_blank');
                           }}
                         >
-                          + 建立新聯繫人
+                          + 建立新聯絡人
                         </button>
                       </div>
                     ) : null}

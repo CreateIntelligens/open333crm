@@ -37,7 +37,7 @@ export function ContactDetail({ contact, onUpdate }: ContactDetailProps) {
       {/* Contact Info */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">聯繫人資訊</CardTitle>
+          <CardTitle className="text-lg">聯絡人資訊</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-start gap-4">

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FlexPreview } from '../MaterialPreview';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface Props {
   body: LineFlexMessageBody;
@@ -84,7 +85,7 @@ export function LineFlexTemplateEditor({ body, onChange }: Props) {
       setJsonText(JSON.stringify(nextBody, null, 2));
       setStatus({ type: 'ok', message: 'JSON 已驗證並匯入到目前草稿' });
     } catch (error: unknown) {
-      setStatus({ type: 'error', message: apiErrorMessage(error, 'Flex JSON 驗證失敗') });
+      setStatus({ type: 'error', message: getApiErrorMessage(error, 'Flex JSON 驗證失敗') });
     }
   };
 
@@ -234,10 +235,3 @@ function StatusMessage({ status }: { status: { type: 'ok' | 'error'; message: st
   );
 }
 
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response?: { data?: { error?: { message?: string; code?: string } } } }).response;
-    return response?.data?.error?.message ?? response?.data?.error?.code ?? fallback;
-  }
-  return error instanceof Error ? error.message : fallback;
-}

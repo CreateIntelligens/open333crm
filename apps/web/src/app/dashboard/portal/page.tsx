@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ActivityItem {
   id: string;
@@ -54,6 +55,7 @@ function ActivityList() {
       mutate();
     } catch (err) {
       console.error('Publish error:', err);
+      alert(getApiErrorMessage(err, '發布失敗，請稍後重試'));
     } finally {
       setActioning(null);
     }
@@ -66,6 +68,7 @@ function ActivityList() {
       mutate();
     } catch (err) {
       console.error('End error:', err);
+      alert(getApiErrorMessage(err, '結束活動失敗，請稍後重試'));
     } finally {
       setActioning(null);
     }
@@ -78,6 +81,7 @@ function ActivityList() {
       mutate();
     } catch (err) {
       console.error('Delete error:', err);
+      alert(getApiErrorMessage(err, '刪除失敗，請稍後重試'));
     }
   };
 

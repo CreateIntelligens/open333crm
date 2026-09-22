@@ -11,6 +11,7 @@ import { CaseDetail } from '@/components/case/CaseDetail';
 import { CaseTimeline } from '@/components/case/CaseTimeline';
 import { EscalationModal } from '@/components/case/EscalationModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -69,6 +70,7 @@ export default function CaseDetailPage() {
       fetchCase();
     } catch (err) {
       console.error('Failed to resolve case:', err);
+      alert(getApiErrorMessage(err, '結案失敗，請稍後重試'));
     }
   };
 
@@ -78,6 +80,7 @@ export default function CaseDetailPage() {
       fetchCase();
     } catch (err) {
       console.error('Failed to close case:', err);
+      alert(getApiErrorMessage(err, '關閉案件失敗，請稍後重試'));
     }
   };
 

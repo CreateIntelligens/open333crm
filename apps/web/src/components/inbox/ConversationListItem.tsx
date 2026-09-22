@@ -39,7 +39,7 @@ export function ConversationListItem({
   onClick,
   showCsat,
 }: ConversationListItemProps) {
-  const contactName = conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人';
+  const contactName = conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人';
   const lastMessageContent = formatMessagePreview(conversation.lastMessage);
   const lastMessageTime = conversation.lastMessage?.createdAt || conversation.updatedAt;
   const unreadCount = conversation.unreadCount || 0;

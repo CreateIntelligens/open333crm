@@ -32,9 +32,9 @@ export default function ContactsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="聯繫人">
+      <Topbar title="聯絡人">
         <SearchInput
-          placeholder="搜尋聯繫人..."
+          placeholder="搜尋聯絡人..."
           onSearch={handleSearch}
           className="w-64"
         />

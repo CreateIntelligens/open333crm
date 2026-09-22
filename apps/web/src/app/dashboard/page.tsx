@@ -221,7 +221,7 @@ export default function DashboardPage() {
     },
     {
       icon: <Users className="h-6 w-6 text-success" />,
-      title: '聯繫人總數',
+      title: '聯絡人總數',
       value: stats.totalContacts,
       color: 'bg-success-subtle',
     },
@@ -282,7 +282,7 @@ export default function DashboardPage() {
                     const contactName =
                       conv.contact?.displayName ||
                       conv.contact?.name ||
-                      '未知聯繫人';
+                      '未知聯絡人';
                     const messageText = extractMessageText(conv.lastMessage?.content);
                     const timeStr = conv.lastMessage?.createdAt || conv.updatedAt;
 
@@ -292,7 +292,7 @@ export default function DashboardPage() {
                           href={`/dashboard/inbox?conv=${conv.id}`}
                           className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-muted/50"
                         >
-                          {/* 聯繫人圖示 */}
+                          {/* 聯絡人圖示 */}
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                             <User className="h-4 w-4" />
                           </div>

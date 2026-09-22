@@ -88,7 +88,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
   if (!conversation?.contact) {
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <p className="text-sm text-muted-foreground">未選擇聯繫人</p>
+        <p className="text-sm text-muted-foreground">未選擇聯絡人</p>
       </div>
     );
   }
@@ -132,7 +132,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {/* Contact Header */}
       <div className="flex flex-col items-center p-6 text-center">
         <Avatar
-          alt={conversation.contact.name || conversation.contact.displayName || '聯繫人'}
+          alt={conversation.contact.name || conversation.contact.displayName || '聯絡人'}
           src={conversation.contact.avatar || conversation.contact.avatarUrl}
           size="lg"
         />
@@ -237,7 +237,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {/* Contact Tags */}
       <div className="p-4">
         <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-          聯繫人標籤
+          聯絡人標籤
         </h4>
         <div className="flex flex-wrap gap-1.5">
           {tags && tags.length > 0 ? (

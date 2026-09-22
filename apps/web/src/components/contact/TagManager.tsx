@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface Tag {
   id: string;
@@ -57,6 +58,7 @@ export function TagManager({ targetType, targetId, tags, onUpdate }: TagManagerP
       onUpdate();
     } catch (err) {
       console.error('Failed to add tag:', err);
+      alert(getApiErrorMessage(err, '加上標籤失敗，請稍後重試'));
     } finally {
       setAdding(false);
     }
@@ -68,6 +70,7 @@ export function TagManager({ targetType, targetId, tags, onUpdate }: TagManagerP
       onUpdate();
     } catch (err) {
       console.error('Failed to remove tag:', err);
+      alert(getApiErrorMessage(err, '移除標籤失敗，請稍後重試'));
     }
   };
 

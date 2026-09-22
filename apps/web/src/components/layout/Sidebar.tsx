@@ -26,7 +26,7 @@ interface NavNode {
 const NAV_TREE: NavNode[] = [
   { id: 'inbox', label: '收件匣', href: '/dashboard/inbox', icon: MessageSquare },
   { id: 'cases', label: '工單', href: '/dashboard/cases', icon: Briefcase },
-  { id: 'contacts', label: '聯繫人', href: '/dashboard/contacts', icon: Users },
+  { id: 'contacts', label: '聯絡人', href: '/dashboard/contacts', icon: Users },
   { id: 'notifications', label: '通知', href: '/dashboard/notifications', icon: Bell },
   { id: 'automation', label: '自動化', href: '/dashboard/automation', icon: Zap, perm: 'automation.view' },
   {

@@ -381,7 +381,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         {caseData.contact && (
           <>
             <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">聯繫人</h4>
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">聯絡人</h4>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
                 <Link

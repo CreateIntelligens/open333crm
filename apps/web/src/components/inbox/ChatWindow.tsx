@@ -200,7 +200,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold">
-              {conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人'}
+              {conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人'}
             </h3>
             <ChannelBadge channel={conversation.channelType} />
             <span

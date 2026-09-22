@@ -297,7 +297,7 @@ function BroadcastTab() {
   };
 
   const targetTypeOptions = [
-    { value: 'all', label: '全部聯繫人' },
+    { value: 'all', label: '全部聯絡人' },
     { value: 'segment', label: '受眾分群' },
     { value: 'tags', label: '依標籤篩選' },
     { value: 'contacts', label: '手動選擇' },

@@ -67,7 +67,7 @@ export function SubmissionsView() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="text-left p-3">聯繫人</th>
+                <th className="text-left p-3">聯絡人</th>
                 <th className="text-left p-3">提交時間</th>
                 <th className="text-left p-3">答案摘要</th>
                 {selectedActivity?.type === 'QUIZ' && <th className="text-left p-3">得分</th>}

@@ -381,7 +381,8 @@ function CreatedCliSessionDialog({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      alert(sessionData.token);
+      // 同上：權杖僅顯示一次，複製失敗時需明確提醒使用者保存
+      alert(`複製失敗，請手動複製並妥善保存（此權杖僅顯示這一次）：\n\n${sessionData.token}`);
     }
   };
 

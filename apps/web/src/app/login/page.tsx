@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { LOGIN_CAPTCHA_ENABLED } from '@/lib/constants';
 import 'playcaptcha/clawcaptcha.css';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 // 夾娃娃機小遊戲關卡使用瀏覽器 API，僅在 client 端載入以避免 SSR 錯誤。
 const ClawCaptcha = dynamic(
@@ -62,14 +63,7 @@ function LoginForm() {
     try {
       await loginWithPasskey(email || undefined, rememberMe);
     } catch (err: unknown) {
-      const axiosError = err as {
-        response?: { data?: { error?: { message?: string }; message?: string } };
-      };
-      setError(
-        axiosError.response?.data?.error?.message
-        || axiosError.response?.data?.message
-        || 'Passkey 登入失敗，請改用帳號密碼登入。',
-      );
+      setError(getApiErrorMessage(err, 'Passkey 登入失敗，請改用帳號密碼登入'));
     } finally {
       setPasskeySubmitting(false);
     }

@@ -30,6 +30,7 @@ import {
   type FlexFieldGroup,
 } from './flex-fields';
 import { SHOWCASE_SAMPLES, type ShowcaseSample } from './samples';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 /** 業務區塊顯示順序（主圖 → 標題內文 → 按鈕 → 其他）。 */
 const groupOrder: FlexFieldGroup[] = ['主圖', '標題與內文', '按鈕', '其他'];
@@ -74,7 +75,7 @@ export function LineFlexShowcaseEditor({ body, onChange }: Props) {
       const data = res.data.data as { contents: Record<string, unknown>; altText: string };
       onChange({ contents: data.contents, altText: data.altText, source: 'ai' });
     } catch (error: unknown) {
-      setAiError(apiErrorMessage(error, 'AI 生成失敗，請調整描述或改用精選範本。'));
+      setAiError(getApiErrorMessage(error, 'AI 生成失敗，請調整描述或改用精選範本。'));
     } finally {
       setAiLoading(false);
     }
@@ -333,13 +334,6 @@ function kindLabel(kind: FlexField['kind']): string {
 }
 
 /** 取 axios 錯誤的後端訊息（success/error wrapper），無則回 fallback。 */
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response?: { data?: { error?: { message?: string; code?: string } } } }).response;
-    return response?.data?.error?.message ?? response?.data?.error?.code ?? fallback;
-  }
-  return error instanceof Error ? error.message : fallback;
-}
 
 // ─── 容器列（顯示子元件、可加可減） ────────────────────
 

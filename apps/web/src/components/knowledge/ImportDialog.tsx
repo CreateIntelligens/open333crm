@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ImportDialogProps {
   open: boolean;
@@ -88,11 +89,11 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
           if (r?.success) {
             updateStatus(f.name, 'success');
           } else {
-            updateStatus(f.name, 'error', r?.error || 'Unknown error');
+            updateStatus(f.name, 'error', r?.error || '匯入失敗，原因不明');
           }
         });
       } catch (err: any) {
-        const msg = err.response?.data?.error?.message || err.message || 'Upload failed';
+        const msg = getApiErrorMessage(err, '上傳失敗，請稍後重試');
         otherFiles.forEach((f) => updateStatus(f.name, 'error', msg));
       }
     }
@@ -104,7 +105,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
         const text = await file.text();
         const parsed = JSON.parse(text);
         if (!Array.isArray(parsed)) {
-          updateStatus(file.name, 'error', 'JSON must be an array');
+          updateStatus(file.name, 'error', 'JSON 最外層必須是陣列');
           continue;
         }
         const res = await api.post('/knowledge/import', { articles: parsed });
@@ -112,10 +113,10 @@ export function ImportDialog({ open, onOpenChange, onImported }: ImportDialogPro
         updateStatus(
           file.name,
           data.failed > 0 && data.imported === 0 ? 'error' : 'success',
-          data.failed > 0 ? `${data.imported} imported, ${data.failed} failed` : undefined,
+          data.failed > 0 ? `成功 ${data.imported} 筆，失敗 ${data.failed} 筆` : undefined,
         );
       } catch (err: any) {
-        const msg = err.response?.data?.error?.message || 'Import failed';
+        const msg = getApiErrorMessage(err, '匯入失敗，請稍後重試');
         updateStatus(file.name, 'error', msg);
       }
     }

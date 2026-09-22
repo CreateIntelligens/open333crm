@@ -31,14 +31,53 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
+// keyword.matched 觸發的具名 schema。
+//
+// 為什麼要特別處理：原本 trigger 只有 `z.object({ type }).passthrough()`，
+// keywords 完全不驗，而 automation.worker.ts 的比對是
+// `lowerText.includes(kw.toLowerCase())` —— `includes('')` 在 JS 恆為 true。
+// worker 雖有 `if (keywords.length === 0) continue` 防空陣列，但擋不住
+// `['']`（長度為 1），結果是該規則會對租戶內每一則進來的訊息觸發自動回覆。
+// UI 有前端擋控，但 API 直呼完全無防護。
+const keywordTriggerSchema = z.object({
+  type: z.literal('keyword.matched'),
+  keywords: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1, '關鍵字不可為空白')
+        .max(100, '單一關鍵字不可超過 100 字'),
+    )
+    .min(1, '至少需要一個關鍵字')
+    .max(50, '關鍵字不可超過 50 個'),
+  match_mode: z.enum(['any', 'all']).optional(),
+});
+
+// 其他觸發類型維持寬鬆（各自的參數由 contracts 層驗證）。
+const genericTriggerSchema = z
+  .object({ type: z.string().min(1) })
+  .passthrough();
+
+/**
+ * 依 type 分流：keyword.matched 走嚴格驗證，其餘維持原本行為。
+ * 用 superRefine 而非 discriminatedUnion，是為了讓 keyword.matched
+ * 的錯誤訊息能精準指到 keywords 欄位，而不是回一句「沒有符合的 union 分支」。
+ */
+const triggerSchema = genericTriggerSchema.superRefine((val, ctx) => {
+  if (val.type !== 'keyword.matched') return;
+  const r = keywordTriggerSchema.safeParse(val);
+  if (!r.success) {
+    for (const issue of r.error.issues) ctx.addIssue(issue);
+  }
+});
+
 const createRuleSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
   priority: z.number().int().min(0).max(10000).optional(),
   stopOnMatch: z.boolean().optional(),
-  trigger: z.object({
-    type: z.string().min(1),
-  }).passthrough(),
+  trigger: triggerSchema,
   conditions: z.record(z.unknown()),
   actions: z.array(
     z.object({
@@ -54,12 +93,8 @@ const updateRuleSchema = z.object({
   priority: z.number().int().min(0).max(10000).optional(),
   stopOnMatch: z.boolean().optional(),
   isActive: z.boolean().optional(),
-  trigger: z
-    .object({
-      type: z.string().min(1),
-    })
-    .passthrough()
-    .optional(),
+  // 更新也必須套同一套驗證，否則可先建合法規則再改成 keywords:[''] 繞過
+  trigger: triggerSchema.optional(),
   conditions: z.record(z.unknown()).optional(),
   actions: z
     .array(

@@ -79,8 +79,8 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
     return (
       <EmptyState
         icon={<Users className="h-12 w-12" />}
-        title="找不到聯繫人"
-        description="建立後聯繫人將顯示在這裡"
+        title="找不到聯絡人"
+        description="建立後聯絡人將顯示在這裡"
       />
     );
   }
@@ -91,7 +91,7 @@ export function ContactList({ contacts, isLoading }: ContactListProps) {
         <thead>
           <tr className="border-b bg-muted/50 text-left">
             <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              聯繫人
+              聯絡人
             </th>
             <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
               電話
