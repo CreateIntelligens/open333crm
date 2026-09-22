@@ -133,7 +133,11 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
   app.get('/:id/clicks', async (request, reply) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
-    const result = await getClickLogs(request.tenantPrisma, id, request.agent.tenantId, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
+    // getClickLogs 的 skip 同樣是 (page-1)*limit，未夾制會負 skip → 500
+    const { page: safePage, limit: safeLimit } = listQuerySchema
+      .pick({ page: true, limit: true })
+      .parse({ page: page ?? undefined, limit: limit ?? undefined });
+    const result = await getClickLogs(request.tenantPrisma, id, request.agent.tenantId, safePage, safeLimit);
     // 先前漏了 reply.status，NOT_FOUND 實際以 HTTP 200 送出，前端判斷不到失敗
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };

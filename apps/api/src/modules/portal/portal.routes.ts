@@ -22,6 +22,7 @@ import {
 } from './points.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { withTenant } from '../../lib/tenant-db.js';
+import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
 export default async function portalRoutes(app: FastifyInstance) {
   // All routes require agent JWT
@@ -35,8 +36,9 @@ export default async function portalRoutes(app: FastifyInstance) {
     const result = await listActivities(request.tenantPrisma, request.agent.tenantId, {
       type,
       status,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
+      // 夾制下限：parseInt 讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
+      page: page ? clampPage(parseInt(page)) : undefined,
+      limit: limit ? clampLimit(parseInt(limit)) : undefined,
     });
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
@@ -109,7 +111,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   app.get('/activities/:id/submissions', async (request) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
-    const result = await listSubmissions(request.tenantPrisma, id, request.agent.tenantId, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
+    const result = await listSubmissions(request.tenantPrisma, id, request.agent.tenantId, page ? clampPage(parseInt(page)) : undefined, limit ? clampLimit(parseInt(limit)) : undefined);
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
@@ -126,7 +128,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   app.get('/points', async (request) => {
     const { contactId, page, limit } = request.query as Record<string, string>;
     if (!contactId) return { success: true, data: [], meta: { total: 0 } };
-    const result = await listPointTransactions(request.tenantPrisma, request.agent.tenantId, contactId, page ? parseInt(page) : undefined, limit ? parseInt(limit) : undefined);
+    const result = await listPointTransactions(request.tenantPrisma, request.agent.tenantId, contactId, page ? clampPage(parseInt(page)) : undefined, limit ? clampLimit(parseInt(limit)) : undefined);
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
