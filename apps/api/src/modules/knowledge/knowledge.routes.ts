@@ -34,7 +34,7 @@ import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 const createArticleSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().trim().min(1, '標題不可為空白').max(200),
   content: z.string().min(1),
   summary: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
@@ -42,7 +42,7 @@ const createArticleSchema = z.object({
 });
 
 const updateArticleSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
+  title: z.string().trim().min(1, '標題不可為空白').max(200).optional(),
   content: z.string().min(1).optional(),
   summary: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
@@ -58,7 +58,7 @@ const searchSchema = z.object({
 const importSchema = z.object({
   articles: z.array(
     z.object({
-      title: z.string().min(1).max(200),
+      title: z.string().trim().min(1, '標題不可為空白').max(200),
       content: z.string().min(1),
       summary: z.string().max(500).optional(),
       category: z.string().max(100).optional(),

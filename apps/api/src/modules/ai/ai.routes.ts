@@ -102,7 +102,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
         },
       },
     });
-    if (!run) return reply.status(404).send({ code: 'NOT_FOUND', message: 'Agent run not found' });
+    if (!run) return reply.status(404).send({ code: 'NOT_FOUND', message: '找不到此執行紀錄，可能已過保留期限' });
     return reply.send(success(run));
   });
 }

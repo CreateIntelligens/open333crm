@@ -62,7 +62,7 @@ function checkPublicLimit(reply: FastifyReply, limits: Array<{ key: string; max:
       reply
         .header('Retry-After', String(result.retryAfterSeconds))
         .status(429)
-        .send({ code: 'RATE_LIMITED', message: 'Too many requests' });
+        .send({ code: 'RATE_LIMITED', message: '操作太頻繁，請稍候再試' });
       return false;
     }
   }

@@ -143,6 +143,7 @@ export function SlaManagement() {
       fetchPolicies();
     } catch {
       console.error('Failed to delete SLA policy');
+      alert('刪除 SLA 政策失敗，請稍後重試');
     }
   };
 

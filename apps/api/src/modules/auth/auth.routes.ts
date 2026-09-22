@@ -583,7 +583,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     if (!token) {
       return reply.status(401).send({
         success: false,
-        error: { code: 'UNAUTHORIZED', message: 'No refresh token' },
+        error: { code: 'UNAUTHORIZED', message: '登入已過期，請重新登入' },
       });
     }
 
@@ -610,7 +610,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     } catch {
       return reply.status(401).send({
         success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Invalid or expired refresh token' },
+        error: { code: 'UNAUTHORIZED', message: '登入已過期，請重新登入' },
       });
     }
   });

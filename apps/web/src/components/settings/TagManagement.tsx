@@ -136,6 +136,7 @@ export function TagManagement() {
       fetchTags();
     } catch {
       console.error('Failed to delete tag');
+      alert('刪除標籤失敗，請稍後重試');
     }
   };
 

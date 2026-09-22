@@ -7,7 +7,7 @@ import { withTenant } from '../../lib/tenant-db.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 const createTagSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1, '標籤名稱不可為空白').max(50, '標籤名稱不可超過 50 字'),
   color: z.string().default('#6366f1'),
   type: z.enum(['MANUAL', 'AUTO', 'SYSTEM', 'CHANNEL']),
   scope: z.enum(['CONTACT', 'CONVERSATION', 'CASE']),
@@ -15,7 +15,7 @@ const createTagSchema = z.object({
 });
 
 const updateTagSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1, '標籤名稱不可為空白').max(50, '標籤名稱不可超過 50 字').optional(),
   color: z.string().optional(),
   description: z.string().optional(),
 });

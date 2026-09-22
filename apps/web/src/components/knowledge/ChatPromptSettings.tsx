@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ChatSettingsData {
   provider: 'ollama' | 'gemini';
@@ -119,6 +120,7 @@ export function ChatPromptSettings() {
       setByokInput('');
     } catch (err) {
       console.error('Failed to save gemini key:', err);
+      alert(getApiErrorMessage(err, '設定儲存失敗，請稍後重試'));
     } finally {
       setByokSaving(false);
     }

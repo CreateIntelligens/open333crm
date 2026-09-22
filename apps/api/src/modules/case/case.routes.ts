@@ -44,7 +44,7 @@ const listQuerySchema = z.object({
 const createCaseSchema = z.object({
   contactId: z.string().uuid(),
   channelId: z.string().uuid(),
-  title: z.string().min(1).max(100),
+  title: z.string().trim().min(1, '標題不可為空白').max(100),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   category: z.string().optional(),
@@ -54,7 +54,7 @@ const createCaseSchema = z.object({
 });
 
 const updateCaseSchema = z.object({
-  title: z.string().min(1).max(100).optional(),
+  title: z.string().trim().min(1, '標題不可為空白').max(100).optional(),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   category: z.string().optional(),
@@ -68,7 +68,7 @@ const assignSchema = z.object({
 });
 
 const escalateSchema = z.object({
-  reason: z.string().min(1),
+  reason: z.string().trim().min(1, '原因不可為空白').max(1000, '原因不可超過 1000 字'),
   note: z.string().max(500).optional(),
   newPriority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   assigneeId: z.string().uuid().optional(),
@@ -76,7 +76,7 @@ const escalateSchema = z.object({
 });
 
 const addNoteSchema = z.object({
-  content: z.string().min(1),
+  content: z.string().trim().min(1, '內容不可為空白').max(5000, '備註不可超過 5000 字'),
   isInternal: z.boolean().default(true),
 });
 
@@ -90,7 +90,7 @@ const csatSchema = z.object({
 });
 
 const createCaseFromConvSchema = z.object({
-  title: z.string().min(1).max(100),
+  title: z.string().trim().min(1, '標題不可為空白').max(100),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   category: z.string().optional(),
@@ -376,7 +376,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     if (!recorded) {
       return reply.status(400).send({
         success: false,
-        error: { code: 'BAD_REQUEST', message: 'Unable to record CSAT score. Case may not exist or already rated.' },
+        error: { code: 'BAD_REQUEST', message: '無法記錄滿意度評分，此案件可能不存在或已評分過' },
       });
     }
 

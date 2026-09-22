@@ -121,7 +121,7 @@ const tagsSchema = z.array(z.string().min(1).max(40)).max(20);
 
 const createMaterialSchema = z.object({
   templateId: z.string().uuid().optional(),
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
   categoryId: z.string().uuid().nullable().optional(),
@@ -136,7 +136,7 @@ const createMaterialSchema = z.object({
 });
 
 const updateMaterialSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
   categoryId: z.string().uuid().nullable().optional(),
@@ -152,13 +152,13 @@ const updateMaterialSchema = z.object({
 const SORT_VALUES = ['recent_used', 'most_used', 'updated', 'name'] as const;
 
 const createCategorySchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().trim().min(1, '分類名稱不可為空白').max(100),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
 
 const updateCategorySchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(1, '分類名稱不可為空白').max(100).optional(),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
@@ -178,7 +178,7 @@ const lineFlexAiGenerateSchema = z.object({
 });
 
 const lineFlexImportSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
   payload: z.unknown(),

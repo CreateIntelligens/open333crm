@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 function LinkList() {
   const { links, isLoading, mutate } = useShortLinks();
@@ -47,6 +48,7 @@ function LinkList() {
       mutate();
     } catch (err) {
       console.error('Delete error:', err);
+      alert(getApiErrorMessage(err, '刪除短連結失敗，請稍後重試'));
     }
   };
 

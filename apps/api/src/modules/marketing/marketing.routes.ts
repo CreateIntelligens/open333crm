@@ -41,26 +41,26 @@ const segmentRulesSchema = z.object({
 });
 
 const createSegmentSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   rules: segmentRulesSchema,
 });
 
 const updateSegmentSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(500).optional(),
   rules: segmentRulesSchema.optional(),
 });
 
 const createCampaignSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
 });
 
 const updateCampaignSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(500).optional(),
   status: z.enum(['draft', 'active', 'completed', 'cancelled']).optional(),
   startDate: z.string().nullable().optional(),
@@ -69,7 +69,7 @@ const updateCampaignSchema = z.object({
 
 const createBroadcastSchema = z
   .object({
-    name: z.string().min(1).max(200),
+    name: z.string().trim().min(1, '名稱不可為空白').max(200),
     // 來源二擇一：素材（推薦）或舊範本（向下相容）
     materialId: z.string().uuid().optional(),
     templateId: z.string().uuid().optional(),
@@ -86,7 +86,7 @@ const createBroadcastSchema = z
     scheduledAt: z.string().optional(),
   })
   .refine((data) => Boolean(data.materialId) !== Boolean(data.templateId), {
-    message: 'Must provide exactly one of materialId or templateId',
+    message: '素材與版型請擇一提供，不可同時或都不填',
     path: ['materialId'],
   });
 

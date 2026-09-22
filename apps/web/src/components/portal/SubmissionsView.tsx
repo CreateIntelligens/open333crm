@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 export function SubmissionsView() {
   const { activities } = useActivities();
@@ -34,6 +35,7 @@ export function SubmissionsView() {
       mutate();
     } catch (err) {
       console.error('Draw error:', err);
+      alert(getApiErrorMessage(err, '抽獎失敗，請稍後重試'));
     } finally {
       setDrawing(false);
     }

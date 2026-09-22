@@ -100,7 +100,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   fastify.patch('/me/password', async (request, reply) => {
     const body = changePasswordSchema.parse(request.body);
     await changeOwnPassword(request.tenantPrisma, request.agent.id, body.currentPassword, body.newPassword);
-    return reply.send(success({ message: 'Password updated' }));
+    return reply.send(success({ message: '密碼已更新' }));
   });
 
   // PATCH /api/v1/agents/:id/role — 需 agent.role.assign（指派角色專用權限；越權防護在 service 層）
@@ -149,7 +149,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       targetId: id,
       ip: request.ip,
     });
-    return reply.send(success({ message: 'Password reset' }));
+    return reply.send(success({ message: '密碼已重設' }));
   });
 
   // POST /api/v1/agents/:id/deactivate — 需 agent.deactivate (停用，可再啟用、保留 email)

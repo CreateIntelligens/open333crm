@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { MessageSquare } from 'lucide-react';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ChatWindowProps {
   conversation: {
@@ -98,6 +99,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       globalMutate(`/conversations/${conversation.id}`);
     } catch (err) {
       console.error('Handoff failed:', err);
+      alert(getApiErrorMessage(err, '轉接失敗，請稍後重試'));
     }
   };
 

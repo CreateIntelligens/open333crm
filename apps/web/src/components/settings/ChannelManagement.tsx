@@ -38,6 +38,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 const WEBHOOK_BASE_URL_KEY = 'open333crm_webhook_base_url';
 
@@ -109,6 +110,7 @@ export function ChannelManagement() {
       mutate();
     } catch (err) {
       console.error('Failed to update webhook base URL:', err);
+      alert(getApiErrorMessage(err, 'Webhook 網址更新失敗，請稍後重試'));
     } finally {
       setUpdatingBaseUrl(false);
     }
@@ -150,6 +152,7 @@ export function ChannelManagement() {
       mutate();
     } catch (err) {
       console.error('Failed to delete channel:', err);
+      alert(getApiErrorMessage(err, '刪除渠道失敗，請稍後重試'));
     }
   };
 

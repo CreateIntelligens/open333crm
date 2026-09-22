@@ -254,7 +254,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     });
 
     if (!channel) {
-      return reply.status(404).send({ error: { message: 'Channel not found' } });
+      return reply.status(404).send({ error: { message: '找不到此渠道，可能已被刪除' } });
     }
 
     if (channel.channelType === CHANNEL_TYPE.FB) {

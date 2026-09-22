@@ -133,7 +133,7 @@ function assertLineFlexMessageBody(body: unknown): LineFlexMessageBody {
   const result = validateLineFlexMessageBody(normalized);
   if (!result.valid) {
     // errors 理論上非空，但防禦性處理避免 errors[0] 為 undefined 再次炸成 500。
-    const first = result.errors[0] ?? { message: 'Invalid LINE Flex message body', code: 'INVALID_LINE_FLEX_BODY' };
+    const first = result.errors[0] ?? { message: 'Flex 訊息格式不符合 LINE 規範', code: 'INVALID_LINE_FLEX_BODY' };
     throw new AppError(first.message, first.code, 400);
   }
   return normalized;

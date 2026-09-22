@@ -116,7 +116,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     if (!config.PLATFORM_JWT_SECRET) {
       return reply.status(503).send({
         success: false,
-        error: { code: 'PLATFORM_DISABLED', message: 'Platform control plane not configured' },
+        error: { code: 'PLATFORM_DISABLED', message: '平台管理功能尚未啟用，請聯繫系統管理員' },
       });
     }
     const body = loginSchema.parse(request.body);

@@ -73,7 +73,7 @@ const triggerSchema = genericTriggerSchema.superRefine((val, ctx) => {
 });
 
 const createRuleSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(1000).optional(),
   priority: z.number().int().min(0).max(10000).optional(),
   stopOnMatch: z.boolean().optional(),
@@ -88,7 +88,7 @@ const createRuleSchema = z.object({
 });
 
 const updateRuleSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(1000).optional(),
   priority: z.number().int().min(0).max(10000).optional(),
   stopOnMatch: z.boolean().optional(),

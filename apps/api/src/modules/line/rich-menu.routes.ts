@@ -60,7 +60,7 @@ const areaSchema = z.object({
 const createSchema = z.object({
   channelId: z.string().uuid(),
   name: z.string().min(1).max(200),
-  chatBarText: z.string().min(1).max(14),
+  chatBarText: z.string().trim().min(1, '選單列文字不可為空白').max(14),
   size: sizeSchema,
   selected: z.boolean().optional(),
   areas: z.array(areaSchema).min(1).max(20),
@@ -69,7 +69,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  chatBarText: z.string().min(1).max(14).optional(),
+  chatBarText: z.string().trim().min(1, '選單列文字不可為空白').max(14).optional(),
   size: sizeSchema.optional(),
   selected: z.boolean().optional(),
   areas: z.array(areaSchema).min(1).max(20).optional(),

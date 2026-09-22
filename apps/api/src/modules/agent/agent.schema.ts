@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const agentRoleEnum = z.enum(['ADMIN', 'SUPERVISOR', 'AGENT']);
 
 export const createAgentSchema = z.object({
-  name: z.string().min(1, '請輸入姓名'),
+  name: z.string().trim().min(1, '請輸入姓名').max(120, '姓名不可超過 120 字'),
   email: z.string().email(),
   // legacy enum role（過渡相容）。提供 roleId 時以 roleId 為準；未提供 roleId 時用 role 解析對應 system role。
   role: agentRoleEnum,

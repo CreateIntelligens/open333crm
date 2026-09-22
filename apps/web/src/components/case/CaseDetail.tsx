@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { CaseStatusBadge } from './CaseStatusBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 // Valid transitions per spec
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -150,6 +151,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
       onRefresh();
     } catch (err) {
       console.error('Failed to update case:', err);
+      alert(getApiErrorMessage(err, '更新案件失敗，請稍後重試'));
     } finally {
       setSaving(false);
     }

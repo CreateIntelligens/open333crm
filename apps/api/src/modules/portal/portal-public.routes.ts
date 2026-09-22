@@ -22,12 +22,12 @@ declare module 'fastify' {
 async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
   const authHeader = request.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: 'Fan token required' } });
+    return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: '請先完成身分驗證' } });
   }
   const token = authHeader.slice(7);
   const payload = verifyFanToken(token);
   if (!payload) {
-    return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid fan token' } });
+    return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: '登入已失效，請重新開啟連結' } });
   }
   request.fan = payload;
 }
@@ -52,7 +52,7 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
     // Verify contact exists
     const contact = await prisma.contact.findFirst({ where: { id: contactId, tenantId } });
     if (!contact) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Contact not found' } });
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此帳號資料' } });
     }
     const token = signFanToken(contactId, tenantId);
     return { success: true, data: { token, contactId, tenantId } };

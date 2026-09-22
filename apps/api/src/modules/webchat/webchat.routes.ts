@@ -54,7 +54,7 @@ function rejectRateLimited(reply: FastifyReply, retryAfterSeconds: number): void
   reply
     .header('Retry-After', String(retryAfterSeconds))
     .status(429)
-    .send({ code: 'RATE_LIMITED', message: 'Too many requests' });
+    .send({ code: 'RATE_LIMITED', message: '操作太頻繁，請稍候再試' });
 }
 
 function checkPublicLimit(reply: FastifyReply, limits: Array<{ key: string; max: number; windowMs?: number }>): boolean {
@@ -189,7 +189,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
       const sessionId = data.fields?.sessionId as { value?: string } | undefined;
       const claimToken = data.fields?.claimToken as { value?: string } | undefined;
       if (!sessionId?.value || !claimToken?.value) {
-        return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Secure chatbox session required' });
+        return reply.status(401).send({ code: 'UNAUTHORIZED', message: '請重新整理頁面以建立連線' });
       }
 
       if (!checkPublicLimit(reply, [
