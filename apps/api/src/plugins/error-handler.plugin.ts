@@ -21,6 +21,21 @@ const UNIQUE_FIELD_LABELS: Record<string, string> = {
 };
 
 async function errorHandlerPlugin(fastify: FastifyInstance) {
+  /**
+   * 找不到路由。
+   *
+   * ⚠️ Fastify 的「無對應路由」404 **不會經過 setErrorHandler**，
+   * 而是走內建的 not-found handler，回 { message, error, statusCode } ——
+   * 既是英文、格式也與全站的 { success, error: { code, message } } 不同。
+   * 本機實測確認後補上此 handler。
+   */
+  fastify.setNotFoundHandler((request, reply) => {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: '找不到此頁面或資源' },
+    });
+  });
+
   fastify.setErrorHandler((error: FastifyError | Error, request, reply) => {
     request.log.error(error);
 

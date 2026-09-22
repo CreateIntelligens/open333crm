@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 export const loginRequestSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email(),
+  password: z.string().min(1, '請輸入密碼'),
   rememberMe: z.boolean().optional().default(false),
 });
 
@@ -23,8 +23,8 @@ export const loginResponseSchema = z.object({
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 
 export const cliLoginRequestSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email(),
+  password: z.string().min(1, '請輸入密碼'),
   name: z.string().min(1).max(120).optional(),
   profile: z.string().min(1).max(80).optional(),
 });
@@ -90,7 +90,7 @@ export const passkeyChallengeIdSchema = z.object({
 });
 
 export const passkeyAuthenticationOptionsSchema = z.object({
-  email: z.string().email('Invalid email format').optional(),
+  email: z.string().email().optional(),
   rememberMe: z.boolean().optional().default(false),
 });
 
