@@ -11,6 +11,7 @@ import {
 import { ensureChannelPublicKey } from '../channel/channel.service.js';
 import { consumePublicWebchatLimit, getPublicWebchatKey } from './public-webchat-limits.js';
 import { isValidUuid } from './webchat.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const fingerprintSchema = z.object({
   browserFamily: z.string().optional(),
@@ -98,7 +99,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
         where: { id: req.params.channelId, channelType: 'WEBCHAT', isActive: true },
         select: { id: true, tenantId: true, publicKey: true },
       });
-      if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
+      if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
 
       const { publicKey } = channel.publicKey
         ? { publicKey: channel.publicKey }
@@ -143,7 +144,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
         userAgent,
       });
       if (session.channelId !== channelId) {
-        throw new AppError('Channel not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
       }
 
       if (!checkPublicLimit(reply, [
@@ -204,7 +205,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
         userAgent: getUserAgent(req.headers),
       });
       if (session.channelId !== channelId) {
-        throw new AppError('Channel not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
       }
 
       const buffer = await data.toBuffer();

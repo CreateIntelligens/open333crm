@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface ContactFilters {
   q?: string;
@@ -155,7 +156,7 @@ export async function getContact(
   });
 
   if (!contact) {
-    throw new AppError('Contact not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
   }
 
   return contact;
@@ -178,7 +179,7 @@ export async function updateContact(
   });
 
   if (!contact) {
-    throw new AppError('Contact not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
   }
 
   const updated = await prisma.contact.update({
@@ -343,7 +344,7 @@ export async function getContactTimeline(
     where: { id: contactId, tenantId },
   });
   if (!contact) {
-    throw new AppError('Contact not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
   }
 
   // Fetch conversations, cases, case events, and tags in parallel
@@ -490,9 +491,9 @@ export async function getMergePreview(
     }),
   ]);
 
-  if (!primary) throw new AppError('Primary contact not found', 'NOT_FOUND', 404);
-  if (!secondary) throw new AppError('Secondary contact not found', 'NOT_FOUND', 404);
-  if (secondary.isArchived) throw new AppError('Secondary contact is already archived/merged', 'BAD_REQUEST', 400);
+  if (!primary) throw new AppError(notFound('primaryContact'), 'NOT_FOUND', 404);
+  if (!secondary) throw new AppError(notFound('secondaryContact'), 'NOT_FOUND', 404);
+  if (secondary.isArchived) throw new AppError('次要聯絡人已被封存或合併，無法再次合併', 'BAD_REQUEST', 400);
 
   // Channel identities: secondary has but primary doesn't (by channelType)
   const primaryChannelTypes = new Set(primary.channelIdentities.map((ci) => ci.channelType));
@@ -557,10 +558,10 @@ export async function mergeContacts(
       prisma.contact.findFirst({ where: { id: secondaryContactId, tenantId } }),
     ]);
 
-    if (!primary) throw new AppError('Primary contact not found', 'NOT_FOUND', 404);
-    if (!secondary) throw new AppError('Secondary contact not found', 'NOT_FOUND', 404);
-    if (secondary.isArchived) throw new AppError('Secondary contact is already archived/merged', 'BAD_REQUEST', 400);
-    if (primaryContactId === secondaryContactId) throw new AppError('Cannot merge a contact with itself', 'BAD_REQUEST', 400);
+    if (!primary) throw new AppError(notFound('primaryContact'), 'NOT_FOUND', 404);
+    if (!secondary) throw new AppError(notFound('secondaryContact'), 'NOT_FOUND', 404);
+    if (secondary.isArchived) throw new AppError('次要聯絡人已被封存或合併，無法再次合併', 'BAD_REQUEST', 400);
+    if (primaryContactId === secondaryContactId) throw new AppError('無法將聯絡人與自己合併', 'BAD_REQUEST', 400);
 
     // 2. Move channel identities
     await prisma.channelIdentity.updateMany({

@@ -6,6 +6,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { ensureChannelPublicKey } from './channel.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function generateEmbedCode(
   prisma: TenantDb,
@@ -17,7 +18,7 @@ export async function generateEmbedCode(
   });
 
   if (!channel) {
-    throw new AppError('WebChat channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('webchatChannel'), 'NOT_FOUND', 404);
   }
 
   const { publicKey: channelPublicKey } = channel.publicKey

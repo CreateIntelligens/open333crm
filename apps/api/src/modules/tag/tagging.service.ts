@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { eventBus } from '../../events/event-bus.js';
 import { AppError } from '../../shared/utils/response.js';
 import type { TenantScopedClient, TenantDb } from '../../lib/tenant-db.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
 type TagKind = 'MANUAL' | 'AUTO' | 'SYSTEM' | 'CHANNEL';
@@ -65,7 +66,7 @@ async function assertTargetExists(
         where: { id: targetId, tenantId },
         select: { id: true },
       });
-      if (!target) throw new AppError('Contact not found', 'NOT_FOUND', 404);
+      if (!target) throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
       return;
     }
     case 'CASE': {
@@ -73,7 +74,7 @@ async function assertTargetExists(
         where: { id: targetId, tenantId },
         select: { id: true },
       });
-      if (!target) throw new AppError('Case not found', 'NOT_FOUND', 404);
+      if (!target) throw new AppError(notFound('case'), 'NOT_FOUND', 404);
       return;
     }
     case 'CONVERSATION': {
@@ -81,7 +82,7 @@ async function assertTargetExists(
         where: { id: targetId, tenantId },
         select: { id: true },
       });
-      if (!target) throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+      if (!target) throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
       return;
     }
   }
@@ -96,7 +97,7 @@ async function getTenantTag(
     where: { id: tagId, tenantId },
     select: TAG_SELECT,
   });
-  if (!tag) throw new AppError('Tag not found', 'NOT_FOUND', 404);
+  if (!tag) throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
   return tag;
 }
 
@@ -202,7 +203,7 @@ export async function createTenantTag(
     select: { id: true },
   });
   if (duplicate) {
-    throw new AppError('Tag name already exists in this scope', 'CONFLICT', 409);
+    throw new AppError('這個範圍內已有同名標籤，請換一個名稱', 'CONFLICT', 409);
   }
 
   return prisma.tag.create({
@@ -226,7 +227,7 @@ export async function updateTenantTag(
   });
 
   if (!tag) {
-    throw new AppError('Tag not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
   }
 
   if (input.name && input.name !== tag.name) {
@@ -240,7 +241,7 @@ export async function updateTenantTag(
       select: { id: true },
     });
     if (duplicate) {
-      throw new AppError('Tag name already exists in this scope', 'CONFLICT', 409);
+      throw new AppError('這個範圍內已有同名標籤，請換一個名稱', 'CONFLICT', 409);
     }
   }
 
@@ -267,7 +268,7 @@ export async function deleteTenantTag(
   });
 
   if (!tag) {
-    throw new AppError('Tag not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
   }
 
   await prisma.contactTag.deleteMany({ where: { tagId } });
@@ -296,7 +297,7 @@ export async function removeTagFromTarget(
           },
         },
       });
-      if (!existing) throw new AppError('Contact tag not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('contactTag'), 'NOT_FOUND', 404);
       await prisma.contactTag.delete({
         where: {
           contactId_tagId: {
@@ -316,7 +317,7 @@ export async function removeTagFromTarget(
           },
         },
       });
-      if (!existing) throw new AppError('Case tag not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('caseTag'), 'NOT_FOUND', 404);
       await prisma.caseTag.delete({
         where: {
           caseId_tagId: {
@@ -336,7 +337,7 @@ export async function removeTagFromTarget(
           },
         },
       });
-      if (!existing) throw new AppError('Conversation tag not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('conversationTag'), 'NOT_FOUND', 404);
       await prisma.conversationTag.delete({
         where: {
           conversationId_tagId: {

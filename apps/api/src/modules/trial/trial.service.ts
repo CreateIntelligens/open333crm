@@ -63,7 +63,7 @@ export async function requestTrial(
 ): Promise<void> {
   const policy = await getTrialPolicy(prisma);
   if (!policy.enabled) {
-    throw new AppError('Trial signup is currently closed', 'TRIAL_CLOSED', 403);
+    throw new AppError('目前暫停開放試用申請', 'TRIAL_CLOSED', 403);
   }
 
   const { email, normalized } = normalizeEmail(input.email);
@@ -160,7 +160,7 @@ export async function verifyAndProvision(
   const policy = await getTrialPolicy(prisma);
 
   const plan = await prisma.plan.findUnique({ where: { slug: policy.planSlug }, select: { id: true } });
-  if (!plan) throw new AppError('Trial plan not configured', 'TRIAL_MISCONFIGURED', 500);
+  if (!plan) throw new AppError('尚未設定試用方案，請聯繫管理員', 'TRIAL_MISCONFIGURED', 500);
 
   // token hash 保留到 provisioned（用 status 當消耗閘，非清 hash），
   // 讓 double-click 仍能反查到 row 回冪等成功。

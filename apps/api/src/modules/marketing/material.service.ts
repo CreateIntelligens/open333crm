@@ -26,6 +26,7 @@ import {
 } from '@open333crm/shared';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { buildLineMessage } from '@open333crm/channel-plugins';
+import { notFound } from '../../shared/messages/resource.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -373,7 +374,7 @@ export async function getMaterial(prisma: TenantDb, id: string, tenantId: string
     include: { template: true },
   });
   if (!material || material.tenantId !== tenantId) {
-    throw new AppError('Material not found', 'MATERIAL_NOT_FOUND', 404);
+    throw new AppError(notFound('material'), 'MATERIAL_NOT_FOUND', 404);
   }
   return material;
 }
@@ -392,13 +393,13 @@ export async function createMaterial(
       where: { id: input.templateId },
     });
     if (!template) {
-      throw new AppError('Source template not found', 'TEMPLATE_NOT_FOUND', 404);
+      throw new AppError(notFound('sourceTemplate'), 'TEMPLATE_NOT_FOUND', 404);
     }
     if (template.tenantId !== null && template.tenantId !== tenantId) {
-      throw new AppError('Source template not accessible', 'TEMPLATE_NOT_FOUND', 404);
+      throw new AppError('無法存取此來源版型', 'TEMPLATE_NOT_FOUND', 404);
     }
     if (!template.isActive) {
-      throw new AppError('Source template is inactive', 'TEMPLATE_INACTIVE', 400);
+      throw new AppError('來源版型已停用', 'TEMPLATE_INACTIVE', 400);
     }
   }
 
@@ -406,7 +407,7 @@ export async function createMaterial(
   const contentType = input.contentType ?? template?.contentType;
 
   if (!channelType || !contentType) {
-    throw new AppError('channelType and contentType are required when no templateId is provided', 'CHANNEL_CONTENT_REQUIRED', 400);
+    throw new AppError('未指定版型時，必須同時提供渠道類型與內容類型', 'CHANNEL_CONTENT_REQUIRED', 400);
   }
   if (!ALLOWED_CHANNEL_TYPES.includes(channelType)) {
     throw new AppError(`channelType must be one of ${ALLOWED_CHANNEL_TYPES.join(', ')}`, 'INVALID_CHANNEL_TYPE', 400);
@@ -662,7 +663,7 @@ export async function getMaterialForSend(
 ) {
   const material = await getMaterial(prisma, materialId, tenantId);
   if (!material.isActive) {
-    throw new AppError('Material is inactive', 'MATERIAL_INACTIVE', 400);
+    throw new AppError('此素材已停用', 'MATERIAL_INACTIVE', 400);
   }
 
   const definedVars = (material.variables as unknown as TemplateVariable[]) ?? [];
@@ -731,7 +732,7 @@ async function writeMaterialVersion(
 async function assertCategoryBelongsToTenant(prisma: TenantDb, categoryId: string, tenantId: string) {
   const cat = await prisma.materialCategory.findUnique({ where: { id: categoryId } });
   if (!cat || cat.tenantId !== tenantId) {
-    throw new AppError('Category not found', 'CATEGORY_NOT_FOUND', 404);
+    throw new AppError(notFound('category'), 'CATEGORY_NOT_FOUND', 404);
   }
   return cat;
 }
@@ -874,7 +875,7 @@ export async function restoreMaterialVersion(
     where: { materialId_versionNo: { materialId, versionNo } },
   });
   if (!version) {
-    throw new AppError('Version not found', 'VERSION_NOT_FOUND', 404);
+    throw new AppError(notFound('version'), 'VERSION_NOT_FOUND', 404);
   }
   const updated = await prisma.material.update({
     where: { id: materialId },

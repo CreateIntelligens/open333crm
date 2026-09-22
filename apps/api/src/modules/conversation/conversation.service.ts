@@ -11,6 +11,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -224,7 +225,7 @@ export async function getConversation(
   });
 
   if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
   return conversation;
@@ -242,7 +243,7 @@ export async function markConversationRead(
   });
 
   if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
   const updated = await prisma.conversation.update({
@@ -308,7 +309,7 @@ export async function sendMessage(
   });
 
   if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
   const now = new Date();
@@ -476,11 +477,11 @@ export async function handoffConversation(
   });
 
   if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
   if (conversation.status !== 'BOT_HANDLED') {
-    throw new AppError('Conversation is not in BOT_HANDLED status', 'BAD_REQUEST', 400);
+    throw new AppError('此對話目前不是由機器人接手，無法執行此操作', 'BAD_REQUEST', 400);
   }
 
   const now = new Date();
@@ -705,7 +706,7 @@ export async function updateConversation(
   });
 
   if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
   const updateData: Prisma.ConversationUpdateInput = {};
@@ -783,7 +784,7 @@ export async function closeConversation(
     where: { id, tenantId },
   });
   if (!conversation) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
   if (conversation.status === 'CLOSED') {
     return conversation;

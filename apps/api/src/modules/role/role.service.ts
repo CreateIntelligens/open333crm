@@ -17,6 +17,7 @@ import {
 } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import { getEffectivePermissions, invalidateRolePermissions } from '../../services/permission.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const ADMIN_LOCKED = PERMISSIONS.filter((p) => p.adminLock).map((p) => p.code);
 
@@ -26,7 +27,7 @@ const ADMIN_LOCKED = PERMISSIONS.filter((p) => p.adminLock).map((p) => p.code);
  */
 export async function loadTenantRole(prisma: TenantDb, roleId: string, tenantId: string) {
   const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
-  if (!role) throw new AppError('Role not found', 'NOT_FOUND', 404);
+  if (!role) throw new AppError(notFound('role'), 'NOT_FOUND', 404);
   return role;
 }
 

@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync }
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 // --- Credential Encryption ---
 
@@ -186,7 +187,7 @@ export async function getChannel(prisma: TenantDb, id: string, tenantId: string)
   });
 
   if (!channel) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   // Return with masked credentials
@@ -226,7 +227,7 @@ export async function updateChannel(
   });
 
   if (!channel) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   const updateData: Record<string, unknown> = {};
@@ -283,7 +284,7 @@ export async function deleteChannel(prisma: TenantDb, id: string, tenantId: stri
   });
 
   if (!channel) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   await prisma.channel.delete({ where: { id } });
@@ -302,7 +303,7 @@ export async function ensureChannelPublicKey(
   });
 
   if (!channel) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   if (channel.publicKey) {
@@ -316,7 +317,7 @@ export async function ensureChannelPublicKey(
   });
 
   if (!updated.publicKey) {
-    throw new AppError('Unable to generate channel public key', 'INTERNAL_ERROR', 500);
+    throw new AppError('無法產生渠道公開金鑰，請稍後重試', 'INTERNAL_ERROR', 500);
   }
 
   return { publicKey: updated.publicKey };
@@ -328,7 +329,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
   });
 
   if (!channel) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);

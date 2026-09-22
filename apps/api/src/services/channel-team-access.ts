@@ -10,6 +10,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../lib/tenant-db.js';
 import { withTenant } from '../lib/tenant-db.js';
 import { AppError } from '../shared/utils/response.js';
+import { notFound } from '../shared/messages/resource.js';
 
 export type ChannelTeamAccessLevel = 'read_only' | 'reply_only' | 'full';
 
@@ -41,8 +42,8 @@ export async function grantChannelTeamAccess(
     prisma.channel.findFirst({ where: { id: params.channelId, tenantId }, select: { id: true } }),
     prisma.team.findFirst({ where: { id: params.teamId, tenantId }, select: { id: true } }),
   ]);
-  if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
-  if (!team) throw new AppError('Team not found', 'NOT_FOUND', 404);
+  if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
+  if (!team) throw new AppError(notFound('team'), 'NOT_FOUND', 404);
 
   const row = await prisma.channelTeamAccess.upsert({
     where: { channelId_teamId: { channelId: params.channelId, teamId: params.teamId } },
@@ -154,12 +155,12 @@ export async function setAgentChannels(
 ): Promise<{ count: number }> {
   return withTenant(prisma, tenantId, async (tx) => {
     const agent = await tx.agent.findFirst({ where: { id: agentId, tenantId }, select: { id: true } });
-    if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    if (!agent) throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
 
     if (channelIds.length > 0) {
       const owned = await tx.channel.count({ where: { id: { in: channelIds }, tenantId } });
       if (owned !== new Set(channelIds).size) {
-        throw new AppError('One or more channels not found in tenant', 'BAD_REQUEST', 400);
+        throw new AppError('指定的渠道中有部分不存在或不屬於此租戶', 'BAD_REQUEST', 400);
       }
     }
 

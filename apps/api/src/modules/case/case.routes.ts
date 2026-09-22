@@ -21,6 +21,7 @@ import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
 
@@ -157,14 +158,14 @@ export default async function caseRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
     );
     if (!caseRecord) {
-      throw new AppError('Case not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }
 
     // CM-173：案件所屬渠道不在可見集合 → 視為不存在（404）。
     // 總店（ALL_CHANNELS）時 isChannelAccessible 直接回 true。
     const accessible = await resolveChannelVisibility(request);
     if (!isChannelAccessible(accessible, caseRecord.channelId)) {
-      throw new AppError('Case not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }
 
     return reply.send(success(caseRecord));

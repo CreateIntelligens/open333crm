@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { randomBytes } from 'node:crypto';
 import { AppError } from '../../shared/utils/response.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function listSubscriptions(prisma: TenantDb, tenantId: string) {
   return prisma.webhookSubscription.findMany({
@@ -23,7 +24,7 @@ export async function getSubscription(prisma: TenantDb, id: string, tenantId: st
   const sub = await prisma.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
-  if (!sub) throw new AppError('Webhook subscription not found', 'NOT_FOUND', 404);
+  if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
   return sub;
 }
 
@@ -64,7 +65,7 @@ export async function updateSubscription(
   const sub = await prisma.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
-  if (!sub) throw new AppError('Webhook subscription not found', 'NOT_FOUND', 404);
+  if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
 
   return prisma.webhookSubscription.update({
     where: { id },
@@ -76,7 +77,7 @@ export async function deleteSubscription(prisma: TenantDb, id: string, tenantId:
   const sub = await prisma.webhookSubscription.findFirst({
     where: { id, tenantId },
   });
-  if (!sub) throw new AppError('Webhook subscription not found', 'NOT_FOUND', 404);
+  if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
 
   await prisma.webhookSubscription.delete({ where: { id } });
   return { deleted: true };
@@ -92,7 +93,7 @@ export async function listDeliveries(
   const sub = await prisma.webhookSubscription.findFirst({
     where: { id: subscriptionId, tenantId },
   });
-  if (!sub) throw new AppError('Webhook subscription not found', 'NOT_FOUND', 404);
+  if (!sub) throw new AppError(notFound('webhookSubscription'), 'NOT_FOUND', 404);
 
   return prisma.webhookDelivery.findMany({
     where: { subscriptionId },

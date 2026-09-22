@@ -253,7 +253,7 @@ export async function assertConversationChannelVisible(
       select: { agentId: true },
     });
     if (!member) {
-      throw new AppError('Forbidden: not a member of the conversation team', 'FORBIDDEN', 403);
+      throw new AppError('沒有權限：您不屬於此對話所屬的團隊', 'FORBIDDEN', 403);
     }
   }
 }

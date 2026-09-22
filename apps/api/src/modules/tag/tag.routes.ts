@@ -4,6 +4,7 @@ import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const createTagSchema = z.object({
   name: z.string().min(1),
@@ -57,7 +58,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
     });
 
     if (!tag) {
-      throw new AppError('Tag not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
     }
 
     const updated = await updateTenantTag(request.tenantPrisma, {
@@ -76,7 +77,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
     });
 
     if (!tag) {
-      throw new AppError('Tag not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
     }
 
     // 連鎖刪除包在綁定租戶的交易內（RLS + 原子性）

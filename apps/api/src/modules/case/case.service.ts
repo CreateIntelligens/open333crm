@@ -12,6 +12,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { trackBroadcastCase } from '../marketing/broadcast.tracking.js';
 import { autoAssignCase } from './assignment.service.js';
 import { logger } from '@open333crm/core';
+import { notFound } from '../../shared/messages/resource.js';
 
 type PrismaExecutor = TenantDb;
 
@@ -226,7 +227,7 @@ export async function getCase(
   });
 
   if (!caseRecord) {
-    throw new AppError('Case not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
   // Look up SLA policy details for first response / resolution targets
@@ -284,7 +285,7 @@ async function createCaseRecord(
       });
 
   if (data.slaPolicyId && !slaPolicy) {
-    throw new AppError('SLA policy not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('slaPolicy'), 'NOT_FOUND', 404);
   }
 
   let slaDueAt: Date | null = null;
@@ -437,7 +438,7 @@ export async function assignCase(
   });
 
   if (!caseRecord) {
-    throw new AppError('Case not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
   // Verify assignee exists
@@ -445,7 +446,7 @@ export async function assignCase(
     where: { id: assigneeId, tenantId },
   });
   if (!assignee) {
-    throw new AppError('Assignee agent not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('assignee'), 'NOT_FOUND', 404);
   }
 
   // If case is OPEN, auto-transition to IN_PROGRESS
@@ -539,7 +540,7 @@ export async function transitionCase(
   });
 
   if (!caseRecord) {
-    throw new AppError('Case not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
   validateTransition(caseRecord.status as CaseStatus, toStatus);
@@ -656,7 +657,7 @@ export async function escalateCase(
   });
 
   if (!caseRecord) {
-    throw new AppError('Case not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
   // Validate transition to ESCALATED
@@ -685,7 +686,7 @@ export async function escalateCase(
       where: { id: body.assigneeId, tenantId },
     });
     if (!assignee) {
-      throw new AppError('Assignee agent not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('assignee'), 'NOT_FOUND', 404);
     }
     updateData.assignee = { connect: { id: body.assigneeId } };
   }
@@ -820,10 +821,10 @@ export async function createCaseFromConversation(
       include: { contact: true, channel: true },
     });
     if (!conversation) {
-      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
     }
     if (conversation.caseId) {
-      throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+      throw new AppError('這則對話已建立過案件', 'CONFLICT', 409);
     }
     const created = await createCaseRecord(tx, tenantId, agentId, {
       contactId: conversation.contactId,
@@ -866,11 +867,11 @@ export async function linkConversationToCase(
   ]);
 
   if (!caseRecord || !conversation) {
-    throw new AppError('Case or conversation not found', 'NOT_FOUND', 404);
+    throw new AppError('找不到此案件或其關聯對話，可能已被刪除', 'NOT_FOUND', 404);
   }
 
   if (conversation.caseId) {
-    throw new AppError('Conversation already has a linked case', 'CONFLICT', 409);
+    throw new AppError('這則對話已建立過案件', 'CONFLICT', 409);
   }
 
   const updatedConversation = await prisma.conversation.update({
@@ -922,7 +923,7 @@ export async function deleteCase(
   });
 
   if (!caseRecord) {
-    throw new AppError('Case not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
   // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
@@ -1015,7 +1016,7 @@ export async function updateCase(
   });
 
   if (!caseRecord) {
-    throw new AppError('Case not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
   const updateData: Prisma.CaseUpdateInput = {};

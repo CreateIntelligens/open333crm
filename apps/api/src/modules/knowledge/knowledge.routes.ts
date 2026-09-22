@@ -274,7 +274,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
         const docId = fields.DocID ?? '';
         if (!docId) {
-          throw new AppError('DocID is required', 'BAD_REQUEST', 400);
+          throw new AppError('請提供文件識別碼', 'BAD_REQUEST', 400);
         }
 
         // Tolerate Stanley's typo: accept both Source and Soruce

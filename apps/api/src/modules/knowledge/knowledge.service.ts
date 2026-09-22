@@ -9,6 +9,7 @@ import {
   bulkReembed as bulkReembedArticles,
   checkOllamaHealth,
 } from '../embedding/embedding.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 // --- Article CRUD ---
 
@@ -110,7 +111,7 @@ export async function getArticle(prisma: TenantDb, id: string, tenantId: string)
   });
 
   if (!article) {
-    throw new AppError('Article not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
   }
 
   // Increment view count
@@ -172,7 +173,7 @@ export async function updateArticle(
   });
 
   if (!article) {
-    throw new AppError('Article not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
   }
 
   const updateData: Record<string, unknown> = {};
@@ -203,7 +204,7 @@ export async function deleteArticle(prisma: TenantDb, id: string, tenantId: stri
   });
 
   if (!article) {
-    throw new AppError('Article not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
   }
 
   await prisma.kmArticle.delete({ where: { id } });
@@ -217,11 +218,11 @@ export async function publishArticle(prisma: TenantDb, id: string, tenantId: str
   });
 
   if (!article) {
-    throw new AppError('Article not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
   }
 
   if (article.status === 'PUBLISHED') {
-    throw new AppError('Article is already published', 'INVALID_STATE', 400);
+    throw new AppError('此文章已發布', 'INVALID_STATE', 400);
   }
 
   // Update status FIRST so the HTTP response returns quickly. Embedding is
@@ -253,11 +254,11 @@ export async function archiveArticle(prisma: TenantDb, id: string, tenantId: str
   });
 
   if (!article) {
-    throw new AppError('Article not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('article'), 'NOT_FOUND', 404);
   }
 
   if (article.status === 'ARCHIVED') {
-    throw new AppError('Article is already archived', 'INVALID_STATE', 400);
+    throw new AppError('此文章已封存', 'INVALID_STATE', 400);
   }
 
   const updated = await prisma.kmArticle.update({

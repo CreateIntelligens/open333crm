@@ -11,6 +11,7 @@ import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateAutomationRuleContract } from '@open333crm/automation';
+import { notFound } from '../../shared/messages/resource.js';
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export async function getRule(
   });
 
   if (!rule) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   return rule;
@@ -137,7 +138,7 @@ export async function updateRule(
   });
 
   if (!existing) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   const existingTrigger = existing.trigger as Record<string, unknown>;
@@ -208,7 +209,7 @@ export async function deleteRule(
   });
 
   if (!existing) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   // Soft delete – deactivate instead of hard delete
@@ -233,7 +234,7 @@ export async function testRule(
   });
 
   if (!rule) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   const conditions = rule.conditions as unknown as TopLevelCondition;

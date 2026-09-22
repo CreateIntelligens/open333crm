@@ -18,7 +18,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
   fastify.post('/upload', async (request, reply) => {
     const file = await request.file();
     if (!file) {
-      throw new AppError('No file uploaded', 'BAD_REQUEST', 400);
+      throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
     }
 
     const buffer = await file.toBuffer();
@@ -50,7 +50,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
   fastify.post('/imagemap-upload', async (request, reply) => {
     const file = await request.file();
     if (!file) {
-      throw new AppError('No file uploaded', 'BAD_REQUEST', 400);
+      throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
     }
     if (!/^image\/(jpeg|png|webp)$/.test(file.mimetype)) {
       throw new AppError('底圖需為 JPEG / PNG / WebP 格式', 'BAD_REQUEST', 400);
@@ -112,12 +112,12 @@ export default async function storageRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { '*': string } }>('/*', async (request, reply) => {
     const key = (request.params as any)['*'];
     if (!key) {
-      throw new AppError('File key is required', 'BAD_REQUEST', 400);
+      throw new AppError('請提供檔案識別碼', 'BAD_REQUEST', 400);
     }
 
     // Ensure the key belongs to the tenant
     if (!key.startsWith(request.agent.tenantId)) {
-      throw new AppError('Access denied', 'FORBIDDEN', 403);
+      throw new AppError('沒有存取權限', 'FORBIDDEN', 403);
     }
 
     await deleteFile(key);

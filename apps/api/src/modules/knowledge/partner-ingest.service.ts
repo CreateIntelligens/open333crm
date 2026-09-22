@@ -102,7 +102,7 @@ export async function ingestPartnerDoc(
   input: PartnerDocInput,
 ): Promise<PartnerIngestResult> {
   if (!input.docId) {
-    throw new AppError('DocID is required', 'BAD_REQUEST', 400);
+    throw new AppError('請提供文件識別碼', 'BAD_REQUEST', 400);
   }
 
   const existing = await prisma.kmArticle.findUnique({

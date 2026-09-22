@@ -13,6 +13,7 @@ import { logger } from '@open333crm/core';
 import { isValidRichMenuSize } from './rich-menu.layouts.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { calculateSegmentContacts } from '../marketing/segment.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 /** Rich Menu 分眾綁定的背景 queue（與 apps/workers 端消費者一致）。 */
 export const RICH_MENU_BIND_QUEUE = 'rich-menu-bind';
@@ -83,38 +84,38 @@ export interface UpdateRichMenuInput {
 // ─── Validation helpers ────────────────────────────────────────────────
 
 function validateChatBarText(text: string): void {
-  if (text.length === 0) throw new AppError('chatBarText is required', 'INVALID_INPUT', 400);
-  if (text.length > 14) throw new AppError('chatBarText must be at most 14 characters', 'INVALID_INPUT', 400);
+  if (text.length === 0) throw new AppError('請填寫聊天列文字', 'INVALID_INPUT', 400);
+  if (text.length > 14) throw new AppError('聊天列文字最多 14 個字', 'INVALID_INPUT', 400);
 }
 
 function validateAction(action: RichMenuAction): void {
   if (!action || !action.type) {
-    throw new AppError('Action type is required', 'INVALID_ACTION', 400);
+    throw new AppError('請選擇動作類型', 'INVALID_ACTION', 400);
   }
   switch (action.type) {
     case 'postback':
-      if (!action.data) throw new AppError('postback action requires data', 'INVALID_ACTION', 400);
-      if (action.data.length > 300) throw new AppError('postback data ≤ 300 chars', 'INVALID_ACTION', 400);
-      if (action.label && action.label.length > 20) throw new AppError('label ≤ 20 chars', 'INVALID_ACTION', 400);
-      if (action.displayText && action.displayText.length > 300) throw new AppError('displayText ≤ 300 chars', 'INVALID_ACTION', 400);
+      if (!action.data) throw new AppError('postback 動作必須填寫資料', 'INVALID_ACTION', 400);
+      if (action.data.length > 300) throw new AppError('postback 資料最多 300 個字', 'INVALID_ACTION', 400);
+      if (action.label && action.label.length > 20) throw new AppError('標籤文字最多 20 個字', 'INVALID_ACTION', 400);
+      if (action.displayText && action.displayText.length > 300) throw new AppError('顯示文字最多 300 個字', 'INVALID_ACTION', 400);
       break;
     case 'message':
-      if (!action.text) throw new AppError('message action requires text', 'INVALID_ACTION', 400);
-      if (action.text.length > 300) throw new AppError('message text ≤ 300 chars', 'INVALID_ACTION', 400);
+      if (!action.text) throw new AppError('message 動作必須填寫訊息內容', 'INVALID_ACTION', 400);
+      if (action.text.length > 300) throw new AppError('訊息內容最多 300 個字', 'INVALID_ACTION', 400);
       break;
     case 'uri':
-      if (!action.uri) throw new AppError('uri action requires uri', 'INVALID_ACTION', 400);
+      if (!action.uri) throw new AppError('uri 動作必須填寫連結網址', 'INVALID_ACTION', 400);
       break;
     case 'datetimepicker':
-      if (!action.data) throw new AppError('datetimepicker requires data', 'INVALID_ACTION', 400);
-      if (!action.mode) throw new AppError('datetimepicker requires mode', 'INVALID_ACTION', 400);
+      if (!action.data) throw new AppError('日期選擇器必須填寫資料', 'INVALID_ACTION', 400);
+      if (!action.mode) throw new AppError('日期選擇器必須指定模式', 'INVALID_ACTION', 400);
       if (!['date', 'time', 'datetime'].includes(action.mode)) {
-        throw new AppError('datetimepicker mode must be date/time/datetime', 'INVALID_ACTION', 400);
+        throw new AppError('日期選擇器模式必須是 date、time 或 datetime', 'INVALID_ACTION', 400);
       }
       break;
     case 'richmenuswitch':
-      if (!action.richMenuAliasId) throw new AppError('richmenuswitch requires richMenuAliasId', 'INVALID_ACTION', 400);
-      if (!action.data) throw new AppError('richmenuswitch requires data', 'INVALID_ACTION', 400);
+      if (!action.richMenuAliasId) throw new AppError('選單切換必須指定目標選單別名', 'INVALID_ACTION', 400);
+      if (!action.data) throw new AppError('選單切換必須填寫資料', 'INVALID_ACTION', 400);
       break;
     default:
       throw new AppError(`Unsupported action type: ${(action as { type: string }).type}`, 'INVALID_ACTION', 400);
@@ -123,10 +124,10 @@ function validateAction(action: RichMenuAction): void {
 
 function validateAreas(areas: RichMenuArea[], size: { width: number; height: number }): void {
   if (!Array.isArray(areas) || areas.length === 0) {
-    throw new AppError('At least one area is required', 'INVALID_INPUT', 400);
+    throw new AppError('至少需要設定一個區塊', 'INVALID_INPUT', 400);
   }
   if (areas.length > 20) {
-    throw new AppError('Up to 20 areas allowed', 'INVALID_INPUT', 400);
+    throw new AppError('最多只能設定 20 個區塊', 'INVALID_INPUT', 400);
   }
   for (const [i, area] of areas.entries()) {
     if (!area.bounds || typeof area.bounds.x !== 'number' || typeof area.bounds.y !== 'number'
@@ -154,10 +155,10 @@ async function assertChannelBelongsToTenant(
   });
   if (!channel) {
     // 不洩露 channel 存在性，回 404
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
   if (channel.channelType !== 'LINE') {
-    throw new AppError('Rich Menu is only supported on LINE channels', 'INVALID_CHANNEL_TYPE', 400);
+    throw new AppError('圖文選單僅支援 LINE 渠道', 'INVALID_CHANNEL_TYPE', 400);
   }
 }
 
@@ -181,7 +182,7 @@ export async function getRichMenu(
   tenantId: string,
 ) {
   const menu = await prisma.richMenu.findFirst({ where: { id, tenantId } });
-  if (!menu) throw new AppError('Rich Menu not found', 'NOT_FOUND', 404);
+  if (!menu) throw new AppError(notFound('richMenu'), 'NOT_FOUND', 404);
   return menu;
 }
 
@@ -203,7 +204,7 @@ export async function createRichMenu(
   validateAreas(input.areas, input.size);
 
   if (!input.imageUrl) {
-    throw new AppError('imageUrl is required', 'INVALID_INPUT', 400);
+    throw new AppError('請提供圖片網址', 'INVALID_INPUT', 400);
   }
 
   return prisma.richMenu.create({
@@ -241,7 +242,7 @@ export async function updateRichMenu(
   // 取出新或舊的 size，用於驗證 areas
   const finalSize = (input.size ?? (existing.size as { width: number; height: number }));
   if (input.size && !isValidRichMenuSize(input.size)) {
-    throw new AppError('Invalid layout size', 'INVALID_LAYOUT', 400);
+    throw new AppError('版面尺寸不正確', 'INVALID_LAYOUT', 400);
   }
   if (input.areas) {
     validateAreas(input.areas, finalSize);
@@ -314,7 +315,7 @@ async function getLineAccessToken(
     where: { id: channelId, tenantId, channelType: 'LINE' },
   });
   if (!channel) {
-    throw new AppError('LINE channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('lineChannel'), 'NOT_FOUND', 404);
   }
   const credentials = decryptCredentials(channel.credentialsEncrypted);
   const accessToken = credentials.channelAccessToken as string | undefined;

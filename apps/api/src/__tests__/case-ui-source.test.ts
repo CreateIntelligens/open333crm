@@ -40,7 +40,9 @@ async function testSlaPolicySelectWiring() {
 
   assert.equal(routesSource.includes('slaPolicyId: z.string().uuid().optional()'), true);
   assert.equal(serviceSource.includes('data.slaPolicyId'), true);
-  assert.equal(serviceSource.includes('SLA policy not found'), true);
+  // 訊息已改由 shared/messages/resource.ts 集中產生（notFound('slaPolicy')），
+  // 此處驗的是「查無 SLA 政策時有拋錯」這個行為，而非特定字串。
+  assert.equal(serviceSource.includes("notFound('slaPolicy')"), true);
 }
 
 await testCasesDashboardDeleteWiring();

@@ -3,6 +3,7 @@ import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function syncLineContactProfile(
   prisma: PrismaClient,
@@ -14,7 +15,7 @@ export async function syncLineContactProfile(
   });
 
   if (!identity) {
-    throw new AppError('ChannelIdentity not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channelIdentity'), 'NOT_FOUND', 404);
   }
 
   const channel = await prisma.channel.findFirst({
@@ -22,12 +23,12 @@ export async function syncLineContactProfile(
   });
 
   if (!channel) {
-    throw new AppError('Channel not found or inactive', 'NOT_FOUND', 404);
+    throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
   }
 
   const plugin = getChannelPlugin(CHANNEL_TYPE.LINE);
   if (!plugin) {
-    throw new AppError('LINE plugin not available', 'INTERNAL_ERROR', 500);
+    throw new AppError('LINE 渠道模組無法使用，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
   }
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);

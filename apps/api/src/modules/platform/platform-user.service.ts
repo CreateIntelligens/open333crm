@@ -9,6 +9,7 @@ import { generateTempPassword } from '../../shared/utils/temp-password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { normalizeEmail } from '../../shared/utils/email.js';
 import { sendPlatformUserProvisionedEmail } from './platform-user-emails.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const PUBLIC_SELECT = {
   id: true,
@@ -30,7 +31,7 @@ export async function listPlatformUsers(prisma: PrismaClient) {
 
 export async function getPlatformUser(prisma: PrismaClient, id: string) {
   const user = await prisma.platformUser.findUnique({ where: { id }, select: PUBLIC_SELECT });
-  if (!user) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+  if (!user) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
   return user;
 }
 
@@ -44,7 +45,7 @@ export async function createPlatformUser(
 ): Promise<{ id: string; email: string; name: string; isActive: boolean; loginUrl: string }> {
   const email = normalizeEmail(input.email);
   const existing = await prisma.platformUser.findUnique({ where: { email }, select: { id: true } });
-  if (existing) throw new AppError('Email already in use', 'CONFLICT', 409);
+  if (existing) throw new AppError('這個電子郵件已被使用，請換一個', 'CONFLICT', 409);
 
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
@@ -66,12 +67,12 @@ export async function updatePlatformUser(
   input: { name?: string; email?: string },
 ) {
   const existing = await prisma.platformUser.findUnique({ where: { id }, select: { id: true, email: true } });
-  if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+  if (!existing) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
 
   const email = input.email !== undefined ? normalizeEmail(input.email) : undefined;
   if (email !== undefined && email !== existing.email) {
     const dup = await prisma.platformUser.findUnique({ where: { email }, select: { id: true } });
-    if (dup) throw new AppError('Email already in use', 'CONFLICT', 409);
+    if (dup) throw new AppError('這個電子郵件已被使用，請換一個', 'CONFLICT', 409);
   }
 
   return prisma.platformUser.update({
@@ -97,7 +98,7 @@ export async function setPlatformUserActive(
 ) {
   // 「不可停用自己」不依賴 DB 狀態（callerId 來自已驗證 token），交易外先擋即可。
   if (!isActive && id === callerId) {
-    throw new AppError('Cannot disable your own account', 'CANNOT_DISABLE_SELF', 400);
+    throw new AppError('無法停用自己的帳號', 'CANNOT_DISABLE_SELF', 400);
   }
 
   // 目標帳號的存在性/isActive 讀取、count 檢查、update 全部放進同一 Serializable 交易，
@@ -106,12 +107,12 @@ export async function setPlatformUserActive(
   return prisma.$transaction(
     async (tx) => {
       const existing = await tx.platformUser.findUnique({ where: { id }, select: { isActive: true } });
-      if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
 
       if (!isActive && existing.isActive) {
         const activeCount = await tx.platformUser.count({ where: { isActive: true } });
         if (activeCount <= 1) {
-          throw new AppError('At least one active platform user must remain', 'PLATFORM_LAST_USER_ACTIVE', 400);
+          throw new AppError('至少須保留一個啟用中的平台帳號', 'PLATFORM_LAST_USER_ACTIVE', 400);
         }
       }
       return tx.platformUser.update({
@@ -127,11 +128,11 @@ export async function setPlatformUserActive(
 /** 重寄開通信：產生新的臨時密碼取代舊值（舊臨時密碼隨即失效），重新標記 mustChangePassword=true。 */
 export async function resendPlatformUserWelcomeEmail(prisma: PrismaClient, id: string) {
   const user = await prisma.platformUser.findUnique({ where: { id }, select: { email: true, name: true, isActive: true } });
-  if (!user) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+  if (!user) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
   // 對已停用帳號重寄開通信沒有意義：換了臨時密碼、寄了信，該用戶登入仍會被 isActive=false 擋下。
   // 擋在這裡，避免管理員誤以為重寄後對方就能登入。需要的話請先啟用帳號再重寄。
   if (!user.isActive) {
-    throw new AppError('Cannot resend welcome email to a disabled account', 'PLATFORM_USER_DISABLED', 400);
+    throw new AppError('無法對已停用的帳號重寄開通信', 'PLATFORM_USER_DISABLED', 400);
   }
 
   const tempPassword = generateTempPassword();
@@ -146,7 +147,7 @@ export async function resendPlatformUserWelcomeEmail(prisma: PrismaClient, id: s
 /** 該平台帳號相關的稽核記錄：自己執行的操作（platformUserId）＋以自己為對象的操作（targetType=platform_user, targetId）。 */
 export async function getPlatformUserAuditLogs(prisma: PrismaClient, id: string) {
   const existing = await prisma.platformUser.findUnique({ where: { id }, select: { id: true } });
-  if (!existing) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+  if (!existing) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
 
   return prisma.platformAuditLog.findMany({
     where: {

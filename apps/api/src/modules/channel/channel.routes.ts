@@ -29,6 +29,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -129,7 +130,7 @@ async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: s
     where: { id, tenantId, channelType: CHANNEL_TYPE.WEBCHAT },
   });
   if (!channel) {
-    throw new AppError('WEBCHAT channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('webchatChannel'), 'NOT_FOUND', 404);
   }
   return channel;
 }
@@ -303,7 +304,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       });
 
       if (!channel) {
-        throw new AppError('WEBCHAT channel not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('webchatChannel'), 'NOT_FOUND', 404);
       }
 
       const { publicKey } = channel.publicKey
@@ -311,7 +312,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         : await ensureChannelPublicKey(request.tenantPrisma, channel.id, request.agent.tenantId);
 
       if (!publicKey) {
-        throw new AppError('publicKey is required', 'BAD_REQUEST', 400);
+        throw new AppError('請提供渠道公開金鑰', 'BAD_REQUEST', 400);
       }
 
       const domain = body.domain.replace(/\/+$/, '');
@@ -462,7 +463,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         request.params.teamId,
       );
       if (!removed) {
-        throw new AppError('Channel team assignment not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('channelTeamAssignment'), 'NOT_FOUND', 404);
       }
 
       // 稽核：撤銷渠道團隊指派

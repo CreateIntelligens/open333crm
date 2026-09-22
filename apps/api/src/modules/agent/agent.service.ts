@@ -8,6 +8,7 @@ import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import { loadTenantRole } from '../role/role.service.js';
 import { getEffectivePermissions } from '../../services/permission.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 // 防自鎖的權限碼（registry 動態抽 selfLock:true，比照 role.service.setRolePermissions）：
 // 含 role.manage。用於「自我降級」守門，避免寫死單一權限碼。
@@ -154,7 +155,7 @@ export async function createAgent(
   });
 
   if (existing) {
-    throw new AppError('Email already in use', 'CONFLICT', 409);
+    throw new AppError('這個電子郵件已被使用，請換一個', 'CONFLICT', 409);
   }
 
   // 方案人數上限硬擋（建立時 count 檢查；無上限 = null 時跳過）。
@@ -210,7 +211,7 @@ export async function updateAgentRole(
   });
 
   if (!existing) {
-    throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
 
   // 雙寫：改 legacy role 同時更新 granular roleId。提供 roleId 時以 roleId 為準並做越權防護。
@@ -260,12 +261,12 @@ export async function changeOwnPassword(
   });
 
   if (!agent) {
-    throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
 
   const valid = await verifyPassword(currentPassword, agent.passwordHash);
   if (!valid) {
-    throw new AppError('Current password is incorrect', 'INVALID_PASSWORD', 400);
+    throw new AppError('目前密碼不正確', 'INVALID_PASSWORD', 400);
   }
 
   const passwordHash = await hashPassword(newPassword);
@@ -286,7 +287,7 @@ export async function resetAgentPassword(
   });
 
   if (!existing) {
-    throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
 
   const passwordHash = await hashPassword(newPassword);
@@ -348,7 +349,7 @@ export async function deactivateAgent(
   });
 
   if (!existing) {
-    throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
 
   // 防呆：不可停用最後一位啟用中的管理員（租戶會被鎖死）
@@ -382,7 +383,7 @@ export async function purgeAgent(
       select: { id: true, isActive: true, role: true, roleId: true },
     });
     if (!existing) {
-      throw new AppError('Agent not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
     }
     // 防呆：不可刪除最後一位啟用中的管理員（租戶會被鎖死）
     await assertNotLastActiveAdmin(tx, tenantId, existing);
