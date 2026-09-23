@@ -133,8 +133,8 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | 限制 | 說明 |
 | --- | --- |
 | 沒有前端頁面 | `apps/web` 內沒有任何程式碼呼叫 `/api/v1/canvas`。`InteractionNode.position` 存的是畫布座標，顯示原本的設計包含拖拉編輯器。目前只能透過 API 建立與操作流程 |
-| `AI_GEN` 節點無法運作 | 節點呼叫 `BRAIN_SERVICE_URL` 的 `/api/generate`。這個環境變數在 repo 內沒有任何地方設定，預設值 `http://localhost:3001` 指向 API 自己，而 API 沒有這個路由。節點會拋錯，該次執行轉為 `FAILED`。相關項目見 `system/AUDIT.md` 的 PKG-03 |
+| `AI_GEN` 節點無法運作 | 節點呼叫 `BRAIN_SERVICE_URL` 的 `/api/generate`。這個環境變數在 repo 內沒有任何地方設定，預設值 `http://localhost:3001` 指向 API 自己，而 API 沒有這個路由。節點會拋錯，該次執行轉為 `FAILED`。相關項目見 `../system/AUDIT.md` 的 PKG-03 |
 | `ACTION` 只支援 `add_tag` | 其他 `actionType` 會被 `canvas.worker.ts` 直接忽略，不會報錯 |
 | `schedule` 與 `event` 兩種 `triggerType` 沒有觸發來源 | Zod schema 接受這兩個值，但沒有程式會依它們啟動流程 |
-| 引擎不走租戶連線 | `flow-runner.ts` 使用未綁租戶的 `prisma` singleton，查詢以主鍵定位且不帶 `tenantId`。詳見 `system/AUDIT.md` 的 RLS-01 |
+| 引擎不走租戶連線 | `flow-runner.ts` 使用未綁租戶的 `prisma` singleton，查詢以主鍵定位且不帶 `tenantId`。詳見 `../system/AUDIT.md` 的 RLS-01 |
 | `CONDITION` 只支援四個運算子 | `eq`、`neq`、`contains`、`exists`。比較一律以字串進行，沒有數值或日期比較 |

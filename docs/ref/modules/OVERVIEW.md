@@ -1,6 +1,6 @@
 # API 功能模組與所屬後台
 
-本文件說明 `apps/api/src/modules/` 的每個模組服務哪一群使用者，並列出每個模組的路由前綴、對應的前端頁面與權限要求。模組之間的程式碼相依請看[應用程式與共用套件](./COMPONENTS.md)。
+本文件說明 `apps/api/src/modules/` 的每個模組服務哪一群使用者，並列出每個模組的路由前綴、對應的前端頁面與權限要求。模組之間的程式碼相依請看[應用程式與共用套件](../system/COMPONENTS.md)。
 
 - **資料來源**：`apps/api/src/index.ts` 的路由註冊、`apps/api/src/modules/*`、`apps/api/src/plugins/auth.plugin.ts`、`apps/web/src/app/*`、`apps/web/src/components/layout/Sidebar.tsx`
 - **核對日期**：2026-09-23
@@ -106,7 +106,9 @@
 | `canvas` | `/api/v1/canvas` | 無頁面 | `canvas.use` |
 | `sla` | `/api/v1/sla-policies` | `/dashboard/settings/sla` | `sla.manage` |
 
-`canvas` 是多步驟的聯繫人旅程引擎，機制見[互動流程引擎](../CANVAS-FLOW-ENGINE.md)。
+`canvas` 是多步驟的聯繫人旅程引擎，機制見[互動流程引擎](./CANVAS-FLOW-ENGINE.md)。
+
+`sla` 模組只有政策的 CRUD。逾時的判定與處置在 `apps/workers`，機制見[服務水準協議](./SLA.md)。
 
 ### 分析
 
