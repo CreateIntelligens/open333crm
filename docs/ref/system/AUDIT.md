@@ -33,6 +33,7 @@
 | SLA-02 | SLA | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
 | SLA-03 | SLA | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | SLA-04 | SLA | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| TRIAL-01 | 試用與方案 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -204,6 +205,34 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - 修改政策名稱之後，既有工單的 `slaPolicy` 仍是舊名稱。`getPolicy()` 回傳 null，`sla.handler.ts` 直接 `continue`，該工單從此不再受監控，而且沒有任何紀錄。
 - `sla_policies` 只有 `@@index([tenantId])`，沒有 `(tenantId, name)` 的唯一約束。同一租戶建立兩條同名政策時，`findFirst` 回傳哪一條不確定。
 - `DELETE /api/v1/sla-policies/:id` 是硬刪除，沒有引用檢查。`SlaPolicy` 沒有 `isActive` 欄位，因此無法套用 `AGENTS.md` 的 soft-delete 慣例。刪除後，引用該名稱的工單留下一個查不到政策的字串。
+
+## 試用與方案
+
+### TRIAL-01：走 plan-change 升級的試用租戶到期仍會被停用
+
+試用租戶升級到付費方案有兩條路徑，兩條的結果不同：
+
+| 路徑 | 觸發者 | `planId` | `trialEndsAt` |
+| --- | --- | --- | --- |
+| `PATCH /api/v1/platform/trial-tenants/:id/convert` | 平台在 `/admin/trial` 操作 | 改 | 清成 `null` |
+| `PATCH /api/v1/platform/plan-change-requests/:id/approve` | 租戶申請、平台在 `/admin/plan-changes` 核准 | 改 | **不動** |
+
+`convertToPaid()` 清空 `trialEndsAt`，註解寫明用意是「脫離試用，不再受到期排程管轄」。`approveRequest()` 的 `upgrade` 分支只寫 `planId`（`plan-change.service.ts` 第 90 行），沒有處理 `trialEndsAt`。
+
+第二條路徑確實可達，逐項確認如下：
+
+1. `settings.manage` 的 `feature` 是 `core`（`packages/core/src/rbac/permissions.ts:101`），而 `core` 恆開（`permission.service.ts:116`）。試用租戶的 `ADMIN` 因此持有這個權限。
+2. `POST /api/v1/plan-change` 只要求 `fastify.authenticate` 加 `settings.manage`。`createPlanChangeRequest()` 沒有檢查租戶是否在試用中。
+3. `apps/web` 的 `/dashboard/plan` 頁面就是呼叫這個端點。
+
+後果發生在排程。`runTrialLifecycle()` 的掃描條件是 `{ trialEndsAt: { not: null }, isActive: true }`（`trial.scheduler.ts:34`），沒有任何方案條件。因此已升級付費的租戶仍在掃描範圍內：
+
+- 到了原本的 `trialEndsAt`，排程把 `isActive` 設為 `false`，寄出「試用已到期」信給該租戶的 `ADMIN`，並寫入 `tenant.trial.expire` 稽核。
+- 再經過 `dataRetentionDays`（預設 30 天），軟刪掃描把 `purgedAt` 設為當下。
+
+也就是說，已付費的租戶會被停用，接著被標記為已清除。
+
+審核者沒有任何提示。`listPendingRequests()` 回傳 `currentPlan`，但不含 `trialEndsAt`，`/admin/plan-changes` 頁面也沒有顯示試用狀態。審核者在這個頁面按下核准時，不會知道這個動作不會讓租戶脫離試用。
 
 ## 授權與安全
 

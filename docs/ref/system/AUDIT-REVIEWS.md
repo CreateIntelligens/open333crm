@@ -4,6 +4,25 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-23：試用生命週期追查，新增 TRIAL-01
+
+起因是閱讀[平台後台](../modules/PLATFORM.md)的試用管理一節時，發現該節只列函式行為、沒有說明誰能觸發，讀者無法判斷延長試用是逐筆操作還是批次。釐清的過程中比對了升級的兩條路徑，發現結果不一致。做法是靜態閱讀原始碼，沒有啟動容器。
+
+判定依據，逐項串成一條可達的路徑：
+
+| 環節 | 依據 |
+| --- | --- |
+| 試用租戶的 `ADMIN` 持有 `settings.manage` | `permissions.ts:101` 標示其 `feature` 為 `core`；`permission.service.ts:116` 讓 `core` 恆開 |
+| 試用租戶可送出 upgrade 申請 | `POST /api/v1/plan-change` 只要求 `authenticate` 加 `settings.manage`；`createPlanChangeRequest()` 沒有試用租戶的檢查 |
+| 核准後 `trialEndsAt` 不變 | `plan-change.service.ts:90` 的 upgrade 分支只寫 `planId` |
+| 排程仍掃到該租戶 | `trial.scheduler.ts:34` 的條件是 `{ trialEndsAt: { not: null }, isActive: true }`，沒有方案條件 |
+| 審核者看不到試用狀態 | `listPendingRequests()` 不回傳 `trialEndsAt`；`/admin/plan-changes` 頁面沒有相關欄位 |
+
+同一次追查另外確認兩件事，都不另開項目：
+
+- 試用政策的參數不是寫死的，存在 `PlatformSetting` 的 `trial.*` 鍵，預設值在 `trial-policy.service.ts` 的 `DEFAULTS`。`enabled` 預設為 `false`，整個試用功能需要平台後台手動開啟。
+- `extendTrial()` 以「現有到期日與今天取較晚者」為基準，兩個方向都正確：尚未到期的租戶不會因延長而縮短，已到期的租戶不會把延長的天數浪費在過去。
+
 ## 2026-09-23：platform 模組盤點，新增兩個安全項目
 
 盤點起因是評估「拆分 `platform.routes.ts` 有沒有風險」。評估的結論是先不拆，但過程中查到兩項與拆分無關、現在就存在的問題。做法是靜態閱讀原始碼，沒有啟動容器。
