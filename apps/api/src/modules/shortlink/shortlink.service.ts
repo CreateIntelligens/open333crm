@@ -104,7 +104,8 @@ export async function createShortLink(
     utmTerm?: string;
     tagOnClick?: string;
     materialId?: string;
-    expiresAt?: string;
+    // routes 用 z.coerce.date() 驗完直接給 Date，這裡不再收字串
+    expiresAt?: Date;
   },
 ) {
   let slug = data.slug;
@@ -144,7 +145,7 @@ export async function createShortLink(
       utmTerm: data.utmTerm,
       tagOnClick: data.tagOnClick,
       materialId: data.materialId ?? null,
-      expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+      expiresAt: data.expiresAt,
     },
   });
 
@@ -219,7 +220,8 @@ export async function updateShortLink(
     utmTerm?: string;
     tagOnClick?: string;
     isActive?: boolean;
-    expiresAt?: string | null;
+    // null = 清除到期時間；undefined = 這欄不動
+    expiresAt?: Date | null;
   },
 ) {
   const link = await prisma.shortLink.findFirst({ where: { id, tenantId } });
@@ -245,7 +247,7 @@ export async function updateShortLink(
       utmTerm: data.utmTerm,
       tagOnClick: data.tagOnClick,
       isActive: data.isActive,
-      expiresAt: data.expiresAt === null ? null : data.expiresAt ? new Date(data.expiresAt) : undefined,
+      expiresAt: data.expiresAt,
     },
   });
 
