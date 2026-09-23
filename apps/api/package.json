@@ -23,7 +23,8 @@
     "test:keyword-trigger": "tsx src/__tests__/keyword-trigger-validation.test.ts",
     "test:trim": "tsx src/__tests__/trim-validation.test.ts",
     "test:url-scheme": "tsx src/__tests__/url-scheme-validation.test.ts",
-    "test:numeric-bounds": "tsx src/__tests__/numeric-bounds.test.ts"
+    "test:numeric-bounds": "tsx src/__tests__/numeric-bounds.test.ts",
+    "test:embedding-timeout": "tsx src/__tests__/embedding-timeout.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

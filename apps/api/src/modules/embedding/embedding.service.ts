@@ -29,6 +29,61 @@ interface SearchOptions {
 
 // ─── Embedding Generation ───────────────────────────────────────────────────
 
+/**
+ * 單次 embed 請求的逾時（毫秒）。
+ *
+ * 為什麼需要：原本的 fetch 沒有任何 timeout。Ollama 閒置一段時間會把
+ * bge-m3 卸載，下一個請求要等模型重載（實測約 30~40 秒），期間每個請求
+ * 都卡滿 Caddy 的 60s gateway timeout → 使用者連吃 3~5 次 504，每次等 60 秒。
+ *
+ * 設 25 秒：比 gateway 的 60s 短很多，讓我們能在「被 Caddy 切斷」之前
+ * 自己收手並重試，把控制權留在應用層。
+ */
+const EMBED_TIMEOUT_MS = 25_000;
+
+/**
+ * 冷啟動重試次數。第一次逾時多半是模型正在載入，
+ * 重試時模型通常已經在記憶體裡，會很快回來。
+ *
+ * 只重試 1 次是被 gateway 預算決定的，不是隨便選的：
+ *   最壞總耗時 = 25s × 2 次 + 1s 重試間隔 = 51s
+ * Caddy 的 gateway timeout 是 60s，扣掉 DB 查詢與序列化的餘裕（約 5s），
+ * 可用預算約 55s。重試 2 次會變成 77s，反而又回到「被 Caddy 切斷」的老問題。
+ */
+const EMBED_COLD_START_RETRIES = 1;
+
+/** 單次呼叫 Ollama embed，帶逾時 */
+async function embedOnce(
+  url: string,
+  model: string,
+  text: string,
+  timeoutMs: number,
+): Promise<number[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, input: text }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`Ollama embed failed (${response.status}): ${errBody}`);
+    }
+
+    const data = (await response.json()) as { embeddings: number[][] };
+    if (!data.embeddings || !data.embeddings[0]) {
+      throw new Error('Ollama returned empty embeddings');
+    }
+    return data.embeddings[0];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function generateEmbedding(
   prisma: TenantDb,
   tenantId: string,
@@ -37,26 +92,30 @@ export async function generateEmbedding(
   const settings = await getEmbeddingSettings(prisma, tenantId);
   const url = `${settings.baseUrl}/api/embed`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: settings.model,
-      input: text,
-    }),
-  });
-
-  if (!response.ok) {
-    const errBody = await response.text();
-    throw new Error(`Ollama embed failed (${response.status}): ${errBody}`);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= EMBED_COLD_START_RETRIES; attempt++) {
+    try {
+      return await embedOnce(url, settings.model, text, EMBED_TIMEOUT_MS);
+    } catch (err) {
+      lastErr = err;
+      const aborted = err instanceof Error && err.name === 'AbortError';
+      if (!aborted || attempt === EMBED_COLD_START_RETRIES) break;
+      // 逾時多半是模型冷啟動中——重試前讓它多載一會兒
+      logger.warn(
+        `[Embedding] embed 逾時（第 ${attempt + 1} 次，${EMBED_TIMEOUT_MS}ms），模型可能正在載入，重試中`,
+      );
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
   }
 
-  const data = (await response.json()) as { embeddings: number[][] };
-  if (!data.embeddings || !data.embeddings[0]) {
-    throw new Error('Ollama returned empty embeddings');
+  if (lastErr instanceof Error && lastErr.name === 'AbortError') {
+    // 轉成可讀訊息：使用者看到的不該是 "AbortError"
+    throw new Error(
+      `向量化服務逾時（${EMBED_TIMEOUT_MS / 1000} 秒 × ${EMBED_COLD_START_RETRIES + 1} 次）。` +
+        'AI 模型可能正在載入，請稍候再試；若持續發生請至「知識庫 → Embedding 設定」檢查服務狀態。',
+    );
   }
-
-  return data.embeddings[0];
+  throw lastErr;
 }
 
 // ─── Article Text Preparation ───────────────────────────────────────────────
