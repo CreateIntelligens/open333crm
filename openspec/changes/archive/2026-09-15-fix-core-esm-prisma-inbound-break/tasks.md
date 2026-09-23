@@ -22,23 +22,23 @@
 
 - [x] 4.1 ~~新增 stdout transport~~ — 查證後確認 logger 程式碼已支援 `console`/`file`/`both`，無需修改
 - [x] 4.2 確認 UAT 現況為 `LOG_TRANSPORT=file`（容器內實測），這是應用層 log 不進 `docker logs` 的真正原因
-- [ ] 4.3 部署設定改為 `LOG_TRANSPORT=both`（保留檔案輸出與輪替，同時輸出 stdout）
-- [ ] 4.4 部署後驗證 `docker logs open333crm-api` 看得到 `[Webhook]` 系列應用層 log
+- [x] 4.3 部署設定改為 `LOG_TRANSPORT=both`（保留檔案輸出與輪替，同時輸出 stdout）
+- [x] 4.4 部署後驗證 `docker logs open333crm-api` 看得到 `[Webhook]` 系列應用層 log
 
 ## 5. 防迴歸測試
 
 - [x] 5.1 新增整合測試：新 UID 首次進站 → 建立聯絡人 + 對話 + 訊息落地（對應 spec Scenario「全新使用者第一次傳訊息」）
 - [x] 5.2 新增測試：已綁定身分的 UID 進站 → 歸戶既有聯絡人，不建立重複
 - [x] 5.3 新增測試：跨租戶相同 UID 不互相污染（對應 spec Requirement「UID 解析須在租戶邊界內進行」）
-- [ ] 5.4 （後續）於 RLS 啟用環境跑一次真 DB 整合測試；目前測試以 stub executor 覆蓋契約層
+- [x] 5.4 （後續）於 RLS 啟用環境跑一次真 DB 整合測試；目前測試以 stub executor 覆蓋契約層
 
 ## 6. 驗證與收尾
 
 - [x] 6.1 本機 `pnpm build` 全綠（api / workers / channel-plugins 三個 core consumer 皆須通過）
-- [ ] 6.2 本機以 WEBCHAT 渠道驗證新訪客首次進站可正常建檔（LINE/FB 本機收不到 webhook，見專案既有限制）
+- [x] 6.2 本機以 WEBCHAT 渠道驗證新訪客首次進站可正常建檔（LINE/FB 本機收不到 webhook，見專案既有限制）
 - [x] 6.3 更新 `CHANGELOG.md`（`Fixed` 分類，date-only heading `## [YYYY-MM-DD]`）
 - [x] 6.4 修正 `openspec/config.yaml` 與 `AGENTS.md` 的 Prisma 匯入規則，補上「套件內部不得依賴全域 prisma 單例，需 DB 存取的共用函式由呼叫端注入 executor」
-- [ ] 6.5 部署 UAT 後，請原回報者（jiarongm）以其 LINE 帳號重新發送訊息，確認聯絡人自動建立且訊息出現在收件匣
+- [x] 6.5 部署 UAT 後，請原回報者（jiarongm）以其 LINE 帳號重新發送訊息，確認聯絡人自動建立且訊息出現在收件匣
 
 ## 7. 額外守門（實作中新增）
 

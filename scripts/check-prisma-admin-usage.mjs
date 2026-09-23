@@ -26,6 +26,7 @@ const WHITELIST = [
   /plugins\/socket\.plugin/,        // authenticated socket room authorization with explicit tenant/resource scope
   /plugins\/chatbox\.plugin/,       // public Chatbox session verification with channel/session ownership checks
   /guards\/rbac\.guard/,            // 授權查詢（角色/方案天花板）
+  /services\/channel-visibility/,   // 渠道可見性授權：跨租戶/角色/方案權限解析後再以 tenantPrisma 查渠道
   /modules\/platform\//,            // 平台層跨租戶
   /modules\/auth\//,                // 登入 email 全域解析、passkey
   /modules\/trial\//,               // trial 防濫用跨租戶

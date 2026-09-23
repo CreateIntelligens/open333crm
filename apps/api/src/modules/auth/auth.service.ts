@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@open333crm/database';
+import type { TenantDb } from '../../lib/tenant-db.js';
 import { verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
@@ -52,7 +53,7 @@ export async function login(prisma: PrismaClient, email: string, password: strin
   return agentData;
 }
 
-export async function getAgentById(prisma: PrismaClient, agentId: string, tenantId: string) {
+export async function getAgentById(prisma: TenantDb, agentId: string, tenantId: string) {
   const agent = await prisma.agent.findFirst({
     where: { id: agentId, tenantId },
     select: {

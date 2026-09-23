@@ -37,12 +37,15 @@ tsx apps/api/src/__tests__/smoke.test.ts
 
 原本的 `ci.yml` 執行兩個租戶隔離靜態檢查與 RLS 隔離測試，之後有 commit 刪除了這個檔案。刪除經過見 `AGENTS.md` 的「CI gates」一節。
 
-在 `ci.yml` 恢復之前，開發者必須在建立 Pull Request 前手動執行兩個靜態檢查：
+在 `ci.yml` 恢復之前，開發者必須在建立 Pull Request 前手動執行三個靜態檢查：
 
 ```bash
 node scripts/check-tenant-scoping.mjs --strict
 node scripts/check-prisma-admin-usage.mjs --strict
+node scripts/check-workspace-esm.mjs --strict
 ```
+
+前兩支檢查租戶隔離。第三支檢查 workspace 的 ESM 設定：套件少了 `"type": "module"` 會被編成 CJS，轉出式 re-export 在執行時變成 `undefined`，而且編譯不會報錯。規則見 `AGENTS.md` 的「Conventions」一節。
 
 ## 部署
 

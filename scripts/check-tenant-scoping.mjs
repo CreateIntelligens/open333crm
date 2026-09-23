@@ -34,6 +34,7 @@ const TENANT_MODELS = new Set([
   'flowExecution', 'identityMap', 'mergeSuggestion', 'partnerApiKey', 'cliSession',
   'passkeyCredential', 'quickReplyPreset', 'kbArticleFeedback', 'aiUsage', 'trialSignup',
   'planChangeRequest', 'tenantAuditLog', 'dataExportRequest', 'dataErasureRequest',
+  'broadcastDeliveryAttempt',
 ]);
 
 // query 方法（會回傳/影響多列、需 tenantId 限定的）

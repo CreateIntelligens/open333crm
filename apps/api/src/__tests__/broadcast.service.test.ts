@@ -5,7 +5,7 @@
  *   - LINE 渠道、無 per-recipient 變數 → 走 multicast 路徑（一次 API call、recipientUids 帶整批）
  *   - LINE 渠道、有變數 → 走 for loop push（每人 sendMessage 一次）
  *   - FB 渠道 → 永遠 for loop（無 multicast API）
- *   - 0 受眾 → 跳過發送但仍標 completed
+ *   - 0 受眾 → 明確回 BROADCAST_NO_RECIPIENTS 並標 failed
  *   - 全部失敗 → status=failed；部分失敗 → completed
  *
  * 用 sandbox：替換 channel-plugins registry + mock prisma + 真正的 encryptCredentials。
@@ -151,6 +151,7 @@ function setupFixture({
   const broadcastUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }> = [];
   const recipientCreates: Array<Record<string, unknown>> = [];
   const recipientCreateMany: Array<{ data: unknown[] }> = [];
+  const deliveryAttempts = new Map<string, Record<string, unknown>>();
 
   const currentBroadcastState = { ...broadcast };
 
@@ -194,6 +195,25 @@ function setupFixture({
         return { count: args.data.length };
       }),
     },
+    broadcastDeliveryAttempt: {
+      findFirst: mockFn(async (args: { where: { batchIndex: number } }) =>
+        deliveryAttempts.get(`${broadcastId}:${args.where.batchIndex}`) ?? null),
+      create: mockFn(async (args: { data: Record<string, unknown> }) => {
+        const attempt = {
+          id: `attempt-${args.data.batchIndex}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...args.data,
+        };
+        deliveryAttempts.set(`${broadcastId}:${args.data.batchIndex}`, attempt);
+        return attempt;
+      }),
+      updateMany: mockFn(async (args: { where: { id: string }; data: Record<string, unknown> }) => {
+        const attempt = [...deliveryAttempts.values()].find((item) => item.id === args.where.id);
+        if (attempt) Object.assign(attempt, args.data, { updatedAt: new Date() });
+        return { count: attempt ? 1 : 0 };
+      }),
+    },
   };
 
   return {
@@ -203,6 +223,8 @@ function setupFixture({
     broadcastUpdates,
     recipientCreates,
     recipientCreateMany,
+    deliveryAttempts,
+    currentBroadcastState,
   };
 }
 
@@ -278,8 +300,7 @@ async function testZeroAudience() {
 
   // 行為已於「錯誤訊息中文化」那輪調整：0 受眾不再默默標 completed，
   // 而是拋出帶原因的 BROADCAST_NO_RECIPIENTS，由外層統一標 failed。
-  // 理由見 marketing.service.ts 的註解——標 completed 會讓使用者
-  // 以為發成功了，其實一個人都沒發到。
+  // 標 completed 會讓使用者以為發成功了，其實一個人都沒發到。
   let thrown: unknown;
   try {
     await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
@@ -294,6 +315,10 @@ async function testZeroAudience() {
 
   // 沒有任何訊息被送出
   assert.equal(f.plugin.sends.length, 0);
+
+  // 併 main 時保留的斷言：狀態要標成 failed，不讓使用者誤以為已完成發送
+  const finalUpdate = f.broadcastUpdates[f.broadcastUpdates.length - 1];
+  assert.equal(finalUpdate.data.status, 'failed');
 }
 
 async function testPluginFailureMarksFailed() {
@@ -361,16 +386,45 @@ async function testMulticastPartialFailure() {
   assert.equal(batch2Recipients[0].deliveryStatus, 'failed');
 }
 
+async function testMulticastRetryReusesAttemptKeyAndRotatesAfter24Hours() {
+  let shouldFail = true;
+  const f = setupFixture({
+    channelType: 'LINE',
+    identitiesCount: 3,
+    pluginBehavior: () => (shouldFail ? 'fail' : 'success'),
+  });
+  const io = createIoMock();
+
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  const firstKey = (f.plugin.sends[0].payload.delivery as { retryKey: string }).retryKey;
+  const attempt = f.deliveryAttempts.get(`${f.broadcastId}:0`)!;
+  assert.equal(attempt.status, 'failed');
+
+  shouldFail = false;
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  const secondKey = (f.plugin.sends[1].payload.delivery as { retryKey: string }).retryKey;
+  assert.equal(secondKey, firstKey);
+  assert.equal(f.deliveryAttempts.size, 1);
+
+  attempt.updatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  attempt.status = 'failed';
+  f.currentBroadcastState.status = 'failed';
+  await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  const thirdKey = (f.plugin.sends[2].payload.delivery as { retryKey: string }).retryKey;
+  assert.notEqual(thirdKey, secondKey);
+}
+
 // ─── Runner ────────────────────────────────────────────────────────────
 
 const tests: Array<[string, () => Promise<void>]> = [
   ['LINE multicast 當無變數', testLineMulticastWhenNoVariable],
   ['LINE for-loop 當有變數', testLineForLoopWhenHasVariable],
   ['FB 永遠 for-loop', testFbAlwaysForLoop],
-  ['0 受眾 → status=completed', testZeroAudience],
+  ['0 受眾 → BROADCAST_NO_RECIPIENTS / status=failed', testZeroAudience],
   ['plugin 失敗 → status=failed', testPluginFailureMarksFailed],
   ['multicast 600 人拆批 499 / 101', testMulticastChunking499],
   ['multicast 部分失敗：第 1 批成功、第 2 批失敗', testMulticastPartialFailure],
+  ['multicast retry 重用 key，超過 24 小時後輪替', testMulticastRetryReusesAttemptKeyAndRotatesAfter24Hours],
 ];
 
 async function main() {

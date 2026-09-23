@@ -5,7 +5,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { Prisma } from '@prisma/client';
 import IORedis from 'ioredis';
 import { AppError } from '../../shared/utils/response.js';
-import { getChannelPlugin } from '@open333crm/channel-plugins';
+import { getChannelPlugin, LINE_DELIVERY_METADATA_KEYS } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { getConfig } from '../../config/env.js';
@@ -30,6 +30,22 @@ export interface ChannelDeliveryOptions {
   strategy?: 'reply' | 'push';
   replyToken?: string;
   receivedAt?: string;
+}
+
+export function mergeLineDeliveryMetadata(
+  currentMetadata: unknown,
+  retryKey: string,
+  result: { success: boolean; requestId?: string },
+): Record<string, unknown> {
+  const base = currentMetadata && typeof currentMetadata === 'object' && !Array.isArray(currentMetadata)
+    ? currentMetadata as Record<string, unknown>
+    : {};
+  return {
+    ...base,
+    [LINE_DELIVERY_METADATA_KEYS.retryKey]: retryKey,
+    [LINE_DELIVERY_METADATA_KEYS.status]: result.success ? 'accepted' : 'failed',
+    ...(result.requestId ? { [LINE_DELIVERY_METADATA_KEYS.requestId]: result.requestId } : {}),
+  };
 }
 
 export async function listConversations(
@@ -372,7 +388,7 @@ export async function sendMessage(
   io.to(`tenant:${tenantId}`).emit('message.new', wsPayload);
 
   // --- Channel Delivery: route outbound message through channel plugin ---
-  let delivery: { success: boolean; error?: string } | null = null;
+  let delivery: { success: boolean; requestId?: string; error?: string } | null = null;
   try {
     const convWithChannel = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -418,18 +434,31 @@ export async function sendMessage(
         });
         const result = await plugin.sendMessage(
           identity.uid,
-          { contentType: data.contentType, content: data.content },
+          {
+            contentType: data.contentType,
+            content: data.content,
+            ...(channel.channelType === CHANNEL_TYPE.LINE
+              ? { delivery: { retryKey: message.id } }
+              : {}),
+          },
           credentials,
         );
 
-        delivery = { success: result.success, error: result.error };
+        delivery = { success: result.success, requestId: result.requestId, error: result.error };
 
+        const updateData: Prisma.MessageUpdateInput = {};
         if (result.success && result.channelMsgId) {
+          updateData.channelMsgId = result.channelMsgId;
+        }
+        if (channel.channelType === CHANNEL_TYPE.LINE) {
+          updateData.metadata = mergeLineDeliveryMetadata(message.metadata, message.id, result) as Prisma.InputJsonValue;
+        }
+        if (Object.keys(updateData).length > 0) {
           await prisma.message.update({
             where: { id: message.id },
-            data: { channelMsgId: result.channelMsgId },
+            data: updateData,
           });
-          logger.info('[ChannelDelivery] OK', { channelType: channel.channelType, channelMsgId: result.channelMsgId });
+          logger.info('[ChannelDelivery] OK', { channelType: channel.channelType, channelMsgId: result.channelMsgId, requestId: result.requestId });
         } else if (!result.success) {
           logger.error('[ChannelDelivery] Failed', { channelType: channel.channelType, error: result.error });
         } else {
