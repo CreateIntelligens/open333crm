@@ -199,5 +199,31 @@ t('後端發布 Rich Menu 前仍會驗圖片大小（雙層防護）', () => {
   assert.ok(code.includes('超過 LINE 限制 1MB'), '錯誤訊息未說明是 LINE 的限制');
 });
 
+// ─── 存檔按鈕擋控（2026-09-23 使用者要求）──────────────────────────────
+
+t('素材編輯器有集中的 body 擋控函式', () => {
+  const code = webSrc('components/materials/validate-body.ts');
+  assert.ok(code.includes('validateMaterialBody'), '未定義 validateMaterialBody');
+  assert.ok(code.includes('validateLineVideoUrl'), '未套用影片網址驗證');
+  assert.ok(
+    code.includes("if (!videoUrl.trim()) return null"),
+    '空值應放行——否則剛進編輯器就把按鈕變灰',
+  );
+});
+
+t('存檔鈕在內容有誤時禁用，且說明原因', () => {
+  const code = webSrc('components/materials/MaterialEditor.tsx');
+  assert.ok(code.includes('validateMaterialBody'), 'MaterialEditor 未套用擋控');
+  assert.ok(code.includes('blockReason'), '未計算阻擋原因');
+  assert.ok(
+    code.includes('disabled={saving || !!blockReason}'),
+    '存檔鈕未在有錯誤時禁用',
+  );
+  assert.ok(
+    code.includes('無法儲存：'),
+    '未在畫面上顯示原因（只靠 title 屬性，觸控裝置看不到）',
+  );
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
