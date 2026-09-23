@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Plus, Play, Square, Loader2, Users } from 'lucide-react';
+import { Plus, Play, Square, Loader2, Users, Archive } from 'lucide-react';
 import { useActivities } from '@/hooks/usePortal';
 import { ActivityFormDialog } from '@/components/portal/ActivityFormDialog';
 import { SubmissionsView } from '@/components/portal/SubmissionsView';
@@ -69,6 +69,22 @@ function ActivityList() {
     } catch (err) {
       console.error('End error:', err);
       alert(getApiErrorMessage(err, '結束活動失敗，請稍後重試'));
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  const handleArchive = async (id: string) => {
+    // 封存而非刪除：PortalSubmission 對活動是 Cascade，
+    // 硬刪會連帶清掉參與者的提交紀錄與積分依據。
+    if (!confirm('封存後此活動不再顯示於列表，參與紀錄仍會保留。確定封存？')) return;
+    setActioning(id);
+    try {
+      await api.post(`/portal/activities/${id}/archive`);
+      mutate();
+    } catch (err) {
+      console.error('Archive error:', err);
+      alert(getApiErrorMessage(err, '封存失敗，請稍後重試'));
     } finally {
       setActioning(null);
     }
@@ -149,6 +165,13 @@ function ActivityList() {
                       <Button size="sm" variant="outline" onClick={() => handleEnd(a.id)} disabled={actioning === a.id}>
                         {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 mr-1" />}
                         結束
+                      </Button>
+                    )}
+                    {a.status === 'ENDED' && (
+                      // 已結束的活動原本沒有任何操作，會永遠留在列表上
+                      <Button size="sm" variant="ghost" onClick={() => handleArchive(a.id)} disabled={actioning === a.id}>
+                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3 mr-1" />}
+                        封存
                       </Button>
                     )}
                   </div>
