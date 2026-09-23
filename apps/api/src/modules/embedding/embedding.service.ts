@@ -98,11 +98,17 @@ export async function generateEmbedding(
       return await embedOnce(url, settings.model, text, EMBED_TIMEOUT_MS);
     } catch (err) {
       lastErr = err;
+      // 冷啟動有兩種表現，都要重試：
+      //   1. AbortError——請求打出去了但模型還在載入，卡到我們的 timeout
+      //   2. HTTP 503——Ollama 明確回「服務尚未就緒」，這種會「立刻」失敗，
+      //      只認 AbortError 的話第一次就直接把錯誤丟給使用者，等於沒處理冷啟動
       const aborted = err instanceof Error && err.name === 'AbortError';
-      if (!aborted || attempt === EMBED_COLD_START_RETRIES) break;
-      // 逾時多半是模型冷啟動中——重試前讓它多載一會兒
+      const unavailable = err instanceof Error && /\(50[23]\)/.test(err.message);
+      const retryable = aborted || unavailable;
+      if (!retryable || attempt === EMBED_COLD_START_RETRIES) break;
       logger.warn(
-        `[Embedding] embed 逾時（第 ${attempt + 1} 次，${EMBED_TIMEOUT_MS}ms），模型可能正在載入，重試中`,
+        `[Embedding] embed ${aborted ? '逾時' : '服務未就緒'}` +
+          `（第 ${attempt + 1} 次），模型可能正在載入，重試中`,
       );
       await new Promise((r) => setTimeout(r, 1_000));
     }

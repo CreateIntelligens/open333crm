@@ -137,7 +137,8 @@ export async function updateRule(
   },
 ) {
   const existing = await prisma.automationRule.findFirst({
-    where: { id, tenantId },
+    // enabled=false 代表已刪除：不可更新，否則帶 isActive:true 就能把它復活
+    where: { id, tenantId, enabled: true },
   });
 
   if (!existing) {
@@ -161,8 +162,11 @@ export async function updateRule(
     updateData.stopProcessing = data.stopOnMatch;
   }
   if (data.isActive !== undefined) {
+    // ⚠️ 不可連動寫 enabled：enabled 現在是「已刪除」標記（見 deleteRule），
+    // 而 isActive 是使用者在列表上切換的啟用狀態。
+    // 兩者連動的話，使用者一關閉規則就等同刪除——列表與 getRule 都會查不到，
+    // 再也無法從任何 UI 路徑把它打開。
     updateData.isActive = data.isActive;
-    updateData.enabled = data.isActive;
   }
   if (data.trigger !== undefined) {
     updateData.trigger = data.trigger as any;
@@ -239,7 +243,8 @@ export async function testRule(
   testFacts?: Record<string, unknown>,
 ) {
   const rule = await prisma.automationRule.findFirst({
-    where: { id: ruleId, tenantId },
+    // 已刪除的規則不該還能 dry-run
+    where: { id: ruleId, tenantId, enabled: true },
   });
 
   if (!rule) {

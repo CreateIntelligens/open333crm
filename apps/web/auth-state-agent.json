@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "refreshToken",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudElkIjoiYjAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAzIiwidGVuYW50SWQiOiJhMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoiQUdFTlQiLCJyb2xlSWQiOiJlOTU3Y2FhYy04NjdjLTQ3N2QtYWVjZi1iNTZkOWNmNmRjZTUiLCJyZW1lbWJlck1lIjpmYWxzZSwiaWF0IjoxNzkwMDU5MjQ1LCJleHAiOjE3OTI2NTEyNDV9.D_wIyOyyt0I2UN2rIPJQyMyiJhvHC10DPEd0y5KmpRI",
+      "domain": "uat.open333crm.create360.ai",
+      "path": "/",
+      "expires": 1790664046,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Strict"
+    }
+  ],
+  "origins": []
+}

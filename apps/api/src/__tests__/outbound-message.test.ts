@@ -154,13 +154,40 @@ t('關鍵不變式：通過驗證的訊息在 LINE 都有對應分支', () => {
   const code = pkgSrc('channel-plugins/src/line/index.ts');
   for (const type of OUTBOUND_MESSAGE_TYPES) {
     if (type === 'text') continue; // text 本身就是 default 的行為
-    if (type === 'file') continue; // LINE 無 file message，另走 text + 連結
+    if (type === 'file') continue; // LINE 無 file message type，走 text + 檔名連結（見下方專屬案例）
     assert.ok(
       new RegExp(`case '${type}':`).test(code),
       `OUTBOUND_MESSAGE_TYPES 有 '${type}' 但 toLineMessage 沒有對應分支，` +
         '會被當成空白文字送給客戶',
     );
   }
+});
+
+// ─── code review 發現（2026-09-23）──────────────────────────────────────
+
+t('video 的 previewImageUrl 不可 fallback 成影片網址', () => {
+  // LINE 要求 previewImageUrl 必須是 JPEG/PNG。拿 mp4 頂替會整則被退 400，
+  // 客戶收不到訊息——比送出空白泡泡更糟（那至少送得出去）。
+  const code = pkgSrc('channel-plugins/src/line/index.ts');
+  const block = code.slice(code.indexOf("case 'video': {"), code.indexOf("case 'audio':"));
+  assert.ok(
+    !/previewImageUrl:\s*\(content\.previewUrl as string\)\s*\?\?\s*url/.test(block),
+    'previewImageUrl fallback 成影片網址，LINE 會退 400',
+  );
+  assert.ok(
+    /\[影片\]/.test(block),
+    '沒有預覽圖時應改送文字+連結，而不是硬送會被退件的 video message',
+  );
+});
+
+t('file 有對應分支（否則送出空白泡泡）', () => {
+  const code = pkgSrc('channel-plugins/src/line/index.ts');
+  assert.ok(
+    /case 'file': \{/.test(code),
+    "OUTBOUND_MESSAGE_TYPES 有 'file'，ChatWindow 也會送——但 LINE 沒分支就落 default 送空字串",
+  );
+  const block = code.slice(code.indexOf("case 'file': {"), code.indexOf("case 'audio':"));
+  assert.ok(/fileName/.test(block), 'file 訊息應帶上檔名，只給連結使用者不知道是什麼');
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

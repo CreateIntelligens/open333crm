@@ -32,6 +32,18 @@ export const CASE_CATEGORIES = [
 export type CaseCategory = (typeof CASE_CATEGORIES)[number];
 
 /**
+ * 統一前的舊分類值。
+ *
+ * 2026-09-23 統一分類時，建立頁原本用的是這三項（加上「其他」）。
+ * 既有工單仍帶著這些值，更新時若照新清單嚴格驗證會被 400 擋下——
+ * 使用者只是改個標題，表單把 category 原樣送回就存不了。
+ *
+ * 故更新端點額外放行這些值（建立端點不放行，避免新資料再帶舊值）。
+ * 待舊值清乾淨後可移除此常數與對應的 caseCategoryUpdateSchema。
+ */
+export const LEGACY_CASE_CATEGORIES = ['維修', '查詢', '投訴'] as const;
+
+/**
  * 下拉選單用的選項（含「未分類」空值）。
  * 詳情頁允許把分類清空，建立頁則視情況決定要不要帶這一項。
  */

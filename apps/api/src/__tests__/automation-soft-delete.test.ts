@@ -116,6 +116,38 @@ t('刪除後 isActive 也是 false，所以 worker 不會撿到已刪除的規�
   assert.ok(/isActive:\s*false/.test(deleteBlock));
 });
 
+// ─── code review 發現：停用不可等同刪除 ──────────────────────────────────
+
+t('updateRule 不可把 isActive 連動寫進 enabled', () => {
+  // 2026-09-23 code review 抓到的回歸：updateRule 原本有
+  //   if (data.isActive !== undefined) { updateData.enabled = data.isActive; }
+  // 配上本次把 enabled 當刪除標記，使用者在列表上關閉規則 → enabled 也變 false
+  // → 規則從列表與 getRule 同時消失，再也無法從任何 UI 路徑打開。
+  const block = service.slice(
+    service.indexOf('export async function updateRule'),
+    service.indexOf('export async function deleteRule'),
+  );
+  assert.ok(
+    !/updateData\.enabled\s*=\s*data\.isActive/.test(block),
+    'updateRule 把 isActive 寫進 enabled——使用者停用規則等同刪除',
+  );
+});
+
+t('updateRule / testRule 都排除已刪除的規則', () => {
+  for (const [fn, next] of [
+    ['updateRule', 'deleteRule'],
+    ['testRule', undefined],
+  ] as Array<[string, string | undefined]>) {
+    const start = service.indexOf(`export async function ${fn}`);
+    const end = next ? service.indexOf(`export async function ${next}`) : start + 900;
+    const block = service.slice(start, end);
+    assert.ok(
+      /enabled: true/.test(block),
+      `${fn} 未排除 enabled=false——已刪除的規則仍可被操作`,
+    );
+  }
+});
+
 // ─── 既有資料的回填腳本 ───────────────────────────────────────────────────
 
 t('有回填腳本可處理既有殘留資料', () => {

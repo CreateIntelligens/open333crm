@@ -166,12 +166,27 @@ export function buildLineMessage(contentType: string, content: Record<string, un
     case 'video': {
       const url = getMediaUrl(content);
       if (!url) return { type: 'text', text: '[影片]', ...base };
+      // ⚠️ previewImageUrl 不可 fallback 成影片網址本身：
+      // LINE 要求它必須是 JPEG/PNG，給 mp4 會整則被退 400，客戶收不到訊息。
+      // 沒有預覽圖時改送「文字 + 連結」，至少送得出去、客戶點得到。
+      const preview = typeof content.previewUrl === 'string' ? content.previewUrl : null;
+      if (!preview) {
+        return { type: 'text', text: `[影片] ${url}`, ...base };
+      }
       return {
         type: 'video',
         originalContentUrl: url,
-        previewImageUrl: (content.previewUrl as string) ?? url,
+        previewImageUrl: preview,
         ...base,
       };
+    }
+    // LINE 沒有 file message type——客服傳檔案時送「檔名 + 連結」的文字訊息。
+    // 不處理的話會落到 default 被當成 text，內容取 content.text ?? '' → 空白泡泡。
+    case 'file': {
+      const url = getMediaUrl(content);
+      const fileName = typeof content.fileName === 'string' ? content.fileName : '檔案';
+      if (!url) return { type: 'text', text: `[${fileName}]`, ...base };
+      return { type: 'text', text: `${fileName}\n${url}`, ...base };
     }
     case 'audio':
       return { type: 'audio', originalContentUrl: getMediaUrl(content) ?? content.mediaUrl, duration: 0, ...base };

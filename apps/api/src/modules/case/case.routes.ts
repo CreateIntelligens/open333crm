@@ -22,7 +22,7 @@ import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { CASE_CATEGORIES } from '@open333crm/shared';
+import { CASE_CATEGORIES, LEGACY_CASE_CATEGORIES } from '@open333crm/shared';
 
 
 // 篩選值正規化為大寫再驗證，避免呼叫端送小寫（如 status=open）直塞 Prisma enum 炸 400
@@ -53,6 +53,28 @@ const caseCategorySchema = z
     message: `分類必須是下列其中之一：${CASE_CATEGORIES.join('、')}`,
   });
 
+/**
+ * 更新用的分類驗證：除了新清單，額外放行 LEGACY_CASE_CATEGORIES。
+ *
+ * 為什麼不能直接套 caseCategorySchema：統一分類前建立的工單帶著舊值
+ * （維修／查詢／投訴），使用者打開這種工單改個標題、表單把 category 原樣送回，
+ * 就會被 400 擋下——訊息還叫他從新清單挑一個，但他根本沒改分類，
+ * 而且新清單裡沒有對應項，等於這張工單再也存不了。
+ *
+ * 建立走嚴格版（不讓新資料再帶舊值），更新走寬鬆版（不擋既有資料）。
+ * 待舊值清乾淨後可移除。
+ */
+const caseCategoryUpdateSchema = z
+  .string()
+  .max(100)
+  .refine(
+    (v) =>
+      v === '' ||
+      (CASE_CATEGORIES as readonly string[]).includes(v) ||
+      (LEGACY_CASE_CATEGORIES as readonly string[]).includes(v),
+    { message: `分類必須是下列其中之一：${CASE_CATEGORIES.join('、')}` },
+  );
+
 const createCaseSchema = z.object({
   contactId: z.string().uuid(),
   channelId: z.string().uuid(),
@@ -69,7 +91,8 @@ const updateCaseSchema = z.object({
   title: z.string().trim().min(1, '標題不可為空白').max(100).optional(),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: caseCategorySchema.optional(),
+  // 更新走寬鬆版：既有工單可能帶舊分類值，不可因此擋下存檔
+  category: caseCategoryUpdateSchema.optional(),
   status: z.enum(['OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED']).optional(),
   assigneeId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),

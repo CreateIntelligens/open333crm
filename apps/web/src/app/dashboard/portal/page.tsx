@@ -43,7 +43,12 @@ const statusMap: Record<string, { label: string; color: string }> = {
 };
 
 function ActivityList() {
-  const { activities, isLoading, mutate } = useActivities();
+  // 封存的活動預設不顯示（後端 listActivities 會排除 ARCHIVED）。
+  // 沒有這個切換的話，封存等於單向操作——unarchiveActivity 端點存在卻無路徑可達。
+  const [showArchived, setShowArchived] = useState(false);
+  const { activities, isLoading, mutate } = useActivities(
+    showArchived ? { status: 'ARCHIVED' } : undefined,
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
@@ -90,6 +95,19 @@ function ActivityList() {
     }
   };
 
+  const handleUnarchive = async (id: string) => {
+    setActioning(id);
+    try {
+      await api.post(`/portal/activities/${id}/unarchive`);
+      mutate();
+    } catch (err) {
+      console.error('Unarchive error:', err);
+      alert(getApiErrorMessage(err, '取消封存失敗，請稍後重試'));
+    } finally {
+      setActioning(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('確定刪除此活動？')) return;
     try {
@@ -103,7 +121,15 @@ function ActivityList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <Button
+          variant={showArchived ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setShowArchived((v) => !v)}
+        >
+          <Archive className="h-4 w-4 mr-1" />
+          {showArchived ? '返回活動列表' : '查看已封存'}
+        </Button>
         <Button onClick={() => { setEditData(null); setDialogOpen(true); }}>
           <Plus className="h-4 w-4 mr-1" /> 建立活動
         </Button>
@@ -165,6 +191,12 @@ function ActivityList() {
                       <Button size="sm" variant="outline" onClick={() => handleEnd(a.id)} disabled={actioning === a.id}>
                         {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 mr-1" />}
                         結束
+                      </Button>
+                    )}
+                    {a.status === 'ARCHIVED' && (
+                      <Button size="sm" variant="outline" onClick={() => handleUnarchive(a.id)} disabled={actioning === a.id}>
+                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3 mr-1" />}
+                        取消封存
                       </Button>
                     )}
                     {a.status === 'ENDED' && (

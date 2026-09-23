@@ -911,8 +911,16 @@ export async function registerMaterialTags(
   }
   if (names.length === 0) return [];
 
+  // ⚠️ 查詢必須也是大小寫不敏感：names 已用 toLowerCase 去重，但 Postgres 的
+  // `in` 與 @@unique([tenantId,name,scope]) 都區分大小寫。
+  // 若只用 `in: names` 查，素材 A 存了 Sale、素材 B 存 sale 時查不到既有列，
+  // 會再建一筆 → 設定頁出現兩個標籤，素材層卻視為同一個。
   const existing = await prisma.tag.findMany({
-    where: { tenantId, scope: 'MATERIAL', name: { in: names } },
+    where: {
+      tenantId,
+      scope: 'MATERIAL',
+      OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' as const } })),
+    },
     select: { name: true },
   });
   const have = new Set(existing.map((t) => t.name.toLowerCase()));

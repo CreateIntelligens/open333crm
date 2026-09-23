@@ -22,7 +22,12 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { CASE_CATEGORIES, CASE_CATEGORY_OPTIONS, isValidCaseCategory } from '@open333crm/shared';
+import {
+  CASE_CATEGORIES,
+  CASE_CATEGORY_OPTIONS,
+  LEGACY_CASE_CATEGORIES,
+  isValidCaseCategory,
+} from '@open333crm/shared';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const apiSrc = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
@@ -154,6 +159,37 @@ t('關鍵不變式：建立頁能選的分類，詳情頁都必須能顯示', ()
       `建立頁的「${c}」在詳情頁下拉找不到，存檔會把分類洗掉`,
     );
   }
+});
+
+// ─── code review 發現（2026-09-23）：舊分類的相容 ────────────────────────
+
+t('更新端點放行舊分類，建立端點不放行', () => {
+  // 本機實測：把工單 category 改成「維修」後打 PATCH，原本回 400
+  // ——使用者只是改個標題、表單把 category 原樣送回就存不了，
+  // 而且訊息叫他從新清單挑，但新清單沒有對應項，等於這張工單再也存不了。
+  const code = apiSrc('modules/case/case.routes.ts');
+  assert.ok(
+    code.includes('caseCategoryUpdateSchema'),
+    '更新端點未用寬鬆 schema——既有工單改不了',
+  );
+  assert.ok(
+    /category: caseCategoryUpdateSchema\.optional\(\)/.test(code),
+    'updateCaseSchema 未套用寬鬆版',
+  );
+  // 建立仍要嚴格，否則新資料會繼續帶舊值
+  assert.ok(
+    /const createCaseSchema[\s\S]{0,400}?category: caseCategorySchema\.optional\(\)/.test(code),
+    'createCaseSchema 不該放行舊分類',
+  );
+});
+
+t('LEGACY_CASE_CATEGORIES 正是被移除的那三項', () => {
+  assert.deepStrictEqual([...LEGACY_CASE_CATEGORIES], ['維修', '查詢', '投訴']);
+  // 「其他」兩邊都有，不該列入 legacy
+  assert.ok(
+    !(LEGACY_CASE_CATEGORIES as readonly string[]).includes('其他'),
+    '「其他」在新清單內，不是 legacy 值',
+  );
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

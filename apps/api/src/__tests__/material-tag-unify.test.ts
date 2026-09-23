@@ -184,6 +184,41 @@ t('前端標籤管理有「素材」選項', () => {
   );
 });
 
+// ─── code review 發現（2026-09-23）──────────────────────────────────────
+
+t('刪除 MATERIAL 標籤會一併從 Material.tags 移除', () => {
+  // 不處理的話：管理員在設定頁刪了標籤，素材仍帶著那個字串，
+  // 而 listMaterialTags 會併入舊字串 → 刪掉的標籤立刻又出現在建議清單。
+  const code = src('modules/tag/tagging.service.ts');
+  assert.ok(
+    code.includes('removeMaterialTagString'),
+    'deleteTenantTag 未清理 Material.tags——刪掉的標籤會馬上復活',
+  );
+  const block = code.slice(code.indexOf('export async function deleteTenantTag'));
+  assert.ok(
+    /scope === 'MATERIAL'[\s\S]{0,120}?removeMaterialTagString/.test(block),
+    '未在 MATERIAL scope 時呼叫清理',
+  );
+});
+
+t('改名 MATERIAL 標籤會同步 Material.tags 內的字串', () => {
+  // 不同步的話 Tag 列是新名、素材是舊名，建議清單會同時出現兩個。
+  const code = src('modules/tag/tagging.service.ts');
+  assert.ok(code.includes('renameMaterialTagString'), 'updateTenantTag 未同步素材標籤');
+});
+
+t('registerMaterialTags 的既有查詢是大小寫不敏感', () => {
+  // names 已用 toLowerCase 去重，但 Postgres 的 in 與 @@unique 都區分大小寫。
+  // 只用 `in: names` 查的話，素材 A 存 Sale、B 存 sale 會建出兩筆 Tag 列。
+  const block = service.slice(
+    service.indexOf('export async function registerMaterialTags'),
+  );
+  assert.ok(
+    /mode: 'insensitive'/.test(block),
+    '查詢未用 insensitive——大小寫不同的同義標籤會重複建立',
+  );
+});
+
 // ─── 回填腳本 ─────────────────────────────────────────────────────────────
 
 t('有回填腳本處理既有資料', () => {

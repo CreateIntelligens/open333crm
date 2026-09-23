@@ -256,6 +256,12 @@ export async function updateTenantTag(
     }
   }
 
+  // 素材標籤存字串，改名要同步替換，否則 Tag 列變新名、素材仍是舊名，
+  // 建議清單會同時出現兩個（新的來自 Tag 表、舊的來自 Material.tags）。
+  if (tag.scope === 'MATERIAL' && input.name && input.name !== tag.name) {
+    await renameMaterialTagString(prisma, input.tenantId, tag.name, input.name);
+  }
+
   return prisma.tag.update({
     where: { id: input.tagId },
     data: {
@@ -268,6 +274,47 @@ export async function updateTenantTag(
 
 // 收 TenantDb：呼叫端以 withTenant(prisma, tid, tx => deleteTenantTag(tx, ...)) 包在
 // 綁定租戶的交易內，故此處依序刪除即為原子（不自開 $transaction，避免與外層巢狀）。
+/**
+ * 從所有素材的 tags 陣列移除某個標籤名稱。
+ *
+ * 素材標籤存在 Material.tags（String[]）而非關聯表，所以刪 Tag 列不會自動清掉——
+ * 需要手動掃過帶有該字串的素材。租戶內素材量不大（數百筆級），逐筆更新可接受。
+ */
+async function removeMaterialTagString(
+  prisma: PrismaExecutor,
+  tenantId: string,
+  name: string,
+): Promise<void> {
+  const affected = await prisma.material.findMany({
+    where: { tenantId, tags: { has: name } },
+    select: { id: true, tags: true },
+  });
+  for (const m of affected) {
+    await prisma.material.update({
+      where: { id: m.id },
+      data: { tags: m.tags.filter((t) => t !== name) },
+    });
+  }
+}
+
+/** 把所有素材 tags 內的舊名稱換成新名稱（改名時保持兩邊一致）。 */
+async function renameMaterialTagString(
+  prisma: PrismaExecutor,
+  tenantId: string,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  const affected = await prisma.material.findMany({
+    where: { tenantId, tags: { has: oldName } },
+    select: { id: true, tags: true },
+  });
+  for (const m of affected) {
+    // 若素材已同時有新舊兩個名稱，換完要去重
+    const next = [...new Set(m.tags.map((t) => (t === oldName ? newName : t)))];
+    await prisma.material.update({ where: { id: m.id }, data: { tags: next } });
+  }
+}
+
 export async function deleteTenantTag(
   prisma: TenantDb,
   tenantId: string,
@@ -275,7 +322,7 @@ export async function deleteTenantTag(
 ) {
   const tag = await prisma.tag.findFirst({
     where: { id: tagId, tenantId },
-    select: { id: true },
+    select: { id: true, name: true, scope: true },
   });
 
   if (!tag) {
@@ -285,6 +332,14 @@ export async function deleteTenantTag(
   await prisma.contactTag.deleteMany({ where: { tagId } });
   await prisma.caseTag.deleteMany({ where: { tagId } });
   await prisma.conversationTag.deleteMany({ where: { tagId } });
+
+  // 素材標籤存在 Material.tags（String[]）而非關聯表，刪 Tag 列不會自動清掉。
+  // 不處理的話：管理員刪了標籤，素材仍帶著那個字串，
+  // 而 listMaterialTags 會併入舊字串 → 刪掉的標籤立刻又出現在建議清單。
+  if (tag.scope === 'MATERIAL') {
+    await removeMaterialTagString(prisma, tenantId, tag.name);
+  }
+
   await prisma.tag.delete({ where: { id: tagId } });
 
   return { deleted: true };

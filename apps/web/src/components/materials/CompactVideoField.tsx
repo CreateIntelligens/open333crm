@@ -88,7 +88,12 @@ export function CompactVideoField({ value, onChange, placeholder, maxBytes }: Pr
 
         <Input
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            // 清掉上一次的上傳錯誤：兩種錯誤共用同一個顯示位置，
+            // 不清的話使用者改網址後仍看到「上傳失敗」，蓋住即時的網址檢查結果。
+            if (error) setError(null);
+            onChange(e.target.value);
+          }}
           placeholder={placeholder ?? 'https://example.com/video.mp4'}
           className="flex-1 text-xs"
         />

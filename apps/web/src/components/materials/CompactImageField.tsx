@@ -32,6 +32,11 @@ interface Props {
    * 「上傳成功」，直到按下發布才收到 400——白做工且錯誤時機很晚。
    */
   maxBytes?: number;
+  /**
+   * 像素尺寸限制（選填）。LINE Rich Menu 有明確的寬高範圍要求，
+   * 不在上傳時擋下的話，圖片會傳成功、直到按發布才被 LINE 退件。
+   */
+  pixelLimits?: { minWidth?: number; maxWidth?: number; minHeight?: number };
   /** 自訂上傳端點（預設 /files/upload；imagemap 底圖走 /files/imagemap-upload 產多尺寸）。 */
   uploadEndpoint?: string;
   /** 從上傳回應取出要存的 URL（預設取 data.url；imagemap 取 data.baseUrl）。 */
@@ -62,7 +67,7 @@ function readImageSize(file: File): Promise<{ width: number; height: number }> {
   });
 }
 
-export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio, maxBytes, uploadEndpoint, extractUrl }: Props) {
+export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio, maxBytes, pixelLimits, uploadEndpoint, extractUrl }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +83,25 @@ export function CompactImageField({ value, onChange, placeholder, hint, requireA
         );
         setUploading(false);
         return;
+      }
+
+      // 像素尺寸驗證（LINE Rich Menu 有明確的寬高範圍要求）
+      if (pixelLimits) {
+        const { width, height } = await readImageSize(file);
+        const { minWidth, maxWidth, minHeight } = pixelLimits;
+        if (
+          (minWidth && width < minWidth) ||
+          (maxWidth && width > maxWidth) ||
+          (minHeight && height < minHeight)
+        ) {
+          const range = [
+            minWidth && maxWidth ? `寬 ${minWidth}~${maxWidth}px` : null,
+            minHeight ? `高至少 ${minHeight}px` : null,
+          ].filter(Boolean).join('、');
+          setError(`圖片尺寸不符：需 ${range}，此圖為 ${width}×${height}。`);
+          setUploading(false);
+          return;
+        }
       }
 
       // 版型比例驗證：上傳前讀圖實際尺寸，比例不符（容差 3%）則擋下。
