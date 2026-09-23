@@ -25,15 +25,17 @@ interface Tag {
 }
 
 const SCOPE_OPTIONS = [
-  { value: 'CONTACT', label: '聯繫人' },
+  { value: 'CONTACT', label: '聯絡人' },
   { value: 'CONVERSATION', label: '對話' },
   { value: 'CASE', label: '案件' },
+  { value: 'MATERIAL', label: '素材' },
 ];
 
 const SCOPE_LABELS: Record<string, string> = {
-  CONTACT: '聯繫人',
+  CONTACT: '聯絡人',
   CONVERSATION: '對話',
   CASE: '案件',
+  MATERIAL: '素材',
 };
 
 const COLOR_PRESETS = [
@@ -130,12 +132,13 @@ export function TagManagement() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除此標籤嗎？已套用在聯繫人、對話和案件上的標籤也會一併移除。')) return;
+    if (!confirm('確定要刪除此標籤嗎？已套用在聯絡人、對話和案件上的標籤也會一併移除。')) return;
     try {
       await api.delete(`/tags/${id}`);
       fetchTags();
     } catch {
       console.error('Failed to delete tag');
+      alert('刪除標籤失敗，請稍後重試');
     }
   };
 
@@ -153,7 +156,7 @@ export function TagManagement() {
         <div>
           <h2 className="text-lg font-semibold">標籤管理</h2>
           <p className="text-sm text-muted-foreground">
-            管理聯繫人、對話和案件的分類標籤
+            管理聯絡人、對話和案件的分類標籤
           </p>
         </div>
         <Button size="sm" onClick={openCreate}>
@@ -164,7 +167,7 @@ export function TagManagement() {
 
       {/* Scope filter */}
       <div className="flex gap-2">
-        {(['ALL', 'CONTACT', 'CONVERSATION', 'CASE'] as const).map((scope) => (
+        {(['ALL', 'CONTACT', 'CONVERSATION', 'CASE', 'MATERIAL'] as const).map((scope) => (
           <button
             key={scope}
             onClick={() => setFilterScope(scope)}

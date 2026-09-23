@@ -4,7 +4,38 @@ import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../shared/utils/response.js';
 
+/**
+ * 唯一約束衝突時，把資料庫欄位名轉成使用者看得懂的說法。
+ * 未收錄者不顯示欄位名——寧可訊息籠統，也不要把 schema 洩漏出去。
+ */
+const UNIQUE_FIELD_LABELS: Record<string, string> = {
+  email: '電子郵件',
+  name: '名稱',
+  slug: '代稱',
+  code: '代碼',
+  uid: '使用者識別',
+  phone: '電話',
+  permissionCode: '權限',
+  tagId: '標籤',
+  key: '欄位名稱',
+};
+
 async function errorHandlerPlugin(fastify: FastifyInstance) {
+  /**
+   * 找不到路由。
+   *
+   * ⚠️ Fastify 的「無對應路由」404 **不會經過 setErrorHandler**，
+   * 而是走內建的 not-found handler，回 { message, error, statusCode } ——
+   * 既是英文、格式也與全站的 { success, error: { code, message } } 不同。
+   * 本機實測確認後補上此 handler。
+   */
+  fastify.setNotFoundHandler((request, reply) => {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: '找不到此頁面或資源' },
+    });
+  });
+
   fastify.setErrorHandler((error: FastifyError | Error, request, reply) => {
     request.log.error(error);
 
@@ -14,7 +45,7 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Request validation failed',
+          message: '輸入內容有誤，請檢查後重新送出',
           details: {
             issues: error.issues.map((issue) => ({
               path: issue.path.join('.'),
@@ -41,12 +72,17 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       switch (error.code) {
         case 'P2002': {
+          // 唯一約束衝突。target 是「資料庫欄位名」，不可直接顯示給使用者——
+          // 轉成使用者語彙；未收錄的欄位寧可籠統也不要洩漏 schema。
           const target = (error.meta?.target as string[]) ?? [];
+          const labels = target.map((t) => UNIQUE_FIELD_LABELS[t]).filter(Boolean);
           return reply.status(409).send({
             success: false,
             error: {
               code: 'CONFLICT',
-              message: `A record with the same ${target.join(', ')} already exists`,
+              message: labels.length
+                ? `${labels.join('、')}已存在，請換一個`
+                : '資料重複，已有相同的記錄存在',
             },
           });
         }
@@ -55,15 +91,17 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
             success: false,
             error: {
               code: 'NOT_FOUND',
-              message: 'Record not found',
+              message: '找不到指定的資料，可能已被刪除',
             },
           });
         default:
+          // ⚠️ 原本回 error.message，會外洩表名、欄位與 SQL 片段。
+          // 第 9 行的 request.log.error 已保留原文，除錯資訊不會遺失。
           return reply.status(400).send({
             success: false,
             error: {
               code: 'DATABASE_ERROR',
-              message: error.message,
+              message: '資料處理失敗，請確認輸入內容後重試',
             },
           });
       }
@@ -75,7 +113,7 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid data provided to the database',
+          message: '提供的資料格式不正確',
         },
       });
     }
@@ -83,11 +121,13 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
     // Fastify built-in errors (e.g., 404 from router)
     if ('statusCode' in error && typeof error.statusCode === 'number') {
       const statusCode = error.statusCode;
+      // ⚠️ 原本回 error.message（框架原文，如 "Body must be object"）。
+      // 原文已在 log 中，此處只回可讀說明。
       return reply.status(statusCode).send({
         success: false,
         error: {
           code: statusCode === 404 ? 'NOT_FOUND' : 'REQUEST_ERROR',
-          message: error.message,
+          message: statusCode === 404 ? '找不到此頁面或資源' : '請求格式不正確，請重新操作',
         },
       });
     }
@@ -97,7 +137,7 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
       success: false,
       error: {
         code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
+        message: '系統發生未預期的錯誤，請稍後重試',
       },
     });
   });

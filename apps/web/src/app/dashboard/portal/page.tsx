@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Plus, Play, Square, Loader2, Users } from 'lucide-react';
+import { Plus, Play, Square, Loader2, Users, Archive } from 'lucide-react';
 import { useActivities } from '@/hooks/usePortal';
 import { ActivityFormDialog } from '@/components/portal/ActivityFormDialog';
 import { SubmissionsView } from '@/components/portal/SubmissionsView';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ActivityItem {
   id: string;
@@ -42,7 +43,12 @@ const statusMap: Record<string, { label: string; color: string }> = {
 };
 
 function ActivityList() {
-  const { activities, isLoading, mutate } = useActivities();
+  // 封存的活動預設不顯示（後端 listActivities 會排除 ARCHIVED）。
+  // 沒有這個切換的話，封存等於單向操作——unarchiveActivity 端點存在卻無路徑可達。
+  const [showArchived, setShowArchived] = useState(false);
+  const { activities, isLoading, mutate } = useActivities(
+    showArchived ? { status: 'ARCHIVED' } : undefined,
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
@@ -54,6 +60,7 @@ function ActivityList() {
       mutate();
     } catch (err) {
       console.error('Publish error:', err);
+      alert(getApiErrorMessage(err, '發布失敗，請稍後重試'));
     } finally {
       setActioning(null);
     }
@@ -66,6 +73,36 @@ function ActivityList() {
       mutate();
     } catch (err) {
       console.error('End error:', err);
+      alert(getApiErrorMessage(err, '結束活動失敗，請稍後重試'));
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  const handleArchive = async (id: string) => {
+    // 封存而非刪除：PortalSubmission 對活動是 Cascade，
+    // 硬刪會連帶清掉參與者的提交紀錄與積分依據。
+    if (!confirm('封存後此活動不再顯示於列表，參與紀錄仍會保留。確定封存？')) return;
+    setActioning(id);
+    try {
+      await api.post(`/portal/activities/${id}/archive`);
+      mutate();
+    } catch (err) {
+      console.error('Archive error:', err);
+      alert(getApiErrorMessage(err, '封存失敗，請稍後重試'));
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  const handleUnarchive = async (id: string) => {
+    setActioning(id);
+    try {
+      await api.post(`/portal/activities/${id}/unarchive`);
+      mutate();
+    } catch (err) {
+      console.error('Unarchive error:', err);
+      alert(getApiErrorMessage(err, '取消封存失敗，請稍後重試'));
     } finally {
       setActioning(null);
     }
@@ -78,12 +115,21 @@ function ActivityList() {
       mutate();
     } catch (err) {
       console.error('Delete error:', err);
+      alert(getApiErrorMessage(err, '刪除失敗，請稍後重試'));
     }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <Button
+          variant={showArchived ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setShowArchived((v) => !v)}
+        >
+          <Archive className="h-4 w-4 mr-1" />
+          {showArchived ? '返回活動列表' : '查看已封存'}
+        </Button>
         <Button onClick={() => { setEditData(null); setDialogOpen(true); }}>
           <Plus className="h-4 w-4 mr-1" /> 建立活動
         </Button>
@@ -145,6 +191,19 @@ function ActivityList() {
                       <Button size="sm" variant="outline" onClick={() => handleEnd(a.id)} disabled={actioning === a.id}>
                         {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 mr-1" />}
                         結束
+                      </Button>
+                    )}
+                    {a.status === 'ARCHIVED' && (
+                      <Button size="sm" variant="outline" onClick={() => handleUnarchive(a.id)} disabled={actioning === a.id}>
+                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3 mr-1" />}
+                        取消封存
+                      </Button>
+                    )}
+                    {a.status === 'ENDED' && (
+                      // 已結束的活動原本沒有任何操作，會永遠留在列表上
+                      <Button size="sm" variant="ghost" onClick={() => handleArchive(a.id)} disabled={actioning === a.id}>
+                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3 mr-1" />}
+                        封存
                       </Button>
                     )}
                   </div>

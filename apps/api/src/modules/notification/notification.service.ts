@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface CreateNotificationInput {
   tenantId: string;
@@ -85,7 +86,7 @@ export async function markAsRead(
   });
 
   if (!notification) {
-    throw new AppError('Notification not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('notification'), 'NOT_FOUND', 404);
   }
 
   const updated = await prisma.notification.update({

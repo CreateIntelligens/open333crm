@@ -303,8 +303,9 @@ function CreatedApiKeyDialog({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
-      alert(keyData.key);
+      // 複製失敗的退路：直接顯示讓使用者手動複製。
+      // 金鑰僅在建立當下顯示一次，關掉就再也看不到，故必須提醒。
+      alert(`複製失敗，請手動複製並妥善保存（此金鑰僅顯示這一次）：\n\n${keyData.key}`);
     }
   };
 

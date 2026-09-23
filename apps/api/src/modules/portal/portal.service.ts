@@ -6,6 +6,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { eventBus } from '../../events/event-bus.js';
 import { addPointTransaction } from './points.service.js';
+import { AppError } from '../../shared/utils/response.js';
 
 // ─── Activity CRUD ──────────────────────────────────────────────────────────
 
@@ -16,7 +17,13 @@ export async function listActivities(
 ) {
   const where: Record<string, unknown> = { tenantId };
   if (filters.type) where.type = filters.type;
-  if (filters.status) where.status = filters.status;
+  if (filters.status) {
+    where.status = filters.status;
+  } else {
+    // 預設不顯示已封存的活動；要看的話明確帶 status=ARCHIVED 查詢。
+    // ENDED 活動原本無法刪除（只有 DRAFT 可刪），誤建的活動會永遠留在列表上。
+    where.status = { not: 'ARCHIVED' };
+  }
 
   const page = filters.page ?? 1;
   const limit = filters.limit ?? 20;
@@ -106,7 +113,7 @@ export async function updateActivity(
 ) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
-  if (activity.status !== 'DRAFT') throw new Error('Only DRAFT activities can be updated');
+  if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以編輯', 'INVALID_ACTIVITY_STATUS', 409);
 
   // Replace options and fields if provided
   if (data.options) {
@@ -156,14 +163,14 @@ export async function updateActivity(
 export async function deleteActivity(prisma: TenantDb, id: string, tenantId: string) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
-  if (activity.status !== 'DRAFT') throw new Error('Only DRAFT activities can be deleted');
+  if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以刪除', 'INVALID_ACTIVITY_STATUS', 409);
   return prisma.portalActivity.delete({ where: { id } });
 }
 
 export async function publishActivity(prisma: TenantDb, id: string, tenantId: string) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
-  if (activity.status !== 'DRAFT') throw new Error('Only DRAFT activities can be published');
+  if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以發布', 'INVALID_ACTIVITY_STATUS', 409);
   return prisma.portalActivity.update({
     where: { id },
     data: { status: 'PUBLISHED', publishedAt: new Date() },
@@ -173,7 +180,45 @@ export async function publishActivity(prisma: TenantDb, id: string, tenantId: st
 export async function endActivity(prisma: TenantDb, id: string, tenantId: string) {
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
-  if (activity.status !== 'PUBLISHED') throw new Error('Only PUBLISHED activities can be ended');
+  if (activity.status !== 'PUBLISHED') throw new AppError('僅已發布的活動可以結束', 'INVALID_ACTIVITY_STATUS', 409);
+  return prisma.portalActivity.update({
+    where: { id },
+    data: { status: 'ENDED' },
+  });
+}
+
+/**
+ * 封存活動：把已結束（或草稿）的活動從列表收起來。
+ *
+ * 為什麼不是直接刪除：PortalSubmission 對 PortalActivity 是
+ * onDelete: Cascade，硬刪會連帶清掉所有參與者的提交紀錄與積分依據。
+ * 活動辦完了要「從列表消失」，不該以銷毀客戶資料為代價。
+ *
+ * 已發布中（PUBLISHED）的活動不可封存——那是還在進行的活動，
+ * 要先按「結束」。
+ */
+export async function archiveActivity(prisma: TenantDb, id: string, tenantId: string) {
+  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  if (!activity) return null;
+  if (activity.status === 'PUBLISHED') {
+    throw new AppError('進行中的活動請先結束再封存', 'INVALID_ACTIVITY_STATUS', 409);
+  }
+  if (activity.status === 'ARCHIVED') {
+    throw new AppError('此活動已封存', 'INVALID_ACTIVITY_STATUS', 409);
+  }
+  return prisma.portalActivity.update({
+    where: { id },
+    data: { status: 'ARCHIVED' },
+  });
+}
+
+/** 取消封存：把活動放回列表（回到 ENDED） */
+export async function unarchiveActivity(prisma: TenantDb, id: string, tenantId: string) {
+  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  if (!activity) return null;
+  if (activity.status !== 'ARCHIVED') {
+    throw new AppError('此活動未封存', 'INVALID_ACTIVITY_STATUS', 409);
+  }
   return prisma.portalActivity.update({
     where: { id },
     data: { status: 'ENDED' },
@@ -214,12 +259,12 @@ export async function submitActivity(
     where: { id: activityId, tenantId, status: 'PUBLISHED' },
     include: { options: true },
   });
-  if (!activity) throw new Error('Activity not found or not published');
+  if (!activity) throw new AppError('活動不存在或尚未開放', 'ACTIVITY_NOT_AVAILABLE', 404);
 
   // Check time range
   const now = new Date();
-  if (activity.startsAt && now < activity.startsAt) throw new Error('Activity has not started yet');
-  if (activity.endsAt && now > activity.endsAt) throw new Error('Activity has ended');
+  if (activity.startsAt && now < activity.startsAt) throw new AppError('活動尚未開始，請於開始後再試', 'ACTIVITY_NOT_STARTED', 409);
+  if (activity.endsAt && now > activity.endsAt) throw new AppError('活動已結束', 'ACTIVITY_ENDED', 409);
 
   // Check duplicate submission
   const settings = activity.settings as Record<string, unknown>;
@@ -228,7 +273,7 @@ export async function submitActivity(
     const existing = await prisma.portalSubmission.findFirst({
       where: { activityId, contactId },
     });
-    if (existing) throw new Error('Already submitted');
+    if (existing) throw new AppError('您已參加過這個活動', 'ALREADY_SUBMITTED', 409);
   }
 
   // Calculate score for QUIZ
@@ -309,15 +354,22 @@ export async function drawWinners(
 
 // ─── Activity result stats (public) ─────────────────────────────────────────
 
-export async function getActivityResult(prisma: PrismaClient, activityId: string) {
+export async function getActivityResult(
+  prisma: PrismaClient,
+  activityId: string,
+  tenantId: string,
+) {
+  // tenantId 為必填：本函式的唯一呼叫端是公開的粉絲門戶（走 prismaAdmin
+  // 繞過 RLS），若不在查詢條件內限定租戶，任何粉絲都能拿活動 id 讀到
+  // 其他租戶的投票／問卷結果。
   const activity = await prisma.portalActivity.findFirst({
-    where: { id: activityId },
+    where: { id: activityId, tenantId },
     include: { options: { orderBy: { sortOrder: 'asc' } } },
   });
   if (!activity) return null;
 
   const submissions = await prisma.portalSubmission.findMany({
-    where: { activityId },
+    where: { activityId, tenantId },
     select: { answers: true, score: true },
   });
 

@@ -53,7 +53,7 @@ export default function ContactDetailPage() {
   if (loading) {
     return (
       <div className="flex h-full flex-col">
-        <Topbar title="聯繫人詳情" />
+        <Topbar title="聯絡人詳情" />
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -64,9 +64,9 @@ export default function ContactDetailPage() {
   if (!contact) {
     return (
       <div className="flex h-full flex-col">
-        <Topbar title="聯繫人詳情" />
+        <Topbar title="聯絡人詳情" />
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-muted-foreground">找不到聯繫人</p>
+          <p className="text-muted-foreground">找不到聯絡人</p>
         </div>
       </div>
     );
@@ -74,7 +74,7 @@ export default function ContactDetailPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="聯繫人詳情">
+      <Topbar title="聯絡人詳情">
         <div className="flex items-center gap-2">
           <Link href="/dashboard/contacts">
             <Button variant="ghost" size="sm">
@@ -88,7 +88,7 @@ export default function ContactDetailPage() {
             onClick={() => setShowMergeModal(true)}
           >
             <Merge className="mr-1 h-4 w-4" />
-            合併聯繫人
+            合併聯絡人
           </Button>
         </div>
       </Topbar>

@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 export function SubmissionsView() {
   const { activities } = useActivities();
@@ -34,6 +35,7 @@ export function SubmissionsView() {
       mutate();
     } catch (err) {
       console.error('Draw error:', err);
+      alert(getApiErrorMessage(err, '抽獎失敗，請稍後重試'));
     } finally {
       setDrawing(false);
     }
@@ -67,7 +69,7 @@ export function SubmissionsView() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="text-left p-3">聯繫人</th>
+                <th className="text-left p-3">聯絡人</th>
                 <th className="text-left p-3">提交時間</th>
                 <th className="text-left p-3">答案摘要</th>
                 {selectedActivity?.type === 'QUIZ' && <th className="text-left p-3">得分</th>}

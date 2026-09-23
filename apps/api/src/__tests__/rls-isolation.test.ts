@@ -92,10 +92,64 @@ test('⑦ 白名單 admin bypass：app_admin 未綁定也能跨租戶查', async
   assert.ok(total >= countA, 'admin(BYPASSRLS) 不受 RLS 限制，能看到全部租戶資料');
 });
 
+// ─── 標籤（2026-09-23 素材標籤統一後補上）──────────────────────────────
+//
+// 標籤的 @@unique 是 [tenantId, name, scope]，「同名不同租戶」是合法且常見的
+// （兩家公司都會有「促銷」）。這正是隔離失效時最容易出事的形狀：
+// 漏帶 tenantId 的查詢會撈到別家的標籤，而且名稱一樣、肉眼看不出來。
+
+test('⑧ 標籤正向隔離：同名標籤不會跨租戶互見', async () => {
+  const NAME = 'RLS-CI-同名標籤';
+  // 兩個租戶各建一筆同名標籤（用 admin 繞過 RLS 建資料）
+  for (const tenantId of [TENANT_A, TENANT_B]) {
+    await adminDb.tag
+      .create({ data: { tenantId, name: NAME, scope: 'MATERIAL', type: 'MANUAL' } })
+      .catch(() => {}); // 已存在就略過
+  }
+
+  const seenByA = await withTenant(tenantDb, TENANT_A, (tx) =>
+    tx.tag.findMany({ where: { name: NAME }, select: { tenantId: true } }),
+  );
+  assert.equal(seenByA.length, 1, '綁 A 時同名標籤只該看到自己那筆');
+  assert.equal(seenByA[0].tenantId, TENANT_A);
+
+  const seenByB = await withTenant(tenantDb, TENANT_B, (tx) =>
+    tx.tag.findMany({ where: { name: NAME }, select: { tenantId: true } }),
+  );
+  assert.equal(seenByB.length, 1, '綁 B 時同名標籤只該看到自己那筆');
+  assert.equal(seenByB[0].tenantId, TENANT_B);
+});
+
+test('⑨ 標籤 fail-closed：未綁租戶 → 查不到任何標籤', async () => {
+  const n = await tenantDb.tag.count();
+  assert.equal(n, 0, '未設 app.current_tenant 時標籤應 fail-closed');
+});
+
+test('⑩ 標籤 WITH CHECK：綁 A 時不可寫入 B 租戶的標籤', async () => {
+  await assert.rejects(
+    () =>
+      withTenant(tenantDb, TENANT_A, (tx) =>
+        tx.tag.create({
+          data: {
+            tenantId: TENANT_B,
+            name: 'RLS-CI-越權標籤',
+            scope: 'MATERIAL',
+            type: 'MANUAL',
+          },
+        }),
+      ),
+    /row-level security|violates/i,
+    '綁 A 時寫入 B 租戶的標籤應被 WITH CHECK 擋',
+  );
+});
+
 test.after(async () => {
   // 清理可能殘留的越權測試列（用 admin）
   await adminDb.contact
     .deleteMany({ where: { displayName: 'RLS-CI-越權' } })
+    .catch(() => {});
+  await adminDb.tag
+    .deleteMany({ where: { name: { startsWith: 'RLS-CI-' } } })
     .catch(() => {});
   await tenantDb.$disconnect();
   await adminDb.$disconnect();

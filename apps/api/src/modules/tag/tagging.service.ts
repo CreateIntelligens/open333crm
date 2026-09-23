@@ -2,8 +2,20 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { eventBus } from '../../events/event-bus.js';
 import { AppError } from '../../shared/utils/response.js';
 import type { TenantScopedClient, TenantDb } from '../../lib/tenant-db.js';
+import { notFound } from '../../shared/messages/resource.js';
 
+/**
+ * 可以「貼標」的目標——這三種有各自的關聯表（ContactTag / CaseTag / ConversationTag）。
+ * 素材不在此列：素材標籤存在 Material.tags（String[]），沒有關聯表，
+ * 不走 addTagToTarget 這條路（見 material.service 的 registerMaterialTags）。
+ */
 export type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
+
+/**
+ * 標籤的適用範圍——比 TagTargetType 多一個 MATERIAL。
+ * 建立標籤時可指定素材範圍，但素材本身的貼標不經過關聯表。
+ */
+export type TagScopeType = TagTargetType | 'MATERIAL';
 type TagKind = 'MANUAL' | 'AUTO' | 'SYSTEM' | 'CHANNEL';
 
 type PrismaExecutor = PrismaClient | Prisma.TransactionClient | TenantScopedClient;
@@ -34,7 +46,7 @@ interface CreateTagInput {
   name: string;
   color: string;
   type: TagKind;
-  scope: TagTargetType;
+  scope: TagScopeType;
   description?: string;
 }
 
@@ -65,7 +77,7 @@ async function assertTargetExists(
         where: { id: targetId, tenantId },
         select: { id: true },
       });
-      if (!target) throw new AppError('Contact not found', 'NOT_FOUND', 404);
+      if (!target) throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
       return;
     }
     case 'CASE': {
@@ -73,7 +85,7 @@ async function assertTargetExists(
         where: { id: targetId, tenantId },
         select: { id: true },
       });
-      if (!target) throw new AppError('Case not found', 'NOT_FOUND', 404);
+      if (!target) throw new AppError(notFound('case'), 'NOT_FOUND', 404);
       return;
     }
     case 'CONVERSATION': {
@@ -81,7 +93,7 @@ async function assertTargetExists(
         where: { id: targetId, tenantId },
         select: { id: true },
       });
-      if (!target) throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+      if (!target) throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
       return;
     }
   }
@@ -96,7 +108,7 @@ async function getTenantTag(
     where: { id: tagId, tenantId },
     select: TAG_SELECT,
   });
-  if (!tag) throw new AppError('Tag not found', 'NOT_FOUND', 404);
+  if (!tag) throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
   return tag;
 }
 
@@ -202,7 +214,7 @@ export async function createTenantTag(
     select: { id: true },
   });
   if (duplicate) {
-    throw new AppError('Tag name already exists in this scope', 'CONFLICT', 409);
+    throw new AppError('這個範圍內已有同名標籤，請換一個名稱', 'CONFLICT', 409);
   }
 
   return prisma.tag.create({
@@ -226,7 +238,7 @@ export async function updateTenantTag(
   });
 
   if (!tag) {
-    throw new AppError('Tag not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
   }
 
   if (input.name && input.name !== tag.name) {
@@ -240,8 +252,14 @@ export async function updateTenantTag(
       select: { id: true },
     });
     if (duplicate) {
-      throw new AppError('Tag name already exists in this scope', 'CONFLICT', 409);
+      throw new AppError('這個範圍內已有同名標籤，請換一個名稱', 'CONFLICT', 409);
     }
+  }
+
+  // 素材標籤存字串，改名要同步替換，否則 Tag 列變新名、素材仍是舊名，
+  // 建議清單會同時出現兩個（新的來自 Tag 表、舊的來自 Material.tags）。
+  if (tag.scope === 'MATERIAL' && input.name && input.name !== tag.name) {
+    await renameMaterialTagString(prisma, input.tenantId, tag.name, input.name);
   }
 
   return prisma.tag.update({
@@ -256,6 +274,47 @@ export async function updateTenantTag(
 
 // 收 TenantDb：呼叫端以 withTenant(prisma, tid, tx => deleteTenantTag(tx, ...)) 包在
 // 綁定租戶的交易內，故此處依序刪除即為原子（不自開 $transaction，避免與外層巢狀）。
+/**
+ * 從所有素材的 tags 陣列移除某個標籤名稱。
+ *
+ * 素材標籤存在 Material.tags（String[]）而非關聯表，所以刪 Tag 列不會自動清掉——
+ * 需要手動掃過帶有該字串的素材。租戶內素材量不大（數百筆級），逐筆更新可接受。
+ */
+async function removeMaterialTagString(
+  prisma: PrismaExecutor,
+  tenantId: string,
+  name: string,
+): Promise<void> {
+  const affected = await prisma.material.findMany({
+    where: { tenantId, tags: { has: name } },
+    select: { id: true, tags: true },
+  });
+  for (const m of affected) {
+    await prisma.material.update({
+      where: { id: m.id },
+      data: { tags: m.tags.filter((t) => t !== name) },
+    });
+  }
+}
+
+/** 把所有素材 tags 內的舊名稱換成新名稱（改名時保持兩邊一致）。 */
+async function renameMaterialTagString(
+  prisma: PrismaExecutor,
+  tenantId: string,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  const affected = await prisma.material.findMany({
+    where: { tenantId, tags: { has: oldName } },
+    select: { id: true, tags: true },
+  });
+  for (const m of affected) {
+    // 若素材已同時有新舊兩個名稱，換完要去重
+    const next = [...new Set(m.tags.map((t) => (t === oldName ? newName : t)))];
+    await prisma.material.update({ where: { id: m.id }, data: { tags: next } });
+  }
+}
+
 export async function deleteTenantTag(
   prisma: TenantDb,
   tenantId: string,
@@ -263,16 +322,24 @@ export async function deleteTenantTag(
 ) {
   const tag = await prisma.tag.findFirst({
     where: { id: tagId, tenantId },
-    select: { id: true },
+    select: { id: true, name: true, scope: true },
   });
 
   if (!tag) {
-    throw new AppError('Tag not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
   }
 
   await prisma.contactTag.deleteMany({ where: { tagId } });
   await prisma.caseTag.deleteMany({ where: { tagId } });
   await prisma.conversationTag.deleteMany({ where: { tagId } });
+
+  // 素材標籤存在 Material.tags（String[]）而非關聯表，刪 Tag 列不會自動清掉。
+  // 不處理的話：管理員刪了標籤，素材仍帶著那個字串，
+  // 而 listMaterialTags 會併入舊字串 → 刪掉的標籤立刻又出現在建議清單。
+  if (tag.scope === 'MATERIAL') {
+    await removeMaterialTagString(prisma, tenantId, tag.name);
+  }
+
   await prisma.tag.delete({ where: { id: tagId } });
 
   return { deleted: true };
@@ -296,7 +363,7 @@ export async function removeTagFromTarget(
           },
         },
       });
-      if (!existing) throw new AppError('Contact tag not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('contactTag'), 'NOT_FOUND', 404);
       await prisma.contactTag.delete({
         where: {
           contactId_tagId: {
@@ -316,7 +383,7 @@ export async function removeTagFromTarget(
           },
         },
       });
-      if (!existing) throw new AppError('Case tag not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('caseTag'), 'NOT_FOUND', 404);
       await prisma.caseTag.delete({
         where: {
           caseId_tagId: {
@@ -336,7 +403,7 @@ export async function removeTagFromTarget(
           },
         },
       });
-      if (!existing) throw new AppError('Conversation tag not found', 'NOT_FOUND', 404);
+      if (!existing) throw new AppError(notFound('conversationTag'), 'NOT_FOUND', 404);
       await prisma.conversationTag.delete({
         where: {
           conversationId_tagId: {

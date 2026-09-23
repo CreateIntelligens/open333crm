@@ -40,6 +40,7 @@ import { requirePermission } from "../../guards/rbac.guard.js";
 import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
+import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 
 const dayScheduleSchema = z
   .object({
@@ -458,8 +459,16 @@ const createApiKeySchema = z.object({
   expiresInDays: z.number().int().positive().nullable().optional(),
 });
 
+/** System prompt 長度上限：直接影響每次 LLM 呼叫的 token 成本 */
+export const MAX_SYSTEM_PROMPT_LENGTH = 8000;
+
+const systemPromptSchema = z
+  .string()
+  .max(MAX_SYSTEM_PROMPT_LENGTH, `提示詞不可超過 ${MAX_SYSTEM_PROMPT_LENGTH} 字`);
+
 const embeddingSettingsSchema = z.object({
-  baseUrl: z.string().url().optional(),
+  // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
+  baseUrl: httpUrlSchema.optional(),
   model: z.string().min(1).optional(),
   topK: z.number().int().min(1).max(20).optional(),
   threshold: z.number().min(0).max(1).optional(),
@@ -468,20 +477,25 @@ const embeddingSettingsSchema = z.object({
 const chatSettingsSchema = z.object({
   provider: z.enum(["ollama", "gemini"]).optional(),
   model: z.string().min(1).optional(),
-  baseUrl: z.string().url().optional(),
+  // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
+  baseUrl: httpUrlSchema.optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(8192).optional(),
-  chatSystemPrompt: z.string().optional(),
-  summarizeSystemPrompt: z.string().optional(),
-  clarifySystemPrompt: z.string().optional(),
-  modelGuideSystemPrompt: z.string().optional(),
+  // 這四段會直接進 LLM context，無上限等於可撐爆 token 預算。
+  // 上限 8000 字：專案內建的四段預設 prompt 最長 360 字（CLARIFY），
+  // 8000 留了 20 倍以上的客製空間，同時擋住 10 萬字這種明顯失控的輸入。
+  chatSystemPrompt: systemPromptSchema.optional(),
+  summarizeSystemPrompt: systemPromptSchema.optional(),
+  clarifySystemPrompt: systemPromptSchema.optional(),
+  modelGuideSystemPrompt: systemPromptSchema.optional(),
   clarifyThreshold: z.number().min(0).max(1).optional(),
   clarifyMaxAttempts: z.number().int().min(0).max(5).optional(),
 });
 
 const chatModelsQuery = z.object({
   provider: z.enum(["ollama", "gemini"]),
-  baseUrl: z.string().url().optional(),
+  // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
+  baseUrl: httpUrlSchema.optional(),
 });
 
 const createCliSessionSchema = z.object({

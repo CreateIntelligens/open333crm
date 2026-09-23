@@ -6,6 +6,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import type { ChatboxThemeConfig } from '@open333crm/shared';
+import { notFound } from '../../shared/messages/resource.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,7 +28,7 @@ export async function initVisitorSession(
     where: { id: channelId, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
 
-  if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
+  if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
 
   const settings = (channel.settings ?? {}) as Record<string, unknown>;
   const greeting = (settings.welcomeMessage as string | undefined) ?? null;
@@ -64,7 +65,7 @@ export async function handleVisitorMessage(
     where: { id: channelId, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
 
-  if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
+  if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
 
   const parsed: ParsedWebhookMessage = {
     channelMsgId: `webchat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -89,7 +90,7 @@ export async function uploadVisitorMedia(
   const channel = await prisma.channel.findFirst({
     where: { id: channelId, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
-  if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
+  if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
 
   const isImage = ALLOWED_IMAGE_MIMES.includes(mimetype);
   const isVideo = ALLOWED_VIDEO_MIMES.includes(mimetype);

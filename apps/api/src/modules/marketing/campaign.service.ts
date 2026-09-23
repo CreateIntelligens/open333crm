@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function listCampaigns(
   prisma: TenantDb,
@@ -37,7 +38,7 @@ export async function getCampaign(prisma: TenantDb, id: string, tenantId: string
     },
   });
   if (!campaign) {
-    throw new AppError('Campaign not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
 
   // Aggregate basic metrics from broadcasts
@@ -109,7 +110,7 @@ export async function updateCampaign(
 ) {
   const existing = await prisma.campaign.findFirst({ where: { id, tenantId } });
   if (!existing) {
-    throw new AppError('Campaign not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
 
   // Validate status transitions
@@ -147,10 +148,10 @@ export async function updateCampaign(
 export async function deleteCampaign(prisma: TenantDb, id: string, tenantId: string) {
   const existing = await prisma.campaign.findFirst({ where: { id, tenantId } });
   if (!existing) {
-    throw new AppError('Campaign not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
   }
   if (existing.status !== 'draft') {
-    throw new AppError('Only draft campaigns can be deleted', 'FORBIDDEN', 403);
+    throw new AppError('僅草稿狀態的行銷活動可以刪除', 'FORBIDDEN', 403);
   }
   await prisma.campaign.delete({ where: { id } });
   return { deleted: true };

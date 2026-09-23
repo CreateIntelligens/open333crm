@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface SegmentRules {
   conditions: Array<{
@@ -35,7 +36,7 @@ export async function getSegment(prisma: TenantDb, id: string, tenantId: string)
     where: { id, tenantId },
   });
   if (!segment) {
-    throw new AppError('Segment not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
   }
   return segment;
 }
@@ -71,7 +72,7 @@ export async function updateSegment(
 ) {
   const existing = await prisma.segment.findFirst({ where: { id, tenantId } });
   if (!existing) {
-    throw new AppError('Segment not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
   }
 
   const updateData: Record<string, unknown> = {};
@@ -94,7 +95,7 @@ export async function updateSegment(
 export async function deleteSegment(prisma: TenantDb, id: string, tenantId: string) {
   const existing = await prisma.segment.findFirst({ where: { id, tenantId } });
   if (!existing) {
-    throw new AppError('Segment not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
   }
   await prisma.segment.delete({ where: { id } });
   return { deleted: true };

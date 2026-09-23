@@ -59,7 +59,9 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
     }
 
     const targetUrl = await trackClick(
-      app.prisma,
+      // 公開端點無登入身分、無 tenant context，RLS 會 fail-closed 擋掉查詢，
+      // 故走 prismaAdmin（BYPASSRLS）。租戶邊界由 slug 全域唯一保證。
+      app.prismaAdmin,
       slug,
       {
         contactId: cid,
@@ -91,7 +93,8 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
       ua_simulator?: string;
     };
 
-    const resolved = await getLinkForRedirect(app.prisma, slug);
+    // 同 /track：公開端點必須走 prismaAdmin，否則 RLS fail-closed 一律查不到
+    const resolved = await getLinkForRedirect(app.prismaAdmin, slug);
     const override = uaSimulatorEnabled()
       ? parseSourceOverride(ua_simulator)
       : null;
@@ -113,11 +116,12 @@ export default async function shortlinkRedirectRoutes(app: FastifyInstance) {
     // LINE webview only: resolve the bound channel's LIFF app id.
     let liffId: string | null = null;
     if (source === "LINE_WEBVIEW" && link.lineChannelId) {
-      liffId = await getChannelLiffId(app.prisma, link.lineChannelId);
+      liffId = await getChannelLiffId(app.prismaAdmin, link.lineChannelId);
     }
 
     // Fetch tenant tracking settings (GA4, Meta Pixel).
-    const tenantSettings = await app.prisma.tenantSettings.findUnique({
+    // tenantId 取自已解析的 link，查詢仍限定單一租戶。
+    const tenantSettings = await app.prismaAdmin.tenantSettings.findUnique({
       where: { tenantId: link.tenantId },
       select: { gaId: true, metaPixelId: true },
     });

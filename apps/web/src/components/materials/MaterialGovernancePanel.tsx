@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { X, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { useMaterialCategoryTree, type MaterialCategoryNode } from '@/hooks/useMaterials';
+import { useMaterialCategoryTree, useMaterialTags, type MaterialCategoryNode } from '@/hooks/useMaterials';
 
 interface GovernanceState {
   categoryId: string | null;
@@ -38,16 +38,30 @@ function flattenTree(cats: MaterialCategoryNode[]): { cat: MaterialCategoryNode;
 
 export function MaterialGovernancePanel({ value, onChange }: Props) {
   const { categories } = useMaterialCategoryTree();
+  // 租戶內既有的素材標籤（由 GET /materials/tags 聚合）。
+  // 素材標籤是自由字串（Material.tags 是 String[]），與「設定→標籤管理」
+  // 的 Tag 表無關——那張表只關聯聯絡人／工單／對話。
+  // 但沒有建議清單的話，使用者每次都得憑記憶重打，很容易打出
+  // 「促銷」「促銷活動」「促銷檔期」這種同義分裂，過濾就失準了。
+  const { tags: existingTags, mutate: mutateTags } = useMaterialTags();
   const [tagInput, setTagInput] = useState('');
 
   const flat = flattenTree(categories);
 
-  const addTag = () => {
-    const t = tagInput.trim();
+  const addTag = (raw?: string) => {
+    const t = (raw ?? tagInput).trim();
     if (!t || value.tags.includes(t)) { setTagInput(''); return; }
     onChange({ ...value, tags: [...value.tags, t] });
     setTagInput('');
+    // 存檔後這個新標籤就會進入租戶的既有清單，先讓 SWR 重抓
+    void mutateTags();
   };
+
+  /** 尚未套用、且符合目前輸入的既有標籤（最多 8 個，避免洗版） */
+  const suggestions = existingTags
+    .filter((t) => !value.tags.includes(t))
+    .filter((t) => !tagInput.trim() || t.toLowerCase().includes(tagInput.trim().toLowerCase()))
+    .slice(0, 8);
   const removeTag = (t: string) => onChange({ ...value, tags: value.tags.filter((x) => x !== t) });
 
   return (
@@ -95,13 +109,40 @@ export function MaterialGovernancePanel({ value, onChange }: Props) {
           />
           <button
             type="button"
-            onClick={addTag}
+            onClick={() => addTag()}
             className="flex items-center rounded-md border border-border px-2 text-muted-foreground hover:bg-muted"
             aria-label="新增標籤"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
+
+        {/* 既有標籤建議：直接點選即可套用，避免同義分裂（促銷／促銷活動／促銷檔期） */}
+        {suggestions.length > 0 && (
+          <div className="mt-2">
+            <div className="mb-1 text-[11px] text-muted-foreground">
+              {tagInput.trim() ? '符合的既有標籤' : '常用標籤'}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => addTag(t)}
+                  className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {existingTags.length === 0 && (
+          <p className="mt-2 text-[11px] text-muted-foreground/70">
+            尚無既有標籤。直接輸入即可建立新標籤，之後其他素材就能沿用。
+          </p>
+        )}
       </div>
     </div>
   );

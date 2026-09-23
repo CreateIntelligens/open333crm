@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { MessageSquare } from 'lucide-react';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface ChatWindowProps {
   conversation: {
@@ -98,6 +99,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       globalMutate(`/conversations/${conversation.id}`);
     } catch (err) {
       console.error('Handoff failed:', err);
+      alert(getApiErrorMessage(err, '轉接失敗，請稍後重試'));
     }
   };
 
@@ -200,7 +202,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold">
-              {conversation.contact?.name || conversation.contact?.displayName || '未知聯繫人'}
+              {conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人'}
             </h3>
             <ChannelBadge channel={conversation.channelType} />
             <span

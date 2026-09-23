@@ -14,6 +14,7 @@ import {
 } from './template-renderer.js';
 import { resolveContext } from './template-context.js';
 import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 // --- Template CRUD ---
 
@@ -95,7 +96,7 @@ export async function getBroadcast(prisma: TenantDb, id: string, tenantId: strin
     },
   });
   if (!broadcast) {
-    throw new AppError('Broadcast not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   }
 
   // Add recipient-level metrics
@@ -133,7 +134,7 @@ export async function createBroadcast(
   },
 ) {
   if (Boolean(data.materialId) === Boolean(data.templateId)) {
-    throw new AppError('Must provide exactly one of materialId or templateId', 'INVALID_INPUT', 400);
+    throw new AppError('素材與版型請擇一提供，不可同時或都不填', 'INVALID_INPUT', 400);
   }
 
   // 驗證來源（Material 或舊 Template）
@@ -142,7 +143,7 @@ export async function createBroadcast(
       where: { id: data.materialId, tenantId, isActive: true },
     });
     if (!material) {
-      throw new AppError('Material not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('material'), 'NOT_FOUND', 404);
     }
   } else {
     const template = await prisma.messageTemplate.findFirst({
@@ -152,7 +153,7 @@ export async function createBroadcast(
       },
     });
     if (!template) {
-      throw new AppError('Template not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('template'), 'NOT_FOUND', 404);
     }
   }
 
@@ -161,7 +162,7 @@ export async function createBroadcast(
     where: { id: data.channelId, tenantId, isActive: true },
   });
   if (!channel) {
-    throw new AppError('Channel not found or inactive', 'NOT_FOUND', 404);
+    throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
   }
 
   // Validate campaign if provided
@@ -170,7 +171,7 @@ export async function createBroadcast(
       where: { id: data.campaignId, tenantId },
     });
     if (!campaign) {
-      throw new AppError('Campaign not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('campaign'), 'NOT_FOUND', 404);
     }
   }
 
@@ -180,7 +181,7 @@ export async function createBroadcast(
       where: { id: data.segmentId, tenantId },
     });
     if (!segment) {
-      throw new AppError('Segment not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
     }
   }
 
@@ -211,10 +212,12 @@ export async function cancelBroadcast(prisma: TenantDb, id: string, tenantId: st
     where: { id, tenantId },
   });
   if (!broadcast) {
-    throw new AppError('Broadcast not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   }
+  // 狀態清單取 main 的版本（LINE 重試機制要能取消 sending/failed 的群發），
+  // 訊息取本分支的中文版。
   if (!['draft', 'scheduled', 'sending', 'failed'].includes(broadcast.status)) {
-    throw new AppError('Can only cancel draft or scheduled broadcasts', 'INVALID_STATUS', 400);
+    throw new AppError('此群發目前的狀態無法取消', 'INVALID_STATUS', 400);
   }
 
   const updated = await prisma.broadcast.update({
@@ -289,10 +292,11 @@ export async function executeBroadcast(
     where: { id: broadcastId },
   });
   if (!broadcast) {
-    throw new AppError('Broadcast not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   }
+  // 同上：狀態清單取 main（支援重試），訊息取中文版
   if (!['draft', 'scheduled', 'sending', 'failed'].includes(broadcast.status)) {
-    throw new AppError('Broadcast is not in a sendable state', 'INVALID_STATUS', 400);
+    throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
   }
 
   // Mark as sending
@@ -303,10 +307,10 @@ export async function executeBroadcast(
 
   try {
     if (!broadcast.channelId || !broadcast.tenantId || !broadcast.createdById) {
-      throw new AppError('Broadcast data is incomplete', 'INVALID_STATE', 400);
+      throw new AppError('群發設定不完整，請補齊後再送出', 'INVALID_STATE', 400);
     }
     if (!broadcast.materialId && !broadcast.templateId) {
-      throw new AppError('Broadcast has no content source', 'INVALID_STATE', 400);
+      throw new AppError('群發尚未設定發送內容', 'INVALID_STATE', 400);
     }
 
     // 取得內容來源：優先 Material，舊資料 fallback Template
@@ -319,7 +323,7 @@ export async function executeBroadcast(
         where: { id: broadcast.materialId, tenantId: broadcast.tenantId },
       });
       if (!material) {
-        throw new AppError('Material not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('material'), 'NOT_FOUND', 404);
       }
       contentType = material.contentType;
       body = material.body as Record<string, unknown>;
@@ -351,7 +355,7 @@ export async function executeBroadcast(
         },
       });
       if (!template) {
-        throw new AppError('Template not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('template'), 'NOT_FOUND', 404);
       }
       contentType = template.contentType;
       body = template.body as Record<string, unknown>;
@@ -363,7 +367,7 @@ export async function executeBroadcast(
       where: { id: broadcast.channelId, tenantId: broadcast.tenantId, isActive: true },
     });
     if (!channel) {
-      throw new AppError('Channel not found or inactive', 'NOT_FOUND', 404);
+      throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
     }
 
     const plugin = getChannelPlugin(channel.channelType);

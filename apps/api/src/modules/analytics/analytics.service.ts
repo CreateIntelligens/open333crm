@@ -636,7 +636,7 @@ export async function exportCsv(
         },
         orderBy: { createdAt: 'desc' },
       });
-      const headers = 'ID,標題,狀態,優先級,分類,指派客服,聯繫人,建立時間,解決時間,CSAT';
+      const headers = 'ID,標題,狀態,優先級,分類,指派客服,聯絡人,建立時間,解決時間,CSAT';
       const rows = cases.map((c) =>
         [
           c.id,

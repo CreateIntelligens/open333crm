@@ -25,6 +25,7 @@ import { LineFlexTemplateEditor } from './line/LineFlexTemplateEditor';
 import { MaterialPreview } from './MaterialPreview';
 import { QuickReplyEditor, type QuickReplyItem } from './QuickReplyEditor';
 import type { MaterialVariable } from '@/hooks/useMaterials';
+import { validateMaterialBody } from './validate-body';
 
 export interface MaterialDraft {
   name: string;
@@ -101,6 +102,12 @@ function bodyEditorFor(contentType: string) {
 export function MaterialEditor({ draft, templateName, saving, onChange, onSave, onCancel, rightPanelExtra }: Props) {
   const BodyEditor = useMemo(() => bodyEditorFor(draft.contentType), [draft.contentType]);
   const [showPreview, setShowPreview] = useState(true);
+  // 存檔前擋控：內容有「存下去也一定不會動」的問題時禁用存檔鈕，
+  // 避免使用者按了才被後端退（如 LINE 影片填了 YouTube 分享連結）。
+  const blockReason = useMemo(
+    () => validateMaterialBody(draft.contentType, draft.body),
+    [draft.contentType, draft.body],
+  );
   const handleBodyChange = (nextBody: Record<string, unknown>) => {
     onChange({
       ...draft,
@@ -124,11 +131,17 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
           <Button variant="outline" onClick={() => setShowPreview((v) => !v)}>
             <Eye className="mr-1 h-4 w-4" />{showPreview ? '隱藏預覽' : '顯示預覽'}
           </Button>
-          <Button onClick={onSave} disabled={saving}>
+          <Button onClick={onSave} disabled={saving || !!blockReason} title={blockReason ?? undefined}>
             <Save className="mr-1 h-4 w-4" />{saving ? '儲存中…' : '存為素材'}
           </Button>
         </div>
       </div>
+
+      {blockReason && (
+        <p className="mt-2 text-right text-xs text-red-600">
+          無法儲存：{blockReason}
+        </p>
+      )}
 
       {/* 二欄：左編輯流（細分隔線分區，不用灰底卡）+ 右預覽/治理 sticky */}
       <div className={`grid gap-8 pt-5 ${showPreview ? 'lg:grid-cols-[1fr_360px]' : ''}`}>

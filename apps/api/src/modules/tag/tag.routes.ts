@@ -4,17 +4,19 @@ import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const createTagSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1, '標籤名稱不可為空白').max(50, '標籤名稱不可超過 50 字'),
   color: z.string().default('#6366f1'),
   type: z.enum(['MANUAL', 'AUTO', 'SYSTEM', 'CHANNEL']),
-  scope: z.enum(['CONTACT', 'CONVERSATION', 'CASE']),
+  // MATERIAL：素材標籤（2026-09-23 統一，原本存在 Material.tags 自由字串）
+  scope: z.enum(['CONTACT', 'CONVERSATION', 'CASE', 'MATERIAL']),
   description: z.string().optional(),
 });
 
 const updateTagSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1, '標籤名稱不可為空白').max(50, '標籤名稱不可超過 50 字').optional(),
   color: z.string().optional(),
   description: z.string().optional(),
 });
@@ -57,7 +59,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
     });
 
     if (!tag) {
-      throw new AppError('Tag not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
     }
 
     const updated = await updateTenantTag(request.tenantPrisma, {
@@ -76,7 +78,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
     });
 
     if (!tag) {
-      throw new AppError('Tag not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('tag'), 'NOT_FOUND', 404);
     }
 
     // 連鎖刪除包在綁定租戶的交易內（RLS + 原子性）

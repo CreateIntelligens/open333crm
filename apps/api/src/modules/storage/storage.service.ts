@@ -62,7 +62,7 @@ export function buildQuarantineKey(
   directory: QuarantineDirectory = 'media',
 ): string {
   if (!/^[a-z0-9-]+$/i.test(directory)) {
-    throw new AppError('Invalid quarantine directory', 'BAD_REQUEST', 400);
+    throw new AppError('隔離區路徑不正確', 'BAD_REQUEST', 400);
   }
   return `${tenantId}/quarantine/${directory}/${randomUUID()}${extname(filename) || ''}`;
 }
@@ -147,12 +147,12 @@ export async function completePresignedUpload(
   directory: StorageDirectory = 'media',
 ): Promise<{ key: string; url: string; detectedMime?: string }> {
   if (!isTenantQuarantineKey(key, tenantId)) {
-    throw new AppError('Invalid quarantine object', 'FORBIDDEN', 403);
+    throw new AppError('隔離區檔案不正確', 'FORBIDDEN', 403);
   }
 
   const object = await getProvider().getObject(key, MAX_QUARANTINE_BYTES);
   if (!object) {
-    throw new AppError('Quarantine object not found or exceeds size limit', 'NOT_FOUND', 404);
+    throw new AppError('找不到此檔案，或檔案超過可掃描的大小上限', 'NOT_FOUND', 404);
   }
 
   let promotedKey: string | undefined;

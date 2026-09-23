@@ -100,7 +100,7 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
       // 全新聯絡人 + 全新渠道身分：這是不折不扣的首次進站。
       ctx.isFirstContact = true;
     } catch (err) {
-      // 同一新聯繫人的兩則訊息（或平台重複投遞）併發進來時，另一請求可能已先建立
+      // 同一新聯絡人的兩則訊息（或平台重複投遞）併發進來時，另一請求可能已先建立
       // 同 (channelId, uid) 的 identity → 撞 P2002。改用對方建立的，回收本次孤兒 contact。
       // 撞到表示對方才是首次，本次不標記（招呼語因此只會送一次）。
       if ((err as { code?: string }).code !== 'P2002') throw err;

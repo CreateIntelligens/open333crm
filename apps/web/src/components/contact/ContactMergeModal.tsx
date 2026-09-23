@@ -213,7 +213,7 @@ export function ContactMergeModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>合併聯繫人</DialogTitle>
+          <DialogTitle>合併聯絡人</DialogTitle>
         </DialogHeader>
 
         {/* Step Indicator */}
@@ -258,7 +258,7 @@ export function ContactMergeModal({
               {/* Primary contact card */}
               <div className="rounded-lg border p-4">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">
-                  主要聯繫人（保留）
+                  主要聯絡人（保留）
                 </p>
                 <div className="flex items-center gap-3">
                   <Avatar
@@ -340,7 +340,7 @@ export function ContactMergeModal({
                       }}
                       onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
                       onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-                      placeholder="搜尋聯繫人..."
+                      placeholder="搜尋聯絡人..."
                       className="pl-9"
                     />
                     {showDropdown && searchResults.length > 0 && (
@@ -374,7 +374,7 @@ export function ContactMergeModal({
                     )}
                     {showDropdown && searchQuery.length >= 2 && searchResults.length === 0 && (
                       <div className="absolute z-50 mt-1 w-full rounded-md border bg-background p-3 text-sm text-muted-foreground shadow-lg">
-                        找不到聯繫人
+                        找不到聯絡人
                       </div>
                     )}
                   </div>

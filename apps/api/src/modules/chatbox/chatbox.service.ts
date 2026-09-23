@@ -26,6 +26,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { processInboundMessage } from '../webhook/webhook.service.js';
 import { uploadVisitorMedia } from '../webchat/webchat.service.js';
 import type { ChatboxMessageRegistry } from './chatbox.registry.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const TOKEN_VERSION = 'cb2';
 const FINGERPRINT_VERSION = 1;
@@ -170,7 +171,7 @@ function encryptSessionPayload(payload: { randomPart: string; expiresAt: number 
 function decryptSessionPayload(sessionId: string): { randomPart: string; expiresAt: number } {
   const [version, ivPart, encryptedPart, tagPart] = sessionId.split('.');
   if (version !== TOKEN_VERSION || !ivPart || !encryptedPart || !tagPart) {
-    throw new AppError('Invalid chatbox session', 'UNAUTHORIZED', 401);
+    throw new AppError('聊天連線已失效，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
 
   try {
@@ -186,7 +187,7 @@ function decryptSessionPayload(sessionId: string): { randomPart: string; expires
     }
     return { randomPart: payload.randomPart, expiresAt: payload.expiresAt };
   } catch {
-    throw new AppError('Invalid chatbox session', 'UNAUTHORIZED', 401);
+    throw new AppError('聊天連線已失效，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
 }
 
@@ -205,7 +206,7 @@ export function issueChatboxSessionId(expiresAt = new Date(Date.now() + getChatb
 export function verifyChatboxSessionId(sessionId: string): { tokenDigest: string } {
   const payload = decryptSessionPayload(sessionId);
   if (payload.expiresAt <= Date.now()) {
-    throw new AppError('Chatbox session is expired', 'UNAUTHORIZED', 401);
+    throw new AppError('聊天連線已逾時，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
 
   return { tokenDigest: digestTokenMaterial(payload.randomPart) };
@@ -219,7 +220,7 @@ export async function claimChatboxSession(
   const session = await verifyChatboxSession(prisma, input);
   const ttlMs = getClaimTtlMs(session.expiresAt);
   if (ttlMs <= 0) {
-    throw new AppError('Chatbox session is expired', 'UNAUTHORIZED', 401);
+    throw new AppError('聊天連線已逾時，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
 
   const claimToken = generateClaimToken();
@@ -233,12 +234,12 @@ export async function claimChatboxSession(
     const redis = claimRedis ?? await getDefaultClaimRedis();
     const created = await redis.set(getChatboxClaimKey(session.tokenDigest), JSON.stringify(value), 'PX', ttlMs, 'NX');
     if (created !== 'OK') {
-      throw new AppError('Chatbox session is already in use', 'FORBIDDEN', 403);
+      throw new AppError('此聊天連線已在其他地方使用中', 'FORBIDDEN', 403);
     }
   } catch (err) {
     if (err instanceof AppError) throw err;
     logger.error('[Chatbox] Redis claim failed:', err);
-    throw new AppError('Chatbox session claim unavailable', 'SERVICE_UNAVAILABLE', 503);
+    throw new AppError('聊天連線暫時無法建立，請稍後重試', 'SERVICE_UNAVAILABLE', 503);
   }
 
   return { session, claimToken };
@@ -250,7 +251,7 @@ export async function verifyClaimedChatboxSession(
   claimRedis?: ChatboxClaimRedis,
 ): Promise<VerifiedChatboxSession> {
   if (!input.claimToken) {
-    throw new AppError('Chatbox session claim is required', 'UNAUTHORIZED', 401);
+    throw new AppError('缺少聊天連線憑證', 'UNAUTHORIZED', 401);
   }
 
   const session = await verifyChatboxSession(prisma, input);
@@ -258,15 +259,15 @@ export async function verifyClaimedChatboxSession(
     const redis = claimRedis ?? await getDefaultClaimRedis();
     const claim = parseClaimValue(await redis.get(getChatboxClaimKey(session.tokenDigest)));
     if (!claim || claim.sessionId !== session.id) {
-      throw new AppError('Chatbox session claim is invalid', 'FORBIDDEN', 403);
+      throw new AppError('聊天連線憑證無效，請重新整理頁面', 'FORBIDDEN', 403);
     }
     if (!timingSafeEqualHex(claim.claimTokenDigest, digestClaimToken(input.claimToken))) {
-      throw new AppError('Chatbox session claim is invalid', 'FORBIDDEN', 403);
+      throw new AppError('聊天連線憑證無效，請重新整理頁面', 'FORBIDDEN', 403);
     }
   } catch (err) {
     if (err instanceof AppError) throw err;
     logger.error('[Chatbox] Redis claim verification failed:', err);
-    throw new AppError('Chatbox session claim unavailable', 'SERVICE_UNAVAILABLE', 503);
+    throw new AppError('聊天連線暫時無法建立，請稍後重試', 'SERVICE_UNAVAILABLE', 503);
   }
 
   return session;
@@ -353,7 +354,7 @@ function buildPublicConfig(channel: VerifiedChatboxSession['channel']): ChatboxB
 
 export async function resolveChatboxChannel(prisma: PrismaClient, publicKey: string) {
   if (!publicKey) {
-    throw new AppError('channel publicKey is required', 'BAD_REQUEST', 400);
+    throw new AppError('請提供渠道公開金鑰', 'BAD_REQUEST', 400);
   }
 
   const identifiers: Array<{ publicKey: string } | { id: string }> = [{ publicKey }];
@@ -362,7 +363,7 @@ export async function resolveChatboxChannel(prisma: PrismaClient, publicKey: str
   const channel = await prisma.channel.findFirst({
     where: { OR: identifiers, channelType: CHANNEL_TYPE.WEBCHAT, isActive: true },
   });
-  if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
+  if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   return channel;
 }
 
@@ -484,15 +485,15 @@ export async function verifyChatboxSession(
     },
   });
 
-  if (!session) throw new AppError('Invalid chatbox session', 'UNAUTHORIZED', 401);
+  if (!session) throw new AppError('聊天連線已失效，請重新整理頁面', 'UNAUTHORIZED', 401);
   if (session.revokedAt || session.riskLevel === 'REVOKED') {
-    throw new AppError('Chatbox session is revoked', 'FORBIDDEN', 403);
+    throw new AppError('聊天連線已被終止，請重新整理頁面', 'FORBIDDEN', 403);
   }
   if (session.expiresAt.getTime() <= now.getTime()) {
-    throw new AppError('Chatbox session is expired', 'UNAUTHORIZED', 401);
+    throw new AppError('聊天連線已逾時，請重新整理頁面', 'UNAUTHORIZED', 401);
   }
   if (!session.channel.isActive || session.channel.channelType !== CHANNEL_TYPE.WEBCHAT) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   const actualFingerprint = normalizeChatboxFingerprint(input.fingerprint, input.userAgent);
@@ -510,7 +511,7 @@ export async function verifyChatboxSession(
         where: { id: session.id },
         data: { riskLevel: 'HIGH' },
       });
-      throw new AppError('Chatbox session fingerprint mismatch', 'FORBIDDEN', 403);
+      throw new AppError('聊天連線環境與建立時不符，請重新整理頁面', 'FORBIDDEN', 403);
     }
   }
 
@@ -564,7 +565,7 @@ export async function adaptChatboxMessageToWebchatParsed(
 ): Promise<ParsedWebhookMessage> {
   const plugin = getChannelPlugin(CHANNEL_TYPE.WEBCHAT);
   if (!plugin) {
-    throw new AppError('WEBCHAT channel plugin is not registered', 'INTERNAL_ERROR', 500);
+    throw new AppError('網頁聊天渠道模組未註冊，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
   }
 
   const channelMsgId = `chatbox-${input.clientMessageId}`;
@@ -577,7 +578,7 @@ export async function adaptChatboxMessageToWebchatParsed(
   }));
   const parsed = await plugin.parseWebhook(rawBody, {});
   const message = parsed[0];
-  if (!message) throw new AppError('Unable to parse chatbox message', 'BAD_REQUEST', 400);
+  if (!message) throw new AppError('無法解析訊息內容', 'BAD_REQUEST', 400);
 
   return {
     ...message,
@@ -634,7 +635,7 @@ export async function handleChatboxMessage(
 
   if (!result?.message) {
     logger.warn('[Chatbox] processInboundMessage returned without message');
-    throw new AppError('Unable to save message', 'INTERNAL_ERROR', 500);
+    throw new AppError('訊息儲存失敗，請稍後重試', 'INTERNAL_ERROR', 500);
   }
 
   return { message: registry.serialize(result.message), duplicate: result.duplicate };

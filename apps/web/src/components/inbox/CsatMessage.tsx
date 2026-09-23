@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface CsatMessageProps {
   score?: number;
@@ -28,6 +29,7 @@ export function CsatMessage({ score: initialScore, readonly, caseId, onRate }: C
         await api.post(`/cases/${caseId}/csat`, { score: star });
       } catch (err) {
         console.error('Failed to submit CSAT:', err);
+        alert(getApiErrorMessage(err, '評分送出失敗，請稍後重試'));
       }
     }
   };

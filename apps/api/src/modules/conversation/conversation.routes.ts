@@ -19,6 +19,8 @@ import { withTenant } from '../../lib/tenant-db.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
+import { notFound } from '../../shared/messages/resource.js';
+import { validateOutboundMessage } from '@open333crm/shared';
 
 interface MediaUploadConfig {
   allowedMimes: readonly string[];
@@ -51,7 +53,7 @@ async function handleSendMedia(
   config: MediaUploadConfig,
 ): Promise<unknown> {
   const file = await request.file();
-  if (!file) throw new AppError('No file uploaded', 'BAD_REQUEST', 400);
+  if (!file) throw new AppError('請選擇要上傳的檔案', 'BAD_REQUEST', 400);
 
   if (!config.allowedMimes.includes(file.mimetype)) {
     throw new AppError(`Unsupported file type. Allowed: ${config.allowedMimes.join(', ')}`, 'BAD_REQUEST', 400);
@@ -77,7 +79,7 @@ async function handleSendMedia(
   });
 
   if (!conversation || conversation.tenantId !== tenantId) {
-    throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
   // CM-173：送媒體屬回覆類操作，需 reply_only 以上（渠道不可見或層級不足 → 403）
@@ -128,10 +130,20 @@ const updateConversationSchema = z.object({
   assignedToId: z.string().uuid().nullable().optional(),
 });
 
-const sendMessageSchema = z.object({
-  contentType: z.string().default('text'),
-  content: z.record(z.unknown()),
-});
+// 原本是 `contentType: z.string()` + `content: z.record(z.unknown())`，
+// 幾乎等於沒驗：空物件、空字串、純空白、亂填欄位、非法 contentType
+// 全部回 201 並以 OUTBOUND 落庫，走真實渠道時會推一則空訊息給客戶。
+const sendMessageSchema = z
+  .object({
+    contentType: z.string().default('text'),
+    content: z.record(z.unknown()),
+  })
+  .superRefine((val, ctx) => {
+    const err = validateOutboundMessage(val.contentType, val.content);
+    if (err) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: err, path: ['content'] });
+    }
+  });
 
 const addTagSchema = z.object({
   tagId: z.string().uuid(),
@@ -185,13 +197,13 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
 
     // 查無此對話（或非本租戶）→ 404，避免下方存取 channelId 觸發 500
     if (!conversation) {
-      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
     }
 
     // CM-173：渠道不在可見集合 → 視為不存在（404），不洩漏他店資料
     const accessible = await resolveChannelVisibility(request);
     if (!isChannelAccessible(accessible, conversation.channelId)) {
-      throw new AppError('Conversation not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
     }
 
     return reply.send(success(conversation));

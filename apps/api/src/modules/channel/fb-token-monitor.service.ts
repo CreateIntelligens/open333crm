@@ -7,6 +7,7 @@ import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface TokenStatus {
   valid: boolean;
@@ -25,7 +26,7 @@ export async function checkFbTokenStatus(
   });
 
   if (!channel) {
-    throw new AppError('Facebook channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('fbChannel'), 'NOT_FOUND', 404);
   }
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);
@@ -34,7 +35,7 @@ export async function checkFbTokenStatus(
   const appSecret = credentials.appSecret as string | undefined;
 
   if (!pageAccessToken) {
-    throw new AppError('Missing Facebook page access token', 'BAD_REQUEST', 400);
+    throw new AppError('缺少 Facebook 粉絲專頁存取權杖，請至渠道設定填寫', 'BAD_REQUEST', 400);
   }
 
   // Use debug_token endpoint if we have app credentials

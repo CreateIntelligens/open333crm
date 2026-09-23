@@ -19,6 +19,8 @@ import { Badge } from '@/components/ui/badge';
 import { CaseStatusBadge } from './CaseStatusBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
+import { getApiErrorMessage } from '@/lib/api-error';
+import { CASE_CATEGORY_OPTIONS } from '@open333crm/shared';
 
 // Valid transitions per spec
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -46,18 +48,9 @@ const PRIORITY_OPTIONS = [
   { value: 'URGENT', label: '緊急' },
 ];
 
-const CATEGORY_OPTIONS = [
-  { value: '', label: '未分類' },
-  { value: '產品諮詢', label: '產品諮詢' },
-  { value: '訂單問題', label: '訂單問題' },
-  { value: '退換貨', label: '退換貨' },
-  { value: '帳號問題', label: '帳號問題' },
-  { value: '技術支援', label: '技術支援' },
-  { value: '投訴建議', label: '投訴建議' },
-  { value: '付款問題', label: '付款問題' },
-  { value: '物流配送', label: '物流配送' },
-  { value: '其他', label: '其他' },
-];
+// 分類清單改由 @open333crm/shared 提供單一事實來源（含「未分類」空值）。
+// shared 的常數是 readonly，Select 的 options prop 要求可變陣列，故複製一份。
+const CATEGORY_OPTIONS = [...CASE_CATEGORY_OPTIONS];
 
 interface CaseDetailProps {
   caseData: {
@@ -150,6 +143,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
       onRefresh();
     } catch (err) {
       console.error('Failed to update case:', err);
+      alert(getApiErrorMessage(err, '更新案件失敗，請稍後重試'));
     } finally {
       setSaving(false);
     }
@@ -381,7 +375,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         {caseData.contact && (
           <>
             <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">聯繫人</h4>
+              <h4 className="mb-2 text-sm font-medium text-muted-foreground">聯絡人</h4>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
                 <Link

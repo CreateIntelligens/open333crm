@@ -4,6 +4,7 @@ import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface SimulatorMessageInput {
   channelType: string;
@@ -35,7 +36,7 @@ export async function simulateInboundMessage(
   });
 
   if (!channel) {
-    throw new AppError('Channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
   // 2. Find or create ChannelIdentity + Contact

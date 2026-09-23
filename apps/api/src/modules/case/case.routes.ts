@@ -21,8 +21,9 @@ import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { notFound } from '../../shared/messages/resource.js';
+import { CASE_CATEGORIES, LEGACY_CASE_CATEGORIES } from '@open333crm/shared';
 
-const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
 
 // 篩選值正規化為大寫再驗證，避免呼叫端送小寫（如 status=open）直塞 Prisma enum 炸 400
 const caseStatusEnum = z.enum(['OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED']);
@@ -32,7 +33,8 @@ const listQuerySchema = z.object({
   status: z.string().transform((s) => s.toUpperCase()).pipe(caseStatusEnum).optional(),
   priority: z.string().transform((s) => s.toUpperCase()).pipe(casePriorityEnum).optional(),
   assigneeId: z.string().uuid().optional(),
-  category: z.string().optional(),
+  // 篩選用：只限長度，不限列舉（允許查詢歷史遺留的舊分類值）
+  category: z.string().max(100).optional(),
   slaStatus: z.enum(['normal', 'warning', 'breached']).optional(),
   sortBy: z.enum(['slaDueAt', 'priority', 'createdAt']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
@@ -40,23 +42,57 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
+// 工單分類：改用 @open333crm/shared 的單一事實來源。
+// 原本是 z.string() 全開——實測 500 字亂碼與 <script> 都能寫入，
+// 會污染分類篩選下拉與報表版面。
+// 允許空字串（等同「未分類」，詳情頁可清空分類）。
+const caseCategorySchema = z
+  .string()
+  .max(100)
+  .refine((v) => v === '' || (CASE_CATEGORIES as readonly string[]).includes(v), {
+    message: `分類必須是下列其中之一：${CASE_CATEGORIES.join('、')}`,
+  });
+
+/**
+ * 更新用的分類驗證：除了新清單，額外放行 LEGACY_CASE_CATEGORIES。
+ *
+ * 為什麼不能直接套 caseCategorySchema：統一分類前建立的工單帶著舊值
+ * （維修／查詢／投訴），使用者打開這種工單改個標題、表單把 category 原樣送回，
+ * 就會被 400 擋下——訊息還叫他從新清單挑一個，但他根本沒改分類，
+ * 而且新清單裡沒有對應項，等於這張工單再也存不了。
+ *
+ * 建立走嚴格版（不讓新資料再帶舊值），更新走寬鬆版（不擋既有資料）。
+ * 待舊值清乾淨後可移除。
+ */
+const caseCategoryUpdateSchema = z
+  .string()
+  .max(100)
+  .refine(
+    (v) =>
+      v === '' ||
+      (CASE_CATEGORIES as readonly string[]).includes(v) ||
+      (LEGACY_CASE_CATEGORIES as readonly string[]).includes(v),
+    { message: `分類必須是下列其中之一：${CASE_CATEGORIES.join('、')}` },
+  );
+
 const createCaseSchema = z.object({
   contactId: z.string().uuid(),
   channelId: z.string().uuid(),
-  title: z.string().min(1).max(100),
+  title: z.string().trim().min(1, '標題不可為空白').max(100),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: z.string().optional(),
+  category: caseCategorySchema.optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   slaPolicyId: z.string().uuid().optional(),
 });
 
 const updateCaseSchema = z.object({
-  title: z.string().min(1).max(100).optional(),
+  title: z.string().trim().min(1, '標題不可為空白').max(100).optional(),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: z.string().optional(),
+  // 更新走寬鬆版：既有工單可能帶舊分類值，不可因此擋下存檔
+  category: caseCategoryUpdateSchema.optional(),
   status: z.enum(['OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED']).optional(),
   assigneeId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),
@@ -67,7 +103,7 @@ const assignSchema = z.object({
 });
 
 const escalateSchema = z.object({
-  reason: z.string().min(1),
+  reason: z.string().trim().min(1, '原因不可為空白').max(1000, '原因不可超過 1000 字'),
   note: z.string().max(500).optional(),
   newPriority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   assigneeId: z.string().uuid().optional(),
@@ -75,7 +111,7 @@ const escalateSchema = z.object({
 });
 
 const addNoteSchema = z.object({
-  content: z.string().min(1),
+  content: z.string().trim().min(1, '內容不可為空白').max(5000, '備註不可超過 5000 字'),
   isInternal: z.boolean().default(true),
 });
 
@@ -89,10 +125,10 @@ const csatSchema = z.object({
 });
 
 const createCaseFromConvSchema = z.object({
-  title: z.string().min(1).max(100),
+  title: z.string().trim().min(1, '標題不可為空白').max(100),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: z.string().optional(),
+  category: caseCategorySchema.optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   slaPolicyId: z.string().uuid().optional(),
@@ -157,14 +193,14 @@ export default async function caseRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
     );
     if (!caseRecord) {
-      throw new AppError('Case not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }
 
     // CM-173：案件所屬渠道不在可見集合 → 視為不存在（404）。
     // 總店（ALL_CHANNELS）時 isChannelAccessible 直接回 true。
     const accessible = await resolveChannelVisibility(request);
     if (!isChannelAccessible(accessible, caseRecord.channelId)) {
-      throw new AppError('Case not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('case'), 'NOT_FOUND', 404);
     }
 
     return reply.send(success(caseRecord));
@@ -375,7 +411,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     if (!recorded) {
       return reply.status(400).send({
         success: false,
-        error: { code: 'BAD_REQUEST', message: 'Unable to record CSAT score. Case may not exist or already rated.' },
+        error: { code: 'BAD_REQUEST', message: '無法記錄滿意度評分，此案件可能不存在或已評分過' },
       });
     }
 

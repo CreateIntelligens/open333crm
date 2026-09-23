@@ -25,6 +25,7 @@ import {
 } from './campaign.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
 // --- Schemas ---
 
@@ -40,26 +41,26 @@ const segmentRulesSchema = z.object({
 });
 
 const createSegmentSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   rules: segmentRulesSchema,
 });
 
 const updateSegmentSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(500).optional(),
   rules: segmentRulesSchema.optional(),
 });
 
 const createCampaignSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
 });
 
 const updateCampaignSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(500).optional(),
   status: z.enum(['draft', 'active', 'completed', 'cancelled']).optional(),
   startDate: z.string().nullable().optional(),
@@ -68,7 +69,7 @@ const updateCampaignSchema = z.object({
 
 const createBroadcastSchema = z
   .object({
-    name: z.string().min(1).max(200),
+    name: z.string().trim().min(1, '名稱不可為空白').max(200),
     // 來源二擇一：素材（推薦）或舊範本（向下相容）
     materialId: z.string().uuid().optional(),
     templateId: z.string().uuid().optional(),
@@ -85,7 +86,7 @@ const createBroadcastSchema = z
     scheduledAt: z.string().optional(),
   })
   .refine((data) => Boolean(data.materialId) !== Boolean(data.templateId), {
-    message: 'Must provide exactly one of materialId or templateId',
+    message: '素材與版型請擇一提供，不可同時或都不填',
     path: ['materialId'],
   });
 
@@ -100,8 +101,9 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get('/templates', async (request, reply) => {
     const query = request.query as Record<string, string>;
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '50', 10);
+    // 夾制下限：parseInt 讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
+    const page = clampPage(parseInt(query.page || '1', 10));
+    const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
     const result = await listTemplates(request.tenantPrisma, request.agent.tenantId, {
       category: query.category || undefined,
@@ -118,8 +120,9 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get('/segments', async (request, reply) => {
     const query = request.query as Record<string, string>;
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '50', 10);
+    // 夾制下限：parseInt 讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
+    const page = clampPage(parseInt(query.page || '1', 10));
+    const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
     const result = await listSegments(request.tenantPrisma, request.agent.tenantId, page, limit);
     return reply.send(paginated(result.segments, result.total, result.page, result.limit));
@@ -180,8 +183,9 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get('/campaigns', async (request, reply) => {
     const query = request.query as Record<string, string>;
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '50', 10);
+    // 夾制下限：parseInt 讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
+    const page = clampPage(parseInt(query.page || '1', 10));
+    const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
     const result = await listCampaigns(request.tenantPrisma, request.agent.tenantId, {
       status: query.status || undefined,
@@ -235,8 +239,9 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
 
   fastify.get('/broadcasts', async (request, reply) => {
     const query = request.query as Record<string, string>;
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '50', 10);
+    // 夾制下限：parseInt 讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
+    const page = clampPage(parseInt(query.page || '1', 10));
+    const limit = clampLimit(parseInt(query.limit || '50', 10), 50);
 
     const result = await listBroadcasts(request.tenantPrisma, request.agent.tenantId, {
       campaignId: query.campaignId || undefined,

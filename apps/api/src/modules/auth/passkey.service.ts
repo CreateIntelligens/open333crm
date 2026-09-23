@@ -63,7 +63,7 @@ export function getPasskeyConfig(): PasskeyConfig {
   }
 
   if (rpID.includes('://') || rpID.includes('/') || rpID.includes(':') || /\s/.test(rpID)) {
-    throw new AppError('Invalid WebAuthn RP ID configuration', 'INTERNAL_ERROR', 500);
+    throw new AppError('Passkey 網域設定不正確，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
   }
 
   let origin: string;
@@ -77,7 +77,7 @@ export function getPasskeyConfig(): PasskeyConfig {
     }
     origin = parsedOrigin.origin;
   } catch {
-    throw new AppError('Invalid WebAuthn origin configuration', 'INTERNAL_ERROR', 500);
+    throw new AppError('Passkey 來源設定不正確，請聯繫系統管理員', 'INTERNAL_ERROR', 500);
   }
 
   return {
@@ -102,7 +102,7 @@ export async function savePasskeyChallenge(
   );
 
   if (result !== 'OK') {
-    throw new AppError('Passkey challenge already exists', 'CONFLICT', 409);
+    throw new AppError('Passkey 驗證程序已在進行中，請稍候', 'CONFLICT', 409);
   }
 }
 
@@ -128,7 +128,7 @@ export async function consumePasskeyChallenge(
     }
     return parsed as PasskeyChallenge;
   } catch {
-    throw new AppError('Invalid passkey challenge', 'UNAUTHORIZED', 401);
+    throw new AppError('Passkey 驗證資料無效，請重新操作', 'UNAUTHORIZED', 401);
   }
 }
 
@@ -140,7 +140,7 @@ export async function storePasskeyChallenge(challenge: PasskeyChallenge): Promis
 export async function takePasskeyChallenge(challengeId: string): Promise<PasskeyChallenge> {
   const challenge = await consumePasskeyChallenge(getPasskeyRedis(), challengeId);
   if (!challenge) {
-    throw new AppError('Passkey challenge is missing or expired', 'UNAUTHORIZED', 401);
+    throw new AppError('Passkey 驗證已逾時，請重新操作', 'UNAUTHORIZED', 401);
   }
   return challenge;
 }

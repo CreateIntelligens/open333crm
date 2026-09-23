@@ -2,6 +2,7 @@ import type { PrismaClient } from '@open333crm/database';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function login(prisma: PrismaClient, email: string, password: string) {
   // email 全域唯一：直接用 email 查出 agent，agent.tenantId 即為登入者所屬租戶
@@ -26,16 +27,16 @@ export async function login(prisma: PrismaClient, email: string, password: strin
   });
 
   if (!agent) {
-    throw new AppError('Invalid email or password', 'INVALID_CREDENTIALS', 401);
+    throw new AppError('電子郵件或密碼不正確', 'INVALID_CREDENTIALS', 401);
   }
 
   if (!agent.isActive) {
-    throw new AppError('Account is disabled', 'ACCOUNT_DISABLED', 403);
+    throw new AppError('此帳號已被停用，請聯繫管理員', 'ACCOUNT_DISABLED', 403);
   }
 
   const valid = await verifyPassword(password, agent.passwordHash);
   if (!valid) {
-    throw new AppError('Invalid email or password', 'INVALID_CREDENTIALS', 401);
+    throw new AppError('電子郵件或密碼不正確', 'INVALID_CREDENTIALS', 401);
   }
 
   // 租戶被停用（例如欠費停權）時，即使帳號本身有效也擋下登入。
@@ -44,7 +45,7 @@ export async function login(prisma: PrismaClient, email: string, password: strin
   // 放在密碼驗證之後：避免未通過驗證者藉由 403(TENANT_DISABLED) 與 401 的差異
   // 枚舉出某 email 是否屬於被停用的租戶。
   if (!agent.tenant?.isActive) {
-    throw new AppError('Tenant is disabled', 'TENANT_DISABLED', 403);
+    throw new AppError('此租戶已停用，請聯繫管理員', 'TENANT_DISABLED', 403);
   }
 
   // 移除 passwordHash 與 join 進來的 tenant 物件，只回傳 agent 本身欄位
@@ -73,7 +74,7 @@ export async function getAgentById(prisma: TenantDb, agentId: string, tenantId: 
   });
 
   if (!agent) {
-    throw new AppError('Agent not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
 
   return agent;
@@ -108,7 +109,7 @@ export async function getActiveAgentForAuth(
   });
 
   if (!agent) {
-    throw new AppError('Account is disabled or unavailable', 'UNAUTHORIZED', 401);
+    throw new AppError('此帳號已停用或無法使用，請聯繫管理員', 'UNAUTHORIZED', 401);
   }
 
   return agent;

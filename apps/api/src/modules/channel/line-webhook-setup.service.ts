@@ -7,6 +7,7 @@ import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { notFound } from '../../shared/messages/resource.js';
 
 export interface LineWebhookSetupResult {
   success: boolean;
@@ -24,18 +25,18 @@ export async function autoSetupLineWebhook(
   });
 
   if (!channel) {
-    throw new AppError('LINE channel not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('lineChannel'), 'NOT_FOUND', 404);
   }
 
   if (!channel.webhookUrl) {
-    throw new AppError('Channel webhook URL not set. Please set webhook base URL first.', 'BAD_REQUEST', 400);
+    throw new AppError('尚未設定渠道 Webhook 網址，請先於渠道設定填寫 Webhook 基底網址', 'BAD_REQUEST', 400);
   }
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);
   const accessToken = credentials.channelAccessToken as string;
 
   if (!accessToken) {
-    throw new AppError('Missing LINE channel access token', 'BAD_REQUEST', 400);
+    throw new AppError('缺少 LINE 渠道存取權杖，請至渠道設定填寫', 'BAD_REQUEST', 400);
   }
 
   // 1. Set webhook endpoint URL
@@ -50,10 +51,12 @@ export async function autoSetupLineWebhook(
 
   if (!setResponse.ok) {
     const errBody = await setResponse.text();
+    // 管理員新增渠道時自動觸發：原文放 details 供排查，message 維持可讀
     throw new AppError(
-      `LINE Webhook 設定失敗 (${setResponse.status}): ${errBody}`,
+      'LINE Webhook 自動設定失敗，可改至 LINE 後台手動貼上網址',
       'CHANNEL_SETUP_FAILED',
       400,
+      { upstream: errBody, status: setResponse.status },
     );
   }
 

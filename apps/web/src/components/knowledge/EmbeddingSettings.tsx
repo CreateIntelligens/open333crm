@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface EmbeddingSettingsData {
   baseUrl: string;
@@ -101,7 +102,7 @@ export function EmbeddingSettings() {
       await fetchAll();
     } catch (err) {
       console.error('Failed to save embedding settings:', err);
-      alert('儲存失敗');
+      alert(getApiErrorMessage(err, '設定儲存失敗，請稍後重試'));
     } finally {
       setSaving(false);
     }
@@ -139,7 +140,7 @@ export function EmbeddingSettings() {
       setStats(refresh.data.data.stats);
     } catch (err) {
       console.error('Bulk re-embed failed:', err);
-      alert('重新嵌入失敗');
+      alert(getApiErrorMessage(err, '批次重建索引失敗，請稍後重試'));
     } finally {
       setReembedding(false);
     }

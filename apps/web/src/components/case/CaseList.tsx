@@ -79,7 +79,7 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
               標題
             </th>
             <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              聯繫人
+              聯絡人
             </th>
             <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
               分類

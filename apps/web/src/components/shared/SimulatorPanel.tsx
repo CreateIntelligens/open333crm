@@ -96,7 +96,7 @@ export function SimulatorPanel() {
 
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                聯繫人名稱（選填）
+                聯絡人名稱（選填）
               </label>
               <Input
                 value={contactName}

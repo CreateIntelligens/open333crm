@@ -14,6 +14,12 @@ import { CompactImageField } from '@/components/materials/CompactImageField';
 import { RichMenuPreview } from './RichMenuPreview';
 import { AreaActionEditor } from './AreaActionEditor';
 import type { RichMenuArea, RichMenuAction } from '@/hooks/useRichMenus';
+import {
+  LINE_RICH_MENU_MAX_IMAGE_BYTES,
+  LINE_RICH_MENU_MIN_WIDTH,
+  LINE_RICH_MENU_MAX_WIDTH,
+  LINE_RICH_MENU_MIN_HEIGHT,
+} from '@open333crm/shared';
 
 export interface RichMenuDraft {
   channelId: string;
@@ -82,9 +88,20 @@ export function RichMenuEditor({ draft, onChange }: Props) {
             <CompactImageField
               value={draft.imageUrl}
               onChange={(imageUrl) => onChange({ ...draft, imageUrl })}
+              // LINE 對 Rich Menu 背景圖的硬限制是 1MB（官方文件
+              // Requirements for rich menu image）。後端 /files/upload 允許 25MB，
+              // 不在這裡擋的話使用者會看到「上傳成功」，直到按發布才收到 400。
+              maxBytes={LINE_RICH_MENU_MAX_IMAGE_BYTES}
+              requireAspectRatio={draft.size}
+              // LINE 對 Rich Menu 圖的像素範圍要求；不擋的話要到按發布才被退件
+              pixelLimits={{
+                minWidth: LINE_RICH_MENU_MIN_WIDTH,
+                maxWidth: LINE_RICH_MENU_MAX_WIDTH,
+                minHeight: LINE_RICH_MENU_MIN_HEIGHT,
+              }}
             />
             <div className="text-[11px] text-muted-foreground">
-              ⚠ 建議尺寸 {draft.size.width} × {draft.size.height}（JPEG/PNG，≤ 1 MB）
+              ⚠ 需求尺寸 {draft.size.width} × {draft.size.height}（JPEG/PNG，≤ 1 MB，LINE 官方限制）
             </div>
           </div>
         </Section>

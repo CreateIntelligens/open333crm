@@ -34,7 +34,7 @@ import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 const createArticleSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().trim().min(1, '標題不可為空白').max(200),
   content: z.string().min(1),
   summary: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
@@ -42,7 +42,7 @@ const createArticleSchema = z.object({
 });
 
 const updateArticleSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
+  title: z.string().trim().min(1, '標題不可為空白').max(200).optional(),
   content: z.string().min(1).optional(),
   summary: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
@@ -58,7 +58,7 @@ const searchSchema = z.object({
 const importSchema = z.object({
   articles: z.array(
     z.object({
-      title: z.string().min(1).max(200),
+      title: z.string().trim().min(1, '標題不可為空白').max(200),
       content: z.string().min(1),
       summary: z.string().max(500).optional(),
       category: z.string().max(100).optional(),
@@ -274,7 +274,7 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
 
         const docId = fields.DocID ?? '';
         if (!docId) {
-          throw new AppError('DocID is required', 'BAD_REQUEST', 400);
+          throw new AppError('請提供文件識別碼', 'BAD_REQUEST', 400);
         }
 
         // Tolerate Stanley's typo: accept both Source and Soruce
@@ -305,12 +305,15 @@ export default async function knowledgeRoutes(fastify: FastifyInstance) {
             error: { code: err.code, message: err.message },
           });
         }
+        // ⚠️ 原本回 (err as Error).message，會把內部例外原文送給外部 Partner 系統。
+        // 上一行已記錄原文供排查；對外只回通用說明。
+        // 此端點對 Partner 機器，依既定原則維持英文。
         request.log.error({ err }, '[PartnerIngest] unexpected failure');
         return reply.status(500).send({
           success: false,
           error: {
             code: 'INGEST_FAILED',
-            message: (err as Error).message,
+            message: 'Ingest failed due to an internal error. Please contact support.',
           },
         });
       }

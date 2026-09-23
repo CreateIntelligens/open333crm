@@ -37,6 +37,7 @@ import {
   parseCliScopes,
   revokeCliSession,
 } from './cli-session.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 type TokenPayload = FastifyJWT['payload'];
 
@@ -129,7 +130,7 @@ function normalizeTransports(value: unknown): AuthenticatorTransportFuture[] {
 }
 
 function invalidPasskeyError(): Error {
-  return new AppError('Invalid passkey response', 'UNAUTHORIZED', 401);
+  return new AppError('Passkey 回應無效，請重新操作', 'UNAUTHORIZED', 401);
 }
 
 export default async function authRoutes(fastify: FastifyInstance) {
@@ -278,7 +279,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       });
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
-        throw new AppError('Passkey is already registered', 'CONFLICT', 409);
+        throw new AppError('此 Passkey 已註冊過', 'CONFLICT', 409);
       }
       throw error;
     }
@@ -491,7 +492,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       data: { name },
     });
     if (result.count !== 1) {
-      throw new AppError('Passkey not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('passkey'), 'NOT_FOUND', 404);
     }
     return reply.send(success({ renamed: true }));
   });
@@ -517,7 +518,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       data: { revokedAt: new Date() },
     });
     if (result.count !== 1) {
-      throw new AppError('Passkey not found', 'NOT_FOUND', 404);
+      throw new AppError(notFound('passkey'), 'NOT_FOUND', 404);
     }
     return reply.send(success({ revoked: true }));
   });
@@ -582,7 +583,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     if (!token) {
       return reply.status(401).send({
         success: false,
-        error: { code: 'UNAUTHORIZED', message: 'No refresh token' },
+        error: { code: 'UNAUTHORIZED', message: '登入已過期，請重新登入' },
       });
     }
 
@@ -609,7 +610,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     } catch {
       return reply.status(401).send({
         success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Invalid or expired refresh token' },
+        error: { code: 'UNAUTHORIZED', message: '登入已過期，請重新登入' },
       });
     }
   });

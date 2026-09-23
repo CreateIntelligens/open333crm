@@ -3,13 +3,13 @@ import { z } from 'zod';
 export const agentRoleEnum = z.enum(['ADMIN', 'SUPERVISOR', 'AGENT']);
 
 export const createAgentSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Invalid email format'),
+  name: z.string().trim().min(1, '請輸入姓名').max(120, '姓名不可超過 120 字'),
+  email: z.string().email(),
   // legacy enum role（過渡相容）。提供 roleId 時以 roleId 為準；未提供 roleId 時用 role 解析對應 system role。
   role: agentRoleEnum,
   // 細粒度 RBAC：自訂角色 / system role 皆可透過此欄位指派（同租戶）。提供時以此為準。
   roleId: z.string().uuid('Invalid roleId format').optional(),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: z.string().min(8, '密碼至少需要 8 個字元'),
 });
 
 export const updateAgentRoleSchema = z
@@ -23,12 +23,12 @@ export const updateAgentRoleSchema = z
   });
 
 export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+  currentPassword: z.string().min(1, '請輸入目前密碼'),
+  newPassword: z.string().min(8, '新密碼至少需要 8 個字元'),
 });
 
 export const resetPasswordSchema = z.object({
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+  newPassword: z.string().min(8, '新密碼至少需要 8 個字元'),
 });
 
 export type AgentRoleValue = z.infer<typeof agentRoleEnum>;

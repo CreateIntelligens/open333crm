@@ -152,7 +152,7 @@ export default function AnalyticsPage() {
                           <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">標題</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">狀態</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">指派客服</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">聯繫人</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">聯絡人</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">SLA 到期</th>
                         </tr>
                       </thead>

@@ -26,7 +26,7 @@ const listQuerySchema = z.object({
 });
 
 const updateContactSchema = z.object({
-  displayName: z.string().min(1).optional(),
+  displayName: z.string().trim().min(1, '名稱不可為空白').max(200, '名稱不可超過 200 字').optional(),
   phone: z.string().nullable().optional(),
   email: z.string().email().nullable().optional(),
   language: z.string().optional(),

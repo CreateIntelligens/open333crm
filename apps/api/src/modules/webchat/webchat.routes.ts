@@ -11,6 +11,7 @@ import {
 import { ensureChannelPublicKey } from '../channel/channel.service.js';
 import { consumePublicWebchatLimit, getPublicWebchatKey } from './public-webchat-limits.js';
 import { isValidUuid } from './webchat.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const fingerprintSchema = z.object({
   browserFamily: z.string().optional(),
@@ -53,7 +54,7 @@ function rejectRateLimited(reply: FastifyReply, retryAfterSeconds: number): void
   reply
     .header('Retry-After', String(retryAfterSeconds))
     .status(429)
-    .send({ code: 'RATE_LIMITED', message: 'Too many requests' });
+    .send({ code: 'RATE_LIMITED', message: '操作太頻繁，請稍候再試' });
 }
 
 function checkPublicLimit(reply: FastifyReply, limits: Array<{ key: string; max: number; windowMs?: number }>): boolean {
@@ -98,7 +99,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
         where: { id: req.params.channelId, channelType: 'WEBCHAT', isActive: true },
         select: { id: true, tenantId: true, publicKey: true },
       });
-      if (!channel) throw new AppError('Channel not found', 'NOT_FOUND', 404);
+      if (!channel) throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
 
       const { publicKey } = channel.publicKey
         ? { publicKey: channel.publicKey }
@@ -143,7 +144,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
         userAgent,
       });
       if (session.channelId !== channelId) {
-        throw new AppError('Channel not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
       }
 
       if (!checkPublicLimit(reply, [
@@ -188,7 +189,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
       const sessionId = data.fields?.sessionId as { value?: string } | undefined;
       const claimToken = data.fields?.claimToken as { value?: string } | undefined;
       if (!sessionId?.value || !claimToken?.value) {
-        return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Secure chatbox session required' });
+        return reply.status(401).send({ code: 'UNAUTHORIZED', message: '請重新整理頁面以建立連線' });
       }
 
       if (!checkPublicLimit(reply, [
@@ -204,7 +205,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
         userAgent: getUserAgent(req.headers),
       });
       if (session.channelId !== channelId) {
-        throw new AppError('Channel not found', 'NOT_FOUND', 404);
+        throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
       }
 
       const buffer = await data.toBuffer();

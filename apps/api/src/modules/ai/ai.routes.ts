@@ -71,7 +71,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
   fastify.post('/agent/run', { preHandler: requirePermission('inbox.reply') }, async (request, reply) => {
     const config = getConfig();
     if (!config.AGENTIC_LLM_ENABLED) {
-      throw new AppError('Agentic LLM is disabled', 'SERVICE_UNAVAILABLE', 503);
+      throw new AppError('AI 代理功能未啟用', 'SERVICE_UNAVAILABLE', 503);
     }
     const data = z.object({
       userMessage: z.string().trim().min(1).max(20_000),
@@ -102,7 +102,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
         },
       },
     });
-    if (!run) return reply.status(404).send({ code: 'NOT_FOUND', message: 'Agent run not found' });
+    if (!run) return reply.status(404).send({ code: 'NOT_FOUND', message: '找不到此執行紀錄，可能已過保留期限' });
     return reply.send(success(run));
   });
 }

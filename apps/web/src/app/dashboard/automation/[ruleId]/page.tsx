@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ConditionBuilder } from '@/components/automation/ConditionBuilder';
 import { ActionList } from '@/components/automation/ActionList';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 // ---- constants ----
 
@@ -237,6 +238,7 @@ export default function AutomationRuleDetailPage() {
       }
     } catch (err) {
       console.error('Failed to save rule:', err);
+      alert(getApiErrorMessage(err, '儲存規則失敗，請稍後重試'));
     } finally {
       setSaving(false);
     }
@@ -250,6 +252,7 @@ export default function AutomationRuleDetailPage() {
       router.push('/dashboard/automation');
     } catch (err) {
       console.error('Failed to delete rule:', err);
+      alert(getApiErrorMessage(err, '刪除規則失敗，請稍後重試'));
     } finally {
       setDeleting(false);
     }

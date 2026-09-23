@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useCases, useCaseStats } from '@/hooks/useCases';
 import { CaseList } from '@/components/case/CaseList';
+import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { CaseDashboardStats } from '@/components/case/CaseDashboardStats';
 import { Topbar } from '@/components/layout/Topbar';
 import { SearchInput } from '@/components/shared/SearchInput';
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import api from '@/lib/api';
+import { CASE_CATEGORIES } from '@open333crm/shared';
 
 const PAGE_SIZE = 20;
 
@@ -25,6 +27,7 @@ const statusTabs = [
 ];
 
 export default function CasesPage() {
+  const [createOpen, setCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -111,11 +114,20 @@ export default function CasesPage() {
 
       {/* Search + Filters */}
       <div className="border-b px-6 py-3 space-y-3">
-        <SearchInput
-          placeholder="搜尋工單標題或描述...（至少 2 個字）"
-          onSearch={setSearch}
-          className="max-w-sm"
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SearchInput
+            placeholder="搜尋工單標題或描述...（至少 2 個字）"
+            onSearch={setSearch}
+            className="max-w-sm"
+          />
+          {/* 建立入口：原本 CaseCreateModal 只掛在收件匣的聯絡人面板，
+              導致無法開立「不來自對話」的工單，後端的 POST /cases
+              在畫面上沒有任何路徑可觸發。 */}
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            新增工單
+          </Button>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Select
             value={assigneeFilter}
@@ -143,10 +155,7 @@ export default function CasesPage() {
             onChange={(e) => setCategoryFilter(e.target.value)}
             options={[
               { value: '', label: '所有分類' },
-              { value: '維修', label: '維修' },
-              { value: '查詢', label: '查詢' },
-              { value: '投訴', label: '投訴' },
-              { value: '其他', label: '其他' },
+              ...CASE_CATEGORIES.map((c) => ({ value: c, label: c })),
             ]}
             className="w-32"
           />
@@ -228,6 +237,20 @@ export default function CasesPage() {
         </div>
       )}
 
+      {/* 不帶 conversationId：視窗會走「獨立建單」分支，
+          顯示聯絡人搜尋與「建立新聯絡人」選項（收件匣模式則是 prefill + disabled）。
+          建立成功後視窗自己會導向該工單詳情頁。 */}
+      <CaseCreateModal
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          // 關閉時重整列表與統計卡：使用者可能建完又返回列表
+          if (!open) {
+            mutateCases();
+            mutateStats();
+          }
+        }}
+      />
     </div>
   );
 }

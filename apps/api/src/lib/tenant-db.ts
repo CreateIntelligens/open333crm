@@ -91,4 +91,20 @@ export type TenantScopedClient = ReturnType<typeof tenantScopedClient>;
  * 等頂層方法，故用此型別的 service MUST 只用 model 操作。
  * 需要 $transaction 的 service 仍收 PrismaClient（走 withTenant 或 admin 連線）。
  */
+/**
+ * ⚠️ 這個聯集已接近 TS 的推導上限，新增 model 關聯前請留意。
+ *
+ * TS 對「聯集型別上呼叫多載函式」的推導成本是各成員的乘積。目前三個成員
+ * 剛好還在上限內，但 2026-09-23 嘗試新增一張 MaterialTag 關聯表時，
+ * 整個 codebase 噴了 470 個 TS2349「This expression is not callable」，
+ * 而且錯誤出現在完全沒改過的檔案（agent.service、material.service 等），
+ * 極難定位——二分驗證後確認就是這個聯集被壓垮。
+ *
+ * 若日後真的需要新增關聯表：
+ *   1. 先評估能否不用關聯表達成（素材標籤最後採「登記到 Tag 表」的作法）
+ *   2. 真的要改，就得收斂這個型別；但改定義會牽連 200+ 處呼叫點，
+ *      且 extended client 與 Prisma.TransactionClient 的 $executeRaw
+ *      回傳型別不相容（[Symbol.toStringTag] 是 string vs 'PrismaPromise'），
+ *      不能直接替換，需要另外定義只描述 model 操作的介面。
+ */
 export type TenantDb = PrismaClient | Prisma.TransactionClient | TenantScopedClient;

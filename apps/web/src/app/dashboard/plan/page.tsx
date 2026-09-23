@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface Req {
   id: string;
@@ -50,10 +51,9 @@ export default function PlanPage() {
       await api.post('/plan-change', body);
       setNote('');
       await load();
-      setMsg('✓ 申請已送出，等待平台方核准');
+      setMsg('申請已送出，等待平台方核准');
     } catch (err: unknown) {
-      const m = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      setMsg(m ?? '送出失敗');
+      setMsg(getApiErrorMessage(err, '申請送出失敗，請稍後重試'));
     } finally {
       setSubmitting(false);
     }

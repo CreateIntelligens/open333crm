@@ -54,6 +54,20 @@ declare module 'fastify' {
   }
 }
 
+/**
+ * 把 JWT 驗證失敗轉成使用者看得懂的說法。
+ *
+ * 「沒帶 token」與「token 過期」對使用者是不同狀況——
+ * 前者多半是連結被直接開啟或已登出，回「請重新登入」會讓人困惑
+ * （我根本沒登入過，何來過期）。@fastify/jwt 的錯誤碼可區分兩者。
+ */
+function authFailureMessage(err: unknown): string {
+  const code = (err as { code?: string })?.code;
+  if (code === 'FST_JWT_NO_AUTHORIZATION_IN_HEADER') return '請先登入後再操作';
+  if (code === 'FST_JWT_AUTHORIZATION_TOKEN_EXPIRED') return '登入已過期，請重新登入';
+  return '登入狀態無效，請重新登入';
+}
+
 function extractBearerToken(request: FastifyRequest): string | undefined {
   const auth = request.headers.authorization ?? '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
@@ -125,7 +139,7 @@ async function authPlugin(fastify: FastifyInstance) {
       if (!config.PLATFORM_JWT_SECRET) {
         return reply.status(503).send({
           success: false,
-          error: { code: 'PLATFORM_DISABLED', message: 'Platform control plane not configured' },
+          error: { code: 'PLATFORM_DISABLED', message: '平台管理功能尚未啟用，請聯繫系統管理員' },
         });
       }
       try {
@@ -134,7 +148,7 @@ async function authPlugin(fastify: FastifyInstance) {
         if (payload.role !== 'PLATFORM_SUPERUSER') {
           return reply.status(403).send({
             success: false,
-            error: { code: 'FORBIDDEN', message: 'Not a platform superuser' },
+            error: { code: 'FORBIDDEN', message: '此帳號沒有平台管理權限' },
           });
         }
         // isActive/mustChangePassword 即時查 DB（非信任 JWT payload 快照）：帳號停用或改密碼
@@ -146,14 +160,14 @@ async function authPlugin(fastify: FastifyInstance) {
         if (!user) {
           return reply.status(401).send({
             success: false,
-            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired platform token' },
+            error: { code: 'UNAUTHORIZED', message: '平台登入已過期，請重新登入' },
           });
         }
         // 帳號被停用後，手上未過期的 JWT 必須立即失效，否則等同授權繞過（停用形同虛設）。
         if (!user.isActive) {
           return reply.status(401).send({
             success: false,
-            error: { code: 'PLATFORM_USER_DISABLED', message: 'This platform account has been disabled' },
+            error: { code: 'PLATFORM_USER_DISABLED', message: '此平台帳號已被停用，請聯繫系統管理員' },
           });
         }
         request.platformUser = {
@@ -164,7 +178,7 @@ async function authPlugin(fastify: FastifyInstance) {
       } catch {
         return reply.status(401).send({
           success: false,
-          error: { code: 'UNAUTHORIZED', message: 'Invalid or expired platform token' },
+          error: { code: 'UNAUTHORIZED', message: '平台登入已過期，請重新登入' },
         });
       }
     },
@@ -185,7 +199,7 @@ async function authPlugin(fastify: FastifyInstance) {
         success: false,
         error: {
           code: 'UNAUTHORIZED',
-          message: 'Invalid or expired token',
+          message: authFailureMessage(err),
         },
       });
     }
@@ -198,7 +212,7 @@ async function authPlugin(fastify: FastifyInstance) {
       if (!token) {
         reply.status(401).send({
           success: false,
-          error: { code: 'UNAUTHORIZED', message: 'Missing CLI token' },
+          error: { code: 'UNAUTHORIZED', message: '缺少 CLI 存取權杖，請先執行 open333 login' },
         });
         return;
       }
@@ -241,10 +255,10 @@ async function authPlugin(fastify: FastifyInstance) {
           tenantId: payload.tenantId,
           role: payload.role,
         };
-      } catch {
+      } catch (err) {
         reply.status(401).send({
           success: false,
-          error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },
+          error: { code: 'UNAUTHORIZED', message: authFailureMessage(err) },
         });
       }
     },
@@ -291,10 +305,10 @@ async function authPlugin(fastify: FastifyInstance) {
           tenantId: payload.tenantId,
           role: payload.role,
         };
-      } catch {
+      } catch (err) {
         reply.status(401).send({
           success: false,
-          error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },
+          error: { code: 'UNAUTHORIZED', message: authFailureMessage(err) },
         });
       }
     },

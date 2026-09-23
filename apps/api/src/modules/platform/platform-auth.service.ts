@@ -12,7 +12,7 @@ export async function platformLogin(prisma: PrismaClient, email: string, passwor
   const hash = user?.passwordHash ?? '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinva';
   const ok = await verifyPassword(password, hash);
   if (!user || !user.isActive || !ok) {
-    throw new AppError('Invalid credentials', 'UNAUTHORIZED', 401);
+    throw new AppError('帳號或密碼不正確', 'UNAUTHORIZED', 401);
   }
   await prisma.platformUser.update({
     where: { id: user.id },

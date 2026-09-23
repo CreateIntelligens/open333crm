@@ -26,6 +26,8 @@ import {
 } from '@open333crm/shared';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { buildLineMessage } from '@open333crm/channel-plugins';
+import { notFound } from '../../shared/messages/resource.js';
+import { validateLineVideoUrl } from '@open333crm/shared';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -132,7 +134,7 @@ function assertLineFlexMessageBody(body: unknown): LineFlexMessageBody {
   const result = validateLineFlexMessageBody(normalized);
   if (!result.valid) {
     // errors 理論上非空，但防禦性處理避免 errors[0] 為 undefined 再次炸成 500。
-    const first = result.errors[0] ?? { message: 'Invalid LINE Flex message body', code: 'INVALID_LINE_FLEX_BODY' };
+    const first = result.errors[0] ?? { message: 'Flex 訊息格式不符合 LINE 規範', code: 'INVALID_LINE_FLEX_BODY' };
     throw new AppError(first.message, first.code, 400);
   }
   return normalized;
@@ -168,6 +170,14 @@ function toLineFlexValidateMessage(body: LineFlexMessageBody): Record<string, un
   };
 }
 
+/**
+ * 把 LINE 的 Flex 驗證錯誤整理成「屬性: 說明」。
+ *
+ * ⚠️ 此處**刻意保留 LINE 原文**，與其他第三方錯誤的處理方式不同：
+ * 這是版型編輯器的回饋，使用者需要知道是哪個屬性不合規才能修正。
+ * 隱藏細節會讓此功能失去價值。LINE 的驗證回應只含版型結構資訊，
+ * 不含帳號或系統內部資料。
+ */
 function formatLineValidateError(status: number, body: unknown): string {
   if (body && typeof body === 'object') {
     const record = body as Record<string, unknown>;
@@ -257,6 +267,17 @@ async function validateLineMaterialWithLineApi(
   // 只驗 LINE 版型；flex_showcase / flex_template 已有專屬 validate（import 時），這裡涵蓋其餘。
   if (!contentType.startsWith('line_')) return;
   if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
+
+  // 影片網址先本機驗一次：LINE 的 validate API 只檢查結構，不會告訴你
+  // 「YouTube 連結播不出來」——那是送出後客戶點開才發現的問題。
+  // 使用者最常見的誤用就是直接貼 YouTube 分享連結（2026-09-23 實際回報）。
+  if (contentType === 'line_video') {
+    const videoUrl = typeof body.videoUrl === 'string' ? body.videoUrl : '';
+    const err = validateLineVideoUrl(videoUrl);
+    if (err) {
+      throw new AppError(err, 'INVALID_LINE_VIDEO_URL', 400);
+    }
+  }
 
   let message: unknown;
   try {
@@ -365,7 +386,7 @@ export async function getMaterial(prisma: TenantDb, id: string, tenantId: string
     include: { template: true },
   });
   if (!material || material.tenantId !== tenantId) {
-    throw new AppError('Material not found', 'MATERIAL_NOT_FOUND', 404);
+    throw new AppError(notFound('material'), 'MATERIAL_NOT_FOUND', 404);
   }
   return material;
 }
@@ -384,13 +405,13 @@ export async function createMaterial(
       where: { id: input.templateId },
     });
     if (!template) {
-      throw new AppError('Source template not found', 'TEMPLATE_NOT_FOUND', 404);
+      throw new AppError(notFound('sourceTemplate'), 'TEMPLATE_NOT_FOUND', 404);
     }
     if (template.tenantId !== null && template.tenantId !== tenantId) {
-      throw new AppError('Source template not accessible', 'TEMPLATE_NOT_FOUND', 404);
+      throw new AppError('無法存取此來源版型', 'TEMPLATE_NOT_FOUND', 404);
     }
     if (!template.isActive) {
-      throw new AppError('Source template is inactive', 'TEMPLATE_INACTIVE', 400);
+      throw new AppError('來源版型已停用', 'TEMPLATE_INACTIVE', 400);
     }
   }
 
@@ -398,7 +419,7 @@ export async function createMaterial(
   const contentType = input.contentType ?? template?.contentType;
 
   if (!channelType || !contentType) {
-    throw new AppError('channelType and contentType are required when no templateId is provided', 'CHANNEL_CONTENT_REQUIRED', 400);
+    throw new AppError('未指定版型時，必須同時提供渠道類型與內容類型', 'CHANNEL_CONTENT_REQUIRED', 400);
   }
   if (!ALLOWED_CHANNEL_TYPES.includes(channelType)) {
     throw new AppError(`channelType must be one of ${ALLOWED_CHANNEL_TYPES.join(', ')}`, 'INVALID_CHANNEL_TYPE', 400);
@@ -441,6 +462,18 @@ export async function createMaterial(
     },
   });
 
+  // 登記到 Tag 表並取回正規化後的名稱（trim + 去重），
+  // 同步寫回 Material.tags——否則素材會存著「  春季促銷  」這種未清理的值，
+  // 與 Tag 表的「春季促銷」對不起來，過濾就失準。
+  const normalizedTags = await registerMaterialTags(prisma, tenantId, input.tags ?? []);
+  if (JSON.stringify(normalizedTags) !== JSON.stringify(input.tags ?? [])) {
+    await prisma.material.update({
+      where: { id: material.id },
+      data: { tags: normalizedTags },
+    });
+    material.tags = normalizedTags;
+  }
+
   // 首建即記 v1 快照（版本歷史從建立起算）。
   await writeMaterialVersion(prisma, material, input.createdById ?? null);
 
@@ -464,6 +497,8 @@ export async function updateMaterial(
     if (input.categoryId) await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
     data.categoryId = input.categoryId;
   }
+  // tags 不直接寫 data——改走 syncMaterialTags（見下方），
+  // 但同步寫回 Material.tags 供過渡期的舊查詢使用。
   if (input.tags !== undefined) data.tags = input.tags;
   if (input.status !== undefined) {
     if (!MATERIAL_STATUSES.includes(input.status)) {
@@ -494,6 +529,15 @@ export async function updateMaterial(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: data as any,
   });
+
+  // 只在呼叫端有帶 tags 時才登記，避免更新其他欄位時做無謂查詢。
+  if (input.tags !== undefined) {
+    const normalized = await registerMaterialTags(prisma, tenantId, input.tags);
+    if (JSON.stringify(normalized) !== JSON.stringify(input.tags)) {
+      await prisma.material.update({ where: { id }, data: { tags: normalized } });
+      updated.tags = normalized;
+    }
+  }
 
   // 每次編輯（name / body 有異動時）記一版快照。只改 status/tags/category 等中繼資料
   // 不算內容變更、不產版本，避免版本表被中繼欄位灌爆。
@@ -654,7 +698,7 @@ export async function getMaterialForSend(
 ) {
   const material = await getMaterial(prisma, materialId, tenantId);
   if (!material.isActive) {
-    throw new AppError('Material is inactive', 'MATERIAL_INACTIVE', 400);
+    throw new AppError('此素材已停用', 'MATERIAL_INACTIVE', 400);
   }
 
   const definedVars = (material.variables as unknown as TemplateVariable[]) ?? [];
@@ -723,7 +767,7 @@ async function writeMaterialVersion(
 async function assertCategoryBelongsToTenant(prisma: TenantDb, categoryId: string, tenantId: string) {
   const cat = await prisma.materialCategory.findUnique({ where: { id: categoryId } });
   if (!cat || cat.tenantId !== tenantId) {
-    throw new AppError('Category not found', 'CATEGORY_NOT_FOUND', 404);
+    throw new AppError(notFound('category'), 'CATEGORY_NOT_FOUND', 404);
   }
   return cat;
 }
@@ -829,14 +873,99 @@ export async function deleteMaterialCategory(prisma: TenantDb, id: string, tenan
 
 // ─── Governance: Tags ───────────────────────────────────────────────────
 
-/** 聚合租戶所有作用中素材的 distinct 標籤（無標籤表，即時彙總）。 */
-export async function listMaterialTags(prisma: TenantDb, tenantId: string): Promise<string[]> {
-  const rows = await prisma.material.findMany({
-    where: { tenantId, isActive: true },
-    select: { tags: true },
+/**
+ * 登記素材標籤到 Tag 表（scope=MATERIAL），並回傳正規化後的名稱。
+ *
+ * 背景：素材標籤原本是 `Material.tags`（String[] 自由字串），與「設定 → 標籤管理」
+ * 的 Tag 表互不相通——同一個概念在兩邊各存一份，無法改名或合併。
+ *
+ * 作法：**保留 Material.tags 作為實際儲存**（查詢用 hasSome，效能好且不需 join），
+ * 但每次寫入時把標籤名稱同步登記到 Tag 表。這樣：
+ *   - 設定頁看得到素材標籤，可統一管理（改名／刪除）
+ *   - 素材編輯器的建議清單能列出「已建立但尚未使用」的標籤
+ *   - 不需要新增關聯表
+ *
+ * ⚠️ 為什麼不用關聯表（MaterialTag）：`TenantDb` 是
+ * `PrismaClient | TransactionClient | TenantScopedClient` 的聯集，
+ * TS 對聯集上的多載推導成本是各成員乘積。實測新增一張關聯表就會超過上限，
+ * 整個 codebase 噴 470 個 TS2349，且錯誤出現在完全沒改過的檔案。
+ * 改動 TenantDb 定義牽連 200+ 處、風險過高，故採此方案。
+ *
+ * @returns trim 去重後的標籤名稱
+ */
+export async function registerMaterialTags(
+  prisma: TenantDb,
+  tenantId: string,
+  tagNames: string[],
+): Promise<string[]> {
+  // trim + 去重（大小寫不敏感，保留首次出現的寫法）
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of tagNames) {
+    const t = String(raw ?? '').trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(t);
+  }
+  if (names.length === 0) return [];
+
+  // ⚠️ 查詢必須也是大小寫不敏感：names 已用 toLowerCase 去重，但 Postgres 的
+  // `in` 與 @@unique([tenantId,name,scope]) 都區分大小寫。
+  // 若只用 `in: names` 查，素材 A 存了 Sale、素材 B 存 sale 時查不到既有列，
+  // 會再建一筆 → 設定頁出現兩個標籤，素材層卻視為同一個。
+  const existing = await prisma.tag.findMany({
+    where: {
+      tenantId,
+      scope: 'MATERIAL',
+      OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' as const } })),
+    },
+    select: { name: true },
   });
+  const have = new Set(existing.map((t) => t.name.toLowerCase()));
+
+  // 隨手打的新標籤自動建立——使用者無感，但自此可在設定頁管理
+  for (const name of names) {
+    if (have.has(name.toLowerCase())) continue;
+    try {
+      await prisma.tag.create({
+        data: { tenantId, name, scope: 'MATERIAL', type: 'MANUAL' },
+      });
+    } catch {
+      // 併發下可能已被其他請求建立（@@unique[tenantId,name,scope]），忽略即可
+    }
+  }
+
+  return names;
+}
+
+
+/**
+ * 列出租戶可用的素材標籤。
+ *
+ * 改走 Tag 表（scope=MATERIAL）而非掃描所有素材的 tags 陣列：
+ * 這樣「建立了但還沒貼到任何素材」的標籤也列得出來，
+ * 使用者在設定頁新增後馬上就能在素材編輯器選到。
+ *
+ * 過渡期一併併入舊的 Material.tags 字串，避免既有資料的標籤突然消失。
+ */
+export async function listMaterialTags(prisma: TenantDb, tenantId: string): Promise<string[]> {
+  const [tags, legacyRows] = await Promise.all([
+    prisma.tag.findMany({
+      where: { tenantId, scope: 'MATERIAL' },
+      select: { name: true },
+    }),
+    prisma.material.findMany({
+      where: { tenantId, isActive: true },
+      select: { tags: true },
+    }),
+  ]);
+
   const set = new Set<string>();
-  for (const r of rows) for (const t of r.tags) set.add(t);
+  for (const t of tags) set.add(t.name);
+  // 舊資料（尚未遷移到關聯表的）仍要看得到
+  for (const r of legacyRows) for (const t of r.tags) if (t.trim()) set.add(t);
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
@@ -866,7 +995,7 @@ export async function restoreMaterialVersion(
     where: { materialId_versionNo: { materialId, versionNo } },
   });
   if (!version) {
-    throw new AppError('Version not found', 'VERSION_NOT_FOUND', 404);
+    throw new AppError(notFound('version'), 'VERSION_NOT_FOUND', 404);
   }
   const updated = await prisma.material.update({
     where: { id: materialId },

@@ -11,6 +11,7 @@ import { evaluateRules } from './engine/rule-engine.js';
 import type { AutomationRuleInput, ActionDefinition } from './engine/rule-engine.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateAutomationRuleContract } from '@open333crm/automation';
+import { notFound } from '../../shared/messages/resource.js';
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,9 @@ export async function listRules(
   filters: RuleFilters,
   pagination: PaginationParams,
 ) {
-  const where: Prisma.AutomationRuleWhereInput = { tenantId };
+  // enabled=false 代表「已刪除」（見 deleteRule），列表一律不顯示。
+  // 使用者手動停用的規則 isActive=false 但 enabled 仍為 true，仍會列出。
+  const where: Prisma.AutomationRuleWhereInput = { tenantId, enabled: true };
 
   if (filters.isActive !== undefined) {
     where.isActive = filters.isActive;
@@ -64,7 +67,8 @@ export async function getRule(
   tenantId: string,
 ) {
   const rule = await prisma.automationRule.findFirst({
-    where: { id, tenantId },
+    // enabled=false 代表已刪除：查不到才對，否則刪掉的規則仍可用網址開啟
+    where: { id, tenantId, enabled: true },
     include: {
       logs: {
         orderBy: { createdAt: 'desc' },
@@ -74,7 +78,7 @@ export async function getRule(
   });
 
   if (!rule) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   return rule;
@@ -133,11 +137,12 @@ export async function updateRule(
   },
 ) {
   const existing = await prisma.automationRule.findFirst({
-    where: { id, tenantId },
+    // enabled=false 代表已刪除：不可更新，否則帶 isActive:true 就能把它復活
+    where: { id, tenantId, enabled: true },
   });
 
   if (!existing) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   const existingTrigger = existing.trigger as Record<string, unknown>;
@@ -157,8 +162,11 @@ export async function updateRule(
     updateData.stopProcessing = data.stopOnMatch;
   }
   if (data.isActive !== undefined) {
+    // ⚠️ 不可連動寫 enabled：enabled 現在是「已刪除」標記（見 deleteRule），
+    // 而 isActive 是使用者在列表上切換的啟用狀態。
+    // 兩者連動的話，使用者一關閉規則就等同刪除——列表與 getRule 都會查不到，
+    // 再也無法從任何 UI 路徑把它打開。
     updateData.isActive = data.isActive;
-    updateData.enabled = data.isActive;
   }
   if (data.trigger !== undefined) {
     updateData.trigger = data.trigger as any;
@@ -208,13 +216,19 @@ export async function deleteRule(
   });
 
   if (!existing) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
-  // Soft delete – deactivate instead of hard delete
+  // 軟刪：用 enabled 標記「已刪除」，isActive 同步關掉以停止觸發。
+  //
+  // 為什麼不共用 isActive：畫面上的啟用切換開關寫的就是 isActive，
+  // 使用者「手動停用」與「刪除」若共用同一個欄位，列表就無法區分——
+  // 這正是先前 UAT 累積 119 筆已刪規則仍顯示在畫面上的原因（CM-170）。
+  // enabled 欄位原本幾乎沒被使用（worker 的觸發判斷只看 isActive），
+  // 挪用為刪除標記不影響既有行為。
   const rule = await prisma.automationRule.update({
     where: { id },
-    data: { isActive: false },
+    data: { enabled: false, isActive: false },
   });
 
   return rule;
@@ -229,11 +243,12 @@ export async function testRule(
   testFacts?: Record<string, unknown>,
 ) {
   const rule = await prisma.automationRule.findFirst({
-    where: { id: ruleId, tenantId },
+    // 已刪除的規則不該還能 dry-run
+    where: { id: ruleId, tenantId, enabled: true },
   });
 
   if (!rule) {
-    throw new AppError('Automation rule not found', 'NOT_FOUND', 404);
+    throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
   const conditions = rule.conditions as unknown as TopLevelCondition;

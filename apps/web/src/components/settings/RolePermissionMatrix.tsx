@@ -91,7 +91,7 @@ export function RolePermissionMatrix() {
         setMatrix(matrixRes.data.data.groups);
         if (rs.length) setSelectedId(rs[0].id);
       })
-      .catch(() => setError('載入失敗'))
+      .catch(() => setError('載入角色清單失敗，請重新整理後再試'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -535,7 +535,7 @@ export function RolePermissionMatrix() {
           </Button>
         </div>
       )}
-      {okMsg && !hasChanges && <p className="text-sm text-success">✓ {okMsg}</p>}
+      {okMsg && !hasChanges && <p className="text-sm text-success">{okMsg}</p>}
       {error && !hasChanges && <p className="text-sm text-destructive">{error}</p>}
 
       {/* 新增/改名 Dialog */}

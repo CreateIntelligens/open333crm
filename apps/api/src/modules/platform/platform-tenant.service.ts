@@ -11,6 +11,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { sendManualProvisionedEmail } from '../trial/trial-emails.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function listTenants(prisma: PrismaClient) {
   return prisma.tenant.findMany({
@@ -49,7 +50,7 @@ export async function getTenantDetail(prisma: PrismaClient, id: string) {
       _count: { select: { agents: true, channels: true, contacts: true, conversations: true, cases: true } },
     },
   });
-  if (!tenant) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+  if (!tenant) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
   return tenant;
 }
 
@@ -60,7 +61,7 @@ export async function updateTenant(
   input: { name?: string; planSlug?: string },
 ) {
   const existing = await prisma.tenant.findUnique({ where: { id }, select: { id: true, planId: true } });
-  if (!existing) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+  if (!existing) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
 
   const data: Prisma.TenantUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
@@ -68,7 +69,7 @@ export async function updateTenant(
   let planChangedTo: string | null = null;
   if (input.planSlug !== undefined) {
     const plan = await prisma.plan.findUnique({ where: { slug: input.planSlug }, select: { id: true } });
-    if (!plan) throw new AppError('Plan not found', 'NOT_FOUND', 404);
+    if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
     if (plan.id !== existing.planId) {
       data.plan = { connect: { id: plan.id } };
       planChangedTo = plan.id;
@@ -99,11 +100,11 @@ export async function updateTenantAgentEmail(
     where: { id: agentId, tenantId },
     select: { id: true, email: true },
   });
-  if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  if (!agent) throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   if (agent.email === email) return { id: agent.id, email: agent.email };
 
   const dup = await prisma.agent.findUnique({ where: { email }, select: { id: true } });
-  if (dup) throw new AppError('Email already in use', 'CONFLICT', 409);
+  if (dup) throw new AppError('這個電子郵件已被使用，請換一個', 'CONFLICT', 409);
 
   return prisma.agent.update({ where: { id: agentId }, data: { email }, select: { id: true, email: true } });
 }
@@ -114,9 +115,9 @@ export async function resendWelcomeEmail(prisma: PrismaClient, tenantId: string,
     where: { id: agentId, tenantId },
     select: { email: true },
   });
-  if (!agent) throw new AppError('Agent not found', 'NOT_FOUND', 404);
+  if (!agent) throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-  if (!tenant) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+  if (!tenant) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
 
   const loginUrl = `${getConfig().WEB_BASE_URL}/login`;
   await sendManualProvisionedEmail(agent.email, {
@@ -129,7 +130,7 @@ export async function resendWelcomeEmail(prisma: PrismaClient, tenantId: string,
 
 export async function setTenantActive(prisma: PrismaClient, id: string, isActive: boolean) {
   const existing = await prisma.tenant.findUnique({ where: { id }, select: { id: true } });
-  if (!existing) throw new AppError('Tenant not found', 'NOT_FOUND', 404);
+  if (!existing) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
   return prisma.tenant.update({ where: { id }, data: { isActive }, select: { id: true, name: true, isActive: true } });
 }
 
@@ -179,11 +180,11 @@ export async function provisionTenantViaApi(
   input: { name: string; planSlug: string; adminEmail: string; adminName: string; adminPassword: string },
 ): Promise<{ tenantId: string; adminAgentId: string; loginUrl: string }> {
   const plan = await prisma.plan.findUnique({ where: { slug: input.planSlug }, select: { id: true } });
-  if (!plan) throw new AppError('Plan not found', 'NOT_FOUND', 404);
+  if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
 
   // email 全域唯一：先擋，避免 transaction 內 P2002
   const existing = await prisma.agent.findUnique({ where: { email: input.adminEmail }, select: { id: true } });
-  if (existing) throw new AppError('Email already in use', 'CONFLICT', 409);
+  if (existing) throw new AppError('這個電子郵件已被使用，請換一個', 'CONFLICT', 409);
 
   const passwordHash = await hashPassword(input.adminPassword);
   const result = await prisma.$transaction((tx) =>

@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { normalizeEmail } from '../../shared/utils/email.js';
 import { sendPlatformPasswordResetEmail } from './platform-user-emails.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 const RESET_TOKEN_TTL_MINUTES = 60;
 
@@ -28,10 +29,10 @@ export async function changeOwnPassword(
   input: { oldPassword: string; newPassword: string },
 ): Promise<void> {
   const user = await prisma.platformUser.findUnique({ where: { id: userId }, select: { passwordHash: true } });
-  if (!user) throw new AppError('Platform user not found', 'NOT_FOUND', 404);
+  if (!user) throw new AppError(notFound('platformUser'), 'NOT_FOUND', 404);
 
   const ok = await verifyPassword(input.oldPassword, user.passwordHash);
-  if (!ok) throw new AppError('Old password is incorrect', 'UNAUTHORIZED', 401);
+  if (!ok) throw new AppError('舊密碼不正確', 'UNAUTHORIZED', 401);
 
   const passwordHash = await hashPassword(input.newPassword);
   await prisma.platformUser.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } });

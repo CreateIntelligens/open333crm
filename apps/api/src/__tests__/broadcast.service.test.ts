@@ -298,14 +298,25 @@ async function testZeroAudience() {
   const f = setupFixture({ channelType: 'LINE', identitiesCount: 0 });
   const io = createIoMock();
 
-  await assert.rejects(
-    () => executeBroadcast(f.prisma as never, io as never, f.broadcastId),
-    (error: unknown) => (error as { code?: string }).code === 'BROADCAST_NO_RECIPIENTS',
-  );
+  // 行為已於「錯誤訊息中文化」那輪調整：0 受眾不再默默標 completed，
+  // 而是拋出帶原因的 BROADCAST_NO_RECIPIENTS，由外層統一標 failed。
+  // 標 completed 會讓使用者以為發成功了，其實一個人都沒發到。
+  let thrown: unknown;
+  try {
+    await executeBroadcast(f.prisma as never, io as never, f.broadcastId);
+  } catch (err) {
+    thrown = err;
+  }
 
+  assert.ok(thrown, '0 受眾應拋錯而非默默完成');
+  assert.equal((thrown as { code?: string }).code, 'BROADCAST_NO_RECIPIENTS');
+  // 訊息要說得出「為什麼沒人可發」，否則使用者不知道下一步
+  assert.match(String((thrown as Error).message), /對象/);
+
+  // 沒有任何訊息被送出
   assert.equal(f.plugin.sends.length, 0);
 
-  // 0 受眾是明確失敗，不讓使用者誤以為已完成發送。
+  // 併 main 時保留的斷言：狀態要標成 failed，不讓使用者誤以為已完成發送
   const finalUpdate = f.broadcastUpdates[f.broadcastUpdates.length - 1];
   assert.equal(finalUpdate.data.status, 'failed');
 }

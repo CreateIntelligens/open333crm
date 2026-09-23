@@ -108,7 +108,7 @@ export default async function fbLoginRoutes(fastify: FastifyInstance) {
       });
 
       if (!conversation) {
-        return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Conversation not found' } });
+        return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此對話，可能已被刪除' } });
       }
 
       if (conversation.channelType !== CHANNEL_TYPE.FB) {

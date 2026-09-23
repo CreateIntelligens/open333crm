@@ -83,7 +83,7 @@ export function PointsTab() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          placeholder="搜尋聯繫人（名稱、電話、Email）"
+          placeholder="搜尋聯絡人（名稱、電話、Email）"
           className="w-72"
         />
         <Button variant="outline" onClick={handleSearch} disabled={searching}>

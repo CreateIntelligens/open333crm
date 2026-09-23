@@ -293,7 +293,7 @@ export default function DesignPreviewPage() {
               {[
                 { label: '收件匣', active: true, badge: 12 },
                 { label: '工單', active: false, badge: 3 },
-                { label: '聯繫人', active: false },
+                { label: '聯絡人', active: false },
                 { label: '自動化', active: false },
                 { label: '報表', active: false },
               ].map((item) => (

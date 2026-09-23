@@ -1,186 +1,154 @@
 /**
- * Cross-channel flow integration test (Task 5.3)
- * Tests: FB Webhook → FlowExecution created → WAIT node queued → Email message sent
+ * Canvas 流程相關的純函式驗證：智慧發送時間視窗、郵件模板渲染、按鈕動作解析。
+ *   npx tsx src/__tests__/canvas-flow.test.ts
+ *
+ * ⚠️ 這支測試原本用 vitest 撰寫，但專案從未安裝 vitest
+ * （root 與 apps/api 的 package.json 都沒有），所以從寫出來到
+ * 2026-09-23 為止從來沒有真正執行過。改寫成與其他測試一致的
+ * node:assert + tsx 寫法。
+ *
+ * 改寫時移除了原本最後一個「Canvas flow simulation」案例：
+ * 那個案例只是把 6 個事件物件推進一個本地陣列再斷言長度是 6，
+ * 沒有呼叫任何專案程式碼，改了實作也不會紅——留著只會給人
+ * 「跨渠道流程有測試覆蓋」的錯覺。真要驗那條流程需要整合測試環境。
  */
+import assert from 'node:assert/strict';
+// 走套件入口而非內部路徑——@open333crm/core 的 exports 只開放 "."，
+// 原本的 '@open333crm/core/src/...' 會被 ERR_PACKAGE_PATH_NOT_EXPORTED 擋下。
+// （這三個函式 index.ts 都有 re-export。）
+import {
+  checkSmartWindow,
+  blockJsonToMjml,
+  substituteMjmlVars,
+  parseLineButton,
+  parseFbButton,
+} from '@open333crm/core';
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { checkSmartWindow } from '@open333crm/core/src/canvas/smart-window.js';
-import { blockJsonToMjml } from '@open333crm/core/src/templates/mjml-renderer.js';
-import { parseLineButton, parseFbButton } from '@open333crm/core/src/templates/button-action-parser.js';
+let pass = 0;
+let fail = 0;
 
-// ── Smart Window Tests ───────────────────────────────────────────────────────
+function t(name: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`PASS  ${name}`);
+    pass += 1;
+  } catch (err) {
+    console.error(`FAIL  ${name}`);
+    console.error(`      ${(err as Error).message}`);
+    fail += 1;
+  }
+}
 
-describe('Smart Window', () => {
-  it('should not adjust time when in active hours (14:00)', () => {
-    const activeTime = new Date('2026-01-15T06:00:00Z'); // 14:00 Taipei (UTC+8)
-    const adjusted = checkSmartWindow(activeTime, 'Asia/Taipei');
-    expect(adjusted.getTime()).toBe(activeTime.getTime());
-  });
+/** 取某個時間點在指定時區的小時數 */
+function hourIn(date: Date, timeZone: string): number {
+  return Number(
+    date.toLocaleString('en-US', { timeZone, hour: 'numeric', hour12: false }),
+  );
+}
 
-  it('should defer quiet-hour time (02:00 Taipei) to next morning', () => {
-    const quietTime = new Date('2026-01-15T18:00:00Z'); // 02:00 Taipei (UTC+8)
-    const adjusted = checkSmartWindow(quietTime, 'Asia/Taipei');
-    // Should be deferred to at least 09:00 Taipei
-    const adjustedHour = new Date(adjusted).toLocaleString('en-US', {
-      timeZone: 'Asia/Taipei',
-      hour: 'numeric',
-      hour12: false,
-    });
-    expect(Number(adjustedHour)).toBeGreaterThanOrEqual(9);
-  });
+// ─── 智慧發送時間視窗 ─────────────────────────────────────────────────────
 
-  it('should defer late night (23:00 Taipei) to next morning', () => {
-    const lateNight = new Date('2026-01-15T15:00:00Z'); // 23:00 Taipei (UTC+8)
-    const adjusted = checkSmartWindow(lateNight, 'Asia/Taipei');
-    expect(adjusted.getTime()).toBeGreaterThan(lateNight.getTime());
-  });
+t('活躍時段（台北 14:00）不調整時間', () => {
+  const activeTime = new Date('2026-01-15T06:00:00Z'); // 14:00 Taipei (UTC+8)
+  assert.equal(checkSmartWindow(activeTime, 'Asia/Taipei').getTime(), activeTime.getTime());
 });
 
-// ── MJML Block Renderer Tests ─────────────────────────────────────────────────
-
-describe('Block JSON → MJML renderer', () => {
-  it('should render a header block', () => {
-    const mjml = blockJsonToMjml([{ type: 'header', content: 'Hello World' }]);
-    expect(mjml).toContain('<mjml>');
-    expect(mjml).toContain('Hello World');
-    expect(mjml).toContain('mj-text');
-  });
-
-  it('should render a button block with href', () => {
-    const mjml = blockJsonToMjml([
-      { type: 'button', content: 'Click Me', href: 'https://example.com' },
-    ]);
-    expect(mjml).toContain('mj-button');
-    expect(mjml).toContain('https://example.com');
-    expect(mjml).toContain('Click Me');
-  });
-
-  it('should render multiple blocks', () => {
-    const mjml = blockJsonToMjml([
-      { type: 'header', content: 'Title' },
-      { type: 'text', content: 'Body text' },
-      { type: 'divider' },
-    ]);
-    expect(mjml).toContain('Title');
-    expect(mjml).toContain('Body text');
-    expect(mjml).toContain('mj-divider');
-  });
-
-  it('should substitute variables in rendered MJML', () => {
-    const { substituteMjmlVars } = require('@open333crm/core/src/templates/mjml-renderer.js');
-    const mjml = '<mj-text>Hello {{contact.name}}</mj-text>';
-    const result = substituteMjmlVars(mjml, { 'contact.name': 'Alice' });
-    expect(result).toBe('<mj-text>Hello Alice</mj-text>');
-  });
+t('安靜時段（台北 02:00）延後到早上', () => {
+  const quietTime = new Date('2026-01-15T18:00:00Z'); // 02:00 Taipei
+  const adjusted = checkSmartWindow(quietTime, 'Asia/Taipei');
+  assert.ok(
+    hourIn(adjusted, 'Asia/Taipei') >= 9,
+    `延後後應不早於 09:00，實際 ${hourIn(adjusted, 'Asia/Taipei')}:00`,
+  );
 });
 
-// ── Button Action Parser Tests ────────────────────────────────────────────────
-
-describe('Button Action Parser', () => {
-  describe('LINE', () => {
-    it('should parse canvas add_tag postback', () => {
-      const action = parseLineButton({
-        type: 'postback',
-        data: 'canvas:add_tag:tag-uuid-123',
-      });
-      expect(action.type).toBe('add_tag');
-      expect(action.tagId).toBe('tag-uuid-123');
-    });
-
-    it('should parse canvas trigger_node postback', () => {
-      const action = parseLineButton({
-        type: 'postback',
-        data: 'canvas:trigger:node-uuid-456',
-      });
-      expect(action.type).toBe('trigger_node');
-      expect(action.nodeId).toBe('node-uuid-456');
-    });
-
-    it('should parse uri action as open_url', () => {
-      const action = parseLineButton({
-        type: 'uri',
-        uri: 'https://example.com/product',
-      });
-      expect(action.type).toBe('open_url');
-      expect(action.url).toBe('https://example.com/product');
-    });
-
-    it('should return unknown for unrecognized postback', () => {
-      const action = parseLineButton({ type: 'postback', data: 'legacy:action' });
-      expect(action.type).toBe('unknown');
-    });
-  });
-
-  describe('Facebook', () => {
-    it('should parse canvas add_tag postback', () => {
-      const btn = parseFbButton({
-        type: 'postback',
-        title: 'Interested',
-        payload: 'canvas:add_tag:interested-tag',
-      });
-      expect(btn.type).toBe('add_tag');
-      expect(btn.tagId).toBe('interested-tag');
-    });
-
-    it('should parse web_url button as open_url', () => {
-      const btn = parseFbButton({
-        type: 'web_url',
-        title: 'Visit Site',
-        url: 'https://shop.example.com',
-      });
-      expect(btn.type).toBe('open_url');
-      expect(btn.url).toBe('https://shop.example.com');
-    });
-  });
+t('深夜（台北 23:00）延後到之後的時間', () => {
+  const lateNight = new Date('2026-01-15T15:00:00Z'); // 23:00 Taipei
+  const adjusted = checkSmartWindow(lateNight, 'Asia/Taipei');
+  assert.ok(adjusted.getTime() > lateNight.getTime(), '深夜時段應被延後');
 });
 
-// ── Cross-channel Flow Simulation ─────────────────────────────────────────────
+// ─── 郵件模板：Block JSON → MJML ─────────────────────────────────────────
 
-describe('Canvas flow simulation (mocked)', () => {
-  it('simulates: FB Webhook → create execution → WAIT → Email send', async () => {
-    /**
-     * This test simulates the full flow pipeline using mocks.
-     * In a real integration test with a live DB, we'd use prisma.$transaction.
-     *
-     * Simulated flow:
-     * 1. FB postback triggers canvas flow detection
-     * 2. FlowExecution is created (status: RUNNING)
-     * 3. MESSAGE node sends via EventBus
-     * 4. WAIT node suspends (status: WAITING)
-     * 5. Scheduler resumes after delay
-     * 6. EMAIL MESSAGE node sends via EventBus
-     * 7. Execution completes
-     */
-
-    const events: Array<{ type: string; payload: unknown }> = [];
-
-    // Mock EventBus
-    const EventBus = {
-      publish: (event: { type: string; payload: unknown }) => {
-        events.push(event);
-      },
-    };
-
-    // Simulate the flow of events
-    EventBus.publish({ type: 'webhook.fb.message', payload: { contactId: 'c1', text: 'hello' } });
-    EventBus.publish({ type: 'canvas.flow_triggered', payload: { flowId: 'flow-1', contactId: 'c1' } });
-    EventBus.publish({ type: 'canvas.send_message', payload: { channelType: 'FB', text: 'Welcome!' } });
-    EventBus.publish({ type: 'canvas.wait_scheduled', payload: { resumeAt: new Date(Date.now() + 86400000) } });
-    // ... (scheduler fires after delay)
-    EventBus.publish({ type: 'canvas.send_message', payload: { channelType: 'email', templateId: 'email-tmpl-1' } });
-    EventBus.publish({ type: 'flow.completed', payload: { flowId: 'flow-1', contactId: 'c1' } });
-
-    expect(events).toHaveLength(6);
-    expect(events[0].type).toBe('webhook.fb.message');
-    expect(events[5].type).toBe('flow.completed');
-
-    const messageSends = events.filter((e) => e.type === 'canvas.send_message');
-    expect(messageSends).toHaveLength(2);
-
-    // Verify email send occurred
-    const emailSend = messageSends.find(
-      (e) => (e.payload as { channelType: string }).channelType === 'email',
-    );
-    expect(emailSend).toBeDefined();
-  });
+t('渲染標題區塊', () => {
+  const mjml = blockJsonToMjml([{ type: 'header', content: 'Hello World' }]);
+  assert.ok(mjml.includes('<mjml>'));
+  assert.ok(mjml.includes('Hello World'));
+  assert.ok(mjml.includes('mj-text'));
 });
+
+t('渲染按鈕區塊並帶上連結', () => {
+  const mjml = blockJsonToMjml([
+    { type: 'button', content: 'Click Me', href: 'https://example.com' },
+  ]);
+  assert.ok(mjml.includes('mj-button'));
+  assert.ok(mjml.includes('https://example.com'));
+  assert.ok(mjml.includes('Click Me'));
+});
+
+t('渲染多個區塊', () => {
+  const mjml = blockJsonToMjml([
+    { type: 'header', content: 'Title' },
+    { type: 'text', content: 'Body text' },
+    { type: 'divider' },
+  ]);
+  assert.ok(mjml.includes('Title'));
+  assert.ok(mjml.includes('Body text'));
+  assert.ok(mjml.includes('mj-divider'));
+});
+
+t('模板變數會被代入', () => {
+  const result = substituteMjmlVars('<mj-text>Hello {{contact.name}}</mj-text>', {
+    'contact.name': 'Alice',
+  });
+  assert.equal(result, '<mj-text>Hello Alice</mj-text>');
+});
+
+// ─── 按鈕動作解析：LINE ──────────────────────────────────────────────────
+
+t('LINE：解析 canvas add_tag postback', () => {
+  const action = parseLineButton({ type: 'postback', data: 'canvas:add_tag:tag-uuid-123' });
+  assert.equal(action.type, 'add_tag');
+  assert.equal(action.tagId, 'tag-uuid-123');
+});
+
+t('LINE：解析 canvas trigger_node postback', () => {
+  const action = parseLineButton({ type: 'postback', data: 'canvas:trigger:node-uuid-456' });
+  assert.equal(action.type, 'trigger_node');
+  assert.equal(action.nodeId, 'node-uuid-456');
+});
+
+t('LINE：uri action 解析為 open_url', () => {
+  const action = parseLineButton({ type: 'uri', uri: 'https://example.com/product' });
+  assert.equal(action.type, 'open_url');
+  assert.equal(action.url, 'https://example.com/product');
+});
+
+t('LINE：無法辨識的 postback 回 unknown（不可誤判成其他動作）', () => {
+  assert.equal(parseLineButton({ type: 'postback', data: 'legacy:action' }).type, 'unknown');
+});
+
+// ─── 按鈕動作解析：Facebook ─────────────────────────────────────────────
+
+t('FB：解析 canvas add_tag postback', () => {
+  const btn = parseFbButton({
+    type: 'postback',
+    title: 'Interested',
+    payload: 'canvas:add_tag:interested-tag',
+  });
+  assert.equal(btn.type, 'add_tag');
+  assert.equal(btn.tagId, 'interested-tag');
+});
+
+t('FB：web_url 按鈕解析為 open_url', () => {
+  const btn = parseFbButton({
+    type: 'web_url',
+    title: 'Visit Site',
+    url: 'https://shop.example.com',
+  });
+  assert.equal(btn.type, 'open_url');
+  assert.equal(btn.url, 'https://shop.example.com');
+});
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail === 0 ? 0 : 1);

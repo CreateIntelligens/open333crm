@@ -24,6 +24,8 @@ import {
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { generateFlexFromPrompt } from '../ai/flex-ai.service.js';
+import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
+import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 
 // ─── ContentType / ChannelType enums ───────────────────────────────────
 
@@ -120,7 +122,7 @@ const tagsSchema = z.array(z.string().min(1).max(40)).max(20);
 
 const createMaterialSchema = z.object({
   templateId: z.string().uuid().optional(),
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
   categoryId: z.string().uuid().nullable().optional(),
@@ -131,11 +133,12 @@ const createMaterialSchema = z.object({
   body: z.record(z.unknown()).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
-  previewImageUrl: z.string().url().optional(),
+  // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
+  previewImageUrl: httpUrlSchema.optional(),
 });
 
 const updateMaterialSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200).optional(),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
   categoryId: z.string().uuid().nullable().optional(),
@@ -144,20 +147,21 @@ const updateMaterialSchema = z.object({
   body: z.record(z.unknown()).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
-  previewImageUrl: z.string().url().optional(),
+  // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
+  previewImageUrl: httpUrlSchema.optional(),
   isActive: z.boolean().optional(),
 });
 
 const SORT_VALUES = ['recent_used', 'most_used', 'updated', 'name'] as const;
 
 const createCategorySchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().trim().min(1, '分類名稱不可為空白').max(100),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
 
 const updateCategorySchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(1, '分類名稱不可為空白').max(100).optional(),
   parentId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
@@ -177,12 +181,13 @@ const lineFlexAiGenerateSchema = z.object({
 });
 
 const lineFlexImportSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().trim().min(1, '名稱不可為空白').max(200),
   description: z.string().max(500).optional(),
   category: z.string().max(100).optional(),
   payload: z.unknown(),
   altText: z.string().max(400).optional(),
-  previewImageUrl: z.string().url().optional(),
+  // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
+  previewImageUrl: httpUrlSchema.optional(),
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────
@@ -246,8 +251,9 @@ export default async function materialRoutes(fastify: FastifyInstance) {
       sort,
       q: q.q,
       isActive: q.isActive === undefined ? true : q.isActive === 'true',
-      page: q.page ? Number(q.page) : 1,
-      limit: q.limit ? Number(q.limit) : 50,
+      // 未夾制的 Number() 會讓 page=0/-1 算出負 skip，Prisma 拋錯 → 500
+      page: clampPage(q.page ? Number(q.page) : 1),
+      limit: clampLimit(q.limit ? Number(q.limit) : 50, 50),
     });
     // 用量長條正規化基準（跨頁一致）併入 meta，前端計算長條寬度用。
     const base = success(result.items, {

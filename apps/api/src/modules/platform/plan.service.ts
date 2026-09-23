@@ -5,6 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
+import { notFound } from '../../shared/messages/resource.js';
 
 export async function listPlans(prisma: PrismaClient) {
   return prisma.plan.findMany({ orderBy: { priceMonthly: { sort: 'asc', nulls: 'last' } } });
@@ -24,7 +25,7 @@ export async function updatePlan(
   },
 ) {
   const existing = await prisma.plan.findUnique({ where: { id } });
-  if (!existing) throw new AppError('Plan not found', 'NOT_FOUND', 404);
+  if (!existing) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
 
   const plan = await prisma.plan.update({
     where: { id },
