@@ -210,7 +210,15 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         </div>
 
         {error && (
-          <p className="text-sm text-destructive">{error}</p>
+          // role=alert 讓螢幕閱讀器也讀得到；視窗內容長，儲存失敗時
+          // 捲回錯誤位置，否則使用者停在上方欄位會以為按了沒反應。
+          <div
+            role="alert"
+            ref={(el) => el?.scrollIntoView({ block: 'nearest' })}
+            className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </div>
         )}
 
         <DialogFooter>
