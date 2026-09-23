@@ -462,6 +462,18 @@ export async function createMaterial(
     },
   });
 
+  // 登記到 Tag 表並取回正規化後的名稱（trim + 去重），
+  // 同步寫回 Material.tags——否則素材會存著「  春季促銷  」這種未清理的值，
+  // 與 Tag 表的「春季促銷」對不起來，過濾就失準。
+  const normalizedTags = await registerMaterialTags(prisma, tenantId, input.tags ?? []);
+  if (JSON.stringify(normalizedTags) !== JSON.stringify(input.tags ?? [])) {
+    await prisma.material.update({
+      where: { id: material.id },
+      data: { tags: normalizedTags },
+    });
+    material.tags = normalizedTags;
+  }
+
   // 首建即記 v1 快照（版本歷史從建立起算）。
   await writeMaterialVersion(prisma, material, input.createdById ?? null);
 
@@ -485,6 +497,8 @@ export async function updateMaterial(
     if (input.categoryId) await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
     data.categoryId = input.categoryId;
   }
+  // tags 不直接寫 data——改走 syncMaterialTags（見下方），
+  // 但同步寫回 Material.tags 供過渡期的舊查詢使用。
   if (input.tags !== undefined) data.tags = input.tags;
   if (input.status !== undefined) {
     if (!MATERIAL_STATUSES.includes(input.status)) {
@@ -515,6 +529,15 @@ export async function updateMaterial(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: data as any,
   });
+
+  // 只在呼叫端有帶 tags 時才登記，避免更新其他欄位時做無謂查詢。
+  if (input.tags !== undefined) {
+    const normalized = await registerMaterialTags(prisma, tenantId, input.tags);
+    if (JSON.stringify(normalized) !== JSON.stringify(input.tags)) {
+      await prisma.material.update({ where: { id }, data: { tags: normalized } });
+      updated.tags = normalized;
+    }
+  }
 
   // 每次編輯（name / body 有異動時）記一版快照。只改 status/tags/category 等中繼資料
   // 不算內容變更、不產版本，避免版本表被中繼欄位灌爆。
@@ -850,14 +873,91 @@ export async function deleteMaterialCategory(prisma: TenantDb, id: string, tenan
 
 // ─── Governance: Tags ───────────────────────────────────────────────────
 
-/** 聚合租戶所有作用中素材的 distinct 標籤（無標籤表，即時彙總）。 */
-export async function listMaterialTags(prisma: TenantDb, tenantId: string): Promise<string[]> {
-  const rows = await prisma.material.findMany({
-    where: { tenantId, isActive: true },
-    select: { tags: true },
+/**
+ * 登記素材標籤到 Tag 表（scope=MATERIAL），並回傳正規化後的名稱。
+ *
+ * 背景：素材標籤原本是 `Material.tags`（String[] 自由字串），與「設定 → 標籤管理」
+ * 的 Tag 表互不相通——同一個概念在兩邊各存一份，無法改名或合併。
+ *
+ * 作法：**保留 Material.tags 作為實際儲存**（查詢用 hasSome，效能好且不需 join），
+ * 但每次寫入時把標籤名稱同步登記到 Tag 表。這樣：
+ *   - 設定頁看得到素材標籤，可統一管理（改名／刪除）
+ *   - 素材編輯器的建議清單能列出「已建立但尚未使用」的標籤
+ *   - 不需要新增關聯表
+ *
+ * ⚠️ 為什麼不用關聯表（MaterialTag）：`TenantDb` 是
+ * `PrismaClient | TransactionClient | TenantScopedClient` 的聯集，
+ * TS 對聯集上的多載推導成本是各成員乘積。實測新增一張關聯表就會超過上限，
+ * 整個 codebase 噴 470 個 TS2349，且錯誤出現在完全沒改過的檔案。
+ * 改動 TenantDb 定義牽連 200+ 處、風險過高，故採此方案。
+ *
+ * @returns trim 去重後的標籤名稱
+ */
+export async function registerMaterialTags(
+  prisma: TenantDb,
+  tenantId: string,
+  tagNames: string[],
+): Promise<string[]> {
+  // trim + 去重（大小寫不敏感，保留首次出現的寫法）
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of tagNames) {
+    const t = String(raw ?? '').trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(t);
+  }
+  if (names.length === 0) return [];
+
+  const existing = await prisma.tag.findMany({
+    where: { tenantId, scope: 'MATERIAL', name: { in: names } },
+    select: { name: true },
   });
+  const have = new Set(existing.map((t) => t.name.toLowerCase()));
+
+  // 隨手打的新標籤自動建立——使用者無感，但自此可在設定頁管理
+  for (const name of names) {
+    if (have.has(name.toLowerCase())) continue;
+    try {
+      await prisma.tag.create({
+        data: { tenantId, name, scope: 'MATERIAL', type: 'MANUAL' },
+      });
+    } catch {
+      // 併發下可能已被其他請求建立（@@unique[tenantId,name,scope]），忽略即可
+    }
+  }
+
+  return names;
+}
+
+
+/**
+ * 列出租戶可用的素材標籤。
+ *
+ * 改走 Tag 表（scope=MATERIAL）而非掃描所有素材的 tags 陣列：
+ * 這樣「建立了但還沒貼到任何素材」的標籤也列得出來，
+ * 使用者在設定頁新增後馬上就能在素材編輯器選到。
+ *
+ * 過渡期一併併入舊的 Material.tags 字串，避免既有資料的標籤突然消失。
+ */
+export async function listMaterialTags(prisma: TenantDb, tenantId: string): Promise<string[]> {
+  const [tags, legacyRows] = await Promise.all([
+    prisma.tag.findMany({
+      where: { tenantId, scope: 'MATERIAL' },
+      select: { name: true },
+    }),
+    prisma.material.findMany({
+      where: { tenantId, isActive: true },
+      select: { tags: true },
+    }),
+  ]);
+
   const set = new Set<string>();
-  for (const r of rows) for (const t of r.tags) set.add(t);
+  for (const t of tags) set.add(t.name);
+  // 舊資料（尚未遷移到關聯表的）仍要看得到
+  for (const r of legacyRows) for (const t of r.tags) if (t.trim()) set.add(t);
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 

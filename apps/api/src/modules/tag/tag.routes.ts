@@ -10,7 +10,8 @@ const createTagSchema = z.object({
   name: z.string().trim().min(1, '標籤名稱不可為空白').max(50, '標籤名稱不可超過 50 字'),
   color: z.string().default('#6366f1'),
   type: z.enum(['MANUAL', 'AUTO', 'SYSTEM', 'CHANNEL']),
-  scope: z.enum(['CONTACT', 'CONVERSATION', 'CASE']),
+  // MATERIAL：素材標籤（2026-09-23 統一，原本存在 Material.tags 自由字串）
+  scope: z.enum(['CONTACT', 'CONVERSATION', 'CASE', 'MATERIAL']),
   description: z.string().optional(),
 });
 

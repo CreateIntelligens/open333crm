@@ -28,12 +28,14 @@ const SCOPE_OPTIONS = [
   { value: 'CONTACT', label: '聯絡人' },
   { value: 'CONVERSATION', label: '對話' },
   { value: 'CASE', label: '案件' },
+  { value: 'MATERIAL', label: '素材' },
 ];
 
 const SCOPE_LABELS: Record<string, string> = {
   CONTACT: '聯絡人',
   CONVERSATION: '對話',
   CASE: '案件',
+  MATERIAL: '素材',
 };
 
 const COLOR_PRESETS = [
@@ -165,7 +167,7 @@ export function TagManagement() {
 
       {/* Scope filter */}
       <div className="flex gap-2">
-        {(['ALL', 'CONTACT', 'CONVERSATION', 'CASE'] as const).map((scope) => (
+        {(['ALL', 'CONTACT', 'CONVERSATION', 'CASE', 'MATERIAL'] as const).map((scope) => (
           <button
             key={scope}
             onClick={() => setFilterScope(scope)}

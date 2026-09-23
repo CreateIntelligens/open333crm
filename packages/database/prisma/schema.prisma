@@ -81,6 +81,7 @@ enum TagScope {
   CONTACT
   CONVERSATION
   CASE
+  MATERIAL
 }
 
 enum KmStatus {
@@ -1042,6 +1043,9 @@ model Material {
   description     String?
   category        String? // 舊字串分類，過渡保留（新走 categoryId），見 improve-material-library-governance
   categoryId      String?   @db.Uuid
+  // ⚠️ 過渡欄位：素材標籤已改走 MaterialTag 關聯表（與「設定→標籤管理」統一）。
+  // 保留此欄位是為了不做破壞性遷移——舊資料仍讀得到，但新寫入一律進關聯表。
+  // 待確認正式環境無殘留後可移除（見 unify-material-tags change）。
   tags            String[]  @default([])
   status          String    @default("draft") // 顯示用：draft / approved（送審狀態機另開 change）
   channelType     String

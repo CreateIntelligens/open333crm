@@ -4,7 +4,18 @@ import { AppError } from '../../shared/utils/response.js';
 import type { TenantScopedClient, TenantDb } from '../../lib/tenant-db.js';
 import { notFound } from '../../shared/messages/resource.js';
 
+/**
+ * 可以「貼標」的目標——這三種有各自的關聯表（ContactTag / CaseTag / ConversationTag）。
+ * 素材不在此列：素材標籤存在 Material.tags（String[]），沒有關聯表，
+ * 不走 addTagToTarget 這條路（見 material.service 的 registerMaterialTags）。
+ */
 export type TagTargetType = 'CONTACT' | 'CASE' | 'CONVERSATION';
+
+/**
+ * 標籤的適用範圍——比 TagTargetType 多一個 MATERIAL。
+ * 建立標籤時可指定素材範圍，但素材本身的貼標不經過關聯表。
+ */
+export type TagScopeType = TagTargetType | 'MATERIAL';
 type TagKind = 'MANUAL' | 'AUTO' | 'SYSTEM' | 'CHANNEL';
 
 type PrismaExecutor = PrismaClient | Prisma.TransactionClient | TenantScopedClient;
@@ -35,7 +46,7 @@ interface CreateTagInput {
   name: string;
   color: string;
   type: TagKind;
-  scope: TagTargetType;
+  scope: TagScopeType;
   description?: string;
 }
 
