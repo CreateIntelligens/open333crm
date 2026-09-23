@@ -35,7 +35,7 @@
 
 所有路由掛在 `/api/v1/platform`，全部經過 `authenticatePlatformSuperuser`。平台層的資料表沒有 RLS，因此這些路由使用 `fastify.prismaAdmin`。
 
-`platform` 在檔案結構上是一個模組目錄，但功能上是八個各自獨立的領域。service 層已經照領域拆開，一個領域一支服務；只有 `platform.routes.ts` 沒有跟著拆，八個領域的路由都掛在同一個檔案裡。
+`platform` 在檔案結構上是一個模組目錄，但功能上是一組各自獨立的領域。service 層已經照領域拆開，一個領域一支服務；只有 `platform.routes.ts` 沒有跟著拆，所有領域的路由都掛在同一個檔案裡。
 
 | 領域 | 服務 | 路由（相對於 `/api/v1/platform`） | `/admin` 頁面 |
 | --- | --- | --- | --- |

@@ -2,7 +2,7 @@
 
 平台後台是營運方管理所有租戶的控制台。營運方在這裡開通租戶、調整方案、審核升級申請、追蹤跨租戶用量，並管理營運方自己的帳號。
 
-`platform` 在檔案結構上是一個模組目錄，功能上是八個各自獨立的領域。服務層已經照領域拆開，一個領域一支服務；`platform.routes.ts` 沒有跟著拆，八個領域的路由都掛在同一個檔案。
+`platform` 在檔案結構上是一個模組目錄，功能上卻是一組各自獨立的領域。服務層已經照領域拆開，一個領域一支服務；`platform.routes.ts` 沒有跟著拆，所有領域的路由都掛在同一個檔案。
 
 - **資料來源**：`apps/api/src/modules/platform/*`、`apps/api/src/plugins/auth.plugin.ts`、`apps/web/src/app/admin/*`、`packages/database/prisma/schema.prisma`
 - **核對日期**：2026-09-23
@@ -12,7 +12,7 @@
 | 問題 | 章節 |
 | --- | --- |
 | 平台後台與租戶後台如何隔離？ | [與租戶後台的隔離](#與租戶後台的隔離) |
-| 八個領域各自負責什麼？有哪些業務規則？ | [八個領域](#八個領域) |
+| 每個領域負責什麼？有哪些業務規則？ | [各領域的職責](#各領域的職責) |
 | 改一個方案會影響什麼？為什麼要失效快取？ | [方案異動的連鎖效果](#方案異動的連鎖效果) |
 | 平台操作的稽核怎麼寫？ | [稽核](#稽核) |
 | 這個模組用哪些資料表？ | [資料模型](#資料模型) |
@@ -36,9 +36,9 @@
 
 平台層的資料表沒有 RLS，因此這個模組全程使用 `fastify.prismaAdmin`（`app_admin` 連線，BYPASSRLS）。兩支租戶隔離檢查腳本以 `/modules\/platform\//` 為白名單，以目錄為單位。
 
-## 八個領域
+## 各領域的職責
 
-### 1. 平台帳號認證
+### 平台帳號認證
 
 服務：`platform-auth.service.ts`、`platform-password-recovery.service.ts`
 
@@ -60,13 +60,13 @@
 
 `platform.routes.ts` 因此有兩組 guard：`guard` 含 `blockIfMustChangePassword`，`authOnlyGuard` 不含。除了 `POST /auth/change-password` 用 `authOnlyGuard` 之外，其餘已登入的路由都用 `guard`。這個差別是必要的——未改密碼的使用者必須還能呼叫改密碼那一條。
 
-### 2. 平台帳號管理
+### 平台帳號管理
 
 服務：`platform-user.service.ts`、`platform-user-emails.ts`
 
 建立、停用、修改營運方帳號，以及重寄開通信。`GET /platform-users/:id/audit-logs` 查該帳號的操作紀錄。
 
-### 3. 租戶管理
+### 租戶管理
 
 服務：`platform-tenant.service.ts`
 
@@ -81,7 +81,7 @@
 
 密碼由呼叫端決定傳明文（函式內部 hash）或已 hash 的值。試用流程在申請時就已 bcrypt，開通時直接搬過來。
 
-### 4. 方案與上限
+### 方案與上限
 
 服務：`plan.service.ts`、`plan-limits.service.ts`
 
@@ -99,7 +99,7 @@
 - 租戶沒有綁定方案。
 - 方案沒有定義這個 key。
 
-### 5. 方案異動審核
+### 方案異動審核
 
 服務：`plan-change.service.ts`
 
@@ -114,7 +114,7 @@
 
 申請狀態不是 `pending` 時，核准與駁回都回 400。
 
-### 6. 試用管理
+### 試用管理
 
 服務：`trial-admin.service.ts`
 
@@ -128,7 +128,7 @@
 
 `updateTenantContract()` 只是記錄，不觸發任何自動生命週期行為。兩個日期都是選用的：傳 `undefined` 不動該欄、傳 `null` 清除、傳日期設值。更新後兩者都有值時，迄日必須不早於起日，否則回 422 `CONTRACT_DATE_INVALID`。這個檢查會合併資料庫現值比對，因此只傳其中一個日期也擋得住。
 
-### 7. 用量統計
+### 用量統計
 
 服務：`platform-usage.service.ts`
 
@@ -138,7 +138,7 @@
 - `costUsd` 一律在後端以 Decimal 加總。前端只顯示，不對字串做加總。
 - 單價來自 `ModelPricing`，該表有分級費率與生效日期。
 
-### 8. 平台設定與權限註冊表
+### 平台設定與權限註冊表
 
 服務：`platform-setting.service.ts`
 
@@ -177,7 +177,7 @@
 
 ## 資料模型
 
-平台層的七張表都沒有 RLS。
+平台層的資料表都沒有 RLS，下表列出全部。
 
 | 表 | 用途 |
 | --- | --- |
@@ -197,7 +197,7 @@
 | --- | --- |
 | **登入與密碼重設沒有稽核紀錄** | `POST /auth/login`、`/auth/forgot-password`、`/auth/reset-password` 與 `/trial-signups/:id/resend` 四條路由沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫。詳見 `../system/AUDIT.md` 的 SEC-02 |
 | **rate-limit 綁在路由 scope 內** | `@fastify/rate-limit` 在整個 API 只註冊一次，而且註冊在 `platformRoutes()` 函式內部。拆分 `platform.routes.ts` 之前必讀 `../system/AUDIT.md` 的 SEC-03 |
-| 沒有任何測試 | `apps/api/src/__tests__/` 沒有檔案涵蓋這個模組。三十多條路由與十一支服務都沒有回歸保護，CI 也沒有執行測試，見 `../system/AUDIT.md` 的 CI-01 |
-| 路由檔沒有跟著領域拆 | `platform.routes.ts` 是 repo 中路由數最多的單一檔案，服務八個領域。這是 `AGENTS.md` 模組結構規則 3 的已知例外 |
+| 沒有任何測試 | `apps/api/src/__tests__/` 沒有檔案涵蓋這個模組。所有路由與服務都沒有回歸保護，CI 也沒有執行測試，見 `../system/AUDIT.md` 的 CI-01 |
+| 路由檔沒有跟著領域拆 | `platform.routes.ts` 是 repo 中路由數最多的單一檔案，一個檔案服務下列所有領域。這是 `AGENTS.md` 模組結構規則 3 的已知例外 |
 | `GET /trial-signups` 直接查資料庫 | 這是 `platform.routes.ts` 唯一沒有委派給服務的路由，是規則 1 的已知例外 |
 | 合約與復原的歸屬與路由名稱不一致 | `PATCH /tenants/:id/contract` 與 `/tenants/:id/restore` 看起來屬於租戶管理，實作在 `trial-admin.service.ts` |
