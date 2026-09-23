@@ -150,6 +150,9 @@ export async function listConversations(
             direction: true,
             senderType: true,
             createdAt: true,
+            // 列表要能標出「最後一則沒送出去」，否則客服掃列表時完全看不到失敗
+            // （送出失敗的紀錄靠 metadata.deliveryFailed 辨識）
+            metadata: true,
           },
         },
       },

@@ -5,7 +5,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
-import { FileText, Star } from 'lucide-react';
+import { AlertCircle, FileText, Star } from 'lucide-react';
 import type { ConversationRow } from '@/hooks/useConversations';
 
 interface ConversationListItemProps {
@@ -15,16 +15,33 @@ interface ConversationListItemProps {
   showCsat?: boolean;
 }
 
+/** 最後一則是否為「送出失敗」的紀錄（worker 寫入，對方其實沒收到）。 */
+function isDeliveryFailed(msg?: ConversationRow['lastMessage']): boolean {
+  return msg?.metadata?.deliveryFailed === true;
+}
+
 function formatMessagePreview(msg?: ConversationRow['lastMessage']): string {
   if (!msg) return '尚無訊息';
 
-  if (msg.contentType === 'image') return '[圖片]';
-  if (msg.contentType === 'file') return '[檔案]';
-  if (msg.contentType === 'flex' || msg.contentType === 'template') return '[卡片訊息]';
-  if (msg.contentType === 'sticker') return '[貼圖]';
-  if (msg.contentType === 'video') return '[影片]';
-  if (msg.contentType === 'audio') return '[語音]';
-  if (msg.contentType === 'location') return '[位置]';
+  // 非文字型別沒有 text，底下的取值會落到「尚無訊息」——對 LINE 素材尤其明顯
+  // （line_video / line_flex 等原本全都顯示成「尚無訊息」）。
+  const typeLabels: Record<string, string> = {
+    image: '[圖片]',
+    line_image: '[圖片]',
+    file: '[檔案]',
+    flex: '[卡片訊息]',
+    template: '[卡片訊息]',
+    line_flex: '[卡片訊息]',
+    sticker: '[貼圖]',
+    video: '[影片]',
+    line_video: '[影片]',
+    audio: '[語音]',
+    location: '[位置]',
+    line_imagemap: '[圖文訊息]',
+    line_carousel: '[輪播訊息]',
+  };
+  const label = msg.contentType ? typeLabels[msg.contentType] : undefined;
+  if (label) return label;
 
   const rawContent = msg.content;
   if (typeof rawContent === 'object' && rawContent !== null) {
@@ -41,6 +58,7 @@ export function ConversationListItem({
 }: ConversationListItemProps) {
   const contactName = conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人';
   const lastMessageContent = formatMessagePreview(conversation.lastMessage);
+  const lastMessageFailed = isDeliveryFailed(conversation.lastMessage);
   const lastMessageTime = conversation.lastMessage?.createdAt || conversation.updatedAt;
   const unreadCount = conversation.unreadCount || 0;
   const isBotHandled = conversation.status === 'BOT_HANDLED';
@@ -94,9 +112,17 @@ export function ConversationListItem({
           <p
             className={cn(
               'truncate text-xs',
-              unreadCount > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
+              lastMessageFailed
+                ? 'text-destructive'
+                : unreadCount > 0
+                  ? 'font-medium text-foreground'
+                  : 'text-muted-foreground',
             )}
+            title={lastMessageFailed ? '最後一則訊息沒有送出，對方並未收到' : undefined}
           >
+            {lastMessageFailed && (
+              <AlertCircle className="mr-1 inline-block h-3 w-3 shrink-0 align-[-2px]" />
+            )}
             {lastMessageContent}
           </p>
           <div className="flex items-center gap-1.5 shrink-0">

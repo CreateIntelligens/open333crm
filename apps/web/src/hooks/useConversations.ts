@@ -27,6 +27,8 @@ interface LastMessage {
   createdAt: string;
   senderType?: string;
   direction?: string;
+  /** 送出失敗的紀錄靠 metadata.deliveryFailed 辨識，列表要據此標紅 */
+  metadata?: Record<string, unknown>;
 }
 
 export interface ConversationRow {
@@ -63,6 +65,7 @@ interface SocketMessagePayload {
   contentType?: string;
   content?: string | Record<string, unknown>;
   createdAt?: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface MessageNewPayload {
@@ -105,6 +108,8 @@ function toLastMessage(message: SocketMessagePayload): LastMessage {
     createdAt: message.createdAt ?? new Date().toISOString(),
     senderType: message.senderType,
     direction: message.direction,
+    // 不帶的話，剛送出失敗的那則在列表上看不出來，要等重新整理才有
+    metadata: message.metadata,
   };
 }
 

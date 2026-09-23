@@ -26,6 +26,84 @@ export interface DeliverPayload {
   };
 }
 
+/** 從第三方錯誤中抽出可讀原因；抽不到就回原字串（截斷避免塞爆 metadata）。 */
+function describeDeliveryError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  // LINE 的錯誤多半長這樣：{"message":"...","details":[{"message":"...","property":"..."}]}
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]) as {
+        message?: string;
+        details?: Array<{ message?: string; property?: string }>;
+      };
+      const detail = parsed.details?.find((d) => d.message)?.message;
+      const combined = [parsed.message, detail].filter(Boolean).join(' — ');
+      if (combined) return combined.slice(0, 500);
+    } catch {
+      // 不是 JSON 就沿用原字串
+    }
+  }
+  return raw.slice(0, 500);
+}
+
+/**
+ * 送出失敗時留下一則可見的紀錄。
+ *
+ * 刻意寫成 OUTBOUND + senderType SYSTEM，讓它出現在收件匣的對話流裡
+ * （前端 MessageBubble 看到 metadata.deliveryFailed 會標成紅色失敗樣式），
+ * 而不是只躺在 log 裡。這則訊息**沒有真的送到使用者端**，只給客服看。
+ *
+ * 本身包 try/catch：紀錄失敗不可以再把原本的錯誤蓋掉。
+ */
+async function recordDeliveryFailure(
+  prisma: PrismaClient,
+  redis: IORedis,
+  conv: { id: string; tenantId: string; channel: { channelType: string } },
+  payload: DeliverPayload,
+  err: unknown,
+  now: Date,
+): Promise<void> {
+  try {
+    const reason = describeDeliveryError(err);
+    const message = await prisma.message.create({
+      data: {
+        conversationId: conv.id,
+        direction: 'OUTBOUND',
+        senderType: 'SYSTEM',
+        contentType: payload.contentType,
+        content: payload.content as object,
+        metadata: {
+          source: 'automation',
+          deliveryFailed: true,
+          deliveryError: reason,
+          channelType: conv.channel.channelType,
+        },
+        createdAt: now,
+      },
+    });
+    const wsPayload = {
+      conversationId: conv.id,
+      message: {
+        id: message.id,
+        conversationId: conv.id,
+        direction: 'OUTBOUND',
+        senderType: 'SYSTEM',
+        contentType: payload.contentType,
+        content: payload.content,
+        metadata: message.metadata,
+        createdAt: now.toISOString(),
+        sender: null,
+      },
+    };
+    await publishSocketEvent(redis, `conversation:${conv.id}`, 'message.new', wsPayload);
+    await publishSocketEvent(redis, `tenant:${conv.tenantId}`, 'message.new', wsPayload);
+    logger.warn(`[worker:deliver] 已記錄送出失敗 conv=${conv.id}: ${reason}`);
+  } catch (recordErr) {
+    logger.error('[worker:deliver] 連失敗紀錄都寫不進去', recordErr);
+  }
+}
+
 /**
  * 把訊息送出 channel，並寫 OUTBOUND message + emit message.new。
  * 回傳是否送出成功（找不到 conversation/identity/plugin 會 return false）。
@@ -59,12 +137,22 @@ export async function deliverToChannelFromWorker(
   );
   if (!identity) {
     logger.error('[worker:deliver] No channel identity for contact on channel', conv.channel.id);
+    await recordDeliveryFailure(
+      prisma, redis, conv, payload,
+      new Error('這位聯絡人沒有綁定此渠道的身分，無法送出'),
+      new Date(),
+    );
     return false;
   }
 
   const plugin = pluginRegistry.get(conv.channel.channelType);
   if (!plugin) {
     logger.error('[worker:deliver] No plugin for channelType:', conv.channel.channelType);
+    await recordDeliveryFailure(
+      prisma, redis, conv, payload,
+      new Error(`系統未載入 ${conv.channel.channelType} 渠道外掛，無法送出`),
+      new Date(),
+    );
     return false;
   }
 
@@ -73,6 +161,13 @@ export async function deliverToChannelFromWorker(
     credentials = decryptCredentials(conv.channel.credentialsEncrypted);
   } catch (err) {
     logger.error('[worker:deliver] Failed to decrypt credentials:', err);
+    // 踩過：用別的環境金鑰加密的 token 在這裡解不開，症狀就是「訊息都沒送出」
+    // 但完全沒有線索。原因寫死成人話，不要把解密錯誤原文外洩。
+    await recordDeliveryFailure(
+      prisma, redis, conv, payload,
+      new Error('渠道憑證無法解密，請到渠道設定重新填寫金鑰'),
+      new Date(),
+    );
     return false;
   }
 
@@ -110,7 +205,13 @@ export async function deliverToChannelFromWorker(
     }
     channelMsgId = result.channelMsgId;
   } catch (err) {
+    // ⚠️ 送出失敗不能只寫 log 就算了。
+    // 2026-09-23 測試人員回報「AI 模式不觸發關鍵字素材」，實際上關鍵字有觸發，
+    // 是影片素材用 Google Drive 分享連結被 LINE 拒收——但後台完全看不出來，
+    // 使用者只覺得「沒反應」，查了很久才從 DB 比對出來（log 那時已輪替掉）。
+    // 所以這裡把失敗也寫成一則訊息，讓它在收件匣裡看得見。
     logger.error('[worker:deliver] plugin.sendMessage threw:', err);
+    await recordDeliveryFailure(prisma, redis, conv, payload, err, now);
     return false;
   }
 
