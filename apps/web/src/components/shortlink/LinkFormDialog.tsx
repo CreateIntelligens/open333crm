@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 import { useChannels } from '@/hooks/useChannels';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface LinkFormDialogProps {
   open: boolean;
@@ -24,6 +25,9 @@ interface LinkFormDialogProps {
 
 export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: LinkFormDialogProps) {
   const [saving, setSaving] = useState(false);
+  // 原本錯誤只 console.error，使用者按了存檔沒反應、也不知道為什麼
+  // （2026-09-23 短連結建不出來時，畫面上完全沒有線索）
+  const [error, setError] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
@@ -80,6 +84,7 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
 
   const handleSave = async () => {
     if (!targetUrl) return;
+    setError('');
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
@@ -111,6 +116,7 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
       onClose();
     } catch (err) {
       console.error('Save link error:', err);
+      setError(getApiErrorMessage(err, '儲存失敗，請檢查輸入內容'));
     } finally {
       setSaving(false);
     }
@@ -200,6 +206,10 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
             </div>
           </details>
         </div>
+
+        {error && (
+          <p className="text-sm text-destructive">{error}</p>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>

@@ -39,7 +39,9 @@ const createShortlinkSchema = z.object({
   slug: z
     .string()
     .trim()
-    .min(3, '自訂代碼至少 3 個字')
+    // 下限設 1 而非 3：短連結的重點就是短，沒有理由禁止 2 字的代碼。
+    // 原本寫 3 是憑感覺訂的，實際會擋掉「ab」這種合理輸入。
+    .min(1, '自訂代碼不可為空白')
     .max(64, '自訂代碼不可超過 64 字')
     .regex(SLUG_RE, '自訂代碼只能使用英數字、底線與連字號')
     .optional(),
@@ -59,7 +61,15 @@ const createShortlinkSchema = z.object({
   utmTerm: z.string().trim().max(100).optional(),
   tagOnClick: z.string().trim().max(100).optional(),
   materialId: z.string().uuid('素材 ID 格式不正確').optional(),
-  expiresAt: z.string().datetime({ offset: true }).optional(),
+  // ⚠️ 不可用 z.string().datetime({ offset: true })：
+  // 前端的 <Input type="datetime-local"> 送出的是「2026-12-31T23:59」這種
+  // 不帶時區、也不帶秒的本地時間，會被 offset:true 直接擋下 400
+  // （2026-09-23 部署後使用者回報短連結建不出來，就是這個）。
+  // 改成只要 Date 解析得出來就放行，交給 service/Prisma 轉型。
+  expiresAt: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), { message: '到期時間格式不正確' })
+    .optional(),
 });
 
 // 更新沿用同組規則，但全欄位可選（targetUrl 也可不帶）。

@@ -231,5 +231,33 @@ t('危險 scheme 仍確實被擋（本次修改未破壞原有防護）', () => 
   }
 });
 
+// ─── 部署後回報：短連結建不出來（2026-09-23）────────────────────────────
+
+t('expiresAt 接受 datetime-local 送出的格式', () => {
+  // 前端用 <Input type="datetime-local">，送出的是「2026-12-31T23:59」
+  // ——不帶時區、不帶秒。原本用 z.string().datetime({offset:true}) 驗，
+  // 整個短連結建立功能被 400 擋死，而前端又把錯誤吞進 console，
+  // 使用者只看到「按了沒反應」。
+  const code = src('modules/shortlink/shortlink.routes.ts');
+  assert.ok(
+    !/expiresAt:\s*z\.string\(\)\.datetime\(\{\s*offset:\s*true/.test(code),
+    'expiresAt 仍用 offset:true——datetime-local 的值會被擋下',
+  );
+  // 實際格式驗證
+  for (const v of ['2026-12-31', '2026-12-31T23:59', '2026-12-31T23:59:00.000Z']) {
+    assert.ok(!Number.isNaN(Date.parse(v)), `${v} 應可被 Date.parse 接受`);
+  }
+  assert.ok(Number.isNaN(Date.parse('not-a-date')), '非日期仍要擋下');
+});
+
+t('slug 下限不可訂得比實際需求嚴', () => {
+  // 短連結的重點就是短，2 字的代碼是合理輸入。
+  const code = src('modules/shortlink/shortlink.routes.ts');
+  assert.ok(
+    !/\.min\(3, '自訂代碼/.test(code),
+    'slug 下限 3 字是憑感覺訂的，會擋掉合理輸入',
+  );
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
