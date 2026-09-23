@@ -101,9 +101,21 @@ export const lineUriSchema = z
     }
 
     if (scheme === 'tel') {
-      // tel:+886912345678 / tel:0912345678——需有實際號碼
-      if (!/^tel:\+?[\d\-() ]{3,}$/i.test(v)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '電話連結格式不正確，例如 tel:+886912345678' });
+      // tel:+886912345678 / tel:0912345678 / tel:02-1234-5678
+      //
+      // ⚠️ 只要求「至少 N 個允許字元」不夠——`tel:---`、`tel:(--)` 會通過
+      // （PR Agent review 2026-09-22 指出）。必須要求開頭是數字，
+      // 並另外數實際數字個數，否則 `tel:1------` 這種也會混過去。
+      const body = v.slice(4).trim();
+      const digits = body.replace(/\D/g, '');
+      // 允許以 + 或 ( 開頭（台灣常見的 (02) 1234-5678 格式）
+      const shapeOk = /^\+?[0-9(][0-9(). \-]*$/.test(body);
+      // 最短的合理號碼：3 碼（如 110、119 等緊急號碼）
+      if (!shapeOk || digits.length < 3) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '電話連結格式不正確，例如 tel:+886912345678',
+        });
       }
       return;
     }

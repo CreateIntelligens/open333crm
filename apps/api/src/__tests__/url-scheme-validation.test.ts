@@ -185,6 +185,22 @@ t('[中] lineUriSchema 擋下只有 scheme、沒有內容的畸形值', () => {
   }
 });
 
+t('[中] tel: 必須含實際號碼，不可只有符號（review 二輪）', () => {
+  // 原本只要求「至少 3 個允許字元」，tel:--- / tel:(--) 會通過
+  for (const v of ['tel:---', 'tel:(--)', 'tel:   -', 'tel:', 'tel:abc', 'tel:()',
+                   'tel:12',        // 數字不足 3 碼
+                   'tel:1------']) { // 有數字但不足 3 碼
+    assert.equal(lineUriSchema.safeParse(v).success, false, `應擋下：${JSON.stringify(v)}`);
+  }
+});
+
+t('[中] tel: 不誤擋台灣常見格式', () => {
+  for (const v of ['tel:+886912345678', 'tel:0912345678', 'tel:02-1234-5678',
+                   'tel:(02) 1234-5678', 'tel:110']) {
+    assert.equal(lineUriSchema.safeParse(v).success, true, `不應擋下：${v}`);
+  }
+});
+
 t('[中] lineUriSchema 不誤擋合法的 LINE URI', () => {
   for (const v of ['https://example.com/path', 'http://example.com',
                    'line://ti/p/@example', 'tel:+886912345678', 'tel:0912345678']) {
