@@ -21,6 +21,7 @@ import { CompactImageField } from '../CompactImageField';
 // ActionConfigEditor 目前未使用（結束畫面 UI 已移除），但 ActionConfig 型別
 // 仍為 endCard 所需，故只保留型別匯入。
 import type { ActionConfig } from './ActionConfigEditor';
+import { validateLineVideoUrl, LINE_VIDEO_PREVIEW_MAX_BYTES } from '@open333crm/shared';
 
 export interface LineVideoBody {
   videoUrl?: string;
@@ -43,10 +44,19 @@ interface Props {
 }
 
 export function LineVideoEditor({ body, onChange }: Props) {
+  // 即時提示而非阻擋輸入：使用者貼上 YouTube 連結時立刻看到原因，
+  // 不用等到推送後才發現客戶那邊播不動。
+  // （空值不提示，留給存檔時的必填擋控處理。）
+  const videoUrlError = body.videoUrl?.trim()
+    ? validateLineVideoUrl(body.videoUrl)
+    : null;
+
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-        影片需為 mp4 格式、長度建議 60 秒以內。請填入可公開存取的網址。
+        影片需為 <strong>可直接下載的 mp4 檔案網址</strong>（結尾 .mp4）、HTTPS、200MB 以內。
+        <br />
+        YouTube、Vimeo 等分享連結<strong>無法播放</strong>——那是網頁不是影片檔。
       </div>
 
       <div>
@@ -54,8 +64,11 @@ export function LineVideoEditor({ body, onChange }: Props) {
         <Input
           value={body.videoUrl ?? ''}
           onChange={(e) => onChange({ ...body, videoUrl: e.target.value })}
-          placeholder="https://...mp4"
+          placeholder="https://example.com/video.mp4"
         />
+        {videoUrlError && (
+          <p className="mt-1 text-xs text-red-600">{videoUrlError}</p>
+        )}
       </div>
 
       <div>
@@ -64,6 +77,8 @@ export function LineVideoEditor({ body, onChange }: Props) {
           value={body.previewImageUrl ?? ''}
           onChange={(previewImageUrl) => onChange({ ...body, previewImageUrl })}
           placeholder="影片預覽圖（jpg / png）"
+          // LINE 對 previewImageUrl 的硬限制是 1MB
+          maxBytes={LINE_VIDEO_PREVIEW_MAX_BYTES}
         />
       </div>
     </div>

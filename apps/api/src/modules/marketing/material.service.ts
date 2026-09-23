@@ -27,6 +27,7 @@ import {
 import { decryptCredentials } from '../channel/channel.service.js';
 import { buildLineMessage } from '@open333crm/channel-plugins';
 import { notFound } from '../../shared/messages/resource.js';
+import { validateLineVideoUrl } from '@open333crm/shared';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -266,6 +267,17 @@ async function validateLineMaterialWithLineApi(
   // 只驗 LINE 版型；flex_showcase / flex_template 已有專屬 validate（import 時），這裡涵蓋其餘。
   if (!contentType.startsWith('line_')) return;
   if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
+
+  // 影片網址先本機驗一次：LINE 的 validate API 只檢查結構，不會告訴你
+  // 「YouTube 連結播不出來」——那是送出後客戶點開才發現的問題。
+  // 使用者最常見的誤用就是直接貼 YouTube 分享連結（2026-09-23 實際回報）。
+  if (contentType === 'line_video') {
+    const videoUrl = typeof body.videoUrl === 'string' ? body.videoUrl : '';
+    const err = validateLineVideoUrl(videoUrl);
+    if (err) {
+      throw new AppError(err, 'INVALID_LINE_VIDEO_URL', 400);
+    }
+  }
 
   let message: unknown;
   try {

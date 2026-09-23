@@ -24,10 +24,25 @@ interface Props {
    * 傳入時，上傳前先讀圖實際尺寸比對，比例不符（超過容差）則擋下、不寫入、顯示錯誤。
    */
   requireAspectRatio?: { width: number; height: number };
+  /**
+   * 檔案大小上限（bytes）。超過則在「選檔當下」就擋下，不送出上傳。
+   *
+   * 為什麼需要：後端 /files/upload 的通用政策允許 25MB，但下游平台各有更嚴的限制
+   * （如 LINE Rich Menu 背景圖上限 1MB）。不在這裡擋的話，使用者會看到
+   * 「上傳成功」，直到按下發布才收到 400——白做工且錯誤時機很晚。
+   */
+  maxBytes?: number;
   /** 自訂上傳端點（預設 /files/upload；imagemap 底圖走 /files/imagemap-upload 產多尺寸）。 */
   uploadEndpoint?: string;
   /** 從上傳回應取出要存的 URL（預設取 data.url；imagemap 取 data.baseUrl）。 */
   extractUrl?: (data: Record<string, unknown>) => string;
+}
+
+/** 把 bytes 格式化成人看得懂的大小 */
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** 讀取本機圖片檔的實際像素寬高。 */
@@ -47,7 +62,7 @@ function readImageSize(file: File): Promise<{ width: number; height: number }> {
   });
 }
 
-export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio, uploadEndpoint, extractUrl }: Props) {
+export function CompactImageField({ value, onChange, placeholder, hint, requireAspectRatio, maxBytes, uploadEndpoint, extractUrl }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +71,15 @@ export function CompactImageField({ value, onChange, placeholder, hint, requireA
     setUploading(true);
     setError(null);
     try {
+      // 大小檢查擺在最前面：不必讀圖就能判斷，且這是最常見的失敗原因。
+      if (maxBytes && file.size > maxBytes) {
+        setError(
+          `圖片 ${formatBytes(file.size)} 超過上限 ${formatBytes(maxBytes)}，請壓縮後再上傳。`,
+        );
+        setUploading(false);
+        return;
+      }
+
       // 版型比例驗證：上傳前讀圖實際尺寸，比例不符（容差 3%）則擋下。
       if (requireAspectRatio) {
         const { width, height } = await readImageSize(file);
