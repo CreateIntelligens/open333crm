@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-23：SLA 功能盤點，新增四個項目
+
+盤點範圍是 `apps/api/src/modules/sla`、`apps/workers/src/handlers/sla.handler.ts` 與 `packages/shared/src/sla`。做法是靜態閱讀原始碼與 schema，沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| SLA-01 | `grep -rn "firstResponseAt" apps/ packages/` 命中 15 處，全部是 schema 宣告、型別宣告、`select` 子句或讀取端，沒有任何一處寫入 |
+| SLA-02 | `getActiveCases()` 的 `take: 100`，查詢沒有 `orderBy`，`where` 也沒有 `tenantId` |
+| SLA-03 | `grep -rn "isDefault" apps/` 的 SLA 相關命中只有 `sla.routes.ts` 的寫入端與 `SlaManagement.tsx` 的顯示；`case.service.ts:279` 挑政策時沒有這個條件 |
+| SLA-04 | `schema.prisma` 的 `SlaPolicy` 沒有 `Case` relation，`Case.slaPolicy` 是 `String?`；`sla.handler.ts:103` 以 `name` 回查 |
+
+SLA-01 與其他三項的性質不同：它每天對每張套用政策的工單各產生一次假的逾時事件，不需要特定操作觸發，連帶讓分析報表的平均首次回應時間永遠沒有數值。其餘三項要在特定條件下才顯現。
+
+盤點時另外確認 `apps/api/src/modules/sla/sla.worker.ts` 是刻意寫成的 no-op，用途是防止 API 行程啟動第二個掃描器，不是遺留程式碼。真正漏掉的第二套掃描器是既有的 APP-01（`packages/core` 的 `sla-monitoring` consumer），沒有另開項目。
+
 ## 2026-09-23：Canvas 模組盤點，新增四個租戶隔離項目
 
 這次不是複查既有項目，是盤點 `apps/api/src/modules/canvas` 與 `packages/core/src/canvas` 時新增的項目。做法是靜態閱讀原始碼與設定檔，沒有啟動容器。

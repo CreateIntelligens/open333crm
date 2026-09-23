@@ -29,6 +29,10 @@
 | RLS-02 | 租戶隔離 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
 | RLS-03 | 租戶隔離 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | RLS-04 | 租戶隔離 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
+| SLA-01 | SLA | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
+| SLA-02 | SLA | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
+| SLA-03 | SLA | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
+| SLA-04 | SLA | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -149,6 +153,55 @@ Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embeddi
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
 `apps/workers/src/index.ts:59` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
+
+## SLA
+
+以下四項在 2026-09-23 盤點 SLA 功能時發現，都是靜態確認。功能說明見[服務水準協議](../modules/SLA.md)。
+
+### SLA-01：`Case.firstResponseAt` 沒有寫入端
+
+`packages/database/prisma/schema.prisma:742` 宣告 `firstResponseAt`，對應的 migration 也建了欄位。三個地方讀這個欄位：
+
+- `apps/workers/src/handlers/sla.handler.ts` 的第 390 與 406 行，用它判定首次回應是否已達成。
+- `apps/api/src/modules/analytics/analytics.service.ts` 的第 100 與 351 行，用它計算平均首次回應時間。
+- `apps/web/src/components/inbox/ContactInfoPanel.tsx:203`，顯示給客服看。
+
+全 repo 沒有任何程式寫入這個欄位。以 `firstResponseAt` 為關鍵字搜尋 `apps/` 與 `packages/`，命中的都是 schema 宣告、型別宣告、`select` 子句或讀取端。
+
+兩個後果：
+
+1. 客服即使立刻回覆，工單仍會在 `createdAt + firstResponseMinutes` 到期時判定為 `first_response_breached`。系統接著通知負責人與該租戶的 `ADMIN`、`SUPERVISOR`，寫入 `CaseEvent`，並觸發租戶的自動化規則。每張套用政策的工單都會發生一次。
+2. 分析報表的平均首次回應時間永遠沒有數值。SQL 的 `FILTER (WHERE "firstResponseAt" IS NOT NULL)` 濾出空集合，`AVG()` 回傳 null。
+
+這一項會持續產生假警報，不需要特定操作觸發。
+
+### SLA-02：掃描每輪上限 100 張工單
+
+`apps/workers/src/handlers/sla.handler.ts` 的 `getActiveCases()` 用 `take: 100` 取工單，沒有 `orderBy`，也沒有租戶條件。這個上限是全系統共用，不是每個租戶各 100 張。
+
+全系統符合條件的工單超過 100 張時，超出的部分在該輪不會被檢查。沒有 `orderBy`，因此每輪取到哪 100 張由資料庫決定，不保證輪替。掃描間隔是 300 秒。
+
+### SLA-03：`isDefault` 沒有讀取端
+
+`apps/api/src/modules/sla/sla.routes.ts` 的建立與修改路由各有一段邏輯，維持「同一優先級只有一條政策的 `isDefault` 為真」。`apps/web/src/components/settings/SlaManagement.tsx` 也顯示這個標記。
+
+但 `apps/api/src/modules/case/case.service.ts:279` 在呼叫端沒有指定 `slaPolicyId` 時，是這樣挑政策的：
+
+```ts
+await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
+```
+
+沒有 `isDefault: true`，也沒有 `orderBy`。同一優先級有多條政策時，挑中哪一條由資料庫決定，與 `isDefault` 無關。
+
+### SLA-04：工單以政策名稱連結政策
+
+`SlaPolicy` 與 `Case` 之間沒有 relation。`Case.slaPolicy` 是 `String?`，存的是政策名稱。`case.service.ts` 建立工單時寫入 `slaPolicy: slaPolicy?.name`，`sla.handler.ts` 的 `getPolicy()` 再以 `findFirst({ where: { tenantId, name } })` 回查。
+
+由此產生三個問題：
+
+- 修改政策名稱之後，既有工單的 `slaPolicy` 仍是舊名稱。`getPolicy()` 回傳 null，`sla.handler.ts` 直接 `continue`，該工單從此不再受監控，而且沒有任何紀錄。
+- `sla_policies` 只有 `@@index([tenantId])`，沒有 `(tenantId, name)` 的唯一約束。同一租戶建立兩條同名政策時，`findFirst` 回傳哪一條不確定。
+- `DELETE /api/v1/sla-policies/:id` 是硬刪除，沒有引用檢查。`SlaPolicy` 沒有 `isActive` 欄位，因此無法套用 `AGENTS.md` 的 soft-delete 慣例。刪除後，引用該名稱的工單留下一個查不到政策的字串。
 
 ## 授權與安全
 
