@@ -459,6 +459,13 @@ const createApiKeySchema = z.object({
   expiresInDays: z.number().int().positive().nullable().optional(),
 });
 
+/** System prompt 長度上限：直接影響每次 LLM 呼叫的 token 成本 */
+export const MAX_SYSTEM_PROMPT_LENGTH = 8000;
+
+const systemPromptSchema = z
+  .string()
+  .max(MAX_SYSTEM_PROMPT_LENGTH, `提示詞不可超過 ${MAX_SYSTEM_PROMPT_LENGTH} 字`);
+
 const embeddingSettingsSchema = z.object({
   // 後端會 fetch 這個位址（健康檢查／向量化）→ 不限 scheme 等於 SSRF 面
   baseUrl: httpUrlSchema.optional(),
@@ -474,10 +481,13 @@ const chatSettingsSchema = z.object({
   baseUrl: httpUrlSchema.optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(8192).optional(),
-  chatSystemPrompt: z.string().optional(),
-  summarizeSystemPrompt: z.string().optional(),
-  clarifySystemPrompt: z.string().optional(),
-  modelGuideSystemPrompt: z.string().optional(),
+  // 這四段會直接進 LLM context，無上限等於可撐爆 token 預算。
+  // 上限 8000 字：專案內建的四段預設 prompt 最長 360 字（CLARIFY），
+  // 8000 留了 20 倍以上的客製空間，同時擋住 10 萬字這種明顯失控的輸入。
+  chatSystemPrompt: systemPromptSchema.optional(),
+  summarizeSystemPrompt: systemPromptSchema.optional(),
+  clarifySystemPrompt: systemPromptSchema.optional(),
+  modelGuideSystemPrompt: systemPromptSchema.optional(),
   clarifyThreshold: z.number().min(0).max(1).optional(),
   clarifyMaxAttempts: z.number().int().min(0).max(5).optional(),
 });

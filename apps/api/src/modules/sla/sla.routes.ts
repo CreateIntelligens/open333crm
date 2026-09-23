@@ -4,22 +4,23 @@ import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { slaMinutesSchema } from '../../shared/utils/numeric-bounds.js';
 
 const createSlaSchema = z.object({
   name: z.string().min(1),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
-  firstResponseMinutes: z.number().int().positive(),
-  resolutionMinutes: z.number().int().positive(),
-  warningBeforeMinutes: z.number().int().positive().default(30),
+  firstResponseMinutes: slaMinutesSchema,
+  resolutionMinutes: slaMinutesSchema,
+  warningBeforeMinutes: slaMinutesSchema.default(30),
   isDefault: z.boolean().default(false),
 });
 
 const updateSlaSchema = z.object({
   name: z.string().min(1).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  firstResponseMinutes: z.number().int().positive().optional(),
-  resolutionMinutes: z.number().int().positive().optional(),
-  warningBeforeMinutes: z.number().int().positive().optional(),
+  firstResponseMinutes: slaMinutesSchema.optional(),
+  resolutionMinutes: slaMinutesSchema.optional(),
+  warningBeforeMinutes: slaMinutesSchema.optional(),
   isDefault: z.boolean().optional(),
 });
 

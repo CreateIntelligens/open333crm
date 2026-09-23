@@ -23,6 +23,17 @@ import {
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
+import { z } from 'zod';
+import { int4Schema } from '../../shared/utils/numeric-bounds.js';
+
+// 積分調整：允許負數（扣點），但必須是能存進 Int 欄位的整數。
+// 小數不做無條件捨去而是直接擋下——靜默改動使用者輸入的數字，
+// 在「調整積分」這種帳務性操作上不可接受。
+const adjustPointsSchema = z.object({
+  contactId: z.string().uuid('聯繫人 ID 格式不正確'),
+  amount: int4Schema,
+  note: z.string().trim().max(500, '備註不可超過 500 字').optional(),
+});
 
 export default async function portalRoutes(app: FastifyInstance) {
   // All routes require agent JWT
@@ -132,9 +143,11 @@ export default async function portalRoutes(app: FastifyInstance) {
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
-  app.post('/points/adjust', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
-    const { contactId, amount, note } = request.body as { contactId: string; amount: number; note?: string };
-    if (!contactId || amount === undefined) return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'contactId and amount required' } });
+  app.post('/points/adjust', { preHandler: requirePermission('portal.manage') }, async (request) => {
+    // 原本是裸轉型 + 只檢查 undefined：
+    // 超大 amount（999999999999999）會溢位 int4 → 500；
+    // 小數（1.5）被 Prisma 靜默無條件捨去成 1，使用者完全無感知。
+    const { contactId, amount, note } = adjustPointsSchema.parse(request.body);
     const tx = await addPointTransaction(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       contactId,
