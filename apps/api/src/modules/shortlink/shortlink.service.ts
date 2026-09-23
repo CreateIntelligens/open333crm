@@ -104,7 +104,8 @@ export async function createShortLink(
     utmTerm?: string;
     tagOnClick?: string;
     materialId?: string;
-    expiresAt?: string;
+    // routes 用 z.coerce.date() 驗完直接給 Date，這裡不再收字串
+    expiresAt?: Date;
   },
 ) {
   let slug = data.slug;
@@ -118,7 +119,8 @@ export async function createShortLink(
   } else {
     // Check custom slug uniqueness
     const existing = await prisma.shortLink.findUnique({ where: { slug } });
-    if (existing) throw new Error('Slug already in use');
+    // 這句會原封不動顯示在建立視窗上（前端已改為顯示後端訊息），所以用中文。
+    if (existing) throw new Error('這個自訂代碼已經被使用了，請換一個');
   }
 
   if (data.lineChannelId) {
@@ -143,7 +145,7 @@ export async function createShortLink(
       utmTerm: data.utmTerm,
       tagOnClick: data.tagOnClick,
       materialId: data.materialId ?? null,
-      expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+      expiresAt: data.expiresAt,
     },
   });
 
@@ -218,7 +220,8 @@ export async function updateShortLink(
     utmTerm?: string;
     tagOnClick?: string;
     isActive?: boolean;
-    expiresAt?: string | null;
+    // null = 清除到期時間；undefined = 這欄不動
+    expiresAt?: Date | null;
   },
 ) {
   const link = await prisma.shortLink.findFirst({ where: { id, tenantId } });
@@ -244,7 +247,7 @@ export async function updateShortLink(
       utmTerm: data.utmTerm,
       tagOnClick: data.tagOnClick,
       isActive: data.isActive,
-      expiresAt: data.expiresAt === null ? null : data.expiresAt ? new Date(data.expiresAt) : undefined,
+      expiresAt: data.expiresAt,
     },
   });
 

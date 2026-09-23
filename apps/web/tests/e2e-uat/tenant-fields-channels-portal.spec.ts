@@ -267,7 +267,8 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
       title: `${E2E_PREFIX} dup2`,
     });
     expect(second.status, '重複 slug 應被擋下').toBe(400);
-    expect(JSON.stringify(second.body)).toContain('Slug already in use');
+    // 訊息已中文化（前端會原封不動顯示給使用者），這裡只斷言語意不綁死字串
+    expect(JSON.stringify(second.body)).toContain('自訂代碼已經被使用');
   });
 
   /** ⚠️ P1 — targetUrl 空字串可存入（前端擋住但後端沒擋，API 可直接繞過） */

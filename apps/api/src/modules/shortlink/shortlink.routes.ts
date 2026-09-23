@@ -39,7 +39,9 @@ const createShortlinkSchema = z.object({
   slug: z
     .string()
     .trim()
-    .min(3, '自訂代碼至少 3 個字')
+    // 下限設 1 而非 3：短連結的重點就是短，沒有理由禁止 2 字的代碼。
+    // 原本寫 3 是憑感覺訂的，實際會擋掉「ab」這種合理輸入。
+    .min(1, '自訂代碼不可為空白')
     .max(64, '自訂代碼不可超過 64 字')
     .regex(SLUG_RE, '自訂代碼只能使用英數字、底線與連字號')
     .optional(),
@@ -59,12 +61,21 @@ const createShortlinkSchema = z.object({
   utmTerm: z.string().trim().max(100).optional(),
   tagOnClick: z.string().trim().max(100).optional(),
   materialId: z.string().uuid('素材 ID 格式不正確').optional(),
-  expiresAt: z.string().datetime({ offset: true }).optional(),
+  // ⚠️ 日期一律用 z.coerce.date()，不可用 z.string().datetime()：
+  // 前端的 <Input type="datetime-local"> 送出的是「2026-12-31T23:59」這種
+  // 不帶時區、也不帶秒的本地時間，會被 datetime() 系列直接擋下 400
+  // （2026-09-23 部署後使用者回報短連結建不出來，就是這個）。
+  // coerce.date() 真實輸入全收、亂填仍擋，且直接產出 Date 可餵 Prisma。
+  expiresAt: z.coerce.date({ invalid_type_error: '到期時間格式不正確' }).optional(),
 });
 
 // 更新沿用同組規則，但全欄位可選（targetUrl 也可不帶）。
 const updateShortlinkSchema = createShortlinkSchema.partial().extend({
   isActive: z.boolean().optional(),
+  // expiresAt 要能被清掉：service 用 `=== null` 判斷「移除到期時間」，
+  // schema 若不收 null 會被擋在 400，那段清除邏輯就永遠執行不到
+  // ——到期時間一旦設了就拿不掉。
+  expiresAt: z.coerce.date({ invalid_type_error: '到期時間格式不正確' }).nullish(),
 });
 
 // page/limit 未夾制會讓 skip 算出負數，Prisma 直接拋錯 → 500。
