@@ -63,8 +63,9 @@ export async function createActivity(
     description?: string;
     coverImage?: string;
     settings?: Record<string, unknown>;
-    startsAt?: string;
-    endsAt?: string;
+    // routes 用 z.coerce.date() 驗完直接給 Date；null = 清除，undefined = 不動
+    startsAt?: Date | null;
+    endsAt?: Date | null;
     options?: Array<{ label: string; imageUrl?: string; sortOrder?: number; isCorrect?: boolean }>;
     fields?: Array<{ fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
@@ -78,8 +79,8 @@ export async function createActivity(
       description: data.description,
       coverImage: data.coverImage,
       settings: (data.settings ?? {}) as Prisma.InputJsonValue,
-      startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-      endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+      startsAt: data.startsAt,
+      endsAt: data.endsAt,
       options: data.options
         ? { create: data.options.map((o, i) => ({ label: o.label, imageUrl: o.imageUrl, sortOrder: o.sortOrder ?? i, isCorrect: o.isCorrect ?? false })) }
         : undefined,
@@ -105,8 +106,9 @@ export async function updateActivity(
     description?: string;
     coverImage?: string;
     settings?: Record<string, unknown>;
-    startsAt?: string;
-    endsAt?: string;
+    // routes 用 z.coerce.date() 驗完直接給 Date；null = 清除，undefined = 不動
+    startsAt?: Date | null;
+    endsAt?: Date | null;
     options?: Array<{ id?: string; label: string; imageUrl?: string; sortOrder?: number; isCorrect?: boolean }>;
     fields?: Array<{ id?: string; fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
@@ -114,6 +116,16 @@ export async function updateActivity(
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以編輯', 'INVALID_ACTIVITY_STATUS', 409);
+
+  // 起訖先後檢查必須在這裡做，不能只靠 routes 的 schema：
+  // schema 只看得到這次送來的欄位，使用者若只改 endsAt，
+  // 就無從跟 DB 既有的 startsAt 比對（實測確認會漏放）。
+  // undefined = 這欄不動 → 沿用 DB 現值；null = 清除 → 該側不設限。
+  const nextStartsAt = data.startsAt === undefined ? activity.startsAt : data.startsAt;
+  const nextEndsAt = data.endsAt === undefined ? activity.endsAt : data.endsAt;
+  if (nextStartsAt && nextEndsAt && nextEndsAt <= nextStartsAt) {
+    throw new AppError('結束時間必須晚於開始時間', 'INVALID_DATE_RANGE', 400);
+  }
 
   // Replace options and fields if provided
   if (data.options) {
@@ -150,8 +162,8 @@ export async function updateActivity(
       description: data.description,
       coverImage: data.coverImage,
       settings: data.settings as Prisma.InputJsonValue | undefined,
-      startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-      endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+      startsAt: data.startsAt,
+      endsAt: data.endsAt,
     },
     include: {
       options: { orderBy: { sortOrder: 'asc' } },

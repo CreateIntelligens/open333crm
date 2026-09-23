@@ -270,7 +270,7 @@ t('到期時間可以被清除（更新端點收 null）', () => {
   // 那段程式等於永遠跑不到——到期時間一旦設了就再也拿不掉。
   const code = src('modules/shortlink/shortlink.routes.ts');
   assert.ok(
-    /expiresAt: z\.coerce\.date\([^)]*\)\.nullish\(\)/.test(code),
+    /expiresAt: z\.coerce\.date\(.*\)\.nullish\(\)/.test(code),
     '更新 schema 未放行 null——到期時間無法清除',
   );
   // 前端也要真的送 null，送 undefined 後端會當成「這欄不動」
@@ -278,8 +278,10 @@ t('到期時間可以被清除（更新端點收 null）', () => {
     join(here, '../../../../apps/web/src/components/shortlink/LinkFormDialog.tsx'),
     'utf8',
   );
+  // toIsoForApi(value, clearable)：clearable=true 時清空送 null（清除），
+  // 否則送 undefined（這欄不動）。見 apps/web/src/lib/datetime-local.ts
   assert.ok(
-    /expiresAt: expiresAt \|\| \(editData \? null : undefined\)/.test(web),
+    /expiresAt: toIsoForApi\(expiresAt, Boolean\(editData\)\)/.test(web),
     '前端清空到期時間時仍送 undefined，後端不會清除',
   );
 });

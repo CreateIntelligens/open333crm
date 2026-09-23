@@ -14,6 +14,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
+import { toLocalInputValue, toIsoForApi } from '@/lib/datetime-local';
 
 interface OptionItem {
   label: string;
@@ -37,6 +39,8 @@ interface ActivityFormDialogProps {
 
 export function ActivityFormDialog({ open, onClose, onSaved, editData }: ActivityFormDialogProps) {
   const [saving, setSaving] = useState(false);
+  // 原本儲存失敗只 console.error，使用者按了沒反應也不知道為什麼
+  const [error, setError] = useState('');
   const [type, setType] = useState<string>('POLL');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -51,8 +55,8 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
       setType((editData.type as string) || 'POLL');
       setTitle((editData.title as string) || '');
       setDescription((editData.description as string) || '');
-      setStartsAt(editData.startsAt ? (editData.startsAt as string).slice(0, 16) : '');
-      setEndsAt(editData.endsAt ? (editData.endsAt as string).slice(0, 16) : '');
+      setStartsAt(toLocalInputValue(editData.startsAt as string | null | undefined));
+      setEndsAt(toLocalInputValue(editData.endsAt as string | null | undefined));
       const settings = (editData.settings || {}) as Record<string, unknown>;
       setPointsPerSubmit((settings.pointsPerSubmit as number) || 0);
       if (editData.options && (editData.options as unknown[]).length > 0) {
@@ -79,14 +83,16 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
 
   const handleSave = async () => {
     if (!title) return;
+    setError('');
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
         type,
         title,
         description: description || undefined,
-        startsAt: startsAt || undefined,
-        endsAt: endsAt || undefined,
+        // 第二參數 = 可清除：編輯時清空要送 null，否則後端當成「這欄不動」
+        startsAt: toIsoForApi(startsAt, Boolean(editData)),
+        endsAt: toIsoForApi(endsAt, Boolean(editData)),
         settings: { pointsPerSubmit },
       };
 
@@ -106,6 +112,7 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
       onClose();
     } catch (err) {
       console.error('Save activity error:', err);
+      setError(getApiErrorMessage(err, '儲存活動失敗，請檢查輸入內容'));
     } finally {
       setSaving(false);
     }
@@ -281,6 +288,18 @@ export function ActivityFormDialog({ open, onClose, onSaved, editData }: Activit
             </div>
           )}
         </div>
+
+        {error && (
+          // 視窗內容長，失敗時捲回錯誤位置，否則使用者停在上方欄位
+          // 會以為按了沒反應
+          <div
+            role="alert"
+            ref={(el) => el?.scrollIntoView({ block: 'nearest' })}
+            className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>

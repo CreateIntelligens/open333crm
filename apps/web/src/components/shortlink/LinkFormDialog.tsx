@@ -14,6 +14,7 @@ import {
 import api from '@/lib/api';
 import { useChannels } from '@/hooks/useChannels';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { toLocalInputValue, toIsoForApi } from '@/lib/datetime-local';
 
 interface LinkFormDialogProps {
   open: boolean;
@@ -59,7 +60,7 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
       setUtmContent((editData.utmContent as string) || '');
       setUtmTerm((editData.utmTerm as string) || '');
       setTagOnClick((editData.tagOnClick as string) || '');
-      setExpiresAt(editData.expiresAt ? (editData.expiresAt as string).slice(0, 16) : '');
+      setExpiresAt(toLocalInputValue(editData.expiresAt as string | null | undefined));
       setLineChannelId((editData.lineChannelId as string) || '');
       setOgTitle((editData.ogTitle as string) || '');
       setOgDescription((editData.ogDescription as string) || '');
@@ -96,9 +97,8 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         utmContent: utmContent || undefined,
         utmTerm: utmTerm || undefined,
         tagOnClick: tagOnClick || undefined,
-        // 編輯時清空欄位要送 null（undefined 會被後端當成「這欄不動」，
-        // 到期時間就永遠拿不掉）；建立時沒有「清除」的概念，送 undefined 即可。
-        expiresAt: expiresAt || (editData ? null : undefined),
+        // 第二參數 = 可清除：編輯時清空要送 null，否則後端當成「這欄不動」
+        expiresAt: toIsoForApi(expiresAt, Boolean(editData)),
         lineChannelId: lineChannelId || null,
         ogTitle: ogTitle || undefined,
         ogDescription: ogDescription || undefined,
