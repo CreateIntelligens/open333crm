@@ -13,14 +13,14 @@
 
 | 文件 | 領域 | 適合解答的問題 |
 | --- | --- | --- |
-| [平台帳號認證](./AUTH.md) | 登入與密碼 | 防帳號枚舉怎麼做？重設 token 的規則是什麼？ |
-| [平台帳號管理](./PLATFORM-USERS.md) | 營運方帳號 | 怎麼建立與停用營運方帳號？ |
-| [租戶管理](./TENANTS.md) | 租戶 | 開通一個租戶會建立哪些東西？ |
-| [方案與上限](./PLANS.md) | 方案 | `Plan` 的四個欄位各自控制什麼？空值代表什麼？ |
-| [方案異動審核](./PLAN-CHANGES.md) | 升級與加購 | 兩種申請型別核准後各做什麼？ |
-| [試用管理](./TRIALS.md) | 試用 | 試用的生命週期是什麼？誰能延長？ |
-| [用量統計](./USAGE.md) | 用量 | 成本怎麼算？哪些呼叫不計入？ |
-| [平台設定與權限註冊表](./SETTINGS.md) | 設定 | 平台設定存在哪裡？`/registry` 回傳什麼？ |
+| [平台帳號認證](./AUTH.md) | 登入與密碼 | 防帳號枚舉怎麼做？停用帳號多久生效？速率限制擋得住暴力破解嗎？ |
+| [平台帳號管理](./PLATFORM-USERS.md) | 營運方帳號 | 新帳號的密碼從哪來？重寄開通信會發生什麼？為什麼停不掉最後一個帳號？ |
+| [租戶管理](./TENANTS.md) | 租戶 | 開通一個租戶會建立哪些東西？停用租戶多久生效？租戶能刪除嗎？ |
+| [方案與上限](./PLANS.md) | 方案 | 四個欄位各自控制什麼？有效上限怎麼算？停售為什麼沒有用？ |
+| [方案異動審核](./PLAN-CHANGES.md) | 升級與加購 | 核准後各做什麼？加購是一次性還是每個月？ |
+| [試用管理](./TRIALS.md) | 試用 | 試用的生命週期是什麼？誰能延長？清單上的狀態怎麼判定？ |
+| [用量統計](./USAGE.md) | 用量 | 成本怎麼算？哪些呼叫不計入？為什麼跟額度的數字對不起來？ |
+| [平台設定與權限註冊表](./SETTINGS.md) | 設定 | 設定存在哪裡？寫錯型別會怎樣？`/registry` 回傳什麼？ |
 
 模組屬於哪個後台、掛在哪個路由前綴、對應哪個 `/admin` 頁面，見[模組總覽](../OVERVIEW.md)的平台後台一節。
 
@@ -60,18 +60,24 @@
 | --- | --- | --- | --- |
 | 權限天花板快取 | `invalidatePlanPermissions(prisma, planId)` | `services/permission.service.ts` | Redis，600 秒 |
 | 租戶方案快取 | `invalidateTenantPlan(tenantId)` | `services/tenant-plan.cache.ts` | 行程內，60 秒 |
-| AI 額度快取 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | 見該檔 |
+| AI 額度計數器 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月，月底過期 |
 
-四個地方會改動方案，各自需要失效的快取不同：
+改動方案的地方有好幾處，各自需要失效的快取不同：
 
 | 動作 | 需要失效 |
 | --- | --- |
 | `plan.service.ts` 的 `updatePlan()` | `features` 或 `permissionOverrides` 有變更時，失效權限天花板快取 |
+| `platform-tenant.service.ts` 的 `updateTenant()` 帶 `planSlug` | 權限天花板快取 + 租戶方案快取 |
 | `plan-change.service.ts` 核准 `upgrade` | 權限天花板快取 + 租戶方案快取 |
-| `plan-change.service.ts` 核准 `token_topup` | 租戶方案快取 + AI 額度快取 |
+| `plan-change.service.ts` 核准 `token_topup` | 租戶方案快取 + AI 額度計數器 |
 | `trial-admin.service.ts` 的 `convertToPaid()` | 權限天花板快取 + 租戶方案快取 |
 
-`convertToPaid()` 的註解說明了漏掉的後果：租戶方案快取存活 60 秒，不失效的話，剛付費的租戶在這段期間仍沿用舊的試用天花板，新功能會被 guard 誤擋成 403。權限天花板快取存活 600 秒，漏掉的影響時間更長。
+`convertToPaid()` 的註解說明了漏掉的後果。租戶方案快取存活 60 秒，不失效的話，剛付費的租戶在這 60 秒內仍沿用舊的試用天花板，新功能會被 guard 誤擋成 403。權限天花板快取存活 600 秒，漏掉的影響時間更長。
+
+兩層快取的失效範圍不同，多開一個 API 行程就看得出來：
+
+- 權限天花板快取在 Redis，`invalidatePlanPermissions()` 用 `SCAN` 逐批刪除該方案的 key，所有行程一起生效。
+- 租戶方案快取是行程內的 `Map`，`invalidateTenantPlan()` 只清得掉自己這個行程。處理這個請求以外的其他行程，仍會沿用舊的 `planId` 直到 60 秒過期。
 
 ## 稽核
 
@@ -79,9 +85,13 @@
 
 **稽核由路由負責寫入，服務內部不重複寫。** `trial-admin.service.ts` 第 58 行的註解說明了這個分工的理由：路由持有 `request.platformUser.id`，服務沒有。
 
-新增異動路由時要一併補上 `writePlatformAudit()` 的呼叫。沒有任何檢查會攔下漏寫。
+新增異動路由時要一併補上 `writePlatformAudit()` 的呼叫。沒有任何檢查會攔下漏寫。四條異動路由目前沒有寫稽核，見[目前的限制](#目前的限制)。
 
-四條異動路由目前沒有寫稽核，見[目前的限制](#目前的限制)。
+`action` 以「對象.動作」命名，例如 `tenant.provision`、`plan.update`、`plan_change.approve`、`setting.update`。三件事值得先知道：
+
+- **`payload` 的內容沒有統一規則。** 多數路由把請求的 body 原樣放進去，`setting.update` 只記鍵名不記值，停用與啟用則完全不帶 payload。稽核能回答「誰動了什麼」，不一定能回答「改成什麼」。
+- **`platformUserId` 可以是空的。** 試用排程寫的 `tenant.trial.expire` 與 `tenant.trial.purge` 沒有操作者，空值代表系統動作。
+- **沒有查詢介面。** 只有 `GET /platform-users/:id/audit-logs` 能查與某個平台帳號相關的紀錄（最多 200 筆），沒有依對象或時間查詢全部紀錄的端點。
 
 ## 資料模型
 
@@ -103,6 +113,8 @@
 
 | 限制 | 說明 |
 | --- | --- |
+| **方案的停售沒有生效** | `Plan.isActive` 沒有任何讀取端，設為停售之後仍可被指派給租戶。詳見 `../../system/AUDIT.md` 的 PLAN-01 |
+| **加購 token 是永久提高每月額度** | `token_topup` 核准後改寫 `limitOverrides.monthlyTokens`，兩邊介面都只寫「加購 Token」。詳見 `../../system/AUDIT.md` 的 PLAN-02 |
 | **登入與密碼重設沒有稽核紀錄** | `POST /auth/login`、`/auth/forgot-password`、`/auth/reset-password` 與 `/trial-signups/:id/resend` 四條路由沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫。詳見 `../../system/AUDIT.md` 的 SEC-02 |
 | **rate-limit 綁在路由 scope 內** | `@fastify/rate-limit` 在整個 API 只註冊一次，而且註冊在 `platformRoutes()` 函式內部。拆分 `platform.routes.ts` 之前必讀 `../../system/AUDIT.md` 的 SEC-03 |
 | 沒有任何測試 | `apps/api/src/__tests__/` 沒有檔案涵蓋這個模組。所有路由與服務都沒有回歸保護，CI 也沒有執行測試，見 `../../system/AUDIT.md` 的 CI-01 |
