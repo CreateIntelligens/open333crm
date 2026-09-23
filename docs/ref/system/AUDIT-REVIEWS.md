@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-23：Canvas 模組盤點，新增四個租戶隔離項目
+
+這次不是複查既有項目，是盤點 `apps/api/src/modules/canvas` 與 `packages/core/src/canvas` 時新增的項目。做法是靜態閱讀原始碼與設定檔，沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| RLS-01 | `grep -rn "from '@open333crm/database'" packages/*/src` 列出五個檔案，其中四個匯入 module-level `prisma` singleton |
+| RLS-02 | 從 `canvas.routes.ts` 的 `/identity/suggestions/:id/approve` 追到 `merge-suggestion-service.ts` 的 `approveMerge()`，兩端都沒有 `tenantId` |
+| RLS-03 | 兩支腳本的 `SCAN_DIR` 都寫死 `apps/api/src`；在 `main` 上執行 `node scripts/check-tenant-scoping.mjs` 只對 `canvas.worker.ts` 提出兩則提示，沒有提到 `packages/core` |
+| RLS-04 | `.env.api.example` 有 `DATABASE_URL` 與 `DATABASE_URL_ADMIN`，沒有 `DATABASE_URL_TENANT`；`prisma.plugin.ts:31` 在未設定時 fallback |
+
+RLS-02 與其他三項不同：它不只是第二層 RLS 失效，應用層也沒有比對租戶，因此兩層都不生效。
+
+盤點時另外確認 Canvas 的 `AI_GEN` 節點呼叫 `BRAIN_SERVICE_URL`，這個變數在 repo 內沒有任何地方設定，預設值 `http://localhost:3001` 指向 API 自己，而 API 沒有 `/api/generate` 路由。這項歸入既有的 PKG-03（`brain` 尚未接線），沒有另開項目。細節見[互動流程引擎](../CANVAS-FLOW-ENGINE.md)。
+
 ## 2026-09-23：所有分支的靜態複查，加上本機執行時重現
 
 複查範圍是所有本地與遠端分支的最新 commit。做法分兩層：先用 `git grep` 比對每個項目的程式碼與設定，比對規則同樣先在盤點時的 commit `c6c4eff` 上驗證；再把 `docker-compose.dev.yml` 的開發環境啟動，實際重現其中十項。

@@ -25,6 +25,10 @@
 | LLM-02 | LLM | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
 | LLM-03 | LLM | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 部分修正 |
 | DB-01 | Database | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
+| RLS-01 | 租戶隔離 | Canvas 引擎不走租戶連線 | 靜態確認 |
+| RLS-02 | 租戶隔離 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
+| RLS-03 | 租戶隔離 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
+| RLS-04 | 租戶隔離 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -104,6 +108,47 @@ Chat 與 Embedding 的實際設定來自 `tenant_settings`，不是環境變數�
 ### DB-01：向量維度不一致
 
 Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embedding` 與 `long_term_memories.embedding` 欄位都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，直接寫入會被資料庫拒絕。
+
+## 租戶隔離
+
+以下四項在 2026-09-23 盤點 Canvas 模組時發現，都是靜態確認。
+
+### RLS-01：Canvas 引擎不走租戶連線
+
+`packages/core/src/canvas/flow-runner.ts:6` 匯入 `@open333crm/database` 的 module-level `prisma` singleton。`packages/core/src/canvas/scheduler.ts:68` 與 `apps/api/src/modules/canvas/canvas.webhook.ts:6` 也用同一個 singleton。
+
+這個 client 由 `packages/database/src/client.ts` 以 `new PrismaClient()` 建立，沒有指定 datasource，因此連線字串是 `DATABASE_URL`。這個 singleton 與 `apps/api/src/plugins/prisma.plugin.ts` 建立的租戶連線不是同一條連線，連線上也不會有 `app.current_tenant`。`AGENTS.md` 明文禁止 `packages/*` 使用這個 singleton。
+
+`FlowRunner` 的查詢全部以主鍵 `executionId` 定位（`flow-runner.ts` 的第 27、70、83、104、278 行），`where` 沒有 `tenantId`。`canvas.service.ts` 的 `triggerFlow()` 建立 execution 時用的是受約束的 `TenantDb`，但建立後把 `execution.id` 交給 `FlowRunner.run()`，之後的讀寫就離開租戶連線。
+
+後果依 `DATABASE_URL` 指向哪個 role 而不同：
+
+- 指向 superuser 或帶 BYPASSRLS 的 role（`.env.api.example` 的 `crm` 屬於這類）：Canvas 的所有讀寫跳過 RLS。
+- 指向 `app_tenant`：singleton 的連線沒有 `app.current_tenant`，policy fail-closed，`FlowRunner.run()` 在第一個 `findUniqueOrThrow` 就查不到列，Canvas 會靜默停止運作。
+
+### RLS-02：身分合併審核端點沒有租戶檢查
+
+`apps/api/src/modules/canvas/canvas.routes.ts` 的第 177 與 183 行把路徑參數直接交給 `approveMerge(suggestionId, agentId)` 與 `rejectMerge(suggestionId, agentId)`，沒有傳入 `request.agent.tenantId`。
+
+`packages/core/src/identity/merge-suggestion-service.ts` 的第 74 與 150 行用 singleton 以主鍵查 `mergeSuggestion`，`where` 也沒有 `tenantId`。`approveMerge` 接著依該筆建議自己的 `tenantId` 合併聯繫人。
+
+兩層租戶隔離在這條路徑上都不生效：應用層沒有比對 `request.agent.tenantId`，資料層走的是不綁租戶的 singleton。持有 `identity.review` 權限的 agent 若取得其他租戶的建議 id，就能核准或駁回該筆建議。同一個檔案的 `listSuggestions()` 有收 `tenantId` 並寫進 `where`，不受這項影響。
+
+### RLS-03：隔離檢查腳本掃不到 `packages/*`
+
+`scripts/check-tenant-scoping.mjs:24` 與 `scripts/check-prisma-admin-usage.mjs:18` 的 `SCAN_DIR` 都是 `apps/api/src`。`packages/*` 不在掃描範圍，因此這兩道檢查攔不到 RLS-01 與 RLS-02 位於 `packages/core` 的程式碼。
+
+兩支腳本檢查的項目是「query 有沒有 `tenantId`」與「有沒有使用 `prismaAdmin`」，沒有檢查「有沒有匯入 module-level singleton」。即使把 `packages/*` 納入掃描範圍，現有規則仍然抓不到這個寫法。
+
+`packages/core` 另有三個檔案匯入同一個 singleton：`inbox/inbox-service.ts`、`contacts/contact-service.ts` 與 `identity/merge-suggestion-service.ts`。前兩個目前沒有任何 app 使用，情況與 PKG-03 相同。
+
+### RLS-04：`.env.api.example` 沒有 `DATABASE_URL_TENANT`
+
+`apps/api/src/plugins/prisma.plugin.ts:31` 在 `DATABASE_URL_TENANT` 未設定時 fallback 到 `DATABASE_URL`。`.env.api.example` 只提供 `DATABASE_URL`（`crm`）與 `DATABASE_URL_ADMIN`，沒有 `DATABASE_URL_TENANT`。
+
+照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
+
+`apps/workers/src/index.ts:59` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
 
 ## 授權與安全
 

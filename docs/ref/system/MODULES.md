@@ -106,6 +106,8 @@
 | `canvas` | `/api/v1/canvas` | 無頁面 | `canvas.use` |
 | `sla` | `/api/v1/sla-policies` | `/dashboard/settings/sla` | `sla.manage` |
 
+`canvas` 是多步驟的聯繫人旅程引擎，機制見[互動流程引擎](../CANVAS-FLOW-ENGINE.md)。
+
 ### 分析
 
 | 模組 | 路由前綴 | 後台頁面 | 權限碼 |
