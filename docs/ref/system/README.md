@@ -95,6 +95,7 @@ sequenceDiagram
 | --- | --- |
 | [部署與執行環境](./DEPLOYMENT.md) | 三個 Compose 檔案有什麼差異？開發容器如何啟動？ |
 | [應用程式與共用套件](./COMPONENTS.md) | 每個 app 與 package 負責什麼？彼此如何相依？ |
+| [API 功能模組與所屬後台](./MODULES.md) | 每個功能模組屬於平台後台還是租戶後台？對應哪個路由與頁面？ |
 | [基礎設施與外部整合](./INFRASTRUCTURE.md) | PostgreSQL、Redis、MinIO、LLM 與渠道如何接線？ |
 | [開發與交付](./DELIVERY.md) | 專案如何建置、測試、執行 CI 及部署？ |
 | [實作落差與驗證紀錄](./AUDIT.md) | 哪些實作與設定不一致？哪些問題已在執行時重現？ |
