@@ -32,7 +32,8 @@
     "test:rbac-registry": "tsx src/__tests__/rbac-registry.test.ts",
     "test:canvas-flow": "tsx src/__tests__/canvas-flow.test.ts",
     "test:portal-archive": "tsx src/__tests__/portal-archive.test.ts",
-    "test:material-tag-unify": "tsx src/__tests__/material-tag-unify.test.ts"
+    "test:material-tag-unify": "tsx src/__tests__/material-tag-unify.test.ts",
+    "test:tag-on-click": "tsx src/__tests__/tag-on-click.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",
