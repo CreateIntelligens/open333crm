@@ -136,6 +136,89 @@ await redisPublisher.publish(
   `packages/database/prisma/seed.ts` and `apps/api/src/modules/platform/platform.routes.ts` both
   import enums and typecheck cleanly.
 
+## Module Structure
+
+A module lives in `apps/api/src/modules/<name>/` and uses these file suffixes:
+
+| Suffix | Role |
+| ------ | ---- |
+| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a service, wrap the response |
+| `<name>.service.ts` | Business logic and data access |
+| `<name>.worker.ts`, `<name>.scheduler.ts` | Background work — see the Socket Event Routing section for which process runs them |
+
+Five rules follow. Each one is the pattern the majority of this repo already uses.
+Where a module does not follow a rule, that module is named under the rule.
+
+### 1. A route handler does not query the database
+
+A route handler validates input, checks permissions, calls a service, and returns.
+Put the query in `<name>.service.ts`.
+
+Five modules still hold inline `prisma.*` calls in their route files, listed here
+from most to fewest: `auth`, `sla` (which has no service file at all), `channel`,
+`portal`, `settings`.
+
+### 2. A service receives its Prisma executor; it never imports one
+
+Every exported service function takes the executor as its first parameter:
+
+```ts
+export async function listCases(prisma: TenantDb, tenantId: string, ...) { }
+```
+
+This is not a style preference. A service that reaches for a client itself picks
+a connection the caller did not intend, and RLS then either leaks across tenants
+or fails closed with no error. The "Prisma in shared packages" rule below is this
+same rule applied to `packages/*`, where it has no exceptions.
+
+### 3. One route file covers one resource
+
+Split a route file when it passes roughly 15 routes, or as soon as it serves a
+second resource — whichever comes first. `marketing` shows the target shape:
+`marketing.routes.ts` and `material.routes.ts` over five services.
+
+`platform/platform.routes.ts` is the module to learn from in both directions. Its
+service layer is the best-decomposed in the repo: eleven services, one per concern,
+and the route file holds almost no logic. Its route file is also the largest in the
+repo by a wide margin, because it serves seven resources at once (tenants, plans,
+platform users, usage, plan changes, trial, settings). Do not copy the route file.
+
+### 4. Cross-module calls go through the other module's service
+
+Import `../<other>/<other>.service.js`. Never import another module's `.routes.ts`.
+
+Four imports today reach past the service layer: `ai/kb-autoreply.service.ts` imports
+`automation/automation.worker.js`; `case/case.service.ts` and
+`webhook/inbound-side-effects.ts` import `marketing/broadcast.tracking.js`; and
+`webhook/inbound-side-effects.ts` imports `canvas/canvas.webhook.js`.
+
+### 5. Channel differences go through the plugin registry
+
+Resolve per-channel behaviour with `getChannelPlugin()`. Do not branch on
+`channelType`. Adding a channel means registering a plugin in
+`apps/api/src/index.ts`, not adding a branch.
+
+### Scope
+
+These rules govern new and modified code. They are not an instruction to refactor
+the exceptions listed above. Fix one only when you are already changing that file
+for another reason.
+
+### Appendix: which SOLID principle each rule is
+
+These are labels for the rules above. They are not an order to apply them, and no
+rule depends on its principle name to be correct.
+
+| Rule | Principle |
+| ---- | --------- |
+| 1, 3 | Single responsibility |
+| 2 | Dependency inversion |
+| 4 | Dependency inversion, interface segregation |
+| 5 | Open-closed |
+
+Liskov substitution has no rule of its own here. The closest thing in this codebase
+is the contract every channel plugin implements, which rule 5 already covers.
+
 ## Conventions
 
 - **CHANGELOG Maintenance (MANDATORY)**: Whenever implementing a feature (`feat`), bug fix (`fix`), architecture change, or completing an OpenSpec change/PR, you **MUST update `CHANGELOG.md`** under the latest release section (categorized into `Added`, `Changed`, `Fixed`, etc.). Never submit code changes without keeping `CHANGELOG.md` updated.
