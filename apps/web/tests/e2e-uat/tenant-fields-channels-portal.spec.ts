@@ -344,6 +344,49 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
     expect(res.status()).toBeLessThan(500);
   });
 
+  /**
+   * ⚠️ 正向案例（2026-09-23 補）——這個欄位原本只有上面那個負向案例，
+   * 結果驗證被加嚴成 z.string().datetime({ offset: true }) 之後，
+   * 前端 <input type="datetime-local"> 送的「2026-12-31T23:59」也一起被擋死，
+   * 短連結完全建不出來，而上面那個測試照樣全綠。
+   *
+   * 所以這裡刻意送「前端真正會送的格式」，不是完整 ISO。
+   * 規範見 TEST-PLAN.md「零、撰寫規範」第 1、2 點。
+   */
+  test('expiresAt：前端各種日期格式都應能建立成功（正向）', async () => {
+    const formats: Array<[string, string]> = [
+      ['datetime-local（無時區無秒）', '2026-12-31T23:59'],
+      ['date（純日期）', '2026-12-31'],
+      ['完整 ISO', '2026-12-31T23:59:00.000Z'],
+    ];
+    for (const [desc, value] of formats) {
+      const r = await createLink({
+        targetUrl: 'https://example.com',
+        title: `${E2E_PREFIX} exp ${desc}`,
+        expiresAt: value,
+      });
+      expect(r.status, `${desc}（${value}）應能建立成功`).toBe(200);
+      expect(r.body?.data?.expiresAt, `${desc} 應有存入到期時間`).toBeTruthy();
+    }
+  });
+
+  test('expiresAt：設定後應可清除（送 null）', async () => {
+    const created = await createLink({
+      targetUrl: 'https://example.com',
+      title: `${E2E_PREFIX} exp clear`,
+      expiresAt: '2026-12-31T23:59',
+    });
+    expect(created.status).toBe(200);
+
+    // service 用 `=== null` 判斷清除；送 undefined 會被當成「這欄不動」，
+    // schema 若不收 null，清除邏輯永遠執行不到（到期時間設了就拿不掉）
+    const patched = await api.patch(`shortlinks/${created.id}`, { data: { expiresAt: null } });
+    expect(patched.status(), '送 null 應成功').toBe(200);
+
+    const read = await (await api.get(`shortlinks/${created.id}`)).json();
+    expect(read?.data?.expiresAt, '到期時間應已被清除').toBeNull();
+  });
+
   test('QR 下載端點：對自建短連結應回傳 data URI', async () => {
     const created = await createLink({
       targetUrl: 'https://example.com/qr',
