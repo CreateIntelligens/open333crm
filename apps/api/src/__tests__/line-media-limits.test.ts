@@ -158,10 +158,12 @@ t('後端存檔時驗證影片網址（前端擋控可被繞過）', () => {
   );
 });
 
-t('前端影片編輯器即時提示網址問題', () => {
-  const code = webSrc('components/materials/line/LineVideoEditor.tsx');
-  assert.ok(code.includes('validateLineVideoUrl'), '編輯器未套用網址驗證');
-  assert.ok(code.includes('videoUrlError'), '未顯示錯誤訊息');
+t('前端影片欄位即時提示網址問題', () => {
+  // 驗證邏輯隨上傳功能一起搬進 CompactVideoField，
+  // LineVideoEditor 改為單純組裝欄位。
+  const code = webSrc('components/materials/CompactVideoField.tsx');
+  assert.ok(code.includes('validateLineVideoUrl'), '影片欄位未套用網址驗證');
+  assert.ok(code.includes('urlError'), '未顯示錯誤訊息');
 });
 
 t('前端圖片元件支援大小上限', () => {
@@ -223,6 +225,30 @@ t('存檔鈕在內容有誤時禁用，且說明原因', () => {
     code.includes('無法儲存：'),
     '未在畫面上顯示原因（只靠 title 屬性，觸控裝置看不到）',
   );
+});
+
+// ─── 影片上傳入口（2026-09-23 使用者問「那影片要怎麼建立」）──────────────
+
+t('影片欄位提供上傳入口，不是只能貼網址', () => {
+  const code = webSrc('components/materials/CompactVideoField.tsx');
+  assert.ok(code.includes("accept=\"video/mp4\""), '未提供 mp4 檔案選擇');
+  assert.ok(code.includes("api.post('/files/upload'"), '未接上傳端點');
+  assert.ok(code.includes('validateLineVideoUrl'), '貼網址時未即時驗證');
+});
+
+t('影片上傳上限取「LINE 限制」與「後端 multipart 上限」的較小值', () => {
+  const code = webSrc('components/materials/CompactVideoField.tsx');
+  assert.ok(code.includes('MAX_UPLOAD_BYTES'), '未定義後端上傳上限');
+  assert.ok(
+    code.includes('Math.min('),
+    '未取兩者較小值——LINE 允許 200MB 但後端 multipart 只收 25MB，' +
+      '直接用 200MB 會讓使用者傳到一半才失敗',
+  );
+});
+
+t('影片編輯器改用 CompactVideoField（不再是純文字框）', () => {
+  const code = webSrc('components/materials/line/LineVideoEditor.tsx');
+  assert.ok(code.includes('CompactVideoField'), '影片編輯器未使用上傳元件');
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

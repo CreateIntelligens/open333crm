@@ -16,12 +16,12 @@
  */
 
 import React from 'react';
-import { Input } from '@/components/ui/input';
 import { CompactImageField } from '../CompactImageField';
 // ActionConfigEditor 目前未使用（結束畫面 UI 已移除），但 ActionConfig 型別
 // 仍為 endCard 所需，故只保留型別匯入。
 import type { ActionConfig } from './ActionConfigEditor';
-import { validateLineVideoUrl, LINE_VIDEO_PREVIEW_MAX_BYTES } from '@open333crm/shared';
+import { LINE_VIDEO_PREVIEW_MAX_BYTES } from '@open333crm/shared';
+import { CompactVideoField } from '../CompactVideoField';
 
 export interface LineVideoBody {
   videoUrl?: string;
@@ -44,13 +44,6 @@ interface Props {
 }
 
 export function LineVideoEditor({ body, onChange }: Props) {
-  // 即時提示而非阻擋輸入：使用者貼上 YouTube 連結時立刻看到原因，
-  // 不用等到推送後才發現客戶那邊播不動。
-  // （空值不提示，留給存檔時的必填擋控處理。）
-  const videoUrlError = body.videoUrl?.trim()
-    ? validateLineVideoUrl(body.videoUrl)
-    : null;
-
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -60,15 +53,11 @@ export function LineVideoEditor({ body, onChange }: Props) {
       </div>
 
       <div>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">影片網址 *</label>
-        <Input
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">影片 *</label>
+        <CompactVideoField
           value={body.videoUrl ?? ''}
-          onChange={(e) => onChange({ ...body, videoUrl: e.target.value })}
-          placeholder="https://example.com/video.mp4"
+          onChange={(videoUrl) => onChange({ ...body, videoUrl })}
         />
-        {videoUrlError && (
-          <p className="mt-1 text-xs text-red-600">{videoUrlError}</p>
-        )}
       </div>
 
       <div>
