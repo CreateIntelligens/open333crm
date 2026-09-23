@@ -20,6 +20,7 @@ import { uploadFile } from '../storage/storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { validateOutboundMessage } from '@open333crm/shared';
 
 interface MediaUploadConfig {
   allowedMimes: readonly string[];
@@ -129,10 +130,20 @@ const updateConversationSchema = z.object({
   assignedToId: z.string().uuid().nullable().optional(),
 });
 
-const sendMessageSchema = z.object({
-  contentType: z.string().default('text'),
-  content: z.record(z.unknown()),
-});
+// 原本是 `contentType: z.string()` + `content: z.record(z.unknown())`，
+// 幾乎等於沒驗：空物件、空字串、純空白、亂填欄位、非法 contentType
+// 全部回 201 並以 OUTBOUND 落庫，走真實渠道時會推一則空訊息給客戶。
+const sendMessageSchema = z
+  .object({
+    contentType: z.string().default('text'),
+    content: z.record(z.unknown()),
+  })
+  .superRefine((val, ctx) => {
+    const err = validateOutboundMessage(val.contentType, val.content);
+    if (err) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: err, path: ['content'] });
+    }
+  });
 
 const addTagSchema = z.object({
   tagId: z.string().uuid(),

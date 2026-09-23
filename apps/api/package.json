@@ -26,7 +26,8 @@
     "test:numeric-bounds": "tsx src/__tests__/numeric-bounds.test.ts",
     "test:embedding-timeout": "tsx src/__tests__/embedding-timeout.test.ts",
     "test:case-category": "tsx src/__tests__/case-category.test.ts",
-    "test:line-media": "tsx src/__tests__/line-media-limits.test.ts"
+    "test:line-media": "tsx src/__tests__/line-media-limits.test.ts",
+    "test:outbound-message": "tsx src/__tests__/outbound-message.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

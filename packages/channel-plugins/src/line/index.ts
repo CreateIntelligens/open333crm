@@ -91,6 +91,7 @@ async function linePut(path: string, token: string, body: unknown): Promise<unkn
 // ─────────────────────────────────────────────────────────────────
 
 import { buildLineCarousel, buildLineImagemap, buildLineVideoWithEndCard } from './builders.js';
+import { getMediaUrl } from '@open333crm/shared';
 
 export function buildLineMessage(contentType: string, content: Record<string, unknown>): unknown {
   const quickReplies = content.quickReplies as Array<{ label: string; text?: string; postbackData?: string; imageUrl?: string }> | undefined;
@@ -145,8 +146,35 @@ export function buildLineMessage(contentType: string, content: Record<string, un
     }
 
     // ─── 既有 channel-native 訊息類型保留（供 channel plugin 內部直接調用） ───
+    //
+    // ⚠️ image / video 原本沒有分支，會落到最下面的 `default:` 被當成 text 送出，
+    // 內容取 `content.text ?? ''` —— 客服在收件匣送一張圖，客戶收到的是一則
+    // 空白文字訊息。2026-09-23 修正。
+    //
+    // 網址欄位名在專案內不一致（前端 useMessages 送 `url`，
+    // 素材版型用 `mediaUrl`），用 getMediaUrl 兩者都接。
+    case 'image': {
+      const url = getMediaUrl(content);
+      if (!url) return { type: 'text', text: '[圖片]', ...base };
+      return {
+        type: 'image',
+        originalContentUrl: url,
+        previewImageUrl: (content.previewUrl as string) ?? url,
+        ...base,
+      };
+    }
+    case 'video': {
+      const url = getMediaUrl(content);
+      if (!url) return { type: 'text', text: '[影片]', ...base };
+      return {
+        type: 'video',
+        originalContentUrl: url,
+        previewImageUrl: (content.previewUrl as string) ?? url,
+        ...base,
+      };
+    }
     case 'audio':
-      return { type: 'audio', originalContentUrl: content.mediaUrl, duration: 0, ...base };
+      return { type: 'audio', originalContentUrl: getMediaUrl(content) ?? content.mediaUrl, duration: 0, ...base };
     case 'location':
       return {
         type: 'location',
