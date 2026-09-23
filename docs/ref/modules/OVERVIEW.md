@@ -48,13 +48,7 @@
 | 用量統計 | `platform-usage.service.ts` | `GET /usage/overview`、`GET /usage/tenants`、`GET /usage/tenants/:tenantId` | `/admin/usage` |
 | 平台設定與權限註冊表 | `platform-setting.service.ts` | `GET、PUT /settings/:key`、`GET /registry` | 無頁面 |
 
-### 跨領域與歸屬例外
-
-`platform-audit.service.ts` 的 `writePlatformAudit()` 不屬於任何一個領域。`platform.routes.ts` 的異動路由呼叫它，把操作紀錄寫進 `platform_audit_logs`。稽核由路由負責寫入，服務內部不重複寫，`trial-admin.service.ts` 的註解說明了這個分工。新增異動路由時要一併補上這個呼叫。
-
-四條異動路由目前沒有寫稽核，因此平台帳號的登入與密碼重設在 `platform_audit_logs` 裡查不到紀錄。詳見 `../system/AUDIT.md` 的 SEC-02。
-
-`platform.routes.ts` 內部註冊了 `@fastify/rate-limit`，`/auth/*` 三條公開路由的頻率限制依賴這個註冊所在的 scope。要拆分這個檔案，先讀 `../system/AUDIT.md` 的 SEC-03。
+### 歸屬例外
 
 以下四項的歸屬與檔名或路由名稱不一致，讀程式碼時容易找錯地方：
 
@@ -65,7 +59,7 @@
 | `plan-change.routes.ts` | 平台後台 | 掛在租戶側的 `/api/v1/plan-change`，見[三個使用者面](#三個使用者面)的說明 |
 | 試用申請流程 | 平台後台 | 對外的申請與驗證在 `trial` 模組，平台只做審核 |
 
-`GET /trial-signups` 是 `platform.routes.ts` 唯一直接呼叫 `prismaAdmin` 的路由，其餘都委派給服務。
+各領域的業務規則、方案異動的快取連鎖、稽核分工與已知限制，見[平台後台](./PLATFORM.md)。
 
 ## 租戶後台（/dashboard）
 
