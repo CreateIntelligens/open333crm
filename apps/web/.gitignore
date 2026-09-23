@@ -39,6 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-auth-state.json
+# Playwright storage state：內含 UAT 的 refreshToken / platformToken，
+# 是可直接換到有效 access token 的真實憑證，絕不可進版控。
+# 原本只擋 auth-state.json，漏掉 -agent / -supervisor / -platform 三個變體，
+# 2026-09-23 被 PR review 抓到已提交（已從索引移除並輪替憑證）。
+auth-state*.json
+
+# Playwright 測試產物（報告內含 request URL、trace、錯誤內容）
+playwright-report*/
+test-results/
 test-results/
 .manual-archive/

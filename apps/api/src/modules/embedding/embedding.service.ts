@@ -53,6 +53,20 @@ const EMBED_TIMEOUT_MS = 25_000;
 const EMBED_COLD_START_RETRIES = 1;
 
 /** 單次呼叫 Ollama embed，帶逾時 */
+/**
+ * 帶 HTTP status 的 embed 錯誤。
+ *
+ * 為什麼不靠解析 err.message：重試判斷原本用 /\(50[23]\)/ 比對訊息文字，
+ * 只要上游換個格式（"503 Service Unavailable"、"status code 503"）就失效，
+ * 冷啟動的 503 會直接把錯誤丟給使用者。改成型別帶 status，判斷不依賴文字。
+ */
+class EmbedHttpError extends Error {
+  constructor(readonly status: number, body: string) {
+    super(`Ollama embed failed (${status}): ${body}`);
+    this.name = 'EmbedHttpError';
+  }
+}
+
 async function embedOnce(
   url: string,
   model: string,
@@ -71,7 +85,7 @@ async function embedOnce(
 
     if (!response.ok) {
       const errBody = await response.text();
-      throw new Error(`Ollama embed failed (${response.status}): ${errBody}`);
+      throw new EmbedHttpError(response.status, errBody);
     }
 
     const data = (await response.json()) as { embeddings: number[][] };
@@ -103,7 +117,8 @@ export async function generateEmbedding(
       //   2. HTTP 503——Ollama 明確回「服務尚未就緒」，這種會「立刻」失敗，
       //      只認 AbortError 的話第一次就直接把錯誤丟給使用者，等於沒處理冷啟動
       const aborted = err instanceof Error && err.name === 'AbortError';
-      const unavailable = err instanceof Error && /\(50[23]\)/.test(err.message);
+      // 502/503 = 上游尚未就緒（Ollama 載入模型中），與逾時同樣值得重試
+      const unavailable = err instanceof EmbedHttpError && (err.status === 502 || err.status === 503);
       const retryable = aborted || unavailable;
       if (!retryable || attempt === EMBED_COLD_START_RETRIES) break;
       logger.warn(

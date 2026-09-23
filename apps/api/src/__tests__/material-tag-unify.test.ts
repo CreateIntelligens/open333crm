@@ -17,7 +17,7 @@
  * 改 TenantDb 定義牽連 200+ 處、風險過高，故採登記制。
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -216,6 +216,51 @@ t('registerMaterialTags 的既有查詢是大小寫不敏感', () => {
   assert.ok(
     /mode: 'insensitive'/.test(block),
     '查詢未用 insensitive——大小寫不同的同義標籤會重複建立',
+  );
+});
+
+// ─── PR review 追加（2026-09-23）──────────────────────────────────────────
+
+t('DB 層有大小寫不敏感的唯一索引（應用層查詢擋不住併發）', () => {
+  // mode:'insensitive' 只縮短競態窗口：兩個並行請求同時註冊 Sale 與 sale
+  // 時兩邊都查不到既有列，最後各自 INSERT 成功。要靠 DB 索引才擋得住。
+  const migrations = readdirSync(
+    join(here, '../../../../packages/database/prisma/migrations'),
+  );
+  const dir = migrations.find((d) => d.includes('tag_case_insensitive_unique'));
+  assert.ok(dir, '缺少大小寫不敏感唯一索引的 migration');
+  const sql = repoFile(
+    `packages/database/prisma/migrations/${dir}/migration.sql`,
+  );
+  assert.ok(/lower\(name\)/.test(sql), '索引未以 lower(name) 為鍵');
+  assert.ok(
+    /CREATE UNIQUE INDEX/.test(sql),
+    '需是 UNIQUE INDEX，一般索引擋不住重複',
+  );
+  // 既有重複資料要先清，否則索引建不起來
+  assert.ok(
+    /HAVING count\(\*\) > 1/.test(sql),
+    'migration 未處理既有的大小寫重複資料，索引會建立失敗',
+  );
+  assert.ok(
+    /UPDATE contact_tags SET "tagId"/.test(sql),
+    '清重複前未轉移關聯——會遺失既有貼標',
+  );
+});
+
+t('embed 重試改用型別化錯誤，不靠解析訊息文字', () => {
+  const code = src('modules/embedding/embedding.service.ts');
+  assert.ok(code.includes('class EmbedHttpError'), '未定義帶 status 的錯誤型別');
+  assert.ok(
+    /err instanceof EmbedHttpError && \(err\.status === 502/.test(code),
+    '仍靠解析 err.message 判斷 502/503——上游換個訊息格式就失效',
+  );
+  // 只檢查實際的判斷式，不檢查註解——註解裡提到舊寫法是刻意保留的脈絡
+  const retryLine = code.split('\n').find((l) => l.includes('const unavailable'));
+  assert.ok(retryLine, '找不到重試判斷');
+  assert.ok(
+    !/test\(err\.message\)/.test(retryLine as string),
+    '重試判斷仍在解析 err.message',
   );
 });
 
