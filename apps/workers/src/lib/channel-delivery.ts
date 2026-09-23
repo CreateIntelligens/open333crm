@@ -137,12 +137,22 @@ export async function deliverToChannelFromWorker(
   );
   if (!identity) {
     logger.error('[worker:deliver] No channel identity for contact on channel', conv.channel.id);
+    await recordDeliveryFailure(
+      prisma, redis, conv, payload,
+      new Error('這位聯絡人沒有綁定此渠道的身分，無法送出'),
+      new Date(),
+    );
     return false;
   }
 
   const plugin = pluginRegistry.get(conv.channel.channelType);
   if (!plugin) {
     logger.error('[worker:deliver] No plugin for channelType:', conv.channel.channelType);
+    await recordDeliveryFailure(
+      prisma, redis, conv, payload,
+      new Error(`系統未載入 ${conv.channel.channelType} 渠道外掛，無法送出`),
+      new Date(),
+    );
     return false;
   }
 
@@ -151,6 +161,13 @@ export async function deliverToChannelFromWorker(
     credentials = decryptCredentials(conv.channel.credentialsEncrypted);
   } catch (err) {
     logger.error('[worker:deliver] Failed to decrypt credentials:', err);
+    // 踩過：用別的環境金鑰加密的 token 在這裡解不開，症狀就是「訊息都沒送出」
+    // 但完全沒有線索。原因寫死成人話，不要把解密錯誤原文外洩。
+    await recordDeliveryFailure(
+      prisma, redis, conv, payload,
+      new Error('渠道憑證無法解密，請到渠道設定重新填寫金鑰'),
+      new Date(),
+    );
     return false;
   }
 

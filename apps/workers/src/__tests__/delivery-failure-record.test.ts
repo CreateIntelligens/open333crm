@@ -157,10 +157,85 @@ async function testRecordFailureIsSafe() {
   assert.equal(ok, false, '仍應正常回報失敗，而不是往外拋');
 }
 
+/**
+ * 送不出去的原因不只「LINE 拒收」。設定問題（憑證解不開、聯絡人沒綁定身分）
+ * 同樣會讓使用者覺得「沒反應」，而且更難聯想到原因，一樣要留下紀錄。
+ */
+async function testConfigFailuresAreRecorded() {
+  // 憑證解不開——踩過：用別的環境金鑰加密的 token 在這裡解不開
+  {
+    const created: CreatedMessage[] = [];
+    const prisma = makePrisma(created);
+    prisma.conversation.findUnique = async () =>
+      ({
+        id: 'conversation-1',
+        tenantId: 'tenant-1',
+        channel: {
+          id: 'channel-1',
+          channelType: 'LINE',
+          isActive: true,
+          credentialsEncrypted: 'not:valid:ciphertext',
+        },
+        contact: { channelIdentities: [{ channelId: 'channel-1', uid: 'line-user-1' }] },
+      }) as never;
+
+    const ok = await deliverToChannelFromWorker(
+      prisma as never,
+      redis as never,
+      new Map([['LINE', failingPlugin]]),
+      'conversation-1',
+      { contentType: 'line_text', content: { text: 'hi' } },
+    );
+    assert.equal(ok, false);
+    assert.equal(created.length, 1, '憑證解不開也要留下紀錄');
+    const meta = created[0].data.metadata as Record<string, unknown>;
+    assert.equal(meta.deliveryFailed, true);
+    assert.ok(
+      String(meta.deliveryError).includes('憑證無法解密'),
+      `原因應為人話，實際為：${String(meta.deliveryError)}`,
+    );
+    // 不可外洩解密錯誤原文
+    assert.ok(
+      !/cipher|auth tag|hex/i.test(String(meta.deliveryError)),
+      '不該外洩底層解密錯誤細節',
+    );
+  }
+
+  // 聯絡人沒有綁定此渠道身分
+  {
+    const created: CreatedMessage[] = [];
+    const prisma = makePrisma(created);
+    prisma.conversation.findUnique = async () =>
+      ({
+        id: 'conversation-1',
+        tenantId: 'tenant-1',
+        channel: {
+          id: 'channel-1',
+          channelType: 'LINE',
+          isActive: true,
+          credentialsEncrypted: encryptCredentials({ channelAccessToken: 'line-token' }),
+        },
+        contact: { channelIdentities: [] },
+      }) as never;
+
+    const ok = await deliverToChannelFromWorker(
+      prisma as never,
+      redis as never,
+      new Map([['LINE', failingPlugin]]),
+      'conversation-1',
+      { contentType: 'line_text', content: { text: 'hi' } },
+    );
+    assert.equal(ok, false);
+    assert.equal(created.length, 1, '沒綁定身分也要留下紀錄');
+    assert.ok(String((created[0].data.metadata as Record<string, unknown>).deliveryError).includes('沒有綁定'));
+  }
+}
+
 async function main() {
   await testFailureIsRecorded();
   await testSuccessIsNotMarked();
   await testRecordFailureIsSafe();
+  await testConfigFailuresAreRecorded();
   console.log('delivery-failure-record tests passed');
   process.exit(0);
 }
