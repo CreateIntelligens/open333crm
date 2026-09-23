@@ -34,6 +34,8 @@
 | SLA-03 | SLA | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | SLA-04 | SLA | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
 | TRIAL-01 | 試用與方案 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
+| PLAN-01 | 試用與方案 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
+| PLAN-02 | 試用與方案 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -233,6 +235,38 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 也就是說，已付費的租戶會被停用，接著被標記為已清除。
 
 審核者沒有任何提示。`listPendingRequests()` 回傳 `currentPlan`，但不含 `trialEndsAt`，`/admin/plan-changes` 頁面也沒有顯示試用狀態。審核者在這個頁面按下核准時，不會知道這個動作不會讓租戶脫離試用。
+
+### PLAN-01：`Plan.isActive` 沒有讀取端
+
+`Plan.isActive` 的 schema 註解寫「停售軟下架」，`/admin/plans` 也能切換它。但整個 repo 沒有任何查詢以它為條件。
+
+`grep -rn "isActive" apps/api/src apps/web/src` 的命中全部屬於 `Tenant`、`Agent` 或 `PlatformUser`，沒有一處是 `Plan`。三條指派方案的路徑都只以 `slug` 查方案，查到就用：
+
+| 路徑 | 位置 |
+| --- | --- |
+| 平台改租戶方案 | `platform-tenant.service.ts` 的 `updateTenant()` |
+| 核准升級申請 | `plan-change.service.ts` 的 `approveRequest()` |
+| 試用開通綁定方案 | `trial.service.ts`，方案來自 `trial.planSlug` |
+
+因此把一個方案設為停售，只會改變 `/admin/plans` 上的顯示。它仍然可以被指派給新的或既有的租戶，既有租戶也完全不受影響。
+
+這與 SLA-03 是同一種形狀：欄位有寫入端與介面，沒有讀取端，操作者以為的效果不會發生。
+
+### PLAN-02：加購 token 是永久提高每月額度
+
+`approveRequest()` 核准 `token_topup` 時，把加購量加進 `tenant.limitOverrides.monthlyTokens`。
+
+這個欄位是每月額度的上限，不是可消耗的餘額：
+
+- 額度的判斷在 `token-quota.service.ts` 的 `isMonthlyTokenExceeded()`，拿當月累計用量與 `getEffectiveLimit(..., 'monthlyTokens')` 比較。
+- 計數器的 Redis key 是 `aiquota:{tenantId}:{YYYY-MM}`，月底過期，每個月從零開始。
+- `limitOverrides` 沒有期限欄位，核准後一直留著。
+
+所以核准一次加購，是把該租戶往後每一個月的額度都提高同樣的量，不是給他一次性的配額。
+
+兩邊介面寫的都是「加購 Token」：租戶端 `/dashboard/plan` 的說明是「申請升級方案或加購 AI token 額度」，平台端 `/admin/plan-changes` 顯示 `+N token`。兩者都看不出是一次性還是長期，審核者也沒有「這是第幾次加購、目前累計多少」的資訊。
+
+這一項與 PLAN-01 不同，不確定是缺陷還是原本的設計。無論是哪一種，目前的用字與資料結構表達的不是同一件事。
 
 ## 授權與安全
 

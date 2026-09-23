@@ -4,6 +4,28 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-23：平台後台各領域逐檔細查，新增兩個方案項目
+
+起因是把[平台後台](../modules/platform/README.md)的領域文件從一兩句話補成完整說明。過程中逐支服務、逐條路由對照原始碼，發現兩項與方案有關的問題，也修正了三處我自己寫錯的描述。做法是靜態閱讀原始碼與前端頁面，沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| PLAN-01 | `grep -rn "isActive" apps/api/src apps/web/src` 的命中全部屬於 `Tenant`、`Agent` 或 `PlatformUser`；三條指派方案的路徑都只用 `slug` 查，沒有一條加 `isActive` 條件 |
+| PLAN-02 | `approveRequest()` 的 `token_topup` 分支寫入 `limitOverrides.monthlyTokens`；`token-quota.service.ts` 的計數器 key 帶年月且月底過期，`limitOverrides` 沒有期限欄位 |
+
+同一次細查修正了三處既有文件的錯誤描述，都不另開項目：
+
+- 有效上限的公式原本寫成 `limitOverrides[key] ?? Plan.limits[key]`。`resolveEffectiveLimit()` 實際用 `hasOwnProperty` 判斷，因此覆寫成 `null` 的意思是「這個租戶無上限」，不是「回去看方案」。`plan-limits.service.ts` 自己的註解也寫成 `??`。
+- 用量統計原本寫「失敗的呼叫計入次數，但不計 token 與成本」。三個查詢的 `where` 都有 `success: true`，失敗的呼叫連次數都不算。`platform-usage.service.ts` 開頭的註解同樣寫錯。
+- 改動租戶方案的入口原本列四處，漏了 `platform-tenant.service.ts` 的 `updateTenant()`。該函式帶 `planSlug` 時會改方案，也確實失效了兩層快取。
+
+另外確認四件事，都不另開項目：
+
+- 平台帳號沒有角色分級。`PlatformUser` 沒有 `role` 欄位，唯一的檢查是 JWT 的 `role` 是否等於 `PLATFORM_SUPERUSER`。能登入平台後台就能做這個模組的每一件事。
+- 停用的生效時機兩邊不同。平台側每個請求都回查 `platform_users`，停用即時生效；租戶側的 `authenticate` 只驗簽章，但 `login()` 與 `POST /auth/refresh` 都會擋下停用的租戶，因此延遲最多是一個 access token 的有效期。兩者都是刻意的取捨。
+- `ModelPricing` 沒有維護介面。平台後台沒有對應的路由或頁面，只有 `packages/database/prisma/seed.ts` 會寫入，而查價在行程內快取 10 分鐘。
+- 平台的 rate-limit 以 `request.ip` 分組，而 `apps/api/src/index.ts` 設了 `trustProxy: true`，這個值取自 `X-Forwarded-For`。前面沒有會覆寫該標頭的反向代理時，呼叫端可以自帶標頭繞過限制。這一點併入既有的 SEC-03 一起看，不另計。
+
 ## 2026-09-23：試用生命週期追查，新增 TRIAL-01
 
 起因是閱讀[平台後台](../modules/platform/README.md)的試用管理一節時，發現該節只列函式行為、沒有說明誰能觸發，讀者無法判斷延長試用是逐筆操作還是批次。釐清的過程中比對了升級的兩條路徑，發現結果不一致。做法是靜態閱讀原始碼，沒有啟動容器。
