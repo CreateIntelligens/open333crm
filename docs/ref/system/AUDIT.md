@@ -4,7 +4,7 @@
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
 - **執行時驗證日期**：2026-09-02
-- **靜態複查日期**：2026-09-11，範圍、方法與結果見[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
+- **最近複查日期**：2026-09-23。歷次複查的範圍、方法與結果見[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
 
 ## 摘要
@@ -23,7 +23,7 @@
 | STO-01 | Storage | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | LLM-01 | LLM | Ollama base URL 預設指向容器自己 | 執行時重現 |
 | LLM-02 | LLM | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
-| LLM-03 | LLM | API 宣告的 `OLLAMA_*` 沒有影響實際設定 | 執行時確認 |
+| LLM-03 | LLM | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 部分修正 |
 | DB-01 | Database | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
@@ -82,13 +82,24 @@ Workers 的 `MinioStorageProvider` 讀取 `MINIO_*`，但 `.env.workers` 提供 
 
 `tenant_settings.chatBaseUrl` 與 `embeddingBaseUrl` 預設為 `http://localhost:11434`。在 API 容器內，這個位址指向 API 自己，不是 `ollama` 容器。執行時連線已重現 `Connection refused`。
 
+Chat 生成路徑已有一層補救，做法見 LLM-03。Embedding 路徑沒有這層補救，仍然直接使用 `tenant_settings.embeddingBaseUrl`。
+
 ### LLM-02：Chat 模型預設不一致
 
 Compose 預設下載 `qwen2.5:0.5b`；資料庫欄位預設為 `qwen2.5:3b`。開發環境沒有 Ollama，因此只確認兩邊設定值不同。
 
-### LLM-03：未生效的 API 環境變數
+### LLM-03：部分生效的 API 環境變數
 
-API 容器有 `OLLAMA_BASE_URL`，但 Chat 與 Embedding 的實際設定來自 `tenant_settings`。`apps/api/src/config/env.ts` 宣告的三個 `OLLAMA_*` 變數不影響這條執行路徑。
+Chat 與 Embedding 的實際設定來自 `tenant_settings`，不是環境變數。commit `ee251c8` 為其中一條路徑加上補救：`apps/api/src/modules/ai/providers/ollama.provider.ts` 的 `generate()` 與 `generateToolTurn()` 在租戶設定的 `baseUrl` 等於預設值 `http://localhost:11434` 時，改讀 `process.env.OLLAMA_BASE_URL`。
+
+因此 `OLLAMA_BASE_URL` 目前只在兩種條件同時成立時生效：呼叫的是 Chat 生成，而且租戶沒有改過 `chatBaseUrl`。租戶把 `chatBaseUrl` 改成其他值之後，即使那個值連不通，補救也不會套用。
+
+以下路徑仍然不讀環境變數：
+
+- 同一個檔案的 `listModels()` 與 `health()`。
+- Embedding 的所有路徑。
+
+`OLLAMA_EMBED_MODEL` 與 `OLLAMA_CHAT_MODEL` 仍然沒有任何程式讀取。
 
 ### DB-01：向量維度不一致
 
