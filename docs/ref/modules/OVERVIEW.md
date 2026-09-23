@@ -10,7 +10,7 @@
 | 問題 | 章節 |
 | --- | --- |
 | 系統分成幾個使用者面？怎麼判斷一個模組屬於哪一面？ | [三個使用者面](#三個使用者面) |
-| 平台營運方能操作哪些功能？ | [平台後台](#平台後台admin) |
+| 平台營運方能操作哪些功能？platform 目錄裡有哪些領域？ | [平台後台](#平台後台admin) |
 | 租戶的客服與管理員能操作哪些功能？ | [租戶後台](#租戶後台dashboard) |
 | 終端使用者與外部系統呼叫哪些端點？ | [對外端點](#對外端點) |
 | 哪些模組沒有路由？誰在呼叫它們？ | [沒有路由的模組](#沒有路由的模組) |
@@ -33,20 +33,37 @@
 
 ## 平台後台（/admin）
 
-所有路由掛在 `/api/v1/platform`，由 `platform` 模組提供，全部經過 `authenticatePlatformSuperuser`。平台層的資料表沒有 RLS，因此這個模組使用 `fastify.prismaAdmin`。
+所有路由掛在 `/api/v1/platform`，全部經過 `authenticatePlatformSuperuser`。平台層的資料表沒有 RLS，因此這些路由使用 `fastify.prismaAdmin`。
 
-| `/admin` 頁面 | API 路由 | 功能 |
+`platform` 在檔案結構上是一個模組目錄，但功能上是八個各自獨立的領域。service 層已經照領域拆開，一個領域一支服務；只有 `platform.routes.ts` 沒有跟著拆，八個領域的路由都掛在同一個檔案裡。
+
+| 領域 | 服務 | 路由（相對於 `/api/v1/platform`） | `/admin` 頁面 |
+| --- | --- | --- | --- |
+| 平台帳號認證 | `platform-auth.service.ts`、`platform-password-recovery.service.ts` | `POST /auth/login`、`POST /auth/forgot-password`、`POST /auth/reset-password`、`POST /auth/change-password` | `/admin/login`、`/admin/forgot-password`、`/admin/reset-password`、`/admin/change-password` |
+| 平台帳號管理 | `platform-user.service.ts`、`platform-user-emails.ts` | `GET、POST /platform-users`、`GET、PATCH /platform-users/:id`、`PATCH /platform-users/:id/active`、`POST /platform-users/:id/resend-welcome`、`GET /platform-users/:id/audit-logs` | `/admin/platform-users` |
+| 租戶管理 | `platform-tenant.service.ts` | `GET、POST /tenants`、`GET、PATCH /tenants/:id`、`PATCH /tenants/:id/active`、`PATCH /tenants/:id/agents/:agentId`、`POST /tenants/:id/agents/:agentId/resend-welcome` | `/admin/tenants` |
+| 方案與上限 | `plan.service.ts` | `GET /plans`、`PATCH /plans/:id` | `/admin/plans` |
+| 方案異動審核 | `plan-change.service.ts` | `GET /plan-change-requests`、`PATCH /plan-change-requests/:id/approve`、`PATCH /plan-change-requests/:id/reject` | `/admin/plan-changes` |
+| 試用管理 | `trial-admin.service.ts` | `GET /trial-signups`、`POST /trial-signups/:id/resend`、`PATCH /trial-signups/:id/fail`、`GET /trial-tenants`、`PATCH /trial-tenants/:id/extend`、`PATCH /trial-tenants/:id/convert`、`PATCH /tenants/:id/contract`、`PATCH /tenants/:id/restore` | `/admin/trial` |
+| 用量統計 | `platform-usage.service.ts` | `GET /usage/overview`、`GET /usage/tenants`、`GET /usage/tenants/:tenantId` | `/admin/usage` |
+| 平台設定與權限註冊表 | `platform-setting.service.ts` | `GET、PUT /settings/:key`、`GET /registry` | 無頁面 |
+
+### 跨領域與歸屬例外
+
+`platform-audit.service.ts` 的 `writePlatformAudit()` 不屬於任何一個領域。`platform.routes.ts` 的異動路由呼叫它，把操作紀錄寫進 `platform_audit_logs`。稽核由路由負責寫入，服務內部不重複寫，`trial-admin.service.ts` 的註解說明了這個分工。新增異動路由時要一併補上這個呼叫。
+
+四條異動路由目前沒有寫稽核：`POST /auth/login`、`POST /auth/forgot-password`、`POST /auth/reset-password` 與 `POST /trial-signups/:id/resend`。對應的服務內部也沒有寫。因此平台帳號的登入與密碼重設在 `platform_audit_logs` 裡查不到紀錄。
+
+以下四項的歸屬與檔名或路由名稱不一致，讀程式碼時容易找錯地方：
+
+| 項目 | 看起來屬於 | 實際位置或歸屬 |
 | --- | --- | --- |
-| `/admin/login`、`/admin/forgot-password`、`/admin/reset-password`、`/admin/change-password` | `POST /auth/login`、`POST /auth/change-password` | 平台帳號登入與密碼復原 |
-| `/admin/platform-users` | `GET、POST /platform-users`、`PATCH /platform-users/:id`、`PATCH /platform-users/:id/active`、`POST /platform-users/:id/resend-welcome`、`GET /platform-users/:id/audit-logs` | 平台帳號管理與操作稽核 |
-| `/admin/tenants` | `GET、POST /tenants`、`PATCH /tenants/:id`、`PATCH /tenants/:id/active`、`PATCH /tenants/:id/contract`、`PATCH /tenants/:id/restore` | 租戶開通、合約與停用復原 |
-| `/admin/plans` | `GET /plans`、`PATCH /plans/:id` | 方案與用量上限 |
-| `/admin/usage` | `GET /usage/overview`、`GET /usage/tenants`、`GET /usage/tenants/:tenantId` | 跨租戶用量與成本統計 |
-| `/admin/plan-changes` | `GET /plan-change-requests`、`PATCH /plan-change-requests/:id/approve`、`PATCH /plan-change-requests/:id/reject` | 審核租戶提出的方案異動 |
-| `/admin/trial` | `GET /trial-signups`、`POST /trial-signups/:id/resend`、`PATCH /trial-signups/:id/fail`、`GET /trial-tenants`、`PATCH /trial-tenants/:id/extend`、`PATCH /trial-tenants/:id/convert` | 試用申請與試用租戶管理 |
-| 無頁面 | `GET /registry`、`GET、PUT /settings/:key` | 權限註冊表查詢與平台設定 |
+| `PATCH /tenants/:id/contract`、`PATCH /tenants/:id/restore` | 租戶管理 | 實作在 `trial-admin.service.ts` |
+| `plan-limits.service.ts` | 平台後台 | 沒有平台路由呼叫它。呼叫者是租戶側的 `agent.service.ts`、`channel.service.ts` 與 `trial/token-quota.service.ts`，用來檢查方案上限 |
+| `plan-change.routes.ts` | 平台後台 | 掛在租戶側的 `/api/v1/plan-change`，見[三個使用者面](#三個使用者面)的說明 |
+| 試用申請流程 | 平台後台 | 對外的申請與驗證在 `trial` 模組，平台只做審核 |
 
-試用功能跨兩個面：對外的申請流程在 `trial` 模組，平台後台的審核邏輯在 `platform/trial-admin.service.ts`。
+`GET /trial-signups` 是 `platform.routes.ts` 唯一直接呼叫 `prismaAdmin` 的路由，其餘都委派給服務。
 
 ## 租戶後台（/dashboard）
 
