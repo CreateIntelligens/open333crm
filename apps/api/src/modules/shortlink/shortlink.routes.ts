@@ -75,6 +75,10 @@ const createShortlinkSchema = z.object({
 // 更新沿用同組規則，但全欄位可選（targetUrl 也可不帶）。
 const updateShortlinkSchema = createShortlinkSchema.partial().extend({
   isActive: z.boolean().optional(),
+  // expiresAt 要能被清掉：service 早就用 `=== null` 判斷「移除到期時間」，
+  // 但 schema 只收 string，null 會被擋在 400（Expected string, received null），
+  // 那段清除邏輯等於永遠執行不到——到期時間一旦設了就拿不掉。
+  expiresAt: createShortlinkSchema.shape.expiresAt.unwrap().nullish(),
 });
 
 // page/limit 未夾制會讓 skip 算出負數，Prisma 直接拋錯 → 500。

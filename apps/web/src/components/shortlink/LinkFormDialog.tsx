@@ -96,7 +96,9 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         utmContent: utmContent || undefined,
         utmTerm: utmTerm || undefined,
         tagOnClick: tagOnClick || undefined,
-        expiresAt: expiresAt || undefined,
+        // 編輯時清空欄位要送 null（undefined 會被後端當成「這欄不動」，
+        // 到期時間就永遠拿不掉）；建立時沒有「清除」的概念，送 undefined 即可。
+        expiresAt: expiresAt || (editData ? null : undefined),
         lineChannelId: lineChannelId || null,
         ogTitle: ogTitle || undefined,
         ogDescription: ogDescription || undefined,
