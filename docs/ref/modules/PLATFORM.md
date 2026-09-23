@@ -85,11 +85,21 @@
 
 服務：`plan.service.ts`、`plan-limits.service.ts`
 
+這一節會反覆出現「天花板」。它是 repo 既有的用語，指**方案允許的權限上限**。一個使用者實際能做什麼，是角色權限與方案天花板的交集：
+
+```text
+有效權限 = 角色權限 ∩ 方案功能天花板
+```
+
+角色給得再多，方案沒開的功能仍然用不到；方案開得再多，角色沒有的權限也不會自動出現。`apps/api/src/guards/rbac.guard.ts` 是這個判斷的實作，`permission.service.ts`、`services/channel-visibility.ts` 與 socket 房間授權都比照同一個公式。平台後台 `/admin/plans` 的介面也用「功能天花板」這個詞。
+
+原始碼裡「功能天花板」與「權限天花板」指同一件事，兩種寫法都有。本文件在講概念時用「功能天花板」，在指那一層快取時沿用程式碼註解的「權限天花板快取」。
+
 `Plan` 的四個欄位分別控制不同的東西。四者互不取代，改其中一個不影響其他三個。
 
 | 欄位 | 中文名 | 作用 | 空值的意義 |
 | --- | --- | --- | --- |
-| `features` | 功能模組清單 | 方案包含哪些功能模組。權限天花板由這份清單換算而來，`core` 恆開 | 空陣列代表只有 `core` |
+| `features` | 功能模組清單 | 方案包含哪些功能模組。功能天花板由這份清單換算而來，`core` 恆開 | 空陣列代表只有 `core` |
 | `limits` | 數值上限 | `maxAgents`、`maxChannels`、`maxTags`、`monthlyTokens` 等數量上限 | 某個 key 的值為 `null` 代表該項無上限 |
 | `allowedChannelTypes` | 可建立的渠道類型白名單 | 限制這個方案能建立哪些渠道類型。`channel.service.ts` 在建立渠道時檢查，不符合就回 403 `CHANNEL_TYPE_NOT_ALLOWED` | **空陣列代表不限制**，不是全部禁止 |
 | `permissionOverrides` | 權限碼扣除清單 | 從 `features` 算出的天花板再扣掉指定的權限碼，結構是 `{ deny: string[] }` | 空物件代表不扣除任何權限 |
@@ -162,18 +172,18 @@
 
 | 快取 | 失效函式 | 位置 | 存活時間 |
 | --- | --- | --- | --- |
-| 權限天花板 | `invalidatePlanPermissions(prisma, planId)` | `services/permission.service.ts` | Redis，600 秒 |
-| 租戶方案 | `invalidateTenantPlan(tenantId)` | `services/tenant-plan.cache.ts` | 行程內，60 秒 |
-| AI 額度 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | 見該檔 |
+| 權限天花板快取 | `invalidatePlanPermissions(prisma, planId)` | `services/permission.service.ts` | Redis，600 秒 |
+| 租戶方案快取 | `invalidateTenantPlan(tenantId)` | `services/tenant-plan.cache.ts` | 行程內，60 秒 |
+| AI 額度快取 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | 見該檔 |
 
 四個地方會改動方案，各自需要失效的快取不同：
 
 | 動作 | 需要失效 |
 | --- | --- |
-| `plan.service.ts` 的 `updatePlan()` | `features` 或 `permissionOverrides` 有變更時，失效權限天花板 |
-| `plan-change.service.ts` 核准 `upgrade` | 權限天花板 + 租戶方案 |
-| `plan-change.service.ts` 核准 `token_topup` | 租戶方案 + AI 額度 |
-| `trial-admin.service.ts` 的 `convertToPaid()` | 權限天花板 + 租戶方案 |
+| `plan.service.ts` 的 `updatePlan()` | `features` 或 `permissionOverrides` 有變更時，失效權限天花板快取 |
+| `plan-change.service.ts` 核准 `upgrade` | 權限天花板快取 + 租戶方案快取 |
+| `plan-change.service.ts` 核准 `token_topup` | 租戶方案快取 + AI 額度快取 |
+| `trial-admin.service.ts` 的 `convertToPaid()` | 權限天花板快取 + 租戶方案快取 |
 
 `convertToPaid()` 的註解說明了漏掉的後果：租戶方案快取存活 60 秒，不失效的話，剛付費的租戶在這段期間仍沿用舊的試用天花板，新功能會被 guard 誤擋成 403。權限天花板快取存活 600 秒，漏掉的影響時間更長。
 
