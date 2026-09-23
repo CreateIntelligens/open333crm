@@ -131,5 +131,14 @@ main().catch(async (e) => {
  * SELECT 'tenant_settings.chatBaseUrl', id, "chatBaseUrl"
  *   FROM tenant_settings WHERE "chatBaseUrl" ~* '^(javascript|data|file|vbscript|blob):';
  *
- * 2026-09-22 於本機 dev DB 執行：全部 0 筆。UAT 尚未執行。
+ * 執行紀錄：
+ *   2026-09-22 本機 dev DB：全部 0 筆。
+ *   2026-09-23 UAT：materials.previewImageUrl **6 筆**，其餘 0 筆。
+ *     經查為 Wave 6 的 E2E 測試殘留（素材名為 `[E2E] scheme xxxxxx`，
+ *     兩批各 3 筆、相隔 7 分鐘，皆屬 demo 租戶 a0000000-...-0001）。
+ *     非攻擊痕跡，但仍是前端會當 <img src> 渲染的真實資料，建議清除。
+ *     清除 SQL（未執行，需人工確認）：
+ *       DELETE FROM materials
+ *       WHERE "previewImageUrl" ~* '^(javascript|data|file|vbscript|blob):'
+ *         AND name LIKE '[E2E]%';
  */
