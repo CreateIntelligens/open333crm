@@ -12,8 +12,16 @@ async function testCasesDashboardDeleteWiring() {
   const pageSource = await readSource('../../../web/src/app/dashboard/cases/page.tsx');
   const listSource = await readSource('../../../web/src/components/case/CaseList.tsx');
 
-  assert.equal(pageSource.includes('CaseCreateModal'), false);
-  assert.equal(pageSource.includes('setShowCreateModal'), false);
+  // 2026-09-23 更新：原本這裡斷言「工單頁不該有 CaseCreateModal」。
+  // 那是 a5ec552a 修刪除功能時的權宜做法（提交訊息：hiding the standalone
+  // create-case entry），副作用是「不來自對話」的工單永遠無法建立——
+  // 後端的 POST /cases 在 UI 上沒有任何路徑可觸發，等於死碼。
+  //
+  // 已於 112cde5 重新加回入口。獨立建單端點本身沒問題
+  // （UAT 實測 POST /cases 不帶 conversationId → 201）。
+  // 改為驗證「建立入口與刪除功能並存」，確保加回入口沒有把刪除弄壞。
+  assert.equal(pageSource.includes('CaseCreateModal'), true);
+  assert.equal(pageSource.includes('setCreateOpen'), true);
   assert.equal(pageSource.includes('await api.delete(`/cases/${caseId}`)'), true);
   assert.equal(pageSource.includes('onDelete={handleDeleteCase}'), true);
   assert.equal(pageSource.includes('mutateStats'), true);

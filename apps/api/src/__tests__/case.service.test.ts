@@ -8,6 +8,12 @@ import {
 } from '../modules/case/case.service.js';
 import { AppError } from '../shared/utils/response.js';
 
+/**
+ * RLS 上線後 withTenant() 會驗 tenantId 必須是合法 UUID
+ * （lib/tenant-db.ts 的 UUID_RE），原本測試用的 'tenant-1' 會被擋下。
+ */
+const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
+
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
 function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
@@ -38,7 +44,7 @@ function createIoMock() {
 function createBaseCase(overrides: Record<string, unknown> = {}) {
   return {
     id: 'case-1',
-    tenantId: 'tenant-1',
+    tenantId: TENANT_ID,
     contactId: 'contact-1',
     channelId: 'channel-1',
     title: 'Broken appliance',
@@ -84,27 +90,25 @@ async function testDeleteCase() {
   const { io, events } = createIoMock();
   const updateMany = mockFn();
   const remove = mockFn();
+  // deleteCase 已改為「不自開 $transaction」——原子性由外層 withTenant 交易保證
+  // （避免巢狀交易）。因此 conversation / case 要掛在頂層而非交易回呼裡。
   const prisma = {
     case: {
       findFirst: mockFn(() => createBaseCase()),
+      delete: remove,
     },
-    $transaction: mockFn(async (callback: (tx: unknown) => Promise<unknown>) =>
-      callback({
-        conversation: { updateMany },
-        case: { delete: remove },
-      }),
-    ),
+    conversation: { updateMany },
   };
 
-  const result = await deleteCase(prisma as never, io as never, 'case-1', 'tenant-1');
+  const result = await deleteCase(prisma as never, io as never, 'case-1', TENANT_ID);
 
   assert.deepEqual(result, { id: 'case-1' });
   assert.deepEqual(updateMany.calls[0][0], {
-    where: { tenantId: 'tenant-1', caseId: 'case-1' },
+    where: { tenantId: TENANT_ID, caseId: 'case-1' },
     data: { caseId: null },
   });
   assert.deepEqual(remove.calls[0][0], { where: { id: 'case-1' } });
-  assert.equal(events[0].room, 'tenant:tenant-1');
+  assert.equal(events[0].room, `tenant:${TENANT_ID}`);
   assert.equal(events[0].event, 'case.deleted');
 }
 
@@ -117,7 +121,7 @@ async function testDeleteCaseRejectsCrossTenant() {
   };
 
   await expectAppError(
-    () => deleteCase(prisma as never, io as never, 'case-2', 'tenant-1'),
+    () => deleteCase(prisma as never, io as never, 'case-2', TENANT_ID),
     'NOT_FOUND',
     404,
   );
@@ -135,7 +139,7 @@ async function testInvalidStatusPatch() {
   };
 
   await expectAppError(
-    () => updateCase(prisma as never, io as never, 'case-1', 'tenant-1', { status: 'IN_PROGRESS' }),
+    () => updateCase(prisma as never, io as never, 'case-1', TENANT_ID, { status: 'IN_PROGRESS' }),
     'INVALID_TRANSITION',
     422,
   );
@@ -159,7 +163,7 @@ async function testReopenClosedCase() {
     prisma as never,
     io as never,
     'case-1',
-    'tenant-1',
+    TENANT_ID,
     'agent-1',
     'OPEN',
   );
@@ -175,12 +179,19 @@ async function testCreateCaseFromConversation() {
   const caseEventCreate = mockFn();
   const txCase = createBaseCase();
   const prisma = {
+    // createCaseFromConversation 在交易外用 tenantScopedClient(prisma, tenantId)
+    // 跑背景副作用（trackBroadcastCase / autoAssignCase）。那條路徑的錯誤會被
+    // .catch() 吞掉，測試不驗它——但 $extends 必須存在，否則同步就炸。
+    $extends: () => ({}),
     $transaction: mockFn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
+        // withTenant 會在交易內跑 set_config 設定 RLS 的 app.current_tenant，
+        // 模擬的 tx 必須提供 $executeRaw，否則會炸在 tenant-db.ts
+        $executeRaw: mockFn(async () => 1),
         conversation: {
           findFirst: mockFn(() => ({
             id: 'conversation-1',
-            tenantId: 'tenant-1',
+            tenantId: TENANT_ID,
             contactId: 'contact-1',
             channelId: 'channel-1',
             caseId: null,
@@ -200,7 +211,7 @@ async function testCreateCaseFromConversation() {
     prisma as never,
     io as never,
     'conversation-1',
-    'tenant-1',
+    TENANT_ID,
     'agent-1',
     { title: 'From conversation' },
   );
@@ -219,10 +230,12 @@ async function testCreateCaseFromConversationRejectsDuplicate() {
   const prisma = {
     $transaction: mockFn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
+        // 同上：withTenant 需要 tx.$executeRaw 設定 RLS 的 app.current_tenant
+        $executeRaw: mockFn(async () => 1),
         conversation: {
           findFirst: mockFn(() => ({
             id: 'conversation-1',
-            tenantId: 'tenant-1',
+            tenantId: TENANT_ID,
             contactId: 'contact-1',
             channelId: 'channel-1',
             caseId: 'case-existing',
@@ -237,7 +250,7 @@ async function testCreateCaseFromConversationRejectsDuplicate() {
       prisma as never,
       io as never,
       'conversation-1',
-      'tenant-1',
+      TENANT_ID,
       'agent-1',
       { title: 'Duplicate' },
     ),
@@ -255,21 +268,19 @@ async function testLinkConversationToCase() {
     status: 'ACTIVE',
     lastMessageAt: null,
   }));
+  // linkConversationToCase 同樣已改為「不自開 $transaction」，
+  // 原子性由外層 withTenant 保證——模型要掛頂層而非交易回呼裡。
   const prisma = {
-    $transaction: mockFn(async (callback: (tx: unknown) => Promise<unknown>) =>
-      callback({
-        case: { findFirst: mockFn(() => createBaseCase()) },
-        conversation: {
-          findFirst: mockFn(() => ({
-            id: 'conversation-2',
-            tenantId: 'tenant-1',
-            caseId: null,
-          })),
-          update: conversationUpdate,
-        },
-        caseEvent: { create: mockFn() },
-      }),
-    ),
+    case: { findFirst: mockFn(() => createBaseCase()) },
+    conversation: {
+      findFirst: mockFn(() => ({
+        id: 'conversation-2',
+        tenantId: TENANT_ID,
+        caseId: null,
+      })),
+      update: conversationUpdate,
+    },
+    caseEvent: { create: mockFn() },
   };
 
   const result = await linkConversationToCase(
@@ -277,7 +288,7 @@ async function testLinkConversationToCase() {
     io as never,
     'case-1',
     'conversation-2',
-    'tenant-1',
+    TENANT_ID,
     'agent-1',
   );
 
@@ -298,13 +309,11 @@ async function testLinkConversationToCase() {
 
 async function testLinkConversationRejectsCrossTenant() {
   const { io } = createIoMock();
+  // 同上：不自開交易，模型掛頂層。
+  // 兩者都回 null 模擬「跨租戶查不到」——應拋 404 而非誤連。
   const prisma = {
-    $transaction: mockFn(async (callback: (tx: unknown) => Promise<unknown>) =>
-      callback({
-        case: { findFirst: mockFn(() => null) },
-        conversation: { findFirst: mockFn(() => null) },
-      }),
-    ),
+    case: { findFirst: mockFn(() => null) },
+    conversation: { findFirst: mockFn(() => null) },
   };
 
   await expectAppError(
@@ -313,7 +322,7 @@ async function testLinkConversationRejectsCrossTenant() {
       io as never,
       'case-1',
       'conversation-foreign',
-      'tenant-1',
+      TENANT_ID,
       'agent-1',
     ),
     'NOT_FOUND',
