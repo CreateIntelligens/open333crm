@@ -6,6 +6,7 @@ export * from './types/chatbox.types.js';
 export * from './types/api.types.js';
 export * from './types/ws.types.js';
 export * from './constants/case-transitions.js';
+export * from './constants/case-categories.js';
 export * from './constants/sla-defaults.js';
 export * from './constants/tenant.js';
 export * from './sla/index.js';

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
+import { CASE_CATEGORIES } from '@open333crm/shared';
 
 interface CaseCreateModalProps {
   open: boolean;
@@ -57,12 +58,10 @@ const PRIORITIES = [
   { value: 'URGENT', label: '緊急' },
 ];
 
-const CATEGORIES = [
-  { value: '維修', label: '維修' },
-  { value: '查詢', label: '查詢' },
-  { value: '投訴', label: '投訴' },
-  { value: '其他', label: '其他' },
-];
+// 分類清單改由 @open333crm/shared 提供單一事實來源。
+// 原本這裡與 CaseDetail 各寫一份且內容完全不同（只有「其他」重疊），
+// 導致建立時選的分類在詳情頁找不到對應 option、一存檔就被洗掉。
+const CATEGORIES = CASE_CATEGORIES.map((c) => ({ value: c, label: c }));
 
 export function CaseCreateModal({
   open,

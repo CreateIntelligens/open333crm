@@ -22,8 +22,8 @@ import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { CASE_CATEGORIES } from '@open333crm/shared';
 
-const CASE_CATEGORIES = ['維修', '查詢', '投訴', '其他'];
 
 // 篩選值正規化為大寫再驗證，避免呼叫端送小寫（如 status=open）直塞 Prisma enum 炸 400
 const caseStatusEnum = z.enum(['OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED']);
@@ -33,7 +33,8 @@ const listQuerySchema = z.object({
   status: z.string().transform((s) => s.toUpperCase()).pipe(caseStatusEnum).optional(),
   priority: z.string().transform((s) => s.toUpperCase()).pipe(casePriorityEnum).optional(),
   assigneeId: z.string().uuid().optional(),
-  category: z.string().optional(),
+  // 篩選用：只限長度，不限列舉（允許查詢歷史遺留的舊分類值）
+  category: z.string().max(100).optional(),
   slaStatus: z.enum(['normal', 'warning', 'breached']).optional(),
   sortBy: z.enum(['slaDueAt', 'priority', 'createdAt']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
@@ -41,13 +42,24 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
+// 工單分類：改用 @open333crm/shared 的單一事實來源。
+// 原本是 z.string() 全開——實測 500 字亂碼與 <script> 都能寫入，
+// 會污染分類篩選下拉與報表版面。
+// 允許空字串（等同「未分類」，詳情頁可清空分類）。
+const caseCategorySchema = z
+  .string()
+  .max(100)
+  .refine((v) => v === '' || (CASE_CATEGORIES as readonly string[]).includes(v), {
+    message: `分類必須是下列其中之一：${CASE_CATEGORIES.join('、')}`,
+  });
+
 const createCaseSchema = z.object({
   contactId: z.string().uuid(),
   channelId: z.string().uuid(),
   title: z.string().trim().min(1, '標題不可為空白').max(100),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: z.string().optional(),
+  category: caseCategorySchema.optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   slaPolicyId: z.string().uuid().optional(),
@@ -57,7 +69,7 @@ const updateCaseSchema = z.object({
   title: z.string().trim().min(1, '標題不可為空白').max(100).optional(),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: z.string().optional(),
+  category: caseCategorySchema.optional(),
   status: z.enum(['OPEN', 'IN_PROGRESS', 'PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED']).optional(),
   assigneeId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),
@@ -93,7 +105,7 @@ const createCaseFromConvSchema = z.object({
   title: z.string().trim().min(1, '標題不可為空白').max(100),
   description: z.string().max(2000).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  category: z.string().optional(),
+  category: caseCategorySchema.optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   slaPolicyId: z.string().uuid().optional(),

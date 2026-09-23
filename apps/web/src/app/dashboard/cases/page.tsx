@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import api from '@/lib/api';
+import { CASE_CATEGORIES } from '@open333crm/shared';
 
 const PAGE_SIZE = 20;
 
@@ -143,10 +144,7 @@ export default function CasesPage() {
             onChange={(e) => setCategoryFilter(e.target.value)}
             options={[
               { value: '', label: '所有分類' },
-              { value: '維修', label: '維修' },
-              { value: '查詢', label: '查詢' },
-              { value: '投訴', label: '投訴' },
-              { value: '其他', label: '其他' },
+              ...CASE_CATEGORIES.map((c) => ({ value: c, label: c })),
             ]}
             className="w-32"
           />
