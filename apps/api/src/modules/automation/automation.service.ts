@@ -31,7 +31,9 @@ export async function listRules(
   filters: RuleFilters,
   pagination: PaginationParams,
 ) {
-  const where: Prisma.AutomationRuleWhereInput = { tenantId };
+  // enabled=false 代表「已刪除」（見 deleteRule），列表一律不顯示。
+  // 使用者手動停用的規則 isActive=false 但 enabled 仍為 true，仍會列出。
+  const where: Prisma.AutomationRuleWhereInput = { tenantId, enabled: true };
 
   if (filters.isActive !== undefined) {
     where.isActive = filters.isActive;
@@ -65,7 +67,8 @@ export async function getRule(
   tenantId: string,
 ) {
   const rule = await prisma.automationRule.findFirst({
-    where: { id, tenantId },
+    // enabled=false 代表已刪除：查不到才對，否則刪掉的規則仍可用網址開啟
+    where: { id, tenantId, enabled: true },
     include: {
       logs: {
         orderBy: { createdAt: 'desc' },
@@ -212,10 +215,16 @@ export async function deleteRule(
     throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
-  // Soft delete – deactivate instead of hard delete
+  // 軟刪：用 enabled 標記「已刪除」，isActive 同步關掉以停止觸發。
+  //
+  // 為什麼不共用 isActive：畫面上的啟用切換開關寫的就是 isActive，
+  // 使用者「手動停用」與「刪除」若共用同一個欄位，列表就無法區分——
+  // 這正是先前 UAT 累積 119 筆已刪規則仍顯示在畫面上的原因（CM-170）。
+  // enabled 欄位原本幾乎沒被使用（worker 的觸發判斷只看 isActive），
+  // 挪用為刪除標記不影響既有行為。
   const rule = await prisma.automationRule.update({
     where: { id },
-    data: { isActive: false },
+    data: { enabled: false, isActive: false },
   });
 
   return rule;
