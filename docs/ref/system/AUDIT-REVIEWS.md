@@ -24,7 +24,7 @@
 - 平台帳號沒有角色分級。`PlatformUser` 沒有 `role` 欄位，唯一的檢查是 JWT 的 `role` 是否等於 `PLATFORM_SUPERUSER`。能登入平台後台就能做這個模組的每一件事。
 - 停用的生效時機兩邊不同。平台側每個請求都回查 `platform_users`，停用即時生效；租戶側的 `authenticate` 只驗簽章，但 `login()` 與 `POST /auth/refresh` 都會擋下停用的租戶，因此延遲最多是一個 access token 的有效期。兩者都是刻意的取捨。
 - `ModelPricing` 沒有維護介面。平台後台沒有對應的路由或頁面，只有 `packages/database/prisma/seed.ts` 會寫入，而查價在行程內快取 10 分鐘。
-- 平台的 rate-limit 以 `request.ip` 分組，而 `apps/api/src/index.ts` 設了 `trustProxy: true`，這個值取自 `X-Forwarded-For`。前面沒有會覆寫該標頭的反向代理時，呼叫端可以自帶標頭繞過限制。這一點併入既有的 SEC-03 一起看，不另計。
+- 平台的 rate-limit 以 `request.ip` 分組，而 `apps/api/src/index.ts` 設了 `trustProxy: true`，這個值取自 `X-Forwarded-For`。當時判斷要看部署架構才能定案，先併入 SEC-03。後續查了 `nginx/nginx.conf.template`，確認是附加而非覆寫，偽造值仍在最左邊，因此另開 SEC-04。
 
 ## 2026-09-23：試用生命週期追查，新增 TRIAL-01
 

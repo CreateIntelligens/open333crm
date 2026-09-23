@@ -41,6 +41,7 @@
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
 | SEC-02 | Security | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | SEC-03 | Security | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
+| SEC-04 | Security | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
 | CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
 | CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
@@ -320,6 +321,37 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 因此存在一個沒有警告的陷阱。把 `/auth/*` 那幾條路由拆到另一個檔案、再從 `index.ts` 另行 `register`，這些路由就落到另一個 scope。路由上的 `config: { rateLimit: ... }` 會被**靜默忽略**，不報錯也不警告，平台超級使用者的登入端點就失去暴力破解保護。
 
 `platform` 模組沒有任何測試，因此這個改動不會被測試擋下。拆分 `platform.routes.ts` 之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。
+
+### SEC-04：`request.ip` 可由呼叫端偽造
+
+`apps/api/src/index.ts:97` 設定 `trustProxy: true`。這個值的意思是「信任所有上游」，Fastify 底層的 `proxy-addr` 因此取 `X-Forwarded-For` 的**最左邊**那一個位址當作 `request.ip`。最左邊是呼叫端自己寫的值。
+
+前面有沒有反向代理都一樣。`nginx/nginx.conf.template` 的六個 location 區塊全部用：
+
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+`$proxy_add_x_forwarded_for` 是**附加**，不是覆寫。呼叫端送 `X-Forwarded-For: 1.2.3.4`，經過 nginx 之後變成 `1.2.3.4, <真實 IP>`，而 API 取的是最左邊的 `1.2.3.4`。
+
+同一份設定裡的 `X-Real-IP: $remote_addr` 是覆寫，值可信，但 API 沒有任何地方讀它。
+
+三處速率限制都以 `request.ip` 分組，因此每換一次標頭就等於換一個新的來源：
+
+| 位置 | 上限 |
+| --- | --- |
+| `platform.routes.ts` | scope 內每分鐘 30 次；登入每分鐘 10 次；忘記密碼每 10 分鐘 5 次 |
+| `auth/auth.routes.ts` | 租戶登入每分鐘 10 次 |
+| `trial/trial.routes.ts` | scope 內每 10 分鐘 20 次；申請試用每 10 分鐘 5 次 |
+
+平台後台與租戶後台都沒有帳號層級的鎖定，速率限制是唯一擋暴力破解的機制。
+
+被影響的不只是速率限制。`request.ip` 還寫進兩種紀錄，兩者都會記到偽造的值：
+
+- `trial_signups.requestIp`，申請來源。
+- 租戶側稽核紀錄的 `ip` 欄位（`agent`、`role`、`contact`、`settings`、`channel`、`data-export` 等模組的異動路由）。
+
+生產環境的 `docker-compose.prod.yml` 只有 nginx 對外開 80 與 443，`api` 沒有對應的 host port。這一點不改變結論：偽造的標頭會原樣通過 nginx。
 
 ## CI 與測試
 

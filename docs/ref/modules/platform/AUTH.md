@@ -74,7 +74,7 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 兩件事要知道：
 
 - **沒有帳號層級的鎖定。** 限制按來源 IP 計算。同一個帳號被多個 IP 輪流嘗試不會觸發鎖定，帳號也不會因為連續失敗而鎖住。
-- **`request.ip` 取自 `X-Forwarded-For`**，因為 `apps/api/src/index.ts` 設了 `trustProxy: true`。前面必須有會覆寫這個標頭的反向代理；API 若直接對外，呼叫端可以自己帶標頭換 IP，繞過上面所有限制。
+- **`request.ip` 可以由呼叫端決定**，因此上面所有限制都繞得過。`trustProxy: true` 讓 API 取 `X-Forwarded-For` 最左邊的值，而 repo 內的 nginx 是附加不是覆寫，偽造的值會原樣留在最左邊。詳見 `../../system/AUDIT.md` 的 SEC-04。
 
 這份 rate-limit 設定綁在路由 scope 內，拆檔會一起失效，見 `../../system/AUDIT.md` 的 SEC-03。
 
