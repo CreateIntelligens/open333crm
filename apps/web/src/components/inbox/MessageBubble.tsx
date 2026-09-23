@@ -5,6 +5,26 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Bot, ExternalLink } from 'lucide-react';
 
+/** 把 contentType 講成人話，用在送出失敗的提示裡（「這則影片沒有送出」）。 */
+function describeContentType(contentType: string): string {
+  const map: Record<string, string> = {
+    text: '訊息',
+    line_text: '訊息',
+    image: '圖片',
+    line_image: '圖片',
+    video: '影片',
+    line_video: '影片',
+    audio: '語音',
+    file: '檔案',
+    line_flex: 'Flex 訊息',
+    line_imagemap: '圖文訊息',
+    line_carousel: '輪播訊息',
+    line_confirm: '確認訊息',
+    line_buttons: '按鈕訊息',
+  };
+  return map[contentType] ?? '訊息';
+}
+
 function extractText(content: string | { text?: string } | unknown): string {
   if (typeof content === 'string') return content;
   if (typeof content === 'object' && content !== null && 'text' in (content as Record<string, unknown>)) {
@@ -52,6 +72,29 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const triggerType = metadata.triggerType as string | undefined;
   const knowledgeRefs = (metadata.knowledgeRefs || metadata.kmRefs) as Array<{ id: string; title: string; url?: string }> | undefined;
   const sentiment = metadata.sentiment as { sentiment: string; score: number; confidence: number } | undefined;
+  // 送出失敗的紀錄（worker 寫入）。這則訊息「沒有」真的送到使用者端，只給客服看。
+  const deliveryFailed = metadata.deliveryFailed === true;
+  const deliveryError = typeof metadata.deliveryError === 'string' ? metadata.deliveryError : '';
+
+  // ⚠️ 要擋在 isSystem 之前：失敗紀錄的 contentType 可能是 line_video 這種
+  // 沒有 text 的型別，走下面的 system 分支會顯示成一條空白灰底，等於沒講。
+  if (deliveryFailed) {
+    return (
+      <div className="flex justify-center py-2">
+        <div
+          role="alert"
+          className="max-w-[min(32rem,90%)] rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          <p className="font-medium">
+            這則{describeContentType(message.contentType)}沒有送出，對方並未收到
+          </p>
+          {deliveryError && (
+            <p className="mt-1 break-words font-normal opacity-90">{deliveryError}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (isSystem) {
     return (
