@@ -63,8 +63,9 @@ export async function createActivity(
     description?: string;
     coverImage?: string;
     settings?: Record<string, unknown>;
-    startsAt?: string;
-    endsAt?: string;
+    // routes 用 z.coerce.date() 驗完直接給 Date；null = 清除，undefined = 不動
+    startsAt?: Date | null;
+    endsAt?: Date | null;
     options?: Array<{ label: string; imageUrl?: string; sortOrder?: number; isCorrect?: boolean }>;
     fields?: Array<{ fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
@@ -78,8 +79,8 @@ export async function createActivity(
       description: data.description,
       coverImage: data.coverImage,
       settings: (data.settings ?? {}) as Prisma.InputJsonValue,
-      startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-      endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+      startsAt: data.startsAt,
+      endsAt: data.endsAt,
       options: data.options
         ? { create: data.options.map((o, i) => ({ label: o.label, imageUrl: o.imageUrl, sortOrder: o.sortOrder ?? i, isCorrect: o.isCorrect ?? false })) }
         : undefined,
@@ -105,8 +106,9 @@ export async function updateActivity(
     description?: string;
     coverImage?: string;
     settings?: Record<string, unknown>;
-    startsAt?: string;
-    endsAt?: string;
+    // routes 用 z.coerce.date() 驗完直接給 Date；null = 清除，undefined = 不動
+    startsAt?: Date | null;
+    endsAt?: Date | null;
     options?: Array<{ id?: string; label: string; imageUrl?: string; sortOrder?: number; isCorrect?: boolean }>;
     fields?: Array<{ id?: string; fieldKey: string; label: string; fieldType?: string; options?: unknown; isRequired?: boolean; sortOrder?: number }>;
   },
@@ -150,8 +152,8 @@ export async function updateActivity(
       description: data.description,
       coverImage: data.coverImage,
       settings: data.settings as Prisma.InputJsonValue | undefined,
-      startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-      endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+      startsAt: data.startsAt,
+      endsAt: data.endsAt,
     },
     include: {
       options: { orderBy: { sortOrder: 'asc' } },

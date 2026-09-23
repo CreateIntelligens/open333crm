@@ -37,6 +37,67 @@ const adjustPointsSchema = z.object({
   note: z.string().trim().max(500, '備註不可超過 500 字').optional(),
 });
 
+/**
+ * 活動建立／更新。原本這兩個端點**完全沒有驗證**，body 直接 as 進 service：
+ *   - startsAt/endsAt 亂填會變成 Invalid Date 一路送進 Prisma → 500 而非 400
+ *   - type 直接 as 成 union，不在 enum 內的值要等 DB 才擋
+ *
+ * 日期一律 z.coerce.date()（專案慣例）：前端 <input type="datetime-local">
+ * 送的是帶時區的 ISO 字串，coerce.date() 能正確解析；亂填則在這層就擋下。
+ */
+const activityOptionSchema = z.object({
+  id: z.string().uuid().optional(),
+  label: z.string().trim().min(1, '選項內容不可為空白').max(500, '選項內容不可超過 500 字'),
+  imageUrl: z.string().trim().max(2048).optional(),
+  sortOrder: int4Schema.optional(),
+  isCorrect: z.boolean().optional(),
+});
+
+const activityFieldSchema = z.object({
+  id: z.string().uuid().optional(),
+  fieldKey: z.string().trim().min(1, '欄位代碼不可為空白').max(100, '欄位代碼不可超過 100 字'),
+  label: z.string().trim().min(1, '欄位名稱不可為空白').max(200, '欄位名稱不可超過 200 字'),
+  fieldType: z.string().trim().max(50).optional(),
+  options: z.unknown().optional(),
+  isRequired: z.boolean().optional(),
+  sortOrder: int4Schema.optional(),
+});
+
+const createActivitySchema = z.object({
+  type: z.enum(['POLL', 'FORM', 'QUIZ'], { errorMap: () => ({ message: '活動類型不正確' }) }),
+  title: z.string().trim().min(1, '活動標題不可為空白').max(200, '活動標題不可超過 200 字'),
+  description: z.string().trim().max(5000, '活動說明不可超過 5000 字').optional(),
+  coverImage: z.string().trim().max(2048).optional(),
+  settings: z.record(z.unknown()).optional(),
+  startsAt: z.coerce.date({ errorMap: () => ({ message: '開始時間格式不正確' }) }).nullish(),
+  endsAt: z.coerce.date({ errorMap: () => ({ message: '結束時間格式不正確' }) }).nullish(),
+  options: z.array(activityOptionSchema).optional(),
+  fields: z.array(activityFieldSchema).optional(),
+});
+
+// 結束早於開始是無效區間：活動永遠不會開放，但畫面上看起來像設定成功。
+// 只在兩者都有值時檢查——只設其中一個是合法的（不限開始或不限結束）。
+const endsAfterStarts = <T extends { startsAt?: Date | null; endsAt?: Date | null }>(
+  v: T,
+  ctx: z.RefinementCtx,
+) => {
+  if (v.startsAt && v.endsAt && v.endsAt <= v.startsAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endsAt'],
+      message: '結束時間必須晚於開始時間',
+    });
+  }
+};
+
+const createActivityBody = createActivitySchema.superRefine(endsAfterStarts);
+
+// 更新全欄位可選；type 不可改（改了既有的 options/fields 就對不上）
+const updateActivitySchema = createActivitySchema
+  .partial()
+  .omit({ type: true })
+  .superRefine(endsAfterStarts);
+
 export default async function portalRoutes(app: FastifyInstance) {
   // All routes require agent JWT
   app.addHook('preHandler', app.authenticate);
@@ -57,7 +118,7 @@ export default async function portalRoutes(app: FastifyInstance) {
   });
 
   app.post('/activities', { preHandler: requirePermission('portal.manage') }, async (request) => {
-    const body = request.body as Record<string, unknown>;
+    const body = createActivityBody.parse(request.body);
     const activity = await createActivity(request.tenantPrisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createActivity>[3]);
     return { success: true, data: activity };
   });
@@ -72,7 +133,7 @@ export default async function portalRoutes(app: FastifyInstance) {
 
   app.patch('/activities/:id', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = request.body as Record<string, unknown>;
+    const body = updateActivitySchema.parse(request.body);
     try {
       // updateActivity 內部有多筆 delete/create（選項、欄位），需在單一綁定租戶的交易內原子完成；
       // RLS 下交易不可巢狀，故由呼叫端用 withTenant 開好交易再把 tx 傳入（函式本身只用傳入的 tx）。

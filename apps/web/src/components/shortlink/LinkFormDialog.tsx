@@ -14,24 +14,7 @@ import {
 import api from '@/lib/api';
 import { useChannels } from '@/hooks/useChannels';
 import { getApiErrorMessage } from '@/lib/api-error';
-
-/**
- * datetime-local 的值是「使用者所在時區的本地時間」，沒有時區資訊。
- *
- * ⚠️ 不可直接把後端的 ISO 字串 slice(0,16) 塞進欄位：
- * `2026-12-31T23:59:00.000Z` 砍掉 Z 之後會被當成本地時間顯示，
- * UAT 伺服器跑 UTC，使用者在台灣就會看到差 8 小時的時間。
- * 送出端同理，要補回時區再送，否則 UTC 伺服器會把 23:59 當成 UTC 23:59，
- * 實際到期時間變成隔天早上 07:59（台北）。
- */
-function toLocalInputValue(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  // 用本地時間各欄位組字串，避免 toISOString() 又轉回 UTC
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+import { toLocalInputValue, toIsoForApi } from '@/lib/datetime-local';
 
 interface LinkFormDialogProps {
   open: boolean;
@@ -114,9 +97,8 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         utmContent: utmContent || undefined,
         utmTerm: utmTerm || undefined,
         tagOnClick: tagOnClick || undefined,
-        // 編輯時清空欄位要送 null（undefined 會被後端當成「這欄不動」，
-        // 到期時間就永遠拿不掉）；建立時沒有「清除」的概念，送 undefined 即可。
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : (editData ? null : undefined),
+        // 第二參數 = 可清除：編輯時清空要送 null，否則後端當成「這欄不動」
+        expiresAt: toIsoForApi(expiresAt, Boolean(editData)),
         lineChannelId: lineChannelId || null,
         ogTitle: ogTitle || undefined,
         ogDescription: ogDescription || undefined,

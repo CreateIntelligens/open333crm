@@ -411,27 +411,27 @@ test.describe('粉絲門戶 /dashboard/portal 欄位', () => {
     });
   });
 
-  /** ⚠️ P1 — 後端無 zod，空字串/純空白標題照存，門戶會出現無標題活動 */
-  test.fail('[已知 P1 bug] 空字串標題應被後端擋下（前端擋控可被繞過）', async () => {
+  // 2026-09-23 已修：活動端點補上 createActivitySchema（原本 body 直接 as 進 service）
+  test('空字串標題應被後端擋下（前端擋控可被繞過）', async () => {
     const r = await createActivity({ type: 'POLL', title: '' });
     expect(r.status, '空標題應被擋下').toBeGreaterThanOrEqual(400);
   });
 
-  test.fail('[已知 P1 bug] 純空白 / 全形空白標題應被後端擋下', async () => {
+  test('純空白 / 全形空白標題應被後端擋下', async () => {
     for (const blank of [FieldSamples.whitespace, FieldSamples.fullwidthSpace]) {
       const r = await createActivity({ type: 'POLL', title: blank });
       expect(r.status, `空白標題 "${blank}" 應被擋下`).toBeGreaterThanOrEqual(400);
     }
   });
 
-  /** ⚠️ P2 — 標題無長度上限，10000 字照存，列表頁會被單一活動撐爆 */
-  test.fail('[已知 P2 bug] 標題應有長度上限（實際 10000 字可存入）', async () => {
+  test('標題應有長度上限（原本 10000 字可存入）', async () => {
     const r = await createActivity({ type: 'POLL', title: `${E2E_PREFIX}${strOfLength(10000)}` });
     expect(r.status, '超長標題應被擋下').toBeGreaterThanOrEqual(400);
   });
 
   /** ⚠️ P2 — 起訖時間沒有先後檢查，可建立「結束早於開始」的活動 */
-  test.fail('[已知 P2 bug] 結束時間早於開始時間應被擋下', async () => {
+  // 2026-09-23 已修：createActivitySchema 加了 superRefine 檢查先後順序
+  test('結束時間早於開始時間應被擋下', async () => {
     const r = await createActivity({
       type: 'POLL',
       title: `${E2E_PREFIX} 日期顛倒`,

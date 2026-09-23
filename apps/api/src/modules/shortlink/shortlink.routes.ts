@@ -66,7 +66,7 @@ const createShortlinkSchema = z.object({
   // 不帶時區、也不帶秒的本地時間，會被 datetime() 系列直接擋下 400
   // （2026-09-23 部署後使用者回報短連結建不出來，就是這個）。
   // coerce.date() 真實輸入全收、亂填仍擋，且直接產出 Date 可餵 Prisma。
-  expiresAt: z.coerce.date({ invalid_type_error: '到期時間格式不正確' }).optional(),
+  expiresAt: z.coerce.date({ errorMap: () => ({ message: '到期時間格式不正確' }) }).optional(),
 });
 
 // 更新沿用同組規則，但全欄位可選（targetUrl 也可不帶）。
@@ -75,7 +75,7 @@ const updateShortlinkSchema = createShortlinkSchema.partial().extend({
   // expiresAt 要能被清掉：service 用 `=== null` 判斷「移除到期時間」，
   // schema 若不收 null 會被擋在 400，那段清除邏輯就永遠執行不到
   // ——到期時間一旦設了就拿不掉。
-  expiresAt: z.coerce.date({ invalid_type_error: '到期時間格式不正確' }).nullish(),
+  expiresAt: z.coerce.date({ errorMap: () => ({ message: '到期時間格式不正確' }) }).nullish(),
 });
 
 // page/limit 未夾制會讓 skip 算出負數，Prisma 直接拋錯 → 500。
