@@ -17,7 +17,13 @@ export async function listActivities(
 ) {
   const where: Record<string, unknown> = { tenantId };
   if (filters.type) where.type = filters.type;
-  if (filters.status) where.status = filters.status;
+  if (filters.status) {
+    where.status = filters.status;
+  } else {
+    // 預設不顯示已封存的活動；要看的話明確帶 status=ARCHIVED 查詢。
+    // ENDED 活動原本無法刪除（只有 DRAFT 可刪），誤建的活動會永遠留在列表上。
+    where.status = { not: 'ARCHIVED' };
+  }
 
   const page = filters.page ?? 1;
   const limit = filters.limit ?? 20;
@@ -175,6 +181,44 @@ export async function endActivity(prisma: TenantDb, id: string, tenantId: string
   const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
   if (!activity) return null;
   if (activity.status !== 'PUBLISHED') throw new AppError('僅已發布的活動可以結束', 'INVALID_ACTIVITY_STATUS', 409);
+  return prisma.portalActivity.update({
+    where: { id },
+    data: { status: 'ENDED' },
+  });
+}
+
+/**
+ * 封存活動：把已結束（或草稿）的活動從列表收起來。
+ *
+ * 為什麼不是直接刪除：PortalSubmission 對 PortalActivity 是
+ * onDelete: Cascade，硬刪會連帶清掉所有參與者的提交紀錄與積分依據。
+ * 活動辦完了要「從列表消失」，不該以銷毀客戶資料為代價。
+ *
+ * 已發布中（PUBLISHED）的活動不可封存——那是還在進行的活動，
+ * 要先按「結束」。
+ */
+export async function archiveActivity(prisma: TenantDb, id: string, tenantId: string) {
+  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  if (!activity) return null;
+  if (activity.status === 'PUBLISHED') {
+    throw new AppError('進行中的活動請先結束再封存', 'INVALID_ACTIVITY_STATUS', 409);
+  }
+  if (activity.status === 'ARCHIVED') {
+    throw new AppError('此活動已封存', 'INVALID_ACTIVITY_STATUS', 409);
+  }
+  return prisma.portalActivity.update({
+    where: { id },
+    data: { status: 'ARCHIVED' },
+  });
+}
+
+/** 取消封存：把活動放回列表（回到 ENDED） */
+export async function unarchiveActivity(prisma: TenantDb, id: string, tenantId: string) {
+  const activity = await prisma.portalActivity.findFirst({ where: { id, tenantId } });
+  if (!activity) return null;
+  if (activity.status !== 'ARCHIVED') {
+    throw new AppError('此活動未封存', 'INVALID_ACTIVITY_STATUS', 409);
+  }
   return prisma.portalActivity.update({
     where: { id },
     data: { status: 'ENDED' },

@@ -12,6 +12,8 @@ import {
   deleteActivity,
   publishActivity,
   endActivity,
+  archiveActivity,
+  unarchiveActivity,
   listSubmissions,
   drawWinners,
 } from './portal.service.js';
@@ -119,6 +121,26 @@ export default async function portalRoutes(app: FastifyInstance) {
 
   // ── Submissions ───────────────────────────────────────────────────────────
 
+
+  // 封存／取消封存：ENDED 活動原本無法從列表移除（deleteActivity 只允許 DRAFT），
+  // 誤建或辦完的活動會永遠留著。改用封存而非刪除——PortalSubmission 對
+  // PortalActivity 是 onDelete: Cascade，硬刪會連帶清掉參與者的提交紀錄。
+  //
+  // 這兩個端點不套 try/catch 轉 400：AppError 自帶語意狀態碼
+  // （狀態不對是 409 CONFLICT），交給全域 error handler 保留原碼即可。
+  app.post('/activities/:id/archive', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const activity = await archiveActivity(request.tenantPrisma, id, request.agent.tenantId);
+    if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
+    return { success: true, data: activity };
+  });
+
+  app.post('/activities/:id/unarchive', { preHandler: requirePermission('portal.manage') }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const activity = await unarchiveActivity(request.tenantPrisma, id, request.agent.tenantId);
+    if (!activity) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此活動，可能已被刪除' } });
+    return { success: true, data: activity };
+  });
   app.get('/activities/:id/submissions', async (request) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
