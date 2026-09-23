@@ -36,6 +36,8 @@
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
+| SEC-02 | Security | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
+| SEC-03 | Security | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
 | CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
 | CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
@@ -221,6 +223,40 @@ Commit `f507fe1` 修正了 API 端：
 - API 啟動時的環境變數驗證要求這個變數，設定缺失會讓 API 啟動失敗。
 
 Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失不會讓 Workers 啟動失敗。Workers 只用這把金鑰解密，因此不會用備援值加密新資料。Workers 缺少金鑰時，這項設定錯誤要到 Workers 解密渠道憑證時才會出現。
+
+### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
+
+`apps/api/src/modules/platform/platform-audit.service.ts` 的 `writePlatformAudit()` 把平台操作寫進 `platform_audit_logs`。`platform.routes.ts` 的異動路由呼叫它，服務層不重複寫，`trial-admin.service.ts` 第 58 行的註解說明了這個分工。
+
+以下四條異動路由沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫：
+
+| 路由 | 服務 |
+| --- | --- |
+| `POST /api/v1/platform/auth/login` | `platform-auth.service.ts` |
+| `POST /api/v1/platform/auth/forgot-password` | `platform-password-recovery.service.ts` |
+| `POST /api/v1/platform/auth/reset-password` | `platform-password-recovery.service.ts` |
+| `POST /api/v1/platform/trial-signups/:id/resend` | `trial-admin.service.ts` |
+
+平台帳號可以開通與停用租戶、修改方案、讀取跨租戶用量。這個身分的登入與密碼重設目前在 `platform_audit_logs` 裡查不到紀錄，事後無法判斷某次異動之前是誰登入、密碼是否被重設過。
+
+`/platform-users/:id/audit-logs` 查得到的是該帳號的操作紀錄，不包含登入事件。
+
+### SEC-03：rate-limit 只註冊在 platform 路由的 scope 內
+
+`apps/api/src/modules/platform/platform.routes.ts` 第 105 行在 `platformRoutes()` 函式內部註冊 `@fastify/rate-limit`：
+
+```ts
+export default async function platformRoutes(fastify: FastifyInstance) {
+  await fastify.register(rateLimit, { global: false, max: 30, timeWindow: '1 minute', ... });
+```
+
+這是整個 API 唯一一處註冊這個外掛。三條公開路由靠它保護：`POST /auth/login`（10 次／分鐘）、`POST /auth/forgot-password`（5 次／10 分鐘）、`POST /auth/reset-password`（10 次／10 分鐘）。
+
+目前運作正常，三條路由與 `register` 呼叫在同一個 Fastify encapsulation scope 內。問題是這個寫法與 repo 其他跨領域外掛的慣例不同：`apps/api/src/plugins/` 的七支外掛全部以 `fastify-plugin` 匯出，並在 `index.ts` 的根層註冊，因此不受 scope 限制。
+
+因此存在一個沒有警告的陷阱。把 `/auth/*` 那幾條路由拆到另一個檔案、再從 `index.ts` 另行 `register`，這些路由就落到另一個 scope。路由上的 `config: { rateLimit: ... }` 會被**靜默忽略**，不報錯也不警告，平台超級使用者的登入端點就失去暴力破解保護。
+
+`platform` 模組沒有任何測試，因此這個改動不會被測試擋下。拆分 `platform.routes.ts` 之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。
 
 ## CI 與測試
 

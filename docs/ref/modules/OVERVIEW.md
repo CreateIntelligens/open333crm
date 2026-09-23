@@ -52,7 +52,9 @@
 
 `platform-audit.service.ts` 的 `writePlatformAudit()` 不屬於任何一個領域。`platform.routes.ts` 的異動路由呼叫它，把操作紀錄寫進 `platform_audit_logs`。稽核由路由負責寫入，服務內部不重複寫，`trial-admin.service.ts` 的註解說明了這個分工。新增異動路由時要一併補上這個呼叫。
 
-四條異動路由目前沒有寫稽核：`POST /auth/login`、`POST /auth/forgot-password`、`POST /auth/reset-password` 與 `POST /trial-signups/:id/resend`。對應的服務內部也沒有寫。因此平台帳號的登入與密碼重設在 `platform_audit_logs` 裡查不到紀錄。
+四條異動路由目前沒有寫稽核，因此平台帳號的登入與密碼重設在 `platform_audit_logs` 裡查不到紀錄。詳見 `../system/AUDIT.md` 的 SEC-02。
+
+`platform.routes.ts` 內部註冊了 `@fastify/rate-limit`，`/auth/*` 三條公開路由的頻率限制依賴這個註冊所在的 scope。要拆分這個檔案，先讀 `../system/AUDIT.md` 的 SEC-03。
 
 以下四項的歸屬與檔名或路由名稱不一致，讀程式碼時容易找錯地方：
 

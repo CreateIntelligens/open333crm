@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-23：platform 模組盤點，新增兩個安全項目
+
+盤點起因是評估「拆分 `platform.routes.ts` 有沒有風險」。評估的結論是先不拆，但過程中查到兩項與拆分無關、現在就存在的問題。做法是靜態閱讀原始碼，沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| SEC-02 | 以 route 區塊切分 `platform.routes.ts`，逐塊檢查 `post`／`patch`／`put`／`delete` 是否含 `writePlatformAudit`，四條沒有；再確認對應的三支服務內部也沒有寫 |
+| SEC-03 | `grep -rn "rateLimit" apps/api/src` 只有 `platform.routes.ts` 一處註冊；比對 `apps/api/src/plugins/*.ts`，七支全部以 `fastify-plugin` 匯出並在根層註冊 |
+
+盤點時另外確認三件事，都不另開項目：
+
+- `platform` 模組的 service 層是 repo 中拆得最細的，十一支服務對應八個領域，`platform.routes.ts` 是唯一沒有跟著拆的檔案。模組歸屬與各領域的對應寫進[模組總覽](../modules/OVERVIEW.md)的平台後台一節。
+- `platform` 模組沒有任何測試。這一點併入既有的 CI-01，不另計。
+- 兩支租戶隔離檢查腳本的白名單是 `/modules\/platform\//`，以目錄為單位。在該目錄內怎麼拆都仍在白名單內，把檔案搬出目錄則會掉出白名單。
+
 ## 2026-09-23：SLA 功能盤點，新增四個項目
 
 盤點範圍是 `apps/api/src/modules/sla`、`apps/workers/src/handlers/sla.handler.ts` 與 `packages/shared/src/sla`。做法是靜態閱讀原始碼與 schema，沒有啟動容器。
