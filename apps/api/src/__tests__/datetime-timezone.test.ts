@@ -215,5 +215,33 @@ t('結束早於開始應被擋下（原本 P2 已知 bug）', () => {
   assert.ok(schema.safeParse({ endsAt: '2026-01-01T00:00:00.000Z' }).success, '只設結束應通過');
 });
 
+t('更新時的起訖檢查在 service 層（schema 看不到 DB 現值）', () => {
+  // schema 的 superRefine 只看得到這次送來的欄位。使用者若只改 endsAt，
+  // 就無從跟 DB 既有的 startsAt 比對——實測確認純靠 schema 會漏放：
+  const updSchema = z
+    .object({ startsAt: z.coerce.date().nullish(), endsAt: z.coerce.date().nullish() })
+    .partial()
+    .superRefine((v, ctx) => {
+      if (v.startsAt && v.endsAt && v.endsAt <= v.startsAt) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endsAt'], message: 'x' });
+      }
+    });
+  assert.ok(
+    updSchema.safeParse({ endsAt: '2020-01-01T00:00:00.000Z' }).success,
+    '前提確認：只送 endsAt 時 schema 本來就擋不到（所以才需要 service 層）',
+  );
+
+  // 因此 service 必須自己跟 DB 現值比對
+  const code = apiSrc('modules/portal/portal.service.ts');
+  assert.ok(
+    /const nextStartsAt = data\.startsAt === undefined \? activity\.startsAt : data\.startsAt/.test(code),
+    'service 未沿用 DB 現值做起訖檢查——只改 endsAt 會繞過驗證',
+  );
+  assert.ok(
+    /nextEndsAt <= nextStartsAt/.test(code) && /INVALID_DATE_RANGE/.test(code),
+    'service 未擋下無效區間',
+  );
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

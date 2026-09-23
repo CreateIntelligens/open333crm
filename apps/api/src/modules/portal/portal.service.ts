@@ -117,6 +117,16 @@ export async function updateActivity(
   if (!activity) return null;
   if (activity.status !== 'DRAFT') throw new AppError('僅草稿狀態的活動可以編輯', 'INVALID_ACTIVITY_STATUS', 409);
 
+  // 起訖先後檢查必須在這裡做，不能只靠 routes 的 schema：
+  // schema 只看得到這次送來的欄位，使用者若只改 endsAt，
+  // 就無從跟 DB 既有的 startsAt 比對（實測確認會漏放）。
+  // undefined = 這欄不動 → 沿用 DB 現值；null = 清除 → 該側不設限。
+  const nextStartsAt = data.startsAt === undefined ? activity.startsAt : data.startsAt;
+  const nextEndsAt = data.endsAt === undefined ? activity.endsAt : data.endsAt;
+  if (nextStartsAt && nextEndsAt && nextEndsAt <= nextStartsAt) {
+    throw new AppError('結束時間必須晚於開始時間', 'INVALID_DATE_RANGE', 400);
+  }
+
   // Replace options and fields if provided
   if (data.options) {
     await prisma.portalOption.deleteMany({ where: { activityId: id } });
