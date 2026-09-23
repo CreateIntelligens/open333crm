@@ -118,7 +118,8 @@ export async function createShortLink(
   } else {
     // Check custom slug uniqueness
     const existing = await prisma.shortLink.findUnique({ where: { slug } });
-    if (existing) throw new Error('Slug already in use');
+    // 這句會原封不動顯示在建立視窗上（前端已改為顯示後端訊息），所以用中文。
+    if (existing) throw new Error('這個自訂代碼已經被使用了，請換一個');
   }
 
   if (data.lineChannelId) {
