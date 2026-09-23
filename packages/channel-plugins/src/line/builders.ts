@@ -290,8 +290,13 @@ export function buildLineImagemap(content: Record<string, unknown>): Record<stri
 // }
 //
 // LINE video message 可選帶 trackingId 用於統計。
-// endCard 在 LINE API 中是「影片播完後的 CTA」，需用 imagemap 替代或包裝後 follow-up。
-// 為簡化，本實作把 endCard 包成 imagemap + video 兩個 message 一起送（呼叫端會把回傳值當陣列處理）。
+//
+// ⚠️ endCard 目前「不會被送出」。
+// 這段註解原本寫「本實作把 endCard 包成 imagemap + video 兩個 message 一起送」，
+// 但函式實際只回傳 video 物件——註解描述的是未完成的設計，不是現況。
+// 2026-09-23 決議：先把前端的結束畫面欄位移除（避免使用者設定了卻永遠看不到），
+// DB 欄位保留不做破壞性遷移，待日後補實作時再啟用。
+// 補實作時需注意：回傳值要改成陣列，且所有呼叫端都要支援多則訊息。
 
 export function buildLineVideoWithEndCard(content: Record<string, unknown>): Record<string, unknown> {
   const videoUrl = content.videoUrl as string;

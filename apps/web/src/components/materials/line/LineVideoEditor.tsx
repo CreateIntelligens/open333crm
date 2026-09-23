@@ -3,21 +3,33 @@
 /**
  * LineVideoEditor — LINE 進階影片訊息編輯器。
  *
- * 對齊 LINE OA 後台「進階影片訊息」：
+ * 目前支援：
  *   • 影片網址（mp4）
  *   • 縮圖網址
- *   • 結束畫面（圖片 + CTA 按鈕 + action）
+ *
+ * ⚠️ 結束畫面（圖片 + CTA 按鈕 + action）的欄位已於 2026-09-23 移除。
+ * 原因：這三個欄位在畫面上可編輯、也會存進 DB，但
+ * `buildLineVideoWithEndCard`（packages/channel-plugins/src/line/builders.ts）
+ * 只回傳 video 物件，整個 endCard 被丟棄——使用者設定了半天，客戶永遠看不到。
+ * 決議先移除 UI 止血；LineVideoBody 的 endCard 型別與 DB 欄位保留，
+ * 不做破壞性遷移，待補實作送出邏輯後再把欄位放回來。
  */
 
 import React from 'react';
 import { Input } from '@/components/ui/input';
 import { CompactImageField } from '../CompactImageField';
-import { ActionConfigEditor, type ActionConfig } from './ActionConfigEditor';
+// ActionConfigEditor 目前未使用（結束畫面 UI 已移除），但 ActionConfig 型別
+// 仍為 endCard 所需，故只保留型別匯入。
+import type { ActionConfig } from './ActionConfigEditor';
 
 export interface LineVideoBody {
   videoUrl?: string;
   previewImageUrl?: string;
   trackingId?: string;
+  /**
+   * ⚠️ 保留型別以相容既有資料，但目前「不會被送出」（見檔頭說明），
+   * 因此編輯器不提供這組欄位。補實作 builders 的送出邏輯後再放回 UI。
+   */
   endCard?: {
     imageUrl?: string;
     label?: string;
@@ -53,38 +65,6 @@ export function LineVideoEditor({ body, onChange }: Props) {
           onChange={(previewImageUrl) => onChange({ ...body, previewImageUrl })}
           placeholder="影片預覽圖（jpg / png）"
         />
-      </div>
-
-      <div className="rounded-md border border-slate-200 p-3 space-y-2">
-        <div className="text-sm font-semibold">影片結束畫面</div>
-        <div className="text-xs text-slate-500">影片播完後顯示，可加 CTA 按鈕引導下一步</div>
-
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">結束畫面圖片</label>
-          <CompactImageField
-            value={body.endCard?.imageUrl ?? ''}
-            onChange={(imageUrl) => onChange({ ...body, endCard: { ...body.endCard, imageUrl } })}
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">CTA 按鈕文字</label>
-          <Input
-            value={body.endCard?.label ?? ''}
-            onChange={(e) => onChange({ ...body, endCard: { ...body.endCard, label: e.target.value } })}
-            maxLength={15}
-            placeholder="如：立即購買"
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1 block">按鈕動作</label>
-          <ActionConfigEditor
-            action={body.endCard?.action}
-            onChange={(action) => onChange({ ...body, endCard: { ...body.endCard, action } })}
-            labelLimit={15}
-          />
-        </div>
       </div>
     </div>
   );
