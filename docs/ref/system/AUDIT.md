@@ -42,6 +42,7 @@
 | SEC-02 | Security | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | SEC-03 | Security | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
 | SEC-04 | Security | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
+| AUTH-01 | Security | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
 | CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
 | CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
@@ -352,6 +353,40 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 - 租戶側稽核紀錄的 `ip` 欄位（`agent`、`role`、`contact`、`settings`、`channel`、`data-export` 等模組的異動路由）。
 
 生產環境的 `docker-compose.prod.yml` 只有 nginx 對外開 80 與 443，`api` 沒有對應的 host port。這一點不改變結論：偽造的標頭會原樣通過 nginx。
+
+### AUTH-01：租戶端沒有密碼復原流程
+
+租戶使用者的密碼一律由「建立這個帳號的人」設定：
+
+| 帳號 | 建立者 | 密碼來源 |
+| --- | --- | --- |
+| 租戶的第一位 ADMIN | 平台人員在 `/admin/tenants` 開通 | 操作者在表單上自己填 |
+| 其餘成員 | 租戶自己的 ADMIN | 建立者在表單上自己填 |
+
+兩端的介面都寫明密碼要由建立者轉交：`/admin/tenants` 開通成功的訊息是「（密碼請自行轉交給管理員）」，開通信的內文是「登入密碼由開通人員為您設定，請向開通人員索取；登入後建議立即修改密碼」。這一點沒有落差，落差在後面。
+
+**「建議修改」沒有任何強制機制。** `Agent` 沒有 `mustChangePassword` 欄位，也沒有對應的 guard。建立者知道的那組密碼不會過期，也不會有任何提示要求更換。平台帳號的同一件事是強制的：`mustChangePassword` 加上 `blockIfMustChangePassword`，不改密碼就只能呼叫改密碼那一條。
+
+**租戶端沒有忘記密碼流程。** 三處都沒有：
+
+| 層 | 平台端 | 租戶端 |
+| --- | --- | --- |
+| 路由 | `POST /platform/auth/forgot-password`、`/reset-password` | 無。`auth.routes.ts` 只有 login、passkey、refresh、logout、me |
+| 資料表 | `platform_users.resetTokenHash`、`resetTokenExpiresAt` | 無。`Agent` 沒有對應欄位 |
+| 頁面 | `/admin/forgot-password`、`/admin/reset-password` | 無。`/login` 沒有「忘記密碼」連結 |
+
+因此復原只能靠別人代為重設：
+
+| 情況 | 復原途徑 |
+| --- | --- |
+| 一般成員忘記密碼 | 租戶的 ADMIN 用 `PATCH /agents/:id/password` 重設（需 `agent.password.reset` 權限） |
+| 租戶唯一的 ADMIN 忘記密碼 | **沒有任何介面可以復原** |
+
+平台後台幫不上忙。它對租戶成員只有兩個端點：改 email（`PATCH /tenants/:id/agents/:agentId`）與重寄開通信（`POST /tenants/:id/agents/:agentId/resend-welcome`）。重寄的那封信不帶密碼，也不會重設密碼，收件者拿到信之後仍然登入不了。平台沒有重設租戶成員密碼的路由。唯一的辦法是直接改資料庫。
+
+Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticate` 之下，要先登入才能註冊，已經被鎖在外面的人用不到。
+
+另有一個前提條件：`EMAIL_DELIVERY_MODE` 預設是 `log`，未設定寄信管道時所有信件只寫進 log。任何以寄信為基礎的復原流程都要先確定這個設定。
 
 ## CI 與測試
 
