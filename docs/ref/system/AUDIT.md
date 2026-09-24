@@ -36,6 +36,7 @@
 | TRIAL-01 | 試用與方案 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
 | PLAN-01 | 試用與方案 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | PLAN-02 | 試用與方案 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
+| PLAN-03 | 試用與方案 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -43,6 +44,7 @@
 | SEC-03 | Security | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
 | SEC-04 | Security | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
 | AUTH-01 | Security | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
+| AUTH-02 | Security | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
 | CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
 | CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
@@ -270,6 +272,28 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 這一項與 PLAN-01 不同，不確定是缺陷還是原本的設計。無論是哪一種，目前的用字與資料結構表達的不是同一件事。
 
+### PLAN-03：換方案不會回收既有的超額狀態
+
+租戶換方案有三個入口：平台改租戶方案（`updateTenant()`）、核准升級申請（`approveRequest()`）、試用轉正式（`convertToPaid()`）。三者都只寫 `planId`，以下三件事不會跟著改變。
+
+**一、既有資源不會被回收。** 方案的數量上限只在建立時檢查：
+
+| 上限 | 檢查點 |
+| --- | --- |
+| `maxAgents` | `agent.service.ts` 建立成員前 `count` 比對，超過回 403 `PLAN_LIMIT_EXCEEDED` |
+| `maxChannels` | `channel.service.ts` 建立渠道前比對 |
+| `allowedChannelTypes` | 只擋新建的渠道類型 |
+
+因此降級到人數較少的方案之後，超出新上限的成員照常登入與使用，渠道也照常收發訊息，只有下一次新增才會被擋。系統不會提示租戶目前超額，也沒有任何地方列得出「哪些租戶超出自己方案的上限」。
+
+**二、`limitOverrides` 不會被清除。** 這個欄位的值優先於方案的 `limits`，而且判斷的是 key 存不存在，連 `null`（無上限）都會延續，見 `../modules/platform/PLANS.md` 的有效上限一節。
+
+寫入端只有一個：核准 `token_topup`。沒有任何路由或頁面可以檢視、修改或清除它。因此一個曾經加購過 AI 額度的租戶，降級之後仍然維持加購後的額度，而且**沒有任何介面能改回來**，只能直接改資料庫。加購本身的語意問題見 PLAN-02。
+
+**三、其他行程的租戶方案快取不會失效。** `invalidateTenantPlan()` 清的是行程內的 `Map`，只對處理這個請求的行程有效。`invalidatePlanPermissions()` 走 Redis，所有行程一起生效。兩者搭配的結果是：其他行程在 60 秒內仍以舊的 `planId` 查天花板，降級後的權限收回會延後，升級後的新功能也會延後開通。
+
+生產環境目前只跑一個 `api` 容器（`docker-compose.prod.yml` 沒有 replicas 設定），因此第三點尚未顯現。水平擴充時會出現。
+
 ## 授權與安全
 
 ### LIC-01、LIC-02：兩份 LicenseService
@@ -401,6 +425,28 @@ Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticat
   設定值本身有驗證：`config/env.ts` 的 `superRefine` 規定 `resend` 模式必填 `RESEND_API_KEY` 與 `EMAIL_FROM`、`smtp` 模式必填 `SMTP_HOST`，缺少時 API 啟動就失敗。因此只要線上 API 啟動成功且模式不是 `log`，寄信設定就是完整的。要確認的只有模式本身。
 
 - **SEC-04 應先修。** 新增的是公開端點，擋暴力破解只能靠速率限制，而速率限制目前以可偽造的 `request.ip` 分組。
+
+### AUTH-02：停用租戶不會中斷既有的連線與 token
+
+`PATCH /platform/tenants/:id/active` 把 `isActive` 設成 `false` 之後，三個存取面的反應不同：
+
+| 存取面 | 會不會被擋 | 最長延遲 |
+| --- | --- | --- |
+| REST（access token） | 會 | 一個 access token 的有效期。`ACCESS_TOKEN_EXPIRES_IN` 預設 15 分鐘 |
+| Socket.IO 既有連線 | **不會** | 連線不中斷就一直有效 |
+| CLI token | **不會** | CLI session 自己的有效期。`DEFAULT_EXPIRES_DAYS` 是 30 天 |
+
+REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但 `login()` 與 `POST /auth/refresh` 都會擋下停用的租戶，換不到新的 access token。
+
+**Socket.IO 只在 handshake 驗一次。** `socket.plugin.ts` 的 `io.use()` 驗完 JWT 就把 `agentId`、`tenantId` 寫進 `socket.data`，之後沒有任何地方重驗，也沒有在租戶停用時主動斷線。連線建立後自動加入的 `tenant:{tenantId}` 與 `agent:{agentId}` 兩個房間不需要 `subscribe`，因此推播到這兩個房間的事件會持續送達。`subscribe` 其他房間時 `authorizeSocketRoom()` 會回查資料庫，但那只檢查渠道權限，不檢查租戶是否停用。
+
+斷線後重連會重跑 handshake，此時過期的 token 會被擋下。所以實際的暴露時間取決於連線活多久，WebSocket 長連線可以維持數天。
+
+**CLI token 沒有檢查租戶狀態。** `verifyCliSession()` 依序檢查 `revokedAt`、`expiresAt` 與 `agent.isActive`，**沒有檢查 `tenant.isActive`**。停用租戶之後，該租戶成員手上的 CLI token 仍然可以呼叫 API，直到 token 自己過期或被撤銷。
+
+停用個別成員的情況比較好但不完整：CLI 端有 `agent.isActive` 的檢查會擋下，Socket 端同樣不會斷線。
+
+對照平台端：`authenticatePlatformSuperuser` 每個請求都回查 `platform_users`，停用即時生效，而平台後台沒有 Socket 或 CLI 通道。兩邊的差距不是刻意設計，是租戶端多了兩個當初沒有一起處理的入口。
 
 ## CI 與測試
 
