@@ -43,6 +43,8 @@
 
 `features` 是唯一沒被驗值的欄位。寫進一個不存在的 feature slug 不會報錯，`permsForFeatures()` 找不到對應權限，那個 slug 等同沒寫。
 
+合法的 slug 定義在 `packages/core/src/rbac/features.ts` 的 `FEATURES`，每一筆帶 slug、顯示名稱、涵蓋範圍說明與是否為核心。那份定義是被指定的單一資料源，平台後台的方案頁透過 `GET /registry` 動態取得，不另外維護清單，見[平台設定與權限註冊表](./SETTINGS.md#權限註冊表)。
+
 ## 停售不會生效
 
 `Plan.isActive` 的註解寫的是「停售軟下架」，但**整個 repo 沒有任何查詢讀這個欄位**。把方案設為停售之後，它仍然可以被指派：平台改租戶方案、核准升級申請、試用開通綁定方案，三條路徑都只用 slug 找方案，沒有一條檢查 `isActive`。詳見 `../../system/AUDIT.md` 的 PLAN-01。
