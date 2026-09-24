@@ -15,17 +15,20 @@
 | --- | --- | --- | --- |
 | `features` | 功能模組清單 | 方案包含哪些功能模組。功能天花板由這份清單換算而來，`core` 恆開 | 空陣列代表只有 `core` |
 | `limits` | 數值上限 | `maxAgents`、`maxChannels`、`maxTags`、`monthlyTokens` 的數量上限 | 某個 key 的值為 `null` 代表該項無上限 |
-| `allowedChannelTypes` | 可建立的渠道類型白名單 | 限制這個方案能建立哪些渠道類型。`channel.service.ts` 在建立渠道時檢查，不符合回 403 `CHANNEL_TYPE_NOT_ALLOWED` | **空陣列代表不限制**，不是全部禁止 |
+| `allowedChannelTypes` | 可建立的渠道類型白名單 | 限制這個方案能建立哪些渠道類型。`channel.service.ts` 在建立渠道時檢查，不符合回 403 `CHANNEL_TYPE_NOT_ALLOWED` | 空陣列代表不限制 |
 | `permissionOverrides` | 權限碼扣除清單 | 從 `features` 算出的天花板再扣掉指定的權限碼，結構是 `{ deny: string[] }` | 空物件代表不扣除任何權限 |
 
-兩個欄位的名稱容易誤讀：
-
-- `allowedChannelTypes` 是白名單，但**空陣列是「不限制」而不是「全部禁止」**。判斷式是「白名單非空、且這個類型不在裡面才擋」。另外它只擋新建的渠道，既有渠道不受影響。
-- `permissionOverrides` 雖然叫 override，實際上**只能扣除，不能加回**。`permission.service.ts` 先以 `features` 算出天花板，再逐一刪掉 `deny` 裡的權限碼。要放寬權限只能改 `features`。扣除不會連坐：deny 一個高階權限碼，不會一併扣掉相關的低階碼。
-
-上面這些行為都是明確的設計決策，不是實作疏漏。`permissionOverrides` 與 `allowedChannelTypes` 來自 2026-09-15 的 `granular-plan-entitlement`，目的是讓方案分級細到權限點，典型情境是「能看報表但不能匯出」。各項取捨的理由寫在 `openspec/changes/archive/2026-09-15-add-granular-plan-entitlement/design.md`，現行規格在 `openspec/specs/granular-plan-entitlement/spec.md`。
-
 `slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。
+
+## 名稱與實際行為不符的欄位
+
+| 欄位 | 看名字會以為 | 實際上 |
+| --- | --- | --- |
+| `allowedChannelTypes` | 空陣列代表全部禁止 | 空陣列代表不限制。而且只擋新建的渠道，既有渠道照常運作 |
+| `permissionOverrides` | 可以覆寫，能加也能減 | 只能扣除。要放寬權限只能改 `features`。deny 一個高階權限碼不會連帶扣掉低階碼 |
+
+這兩項都是明確的設計決策，不是實作疏漏。欄位來自 2026-09-15 的 `granular-plan-entitlement`，目的是讓方案分級細到權限點，典型情境是「能看報表但不能匯出」。取捨的理由見 `openspec/changes/archive/2026-09-15-add-granular-plan-entitlement/design.md`，現行規格見 `openspec/specs/granular-plan-entitlement/spec.md`。
+
 
 ## 路由層先擋掉哪些值
 
