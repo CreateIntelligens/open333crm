@@ -23,6 +23,8 @@
 - `allowedChannelTypes` 是白名單，但**空陣列是「不限制」而不是「全部禁止」**。判斷式是「白名單非空、且這個類型不在裡面才擋」。另外它只擋新建的渠道，既有渠道不受影響。
 - `permissionOverrides` 雖然叫 override，實際上**只能扣除，不能加回**。`permission.service.ts` 先以 `features` 算出天花板，再逐一刪掉 `deny` 裡的權限碼。要放寬權限只能改 `features`。扣除不會連坐：deny 一個高階權限碼，不會一併扣掉相關的低階碼。
 
+上面這些行為都是明確的設計決策，不是實作疏漏。`permissionOverrides` 與 `allowedChannelTypes` 來自 2026-09-15 的 `granular-plan-entitlement`，目的是讓方案分級細到權限點，典型情境是「能看報表但不能匯出」。各項取捨的理由寫在 `openspec/changes/archive/2026-09-15-add-granular-plan-entitlement/design.md`，現行規格在 `openspec/specs/granular-plan-entitlement/spec.md`。
+
 `slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。
 
 ## 路由層先擋掉哪些值
