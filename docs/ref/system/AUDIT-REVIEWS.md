@@ -4,6 +4,23 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-24：權限碼強制點盤點，新增 RBAC-01 與 PLAN-04
+
+起因是討論要不要在[模組總覽](../modules/OVERVIEW.md)加一欄「這個模組屬於哪個 feature」。評估的結論是不加，因為推導所需的依據在一半以上的模組並不存在，而過程中查出的問題比那張對照表重要。做法是靜態比對原始碼與 OpenSpec 紀錄，沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| RBAC-01 | 逐一以權限碼 `grep` 掃 `apps/api/src`（排除測試），56 個碼中 15 個零命中；另比對命中處是 `requirePermission()` 還是稽核 `action` 字串 |
+| PLAN-04 | 逐模組統計路由數與 `requirePermission`／`requireAnyPermission` 出現次數，再依 `permissions.ts` 的 `feature` 欄位分組；另查 `maxTags` 在 `apps/api/src` 只出現於型別宣告 |
+
+不加對照表的理由值得留存：`apps/api/src/modules` 下的模組只有 18 個使用 `requirePermission`，模組到 feature 的推導對其餘模組沒有依據；而且就算推導得出，寫下「`case` 屬於 `inbox`」會讓讀者以為方案關掉 `inbox` 就停用案件功能，實際上不會。該欄位會把一個不成立的因果關係固化進文件。改為在[平台後台](../modules/platform/README.md)的天花板一節補一句結構性事實：這個交集只在路由呼叫 `requirePermission()` 時計算。
+
+盤點時另外確認三件事，都不另開項目：
+
+- `guards/license.guard.ts` 的 `requireFeature()` 沒有任何呼叫端，而且讀的是 LIC-01 那份寫死的授權資料。feature 層級的閘門從未接上。
+- `requireRole()`、`requireAdmin()`、`requireSupervisor()` 也沒有呼叫端。`case.routes.ts` 的 git 歷史查不到曾經使用，因此缺少授權判斷不是切換 guard 時漏掉的。
+- 前端 `Sidebar.tsx` 會用 `/auth/me/permissions` 過濾選單，但「收件匣」「工單」「聯繫人」「通知」四個節點沒有 `perm` 欄位。前端隱藏本來就不等於後端擋住，這四項連隱藏都沒有。
+
 ## 2026-09-23：平台後台各領域逐檔細查，新增兩個方案項目
 
 起因是把[平台後台](../modules/platform/README.md)的領域文件從一兩句話補成完整說明。過程中逐支服務、逐條路由對照原始碼，發現兩項與方案有關的問題，也修正了三處我自己寫錯的描述。做法是靜態閱讀原始碼與前端頁面，沒有啟動容器。

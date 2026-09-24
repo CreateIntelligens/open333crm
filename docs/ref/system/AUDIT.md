@@ -37,6 +37,7 @@
 | PLAN-01 | 試用與方案 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | PLAN-02 | 試用與方案 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | PLAN-03 | 試用與方案 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
+| PLAN-04 | 試用與方案 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -45,6 +46,7 @@
 | SEC-04 | Security | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
 | AUTH-01 | Security | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
 | AUTH-02 | Security | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
+| RBAC-01 | Security | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
 | CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
 | CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
@@ -294,6 +296,40 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 生產環境目前只跑一個 `api` 容器（`docker-compose.prod.yml` 沒有 replicas 設定），因此第三點尚未顯現。水平擴充時會出現。
 
+### PLAN-04：功能天花板在收件匣一帶沒有咬合點
+
+方案用三種手段限制租戶，效力不同：
+
+| 手段 | 強制點 | 是否生效 |
+| --- | --- | --- |
+| `limits.maxAgents` | `agent.service.ts` 建立成員前 count | 是 |
+| `limits.maxChannels` | `channel.service.ts` 建立渠道前 count | 是 |
+| `limits.monthlyTokens` | `token-quota.service.ts` 的 Redis 計數器 | 是 |
+| `limits.maxTags` | **沒有強制點** | 否 |
+| `allowedChannelTypes` | `channel.service.ts` 建立渠道時 | 是 |
+| `features`（功能天花板） | 只有 `requirePermission()` | 視路由而定 |
+
+功能天花板的公式是「角色權限 ∩ 方案天花板」，而這個交集只在 `requirePermission()` 執行時才被計算。沒有呼叫它的路由，方案開不開都一樣。
+
+以 feature 分組統計各模組的路由數與權限檢查數（2026-09-24 核對）：
+
+| feature | 路由層的覆蓋情況 | 關掉這個 feature |
+| --- | --- | --- |
+| `automation` | `canvas` 11 條全有、`automation` 7 條中 5 條 | 擋得住 |
+| `analytics` | 9 條路由、10 處檢查 | 擋得住 |
+| `channels` | `channel` 19 條中 17 條 | 大致擋得住 |
+| `marketing` | 36 條中 21 條 | 大部分擋得住，仍有未檢查的路由 |
+| `knowledge` | 21 條中 12 條 | 同上 |
+| `portal` | 17 條中 8 條 | 同上 |
+| `inbox` | `case` 19 條、`conversation` 14 條、`contact` 10 條、`tag` 4 條、`shortlink` 8 條，**全部 0 處檢查** | **沒有效果** |
+| `core` | 恆開，方案不會關 | 不適用 |
+
+也就是說，把 `inbox` 從方案的 `features` 拿掉之後，該租戶的收件匣、對話、案件、聯絡人、標籤與短連結全部照常使用。前端也擋不住：`apps/web` 的 `Sidebar.tsx` 會依權限過濾選單，但「收件匣」「工單」「聯繫人」「通知」四個節點沒有 `perm` 欄位，一律顯示。
+
+`maxTags` 是另一種形狀的失效：它在 `apps/api/src` 只出現在 `plan-limits.service.ts` 的 `LimitKey` 型別宣告，沒有任何地方拿它比對，與 PLAN-01 的 `Plan.isActive` 相同。
+
+成因見 RBAC-01。
+
 ## 授權與安全
 
 ### LIC-01、LIC-02：兩份 LicenseService
@@ -447,6 +483,30 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 停用個別成員的情況比較好但不完整：CLI 端有 `agent.isActive` 的檢查會擋下，Socket 端同樣不會斷線。
 
 對照平台端：`authenticatePlatformSuperuser` 每個請求都回查 `platform_users`，停用即時生效，而平台後台沒有 Socket 或 CLI 通道。兩邊的差距不是刻意設計，是租戶端多了兩個當初沒有一起處理的入口。
+
+### RBAC-01：部分權限碼沒有強制點
+
+`packages/core/src/rbac/permissions.ts` 宣告 56 個權限碼（2026-09-24 核對）。其中 15 個在 `apps/api/src` 完全沒有出現：
+
+| feature | 沒有出現的權限碼 |
+| --- | --- |
+| `inbox` | `inbox.manage`、`case.view`、`case.create`、`case.update`、`case.assign`、`case.escalate`、`contact.view`、`contact.update`、`tag.view`、`tag.manage`、`shortlink.view`、`shortlink.manage` |
+| `core` | `agent.delete`、`billing.view` |
+| `knowledge` | `knowledge.view` |
+
+另有兩個碼只以稽核紀錄的 `action` 字串出現，不是檢查：`case.delete`（`case.routes.ts:200`）與 `contact.merge`（`contact.routes.ts:101`）。`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由上，不在收件匣本身。
+
+結果是 `case`、`conversation`、`contact`、`tag`、`shortlink` 這幾個模組的路由只有 `fastify.authenticate`，沒有任何授權判斷。租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
+
+一個例外要分辨：`channel.view_all` 也沒有出現在 `requirePermission()` 裡，但它透過 `getEffectiveTenantPermissions()` 在 `services/channel-visibility.ts` 與 socket 房間授權中判斷，屬於有強制點的情況。
+
+**這是未完成的遷移，不是設計決策。** `openspec/changes/archive/2026-09-15-rbac-granular-permissions/tasks.md` 的第 9.2 項「分批灰度切換路由 guard（新舊並存），監控 403 異常」沒有打勾，該 change 就已歸檔。同一節的 9.1、9.3、9.4、9.5 也都沒有打勾。
+
+舊的角色守門也已經不在：`requireRole()`、`requireAdmin()`、`requireSupervisor()` 仍由 `guards/rbac.guard.ts` 匯出，但 `apps/api/src` 沒有任何呼叫端。`case.routes.ts` 的 git 歷史也查不到曾經使用過。因此這些路由不是「從舊守門切到新守門時漏掉」，而是從頭就沒有授權判斷。
+
+啟動時的檢查只驗單向：`validateRouteCodes()` 確認路由用到的碼都存在於 registry，不檢查 registry 的碼有沒有人用。因此宣告了卻沒有強制點的碼不會產生任何警告。
+
+對方案天花板的連帶影響見 PLAN-04。
 
 ## CI 與測試
 

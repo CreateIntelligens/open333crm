@@ -48,7 +48,7 @@
 有效權限 = 角色權限 ∩ 方案功能天花板
 ```
 
-角色給得再多，方案沒開的功能仍然用不到；方案開得再多，角色沒有的權限也不會自動出現。`apps/api/src/guards/rbac.guard.ts` 是這個判斷的實作，`permission.service.ts`、`services/channel-visibility.ts` 與 socket 房間授權都比照同一個公式。平台後台 `/admin/plans` 的介面也用「功能天花板」這個詞。
+角色給得再多，方案沒開的功能仍然用不到；方案開得再多，角色沒有的權限也不會自動出現。這個交集只在路由呼叫 `requirePermission()` 時計算，沒有呼叫的路由不受方案與角色影響，見 `../../system/AUDIT.md` 的 PLAN-04。`apps/api/src/guards/rbac.guard.ts` 是這個判斷的實作，`permission.service.ts`、`services/channel-visibility.ts` 與 socket 房間授權都比照同一個公式。平台後台 `/admin/plans` 的介面也用「功能天花板」這個詞。
 
 原始碼裡「功能天花板」與「權限天花板」指同一件事，兩種寫法都有。這一組文件在講概念時用「功能天花板」，在指那一層快取時沿用程式碼註解的「權限天花板快取」。
 
