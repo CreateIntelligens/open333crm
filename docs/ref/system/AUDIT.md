@@ -386,7 +386,16 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticate` 之下，要先登入才能註冊，已經被鎖在外面的人用不到。
 
-另有一個前提條件：`EMAIL_DELIVERY_MODE` 預設是 `log`，未設定寄信管道時所有信件只寫進 log。任何以寄信為基礎的復原流程都要先確定這個設定。
+**修正方向（2026-09-24 決定，尚未實作）**
+
+補上租戶端的忘記密碼流程，照 `platform-password-recovery.service.ts` 的既有作法：`Agent` 增加 `resetTokenHash` 與 `resetTokenExpiresAt`、兩條公開路由、一個信件模板，以及 `/forgot-password` 與 `/reset-password` 兩頁。`Agent.email` 全域唯一，不需要處理「同一個信箱屬於哪個租戶」的歧義。
+
+同時建議加上 `Agent.mustChangePassword`，讓建立者設定的密碼在第一次登入後就失效。這一項單獨做沒有意義，反而會提高忘記密碼的機率，只有在復原流程存在之後才成立。
+
+兩個前置條件：
+
+- **寄信管道要先確認。** `EMAIL_DELIVERY_MODE` 預設是 `log`，此時所有信件只寫進 log。倉庫內的 `.env.api` 沒有設定這個變數，因此本機一律走 `log`；`.env.api.example` 的範本值是 `resend`。生產環境的值在伺服器上的 `.env.api`，不在倉庫內。
+- **SEC-04 應先修。** 新增的是公開端點，擋暴力破解只能靠速率限制，而速率限制目前以可偽造的 `request.ip` 分組。
 
 ## CI 與測試
 
