@@ -394,7 +394,12 @@ Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticat
 
 兩個前置條件：
 
-- **寄信管道要先確認。** `EMAIL_DELIVERY_MODE` 預設是 `log`，此時所有信件只寫進 log。倉庫內的 `.env.api` 沒有設定這個變數，因此本機一律走 `log`；`.env.api.example` 的範本值是 `resend`。生產環境的值在伺服器上的 `.env.api`，不在倉庫內。
+- **寄信管道要先確認。** `EMAIL_DELIVERY_MODE` 預設是 `log`，此時所有信件只寫進 log，包含現有的開通信與試用提醒信。倉庫內的 `.env.api` 沒有設定這個變數，因此本機一律走 `log`；`.env.api.example` 的範本值是 `resend`。生產環境的值在伺服器上的 `.env.api`，不在倉庫內。
+
+  部署說明不會提醒設定它。`docker-compose.prod.yml` 開頭的步驟只寫「複製 `.env.prod.example` 成 `.env.prod`，填入 `DOMAIN` 與 `CERTBOT_EMAIL`」，而 `.env.prod` 只給 nginx 與 certbot 使用；api 讀的是 `.env.api`，沒有對應的生產範本。`.env.prod.example` 本身也沒有任何 email 變數。照這份步驟部署的人不會被提醒寄信管道需要設定，而寄不出信不會有任何錯誤，`sendEmail()` 在 `log` 模式下正常返回。
+
+  設定值本身有驗證：`config/env.ts` 的 `superRefine` 規定 `resend` 模式必填 `RESEND_API_KEY` 與 `EMAIL_FROM`、`smtp` 模式必填 `SMTP_HOST`，缺少時 API 啟動就失敗。因此只要線上 API 啟動成功且模式不是 `log`，寄信設定就是完整的。要確認的只有模式本身。
+
 - **SEC-04 應先修。** 新增的是公開端點，擋暴力破解只能靠速率限制，而速率限制目前以可偽造的 `request.ip` 分組。
 
 ## CI 與測試
