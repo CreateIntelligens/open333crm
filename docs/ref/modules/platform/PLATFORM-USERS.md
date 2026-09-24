@@ -14,7 +14,7 @@
 建立帳號只需要 email 與姓名。密碼由系統產生：
 
 1. email 正規化後檢查全域唯一，重複回 409 `CONFLICT`。
-2. `generateTempPassword()` 產生臨時密碼，雜湊後寫入，`mustChangePassword` 設為真。
+2. `generateTempPassword()` 產生臨時密碼，雜湊後寫入，`mustChangePassword` 設成 `true`。
 3. 寄開通信，信裡有明文臨時密碼與登入網址。
 
 **臨時密碼只出現在那一封信裡。** 資料庫只有雜湊，介面沒有任何地方能再看一次。而且建立帳號時的寄信是 fire-and-forget：`sendEmail` 失敗只寫 log，不影響建立結果，操作者仍然看到成功。信沒寄到的唯一補救是重寄開通信。

@@ -37,9 +37,9 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 
 ## 臨時密碼與兩組 guard
 
-`mustChangePassword` 標記這個帳號目前用的是系統發的臨時密碼。建立帳號與重寄開通信都會設為真，使用者改密碼成功後清除。
+`mustChangePassword` 標記這個帳號目前用的是系統發的臨時密碼。建立帳號與重寄開通信都會把它設成 `true`，使用者改密碼成功後清除。
 
-標記為真時，`blockIfMustChangePassword` 把請求擋成 403 `MUST_CHANGE_PASSWORD`。因此路由分成兩組：
+值是 `true` 時，`blockIfMustChangePassword` 把請求擋成 403 `MUST_CHANGE_PASSWORD`。因此路由分成兩組：
 
 | Guard | 內容 | 用在 |
 | --- | --- | --- |

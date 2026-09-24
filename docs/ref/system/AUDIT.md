@@ -189,7 +189,7 @@ Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embeddi
 
 ### SLA-03：`isDefault` 沒有讀取端
 
-`apps/api/src/modules/sla/sla.routes.ts` 的建立與修改路由各有一段邏輯，維持「同一優先級只有一條政策的 `isDefault` 為真」。`apps/web/src/components/settings/SlaManagement.tsx` 也顯示這個標記。
+`apps/api/src/modules/sla/sla.routes.ts` 的建立與修改路由各有一段邏輯，維持「同一優先級只有一條政策的 `isDefault` 是 `true`」。`apps/web/src/components/settings/SlaManagement.tsx` 也顯示這個標記。
 
 但 `apps/api/src/modules/case/case.service.ts:279` 在呼叫端沒有指定 `slaPolicyId` 時，是這樣挑政策的：
 

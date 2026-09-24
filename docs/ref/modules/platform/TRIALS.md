@@ -69,7 +69,7 @@
 | 狀態 | 條件 |
 | --- | --- |
 | 已清除 | `purgedAt` 有值 |
-| 已停用 | `isActive` 為假 |
+| 已停用 | `isActive` 是 `false` |
 | 已到期 | 剩餘天數小於等於 0 |
 | 即將到期 | 剩餘天數小於等於 3 |
 | 試用中 | 其餘 |
@@ -87,9 +87,9 @@
 
 取較晚者是為了讓兩個方向都合理。一律從今天起算，第一種情境會變成 10/27，比原本的到期日還早。一律從原到期日起算，第二種情境會變成 10/22，延長的天數有一大半用在過去。
 
-延長同時把 `isActive` 設為真，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。
+延長同時把 `isActive` 設成 `true`，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。
 
-`convertToPaid(tenantId, planSlug)` 改 `planId`、把 `trialEndsAt` 清成 `null`、確保 `isActive` 為真。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是 `trial` 時擋下。
+`convertToPaid(tenantId, planSlug)` 改 `planId`、把 `trialEndsAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是 `trial` 時擋下。
 
 `restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。
 

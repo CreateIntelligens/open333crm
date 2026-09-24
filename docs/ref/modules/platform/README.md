@@ -102,7 +102,7 @@
 | `platform_users` | 營運方帳號。含 `resetTokenHash`、`resetTokenExpiresAt`、`mustChangePassword`、`lastLoginAt` |
 | `platform_audit_logs` | 平台操作紀錄，關聯到 `platform_users` |
 | `platform_settings` | 以 `key` 為主鍵的 JSON 設定 |
-| `plans` | 方案。`slug` 唯一，`isActive` 為假代表停售軟下架 |
+| `plans` | 方案。`slug` 唯一，`isActive` 是 `false` 代表停售軟下架 |
 | `model_pricings` | LLM 單價，含分級費率與生效日期 |
 | `trial_signups` | 試用申請。`emailNormalized` 唯一，用來擋 Gmail 別名重複申請 |
 | `tenants` | 租戶。`planId`、`limitOverrides`、`trialEndsAt`、`purgedAt`、合約起訖日 |

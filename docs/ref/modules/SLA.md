@@ -94,7 +94,7 @@ facts 由 `buildSlaFacts()` 組成，包含四類資料：
 
 [逾時之後的四個動作](#逾時之後的四個動作)的第 4 步含一個自動化接點，讓租戶決定預設通知以外的處置。
 
-`evaluateSlaAutomationRules()` 取出該租戶 `eventType` 等於該 SLA 事件名稱、而且 `isActive` 為真的 `AutomationRule`，依 `priority` 由高到低排序，把 facts 交給 `@open333crm/automation` 的 `evaluateRules()` 比對，再執行命中規則的動作。
+`evaluateSlaAutomationRules()` 取出該租戶 `eventType` 等於該 SLA 事件名稱、而且 `isActive` 是 `true` 的 `AutomationRule`，依 `priority` 由高到低排序，把 facts 交給 `@open333crm/automation` 的 `evaluateRules()` 比對，再執行命中規則的動作。
 
 租戶因此可以寫出「結案逾時而且聯繫人是 VIP，就指派給特定團隊」這類規則。每種事件開放哪些 fact 由 `getSlaConditionFactsForEvent()` 決定，各事件開放的 fact 不同。
 
