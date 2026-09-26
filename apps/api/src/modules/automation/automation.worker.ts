@@ -360,7 +360,16 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
       const isTextMessage = !contentType || contentType === 'text';
       let agentHandled = false;
       if (conversationId && text && isTextMessage && botConfig) {
-        if (isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
+        // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
+        // kb-autoreply 早就有這個判斷（見 attemptKbAutoReply 的 1.5），
+        // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
+        // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
+        // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
+        const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text);
+        if (keywordWillHandle) {
+          logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：關鍵字規則將處理`);
+        }
+        if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
           try {
             const agentResult = await runAgentReply(prisma, {
               tenantId: event.tenantId,
