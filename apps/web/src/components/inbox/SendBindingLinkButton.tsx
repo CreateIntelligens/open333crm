@@ -10,6 +10,7 @@ import { usePermission } from '@/providers/AuthProvider';
 const RESULT_TEXT: Record<string, string> = {
   no_targets: '沒有其他可綁定的渠道，請先到「渠道管理」設定各渠道的導流識別。',
   rate_limited: '此顧客一小時內的綁定連結申請次數過多，請稍後再試。',
+  delivery_failed: '綁定連結沒有送到顧客（渠道發送失敗），請確認渠道狀態後再試。',
 };
 
 /**
@@ -32,7 +33,7 @@ export function SendBindingLinkButton({ contactId, conversationId }: { contactId
       if (status === 'sent') {
         setNotice({ tone: 'success', text: `已在對話中送出綁定連結（可綁定 ${targets} 個帳號）` });
       } else {
-        setNotice({ tone: 'warning', text: RESULT_TEXT[status] ?? '綁定連結沒有送出' });
+        setNotice({ tone: status === 'delivery_failed' ? 'error' : 'warning', text: RESULT_TEXT[status] ?? '綁定連結沒有送出' });
       }
     } catch (err) {
       setNotice({ tone: 'error', text: getApiErrorMessage(err, '傳送綁定連結失敗，請稍後重試') });

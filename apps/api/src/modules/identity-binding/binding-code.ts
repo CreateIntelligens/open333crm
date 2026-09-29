@@ -53,6 +53,9 @@ export interface BindingStore {
   getdel(key: string): Promise<string | null>;
   get(key: string): Promise<string | null>;
   incr(key: string): Promise<number>;
+  /** 剩餘毫秒；沒有 TTL 回 -1、key 不存在回 -2 */
+  pttl(key: string): Promise<number>;
+  pexpire(key: string, ms: number): Promise<number>;
 }
 
 /** 代碼內容（存於 Redis） */
@@ -74,12 +77,13 @@ export const failCounterKey = (channelIdentityId: string) => `bindcode:fail:${ch
 
 /**
  * 計數器 +1；回傳目前計數。
- * 先以 SET NX PX 建立帶效期的 key，再 INCR（INCR 會保留既有 TTL）：避免「INCR 成功但
- * PEXPIRE 失敗／進程中斷」留下永不過期的計數器，把顧客永久擋住。
+ * INCR 後檢查 TTL，沒有就補上：key 在兩個指令之間過期、PEXPIRE 失敗或進程中斷，都會在
+ * 下一次呼叫時補回效期，不會留下永不過期的計數器把顧客永久擋住。
  */
 export async function bumpCounter(store: BindingStore, key: string, windowMs = RATE_WINDOW_MS): Promise<number> {
-  await store.set(key, '0', 'PX', windowMs, 'NX');
-  return store.incr(key);
+  const n = await store.incr(key);
+  if ((await store.pttl(key)) < 0) await store.pexpire(key, windowMs);
+  return n;
 }
 
 export async function readCounter(store: BindingStore, key: string): Promise<number> {

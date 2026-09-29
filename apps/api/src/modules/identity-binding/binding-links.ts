@@ -118,7 +118,7 @@ export function buildInviteText(links: BindingLink[], code: string): string {
 export const BINDING_TEXT = {
   noTargets: '目前沒有其他可以綁定的帳號。',
   rateLimited: '綁定連結申請次數過多，請一小時後再試。',
-  invalid: '這組綁定代碼無效或已過期，請回到原本的對話重新取得。',
+  invalid: '這組綁定代碼無效、已被使用或已過期，請回到原本的對話重新取得。',
   sameIdentity: '請到「另一個」要綁定的帳號送出這組代碼。',
   alreadyBound: '這兩個帳號已經完成綁定了。',
   channelConflict: '無法綁定：同一個渠道只能綁定一個帳號。若這不是您本人的帳號，請不要使用別人轉傳的代碼。',

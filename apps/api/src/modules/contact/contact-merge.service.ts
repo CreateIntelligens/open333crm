@@ -40,6 +40,8 @@ export interface MovedRecords {
   contactAttribute: string[];
   /** survivor 原本為空、由 merged 補上的欄位名稱 */
   filledFields: string[];
+  /** 原本 mergedIntoId 指向被合併方、合併時改指 survivor 的聯絡人（解除時改回） */
+  repointedContacts?: string[];
   /** 呼叫端附加的脈絡（例如綁定代碼的發碼身分），供解除時判斷用 */
   meta?: { issuerChannelIdentityId?: string };
 }
@@ -173,6 +175,15 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   if (merged.isArchived) {
     throw new AppError('此聯絡人已被封存或合併，無法再次合併', 'BAD_REQUEST', 400);
   }
+  // 先以條件式更新佔用被合併方：上面的檢查只是讀取，兩個合併同時進來會都通過；
+  // 這裡只有一個能把 isArchived 從 false 改成 true，另一個影響 0 列即中止
+  const claimed = await db.contact.updateMany({
+    where: { id: mergedId, tenantId, isArchived: false },
+    data: { isArchived: true, mergedIntoId: survivorId },
+  });
+  if (claimed.count === 0) {
+    throw new AppError('此聯絡人已被封存或合併，無法再次合併', 'CONFLICT', 409);
+  }
 
   const to = { contactId: survivorId };
 
@@ -291,8 +302,11 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     },
     data: { status: 'SUPERSEDED' },
   });
-  // 先前併入 merged 的聯絡人改指 survivor，讓 mergedIntoId 不形成長鏈
-  await db.contact.updateMany({ where: { tenantId, mergedIntoId: mergedId }, data: { mergedIntoId: survivorId } });
+  // 先前併入 merged 的聯絡人改指 survivor，讓 mergedIntoId 不形成長鏈；記下來，解除時改回指向 merged
+  const repointedContacts = await moveIds(
+    () => db.contact.findMany({ where: { tenantId, mergedIntoId: mergedId }, select: { id: true } }),
+    (ids) => db.contact.updateMany({ where: { tenantId, id: { in: ids } }, data: { mergedIntoId: survivorId } }),
+  );
 
   // ── 4. survivor 補空欄、封存 merged ────────────────────────────────────
   const fill: Prisma.ContactUpdateInput = {};
@@ -316,11 +330,6 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   if (filledFields.length > 0) {
     await db.contact.update({ where: { id: survivorId, tenantId }, data: fill });
   }
-  await db.contact.update({
-    where: { id: mergedId, tenantId },
-    data: { isArchived: true, mergedIntoId: survivorId },
-  });
-
   const moved: MovedRecords = {
     channelIdentity,
     conversation,
@@ -337,6 +346,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     contactTag,
     contactAttribute,
     filledFields,
+    repointedContacts,
     ...(meta ? { meta } : {}),
   };
 
@@ -388,6 +398,14 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
 
   const restored = await db.contact.findFirst({ where: { id: log.mergedId, tenantId } });
   if (!restored) throw new AppError('被合併的聯絡人已不存在，無法解除', 'NOT_FOUND', 404);
+
+  // 先以條件式更新佔用這筆紀錄：顧客自助解除與客服解除同時進來時，只有一個能繼續，
+  // 否則兩邊都會轉回點數（被恢復方拿到兩倍、持有方被扣兩次）
+  const claimed = await db.contactMergeLog.updateMany({
+    where: { id: log.id, tenantId, revertedAt: null },
+    data: { revertedAt: new Date(), revertedBy },
+  });
+  if (claimed.count === 0) throw new AppError('此合併已經解除過了', 'CONFLICT', 409);
 
   // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈
   const holderChain = await resolveMergeChain(db, tenantId, log.survivorId);
@@ -508,10 +526,13 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
     where: { id: log.mergedId, tenantId },
     data: { isArchived: false, mergedIntoId: null },
   });
-  await db.contactMergeLog.update({
-    where: { id: log.id, tenantId },
-    data: { revertedAt: new Date(), revertedBy },
-  });
+  // 合併時被「壓平」改指 survivor 的聯絡人改回指向被恢復方，合併鏈才會正確
+  if (moved.repointedContacts?.length) {
+    await db.contact.updateMany({
+      where: { tenantId, id: { in: moved.repointedContacts }, mergedIntoId: heldBy },
+      data: { mergedIntoId: log.mergedId },
+    });
+  }
 
   return {
     survivorId: log.survivorId,

@@ -196,6 +196,14 @@ scenario('發碼：沒有其他可綁定渠道時回覆說明且不產生代碼'
   assert.equal(extractBindingCode(f.sent.at(-1)!.text), null);
 });
 
+scenario('發碼：邀請訊息沒送到顧客 → 回報 delivery_failed 並作廢代碼', async (f) => {
+  f.failConversations.add(f.fb.conversationId);
+  const r = await issueBindingCode(f.tx, f.deps, f.fb);
+  assert.equal(r.status, 'delivery_failed', '客服代發按鈕不可顯示成功');
+  const code = extractBindingCode(f.sent.at(-1)!.text)!;
+  assert.equal(await f.deps.store.get(`bindcode:${T}:${code}`), null, '顧客沒收到的代碼要作廢');
+});
+
 scenario('發碼：同一身分一小時第 6 次被擋', async (f) => {
   for (let i = 0; i < 5; i++) assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'sent');
   assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'rate_limited');
@@ -290,13 +298,42 @@ scenario('確認：待確認期間對方已和別人合併到同一渠道 → �
   assert.equal((await confirmBinding(f.tx, f.deps, f.line)).status, 'channel_conflict');
 });
 
+scenario('安全：別人點開連結但不確認，不會讓本人的代碼失效', async (f) => {
+  const code = await issueAndGetCode(f, f.fb);
+  const stranger = await f.newActor(f.igChannel, 'X-ig-stranger');
+  assert.equal((await redeemBindingCode(f.tx, f.deps, stranger, code)).status, 'pending_confirm');
+  // 陌生人沒有確認；本人在 LINE 仍可完成綁定
+  assert.equal((await bind(f, f.line, code)).status, 'bound');
+  assert.equal(await contactOf(f.tx, stranger.channelIdentityId), stranger.contactId, '陌生人沒有被合併');
+});
+
+scenario('確認：兩人同時等待確認同一代碼，只有先確認的成功', async (f) => {
+  const code = await issueAndGetCode(f, f.fb);
+  const other = await f.newActor(f.igChannel, 'Y-ig');
+  assert.equal((await redeemBindingCode(f.tx, f.deps, f.line, code)).status, 'pending_confirm');
+  assert.equal((await redeemBindingCode(f.tx, f.deps, other, code)).status, 'pending_confirm');
+  assert.equal((await confirmBinding(f.tx, f.deps, f.line)).status, 'bound');
+  assert.equal((await confirmBinding(f.tx, f.deps, other)).status, 'invalid', '代碼已被用掉');
+  assert.equal(await contactOf(f.tx, other.channelIdentityId), other.contactId);
+});
+
+scenario('確認：發碼身分在確認前被移到別的聯絡人 → 併入它目前所屬的聯絡人', async (f) => {
+  const code = await issueAndGetCode(f, f.fb);
+  assert.equal((await redeemBindingCode(f.tx, f.deps, f.line, code)).status, 'pending_confirm');
+  const moved = await f.tx.contact.create({ data: { tenantId: T, displayName: 'FB-owner-now' } });
+  await f.tx.channelIdentity.update({ where: { id: f.fb.channelIdentityId }, data: { contactId: moved.id } });
+  const r = await confirmBinding(f.tx, f.deps, f.line);
+  assert.equal(r.status, 'bound');
+  assert.equal(r.status === 'bound' && r.survivorId, moved.id, '不是發碼當下的舊聯絡人');
+});
+
 scenario('兌換：同一代碼第二次送出 → 無效，不再合併', async (f) => {
   const code = await issueAndGetCode(f, f.fb);
   assert.equal((await bind(f, f.line, code)).status, 'bound');
   const logsBefore = await f.tx.contactMergeLog.count({ where: { tenantId: T } });
   assert.equal((await redeemBindingCode(f.tx, f.deps, f.line, code)).status, 'invalid');
   assert.equal(await f.tx.contactMergeLog.count({ where: { tenantId: T } }), logsBefore);
-  assert.ok(f.sent.at(-1)!.text.includes('無效或已過期'));
+  assert.ok(f.sent.at(-1)!.text.includes('代碼無效'));
 });
 
 scenario('兌換：超過 30 分鐘 → 無效', async (f) => {
@@ -389,7 +426,7 @@ scenario('解除：7 天內顧客回覆「解除綁定」→ 恢復兩個聯絡�
 
   const lineNow = { ...f.line, contactId: f.fb.contactId };
   const intent = await detectBindingIntent(f.tx, { tenantId: T, contactId: lineNow.contactId, text: '解除綁定', code: null, getChannelIdentityId: async () => f.line.channelIdentityId });
-  assert.deepEqual(intent, { kind: 'unbind' });
+  assert.equal(intent?.kind, 'unbind');
   const r = await unbindByCustomer(f.tx, f.deps, lineNow);
   assert.equal(r.status, 'unbound');
 

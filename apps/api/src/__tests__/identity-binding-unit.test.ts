@@ -4,7 +4,8 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractBindingCode, generateBindingCode } from '../modules/identity-binding/binding-code.js';
+import { bumpCounter, extractBindingCode, generateBindingCode } from '../modules/identity-binding/binding-code.js';
+import { memBindingStore } from './helpers/mem-binding-store.js';
 import {
   buildBindingLink,
   buildInviteText,
@@ -97,4 +98,15 @@ test('邀請訊息：列出各渠道連結、純文字代碼退路、時效說�
   assert.ok(text.includes(`直接傳送這組代碼：${code}`));
   assert.ok(text.includes('30 分鐘'));
   assert.ok(!/\p{Extended_Pictographic}/u.test(text), '訊息不放 emoji');
+});
+
+test('頻率計數器：沒有效期的 key（例如 INCR 與設效期之間過期）會被補上效期，不會永久擋人', async () => {
+  const clock = { now: 0 };
+  const store = memBindingStore(clock);
+  await store.incr('k'); // 模擬先前留下、沒有 TTL 的計數器
+  assert.equal(await store.pttl('k'), -1);
+  assert.equal(await bumpCounter(store, 'k', 1000), 2);
+  assert.ok((await store.pttl('k')) > 0, '補上效期');
+  clock.now += 1001;
+  assert.equal(await bumpCounter(store, 'k', 1000), 1, '過期後重新計數');
 });

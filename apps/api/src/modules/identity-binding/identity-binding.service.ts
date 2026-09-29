@@ -10,6 +10,7 @@
 import type { Prisma } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
+import { AppError } from '../../shared/utils/response.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { mergeContacts, resolveMergeChain, revertMerge, type MovedRecords } from '../contact/contact-merge.service.js';
@@ -137,6 +138,7 @@ async function sendBindingMessage(
 
 export type IssueResult =
   | { status: 'sent'; code: string; targets: number }
+  | { status: 'delivery_failed' }
   | { status: 'no_targets' }
   | { status: 'rate_limited' };
 
@@ -183,10 +185,15 @@ export async function issueBindingCode(db: TenantDb, deps: BindingDeps, actor: B
     const ok = await deps.store.set(codeKey(tenantId, candidate), JSON.stringify(payload), 'PX', BINDING_CODE_TTL_MS, 'NX');
     if (ok === 'OK') code = candidate;
   }
-  if (!code) throw new Error('無法產生不重複的綁定代碼');
+  if (!code) throw new AppError('暫時無法產生綁定代碼，請稍後再試', 'BINDING_CODE_UNAVAILABLE', 503);
 
   const links = targets.map((t) => buildBindingLink(t, code));
-  await sendBindingMessage(db, deps, tenantId, actor.conversationId, buildInviteText(links, code), 'invite');
+  const delivered = await sendBindingMessage(db, deps, tenantId, actor.conversationId, buildInviteText(links, code), 'invite');
+  if (!delivered) {
+    // 顧客沒收到就作廢代碼，並如實回報（客服代發按鈕不可顯示成功）
+    await deps.store.getdel(codeKey(tenantId, code));
+    return { status: 'delivery_failed' };
+  }
   logger.info('[IdentityBinding] 已發出綁定代碼', { tenantId, channelIdentityId: actor.channelIdentityId, targets: targets.length });
   return { status: 'sent', code, targets: targets.length };
 }
@@ -218,7 +225,6 @@ export async function redeemBindingCode(
   code: string,
 ): Promise<RedeemResult> {
   const { tenantId } = actor;
-  const now = (deps.now ?? Date.now)();
 
   const failKey = failCounterKey(actor.channelIdentityId);
   const fail = async (): Promise<RedeemResult> => {
@@ -237,42 +243,28 @@ export async function redeemBindingCode(
     return { status: 'throttled' };
   }
 
-  // GETDEL：原子取出並作廢，同一代碼幾乎同時從兩個渠道送出也只有一方拿得到
-  const raw = await deps.store.getdel(codeKey(tenantId, code));
+  // 兌換時只讀、不作廢：代碼到「確認」時才用掉（confirmBinding 以 GETDEL 原子取出）。
+  // 別人點開轉傳的連結卻不確認時，本人的代碼仍然有效，不會被看到連結的人弄失效
+  const raw = await deps.store.get(codeKey(tenantId, code));
   if (!raw) return fail();
 
-  let payload: BindingCodePayload;
-  try {
-    payload = JSON.parse(raw) as BindingCodePayload;
-  } catch {
-    return fail();
-  }
-  if (payload.tenantId !== tenantId) return fail();
-
-  // 沒兌換成功的情境把代碼放回去，讓真正的顧客仍可在剩餘時效內到別的渠道使用
-  const putBack = async () => {
-    const remaining = payload.issuedAt + BINDING_CODE_TTL_MS - now;
-    if (remaining > 0) await deps.store.set(codeKey(tenantId, code), raw, 'PX', remaining, 'NX');
-  };
+  const payload = parsePayload(raw, tenantId);
+  if (!payload) return fail();
 
   if (payload.channelIdentityId === actor.channelIdentityId) {
-    await putBack();
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.sameIdentity, 'same_identity');
     return { status: 'same_identity' };
   }
 
   const check = await checkBindable(db, deps, actor, payload);
   if (check.status === 'invalid') return fail();
-  if (check.status !== 'ok') {
-    if (check.status === 'channel_conflict') await putBack();
-    return { status: check.status };
-  }
+  if (check.status !== 'ok') return { status: check.status };
 
   // 不立即合併：先請兌換方確認。代碼即憑證，連結被轉給別人時點擊者會被靜默併入發碼者，
   // 點數、AI 記憶、個資都歸對方；顯示對方帳號名稱並要求回覆確認字才合併（design D7）
   const pendingKey = pendingConfirmKey(tenantId, actor.channelIdentityId);
-  await deps.store.getdel(pendingKey); // 同一身分又兌換了新代碼：以最新一次為準
-  await deps.store.set(pendingKey, raw, 'PX', PENDING_CONFIRM_TTL_MS, 'NX');
+  await deps.store.getdel(pendingKey); // 同一身分又兌換了新代碼：以最新一次為準（舊代碼未被用掉，仍有效）
+  await deps.store.set(pendingKey, code, 'PX', PENDING_CONFIRM_TTL_MS, 'NX');
   const issuer = await db.channelIdentity.findFirst({
     where: { id: payload.channelIdentityId },
     select: { profileName: true, channelType: true, contact: { select: { displayName: true } } },
@@ -293,6 +285,15 @@ export async function redeemBindingCode(
   return { status: 'pending_confirm' };
 }
 
+function parsePayload(raw: string, tenantId: string): BindingCodePayload | null {
+  try {
+    const payload = JSON.parse(raw) as BindingCodePayload;
+    return payload.tenantId === tenantId ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 type BindableCheck =
   | { status: 'ok'; survivorId: string; redeemerId: string }
   | { status: 'invalid' }
@@ -310,7 +311,14 @@ async function checkBindable(
   payload: BindingCodePayload,
 ): Promise<BindableCheck> {
   const { tenantId } = actor;
-  const survivorId = await resolveLiveContactId(db, tenantId, payload.contactId);
+  // survivor 以「發碼身分目前所屬的聯絡人」為準，而不是發碼當下的 contactId：
+  // 發碼身分之後可能因解除合併被搬回別的聯絡人，沿用舊 contactId 會併到錯的人
+  const issuerIdentity = await db.channelIdentity.findFirst({
+    where: { id: payload.channelIdentityId },
+    select: { contactId: true },
+  });
+  if (!issuerIdentity) return { status: 'invalid' };
+  const survivorId = await resolveLiveContactId(db, tenantId, issuerIdentity.contactId);
   const redeemerId = await resolveLiveContactId(db, tenantId, actor.contactId);
   if (!survivorId || !redeemerId) return { status: 'invalid' };
 
@@ -339,24 +347,30 @@ async function checkBindable(
  */
 export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: BindingActor): Promise<RedeemResult> {
   const { tenantId } = actor;
-  const raw = await deps.store.getdel(pendingConfirmKey(tenantId, actor.channelIdentityId));
-  let payload: BindingCodePayload | null = null;
-  try {
-    payload = raw ? (JSON.parse(raw) as BindingCodePayload) : null;
-  } catch {
-    payload = null;
-  }
-  if (!payload || payload.tenantId !== tenantId) {
+  const code = await deps.store.getdel(pendingConfirmKey(tenantId, actor.channelIdentityId));
+  if (!code) {
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.noPending, 'no_pending');
     return { status: 'no_pending' };
   }
 
-  const check = await checkBindable(db, deps, actor, payload);
-  if (check.status === 'invalid') {
+  // 此時才原子用掉代碼：同一代碼若有多人都在待確認，只有第一個確認的人成功
+  const raw = await deps.store.getdel(codeKey(tenantId, code));
+  const payload = raw ? parsePayload(raw, tenantId) : null;
+  if (!raw || !payload) {
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.invalid, 'invalid');
     return { status: 'invalid' };
   }
-  if (check.status !== 'ok') return { status: check.status };
+
+  const check = await checkBindable(db, deps, actor, payload);
+  if (check.status !== 'ok') {
+    // 沒有合併就把代碼放回剩餘效期，本人仍可到其他渠道使用
+    const remaining = payload.issuedAt + BINDING_CODE_TTL_MS - (deps.now ?? Date.now)();
+    if (remaining > 0) await deps.store.set(codeKey(tenantId, code), raw, 'PX', remaining, 'NX');
+    if (check.status === 'invalid') {
+      await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.invalid, 'invalid');
+    }
+    return { status: check.status };
+  }
   const { survivorId, redeemerId } = check;
 
   const merge = await inTransaction(db, async (tx) => {
@@ -451,9 +465,19 @@ async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId:
 
 export type UnbindResult = { status: 'none' } | { status: 'expired' } | { status: 'unbound'; restoredContactId: string };
 
-export async function unbindByCustomer(db: TenantDb, deps: BindingDeps, actor: BindingActor): Promise<UnbindResult> {
+/**
+ * @param knownLogId 入站判斷時已找到的綁定紀錄 id（省去重查合併鏈）；未提供時自行查找
+ */
+export async function unbindByCustomer(
+  db: TenantDb,
+  deps: BindingDeps,
+  actor: BindingActor,
+  knownLogId?: string,
+): Promise<UnbindResult> {
   const { tenantId } = actor;
-  const log = await findBindingForIdentity(db, tenantId, actor.contactId, actor.channelIdentityId);
+  const log = knownLogId
+    ? await db.contactMergeLog.findFirst({ where: { id: knownLogId, tenantId, revertedAt: null } })
+    : await findBindingForIdentity(db, tenantId, actor.contactId, actor.channelIdentityId);
   if (!log) return { status: 'none' };
 
   const now = (deps.now ?? Date.now)();
@@ -504,7 +528,7 @@ export type BindingIntent =
   | { kind: 'redeem'; code: string }
   | { kind: 'confirm' }
   | { kind: 'issue' }
-  | { kind: 'unbind' };
+  | { kind: 'unbind'; mergeLogId: string };
 
 /**
  * 判斷一則入站訊息是否為綁定相關操作。租戶未啟用時一律回 null（行為與改版前相同）。
@@ -531,7 +555,7 @@ export async function detectBindingIntent(
     const channelIdentityId = await input.getChannelIdentityId();
     if (!channelIdentityId) return null;
     const log = await findBindingForIdentity(db, input.tenantId, input.contactId, channelIdentityId);
-    return log ? { kind: 'unbind' } : null;
+    return log ? { kind: 'unbind', mergeLogId: log.id } : null;
   }
   return null;
 }
@@ -546,5 +570,5 @@ export async function executeBindingIntent(
   if (intent.kind === 'redeem') return (await redeemBindingCode(db, deps, actor, intent.code)).status;
   if (intent.kind === 'confirm') return (await confirmBinding(db, deps, actor)).status;
   if (intent.kind === 'issue') return (await issueBindingCode(db, deps, actor)).status;
-  return (await unbindByCustomer(db, deps, actor)).status;
+  return (await unbindByCustomer(db, deps, actor, intent.mergeLogId)).status;
 }

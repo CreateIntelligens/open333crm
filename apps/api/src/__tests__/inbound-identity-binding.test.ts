@@ -140,7 +140,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
     },
   ],
   [
-    '啟用：新 LINE 好友送出預填代碼並回覆確認 → 併入 A、不送招呼語、不發 message.received',
+    '啟用：新 LINE 好友送出預填代碼並回覆確認 → 併入 A、招呼語只送一次、不發 message.received',
     true,
     async (env) => {
       const code = await codeFromA(env);
@@ -154,9 +154,11 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       assert.equal(identity?.contactId, env.fbA.contactId, 'LINE 身分併到 A');
       const lineConv = await env.tx.conversation.findFirst({ where: { tenantId: T, channelId: env.line.id } });
       const msgs = await env.tx.message.findMany({ where: { conversationId: lineConv!.id } });
-      assert.ok(
-        !msgs.some((m) => (m.metadata as { source?: string }).source === 'first_contact_greeting'),
-        '不送首次招呼語',
+      // 送代碼時還沒合併（等待確認），新顧客照常收到一次招呼語；確認合併後不再送
+      assert.equal(
+        msgs.filter((m) => (m.metadata as { source?: string }).source === 'first_contact_greeting').length,
+        1,
+        '招呼語只送一次',
       );
       assert.ok(msgs.some((m) => ((m.content as { text?: string }).text ?? '').startsWith('已完成帳號綁定')));
       assert.equal(received.length, 0);
@@ -230,7 +232,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       const replies = await env.tx.message.findMany({ where: { conversationId: fbConv!.id, senderType: 'BOT' } });
       const texts = replies.map((m) => (m.content as { text?: string }).text ?? '');
       assert.equal(texts.filter((t) => t.startsWith('已完成帳號綁定')).length, 1, '只綁定一次');
-      assert.ok(!texts.some((t) => t.includes('無效或已過期')), '重送事件不回覆代碼無效');
+      assert.ok(!texts.some((t) => t.includes('代碼無效')), '重送事件不回覆代碼無效');
     },
   ],
   [
@@ -262,7 +264,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
         (m) => (m.content as { text?: string }).text ?? '',
       );
       assert.equal(texts.filter((t) => t.startsWith('已完成帳號綁定')).length, 1);
-      assert.ok(!texts.some((t) => t.includes('無效或已過期')), '重送不回覆代碼無效');
+      assert.ok(!texts.some((t) => t.includes('代碼無效')), '重送不回覆代碼無效');
     },
   ],
   [
@@ -273,7 +275,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       await run(env, env.line, inbound(lineUid, linePrefillText('BIND-0000000000')));
       const lineConv = await env.tx.conversation.findFirst({ where: { tenantId: T, channelId: env.line.id } });
       const msgs = await env.tx.message.findMany({ where: { conversationId: lineConv!.id } });
-      assert.ok(msgs.some((m) => ((m.content as { text?: string }).text ?? '').includes('無效或已過期')));
+      assert.ok(msgs.some((m) => ((m.content as { text?: string }).text ?? '').includes('代碼無效')));
       assert.ok(
         msgs.some((m) => (m.metadata as { source?: string }).source === 'first_contact_greeting'),
         '沒有合併的新顧客仍要收到招呼語',

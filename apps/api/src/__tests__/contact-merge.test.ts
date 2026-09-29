@@ -408,6 +408,40 @@ test('解除：雙方在同一渠道都有身分（手動合併不擋）時，�
   assert.equal(owner(db, 'conversation', 'conv-s-after'), 'S', '無法分辨屬於誰時寧可不搬');
 });
 
+test('解除：合併時被壓平改指 survivor 的聯絡人，解除後改回指向被恢復方', async () => {
+  const db = makeDb();
+  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  assert.equal(db.contact.rows.find((c) => c.id === 'OLD')!.mergedIntoId, 'S');
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(db.contact.rows.find((c) => c.id === 'OLD')!.mergedIntoId, 'M', '合併鏈還原，之後從 OLD 出發才找得到正確持有者');
+});
+
+test('解除：顧客與客服同時解除，只有一個成功，點數不會轉回兩次', async () => {
+  const db = makeDb();
+  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  const results = await Promise.allSettled([
+    revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'customer' }),
+    revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' }),
+  ]);
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+  assert.equal((rejected.reason as { statusCode?: number }).statusCode, 409);
+  assert.equal(balanceOf(db, 'M'), 50, '只轉回一次');
+  assert.equal(balanceOf(db, 'S'), 100);
+});
+
+test('合併：同一聯絡人同時被併入兩個對象，只有一個成功', async () => {
+  const db = makeDb();
+  const results = await Promise.allSettled([
+    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
+    mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'M', source: 'MANUAL' }),
+  ]);
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+  const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+  assert.equal((rejected.reason as { statusCode?: number }).statusCode, 409, '由佔用檢查擋下，而不是中途撞錯');
+  assert.equal(db.contactMergeLog.rows.length, 1);
+});
+
 test('解除：重複解除回 409', async () => {
   const db = makeDb();
   const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });

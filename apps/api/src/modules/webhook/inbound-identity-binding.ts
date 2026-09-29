@@ -6,7 +6,7 @@
  */
 import { logger } from '@open333crm/core';
 import type { InboundMessageContext } from './inbound-message.types.js';
-import { emitInboundSocketEvents } from './inbound-side-effects.js';
+import { emitInboundSocketEvents, sendFirstContactGreeting } from './inbound-side-effects.js';
 import { buildMessageNewPayload, emitToConversationAndTenant } from './inbound-socket-presenter.js';
 import { extractBindingCode, getBindingStore, type BindingStore } from '../identity-binding/binding-code.js';
 import {
@@ -102,7 +102,9 @@ export async function handleReferralEvent(
   await resolve(ctx);
   if (!ctx.contactId || !ctx.conversation) return;
   if (!(await firstSeenReferral(ctx, code))) return;
-  await runBindingIntent(ctx, { kind: 'redeem', code });
+  const status = await runBindingIntent(ctx, { kind: 'redeem', code });
+  // 以 referral（例如 IG Icebreaker）第一次接觸、又沒有真的合併的新顧客，仍要收到招呼語
+  if (status !== 'bound') await sendFirstContactGreeting(ctx);
 }
 
 async function findChannelIdentityId(ctx: InboundMessageContext): Promise<string | null> {

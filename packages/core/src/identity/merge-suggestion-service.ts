@@ -105,10 +105,12 @@ export async function claimSuggestionForApproval(
   if (!suggestion) throw new SuggestionNotFoundError(suggestionId);
   if (suggestion.status !== 'PENDING') throw new SuggestionNotPendingError(suggestionId, suggestion.status);
 
-  await db.mergeSuggestion.update({
-    where: { id: suggestionId, tenantId },
+  // 以條件式更新佔用：兩位客服同時核准時只有一個成功
+  const claimed = await db.mergeSuggestion.updateMany({
+    where: { id: suggestionId, tenantId, status: 'PENDING' },
     data: { status: 'APPROVED', reviewedById: agentId, reviewedAt: new Date() },
   });
+  if (claimed.count === 0) throw new SuggestionNotPendingError(suggestionId, 'APPROVED');
 
   logger.info(
     `[MergeSuggestion] Approved ${suggestionId}: ${suggestion.secondaryContactId} → ${suggestion.primaryContactId} (by ${agentId})`,
