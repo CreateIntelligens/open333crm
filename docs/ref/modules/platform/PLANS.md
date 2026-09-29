@@ -18,7 +18,7 @@
 | `allowedChannelTypes` | 可建立的渠道類型白名單 | 限制這個方案能建立哪些渠道類型。`channel.service.ts` 在建立渠道時檢查，不符合回 403 `CHANNEL_TYPE_NOT_ALLOWED` | 空陣列代表不限制 |
 | `permissionOverrides` | 權限碼扣除清單 | 從 `features` 算出的天花板再扣掉指定的權限碼，結構是 `{ deny: string[] }` | 空物件代表不扣除任何權限 |
 
-`slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。
+`slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。它只出現在平台後台的方案頁與排序，不會回傳給租戶端，系統也不產生帳單，見 `../../system/AUDIT.md` 的 PLAN-10。
 
 ## 名稱與實際行為不符的欄位
 

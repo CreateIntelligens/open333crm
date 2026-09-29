@@ -44,6 +44,7 @@
 | PLAN-07 | 試用與方案 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
 | PLAN-08 | 試用與方案 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
 | PLAN-09 | 試用與方案 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
+| PLAN-10 | 試用與方案 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -300,7 +301,7 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 兩邊介面寫的都是「加購 Token」：租戶端 `/dashboard/plan` 的說明是「申請升級方案或加購 AI token 額度」，平台端 `/admin/plan-changes` 顯示 `+N token`。兩者都看不出是一次性還是長期，審核者也沒有「這是第幾次加購、目前累計多少」的資訊。
 
-這一項與 PLAN-01 不同，不確定是缺陷還是原本的設計。無論是哪一種，目前的用字與資料結構表達的不是同一件事。
+這一項與 PLAN-01 不同，不是「設定了卻沒有讀取端」，而是資料結構表達的事情與介面用字不同。而且系統沒有計費機制（見 PLAN-10），因此永久提高額度不會造成重複收費，結果是平台往後每個月都無償提供同樣的加購量。
 
 寫入方式另有兩個問題。
 
@@ -475,6 +476,26 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 租戶端的感受見 PLAN-08：權限消失時，角色頁上那些權限仍然顯示為已勾選。
 
+### PLAN-10：加購沒有金額紀錄，事後無法對帳
+
+這個系統不接金流。`Plan.priceMonthly` 的 schema 註解寫明「顯示用，不接金流」，資料庫也沒有帳單、發票或付款的資料表，沒有任何程式把用量或方案換算成應收金額。收費在系統外進行，這是設計決策，不是落差。
+
+落差在於：加購這個動作在系統裡留下的紀錄，不足以還原當初賣了什麼。
+
+**一、申請不記金額。** `PlanChangeRequest` 的欄位是 `type`、`targetPlanSlug`、`topupTokens`、`note` 與審核欄位，沒有金額欄位。租戶申請加購 30 萬 token，系統記得數量，記不得價格。
+
+**二、覆寫值拆不開。** `limitOverrides.monthlyTokens` 存的是「加購當時的方案額度 + 加購量」的合併值（見 PLAN-02），無法從現況反推加購了多少。
+
+**三、方案額度沒有變更歷史。** 要還原加購量，只能回頭加總該租戶所有已核准的 `topupTokens`，而這個算法必須假設 `Plan.limits.monthlyTokens` 從未被編輯過。`updatePlan()` 可以隨時改 `limits`，而且稽核只記新值（見 PLAN-09），因此這個假設無法驗證。
+
+**四、沒有任何介面看得到。** `limitOverrides` 沒有讀取端（見 PLAN-03），平台後台列不出哪些租戶加購過、加購了多少、什麼時候加的。
+
+四者相加的結果是：加購在系統裡留下的唯一痕跡，是一個拆不開、看不到、也對不回金額的數字。
+
+租戶端同樣查不到。`/dashboard/plan` 只有申請表與自己的申請列表，看不到目前方案的內容、價格或已用額度。`priceMonthly` 只在平台後台的 `/admin/plans` 顯示，以及 `listPlans()` 拿來排序，從不回傳給租戶端。
+
+`model_pricings` 不是租戶售價。它是各個 LLM 模型每 1M token 的單價，`platform-usage.service.ts` 用它算出平台自己的成本，顯示在 `/admin/usage`。
+
 ## 授權與安全
 
 ### LIC-01、LIC-02：兩份 LicenseService
@@ -638,6 +659,8 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 | `inbox` | `inbox.manage`、`case.view`、`case.create`、`case.update`、`case.assign`、`case.escalate`、`contact.view`、`contact.update`、`tag.view`、`tag.manage`、`shortlink.view`、`shortlink.manage` |
 | `core` | `agent.delete`、`billing.view` |
 | `knowledge` | `knowledge.view` |
+
+其中 `billing.view` 的描述是「租戶站內方案/用量頁」，而那個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表，看不到方案內容、價格或已用額度（見 PLAN-10）。
 
 另有兩個碼只以稽核紀錄的 `action` 字串出現，不是檢查：`case.delete`（`case.routes.ts:200`）與 `contact.merge`（`contact.routes.ts:101`）。`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由上，不在收件匣本身。
 
