@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Copy, Check, HelpCircle } from 'lucide-react';
 import api from '@/lib/api';
+import { ChannelBindingHandleField } from './ChannelBindingHandleField';
 import { usePermission } from '@/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -447,6 +448,11 @@ export function ChannelFormDialog({
                   />
                 </div>
               </>
+            )}
+
+            {/* 跨渠道綁定導流識別（僅編輯 LINE／FB／IG 時顯示，獨立儲存） */}
+            {isEditing && channel && (
+              <ChannelBindingHandleField channelId={channel.id} channelType={channel.channelType} />
             )}
 
             {/* Webhook URL (shown for editing) */}

@@ -145,6 +145,7 @@ model ContactMergeLog {
 
 合併方向：**survivor = 發碼方聯絡人**，merged = 兌換方聯絡人。理由：發碼方是顧客主動發起綁定的那一端，通常是既有、資料較完整的一方；兌換方常常是剛因這則訊息被建立的新聯絡人。
 合併後：`IdentityMap` upsert 兌換方身分（source `BINDING_CODE`，confidence 1.0）；雙邊對話各送確認訊息（以 `deliverToChannel` 送，失敗寫系統訊息，不靜默）。為此 `deliverToChannel` 改為回傳是否成功（`Promise<boolean>`，原呼叫端忽略回傳值不受影響）。
+綁定相關訊息以 `senderType: 'BOT'` 寫入對話（收件匣以 Bot 泡泡呈現、保留換行，客服看得出顧客收到了什麼）；送出失敗時比照 worker `recordDeliveryFailure` 慣例，在該則訊息標 `metadata.deliveryFailed` + `deliveryError`，收件匣顯示紅色「沒有送出」提示。
 `revertMerge` 搬回渠道身分時，一併把該 uid 的 `IdentityMap` 指回被恢復的聯絡人（含合併後才寫入的 BINDING_CODE 紀錄），否則之後該 uid 進站會被解析回 survivor。
 
 ### D8 解除綁定
@@ -181,10 +182,17 @@ model ContactMergeLog {
 
 ## Migration Plan
 
-1. Migration：新增 `ContactMergeLog`（含 RLS policy + `app_tenant` grant）、`StitchSource` 加 `BINDING_CODE`、`SuggestionStatus` enum 加 `SUPERSEDED`。
-2. 部署後既有 LINE/IG 渠道需重新驗證一次以寫入導流識別（或由一次性 script 補抓）。
-3. 功能預設關閉，租戶在設定頁開啟。
-4. 回滾：關閉 `identityBinding.enabled` 即停止攔截；統一合併引擎不可回滾到舊的硬刪實作（舊實作本身有 bug），合併紀錄表保留。
+部署清單（依序）：
+1. **Migration**（兩支，皆須以 owner 連線 `MIGRATE_DATABASE_URL` 執行 `migrate deploy`）：
+   - `20260929100000_add_contact_merge_log`：新表 `contact_merge_logs`（含 ENABLE/FORCE RLS + `tenant_isolation` policy；`app_tenant`/`app_admin` 權限由既有 DEFAULT PRIVILEGES 自動授予）、`StitchSource` 加 `BINDING_CODE`、`SuggestionStatus` 加 `SUPERSEDED`。
+   - `20260929110000_add_identity_binding_settings`：`tenant_settings.identityBinding` JSONB，預設 `{}`（＝關閉）。
+2. **不需** reconcile 權限點：只用到既有的 `contact.merge`、`contact.update`、`channel.view/update`、`settings.manage`。
+3. **既有渠道補抓導流識別**：`cd apps/api && npx tsx src/scripts/backfill-binding-handles.ts`（先 dry-run 看清單，再加 `--apply`；需 owner/app_admin 連線與 `CREDENTIAL_ENCRYPTION_KEY`）。也可請管理員在後台逐一按「驗證」。
+4. 功能預設關閉；租戶於「設定 → 跨渠道綁定」啟用前，依頁面清單確認導流識別、FB「開始使用」按鈕、IG App 已發佈、多個 LINE OA 同 provider。
+5. UAT 真機驗證（tasks 0.4）：FB/IG 新舊對話四種情境、LINE 加好友流程。
+6. 回滾：關閉 `identityBinding.enabled` 即停止攔截；統一合併引擎不回滾到舊實作（舊實作會硬刪、有 bug）；migration 皆為新增，不影響既有資料。
+
+⚠️ 與優惠券分支（`feat/coupon-system`，尚未 merge）的交集：該分支 rebase 到本分支之後時，須把 `CouponInstance`（帶 `contactId`）加入 `contact-merge.service.ts` 的搬移清單（及解除時搬回），並更新該 change 的 D6「不做跨渠道歸戶」描述。
 
 ## Open Questions
 

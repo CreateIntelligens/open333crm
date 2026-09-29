@@ -74,8 +74,9 @@ export async function getIdentityBindingSettings(db: TenantDb, tenantId: string)
 }
 
 /**
- * 在對話中寫入並送出一則系統訊息。送出失敗時另寫一則只有客服看得到的內部提示，
- * 不讓失敗只留在 log（使用者看不到的失敗會被當成「沒反應」）。
+ * 送出一則綁定訊息並寫入對話紀錄（以 Bot 訊息呈現，保留換行，客服看得出顧客收到了什麼）。
+ * 送出失敗時比照 worker 的 recordDeliveryFailure 慣例，在該則訊息標 metadata.deliveryFailed，
+ * 收件匣會顯示成紅色「沒有送出」提示，不讓失敗只留在 log。
  */
 async function sendBindingMessage(
   db: TenantDb,
@@ -85,45 +86,27 @@ async function sendBindingMessage(
   text: string,
   kind: string,
 ): Promise<boolean> {
+  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, text);
+  if (!ok) logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });
+
   const message = await db.message.create({
     data: {
       conversationId,
       direction: 'OUTBOUND',
-      senderType: 'SYSTEM',
+      senderType: 'BOT',
       contentType: 'text',
       content: { text },
-      metadata: { source: 'identity_binding', kind },
+      metadata: {
+        source: 'identity_binding',
+        kind,
+        ...(ok ? {} : { deliveryFailed: true, deliveryError: BINDING_TEXT.deliveryFailed }),
+      },
     },
   });
   await db.conversation.updateMany({ where: { id: conversationId, tenantId }, data: { lastMessageAt: new Date() } });
   if (deps.io) {
-    const payload = buildMessageNewPayload(message, { content: { text }, includeTypePayload: true });
+    const payload = buildMessageNewPayload(message, { content: { text }, includeTypePayload: true, includeMetadata: true });
     emitToConversationAndTenant(deps.io, conversationId, tenantId, 'message.new', payload);
-  }
-
-  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, text);
-  if (!ok) {
-    logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });
-    const note = await db.message.create({
-      data: {
-        conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'SYSTEM',
-        contentType: 'system',
-        content: { text: BINDING_TEXT.deliveryFailed },
-        metadata: { type: 'identity_binding_delivery_failed', kind },
-        isRead: true,
-      },
-    });
-    if (deps.io) {
-      emitToConversationAndTenant(
-        deps.io,
-        conversationId,
-        tenantId,
-        'message.new',
-        buildMessageNewPayload(note, { includeTypePayload: true }),
-      );
-    }
   }
   return ok;
 }

@@ -168,7 +168,7 @@ scenario('發碼：列出其他渠道連結，不含顧客所在渠道與未設�
   assert.ok(!invite.text.includes('m.me/'), '不列出顧客所在的 FB');
   assert.ok(!invite.text.includes('ig.me/'), '未設定導流識別的 IG 不列出');
   const msg = await f.tx.message.findFirst({ where: { conversationId: f.fb.conversationId }, orderBy: { createdAt: 'desc' } });
-  assert.equal(msg?.senderType, 'SYSTEM', '邀請訊息寫入對話紀錄');
+  assert.equal(msg?.senderType, 'BOT', '邀請訊息寫入對話紀錄');
 });
 
 scenario('發碼：沒有其他可綁定渠道時回覆說明且不產生代碼', async (f) => {
@@ -267,15 +267,17 @@ scenario('兌換：發碼方中途已被併入他人 → 沿 mergedIntoId 併到
   assert.equal(await contactOf(f.tx, f.line.channelIdentityId), d.id);
 });
 
-scenario('兌換：一邊通知送出失敗 → 該對話留客服可見的系統提示，合併不回滾', async (f) => {
+scenario('兌換：一邊通知送出失敗 → 該則訊息標為送出失敗（客服可見），合併不回滾', async (f) => {
   const code = await issueAndGetCode(f, f.fb);
   f.failConversations.add(f.fb.conversationId);
   assert.equal((await redeemBindingCode(f.tx, f.deps, f.line, code)).status, 'bound');
-  const note = await f.tx.message.findFirst({
-    where: { conversationId: f.fb.conversationId, contentType: 'system' },
+  const bound = await f.tx.message.findFirst({
+    where: { conversationId: f.fb.conversationId, senderType: 'BOT' },
     orderBy: { createdAt: 'desc' },
   });
-  assert.ok((note?.content as { text?: string }).text?.includes('送出失敗'));
+  const meta = bound?.metadata as { deliveryFailed?: boolean; deliveryError?: string };
+  assert.equal(meta.deliveryFailed, true, '該則訊息標為送出失敗（收件匣顯示紅色提示）');
+  assert.ok(meta.deliveryError?.includes('沒有送到顧客'));
   assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.fb.contactId);
 });
 

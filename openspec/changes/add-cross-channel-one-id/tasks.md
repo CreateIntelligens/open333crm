@@ -33,7 +33,7 @@
 - [x] 4.1 LINE `verifyChannel` 將 `/v2/bot/info` 的 `basicId` 寫入 `Channel.settings.bindingHandle`
 - [x] 4.2 IG verify 改呼叫 `/me?fields=id,username` 並寫入 username；FB 支援選填 `pageUsername`，無則用 `pageId`
 - [x] 4.3 一次性 script：為既有 LINE/IG 渠道補抓導流識別（逐租戶 `withTenant`）
-- [ ] 4.4 後台渠道設定頁顯示並可覆寫導流識別
+- [x] 4.4 後台渠道設定頁顯示並可覆寫導流識別（新增 GET/PATCH /channels/:id/binding-handle，只合併這一欄不整包覆寫 settings；FB 未設「開始使用」時顯示提醒）
 
 ## 5. P1：FB/IG referral 解析
 
@@ -58,15 +58,15 @@
 
 ## 7. P1：後台 UI
 
-- [ ] 7.1 租戶設定頁新增「跨渠道綁定」區塊：開關、綁定/解除關鍵字
-- [ ] 7.2 聯絡人頁：已綁定渠道列表與來源標示、合併紀錄與「解除」按鈕
-- [ ] 7.3 聯絡人對話：「傳送綁定連結」按鈕
-- [ ] 7.4 UI 不放 emoji／勾勾符號；錯誤以 toast 顯示中文訊息
+- [x] 7.1 租戶設定頁新增「跨渠道綁定」區塊：開關、綁定/解除關鍵字
+- [x] 7.2 聯絡人頁：已綁定渠道列表與來源標示、合併紀錄與「解除」按鈕
+- [x] 7.3 聯絡人對話：「傳送綁定連結」按鈕
+- [x] 7.4 UI 不放 emoji／勾勾符號；錯誤以頁面內訊息顯示中文（專案無共用 toast，改用 getApiErrorMessage + 內嵌提示，不用 alert）
 
 ## 8. 收尾
 
-- [ ] 8.1 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-workspace-esm.mjs --strict` 全過
-- [ ] 8.2 typecheck / lint / 新舊相關測試全過
-- [ ] 8.3 本機以 WEBCHAT 發碼 + 模擬 LINE/FB webhook 兌換做端到端驗證；LINE/FB 真機驗證留 UAT
-- [ ] 8.4 更新 `CHANGELOG.md`（`## [YYYY-MM-DD]` 格式）
-- [ ] 8.5 部署清單：migration、既有渠道補抓導流識別 script、租戶啟用說明；記錄優惠券分支 rebase 時須把 `CouponInstance` 加入合併搬移清單
+- [x] 8.1 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-workspace-esm.mjs --strict` 全過
+- [x] 8.2 typecheck / lint / 新舊相關測試全過
+- [x] 8.3 本機端到端驗證：以真實入站管線 + 真實 Redis 模擬 FB 發碼、LINE 兌換，並在瀏覽器驗證設定頁、渠道導流識別、聯絡人合併紀錄與解除、收件匣代發按鈕（2026-09-29 完成）；LINE/FB/IG 真機驗證留 UAT（見 0.4）
+- [x] 8.4 更新 `CHANGELOG.md`（`## [YYYY-MM-DD]` 格式）
+- [x] 8.5 部署清單：migration、既有渠道補抓導流識別 script、租戶啟用說明；記錄優惠券分支 rebase 時須把 `CouponInstance` 加入合併搬移清單

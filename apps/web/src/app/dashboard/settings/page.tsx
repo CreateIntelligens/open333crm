@@ -11,6 +11,7 @@ import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { OfficeHoursSettings } from "@/components/settings/OfficeHoursSettings";
 import { ApiKeyManagement } from "@/components/settings/ApiKeyManagement";
 import { TrackingSettings } from "@/components/settings/TrackingSettings";
+import { IdentityBindingSettings } from "@/components/settings/IdentityBindingSettings";
 import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
 import { RolePermissionMatrix } from "@/components/settings/RolePermissionMatrix";
 import { PasskeyManagement } from "@/components/settings/PasskeyManagement";
@@ -26,6 +27,7 @@ const SETTINGS_TABS = [
   { key: "sla", label: "SLA 政策" },
   { key: "office-hours", label: "營業時間" },
   { key: "tracking", label: "追蹤設定" },
+  { key: "identity-binding", label: "跨渠道綁定", perm: "settings.manage" },
   { key: "api-keys", label: "API 金鑰" },
   { key: "cli-sessions", label: "CLI 連線" },
   { key: "passkeys", label: "Passkey 登入" },
@@ -54,6 +56,7 @@ export default function SettingsPage() {
           {activeTab === "sla" && <SlaManagement />}
           {activeTab === "office-hours" && <OfficeHoursSettings />}
           {activeTab === "tracking" && <TrackingSettings />}
+          {activeTab === "identity-binding" && (canManageSettings ? <IdentityBindingSettings /> : <PermissionDenied />)}
           {activeTab === "api-keys" && <ApiKeyManagement />}
           {activeTab === "cli-sessions" && <CliSessionManagement />}
           {activeTab === "passkeys" && <PasskeyManagement />}

@@ -100,7 +100,8 @@ async function runBindingIntent(
     );
   } catch (err) {
     // 失敗不能只寫 log：在對話留一則客服看得到的內部提示
-    logger.error('[Webhook] Identity binding failed', { conversationId: conversation.id, intent: intent.kind, err });
+    // err 放第二個參數才會帶出 message 與 stack（包在物件裡會被序列化成 {}）
+    logger.error(`[Webhook] Identity binding failed (intent=${intent.kind}, conversation=${conversation.id}):`, err);
     try {
       const note = await ctx.prisma.message.create({
         data: {

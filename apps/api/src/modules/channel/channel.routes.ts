@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
@@ -135,6 +136,38 @@ async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: s
     throw new AppError(notFound('webchatChannel'), 'NOT_FOUND', 404);
   }
   return channel;
+}
+
+const bindingHandleSchema = z.object({
+  bindingHandle: z
+    .string()
+    .trim()
+    .max(64, '導流識別不可超過 64 字')
+    .regex(/^@?[A-Za-z0-9._-]*$/, '導流識別只能包含英數字與 . _ -（LINE 以 @ 開頭）')
+    .nullable(),
+});
+
+async function getBindableChannel(prisma: TenantDb, id: string, tenantId: string) {
+  const channel = await prisma.channel.findFirst({
+    where: { id, tenantId, channelType: { in: ['LINE', 'FB', 'THREADS'] } },
+    select: { id: true, channelType: true, settings: true },
+  });
+  if (!channel) throw new AppError('找不到可設定導流識別的渠道（僅支援 LINE、Facebook、Instagram）', 'NOT_FOUND', 404);
+  return channel;
+}
+
+function bindingHandleView(channel: { id: string; channelType: string; settings: unknown }) {
+  const s = (channel.settings || {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return {
+    id: channel.id,
+    channelType: channel.channelType,
+    bindingHandle: str(s.bindingHandle),
+    bindingHandleAuto: str(s.bindingHandleAuto),
+    effectiveHandle: str(s.bindingHandle) ?? str(s.bindingHandleAuto),
+    // 只有 FB 有意義；null＝未驗證過或查詢失敗
+    fbGetStartedConfigured: typeof s.fbGetStartedConfigured === 'boolean' ? s.fbGetStartedConfigured : null,
+  };
 }
 
 export default async function channelRoutes(fastify: FastifyInstance) {
@@ -322,6 +355,44 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         publicKey,
         url: `${domain}/chatbox?channel=${encodeURIComponent(publicKey)}`,
       }));
+    },
+  );
+
+  // ── 跨渠道綁定導流識別（change add-cross-channel-one-id，D10）──────────────
+  // 渠道驗證時自動寫入 settings.bindingHandleAuto；管理員可在此手動覆寫 settings.bindingHandle。
+  // 只合併這一欄，不整包覆寫 settings（避免蓋掉機器人設定等其他欄位）。
+
+  // GET /api/v1/channels/:id/binding-handle
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/binding-handle',
+    { preHandler: requirePermission('channel.view') },
+    async (request, reply) => {
+      const channel = await getBindableChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
+      return reply.send(success(bindingHandleView(channel)));
+    },
+  );
+
+  // PATCH /api/v1/channels/:id/binding-handle
+  fastify.patch<{ Params: { id: string }; Body: unknown }>(
+    '/:id/binding-handle',
+    { preHandler: requirePermission('channel.update') },
+    async (request, reply) => {
+      const channel = await getBindableChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
+      const { bindingHandle } = bindingHandleSchema.parse(request.body);
+      const handle = bindingHandle?.trim() || null;
+      if (handle && channel.channelType === 'LINE' && !handle.startsWith('@')) {
+        throw new AppError('LINE Basic ID 須以 @ 開頭，例如 @abc1234', 'VALIDATION_ERROR', 400);
+      }
+      const settings = { ...((channel.settings || {}) as Record<string, unknown>) };
+      if (handle) settings.bindingHandle = handle;
+      else delete settings.bindingHandle;
+
+      const updated = await request.tenantPrisma.channel.update({
+        where: { id: channel.id, tenantId: request.agent.tenantId },
+        data: { settings: settings as Prisma.InputJsonValue },
+        select: { id: true, channelType: true, settings: true },
+      });
+      return reply.send(success(bindingHandleView(updated)));
     },
   );
 

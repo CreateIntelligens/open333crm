@@ -138,6 +138,8 @@ export default function ContactDetailPage() {
               }}
               onUpdate={() => {
                 fetchContact();
+                // 解除合併會把對話搬回另一位聯絡人，時間軸也要跟著更新
+                fetchTimeline();
               }}
             />
           </div>

@@ -133,7 +133,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
         orderBy: { createdAt: 'asc' },
       });
       assert.ok(msgs.some((m) => m.direction === 'INBOUND'), '顧客訊息仍落地');
-      const invite = msgs.find((m) => m.senderType === 'SYSTEM' && m.contentType === 'text');
+      const invite = msgs.find((m) => m.senderType === 'BOT' && m.contentType === 'text');
       assert.ok(extractBindingCode((invite?.content as { text?: string }).text), '回覆含代碼的邀請');
       assert.equal(received.length, 0, 'AI／關鍵字／自動化不處理');
     },

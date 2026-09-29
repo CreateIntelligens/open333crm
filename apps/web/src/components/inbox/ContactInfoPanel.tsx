@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { ChannelBadge } from '@/components/shared/ChannelBadge';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
+import { SendBindingLinkButton } from './SendBindingLinkButton';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface ContactInfoPanelProps {
@@ -321,6 +322,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
             {requestingEmail ? '傳送中...' : '請求 Email'}
           </Button>
         )}
+        <SendBindingLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <Button
           variant="outline"
           className="w-full"

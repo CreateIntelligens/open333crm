@@ -125,5 +125,5 @@ export const BINDING_TEXT = {
   bound: (otherLabel: string, unbindKeyword: string) =>
     `已完成帳號綁定：此帳號已與您的 ${otherLabel} 帳號合併為同一位顧客。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
   unbound: '已解除帳號綁定，兩個帳號恢復為各自獨立。',
-  deliveryFailed: '綁定通知訊息送出失敗，顧客可能沒有收到（綁定結果不受影響）。',
+  deliveryFailed: '綁定通知沒有送到顧客（綁定結果不受影響）',
 } as const;
