@@ -61,6 +61,7 @@
 | PLAN-09 | 試用與方案 | P3 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
 | PLAN-10 | 試用與方案 | P3 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
 | PLAN-11 | 試用與方案 | P3 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
+| PLAN-12 | 試用與方案 | P3 | AI 不在功能天花板的維度內，停用 AI 只能把 `monthlyTokens` 設成 `0` | 靜態確認 |
 | USAGE-01 | 用量 | P3 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
 | AI-01 | AI | P2 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
 | LIC-01 | License | P4 | API 使用寫死的授權資料 | 間接確認 |
@@ -529,6 +530,39 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 連帶影響 PLAN-10。那一項提到加購量可以回頭加總 `plan_change_requests.topupTokens` 來還原，但平台後台沒有任何介面做得到這件事，只能直接查資料庫。
 
 ## AI 用量與金鑰
+
+### PLAN-12：AI 不在功能天花板的維度內
+
+`packages/core/src/rbac/features.ts` 的 `FEATURES` 有八個 slug：`inbox`、`channels`、`automation`、`marketing`、`analytics`、`knowledge`、`portal`、`core`。**沒有 `ai`。** 因此方案的 `features` 陣列無法表達「這個方案不含 AI」，平台後台方案頁的功能勾選區也關不掉 AI。
+
+權限碼這一層同樣擋不住。AI 的入口有三類，只有一類掛得上權限：
+
+| 入口 | 觸發者 | 授權判斷 |
+| --- | --- | --- |
+| `ai.routes.ts` 的 `/suggest-reply`、`/summarize`、`/analyze-sentiment`、`/classify`、`/rewrite` | 客服操作 | 只有 `fastify.authenticate`，沒有權限碼 |
+| `ai.routes.ts` 的 `/agent/run`、`/agent/runs/:id` | 客服操作 | `requirePermission('inbox.reply')`、`('inbox.view')` |
+| `kb-autoreply`（`automation.worker.ts`）、自動化動作（`engine/action-executor.ts`） | 客人傳訊息、規則命中 | 不經過路由，沒有請求可以掛 guard |
+
+後兩個入口沒有使用者按下任何按鈕，因此不存在可以檢查權限的時機。
+
+結果是控制 AI 只剩 `limits.monthlyTokens` 一個數值欄位，而它的語意在「不給用」這個方向上與其他欄位相反：
+
+| `monthlyTokens` | `resolveEffectiveLimit()` 回傳 | 實際效果 |
+| --- | --- | --- |
+| 方案沒有這個 key | `null` | 無上限 |
+| `null` | `null` | 無上限 |
+| `0` | `0` | `used >= 0` 恆成立，一律擋下。這是唯一能表達「不給 AI」的寫法 |
+| 正整數 | 該數值 | 依數值擋 |
+
+其他欄位「留空」代表不限制，符合直覺；AI 要停用卻必須主動填 `0`。
+
+兩點澄清，避免把這一項讀成比實際更嚴重：
+
+- **現況沒有踩到。** `seedPlans()` 的五個方案都定義了 `monthlyTokens`，其中 `enterprise` 是 `null`（刻意無上限）。
+- **介面有標示。** `/admin/plans` 的欄位標題是「數值上限（留空 = 無上限）」，placeholder 是「無上限」，輸入非數字時 `setLimit()` 會維持原值而不是解除上限。這一點比 PLAN-07 的 `maxChannels` 好：那個欄位是方案從未定義過，畫面同樣顯示空白，但「從未設定」與「刻意設成無上限」在介面上分辨不出來。
+
+這一項記的是方案模型缺少 AI 這個維度，不是某個值設錯。
+
 
 ### USAGE-01：用量頁沒有標示統計的母體與筆數上限
 

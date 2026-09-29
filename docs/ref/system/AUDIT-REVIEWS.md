@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：AI 的方案控制點，新增 PLAN-12
+
+承上一則。確認 AI-01 退回平台金鑰之後會扣哪一份額度時，延伸出一個問題：方案若不含 AI，租戶是不是就無限制可用。做法是回頭清點 AI 的所有入口與可用的控制點。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| PLAN-12 | `FEATURES` 的八個 slug 沒有 `ai`；`ai.routes.ts` 七條路由中五條只有 `fastify.authenticate`；`kb-autoreply` 與自動化動作不經過路由；控制只剩 `limits.monthlyTokens`，而未定義與 `null` 都回傳無上限 |
+
+問題的前提不成立：方案表達不出「沒有 AI」。要停用只能把 `monthlyTokens` 設成 `0`，`0` 會讓 `used >= limit` 恆成立。
+
+兩點與 PLAN-07 對照後刻意寫進條目，避免日後被讀成比實際嚴重：`seedPlans()` 的五個方案都定義了 `monthlyTokens`，現況沒有踩到；`/admin/plans` 的欄位標題寫明「留空 = 無上限」，`setLimit()` 對非數字輸入也會維持原值。`maxChannels` 沒有這兩層保護。
+
 ## 2026-09-29：BYOK 的金鑰解析路徑，新增 AI-01
 
 起因是一個提問：BYOK 是什麼。查證時發現這個詞在文件裡出現多次卻從未定義，也順著 `resolveGeminiKey()` 讀完整條金鑰解析路徑。

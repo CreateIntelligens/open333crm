@@ -79,6 +79,8 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 第四條目前有一個實例：沒有任何方案定義 `maxChannels`，因此渠道數的檢查永遠跳過。`allowedChannelTypes` 也沒有任何方案填過值，同樣不限制。渠道這個維度的兩個分級機制都沒有生效，詳見 `../../system/AUDIT.md` 的 PLAN-07。
 
+`monthlyTokens` 要特別注意。`FEATURES` 沒有 `ai` 這個 slug，所以 AI 不受功能天花板管，唯一的控制就是這個數值。留空或未定義都代表無上限，要停用 AI 必須填 `0`，詳見 `../../system/AUDIT.md` 的 PLAN-12。
+
 ## 改了方案之後會發生什麼
 
 `updatePlan()` 寫入後，若 `features` 或 `permissionOverrides` 有變動，就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求即用新的天花板重算。沒有灰度，也沒有延遲。
