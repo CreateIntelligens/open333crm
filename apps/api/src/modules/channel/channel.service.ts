@@ -258,7 +258,11 @@ export async function updateChannel(
     // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
     // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）一律以資料庫現值為準，放在後面蓋過
     // 快照裡的舊值——這些欄位只能經由驗證或 /binding-handle 專屬 API 修改
-    updateData.settings = { ...data.settings, ...pickSystemManagedSettings(channel.settings) };
+    // 先丟掉快照裡的系統欄位再補回資料庫現值：否則資料庫已刪除的 key（例如管理員清空手動導流識別）
+    // 會被快照裡的舊值寫回來
+    const incoming = { ...data.settings };
+    for (const key of SYSTEM_MANAGED_SETTING_KEYS) delete incoming[key];
+    updateData.settings = { ...incoming, ...pickSystemManagedSettings(channel.settings) };
   }
 
   const updated = await prisma.channel.update({

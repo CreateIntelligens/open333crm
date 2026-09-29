@@ -14,6 +14,7 @@
 import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
+import { getLatestPointEntry } from '../portal/points.service.js';
 
 export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE';
 
@@ -86,13 +87,20 @@ async function moveIds(
   return ids;
 }
 
-async function latestPointBalance(db: TenantDb, tenantId: string, contactId: string) {
-  const latest = await db.pointTransaction.findFirst({
-    where: { tenantId, contactId },
-    orderBy: { createdAt: 'desc' },
-    select: { balance: true, createdAt: true },
-  });
-  return latest?.balance ?? 0;
+/**
+ * 沿 mergedIntoId 走完合併鏈：回傳從 contactId 開始、依序被併入的聯絡人 id（最後一個是目前持有者）。
+ * 有環或超過 20 層即停止。解除合併與綁定兌換都用這支，避免兩份邏輯漂移。
+ */
+export async function resolveMergeChain(db: TenantDb, tenantId: string, contactId: string): Promise<string[]> {
+  const chain = [contactId];
+  let cursor = contactId;
+  for (let i = 0; i < 20; i++) {
+    const c = await db.contact.findFirst({ where: { id: cursor, tenantId }, select: { mergedIntoId: true } });
+    if (!c?.mergedIntoId || chain.includes(c.mergedIntoId)) break;
+    cursor = c.mergedIntoId;
+    chain.push(cursor);
+  }
+  return chain;
 }
 
 /**
@@ -109,15 +117,10 @@ async function transferPoints(
   amount?: number,
   expected?: number,
 ): Promise<number> {
-  const [from, to] = await Promise.all(
-    [fromId, toId].map((contactId) =>
-      db.pointTransaction.findFirst({
-        where: { tenantId, contactId },
-        orderBy: { createdAt: 'desc' },
-        select: { balance: true, createdAt: true },
-      }),
-    ),
-  );
+  const [from, to] = await Promise.all([
+    getLatestPointEntry(db, fromId, tenantId),
+    getLatestPointEntry(db, toId, tenantId),
+  ]);
   const fromBalance = from?.balance ?? 0;
   const value = amount ?? fromBalance;
   if (value <= 0) return 0;
@@ -387,14 +390,7 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   if (!restored) throw new AppError('被合併的聯絡人已不存在，無法解除', 'NOT_FOUND', 404);
 
   // survivor 之後可能又被併入別人：沿 mergedIntoId 找出目前持有資料的聯絡人鏈
-  const holderChain = [log.survivorId];
-  let cursor = log.survivorId;
-  for (let i = 0; i < 20; i++) {
-    const c = await db.contact.findFirst({ where: { id: cursor, tenantId }, select: { mergedIntoId: true } });
-    if (!c?.mergedIntoId || holderChain.includes(c.mergedIntoId)) break;
-    cursor = c.mergedIntoId;
-    holderChain.push(cursor);
-  }
+  const holderChain = await resolveMergeChain(db, tenantId, log.survivorId);
 
   const moved = log.movedRecords as unknown as Partial<MovedRecords>;
   const back = { contactId: log.mergedId };
@@ -426,7 +422,7 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   if (moved.pointsTransferred && moved.pointsTransferred > 0) {
     // 把當初轉入的點數轉回；survivor 若在合併後已用掉一部分，只轉回剩餘的
     const holderId = holderChain[holderChain.length - 1];
-    const holderBalance = await latestPointBalance(db, tenantId, holderId);
+    const holderBalance = (await getLatestPointEntry(db, holderId, tenantId))?.balance ?? 0;
     const amount = Math.min(moved.pointsTransferred, Math.max(holderBalance, 0));
     if (amount > 0) {
       await transferPoints(db, tenantId, holderId, log.mergedId, 'revert', amount, moved.pointsTransferred);
@@ -482,6 +478,29 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
         where: { tenantId, channelType: identity.channelType, uid: identity.uid, contactId: heldBy },
         data: back,
       });
+    }
+  }
+
+  // 合併時從被合併方補到 survivor 的電話／email／頭像／名稱，解除後不可留在對方身上（個資）。
+  // 只清「仍是當時補上的值」的欄位：合併後客服或顧客自己改過的就不動
+  const filled = moved.filledFields ?? [];
+  if (filled.length > 0) {
+    const [restoredContact, survivorContact] = await Promise.all([
+      db.contact.findFirst({ where: { id: log.mergedId, tenantId } }),
+      db.contact.findFirst({ where: { id: log.survivorId, tenantId } }),
+    ]);
+    if (restoredContact && survivorContact) {
+      const clear: Prisma.ContactUpdateInput = {};
+      for (const field of filled) {
+        if (field === 'phone' && survivorContact.phone === restoredContact.phone) clear.phone = null;
+        if (field === 'email' && survivorContact.email === restoredContact.email) clear.email = null;
+        if (field === 'avatarUrl' && survivorContact.avatarUrl === restoredContact.avatarUrl) clear.avatarUrl = null;
+        // displayName 為必填，只在合併前 survivor 名稱為空白時才補過；清回空字串
+        if (field === 'displayName' && survivorContact.displayName === restoredContact.displayName) clear.displayName = '';
+      }
+      if (Object.keys(clear).length > 0) {
+        await db.contact.update({ where: { id: log.survivorId, tenantId }, data: clear });
+      }
     }
   }
 

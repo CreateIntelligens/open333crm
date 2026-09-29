@@ -68,7 +68,8 @@ export class FbPlugin implements ChannelPlugin {
 
           if (event.postback) {
             messages.push({
-              channelMsgId: undefined,
+              // postback 也有平台訊息 id；帶上才能讓入站管線的 channelMsgId 去重擋掉 Meta 重送
+              channelMsgId: event.postback.mid,
               contactUid: event.sender?.id ?? '',
               timestamp: new Date(event.timestamp ?? Date.now()),
               contentType: 'postback',

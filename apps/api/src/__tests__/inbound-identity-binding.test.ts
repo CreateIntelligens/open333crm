@@ -234,8 +234,10 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       const uid = `fb-getstarted-${seq++}`;
       const b = await env.tx.contact.create({ data: { tenantId: T, displayName: 'LINE-B' } });
       await env.tx.channelIdentity.create({ data: { contactId: b.id, channelId: env.line.id, channelType: 'LINE', uid } });
+      // FB postback 帶平台 mid（postback.mid），重送時 mid 相同
       const postback = {
         contactUid: uid,
+        channelMsgId: `pb-mid-${seq++}`,
         timestamp: new Date(),
         contentType: 'postback',
         content: { text: '開始使用' },
@@ -252,6 +254,22 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       );
       assert.equal(texts.filter((t) => t.startsWith('已完成帳號綁定')).length, 1);
       assert.ok(!texts.some((t) => t.includes('無效或已過期')), '重送不回覆代碼無效');
+    },
+  ],
+  [
+    '啟用：新 LINE 好友第一則就送出無效代碼 → 回覆代碼無效，且仍收到首次招呼語',
+    true,
+    async (env) => {
+      const lineUid = `new-line-${seq++}`;
+      await run(env, env.line, inbound(lineUid, linePrefillText('BIND-0000000000')));
+      const lineConv = await env.tx.conversation.findFirst({ where: { tenantId: T, channelId: env.line.id } });
+      const msgs = await env.tx.message.findMany({ where: { conversationId: lineConv!.id } });
+      assert.ok(msgs.some((m) => ((m.content as { text?: string }).text ?? '').includes('無效或已過期')));
+      assert.ok(
+        msgs.some((m) => (m.metadata as { source?: string }).source === 'first_contact_greeting'),
+        '沒有合併的新顧客仍要收到招呼語',
+      );
+      assert.equal(received.length, 0, '仍不交給 AI');
     },
   ],
 ];

@@ -28,11 +28,12 @@ test('FB 既有對話：獨立 referral 事件 → contentType referral 並帶 r
 
 test('FB 新對話：ref 夾在「開始使用」postback 裡', async () => {
   const [m] = await fb.parseWebhook(
-    fbPayload({ postback: { title: '開始使用', payload: 'GET_STARTED', referral: { ref: 'BIND-7K2M9QH4TX', source: 'SHORTLINK', type: 'OPEN_THREAD' } } }),
+    fbPayload({ postback: { mid: 'pb-mid-1', title: '開始使用', payload: 'GET_STARTED', referral: { ref: 'BIND-7K2M9QH4TX', source: 'SHORTLINK', type: 'OPEN_THREAD' } } }),
     {},
   );
   assert.equal(m.contentType, 'postback');
   assert.equal(m.referralRef, 'BIND-7K2M9QH4TX');
+  assert.equal(m.channelMsgId, 'pb-mid-1', '帶平台 mid，讓入站管線可去重 Meta 重送');
 });
 
 test('FB 訊息夾帶 referral 也取出 ref', async () => {

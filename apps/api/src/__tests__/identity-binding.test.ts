@@ -191,18 +191,23 @@ scenario('發碼：沒有其他可綁定渠道時回覆說明且不產生代碼'
 scenario('發碼：同一身分一小時第 6 次被擋', async (f) => {
   for (let i = 0; i < 5; i++) assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'sent');
   assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'rate_limited');
+  assert.ok(f.sent.at(-1)!.text.includes('次數過多'), '第一次超過時回覆一次');
+  const before = f.sent.length;
+  for (let i = 0; i < 3; i++) assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'rate_limited');
+  assert.equal(f.sent.length, before, '之後不再回覆（避免被拿來洗訊息、佔推播額度）');
   f.clock.now += 61 * MIN;
   assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'sent', '一小時後恢復');
 });
 
 scenario('渠道設定整包更新（例如其他設定視窗用舊快照儲存）不會洗掉導流識別', async (f) => {
-  // 前端快照是舊的：沒有最新值、甚至帶著舊的導流識別
+  // 前端快照是舊的：帶著舊的自動導流識別，以及資料庫裡已被清空的手動導流識別
   await updateChannel(f.tx, f.lineChannelId, T, {
-    settings: { botConfig: { botMode: 'OFF' }, bindingHandleAuto: '@stale-old' },
+    settings: { botConfig: { botMode: 'OFF' }, bindingHandleAuto: '@stale-old', bindingHandle: '@cleared-before' },
   });
   const ch = await f.tx.channel.findFirst({ where: { id: f.lineChannelId, tenantId: T }, select: { settings: true } });
   const settings = ch?.settings as Record<string, unknown>;
   assert.equal(settings.bindingHandleAuto, '@line1234', '導流識別以資料庫現值為準，不被舊快照蓋掉');
+  assert.equal(settings.bindingHandle, undefined, '資料庫已清空的欄位不會被快照寫回來');
   assert.deepEqual(settings.botConfig, { botMode: 'OFF' }, '送來的設定照常寫入');
 });
 
@@ -365,6 +370,18 @@ scenario('解除：綁了兩個渠道，在其中一個回覆「解除綁定」�
   assert.equal(r.status, 'unbound');
   assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.line.contactId, 'LINE 被拆開');
   assert.equal(await contactOf(f.tx, d.channelIdentityId), f.fb.contactId, 'IG 仍綁著');
+});
+
+scenario('解除：發碼方之後又被併入別人 → 另一邊（目前持有者）仍收到解除通知', async (f) => {
+  await redeemBindingCode(f.tx, f.deps, f.line, await issueAndGetCode(f, f.fb));
+  // A（含 FB、LINE）之後被手動併入 Z
+  const z = await f.tx.contact.create({ data: { tenantId: T, displayName: 'Z' } });
+  await mergeContacts(f.tx, { tenantId: T, survivorId: z.id, mergedId: f.fb.contactId, source: 'MANUAL' });
+
+  const r = await unbindByCustomer(f.tx, f.deps, { ...f.line, contactId: z.id });
+  assert.equal(r.status, 'unbound');
+  const unbound = f.sent.filter((s) => s.text.startsWith('已解除帳號綁定')).map((s) => s.conversationId).sort();
+  assert.deepEqual(unbound, [f.fb.conversationId, f.line.conversationId].sort(), '雙邊都收到');
 });
 
 scenario('解除：超過 7 天 → 請聯繫客服，不撤銷', async (f) => {

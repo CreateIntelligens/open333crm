@@ -7,13 +7,24 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 /**
  * Get current point balance for a contact.
  */
-export async function getPointBalance(prisma: TenantDb, contactId: string): Promise<number> {
-  const latest = await prisma.pointTransaction.findFirst({
-    where: { contactId },
+export async function getPointBalance(prisma: TenantDb, contactId: string, tenantId?: string): Promise<number> {
+  return (await getLatestPointEntry(prisma, contactId, tenantId))?.balance ?? 0;
+}
+
+/**
+ * 帳本最新一筆（餘額與時間）。餘額規則只寫在這裡：取 createdAt 最新一筆的 balance。
+ * 合併引擎轉移點數時也用這支，確保與點數頁算出的餘額一致。
+ */
+export async function getLatestPointEntry(
+  prisma: TenantDb,
+  contactId: string,
+  tenantId?: string,
+): Promise<{ balance: number; createdAt: Date } | null> {
+  return prisma.pointTransaction.findFirst({
+    where: { contactId, ...(tenantId ? { tenantId } : {}) },
     orderBy: { createdAt: 'desc' },
-    select: { balance: true },
+    select: { balance: true, createdAt: true },
   });
-  return latest?.balance ?? 0;
 }
 
 /**

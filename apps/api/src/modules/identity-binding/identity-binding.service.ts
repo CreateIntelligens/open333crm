@@ -12,7 +12,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { mergeContacts, revertMerge, type MovedRecords } from '../contact/contact-merge.service.js';
+import { mergeContacts, resolveMergeChain, revertMerge, type MovedRecords } from '../contact/contact-merge.service.js';
 import { buildMessageNewPayload, emitToConversationAndTenant } from '../webhook/inbound-socket-presenter.js';
 import {
   BINDING_CODE_TTL_MS,
@@ -145,7 +145,10 @@ export async function issueBindingCode(db: TenantDb, deps: BindingDeps, actor: B
 
   const issued = await bumpCounter(deps.store, issueCounterKey(actor.channelIdentityId));
   if (issued > MAX_ISSUES_PER_HOUR) {
-    await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.rateLimited, 'rate_limited');
+    // 只在第一次超過時回覆；之後不再回（每則回覆都佔用平台推播額度，否則可被拿來洗訊息）
+    if (issued === MAX_ISSUES_PER_HOUR + 1) {
+      await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.rateLimited, 'rate_limited');
+    }
     return { status: 'rate_limited' };
   }
 
@@ -195,17 +198,12 @@ export type RedeemResult =
   | { status: 'channel_conflict' }
   | { status: 'already_bound' };
 
-/** 沿 mergedIntoId 找到目前仍在使用的聯絡人（發碼方可能在兌換前已被併入別人） */
+/** 沿 mergedIntoId 找到目前仍在使用的聯絡人（發碼方可能在兌換前已被併入別人）；找不到或已封存回 null */
 async function resolveLiveContactId(db: TenantDb, tenantId: string, contactId: string): Promise<string | null> {
-  let cursor = contactId;
-  for (let i = 0; i < 20; i++) {
-    const c = await db.contact.findFirst({ where: { id: cursor, tenantId }, select: { isArchived: true, mergedIntoId: true } });
-    if (!c) return null;
-    if (!c.isArchived) return cursor;
-    if (!c.mergedIntoId) return null;
-    cursor = c.mergedIntoId;
-  }
-  return null;
+  const chain = await resolveMergeChain(db, tenantId, contactId);
+  const holder = chain[chain.length - 1];
+  const c = await db.contact.findFirst({ where: { id: holder, tenantId }, select: { isArchived: true } });
+  return c && !c.isArchived ? holder : null;
 }
 
 export async function redeemBindingCode(
@@ -345,23 +343,30 @@ export async function redeemBindingCode(
 
 /**
  * 找出與顧客「目前所在渠道身分」有關、最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼）。
- * 有關＝該身分是當次被併入的身分之一，或是當次的發碼身分。只看 survivor 會拆錯筆：
- * 顧客綁了 FB 又綁了 IG，在 FB 回「解除綁定」應拆 FB 那筆，而不是最近的 IG。
+ * 有關＝該身分是當次被併入的身分之一，或是當次的發碼身分。
+ * - 只看 survivor 會拆錯筆：顧客綁了 FB 又綁了 IG，在 FB 回「解除綁定」應拆 FB 那筆。
+ * - 以身分查而不是以 survivorId 查：survivor 之後可能又被併入別人，顧客目前的聯絡人已不是當初的 survivor。
+ *   查到後再確認這筆綁定的持有者（沿合併鏈）就是顧客目前的聯絡人。
  */
 async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId: string, channelIdentityId: string) {
   const logs = await db.contactMergeLog.findMany({
-    where: { tenantId, source: 'BINDING_CODE', revertedAt: null, survivorId: contactId },
+    where: {
+      tenantId,
+      source: 'BINDING_CODE',
+      revertedAt: null,
+      OR: [
+        { movedRecords: { path: ['channelIdentity'], array_contains: [channelIdentityId] } },
+        { movedRecords: { path: ['meta', 'issuerChannelIdentityId'], equals: channelIdentityId } },
+      ],
+    },
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take: 20,
   });
-  return (
-    logs.find((log) => {
-      const moved = log.movedRecords as unknown as Partial<MovedRecords>;
-      return (
-        moved.channelIdentity?.includes(channelIdentityId) || moved.meta?.issuerChannelIdentityId === channelIdentityId
-      );
-    }) ?? null
-  );
+  for (const log of logs) {
+    const chain = await resolveMergeChain(db, tenantId, log.survivorId);
+    if (chain[chain.length - 1] === contactId) return log;
+  }
+  return null;
 }
 
 export type UnbindResult = { status: 'none' } | { status: 'expired' } | { status: 'unbound'; restoredContactId: string };
@@ -390,7 +395,8 @@ export async function unbindByCustomer(db: TenantDb, deps: BindingDeps, actor: B
   // 雙邊通知：顧客目前的對話，以及「另一邊」聯絡人最近的對話
   await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.unbound, 'unbound');
   const current = await db.conversation.findFirst({ where: { id: actor.conversationId, tenantId }, select: { contactId: true } });
-  const otherContactId = current?.contactId === result.restoredContactId ? log.survivorId : result.restoredContactId;
+  // 另一邊用「目前持有者」：survivor 之後可能又被併入別人，原 survivor 已封存、沒有對話
+  const otherContactId = current?.contactId === result.restoredContactId ? result.holderId : result.restoredContactId;
   const moved = log.movedRecords as unknown as Partial<MovedRecords>;
   const other = await db.conversation.findFirst({
     where: {
@@ -448,13 +454,14 @@ export async function detectBindingIntent(
   return null;
 }
 
+/** 回傳處理結果的 status（例如 'bound'、'invalid'、'sent'），供入站管線判斷後續行為 */
 export async function executeBindingIntent(
   db: TenantDb,
   deps: BindingDeps,
   actor: BindingActor,
   intent: BindingIntent,
-): Promise<void> {
-  if (intent.kind === 'redeem') await redeemBindingCode(db, deps, actor, intent.code);
-  else if (intent.kind === 'issue') await issueBindingCode(db, deps, actor);
-  else await unbindByCustomer(db, deps, actor);
+): Promise<string> {
+  if (intent.kind === 'redeem') return (await redeemBindingCode(db, deps, actor, intent.code)).status;
+  if (intent.kind === 'issue') return (await issueBindingCode(db, deps, actor)).status;
+  return (await unbindByCustomer(db, deps, actor)).status;
 }

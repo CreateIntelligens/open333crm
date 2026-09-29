@@ -32,6 +32,7 @@ import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
+import { resolveBindingHandle } from '../identity-binding/binding-links.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -164,7 +165,8 @@ function bindingHandleView(channel: { id: string; channelType: string; settings:
     channelType: channel.channelType,
     bindingHandle: str(s.bindingHandle),
     bindingHandleAuto: str(s.bindingHandleAuto),
-    effectiveHandle: str(s.bindingHandle) ?? str(s.bindingHandleAuto),
+    // 與產生綁定連結用同一支規則（含 trim），後台顯示的「目前使用」才會和實際連結一致
+    effectiveHandle: resolveBindingHandle(channel.settings),
     // 只有 FB 有意義；null＝未驗證過或查詢失敗
     fbGetStartedConfigured: typeof s.fbGetStartedConfigured === 'boolean' ? s.fbGetStartedConfigured : null,
   };

@@ -28,11 +28,17 @@ function codeFrom(ctx: InboundMessageContext): string | null {
   return extractBindingCode(ctx.parsed.referralRef) ?? extractBindingCode(ctx.textContent);
 }
 
+export interface BindingInterceptResult {
+  handled: boolean;
+  /** 處理結果；'bound' 表示本則訊息的聯絡人已併入既有聯絡人 */
+  status?: string;
+}
+
 /**
- * 一般訊息（文字、postback）的綁定攔截。命中並處理完回 true，呼叫端應直接結束後續流程。
+ * 一般訊息（文字、postback）的綁定攔截。handled=true 時呼叫端應結束後續流程（不跑 AI／自動化）。
  */
-export async function interceptIdentityBinding(ctx: InboundMessageContext): Promise<boolean> {
-  if (!ctx.contactId || !ctx.conversation) return false;
+export async function interceptIdentityBinding(ctx: InboundMessageContext): Promise<BindingInterceptResult> {
+  if (!ctx.contactId || !ctx.conversation) return { handled: false };
 
   const intent = await detectBindingIntent(ctx.prisma, {
     tenantId: ctx.tenantId,
@@ -41,20 +47,17 @@ export async function interceptIdentityBinding(ctx: InboundMessageContext): Prom
     code: codeFrom(ctx),
     getChannelIdentityId: () => findChannelIdentityId(ctx),
   });
-  if (!intent) return false;
+  if (!intent) return { handled: false };
 
   if (ctx.message) await emitInboundSocketEvents(ctx);
-  // 代碼隨 FB「開始使用」postback 或 IG 第一則訊息的 referral 送達時，這類事件常沒有平台訊息 id
-  // （postback 無 mid），一般的 channelMsgId 去重擋不到重送 → 同樣以 ref 去重
-  if (intent.kind === 'redeem' && ctx.parsed.referralRef && !(await firstSeenReferral(ctx, intent.code))) {
-    return true;
-  }
-  await runBindingIntent(ctx, intent);
-  return true;
+  // 一般訊息與 postback 都有平台訊息 id（FB postback.mid、IG message.mid），重送已由
+  // channelMsgId 去重擋下，這裡不需另外去重；只有獨立 referral 事件沒有 id（見 handleReferralEvent）
+  const status = await runBindingIntent(ctx, intent);
+  return { handled: true, status };
 }
 
 /**
- * referral 帶來的綁定代碼去重：沒有平台訊息 id 的事件無法走一般訊息的去重，平台重送同一事件時
+ * 獨立 referral 事件的去重：這類事件沒有平台訊息 id，無法走一般訊息的去重，平台重送同一事件時
  * 會變成「剛綁定成功又收到代碼無效」。以渠道＋顧客＋代碼做 10 分鐘的去重，第一次回 true。
  */
 async function firstSeenReferral(ctx: InboundMessageContext, code: string): Promise<boolean> {
@@ -95,10 +98,10 @@ export async function handleReferralEvent(
     return;
   }
 
-  if (!(await firstSeenReferral(ctx, code))) return;
-
+  // 先解析聯絡人再寫去重 key：解析若失敗會往外拋讓平台重送，重送時不會被去重擋掉
   await resolve(ctx);
   if (!ctx.contactId || !ctx.conversation) return;
+  if (!(await firstSeenReferral(ctx, code))) return;
   await runBindingIntent(ctx, { kind: 'redeem', code });
 }
 
@@ -113,13 +116,13 @@ async function findChannelIdentityId(ctx: InboundMessageContext): Promise<string
 async function runBindingIntent(
   ctx: InboundMessageContext,
   intent: Parameters<typeof executeBindingIntent>[3],
-): Promise<void> {
+): Promise<string> {
   const conversation = ctx.conversation!;
   try {
     const identityId = await findChannelIdentityId(ctx);
     if (!identityId) throw new Error('找不到顧客的渠道身分');
 
-    await executeBindingIntent(
+    return await executeBindingIntent(
       ctx.prisma,
       { store: storeOverride ?? getBindingStore(), io: ctx.io },
       {
@@ -159,5 +162,6 @@ async function runBindingIntent(
     } catch (noteErr) {
       logger.error('[Webhook] Failed to record identity binding failure', noteErr);
     }
+    return 'error';
   }
 }

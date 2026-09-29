@@ -370,6 +370,10 @@ test('解除：恢復被合併方與當次搬走的渠道身分／對話／點�
     assert.equal(owner(db, t, id), 'M', `${t} ${id} 應搬回`);
   }
   assert.equal(owner(db, 'channelIdentity', 'ci-s-line'), 'S', 'survivor 原有的不可被搬走');
+  const sAfter = db.contact.rows.find((c) => c.id === 'S')!;
+  assert.equal(sAfter.phone, null, '合併時從對方補來的電話，解除後不可留在 survivor 身上');
+  assert.equal(sAfter.avatarUrl, null);
+  assert.equal(sAfter.email, 's@example.com', 'survivor 原本的 email 不動');
   assert.equal(db.contactTag.rows.find((r) => r.tagId === 'promo')!.contactId, 'S', '標籤不回收');
 
   const log = db.contactMergeLog.rows[0];

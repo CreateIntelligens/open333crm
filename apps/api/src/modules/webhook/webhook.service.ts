@@ -184,7 +184,11 @@ export async function processInboundMessage(
 
   // 跨渠道綁定（綁定關鍵字／代碼／解除）排在招呼語之前：帶代碼來的新顧客即將併入既有聯絡人，
   // 不該先收到「歡迎加入」；命中時也不跑其他攔截與 AI／關鍵字／自動化。
-  if (await interceptIdentityBinding(ctx)) {
+  const binding = await interceptIdentityBinding(ctx);
+  if (binding.handled) {
+    // 沒有真的合併（代碼無效、同渠道衝突、只是索取代碼…）的新顧客仍要收到招呼語，
+    // 否則 isFirstContact 只有這一次，之後永遠收不到
+    if (binding.status !== 'bound') await sendFirstContactGreeting(ctx);
     return { conversation: ctx.conversation, message: ctx.message, duplicate: false };
   }
 
