@@ -12,7 +12,9 @@ import {
   getMergePreview,
   mergeContacts,
 } from './contact.service.js';
+import { listMergeLogs, revertMerge } from './contact-merge.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 import { success, paginated } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -40,6 +42,14 @@ const paginationQuerySchema = z.object({
 
 const addTagSchema = z.object({
   tagId: z.string().uuid(),
+});
+
+const mergeLogParamsSchema = z.object({
+  logId: z.string().uuid('合併紀錄 id 格式錯誤'),
+});
+
+const contactIdParamsSchema = z.object({
+  id: z.string().uuid('聯絡人 id 格式錯誤'),
 });
 
 const mergePreviewQuerySchema = z.object({
@@ -87,11 +97,18 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/contacts/merge
-  fastify.post('/merge', async (request, reply) => {
+  fastify.post('/merge', { preHandler: [requirePermission('contact.merge')] }, async (request, reply) => {
     const body = mergeBodySchema.parse(request.body);
 
     const result = await withTenant(fastify.prisma, request.agent.tenantId, (tx) =>
-      mergeContacts(tx, fastify.io, request.agent.tenantId, body.primaryContactId, body.secondaryContactId),
+      mergeContacts(
+        tx,
+        fastify.io,
+        request.agent.tenantId,
+        body.primaryContactId,
+        body.secondaryContactId,
+        request.agent.id,
+      ),
     );
 
     // 稽核：合併聯絡人（只放兩造 id，不放姓名/電話等 PII 明文）
@@ -106,6 +123,45 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     });
 
     return reply.send(success(result));
+  });
+
+  // POST /api/v1/contacts/merge-logs/:logId/revert — 解除一次合併（任何來源皆可）
+  fastify.post<{ Params: { logId: string } }>(
+    '/merge-logs/:logId/revert',
+    { preHandler: [requirePermission('contact.merge')] },
+    async (request, reply) => {
+      const { logId } = mergeLogParamsSchema.parse(request.params);
+      const tenantId = request.agent.tenantId;
+
+      const result = await withTenant(fastify.prisma, tenantId, (tx) =>
+        revertMerge(tx, { tenantId, mergeLogId: logId, revertedBy: request.agent.id }),
+      );
+
+      fastify.io.to(`tenant:${tenantId}`).emit('contact.merge_reverted', {
+        mergeLogId: logId,
+        survivorId: result.holderId,
+        restoredContactId: result.restoredContactId,
+      });
+
+      await writeTenantAudit(request.tenantPrisma, {
+        tenantId,
+        actorId: request.agent.id,
+        action: 'contact.merge_revert',
+        targetType: 'contact',
+        targetId: result.restoredContactId,
+        payload: { mergeLogId: logId, survivorId: result.survivorId, source: result.source },
+        ip: request.ip,
+      });
+
+      return reply.send(success(result));
+    },
+  );
+
+  // GET /api/v1/contacts/:id/merge-logs — 此聯絡人相關的合併紀錄（新到舊）
+  fastify.get<{ Params: { id: string } }>('/:id/merge-logs', async (request, reply) => {
+    const { id } = contactIdParamsSchema.parse(request.params);
+    const logs = await listMergeLogs(request.tenantPrisma, request.agent.tenantId, id);
+    return reply.send(success(logs));
   });
 
   // GET /api/v1/contacts/:id

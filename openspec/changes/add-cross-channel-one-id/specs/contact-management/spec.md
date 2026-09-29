@@ -26,18 +26,22 @@ The system SHALL merge two contact records through a single merge engine used by
 ## ADDED Requirements
 
 ### Requirement: Merge Reversal
-The system SHALL allow a user with `contact.update` permission to revert any non-reverted merge log entry. Reversal SHALL un-archive the merged contact and move back the channel identities, conversations, cases, portal submissions, point transactions and identity map entries recorded in the log that still point to the survivor. Tags and attributes SHALL NOT be taken back. The log SHALL record `revertedAt` and `revertedBy`.
+The system SHALL allow a user with `contact.merge` permission to revert any non-reverted merge log entry. Reversal SHALL un-archive the merged contact and move back the channel identities, conversations, cases, portal submissions, point transactions and identity map entries recorded in the log that still point to the survivor. Tags and attributes SHALL NOT be taken back. The log SHALL record `revertedAt` and `revertedBy`.
 
 #### Scenario: Agent reverts a binding
 - **WHEN** an agent reverts the merge log that bound a LINE identity into a FB contact
 - **THEN** the LINE contact SHALL be restored as an active separate contact with its LINE identity and the conversations recorded in the log
+
+#### Scenario: Revert without permission
+- **WHEN** a user whose role lacks `contact.merge` calls the revert endpoint
+- **THEN** the system SHALL respond 403 and change nothing
 
 #### Scenario: Already reverted
 - **WHEN** a merge log that is already reverted is reverted again
 - **THEN** the system SHALL reject the request and change nothing
 
 ### Requirement: Contact Merge History Display
-The contact detail page SHALL list the contact's merge history (source, time, actor, merged contact's channel identities) and show a revert action for each non-reverted entry to users with `contact.update` permission.
+The contact detail page SHALL list the contact's merge history (source, time, actor, merged contact's channel identities) and show a revert action for each non-reverted entry to users with `contact.merge` permission.
 
 #### Scenario: Viewing merge history
 - **WHEN** an agent opens a contact that was bound via binding code

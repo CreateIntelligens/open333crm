@@ -173,12 +173,14 @@ enum StitchSource {
   EMAIL_MATCH
   MANUAL
   OTP_VERIFIED
+  BINDING_CODE
 }
 
 enum SuggestionStatus {
   PENDING
   APPROVED
   REJECTED
+  SUPERSEDED
 }
 
 // ─────────────────────────────────────────────
@@ -220,6 +222,7 @@ model Tenant {
   flowExecutions          FlowExecution[]
   identityMaps            IdentityMap[]
   mergeSuggestions        MergeSuggestion[]
+  contactMergeLogs        ContactMergeLog[]
   notifications           Notification[]
   dailyStats              DailyStat[]
   tenantSettings          TenantSettings?
@@ -1697,6 +1700,29 @@ model IdentityMap {
   @@unique([tenantId, channelType, uid])
   @@index([contactId])
   @@map("identity_maps")
+}
+
+/// 聯絡人合併紀錄：所有合併路徑（手動／建議／LINE Login／FB Login／綁定代碼）都寫一筆，
+/// movedRecords 記錄當次搬移的各表 id，供稽核與解除合併（revert）使用。
+model ContactMergeLog {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  survivorId   String    @db.Uuid
+  mergedId     String    @db.Uuid
+  /// MANUAL | SUGGESTION | LINE_LOGIN | FB_LOGIN | BINDING_CODE
+  source       String
+  actorAgentId String?   @db.Uuid
+  movedRecords Json
+  revertedAt   DateTime?
+  /// agentId，或顧客自助解除時為 'customer'
+  revertedBy   String?
+  createdAt    DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, survivorId])
+  @@index([tenantId, mergedId])
+  @@map("contact_merge_logs")
 }
 
 model MergeSuggestion {

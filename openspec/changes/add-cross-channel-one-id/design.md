@@ -84,7 +84,7 @@ mergeContacts(tx: TenantTx, input: {
 | ContactTag（唯一 `[contactId,tagId]`） | survivor 沒有的才搬，重複的刪 |
 | ContactAttribute（唯一 `[contactId,key]`） | survivor 沒有的 key 才搬，**衝突時 survivor 優先** |
 | ContactRelation | 兩端改指 survivor，刪除因此產生的自我關聯與重複 |
-| BroadcastRecipient（唯一 `[broadcastId,contactId]`） | 同 tag 規則 |
+| BroadcastRecipient（唯一 `[broadcastId,contactId]`） | survivor 沒收過的才搬；雙方都收過的**留在原處不刪**（刪了會讓廣播送達統計少算） |
 | ClickLog、FlowExecution、KbArticleFeedback | `updateMany`（無 FK，純欄位） |
 | MergeSuggestion 涉及 merged 的 PENDING 建議 | 標為 `SUPERSEDED` |
 | DataErasureRequest | 不動（稽核性質） |
@@ -148,7 +148,7 @@ model ContactMergeLog {
 
 ### D8 解除綁定
 - **顧客端**：綁定後 7 天內，在任一邊對話回覆解除關鍵字（`identityBinding.unbindKeywords`，預設 `["解除綁定"]`）→ 撤銷最近一筆 `source=BINDING_CODE` 且未撤銷、涉及該顧客當前身分的 `ContactMergeLog`。超過 7 天回覆「請聯繫客服協助解除」，改由客服處理（避免久遠的合併被一句話拆掉，後續資料已混在一起）。
-- **客服端**：聯絡人頁的合併紀錄可逐筆「解除」（需 `contact.update`，任何 source 皆可）。
+- **客服端**：聯絡人頁的合併紀錄可逐筆「解除」（需 `contact.merge`，任何 source 皆可）。既有 `POST /contacts/merge` 一併補上 `contact.merge` 守門（原本只驗登入；三個預設角色皆有此權限，不影響既有帳號）。
 
 撤銷流程：將 merged 聯絡人取消封存，把 `movedRecords` 中仍指向 survivor 的 ChannelIdentity、Conversation、Case、PortalSubmission、PointTransaction、IdentityMap 搬回；tag/attribute **不回收**（無法判斷合併後是誰加的）；記 `revertedAt/revertedBy`；雙邊送出已解除訊息。
 合併後才新建的資料（新對話、新案件）留在 survivor——會落在 `movedRecords` 以外，不追蹤。

@@ -1,6 +1,7 @@
 import { randomBytes, createHmac } from 'node:crypto';
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { getConfig } from '../../config/env.js';
+import { mergeContacts } from '../contact/contact-merge.service.js';
 
 // In-memory state store with TTL (10 minutes)
 const stateStore = new Map<string, { psid: string; channelId: string; expiresAt: number }>();
@@ -131,22 +132,25 @@ export async function updateContactEmail(
       where: {
         tenantId: identity.channel.tenantId,
         email,
+        isArchived: false,
       },
       select: { id: true },
     });
 
     if (!existing || existing.id === identity.contactId) {
       await tx.contact.update({
-        where: { id: identity.contactId },
+        where: { id: identity.contactId, tenantId: identity.channel.tenantId },
         data: { email },
       });
       return identity.contactId;
     }
 
-    await mergeContactIntoTarget(tx, identity.contactId, existing.id, email);
-    await tx.channelIdentity.update({
-      where: { id: identity.id },
-      data: { contactId: existing.id },
+    // 已有同 email 的聯絡人 → 併入該聯絡人（統一合併引擎：搬移全部關聯資料、封存不硬刪）
+    await mergeContacts(tx, {
+      tenantId: identity.channel.tenantId,
+      survivorId: existing.id,
+      mergedId: identity.contactId,
+      source: 'FB_LOGIN',
     });
 
     return existing.id;
@@ -185,71 +189,5 @@ async function upsertIdentityMap(
       source: 'LIFF_COOKIE',
       mergedAt: new Date(),
     },
-  });
-}
-
-async function mergeContactIntoTarget(
-  tx: Prisma.TransactionClient,
-  sourceContactId: string,
-  targetContactId: string,
-  email: string,
-) {
-  await tx.conversation.updateMany({
-    where: { contactId: sourceContactId },
-    data: { contactId: targetContactId },
-  });
-
-  await tx.case.updateMany({
-    where: { contactId: sourceContactId },
-    data: { contactId: targetContactId },
-  });
-
-  await tx.longTermMemory.updateMany({
-    where: { contactId: sourceContactId },
-    data: { contactId: targetContactId },
-  });
-
-  await tx.identityMap.updateMany({
-    where: { contactId: sourceContactId },
-    data: { contactId: targetContactId },
-  });
-
-  const tags = await tx.contactTag.findMany({ where: { contactId: sourceContactId } });
-  for (const tag of tags) {
-    await tx.contactTag.upsert({
-      where: { contactId_tagId: { contactId: targetContactId, tagId: tag.tagId } },
-      create: {
-        contactId: targetContactId,
-        tagId: tag.tagId,
-        addedBy: tag.addedBy,
-        addedById: tag.addedById,
-        addedAt: tag.addedAt,
-        expiresAt: tag.expiresAt,
-      },
-      update: {},
-    });
-  }
-
-  const attributes = await tx.contactAttribute.findMany({ where: { contactId: sourceContactId } });
-  for (const attribute of attributes) {
-    await tx.contactAttribute.upsert({
-      where: { contactId_key: { contactId: targetContactId, key: attribute.key } },
-      create: {
-        contactId: targetContactId,
-        key: attribute.key,
-        value: attribute.value,
-        dataType: attribute.dataType,
-      },
-      update: {},
-    });
-  }
-
-  await tx.contact.update({
-    where: { id: targetContactId },
-    data: { email },
-  });
-
-  await tx.contact.delete({
-    where: { id: sourceContactId },
   });
 }

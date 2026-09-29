@@ -7,26 +7,26 @@
 
 ## 1. P0：移除 fan/auth 漏洞
 
-- [ ] 1.1 刪除 `apps/api/src/modules/portal/portal-public.routes.ts` 的 `POST /auth` 路由，再次 grep 確認無呼叫者（含 e2e 測試）
-- [ ] 1.2 更新 `apps/web/tests/e2e-uat/WAVE6-FIX-PLAN.md` 相關段落為已修復
+- [x] 1.1 刪除 `apps/api/src/modules/portal/portal-public.routes.ts` 的 `POST /auth` 路由，再次 grep 確認無呼叫者（含 e2e 測試）
+- [x] 1.2 更新 `apps/web/tests/e2e-uat/WAVE6-FIX-PLAN.md` 相關段落為已修復
 
 ## 2. P0：資料庫 migration
 
-- [ ] 2.1 schema 新增 `ContactMergeLog`；`StitchSource` 加 `BINDING_CODE`；`SuggestionStatus` 加 `SUPERSEDED`
-- [ ] 2.2 產生正式 migration SQL（`pnpm db:migrate -- --name add_contact_merge_log`），含 `ContactMergeLog` 的 ENABLE/FORCE RLS、`tenant_isolation` policy 與 `app_tenant` grant（照 `postgres-rls-tenant-isolation` skill）
-- [ ] 2.3 `rls-isolation.test.ts` 加入 `contact_merge_logs` 的跨租戶隔離案例
+- [x] 2.1 schema 新增 `ContactMergeLog`；`StitchSource` 加 `BINDING_CODE`；`SuggestionStatus` 加 `SUPERSEDED`
+- [x] 2.2 產生正式 migration SQL（`pnpm db:migrate -- --name add_contact_merge_log`），含 `ContactMergeLog` 的 ENABLE/FORCE RLS、`tenant_isolation` policy 與 `app_tenant` grant（照 `postgres-rls-tenant-isolation` skill）
+- [x] 2.3 `rls-isolation.test.ts` 加入 `contact_merge_logs` 的跨租戶隔離案例
 
 ## 3. P0：統一合併引擎
 
-- [ ] 3.1 新增 `apps/api/src/modules/contact/contact-merge.service.ts` 的 `mergeContacts(tx, input)`：租戶/封存/同筆檢查、D5 搬移清單、survivor 補空欄、寫 `ContactMergeLog.movedRecords`
-- [ ] 3.2 同檔新增 `revertMerge(tx, { tenantId, mergeLogId, revertedBy })`：取消封存、依 movedRecords 搬回、tag/attribute 不回收、重複撤銷拒絕
-- [ ] 3.3 `contact.service.mergeContacts` 改為呼叫新引擎（source `MANUAL`），保留原 API 契約與 `contact.merged` socket 事件
-- [ ] 3.4 `approveMerge`（packages/core）改為只驗證建議（補 tenant 檢查）與更新狀態；identity suggestions 路由在同一 `withTenant` 交易內呼叫新引擎（source `SUGGESTION`）
-- [ ] 3.5 刪除 `line-login.service.ts`、`fb-login.service.ts` 的 `mergeContactIntoTarget`，改呼叫新引擎（source `LINE_LOGIN` / `FB_LOGIN`）；確認 ChannelIdentity 更新不再因 cascade 失效
-- [ ] 3.6 刪除 `packages/core/src/contacts/contact-service.ts` 的死程式碼 `mergeContacts`（確認無呼叫者）
-- [ ] 3.7 新增合併紀錄 API：`GET /api/v1/contacts/:id/merge-logs`、`POST /api/v1/contacts/merge-logs/:logId/revert`（`contact.update`，Zod 驗證，AppError）
-- [ ] 3.8 測試 `contact-merge.test.ts`（fake prisma）：各表搬移、tag/attribute/broadcast 去重、survivor 優先、跨租戶拒絕、Restrict FK 表不失敗、SUPERSEDED、revert 與重複 revert；加入 `apps/api/package.json` script
-- [ ] 3.9 執行既有 `contact.service.test.ts` 等相關測試確認無回歸
+- [x] 3.1 新增 `apps/api/src/modules/contact/contact-merge.service.ts` 的 `mergeContacts(tx, input)`：租戶/封存/同筆檢查、D5 搬移清單、survivor 補空欄、寫 `ContactMergeLog.movedRecords`
+- [x] 3.2 同檔新增 `revertMerge(tx, { tenantId, mergeLogId, revertedBy })`：取消封存、依 movedRecords 搬回、tag/attribute 不回收、重複撤銷拒絕
+- [x] 3.3 `contact.service.mergeContacts` 改為呼叫新引擎（source `MANUAL`），保留原 API 契約與 `contact.merged` socket 事件
+- [x] 3.4 `approveMerge`（packages/core）改為只驗證建議（補 tenant 檢查）與更新狀態；identity suggestions 路由在同一 `withTenant` 交易內呼叫新引擎（source `SUGGESTION`）
+- [x] 3.5 刪除 `line-login.service.ts`、`fb-login.service.ts` 的 `mergeContactIntoTarget`，改呼叫新引擎（source `LINE_LOGIN` / `FB_LOGIN`）；確認 ChannelIdentity 更新不再因 cascade 失效
+- [x] 3.6 刪除 `packages/core/src/contacts/contact-service.ts` 的死程式碼 `mergeContacts`（確認無呼叫者）
+- [x] 3.7 新增合併紀錄 API：`GET /api/v1/contacts/:id/merge-logs`、`POST /api/v1/contacts/merge-logs/:logId/revert`（`contact.merge`，Zod 驗證，AppError）；既有 `POST /merge` 補 `contact.merge` 守門
+- [x] 3.8 測試 `contact-merge.test.ts`（fake prisma）：各表搬移、tag/attribute/broadcast 去重、survivor 優先、跨租戶拒絕、Restrict FK 表不失敗、SUPERSEDED、revert 與重複 revert；加入 `apps/api/package.json` script
+- [x] 3.9 執行既有 `contact.service.test.ts` 等相關測試確認無回歸
 
 ## 4. P1：渠道導流識別
 
