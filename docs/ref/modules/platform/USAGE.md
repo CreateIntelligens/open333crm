@@ -15,13 +15,13 @@
 | `GET /usage/tenants` | 各租戶排行，依 token 由多到少 | 只取前 50 名 |
 | `GET /usage/tenants/:tenantId` | 單一租戶的每日趨勢與各 feature 分佈 | 每日趨勢用 `$queryRaw` 的 `date_trunc`，Prisma 的 `groupBy` 不能截斷日期 |
 
-排行只有前 50 名，所以把排行的數字加起來不會等於總覽的數字。租戶數多於 50 時，差額落在沒進榜的那些租戶身上。
+排行只有前 50 名，所以把排行的數字加起來不會等於總覽的數字。租戶數多於 50 時，差額落在沒進榜的那些租戶身上。介面沒有標示這個上限，見 `../../system/AUDIT.md` 的 USAGE-01。
 
 ## 哪些呼叫不算
 
 這些查詢的 `where` 都有 `success: true`，**失敗的呼叫完全不計入，連呼叫次數也不算**。`totalCalls` 算的是成功次數，不是總嘗試次數。
 
-（`platform-usage.service.ts` 開頭的註解寫「失敗成本為 0，計入次數但不計 token/cost」。這句與實作不符，以 `where` 為準。）
+（`platform-usage.service.ts` 開頭的註解寫「失敗成本為 0，計入次數但不計 token/cost」。這句與實作不符，以 `where` 為準。`/admin/usage` 的頁首與卡片副標寫的是「僅計成功呼叫」，與實作一致。）
 
 下面這些呼叫會進統計，但成本是 0：
 
@@ -33,6 +33,8 @@
 | provider 沒回傳用量 | 0，並標記 `usageMissing` | token 數也是 0，不是真實值 |
 
 **平台這些查詢都不看 `usageMissing`，也不分 `keySource`。** 看到的成本因此是「平台實際付的錢」的下限：BYOK 的呼叫與查無價目的呼叫都以 0 併進去，而它們的 token 數仍然計入總量。要分辨得自己查 `ai_usages`。
+
+因此「總 AI Token」與「總成本」兩張卡的母體不同，而介面只在成本那張標了「不含 BYOK」，見 `../../system/AUDIT.md` 的 USAGE-01。
 
 ## 成本怎麼算出來的
 
