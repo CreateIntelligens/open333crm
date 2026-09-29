@@ -2,6 +2,22 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-09-29]
+
+### Changed
+
+- **統一聯絡人合併引擎（跨渠道 One ID P0，change `add-cross-channel-one-id`）** — 原本有四套各自實作的合併邏輯（手動合併、合併建議核准、LINE Login、FB Login，外加一套無人呼叫的死程式碼），各漏搬不同資料。現收斂為單一 `contact-merge.service`：搬移所有帶 `contactId` 的表（渠道身分、對話、案件、長期記憶、活動報名、點數、身分對應、點擊紀錄、流程執行、KB 回饋、廣播收件），標籤／屬性／廣播收件依唯一鍵去重且 survivor 優先（標籤保留到期日），被合併方一律**封存不刪除**，並把搬移明細寫入新表 `contact_merge_logs`（含 RLS）。
+- **合併建議改為租戶隔離** — `packages/core` 的合併建議服務原本使用未綁租戶的全域 `prisma` 單例，且核准／拒絕時不檢查建議是否屬於操作者的租戶；改由呼叫端傳入 `withTenant` 執行器並檢查 `tenantId`，建議狀態與合併在同一交易內完成。
+
+### Added
+
+- **解除合併** — `POST /api/v1/contacts/merge-logs/:logId/revert` 依合併紀錄恢復被合併的聯絡人，並搬回當次移走的渠道身分、對話、案件、活動報名、點數與身分對應（標籤、屬性不回收）；`GET /api/v1/contacts/:id/merge-logs` 查詢合併紀錄。合併與解除皆以 `contact.merge` 權限守門（原 `POST /contacts/merge` 只驗登入；三個預設角色皆有此權限，既有帳號不受影響）。
+
+### Fixed
+
+- **移除 `POST /api/v1/fan/auth` 身分冒用漏洞** — 該端點憑任意 `{contactId, tenantId}` 即簽發顧客 token，不驗證呼叫者身分，任何人都能冒充任一顧客存取粉絲門戶。經查無任何呼叫者，直接移除。
+- **LINE／FB Login 合併失敗** — 舊實作硬刪來源聯絡人，遇到點數或活動報名紀錄（外鍵 RESTRICT）會整筆失敗，且串聯刪除會連帶刪掉其他渠道身分。改走統一合併引擎後改為封存，且不再比對到已封存的聯絡人。
+
 ## [2026-09-22]
 
 ### Added
