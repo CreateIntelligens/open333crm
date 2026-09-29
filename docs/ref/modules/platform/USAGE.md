@@ -5,9 +5,9 @@
 - **資料來源**：`apps/api/src/modules/platform/platform-usage.service.ts`、`apps/api/src/modules/ai/pricing.service.ts`、`llm.service.ts`
 - **核對日期**：2026-09-23
 
-## 三個查詢
+## 每個端點回傳什麼
 
-三個端點都查同一張 `ai_usages`，預設區間都是最近 30 天，由 query 的 `from` 與 `to` 覆寫。
+這些端點都查同一張 `ai_usages`，預設區間都是最近 30 天，由 query 的 `from` 與 `to` 覆寫。
 
 | 端點 | 回傳 | 限制 |
 | --- | --- | --- |
@@ -19,7 +19,7 @@
 
 ## 哪些呼叫不算
 
-三個查詢的 `where` 都有 `success: true`，**失敗的呼叫完全不計入，連呼叫次數也不算**。`totalCalls` 算的是成功次數，不是總嘗試次數。
+這些查詢的 `where` 都有 `success: true`，**失敗的呼叫完全不計入，連呼叫次數也不算**。`totalCalls` 算的是成功次數，不是總嘗試次數。
 
 （`platform-usage.service.ts` 開頭的註解寫「失敗成本為 0，計入次數但不計 token/cost」。這句與實作不符，以 `where` 為準。）
 
@@ -32,7 +32,7 @@
 | 查不到價目 | 0，並標記 `usageMissing` | `ModelPricing` 沒有這個 model 的價目，log 會留一則 warn |
 | provider 沒回傳用量 | 0，並標記 `usageMissing` | token 數也是 0，不是真實值 |
 
-**平台的三個查詢都不看 `usageMissing`，也不分 `keySource`。** 看到的成本因此是「平台實際付的錢」的下限：BYOK 的呼叫與查無價目的呼叫都以 0 併進去，而它們的 token 數仍然計入總量。要分辨得自己查 `ai_usages`。
+**平台這些查詢都不看 `usageMissing`，也不分 `keySource`。** 看到的成本因此是「平台實際付的錢」的下限：BYOK 的呼叫與查無價目的呼叫都以 0 併進去，而它們的 token 數仍然計入總量。要分辨得自己查 `ai_usages`。
 
 ## 成本怎麼算出來的
 
@@ -47,7 +47,7 @@
      ÷ 1,000,000
 ```
 
-三個細節：
+公式裡容易算錯的地方：
 
 - `cachedTokens` 是 `promptTokens` 的子集，要先扣掉才不會重複計價。
 - thinking token（`thoughtsTokens`）按 output 單價算，這是 Google 的計費規則。
