@@ -42,6 +42,7 @@ import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
+import { CONFIRM_KEYWORD } from "../identity-binding/binding-code.js";
 import { invalidateIdentityBindingSettings } from "../identity-binding/identity-binding.service.js";
 
 const dayScheduleSchema = z
@@ -83,6 +84,15 @@ const identityBindingSettingsSchema = z
     unbindKeywords: bindingKeywordsSchema,
   })
   .superRefine((data, ctx) => {
+    for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
+      if (list.some((k) => k === CONFIRM_KEYWORD)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: `「${CONFIRM_KEYWORD}」是顧客確認綁定用的回覆字，不可設為關鍵字`,
+        });
+      }
+    }
     const bind = new Set(data.bindKeywords.map((k) => k.toLowerCase()));
     if (data.unbindKeywords.some((k) => bind.has(k.toLowerCase()))) {
       ctx.addIssue({

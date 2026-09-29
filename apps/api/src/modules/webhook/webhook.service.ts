@@ -186,9 +186,9 @@ export async function processInboundMessage(
   // 不該先收到「歡迎加入」；命中時也不跑其他攔截與 AI／關鍵字／自動化。
   const binding = await interceptIdentityBinding(ctx);
   if (binding.handled) {
-    // 沒有真的合併（代碼無效、同渠道衝突、只是索取代碼…）的新顧客仍要收到招呼語，
-    // 否則 isFirstContact 只有這一次，之後永遠收不到
-    if (binding.status !== 'bound') await sendFirstContactGreeting(ctx);
+    // 沒有要合併（代碼無效、同渠道衝突、只是索取代碼…）的新顧客仍要收到招呼語，
+    // 否則 isFirstContact 只有這一次，之後永遠收不到。已合併或正在等確認合併的不送
+    if (binding.status !== 'bound' && binding.status !== 'pending_confirm') await sendFirstContactGreeting(ctx);
     return { conversation: ctx.conversation, message: ctx.message, duplicate: false };
   }
 

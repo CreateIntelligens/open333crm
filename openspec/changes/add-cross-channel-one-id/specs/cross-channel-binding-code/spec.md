@@ -48,11 +48,23 @@
 - **WHEN** 同一代碼幾乎同時從兩個渠道送出
 - **THEN** 系統 SHALL 只讓其中一次兌換成功
 
-### Requirement: 在其他渠道兌換代碼即合併聯絡人
-系統 SHALL 在 LINE 文字訊息中搜尋綁定代碼（不要求整句相符、不分大小寫），並接受 FB/IG referral 事件的 `ref` 作為代碼；兌換成功時 SHALL 將兌換方聯絡人合併進發碼方聯絡人（發碼方為 survivor），並在 `IdentityMap` 以來源 `BINDING_CODE`、信心值 1.0 記錄兌換方身分。
+### Requirement: 在其他渠道兌換代碼並經確認後合併聯絡人
+系統 SHALL 在文字訊息中搜尋綁定代碼（不要求整句相符、不分大小寫），並接受 FB/IG referral 的 `ref` 作為代碼。代碼有效時系統 SHALL **先不合併**，而是回覆一則確認訊息（顯示要綁定的對方渠道與帳號名稱），並保留待確認狀態 10 分鐘；兌換方回覆「確認綁定」且重新檢查通過後，系統 SHALL 將兌換方聯絡人合併進發碼方聯絡人（發碼方為 survivor），並在 `IdentityMap` 以來源 `BINDING_CODE`、信心值 1.0 記錄兌換方身分。此確認步驟用於防止連結被轉傳時，點擊者在不知情下被併入他人。
+
+#### Scenario: 送出代碼只進入待確認
+- **WHEN** 顧客在 LINE 送出有效代碼
+- **THEN** 系統 SHALL 回覆顯示對方帳號名稱的確認訊息，且此時 SHALL NOT 合併任何聯絡人
+
+#### Scenario: 被轉傳連結的人不確認
+- **WHEN** 他人點開轉傳的綁定連結但未在 10 分鐘內回覆「確認綁定」
+- **THEN** 系統 SHALL NOT 合併，之後回覆「確認綁定」時 SHALL 提示沒有待確認的綁定
+
+#### Scenario: 確認時重新檢查
+- **WHEN** 待確認期間發碼方已在兌換方的渠道有另一個身分
+- **THEN** 顧客回覆「確認綁定」時系統 SHALL 拒絕合併
 
 #### Scenario: LINE 預填訊息兌換
-- **WHEN** 顧客從 FB 取得的連結開啟 LINE，送出預填的「我要綁定帳號，代碼 BIND-7K2M9QH4TX（請直接送出）」
+- **WHEN** 顧客從 FB 取得的連結開啟 LINE，送出預填的「我要綁定帳號，代碼 BIND-7K2M9QH4TX（請直接送出）」並回覆「確認綁定」
 - **THEN** 系統 SHALL 將該 LINE 身分所屬聯絡人併入 FB 端聯絡人，兩個渠道身分都掛在同一聯絡人下
 
 #### Scenario: 顧客改動預填文字
@@ -60,8 +72,8 @@
 - **THEN** 系統 SHALL 仍正確兌換代碼
 
 #### Scenario: FB referral 兌換
-- **WHEN** 顧客點 `https://m.me/{粉專}?ref=BIND-7K2M9QH4TX`，FB 送來帶該 ref 的 referral 事件
-- **THEN** 系統 SHALL 以該 ref 兌換並合併
+- **WHEN** 顧客點 `https://m.me/{粉專}?ref=BIND-7K2M9QH4TX`，FB 送來帶該 ref 的 referral 事件，顧客再回覆「確認綁定」
+- **THEN** 系統 SHALL 以該 ref 兌換並在確認後合併
 
 #### Scenario: 在同一身分兌換
 - **WHEN** 代碼從發碼的同一個渠道身分送回
@@ -95,7 +107,7 @@
 合併成功後，系統 SHALL 在發碼方與兌換方兩邊的對話各送出確認訊息，內容 SHALL 包含「若非本人操作請回覆『解除綁定』」；送出失敗時 SHALL 在該對話寫入客服可見的系統訊息，不得只寫 log。
 
 #### Scenario: 雙邊確認
-- **WHEN** 顧客在 LINE 兌換 FB 發出的代碼成功
+- **WHEN** 顧客在 LINE 兌換 FB 發出的代碼並確認成功
 - **THEN** LINE 與 FB 兩邊對話 SHALL 各收到一則綁定成功訊息
 
 #### Scenario: 一邊送出失敗

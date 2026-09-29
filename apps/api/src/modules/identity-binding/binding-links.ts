@@ -123,6 +123,9 @@ export const BINDING_TEXT = {
   alreadyBound: '這兩個帳號已經完成綁定了。',
   channelConflict: '無法綁定：同一個渠道只能綁定一個帳號。若這不是您本人的帳號，請不要使用別人轉傳的代碼。',
   unbindExpired: '綁定已超過 7 天，無法自行解除，請聯繫客服協助。',
+  confirmPrompt: (otherLabel: string, otherName: string, confirmKeyword: string, minutes: number) =>
+    `您正在把這個帳號與 ${otherLabel} 帳號「${otherName}」綁定，綁定後兩邊的對話紀錄、點數會合併在一起。\n\n確定是您本人的帳號，請於 ${minutes} 分鐘內回覆「${confirmKeyword}」。\n如果不是您本人申請的，請不要回覆，也不要把代碼或連結轉給別人。`,
+  noPending: '目前沒有待確認的綁定，可能已超過時間。請回到原本的對話重新取得代碼。',
   bound: (otherLabel: string, unbindKeyword: string) =>
     `已完成帳號綁定：此帳號已與您的 ${otherLabel} 帳號合併為同一位顧客。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
   unbound: '已解除帳號綁定，兩個帳號恢復為各自獨立。',

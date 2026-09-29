@@ -15,6 +15,11 @@ export const MAX_ISSUES_PER_HOUR = 5;
 export const MAX_FAILURES_PER_HOUR = 10;
 export const RATE_WINDOW_MS = 60 * 60 * 1000;
 
+/** 兌換後等待顧客確認的時間（design D7：兌換方須明確確認才合併，防止轉傳連結被冒用） */
+export const PENDING_CONFIRM_TTL_MS = 10 * 60 * 1000;
+/** 確認綁定的固定回覆字（不開放租戶自訂，避免與綁定／解除關鍵字衝突） */
+export const CONFIRM_KEYWORD = '確認綁定';
+
 export const DEFAULT_BIND_KEYWORDS = ['綁定帳號'];
 export const DEFAULT_UNBIND_KEYWORDS = ['解除綁定'];
 
@@ -62,6 +67,8 @@ export interface BindingCodePayload {
 
 // key 帶 tenantId：他租戶收到的代碼根本查不到，不會誤耗掉原租戶的代碼，也不洩漏代碼是否存在
 export const codeKey = (tenantId: string, code: string) => `bindcode:${tenantId}:${code}`;
+export const pendingConfirmKey = (tenantId: string, channelIdentityId: string) =>
+  `bindcode:pending:${tenantId}:${channelIdentityId}`;
 export const issueCounterKey = (channelIdentityId: string) => `bindcode:issue:${channelIdentityId}`;
 export const failCounterKey = (channelIdentityId: string) => `bindcode:fail:${channelIdentityId}`;
 

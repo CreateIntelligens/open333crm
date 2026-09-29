@@ -16,6 +16,9 @@ import { mergeContacts, resolveMergeChain, revertMerge, type MovedRecords } from
 import { buildMessageNewPayload, emitToConversationAndTenant } from '../webhook/inbound-socket-presenter.js';
 import {
   BINDING_CODE_TTL_MS,
+  CONFIRM_KEYWORD,
+  PENDING_CONFIRM_TTL_MS,
+  pendingConfirmKey,
   MAX_FAILURES_PER_HOUR,
   MAX_ISSUES_PER_HOUR,
   SELF_UNBIND_WINDOW_MS,
@@ -194,6 +197,8 @@ export type RedeemResult =
   | { status: 'bound'; survivorId: string; mergedId: string; mergeLogId: string }
   | { status: 'invalid' }
   | { status: 'throttled' }
+  | { status: 'pending_confirm' }
+  | { status: 'no_pending' }
   | { status: 'same_identity' }
   | { status: 'channel_conflict' }
   | { status: 'already_bound' };
@@ -256,9 +261,58 @@ export async function redeemBindingCode(
     return { status: 'same_identity' };
   }
 
+  const check = await checkBindable(db, deps, actor, payload);
+  if (check.status === 'invalid') return fail();
+  if (check.status !== 'ok') {
+    if (check.status === 'channel_conflict') await putBack();
+    return { status: check.status };
+  }
+
+  // 不立即合併：先請兌換方確認。代碼即憑證，連結被轉給別人時點擊者會被靜默併入發碼者，
+  // 點數、AI 記憶、個資都歸對方；顯示對方帳號名稱並要求回覆確認字才合併（design D7）
+  const pendingKey = pendingConfirmKey(tenantId, actor.channelIdentityId);
+  await deps.store.getdel(pendingKey); // 同一身分又兌換了新代碼：以最新一次為準
+  await deps.store.set(pendingKey, raw, 'PX', PENDING_CONFIRM_TTL_MS, 'NX');
+  const issuer = await db.channelIdentity.findFirst({
+    where: { id: payload.channelIdentityId },
+    select: { profileName: true, channelType: true, contact: { select: { displayName: true } } },
+  });
+  await sendBindingMessage(
+    db,
+    deps,
+    tenantId,
+    actor.conversationId,
+    BINDING_TEXT.confirmPrompt(
+      channelLabel(issuer?.channelType ?? ''),
+      issuer?.profileName || issuer?.contact.displayName || '未命名',
+      CONFIRM_KEYWORD,
+      Math.round(PENDING_CONFIRM_TTL_MS / 60000),
+    ),
+    'confirm_prompt',
+  );
+  return { status: 'pending_confirm' };
+}
+
+type BindableCheck =
+  | { status: 'ok'; survivorId: string; redeemerId: string }
+  | { status: 'invalid' }
+  | { status: 'already_bound' }
+  | { status: 'channel_conflict' };
+
+/**
+ * 合併前的檢查（兌換時與確認時各做一次：兩者之間狀態可能已改變）。
+ * 不通過時已回覆顧客（invalid 除外，交給呼叫端決定是否計入失敗次數）。
+ */
+async function checkBindable(
+  db: TenantDb,
+  deps: BindingDeps,
+  actor: BindingActor,
+  payload: BindingCodePayload,
+): Promise<BindableCheck> {
+  const { tenantId } = actor;
   const survivorId = await resolveLiveContactId(db, tenantId, payload.contactId);
   const redeemerId = await resolveLiveContactId(db, tenantId, actor.contactId);
-  if (!survivorId || !redeemerId) return fail();
+  if (!survivorId || !redeemerId) return { status: 'invalid' };
 
   if (survivorId === redeemerId) {
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.alreadyBound, 'already_bound');
@@ -273,11 +327,37 @@ export async function redeemBindingCode(
   ]);
   const occupied = new Set(survivorChannels.map((c) => c.channelId));
   if (redeemerChannels.some((c) => occupied.has(c.channelId))) {
-    await putBack();
     logger.warn('[IdentityBinding] 雙方在同一渠道都有帳號，拒絕合併', { tenantId, survivorId, redeemerId });
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.channelConflict, 'channel_conflict');
     return { status: 'channel_conflict' };
   }
+  return { status: 'ok', survivorId, redeemerId };
+}
+
+/**
+ * 兌換方回覆確認字後才真正合併。
+ */
+export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: BindingActor): Promise<RedeemResult> {
+  const { tenantId } = actor;
+  const raw = await deps.store.getdel(pendingConfirmKey(tenantId, actor.channelIdentityId));
+  let payload: BindingCodePayload | null = null;
+  try {
+    payload = raw ? (JSON.parse(raw) as BindingCodePayload) : null;
+  } catch {
+    payload = null;
+  }
+  if (!payload || payload.tenantId !== tenantId) {
+    await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.noPending, 'no_pending');
+    return { status: 'no_pending' };
+  }
+
+  const check = await checkBindable(db, deps, actor, payload);
+  if (check.status === 'invalid') {
+    await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.invalid, 'invalid');
+    return { status: 'invalid' };
+  }
+  if (check.status !== 'ok') return { status: check.status };
+  const { survivorId, redeemerId } = check;
 
   const merge = await inTransaction(db, async (tx) => {
     const result = await mergeContacts(tx, {
@@ -422,6 +502,7 @@ export async function unbindByCustomer(db: TenantDb, deps: BindingDeps, actor: B
 
 export type BindingIntent =
   | { kind: 'redeem'; code: string }
+  | { kind: 'confirm' }
   | { kind: 'issue' }
   | { kind: 'unbind' };
 
@@ -445,6 +526,7 @@ export async function detectBindingIntent(
   if (input.code) return { kind: 'redeem', code: input.code };
 
   if (matchesKeyword(input.text, settings.bindKeywords)) return { kind: 'issue' };
+  if (matchesKeyword(input.text, [CONFIRM_KEYWORD])) return { kind: 'confirm' };
   if (matchesKeyword(input.text, settings.unbindKeywords)) {
     const channelIdentityId = await input.getChannelIdentityId();
     if (!channelIdentityId) return null;
@@ -462,6 +544,7 @@ export async function executeBindingIntent(
   intent: BindingIntent,
 ): Promise<string> {
   if (intent.kind === 'redeem') return (await redeemBindingCode(db, deps, actor, intent.code)).status;
+  if (intent.kind === 'confirm') return (await confirmBinding(db, deps, actor)).status;
   if (intent.kind === 'issue') return (await issueBindingCode(db, deps, actor)).status;
   return (await unbindByCustomer(db, deps, actor)).status;
 }

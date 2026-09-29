@@ -140,12 +140,15 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
     },
   ],
   [
-    '啟用：新 LINE 好友送出預填代碼 → 併入 A、不送招呼語、不發 message.received',
+    '啟用：新 LINE 好友送出預填代碼並回覆確認 → 併入 A、不送招呼語、不發 message.received',
     true,
     async (env) => {
       const code = await codeFromA(env);
       const lineUid = `new-line-${seq++}`;
       await run(env, env.line, inbound(lineUid, linePrefillText(code)));
+      const pending = await env.tx.channelIdentity.findFirst({ where: { channelId: env.line.id, uid: lineUid } });
+      assert.notEqual(pending?.contactId, env.fbA.contactId, '送出代碼只會先請顧客確認，還不合併');
+      await run(env, env.line, inbound(lineUid, '確認綁定'));
 
       const identity = await env.tx.channelIdentity.findFirst({ where: { channelId: env.line.id, uid: lineUid } });
       assert.equal(identity?.contactId, env.fbA.contactId, 'LINE 身分併到 A');
@@ -185,7 +188,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
     },
   ],
   [
-    'FB referral 帶綁定代碼 → 合併、不落地空白訊息，平台重送不重複處理',
+    'FB referral 帶綁定代碼並確認 → 合併、不落地空白訊息，平台重送不重複處理',
     true,
     async (env) => {
       // 由 LINE 顧客 B 發碼，FB 新身分以 referral 兌換
@@ -214,11 +217,16 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       await run(env, env.fb, referral);
       // 平台重送同一 referral 事件：應被去重，不再回覆「代碼無效」
       await run(env, env.fb, { ...referral, timestamp: new Date() });
+      await run(env, env.fb, inbound(fbUid, '確認綁定'));
       const identity = await env.tx.channelIdentity.findFirst({ where: { channelId: env.fb.id, uid: fbUid } });
       assert.equal(identity?.contactId, b.id, 'FB 身分併到發碼的 B');
       const fbConv = await env.tx.conversation.findFirst({ where: { tenantId: T, channelId: env.fb.id, contactId: b.id } });
-      const inboundMsgs = await env.tx.message.count({ where: { conversationId: fbConv!.id, direction: 'INBOUND' } });
-      assert.equal(inboundMsgs, 0, 'referral 事件不落地成顧客訊息');
+      const inboundMsgs = await env.tx.message.findMany({ where: { conversationId: fbConv!.id, direction: 'INBOUND' } });
+      assert.deepEqual(
+        inboundMsgs.map((m) => (m.content as { text?: string }).text),
+        ['確認綁定'],
+        'referral 事件本身不落地成顧客訊息，只有顧客回覆的確認字',
+      );
       const replies = await env.tx.message.findMany({ where: { conversationId: fbConv!.id, senderType: 'BOT' } });
       const texts = replies.map((m) => (m.content as { text?: string }).text ?? '');
       assert.equal(texts.filter((t) => t.startsWith('已完成帳號綁定')).length, 1, '只綁定一次');
@@ -226,7 +234,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
     },
   ],
   [
-    'FB 新顧客按「開始使用」帶綁定代碼 → 合併；平台重送同一 postback 不回覆代碼無效',
+    'FB 新顧客按「開始使用」帶綁定代碼並確認 → 合併；平台重送同一 postback 不回覆代碼無效',
     true,
     async (env) => {
       const code = await codeFromA(env);
@@ -245,6 +253,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       } as ParsedWebhookMessage;
       await run(env, env.line, postback);
       await run(env, env.line, { ...postback, timestamp: new Date() });
+      await run(env, env.line, inbound(uid, '確認綁定'));
 
       const identity = await env.tx.channelIdentity.findFirst({ where: { channelId: env.line.id, uid } });
       assert.equal(identity?.contactId, env.fbA.contactId, '併入發碼的 A');

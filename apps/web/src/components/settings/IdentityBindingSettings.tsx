@@ -103,7 +103,7 @@ export function IdentityBindingSettings() {
         <h2 className="mb-2 text-lg font-semibold">跨渠道綁定</h2>
         <p className="text-sm text-muted-foreground">
           讓同一位顧客在 LINE、Facebook、Instagram 的帳號合併成同一位聯絡人。顧客在任一渠道傳送綁定關鍵字，
-          系統會回覆其他渠道的專屬連結與一次性代碼；顧客點連結到另一個渠道送出代碼後，兩個帳號即合併，
+          系統會回覆其他渠道的專屬連結與一次性代碼；顧客點連結到另一個渠道送出代碼，並回覆「確認綁定」後，兩個帳號即合併，
           對話紀錄、標籤、點數會集中在同一位聯絡人底下。
         </p>
       </div>

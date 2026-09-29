@@ -144,6 +144,8 @@ model ContactMergeLog {
 4. 兩個身分已屬於同一聯絡人 → 「已完成綁定」。
 5. 發碼方聯絡人已封存（中途被合併）→ 追 `mergedIntoId` 找到現存聯絡人再合併。
 
+**兌換方確認（第三輪 code review 後加入）**：以上檢查都通過後**不立即合併**，而是回覆確認訊息（顯示發碼方的渠道與帳號名稱），待確認狀態存 Redis `bindcode:pending:{tenantId}:{兌換方身分}` 10 分鐘；兌換方回覆固定確認字「確認綁定」後重新做一次檢查（期間狀態可能已變）才合併。理由：代碼即憑證，連結被轉傳時（例如攻擊者把自己的 ig.me 連結傳給他人），點擊者 ref 自動送達會被靜默併入發碼者，點數、AI 記憶、個資都歸對方；看到陌生帳號名稱並需主動回覆，能擋掉這種冒用。取捨：多一步操作。確認字不開放租戶自訂，且不可設為綁定／解除關鍵字。
+
 合併方向：**survivor = 發碼方聯絡人**，merged = 兌換方聯絡人。理由：發碼方是顧客主動發起綁定的那一端，通常是既有、資料較完整的一方；兌換方常常是剛因這則訊息被建立的新聯絡人。
 合併後：`IdentityMap` upsert 兌換方身分（source `BINDING_CODE`，confidence 1.0）；雙邊對話各送確認訊息（以 `deliverToChannel` 送，失敗寫系統訊息，不靜默）。為此 `deliverToChannel` 改為回傳是否成功（`Promise<boolean>`，原呼叫端忽略回傳值不受影響）。
 綁定相關訊息以 `senderType: 'BOT'` 寫入對話（收件匣以 Bot 泡泡呈現、保留換行，客服看得出顧客收到了什麼）；送出失敗時比照 worker `recordDeliveryFailure` 慣例，在該則訊息標 `metadata.deliveryFailed` + `deliveryError`，收件匣顯示紅色「沒有送出」提示。
