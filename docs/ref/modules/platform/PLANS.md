@@ -77,7 +77,17 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 第三條是刻意保留的相容狀態。`Tenant.planId` 可以是 `null`，schema 的註解寫明那代表「既有租戶為 null = 不設功能天花板、無數值上限」，指的是方案機制上線前就存在的租戶。建立租戶的路由要求 `planSlug`，所以新租戶不會落入這個狀態。
 
-第四條目前有一個實例：沒有任何方案定義 `maxChannels`，因此渠道數的檢查永遠跳過，詳見 `../../system/AUDIT.md` 的 PLAN-07。
+第四條目前有一個實例：沒有任何方案定義 `maxChannels`，因此渠道數的檢查永遠跳過。`allowedChannelTypes` 也沒有任何方案填過值，同樣不限制。渠道這個維度的兩個分級機制都沒有生效，詳見 `../../system/AUDIT.md` 的 PLAN-07。
+
+## 改了方案之後會發生什麼
+
+`updatePlan()` 寫入後，若 `features` 或 `permissionOverrides` 有變動，就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求即用新的天花板重算。沒有灰度，也沒有延遲。
+
+`limits` 與 `allowedChannelTypes` 不需要失效快取，因為兩者都不快取，每次都查資料庫。
+
+操作者在按下儲存之前，看不到這次改動影響幾個租戶；事後也查不到改動前的值。詳見 `../../system/AUDIT.md` 的 PLAN-09。
+
+租戶端不會知道天花板變了。角色與權限頁顯示的是資料庫的授予紀錄，不套天花板，因此被方案擋掉的權限在那一頁仍然顯示為已勾選，詳見 `../../system/AUDIT.md` 的 PLAN-08。
 
 ## 加購會改寫覆寫值
 

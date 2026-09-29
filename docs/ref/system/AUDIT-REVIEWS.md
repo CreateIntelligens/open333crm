@@ -4,6 +4,24 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：方案三個控制面的其餘部分，新增 PLAN-08 與 PLAN-09
+
+承上一則。上一輪只追了數值上限，這一輪補完方案的另外兩個控制面（功能天花板、渠道白名單），以及改方案這個操作本身。做法是靜態追路由、服務與前端頁面，沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| PLAN-08 | 比對 `getEffectivePermissions()` 與 `getEffectiveTenantPermissions()` 的呼叫端：guard 走後者，`setRolePermissions()` 的越權防護走前者；`GET /roles/matrix` 回整份註冊表；`seedRolesForTenant()` 給 admin 的是 `PERMISSIONS.map((p) => p.code)` |
+| PLAN-09 | `listPlans()` 沒有 `_count`；`RolePermissionMatrix.tsx` 與 `/admin/plans` 都沒有方案感知；`plan.update` 的稽核 payload 是請求主體 |
+
+PLAN-07 一併擴充：`seedPlans()` 的 `upsert` 沒有傳 `allowedChannelTypes`，五個方案都落在預設值 `[]`，而 `[]` 代表不限制。加上原本缺的 `maxChannels`，渠道這個維度的兩個分級機制都沒有方案填過值。
+
+本次確認無誤、不開項目的部分：
+
+- 所有 guard 路徑都用套過天花板的 `getEffectiveTenantPermissions()`：`rbac.guard.ts`、`socket-room-authorization.ts`、`channel-visibility.ts` 與 `/auth/me/permissions`。沒有漏走天花板的判斷點。
+- `features` 雖然不驗 slug（見[方案與功能](../modules/platform/PLANS.md)），但 `/admin/plans` 的功能清單是從 `GET /registry` 產生的勾選項，介面操作打不出不存在的 slug。風險只存在於直接呼叫 API。
+- `limits` 沒有任何快取，`getEffectiveLimit()` 每次都查資料庫，因此改上限不會有陳舊資料問題。
+- `permissionOverrides.deny` 在路由層驗過權限碼。資料庫裡若留著已下架的碼，`ceiling.delete()` 對不存在的碼是空操作，沒有後果。
+
 ## 2026-09-29：AI 月額度的寫入與判定路徑，新增三個方案項目
 
 起因是質疑加購直接改寫 `limitOverrides.monthlyTokens` 的做法。做法是靜態追完整條路徑：`plan-change.service.ts` 的核准、`plan-limits.service.ts` 的上限解析、`token-quota.service.ts` 的計數與告警、`llm.service.ts` 的硬擋點，以及 `limitOverrides` 的所有讀寫端。沒有啟動容器。

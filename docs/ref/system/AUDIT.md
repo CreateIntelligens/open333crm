@@ -41,7 +41,9 @@
 | PLAN-04 | 試用與方案 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
 | PLAN-05 | 試用與方案 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
 | PLAN-06 | 試用與方案 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
-| PLAN-07 | 試用與方案 | 沒有任何方案定義 `maxChannels`，渠道數上限的檢查永遠不會觸發 | 靜態確認 |
+| PLAN-07 | 試用與方案 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
+| PLAN-08 | 試用與方案 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
+| PLAN-09 | 試用與方案 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -403,7 +405,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 租戶也無法自己查。`getEffectiveLimit()` 的呼叫端都在伺服器端做判斷，沒有任何路由把上限或已用量回傳給租戶端；租戶側的 `/api/v1/plan-change` 只能列出自己的申請與發起新申請。這兩個門檻的告警是租戶唯一的資訊來源。
 
-### PLAN-07：沒有任何方案定義 `maxChannels`
+### PLAN-07：渠道的兩個分級欄位都沒有方案填過值
 
 `resolveEffectiveLimit()` 在方案的 `limits` 沒有某個 key 時回傳 `null`，而 `null` 代表無上限。缺少設定的結果是完全不限制。
 
@@ -421,6 +423,57 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 `/admin/plans` 的欄位清單（`apps/web/src/app/admin/plans/page.tsx` 的 `LIMIT_KEYS`）列出全部四項，`maxChannels` 顯示為空白。平台後台看不出「空白」在這裡代表方案從未定義這個 key，也就是無上限。
 
 `updatePlanSchema` 的 `limits` 是 `z.record(...)`，沒有 key 白名單，也沒有必填項。送 `{}` 會通過驗證，該方案所有租戶的四項上限同時變成無上限。平台後台的頁面每次送出都帶完整的 `limits` 物件，因此從介面操作不會漏 key；直接呼叫 API 則會。
+
+另一半是 `allowedChannelTypes`。`seedPlans()` 的 `upsert` 沒有傳這個欄位，因此五個方案都落在 schema 的預設值 `[]`，而 `[]` 的語意是不限制。`channel.service.ts:108` 的白名單檢查只在陣列非空時才比對，所以也永遠跳過。
+
+兩者相加的結果是渠道這個維度完全沒有分級：
+
+| | `light` | `enterprise` |
+| --- | --- | --- |
+| 渠道數上限 | 無上限 | 無上限 |
+| 可建立的渠道類型 | 全部 | 全部 |
+
+兩個機制的檢查程式碼都完整，缺的是方案資料。`/admin/plans` 兩個欄位都編輯得到，補上值就會生效。
+
+### PLAN-08：角色權限的顯示與儲存都不套方案天花板
+
+租戶側「角色與權限」頁的勾選狀態來自資料庫的授予紀錄，與方案天花板無關。三個端點都不套天花板：
+
+| 端點 | 回傳或寫入 | 是否套天花板 |
+| --- | --- | --- |
+| `GET /roles/matrix` | `getPermissionMatrix()`，整份權限註冊表 | 否 |
+| `GET /roles/:id/permissions` | `role_permissions` 的原始列 | 否 |
+| `PUT /roles/:id/permissions` | `setRolePermissions()` 的四道驗證 | 否 |
+
+`setRolePermissions()` 驗依賴前置、越權、admin 核心鎖定與防自鎖。其中的越權防護讀 `getEffectivePermissions()`（角色原始權限），不是 `getEffectiveTenantPermissions()`（套過天花板的那一個）。因此租戶可以勾選方案不含的權限，儲存會成功，資料庫也會留下該筆授予。
+
+這不是邊界情境。`seedRolesForTenant()` 給每個新租戶的 admin 角色種入 `DEFAULT_ROLE_PERMISSIONS.admin`，其值是 `PERMISSIONS.map((p) => p.code)`，也就是註冊表的全部權限碼，過程完全不看方案。以 seed 的 `light` 方案為例，它的 `features` 只有 `inbox` 與 `core`，`FEATURES` 的其餘六項都不在天花板內。
+
+於是同一個權限在三個地方呈現三種狀態：
+
+| 位置 | 讀的是什麼 | 顯示結果 |
+| --- | --- | --- |
+| 角色與權限頁 | `role_permissions` | 已勾選 |
+| 側邊欄 | `/auth/me/permissions`（套過天花板） | 該選單不出現 |
+| 直接開該路由 | `requirePermission()`（套過天花板） | 403 |
+
+三處沒有任何一處說明原因。`403` 的訊息與權限不足時相同，看不出是方案不含這個功能。管理員看到角色頁上打勾，會判斷成系統故障。
+
+PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相反：天花板確實生效，但沒有任何介面反映它的存在。
+
+### PLAN-09：改方案立即影響全體租戶，介面不顯示影響範圍
+
+`updatePlan()` 寫入後，`features` 或 `permissionOverrides` 有變動就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求就會用新的天花板重算，沒有灰度，也沒有延遲。`/admin/plans` 的提示文字有寫「該方案所有租戶即時生效」。
+
+缺的是操作者判斷影響範圍所需的資訊：
+
+- **看不到租戶數。** `listPlans()` 只做 `plan.findMany()`，沒有帶 `_count`，頁面也沒有顯示這個方案目前有幾個租戶。
+- **沒有預覽與二次確認。** 取消勾選一個 feature 之後直接儲存即生效。
+- **稽核不記舊值。** `plan.update` 的 payload 是送出的請求主體，只有新值。事後查不出改動前是什麼，也無法據以還原。
+
+因此把 `professional` 的 `analytics` 取消勾選，所有 professional 租戶下一次請求就失去報表相關權限，而操作者在按下儲存之前不知道這影響幾個租戶，事後也沒有紀錄可以還原。
+
+租戶端的感受見 PLAN-08：權限消失時，角色頁上那些權限仍然顯示為已勾選。
 
 ## 授權與安全
 
