@@ -11,16 +11,16 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **跨渠道綁定（One ID）** — 同一位顧客在 LINE、Facebook、Instagram 的帳號可合併為同一位聯絡人，**不需要客戶自有會員庫、不收個資、不需簡訊**。顧客在任一渠道傳送綁定關鍵字（預設「綁定帳號」，整句相符才觸發），系統回覆其他渠道的導流連結與一次性代碼 `BIND-XXXXXXXXXX`（30 分鐘、單次有效）：LINE 為「加好友 → oaMessage 預填代碼」兩步、FB 為 `m.me/{粉專}?ref=`、IG 為 `ig.me/m/{帳號}?ref=`，並附純文字代碼作退路。顧客在另一渠道送回代碼即以統一合併引擎合併（發碼方為存續聯絡人），`IdentityMap` 記為 `BINDING_CODE`，雙邊對話各收到確認訊息；7 天內可回覆「解除綁定」自助解除。入站管線在首次招呼語與 AI／關鍵字／自動化**之前**攔截，命中時不觸發 Bot。發碼每小時 5 次、兌換失敗每小時 10 次後不再回覆。功能預設關閉，於「設定 → 跨渠道綁定」啟用（`GET/PUT /api/v1/settings/identity-binding`）。
+- **跨渠道綁定（One ID）** — 同一位顧客在 LINE、Facebook、Instagram 的帳號可合併為同一位聯絡人，**不需要客戶自有會員庫、不收個資、不需簡訊**。顧客在任一渠道傳送綁定關鍵字（預設「綁定帳號」，整句相符才觸發），系統回覆其他渠道的導流連結與一次性代碼 `BIND-XXXXXXXXXX`（30 分鐘、單次有效）：LINE 為「加好友 → oaMessage 預填代碼」兩步、FB 為 `m.me/{粉專}?ref=`、IG 為 `ig.me/m/{帳號}?ref=`，並附純文字代碼作退路。顧客在另一渠道送回代碼即以統一合併引擎合併（發碼方為存續聯絡人），`IdentityMap` 記為 `BINDING_CODE`，雙邊對話各收到確認訊息；7 天內可回覆「解除綁定」自助解除（只拆顧客目前所在渠道的那筆綁定）。**同一渠道只能綁一個帳號**：代碼被轉給同一個官方帳號的其他人、或合併後同一渠道會有兩個身分時一律拒絕，代碼放回給本人使用。FB/IG 重送同一 referral 事件會被去重。入站管線在首次招呼語與 AI／關鍵字／自動化**之前**攔截，命中時不觸發 Bot。發碼每小時 5 次、兌換失敗每小時 10 次後不再回覆。功能預設關閉，於「設定 → 跨渠道綁定」啟用（`GET/PUT /api/v1/settings/identity-binding`）。
 - **FB／IG referral 解析** — FB `messaging_referrals`（既有對話）、「開始使用」postback 與訊息夾帶的 referral，以及 IG `messaging_referral` 與新對話第一則訊息／Icebreaker 夾帶的 referral，都會帶出 `ref`（原本整批被丟棄）。非綁定代碼的 referral 只記錄、不落地成空白訊息。
-- **渠道導流識別** — 渠道驗證時自動存 LINE Basic ID、FB 粉專 username（無則 page ID）、IG username，並檢查 FB 是否設定「開始使用」按鈕；渠道編輯視窗可檢視與手動覆寫（`GET/PATCH /api/v1/channels/:id/binding-handle`，只更新這一欄）。附 `apps/api/src/scripts/backfill-binding-handles.ts` 為既有渠道補抓（預設 dry-run）。
+- **渠道導流識別** — 渠道其他設定視窗整包儲存 settings 時會保留導流識別與 FB 檢查結果，不會被舊快照洗掉。渠道驗證時自動存 LINE Basic ID、FB 粉專 username（無則 page ID）、IG username，並檢查 FB 是否設定「開始使用」按鈕；渠道編輯視窗可檢視與手動覆寫（`GET/PATCH /api/v1/channels/:id/binding-handle`，只更新這一欄）。附 `apps/api/src/scripts/backfill-binding-handles.ts` 為既有渠道補抓（預設 dry-run）。
 - **客服代發綁定連結** — 收件匣聯絡人面板新增「傳送跨渠道綁定連結」（`POST /api/v1/contacts/:id/binding-link`，需 `contact.update`）；聯絡人頁新增「合併紀錄」可逐筆解除。
-- **解除合併** — `POST /api/v1/contacts/merge-logs/:logId/revert` 依合併紀錄恢復被合併的聯絡人，並搬回當次移走的渠道身分、對話、案件、活動報名、點數與身分對應（標籤、屬性不回收）；`GET /api/v1/contacts/:id/merge-logs` 查詢合併紀錄。合併與解除皆以 `contact.merge` 權限守門（原 `POST /contacts/merge` 只驗登入；三個預設角色皆有此權限，既有帳號不受影響）。
+- **解除合併** — `POST /api/v1/contacts/merge-logs/:logId/revert` 依合併紀錄恢復被合併的聯絡人，並搬回當次移走的所有紀錄（含 AI 長期記憶）與合併後才在該渠道新開的對話與案件（標籤、屬性不回收）；`GET /api/v1/contacts/:id/merge-logs` 查詢合併紀錄。合併與解除皆以 `contact.merge` 權限守門（原 `POST /contacts/merge` 只驗登入；三個預設角色皆有此權限，既有帳號不受影響）。
 
 ### Fixed
 
 - **`inbound-message-refactor` 測試失效** — 測試的假 Prisma 缺 `message.findFirst`（channelMsgId 去重查詢後加的），整支測試在 main 上就已失敗、失去守門作用；補齊後恢復。
-- **移除 `POST /api/v1/fan/auth` 身分冒用漏洞** — 該端點憑任意 `{contactId, tenantId}` 即簽發顧客 token，不驗證呼叫者身分，任何人都能冒充任一顧客存取粉絲門戶。經查無任何呼叫者，直接移除。
+- **移除 `POST /api/v1/fan/auth` 身分冒用漏洞** — 該端點憑任意 `{contactId, tenantId}` 即簽發顧客 token，不驗證呼叫者身分，任何人都能冒充任一顧客存取粉絲門戶。經查無任何呼叫者，直接移除。⚠️ 移除後暫無簽發 fan token 的路徑，`/api/v1/fan/*` 受保護路由（活動、點數）暫不可用；目前無顧客端頁面使用，待優惠券分支的 Account Link 驗證或會員登入頁接上。
 - **LINE／FB Login 合併失敗** — 舊實作硬刪來源聯絡人，遇到點數或活動報名紀錄（外鍵 RESTRICT）會整筆失敗，且串聯刪除會連帶刪掉其他渠道身分。改走統一合併引擎後改為封存，且不再比對到已封存的聯絡人。
 
 ## [2026-09-22]

@@ -121,6 +121,7 @@ export const BINDING_TEXT = {
   invalid: '這組綁定代碼無效或已過期，請回到原本的對話重新取得。',
   sameIdentity: '請到「另一個」要綁定的帳號送出這組代碼。',
   alreadyBound: '這兩個帳號已經完成綁定了。',
+  channelConflict: '無法綁定：同一個渠道只能綁定一個帳號。若這不是您本人的帳號，請不要使用別人轉傳的代碼。',
   unbindExpired: '綁定已超過 7 天，無法自行解除，請聯繫客服協助。',
   bound: (otherLabel: string, unbindKeyword: string) =>
     `已完成帳號綁定：此帳號已與您的 ${otherLabel} 帳號合併為同一位顧客。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,

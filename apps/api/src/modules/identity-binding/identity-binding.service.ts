@@ -73,6 +73,24 @@ export async function getIdentityBindingSettings(db: TenantDb, tenantId: string)
   return parseIdentityBindingSettings(row?.identityBinding);
 }
 
+// 入站熱路徑每則訊息都要判斷是否啟用；多數租戶沒開，快取 15 秒省下每則訊息一次 DB 往返。
+// 設定頁儲存時清除本進程快取；多實例部署時其他實例最多延遲 15 秒生效。
+const SETTINGS_CACHE_TTL_MS = 15_000;
+const settingsCache = new Map<string, { value: IdentityBindingSettings; expiresAt: number }>();
+
+export async function getIdentityBindingSettingsCached(db: TenantDb, tenantId: string): Promise<IdentityBindingSettings> {
+  const hit = settingsCache.get(tenantId);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await getIdentityBindingSettings(db, tenantId);
+  settingsCache.set(tenantId, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
+  return value;
+}
+
+export function invalidateIdentityBindingSettings(tenantId?: string): void {
+  if (tenantId) settingsCache.delete(tenantId);
+  else settingsCache.clear();
+}
+
 /**
  * 送出一則綁定訊息並寫入對話紀錄（以 Bot 訊息呈現，保留換行，客服看得出顧客收到了什麼）。
  * 送出失敗時比照 worker 的 recordDeliveryFailure 慣例，在該則訊息標 metadata.deliveryFailed，
@@ -173,6 +191,7 @@ export type RedeemResult =
   | { status: 'invalid' }
   | { status: 'throttled' }
   | { status: 'same_identity' }
+  | { status: 'channel_conflict' }
   | { status: 'already_bound' };
 
 /** 沿 mergedIntoId 找到目前仍在使用的聯絡人（發碼方可能在兌換前已被併入別人） */
@@ -226,12 +245,14 @@ export async function redeemBindingCode(
   }
   if (payload.tenantId !== tenantId) return fail();
 
-  if (payload.channelIdentityId === actor.channelIdentityId) {
-    // 在發碼的同一個身分送回：放回去讓顧客仍可在剩餘時效內到別的渠道使用
+  // 沒兌換成功的情境把代碼放回去，讓真正的顧客仍可在剩餘時效內到別的渠道使用
+  const putBack = async () => {
     const remaining = payload.issuedAt + BINDING_CODE_TTL_MS - now;
-    if (remaining > 0) {
-      await deps.store.set(codeKey(tenantId, code), raw, 'PX', remaining, 'NX');
-    }
+    if (remaining > 0) await deps.store.set(codeKey(tenantId, code), raw, 'PX', remaining, 'NX');
+  };
+
+  if (payload.channelIdentityId === actor.channelIdentityId) {
+    await putBack();
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.sameIdentity, 'same_identity');
     return { status: 'same_identity' };
   }
@@ -245,12 +266,28 @@ export async function redeemBindingCode(
     return { status: 'already_bound' };
   }
 
+  // 同一渠道只能有一個帳號：雙方在同一個渠道都有身分（例如代碼被轉給同一個 LINE OA 的朋友），
+  // 合併後同一渠道會有兩個身分，回覆會送錯人、對話會混在一起 → 拒絕
+  const [survivorChannels, redeemerChannels] = await Promise.all([
+    db.channelIdentity.findMany({ where: { contactId: survivorId }, select: { channelId: true } }),
+    db.channelIdentity.findMany({ where: { contactId: redeemerId }, select: { channelId: true } }),
+  ]);
+  const occupied = new Set(survivorChannels.map((c) => c.channelId));
+  if (redeemerChannels.some((c) => occupied.has(c.channelId))) {
+    await putBack();
+    logger.warn('[IdentityBinding] 雙方在同一渠道都有帳號，拒絕合併', { tenantId, survivorId, redeemerId });
+    await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.channelConflict, 'channel_conflict');
+    return { status: 'channel_conflict' };
+  }
+
   const merge = await inTransaction(db, async (tx) => {
     const result = await mergeContacts(tx, {
       tenantId,
       survivorId,
       mergedId: redeemerId,
       source: 'BINDING_CODE',
+      // 自助解除時用來判斷「顧客目前所在的身分」涉及哪一筆綁定
+      meta: { issuerChannelIdentityId: payload.channelIdentityId },
     });
     await tx.identityMap.upsert({
       where: {
@@ -305,19 +342,32 @@ export async function redeemBindingCode(
 
 // ── 解除 ────────────────────────────────────────────────────────────────────
 
-/** 找出此顧客最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼） */
-async function findLatestBinding(db: TenantDb, tenantId: string, contactId: string) {
-  return db.contactMergeLog.findFirst({
+/**
+ * 找出與顧客「目前所在渠道身分」有關、最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼）。
+ * 有關＝該身分是當次被併入的身分之一，或是當次的發碼身分。只看 survivor 會拆錯筆：
+ * 顧客綁了 FB 又綁了 IG，在 FB 回「解除綁定」應拆 FB 那筆，而不是最近的 IG。
+ */
+async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId: string, channelIdentityId: string) {
+  const logs = await db.contactMergeLog.findMany({
     where: { tenantId, source: 'BINDING_CODE', revertedAt: null, survivorId: contactId },
     orderBy: { createdAt: 'desc' },
+    take: 50,
   });
+  return (
+    logs.find((log) => {
+      const moved = log.movedRecords as unknown as Partial<MovedRecords>;
+      return (
+        moved.channelIdentity?.includes(channelIdentityId) || moved.meta?.issuerChannelIdentityId === channelIdentityId
+      );
+    }) ?? null
+  );
 }
 
 export type UnbindResult = { status: 'none' } | { status: 'expired' } | { status: 'unbound'; restoredContactId: string };
 
 export async function unbindByCustomer(db: TenantDb, deps: BindingDeps, actor: BindingActor): Promise<UnbindResult> {
   const { tenantId } = actor;
-  const log = await findLatestBinding(db, tenantId, actor.contactId);
+  const log = await findBindingForIdentity(db, tenantId, actor.contactId, actor.channelIdentityId);
   if (!log) return { status: 'none' };
 
   const now = (deps.now ?? Date.now)();
@@ -374,9 +424,16 @@ export type BindingIntent =
  */
 export async function detectBindingIntent(
   db: TenantDb,
-  input: { tenantId: string; contactId: string; text: string; code: string | null },
+  input: {
+    tenantId: string;
+    contactId: string;
+    text: string;
+    code: string | null;
+    /** 只有命中解除關鍵字時才需要（避免每則訊息都多查一次） */
+    getChannelIdentityId: () => Promise<string | null>;
+  },
 ): Promise<BindingIntent | null> {
-  const settings = await getIdentityBindingSettings(db, input.tenantId);
+  const settings = await getIdentityBindingSettingsCached(db, input.tenantId);
   if (!settings.enabled) return null;
   if (input.code) return { kind: 'redeem', code: input.code };
 
@@ -384,7 +441,9 @@ export async function detectBindingIntent(
   if (!text) return null;
   if (settings.bindKeywords.some((k) => k.toLowerCase() === text)) return { kind: 'issue' };
   if (settings.unbindKeywords.some((k) => k.toLowerCase() === text)) {
-    const log = await findLatestBinding(db, input.tenantId, input.contactId);
+    const channelIdentityId = await input.getChannelIdentityId();
+    if (!channelIdentityId) return null;
+    const log = await findBindingForIdentity(db, input.tenantId, input.contactId, channelIdentityId);
     return log ? { kind: 'unbind' } : null;
   }
   return null;

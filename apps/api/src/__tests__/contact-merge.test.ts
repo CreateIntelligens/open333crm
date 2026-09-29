@@ -26,6 +26,10 @@ function matches(row: Row, where: Where): boolean {
       if (!(cond as { in: unknown[] }).in.includes(row[key])) return false;
       continue;
     }
+    if (cond && typeof cond === 'object' && !(cond instanceof Date) && 'gte' in cond) {
+      if (!((row[key] as Date) >= (cond as { gte: Date }).gte)) return false;
+      continue;
+    }
     if (row[key] !== cond) return false;
   }
   return true;
@@ -124,15 +128,15 @@ function makeDb() {
       contact('B-1', { tenantId: OTHER_T }),
     ]),
     channelIdentity: table([
-      { id: 'ci-s-line', contactId: 'S' },
-      { id: 'ci-m-fb', contactId: 'M' },
-      { id: 'ci-m-ig', contactId: 'M' },
+      { id: 'ci-s-line', contactId: 'S', channelId: 'ch-line' },
+      { id: 'ci-m-fb', contactId: 'M', channelId: 'ch-fb' },
+      { id: 'ci-m-ig', contactId: 'M', channelId: 'ch-ig' },
     ]),
     conversation: table([
-      { id: 'conv-s', tenantId: T, contactId: 'S' },
-      { id: 'conv-m', tenantId: T, contactId: 'M' },
+      { id: 'conv-s', tenantId: T, contactId: 'S', channelId: 'ch-line', createdAt: new Date('2026-01-01') },
+      { id: 'conv-m', tenantId: T, contactId: 'M', channelId: 'ch-fb', createdAt: new Date('2026-01-01') },
     ]),
-    case: table([{ id: 'case-m', tenantId: T, contactId: 'M' }]),
+    case: table([{ id: 'case-m', tenantId: T, contactId: 'M', channelId: 'ch-fb', createdAt: new Date('2026-01-01') }]),
     longTermMemory: table([{ id: 'ltm-m', contactId: 'M' }]),
     portalSubmission: table([{ id: 'ps-m', tenantId: T, contactId: 'M' }]),
     pointTransaction: table([{ id: 'pt-m', tenantId: T, contactId: 'M' }]),
@@ -328,6 +332,21 @@ test('解除：恢復被合併方與當次搬走的渠道身分／對話／點�
   const log = db.contactMergeLog.rows[0];
   assert.ok(log.revertedAt instanceof Date);
   assert.equal(log.revertedBy, 'customer');
+});
+
+test('解除：AI 長期記憶與合併後才新開的該渠道對話／案件也搬回', async () => {
+  const db = makeDb();
+  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  // 合併後顧客從 FB 再進線，對話與案件開在 survivor 身上
+  db.conversation.rows.push({ id: 'conv-after', tenantId: T, contactId: 'S', channelId: 'ch-fb', createdAt: new Date(Date.now() + 1000) });
+  db.case.rows.push({ id: 'case-after', tenantId: T, contactId: 'S', channelId: 'ch-fb', createdAt: new Date(Date.now() + 1000) });
+
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'customer' });
+  assert.equal(owner(db, 'longTermMemory', 'ltm-m'), 'M', 'AI 記憶不可留在對方身上');
+  assert.equal(owner(db, 'clickLog', 'cl-m'), 'M');
+  assert.equal(owner(db, 'conversation', 'conv-after'), 'M', '合併後新開的 FB 對話跟著 FB 身分回去');
+  assert.equal(owner(db, 'case', 'case-after'), 'M');
+  assert.equal(owner(db, 'conversation', 'conv-s'), 'S', 'survivor 原有 LINE 對話不動');
 });
 
 test('解除：重複解除回 409', async () => {

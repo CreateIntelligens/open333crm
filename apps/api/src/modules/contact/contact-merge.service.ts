@@ -36,6 +36,8 @@ export interface MovedRecords {
   contactAttribute: string[];
   /** survivor 原本為空、由 merged 補上的欄位名稱 */
   filledFields: string[];
+  /** 呼叫端附加的脈絡（例如綁定代碼的發碼身分），供解除時判斷用 */
+  meta?: { issuerChannelIdentityId?: string };
 }
 
 export interface MergeContactsInput {
@@ -44,6 +46,7 @@ export interface MergeContactsInput {
   mergedId: string;
   source: MergeSource;
   actorAgentId?: string;
+  meta?: MovedRecords['meta'];
 }
 
 export interface MergeContactsResult {
@@ -53,14 +56,23 @@ export interface MergeContactsResult {
   moved: MovedRecords;
 }
 
-/** 撤銷時要搬回的表（tag／屬性不回收，見 design D8） */
+/**
+ * 撤銷時要搬回的表。標籤／屬性不回收（合併後無法判斷是誰加的，見 design D8）；
+ * 其餘屬於被合併方的紀錄都要搬回——特別是 AI 長期記憶，留在 survivor 身上等於把
+ * 對方的個資留給另一個人（綁定被冒用時更嚴重）。
+ */
 type RevertibleKey =
   | 'channelIdentity'
   | 'conversation'
   | 'case'
+  | 'longTermMemory'
   | 'portalSubmission'
   | 'pointTransaction'
-  | 'identityMap';
+  | 'identityMap'
+  | 'clickLog'
+  | 'flowExecution'
+  | 'kbArticleFeedback'
+  | 'broadcastRecipient';
 
 async function moveIds(
   find: () => Promise<Array<{ id: string }>>,
@@ -78,7 +90,7 @@ async function moveIds(
  * @returns 合併紀錄 id、雙方名稱與搬移明細
  */
 export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Promise<MergeContactsResult> {
-  const { tenantId, survivorId, mergedId, source, actorAgentId } = input;
+  const { tenantId, survivorId, mergedId, source, actorAgentId, meta } = input;
 
   if (survivorId === mergedId) {
     throw new AppError('無法將聯絡人與自己合併', 'BAD_REQUEST', 400);
@@ -260,6 +272,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     contactTag,
     contactAttribute,
     filledFields,
+    ...(meta ? { meta } : {}),
   };
 
   const log = await db.contactMergeLog.create({
@@ -326,33 +339,56 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   const heldBy = { in: holderChain };
   const ids = (key: RevertibleKey) => moved[key] ?? [];
 
-  if (ids('channelIdentity').length > 0) {
-    await db.channelIdentity.updateMany({ where: { id: { in: ids('channelIdentity') }, contactId: heldBy }, data: back });
+  const inList = (key: RevertibleKey) => ({ in: ids(key) });
+  const has = (key: RevertibleKey) => ids(key).length > 0;
+
+  if (has('channelIdentity')) {
+    await db.channelIdentity.updateMany({ where: { id: inList('channelIdentity'), contactId: heldBy }, data: back });
   }
-  if (ids('conversation').length > 0) {
+  if (has('conversation')) {
+    await db.conversation.updateMany({ where: { tenantId, id: inList('conversation'), contactId: heldBy }, data: back });
+  }
+  if (has('case')) {
+    await db.case.updateMany({ where: { tenantId, id: inList('case'), contactId: heldBy }, data: back });
+  }
+  if (has('longTermMemory')) {
+    await db.longTermMemory.updateMany({ where: { id: inList('longTermMemory'), contactId: heldBy }, data: back });
+  }
+  if (has('portalSubmission')) {
+    await db.portalSubmission.updateMany({ where: { tenantId, id: inList('portalSubmission'), contactId: heldBy }, data: back });
+  }
+  if (has('pointTransaction')) {
+    await db.pointTransaction.updateMany({ where: { tenantId, id: inList('pointTransaction'), contactId: heldBy }, data: back });
+  }
+  if (has('identityMap')) {
+    await db.identityMap.updateMany({ where: { tenantId, id: inList('identityMap'), contactId: heldBy }, data: back });
+  }
+  if (has('clickLog')) {
+    await db.clickLog.updateMany({ where: { id: inList('clickLog'), contactId: heldBy }, data: back });
+  }
+  if (has('flowExecution')) {
+    await db.flowExecution.updateMany({ where: { tenantId, id: inList('flowExecution'), contactId: heldBy }, data: back });
+  }
+  if (has('kbArticleFeedback')) {
+    await db.kbArticleFeedback.updateMany({ where: { tenantId, id: inList('kbArticleFeedback'), contactId: heldBy }, data: back });
+  }
+  if (has('broadcastRecipient')) {
+    await db.broadcastRecipient.updateMany({ where: { id: inList('broadcastRecipient'), contactId: heldBy }, data: back });
+  }
+
+  // 合併「之後」才在 survivor 上新開、屬於被搬回渠道的對話與案件（不在 movedRecords 裡），
+  // 也要跟著渠道身分回去；否則對話的聯絡人身上已沒有該渠道身分，客服回覆會送不出去。
+  const restoredChannels = (
+    await db.channelIdentity.findMany({ where: { contactId: log.mergedId }, select: { channelId: true } })
+  ).map((c) => c.channelId);
+  if (restoredChannels.length > 0) {
+    const sinceMerge = { gte: log.createdAt };
     await db.conversation.updateMany({
-      where: { tenantId, id: { in: ids('conversation') }, contactId: heldBy },
+      where: { tenantId, contactId: heldBy, channelId: { in: restoredChannels }, createdAt: sinceMerge },
       data: back,
     });
-  }
-  if (ids('case').length > 0) {
-    await db.case.updateMany({ where: { tenantId, id: { in: ids('case') }, contactId: heldBy }, data: back });
-  }
-  if (ids('portalSubmission').length > 0) {
-    await db.portalSubmission.updateMany({
-      where: { tenantId, id: { in: ids('portalSubmission') }, contactId: heldBy },
-      data: back,
-    });
-  }
-  if (ids('pointTransaction').length > 0) {
-    await db.pointTransaction.updateMany({
-      where: { tenantId, id: { in: ids('pointTransaction') }, contactId: heldBy },
-      data: back,
-    });
-  }
-  if (ids('identityMap').length > 0) {
-    await db.identityMap.updateMany({
-      where: { tenantId, id: { in: ids('identityMap') }, contactId: heldBy },
+    await db.case.updateMany({
+      where: { tenantId, contactId: heldBy, channelId: { in: restoredChannels }, createdAt: sinceMerge },
       data: back,
     });
   }

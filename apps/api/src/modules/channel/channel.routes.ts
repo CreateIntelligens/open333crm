@@ -379,7 +379,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const channel = await getBindableChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
       const { bindingHandle } = bindingHandleSchema.parse(request.body);
-      const handle = bindingHandle?.trim() || null;
+      let handle = bindingHandle?.trim() || null;
+      // FB／IG 的 m.me、ig.me 連結不接受 @，管理員習慣性加上時自動去掉
+      if (handle && channel.channelType !== 'LINE') handle = handle.replace(/^@+/, '') || null;
       if (handle && channel.channelType === 'LINE' && !handle.startsWith('@')) {
         throw new AppError('LINE Basic ID 須以 @ 開頭，例如 @abc1234', 'VALIDATION_ERROR', 400);
       }

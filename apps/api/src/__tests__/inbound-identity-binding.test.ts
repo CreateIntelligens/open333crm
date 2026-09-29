@@ -13,7 +13,7 @@ import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { eventBus, type AppEvent } from '../events/event-bus.js';
 import { processInboundMessage } from '../modules/webhook/webhook.service.js';
 import { setBindingStoreForTest } from '../modules/webhook/inbound-identity-binding.js';
-import { issueBindingCode } from '../modules/identity-binding/identity-binding.service.js';
+import { issueBindingCode, invalidateIdentityBindingSettings } from '../modules/identity-binding/identity-binding.service.js';
 import { extractBindingCode } from '../modules/identity-binding/binding-code.js';
 import { linePrefillText } from '../modules/identity-binding/binding-links.js';
 import { memBindingStore } from './helpers/mem-binding-store.js';
@@ -80,6 +80,7 @@ async function setup(tx: Prisma.TransactionClient, enabled: boolean): Promise<En
   const conv = await tx.conversation.create({
     data: { tenantId: T, contactId: a.id, channelId: fb.id, channelType: 'FB' },
   });
+  invalidateIdentityBindingSettings();
   const store = memBindingStore();
   setBindingStoreForTest(store);
   received.length = 0;
@@ -184,7 +185,7 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
     },
   ],
   [
-    'FB referral 帶綁定代碼 → 合併，且不落地成空白顧客訊息',
+    'FB referral 帶綁定代碼 → 合併、不落地空白訊息，平台重送不重複處理',
     true,
     async (env) => {
       // 由 LINE 顧客 B 發碼，FB 新身分以 referral 兌換
@@ -209,12 +210,19 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       const code = r.status === 'sent' ? r.code : '';
 
       const fbUid = `fb-new-${seq++}`;
-      await run(env, env.fb, { contactUid: fbUid, timestamp: new Date(), contentType: 'referral', content: {}, referralRef: code });
+      const referral = { contactUid: fbUid, timestamp: new Date(), contentType: 'referral', content: {}, referralRef: code };
+      await run(env, env.fb, referral);
+      // 平台重送同一 referral 事件：應被去重，不再回覆「代碼無效」
+      await run(env, env.fb, { ...referral, timestamp: new Date() });
       const identity = await env.tx.channelIdentity.findFirst({ where: { channelId: env.fb.id, uid: fbUid } });
       assert.equal(identity?.contactId, b.id, 'FB 身分併到發碼的 B');
       const fbConv = await env.tx.conversation.findFirst({ where: { tenantId: T, channelId: env.fb.id, contactId: b.id } });
       const inboundMsgs = await env.tx.message.count({ where: { conversationId: fbConv!.id, direction: 'INBOUND' } });
       assert.equal(inboundMsgs, 0, 'referral 事件不落地成顧客訊息');
+      const replies = await env.tx.message.findMany({ where: { conversationId: fbConv!.id, senderType: 'BOT' } });
+      const texts = replies.map((m) => (m.content as { text?: string }).text ?? '');
+      assert.equal(texts.filter((t) => t.startsWith('已完成帳號綁定')).length, 1, '只綁定一次');
+      assert.ok(!texts.some((t) => t.includes('無效或已過期')), '重送事件不回覆代碼無效');
     },
   ],
 ];

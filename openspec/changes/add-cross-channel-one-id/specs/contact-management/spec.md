@@ -26,7 +26,7 @@ The system SHALL merge two contact records through a single merge engine used by
 ## ADDED Requirements
 
 ### Requirement: Merge Reversal
-The system SHALL allow a user with `contact.merge` permission to revert any non-reverted merge log entry. Reversal SHALL un-archive the merged contact and move back the channel identities, conversations, cases, portal submissions, point transactions and identity map entries recorded in the log that still point to the survivor. Tags and attributes SHALL NOT be taken back. The log SHALL record `revertedAt` and `revertedBy`.
+The system SHALL allow a user with `contact.merge` permission to revert any non-reverted merge log entry. Reversal SHALL un-archive the merged contact and move back every record listed in the log that still points to the survivor (or to whoever the survivor was later merged into): channel identities, conversations, cases, long-term memories, portal submissions, point transactions, identity map entries, click logs, flow executions, KB feedback and broadcast recipients. Conversations and cases created on the survivor after the merge on a channel whose identity is moved back SHALL also move back. Tags and attributes SHALL NOT be taken back. The log SHALL record `revertedAt` and `revertedBy`.
 
 #### Scenario: Agent reverts a binding
 - **WHEN** an agent reverts the merge log that bound a LINE identity into a FB contact
@@ -35,6 +35,14 @@ The system SHALL allow a user with `contact.merge` permission to revert any non-
 #### Scenario: Revert without permission
 - **WHEN** a user whose role lacks `contact.merge` calls the revert endpoint
 - **THEN** the system SHALL respond 403 and change nothing
+
+#### Scenario: Long-term memory is not left with the other person
+- **WHEN** a binding made with a forwarded code is reverted
+- **THEN** the merged contact's long-term memories SHALL move back and SHALL NOT remain on the survivor
+
+#### Scenario: Conversation opened after the merge
+- **WHEN** the customer started a new FB conversation after the merge and the merge is then reverted
+- **THEN** that conversation SHALL move back to the restored contact together with the FB identity
 
 #### Scenario: Already reverted
 - **WHEN** a merge log that is already reverted is reverted again

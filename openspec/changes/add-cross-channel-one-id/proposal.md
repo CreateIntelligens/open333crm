@@ -14,7 +14,7 @@
 ## What Changes
 
 **P0 — 前置修正**
-- **BREAKING** 移除 `POST /api/v1/fan/auth`（憑任意 contactId 直接發顧客 token）。經查 apps/web、widget、cli、workers、packages 均無呼叫者，移除不影響現有功能；顧客身分驗證改由後續會員登入頁（P2）與既有 LINE/FB Login 流程負責。
+- **BREAKING** 移除 `POST /api/v1/fan/auth`（憑任意 contactId 直接發顧客 token）。經查 apps/web、widget、cli、workers、packages 均無呼叫者，移除後 main 上暫無簽發 fan token 的路徑（粉絲門戶受保護路由暫不可用，但目前沒有顧客端頁面使用），待優惠券分支的 Account Link 或 P2 會員登入頁接上。
 - 統一合併引擎：三套合併實作收斂為單一 `mergeContacts` 服務，搬移**所有**帶 `contactId` 的關聯資料，來源聯絡人改為封存（`isArchived` + `mergedIntoId`）不硬刪，並寫入合併紀錄（供稽核與日後拆回）。
 
 **P1 — 一次性綁定代碼引擎**

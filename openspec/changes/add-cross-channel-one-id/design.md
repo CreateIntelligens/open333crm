@@ -168,7 +168,7 @@ model ContactMergeLog {
 後台渠道設定頁顯示並可手動覆寫。
 
 ### D11 移除 fan/auth
-直接刪除 `POST /api/v1/fan/auth` 路由（無呼叫者）。其他 `/api/v1/fan/*` 路由維持現狀，僅接受由既有 LINE/FB Login 流程簽發的 fan token。
+直接刪除 `POST /api/v1/fan/auth` 路由（無呼叫者）。**注意：刪除後 main 上已沒有任何簽發 fan token 的路徑**（LINE/FB Login 流程只更新 email、不簽 token），其他 `/api/v1/fan/*` 受保護路由（活動、點數）暫時無法使用。影響評估：apps/web 沒有任何顧客端門戶頁面呼叫這些路由，且先前在 UAT 已因 RLS 回 404，實際無使用者受影響。`signFanToken` 保留，待優惠券分支的 Account Link 驗證流程或 P2 會員登入頁接上正式簽發路徑。
 
 ## Risks / Trade-offs
 

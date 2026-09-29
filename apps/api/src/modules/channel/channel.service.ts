@@ -255,7 +255,9 @@ export async function updateChannel(
     updateData.credentialsEncrypted = encryptCredentials(nextCredentials);
   }
   if (data.settings !== undefined) {
-    updateData.settings = data.settings;
+    // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
+    // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）若快照是舊的就會被洗掉，這裡保留
+    updateData.settings = { ...pickSystemManagedSettings(channel.settings), ...data.settings };
   }
 
   const updated = await prisma.channel.update({
@@ -348,6 +350,18 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
   } catch {
     return null;
   }
+}
+
+/** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
+const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured'] as const;
+
+function pickSystemManagedSettings(settings: unknown): Record<string, unknown> {
+  const current = (settings && typeof settings === 'object' ? settings : {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of SYSTEM_MANAGED_SETTING_KEYS) {
+    if (key in current) out[key] = current[key];
+  }
+  return out;
 }
 
 export async function verifyChannel(prisma: TenantDb, id: string, tenantId: string) {

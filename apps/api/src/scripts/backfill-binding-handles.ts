@@ -13,13 +13,12 @@
  *   DATABASE_URL=<owner 或 app_admin> CREDENTIAL_ENCRYPTION_KEY=... npx tsx src/scripts/backfill-binding-handles.ts
  *   ... npx tsx src/scripts/backfill-binding-handles.ts --apply
  */
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@open333crm/database';
 import { withTenant } from '../lib/tenant-db.js';
 import { verifyChannel } from '../modules/channel/channel.service.js';
 
 const apply = process.argv.includes('--apply');
-// 跨租戶掃描：需以 owner / app_admin（BYPASSRLS）連線執行
-const prisma = new PrismaClient();
+// 跨租戶掃描：使用共用 client（不自建 PrismaClient），DATABASE_URL 需指向 owner / app_admin（BYPASSRLS）
 
 function hasHandle(settings: unknown): boolean {
   const s = (settings ?? {}) as Record<string, unknown>;

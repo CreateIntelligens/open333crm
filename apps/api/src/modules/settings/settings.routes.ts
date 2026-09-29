@@ -42,6 +42,7 @@ import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
+import { invalidateIdentityBindingSettings } from "../identity-binding/identity-binding.service.js";
 
 const dayScheduleSchema = z
   .object({
@@ -202,6 +203,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       create: { tenantId, identityBinding: value },
       update: { identityBinding: value },
     });
+    invalidateIdentityBindingSettings(tenantId);
     await writeTenantAudit(request.tenantPrisma, {
       tenantId,
       actorId: request.agent.id,

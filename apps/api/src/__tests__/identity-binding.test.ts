@@ -16,10 +16,12 @@ import {
   issueBindingCode,
   redeemBindingCode,
   unbindByCustomer,
+  invalidateIdentityBindingSettings,
   type BindingActor,
   type BindingDeps,
 } from '../modules/identity-binding/identity-binding.service.js';
 import { mergeContacts } from '../modules/contact/contact-merge.service.js';
+import { updateChannel } from '../modules/channel/channel.service.js';
 
 if (!process.env.DATABASE_URL) {
   console.log('SKIP identity-binding: 需 DATABASE_URL');
@@ -42,6 +44,9 @@ interface Fixture {
   fb: BindingActor;
   line: BindingActor;
   lineChannelId: string;
+  igChannel: { id: string; channelType: string };
+  lineChannel: { id: string; channelType: string };
+  newActor: (channel: { id: string; channelType: string }, name: string) => Promise<BindingActor>;
 }
 
 let seq = 0;
@@ -54,6 +59,7 @@ async function setup(tx: TenantDb, enabled = true): Promise<Fixture> {
     create: { tenantId: T, identityBinding: { enabled } },
     update: { identityBinding: { enabled } },
   });
+  invalidateIdentityBindingSettings();
   // 本機既有渠道會被列入可綁定清單，先停用避免干擾（交易 rollback 後恢復）
   await tx.channel.updateMany({ where: { tenantId: T }, data: { isActive: false } });
 
@@ -63,7 +69,7 @@ async function setup(tx: TenantDb, enabled = true): Promise<Fixture> {
     });
   const lineCh = await mk('LINE', '測試 LINE', { bindingHandleAuto: '@line1234' });
   const fbCh = await mk('FB', '測試粉專', { bindingHandle: 'test.page' });
-  await mk('THREADS', '測試 IG', {});
+  const igCh = await mk('THREADS', '測試 IG', {});
 
   const actor = async (channel: { id: string; channelType: string }, name: string): Promise<BindingActor> => {
     const contact = await tx.contact.create({ data: { tenantId: T, displayName: name } });
@@ -105,6 +111,9 @@ async function setup(tx: TenantDb, enabled = true): Promise<Fixture> {
     fb: await actor(fbCh, 'A-fb'),
     line: await actor(lineCh, 'B-line'),
     lineChannelId: lineCh.id,
+    igChannel: igCh,
+    lineChannel: lineCh,
+    newActor: actor,
   };
 }
 
@@ -147,9 +156,9 @@ async function contactOf(tx: TenantDb, channelIdentityId: string) {
 scenario(
   '未啟用：綁定關鍵字與代碼都視為一般訊息',
   async (f) => {
-    assert.equal(await detectBindingIntent(f.tx, { tenantId: T, contactId: f.fb.contactId, text: '綁定帳號', code: null }), null);
+    assert.equal(await detectBindingIntent(f.tx, { tenantId: T, contactId: f.fb.contactId, text: '綁定帳號', code: null, getChannelIdentityId: async () => f.fb.channelIdentityId }), null);
     assert.equal(
-      await detectBindingIntent(f.tx, { tenantId: T, contactId: f.fb.contactId, text: '', code: 'BIND-7K2M9QH4TX' }),
+      await detectBindingIntent(f.tx, { tenantId: T, contactId: f.fb.contactId, text: '', code: 'BIND-7K2M9QH4TX', getChannelIdentityId: async () => f.fb.channelIdentityId }),
       null,
     );
   },
@@ -157,7 +166,7 @@ scenario(
 );
 
 scenario('發碼：列出其他渠道連結，不含顧客所在渠道與未設定導流識別的渠道', async (f) => {
-  const intent = await detectBindingIntent(f.tx, { tenantId: T, contactId: f.fb.contactId, text: '綁定帳號', code: null });
+  const intent = await detectBindingIntent(f.tx, { tenantId: T, contactId: f.fb.contactId, text: '綁定帳號', code: null, getChannelIdentityId: async () => f.fb.channelIdentityId });
   assert.deepEqual(intent, { kind: 'issue' });
   await executeBindingIntent(f.tx, f.deps, f.fb, intent!);
 
@@ -186,6 +195,14 @@ scenario('發碼：同一身分一小時第 6 次被擋', async (f) => {
   assert.equal((await issueBindingCode(f.tx, f.deps, f.fb)).status, 'sent', '一小時後恢復');
 });
 
+scenario('渠道設定整包更新（例如其他設定視窗用舊快照儲存）不會洗掉導流識別', async (f) => {
+  await updateChannel(f.tx, f.lineChannelId, T, { settings: { botConfig: { botMode: 'OFF' } } });
+  const ch = await f.tx.channel.findFirst({ where: { id: f.lineChannelId, tenantId: T }, select: { settings: true } });
+  const settings = ch?.settings as Record<string, unknown>;
+  assert.equal(settings.bindingHandleAuto, '@line1234', '導流識別保留');
+  assert.deepEqual(settings.botConfig, { botMode: 'OFF' }, '送來的設定照常寫入');
+});
+
 // ── 兌換 ────────────────────────────────────────────────────────────────────
 
 scenario('兌換：LINE 送出（改動過的）預填文字 → 合併、寫 IdentityMap、雙邊通知', async (f) => {
@@ -196,6 +213,7 @@ scenario('兌換：LINE 送出（改動過的）預填文字 → 合併、寫 Id
     contactId: f.line.contactId,
     text,
     code: extractBindingCode(text),
+    getChannelIdentityId: async () => f.line.channelIdentityId,
   });
   assert.deepEqual(intent, { kind: 'redeem', code });
   const r = await redeemBindingCode(f.tx, f.deps, f.line, code);
@@ -281,6 +299,24 @@ scenario('兌換：一邊通知送出失敗 → 該則訊息標為送出失敗�
   assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.fb.contactId);
 });
 
+scenario('兌換：同一渠道的另一個人（例如被轉傳代碼的朋友）→ 拒絕合併，代碼仍可給本人使用', async (f) => {
+  // B 在 LINE 發碼；同一個 LINE OA 的另一位使用者 C 拿到代碼送出
+  const code = await issueAndGetCode(f, f.line);
+  const friend = await f.newActor(f.lineChannel, 'C-line-friend');
+  assert.equal((await redeemBindingCode(f.tx, f.deps, friend, code)).status, 'channel_conflict');
+  assert.equal(await contactOf(f.tx, friend.channelIdentityId), friend.contactId, '朋友沒有被合併');
+  assert.ok(f.sent.at(-1)!.text.includes('同一個渠道只能綁定一個帳號'));
+  // 代碼放回去了：B 本人在 FB 仍可兌換
+  assert.equal((await redeemBindingCode(f.tx, f.deps, f.fb, code)).status, 'bound');
+});
+
+scenario('兌換：發碼方在兌換方的渠道已有帳號 → 拒絕（同一渠道不可有兩個帳號）', async (f) => {
+  // A(FB) 先綁了 LINE 的 B；A 再發碼，LINE 上另一位 C 兌換 → A 會在 LINE 有兩個身分
+  await redeemBindingCode(f.tx, f.deps, f.line, await issueAndGetCode(f, f.fb));
+  const c = await f.newActor(f.lineChannel, 'C-line');
+  assert.equal((await redeemBindingCode(f.tx, f.deps, c, await issueAndGetCode(f, f.fb))).status, 'channel_conflict');
+});
+
 scenario('兌換：同一身分一小時失敗 10 次後，第 11 次起不再回覆', async (f) => {
   for (let i = 0; i < 10; i++) {
     assert.equal((await redeemBindingCode(f.tx, f.deps, f.line, 'BIND-0000000000')).status, 'invalid');
@@ -298,7 +334,7 @@ scenario('解除：7 天內顧客回覆「解除綁定」→ 恢復兩個聯絡�
   f.clock.now += 2 * DAY;
 
   const lineNow = { ...f.line, contactId: f.fb.contactId };
-  const intent = await detectBindingIntent(f.tx, { tenantId: T, contactId: lineNow.contactId, text: '解除綁定', code: null });
+  const intent = await detectBindingIntent(f.tx, { tenantId: T, contactId: lineNow.contactId, text: '解除綁定', code: null, getChannelIdentityId: async () => f.line.channelIdentityId });
   assert.deepEqual(intent, { kind: 'unbind' });
   const r = await unbindByCustomer(f.tx, f.deps, lineNow);
   assert.equal(r.status, 'unbound');
@@ -315,6 +351,19 @@ scenario('解除：7 天內顧客回覆「解除綁定」→ 恢復兩個聯絡�
   assert.deepEqual(unbound, [f.fb.conversationId, f.line.conversationId].sort());
 });
 
+scenario('解除：綁了兩個渠道，在其中一個回覆「解除綁定」只拆那一個', async (f) => {
+  // A(FB) 綁 LINE 的 B（第 1 筆），再綁 IG 的 D（第 2 筆，較新）
+  await redeemBindingCode(f.tx, f.deps, f.line, await issueAndGetCode(f, f.fb));
+  const d = await f.newActor(f.igChannel, 'D-ig');
+  assert.equal((await redeemBindingCode(f.tx, f.deps, d, await issueAndGetCode(f, f.fb))).status, 'bound');
+
+  // 在 LINE 回覆解除 → 應拆 LINE 那筆（較舊），IG 維持綁定
+  const r = await unbindByCustomer(f.tx, f.deps, { ...f.line, contactId: f.fb.contactId });
+  assert.equal(r.status, 'unbound');
+  assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.line.contactId, 'LINE 被拆開');
+  assert.equal(await contactOf(f.tx, d.channelIdentityId), f.fb.contactId, 'IG 仍綁著');
+});
+
 scenario('解除：超過 7 天 → 請聯繫客服，不撤銷', async (f) => {
   const code = await issueAndGetCode(f, f.fb);
   await redeemBindingCode(f.tx, f.deps, f.line, code);
@@ -327,7 +376,7 @@ scenario('解除：超過 7 天 → 請聯繫客服，不撤銷', async (f) => {
 });
 
 scenario('解除：從未綁定的顧客傳「解除綁定」→ 視為一般訊息', async (f) => {
-  assert.equal(await detectBindingIntent(f.tx, { tenantId: T, contactId: f.line.contactId, text: '解除綁定', code: null }), null);
+  assert.equal(await detectBindingIntent(f.tx, { tenantId: T, contactId: f.line.contactId, text: '解除綁定', code: null, getChannelIdentityId: async () => f.line.channelIdentityId }), null);
 });
 
 let failed = 0;

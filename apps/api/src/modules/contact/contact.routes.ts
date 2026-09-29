@@ -172,31 +172,32 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       const { conversationId } = bindingLinkBodySchema.parse(request.body);
       const tenantId = request.agent.tenantId;
 
-      const result = await withTenant(fastify.prisma, tenantId, async (tx) => {
-        const settings = await getIdentityBindingSettings(tx, tenantId);
-        if (!settings.enabled) {
-          throw new AppError('尚未開啟跨渠道綁定，請先到「設定」啟用', 'BINDING_DISABLED', 400);
-        }
-        const conversation = await tx.conversation.findFirst({
-          where: { id: conversationId, tenantId, contactId: id },
-          select: { id: true, channelId: true, channel: { select: { channelType: true } } },
-        });
-        if (!conversation) throw new AppError('找不到此聯絡人的這個對話', 'NOT_FOUND', 404);
-        const identity = await tx.channelIdentity.findFirst({
-          where: { contactId: id, channelId: conversation.channelId },
-          select: { id: true, uid: true },
-        });
-        if (!identity) throw new AppError('此對話的渠道身分不存在，無法傳送綁定連結', 'NOT_FOUND', 404);
+      const db = request.tenantPrisma;
+      const settings = await getIdentityBindingSettings(db, tenantId);
+      if (!settings.enabled) {
+        throw new AppError('尚未開啟跨渠道綁定，請先到「設定」啟用', 'BINDING_DISABLED', 400);
+      }
+      const conversation = await db.conversation.findFirst({
+        where: { id: conversationId, tenantId, contactId: id },
+        select: { id: true, channelId: true, channel: { select: { channelType: true } } },
+      });
+      if (!conversation) throw new AppError('找不到此聯絡人的這個對話', 'NOT_FOUND', 404);
+      const identity = await db.channelIdentity.findFirst({
+        where: { contactId: id, channelId: conversation.channelId },
+        select: { id: true, uid: true },
+      });
+      if (!identity) throw new AppError('此對話的渠道身分不存在，無法傳送綁定連結', 'NOT_FOUND', 404);
 
-        return issueBindingCode(tx, { store: getBindingStore(), io: fastify.io }, {
-          tenantId,
-          channelId: conversation.channelId,
-          channelType: conversation.channel.channelType,
-          channelIdentityId: identity.id,
-          uid: identity.uid,
-          contactId: id,
-          conversationId: conversation.id,
-        });
+      // 不包在交易內：發碼會推播到 LINE/FB 並寫 Redis，外部呼叫放進交易會拖長交易、
+      // 逾時回滾時顧客已收到代碼但對話紀錄消失
+      const result = await issueBindingCode(db, { store: getBindingStore(), io: fastify.io }, {
+        tenantId,
+        channelId: conversation.channelId,
+        channelType: conversation.channel.channelType,
+        channelIdentityId: identity.id,
+        uid: identity.uid,
+        contactId: id,
+        conversationId: conversation.id,
       });
 
       await writeTenantAudit(request.tenantPrisma, {

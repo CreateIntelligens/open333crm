@@ -12,8 +12,10 @@ import { extractBindingCode, getBindingStore, type BindingStore } from '../ident
 import {
   detectBindingIntent,
   executeBindingIntent,
-  getIdentityBindingSettings,
+  getIdentityBindingSettingsCached,
 } from '../identity-binding/identity-binding.service.js';
+
+const REFERRAL_DEDUP_MS = 10 * 60 * 1000;
 
 /** 測試可注入記憶體版儲存 */
 let storeOverride: BindingStore | null = null;
@@ -37,6 +39,7 @@ export async function interceptIdentityBinding(ctx: InboundMessageContext): Prom
     contactId: ctx.contactId,
     text: ctx.textContent,
     code: codeFrom(ctx),
+    getChannelIdentityId: () => findChannelIdentityId(ctx),
   });
   if (!intent) return false;
 
@@ -56,7 +59,7 @@ export async function handleReferralEvent(
   resolve: (ctx: InboundMessageContext) => Promise<void>,
 ): Promise<void> {
   const code = extractBindingCode(ctx.parsed.referralRef);
-  const settings = code ? await getIdentityBindingSettings(ctx.prisma, ctx.tenantId) : null;
+  const settings = code ? await getIdentityBindingSettingsCached(ctx.prisma, ctx.tenantId) : null;
   if (!code || !settings?.enabled) {
     logger.info('[Webhook] Referral event ignored', {
       channelId: ctx.channel.id,
@@ -67,9 +70,32 @@ export async function handleReferralEvent(
     return;
   }
 
+  // referral 事件沒有平台訊息 id，無法走一般訊息的 channelMsgId 去重；平台重送同一事件時
+  // 會變成「剛綁定成功又收到代碼無效」，以渠道＋顧客＋代碼做 10 分鐘的去重
+  const store = storeOverride ?? getBindingStore();
+  const first = await store.set(
+    `bindcode:referral-seen:${ctx.channel.id}:${ctx.contactUid}:${code}`,
+    '1',
+    'PX',
+    REFERRAL_DEDUP_MS,
+    'NX',
+  );
+  if (first !== 'OK') {
+    logger.info('[Webhook] Duplicate referral event ignored', { channelId: ctx.channel.id, code });
+    return;
+  }
+
   await resolve(ctx);
   if (!ctx.contactId || !ctx.conversation) return;
   await runBindingIntent(ctx, { kind: 'redeem', code });
+}
+
+async function findChannelIdentityId(ctx: InboundMessageContext): Promise<string | null> {
+  const identity = await ctx.prisma.channelIdentity.findUnique({
+    where: { channelId_uid: { channelId: ctx.channel.id, uid: ctx.contactUid } },
+    select: { id: true },
+  });
+  return identity?.id ?? null;
 }
 
 async function runBindingIntent(
@@ -78,11 +104,8 @@ async function runBindingIntent(
 ): Promise<void> {
   const conversation = ctx.conversation!;
   try {
-    const identity = await ctx.prisma.channelIdentity.findUnique({
-      where: { channelId_uid: { channelId: ctx.channel.id, uid: ctx.contactUid } },
-      select: { id: true },
-    });
-    if (!identity) throw new Error('找不到顧客的渠道身分');
+    const identityId = await findChannelIdentityId(ctx);
+    if (!identityId) throw new Error('找不到顧客的渠道身分');
 
     await executeBindingIntent(
       ctx.prisma,
@@ -91,7 +114,7 @@ async function runBindingIntent(
         tenantId: ctx.tenantId,
         channelId: ctx.channel.id,
         channelType: ctx.channel.channelType,
-        channelIdentityId: identity.id,
+        channelIdentityId: identityId,
         uid: ctx.contactUid,
         contactId: ctx.contactId!,
         conversationId: conversation.id,
