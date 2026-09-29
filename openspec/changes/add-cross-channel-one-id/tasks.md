@@ -1,9 +1,9 @@
 ## 0. 平台行為實測（先做，結果可能改變 FB/IG/LINE 導流方式）
 
-- [ ] 0.1 實測 FB：已有對話的顧客點 `m.me/{粉專}?ref=X`，確認每次都送出 referral 事件及 payload 形狀；記錄於 design.md Risks
-- [ ] 0.2 實測 IG：`ig.me/m/{username}?ref=X` 是否送出 `messaging_referral`（新對話 / 既有對話）
-- [ ] 0.3 實測 LINE：非好友開啟 `line.me/R/oaMessage/{basicId}/?{text}`，預填文字是否保留、加好友後送出是否進 webhook
-- [ ] 0.4 若 0.1/0.2 不穩，決定 FB/IG 退路（改為在對話貼代碼文字），更新 design D4/D6
+- [x] 0.1 查證 FB `m.me?ref=`：既有對話送 `messaging_referrals`、新對話 ref 附在 Get Started postback（Meta 官方文件，已寫入 design D4）
+- [x] 0.2 查證 IG `ig.me?ref=`：既有對話送 `messaging_referral`、新對話 ref 附在第一次互動、不支援網頁版、App 須 Live（Meta 官方文件，已寫入 design D4）
+- [x] 0.3 LINE 非好友須先加好友（使用者確認），導流改兩步（design D6）
+- [ ] 0.4 UAT 真機驗證：FB/IG 新舊對話四種情境與 LINE 加好友流程的實際體驗，確認說明文字與純文字代碼退路可用
 
 ## 1. P0：移除 fan/auth 漏洞
 
@@ -39,7 +39,8 @@
 
 - [ ] 5.1 `ParsedWebhookMessage` 加 `referralRef?: string`、`contentType` 加 `'referral'`
 - [ ] 5.2 FB plugin 解析獨立 `referral`、`message.referral`、`postback.referral`
-- [ ] 5.3 IG（threads.ts）解析 `messaging_referral`，不再因缺 `message.mid` 跳過
+- [ ] 5.3 IG（threads.ts）解析 `messaging_referral`（既有對話），不再因缺 `message.mid` 跳過；並解析新對話第一則 `messages` / `messaging_postback` 內夾帶的 `referral`
+- [ ] 5.6 FB 渠道設定：檢查粉專是否已設定 Get Started 按鈕（新對話的 ref 靠它送達），未設定時在後台提示
 - [ ] 5.4 入站管線：`referral` 事件若 ref 非綁定代碼 → 只記 log，不落地訊息
 - [ ] 5.5 plugin 單元測試：三種 FB referral 形狀、IG referral、無 ref 事件
 
@@ -47,7 +48,7 @@
 
 - [ ] 6.1 新增 `apps/api/src/modules/identity-binding/`：可注入 Redis 介面的 code store（`SET PX NX` / `GETDEL`）、代碼產生（Crockford base32）、regex 搜尋與正規化
 - [ ] 6.2 `TenantSettings.identityBinding`（enabled 預設 false、bindKeywords、unbindKeywords）讀取與預設值；常數（30 分鐘、7 天、頻率上限）集中一檔
-- [ ] 6.3 發碼：產生代碼、依 D6 產生各渠道連結（percent-encode）、回覆系統訊息；發碼頻率限制
+- [ ] 6.3 發碼：產生代碼、依 D6 產生各渠道連結（percent-encode；LINE 分「加好友 → 送出代碼」兩步；所有渠道附純文字代碼與「開啟後傳送任一訊息或直接貼上代碼」說明）、回覆系統訊息；發碼頻率限制
 - [ ] 6.4 兌換：D7 五項檢查、呼叫統一合併引擎（source `BINDING_CODE`）、`IdentityMap` upsert、雙邊確認（送出失敗寫 SYSTEM 訊息）、失敗次數限制
 - [ ] 6.5 解除：7 天內顧客解除（撤銷最近一筆 BINDING_CODE 合併）、超過 7 天回覆聯繫客服、雙邊通知
 - [ ] 6.6 在 `processInboundMessage` 的 `sendFirstContactGreeting` 前接上 `handleIdentityBinding(ctx)`；命中時跳過打招呼、其他攔截器與 `message.received`，但保留 socket 事件

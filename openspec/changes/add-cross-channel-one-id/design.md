@@ -55,6 +55,17 @@
 - `contentType: 'referral'` 的事件若 `ref` 不是綁定代碼，**只記錄不落地訊息**（避免收件匣出現空白訊息），保留給日後廣告歸因使用。
 攔截時代碼來源為 `referralRef ?? textContent 中的 regex 結果`。
 
+**Meta 官方文件查證（2026-09-29）**，ref 送達時機依「是否已有對話」而不同，三種位置都要解析：
+| 情境 | FB（m.me） | IG（ig.me） |
+|---|---|---|
+| 已有對話 | 點連結即送 `messaging_referrals`，`referral = { ref, source: "SHORTLINK", type: "OPEN_THREAD" }` | 點連結即送 `messaging_referral`，`source: "SHORTLINKS"`，`type: "OPEN_THREAD"` |
+| 新對話 | ref 附在「開始使用（Get Started）」按鈕的 `postback.referral`，**顧客要按開始使用才會送** | ref 附在顧客第一次互動（點 Icebreaker 的 `messaging_postback` 或傳第一則訊息的 `messages`）裡，**顧客不動作就不會送** |
+
+- ref 只允許英數與 `-`、`_`、`=`：`BIND-` + Crockford base32 符合。
+- IG：App 必須已發佈（Live）才收得到一般使用者的 ref（與 IG 渠道既有要求一致）；ig.me **不支援 Instagram 網頁版**。
+- IG referral 會重置 24 小時訊息視窗，收到後可立即回覆確認訊息。
+- 新對話的情境：FB 粉專須設定 Get Started 按鈕（渠道設定時檢查並提示）；IG 顧客若只開了對話不傳訊息，代碼不會送達 → 連結訊息的說明文字請顧客「開啟後傳送任一訊息或直接貼上代碼」。
+
 ### D5 統一合併引擎 `contact-merge.service.ts`
 位置：`apps/api/src/modules/contact/contact-merge.service.ts`，簽章：
 ```ts
@@ -115,6 +126,9 @@ model ContactMergeLog {
 
 發碼後回覆一則系統訊息，列出**其他**可綁定渠道的導流連結（排除顧客目前所在的這個 channel；只列 `isActive` 且已設定導流識別的 LINE/FB/IG 渠道）：
 - LINE：`https://line.me/R/oaMessage/{percent-encoded basicId}/?{percent-encoded 預填文字}`
+  - **非好友必須先加好友才能送出**（2026-09-29 使用者確認）。因此 LINE 的導流訊息分兩步呈現：①加好友連結 `https://line.me/R/ti/p/{percent-encoded basicId}` ②「加好友後點此送出代碼」的 oaMessage 連結；同時以純文字顯示代碼，讓顧客在預填文字遺失時可手動貼上（regex 搜尋本來就支援）。
+  - 顧客加好友會觸發 `follow` 事件與首次打招呼訊息；綁定代碼稍後才送達，屬可接受行為（打招呼已送出，不回收）。
+- 所有渠道的導流訊息都**同時以純文字顯示代碼**，作為 ref／預填文字失效時的退路。
 - FB：`https://m.me/{pageUsername ?? pageId}?ref={code}`
 - IG：`https://ig.me/m/{igUsername}?ref={code}`
 
@@ -157,8 +171,9 @@ model ContactMergeLog {
 ## Risks / Trade-offs
 
 - **FB 24 小時視窗**：確認訊息送往發碼方對話時，距發碼最多 30 分鐘，一定在視窗內；解除訊息在 7 天內可能超出視窗而送失敗 → 失敗寫入 SYSTEM 訊息讓客服看得到，不重試。全面的 24h 處理不在本 change。
-- **ref 在既有對話是否帶入未實測**：Meta 文件列出 referral 事件在「重啟對話」時觸發，但已開著的對話點 `m.me?ref=` 是否每次都送事件需實測 → tasks 列為第一個驗證項；若不穩，FB/IG 改用與 LINE 相同的「對話中貼代碼文字」退路（regex 攔截本來就支援）。
-- **LINE oaMessage 對非好友**：非好友開啟 oaMessage 後送出訊息，是否需先加好友才會進 webhook 需實測 → 若需加好友，預填文字在加好友後仍保留，流程相同；tasks 列驗證項。
+- **FB/IG 新對話的 ref 要等顧客動作才送達**（官方文件已確認，見 D4）：FB 要按「開始使用」、IG 要傳第一則訊息或點 Icebreaker → 說明文字引導顧客動作；所有導流訊息同時顯示純文字代碼作退路（regex 攔截本來就支援）。實際體驗仍需在 UAT 真機驗證。
+- **LINE 非好友須先加好友**（使用者確認）：導流訊息改為「加好友 → 點連結送出代碼」兩步（見 D6）；加好友時會先收到打招呼訊息，屬可接受行為。
+- **ig.me 不支援 IG 網頁版**：用電腦版 IG 的顧客點不開 → 退路同上（貼代碼）。
 - **合併方向固定為發碼方**：若兌換方其實是資料較多的一方，只影響 displayName 等單值欄位（survivor 空欄才補），關聯資料全數搬移不遺失 → 可接受。
 - **解除無法完全還原**：tag/attribute 不回收、合併後新資料不搬回 → 在解除確認與後台說明中明示。
 - **合併交易變大**：搬移表數增加，單次合併在同一交易中執行 → 單一顧客資料量小，可接受；觀察交易時間。

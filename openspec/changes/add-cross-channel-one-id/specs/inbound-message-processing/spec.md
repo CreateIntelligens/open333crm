@@ -12,7 +12,7 @@ When the tenant has identity binding enabled, inbound processing SHALL check eac
 - **THEN** inbound processing SHALL behave exactly as before this change
 
 ### Requirement: FB and Instagram referral events are parsed
-The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_referrals`, standalone `referral`, and `referral` nested in `message` or `postback`; Instagram `messaging_referral`) and expose the `ref` value on the parsed event as `referralRef`. A referral-only event whose `ref` is not a binding code SHALL be logged and SHALL NOT create an inbox message.
+The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_referrals`, standalone `referral`, and `referral` nested in `message` or `postback`; Instagram `messaging_referral` for existing threads, and `referral` nested in the first `messages` or `messaging_postback` event of a new thread) and expose the `ref` value on the parsed event as `referralRef`. A referral-only event whose `ref` is not a binding code SHALL be logged and SHALL NOT create an inbox message.
 
 #### Scenario: m.me link with ref
 - **WHEN** FB delivers a `referral` event with `ref = BIND-7K2M9QH4TX` and source `SHORTLINK`
