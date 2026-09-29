@@ -13,9 +13,11 @@ import {
   mergeContacts,
 } from './contact.service.js';
 import { listMergeLogs, revertMerge } from './contact-merge.service.js';
+import { getBindingStore } from '../identity-binding/binding-code.js';
+import { getIdentityBindingSettings, issueBindingCode } from '../identity-binding/identity-binding.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { success, paginated } from '../../shared/utils/response.js';
+import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
 const listQuerySchema = z.object({
@@ -46,6 +48,10 @@ const addTagSchema = z.object({
 
 const mergeLogParamsSchema = z.object({
   logId: z.string().uuid('合併紀錄 id 格式錯誤'),
+});
+
+const bindingLinkBodySchema = z.object({
+  conversationId: z.string().uuid('對話 id 格式錯誤'),
 });
 
 const contactIdParamsSchema = z.object({
@@ -154,6 +160,57 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send(success(result));
+    },
+  );
+
+  // POST /api/v1/contacts/:id/binding-link — 客服代顧客在指定對話送出跨渠道綁定連結
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/binding-link',
+    { preHandler: [requirePermission('contact.update')] },
+    async (request, reply) => {
+      const { id } = contactIdParamsSchema.parse(request.params);
+      const { conversationId } = bindingLinkBodySchema.parse(request.body);
+      const tenantId = request.agent.tenantId;
+
+      const result = await withTenant(fastify.prisma, tenantId, async (tx) => {
+        const settings = await getIdentityBindingSettings(tx, tenantId);
+        if (!settings.enabled) {
+          throw new AppError('尚未開啟跨渠道綁定，請先到「設定」啟用', 'BINDING_DISABLED', 400);
+        }
+        const conversation = await tx.conversation.findFirst({
+          where: { id: conversationId, tenantId, contactId: id },
+          select: { id: true, channelId: true, channel: { select: { channelType: true } } },
+        });
+        if (!conversation) throw new AppError('找不到此聯絡人的這個對話', 'NOT_FOUND', 404);
+        const identity = await tx.channelIdentity.findFirst({
+          where: { contactId: id, channelId: conversation.channelId },
+          select: { id: true, uid: true },
+        });
+        if (!identity) throw new AppError('此對話的渠道身分不存在，無法傳送綁定連結', 'NOT_FOUND', 404);
+
+        return issueBindingCode(tx, { store: getBindingStore(), io: fastify.io }, {
+          tenantId,
+          channelId: conversation.channelId,
+          channelType: conversation.channel.channelType,
+          channelIdentityId: identity.id,
+          uid: identity.uid,
+          contactId: id,
+          conversationId: conversation.id,
+        });
+      });
+
+      await writeTenantAudit(request.tenantPrisma, {
+        tenantId,
+        actorId: request.agent.id,
+        action: 'contact.binding_link_send',
+        targetType: 'contact',
+        targetId: id,
+        payload: { conversationId, status: result.status },
+        ip: request.ip,
+      });
+
+      // 不回傳代碼本身：代碼即憑證，只該出現在顧客的對話裡
+      return reply.send(success({ status: result.status, targets: result.status === 'sent' ? result.targets : 0 }));
     },
   );
 

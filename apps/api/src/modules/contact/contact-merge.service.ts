@@ -357,6 +357,21 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
     });
   }
 
+  // 搬回的渠道身分，其 IdentityMap 對應（含合併後才寫入的，例如綁定代碼的 BINDING_CODE 紀錄）
+  // 也要指回被恢復的聯絡人，否則之後該 uid 進站會被解析回 survivor
+  if (ids('channelIdentity').length > 0) {
+    const identities = await db.channelIdentity.findMany({
+      where: { id: { in: ids('channelIdentity') }, contactId: log.mergedId },
+      select: { channelType: true, uid: true },
+    });
+    for (const identity of identities) {
+      await db.identityMap.updateMany({
+        where: { tenantId, channelType: identity.channelType, uid: identity.uid, contactId: heldBy },
+        data: back,
+      });
+    }
+  }
+
   await db.contact.update({
     where: { id: log.mergedId, tenantId },
     data: { isArchived: false, mergedIntoId: null },

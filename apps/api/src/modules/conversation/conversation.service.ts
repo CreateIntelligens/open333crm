@@ -627,7 +627,7 @@ export async function deliverToChannel(
   prisma: TenantDb,
   conversationId: string,
   payload: string | { contentType: string; content: Record<string, unknown>; delivery?: ChannelDeliveryOptions },
-): Promise<void> {
+): Promise<boolean> {
   const outbound = typeof payload === 'string'
     ? { contentType: 'text', content: { text: payload } as Record<string, unknown> }
     : payload;
@@ -645,23 +645,23 @@ export async function deliverToChannel(
       },
     });
 
-    if (!conv) { logger.error('[deliverToChannel] Conversation not found:', conversationId); return; }
-    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return; }
+    if (!conv) { logger.error('[deliverToChannel] Conversation not found:', conversationId); return false; }
+    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return false; }
 
     const identity = conv.contact?.channelIdentities?.find(
       (ci) => ci.channelId === conv.channel.id,
     );
-    if (!identity) { logger.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return; }
+    if (!identity) { logger.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return false; }
 
     const plugin = getChannelPlugin(conv.channel.channelType);
-    if (!plugin) { logger.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return; }
+    if (!plugin) { logger.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return false; }
 
     let credentials: Record<string, unknown>;
     try {
       credentials = decryptCredentials(conv.channel.credentialsEncrypted);
     } catch (err) {
       logger.error('[deliverToChannel] Failed to decrypt credentials:', err);
-      return;
+      return false;
     }
 
     logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid} contentType=${outbound.contentType}`);
@@ -721,8 +721,10 @@ export async function deliverToChannel(
         .publish('socket:emit', JSON.stringify({ namespace: '/visitor', room, event: 'agent:message', data: msgPayload }))
         .catch((err) => logger.error('[deliverToChannel] Redis publish failed:', err));
     }
+    return true;
   } catch (err) {
     logger.error('[deliverToChannel] Error delivering to channel:', err);
+    return false;
   }
 }
 

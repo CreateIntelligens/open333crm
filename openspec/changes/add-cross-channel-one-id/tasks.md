@@ -30,31 +30,31 @@
 
 ## 4. P1：渠道導流識別
 
-- [ ] 4.1 LINE `verifyChannel` 將 `/v2/bot/info` 的 `basicId` 寫入 `Channel.settings.bindingHandle`
-- [ ] 4.2 IG verify 改呼叫 `/me?fields=id,username` 並寫入 username；FB 支援選填 `pageUsername`，無則用 `pageId`
-- [ ] 4.3 一次性 script：為既有 LINE/IG 渠道補抓導流識別（逐租戶 `withTenant`）
+- [x] 4.1 LINE `verifyChannel` 將 `/v2/bot/info` 的 `basicId` 寫入 `Channel.settings.bindingHandle`
+- [x] 4.2 IG verify 改呼叫 `/me?fields=id,username` 並寫入 username；FB 支援選填 `pageUsername`，無則用 `pageId`
+- [x] 4.3 一次性 script：為既有 LINE/IG 渠道補抓導流識別（逐租戶 `withTenant`）
 - [ ] 4.4 後台渠道設定頁顯示並可覆寫導流識別
 
 ## 5. P1：FB/IG referral 解析
 
-- [ ] 5.1 `ParsedWebhookMessage` 加 `referralRef?: string`、`contentType` 加 `'referral'`
-- [ ] 5.2 FB plugin 解析獨立 `referral`、`message.referral`、`postback.referral`
-- [ ] 5.3 IG（threads.ts）解析 `messaging_referral`（既有對話），不再因缺 `message.mid` 跳過；並解析新對話第一則 `messages` / `messaging_postback` 內夾帶的 `referral`
-- [ ] 5.6 FB 渠道設定：檢查粉專是否已設定 Get Started 按鈕（新對話的 ref 靠它送達），未設定時在後台提示
-- [ ] 5.4 入站管線：`referral` 事件若 ref 非綁定代碼 → 只記 log，不落地訊息
-- [ ] 5.5 plugin 單元測試：三種 FB referral 形狀、IG referral、無 ref 事件
+- [x] 5.1 `ParsedWebhookMessage` 加 `referralRef?: string`、`contentType` 加 `'referral'`
+- [x] 5.2 FB plugin 解析獨立 `referral`、`message.referral`、`postback.referral`
+- [x] 5.3 IG（threads.ts）解析 `messaging_referral`（既有對話），不再因缺 `message.mid` 跳過；並解析新對話第一則 `messages` / `messaging_postback` 內夾帶的 `referral`
+- [x] 5.6 FB 渠道設定：檢查粉專是否已設定 Get Started 按鈕（新對話的 ref 靠它送達），未設定時在後台提示
+- [x] 5.4 入站管線：`referral` 事件若 ref 非綁定代碼 → 只記 log，不落地訊息
+- [x] 5.5 plugin 單元測試：三種 FB referral 形狀、IG referral、無 ref 事件
 
 ## 6. P1：綁定代碼引擎
 
-- [ ] 6.1 新增 `apps/api/src/modules/identity-binding/`：可注入 Redis 介面的 code store（`SET PX NX` / `GETDEL`）、代碼產生（Crockford base32）、regex 搜尋與正規化
-- [ ] 6.2 `TenantSettings.identityBinding`（enabled 預設 false、bindKeywords、unbindKeywords）讀取與預設值；常數（30 分鐘、7 天、頻率上限）集中一檔
-- [ ] 6.3 發碼：產生代碼、依 D6 產生各渠道連結（percent-encode；LINE 分「加好友 → 送出代碼」兩步；所有渠道附純文字代碼與「開啟後傳送任一訊息或直接貼上代碼」說明）、回覆系統訊息；發碼頻率限制
-- [ ] 6.4 兌換：D7 五項檢查、呼叫統一合併引擎（source `BINDING_CODE`）、`IdentityMap` upsert、雙邊確認（送出失敗寫 SYSTEM 訊息）、失敗次數限制
-- [ ] 6.5 解除：7 天內顧客解除（撤銷最近一筆 BINDING_CODE 合併）、超過 7 天回覆聯繫客服、雙邊通知
-- [ ] 6.6 在 `processInboundMessage` 的 `sendFirstContactGreeting` 前接上 `handleIdentityBinding(ctx)`；命中時跳過打招呼、其他攔截器與 `message.received`，但保留 socket 事件
-- [ ] 6.7 客服代發 API：`POST /api/v1/contacts/:id/binding-link`（`contact.update`，指定 conversationId）
-- [ ] 6.8 測試 `identity-binding.test.ts`：spec 中 cross-channel-binding-code 每個 Scenario 一案（含未啟用、並發兌換、跨租戶、同身分、已合併追 mergedIntoId、改動預填文字、頻率限制）
-- [ ] 6.9 測試 `first-contact-greeting.test.ts` / inbound 相關補案例：代碼命中時不送打招呼、不發 `message.received`；未啟用時行為不變
+- [x] 6.1 新增 `apps/api/src/modules/identity-binding/`：可注入 Redis 介面的 code store（`SET PX NX` / `GETDEL`）、代碼產生（Crockford base32）、regex 搜尋與正規化
+- [x] 6.2 `TenantSettings.identityBinding`（enabled 預設 false、bindKeywords、unbindKeywords）讀取與預設值；常數（30 分鐘、7 天、頻率上限）集中一檔
+- [x] 6.3 發碼：產生代碼、依 D6 產生各渠道連結（percent-encode；LINE 分「加好友 → 送出代碼」兩步；所有渠道附純文字代碼與「開啟後傳送任一訊息或直接貼上代碼」說明）、回覆系統訊息；發碼頻率限制
+- [x] 6.4 兌換：D7 五項檢查、呼叫統一合併引擎（source `BINDING_CODE`）、`IdentityMap` upsert、雙邊確認（送出失敗寫 SYSTEM 訊息）、失敗次數限制
+- [x] 6.5 解除：7 天內顧客解除（撤銷最近一筆 BINDING_CODE 合併）、超過 7 天回覆聯繫客服、雙邊通知
+- [x] 6.6 在 `processInboundMessage` 的 `sendFirstContactGreeting` 前接上 `handleIdentityBinding(ctx)`；命中時跳過打招呼、其他攔截器與 `message.received`，但保留 socket 事件
+- [x] 6.7 客服代發 API：`POST /api/v1/contacts/:id/binding-link`（`contact.update`，指定 conversationId）
+- [x] 6.8 測試 `identity-binding.test.ts`：spec 中 cross-channel-binding-code 每個 Scenario 一案（含未啟用、並發兌換、跨租戶、同身分、已合併追 mergedIntoId、改動預填文字、頻率限制）
+- [x] 6.9 測試 `first-contact-greeting.test.ts` / inbound 相關補案例：代碼命中時不送打招呼、不發 `message.received`；未啟用時行為不變
 
 ## 7. P1：後台 UI
 

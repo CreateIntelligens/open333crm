@@ -34,7 +34,11 @@
     "test:portal-archive": "tsx src/__tests__/portal-archive.test.ts",
     "test:material-tag-unify": "tsx src/__tests__/material-tag-unify.test.ts",
     "test:tag-on-click": "tsx src/__tests__/tag-on-click.test.ts",
-    "test:contact-merge": "tsx src/__tests__/contact-merge.test.ts"
+    "test:contact-merge": "tsx src/__tests__/contact-merge.test.ts",
+    "test:identity-binding-unit": "tsx src/__tests__/identity-binding-unit.test.ts",
+    "test:identity-binding": "tsx src/__tests__/identity-binding.test.ts",
+    "test:inbound-identity-binding": "tsx src/__tests__/inbound-identity-binding.test.ts",
+    "test:referral-parsing": "tsx ../../packages/channel-plugins/src/__tests__/referral-parsing.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

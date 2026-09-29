@@ -1199,6 +1199,8 @@ model TenantSettings {
   geminiApiKeyEnc        String?
   gaId                   String?
   metaPixelId            String?
+  // 跨渠道綁定（One ID）：{ enabled, bindKeywords, unbindKeywords }，預設關閉
+  identityBinding        Json     @default("{}")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

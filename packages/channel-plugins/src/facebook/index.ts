@@ -4,6 +4,12 @@ import { CHANNEL_TYPE } from '@open333crm/shared';
 
 const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
 
+/** 取出 referral 物件的 ref 字串；沒有或空字串回 undefined */
+function refOf(referral: unknown): string | undefined {
+  const ref = (referral as { ref?: unknown } | undefined)?.ref;
+  return typeof ref === 'string' && ref.trim() !== '' ? ref.trim() : undefined;
+}
+
 export class FbPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.FB;
 
@@ -61,6 +67,7 @@ export class FbPlugin implements ChannelPlugin {
               contentType,
               content,
               rawPayload: event,
+              referralRef: refOf(msg.referral),
             });
           }
 
@@ -72,7 +79,25 @@ export class FbPlugin implements ChannelPlugin {
               contentType: 'postback',
               content: { text: event.postback.title || event.postback.payload || '[按鈕回應]' },
               rawPayload: event,
+              // 新對話點 m.me?ref= 時，ref 夾在「開始使用」按鈕的 postback 裡
+              referralRef: refOf(event.postback.referral),
             });
+          }
+
+          // 已有對話的顧客點 m.me?ref= → 獨立的 referral 事件（messaging_referrals），沒有訊息內容
+          if (event.referral && !event.message && !event.postback) {
+            const referralRef = refOf(event.referral);
+            if (referralRef) {
+              messages.push({
+                channelMsgId: undefined,
+                contactUid: event.sender?.id ?? '',
+                timestamp: new Date(event.timestamp ?? Date.now()),
+                contentType: 'referral',
+                content: {},
+                rawPayload: event,
+                referralRef,
+              });
+            }
           }
         }
       }

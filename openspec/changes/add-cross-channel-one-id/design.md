@@ -121,7 +121,7 @@ model ContactMergeLog {
 
 ### D6 發碼
 觸發方式：
-1. 顧客在對話中傳送綁定關鍵字（租戶設定 `TenantSettings.identityBinding.bindKeywords`，預設 `["綁定帳號"]`）。
+1. 顧客在對話中傳送綁定關鍵字（租戶設定 `TenantSettings.identityBinding.bindKeywords`，預設 `["綁定帳號"]`；新增 JSON 欄位 `identityBinding`）。關鍵字須**整句相符**（去頭尾空白、不分大小寫），避免一般對話提到「綁定帳號」就被攔截。
 2. 客服在聯絡人頁按「傳送綁定連結」（需 `contact.update` 權限），系統在該對話送出。
 
 發碼後回覆一則系統訊息，列出**其他**可綁定渠道的導流連結（排除顧客目前所在的這個 channel；只列 `isActive` 且已設定導流識別的 LINE/FB/IG 渠道）：
@@ -138,13 +138,14 @@ model ContactMergeLog {
 ### D7 兌換規則
 依序檢查，任一不通過即回覆對應訊息並結束（不合併）：
 1. `GETDEL` 取不到 → 「代碼無效或已過期，請回原對話重新取得」。
-2. 代碼 `tenantId` ≠ 收訊渠道的 `tenantId` → 視同無效（不洩漏代碼存在）。
+2. 代碼 `tenantId` ≠ 收訊渠道的 `tenantId` → 視同無效（不洩漏代碼存在）。實作上 Redis key 為 `bindcode:{tenantId}:{code}`，他租戶根本查不到，也就不會誤耗掉原租戶的代碼。
 3. 兌換方的 channelIdentity 就是發碼方 → 「請到其他渠道送出此代碼」。
 4. 兩個身分已屬於同一聯絡人 → 「已完成綁定」。
 5. 發碼方聯絡人已封存（中途被合併）→ 追 `mergedIntoId` 找到現存聯絡人再合併。
 
 合併方向：**survivor = 發碼方聯絡人**，merged = 兌換方聯絡人。理由：發碼方是顧客主動發起綁定的那一端，通常是既有、資料較完整的一方；兌換方常常是剛因這則訊息被建立的新聯絡人。
-合併後：`IdentityMap` upsert 兌換方身分（source `BINDING_CODE`，confidence 1.0）；雙邊對話各送確認訊息（以 `deliverToChannel` 送，失敗寫系統訊息，不靜默）。
+合併後：`IdentityMap` upsert 兌換方身分（source `BINDING_CODE`，confidence 1.0）；雙邊對話各送確認訊息（以 `deliverToChannel` 送，失敗寫系統訊息，不靜默）。為此 `deliverToChannel` 改為回傳是否成功（`Promise<boolean>`，原呼叫端忽略回傳值不受影響）。
+`revertMerge` 搬回渠道身分時，一併把該 uid 的 `IdentityMap` 指回被恢復的聯絡人（含合併後才寫入的 BINDING_CODE 紀錄），否則之後該 uid 進站會被解析回 survivor。
 
 ### D8 解除綁定
 - **顧客端**：綁定後 7 天內，在任一邊對話回覆解除關鍵字（`identityBinding.unbindKeywords`，預設 `["解除綁定"]`）→ 撤銷最近一筆 `source=BINDING_CODE` 且未撤銷、涉及該顧客當前身分的 `ContactMergeLog`。超過 7 天回覆「請聯繫客服協助解除」，改由客服處理（避免久遠的合併被一句話拆掉，後續資料已混在一起）。
@@ -159,7 +160,7 @@ model ContactMergeLog {
 - 轉傳風險：代碼即憑證，被轉給他人會被他人綁走。緩解：只在顧客主動要求（或客服主動發）時產生、30 分鐘時效、雙邊確認訊息含「非本人操作請回覆『解除綁定』」、7 天內自助解除。
 
 ### D10 渠道導流識別
-`Channel.settings` 新增 `bindingHandle`：
+`Channel.settings` 新增兩欄：驗證時自動取得的 `bindingHandleAuto`，與管理員手動填的 `bindingHandle`（優先使用）。分兩欄是因為渠道設定 API 整包覆寫 settings，重新驗證時不可蓋掉管理員填的值。FB 驗證時另檢查 `messenger_profile.get_started`，結果存 `fbGetStartedConfigured` 供後台提示（新對話的 ref 只隨「開始使用」送達）。
 - LINE：`verifyChannel` 時將 `/v2/bot/info` 回傳的 `basicId` 寫入；既有渠道重新驗證即補齊。
 - FB：`pageUsername`（選填，後台可填），沒有就用 `pageId`。
 - IG：verify 時改呼叫 `/me?fields=id,username` 並寫入 `username`。

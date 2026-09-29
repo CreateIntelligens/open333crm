@@ -17,6 +17,7 @@ import {
   updateConversationAfterInboundMessage,
 } from './inbound-message-writer.js';
 import { runInboundPostbackInterceptors } from './inbound-postback-interceptors.js';
+import { handleReferralEvent, interceptIdentityBinding } from './inbound-identity-binding.js';
 import {
   emitInboundSocketEvents,
   publishMessageReceived,
@@ -143,6 +144,15 @@ export async function processInboundMessage(
   const ctx = createInboundMessageContext(prisma, io, credentials, channel, tenantId, parsed, options);
   if (!ctx) return;
 
+  // FB／IG 點 m.me／ig.me 連結產生的 referral 事件只帶 ref、沒有訊息內容，不落地成收件匣訊息
+  if (ctx.contentType === 'referral') {
+    await handleReferralEvent(ctx, async (c) => {
+      await resolveInboundContact(c);
+      await resolveInboundConversation(c);
+    });
+    return;
+  }
+
   await resolveInboundContact(ctx);
   await resolveInboundConversation(ctx);
 
@@ -171,6 +181,12 @@ export async function processInboundMessage(
   resolveInboundMediaAsync(ctx);
 
   await updateConversationAfterInboundMessage(ctx);
+
+  // 跨渠道綁定（綁定關鍵字／代碼／解除）排在招呼語之前：帶代碼來的新顧客即將併入既有聯絡人，
+  // 不該先收到「歡迎加入」；命中時也不跑其他攔截與 AI／關鍵字／自動化。
+  if (await interceptIdentityBinding(ctx)) {
+    return { conversation: ctx.conversation, message: ctx.message, duplicate: false };
+  }
 
   // 招呼語放在 postback 攔截之前：攔截命中（CSAT/KB 回饋/轉真人）會提早 return，
   // 那些情境雖不太可能是首次進站，但招呼語沒有理由被它們跳過。
