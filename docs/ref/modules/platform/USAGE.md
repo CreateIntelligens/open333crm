@@ -53,11 +53,11 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
      ÷ 1,000,000
 ```
 
-公式裡容易算錯的地方：
+自己驗算時容易弄錯的地方：
 
 - `cachedTokens` 是 `promptTokens` 的子集，要先扣掉才不會重複計價。
 - thinking token（`thoughtsTokens`）按 output 單價算，這是 Google 的計費規則。
-- 該 model 的價目設了 `tierThreshold`，而 `promptTokens` 超過門檻時，**整筆**改用 tier 單價，不是只有超出的部分。
+- 該 model 的價目設了 `tierThreshold`，而 `promptTokens` 超過門檻時，**整筆**改用 tier 單價，不是只有超出的部分。換的是 input 與 output 兩個單價，cached 沒有分級價，一律用 `cachedPer1M`。
 
 金額全程用 `Prisma.Decimal`，欄位是 `Decimal(12, 8)`，API 回傳的也是字串。前端只負責顯示，不對字串做加總。
 
