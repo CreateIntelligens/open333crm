@@ -196,10 +196,13 @@ scenario('發碼：同一身分一小時第 6 次被擋', async (f) => {
 });
 
 scenario('渠道設定整包更新（例如其他設定視窗用舊快照儲存）不會洗掉導流識別', async (f) => {
-  await updateChannel(f.tx, f.lineChannelId, T, { settings: { botConfig: { botMode: 'OFF' } } });
+  // 前端快照是舊的：沒有最新值、甚至帶著舊的導流識別
+  await updateChannel(f.tx, f.lineChannelId, T, {
+    settings: { botConfig: { botMode: 'OFF' }, bindingHandleAuto: '@stale-old' },
+  });
   const ch = await f.tx.channel.findFirst({ where: { id: f.lineChannelId, tenantId: T }, select: { settings: true } });
   const settings = ch?.settings as Record<string, unknown>;
-  assert.equal(settings.bindingHandleAuto, '@line1234', '導流識別保留');
+  assert.equal(settings.bindingHandleAuto, '@line1234', '導流識別以資料庫現值為準，不被舊快照蓋掉');
   assert.deepEqual(settings.botConfig, { botMode: 'OFF' }, '送來的設定照常寫入');
 });
 

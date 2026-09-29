@@ -24,7 +24,10 @@ export interface MovedRecords {
   case: string[];
   longTermMemory: string[];
   portalSubmission: string[];
+  /** 舊版合併直接搬移的點數交易 id（已不再使用，保留供解除舊紀錄） */
   pointTransaction: string[];
+  /** 由被合併方轉入 survivor 的點數（點數帳本為 append-only，以轉出／轉入兩筆交易處理） */
+  pointsTransferred?: number;
   identityMap: string[];
   clickLog: string[];
   flowExecution: string[];
@@ -83,6 +86,64 @@ async function moveIds(
   return ids;
 }
 
+async function latestPointBalance(db: TenantDb, tenantId: string, contactId: string) {
+  const latest = await db.pointTransaction.findFirst({
+    where: { tenantId, contactId },
+    orderBy: { createdAt: 'desc' },
+    select: { balance: true, createdAt: true },
+  });
+  return latest?.balance ?? 0;
+}
+
+/**
+ * 以兩筆交易把點數從 from 轉到 to（append-only 帳本）。回傳實際轉移的點數。
+ * amount 省略時轉出 from 的全部餘額。createdAt 明確取在雙方最新交易之後，
+ * 避免同一交易內寫入的多筆 now() 時間相同，讓「取最新一筆」的餘額計算不確定。
+ */
+async function transferPoints(
+  db: TenantDb,
+  tenantId: string,
+  fromId: string,
+  toId: string,
+  reason: 'merge' | 'revert',
+  amount?: number,
+  expected?: number,
+): Promise<number> {
+  const [from, to] = await Promise.all(
+    [fromId, toId].map((contactId) =>
+      db.pointTransaction.findFirst({
+        where: { tenantId, contactId },
+        orderBy: { createdAt: 'desc' },
+        select: { balance: true, createdAt: true },
+      }),
+    ),
+  );
+  const fromBalance = from?.balance ?? 0;
+  const value = amount ?? fromBalance;
+  if (value <= 0) return 0;
+
+  const floor = Math.max(from?.createdAt.getTime() ?? 0, to?.createdAt.getTime() ?? 0);
+  const createdAt = new Date(Math.max(Date.now(), floor + 1));
+  const partial = expected !== undefined && value < expected ? `（原轉入 ${expected} 點，合併後已使用部分，僅轉回 ${value} 點）` : '';
+  const note = reason === 'merge' ? '聯絡人合併：點數轉移' : `解除合併：點數轉回${partial}`;
+
+  await db.pointTransaction.create({
+    data: { tenantId, contactId: fromId, amount: -value, balance: fromBalance - value, type: `${reason}_transfer_out`, note, createdAt },
+  });
+  await db.pointTransaction.create({
+    data: {
+      tenantId,
+      contactId: toId,
+      amount: value,
+      balance: (to?.balance ?? 0) + value,
+      type: `${reason}_transfer_in`,
+      note,
+      createdAt,
+    },
+  });
+  return value;
+}
+
 /**
  * 將 mergedId 合併進 survivorId。
  *
@@ -133,10 +194,10 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     () => db.portalSubmission.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
     (ids) => db.portalSubmission.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
   );
-  const pointTransaction = await moveIds(
-    () => db.pointTransaction.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
-    (ids) => db.pointTransaction.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
-  );
+  // 點數帳本是 append-only、每筆記錄當下餘額（getPointBalance 取最新一筆的 balance），
+  // 直接搬交易會讓餘額變成「兩人裡最新那筆」→ 改為被合併方轉出、survivor 轉入
+  const pointsTransferred = await transferPoints(db, tenantId, mergedId, survivorId, 'merge');
+  const pointTransaction: string[] = [];
   const identityMap = await moveIds(
     () => db.identityMap.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
     (ids) => db.identityMap.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
@@ -264,6 +325,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     longTermMemory,
     portalSubmission,
     pointTransaction,
+    pointsTransferred,
     identityMap,
     clickLog,
     flowExecution,
@@ -358,7 +420,17 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
     await db.portalSubmission.updateMany({ where: { tenantId, id: inList('portalSubmission'), contactId: heldBy }, data: back });
   }
   if (has('pointTransaction')) {
+    // 舊版合併紀錄（直接搬移交易）才會有
     await db.pointTransaction.updateMany({ where: { tenantId, id: inList('pointTransaction'), contactId: heldBy }, data: back });
+  }
+  if (moved.pointsTransferred && moved.pointsTransferred > 0) {
+    // 把當初轉入的點數轉回；survivor 若在合併後已用掉一部分，只轉回剩餘的
+    const holderId = holderChain[holderChain.length - 1];
+    const holderBalance = await latestPointBalance(db, tenantId, holderId);
+    const amount = Math.min(moved.pointsTransferred, Math.max(holderBalance, 0));
+    if (amount > 0) {
+      await transferPoints(db, tenantId, holderId, log.mergedId, 'revert', amount, moved.pointsTransferred);
+    }
   }
   if (has('identityMap')) {
     await db.identityMap.updateMany({ where: { tenantId, id: inList('identityMap'), contactId: heldBy }, data: back });
@@ -378,9 +450,14 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
 
   // 合併「之後」才在 survivor 上新開、屬於被搬回渠道的對話與案件（不在 movedRecords 裡），
   // 也要跟著渠道身分回去；否則對話的聯絡人身上已沒有該渠道身分，客服回覆會送不出去。
-  const restoredChannels = (
-    await db.channelIdentity.findMany({ where: { contactId: log.mergedId }, select: { channelId: true } })
-  ).map((c) => c.channelId);
+  // 只處理「持有方在該渠道已沒有任何身分」的渠道：若持有方自己在同一渠道也有身分
+  // （手動合併不擋同渠道），無法分辨新對話屬於哪個人，寧可不搬也不搬錯
+  const [restoredIdentities, holderIdentities] = await Promise.all([
+    db.channelIdentity.findMany({ where: { contactId: log.mergedId }, select: { channelId: true } }),
+    db.channelIdentity.findMany({ where: { contactId: heldBy }, select: { channelId: true } }),
+  ]);
+  const holderChannels = new Set(holderIdentities.map((c) => c.channelId));
+  const restoredChannels = restoredIdentities.map((c) => c.channelId).filter((id) => !holderChannels.has(id));
   if (restoredChannels.length > 0) {
     const sinceMerge = { gte: log.createdAt };
     await db.conversation.updateMany({

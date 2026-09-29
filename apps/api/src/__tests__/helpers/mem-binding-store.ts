@@ -1,5 +1,5 @@
 /**
- * 測試用記憶體版綁定代碼儲存（取代 Redis）：支援 PX 過期、NX、GETDEL、INCR、PEXPIRE，
+ * 測試用記憶體版綁定代碼儲存（取代 Redis）：支援 PX 過期、NX、GETDEL、INCR（保留 TTL），
  * 時間由 clock 控制，可快轉測試過期與頻率限制。
  */
 import type { BindingStore } from '../../modules/identity-binding/binding-code.js';
@@ -35,12 +35,6 @@ export function memBindingStore(clock: { now: number } = { now: Date.now() }): B
       const n = Number(e?.v ?? 0) + 1;
       m.set(k, { v: String(n), exp: e?.exp ?? null });
       return n;
-    },
-    async pexpire(k, ms) {
-      const e = live(k);
-      if (!e) return 0;
-      e.exp = clock.now + ms;
-      return 1;
     },
   };
 }

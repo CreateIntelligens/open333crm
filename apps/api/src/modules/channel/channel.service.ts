@@ -256,8 +256,9 @@ export async function updateChannel(
   }
   if (data.settings !== undefined) {
     // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
-    // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）若快照是舊的就會被洗掉，這裡保留
-    updateData.settings = { ...pickSystemManagedSettings(channel.settings), ...data.settings };
+    // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）一律以資料庫現值為準，放在後面蓋過
+    // 快照裡的舊值——這些欄位只能經由驗證或 /binding-handle 專屬 API 修改
+    updateData.settings = { ...data.settings, ...pickSystemManagedSettings(channel.settings) };
   }
 
   const updated = await prisma.channel.update({

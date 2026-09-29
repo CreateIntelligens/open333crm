@@ -5,7 +5,11 @@ The system SHALL merge two contact records through a single merge engine used by
 
 #### Scenario: Merging duplicates
 - **WHEN** a supervisor selects Contact A to be merged into Contact B
-- **THEN** channel identities, conversations, cases, long-term memories, portal submissions, point transactions, identity map entries, click logs, flow executions, KB feedback and broadcast recipients of A SHALL point to B; tags, attributes and broadcast recipients SHALL be de-duplicated with B's existing values taking precedence; A SHALL be archived with `mergedIntoId = B`; and a merge log with source `MANUAL` SHALL be written
+- **THEN** channel identities, conversations, cases, long-term memories, portal submissions, identity map entries, click logs, flow executions, KB feedback and broadcast recipients of A SHALL point to B; A's point balance SHALL be transferred to B through a transfer-out entry on A and a transfer-in entry on B (the append-only ledger's existing entries stay with their owner); tags, attributes and broadcast recipients SHALL be de-duplicated with B's existing values taking precedence; A SHALL be archived with `mergedIntoId = B`; and a merge log with source `MANUAL` SHALL be written
+
+#### Scenario: Point balances are summed
+- **WHEN** B has 100 points and A has 50 points and A is merged into B
+- **THEN** B's point balance SHALL be 150 and A's SHALL be 0
 
 #### Scenario: Merge with records protected by restrictive foreign keys
 - **WHEN** Contact A has point transactions and portal submissions and is merged into B through LINE Login
@@ -35,6 +39,14 @@ The system SHALL allow a user with `contact.merge` permission to revert any non-
 #### Scenario: Revert without permission
 - **WHEN** a user whose role lacks `contact.merge` calls the revert endpoint
 - **THEN** the system SHALL respond 403 and change nothing
+
+#### Scenario: Points transferred back on reversal
+- **WHEN** a merge that transferred 50 points is reverted and the survivor has spent all but 30 of its points since
+- **THEN** 30 points SHALL be transferred back and the survivor's balance SHALL NOT go negative
+
+#### Scenario: Survivor's own conversations stay
+- **WHEN** both contacts had an identity on the same channel and the survivor opened a new conversation on it after the merge
+- **THEN** reversal SHALL NOT move that conversation
 
 #### Scenario: Long-term memory is not left with the other person
 - **WHEN** a binding made with a forwarded code is reverted

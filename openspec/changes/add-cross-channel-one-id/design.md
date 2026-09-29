@@ -80,7 +80,8 @@ mergeContacts(tx: TenantTx, input: {
 搬移清單（依 schema 所有帶 `contactId` 的欄位）：
 | 表 | 處理 |
 |---|---|
-| ChannelIdentity、Conversation、Case、LongTermMemory、PortalSubmission、PointTransaction、IdentityMap | `updateMany` 改指 survivor |
+| ChannelIdentity、Conversation、Case、LongTermMemory、PortalSubmission、IdentityMap | `updateMany` 改指 survivor |
+| PointTransaction（append-only 帳本，每筆記當下餘額） | **不搬交易**：被合併方寫一筆 `merge_transfer_out`（餘額歸 0）、survivor 寫一筆 `merge_transfer_in`（餘額＝合計），轉移點數記在 `movedRecords.pointsTransferred`；解除時反向轉回，survivor 合併後已用掉部分時只轉回剩餘的 |
 | ContactTag（唯一 `[contactId,tagId]`） | survivor 沒有的才搬，重複的刪 |
 | ContactAttribute（唯一 `[contactId,key]`） | survivor 沒有的 key 才搬，**衝突時 survivor 優先** |
 | ContactRelation | 兩端改指 survivor，刪除因此產生的自我關聯與重複 |

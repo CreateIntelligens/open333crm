@@ -225,6 +225,35 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       assert.ok(!texts.some((t) => t.includes('無效或已過期')), '重送事件不回覆代碼無效');
     },
   ],
+  [
+    'FB 新顧客按「開始使用」帶綁定代碼 → 合併；平台重送同一 postback 不回覆代碼無效',
+    true,
+    async (env) => {
+      const code = await codeFromA(env);
+      // 以 LINE 身分接收（LINE 不會有 postback referral，此處只驗證 ref 去重邏輯與管線行為）
+      const uid = `fb-getstarted-${seq++}`;
+      const b = await env.tx.contact.create({ data: { tenantId: T, displayName: 'LINE-B' } });
+      await env.tx.channelIdentity.create({ data: { contactId: b.id, channelId: env.line.id, channelType: 'LINE', uid } });
+      const postback = {
+        contactUid: uid,
+        timestamp: new Date(),
+        contentType: 'postback',
+        content: { text: '開始使用' },
+        referralRef: code,
+      } as ParsedWebhookMessage;
+      await run(env, env.line, postback);
+      await run(env, env.line, { ...postback, timestamp: new Date() });
+
+      const identity = await env.tx.channelIdentity.findFirst({ where: { channelId: env.line.id, uid } });
+      assert.equal(identity?.contactId, env.fbA.contactId, '併入發碼的 A');
+      const conv = await env.tx.conversation.findFirst({ where: { tenantId: T, channelId: env.line.id, contactId: env.fbA.contactId } });
+      const texts = (await env.tx.message.findMany({ where: { conversationId: conv!.id, senderType: 'BOT' } })).map(
+        (m) => (m.content as { text?: string }).text ?? '',
+      );
+      assert.equal(texts.filter((t) => t.startsWith('已完成帳號綁定')).length, 1);
+      assert.ok(!texts.some((t) => t.includes('無效或已過期')), '重送不回覆代碼無效');
+    },
+  ],
 ];
 
 let failed = 0;

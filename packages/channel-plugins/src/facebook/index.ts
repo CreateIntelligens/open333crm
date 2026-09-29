@@ -1,14 +1,9 @@
 import { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.js';
 import crypto from 'crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { refOf } from '../referral.js';
 
 const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
-
-/** 取出 referral 物件的 ref 字串；沒有或空字串回 undefined */
-function refOf(referral: unknown): string | undefined {
-  const ref = (referral as { ref?: unknown } | undefined)?.ref;
-  return typeof ref === 'string' && ref.trim() !== '' ? ref.trim() : undefined;
-}
 
 export class FbPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.FB;

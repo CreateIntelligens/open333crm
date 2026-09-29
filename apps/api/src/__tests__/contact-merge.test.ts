@@ -42,6 +42,16 @@ function pick(row: Row, select?: Record<string, boolean>): Row {
   return out;
 }
 
+type OrderBy = Record<string, 'asc' | 'desc'>;
+
+/** 支援單一欄位排序（點數帳本以 createdAt desc 取最新一筆餘額） */
+function sorted(list: Row[], orderBy?: OrderBy): Row[] {
+  const [key, dir] = Object.entries(orderBy ?? {})[0] ?? [];
+  if (!key) return list;
+  const val = (r: Row) => (r[key] instanceof Date ? (r[key] as Date).getTime() : (r[key] as number));
+  return [...list].sort((a, b) => (dir === 'desc' ? val(b) - val(a) : val(a) - val(b)));
+}
+
 /** 建立一張假表；unique 為唯一鍵欄位組，寫入後違反即丟錯（模擬 Postgres） */
 function table(rows: Row[], unique: string[][] = []) {
   const assertUnique = () => {
@@ -56,11 +66,11 @@ function table(rows: Row[], unique: string[][] = []) {
   };
   return {
     rows,
-    async findMany(args: { where?: Where; select?: Record<string, boolean> } = {}) {
-      return rows.filter((r) => matches(r, args.where)).map((r) => pick(r, args.select));
+    async findMany(args: { where?: Where; select?: Record<string, boolean>; orderBy?: OrderBy } = {}) {
+      return sorted(rows.filter((r) => matches(r, args.where)), args.orderBy).map((r) => pick(r, args.select));
     },
-    async findFirst(args: { where?: Where; select?: Record<string, boolean> } = {}) {
-      const r = rows.find((row) => matches(row, args.where));
+    async findFirst(args: { where?: Where; select?: Record<string, boolean>; orderBy?: OrderBy } = {}) {
+      const r = sorted(rows.filter((row) => matches(row, args.where)), args.orderBy)[0];
       return r ? pick(r, args.select) : null;
     },
     async updateMany(args: { where?: Where; data: Row }) {
@@ -139,7 +149,11 @@ function makeDb() {
     case: table([{ id: 'case-m', tenantId: T, contactId: 'M', channelId: 'ch-fb', createdAt: new Date('2026-01-01') }]),
     longTermMemory: table([{ id: 'ltm-m', contactId: 'M' }]),
     portalSubmission: table([{ id: 'ps-m', tenantId: T, contactId: 'M' }]),
-    pointTransaction: table([{ id: 'pt-m', tenantId: T, contactId: 'M' }]),
+    pointTransaction: table([
+      { id: 'pt-s', tenantId: T, contactId: 'S', amount: 100, balance: 100, createdAt: new Date('2026-01-01') },
+      // 被合併方的最新交易比 survivor 新：舊寫法直接搬交易會讓 survivor 餘額變成 50
+      { id: 'pt-m', tenantId: T, contactId: 'M', amount: 50, balance: 50, createdAt: new Date('2026-02-01') },
+    ]),
     identityMap: table([{ id: 'im-m', tenantId: T, contactId: 'M' }]),
     clickLog: table([{ id: 'cl-m', contactId: 'M' }]),
     flowExecution: table([{ id: 'fe-m', tenantId: T, contactId: 'M' }]),
@@ -202,7 +216,6 @@ test('合併：各表關聯資料全數搬到 survivor，merged 封存不刪除'
     ['case', 'case-m'],
     ['longTermMemory', 'ltm-m'],
     ['portalSubmission', 'ps-m'],
-    ['pointTransaction', 'pt-m'],
     ['identityMap', 'im-m'],
     ['clickLog', 'cl-m'],
     ['flowExecution', 'fe-m'],
@@ -222,7 +235,38 @@ test('合併：各表關聯資料全數搬到 survivor，merged 封存不刪除'
   assert.equal(log.source, 'MANUAL');
   const moved = log.movedRecords as MovedRecords;
   assert.deepEqual(moved.channelIdentity.sort(), ['ci-m-fb', 'ci-m-ig']);
-  assert.deepEqual(moved.pointTransaction, ['pt-m']);
+  assert.equal(moved.pointsTransferred, 50);
+});
+
+const balanceOf = (db: FakeDb, contactId: string) =>
+  [...(db.pointTransaction.rows as Row[])]
+    .filter((r) => r.contactId === contactId)
+    .sort((a, b) => (b.createdAt as Date).getTime() - (a.createdAt as Date).getTime())[0]?.balance ?? 0;
+
+test('合併：點數以轉出／轉入兩筆交易合計，不直接搬交易（帳本 append-only）', async () => {
+  const db = makeDb();
+  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  assert.equal(balanceOf(db, 'S'), 150, 'survivor 餘額＝雙方合計');
+  assert.equal(balanceOf(db, 'M'), 0, '被合併方轉出後為 0');
+  assert.equal(owner(db, 'pointTransaction', 'pt-m'), 'M', '原交易留在原主人的帳本上');
+  const types = (db.pointTransaction.rows as Row[]).map((r) => r.type).filter(Boolean).sort();
+  assert.deepEqual(types, ['merge_transfer_in', 'merge_transfer_out']);
+});
+
+test('解除：點數轉回；合併後已用掉部分時只轉回剩餘的', async () => {
+  const db = makeDb();
+  const full = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId: full.mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(balanceOf(db, 'M'), 50);
+  assert.equal(balanceOf(db, 'S'), 100);
+
+  const db2 = makeDb();
+  const r = await mergeContacts(asDb(db2), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  // 合併後 survivor 用掉 120 點，只剩 30
+  db2.pointTransaction.rows.push({ id: 'pt-spend', tenantId: T, contactId: 'S', amount: -120, balance: 30, createdAt: new Date(Date.now() + 5000) });
+  await revertMerge(asDb(db2), { tenantId: T, mergeLogId: r.mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(balanceOf(db2, 'M'), 30, '只轉回剩餘的 30 點');
+  assert.equal(balanceOf(db2, 'S'), 0, 'survivor 不會變負數');
 });
 
 test('合併：標籤去重且保留到期日，重複的不留在封存聯絡人上', async () => {
@@ -320,7 +364,6 @@ test('解除：恢復被合併方與當次搬走的渠道身分／對話／點�
     ['channelIdentity', 'ci-m-fb'],
     ['conversation', 'conv-m'],
     ['case', 'case-m'],
-    ['pointTransaction', 'pt-m'],
     ['portalSubmission', 'ps-m'],
     ['identityMap', 'im-m'],
   ] as const) {
@@ -347,6 +390,18 @@ test('解除：AI 長期記憶與合併後才新開的該渠道對話／案件�
   assert.equal(owner(db, 'conversation', 'conv-after'), 'M', '合併後新開的 FB 對話跟著 FB 身分回去');
   assert.equal(owner(db, 'case', 'case-after'), 'M');
   assert.equal(owner(db, 'conversation', 'conv-s'), 'S', 'survivor 原有 LINE 對話不動');
+});
+
+test('解除：雙方在同一渠道都有身分（手動合併不擋）時，不搬 survivor 自己的新對話', async () => {
+  const db = makeDb();
+  // M 也有一個 LINE（同渠道 ch-line）身分；手動合併不會擋
+  db.channelIdentity.rows.push({ id: 'ci-m-line', contactId: 'M', channelId: 'ch-line' });
+  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  // 合併後 S 自己的 LINE 帳號開了新對話
+  db.conversation.rows.push({ id: 'conv-s-after', tenantId: T, contactId: 'S', channelId: 'ch-line', createdAt: new Date(Date.now() + 1000) });
+
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(owner(db, 'conversation', 'conv-s-after'), 'S', '無法分辨屬於誰時寧可不搬');
 });
 
 test('解除：重複解除回 409', async () => {

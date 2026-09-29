@@ -7,14 +7,13 @@
  * 安全設計：
  *   - 預設 dry-run，只列出缺導流識別的渠道；帶 --apply 才實際呼叫平台 API 並寫入
  *   - 單一渠道驗證失敗（權杖過期等）只記錄、不中斷其他渠道
- *   - 每個渠道都在自己租戶的 withTenant 交易內執行
+ *   - 查詢皆帶 tenantId；平台 API 呼叫不包在資料庫交易內（避免逾時）
  *
  * 用法（在 apps/api 目錄）：
  *   DATABASE_URL=<owner 或 app_admin> CREDENTIAL_ENCRYPTION_KEY=... npx tsx src/scripts/backfill-binding-handles.ts
  *   ... npx tsx src/scripts/backfill-binding-handles.ts --apply
  */
 import { prisma } from '@open333crm/database';
-import { withTenant } from '../lib/tenant-db.js';
 import { verifyChannel } from '../modules/channel/channel.service.js';
 
 const apply = process.argv.includes('--apply');
@@ -45,7 +44,9 @@ async function main() {
   let failed = 0;
   for (const c of missing) {
     try {
-      await withTenant(prisma, c.tenantId, (tx) => verifyChannel(tx, c.id, c.tenantId));
+      // 不包 withTenant 交易：verifyChannel 會呼叫平台 API（FB 兩次），放在交易內容易超過 5 秒逾時。
+      // 共用 client 以 BYPASSRLS 連線執行，verifyChannel 的查詢本身都帶 tenantId
+      await verifyChannel(prisma, c.id, c.tenantId);
       const after = await prisma.channel.findFirst({ where: { id: c.id, tenantId: c.tenantId }, select: { settings: true } });
       const handle = (after?.settings as Record<string, unknown> | null)?.bindingHandleAuto;
       if (handle) {

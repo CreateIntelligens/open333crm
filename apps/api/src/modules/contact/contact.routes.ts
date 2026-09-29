@@ -17,6 +17,7 @@ import { getBindingStore } from '../identity-binding/binding-code.js';
 import { getIdentityBindingSettings, issueBindingCode } from '../identity-binding/identity-binding.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -171,6 +172,9 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       const { id } = contactIdParamsSchema.parse(request.params);
       const { conversationId } = bindingLinkBodySchema.parse(request.body);
       const tenantId = request.agent.tenantId;
+
+      // CM-173：送訊息進對話屬「回覆」層級，分店帳號不可對看不到或唯讀的渠道發綁定邀請
+      await assertConversationChannelVisible(request, conversationId, 'reply_only');
 
       const db = request.tenantPrisma;
       const settings = await getIdentityBindingSettings(db, tenantId);

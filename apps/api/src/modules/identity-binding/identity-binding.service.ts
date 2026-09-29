@@ -33,6 +33,7 @@ import {
   buildBindingLink,
   buildInviteText,
   channelLabel,
+  matchesKeyword,
   parseIdentityBindingSettings,
   resolveBindingHandle,
   type BindableChannelType,
@@ -437,10 +438,8 @@ export async function detectBindingIntent(
   if (!settings.enabled) return null;
   if (input.code) return { kind: 'redeem', code: input.code };
 
-  const text = input.text.trim().toLowerCase();
-  if (!text) return null;
-  if (settings.bindKeywords.some((k) => k.toLowerCase() === text)) return { kind: 'issue' };
-  if (settings.unbindKeywords.some((k) => k.toLowerCase() === text)) {
+  if (matchesKeyword(input.text, settings.bindKeywords)) return { kind: 'issue' };
+  if (matchesKeyword(input.text, settings.unbindKeywords)) {
     const channelIdentityId = await input.getChannelIdentityId();
     if (!channelIdentityId) return null;
     const log = await findBindingForIdentity(db, input.tenantId, input.contactId, channelIdentityId);

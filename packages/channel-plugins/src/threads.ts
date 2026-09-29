@@ -9,6 +9,7 @@ import type {
 } from './index.js';
 import { createHmac } from 'node:crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { refOf } from './referral.js';
 
 interface ThreadsCredentials {
   appId: string;
@@ -63,15 +64,16 @@ export class ThreadsPlugin implements ChannelPlugin {
           });
           continue;
         }
-        // 新對話點 ig.me?ref= 後按 Icebreaker：ref 夾在 postback 裡。
-        // 其他 postback 維持原本行為（跳過，見下方 mid 守門說明）
+        // 新對話點 ig.me?ref= 後按 Icebreaker：ref 夾在 postback 裡。只把 ref 當成 referral 事件
+        // 交給入站管線（是綁定代碼才處理，其他 ref 只記錄）；不建成 postback 訊息，
+        // 維持原本「IG postback 一律不進收件匣、不觸發 Bot」的行為（見下方 mid 守門說明）
         const postbackRef = refOf(messaging.postback?.referral);
         if (postbackRef) {
           messages.push({
             contactUid: messaging.sender.id,
             timestamp: new Date(messaging.timestamp),
-            contentType: 'postback',
-            content: { text: messaging.postback?.title ?? '' },
+            contentType: 'referral',
+            content: {},
             rawPayload: messaging,
             referralRef: postbackRef,
           });
@@ -182,12 +184,6 @@ export class ThreadsPlugin implements ChannelPlugin {
 export const threadsPlugin = new ThreadsPlugin();
 
 // ── Internal Instagram Webhook types (minimal) ─────────────────────
-
-/** 取出 referral 物件的 ref 字串；沒有或空字串回 undefined */
-function refOf(referral: { ref?: string } | undefined): string | undefined {
-  const ref = referral?.ref;
-  return typeof ref === 'string' && ref.trim() !== '' ? ref.trim() : undefined;
-}
 
 interface InstagramWebhookPayload {
   object: string;

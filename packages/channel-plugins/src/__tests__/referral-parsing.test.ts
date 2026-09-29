@@ -61,10 +61,15 @@ test('IG 新對話：ref 夾在第一則訊息裡', async () => {
   assert.equal(m.referralRef, 'BIND-7K2M9QH4TX');
 });
 
-test('IG 新對話：ref 夾在 Icebreaker postback 裡', async () => {
+test('IG 新對話：ref 夾在 Icebreaker postback 裡 → 以 referral 事件交出，不建成訊息', async () => {
   const [m] = await ig.parseWebhook(igPayload({ postback: { title: '我想了解方案', payload: 'IB1', referral: { ref: 'BIND-7K2M9QH4TX' } } }), {});
-  assert.equal(m.contentType, 'postback');
+  assert.equal(m.contentType, 'referral', '走 referral 路徑：非綁定代碼只記錄，不觸發 Bot');
   assert.equal(m.referralRef, 'BIND-7K2M9QH4TX');
+});
+
+test('IG 廣告 Icebreaker 帶非綁定的 ref → 也是 referral 事件（入站管線只記錄）', async () => {
+  const [m] = await ig.parseWebhook(igPayload({ postback: { title: '看商品', payload: 'IB2', referral: { ref: 'ads_spring' } } }), {});
+  assert.equal(m.contentType, 'referral');
 });
 
 test('IG 沒有 ref 的 postback 維持原本行為（跳過）', async () => {

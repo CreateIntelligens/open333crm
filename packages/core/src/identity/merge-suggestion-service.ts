@@ -59,13 +59,13 @@ export async function listSuggestions(
   });
   const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
-  const suggestions = rows
-    .filter((r) => contactMap.has(r.primaryContactId) && contactMap.has(r.secondaryContactId))
-    .map((r) => ({
-      ...r,
-      primaryContact: contactMap.get(r.primaryContactId)!,
-      secondaryContact: contactMap.get(r.secondaryContactId)!,
-    })) as MergeSuggestionWithContacts[];
+  // 聯絡人可能已被資料刪除請求移除：以占位資料呈現而不是丟掉該列，讓分頁 total 與實際列數一致
+  const missing = (id: string) => ({ id, displayName: '（已刪除的聯絡人）', phone: null, email: null });
+  const suggestions = rows.map((r) => ({
+    ...r,
+    primaryContact: contactMap.get(r.primaryContactId) ?? missing(r.primaryContactId),
+    secondaryContact: contactMap.get(r.secondaryContactId) ?? missing(r.secondaryContactId),
+  })) as MergeSuggestionWithContacts[];
 
   return { suggestions, total };
 }
