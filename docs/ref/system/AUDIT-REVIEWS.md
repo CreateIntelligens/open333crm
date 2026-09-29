@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：摘要表加上修復優先順序
+
+`AUDIT.md` 的摘要表新增「優先」欄。方向與級距先在 repo 內量過再決定，不是套外部慣例：
+
+| 出處 | 既有寫法 |
+| --- | --- |
+| `docs/00_WHY_AND_VISION.md` | `P1` 到 `P3` 標示問題輕重，`P1` 最重 |
+| `docs/JIRA_STRUCTURE.md` | 優先 label 是 `critical`／`high`／`medium`／`low` |
+| `docs/TRIVY_SCAN_REPORT_*.md`、`docs/security/dependency-triage-*.md` | `CRITICAL`／`HIGH`／`MEDIUM`／`LOW` |
+
+三處一致：數字越小越優先，級距是四級。因此採 P1 到 P4，並在 `AUDIT.md` 加一節寫明判定標準。repo 沒有 1 到 9 的先例，項目數也支撐不起九級的分辨度。
+
+這一輪只標優先順序，沒有改動任何項目的內容。
+
 ## 2026-09-29：計費面盤點，新增 PLAN-10
 
 起因是一個提問：加購既然是永久提高每月額度，租戶的帳單是不是每個月都被算進去。做法是靜態搜尋整個 repo 的計費相關實作，再逐一確認 `priceMonthly`、`PlanChangeRequest`、`model_pricings` 與 `billing.view` 各自的角色。

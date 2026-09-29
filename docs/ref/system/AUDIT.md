@@ -7,56 +7,71 @@
 - **最近複查日期**：2026-09-29。歷次複查的範圍、方法與結果見[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
 
+## 優先順序怎麼讀
+
+「優先」欄是**修復順序**，不是嚴重度。**數字越小越優先**，P1 排最前面。
+
+| 優先 | 對應 label | 判定標準 |
+| --- | --- | --- |
+| P1 | `critical` | 目前就在產生錯誤結果、資料跨租戶或安全暴露，不需要特定操作觸發，也沒有補償措施 |
+| P2 | `high` | 會產生錯誤行為，但要滿足特定條件才觸發，或已有可繞過的做法 |
+| P3 | `medium` | 設定與實際行為不符、介面與資料不一致、維運與稽核的落差。不影響現有功能的正確性 |
+| P4 | `low` | 殘留設定、命名不符、未接線的程式碼。移除或改名即可，不影響任何行為 |
+
+排序只反映「先修哪一個」，與修復成本無關。兩項同為 P1 時，先做哪一項由當時的人力與相依關係決定。
+
+標示日期為 2026-09-29。項目的內容改變時要一併重看它的優先順序。
+
 ## 摘要
 
-| ID | 範圍 | 問題 | 驗證狀態 |
-| --- | --- | --- | --- |
-| DEP-01 | 部署 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
-| DEP-02 | 部署 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
-| APP-01 | Apps | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
-| APP-02 | Apps | Telegram 外掛未註冊 | 執行時確認 |
-| APP-03 | Apps | 啟動 log 少列 Threads | 執行時確認 |
-| APP-04 | Apps | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
-| PKG-01 | Packages | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
-| PKG-02 | Packages | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
-| PKG-03 | Packages | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
-| PKG-04 | Packages | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
-| STO-01 | Storage | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
-| LLM-01 | LLM | Ollama base URL 預設指向容器自己 | 執行時重現 |
-| LLM-02 | LLM | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
-| LLM-03 | LLM | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 部分修正 |
-| DB-01 | Database | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
-| RLS-01 | 租戶隔離 | Canvas 引擎不走租戶連線 | 靜態確認 |
-| RLS-02 | 租戶隔離 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
-| RLS-03 | 租戶隔離 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
-| RLS-04 | 租戶隔離 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| SLA-01 | SLA | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
-| SLA-02 | SLA | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
-| SLA-03 | SLA | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
-| SLA-04 | SLA | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
-| TRIAL-01 | 試用與方案 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
-| PLAN-01 | 試用與方案 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
-| PLAN-02 | 試用與方案 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
-| PLAN-03 | 試用與方案 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
-| PLAN-04 | 試用與方案 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
-| PLAN-05 | 試用與方案 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
-| PLAN-06 | 試用與方案 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
-| PLAN-07 | 試用與方案 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
-| PLAN-08 | 試用與方案 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
-| PLAN-09 | 試用與方案 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
-| PLAN-10 | 試用與方案 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
-| LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
-| LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
-| SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
-| SEC-02 | Security | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
-| SEC-03 | Security | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
-| SEC-04 | Security | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
-| AUTH-01 | Security | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
-| AUTH-02 | Security | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
-| RBAC-01 | Security | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
-| CI-01 | CI | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
-| CI-02 | CI | 沒有 CI workflow 執行 lint | 靜態確認 |
-| CI-03 | Test | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
+| ID | 範圍 | 優先 | 問題 | 驗證狀態 |
+| --- | --- | --- | --- | --- |
+| DEP-01 | 部署 | P4 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
+| DEP-02 | 部署 | P3 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
+| APP-01 | Apps | P3 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
+| APP-02 | Apps | P3 | Telegram 外掛未註冊 | 執行時確認 |
+| APP-03 | Apps | P4 | 啟動 log 少列 Threads | 執行時確認 |
+| APP-04 | Apps | P4 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
+| PKG-01 | Packages | P4 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
+| PKG-02 | Packages | P3 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
+| PKG-03 | Packages | P4 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
+| PKG-04 | Packages | P4 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
+| STO-01 | Storage | P2 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
+| LLM-01 | LLM | P2 | Ollama base URL 預設指向容器自己 | 執行時重現 |
+| LLM-02 | LLM | P3 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
+| LLM-03 | LLM | P3 | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 部分修正 |
+| DB-01 | Database | P2 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
+| RLS-01 | 租戶隔離 | P1 | Canvas 引擎不走租戶連線 | 靜態確認 |
+| RLS-02 | 租戶隔離 | P1 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
+| RLS-03 | 租戶隔離 | P3 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
+| RLS-04 | 租戶隔離 | P3 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
+| SLA-01 | SLA | P1 | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
+| SLA-02 | SLA | P2 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
+| SLA-03 | SLA | P3 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
+| SLA-04 | SLA | P2 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| TRIAL-01 | 試用與方案 | P1 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
+| PLAN-01 | 試用與方案 | P3 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
+| PLAN-02 | 試用與方案 | P3 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
+| PLAN-03 | 試用與方案 | P3 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
+| PLAN-04 | 試用與方案 | P2 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
+| PLAN-05 | 試用與方案 | P2 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
+| PLAN-06 | 試用與方案 | P2 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
+| PLAN-07 | 試用與方案 | P3 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
+| PLAN-08 | 試用與方案 | P1 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
+| PLAN-09 | 試用與方案 | P3 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
+| PLAN-10 | 試用與方案 | P3 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
+| LIC-01 | License | P4 | API 使用寫死的授權資料 | 間接確認 |
+| LIC-02 | License | P4 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
+| SEC-01 | Security | P2 | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
+| SEC-02 | Security | P3 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
+| SEC-03 | Security | P3 | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
+| SEC-04 | Security | P1 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
+| AUTH-01 | Security | P2 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
+| AUTH-02 | Security | P2 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
+| RBAC-01 | Security | P1 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
+| CI-01 | CI | P2 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
+| CI-02 | CI | P3 | 沒有 CI workflow 執行 lint | 靜態確認 |
+| CI-03 | Test | P4 | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
 
 ## 部署與應用程式
 
