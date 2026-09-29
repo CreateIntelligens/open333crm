@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：BYOK 的金鑰解析路徑，新增 AI-01
+
+起因是一個提問：BYOK 是什麼。查證時發現這個詞在文件裡出現多次卻從未定義，也順著 `resolveGeminiKey()` 讀完整條金鑰解析路徑。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| AI-01 | `ai-key.service.ts` 的解密 `catch` 區塊是空的，直接落到 fallback 回傳 `source: 'platform'`；`llm.service.ts:80` 的 `!isByok` 決定是否計成本，`incrMonthlyTokens()` 與 `llm.service.ts:264` 決定是否計額度與是否擋下 |
+
+釐清一件容易搞反的事：退回之後**成本由平台承擔**，不是由租戶承擔。呼叫改用平台的 `GEMINI_API_KEY`，Google 的帳單開給平台；租戶付出的是額度，因為那些 token 開始計入 `monthlyTokens`，用完還會被擋。租戶的金錢支出不變，系統本來就沒有計費機制（見 PLAN-10）。
+
+`ai-key.service.ts` 的加解密複用 `channel.service.ts` 的函式，與渠道憑證共用 `CREDENTIAL_ENCRYPTION_KEY`，因此一次金鑰輪替會讓所有租戶的 BYOK 同時退回。
+
+`AUDIT.md` 原本為 USAGE-01 開的「用量統計」章節改名為「AI 用量與金鑰」，兩項共用。BYOK 的定義補在[用量統計](../modules/platform/USAGE.md)第一次使用該詞的位置。
+
 ## 2026-09-29：用量頁的說明文字，新增 USAGE-01
 
 起因是一個提問：[用量統計](../modules/platform/USAGE.md)記下的「失敗呼叫完全不計入」有沒有寫在前端介面上。做法是把 `/admin/usage` 的每一句說明文字與 `platform-usage.service.ts` 的查詢條件逐句對照。

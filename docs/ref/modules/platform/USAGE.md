@@ -32,6 +32,10 @@
 | 查不到價目 | 0，並標記 `usageMissing` | `ModelPricing` 沒有這個 model 的價目，log 會留一則 warn |
 | provider 沒回傳用量 | 0，並標記 `usageMissing` | token 數也是 0，不是真實值 |
 
+BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Gemini 支援：租戶在自己的後台填入金鑰，密文存 `TenantSettings.geminiApiKeyEnc`。`resolveGeminiKey()` 依序找租戶自填的金鑰、平台代設的金鑰、全域 `GEMINI_API_KEY`，只有第一層回傳 `keySource = 'byok'`。BYOK 的呼叫由 Google 直接向租戶收費，平台不經手，所以 `costUsd` 記 0。
+
+租戶金鑰解密失敗時會靜默退回平台金鑰，連帶改變成本歸屬與額度計算，見 `../../system/AUDIT.md` 的 AI-01。
+
 **平台這些查詢都不看 `usageMissing`，也不分 `keySource`。** 看到的成本因此是「平台實際付的錢」的下限：BYOK 的呼叫與查無價目的呼叫都以 0 併進去，而它們的 token 數仍然計入總量。要分辨得自己查 `ai_usages`。
 
 因此「總 AI Token」與「總成本」兩張卡的母體不同，而介面只在成本那張標了「不含 BYOK」，見 `../../system/AUDIT.md` 的 USAGE-01。

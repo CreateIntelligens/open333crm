@@ -62,6 +62,7 @@
 | PLAN-10 | 試用與方案 | P3 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
 | PLAN-11 | 試用與方案 | P3 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
 | USAGE-01 | 用量 | P3 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
+| AI-01 | AI | P2 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
 | LIC-01 | License | P4 | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | P4 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | P2 | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -527,7 +528,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 連帶影響 PLAN-10。那一項提到加購量可以回頭加總 `plan_change_requests.topupTokens` 來還原，但平台後台沒有任何介面做得到這件事，只能直接查資料庫。
 
-## 用量統計
+## AI 用量與金鑰
 
 ### USAGE-01：用量頁沒有標示統計的母體與筆數上限
 
@@ -547,6 +548,31 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 **二、租戶排行沒有標筆數上限。** `platform-usage.service.ts:65` 是 `take: 50`，介面標題只寫「各租戶用量排行」。租戶多於 50 個時，排行的 token 加總會小於總覽的數字，畫面上沒有任何說明。
 
 另有一處說明與實作不符，位置在原始碼裡。`platform-usage.service.ts` 開頭的註解寫「失敗成本為 0，計入次數但不計 token/cost」，但三個查詢的 `where` 都有 `success: true`，失敗的呼叫連次數都不算。介面與實作是一致的，只有這行註解是錯的，會誤導下一個改這支服務的人。
+
+### AI-01：BYOK 金鑰解密失敗會靜默退回平台金鑰
+
+BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platform/USAGE.md#哪些呼叫不算)。
+
+`ai-key.service.ts` 的 `resolveGeminiKey()` 在解密租戶金鑰失敗時，`catch` 區塊是空的，直接往下走 fallback，回傳平台的 `GEMINI_API_KEY` 與 `source: 'platform'`。原始碼註解寫「解密失敗（如換過加密 key）→ 退回平台 key」，因此退回本身是刻意的。
+
+問題是 `keySource` 一路決定三件事，退回之後全部反轉：
+
+| | 退回前（`byok`） | 退回後（`platform`） |
+| --- | --- | --- |
+| 呼叫用誰的金鑰 | 租戶自備的 | 平台的 `GEMINI_API_KEY` |
+| Google 的帳單開給誰 | 租戶 | **平台** |
+| `AiUsage.costUsd` | 記 0 | 依 `ModelPricing` 實算（`llm.service.ts:80` 的 `!isByok`） |
+| 是否計入租戶月額度 | 否 | **是**（`incrMonthlyTokens()` 只累加 `platform`） |
+| 額度用完是否被擋 | 否 | **是**（`llm.service.ts:264`） |
+
+租戶不會因此多付錢，系統沒有計費機制（見 PLAN-10）。他付出的是額度：原本不計數的呼叫開始消耗 `monthlyTokens`，用完還會被擋下。平台則開始承擔本來由租戶負擔的 LLM 費用。
+
+觸發條件是解密失敗，最可能的成因是 `CREDENTIAL_ENCRYPTION_KEY` 輪替。`ai-key.service.ts` 的加解密直接複用 `channel.service.ts` 的函式，與渠道憑證共用同一把金鑰，因此一次輪替會讓所有租戶的 BYOK 同時退回平台金鑰。
+
+兩端的訊號都很弱：
+
+- **平台端沒有訊號。** 唯一的間接跡象是 `/admin/usage` 的成本上升，但那一頁不分 `keySource`（見 USAGE-01），看不出是哪些租戶，也看不出原因。
+- **租戶端要主動去看才知道。** `getTenantGeminiKeyStatus()` 解密失敗時回 `configured: true`，遮罩字串是「（無法解密）」。設定頁看得到這行字，但 AI 呼叫本身不會失敗，也沒有任何通知，租戶沒有理由去開那一頁。
 
 ## 授權與安全
 
