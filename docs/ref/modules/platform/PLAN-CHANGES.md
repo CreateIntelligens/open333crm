@@ -59,4 +59,6 @@
 
 `reviewedBy` 存的是 `platformUserId`，但不是外鍵，要顯示審核者的姓名必須自己查 `platform_users`。
 
+稽核反查也不實用，平台稽核只能依平台帳號查，不能依租戶或 `action` 查，詳見 `../../system/AUDIT.md` 的 PLAN-11。
+
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

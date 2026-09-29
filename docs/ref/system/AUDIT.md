@@ -60,6 +60,7 @@
 | PLAN-08 | 試用與方案 | P1 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
 | PLAN-09 | 試用與方案 | P3 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
 | PLAN-10 | 試用與方案 | P3 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
+| PLAN-11 | 試用與方案 | P3 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
 | LIC-01 | License | P4 | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | P4 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | P2 | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -510,6 +511,20 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 租戶端同樣查不到。`/dashboard/plan` 只有申請表與自己的申請列表，看不到目前方案的內容、價格或已用額度。`priceMonthly` 只在平台後台的 `/admin/plans` 顯示，以及 `listPlans()` 拿來排序，從不回傳給租戶端。
 
 `model_pricings` 不是租戶售價。它是各個 LLM 模型每 1M token 的單價，`platform-usage.service.ts` 用它算出平台自己的成本，顯示在 `/admin/usage`。
+
+### PLAN-11：平台查不到已處理的方案異動申請
+
+`listPendingRequests()` 的查詢條件寫死 `status: 'pending'`，而平台側只有 `GET /api/v1/platform/plan-change-requests` 這一個列表端點。已核准與已駁回的申請一旦離開待審狀態，平台後台就再也看不到。
+
+資料本身沒有遺失，只是平台讀不到。租戶側的 `listTenantPlanChangeRequests()` 查 `where: { tenantId }`，不分狀態，回傳最近 50 筆。同一批資料，租戶看得到自己的全部歷史，平台看不到任何一筆。
+
+租戶詳情頁也沒有。`getTenantDetail()` 的 `select` 涵蓋方案、成員與各項計數，沒有 `planChangeRequests`，也沒有 `limitOverrides`。
+
+從稽核紀錄反查不實用。平台稽核只有一個查詢端點 `GET /platform-users/:id/audit-logs`，條件是 `platformUserId` 或 `targetType = 'platform_user'`，上限 200 筆。它不能依租戶或 `action` 查詢，所以要找某個租戶的升級紀錄，必須先知道當初是哪一位平台人員核准的，再希望那筆還在他最近 200 筆之內。
+
+`reviewedBy` 存的是 `platformUserId`，但不是外鍵，因此即使查到紀錄，要顯示審核者姓名仍須自己查 `platform_users`。
+
+連帶影響 PLAN-10。那一項提到加購量可以回頭加總 `plan_change_requests.topupTokens` 來還原，但平台後台沒有任何介面做得到這件事，只能直接查資料庫。
 
 ## 授權與安全
 

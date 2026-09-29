@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：方案異動申請的讀取途徑，新增 PLAN-11
+
+起因是[方案異動審核](../modules/platform/PLAN-CHANGES.md)的「平台看不到歷史」一節。確認平台側除了待審列表之外還有沒有其他讀取途徑，逐一查了三條：租戶詳情頁的 `select`、平台稽核的查詢端點，以及租戶側的列表。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| PLAN-11 | `listPendingRequests()` 的 `where` 寫死 `status: 'pending'`，平台側無第二個列表端點；`getTenantDetail()` 的 `select` 不含 `planChangeRequests`；`getPlatformUserAuditLogs()` 只能依 `platformUserId` 或 `targetType = 'platform_user'` 查，上限 200 筆 |
+
+同一批資料，租戶側的 `listTenantPlanChangeRequests()` 不分狀態回最近 50 筆。因此這是讀取途徑的落差，不是資料保存的問題。
+
 ## 2026-09-29：摘要表加上修復優先順序
 
 `AUDIT.md` 的摘要表新增「優先」欄。方向與級距先在 repo 內量過再決定，不是套外部慣例：
