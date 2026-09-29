@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：正式環境 Compose 的環境變數流向，新增 DEP-02
+
+起因是先前討論平台寄信設定時擱置的一項：`.env.prod.example` 裡有幾個變數，正式環境的 Compose 未必送得到讀取端。做法是靜態比對 `docker-compose.prod.yml`、`docker-compose.yml`、各個 `.env.*.example` 與原始碼的讀取位置；另外用一份最小 Compose 檔確認 Compose 對缺少 `env_file` 的行為。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| DEP-02 | 比對 `docker-compose.prod.yml` 的 `env_file` 分配、`nginx/entrypoint.sh` 與 `nginx/certbot-entrypoint.sh` 實際使用的變數，再 `grep` 每個變數在 `apps/` 下的讀取端與缺少時的 fallback |
+
+Compose 的行為單獨確認過：`env_file` 指向的檔案不存在時，`docker compose config` 就報 `env file ... not found`，不會進到啟動階段。因此 `docker-compose.prod.yml` 開頭那份步驟說明照著做會在第一步就失敗，而不是啟動後才出問題。
+
+本次另外確認兩件事，都不另開項目：
+
+- `.github/workflows/deploy.yml` 沒有 `-f`，也沒有 `COMPOSE_FILE`，因此部署用的是 `docker-compose.yml`，不是 `docker-compose.prod.yml`。兩份檔案各自定義完整堆疊，反向代理也各一套（前者是 caddy，後者是 nginx + certbot）。
+- 同一份 workflow 的「Fix caddy port for UAT」那一步執行 `sed -i 's/"80:80"/"8888:80"/'`，但 `docker-compose.yml` 裡沒有 `80:80`，caddy 早就寫成 `127.0.0.1:8888:80`。這一步現在是空操作，沒有後果。
+
 ## 2026-09-24：權限碼強制點盤點，新增 RBAC-01 與 PLAN-04
 
 起因是討論要不要在[模組總覽](../modules/OVERVIEW.md)加一欄「這個模組屬於哪個 feature」。評估的結論是不加，因為推導所需的依據在一半以上的模組並不存在，而過程中查出的問題比那張對照表重要。做法是靜態比對原始碼與 OpenSpec 紀錄，沒有啟動容器。

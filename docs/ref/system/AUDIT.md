@@ -4,7 +4,7 @@
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
 - **執行時驗證日期**：2026-09-02
-- **最近複查日期**：2026-09-23。歷次複查的範圍、方法與結果見[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
+- **最近複查日期**：2026-09-29。歷次複查的範圍、方法與結果見[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
 
 ## 摘要
@@ -12,6 +12,7 @@
 | ID | 範圍 | 問題 | 驗證狀態 |
 | --- | --- | --- | --- |
 | DEP-01 | 部署 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
+| DEP-02 | 部署 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | APP-01 | Apps | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
 | APP-02 | Apps | Telegram 外掛未註冊 | 執行時確認 |
 | APP-03 | Apps | 啟動 log 少列 Threads | 執行時確認 |
@@ -56,6 +57,28 @@
 ### DEP-01：殘留的 Video Worker 設定
 
 `apps/video-worker` 沒有原始碼與 `package.json`，但開發 Compose 仍保留 `nm_videoworker` volume 與掛載點。
+
+### DEP-02：`.env.prod.example` 的變數送不到讀取它們的行程
+
+`docker-compose.prod.yml` 只把 `.env.prod` 掛給 nginx（:122）與 certbot（:135）。api、workers、web 各自讀 `.env.api`、`.env.workers`、`.env.web`。
+
+`.env.prod.example` 除了 `DOMAIN` 與 `CERTBOT_EMAIL`，還放了下表這些變數。它們只有 api 或 workers 讀：
+
+| 變數 | 讀取端 | 缺少時的行為 |
+| --- | --- | --- |
+| `DATABASE_URL_ADMIN` | `apps/api/src/plugins/prisma.plugin.ts:36`、`apps/workers/src/index.ts:58` | api fallback 到租戶連線，workers 拋錯不啟動。見 RLS-04 |
+| `CHATBOX_SESSION_TTL_MINUTES` | `apps/api/src/modules/chatbox/chatbox.service.ts:99` | 取程式預設值，與範例檔給的值相同 |
+| `WEBCHAT_LEGACY_ROUTES_ENABLED` | `apps/api/src/modules/webchat/webchat.routes.ts:84` | 取程式預設值 `false`，與範例檔給的值相同 |
+
+nginx 的 entrypoint 只用 `DOMAIN`，certbot 的 entrypoint 只用 `DOMAIN` 與 `CERTBOT_EMAIL`。拿到 `.env.prod` 的這兩個容器都不讀上表的變數。
+
+實際影響集中在 `DATABASE_URL_ADMIN`。api 缺少這個變數時不會報錯，`prismaAdmin` 直接指向租戶連線，因此失去 BYPASSRLS。走白名單的服務查詢受 RLS 的租戶表時，會得到空結果，而不是錯誤。這些服務包含平台後台、auth、排程、OAuth callback 與公開 webhook。唯一的訊號是啟動 log 少印 `+ admin`。另外兩個變數的程式預設值與範例檔的值相同，缺少它們沒有差別。
+
+上表的變數在 `.env.api.example` 都已經有一份，`DATABASE_URL_ADMIN` 在 `.env.workers.example` 也有。部署時逐一複製 `.env.*.example` 就不會缺這些值。`.env.prod.example` 裡的這幾行是第二份副本，改一邊不會同步到另一邊。
+
+`docker-compose.prod.yml` 開頭的步驟說明只要求建立 `.env.prod`，沒有提到 `.env.api`、`.env.web`、`.env.workers`。Compose 發現 `env_file` 指向的檔案不存在時，在解析階段就報錯，不會啟動任何服務。照那份步驟說明操作，`docker compose -f docker-compose.prod.yml up -d` 會直接失敗。`AGENTS.md` 的「Environment Gotchas」有寫要複製這三個檔案，prod compose 檔本身沒寫。
+
+CI 的部署不走這條路徑。`.github/workflows/deploy.yml` 用的是 `docker-compose.yml`，而且有一步檢查 `.env.web`、`.env.api`、`.env.workers` 是否存在，缺一個就讓部署失敗。因此這個落差只影響照 `docker-compose.prod.yml` 手動部署的人。
 
 ### APP-01：兩套 SLA 機制
 
