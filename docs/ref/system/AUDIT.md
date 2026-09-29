@@ -39,6 +39,9 @@
 | PLAN-02 | 試用與方案 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | PLAN-03 | 試用與方案 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
 | PLAN-04 | 試用與方案 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
+| PLAN-05 | 試用與方案 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
+| PLAN-06 | 試用與方案 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
+| PLAN-07 | 試用與方案 | 沒有任何方案定義 `maxChannels`，渠道數上限的檢查永遠不會觸發 | 靜態確認 |
 | LIC-01 | License | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -297,6 +300,12 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 這一項與 PLAN-01 不同，不確定是缺陷還是原本的設計。無論是哪一種，目前的用字與資料結構表達的不是同一件事。
 
+寫入方式另有兩個問題。
+
+**累加沒有交易保護。** `approveRequest()` 的流程是 `findUnique` 讀出 `limitOverrides`、在記憶體算出新值、再 `update` 覆寫整個 JSON 物件。三步之間沒有交易。同一個租戶的兩筆加購申請若同時核准，兩邊都讀到同一個起始值，後寫入的會覆蓋先寫入的，其中一筆加購量消失。覆寫的是整份 JSON，因此將來若有其他路徑寫別的 key，那些值也會一起被蓋掉。同一個模組的 `platform-user.service.ts` 停用最後一個帳號時用了 `Serializable` 交易，兩處的嚴謹程度不一致。
+
+**有效上限的解析邏輯有第二份副本。** `plan-change.service.ts:103` 自己重寫了一次「覆寫優先」的判斷，用 `overrides.monthlyTokens !== undefined`；`plan-limits.service.ts:16` 的 `resolveEffectiveLimit()` 用 `hasOwnProperty`。JSON 欄位存不出 `undefined`，所以兩者目前行為相同，但這是兩份會分歧的邏輯。`approveRequest()` 手上已經有 `limitOverrides` 與 `plan.limits`，可以直接呼叫 `resolveEffectiveLimit()`。
+
 ### PLAN-03：換方案不會回收既有的超額狀態
 
 租戶換方案有三個入口：平台改租戶方案（`updateTenant()`）、核准升級申請（`approveRequest()`）、試用轉正式（`convertToPaid()`）。三者都只寫 `planId`，以下三件事不會跟著改變。
@@ -352,6 +361,66 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 `maxTags` 是另一種形狀的失效：它在 `apps/api/src` 只出現在 `plan-limits.service.ts` 的 `LimitKey` 型別宣告，沒有任何地方拿它比對，與 PLAN-01 的 `Plan.isActive` 相同。
 
 成因見 RBAC-01。
+
+### PLAN-05：加購過的租戶升級方案，額度反而變低
+
+`resolveEffectiveLimit()` 判斷 `limitOverrides` 有沒有這個 key，有就直接回傳覆寫值，不與方案的 `limits` 比大小。加購把覆寫值寫成「加購當時的方案額度 + 加購量」（見 PLAN-02），因此覆寫值綁的是**加購當時**的那個方案。
+
+以 `packages/database/prisma/seed.ts` 的方案額度為例：
+
+| 步驟 | `Plan.limits.monthlyTokens` | `limitOverrides.monthlyTokens` | 有效上限 |
+| --- | --- | --- | --- |
+| 綁 `light` | 1,500,000 | 未設定 | 1,500,000 |
+| 核准加購 50,000 | 1,500,000 | 1,550,000 | 1,550,000 |
+| 升級到 `standard` | 3,000,000 | 1,550,000 | **1,550,000** |
+
+租戶付費升級之後，AI 月額度停在升級前的數字。換方案的三個入口（`updateTenant()`、`approveRequest()` 的 `upgrade`、`convertToPaid()`）都只寫 `planId`，沒有一個會清除或重算覆寫值。
+
+沒有任何路由或頁面讀得到 `limitOverrides`，因此平台方也看不出這個租戶的額度為什麼沒跟著升級，只能直接改資料庫。
+
+PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額度，結果對租戶有利。這一項是同一個機制在升級方向上的結果，對租戶不利。
+
+### PLAN-06：核准加購之後，當月的額度告警全部靜默
+
+`approveRequest()` 核准加購後呼叫 `clearTokenQuotaCache(req.tenantId)`，程式註解寫「讓硬擋重讀新額度」。這一行清掉的是用量計數器 `aiquota:{tenantId}:{YYYY-MM}`，不是告警旗標。
+
+清計數器沒有必要，也沒有效果：
+
+- 上限不在 Redis。`isMonthlyTokenExceeded()` 每次都呼叫 `getEffectiveLimit()` 查資料庫，本來就讀得到新額度。
+- 計數器存的是已用量。清掉之後，下一次呼叫會從 `aiUsage` 重新加總回填，得到的值與清掉之前相同，只是多跑一次聚合查詢。
+
+真正需要清的是告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`。`checkQuotaThresholdCrossing()` 用 `SET NX` 搶旗標做冪等，搶不到就不回報該門檻，而旗標的過期時間是月底。於是同一個月內第二次接近上限時，兩個門檻都不會再發通知：
+
+| 事件 | 有效上限 | 累計用量 | 跨越的門檻 | 是否通知 |
+| --- | --- | --- | --- | --- |
+| 用量累積 | 200,000 | 160,000 | warning（80%） | 是，旗標寫入 |
+| 用量累積 | 200,000 | 200,000 | critical（100%） | 是，旗標寫入。之後被硬擋 |
+| 核准加購 300,000 | 500,000 | 200,000 | 無 | 無 |
+| 用量累積 | 500,000 | 400,000 | warning（80%） | **否**，旗標已存在 |
+| 用量累積 | 500,000 | 500,000 | critical（100%） | **否**，旗標已存在。再次被硬擋 |
+
+告警會送給該租戶的所有 ADMIN，站內通知與 email 各一份（`notification.worker.ts:230`）。因此加購過的租戶當月第二次用完額度時，是毫無預警被擋下的。
+
+租戶也無法自己查。`getEffectiveLimit()` 的呼叫端都在伺服器端做判斷，沒有任何路由把上限或已用量回傳給租戶端；租戶側的 `/api/v1/plan-change` 只能列出自己的申請與發起新申請。這兩個門檻的告警是租戶唯一的資訊來源。
+
+### PLAN-07：沒有任何方案定義 `maxChannels`
+
+`resolveEffectiveLimit()` 在方案的 `limits` 沒有某個 key 時回傳 `null`，而 `null` 代表無上限。缺少設定的結果是完全不限制。
+
+`packages/database/prisma/seed.ts` 的 `seedPlans()` 為每個方案寫的 `limits` 只有 `maxAgents`、`maxTags`、`monthlyTokens`，沒有 `maxChannels`。因此凡是綁定 seed 方案的租戶，渠道數都是無上限。
+
+這一項與 PLAN-04 的 `maxTags` 剛好相反，兩者各缺一半：
+
+| 上限 | 方案有定義嗎 | 有檢查點嗎 | 結果 |
+| --- | --- | --- | --- |
+| `maxAgents` | 有 | `agent.service.ts:162` | 生效 |
+| `monthlyTokens` | 有 | `token-quota.service.ts:118` | 生效 |
+| `maxChannels` | **沒有** | `channel.service.ts:117` | 檢查點永遠跳過 |
+| `maxTags` | 有 | **沒有** | 設定值沒有讀取端 |
+
+`/admin/plans` 的欄位清單（`apps/web/src/app/admin/plans/page.tsx` 的 `LIMIT_KEYS`）列出全部四項，`maxChannels` 顯示為空白。平台後台看不出「空白」在這裡代表方案從未定義這個 key，也就是無上限。
+
+`updatePlanSchema` 的 `limits` 是 `z.record(...)`，沒有 key 白名單，也沒有必填項。送 `{}` 會通過驗證，該方案所有租戶的四項上限同時變成無上限。平台後台的頁面每次送出都帶完整的 `limits` 物件，因此從介面操作不會漏 key；直接呼叫 API 則會。
 
 ## 授權與安全
 

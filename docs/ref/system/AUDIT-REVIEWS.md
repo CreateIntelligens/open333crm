@@ -4,6 +4,27 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-29：AI 月額度的寫入與判定路徑，新增三個方案項目
+
+起因是質疑加購直接改寫 `limitOverrides.monthlyTokens` 的做法。做法是靜態追完整條路徑：`plan-change.service.ts` 的核准、`plan-limits.service.ts` 的上限解析、`token-quota.service.ts` 的計數與告警、`llm.service.ts` 的硬擋點，以及 `limitOverrides` 的所有讀寫端。沒有啟動容器。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| PLAN-05 | `resolveEffectiveLimit()` 只判斷 key 是否存在，不與方案的 `limits` 比大小；三個換方案入口都只寫 `planId` |
+| PLAN-06 | `clearTokenQuotaCache()` 只 `del` 計數器 key；告警旗標另有 key，`checkQuotaThresholdCrossing()` 以 `SET NX` 搶旗標，過期時間是月底 |
+| PLAN-07 | 比對 `seedPlans()` 每個方案的 `limits` 鍵與 `LimitKey` 的四個值，`maxChannels` 在每個方案都缺 |
+
+PLAN-07 是另一條線索：整理[方案與功能](../modules/platform/PLANS.md)的「無上限」一節時，發現該節把「刻意設成無上限」與「缺少設定」列成同一組情況，於是逐一驗證每種情況在現有資料上是否成立，查出 `maxChannels` 從來沒有任何方案定義過。該節已改寫成依性質分列，並標出哪幾種是 fail-open。
+
+判定的共同根因是一個資料模型問題：`limitOverrides` 的語意是狀態覆寫（絕對值），加購是事件（一次性增量）。把事件累加進狀態欄位之後，來源、時效與次數三項資訊都無法還原。PLAN-02、PLAN-03、PLAN-05、PLAN-06 都是這個根因的下游結果。
+
+本次另外確認四件事，都不另開項目：
+
+- **硬擋是呼叫前檢查。** `llm.service.ts:264` 在呼叫 LLM 之前比對 `used >= limit`，通過之後不限制該次呼叫的用量，也沒有預留機制。上限實際上是「軟上限加一次呼叫」。
+- **額度的單位與成本的單位不同。** `monthlyTokens` 不分模型，但 `model_pricings` 算出的每 token 成本差異很大。平台用 token 設天花板，帳單是金額，兩者沒有對應關係，也沒有金額上限機制。
+- **稽核記不到加購量。** approve 的稽核 payload 只寫 `{ type }`，沒有加購量，也沒有覆寫的前後值。要查只能回頭加總 `plan_change_requests.topupTokens`，而且那只在 `Plan.limits` 從未被編輯過時推得回來；方案的 `limits` 沒有變更歷史。
+- **快取的對象與變動頻率相反。** 變動極慢的上限在每次 AI 呼叫查兩次資料庫（`isMonthlyTokenExceeded()` 與 `checkQuotaThresholdCrossing()` 各一次）；變動極快的已用量做了完整的 Redis 計數器，還處理了併發回填的 lost-update。該快取的沒快取。
+
 ## 2026-09-29：正式環境 Compose 的環境變數流向，新增 DEP-02
 
 起因是先前討論平台寄信設定時擱置的一項：`.env.prod.example` 裡有幾個變數，正式環境的 Compose 未必送得到讀取端。做法是靜態比對 `docker-compose.prod.yml`、`docker-compose.yml`、各個 `.env.*.example` 與原始碼的讀取位置；另外用一份最小 Compose 檔確認 Compose 對缺少 `env_file` 的行為。

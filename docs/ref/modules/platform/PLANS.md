@@ -62,12 +62,27 @@ limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
 
 差別在 `null`。`Tenant.limitOverrides` 寫 `{ "maxAgents": null }` 的意思是「這個租戶的人數改成無上限」，而不是「沒設定，回去看方案」。程式用 `hasOwnProperty` 判斷，不是 `??`。
 
-回傳 `null` 一律代表無上限，三種情況都會得到 `null`：
+## 什麼情況會變成無上限
 
-- 覆寫或方案裡該 key 的值本身是 `null`。
-- 租戶沒有綁定方案。
-- 方案沒有定義這個 key。
+回傳 `null` 一律代表無上限。得到 `null` 的路徑有四條，前兩條是有人刻意設定，後兩條是設定不存在：
 
-AI 月額度的加購是直接改寫 `limitOverrides.monthlyTokens`，見[方案異動審核](./PLAN-CHANGES.md#加購是永久提高每月額度)。
+| 情況 | 為什麼回 `null` | 性質 |
+| --- | --- | --- |
+| `limitOverrides` 的該 key 值是 `null` | 平台方把這個租戶設成無上限 | 刻意設定 |
+| `Plan.limits` 的該 key 值是 `null` | 方案本身不限這一項，例如 `enterprise` | 刻意設定 |
+| 租戶的 `planId` 是 `null` | 沒有方案可查，直接回 `null` | 設定不存在 |
+| 方案的 `limits` 沒有這個 key | 方案沒有定義這一項，直接回 `null` | 設定不存在 |
+
+後兩條是 fail-open：缺少設定的結果是完全不限制，不是套用最嚴格的值，而且沒有任何警告或紀錄。
+
+第三條是刻意保留的相容狀態。`Tenant.planId` 可以是 `null`，schema 的註解寫明那代表「既有租戶為 null = 不設功能天花板、無數值上限」，指的是方案機制上線前就存在的租戶。建立租戶的路由要求 `planSlug`，所以新租戶不會落入這個狀態。
+
+第四條目前有一個實例：沒有任何方案定義 `maxChannels`，因此渠道數的檢查永遠跳過，詳見 `../../system/AUDIT.md` 的 PLAN-07。
+
+## 加購會改寫覆寫值
+
+AI 月額度的加購直接改寫 `limitOverrides.monthlyTokens`，寫進去的值是「加購當時的方案額度 + 加購量」，見[方案異動審核](./PLAN-CHANGES.md#加購是永久提高每月額度)。
+
+因為覆寫值優先於方案的 `limits`，而且解析時不比大小，加購過的租戶升級方案之後，AI 月額度會停在升級前的數字，見 `../../system/AUDIT.md` 的 PLAN-05。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。
