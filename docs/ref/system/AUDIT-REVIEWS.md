@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：平台 KV 設定的寫入與讀取，新增 TRIAL-02
+
+起因是[平台設定](../modules/platform/SETTINGS.md)描述的 KV 做法缺點很多，要為它提出修正方向。做法是追完一個設定值從寫入到被使用的整條路徑：`/admin/trial` 設定分頁、`PUT /settings/:key`、`getTrialPolicy()`，以及各參數在 `trial.service.ts` 與 `trial.scheduler.ts` 的使用處。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| TRIAL-02 | `PUT` 的驗證是 `z.unknown()`；`getTrialPolicy()` 只做 `typeof`；`durationDays`、`dataRetentionDays`、`verifyTokenTtlHours` 直接乘上毫秒數使用，沒有範圍檢查；`planSlug` 在 `verifyAndProvision()` 查不到方案時回 500；前端 `saveSetting()` 沒有 `catch`；沒有刪除端點 |
+
+原本 `SETTINGS.md` 只記了型別不符會靜默退回預設值。這次補上相反方向：型別正確但範圍錯誤的值會通過檢查並照用。兩個方向都沒有訊息。
+
+`SETTINGS.md` 的敘述裡有三處數量（「三件事」「六個鍵」「五個鍵」），一併改成不含數量的寫法。
+
 ## 2026-09-30：價目表的寫入途徑，新增 USAGE-02
 
 起因是[用量統計](../modules/platform/USAGE.md)的「價目表沒有維護介面」一節，要為它提出修正方向。查證時追了三件原本沒寫的事：seed 在正式環境是否可用、查無價目是否進快取、缺價期間的成本能否事後修正。

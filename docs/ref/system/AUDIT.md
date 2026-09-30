@@ -50,6 +50,7 @@
 | SLA-03 | SLA | P3 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | SLA-04 | SLA | P2 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
 | TRIAL-01 | 試用與方案 | P1 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
+| TRIAL-02 | 試用與方案 | P3 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
 | PLAN-01 | 試用與方案 | P3 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | PLAN-02 | 試用與方案 | P3 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | PLAN-03 | 試用與方案 | P3 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
@@ -290,6 +291,42 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 也就是說，已付費的租戶會被停用，接著被標記為已清除。
 
 審核者沒有任何提示。`listPendingRequests()` 回傳 `currentPlan`，但不含 `trialEndsAt`，`/admin/plan-changes` 頁面也沒有顯示試用狀態。審核者在這個頁面按下核准時，不會知道這個動作不會讓租戶脫離試用。
+
+### TRIAL-02：試用政策存在無型別的 KV
+
+試用政策的每個參數是 `PlatformSetting` 的一列，`value` 是任意 JSON。`PUT /settings/:key` 的驗證只有 `z.object({ value: z.unknown() })`，沒有鍵名白名單，也沒有值的型別與範圍。讀取端 `getTrialPolicy()` 只做 `typeof` 檢查，不符就改用 `DEFAULTS`。
+
+因此寫錯的值會往兩個相反的方向出錯，兩個方向都沒有任何訊息：
+
+| 寫入的值 | 讀取端的判斷 | 結果 |
+| --- | --- | --- |
+| 型別錯，例如 `trial.durationDays` 寫成 `"30"` | `typeof` 不是 `number` | 靜默失效：設定存進去了，行為仍是預設的 14 天 |
+| 型別對但範圍錯，例如 `0` 或負數 | `typeof` 通過 | 靜默生效：照用錯誤的值 |
+| `trial.planSlug` 寫了不存在的方案 | `typeof` 通過 | 之後每一筆試用驗證都在最後一步失敗，回 500 `TRIAL_MISCONFIGURED`（`trial.service.ts:163`） |
+
+範圍錯的值實際造成的結果：
+
+| 參數 | 錯誤的值 | 結果 |
+| --- | --- | --- |
+| `trial.durationDays` | `0` 或負數 | 新開通租戶的 `trialEndsAt` 已經過去，下一輪排程（最多一小時）就被停用 |
+| `trial.dataRetentionDays` | `0` | 租戶到期停用後，下一輪排程就標記軟刪 |
+| `trial.verifyTokenTtlHours` | `0` | 驗證信寄出時連結就已過期，`verifyAndProvision()` 回 410 |
+
+**介面擋不住。** `/admin/trial` 的「設定」分頁在欄位 `onBlur` 時直接呼叫 `PUT`，沒有確認步驟，數字欄位也沒有 `min`。清空數字欄位再離開時，`parseInt('')` 得到 `NaN`，JSON 序列化成 `null`；`PlatformSetting.value` 是必填的 `Json`，這筆寫入會失敗，而 `saveSetting()` 沒有 `catch`，頁面既不顯示成功也不顯示失敗。`trial.planSlug` 不在這個分頁上，只能直接呼叫 API，而 API 不檢查方案是否存在。
+
+**管理面也有缺口：**
+
+- 沒有刪除端點。寫錯的鍵刪不掉，也沒有「恢復預設」，只能手動寫回預設值，而預設值只存在於原始碼的 `DEFAULTS`。
+- 稽核只記鍵名，不記新舊值（見[平台設定](../modules/platform/SETTINGS.md)）。
+- 每個參數各自一次 `PUT`。彼此相關的參數（例如試用天數與提醒檔位）無法一起改，中間狀態會被排程讀到。
+
+**修正方向（2026-09-30 提出，尚未實作）**
+
+- **在寫入端驗證。** 為每個已知鍵定義一個 Zod schema，寫明型別與範圍。`PUT /settings/:key` 先比對鍵名白名單，再以對應 schema 驗值，不符就回 422。讀取端的 `typeof` 退回預設值，就只剩「資料庫沒有這一列」這一種情況，不再吞掉錯誤的值。
+- **較徹底的做法：試用政策改成單一鍵。** 例如 `trial.policy`，值是整份 `TrialPolicy` 物件，由一個 schema 驗證。讀取從多次查詢變成一次，相關參數一次寫入，也不再有中間狀態。
+- **`trial.planSlug` 寫入時檢查方案存在**，並把它加進設定分頁。PLAN-01 修好之後，一併檢查方案未停售。
+- **稽核記下新舊值**，payload 帶 `{ before, after }`。
+- **前端補錯誤處理。** `saveSetting()` 加上 `catch` 並顯示錯誤，數字欄位加上 `min`。
 
 ### PLAN-01：`Plan.isActive` 沒有讀取端
 
