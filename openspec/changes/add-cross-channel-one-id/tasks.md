@@ -87,12 +87,13 @@
 
 ### 9.3 本次發現、建議另開單（不在本 change 範圍）
 
-- [ ] 9.3.1 **聯絡人路由幾乎全無權限守門**：`contact.view`／`contact.update` 權限點有定義但多數 `/api/v1/contacts/*` 路由沒套；本次只補了合併、解除、代發綁定連結
+- [x] 9.3.1 **聯絡人路由權限守門**（2026-09-30 補上）：原本 10 條 `/api/v1/contacts/*` 路由只要登入即可讀寫（無權限角色可直接列出聯絡人、看其對話與案件）。現依 `contact.view`／`contact.update`／`contact.merge` 守門，聯絡人的對話另需 `inbox.view`、案件另需 `case.view`；路由層測試 `test:contact-routes-permission`。聯絡人層級的渠道可見性（CM-173：分店帳號只看自己渠道的聯絡人）仍未處理，見 9.3.8
 - [ ] 9.3.2 Redis 連線單例重複：passkey、downstream-loop-guard、identity-binding 各自 `new IORedis`，建議抽共用 client
 - [ ] 9.3.3 移除 `fan/auth` 後暫無簽發 fan token 的路徑，粉絲門戶受保護路由（活動、點數）暫不可用；待優惠券分支 Account Link 或 P2 會員登入頁接上
 - [ ] 9.3.4 `check-prisma-admin-usage --strict` 在 main 上就失敗（shortlink-redirect、portal-public 共 5 處），非本次造成
 - [ ] 9.3.5 `.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
 - [ ] 9.3.6 Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
+- [ ] 9.3.8 聯絡人路由尚未套用 CM-173 渠道可見性：分店帳號仍可看到其他渠道顧客的聯絡人資料與對話列表（權限點守門已補，渠道範圍未補）
 - [ ] 9.3.7 API 啟動 log 寫「Registered channel plugins: LINE, FB, WEBCHAT」漏了 THREADS（實際有註冊，僅文字過時）
 
 ### 9.4 與其他分支的交集
@@ -106,7 +107,7 @@
 
 ### 9.6 測試覆蓋缺口
 
-- [ ] 9.6.1 缺路由層測試：`/channels/:id/binding-handle` 非法 id 回 400、`/contacts/identity-binding/status`、`/contacts/:id/binding-link` 的 CM-173 渠道存取守門
+- [ ] 9.6.1 缺路由層測試：`/channels/:id/binding-handle` 非法 id 回 400、`/contacts/:id/binding-link` 的 CM-173 渠道存取守門（聯絡人路由的權限守門已有 `test:contact-routes-permission`）
 - [ ] 9.6.2 `inTransaction` 擋 tenant-scoped client 的守門、stitcher 排除封存聯絡人，目前沒有專屬測試
 
 ### 9.7 本機環境（demo 用，驗證完需清理）

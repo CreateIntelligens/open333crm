@@ -20,6 +20,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **`inbound-message-refactor` 測試失效** — 測試的假 Prisma 缺 `message.findFirst`（channelMsgId 去重查詢後加的），整支測試在 main 上就已失敗、失去守門作用；補齊後恢復。
+- **聯絡人 API 補上權限守門** — `contact.view`／`contact.update` 權限點早已定義，但 10 條 `/api/v1/contacts/*` 路由（列表、詳情、編輯、貼標、時間軸、對話、案件、合併預覽、合併紀錄）只要登入即可存取，沒有權限的自訂角色也能列出所有聯絡人並查看其對話與案件。現改為依權限點守門：讀取需 `contact.view`、編輯與貼標需 `contact.update`、合併預覽需 `contact.merge`，聯絡人的對話另需 `inbox.view`、案件另需 `case.view`。三個預設角色皆已具備這些權限，既有帳號不受影響。
 - **移除 `POST /api/v1/fan/auth` 身分冒用漏洞** — 該端點憑任意 `{contactId, tenantId}` 即簽發顧客 token，不驗證呼叫者身分，任何人都能冒充任一顧客存取粉絲門戶。經查無任何呼叫者，直接移除。⚠️ 移除後暫無簽發 fan token 的路徑，`/api/v1/fan/*` 受保護路由（活動、點數）暫不可用；目前無顧客端頁面使用，待優惠券分支的 Account Link 驗證或會員登入頁接上。
 - **LINE／FB Login 合併失敗** — 舊實作硬刪來源聯絡人，遇到點數或活動報名紀錄（外鍵 RESTRICT）會整筆失敗，且串聯刪除會連帶刪掉其他渠道身分。改走統一合併引擎後改為封存，且不再比對到已封存的聯絡人。
 

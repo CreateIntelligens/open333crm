@@ -69,12 +69,16 @@ const mergeBodySchema = z.object({
   secondaryContactId: z.string().uuid(),
 });
 
+// 聯絡人資料的讀寫權限（RBAC 權限點早已定義，先前多數路由未套用，只要登入即可存取）
+const canView = requirePermission('contact.view');
+const canUpdate = requirePermission('contact.update');
+
 export default async function contactRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/contacts
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: [canView] }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
@@ -90,7 +94,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/contacts/merge-preview?primaryId=X&secondaryId=Y
   // Must be before /:id to avoid being captured as a param
-  fastify.get('/merge-preview', async (request, reply) => {
+  fastify.get('/merge-preview', { preHandler: [requirePermission('contact.merge')] }, async (request, reply) => {
     const query = mergePreviewQuerySchema.parse(request.query);
 
     const preview = await getMergePreview(
@@ -227,14 +231,14 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   );
 
   // GET /api/v1/contacts/:id/merge-logs — 此聯絡人相關的合併紀錄（新到舊）
-  fastify.get<{ Params: { id: string } }>('/:id/merge-logs', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/merge-logs', { preHandler: [canView] }, async (request, reply) => {
     const { id } = contactIdParamsSchema.parse(request.params);
     const logs = await listMergeLogs(request.tenantPrisma, request.agent.tenantId, id);
     return reply.send(success(logs));
   });
 
   // GET /api/v1/contacts/:id
-  fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [canView] }, async (request, reply) => {
     const contact = await getContact(
       request.tenantPrisma,
       request.params.id,
@@ -245,7 +249,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/contacts/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [canUpdate] }, async (request, reply) => {
     const data = updateContactSchema.parse(request.body);
 
     const contact = await updateContact(
@@ -259,7 +263,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/contacts/:id/conversations
-  fastify.get<{ Params: { id: string } }>('/:id/conversations', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/conversations', { preHandler: [canView, requirePermission('inbox.view')] }, async (request, reply) => {
     const query = paginationQuerySchema.parse(request.query);
 
     const { conversations, total } = await getContactConversations(
@@ -274,7 +278,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/contacts/:id/cases
-  fastify.get<{ Params: { id: string } }>('/:id/cases', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/cases', { preHandler: [canView, requirePermission('case.view')] }, async (request, reply) => {
     const query = paginationQuerySchema.parse(request.query);
 
     const { cases, total } = await getContactCases(
@@ -289,7 +293,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/contacts/:id/tags
-  fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/tags', { preHandler: [canUpdate] }, async (request, reply) => {
     const body = addTagSchema.parse(request.body);
 
     const contactTag = await addContactTag(
@@ -306,6 +310,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // DELETE /api/v1/contacts/:id/tags/:tagId
   fastify.delete<{ Params: { id: string; tagId: string } }>(
     '/:id/tags/:tagId',
+    { preHandler: [canUpdate] },
     async (request, reply) => {
       await removeContactTag(
         request.tenantPrisma,
@@ -319,7 +324,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   );
 
   // GET /api/v1/contacts/:id/timeline
-  fastify.get<{ Params: { id: string } }>('/:id/timeline', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/timeline', { preHandler: [canView] }, async (request, reply) => {
     const timeline = await getContactTimeline(
       request.tenantPrisma,
       request.params.id,
