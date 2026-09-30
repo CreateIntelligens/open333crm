@@ -44,7 +44,6 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
   const [pageAccessToken, setPageAccessToken] = useState('');
-  const [pageId, setPageId] = useState('');
 
   const [creating, setCreating] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string | null>(null);
@@ -63,7 +62,6 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     setAppId('');
     setAppSecret('');
     setPageAccessToken('');
-    setPageId('');
     setCreating(false);
     setCreatedChannelId(null);
     setCreatedWebhookInfo(null);
@@ -97,7 +95,6 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
           appId,
           appSecret,
           pageAccessToken,
-          pageId,
           verifyToken: metaVerifyToken,
         };
       } else if (channelType === CHANNEL_TYPE.THREADS) {
@@ -319,10 +316,9 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                     <label className="mb-1.5 block text-sm font-medium">Page Access Token</label>
                     <Input type="password" value={pageAccessToken} onChange={(e) => setPageAccessToken(e.target.value)} placeholder="EAA... 開頭的 Token" />
                   </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">Page ID</label>
-                    <Input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="粉絲專頁數字 ID（選填）" />
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    粉專 ID 不需填寫，建立後驗證時會自動取得。
+                  </p>
                 </>
               )}
 

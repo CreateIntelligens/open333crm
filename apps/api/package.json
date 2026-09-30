@@ -40,7 +40,9 @@
     "test:inbound-identity-binding": "tsx src/__tests__/inbound-identity-binding.test.ts",
     "test:referral-parsing": "tsx ../../packages/channel-plugins/src/__tests__/referral-parsing.test.ts",
     "test:contact-routes-permission": "tsx src/__tests__/contact-routes-permission.test.ts",
-    "test:mcp-channel-visibility": "tsx src/__tests__/mcp-channel-visibility.test.ts"
+    "test:mcp-channel-visibility": "tsx src/__tests__/mcp-channel-visibility.test.ts",
+    "test:webhook-account-routing": "tsx src/__tests__/webhook-account-routing.test.ts",
+    "test:channel-external-account": "tsx src/__tests__/channel-external-account.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1013.0",

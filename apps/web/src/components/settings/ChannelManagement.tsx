@@ -39,6 +39,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { ChannelAccountRouting } from './ChannelAccountRouting';
 
 const WEBHOOK_BASE_URL_KEY = 'open333crm_webhook_base_url';
 
@@ -50,6 +51,8 @@ interface Channel {
   isActive: boolean;
   webhookUrl?: string;
   lastVerifiedAt?: string;
+  /** FB 粉專 ID／IG 帳號 ID，webhook 依此分派（由驗證自動取得） */
+  externalAccountId?: string | null;
   settings?: Record<string, unknown>;
   createdAt: string;
 }
@@ -407,6 +410,13 @@ export function ChannelManagement() {
                           {new Date(ch.lastVerifiedAt).toLocaleString('zh-TW')}
                         </p>
                       )}
+
+                      {/* FB／IG 帳號 ID 與 webhook 分派警示 */}
+                      <ChannelAccountRouting
+                        channelType={ch.channelType}
+                        externalAccountId={ch.externalAccountId}
+                        settings={ch.settings}
+                      />
 
                       {/* FB Token warning */}
                       {channelStatuses[ch.id]?.tokenWarning && (

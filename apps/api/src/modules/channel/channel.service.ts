@@ -73,6 +73,7 @@ export async function listChannels(
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       createdAt: true,
       updatedAt: true,
@@ -157,6 +158,7 @@ export async function createChannel(
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       createdAt: true,
       updatedAt: true,
@@ -178,6 +180,7 @@ export async function getChannel(prisma: TenantDb, id: string, tenantId: string)
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       credentialsEncrypted: true,
       createdAt: true,
@@ -251,6 +254,13 @@ export async function updateChannel(
       /* 舊憑證解不開（跨環境金鑰不符）就直接用新憑證 */
     }
     updateData.credentialsEncrypted = encryptCredentials(nextCredentials);
+    // FB／IG 換了 token 可能已是另一個粉專／帳號：舊的外部帳號 ID 不再可信，清掉等重新驗證寫入
+    const tokenChanged = ['pageAccessToken', 'appSecret'].some(
+      (k) => data.credentials![k] !== undefined && data.credentials![k] !== '',
+    );
+    if ((channel.channelType === CHANNEL_TYPE.FB || channel.channelType === CHANNEL_TYPE.THREADS) && tokenChanged) {
+      updateData.externalAccountId = null;
+    }
   }
   if (data.settings !== undefined) {
     // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
@@ -282,6 +292,7 @@ export async function updateChannel(
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       createdAt: true,
       updatedAt: true,
@@ -376,7 +387,32 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
 }
 
 /** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
-const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured'] as const;
+const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting'] as const;
+
+/**
+ * 寫入渠道的外部帳號 ID（FB 粉專 ID／IG 專業帳號 ID），webhook 依它分派渠道與租戶
+ * （change fix-meta-webhook-page-routing）。
+ *
+ * **只由驗證呼叫**：ID 來自以該渠道 token 向 Meta 查得的結果，等於證明持有者真的管理這個帳號。
+ * 不接受表單手填——共用同一個 Meta App 時，手填別人的粉專 ID 就能把別的租戶的訊息搶過來。
+ * 同一帳號全平台只能連結一次（唯一索引），撞重複回 409 且不寫入；成功後清掉分派警示。
+ */
+async function setExternalAccountId(prisma: TenantDb, id: string, tenantId: string, accountId: unknown) {
+  if (accountId === undefined || accountId === null || String(accountId).trim() === '') return;
+  try {
+    await prisma.channel.updateMany({ where: { id, tenantId }, data: { externalAccountId: String(accountId).trim() } });
+  } catch (err) {
+    if ((err as { code?: string }).code === 'P2002') {
+      throw new AppError(
+        '此粉專／IG 帳號已連結到其他渠道，同一個帳號只能連結一次',
+        'CHANNEL_ACCOUNT_ALREADY_LINKED',
+        409,
+      );
+    }
+    throw err;
+  }
+  await patchChannelSettings(prisma, id, tenantId, {}, ['webhookRouting']);
+}
 
 
 export async function verifyChannel(prisma: TenantDb, id: string, tenantId: string) {
@@ -446,6 +482,8 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // 沒設定的話新顧客的綁定代碼永遠進不來，驗證時一併檢查並回報給後台提示
     const getStartedConfigured = await hasFbGetStarted(pageAccessToken);
 
+    // 粉專 ID = webhook entry.id，入站依它分派；已被其他渠道連結時丟 409，驗證不成立
+    await setExternalAccountId(prisma, id, tenantId, pageInfo.id);
     await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
     // 粉專 username（沒有就用 page id）供 m.me 綁定連結使用
     await patchChannelSettings(prisma, id, tenantId, {
@@ -462,7 +500,8 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // 走 IG Login 路線，用 Instagram Graph API 驗證 token 有效
     // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄，也免去編碼問題
     const response = await fetch(
-      'https://graph.instagram.com/v21.0/me?fields=id,username',
+      // user_id 才是 IG 專業帳號 ID（= webhook entry.id）；id 只是 App 範圍的使用者 ID，不能拿來分派
+      'https://graph.instagram.com/v21.0/me?fields=user_id,username',
       { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
@@ -480,6 +519,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const igInfo = (await response.json()) as Record<string, unknown>;
 
+    await setExternalAccountId(prisma, id, tenantId, igInfo.user_id);
     await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
     // IG username 供 ig.me 綁定連結使用
     await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(igInfo.username));

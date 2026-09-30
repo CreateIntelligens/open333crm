@@ -391,6 +391,9 @@ model Channel {
   settings             Json        @default("{}")
   webhookUrl           String?
   lastVerifiedAt       DateTime?
+  /// 平台上的外部帳號 ID（FB 粉專 ID／IG 專業帳號 ID），webhook 依 entry.id 分派渠道用；
+  /// 同一帳號全平台只能連結一次（見 @@unique）。change fix-meta-webhook-page-routing
+  externalAccountId    String?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
 
@@ -405,6 +408,7 @@ model Channel {
   chatboxSessions   ChatboxSession[]
   shortLinks        ShortLink[]         @relation("ShortLinkLineChannel")
 
+  @@unique([channelType, externalAccountId])
   @@index([tenantId])
   @@index([publicKey])
   @@map("channels")

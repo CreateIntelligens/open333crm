@@ -29,6 +29,7 @@ import {
 } from './inbound-side-effects.js';
 import { forwardToDownstream, getDownstreamWebhookConfig } from './downstream-forwarder.js';
 import { claimForForward } from './downstream-loop-guard.js';
+import { recordRoutingWarning, routeWebhookMessages } from './webhook-account-routing.js';
 
 // TODO(rls): 入站 webhook 為公開端點（無認證租戶），tenant 由 channel 反查得出，
 // 且下游 resolver / InboundMessageContext 皆以 PrismaClient 型別串接，故此路徑不套 RLS，維持 PrismaClient。
@@ -87,11 +88,43 @@ export async function processWebhookEvent(
   }
   logger.info('[Webhook] Signature OK', { channelId, channelType });
 
-  // 3b. Downstream webhook forwarding (any channel). See openspec `line-downstream-webhook`.
+  // 4. Parse webhook into normalized messages
+  const parsedMessages = await plugin.parseWebhook(rawBody, headers);
+
+  logger.info('[Webhook] Parsed', {
+    channelId,
+    channelType,
+    count: parsedMessages.length,
+    messages: parsedMessages.map(m => ({ contactUid: m.contactUid, contentType: m.contentType, channelMsgId: m.channelMsgId, accountId: m.accountId })),
+  });
+
+  if (parsedMessages.length === 0) {
+    logger.info('[Webhook] No actionable messages in payload', { channelId, channelType });
+  }
+
+  // 5. FB／IG 依事件的帳號 ID（entry.id）分派到真正的渠道與租戶；多個粉專共用同一個 Meta App 時，
+  //    別的粉專的事件不會再落進網址渠道（change fix-meta-webhook-page-routing）。其他渠道類型原樣回傳。
+  const routing = await routeWebhookMessages(
+    prisma,
+    { id: channel.id, tenantId, channelType: channel.channelType, externalAccountId: channel.externalAccountId },
+    credentials,
+    secret,
+    parsedMessages,
+  );
+
+  // 6. Downstream webhook forwarding (any channel). See openspec `line-downstream-webhook`.
+  //    轉發的是原始 body 與簽章，無法拆包重簽：只有整包都屬於網址渠道時才轉發，
+  //    否則會把別的渠道（甚至別的租戶）的事件轉給網址渠道設定的下游。
   const downstream = getDownstreamWebhookConfig(channel.settings);
-  if (downstream && downstream.mode === 'immediate') {
+  const canForward = routing.allToUrlChannel;
+  if (downstream && !canForward) {
+    logger.warn('[Webhook] Payload contains events of other channels — downstream forward skipped', { channelId });
+    await recordRoutingWarning(prisma, { id: channel.id, tenantId }, 'downstream_skipped');
+  }
+  const immediate = downstream?.mode === 'immediate';
+  if (downstream && immediate && canForward) {
     // Immediate mode: forward the original payload, then short-circuit —
-    // skip parse + CRM inbound processing (downstream takes over).
+    // skip CRM inbound processing (downstream takes over).
     // Loop guard: if the downstream shot our own forward back, drop it.
     if (await claimForForward(channelId, rawBody)) {
       logger.info('[Webhook] Downstream immediate — forwarding and short-circuiting', { channelId });
@@ -102,28 +135,25 @@ export async function processWebhookEvent(
     return;
   }
 
-  // 4. Parse webhook into normalized messages
-  const parsedMessages = await plugin.parseWebhook(rawBody, headers);
-
-  logger.info('[Webhook] Parsed', {
-    channelId,
-    channelType,
-    count: parsedMessages.length,
-    messages: parsedMessages.map(m => ({ contactUid: m.contactUid, contentType: m.contentType, channelMsgId: m.channelMsgId })),
-  });
-
-  if (parsedMessages.length === 0) {
-    logger.info('[Webhook] No actionable messages in payload', { channelId, channelType });
+  // 7. Process each message with its routed channel and tenant (same pattern as simulator.service.ts)
+  for (const group of routing.groups) {
+    // immediate 模式由下游接手網址渠道的事件：整包混有其他渠道而無法轉發時，網址渠道自己的事件也不進 CRM
+    if (immediate && group.channel.id === channel.id) continue;
+    if (group.channel.id !== channel.id) {
+      logger.info('[Webhook] Routed events to channel by account ID', {
+        urlChannelId: channel.id,
+        targetChannelId: group.channel.id,
+        count: group.messages.length,
+      });
+    }
+    for (const parsed of group.messages) {
+      await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed);
+    }
   }
 
-  // 5. Process each message (same pattern as simulator.service.ts)
-  for (const parsed of parsedMessages) {
-    await processInboundMessage(prisma, io, credentials, channel, tenantId, parsed);
-  }
-
-  // 6. Downstream "after" mode: CRM processing done, now forward a copy.
+  // 8. Downstream "after" mode: CRM processing done, now forward a copy.
   //    Loop guard: skip forwarding a payload the downstream shot back at us.
-  if (downstream && downstream.mode === 'after') {
+  if (downstream && downstream.mode === 'after' && canForward) {
     if (await claimForForward(channelId, rawBody)) {
       void forwardToDownstream(downstream, rawBody, headers, channel);
     } else {
