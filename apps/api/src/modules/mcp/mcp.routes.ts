@@ -3,7 +3,27 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 
 import { hasCliScope } from "../auth/cli-session.service.js";
 import { MCP_READ_SCOPE, requiredMcpScopeForTool } from "./mcp.constants.js";
-import { createMcpServer } from "./mcp.server.js";
+import { createMcpServer, type McpChannelAccess } from "./mcp.server.js";
+import {
+  assertConversationChannelVisible,
+  resolveChannelVisibility,
+  type AccessibleChannels,
+} from "../../services/channel-visibility.js";
+
+/** 依當前 request 建立 MCP 的渠道可見性（CM-173）；可見集合只在工具需要時解析一次 */
+export function requestChannelAccess(request: FastifyRequest): McpChannelAccess {
+  let accessible: Promise<AccessibleChannels> | undefined;
+  return {
+    accessible: () => (accessible ??= resolveChannelVisibility(request)),
+    assertConversation: (conversationId, level) =>
+      assertConversationChannelVisible(request, conversationId, level),
+  };
+}
+
+export interface McpRoutesOptions {
+  /** 測試用：替換渠道可見性解析（正式環境使用 requestChannelAccess） */
+  channelAccess?: (request: FastifyRequest) => McpChannelAccess;
+}
 
 function toWebRequest(request: FastifyRequest): Request {
   const protocol = request.protocol;
@@ -125,7 +145,8 @@ function requestedToolName(request: FastifyRequest): string | undefined {
   return body.params?.name;
 }
 
-export default async function mcpRoutes(fastify: FastifyInstance) {
+export default async function mcpRoutes(fastify: FastifyInstance, opts: McpRoutesOptions = {}) {
+  const buildChannelAccess = opts.channelAccess ?? requestChannelAccess;
   const preHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!isAllowedOrigin(request)) {
       reply.status(403).send({
@@ -160,7 +181,7 @@ export default async function mcpRoutes(fastify: FastifyInstance) {
       ...request.agent,
       scopes: request.agent.cliSession?.scopes ?? [],
       cliSessionId: request.agent.cliSession?.id ?? "",
-    }, fastify.io);
+    }, buildChannelAccess(request), fastify.io);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

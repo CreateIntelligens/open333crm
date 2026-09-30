@@ -29,7 +29,7 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
-import { resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
@@ -585,7 +585,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     '/assignable',
     { preHandler: requirePermission('channel.assign_team') },
     async (request, reply) => {
-      const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
+      const channels = await listChannels(request.tenantPrisma, request.agent.tenantId, ALL_CHANNELS);
       return reply.send(success(channels));
     },
   );

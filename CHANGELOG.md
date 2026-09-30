@@ -20,6 +20,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **MCP 工具套用分店渠道可見性（CM-173）** — 原本 MCP 所有工具都不看分店渠道限制：任何持有 CLI token 的帳號（包含只綁部分渠道的分店帳號）可經 `crm_search_contacts`／`crm_get_contact`／`crm_list_cases`／`crm_get_case`／`crm_line_list_conversations`／`crm_line_get_conversation` 讀到其他分店的聯絡人、案件與對話，`crm_line_direct_send` 也能對看不到或唯讀的渠道發 LINE 訊息。現與 REST 同一套規則：列表只回可見渠道；單筆渠道不可見時，回應與「查無此資料」完全相同（無法藉此分辨他店資料是否存在，用渠道＋聯絡人查對話也一樣）；發訊息需回覆層級，預覽與確認送出前各檢查一次，預覽後權限被收回也送不出去，被擋時稽核紀錄記為 `rejected`；權限解析失敗時回通用錯誤，不把資料庫等內部訊息回給用戶端。**尚未涵蓋**（REST 與 MCP 相同的既有狀態）：讀自己渠道的單筆對話／案件時，附帶的聯絡人資料仍含其他渠道的身份；群發與報表不依渠道限制。總店（`channel.view_all`）不受影響。另外案件、對話、渠道列表的 service 函式「可見渠道」參數改為必填，新呼叫端漏傳會編譯失敗，不再悄悄不過濾。
 - **`inbound-message-refactor` 測試失效** — 測試的假 Prisma 缺 `message.findFirst`（channelMsgId 去重查詢後加的），整支測試在 main 上就已失敗、失去守門作用；補齊後恢復。
 - **聯絡人 API 補上權限守門** — `contact.view`／`contact.update` 權限點早已定義，但 10 條 `/api/v1/contacts/*` 路由（列表、詳情、編輯、貼標、時間軸、對話、案件、合併預覽、合併紀錄）只要登入即可存取，沒有權限的自訂角色也能列出所有聯絡人並查看其對話與案件。現改為依權限點守門：讀取需 `contact.view`、編輯與貼標需 `contact.update`、合併預覽需 `contact.merge`，聯絡人的對話另需 `inbox.view`、案件另需 `case.view`。三個預設角色皆已具備這些權限，既有帳號不受影響。另外，聯絡人的對話、案件、時間軸改依分店渠道可見性（CM-173）過濾，分店帳號不能再經由聯絡人頁讀到其他渠道的對話與案件（原本可繞過收件匣與案件列表的渠道限制）；聯絡人列表與詳情回傳的「渠道身份」也只列出可見渠道，不會看到其他分店渠道的名稱、顧客 uid 與暱稱。
 - **移除 `POST /api/v1/fan/auth` 身分冒用漏洞** — 該端點憑任意 `{contactId, tenantId}` 即簽發顧客 token，不驗證呼叫者身分，任何人都能冒充任一顧客存取粉絲門戶。經查無任何呼叫者，直接移除。⚠️ 移除後暫無簽發 fan token 的路徑，`/api/v1/fan/*` 受保護路由（活動、點數）暫不可用；目前無顧客端頁面使用，待優惠券分支的 Account Link 驗證或會員登入頁接上。

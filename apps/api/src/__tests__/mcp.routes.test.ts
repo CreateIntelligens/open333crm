@@ -4,10 +4,24 @@ import { registerChannelPlugin } from "@open333crm/channel-plugins";
 import { encryptCredentials } from "../modules/channel/channel.service.js";
 
 import mcpRoutes from "../modules/mcp/mcp.routes.js";
+import type { McpChannelAccess } from "../modules/mcp/mcp.server.js";
+import { ALL_CHANNELS } from "../services/channel-visibility.js";
+import { AppError } from "../shared/utils/response.js";
+import { notFound } from "../shared/messages/resource.js";
 import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from "../modules/mcp/mcp.constants.js";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
+
+/** 記錄 mock 收到的查詢條件，用來確認列表工具有帶渠道過濾 */
+const recordedWhere: Record<string, unknown[]> = { conversation: [], case: [], contact: [] };
+let messagesCreated = 0;
+
+/** 總店：不限渠道（既有測試的預設） */
+const unrestrictedAccess = (): McpChannelAccess => ({
+  accessible: async () => ALL_CHANNELS,
+  assertConversation: async () => {},
+});
 
 function createPrismaMock() {
   const conversation = {
@@ -71,7 +85,7 @@ function createPrismaMock() {
       }),
     },
     contact: {
-      findMany: async () => [
+      findMany: async (args: { include?: { channelIdentities?: { where?: unknown } } }) => { recordedWhere.contact!.push(args.include?.channelIdentities?.where); return [
         {
           id: "44444444-4444-4444-8444-444444444444",
           tenantId: TENANT_ID,
@@ -80,11 +94,16 @@ function createPrismaMock() {
           channelIdentities: [],
           tags: [],
         },
-      ],
+      ]; },
       count: async () => 1,
     },
+    case: {
+      findMany: async (args: { where?: unknown }) => { recordedWhere.case!.push(args.where); return []; },
+      count: async () => 0,
+      findFirst: async () => ({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", tenantId: TENANT_ID, channelId: conversation.channelId, title: "Case", slaPolicy: null, events: [], notes: [], tags: [], conversations: [] }),
+    },
     conversation: {
-      findMany: async () => [conversation],
+      findMany: async (args: { where?: unknown }) => { recordedWhere.conversation!.push(args.where); return [conversation]; },
       findFirst: async (args: { where?: { id?: string } }) =>
         args.where?.id && args.where.id !== conversation.id ? null : conversation,
       findUnique: async () => conversation,
@@ -102,7 +121,7 @@ function createPrismaMock() {
     },
     message: {
       count: async () => 0,
-      create: async () => message,
+      create: async () => { messagesCreated++; return message; },
       update: async () => message,
     },
     tenantAuditLog: {
@@ -114,6 +133,7 @@ function createPrismaMock() {
 async function createApp(options?: {
   scopes?: string[];
   authentication?: "cli" | "jwt";
+  channelAccess?: () => McpChannelAccess;
 }) {
   const app = Fastify();
   process.env.JWT_SECRET = process.env.JWT_SECRET || "test-mcp-confirmation-secret";
@@ -166,7 +186,7 @@ async function createApp(options?: {
       (request as FastifyRequest & { tenantPrisma: ReturnType<typeof createPrismaMock> }).tenantPrisma = createPrismaMock();
     },
   );
-  await app.register(mcpRoutes);
+  await app.register(mcpRoutes, { channelAccess: options?.channelAccess ?? unrestrictedAccess });
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
   return { app, address };
 }
@@ -644,6 +664,141 @@ async function testConfirmedLineBroadcastRejectsQuota() {
   }
 }
 
+
+// ── CM-173：分店帳號透過 MCP 只看得到、只操作得到自己渠道的資料 ──
+const OTHER_CHANNEL = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+/** 分店：只看得到 OTHER_CHANNEL；mock 裡的對話／案件都在另一個渠道 */
+const branchAccess = (assertError?: AppError) => (): McpChannelAccess => ({
+  accessible: async () => new Set([OTHER_CHANNEL]),
+  assertConversation: async () => {
+    throw assertError ?? new AppError("Conversation not found", "NOT_FOUND", 404);
+  },
+});
+
+async function callTool(address: string, name: string, args: Record<string, unknown>) {
+  const response = await requestMcp(address, {
+    authorization: "Bearer cli_test",
+    body: { jsonrpc: "2.0", id: 50, method: "tools/call", params: { name, arguments: args } },
+  });
+  assert.equal(response.status, 200);
+  return JSON.parse(await response.text()) as {
+    result: { isError?: boolean; content: Array<{ text: string }> };
+  };
+}
+
+async function testBranchListToolsFilterByVisibleChannels() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE],
+    channelAccess: branchAccess(),
+  });
+  try {
+    for (const key of Object.keys(recordedWhere)) recordedWhere[key] = [];
+    await callTool(address, "crm_line_list_conversations", { page: 1, limit: 20 });
+    await callTool(address, "crm_list_cases", { page: 1, limit: 20 });
+    await callTool(address, "crm_search_contacts", { q: "Ada", page: 1, limit: 20 });
+    await callTool(address, "crm_line_search_contacts", { q: "Ada", page: 1, limit: 20 });
+
+    const channelIn = (where: unknown) => (where as { channelId?: { in: string[] } }).channelId;
+    assert.deepEqual(channelIn(recordedWhere.conversation![0]), { in: [OTHER_CHANNEL] }, "對話列表要帶可見渠道過濾");
+    assert.deepEqual(channelIn(recordedWhere.case![0]), { in: [OTHER_CHANNEL] }, "案件列表要帶可見渠道過濾");
+    // 聯絡人的渠道身份只列可見渠道（過濾在 include.channelIdentities.where）
+    assert.equal(recordedWhere.contact!.length, 2, "兩個聯絡人搜尋工具都有查詢");
+    for (const where of recordedWhere.contact!) {
+      assert.match(JSON.stringify(where), new RegExp(`"channelId":\\{"in":\\["${OTHER_CHANNEL}"\\]\\}`), "聯絡人的渠道身份要帶可見渠道過濾");
+    }
+  } finally {
+    await app.close();
+  }
+}
+
+async function testBranchCannotReadOtherChannelRecords() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE],
+    channelAccess: branchAccess(),
+  });
+  try {
+    // 回應與「查無此對話／案件」完全相同，不洩漏他店資料是否存在
+    const conv = await callTool(address, "crm_line_get_conversation", { id: "55555555-5555-4555-8555-555555555555" });
+    assert.equal(conv.result.isError, true);
+    assert.equal(conv.result.content[0]!.text, notFound("conversation"));
+
+    const kase = await callTool(address, "crm_get_case", { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+    assert.equal(kase.result.isError, true);
+    assert.equal(kase.result.content[0]!.text, notFound("case"));
+  } finally {
+    await app.close();
+  }
+}
+
+async function testUnrestrictedAgentStillReadsRecords() {
+  const { app, address } = await createApp({ scopes: [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE] });
+  try {
+    const conv = await callTool(address, "crm_line_get_conversation", { id: "55555555-5555-4555-8555-555555555555" });
+    assert.notEqual(conv.result.isError, true);
+    assert.match(conv.result.content[0]!.text, /LINE Contact/);
+    const kase = await callTool(address, "crm_get_case", { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+    assert.notEqual(kase.result.isError, true);
+  } finally {
+    await app.close();
+  }
+}
+
+async function testAccessResolutionFailureIsSanitized() {
+  const { app, address } = await createApp({
+    scopes: [MCP_READ_SCOPE, MCP_LINE_READ_SCOPE],
+    channelAccess: () => ({
+      accessible: async () => { throw new Error("connect ECONNREFUSED 10.0.0.5:5432 password=secret"); },
+      assertConversation: async () => { throw new Error("redis internal detail"); },
+    }),
+  });
+  try {
+    const list = await callTool(address, "crm_line_list_conversations", { page: 1, limit: 20 });
+    assert.equal(list.result.isError, true);
+    assert.doesNotMatch(list.result.content[0]!.text, /ECONNREFUSED|password|10\.0\.0\.5/, "不可把內部錯誤原文回給用戶端");
+  } finally {
+    await app.close();
+  }
+}
+
+async function testBranchDirectSendChecksChannelLevel() {
+  const scopes = [MCP_READ_SCOPE, MCP_LINE_SEND_SCOPE];
+  const args = { conversationId: "55555555-5555-4555-8555-555555555555", contentType: "text", content: { text: "hello" } };
+
+  // 預覽：唯讀渠道不可發
+  const readOnly = await createApp({
+    scopes,
+    channelAccess: branchAccess(new AppError("level insufficient", "CHANNEL_ACCESS_LEVEL_INSUFFICIENT", 403)),
+  });
+  try {
+    const preview = await callTool(readOnly.address, "crm_line_direct_send", args);
+    assert.equal(preview.result.isError, true);
+    assert.match(preview.result.content[0]!.text, /CHANNEL_ACCESS_LEVEL_INSUFFICIENT/);
+    assert.doesNotMatch(preview.result.content[0]!.text, /confirmationToken/);
+  } finally {
+    await readOnly.app.close();
+  }
+
+  // 確認：預覽時有權限，確認前被收回 → 不送出
+  const open = await createApp({ scopes });
+  let token: string;
+  try {
+    const preview = await callTool(open.address, "crm_line_direct_send", args);
+    token = (JSON.parse(preview.result.content[0]!.text) as { confirmationToken: string }).confirmationToken;
+  } finally {
+    await open.app.close();
+  }
+  const revoked = await createApp({ scopes, channelAccess: branchAccess() });
+  try {
+    const before = messagesCreated;
+    const confirmed = await callTool(revoked.address, "crm_line_direct_send", { confirmation: true, confirmationToken: token });
+    assert.equal(confirmed.result.isError, true);
+    assert.equal(confirmed.result.content[0]!.text, notFound("conversation"));
+    assert.equal(messagesCreated, before, "權限收回後不可送出訊息");
+  } finally {
+    await revoked.app.close();
+  }
+}
+
 await testRejectsMissingAuthentication();
 await testRejectsCookieOnlyAuthentication();
 await testInitializesMcpServer();
@@ -660,5 +815,10 @@ await testConfirmedLineBroadcastRejectsQuota();
 await testRejectsCliTokenWithoutMcpScope();
 await testRejectsJwtWithoutMcpScope();
 await testAllowsSameOriginInDevelopmentWithoutConfiguredOrigins();
+await testBranchListToolsFilterByVisibleChannels();
+await testBranchCannotReadOtherChannelRecords();
+await testUnrestrictedAgentStillReadsRecords();
+await testBranchDirectSendChecksChannelLevel();
+await testAccessResolutionFailureIsSanitized();
 console.log("mcp.routes.test.ts passed");
 process.exit(0);

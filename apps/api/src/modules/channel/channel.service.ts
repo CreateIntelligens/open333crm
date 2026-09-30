@@ -55,13 +55,12 @@ export async function listChannels(
   prisma: TenantDb,
   tenantId: string,
   /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空＝fail-closed）。 */
-  accessibleChannels?: AccessibleChannels,
+  /** 必填：呼叫端明確決定可見範圍，不受限時傳 ALL_CHANNELS（漏傳會編譯失敗，而不是悄悄不過濾） */
+  accessibleChannels: AccessibleChannels,
 ) {
   const where: { tenantId: string; id?: { in: string[] } } = { tenantId };
-  if (accessibleChannels !== undefined) {
-    const filter = channelIdWhereFilter(accessibleChannels);
-    if (filter) where.id = filter;
-  }
+  const filter = channelIdWhereFilter(accessibleChannels);
+  if (filter) where.id = filter;
   const channels = await prisma.channel.findMany({
     where,
     orderBy: { createdAt: 'desc' },
