@@ -52,7 +52,7 @@
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
-| [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已提建議 | 預設角色的權限有兩份，內容已經不同；正式租戶的 `supervisor` 沒有 `channel.view_all` | 靜態確認 |
+| [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已定方向 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all`，`admin` 少了稽核與資料權利的權限碼 | 靜態確認 |
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P3 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用 | 靜態確認 |
 | [A2A-01](#a2a-01) | 租戶隔離與權限 | P2 | 未處理 | A2A 橋接以最早建立的租戶執行所有外部任務，使用該租戶的金鑰與額度 | 靜態確認 |
 | [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
@@ -351,12 +351,23 @@ CLI token 的停用問題另見 AUTH-02。
 | `agent` | 無 | 無 |
 | `admin` | `audit.view`、`data.export`、`data.erase`（core 的 `admin` 是註冊表的全部權限碼） | 無 |
 
+**分歧的來源。** 兩份檔案與平台的開通流程都在 2026-08-25 加入（`723f6e1`、`acb7568`），當時內容一致。之後兩次新增權限碼，各只更新了其中一份：
+
+| 日期 | commit | 新增的權限碼 | core 的版本 | demo seed 的版本 |
+| --- | --- | --- | --- | --- |
+| 2026-08-26 | `ad686d2` | `audit.view`、`data.export`、`data.erase` | `admin` 以全部權限碼計算，自動取得 | `ADMIN_ONLY` 沒有更新 |
+| 2026-09-11 | `4382dc3` | `channel.view_all`、`channel.assign_team`、`agent.deactivate`、`agent.purge` | `SUPERVISOR_CODES` 沒有更新 | `supervisor` 加上 `channel.view_all` |
+
 影響：
 
-- **正式租戶的 `supervisor` 受渠道綁定限制，開發環境的不受限。** 在開發環境測試分店情境時，`supervisor` 看得到所有渠道；平台開通的租戶則不然。CHANGELOG 的 CM-173 寫 `channel.view_all`「給 admin/supervisor」，與 core 的版本不符；openspec 的設計文件只寫「授予給總店主管類角色」，沒有指定角色。
+- **開發環境的 `supervisor` 看得到所有渠道，平台開通的租戶則受渠道綁定限制。** 在開發環境測試分店情境時，得到的結果與正式租戶不同。
 - **demo 租戶的 `admin` 呼叫不了稽核日誌、資料匯出與資料刪除的端點**，直到執行 reconcile。
+- CHANGELOG 的 CM-173 寫 `channel.view_all`「給 admin/supervisor」，與下方定案的方向不符。openspec 的設計文件只寫「授予給總店主管類角色」，沒有指定角色。
 
-**修正方向**：先決定 `supervisor` 是否預設擁有 `channel.view_all`，再讓兩份共用同一個來源。例如把預設權限移到 `core` 與 `database` 都能相依、而且不相依兩者的位置，或讓 demo seed 改由 API 的開通流程建立租戶。
+**已定方向（2026-09-30）**：`supervisor` 預設**不**擁有 `channel.view_all`，以 core 的版本為準。總店主管由租戶管理員另外授權，例如建立含 `channel.view_all` 的自訂角色。要做的事：
+
+1. demo seed 的 `supervisor` 移除 `channel.view_all`；`admin` 改為註冊表的全部權限碼，與 core 相同。
+2. 兩份改為共用同一個來源，避免再次分歧。例如把預設權限移到 `core` 與 `database` 都能相依、而且不相依兩者的位置，或讓 demo seed 改由 API 的開通流程建立租戶。
 
 <a id="team-01"></a>
 ### TEAM-01：團隊沒有建立與管理成員的途徑

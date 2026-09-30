@@ -4,6 +4,12 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：RBAC-06 定案，並補上分歧的來源
+
+使用者決定 `supervisor` 預設不擁有 `channel.view_all`，以 core 的 `default-roles.ts` 為準，demo seed 與 CHANGELOG 的描述是錯的。RBAC-06 的處理狀態改為「已定方向」。
+
+同時以 `git log --follow` 查兩份檔案的歷史，確認分歧的來源。討論時曾推測是「平台開通流程比較晚做」，但歷史不支持：`seed-data/rbac-roles.ts` 與 `default-roles.ts` 都在 `723f6e1`（2026-08-25）加入，平台開通流程的 `seedRolesForTenant()` 呼叫在同一天的 `acb7568` 加入。分歧來自之後兩次新增權限碼：`ad686d2` 只讓 core 取得新碼，`4382dc3` 只更新 demo seed。
+
 ## 2026-09-30：撰寫渠道外掛文件，新增 CHAN-02、CHAN-03、PKG-06
 
 起因是新增[渠道外掛](../modules/CHANNEL-PLUGINS.md)。做法是從 `ChannelPlugin` 介面出發，對每個方法與擴充 grep 呼叫端；比對 API 與 workers 各自註冊的外掛；再列出 `apps/api/src` 與 `apps/workers/src` 所有以 `channelType` 分支的地方。
