@@ -100,5 +100,5 @@ sequenceDiagram
 | [實作落差與驗證紀錄](./AUDIT.md) | 哪些實作與設定不一致？哪些問題已在執行時重現？ |
 | [實作落差複查紀錄](./AUDIT-REVIEWS.md) | 哪次複查發現哪些落差已修正？複查的範圍與方法是什麼？ |
 
-每個功能模組的職責與路由請看[模組總覽](../modules/OVERVIEW.md)。資料表關聯請看 [`../DATABASE-ERD.md`](../DATABASE-ERD.md)。API 外掛模式請看 [`../API-PLUGIN-ARCHITECTURE.md`](../API-PLUGIN-ARCHITECTURE.md)。開發規則請看 [`../../../AGENTS.md`](../../../AGENTS.md)。
+每個程式模組的職責與路由請看[模組總覽](../modules/OVERVIEW.md)；各產品功能怎麼運作請看[功能區文件](../features/README.md)。資料表關聯請看 [`../DATABASE-ERD.md`](../DATABASE-ERD.md)。API 外掛模式請看 [`../API-PLUGIN-ARCHITECTURE.md`](../API-PLUGIN-ARCHITECTURE.md)。開發規則請看 [`../../../AGENTS.md`](../../../AGENTS.md)。
 
