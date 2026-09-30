@@ -87,7 +87,8 @@ authed API 查得到 → 確認被 RLS 擋。**整個粉絲門戶對外功能全
 # 修前（現況）：全 404
 for s in w3E7u1 UKw2QC 0pQ6uA; do curl -s -o /dev/null -w "%{http_code} $s\n" https://.../s/$s; done
 # 修後預期：302 導向目標網址
-# 另驗 /s/track 回 200（非 410）、/api/v1/fan/auth 回 200（非 404）
+# 另驗 /s/track 回 200（非 410）
+# （/api/v1/fan/auth 已於 2026-09-29 移除：不驗身分即簽發顧客 token 的漏洞，見 change add-cross-channel-one-id）
 # XSS 防護：建一筆 targetUrl=javascript:... 的短連結 → 應被 4xx 擋下（不可存入）
 ```
 ⚠️ 階段 1 需部署到 UAT 才能端到端驗證；**部署與 push 需另外取得使用者同意**。

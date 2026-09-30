@@ -10,6 +10,7 @@ import {
   verifyChannel,
   updateWebhookBaseUrl,
   ensureChannelPublicKey,
+  patchChannelSettings,
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -28,9 +29,10 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
-import { resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
+import { resolveBindingHandle } from '../identity-binding/binding-links.js';
 
 /**
  * Validate `settings.downstreamWebhook` shape when present (LINE downstream
@@ -135,6 +137,43 @@ async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: s
     throw new AppError(notFound('webchatChannel'), 'NOT_FOUND', 404);
   }
   return channel;
+}
+
+const channelIdParamsSchema = z.object({
+  id: z.string().uuid('渠道 id 格式錯誤'),
+});
+
+const bindingHandleSchema = z.object({
+  bindingHandle: z
+    .string()
+    .trim()
+    .max(64, '導流識別不可超過 64 字')
+    .regex(/^@?[A-Za-z0-9._-]*$/, '導流識別只能包含英數字與 . _ -（LINE 以 @ 開頭）')
+    .nullable(),
+});
+
+async function getBindableChannel(prisma: TenantDb, id: string, tenantId: string) {
+  const channel = await prisma.channel.findFirst({
+    where: { id, tenantId, channelType: { in: ['LINE', 'FB', 'THREADS'] } },
+    select: { id: true, channelType: true, settings: true },
+  });
+  if (!channel) throw new AppError('找不到可設定導流識別的渠道（僅支援 LINE、Facebook、Instagram）', 'NOT_FOUND', 404);
+  return channel;
+}
+
+function bindingHandleView(channel: { id: string; channelType: string; settings: unknown }) {
+  const s = (channel.settings || {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return {
+    id: channel.id,
+    channelType: channel.channelType,
+    bindingHandle: str(s.bindingHandle),
+    bindingHandleAuto: str(s.bindingHandleAuto),
+    // 與產生綁定連結用同一支規則（含 trim），後台顯示的「目前使用」才會和實際連結一致
+    effectiveHandle: resolveBindingHandle(channel.settings),
+    // 只有 FB 有意義；null＝未驗證過或查詢失敗
+    fbGetStartedConfigured: typeof s.fbGetStartedConfigured === 'boolean' ? s.fbGetStartedConfigured : null,
+  };
 }
 
 export default async function channelRoutes(fastify: FastifyInstance) {
@@ -325,6 +364,48 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // ── 跨渠道綁定導流識別（change add-cross-channel-one-id，D10）──────────────
+  // 渠道驗證時自動寫入 settings.bindingHandleAuto；管理員可在此手動覆寫 settings.bindingHandle。
+  // 只合併這一欄，不整包覆寫 settings（避免蓋掉機器人設定等其他欄位）。
+
+  // GET /api/v1/channels/:id/binding-handle
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/binding-handle',
+    { preHandler: requirePermission('channel.view') },
+    async (request, reply) => {
+      const { id } = channelIdParamsSchema.parse(request.params);
+      const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
+      return reply.send(success(bindingHandleView(channel)));
+    },
+  );
+
+  // PATCH /api/v1/channels/:id/binding-handle
+  fastify.patch<{ Params: { id: string }; Body: unknown }>(
+    '/:id/binding-handle',
+    { preHandler: requirePermission('channel.update') },
+    async (request, reply) => {
+      const { id } = channelIdParamsSchema.parse(request.params);
+      const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
+      const { bindingHandle } = bindingHandleSchema.parse(request.body);
+      let handle = bindingHandle?.trim() || null;
+      // FB／IG 的 m.me、ig.me 連結不接受 @，管理員習慣性加上時自動去掉
+      if (handle && channel.channelType !== 'LINE') handle = handle.replace(/^@+/, '') || null;
+      if (handle && channel.channelType === 'LINE' && !handle.startsWith('@')) {
+        throw new AppError('LINE Basic ID 須以 @ 開頭，例如 @abc1234', 'VALIDATION_ERROR', 400);
+      }
+      // 只合併這一欄（資料庫端原子更新），不整包覆寫 settings
+      await patchChannelSettings(
+        request.tenantPrisma,
+        channel.id,
+        request.agent.tenantId,
+        handle ? { bindingHandle: handle } : {},
+        handle ? [] : ['bindingHandle'],
+      );
+      const updated = await getBindableChannel(request.tenantPrisma, channel.id, request.agent.tenantId);
+      return reply.send(success(bindingHandleView(updated)));
+    },
+  );
+
   // PATCH /api/v1/channels/:id/chatbox-theme — WebChat chatbox public theme
   fastify.patch<{ Params: { id: string }; Body: unknown }>(
     '/:id/chatbox-theme',
@@ -504,7 +585,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     '/assignable',
     { preHandler: requirePermission('channel.assign_team') },
     async (request, reply) => {
-      const channels = await listChannels(request.tenantPrisma, request.agent.tenantId);
+      const channels = await listChannels(request.tenantPrisma, request.agent.tenantId, ALL_CHANNELS);
       return reply.send(success(channels));
     },
   );

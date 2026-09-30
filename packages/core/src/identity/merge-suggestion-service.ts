@@ -1,12 +1,21 @@
 /**
  * Merge Suggestion Service (Task 4.3)
- * Lists AI-generated merge suggestions and handles admin approve/reject with actual merge.
+ * 列出合併建議，並處理核准／拒絕的「建議狀態」部分。
+ *
+ * 實際合併聯絡人不在這裡做：核准路由會在同一個 withTenant 交易內先呼叫
+ * claimSuggestionForApproval，再呼叫 API 端的統一合併引擎（contact-merge.service.ts），
+ * 確保所有合併路徑搬移的資料一致（change add-cross-channel-one-id）。
+ *
+ * 依 CM-175 規範，本檔不使用 @open333crm/database 的模組層 prisma 單例，
+ * 一律由呼叫端傳入已綁定租戶的執行器。
  */
 
-import { prisma } from '@open333crm/database';
 import { logger } from '../logger/index.js';
+import type { PrismaExecutor } from './identity-stitcher.js';
 
 // ── List Suggestions ───────────────────────────────────────────────────────
+
+export type SuggestionStatusFilter = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
 
 export interface MergeSuggestionWithContacts {
   id: string;
@@ -22,19 +31,20 @@ export interface MergeSuggestionWithContacts {
 }
 
 /**
- * List pending merge suggestions for a tenant.
+ * 列出租戶的合併建議。
  */
 export async function listSuggestions(
+  db: PrismaExecutor,
   tenantId: string,
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'PENDING',
+  status: SuggestionStatusFilter = 'PENDING',
   opts: { page?: number; limit?: number } = {},
 ): Promise<{ suggestions: MergeSuggestionWithContacts[]; total: number }> {
   const { page = 1, limit = 20 } = opts;
   const skip = (page - 1) * limit;
 
   const [total, rows] = await Promise.all([
-    prisma.mergeSuggestion.count({ where: { tenantId, status } }),
-    prisma.mergeSuggestion.findMany({
+    db.mergeSuggestion.count({ where: { tenantId, status } }),
+    db.mergeSuggestion.findMany({
       where: { tenantId, status },
       orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
       skip,
@@ -42,113 +52,90 @@ export async function listSuggestions(
     }),
   ]);
 
-  // Resolve contact details
-  const contactIds = [
-    ...new Set(rows.flatMap((r) => [r.primaryContactId, r.secondaryContactId])),
-  ];
-  const contacts = await prisma.contact.findMany({
-    where: { id: { in: contactIds } },
+  const contactIds = [...new Set(rows.flatMap((r) => [r.primaryContactId, r.secondaryContactId]))];
+  const contacts = await db.contact.findMany({
+    where: { tenantId, id: { in: contactIds } },
     select: { id: true, displayName: true, phone: true, email: true },
   });
   const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
+  // 聯絡人可能已被資料刪除請求移除：以占位資料呈現而不是丟掉該列，讓分頁 total 與實際列數一致
+  const missing = (id: string) => ({ id, displayName: '（已刪除的聯絡人）', phone: null, email: null });
   const suggestions = rows.map((r) => ({
     ...r,
-    primaryContact: contactMap.get(r.primaryContactId)!,
-    secondaryContact: contactMap.get(r.secondaryContactId)!,
+    primaryContact: contactMap.get(r.primaryContactId) ?? missing(r.primaryContactId),
+    secondaryContact: contactMap.get(r.secondaryContactId) ?? missing(r.secondaryContactId),
   })) as MergeSuggestionWithContacts[];
 
   return { suggestions, total };
 }
 
-// ── Approve Merge ──────────────────────────────────────────────────────────
+// ── Approve ────────────────────────────────────────────────────────────────
+
+export class SuggestionNotFoundError extends Error {
+  constructor(suggestionId: string) {
+    super(`Merge suggestion ${suggestionId} not found`);
+    this.name = 'SuggestionNotFoundError';
+  }
+}
+
+export class SuggestionNotPendingError extends Error {
+  constructor(
+    suggestionId: string,
+    public readonly status: string,
+  ) {
+    super(`Merge suggestion ${suggestionId} is already ${status}`);
+    this.name = 'SuggestionNotPendingError';
+  }
+}
 
 /**
- * Approve a merge suggestion.
- * Merges secondaryContact into primaryContact:
- *   1. Re-assigns all ChannelIdentity, IdentityMap, Conversation, Case to primary
- *   2. Marks secondaryContact as a relation of primary (for audit)
- *   3. Updates suggestion status to APPROVED
+ * 核准前的檢查與狀態更新：確認建議屬於此租戶且仍待審核，並標為 APPROVED。
+ * 必須與後續的合併在同一交易內呼叫，合併失敗時狀態會一併回滾。
+ *
+ * @returns 建議的主／次聯絡人 id，供呼叫端交給合併引擎
  */
-export async function approveMerge(suggestionId: string, agentId: string): Promise<void> {
-  const suggestion = await prisma.mergeSuggestion.findUniqueOrThrow({
-    where: { id: suggestionId },
+export async function claimSuggestionForApproval(
+  db: PrismaExecutor,
+  tenantId: string,
+  suggestionId: string,
+  agentId: string,
+): Promise<{ primaryContactId: string; secondaryContactId: string }> {
+  const suggestion = await db.mergeSuggestion.findFirst({ where: { id: suggestionId, tenantId } });
+  if (!suggestion) throw new SuggestionNotFoundError(suggestionId);
+  if (suggestion.status !== 'PENDING') throw new SuggestionNotPendingError(suggestionId, suggestion.status);
+
+  // 以條件式更新佔用：兩位客服同時核准時只有一個成功
+  const claimed = await db.mergeSuggestion.updateMany({
+    where: { id: suggestionId, tenantId, status: 'PENDING' },
+    data: { status: 'APPROVED', reviewedById: agentId, reviewedAt: new Date() },
   });
-
-  if (suggestion.status !== 'PENDING') {
-    throw new Error(`Suggestion ${suggestionId} is already ${suggestion.status}`);
-  }
-
-  const { primaryContactId, secondaryContactId, tenantId } = suggestion;
+  if (claimed.count === 0) throw new SuggestionNotPendingError(suggestionId, 'APPROVED');
 
   logger.info(
-    `[MergeSuggestion] Merging contact ${secondaryContactId} → ${primaryContactId} (approved by ${agentId})`,
+    `[MergeSuggestion] Approved ${suggestionId}: ${suggestion.secondaryContactId} → ${suggestion.primaryContactId} (by ${agentId})`,
   );
 
-  await prisma.$transaction(async (tx) => {
-    // 1. Re-assign channel identities
-    await tx.channelIdentity.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 2. Re-assign identity maps
-    await tx.identityMap.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 3. Re-assign conversations
-    await tx.conversation.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 4. Re-assign cases
-    await tx.case.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 5. Re-assign contact tags
-    await tx.contactTag.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 6. Mark secondary as merged into primary (using existing ContactRelation)
-    await tx.contactRelation.upsert({
-      where: {
-        fromContactId_toContactId_relationType: {
-          fromContactId: secondaryContactId,
-          toContactId: primaryContactId,
-          relationType: 'merged_into',
-        },
-      },
-      create: {
-        fromContactId: secondaryContactId,
-        toContactId: primaryContactId,
-        relationType: 'merged_into',
-        notes: `Merged by agent ${agentId} via MergeSuggestion ${suggestionId}`,
-      },
-      update: {},
-    });
-
-    // 7. Mark suggestion as APPROVED
-    await tx.mergeSuggestion.update({
-      where: { id: suggestionId },
-      data: { status: 'APPROVED', reviewedById: agentId, reviewedAt: new Date() },
-    });
-  });
-
-  logger.info(`[MergeSuggestion] Merge complete: ${secondaryContactId} → ${primaryContactId}`);
+  return {
+    primaryContactId: suggestion.primaryContactId,
+    secondaryContactId: suggestion.secondaryContactId,
+  };
 }
 
 // ── Reject Suggestion ──────────────────────────────────────────────────────
 
-export async function rejectMerge(suggestionId: string, agentId: string): Promise<void> {
-  await prisma.mergeSuggestion.update({
-    where: { id: suggestionId },
+export async function rejectMerge(
+  db: PrismaExecutor,
+  tenantId: string,
+  suggestionId: string,
+  agentId: string,
+): Promise<void> {
+  const suggestion = await db.mergeSuggestion.findFirst({ where: { id: suggestionId, tenantId } });
+  if (!suggestion) throw new SuggestionNotFoundError(suggestionId);
+  if (suggestion.status !== 'PENDING') throw new SuggestionNotPendingError(suggestionId, suggestion.status);
+
+  await db.mergeSuggestion.update({
+    where: { id: suggestionId, tenantId },
     data: { status: 'REJECTED', reviewedById: agentId, reviewedAt: new Date() },
   });
 }

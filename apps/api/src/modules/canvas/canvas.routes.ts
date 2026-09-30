@@ -17,10 +17,14 @@ import {
 } from './canvas.service.js';
 import {
   listSuggestions,
-  approveMerge,
+  claimSuggestionForApproval,
   rejectMerge,
+  SuggestionNotFoundError,
+  SuggestionNotPendingError,
 } from '@open333crm/core';
-import { success, paginated } from '../../shared/utils/response.js';
+import { success, paginated, AppError } from '../../shared/utils/response.js';
+import { withTenant } from '../../lib/tenant-db.js';
+import { mergeContacts } from '../contact/contact-merge.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -65,10 +69,25 @@ const triggerFlowSchema = z.object({
 });
 
 const suggestionQuerySchema = z.object({
-  status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+  status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUPERSEDED']).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
+
+const suggestionParamsSchema = z.object({
+  id: z.string().uuid('合併建議 id 格式錯誤'),
+});
+
+/** 把 core 的建議錯誤轉成對應 HTTP 狀態的 AppError */
+function toSuggestionAppError(err: unknown): never {
+  if (err instanceof SuggestionNotFoundError) {
+    throw new AppError('找不到此合併建議', 'NOT_FOUND', 404);
+  }
+  if (err instanceof SuggestionNotPendingError) {
+    throw new AppError('此合併建議已處理過了', 'CONFLICT', 409);
+  }
+  throw err;
+}
 
 // ── Route registration ───────────────────────────────────────────────────────
 
@@ -164,10 +183,9 @@ export async function identityRoutes(fastify: FastifyInstance) {
     const query = suggestionQuerySchema.parse(request.query);
     const { status, page, limit } = query;
 
-    const { suggestions, total } = await listSuggestions(
-      request.agent.tenantId,
-      status ?? 'PENDING',
-      { page, limit },
+    const tenantId = request.agent.tenantId;
+    const { suggestions, total } = await withTenant(fastify.prisma, tenantId, (tx) =>
+      listSuggestions(tx, tenantId, status ?? 'PENDING', { page, limit }),
     );
 
     return reply.send(paginated(suggestions, total, page, limit));
@@ -175,13 +193,40 @@ export async function identityRoutes(fastify: FastifyInstance) {
 
   // ── POST /api/v1/identity/suggestions/:id/approve ──────────────────────
   fastify.post<{ Params: { id: string } }>('/suggestions/:id/approve', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
-    await approveMerge(request.params.id, request.agent.id);
-    return reply.send(success({ merged: true }));
+    const { id } = suggestionParamsSchema.parse(request.params);
+    const tenantId = request.agent.tenantId;
+    // 建議狀態與合併在同一交易：合併失敗時建議維持 PENDING
+    const result = await withTenant(fastify.prisma, tenantId, async (tx) => {
+      const { primaryContactId, secondaryContactId } = await claimSuggestionForApproval(
+        tx,
+        tenantId,
+        id,
+        request.agent.id,
+      ).catch(toSuggestionAppError);
+      return mergeContacts(tx, {
+        tenantId,
+        survivorId: primaryContactId,
+        mergedId: secondaryContactId,
+        source: 'SUGGESTION',
+        actorAgentId: request.agent.id,
+      });
+    });
+    fastify.io.to(`tenant:${tenantId}`).emit('contact.merged', {
+      primaryContactId: result.survivor.id,
+      secondaryContactId: result.merged.id,
+      primaryName: result.survivor.displayName,
+      secondaryName: result.merged.displayName,
+    });
+    return reply.send(success({ merged: true, mergeLogId: result.mergeLogId }));
   });
 
   // ── POST /api/v1/identity/suggestions/:id/reject ───────────────────────
   fastify.post<{ Params: { id: string } }>('/suggestions/:id/reject', { preHandler: [requirePermission('identity.review')] }, async (request, reply) => {
-    await rejectMerge(request.params.id, request.agent.id);
+    const { id } = suggestionParamsSchema.parse(request.params);
+    const tenantId = request.agent.tenantId;
+    await withTenant(fastify.prisma, tenantId, (tx) =>
+      rejectMerge(tx, tenantId, id, request.agent.id),
+    ).catch(toSuggestionAppError);
     return reply.send(success({ rejected: true }));
   });
 }

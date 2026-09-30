@@ -11,6 +11,12 @@ export interface ParsedWebhookMessage {
   contentType: string;
   content: Record<string, unknown>;
   rawPayload?: unknown;
+  /**
+   * FB m.me / IG ig.me 連結帶的 `?ref=` 值（referral 事件，或夾在訊息／postback 內的 referral）。
+   * 跨渠道綁定代碼由此送達（change add-cross-channel-one-id）。
+   * contentType 為 'referral' 的事件只帶這個值、沒有訊息內容。
+   */
+  referralRef?: string;
 }
 
 export interface OutboundPayload {

@@ -43,6 +43,8 @@ export default function InboxPage() {
           avatar: (contact.avatar || contact.avatarUrl) as string | undefined,
         } : undefined,
         channelType: selectedConversation.channelType as string,
+        // 渠道名稱：同一租戶可能接多個 LINE OA／粉專，標題要看得出是哪一個
+        channel: (selectedConversation.channel as { id: string; displayName: string; channelType: string } | undefined) ?? null,
         status: selectedConversation.status as string,
         assignedToId: (selectedConversation.assignedToId as string | undefined) || null,
       }

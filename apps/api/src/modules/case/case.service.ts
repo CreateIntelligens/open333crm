@@ -37,17 +37,16 @@ export async function listCases(
   filters: CaseFilters,
   pagination: PaginationParams,
   /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空＝fail-closed）。 */
-  accessibleChannels?: AccessibleChannels,
+  /** 必填：呼叫端明確決定可見範圍，不受限時傳 ALL_CHANNELS（漏傳會編譯失敗，而不是悄悄不過濾） */
+  accessibleChannels: AccessibleChannels,
 ) {
   const now = new Date();
   const where: Prisma.CaseWhereInput = {
     tenantId,
   };
 
-  if (accessibleChannels !== undefined) {
-    const filter = channelIdWhereFilter(accessibleChannels);
-    if (filter) where.channelId = filter;
-  }
+  const filter = channelIdWhereFilter(accessibleChannels);
+  if (filter) where.channelId = filter;
 
   if (filters.status) {
     where.status = filters.status as any;

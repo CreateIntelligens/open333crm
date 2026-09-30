@@ -8,6 +8,8 @@ interface ChannelIdentity {
   channelType: string;
   externalId: string;
   displayName?: string;
+  /** 渠道名稱（例如「總店 LINE OA」）：同一租戶可能接多個同類型渠道 */
+  channelName?: string;
 }
 
 interface ChannelIdentityListProps {
@@ -28,14 +30,17 @@ export function ChannelIdentityList({ identities }: ChannelIdentityListProps) {
           key={identity.id}
           className="flex items-center justify-between rounded-md border p-3"
         >
-          <div className="flex items-center gap-3">
-            <ChannelBadge channel={identity.channelType} />
-            <div>
-              <p className="text-sm font-medium">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <ChannelBadge channel={identity.channelType} className="shrink-0" />
+            <div className="min-w-0">
+              {identity.channelName && (
+                <p className="truncate text-xs font-medium text-muted-foreground">{identity.channelName}</p>
+              )}
+              <p className="truncate text-sm font-medium">
                 {identity.displayName || identity.externalId}
               </p>
               {identity.displayName && (
-                <p className="text-xs text-muted-foreground">{identity.externalId}</p>
+                <p className="truncate text-xs text-muted-foreground">{identity.externalId}</p>
               )}
             </div>
           </div>

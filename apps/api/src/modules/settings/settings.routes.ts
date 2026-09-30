@@ -41,6 +41,12 @@ import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
+import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
+import { CONFIRM_KEYWORD } from "../identity-binding/binding-code.js";
+import {
+  getIdentityBindingSettings,
+  invalidateIdentityBindingSettings,
+} from "../identity-binding/identity-binding.service.js";
 
 const dayScheduleSchema = z
   .object({
@@ -68,6 +74,37 @@ const officeHoursSchema = z.object({
       .default("您好！目前為非營業時間，我們將在營業時間內盡速回覆您。"),
   }),
 });
+
+const bindingKeywordsSchema = z
+  .array(z.string().trim().min(1, "關鍵字不可為空白").max(20, "關鍵字不可超過 20 字"))
+  .min(1, "至少需要一個關鍵字")
+  .max(5, "最多 5 個關鍵字");
+
+const identityBindingSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    bindKeywords: bindingKeywordsSchema,
+    unbindKeywords: bindingKeywordsSchema,
+  })
+  .superRefine((data, ctx) => {
+    for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
+      if (list.some((k) => k === CONFIRM_KEYWORD)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: `「${CONFIRM_KEYWORD}」是顧客確認綁定用的回覆字，不可設為關鍵字`,
+        });
+      }
+    }
+    const bind = new Set(data.bindKeywords.map((k) => k.toLowerCase()));
+    if (data.unbindKeywords.some((k) => bind.has(k.toLowerCase()))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["unbindKeywords"],
+        message: "綁定與解除關鍵字不可相同",
+      });
+    }
+  });
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
@@ -153,6 +190,38 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       ip: request.ip,
     });
     return reply.send(success(settings));
+  });
+
+  // ─── Identity Binding（跨渠道 One ID）──────────────────────────────────────
+  // GET /api/v1/settings/identity-binding
+  fastify.get("/identity-binding", async (request, reply) => {
+    return reply.send(success(await getIdentityBindingSettings(request.tenantPrisma, request.agent.tenantId)));
+  });
+
+  // PUT /api/v1/settings/identity-binding
+  fastify.put("/identity-binding", async (request, reply) => {
+    const data = identityBindingSettingsSchema.parse(request.body);
+    const tenantId = request.agent.tenantId;
+    const value = {
+      enabled: data.enabled,
+      bindKeywords: data.bindKeywords,
+      unbindKeywords: data.unbindKeywords,
+    };
+    await request.tenantPrisma.tenantSettings.upsert({
+      where: { tenantId },
+      create: { tenantId, identityBinding: value },
+      update: { identityBinding: value },
+    });
+    invalidateIdentityBindingSettings(tenantId);
+    await writeTenantAudit(request.tenantPrisma, {
+      tenantId,
+      actorId: request.agent.id,
+      action: "settings.update",
+      targetType: "settings",
+      payload: { section: "identity-binding", enabled: data.enabled },
+      ip: request.ip,
+    });
+    return reply.send(success(parseIdentityBindingSettings(value)));
   });
 
   // ─── Embedding Settings ──────────────────────────────────────────────────

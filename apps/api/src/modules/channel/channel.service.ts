@@ -55,13 +55,12 @@ export async function listChannels(
   prisma: TenantDb,
   tenantId: string,
   /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空＝fail-closed）。 */
-  accessibleChannels?: AccessibleChannels,
+  /** 必填：呼叫端明確決定可見範圍，不受限時傳 ALL_CHANNELS（漏傳會編譯失敗，而不是悄悄不過濾） */
+  accessibleChannels: AccessibleChannels,
 ) {
   const where: { tenantId: string; id?: { in: string[] } } = { tenantId };
-  if (accessibleChannels !== undefined) {
-    const filter = channelIdWhereFilter(accessibleChannels);
-    if (filter) where.id = filter;
-  }
+  const filter = channelIdWhereFilter(accessibleChannels);
+  if (filter) where.id = filter;
   const channels = await prisma.channel.findMany({
     where,
     orderBy: { createdAt: 'desc' },
@@ -254,7 +253,21 @@ export async function updateChannel(
     updateData.credentialsEncrypted = encryptCredentials(nextCredentials);
   }
   if (data.settings !== undefined) {
-    updateData.settings = data.settings;
+    // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
+    // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）只能經由驗證或 /binding-handle 修改：
+    // 丟掉快照裡的這些 key，並在資料庫端取「寫入當下」的現值補回（單一 UPDATE，原子）。
+    // 不用函式開頭讀到的 channel.settings：驗證可能在這之間寫入，用舊快照會把它蓋回去
+    const incoming = { ...data.settings };
+    for (const key of SYSTEM_MANAGED_SETTING_KEYS) delete incoming[key];
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET settings = ${JSON.stringify(incoming)}::jsonb || COALESCE(
+            (SELECT jsonb_object_agg(e.key, e.value)
+               FROM jsonb_each(COALESCE(settings, '{}'::jsonb)) AS e
+              WHERE e.key = ANY(${[...SYSTEM_MANAGED_SETTING_KEYS]}::text[])),
+            '{}'::jsonb),
+          "updatedAt" = now()
+      WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
   }
 
   const updated = await prisma.channel.update({
@@ -323,6 +336,49 @@ export async function ensureChannelPublicKey(
   return { publicKey: updated.publicKey };
 }
 
+/**
+ * 以資料庫端的 JSON 合併原子更新渠道 settings 的部分欄位（`settings || patch`，再移除 remove 的 key）。
+ * 不走「讀出整包 → 改 → 寫回」：驗證要打平台 API（數秒），期間其他分頁存的設定會被舊快照蓋掉。
+ */
+export async function patchChannelSettings(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  patch: Record<string, unknown>,
+  remove: string[] = [],
+): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE channels
+    SET settings = (COALESCE(settings, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb) - ${remove}::text[],
+        "updatedAt" = now()
+    WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
+}
+
+/** 驗證時取得的導流識別（無效值不寫入）。管理員手動填的 settings.bindingHandle 另存一欄且優先使用 */
+function autoBindingHandlePatch(handle: unknown): Record<string, unknown> {
+  return typeof handle === 'string' && handle.trim() !== '' ? { bindingHandleAuto: handle.trim() } : {};
+}
+
+/**
+ * 檢查粉專是否已設定「開始使用」按鈕。查詢失敗（權限不足等）回 null，代表未知，不當成未設定。
+ */
+async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null> {
+  try {
+    const res = await fetch('https://graph.facebook.com/v21.0/me/messenger_profile?fields=get_started', {
+      headers: { Authorization: `Bearer ${pageAccessToken}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data?: Array<{ get_started?: unknown }> };
+    return Boolean(body.data?.some((d) => d.get_started));
+  } catch {
+    return null;
+  }
+}
+
+/** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
+const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured'] as const;
+
+
 export async function verifyChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({
     where: { id, tenantId },
@@ -355,10 +411,9 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const botInfo = (await response.json()) as Record<string, unknown>;
 
-    await prisma.channel.update({
-      where: { id },
-      data: { lastVerifiedAt: new Date() },
-    });
+    await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
+    // Basic ID（@xxxx）供跨渠道綁定產生加好友／oaMessage 連結
+    await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(botInfo.basicId));
 
     return { verified: true, botInfo };
   }
@@ -369,7 +424,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // Verify the page access token by calling the Graph API
     // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄
     const response = await fetch(
-      'https://graph.facebook.com/v21.0/me?fields=id,name',
+      'https://graph.facebook.com/v21.0/me?fields=id,name,username',
       { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
@@ -387,12 +442,18 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const pageInfo = (await response.json()) as Record<string, unknown>;
 
-    await prisma.channel.update({
-      where: { id },
-      data: { lastVerifiedAt: new Date() },
+    // 新對話點 m.me?ref= 時，ref 只會隨「開始使用（Get Started）」按鈕送達；
+    // 沒設定的話新顧客的綁定代碼永遠進不來，驗證時一併檢查並回報給後台提示
+    const getStartedConfigured = await hasFbGetStarted(pageAccessToken);
+
+    await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
+    // 粉專 username（沒有就用 page id）供 m.me 綁定連結使用
+    await patchChannelSettings(prisma, id, tenantId, {
+      ...autoBindingHandlePatch(pageInfo.username ?? pageInfo.id),
+      fbGetStartedConfigured: getStartedConfigured,
     });
 
-    return { verified: true, pageInfo };
+    return { verified: true, pageInfo, getStartedConfigured };
   }
 
   if (channel.channelType === CHANNEL_TYPE.THREADS) {
@@ -401,7 +462,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // 走 IG Login 路線，用 Instagram Graph API 驗證 token 有效
     // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄，也免去編碼問題
     const response = await fetch(
-      'https://graph.instagram.com/v21.0/me?fields=id',
+      'https://graph.instagram.com/v21.0/me?fields=id,username',
       { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
@@ -419,10 +480,9 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const igInfo = (await response.json()) as Record<string, unknown>;
 
-    await prisma.channel.update({
-      where: { id },
-      data: { lastVerifiedAt: new Date() },
-    });
+    await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
+    // IG username 供 ig.me 綁定連結使用
+    await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(igInfo.username));
 
     return { verified: true, pageInfo: igInfo };
   }

@@ -54,17 +54,16 @@ export async function listConversations(
   filters: ConversationFilters,
   pagination: PaginationParams,
   /** CM-173 渠道級可見性：ALL_CHANNELS→不過濾；Set→只回可見渠道（空集合＝fail-closed 回空）。 */
-  accessibleChannels?: AccessibleChannels,
+  /** 必填：呼叫端明確決定可見範圍，不受限時傳 ALL_CHANNELS（漏傳會編譯失敗，而不是悄悄不過濾） */
+  accessibleChannels: AccessibleChannels,
 ) {
   const where: Prisma.ConversationWhereInput = {
     tenantId,
   };
 
   // 渠道可見性過濾（總店 ALL 時 filter 為 undefined、不加條件）
-  if (accessibleChannels !== undefined) {
-    const filter = channelIdWhereFilter(accessibleChannels);
-    if (filter) where.channelId = filter;
-  }
+  const filter = channelIdWhereFilter(accessibleChannels);
+  if (filter) where.channelId = filter;
 
   if (filters.status) {
     if (filters.status === '!CLOSED') {
@@ -627,7 +626,7 @@ export async function deliverToChannel(
   prisma: TenantDb,
   conversationId: string,
   payload: string | { contentType: string; content: Record<string, unknown>; delivery?: ChannelDeliveryOptions },
-): Promise<void> {
+): Promise<boolean> {
   const outbound = typeof payload === 'string'
     ? { contentType: 'text', content: { text: payload } as Record<string, unknown> }
     : payload;
@@ -645,23 +644,23 @@ export async function deliverToChannel(
       },
     });
 
-    if (!conv) { logger.error('[deliverToChannel] Conversation not found:', conversationId); return; }
-    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return; }
+    if (!conv) { logger.error('[deliverToChannel] Conversation not found:', conversationId); return false; }
+    if (!conv.channel?.isActive) { logger.error('[deliverToChannel] Channel inactive or missing for conv:', conversationId); return false; }
 
     const identity = conv.contact?.channelIdentities?.find(
       (ci) => ci.channelId === conv.channel.id,
     );
-    if (!identity) { logger.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return; }
+    if (!identity) { logger.error('[deliverToChannel] No channel identity found for contact', conv.contact?.id, 'on channel', conv.channel.id); return false; }
 
     const plugin = getChannelPlugin(conv.channel.channelType);
-    if (!plugin) { logger.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return; }
+    if (!plugin) { logger.error('[deliverToChannel] No plugin for channelType:', conv.channel.channelType); return false; }
 
     let credentials: Record<string, unknown>;
     try {
       credentials = decryptCredentials(conv.channel.credentialsEncrypted);
     } catch (err) {
       logger.error('[deliverToChannel] Failed to decrypt credentials:', err);
-      return;
+      return false;
     }
 
     logger.info(`[deliverToChannel] Sending to ${conv.channel.channelType} uid=${identity.uid} contentType=${outbound.contentType}`);
@@ -721,8 +720,10 @@ export async function deliverToChannel(
         .publish('socket:emit', JSON.stringify({ namespace: '/visitor', room, event: 'agent:message', data: msgPayload }))
         .catch((err) => logger.error('[deliverToChannel] Redis publish failed:', err));
     }
+    return true;
   } catch (err) {
     logger.error('[deliverToChannel] Error delivering to channel:', err);
+    return false;
   }
 }
 

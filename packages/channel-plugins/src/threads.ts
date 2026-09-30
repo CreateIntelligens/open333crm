@@ -9,6 +9,7 @@ import type {
 } from './index.js';
 import { createHmac } from 'node:crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { refOf } from './referral.js';
 
 interface ThreadsCredentials {
   appId: string;
@@ -49,6 +50,36 @@ export class ThreadsPlugin implements ChannelPlugin {
         // echo：商業帳號自己發出的訊息會被 Meta 回送（sender = entry.id 或 is_echo）。
         // 不濾掉會讓 Bot 把自己的回覆當客戶訊息，形成自問自答迴圈。
         if (messaging.sender.id === entry.id || messaging.message?.is_echo) continue;
+
+        // 已有對話的顧客點 ig.me?ref= → 獨立的 messaging_referral 事件，沒有訊息內容
+        const standaloneRef = refOf(messaging.referral);
+        if (standaloneRef && !messaging.message) {
+          messages.push({
+            contactUid: messaging.sender.id,
+            timestamp: new Date(messaging.timestamp),
+            contentType: 'referral',
+            content: {},
+            rawPayload: messaging,
+            referralRef: standaloneRef,
+          });
+          continue;
+        }
+        // 新對話點 ig.me?ref= 後按 Icebreaker：ref 夾在 postback 裡。只把 ref 當成 referral 事件
+        // 交給入站管線（是綁定代碼才處理，其他 ref 只記錄）；不建成 postback 訊息，
+        // 維持原本「IG postback 一律不進收件匣、不觸發 Bot」的行為（見下方 mid 守門說明）
+        const postbackRef = refOf(messaging.postback?.referral);
+        if (postbackRef) {
+          messages.push({
+            contactUid: messaging.sender.id,
+            timestamp: new Date(messaging.timestamp),
+            contentType: 'referral',
+            content: {},
+            rawPayload: messaging,
+            referralRef: postbackRef,
+          });
+          continue;
+        }
+
         // 非訊息互動事件（已讀 seen、reaction 按愛心、postback 等）沒有 message.mid，
         // 建成空訊息只會在收件匣產生噪音氣泡並觸發 Bot 空跑；真訊息必有 mid，一律要求。
         if (!messaging.message?.mid) continue;
@@ -56,13 +87,15 @@ export class ThreadsPlugin implements ChannelPlugin {
         const timestamp = new Date(messaging.timestamp);
         // IG 訊息 id（mid），供 inbound 管線去重（Meta 可能重送同一事件）
         const channelMsgId = messaging.message.mid;
+        // 新對話點 ig.me?ref= 後傳第一則訊息：ref 夾在該訊息的 referral 裡
+        const referralRef = refOf(messaging.message.referral);
 
         if (messaging.message?.reply_to?.story) {
-          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: `[Story reply] ${messaging.message.text ?? ''}` }, rawPayload: messaging, referralRef });
           continue;
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'like_heart')) {
-          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'sticker', content: { text: '❤️' }, rawPayload: messaging, referralRef });
           continue;
         }
         if (messaging.message?.attachments?.some((a) => a.type === 'image')) {
@@ -70,14 +103,14 @@ export class ThreadsPlugin implements ChannelPlugin {
           // 同時帶 mediaUrl（各 plugin 慣例）與 url（對齊 FB、前端相容）。
           // 不放 text 佔位字：否則 message.received 的 text 守門會讓 Bot 拿「[圖片]」去做
           // KB 檢索並回覆不相關內容。純圖片訊息不應觸發 Bot 自動回覆。
-          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url, url: img?.payload?.url }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'image', content: { mediaUrl: img?.payload?.url, url: img?.payload?.url }, rawPayload: messaging, referralRef });
           continue;
         }
         if (messaging.message?.text) {
-          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging });
+          messages.push({ channelMsgId, contactUid, timestamp, contentType: 'text', content: { text: messaging.message.text }, rawPayload: messaging, referralRef });
           continue;
         }
-        messages.push({ channelMsgId, contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging });
+        messages.push({ channelMsgId, contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging, referralRef });
       }
     }
 
@@ -165,10 +198,13 @@ interface InstagramMessaging {
   sender:    { id: string };
   recipient: { id: string };
   timestamp: number;
+  referral?: { ref?: string; source?: string; type?: string };
+  postback?: { title?: string; payload?: string; referral?: { ref?: string } };
   message?: {
     mid?:   string;
     text?:  string;
     is_echo?: boolean;
+    referral?: { ref?: string };
     reply_to?: { story?: { url: string; id: string } };
     attachments?: Array<{
       type:    string;

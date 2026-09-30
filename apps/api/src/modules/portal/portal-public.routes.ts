@@ -5,7 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
-import { signFanToken, verifyFanToken, type FanPayload } from './portal-auth.service.js';
+import { verifyFanToken, type FanPayload } from './portal-auth.service.js';
 import { submitActivity, getActivityResult } from './portal.service.js';
 import { getPointBalance, listPointTransactions } from './points.service.js';
 
@@ -34,29 +34,16 @@ async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
 
 export default async function portalPublicRoutes(app: FastifyInstance) {
   // 粉絲門戶是公開端點（訪客持 fanToken，非租戶客服登入），請求沒有 tenant
-  // context，用 app.prisma 會被 RLS fail-closed 擋掉每一筆查詢（實測
-  // POST /api/v1/fan/auth 對存在的 contact 一律回 404）。故走 prismaAdmin。
+  // context，用 app.prisma 會被 RLS fail-closed 擋掉每一筆查詢。故走 prismaAdmin。
   //
   // ⚠️ 走 BYPASSRLS 後租戶隔離不再由 RLS 兜底，改由查詢條件自行保證：
   // 本檔所有查詢都明確帶 tenantId，且該值一律取自已驗簽的 fanToken
-  // （signFanToken 簽入、authenticateFan 驗出），呼叫端無法指定他人租戶。
+  // （由 portal-auth.service 簽入、authenticateFan 驗出），呼叫端無法指定他人租戶。
   const prisma: PrismaClient = app.prismaAdmin;
 
-  // ── Auth (no JWT required) ────────────────────────────────────────────────
-
-  app.post('/auth', async (request, reply) => {
-    const { contactId, tenantId } = request.body as { contactId: string; tenantId: string };
-    if (!contactId || !tenantId) {
-      return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'contactId and tenantId required' } });
-    }
-    // Verify contact exists
-    const contact = await prisma.contact.findFirst({ where: { id: contactId, tenantId } });
-    if (!contact) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此帳號資料' } });
-    }
-    const token = signFanToken(contactId, tenantId);
-    return { success: true, data: { token, contactId, tenantId } };
-  });
+  // 已移除 POST /auth：舊版憑任意 {contactId, tenantId} 即簽發 fanToken，
+  // 不驗證呼叫者身分（任何人都能冒充任一顧客）。fanToken 改由經平台驗證的流程
+  // 簽發（見 openspec change add-cross-channel-one-id）。
 
   // ── Protected routes (fan JWT) ────────────────────────────────────────────
 

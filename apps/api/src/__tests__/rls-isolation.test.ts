@@ -143,8 +143,61 @@ test('⑩ 標籤 WITH CHECK：綁 A 時不可寫入 B 租戶的標籤', async ()
   );
 });
 
+// ─── 合併紀錄（2026-09-29 跨渠道 One ID 新增 contact_merge_logs）──────────
+//
+// movedRecords 記著另一個租戶的聯絡人／對話 id，外洩等同洩漏客戶關聯，須與 contacts 同級隔離。
+
+const MERGE_LOG_MARK = { rlsCi: true };
+
+test('⑪ 合併紀錄正向隔離：綁 B 看不到 A 的合併紀錄', async () => {
+  const log = await adminDb.contactMergeLog.create({
+    data: {
+      tenantId: TENANT_A,
+      survivorId: '00000000-0000-0000-0000-00000000a001',
+      mergedId: '00000000-0000-0000-0000-00000000a002',
+      source: 'MANUAL',
+      movedRecords: MERGE_LOG_MARK,
+    },
+  });
+
+  const seenByA = await withTenant(tenantDb, TENANT_A, (tx) =>
+    tx.contactMergeLog.count({ where: { id: log.id } }),
+  );
+  assert.equal(seenByA, 1, '綁 A 應看得到自己的合併紀錄');
+
+  const seenByB = await withTenant(tenantDb, TENANT_B, (tx) =>
+    tx.contactMergeLog.count({ where: { id: log.id } }),
+  );
+  assert.equal(seenByB, 0, '綁 B 不該看到 A 的合併紀錄');
+
+  const unbound = await tenantDb.contactMergeLog.count();
+  assert.equal(unbound, 0, '未綁租戶時合併紀錄應 fail-closed');
+});
+
+test('⑫ 合併紀錄 WITH CHECK：綁 A 時不可寫入 B 租戶的合併紀錄', async () => {
+  await assert.rejects(
+    () =>
+      withTenant(tenantDb, TENANT_A, (tx) =>
+        tx.contactMergeLog.create({
+          data: {
+            tenantId: TENANT_B,
+            survivorId: '00000000-0000-0000-0000-00000000b001',
+            mergedId: '00000000-0000-0000-0000-00000000b002',
+            source: 'MANUAL',
+            movedRecords: MERGE_LOG_MARK,
+          },
+        }),
+      ),
+    /row-level security|violates/i,
+    '綁 A 時寫入 B 租戶的合併紀錄應被 WITH CHECK 擋',
+  );
+});
+
 test.after(async () => {
   // 清理可能殘留的越權測試列（用 admin）
+  await adminDb.contactMergeLog
+    .deleteMany({ where: { movedRecords: { equals: MERGE_LOG_MARK } } })
+    .catch(() => {});
   await adminDb.contact
     .deleteMany({ where: { displayName: 'RLS-CI-越權' } })
     .catch(() => {});

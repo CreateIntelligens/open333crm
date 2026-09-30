@@ -8,9 +8,10 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { ChannelBadge } from '@/components/shared/ChannelBadge';
+import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
+import { SendBindingLinkButton } from './SendBindingLinkButton';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 
 interface ContactInfoPanelProps {
@@ -99,6 +100,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
     channelType: string;
     externalId: string;
     displayName?: string;
+    channel?: { displayName?: string } | null;
   }> | undefined;
   const tags = (c as Record<string, unknown>).tags as Array<{
     id: string;
@@ -224,9 +226,9 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
           <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             渠道
           </h4>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-1.5">
             {channelIdentities.map((ci) => (
-              <ChannelBadge key={ci.id} channel={ci.channelType} />
+              <ChannelLabel key={ci.id} channelType={ci.channelType} channelName={ci.channel?.displayName} />
             ))}
           </div>
         </div>
@@ -321,6 +323,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
             {requestingEmail ? '傳送中...' : '請求 Email'}
           </Button>
         )}
+        <SendBindingLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <Button
           variant="outline"
           className="w-full"

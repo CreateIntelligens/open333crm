@@ -5,6 +5,14 @@ import { z } from "zod";
 
 import { getAgentById } from "../auth/auth.service.js";
 import { getContact, listContacts } from "../contact/contact.service.js";
+import {
+  isChannelAccessible,
+  type AccessibleChannels,
+  type ChannelAccessLevel,
+} from "../../services/channel-visibility.js";
+import { AppError } from "../../shared/utils/response.js";
+import { notFound } from "../../shared/messages/resource.js";
+import { logger } from "@open333crm/core";
 import { getConversation, listConversations } from "../conversation/conversation.service.js";
 import {
   getCaseStats,
@@ -24,6 +32,17 @@ import {
   MCP_LINE_SEND_SCOPE,
   MCP_LINE_READ_SCOPE,
 } from "./mcp.constants.js";
+
+/**
+ * CM-173 渠道級可見性：MCP 工具與 REST 同一套規則（分店帳號只看／只操作自己的渠道）。
+ * 由 mcp.routes 依當前 request 建立；抽成介面讓測試可以注入。
+ */
+export interface McpChannelAccess {
+  /** 可見渠道集合，總店（channel.view_all）為 ALL_CHANNELS */
+  accessible(): Promise<AccessibleChannels>;
+  /** 對話操作守門：渠道不可見丟 404、層級不足丟 403（AppError） */
+  assertConversation(conversationId: string, level: ChannelAccessLevel): Promise<void>;
+}
 
 export interface McpAgentContext {
   id: string;
@@ -82,12 +101,59 @@ function dateRange(input: { from?: string; to?: string }) {
 export function createMcpServer(
   prisma: TenantDb,
   agent: McpAgentContext,
+  channelAccess: McpChannelAccess,
   _io?: SocketIOServer,
 ): McpServer {
   const server = new McpServer({
     name: "open333crm",
     version: "0.4.0",
   });
+
+  /** 權限解析本身失敗（DB／Redis）時不把內部錯誤原文回給 MCP 用戶端 */
+  function internalAccessError(error: unknown): AppError {
+    logger.error("[MCP] 渠道權限檢查失敗", { error: error instanceof Error ? error.message : String(error) });
+    return new AppError("無法確認渠道權限，請稍後再試", "INTERNAL_ERROR", 500);
+  }
+
+  /** 可見渠道集合（CM-173）；解析失敗改丟通用錯誤 */
+  async function accessible(): Promise<AccessibleChannels> {
+    try {
+      return await channelAccess.accessible();
+    } catch (error) {
+      throw internalAccessError(error);
+    }
+  }
+
+  /**
+   * 對話守門。回 null＝通過；層級不足等回 MCP 錯誤結果。
+   * 渠道不可見（404）時丟出與「查無此對話」完全相同的例外，或交給 onNotFound 產生該分支原本的查無結果，
+   * 讓他店對話與不存在的對話在回應上無法區分（不洩漏他店資料是否存在）。
+   */
+  async function guardConversation(
+    conversationId: string,
+    level: ChannelAccessLevel,
+    onNotFound?: () => ReturnType<typeof operationError>,
+  ) {
+    try {
+      await channelAccess.assertConversation(conversationId, level);
+      return null;
+    } catch (error) {
+      if (!(error instanceof AppError)) throw internalAccessError(error);
+      if (error.statusCode === 404) {
+        if (onNotFound) return onNotFound();
+        throw new AppError(notFound("conversation"), "NOT_FOUND", 404);
+      }
+      return operationError(error.code, error.message);
+    }
+  }
+
+  /** 單筆讀取：渠道不可見時丟出與 service「查無資料」相同的例外（與 REST GET /:id 一致，不洩漏他店資料是否存在） */
+  async function visibleOrNotFound<T extends { channelId: string }>(record: T, resource: "case" | "conversation") {
+    if (!isChannelAccessible(await accessible(), record.channelId)) {
+      throw new AppError(notFound(resource), "NOT_FOUND", 404);
+    }
+    return textResult(record);
+  }
 
   server.registerTool(
     "crm_get_current_agent",
@@ -121,7 +187,7 @@ export function createMcpServer(
     },
     async ({ q, page, limit }) =>
       textResult(
-        await listContacts(prisma, agent.tenantId, { q }, { page, limit }),
+        await listContacts(prisma, agent.tenantId, { q }, { page, limit }, await accessible()),
       ),
   );
 
@@ -157,6 +223,7 @@ export function createMcpServer(
           agent.tenantId,
           { status, priority, assigneeId, category, slaStatus },
           { page, limit },
+          await accessible(),
         ),
       ),
   );
@@ -172,7 +239,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => textResult(await getCase(prisma, id, agent.tenantId)),
+    async ({ id }) => visibleOrNotFound(await getCase(prisma, id, agent.tenantId), "case"),
   );
 
   server.registerTool(
@@ -186,7 +253,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => textResult(await getContact(prisma, id, agent.tenantId)),
+    async ({ id }) => textResult(await getContact(prisma, id, agent.tenantId, await accessible())),
   );
 
   server.registerTool(
@@ -266,6 +333,7 @@ export function createMcpServer(
         agent.tenantId,
         { status, channelType, assigneeId, unread, closedAfter },
         { page, limit },
+        await accessible(),
       ));
     },
   );
@@ -280,7 +348,7 @@ export function createMcpServer(
     },
     async ({ id }) => {
       if (!hasScope(agent, MCP_LINE_READ_SCOPE)) return scopeError(MCP_LINE_READ_SCOPE);
-      return textResult(await getConversation(prisma, id, agent.tenantId));
+      return visibleOrNotFound(await getConversation(prisma, id, agent.tenantId), "conversation");
     },
   );
 
@@ -303,6 +371,7 @@ export function createMcpServer(
         agent.tenantId,
         { q, channelType: "LINE" },
         { page, limit },
+        await accessible(),
       ));
     },
   );
@@ -357,6 +426,29 @@ export function createMcpServer(
           return operationError("INVALID_CONFIRMATION", "The confirmation token is invalid or expired");
         }
 
+        // 預覽到確認之間渠道授權可能被收回，送出前再守門一次（先守門再記 confirmed，稽核才不會停在「已確認」）
+        const rejectedAudit = (errorCode: string) =>
+          writeLineMcpAudit(prisma, {
+            tenantId: agent.tenantId,
+            agentId: agent.id,
+            cliSessionId: agent.cliSessionId,
+            operation: "direct_send",
+            outcome: "rejected",
+            conversationId: claims.conversationId,
+            errorCode,
+          });
+        let denied;
+        try {
+          denied = await guardConversation(claims.conversationId!, "reply_only");
+        } catch (error) {
+          await rejectedAudit(error instanceof AppError ? error.code : "UNKNOWN");
+          throw error;
+        }
+        if (denied) {
+          await rejectedAudit("CHANNEL_ACCESS_DENIED");
+          return denied;
+        }
+
         await writeLineMcpAudit(prisma, {
           tenantId: agent.tenantId,
           agentId: agent.id,
@@ -365,7 +457,6 @@ export function createMcpServer(
           outcome: "confirmed",
           conversationId: claims.conversationId,
         });
-
         if (!_io) return operationError("SOCKET_UNAVAILABLE", "MCP direct send requires the API Socket.IO instance");
         try {
           const result = await sendConversationMessage(
@@ -419,7 +510,28 @@ export function createMcpServer(
         });
         conversationId = candidate?.id;
       }
-      if (!conversationId) return operationError("CONVERSATION_NOT_FOUND", "No tenant-scoped LINE conversation matches the target");
+      const conversationNotFound = () =>
+        operationError("CONVERSATION_NOT_FOUND", "No tenant-scoped LINE conversation matches the target");
+      if (!conversationId) return conversationNotFound();
+      // CM-173：送訊息屬回覆層級，看不到或唯讀的渠道不可發（與 REST 回覆端點一致）。
+      // 用 channelId+contactId 找到的對話若渠道不可見，回應與「查無對話」相同，避免探測他店是否有這位顧客的對話
+      const denied = await guardConversation(
+        conversationId,
+        "reply_only",
+        input.conversationId ? undefined : conversationNotFound,
+      );
+      if (denied) {
+        await writeLineMcpAudit(prisma, {
+          tenantId: agent.tenantId,
+          agentId: agent.id,
+          cliSessionId: agent.cliSessionId,
+          operation: "direct_send",
+          outcome: "rejected",
+          conversationId,
+          errorCode: "CHANNEL_ACCESS_DENIED",
+        });
+        return denied;
+      }
       const conversation = await getConversation(prisma, conversationId, agent.tenantId);
       if (conversation.channel.channelType !== "LINE") {
         return operationError("LINE_CHANNEL_REQUIRED", "The conversation must belong to a LINE channel");

@@ -178,10 +178,16 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
     },
     message: {
       count: mockFn(() => 0),
+      // channelMsgId 去重查詢：沒有重複
+      findFirst: mockFn(() => null),
       create: mockFn(() => inboundMessage),
     },
     case: {
       findUnique: mockFn(() => null),
+    },
+    // 跨渠道綁定攔截會先讀租戶設定；沒有設定＝未啟用，行為與改版前相同
+    tenantSettings: {
+      findFirst: mockFn(() => null),
     },
   };
 
@@ -206,6 +212,7 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
   assert.equal(prisma.message.create.calls.length, 1);
   assert.equal(prisma.conversation.update.calls.length, 1);
   assert.equal(prisma.case.findUnique.calls.length, 1);
+  assert.equal(prisma.tenantSettings.findFirst.calls.length, 1, '綁定攔截有檢查租戶設定');
   assert.equal(events.some((event) => event.name === 'message.received'), false);
 }
 

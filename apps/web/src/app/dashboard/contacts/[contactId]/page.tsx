@@ -115,7 +115,9 @@ export default function ContactDetailPage() {
                   id: ci.id,
                   channelType: ci.channelType || ci.channel?.channelType || '',
                   externalId: ci.uid || '',
-                  displayName: ci.profileName || ci.channel?.displayName,
+                  displayName: ci.profileName || undefined,
+                  // 同一租戶可能接多個 LINE OA／粉專，要顯示是哪一個渠道
+                  channelName: ci.channel?.displayName,
                 })),
                 tags: (
                   contact.tags as Array<{
@@ -138,6 +140,8 @@ export default function ContactDetailPage() {
               }}
               onUpdate={() => {
                 fetchContact();
+                // 解除合併會把對話搬回另一位聯絡人，時間軸也要跟著更新
+                fetchTimeline();
               }}
             />
           </div>

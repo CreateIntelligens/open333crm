@@ -3,6 +3,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import type { ChannelType } from '@open333crm/shared';
+import { channelTypeName } from './ChannelLogo';
 
 /**
  * ChannelBadge — 對齊 Figma「Tag / Metadata」通道徽章
@@ -13,19 +14,19 @@ interface ChannelBadgeProps {
   className?: string;
 }
 
-const channelConfig: Record<string, { className: string; label: string }> = {
-  LINE: { className: 'bg-success-subtle text-success', label: 'LINE' },
-  FB: { className: 'bg-primary-subtle text-primary', label: 'Facebook' },
-  THREADS: { className: 'bg-ai-subtle text-ai', label: 'Instagram' },
-  WEBCHAT: { className: 'bg-muted text-muted-foreground', label: 'WebChat' },
-  WHATSAPP: { className: 'bg-success-subtle text-success', label: 'WhatsApp' },
-  EMAIL: { className: 'bg-ai-subtle text-ai', label: 'Email' },
+const channelClassName: Record<string, string> = {
+  LINE: 'bg-success-subtle text-success',
+  FB: 'bg-primary-subtle text-primary',
+  THREADS: 'bg-ai-subtle text-ai',
+  WEBCHAT: 'bg-muted text-muted-foreground',
+  WHATSAPP: 'bg-success-subtle text-success',
+  EMAIL: 'bg-ai-subtle text-ai',
 };
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
-  const config = channelConfig[channel] || {
-    className: 'bg-muted text-muted-foreground',
-    label: channel,
+  const config = {
+    className: channelClassName[channel] ?? 'bg-muted text-muted-foreground',
+    label: channelTypeName(channel),
   };
 
   return (

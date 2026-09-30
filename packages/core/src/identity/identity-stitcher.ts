@@ -38,7 +38,8 @@ export async function stitchByLiffCookie(
   if (!cookieEmail) return null;
 
   const contact = await db.contact.findFirst({
-    where: { tenantId, email: cookieEmail },
+    // 已封存（被合併）的聯絡人保留原 email／phone，不可再當成比對對象
+    where: { tenantId, email: cookieEmail, isArchived: false },
   });
 
   if (!contact) {
@@ -77,7 +78,7 @@ export async function stitchByPhone(
   if (!normalizedPhone) return null;
 
   const contact = await db.contact.findFirst({
-    where: { tenantId, phone: normalizedPhone },
+    where: { tenantId, phone: normalizedPhone, isArchived: false },
   });
 
   if (!contact) {
@@ -121,7 +122,7 @@ export async function resolveUidToContact(
 export async function detectPhoneDuplicates(db: PrismaExecutor, tenantId: string): Promise<number> {
   // Find all contacts with the same phone in this tenant (not null)
   const contacts = await db.contact.findMany({
-    where: { tenantId, phone: { not: null } },
+    where: { tenantId, phone: { not: null }, isArchived: false },
     select: { id: true, phone: true },
   });
 

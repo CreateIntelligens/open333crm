@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ChannelIdentityList } from './ChannelIdentityList';
 import { TagManager } from './TagManager';
+import { ContactMergeHistory } from './ContactMergeHistory';
 
 interface ContactDetailProps {
   contact: {
@@ -20,6 +21,7 @@ interface ContactDetailProps {
       channelType: string;
       externalId: string;
       displayName?: string;
+      channelName?: string;
     }>;
     tags?: Array<{
       id: string;
@@ -68,6 +70,16 @@ export function ContactDetail({ contact, onUpdate }: ContactDetailProps) {
         </CardHeader>
         <CardContent>
           <ChannelIdentityList identities={contact.channelIdentities || []} />
+        </CardContent>
+      </Card>
+
+      {/* Merge history（跨渠道綁定、手動合併等） */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">合併紀錄</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ContactMergeHistory contactId={contact.id} onUpdate={onUpdate} />
         </CardContent>
       </Card>
 

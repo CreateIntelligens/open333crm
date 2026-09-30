@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { listContacts } from '../modules/contact/contact.service.js';
+import { ALL_CHANNELS } from '../services/channel-visibility.js';
 
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
@@ -45,6 +46,7 @@ async function testListContactsIncludesSafeChannelMetadata() {
     'tenant-1',
     {},
     { page: 1, limit: 20 },
+    ALL_CHANNELS,
   );
 
   assert.deepEqual(result, { contacts: [contact], total: 1 });
@@ -128,6 +130,7 @@ async function testListContactsCanExcludeChannelIdentitiesFromPayload() {
     'tenant-1',
     { excludeChannelType: 'WEBCHAT' },
     { page: 1, limit: 20 },
+    ALL_CHANNELS,
   );
 
   assert.deepEqual(result, {

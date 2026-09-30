@@ -41,6 +41,8 @@ export interface ConversationRow {
     avatarUrl?: string;
   };
   channelType: string;
+  /** 對話所屬渠道（API 已回傳）；同一租戶可能接多個 LINE OA／粉專 */
+  channel?: { id: string; displayName: string; channelType: string } | null;
   lastMessage?: LastMessage | null;
   unreadCount?: number;
   status: string;

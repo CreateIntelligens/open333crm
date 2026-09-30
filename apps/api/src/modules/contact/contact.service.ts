@@ -5,6 +5,8 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { AppError } from '../../shared/utils/response.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { mergeContacts as runMergeEngine } from './contact-merge.service.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 export interface ContactFilters {
   q?: string;
@@ -32,11 +34,22 @@ function combineChannelIdentityFilters(filters: Prisma.ChannelIdentityWhereInput
   return { AND: filters };
 }
 
+function combineIdentityInclude(
+  base: Prisma.ChannelIdentityWhereInput | undefined,
+  channelId: { in: string[] } | undefined,
+): Prisma.ChannelIdentityWhereInput | undefined {
+  const parts = [...(base ? [base] : []), ...(channelId ? [{ channelId }] : [])];
+  if (parts.length === 0) return undefined;
+  return combineChannelIdentityFilters(parts);
+}
+
 export async function listContacts(
   prisma: TenantDb,
   tenantId: string,
   filters: ContactFilters,
   pagination: PaginationParams,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
   const where: Prisma.ContactWhereInput = {
     tenantId,
@@ -83,12 +96,17 @@ export async function listContacts(
     };
   }
 
+  // 列出的渠道身份只含可見渠道（CM-173）：否則分店帳號會看到其他分店渠道的名稱與 uid。
+  // 聯絡人本身是否該被列出屬 tasks 9.3.9，這裡只收掉身份明細。
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
+  const includedIdentityWhere = combineIdentityInclude(channelIdentityWhere, visibleChannelId);
+
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({
       where,
       include: {
         channelIdentities: {
-          ...(channelIdentityWhere ? { where: channelIdentityWhere } : {}),
+          ...(includedIdentityWhere ? { where: includedIdentityWhere } : {}),
           select: {
             id: true,
             channelType: true,
@@ -131,11 +149,16 @@ export async function getContact(
   prisma: TenantDb,
   id: string,
   tenantId: string,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
     include: {
       channelIdentities: {
+        // 只回傳可見渠道的身份（CM-173），避免分店看到其他渠道的名稱、uid 與暱稱
+        ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
         include: {
           channel: {
             select: {
@@ -211,10 +234,14 @@ export async function getContactConversations(
   tenantId: string,
   page: number,
   limit: number,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
   const where: Prisma.ConversationWhereInput = {
     contactId,
     tenantId,
+    ...(channelId ? { channelId } : {}),
   };
 
   const [conversations, total] = await Promise.all([
@@ -271,10 +298,14 @@ export async function getContactCases(
   tenantId: string,
   page: number,
   limit: number,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
   const where: Prisma.CaseWhereInput = {
     contactId,
     tenantId,
+    ...(channelId ? { channelId } : {}),
   };
 
   const [cases, total] = await Promise.all([
@@ -338,7 +369,11 @@ export async function getContactTimeline(
   prisma: TenantDb,
   contactId: string,
   tenantId: string,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  const channelFilter = channelId ? { channelId } : {};
   // Verify contact exists
   const contact = await prisma.contact.findFirst({
     where: { id: contactId, tenantId },
@@ -350,7 +385,7 @@ export async function getContactTimeline(
   // Fetch conversations, cases, case events, and tags in parallel
   const [conversations, cases, contactTags] = await Promise.all([
     prisma.conversation.findMany({
-      where: { contactId, tenantId },
+      where: { contactId, tenantId, ...channelFilter },
       select: {
         id: true,
         channelType: true,
@@ -363,7 +398,7 @@ export async function getContactTimeline(
       orderBy: { createdAt: 'desc' },
     }),
     prisma.case.findMany({
-      where: { contactId, tenantId },
+      where: { contactId, tenantId, ...channelFilter },
       select: {
         id: true,
         title: true,
@@ -550,153 +585,30 @@ export async function mergeContacts(
   tenantId: string,
   primaryContactId: string,
   secondaryContactId: string,
+  actorAgentId?: string,
 ) {
-  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）
-    // 1. Validate both contacts exist, same tenant, secondary not archived
-    const [primary, secondary] = await Promise.all([
-      prisma.contact.findFirst({ where: { id: primaryContactId, tenantId } }),
-      prisma.contact.findFirst({ where: { id: secondaryContactId, tenantId } }),
-    ]);
+  // 外層 withTenant 交易保證原子（不自開 $transaction，避免巢狀）；
+  // 實際搬移由統一合併引擎負責（見 contact-merge.service.ts）
+  const result = await runMergeEngine(prisma, {
+    tenantId,
+    survivorId: primaryContactId,
+    mergedId: secondaryContactId,
+    source: 'MANUAL',
+    actorAgentId,
+  });
 
-    if (!primary) throw new AppError(notFound('primaryContact'), 'NOT_FOUND', 404);
-    if (!secondary) throw new AppError(notFound('secondaryContact'), 'NOT_FOUND', 404);
-    if (secondary.isArchived) throw new AppError('次要聯絡人已被封存或合併，無法再次合併', 'BAD_REQUEST', 400);
-    if (primaryContactId === secondaryContactId) throw new AppError('無法將聯絡人與自己合併', 'BAD_REQUEST', 400);
-
-    // 2. Move channel identities
-    await prisma.channelIdentity.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 3. Move conversations
-    await prisma.conversation.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 4. Move cases
-    await prisma.case.updateMany({
-      where: { contactId: secondaryContactId },
-      data: { contactId: primaryContactId },
-    });
-
-    // 5. Merge tags (skip duplicates)
-    const secondaryTags = await prisma.contactTag.findMany({
-      where: { contactId: secondaryContactId },
-    });
-    const primaryTagIds = await prisma.contactTag.findMany({
-      where: { contactId: primaryContactId },
-      select: { tagId: true },
-    });
-    const existingTagIds = new Set(primaryTagIds.map((t) => t.tagId));
-    for (const st of secondaryTags) {
-      if (!existingTagIds.has(st.tagId)) {
-        await prisma.contactTag.create({
-          data: {
-            contactId: primaryContactId,
-            tagId: st.tagId,
-            addedBy: st.addedBy,
-            addedById: st.addedById,
-          },
-        });
-      }
-    }
-    // Remove secondary's tags to avoid FK issues
-    await prisma.contactTag.deleteMany({
-      where: { contactId: secondaryContactId },
-    });
-
-    // 6. Merge attributes (skip duplicate keys)
-    const secondaryAttrs = await prisma.contactAttribute.findMany({
-      where: { contactId: secondaryContactId },
-    });
-    const primaryAttrKeys = await prisma.contactAttribute.findMany({
-      where: { contactId: primaryContactId },
-      select: { key: true },
-    });
-    const existingKeys = new Set(primaryAttrKeys.map((a) => a.key));
-    for (const sa of secondaryAttrs) {
-      if (!existingKeys.has(sa.key)) {
-        await prisma.contactAttribute.create({
-          data: {
-            contactId: primaryContactId,
-            key: sa.key,
-            value: sa.value,
-            dataType: sa.dataType,
-          },
-        });
-      }
-    }
-    await prisma.contactAttribute.deleteMany({
-      where: { contactId: secondaryContactId },
-    });
-
-    // 7. Merge contact relations
-    const relationsFrom = await prisma.contactRelation.findMany({
-      where: { fromContactId: secondaryContactId },
-    });
-    for (const rel of relationsFrom) {
-      const targetId = rel.toContactId === secondaryContactId ? primaryContactId : rel.toContactId;
-      if (targetId === primaryContactId && rel.fromContactId === secondaryContactId) {
-        // Would create self-reference or duplicate, skip
-        const existing = await prisma.contactRelation.findFirst({
-          where: { fromContactId: primaryContactId, toContactId: targetId, relationType: rel.relationType },
-        });
-        if (!existing && primaryContactId !== targetId) {
-          await prisma.contactRelation.update({
-            where: { id: rel.id },
-            data: { fromContactId: primaryContactId },
-          });
-        }
-      }
-    }
-    const relationsTo = await prisma.contactRelation.findMany({
-      where: { toContactId: secondaryContactId },
-    });
-    for (const rel of relationsTo) {
-      if (rel.fromContactId === primaryContactId) continue; // Would become self-reference
-      const existing = await prisma.contactRelation.findFirst({
-        where: { fromContactId: rel.fromContactId, toContactId: primaryContactId, relationType: rel.relationType },
-      });
-      if (!existing) {
-        await prisma.contactRelation.update({
-          where: { id: rel.id },
-          data: { toContactId: primaryContactId },
-        });
-      }
-    }
-    // Clean up any remaining relations pointing to secondary
-    await prisma.contactRelation.deleteMany({
-      where: {
-        OR: [
-          { fromContactId: secondaryContactId },
-          { toContactId: secondaryContactId },
-        ],
-      },
-    });
-
-    // 8. Archive the secondary contact
-    await prisma.contact.update({
-      where: { id: secondaryContactId },
-      data: {
-        isArchived: true,
-        mergedIntoId: primaryContactId,
-      },
-    });
-
-    // 9. Emit WebSocket event
-    io.to(`tenant:${tenantId}`).emit('contact.merged', {
-      primaryContactId,
-      secondaryContactId,
-      primaryName: primary.displayName,
-      secondaryName: secondary.displayName,
-    });
+  io.to(`tenant:${tenantId}`).emit('contact.merged', {
+    primaryContactId,
+    secondaryContactId,
+    primaryName: result.survivor.displayName,
+    secondaryName: result.merged.displayName,
+  });
 
   return {
     primaryContactId,
     secondaryContactId,
-    primaryName: primary.displayName,
-    secondaryName: secondary.displayName,
+    primaryName: result.survivor.displayName,
+    secondaryName: result.merged.displayName,
+    mergeLogId: result.mergeLogId,
   };
 }

@@ -1,4 +1,4 @@
-import { prisma, Prisma } from '@open333crm/database';
+import { prisma } from '@open333crm/database';
 import { logger } from '../logger/index.js';
 
 export class ContactService {
@@ -92,97 +92,6 @@ export class ContactService {
       where: { contactId_key: { contactId, key } },
       update: { value, dataType },
       create: { contactId, key, value, dataType },
-    });
-  }
-
-  static async mergeContacts(tenantId: string, sourceId: string, targetId: string) {
-    if (sourceId === targetId) throw new Error('Cannot merge a contact into itself');
-
-    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const source = await tx.contact.findUnique({ where: { id: sourceId, tenantId } });
-      const target = await tx.contact.findUnique({ where: { id: targetId, tenantId } });
-
-      if (!source || !target) {
-        throw new Error('Source or Target contact not found, or tenant mismatch');
-      }
-
-      // 1. Move Channel Identities
-      await tx.channelIdentity.updateMany({
-        where: { contactId: sourceId },
-        data: { contactId: targetId },
-      });
-
-      // 2. Move Conversations
-      await tx.conversation.updateMany({
-        where: { contactId: sourceId },
-        data: { contactId: targetId },
-      });
-
-      // 3. Move Cases
-      await tx.case.updateMany({
-        where: { contactId: sourceId },
-        data: { contactId: targetId },
-      });
-
-      // 4. Move Long Term Memories
-      await tx.longTermMemory.updateMany({
-        where: { contactId: sourceId },
-        data: { contactId: targetId },
-      });
-
-      // 5. Move Attributes (Ignore conflicts natively by simply catching or we do it one by one)
-      const sourceAttrs = await tx.contactAttribute.findMany({ where: { contactId: sourceId } });
-      for (const attr of sourceAttrs) {
-        // Upsert avoids unique constraint violations
-        await tx.contactAttribute.upsert({
-          where: { contactId_key: { contactId: targetId, key: attr.key } },
-          update: {}, // keep target's existing value
-          create: { contactId: targetId, key: attr.key, value: attr.value, dataType: attr.dataType },
-        });
-      }
-
-      // 6. Move Tags
-      const sourceTags = await tx.contactTag.findMany({ where: { contactId: sourceId } });
-      for (const t of sourceTags) {
-        // Check if target already has this tag
-        const existing = await tx.contactTag.findFirst({
-          where: { contactId: targetId, tagId: t.tagId }
-        });
-        if (!existing) {
-          await tx.contactTag.update({
-            where: { id: t.id },
-            data: { contactId: targetId },
-          });
-        }
-      }
-
-      // 7. Move Relations
-      // From source
-      await tx.contactRelation.updateMany({
-        where: { fromContactId: sourceId },
-        data: { fromContactId: targetId },
-      });
-      // To source
-      await tx.contactRelation.updateMany({
-        where: { toContactId: sourceId },
-        data: { toContactId: targetId },
-      });
-
-      // 8. Update profile details if target is missing them
-      await tx.contact.update({
-        where: { id: targetId },
-        data: {
-          phone: target.phone || source.phone,
-          email: target.email || source.email,
-          avatarUrl: target.avatarUrl || source.avatarUrl,
-        },
-      });
-
-      // 9. Delete source contact
-      await tx.contact.delete({ where: { id: sourceId } });
-
-      logger.info(`[ContactService] Successfully merged Contact ${sourceId} into ${targetId}`);
-      return targetId;
     });
   }
 
