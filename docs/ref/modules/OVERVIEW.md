@@ -68,7 +68,7 @@
 
 ## 租戶後台（/dashboard）
 
-路由掛在 `/api/v1` 下，經過 `fastify.authenticate` 取得 `request.agent`，再由 `requirePermission()` 檢查權限碼。資料存取用 `request.tenantPrisma` 或 `withTenant()`，兩者都受 RLS 約束。
+路由掛在 `/api/v1` 下，經過 `fastify.authenticate` 取得 `request.agent`，再由 `requirePermission()` 檢查權限碼。有效權限的算法見[權限計算](./PERMISSIONS.md)。資料存取用 `request.tenantPrisma` 或 `withTenant()`，兩者都受 RLS 約束。
 
 各功能區由哪些模組負責、模組之間怎麼接力，見[租戶後台](../features/tenant/README.md)。
 

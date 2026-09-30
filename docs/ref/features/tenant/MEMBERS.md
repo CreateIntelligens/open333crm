@@ -92,11 +92,9 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 ### 有效權限怎麼算
 
-```text
-有效權限 = 角色的權限碼 ∩ 方案功能天花板 − 方案拒絕清單
-```
+成員實際能用的權限，是角色授予的權限碼再扣掉方案不允許的部分。`requirePermission()`、渠道可見範圍與 socket 房間授權都用這個結果。計算步驟、快取，以及改角色或方案之後多久生效，見[權限計算](../../modules/PERMISSIONS.md)。
 
-`getEffectiveTenantPermissions()` 計算上式，結果快取在 Redis。`requirePermission()`、渠道可見範圍與 socket 房間授權都用這個結果。方案天花板的細節見平台後台的[方案與上限](../platform/PLANS.md)。
+新增權限碼之後，既有租戶的角色不會自動取得，要執行 reconcile 腳本；而這個腳本會覆蓋管理員對系統角色的修改，見 `../../system/AUDIT.md` 的 RBAC-05。
 
 「角色與權限」頁顯示的是角色本身的權限碼，沒有套用方案天花板，因此畫面上勾選的權限不一定真的生效，見 `../../system/AUDIT.md` 的 PLAN-08。
 
@@ -152,6 +150,8 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | **密碼登入沒有速率限制** | 詳見 `../../system/AUDIT.md` 的 SEC-05 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
+| **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
+| 正式租戶的 `supervisor` 預設沒有 `channel.view_all` | 預設權限有兩份，demo 資料的版本不同。詳見 `../../system/AUDIT.md` 的 RBAC-06 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |
 | 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |
 | 沒有忘記密碼流程 | 詳見 `../../system/AUDIT.md` 的 AUTH-01 |

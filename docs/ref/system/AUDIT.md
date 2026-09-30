@@ -51,6 +51,8 @@
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
+| [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
+| [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已提建議 | 預設角色的權限有兩份，內容已經不同；正式租戶的 `supervisor` 沒有 `channel.view_all` | 靜態確認 |
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P3 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用 | 靜態確認 |
 | [A2A-01](#a2a-01) | 租戶隔離與權限 | P2 | 未處理 | A2A 橋接以最早建立的租戶執行所有外部任務，使用該租戶的金鑰與額度 | 靜態確認 |
 | [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
@@ -301,6 +303,53 @@ CLI token 的停用問題另見 AUTH-02。
 | `case.routes.ts` 的 `GET /stats` | 統計全租戶的工單 |
 
 第一項影響最大：只要受限客服的畫面連著 socket，渠道可見範圍在即時事件上等於不存在。
+
+<a id="rbac-05"></a>
+### RBAC-05：reconcile 腳本會覆蓋租戶對系統角色的修改
+
+新增權限碼之後，既有租戶的角色不會自動取得，連 `admin` 也不會。補上的唯一途徑是手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶呼叫 `seedRolesForTenant()`，而 `seed-roles.ts` 的 `seedRolesForTenant()` 對三個系統角色都是先 `rolePermission.deleteMany()`，再依 `DEFAULT_ROLE_PERMISSIONS` 重建。
+
+租戶管理員可以修改系統角色的權限碼：`role.service.ts` 的 `setRolePermissions()` 只禁止移除 `admin` 的鎖定碼，不禁止修改系統角色。因此執行 reconcile 之後：
+
+| 租戶做過的修改 | reconcile 之後 |
+| --- | --- |
+| 從 `supervisor` 或 `agent` 移除某個權限碼，例如 `marketing.broadcast` | 重新授予，租戶不會收到任何通知 |
+| 給 `supervisor` 或 `agent` 加上預設沒有的權限碼 | 被移除 |
+| 自訂角色 | 不受影響 |
+
+腳本的註解寫「只動 system role；租戶自訂角色不受影響」，沒有提到系統角色的修改會遺失。
+
+另外兩個相關的缺口：
+
+- 腳本不清除 Redis 的 `perms:*` 快取，重建後最多 10 分鐘才生效。`openspec/changes/archive/2026-09-15-channel-scoped-visibility/design.md` 把「清權限快取」列為部署時的手動步驟。
+- `.github/workflows/deploy.yml` 不執行這個腳本，執行與否完全依賴部署的人記得。漏掉時，新功能的路由對所有既有租戶回 403。
+
+**修正方向**：reconcile 只補上「預設有、但租戶從未設定過」的新權限碼，不刪除也不重加既有的碼；這需要記錄每個角色已經同步到哪一版註冊表。腳本結束前清除 `perms:*` 快取，並納入部署流程。
+
+<a id="rbac-06"></a>
+### RBAC-06：預設角色的權限有兩份，內容已經不同
+
+系統角色的預設權限寫在兩個地方：
+
+| 位置 | 用途 |
+| --- | --- |
+| `packages/core/src/rbac/default-roles.ts` 的 `DEFAULT_ROLE_PERMISSIONS` | 平台開通租戶、reconcile 腳本 |
+| `packages/database/prisma/seed-data/rbac-roles.ts` | `pnpm db:seed` 建立的 demo 租戶 |
+
+第二份存在的原因寫在檔頭：`database` 套件不能 import `core`，否則形成循環相依。兩份以人工同步，逐項比對的結果如下：
+
+| 角色 | 只在 core 的版本 | 只在 demo seed 的版本 |
+| --- | --- | --- |
+| `supervisor` | 無 | `channel.view_all` |
+| `agent` | 無 | 無 |
+| `admin` | `audit.view`、`data.export`、`data.erase`（core 的 `admin` 是註冊表的全部權限碼） | 無 |
+
+影響：
+
+- **正式租戶的 `supervisor` 受渠道綁定限制，開發環境的不受限。** 在開發環境測試分店情境時，`supervisor` 看得到所有渠道；平台開通的租戶則不然。CHANGELOG 的 CM-173 寫 `channel.view_all`「給 admin/supervisor」，與 core 的版本不符；openspec 的設計文件只寫「授予給總店主管類角色」，沒有指定角色。
+- **demo 租戶的 `admin` 呼叫不了稽核日誌、資料匯出與資料刪除的端點**，直到執行 reconcile。
+
+**修正方向**：先決定 `supervisor` 是否預設擁有 `channel.view_all`，再讓兩份共用同一個來源。例如把預設權限移到 `core` 與 `database` 都能相依、而且不相依兩者的位置，或讓 demo seed 改由 API 的開通流程建立租戶。
 
 <a id="team-01"></a>
 ### TEAM-01：團隊沒有建立與管理成員的途徑

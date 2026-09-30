@@ -4,6 +4,17 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：撰寫權限計算文件，新增 RBAC-05、RBAC-06
+
+起因是新增[權限計算](../modules/PERMISSIONS.md)。做法是從 `packages/core/src/rbac/` 的註冊表開始，沿著 `requirePermission()`、`getEffectiveTenantPermissions()`、渠道可見範圍與 socket 房間授權讀一遍，再追查權限碼怎麼進入每個租戶的角色：開通流程、reconcile 腳本與 demo seed。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| RBAC-05 | `seedRolesForTenant()` 對每個系統角色先 `rolePermission.deleteMany({ where: { roleId } })` 再 `createMany()`；`reconcile-system-role-permissions.mjs` 對所有租戶呼叫它；`setRolePermissions()` 對系統角色只檢查 `ADMIN_LOCKED`；腳本沒有呼叫任何 Redis 清除；`.github/workflows/deploy.yml` 沒有出現 `reconcile` |
+| RBAC-06 | 以腳本擷取兩個檔案的 `SUPERVISOR_CODES`、`AGENT_CODES` 與 demo seed 的 `ADMIN_ONLY` 做集合比對；`git log -S"channel.view_all" -- packages/core/src/rbac/` 只有新增權限碼的 commit，`default-roles.ts` 從未包含它；CHANGELOG 的 CM-173 條目 |
+
+**文件修正。** `tenant/MEMBERS.md` 的「有效權限怎麼算」改為摘要並連到新文件。
+
 ## 2026-09-30：撰寫認證機制文件，新增三個項目並修正 SEC-03
 
 起因是新增[認證與憑證](../modules/AUTHENTICATION.md)。做法是逐一讀 `auth.plugin.ts` 的每個認證裝飾器、每種憑證的簽發與驗證函式、兩個 socket namespace 的 handshake，以及沒有客服登入的對外端點，再列出每個裝飾器寫入 `request.agent` 的欄位，與讀取這些欄位的程式對照。

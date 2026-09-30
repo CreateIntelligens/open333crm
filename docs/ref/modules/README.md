@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | [模組總覽](./OVERVIEW.md) | 全部模組 | 這個模組屬於哪個後台？掛哪個路由？對應哪個後台頁面？需要什麼權限？背景工作跑在哪個行程？ |
 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) | `canvas` | 一條流程由哪些節點組成？停下來之後怎麼繼續？ |
+| [權限計算](./PERMISSIONS.md) | `packages/core/src/rbac/`、`guards/rbac.guard.ts`、`services/permission.service.ts`、`services/channel-visibility.ts` | 有效權限怎麼算？改角色或方案多久生效？成員看得到哪些渠道？新增權限碼要做什麼？ |
 | [認證與憑證](./AUTHENTICATION.md) | `auth`、`plugins/auth.plugin.ts`、`plugins/socket.plugin.ts`，以及各對外端點的驗證 | 系統有哪些憑證？路由該掛哪個認證裝飾器？停用或撤銷之後多久生效？ |
 
 ## 新增文件時
