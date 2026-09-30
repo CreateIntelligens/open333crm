@@ -73,6 +73,7 @@ export async function listChannels(
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       createdAt: true,
       updatedAt: true,
@@ -81,6 +82,9 @@ export async function listChannels(
 
   return channels;
 }
+
+const accountAlreadyLinked = () =>
+  new AppError('此粉專／IG 帳號已連結到其他渠道，同一個帳號只能連結一次', 'CHANNEL_ACCOUNT_ALREADY_LINKED', 409);
 
 export async function createChannel(
   prisma: TenantDb,
@@ -91,6 +95,12 @@ export async function createChannel(
     credentials: Record<string, unknown>;
     settings?: Record<string, unknown>;
     webhookBaseUrl?: string;
+    /**
+     * 僅供系統內部的可信來源使用（平台 Facebook 登入連結：ID 來自 Meta 以使用者授權取得的粉專清單）。
+     * 不可由租戶 API 輸入傳入——手填的帳號 ID 可被用來搶別人的粉專（design D4b）。
+     * 已被其他渠道連結時丟 409 CHANNEL_ACCOUNT_ALREADY_LINKED。
+     */
+    externalAccountId?: string;
   },
 ) {
   // 方案層渠道管控（一次查 tenant+plan，供白名單與數量上限共用）。
@@ -128,17 +138,39 @@ export async function createChannel(
 
   const encrypted = encryptCredentials(data.credentials);
 
-  const channel = await prisma.channel.create({
-    data: {
-      tenantId,
-      channelType: data.channelType as any,
-      displayName: data.displayName,
-      publicKey: generatePublicKey(),
-      isActive: true,
-      credentialsEncrypted: encrypted,
-      settings: (data.settings ?? {}) as any,
-    },
-  });
+  const createRow = () =>
+    prisma.channel.create({
+      data: {
+        tenantId,
+        channelType: data.channelType as any,
+        displayName: data.displayName,
+        publicKey: generatePublicKey(),
+        isActive: true,
+        credentialsEncrypted: encrypted,
+        settings: (data.settings ?? {}) as any,
+        ...(data.externalAccountId ? { externalAccountId: data.externalAccountId } : {}),
+      },
+    });
+  const isAccountConflict = (err: unknown) => {
+    const e = err as { code?: string; meta?: { target?: unknown } };
+    return e.code === 'P2002' && String(e.meta?.target ?? '').includes('externalAccountId');
+  };
+  let channel: Awaited<ReturnType<typeof createRow>>;
+  try {
+    channel = await createRow();
+  } catch (err) {
+    if (!isAccountConflict(err) || !data.externalAccountId) throw err;
+    // 佔住的若是停用渠道／停用租戶的渠道，釋放後重試一次；啟用中的連結不受影響
+    const [row] = await prisma.$queryRaw<Array<{ released: number }>>`
+      SELECT release_inactive_channel_account(${data.channelType}::"ChannelType", ${data.externalAccountId}) AS released`;
+    if (!row || Number(row.released) === 0) throw accountAlreadyLinked();
+    try {
+      channel = await createRow();
+    } catch (retryErr) {
+      if (isAccountConflict(retryErr)) throw accountAlreadyLinked();
+      throw retryErr;
+    }
+  }
 
   // Generate and store webhook URL
   const apiBaseUrl = data.webhookBaseUrl || process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`;
@@ -157,6 +189,7 @@ export async function createChannel(
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       createdAt: true,
       updatedAt: true,
@@ -178,6 +211,7 @@ export async function getChannel(prisma: TenantDb, id: string, tenantId: string)
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       credentialsEncrypted: true,
       createdAt: true,
@@ -236,6 +270,8 @@ export async function updateChannel(
   }
   if (data.isActive !== undefined) {
     updateData.isActive = data.isActive;
+    // 停用的渠道不再持有帳號 ID，否則會永久佔住該粉專，新渠道無法連結（重新啟用後按測試連線即可取回）
+    if (data.isActive === false) updateData.externalAccountId = null;
   }
   if (data.credentials) {
     // 部分更新：先合併舊憑證，再以本次明確提供（非 undefined）的欄位覆蓋，
@@ -251,6 +287,13 @@ export async function updateChannel(
       /* 舊憑證解不開（跨環境金鑰不符）就直接用新憑證 */
     }
     updateData.credentialsEncrypted = encryptCredentials(nextCredentials);
+    // FB／IG 換了 token 可能已是另一個粉專／帳號：舊的外部帳號 ID 不再可信，清掉等重新驗證寫入
+    const tokenChanged = ['pageAccessToken', 'appSecret'].some(
+      (k) => data.credentials![k] !== undefined && data.credentials![k] !== '',
+    );
+    if ((channel.channelType === CHANNEL_TYPE.FB || channel.channelType === CHANNEL_TYPE.THREADS) && tokenChanged) {
+      updateData.externalAccountId = null;
+    }
   }
   if (data.settings !== undefined) {
     // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
@@ -282,6 +325,7 @@ export async function updateChannel(
       isActive: true,
       webhookUrl: true,
       lastVerifiedAt: true,
+      externalAccountId: true,
       settings: true,
       createdAt: true,
       updatedAt: true,
@@ -301,6 +345,21 @@ export async function deleteChannel(prisma: TenantDb, id: string, tenantId: stri
   }
 
   await prisma.channel.delete({ where: { id } });
+
+  // 平台模式（Facebook 登入連結）的粉專：刪除成功後取消它對平台 App 的訂閱，平台不再收到這個粉專的事件。
+  // 動態 import 避免與 meta-connect 模組互相引用；盡力而為，失敗只記 log
+  if (channel.channelType === CHANNEL_TYPE.FB) {
+    let credentials: Record<string, unknown> | null = null;
+    try {
+      credentials = decryptCredentials(channel.credentialsEncrypted);
+    } catch {
+      /* 解不開就沒有 token 可用，略過 */
+    }
+    if (credentials?.connectMode === 'platform') {
+      const { unsubscribePlatformPage } = await import('../meta-connect/meta-connect.service.js');
+      await unsubscribePlatformPage(credentials);
+    }
+  }
 
   return { deleted: true };
 }
@@ -376,7 +435,61 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
 }
 
 /** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
-const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured'] as const;
+const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting', 'metaConnect'] as const;
+
+/** 只由平台連結流程寫入的憑證欄位：租戶不可自行設定（例如把自備渠道標成平台模式，或替平台渠道補 appSecret） */
+const SYSTEM_MANAGED_CREDENTIAL_KEYS = ['connectMode'] as const;
+
+export function stripSystemManagedCredentials<T extends Record<string, unknown> | undefined>(credentials: T): T {
+  if (!credentials) return credentials;
+  const copy = { ...credentials } as Record<string, unknown>;
+  for (const key of SYSTEM_MANAGED_CREDENTIAL_KEYS) delete copy[key];
+  return copy as T;
+}
+
+/** 租戶 API 送來的 settings 移除系統維護欄位（這些只能由驗證、webhook 或平台連結流程寫入） */
+export function stripSystemManagedSettings(settings: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!settings) return settings;
+  const copy = { ...settings };
+  for (const key of SYSTEM_MANAGED_SETTING_KEYS) delete copy[key];
+  return copy;
+}
+
+/**
+ * 寫入渠道的外部帳號 ID（FB 粉專 ID／IG 專業帳號 ID），webhook 依它分派渠道與租戶
+ * （change fix-meta-webhook-page-routing）。
+ *
+ * **只由驗證呼叫**：ID 來自以該渠道 token 向 Meta 查得的結果，等於證明持有者真的管理這個帳號。
+ * 不接受表單手填——共用同一個 Meta App 時，手填別人的粉專 ID 就能把別的租戶的訊息搶過來。
+ * 同一帳號全平台只能連結一次（唯一索引），撞重複回 409 且不寫入；成功後清掉分派警示。
+ */
+async function setExternalAccountId(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  channelType: string,
+  accountId: unknown,
+) {
+  if (accountId === undefined || accountId === null || String(accountId).trim() === '') return;
+  const value = String(accountId).trim();
+  const write = () => prisma.channel.updateMany({ where: { id, tenantId }, data: { externalAccountId: value } });
+  try {
+    await write();
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'P2002') throw err;
+    // 佔住的若是已停用渠道或停用租戶的渠道，釋放後重試一次（資料庫函式只會動停用的，啟用中的連結不受影響）
+    const [row] = await prisma.$queryRaw<Array<{ released: number }>>`
+      SELECT release_inactive_channel_account(${channelType}::"ChannelType", ${value}) AS released`;
+    if (!row || Number(row.released) === 0) throw accountAlreadyLinked();
+    try {
+      await write();
+    } catch (retryErr) {
+      if ((retryErr as { code?: string }).code === 'P2002') throw accountAlreadyLinked();
+      throw retryErr;
+    }
+  }
+  await patchChannelSettings(prisma, id, tenantId, {}, ['webhookRouting']);
+}
 
 
 export async function verifyChannel(prisma: TenantDb, id: string, tenantId: string) {
@@ -424,7 +537,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // Verify the page access token by calling the Graph API
     // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄
     const response = await fetch(
-      'https://graph.facebook.com/v21.0/me?fields=id,name,username',
+      'https://graph.facebook.com/v21.0/me?fields=id,name,username,category',
       { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
@@ -446,6 +559,16 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // 沒設定的話新顧客的綁定代碼永遠進不來，驗證時一併檢查並回報給後台提示
     const getStartedConfigured = await hasFbGetStarted(pageAccessToken);
 
+    // 粉專 ID = webhook entry.id，入站依它分派；已被其他渠道連結時丟 409，驗證不成立
+    // 粉專才有 category；沒有代表填的是個人使用者權杖，拿到的 id 不是粉專 ID，寫進去會讓本渠道的事件全部對不上
+    if (!pageInfo.category) {
+      throw new AppError(
+        'Facebook 驗證失敗：這組權杖不是粉絲專頁權杖，請在「產生存取權杖」選擇粉專後產生的權杖',
+        'CHANNEL_VERIFY_FAILED',
+        400,
+      );
+    }
+    await setExternalAccountId(prisma, id, tenantId, CHANNEL_TYPE.FB, pageInfo.id);
     await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
     // 粉專 username（沒有就用 page id）供 m.me 綁定連結使用
     await patchChannelSettings(prisma, id, tenantId, {
@@ -462,7 +585,8 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // 走 IG Login 路線，用 Instagram Graph API 驗證 token 有效
     // token 走 Authorization header，避免出現在 URL 被代理/日誌記錄，也免去編碼問題
     const response = await fetch(
-      'https://graph.instagram.com/v21.0/me?fields=id,username',
+      // user_id 才是 IG 專業帳號 ID（= webhook entry.id）；id 只是 App 範圍的使用者 ID，不能拿來分派
+      'https://graph.instagram.com/v21.0/me?fields=user_id,username',
       { headers: { Authorization: `Bearer ${pageAccessToken}` } },
     );
 
@@ -480,6 +604,10 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const igInfo = (await response.json()) as Record<string, unknown>;
 
+    if (!igInfo.user_id) {
+      throw new AppError('Instagram 驗證失敗：無法取得 IG 專業帳號 ID，請確認帳號權杖正確', 'CHANNEL_VERIFY_FAILED', 400);
+    }
+    await setExternalAccountId(prisma, id, tenantId, CHANNEL_TYPE.THREADS, igInfo.user_id);
     await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
     // IG username 供 ig.me 綁定連結使用
     await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(igInfo.username));

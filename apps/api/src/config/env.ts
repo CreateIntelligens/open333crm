@@ -34,6 +34,19 @@ const envSchema = z.object({
   FB_LOGIN_APP_ID: z.string().optional(),
   FB_LOGIN_APP_SECRET: z.string().optional(),
   FB_LOGIN_CALLBACK_URL: z.string().optional(),
+  // 平台持有的 Meta App（change fix-meta-webhook-page-routing 第 3 階段）：租戶以 Facebook 登入連結粉專，
+  // 事件統一打到 /api/v1/webhooks/meta。四個都設定才啟用；未設定時相關端點回 503
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  // 必須與 Meta 後台「有效的 OAuth 重新導向 URI」完全一致，例如 https://uat.example.com/api/v1/meta-connect/callback
+  META_CONNECT_REDIRECT_URI: z.string().url().optional(),
+  // Facebook Login for Business 的設定 ID；未設定時改用傳統 scope 授權。
+  // 設定類型必須是「使用者存取權杖（User access token）」：程式會把它換成長效權杖再取粉專清單；
+  // 系統使用者權杖（SUAT）類型的流程不同，未支援。平台 App 請勿開啟「Require App Secret」以外的
+  // 額外限制；已開啟也可（連結流程會帶 appsecret_proof），但收發訊息的呼叫尚未帶 proof。
+  // 四個必要值要一起設定或一起移除：只移除一部分會讓 /webhooks/meta 回 503，Meta 重試後可能自動停用 webhook
+  META_LOGIN_CONFIG_ID: z.string().optional(),
   OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
   OLLAMA_EMBED_MODEL: z.string().default('bge-m3'),
   OLLAMA_CHAT_MODEL: z.string().default('qwen2.5:3b'),

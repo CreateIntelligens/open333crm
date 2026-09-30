@@ -229,7 +229,8 @@ async function testFacadeAndCallerContractsFromSource() {
   assert.equal(webhookSource.includes('await runInboundPostbackInterceptors(ctx)'), true);
   assert.equal(webhookSource.includes('await triggerWebhookFlow(ctx)'), true);
 
-  assert.equal(webhookSource.includes('await processInboundMessage(prisma, io, credentials, channel, tenantId, parsed)'), true);
+  // FB／IG 依 entry.id 分派後，每組以分派到的渠道、憑證與租戶進入入站管線（change fix-meta-webhook-page-routing）
+  assert.equal(webhookSource.includes('await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed)'), true);
   assert.equal(webchatSource.includes('await processInboundMessage(prisma, io, {}, channel, channel.tenantId, parsed)'), true);
   assert.equal(chatboxSource.includes('const result = await processInboundMessage('), true);
   assert.equal(chatboxSource.includes('conversationId: session.conversationId'), true);

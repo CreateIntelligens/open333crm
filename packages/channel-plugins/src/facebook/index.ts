@@ -26,6 +26,7 @@ export class FbPlugin implements ChannelPlugin {
 
     if (payload.object === 'page') {
       for (const entry of payload.entry || []) {
+        const firstOfEntry = messages.length;
         for (const event of entry.messaging || []) {
           // Skip echo messages
           if (event.message?.is_echo) continue;
@@ -96,6 +97,9 @@ export class FbPlugin implements ChannelPlugin {
             }
           }
         }
+        // 事件所屬粉專（entry.id），入站管線依此分派渠道與租戶
+        const accountId = entry.id != null ? String(entry.id) : undefined;
+        for (let i = firstOfEntry; i < messages.length; i++) messages[i]!.accountId = accountId;
       }
     }
 

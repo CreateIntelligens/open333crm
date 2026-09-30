@@ -11,6 +11,8 @@ import {
   updateWebhookBaseUrl,
   ensureChannelPublicKey,
   patchChannelSettings,
+  stripSystemManagedCredentials,
+  stripSystemManagedSettings,
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -192,7 +194,12 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: requirePermission('channel.create') }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
 
-    const channel = await createChannel(request.tenantPrisma, request.agent.tenantId, data);
+    // 系統維護欄位（分派警示、平台連結標記等）不接受租戶輸入
+    const channel = await createChannel(request.tenantPrisma, request.agent.tenantId, {
+      ...data,
+      credentials: stripSystemManagedCredentials(data.credentials),
+      settings: stripSystemManagedSettings(data.settings),
+    });
 
     // 稽核：建立渠道（只放型別與顯示名，絕不放 credentials 憑證）
     await writeTenantAudit(request.tenantPrisma, {
@@ -221,7 +228,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
   // PATCH /api/v1/channels/:id
   fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: requirePermission('channel.update') }, async (request, reply) => {
-    const data = updateChannelSchema.parse(request.body);
+    const parsed = updateChannelSchema.parse(request.body);
+    const data = { ...parsed, credentials: stripSystemManagedCredentials(parsed.credentials) };
 
     const channel = await updateChannel(
       request.tenantPrisma,
@@ -229,6 +237,16 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       data,
     );
+
+    // FB／IG 換了權杖或重新啟用都會少了帳號 ID（見 updateChannel）：立即重新驗證取回。
+    // 平台模式渠道沒有網址可退回相容模式，不取回就會收不到任何訊息。
+    // 驗證失敗不影響儲存本身，渠道卡片會顯示「尚未取得帳號 ID」提示管理員
+    const needsReverify = Boolean(data.credentials) || data.isActive === true;
+    if (needsReverify && channel.isActive && (channel.channelType === CHANNEL_TYPE.FB || channel.channelType === CHANNEL_TYPE.THREADS) && !channel.externalAccountId) {
+      await verifyChannel(request.tenantPrisma, request.params.id, request.agent.tenantId).catch((err: unknown) =>
+        request.log.warn({ err: err instanceof Error ? err.message : err, channelId: request.params.id }, '更新權杖後自動驗證失敗'),
+      );
+    }
 
     return reply.send(success(channel));
   });

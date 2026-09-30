@@ -42,8 +42,11 @@ export class ThreadsPlugin implements ChannelPlugin {
   ): Promise<ParsedWebhookMessage[]> {
     const payload = JSON.parse(rawBody.toString()) as InstagramWebhookPayload;
     const messages: ParsedWebhookMessage[] = [];
+    // 只處理 Instagram 物件的事件；其他 object（例如誤送的 page 事件）不當成 IG 訊息
+    if (payload.object !== 'instagram') return messages;
 
     for (const entry of payload.entry ?? []) {
+      const firstOfEntry = messages.length;
       for (const messaging of entry.messaging ?? []) {
         // 非訊息事件（read 已讀回條、reaction 等）沒有 sender，跳過避免 TypeError
         if (!messaging?.sender?.id) continue;
@@ -112,6 +115,9 @@ export class ThreadsPlugin implements ChannelPlugin {
         }
         messages.push({ channelMsgId, contactUid, timestamp, contentType: 'unknown', content: {}, rawPayload: messaging, referralRef });
       }
+      // 事件所屬 IG 專業帳號（entry.id），入站管線依此分派渠道與租戶
+      const accountId = entry.id != null ? String(entry.id) : undefined;
+      for (let i = firstOfEntry; i < messages.length; i++) messages[i]!.accountId = accountId;
     }
 
     return messages;

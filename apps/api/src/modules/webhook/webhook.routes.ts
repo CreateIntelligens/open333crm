@@ -1,5 +1,7 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { processWebhookEvent } from './webhook.service.js';
+import { processPlatformMetaWebhook, processWebhookEvent } from './webhook.service.js';
+import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
@@ -51,6 +53,39 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       return reply.status(200).send({ success: true });
     },
   );
+
+  // ─── 平台 Meta App Webhook（change fix-meta-webhook-page-routing 第 3 階段）──
+  // 以 Facebook 登入連結的粉專，事件統一打到這裡，依 entry.id 分派渠道與租戶
+
+  fastify.get<{
+    Querystring: { 'hub.mode'?: string; 'hub.verify_token'?: string; 'hub.challenge'?: string };
+  }>('/meta', async (request, reply) => {
+    const cfg = getMetaAppConfig();
+    if (!cfg) return reply.status(503).send('Platform Meta App is not configured');
+    const mode = request.query['hub.mode'];
+    const token = request.query['hub.verify_token'];
+    const challenge = request.query['hub.challenge'];
+    const expected = Buffer.from(cfg.verifyToken);
+    const given = Buffer.from(token ?? '');
+    const tokenOk = given.length === expected.length && timingSafeEqual(given, expected);
+    if (mode !== 'subscribe' || !challenge || !tokenOk) {
+      return reply.status(403).send('Forbidden');
+    }
+    return reply.status(200).type('text/plain').send(challenge);
+  });
+
+  fastify.post('/meta', async (request, reply) => {
+    if (!getMetaAppConfig()) return reply.status(503).send('Platform Meta App is not configured');
+    const body = request.body as Record<string, unknown> | undefined;
+    const rawBody = (body as any)?.__rawBody as Buffer | undefined;
+    if (!rawBody) return reply.status(400).send('Bad Request');
+    const headers = request.headers as Record<string, string>;
+    // 先回 200，非同步處理（避免 Meta 重試或自動停用 webhook）
+    processPlatformMetaWebhook(fastify.prismaAdmin, fastify.io, rawBody, headers).catch((err) => {
+      fastify.log.error({ err: err?.message ?? err }, 'Platform Meta webhook processing failed');
+    });
+    return reply.status(200).send('EVENT_RECEIVED');
+  });
 
   // ─── Facebook Messenger Webhook ──────────────────────────────────────────
 

@@ -54,7 +54,6 @@ export function ChannelFormDialog({
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
   const [pageAccessToken, setPageAccessToken] = useState('');
-  const [pageId, setPageId] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +76,6 @@ export function ChannelFormDialog({
     setAppId('');
     setAppSecret('');
     setPageAccessToken('');
-    setPageId('');
     setSavedCredentials({});
     setError(null);
     setCopied(false);
@@ -114,12 +112,11 @@ export function ChannelFormDialog({
         // 只送出實際填寫的欄位（未填帶 undefined），讓後端合併既有憑證，
         // 支援只輪替單一憑證（例如只換 pageAccessToken）而不需重填全部。
         if (channel!.channelType === CHANNEL_TYPE.FB) {
-          if (appId || appSecret || pageAccessToken || pageId) {
+          if (appId || appSecret || pageAccessToken) {
             editPayload.credentials = {
               appId: appId || undefined,
               appSecret: appSecret || undefined,
               pageAccessToken: pageAccessToken || undefined,
-              pageId: pageId || undefined,
             };
           }
         } else if (channel!.channelType === CHANNEL_TYPE.THREADS) {
@@ -155,7 +152,6 @@ export function ChannelFormDialog({
             appId,
             appSecret,
             pageAccessToken,
-            pageId,
             verifyToken,
           };
         } else if (channelType === CHANNEL_TYPE.THREADS) {
@@ -355,19 +351,9 @@ export function ChannelFormDialog({
                     Messenger → Settings → Token Generation → 選擇粉專 → Generate Token
                   </p>
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">
-                    Page ID
-                  </label>
-                  <Input
-                    value={pageId}
-                    onChange={(e) => setPageId(e.target.value)}
-                    placeholder="粉絲專頁數字 ID"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    粉專設定 → 關於，或 Token Generation 頁面旁邊
-                  </p>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  粉專 ID 不需填寫：儲存後按「測試連線」，系統會用 Page Access Token 向 Facebook 取得並顯示在渠道卡片上。
+                </p>
               </>
             )}
 
@@ -577,7 +563,6 @@ export function ChannelFormDialog({
         ...(appId ? { appId } : {}),
         ...(appSecret ? { appSecret } : {}),
         ...(pageAccessToken ? { pageAccessToken } : {}),
-        ...(pageId ? { pageId } : {}),
       }}
     />
     </>

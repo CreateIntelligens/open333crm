@@ -85,13 +85,12 @@ const GUIDES: Record<string, ChannelGuide> = {
         values: [{ label: 'Page Access Token', key: 'pageAccessToken', secret: true }],
       },
       {
-        field: 'Page ID（選填）',
-        values: [{ label: 'Page ID', key: 'pageId', secret: false }],
+        field: 'Page ID（不需填寫）',
+        values: [],
         steps: [
-          '通常可留空——發送訊息用 Page Access Token 即可，不一定需要 Page ID',
-          '若要填：新版粉專已隱藏編號，需到粉專後台「專業主控版」→ 進入「Meta Business Suite（商務套件）」',
-          '在 Meta Business Suite 右上角「設定」→「查看所有設定」→ 左側「訊息」，找到 m.me/xxxxx 後面那串 15 位數字即為 Page ID',
-          '（或用第三方查詢工具如 lookup-id.com，貼上粉專網址即可查出）',
+          '不需要手動填寫：按「測試連線」時，系統會用 Page Access Token 向 Facebook 取得粉專 ID，顯示在渠道卡片上',
+          '系統依粉專 ID 判斷每則訊息屬於哪個渠道；多個粉專共用同一個 Meta 應用程式時也不會收錯',
+          '同一個粉專只能連結一個渠道，重複連結時測試連線會提示「此粉專已連結到其他渠道」',
         ],
       },
     ],

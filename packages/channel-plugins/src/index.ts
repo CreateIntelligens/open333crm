@@ -17,6 +17,12 @@ export interface ParsedWebhookMessage {
    * contentType 為 'referral' 的事件只帶這個值、沒有訊息內容。
    */
   referralRef?: string;
+  /**
+   * 事件所屬的平台帳號 ID（FB／IG webhook 的 `entry.id`：粉專 ID／IG 專業帳號 ID）。
+   * 同一個 Meta App 可能服務多個粉專，入站管線依此找出真正的渠道與租戶，
+   * 不可只看 webhook 網址上的 channelId（change fix-meta-webhook-page-routing）。
+   */
+  accountId?: string;
 }
 
 export interface OutboundPayload {
