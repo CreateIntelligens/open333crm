@@ -123,7 +123,7 @@ model ContactMergeLog {
 ### D6 發碼
 觸發方式：
 1. 顧客在對話中傳送綁定關鍵字（租戶設定 `TenantSettings.identityBinding.bindKeywords`，預設 `["綁定帳號"]`；新增 JSON 欄位 `identityBinding`）。關鍵字須**整句相符**（去頭尾空白、不分大小寫），避免一般對話提到「綁定帳號」就被攔截。
-2. 客服在聯絡人頁按「傳送綁定連結」（需 `contact.update` 權限），系統在該對話送出。
+2. 客服在收件匣按「傳送綁定連結」（需 `inbox.reply` 權限與該渠道的回覆層級存取），系統在該對話送出。
 
 發碼後回覆一則系統訊息，列出**其他**可綁定渠道的導流連結（排除顧客目前所在的這個 channel；只列 `isActive` 且已設定導流識別的 LINE/FB/IG 渠道）：
 - LINE：`https://line.me/R/oaMessage/{percent-encoded basicId}/?{percent-encoded 預填文字}`

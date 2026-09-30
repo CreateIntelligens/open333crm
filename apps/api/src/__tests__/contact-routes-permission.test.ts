@@ -4,7 +4,7 @@
  * 背景：contact.view／contact.update 權限點早已定義，但多數 /api/v1/contacts/* 路由沒套用，
  * 只要登入即可讀寫任何聯絡人。本測試確保每一條路由都有守門，且有權限時照常放行。
  *
- * 需要 DATABASE_URL（自動讀 repo 根目錄 .env；建立測試角色，結束時刪除）。
+ * 需要 DATABASE_URL（自動讀 repo 根目錄 .env，但只接受本機資料庫；建立測試角色，結束時刪除）。
  * 執行：pnpm --filter @open333crm/api test:contact-routes-permission
  */
 import './helpers/load-root-env.js';
@@ -37,13 +37,13 @@ async function createRole(slug: string, permissions: string[]) {
   });
 }
 
-async function buildApp(roleId: string) {
+async function buildApp(roleId: string, agentId = SOME_ID) {
   const app = Fastify();
   app.decorate('prisma', prisma);
   app.decorate('prismaAdmin', prisma);
   app.decorate('io', { to: () => ({ emit: () => {} }) } as never);
   app.decorate('authenticate', async (request: FastifyRequest) => {
-    request.agent = { id: SOME_ID, tenantId: T, role: 'AGENT', roleId } as never;
+    request.agent = { id: agentId, tenantId: T, role: 'AGENT', roleId } as never;
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(prisma, T);
   });
   await app.register(contactRoutes, { prefix: '/api/v1/contacts' });
@@ -82,77 +82,135 @@ async function check(name: string, fn: () => Promise<void>) {
 }
 
 const roles: string[] = [];
+const apps: Array<{ close: () => Promise<unknown> }> = [];
+const cleanup: Array<() => Promise<unknown>> = [];
+
+/** 依路徑片段找路由，不依賴陣列順序 */
+const route = (fragment: string, method?: string) => {
+  const r = ROUTES.find((x) => x.url.includes(fragment) && (!method || x.method === method));
+  if (!r) throw new Error(`找不到路由：${method ?? ''} ${fragment}`);
+  return r;
+};
+const call = (app: Awaited<ReturnType<typeof buildApp>>, r: (typeof ROUTES)[number]) =>
+  app.inject({ method: r.method, url: r.url, payload: r.payload });
+
 try {
   const none = await createRole('none', []);
   const viewOnly = await createRole('view-only', ['contact.view']);
-  roles.push(none.id, viewOnly.id);
+  // contact.update 依權限註冊表 dependsOn contact.view，正式流程不會出現只有 update 的角色
+  const viewUpdate = await createRole('view-update', ['contact.view', 'contact.update']);
+  const replyOnly = await createRole('reply', ['inbox.view', 'inbox.reply']);
+  roles.push(none.id, viewOnly.id, viewUpdate.id, replyOnly.id);
 
   const noPermApp = await buildApp(none.id);
+  const viewApp = await buildApp(viewOnly.id);
+  const updateApp = await buildApp(viewUpdate.id);
+  const replyApp = await buildApp(replyOnly.id);
+  apps.push(noPermApp, viewApp, updateApp, replyApp);
+
   await check('沒有任何權限的角色：每一條聯絡人路由都回 403', async () => {
     const leaks: string[] = [];
     for (const r of ROUTES) {
-      const res = await noPermApp.inject({ method: r.method, url: r.url, payload: r.payload });
+      const res = await call(noPermApp, r);
       if (res.statusCode !== 403) leaks.push(`${r.method} ${r.url} → ${res.statusCode}`);
     }
     assert.deepEqual(leaks, [], `以下路由沒擋：\n${leaks.join('\n')}`);
   });
 
-  const viewApp = await buildApp(viewOnly.id);
   await check('只有 contact.view：可讀聯絡人列表與詳情（不回 403）', async () => {
     const list = await viewApp.inject({ method: 'GET', url: '/api/v1/contacts?limit=1' });
     assert.equal(list.statusCode, 200);
-    const detail = await viewApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}` });
+    const detail = await call(viewApp, route(`/contacts/${SOME_ID}`, 'GET'));
     assert.notEqual(detail.statusCode, 403, '有 contact.view 應通過守門（查無此人回 404）');
   });
 
-  await check('只有 contact.view：修改、貼標、合併仍回 403', async () => {
-    for (const r of ROUTES.filter((x) => ['PATCH', 'POST', 'DELETE'].includes(x.method))) {
-      const res = await viewApp.inject({ method: r.method, url: r.url, payload: r.payload });
-      assert.equal(res.statusCode, 403, `${r.method} ${r.url}`);
+  await check('只有 contact.view：修改、貼標、移除標籤、合併、合併預覽、代發連結皆回 403', async () => {
+    for (const r of [
+      route(`/contacts/${SOME_ID}`, 'PATCH'),
+      route('/tags', 'POST'),
+      route('/tags/', 'DELETE'),
+      route('/contacts/merge', 'POST'),
+      route('merge-preview'),
+      route('/revert'),
+      route('/binding-link'),
+    ]) {
+      assert.equal((await call(viewApp, r)).statusCode, 403, `${r.method} ${r.url}`);
     }
   });
 
   await check('只有 contact.view：看聯絡人的對話需 inbox.view、看案件需 case.view', async () => {
-    const convs = await viewApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}/conversations` });
-    assert.equal(convs.statusCode, 403);
-    const cases = await viewApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}/cases` });
-    assert.equal(cases.statusCode, 403);
+    assert.equal((await call(viewApp, route('/conversations'))).statusCode, 403);
+    assert.equal((await call(viewApp, route('/cases'))).statusCode, 403);
   });
 
-  await check('只有 contact.view：合併預覽需 contact.merge', async () => {
-    const res = await viewApp.inject({ method: 'GET', url: ROUTES[1].url });
-    assert.equal(res.statusCode, 403);
+  await check('contact.view + contact.update：修改、貼標、移除標籤都通過守門，合併仍 403', async () => {
+    for (const r of [route(`/contacts/${SOME_ID}`, 'PATCH'), route('/tags', 'POST'), route('/tags/', 'DELETE')]) {
+      assert.notEqual((await call(updateApp, r)).statusCode, 403, `${r.method} ${r.url}`);
+    }
+    assert.equal((await call(updateApp, route('/contacts/merge', 'POST'))).statusCode, 403);
+    assert.equal((await call(updateApp, route('merge-preview'))).statusCode, 403);
   });
 
-  // 權限彼此獨立：update 不隱含 view
-  const updateOnly = await createRole('update-only', ['contact.update']);
-  roles.push(updateOnly.id);
-  const updateApp = await buildApp(updateOnly.id);
-  await check('只有 contact.update：可以修改與貼標，但讀不到聯絡人', async () => {
-    const list = await updateApp.inject({ method: 'GET', url: '/api/v1/contacts' });
-    assert.equal(list.statusCode, 403, 'update 不隱含 view');
-    const detail = await updateApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}` });
-    assert.equal(detail.statusCode, 403);
-    const patch = await updateApp.inject({ method: 'PATCH', url: `/api/v1/contacts/${SOME_ID}`, payload: { displayName: 'x' } });
-    assert.notEqual(patch.statusCode, 403, '有 contact.update 應通過守門');
+  await check('代發綁定連結屬回覆層級：有 inbox.reply 通過守門，只有 contact.update 被擋', async () => {
+    assert.notEqual((await call(replyApp, route('/identity-binding/status'))).statusCode, 403);
+    assert.notEqual((await call(replyApp, route('/binding-link'))).statusCode, 403);
+    assert.equal((await call(updateApp, route('/binding-link'))).statusCode, 403);
   });
 
-  // 補上 inbox.view／case.view 後可看對話與案件
-  const viewPlus = await createRole('view-plus', ['contact.view', 'inbox.view', 'case.view']);
-  roles.push(viewPlus.id);
-  const viewPlusApp = await buildApp(viewPlus.id);
-  await check('contact.view + inbox.view + case.view：可看聯絡人的對話與案件', async () => {
-    const convs = await viewPlusApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}/conversations` });
-    assert.notEqual(convs.statusCode, 403);
-    const cases = await viewPlusApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}/cases` });
-    assert.notEqual(cases.statusCode, 403);
+  // ── CM-173 渠道可見性：分店帳號只綁渠道 A，看不到同一位聯絡人在渠道 B 的對話與案件 ──
+  const branchRole = await createRole('branch', ['contact.view', 'inbox.view', 'case.view']);
+  roles.push(branchRole.id);
+  const mkChannel = (name: string) =>
+    prisma.channel.create({
+      data: { tenantId: T, channelType: 'WEBCHAT', displayName: `CI 渠道可見性 ${name} ${stamp}`, credentialsEncrypted: 'x' },
+    });
+  const chA = await mkChannel('A');
+  const chB = await mkChannel('B');
+  const agent = await prisma.agent.create({
+    data: { tenantId: T, email: `ci-branch-${stamp}@example.test`, name: 'CI 分店帳號', passwordHash: 'x', roleId: branchRole.id },
   });
+  await prisma.agentChannelAccess.create({ data: { agentId: agent.id, channelId: chA.id, accessLevel: 'read_only' } });
+  // 渠道 B 綁給另一位分店帳號：沒有任何授權的渠道依 CM-173 向後相容規則是「全租戶可見」，
+  // 必須有人被授權，B 才是受限渠道
+  const otherAgent = await prisma.agent.create({
+    data: { tenantId: T, email: `ci-branch-other-${stamp}@example.test`, name: 'CI 另一分店', passwordHash: 'x' },
+  });
+  await prisma.agentChannelAccess.create({ data: { agentId: otherAgent.id, channelId: chB.id, accessLevel: 'full' } });
+  const contact = await prisma.contact.create({ data: { tenantId: T, displayName: `CI 可見性聯絡人 ${stamp}` } });
+  for (const ch of [chA, chB]) {
+    await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT' } });
+    await prisma.case.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `CI 案件 ${ch.id === chA.id ? 'A' : 'B'}` } });
+  }
+  cleanup.push(async () => {
+    await prisma.case.deleteMany({ where: { tenantId: T, contactId: contact.id } });
+    await prisma.conversation.deleteMany({ where: { tenantId: T, contactId: contact.id } });
+    await prisma.contact.deleteMany({ where: { id: contact.id, tenantId: T } });
+    await prisma.agent.deleteMany({ where: { id: { in: [agent.id, otherAgent.id] }, tenantId: T } });
+    await prisma.channel.deleteMany({ where: { tenantId: T, id: { in: [chA.id, chB.id] } } });
+  });
+  const branchApp = await buildApp(branchRole.id, agent.id);
+  apps.push(branchApp);
 
-  await noPermApp.close();
-  await viewApp.close();
-  await updateApp.close();
-  await viewPlusApp.close();
+  await check('CM-173：分店帳號看聯絡人的對話、案件、時間軸，只看得到自己渠道的資料', async () => {
+    const convs = await branchApp.inject({ method: 'GET', url: `/api/v1/contacts/${contact.id}/conversations` });
+    assert.equal(convs.statusCode, 200);
+    const convChannels = (convs.json().data as Array<{ channelId: string }>).map((c) => c.channelId);
+    assert.deepEqual(convChannels, [chA.id], '不可看到渠道 B 的對話');
+
+    const cases = await branchApp.inject({ method: 'GET', url: `/api/v1/contacts/${contact.id}/cases` });
+    assert.equal(cases.statusCode, 200);
+    const caseTitles = (cases.json().data as Array<{ title: string }>).map((c) => c.title);
+    assert.deepEqual(caseTitles, ['CI 案件 A'], '不可看到渠道 B 的案件');
+
+    const timeline = await branchApp.inject({ method: 'GET', url: `/api/v1/contacts/${contact.id}/timeline` });
+    assert.equal(timeline.statusCode, 200);
+    const text = JSON.stringify(timeline.json());
+    assert.ok(!text.includes('CI 案件 B'), '時間軸不可出現渠道 B 的案件');
+    assert.ok(!text.includes(`CI 渠道可見性 B ${stamp}`), '時間軸不可出現渠道 B 的對話');
+  });
 } finally {
+  for (const app of apps) await app.close().catch(() => {});
+  for (const fn of cleanup) await fn().catch((err) => console.error('清理失敗', err));
   if (roles.length) await prisma.role.deleteMany({ where: { id: { in: roles } } });
   await prisma.$disconnect();
 }

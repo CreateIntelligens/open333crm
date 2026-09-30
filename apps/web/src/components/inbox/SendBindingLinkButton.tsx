@@ -28,7 +28,8 @@ const RESULT_TEXT: Record<string, string> = {
  * 對應 API：POST /contacts/:id/binding-link
  */
 export function SendBindingLinkButton({ contactId, conversationId }: { contactId: string; conversationId: string }) {
-  const canUpdate = usePermission('contact.update');
+  // 代發綁定連結＝在對話中發訊息給顧客，需要回覆權限
+  const canUpdate = usePermission('inbox.reply');
   const [enabled, setEnabled] = useState(false);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'warning' | 'error'; text: string } | null>(null);

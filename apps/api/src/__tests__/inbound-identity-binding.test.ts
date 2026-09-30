@@ -5,7 +5,8 @@
  * 驗證：命中綁定時不送招呼語、不發 message.received（AI／關鍵字／自動化不處理）；
  * 未啟用時行為與改版前相同；非綁定代碼的 referral 事件不落地。
  *
- * 執行：DATABASE_URL=... tsx src/__tests__/inbound-identity-binding.test.ts
+ * 執行：pnpm --filter @open333crm/api test:inbound-identity-binding
+ * 會自動讀 repo 根目錄 .env；.env 的 DATABASE_URL 只接受本機資料庫（要測遠端請明確 export）
  */
 import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';

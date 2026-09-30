@@ -93,7 +93,8 @@
 - [ ] 9.3.4 `check-prisma-admin-usage --strict` 在 main 上就失敗（shortlink-redirect、portal-public 共 5 處），非本次造成
 - [ ] 9.3.5 `.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
 - [ ] 9.3.6 Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
-- [ ] 9.3.8 聯絡人路由尚未套用 CM-173 渠道可見性：分店帳號仍可看到其他渠道顧客的聯絡人資料與對話列表（權限點守門已補，渠道範圍未補）
+- [x] 9.3.8 聯絡人的對話／案件／時間軸已套用 CM-173 渠道可見性（2026-09-30）
+- [ ] 9.3.9 聯絡人**列表與詳情**本身仍未依渠道過濾：分店帳號看得到其他渠道顧客的聯絡人基本資料（跨渠道聯絡人的歸屬規則需另行設計）
 - [ ] 9.3.7 API 啟動 log 寫「Registered channel plugins: LINE, FB, WEBCHAT」漏了 THREADS（實際有註冊，僅文字過時）
 
 ### 9.4 與其他分支的交集

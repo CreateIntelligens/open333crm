@@ -17,7 +17,7 @@ import { getBindingStore } from '../identity-binding/binding-code.js';
 import { getIdentityBindingSettings, issueBindingCode } from '../identity-binding/identity-binding.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
+import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 
@@ -76,6 +76,8 @@ const perm = {
   update: requirePermission('contact.update'),
   merge: requirePermission('contact.merge'),
   inboxView: requirePermission('inbox.view'),
+  // 代發綁定連結＝在對話中發訊息給顧客，屬回覆層級（不是「編輯聯絡人」）
+  inboxReply: requirePermission('inbox.reply'),
   caseView: requirePermission('case.view'),
 };
 
@@ -176,7 +178,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/contacts/identity-binding/status — 收件匣判斷是否顯示「傳送綁定連結」按鈕
   // （完整設定 API 需 settings.manage，一般客服讀不到；這裡只回是否啟用）
-  fastify.get('/identity-binding/status', { preHandler: [perm.update] }, async (request, reply) => {
+  fastify.get('/identity-binding/status', { preHandler: [perm.inboxReply] }, async (request, reply) => {
     const settings = await getIdentityBindingSettings(request.tenantPrisma, request.agent.tenantId);
     return reply.send(success({ enabled: settings.enabled }));
   });
@@ -184,7 +186,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // POST /api/v1/contacts/:id/binding-link — 客服代顧客在指定對話送出跨渠道綁定連結
   fastify.post<{ Params: { id: string } }>(
     '/:id/binding-link',
-    { preHandler: [perm.update] },
+    { preHandler: [perm.inboxReply] },
     async (request, reply) => {
       const { id } = contactIdParamsSchema.parse(request.params);
       const { conversationId } = bindingLinkBodySchema.parse(request.body);
@@ -278,6 +280,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       query.page,
       query.limit,
+      // CM-173：與收件匣一致，分店帳號只看得到可見渠道的對話
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(paginated(conversations, total, query.page, query.limit));
@@ -293,6 +297,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       query.page,
       query.limit,
+      // CM-173：與案件列表一致，分店帳號只看得到可見渠道的案件
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(paginated(cases, total, query.page, query.limit));
@@ -335,6 +341,8 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      // CM-173：時間軸的對話與案件只列可見渠道
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(success(timeline));

@@ -23,14 +23,14 @@
 - **THEN** 系統 SHALL 回覆目前沒有其他可綁定的渠道，且不產生代碼
 
 ### Requirement: 客服可主動傳送綁定連結
-具 `contact.update` 權限的客服 SHALL 能在聯絡人對話中觸發傳送綁定連結，行為與顧客自行請求相同。
+具 `inbox.reply` 權限、且對該對話渠道有回覆層級存取（CM-173）的客服 SHALL 能在聯絡人對話中觸發傳送綁定連結，行為與顧客自行請求相同。
 
 #### Scenario: 客服代發
 - **WHEN** 客服在某聯絡人的 LINE 對話按下「傳送綁定連結」
 - **THEN** 系統 SHALL 以該 LINE 身分產生代碼，並在該對話送出其他渠道的導流連結
 
 #### Scenario: 無權限
-- **WHEN** 沒有 `contact.update` 權限的使用者呼叫發送綁定連結 API
+- **WHEN** 沒有 `inbox.reply` 權限的使用者呼叫發送綁定連結 API
 - **THEN** 系統 SHALL 回傳 403
 
 ### Requirement: 綁定代碼為一次性且短效

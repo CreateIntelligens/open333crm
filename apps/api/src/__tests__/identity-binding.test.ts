@@ -2,7 +2,8 @@
  * 跨渠道綁定代碼引擎整合測試（真實 Postgres；每個案例在交易內執行並 rollback，不留資料）。
  * 對應 spec cross-channel-binding-code 的各 Scenario。Redis 換成可快轉時間的記憶體實作。
  *
- * 執行：DATABASE_URL=... tsx src/__tests__/identity-binding.test.ts
+ * 執行：pnpm --filter @open333crm/api test:identity-binding
+ * 會自動讀 repo 根目錄 .env；.env 的 DATABASE_URL 只接受本機資料庫（要測遠端請明確 export）
  * 需 DB 已套用本 change 的 migration，且有 RLS_TEST_TENANT_A（預設 seed 租戶）。
  */
 import './helpers/load-root-env.js';

@@ -6,6 +6,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { mergeContacts as runMergeEngine } from './contact-merge.service.js';
+import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 export interface ContactFilters {
   q?: string;
@@ -212,10 +213,14 @@ export async function getContactConversations(
   tenantId: string,
   page: number,
   limit: number,
+  /** CM-173 渠道級可見性：分店帳號只看得到可見渠道的資料（省略＝不過濾） */
+  accessibleChannels?: AccessibleChannels,
 ) {
+  const channelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
   const where: Prisma.ConversationWhereInput = {
     contactId,
     tenantId,
+    ...(channelId ? { channelId } : {}),
   };
 
   const [conversations, total] = await Promise.all([
@@ -272,10 +277,14 @@ export async function getContactCases(
   tenantId: string,
   page: number,
   limit: number,
+  /** CM-173 渠道級可見性：分店帳號只看得到可見渠道的資料（省略＝不過濾） */
+  accessibleChannels?: AccessibleChannels,
 ) {
+  const channelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
   const where: Prisma.CaseWhereInput = {
     contactId,
     tenantId,
+    ...(channelId ? { channelId } : {}),
   };
 
   const [cases, total] = await Promise.all([
@@ -339,7 +348,11 @@ export async function getContactTimeline(
   prisma: TenantDb,
   contactId: string,
   tenantId: string,
+  /** CM-173 渠道級可見性：時間軸的對話與案件只列可見渠道（省略＝不過濾） */
+  accessibleChannels?: AccessibleChannels,
 ) {
+  const channelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const channelFilter = channelId ? { channelId } : {};
   // Verify contact exists
   const contact = await prisma.contact.findFirst({
     where: { id: contactId, tenantId },
@@ -351,7 +364,7 @@ export async function getContactTimeline(
   // Fetch conversations, cases, case events, and tags in parallel
   const [conversations, cases, contactTags] = await Promise.all([
     prisma.conversation.findMany({
-      where: { contactId, tenantId },
+      where: { contactId, tenantId, ...channelFilter },
       select: {
         id: true,
         channelType: true,
@@ -364,7 +377,7 @@ export async function getContactTimeline(
       orderBy: { createdAt: 'desc' },
     }),
     prisma.case.findMany({
-      where: { contactId, tenantId },
+      where: { contactId, tenantId, ...channelFilter },
       select: {
         id: true,
         title: true,
