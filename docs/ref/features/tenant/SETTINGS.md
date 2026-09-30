@@ -69,7 +69,7 @@ API 金鑰讓外部夥伴系統把文件推送到知識庫（`POST /knowledge/pa
 
 金鑰的格式是 `pk_` 開頭加一串隨機字元。完整金鑰只在建立時回傳一次；資料庫只存雜湊值，清單只顯示前綴與最後幾碼。
 
-持金鑰呼叫時，`rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED` 決定它能通過哪些權限檢查，目前只有 `knowledge.admin`。
+持金鑰呼叫時，`rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED` 決定它能通過哪些權限檢查，目前只有 `knowledge.admin`。金鑰與 CLI token 怎麼驗證、停用成員或租戶之後是否失效，見[認證與憑證](../../modules/AUTHENTICATION.md)。
 
 ## CLI 連線
 
@@ -104,6 +104,7 @@ API 金鑰與 CLI token 的建立和撤銷**沒有**寫入稽核。這兩種都�
 | 限制 | 說明 |
 | --- | --- |
 | CLI token 不受角色與方案限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
+| API 金鑰不受租戶停用與建立者清除影響 | 詳見 `../../system/AUDIT.md` 的 AUTH-02 |
 | A2A 以最早建立的租戶執行任務 | 詳見 `../../system/AUDIT.md` 的 A2A-01 |
 | 長效憑證的建立與撤銷沒有稽核 | 詳見 `../../system/AUDIT.md` 的 AUD-01 |
 | 閒置自動關閉的時限沒有頁面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |

@@ -4,6 +4,22 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：撰寫認證機制文件，新增三個項目並修正 SEC-03
+
+起因是新增[認證與憑證](../modules/AUTHENTICATION.md)。做法是逐一讀 `auth.plugin.ts` 的每個認證裝飾器、每種憑證的簽發與驗證函式、兩個 socket namespace 的 handshake，以及沒有客服登入的對外端點，再列出每個裝飾器寫入 `request.agent` 的欄位，與讀取這些欄位的程式對照。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| AUTH-06 | `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支只設定 `id`、`tenantId`、`role`；`knowledge.routes.ts` 的 `/partner-ingest` 掛 `requirePermission('knowledge.admin')`；`getEffectiveTenantPermissions()` 在 `roleId` 為空時回傳空集合 |
+| AUTH-07 | `JWT_EXPIRES_IN` 在 `apps/`、`packages/` 只出現在 `config/env.ts` 的定義；`docs/10_TECH_STACK.md` 的範例列出這個變數 |
+| IDENT-02 | `line-login.routes.ts` 與 `fb-login.routes.ts` 的 `/authorize` 沒有 `preHandler`；`/callback` 取得 `verifyIdToken()` 的 `userId` 後沒有使用；`updateContactEmail()` 以 state 的 `lineUid` 查渠道身分；`apps/web/src` 與 `apps/widget` 沒有呼叫 `/authorize`；`stateStore` 是模組層的 `Map` |
+
+**既有項目的補充。** AUTH-02 補上 Partner API 金鑰：`verifyPartnerApiKey()` 只查 `keyPrefix`、`isActive` 與 `expiresAt`；`PartnerApiKey.createdById` 在 schema 中沒有關聯；`agent` 模組的清除流程沒有處理 `partnerApiKey`。
+
+**修正 SEC-03。** 內文原本寫五處註冊「每一處都寫 `global: false`」。`chatbox.routes.ts` 與 `webchat.routes.ts` 註冊時沒有指定 `global`，外掛預設為 `true`，這兩個模組的每條路由都受每分鐘 60 次的限制。已把表格改成列出每一處的註冊方式與效果。
+
+**優先順序的判斷。** IDENT-02 標為 P2：要先知道目標的渠道身分 ID，但成員在後台就看得到。AUTH-06 標為 P3：目前受影響的只有外部夥伴專用的路由，但新路由沿用同一個裝飾器時會重現。
+
 ## 2026-09-30：功能區文件移到 `docs/ref/features/`
 
 `docs/ref/modules/` 原本同時放兩種文件：以程式模組為單位的（模組總覽、互動流程引擎），以及以產品功能區為單位的（平台後台、租戶後台、SLA）。後者一份文件跨好幾個程式模組，放在 `modules/` 底下，讀者照目錄名稱找不到。因此把功能區文件移到新的 `docs/ref/features/`：

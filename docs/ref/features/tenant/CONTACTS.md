@@ -108,6 +108,7 @@
 | **兩套合併實作行為不一致** | 手動合併不搬積分；登入時自動合併會硬刪除聯絡人，遇到積分則失敗。詳見 `../../system/AUDIT.md` 的 CONTACT-01 |
 | **聯絡人頁不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 自動化貼標不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |
+| **LINE、Facebook 登入補 email 時不確認登入者** | 知道渠道身分 ID 的人可以寫入自己的 email，並觸發自動合併。詳見 `../../system/AUDIT.md` 的 IDENT-02 |
 | 合併建議沒有產生端 | 詳見 `../../system/AUDIT.md` 的 IDENT-01 |
 | `isBlocked` 與 `ContactTag.expiresAt` 沒有作用 | 詳見 `../../system/AUDIT.md` 的 DB-04 與 DB-02 |
 | 沒有權限碼 | 詳見 `../../system/AUDIT.md` 的 RBAC-01 |

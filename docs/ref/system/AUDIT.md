@@ -54,10 +54,12 @@
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P3 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用 | 靜態確認 |
 | [A2A-01](#a2a-01) | 租戶隔離與權限 | P2 | 未處理 | A2A 橋接以最早建立的租戶執行所有外部任務，使用該租戶的金鑰與額度 | 靜態確認 |
 | [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
-| [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
+| [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
 | [AUTH-05](#auth-05) | 帳號與登入 | P1 | 已提建議 | 租戶端 JWT 不分用途，粉絲 token 與 refresh token 都能當客服 access token | 靜態確認 |
+| [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
+| [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-04](#sec-04) | 帳號與登入 | P1 | 未處理 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
@@ -98,6 +100,7 @@
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 未處理 | 規則編輯器提供的部分觸發事件永遠不會觸發 | 靜態確認 |
 | [CONTACT-01](#contact-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 兩套聯絡人合併實作行為不一致：手動合併遺失積分，自動合併硬刪除並可能失敗 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P4 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
+| [IDENT-02](#ident-02) | 聯絡人、行銷與報表 | P2 | 已提建議 | LINE、Facebook 登入補 email 時不確認登入者就是該聯絡人，授權網址可由任何人以任意渠道身分產生 | 靜態確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 已提建議 | 群發可以重複執行，重送時不排除已送達的人 | 靜態確認 |
 | [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 記錄點擊的公開端點採信呼叫端提供的聯絡人與 LINE uid，也沒有速率限制 | 靜態確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
@@ -325,7 +328,7 @@ CLI token 的停用問題另見 AUTH-02。
 
 ## 帳號與登入
 
-功能說明見[平台帳號認證](../features/platform/AUTH.md)與[平台帳號管理](../features/platform/PLATFORM-USERS.md)。
+功能說明見[平台帳號認證](../features/platform/AUTH.md)與[平台帳號管理](../features/platform/PLATFORM-USERS.md)。租戶端各種憑證的簽發、驗證與失效時間，見[認證與憑證](../modules/AUTHENTICATION.md)。
 
 <a id="auth-01"></a>
 ### AUTH-01：租戶端沒有密碼復原流程
@@ -386,6 +389,7 @@ Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticat
 | REST（access token） | 會 | 一個 access token 的有效期。`ACCESS_TOKEN_EXPIRES_IN` 預設 15 分鐘 |
 | Socket.IO 既有連線 | **不會** | 連線不中斷就一直有效 |
 | CLI token | **不會** | CLI session 自己的有效期。`DEFAULT_EXPIRES_DAYS` 是 30 天 |
+| Partner API 金鑰 | **不會** | 金鑰自己的有效期。建立時不指定就永不過期 |
 
 REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但 `login()` 與 `POST /auth/refresh` 都會擋下停用的租戶，換不到新的 access token。
 
@@ -396,6 +400,8 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 **CLI token 沒有檢查租戶狀態。** `verifyCliSession()` 依序檢查 `revokedAt`、`expiresAt` 與 `agent.isActive`，**沒有檢查 `tenant.isActive`**。停用租戶之後，該租戶成員手上的 CLI token 仍然可以呼叫 API，直到 token 自己過期或被撤銷。
 
 停用個別成員的情況比較好但不完整：CLI 端有 `agent.isActive` 的檢查會擋下，Socket 端同樣不會斷線。
+
+**Partner API 金鑰不檢查租戶，也不檢查建立者。** `partner-api-key.service.ts` 的 `verifyPartnerApiKey()` 只檢查金鑰是否啟用、是否過期。`PartnerApiKey.createdById` 沒有外鍵，清除建立者時金鑰不會跟著刪除；之後以這把金鑰呼叫，`request.agent.id` 指向已經不存在的成員。
 
 對照平台端：`authenticatePlatformSuperuser` 每個請求都回查 `platform_users`，停用即時生效，而平台後台沒有 Socket 或 CLI 通道。兩邊的差距不是刻意設計，是租戶端多了兩個當初沒有一起處理的入口。
 
@@ -466,6 +472,29 @@ refresh token 放在 httpOnly cookie，前端程式讀不到，直接被盜用�
 - `authenticate` 要求 payload 帶 `agentId`。
 - `/fan/auth` 改為驗證 LINE LIFF 的 ID token，由 token 推導出聯絡人，不接受呼叫端指定。
 
+<a id="auth-06"></a>
+### AUTH-06：兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`
+
+`auth.plugin.ts` 有兩個裝飾器同時接受 JWT 與另一種憑證。兩者的 JWT 分支都只寫入 `id`、`tenantId` 與 `role`，沒有寫入 `roleId`：
+
+| 裝飾器 | 另一種憑證 | 使用的路由 | JWT 分支的後果 |
+| --- | --- | --- | --- |
+| `authenticateJwtOrCliSession` | CLI token | `GET /auth/me`、MCP 端點 | 目前沒有影響：`/auth/me` 不檢查權限，MCP 會先擋下不是 CLI token 的請求 |
+| `authenticateJwtOrPartnerKey` | Partner API 金鑰 | `POST /knowledge/partner-ingest` | 這條路由掛 `requirePermission('knowledge.admin')`。`roleId` 為空時權限集合為空，**網頁登入的成員即使有 `knowledge.admin` 也一律 403** |
+
+`authenticate` 本身有填 `roleId`。三個裝飾器的 JWT 分支是各自複製的程式碼，後來 `authenticate` 加上 `roleId` 時，另外兩份沒有跟著改。
+
+`partner-ingest` 的設計對象是外部夥伴系統，網頁前端沒有呼叫它，所以目前只有以 JWT 測試這條路由的人會遇到。但任何新路由改用這兩個裝飾器、同時掛 `requirePermission()`，網頁使用者都會被擋下；CLI 分支則因為 `requirePermission()` 對 CLI 直接放行而完全不受檢查，見 RBAC-02。
+
+**修正方向**：三個裝飾器的 JWT 分支共用一個函式，由它寫入完整的 `request.agent`，包括 `roleId`。
+
+<a id="auth-07"></a>
+### AUTH-07：`JWT_EXPIRES_IN` 沒有讀取端
+
+`apps/api/src/config/env.ts` 定義了 `JWT_EXPIRES_IN`，預設 `7d`，程式沒有任何地方讀取。token 的有效期實際由 `ACCESS_TOKEN_EXPIRES_IN` 與 `REFRESH_TOKEN_EXPIRES_IN` 決定。
+
+`docs/10_TECH_STACK.md` 的環境變數範例列出 `JWT_EXPIRES_IN=7d`。讀者照著設定，會以為 token 有效 7 天，而實際的 access token 有效期不受影響。
+
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
 
@@ -487,15 +516,15 @@ refresh token 放在 httpOnly cookie，前端程式讀不到，直接被盜用�
 <a id="sec-03"></a>
 ### SEC-03：rate-limit 在各路由模組內各自註冊
 
-`@fastify/rate-limit` 沒有在根層註冊，而是在五個路由模組內各自註冊一次，每一處都寫 `global: false`，路由再以 `config: { rateLimit: ... }` 設定自己的上限：
+`@fastify/rate-limit` 沒有在根層註冊，而是在五個路由模組內各自註冊一次。兩種註冊方式的效果不同：
 
-| 模組 | 註冊處 |
-| --- | --- |
-| 租戶認證 | `auth.routes.ts` |
-| 試用申請 | `trial.routes.ts` |
-| 平台後台 | `platform.routes.ts` 的 `platformRoutes()` |
-| 公開 Chatbox | `chatbox.routes.ts` |
-| 舊版 Webchat | `webchat.routes.ts` |
+| 模組 | 註冊處 | 註冊方式 | 效果 |
+| --- | --- | --- | --- |
+| 租戶認證 | `auth.routes.ts` | `global: false` | 只有設定 `config.rateLimit` 的路由受限 |
+| 試用申請 | `trial.routes.ts` | `global: false` | 同上 |
+| 平台後台 | `platform.routes.ts` 的 `platformRoutes()` | `global: false` | 同上 |
+| 公開 Chatbox | `chatbox.routes.ts` | 沒有寫 `global`，外掛預設為 `true` | 模組內每條路由都以來源 IP 限制每分鐘 60 次；個別路由再以 `config.rateLimit` 收緊 |
+| 舊版 Webchat | `webchat.routes.ts` | 同上 | 同上 |
 
 目前五處都運作正常，因為每條帶 `config.rateLimit` 的路由，與它依賴的 `register` 呼叫在同一個 Fastify encapsulation scope 內。
 
@@ -1282,6 +1311,29 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 `packages/core/src/identity/identity-stitcher.ts` 的 `detectPhoneDuplicates()` 是唯一會建立 `MergeSuggestion` 的函式，它沒有任何呼叫端；同一個檔案的 `stitchByPhone()` 與 `stitchByLiffCookie()` 也沒有。`/api/v1/identity` 的審核端點因此永遠沒有資料可審。
 
 這一項影響 RLS-02 的現況：在接上產生端之前，RLS-02 的跨租戶路徑沒有資料可以操作。
+
+<a id="ident-02"></a>
+### IDENT-02：LINE、Facebook 登入補 email 時，不確認登入者就是該聯絡人
+
+客服在對話中按「索取 email」時，`line-login.routes.ts` 的 `POST /auth/line/request-email` 產生一個 LINE Login 授權網址，以訊息傳給客人。客人登入並同意提供 email 之後，callback 把 email 寫到聯絡人上。Facebook 的 `fb-login` 模組是同一套流程，以 `psid` 取代 `lineUid`。
+
+這個流程有三個缺口：
+
+1. **授權網址可以由任何人產生。** `GET /auth/line/authorize` 與 `GET /auth/fb/authorize` 是公開端點，接受呼叫端指定的 `lineUid`（或 `psid`）與 `channelId`，直接產生帶 state 的授權網址。前端沒有任何地方呼叫這兩個端點。
+2. **callback 不比對登入者。** `/callback` 取出 state 記錄的 `lineUid`，把登入者的 email 寫到這個渠道身分所屬的聯絡人。`verifyIdToken()` 回傳的 `userId` 沒有被使用，因此系統不知道登入的人是不是這位聯絡人。LINE Login 的 channel 由 `LINE_LOGIN_CHANNEL_ID` 設定，全部署共用一個；它與租戶的 Messaging API channel 通常不屬於同一個 provider，同一個人在兩邊的 user ID 也不同，所以無法直接比對。
+3. **授權網址本身就是憑證。** 客人把收到的連結轉給別人，由別人完成登入，寫入的就是別人的 email。
+
+寫入的 email 會觸發自動合併：`updateContactEmail()` 在同租戶找到另一個同 email 的聯絡人時，把原聯絡人併進去並硬刪除，見 CONTACT-01。所以知道一組 `lineUid` 與 `channelId` 的人，可以用自己的 LINE 帳號完成登入，把該聯絡人併進自己的聯絡人。合併之後，客服看到的歷史對話與資料都歸在同一個聯絡人底下。
+
+觸發的前提是知道目標的 `lineUid` 與 `channelId`。這兩個值不會出現在公開頁面，但租戶成員在聯絡人詳情頁看得到渠道身分的 ID，因此離職成員是最可能的來源。
+
+另外，state 存在 API 行程的記憶體（`line-login.service.ts` 與 `fb-login.service.ts` 各自的 `stateStore`）。API 重啟之後，還沒完成的授權全部失效；部署多個 API 行程時，callback 若落在另一個行程也會失敗。
+
+**修正方向**：
+
+- 移除公開的 `/authorize`，授權網址只由 `request-email` 產生。
+- state 與產生它的對話綁定，存在 Redis，並設定一次性使用。
+- email 寫入之後不自動合併，改為產生合併建議，由客服確認。
 
 <a id="mkt-01"></a>
 ### MKT-01：群發可以重複執行，重送時不排除已送達的人

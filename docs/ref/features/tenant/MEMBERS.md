@@ -127,7 +127,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 密碼登入先檢查帳號是否停用，再驗證密碼。因此不需要知道密碼，就能從回應分辨一個 email 是否屬於被停用的帳號。
 
-**token 的種類沒有區分。** access token、refresh token、粉絲活動的 token 與 MCP 的確認 token 都用同一把 `JWT_SECRET` 簽發，而 `authenticate` 與 socket 連線只驗簽章。refresh token 因此可以直接當 access token 用 30 天；粉絲 token 也能通過客服認證。見 `../../system/AUDIT.md` 的 AUTH-05。
+各種 token 的簽發與驗證、停用成員或改角色之後多久生效，見[認證與憑證](../../modules/AUTHENTICATION.md)。其中最嚴重的問題是 token 不分種類：refresh token 與粉絲 token 都能當客服的 access token 使用，見 `../../system/AUDIT.md` 的 AUTH-05。
 
 ## 權限一覽
 
@@ -153,7 +153,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |
-| 停用成員不會中斷登入中的 token 與 socket | access token 最長 15 分鐘，socket 直到斷線 |
+| 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |
 | 沒有忘記密碼流程 | 詳見 `../../system/AUDIT.md` 的 AUTH-01 |
 | 登出不撤銷 token | 只清 cookie |
 | 登入回應透露帳號是否停用 | 停用檢查在密碼驗證之前 |
