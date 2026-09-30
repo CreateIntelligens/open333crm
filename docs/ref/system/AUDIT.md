@@ -107,6 +107,8 @@
 | [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 記錄點擊的公開端點採信呼叫端提供的聯絡人與 LINE uid，也沒有速率限制 | 靜態確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
+| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時客人收不到任何回覆 | 靜態確認 |
+| [CHAN-03](#chan-03) | 渠道、稽核與資料權利 | P4 | 已提建議 | 進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | 靜態確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
@@ -125,6 +127,7 @@
 | [PKG-03](#pkg-03) | 共用套件 | P4 | 未處理 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
 | [PKG-04](#pkg-04) | 共用套件 | P4 | 未處理 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
 | [PKG-05](#pkg-05) | 共用套件 | P4 | 未處理 | `core` 匯出沒有呼叫端的服務與事件訂閱者 | 靜態確認 |
+| [PKG-06](#pkg-06) | 共用套件 | P4 | 未處理 | `channel-plugins` 有沒有呼叫端的方法、擴充與檔案 | 靜態確認 |
 | [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Ollama base URL 預設指向容器自己 | 執行時重現 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
@@ -1434,6 +1437,32 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 - 有對話的渠道刪除時，資料庫拒絕。repo 沒有處理 Prisma 的外鍵錯誤（`P2003`），前端收到一般的伺服器錯誤，看不出原因。
 - 沒有對話的渠道刪除時，`ChannelIdentity`、`ChannelTeamAccess`、`AgentChannelAccess` 與 `ChatboxSession` 因 `onDelete: Cascade` 一併刪除。
 
+<a id="chan-02"></a>
+### CHAN-02：workers 只註冊 LINE 與 FB 外掛，關鍵字回覆在其他渠道送不出去
+
+API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四個外掛。workers 行程不用這個註冊表，`apps/workers/src/index.ts` 另建一個 `pluginRegistry`，只放 `linePlugin` 與 `fbPlugin`。自動化的 `send_message`、`send_material` 在 workers 執行，由 `channel-delivery.ts` 的 `deliverToChannelFromWorker()` 以這個 `Map` 找外掛；找不到時寫入一則失敗訊息「系統未載入 … 渠道外掛，無法送出」。
+
+這個缺口在關鍵字回覆上最明顯：
+
+1. 「LINE 關鍵字回覆」頁建立規則時，`useKeywordReplies.ts` 送出的 `conditions` 是 `{ all: [] }`，沒有限定渠道。所以 Instagram 私訊（`THREADS`）與網站聊天室的訊息也會命中。
+2. 命中時，`kb-autoreply.service.ts` 以 `automation.worker.ts` 的 `hasMatchingKeywordRule()` 判斷後讓知識庫與 AI 的機器人回覆讓步，避免客人同時收到兩種回覆。
+3. workers 收到 `keyword.matched` 後執行 `send_material`，因為沒有外掛而失敗。
+
+結果是客人**沒有收到任何回覆**。一般的自動化規則若含 `send_message` 動作，在這兩種渠道也同樣送不出去。
+
+網站聊天室即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
+
+**修正方向**：workers 改用與 API 相同的註冊函式，註冊全部外掛；網站聊天室的訪客推送移進外掛或共用的送出函式；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
+
+<a id="chan-03"></a>
+### CHAN-03：webhook 驗簽的兩處細節
+
+**進站路由不比對渠道本身的類型。** `webhook.routes.ts` 的 LINE、FB、Threads 路由各自把固定的 `channelType` 傳給 `processWebhookEvent()`，後者以這個值取得外掛與決定驗簽用的秘密，但不與 `channel.channelType` 比對。把 LINE 渠道的 ID 送到 Facebook 的路由，會以 Facebook 外掛、LINE 渠道的憑證處理。目前因為兩種渠道的憑證欄位不同（LINE 沒有 `appSecret`），驗簽會失敗；這個保護依賴於憑證欄位碰巧不同。
+
+**FB 與 Instagram 以一般字串比對簽章。** `facebook/index.ts` 與 `threads.ts` 的 `verifySignature()` 以 `===` 比對 HMAC，不是固定時間的比較。LINE 外掛使用 `crypto.timingSafeEqual()`，但沒有先比對長度，簽章長度不同時會拋出錯誤而不是回傳 `false`；錯誤被外層接住，只寫一筆 error log。
+
+**修正方向**：`processWebhookEvent()` 在取得渠道後比對類型，不符時丟棄；三個外掛統一以長度檢查加上 `timingSafeEqual()` 比對。
+
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
 
@@ -1616,6 +1645,19 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 | `automation/engine.ts` 的 `AutomationEngine` | 訂閱 `crm:events` 執行自動化規則 | 沒有從 `index.ts` 匯出，也沒有呼叫 `start()` 的程式 |
 
 這些與 API 的 `case`、`conversation`、`contact`、`automation` 模組功能重疊。讀程式時容易以為工單或自動化走這裡。
+
+<a id="pkg-06"></a>
+### PKG-06：`channel-plugins` 有沒有呼叫端的程式
+
+| 程式 | 內容 | 呼叫端 |
+| --- | --- | --- |
+| `ChannelPlugin.setWebhook()` | LINE 與 Telegram 外掛有實作 | 沒有。LINE 的自動設定由 API 的 `line-webhook-setup.service.ts` 直接呼叫 LINE API |
+| `extensions.audience` | LINE 外掛有實作分眾名單 | 沒有 |
+| `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts` | 各自定義 BullMQ 佇列與 worker | 沒有任何檔案 import。LINE 媒體下載實際走 `resolveInboundMedia()` |
+| `getAllChannelPlugins()`、`hasChannelPlugin()`、`getPlugin()`、`registerPlugin` | 註冊表的輔助函式與舊名稱 | 沒有 |
+| `telegram.ts` 與 `telegram/index.ts` | 兩份 `TelegramPlugin` 類別；前者由 `./telegram` 子路徑匯出，後者由套件入口匯出 | 都沒有註冊，見 APP-02 |
+
+與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.service.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
 
 ## Storage、LLM 與資料庫
 

@@ -129,6 +129,7 @@
 | --- | --- |
 | **部分動作不會執行** | 詳見 `../../system/AUDIT.md` 的 AUTO-01 |
 | **部分觸發事件永遠不會觸發** | 詳見 `../../system/AUDIT.md` 的 AUTO-05 |
+| **關鍵字回覆在 Instagram 私訊與網站聊天室送不出去** | 規則不限渠道，命中時機器人讓步，但 workers 沒有這兩種渠道的外掛，客人收不到任何回覆。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | **關鍵字回覆頁承諾的兩項保護沒有生效** | 客服接手後仍會自動回覆，也沒有頻率上限。詳見 `../../system/AUDIT.md` 的 AUTO-04 |
 | 執行紀錄與執行次數停止更新 | 詳見 `../../system/AUDIT.md` 的 AUTO-02 |
 | `add_tag` 不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |

@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：撰寫渠道外掛文件，新增 CHAN-02、CHAN-03、PKG-06
+
+起因是新增[渠道外掛](../modules/CHANNEL-PLUGINS.md)。做法是從 `ChannelPlugin` 介面出發，對每個方法與擴充 grep 呼叫端；比對 API 與 workers 各自註冊的外掛；再列出 `apps/api/src` 與 `apps/workers/src` 所有以 `channelType` 分支的地方。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| CHAN-02 | `apps/workers/src/index.ts` 的 `pluginRegistry.set()` 只有 `linePlugin`、`fbPlugin`；`deliverToChannelFromWorker()` 找不到外掛時呼叫 `recordDeliveryFailure()`；`useKeywordReplies.ts` 建立規則時送出 `conditions: { all: [] }`；`kb-autoreply.service.ts` 呼叫 `automation.worker.ts` 的 `hasMatchingKeywordRule()`，命中時不走知識庫回覆；`webchatPlugin.sendMessage()` 只寫 log |
+| CHAN-03 | `webhook.routes.ts` 以常數傳入 `CHANNEL_TYPE.LINE` 等；`processWebhookEvent()` 以參數 `channelType` 呼叫 `getChannelPlugin()`，沒有與 `channel.channelType` 比較；`facebook/index.ts` 與 `threads.ts` 以 `===` 比較簽章；`line/index.ts` 直接呼叫 `timingSafeEqual()` |
+| PKG-06 | `setWebhook`、`extensions.audience`、`getAllChannelPlugins`、`hasChannelPlugin`、`getPlugin(`、`registerPlugin` 在 `apps/` 沒有出現；三個 `line/worker-*.ts` 在整個 repo 沒有被 import |
+
+**文件修正。** `tenant/AUTOMATION.md` 與 `tenant/CHANNELS.md` 的限制表補上 CHAN-02。
+
 ## 2026-09-30：撰寫事件與背景工作文件，新增四個項目
 
 起因是新增[事件與背景工作](../modules/EVENTS.md)。做法是以腳本列出 `AppEventName` 的每個事件在 `apps/api/src` 的 `eventBus.publish` 與 `eventBus.subscribe`，再逐一對照每個 `new Queue(` 與 `apps/workers` 的 `new Worker(`、兩條 Redis 轉發頻道，以及 API 行程內的每個 `setInterval`。
