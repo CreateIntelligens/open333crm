@@ -4,6 +4,28 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：撰寫租戶後台文件時的盤點，新增十一個項目
+
+起因是撰寫[租戶後台](../modules/tenant/README.md)。做法是從側欄的每一項出發，追到負責的路由、服務與背景工作，再對照前端實際呼叫的端點。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| RLS-05 | `line-profile.routes.ts` 只掛 `authenticate`，把 `channelId` 交給 `syncLineContactProfile(fastify.prismaAdmin, …)`；服務的 `channelIdentity.findUnique` 與 `channel.findFirst` 都沒有 `tenantId`；`check-prisma-admin-usage.mjs` 以 `/modules\/line\/line-profile/` 列入白名單；`apps/web/src`、`apps/cli/src` 與 `modules/mcp` 都找不到 `sync-profile` |
+| RBAC-03 | grep `role: 'AGENT'`、`role: { in: ['SUPERVISOR', 'ADMIN'] }`、`role: 'ADMIN'` 的結果；`resolveRoleAssignment()` 對自訂角色回傳 `input.role ?? fallbackRole` |
+| A2A-01 | `a2a-bridge.worker.ts` 以 `tenant.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'asc' } })` 挑租戶；`agent.service.ts` 的 `recordUsage()` 以 `input.tenantId` 記錄用量，並帶 `keySource` |
+| CONV-01 | `inactivityCloseHours` 在 `apps/api/src`、`apps/web/src`、`apps/cli/src` 與 `seed.ts` 只出現在 `inactivity-close.worker.ts` 的讀取；`tenantSettings.create`／`upsert` 只出現在設定類服務的延遲建立與 `settings.routes.ts`，開通租戶的 `platform-tenant.service.ts` 與 `trial` 模組都沒有 |
+| CASE-01 | `CaseDetail.tsx` 的 `handleStatusChange()` 呼叫 `PATCH /cases/:id`；`updateCase()` 有 `validateTransition()`，但沒有 `caseEvent.create` 與 `eventBus.publish`；`transitionCase()` 兩者都有 |
+| AUTO-01 | 逐一比對 `executeWorkerAutomationActions()` 的分支與 `AUTOMATION_ACTION_DEFINITIONS`；`action-executor.ts` 在 `apps/api/src` 沒有 import 者；`git log -S "executeActions("` 指向 `9255245` |
+| AUTO-02 | `automationLog.create` 與 `runCount: { increment: 1 }` 只出現在 `action-executor.ts`；`automationExecution` 在 `apps/*/src` 與 `packages/*/src` 都沒有出現 |
+| APP-05 | `sla.warning`、`sla.breached` 在 `apps/api/src` 只出現在 eventBus 的型別宣告與 `notification.worker.ts` 的訂閱 |
+| APP-06 | `index.ts` 無條件註冊 `simulatorRoutes`；`SimulatorPanel.tsx` 以 `process.env.NODE_ENV !== 'development'` 隱藏；`simulateInboundMessage()` 發布 `message.received` |
+| DB-02 | 與標籤相關的 `expiresAt` 只出現在 `line-login.service.ts` 與 `fb-login.service.ts` 的合併程式 |
+| DB-03 | `dailyStat` 在 `apps/api/src` 與 `apps/workers/src` 只出現在 `analytics.aggregator.ts` |
+
+**優先順序的判斷。** AUTO-01 標為 P1：前端直接提供這些動作，照正常操作建立的規則就會靜默失效，不需要特殊條件。RLS-05 比照 RLS-02 標為 P1：兩者都要先取得其他租戶的識別碼，但取得之後就能跨租戶讀寫。A2A-01 只在啟用橋接時觸發，因此標為 P2。
+
+**同時修正的文件錯誤。** `modules/OVERVIEW.md` 把 `settings` 模組寫成「僅需登入」。實際上 `settings.routes.ts` 在整個 plugin 掛了 `requirePermission("settings.manage")`。已改正，並補上原本漏列的 `/api/v1/simulator` 與 `sync-profile` 兩條路由。
+
 ## 2026-09-30：CLI token 的授權路徑，新增 RBAC-02，並修正 SEC-03 與 SEC-04
 
 起因是補寫 PLAN-08 時讀到 `requirePermission()` 遇到 `isCliSession` 就直接放行。做法是追完 CLI token 的整條路徑：哪些驗證函式接受它、哪些路由掛這些驗證函式、token 怎麼發出、scope 怎麼決定，以及 CLI 路由與 MCP 工具做了哪些檢查。

@@ -45,8 +45,11 @@
 | [RLS-02](#rls-02) | 租戶隔離與權限 | P1 | 未處理 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
+| [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 未處理 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
+| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
+| [A2A-01](#a2a-01) | 租戶隔離與權限 | P2 | 未處理 | A2A 橋接以最早建立的租戶執行所有外部任務，使用該租戶的金鑰與額度 | 靜態確認 |
 | [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
@@ -79,12 +82,18 @@
 | [SLA-02](#sla-02) | SLA | P2 | 未處理 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
 | [SLA-03](#sla-03) | SLA | P3 | 未處理 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | [SLA-04](#sla-04) | SLA | P2 | 未處理 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
+| [CASE-01](#case-01) | 對話、工單與自動化 | P2 | 已提建議 | 工單的狀態下拉選單不寫時間軸、不發布事件，選「已升級」不通知主管 | 靜態確認 |
+| [AUTO-01](#auto-01) | 對話、工單與自動化 | P1 | 已提建議 | 部分自動化動作可以儲存、也會命中，workers 執行時卻略過 | 靜態確認 |
+| [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 未處理 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | [APP-01](#app-01) | 部署與應用程式 | P3 | 未處理 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
 | [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | Telegram 外掛未註冊 | 執行時確認 |
 | [APP-03](#app-03) | 部署與應用程式 | P4 | 未處理 | 啟動 log 少列 Threads | 執行時確認 |
 | [APP-04](#app-04) | 部署與應用程式 | P4 | 未處理 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
+| [APP-05](#app-05) | 部署與應用程式 | P4 | 未處理 | API 行程訂閱的 `sla.warning`、`sla.breached` 沒有發布端 | 靜態確認 |
+| [APP-06](#app-06) | 部署與應用程式 | P3 | 未處理 | 訊息模擬器的 API 在正式環境可用，成員可偽造進站訊息 | 靜態確認 |
 | [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
 | [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
 | [PKG-03](#pkg-03) | 共用套件 | P4 | 未處理 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
@@ -94,6 +103,8 @@
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
 | [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P3 | 部分修正 | `OLLAMA_BASE_URL`：Chat 生成已生效（`ee251c8`），Embedding、`listModels()`、`health()` 仍不讀；兩個 `*_MODEL` 變數仍無讀取端 | 靜態確認 |
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
+| [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
+| [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
 | [CI-03](#ci-03) | CI 與測試 | P4 | 未處理 | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
@@ -140,6 +151,25 @@
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
 `apps/workers/src/index.ts` 的 `main()` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
+
+<a id="rls-05"></a>
+### RLS-05：重抓 LINE 個人資料的端點不檢查租戶
+
+`apps/api/src/modules/line/line-profile.routes.ts` 註冊 `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile`。這條路由只掛 `fastify.authenticate`，沒有權限碼。它把路徑參數直接交給 `line-profile.service.ts` 的 `syncLineContactProfile(fastify.prismaAdmin, channelId, lineUid)`，沒有傳入 `request.agent.tenantId`。
+
+`syncLineContactProfile()` 以 `prismaAdmin`（BYPASSRLS）查 `channelIdentity` 與 `channel`，`where` 都沒有 `tenantId`。接著它用該渠道的憑證呼叫 LINE，再改寫 `channelIdentity`。
+
+兩層租戶隔離在這條路徑上都不生效。任何租戶的已登入成員，只要取得其他租戶的 `channelId` 與一個 LINE uid，就能：
+
+- 讓系統以對方渠道的憑證呼叫 LINE Profile API。
+- 改寫對方租戶的 `ChannelIdentity.profileName` 與 `profilePic`。
+- 從回應取得該 LINE 使用者的顯示名稱與頭像網址。
+
+`scripts/check-prisma-admin-usage.mjs` 把這個檔案列在白名單，註解寫「LINE profile（認證相關）」。這條路由是登入後的客服操作，不屬於白名單涵蓋的平台後台、auth、排程、OAuth callback 與公開 webhook。
+
+前端、CLI 與 MCP 都沒有呼叫這個端點。
+
+**修正方向**：路由改用 `request.tenantPrisma`，服務查 `channelIdentity` 與 `channel` 的條件都加上 `tenantId`，並把這個檔案移出白名單。確認沒有外部呼叫端的話，也可以直接移除這條路由。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
@@ -201,6 +231,34 @@ CLI token 與網頁登入走兩套授權，兩套之間沒有對應：
 **`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下。同一條路由，JWT 失效關閉，CLI 失效開放。
 
 CLI token 的停用問題另見 AUTH-02。
+
+<a id="rbac-03"></a>
+### RBAC-03：業務規則看舊的角色列舉，不看細粒度角色
+
+`Agent` 有兩個角色欄位。`role` 是 `AgentRole` 列舉（`ADMIN`、`SUPERVISOR`、`AGENT`），`roleId` 指向可自訂的 `Role`。schema 的註解說明這是過渡期的雙寫，最終要移除列舉。權限檢查已經改看 `roleId`，下列業務規則仍然看 `role`：
+
+| 位置 | 規則 |
+| --- | --- |
+| `case/assignment.service.ts` 的 `getNextAgent()` | 工單自動指派只從 `role` 為 `AGENT` 的成員挑選 |
+| `notification/notification.worker.ts` 的 `getSupervisorAndAdminIds()` | 未指派對話的新訊息與工單升級，通知 `SUPERVISOR` 與 `ADMIN` |
+| 同一個檔案訂閱 `usage.quota.threshold` 的處理器 | AI 額度告警只通知 `ADMIN` |
+| `apps/workers/src/lib/automation-actions.ts` 的 `getSupervisorAndAdminAgentIds()` | 自動化的「通知主管」動作 |
+| `trial/trial.scheduler.ts` 的 `adminEmails()` | 試用到期的通知信只寄給 `ADMIN` |
+
+指派自訂角色時，`agent.service.ts` 的 `resolveRoleAssignment()` 讓 `role` 沿用成員原本的值。因此兩個同屬一個自訂角色的成員，行為可能正好相反：原本是 `ADMIN` 的人會收到所有主管通知，也永遠不會被自動指派工單；原本是 `AGENT` 的人則相反。「人員管理」頁只顯示細粒度角色，管理員看不到這個差異。
+
+<a id="a2a-01"></a>
+### A2A-01：A2A 橋接以最早建立的租戶執行外部任務
+
+`A2A_BRIDGE_ENABLED` 為 `true` 時，`settings/a2a-bridge.worker.ts` 的 `startA2ABridgeWorker()` 在 API 行程常駐輪詢 A2A Hub。收到外部 agent 的任務後，它用 `prismaAdmin` 查出 `isActive` 為 `true`、`createdAt` 最早的租戶，再以該租戶的身分執行 `runAgentReply()`。
+
+橋接的身分（`A2A_AGENT_ID`、`A2A_AGENT_TOKEN`）是整個部署共用的環境變數，任務本身不帶租戶。後果如下：
+
+- 多租戶部署中，所有外部任務都以同一個租戶執行。AI 呼叫使用該租戶的金鑰設定，包含租戶自備的 Gemini 金鑰，用量也記在該租戶名下。
+- 那個租戶被停用後，任務改由次早建立的租戶執行，沒有任何通知。
+- 每個租戶的「設定 → 整合 → A2A」都顯示同一個橋接的狀態，看起來像是自己租戶的設定。
+
+只有一個租戶的部署不受影響。
 
 ## 帳號與登入
 
@@ -936,6 +994,86 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - `sla_policies` 只有 `@@index([tenantId])`，沒有 `(tenantId, name)` 的唯一約束。同一租戶建立兩條同名政策時，`findFirst` 回傳哪一條不確定。
 - `DELETE /api/v1/sla-policies/:id` 是硬刪除，沒有引用檢查。`SlaPolicy` 沒有 `isActive` 欄位，因此無法套用 `AGENTS.md` 的 soft-delete 慣例。刪除後，引用該名稱的工單留下一個查不到政策的字串。
 
+## 對話、工單與自動化
+
+功能說明見[租戶後台](../modules/tenant/README.md)的收件匣與對話、工單、自動化三節。
+
+<a id="conv-01"></a>
+### CONV-01：對話的閒置自動關閉時限沒有維護介面
+
+`conversation/inactivity-close.worker.ts` 的 `setupInactivityCloseWorker()` 定期關閉閒置過久的對話。時限讀 `TenantSettings.inactivityCloseHours`，schema 預設 72 小時，值小於等於 0 代表停用。
+
+這個欄位沒有寫入端。`settings.routes.ts` 沒有對應的路由，前端、CLI 與 seed 都不設定它。租戶無法調整時限，也無法停用自動關閉；要改只能直接更新資料庫。
+
+掃描以 `tenant_settings` 的列為單位，因此還有一個邊界情況：沒有這一列的租戶不會被掃描，對話永遠不會自動關閉。開通租戶時不會建立這一列。第一次呼叫 AI，或打開 Chat、Embedding、營業時間、追蹤設定等設定頁時，才會建立。收過文字訊息的租戶通常已有這一列，因為情緒分析會經由 `llm.service.ts` 呼叫 `getChatSettings()`。
+
+**修正方向**：在 `settings` 模組加一組讀寫閒置時限的路由，驗證範圍（0 代表停用），寫入時記錄租戶稽核。前端放在設定頁，例如與營業時間同一頁。開通租戶時一併建立 `TenantSettings`，讓掃描涵蓋所有租戶。
+
+<a id="case-01"></a>
+### CASE-01：工單的狀態下拉選單繞過狀態轉換的副作用
+
+工單改狀態有兩類路徑：
+
+| 路徑 | 呼叫端 | 服務函式 |
+| --- | --- | --- |
+| `POST /cases/:id/resolve`、`/close`、`/reopen` | 工單詳情頁的按鈕 | `case.service.ts` 的 `transitionCase()` |
+| `POST /cases/:id/escalate` | 升級對話框 `EscalationModal.tsx` | `case.service.ts` 的 `escalateCase()` |
+| `PATCH /cases/:id` 帶 `status` | 工單詳情頁的狀態下拉選單，`CaseDetail.tsx` 的 `handleStatusChange()` | `case.service.ts` 的 `updateCase()` |
+
+兩類路徑都經過 `validateTransition()`，允許的轉換相同。差別在副作用：
+
+| 副作用 | 專用端點 | `PATCH /cases/:id` |
+| --- | --- | --- |
+| 寫入 `CaseEvent`（工單時間軸） | 有 | 沒有 |
+| 發布 `case.resolved`、`case.closed` | 有 | 沒有 |
+| 發布 `case.escalated`（通知主管、觸發自動化） | 有 | 沒有 |
+| 記錄升級原因 | 有 | 沒有 |
+| 設定 `resolvedAt`、`closedAt` | 有 | 有 |
+
+下拉選單的選項包含「已升級」。客服從下拉選單把工單改成 `ESCALATED` 時，主管不會收到通知，訂閱 `case.escalated` 的自動化規則也不會觸發。從下拉選單解決或關閉的工單，時間軸上沒有這筆紀錄，訂閱 `case.resolved`、`case.closed` 的對外 Webhook 也收不到事件。
+
+`resolvedAt` 仍然會寫入，因此 CSAT 排程照常發送調查。
+
+**修正方向**：`updateCase()` 收到 `status` 時改走 `transitionCase()`，收到 `ESCALATED` 時拒絕並要求改用 `/escalate`。另一個做法是讓前端的下拉選單改呼叫專用端點。
+
+<a id="auto-01"></a>
+### AUTO-01：部分自動化動作可以儲存、也會命中，執行時卻被略過
+
+2026-05-12 的 `9255245` 把自動化規則的評估與執行，從 API 行程搬到 `apps/workers`。從那之後，`automation` queue 由 `apps/workers/src/handlers/automation.handler.ts` 消費，動作由 `lib/automation-actions.ts` 的 `executeWorkerAutomationActions()` 執行。
+
+搬遷時只實作了一部分動作。規則契約 `packages/automation/src/contracts/actions.ts` 的 `AUTOMATION_ACTION_DEFINITIONS` 與前端規則編輯器都提供下列動作，`executeWorkerAutomationActions()` 卻沒有對應的分支：
+
+| 動作 | 前端標籤 |
+| --- | --- |
+| `create_case` | 建立工單 |
+| `remove_tag` | 移除標籤 |
+| `assign_bot` | 指派機器人 |
+| `kb_auto_reply` | KB 知識庫回覆 |
+| `llm_reply` | LLM 智能回覆 |
+
+遇到上表的動作時，函式只記一行 info 等級的 log（`Unsupported worker action "…" skipped`），然後繼續執行下一個動作。規則能通過 `automation.handler.ts` 呼叫的 `validateAutomationRuleContract()`，因為契約只依事件提供的資料判斷動作是否允許，不管 workers 有沒有實作。
+
+結果：租戶可以建立「收到訊息 → 建立工單」這類規則。規則儲存成功、條件命中，前端也收到 `automation.executed` socket 事件，但工單從未建立。
+
+API 行程的 `modules/automation/engine/action-executor.ts` 的 `executeActions()` 實作了上表的動作，但自 `9255245` 起沒有任何檔案 import 它。
+
+**修正方向**：兩個方向擇一：
+
+- 把缺少的動作補進 `executeWorkerAutomationActions()`。
+- 在契約標出 workers 支援哪些動作，讓前端與 `validateAutomationRuleContract()` 拒絕其他動作。
+
+不論選哪一個，都應刪除 API 端沒有呼叫端的 `action-executor.ts`，避免讀程式的人以為它在運作。
+
+<a id="auto-02"></a>
+### AUTO-02：規則的執行紀錄與執行次數停止更新
+
+寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端（見 AUTO-01），workers 的執行路徑也不寫這些欄位。
+
+- 自動化頁的規則清單顯示的執行次數與最後執行時間，停在搬遷前的值。搬遷後建立的規則永遠顯示 0。
+- `GET /automation/logs` 查不到搬遷後的任何執行。前端沒有呼叫這個端點。
+
+`AutomationExecution` 表則是從來沒有任何程式讀寫。
+
 ## 部署與應用程式
 
 <a id="dep-01"></a>
@@ -987,6 +1125,22 @@ API 啟動 log 寫死為 `LINE, FB, WEBCHAT`，但實際註冊表也包含 Threa
 ### APP-04：Worker 檔名與內容不符
 
 API 的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue producer。真正的 consumer 位於 `apps/workers`。
+
+<a id="app-05"></a>
+### APP-05：API 行程的 SLA 通知訂閱永遠收不到事件
+
+`notification.worker.ts` 的 `setupNotificationWorker()` 訂閱 `sla.warning` 與 `sla.breached`。SLA 掃描在 `apps/workers` 的 `sla.handler.ts`，它直接送出通知，不經過 API 行程的 eventBus。API 行程裡也沒有其他程式發布這兩個事件。
+
+因此這兩個訂閱者永遠不會執行。讀程式時容易誤以為 SLA 通知經過這裡。
+
+<a id="app-06"></a>
+### APP-06：訊息模擬器在所有環境都可用
+
+`apps/api/src/index.ts` 無條件註冊 `/api/v1/simulator`。`channels/simulator/simulator.routes.ts` 只掛 `fastify.authenticate`，沒有權限碼，也不檢查執行環境。前端的 `SimulatorPanel.tsx` 在 `NODE_ENV` 不是 `development` 時不顯示，但這只隱藏入口，API 在正式環境一樣可用。
+
+`simulator.service.ts` 的 `simulateInboundMessage()` 會建立聯絡人與對話、寫入訊息，並發布 `message.received`。任何已登入的成員都能用自己租戶的任一渠道，偽造一則來自任意 uid 的進站訊息。這則訊息會觸發機器人回覆、情緒分析、自動化規則、新訊息通知與對外 Webhook，AI 用量也計入租戶額度。
+
+影響範圍限於呼叫者自己的租戶。
 
 ## 共用套件
 
@@ -1045,6 +1199,18 @@ Chat 與 Embedding 的實際設定來自 `tenant_settings`，不是環境變數�
 ### DB-01：向量維度不一致
 
 Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embedding` 與 `long_term_memories.embedding` 欄位都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，直接寫入會被資料庫拒絕。
+
+<a id="db-02"></a>
+### DB-02：`ContactTag.expiresAt` 沒有設定端，也沒有讀取端
+
+schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個欄位，也沒有任何查詢或排程依它過濾或清除標籤。它唯一出現的地方，是 `line-login.service.ts` 與 `fb-login.service.ts` 合併聯絡人時，把舊值原樣抄到新的一筆。
+
+<a id="db-03"></a>
+### DB-03：`DailyStat` 每天寫入，沒有讀取端
+
+`analytics.scheduler.ts` 的 `setupAnalyticsScheduler()` 每天對每個啟用中的租戶呼叫 `analytics.aggregator.ts` 的 `runDailyAggregation()`，把總覽、工單、客服、渠道與聯絡人的彙總寫入 `DailyStat`。
+
+`analytics.service.ts` 的報表函式都在查詢當下從原始資料表計算，沒有任何程式讀 `DailyStat`。排程每天為每個租戶做一次完整計算，結果沒有用途。
 
 ## CI 與測試
 

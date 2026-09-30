@@ -65,6 +65,8 @@
 
 路由掛在 `/api/v1` 下，經過 `fastify.authenticate` 取得 `request.agent`，再由 `requirePermission()` 檢查權限碼。資料存取用 `request.tenantPrisma` 或 `withTenant()`，兩者都受 RLS 約束。
 
+各功能區由哪些模組負責、模組之間怎麼接力，見[租戶後台](./tenant/README.md)。
+
 ### 對話與工單
 
 | 模組 | 路由前綴 | 後台頁面 | 權限碼 |
@@ -110,6 +112,8 @@
 | `channel` | `/api/v1/channels` | `/dashboard/settings/channels` | `channel.view`、`channel.create`、`channel.update`、`channel.delete`、`channel.assign_team` |
 | `line` | `/api/v1/line/rich-menus`、`/api/v1/line/quick-reply-presets` | `/dashboard/line/*` | `richmenu.manage`、`quickreply.manage` |
 | `storage` | `/api/v1/files` | 各上傳介面 | 僅需登入 |
+| `line`（line-profile 部分） | `/api/v1/channels/:channelId/contacts/:lineUid/sync-profile` | 無頁面 | 僅需登入 |
+| `channels/simulator` | `/api/v1/simulator` | 開發環境的模擬器面板 | 僅需登入 |
 
 ### 自動化
 
@@ -136,7 +140,7 @@
 | `auth` | `/api/v1/auth` | `/login`、`/dashboard/settings/passkeys` | 僅需登入 |
 | `agent` | `/api/v1/agents` | `/dashboard/settings/agents` | `agent.view`、`agent.manage`、`agent.role.assign`、`agent.password.reset`、`agent.deactivate`、`agent.purge` |
 | `role` | `/api/v1/roles` | `/dashboard/settings/roles` | `role.view`、`role.manage` |
-| `settings` | `/api/v1/settings` | `/dashboard/settings/*` | 僅需登入 |
+| `settings` | `/api/v1/settings` | `/dashboard/settings/*` | `settings.manage` |
 | `cli` | `/api/v1/cli` | `/dashboard/settings/cli-sessions` | CLI session 驗證 |
 | `mcp` | `/mcp` | 無頁面 | JWT 或 CLI session，再依工具檢查 scope |
 | `webhook-subscriptions` | `/api/v1/webhook-subscriptions` | 無頁面 | `webhook.view`、`webhook.manage` |
@@ -188,6 +192,7 @@
 | 對外 Webhook 訂閱管理 | `/api/v1/webhook-subscriptions` |
 | Canvas 自動化流程 | `/api/v1/canvas` |
 | 身分合併建議審核 | `/api/v1/identity` |
+| 重抓 LINE 個人資料 | `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile` |
 
 ## 背景工作的歸屬
 
