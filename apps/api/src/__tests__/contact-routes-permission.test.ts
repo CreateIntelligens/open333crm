@@ -242,7 +242,10 @@ try {
     assert.ok(!listJson.includes(`CI 渠道可見性 B ${stamp}`), '列表不可出現渠道 B 的名稱');
     assert.ok(!listJson.includes(`ci-uid-${chB.id}`), '列表不可出現渠道 B 的顧客 uid');
     assert.ok(!listJson.includes('CI 暱稱 B'), '列表不可出現渠道 B 的暱稱');
-    assert.ok(listJson.includes(`ci-uid-${chA.id}`) && listJson.includes('CI 暱稱 A'), '列表應保留可見渠道的 uid 與暱稱');
+    // 正向：對解析後的欄位斷言，確認 uid／暱稱就在這位聯絡人的渠道 A 身份上
+    const listVisible = row.channelIdentities[0] as unknown as { uid: string; profileName: string };
+    assert.equal(listVisible.uid, `ci-uid-${chA.id}`, '列表應保留可見渠道的 uid');
+    assert.equal(listVisible.profileName, 'CI 暱稱 A', '列表應保留可見渠道的暱稱');
   });
 
   await check('CM-173：代發綁定連結檢查渠道層級（看不到的渠道 404、唯讀渠道 403）', async () => {
