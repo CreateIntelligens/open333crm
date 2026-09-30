@@ -14,7 +14,7 @@
 import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
-import { getLatestPointEntry } from '../portal/points.service.js';
+import { addPointTransaction, getLatestPointEntry } from '../portal/points.service.js';
 
 export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE';
 
@@ -40,6 +40,11 @@ export interface MovedRecords {
   contactAttribute: string[];
   /** survivor 原本為空、由 merged 補上的欄位名稱 */
   filledFields: string[];
+  /** 合併時搬移或因重複而刪除的聯絡人關係（原貌），解除時還原 */
+  contactRelations?: {
+    updated: Array<{ id: string; fromContactId: string; toContactId: string; relationType: string }>;
+    deleted: Array<{ fromContactId: string; toContactId: string; relationType: string; notes: string | null }>;
+  };
   /** 原本 mergedIntoId 指向被合併方、合併時改指 survivor 的聯絡人（解除時改回） */
   repointedContacts?: string[];
   /** 呼叫端附加的脈絡（例如綁定代碼的發碼身分），供解除時判斷用 */
@@ -132,20 +137,9 @@ async function transferPoints(
   const partial = expected !== undefined && value < expected ? `（原轉入 ${expected} 點，合併後已使用部分，僅轉回 ${value} 點）` : '';
   const note = reason === 'merge' ? '聯絡人合併：點數轉移' : `解除合併：點數轉回${partial}`;
 
-  await db.pointTransaction.create({
-    data: { tenantId, contactId: fromId, amount: -value, balance: fromBalance - value, type: `${reason}_transfer_out`, note, createdAt },
-  });
-  await db.pointTransaction.create({
-    data: {
-      tenantId,
-      contactId: toId,
-      amount: value,
-      balance: (to?.balance ?? 0) + value,
-      type: `${reason}_transfer_in`,
-      note,
-      createdAt,
-    },
-  });
+  // 帳本寫入規則只在 points.service 一處（取最新餘額 + amount）
+  await addPointTransaction(db, { tenantId, contactId: fromId, amount: -value, type: `${reason}_transfer_out`, note, createdAt });
+  await addPointTransaction(db, { tenantId, contactId: toId, amount: value, type: `${reason}_transfer_in`, note, createdAt });
   return value;
 }
 
@@ -175,14 +169,20 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   if (merged.isArchived) {
     throw new AppError('此聯絡人已被封存或合併，無法再次合併', 'BAD_REQUEST', 400);
   }
-  // 先以條件式更新佔用被合併方：上面的檢查只是讀取，兩個合併同時進來會都通過；
-  // 這裡只有一個能把 isArchived 從 false 改成 true，另一個影響 0 列即中止
-  const claimed = await db.contact.updateMany({
-    where: { id: mergedId, tenantId, isArchived: false },
-    data: { isArchived: true, mergedIntoId: survivorId },
-  });
-  if (claimed.count === 0) {
-    throw new AppError('此聯絡人已被封存或合併，無法再次合併', 'CONFLICT', 409);
+  // 以條件式更新鎖定雙方：上面的檢查只是讀取，同時進來的合併會都通過。
+  // - 被合併方：只有一個交易能把 isArchived 從 false 改成 true
+  // - survivor：也要鎖住（碰一下 updatedAt 取得列鎖），否則另一個交易同時把 survivor 併入別人，
+  //   本次搬過去的資料會落在已封存的聯絡人上
+  // 依 id 排序鎖定，避免「A 併入 B」與「B 併入 A」同時進行時互相等待而死結
+  const now = new Date();
+  for (const id of [survivorId, mergedId].sort()) {
+    const locked = await db.contact.updateMany({
+      where: { id, tenantId, isArchived: false },
+      data: id === mergedId ? { isArchived: true, mergedIntoId: survivorId } : { updatedAt: now },
+    });
+    if (locked.count === 0) {
+      throw new AppError('聯絡人已被封存或合併，請重新整理後再試', 'CONFLICT', 409);
+    }
   }
 
   const to = { contactId: survivorId };
@@ -276,6 +276,8 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
   const relations = await db.contactRelation.findMany({
     where: { OR: [{ fromContactId: mergedId }, { toContactId: mergedId }] },
   });
+  // 每一筆的原貌都記下來（搬移的記 id 與原端點、刪除的記完整內容），解除時才能還原
+  const contactRelations: NonNullable<MovedRecords['contactRelations']> = { updated: [], deleted: [] };
   for (const rel of relations) {
     const fromContactId = rel.fromContactId === mergedId ? survivorId : rel.fromContactId;
     const toContactId = rel.toContactId === mergedId ? survivorId : rel.toContactId;
@@ -285,10 +287,13 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
         where: { fromContactId, toContactId, relationType: rel.relationType, NOT: { id: rel.id } },
         select: { id: true },
       }));
+    const original = { fromContactId: rel.fromContactId, toContactId: rel.toContactId, relationType: rel.relationType };
     if (duplicate) {
       await db.contactRelation.delete({ where: { id: rel.id } });
+      contactRelations.deleted.push({ ...original, notes: rel.notes });
     } else {
       await db.contactRelation.update({ where: { id: rel.id }, data: { fromContactId, toContactId } });
+      contactRelations.updated.push({ id: rel.id, ...original });
     }
   }
 
@@ -347,6 +352,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     contactAttribute,
     filledFields,
     repointedContacts,
+    contactRelations,
     ...(meta ? { meta } : {}),
   };
 
@@ -444,6 +450,26 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
     const amount = Math.min(moved.pointsTransferred, Math.max(holderBalance, 0));
     if (amount > 0) {
       await transferPoints(db, tenantId, holderId, log.mergedId, 'revert', amount, moved.pointsTransferred);
+      // 這些點數當初是經由後續的合併（survivor → … → 持有者）一路轉過去的；那些合併紀錄記的
+      // pointsTransferred 包含了這筆，扣掉，否則之後再解除它們會把同一批點數再轉一次
+      for (let i = 0; i < holderChain.length - 1; i++) {
+        const later = await db.contactMergeLog.findFirst({
+          where: { tenantId, mergedId: holderChain[i], survivorId: holderChain[i + 1], revertedAt: null },
+          orderBy: { createdAt: 'desc' },
+        });
+        const laterMoved = later?.movedRecords as unknown as Partial<MovedRecords> | undefined;
+        if (later && laterMoved?.pointsTransferred) {
+          await db.contactMergeLog.update({
+            where: { id: later.id, tenantId },
+            data: {
+              movedRecords: {
+                ...laterMoved,
+                pointsTransferred: Math.max(0, laterMoved.pointsTransferred - amount),
+              } as unknown as Prisma.InputJsonValue,
+            },
+          });
+        }
+      }
     }
   }
   if (has('identityMap')) {
@@ -529,6 +555,29 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
     where: { id: log.mergedId, tenantId },
     data: { isArchived: false, mergedIntoId: null },
   });
+  // 聯絡人關係還原：搬移過的改回原端點（若該位置已有同樣的關係就略過，避免撞唯一鍵），刪除的重建
+  if (moved.contactRelations) {
+    for (const rel of moved.contactRelations.updated) {
+      const exists = await db.contactRelation.findFirst({
+        where: { fromContactId: rel.fromContactId, toContactId: rel.toContactId, relationType: rel.relationType },
+        select: { id: true },
+      });
+      if (!exists) {
+        await db.contactRelation.updateMany({
+          where: { id: rel.id },
+          data: { fromContactId: rel.fromContactId, toContactId: rel.toContactId },
+        });
+      }
+    }
+    for (const rel of moved.contactRelations.deleted) {
+      const exists = await db.contactRelation.findFirst({
+        where: { fromContactId: rel.fromContactId, toContactId: rel.toContactId, relationType: rel.relationType },
+        select: { id: true },
+      });
+      if (!exists) await db.contactRelation.create({ data: rel });
+    }
+  }
+
   // 合併時被「壓平」改指 survivor 的聯絡人改回指向被恢復方，合併鏈才會正確
   if (moved.repointedContacts?.length) {
     await db.contact.updateMany({

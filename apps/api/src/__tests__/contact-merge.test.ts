@@ -454,6 +454,43 @@ test('解除：survivor 之後又被併入別人，從對方補來的電話也�
   assert.equal(db.contact.rows.find((c) => c.id === 'M')!.phone, '0912345678', '被恢復方保有自己的電話');
 });
 
+test('解除：連環合併不照順序解除，點數不會重複轉回', async () => {
+  const db = makeDb();
+  // X 自己有 30 點
+  db.pointTransaction.rows.push({ id: 'pt-x', tenantId: T, contactId: 'X', amount: 30, balance: 30, createdAt: new Date('2026-01-15') });
+  // A：M(50) 併入 S(100) → S=150；B：S 再併入 X(30) → X=180
+  const a = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  const b = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
+  assert.equal(balanceOf(db, 'X'), 180);
+
+  // 先解除較早的 A：M 從目前持有者 X 拿回 50
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId: a.mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(balanceOf(db, 'M'), 50);
+  // 再解除 B：S 只應拿回自己原本的 100，不可把 M 那 50 再算一次（那會吃掉 X 自己的點數）
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId: b.mergeLogId, revertedBy: 'agent-1' });
+  assert.equal(balanceOf(db, 'S'), 100);
+  assert.equal(balanceOf(db, 'X'), 30, 'X 自己的 30 點不受影響');
+});
+
+test('合併：「M 併入 S」與「S 併入 X」同時進行，後鎖到 S 的那個被擋下', async () => {
+  const db = makeDb();
+  const results = await Promise.allSettled([
+    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
+    mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' }),
+  ]);
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, '不可兩個都成功（資料會落在已封存的 S）');
+  const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+  assert.equal((rejected.reason as { statusCode?: number }).statusCode, 409);
+});
+
+test('解除：聯絡人關係還原（搬移的改回、因重複刪除的重建）', async () => {
+  const db = makeDb();
+  const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId, revertedBy: 'agent-1' });
+  const rels = db.contactRelation.rows.map((r) => `${r.fromContactId}->${r.toContactId}:${r.relationType}`).sort();
+  assert.deepEqual(rels, ['M->S:friend', 'M->X:family', 'X->M:colleague', 'X->S:colleague']);
+});
+
 test('解除：重複解除回 409', async () => {
   const db = makeDb();
   const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });

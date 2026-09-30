@@ -63,6 +63,13 @@ export function tenantScopedClient(base: PrismaClient, tenantId: string) {
       },
     },
     client: {
+      /**
+       * 標記：這是「每個查詢各自開一個綁租戶交易」的 client。它的 $transaction 不會設定
+       * app.current_tenant，交易內的查詢也不在同一個交易裡——需要原子性的流程必須改用 withTenant。
+       */
+      $isTenantScoped(): true {
+        return true;
+      },
       // 覆寫 raw query，使其在綁定租戶的交易內執行（tx 上重發同名方法）。
       // 保留泛型 <T>，讓呼叫端 $queryRaw<{...}[]> 的回傳型別不退化為 unknown。
       /* eslint-disable @typescript-eslint/no-explicit-any */

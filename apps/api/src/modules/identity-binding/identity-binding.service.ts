@@ -67,7 +67,15 @@ export interface BindingActor {
 const BINDABLE_TYPES: BindableChannelType[] = ['LINE', 'FB', 'THREADS'];
 
 async function inTransaction<T>(db: TenantDb, fn: (tx: TenantDb) => Promise<T>): Promise<T> {
-  const client = db as unknown as { $transaction?: (cb: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T> };
+  const client = db as unknown as {
+    $transaction?: (cb: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
+    $isTenantScoped?: () => true;
+  };
+  // request.tenantPrisma 的 $transaction 不帶租戶、查詢也各自開交易，合併會失去原子性且被 RLS 擋掉；
+  // 需要合併／解除的呼叫端必須傳 withTenant 的 tx（或白名單的 prismaAdmin）
+  if (typeof client.$isTenantScoped === 'function') {
+    throw new Error('identity-binding：合併／解除需在 withTenant 交易內執行，請勿傳入 request.tenantPrisma');
+  }
   // 已在交易內（TransactionClient 沒有 $transaction）就直接執行，避免巢狀
   if (typeof client.$transaction === 'function') return client.$transaction((tx) => fn(tx));
   return fn(db);

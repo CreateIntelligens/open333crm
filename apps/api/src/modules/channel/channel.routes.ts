@@ -139,6 +139,10 @@ async function getTenantWebchatChannel(prisma: TenantDb, id: string, tenantId: s
   return channel;
 }
 
+const channelIdParamsSchema = z.object({
+  id: z.string().uuid('渠道 id 格式錯誤'),
+});
+
 const bindingHandleSchema = z.object({
   bindingHandle: z
     .string()
@@ -369,7 +373,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     '/:id/binding-handle',
     { preHandler: requirePermission('channel.view') },
     async (request, reply) => {
-      const channel = await getBindableChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
+      const { id } = channelIdParamsSchema.parse(request.params);
+      const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
       return reply.send(success(bindingHandleView(channel)));
     },
   );
@@ -379,7 +384,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     '/:id/binding-handle',
     { preHandler: requirePermission('channel.update') },
     async (request, reply) => {
-      const channel = await getBindableChannel(request.tenantPrisma, request.params.id, request.agent.tenantId);
+      const { id } = channelIdParamsSchema.parse(request.params);
+      const channel = await getBindableChannel(request.tenantPrisma, id, request.agent.tenantId);
       const { bindingHandle } = bindingHandleSchema.parse(request.body);
       let handle = bindingHandle?.trim() || null;
       // FB／IG 的 m.me、ig.me 連結不接受 @，管理員習慣性加上時自動去掉

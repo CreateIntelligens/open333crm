@@ -255,13 +255,20 @@ export async function updateChannel(
   }
   if (data.settings !== undefined) {
     // 前端各設定視窗會拿手上的 settings 快照整包送回；系統維護的欄位（驗證時寫入的導流識別、
-    // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）一律以資料庫現值為準，放在後面蓋過
-    // 快照裡的舊值——這些欄位只能經由驗證或 /binding-handle 專屬 API 修改
-    // 先丟掉快照裡的系統欄位再補回資料庫現值：否則資料庫已刪除的 key（例如管理員清空手動導流識別）
-    // 會被快照裡的舊值寫回來
+    // 管理員在專屬 API 改的導流識別、FB「開始使用」檢查結果）只能經由驗證或 /binding-handle 修改：
+    // 丟掉快照裡的這些 key，並在資料庫端取「寫入當下」的現值補回（單一 UPDATE，原子）。
+    // 不用函式開頭讀到的 channel.settings：驗證可能在這之間寫入，用舊快照會把它蓋回去
     const incoming = { ...data.settings };
     for (const key of SYSTEM_MANAGED_SETTING_KEYS) delete incoming[key];
-    updateData.settings = { ...incoming, ...pickSystemManagedSettings(channel.settings) };
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET settings = ${JSON.stringify(incoming)}::jsonb || COALESCE(
+            (SELECT jsonb_object_agg(e.key, e.value)
+               FROM jsonb_each(COALESCE(settings, '{}'::jsonb)) AS e
+              WHERE e.key = ANY(${[...SYSTEM_MANAGED_SETTING_KEYS]}::text[])),
+            '{}'::jsonb),
+          "updatedAt" = now()
+      WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
   }
 
   const updated = await prisma.channel.update({
@@ -372,14 +379,6 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
 /** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
 const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured'] as const;
 
-function pickSystemManagedSettings(settings: unknown): Record<string, unknown> {
-  const current = (settings && typeof settings === 'object' ? settings : {}) as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const key of SYSTEM_MANAGED_SETTING_KEYS) {
-    if (key in current) out[key] = current[key];
-  }
-  return out;
-}
 
 export async function verifyChannel(prisma: TenantDb, id: string, tenantId: string) {
   const channel = await prisma.channel.findFirst({

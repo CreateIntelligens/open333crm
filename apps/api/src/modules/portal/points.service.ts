@@ -40,9 +40,11 @@ export async function addPointTransaction(
     type: string; // activity_submit | admin_adjust | reward_redeem
     refId?: string;
     note?: string;
+    /** 指定寫入時間（合併轉移點數時用，確保排在雙方既有交易之後）；省略為現在 */
+    createdAt?: Date;
   },
 ) {
-  const currentBalance = await getPointBalance(prisma, data.contactId);
+  const currentBalance = await getPointBalance(prisma, data.contactId, data.tenantId);
   const newBalance = currentBalance + data.amount;
 
   return prisma.pointTransaction.create({
@@ -54,6 +56,7 @@ export async function addPointTransaction(
       type: data.type,
       refId: data.refId,
       note: data.note,
+      ...(data.createdAt ? { createdAt: data.createdAt } : {}),
     },
   });
 }

@@ -164,6 +164,13 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // GET /api/v1/contacts/identity-binding/status — 收件匣判斷是否顯示「傳送綁定連結」按鈕
+  // （完整設定 API 需 settings.manage，一般客服讀不到；這裡只回是否啟用）
+  fastify.get('/identity-binding/status', { preHandler: [requirePermission('contact.update')] }, async (request, reply) => {
+    const settings = await getIdentityBindingSettings(request.tenantPrisma, request.agent.tenantId);
+    return reply.send(success({ enabled: settings.enabled }));
+  });
+
   // POST /api/v1/contacts/:id/binding-link — 客服代顧客在指定對話送出跨渠道綁定連結
   fastify.post<{ Params: { id: string } }>(
     '/:id/binding-link',
