@@ -46,12 +46,13 @@
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 未處理 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
+| [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
-| [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
+| [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-04](#sec-04) | 帳號與登入 | P1 | 未處理 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
 | [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
@@ -166,6 +167,40 @@
 啟動時的檢查只驗單向：`validateRouteCodes()` 確認路由用到的碼都存在於 registry，不檢查 registry 的碼有沒有人用。因此宣告了卻沒有強制點的碼不會產生任何警告。
 
 對方案天花板的連帶影響見 PLAN-04。
+
+<a id="rbac-02"></a>
+### RBAC-02：CLI token 以 scope 授權，繞過角色權限與方案天花板
+
+CLI token 與網頁登入走兩套授權，兩套之間沒有對應：
+
+| | 網頁路由 | CLI 路由與 MCP |
+| --- | --- | --- |
+| 驗證 | `fastify.authenticate`（JWT） | `authenticateCliSession` 或 `authenticateJwtOrCliSession` |
+| 授權 | `requirePermission()`：角色權限 ∩ 方案天花板 | 只檢查 token 的 scope |
+
+一般路由的 `authenticate` 只接受 JWT，`cli_` 開頭的 token 會被擋下。會收 CLI token 的只有 `/auth/me`、`/auth/cli/logout`、`cli.routes.ts` 的各條路由，以及 MCP 端點。
+
+**取得 token 的兩條路徑都不看角色與方案：**
+
+| 路徑 | 誰能用 | 拿到的 scope |
+| --- | --- | --- |
+| `POST /auth/cli/login` | 任何成員，用帳號密碼即可，不分角色 | `DEFAULT_CLI_SCOPES`：`cli:status`、`cli:apis`、`cli:analytics:read` |
+| `POST /settings/cli-sessions` | 持有 `settings.manage` | 請求自帶的 `scopes`。schema 是 `z.array(z.string())`，任何字串都收；`mcpRead: true` 再加上 `mcp:read` |
+
+**後果一：任何成員都能以 CLI 讀全租戶報表。**
+
+| | 網頁 `/analytics/overview` 等 | CLI `/cli/analytics/overview` 等 |
+| --- | --- | --- |
+| 角色 | 需要 `analytics.view` | 只看 `cli:analytics:read` |
+| 方案 | `analytics.view` 屬於 `analytics` feature，受天花板限制 | 不看方案 |
+
+`agent` 系統角色的預設權限只有 `analytics.view.self`，沒有 `analytics.view`。因此任何客服用自己的帳密走 CLI 登入，就能讀到全租戶的總覽、訊息趨勢、案件與渠道報表，而這些在網頁上他看不到。方案不含 `analytics` 的租戶（seed 的 `trial`、`light`、`standard`）也一樣讀得到。
+
+**後果二：MCP 工具不受方案限制。** MCP 端點要求 token 帶 `mcp:read`，個別工具再依 `requiredMcpScopeForTool()` 要求 `mcp:line:read`、`mcp:line:send` 或 `mcp:line:broadcast`。`mcp.server.ts` 的工具（查聯繫人與案件、報表、LINE 對話、直接發送、群發）都不檢查角色權限或方案天花板。只有持 `settings.manage` 的人能發出帶這些 scope 的 token，但發出之後，方案不含 `marketing` 的租戶也能透過 MCP 群發。
+
+**`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下。同一條路由，JWT 失效關閉，CLI 失效開放。
+
+CLI token 的停用問題另見 AUTH-02。
 
 ## 帳號與登入
 
@@ -296,22 +331,25 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 `/platform-users/:id/audit-logs` 查得到的是該帳號的操作紀錄，不包含登入事件。
 
 <a id="sec-03"></a>
-### SEC-03：rate-limit 只註冊在 platform 路由的 scope 內
+### SEC-03：rate-limit 在各路由模組內各自註冊
 
-`apps/api/src/modules/platform/platform.routes.ts` 在 `platformRoutes()` 函式內部一開始就註冊 `@fastify/rate-limit`：
+`@fastify/rate-limit` 沒有在根層註冊，而是在五個路由模組內各自註冊一次，每一處都寫 `global: false`，路由再以 `config: { rateLimit: ... }` 設定自己的上限：
 
-```ts
-export default async function platformRoutes(fastify: FastifyInstance) {
-  await fastify.register(rateLimit, { global: false, max: 30, timeWindow: '1 minute', ... });
-```
+| 模組 | 註冊處 |
+| --- | --- |
+| 租戶認證 | `auth.routes.ts` |
+| 試用申請 | `trial.routes.ts` |
+| 平台後台 | `platform.routes.ts` 的 `platformRoutes()` |
+| 公開 Chatbox | `chatbox.routes.ts` |
+| 舊版 Webchat | `webchat.routes.ts` |
 
-這是整個 API 唯一一處註冊這個外掛。三條公開路由靠它保護：`POST /auth/login`（10 次／分鐘）、`POST /auth/forgot-password`（5 次／10 分鐘）、`POST /auth/reset-password`（10 次／10 分鐘）。
+目前五處都運作正常，因為每條帶 `config.rateLimit` 的路由，與它依賴的 `register` 呼叫在同一個 Fastify encapsulation scope 內。
 
-目前運作正常，三條路由與 `register` 呼叫在同一個 Fastify encapsulation scope 內。問題是這個寫法與 repo 其他跨領域外掛的慣例不同：`apps/api/src/plugins/` 的七支外掛全部以 `fastify-plugin` 匯出，並在 `index.ts` 的根層註冊，因此不受 scope 限制。
+問題是這個寫法與 `apps/api/src/plugins/` 的慣例不同。那裡的外掛以 `fastify-plugin` 匯出、在 `index.ts` 的根層註冊，因此不受 scope 限制。
 
-因此存在一個沒有警告的陷阱。把 `/auth/*` 那幾條路由拆到另一個檔案、再從 `index.ts` 另行 `register`，這些路由就落到另一個 scope。路由上的 `config: { rateLimit: ... }` 會被**靜默忽略**，不報錯也不警告，平台超級使用者的登入端點就失去暴力破解保護。
+因此存在一個沒有警告的陷阱。把帶 `config.rateLimit` 的路由搬到另一個檔案、再從 `index.ts` 另行 `register`，那些路由就落到沒有註冊這個外掛的 scope。`config.rateLimit` 會被**靜默忽略**，不報錯也不警告，登入端點就失去暴力破解保護。
 
-`platform` 模組沒有任何測試，因此這個改動不會被測試擋下。拆分 `platform.routes.ts` 之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。
+搬移之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。`platform` 模組沒有任何測試，這類改動不會被測試擋下。
 
 <a id="sec-04"></a>
 ### SEC-04：`request.ip` 可由呼叫端偽造
@@ -328,13 +366,15 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 同一份設定裡的 `X-Real-IP: $remote_addr` 是覆寫，值可信，但 API 沒有任何地方讀它。
 
-三處速率限制都以 `request.ip` 分組，因此每換一次標頭就等於換一個新的來源：
+五個模組的速率限制，`keyGenerator` 都是 `request.ip`，因此每換一次標頭就等於換一個新的來源：
 
 | 位置 | 上限 |
 | --- | --- |
 | `platform.routes.ts` | scope 內每分鐘 30 次；登入每分鐘 10 次；忘記密碼每 10 分鐘 5 次 |
-| `auth/auth.routes.ts` | 租戶登入每分鐘 10 次 |
+| `auth/auth.routes.ts` | scope 內每分鐘 10 次；租戶登入、passkey、CLI 登入各每分鐘 10 次 |
 | `trial/trial.routes.ts` | scope 內每 10 分鐘 20 次；申請試用每 10 分鐘 5 次 |
+| `chatbox/chatbox.routes.ts` | scope 內每分鐘 60 次；建立 session 每分鐘 10 次 |
+| `webchat/webchat.routes.ts` | scope 內每分鐘 60 次；各路由每分鐘 10 到 30 次 |
 
 平台後台與租戶後台都沒有帳號層級的鎖定，速率限制是唯一擋暴力破解的機制。
 

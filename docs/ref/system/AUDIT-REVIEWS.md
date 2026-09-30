@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：CLI token 的授權路徑，新增 RBAC-02，並修正 SEC-03 與 SEC-04
+
+起因是補寫 PLAN-08 時讀到 `requirePermission()` 遇到 `isCliSession` 就直接放行。做法是追完 CLI token 的整條路徑：哪些驗證函式接受它、哪些路由掛這些驗證函式、token 怎麼發出、scope 怎麼決定，以及 CLI 路由與 MCP 工具做了哪些檢查。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| RBAC-02 | `authenticate` 只接受 JWT；接受 CLI token 的只有 `authenticateCliSession` 與 `authenticateJwtOrCliSession`，掛在 `/auth/me`、`/auth/cli/logout`、`cli.routes.ts` 與 MCP；這些路由只檢查 scope；`/auth/cli/login` 不分角色發出含 `cli:analytics:read` 的預設 scope；`/settings/cli-sessions` 的 `scopes` 不設白名單；`mcp.server.ts` 的工具沒有任何角色或方案檢查 |
+
+`requirePermission()` 的 `isCliSession` 放行本身目前碰不到，因為沒有路由同時接受 CLI token 又掛 `requirePermission()`。真正的問題在於 CLI 整條路徑用 scope 取代了 RBAC 與方案天花板，因此寫成 RBAC-02，放行那段列為其中一點。
+
+**修正 SEC-03。** 原本寫「這是整個 API 唯一一處註冊這個外掛」，這句從寫入時就是錯的。`auth.routes.ts` 自 2026-06-04（`00aa7ee`）、`trial.routes.ts` 自 2026-08-25（`acb7568`）就各自註冊了；`chatbox.routes.ts` 與 `webchat.routes.ts` 也有。實際是五個路由模組各自註冊。SEC-03 所說的陷阱（搬移路由時 `config.rateLimit` 會被靜默忽略）仍然成立，而且適用於五個模組，因此改寫描述與標題，結論不變。
+
+**補正 SEC-04。** 原本的表只列三個模組。`chatbox.routes.ts` 與 `webchat.routes.ts` 的 `keyGenerator` 也是 `request.ip`，同樣受影響，已補上。
+
 ## 2026-09-30：對照 main 複查，並移除文件中的程式碼行號
 
 本地 `main` 同步到 `8611bf8` 後，本分支落後 `main` 46 個 commit。這些 commit 改到 AUDIT 常引用的檔案，因此逐項對照 `main` 複查。
