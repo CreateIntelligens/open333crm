@@ -4,7 +4,7 @@ import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
-import { ChannelBadge } from '@/components/shared/ChannelBadge';
+import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { AlertCircle, FileText, Star } from 'lucide-react';
 import type { ConversationRow } from '@/hooks/useConversations';
 
@@ -91,10 +91,14 @@ export function ConversationListItem({
             {formatDistanceToNow(new Date(lastMessageTime), { addSuffix: false })}
           </span>
         </div>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          <ChannelBadge channel={conversation.channelType} />
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+          <ChannelLabel
+            channelType={conversation.channelType}
+            channelName={conversation.channel?.displayName}
+            nameClassName="max-w-[7.5rem]"
+          />
           {isBotHandled && (
-            <span className="inline-flex items-center rounded-md bg-ai-subtle px-1.5 py-0.5 text-[10px] font-medium text-ai">
+            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-ai-subtle px-1.5 py-0.5 text-[10px] font-medium text-ai">
               Bot 中
             </span>
           )}

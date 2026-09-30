@@ -10,7 +10,7 @@ import { StatusBanner } from './StatusBanner';
 import { TemplatePicker } from './TemplatePicker';
 import { TypingIndicator } from './TypingIndicator';
 import { CsatMessage } from './CsatMessage';
-import { ChannelBadge } from '@/components/shared/ChannelBadge';
+import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ interface ChatWindowProps {
       avatarUrl?: string;
     };
     channelType: string;
+    channel?: { id: string; displayName: string; channelType: string } | null;
     status: string;
     assignedToId?: string | null;
   } | null;
@@ -204,7 +205,11 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
             <h3 className="font-semibold">
               {conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人'}
             </h3>
-            <ChannelBadge channel={conversation.channelType} />
+            <ChannelLabel
+              channelType={conversation.channelType}
+              channelName={conversation.channel?.displayName}
+              nameClassName="max-w-[12rem] text-sm"
+            />
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                 statusColor[conversation.status] || 'bg-success-subtle text-success'
