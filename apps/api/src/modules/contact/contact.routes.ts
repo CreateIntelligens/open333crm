@@ -202,7 +202,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
         uid: identity.uid,
         contactId: id,
         conversationId: conversation.id,
-      });
+      }, 'agent');
 
       await writeTenantAudit(request.tenantPrisma, {
         tenantId,

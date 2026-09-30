@@ -500,24 +500,27 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   }
 
   // 合併時從被合併方補到 survivor 的電話／email／頭像／名稱，解除後不可留在對方身上（個資）。
+  // survivor 之後若又被併入別人，這些值可能再被補到後續持有者身上 → 整條合併鏈都要清。
   // 只清「仍是當時補上的值」的欄位：合併後客服或顧客自己改過的就不動
   const filled = moved.filledFields ?? [];
   if (filled.length > 0) {
-    const [restoredContact, survivorContact] = await Promise.all([
-      db.contact.findFirst({ where: { id: log.mergedId, tenantId } }),
-      db.contact.findFirst({ where: { id: log.survivorId, tenantId } }),
-    ]);
-    if (restoredContact && survivorContact) {
-      const clear: Prisma.ContactUpdateInput = {};
-      for (const field of filled) {
-        if (field === 'phone' && survivorContact.phone === restoredContact.phone) clear.phone = null;
-        if (field === 'email' && survivorContact.email === restoredContact.email) clear.email = null;
-        if (field === 'avatarUrl' && survivorContact.avatarUrl === restoredContact.avatarUrl) clear.avatarUrl = null;
-        // displayName 為必填，只在合併前 survivor 名稱為空白時才補過；清回空字串
-        if (field === 'displayName' && survivorContact.displayName === restoredContact.displayName) clear.displayName = '';
-      }
-      if (Object.keys(clear).length > 0) {
-        await db.contact.update({ where: { id: log.survivorId, tenantId }, data: clear });
+    const restoredContact = await db.contact.findFirst({ where: { id: log.mergedId, tenantId } });
+    if (restoredContact) {
+      const holders = await db.contact.findMany({ where: { tenantId, id: { in: holderChain } } });
+      for (const holder of holders) {
+        const clear: Prisma.ContactUpdateInput = {};
+        for (const field of filled) {
+          if (field === 'phone' && restoredContact.phone && holder.phone === restoredContact.phone) clear.phone = null;
+          if (field === 'email' && restoredContact.email && holder.email === restoredContact.email) clear.email = null;
+          if (field === 'avatarUrl' && restoredContact.avatarUrl && holder.avatarUrl === restoredContact.avatarUrl) {
+            clear.avatarUrl = null;
+          }
+          // displayName 為必填，只在合併前 survivor 名稱為空白時才補過；清回空字串
+          if (field === 'displayName' && holder.displayName === restoredContact.displayName) clear.displayName = '';
+        }
+        if (Object.keys(clear).length > 0) {
+          await db.contact.update({ where: { id: holder.id, tenantId }, data: clear });
+        }
       }
     }
   }

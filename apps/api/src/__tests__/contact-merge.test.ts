@@ -442,6 +442,18 @@ test('合併：同一聯絡人同時被併入兩個對象，只有一個成功',
   assert.equal(db.contactMergeLog.rows.length, 1);
 });
 
+test('解除：survivor 之後又被併入別人，從對方補來的電話也要從後續持有者身上清掉', async () => {
+  const db = makeDb();
+  // M(有電話) 併入 S(沒電話) → S 補上電話；S 再併入 X(沒電話) → X 也補上
+  const first = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'BINDING_CODE' });
+  await mergeContacts(asDb(db), { tenantId: T, survivorId: 'X', mergedId: 'S', source: 'MANUAL' });
+  assert.equal(db.contact.rows.find((c) => c.id === 'X')!.phone, '0912345678');
+
+  await revertMerge(asDb(db), { tenantId: T, mergeLogId: first.mergeLogId, revertedBy: 'customer' });
+  assert.equal(db.contact.rows.find((c) => c.id === 'X')!.phone, null, '個資不可留在後續持有者身上');
+  assert.equal(db.contact.rows.find((c) => c.id === 'M')!.phone, '0912345678', '被恢復方保有自己的電話');
+});
+
 test('解除：重複解除回 409', async () => {
   const db = makeDb();
   const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });

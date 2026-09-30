@@ -8,7 +8,7 @@ import { logger } from '@open333crm/core';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { emitInboundSocketEvents, sendFirstContactGreeting } from './inbound-side-effects.js';
 import { buildMessageNewPayload, emitToConversationAndTenant } from './inbound-socket-presenter.js';
-import { extractBindingCode, getBindingStore, type BindingStore } from '../identity-binding/binding-code.js';
+import { extractBindingCode, getBindingStore, pendingConfirmKey, type BindingStore } from '../identity-binding/binding-code.js';
 import {
   detectBindingIntent,
   executeBindingIntent,
@@ -46,10 +46,19 @@ export async function interceptIdentityBinding(ctx: InboundMessageContext): Prom
     text: ctx.textContent,
     code: codeFrom(ctx),
     getChannelIdentityId: () => findChannelIdentityId(ctx),
+    hasPendingConfirm: async () => {
+      const identityId = await findChannelIdentityId(ctx);
+      if (!identityId) return false;
+      const store = storeOverride ?? getBindingStore();
+      return (await store.get(pendingConfirmKey(ctx.tenantId, identityId))) !== null;
+    },
   });
   if (!intent) return { handled: false };
 
   if (ctx.message) await emitInboundSocketEvents(ctx);
+  // 新顧客的招呼語先送，再送綁定相關回覆：送出代碼只會進入「等待確認」、不會立即合併，
+  // 招呼語若排在確認提示之後會把提示擠掉（確認回覆本身不會是首次進站）
+  await sendFirstContactGreeting(ctx);
   // 一般訊息與 postback 都有平台訊息 id（FB postback.mid、IG message.mid），重送已由
   // channelMsgId 去重擋下，這裡不需另外去重；只有獨立 referral 事件沒有 id（見 handleReferralEvent）
   const status = await runBindingIntent(ctx, intent);
@@ -102,12 +111,15 @@ export async function handleReferralEvent(
   await resolve(ctx);
   if (!ctx.contactId || !ctx.conversation) return;
   if (!(await firstSeenReferral(ctx, code))) return;
-  const status = await runBindingIntent(ctx, { kind: 'redeem', code });
-  // 以 referral（例如 IG Icebreaker）第一次接觸、又沒有真的合併的新顧客，仍要收到招呼語
-  if (status !== 'bound') await sendFirstContactGreeting(ctx);
+  // 以 referral（例如 IG Icebreaker）第一次接觸的新顧客：招呼語先送，再送確認提示
+  await sendFirstContactGreeting(ctx);
+  await runBindingIntent(ctx, { kind: 'redeem', code });
 }
 
 async function findChannelIdentityId(ctx: InboundMessageContext): Promise<string | null> {
+  // resolveInboundContact 已把身分放在 ctx 上，沿用即可，省一次查詢
+  const known = (ctx.channelIdentity as { id?: string } | null | undefined)?.id;
+  if (known) return known;
   const identity = await ctx.prisma.channelIdentity.findUnique({
     where: { channelId_uid: { channelId: ctx.channel.id, uid: ctx.contactUid } },
     select: { id: true },

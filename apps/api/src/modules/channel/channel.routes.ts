@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
@@ -11,6 +10,7 @@ import {
   verifyChannel,
   updateWebhookBaseUrl,
   ensureChannelPublicKey,
+  patchChannelSettings,
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -387,15 +387,15 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       if (handle && channel.channelType === 'LINE' && !handle.startsWith('@')) {
         throw new AppError('LINE Basic ID 須以 @ 開頭，例如 @abc1234', 'VALIDATION_ERROR', 400);
       }
-      const settings = { ...((channel.settings || {}) as Record<string, unknown>) };
-      if (handle) settings.bindingHandle = handle;
-      else delete settings.bindingHandle;
-
-      const updated = await request.tenantPrisma.channel.update({
-        where: { id: channel.id, tenantId: request.agent.tenantId },
-        data: { settings: settings as Prisma.InputJsonValue },
-        select: { id: true, channelType: true, settings: true },
-      });
+      // 只合併這一欄（資料庫端原子更新），不整包覆寫 settings
+      await patchChannelSettings(
+        request.tenantPrisma,
+        channel.id,
+        request.agent.tenantId,
+        handle ? { bindingHandle: handle } : {},
+        handle ? [] : ['bindingHandle'],
+      );
+      const updated = await getBindableChannel(request.tenantPrisma, channel.id, request.agent.tenantId);
       return reply.send(success(bindingHandleView(updated)));
     },
   );

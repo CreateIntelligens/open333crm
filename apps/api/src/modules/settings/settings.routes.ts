@@ -43,7 +43,10 @@ import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
 import { CONFIRM_KEYWORD } from "../identity-binding/binding-code.js";
-import { invalidateIdentityBindingSettings } from "../identity-binding/identity-binding.service.js";
+import {
+  getIdentityBindingSettings,
+  invalidateIdentityBindingSettings,
+} from "../identity-binding/identity-binding.service.js";
 
 const dayScheduleSchema = z
   .object({
@@ -192,11 +195,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // ─── Identity Binding（跨渠道 One ID）──────────────────────────────────────
   // GET /api/v1/settings/identity-binding
   fastify.get("/identity-binding", async (request, reply) => {
-    const row = await request.tenantPrisma.tenantSettings.findUnique({
-      where: { tenantId: request.agent.tenantId },
-      select: { identityBinding: true },
-    });
-    return reply.send(success(parseIdentityBindingSettings(row?.identityBinding)));
+    return reply.send(success(await getIdentityBindingSettings(request.tenantPrisma, request.agent.tenantId)));
   });
 
   // PUT /api/v1/settings/identity-binding

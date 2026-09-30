@@ -145,13 +145,21 @@ export type IssueResult =
 /**
  * 為顧客目前的渠道身分產生綁定代碼，並在該對話送出其他渠道的導流連結。
  */
-export async function issueBindingCode(db: TenantDb, deps: BindingDeps, actor: BindingActor): Promise<IssueResult> {
+export async function issueBindingCode(
+  db: TenantDb,
+  deps: BindingDeps,
+  actor: BindingActor,
+  /** 'agent'＝客服在後台代發：另計次數、超限時只回報給客服，不在顧客對話送「次數過多」 */
+  initiatedBy: 'customer' | 'agent' = 'customer',
+): Promise<IssueResult> {
   const { tenantId } = actor;
 
-  const issued = await bumpCounter(deps.store, issueCounterKey(actor.channelIdentityId));
+  const counterKey =
+    initiatedBy === 'agent' ? `${issueCounterKey(actor.channelIdentityId)}:agent` : issueCounterKey(actor.channelIdentityId);
+  const issued = await bumpCounter(deps.store, counterKey);
   if (issued > MAX_ISSUES_PER_HOUR) {
-    // 只在第一次超過時回覆；之後不再回（每則回覆都佔用平台推播額度，否則可被拿來洗訊息）
-    if (issued === MAX_ISSUES_PER_HOUR + 1) {
+    // 顧客自己要求時只在第一次超過回覆，之後不再回（每則回覆都佔推播額度，否則可被拿來洗訊息）
+    if (initiatedBy === 'customer' && issued === MAX_ISSUES_PER_HOUR + 1) {
       await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.rateLimited, 'rate_limited');
     }
     return { status: 'rate_limited' };
@@ -228,16 +236,12 @@ export async function redeemBindingCode(
 
   const failKey = failCounterKey(actor.channelIdentityId);
   const fail = async (): Promise<RedeemResult> => {
-    const failures = await bumpCounter(deps.store, failKey);
-    // 超過上限後不再回覆（防止以對話刷訊息猜碼），仍記錄
-    if (failures > MAX_FAILURES_PER_HOUR) {
-      logger.warn('[IdentityBinding] 兌換失敗次數過多，不再回覆', { tenantId, channelIdentityId: actor.channelIdentityId });
-      return { status: 'throttled' };
-    }
+    await bumpCounter(deps.store, failKey);
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.invalid, 'invalid');
     return { status: 'invalid' };
   };
 
+  // 一小時內失敗達上限後不再處理也不回覆（防止以對話刷訊息猜碼）
   if ((await readCounter(deps.store, failKey)) >= MAX_FAILURES_PER_HOUR) {
     logger.warn('[IdentityBinding] 兌換失敗次數過多，略過', { tenantId, channelIdentityId: actor.channelIdentityId });
     return { status: 'throttled' };
@@ -373,6 +377,14 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
   }
   const { survivorId, redeemerId } = check;
 
+  // 合併本身失敗（同時有客服在合併同一聯絡人而 409、交易逾時、DB 錯誤）時，把代碼與待確認狀態放回，
+  // 顧客再回覆一次確認即可，不必重新索取代碼
+  const restore = async () => {
+    const remaining = payload.issuedAt + BINDING_CODE_TTL_MS - (deps.now ?? Date.now)();
+    if (remaining > 0) await deps.store.set(codeKey(tenantId, code), raw, 'PX', remaining, 'NX');
+    await deps.store.set(pendingConfirmKey(tenantId, actor.channelIdentityId), code, 'PX', PENDING_CONFIRM_TTL_MS, 'NX');
+  };
+
   const merge = await inTransaction(db, async (tx) => {
     const result = await mergeContacts(tx, {
       tenantId,
@@ -397,6 +409,9 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
       update: { contactId: survivorId, source: 'BINDING_CODE', confidence: 1, mergedAt: new Date() },
     });
     return result;
+  }).catch(async (err) => {
+    await restore();
+    throw err;
   });
 
   deps.io?.to(`tenant:${tenantId}`).emit('contact.merged', {
@@ -456,7 +471,14 @@ async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId:
     orderBy: { createdAt: 'desc' },
     take: 20,
   });
+  // 常見情況：survivor 就是顧客目前的聯絡人，不必走合併鏈
+  const direct = logs.find((log) => log.survivorId === contactId);
+  if (direct) return direct;
+  // survivor 之後又被併入別人：每個不同的 survivor 只走一次合併鏈
+  const checked = new Set<string>();
   for (const log of logs) {
+    if (checked.has(log.survivorId)) continue;
+    checked.add(log.survivorId);
     const chain = await resolveMergeChain(db, tenantId, log.survivorId);
     if (chain[chain.length - 1] === contactId) return log;
   }
@@ -543,6 +565,8 @@ export async function detectBindingIntent(
     code: string | null;
     /** 只有命中解除關鍵字時才需要（避免每則訊息都多查一次） */
     getChannelIdentityId: () => Promise<string | null>;
+    /** 只有命中確認字時才需要：沒有待確認的綁定就當一般訊息（交給 AI／關鍵字） */
+    hasPendingConfirm: () => Promise<boolean>;
   },
 ): Promise<BindingIntent | null> {
   const settings = await getIdentityBindingSettingsCached(db, input.tenantId);
@@ -550,7 +574,9 @@ export async function detectBindingIntent(
   if (input.code) return { kind: 'redeem', code: input.code };
 
   if (matchesKeyword(input.text, settings.bindKeywords)) return { kind: 'issue' };
-  if (matchesKeyword(input.text, [CONFIRM_KEYWORD])) return { kind: 'confirm' };
+  if (matchesKeyword(input.text, [CONFIRM_KEYWORD])) {
+    return (await input.hasPendingConfirm()) ? { kind: 'confirm' } : null;
+  }
   if (matchesKeyword(input.text, settings.unbindKeywords)) {
     const channelIdentityId = await input.getChannelIdentityId();
     if (!channelIdentityId) return null;

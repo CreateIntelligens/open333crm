@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
@@ -332,13 +331,26 @@ export async function ensureChannelPublicKey(
 }
 
 /**
- * 把渠道驗證時取得的導流識別寫入 settings.bindingHandleAuto。
- * 管理員手動填的 settings.bindingHandle 另存一欄且優先使用，重新驗證不會覆蓋它。
+ * 以資料庫端的 JSON 合併原子更新渠道 settings 的部分欄位（`settings || patch`，再移除 remove 的 key）。
+ * 不走「讀出整包 → 改 → 寫回」：驗證要打平台 API（數秒），期間其他分頁存的設定會被舊快照蓋掉。
  */
-function withAutoBindingHandle(settings: unknown, handle: unknown): Prisma.InputJsonValue {
-  const current = (settings && typeof settings === 'object' ? settings : {}) as Record<string, unknown>;
-  if (typeof handle !== 'string' || handle.trim() === '') return current as Prisma.InputJsonValue;
-  return { ...current, bindingHandleAuto: handle.trim() } as Prisma.InputJsonValue;
+export async function patchChannelSettings(
+  prisma: TenantDb,
+  id: string,
+  tenantId: string,
+  patch: Record<string, unknown>,
+  remove: string[] = [],
+): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE channels
+    SET settings = (COALESCE(settings, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb) - ${remove}::text[],
+        "updatedAt" = now()
+    WHERE id = ${id}::uuid AND "tenantId" = ${tenantId}::uuid`;
+}
+
+/** 驗證時取得的導流識別（無效值不寫入）。管理員手動填的 settings.bindingHandle 另存一欄且優先使用 */
+function autoBindingHandlePatch(handle: unknown): Record<string, unknown> {
+  return typeof handle === 'string' && handle.trim() !== '' ? { bindingHandleAuto: handle.trim() } : {};
 }
 
 /**
@@ -401,14 +413,9 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const botInfo = (await response.json()) as Record<string, unknown>;
 
-    await prisma.channel.update({
-      where: { id },
-      data: {
-        lastVerifiedAt: new Date(),
-        // Basic ID（@xxxx）供跨渠道綁定產生加好友／oaMessage 連結
-        settings: withAutoBindingHandle(channel.settings, botInfo.basicId),
-      },
-    });
+    await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
+    // Basic ID（@xxxx）供跨渠道綁定產生加好友／oaMessage 連結
+    await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(botInfo.basicId));
 
     return { verified: true, botInfo };
   }
@@ -441,16 +448,11 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     // 沒設定的話新顧客的綁定代碼永遠進不來，驗證時一併檢查並回報給後台提示
     const getStartedConfigured = await hasFbGetStarted(pageAccessToken);
 
-    await prisma.channel.update({
-      where: { id },
-      data: {
-        lastVerifiedAt: new Date(),
-        // 粉專 username（沒有就用 page id）供 m.me 綁定連結使用
-        settings: {
-          ...(withAutoBindingHandle(channel.settings, pageInfo.username ?? pageInfo.id) as Record<string, unknown>),
-          fbGetStartedConfigured: getStartedConfigured,
-        } as Prisma.InputJsonValue,
-      },
+    await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
+    // 粉專 username（沒有就用 page id）供 m.me 綁定連結使用
+    await patchChannelSettings(prisma, id, tenantId, {
+      ...autoBindingHandlePatch(pageInfo.username ?? pageInfo.id),
+      fbGetStartedConfigured: getStartedConfigured,
     });
 
     return { verified: true, pageInfo, getStartedConfigured };
@@ -480,14 +482,9 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     const igInfo = (await response.json()) as Record<string, unknown>;
 
-    await prisma.channel.update({
-      where: { id },
-      data: {
-        lastVerifiedAt: new Date(),
-        // IG username 供 ig.me 綁定連結使用
-        settings: withAutoBindingHandle(channel.settings, igInfo.username),
-      },
-    });
+    await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
+    // IG username 供 ig.me 綁定連結使用
+    await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(igInfo.username));
 
     return { verified: true, pageInfo: igInfo };
   }

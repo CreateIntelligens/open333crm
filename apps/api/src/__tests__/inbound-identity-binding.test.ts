@@ -25,7 +25,15 @@ if (!process.env.DATABASE_URL) {
 
 const prisma = new PrismaClient();
 const T = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-000000000001';
-const io = { to: () => ({ emit: () => {} }) } as never;
+// 記錄推送到收件匣的訊息順序（驗證招呼語排在綁定提示之前）
+const emitted: string[] = [];
+const io = {
+  to: () => ({
+    emit: (event: string, payload: { message?: { content?: { text?: string } } }) => {
+      if (event === 'message.new' && payload?.message?.content?.text) emitted.push(payload.message.content.text);
+    },
+  }),
+} as never;
 class Rollback extends Error {}
 
 const received: AppEvent[] = [];
@@ -84,6 +92,7 @@ async function setup(tx: Prisma.TransactionClient, enabled: boolean): Promise<En
   const store = memBindingStore();
   setBindingStoreForTest(store);
   received.length = 0;
+  emitted.length = 0;
   return {
     tx,
     line,
@@ -146,6 +155,9 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
       const code = await codeFromA(env);
       const lineUid = `new-line-${seq++}`;
       await run(env, env.line, inbound(lineUid, linePrefillText(code)));
+      const greetingAt = emitted.indexOf('歡迎加入！');
+      const promptAt = emitted.findIndex((t) => t.startsWith('您正在把這個帳號'));
+      assert.ok(greetingAt >= 0 && promptAt > greetingAt, '招呼語先送，確認提示在後（不被擠掉）');
       const pending = await env.tx.channelIdentity.findFirst({ where: { channelId: env.line.id, uid: lineUid } });
       assert.notEqual(pending?.contactId, env.fbA.contactId, '送出代碼只會先請顧客確認，還不合併');
       await run(env, env.line, inbound(lineUid, '確認綁定'));
