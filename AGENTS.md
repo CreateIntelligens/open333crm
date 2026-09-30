@@ -97,7 +97,7 @@ Use when: event is the direct result of the current HTTP request, data already i
 **Path B — Async queue** (eventBus → BullMQ → workers → Redis pub/sub):
 
 ```ts
-eventBus.publish("case.assigned", { tenantId, payload }); // API process
+eventBus.publish({ name: "case.assigned", tenantId, timestamp: new Date(), payload }); // API process
 // → notificationQueue.add(job)  // BullMQ
 // → apps/workers consume → publishSocketEvent(redis, room, event, data)
 ```

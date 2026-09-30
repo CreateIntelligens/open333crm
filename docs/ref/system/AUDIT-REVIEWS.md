@@ -17,7 +17,7 @@
 
 **文件修正。** `CANVAS-FLOW-ENGINE.md` 原本寫「喚醒優先用 BullMQ 的延遲工作」，實際上 BullMQ 路徑從未成功，已改為只靠資料庫輪詢；同一份文件把 Canvas 的事件寫成「發到 eventBus」，實際是 `packages/core` 另一套走 Redis 的 `EventBus`，已改正。`tenant/README.md` 的事件表補上 `crm:events`，其餘細節改為連到新文件。
 
-**另外發現、沒有修改的文件錯誤。** `AGENTS.md` 的 Socket 事件路由一節，範例寫 `eventBus.publish("case.assigned", { tenantId, payload })`。實際的簽章是 `publish(event: AppEvent)`，只接受一個含 `name` 的物件，照範例寫會編譯失敗。
+**另外修正 `AGENTS.md`。** Socket 事件路由一節的範例原本寫 `eventBus.publish("case.assigned", { tenantId, payload })`。實際的簽章是 `publish(event: AppEvent)`，只接受一個含 `name`、`tenantId`、`timestamp`、`payload` 的物件，照範例寫會編譯失敗。已改成實際的寫法。
 
 ## 2026-09-30：撰寫權限計算文件，新增 RBAC-05、RBAC-06
 
