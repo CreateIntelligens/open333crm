@@ -94,7 +94,7 @@
 - [ ] 9.3.5 `.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
 - [ ] 9.3.6 Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
 - [x] 9.3.8 聯絡人的對話／案件／時間軸已套用 CM-173 渠道可見性（2026-09-30）
-- [ ] 9.3.9 聯絡人**列表與詳情**本身仍未依渠道過濾：分店帳號看得到其他渠道顧客的聯絡人基本資料（跨渠道聯絡人的歸屬規則需另行設計）。**已先收掉**：列表與詳情回傳的「渠道身份」只列出可見渠道，不再洩漏其他渠道的名稱、uid、暱稱；聯絡人本身是否列出仍待設計。另 MCP server 的 `listContacts`／`getContact` 未套渠道可見性（MCP 目前無分店情境），一併留待此項
+- [ ] 9.3.9 聯絡人**列表與詳情**本身仍未依渠道過濾：分店帳號看得到其他渠道顧客的聯絡人基本資料（跨渠道聯絡人的歸屬規則需另行設計）。**已先收掉**：列表與詳情回傳的「渠道身份」只列出可見渠道，不再洩漏其他渠道的名稱、uid、暱稱；聯絡人本身是否列出仍待設計。另 **MCP 全部工具都未套 CM-173**（既有缺口）：任何持有 CLI token 的帳號（含有渠道限制的分店帳號）用 `crm_search_contacts`／`crm_get_contact`／`crm_list_cases`／`crm_get_case`／`crm_line_list_conversations` 等可讀到其他渠道資料，LINE direct send 也未檢查渠道層級。修法：`mcp.routes.ts` 解析 `resolveChannelVisibility(request)` 傳進 `createMcpServer`，套到所有讀取與送訊工具。同時把 `case.service`／`conversation.service`／`channel.service` 的 `accessibleChannels?` 比照聯絡人模組改必填（目前漏傳＝不過濾）
 - [ ] 9.3.7 API 啟動 log 寫「Registered channel plugins: LINE, FB, WEBCHAT」漏了 THREADS（實際有註冊，僅文字過時）
 
 ### 9.4 與其他分支的交集

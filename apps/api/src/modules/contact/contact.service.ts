@@ -48,7 +48,8 @@ export async function listContacts(
   tenantId: string,
   filters: ContactFilters,
   pagination: PaginationParams,
-  accessibleChannels?: AccessibleChannels,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
   const where: Prisma.ContactWhereInput = {
     tenantId,
@@ -97,7 +98,7 @@ export async function listContacts(
 
   // 列出的渠道身份只含可見渠道（CM-173）：否則分店帳號會看到其他分店渠道的名稱與 uid。
   // 聯絡人本身是否該被列出屬 tasks 9.3.9，這裡只收掉身份明細。
-  const visibleChannelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const includedIdentityWhere = combineIdentityInclude(channelIdentityWhere, visibleChannelId);
 
   const [contacts, total] = await Promise.all([
@@ -148,9 +149,10 @@ export async function getContact(
   prisma: TenantDb,
   id: string,
   tenantId: string,
-  accessibleChannels?: AccessibleChannels,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
-  const visibleChannelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const visibleChannelId = channelIdWhereFilter(accessibleChannels);
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
     include: {
@@ -232,10 +234,10 @@ export async function getContactConversations(
   tenantId: string,
   page: number,
   limit: number,
-  /** CM-173 渠道級可見性：分店帳號只看得到可見渠道的資料（省略＝不過濾） */
-  accessibleChannels?: AccessibleChannels,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
-  const channelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const channelId = channelIdWhereFilter(accessibleChannels);
   const where: Prisma.ConversationWhereInput = {
     contactId,
     tenantId,
@@ -296,10 +298,10 @@ export async function getContactCases(
   tenantId: string,
   page: number,
   limit: number,
-  /** CM-173 渠道級可見性：分店帳號只看得到可見渠道的資料（省略＝不過濾） */
-  accessibleChannels?: AccessibleChannels,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
-  const channelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const channelId = channelIdWhereFilter(accessibleChannels);
   const where: Prisma.CaseWhereInput = {
     contactId,
     tenantId,
@@ -367,10 +369,10 @@ export async function getContactTimeline(
   prisma: TenantDb,
   contactId: string,
   tenantId: string,
-  /** CM-173 渠道級可見性：時間軸的對話與案件只列可見渠道（省略＝不過濾） */
-  accessibleChannels?: AccessibleChannels,
+  /** CM-173 渠道級可見性，必填：呼叫端要明確決定可見範圍，不受限時傳 ALL_CHANNELS（避免新呼叫端漏傳而外洩其他渠道資料） */
+  accessibleChannels: AccessibleChannels,
 ) {
-  const channelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const channelId = channelIdWhereFilter(accessibleChannels);
   const channelFilter = channelId ? { channelId } : {};
   // Verify contact exists
   const contact = await prisma.contact.findFirst({

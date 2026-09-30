@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { getAgentById } from "../auth/auth.service.js";
 import { getContact, listContacts } from "../contact/contact.service.js";
+import { ALL_CHANNELS } from "../../services/channel-visibility.js";
 import { getConversation, listConversations } from "../conversation/conversation.service.js";
 import {
   getCaseStats,
@@ -121,7 +122,8 @@ export function createMcpServer(
     },
     async ({ q, page, limit }) =>
       textResult(
-        await listContacts(prisma, agent.tenantId, { q }, { page, limit }),
+        // MCP 尚未套 CM-173 渠道可見性（既有缺口，所有 MCP 工具皆同），暫以 ALL_CHANNELS 維持原行為；待補，見 openspec add-cross-channel-one-id tasks 9.3.9
+        await listContacts(prisma, agent.tenantId, { q }, { page, limit }, ALL_CHANNELS),
       ),
   );
 
@@ -186,7 +188,7 @@ export function createMcpServer(
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => textResult(await getContact(prisma, id, agent.tenantId)),
+    async ({ id }) => textResult(await getContact(prisma, id, agent.tenantId, ALL_CHANNELS)),
   );
 
   server.registerTool(
@@ -303,6 +305,7 @@ export function createMcpServer(
         agent.tenantId,
         { q, channelType: "LINE" },
         { page, limit },
+        ALL_CHANNELS,
       ));
     },
   );

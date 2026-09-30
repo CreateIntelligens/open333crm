@@ -220,7 +220,14 @@ try {
     assert.equal(detail.statusCode, 200);
     const detailIds = (detail.json().data.channelIdentities as Array<{ channelId: string }>).map((i) => i.channelId);
     assert.deepEqual(detailIds, [chA.id], '詳情不可列出渠道 B 的身份');
-    assert.ok(!JSON.stringify(detail.json()).includes(`CI 渠道可見性 B ${stamp}`), '詳情不可出現渠道 B 的名稱');
+    const detailJson = JSON.stringify(detail.json());
+    assert.ok(!detailJson.includes(`CI 渠道可見性 B ${stamp}`), '詳情不可出現渠道 B 的名稱');
+    assert.ok(!detailJson.includes(`ci-uid-${chB.id}`), '詳情不可出現渠道 B 的顧客 uid');
+    assert.ok(!detailJson.includes('CI 暱稱 B'), '詳情不可出現渠道 B 的暱稱');
+    // 正向：可見渠道的身份仍完整回傳，不是整包被濾掉
+    const visible = detail.json().data.channelIdentities[0] as { uid: string; profileName: string };
+    assert.equal(visible.uid, `ci-uid-${chA.id}`);
+    assert.equal(visible.profileName, 'CI 暱稱 A');
 
     const list = await branchApp.inject({
       method: 'GET',
@@ -231,6 +238,11 @@ try {
     const row = rows.find((r) => r.id === contact.id);
     assert.ok(row, '列表應找得到這位聯絡人');
     assert.deepEqual(row.channelIdentities.map((i) => i.channel.id), [chA.id], '列表不可列出渠道 B 的身份');
+    const listJson = JSON.stringify(list.json());
+    assert.ok(!listJson.includes(`CI 渠道可見性 B ${stamp}`), '列表不可出現渠道 B 的名稱');
+    assert.ok(!listJson.includes(`ci-uid-${chB.id}`), '列表不可出現渠道 B 的顧客 uid');
+    assert.ok(!listJson.includes('CI 暱稱 B'), '列表不可出現渠道 B 的暱稱');
+    assert.ok(listJson.includes(`ci-uid-${chA.id}`) && listJson.includes('CI 暱稱 A'), '列表應保留可見渠道的 uid 與暱稱');
   });
 
   await check('CM-173：代發綁定連結檢查渠道層級（看不到的渠道 404、唯讀渠道 403）', async () => {
