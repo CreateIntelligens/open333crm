@@ -40,6 +40,9 @@ const OTHER_AGENT = '00000000-0000-4000-8000-0000000000a2';
 const PAGE_OK = `71${stamp}`;
 const PAGE_FAIL = `72${stamp}`;
 const PAGE_TAKEN = `73${stamp}`;
+const PAGE_P2 = `74${stamp}`; // 第二頁的粉專
+const PAGE_FALSE = `75${stamp}`; // 訂閱回 success:false
+const unsubscribeCalls: string[] = [];
 
 // ── 假 Graph API ────────────────────────────────────────────────────────────
 const subscribeCalls: Array<{ pageId: string; token: string }> = [];
@@ -51,18 +54,29 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   if (url.includes('/oauth/access_token') && url.includes('code=GOOD')) return json({ access_token: 'short-user-token' });
   if (url.includes('/oauth/access_token') && url.includes('fb_exchange_token=short-user-token')) return json({ access_token: 'long-user-token' });
   if (url.includes('/oauth/access_token')) return json({ error: { message: 'bad code' } }, 400);
+  const pageRow = (id: string) => ({ id, name: `CI 平台粉專 ${id}`, access_token: `page-token-${id}`, picture: { data: { url: 'https://x/p.png' } } });
+  if (url.includes('/me/accounts') && url.includes('after=CURSOR2') && auth === 'long-user-token') {
+    return json({ data: [pageRow(PAGE_P2)] });
+  }
   if (url.includes('/me/accounts') && auth === 'long-user-token') {
+    assert.ok(url.includes('appsecret_proof='), '取粉專清單要帶 appsecret_proof');
     return json({
-      data: [PAGE_OK, PAGE_FAIL, PAGE_TAKEN].map((id) => ({ id, name: `CI 平台粉專 ${id}`, access_token: `page-token-${id}`, picture: { data: { url: 'https://x/p.png' } } })),
+      data: [PAGE_OK, PAGE_FAIL, PAGE_TAKEN, PAGE_FALSE].map(pageRow),
+      paging: { next: 'https://graph.facebook.com/v21.0/me/accounts?limit=100&after=CURSOR2' },
     });
   }
-  const sub = url.match(/\/(\d+)\/subscribed_apps$/);
+  const sub = url.match(/\/(\d+)\/subscribed_apps(\?|$)/);
+  if (sub && init?.method === 'DELETE') {
+    unsubscribeCalls.push(sub[1]!);
+    return json({ success: true });
+  }
   if (sub && init?.method === 'POST') {
     subscribeCalls.push({ pageId: sub[1]!, token: auth });
+    if (sub[1] === PAGE_FALSE) return json({ success: false });
     return failSubscribeFor.has(sub[1]!) ? json({ error: { message: 'no permission' } }, 403) : json({ success: true });
   }
-  // 連結後的 verifyChannel
-  if (url.includes('/me?fields=id,name,username')) return json({ id: auth.replace('page-token-', ''), name: 'CI' });
+  // 連結後的 verifyChannel（粉專權杖回應帶 category）
+  if (url.includes('/me?fields=id,name,username')) return json({ id: auth.replace('page-token-', ''), name: 'CI', username: `ci_${auth.slice(-4)}`, category: 'Shopping' });
   if (url.includes('messenger_profile')) return json({ data: [] });
   return json({ error: { message: `unexpected ${url}` } }, 404);
 }) as typeof fetch;
@@ -82,6 +96,8 @@ async function check(name: string, fn: () => Promise<void>) {
 const store = memBindingStore();
 const actor = { tenantId: T_A, agentId: AGENT };
 const stateFrom = (url: string) => new URL(url).searchParams.get('state')!;
+/** 模擬「發起授權的同一個瀏覽器」帶回的綁定 cookie */
+const browserOf = (url: string) => svc.stateBinding(stateFrom(url));
 const cleanup: Array<() => Promise<unknown>> = [];
 
 try {
@@ -123,35 +139,51 @@ try {
   });
 
   await check('callback：不存在的 state 被拒', async () => {
-    const r = await svc.handleCallback(store, { state: 'forged-state', code: 'GOOD' });
+    const r = await svc.handleCallback(store, { state: 'forged-state', code: 'GOOD' }, svc.stateBinding('forged-state'));
     assert.deepEqual(r, { ok: false, reason: 'invalid_state' });
   });
 
   await check('callback：使用者取消授權 → denied，且 state 已作廢', async () => {
-    const state = stateFrom((await svc.startConnect(store, actor)).url);
-    assert.deepEqual(await svc.handleCallback(store, { state, error: 'access_denied' }), { ok: false, reason: 'denied' });
-    assert.deepEqual(await svc.handleCallback(store, { state, code: 'GOOD' }), { ok: false, reason: 'invalid_state' });
+    const { url } = await svc.startConnect(store, actor);
+    const state = stateFrom(url);
+    assert.deepEqual(await svc.handleCallback(store, { state, error: 'access_denied' }, browserOf(url)), { ok: false, reason: 'denied' });
+    assert.deepEqual(await svc.handleCallback(store, { state, code: 'GOOD' }, browserOf(url)), { ok: false, reason: 'invalid_state' });
+  });
+
+  await check('callback：在不是發起授權的瀏覽器完成（沒有或不同的綁定 cookie）→ 拒絕，state 作廢', async () => {
+    const { url } = await svc.startConnect(store, actor);
+    const state = stateFrom(url);
+    assert.deepEqual(await svc.handleCallback(store, { state, code: 'GOOD' }, undefined), { ok: false, reason: 'invalid_state' });
+    // 就算之後拿到正確 cookie，state 也已作廢，不能再換到粉專權杖
+    assert.deepEqual(await svc.handleCallback(store, { state, code: 'GOOD' }, browserOf(url)), { ok: false, reason: 'invalid_state' });
+    const other = stateFrom((await svc.startConnect(store, actor)).url);
+    assert.deepEqual(
+      await svc.handleCallback(store, { state: other, code: 'GOOD' }, svc.stateBinding('another-browser-state')),
+      { ok: false, reason: 'invalid_state' },
+    );
   });
 
   await check('callback：code 換不到 token → exchange_failed', async () => {
-    const state = stateFrom((await svc.startConnect(store, actor)).url);
-    assert.deepEqual(await svc.handleCallback(store, { state, code: 'BAD' }), { ok: false, reason: 'exchange_failed' });
+    const { url } = await svc.startConnect(store, actor);
+    assert.deepEqual(await svc.handleCallback(store, { state: stateFrom(url), code: 'BAD' }, browserOf(url)), { ok: false, reason: 'exchange_failed' });
   });
 
   let connectId = '';
   await check('callback 成功：state 只能用一次；暫存內容加密、不含明文 token', async () => {
-    const state = stateFrom((await svc.startConnect(store, actor)).url);
-    const r = await svc.handleCallback(store, { state, code: 'GOOD' });
+    const { url } = await svc.startConnect(store, actor);
+    const state = stateFrom(url);
+    const r = await svc.handleCallback(store, { state, code: 'GOOD' }, browserOf(url));
     assert.equal(r.ok, true);
     connectId = (r as { connectId: string }).connectId;
-    assert.deepEqual(await svc.handleCallback(store, { state, code: 'GOOD' }), { ok: false, reason: 'invalid_state' }, 'state 重用要被拒');
+    assert.deepEqual(await svc.handleCallback(store, { state, code: 'GOOD' }, browserOf(url)), { ok: false, reason: 'invalid_state' }, 'state 重用要被拒');
     const raw = await store.get(`metaconnect:session:${connectId}`);
     assert.ok(raw && !raw.includes('page-token-'), '暫存要加密，不可有明文 page token');
   });
 
   await check('pages：只回名稱與頭像，不含 token；其他人讀不到', async () => {
     const pages = await svc.listConnectablePages(db, store, connectId, actor);
-    assert.equal(pages.length, 3);
+    assert.equal(pages.length, 5, '要跟著分頁取完（第一頁 4 個＋第二頁 1 個）');
+    assert.ok(pages.some((p) => p.id === PAGE_P2));
     assert.ok(!JSON.stringify(pages).includes('page-token-'), '不可回傳 token');
     assert.deepEqual(Object.keys(pages[0]!).sort(), ['id', 'linkedInThisTenant', 'name', 'pictureUrl']);
     await assert.rejects(
@@ -166,7 +198,7 @@ try {
 
   await check('connect：成功建立平台模式渠道並訂閱；訂閱失敗回滾；已被連結的不呼叫 Meta', async () => {
     subscribeCalls.length = 0;
-    const results = await svc.connectPages(db, store, connectId, actor, [PAGE_OK, PAGE_FAIL, PAGE_TAKEN]);
+    const results = await svc.connectPages(db, store, connectId, actor, [PAGE_OK, PAGE_FAIL, PAGE_TAKEN, PAGE_FALSE]);
     const by = Object.fromEntries(results.map((r) => [r.pageId, r]));
 
     assert.equal(by[PAGE_OK]!.status, 'connected');
@@ -185,12 +217,19 @@ try {
 
     assert.equal((by[PAGE_TAKEN] as { code: string }).code, 'CHANNEL_ACCOUNT_ALREADY_LINKED');
     assert.ok(!subscribeCalls.some((c) => c.pageId === PAGE_TAKEN), '已被連結的粉專不可對 Meta 做任何呼叫');
+
+    assert.equal((by[PAGE_FALSE] as { code: string }).code, 'SUBSCRIBE_FAILED', 'Meta 回 success:false 也算訂閱失敗');
+    assert.equal(await prisma.channel.count({ where: { externalAccountId: PAGE_FALSE } }), 0);
+
+    // 連結後的驗證成功：寫入導流識別與最後驗證時間
+    assert.ok(ch!.lastVerifiedAt, '連結後應完成驗證');
+    assert.ok(((ch!.settings ?? {}) as Record<string, unknown>).bindingHandleAuto, '連結後應取得導流識別');
   });
 
   await check('connect 有失敗時 session 保留，可在同一次授權重試', async () => {
     failSubscribeFor = new Set();
-    const [r] = await svc.connectPages(db, store, connectId, actor, [PAGE_FAIL]);
-    assert.equal(r!.status, 'connected');
+    const results = await svc.connectPages(db, store, connectId, actor, [PAGE_FAIL, PAGE_P2]);
+    assert.deepEqual(results.map((r) => r.status), ['connected', 'connected']);
   });
 
   const signed = (pageId: string, psid: string, secret = 'ci-platform-secret') => {
@@ -214,6 +253,24 @@ try {
     const p = signed(PAGE_TAKEN, psid);
     await processPlatformMetaWebhook(prisma, io, p.raw, p.headers);
     assert.equal(await prisma.channelIdentity.count({ where: { uid: psid } }), 0);
+  });
+
+  await check('平台 webhook：平台模式渠道停用後，事件丟棄', async () => {
+    const ch = await prisma.channel.findFirst({ where: { externalAccountId: PAGE_P2 } });
+    assert.ok(ch, '需要一個平台模式渠道');
+    // 模擬停用前沒清空帳號 ID 的舊資料：直接把 isActive 改成 false
+    await prisma.channel.update({ where: { id: ch!.id }, data: { isActive: false } });
+    const psid = `PSID_OFF_${stamp}`;
+    const p = signed(PAGE_P2, psid);
+    await processPlatformMetaWebhook(prisma, io, p.raw, p.headers);
+    assert.equal(await prisma.channelIdentity.count({ where: { uid: psid } }), 0);
+  });
+
+  await check('刪除平台模式渠道：取消粉專對平台 App 的訂閱', async () => {
+    const { deleteChannel } = await import('../modules/channel/channel.service.js');
+    const ch = await prisma.channel.findFirst({ where: { externalAccountId: PAGE_P2 } });
+    await deleteChannel(db, ch!.id, T_A);
+    assert.ok(unsubscribeCalls.includes(PAGE_P2));
   });
 
   await check('平台 webhook：簽章不是平台 secret → 拒絕', async () => {

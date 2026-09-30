@@ -66,7 +66,7 @@ IG Login 驗證改打 `graph.instagram.com/{v}/me?fields=user_id,username`，以
 - **平台 webhook**：`GET/POST /api/v1/webhooks/meta`。GET 以平台驗證權杖回 challenge；POST 以平台 App Secret 驗簽，依 `object`（`page` → FB、`instagram` → THREADS）與 `entry.id` 走 D2 的分派（沒有網址渠道，所以找不到就一律丟棄＋平台層 log）。
 - **渠道連結模式**：credentials 加 `connectMode: 'platform' | 'own_app'`。`platform` 渠道不存 appSecret；D2 步驟 4 的比對改為「驗簽 secret 為平台 secret 且目標渠道為 platform 模式」。
 - **連結流程**：
-  1. `POST /api/v1/meta-connect/start`（需 `channel.manage`）→ 產生 state（Redis，10 分鐘，綁租戶＋操作者，一次性）→ 回傳 Facebook Login 網址。
+  1. `POST /api/v1/meta-connect/start`（需 `channel.create`）→ 產生 state（Redis，10 分鐘，綁租戶＋操作者，一次性）→ 回傳 Facebook Login 網址。
   2. `GET /api/v1/meta-connect/callback` → 驗 state、以 code 換 user token → 換長效 user token → `/me/accounts` 取粉專清單與 Page token；user token 與 Page token 以 `encryptCredentials` 加密暫存 Redis（同 state），**不回傳給前端**；轉址回前端選擇頁。
   3. `GET /api/v1/meta-connect/pages?state=` 只回粉專 ID、名稱、頭像、是否已被連結。
   4. `POST /api/v1/meta-connect/pages` 選定 → 建立新渠道（不自動轉換同帳號的既有自備 App 渠道，見 Risks）、寫 `externalAccountId`、呼叫 `POST /{page-id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_referrals,message_echoes` → 成功才完成；失敗回報並不留半套渠道。
@@ -80,6 +80,16 @@ IG Login 驗證改打 `graph.instagram.com/{v}/me?fields=user_id,username`，以
 - **驗證必須取得真正的帳號 ID**：FB 要求回應含 `category`（粉專才有；個人使用者權杖會被擋），IG 回應沒有 `user_id` 時驗證失敗。
 - 更新 FB／IG 權杖後自動重新驗證，縮短相容模式空窗；建立渠道時濾掉系統維護的 settings 欄位。
 - 平台連結模式的渠道不做下游轉發（平台層事件）。
+
+### D10 第 3 階段 code review 後的修正（2026-09-30）
+- **授權綁定發起者的瀏覽器**：`/start` 在發起者瀏覽器設 HttpOnly、SameSite=Lax、限 `/api/v1/meta-connect` 路徑的 cookie（值為 state 的 SHA-256），callback 以常數時間比對，不符即作廢 state。防止攻擊者把自己的授權網址丟給其他粉專管理員、對方同意後粉專被連進攻擊者租戶。
+- callback 任何失敗（參數異常、Redis 錯誤）一律導回渠道頁並帶原因，不停在 JSON 錯誤頁。
+- 重新啟用 FB／IG 渠道時自動重新驗證（平台模式渠道沒有網址可退回相容模式，不取回帳號 ID 就收不到任何訊息）。
+- 訂閱失敗刪除渠道若被外鍵擋下，改為停用並清空帳號 ID；刪除平台模式渠道時取消粉專對平台 App 的訂閱。
+- `release_inactive_channel_account` 的 `search_path` 改為 `pg_catalog, public, pg_temp` 並寫完整表名（防同名暫存表誤導，已實測擋下）。
+- 連結流程的 Graph 呼叫帶 `appsecret_proof`；`/me/accounts` 跟著分頁取完（上限 5 頁）。
+- 租戶不可自行設定憑證的 `connectMode`；按鈕只對有 `channel.create` 權限者顯示；平台 webhook 驗證權杖以常數時間比對。
+- **限制**：`META_LOGIN_CONFIG_ID` 必須是「使用者存取權杖」類型的 Facebook Login for Business 設定（系統使用者權杖類型流程不同、未支援）；平台 App 若開啟 Require App Secret，收發訊息的呼叫尚未帶 proof。
 
 ## Risks / Trade-offs
 

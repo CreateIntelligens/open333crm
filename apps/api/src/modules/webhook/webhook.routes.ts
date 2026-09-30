@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { processPlatformMetaWebhook, processWebhookEvent } from './webhook.service.js';
 import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
@@ -64,7 +65,10 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
     const mode = request.query['hub.mode'];
     const token = request.query['hub.verify_token'];
     const challenge = request.query['hub.challenge'];
-    if (mode !== 'subscribe' || !token || !challenge || token !== cfg.verifyToken) {
+    const expected = Buffer.from(cfg.verifyToken);
+    const given = Buffer.from(token ?? '');
+    const tokenOk = given.length === expected.length && timingSafeEqual(given, expected);
+    if (mode !== 'subscribe' || !challenge || !tokenOk) {
       return reply.status(403).send('Forbidden');
     }
     return reply.status(200).type('text/plain').send(challenge);
@@ -72,8 +76,9 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
 
   fastify.post('/meta', async (request, reply) => {
     if (!getMetaAppConfig()) return reply.status(503).send('Platform Meta App is not configured');
-    const body = request.body as Record<string, unknown>;
-    const rawBody = (body as any).__rawBody as Buffer;
+    const body = request.body as Record<string, unknown> | undefined;
+    const rawBody = (body as any)?.__rawBody as Buffer | undefined;
+    if (!rawBody) return reply.status(400).send('Bad Request');
     const headers = request.headers as Record<string, string>;
     // 先回 200，非同步處理（避免 Meta 重試或自動停用 webhook）
     processPlatformMetaWebhook(fastify.prismaAdmin, fastify.io, rawBody, headers).catch((err) => {

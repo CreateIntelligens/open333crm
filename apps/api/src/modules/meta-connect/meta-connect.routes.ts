@@ -20,8 +20,13 @@ import {
   handleCallback,
   listConnectablePages,
   startConnect,
+  stateBinding,
   type MetaConnectStore,
 } from './meta-connect.service.js';
+
+/** 綁定發起授權瀏覽器的 cookie（只送往 meta-connect 路徑；Facebook 以頂層導覽導回，SameSite=Lax 會帶上） */
+const BINDING_COOKIE = 'metaConnectState';
+const BINDING_COOKIE_PATH = '/api/v1/meta-connect';
 
 export interface MetaConnectRoutesOptions {
   /** 測試用：替換 Redis */
@@ -42,20 +47,37 @@ export default async function metaConnectRoutes(fastify: FastifyInstance, opts: 
   });
 
   fastify.post('/start', { preHandler: [fastify.authenticate, requirePermission('channel.create')] }, async (request, reply) => {
-    return reply.send(success(await startConnect(store(), actorOf(request))));
+    const { url, state } = await startConnect(store(), actorOf(request));
+    reply.setCookie(BINDING_COOKIE, stateBinding(state), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: BINDING_COOKIE_PATH,
+      maxAge: 10 * 60,
+    });
+    return reply.send(success({ url }));
   });
 
   // 公開：Facebook 以瀏覽器導回，沒有我們的登入 session；身分由一次性 state 對回發起者
+  // 任何失敗都導回渠道頁並帶原因，不讓使用者停在 JSON 錯誤頁
   fastify.get('/callback', async (request, reply) => {
+    const fail = (reason: string) => reply.redirect(`${channelsPage()}?metaConnectError=${reason}`);
+    const binding = request.cookies?.[BINDING_COOKIE];
+    reply.clearCookie(BINDING_COOKIE, { path: BINDING_COOKIE_PATH });
+    if (!getMetaAppConfig()) return fail('not_configured');
     const query = z
-      .object({ code: z.string().optional(), state: z.string().max(128).optional(), error: z.string().optional() })
-      .parse(request.query);
-    if (!getMetaAppConfig()) return reply.redirect(`${channelsPage()}?metaConnectError=not_configured`);
-    const result = await handleCallback(store(), query);
-    const target = result.ok
-      ? `${channelsPage()}?metaConnect=${encodeURIComponent(result.connectId)}`
-      : `${channelsPage()}?metaConnectError=${result.reason}`;
-    return reply.redirect(target);
+      .object({ code: z.string().max(2048).optional(), state: z.string().max(128).optional(), error: z.string().max(256).optional() })
+      .safeParse(request.query);
+    if (!query.success) return fail('invalid_state');
+    try {
+      const result = await handleCallback(store(), query.data, binding);
+      return result.ok
+        ? reply.redirect(`${channelsPage()}?metaConnect=${encodeURIComponent(result.connectId)}`)
+        : fail(result.reason);
+    } catch (err) {
+      request.log.error({ err: err instanceof Error ? err.message : err }, 'Meta connect callback failed');
+      return fail('exchange_failed');
+    }
   });
 
   fastify.get<{ Params: { connectId: string } }>(

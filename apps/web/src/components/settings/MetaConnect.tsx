@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import api from '@/lib/api';
+import { usePermission } from '@/providers/AuthProvider';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,10 +15,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
  * 租戶不需要準備自己的 Meta 應用程式、App Secret 或驗證權杖。
  */
 
-/** 平台已設定 Meta App 時才顯示「用 Facebook 連結粉專」 */
+/** 平台已設定 Meta App、且有建立渠道權限時才顯示「用 Facebook 連結粉專」 */
 export function useMetaConnectConfigured(): boolean {
+  const canCreate = usePermission('channel.create');
   const [configured, setConfigured] = useState(false);
   useEffect(() => {
+    if (!canCreate) return;
     let cancelled = false;
     api
       .get('/meta-connect/status')
@@ -30,8 +33,8 @@ export function useMetaConnectConfigured(): boolean {
     return () => {
       cancelled = true;
     };
-  }, []);
-  return configured;
+  }, [canCreate]);
+  return canCreate && configured;
 }
 
 export function MetaConnectButton({ onError }: { onError: (message: string) => void }) {

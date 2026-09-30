@@ -48,7 +48,8 @@
 
 - [x] 6.1 CHANGELOG（`## [YYYY-MM-DD]`）
 - [x] 6.2a code review（第 1、2 階段）：1 高 3 中已修（design D9），突變驗證
-- [ ] 6.2 第 3 階段 code review、push、開 PR（須使用者同意）
+- [x] 6.2b 第 3 階段 code review：2 中 7 低已修（design D10），突變驗證
+- [ ] 6.2 push、開 PR（須使用者同意）
 - [ ] 6.3 UAT 部署清單：2 支 migration（`20260930100000_add_channel_external_account_id`、`20260930110000_release_inactive_channel_account`，須 owner 連線）→ 停用 Demo Facebook（與 test333 同一粉專）→ 回填 dry-run → `--apply` → 確認渠道卡片警示
 - [ ] 6.4 UAT 驗證：Open333test 訊息落在預設租戶、創造智能訊息仍落在創造智能租戶、兩邊都收得到回覆
 
@@ -72,6 +73,8 @@
 ## 9. 後續評估（不在本 change）
 
 - [ ] 9.0 平台連結模式渠道的下游轉發（目前平台層事件不轉發）
+- [ ] 9.0c 平台 App 開啟 Require App Secret 時，收發訊息（插件 sendMessage／getProfile、verify）也要帶 appsecret_proof
+- [ ] 9.0d 支援系統使用者權杖（SUAT）類型的 Facebook Login for Business 設定
 - [ ] 9.0b 精靈建立渠道後驗證 409 時，重複的渠道仍留著（ID 為 NULL、佔用渠道數名額；不會外洩），可考慮提示刪除
 
 - [ ] 9.1 IG 走 Facebook Login（`instagram_manage_messages`、`graph.facebook.com/{PAGE_ID}/messages`）與現行 IG Login 路線的整合方式

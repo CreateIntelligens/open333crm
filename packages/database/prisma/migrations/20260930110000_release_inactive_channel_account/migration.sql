@@ -12,16 +12,17 @@ CREATE OR REPLACE FUNCTION release_inactive_channel_account(p_type "ChannelType"
 RETURNS integer
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public
+-- pg_temp 放最後、表名寫完整 schema：避免呼叫者用同名暫存表（例如假的 tenants）誤導判斷
+SET search_path = pg_catalog, public, pg_temp
 AS $$
   WITH released AS (
-    UPDATE channels c
+    UPDATE public.channels c
        SET "externalAccountId" = NULL, "updatedAt" = now()
      WHERE c."channelType" = p_type
        AND c."externalAccountId" = p_account
        AND (
          c."isActive" = false
-         OR EXISTS (SELECT 1 FROM tenants t WHERE t.id = c."tenantId" AND t."isActive" = false)
+         OR EXISTS (SELECT 1 FROM public.tenants t WHERE t.id = c."tenantId" AND t."isActive" = false)
        )
     RETURNING 1
   )

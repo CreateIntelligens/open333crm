@@ -346,6 +346,21 @@ export async function deleteChannel(prisma: TenantDb, id: string, tenantId: stri
 
   await prisma.channel.delete({ where: { id } });
 
+  // 平台模式（Facebook 登入連結）的粉專：刪除成功後取消它對平台 App 的訂閱，平台不再收到這個粉專的事件。
+  // 動態 import 避免與 meta-connect 模組互相引用；盡力而為，失敗只記 log
+  if (channel.channelType === CHANNEL_TYPE.FB) {
+    let credentials: Record<string, unknown> | null = null;
+    try {
+      credentials = decryptCredentials(channel.credentialsEncrypted);
+    } catch {
+      /* 解不開就沒有 token 可用，略過 */
+    }
+    if (credentials?.connectMode === 'platform') {
+      const { unsubscribePlatformPage } = await import('../meta-connect/meta-connect.service.js');
+      await unsubscribePlatformPage(credentials);
+    }
+  }
+
   return { deleted: true };
 }
 
@@ -421,6 +436,16 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
 
 /** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
 const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting', 'metaConnect'] as const;
+
+/** 只由平台連結流程寫入的憑證欄位：租戶不可自行設定（例如把自備渠道標成平台模式，或替平台渠道補 appSecret） */
+const SYSTEM_MANAGED_CREDENTIAL_KEYS = ['connectMode'] as const;
+
+export function stripSystemManagedCredentials<T extends Record<string, unknown> | undefined>(credentials: T): T {
+  if (!credentials) return credentials;
+  const copy = { ...credentials } as Record<string, unknown>;
+  for (const key of SYSTEM_MANAGED_CREDENTIAL_KEYS) delete copy[key];
+  return copy as T;
+}
 
 /** 租戶 API 送來的 settings 移除系統維護欄位（這些只能由驗證、webhook 或平台連結流程寫入） */
 export function stripSystemManagedSettings(settings: Record<string, unknown> | undefined): Record<string, unknown> | undefined {

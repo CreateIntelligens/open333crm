@@ -16,7 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **用 Facebook 登入連結粉專（平台 Meta 應用程式）** — 平台設定 `META_APP_ID`、`META_APP_SECRET`、`META_WEBHOOK_VERIFY_TOKEN`、`META_CONNECT_REDIRECT_URI`（與選填的 `META_LOGIN_CONFIG_ID`）後，「渠道管理」出現「用 Facebook 連結粉專」：管理員授權後勾選要連結的粉專，系統自動建立渠道並訂閱訊息，租戶不需要準備自己的 Meta 應用程式、App Secret 或驗證權杖，也不需設定 Webhook。事件統一由 `/api/v1/webhooks/meta` 接收並依粉專 ID 分派。授權用的 state 一次性、綁定發起的租戶與操作者、10 分鐘過期；粉專權杖加密暫存於伺服器、不回傳前端；訂閱失敗會移除剛建立的渠道。既有自備應用程式的渠道照常運作。正式開放前需在 Meta 完成權限審查與商業驗證。
+- **用 Facebook 登入連結粉專（平台 Meta 應用程式）** — 平台設定 `META_APP_ID`、`META_APP_SECRET`、`META_WEBHOOK_VERIFY_TOKEN`、`META_CONNECT_REDIRECT_URI`（與選填的 `META_LOGIN_CONFIG_ID`）後，「渠道管理」出現「用 Facebook 連結粉專」：管理員授權後勾選要連結的粉專，系統自動建立渠道並訂閱訊息，租戶不需要準備自己的 Meta 應用程式、App Secret 或驗證權杖，也不需設定 Webhook。事件統一由 `/api/v1/webhooks/meta` 接收並依粉專 ID 分派。授權用的 state 一次性、綁定發起的租戶、操作者與瀏覽器（HttpOnly cookie，防止把自己的授權網址丟給別的粉專管理員來搶粉專）、10 分鐘過期；授權失敗一律導回渠道頁並說明原因；刪除以此方式連結的渠道會一併取消粉專訂閱；粉專權杖加密暫存於伺服器、不回傳前端；訂閱失敗會移除剛建立的渠道。既有自備應用程式的渠道照常運作。正式開放前需在 Meta 完成權限審查與商業驗證。
 
 ### Changed
 

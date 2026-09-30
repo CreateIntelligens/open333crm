@@ -11,7 +11,7 @@
  *
  * callback 沒有登入 session，但整段只碰 Redis 與 Graph API、不查資料庫，不需要 prismaAdmin。
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { getConfig } from '../../config/env.js';
@@ -56,6 +56,24 @@ export function requireMetaAppConfig(): MetaAppConfig {
   return cfg;
 }
 
+/**
+ * 綁定發起授權的瀏覽器：/start 在該瀏覽器設 HttpOnly cookie（值為 state 的雜湊），callback 比對。
+ * 防止攻擊者把「自己產生的授權網址」丟給別的粉專管理員，對方同意後粉專被連進攻擊者的租戶。
+ */
+export const stateBinding = (state: string) => createHash('sha256').update(state).digest('hex');
+
+function sameBinding(expected: string, actual: string | undefined): boolean {
+  if (!actual) return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(actual);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** 平台 App 若開啟「Require App Secret」，所有以使用者／粉專權杖呼叫的 Graph API 都要帶 appsecret_proof */
+function appSecretProof(token: string, appSecret: string): string {
+  return createHmac('sha256', appSecret).update(token).digest('hex');
+}
+
 const stateKey = (state: string) => `metaconnect:state:${state}`;
 const sessionKey = (connectId: string) => `metaconnect:session:${connectId}`;
 const token = () => randomBytes(24).toString('base64url');
@@ -78,7 +96,8 @@ interface SessionPayload extends StatePayload {
 
 // ── 1. start ────────────────────────────────────────────────────────────────
 
-export async function startConnect(store: MetaConnectStore, actor: StatePayload): Promise<{ url: string }> {
+/** 回傳授權網址與 state；呼叫端須以 stateBinding(state) 在發起者瀏覽器設 cookie */
+export async function startConnect(store: MetaConnectStore, actor: StatePayload): Promise<{ url: string; state: string }> {
   const cfg = requireMetaAppConfig();
   const state = token();
   await store.set(stateKey(state), JSON.stringify(actor), 'PX', SESSION_TTL_MS, 'NX');
@@ -94,7 +113,7 @@ export async function startConnect(store: MetaConnectStore, actor: StatePayload)
   } else {
     params.set('scope', LEGACY_SCOPES.join(','));
   }
-  return { url: `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}` };
+  return { url: `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`, state };
 }
 
 // ── 2. callback ─────────────────────────────────────────────────────────────
@@ -117,11 +136,15 @@ export type CallbackResult = { ok: true; connectId: string } | { ok: false; reas
 export async function handleCallback(
   store: MetaConnectStore,
   query: { code?: string; state?: string; error?: string },
+  /** 瀏覽器帶回的綁定 cookie（/start 時設定） */
+  browserBinding: string | undefined,
 ): Promise<CallbackResult> {
   const cfg = requireMetaAppConfig();
-  // state 一律先消耗（GETDEL）：就算使用者取消授權，這個 state 也不能再被拿來用
+  // state 一律先消耗（GETDEL）：就算使用者取消授權或瀏覽器不符，這個 state 也不能再被拿來用
   const raw = query.state ? await store.getdel(stateKey(query.state)) : null;
   if (!raw) return { ok: false, reason: 'invalid_state' };
+  // 完成授權的必須是發起授權的同一個瀏覽器
+  if (!sameBinding(stateBinding(query.state!), browserBinding)) return { ok: false, reason: 'invalid_state' };
   if (query.error || !query.code) return { ok: false, reason: 'denied' };
   const actor = JSON.parse(raw) as StatePayload;
 
@@ -144,8 +167,17 @@ export async function handleCallback(
         fb_exchange_token: String(short.access_token),
       })}`,
     );
-    const accounts = await graphGet(`${GRAPH}/me/accounts?fields=id,name,picture{url},access_token&limit=100`, String(long.access_token));
-    pages = ((accounts.data ?? []) as Array<Record<string, any>>)
+    const userToken = String(long.access_token);
+    const proof = appSecretProof(userToken, cfg.appSecret);
+    // 跟著分頁取完（上限 5 頁 × 100 個粉專）
+    const rawPages: Array<Record<string, any>> = [];
+    let next: string | null = `${GRAPH}/me/accounts?fields=id,name,picture{url},access_token&limit=100&appsecret_proof=${proof}`;
+    for (let i = 0; next && i < 5; i++) {
+      const page: Record<string, any> = await graphGet(next, userToken);
+      rawPages.push(...((page.data ?? []) as Array<Record<string, any>>));
+      next = typeof page.paging?.next === 'string' && page.paging.next.startsWith(`${GRAPH}/`) ? page.paging.next : null;
+    }
+    pages = rawPages
       .filter((p) => p.id && p.access_token)
       .map((p) => ({
         id: String(p.id),
@@ -207,14 +239,47 @@ export type ConnectPageResult =
   | { pageId: string; status: 'connected'; channelId: string }
   | { pageId: string; status: 'failed'; code: string; message: string };
 
-async function subscribePage(pageId: string, pageToken: string): Promise<void> {
+async function subscribePage(pageId: string, pageToken: string, appSecret: string): Promise<void> {
   const res = await fetch(`${GRAPH}/${pageId}/subscribed_apps`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ subscribed_fields: SUBSCRIBED_FIELDS.join(',') }).toString(),
+    body: new URLSearchParams({
+      subscribed_fields: SUBSCRIBED_FIELDS.join(','),
+      appsecret_proof: appSecretProof(pageToken, appSecret),
+    }).toString(),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, any>;
   if (!res.ok || body.error || !body.success) throw new Error(body.error?.message ?? `HTTP ${res.status}`);
+}
+
+/**
+ * 訂閱失敗時移除剛建立的渠道。建立到訂閱失敗之間若恰好有事件寫入（對話對渠道是 Restrict 外鍵），
+ * 刪除會失敗：改為停用並清空帳號 ID，不讓整個請求出錯、也不留下仍佔著粉專的渠道。
+ */
+async function removeUnsubscribedChannel(db: TenantDb, channelId: string, tenantId: string) {
+  try {
+    await db.channel.deleteMany({ where: { id: channelId, tenantId } });
+  } catch (err) {
+    logger.warn('[MetaConnect] 刪除未完成的渠道失敗，改為停用', { channelId, error: err instanceof Error ? err.message : String(err) });
+    await db.channel.updateMany({ where: { id: channelId, tenantId }, data: { isActive: false, externalAccountId: null } });
+  }
+}
+
+/** 平台模式渠道刪除時取消粉專對平台 App 的訂閱（盡力而為，失敗只記 log，不擋刪除） */
+export async function unsubscribePlatformPage(credentials: Record<string, unknown>): Promise<void> {
+  const cfg = getMetaAppConfig();
+  const pageId = credentials.pageId as string | undefined;
+  const token = credentials.pageAccessToken as string | undefined;
+  if (!cfg || credentials.connectMode !== 'platform' || !pageId || !token) return;
+  try {
+    const res = await fetch(
+      `${GRAPH}/${pageId}/subscribed_apps?appsecret_proof=${appSecretProof(token, cfg.appSecret)}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) logger.warn('[MetaConnect] 取消粉專訂閱失敗', { pageId, status: res.status });
+  } catch (err) {
+    logger.warn('[MetaConnect] 取消粉專訂閱失敗', { pageId, error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 export async function connectPages(
@@ -224,6 +289,7 @@ export async function connectPages(
   actor: StatePayload,
   pageIds: string[],
 ): Promise<ConnectPageResult[]> {
+  const cfg = requireMetaAppConfig();
   const session = await loadSession(store, connectId, actor);
   const results: ConnectPageResult[] = [];
 
@@ -253,9 +319,9 @@ export async function connectPages(
 
     // 2. 訂閱粉專到平台 App；失敗就刪掉剛建立的渠道（尚無任何訊息，直接刪除），不留半套
     try {
-      await subscribePage(page.id, page.accessToken);
+      await subscribePage(page.id, page.accessToken, cfg.appSecret);
     } catch (err) {
-      await db.channel.deleteMany({ where: { id: channelId, tenantId: actor.tenantId } });
+      await removeUnsubscribedChannel(db, channelId, actor.tenantId);
       logger.warn('[MetaConnect] 粉專訂閱失敗，已移除渠道', {
         tenantId: actor.tenantId,
         pageId,
