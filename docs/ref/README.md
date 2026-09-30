@@ -6,12 +6,13 @@
 
 ## 本 repo 的現況文件
 
-| 文件                                                         | 內容                                                                    | 資料來源                                                                |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`system/`](./system/)                                       | 系統總覽，以及部署、元件、基礎設施、交付與實作落差的分層文件            | Compose、workspace 設定、各 `package.json` 與執行時驗證                 |
-| [`modules/`](./modules/README.md)                            | 每個功能模組屬於哪個後台、掛哪個路由，以及 canvas、sla 等模組的內部機制 | `apps/api/src/index.ts`、`apps/api/src/modules/*`、`apps/web/src/app/*` |
-| [`DATABASE-ERD.md`](./DATABASE-ERD.md)                       | 資料表關聯與每張表儲存的資料類型                                        | `packages/database/prisma/schema.prisma`                                |
-| [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md) | `apps/api` 如何註冊外掛、隔離路由作用域，以及建立租戶資料庫 client      | `apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`                    |
+| 文件                                                         | 內容                                                                              | 資料來源                                                                           |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`system/`](./system/)                                       | 系統總覽，以及部署、元件、基礎設施、交付與實作落差的分層文件                      | Compose、workspace 設定、各 `package.json` 與執行時驗證                            |
+| [`modules/`](./modules/README.md)                            | 以程式模組為單位：每個模組屬於哪個後台、掛哪個路由，以及 canvas 等模組的內部機制  | `apps/api/src/index.ts`、`apps/api/src/modules/*`、`apps/web/src/app/*`            |
+| [`features/`](./features/README.md)                          | 以產品功能區為單位：租戶後台、平台後台與 SLA 各功能怎麼運作、有哪些規則與已知問題 | `apps/api/src/modules/*`、`apps/workers/src/*`、`apps/web/src/app/*`、`packages/*` |
+| [`DATABASE-ERD.md`](./DATABASE-ERD.md)                       | 資料表關聯與每張表儲存的資料類型                                                  | `packages/database/prisma/schema.prisma`                                           |
+| [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md) | `apps/api` 如何註冊外掛、隔離路由作用域，以及建立租戶資料庫 client                | `apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`                               |
 
 ## 外部系統的參考文件
 

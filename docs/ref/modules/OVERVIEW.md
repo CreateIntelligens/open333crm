@@ -59,13 +59,13 @@
 | `plan-change.routes.ts` | 平台後台 | 掛在租戶側的 `/api/v1/plan-change`，見[三個使用者面](#三個使用者面)的說明 |
 | 試用申請流程 | 平台後台 | 對外的申請與驗證在 `trial` 模組，平台只做審核 |
 
-各領域的業務規則、方案異動的快取連鎖、稽核分工與已知限制，見[平台後台](./platform/README.md)。
+各領域的業務規則、方案異動的快取連鎖、稽核分工與已知限制，見[平台後台](../features/platform/README.md)。
 
 ## 租戶後台（/dashboard）
 
 路由掛在 `/api/v1` 下，經過 `fastify.authenticate` 取得 `request.agent`，再由 `requirePermission()` 檢查權限碼。資料存取用 `request.tenantPrisma` 或 `withTenant()`，兩者都受 RLS 約束。
 
-各功能區由哪些模組負責、模組之間怎麼接力，見[租戶後台](./tenant/README.md)。
+各功能區由哪些模組負責、模組之間怎麼接力，見[租戶後台](../features/tenant/README.md)。
 
 ### 對話與工單
 
@@ -125,7 +125,7 @@
 
 `canvas` 是多步驟的聯繫人旅程引擎，機制見[互動流程引擎](./CANVAS-FLOW-ENGINE.md)。
 
-`sla` 模組只有政策的 CRUD。逾時的判定與處置在 `apps/workers`，機制見[服務水準協議](./SLA.md)。
+`sla` 模組只有政策的 CRUD。逾時的判定與處置在 `apps/workers`，機制見[服務水準協議](../features/SLA.md)。
 
 ### 分析
 
@@ -142,7 +142,7 @@
 | `role` | `/api/v1/roles` | `/dashboard/settings/roles` | `role.view`、`role.manage` |
 | `settings` | `/api/v1/settings` | `/dashboard/settings/*` | `settings.manage` |
 | `cli` | `/api/v1/cli` | `/dashboard/settings/cli-sessions` | CLI session 驗證 |
-| `mcp` | `/mcp` | 無頁面 | JWT 或 CLI session，再依工具檢查 scope |
+| `mcp` | `/mcp` | 無頁面 | 帶 `mcp:read` scope 的 CLI session，再依工具檢查 scope |
 | `webhook-subscriptions` | `/api/v1/webhook-subscriptions` | 無頁面 | `webhook.view`、`webhook.manage` |
 | `tenant-audit` | `/api/v1/tenant/audit-logs` | 無頁面 | `audit.view` |
 | `data-export` | `/api/v1/tenant/data-export` | 無頁面 | `data.export` |

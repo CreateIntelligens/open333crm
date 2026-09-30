@@ -4,9 +4,55 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：功能區文件移到 `docs/ref/features/`
+
+`docs/ref/modules/` 原本同時放兩種文件：以程式模組為單位的（模組總覽、互動流程引擎），以及以產品功能區為單位的（平台後台、租戶後台、SLA）。後者一份文件跨好幾個程式模組，放在 `modules/` 底下，讀者照目錄名稱找不到。因此把功能區文件移到新的 `docs/ref/features/`：
+
+| 原路徑 | 新路徑 |
+| --- | --- |
+| `docs/ref/modules/platform/` | `docs/ref/features/platform/` |
+| `docs/ref/modules/tenant/` | `docs/ref/features/tenant/` |
+| `docs/ref/modules/SLA.md` | `docs/ref/features/SLA.md` |
+
+`modules/` 只留模組總覽與互動流程引擎。本檔較早的紀錄提到的舊路徑，是當時的位置，不回頭改寫；可點擊的連結已改成新路徑。
+
+## 2026-09-30：租戶後台逐模組深入，新增十九個項目並修正 SEC-04
+
+起因是把[租戶後台](../features/tenant/README.md)拆成各功能區的獨立文件。做法是逐一讀每個功能區的路由、服務、workers handler 與前端呼叫點，對照前端文案與實際行為，並追查跨模組的事件與 token 流向。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| RLS-06 | `handleCsatResponse()` 以 `/^csat:(\d):([a-f0-9-]+)$/i` 比對 `textContent` 或 `postbackData`；`recordCsatScore()` 以 `case.findUnique({ where: { id: caseId } })` 查詢；`webhook.routes.ts` 以 `fastify.prismaAdmin` 呼叫 `processWebhookEvent()`；`recordKbFeedback()` 有 `conversation: { tenantId }` 條件 |
+| RBAC-04 | `socket.plugin.ts` 在 `connection` 時無條件 `socket.join()` 加入 `tenant:<租戶 ID>` 房間；`sendMessage()` 與 `emitToConversationAndTenant()` 都以 `io.to()` 把 `message.new` 發到租戶房間；`contact.routes.ts` 與 `ai.routes.ts` 沒有引用 `channel-visibility`；`case.routes.ts` 的 `POST /` 與 `GET /stats` 沒有呼叫 `assertCaseChannelVisible` 或 `resolveChannelVisibility` |
+| TEAM-01 | `team.create`、`agentTeamMember.create` 在 `apps/*/src`、`packages/*/src` 與 `seed.ts` 都沒有出現；`ChannelTeamAssignment.tsx` 只呼叫 `GET /channels/teams` 列出既有團隊 |
+| AUTH-05 | `auth.plugin.ts` 以 `config.JWT_SECRET` 註冊 `@fastify/jwt`，`authenticate` 只 `jwtVerify()`；`portal-auth.service.ts` 的 `signFanToken()` 以同一把密鑰簽 `{ sub: 'fan', contactId, tenantId }`；`/fan/auth` 只 `contact.findFirst({ where: { id: contactId, tenantId } })`；`resolveRoleId()` 以 `agent.findFirst({ where: { id: request.agent.id, tenantId } })` 查角色；`signRefreshToken()` 與 `createLineMcpConfirmation()` 也用同一把密鑰 |
+| SEC-05 | `auth.routes.ts` 以 `global: false` 註冊外掛；有 `config.rateLimit` 的路由只有 Passkey 各路由與 `/cli/login`；`git log -L` 顯示 `/login` 從未設定；`login()` 沒有失敗計數 |
+| CONV-02 | `ChatWindow.tsx` 的 `handleAssign` 與狀態選單呼叫 `PATCH /conversations/:id`；`updateConversation()` 沒有 `eventBus.publish`；`conversation.assigned` 在 `apps/api/src` 只出現在 eventBus 型別、`notification.worker.ts` 的訂閱與 `action-executor.ts` 的 socket `emit` |
+| CONV-03 | `sendMessage()` 的失敗分支只寫 log 或 `lineDeliveryStatus`；`deliveryFailed` 只有 `apps/workers/src/lib/channel-delivery.ts` 寫入；`POST /:id/messages` 以 `const { message } = await sendMessage(…)` 丟棄 `delivery`；`useMessages.ts` 不讀 `delivery` |
+| AUTO-03 | `automation-actions.ts` 的 `add_tag` 以 `{ name: tagName!, tenantId }` 查詢，找不到就 `tag.create({ data: { tenantId, name: tagName } })` |
+| AUTO-04 | `keyword-replies/page.tsx` 的說明文字；`checkKeywordTriggers()` 沒有狀態條件；`RATE_LIMIT_MAX` 只在 `action-executor.ts`；`git log -S` 指向 `fff80d8` |
+| AUTO-05 | 比對 `AUTOMATION_EVENT_NAMES` 與 `automation.worker.ts` 送進 queue 的 `trigger:` 值；`contact.updated`、`message.postback`、`case.status_changed`、`case.updated` 在 `apps/api/src` 與 `apps/workers/src` 沒有 `name: '…'` 的發布 |
+| CONTACT-01 | 比對 `mergeContacts()` 與兩份 `mergeContactIntoTarget()` 觸及的資料表；`diff` 確認兩份 `mergeContactIntoTarget()` 相同；migration 中 `point_transactions_contactId_fkey` 與 `portal_submissions_contactId_fkey` 為 `ON DELETE RESTRICT` |
+| IDENT-01 | `mergeSuggestion.create` 只在 `detectPhoneDuplicates()`；該函式、`stitchByPhone()`、`stitchByLiffCookie()` 在 `apps/*/src` 沒有呼叫端 |
+| MKT-01 | `/broadcasts/:id/send` 的 handler `await executeBroadcast()`；狀態白名單含 `sending` 與 `failed`；`executeBroadcast()` 沒有查詢既有 `BroadcastRecipient` |
+| SHORT-01 | `/s/track` 的 handler 直接把 `cid`、`lineUid` 傳給 `trackClick()`；`shortlink-redirect.routes.ts` 沒有 `rateLimit`；`isUnique` 只在有 `lineUid` 時去重 |
+| ANA-01 | migration 中 `"createdAt" TIMESTAMP(3)`；`analytics.service.ts` 以 `date_trunc(…, "createdAt")` 分組，沒有 `AT TIME ZONE` |
+| CHAN-01 | `deleteChannel()` 呼叫 `prisma.channel.delete()`；schema 中 `Conversation`、`ChannelUsage`、`RichMenu` 的 `channel` 關聯沒有 `onDelete`；`apps/api/src` 沒有 `P2003` |
+| AUD-01 | 列出 `apps/api/src/modules` 中所有 `writeTenantAudit` 的 `action`；`auth`、`marketing`、`automation`、`knowledge`、`tag` 的路由檔沒有呼叫 |
+| ERASE-01 | 列出 `data-erasure.handler.ts` 觸及的資料表；`ClickLog`、`BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` 在 schema 中只有 `contactId` 欄位、沒有 `Contact` 關聯 |
+| DB-04 | `Conversation.teamId` 在所有 `conversation.create`／`update` 附近都沒有寫入；`parentCaseId`、`caseRelation` 在 `apps/*/src` 沒有出現；`isBlocked` 在 `apps/web/src` 沒有出現、在 `apps/api/src` 只出現在 `contact.routes.ts` 的 schema |
+
+**既有項目的補充。** RBAC-03 補上 `recordCsatScore()` 只通知 `SUPERVISOR` 的一列。PLAN-06 補上現成但沒有呼叫端的 `clearQuotaAlertFlags()`。PLAN-07 補上重新啟用渠道不檢查數量上限。APP-02 補上 WhatsApp 可以建立但沒有外掛。RLS-02 補上 IDENT-01 的影響：目前沒有任何合併建議，跨租戶路徑沒有資料可以操作。RLS-02 的優先順序維持 P1，因為接上產生端後會立即生效。
+
+**修正 SEC-04。** 表格中 `auth.routes.ts` 那一列原本寫「租戶登入、passkey、CLI 登入各每分鐘 10 次」。租戶的密碼登入實際上沒有限制，已改正，並另立 SEC-05。
+
+**優先順序的判斷。** AUTH-05 標為 P1：只驗登入的路由涵蓋整個收件匣，socket 更能即時收到全租戶的訊息，而被停用的成員就具備取得 token 的條件。SEC-05 標為 P1：不需要任何前提就能暴力嘗試密碼。RLS-06 比照 RLS-02、RLS-05 標為 P1，而且觸發者是任何外部使用者，不需要是租戶成員。
+
+**同時修正的文件錯誤。** `tenant/INBOX.md` 初稿寫「客服收不到看不見的渠道的即時事件」，查到租戶房間後改正。`OVERVIEW.md` 把 MCP 的認證寫成「JWT 或 CLI session」，實際只接受帶 `mcp:read` 的 CLI token，已改正。
+
 ## 2026-09-30：撰寫租戶後台文件時的盤點，新增十一個項目
 
-起因是撰寫[租戶後台](../modules/tenant/README.md)。做法是從側欄的每一項出發，追到負責的路由、服務與背景工作，再對照前端實際呼叫的端點。
+起因是撰寫[租戶後台](../features/tenant/README.md)。做法是從側欄的每一項出發，追到負責的路由、服務與背景工作，再對照前端實際呼叫的端點。
 
 | 新項目 | 判定依據 |
 | --- | --- |
@@ -127,7 +173,7 @@
 
 ## 2026-09-30：平台 KV 設定的寫入與讀取，新增 TRIAL-02
 
-起因是[平台設定](../modules/platform/SETTINGS.md)描述的 KV 做法缺點很多，要為它提出修正方向。做法是追完一個設定值從寫入到被使用的整條路徑：`/admin/trial` 設定分頁、`PUT /settings/:key`、`getTrialPolicy()`，以及各參數在 `trial.service.ts` 與 `trial.scheduler.ts` 的使用處。
+起因是[平台設定](../features/platform/SETTINGS.md)描述的 KV 做法缺點很多，要為它提出修正方向。做法是追完一個設定值從寫入到被使用的整條路徑：`/admin/trial` 設定分頁、`PUT /settings/:key`、`getTrialPolicy()`，以及各參數在 `trial.service.ts` 與 `trial.scheduler.ts` 的使用處。
 
 | 新項目 | 判定依據 |
 | --- | --- |
@@ -141,7 +187,7 @@
 
 ## 2026-09-30：價目表的寫入途徑，新增 USAGE-02
 
-起因是[用量統計](../modules/platform/USAGE.md)的「價目表沒有維護介面」一節，要為它提出修正方向。查證時追了三件原本沒寫的事：seed 在正式環境是否可用、查無價目是否進快取、缺價期間的成本能否事後修正。
+起因是[用量統計](../features/platform/USAGE.md)的「價目表沒有維護介面」一節，要為它提出修正方向。查證時追了三件原本沒寫的事：seed 在正式環境是否可用、查無價目是否進快取、缺價期間的成本能否事後修正。
 
 | 新項目 | 判定依據 |
 | --- | --- |
@@ -175,11 +221,11 @@
 
 `ai-key.service.ts` 的加解密複用 `channel.service.ts` 的函式，與渠道憑證共用 `CREDENTIAL_ENCRYPTION_KEY`，因此一次金鑰輪替會讓所有租戶的 BYOK 同時退回。
 
-`AUDIT.md` 原本為 USAGE-01 開的「用量統計」章節改名為「AI 用量與金鑰」，兩項共用。BYOK 的定義補在[用量統計](../modules/platform/USAGE.md)第一次使用該詞的位置。
+`AUDIT.md` 原本為 USAGE-01 開的「用量統計」章節改名為「AI 用量與金鑰」，兩項共用。BYOK 的定義補在[用量統計](../features/platform/USAGE.md)第一次使用該詞的位置。
 
 ## 2026-09-29：用量頁的說明文字，新增 USAGE-01
 
-起因是一個提問：[用量統計](../modules/platform/USAGE.md)記下的「失敗呼叫完全不計入」有沒有寫在前端介面上。做法是把 `/admin/usage` 的每一句說明文字與 `platform-usage.service.ts` 的查詢條件逐句對照。
+起因是一個提問：[用量統計](../features/platform/USAGE.md)記下的「失敗呼叫完全不計入」有沒有寫在前端介面上。做法是把 `/admin/usage` 的每一句說明文字與 `platform-usage.service.ts` 的查詢條件逐句對照。
 
 結果是介面寫對了。頁首的「僅計成功呼叫」、「AI 呼叫數」卡片的「成功呼叫」、「總成本」卡片的「平台承擔（不含 BYOK）」三句都與實作相符。錯的只有服務檔開頭的註解，而那正是先前誤讀的出處。
 
@@ -189,7 +235,7 @@
 
 ## 2026-09-29：方案異動申請的讀取途徑，新增 PLAN-11
 
-起因是[方案異動審核](../modules/platform/PLAN-CHANGES.md)的「平台看不到歷史」一節。確認平台側除了待審列表之外還有沒有其他讀取途徑，逐一查了三條：租戶詳情頁的 `select`、平台稽核的查詢端點，以及租戶側的列表。
+起因是[方案異動審核](../features/platform/PLAN-CHANGES.md)的「平台看不到歷史」一節。確認平台側除了待審列表之外還有沒有其他讀取途徑，逐一查了三條：租戶詳情頁的 `select`、平台稽核的查詢端點，以及租戶側的列表。
 
 | 新項目 | 判定依據 |
 | --- | --- |
@@ -243,7 +289,7 @@ PLAN-07 一併擴充：`seedPlans()` 的 `upsert` 沒有傳 `allowedChannelTypes
 本次確認無誤、不開項目的部分：
 
 - 所有 guard 路徑都用套過天花板的 `getEffectiveTenantPermissions()`：`rbac.guard.ts`、`socket-room-authorization.ts`、`channel-visibility.ts` 與 `/auth/me/permissions`。沒有漏走天花板的判斷點。
-- `features` 雖然不驗 slug（見[方案與功能](../modules/platform/PLANS.md)），但 `/admin/plans` 的功能清單是從 `GET /registry` 產生的勾選項，介面操作打不出不存在的 slug。風險只存在於直接呼叫 API。
+- `features` 雖然不驗 slug（見[方案與功能](../features/platform/PLANS.md)），但 `/admin/plans` 的功能清單是從 `GET /registry` 產生的勾選項，介面操作打不出不存在的 slug。風險只存在於直接呼叫 API。
 - `limits` 沒有任何快取，`getEffectiveLimit()` 每次都查資料庫，因此改上限不會有陳舊資料問題。
 - `permissionOverrides.deny` 在路由層驗過權限碼。資料庫裡若留著已下架的碼，`ceiling.delete()` 對不存在的碼是空操作，沒有後果。
 
@@ -257,7 +303,7 @@ PLAN-07 一併擴充：`seedPlans()` 的 `upsert` 沒有傳 `allowedChannelTypes
 | PLAN-06 | `clearTokenQuotaCache()` 只 `del` 計數器 key；告警旗標另有 key，`checkQuotaThresholdCrossing()` 以 `SET NX` 搶旗標，過期時間是月底 |
 | PLAN-07 | 比對 `seedPlans()` 每個方案的 `limits` 鍵與 `LimitKey` 的四個值，`maxChannels` 在每個方案都缺 |
 
-PLAN-07 是另一條線索：整理[方案與功能](../modules/platform/PLANS.md)的「無上限」一節時，發現該節把「刻意設成無上限」與「缺少設定」列成同一組情況，於是逐一驗證每種情況在現有資料上是否成立，查出 `maxChannels` 從來沒有任何方案定義過。該節已改寫成依性質分列，並標出哪幾種是 fail-open。
+PLAN-07 是另一條線索：整理[方案與功能](../features/platform/PLANS.md)的「無上限」一節時，發現該節把「刻意設成無上限」與「缺少設定」列成同一組情況，於是逐一驗證每種情況在現有資料上是否成立，查出 `maxChannels` 從來沒有任何方案定義過。該節已改寫成依性質分列，並標出哪幾種是 fail-open。
 
 判定的共同根因是一個資料模型問題：`limitOverrides` 的語意是狀態覆寫（絕對值），加購是事件（一次性增量）。把事件累加進狀態欄位之後，來源、時效與次數三項資訊都無法還原。PLAN-02、PLAN-03、PLAN-05、PLAN-06 都是這個根因的下游結果。
 
@@ -292,7 +338,7 @@ Compose 的行為單獨確認過：`env_file` 指向的檔案不存在時，`doc
 | RBAC-01 | 逐一以權限碼 `grep` 掃 `apps/api/src`（排除測試），56 個碼中 15 個零命中；另比對命中處是 `requirePermission()` 還是稽核 `action` 字串 |
 | PLAN-04 | 逐模組統計路由數與 `requirePermission`／`requireAnyPermission` 出現次數，再依 `permissions.ts` 的 `feature` 欄位分組；另查 `maxTags` 在 `apps/api/src` 只出現於型別宣告 |
 
-不加對照表的理由值得留存：`apps/api/src/modules` 下的模組只有 18 個使用 `requirePermission`，模組到 feature 的推導對其餘模組沒有依據；而且就算推導得出，寫下「`case` 屬於 `inbox`」會讓讀者以為方案關掉 `inbox` 就停用案件功能，實際上不會。該欄位會把一個不成立的因果關係固化進文件。改為在[平台後台](../modules/platform/README.md)的天花板一節補一句結構性事實：這個交集只在路由呼叫 `requirePermission()` 時計算。
+不加對照表的理由值得留存：`apps/api/src/modules` 下的模組只有 18 個使用 `requirePermission`，模組到 feature 的推導對其餘模組沒有依據；而且就算推導得出，寫下「`case` 屬於 `inbox`」會讓讀者以為方案關掉 `inbox` 就停用案件功能，實際上不會。該欄位會把一個不成立的因果關係固化進文件。改為在[平台後台](../features/platform/README.md)的天花板一節補一句結構性事實：這個交集只在路由呼叫 `requirePermission()` 時計算。
 
 盤點時另外確認三件事，都不另開項目：
 
@@ -302,7 +348,7 @@ Compose 的行為單獨確認過：`env_file` 指向的檔案不存在時，`doc
 
 ## 2026-09-23：平台後台各領域逐檔細查，新增兩個方案項目
 
-起因是把[平台後台](../modules/platform/README.md)的領域文件從一兩句話補成完整說明。過程中逐支服務、逐條路由對照原始碼，發現兩項與方案有關的問題，也修正了三處我自己寫錯的描述。做法是靜態閱讀原始碼與前端頁面，沒有啟動容器。
+起因是把[平台後台](../features/platform/README.md)的領域文件從一兩句話補成完整說明。過程中逐支服務、逐條路由對照原始碼，發現兩項與方案有關的問題，也修正了三處我自己寫錯的描述。做法是靜態閱讀原始碼與前端頁面，沒有啟動容器。
 
 | 新項目 | 判定依據 |
 | --- | --- |
@@ -324,7 +370,7 @@ Compose 的行為單獨確認過：`env_file` 指向的檔案不存在時，`doc
 
 ## 2026-09-23：試用生命週期追查，新增 TRIAL-01
 
-起因是閱讀[平台後台](../modules/platform/README.md)的試用管理一節時，發現該節只列函式行為、沒有說明誰能觸發，讀者無法判斷延長試用是逐筆操作還是批次。釐清的過程中比對了升級的兩條路徑，發現結果不一致。做法是靜態閱讀原始碼，沒有啟動容器。
+起因是閱讀[平台後台](../features/platform/README.md)的試用管理一節時，發現該節只列函式行為、沒有說明誰能觸發，讀者無法判斷延長試用是逐筆操作還是批次。釐清的過程中比對了升級的兩條路徑，發現結果不一致。做法是靜態閱讀原始碼，沒有啟動容器。
 
 判定依據，逐項串成一條可達的路徑：
 
