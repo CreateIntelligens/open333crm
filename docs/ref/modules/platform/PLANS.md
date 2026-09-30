@@ -1,0 +1,100 @@
+# 方案與上限
+
+方案定義租戶的功能範圍與數量上限。這一份說明各欄位控制什麼，以及有效上限怎麼算出來。
+
+- **資料來源**：`apps/api/src/modules/platform/plan.service.ts`、`plan-limits.service.ts`、`platform.routes.ts`
+- **核對日期**：2026-09-23
+
+這一份會反覆出現「天花板」。它指方案允許的權限上限，定義與公式見[平台後台](./README.md#用語天花板)。
+
+## 每個欄位各控制什麼
+
+`Plan` 的這幾個欄位互不取代，改其中一個不影響其他欄位。
+
+| 欄位 | 中文名 | 作用 | 空值的意義 |
+| --- | --- | --- | --- |
+| `features` | 功能模組清單 | 方案包含哪些功能模組。功能天花板由這份清單換算而來，`core` 恆開 | 空陣列代表只有 `core` |
+| `limits` | 數值上限 | `maxAgents`、`maxChannels`、`maxTags`、`monthlyTokens` 的數量上限 | 某個 key 的值為 `null` 代表該項無上限 |
+| `allowedChannelTypes` | 可建立的渠道類型白名單 | 限制這個方案能建立哪些渠道類型。`channel.service.ts` 在建立渠道時檢查，不符合回 403 `CHANNEL_TYPE_NOT_ALLOWED` | 空陣列代表不限制 |
+| `permissionOverrides` | 權限碼扣除清單 | 從 `features` 算出的天花板再扣掉指定的權限碼，結構是 `{ deny: string[] }` | 空物件代表不扣除任何權限 |
+
+`slug` 全域唯一，程式用它認方案（`trial.planSlug`、升級申請的 `targetPlanSlug`、平台改方案的 `planSlug` 都是傳 slug）。`priceMonthly` 只是顯示用，這個系統不接金流。它只出現在平台後台的方案頁與排序，不會回傳給租戶端，系統也不產生帳單，見 `../../system/AUDIT.md` 的 PLAN-10。
+
+## 名稱與實際行為不符的欄位
+
+| 欄位 | 看名字會以為 | 實際上 |
+| --- | --- | --- |
+| `allowedChannelTypes` | 空陣列代表全部禁止 | 空陣列代表不限制。而且只擋新建的渠道，既有渠道照常運作 |
+| `permissionOverrides` | 可以覆寫，能加也能減 | 只能扣除。要放寬權限只能改 `features`。deny 一個高階權限碼不會連帶扣掉低階碼 |
+
+這兩項都是明確的設計決策，不是實作疏漏。欄位來自 2026-09-15 的 `granular-plan-entitlement`，目的是讓方案分級細到權限點，典型情境是「能看報表但不能匯出」。取捨的理由見 `openspec/changes/archive/2026-09-15-add-granular-plan-entitlement/design.md`，現行規格見 `openspec/specs/granular-plan-entitlement/spec.md`。
+
+
+## 路由層先擋掉哪些值
+
+`updatePlanSchema` 在寫入前就驗過一輪，因此服務層不必再檢查：
+
+| 欄位 | 規則 |
+| --- | --- |
+| `limits` | 每個值是非負整數或 `null`。擋掉小數、負數與字串 |
+| `allowedChannelTypes` | 每個值必須是 Prisma `ChannelType` 的合法值 |
+| `permissionOverrides.deny` | 每個值必須在 `PERMISSION_CODES` 內，否則回「未知的權限碼」 |
+| `features` | 只驗型別是字串陣列，**不驗 slug 是否存在** |
+
+`features` 是唯一沒被驗值的欄位。寫進一個不存在的 feature slug 不會報錯，`permsForFeatures()` 找不到對應權限，那個 slug 等同沒寫。
+
+合法的 slug 定義在 `packages/core/src/rbac/features.ts` 的 `FEATURES`，每一筆帶 slug、顯示名稱、涵蓋範圍說明與是否為核心。那份定義是被指定的單一資料源，平台後台的方案頁透過 `GET /registry` 動態取得，不另外維護清單，見[平台設定與權限註冊表](./SETTINGS.md#權限註冊表)。
+
+## 停售不會生效
+
+`Plan.isActive` 的註解寫的是「停售軟下架」，但**整個 repo 沒有任何查詢讀這個欄位**。把方案設為停售之後，它仍然可以被指派：平台改租戶方案、核准升級申請、試用開通綁定方案，三條路徑都只用 slug 找方案，沒有一條檢查 `isActive`。詳見 `../../system/AUDIT.md` 的 PLAN-01。
+
+## 有效上限怎麼算
+
+`plan-limits.service.ts` 解析單一租戶的有效上限。**這支服務不屬於平台後台**，沒有任何平台路由呼叫它，呼叫者都在租戶側：`agent.service.ts`、`channel.service.ts` 與 `trial/token-quota.service.ts`。
+
+判斷順序是「租戶的覆寫優先」，但判斷的是 key 存不存在，不是值是不是空：
+
+```text
+limitOverrides 有這個 key（即使值是 null）→ 用 limitOverrides 的值
+否則                                      → 用 Plan.limits 的值
+```
+
+差別在 `null`。`Tenant.limitOverrides` 寫 `{ "maxAgents": null }` 的意思是「這個租戶的人數改成無上限」，而不是「沒設定，回去看方案」。程式用 `hasOwnProperty` 判斷，不是 `??`。
+
+## 什麼情況會變成無上限
+
+回傳 `null` 一律代表無上限。得到 `null` 的路徑有四條，前兩條是有人刻意設定，後兩條是設定不存在：
+
+| 情況 | 為什麼回 `null` | 性質 |
+| --- | --- | --- |
+| `limitOverrides` 的該 key 值是 `null` | 平台方把這個租戶設成無上限 | 刻意設定 |
+| `Plan.limits` 的該 key 值是 `null` | 方案本身不限這一項，例如 `enterprise` | 刻意設定 |
+| 租戶的 `planId` 是 `null` | 沒有方案可查，直接回 `null` | 設定不存在 |
+| 方案的 `limits` 沒有這個 key | 方案沒有定義這一項，直接回 `null` | 設定不存在 |
+
+後兩條是 fail-open：缺少設定的結果是完全不限制，不是套用最嚴格的值，而且沒有任何警告或紀錄。
+
+第三條是刻意保留的相容狀態。`Tenant.planId` 可以是 `null`，schema 的註解寫明那代表「既有租戶為 null = 不設功能天花板、無數值上限」，指的是方案機制上線前就存在的租戶。建立租戶的路由要求 `planSlug`，所以新租戶不會落入這個狀態。
+
+第四條目前有一個實例：沒有任何方案定義 `maxChannels`，因此渠道數的檢查永遠跳過。`allowedChannelTypes` 也沒有任何方案填過值，同樣不限制。渠道這個維度的兩個分級機制都沒有生效，詳見 `../../system/AUDIT.md` 的 PLAN-07。
+
+`monthlyTokens` 要特別注意。`FEATURES` 沒有 `ai` 這個 slug，所以 AI 不受功能天花板管，唯一的控制就是這個數值。留空或未定義都代表無上限，要停用 AI 必須填 `0`，詳見 `../../system/AUDIT.md` 的 PLAN-12。
+
+## 改了方案之後會發生什麼
+
+`updatePlan()` 寫入後，若 `features` 或 `permissionOverrides` 有變動，就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求即用新的天花板重算。沒有灰度，也沒有延遲。
+
+`limits` 與 `allowedChannelTypes` 不需要失效快取，因為兩者都不快取，每次都查資料庫。
+
+操作者在按下儲存之前，看不到這次改動影響幾個租戶；事後也查不到改動前的值。詳見 `../../system/AUDIT.md` 的 PLAN-09。
+
+租戶端不會知道天花板變了。角色與權限頁顯示的是資料庫的授予紀錄，不套天花板，因此被方案擋掉的權限在那一頁仍然顯示為已勾選，詳見 `../../system/AUDIT.md` 的 PLAN-08。
+
+## 加購會改寫覆寫值
+
+AI 月額度的加購直接改寫 `limitOverrides.monthlyTokens`，寫進去的值是「加購當時的方案額度 + 加購量」，見[方案異動審核](./PLAN-CHANGES.md#加購是永久提高每月額度)。
+
+因為覆寫值優先於方案的 `limits`，而且解析時不比大小，加購過的租戶升級方案之後，AI 月額度會停在升級前的數字，見 `../../system/AUDIT.md` 的 PLAN-05。
+
+平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。
