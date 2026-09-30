@@ -33,7 +33,7 @@
 | 未處理 | 沒有修正方向，也沒有任何修正 |
 | 已提建議 | 內文附有修正方向，還沒決定是否照做 |
 | 已定方向 | 修正方向已經討論定案，尚未實作 |
-| 部分修正 | 已有 commit 修掉其中一部分，內文只描述剩下的部分 |
+| 部分修正 | 已有 commit 修掉其中一部分。問題描述寫明哪部分已修、哪部分未修，並附修正的 commit |
 
 一項完全修正之後，從本文件移除，修正它的 commit 記在[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 
@@ -53,7 +53,7 @@
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
 | [SEC-04](#sec-04) | 帳號與登入 | P1 | 未處理 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
-| [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | Workers 的渠道加密金鑰仍有硬編碼備援值 | 靜態確認 |
+| [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | [TRIAL-01](#trial-01) | 試用 | P1 | 未處理 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
@@ -91,7 +91,7 @@
 | [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Ollama base URL 預設指向容器自己 | 執行時重現 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
-| [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P3 | 部分修正 | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 靜態確認 |
+| [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P3 | 部分修正 | `OLLAMA_BASE_URL`：Chat 生成已生效（`ee251c8`），Embedding、`listModels()`、`health()` 仍不讀；兩個 `*_MODEL` 變數仍無讀取端 | 靜態確認 |
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
