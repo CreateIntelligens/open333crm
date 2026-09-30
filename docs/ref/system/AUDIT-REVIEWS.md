@@ -4,6 +4,36 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：對照 main 複查，並移除文件中的程式碼行號
+
+本地 `main` 同步到 `8611bf8` 後，本分支落後 `main` 46 個 commit。這些 commit 改到 AUDIT 常引用的檔案，因此逐項對照 `main` 複查。
+
+結果：沒有任何項目被修正，也沒有任何結論被推翻。受影響檔案的改動全是錯誤訊息整理（`bc3b529`、`9dd15dd`、`ad4edc6`、`6f7a724`）：英文訊息改成中文、回應格式統一。逐項確認的行為如下：
+
+| 項目 | 在 `main` 上的確認結果 |
+| --- | --- |
+| AUTH-03 | `auth.plugin.ts` 只改訊息，仍然沒有撤銷 token 的機制 |
+| AUTH-04 | `updatePlatformUser()` 只改訊息，改 email 仍然不通知 |
+| SEC-04 | `trustProxy: true` 仍在 |
+| RBAC-01 | 15 個權限碼在 `apps/api/src` 仍然出現 0 次 |
+| SLA-01 | `firstResponseAt` 仍然沒有寫入端 |
+| SLA-03 | 挑政策時仍然沒有 `isDefault`，也沒有 `orderBy` |
+| PLAN-12 | `ai.routes.ts` 只改訊息，路由仍然沒有權限碼 |
+
+`ad4edc6` 修正了 403 的回應格式：改成全站一致的結構，並在 `details` 附上 `requiredPermission`。回應仍然分不出是角色沒有權限，還是方案不含這個功能，因此 PLAN-08 的結論不變。這個細節等本分支合併 `main` 之後再寫進 PLAN-08。
+
+複查時發現 9 處行號引用已經指到別的程式碼，其中 `index.ts` 的 `trustProxy` 偏移後落在空白行。行號會隨任何改動偏移，而且過期時會默默指到別的程式碼，讀者不會發現。因此把現況文件的行號全部移除，改用不會因上下文增減而移動的定位方式：
+
+| 情況 | 寫法 |
+| --- | --- |
+| 在某個函式裡 | 檔名加函式名，例如 `plan-limits.service.ts` 的 `resolveEffectiveLimit()` |
+| schema | 檔名加 model 或欄位，例如 `schema.prisma` 的 `Case` |
+| 沒有函式名可指 | 引用一段可以 grep 的程式碼，例如 `case.routes.ts` 的 `action: 'case.delete'` |
+
+範圍是 `AUDIT.md` 41 處、`modules/SLA.md` 1 處、`modules/platform/README.md` 1 處。改完後以腳本確認 41 個定位在本分支與 `main` 上都找得到。
+
+本文件的行號不改。每一則紀錄都有日期，記的是當天的程式碼。
+
 ## 2026-09-30：摘要表加上內文連結與處理狀態
 
 摘要表的 ID 改成連到內文的連結。錨點用明確的 `<a id>` 放在每個標題上方，不依賴標題文字自動產生的錨點，因此標題改寫時連結不會斷。

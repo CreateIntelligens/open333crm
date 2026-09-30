@@ -83,7 +83,7 @@
 
 `platform-audit.service.ts` 的 `writePlatformAudit()` 把操作寫進 `platform_audit_logs`，欄位有 `platformUserId`、`action`、`targetType`、`targetId` 與 `payload`。
 
-**稽核由路由負責寫入，服務內部不重複寫。** `trial-admin.service.ts` 第 58 行的註解說明了這個分工的理由：路由持有 `request.platformUser.id`，服務沒有。
+**稽核由路由負責寫入，服務內部不重複寫。** `trial-admin.service.ts` 的 `restorePurgedTenant()` 註解說明了這個分工的理由：路由持有 `request.platformUser.id`，服務沒有。
 
 新增異動路由時要一併補上 `writePlatformAudit()` 的呼叫。沒有任何檢查會攔下漏寫。四條異動路由目前沒有寫稽核，見[目前的限制](#目前的限制)。
 

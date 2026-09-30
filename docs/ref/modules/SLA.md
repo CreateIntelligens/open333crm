@@ -31,7 +31,7 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 
 ## 政策的設定項
 
-`SlaPolicy` 定義在 `packages/database/prisma/schema.prisma` 的第 823 行起，每個租戶維護自己的一組。
+`SlaPolicy` 定義在 `packages/database/prisma/schema.prisma` 的 `model SlaPolicy`，每個租戶維護自己的一組。
 
 | 欄位 | 意義 |
 | --- | --- |

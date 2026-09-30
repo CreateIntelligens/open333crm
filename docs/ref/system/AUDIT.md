@@ -102,11 +102,11 @@
 <a id="rls-01"></a>
 ### RLS-01：Canvas 引擎不走租戶連線
 
-`packages/core/src/canvas/flow-runner.ts:6` 匯入 `@open333crm/database` 的 module-level `prisma` singleton。`packages/core/src/canvas/scheduler.ts:68` 與 `apps/api/src/modules/canvas/canvas.webhook.ts:6` 也用同一個 singleton。
+`packages/core/src/canvas/flow-runner.ts` 在檔案開頭匯入 `@open333crm/database` 的 module-level `prisma` singleton。`packages/core/src/canvas/scheduler.ts` 的 `processResumeQueue()` 與 `apps/api/src/modules/canvas/canvas.webhook.ts` 也用同一個 singleton。
 
 這個 client 由 `packages/database/src/client.ts` 以 `new PrismaClient()` 建立，沒有指定 datasource，因此連線字串是 `DATABASE_URL`。這個 singleton 與 `apps/api/src/plugins/prisma.plugin.ts` 建立的租戶連線不是同一條連線，連線上也不會有 `app.current_tenant`。`AGENTS.md` 明文禁止 `packages/*` 使用這個 singleton。
 
-`FlowRunner` 的查詢全部以主鍵 `executionId` 定位（`flow-runner.ts` 的第 27、70、83、104、278 行），`where` 沒有 `tenantId`。`canvas.service.ts` 的 `triggerFlow()` 建立 execution 時用的是受約束的 `TenantDb`，但建立後把 `execution.id` 交給 `FlowRunner.run()`，之後的讀寫就離開租戶連線。
+`FlowRunner` 的每一個查詢都以主鍵 `executionId` 定位，`where` 沒有 `tenantId`。`canvas.service.ts` 的 `triggerFlow()` 建立 execution 時用的是受約束的 `TenantDb`，但建立後把 `execution.id` 交給 `FlowRunner.run()`，之後的讀寫就離開租戶連線。
 
 後果依 `DATABASE_URL` 指向哪個 role 而不同：
 
@@ -116,16 +116,16 @@
 <a id="rls-02"></a>
 ### RLS-02：身分合併審核端點沒有租戶檢查
 
-`apps/api/src/modules/canvas/canvas.routes.ts` 的第 177 與 183 行把路徑參數直接交給 `approveMerge(suggestionId, agentId)` 與 `rejectMerge(suggestionId, agentId)`，沒有傳入 `request.agent.tenantId`。
+`apps/api/src/modules/canvas/canvas.routes.ts` 的 `POST /suggestions/:id/approve` 與 `POST /suggestions/:id/reject` 把路徑參數直接交給 `approveMerge(suggestionId, agentId)` 與 `rejectMerge(suggestionId, agentId)`，沒有傳入 `request.agent.tenantId`。
 
-`packages/core/src/identity/merge-suggestion-service.ts` 的第 74 與 150 行用 singleton 以主鍵查 `mergeSuggestion`，`where` 也沒有 `tenantId`。`approveMerge` 接著依該筆建議自己的 `tenantId` 合併聯繫人。
+`packages/core/src/identity/merge-suggestion-service.ts` 的 `approveMerge()` 與 `rejectMerge()` 用 singleton 以主鍵查 `mergeSuggestion`，`where` 也沒有 `tenantId`。`approveMerge` 接著依該筆建議自己的 `tenantId` 合併聯繫人。
 
 兩層租戶隔離在這條路徑上都不生效：應用層沒有比對 `request.agent.tenantId`，資料層走的是不綁租戶的 singleton。持有 `identity.review` 權限的 agent 若取得其他租戶的建議 id，就能核准或駁回該筆建議。同一個檔案的 `listSuggestions()` 有收 `tenantId` 並寫進 `where`，不受這項影響。
 
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
 
-`scripts/check-tenant-scoping.mjs:24` 與 `scripts/check-prisma-admin-usage.mjs:18` 的 `SCAN_DIR` 都是 `apps/api/src`。`packages/*` 不在掃描範圍，因此這兩道檢查攔不到 RLS-01 與 RLS-02 位於 `packages/core` 的程式碼。
+`scripts/check-tenant-scoping.mjs` 與 `scripts/check-prisma-admin-usage.mjs` 的 `SCAN_DIR` 常數都是 `apps/api/src`。`packages/*` 不在掃描範圍，因此這兩道檢查攔不到 RLS-01 與 RLS-02 位於 `packages/core` 的程式碼。
 
 兩支腳本檢查的項目是「query 有沒有 `tenantId`」與「有沒有使用 `prismaAdmin`」，沒有檢查「有沒有匯入 module-level singleton」。即使把 `packages/*` 納入掃描範圍，現有規則仍然抓不到這個寫法。
 
@@ -134,11 +134,11 @@
 <a id="rls-04"></a>
 ### RLS-04：`.env.api.example` 沒有 `DATABASE_URL_TENANT`
 
-`apps/api/src/plugins/prisma.plugin.ts:31` 在 `DATABASE_URL_TENANT` 未設定時 fallback 到 `DATABASE_URL`。`.env.api.example` 只提供 `DATABASE_URL`（`crm`）與 `DATABASE_URL_ADMIN`，沒有 `DATABASE_URL_TENANT`。
+`apps/api/src/plugins/prisma.plugin.ts` 的 `prismaPlugin()` 在 `DATABASE_URL_TENANT` 未設定時 fallback 到 `DATABASE_URL`。`.env.api.example` 只提供 `DATABASE_URL`（`crm`）與 `DATABASE_URL_ADMIN`，沒有 `DATABASE_URL_TENANT`。
 
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
-`apps/workers/src/index.ts:59` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
+`apps/workers/src/index.ts` 的 `main()` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
@@ -153,7 +153,7 @@
 
 其中 `billing.view` 的描述是「租戶站內方案/用量頁」，而那個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表，看不到方案內容、價格或已用額度（見 PLAN-10）。
 
-另有兩個碼只以稽核紀錄的 `action` 字串出現，不是檢查：`case.delete`（`case.routes.ts:200`）與 `contact.merge`（`contact.routes.ts:101`）。`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由上，不在收件匣本身。
+另有兩個碼只以稽核紀錄的 `action` 字串出現，不是檢查：`case.delete`（`case.routes.ts` 的 `action: 'case.delete'`）與 `contact.merge`（`contact.routes.ts` 的 `action: 'contact.merge'`）。`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由上，不在收件匣本身。
 
 結果是 `case`、`conversation`、`contact`、`tag`、`shortlink` 這幾個模組的路由只有 `fastify.authenticate`，沒有任何授權判斷。租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
 
@@ -280,7 +280,7 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
 
-`apps/api/src/modules/platform/platform-audit.service.ts` 的 `writePlatformAudit()` 把平台操作寫進 `platform_audit_logs`。`platform.routes.ts` 的異動路由呼叫它，服務層不重複寫，`trial-admin.service.ts` 第 58 行的註解說明了這個分工。
+`apps/api/src/modules/platform/platform-audit.service.ts` 的 `writePlatformAudit()` 把平台操作寫進 `platform_audit_logs`。`platform.routes.ts` 的異動路由呼叫它，服務層不重複寫，`trial-admin.service.ts` 的 `restorePurgedTenant()` 註解說明了這個分工。
 
 以下四條異動路由沒有呼叫 `writePlatformAudit()`，對應的服務內部也沒有寫：
 
@@ -298,7 +298,7 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 <a id="sec-03"></a>
 ### SEC-03：rate-limit 只註冊在 platform 路由的 scope 內
 
-`apps/api/src/modules/platform/platform.routes.ts` 第 105 行在 `platformRoutes()` 函式內部註冊 `@fastify/rate-limit`：
+`apps/api/src/modules/platform/platform.routes.ts` 在 `platformRoutes()` 函式內部一開始就註冊 `@fastify/rate-limit`：
 
 ```ts
 export default async function platformRoutes(fastify: FastifyInstance) {
@@ -316,7 +316,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 <a id="sec-04"></a>
 ### SEC-04：`request.ip` 可由呼叫端偽造
 
-`apps/api/src/index.ts:97` 設定 `trustProxy: true`。這個值的意思是「信任所有上游」，Fastify 底層的 `proxy-addr` 因此取 `X-Forwarded-For` 的**最左邊**那一個位址當作 `request.ip`。最左邊是呼叫端自己寫的值。
+`apps/api/src/index.ts` 建立 Fastify 實例時設定 `trustProxy: true`。這個值的意思是「信任所有上游」，Fastify 底層的 `proxy-addr` 因此取 `X-Forwarded-For` 的**最左邊**那一個位址當作 `request.ip`。最左邊是呼叫端自己寫的值。
 
 前面有沒有反向代理都一樣。`nginx/nginx.conf.template` 的六個 location 區塊全部用：
 
@@ -381,15 +381,15 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 | `PATCH /api/v1/platform/trial-tenants/:id/convert` | 平台在 `/admin/trial` 操作 | 改 | 清成 `null` |
 | `PATCH /api/v1/platform/plan-change-requests/:id/approve` | 租戶申請、平台在 `/admin/plan-changes` 核准 | 改 | **不動** |
 
-`convertToPaid()` 清空 `trialEndsAt`，註解寫明用意是「脫離試用，不再受到期排程管轄」。`approveRequest()` 的 `upgrade` 分支只寫 `planId`（`plan-change.service.ts` 第 90 行），沒有處理 `trialEndsAt`。
+`convertToPaid()` 清空 `trialEndsAt`，註解寫明用意是「脫離試用，不再受到期排程管轄」。`plan-change.service.ts` 的 `approveRequest()` 在 `upgrade` 分支只寫 `planId`，沒有處理 `trialEndsAt`。
 
 第二條路徑確實可達，逐項確認如下：
 
-1. `settings.manage` 的 `feature` 是 `core`（`packages/core/src/rbac/permissions.ts:101`），而 `core` 恆開（`permission.service.ts:116`）。試用租戶的 `ADMIN` 因此持有這個權限。
+1. `settings.manage` 的 `feature` 是 `core`（見 `packages/core/src/rbac/permissions.ts` 的 `PERMISSIONS`），而 `core` 恆開（`permission.service.ts` 的 `getEffectiveTenantPermissions()` 一律加入 `CORE_FEATURE`）。試用租戶的 `ADMIN` 因此持有這個權限。
 2. `POST /api/v1/plan-change` 只要求 `fastify.authenticate` 加 `settings.manage`。`createPlanChangeRequest()` 沒有檢查租戶是否在試用中。
 3. `apps/web` 的 `/dashboard/plan` 頁面就是呼叫這個端點。
 
-後果發生在排程。`runTrialLifecycle()` 的掃描條件是 `{ trialEndsAt: { not: null }, isActive: true }`（`trial.scheduler.ts:34`），沒有任何方案條件。因此已升級付費的租戶仍在掃描範圍內：
+後果發生在排程。`trial.scheduler.ts` 的 `runTrialLifecycle()` 第一輪的掃描條件是 `{ trialEndsAt: { not: null }, isActive: true }`，沒有任何方案條件。因此已升級付費的租戶仍在掃描範圍內：
 
 - 到了原本的 `trialEndsAt`，排程把 `isActive` 設為 `false`，寄出「試用已到期」信給該租戶的 `ADMIN`，並寫入 `tenant.trial.expire` 稽核。
 - 再經過 `dataRetentionDays`（預設 30 天），軟刪掃描把 `purgedAt` 設為當下。
@@ -409,7 +409,7 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 | --- | --- | --- |
 | 型別錯，例如 `trial.durationDays` 寫成 `"30"` | `typeof` 不是 `number` | 靜默失效：設定存進去了，行為仍是預設的 14 天 |
 | 型別對但範圍錯，例如 `0` 或負數 | `typeof` 通過 | 靜默生效：照用錯誤的值 |
-| `trial.planSlug` 寫了不存在的方案 | `typeof` 通過 | 之後每一筆試用驗證都在最後一步失敗，回 500 `TRIAL_MISCONFIGURED`（`trial.service.ts:163`） |
+| `trial.planSlug` 寫了不存在的方案 | `typeof` 通過 | 之後每一筆試用驗證都在最後一步失敗，回 500 `TRIAL_MISCONFIGURED`（`trial.service.ts` 的 `verifyAndProvision()`） |
 
 範圍錯的值實際造成的結果：
 
@@ -467,7 +467,7 @@ PlatformSetting（KV，不知道型別）
 
 因此一個試用過就離開的租戶，他的聯繫人、對話、訊息會一直留在資料庫裡。這些資料的主體是**租戶的客戶**，不是租戶本身。營運方若依這個設定對外說明保留期限，實際上做不到。
 
-`purgedAt` 帶來的唯一行為差異是平台清單上的狀態顯示「已清除」。租戶在試用到期時已經被停用，因此標記前後，租戶端的存取沒有任何改變。入站 webhook 在停用時就已經不處理（`webhook.service.ts:58` 檢查 `tenant.isActive`），也與 `purgedAt` 無關。
+`purgedAt` 帶來的唯一行為差異是平台清單上的狀態顯示「已清除」。租戶在試用到期時已經被停用，因此標記前後，租戶端的存取沒有任何改變。入站 webhook 在停用時就已經不處理（`webhook.service.ts` 的 `processWebhookEvent()` 檢查 `tenant.isActive`），也與 `purgedAt` 無關。
 
 `trial.enabled` 的預設值是 `false`。正式環境若從未開放試用，目前沒有受影響的資料。這一點要到線上確認。
 
@@ -513,7 +513,7 @@ PlatformSetting（KV，不知道型別）
 
 **累加沒有交易保護。** `approveRequest()` 的流程是 `findUnique` 讀出 `limitOverrides`、在記憶體算出新值、再 `update` 覆寫整個 JSON 物件。三步之間沒有交易。同一個租戶的兩筆加購申請若同時核准，兩邊都讀到同一個起始值，後寫入的會覆蓋先寫入的，其中一筆加購量消失。覆寫的是整份 JSON，因此將來若有其他路徑寫別的 key，那些值也會一起被蓋掉。同一個模組的 `platform-user.service.ts` 停用最後一個帳號時用了 `Serializable` 交易，兩處的嚴謹程度不一致。
 
-**有效上限的解析邏輯有第二份副本。** `plan-change.service.ts:103` 自己重寫了一次「覆寫優先」的判斷，用 `overrides.monthlyTokens !== undefined`；`plan-limits.service.ts:16` 的 `resolveEffectiveLimit()` 用 `hasOwnProperty`。JSON 欄位存不出 `undefined`，所以兩者目前行為相同，但這是兩份會分歧的邏輯。`approveRequest()` 手上已經有 `limitOverrides` 與 `plan.limits`，可以直接呼叫 `resolveEffectiveLimit()`。
+**有效上限的解析邏輯有第二份副本。** `plan-change.service.ts` 的 `approveRequest()` 在 `token_topup` 分支自己重寫了一次「覆寫優先」的判斷，用 `overrides.monthlyTokens !== undefined`；`plan-limits.service.ts` 的 `resolveEffectiveLimit()` 用 `hasOwnProperty`。JSON 欄位存不出 `undefined`，所以兩者目前行為相同，但這是兩份會分歧的邏輯。`approveRequest()` 手上已經有 `limitOverrides` 與 `plan.limits`，可以直接呼叫 `resolveEffectiveLimit()`。
 
 <a id="plan-03"></a>
 ### PLAN-03：換方案不會回收既有的超額狀態
@@ -612,7 +612,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 | 用量累積 | 500,000 | 400,000 | warning（80%） | **否**，旗標已存在 |
 | 用量累積 | 500,000 | 500,000 | critical（100%） | **否**，旗標已存在。再次被硬擋 |
 
-告警會送給該租戶的所有 ADMIN，站內通知與 email 各一份（`notification.worker.ts:230`）。因此加購過的租戶當月第二次用完額度時，是毫無預警被擋下的。
+告警會送給該租戶的所有 ADMIN，站內通知與 email 各一份（`notification.worker.ts` 訂閱的 `usage.quota.threshold` 事件）。因此加購過的租戶當月第二次用完額度時，是毫無預警被擋下的。
 
 租戶也無法自己查。`getEffectiveLimit()` 的呼叫端都在伺服器端做判斷，沒有任何路由把上限或已用量回傳給租戶端；租戶側的 `/api/v1/plan-change` 只能列出自己的申請與發起新申請。這兩個門檻的告警是租戶唯一的資訊來源。
 
@@ -627,16 +627,16 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 | 上限 | 方案有定義嗎 | 有檢查點嗎 | 結果 |
 | --- | --- | --- | --- |
-| `maxAgents` | 有 | `agent.service.ts:162` | 生效 |
-| `monthlyTokens` | 有 | `token-quota.service.ts:118` | 生效 |
-| `maxChannels` | **沒有** | `channel.service.ts:117` | 檢查點永遠跳過 |
+| `maxAgents` | 有 | `agent.service.ts` 的 `createAgent()` | 生效 |
+| `monthlyTokens` | 有 | `token-quota.service.ts` 的 `isMonthlyTokenExceeded()` | 生效 |
+| `maxChannels` | **沒有** | `channel.service.ts` 的 `createChannel()` | 檢查點永遠跳過 |
 | `maxTags` | 有 | **沒有** | 設定值沒有讀取端 |
 
 `/admin/plans` 的欄位清單（`apps/web/src/app/admin/plans/page.tsx` 的 `LIMIT_KEYS`）列出全部四項，`maxChannels` 顯示為空白。平台後台看不出「空白」在這裡代表方案從未定義這個 key，也就是無上限。
 
 `updatePlanSchema` 的 `limits` 是 `z.record(...)`，沒有 key 白名單，也沒有必填項。送 `{}` 會通過驗證，該方案所有租戶的四項上限同時變成無上限。平台後台的頁面每次送出都帶完整的 `limits` 物件，因此從介面操作不會漏 key；直接呼叫 API 則會。
 
-另一半是 `allowedChannelTypes`。`seedPlans()` 的 `upsert` 沒有傳這個欄位，因此五個方案都落在 schema 的預設值 `[]`，而 `[]` 的語意是不限制。`channel.service.ts:108` 的白名單檢查只在陣列非空時才比對，所以也永遠跳過。
+另一半是 `allowedChannelTypes`。`seedPlans()` 的 `upsert` 沒有傳這個欄位，因此五個方案都落在 schema 的預設值 `[]`，而 `[]` 的語意是不限制。`channel.service.ts` 的 `createChannel()` 裡，白名單檢查只在陣列非空時才比對，所以也永遠跳過。
 
 兩者相加的結果是渠道這個維度完全沒有分級：
 
@@ -775,9 +775,9 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 | --- | --- | --- |
 | 呼叫用誰的金鑰 | 租戶自備的 | 平台的 `GEMINI_API_KEY` |
 | Google 的帳單開給誰 | 租戶 | **平台** |
-| `AiUsage.costUsd` | 記 0 | 依 `ModelPricing` 實算（`llm.service.ts:80` 的 `!isByok`） |
+| `AiUsage.costUsd` | 記 0 | 依 `ModelPricing` 實算（`llm.service.ts` 的 `recordAiUsage()` 以 `!isByok` 判斷） |
 | 是否計入租戶月額度 | 否 | **是**（`incrMonthlyTokens()` 只累加 `platform`） |
-| 額度用完是否被擋 | 否 | **是**（`llm.service.ts:264`） |
+| 額度用完是否被擋 | 否 | **是**（`llm.service.ts` 的 `generateReply()`） |
 
 租戶不會因此多付錢，系統沒有計費機制（見 PLAN-10）。他付出的是額度：原本不計數的呼叫開始消耗 `monthlyTokens`，用完還會被擋下。平台則開始承擔本來由租戶負擔的 LLM 費用。
 
@@ -804,7 +804,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 兩張卡並排，讀者會拿成本除以 token 推算平均單價，但分母的母體大於分子。
 
-**二、租戶排行沒有標筆數上限。** `platform-usage.service.ts:65` 是 `take: 50`，介面標題只寫「各租戶用量排行」。租戶多於 50 個時，排行的 token 加總會小於總覽的數字，畫面上沒有任何說明。
+**二、租戶排行沒有標筆數上限。** `platform-usage.service.ts` 的 `getTenantUsageRanking()` 是 `take: 50`，介面標題只寫「各租戶用量排行」。租戶多於 50 個時，排行的 token 加總會小於總覽的數字，畫面上沒有任何說明。
 
 另有一處說明與實作不符，位置在原始碼裡。`platform-usage.service.ts` 開頭的註解寫「失敗成本為 0，計入次數但不計 token/cost」，但三個查詢的 `where` 都有 `success: true`，失敗的呼叫連次數都不算。介面與實作是一致的，只有這行註解是錯的，會誤導下一個改這支服務的人。
 
@@ -813,7 +813,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 `ModelPricing` 以 `(model, effectiveFrom)` 版本化，結構本身支援調價。缺的是寫入途徑。
 
-**唯一的寫入端是 seed，而 seed 不能在正式環境執行。** 全 repo 只有 `packages/database/prisma/seed.ts:168` 會寫 `modelPricing`，平台後台沒有任何路由。但 `seed.ts` 的 `main()` 會建立 Demo Tenant 與一批固定密碼的 demo 成員，`seedPlatformUser()` 種的也是開發用密碼。因此「調價要改 seed」在正式環境等於不可行，實務上只剩直接改資料庫一條路。
+**唯一的寫入端是 seed，而 seed 不能在正式環境執行。** 全 repo 只有 `packages/database/prisma/seed.ts` 的 `seedModelPricing()` 會寫 `modelPricing`，平台後台沒有任何路由。但 `seed.ts` 的 `main()` 會建立 Demo Tenant 與一批固定密碼的 demo 成員，`seedPlatformUser()` 種的也是開發用密碼。因此「調價要改 seed」在正式環境等於不可行，實務上只剩直接改資料庫一條路。
 
 **缺價期間的成本無法事後修正。** 成本在寫入 `AiUsage` 的當下就算好，之後不重算。`getPricing()` 查不到價目時 `calcCostUsd()` 回 `null`，呼叫端記 `costUsd = 0` 並標 `usageMissing`。所以從新模型開始被使用、到有人手動補上價目之間的每一筆呼叫，成本永久是 0，而 repo 裡沒有任何重算路徑。
 
@@ -837,11 +837,11 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 <a id="sla-01"></a>
 ### SLA-01：`Case.firstResponseAt` 沒有寫入端
 
-`packages/database/prisma/schema.prisma:742` 宣告 `firstResponseAt`，對應的 migration 也建了欄位。三個地方讀這個欄位：
+`packages/database/prisma/schema.prisma` 的 `Case` 宣告 `firstResponseAt`，對應的 migration 也建了欄位。三個地方讀這個欄位：
 
-- `apps/workers/src/handlers/sla.handler.ts` 的第 390 與 406 行，用它判定首次回應是否已達成。
-- `apps/api/src/modules/analytics/analytics.service.ts` 的第 100 與 351 行，用它計算平均首次回應時間。
-- `apps/web/src/components/inbox/ContactInfoPanel.tsx:203`，顯示給客服看。
+- `apps/workers/src/handlers/sla.handler.ts` 的 `pollSlaCases()`，用它判定首次回應是否已達成。
+- `apps/api/src/modules/analytics/analytics.service.ts` 的 `getOverviewStats()` 與 `getAgentPerformance()`，用它計算平均首次回應時間。
+- `apps/web/src/components/inbox/ContactInfoPanel.tsx`，顯示給客服看。
 
 全 repo 沒有任何程式寫入這個欄位。以 `firstResponseAt` 為關鍵字搜尋 `apps/` 與 `packages/`，命中的都是 schema 宣告、型別宣告、`select` 子句或讀取端。
 
@@ -864,7 +864,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 `apps/api/src/modules/sla/sla.routes.ts` 的建立與修改路由各有一段邏輯，維持「同一優先級只有一條政策的 `isDefault` 是 `true`」。`apps/web/src/components/settings/SlaManagement.tsx` 也顯示這個標記。
 
-但 `apps/api/src/modules/case/case.service.ts:279` 在呼叫端沒有指定 `slaPolicyId` 時，是這樣挑政策的：
+但 `apps/api/src/modules/case/case.service.ts` 的 `createCaseRecord()` 在呼叫端沒有指定 `slaPolicyId` 時，是這樣挑政策的：
 
 ```ts
 await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
@@ -893,15 +893,15 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 <a id="dep-02"></a>
 ### DEP-02：`.env.prod.example` 的變數送不到讀取它們的行程
 
-`docker-compose.prod.yml` 只把 `.env.prod` 掛給 nginx（:122）與 certbot（:135）。api、workers、web 各自讀 `.env.api`、`.env.workers`、`.env.web`。
+`docker-compose.prod.yml` 只把 `.env.prod` 掛給 `nginx` 與 `certbot` 兩個服務的 `env_file`。api、workers、web 各自讀 `.env.api`、`.env.workers`、`.env.web`。
 
 `.env.prod.example` 除了 `DOMAIN` 與 `CERTBOT_EMAIL`，還放了下表這些變數。它們只有 api 或 workers 讀：
 
 | 變數 | 讀取端 | 缺少時的行為 |
 | --- | --- | --- |
-| `DATABASE_URL_ADMIN` | `apps/api/src/plugins/prisma.plugin.ts:36`、`apps/workers/src/index.ts:58` | api fallback 到租戶連線，workers 拋錯不啟動。見 RLS-04 |
-| `CHATBOX_SESSION_TTL_MINUTES` | `apps/api/src/modules/chatbox/chatbox.service.ts:99` | 取程式預設值，與範例檔給的值相同 |
-| `WEBCHAT_LEGACY_ROUTES_ENABLED` | `apps/api/src/modules/webchat/webchat.routes.ts:84` | 取程式預設值 `false`，與範例檔給的值相同 |
+| `DATABASE_URL_ADMIN` | `apps/api/src/plugins/prisma.plugin.ts` 的 `prismaPlugin()`、`apps/workers/src/index.ts` 的 `main()` | api fallback 到租戶連線，workers 拋錯不啟動。見 RLS-04 |
+| `CHATBOX_SESSION_TTL_MINUTES` | `apps/api/src/modules/chatbox/chatbox.service.ts` 的 `getChatboxSessionTtlMs()` | 取程式預設值，與範例檔給的值相同 |
+| `WEBCHAT_LEGACY_ROUTES_ENABLED` | `apps/api/src/modules/webchat/webchat.routes.ts` 的舊版訪客 token 路由 | 取程式預設值 `false`，與範例檔給的值相同 |
 
 nginx 的 entrypoint 只用 `DOMAIN`，certbot 的 entrypoint 只用 `DOMAIN` 與 `CERTBOT_EMAIL`。拿到 `.env.prod` 的這兩個容器都不讀上表的變數。
 
