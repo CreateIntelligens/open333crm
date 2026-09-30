@@ -11,6 +11,7 @@ import {
   updateWebhookBaseUrl,
   ensureChannelPublicKey,
   patchChannelSettings,
+  stripSystemManagedSettings,
 } from './channel.service.js';
 import { AppError, success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
@@ -192,7 +193,11 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: requirePermission('channel.create') }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
 
-    const channel = await createChannel(request.tenantPrisma, request.agent.tenantId, data);
+    // 系統維護欄位（分派警示、平台連結標記等）不接受租戶輸入
+    const channel = await createChannel(request.tenantPrisma, request.agent.tenantId, {
+      ...data,
+      settings: stripSystemManagedSettings(data.settings),
+    });
 
     // 稽核：建立渠道（只放型別與顯示名，絕不放 credentials 憑證）
     await writeTenantAudit(request.tenantPrisma, {
@@ -229,6 +234,14 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       data,
     );
+
+    // FB／IG 換了權杖會清空帳號 ID（見 updateChannel）：立即重新驗證取回，縮短相容模式的空窗。
+    // 驗證失敗不影響儲存本身，渠道卡片會顯示「尚未取得帳號 ID」提示管理員
+    if (data.credentials && (channel.channelType === CHANNEL_TYPE.FB || channel.channelType === CHANNEL_TYPE.THREADS) && !channel.externalAccountId) {
+      await verifyChannel(request.tenantPrisma, request.params.id, request.agent.tenantId).catch((err: unknown) =>
+        request.log.warn({ err: err instanceof Error ? err.message : err, channelId: request.params.id }, '更新權杖後自動驗證失敗'),
+      );
+    }
 
     return reply.send(success(channel));
   });

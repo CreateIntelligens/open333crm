@@ -81,11 +81,13 @@ try {
   const dbB = tenantScopedClient(prisma, tenantB.id);
 
   const PAGE = `9${stamp}`;
-  graph[`fb-a-${stamp}`] = { id: PAGE, name: 'CI 粉專' };
-  graph[`fb-b-${stamp}`] = { id: PAGE, name: 'CI 粉專（另一個租戶拿同一粉專的 token）' };
-  graph[`fb-a2-${stamp}`] = { id: PAGE, name: 'CI 粉專（同租戶第二筆）' };
-  graph[`fb-other-${stamp}`] = { id: `8${stamp}`, name: 'CI 另一個粉專' };
+  graph[`fb-a-${stamp}`] = { id: PAGE, name: 'CI 粉專', category: 'Shopping' };
+  graph[`fb-b-${stamp}`] = { id: PAGE, name: 'CI 粉專（另一個租戶拿同一粉專的 token）', category: 'Shopping' };
+  graph[`fb-a2-${stamp}`] = { id: PAGE, name: 'CI 粉專（同租戶第二筆）', category: 'Shopping' };
+  graph[`fb-other-${stamp}`] = { id: `8${stamp}`, name: 'CI 另一個粉專', category: 'Shopping' };
+  graph[`fb-user-${stamp}`] = { id: `5${stamp}`, name: '某個人（使用者權杖，沒有 category）' };
   graph[`ig-${stamp}`] = { id: `app-scoped-${stamp}`, user_id: `1784${stamp}`, username: 'ci_ig' };
+  graph[`ig-nouser-${stamp}`] = { id: `app-scoped-2-${stamp}`, username: 'ci_ig_2' };
 
   const fbA = await mkChannel(T_A, 'FB', `fb-a-${stamp}`, {
     webhookRouting: { reason: 'account_id_missing', accountId: null, lastAt: new Date().toISOString() },
@@ -93,6 +95,8 @@ try {
   const fbB = await mkChannel(tenantB.id, 'FB', `fb-b-${stamp}`);
   const fbA2 = await mkChannel(T_A, 'FB', `fb-a2-${stamp}`);
   const ig = await mkChannel(T_A, 'THREADS', `ig-${stamp}`);
+  const fbUser = await mkChannel(T_A, 'FB', `fb-user-${stamp}`);
+  const igNoUser = await mkChannel(T_A, 'THREADS', `ig-nouser-${stamp}`);
 
   await check('FB 驗證：寫入粉專 ID，並清掉分派警示', async () => {
     await verifyChannel(dbA, fbA.id, T_A);
@@ -141,6 +145,35 @@ try {
     const s = (await prisma.channel.findUnique({ where: { id: fbA.id }, select: { settings: true } }))?.settings as Record<string, any>;
     assert.equal(s.webhookRouting?.reason, 'unrouted_account');
     assert.equal(s.someUserSetting, 1);
+  });
+  await check('FB 填成個人使用者權杖（沒有 category）：驗證失敗、不寫帳號 ID', async () => {
+    await assert.rejects(verifyChannel(dbA, fbUser.id, T_A), (e: { code?: string }) => e.code === 'CHANNEL_VERIFY_FAILED');
+    assert.equal(await accountIdOf(fbUser.id), null);
+  });
+
+  await check('IG 回應沒有 user_id：驗證失敗，不可假裝成功', async () => {
+    await assert.rejects(verifyChannel(dbA, igNoUser.id, T_A), (e: { code?: string }) => e.code === 'CHANNEL_VERIFY_FAILED');
+    assert.equal(await accountIdOf(igNoUser.id), null);
+  });
+
+  await check('停用渠道：清空帳號 ID，不再佔住粉專', async () => {
+    const before = await accountIdOf(fbA.id);
+    assert.ok(before);
+    await updateChannel(dbA, fbA.id, T_A, { isActive: false });
+    assert.equal(await accountIdOf(fbA.id), null);
+    await updateChannel(dbA, fbA.id, T_A, { isActive: true });
+  });
+
+  await check('被別租戶「已停用」的渠道佔住：驗證時自動釋放並寫入（啟用中的仍擋）', async () => {
+    // 租戶 B 的 fbB 直接寫入 PAGE 後停用（模擬舊資料：停用前沒清空）
+    await prisma.channel.update({ where: { id: fbB.id }, data: { externalAccountId: PAGE, isActive: false } });
+    await verifyChannel(dbA, fbA2.id, T_A);
+    assert.equal(await accountIdOf(fbA2.id), PAGE, '應取回被停用渠道佔住的粉專');
+    assert.equal(await accountIdOf(fbB.id), null, '停用渠道的帳號 ID 應被釋放');
+    // 啟用中的持有者不受影響：fbB 重新啟用後驗證同一粉專仍 409
+    await prisma.channel.update({ where: { id: fbB.id }, data: { isActive: true } });
+    await assert.rejects(verifyChannel(dbB, fbB.id, tenantB.id), (e: { code?: string }) => e.code === 'CHANNEL_ACCOUNT_ALREADY_LINKED');
+    assert.equal(await accountIdOf(fbA2.id), PAGE);
   });
 } finally {
   for (const fn of cleanup) await fn().catch((err) => console.error('清理失敗', err));

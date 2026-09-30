@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { ChannelAccountRouting } from './ChannelAccountRouting';
+import { META_CONNECT_ERROR_TEXT, MetaConnectButton, MetaConnectDialog, useMetaConnectConfigured } from './MetaConnect';
 
 const WEBHOOK_BASE_URL_KEY = 'open333crm_webhook_base_url';
 
@@ -60,6 +61,18 @@ interface Channel {
 export function ChannelManagement() {
   const { channels, isLoading, mutate } = useChannels();
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const metaConnectConfigured = useMetaConnectConfigured();
+  // Facebook 授權導回時帶 ?metaConnect=（選擇粉專）或 ?metaConnectError=（失敗原因）
+  const [metaConnectId, setMetaConnectId] = useState<string | null>(null);
+  const [metaConnectError, setMetaConnectError] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('metaConnect');
+    const error = params.get('metaConnectError');
+    if (id) setMetaConnectId(id);
+    if (error) setMetaConnectError(META_CONNECT_ERROR_TEXT[error] ?? 'Facebook 授權失敗，請稍後重試。');
+    if (id || error) window.history.replaceState(null, '', window.location.pathname);
+  }, []);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<
@@ -343,6 +356,7 @@ export function ChannelManagement() {
           </p>
         </div>
         <div className="flex gap-2">
+          {metaConnectConfigured && <MetaConnectButton onError={setMetaConnectError} />}
           <Button size="sm" variant="outline" onClick={() => setShowWizard(true)}>
             設定精靈
           </Button>
@@ -352,6 +366,22 @@ export function ChannelManagement() {
           </Button>
         </div>
       </div>
+
+      {metaConnectError && (
+        <div className="flex items-start justify-between gap-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <span>{metaConnectError}</span>
+          <button className="shrink-0 underline" onClick={() => setMetaConnectError(null)}>
+            關閉
+          </button>
+        </div>
+      )}
+      {metaConnectId && (
+        <MetaConnectDialog
+          connectId={metaConnectId}
+          onClose={() => setMetaConnectId(null)}
+          onConnected={() => mutate()}
+        />
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">

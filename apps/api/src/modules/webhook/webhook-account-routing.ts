@@ -45,6 +45,8 @@ export interface RoutedGroup {
   channel: RoutingChannel;
   credentials: Record<string, unknown>;
   messages: ParsedWebhookMessage[];
+  /** 目標渠道的 settings（網址渠道本身不帶，呼叫端已有）；用來檢查目標渠道自己的下游轉發設定 */
+  settings?: unknown;
 }
 
 export interface RoutingResult {
@@ -89,7 +91,7 @@ export async function routeWebhookMessages(
       continue;
     }
 
-    const target = await prisma.channel.findUnique({
+    const found = await prisma.channel.findUnique({
       where: { channelType_externalAccountId: { channelType: urlChannel.channelType as never, externalAccountId: accountId } },
       select: {
         id: true,
@@ -98,9 +100,16 @@ export async function routeWebhookMessages(
         externalAccountId: true,
         isActive: true,
         credentialsEncrypted: true,
+        settings: true,
         tenant: { select: { isActive: true } },
       },
     });
+    // 停用的渠道或停用租戶的渠道視同沒人認領：不可讓它安靜吞掉事件（新渠道會永遠收不到），
+    // 改走下面「沒人認領」的規則並留下警示
+    const target = found && found.isActive && found.tenant?.isActive ? found : null;
+    if (found && !target) {
+      logger.info('[Webhook] 認領帳號的渠道或租戶已停用，視同未認領', { targetChannelId: found.id, accountId });
+    }
 
     if (!target) {
       if (!urlChannel.externalAccountId) {
@@ -121,12 +130,6 @@ export async function routeWebhookMessages(
 
     // 以下各分支都不是網址渠道的事件（改派或丟棄）
     allToUrlChannel = false;
-
-    // 渠道或租戶停用：與原本「停用渠道／租戶不收訊」一致，安靜丟棄
-    if (!target.isActive || !target.tenant?.isActive) {
-      logger.info('[Webhook] 目標渠道或租戶已停用，丟棄事件', { targetChannelId: target.id, accountId });
-      continue;
-    }
 
     let targetCredentials: Record<string, unknown>;
     try {
@@ -152,6 +155,7 @@ export async function routeWebhookMessages(
       channel: { id: target.id, tenantId: target.tenantId, channelType: target.channelType, externalAccountId: target.externalAccountId },
       credentials: targetCredentials,
       messages: list,
+      settings: target.settings,
     });
   }
 
@@ -197,4 +201,59 @@ export async function recordRoutingWarning(
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+/**
+ * 平台 Meta App 的事件分派（/api/v1/webhooks/meta，design D8）。沒有網址渠道可退回：
+ * 事件只會交給以 Facebook 登入連結（connectMode = 'platform'）的渠道，其餘一律丟棄並記 log。
+ * 驗簽已在呼叫前以平台 App Secret 完成。
+ */
+export async function routePlatformMessages(
+  prisma: PrismaClient,
+  channelType: string,
+  messages: ParsedWebhookMessage[],
+): Promise<RoutedGroup[]> {
+  const byAccount = new Map<string, ParsedWebhookMessage[]>();
+  for (const m of messages) {
+    if (!m.accountId) continue;
+    byAccount.set(m.accountId, [...(byAccount.get(m.accountId) ?? []), m]);
+  }
+
+  const groups: RoutedGroup[] = [];
+  for (const [accountId, list] of byAccount) {
+    const target = await prisma.channel.findUnique({
+      where: { channelType_externalAccountId: { channelType: channelType as never, externalAccountId: accountId } },
+      select: {
+        id: true,
+        tenantId: true,
+        channelType: true,
+        externalAccountId: true,
+        isActive: true,
+        credentialsEncrypted: true,
+        tenant: { select: { isActive: true } },
+      },
+    });
+    if (!target || !target.isActive || !target.tenant?.isActive) {
+      logger.warn('[Webhook:meta] 沒有啟用中的渠道認領此帳號，已丟棄', { channelType, accountId, count: list.length });
+      continue;
+    }
+    let credentials: Record<string, unknown>;
+    try {
+      credentials = decryptCredentials(target.credentialsEncrypted);
+    } catch (err) {
+      logger.error('[Webhook:meta] 渠道憑證無法解密，丟棄事件', { channelId: target.id, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    // 自備 App 的渠道不該收到平台 App 的事件（粉專同時訂閱兩個 App 時會發生），交給它自己的回呼網址處理
+    if (credentials.connectMode !== 'platform') {
+      logger.warn('[Webhook:meta] 認領帳號的渠道不是平台連結模式，已丟棄', { channelId: target.id, accountId });
+      continue;
+    }
+    groups.push({
+      channel: { id: target.id, tenantId: target.tenantId, channelType: target.channelType, externalAccountId: target.externalAccountId },
+      credentials,
+      messages: list,
+    });
+  }
+  return groups;
 }

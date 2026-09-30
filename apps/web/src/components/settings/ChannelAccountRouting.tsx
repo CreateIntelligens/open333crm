@@ -33,8 +33,8 @@ function warningText(w: WebhookRoutingWarning): { title: string; hint: string } 
       };
     case 'downstream_skipped':
       return {
-        title: '訊息中含其他渠道的事件，未轉發到下游 Webhook',
-        hint: '共用同一個 Meta 應用程式的多個粉專同時有訊息時會發生；此渠道自己的訊息仍正常處理。',
+        title: '部分訊息未轉發到下游 Webhook，已改由系統直接處理',
+        hint: '共用同一個 Meta 應用程式的多個粉專同時有訊息時，Meta 會把它們打包成一批送來，系統無法只轉發屬於此渠道的部分。這些訊息仍會進收件匣，但下游系統沒有收到。',
       };
     default:
       return { title: 'Webhook 分派異常', hint: '' };
@@ -60,8 +60,11 @@ export function ChannelAccountRouting({
   const warning = settings?.webhookRouting as WebhookRoutingWarning | undefined;
   const text = warning?.reason ? warningText(warning) : null;
 
+  const connectedViaPlatform = (settings?.metaConnect as { mode?: string } | undefined)?.mode === 'platform';
+
   return (
     <div className="mt-0.5 space-y-1">
+      {connectedViaPlatform && <p className="text-xs text-muted-foreground">透過 Facebook 登入連結，不需另外設定 Webhook</p>}
       {externalAccountId && (
         <p className="text-xs text-muted-foreground">
           {label}：<span className="font-mono">{externalAccountId}</span>

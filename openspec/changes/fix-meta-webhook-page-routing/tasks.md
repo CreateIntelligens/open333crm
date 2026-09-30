@@ -47,19 +47,20 @@
 ## 6. 第 1、2 階段收尾
 
 - [x] 6.1 CHANGELOG（`## [YYYY-MM-DD]`）
-- [ ] 6.2 code review、push、開 PR（須使用者同意）
-- [ ] 6.3 UAT 部署清單：migration → 停用 Demo Facebook（與 test333 同一粉專）→ 回填 dry-run → `--apply` → 確認警示
+- [x] 6.2a code review（第 1、2 階段）：1 高 3 中已修（design D9），突變驗證
+- [ ] 6.2 第 3 階段 code review、push、開 PR（須使用者同意）
+- [ ] 6.3 UAT 部署清單：2 支 migration（`20260930100000_add_channel_external_account_id`、`20260930110000_release_inactive_channel_account`，須 owner 連線）→ 停用 Demo Facebook（與 test333 同一粉專）→ 回填 dry-run → `--apply` → 確認渠道卡片警示
 - [ ] 6.4 UAT 驗證：Open333test 訊息落在預設租戶、創造智能訊息仍落在創造智能租戶、兩邊都收得到回覆
 
 ## 7. 第 3 階段：平台 Meta App（程式）
 
-- [ ] 7.1 env：`META_APP_ID`、`META_APP_SECRET`、`META_WEBHOOK_VERIFY_TOKEN`、`META_LOGIN_CONFIG_ID`；未設定時相關端點回 503
-- [ ] 7.2 credentials 加 `connectMode: 'platform' | 'own_app'`；分派的 secret 比對支援 platform 模式
-- [ ] 7.3 `GET/POST /api/v1/webhooks/meta`（平台驗證權杖、平台 secret 驗簽、依 object 與 entry.id 分派）
-- [ ] 7.4 `modules/meta-connect/`：start（Redis state）、callback（換長效 token、`/me/accounts`、加密暫存）、pages 列表、選定建立渠道＋`subscribed_apps` 訂閱（失敗不留半套）
-- [ ] 7.5 `check-prisma-admin-usage.mjs` 白名單加入 `modules/meta-connect/`
-- [ ] 7.6 前端：「用 Facebook 連結粉專」按鈕、粉專選擇頁（已連結的標示不可選）
-- [ ] 7.7 測試：state 竄改／過期／重用、token 不回傳前端、訂閱失敗回滾、已連結粉專
+- [x] 7.1 env：`META_APP_ID`、`META_APP_SECRET`、`META_WEBHOOK_VERIFY_TOKEN`、`META_LOGIN_CONFIG_ID`；未設定時相關端點回 503
+- [x] 7.2 credentials 加 `connectMode: 'platform' | 'own_app'`；分派的 secret 比對支援 platform 模式
+- [x] 7.3 `GET/POST /api/v1/webhooks/meta`（平台驗證權杖、平台 secret 驗簽、依 object 與 entry.id 分派）
+- [x] 7.4 `modules/meta-connect/`：start（Redis state）、callback（換長效 token、`/me/accounts`、加密暫存）、pages 列表、選定建立渠道＋`subscribed_apps` 訂閱（失敗不留半套）
+- [x] 7.5 ~~`check-prisma-admin-usage.mjs` 白名單加入 `modules/meta-connect/`~~ 不需要：callback 只碰 Redis 與 Graph API，不查資料庫；平台 webhook 在既有白名單的 `modules/webhook/`
+- [x] 7.6 前端：「用 Facebook 連結粉專」按鈕、粉專選擇頁（已連結的標示不可選）
+- [x] 7.7 測試：state 竄改／過期／重用、token 不回傳前端、訂閱失敗回滾、已連結粉專
 
 ## 8. 第 3 階段：Meta 端前置（平台方在 Meta 後台操作，非程式）
 
@@ -69,6 +70,9 @@
 - [ ] 8.4 Page 回呼網址改為 `/api/v1/webhooks/meta`，設定平台驗證權杖
 
 ## 9. 後續評估（不在本 change）
+
+- [ ] 9.0 平台連結模式渠道的下游轉發（目前平台層事件不轉發）
+- [ ] 9.0b 精靈建立渠道後驗證 409 時，重複的渠道仍留著（ID 為 NULL、佔用渠道數名額；不會外洩），可考慮提示刪除
 
 - [ ] 9.1 IG 走 Facebook Login（`instagram_manage_messages`、`graph.facebook.com/{PAGE_ID}/messages`）與現行 IG Login 路線的整合方式
 - [ ] 9.2 既有自備 App 渠道遷移到平台模式的引導流程

@@ -72,6 +72,15 @@ IG Login 驗證改打 `graph.instagram.com/{v}/me?fields=user_id,username`，以
   4. `POST /api/v1/meta-connect/pages` 選定 → 建立新渠道（不自動轉換同帳號的既有自備 App 渠道，見 Risks）、寫 `externalAccountId`、呼叫 `POST /{page-id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_referrals,message_echoes` → 成功才完成；失敗回報並不留半套渠道。
 - 模組放 `apps/api/src/modules/meta-connect/`，callback 需 `prismaAdmin`（無登入 session）→ 加入 `check-prisma-admin-usage.mjs` 白名單。
 
+### D9 code review 後的修正（2026-09-30）
+- **停用的渠道不可佔住帳號 ID**：停用渠道時清空 `externalAccountId`；另以 `SECURITY DEFINER` 函式 `release_inactive_channel_account(type, account)` 只釋放「停用渠道或停用租戶」持有的 ID，驗證／平台連結撞到唯一衝突時先呼叫再重試一次。啟用中的連結一律不動（已以 `app_tenant` 身分實測：看不到別租戶的列，但能釋放別租戶停用渠道的 ID）。
+- **分派時目標已停用視同未認領**（不再安靜吞掉），依 D2-5 走相容模式或丟棄＋警示。
+- **immediate 下游遇混包**：網址渠道自己的事件改由 CRM 處理（寧可重複不可遺失），並顯示警示。
+- **改派到有下游設定的目標渠道**：照常處理並在目標渠道留 `downstream_skipped` 警示。
+- **驗證必須取得真正的帳號 ID**：FB 要求回應含 `category`（粉專才有；個人使用者權杖會被擋），IG 回應沒有 `user_id` 時驗證失敗。
+- 更新 FB／IG 權杖後自動重新驗證，縮短相容模式空窗；建立渠道時濾掉系統維護的 settings 欄位。
+- 平台連結模式的渠道不做下游轉發（平台層事件）。
+
 ## Risks / Trade-offs
 
 - **相容模式期間仍可能錯置**（D2-5）：回填完成、警示清零之前，未取得帳號 ID 的網址渠道仍照舊收件。→ 部署清單把回填列為必做，並在渠道卡片顯示「尚未取得帳號 ID」。

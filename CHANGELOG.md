@@ -10,10 +10,18 @@ All notable changes to **open333CRM** will be documented in this file.
 - **Instagram 帳號 ID 取錯欄位** — IG 渠道驗證原本讀 `/me` 的 `id`（應用程式範圍的使用者 ID），與 webhook 事件的帳號 ID 對不上；改讀 `user_id`（IG 專業帳號 ID）。
 - **FB 權杖檢查會蓋掉系統設定** — 渠道狀態檢查寫回權杖到期日時整包覆寫 settings，可能洗掉導流識別等系統維護欄位；改為資料庫端原子合併。
 
+- **停用的渠道不再佔住粉專** — 渠道停用時釋放它的粉專／IG 帳號 ID；被停用渠道或停用租戶佔住的帳號，在另一個渠道「測試連線」時會自動釋放後連結，啟用中的連結不受影響。
+- **分派細節** — 認領帳號的渠道已停用時不再安靜丟掉事件；下游 Webhook 設為 immediate 時遇到混包，此渠道自己的訊息改由系統處理而非遺失；改派到自己設有下游的渠道時在該渠道顯示「未轉發到下游」警示。
+- **測試連線更嚴謹** — FB 填成個人使用者權杖時驗證失敗（不會把使用者 ID 當成粉專 ID）；IG 取不到專業帳號 ID 時驗證失敗；更換 FB／IG 權杖後自動重新測試連線。
+
+### Added
+
+- **用 Facebook 登入連結粉專（平台 Meta 應用程式）** — 平台設定 `META_APP_ID`、`META_APP_SECRET`、`META_WEBHOOK_VERIFY_TOKEN`、`META_CONNECT_REDIRECT_URI`（與選填的 `META_LOGIN_CONFIG_ID`）後，「渠道管理」出現「用 Facebook 連結粉專」：管理員授權後勾選要連結的粉專，系統自動建立渠道並訂閱訊息，租戶不需要準備自己的 Meta 應用程式、App Secret 或驗證權杖，也不需設定 Webhook。事件統一由 `/api/v1/webhooks/meta` 接收並依粉專 ID 分派。授權用的 state 一次性、綁定發起的租戶與操作者、10 分鐘過期；粉專權杖加密暫存於伺服器、不回傳前端；訂閱失敗會移除剛建立的渠道。既有自備應用程式的渠道照常運作。正式開放前需在 Meta 完成權限審查與商業驗證。
+
 ### Changed
 
 - **粉專／IG 帳號同一個只能連結一次** — 渠道新增外部帳號 ID 欄位（明文、全平台唯一），按「測試連線」時由系統用權杖向 Meta 取得並寫入，渠道卡片顯示「粉專 ID／IG 帳號 ID」。同一個帳號已連結到其他渠道（不論哪個租戶）時測試連線回報「此粉專／IG 帳號已連結到其他渠道，同一個帳號只能連結一次」，不會建立第二個連結。帳號 ID **只由測試連線寫入、不接受手填**（共用應用程式時手填別人的粉專 ID 可搶走別的租戶的訊息），因此移除 FB 渠道表單與設定精靈的 Page ID 欄位；更換權杖或應用程式密鑰時會清除帳號 ID，需重新測試連線。
-- **部署注意** — 需跑 migration `20260930100000_add_channel_external_account_id`，再以 `apps/api/src/scripts/backfill-channel-external-account-id.ts` 為既有 FB／IG 渠道補帳號 ID（預設 dry-run；同一帳號對到多個渠道時衝突者全部不寫入並列出，須先停用多餘渠道）。
+- **部署注意** — 需跑 migration `20260930100000_add_channel_external_account_id`、`20260930110000_release_inactive_channel_account`（須 owner 連線），再以 `apps/api/src/scripts/backfill-channel-external-account-id.ts` 為既有 FB／IG 渠道補帳號 ID（預設 dry-run；同一帳號對到多個渠道時衝突者全部不寫入並列出，須先停用多餘渠道）。
 
 ## [2026-09-29]
 

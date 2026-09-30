@@ -82,7 +82,14 @@ export async function checkFbTokenStatus(
         // Store token expiry in channel settings
         // 以資料庫端 JSON 合併原子寫入：不拿開頭讀到的 settings 快照整包寫回，
         // 否則會蓋掉期間由驗證或 webhook 寫入的系統欄位（導流識別、分派警示等）
-        await patchChannelSettings(prisma, channelId, channel.tenantId, { tokenExpiresAt: expiresAt });
+        // 沒有到期日（永久權杖）時移除舊值，避免換成永久權杖後仍顯示即將過期
+        await patchChannelSettings(
+          prisma,
+          channelId,
+          channel.tenantId,
+          expiresAt ? { tokenExpiresAt: expiresAt } : {},
+          expiresAt ? [] : ['tokenExpiresAt'],
+        );
         await prisma.channel.update({ where: { id: channelId }, data: { lastVerifiedAt: new Date() } });
 
         if (!isValid) {

@@ -25,7 +25,11 @@ loadEnvConfig();
 registerChannelPlugin(fbPlugin);
 registerChannelPlugin(threadsPlugin);
 // 測試裡的假 token 不能真的打到 Meta：攔下所有對外 fetch
-globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: 'offline test' } }), { status: 400 })) as typeof fetch;
+const fetchedUrls: string[] = [];
+globalThis.fetch = (async (input: string | URL | Request) => {
+  fetchedUrls.push(String(input instanceof Request ? input.url : input));
+  return new Response(JSON.stringify({ error: { message: 'offline test' } }), { status: 400 });
+}) as typeof fetch;
 
 const prisma = new PrismaClient();
 const io = { to: () => ({ emit: () => {} }), emit: () => {} } as never;
@@ -125,6 +129,14 @@ try {
   const chDownstream = await mkChannel(T_A, 'Downstream', page('DS'), SHARED_SECRET, {
     downstreamWebhook: { enabled: true, url: 'https://example.invalid/hook', mode: 'after' },
   });
+  const chImmediate = await mkChannel(T_A, 'Immediate', page('IMM'), SHARED_SECRET, {
+    downstreamWebhook: { enabled: true, url: 'https://example.invalid/immediate', mode: 'immediate' },
+  });
+  const chTargetDs = await mkChannel(tenantB.id, 'TargetDS', page('TDS'), SHARED_SECRET, {
+    downstreamWebhook: { enabled: true, url: 'https://example.invalid/target', mode: 'after' },
+  });
+  const chInactive = await mkChannel(tenantB.id, 'Inactive', page('INACTIVE'), SHARED_SECRET);
+  await prisma.channel.update({ where: { id: chInactive.id }, data: { isActive: false } });
 
   const run = (urlChannelId: string, payload: ReturnType<typeof signedFb>) =>
     processWebhookEvent(prisma, io, urlChannelId, 'FB', payload.raw, payload.headers);
@@ -161,9 +173,33 @@ try {
     assert.equal((await routingWarning(chA.id))?.reason, 'app_mismatch');
   });
 
-  await check('目標租戶已停用：丟棄', async () => {
+  await check('目標租戶已停用：視同未認領，丟棄並警示', async () => {
     await run(chA.id, signedFb([{ pageId: page('OFF'), psid: psid('off'), text: 'x' }]));
     assert.equal(await anyChannelReceived(psid('off')), false);
+    const w = await routingWarning(chA.id);
+    assert.equal(w?.reason, 'unrouted_account');
+    assert.equal(w?.accountId, page('OFF'));
+  });
+
+  await check('目標渠道已停用：視同未認領，丟棄並警示（不可安靜吞掉）', async () => {
+    await run(chA.id, signedFb([{ pageId: page('INACTIVE'), psid: psid('inactive'), text: 'x' }]));
+    assert.equal(await anyChannelReceived(psid('inactive')), false);
+    assert.equal((await routingWarning(chA.id))?.accountId, page('INACTIVE'));
+  });
+
+  await check('目標渠道已停用＋網址渠道尚無帳號 ID：相容模式交給網址渠道（新渠道不會被停用渠道卡住）', async () => {
+    const legacySecret = `legacy-secret-${stamp}`;
+    // chLegacy 與 chInactive 不同 secret；這裡改用同 secret 的新舊渠道情境
+    await prisma.channel.update({
+      where: { id: chLegacy.id },
+      data: { credentialsEncrypted: encryptCredentials({ pageAccessToken: 't', appSecret: SHARED_SECRET, verifyToken: 'v' }) },
+    });
+    await run(chLegacy.id, signedFb([{ pageId: page('INACTIVE'), psid: psid('newch'), text: 'x' }]));
+    assert.ok(await received(chLegacy.id, psid('newch')), '被停用渠道佔住的粉專，事件要能交給新渠道');
+    await prisma.channel.update({
+      where: { id: chLegacy.id },
+      data: { credentialsEncrypted: encryptCredentials({ pageAccessToken: 't', appSecret: legacySecret, verifyToken: 'v' }) },
+    });
   });
 
   await check('相容模式：網址渠道尚無帳號 ID，照舊收件並提示去驗證', async () => {
@@ -190,6 +226,25 @@ try {
     assert.ok(await received(chDownstream.id, psid('ds')), '自己的事件照常進 CRM（after 模式）');
     assert.ok(await received(chB.id, psid('dsB')));
     assert.equal((await routingWarning(chDownstream.id))?.reason, 'downstream_skipped');
+    assert.ok(!fetchedUrls.some((u) => u.includes('example.invalid/hook')), '混包不可轉發到下游');
+  });
+
+  await check('下游 immediate 遇到混包：自己的事件改由系統處理，不可遺失', async () => {
+    await run(chImmediate.id, signedFb([
+      { pageId: page('IMM'), psid: psid('imm'), text: 'a' },
+      { pageId: page('B'), psid: psid('immB'), text: 'b' },
+    ]));
+    assert.ok(await received(chImmediate.id, psid('imm')), '網址渠道自己的事件要進收件匣');
+    assert.ok(await received(chB.id, psid('immB')));
+    assert.ok(!fetchedUrls.some((u) => u.includes('example.invalid/immediate')));
+    assert.equal((await routingWarning(chImmediate.id))?.reason, 'downstream_skipped');
+  });
+
+  await check('改派到有下游設定的目標渠道：照常進收件匣，並在目標渠道留警示', async () => {
+    await run(chA.id, signedFb([{ pageId: page('TDS'), psid: psid('tds'), text: 'x' }]));
+    assert.ok(await received(chTargetDs.id, psid('tds')));
+    assert.equal((await routingWarning(chTargetDs.id))?.reason, 'downstream_skipped');
+    assert.ok(!fetchedUrls.some((u) => u.includes('example.invalid/target')));
   });
 
   await check('回滾開關 META_WEBHOOK_ROUTING=legacy：退回純網址分派', async () => {

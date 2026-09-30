@@ -22,33 +22,58 @@ import { decryptCredentials } from '../modules/channel/channel.service.js';
 const apply = process.argv.includes('--apply');
 // 跨租戶掃描：使用共用 client（不自建 PrismaClient），DATABASE_URL 需指向 owner / app_admin（BYPASSRLS）
 
-type Row = { id: string; tenantId: string; channelType: string; displayName: string; externalAccountId: string | null; isActive: boolean };
+type Row = {
+  id: string;
+  tenantId: string;
+  channelType: string;
+  displayName: string;
+  externalAccountId: string | null;
+  isActive: boolean;
+  tenantActive: boolean;
+};
 
 async function lookupAccountId(channelType: string, token: string): Promise<string> {
   const url =
     channelType === 'FB'
-      ? 'https://graph.facebook.com/v21.0/me?fields=id,name'
+      ? 'https://graph.facebook.com/v21.0/me?fields=id,name,category'
       : 'https://graph.instagram.com/v21.0/me?fields=user_id,username';
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const body = (await res.json().catch(() => ({}))) as Record<string, any>;
   if (!res.ok) throw new Error(body.error?.message ?? `HTTP ${res.status}`);
+  // 粉專才有 category；沒有代表是個人使用者權杖，拿到的 id 不是粉專 ID
+  if (channelType === 'FB' && !body.category) throw new Error('權杖不是粉絲專頁權杖（沒有 category）');
   const id = channelType === 'FB' ? body.id : body.user_id;
   if (!id) throw new Error('回應沒有帳號 ID');
   return String(id);
 }
 
-const label = (c: Row) => `[${c.channelType}] ${c.displayName} (${c.id}) tenant=${c.tenantId}${c.isActive ? '' : ' 已停用'}`;
+const label = (c: Row) =>
+  `[${c.channelType}] ${c.displayName} (${c.id}) tenant=${c.tenantId}${c.isActive ? '' : ' 渠道已停用'}${c.tenantActive ? '' : ' 租戶已停用'}`;
+const live = (c: Row) => c.isActive && c.tenantActive;
 
 async function main() {
   const rows = await prisma.channel.findMany({
     where: { channelType: { in: ['FB', 'THREADS'] } },
-    select: { id: true, tenantId: true, channelType: true, displayName: true, externalAccountId: true, isActive: true, credentialsEncrypted: true },
+    select: {
+      id: true,
+      tenantId: true,
+      channelType: true,
+      displayName: true,
+      externalAccountId: true,
+      isActive: true,
+      credentialsEncrypted: true,
+      tenant: { select: { isActive: true } },
+    },
     orderBy: [{ tenantId: 'asc' }, { channelType: 'asc' }],
   });
+  if (rows.length === 0) {
+    // 用了受 RLS 限制的連線（app_tenant）時會因 fail-closed 查不到任何列，而不是真的沒有渠道
+    console.log('查不到任何 FB／IG 渠道。若確定有渠道，請確認 DATABASE_URL 使用 owner／app_admin（BYPASSRLS）連線。');
+  }
   const credsById = new Map(rows.map((r) => [r.id, r.credentialsEncrypted]));
-  const channels: Row[] = rows.map(({ credentialsEncrypted: _c, ...r }) => r);
+  const channels: Row[] = rows.map(({ credentialsEncrypted: _c, tenant, ...r }) => ({ ...r, tenantActive: tenant?.isActive ?? false }));
 
-  const missing = channels.filter((c) => !c.externalAccountId && c.isActive);
+  const missing = channels.filter((c) => !c.externalAccountId && live(c));
   console.log(`FB／IG 渠道 ${channels.length} 個，啟用中且缺帳號 ID ${missing.length} 個\n`);
 
   // 1. 查詢
@@ -69,9 +94,9 @@ async function main() {
     }
   }
 
-  // 2. 比對重複（含已寫入帳號 ID 的渠道；不分租戶）
+  // 2. 比對重複（含已寫入帳號 ID 的渠道；不分租戶）。停用渠道／停用租戶持有的 ID 不算認領，寫入前會先釋放
   const claims = new Map<string, Row[]>(); // `${type}:${accountId}` -> channels
-  for (const c of channels) {
+  for (const c of channels.filter(live)) {
     const accountId = c.externalAccountId ?? found.get(c.id);
     if (!accountId) continue;
     const key = `${c.channelType}:${accountId}`;
@@ -100,8 +125,14 @@ async function main() {
   for (const [id, accountId] of toWrite) {
     const c = channels.find((x) => x.id === id)!;
     try {
-      await prisma.channel.updateMany({ where: { id, tenantId: c.tenantId, externalAccountId: null }, data: { externalAccountId: accountId } });
-      written++;
+      // 先釋放停用渠道／停用租戶佔住的同一個帳號（函式只動停用的）
+      await prisma.$queryRaw`SELECT release_inactive_channel_account(${c.channelType}::"ChannelType", ${accountId})`;
+      const res = await prisma.channel.updateMany({
+        where: { id, tenantId: c.tenantId, externalAccountId: null },
+        data: { externalAccountId: accountId },
+      });
+      if (res.count === 1) written++;
+      else console.log(`  未寫入 ${label(c)}：渠道在執行期間已取得帳號 ID 或已不存在`);
     } catch (err) {
       // 腳本執行期間有人按了驗證而先寫入同一帳號：唯一索引擋下，列出即可
       console.log(`  寫入失敗 ${label(c)}：${(err as { code?: string }).code === 'P2002' ? '帳號已被其他渠道連結' : String(err)}`);

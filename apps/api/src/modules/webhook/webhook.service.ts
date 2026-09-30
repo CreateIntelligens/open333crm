@@ -29,7 +29,8 @@ import {
 } from './inbound-side-effects.js';
 import { forwardToDownstream, getDownstreamWebhookConfig } from './downstream-forwarder.js';
 import { claimForForward } from './downstream-loop-guard.js';
-import { recordRoutingWarning, routeWebhookMessages } from './webhook-account-routing.js';
+import { recordRoutingWarning, routePlatformMessages, routeWebhookMessages } from './webhook-account-routing.js';
+import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
 
 // TODO(rls): 入站 webhook 為公開端點（無認證租戶），tenant 由 channel 反查得出，
 // 且下游 resolver / InboundMessageContext 皆以 PrismaClient 型別串接，故此路徑不套 RLS，維持 PrismaClient。
@@ -136,15 +137,19 @@ export async function processWebhookEvent(
   }
 
   // 7. Process each message with its routed channel and tenant (same pattern as simulator.service.ts)
+  //    immediate 模式卻因混包無法轉發時，網址渠道自己的事件改由 CRM 處理——寧可重複處理也不能讓訊息消失。
   for (const group of routing.groups) {
-    // immediate 模式由下游接手網址渠道的事件：整包混有其他渠道而無法轉發時，網址渠道自己的事件也不進 CRM
-    if (immediate && group.channel.id === channel.id) continue;
     if (group.channel.id !== channel.id) {
       logger.info('[Webhook] Routed events to channel by account ID', {
         urlChannelId: channel.id,
         targetChannelId: group.channel.id,
         count: group.messages.length,
       });
+      // 改派過來的事件無法轉發給目標渠道自己的下游（原始 body 含其他帳號、簽章無法拆包重簽）：
+      // 照常進 CRM，並在目標渠道留警示，讓設了下游的管理員知道這些事件沒轉出去
+      if (getDownstreamWebhookConfig(group.settings)) {
+        await recordRoutingWarning(prisma, group.channel, 'downstream_skipped');
+      }
     }
     for (const parsed of group.messages) {
       await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, parsed);
@@ -158,6 +163,47 @@ export async function processWebhookEvent(
       void forwardToDownstream(downstream, rawBody, headers, channel);
     } else {
       logger.warn('[Webhook] Downstream loopback detected — skip forward (after)', { channelId });
+    }
+  }
+}
+
+/**
+ * 平台 Meta App 的 webhook（/api/v1/webhooks/meta，change fix-meta-webhook-page-routing 第 3 階段）。
+ * 以平台 App Secret 驗簽，依 object 決定渠道類型（page → FB、instagram → IG），
+ * 再依 entry.id 交給以 Facebook 登入連結的渠道。平台層事件不做下游轉發。
+ */
+export async function processPlatformMetaWebhook(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  rawBody: Buffer,
+  headers: Record<string, string>,
+) {
+  const cfg = getMetaAppConfig();
+  if (!cfg) throw new Error('Platform Meta App is not configured');
+
+  let object: unknown;
+  try {
+    object = (JSON.parse(rawBody.toString('utf-8')) as { object?: unknown }).object;
+  } catch {
+    throw new Error('Invalid webhook payload');
+  }
+  const channelType = object === 'page' ? CHANNEL_TYPE.FB : object === 'instagram' ? CHANNEL_TYPE.THREADS : null;
+  if (!channelType) {
+    logger.info('[Webhook:meta] 不處理的 object，略過', { object });
+    return;
+  }
+  const plugin = getChannelPlugin(channelType);
+  if (!plugin) throw new Error(`No plugin for channel type: ${channelType}`);
+  if (!plugin.verifySignature(rawBody, headers, cfg.appSecret)) {
+    logger.warn('[Webhook:meta] Signature verification failed', { channelType });
+    throw new Error('Invalid webhook signature');
+  }
+
+  const parsed = await plugin.parseWebhook(rawBody, headers);
+  const groups = await routePlatformMessages(prisma, channelType, parsed);
+  for (const group of groups) {
+    for (const message of group.messages) {
+      await processInboundMessage(prisma, io, group.credentials, group.channel, group.channel.tenantId, message);
     }
   }
 }
