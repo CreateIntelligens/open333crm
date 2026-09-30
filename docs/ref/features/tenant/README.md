@@ -103,18 +103,14 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 機制 | 範圍 | 用途 | 例子 |
 | --- | --- | --- | --- |
 | eventBus | API 行程內 | 業務事件。`events/event-bus.ts` 的 `EventEmitter`，不經過 Redis | `message.received`、`case.created`、`contact.tagged` |
+| `crm:events` | Redis 廣播 | Canvas 流程引擎的事件，與 eventBus 不相通 | `canvas.send_message` |
 | BullMQ queue | API 行程 → workers | 需要查資料或會拖慢回應的工作 | `automation`、`notification`、`rich-menu-bind`、`data-export`、`data-erasure` |
 | Redis `socket:emit` | workers → API 行程 → 前端 | workers 沒有 socket 連線，由 API 行程代為推送 | 自動化執行結果、通知 |
 | Redis `domain:event` | workers → API 行程的 eventBus | workers 產生、API 端要接著處理的業務事件 | workers 貼標後的 `contact.tagged` |
 
-要知道的事：
+每個事件由誰發布、誰訂閱，哪些事件只有一邊，失敗時會不會重試，以及為什麼目前只能跑一個 API 行程，見[事件與背景工作](../../modules/EVENTS.md)。
 
-- **eventBus 只存在於單一 API 行程。** 同時跑多個 API 行程時，每個行程各自有一份。`domain:event` 由每個 API 行程各自訂閱，同一個事件會在每個行程各轉發一次。
-- **事件沒有持久化。** API 行程在事件處理完之前重新啟動，事件就遺失；對外 Webhook 的重試也是。
-- **沒有發布端的事件。** 有些事件有訂閱者或出現在介面上，卻沒有任何程式發布，例如 `conversation.assigned`、`sla.warning`。各文件在相關段落標出，彙整見 `../../system/AUDIT.md` 的 CONV-02、APP-05 與 AUTO-05。
-- **socket 的租戶房間收得到全部。** 每條 socket 連線建立時自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件會帶著內容發到這個房間。渠道可見範圍因此在即時事件上不生效，見 `../../system/AUDIT.md` 的 RBAC-04。
-
-背景工作跑在哪個行程，見[模組總覽](../../modules/OVERVIEW.md#背景工作的歸屬)。
+**socket 的租戶房間收得到全部。** 每條 socket 連線建立時自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件會帶著內容發到這個房間。渠道可見範圍因此在即時事件上不生效，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 側欄顯示與 API 權限
 

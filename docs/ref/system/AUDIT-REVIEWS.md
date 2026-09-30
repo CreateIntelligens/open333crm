@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：撰寫事件與背景工作文件，新增四個項目
+
+起因是新增[事件與背景工作](../modules/EVENTS.md)。做法是以腳本列出 `AppEventName` 的每個事件在 `apps/api/src` 的 `eventBus.publish` 與 `eventBus.subscribe`，再逐一對照每個 `new Queue(` 與 `apps/workers` 的 `new Worker(`、兩條 Redis 轉發頻道，以及 API 行程內的每個 `setInterval`。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| APP-07 | `scheduler.ts` 以 `new Queue(FLOW_RESUME_JOB, …)` 建立佇列，`FLOW_RESUME_JOB` 是 `'flow:resume'`；`pnpm-lock.yaml` 鎖定 `bullmq@5.71.0`，該版 `dist/esm/classes/queue-base.js` 在名稱含 `:` 時拋出錯誤（以 unpkg 的原始碼確認，本機沒有安裝相依套件）；`apps/` 沒有 `new Worker('flow:resume'` |
+| APP-08 | `removeOnComplete` 在 `apps/`、`packages/*/src` 只出現在 `automation.worker.ts` 與 `data-erasure.service.ts`；`apps/workers/src/index.ts` 的每個 `new Worker(` 只傳 `{ connection }`；`notification.worker.ts` 的 `message.received` 訂閱者每則訊息至少送一筆工作；`docker-compose.prod.yml` 的 `redis` 服務沒有 `command` 或 `maxmemory` |
+| APP-09 | 列出 API 行程的 `setInterval` 與 `setTimeout` 排程，都沒有 Redis 鎖或 advisory lock；`socket.plugin.ts` 與 `canvas.worker.ts` 各自訂閱 Redis 頻道；`@socket.io/redis-adapter` 在 `apps/api/src` 沒有 import |
+| PKG-05 | `CaseService`、`InboxService`、`ContactService` 在 `apps/` 沒有出現；`packages/core/src/index.ts` 沒有匯出 `automation/engine.ts`；`package.json` 的 `exports` 只有 `.` |
+
+**文件修正。** `CANVAS-FLOW-ENGINE.md` 原本寫「喚醒優先用 BullMQ 的延遲工作」，實際上 BullMQ 路徑從未成功，已改為只靠資料庫輪詢；同一份文件把 Canvas 的事件寫成「發到 eventBus」，實際是 `packages/core` 另一套走 Redis 的 `EventBus`，已改正。`tenant/README.md` 的事件表補上 `crm:events`，其餘細節改為連到新文件。
+
+**另外發現、沒有修改的文件錯誤。** `AGENTS.md` 的 Socket 事件路由一節，範例寫 `eventBus.publish("case.assigned", { tenantId, payload })`。實際的簽章是 `publish(event: AppEvent)`，只接受一個含 `name` 的物件，照範例寫會編譯失敗。
+
 ## 2026-09-30：撰寫權限計算文件，新增 RBAC-05、RBAC-06
 
 起因是新增[權限計算](../modules/PERMISSIONS.md)。做法是從 `packages/core/src/rbac/` 的註冊表開始，沿著 `requirePermission()`、`getEffectiveTenantPermissions()`、渠道可見範圍與 socket 房間授權讀一遍，再追查權限碼怎麼進入每個租戶的角色：開通流程、reconcile 腳本與 demo seed。

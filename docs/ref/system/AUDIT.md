@@ -117,10 +117,14 @@
 | [APP-04](#app-04) | 部署與應用程式 | P4 | 未處理 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
 | [APP-05](#app-05) | 部署與應用程式 | P4 | 未處理 | API 行程訂閱的 `sla.warning`、`sla.breached` 沒有發布端 | 靜態確認 |
 | [APP-06](#app-06) | 部署與應用程式 | P3 | 未處理 | 訊息模擬器的 API 在正式環境可用，成員可偽造進站訊息 | 靜態確認 |
+| [APP-07](#app-07) | 部署與應用程式 | P4 | 已提建議 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | 靜態確認 |
+| [APP-08](#app-08) | 部署與應用程式 | P3 | 已提建議 | 多數 BullMQ 佇列永遠保留已完成的工作，Redis 沒有記憶體上限 | 靜態確認 |
+| [APP-09](#app-09) | 部署與應用程式 | P3 | 已提建議 | API 行程假設只有一份：排程沒有鎖、Redis 廣播會重複處理，無法水平擴充 | 靜態確認 |
 | [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
 | [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
 | [PKG-03](#pkg-03) | 共用套件 | P4 | 未處理 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
 | [PKG-04](#pkg-04) | 共用套件 | P4 | 未處理 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
+| [PKG-05](#pkg-05) | 共用套件 | P4 | 未處理 | `core` 匯出沒有呼叫端的服務與事件訂閱者 | 靜態確認 |
 | [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Ollama base URL 預設指向容器自己 | 執行時重現 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
@@ -1536,6 +1540,51 @@ API 的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue prod
 
 影響範圍限於呼叫者自己的租戶。
 
+<a id="app-07"></a>
+### APP-07：Canvas 等待節點的 BullMQ 路徑永遠失敗
+
+`packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()` 先嘗試建立名為 `flow:resume` 的 BullMQ 佇列送出延遲工作，失敗時退回資料庫輪詢。實際上前者從未成功：
+
+- `pnpm-lock.yaml` 鎖定的 BullMQ 是 5.71.0，它的 `QueueBase` 建構子在名稱含 `:` 時拋出 `Queue name cannot contain :`。錯誤被 `catch` 接住，每個等待節點都寫一筆「BullMQ scheduling failed」的 warning。
+- 即使建立成功，`apps/workers` 與 API 都沒有消費 `flow:resume` 的 worker，工作會永遠留在 Redis。
+
+所以 Canvas 的喚醒完全靠 API 行程的 `canvas.scheduler.ts` 每 60 秒輪詢，精度是 60 秒。`CANVAS-FLOW-ENGINE.md` 原本寫「優先用 BullMQ 的延遲工作」，已改正。
+
+**修正方向**：移除 BullMQ 路徑，或改用不含冒號的名稱並在 workers 加上消費者。
+
+<a id="app-08"></a>
+### APP-08：多數 BullMQ 佇列永遠保留已完成的工作
+
+BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `data-erasure` 的佇列設定了 `removeOnComplete` 與 `removeOnFail`，其他佇列與 `apps/workers` 的所有 `Worker` 都沒有設定：
+
+| 佇列 | 產生頻率 |
+| --- | --- |
+| `notification` | 每則進站訊息至少一筆；對話沒有負責人時，每位管理員與主管各一筆 |
+| `sla` | 重複工作，每 5 分鐘一筆 |
+| `data-export-cleanup`、`agent-retention-cleanup` | 重複工作，每小時各一筆 |
+| `rich-menu-bind`、`data-export` | 依操作 |
+
+每筆工作以 hash 存在 Redis，含完整的 `data`。`docker-compose.prod.yml` 的 Redis 沒有設定 `maxmemory` 或淘汰策略，因此用量會隨訊息量持續成長，直到主機記憶體不足。
+
+**修正方向**：所有佇列設定 `removeOnComplete` 與 `removeOnFail`（以筆數或時間為上限）；Redis 設定 `maxmemory`，但淘汰策略要用 `noeviction`，避免佇列的鍵被淘汰。
+
+<a id="app-09"></a>
+### APP-09：API 行程假設只有一份
+
+生產環境只跑一個 `api` 容器，所以下列問題目前不會出現。但只要水平擴充，就會同時出現：
+
+| 機制 | 多個 API 行程時 |
+| --- | --- |
+| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發在兩個行程都查到同一筆 `scheduled` 時，因 `executeBroadcast()` 接受 `sending` 狀態而兩邊都執行，見 MKT-01 |
+| `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
+| `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
+| 行程記憶體的狀態 | OAuth 的 state（IDENT-02）、非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
+| Socket.IO | 沒有 Redis adapter。`@socket.io/redis-adapter` 列在 `apps/api/package.json`，但程式沒有使用。API 直接推送的事件只送到同一個行程的客戶端 |
+
+這些問題分散在各模組，單獨看都像是小事，但合起來代表 API 目前無法水平擴充。
+
+**修正方向**：定期工作移到 workers 以 BullMQ 重複工作執行；Redis 廣播改成 BullMQ 佇列，或在接收端以事件 ID 去重；行程記憶體的狀態改存 Redis；Socket.IO 接上 Redis adapter。
+
 ## 共用套件
 
 <a id="pkg-01"></a>
@@ -1553,6 +1602,20 @@ API 的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue prod
 ### PKG-03、PKG-04：未接線套件仍持續建置
 
 `brain` 沒有 app 使用者；`ui` 只有空匯出。兩者仍由開發環境的 `packages` 服務建置並啟動 watch process。
+
+<a id="pkg-05"></a>
+### PKG-05：`core` 匯出沒有呼叫端的服務與事件訂閱者
+
+`packages/core` 有一套以 Redis `crm:events` 頻道傳遞的 `EventBus`，與 API 行程的 eventBus 不相通。實際使用它的只有 Canvas：`FlowRunner` 發布、API 的 `canvas.worker.ts` 訂閱。同一個套件裡另有：
+
+| 程式 | 內容 | 呼叫端 |
+| --- | --- | --- |
+| `cases/case-service.ts` 的 `CaseService` | 工單的建立與狀態變更，並發布到 `crm:events` | `apps/*` 沒有。模組載入時建立 `sla-monitoring` 佇列，見 APP-01 |
+| `inbox/inbox-service.ts` 的 `InboxService` | 對話與訊息，並發布到 `crm:events` | `apps/*` 沒有 |
+| `contacts/contact-service.ts` 的 `ContactService` | 聯絡人 | `apps/*` 沒有 |
+| `automation/engine.ts` 的 `AutomationEngine` | 訂閱 `crm:events` 執行自動化規則 | 沒有從 `index.ts` 匯出，也沒有呼叫 `start()` 的程式 |
+
+這些與 API 的 `case`、`conversation`、`contact`、`automation` 模組功能重疊。讀程式時容易以為工單或自動化走這裡。
 
 ## Storage、LLM 與資料庫
 

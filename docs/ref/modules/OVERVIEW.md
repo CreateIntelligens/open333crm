@@ -201,7 +201,7 @@
 
 ## 背景工作的歸屬
 
-背景工作分在兩個行程執行，兩邊的機制不同。
+背景工作分在兩個行程執行，兩邊的機制不同。事件與佇列的發布端、消費端與失敗處理，見[事件與背景工作](./EVENTS.md)。
 
 - **API 行程**跑的是 in-process 的 eventBus 監聽器與 `setInterval` 排程。函式名稱裡的 `Worker` **不代表 BullMQ consumer**：`setupNotificationWorker` 與 `setupAutomationWorker` 訂閱 eventBus，再把工作送進 BullMQ queue，扮演的是 producer。
 - **`apps/workers` 行程**是唯一的 BullMQ consumer。

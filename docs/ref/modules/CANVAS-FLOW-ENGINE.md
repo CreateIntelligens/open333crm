@@ -64,7 +64,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | `AI_GEN` | 呼叫 brain 服務生成文字，寫進 `gen.*` | `prompt`、`outputKey`、`model`、`maxTokens`、`systemInstruction` |
 | `ACTION` | 執行一個副作用動作 | `actionType`、`params` |
 
-`MESSAGE` 與 `ACTION` 兩種節點不自己執行動作。`FlowRunner` 發 `canvas.send_message` 或 `canvas.action` 到 eventBus，`apps/api/src/modules/canvas/canvas.worker.ts` 接手執行：
+`MESSAGE` 與 `ACTION` 兩種節點不自己執行動作。`FlowRunner` 發 `canvas.send_message` 或 `canvas.action` 到 `packages/core` 的 `EventBus`，`apps/api/src/modules/canvas/canvas.worker.ts` 接手執行。這個 `EventBus` 走 Redis 的 `crm:events` 頻道，與 API 行程的 eventBus 是兩套不相通的系統，見[事件與背景工作](./EVENTS.md#canvas-的事件)：
 
 - `canvas.send_message`：`channelType` 是 `email` 時查聯繫人信箱並套用 `templateView` 寄信；其他渠道透過對應的 channel plugin 發送。
 - `canvas.action`：目前只實作 `add_tag`，其餘 `actionType` 直接忽略。
@@ -99,10 +99,9 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 
 `WAIT` 節點回傳 `pause`。`FlowRunner` 接著把狀態改成 `WAITING`、寫入 `resumeAt`，然後結束這一次 `run()`。
 
-喚醒有兩種機制，都定義在 `packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()`：
+喚醒實際上只靠資料庫輪詢：`apps/api/src/modules/canvas/canvas.scheduler.ts` 每 60 秒執行一次 `processResumeQueue()`，一次取最多 50 筆 `resumeAt` 已到期的 `WAITING` 執行，先改成 `RUNNING` 再交給 `FlowRunner.run()`。先改狀態，避免輪詢器重複處理同一筆執行。因此喚醒時間的精度是 60 秒。
 
-1. 優先用 BullMQ 的延遲工作。`scheduleWaitNode()` 以動態 import 載入 BullMQ；載入失敗時改用第二種機制。
-2. 退回資料庫輪詢。`apps/api/src/modules/canvas/canvas.scheduler.ts` 每 60 秒執行一次 `processResumeQueue()`，一次取最多 50 筆 `resumeAt` 已到期的 `WAITING` 執行，先改成 `RUNNING` 再交給 `FlowRunner.run()`。先改狀態，避免輪詢器重複處理同一筆執行。
+`packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()` 會先嘗試送出 BullMQ 的延遲工作，但佇列名稱 `flow:resume` 含冒號，BullMQ 建立佇列時直接拋出錯誤，每次都退回輪詢並寫一筆 warning；這個佇列也沒有消費者。見 `../system/AUDIT.md` 的 APP-07。
 
 輪詢器跑在 API 行程內，不在 `apps/workers`。
 
