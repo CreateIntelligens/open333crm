@@ -64,6 +64,7 @@
 | PLAN-12 | 試用與方案 | P3 | AI 不在功能天花板的維度內，停用 AI 只能把 `monthlyTokens` 設成 `0` | 靜態確認 |
 | USAGE-01 | 用量 | P3 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
 | AI-01 | AI | P2 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
+| USAGE-02 | 用量 | P2 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
 | LIC-01 | License | P4 | API 使用寫死的授權資料 | 間接確認 |
 | LIC-02 | License | P4 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | SEC-01 | Security | P2 | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
@@ -607,6 +608,27 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 - **平台端沒有訊號。** 唯一的間接跡象是 `/admin/usage` 的成本上升，但那一頁不分 `keySource`（見 USAGE-01），看不出是哪些租戶，也看不出原因。
 - **租戶端要主動去看才知道。** `getTenantGeminiKeyStatus()` 解密失敗時回 `configured: true`，遮罩字串是「（無法解密）」。設定頁看得到這行字，但 AI 呼叫本身不會失敗，也沒有任何通知，租戶沒有理由去開那一頁。
+
+### USAGE-02：價目表沒有維護介面，缺價期間的成本永久記 0
+
+`ModelPricing` 以 `(model, effectiveFrom)` 版本化，結構本身支援調價。缺的是寫入途徑。
+
+**唯一的寫入端是 seed，而 seed 不能在正式環境執行。** 全 repo 只有 `packages/database/prisma/seed.ts:168` 會寫 `modelPricing`，平台後台沒有任何路由。但 `seed.ts` 的 `main()` 會建立 Demo Tenant 與一批固定密碼的 demo 成員，`seedPlatformUser()` 種的也是開發用密碼。因此「調價要改 seed」在正式環境等於不可行，實務上只剩直接改資料庫一條路。
+
+**缺價期間的成本無法事後修正。** 成本在寫入 `AiUsage` 的當下就算好，之後不重算。`getPricing()` 查不到價目時 `calcCostUsd()` 回 `null`，呼叫端記 `costUsd = 0` 並標 `usageMissing`。所以從新模型開始被使用、到有人手動補上價目之間的每一筆呼叫，成本永久是 0，而 repo 裡沒有任何重算路徑。
+
+**快取讓這段期間更長。** `pricingCache` 是行程內的 `Map`，TTL 10 分鐘，而且**連查無價目的 `null` 一起快取**。補上價目之後最久還要再等 10 分鐘才會套用，多個 API 行程各自計時。`clearPricingCache()` 的註解寫「測試/改價後手動清快取用」，但全 repo 沒有任何呼叫端，也沒有對外端點。
+
+**平台看不出帳面被低估。** `/admin/usage` 不看 `usageMissing`（見 USAGE-01），畫面上的成本只會偏低，沒有任何提示。唯一的線索是 `recordAiUsage()` 留的一則 warn log。
+
+**修正方向（2026-09-30 提出，尚未實作）**
+
+補一組 `ModelPricing` 的平台路由即可，不需要改 schema，版本化欄位已經齊備：
+
+- **寫入介面**：列出各 model 的現行價目、新增一個 `effectiveFrom` 版本。寫入時一併呼叫 `writePlatformAudit()`，調價是會改變帳面的操作，應該留紀錄。
+- **快取失效**：把 `clearPricingCache()` 接到寫入路由。但它清的是行程內的 `Map`，多行程時只對自己有效，應比照 `invalidatePlanPermissions()` 改走 Redis。
+- **不要快取查無價目**：查不到時縮短 TTL 或直接不寫入快取，避免補完價目還要等滿 10 分鐘。
+- **既有的零成本列**：要修正需要一條重算路徑（依 `model` 與 `createdAt` 回查當時應適用的價目版本）。若不打算做重算，至少讓 `/admin/usage` 顯示 `usageMissing` 的筆數，讓平台知道帳面被低估——這一點與 USAGE-01 一起修。
 
 ## 授權與安全
 

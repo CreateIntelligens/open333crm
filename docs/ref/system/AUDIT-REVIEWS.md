@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：價目表的寫入途徑，新增 USAGE-02
+
+起因是[用量統計](../modules/platform/USAGE.md)的「價目表沒有維護介面」一節，要為它提出修正方向。查證時追了三件原本沒寫的事：seed 在正式環境是否可用、查無價目是否進快取、缺價期間的成本能否事後修正。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| USAGE-02 | `modelPricing` 的唯一寫入端是 `seed.ts:168`；`seed.ts` 的 `main()` 會建立 Demo Tenant 與固定密碼帳號；`getPricing()` 把 `null` 一併寫入 `pricingCache`；`clearPricingCache()` 全 repo 零呼叫端；成本在 `recordAiUsage()` 寫入時定版，沒有重算路徑 |
+
+因此原本那節寫的「調價要改 seed 或直接改資料庫」在正式環境只剩後者一條路。三項查證都併進 `USAGE.md` 的同一節。
+
+條目附了修正方向：補一組 `ModelPricing` 的平台路由並寫稽核、快取失效改走 Redis、查無價目不進快取、既有零成本列若不重算至少讓 `/admin/usage` 顯示 `usageMissing` 筆數。schema 不需要改動，`(model, effectiveFrom)` 已經支援版本化。
+
 ## 2026-09-29：AI 的方案控制點，新增 PLAN-12
 
 承上一則。確認 AI-01 退回平台金鑰之後會扣哪一份額度時，延伸出一個問題：方案若不含 AI，租戶是不是就無限制可用。做法是回頭清點 AI 的所有入口與可用的控制點。
