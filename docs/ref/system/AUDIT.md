@@ -320,13 +320,34 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - 稽核只記鍵名，不記新舊值（見[平台設定](../modules/platform/SETTINGS.md)）。
 - 每個參數各自一次 `PUT`。彼此相關的參數（例如試用天數與提醒檔位）無法一起改，中間狀態會被排程讀到。
 
-**修正方向（2026-09-30 提出，尚未實作）**
+**修正方向（2026-09-30 討論，尚未實作）**
 
-- **在寫入端驗證。** 為每個已知鍵定義一個 Zod schema，寫明型別與範圍。`PUT /settings/:key` 先比對鍵名白名單，再以對應 schema 驗值，不符就回 422。讀取端的 `typeof` 退回預設值，就只剩「資料庫沒有這一列」這一種情況，不再吞掉錯誤的值。
-- **較徹底的做法：試用政策改成單一鍵。** 例如 `trial.policy`，值是整份 `TrialPolicy` 物件，由一個 schema 驗證。讀取從多次查詢變成一次，相關參數一次寫入，也不再有中間狀態。
-- **`trial.planSlug` 寫入時檢查方案存在**，並把它加進設定分頁。PLAN-01 修好之後，一併檢查方案未停售。
-- **稽核記下新舊值**，payload 帶 `{ before, after }`。
-- **前端補錯誤處理。** `saveSetting()` 加上 `catch` 並顯示錯誤，數字欄位加上 `min`。
+KV 表保留為底層儲存，不承擔型別。上面加一層殼層，每個設定群有自己的 API 路徑，型別、範圍、預設值與檢查都由殼層負責：
+
+```text
+/admin/trial 設定分頁
+        │  PUT /settings/trial
+        ▼
+殼層：trial 設定群
+  schema、預設值、範圍
+  跨欄位檢查（提醒檔位不大於試用天數）
+  參照檢查（planSlug 對應的方案存在）
+  稽核 { before, after }
+        │
+        ▼
+PlatformSetting（KV，不知道型別）
+```
+
+要先定下來的決策：
+
+- **拿掉通用的 `PUT /settings/:key`。** 只要這個端點還在，殼層的驗證就能被繞過。讀取可以保留給除錯用，寫入只能走各設定群的路徑。
+- **底層採一群一列。** `trial` 一列，值是整份 `TrialPolicy`。整份一起驗證、一起寫入，沒有中間狀態，讀取也只查一次。部分更新用 `PATCH`，先與現值合併，再驗證合併後的整份。跨欄位檢查在這種形狀下最容易做。
+- **殼層由註冊表產生。** 每個設定群註冊 `{ group, schema, defaults, validate }`，由同一個 handler 提供 `GET`／`PUT`／`PATCH /settings/:group`。新增一個設定群只要註冊一次，路由、驗證與稽核就一併具備。做法與 `/registry` 由 `FEATURES` 推導清單相同。
+- **讀取端解析失敗要留下紀錄。** `getTrialPolicy()` 改成殼層的讀取函式，用同一份 schema 解析。資料庫沒有這一列時使用預設值，屬於正常情況。資料庫有值但解析失敗時，要先記 error log 再退回預設值。寫入端擋住之後，這種情況只會出現在手動改資料庫時，正好需要被看見。
+
+其餘項目併入殼層：`trial.planSlug` 加進設定分頁，PLAN-01 修好之後一併檢查方案未停售；前端 `saveSetting()` 補上 `catch`，顯示殼層回傳的 422 欄位錯誤。
+
+遷移：現有的 `trial.*` 各列要合併成一列 `trial`。可以讓讀取端在一段期間內相容兩種形狀，也可以寫一次性的 migration，合併之後刪除舊列。
 
 ### PLAN-01：`Plan.isActive` 沒有讀取端
 
