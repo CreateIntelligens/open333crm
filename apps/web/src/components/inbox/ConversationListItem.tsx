@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { differenceInCalendarDays, format, isSameYear } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
-import { ChannelLabel } from '@/components/shared/ChannelLabel';
+import { ChannelLogo, channelTypeName } from '@/components/shared/ChannelLogo';
 import { AlertCircle, FileText, Star } from 'lucide-react';
 import type { ConversationRow } from '@/hooks/useConversations';
 
@@ -50,6 +50,18 @@ function formatMessagePreview(msg?: ConversationRow['lastMessage']): string {
   return String(rawContent || '尚無訊息');
 }
 
+/** 列表時間：當天「14:05」、昨天「昨天」、一週內「週一」、更早「9/28」，跨年加年份——字短，把空間留給渠道名稱 */
+const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+function formatListTime(value: string | Date): string {
+  const date = new Date(value);
+  const now = new Date();
+  const days = differenceInCalendarDays(now, date);
+  if (days <= 0) return format(date, 'HH:mm');
+  if (days === 1) return '昨天';
+  if (days < 7) return WEEKDAYS[date.getDay()];
+  return isSameYear(date, now) ? format(date, 'M/d') : format(date, 'yyyy/M/d');
+}
+
 export function ConversationListItem({
   conversation,
   isSelected,
@@ -62,6 +74,7 @@ export function ConversationListItem({
   const lastMessageTime = conversation.lastMessage?.createdAt || conversation.updatedAt;
   const unreadCount = conversation.unreadCount || 0;
   const isBotHandled = conversation.status === 'BOT_HANDLED';
+  const channelName = conversation.channel?.displayName?.trim();
 
   return (
     <button
@@ -72,47 +85,35 @@ export function ConversationListItem({
         unreadCount > 0 && !isSelected && 'bg-primary-subtle/40'
       )}
     >
-      <Avatar
-        alt={contactName}
-        src={conversation.contact?.avatar || conversation.contact?.avatarUrl}
-        size="md"
-      />
+      <span className="relative shrink-0">
+        <Avatar
+          alt={contactName}
+          src={conversation.contact?.avatar || conversation.contact?.avatarUrl}
+          size="md"
+        />
+        <ChannelLogo
+          channelType={conversation.channelType}
+          className="absolute -bottom-0.5 -right-0.5 h-4 w-4 ring-2 ring-background"
+        />
+      </span>
       <div className="flex-1 overflow-hidden">
         <div className="flex items-center justify-between gap-2">
           <span
             className={cn(
-              'truncate text-sm',
+              'min-w-0 truncate text-sm',
               unreadCount > 0 ? 'font-semibold' : 'font-medium'
             )}
           >
             {contactName}
           </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {formatDistanceToNow(new Date(lastMessageTime), { addSuffix: false })}
+          <span
+            className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
+            title={format(new Date(lastMessageTime), 'yyyy/M/d HH:mm')}
+          >
+            {formatListTime(lastMessageTime)}
           </span>
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-          <ChannelLabel
-            channelType={conversation.channelType}
-            channelName={conversation.channel?.displayName}
-            nameClassName="max-w-[7.5rem]"
-          />
-          {isBotHandled && (
-            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-ai-subtle px-1.5 py-0.5 text-[10px] font-medium text-ai">
-              Bot 中
-            </span>
-          )}
-          {conversation.lastMessageSentiment === 'positive' && (
-            <span className="inline-block h-2 w-2 rounded-full bg-success" title="正面情緒" />
-          )}
-          {conversation.lastMessageSentiment === 'negative' && (
-            <span className="inline-block h-2 w-2 rounded-full bg-destructive" title="負面情緒" />
-          )}
-          {conversation.caseId && (
-            <FileText className="h-3 w-3 text-warning" />
-          )}
-        </div>
-        <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="mt-0.5 flex items-center justify-between gap-2">
           <p
             className={cn(
               'truncate text-xs',
@@ -130,6 +131,23 @@ export function ConversationListItem({
             {lastMessageContent}
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
+            {conversation.lastMessageSentiment === 'positive' && (
+              <span className="inline-block h-2 w-2 rounded-full bg-success" title="正面情緒" />
+            )}
+            {conversation.lastMessageSentiment === 'negative' && (
+              <span className="inline-block h-2 w-2 rounded-full bg-destructive" title="負面情緒" />
+            )}
+            {conversation.caseId && (
+              <FileText className="h-3 w-3 text-warning" aria-label="已建立案件" />
+            )}
+            {isBotHandled && (
+              <span
+                className="whitespace-nowrap rounded bg-ai-subtle px-1 text-[10px] font-medium leading-4 text-ai"
+                title="目前由 Bot 處理中"
+              >
+                Bot
+              </span>
+            )}
             {showCsat && conversation.csatScore != null && (
               <span className="flex items-center gap-0.5 text-[10px] text-warning">
                 <Star className="h-3 w-3 fill-warning" />
@@ -143,6 +161,13 @@ export function ConversationListItem({
             )}
           </div>
         </div>
+        {/* 渠道名稱獨立一行：同類型可能接多個 LINE OA／粉專，給整行寬度才看得清楚；類型由頭像角落 logo 表示 */}
+        <p
+          className="mt-0.5 truncate text-[11px] text-muted-foreground"
+          title={[channelTypeName(conversation.channelType), channelName].filter(Boolean).join('：')}
+        >
+          {channelName || channelTypeName(conversation.channelType)}
+        </p>
       </div>
     </button>
   );
