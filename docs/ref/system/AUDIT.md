@@ -2,7 +2,7 @@
 
 本文件集中記錄系統盤點時發現的實作落差，只描述各項的現況。其他系統文件只描述主要結構，不重複問題細節；每一項怎麼查證、在哪一次盤點發現，記在[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
 
-摘要表依章節排列，順序與內文相同。
+摘要表依章節排列，順序與內文相同。點 ID 可跳到該項的內文。
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
 - **執行時驗證日期**：2026-09-02
@@ -24,68 +24,82 @@
 
 最近一次標示日期為 2026-09-30。項目的內容改變時要一併重看它的優先順序。
 
+## 處理狀態怎麼讀
+
+「處理狀態」記的是這一項修到哪裡，「驗證狀態」記的是這一項怎麼被確認，兩者互不影響。
+
+| 處理狀態 | 意思 |
+| --- | --- |
+| 未處理 | 沒有修正方向，也沒有任何修正 |
+| 已提建議 | 內文附有修正方向，還沒決定是否照做 |
+| 已定方向 | 修正方向已經討論定案，尚未實作 |
+| 部分修正 | 已有 commit 修掉其中一部分，內文只描述剩下的部分 |
+
+一項完全修正之後，從本文件移除，修正它的 commit 記在[實作落差複查紀錄](./AUDIT-REVIEWS.md)。
+
 ## 摘要
 
-| ID | 範圍 | 優先 | 問題 | 驗證狀態 |
-| --- | --- | --- | --- | --- |
-| RLS-01 | 租戶隔離與權限 | P1 | Canvas 引擎不走租戶連線 | 靜態確認 |
-| RLS-02 | 租戶隔離與權限 | P1 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
-| RLS-03 | 租戶隔離與權限 | P3 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
-| RLS-04 | 租戶隔離與權限 | P3 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| RBAC-01 | 租戶隔離與權限 | P1 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
-| AUTH-01 | 帳號與登入 | P2 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
-| AUTH-02 | 帳號與登入 | P2 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
-| AUTH-03 | 帳號與登入 | P2 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
-| AUTH-04 | 帳號與登入 | P2 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| SEC-02 | 帳號與登入 | P3 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
-| SEC-03 | 帳號與登入 | P3 | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
-| SEC-04 | 帳號與登入 | P1 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
-| SEC-01 | 金鑰與 License | P2 | Workers 的渠道加密金鑰仍有硬編碼備援值（API 已修正） | 靜態確認 |
-| LIC-01 | 金鑰與 License | P4 | API 使用寫死的授權資料 | 間接確認 |
-| LIC-02 | 金鑰與 License | P4 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
-| TRIAL-01 | 試用 | P1 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
-| TRIAL-02 | 試用 | P3 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
-| TRIAL-03 | 試用 | P2 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
-| PLAN-01 | 方案與額度 | P3 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
-| PLAN-02 | 方案與額度 | P3 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
-| PLAN-03 | 方案與額度 | P3 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
-| PLAN-04 | 方案與額度 | P2 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
-| PLAN-05 | 方案與額度 | P2 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
-| PLAN-06 | 方案與額度 | P2 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
-| PLAN-07 | 方案與額度 | P3 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
-| PLAN-08 | 方案與額度 | P1 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
-| PLAN-09 | 方案與額度 | P3 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
-| PLAN-10 | 方案與額度 | P3 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
-| PLAN-11 | 方案與額度 | P3 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
-| PLAN-12 | 方案與額度 | P3 | AI 不在功能天花板的維度內，停用 AI 只能把 `monthlyTokens` 設成 `0` | 靜態確認 |
-| AI-01 | AI 用量與成本 | P2 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
-| USAGE-01 | AI 用量與成本 | P3 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
-| USAGE-02 | AI 用量與成本 | P2 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
-| SLA-01 | SLA | P1 | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
-| SLA-02 | SLA | P2 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
-| SLA-03 | SLA | P3 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
-| SLA-04 | SLA | P2 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
-| DEP-01 | 部署與應用程式 | P4 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
-| DEP-02 | 部署與應用程式 | P3 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
-| APP-01 | 部署與應用程式 | P3 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
-| APP-02 | 部署與應用程式 | P3 | Telegram 外掛未註冊 | 執行時確認 |
-| APP-03 | 部署與應用程式 | P4 | 啟動 log 少列 Threads | 執行時確認 |
-| APP-04 | 部署與應用程式 | P4 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
-| PKG-01 | 共用套件 | P4 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
-| PKG-02 | 共用套件 | P3 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
-| PKG-03 | 共用套件 | P4 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
-| PKG-04 | 共用套件 | P4 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
-| STO-01 | Storage、LLM 與資料庫 | P2 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
-| LLM-01 | Storage、LLM 與資料庫 | P2 | Ollama base URL 預設指向容器自己 | 執行時重現 |
-| LLM-02 | Storage、LLM 與資料庫 | P3 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
-| LLM-03 | Storage、LLM 與資料庫 | P3 | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 部分修正 |
-| DB-01 | Storage、LLM 與資料庫 | P2 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
-| CI-01 | CI 與測試 | P2 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
-| CI-02 | CI 與測試 | P3 | 沒有 CI workflow 執行 lint | 靜態確認 |
-| CI-03 | CI 與測試 | P4 | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
+| ID | 範圍 | 優先 | 處理狀態 | 問題 | 驗證狀態 |
+| --- | --- | --- | --- | --- | --- |
+| [RLS-01](#rls-01) | 租戶隔離與權限 | P1 | 未處理 | Canvas 引擎不走租戶連線 | 靜態確認 |
+| [RLS-02](#rls-02) | 租戶隔離與權限 | P1 | 未處理 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
+| [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
+| [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 未處理 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
+| [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
+| [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
+| [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
+| [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
+| [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
+| [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 只註冊在 platform 路由的 scope 內 | 靜態確認 |
+| [SEC-04](#sec-04) | 帳號與登入 | P1 | 未處理 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
+| [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | Workers 的渠道加密金鑰仍有硬編碼備援值 | 靜態確認 |
+| [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
+| [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
+| [TRIAL-01](#trial-01) | 試用 | P1 | 未處理 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
+| [TRIAL-02](#trial-02) | 試用 | P3 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
+| [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
+| [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
+| [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
+| [PLAN-03](#plan-03) | 方案與額度 | P3 | 未處理 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
+| [PLAN-04](#plan-04) | 方案與額度 | P2 | 未處理 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
+| [PLAN-05](#plan-05) | 方案與額度 | P2 | 未處理 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
+| [PLAN-06](#plan-06) | 方案與額度 | P2 | 未處理 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
+| [PLAN-07](#plan-07) | 方案與額度 | P3 | 未處理 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
+| [PLAN-08](#plan-08) | 方案與額度 | P1 | 未處理 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
+| [PLAN-09](#plan-09) | 方案與額度 | P3 | 未處理 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
+| [PLAN-10](#plan-10) | 方案與額度 | P3 | 未處理 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
+| [PLAN-11](#plan-11) | 方案與額度 | P3 | 未處理 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
+| [PLAN-12](#plan-12) | 方案與額度 | P3 | 未處理 | AI 不在功能天花板的維度內，停用 AI 只能把 `monthlyTokens` 設成 `0` | 靜態確認 |
+| [AI-01](#ai-01) | AI 用量與成本 | P2 | 未處理 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
+| [USAGE-01](#usage-01) | AI 用量與成本 | P3 | 未處理 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
+| [USAGE-02](#usage-02) | AI 用量與成本 | P2 | 已提建議 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
+| [SLA-01](#sla-01) | SLA | P1 | 未處理 | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
+| [SLA-02](#sla-02) | SLA | P2 | 未處理 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
+| [SLA-03](#sla-03) | SLA | P3 | 未處理 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
+| [SLA-04](#sla-04) | SLA | P2 | 未處理 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
+| [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
+| [APP-01](#app-01) | 部署與應用程式 | P3 | 未處理 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
+| [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | Telegram 外掛未註冊 | 執行時確認 |
+| [APP-03](#app-03) | 部署與應用程式 | P4 | 未處理 | 啟動 log 少列 Threads | 執行時確認 |
+| [APP-04](#app-04) | 部署與應用程式 | P4 | 未處理 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
+| [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
+| [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
+| [PKG-03](#pkg-03) | 共用套件 | P4 | 未處理 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
+| [PKG-04](#pkg-04) | 共用套件 | P4 | 未處理 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
+| [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
+| [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Ollama base URL 預設指向容器自己 | 執行時重現 |
+| [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
+| [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P3 | 部分修正 | API 宣告的 `OLLAMA_*` 只對 Chat 生成路徑生效 | 靜態確認 |
+| [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
+| [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
+| [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
+| [CI-03](#ci-03) | CI 與測試 | P4 | 未處理 | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
 
 ## 租戶隔離與權限
 
+<a id="rls-01"></a>
 ### RLS-01：Canvas 引擎不走租戶連線
 
 `packages/core/src/canvas/flow-runner.ts:6` 匯入 `@open333crm/database` 的 module-level `prisma` singleton。`packages/core/src/canvas/scheduler.ts:68` 與 `apps/api/src/modules/canvas/canvas.webhook.ts:6` 也用同一個 singleton。
@@ -99,6 +113,7 @@
 - 指向 superuser 或帶 BYPASSRLS 的 role（`.env.api.example` 的 `crm` 屬於這類）：Canvas 的所有讀寫跳過 RLS。
 - 指向 `app_tenant`：singleton 的連線沒有 `app.current_tenant`，policy fail-closed，`FlowRunner.run()` 在第一個 `findUniqueOrThrow` 就查不到列，Canvas 會靜默停止運作。
 
+<a id="rls-02"></a>
 ### RLS-02：身分合併審核端點沒有租戶檢查
 
 `apps/api/src/modules/canvas/canvas.routes.ts` 的第 177 與 183 行把路徑參數直接交給 `approveMerge(suggestionId, agentId)` 與 `rejectMerge(suggestionId, agentId)`，沒有傳入 `request.agent.tenantId`。
@@ -107,6 +122,7 @@
 
 兩層租戶隔離在這條路徑上都不生效：應用層沒有比對 `request.agent.tenantId`，資料層走的是不綁租戶的 singleton。持有 `identity.review` 權限的 agent 若取得其他租戶的建議 id，就能核准或駁回該筆建議。同一個檔案的 `listSuggestions()` 有收 `tenantId` 並寫進 `where`，不受這項影響。
 
+<a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
 
 `scripts/check-tenant-scoping.mjs:24` 與 `scripts/check-prisma-admin-usage.mjs:18` 的 `SCAN_DIR` 都是 `apps/api/src`。`packages/*` 不在掃描範圍，因此這兩道檢查攔不到 RLS-01 與 RLS-02 位於 `packages/core` 的程式碼。
@@ -115,6 +131,7 @@
 
 `packages/core` 另有三個檔案匯入同一個 singleton：`inbox/inbox-service.ts`、`contacts/contact-service.ts` 與 `identity/merge-suggestion-service.ts`。前兩個目前沒有任何 app 使用，情況與 PKG-03 相同。
 
+<a id="rls-04"></a>
 ### RLS-04：`.env.api.example` 沒有 `DATABASE_URL_TENANT`
 
 `apps/api/src/plugins/prisma.plugin.ts:31` 在 `DATABASE_URL_TENANT` 未設定時 fallback 到 `DATABASE_URL`。`.env.api.example` 只提供 `DATABASE_URL`（`crm`）與 `DATABASE_URL_ADMIN`，沒有 `DATABASE_URL_TENANT`。
@@ -123,6 +140,7 @@
 
 `apps/workers/src/index.ts:59` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
 
+<a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
 
 `packages/core/src/rbac/permissions.ts` 宣告 56 個權限碼（2026-09-24 核對）。其中 15 個在 `apps/api/src` 完全沒有出現：
@@ -153,6 +171,7 @@
 
 功能說明見[平台帳號認證](../modules/platform/AUTH.md)與[平台帳號管理](../modules/platform/PLATFORM-USERS.md)。
 
+<a id="auth-01"></a>
 ### AUTH-01：租戶端沒有密碼復原流程
 
 租戶使用者的密碼一律由「建立這個帳號的人」設定：
@@ -201,6 +220,7 @@ Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticat
 
 - **SEC-04 應先修。** 新增的是公開端點，擋暴力破解只能靠速率限制，而速率限制目前以可偽造的 `request.ip` 分組。
 
+<a id="auth-02"></a>
 ### AUTH-02：停用租戶不會中斷既有的連線與 token
 
 `PATCH /platform/tenants/:id/active` 把 `isActive` 設成 `false` 之後，三個存取面的反應不同：
@@ -223,6 +243,7 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 
 對照平台端：`authenticatePlatformSuperuser` 每個請求都回查 `platform_users`，停用即時生效，而平台後台沒有 Socket 或 CLI 通道。兩邊的差距不是刻意設計，是租戶端多了兩個當初沒有一起處理的入口。
 
+<a id="auth-03"></a>
 ### AUTH-03：平台帳號改密碼後，已發出的 token 仍然有效
 
 `auth.plugin.ts` 的 `authenticatePlatformSuperuser` 在驗完簽章後會查一次資料庫，但只檢查 `isActive` 與 `mustChangePassword`。`PlatformUser` 沒有 `tokenVersion` 或 `passwordChangedAt` 這類欄位，簽發時間無從比對。平台也沒有登出路由，登出只是前端丟掉 token。
@@ -239,6 +260,7 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 
 `auth.plugin.ts` 的註解寫「帳號停用或改密碼後立即生效」。這裡的「改密碼」指的是 `mustChangePassword` 旗標被重新標記，不是撤銷 token，讀起來容易誤會。
 
+<a id="auth-04"></a>
 ### AUTH-04：平台帳號沒有權限分級，也沒有第二因子
 
 所有平台帳號的 JWT 都帶 `role: 'PLATFORM_SUPERUSER'`，平台側沒有權限表。平台端也沒有 MFA 或 passkey；passkey 只有租戶端有。
@@ -255,6 +277,7 @@ B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登
 
 A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
 
+<a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
 
 `apps/api/src/modules/platform/platform-audit.service.ts` 的 `writePlatformAudit()` 把平台操作寫進 `platform_audit_logs`。`platform.routes.ts` 的異動路由呼叫它，服務層不重複寫，`trial-admin.service.ts` 第 58 行的註解說明了這個分工。
@@ -272,6 +295,7 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 
 `/platform-users/:id/audit-logs` 查得到的是該帳號的操作紀錄，不包含登入事件。
 
+<a id="sec-03"></a>
 ### SEC-03：rate-limit 只註冊在 platform 路由的 scope 內
 
 `apps/api/src/modules/platform/platform.routes.ts` 第 105 行在 `platformRoutes()` 函式內部註冊 `@fastify/rate-limit`：
@@ -289,6 +313,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
 
 `platform` 模組沒有任何測試，因此這個改動不會被測試擋下。拆分 `platform.routes.ts` 之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。
 
+<a id="sec-04"></a>
 ### SEC-04：`request.ip` 可由呼叫端偽造
 
 `apps/api/src/index.ts:97` 設定 `trustProxy: true`。這個值的意思是「信任所有上游」，Fastify 底層的 `proxy-addr` 因此取 `X-Forwarded-For` 的**最左邊**那一個位址當作 `request.ip`。最左邊是呼叫端自己寫的值。
@@ -322,6 +347,7 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 ## 金鑰與 License
 
+<a id="sec-01"></a>
 ### SEC-01：渠道加密金鑰備援值
 
 盤點時，API 的 `channel.service.ts` 與 Workers 的 `apps/workers/src/lib/credentials.ts` 都有同一個備援字串。缺少 `CREDENTIAL_ENCRYPTION_KEY` 時，兩個檔案都改用這個公開在原始碼中的字串。
@@ -333,6 +359,8 @@ Commit `f507fe1` 修正了 API 端：
 
 Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失不會讓 Workers 啟動失敗。Workers 只用這把金鑰解密，因此不會用備援值加密新資料。Workers 缺少金鑰時，這項設定錯誤要到 Workers 解密渠道憑證時才會出現。
 
+<a id="lic-01"></a>
+<a id="lic-02"></a>
 ### LIC-01、LIC-02：兩份 LicenseService
 
 `license.guard.ts` 使用 `apps/api/src/services/license.ts`。該實作直接建立寫死的授權資料，不會連線到授權伺服器。
@@ -343,6 +371,7 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 
 功能說明見[試用管理](../modules/platform/TRIALS.md)與[平台設定](../modules/platform/SETTINGS.md)。
 
+<a id="trial-01"></a>
 ### TRIAL-01：走 plan-change 升級的試用租戶到期仍會被停用
 
 試用租戶升級到付費方案有兩條路徑，兩條的結果不同：
@@ -369,6 +398,7 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 
 審核者沒有任何提示。`listPendingRequests()` 回傳 `currentPlan`，但不含 `trialEndsAt`，`/admin/plan-changes` 頁面也沒有顯示試用狀態。審核者在這個頁面按下核准時，不會知道這個動作不會讓租戶脫離試用。
 
+<a id="trial-02"></a>
 ### TRIAL-02：試用政策存在無型別的 KV
 
 試用政策的每個參數是 `PlatformSetting` 的一列，`value` 是任意 JSON。`PUT /settings/:key` 的驗證只有 `z.object({ value: z.unknown() })`，沒有鍵名白名單，也沒有值的型別與範圍。讀取端 `getTrialPolicy()` 只做 `typeof` 檢查，不符就改用 `DEFAULTS`。
@@ -426,6 +456,7 @@ PlatformSetting（KV，不知道型別）
 
 遷移：現有的 `trial.*` 各列要合併成一列 `trial`。可以讓讀取端在一段期間內相容兩種形狀，也可以寫一次性的 migration，合併之後刪除舊列。
 
+<a id="trial-03"></a>
 ### TRIAL-03：「資料保留天數」到期不會刪除任何資料
 
 `trial.dataRetentionDays` 在 `/admin/trial` 設定分頁的標籤是「到期後資料保留天數」。這個名稱承諾的是「保留期滿後刪除」，實作只有標記：
@@ -444,6 +475,7 @@ PlatformSetting（KV，不知道型別）
 
 功能說明見[方案與上限](../modules/platform/PLANS.md)與[方案異動審核](../modules/platform/PLAN-CHANGES.md)。
 
+<a id="plan-01"></a>
 ### PLAN-01：`Plan.isActive` 沒有讀取端
 
 `Plan.isActive` 的 schema 註解寫「停售軟下架」，`/admin/plans` 也能切換它。但整個 repo 沒有任何查詢以它為條件。
@@ -460,6 +492,7 @@ PlatformSetting（KV，不知道型別）
 
 這與 SLA-03 是同一種形狀：欄位有寫入端與介面，沒有讀取端，操作者以為的效果不會發生。
 
+<a id="plan-02"></a>
 ### PLAN-02：加購 token 是永久提高每月額度
 
 `approveRequest()` 核准 `token_topup` 時，把加購量加進 `tenant.limitOverrides.monthlyTokens`。
@@ -482,6 +515,7 @@ PlatformSetting（KV，不知道型別）
 
 **有效上限的解析邏輯有第二份副本。** `plan-change.service.ts:103` 自己重寫了一次「覆寫優先」的判斷，用 `overrides.monthlyTokens !== undefined`；`plan-limits.service.ts:16` 的 `resolveEffectiveLimit()` 用 `hasOwnProperty`。JSON 欄位存不出 `undefined`，所以兩者目前行為相同，但這是兩份會分歧的邏輯。`approveRequest()` 手上已經有 `limitOverrides` 與 `plan.limits`，可以直接呼叫 `resolveEffectiveLimit()`。
 
+<a id="plan-03"></a>
 ### PLAN-03：換方案不會回收既有的超額狀態
 
 租戶換方案有三個入口：平台改租戶方案（`updateTenant()`）、核准升級申請（`approveRequest()`）、試用轉正式（`convertToPaid()`）。三者都只寫 `planId`，以下三件事不會跟著改變。
@@ -504,6 +538,7 @@ PlatformSetting（KV，不知道型別）
 
 生產環境目前只跑一個 `api` 容器（`docker-compose.prod.yml` 沒有 replicas 設定），因此第三點尚未顯現。水平擴充時會出現。
 
+<a id="plan-04"></a>
 ### PLAN-04：功能天花板在收件匣一帶沒有咬合點
 
 方案用三種手段限制租戶，效力不同：
@@ -538,6 +573,7 @@ PlatformSetting（KV，不知道型別）
 
 成因見 RBAC-01。
 
+<a id="plan-05"></a>
 ### PLAN-05：加購過的租戶升級方案，額度反而變低
 
 `resolveEffectiveLimit()` 判斷 `limitOverrides` 有沒有這個 key，有就直接回傳覆寫值，不與方案的 `limits` 比大小。加購把覆寫值寫成「加購當時的方案額度 + 加購量」（見 PLAN-02），因此覆寫值綁的是**加購當時**的那個方案。
@@ -556,6 +592,7 @@ PlatformSetting（KV，不知道型別）
 
 PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額度，結果對租戶有利。這一項是同一個機制在升級方向上的結果，對租戶不利。
 
+<a id="plan-06"></a>
 ### PLAN-06：核准加購之後，當月的額度告警全部靜默
 
 `approveRequest()` 核准加購後呼叫 `clearTokenQuotaCache(req.tenantId)`，程式註解寫「讓硬擋重讀新額度」。這一行清掉的是用量計數器 `aiquota:{tenantId}:{YYYY-MM}`，不是告警旗標。
@@ -568,7 +605,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 真正需要清的是告警旗標 `aiquota-alert:{tenantId}:{YYYY-MM}:{level}`。`checkQuotaThresholdCrossing()` 用 `SET NX` 搶旗標做冪等，搶不到就不回報該門檻，而旗標的過期時間是月底。於是同一個月內第二次接近上限時，兩個門檻都不會再發通知：
 
 | 事件 | 有效上限 | 累計用量 | 跨越的門檻 | 是否通知 |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- |
 | 用量累積 | 200,000 | 160,000 | warning（80%） | 是，旗標寫入 |
 | 用量累積 | 200,000 | 200,000 | critical（100%） | 是，旗標寫入。之後被硬擋 |
 | 核准加購 300,000 | 500,000 | 200,000 | 無 | 無 |
@@ -579,6 +616,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 租戶也無法自己查。`getEffectiveLimit()` 的呼叫端都在伺服器端做判斷，沒有任何路由把上限或已用量回傳給租戶端；租戶側的 `/api/v1/plan-change` 只能列出自己的申請與發起新申請。這兩個門檻的告警是租戶唯一的資訊來源。
 
+<a id="plan-07"></a>
 ### PLAN-07：渠道的兩個分級欄位都沒有方案填過值
 
 `resolveEffectiveLimit()` 在方案的 `limits` 沒有某個 key 時回傳 `null`，而 `null` 代表無上限。缺少設定的結果是完全不限制。
@@ -609,6 +647,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 兩個機制的檢查程式碼都完整，缺的是方案資料。`/admin/plans` 兩個欄位都編輯得到，補上值就會生效。
 
+<a id="plan-08"></a>
 ### PLAN-08：角色權限的顯示與儲存都不套方案天花板
 
 租戶側「角色與權限」頁的勾選狀態來自資料庫的授予紀錄，與方案天花板無關。三個端點都不套天花板：
@@ -635,6 +674,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相反：天花板確實生效，但沒有任何介面反映它的存在。
 
+<a id="plan-09"></a>
 ### PLAN-09：改方案立即影響全體租戶，介面不顯示影響範圍
 
 `updatePlan()` 寫入後，`features` 或 `permissionOverrides` 有變動就呼叫 `invalidatePlanPermissions()` 清掉該方案所有租戶的天花板交集快取。下一個請求就會用新的天花板重算，沒有灰度，也沒有延遲。`/admin/plans` 的提示文字有寫「該方案所有租戶即時生效」。
@@ -649,6 +689,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 租戶端的感受見 PLAN-08：權限消失時，角色頁上那些權限仍然顯示為已勾選。
 
+<a id="plan-10"></a>
 ### PLAN-10：加購沒有金額紀錄，事後無法對帳
 
 這個系統不接金流。`Plan.priceMonthly` 的 schema 註解寫明「顯示用，不接金流」，資料庫也沒有帳單、發票或付款的資料表，沒有任何程式把用量或方案換算成應收金額。收費在系統外進行，這是設計決策，不是落差。
@@ -669,6 +710,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 `model_pricings` 不是租戶售價。它是各個 LLM 模型每 1M token 的單價，`platform-usage.service.ts` 用它算出平台自己的成本，顯示在 `/admin/usage`。
 
+<a id="plan-11"></a>
 ### PLAN-11：平台查不到已處理的方案異動申請
 
 `listPendingRequests()` 的查詢條件寫死 `status: 'pending'`，而平台側只有 `GET /api/v1/platform/plan-change-requests` 這一個列表端點。已核准與已駁回的申請一旦離開待審狀態，平台後台就再也看不到。
@@ -683,6 +725,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 連帶影響 PLAN-10。那一項提到加購量可以回頭加總 `plan_change_requests.topupTokens` 來還原，但平台後台沒有任何介面做得到這件事，只能直接查資料庫。
 
+<a id="plan-12"></a>
 ### PLAN-12：AI 不在功能天花板的維度內
 
 `packages/core/src/rbac/features.ts` 的 `FEATURES` 有八個 slug：`inbox`、`channels`、`automation`、`marketing`、`analytics`、`knowledge`、`portal`、`core`。**沒有 `ai`。** 因此方案的 `features` 陣列無法表達「這個方案不含 AI」，平台後台方案頁的功能勾選區也關不掉 AI。
@@ -719,6 +762,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 
 功能說明見[用量統計](../modules/platform/USAGE.md)。
 
+<a id="ai-01"></a>
 ### AI-01：BYOK 金鑰解密失敗會靜默退回平台金鑰
 
 BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platform/USAGE.md#哪些呼叫不算)。
@@ -744,6 +788,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 - **平台端沒有訊號。** 唯一的間接跡象是 `/admin/usage` 的成本上升，但那一頁不分 `keySource`（見 USAGE-01），看不出是哪些租戶，也看不出原因。
 - **租戶端要主動去看才知道。** `getTenantGeminiKeyStatus()` 解密失敗時回 `configured: true`，遮罩字串是「（無法解密）」。設定頁看得到這行字，但 AI 呼叫本身不會失敗，也沒有任何通知，租戶沒有理由去開那一頁。
 
+<a id="usage-01"></a>
 ### USAGE-01：用量頁沒有標示統計的母體與筆數上限
 
 `/admin/usage` 有標對的部分：頁首寫「僅計成功呼叫」，「AI 呼叫數」卡片的副標是「成功呼叫」，「總成本」卡片的副標是「平台承擔（不含 BYOK）」。這三句都與 `platform-usage.service.ts` 的實作相符。
@@ -763,6 +808,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 另有一處說明與實作不符，位置在原始碼裡。`platform-usage.service.ts` 開頭的註解寫「失敗成本為 0，計入次數但不計 token/cost」，但三個查詢的 `where` 都有 `success: true`，失敗的呼叫連次數都不算。介面與實作是一致的，只有這行註解是錯的，會誤導下一個改這支服務的人。
 
+<a id="usage-02"></a>
 ### USAGE-02：價目表沒有維護介面，缺價期間的成本永久記 0
 
 `ModelPricing` 以 `(model, effectiveFrom)` 版本化，結構本身支援調價。缺的是寫入途徑。
@@ -788,6 +834,7 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 功能說明見[服務水準協議](../modules/SLA.md)。
 
+<a id="sla-01"></a>
 ### SLA-01：`Case.firstResponseAt` 沒有寫入端
 
 `packages/database/prisma/schema.prisma:742` 宣告 `firstResponseAt`，對應的 migration 也建了欄位。三個地方讀這個欄位：
@@ -805,12 +852,14 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../modules/platfor
 
 這一項會持續產生假警報，不需要特定操作觸發。
 
+<a id="sla-02"></a>
 ### SLA-02：掃描每輪上限 100 張工單
 
 `apps/workers/src/handlers/sla.handler.ts` 的 `getActiveCases()` 用 `take: 100` 取工單，沒有 `orderBy`，也沒有租戶條件。這個上限是全系統共用，不是每個租戶各 100 張。
 
 全系統符合條件的工單超過 100 張時，超出的部分在該輪不會被檢查。沒有 `orderBy`，因此每輪取到哪 100 張由資料庫決定，不保證輪替。掃描間隔是 300 秒。
 
+<a id="sla-03"></a>
 ### SLA-03：`isDefault` 沒有讀取端
 
 `apps/api/src/modules/sla/sla.routes.ts` 的建立與修改路由各有一段邏輯，維持「同一優先級只有一條政策的 `isDefault` 是 `true`」。`apps/web/src/components/settings/SlaManagement.tsx` 也顯示這個標記。
@@ -823,6 +872,7 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 沒有 `isDefault: true`，也沒有 `orderBy`。同一優先級有多條政策時，挑中哪一條由資料庫決定，與 `isDefault` 無關。
 
+<a id="sla-04"></a>
 ### SLA-04：工單以政策名稱連結政策
 
 `SlaPolicy` 與 `Case` 之間沒有 relation。`Case.slaPolicy` 是 `String?`，存的是政策名稱。`case.service.ts` 建立工單時寫入 `slaPolicy: slaPolicy?.name`，`sla.handler.ts` 的 `getPolicy()` 再以 `findFirst({ where: { tenantId, name } })` 回查。
@@ -835,10 +885,12 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 ## 部署與應用程式
 
+<a id="dep-01"></a>
 ### DEP-01：殘留的 Video Worker 設定
 
 `apps/video-worker` 沒有原始碼與 `package.json`，但開發 Compose 仍保留 `nm_videoworker` volume 與掛載點。
 
+<a id="dep-02"></a>
 ### DEP-02：`.env.prod.example` 的變數送不到讀取它們的行程
 
 `docker-compose.prod.yml` 只把 `.env.prod` 掛給 nginx（:122）與 certbot（:135）。api、workers、web 各自讀 `.env.api`、`.env.workers`、`.env.web`。
@@ -861,56 +913,68 @@ nginx 的 entrypoint 只用 `DOMAIN`，certbot 的 entrypoint 只用 `DOMAIN` �
 
 CI 的部署不走這條路徑。`.github/workflows/deploy.yml` 用的是 `docker-compose.yml`，而且有一步檢查 `.env.web`、`.env.api`、`.env.workers` 是否存在，缺一個就讓部署失敗。因此這個落差只影響照 `docker-compose.prod.yml` 手動部署的人。
 
+<a id="app-01"></a>
 ### APP-01：兩套 SLA 機制
 
 `packages/core/src/cases/case-service.ts` 在模組載入時建立 `sla-monitoring` consumer。任何匯入 `@open333crm/core` 的程序都會產生副作用。`apps/workers` 另有正式的 `sla` consumer，因此 Redis 同時出現 `sla` 與 `sla-monitoring`。
 
 執行時匯入 `@open333crm/core` 會立即建立 Redis 連線，證實模組載入具有副作用。
 
+<a id="app-02"></a>
 ### APP-02：Telegram 未註冊
 
 渠道套件只匯出 `TelegramPlugin` 類別，沒有 `telegramPlugin` 實例。API 因此無法將 Telegram 傳給 `registerChannelPlugin()`。執行時檢查顯示 LINE、Facebook、WebChat、Threads 已註冊，Telegram 未註冊。
 
+<a id="app-03"></a>
 ### APP-03：啟動 log 過時
 
 API 啟動 log 寫死為 `LINE, FB, WEBCHAT`，但實際註冊表也包含 Threads。
 
+<a id="app-04"></a>
 ### APP-04：Worker 檔名與內容不符
 
 API 的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue producer。真正的 consumer 位於 `apps/workers`。
 
 ## 共用套件
 
+<a id="pkg-01"></a>
 ### PKG-01：重複的渠道型別
 
 `packages/types` 與 `packages/shared` 都定義 `ChannelType`、`MessageContentType`。兩份定義目前相同，但沒有同步機制。
 
+<a id="pkg-02"></a>
 ### PKG-02：錯誤的 Facebook 子路徑
 
 `channel-plugins` 的 `./fb` export 指向 `dist/fb/index.js`，實際輸出位於 `dist/facebook/index.js`。容器內執行 `import('@open333crm/channel-plugins/fb')` 會回傳 `ERR_MODULE_NOT_FOUND`。
 
+<a id="pkg-03"></a>
+<a id="pkg-04"></a>
 ### PKG-03、PKG-04：未接線套件仍持續建置
 
 `brain` 沒有 app 使用者；`ui` 只有空匯出。兩者仍由開發環境的 `packages` 服務建置並啟動 watch process。
 
 ## Storage、LLM 與資料庫
 
+<a id="sto-01"></a>
 ### STO-01：Workers 無法連線 MinIO
 
 Workers 的 `MinioStorageProvider` 讀取 `MINIO_*`，但 `.env.workers` 提供 `S3_*`。`STORAGE_PROVIDER` 也沒有程式讀取。Provider 最後採用 `localhost:9000`，在 Workers 容器內會連回自己。
 
 執行時呼叫 `listBuckets()` 已重現 `ECONNREFUSED`。
 
+<a id="llm-01"></a>
 ### LLM-01：Ollama 位址錯誤
 
 `tenant_settings.chatBaseUrl` 與 `embeddingBaseUrl` 預設為 `http://localhost:11434`。在 API 容器內，這個位址指向 API 自己，不是 `ollama` 容器。執行時連線已重現 `Connection refused`。
 
 Chat 生成路徑已有一層補救，做法見 LLM-03。Embedding 路徑沒有這層補救，仍然直接使用 `tenant_settings.embeddingBaseUrl`。
 
+<a id="llm-02"></a>
 ### LLM-02：Chat 模型預設不一致
 
 Compose 預設下載 `qwen2.5:0.5b`；資料庫欄位預設為 `qwen2.5:3b`。開發環境沒有 Ollama，因此只確認兩邊設定值不同。
 
+<a id="llm-03"></a>
 ### LLM-03：部分生效的 API 環境變數
 
 Chat 與 Embedding 的實際設定來自 `tenant_settings`，不是環境變數。commit `ee251c8` 為其中一條路徑加上補救：`apps/api/src/modules/ai/providers/ollama.provider.ts` 的 `generate()` 與 `generateToolTurn()` 在租戶設定的 `baseUrl` 等於預設值 `http://localhost:11434` 時，改讀 `process.env.OLLAMA_BASE_URL`。
@@ -924,6 +988,7 @@ Chat 與 Embedding 的實際設定來自 `tenant_settings`，不是環境變數�
 
 `OLLAMA_EMBED_MODEL` 與 `OLLAMA_CHAT_MODEL` 仍然沒有任何程式讀取。
 
+<a id="db-01"></a>
 ### DB-01：向量維度不一致
 
 Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embedding` 與 `long_term_memories.embedding` 欄位都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，直接寫入會被資料庫拒絕。
@@ -932,14 +997,17 @@ Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embeddi
 
 盤點時，`.github/workflows/ci.yml` 只執行 RLS 隔離測試，lint 步驟只輸出略過訊息。之後有 commit 刪除了 `ci.yml`，刪除經過見 `AGENTS.md` 的「CI gates」一節。目前唯一的 workflow 是 `deploy.yml`，它只負責部署到 UAT，不執行測試或 lint。
 
+<a id="ci-01"></a>
 ### CI-01：沒有 CI 執行 API 測試
 
 沒有任何 CI workflow 執行 API 測試。API 測試也沒有統一入口。
 
+<a id="ci-02"></a>
 ### CI-02：沒有 CI 執行 lint
 
 `eslint.config.js` 與 `pnpm lint` 已存在，但沒有任何 CI workflow 執行 lint。
 
+<a id="ci-03"></a>
 ### CI-03：測試工具未整合
 
 測試檔使用 Vitest API，卻由 `tsx` 個別執行。專案無法使用 Vitest 的統一執行、覆蓋率及 watch mode。
