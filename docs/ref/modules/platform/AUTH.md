@@ -33,6 +33,8 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 - 帳號被停用，手上未過期的 token 立刻失效，回 401 `PLATFORM_USER_DISABLED`。
 - `mustChangePassword` 被重新標記（例如平台重寄開通信），下一個請求就被擋。
 
+改密碼則不同。這個查詢不比對密碼變更時間，因此自助改密碼與忘記密碼後的重設，都不會讓已發出的 token 失效，見 `../../system/AUDIT.md` 的 AUTH-03。
+
 代價是每個平台請求都多一次資料庫查詢。租戶側的 `authenticate` 沒有這一步，停用的生效時機因存取面而異，見[租戶管理](./TENANTS.md#停用租戶多久生效)。
 
 ## 臨時密碼與兩組 guard

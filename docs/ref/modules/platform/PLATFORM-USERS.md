@@ -7,7 +7,7 @@
 
 ## 沒有角色分級
 
-所有平台帳號的權限相同。JWT 只帶一種 `role`，值固定是 `PLATFORM_SUPERUSER`，平台側也沒有相當於租戶 RBAC 的權限表。能登入平台後台，就能做這個模組的每一件事，包含建立與停用其他平台帳號。
+所有平台帳號的權限相同。JWT 只帶一種 `role`，值固定是 `PLATFORM_SUPERUSER`，平台側也沒有相當於租戶 RBAC 的權限表。能登入平台後台，就能做這個模組的每一件事，包含建立與停用其他平台帳號。平台端也沒有 MFA 或 passkey，見 `../../system/AUDIT.md` 的 AUTH-04。
 
 ## 建立帳號時不輸入密碼
 
@@ -49,7 +49,7 @@
 
 ## 修改帳號
 
-`PATCH /platform-users/:id` 只能改姓名與 email，而且至少要給一個欄位。email 換成別人已在用的值回 409 `CONFLICT`。改 email 不會通知對方，也不會影響他手上的 token，因為 token 認的是帳號 id。
+`PATCH /platform-users/:id` 只能改姓名與 email，而且至少要給一個欄位。email 換成別人已在用的值回 409 `CONFLICT`。改 email 不會通知對方，也不會影響他手上的 token，因為 token 認的是帳號 id。搭配忘記密碼，同級帳號可以藉此接管另一個帳號，見 `../../system/AUDIT.md` 的 AUTH-04。
 
 介面看不到密碼雜湊與重設 token，列表與明細都只回傳 `PUBLIC_SELECT` 的欄位。
 

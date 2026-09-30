@@ -4,6 +4,23 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-09-30：平台模組的設計缺陷補查，新增 AUTH-03、AUTH-04、TRIAL-03
+
+起因是請求再看一次平台模組有沒有漏掉的設計缺陷。做法是回頭比對平台各領域文件已記的事實，哪些還沒有對應的 AUDIT 項目，再逐項回原始碼確認。
+
+| 新項目 | 判定依據 |
+| --- | --- |
+| AUTH-03 | `authenticatePlatformSuperuser` 只查 `isActive` 與 `mustChangePassword`；`PlatformUser` 沒有 `tokenVersion` 或 `passwordChangedAt`；平台沒有登出路由 |
+| AUTH-04 | JWT 的 `role` 固定是 `PLATFORM_SUPERUSER`；`apps/api/src/modules/platform/` 找不到 MFA、TOTP、passkey 或 WebAuthn；`updatePlatformUser()` 改 email 時不寄信 |
+| TRIAL-03 | `purgedAt` 的寫入端只有排程，讀取端只有狀態顯示與復原；全 repo 沒有依 `tenantId` 刪除業務資料的程式，也沒有刪除租戶的路由 |
+
+查證後確認沒有問題、不開項目的部分：
+
+- 入站 webhook 在 `webhook.service.ts:58` 檢查 `tenant.isActive`，停用的租戶不會繼續收訊息，也不會觸發 AI 自動回覆。
+- `mustChangePassword` 在 `platform.routes.ts:152` 的 guard 確實有擋，改密碼以外的操作都會被拒。
+- `PATCH /platform-users/:id` 寫 `platform_user.update` 稽核，payload 是請求內容，改 email 會留下紀錄。
+- 平台臨時密碼以明文 email 寄送，但有 `mustChangePassword` 強制首次登入就改密碼，屬於常見做法。
+
 ## 2026-09-30：平台 KV 設定的寫入與讀取，新增 TRIAL-02
 
 起因是[平台設定](../modules/platform/SETTINGS.md)描述的 KV 做法缺點很多，要為它提出修正方向。做法是追完一個設定值從寫入到被使用的整條路徑：`/admin/trial` 設定分頁、`PUT /settings/:key`、`getTrialPolicy()`，以及各參數在 `trial.service.ts` 與 `trial.scheduler.ts` 的使用處。

@@ -59,7 +59,7 @@
 | `trial.durationDays` | 14 | 開通時 `trialEndsAt` 距今幾天 |
 | `trial.reminderDaysBefore` | `[7, 1]` | 剩餘幾天時寄提醒 |
 | `trial.verifyTokenTtlHours` | 24 | 驗證信連結的有效時數 |
-| `trial.dataRetentionDays` | 30 | 到期後幾天標記軟刪 |
+| `trial.dataRetentionDays` | 30 | 到期後幾天標記軟刪。只標記，不刪任何資料，見 AUDIT 的 TRIAL-03 |
 | `trial.planSlug` | `trial` | 開通時綁定的方案 |
 
 ## 清單上的狀態怎麼判定
@@ -91,7 +91,7 @@
 
 `convertToPaid(tenantId, planSlug)` 改 `planId`、把 `trialEndsAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是 `trial` 時擋下。
 
-`restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。
+`restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。
 
 `resendVerification(signupId)` 重寄驗證信，而且**刻意繞過使用者端的重寄節流**，避免平台人員的操作靜默失敗。只有 `pending_verification` 的申請能重寄，其餘回 400。
 

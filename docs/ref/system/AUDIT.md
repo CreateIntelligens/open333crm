@@ -51,6 +51,7 @@
 | SLA-04 | SLA | P2 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
 | TRIAL-01 | 試用與方案 | P1 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
 | TRIAL-02 | 試用與方案 | P3 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
+| TRIAL-03 | 試用與方案 | P2 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
 | PLAN-01 | 試用與方案 | P3 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | PLAN-02 | 試用與方案 | P3 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | PLAN-03 | 試用與方案 | P3 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
@@ -74,6 +75,8 @@
 | SEC-04 | Security | P1 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
 | AUTH-01 | Security | P2 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
 | AUTH-02 | Security | P2 | 停用租戶不會中斷既有的 Socket 連線，CLI token 也不受影響 | 靜態確認 |
+| AUTH-03 | Security | P2 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
+| AUTH-04 | Security | P2 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
 | RBAC-01 | Security | P1 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
 | CI-01 | CI | P2 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | CI-02 | CI | P3 | 沒有 CI workflow 執行 lint | 靜態確認 |
@@ -348,6 +351,20 @@ PlatformSetting（KV，不知道型別）
 其餘項目併入殼層：`trial.planSlug` 加進設定分頁，PLAN-01 修好之後一併檢查方案未停售；前端 `saveSetting()` 補上 `catch`，顯示殼層回傳的 422 欄位錯誤。
 
 遷移：現有的 `trial.*` 各列要合併成一列 `trial`。可以讓讀取端在一段期間內相容兩種形狀，也可以寫一次性的 migration，合併之後刪除舊列。
+
+### TRIAL-03：「資料保留天數」到期不會刪除任何資料
+
+`trial.dataRetentionDays` 在 `/admin/trial` 設定分頁的標籤是「到期後資料保留天數」。這個名稱承諾的是「保留期滿後刪除」，實作只有標記：
+
+- `trial.scheduler.ts` 的第二輪掃描在保留期滿時，只把 `tenant.purgedAt` 設成當下，原始碼註解也寫明「標記，不真刪 DB，可復原」。
+- `purgedAt` 的讀取端只有平台後台的狀態顯示（`trial-admin.service.ts`）與復原功能 `restorePurgedTenant()`。
+- 全 repo 沒有任何程式依 `tenantId` 刪除業務資料，平台也沒有刪除租戶的路由。
+
+因此一個試用過就離開的租戶，他的聯繫人、對話、訊息會一直留在資料庫裡。這些資料的主體是**租戶的客戶**，不是租戶本身。營運方若依這個設定對外說明保留期限，實際上做不到。
+
+`purgedAt` 帶來的唯一行為差異是平台清單上的狀態顯示「已清除」。租戶在試用到期時已經被停用，因此標記前後，租戶端的存取沒有任何改變。入站 webhook 在停用時就已經不處理（`webhook.service.ts:58` 檢查 `tenant.isActive`），也與 `purgedAt` 無關。
+
+`trial.enabled` 的預設值是 `false`。正式環境若從未開放試用，目前沒有受影響的資料。這一點要到線上確認。
 
 ### PLAN-01：`Plan.isActive` 沒有讀取端
 
@@ -841,6 +858,38 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 停用個別成員的情況比較好但不完整：CLI 端有 `agent.isActive` 的檢查會擋下，Socket 端同樣不會斷線。
 
 對照平台端：`authenticatePlatformSuperuser` 每個請求都回查 `platform_users`，停用即時生效，而平台後台沒有 Socket 或 CLI 通道。兩邊的差距不是刻意設計，是租戶端多了兩個當初沒有一起處理的入口。
+
+### AUTH-03：平台帳號改密碼後，已發出的 token 仍然有效
+
+`auth.plugin.ts` 的 `authenticatePlatformSuperuser` 在驗完簽章後會查一次資料庫，但只檢查 `isActive` 與 `mustChangePassword`。`PlatformUser` 沒有 `tokenVersion` 或 `passwordChangedAt` 這類欄位，簽發時間無從比對。平台也沒有登出路由，登出只是前端丟掉 token。
+
+所以以下三種操作都不會讓已發出的 token 失效：
+
+| 操作 | 位置 |
+| --- | --- |
+| 自助改密碼 | `platform-password-recovery.service.ts` 的改密碼函式 |
+| 忘記密碼後重設 | 同一檔案的重設函式 |
+| 登出 | 沒有伺服器端路由 |
+
+情境是平台帳號外洩。管理者發現後重設密碼，攻擊者手上的 JWT 仍然可以用到過期為止，期限是 `PLATFORM_JWT_EXPIRES_IN`（預設 `2h`）。能立刻止血的只有停用帳號，而停用會連帳號本人一起擋掉。
+
+`auth.plugin.ts` 的註解寫「帳號停用或改密碼後立即生效」。這裡的「改密碼」指的是 `mustChangePassword` 旗標被重新標記，不是撤銷 token，讀起來容易誤會。
+
+### AUTH-04：平台帳號沒有權限分級，也沒有第二因子
+
+所有平台帳號的 JWT 都帶 `role: 'PLATFORM_SUPERUSER'`，平台側沒有權限表。平台端也沒有 MFA 或 passkey；passkey 只有租戶端有。
+
+這個身分可以跨租戶開通、停用、改方案、看用量，也能建立與停用其他平台帳號。單一密碼就是全部權限，而登入端點的速率限制又能透過 SEC-04 繞過。
+
+**同級帳號之間可以互相接管。**
+
+1. 平台帳號 A 以 `PATCH /platform-users/:id` 把帳號 B 的 email 改成自己的。系統不通知 B，B 手上的 token 也不受影響，因為 token 認的是帳號 id。
+2. A 對這個 email 呼叫忘記密碼，重設信寄到 A 手上。
+3. A 重設 B 的密碼，之後以 B 的身分登入。
+
+B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登不進來，而 B 自己走忘記密碼，信會寄到 A 的信箱。
+
+A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
 
 ### RBAC-01：部分權限碼沒有強制點
 
