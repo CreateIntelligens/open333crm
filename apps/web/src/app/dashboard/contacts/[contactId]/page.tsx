@@ -115,7 +115,9 @@ export default function ContactDetailPage() {
                   id: ci.id,
                   channelType: ci.channelType || ci.channel?.channelType || '',
                   externalId: ci.uid || '',
-                  displayName: ci.profileName || ci.channel?.displayName,
+                  displayName: ci.profileName || undefined,
+                  // 同一租戶可能接多個 LINE OA／粉專，要顯示是哪一個渠道
+                  channelName: ci.channel?.displayName,
                 })),
                 tags: (
                   contact.tags as Array<{

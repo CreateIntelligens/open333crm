@@ -452,7 +452,11 @@ export function ChannelFormDialog({
 
             {/* 跨渠道綁定導流識別（僅編輯 LINE／FB／IG 時顯示，獨立儲存） */}
             {isEditing && channel && (
-              <ChannelBindingHandleField channelId={channel.id} channelType={channel.channelType} />
+              <ChannelBindingHandleField
+                channelId={channel.id}
+                channelType={channel.channelType}
+                channelName={channel.displayName}
+              />
             )}
 
             {/* Webhook URL (shown for editing) */}

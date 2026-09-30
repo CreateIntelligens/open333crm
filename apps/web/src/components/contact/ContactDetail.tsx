@@ -21,6 +21,7 @@ interface ContactDetailProps {
       channelType: string;
       externalId: string;
       displayName?: string;
+      channelName?: string;
     }>;
     tags?: Array<{
       id: string;

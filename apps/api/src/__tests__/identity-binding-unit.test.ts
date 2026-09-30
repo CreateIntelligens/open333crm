@@ -8,6 +8,7 @@ import { bumpCounter, extractBindingCode, generateBindingCode } from '../modules
 import { memBindingStore } from './helpers/mem-binding-store.js';
 import {
   buildBindingLink,
+  channelDisplayLabel,
   buildInviteText,
   matchesKeyword,
   parseIdentityBindingSettings,
@@ -109,4 +110,11 @@ test('頻率計數器：沒有效期的 key（例如 INCR 與設效期之間過�
   assert.ok((await store.pttl('k')) > 0, '補上效期');
   clock.now += 1001;
   assert.equal(await bumpCounter(store, 'k', 1000), 1, '過期後重新計數');
+});
+
+test('渠道稱呼：類型加渠道名稱，沒有名稱時只顯示類型', () => {
+  assert.equal(channelDisplayLabel('LINE', '總店官方帳號'), 'LINE（總店官方帳號）');
+  assert.equal(channelDisplayLabel('THREADS', ' 官方 IG '), 'Instagram（官方 IG）');
+  assert.equal(channelDisplayLabel('FB', ''), 'Facebook');
+  assert.equal(channelDisplayLabel('FB', null), 'Facebook');
 });

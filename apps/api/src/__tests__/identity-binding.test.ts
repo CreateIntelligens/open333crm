@@ -262,7 +262,7 @@ scenario('兌換：LINE 送出（改動過的）預填文字 → 合併、寫 Id
   assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.line.contactId, '送出代碼還不會合併');
   const prompt = f.sent.at(-1)!;
   assert.equal(prompt.conversationId, f.line.conversationId);
-  assert.ok(prompt.text.includes('Facebook 帳號「A-fb」'), '確認訊息顯示要綁定的對方帳號名稱');
+  assert.ok(prompt.text.includes('Facebook（測試粉專）帳號「A-fb」'), '確認訊息顯示對方的渠道名稱與帳號名稱');
   assert.ok(prompt.text.includes('確認綁定'));
 
   const confirm = await detectBindingIntent(f.tx, {
@@ -292,6 +292,9 @@ scenario('兌換：LINE 送出（改動過的）預填文字 → 合併、寫 Id
   const bound = f.sent.filter((s) => s.text.startsWith('已完成帳號綁定'));
   assert.deepEqual(bound.map((s) => s.conversationId).sort(), [f.fb.conversationId, f.line.conversationId].sort());
   assert.ok(bound.every((s) => s.text.includes('解除綁定')), '通知含解除方式');
+  // 同一租戶可能接多個 LINE OA／粉專：通知要寫出是哪一個渠道
+  assert.ok(bound.find((s) => s.conversationId === f.line.conversationId)!.text.includes('Facebook（測試粉專）'));
+  assert.ok(bound.find((s) => s.conversationId === f.fb.conversationId)!.text.includes('LINE（測試 LINE）'));
 });
 
 scenario('安全：轉傳的連結被別人點開，只要不回覆確認就不會合併（逾時後也不會）', async (f) => {

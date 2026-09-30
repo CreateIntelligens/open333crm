@@ -94,6 +94,16 @@ export function channelLabel(channelType: string): string {
   return CHANNEL_LABEL[channelType] ?? channelType;
 }
 
+/**
+ * 給顧客看的渠道稱呼：類型加上渠道名稱，例如「LINE（總店官方帳號）」。
+ * 同一租戶可能接多個 LINE OA／粉專，只寫「LINE」顧客分不出是哪一個。
+ */
+export function channelDisplayLabel(channelType: string, displayName?: string | null): string {
+  const label = channelLabel(channelType);
+  const name = displayName?.trim();
+  return name ? `${label}（${name}）` : label;
+}
+
 /** 發碼後回覆顧客的訊息（純文字，四個渠道都能顯示；不放 emoji） */
 export function buildInviteText(links: BindingLink[], code: string): string {
   const minutes = Math.round(BINDING_CODE_TTL_MS / 60000);
@@ -115,6 +125,9 @@ export function buildInviteText(links: BindingLink[], code: string): string {
   ].join('\n\n');
 }
 
+/** 「LINE 帳號」／「LINE（總店）帳號」：全形括號後不留空格 */
+const accountOf = (label: string) => `${label}${label.endsWith('）') ? '' : ' '}帳號`;
+
 export const BINDING_TEXT = {
   noTargets: '目前沒有其他可以綁定的帳號。',
   rateLimited: '綁定連結申請次數過多，請一小時後再試。',
@@ -124,10 +137,10 @@ export const BINDING_TEXT = {
   channelConflict: '無法綁定：同一個渠道只能綁定一個帳號。若這不是您本人的帳號，請不要使用別人轉傳的代碼。',
   unbindExpired: '綁定已超過 7 天，無法自行解除，請聯繫客服協助。',
   confirmPrompt: (otherLabel: string, otherName: string, confirmKeyword: string, minutes: number) =>
-    `您正在把這個帳號與 ${otherLabel} 帳號「${otherName}」綁定，綁定後兩邊的對話紀錄、點數會合併在一起。\n\n確定是您本人的帳號，請於 ${minutes} 分鐘內回覆「${confirmKeyword}」。\n如果不是您本人申請的，請不要回覆，也不要把代碼或連結轉給別人。`,
+    `您正在把這個帳號與 ${accountOf(otherLabel)}「${otherName}」綁定，綁定後兩邊的對話紀錄、點數會合併在一起。\n\n確定是您本人的帳號，請於 ${minutes} 分鐘內回覆「${confirmKeyword}」。\n如果不是您本人申請的，請不要回覆，也不要把代碼或連結轉給別人。`,
   noPending: '目前沒有待確認的綁定，可能已超過時間。請回到原本的對話重新取得代碼。',
   bound: (otherLabel: string, unbindKeyword: string) =>
-    `已完成帳號綁定：此帳號已與您的 ${otherLabel} 帳號合併為同一位顧客。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
+    `已完成帳號綁定：此帳號已與您的 ${accountOf(otherLabel)}合併為同一位顧客。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
   unbound: '已解除帳號綁定，兩個帳號恢復為各自獨立。',
   deliveryFailed: '綁定通知沒有送到顧客（綁定結果不受影響）',
 } as const;

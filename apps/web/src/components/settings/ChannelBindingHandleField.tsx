@@ -36,7 +36,16 @@ const HANDLE_LABEL: Record<string, { label: string; placeholder: string; hint: s
  * 跨渠道綁定用的導流識別：產生加好友／m.me／ig.me 連結時使用。
  * 按「驗證」時系統會自動取得；自動取得不到或要改用其他值時可在此手動填寫。
  */
-export function ChannelBindingHandleField({ channelId, channelType }: { channelId: string; channelType: string }) {
+export function ChannelBindingHandleField({
+  channelId,
+  channelType,
+  channelName,
+}: {
+  channelId: string;
+  channelType: string;
+  /** 正在編輯的渠道名稱：同一租戶可能接多個 LINE OA／粉專，標題要看得出是哪一個 */
+  channelName?: string;
+}) {
   const meta = HANDLE_LABEL[channelType];
   const [view, setView] = useState<BindingHandleView | null>(null);
   const [value, setValue] = useState('');
@@ -89,7 +98,10 @@ export function ChannelBindingHandleField({ channelId, channelType }: { channelI
   return (
     <div className="space-y-2 rounded-lg border p-3">
       <div>
-        <p className="text-sm font-medium">跨渠道綁定：{meta.label}</p>
+        <p className="text-sm font-medium">
+          跨渠道綁定：{meta.label}
+          {channelName && <span className="ml-1 font-normal text-muted-foreground">（{channelName}）</span>}
+        </p>
         <p className="text-xs text-muted-foreground">
           顧客要綁定此帳號時，系統用它產生連結。{meta.hint}
         </p>
