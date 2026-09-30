@@ -70,3 +70,46 @@
 - [x] 8.3 本機端到端驗證：以真實入站管線 + 真實 Redis 模擬 FB 發碼、LINE 兌換，並在瀏覽器驗證設定頁、渠道導流識別、聯絡人合併紀錄與解除、收件匣代發按鈕（2026-09-29 完成）；LINE/FB/IG 真機驗證留 UAT（見 0.4）
 - [x] 8.4 更新 `CHANGELOG.md`（`## [YYYY-MM-DD]` 格式）
 - [x] 8.5 部署清單：migration、既有渠道補抓導流識別 script、租戶啟用說明；記錄優惠券分支 rebase 時須把 `CouponInstance` 加入合併搬移清單
+
+## 9. 未完成／後續事項（2026-09-30 整理）
+
+### 9.1 本 change 上線前必做
+
+- [ ] 9.1.1 push 分支並開 PR（目前 13 個 commit 皆只在本地）
+- [ ] 9.1.2 UAT 部署：2 支 migration（`20260929100000_add_contact_merge_log`、`20260929110000_add_identity_binding_settings`）、跑 `backfill-binding-handles.ts` 補抓既有渠道導流識別（見 design.md Migration Plan）
+- [ ] 9.1.3 UAT 真機驗證（即 0.4）：FB／IG 新舊對話四種情境、LINE 加好友流程、**兌換後回覆「確認綁定」的確認步驟**、解除綁定、客服代發按鈕
+- [ ] 9.1.4 第六輪 review 的修正（2b2622f）尚未再經 review；是否再跑一輪由負責人決定
+
+### 9.2 demo 觀察到、尚未改善的體驗
+
+- [ ] 9.2.1 LINE「送出代碼」連結的預填中文被編碼成很長的 `%E6%88%91…`，顧客可能不敢點；考慮縮短預填文字（例如只放代碼）
+- [ ] 9.2.2 網站客服（WebChat）視窗內的網址是純文字、不能點（LINE／FB 會自動變連結，不受影響）
+
+### 9.3 本次發現、建議另開單（不在本 change 範圍）
+
+- [ ] 9.3.1 **聯絡人路由幾乎全無權限守門**：`contact.view`／`contact.update` 權限點有定義但多數 `/api/v1/contacts/*` 路由沒套；本次只補了合併、解除、代發綁定連結
+- [ ] 9.3.2 Redis 連線單例重複：passkey、downstream-loop-guard、identity-binding 各自 `new IORedis`，建議抽共用 client
+- [ ] 9.3.3 移除 `fan/auth` 後暫無簽發 fan token 的路徑，粉絲門戶受保護路由（活動、點數）暫不可用；待優惠券分支 Account Link 或 P2 會員登入頁接上
+- [ ] 9.3.4 `check-prisma-admin-usage --strict` 在 main 上就失敗（shortlink-redirect、portal-public 共 5 處），非本次造成
+- [ ] 9.3.5 `.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
+- [ ] 9.3.6 Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
+- [ ] 9.3.7 API 啟動 log 寫「Registered channel plugins: LINE, FB, WEBCHAT」漏了 THREADS（實際有註冊，僅文字過時）
+
+### 9.4 與其他分支的交集
+
+- [ ] 9.4.1 優惠券分支 `feat/coupon-system` rebase 後：把 `CouponInstance`（帶 contactId）加入 `contact-merge.service.ts` 搬移清單與解除搬回；更新該 change 的 D6「不做跨渠道歸戶」描述
+
+### 9.5 後續階段（另開 change）
+
+- [ ] 9.5.1 P2：會員登入頁（比對客戶會員 API／串客戶自家登入）→ 登入後發綁定代碼
+- [ ] 9.5.2 P3：簡訊／Email OTP、LIFF 版綁定頁、後台身分衝突清單、手機重複合併建議（`detectPhoneDuplicates` 目前無呼叫者）
+
+### 9.6 測試覆蓋缺口
+
+- [ ] 9.6.1 缺路由層測試：`/channels/:id/binding-handle` 非法 id 回 400、`/contacts/identity-binding/status`、`/contacts/:id/binding-link` 的 CM-173 渠道存取守門
+- [ ] 9.6.2 `inTransaction` 擋 tenant-scoped client 的守門、stitcher 排除封存聯絡人，目前沒有專屬測試
+
+### 9.7 本機環境（demo 用，驗證完需清理）
+
+- [ ] 9.7.1 本機仍在執行：API（3001）、前端 dev（3002）；3000 是 9/15 起的舊 next-server（非本次啟動）
+- [ ] 9.7.2 本機 DB 有兩個 demo 假渠道（名稱含「demo 用可刪」）與 demo 期間產生的聯絡人／對話；租戶設定 `identityBinding` 目前為**開啟**，清理時改回 `{}`
