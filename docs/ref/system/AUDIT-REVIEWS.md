@@ -16,6 +16,8 @@
 
 **文件修正。** `tenant/AUTOMATION.md` 與 `tenant/CHANNELS.md` 的限制表補上 CHAN-02。
 
+**`AGENTS.md` 規則 5 補上例外。** 規則 1 到 4 都列出不符合規則的模組，規則 5 原本沒有。以 grep 列出 `apps/api/src` 與 `apps/workers/src` 所有比較 `channelType` 的地方，分成改變行為的分支（`conversation`、`channel`、`csat`、`webhook`、`marketing`，以及 workers 的 `channel-delivery.ts`）與只擋不支援渠道的檢查；再以 grep 列出直接呼叫 `api.line.me`、`graph.facebook.com`、`graph.instagram.com` 的服務。規則 5 原本寫「在 `apps/api/src/index.ts` 註冊外掛」，漏了 workers 另有一份註冊表，這正是 CHAN-02 的成因，一併補上。
+
 ## 2026-09-30：撰寫事件與背景工作文件，新增四個項目
 
 起因是新增[事件與背景工作](../modules/EVENTS.md)。做法是以腳本列出 `AppEventName` 的每個事件在 `apps/api/src` 的 `eventBus.publish` 與 `eventBus.subscribe`，再逐一對照每個 `new Queue(` 與 `apps/workers` 的 `new Worker(`、兩條 Redis 轉發頻道，以及 API 行程內的每個 `setInterval`。

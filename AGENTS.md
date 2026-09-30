@@ -195,8 +195,33 @@ Four imports today reach past the service layer: `ai/kb-autoreply.service.ts` im
 ### 5. Channel differences go through the plugin registry
 
 Resolve per-channel behaviour with `getChannelPlugin()`. Do not branch on
-`channelType`. Adding a channel means registering a plugin in
-`apps/api/src/index.ts`, not adding a branch.
+`channelType`. Adding a channel means registering a plugin, not adding a branch.
+Register it in both processes: `registerChannelPlugin()` in `apps/api/src/index.ts`,
+and the `pluginRegistry` map in `apps/workers/src/index.ts`. The workers map does
+not read the shared registry, so a plugin registered only in the API cannot send
+from automation rules.
+
+Five API modules and one workers file still branch on `channelType` to change
+behaviour, listed here from most to fewest branches: `conversation` (LINE
+reply-or-push, WebChat visitor push), `channel` (credential schemas and checks,
+Facebook token status), `csat` (LINE Flex survey), `webhook` (which secret
+verifies the signature), `marketing` (LINE multicast), and
+`apps/workers/src/lib/channel-delivery.ts` (LINE reply-or-push).
+
+Two kinds of code are not counted above. Guards that reject an unsupported channel
+belong to features that exist for one channel only: `mcp`, `line` rich menus,
+`line-login`, `fb-login` and `chatbox`. `marketing/material.service.ts` compares
+the material's own lowercase channel type, not `Channel.channelType`.
+
+Five services call a channel's messaging API directly instead of going through a
+plugin: `channel/channel.service.ts` (credential checks),
+`channel/line-webhook-setup.service.ts`, `channel/fb-token-monitor.service.ts`,
+`line/rich-menu.service.ts` and `marketing/material.service.ts` (LINE message
+validation). The plugin interface has `setWebhook()`, but nothing calls it.
+`line-login` and `fb-login` also call LINE and Facebook, but for OAuth login,
+not for messaging.
+
+`docs/ref/modules/CHANNEL-PLUGINS.md` lists the steps to add a channel.
 
 ### Scope
 

@@ -25,7 +25,7 @@
 實際上外掛只涵蓋收發訊息的主幹。下列兩件事要先知道：
 
 1. **註冊表是每個行程各自一份。** API 行程以 `registerChannelPlugin()` 註冊四個外掛；workers 行程不用這個註冊表，自己建一個 `Map`，只放 LINE 與 Facebook。所以 workers 送不出 Instagram 私訊與網站聊天室的訊息，見 `../system/AUDIT.md` 的 CHAN-02。
-2. **很多渠道專屬的功能不在外掛裡。** 設定 webhook、驗證憑證、圖文選單、群發的分眾推播、滿意度調查的版型等，都在各模組內以 `channelType` 分支，直接呼叫渠道平台的 API。見[外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式)。
+2. **很多渠道專屬的功能不在外掛裡。** 設定 webhook、驗證憑證、圖文選單、群發的 multicast、滿意度調查的版型等，都在各模組內以 `channelType` 分支，直接呼叫渠道平台的 API。見[外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式)。
 
 ## 外掛介面
 
@@ -113,9 +113,9 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 重抓個人資料 | `line/line-profile.service.ts` | LINE |
 | 索取 email | `line-login`、`fb-login` 模組 | LINE、FB |
 | MCP 的 LINE 工具 | `mcp.server.ts` | LINE |
-| 素材的內容格式 | `marketing/material.service.ts` | 素材以自己的小寫 `channelType`（`line`、`fb`）區分，與 `Channel.channelType` 不同 |
+| 素材的格式檢查 | `marketing/material.service.ts`，呼叫 LINE 的訊息驗證 API | LINE。素材以自己的小寫 `channelType`（`line`、`fb`）區分，與 `Channel.channelType` 不同 |
 
-`AGENTS.md` 的規則 5 沒有列出這些例外。其他規則都會列出不符合的模組。
+`AGENTS.md` 的規則 5 列出這些例外，並區分「改變行為的分支」與「只擋不支援渠道的檢查」。
 
 ## 新增一種渠道
 
