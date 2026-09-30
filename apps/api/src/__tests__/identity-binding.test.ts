@@ -5,6 +5,7 @@
  * 執行：DATABASE_URL=... tsx src/__tests__/identity-binding.test.ts
  * 需 DB 已套用本 change 的 migration，且有 RLS_TEST_TENANT_A（預設 seed 租戶）。
  */
+import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { withTenant, type TenantDb } from '../lib/tenant-db.js';
@@ -25,7 +26,7 @@ import { mergeContacts } from '../modules/contact/contact-merge.service.js';
 import { patchChannelSettings, updateChannel } from '../modules/channel/channel.service.js';
 
 if (!process.env.DATABASE_URL) {
-  console.log('SKIP identity-binding: 需 DATABASE_URL');
+  console.log('SKIP identity-binding：repo 根目錄 .env 與環境變數都沒有 DATABASE_URL');
   process.exit(0);
 }
 

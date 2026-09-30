@@ -4,9 +4,10 @@
  * 背景：contact.view／contact.update 權限點早已定義，但多數 /api/v1/contacts/* 路由沒套用，
  * 只要登入即可讀寫任何聯絡人。本測試確保每一條路由都有守門，且有權限時照常放行。
  *
- * 需要 DATABASE_URL（建立兩個測試角色，結束時刪除）。
- * 執行：DATABASE_URL=... tsx src/__tests__/contact-routes-permission.test.ts
+ * 需要 DATABASE_URL（自動讀 repo 根目錄 .env；建立測試角色，結束時刪除）。
+ * 執行：pnpm --filter @open333crm/api test:contact-routes-permission
  */
+import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
@@ -15,7 +16,7 @@ import { tenantScopedClient } from '../lib/tenant-db.js';
 import contactRoutes from '../modules/contact/contact.routes.js';
 
 if (!process.env.DATABASE_URL) {
-  console.log('SKIP contact-routes-permission: 需 DATABASE_URL');
+  console.log('SKIP contact-routes-permission：repo 根目錄 .env 與環境變數都沒有 DATABASE_URL');
   process.exit(0);
 }
 
@@ -118,8 +119,39 @@ try {
     assert.equal(cases.statusCode, 403);
   });
 
+  await check('只有 contact.view：合併預覽需 contact.merge', async () => {
+    const res = await viewApp.inject({ method: 'GET', url: ROUTES[1].url });
+    assert.equal(res.statusCode, 403);
+  });
+
+  // 權限彼此獨立：update 不隱含 view
+  const updateOnly = await createRole('update-only', ['contact.update']);
+  roles.push(updateOnly.id);
+  const updateApp = await buildApp(updateOnly.id);
+  await check('只有 contact.update：可以修改與貼標，但讀不到聯絡人', async () => {
+    const list = await updateApp.inject({ method: 'GET', url: '/api/v1/contacts' });
+    assert.equal(list.statusCode, 403, 'update 不隱含 view');
+    const detail = await updateApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}` });
+    assert.equal(detail.statusCode, 403);
+    const patch = await updateApp.inject({ method: 'PATCH', url: `/api/v1/contacts/${SOME_ID}`, payload: { displayName: 'x' } });
+    assert.notEqual(patch.statusCode, 403, '有 contact.update 應通過守門');
+  });
+
+  // 補上 inbox.view／case.view 後可看對話與案件
+  const viewPlus = await createRole('view-plus', ['contact.view', 'inbox.view', 'case.view']);
+  roles.push(viewPlus.id);
+  const viewPlusApp = await buildApp(viewPlus.id);
+  await check('contact.view + inbox.view + case.view：可看聯絡人的對話與案件', async () => {
+    const convs = await viewPlusApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}/conversations` });
+    assert.notEqual(convs.statusCode, 403);
+    const cases = await viewPlusApp.inject({ method: 'GET', url: `/api/v1/contacts/${SOME_ID}/cases` });
+    assert.notEqual(cases.statusCode, 403);
+  });
+
   await noPermApp.close();
   await viewApp.close();
+  await updateApp.close();
+  await viewPlusApp.close();
 } finally {
   if (roles.length) await prisma.role.deleteMany({ where: { id: { in: roles } } });
   await prisma.$disconnect();

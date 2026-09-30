@@ -7,6 +7,7 @@
  *
  * 執行：DATABASE_URL=... tsx src/__tests__/inbound-identity-binding.test.ts
  */
+import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
@@ -19,7 +20,7 @@ import { linePrefillText } from '../modules/identity-binding/binding-links.js';
 import { memBindingStore } from './helpers/mem-binding-store.js';
 
 if (!process.env.DATABASE_URL) {
-  console.log('SKIP inbound-identity-binding: 需 DATABASE_URL');
+  console.log('SKIP inbound-identity-binding：repo 根目錄 .env 與環境變數都沒有 DATABASE_URL');
   process.exit(0);
 }
 
