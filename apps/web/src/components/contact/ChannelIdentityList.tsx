@@ -30,8 +30,8 @@ export function ChannelIdentityList({ identities }: ChannelIdentityListProps) {
           key={identity.id}
           className="flex items-center justify-between rounded-md border p-3"
         >
-          <div className="flex items-center gap-3">
-            <ChannelBadge channel={identity.channelType} />
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <ChannelBadge channel={identity.channelType} className="shrink-0" />
             <div className="min-w-0">
               {identity.channelName && (
                 <p className="truncate text-xs font-medium text-muted-foreground">{identity.channelName}</p>

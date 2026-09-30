@@ -76,7 +76,7 @@ export function ChannelLogo({ channelType, className }: { channelType: string; c
       );
     default:
       return (
-        <span className={cn(base, 'bg-muted-foreground')} role="img" aria-label={label}>
+        <span className={base} style={{ backgroundColor: '#475569' }} role="img" aria-label={label}>
           <MessageCircle className="h-[62%] w-[62%]" strokeWidth={2.5} aria-hidden />
         </span>
       );

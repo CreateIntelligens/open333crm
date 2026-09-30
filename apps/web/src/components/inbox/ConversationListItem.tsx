@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { differenceInCalendarDays, format, isSameYear } from 'date-fns';
+import { differenceInCalendarDays, format, isSameYear, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { ChannelLogo, channelTypeName } from '@/components/shared/ChannelLogo';
@@ -54,9 +54,12 @@ function formatMessagePreview(msg?: ConversationRow['lastMessage']): string {
 const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 function formatListTime(value: string | Date): string {
   const date = new Date(value);
+  if (!isValid(date)) return '';
   const now = new Date();
   const days = differenceInCalendarDays(now, date);
-  if (days <= 0) return format(date, 'HH:mm');
+  if (days === 0) return format(date, 'HH:mm');
+  // 本機時鐘比伺服器慢一天以上時是「未來」時間，只顯示時分會看不出是哪天
+  if (days < 0) return format(date, 'M/d HH:mm');
   if (days === 1) return '昨天';
   if (days < 7) return WEEKDAYS[date.getDay()];
   return isSameYear(date, now) ? format(date, 'M/d') : format(date, 'yyyy/M/d');
@@ -108,7 +111,7 @@ export function ConversationListItem({
           </span>
           <span
             className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
-            title={format(new Date(lastMessageTime), 'yyyy/M/d HH:mm')}
+            title={isValid(new Date(lastMessageTime)) ? format(new Date(lastMessageTime), 'yyyy/M/d HH:mm') : undefined}
           >
             {formatListTime(lastMessageTime)}
           </span>

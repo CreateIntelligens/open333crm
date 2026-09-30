@@ -158,7 +158,8 @@ try {
   });
 
   // ── CM-173 渠道可見性：分店帳號只綁渠道 A，看不到同一位聯絡人在渠道 B 的對話與案件 ──
-  const branchRole = await createRole('branch', ['contact.view', 'inbox.view', 'case.view']);
+  // 含 inbox.reply：代發綁定連結要先通過權限守門，才測得到後面的渠道層級檢查
+  const branchRole = await createRole('branch', ['contact.view', 'inbox.view', 'inbox.reply', 'case.view']);
   roles.push(branchRole.id);
   const mkChannel = (name: string) =>
     prisma.channel.create({
@@ -177,8 +178,13 @@ try {
   });
   await prisma.agentChannelAccess.create({ data: { agentId: otherAgent.id, channelId: chB.id, accessLevel: 'full' } });
   const contact = await prisma.contact.create({ data: { tenantId: T, displayName: `CI 可見性聯絡人 ${stamp}` } });
+  const convByChannel = new Map<string, string>();
   for (const ch of [chA, chB]) {
-    await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT' } });
+    const conv = await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT' } });
+    convByChannel.set(ch.id, conv.id);
+    await prisma.channelIdentity.create({
+      data: { contactId: contact.id, channelId: ch.id, channelType: 'WEBCHAT', uid: `ci-uid-${ch.id}`, profileName: `CI 暱稱 ${ch.id === chA.id ? 'A' : 'B'}` },
+    });
     await prisma.case.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `CI 案件 ${ch.id === chA.id ? 'A' : 'B'}` } });
   }
   cleanup.push(async () => {
@@ -207,6 +213,41 @@ try {
     const text = JSON.stringify(timeline.json());
     assert.ok(!text.includes('CI 案件 B'), '時間軸不可出現渠道 B 的案件');
     assert.ok(!text.includes(`CI 渠道可見性 B ${stamp}`), '時間軸不可出現渠道 B 的對話');
+  });
+
+  await check('CM-173：聯絡人詳情與列表的渠道身份只列出可見渠道（不洩漏其他渠道名稱、uid）', async () => {
+    const detail = await branchApp.inject({ method: 'GET', url: `/api/v1/contacts/${contact.id}` });
+    assert.equal(detail.statusCode, 200);
+    const detailIds = (detail.json().data.channelIdentities as Array<{ channelId: string }>).map((i) => i.channelId);
+    assert.deepEqual(detailIds, [chA.id], '詳情不可列出渠道 B 的身份');
+    assert.ok(!JSON.stringify(detail.json()).includes(`CI 渠道可見性 B ${stamp}`), '詳情不可出現渠道 B 的名稱');
+
+    const list = await branchApp.inject({
+      method: 'GET',
+      url: `/api/v1/contacts?q=${encodeURIComponent(`CI 可見性聯絡人 ${stamp}`)}`,
+    });
+    assert.equal(list.statusCode, 200);
+    const rows = list.json().data as Array<{ id: string; channelIdentities: Array<{ channel: { id: string } }> }>;
+    const row = rows.find((r) => r.id === contact.id);
+    assert.ok(row, '列表應找得到這位聯絡人');
+    assert.deepEqual(row.channelIdentities.map((i) => i.channel.id), [chA.id], '列表不可列出渠道 B 的身份');
+  });
+
+  await check('CM-173：代發綁定連結檢查渠道層級（看不到的渠道 404、唯讀渠道 403）', async () => {
+    const toB = await branchApp.inject({
+      method: 'POST',
+      url: `/api/v1/contacts/${contact.id}/binding-link`,
+      payload: { conversationId: convByChannel.get(chB.id) },
+    });
+    assert.equal(toB.statusCode, 404, `看不到的渠道應回 404，實際 ${toB.statusCode} ${toB.body}`);
+
+    const toA = await branchApp.inject({
+      method: 'POST',
+      url: `/api/v1/contacts/${contact.id}/binding-link`,
+      payload: { conversationId: convByChannel.get(chA.id) },
+    });
+    assert.equal(toA.statusCode, 403, `唯讀渠道應回 403，實際 ${toA.statusCode} ${toA.body}`);
+    assert.equal(toA.json().error?.code ?? toA.json().code, 'CHANNEL_ACCESS_LEVEL_INSUFFICIENT');
   });
 } finally {
   for (const app of apps) await app.close().catch(() => {});

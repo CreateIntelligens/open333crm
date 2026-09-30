@@ -95,6 +95,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       filters,
       { page, limit },
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(paginated(contacts, total, page, limit));
@@ -251,6 +252,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(success(contact));

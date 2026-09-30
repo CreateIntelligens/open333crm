@@ -34,11 +34,21 @@ function combineChannelIdentityFilters(filters: Prisma.ChannelIdentityWhereInput
   return { AND: filters };
 }
 
+function combineIdentityInclude(
+  base: Prisma.ChannelIdentityWhereInput | undefined,
+  channelId: { in: string[] } | undefined,
+): Prisma.ChannelIdentityWhereInput | undefined {
+  const parts = [...(base ? [base] : []), ...(channelId ? [{ channelId }] : [])];
+  if (parts.length === 0) return undefined;
+  return combineChannelIdentityFilters(parts);
+}
+
 export async function listContacts(
   prisma: TenantDb,
   tenantId: string,
   filters: ContactFilters,
   pagination: PaginationParams,
+  accessibleChannels?: AccessibleChannels,
 ) {
   const where: Prisma.ContactWhereInput = {
     tenantId,
@@ -85,12 +95,17 @@ export async function listContacts(
     };
   }
 
+  // 列出的渠道身份只含可見渠道（CM-173）：否則分店帳號會看到其他分店渠道的名稱與 uid。
+  // 聯絡人本身是否該被列出屬 tasks 9.3.9，這裡只收掉身份明細。
+  const visibleChannelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
+  const includedIdentityWhere = combineIdentityInclude(channelIdentityWhere, visibleChannelId);
+
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({
       where,
       include: {
         channelIdentities: {
-          ...(channelIdentityWhere ? { where: channelIdentityWhere } : {}),
+          ...(includedIdentityWhere ? { where: includedIdentityWhere } : {}),
           select: {
             id: true,
             channelType: true,
@@ -133,11 +148,15 @@ export async function getContact(
   prisma: TenantDb,
   id: string,
   tenantId: string,
+  accessibleChannels?: AccessibleChannels,
 ) {
+  const visibleChannelId = accessibleChannels ? channelIdWhereFilter(accessibleChannels) : undefined;
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
     include: {
       channelIdentities: {
+        // 只回傳可見渠道的身份（CM-173），避免分店看到其他渠道的名稱、uid 與暱稱
+        ...(visibleChannelId ? { where: { channelId: visibleChannelId } } : {}),
         include: {
           channel: {
             select: {
