@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import type { Job } from 'bullmq';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { handleRichMenuBindJob } from '../handlers/rich-menu-bind.handler';
+import { handleRichMenuBindJob } from '#src/handlers/rich-menu-bind.handler';
 
 /**
  * rich-menu-bind worker handler 測試（rich-menu-audience-targeting 第 3 塊）。
@@ -102,13 +103,7 @@ async function testEmptyUidsNoop() {
   assert.equal(calls.link, 0);
 }
 
-async function main() {
-  await testLinkCallsPluginUi();
-  await testUnlinkCallsPluginUi();
-  await testChannelNotInTenantSkips();
-  await testEmptyUidsNoop();
-  console.log('rich-menu-bind tests passed');
-  process.exit(0);
-}
-
-main().catch((err) => { console.error(err); process.exit(1); });
+test('link calls plugin ui', testLinkCallsPluginUi);
+test('unlink calls plugin ui', testUnlinkCallsPluginUi);
+test('channel not in tenant skips', testChannelNotInTenantSkips);
+test('empty uids noop', testEmptyUidsNoop);

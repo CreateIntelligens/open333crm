@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { mkdirSync } from 'node:fs';
 
 const configHome = `/tmp/open333-cli-stats-test-${Date.now()}`;
@@ -7,9 +8,9 @@ mkdirSync(configHome, { recursive: true });
 process.env.XDG_CONFIG_HOME = configHome;
 process.env.OPEN333_TOKEN = 'cli_test_token';
 
-const { saveProfile } = await import('../config-store.js');
-const { statsCommand } = await import('../commands/stats.js');
-const { CliError } = await import('../errors.js');
+const { saveProfile } = await import('#src/config-store.js');
+const { statsCommand } = await import('#src/commands/stats.js');
+const { CliError } = await import('#src/errors.js');
 
 saveProfile({
   host: 'http://open333.test',
@@ -131,9 +132,6 @@ async function testInsufficientScope() {
   );
 }
 
-await testTextOutput();
-await testJsonOutput();
-await testInsufficientScope();
-
-console.log('stats-command tests passed');
-process.exit(0);
+test('text output', testTextOutput);
+test('json output', testJsonOutput);
+test('insufficient scope', testInsufficientScope);

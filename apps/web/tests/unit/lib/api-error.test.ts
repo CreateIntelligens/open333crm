@@ -5,14 +5,8 @@
  * 重點在「取不到後端訊息時會怎樣」——那是這支 helper 存在的理由。
  */
 import assert from 'node:assert/strict';
-import { getApiErrorMessage, getFieldErrors, getApiErrorCode } from './api-error.js';
-
-let pass = 0;
-let fail = 0;
-function t(name: string, fn: () => void) {
-  try { fn(); console.log(`PASS  ${name}`); pass++; }
-  catch (e) { console.log(`FAIL  ${name}\n      ${(e as Error).message}`); fail++; }
-}
+import { test as t } from 'vitest';
+import { getApiErrorMessage, getFieldErrors, getApiErrorCode } from '#src/lib/api-error.js';
 
 const withError = (status: number, error: unknown) => ({ response: { status, data: { error } } });
 
@@ -79,6 +73,3 @@ t('錯誤碼可供程式判斷分支', () => {
   assert.equal(getApiErrorCode(withError(409, { code: 'ALREADY_CLAIMED' })), 'ALREADY_CLAIMED');
   assert.equal(getApiErrorCode(null), undefined);
 });
-
-console.log(`\n結果：${pass} 通過 / ${fail} 失敗`);
-process.exit(fail > 0 ? 1 : 0);

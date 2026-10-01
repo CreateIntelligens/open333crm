@@ -3,9 +3,9 @@
  * m.me / ig.me 的 ?ref= 依「是否已有對話」送達位置不同（見 design D4），三種位置都要解析。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { FbPlugin } from '../facebook/index.js';
-import { ThreadsPlugin } from '../threads.js';
+import { test } from 'vitest';
+import { FbPlugin } from '#src/facebook/index.js';
+import { ThreadsPlugin } from '#src/threads.js';
 
 const fb = new FbPlugin();
 const ig = new ThreadsPlugin();

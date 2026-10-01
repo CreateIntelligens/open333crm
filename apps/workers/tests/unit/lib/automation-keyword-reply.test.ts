@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import type { ChannelPlugin, OutboundPayload } from '@open333crm/channel-plugins';
-import { executeWorkerAutomationActions } from '../lib/automation-actions';
+import { executeWorkerAutomationActions } from '#src/lib/automation-actions';
 
 const ALGORITHM = 'aes-256-gcm';
 
@@ -142,14 +143,5 @@ async function testReplyFailureFallsBackToPush() {
   assert.equal(sends[1].content.strategy, 'push');
 }
 
-async function main() {
-  await testKeywordMatchedLineSendMessageUsesReplyToken();
-  await testReplyFailureFallsBackToPush();
-  console.log('automation-keyword-reply tests passed');
-  process.exit(0);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+test('keyword matched line send message uses reply token', testKeywordMatchedLineSendMessageUsesReplyToken);
+test('reply failure falls back to push', testReplyFailureFallsBackToPush);

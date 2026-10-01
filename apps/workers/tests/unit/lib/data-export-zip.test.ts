@@ -6,11 +6,12 @@
  *  - toCsv 主表扁平化與跳脫正確
  */
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { SimpleZip, toCsv } from '../lib/simple-zip.js';
+import { SimpleZip, toCsv } from '#src/lib/simple-zip.js';
 
 function testCsv() {
   const csv = toCsv([
@@ -55,7 +56,5 @@ function testZipRoundtrip() {
   console.log('  ✓ SimpleZip roundtrip (system unzip)');
 }
 
-testCsv();
-testZipRoundtrip();
-console.log('data-export-zip tests passed');
-process.exit(0);
+test('csv', testCsv);
+test('zip roundtrip', testZipRoundtrip);

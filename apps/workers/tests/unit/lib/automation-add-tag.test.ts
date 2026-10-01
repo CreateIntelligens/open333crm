@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { executeWorkerAutomationActions } from '../lib/automation-actions';
+import { test } from 'vitest';
+import { executeWorkerAutomationActions } from '#src/lib/automation-actions';
 
 /**
  * add_tag worker 動作測試（line-material-basics-and-click-tag 第 2 塊）。
@@ -124,17 +125,8 @@ async function testAddTagByNameCreatesIfMissing() {
   assert.equal(state.contactTags.length, 1);
 }
 
-async function main() {
-  await testAddTagByTagIdSuccess();
-  await testAddTagIdempotent();
-  await testAddTagMissingContactSkips();
-  await testAddTagCrossTenantBlocked();
-  await testAddTagByNameCreatesIfMissing();
-  console.log('automation-add-tag tests passed');
-  process.exit(0);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+test('add tag by tag id success', testAddTagByTagIdSuccess);
+test('add tag idempotent', testAddTagIdempotent);
+test('add tag missing contact skips', testAddTagMissingContactSkips);
+test('add tag cross tenant blocked', testAddTagCrossTenantBlocked);
+test('add tag by name creates if missing', testAddTagByNameCreatesIfMissing);

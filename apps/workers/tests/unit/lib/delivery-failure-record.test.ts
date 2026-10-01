@@ -16,9 +16,10 @@
  * 讓它出現在收件匣裡。這則訊息沒有真的送到使用者端，只給客服看。
  */
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { createCipheriv, randomBytes, scryptSync } from 'node:crypto';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { deliverToChannelFromWorker } from '../lib/channel-delivery';
+import { deliverToChannelFromWorker } from '#src/lib/channel-delivery';
 
 const ALGORITHM = 'aes-256-gcm';
 
@@ -231,16 +232,7 @@ async function testConfigFailuresAreRecorded() {
   }
 }
 
-async function main() {
-  await testFailureIsRecorded();
-  await testSuccessIsNotMarked();
-  await testRecordFailureIsSafe();
-  await testConfigFailuresAreRecorded();
-  console.log('delivery-failure-record tests passed');
-  process.exit(0);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+test('failure is recorded', testFailureIsRecorded);
+test('success is not marked', testSuccessIsNotMarked);
+test('record failure is safe', testRecordFailureIsSafe);
+test('config failures are recorded', testConfigFailuresAreRecorded);

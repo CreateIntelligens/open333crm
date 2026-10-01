@@ -3,9 +3,9 @@
  * （change fix-meta-webhook-page-routing，tasks 2.4）。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { FbPlugin } from '../facebook/index.js';
-import { ThreadsPlugin } from '../threads.js';
+import { test } from 'vitest';
+import { FbPlugin } from '#src/facebook/index.js';
+import { ThreadsPlugin } from '#src/threads.js';
 
 const fb = new FbPlugin();
 const ig = new ThreadsPlugin();

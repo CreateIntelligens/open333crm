@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
   registerCrmWebMcpTools,
   type WebMcpApiClient,
   type WebMcpModelContext,
-} from "./webmcp.js";
+} from "#src/lib/webmcp.js";
 
 test("registers the six read-only CRM WebMCP tools", async () => {
   const registered: Array<Record<string, unknown>> = [];

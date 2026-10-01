@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { initSession } from '../session.js';
+import { test } from 'vitest';
+import { initSession } from '#src/session.js';
 
 const fingerprint = {
   browserFamily: 'chrome',
@@ -35,7 +36,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }) as typeof fetch;
 
-(async () => {
+test('session', async () => {
   const result = await initSession('https://crm.example/api/v1', 'ch_public', fingerprint);
 
   assert.equal(result.sessionId, 'session-id');
@@ -53,8 +54,4 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     fingerprint,
   });
 
-  console.log('widget session tests passed');
-})().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
 });

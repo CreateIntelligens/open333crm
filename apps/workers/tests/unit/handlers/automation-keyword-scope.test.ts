@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { handleAutomationJob } from '../handlers/automation.handler';
+import { test } from 'vitest';
+import { handleAutomationJob } from '#src/handlers/automation.handler';
 
 async function testKeywordMatchedJobScopesCandidateRuleByMatchedRuleId() {
   const findManyCalls: unknown[] = [];
@@ -71,13 +72,4 @@ async function testKeywordMatchedJobScopesCandidateRuleByMatchedRuleId() {
   assert.doesNotMatch(JSON.stringify(publishCalls[0]), /rule-line-text/);
 }
 
-async function main() {
-  await testKeywordMatchedJobScopesCandidateRuleByMatchedRuleId();
-  console.log('automation-keyword-scope tests passed');
-  process.exit(0);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+test('keyword matched job scopes candidate rule by matched rule id', testKeywordMatchedJobScopesCandidateRuleByMatchedRuleId);

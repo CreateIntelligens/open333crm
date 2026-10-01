@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { linePlugin } from '../line/index.js';
+import { test } from 'vitest';
+import { linePlugin } from '#src/line/index.js';
 
 function response(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -8,7 +9,7 @@ function response(status: number, body: unknown, headers: Record<string, string>
   });
 }
 
-async function main() {
+test('line-delivery-retry', async () => {
   const originalFetch = globalThis.fetch;
   const requests: Array<{ url: string; headers: Headers; body: unknown }> = [];
 
@@ -103,9 +104,4 @@ async function main() {
   } finally {
     globalThis.fetch = originalFetch;
   }
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
 });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { linePlugin } from '../line/index.js';
+import { test } from 'vitest';
+import { linePlugin } from '#src/line/index.js';
 
 async function testLineFlexTemplateSendsOnlyLinePayloadFields() {
   const calls: Array<{ url: string; body: unknown }> = [];
@@ -115,14 +116,5 @@ async function testLineFlexTemplateReplyKeepsDeliveryFieldsOutOfMessage() {
   }
 }
 
-async function main() {
-  await testLineFlexTemplateSendsOnlyLinePayloadFields();
-  await testLineFlexTemplateReplyKeepsDeliveryFieldsOutOfMessage();
-  console.log('line-flex-template channel plugin tests passed');
-  process.exit(0);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+test('line flex template sends only line payload fields', testLineFlexTemplateSendsOnlyLinePayloadFields);
+test('line flex template reply keeps delivery fields out of message', testLineFlexTemplateReplyKeepsDeliveryFieldsOutOfMessage);
