@@ -64,7 +64,7 @@ async function testChallengeCannotBeOverwrittenBeforeConsumption() {
 
   await assert.rejects(
     savePasskeyChallenge(redis, { ...challenge, challenge: 'replacement' }, 120),
-    /already exists/,
+    { code: 'CONFLICT', statusCode: 409 },
   );
 }
 
@@ -74,7 +74,7 @@ async function testMalformedChallengeIsRejected() {
 
   await assert.rejects(
     consumePasskeyChallenge(redis, 'malformed'),
-    /invalid/i,
+    { code: 'UNAUTHORIZED', statusCode: 401 },
   );
 }
 
