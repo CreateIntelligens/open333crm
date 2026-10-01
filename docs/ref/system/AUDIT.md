@@ -983,14 +983,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 三處都沒有說明原因。管理員看到角色頁上已經打勾，會判斷成系統故障。
 
-403 的回應內容，本分支與 `main` 不同：
-
-| 版本 | `requirePermission()` 的 403 回應 | 前端看到的 |
-| --- | --- | --- |
-| 本分支 | `{ code: 'FORBIDDEN', message: 'Insufficient permission' }`，不是全站的 `{ success, error }` 結構 | 讀不到 `error.message`，畫面空白（`ad4edc6` 的說明） |
-| `main`（`ad4edc6` 之後） | `error.message` 是「權限不足，無法執行此操作。如需使用請聯繫管理員。」，`error.details` 附 `requiredPermission` | 顯示這句訊息 |
-
-`main` 修好了回應格式，但這一項的結論不變。`requirePermission()` 拿來比對的 `eff` 已經是「角色權限 ∩ 方案天花板」的交集，角色沒勾與方案不含走的是同一個判斷，回應無從區分。`details.requiredPermission` 只告訴維運缺哪一個權限碼，不告訴缺在哪一層。
+`requirePermission()` 回 403 時，`error.message` 是「權限不足，無法執行此操作。如需使用請聯繫管理員。」，`error.details` 附 `requiredPermission`。回應無法區分「角色沒有授予」與「方案不包含」：guard 拿來比對的 `eff` 是 `getEffectiveTenantPermissions()` 算出的「角色權限 ∩ 方案天花板」，兩種情況走同一個判斷。`details.requiredPermission` 只告訴維運缺哪一個權限碼，不告訴缺在哪一層。
 
 訊息也指向了錯的人。「如需使用請聯繫管理員」把使用者導向租戶的管理員，而管理員打開角色頁，看到的是這個權限已經勾選。能處理的是平台方，要升級方案才會生效，訊息沒有提到這一點。
 

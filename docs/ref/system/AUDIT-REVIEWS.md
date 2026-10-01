@@ -4,6 +4,29 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：複查所有 P1 項目，全部仍然存在
+
+上一筆複查更新 RLS-02、AUTH-05、RBAC-01 之後，P1 剩下 10 項。本次在 `main`（`e775c07`）以靜態方式逐項複查，10 項都仍然存在：
+
+| 項目 | 結果 | 查證方式 |
+| --- | --- | --- |
+| RLS-01 | 仍存在 | `flow-runner.ts` 在檔案開頭匯入 singleton，查詢只以 `executionId` 定位；`scheduler.ts` 的 `processResumeQueue()` 動態載入同一個 singleton；`canvas.service.ts` 建立 execution 後呼叫 `FlowRunner.run(execution.id)` |
+| RLS-05 | 仍存在 | 路由只掛 `fastify.authenticate`，把 `prismaAdmin` 交給 `syncLineContactProfile()`；服務查 `channelIdentity` 與 `channel` 的 `where` 都沒有 `tenantId`；`check-prisma-admin-usage.mjs` 的白名單仍列出這個檔案；`apps/web` 沒有呼叫端 |
+| RLS-06 | 仍存在 | `handleCsatResponse()` 同時比對文字訊息與 postback；`recordCsatScore()` 以 `findUnique({ where: { id: caseId } })` 查工單；`webhook.routes.ts` 把 `prismaAdmin` 交給 `processWebhookEvent()`，一路傳到攔截器，中間沒有 `withTenant` |
+| RBAC-01 | 部分修正，與上一筆一致 | 12 個權限碼仍然沒有出現在 `apps/api/src`；`case`、`conversation`、`tag`、`shortlink` 的路由檔都沒有 `requirePermission` |
+| SEC-04 | 仍存在 | `index.ts` 仍設定 `trustProxy: true`；`nginx.conf.template` 的 6 個 location 都用 `$proxy_add_x_forwarded_for`；`apps/api/src` 沒有讀 `X-Real-IP`；5 個模組的 `keyGenerator` 都是 `request.ip` |
+| SEC-05 | 仍存在 | `auth.routes.ts` 以 `global: false` 註冊速率限制外掛，`/login` 沒有 `config.rateLimit`；schema 與 `auth.service.ts` 都沒有失敗次數或鎖定的欄位 |
+| TRIAL-01 | 仍存在 | `approveRequest()` 的 upgrade 分支只寫 `planId`；`createPlanChangeRequest()` 不檢查試用狀態；`runTrialLifecycle()` 的停用與清除掃描都沒有方案條件 |
+| PLAN-08 | 仍存在 | `/roles/matrix` 回傳 `getPermissionMatrix()` 的整份註冊表；`setRolePermissions()` 的越權防護讀 `getEffectivePermissions()`；`default-roles.ts` 的 admin 擁有全部權限碼；`RolePermissionMatrix.tsx` 沒有方案判斷 |
+| SLA-01 | 仍存在 | 在 `apps/` 與 `packages/` 搜尋 `firstResponseAt`，命中的檔案只有 schema、`sla.handler.ts`、`analytics.service.ts` 與兩個前端檔案，都是讀取端 |
+| AUTO-01 | 仍存在 | `automation-actions.ts` 沒有 `create_case`、`remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 的分支，契約仍提供這 5 種動作，遇到時仍只記 info log |
+
+**未合併的遠端分支。** 對每一個沒有合併進 `main` 的遠端分支，比對上述項目涉及的檔案。`feat/coupon-system` 與 `feat/line-click-tag-and-material-basics` 改了 `automation-actions.ts`，但都沒有加入 AUTO-01 缺少的動作；其他分支的改動與這 10 項無關。因此沒有任何分支即將修正這些項目。
+
+**PLAN-08 刪除一張過時的表。** PLAN-08 原本用一張表對照「本分支」與「`main`」的 403 回應。`ad4edc6` 已經在 `main`，`rbac.guard.ts` 的 `sendForbidden()` 回傳全站的 `{ success, error }` 結構，訊息是中文並附 `requiredPermission`。這張表因此刪除，內文只描述 `main` 的行為。PLAN-08 的結論不變。
+
+**限制。** 本次只讀程式碼，沒有在執行環境重現。
+
 ## 2026-10-01：對照 One ID 的合併，移除 RLS-02，AUTH-05 與 RBAC-01 改為部分修正
 
 整理 P1 項目的修復順序時發現，2026-09-30 合併的 `481452a`（#185，`add-cross-channel-one-id`）已經修掉三個 P1 項目的全部或一部分，但 `AUDIT.md` 仍以修正前的狀態描述這三項。本次逐項對照 `main` 的程式後更新：
