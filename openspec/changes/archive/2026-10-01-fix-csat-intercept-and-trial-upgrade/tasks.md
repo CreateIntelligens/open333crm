@@ -38,4 +38,4 @@
 - [x] 4.2 `pnpm test:feature` 通過
 - [x] 4.3 `node scripts/check-tenant-scoping.mjs --strict` 與 `node scripts/check-prisma-admin-usage.mjs --strict` 沒有本 change 新增的違規
 - [x] 4.4 `CHANGELOG.md` 在最新的 `## [YYYY-MM-DD]` 段落加入 `Fixed` 項目，涵蓋 RLS-06 與 TRIAL-01
-- [ ] 4.5 所有任務打勾後，歸檔本 change
+- [x] 4.5 所有任務打勾後，歸檔本 change
