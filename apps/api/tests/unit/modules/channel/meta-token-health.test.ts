@@ -100,3 +100,16 @@ test('權限被撤銷（code 10／200 系列）：失效', async () => {
   fakeFetch(403, { error: { type: 'OAuthException', code: 200, message: 'permission' } });
   assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
 });
+
+test('HTTP 429 或沒列出的 OAuthException：無法判斷，只有明確的權杖失效／權限撤銷才算失效', async () => {
+  fakeFetch(429, { error: { type: 'OAuthException', code: 9999, message: 'slow down' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'unknown');
+  fakeFetch(400, { error: { type: 'OAuthException', code: 1, message: 'An unknown error occurred' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'unknown');
+  fakeFetch(400, { error: { type: 'OAuthException', code: 190, message: 'expired' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
+  fakeFetch(403, { error: { type: 'OAuthException', code: 10, message: 'permission' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
+  fakeFetch(401, { error: { type: 'OAuthException', message: 'unauthorized' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
+});

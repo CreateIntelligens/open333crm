@@ -17,13 +17,36 @@ import { getConfig } from '../../config/env.js';
 import { withLeaderLock } from '../../lib/scheduler-lock.js';
 import { createAndDispatch } from '../notification/notification.service.js';
 import { sendEmail } from '../email/email.service.js';
-import { decryptCredentials, patchChannelSettings } from './channel.service.js';
+import { decryptCredentials } from './channel.service.js';
 
 const HOUR_MS = 3600_000;
 const CHECK_INTERVAL_MS = 6 * HOUR_MS;
 const REMIND_INTERVAL_MS = 72 * HOUR_MS;
 /** Meta 的限流錯誤碼：type 同樣是 OAuthException，但與權杖是否有效無關 */
 const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80001, 80002, 80006]);
+
+/** 190 權杖失效／過期／被撤銷、102 工作階段失效、10 與 200–299 權限被撤銷 */
+function isTokenInvalidCode(code: number): boolean {
+  return code === 190 || code === 102 || code === 10 || (code >= 200 && code <= 299);
+}
+
+/**
+ * 只在權杖仍是檢查時那一組的情況下寫入（資料庫端比對密文，原子操作）。
+ * 檢查期間管理員重新連結或更新權杖時回 false，避免用舊權杖的結果蓋掉新狀態、發出錯誤通知。
+ */
+async function writeTokenHealthIfUnchanged(
+  prisma: PrismaClient,
+  ch: { id: string; tenantId: string; credentialsEncrypted: string },
+  health: TokenHealth,
+): Promise<boolean> {
+  const count = await prisma.$executeRaw`
+    UPDATE channels
+    SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('tokenHealth', ${JSON.stringify(health)}::jsonb),
+        "updatedAt" = now()
+    WHERE id = ${ch.id}::uuid AND "tenantId" = ${ch.tenantId}::uuid
+      AND "credentialsEncrypted" = ${ch.credentialsEncrypted} AND "isActive" = true`;
+  return count > 0;
+}
 
 export type TokenHealthStatus = 'valid' | 'invalid';
 
@@ -40,7 +63,7 @@ export type ProbeResult = { status: TokenHealthStatus; reason?: string } | { sta
 
 /**
  * 用渠道權杖呼叫一次 /me 判斷是否仍有效。
- * Meta 回 OAuthException（例如 190 權杖失效、權限被撤銷）才算失效；網路錯誤或 5xx 回 unknown。
+ * 只有明確的失效訊號（401、190 權杖失效、權限被撤銷）才算失效；網路錯誤、5xx、429、限流與其他錯誤回 unknown。
  */
 export async function probeChannelToken(channelType: string, credentials: Record<string, unknown>): Promise<ProbeResult> {
   const token = credentials.pageAccessToken as string | undefined;
@@ -60,12 +83,12 @@ export async function probeChannelToken(channelType: string, credentials: Record
     error?: { type?: string; code?: number; message?: string; is_transient?: boolean };
   };
   const e = body.error;
-  if (res.status >= 500 || !e) return { status: 'unknown', reason: `HTTP ${res.status}` };
+  if (res.status >= 500 || res.status === 429 || !e) return { status: 'unknown', reason: e?.message ?? `HTTP ${res.status}` };
   if (e.is_transient || (e.code !== undefined && RATE_LIMIT_CODES.has(e.code))) {
     return { status: 'unknown', reason: e.message ?? `HTTP ${res.status}` };
   }
-  // 190 = 權杖失效／過期；OAuthException 涵蓋權限被撤銷、使用者登出等
-  if (e.code === 190 || e.type === 'OAuthException' || res.status === 401) {
+  // 只認明確的失效訊號；其他錯誤（包括沒列出的 OAuthException）一律當無法判斷，寧可漏報也不誤發通知
+  if (res.status === 401 || (e.code !== undefined && isTokenInvalidCode(e.code))) {
     return { status: 'invalid', reason: e.message ?? '權杖已失效' };
   }
   return { status: 'unknown', reason: e.message ?? `HTTP ${res.status}` };
@@ -149,7 +172,7 @@ async function notifyAdmins(
 export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIOServer, now = new Date()): Promise<void> {
   const channels = await prisma.channel.findMany({
     where: { isActive: true, channelType: { in: [CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS] as never }, tenant: { isActive: true } },
-    select: { id: true, tenantId: true, channelType: true, displayName: true, credentialsEncrypted: true },
+    select: { id: true, tenantId: true, channelType: true, displayName: true, credentialsEncrypted: true, settings: true },
   });
   for (const ch of channels) {
     try {
@@ -162,15 +185,11 @@ export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIO
         // 加密金鑰不同（例如從別的環境同步過來的資料）：權杖讀不出來，同樣收不到訊息
         probe = { status: 'invalid', reason: '渠道憑證無法解密，請重新填寫存取權杖' };
       }
-      // 檢查期間管理員可能已重新連結或更新權杖：權杖換過就不寫入，免得用舊權杖的結果蓋掉新狀態
-      const current = await prisma.channel.findFirst({
-        where: { id: ch.id, tenantId: ch.tenantId },
-        select: { credentialsEncrypted: true, settings: true },
-      });
-      if (!current || current.credentialsEncrypted !== ch.credentialsEncrypted) continue;
-      const prev = ((current.settings ?? {}) as Record<string, unknown>).tokenHealth as TokenHealth | undefined;
+      const prev = ((ch.settings ?? {}) as Record<string, unknown>).tokenHealth as TokenHealth | undefined;
       const { health, notify } = nextTokenHealth(prev, probe, now);
-      if (health) await patchChannelSettings(prisma, ch.id, ch.tenantId, { tokenHealth: health });
+      if (!health || health === prev) continue; // 無法判斷：狀態不變
+      // 權杖在檢查期間被換掉（重新連結、手動更新）就不寫入、不通知
+      if (!(await writeTokenHealthIfUnchanged(prisma, ch, health))) continue;
       if (notify) {
         logger.warn('[MetaTokenHealth] 渠道權杖失效，通知管理員', { channelId: ch.id, tenantId: ch.tenantId, reason: probe.reason });
         await notifyAdmins(prisma, io, ch, credentials.connectMode === 'platform');
