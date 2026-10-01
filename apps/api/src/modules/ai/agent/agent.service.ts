@@ -12,6 +12,7 @@ import { addRetentionExpiry } from './retention.js';
 import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
 import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
+import { guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -137,12 +138,16 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     baseUrl: settings.baseUrl,
     apiKey: key.key,
   });
-  const output = { ...result, handled: result.status === 'completed', runId: run.id };
+  // 綁定代碼只能由綁定流程產生：AI 回覆含代碼就整則換成固定說明
+  const guarded = result.status === 'completed'
+    ? await guardAiReplyForTenant(prisma, input.tenantId, result.text, { conversationId: input.conversationId, source: 'agentic_llm' })
+    : { text: result.text, blocked: false };
+  const output = { ...result, text: guarded.text, handled: result.status === 'completed', runId: run.id };
   if (output.handled && input.deliver && input.conversationId && input.io) {
     await persistAndDeliverAgentReply(prisma, input.tenantId, input.conversationId, output.text, output.runId, input.io, {
       replyToken: input.replyToken,
       receivedAt: input.receivedAt,
-    });
+    }, guarded.blocked);
   }
   return output;
 }
@@ -155,6 +160,7 @@ async function persistAndDeliverAgentReply(
   runId: string,
   io: Server,
   delivery: { replyToken?: string; receivedAt?: string },
+  bindingCodeBlocked = false,
 ): Promise<void> {
   const now = new Date();
   type PersistedAgentMessage = { id: string; metadata: unknown };
@@ -172,7 +178,7 @@ async function persistAndDeliverAgentReply(
         senderType: 'BOT',
         contentType: 'text',
         content: { text },
-        metadata: { source: 'agentic_llm', agentRunId: runId },
+        metadata: { source: 'agentic_llm', agentRunId: runId, ...(bindingCodeBlocked ? { bindingCodeBlocked: true } : {}) },
         createdAt: now,
       },
       select: { id: true, metadata: true },
@@ -204,7 +210,7 @@ async function persistAndDeliverAgentReply(
   await deliverToChannel(prisma, conversationId, { contentType: 'text', content: { text }, delivery });
 }
 
-async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string, excludeMessageId?: string): Promise<HistoryMessage[]> {
+export async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string, excludeMessageId?: string): Promise<HistoryMessage[]> {
   const rows = await prisma.message.findMany({
     where: {
       conversationId,
@@ -213,15 +219,10 @@ async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversation
     },
     orderBy: { createdAt: 'desc' },
     take: 10,
-    select: { direction: true, content: true },
+    select: { direction: true, content: true, metadata: true },
   });
-  return rows.reverse().flatMap((row) => {
-    const text = typeof row.content === 'object' && row.content !== null
-      ? (row.content as { text?: string }).text ?? ''
-      : '';
-    if (!text) return [];
-    return [{ role: row.direction === 'INBOUND' ? 'user' as const : 'assistant' as const, content: text }];
-  });
+  // 系統發的綁定訊息不給 AI 看、代碼遮掉：AI 曾照抄綁定訊息編出不存在的代碼
+  return toAiHistory(rows.reverse());
 }
 
 export function isAgentEnabled(): boolean {

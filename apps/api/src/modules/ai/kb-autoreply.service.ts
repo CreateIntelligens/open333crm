@@ -24,6 +24,7 @@ import type { HistoryMessage } from './llm.service.js';
 import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
 import { getKnownModelKeys } from './model-registry.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
   hasMatchingKeywordRule,
   DEFAULT_BOT_CONFIG,
@@ -137,7 +138,7 @@ export async function attemptKbAutoReply(
   const chatSettings = await getChatSettings(prisma, tenantId);
 
   // 5. Fetch conversation history (excluding the just-arrived message we're replying to)
-  const history = await loadHistory(prisma, conversationId);
+  const history = await loadKbHistory(prisma, conversationId);
 
   // 6. Generate embedding for inbound message
   let queryEmbedding: number[];
@@ -375,7 +376,9 @@ async function persistAndDeliver(input: {
   // 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
   const kbReply = buildKbReplyPayload({ replyText, replyKind, botConfig });
   // 真正送 channel 的文字（可能多帶 text suffix）— DB 也存這份以利客服 UI 對齊
-  const finalText = kbReply.text;
+  // 綁定代碼只能由綁定流程產生：回覆含代碼（KB 內容或 LLM 生成）就整則換成固定說明
+  const guarded = await guardAiReplyForTenant(prisma, tenantId, kbReply.text, { conversationId, source: 'kb_autoreply' });
+  const finalText = guarded.text;
 
   // Persist BOT message
   const now = new Date();
@@ -394,6 +397,7 @@ async function persistAndDeliver(input: {
         articleTitle: topResult?.title,
         allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
         ...metadataExtras,
+        ...(guarded.blocked ? { bindingCodeBlocked: true } : {}),
       },
       createdAt: now,
     },
@@ -504,7 +508,7 @@ function buildKbReplyPayload(input: {
  * user/assistant turns. The just-arrived inbound message is excluded — we
  * pass it separately via `userMessage`.
  */
-async function loadHistory(
+export async function loadKbHistory(
   prisma: PrismaClient,
   conversationId: string,
 ): Promise<HistoryMessage[]> {
@@ -512,21 +516,11 @@ async function loadHistory(
     where: { conversationId },
     orderBy: { createdAt: 'desc' },
     take: HISTORY_LIMIT + 1,
-    select: { direction: true, senderType: true, content: true },
+    select: { direction: true, senderType: true, content: true, metadata: true },
   });
   // Drop the most recent inbound (the one we're replying to right now).
   const trimmed = rows.length > 0 && rows[0].direction === 'INBOUND' ? rows.slice(1) : rows;
 
-  return trimmed
-    .reverse()
-    .map((m) => {
-      const text =
-        typeof m.content === 'object' && m.content !== null
-          ? ((m.content as { text?: string }).text ?? '')
-          : '';
-      if (!text) return null;
-      const role: 'user' | 'assistant' = m.direction === 'INBOUND' ? 'user' : 'assistant';
-      return { role, content: text };
-    })
-    .filter((m): m is HistoryMessage => m !== null);
+  // 系統發的綁定訊息不給 AI 看、代碼遮掉：AI 曾照抄綁定訊息編出不存在的代碼
+  return toAiHistory(trimmed.reverse());
 }

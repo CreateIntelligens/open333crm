@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **AI 偽造綁定代碼** — 顧客打錯綁定關鍵字（例如「綁定帳號綁定帳號」）時訊息會交給 AI，AI 照對話紀錄裡的綁定訊息編出一整則導流訊息，含系統裡不存在的代碼，顧客照做只會收到「代碼無效」（UAT 實測）。AI 回覆與知識庫自動回覆讀的對話紀錄改為不含系統發的綁定訊息、其他訊息中的代碼遮掉；AI 回覆仍含代碼時整則換成固定說明（綁定啟用時引導傳送綁定關鍵字，未啟用時請洽客服），並在訊息標記 `bindingCodeBlocked`。
 - **5 個在 `main` 上失敗的測試** — `cli-session-auth`、`passkey.service`、`tagging.service`、`sla-contract`、`inbox-realtime-source` 都是程式改了、測試沒跟上，逐一查證後沒有發現程式錯誤，已更新測試。刪除標籤另外新增契約測試，確認 route 在租戶交易內呼叫 `deleteTenantTag()`，因為 service 依序刪除，只有在這個交易內才是原子的。
 
 ## [2026-09-30]
