@@ -24,7 +24,7 @@
 
 每位收件人各有一筆通知紀錄。同一個事件通知五個人，就寫五筆。
 
-有兩個來源不經過上面的流程：
+下列來源不經過上面的流程：
 
 - **CSAT 低分**：`csat.service.ts` 的 `recordCsatScore()` 直接呼叫 `createAndDispatch()`，在 API 行程寫入並推送。
 - **SLA 預警與逾時**：workers 的 `sla.handler.ts` 自己送進 queue，見[服務水準協議](../SLA.md)。

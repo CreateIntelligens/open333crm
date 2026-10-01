@@ -79,7 +79,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。第�
 
 | 設定 | 欄位 | 預設值的位置 |
 | --- | --- | --- |
-| Chat（Chat & Prompt 頁） | 供應商（Ollama 或 Gemini）、模型、位址、溫度、最大 token、四組系統提示詞、追問門檻與次數 | `chat-settings.service.ts` 的 `DEFAULT_CHAT_SETTINGS` |
+| Chat（Chat & Prompt 頁） | 供應商（Ollama 或 Gemini）、模型、位址、溫度、最大 token、系統提示詞、追問門檻與次數 | `chat-settings.service.ts` 的 `DEFAULT_CHAT_SETTINGS` |
 | Embedding（Embedding 頁） | 位址、模型、`topK`、`threshold` | `embedding-settings.service.ts` 的 `DEFAULT_EMBEDDING_SETTINGS` |
 
 兩頁都有健康檢查（`/settings/chat/health`、`/settings/embedding/health`），用來確認模型位址連得上。預設位址 `http://localhost:11434` 在容器內指向 API 自己，見 `../../system/AUDIT.md` 的 LLM-01 與 LLM-03。

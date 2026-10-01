@@ -54,7 +54,7 @@
 
 ## 轉真人
 
-轉真人把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`。有三種觸發方式：
+轉真人把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`。觸發方式如下：
 
 | 方式 | 觸發條件 | 程式位置 | 指派給誰 |
 | --- | --- | --- | --- |
@@ -62,15 +62,15 @@
 | 自動轉真人 | 機器人回覆次數達到 `maxBotReplies`、訊息含 `handoffKeywords`，或客人傳圖片、檔案或影片 | `automation.worker.ts` 的 `checkAutoHandoff()` | 不指派 |
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
-三種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求與自動轉真人會發布 `conversation.handoff` 事件。
+每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求與自動轉真人會發布 `conversation.handoff` 事件。
 
-前兩種方式不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知租戶內所有 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
+客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知租戶內所有 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 
 客人在對話已經是 `AGENT_HANDLED` 時再按轉接按鈕，系統只重送 `handoffMessage`，不改任何狀態。
 
 ## 客服回覆怎麼送出
 
-客服送出文字走 `POST /conversations/:id/messages`，圖片與影片走 `/send-image`、`/send-video`。三條路由最後都呼叫 `sendMessage()`，依序做下列事情：
+客服送出文字走 `POST /conversations/:id/messages`，圖片與影片走 `/send-image`、`/send-video`。這些路由最後都呼叫 `sendMessage()`，依序做下列事情：
 
 1. 寫入一則 `OUTBOUND` 訊息，`senderType` 為 `AGENT`。
 2. 更新對話的最後訊息時間，並把未讀數歸零。

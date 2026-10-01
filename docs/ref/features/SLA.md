@@ -9,15 +9,15 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 
 | 問題 | 章節 |
 | --- | --- |
-| SLA 的程式碼在哪裡？為什麼不只在一個模組？ | [功能分佈在三個地方](#功能分佈在三個地方) |
+| SLA 的程式碼在哪裡？為什麼不只在一個模組？ | [程式碼分佈在哪裡](#程式碼分佈在哪裡) |
 | 一條政策能設定什麼？ | [政策的設定項](#政策的設定項) |
 | 政策怎麼套到一張工單上？ | [政策如何套用到工單](#政策如何套用到工單) |
-| 系統監控哪幾種時限？判定條件是什麼？ | [三種時限](#三種時限) |
-| 逾時之後系統做什麼？ | [逾時之後的四個動作](#逾時之後的四個動作) |
+| 系統監控哪幾種時限？判定條件是什麼？ | [監控的時限](#監控的時限) |
+| 逾時之後系統做什麼？ | [逾時之後系統做什麼](#逾時之後系統做什麼) |
 | 租戶可以自訂逾時的處理方式嗎？ | [租戶自訂規則](#租戶自訂規則) |
 | 現在哪些部分不能用？ | [目前的限制](#目前的限制) |
 
-## 功能分佈在三個地方
+## 程式碼分佈在哪裡
 
 讀 `apps/api/src/modules/sla/` 只會看到政策的 CRUD。SLA 的判定與處置不在這個模組裡。
 
@@ -56,9 +56,9 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 
 `Case` 與 `SlaPolicy` 之間沒有外鍵。工單後續要取得政策內容時，都用這個名稱回查。
 
-## 三種時限
+## 監控的時限
 
-`apps/workers` 每 300 秒執行一次 `sla:poll`。每一輪取出狀態為 `OPEN`、`IN_PROGRESS`、`PENDING` 或 `ESCALATED`，而且 `slaPolicy` 不為空的工單，逐一檢查三種時限。
+`apps/workers` 每 300 秒執行一次 `sla:poll`。每一輪取出狀態為 `OPEN`、`IN_PROGRESS`、`PENDING` 或 `ESCALATED`，而且 `slaPolicy` 不為空的工單，逐一檢查下表的時限。
 
 | 時限 | 預警條件 | 逾時條件 | 事件名稱 |
 | --- | --- | --- | --- |
@@ -66,22 +66,22 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 | 結案 | 距 `Case.slaDueAt` 剩下 `warningBeforeMinutes` 以內 | 已過 `slaDueAt` | `sla.resolution.warning` / `sla.resolution.breached` |
 | 客戶枯等 | 無預警 | 最後一則客服回覆之後，客戶累積 3 則以上訊息 | `sla.customer_waiting.breached` |
 
-前兩種時限比對時間，第三種比對對話內容。第三種的計算分三步：
+首次回應與結案比對時間，客戶枯等比對對話內容。客戶枯等的計算步驟如下：
 
 1. 取出該工單底下所有對話。
 2. 在這些對話中找出最後一則客服訊息，條件是 `direction` 為 `OUTBOUND` 且 `senderType` 為 `AGENT` 或 `SYSTEM`。
 3. 計算該則訊息之後的客戶訊息則數，最多取 20 則。
 
-## 逾時之後的四個動作
+## 逾時之後系統做什麼
 
-`dispatchSlaOutcome()` 依序執行四件事。
+`dispatchSlaOutcome()` 依序執行下列步驟。
 
 1. **去重**。同一張工單、同一種事件，24 小時內已經發生過就直接返回。掃描每 5 分鐘一輪，沒有這道檢查會重複發送。
 2. **升級優先級**。只有結案逾時會做。`bumpSlaPriority()` 依 `LOW → MEDIUM → HIGH → URGENT` 推一級，已經是 `URGENT` 就不動。
 3. **寫入 `CaseEvent`**。`actorType` 為 `system`，payload 內含事件名稱、升級前後的優先級，以及一整包 facts。
 4. **發通知並觸發自動化規則**。
 
-facts 由 `buildSlaFacts()` 組成，包含四類資料：
+facts 由 `buildSlaFacts()` 組成，包含下列資料：
 
 - 時間：剩餘分鐘數、逾時分鐘數、預警提前分鐘數。
 - 工單：狀態、優先級、負責人、團隊、累計逾時次數。
@@ -92,7 +92,7 @@ facts 由 `buildSlaFacts()` 組成，包含四類資料：
 
 ## 租戶自訂規則
 
-[逾時之後的四個動作](#逾時之後的四個動作)的第 4 步含一個自動化接點，讓租戶決定預設通知以外的處置。
+[逾時之後系統做什麼](#逾時之後系統做什麼)的「發通知並觸發自動化規則」含一個自動化接點，讓租戶決定預設通知以外的處置。
 
 `evaluateSlaAutomationRules()` 取出該租戶 `eventType` 等於該 SLA 事件名稱、而且 `isActive` 是 `true` 的 `AutomationRule`，依 `priority` 由高到低排序，把 facts 交給 `@open333crm/automation` 的 `evaluateRules()` 比對，再執行命中規則的動作。
 
@@ -107,4 +107,4 @@ facts 由 `buildSlaFacts()` 組成，包含四類資料：
 | `isDefault` 沒有讀取端 | 路由維護「同一優先級只有一條預設」，但 `case.service.ts` 挑政策時不看這個欄位。詳見 `../system/AUDIT.md` 的 SLA-03 |
 | 改名或刪除政策會讓既有工單脫離監控 | 工單存的是政策名稱，不是外鍵。改名之後 `getPolicy()` 回查不到，`sla.handler.ts` 直接跳過該工單。詳見 `../system/AUDIT.md` 的 SLA-04 |
 | 存在第二套掃描機制 | `packages/core/src/cases/case-service.ts` 在模組載入時建立 `sla-monitoring` consumer。任何匯入 `@open333crm/core` 的行程都會產生這個副作用。詳見 `../system/AUDIT.md` 的 APP-01 |
-| 路由層沒有 service | `sla.routes.ts` 直接呼叫 `prisma`，是 `AGENTS.md` 模組結構規則 1 的已知例外。CRUD 也沒有測試覆蓋：`sla-contract.test.ts` 測的是 `packages/shared` 的純函式與規則驗證，沒有碰這四條路由 |
+| 路由層沒有 service | `sla.routes.ts` 直接呼叫 `prisma`，是 `AGENTS.md` 模組結構規則 1 的已知例外。CRUD 也沒有測試覆蓋：`sla-contract.test.ts` 測的是 `packages/shared` 的純函式與規則驗證，沒有碰 CRUD 路由 |

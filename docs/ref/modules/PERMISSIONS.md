@@ -22,7 +22,7 @@
 
 ## 先讀這一段
 
-請求通過認證之後，系統用三種互不相關的機制決定成員能做什麼：
+請求通過認證之後，系統用下列互不相關的機制決定成員能做什麼：
 
 1. **權限碼**：角色被授予哪些權限碼，再扣掉方案不允許的部分。路由以 `requirePermission()` 檢查。
 2. **渠道可見範圍**：同一個租戶內，成員看得到哪些渠道，以及在每個渠道能做到哪個層級。收件匣與工單的路由以 `assert*ChannelVisible()` 檢查。
@@ -88,9 +88,9 @@ flowchart LR
 
 1. `roleId` 為空時，直接回傳空集合。
 2. `getEffectivePermissions()` 讀角色的 `RolePermission`，以 `resolveImplied()` 展開 `implies`。
-3. `tenant-plan.cache.ts` 的 `getTenantPlanId()` 取得租戶的方案。租戶沒有方案（`planId` 為 `null`）時不套天花板，直接回傳第 2 步的結果。
+3. `tenant-plan.cache.ts` 的 `getTenantPlanId()` 取得租戶的方案。租戶沒有方案（`planId` 為 `null`）時不套天花板，直接回傳角色展開後的權限碼。
 4. 取方案的 `features`，加上恆開的 `core`，由 `permsForFeatures()` 換算成權限碼的集合，再扣掉 `permissionOverrides.deny`。這個集合稱為方案天花板。
-5. 第 2 步與第 4 步取交集。
+5. 角色展開後的權限碼與方案天花板取交集。
 
 `implies` 在交集之前展開，所以隱含的碼同樣受天花板限制。例如 `marketing.manage` 隱含 `contact.view`，而 `contact.view` 屬於 `inbox` 功能模組；方案不含 `inbox` 時，`contact.view` 會在交集時被扣掉。
 
@@ -100,8 +100,8 @@ flowchart LR
 
 | 快取的內容 | 存放位置 | 有效期 | 誰清除 |
 | --- | --- | --- | --- |
-| 角色權限（第 2 步） | Redis `perms:role:<roleId>` | 10 分鐘 | `invalidateRolePermissions()`：儲存或刪除角色時 |
-| 有效權限（第 5 步） | Redis `perms:tenant:<roleId>:<planId>` | 10 分鐘 | `invalidateRolePermissions()`；`invalidatePlanPermissions()`：修改方案、核准方案異動、試用轉正式、平台修改租戶方案時 |
+| 角色權限（已展開 `implies`） | Redis `perms:role:<roleId>` | 10 分鐘 | `invalidateRolePermissions()`：儲存或刪除角色時 |
+| 有效權限 | Redis `perms:tenant:<roleId>:<planId>` | 10 分鐘 | `invalidateRolePermissions()`；`invalidatePlanPermissions()`：修改方案、核准方案異動、試用轉正式、平台修改租戶方案時 |
 | 租戶的方案 | API 行程記憶體 | 60 秒 | `invalidateTenantPlan()`：只清除處理這個請求的行程，其他 API 行程最多延遲 60 秒 |
 | 成員的 `roleId` | access token | token 的有效期 | 換發 token 時重讀，見[認證與憑證](./AUTHENTICATION.md#客服的登入與換發) |
 | 前端的權限集合 | 瀏覽器記憶體 | 到重新載入頁面為止 | 登入或重新載入頁面時重新取得 |

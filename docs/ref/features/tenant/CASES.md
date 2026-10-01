@@ -54,7 +54,7 @@
 - 自動指派一律把狀態改成 `IN_PROGRESS`。
 - 升級把狀態改成 `ESCALATED`。
 
-### 改狀態的兩條路
+### 改狀態的路徑
 
 | 路徑 | 呼叫端 | 寫時間軸 | 發布事件 |
 | --- | --- | --- | --- |
@@ -62,7 +62,7 @@
 | `POST /cases/:id/escalate` | 升級對話框 | 有 | `case.escalated` |
 | `PATCH /cases/:id` 帶 `status` | 工單詳情頁的狀態下拉選單 | 沒有 | 沒有 |
 
-兩條路允許的轉換相同，都會寫入 `resolvedAt` 與 `closedAt`。差別在時間軸與事件：從下拉選單改的狀態不留紀錄，也不會觸發通知、自動化與對外 Webhook。從下拉選單選「已升級」時，主管不會收到通知。詳見 `../../system/AUDIT.md` 的 CASE-01。
+各路徑允許的轉換相同，都會寫入 `resolvedAt` 與 `closedAt`。差別在時間軸與事件：從下拉選單改的狀態不留紀錄，也不會觸發通知、自動化與對外 Webhook。從下拉選單選「已升級」時，主管不會收到通知。詳見 `../../system/AUDIT.md` 的 CASE-01。
 
 ## 指派
 
@@ -110,7 +110,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 
 ## 解決之後
 
-`csat.scheduler.ts` 的 `setupCsatScheduler()` 在 API 行程定期執行兩件事：
+`csat.scheduler.ts` 的 `setupCsatScheduler()` 在 API 行程定期執行下列工作：
 
 1. **發送調查**。工單轉成 `RESOLVED` 一段時間後，對工單連結的其中一個對話發送滿意度調查。沒有連結對話的工單不發送。
 2. **逾時結案**。調查發出後超過時限仍沒有回覆，把工單轉成 `CLOSED`、發布 `case.closed`，並關閉該工單所有尚未關閉的對話。這個結案不寫時間軸事件。
@@ -142,7 +142,7 @@ CSAT 攔截器沒有檢查工單是否屬於傳訊的租戶與聯絡人，見 `.
 | `reply_only` | 貼標、加備註 |
 | `full` | 改欄位、改狀態、指派、升級、連結對話、記錄 CSAT、刪除 |
 
-兩個例外沒有套用可見範圍：`POST /cases` 不檢查 `channelId` 是否可見，`GET /cases/stats` 統計的是全租戶的工單。見 `../../system/AUDIT.md` 的 RBAC-04。
+下列操作沒有套用可見範圍：`POST /cases` 不檢查 `channelId` 是否可見，`GET /cases/stats` 統計的是全租戶的工單。見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 目前的限制
 

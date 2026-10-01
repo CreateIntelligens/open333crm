@@ -21,13 +21,13 @@
 
 ## 開通一個租戶建立了什麼
 
-`provisionTenant()` 在同一個交易內依序做三件事：
+`provisionTenant()` 在同一個交易內依序做下列事情：
 
 1. 建 `Tenant`，綁上方案。
 2. `seedRolesForTenant()` 建三個系統角色與各自的預設權限。
 3. 建管理員 `Agent`，`role` 為 `ADMIN`，並綁上剛才建好的 admin 角色。
 
-這個函式收呼叫端傳入的 transaction client，因此兩條開通路徑共用同一份邏輯：
+這個函式收呼叫端傳入的 transaction client，因此各條開通路徑共用同一份邏輯：
 
 | 路徑 | 呼叫者 | 差異 |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ email 的唯一檢查刻意放在交易外先做，讓衝突回 409 `CONFLICT`�
 
 ## 停用租戶多久生效
 
-看走哪個存取面，三個答案不一樣。
+答案依存取面而不同。
 
 | 存取面 | 會不會被擋 | 最長延遲 |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ email 的唯一檢查刻意放在交易外先做，讓衝突回 409 `CONFLICT`�
 | Socket.IO 既有連線 | 不會 | 連線不中斷就一直有效 |
 | CLI token | 不會 | CLI session 自己的有效期 |
 
-REST 這一面是有界的。`authenticate` 只驗 JWT 簽章不回查資料庫，停用當下已經發出的 access token 仍然可用；但續命與重新登入兩條路都被擋住：
+REST 這一面是有界的。`authenticate` 只驗 JWT 簽章不回查資料庫，停用當下已經發出的 access token 仍然可用；但續命與重新登入都被擋住：
 
 - `POST /auth/refresh` 用 `getActiveAgentForAuth()` 重查資料庫，條件包含 `tenant: { isActive: true }`，停用的租戶換不到新的 access token。
 - `login()` 在驗完密碼之後才檢查租戶狀態，停用回 403 `TENANT_DISABLED`。順序是刻意的：放在密碼驗證之後，未通過驗證的人就無法用錯誤碼的差異推測某個 email 屬於哪個租戶。

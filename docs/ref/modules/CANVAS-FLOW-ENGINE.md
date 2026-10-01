@@ -11,7 +11,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | --- | --- |
 | Canvas 與 `automation` 有什麼不同？各自該用在哪裡？ | [與 automation 的分工](#與-automation-的分工) |
 | 一條流程由哪些東西組成？ | [資料模型](#資料模型) |
-| 七種節點各自做什麼？設定長什麼樣？ | [節點型別](#節點型別) |
+| 每種節點各自做什麼？設定長什麼樣？ | [節點型別](#節點型別) |
 | 流程怎麼開始？停下來之後怎麼繼續？ | [執行模型](#執行模型) |
 | 程式碼分佈在哪幾個檔案？各自的職責是什麼？ | [程式碼分佈](#程式碼分佈) |
 | 現在哪些部分不能用？ | [目前的限制](#目前的限制) |
@@ -31,7 +31,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 
 ## 資料模型
 
-四張表定義在 `packages/database/prisma/schema.prisma` 的 `Interaction Canvas` 區段。
+資料表定義在 `packages/database/prisma/schema.prisma` 的 `Interaction Canvas` 區段。
 
 | 表 | 存什麼 | 關鍵欄位 |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 
 ## 節點型別
 
-`NodeType` enum 定義七種節點。執行邏輯在 `packages/core/src/canvas/flow-runner.ts` 的 `executeNode()`。
+`NodeType` enum 定義節點的型別。執行邏輯在 `packages/core/src/canvas/flow-runner.ts` 的 `executeNode()`。
 
 | 節點 | 職責 | 設定欄位 |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 
 ### 觸發
 
-`triggerType` 有四個值：`webhook`、`schedule`、`manual`、`event`。目前只有兩個值有程式支援：
+`triggerType` 的值有 `webhook`、`schedule`、`manual`、`event`。目前有程式支援的如下：
 
 | 來源 | 路徑 |
 | --- | --- |
@@ -136,4 +136,4 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | `ACTION` 只支援 `add_tag` | 其他 `actionType` 會被 `canvas.worker.ts` 直接忽略，不會報錯 |
 | `schedule` 與 `event` 兩種 `triggerType` 沒有觸發來源 | Zod schema 接受這兩個值，但沒有程式會依它們啟動流程 |
 | 引擎不走租戶連線 | `flow-runner.ts` 使用未綁租戶的 `prisma` singleton，查詢以主鍵定位且不帶 `tenantId`。詳見 `../system/AUDIT.md` 的 RLS-01 |
-| `CONDITION` 只支援四個運算子 | `eq`、`neq`、`contains`、`exists`。比較一律以字串進行，沒有數值或日期比較 |
+| `CONDITION` 沒有數值或日期比較 | 運算子只有 `eq`、`neq`、`contains`、`exists`，比較一律以字串進行 |
