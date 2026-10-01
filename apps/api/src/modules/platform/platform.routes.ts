@@ -471,7 +471,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
       action: 'plan_change.approve',
       targetType: 'plan_change_request',
       targetId: result.id,
-      payload: { type: result.type },
+      payload: { type: result.type, trialExited: result.trialExited },
     });
     return success(result);
   });

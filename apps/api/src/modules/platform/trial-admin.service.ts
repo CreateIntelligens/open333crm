@@ -9,6 +9,13 @@ import { invalidatePlanPermissions } from '../../services/permission.service.js'
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { notFound } from '../../shared/messages/resource.js';
 
+/**
+ * 試用租戶轉為付費方案時一併寫入：脫離試用（不再受到期與軟刪排程管轄）、恢復啟用、
+ * 清掉軟刪標記，避免付費租戶仍顯示「已清除」或被日後的硬刪選中。
+ * 轉付費與核准升級申請共用（change fix-csat-intercept-and-trial-upgrade）。
+ */
+export const TRIAL_EXIT_DATA = { trialEndsAt: null, purgedAt: null, isActive: true } as const;
+
 /** 列試用租戶（trialEndsAt 非 null），含剩餘天數與狀態。 */
 export async function listTrialTenants(prisma: PrismaClient) {
   const tenants = await prisma.tenant.findMany({
@@ -142,8 +149,7 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
     where: { id: tenantId },
     data: {
       planId: plan.id,
-      trialEndsAt: null, // 清 = 脫離試用，不再受到期排程管轄
-      isActive: true,
+      ...TRIAL_EXIT_DATA,
     },
     select: { id: true, name: true, plan: { select: { name: true } } },
   });
