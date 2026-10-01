@@ -32,9 +32,13 @@ import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
  */
 export function signedBySameApp(targetCredentials: Record<string, unknown>, verifySecret: string | undefined): boolean {
   if (!verifySecret) return false;
-  if (targetCredentials.appSecret === verifySecret) return true;
-  const platformSecret = getMetaAppConfig()?.appSecret;
-  return targetCredentials.connectMode === 'platform' && Boolean(platformSecret) && platformSecret === verifySecret;
+  // 依連結模式分開判斷：平台模式渠道只認平台 App Secret，就算憑證裡殘留了 appSecret（舊資料或被 API 補上）
+  // 也不採用，否則它會接受那個 App 簽的事件
+  if (targetCredentials.connectMode === 'platform') {
+    const platformSecret = getMetaAppConfig()?.appSecret;
+    return Boolean(platformSecret) && platformSecret === verifySecret;
+  }
+  return targetCredentials.appSecret === verifySecret;
 }
 
 /** 需要依帳號分派的渠道類型（LINE 每個 OA 各自設 webhook，沒有共用回呼的問題） */

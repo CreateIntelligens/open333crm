@@ -317,6 +317,23 @@ try {
     assert.equal(await prisma.channelIdentity.count({ where: { channelId: sameAppOwn.id, uid: psid } }), 1);
   });
 
+  await check('平台模式渠道殘留其他 App 的 App Secret：不可因此接受那個 App 簽的事件', async () => {
+    const { processWebhookEvent } = await import('../modules/webhook/webhook.service.js');
+    const platformCh = await prisma.channel.findFirst({ where: { externalAccountId: PAGE_OK } });
+    const creds = decryptCredentials(platformCh!.credentialsEncrypted);
+    // 模擬舊資料或被 API 補上的 appSecret
+    await prisma.channel.update({ where: { id: platformCh!.id }, data: { credentialsEncrypted: encryptCredentials({ ...creds, appSecret: 'y' }) } });
+    try {
+      const own = await prisma.channel.findFirst({ where: { externalAccountId: PAGE_TAKEN }, select: { id: true } }); // appSecret 'y' 的自備渠道
+      const psid = `PSID_RESIDUAL_${stamp}`;
+      const p = signed(PAGE_OK, psid, 'y');
+      await processWebhookEvent(prisma, io, own!.id, 'FB', p.raw, p.headers);
+      assert.equal(await prisma.channelIdentity.count({ where: { uid: psid } }), 0, '平台模式渠道只認平台 App Secret');
+    } finally {
+      await prisma.channel.update({ where: { id: platformCh!.id }, data: { credentialsEncrypted: platformCh!.credentialsEncrypted } });
+    }
+  });
+
 } finally {
   for (const fn of cleanup) await fn().catch((err) => console.error('清理失敗', err));
   await prisma.$disconnect();
