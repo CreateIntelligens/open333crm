@@ -91,6 +91,9 @@ IG Login 驗證改打 `graph.instagram.com/{v}/me?fields=user_id,username`，以
 - 租戶不可自行設定憑證的 `connectMode`；按鈕只對有 `channel.create` 權限者顯示；平台 webhook 驗證權杖以常數時間比對。
 - **限制**：`META_LOGIN_CONFIG_ID` 必須是「使用者存取權杖」類型的 Facebook Login for Business 設定（系統使用者權杖類型流程不同、未支援）；平台 App 若開啟 Require App Secret，收發訊息的呼叫尚未帶 proof。
 
+### D11 沿用既有 App 當平台 App（2026-10-01）
+UAT 送審沿用「創造智能」App，它同時有自備 App 渠道在用（創造智能租戶的正式粉專），回呼網址指向該渠道。「是否同一個 App」改為：自備渠道看 App Secret 相同、平台模式渠道看驗簽 secret 是否為平台 App Secret（`signedBySameApp`）。兩條路徑（渠道網址、`/webhooks/meta`）都用同一判斷，所以回呼網址不必切換即可錄影送審；日後切到 `/webhooks/meta` 時，App Secret 等於平台 secret 的自備渠道也照常收訊。
+
 ## Risks / Trade-offs
 
 - **相容模式期間仍可能錯置**（D2-5）：回填完成、警示清零之前，未取得帳號 ID 的網址渠道仍照舊收件。→ 部署清單把回填列為必做，並在渠道卡片顯示「尚未取得帳號 ID」。

@@ -20,6 +20,22 @@ import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { decryptCredentials } from '../channel/channel.service.js';
+import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
+
+/**
+ * 目標渠道與「簽這包事件的 Meta App」是否為同一個 App。
+ * - 自備 App 渠道：存的 App Secret 與驗簽用的相同
+ * - 平台模式渠道（Facebook 登入連結，不存 App Secret）：驗簽用的是平台 App Secret
+ *
+ * 平台 App 本身也可能有自備 App 渠道在用（例如沿用既有 App 當平台 App），兩種渠道會共用同一個回呼網址；
+ * 依此判斷，事件不論從渠道網址還是 /webhooks/meta 進來都能派給正確的渠道，回呼網址不必馬上切換。
+ */
+export function signedBySameApp(targetCredentials: Record<string, unknown>, verifySecret: string | undefined): boolean {
+  if (!verifySecret) return false;
+  if (targetCredentials.appSecret === verifySecret) return true;
+  const platformSecret = getMetaAppConfig()?.appSecret;
+  return targetCredentials.connectMode === 'platform' && Boolean(platformSecret) && platformSecret === verifySecret;
+}
 
 /** 需要依帳號分派的渠道類型（LINE 每個 OA 各自設 webhook，沒有共用回呼的問題） */
 const ROUTED_CHANNEL_TYPES = new Set<string>([CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS]);
@@ -141,7 +157,7 @@ export async function routeWebhookMessages(
       });
       continue;
     }
-    if (!verifySecret || targetCredentials.appSecret !== verifySecret) {
+    if (!signedBySameApp(targetCredentials, verifySecret)) {
       logger.warn('[Webhook] 認領帳號的渠道使用不同的 Meta App，已丟棄', {
         urlChannelId: urlChannel.id,
         targetChannelId: target.id,
@@ -244,9 +260,10 @@ export async function routePlatformMessages(
       logger.error('[Webhook:meta] 渠道憑證無法解密，丟棄事件', { channelId: target.id, error: err instanceof Error ? err.message : String(err) });
       continue;
     }
-    // 自備 App 的渠道不該收到平台 App 的事件（粉專同時訂閱兩個 App 時會發生），交給它自己的回呼網址處理
-    if (credentials.connectMode !== 'platform') {
-      logger.warn('[Webhook:meta] 認領帳號的渠道不是平台連結模式，已丟棄', { channelId: target.id, accountId });
+    // 只收「同一個 App」的渠道：平台模式渠道，或 App Secret 就是平台 App 的自備渠道（沿用既有 App 當平台 App 時）。
+    // 用別的 App 的自備渠道不該收到平台 App 的事件（粉專同時訂閱兩個 App 時會發生），交給它自己的回呼網址處理
+    if (!signedBySameApp(credentials, getMetaAppConfig()?.appSecret)) {
+      logger.warn('[Webhook:meta] 認領帳號的渠道使用其他 Meta App，已丟棄', { channelId: target.id, accountId });
       continue;
     }
     groups.push({
