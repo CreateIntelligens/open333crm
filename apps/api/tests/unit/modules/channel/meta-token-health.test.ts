@@ -113,3 +113,15 @@ test('HTTP 429 或沒列出的 OAuthException：無法判斷，只有明確的�
   fakeFetch(401, { error: { type: 'OAuthException', message: 'unauthorized' } });
   assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
 });
+
+test('HTTP 401 沒有錯誤內容：仍算失效', async () => {
+  fakeFetch(401, {});
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
+});
+
+test('102 與 200 系列其他錯誤碼：失效', async () => {
+  for (const code of [102, 230, 299]) {
+    fakeFetch(400, { error: { type: 'OAuthException', code, message: 'x' } });
+    assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid', `code ${code}`);
+  }
+});

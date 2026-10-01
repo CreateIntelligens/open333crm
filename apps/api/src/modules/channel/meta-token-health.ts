@@ -83,12 +83,14 @@ export async function probeChannelToken(channelType: string, credentials: Record
     error?: { type?: string; code?: number; message?: string; is_transient?: boolean };
   };
   const e = body.error;
+  // 401 本身就是明確的失效訊號，沒有錯誤內容也算
+  if (res.status === 401) return { status: 'invalid', reason: e?.message ?? '權杖已失效' };
   if (res.status >= 500 || res.status === 429 || !e) return { status: 'unknown', reason: e?.message ?? `HTTP ${res.status}` };
   if (e.is_transient || (e.code !== undefined && RATE_LIMIT_CODES.has(e.code))) {
     return { status: 'unknown', reason: e.message ?? `HTTP ${res.status}` };
   }
   // 只認明確的失效訊號；其他錯誤（包括沒列出的 OAuthException）一律當無法判斷，寧可漏報也不誤發通知
-  if (res.status === 401 || (e.code !== undefined && isTokenInvalidCode(e.code))) {
+  if (e.code !== undefined && isTokenInvalidCode(e.code)) {
     return { status: 'invalid', reason: e.message ?? '權杖已失效' };
   }
   return { status: 'unknown', reason: e.message ?? `HTTP ${res.status}` };
