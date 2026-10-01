@@ -20,6 +20,10 @@ export const AGENT_SYSTEM_PROMPT =
   '需要外部即時資料時應使用工具，不要假裝已查詢。只有在使用者明確需要長篇報告或要求發布時，才可使用 Wiki 發布工具。' +
   '回答時請清楚區分已查證資料與推測，無法確認時要明確說明。';
 
+const AGENT_HISTORY_LIMIT = 10;
+/** 讀取筆數倍數：過濾綁定訊息後仍留得滿歷史上限 */
+const HISTORY_FETCH_FACTOR = 3;
+
 export interface AgentReplyInput {
   tenantId: string;
   userMessage: string;
@@ -218,11 +222,12 @@ export async function loadAgentHistory(prisma: TenantDb, tenantId: string, conve
       ...(excludeMessageId ? { id: { not: excludeMessageId } } : {}),
     },
     orderBy: { createdAt: 'desc' },
-    take: 10,
+    // 多取一些：綁定訊息過濾掉之後，仍要留滿 AGENT_HISTORY_LIMIT 則一般對話
+    take: AGENT_HISTORY_LIMIT * HISTORY_FETCH_FACTOR,
     select: { direction: true, content: true, metadata: true },
   });
   // 系統發的綁定訊息不給 AI 看、代碼遮掉：AI 曾照抄綁定訊息編出不存在的代碼
-  return toAiHistory(rows.reverse());
+  return toAiHistory(rows.reverse()).slice(-AGENT_HISTORY_LIMIT);
 }
 
 export function isAgentEnabled(): boolean {

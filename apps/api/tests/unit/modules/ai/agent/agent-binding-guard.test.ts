@@ -15,6 +15,12 @@ vi.mock('#src/modules/settings/chat-settings.service.js', () => ({
   getChatSettings: async () => ({ provider: 'gemini', model: 'm', temperature: 0, maxTokens: 10 }),
 }));
 vi.mock('#src/modules/ai/ai-key.service.js', () => ({ resolveGeminiKey: async () => ({ key: 'k', source: 'tenant' }) }));
+const delivered: unknown[] = [];
+vi.mock('#src/modules/conversation/conversation.service.js', () => ({
+  deliverToChannel: async (_db: unknown, _conversationId: string, payload: unknown) => {
+    delivered.push(payload);
+  },
+}));
 vi.mock('#src/config/env.js', async (orig) => ({
   ...(await orig<object>()),
   getConfig: () => ({ AGENT_WIKI_AUTO_PUBLISH: false, AGENT_MAX_TURNS: 1, AGENT_MAX_TOOL_CALLS: 1, AGENT_TIMEOUT_MS: 1000, AGENT_MAX_TOTAL_TOKENS: 1000 }),
@@ -29,4 +35,34 @@ test('runAgentReply：AI 回覆含代碼 → 換成引導傳送綁定關鍵字�
   const out = await runAgentReply(prisma, { tenantId: 'agent-guard-tenant', userMessage: '綁定帳號綁定帳號' });
   assert.doesNotMatch(out.text, /BIND-/);
   assert.match(out.text, /「綁定帳號」/);
+});
+
+test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說明，訊息標記 bindingCodeBlocked', async () => {
+  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
+  const created: Array<{ content: { text: string }; metadata: Record<string, unknown> }> = [];
+  const tx = {
+    conversation: { updateMany: async () => ({ count: 1 }) },
+    message: {
+      create: async (args: { data: { content: { text: string }; metadata: Record<string, unknown> } }) => {
+        created.push(args.data);
+        return { id: 'm1', metadata: args.data.metadata };
+      },
+    },
+  };
+  const prisma = {
+    ...tx,
+    $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+    conversation: { ...tx.conversation, findFirst: async () => ({ id: 'c1' }) },
+    agentRun: { create: async () => ({ id: 'run2', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    tenantSettings: { findFirst: async () => ({ identityBinding: { enabled: true, bindKeywords: ['綁定帳號'] } }) },
+    message: { ...tx.message, findMany: async () => [] },
+  } as never;
+  const io = { to: () => ({ emit: () => {} }) } as never;
+  delivered.length = 0;
+  await runAgentReply(prisma, { tenantId: 'agent-guard-tenant-2', conversationId: 'c1', userMessage: 'x', deliver: true, io });
+  assert.equal(created.length, 1);
+  assert.equal(created[0]!.metadata.bindingCodeBlocked, true);
+  assert.doesNotMatch(created[0]!.content.text, /BIND-|https?:/);
+  assert.equal(delivered.length, 1);
+  assert.doesNotMatch(JSON.stringify(delivered[0]), /BIND-|https?:/);
 });

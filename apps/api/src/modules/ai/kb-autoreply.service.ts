@@ -515,12 +515,13 @@ export async function loadKbHistory(
   const rows = await prisma.message.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'desc' },
-    take: HISTORY_LIMIT + 1,
+    // 多取一些：綁定訊息過濾掉之後，仍要留滿 HISTORY_LIMIT 則一般對話
+    take: (HISTORY_LIMIT + 1) * 3,
     select: { direction: true, senderType: true, content: true, metadata: true },
   });
   // Drop the most recent inbound (the one we're replying to right now).
   const trimmed = rows.length > 0 && rows[0].direction === 'INBOUND' ? rows.slice(1) : rows;
 
   // 系統發的綁定訊息不給 AI 看、代碼遮掉：AI 曾照抄綁定訊息編出不存在的代碼
-  return toAiHistory(trimmed.reverse());
+  return toAiHistory(trimmed.reverse()).slice(-HISTORY_LIMIT);
 }
