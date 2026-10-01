@@ -126,7 +126,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 側欄顯示，API 回 403 | 「設定」底下的「渠道管理」「人員管理」「SLA 政策」「營業時間」等分頁在側欄沒有 `perm`，所有成員都看得到；對應的 API 需要 `channel.view`、`agent.view`、`sla.manage` 或 `settings.manage` |
 | 側欄隱藏，API 放行 | 「我的績效」掛在「報表」底下，側欄要求 `analytics.view`；`GET /analytics/my` 只要有 `analytics.view.self` 就放行，但只有這個權限碼的客服在側欄找不到入口。「短連結」在側欄要求 `shortlink.view`；`/api/v1/shortlinks` 只需要登入 |
 
-收件匣、工單、聯絡人一帶的路由沒有權限碼，只驗登入，見 `../../system/AUDIT.md` 的 RBAC-01。各功能區的權限細節見各文件的「權限」一節。
+收件匣與工單一帶的路由沒有權限碼，只驗登入，見 `../../system/AUDIT.md` 的 RBAC-01。各功能區的權限細節見各文件的「權限」一節。
 
 ## 最需要注意的問題
 
@@ -134,7 +134,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 問題 | 影響 | 文件 | AUDIT |
 | --- | --- | --- | --- |
-| 粉絲 token 與 refresh token 都能通過客服認證 | 知道一組聯絡人 ID 與租戶 ID，就能讀取收件匣並收到即時訊息 | [人員與角色](./MEMBERS.md#登入)、[粉絲活動](./PORTAL.md) | AUTH-05 |
+| refresh token 能通過客服認證 | 外洩的 refresh token，或被停用成員手上的 refresh token，能讀取收件匣並收到即時訊息，最長 30 天。粉絲 token 的簽發路徑接回之後，粉絲 token 也能 | [人員與角色](./MEMBERS.md#登入)、[粉絲活動](./PORTAL.md) | AUTH-05 |
 | 密碼登入沒有速率限制 | 可以無限次嘗試密碼 | [人員與角色](./MEMBERS.md#登入) | SEC-05 |
 | CSAT 攔截器與重抓 LINE 個人資料的端點不檢查租戶 | 可以改寫或讀取其他租戶的資料 | [工單](./CASES.md#解決之後)、[聯絡人與標籤](./CONTACTS.md) | RLS-06、RLS-05 |
 | 部分自動化動作與觸發事件不會生效 | 規則可以儲存、看起來正常，實際什麼都不做 | [自動化](./AUTOMATION.md) | AUTO-01、AUTO-05 |

@@ -38,7 +38,7 @@
 | 平台 JWT | 平台帳號 | `POST /platform/auth/login` | JWT，以 `PLATFORM_JWT_SECRET` 簽發，註冊在 `platform` namespace | `authenticatePlatformSuperuser` | `PLATFORM_JWT_EXPIRES_IN` |
 | CLI token | 成員（CLI、MCP） | `POST /auth/cli/login`，或在設定頁 `POST /settings/cli-sessions` | `cli_` 開頭的隨機字元。`CliSession` 存雜湊值與 scope | `authenticateCliSession`、`authenticateJwtOrCliSession` | 預設 30 天，見 `cli-session.service.ts` 的 `DEFAULT_EXPIRES_DAYS` |
 | Partner API 金鑰 | 外部夥伴系統 | 設定頁 `POST /settings/api-keys` | `pk_` 開頭的隨機字元。`PartnerApiKey` 存雜湊值 | `authenticateJwtOrPartnerKey` | 建立時指定；不指定就不會過期 |
-| 粉絲 token | LINE 粉絲 | `POST /fan/auth` | JWT，以 `JWT_SECRET` 簽發，`sub` 為 `'fan'` | `portal-public.routes.ts` 的 `authenticateFan()` | 24 小時，寫死在 `signFanToken()` |
+| 粉絲 token | LINE 粉絲 | 目前沒有。原本的 `POST /fan/auth` 已在 `481452a` 刪除，`signFanToken()` 沒有呼叫端 | JWT，以 `JWT_SECRET` 簽發，`sub` 為 `'fan'` | `portal-public.routes.ts` 的 `authenticateFan()` | 24 小時，寫死在 `signFanToken()` |
 | MCP 確認 token | MCP 客戶端 | 呼叫 LINE 發送或群發工具、但沒帶確認 token 時，工具回傳預覽與這個 token | JWT，以 `JWT_SECRET` 簽發 | `verifyLineMcpConfirmation()`，比對操作種類、租戶、成員與 CLI session | 5 分鐘 |
 | Chatbox session 與 claim token | 網站訪客 | `POST /chatbox/sessions` 建立 session，`POST /chatbox/sessions/verify` 取得 claim token | session ID 是加密字串；`ChatboxSession` 存 session，claim token 的 HMAC 存在 Redis | `chatboxSessionVerifier`，REST 與 `/visitor` socket 共用 | `CHATBOX_SESSION_TTL_MINUTES`，程式上限 3 天 |
 | 試用驗證 token | 試用申請者 | 送出試用申請後寄到信箱 | 隨機字元。`TrialSignup` 存 SHA-256 | `GET /trial/verify` | 試用政策的 `verifyTokenTtlHours` |
@@ -71,7 +71,7 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | 工單自動指派、通知收件人等業務規則 | `role` | 見 `../system/AUDIT.md` 的 RBAC-03 |
 | `request.tenantPrisma` | `tenantId` | 沒有 `request.agent` 時拋出錯誤 |
 
-`authenticate` 不檢查 token 的種類，也不要求 payload 帶 `agentId`。refresh token、粉絲 token 與 MCP 確認 token 都能通過，見 `../system/AUDIT.md` 的 AUTH-05。
+`authenticate` 不檢查 token 的種類，也不要求 payload 帶 `agentId`。refresh token 與 MCP 確認 token 都能通過；粉絲 token 的簽發路徑接回之後，粉絲 token 也能通過。見 `../system/AUDIT.md` 的 AUTH-05。
 
 ## 客服的登入與換發
 
@@ -158,7 +158,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | --- | --- | --- | --- |
 | `/api/v1/webhooks/line/:channelId`、`/fb/:channelId`、`/threads/:channelId` | 渠道平台 | `webhook.service.ts` 以渠道的外掛 `verifySignature()` 驗證原始內容的簽章 | 路徑的 `channelId` 對應的渠道 |
 | `/api/v1/chatbox/*`、`/api/v1/webchat/:channelId/*` | 網站訪客 | Chatbox session 加 claim token。瀏覽器指紋與建立時差異過大時拒絕 | session 所屬的渠道 |
-| `/api/v1/fan/*` | LINE 粉絲 | 粉絲 token | token 的 `tenantId` |
+| `/api/v1/fan/*` | LINE 粉絲 | 粉絲 token。系統目前不簽發粉絲 token，因此這組路由目前無法使用 | token 的 `tenantId` |
 | `/api/v1/trial/*` | 試用申請者 | 信箱驗證 token | 驗證成功時才建立租戶 |
 | `/api/v1/auth/line/*`、`/api/v1/auth/fb/*` | 客人 | OAuth 的 state | state 記錄的渠道 |
 | `/s/:slug`、`/s/track` | 點擊短連結的人 | 無 | 短連結所屬的租戶 |
@@ -171,15 +171,14 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 1. **租戶後台的路由用 `fastify.authenticate`，再掛 `requirePermission()`。** 只有 `authenticate` 會填 `roleId`，權限檢查才算得出權限集合。
 2. **不要把 `authenticateJwtOrCliSession` 與 `requirePermission()` 放在同一條路由。** CLI 分支會被 `requirePermission()` 直接放行，JWT 分支會因為沒有 `roleId` 而一律 403。同一條路由，CLI 失效開放，網頁失效關閉。CLI 路由改用 `hasCliScope()` 檢查 scope。
 3. **要讓 Partner API 金鑰呼叫新路由，就把權限碼加進 `rbac.guard.ts` 的 `PARTNER_KEY_ALLOWED`。** 沒有列入的權限碼，金鑰一律 403。
-4. **公開端點的租戶與身分，要從驗證過的憑證推導。** 不要接受呼叫端在 body 或 query 指定 `tenantId`、`contactId` 或渠道身分。`/fan/auth` 與 `/auth/line/authorize` 沒有遵守這條規則，見下一節。
+4. **公開端點的租戶與身分，要從驗證過的憑證推導。** 不要接受呼叫端在 body 或 query 指定 `tenantId`、`contactId` 或渠道身分。`/auth/line/authorize` 沒有遵守這條規則，見下一節。已刪除的 `/fan/auth` 也是因為違反這條規則而刪除。
 5. **確認新路由有沒有速率限制。** 速率限制外掛由各模組自己註冊，沒有全站設定。`auth`、`trial`、`platform` 以 `global: false` 註冊，只有個別設定 `config.rateLimit` 的路由受限。`chatbox`、`webchat` 對模組內每條路由套用同一個上限。其他模組沒有註冊外掛，在這些模組設定 `config.rateLimit` 不會生效，也不會報錯。見 `../system/AUDIT.md` 的 SEC-03。
 
 ## 目前的限制
 
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
-| `authenticate` 與 socket 不區分 JWT 種類，粉絲 token 與 refresh token 都能當客服 access token | AUTH-05 |
-| `/fan/auth` 只要知道聯絡人 ID 與租戶 ID 就發出粉絲 token | AUTH-05 |
+| `authenticate` 與 socket 不區分 JWT 種類，refresh token 能當客服 access token；粉絲 token 的簽發路徑接回之後，粉絲 token 也能 | AUTH-05 |
 | 租戶的密碼登入沒有速率限制，也沒有帳號鎖定 | SEC-05 |
 | 速率限制以 `request.ip` 計算，而 `request.ip` 可由呼叫端偽造 | SEC-04 |
 | CLI token 只看 scope，不看角色與方案天花板；`requirePermission()` 對 CLI 直接放行 | RBAC-02 |

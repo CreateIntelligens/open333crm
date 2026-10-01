@@ -18,6 +18,8 @@
 
 租戶後台的前端頁面有活動管理、提交紀錄與積分管理。粉絲端的前端不在這個 repo，`/api/v1/fan` 沒有已知的呼叫端。
 
+**粉絲端目前無法使用。** 系統目前沒有簽發粉絲 token 的路徑，因此粉絲端的每條路由都會回 401。原本簽發 token 的 `POST /api/v1/fan/auth` 不驗證身分，已在 `481452a`（2026-09-30）刪除。`openspec/changes/add-cross-channel-one-id/tasks.md` 的 9.3.3 預計接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。
+
 ## 活動
 
 活動有三種類型：
@@ -41,15 +43,13 @@
 
 ## 粉絲怎麼參加
 
-1. 粉絲端呼叫 `POST /api/v1/fan/auth`，帶 `contactId` 與 `tenantId`，取得 24 小時有效的粉絲 token。
+1. 粉絲端取得 24 小時有效的粉絲 token（`portal-auth.service.ts` 的 `signFanToken()`）。目前沒有簽發路徑，見[負責的程式](#負責的程式)。
 2. 以 token 瀏覽活動（`GET /fan/activities`）並提交（`POST /fan/activities/:id/submit`）。
 3. 查看結果（`/fan/activities/:id/result`）、自己參加過的活動（`/fan/me/activities`）與積分（`/fan/me/points`）。
 
 粉絲端的每個查詢都以 token 裡的 `tenantId` 與 `contactId` 過濾，因此只看得到自己租戶的活動與自己的紀錄。這組路由使用 `prismaAdmin`，租戶隔離完全靠這個查詢條件。
 
-**取得 token 不需要證明身分。** `/fan/auth` 只檢查這個聯絡人是否存在，不驗證任何 LINE 登入憑證。知道一組聯絡人 ID 與租戶 ID，就能以那個人的身分參加活動、查看他的積分。
-
-**粉絲 token 能通過客服認證。** 粉絲 token 與客服的 JWT 用同一把 `JWT_SECRET` 簽發，而客服端的 `authenticate` 只驗簽章，不檢查 token 是不是客服的。拿粉絲 token 呼叫只驗登入的客服路由，例如對話清單，會被當成該租戶的客服放行；用它連 socket 也會收到全租戶的即時訊息。見 `../../system/AUDIT.md` 的 AUTH-05。
+**接回簽發路徑之前，要先修 AUTH-05。** 粉絲 token 與客服的 JWT 用同一把 `JWT_SECRET` 簽發，而客服端的 `authenticate` 只驗簽章，不檢查 token 是不是客服的。簽發路徑接回之後，拿粉絲 token 呼叫只驗登入的客服路由，例如對話清單，會被當成該租戶的客服放行；用它連 socket 也會收到全租戶的即時訊息。見 `../../system/AUDIT.md` 的 AUTH-05。
 
 ## 提交
 
@@ -88,7 +88,8 @@
 
 | 限制 | 說明 |
 | --- | --- |
-| **取得粉絲 token 不需要證明身分，且 token 能通過客服認證** | 詳見 `../../system/AUDIT.md` 的 AUTH-05 |
+| **系統目前不簽發粉絲 token，粉絲端無法使用** | 見[負責的程式](#負責的程式) |
+| **粉絲 token 能通過客服認證** | 簽發路徑接回之後就會發生。詳見 `../../system/AUDIT.md` 的 AUTH-05 |
 | 重複提交只在應用層檢查 | 同時送出可能重複加分 |
 | 問答錯選不扣分 | 全選即可拿滿分 |
 | 抽獎以提交為單位 | 允許重複提交時，多提交的人中獎機率較高 |

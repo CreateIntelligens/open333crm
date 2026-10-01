@@ -4,6 +4,51 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：複查所有 P1 項目，全部仍然存在
+
+上一筆複查更新 RLS-02、AUTH-05、RBAC-01 之後，P1 剩下 10 項。本次在 `main`（`e775c07`）以靜態方式逐項複查，10 項都仍然存在：
+
+| 項目 | 結果 | 查證方式 |
+| --- | --- | --- |
+| RLS-01 | 仍存在 | `flow-runner.ts` 在檔案開頭匯入 singleton，查詢只以 `executionId` 定位；`scheduler.ts` 的 `processResumeQueue()` 動態載入同一個 singleton；`canvas.service.ts` 建立 execution 後呼叫 `FlowRunner.run(execution.id)` |
+| RLS-05 | 仍存在 | 路由只掛 `fastify.authenticate`，把 `prismaAdmin` 交給 `syncLineContactProfile()`；服務查 `channelIdentity` 與 `channel` 的 `where` 都沒有 `tenantId`；`check-prisma-admin-usage.mjs` 的白名單仍列出這個檔案；`apps/web` 沒有呼叫端 |
+| RLS-06 | 仍存在 | `handleCsatResponse()` 同時比對文字訊息與 postback；`recordCsatScore()` 以 `findUnique({ where: { id: caseId } })` 查工單；`webhook.routes.ts` 把 `prismaAdmin` 交給 `processWebhookEvent()`，一路傳到攔截器，中間沒有 `withTenant` |
+| RBAC-01 | 部分修正，與上一筆一致 | 12 個權限碼仍然沒有出現在 `apps/api/src`；`case`、`conversation`、`tag`、`shortlink` 的路由檔都沒有 `requirePermission` |
+| SEC-04 | 仍存在 | `index.ts` 仍設定 `trustProxy: true`；`nginx.conf.template` 的 6 個 location 都用 `$proxy_add_x_forwarded_for`；`apps/api/src` 沒有讀 `X-Real-IP`；5 個模組的 `keyGenerator` 都是 `request.ip` |
+| SEC-05 | 仍存在 | `auth.routes.ts` 以 `global: false` 註冊速率限制外掛，`/login` 沒有 `config.rateLimit`；schema 與 `auth.service.ts` 都沒有失敗次數或鎖定的欄位 |
+| TRIAL-01 | 仍存在 | `approveRequest()` 的 upgrade 分支只寫 `planId`；`createPlanChangeRequest()` 不檢查試用狀態；`runTrialLifecycle()` 的停用與清除掃描都沒有方案條件 |
+| PLAN-08 | 仍存在 | `/roles/matrix` 回傳 `getPermissionMatrix()` 的整份註冊表；`setRolePermissions()` 的越權防護讀 `getEffectivePermissions()`；`default-roles.ts` 的 admin 擁有全部權限碼；`RolePermissionMatrix.tsx` 沒有方案判斷 |
+| SLA-01 | 仍存在 | 在 `apps/` 與 `packages/` 搜尋 `firstResponseAt`，命中的檔案只有 schema、`sla.handler.ts`、`analytics.service.ts` 與兩個前端檔案，都是讀取端 |
+| AUTO-01 | 仍存在 | `automation-actions.ts` 沒有 `create_case`、`remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 的分支，契約仍提供這 5 種動作，遇到時仍只記 info log |
+
+**未合併的遠端分支。** 對每一個沒有合併進 `main` 的遠端分支，比對上述項目涉及的檔案。`feat/coupon-system` 與 `feat/line-click-tag-and-material-basics` 改了 `automation-actions.ts`，但都沒有加入 AUTO-01 缺少的動作；其他分支的改動與這 10 項無關。因此沒有任何分支即將修正這些項目。
+
+**PLAN-08 刪除一張過時的表。** PLAN-08 原本用一張表對照「本分支」與「`main`」的 403 回應。`ad4edc6` 已經在 `main`，`rbac.guard.ts` 的 `sendForbidden()` 回傳全站的 `{ success, error }` 結構，訊息是中文並附 `requiredPermission`。這張表因此刪除，內文只描述 `main` 的行為。PLAN-08 的結論不變。
+
+**限制。** 本次只讀程式碼，沒有在執行環境重現。
+
+## 2026-10-01：對照 One ID 的合併，移除 RLS-02，AUTH-05 與 RBAC-01 改為部分修正
+
+整理 P1 項目的修復順序時發現，2026-09-30 合併的 `481452a`（#185，`add-cross-channel-one-id`）已經修掉三個 P1 項目的全部或一部分，但 `AUDIT.md` 仍以修正前的狀態描述這三項。本次逐項對照 `main` 的程式後更新：
+
+| 項目 | `481452a` 改了什麼 | 處理 | 優先 |
+| --- | --- | --- | --- |
+| RLS-02 | approve 與 reject 路由在 `withTenant` 內呼叫服務，並傳入 `request.agent.tenantId`；`rejectMerge()` 與 `claimSuggestionForApproval()` 改由呼叫端傳入 executor，`where` 帶 `tenantId`；`merge-suggestion-service.ts` 不再匯入 module-level singleton | 已修正，從 `AUDIT.md` 移除 | — |
+| AUTH-05 | 刪除 `POST /api/v1/fan/auth`。`signFanToken()` 因此沒有呼叫端 | 部分修正。`authenticate` 與 socket 驗證仍不區分 token 種類 | P1 → P2 |
+| RBAC-01 | `contact.routes.ts` 的每條路由都掛上 `requirePermission()` | 部分修正。工單、對話、標籤、短連結的路由仍然沒有授權判斷 | P1，不變 |
+
+**AUTH-05 調為 P2 的理由。** 原本標為 P1，是因為任何人知道一組聯絡人 ID 與租戶 ID，就能從 `/fan/auth` 取得能通過客服認證的 token。這條路徑刪除之後，利用剩下的問題需要先取得外洩的 refresh token，或曾經是該租戶的成員。One ID change 的 `tasks.md` 9.3.3 預計接回粉絲 token 的簽發路徑，但這個 change 沒有在 `authenticate` 加上 token 種類的檢查。因此內文註明這一項必須在 9.3.3 之前修正。
+
+**RBAC-01 的權限碼重新計算。** 在 `apps/api/src` 逐一搜尋 `permissions.ts` 的權限碼字串。完全沒有出現的碼從 15 個減為 12 個：`contact.view`、`contact.update` 與 `case.view` 都出現在 `contact.routes.ts`。`case.view` 只守在 `GET /contacts/:id/cases`，`case.routes.ts` 本身仍不檢查，因此在內文另外說明。`contact.merge` 原本只以稽核紀錄的 `action` 字串出現，現在已經是路由的檢查。
+
+連帶修改：
+
+- RLS-03 不再提到 RLS-02，匯入 singleton 的 `packages/core` 檔案從三個減為兩個。
+- IDENT-01 刪除「影響 RLS-02 的現況」一句。
+- `AUTHENTICATION.md`、`PORTAL.md` 與其他引用 AUTH-05、RBAC-01 的功能區文件，改寫「呼叫 `/fan/auth` 取得粉絲 token」與「聯絡人路由沒有權限碼」的描述。
+
+**本次沒有查證的項目。** `481452a` 也新增了 `contact-merge.service.ts`，把多套合併實作收斂成一套。CONTACT-01（兩套合併實作的行為不一致）可能因此過時，本次沒有查證，留待下次複查。
+
 ## 2026-10-01：組織決定不部署 Ollama，重寫 LLM-01 至 LLM-03，新增 LLM-04
 
 組織因主機資源不足，決定不部署 Ollama。原本的 LLM-01 至 LLM-03 都假設 Ollama 有部署，問題在於「連錯位址」或「設定不一致」。這個決定之後，三項依新的前提重寫：

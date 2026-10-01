@@ -43,13 +43,12 @@
 | ID | 範圍 | 優先 | 處理狀態 | 問題 | 驗證狀態 |
 | --- | --- | --- | --- | --- | --- |
 | [RLS-01](#rls-01) | 租戶隔離與權限 | P1 | 未處理 | Canvas 引擎不走租戶連線 | 靜態確認 |
-| [RLS-02](#rls-02) | 租戶隔離與權限 | P1 | 未處理 | 身分合併審核端點沒有租戶檢查 | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RLS-06](#rls-06) | 租戶隔離與權限 | P1 | 已提建議 | 進站的 CSAT 攔截器不檢查租戶與聯絡人，外部使用者可改寫任一租戶的工單評分 | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
-| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 未處理 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由只驗身分 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
@@ -61,7 +60,7 @@
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| [AUTH-05](#auth-05) | 帳號與登入 | P1 | 已提建議 | 租戶端 JWT 不分用途，粉絲 token 與 refresh token 都能當客服 access token | 靜態確認 |
+| [AUTH-05](#auth-05) | 帳號與登入 | P2 | 部分修正 | 租戶端 JWT 不分用途，refresh token 能當客服 access token；粉絲 token 的簽發路徑接回後，粉絲 token 也能 | 靜態確認 |
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
@@ -160,25 +159,14 @@
 - 指向 superuser 或帶 BYPASSRLS 的 role（`.env.api.example` 的 `crm` 屬於這類）：Canvas 的所有讀寫跳過 RLS。
 - 指向 `app_tenant`：singleton 的連線沒有 `app.current_tenant`，policy fail-closed，`FlowRunner.run()` 在第一個 `findUniqueOrThrow` 就查不到列，Canvas 會靜默停止運作。
 
-<a id="rls-02"></a>
-### RLS-02：身分合併審核端點沒有租戶檢查
-
-`apps/api/src/modules/canvas/canvas.routes.ts` 的 `POST /suggestions/:id/approve` 與 `POST /suggestions/:id/reject` 把路徑參數直接交給 `approveMerge(suggestionId, agentId)` 與 `rejectMerge(suggestionId, agentId)`，沒有傳入 `request.agent.tenantId`。
-
-`packages/core/src/identity/merge-suggestion-service.ts` 的 `approveMerge()` 與 `rejectMerge()` 用 singleton 以主鍵查 `mergeSuggestion`，`where` 也沒有 `tenantId`。`approveMerge` 接著依該筆建議自己的 `tenantId` 合併聯繫人。
-
-兩層租戶隔離在這條路徑上都不生效：應用層沒有比對 `request.agent.tenantId`，資料層走的是不綁租戶的 singleton。持有 `identity.review` 權限的 agent 若取得其他租戶的建議 id，就能核准或駁回該筆建議。同一個檔案的 `listSuggestions()` 有收 `tenantId` 並寫進 `where`，不受這項影響。
-
-目前沒有任何程式產生合併建議，見 IDENT-01。在接上產生端之前，這條路徑沒有資料可以操作；接上之後，這項落差立即生效。
-
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
 
-`scripts/check-tenant-scoping.mjs` 與 `scripts/check-prisma-admin-usage.mjs` 的 `SCAN_DIR` 常數都是 `apps/api/src`。`packages/*` 不在掃描範圍，因此這兩道檢查攔不到 RLS-01 與 RLS-02 位於 `packages/core` 的程式碼。
+`scripts/check-tenant-scoping.mjs` 與 `scripts/check-prisma-admin-usage.mjs` 的 `SCAN_DIR` 常數都是 `apps/api/src`。`packages/*` 不在掃描範圍，因此這兩道檢查攔不到 RLS-01 位於 `packages/core` 的程式碼。
 
 兩支腳本檢查的項目是「query 有沒有 `tenantId`」與「有沒有使用 `prismaAdmin`」，沒有檢查「有沒有匯入 module-level singleton」。即使把 `packages/*` 納入掃描範圍，現有規則仍然抓不到這個寫法。
 
-`packages/core` 另有三個檔案匯入同一個 singleton：`inbox/inbox-service.ts`、`contacts/contact-service.ts` 與 `identity/merge-suggestion-service.ts`。前兩個目前沒有任何 app 使用，情況與 PKG-03 相同。
+`packages/core` 另有兩個檔案匯入同一個 singleton：`inbox/inbox-service.ts` 與 `contacts/contact-service.ts`。這兩個檔案目前沒有任何 app 使用，情況與 PKG-03 相同。
 
 <a id="rls-04"></a>
 ### RLS-04：`.env.api.example` 沒有 `DATABASE_URL_TENANT`
@@ -233,19 +221,26 @@
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
 
-`packages/core/src/rbac/permissions.ts` 宣告 56 個權限碼（2026-09-24 核對）。其中 15 個在 `apps/api/src` 完全沒有出現：
+**部分修正。** `481452a`（2026-09-30）讓 `contact.routes.ts` 的每一條路由都掛上 `requirePermission()`：讀取用 `contact.view`，修改與貼標用 `contact.update`，合併與解除合併用 `contact.merge`；聯絡人的對話另外要求 `inbox.view`，聯絡人的工單另外要求 `case.view`。工單、對話、標籤與短連結模組的路由仍然沒有授權判斷。
+
+`packages/core/src/rbac/permissions.ts` 宣告 56 個權限碼（2026-10-01 核對）。其中 12 個在 `apps/api/src` 完全沒有出現：
 
 | feature | 沒有出現的權限碼 |
 | --- | --- |
-| `inbox` | `inbox.manage`、`case.view`、`case.create`、`case.update`、`case.assign`、`case.escalate`、`contact.view`、`contact.update`、`tag.view`、`tag.manage`、`shortlink.view`、`shortlink.manage` |
+| `inbox` | `inbox.manage`、`case.create`、`case.update`、`case.assign`、`case.escalate`、`tag.view`、`tag.manage`、`shortlink.view`、`shortlink.manage` |
 | `core` | `agent.delete`、`billing.view` |
 | `knowledge` | `knowledge.view` |
 
 其中 `billing.view` 的描述是「租戶站內方案/用量頁」，而那個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表，看不到方案內容、價格或已用額度（見 PLAN-10）。
 
-另有兩個碼只以稽核紀錄的 `action` 字串出現，不是檢查：`case.delete`（`case.routes.ts` 的 `action: 'case.delete'`）與 `contact.merge`（`contact.routes.ts` 的 `action: 'contact.merge'`）。`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由上，不在收件匣本身。
+另有兩個碼有出現，但沒有守在對應的路由上：
 
-結果是 `case`、`conversation`、`contact`、`tag`、`shortlink` 這幾個模組的路由只有 `fastify.authenticate`，沒有任何授權判斷。租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
+- `case.delete` 只以稽核紀錄的 `action` 字串出現（`case.routes.ts` 的 `action: 'case.delete'`），不是檢查。
+- `case.view` 只守在聯絡人模組的 `GET /contacts/:id/cases`，`case.routes.ts` 本身不檢查。
+
+`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由與聯絡人模組上，不在收件匣本身。
+
+結果是 `case`、`conversation`、`tag`、`shortlink` 這幾個模組的路由只有 `fastify.authenticate`，沒有任何授權判斷。租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
 
 一個例外要分辨：`channel.view_all` 也沒有出現在 `requirePermission()` 裡，但它透過 `getEffectiveTenantPermissions()` 在 `services/channel-visibility.ts` 與 socket 房間授權中判斷，屬於有強制點的情況。
 
@@ -518,7 +513,9 @@ B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登
 A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
 
 <a id="auth-05"></a>
-### AUTH-05：租戶端的 JWT 不分用途，粉絲 token 能通過客服認證
+### AUTH-05：租戶端的 JWT 不分用途，refresh token 能通過客服認證
+
+**部分修正。** `481452a`（2026-09-30）刪除了 `POST /api/v1/fan/auth`。這條路由只要 body 帶 `contactId` 與 `tenantId`、而且該聯絡人存在，就簽發粉絲 token，不驗證任何登入憑證。刪除之後，`signFanToken()` 沒有呼叫端，系統目前不簽發粉絲 token。驗證端沒有改：`authenticate` 仍然不區分 token 的種類。
 
 `JWT_SECRET` 同時簽發下列 token，`@fastify/jwt` 也以它驗證客服的 access token：
 
@@ -526,29 +523,27 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 | --- | --- | --- | --- |
 | 客服 access token | `auth.routes.ts` 的 `signAccessToken()` | `agentId`、`tenantId`、`role`、`roleId` | 預設 15 分鐘 |
 | 客服 refresh token | `auth.routes.ts` 的 `signRefreshToken()` | 同上，另加 `rememberMe` | 預設 30 天 |
-| 粉絲 token | `portal-auth.service.ts` 的 `signFanToken()` | `sub: 'fan'`、`contactId`、`tenantId` | 24 小時 |
+| 粉絲 token | `portal-auth.service.ts` 的 `signFanToken()`，目前沒有呼叫端 | `sub: 'fan'`、`contactId`、`tenantId` | 24 小時 |
 | MCP 確認 token | `mcp/line-mcp-confirmation.ts` 的 `createLineMcpConfirmation()` | `op`、`tenantId`、`agentId` 等 | 5 分鐘 |
 
 `auth.plugin.ts` 的 `authenticate` 只呼叫 `jwtVerify()`，不檢查 token 的種類，也不要求 payload 帶 `agentId`。`plugins/socket.plugin.ts` 的連線驗證同樣只驗簽章。因此這四種 token 都能當客服的 access token 使用。
 
-**粉絲 token 的取得不需要證明身分。** `portal-public.routes.ts` 的 `POST /api/v1/fan/auth` 只要 body 帶 `contactId` 與 `tenantId`、而且該聯絡人存在，就簽發粉絲 token，不驗證任何 LINE 登入憑證。
+**refresh token 能當 access token 使用 30 天。** refresh token 放在 httpOnly cookie，前端程式讀不到，被第三方盜用的機會較低。但 refresh token 一旦外洩，就能當 access token 使用到過期，而且 `authenticate` 不檢查成員或租戶是否已停用。成員本人也能從瀏覽器取出自己的 refresh token：成員被停用之後，`POST /auth/refresh` 會擋下換發，但直接拿 refresh token 呼叫 API 不會被擋。AUTH-02 所說「REST 這一面是有界的」前提，在 refresh token 直接當 access token 時不成立。
 
-拿粉絲 token 呼叫客服 API 時，`request.agent` 為 `{ id: undefined, tenantId, role: undefined, roleId: null }`：
+**粉絲 token 的簽發路徑接回之後，粉絲 token 也能通過客服認證。** `openspec/changes/add-cross-channel-one-id/tasks.md` 的 9.3.3 預計接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。接回之後，持有粉絲 token 的人呼叫客服 API 時，`request.agent` 為 `{ id: undefined, tenantId, role: undefined, roleId: null }`：
 
 - `requirePermission()` 以 `roleId` 計算權限，得到空集合，掛權限碼的路由回 403。
-- 只驗登入的路由全部放行：對話、訊息、工單、聯絡人、標籤、通知、AI 輔助、短連結、檔案、訊息模擬器，也包括送出訊息給客人。見 RBAC-01。
+- 只驗登入的路由全部放行：對話、訊息、工單、標籤、通知、AI 輔助、短連結、檔案、訊息模擬器，也包括送出訊息給客人。見 RBAC-01。
 - 渠道可見範圍的 `resolveRoleId()` 以 `agent.findFirst({ where: { id: undefined, tenantId } })` 查角色。Prisma 忽略值為 `undefined` 的條件，查到的是該租戶的任一成員，於是沿用那個人的角色。即使沒有 `channel.view_all`，沒有綁定成員或團隊的渠道本來就所有人可見。
 - 以粉絲 token 連 socket，會自動加入租戶房間，即時收到全租戶的新訊息內容。見 RBAC-04。
 
-前提是知道一組 `contactId` 與 `tenantId`。被停用或離職的成員一定知道，而且粉絲 token 不受成員停用影響；`tenantId` 也出現在送給客人的 `/line-imagemap/:tenantId/…` 圖片網址中。
-
-refresh token 放在 httpOnly cookie，前端程式讀不到，直接被盜用的機會較低。但它一旦外洩，可以當 access token 用 30 天，而且 `authenticate` 不檢查成員或租戶是否已停用。AUTH-02 所說「REST 這一面是有界的」前提，在 refresh token 直接當 access token 時不成立。
+**優先順序。** 刪除 `/fan/auth` 之後，利用這一項需要先取得外洩的 refresh token，或曾經是該租戶的成員，因此從 P1 調為 P2。這一項必須在 9.3.3 接回簽發路徑之前修正。
 
 **修正方向**：
 
 - 各種 token 以不同的密鑰簽發，或加上用途欄位（例如 `typ`），由 `authenticate` 與 socket 驗證時檢查。
 - `authenticate` 要求 payload 帶 `agentId`。
-- `/fan/auth` 改為驗證 LINE LIFF 的 ID token，由 token 推導出聯絡人，不接受呼叫端指定。
+- 接回粉絲 token 的簽發路徑時，由驗證過的憑證（例如 LINE LIFF 的 ID token）推導出聯絡人，不接受呼叫端指定。
 
 <a id="auth-06"></a>
 ### AUTH-06：兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`
@@ -988,14 +983,7 @@ PLAN-03 記錄的是相反方向：降級之後仍然維持加購後的較高額
 
 三處都沒有說明原因。管理員看到角色頁上已經打勾，會判斷成系統故障。
 
-403 的回應內容，本分支與 `main` 不同：
-
-| 版本 | `requirePermission()` 的 403 回應 | 前端看到的 |
-| --- | --- | --- |
-| 本分支 | `{ code: 'FORBIDDEN', message: 'Insufficient permission' }`，不是全站的 `{ success, error }` 結構 | 讀不到 `error.message`，畫面空白（`ad4edc6` 的說明） |
-| `main`（`ad4edc6` 之後） | `error.message` 是「權限不足，無法執行此操作。如需使用請聯繫管理員。」，`error.details` 附 `requiredPermission` | 顯示這句訊息 |
-
-`main` 修好了回應格式，但這一項的結論不變。`requirePermission()` 拿來比對的 `eff` 已經是「角色權限 ∩ 方案天花板」的交集，角色沒勾與方案不含走的是同一個判斷，回應無從區分。`details.requiredPermission` 只告訴維運缺哪一個權限碼，不告訴缺在哪一層。
+`requirePermission()` 回 403 時，`error.message` 是「權限不足，無法執行此操作。如需使用請聯繫管理員。」，`error.details` 附 `requiredPermission`。回應無法區分「角色沒有授予」與「方案不包含」：guard 拿來比對的 `eff` 是 `getEffectiveTenantPermissions()` 算出的「角色權限 ∩ 方案天花板」，兩種情況走同一個判斷。`details.requiredPermission` 只告訴維運缺哪一個權限碼，不告訴缺在哪一層。
 
 訊息也指向了錯的人。「如需使用請聯繫管理員」把使用者導向租戶的管理員，而管理員打開角色頁，看到的是這個權限已經勾選。能處理的是平台方，要升級方案才會生效，訊息沒有提到這一點。
 
@@ -1387,8 +1375,6 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 ### IDENT-01：合併建議沒有產生端
 
 `packages/core/src/identity/identity-stitcher.ts` 的 `detectPhoneDuplicates()` 是唯一會建立 `MergeSuggestion` 的函式，它沒有任何呼叫端；同一個檔案的 `stitchByPhone()` 與 `stitchByLiffCookie()` 也沒有。`/api/v1/identity` 的審核端點因此永遠沒有資料可審。
-
-這一項影響 RLS-02 的現況：在接上產生端之前，RLS-02 的跨租戶路徑沒有資料可以操作。
 
 <a id="ident-02"></a>
 ### IDENT-02：LINE、Facebook 登入補 email 時，不確認登入者就是該聯絡人
