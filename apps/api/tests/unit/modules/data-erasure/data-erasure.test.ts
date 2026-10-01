@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert/strict';
 
+import { test } from 'vitest';
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
 function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
@@ -19,7 +20,7 @@ function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
 }
 
 const { requestErasure, getErasureRequest, setEnqueueErasureJob } = await import(
-  '../modules/data-erasure/data-erasure.service.js'
+  '#src/modules/data-erasure/data-erasure.service.js'
 );
 
 // 注入入列替身，避免單元測試連 Redis。
@@ -118,9 +119,6 @@ async function testGetErasureRequestIsTenantScoped() {
   });
 }
 
-await testRejectsForeignContact();
-await testCreatesPendingRequestAndAudit();
-await testGetErasureRequestIsTenantScoped();
-
-console.log('data-erasure tests passed');
-process.exit(0);
+test('rejects foreign contact', testRejectsForeignContact);
+test('creates pending request and audit', testCreatesPendingRequestAndAudit);
+test('get erasure request is tenant scoped', testGetErasureRequestIsTenantScoped);

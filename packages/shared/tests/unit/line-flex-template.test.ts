@@ -12,8 +12,9 @@ import {
   validateLineFlexTemplateBody,
   validateRequiredFlexTemplateValues,
   type FlexTemplateField,
-} from '../../../../packages/shared/src/line-flex-template.js';
+} from '#src/line-flex-template.js';
 
+import { test } from 'vitest';
 const rawBubble = {
   type: 'bubble',
   body: {
@@ -143,10 +144,8 @@ async function testRenderRequiredFields() {
   assert.equal(getJsonPointer(rendered.contents, '/body/contents/0/text'), 'Open333 Cafe');
 }
 
-await testNormalizeMessageAndRawContents();
-await testJsonPointerHelpers();
-await testFieldHoleAndValidation();
-await testEditableContainersAndInsertion();
-await testRenderRequiredFields();
-
-console.log('line-flex-template tests passed');
+test('normalize message and raw contents', testNormalizeMessageAndRawContents);
+test('json pointer helpers', testJsonPointerHelpers);
+test('field hole and validation', testFieldHoleAndValidation);
+test('editable containers and insertion', testEditableContainersAndInsertion);
+test('render required fields', testRenderRequiredFields);

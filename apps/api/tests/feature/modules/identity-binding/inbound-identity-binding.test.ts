@@ -5,25 +5,19 @@
  * 驗證：命中綁定時不送招呼語、不發 message.received（AI／關鍵字／自動化不處理）；
  * 未啟用時行為與改版前相同；非綁定代碼的 referral 事件不落地。
  *
- * 執行：pnpm --filter @open333crm/api test:inbound-identity-binding
- * 會自動讀 repo 根目錄 .env；.env 的 DATABASE_URL 只接受本機資料庫（要測遠端請明確 export）
+ * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
-import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';
+import { afterAll, test } from 'vitest';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
-import { eventBus, type AppEvent } from '../events/event-bus.js';
-import { processInboundMessage } from '../modules/webhook/webhook.service.js';
-import { setBindingStoreForTest } from '../modules/webhook/inbound-identity-binding.js';
-import { issueBindingCode, invalidateIdentityBindingSettings } from '../modules/identity-binding/identity-binding.service.js';
-import { extractBindingCode } from '../modules/identity-binding/binding-code.js';
-import { linePrefillText } from '../modules/identity-binding/binding-links.js';
-import { memBindingStore } from './helpers/mem-binding-store.js';
-
-if (!process.env.DATABASE_URL) {
-  console.log('SKIP inbound-identity-binding：repo 根目錄 .env 與環境變數都沒有 DATABASE_URL');
-  process.exit(0);
-}
+import { eventBus, type AppEvent } from '#src/events/event-bus.js';
+import { processInboundMessage } from '#src/modules/webhook/webhook.service.js';
+import { setBindingStoreForTest } from '#src/modules/webhook/inbound-identity-binding.js';
+import { issueBindingCode, invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
+import { extractBindingCode } from '#src/modules/identity-binding/binding-code.js';
+import { linePrefillText } from '#src/modules/identity-binding/binding-links.js';
+import { memBindingStore } from '#tests/support/mem-binding-store.js';
 
 const prisma = new PrismaClient();
 const T = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-000000000001';
@@ -299,10 +293,9 @@ const scenarios: Array<[string, boolean, (env: Env) => Promise<void>]> = [
   ],
 ];
 
-let failed = 0;
-for (const [i, [name, enabled, fn]] of scenarios.entries()) {
-  try {
-    await prisma
+for (const [name, enabled, fn] of scenarios) {
+  test(name, () =>
+    prisma
       .$transaction(
         async (tx) => {
           await fn(await setup(tx, enabled));
@@ -312,16 +305,11 @@ for (const [i, [name, enabled, fn]] of scenarios.entries()) {
       )
       .catch((e) => {
         if (!(e instanceof Rollback)) throw e;
-      });
-    console.log(`ok ${i + 1} - ${name}`);
-  } catch (err) {
-    failed++;
-    console.log(`not ok ${i + 1} - ${name}`);
-    console.error(err);
-  }
+      }),
+  );
 }
-setBindingStoreForTest(null);
-console.log(`# pass ${scenarios.length - failed}`);
-console.log(`# fail ${failed}`);
-await prisma.$disconnect();
-process.exit(failed === 0 ? 0 : 1);
+
+afterAll(async () => {
+  setBindingStoreForTest(null);
+  await prisma.$disconnect();
+});

@@ -18,24 +18,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 /** 空白樣本：半形、全形、tab、換行、混合 */
 const BLANKS = ['   ', '　', '\t', '\n', ' 　\t '];
@@ -143,6 +129,3 @@ t('原本沒有長度上限的欄位已補上（Wave 6 實測可存超長值）'
     '聯繫人 displayName 仍無長度上限（實測 10000 字可寫入）',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

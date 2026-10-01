@@ -201,6 +201,4 @@ afterAll(async () => {
     .catch(() => {});
   await tenantDb.$disconnect();
   await adminDb.$disconnect();
-  // 不呼叫 process.exit：讓 node test runner 依測試結果自行決定退出碼，
-  // 否則失敗會被 exit(0) 掩蓋、CI 誤判為通過。
 });

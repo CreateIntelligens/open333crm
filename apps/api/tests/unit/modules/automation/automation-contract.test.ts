@@ -7,8 +7,10 @@ import {
   composeAutomationContract,
   validateAutomationRuleContract,
 } from '@open333crm/automation';
-import { createRule } from '../modules/automation/automation.service.js';
+import { createRule } from '#src/modules/automation/automation.service.js';
+import { repoRoot } from '#tests/support/paths.js';
 
+import { test } from 'vitest';
 async function testComposerOutputByEvent() {
   const message = composeAutomationContract(AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED);
   assert.ok(message);
@@ -98,14 +100,13 @@ async function testApiCreateRuleRejectsInvalidContractBeforeWrite() {
 }
 
 async function testFrontendUsesComposerMetadata() {
-  const here = fileURLToPath(new URL('.', import.meta.url));
   const pagePath = resolve(
-    here,
-    '../../../web/src/app/dashboard/automation/[ruleId]/page.tsx',
+    repoRoot,
+    'apps/web/src/app/dashboard/automation/[ruleId]/page.tsx',
   );
   const actionListPath = resolve(
-    here,
-    '../../../web/src/components/automation/ActionList.tsx',
+    repoRoot,
+    'apps/web/src/components/automation/ActionList.tsx',
   );
   const pageSource = await readFile(pagePath, 'utf8');
   const actionListSource = await readFile(actionListPath, 'utf8');
@@ -115,11 +116,9 @@ async function testFrontendUsesComposerMetadata() {
   assert.equal(actionListSource.includes('actionDefinitions'), true);
 }
 
-await testComposerOutputByEvent();
-await testResolverDefaultExclusion();
-await testValidationRejectsIncompatibleFacts();
-await testValidationRejectsIncompatibleActions();
-await testApiCreateRuleRejectsInvalidContractBeforeWrite();
-await testFrontendUsesComposerMetadata();
-
-console.log('automation-contract tests passed');
+test('composer output by event', testComposerOutputByEvent);
+test('resolver default exclusion', testResolverDefaultExclusion);
+test('validation rejects incompatible facts', testValidationRejectsIncompatibleFacts);
+test('validation rejects incompatible actions', testValidationRejectsIncompatibleActions);
+test('api create rule rejects invalid contract before write', testApiCreateRuleRejectsInvalidContractBeforeWrite);
+test('frontend uses composer metadata', testFrontendUsesComposerMetadata);

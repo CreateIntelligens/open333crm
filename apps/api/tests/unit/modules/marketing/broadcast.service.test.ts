@@ -13,13 +13,14 @@
  */
 
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import {
   registerChannelPlugin,
   type ChannelPlugin,
   type OutboundPayload,
 } from '@open333crm/channel-plugins';
-import { encryptCredentials } from '../modules/channel/channel.service.js';
-import { executeBroadcast } from '../modules/marketing/marketing.service.js';
+import { encryptCredentials } from '#src/modules/channel/channel.service.js';
+import { executeBroadcast } from '#src/modules/marketing/marketing.service.js';
 
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
@@ -427,23 +428,4 @@ const tests: Array<[string, () => Promise<void>]> = [
   ['multicast retry 重用 key，超過 24 小時後輪替', testMulticastRetryReusesAttemptKeyAndRotatesAfter24Hours],
 ];
 
-async function main() {
-  let passed = 0;
-  let failed = 0;
-  for (const [name, fn] of tests) {
-    try {
-      await fn();
-      console.log(`✓ ${name}`);
-      passed++;
-    } catch (err) {
-      console.error(`✗ ${name}`);
-      console.error(err);
-      failed++;
-    }
-  }
-  console.log(`\n${passed} passed, ${failed} failed`);
-  // Marketing service 載入時連 Redis 等資源 → 顯式 exit 避免 hang
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-main();
+for (const [name, fn] of tests) test(name, fn);

@@ -7,9 +7,11 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://user:pass@l
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-inbound-refactor-jwt-secret';
 
-import { eventBus, type AppEvent } from '../events/event-bus.js';
-import { processInboundMessage } from '../modules/webhook/webhook.service.js';
+import { eventBus, type AppEvent } from '#src/events/event-bus.js';
+import { processInboundMessage } from '#src/modules/webhook/webhook.service.js';
+import { apiSrc } from '#tests/support/paths.js';
 
+import { test } from 'vitest';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -73,8 +75,7 @@ function createInboundMessage(overrides: Record<string, unknown> = {}) {
 }
 
 async function readSource(relativePath: string) {
-  const here = fileURLToPath(new URL('.', import.meta.url));
-  return readFile(resolve(here, relativePath), 'utf8');
+  return readFile(resolve(apiSrc, relativePath), 'utf8');
 }
 
 async function captureEvents(run: () => Promise<unknown>) {
@@ -217,9 +218,9 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
 }
 
 async function testFacadeAndCallerContractsFromSource() {
-  const webhookSource = await readSource('../modules/webhook/webhook.service.ts');
-  const webchatSource = await readSource('../modules/webchat/webchat.service.ts');
-  const chatboxSource = await readSource('../modules/chatbox/chatbox.service.ts');
+  const webhookSource = await readSource('modules/webhook/webhook.service.ts');
+  const webchatSource = await readSource('modules/webchat/webchat.service.ts');
+  const chatboxSource = await readSource('modules/chatbox/chatbox.service.ts');
 
   assert.equal(webhookSource.includes('export async function processInboundMessage'), true);
   assert.equal(webhookSource.includes('options: ProcessInboundMessageOptions = {}'), true);
@@ -239,13 +240,13 @@ async function testFacadeAndCallerContractsFromSource() {
 
 async function testRefactorStructureFromSource() {
   const files = [
-    '../modules/webhook/inbound-message.types.ts',
-    '../modules/webhook/inbound-contact-resolver.ts',
-    '../modules/webhook/inbound-conversation-resolver.ts',
-    '../modules/webhook/inbound-message-writer.ts',
-    '../modules/webhook/inbound-postback-interceptors.ts',
-    '../modules/webhook/inbound-socket-presenter.ts',
-    '../modules/webhook/inbound-side-effects.ts',
+    'modules/webhook/inbound-message.types.ts',
+    'modules/webhook/inbound-contact-resolver.ts',
+    'modules/webhook/inbound-conversation-resolver.ts',
+    'modules/webhook/inbound-message-writer.ts',
+    'modules/webhook/inbound-postback-interceptors.ts',
+    'modules/webhook/inbound-socket-presenter.ts',
+    'modules/webhook/inbound-side-effects.ts',
   ];
   const sources = await Promise.all(files.map(readSource));
   const combined = sources.join('\n');
@@ -262,11 +263,8 @@ async function testRefactorStructureFromSource() {
   assert.equal(combined.indexOf('handleKbFeedback') < combined.indexOf('handleHandoffRequest'), true);
 }
 
-await testMissingContactUidShortCircuits();
-await testDuplicateClientMessageReturnsExistingMessage();
-await testCsatInterceptDoesNotPublishMessageReceived();
-await testFacadeAndCallerContractsFromSource();
-await testRefactorStructureFromSource();
-
-console.log('inbound-message-refactor tests passed');
-process.exit(0);
+test('missing contact uid short circuits', testMissingContactUidShortCircuits);
+test('duplicate client message returns existing message', testDuplicateClientMessageReturnsExistingMessage);
+test('csat intercept does not publish message received', testCsatInterceptDoesNotPublishMessageReceived);
+test('facade and caller contracts from source', testFacadeAndCallerContractsFromSource);
+test('refactor structure from source', testRefactorStructureFromSource);

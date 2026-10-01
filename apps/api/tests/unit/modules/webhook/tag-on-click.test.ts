@@ -22,26 +22,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { apiSrc, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 const webSrc = (rel: string) =>
-  readFileSync(join(here, '../../../../apps/web/src', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+  readFileSync(join(repoRoot, 'apps/web/src', rel), 'utf8');
 
 const interceptors = src('modules/webhook/inbound-postback-interceptors.ts');
 const tagging = src('modules/tag/tagging.service.ts');
@@ -157,6 +143,3 @@ t('貼標來源標記為 system（與客服手動貼標區分）', () => {
   const block = interceptors.slice(interceptors.indexOf('async function handleTagOnClick'));
   assert.ok(/addedBy: 'system'/.test(block), '未標記來源，事後無法分辨是誰貼的');
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

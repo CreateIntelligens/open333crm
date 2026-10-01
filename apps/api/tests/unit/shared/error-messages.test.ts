@@ -6,27 +6,14 @@
  * 例如 portal 的業務錯誤是否真的不再變成 500。
  */
 import assert from 'node:assert';
+import { test as t } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { AppError } from '../shared/utils/response.js';
+import { AppError } from '#src/shared/utils/response.js';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.log(`FAIL  ${name}\n      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 // ── Bug 1：portal 業務錯誤不可再是 plain Error ──
 t('portal.service 不再有 throw new Error（會被吞成 500）', () => {
@@ -178,6 +165,3 @@ t('AppError 預設值與傳入值正確', () => {
   assert.equal(e.statusCode, 409);
   assert.deepEqual(e.details, { k: 'v' });
 });
-
-console.log(`\n結果：${pass} 通過 / ${fail} 失敗`);
-process.exit(fail > 0 ? 1 : 0);

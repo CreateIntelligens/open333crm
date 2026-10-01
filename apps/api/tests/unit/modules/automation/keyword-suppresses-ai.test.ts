@@ -17,24 +17,10 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 // ─── 比對語意（與 hasMatchingKeywordRule 同邏輯）─────────────────────────
 
@@ -131,6 +117,3 @@ t('比對出錯時不應連帶擋掉 AI（寧可多回一則，不要完全沒�
     'message.received 外層缺少 try/catch，比對出錯會讓整條鏈中斷',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

@@ -5,14 +5,15 @@ import {
   savePasskeyChallenge,
   type PasskeyChallenge,
   type PasskeyChallengeRedis,
-} from '../modules/auth/passkey.service.js';
+} from '#src/modules/auth/passkey.service.js';
 import {
   passkeyAuthenticationOptionsSchema,
   passkeyAuthenticationVerifySchema,
   passkeyRenameSchema,
   passkeyRegistrationVerifySchema,
-} from '../modules/auth/auth.schema.js';
+} from '#src/modules/auth/auth.schema.js';
 
+import { test } from 'vitest';
 class FakePasskeyRedis implements PasskeyChallengeRedis {
   readonly values = new Map<string, string>();
 
@@ -124,10 +125,8 @@ function testPasskeyNameIsTrimmedAndDefaultsForLegacyClients() {
   assert.equal(passkeyRenameSchema.parse({ name: '  iPhone  ' }).name, 'iPhone');
 }
 
-await testChallengeIsStoredWithTtlAndConsumedOnce();
-await testChallengeCannotBeOverwrittenBeforeConsumption();
-await testMalformedChallengeIsRejected();
-testPasskeyRequestSchemasRejectMalformedCredentialData();
-testPasskeyNameIsTrimmedAndDefaultsForLegacyClients();
-
-console.log('passkey.service.test.ts passed');
+test('challenge is stored with ttl and consumed once', testChallengeIsStoredWithTtlAndConsumedOnce);
+test('challenge cannot be overwritten before consumption', testChallengeCannotBeOverwrittenBeforeConsumption);
+test('malformed challenge is rejected', testMalformedChallengeIsRejected);
+test('passkey request schemas reject malformed credential data', testPasskeyRequestSchemasRejectMalformedCredentialData);
+test('passkey name is trimmed and defaults for legacy clients', testPasskeyNameIsTrimmedAndDefaultsForLegacyClients);

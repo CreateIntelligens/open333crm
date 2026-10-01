@@ -8,6 +8,7 @@
  */
 import assert from 'node:assert/strict';
 
+import { test } from 'vitest';
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
 function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
@@ -20,10 +21,9 @@ function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
 }
 
 // 入列 lazy-init queue：用本機 Redis（可達）讓 add 快速完成，結束 close 即可。
-process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
 
 const { requestExport, getExportRequest, getExportDownload, closeExportQueue } = await import(
-  '../modules/data-export/data-export.service.js'
+  '#src/modules/data-export/data-export.service.js'
 );
 
 async function testCreatesPendingRequestAndAudit() {
@@ -148,13 +148,10 @@ async function testDownloadExpired() {
   assert.equal(prisma.dataExportRequest.updateMany.calls.length, 0);
 }
 
-await testCreatesPendingRequestAndAudit();
-await testGetExportRequestIsTenantScoped();
-await testGetExportRequestNotFound();
-await testDownloadCrossTenantRejected();
-await testDownloadNotReady();
-await testDownloadExpired();
+test('creates pending request and audit', testCreatesPendingRequestAndAudit);
+test('get export request is tenant scoped', testGetExportRequestIsTenantScoped);
+test('get export request not found', testGetExportRequestNotFound);
+test('download cross tenant rejected', testDownloadCrossTenantRejected);
+test('download not ready', testDownloadNotReady);
+test('download expired', testDownloadExpired);
 await closeExportQueue();
-
-console.log('data-export tests passed');
-process.exit(0);

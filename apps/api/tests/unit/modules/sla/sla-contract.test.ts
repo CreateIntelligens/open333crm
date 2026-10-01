@@ -11,7 +11,9 @@ import {
   getSlaState,
   validateSlaRuleConditionTree,
 } from '@open333crm/shared';
+import { apiSrc, repoRoot } from '#tests/support/paths.js';
 
+import { test } from 'vitest';
 async function testSlaContractMetadata() {
   const facts = getSlaConditionFactsForEvent(SLA_EVENT_NAMES.CUSTOMER_WAITING_BREACHED);
   assert.ok(facts.some((fact) => fact.key === 'case.customerMessagesSinceLastAgentReply'));
@@ -91,8 +93,7 @@ async function testSlaRuleEvaluation() {
 }
 
 async function testApiStartupDoesNotRegisterSlaScanner() {
-  const here = fileURLToPath(new URL('.', import.meta.url));
-  const indexPath = resolve(here, '../index.ts');
+  const indexPath = resolve(apiSrc, 'index.ts');
   const source = await readFile(indexPath, 'utf8');
 
   assert.equal(source.includes("from './modules/sla/sla.worker.js'"), false);
@@ -100,8 +101,7 @@ async function testApiStartupDoesNotRegisterSlaScanner() {
 }
 
 async function testApiAutomationSubscriberOnlyEnqueuesJobs() {
-  const here = fileURLToPath(new URL('.', import.meta.url));
-  const workerPath = resolve(here, '../modules/automation/automation.worker.ts');
+  const workerPath = resolve(apiSrc, 'modules/automation/automation.worker.ts');
   const source = await readFile(workerPath, 'utf8');
 
   assert.equal(source.includes("import { triggerAutomation }"), false);
@@ -111,8 +111,7 @@ async function testApiAutomationSubscriberOnlyEnqueuesJobs() {
 }
 
 async function testWorkerSlaNotificationPathsArePresent() {
-  const here = fileURLToPath(new URL('.', import.meta.url));
-  const handlerPath = resolve(here, '../../../workers/src/handlers/sla.handler.ts');
+  const handlerPath = resolve(repoRoot, 'apps/workers/src/handlers/sla.handler.ts');
   const source = await readFile(handlerPath, 'utf8');
 
   assert.equal(source.includes('enqueueNotification'), true);
@@ -124,12 +123,10 @@ async function testWorkerSlaNotificationPathsArePresent() {
   assert.equal(source.includes('message.received'), false);
 }
 
-await testSlaContractMetadata();
-await testSlaHelpers();
-await testSlaRuleValidation();
-await testSlaRuleEvaluation();
-await testApiStartupDoesNotRegisterSlaScanner();
-await testApiAutomationSubscriberOnlyEnqueuesJobs();
-await testWorkerSlaNotificationPathsArePresent();
-
-console.log('sla-contract tests passed');
+test('sla contract metadata', testSlaContractMetadata);
+test('sla helpers', testSlaHelpers);
+test('sla rule validation', testSlaRuleValidation);
+test('sla rule evaluation', testSlaRuleEvaluation);
+test('api startup does not register sla scanner', testApiStartupDoesNotRegisterSlaScanner);
+test('api automation subscriber only enqueues jobs', testApiAutomationSubscriberOnlyEnqueuesJobs);
+test('worker sla notification paths are present', testWorkerSlaNotificationPathsArePresent);

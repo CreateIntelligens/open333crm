@@ -17,14 +17,15 @@
  */
 
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/open333crm';
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-inbound-first-contact-secret';
 
-import { eventBus, type AppEvent } from '../events/event-bus.js';
-import { resolveInboundContact } from '../modules/webhook/inbound-contact-resolver.js';
+import { eventBus, type AppEvent } from '#src/events/event-bus.js';
+import { resolveInboundContact } from '#src/modules/webhook/inbound-contact-resolver.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -248,7 +249,7 @@ async function run() {
       }) as AnyRecord;
 
     const { sendFirstContactGreeting } = await import(
-      '../modules/webhook/inbound-side-effects.js'
+      '#src/modules/webhook/inbound-side-effects.js'
     );
 
     // 首輪：建立 identity 並送出招呼語（模擬送出後推送實際失敗）
@@ -273,11 +274,4 @@ async function run() {
   console.log('✔ inbound-first-contact-resolver：5 組情境全部通過（CM-176）');
 }
 
-run()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+test('inbound-first-contact-resolver', run);

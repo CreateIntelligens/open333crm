@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { AppError } from '../shared/utils/response.js';
+import { AppError } from '#src/shared/utils/response.js';
 import {
   addTagToTarget,
   createTenantTag,
   deleteTenantTag,
   removeTagFromTarget,
-} from '../modules/tag/tagging.service.js';
+} from '#src/modules/tag/tagging.service.js';
 
+import { test } from 'vitest';
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
 function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
@@ -244,13 +245,10 @@ async function testDeleteTagRemovesAllAssignments() {
   assert.equal(transaction.calls[0][0].length, 4);
 }
 
-await testCreateTagRejectsDuplicateWithinScope();
-await testCreateTagUsesTenantAndScope();
-await testAddTagsForAllTargets();
-await testRejectScopeMismatch();
-await testRejectCrossTenantTag();
-await testRemoveCaseTagOnlyDeletesAssignment();
-await testDeleteTagRemovesAllAssignments();
-
-console.log('tagging.service tests passed');
-process.exit(0);
+test('create tag rejects duplicate within scope', testCreateTagRejectsDuplicateWithinScope);
+test('create tag uses tenant and scope', testCreateTagUsesTenantAndScope);
+test('add tags for all targets', testAddTagsForAllTargets);
+test('reject scope mismatch', testRejectScopeMismatch);
+test('reject cross tenant tag', testRejectCrossTenantTag);
+test('remove case tag only deletes assignment', testRemoveCaseTagOnlyDeletesAssignment);
+test('delete tag removes all assignments', testDeleteTagRemovesAllAssignments);

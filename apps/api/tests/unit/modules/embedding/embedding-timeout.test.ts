@@ -20,37 +20,13 @@
  * 會在這裡被擋下，而不是上線後又變成 504。
  */
 import assert from 'node:assert';
+import { test as t } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void | Promise<void>) {
-  const run = () => {
-    try {
-      const r = fn();
-      if (r instanceof Promise) return r.then(
-        () => { console.log(`PASS  ${name}`); pass += 1; },
-        (err: Error) => { console.error(`FAIL  ${name}\n      ${err.message}`); fail += 1; },
-      );
-      console.log(`PASS  ${name}`);
-      pass += 1;
-    } catch (err) {
-      console.error(`FAIL  ${name}`);
-      console.error(`      ${(err as Error).message}`);
-      fail += 1;
-    }
-    return Promise.resolve();
-  };
-  queue = queue.then(run);
-}
-
-let queue: Promise<void> = Promise.resolve();
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 // ─── 從原始碼讀出實際設定值（避免測試與實作各寫一份常數而失真）──────────
 
@@ -175,9 +151,4 @@ t('逾時錯誤被轉成可讀訊息（使用者不該看到 AbortError）', () 
     code.includes('Embedding 設定'),
     '逾時訊息未指引使用者去哪裡檢查服務狀態',
   );
-});
-
-queue.then(() => {
-  console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail === 0 ? 0 : 1);
 });

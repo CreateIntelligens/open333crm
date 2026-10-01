@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { listContacts } from '../modules/contact/contact.service.js';
-import { ALL_CHANNELS } from '../services/channel-visibility.js';
+import { listContacts } from '#src/modules/contact/contact.service.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
+import { test } from 'vitest';
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
 function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
@@ -206,8 +207,5 @@ async function testListContactsCanExcludeChannelIdentitiesFromPayload() {
   });
 }
 
-await testListContactsIncludesSafeChannelMetadata();
-await testListContactsCanExcludeChannelIdentitiesFromPayload();
-
-console.log('contact.service tests passed');
-process.exit(0);
+test('list contacts includes safe channel metadata', testListContactsIncludesSafeChannelMetadata);
+test('list contacts can exclude channel identities from payload', testListContactsCanExcludeChannelIdentitiesFromPayload);

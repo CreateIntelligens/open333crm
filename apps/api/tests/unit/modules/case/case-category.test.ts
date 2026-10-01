@@ -28,26 +28,12 @@ import {
   LEGACY_CASE_CATEGORIES,
   isValidCaseCategory,
 } from '@open333crm/shared';
+import { apiSrc as apiSrcDir, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const apiSrc = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
+import { test as t } from 'vitest';
+const apiSrc = (rel: string) => readFileSync(join(apiSrcDir, rel), 'utf8');
 const webSrc = (rel: string) =>
-  readFileSync(join(here, '../../../../apps/web/src', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+  readFileSync(join(repoRoot, 'apps/web/src', rel), 'utf8');
 
 /** 統一前的舊清單——不該再出現在任何地方 */
 const LEGACY_CATEGORIES = ['維修', '查詢', '投訴'];
@@ -191,6 +177,3 @@ t('LEGACY_CASE_CATEGORIES 正是被移除的那三項', () => {
     '「其他」在新清單內，不是 legacy 值',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

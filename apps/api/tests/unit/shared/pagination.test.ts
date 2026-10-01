@@ -14,25 +14,11 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { clampPage, clampLimit, paginationSchema, MAX_PAGE_SIZE } from '../shared/utils/pagination.js';
+import { clampPage, clampLimit, paginationSchema, MAX_PAGE_SIZE } from '#src/shared/utils/pagination.js';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 // ─── clampPage：任何輸入都不得產生 < 1 的頁碼 ──────────────────────────────
 
@@ -141,6 +127,3 @@ t('短連結改用 zod 擋分頁（不是裸 parseInt）', () => {
     'shortlink.routes.ts 仍殘留未夾制的 parseInt',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

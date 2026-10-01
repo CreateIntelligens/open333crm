@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { apiSrc } from '#tests/support/paths.js';
 
+import { test } from 'vitest';
 async function readSource(relativePath: string) {
-  const here = fileURLToPath(new URL('.', import.meta.url));
-  return readFile(resolve(here, relativePath), 'utf8');
+  return readFile(resolve(apiSrc, relativePath), 'utf8');
 }
 
 async function testCasesDashboardDeleteWiring() {
-  const pageSource = await readSource('../../../web/src/app/dashboard/cases/page.tsx');
-  const listSource = await readSource('../../../web/src/components/case/CaseList.tsx');
+  const pageSource = await readSource('../../web/src/app/dashboard/cases/page.tsx');
+  const listSource = await readSource('../../web/src/components/case/CaseList.tsx');
 
   // 2026-09-23 更新：原本這裡斷言「工單頁不該有 CaseCreateModal」。
   // 那是 a5ec552a 修刪除功能時的權宜做法（提交訊息：hiding the standalone
@@ -33,9 +34,9 @@ async function testCasesDashboardDeleteWiring() {
 }
 
 async function testSlaPolicySelectWiring() {
-  const modalSource = await readSource('../../../web/src/components/case/CaseCreateModal.tsx');
-  const routesSource = await readSource('../modules/case/case.routes.ts');
-  const serviceSource = await readSource('../modules/case/case.service.ts');
+  const modalSource = await readSource('../../web/src/components/case/CaseCreateModal.tsx');
+  const routesSource = await readSource('modules/case/case.routes.ts');
+  const serviceSource = await readSource('modules/case/case.service.ts');
 
   assert.equal(modalSource.includes('selectedSlaPolicyId'), true);
   assert.equal(modalSource.includes('value={selectedSlaPolicyId}'), true);
@@ -53,7 +54,5 @@ async function testSlaPolicySelectWiring() {
   assert.equal(serviceSource.includes("notFound('slaPolicy')"), true);
 }
 
-await testCasesDashboardDeleteWiring();
-await testSlaPolicySelectWiring();
-
-console.log('case-ui-source tests passed');
+test('cases dashboard delete wiring', testCasesDashboardDeleteWiring);
+test('sla policy select wiring', testSlaPolicySelectWiring);

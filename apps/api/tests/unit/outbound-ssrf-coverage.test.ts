@@ -12,19 +12,13 @@
  * 不在此列——那些位址不是使用者能控制的。
  */
 import assert from 'node:assert';
+import { test as t } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-function t(name: string, fn: () => void) {
-  try { fn(); console.log(`PASS  ${name}`); pass += 1; }
-  catch (e) { console.log(`FAIL  ${name}\n      ${(e as Error).message}`); fail += 1; }
-}
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 /**
  * 每一項都是「租戶可自行填寫網址，後端會去連」的路徑。
@@ -78,6 +72,3 @@ t('目的地檢查本身涵蓋雲端 metadata 與 loopback', () => {
   }
   assert.ok(/::1/.test(code), 'isBlockedUrl 未涵蓋 IPv6 loopback');
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

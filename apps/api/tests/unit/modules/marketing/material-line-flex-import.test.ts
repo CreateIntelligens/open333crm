@@ -5,9 +5,10 @@ import {
   importLineFlexMaterial,
   updateMaterial,
   validateLineFlexDraft,
-} from '../modules/marketing/material.service.js';
-import { encryptCredentials } from '../modules/channel/channel.service.js';
+} from '#src/modules/marketing/material.service.js';
+import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 
+import { test } from 'vitest';
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 
 type StoredMaterial = Record<string, any>;
@@ -279,12 +280,10 @@ async function testCreateRejectsInvalidFlexBodyWith400() {
   }
 }
 
-await testImportCompleteAndRawFlexPayloads();
-await testValidateRejectsInvalidRoot();
-await testValidateCallsLineValidateApi();
-await testValidateSurfacesLineApiErrors();
-await testCreateAndUpdateNormalizePureFlexPayload();
-await testSendHelperReturnsPureFlexBody();
-await testCreateRejectsInvalidFlexBodyWith400();
-
-console.log('material-line-flex-import tests passed');
+test('import complete and raw flex payloads', testImportCompleteAndRawFlexPayloads);
+test('validate rejects invalid root', testValidateRejectsInvalidRoot);
+test('validate calls line validate api', testValidateCallsLineValidateApi);
+test('validate surfaces line api errors', testValidateSurfacesLineApiErrors);
+test('create and update normalize pure flex payload', testCreateAndUpdateNormalizePureFlexPayload);
+test('send helper returns pure flex body', testSendHelperReturnsPureFlexBody);
+test('create rejects invalid flex body with400', testCreateRejectsInvalidFlexBodyWith400);

@@ -21,23 +21,9 @@ import {
   permsForFeatures,
   buildFeaturePerms,
   FEATURE_SLUGS,
-} from '@open333crm/core';
+} from '#src/rbac/index.js';
 
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
-
+import { test as t } from 'vitest';
 // ─── registry 完整性 ──────────────────────────────────────────────────────
 
 t('正式 registry 通過所有完整性驗證（無重複/懸空/成環/feature 缺失）', () => {
@@ -114,6 +100,3 @@ t('不存在的碼 → 報錯', () => {
   assert.equal(errors.length, 1);
   assert.ok(errors[0].includes('nonexistent.code'), '錯誤訊息應指出是哪個碼');
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

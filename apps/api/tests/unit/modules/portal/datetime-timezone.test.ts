@@ -20,26 +20,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { apiSrc as apiSrcDir, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const apiSrc = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
+import { test as t } from 'vitest';
+const apiSrc = (rel: string) => readFileSync(join(apiSrcDir, rel), 'utf8');
 const webSrc = (rel: string) =>
-  readFileSync(join(here, '../../../../apps/web/src', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+  readFileSync(join(repoRoot, 'apps/web/src', rel), 'utf8');
 
 // ─── 時區換算的正確性 ─────────────────────────────────────────────────────
 
@@ -242,6 +228,3 @@ t('更新時的起訖檢查在 service 層（schema 看不到 DB 現值）', () 
     'service 未擋下無效區間',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

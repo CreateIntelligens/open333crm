@@ -7,7 +7,7 @@ process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-chatbox-jwt-secret';
 process.env.CHATBOX_SESSION_SECRET = 'test-chatbox-session-secret';
 
-import { AppError } from '../shared/utils/response.js';
+import { AppError } from '#src/shared/utils/response.js';
 import {
   bootstrapChatboxSession,
   claimChatboxSession,
@@ -21,15 +21,16 @@ import {
   verifyChatboxSession,
   verifyChatboxSessionId,
   type ChatboxClaimRedis,
-} from '../modules/chatbox/chatbox.service.js';
+} from '#src/modules/chatbox/chatbox.service.js';
 import {
   createChatboxMessageRegistry,
   registerBuiltInChatboxMessageHandlers,
-} from '../modules/chatbox/chatbox.registry.js';
+} from '#src/modules/chatbox/chatbox.registry.js';
 import { WebchatPlugin } from '@open333crm/channel-plugins';
-import chatboxRoutes from '../modules/chatbox/chatbox.routes.js';
-import { registerVisitorNamespace } from '../modules/webchat/webchat.socket.js';
+import chatboxRoutes from '#src/modules/chatbox/chatbox.routes.js';
+import { registerVisitorNamespace } from '#src/modules/webchat/webchat.socket.js';
 
+import { test } from 'vitest';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -633,23 +634,20 @@ async function testWebchatPluginContractRemainsUnchanged() {
   assert.match(sent.channelMsgId || '', /^webchat-msg-/);
 }
 
-testSessionIdIsSignedAndTamperResistant();
-testSessionIdCarriesEncryptedExpiry();
-await testVerifyUpdatesLastSeenForMatchingFingerprint();
-await testVerifyRejectsExpiredAndStrongMismatch();
-await testBootstrapOmitsPersistedMessages();
-await testClaimCreatesRedisEntryWithSessionTtlAndNoRawSessionId();
-await testDuplicateClaimIsRejected();
-await testClaimedVerificationRequiresMatchingClaimToken();
-await testCreateSessionCreatesContactConversationAndDigestOnlySession();
-testMessageRegistryValidatesBuiltIns();
-await testClientMessageIdDuplicateReturnsOriginalAck();
-await testChatboxMediaUsesSessionVisitorToken();
-await testMessageRouteRequiresClaimToken();
-await testSessionVerifyRouteClaimsAndRejectsDuplicate();
-await testMediaRouteRequiresClaimToken();
-await testVisitorSocketRequiresAndAcceptsClaimToken();
-await testWebchatPluginContractRemainsUnchanged();
-
-console.log('chatbox.service tests passed');
-process.exit(0);
+test('session id is signed and tamper resistant', testSessionIdIsSignedAndTamperResistant);
+test('session id carries encrypted expiry', testSessionIdCarriesEncryptedExpiry);
+test('verify updates last seen for matching fingerprint', testVerifyUpdatesLastSeenForMatchingFingerprint);
+test('verify rejects expired and strong mismatch', testVerifyRejectsExpiredAndStrongMismatch);
+test('bootstrap omits persisted messages', testBootstrapOmitsPersistedMessages);
+test('claim creates redis entry with session ttl and no raw session id', testClaimCreatesRedisEntryWithSessionTtlAndNoRawSessionId);
+test('duplicate claim is rejected', testDuplicateClaimIsRejected);
+test('claimed verification requires matching claim token', testClaimedVerificationRequiresMatchingClaimToken);
+test('create session creates contact conversation and digest only session', testCreateSessionCreatesContactConversationAndDigestOnlySession);
+test('message registry validates built ins', testMessageRegistryValidatesBuiltIns);
+test('client message id duplicate returns original ack', testClientMessageIdDuplicateReturnsOriginalAck);
+test('chatbox media uses session visitor token', testChatboxMediaUsesSessionVisitorToken);
+test('message route requires claim token', testMessageRouteRequiresClaimToken);
+test('session verify route claims and rejects duplicate', testSessionVerifyRouteClaimsAndRejectsDuplicate);
+test('media route requires claim token', testMediaRouteRequiresClaimToken);
+test('visitor socket requires and accepts claim token', testVisitorSocketRequiresAndAcceptsClaimToken);
+test('webchat plugin contract remains unchanged', testWebchatPluginContractRemainsUnchanged);

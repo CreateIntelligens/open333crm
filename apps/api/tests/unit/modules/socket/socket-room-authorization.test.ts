@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { authorizeSocketRoom } from '../modules/socket/socket-room-authorization.js';
+import { authorizeSocketRoom } from '#src/modules/socket/socket-room-authorization.js';
 
+import { test } from 'vitest';
 const tenantA = '11111111-1111-4111-8111-111111111111';
 const tenantB = '22222222-2222-4222-8222-222222222222';
 const agentA = '33333333-3333-4333-8333-333333333333';
@@ -96,11 +97,9 @@ async function testTeamScopedConversationDoesNotFallBackToChannelAccess() {
   assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
 }
 
-await testRejectsArbitraryRoomNames();
-await testRejectsAnotherTenant();
-await testRejectsAnotherAgentPrivateRoom();
-await testAllowsAuthorizedConversation();
-await testRejectsConversationOutsideScope();
-await testTeamScopedConversationDoesNotFallBackToChannelAccess();
-
-console.log('socket room authorization tests passed');
+test('rejects arbitrary room names', testRejectsArbitraryRoomNames);
+test('rejects another tenant', testRejectsAnotherTenant);
+test('rejects another agent private room', testRejectsAnotherAgentPrivateRoom);
+test('allows authorized conversation', testAllowsAuthorizedConversation);
+test('rejects conversation outside scope', testRejectsConversationOutsideScope);
+test('team scoped conversation does not fall back to channel access', testTeamScopedConversationDoesNotFallBackToChannelAccess);

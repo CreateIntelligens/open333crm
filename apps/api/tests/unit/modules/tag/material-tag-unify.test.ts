@@ -20,27 +20,13 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { apiSrc, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-const repoFile = (rel: string) => readFileSync(join(here, '../../../../', rel), 'utf8');
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
+const repoFile = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
 const webSrc = (rel: string) =>
-  readFileSync(join(here, '../../../../apps/web/src', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+  readFileSync(join(repoRoot, 'apps/web/src', rel), 'utf8');
 
 const service = src('modules/marketing/material.service.ts');
 const schema = repoFile('packages/database/prisma/schema.prisma');
@@ -225,7 +211,7 @@ t('DB 層有大小寫不敏感的唯一索引（應用層查詢擋不住併發�
   // mode:'insensitive' 只縮短競態窗口：兩個並行請求同時註冊 Sale 與 sale
   // 時兩邊都查不到既有列，最後各自 INSERT 成功。要靠 DB 索引才擋得住。
   const migrations = readdirSync(
-    join(here, '../../../../packages/database/prisma/migrations'),
+    join(repoRoot, 'packages/database/prisma/migrations'),
   );
   const dir = migrations.find((d) => d.includes('tag_case_insensitive_unique'));
   assert.ok(dir, '缺少大小寫不敏感唯一索引的 migration');
@@ -275,6 +261,3 @@ t('有回填腳本處理既有資料', () => {
     '未正規化既有素材的 tags——會殘留未 trim 的值',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

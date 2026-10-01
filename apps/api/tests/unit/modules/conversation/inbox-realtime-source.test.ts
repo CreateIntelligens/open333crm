@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { apiSrc } from '#tests/support/paths.js';
 
+import { test } from 'vitest';
 async function readSource(relativePath: string) {
-  const here = fileURLToPath(new URL('.', import.meta.url));
-  return readFile(resolve(here, relativePath), 'utf8');
+  return readFile(resolve(apiSrc, relativePath), 'utf8');
 }
 
 async function testMarkReadContract() {
-  const sharedWsSource = await readSource('../../../../packages/shared/src/types/ws.types.ts');
-  const serviceSource = await readSource('../modules/conversation/conversation.service.ts');
-  const routesSource = await readSource('../modules/conversation/conversation.routes.ts');
+  const sharedWsSource = await readSource('../../../packages/shared/src/types/ws.types.ts');
+  const serviceSource = await readSource('modules/conversation/conversation.service.ts');
+  const routesSource = await readSource('modules/conversation/conversation.routes.ts');
 
   assert.equal(sharedWsSource.includes('export interface ConversationUpdatedPayload'), true);
   assert.equal(sharedWsSource.includes('updatedAt: string'), true);
@@ -29,11 +30,11 @@ async function testMarkReadContract() {
 }
 
 async function testUpdatedAtOrderingAndPayloads() {
-  const serviceSource = await readSource('../modules/conversation/conversation.service.ts');
-  const webhookSource = await readSource('../modules/webhook/webhook.service.ts');
-  const simulatorSource = await readSource('../channels/simulator/simulator.service.ts');
-  const automationWorkerSource = await readSource('../modules/automation/automation.worker.ts');
-  const actionExecutorSource = await readSource('../modules/automation/engine/action-executor.ts');
+  const serviceSource = await readSource('modules/conversation/conversation.service.ts');
+  const webhookSource = await readSource('modules/webhook/webhook.service.ts');
+  const simulatorSource = await readSource('channels/simulator/simulator.service.ts');
+  const automationWorkerSource = await readSource('modules/automation/automation.worker.ts');
+  const actionExecutorSource = await readSource('modules/automation/engine/action-executor.ts');
 
   assert.equal(serviceSource.includes("orderBy: { updatedAt: 'desc' }"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
@@ -45,8 +46,8 @@ async function testUpdatedAtOrderingAndPayloads() {
 }
 
 async function testFrontendSocketLocalUpdates() {
-  const hookSource = await readSource('../../../web/src/hooks/useConversations.ts');
-  const listSource = await readSource('../../../web/src/components/inbox/ConversationList.tsx');
+  const hookSource = await readSource('../../web/src/hooks/useConversations.ts');
+  const listSource = await readSource('../../web/src/components/inbox/ConversationList.tsx');
 
   assert.equal(hookSource.includes("import type { ConversationUpdatedPayload } from '@open333crm/shared'"), true);
   assert.equal(hookSource.includes('interface ConversationUpdatedPayload'), false);
@@ -61,8 +62,6 @@ async function testFrontendSocketLocalUpdates() {
   assert.equal(listSource.includes('markConversationRead(conversation.id)'), true);
 }
 
-await testMarkReadContract();
-await testUpdatedAtOrderingAndPayloads();
-await testFrontendSocketLocalUpdates();
-
-console.log('inbox-realtime-source tests passed');
+test('mark read contract', testMarkReadContract);
+test('updated at ordering and payloads', testUpdatedAtOrderingAndPayloads);
+test('frontend socket local updates', testFrontendSocketLocalUpdates);

@@ -5,19 +5,20 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://user:pass@l
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-cli-session-jwt-secret';
 
-import authPlugin from '../plugins/auth.plugin.js';
-import errorHandlerPlugin from '../plugins/error-handler.plugin.js';
-import authRoutes from '../modules/auth/auth.routes.js';
-import cliRoutes from '../modules/cli/cli.routes.js';
-import { loadEnvConfig } from '../config/env.js';
+import authPlugin from '#src/plugins/auth.plugin.js';
+import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
+import authRoutes from '#src/modules/auth/auth.routes.js';
+import cliRoutes from '#src/modules/cli/cli.routes.js';
+import { loadEnvConfig } from '#src/config/env.js';
 
 process.env.CREDENTIAL_ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || 'test-credential-encryption-key-32-bytes!!';
 import {
   createCliSession,
   verifyCliSession,
-} from '../modules/auth/cli-session.service.js';
-import { hashPassword } from '../shared/utils/password.js';
+} from '#src/modules/auth/cli-session.service.js';
+import { hashPassword } from '#src/shared/utils/password.js';
 
+import { test } from 'vitest';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -339,9 +340,6 @@ async function testCliAnalyticsRoutes() {
   }
 }
 
-await testCliSessionServiceLifecycle();
-await testCliAuthRoutes();
-await testCliAnalyticsRoutes();
-
-console.log('cli-session-auth tests passed');
-process.exit(0);
+test('cli session service lifecycle', testCliSessionServiceLifecycle);
+test('cli auth routes', testCliAuthRoutes);
+test('cli analytics routes', testCliAnalyticsRoutes);

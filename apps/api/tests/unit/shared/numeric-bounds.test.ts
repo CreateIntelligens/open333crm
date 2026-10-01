@@ -26,25 +26,11 @@ import {
   INT4_MAX,
   INT4_MIN,
   MAX_SLA_MINUTES,
-} from '../shared/utils/numeric-bounds.js';
+} from '#src/shared/utils/numeric-bounds.js';
+import { apiSrc } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 // ─── 前提：確認 int4 邊界就是 UAT 觀察到的那條線 ──────────────────────────
 
@@ -163,6 +149,3 @@ t('system prompt 四個欄位都有長度上限', () => {
     'settings 仍殘留無上限的 system prompt',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

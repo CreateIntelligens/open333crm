@@ -17,28 +17,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { apiSrc, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 const schema = readFileSync(
-  join(here, '../../../../packages/database/prisma/schema.prisma'),
+  join(repoRoot, 'packages/database/prisma/schema.prisma'),
   'utf8',
 );
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
 
 const service = src('modules/portal/portal.service.ts');
 const routes = src('modules/portal/portal.routes.ts');
@@ -155,6 +141,3 @@ t('封存端點不把 AppError 壓成 400（保留 409 等語意狀態碼）', (
     '同檔其他端點把 AppError 一律轉 400，遺失了 409 的語意；新端點應交給全域 handler',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

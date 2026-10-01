@@ -2,17 +2,14 @@
  * 租戶稽核 service 測試（writeTenantAudit / listTenantAudit）。
  * 真連 DB：驗寫入欄位正確、寫入失敗不阻斷、查詢 tenantId 隔離。
  *
- * 執行：DATABASE_URL=... REDIS_URL=... tsx src/__tests__/tenant-audit.test.ts
+ * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test, afterAll } from 'vitest';
 
-process.env.DATABASE_URL =
-  process.env.DATABASE_URL || 'postgresql://crm:crmpassword@localhost:5433/open333crm';
-process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
 
 import { PrismaClient } from '@prisma/client';
-import { writeTenantAudit, listTenantAudit } from '../modules/tenant-audit/tenant-audit.service.js';
+import { writeTenantAudit, listTenantAudit } from '#src/modules/tenant-audit/tenant-audit.service.js';
 
 const prisma = new PrismaClient();
 const TENANT_A = 'a0000000-0000-0000-0000-000000000001'; // Demo Tenant
@@ -61,9 +58,8 @@ test('listTenantAudit 分頁 + 日期篩選', async () => {
   assert.ok(total >= rows.length);
 });
 
-test.after(async () => {
+afterAll(async () => {
   // 清理本次測試寫入的稽核
   await prisma.tenantAuditLog.deleteMany({ where: { action: { startsWith: MARK } } });
   await prisma.$disconnect();
-  process.exit(0);
 });

@@ -13,6 +13,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/open333crm';
@@ -90,7 +91,7 @@ async function run() {
     if (deliverShouldThrow) throw new Error('channel send failed');
   }) as never;
 
-  const { sendFirstContactGreeting } = await import('../modules/webhook/inbound-side-effects.js');
+  const { sendFirstContactGreeting } = await import('#src/modules/webhook/inbound-side-effects.js');
 
   // ── 1. 首次進站送出招呼語，且完成變數替換 ─────────────────────────────
   {
@@ -185,12 +186,4 @@ async function run() {
   console.log('✔ first-contact-greeting：6 組情境全部通過（CM-176）');
 }
 
-run()
-  .then(() => {
-    // 與其他既有測試一致：明確退出，避免模組載入時建立的 Redis 連線讓程序掛住。
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+test('first-contact-greeting', run);

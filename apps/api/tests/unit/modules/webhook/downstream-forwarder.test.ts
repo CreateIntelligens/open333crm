@@ -5,13 +5,14 @@ import {
   isBlockedUrl,
   forwardToDownstream,
   type DownstreamWebhookConfig,
-} from '../modules/webhook/downstream-forwarder.js';
+} from '#src/modules/webhook/downstream-forwarder.js';
 import {
   extractEventIds,
   claimForForward,
   type LoopGuardStore,
-} from '../modules/webhook/downstream-loop-guard.js';
+} from '#src/modules/webhook/downstream-loop-guard.js';
 
+import { test } from 'vitest';
 const PUBLIC_URL = 'https://8.8.8.8/line-hook'; // IP literal → no network DNS, not blocked
 
 async function testConfigParsing() {
@@ -181,13 +182,11 @@ async function testLoopGuardBreaksLoop() {
   assert.equal(await claimForForward('c1', noEvents, store), false, 'event-less verbatim loopback → do NOT forward');
 }
 
-await testConfigParsing();
-await testSchemaValidation();
-await testSsrfGuard();
-await testForwardPassesOriginalHeaders();
-await testForwardBlocksSsrfTarget();
-await testForwardIsBestEffortOnThrow();
-await testExtractEventIds();
-await testLoopGuardBreaksLoop();
-
-console.log('downstream forwarder + loop-guard tests passed');
+test('config parsing', testConfigParsing);
+test('schema validation', testSchemaValidation);
+test('ssrf guard', testSsrfGuard);
+test('forward passes original headers', testForwardPassesOriginalHeaders);
+test('forward blocks ssrf target', testForwardBlocksSsrfTarget);
+test('forward is best effort on throw', testForwardIsBestEffortOnThrow);
+test('extract event ids', testExtractEventIds);
+test('loop guard breaks loop', testLoopGuardBreaksLoop);

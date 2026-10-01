@@ -5,23 +5,17 @@
  * 聯絡人、對話、案件，也能對看不到的渠道發 LINE 訊息。mcp.routes.test.ts 用注入的假解析
  * 驗證各工具有守門；本測試確認正式接線（依登入帳號查 AgentChannelAccess 與權限）真的生效。
  *
- * 需要 DATABASE_URL（自動讀 repo 根目錄 .env，但只接受本機資料庫）與 Redis（權限快取）。
- * 執行：pnpm --filter @open333crm/api test:mcp-channel-visibility
+ * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
-import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';
+import { afterAll, test } from 'vitest';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
-import { loadEnvConfig } from '../config/env.js';
-import { tenantScopedClient } from '../lib/tenant-db.js';
-import mcpRoutes from '../modules/mcp/mcp.routes.js';
-import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from '../modules/mcp/mcp.constants.js';
-import { notFound } from '../shared/messages/resource.js';
-
-if (!process.env.DATABASE_URL) {
-  console.log('SKIP mcp-channel-visibility：repo 根目錄 .env 與環境變數都沒有 DATABASE_URL');
-  process.exit(0);
-}
+import { loadEnvConfig } from '#src/config/env.js';
+import { tenantScopedClient } from '#src/lib/tenant-db.js';
+import mcpRoutes from '#src/modules/mcp/mcp.routes.js';
+import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from '#src/modules/mcp/mcp.constants.js';
+import { notFound } from '#src/shared/messages/resource.js';
 
 loadEnvConfig();
 const prisma = new PrismaClient();
@@ -75,150 +69,135 @@ async function callTool(address: string, name: string, args: Record<string, unkn
   return { isError: body.result.isError === true, text: body.result.content[0]?.text ?? '' };
 }
 
-let failed = 0;
-async function check(name: string, fn: () => Promise<void>) {
-  try {
-    await fn();
-    console.log(`ok - ${name}`);
-  } catch (err) {
-    failed++;
-    console.log(`not ok - ${name}`);
-    console.error(err);
-  }
-}
-
 const roles: string[] = [];
 const apps: Array<{ close: () => Promise<unknown> }> = [];
 const cleanup: Array<() => Promise<unknown>> = [];
 
-try {
-  const mkRole = (slug: string, permissions: string[]) =>
-    prisma.role.create({
-      data: {
-        tenantId: T,
-        slug: `ci-mcp-${slug}-${stamp}`,
-        name: `CI MCP 可見性（${slug}）`,
-        permissions: { create: permissions.map((permissionCode) => ({ permissionCode })) },
-      },
-    });
-  const branchRole = await mkRole('branch', ['inbox.view', 'inbox.reply']);
-  roles.push(branchRole.id);
-  const hqRole = await mkRole('hq', ['inbox.view', 'inbox.reply', 'channel.view_all']);
-  roles.push(hqRole.id);
-
-  const mkChannel = (name: string) =>
-    prisma.channel.create({
-      data: { tenantId: T, channelType: 'LINE', displayName: `CI MCP 渠道 ${name} ${stamp}`, credentialsEncrypted: 'x' },
-    });
-  // 清理依建立順序反向執行；每建一筆就註冊，中途失敗也不留殘留資料
-  // （agentChannelAccess、channelIdentity、rolePermission 皆 onDelete: Cascade）
-  const chA = await mkChannel('A');
-  cleanup.unshift(() => prisma.channel.deleteMany({ where: { tenantId: T, id: chA.id } }));
-  const chB = await mkChannel('B');
-  cleanup.unshift(() => prisma.channel.deleteMany({ where: { tenantId: T, id: chB.id } }));
-  const mkAgent = async (slug: string, name: string, roleId?: string) => {
-    const a = await prisma.agent.create({
-      data: { tenantId: T, email: `ci-mcp-${slug}-${stamp}@example.test`, name, passwordHash: 'x', roleId },
-    });
-    cleanup.unshift(() => prisma.agent.deleteMany({ where: { id: a.id, tenantId: T } }));
-    return a;
-  };
-  const branch = await mkAgent('branch', 'CI MCP 分店', branchRole.id);
-  const other = await mkAgent('other', 'CI MCP 另一分店');
-  const hq = await mkAgent('hq', 'CI MCP 總店', hqRole.id);
-  // 分店只唯讀渠道 A；渠道 B 綁給另一分店（未綁任何人的渠道依 CM-173 相容規則是全租戶可見）
-  await prisma.agentChannelAccess.create({ data: { agentId: branch.id, channelId: chA.id, accessLevel: 'read_only' } });
-  await prisma.agentChannelAccess.create({ data: { agentId: other.id, channelId: chB.id, accessLevel: 'full' } });
-
-  const contact = await prisma.contact.create({ data: { tenantId: T, displayName: `CI MCP 聯絡人 ${stamp}` } });
-  cleanup.unshift(async () => {
-    await prisma.case.deleteMany({ where: { tenantId: T, contactId: contact.id } });
-    await prisma.conversation.deleteMany({ where: { tenantId: T, contactId: contact.id } });
-    await prisma.contact.deleteMany({ where: { id: contact.id, tenantId: T } });
+const mkRole = (slug: string, permissions: string[]) =>
+  prisma.role.create({
+    data: {
+      tenantId: T,
+      slug: `ci-mcp-${slug}-${stamp}`,
+      name: `CI MCP 可見性（${slug}）`,
+      permissions: { create: permissions.map((permissionCode) => ({ permissionCode })) },
+    },
   });
-  const conv = new Map<string, string>();
-  const caseId = new Map<string, string>();
-  for (const [label, ch] of [['A', chA], ['B', chB]] as const) {
-    const c = await prisma.conversation.create({
-      data: { tenantId: T, contactId: contact.id, channelId: ch.id, channelType: 'LINE', lastMessageAt: new Date() },
-    });
-    conv.set(label, c.id);
-    const k = await prisma.case.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `CI MCP 案件 ${label} ${stamp}` } });
-    caseId.set(label, k.id);
-    await prisma.channelIdentity.create({
-      data: { contactId: contact.id, channelId: ch.id, channelType: 'LINE', uid: `ci-mcp-uid-${ch.id}`, profileName: `CI MCP 暱稱 ${label}` },
-    });
-  }
-  const { app, address } = await buildApp(branch.id);
-  apps.push(app);
-  const hqApp = await buildApp(hq.id);
-  apps.push(hqApp.app);
+const branchRole = await mkRole('branch', ['inbox.view', 'inbox.reply']);
+roles.push(branchRole.id);
+const hqRole = await mkRole('hq', ['inbox.view', 'inbox.reply', 'channel.view_all']);
+roles.push(hqRole.id);
 
-  await check('分店讀單筆對話／案件：他店與不存在的回應完全相同，自己的渠道可讀', async () => {
-    const b = await callTool(address, 'crm_line_get_conversation', { id: conv.get('B') });
-    const missing = await callTool(address, 'crm_line_get_conversation', { id: MISSING_ID });
-    assert.equal(b.isError, true);
-    assert.deepEqual(b, missing, '他店對話與不存在的對話回應要一致');
-    assert.equal(b.text, notFound('conversation'));
-
-    const caseB = await callTool(address, 'crm_get_case', { id: caseId.get('B') });
-    const caseMissing = await callTool(address, 'crm_get_case', { id: MISSING_ID });
-    assert.deepEqual(caseB, caseMissing, '他店案件與不存在的案件回應要一致');
-    assert.equal(caseB.text, notFound('case'));
-    const caseA = await callTool(address, 'crm_get_case', { id: caseId.get('A') });
-    assert.equal(caseA.isError, false, caseA.text);
-
-    const a = await callTool(address, 'crm_line_get_conversation', { id: conv.get('A') });
-    assert.equal(a.isError, false, a.text);
-    assert.match(a.text, new RegExp(conv.get('A')!));
+const mkChannel = (name: string) =>
+  prisma.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: `CI MCP 渠道 ${name} ${stamp}`, credentialsEncrypted: 'x' },
   });
-
-  await check('分店列對話：不含看不到的渠道', async () => {
-    const r = await callTool(address, 'crm_line_list_conversations', { page: 1, limit: 50 });
-    assert.equal(r.isError, false, r.text);
-    assert.ok(!r.text.includes(conv.get('B')!), '不可列出渠道 B 的對話');
-    assert.ok(r.text.includes(conv.get('A')!), '應列出渠道 A 的對話');
+// 清理依建立順序反向執行；每建一筆就註冊，中途失敗也不留殘留資料
+// （agentChannelAccess、channelIdentity、rolePermission 皆 onDelete: Cascade）
+const chA = await mkChannel('A');
+cleanup.unshift(() => prisma.channel.deleteMany({ where: { tenantId: T, id: chA.id } }));
+const chB = await mkChannel('B');
+cleanup.unshift(() => prisma.channel.deleteMany({ where: { tenantId: T, id: chB.id } }));
+const mkAgent = async (slug: string, name: string, roleId?: string) => {
+  const a = await prisma.agent.create({
+    data: { tenantId: T, email: `ci-mcp-${slug}-${stamp}@example.test`, name, passwordHash: 'x', roleId },
   });
+  cleanup.unshift(() => prisma.agent.deleteMany({ where: { id: a.id, tenantId: T } }));
+  return a;
+};
+const branch = await mkAgent('branch', 'CI MCP 分店', branchRole.id);
+const other = await mkAgent('other', 'CI MCP 另一分店');
+const hq = await mkAgent('hq', 'CI MCP 總店', hqRole.id);
+// 分店只唯讀渠道 A；渠道 B 綁給另一分店（未綁任何人的渠道依 CM-173 相容規則是全租戶可見）
+await prisma.agentChannelAccess.create({ data: { agentId: branch.id, channelId: chA.id, accessLevel: 'read_only' } });
+await prisma.agentChannelAccess.create({ data: { agentId: other.id, channelId: chB.id, accessLevel: 'full' } });
 
-  await check('分店讀聯絡人：渠道身份只列可見渠道', async () => {
-    const r = await callTool(address, 'crm_get_contact', { id: contact.id });
-    assert.equal(r.isError, false, r.text);
-    assert.ok(r.text.includes(`ci-mcp-uid-${chA.id}`), '應保留渠道 A 的身份');
-    assert.ok(!r.text.includes(`ci-mcp-uid-${chB.id}`), '不可出現渠道 B 的 uid');
-    assert.ok(!r.text.includes('CI MCP 暱稱 B'), '不可出現渠道 B 的暱稱');
+const contact = await prisma.contact.create({ data: { tenantId: T, displayName: `CI MCP 聯絡人 ${stamp}` } });
+cleanup.unshift(async () => {
+  await prisma.case.deleteMany({ where: { tenantId: T, contactId: contact.id } });
+  await prisma.conversation.deleteMany({ where: { tenantId: T, contactId: contact.id } });
+  await prisma.contact.deleteMany({ where: { id: contact.id, tenantId: T } });
+});
+const conv = new Map<string, string>();
+const caseId = new Map<string, string>();
+for (const [label, ch] of [['A', chA], ['B', chB]] as const) {
+  const c = await prisma.conversation.create({
+    data: { tenantId: T, contactId: contact.id, channelId: ch.id, channelType: 'LINE', lastMessageAt: new Date() },
   });
-
-  await check('分店發 LINE：唯讀渠道 403 層級不足，看不到的渠道與不存在的回應相同', async () => {
-    const payload = { contentType: 'text', content: { text: 'hi' } };
-    const a = await callTool(address, 'crm_line_direct_send', { ...payload, conversationId: conv.get('A') });
-    assert.equal(a.isError, true);
-    assert.match(a.text, /CHANNEL_ACCESS_LEVEL_INSUFFICIENT/);
-    const b = await callTool(address, 'crm_line_direct_send', { ...payload, conversationId: conv.get('B') });
-    const missing = await callTool(address, 'crm_line_direct_send', { ...payload, conversationId: MISSING_ID });
-    assert.equal(b.isError, true);
-    assert.deepEqual(b, missing, '他店對話與不存在的對話回應要一致');
-
-    // 用渠道＋聯絡人找對話：不可藉此探測他店是否有這位顧客的對話
-    const byPair = await callTool(address, 'crm_line_direct_send', { ...payload, channelId: chB.id, contactId: contact.id });
-    const byPairMissing = await callTool(address, 'crm_line_direct_send', { ...payload, channelId: chB.id, contactId: MISSING_ID });
-    assert.equal(byPair.isError, true);
-    assert.deepEqual(byPair, byPairMissing, '渠道＋聯絡人查詢：他店有對話與沒有對話的回應要一致');
+  conv.set(label, c.id);
+  const k = await prisma.case.create({ data: { tenantId: T, contactId: contact.id, channelId: ch.id, title: `CI MCP 案件 ${label} ${stamp}` } });
+  caseId.set(label, k.id);
+  await prisma.channelIdentity.create({
+    data: { contactId: contact.id, channelId: ch.id, channelType: 'LINE', uid: `ci-mcp-uid-${ch.id}`, profileName: `CI MCP 暱稱 ${label}` },
   });
+}
+const { app, address } = await buildApp(branch.id);
+apps.push(app);
+const hqApp = await buildApp(hq.id);
+apps.push(hqApp.app);
 
-  await check('總店（channel.view_all）：看得到所有渠道的對話、案件與身份', async () => {
-    const b = await callTool(hqApp.address, 'crm_line_get_conversation', { id: conv.get('B') });
-    assert.equal(b.isError, false, b.text);
-    const caseB = await callTool(hqApp.address, 'crm_get_case', { id: caseId.get('B') });
-    assert.equal(caseB.isError, false, caseB.text);
-    const contactRes = await callTool(hqApp.address, 'crm_get_contact', { id: contact.id });
-    assert.ok(contactRes.text.includes(`ci-mcp-uid-${chB.id}`), '總店應看得到渠道 B 的身份');
-  });
-} finally {
+test('分店讀單筆對話／案件：他店與不存在的回應完全相同，自己的渠道可讀', async () => {
+  const b = await callTool(address, 'crm_line_get_conversation', { id: conv.get('B') });
+  const missing = await callTool(address, 'crm_line_get_conversation', { id: MISSING_ID });
+  assert.equal(b.isError, true);
+  assert.deepEqual(b, missing, '他店對話與不存在的對話回應要一致');
+  assert.equal(b.text, notFound('conversation'));
+
+  const caseB = await callTool(address, 'crm_get_case', { id: caseId.get('B') });
+  const caseMissing = await callTool(address, 'crm_get_case', { id: MISSING_ID });
+  assert.deepEqual(caseB, caseMissing, '他店案件與不存在的案件回應要一致');
+  assert.equal(caseB.text, notFound('case'));
+  const caseA = await callTool(address, 'crm_get_case', { id: caseId.get('A') });
+  assert.equal(caseA.isError, false, caseA.text);
+
+  const a = await callTool(address, 'crm_line_get_conversation', { id: conv.get('A') });
+  assert.equal(a.isError, false, a.text);
+  assert.match(a.text, new RegExp(conv.get('A')!));
+});
+
+test('分店列對話：不含看不到的渠道', async () => {
+  const r = await callTool(address, 'crm_line_list_conversations', { page: 1, limit: 50 });
+  assert.equal(r.isError, false, r.text);
+  assert.ok(!r.text.includes(conv.get('B')!), '不可列出渠道 B 的對話');
+  assert.ok(r.text.includes(conv.get('A')!), '應列出渠道 A 的對話');
+});
+
+test('分店讀聯絡人：渠道身份只列可見渠道', async () => {
+  const r = await callTool(address, 'crm_get_contact', { id: contact.id });
+  assert.equal(r.isError, false, r.text);
+  assert.ok(r.text.includes(`ci-mcp-uid-${chA.id}`), '應保留渠道 A 的身份');
+  assert.ok(!r.text.includes(`ci-mcp-uid-${chB.id}`), '不可出現渠道 B 的 uid');
+  assert.ok(!r.text.includes('CI MCP 暱稱 B'), '不可出現渠道 B 的暱稱');
+});
+
+test('分店發 LINE：唯讀渠道 403 層級不足，看不到的渠道與不存在的回應相同', async () => {
+  const payload = { contentType: 'text', content: { text: 'hi' } };
+  const a = await callTool(address, 'crm_line_direct_send', { ...payload, conversationId: conv.get('A') });
+  assert.equal(a.isError, true);
+  assert.match(a.text, /CHANNEL_ACCESS_LEVEL_INSUFFICIENT/);
+  const b = await callTool(address, 'crm_line_direct_send', { ...payload, conversationId: conv.get('B') });
+  const missing = await callTool(address, 'crm_line_direct_send', { ...payload, conversationId: MISSING_ID });
+  assert.equal(b.isError, true);
+  assert.deepEqual(b, missing, '他店對話與不存在的對話回應要一致');
+
+  // 用渠道＋聯絡人找對話：不可藉此探測他店是否有這位顧客的對話
+  const byPair = await callTool(address, 'crm_line_direct_send', { ...payload, channelId: chB.id, contactId: contact.id });
+  const byPairMissing = await callTool(address, 'crm_line_direct_send', { ...payload, channelId: chB.id, contactId: MISSING_ID });
+  assert.equal(byPair.isError, true);
+  assert.deepEqual(byPair, byPairMissing, '渠道＋聯絡人查詢：他店有對話與沒有對話的回應要一致');
+});
+
+test('總店（channel.view_all）：看得到所有渠道的對話、案件與身份', async () => {
+  const b = await callTool(hqApp.address, 'crm_line_get_conversation', { id: conv.get('B') });
+  assert.equal(b.isError, false, b.text);
+  const caseB = await callTool(hqApp.address, 'crm_get_case', { id: caseId.get('B') });
+  assert.equal(caseB.isError, false, caseB.text);
+  const contactRes = await callTool(hqApp.address, 'crm_get_contact', { id: contact.id });
+  assert.ok(contactRes.text.includes(`ci-mcp-uid-${chB.id}`), '總店應看得到渠道 B 的身份');
+});
+
+afterAll(async () => {
   for (const app of apps) await app.close().catch(() => {});
   for (const fn of cleanup) await fn().catch((err) => console.error('清理失敗', err));
   if (roles.length) await prisma.role.deleteMany({ where: { id: { in: roles } } });
   await prisma.$disconnect();
-}
-
-console.log(`# fail ${failed}`);
-process.exit(failed === 0 ? 0 : 1);
+});

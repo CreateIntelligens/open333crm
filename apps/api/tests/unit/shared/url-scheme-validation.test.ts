@@ -19,25 +19,11 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { httpUrlSchema, lineUriSchema, isSafeHttpUrl } from '../shared/utils/url-schemes.js';
+import { httpUrlSchema, lineUriSchema, isSafeHttpUrl } from '#src/shared/utils/url-schemes.js';
+import { apiSrc, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const src = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+import { test as t } from 'vitest';
+const src = (rel: string) => readFileSync(join(apiSrc, rel), 'utf8');
 
 /** Wave 6 實測可通過舊驗證的危險值 */
 const DANGEROUS = [
@@ -275,7 +261,7 @@ t('到期時間可以被清除（更新端點收 null）', () => {
   );
   // 前端也要真的送 null，送 undefined 後端會當成「這欄不動」
   const web = readFileSync(
-    join(here, '../../../../apps/web/src/components/shortlink/LinkFormDialog.tsx'),
+    join(repoRoot, 'apps/web/src/components/shortlink/LinkFormDialog.tsx'),
     'utf8',
   );
   // toIsoForApi(value, clearable)：clearable=true 時清空送 null（清除），
@@ -285,6 +271,3 @@ t('到期時間可以被清除（更新端點收 null）', () => {
     '前端清空到期時間時仍送 undefined，後端不會清除',
   );
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

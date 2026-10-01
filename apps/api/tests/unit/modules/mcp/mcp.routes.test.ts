@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { registerChannelPlugin } from "@open333crm/channel-plugins";
-import { encryptCredentials } from "../modules/channel/channel.service.js";
+import { encryptCredentials } from "#src/modules/channel/channel.service.js";
 
-import mcpRoutes from "../modules/mcp/mcp.routes.js";
-import type { McpChannelAccess } from "../modules/mcp/mcp.server.js";
-import { ALL_CHANNELS } from "../services/channel-visibility.js";
-import { AppError } from "../shared/utils/response.js";
-import { notFound } from "../shared/messages/resource.js";
-import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from "../modules/mcp/mcp.constants.js";
+import mcpRoutes from "#src/modules/mcp/mcp.routes.js";
+import type { McpChannelAccess } from "#src/modules/mcp/mcp.server.js";
+import { ALL_CHANNELS } from "#src/services/channel-visibility.js";
+import { AppError } from "#src/shared/utils/response.js";
+import { notFound } from "#src/shared/messages/resource.js";
+import { MCP_LINE_READ_SCOPE, MCP_LINE_SEND_SCOPE, MCP_READ_SCOPE } from "#src/modules/mcp/mcp.constants.js";
 
+import { test } from 'vitest';
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -799,26 +800,24 @@ async function testBranchDirectSendChecksChannelLevel() {
   }
 }
 
-await testRejectsMissingAuthentication();
-await testRejectsCookieOnlyAuthentication();
-await testInitializesMcpServer();
-await testRejectsUntrustedOrigin();
-await testAllowsConfiguredOriginOnly();
-await testListsReadOnlyTools();
-await testCallsSearchContactsAndPreservesBigInt();
-await testRejectsInvalidToolInput();
-await testConfirmedLineDirectSend();
-await testRejectsLineDirectSendWithoutScope();
-await testRejectsForeignLineConversation();
-await testListsLineConversationsWithTenantScope();
-await testConfirmedLineBroadcastRejectsQuota();
-await testRejectsCliTokenWithoutMcpScope();
-await testRejectsJwtWithoutMcpScope();
-await testAllowsSameOriginInDevelopmentWithoutConfiguredOrigins();
-await testBranchListToolsFilterByVisibleChannels();
-await testBranchCannotReadOtherChannelRecords();
-await testUnrestrictedAgentStillReadsRecords();
-await testBranchDirectSendChecksChannelLevel();
-await testAccessResolutionFailureIsSanitized();
-console.log("mcp.routes.test.ts passed");
-process.exit(0);
+test('rejects missing authentication', testRejectsMissingAuthentication);
+test('rejects cookie only authentication', testRejectsCookieOnlyAuthentication);
+test('initializes mcp server', testInitializesMcpServer);
+test('rejects untrusted origin', testRejectsUntrustedOrigin);
+test('allows configured origin only', testAllowsConfiguredOriginOnly);
+test('lists read only tools', testListsReadOnlyTools);
+test('calls search contacts and preserves big int', testCallsSearchContactsAndPreservesBigInt);
+test('rejects invalid tool input', testRejectsInvalidToolInput);
+test('confirmed line direct send', testConfirmedLineDirectSend);
+test('rejects line direct send without scope', testRejectsLineDirectSendWithoutScope);
+test('rejects foreign line conversation', testRejectsForeignLineConversation);
+test('lists line conversations with tenant scope', testListsLineConversationsWithTenantScope);
+test('confirmed line broadcast rejects quota', testConfirmedLineBroadcastRejectsQuota);
+test('rejects cli token without mcp scope', testRejectsCliTokenWithoutMcpScope);
+test('rejects jwt without mcp scope', testRejectsJwtWithoutMcpScope);
+test('allows same origin in development without configured origins', testAllowsSameOriginInDevelopmentWithoutConfiguredOrigins);
+test('branch list tools filter by visible channels', testBranchListToolsFilterByVisibleChannels);
+test('branch cannot read other channel records', testBranchCannotReadOtherChannelRecords);
+test('unrestricted agent still reads records', testUnrestrictedAgentStillReadsRecords);
+test('branch direct send checks channel level', testBranchDirectSendChecksChannelLevel);
+test('access resolution failure is sanitized', testAccessResolutionFailureIsSanitized);

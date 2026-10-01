@@ -29,26 +29,12 @@ import {
   LINE_MEDIA_URL_MAX_LENGTH,
   NON_DIRECT_VIDEO_HOSTS,
 } from '@open333crm/shared';
+import { apiSrc as apiSrcDir, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const apiSrc = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
+import { test as t } from 'vitest';
+const apiSrc = (rel: string) => readFileSync(join(apiSrcDir, rel), 'utf8');
 const webSrc = (rel: string) =>
-  readFileSync(join(here, '../../../../apps/web/src', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+  readFileSync(join(repoRoot, 'apps/web/src', rel), 'utf8');
 
 // ─── 常數對齊 LINE 官方文件 ───────────────────────────────────────────────
 
@@ -250,6 +236,3 @@ t('影片編輯器改用 CompactVideoField（不再是純文字框）', () => {
   const code = webSrc('components/materials/line/LineVideoEditor.tsx');
   assert.ok(code.includes('CompactVideoField'), '影片編輯器未使用上傳元件');
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

@@ -14,6 +14,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/open333crm';
@@ -21,8 +22,8 @@ process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-inbound-contact-resolution-secret';
 
 import { resolveUidToContact } from '@open333crm/core';
-import { resolveInboundContact } from '../modules/webhook/inbound-contact-resolver.js';
-import type { InboundMessageContext } from '../modules/webhook/inbound-message.types.js';
+import { resolveInboundContact } from '#src/modules/webhook/inbound-contact-resolver.js';
+import type { InboundMessageContext } from '#src/modules/webhook/inbound-message.types.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -210,12 +211,4 @@ async function run() {
   console.log('✔ inbound-contact-resolution：5 組情境全部通過（CM-175 防迴歸）');
 }
 
-run()
-  .then(() => {
-    // 與其他既有測試一致：明確退出，避免模組載入時建立的 Redis 連線讓程序掛住。
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+test('inbound-contact-resolution', run);

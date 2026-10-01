@@ -2,19 +2,16 @@
  * 用量告警核心邏輯測試（checkQuotaThresholdCrossing）。
  * 真連 Redis（冪等旗標）；prisma 以 stub 提供固定 monthlyTokens 上限，不依賴特定租戶資料。
  *
- * 執行：REDIS_URL=redis://localhost:6380 tsx src/__tests__/token-quota-alert.test.ts
+ * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test, afterAll } from 'vitest';
 
-process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-process.env.DATABASE_URL =
-  process.env.DATABASE_URL || 'postgresql://crm:crmpassword@localhost:5433/open333crm';
 
 import {
   checkQuotaThresholdCrossing,
   clearQuotaAlertFlags,
-} from '../modules/trial/token-quota.service.js';
+} from '#src/modules/trial/token-quota.service.js';
 import { redis } from '@open333crm/core';
 
 /** stub prisma：讓 getEffectiveLimit 回固定 monthlyTokens（limit 為 null 表無上限）。 */
@@ -88,10 +85,7 @@ test('清旗標後可再發（跨月語意）', async () => {
   assert.equal(b.length, 1, '清旗標後應可再發');
 });
 
-test.after(async () => {
+afterAll(async () => {
   await clearQuotaAlertFlags(TID);
   await redis.quit();
-  // core barrel 匯入會帶入多個 side-effect singleton（storage/event-bus 等）留下未關閉 handle，
-  // 使 node:test 跑完仍不退出 → 強制結束（測試結果已由各 test 斷言決定）。
-  process.exit(0);
 });

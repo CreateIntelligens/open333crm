@@ -3,9 +3,9 @@
  * change add-cross-channel-one-id，spec cross-channel-binding-code。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { bumpCounter, extractBindingCode, generateBindingCode } from '../modules/identity-binding/binding-code.js';
-import { memBindingStore } from './helpers/mem-binding-store.js';
+import { test } from 'vitest';
+import { bumpCounter, extractBindingCode, generateBindingCode } from '#src/modules/identity-binding/binding-code.js';
+import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import {
   buildBindingLink,
   channelDisplayLabel,
@@ -13,7 +13,7 @@ import {
   matchesKeyword,
   parseIdentityBindingSettings,
   resolveBindingHandle,
-} from '../modules/identity-binding/binding-links.js';
+} from '#src/modules/identity-binding/binding-links.js';
 
 test('代碼格式：BIND- + 10 碼 Crockford base32，且 FB/IG ref 允許的字元', () => {
   for (let i = 0; i < 200; i++) {

@@ -24,26 +24,12 @@ import {
   OUTBOUND_MESSAGE_TYPES,
   MESSAGE_TEXT_MAX_LENGTH,
 } from '@open333crm/shared';
+import { apiSrc as apiSrcDir, repoRoot } from '#tests/support/paths.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const apiSrc = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
+import { test as t } from 'vitest';
+const apiSrc = (rel: string) => readFileSync(join(apiSrcDir, rel), 'utf8');
 const pkgSrc = (rel: string) =>
-  readFileSync(join(here, '../../../../packages', rel), 'utf8');
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+  readFileSync(join(repoRoot, 'packages', rel), 'utf8');
 
 // ─── UAT 實測全部回 201 的五種輸入，現在都該被擋下 ────────────────────────
 
@@ -189,6 +175,3 @@ t('file 有對應分支（否則送出空白泡泡）', () => {
   const block = code.slice(code.indexOf("case 'file': {"), code.indexOf("case 'audio':"));
   assert.ok(/fileName/.test(block), 'file 訊息應帶上檔名，只給連結使用者不知道是什麼');
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);
