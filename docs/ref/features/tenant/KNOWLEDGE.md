@@ -13,7 +13,7 @@
 | `embedding` | 產生向量與 pgvector 相似度檢索。沒有路由 |
 | `ai` 的 `kb-autoreply.service.ts` | 機器人依知識庫回覆 |
 | `ai` 的 `agent/` | AI agent：可以呼叫工具（搜尋網頁、讀網頁、OCR、解析文件、查天氣、發布 Wiki）的多輪回覆 |
-| `ai` 的 `llm.service.ts`、`providers/` | 呼叫 LLM。支援 Ollama 與 Gemini |
+| `ai` 的 `llm.service.ts`、`providers/` | 呼叫 LLM。支援 Ollama 與 Gemini；組織不部署 Ollama，因此只能用 Gemini |
 | `ai` 的 `ai-key.service.ts` | 決定用平台的 Gemini 金鑰還是租戶自備的金鑰 |
 | `settings` 的 chat、embedding、gemini-key 部分 | 租戶的 Chat 設定、Embedding 設定與自備金鑰 |
 | `trial` 的 `token-quota.service.ts` | AI 月額度的計數與告警 |
@@ -82,7 +82,9 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。第�
 | Chat（Chat & Prompt 頁） | 供應商（Ollama 或 Gemini）、模型、位址、溫度、最大 token、系統提示詞、追問門檻與次數 | `chat-settings.service.ts` 的 `DEFAULT_CHAT_SETTINGS` |
 | Embedding（Embedding 頁） | 位址、模型、`topK`、`threshold` | `embedding-settings.service.ts` 的 `DEFAULT_EMBEDDING_SETTINGS` |
 
-兩頁都有健康檢查（`/settings/chat/health`、`/settings/embedding/health`），用來確認模型位址連得上。預設位址 `http://localhost:11434` 在容器內指向 API 自己，見 `../../system/AUDIT.md` 的 LLM-01 與 LLM-03。
+兩頁都有健康檢查（`/settings/chat/health`、`/settings/embedding/health`），用來確認模型位址連得上。
+
+兩頁的預設值都指向 Ollama，但組織不部署 Ollama。Chat 可以把供應商改成 Gemini；Embedding 沒有供應商可選，只會呼叫 Ollama。見 `../../system/AUDIT.md` 的 LLM-01 與 LLM-04。
 
 **自備金鑰（BYOK）。** 租戶可以在設定頁填入自己的 Gemini 金鑰（`PUT /settings/gemini-key`），金鑰加密後存在 `TenantSettings.geminiApiKeyEnc`。有自備金鑰時，AI 呼叫用租戶的金鑰，成本記 0，也不受月額度限制。解密失敗時會靜默改用平台金鑰，見 `../../system/AUDIT.md` 的 AI-01。
 
@@ -111,7 +113,8 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。第�
 | --- | --- |
 | 向量在背景產生，失敗不會通知 | 已發布的文章可能檢索不到，要從向量狀態自行檢查 |
 | 向量維度不一致 | 詳見 `../../system/AUDIT.md` 的 DB-01 |
-| 預設的模型位址在容器內連不到 | 詳見 `../../system/AUDIT.md` 的 LLM-01 與 LLM-03 |
+| Embedding 只能呼叫 Ollama，組織不部署 Ollama | 產生向量、檢索、自動回覆、AI 建議回覆都會失敗。自動回覆失敗時不回覆客人，也不轉真人。詳見 `../../system/AUDIT.md` 的 LLM-04 |
+| Chat 的預設供應商是 Ollama | 新租戶要先把 Chat 供應商改成 Gemini。詳見 `../../system/AUDIT.md` 的 LLM-01 |
 | 自備金鑰解密失敗時靜默改用平台金鑰 | 詳見 `../../system/AUDIT.md` 的 AI-01 |
 | AI 不在方案的功能天花板內 | 詳見 `../../system/AUDIT.md` 的 PLAN-12 |
 | 讀取類路由沒有權限碼 | 側欄要求 `knowledge.view`，API 不檢查 |

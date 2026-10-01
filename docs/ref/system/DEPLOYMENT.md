@@ -16,6 +16,8 @@
 | 對外 port | 80、3000、3001、5433、6380、9000、9001、11434 | 3000、3001、5433、6380、9000、9001 | 80、443 |
 | 主要用途 | 驗證正式建置 | 日常開發 | 部署到伺服器 |
 
+表中的「Ollama」指 Compose 檔的內容。組織因主機資源不足，決定不部署 Ollama（2026-10-01），但 `docker-compose.yml` 與 `docker-compose.prod.yml` 仍保留 `ollama` 服務，見[實作落差與驗證紀錄](./AUDIT.md)的 LLM-02。
+
 ## 服務分布
 
 | 服務 | 本機整合 | 開發 | 正式 | 對外 port |
@@ -105,7 +107,7 @@ packages/types/dist/index.js
 `docs/02_SYSTEM_ARCHITECTURE.md` 的 Compose 服務清單是規劃稿。現在的實作有四項主要差異：
 
 1. 現在只有一個 `workers` 容器，不再分成三種 worker 容器。
-2. 本機整合與正式環境加入 Ollama。
+2. 本機整合與正式環境的 Compose 檔加入 Ollama。組織已決定不部署 Ollama，見上方「環境差異」的說明。
 3. `widget` 由 `web` 提供靜態檔案，不是獨立服務。
 4. 本機整合環境使用 Caddy；正式環境使用 Nginx 與 Certbot。
 

@@ -45,11 +45,13 @@ API 使用 `media`、`templates`、`exports`、`avatars`、`imagemap` 作為物�
 
 ## LLM
 
-API 提供 Ollama 與 Gemini provider。租戶的 Chat 與 Embedding 設定儲存在 `tenant_settings`，包含 provider、模型及 base URL。Gemini API key 使用 AES-256-GCM 加密。
+Chat 有 Ollama 與 Gemini 兩個 provider。Embedding 沒有 provider 可選，只會呼叫 Ollama。租戶的 Chat 與 Embedding 設定儲存在 `tenant_settings`，包含模型及 base URL；Chat 設定另有 provider。Gemini API key 使用 AES-256-GCM 加密。
 
 `packages/brain` 另有 OpenAI 語音轉文字與摘要程式碼，但目前沒有 app 匯入 `brain`。
 
-開發 Compose 不提供 Ollama。需要本地模型時，開發者必須另外啟動 Ollama，並將租戶設定指向可連線的主機位址。
+組織因主機資源不足，決定不部署 Ollama（2026-10-01）。租戶的 Chat 設定要改用 Gemini。Embedding 沒有替代的 provider，因此依賴向量的功能目前無法運作，見[實作落差與驗證紀錄](./AUDIT.md)的 LLM-01 與 LLM-04。
+
+開發 Compose 不提供 Ollama。
 
 ## 渠道平台
 
