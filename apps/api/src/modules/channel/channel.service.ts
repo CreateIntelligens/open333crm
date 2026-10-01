@@ -512,7 +512,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
 
     if (!response.ok) {
       const errBody = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      // 管理員按「驗證」時主動觸發：他正是要知道 LINE 為何拒絕。
+      // 管理員按「測試連線」時主動觸發：他正是要知道 LINE 為何拒絕。
       // message 用可讀說明，平台原文放 details 供排查（常見為權杖失效／密鑰不符）。
       throw new AppError(
         'LINE 驗證失敗，請確認 Channel Secret 與 Access Token 是否正確且未過期',
