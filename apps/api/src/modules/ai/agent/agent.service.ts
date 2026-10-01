@@ -12,7 +12,7 @@ import { addRetentionExpiry } from './retention.js';
 import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
 import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
-import { guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
+import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -21,8 +21,6 @@ export const AGENT_SYSTEM_PROMPT =
   '回答時請清楚區分已查證資料與推測，無法確認時要明確說明。';
 
 const AGENT_HISTORY_LIMIT = 10;
-/** 讀取筆數倍數：過濾綁定訊息後仍留得滿歷史上限 */
-const HISTORY_FETCH_FACTOR = 3;
 
 export interface AgentReplyInput {
   tenantId: string;
@@ -223,7 +221,7 @@ export async function loadAgentHistory(prisma: TenantDb, tenantId: string, conve
     },
     orderBy: { createdAt: 'desc' },
     // 多取一些：綁定訊息過濾掉之後，仍要留滿 AGENT_HISTORY_LIMIT 則一般對話
-    take: AGENT_HISTORY_LIMIT * HISTORY_FETCH_FACTOR,
+    take: AGENT_HISTORY_LIMIT * AI_HISTORY_FETCH_FACTOR,
     select: { direction: true, content: true, metadata: true },
   });
   // 系統發的綁定訊息不給 AI 看、代碼遮掉：AI 曾照抄綁定訊息編出不存在的代碼

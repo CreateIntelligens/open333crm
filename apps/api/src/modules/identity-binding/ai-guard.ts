@@ -17,6 +17,12 @@ const LOOSE_CODE_PATTERN = /(?<![A-Za-z])BIND-[0-9A-Za-z]{4,}/gi;
 const REDACTED = '[綁定代碼]';
 const BINDING_MESSAGE_SOURCE = 'identity_binding';
 
+/**
+ * 讀對話紀錄時多取的倍數：綁定訊息過濾掉之後仍留得滿歷史上限。
+ * 綁定代碼每個身分每小時最多申請 5 組，最近的訊息幾乎不可能大半都是綁定訊息，固定倍數已足夠，不需分頁讀取。
+ */
+export const AI_HISTORY_FETCH_FACTOR = 3;
+
 export function containsBindingCode(text: string): boolean {
   return new RegExp(LOOSE_CODE_PATTERN.source, 'i').test(text);
 }

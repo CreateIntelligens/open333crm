@@ -60,9 +60,10 @@ test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說
   const io = { to: () => ({ emit: () => {} }) } as never;
   delivered.length = 0;
   await runAgentReply(prisma, { tenantId: 'agent-guard-tenant-2', conversationId: 'c1', userMessage: 'x', deliver: true, io });
+  const expected = '如需綁定其他帳號，請直接傳送「綁定帳號」，系統會提供專屬的綁定連結與代碼。';
   assert.equal(created.length, 1);
   assert.equal(created[0]!.metadata.bindingCodeBlocked, true);
-  assert.doesNotMatch(created[0]!.content.text, /BIND-|https?:/);
+  assert.equal(created[0]!.content.text, expected);
   assert.equal(delivered.length, 1);
-  assert.doesNotMatch(JSON.stringify(delivered[0]), /BIND-|https?:/);
+  assert.equal((delivered[0] as { content: { text: string } }).content.text, expected, '送到渠道的與寫進資料庫的相同');
 });

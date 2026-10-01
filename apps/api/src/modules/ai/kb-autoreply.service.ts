@@ -24,7 +24,7 @@ import type { HistoryMessage } from './llm.service.js';
 import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
 import { getKnownModelKeys } from './model-registry.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
+import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
   hasMatchingKeywordRule,
   DEFAULT_BOT_CONFIG,
@@ -516,7 +516,7 @@ export async function loadKbHistory(
     where: { conversationId },
     orderBy: { createdAt: 'desc' },
     // 多取一些：綁定訊息過濾掉之後，仍要留滿 HISTORY_LIMIT 則一般對話
-    take: (HISTORY_LIMIT + 1) * 3,
+    take: (HISTORY_LIMIT + 1) * AI_HISTORY_FETCH_FACTOR,
     select: { direction: true, senderType: true, content: true, metadata: true },
   });
   // Drop the most recent inbound (the one we're replying to right now).
