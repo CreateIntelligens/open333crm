@@ -47,6 +47,7 @@
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RLS-06](#rls-06) | 租戶隔離與權限 | P1 | 已提建議 | 進站的 CSAT 攔截器不檢查租戶與聯絡人，外部使用者可改寫任一租戶的工單評分 | 靜態確認 |
+| [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 未處理 | 權限碼有一部分沒有強制點，收件匣一帶的路由只驗身分 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
@@ -128,6 +129,8 @@
 | [PKG-04](#pkg-04) | 共用套件 | P4 | 未處理 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
 | [PKG-05](#pkg-05) | 共用套件 | P4 | 未處理 | `core` 匯出沒有呼叫端的服務與事件訂閱者 | 靜態確認 |
 | [PKG-06](#pkg-06) | 共用套件 | P4 | 未處理 | `channel-plugins` 有沒有呼叫端的方法、擴充與檔案 | 靜態確認 |
+| [ARCH-01](#arch-01) | 架構規則 | P4 | 未處理 | route 檔直接查詢資料庫 | 靜態確認 |
+| [ARCH-02](#arch-02) | 架構規則 | P4 | 未處理 | `ai` 模組 import `automation` 的 worker 檔 | 靜態確認 |
 | [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Ollama base URL 預設指向容器自己 | 執行時重現 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
@@ -217,6 +220,13 @@
 任何能傳訊息給任一租戶官方帳號的外部使用者，只要知道一個工單 ID，輸入 `csat:1:<工單 ID>` 就能改寫任一租戶的工單評分，並讓對方的渠道送出訊息。工單 ID 是 UUID，不容易猜到，但會出現在送給客人的 CSAT 按鈕資料裡。同一個攔截器處理的知識庫回饋有以 `ctx.tenantId` 過濾，不受影響。
 
 **修正方向**：`recordCsatScore()` 加上 `tenantId` 與 `contactId` 條件，只接受工單屬於同租戶、同一個聯絡人的評分；攔截器只接受 postback，不接受純文字。
+
+<a id="rls-07"></a>
+### RLS-07：短連結轉址使用 `prismaAdmin`，但不在白名單
+
+`207da85`（2026-09-22）修復短連結被 RLS 擋下時，讓 `shortlink/shortlink-redirect.routes.ts` 改用 `prismaAdmin` 查渠道的 LIFF ID 與租戶的追蹤碼設定，但沒有把這個檔案加進 `scripts/check-prisma-admin-usage.mjs` 的白名單。從那時起，這支檢查以 `--strict` 執行就會失敗。CI 沒有執行這支檢查，所以一直沒有人發現。2026-10-01 實際執行確認。
+
+用途看起來合理：這是不需要登入的公開路由，請求進來時還不知道是哪個租戶；路由先依短網址解析出連結，再只查該連結所屬租戶的資料。修正方式是把這個檔案加進白名單，並註明理由。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
@@ -1729,6 +1739,47 @@ schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個�
 | `Conversation.teamId` | 沒有寫入端。`channel-visibility.ts` 的 `assertConversationChannelVisible()` 有一段「對話綁了團隊時只有該團隊成員能操作」的檢查，因此永遠不會觸發 |
 | `Case.mergedIntoId`、`Case.parentCaseId`、`CaseRelation` | `apps/api`、`apps/workers`、`apps/web` 都沒有讀寫。工單的合併、子工單與關聯沒有實作 |
 | `Contact.isBlocked` | `PATCH /contacts/:id` 可以寫入，前端沒有入口，也沒有任何程式讀取。設成 `true` 不會擋下訊息、機器人或群發 |
+
+## 架構規則
+
+`AGENTS.md` 的模組結構規則只約束新寫與修改的程式。本節記錄既有程式中違反規則、而且修正成本低的部分。修正成本高的規則（一個 route 檔一種資源、渠道差異走外掛）不在這裡列出清單，原因見 `AGENTS.md`。
+
+<a id="arch-01"></a>
+### ARCH-01：route 檔直接查詢資料庫
+
+規則 1 要求 route 只驗證輸入、檢查權限、呼叫 service，查詢放在 service。2026-10-01 以下列指令核對：
+
+```bash
+grep -cE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update|delete|upsert|count|aggregate|groupBy)' apps/api/src/modules/*/*.routes.ts | grep -v ':0$'
+```
+
+當天的結果：
+
+| route 檔 | 查詢呼叫數 | 備註 |
+| --- | --- | --- |
+| `auth/auth.routes.ts` | 9 | |
+| `sla/sla.routes.ts` | 8 | 模組沒有 service 檔 |
+| `channel/channel.routes.ts` | 7 | |
+| `settings/settings.routes.ts` | 5 | |
+| `portal/portal-public.routes.ts` | 4 | |
+| `tag/tag.routes.ts` | 3 | |
+| `line-login/line-login.routes.ts` | 3 | |
+| `fb-login/fb-login.routes.ts` | 3 | |
+| `webhook/webhook.routes.ts` | 2 | |
+| `webchat/webchat.routes.ts`、`shortlink/shortlink-redirect.routes.ts`、`platform/platform.routes.ts`、`knowledge/knowledge.routes.ts`、`conversation/conversation.routes.ts`、`analytics/analytics.routes.ts`、`ai/ai.routes.ts`、`agent/agent.routes.ts` | 各 1 | |
+
+多數是單筆查詢，搬進 service 即可。這些 route 大多沒有測試，搬移前先補上 route 的測試，確認行為不變。
+
+<a id="arch-02"></a>
+### ARCH-02：`ai` 模組 import `automation` 的 worker 檔
+
+規則 4 禁止 import 別的模組的 `.routes.ts`、`.worker.ts`、`.scheduler.ts`；引用別的模組的 helper 檔不算違規。2026-10-01 以下列指令核對，只有一處違規：
+
+```bash
+grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes|worker|scheduler)\.js'" apps/api/src/modules
+```
+
+`ai/kb-autoreply.service.ts` 從 `automation/automation.worker.ts` 匯入 `hasMatchingKeywordRule()`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與 `BotConfig`。修正方式是把這些搬到 `automation` 的 service 或 helper 檔。
 
 ## CI 與測試
 
