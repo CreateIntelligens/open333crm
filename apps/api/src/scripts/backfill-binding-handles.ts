@@ -1,7 +1,7 @@
 /**
  * 為既有 LINE／FB／IG 渠道補抓跨渠道綁定用的導流識別（change add-cross-channel-one-id，tasks 4.3）。
  *
- * 新渠道在後台按「驗證」時會自動寫入 settings.bindingHandleAuto；這支腳本替既有渠道
+ * 新渠道在後台按「測試連線」時會自動寫入 settings.bindingHandleAuto；這支腳本替既有渠道
  * 補跑一次同樣的驗證（直接重用 verifyChannel，不另寫一份邏輯）。
  *
  * 安全設計：
