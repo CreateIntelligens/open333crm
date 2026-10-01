@@ -22,7 +22,7 @@
 | 資料庫      | PostgreSQL 16 + Prisma 6                         |
 | 快取 / 佇列 | Redis + BullMQ                                   |
 | 即時通訊    | Socket.IO (on Fastify)                           |
-| AI          | Ollama (qwen2.5 / bge-m3)                        |
+| AI          | Gemini；Embedding 只支援 Ollama，見 AUDIT LLM-04 |
 | 儲存        | MinIO (S3 相容)                                  |
 | 建構        | pnpm workspaces + Turborepo                      |
 | 容器        | Docker Compose                                   |
@@ -61,7 +61,7 @@ packages/
   types/      # TypeScript 型別定義
   ui/         # React UI 元件 (shadcn/ui)
   automation/ # 自動化引擎 (json-rules-engine)
-  brain/      # AI/LLM 整合 (Ollama)
+  brain/      # AI/LLM 輔助程式，目前沒有 app 匯入
   channel-plugins/ # LINE、Facebook、WebChat 插件
   kb-ingest/  # 知識庫擷取管線
 ```

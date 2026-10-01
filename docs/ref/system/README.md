@@ -24,7 +24,7 @@ flowchart LR
   api --> pg[("PostgreSQL")]
   api --> redis[("Redis")]
   api --> minio[("MinIO")]
-  api --> llm["Ollama / Gemini"]
+  api --> llm["Gemini<br/>（Embedding 呼叫 Ollama）"]
 
   redis --> workers["workers<br/>BullMQ consumers"]
   workers --> pg
@@ -47,7 +47,7 @@ flowchart LR
 | PostgreSQL | 主資料、向量資料與租戶隔離 | 基礎設施容器 |
 | Redis | BullMQ、快取與 pub/sub | 基礎設施容器 |
 | MinIO | S3 相容物件儲存 | 基礎設施容器 |
-| Ollama | 本地 Chat 與 Embedding 模型 | 部分環境使用的容器 |
+| Ollama | 本地 Chat 與 Embedding 模型 | 不部署。Compose 檔仍保留容器，見[實作落差與驗證紀錄](./AUDIT.md)的 LLM-02 |
 
 ## 兩條 Socket 事件路徑
 
