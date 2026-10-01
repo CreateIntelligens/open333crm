@@ -89,7 +89,7 @@
 
 延長同時把 `isActive` 設成 `true`，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。
 
-`convertToPaid(tenantId, planSlug)` 改 `planId`，並寫入 `TRIAL_EXIT_DATA`：把 `trialEndsAt` 與 `purgedAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是 `trial` 時擋下。
+`convertToPaid(tenantId, planSlug)` 改 `planId`，並寫入 `TRIAL_EXIT_DATA`：把 `trialEndsAt` 與 `purgedAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是試用方案時回 400，試用方案以試用政策的 `trial.planSlug` 判斷（`assertNotTrialPlan()`）。
 
 `restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。
 
@@ -112,5 +112,7 @@
 
 - 核准 `token_topup` 申請。試用租戶加購之後，到期仍會被停用。
 - 在 `/admin/tenants/:id` 改方案（`updateTenant()`）。頁面會提示這個租戶仍在試用中。
+
+試用方案不能當成「轉正式」或升級申請的目標。否則租戶留在試用方案、`trialEndsAt` 卻被清空，永遠不會到期。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

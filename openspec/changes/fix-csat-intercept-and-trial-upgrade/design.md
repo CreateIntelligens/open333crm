@@ -65,6 +65,18 @@
 
 `updateTenant()` 的行為不變。`apps/web/src/app/admin/tenants/[id]/page.tsx` 在方案下拉選單旁邊，對 `trialEndsAt` 不是 null 的租戶顯示提示：改方案不會讓租戶脫離試用；要轉付費，使用試用管理頁的「轉付費」。
 
+### D5. 試用方案不能當成升級或轉正式的目標
+
+D3 之後，核准一筆「升級到試用方案」的申請會清掉 `trialEndsAt`，租戶留在試用方案卻永遠不會到期。租戶的前端只提供付費方案，但 `createPlanChangeRequest()` 接受任何存在的方案 slug，租戶的 ADMIN 可以直接呼叫 API 送出這種申請。
+
+在 `trial-admin.service.ts` 新增 `assertNotTrialPlan(prisma, planSlug)`，以 `getTrialPolicy()` 取得當下的 `trial.planSlug` 比對，目標是試用方案時拋出 400。三個地方都呼叫它：
+
+- `createPlanChangeRequest()`：租戶送出時就收到錯誤。
+- `approveRequest()`：擋下規則上線前就已建立的申請。
+- `convertToPaid()`：取代原本寫死的 `plan.slug === 'trial'`。平台修改 `trial.planSlug` 之後，原本的寫法會失效。
+
+**替代方案：** 只在核准時擋。租戶要等平台審核才知道申請無效，而且審核頁會留下一筆不能核准的申請。
+
 ## Risks / Trade-offs
 
 - [正式環境已有受影響的租戶] → 部署前執行下方的查詢與修復。

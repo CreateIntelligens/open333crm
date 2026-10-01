@@ -8,7 +8,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { clearTokenQuotaCache } from '../trial/token-quota.service.js';
-import { TRIAL_EXIT_DATA } from './trial-admin.service.js';
+import { TRIAL_EXIT_DATA, assertNotTrialPlan } from './trial-admin.service.js';
 
 // ── 租戶側 ──
 
@@ -28,6 +28,7 @@ export async function createPlanChangeRequest(
     if (!input.targetPlanSlug) throw new AppError('缺少目標方案', 'BAD_REQUEST', 400);
     const plan = await prisma.plan.findUnique({ where: { slug: input.targetPlanSlug }, select: { id: true } });
     if (!plan) throw new AppError('目標方案不存在', 'NOT_FOUND', 404);
+    await assertNotTrialPlan(prisma, input.targetPlanSlug);
   } else {
     if (!input.topupTokens || input.topupTokens <= 0) throw new AppError('加購 token 數需為正整數', 'BAD_REQUEST', 400);
   }
@@ -92,6 +93,7 @@ export async function approveRequest(
   if (req.type === 'upgrade') {
     const plan = await prisma.plan.findUnique({ where: { slug: req.targetPlanSlug! }, select: { id: true } });
     if (!plan) throw new AppError('目標方案不存在', 'NOT_FOUND', 404);
+    await assertNotTrialPlan(prisma, req.targetPlanSlug!);
     const tenant = await prisma.tenant.findUnique({ where: { id: req.tenantId }, select: { trialEndsAt: true } });
     trialExited = tenant?.trialEndsAt != null;
     await prisma.tenant.update({

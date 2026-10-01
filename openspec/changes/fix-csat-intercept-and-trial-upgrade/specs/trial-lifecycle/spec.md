@@ -39,3 +39,24 @@
 #### Scenario: 脫離試用後不被到期排程停用
 - **WHEN** 一個租戶經由核准升級申請脫離試用，之後到期排程在原本的試用到期日之後執行
 - **THEN** 該租戶的 `isActive` MUST 仍是 true，且系統 MUST NOT 寄出試用到期信
+
+### Requirement: 試用方案不能當成升級或轉正式的目標
+試用方案是試用政策 `trial.planSlug` 指定的方案。下列操作的目標方案是試用方案時，系統 MUST 回應 400，而且 MUST NOT 改變任何租戶或申請：
+
+- 租戶建立 `type=upgrade` 的方案異動申請（`createPlanChangeRequest()`）。
+- 平台核准 `type=upgrade` 的方案異動申請（`approveRequest()`）。這涵蓋規則上線前就已建立的申請。
+- 平台以「轉正式」轉換租戶（`convertToPaid()`）。
+
+系統 MUST 以當下的 `trial.planSlug` 判斷，MUST NOT 寫死方案的 slug。
+
+#### Scenario: 租戶申請升級到試用方案
+- **WHEN** 租戶建立 `type=upgrade` 的申請，`targetPlanSlug` 是 `trial.planSlug` 指定的方案
+- **THEN** 系統 MUST 回應 400，而且 MUST NOT 建立申請
+
+#### Scenario: 平台核准目標為試用方案的升級申請
+- **WHEN** 平台核准一筆 `type=upgrade`、`status=pending` 的申請，目標方案是 `trial.planSlug` 指定的方案，申請的租戶 `trialEndsAt` 不是 null
+- **THEN** 系統 MUST 回應 400；該租戶的 `planId` 與 `trialEndsAt` MUST 不變，申請的 `status` MUST 仍是 `pending`
+
+#### Scenario: 轉正式到試用方案
+- **WHEN** 平台對試用租戶執行「轉正式」，目標方案是 `trial.planSlug` 指定的方案，而這個方案的 slug 不是 `trial`
+- **THEN** 系統 MUST 回應 400，而且該租戶的 `trialEndsAt` MUST 不變

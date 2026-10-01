@@ -12,6 +12,7 @@ TRIAL-01 是兩個 change 之間的交接缺口。`trial-signup` 的設計把「
 - CSAT 攔截器只在工單屬於收訊的租戶、而且工單的聯絡人就是傳訊的聯絡人時，才記錄評分。不符合時仍然攔截這則訊息，但不記錄評分、不送感謝訊息、不通知主管。攔截器仍然同時接受 postback 與文字訊息。
 - 平台核准 `upgrade` 申請時，如果租戶仍在試用中，系統讓租戶脫離試用：清除 `trialEndsAt` 與 `purgedAt`，並設 `isActive = true`。
 - 平台以「轉付費」操作（`convertToPaid()`）轉換租戶時，也清除 `purgedAt`。目前這個操作已經清除 `trialEndsAt` 並設 `isActive = true`。
+- 試用方案（試用政策 `trial.planSlug` 指定的方案）不能當成升級申請或轉正式的目標。建立申請、核准申請與轉正式都回應 400。`convertToPaid()` 原本寫死比對 `trial`，改為讀試用政策。
 
 不在本 change 的範圍：
 
@@ -29,7 +30,7 @@ TRIAL-01 是兩個 change 之間的交接缺口。`trial-signup` 的設計把「
 ### Modified Capabilities
 
 - `inbound-message-processing`：CSAT 攔截在記錄評分前，比對工單的租戶與聯絡人。
-- `trial-lifecycle`：新增「租戶轉為付費方案時脫離試用」的要求，涵蓋核准升級申請與「轉付費」兩條路徑。
+- `trial-lifecycle`：新增「租戶轉為付費方案時脫離試用」的要求，涵蓋核准升級申請與「轉付費」兩條路徑；新增「試用方案不能當成升級或轉正式的目標」的要求。
 
 ## Impact
 

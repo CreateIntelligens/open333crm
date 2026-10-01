@@ -21,6 +21,8 @@
 
 **TRIAL-01 的成因。** `trial-signup` 的設計（`archive/2026-09-15-trial-signup/design.md` 的 Non-Goals）把「試用轉正式」交給 plan-change-request，但 plan-change-request 的規格沒有提到試用。兩者在同一個 PR（`acb7568`）實作。
 
+**Codex review 發現的退化。** 對本分支執行 `codex review --base origin/main` 時，Codex 指出：核准 TRIAL-01 的修正之後，一筆「升級到試用方案」的申請會清掉 `trialEndsAt`，租戶留在試用方案卻永遠不會到期。`createPlanChangeRequest()` 接受任何存在的方案 slug，租戶的 ADMIN 可以直接呼叫 API 送出這種申請。修正方式是新增 `assertNotTrialPlan()`，由建立申請、核准申請與轉正式三處呼叫，並改以試用政策的 `trial.planSlug` 判斷試用方案；`convertToPaid()` 原本寫死比對 `trial`，平台修改 `trial.planSlug` 之後會失效。
+
 **新增 CASE-02。** 修 RLS-06 時發現，非 LINE 渠道的滿意度調查送出的是文字提示「回覆 csat:分數」，這個格式不含工單 ID，攔截器認不出來。`buildCsatChannelMessage()` 組的快速回覆沒有被使用，Facebook 的 postback 也沒有解析進 `postbackData`。`CASES.md` 原本寫 Facebook 與 WebChat 送快速回覆，與實際不符，一併改正。
 
 ## 2026-10-01：複查所有 P1 項目，全部仍然存在

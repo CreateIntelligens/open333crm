@@ -21,6 +21,10 @@
 - [x] 2.7 修改 `platform.routes.ts` 的 `plan_change.approve` 稽核，在 payload 寫入 `trialExited`
 - [x] 2.8 在 `apps/web/src/app/admin/tenants/[id]/page.tsx` 的方案下拉選單旁邊，對 `trialEndsAt` 不是 null 的租戶顯示提示：改方案不會脫離試用，轉付費請用試用管理頁（design D4）
 
+- [x] 2.9 在 `plan-change-trial-exit.test.ts` 寫失敗的測試，fixture 把 `trial.planSlug` 設為測試用的試用方案，涵蓋規格的「租戶申請升級到試用方案」「平台核准目標為試用方案的升級申請」「轉正式到試用方案」
+- [x] 2.10 在 `trial-admin.service.ts` 新增 `assertNotTrialPlan()`，由 `createPlanChangeRequest()`、`approveRequest()`、`convertToPaid()` 呼叫，`convertToPaid()` 移除寫死的 `trial` 比對（design D5）。讓 2.9 通過
+- [x] 2.11 更新 `docs/ref/features/platform/PLAN-CHANGES.md` 與 `TRIALS.md`，說明試用方案不能當成目標，並在 `AUDIT-REVIEWS.md` 記錄這項由 Codex review 發現
+
 ## 3. 文件與 AUDIT
 
 - [x] 3.1 `docs/ref/system/AUDIT.md`：移除 RLS-06 與 TRIAL-01，並新增一個項目記錄「非 LINE 渠道的 CSAT 無法運作」（提示格式不含工單 ID、FB 的 postback 沒有解析進 `postbackData`、`buildCsatChannelMessage()` 的 quick reply 沒有使用）
