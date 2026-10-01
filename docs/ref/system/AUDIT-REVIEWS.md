@@ -4,6 +4,28 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：對照 One ID 的合併，移除 RLS-02，AUTH-05 與 RBAC-01 改為部分修正
+
+整理 P1 項目的修復順序時發現，2026-09-30 合併的 `481452a`（#185，`add-cross-channel-one-id`）已經修掉三個 P1 項目的全部或一部分，但 `AUDIT.md` 仍以修正前的狀態描述這三項。本次逐項對照 `main` 的程式後更新：
+
+| 項目 | `481452a` 改了什麼 | 處理 | 優先 |
+| --- | --- | --- | --- |
+| RLS-02 | approve 與 reject 路由在 `withTenant` 內呼叫服務，並傳入 `request.agent.tenantId`；`rejectMerge()` 與 `claimSuggestionForApproval()` 改由呼叫端傳入 executor，`where` 帶 `tenantId`；`merge-suggestion-service.ts` 不再匯入 module-level singleton | 已修正，從 `AUDIT.md` 移除 | — |
+| AUTH-05 | 刪除 `POST /api/v1/fan/auth`。`signFanToken()` 因此沒有呼叫端 | 部分修正。`authenticate` 與 socket 驗證仍不區分 token 種類 | P1 → P2 |
+| RBAC-01 | `contact.routes.ts` 的每條路由都掛上 `requirePermission()` | 部分修正。工單、對話、標籤、短連結的路由仍然沒有授權判斷 | P1，不變 |
+
+**AUTH-05 調為 P2 的理由。** 原本標為 P1，是因為任何人知道一組聯絡人 ID 與租戶 ID，就能從 `/fan/auth` 取得能通過客服認證的 token。這條路徑刪除之後，利用剩下的問題需要先取得外洩的 refresh token，或曾經是該租戶的成員。One ID change 的 `tasks.md` 9.3.3 預計接回粉絲 token 的簽發路徑，但這個 change 沒有在 `authenticate` 加上 token 種類的檢查。因此內文註明這一項必須在 9.3.3 之前修正。
+
+**RBAC-01 的權限碼重新計算。** 在 `apps/api/src` 逐一搜尋 `permissions.ts` 的權限碼字串。完全沒有出現的碼從 15 個減為 12 個：`contact.view`、`contact.update` 與 `case.view` 都出現在 `contact.routes.ts`。`case.view` 只守在 `GET /contacts/:id/cases`，`case.routes.ts` 本身仍不檢查，因此在內文另外說明。`contact.merge` 原本只以稽核紀錄的 `action` 字串出現，現在已經是路由的檢查。
+
+連帶修改：
+
+- RLS-03 不再提到 RLS-02，匯入 singleton 的 `packages/core` 檔案從三個減為兩個。
+- IDENT-01 刪除「影響 RLS-02 的現況」一句。
+- `AUTHENTICATION.md`、`PORTAL.md` 與其他引用 AUTH-05、RBAC-01 的功能區文件，改寫「呼叫 `/fan/auth` 取得粉絲 token」與「聯絡人路由沒有權限碼」的描述。
+
+**本次沒有查證的項目。** `481452a` 也新增了 `contact-merge.service.ts`，把多套合併實作收斂成一套。CONTACT-01（兩套合併實作的行為不一致）可能因此過時，本次沒有查證，留待下次複查。
+
 ## 2026-10-01：組織決定不部署 Ollama，重寫 LLM-01 至 LLM-03，新增 LLM-04
 
 組織因主機資源不足，決定不部署 Ollama。原本的 LLM-01 至 LLM-03 都假設 Ollama 有部署，問題在於「連錯位址」或「設定不一致」。這個決定之後，三項依新的前提重寫：

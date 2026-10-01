@@ -163,7 +163,7 @@
 | **客服回覆送出失敗時，介面沒有標示** | 詳見 `../../system/AUDIT.md` 的 CONV-03 |
 | **指派對話不會通知被指派的人** | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | **即時事件、聯絡人頁與 AI 輔助不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
-| **粉絲 token 能通過客服認證** | 知道一組聯絡人 ID 與租戶 ID，就能讀取收件匣並收到即時訊息。詳見 `../../system/AUDIT.md` 的 AUTH-05 |
+| **refresh token 能通過客服認證** | 外洩的 refresh token，或被停用成員手上的 refresh token，能讀取收件匣並收到即時訊息。詳見 `../../system/AUDIT.md` 的 AUTH-05 |
 | 狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | 閒置時限沒有維護介面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 | 收件匣的路由沒有權限碼 | 只驗登入與渠道可見範圍。詳見 `../../system/AUDIT.md` 的 RBAC-01 與 PLAN-04 |

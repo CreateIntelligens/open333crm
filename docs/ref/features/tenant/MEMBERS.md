@@ -125,7 +125,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 密碼登入先檢查帳號是否停用，再驗證密碼。因此不需要知道密碼，就能從回應分辨一個 email 是否屬於被停用的帳號。
 
-各種 token 的簽發與驗證、停用成員或改角色之後多久生效，見[認證與憑證](../../modules/AUTHENTICATION.md)。其中最嚴重的問題是 token 不分種類：refresh token 與粉絲 token 都能當客服的 access token 使用，見 `../../system/AUDIT.md` 的 AUTH-05。
+各種 token 的簽發與驗證、停用成員或改角色之後多久生效，見[認證與憑證](../../modules/AUTHENTICATION.md)。其中最嚴重的問題是 token 不分種類：refresh token 能當客服的 access token 使用，粉絲 token 的簽發路徑接回之後，粉絲 token 也能，見 `../../system/AUDIT.md` 的 AUTH-05。
 
 ## 權限一覽
 
@@ -146,7 +146,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 | 限制 | 說明 |
 | --- | --- |
-| **token 不分種類，粉絲 token 與 refresh token 都能當 access token** | 詳見 `../../system/AUDIT.md` 的 AUTH-05 |
+| **token 不分種類，refresh token 能當 access token** | 詳見 `../../system/AUDIT.md` 的 AUTH-05 |
 | **密碼登入沒有速率限制** | 詳見 `../../system/AUDIT.md` 的 SEC-05 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
