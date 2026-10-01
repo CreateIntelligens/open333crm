@@ -11,6 +11,14 @@
       "persistent": true
     },
     "lint": {},
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:feature": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "db:generate": {
       "cache": false
     },

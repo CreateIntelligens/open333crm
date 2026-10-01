@@ -5,17 +5,13 @@
  * 前置：DB 已套 RLS migration（roles+grants / enable_core / enable_tenantid / enable_child），
  * 且 app_tenant(NOBYPASSRLS)/app_admin(BYPASSRLS) role 存在並有密碼。
  *
- * 執行：
- *   DATABASE_URL_TENANT=postgresql://app_tenant:<pw>@localhost:5433/open333crm \
- *   DATABASE_URL_ADMIN=postgresql://app_admin:<pw>@localhost:5433/open333crm \
- *   tsx src/__tests__/rls-isolation.test.ts
- *
- * CI 會起帶這兩個 role 的 Postgres、套 migration、注入本測試需要的兩筆租戶測試資料。
+ * 屬於 feature 組：tests/setup/ 會建立測試資料庫、套 migration、建立租戶 A、B，
+ * 並以 DATABASE_URL_TENANT／DATABASE_URL_ADMIN 提供兩種角色的連線。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { withTenant, tenantScopedClient } from '../lib/tenant-db.js';
+import { withTenant, tenantScopedClient } from '#src/lib/tenant-db.js';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
 const ADMIN_URL = process.env.DATABASE_URL_ADMIN;
@@ -24,8 +20,7 @@ const TENANT_A = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-00000
 const TENANT_B = process.env.RLS_TEST_TENANT_B ?? 'd207783b-58a6-48a1-838c-526874ce1606';
 
 if (!TENANT_URL || !ADMIN_URL) {
-  console.log('SKIP rls-isolation: 需 DATABASE_URL_TENANT / DATABASE_URL_ADMIN（帶 app_tenant/app_admin role）');
-  process.exit(0);
+  throw new Error('rls-isolation 需要 DATABASE_URL_TENANT / DATABASE_URL_ADMIN，由 tests/setup/feature.env.ts 提供');
 }
 
 const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
@@ -193,7 +188,7 @@ test('⑫ 合併紀錄 WITH CHECK：綁 A 時不可寫入 B 租戶的合併紀�
   );
 });
 
-test.after(async () => {
+afterAll(async () => {
   // 清理可能殘留的越權測試列（用 admin）
   await adminDb.contactMergeLog
     .deleteMany({ where: { movedRecords: { equals: MERGE_LOG_MARK } } })

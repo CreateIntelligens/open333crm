@@ -1,11 +1,10 @@
 /**
  * Canvas 流程相關的純函式驗證：智慧發送時間視窗、郵件模板渲染、按鈕動作解析。
- *   npx tsx src/__tests__/canvas-flow.test.ts
  *
- * ⚠️ 這支測試原本用 vitest 撰寫，但專案從未安裝 vitest
- * （root 與 apps/api 的 package.json 都沒有），所以從寫出來到
- * 2026-09-23 為止從來沒有真正執行過。改寫成與其他測試一致的
- * node:assert + tsx 寫法。
+ * 歷史：這支測試原本用 vitest 撰寫，但專案當時沒有安裝 vitest，所以到 2026-09-23
+ * 為止從未執行過，之後改寫成 node:assert + tsx。2026-10-01 專案導入 Vitest，
+ * 改回由 Vitest 執行；斷言仍用 node:assert。測的是 @open333crm/core 的函式，
+ * 因此從 apps/api 搬到 packages/core。
  *
  * 改寫時移除了原本最後一個「Canvas flow simulation」案例：
  * 那個案例只是把 6 個事件物件推進一個本地陣列再斷言長度是 6，
@@ -13,31 +12,10 @@
  * 「跨渠道流程有測試覆蓋」的錯覺。真要驗那條流程需要整合測試環境。
  */
 import assert from 'node:assert/strict';
-// 走套件入口而非內部路徑——@open333crm/core 的 exports 只開放 "."，
-// 原本的 '@open333crm/core/src/...' 會被 ERR_PACKAGE_PATH_NOT_EXPORTED 擋下。
-// （這三個函式 index.ts 都有 re-export。）
-import {
-  checkSmartWindow,
-  blockJsonToMjml,
-  substituteMjmlVars,
-  parseLineButton,
-  parseFbButton,
-} from '@open333crm/core';
-
-let pass = 0;
-let fail = 0;
-
-function t(name: string, fn: () => void) {
-  try {
-    fn();
-    console.log(`PASS  ${name}`);
-    pass += 1;
-  } catch (err) {
-    console.error(`FAIL  ${name}`);
-    console.error(`      ${(err as Error).message}`);
-    fail += 1;
-  }
-}
+import { test as t } from 'vitest';
+import { checkSmartWindow } from '#src/canvas/smart-window.js';
+import { blockJsonToMjml, substituteMjmlVars } from '#src/templates/mjml-renderer.js';
+import { parseLineButton, parseFbButton } from '#src/templates/button-action-parser.js';
 
 /** 取某個時間點在指定時區的小時數 */
 function hourIn(date: Date, timeZone: string): number {
@@ -149,6 +127,3 @@ t('FB：web_url 按鈕解析為 open_url', () => {
   assert.equal(btn.type, 'open_url');
   assert.equal(btn.url, 'https://shop.example.com');
 });
-
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import {
   createCaseFromConversation,
   deleteCase,
   linkConversationToCase,
   transitionCase,
   updateCase,
-} from '../modules/case/case.service.js';
-import { AppError } from '../shared/utils/response.js';
+} from '#src/modules/case/case.service.js';
+import { AppError } from '#src/shared/utils/response.js';
 
 /**
  * RLS 上線後 withTenant() 會驗 tenantId 必須是合法 UUID
@@ -330,14 +331,11 @@ async function testLinkConversationRejectsCrossTenant() {
   );
 }
 
-await testDeleteCase();
-await testDeleteCaseRejectsCrossTenant();
-await testInvalidStatusPatch();
-await testReopenClosedCase();
-await testCreateCaseFromConversation();
-await testCreateCaseFromConversationRejectsDuplicate();
-await testLinkConversationToCase();
-await testLinkConversationRejectsCrossTenant();
-
-console.log('case.service tests passed');
-process.exit(0);
+test('delete case', testDeleteCase);
+test('delete case rejects cross tenant', testDeleteCaseRejectsCrossTenant);
+test('invalid status patch', testInvalidStatusPatch);
+test('reopen closed case', testReopenClosedCase);
+test('create case from conversation', testCreateCaseFromConversation);
+test('create case from conversation rejects duplicate', testCreateCaseFromConversationRejectsDuplicate);
+test('link conversation to case', testLinkConversationToCase);
+test('link conversation rejects cross tenant', testLinkConversationRejectsCrossTenant);

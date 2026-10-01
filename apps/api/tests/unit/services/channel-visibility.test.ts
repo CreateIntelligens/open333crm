@@ -9,6 +9,7 @@
  * 對 fixture 渠道逐一比對，確保測到的是真正的過濾語意，而非硬回一組清單。
  */
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import {
   getAccessibleChannelIds,
   channelIdWhereFilter,
@@ -16,7 +17,7 @@ import {
   ALL_CHANNELS,
   levelMeets,
   resolveChannelAccessLevel,
-} from '../services/channel-visibility.js';
+} from '#src/services/channel-visibility.js';
 
 // 固定 UUID（僅 [0-9a-f]，比照既有測試風格）
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -250,13 +251,13 @@ async function testAgentDirectBinding() {
   assert.ok(soloSet.has(CH_A) && !soloSet.has(CH_DIRECT), 'team 授權與 agent 直綁互不越界');
 }
 
-await testBranchAgentSeesOwnChannel();
-await testMultiTeamUnion();
-await testViewAllReturnsSentinel();
-await testLegacyChannelVisibleToAll();
-await testFailClosedEmptySet();
-testChannelIdWhereFilter();
-await testAgentDirectBinding();
+test('branch agent sees own channel', testBranchAgentSeesOwnChannel);
+test('multi team union', testMultiTeamUnion);
+test('view all returns sentinel', testViewAllReturnsSentinel);
+test('legacy channel visible to all', testLegacyChannelVisibleToAll);
+test('fail closed empty set', testFailClosedEmptySet);
+test('channel id where filter', testChannelIdWhereFilter);
+test('agent direct binding', testAgentDirectBinding);
 
 // 案例 8：存取層級——levelMeets 排序 + resolveChannelAccessLevel 多來源取最高/legacy/總店
 function testLevelMeets() {
@@ -309,7 +310,5 @@ async function testResolveLevel() {
     'read_only', '純 read_only');
 }
 
-testLevelMeets();
-await testResolveLevel();
-
-console.log('channel visibility tests passed');
+test('level meets', testLevelMeets);
+test('resolve level', testResolveLevel);

@@ -5,9 +5,9 @@
  * 並模擬唯一鍵衝突（舊 approveMerge 的 tag updateMany 撞唯一鍵就是這類 bug）。
  */
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { mergeContacts, revertMerge, type MovedRecords } from '../modules/contact/contact-merge.service.js';
+import { mergeContacts, revertMerge, type MovedRecords } from '#src/modules/contact/contact-merge.service.js';
 
 type Row = Record<string, unknown>;
 type Where = Record<string, unknown> | undefined;

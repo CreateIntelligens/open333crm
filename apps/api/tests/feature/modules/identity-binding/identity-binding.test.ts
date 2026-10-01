@@ -2,16 +2,14 @@
  * 跨渠道綁定代碼引擎整合測試（真實 Postgres；每個案例在交易內執行並 rollback，不留資料）。
  * 對應 spec cross-channel-binding-code 的各 Scenario。Redis 換成可快轉時間的記憶體實作。
  *
- * 執行：pnpm --filter @open333crm/api test:identity-binding
- * 會自動讀 repo 根目錄 .env；.env 的 DATABASE_URL 只接受本機資料庫（要測遠端請明確 export）
- * 需 DB 已套用本 change 的 migration，且有 RLS_TEST_TENANT_A（預設 seed 租戶）。
+ * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
-import './helpers/load-root-env.js';
 import assert from 'node:assert/strict';
+import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { withTenant, type TenantDb } from '../lib/tenant-db.js';
-import { extractBindingCode } from '../modules/identity-binding/binding-code.js';
-import { memBindingStore as memStore } from './helpers/mem-binding-store.js';
+import { withTenant, type TenantDb } from '#src/lib/tenant-db.js';
+import { extractBindingCode } from '#src/modules/identity-binding/binding-code.js';
+import { memBindingStore as memStore } from '#tests/support/mem-binding-store.js';
 import {
   detectBindingIntent,
   executeBindingIntent,
@@ -22,14 +20,9 @@ import {
   invalidateIdentityBindingSettings,
   type BindingActor,
   type BindingDeps,
-} from '../modules/identity-binding/identity-binding.service.js';
-import { mergeContacts } from '../modules/contact/contact-merge.service.js';
-import { patchChannelSettings, updateChannel } from '../modules/channel/channel.service.js';
-
-if (!process.env.DATABASE_URL) {
-  console.log('SKIP identity-binding：repo 根目錄 .env 與環境變數都沒有 DATABASE_URL');
-  process.exit(0);
-}
+} from '#src/modules/identity-binding/identity-binding.service.js';
+import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
+import { patchChannelSettings, updateChannel } from '#src/modules/channel/channel.service.js';
 
 const prisma = new PrismaClient();
 const T = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-000000000001';
@@ -120,13 +113,12 @@ async function setup(tx: TenantDb, enabled = true): Promise<Fixture> {
   };
 }
 
-// 依序執行（各案例共用同一租戶資料，不可並行）。@open333crm/core 載入時會建立 BullMQ／Redis
-// 連線使進程不會自行結束，因此同其他測試檔以自訂計數 + process.exit 收尾。
-const scenarios: Array<{ name: string; fn: (f: Fixture) => Promise<void>; enabled: boolean }> = [];
-
+// 各案例共用同一租戶資料，不可並行；Vitest 預設依序執行同一檔案內的測試。
 function scenario(name: string, fn: (f: Fixture) => Promise<void>, enabled = true) {
-  scenarios.push({ name, fn, enabled });
+  test(name, () => runScenario(fn, enabled));
 }
+
+afterAll(() => prisma.$disconnect());
 
 async function runScenario(fn: (f: Fixture) => Promise<void>, enabled: boolean) {
   try {
@@ -532,19 +524,3 @@ scenario('解除：超過 7 天 → 請聯繫客服，不撤銷', async (f) => {
 scenario('解除：從未綁定的顧客傳「解除綁定」→ 視為一般訊息', async (f) => {
   assert.equal(await detectBindingIntent(f.tx, { tenantId: T, contactId: f.line.contactId, text: '解除綁定', code: null, getChannelIdentityId: async () => f.line.channelIdentityId, hasPendingConfirm: async () => false }), null);
 });
-
-let failed = 0;
-for (const [i, sc] of scenarios.entries()) {
-  try {
-    await runScenario(sc.fn, sc.enabled);
-    console.log(`ok ${i + 1} - ${sc.name}`);
-  } catch (err) {
-    failed++;
-    console.log(`not ok ${i + 1} - ${sc.name}`);
-    console.error(err);
-  }
-}
-console.log(`# pass ${scenarios.length - failed}`);
-console.log(`# fail ${failed}`);
-await prisma.$disconnect();
-process.exit(failed === 0 ? 0 : 1);
