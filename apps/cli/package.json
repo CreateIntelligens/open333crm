@@ -4,6 +4,9 @@
   "description": "Open333 command line interface",
   "license": "GPL-3.0-only",
   "type": "module",
+  "imports": {
+    "#src/*": "./src/*"
+  },
   "bin": {
     "open333": "dist/index.js"
   },
@@ -21,7 +24,7 @@
     "dev": "tsx src/index.ts",
     "lint": "tsc -p tsconfig.json --noEmit",
     "pack:dry-run": "npm pack --dry-run",
-    "test:a2a": "tsx src/__tests__/a2a-execute.test.ts"
+    "test": "vitest run --project unit"
   },
   "keywords": [
     "open333",

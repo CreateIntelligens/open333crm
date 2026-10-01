@@ -246,5 +246,5 @@ Examples:
 - [ ] Add route to `apps/api/src/modules/cli/cli.routes.ts`
 - [ ] Create command in `apps/cli/src/commands/<name>.ts`
 - [ ] Register in `apps/cli/src/commands.ts`
-- [ ] Add test in `apps/cli/src/__tests__/<name>-command.test.ts`
+- [ ] Add test in `apps/cli/tests/unit/commands/<name>-command.test.ts`
 - [ ] Build & verify: `pnpm --filter @open333crm/cli build && pnpm --filter @open333crm/cli dev -- <command> --help`

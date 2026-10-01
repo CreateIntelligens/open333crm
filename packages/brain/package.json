@@ -4,6 +4,9 @@
   "license": "GPL-3.0-only",
   "description": "KM Brain for open333CRM using LanceDB and BM25",
   "type": "module",
+  "imports": {
+    "#src/*": "./src/*"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,7 +15,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc -w",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run --project unit"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.11.0",

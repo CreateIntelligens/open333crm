@@ -17,14 +17,16 @@ pnpm --filter @open333crm/api dev   # API only (port 3001, tsx watch)
 pnpm --filter @open333crm/web dev   # Web only (port 3000, needs sync:widget first)
 pnpm build                          # turbo build
 pnpm lint                           # turbo lint (ESLint 9 flat config) — NOT enforced in CI yet
+pnpm test                           # unit tests, every package (Vitest, no services needed)
+pnpm test:feature                   # feature tests — needs postgres + redis from docker-compose.dev.yml
 pnpm db:generate                    # prisma generate
 pnpm db:migrate -- --name <name>    # create migration
 pnpm db:seed                        # seed database
 ```
 
-**Run a single API test**: `pnpm --filter @open333crm/api test:case` or `tsx apps/api/src/__tests__/smoke.test.ts`
-Tests use vitest imports but run via `tsx` directly. No vitest config file exists.
-`apps/api/package.json` contains the other test scripts (`test:broadcast`, `test:erasure`, `test:data-export`, …).
+**Run some tests**: filter by file name, e.g. `pnpm --filter @open333crm/api test -- case.service`.
+Tests live in each package's `tests/unit/` (mirrors `src/`) and `tests/feature/`, and import source
+through `#src/`. `docs/ref/system/DELIVERY.md` describes the layout and the feature-test database.
 
 ## Tech Stack (Verified)
 
@@ -77,7 +79,7 @@ Two scripts check tenant isolation. With `--strict`, each script exits with code
 Run them without `--strict` to get a report instead of a failure.
 
 > **No CI workflow runs these checks now.** `.github/workflows/ci.yml` ran both scripts with
-> `--strict`, and also ran the RLS integration test `apps/api/src/__tests__/rls-isolation.test.ts`.
+> `--strict`, and also ran the RLS integration test `apps/api/tests/feature/rls-isolation.test.ts`.
 > Commit `4b384b7` deleted `ci.yml`. Commit `323deeb` restored only `deploy.yml`, which runs none
 > of these checks. Until `ci.yml` is restored, run both scripts with `--strict` before you open a
 > pull request.

@@ -4,6 +4,33 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：導入 Vitest，移除 CI-03，並修正在 main 上失敗的測試
+
+CI-03（測試由 `tsx` 個別執行，沒有統一入口）已修正，從 `AUDIT.md` 移除。修正的 commit 是 `609148c`、`0fb276a`、`3c7b97f`、`6a4a4cd`、`14f51f9`：
+
+- 導入 Vitest；
+- 每個套件分成 `tests/unit` 與 `tests/feature` 兩組；
+- feature 組使用獨立的測試資料庫。
+
+CI-01 仍未處理：CI 依然不執行測試。內文改寫為目前的本機執行方式。
+
+**方法。** 在 `docker-compose.dev.yml` 起的本機環境中執行全部測試。每個檔案各執行兩次：一次沒有 PostgreSQL 與 Redis，一次有。再比較兩次的結果。
+
+**結果。** 轉換前，在 main 上有 5 個測試檔失敗。逐一查證後，都是程式改了、測試沒跟上，沒有發現程式錯誤：
+
+| 測試 | 失敗的原因 | 失敗起點 | 修正的 commit |
+| --- | --- | --- | --- |
+| `cli-session-auth` | 預設 scope 新增 `cli:analytics:read`；登入改走 `prismaAdmin`；登入會檢查租戶是否啟用；錯誤訊息改為中文 | `7aebbce`、`b493c17`、`6bca767` | `01cce76` |
+| `passkey.service` | 錯誤訊息改為中文，測試比對英文訊息 | `9dd15dd` | `56682dd` |
+| `tagging.service` | RLS 把 `deleteTenantTag()` 內的 `$transaction` 移到呼叫端的 `withTenant`，測試仍檢查 service 內的交易 | `6bca767` | `a31eb68` |
+| `sla-contract` | automation 佇列改為延遲建立的 `automationQueue()`，比對的字串不再存在 | `fff80d8`（2026-05-28） | `bd46722` |
+| `inbox-realtime-source` | 入站管線拆檔，payload 改由 `inbound-socket-presenter.ts` 組成 | `0051dea`（2026-06-03） | `0f09d25` |
+
+**另外的發現。**
+
+- **需要資料庫的測試會默默跳過。** 8 個測試檔在沒有 `DATABASE_URL` 時以結束碼 0 結束，看起來與通過無異。除非明確設定 `DATABASE_URL`，或根目錄有 `.env`，否則它們從未真正執行。這次給了資料庫之後，它們全部通過。改用 Vitest 後，feature 組一律由 global setup 提供測試資料庫，不再有這種跳過。
+- **本機開發時 RLS 不生效。** 本機 API 以 `crm` 連線，而 `crm` 是 superuser，會繞過 RLS。`app_tenant` 與 `app_admin` 在本機沒有密碼。feature 組的 global setup 會替沒有密碼的角色設定測試用密碼，`rls-isolation` 才能以 `app_tenant` 實際驗證隔離。
+
 ## 2026-09-30：RBAC-06 定案，並補上分歧的來源
 
 使用者決定 `supervisor` 預設不擁有 `channel.view_all`，以 core 的 `default-roles.ts` 為準，demo seed 與 CHANGELOG 的描述是錯的。RBAC-06 的處理狀態改為「已定方向」。

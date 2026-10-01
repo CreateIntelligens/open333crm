@@ -38,7 +38,7 @@ export const LINE_URI_SCHEME_RE = /^(https?|line|tel):/i;
  * 專案已有完整的目的地檢查：`modules/webhook/downstream-forwarder.ts`
  * 的 `isBlockedUrl()`——CIDR 比對，涵蓋 loopback／private／CGNAT／link-local／
  * benchmarking／multicast／reserved 與 IPv6（含 IPv4-mapped），DNS 失敗一律擋，
- * 並有 `__tests__/webhook-ssrf.test.ts`。**不要再寫第四份。**
+ * 並有 `tests/unit/modules/webhook/webhook-ssrf.test.ts`。**不要再寫第四份。**
  *
  * 各欄位該用哪一層：
  * | 欄位性質 | 需要 |

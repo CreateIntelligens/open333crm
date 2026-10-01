@@ -193,8 +193,9 @@ pnpm --filter @open333crm/cli dev -- stats --json
 # Lint
 pnpm --filter @open333crm/cli lint
 
-# Test single file
-tsx apps/cli/src/__tests__/stats-command.test.ts
+# Test (all files, or filter by file name)
+pnpm --filter @open333crm/cli test
+pnpm --filter @open333crm/cli test -- stats-command
 ```
 
 ---

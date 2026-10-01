@@ -698,24 +698,27 @@ pnpm --filter @open333crm/cli dev -- stats --json
 ## Testing
 
 ```bash
-# Single test file (uses tsx directly, no vitest config)
-tsx apps/cli/src/__tests__/stats-command.test.ts
+# All CLI tests (Vitest)
+pnpm --filter @open333crm/cli test
+# One file: filter by file name
+pnpm --filter @open333crm/cli test -- stats-command
 ```
 
-Test pattern (from `stats-command.test.ts`):
+Tests live in `apps/cli/tests/unit/`, mirroring `src/`, and import source through `#src/`.
+Test pattern:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { statsCommand } from "../commands/stats.js";
-import { CliError } from "../errors.js";
+import { statsCommand } from "#src/commands/stats.js";
+import { CliError } from "#src/errors.js";
 
 // Mock dependencies
-vi.mock("../config-store.js", () => ({
+vi.mock("#src/config-store.js", () => ({
   getProfile: vi.fn(),
   resolveProfileName: vi.fn(),
 }));
-vi.mock("../credential-store.js", () => ({ readToken: vi.fn() }));
-vi.mock("../api-client.js", () => ({
+vi.mock("#src/credential-store.js", () => ({ readToken: vi.fn() }));
+vi.mock("#src/api-client.js", () => ({
   ApiClient: vi.fn().mockImplementation(() => ({ get: vi.fn() })),
 }));
 
@@ -723,7 +726,7 @@ describe("statsCommand", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("throws PROFILE_MISSING when profile not configured", async () => {
-    const { getProfile } = await import("../config-store.js");
+    const { getProfile } = await import("#src/config-store.js");
     vi.mocked(getProfile).mockReturnValue(undefined);
 
     await expect(statsCommand({})).rejects.toThrow(CliError);

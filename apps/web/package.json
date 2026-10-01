@@ -3,13 +3,16 @@
   "version": "0.0.1",
   "license": "GPL-3.0-only",
   "private": true,
+  "imports": {
+    "#src/*": "./src/*"
+  },
   "scripts": {
     "sync:widget": "pnpm --filter @open333crm/shared build && pnpm --filter @open333crm/widget build && mkdir -p public/webchat && cp ../widget/dist/widget.js public/webchat/widget.js",
     "sync:playcaptcha": "rm -rf public/toys public/playcaptcha.svg && mkdir -p public/toys && cp -R node_modules/playcaptcha/assets/toys/. public/toys/ && cp node_modules/playcaptcha/assets/playcaptcha.svg public/playcaptcha.svg",
     "dev": "pnpm sync:widget && pnpm sync:playcaptcha && next dev --port 3000",
     "build": "pnpm sync:widget && pnpm sync:playcaptcha && next build",
-    "test": "tsx src/lib/webmcp.test.ts",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run --project unit"
   },
   "dependencies": {
     "@open333crm/automation": "workspace:*",

@@ -126,7 +126,7 @@
 - [ ] Create command function in `cli/src/commands/*.ts`
 - [ ] Create command class extending `Open333Command`
 - [ ] Register in `cli/src/commands.ts`
-- [ ] Add test in `cli/src/__tests__/*.test.ts`
+- [ ] Add test in `cli/tests/unit/commands/*.test.ts`
 - [ ] Run `pnpm --filter @open333crm/cli build && pnpm --filter @open333crm/cli lint`
 
 ## Scope Naming Convention
