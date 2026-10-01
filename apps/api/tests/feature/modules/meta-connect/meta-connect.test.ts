@@ -42,6 +42,7 @@ const unsubscribeCalls: string[] = [];
 // ── 假 Graph API ────────────────────────────────────────────────────────────
 const subscribeCalls: Array<{ pageId: string; token: string }> = [];
 let failSubscribeFor = new Set<string>([PAGE_FAIL]);
+let tokenSuffix = ''; // 重新授權時 Meta 發新版權杖
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   const auth = new Headers(init?.headers).get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
@@ -49,7 +50,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   if (url.includes('/oauth/access_token') && url.includes('code=GOOD')) return json({ access_token: 'short-user-token' });
   if (url.includes('/oauth/access_token') && url.includes('fb_exchange_token=short-user-token')) return json({ access_token: 'long-user-token' });
   if (url.includes('/oauth/access_token')) return json({ error: { message: 'bad code' } }, 400);
-  const pageRow = (id: string) => ({ id, name: `CI 平台粉專 ${id}`, access_token: `page-token-${id}`, picture: { data: { url: 'https://x/p.png' } } });
+  const pageRow = (id: string) => ({ id, name: `CI 平台粉專 ${id}`, access_token: `page-token-${id}${tokenSuffix}`, picture: { data: { url: 'https://x/p.png' } } });
   if (url.includes('/me/accounts') && url.includes('after=CURSOR2') && auth === 'long-user-token') {
     return json({ data: [pageRow(PAGE_P2)] });
   }
@@ -71,7 +72,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return failSubscribeFor.has(sub[1]!) ? json({ error: { message: 'no permission' } }, 403) : json({ success: true });
   }
   // 連結後的 verifyChannel（粉專權杖回應帶 category）
-  if (url.includes('/me?fields=id,name,username')) return json({ id: auth.replace('page-token-', ''), name: 'CI', username: `ci_${auth.slice(-4)}`, category: 'Shopping' });
+  if (url.includes('/me?fields=id,name,username')) return json({ id: auth.replace('page-token-', '').replace(/-v\d+$/, ''), name: 'CI', username: `ci_${auth.slice(-4)}`, category: 'Shopping' });
   if (url.includes('messenger_profile')) return json({ data: [] });
   return json({ error: { message: `unexpected ${url}` } }, 404);
 }) as typeof fetch;
@@ -314,6 +315,60 @@ test('平台模式渠道殘留其他 App 的 App Secret：不可因此接受那�
     assert.equal(await prisma.channelIdentity.count({ where: { uid: psid } }), 0, '平台模式渠道只認平台 App Secret');
   } finally {
     await prisma.channel.update({ where: { id: platformCh!.id }, data: { credentialsEncrypted: platformCh!.credentialsEncrypted } });
+  }
+});
+
+// ── 重新連結：權杖失效後同一個粉專再授權一次，更新原渠道權杖、保留渠道與對話 ──
+const authorize = async () => {
+  const { url } = await svc.startConnect(store, actor);
+  const r = await svc.handleCallback(store, { state: stateFrom(url), code: 'GOOD' }, browserOf(url));
+  assert.equal(r.ok, true);
+  return (r as { connectId: string }).connectId;
+};
+
+test('重新連結：更新原渠道權杖、保留渠道 id 與對話，清除失效狀態', async () => {
+  const before = await prisma.channel.findFirst({ where: { tenantId: T_A, externalAccountId: PAGE_OK } });
+  const convCount = await prisma.conversation.count({ where: { channelId: before!.id } });
+  assert.ok(convCount > 0, '前面的 webhook 測試應已留下對話');
+  await prisma.channel.update({
+    where: { id: before!.id },
+    data: { settings: { ...((before!.settings ?? {}) as object), tokenHealth: { status: 'invalid', checkedAt: new Date().toISOString() } } },
+  });
+
+  tokenSuffix = '-v2';
+  const sid = await authorize();
+  const pages = await svc.listConnectablePages(db, store, sid, actor);
+  assert.equal(pages.find((p) => p.id === PAGE_OK)?.linkedInThisTenant, true);
+
+  const [r] = await svc.connectPages(db, store, sid, actor, [PAGE_OK]);
+  assert.equal(r!.status, 'reconnected');
+  assert.equal(r!.channelId, before!.id, '沿用原渠道');
+  assert.equal(await prisma.channel.count({ where: { externalAccountId: PAGE_OK } }), 1, '不可多建一筆');
+  const after = await prisma.channel.findUnique({ where: { id: before!.id } });
+  const creds = decryptCredentials(after!.credentialsEncrypted);
+  assert.equal(creds.pageAccessToken, `page-token-${PAGE_OK}-v2`);
+  assert.equal(creds.connectMode, 'platform');
+  assert.equal(after!.externalAccountId, PAGE_OK);
+  const settings = (after!.settings ?? {}) as Record<string, any>;
+  assert.equal(settings.tokenHealth, undefined, '重新連結後清除失效狀態');
+  assert.equal(settings.metaConnect?.reconnected, true);
+  assert.equal(await prisma.conversation.count({ where: { channelId: before!.id } }), convCount, '對話保留');
+  assert.ok(subscribeCalls.some((c) => c.pageId === PAGE_OK && c.token === `page-token-${PAGE_OK}-v2`), '用新權杖重新訂閱');
+});
+
+test('重新連結時訂閱失敗：原渠道權杖不動', async () => {
+  tokenSuffix = '-v3';
+  failSubscribeFor = new Set([PAGE_OK]);
+  try {
+    const sid = await authorize();
+    const [r] = await svc.connectPages(db, store, sid, actor, [PAGE_OK]);
+    assert.equal(r!.status, 'failed');
+    assert.equal((r as { code: string }).code, 'SUBSCRIBE_FAILED');
+    const ch = await prisma.channel.findFirst({ where: { externalAccountId: PAGE_OK } });
+    assert.equal(decryptCredentials(ch!.credentialsEncrypted).pageAccessToken, `page-token-${PAGE_OK}-v2`);
+  } finally {
+    failSubscribeFor = new Set();
+    tokenSuffix = '';
   }
 });
 

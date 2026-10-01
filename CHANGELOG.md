@@ -4,6 +4,15 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-01]
 
+### Added
+
+- **FB 粉專重新連結** — 用 Facebook 登入連結的粉專權杖失效（管理員改密碼、被移除管理員身分、在 Facebook 移除應用程式等）時，原本只能刪掉渠道重建，對話紀錄會跟著斷開。現在「用 Facebook 連結粉專」的選擇頁可勾選本租戶已連結的粉專，系統以新權杖更新原渠道，渠道、對話、設定與分店權限全部保留；新權杖訂閱失敗時原渠道完全不動。自備應用程式的渠道也可用這個方式轉為平台模式。
+- **FB／IG 權杖失效通知** — 每 6 小時檢查一次啟用中的 FB／IG 渠道權杖。失效時渠道卡片顯示紅色警示並說明處理方式，同時以站內通知與 email 告知該租戶所有管理員；持續失效每 3 天再提醒一次，恢復後自動清除。網路錯誤或 Meta 服務異常不會誤報。
+
+### Security
+
+- **OAuth 授權碼不進 log** — API 的請求 log 會遮蔽網址上的 `code`、`state`、`access_token`、`token` 參數，Facebook 授權回呼的授權碼不再以明文寫進 log。
+
 ### Changed
 
 - **綁定訊息改用公開帳號名稱** — 跨渠道綁定的邀請、確認與完成訊息原本寫的是後台自取的渠道名稱（例如「Facebook（測試粉專）」「LINE（第二個line串接）」），顧客會看到內部命名。改為平台上的公開帳號：FB 用粉專 username、IG 用 @帳號、LINE 用官方帳號 Basic ID（例如「Facebook（my.shop）」「LINE（@abc1234）」）。FB 沒有 username 時只寫「Facebook」，不顯示數字粉專 ID。後台畫面（收件匣、聯絡人頁、渠道管理）仍顯示渠道名稱。

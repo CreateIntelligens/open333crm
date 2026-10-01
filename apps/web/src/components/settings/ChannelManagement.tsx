@@ -446,6 +446,7 @@ export function ChannelManagement() {
                         channelType={ch.channelType}
                         externalAccountId={ch.externalAccountId}
                         settings={ch.settings}
+                        isActive={ch.isActive}
                       />
 
                       {/* FB Token warning */}

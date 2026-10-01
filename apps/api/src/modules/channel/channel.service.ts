@@ -435,7 +435,7 @@ async function hasFbGetStarted(pageAccessToken: string): Promise<boolean | null>
 }
 
 /** 由系統或專屬 API 維護、不該被整包更新洗掉的渠道 settings 欄位 */
-const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting', 'metaConnect'] as const;
+const SYSTEM_MANAGED_SETTING_KEYS = ['bindingHandle', 'bindingHandleAuto', 'fbGetStartedConfigured', 'webhookRouting', 'metaConnect', 'tokenHealth'] as const;
 
 /** 只由平台連結流程寫入的憑證欄位：租戶不可自行設定（例如把自備渠道標成平台模式，或替平台渠道補 appSecret） */
 const SYSTEM_MANAGED_CREDENTIAL_KEYS = ['connectMode'] as const;

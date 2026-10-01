@@ -62,6 +62,9 @@
 - [x] 7.5 ~~`check-prisma-admin-usage.mjs` 白名單加入 `modules/meta-connect/`~~ 不需要：callback 只碰 Redis 與 Graph API，不查資料庫；平台 webhook 在既有白名單的 `modules/webhook/`
 - [x] 7.6 前端：「用 Facebook 連結粉專」按鈕、粉專選擇頁（已連結的標示不可選）
 - [x] 7.7 測試：state 竄改／過期／重用、token 不回傳前端、訂閱失敗回滾、已連結粉專
+- [x] 7.8 重新連結：本租戶已連結的粉專可在選擇頁勾選，更新原渠道權杖（保留渠道 id、對話、設定），先用新權杖訂閱成功才寫入；稽核紀錄 `channel.update`
+- [x] 7.9 權杖失效通知：每 6 小時（leader lock）檢查啟用中的 FB／IG 渠道權杖，失效寫入 `settings.tokenHealth`（系統維護欄位）、渠道卡片紅色警示、站內通知＋email 給租戶管理員，持續失效每 3 天再提醒；網路錯誤或 Meta 5xx 不改狀態
+- [x] 7.10 API log 遮蔽網址上的 `code`、`state`、`access_token`、`token`（OAuth callback 的授權碼不進 log）
 
 ## 8. 第 3 階段：Meta 端前置（平台方在 Meta 後台操作，非程式）
 
@@ -78,5 +81,5 @@
 - [ ] 9.0b 精靈建立渠道後驗證 409 時，重複的渠道仍留著（ID 為 NULL、佔用渠道數名額；不會外洩），可考慮提示刪除
 
 - [ ] 9.1 IG 走 Facebook Login（`instagram_manage_messages`、`graph.facebook.com/{PAGE_ID}/messages`）與現行 IG Login 路線的整合方式
-- [ ] 9.2 既有自備 App 渠道遷移到平台模式的引導流程
+- [ ] 9.2 既有自備 App 渠道遷移到平台模式的引導流程（7.8 的重新連結已能把同租戶的自備渠道轉為平台模式，缺 UI 引導）
 - [ ] 9.3 worker `credentials.ts` 的 `'fallback-open333crm-key'` 預設金鑰與 API 行為不一致（盤點時發現，另案處理）

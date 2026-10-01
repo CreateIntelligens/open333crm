@@ -78,6 +78,8 @@ import { setupNotificationWorker } from './modules/notification/notification.wor
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
+import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
+import { redactSensitiveQuery } from './lib/log-redact.js';
 import { setupInactivityCloseWorker } from './modules/conversation/inactivity-close.worker.js';
 import { registerChannelPlugin, linePlugin, fbPlugin, webchatPlugin, threadsPlugin } from '@open333crm/channel-plugins';
 import { preloadUploadContentDetector } from './modules/upload/upload-content-detector.js';
@@ -105,6 +107,18 @@ export async function bootstrap() {
     bodyLimit: 30 * 1024 * 1024,
     logger: {
       level: 'info',
+      // 請求 log 會記下完整網址：OAuth 導回的一次性授權碼與 state（Facebook 連結粉專）不可寫進 log
+      serializers: {
+        req(req) {
+          return {
+            method: req.method,
+            url: redactSensitiveQuery(req.url),
+            host: req.host,
+            remoteAddress: req.ip,
+            remotePort: req.socket?.remotePort,
+          };
+        },
+      },
       transport:
         process.env.NODE_ENV !== 'production'
           ? {
@@ -192,6 +206,7 @@ export async function bootstrap() {
   setupAnalyticsScheduler(app.prismaAdmin);
   setupBroadcastScheduler(app.prismaAdmin, app.io);
   setupCsatScheduler(app.prismaAdmin, app.io);
+  setupMetaTokenHealthScheduler(app.prismaAdmin, app.io);
   setupInactivityCloseWorker(app.prismaAdmin, app.io);
   setupCanvasWorker(app.prismaAdmin, app.io);
   setupCanvasScheduler(app.prismaAdmin);

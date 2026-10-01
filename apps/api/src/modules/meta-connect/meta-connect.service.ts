@@ -18,7 +18,13 @@ import { getConfig } from '../../config/env.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
-import { createChannel, decryptCredentials, encryptCredentials, verifyChannel } from '../channel/channel.service.js';
+import {
+  createChannel,
+  decryptCredentials,
+  encryptCredentials,
+  patchChannelSettings,
+  verifyChannel,
+} from '../channel/channel.service.js';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const SESSION_TTL_MS = 10 * 60 * 1000;
@@ -237,6 +243,8 @@ export async function listConnectablePages(
 
 export type ConnectPageResult =
   | { pageId: string; status: 'connected'; channelId: string }
+  /** 本租戶原本就連著這個粉專：更新原渠道的權杖，對話紀錄與設定都保留 */
+  | { pageId: string; status: 'reconnected'; channelId: string }
   | { pageId: string; status: 'failed'; code: string; message: string };
 
 async function subscribePage(pageId: string, pageToken: string, appSecret: string): Promise<void> {
@@ -300,6 +308,51 @@ export async function connectPages(
       continue;
     }
 
+    // 0. 重新連結：本租戶已有啟用中的渠道連著這個粉專（權杖失效、管理員換人、移除過應用程式等）→
+    //    更新原渠道的權杖，不另建渠道，對話紀錄、設定、分店權限都保留。
+    //    先用新權杖訂閱成功才寫入；失敗時原渠道完全不動（不可像新建流程那樣刪除）
+    const existing = await db.channel.findFirst({
+      where: { tenantId: actor.tenantId, channelType: CHANNEL_TYPE.FB, externalAccountId: page.id, isActive: true },
+      select: { id: true, credentialsEncrypted: true },
+    });
+    if (existing) {
+      try {
+        await subscribePage(page.id, page.accessToken, cfg.appSecret);
+      } catch (err) {
+        logger.warn('[MetaConnect] 重新連結時粉專訂閱失敗，原渠道不變', {
+          tenantId: actor.tenantId,
+          pageId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        results.push({ pageId, status: 'failed', code: 'SUBSCRIBE_FAILED', message: '無法訂閱此粉專的訊息，請確認您是粉專管理員並已授予訊息權限' });
+        continue;
+      }
+      let oldCreds: Record<string, unknown> = {};
+      try {
+        oldCreds = decryptCredentials(existing.credentialsEncrypted);
+      } catch {
+        /* 舊憑證解不開（例如跨環境金鑰不同）就直接用新的 */
+      }
+      // 改為平台模式：新權杖來自平台 App 的授權；自備 App 的 appSecret 在平台模式下不採用（見 signedBySameApp）
+      const credentials = { ...oldCreds, connectMode: 'platform', pageAccessToken: page.accessToken, pageId: page.id };
+      await db.channel.updateMany({
+        where: { id: existing.id, tenantId: actor.tenantId },
+        data: { credentialsEncrypted: encryptCredentials(credentials), webhookUrl: null },
+      });
+      await patchChannelSettings(
+        db,
+        existing.id,
+        actor.tenantId,
+        { metaConnect: { mode: 'platform', connectedAt: new Date().toISOString(), connectedBy: actor.agentId, reconnected: true } },
+        ['tokenHealth', 'tokenExpiresAt'],
+      );
+      await verifyChannel(db, existing.id, actor.tenantId).catch((err: unknown) =>
+        logger.warn('[MetaConnect] 重新連結後驗證失敗（不影響收發）', { channelId: existing.id, error: err instanceof Error ? err.message : String(err) }),
+      );
+      results.push({ pageId, status: 'reconnected', channelId: existing.id });
+      continue;
+    }
+
     // 1. 先建立渠道並寫入帳號 ID：唯一索引先擋掉重複連結，不會對別人正在用的粉專做任何 Meta 呼叫
     let channelId: string;
     try {
@@ -341,6 +394,6 @@ export async function connectPages(
   }
 
   // 全部處理完才作廢 session；有失敗的可以在同一個授權內重試
-  if (results.every((r) => r.status === 'connected')) await store.getdel(sessionKey(connectId));
+  if (results.every((r) => r.status !== 'failed')) await store.getdel(sessionKey(connectId));
   return results;
 }
