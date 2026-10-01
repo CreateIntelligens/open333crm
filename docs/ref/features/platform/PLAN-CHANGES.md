@@ -22,7 +22,7 @@
 
 | 型別 | 核准後的動作 | 失效的快取 |
 | --- | --- | --- |
-| `upgrade` | 改 `tenant.planId` | 權限天花板快取、租戶方案快取 |
+| `upgrade` | 改 `tenant.planId`。試用租戶同時脫離試用，見[試用](./TRIALS.md#哪些操作會讓租戶脫離試用) | 權限天花板快取、租戶方案快取 |
 | `token_topup` | 把加購量加進 `tenant.limitOverrides.monthlyTokens` | 租戶方案快取、AI 額度計數器 |
 
 `upgrade` 只是換方案，**沒有任何「比較貴」的檢查**。目標方案是更便宜或功能更少的方案時，核准一樣會照做。系統也沒有 `downgrade` 型別，租戶要降級只能請平台直接改，見[租戶管理](./TENANTS.md#改方案的連帶效果)。

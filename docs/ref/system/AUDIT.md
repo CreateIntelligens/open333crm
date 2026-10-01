@@ -46,7 +46,6 @@
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
-| [RLS-06](#rls-06) | 租戶隔離與權限 | P1 | 已提建議 | 進站的 CSAT 攔截器不檢查租戶與聯絡人，外部使用者可改寫任一租戶的工單評分 | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由只驗身分 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
@@ -70,7 +69,6 @@
 | [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
-| [TRIAL-01](#trial-01) | 試用 | P1 | 未處理 | 走 plan-change 升級的試用租戶不會脫離試用，到期仍被停用 | 靜態確認 |
 | [TRIAL-02](#trial-02) | 試用 | P3 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
@@ -96,6 +94,7 @@
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 已提建議 | 收件匣的下拉選單繞過關閉與指派的副作用；指派對話不會通知 | 靜態確認 |
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
 | [CASE-01](#case-01) | 對話、工單與自動化 | P2 | 已提建議 | 工單的狀態下拉選單不寫時間軸、不發布事件，選「已升級」不通知主管 | 靜態確認 |
+| [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
 | [AUTO-01](#auto-01) | 對話、工單與自動化 | P1 | 已提建議 | 部分自動化動作可以儲存、也會命中，workers 執行時卻略過 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 未處理 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P3 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
@@ -195,21 +194,6 @@
 前端、CLI 與 MCP 都沒有呼叫這個端點。
 
 **修正方向**：路由改用 `request.tenantPrisma`，服務查 `channelIdentity` 與 `channel` 的條件都加上 `tenantId`，並把這個檔案移出白名單。確認沒有外部呼叫端的話，也可以直接移除這條路由。
-
-<a id="rls-06"></a>
-### RLS-06：進站的 CSAT 攔截器不檢查租戶與聯絡人
-
-客人點選滿意度分數時，按鈕送出 `csat:<分數>:<工單 ID>`。`webhook/inbound-postback-interceptors.ts` 的 `handleCsatResponse()` 用正規表示式從 postback 資料**或文字訊息**取出分數與工單 ID，交給 `csat.service.ts` 的 `recordCsatScore(ctx.prisma, ctx.io, caseId, score)`，沒有傳入租戶或聯絡人。
-
-進站管線使用 `prismaAdmin`（BYPASSRLS）。`recordCsatScore()` 以主鍵 `findUnique` 查工單，`where` 沒有 `tenantId`，也不比對工單的聯絡人是不是傳訊的人。查到之後：
-
-- 寫入 `csatScore`、`csatRespondedAt`。每張工單只記第一次評分，之後的真實評分會被忽略。
-- 在該工單的對話寫一則感謝訊息，並用**該工單所屬租戶的渠道**送給**該工單的客人**。
-- 分數兩分以下時，通知該租戶的主管。
-
-任何能傳訊息給任一租戶官方帳號的外部使用者，只要知道一個工單 ID，輸入 `csat:1:<工單 ID>` 就能改寫任一租戶的工單評分，並讓對方的渠道送出訊息。工單 ID 是 UUID，不容易猜到，但會出現在送給客人的 CSAT 按鈕資料裡。同一個攔截器處理的知識庫回饋有以 `ctx.tenantId` 過濾，不受影響。
-
-**修正方向**：`recordCsatScore()` 加上 `tenantId` 與 `contactId` 條件，只接受工單屬於同租戶、同一個聯絡人的評分；攔截器只接受 postback，不接受純文字。
 
 <a id="rls-07"></a>
 ### RLS-07：短連結轉址使用 `prismaAdmin`，但不在白名單
@@ -677,33 +661,6 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 ## 試用
 
 功能說明見[試用管理](../features/platform/TRIALS.md)與[平台設定](../features/platform/SETTINGS.md)。
-
-<a id="trial-01"></a>
-### TRIAL-01：走 plan-change 升級的試用租戶到期仍會被停用
-
-試用租戶升級到付費方案有兩條路徑，兩條的結果不同：
-
-| 路徑 | 觸發者 | `planId` | `trialEndsAt` |
-| --- | --- | --- | --- |
-| `PATCH /api/v1/platform/trial-tenants/:id/convert` | 平台在 `/admin/trial` 操作 | 改 | 清成 `null` |
-| `PATCH /api/v1/platform/plan-change-requests/:id/approve` | 租戶申請、平台在 `/admin/plan-changes` 核准 | 改 | **不動** |
-
-`convertToPaid()` 清空 `trialEndsAt`，註解寫明用意是「脫離試用，不再受到期排程管轄」。`plan-change.service.ts` 的 `approveRequest()` 在 `upgrade` 分支只寫 `planId`，沒有處理 `trialEndsAt`。
-
-第二條路徑確實可達，逐項確認如下：
-
-1. `settings.manage` 的 `feature` 是 `core`（見 `packages/core/src/rbac/permissions.ts` 的 `PERMISSIONS`），而 `core` 恆開（`permission.service.ts` 的 `getEffectiveTenantPermissions()` 一律加入 `CORE_FEATURE`）。試用租戶的 `ADMIN` 因此持有這個權限。
-2. `POST /api/v1/plan-change` 只要求 `fastify.authenticate` 加 `settings.manage`。`createPlanChangeRequest()` 沒有檢查租戶是否在試用中。
-3. `apps/web` 的 `/dashboard/plan` 頁面就是呼叫這個端點。
-
-後果發生在排程。`trial.scheduler.ts` 的 `runTrialLifecycle()` 第一輪的掃描條件是 `{ trialEndsAt: { not: null }, isActive: true }`，沒有任何方案條件。因此已升級付費的租戶仍在掃描範圍內：
-
-- 到了原本的 `trialEndsAt`，排程把 `isActive` 設為 `false`，寄出「試用已到期」信給該租戶的 `ADMIN`，並寫入 `tenant.trial.expire` 稽核。
-- 再經過 `dataRetentionDays`（預設 30 天），軟刪掃描把 `purgedAt` 設為當下。
-
-也就是說，已付費的租戶會被停用，接著被標記為已清除。
-
-審核者沒有任何提示。`listPendingRequests()` 回傳 `currentPlan`，但不含 `trialEndsAt`，`/admin/plan-changes` 頁面也沒有顯示試用狀態。審核者在這個頁面按下核准時，不會知道這個動作不會讓租戶脫離試用。
 
 <a id="trial-02"></a>
 ### TRIAL-02：試用政策存在無型別的 KV
@@ -1272,6 +1229,25 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 `resolvedAt` 仍然會寫入，因此 CSAT 排程照常發送調查。
 
 **修正方向**：`updateCase()` 收到 `status` 時改走 `transitionCase()`，收到 `ESCALATED` 時拒絕並要求改用 `/escalate`。另一個做法是讓前端的下拉選單改呼叫專用端點。
+
+<a id="case-02"></a>
+### CASE-02：非 LINE 渠道的滿意度調查無法回覆
+
+`csat.service.ts` 的 `sendCsatSurvey()` 依渠道送出調查：
+
+| 渠道 | 實際送出的內容 | 客人能不能回覆 |
+| --- | --- | --- |
+| LINE | Flex Message，五個 postback 按鈕，資料是 `csat:<分數>:<工單 ID>` | 能 |
+| 其他渠道 | `deliverToChannel()` 送出文字「回覆 csat:分數 即可，例如 csat:5」 | 不能 |
+
+`inbound-postback-interceptors.ts` 的 `handleCsatResponse()` 只認得 `csat:<分數>:<工單 ID>`。客人照提示回覆的 `csat:5` 沒有工單 ID，不符合這個格式，會被當成一般訊息交給 AI 回覆與自動化。
+
+另外兩個零件也沒有接上：
+
+- `buildCsatChannelMessage()` 為非 LINE 渠道組了五個快速回覆選項，但 `sendCsatSurvey()` 只在 LINE 分支使用它的回傳值。
+- 進站的 `postbackData` 只從 LINE 的 `rawPayload.postback.data` 取值，Facebook 的 postback 欄位沒有解析，因此即使改送快速回覆或按鈕，Facebook 送回的 payload 也到不了攔截器。
+
+結果是非 LINE 渠道的工單永遠不會有 CSAT 分數，報表的滿意度只反映 LINE 的客人。
 
 <a id="auto-01"></a>
 ### AUTO-01：部分自動化動作可以儲存、也會命中，執行時卻被略過
