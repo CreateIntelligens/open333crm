@@ -16,7 +16,7 @@
 
 服務分成 `portal.service.ts`（活動、提交、抽獎、結果）、`points.service.ts`（積分）與 `portal-auth.service.ts`（粉絲 token）。
 
-租戶後台的前端有活動管理、提交紀錄與積分管理三頁。粉絲端的前端不在這個 repo，`/api/v1/fan` 沒有已知的呼叫端。
+租戶後台的前端頁面有活動管理、提交紀錄與積分管理。粉絲端的前端不在這個 repo，`/api/v1/fan` 沒有已知的呼叫端。
 
 ## 活動
 

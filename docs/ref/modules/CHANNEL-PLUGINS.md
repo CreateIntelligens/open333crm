@@ -24,7 +24,7 @@
 
 實際上外掛只涵蓋收發訊息的主幹。下列兩件事要先知道：
 
-1. **註冊表是每個行程各自一份。** API 行程以 `registerChannelPlugin()` 註冊四個外掛；workers 行程不用這個註冊表，自己建一個 `Map`，只放 LINE 與 Facebook。所以 workers 送不出 Instagram 私訊與網站聊天室的訊息，見 `../system/AUDIT.md` 的 CHAN-02。
+1. **註冊表是每個行程各自一份。** API 行程以 `registerChannelPlugin()` 註冊所有外掛；workers 行程不用這個註冊表，自己建一個 `Map`，只放 LINE 與 Facebook。所以 workers 送不出 Instagram 私訊與網站聊天室的訊息，見 `../system/AUDIT.md` 的 CHAN-02。
 2. **很多渠道專屬的功能不在外掛裡。** 設定 webhook、驗證憑證、圖文選單、群發的 multicast、滿意度調查的版型等，都在各模組內以 `channelType` 分支，直接呼叫渠道平台的 API。見[外掛之外的渠道專屬程式](#外掛之外的渠道專屬程式)。
 
 ## 外掛介面
@@ -72,7 +72,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 5. 渠道設定了下游轉發時，把原始內容轉發出去，見[渠道管理](../features/tenant/CHANNELS.md#webhook)。
 6. 呼叫外掛的 `parseWebhook()`，對每一則訊息執行 `processInboundMessage()`。建立新聯絡人時呼叫 `getProfile()`；訊息寫入後，若外掛有 `resolveInboundMedia()`，就在背景下載媒體。
 
-第 2 步使用路由的 `channelType`，不與渠道本身的 `channelType` 比對。把 LINE 渠道的 ID 送到 Facebook 的路由，會以 Facebook 外掛、LINE 渠道的憑證處理；目前因為兩者的憑證欄位不同，驗簽會失敗，見 CHAN-03。
+取得外掛時使用路由的 `channelType`，不與渠道本身的 `channelType` 比對。把 LINE 渠道的 ID 送到 Facebook 的路由，會以 Facebook 外掛、LINE 渠道的憑證處理；目前因為兩者的憑證欄位不同，驗簽會失敗，見 CHAN-03。
 
 ## 送出
 

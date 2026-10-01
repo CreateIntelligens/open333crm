@@ -7,7 +7,7 @@
 
 ## 負責的程式
 
-四個概念都在 `marketing` 模組，由兩個路由檔提供：`marketing.routes.ts` 管行銷活動、群發與分群，`material.routes.ts` 管素材。
+這些概念都在 `marketing` 模組：`marketing.routes.ts` 管行銷活動、群發與分群，`material.routes.ts` 管素材。
 
 | 概念 | 服務 | 負責什麼 |
 | --- | --- | --- |
@@ -95,7 +95,7 @@
 | `tags` | 貼了任一指定標籤的聯絡人，且在這個渠道有身分 |
 | `contacts` | 手動挑選的聯絡人，且在這個渠道有身分 |
 
-四種方式都排除已封存的聯絡人。聯絡人的 `isBlocked` 不影響發送，見 `../../system/AUDIT.md` 的 DB-04。
+所有發送對象都排除已封存的聯絡人。聯絡人的 `isBlocked` 不影響發送，見 `../../system/AUDIT.md` 的 DB-04。
 
 **兩種送法。** LINE 渠道而且素材沒有變數時，用 LINE 的 multicast 一次送給一批人，每批上限在 `executeBroadcast()` 的 `MULTICAST_CHUNK`。一批失敗只影響那一批。其他情況（Facebook，或素材含變數需要逐人代入）逐人送出。
 
@@ -116,7 +116,7 @@
 
 ## 權限
 
-兩個路由檔都在整個 plugin 掛了 `marketing.view`。其餘權限：
+`marketing.routes.ts` 與 `material.routes.ts` 都在整個 plugin 掛了 `marketing.view`。其餘權限：
 
 | 動作 | 權限 |
 | --- | --- |

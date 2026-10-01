@@ -4,7 +4,7 @@
 
 - **資料來源**：`packages/database/prisma/schema.prisma`
 - **資料庫**：PostgreSQL 16 + pgvector + pgcrypto
-- **規模**：78 張資料表、24 個 enum、114 條外鍵關聯
+- **規模**（2026-09-01 核對）：78 張資料表、24 個 enum、114 條外鍵關聯
 - **圖表格式**：Mermaid `erDiagram`，GitHub 會直接渲染，不需要額外工具
 
 > 本文件說明資料表**關聯**與**存什麼資料**。欄位定義以 `packages/database/prisma/schema.prisma` 為唯一真實來源；設計決策、索引策略與已知落差請看 `docs/16_DB_SCHEMA.md`。
@@ -25,7 +25,7 @@ Mermaid 關聯符號的意思：
 | `\|\|--o\|`  | 一對一，右端可以不存在     |
 | `\|\|--\|\|` | 一對一，兩端都必定存在     |
 
-有 6 張資料表完全沒有外鍵關聯，因此不出現在任何 ERD 圖上，只在領域表格中說明。`audience_groups` 與 `insight_snapshots` 靠鬆耦合欄位連到 `channels`；`sla_policies` 靠鬆耦合的 `tenant_id` 歸屬租戶。`model_pricings`、`platform_settings`、`trial_signups` 則是獨立的設定或流水資料。
+有些資料表完全沒有外鍵關聯，因此不出現在任何 ERD 圖上，只在領域表格中說明。`audience_groups` 與 `insight_snapshots` 靠鬆耦合欄位連到 `channels`；`sla_policies` 靠鬆耦合的 `tenant_id` 歸屬租戶。`model_pricings`、`platform_settings`、`trial_signups` 則是獨立的設定或流水資料。
 
 ---
 
@@ -395,22 +395,22 @@ erDiagram
 
 ## 多租戶隔離
 
-78 張資料表中有 46 張帶 `tenant_id` 欄位。其餘 32 張分成兩類：
+多數資料表帶 `tenant_id` 欄位。沒有這個欄位的資料表分成兩類：
 
 1. **平台層資料表**：`tenants`、`plans`、`platform_users`、`platform_audit_logs`、`platform_settings`、`model_pricings`。這些資料表管理租戶本身，不屬於任何租戶。
 2. **子表**：透過父表間接歸屬租戶，例如 `messages` 靠 `conversations`、`case_events` 靠 `cases`、`role_permissions` 靠 `roles`。
 
 資料庫層另外用 Postgres RLS 強制隔離租戶資料。RLS 的接線規則、新增資料表時的必要步驟、以及排查方式，都寫在 `postgres-rls-tenant-isolation` skill，本文件不重複說明。
 
-**注意**：以下 7 張資料表有 `tenant_id` 欄位，但是 Prisma schema **沒有**宣告對 `Tenant` 的關聯，資料庫層也就沒有對應的外鍵約束。這 7 張分成兩類。
+**注意**：以下資料表有 `tenant_id` 欄位，但是 Prisma schema **沒有**宣告對 `Tenant` 的關聯，資料庫層也就沒有對應的外鍵約束。這些資料表分成兩類。
 
-**第 1 類：刻意不建外鍵（1 張）**
+**第 1 類：刻意不建外鍵**
 
 | 資料表          | Prisma model                   | 原因                                                                                                    |
 | --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `trial_signups` | `TrialSignup`（欄位可為 null） | 使用者送出試用申請時，租戶還不存在。系統在開通成功後才回填 `tenantId`。schema 註解已明示這是 soft ref。 |
 
-**第 2 類：缺少外鍵，原因未記載（6 張）**
+**第 2 類：缺少外鍵，原因未記載**
 
 | 資料表              | Prisma model                       |
 | ------------------- | ---------------------------------- |
@@ -421,7 +421,7 @@ erDiagram
 | `message_templates` | `MessageTemplate`（欄位可為 null） |
 | `automation_logs`   | `AutomationLog`                    |
 
-第 2 類的 6 張表是 2026-04-02 多租戶改造的遺漏，不是設計決策。migration 證據、兩項不成立的常見理由，以及目前的實際影響，寫在 `docs/16_DB_SCHEMA.md` 的「已知落差」第 3 項。
+第 2 類的資料表是 2026-04-02 多租戶改造的遺漏，不是設計決策。migration 證據、兩項不成立的常見理由，以及目前的實際影響，寫在 `docs/16_DB_SCHEMA.md` 的「已知落差」中，租戶資料表缺少外鍵的那一項。
 
 ---
 

@@ -14,7 +14,7 @@
 
 ## API 如何組裝
 
-`apps/api/src/index.ts` 的 `bootstrap()` 負責組裝整個 API。它先直接註冊 `@fastify/multipart`，再註冊 7 個本地基礎設施外掛。
+`apps/api/src/index.ts` 的 `bootstrap()` 負責組裝整個 API。它先直接註冊 `@fastify/multipart`，再註冊 `apps/api/src/plugins/` 的本地基礎設施外掛。
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,7 @@ flowchart LR
 | `socket`        | `io`                                     | 無                      | 訂閱 Redis 事件；關閉時清理資源      |
 | `chatbox`       | Message Registry、i18n、Session Verifier | 無                      | 初始化 Chatbox 共用服務              |
 
-`multipart` 由 `bootstrap()` 直接註冊，不屬於 `apps/api/src/plugins/` 的 7 個本地外掛。
+`multipart` 由 `bootstrap()` 直接註冊，不屬於 `apps/api/src/plugins/` 的本地外掛。
 
 ## 一個租戶請求如何執行
 

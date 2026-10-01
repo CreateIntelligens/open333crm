@@ -9,7 +9,7 @@
 
 ## 先讀這一段
 
-租戶後台的模組分成五組，對應客服中心的五件事：
+租戶後台的模組依客服中心要做的事分組：
 
 1. **接住訊息**：客人從 LINE、Facebook 等渠道傳訊息進來。系統找出或建立聯絡人與對話，再推到收件匣。
 2. **先讓系統處理**：客服接手之前，機器人依關鍵字、知識庫或 AI 自動回覆。自動化規則依事件貼標、指派、發通知。
@@ -17,7 +17,7 @@
 4. **主動觸及客人**：群發訊息、舉辦粉絲活動、發送短連結，並追蹤誰點了、誰回了。
 5. **管理租戶**：渠道、人員、角色、營業時間、AI 設定與方案。
 
-多數模組只屬於其中一組。自動化是例外：它訂閱第 1 組產生的事件，替第 2 組與第 3 組做事。
+多數模組只屬於其中一組。自動化是例外：它訂閱「接住訊息」產生的事件，替「先讓系統處理」與「追蹤處理結果」做事。
 
 模組掛在哪個路由前綴、需要哪個權限碼，見[模組總覽](../../modules/OVERVIEW.md)。
 
@@ -80,14 +80,14 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 3 | `findDuplicateInboundMessage()`、`createInboundMessage()` | 排除渠道重送的重複訊息，然後寫入訊息 | `conversation` |
 | 4 | `updateConversationAfterInboundMessage()` | 更新對話的最後訊息時間與未讀數 | `conversation` |
 | 5 | `sendFirstContactGreeting()` | 聯絡人第一次進站、而且渠道設定了 `firstContactGreeting` 時，送出招呼語 | `channel` |
-| 6 | `runInboundPostbackInterceptors()` | 處理按鈕回傳。點擊貼標處理完會繼續往下；CSAT 評分、知識庫回饋、轉真人這三種處理完，管線就在這一步結束 | `tag`、`csat`、`knowledge`、`conversation` |
+| 6 | `runInboundPostbackInterceptors()` | 處理按鈕回傳。點擊貼標處理完會繼續往下；CSAT 評分、知識庫回饋與轉真人處理完，管線就在這一步結束 | `tag`、`csat`、`knowledge`、`conversation` |
 | 7 | `trackInboundBroadcastReply()` | 把這次回覆記到該聯絡人最近一筆群發的收件紀錄 | `marketing` |
 | 8 | `emitInboundSocketEvents()` | 推送 `message.new` 與 `conversation.updated`，收件匣即時更新 | `socket` |
 | 9 | `publishMessageReceived()` | 在 eventBus 發布 `message.received` | 見下表 |
 | 10 | `triggerWebhookFlow()` | 觸發 Canvas 流程 | `canvas` |
 | 11 | `sendOutsideHoursAutoReply()` | 營業時間外送出自動回覆。同一個聯絡人在去重間隔內只回一次 | `settings`（營業時間） |
 
-第 9 步發布的 `message.received`，訂閱者都在 API 行程：
+`publishMessageReceived()` 發布的 `message.received`，訂閱者都在 API 行程：
 
 | 訂閱者 | 做什麼 |
 | --- | --- |

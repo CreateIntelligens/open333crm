@@ -21,7 +21,7 @@
 
 ## 先讀這一段
 
-系統用三種方式確認呼叫者：
+系統用下列方式確認呼叫者：
 
 1. **簽章 token（JWT）**：伺服器只驗證簽章與到期時間，不查資料庫。驗證快，但 token 發出之後無法撤銷，也反映不了帳號後來的狀態。客服的 access token 與 refresh token、平台 JWT、粉絲 token、MCP 確認 token 屬於這一種。
 2. **查表的 token**：token 是一串隨機字元，資料庫只存雜湊值。每個請求都查一次資料庫，所以可以撤銷，也可以同時檢查帳號狀態。CLI token、Partner API 金鑰與 Chatbox session 屬於這一種。
