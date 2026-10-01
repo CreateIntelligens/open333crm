@@ -34,7 +34,7 @@ const HANDLE_LABEL: Record<string, { label: string; placeholder: string; hint: s
 
 /**
  * 跨渠道綁定用的導流識別：產生加好友／m.me／ig.me 連結時使用。
- * 按「驗證」時系統會自動取得；自動取得不到或要改用其他值時可在此手動填寫。
+ * 按「測試連線」時系統會自動取得；自動取得不到或要改用其他值時可在此手動填寫。
  */
 export function ChannelBindingHandleField({
   channelId,
@@ -109,7 +109,7 @@ export function ChannelBindingHandleField({
 
       {view && (
         <p className="text-xs text-muted-foreground">
-          自動取得：{view.bindingHandleAuto ?? '尚未取得（請按「驗證」）'}
+          自動取得：{view.bindingHandleAuto ?? '尚未取得（請在渠道卡片按「測試連線」）'}
           {view.effectiveHandle ? `｜目前使用：${view.effectiveHandle}` : ''}
         </p>
       )}

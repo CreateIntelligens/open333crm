@@ -50,7 +50,8 @@ export interface BindingTarget {
 
 export interface BindingLink {
   channelType: BindableChannelType;
-  displayName: string;
+  /** 給顧客看的公開帳號名稱（見 publicAccountName）；沒有可公開的名稱時為 null */
+  publicName: string | null;
   /** LINE 專用：非好友必須先加好友才能送出訊息 */
   addFriendUrl?: string;
   /** 點下去會把代碼帶回系統的連結 */
@@ -68,16 +69,16 @@ export function buildBindingLink(target: BindingTarget, code: string): BindingLi
     case 'LINE':
       return {
         channelType: 'LINE',
-        displayName: target.displayName,
+        publicName: publicAccountName('LINE', target.handle),
         addFriendUrl: `https://line.me/R/ti/p/${handle}`,
         sendCodeUrl: `https://line.me/R/oaMessage/${handle}/?${encodeURIComponent(linePrefillText(code))}`,
       };
     case 'FB':
-      return { channelType: 'FB', displayName: target.displayName, sendCodeUrl: `https://m.me/${handle}?ref=${code}` };
+      return { channelType: 'FB', publicName: publicAccountName('FB', target.handle), sendCodeUrl: `https://m.me/${handle}?ref=${code}` };
     case 'THREADS':
       return {
         channelType: 'THREADS',
-        displayName: target.displayName,
+        publicName: publicAccountName('THREADS', target.handle),
         sendCodeUrl: `https://ig.me/m/${handle}?ref=${code}`,
       };
   }
@@ -95,12 +96,25 @@ export function channelLabel(channelType: string): string {
 }
 
 /**
- * 給顧客看的渠道稱呼：類型加上渠道名稱，例如「LINE（總店官方帳號）」。
- * 同一租戶可能接多個 LINE OA／粉專，只寫「LINE」顧客分不出是哪一個。
+ * 給顧客看的公開帳號名稱：FB 粉專 username、IG @username、LINE Basic ID（@xxxx）。
+ * 一律用平台上的公開識別，不用後台自取的渠道名稱（例如「測試粉專」「第二個line串接」不該讓顧客看到）。
+ * FB 沒有 username 時導流識別會退回純數字的粉專 ID，數字對顧客沒有意義，回 null 只顯示類型。
  */
-export function channelDisplayLabel(channelType: string, displayName?: string | null): string {
+export function publicAccountName(channelType: string, handle?: string | null): string | null {
+  const h = handle?.trim();
+  if (!h) return null;
+  if (channelType === 'FB') return /^\d+$/.test(h) ? null : h;
+  if (channelType === 'THREADS' || channelType === 'LINE') return h.startsWith('@') ? h : `@${h}`;
+  return h;
+}
+
+/**
+ * 給顧客看的渠道稱呼：類型加上公開帳號名稱，例如「Facebook（my.shop）」「LINE（@abc1234）」。
+ * 同一租戶可能接多個 LINE OA／粉專，只寫「LINE」顧客分不出是哪一個；沒有公開名稱時只寫類型。
+ */
+export function channelPublicLabel(channelType: string, handle?: string | null): string {
   const label = channelLabel(channelType);
-  const name = displayName?.trim();
+  const name = publicAccountName(channelType, handle);
   return name ? `${label}（${name}）` : label;
 }
 
@@ -108,7 +122,7 @@ export function channelDisplayLabel(channelType: string, displayName?: string | 
 export function buildInviteText(links: BindingLink[], code: string): string {
   const minutes = Math.round(BINDING_CODE_TTL_MS / 60000);
   const sections = links.map((link) => {
-    const title = `【${channelLabel(link.channelType)}：${link.displayName}】`;
+    const title = link.publicName ? `【${channelLabel(link.channelType)}：${link.publicName}】` : `【${channelLabel(link.channelType)}】`;
     if (link.channelType === 'LINE') {
       return `${title}\n1. 先加入好友：${link.addFriendUrl}\n2. 加入後點此送出綁定代碼：${link.sendCodeUrl}`;
     }
