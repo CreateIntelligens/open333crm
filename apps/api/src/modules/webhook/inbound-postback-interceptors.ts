@@ -57,11 +57,21 @@ async function handleCsatResponse(ctx: InboundMessageContext): Promise<boolean> 
 
   const score = parseInt(csatMatch[1], 10);
   const csatCaseId = csatMatch[2];
-  if (score >= 1 && score <= 5) {
-    await recordCsatScore(ctx.prisma, ctx.io, csatCaseId, score);
-    return true;
+  if (score < 1 || score > 5) return false;
+
+  // 只接受同租戶、傳訊者本人的工單；不符時仍攔截，避免偽造的評分落入 AI 與自動化（AUDIT RLS-06）
+  const recorded = ctx.contactId
+    ? await recordCsatScore(ctx.prisma, ctx.io, csatCaseId, score, undefined, {
+      tenantId: ctx.tenantId,
+      contactId: ctx.contactId,
+    })
+    : false;
+  if (!recorded) {
+    logger.warn(
+      `[Webhook] CSAT 未記錄：工單不存在、已評分，或不屬於此租戶與聯絡人 tenant=${ctx.tenantId} contact=${ctx.contactId ?? '-'} case=${csatCaseId}`,
+    );
   }
-  return false;
+  return true;
 }
 
 async function handleKbFeedback(ctx: InboundMessageContext): Promise<boolean> {

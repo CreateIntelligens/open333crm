@@ -406,6 +406,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
       request.params.id,
       data.score,
       data.comment,
+      { tenantId: request.agent.tenantId },
     );
 
     if (!recorded) {
