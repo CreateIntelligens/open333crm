@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { test } from 'vitest';
 import { AppError } from '#src/shared/utils/response.js';
 import {
   addTagToTarget,
@@ -6,8 +9,8 @@ import {
   deleteTenantTag,
   removeTagFromTarget,
 } from '#src/modules/tag/tagging.service.js';
+import { apiSrc } from '#tests/support/paths.js';
 
-import { test } from 'vitest';
 type MockFn = ((...args: unknown[]) => unknown) & { calls: unknown[][] };
 
 function mockFn(impl?: (...args: unknown[]) => unknown): MockFn {
@@ -242,7 +245,18 @@ async function testDeleteTagRemovesAllAssignments() {
   assert.deepEqual(caseDeleteMany.calls[0][0], { where: { tagId: 'tag-1' } });
   assert.deepEqual(conversationDeleteMany.calls[0][0], { where: { tagId: 'tag-1' } });
   assert.deepEqual(tagDelete.calls[0][0], { where: { id: 'tag-1' } });
-  assert.equal(transaction.calls[0][0].length, 4);
+  // 6bca767 起不自開 $transaction：呼叫端以 withTenant 包在綁定租戶的交易內，
+  // 自開會與外層巢狀。原子性由下一個測試確認的呼叫端保證。
+  assert.equal(transaction.calls.length, 0);
+}
+
+async function testDeleteTagRouteRunsInsideTenantTransaction() {
+  // service 依序刪除，只有在呼叫端的交易內才是原子的；拿掉 withTenant 會留下刪到一半的資料。
+  const routes = await readFile(join(apiSrc, 'modules/tag/tag.routes.ts'), 'utf8');
+  assert.match(
+    routes,
+    /withTenant\(fastify\.prisma, request\.agent\.tenantId, \(tx\) =>\s*deleteTenantTag\(tx,/,
+  );
 }
 
 test('create tag rejects duplicate within scope', testCreateTagRejectsDuplicateWithinScope);
@@ -252,3 +266,4 @@ test('reject scope mismatch', testRejectScopeMismatch);
 test('reject cross tenant tag', testRejectCrossTenantTag);
 test('remove case tag only deletes assignment', testRemoveCaseTagOnlyDeletesAssignment);
 test('delete tag removes all assignments', testDeleteTagRemovesAllAssignments);
+test('delete tag route runs inside tenant transaction', testDeleteTagRouteRunsInsideTenantTransaction);
