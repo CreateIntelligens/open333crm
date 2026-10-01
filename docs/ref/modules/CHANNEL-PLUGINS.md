@@ -115,7 +115,22 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | MCP 的 LINE 工具 | `mcp.server.ts` | LINE |
 | 素材的格式檢查 | `marketing/material.service.ts`，呼叫 LINE 的訊息驗證 API | LINE。素材以自己的小寫 `channelType`（`line`、`fb`）區分，與 `Channel.channelType` 不同 |
 
-`AGENTS.md` 的規則 5 列出這些例外，並區分「改變行為的分支」與「只擋不支援渠道的檢查」。
+另有一些模組以 `channelType` 分支，對不同渠道做不同的事。這違反 `AGENTS.md` 的結構規則 5，但改成走外掛的成本高，因此只記錄位置，不要照抄。下表是 2026-10-01 以 `AGENTS.md` 規則 5 的檢查指令核對的結果：
+
+| 位置 | 分支做什麼 |
+| --- | --- |
+| `conversation/conversation.service.ts` | LINE 先用 reply token 回覆，失敗才 push；WebChat 推送給訪客的 socket |
+| `channel/channel.service.ts`、`channel.routes.ts` | 依渠道選擇憑證欄位與驗證方式；顯示 Facebook 權杖狀態 |
+| `csat/csat.service.ts` | LINE 送 Flex 調查，其他渠道送快速回覆 |
+| `webhook/webhook.service.ts` | 選擇驗簽用的秘密：`FB`、`THREADS` 用 `appSecret`，其他用 `channelSecret` |
+| `marketing/marketing.service.ts` | LINE 且素材沒有變數時用 multicast |
+| `identity-binding/binding-links.ts` | 依渠道產生導流連結（LINE 的加好友與預填文字、FB 的 `m.me`、IG 的 `ig.me`）與顧客看到的帳號稱呼 |
+| `apps/workers/src/lib/channel-delivery.ts` | LINE 先用 reply token 回覆，失敗才 push |
+
+檢查指令也會找到另外兩種程式，它們不算違規：
+
+- 只擋不支援渠道的檢查。這些功能本來就只為一種渠道而做：`mcp`、`line` 的圖文選單、`line-login`、`fb-login`、`chatbox`。
+- 比對設定值的條件，例如 `canvas.webhook.ts` 比對流程觸發條件裡的 `channelType`。
 
 ## 新增一種渠道
 

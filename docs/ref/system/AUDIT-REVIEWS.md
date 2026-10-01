@@ -4,6 +4,22 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：改寫 AGENTS.md 的開發流程，新增 ARCH-01、ARCH-02、RLS-07
+
+起因是改寫 `AGENTS.md`：依 SDD、TDD、SOLID 把模組結構規則改成「開發流程」一節，每條規則附上理由與檢查指令。原本寫在 `AGENTS.md` 的例外清單已經過時，例如規則 1 列 5 個模組、規則 4 列 4 處 import，都與實際不符。因此依修正成本分開處理：
+
+| 規則 | 處理 | 依據 |
+| --- | --- | --- |
+| 1. route 不直接查資料庫 | 新增 ARCH-01，附快照 | 多為單筆查詢，搬進 service 即可 |
+| 2. service 從參數接收 executor | 指向既有的 RLS-01 | 違反的是 Canvas 引擎與 `packages/core` 中沒人使用的服務，RLS-01 已記錄 |
+| 3. 一個 route 檔一種資源 | 不列清單 | 拆檔成本高；`platform.routes.ts` 拆檔前須先處理 SEC-03 |
+| 4. 跨模組只走對方的 service | 新增 ARCH-02 | 規則改為「不可 import 別的模組的 `.routes.ts`、`.worker.ts`、`.scheduler.ts`」；引用 helper 檔不算違規。改定義後只剩一處 |
+| 5. 渠道差異走外掛 | 不列清單；改由 `CHANNEL-PLUGINS.md` 記錄位置 | 改成走外掛要擴充外掛介面與兩個行程的註冊表 |
+
+每條規則的檢查指令都照 `AGENTS.md` 的寫法實際執行過。
+
+**RLS-07。** 為了寫「完成的定義」，實際以 `--strict` 執行兩支租戶隔離檢查。`check-tenant-scoping.mjs` 通過；它在沒有疑似漏帶時，訊息仍寫「dry-run」，但 exit code 正確。`check-prisma-admin-usage.mjs` 在 `main` 上就失敗，原因是 `207da85` 讓短連結轉址改用 `prismaAdmin`，卻沒有更新白名單。`AGENTS.md` 的完成定義因此寫成「不新增違規」，既有的違規查 `AUDIT.md`。
+
 ## 2026-10-01：導入 Vitest，移除 CI-03，並修正在 main 上失敗的測試
 
 CI-03（測試由 `tsx` 個別執行，沒有統一入口）已修正，從 `AUDIT.md` 移除。修正的 commit 是 `609148c`、`0fb276a`、`3c7b97f`、`6a4a4cd`、`14f51f9`：
