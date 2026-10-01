@@ -13,6 +13,13 @@ test('遮掉 code、state、access_token、token，其他參數保留', () => {
   assert.equal(redactSensitiveQuery('/x?error_code=1&statement=a'), '/x?error_code=1&statement=a', '名稱只是包含 code／state 的參數不受影響');
 });
 
+test('遮掉 Meta webhook 驗證的 hub.verify_token', () => {
+  assert.equal(
+    redactSensitiveQuery('/api/v1/webhooks/meta?hub.mode=subscribe&hub.verify_token=secret&hub.challenge=123'),
+    '/api/v1/webhooks/meta?hub.mode=subscribe&hub.verify_token=<redacted>&hub.challenge=123',
+  );
+});
+
 test('沒有參數或空值時原樣回傳', () => {
   assert.equal(redactSensitiveQuery('/health'), '/health');
   assert.equal(redactSensitiveQuery(undefined), undefined);

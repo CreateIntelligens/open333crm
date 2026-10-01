@@ -22,8 +22,11 @@ const io = { to: (room: string) => ({ emit: (event: string) => emitted.push({ ro
 
 // 假 Graph API：bad-* 權杖回 190，其餘有效
 const validTokens = new Set<string>();
+/** 檢查某個權杖的當下要做的事（模擬檢查途中管理員剛好重新連結） */
+const duringProbe = new Map<string, () => Promise<unknown>>();
 globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
   const token = new Headers(init?.headers).get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+  await duringProbe.get(token)?.();
   if (validTokens.has(token)) return new Response(JSON.stringify({ id: '1' }), { status: 200 });
   return new Response(JSON.stringify({ error: { type: 'OAuthException', code: 190, message: 'Error validating access token' } }), { status: 400 });
 }) as typeof fetch;
@@ -80,6 +83,39 @@ test('權杖恢復有效：清除失效狀態', async () => {
   const h = await healthOf(bad.id);
   assert.equal(h?.status, 'valid');
   assert.equal(h?.reason, undefined);
+});
+
+test('檢查途中權杖被換掉（重新連結）：不寫入舊權杖的結果、不通知', async () => {
+  const racing = await mk('競態', `bad-race-${stamp}`);
+  duringProbe.set(`bad-race-${stamp}`, () =>
+    prisma.channel.update({
+      where: { id: racing.id },
+      data: { credentialsEncrypted: encryptCredentials({ pageAccessToken: `new-${stamp}`, connectMode: 'platform' }) },
+    }),
+  );
+  try {
+    await runMetaTokenHealthCheck(prisma, io);
+    assert.equal(await healthOf(racing.id), undefined);
+    assert.equal(await notificationsFor('CI 權杖 競態'), 0);
+  } finally {
+    duringProbe.clear();
+    await prisma.channel.deleteMany({ where: { id: racing.id } });
+  }
+});
+
+test('憑證解不開：視為失效，原因寫明要重新填權杖', async () => {
+  const broken = await prisma.channel.create({
+    data: { tenantId: T_A, channelType: 'FB', displayName: `CI 權杖 解不開 ${stamp}`, credentialsEncrypted: 'not-decryptable' },
+  });
+  try {
+    await runMetaTokenHealthCheck(prisma, io);
+    const h = await healthOf(broken.id);
+    assert.equal(h?.status, 'invalid');
+    assert.match(h?.reason ?? '', /無法解密/);
+  } finally {
+    await prisma.notification.deleteMany({ where: { agentId: admin.id, title: { contains: '解不開' } } });
+    await prisma.channel.deleteMany({ where: { id: broken.id } });
+  }
 });
 
 afterAll(async () => {

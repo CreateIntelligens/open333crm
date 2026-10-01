@@ -86,3 +86,17 @@ test('probe：IG 渠道打 graph.instagram.com', async () => {
   await probeChannelToken('THREADS', { pageAccessToken: 't' });
   assert.match(called, /graph\.instagram\.com/);
 });
+
+test('Meta 限流或暫時性錯誤：無法判斷，不可誤報失效', async () => {
+  for (const code of [4, 17, 32, 613]) {
+    fakeFetch(400, { error: { type: 'OAuthException', code, message: 'rate limit' } });
+    assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'unknown', `code ${code}`);
+  }
+  fakeFetch(400, { error: { type: 'OAuthException', code: 2, is_transient: true, message: 'temporary' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'unknown');
+});
+
+test('權限被撤銷（code 10／200 系列）：失效', async () => {
+  fakeFetch(403, { error: { type: 'OAuthException', code: 200, message: 'permission' } });
+  assert.equal((await probeChannelToken('FB', { pageAccessToken: 't' })).status, 'invalid');
+});

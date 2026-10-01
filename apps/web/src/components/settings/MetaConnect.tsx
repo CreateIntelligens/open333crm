@@ -71,6 +71,8 @@ interface ConnectablePage {
   name: string;
   pictureUrl: string | null;
   linkedInThisTenant: boolean;
+  /** platform 可重新連結；own_app 是自備應用程式連結的，要在渠道編輯更新權杖 */
+  linkedMode: 'platform' | 'own_app' | null;
 }
 
 type ConnectResult =
@@ -148,8 +150,9 @@ export function MetaConnectDialog({
           <div className="max-h-80 space-y-2 overflow-y-auto">
             {pages.map((p) => {
               const r = resultOf(p.id);
-              // 本次已處理成功的才鎖住；原本就連著的粉專可以勾選，重新連結以更新權杖
-              const done = r?.status === 'connected' || r?.status === 'reconnected';
+              // 本次已處理成功的、或用自備應用程式連結的鎖住；以平台方式連著的粉專可以勾選，重新連結以更新權杖
+              const ownApp = p.linkedMode === 'own_app';
+              const done = r?.status === 'connected' || r?.status === 'reconnected' || ownApp;
               return (
                 <label
                   key={p.id}
@@ -169,10 +172,14 @@ export function MetaConnectDialog({
                     <p className="truncate text-sm font-medium">{p.name}</p>
                     <p className="font-mono text-xs text-muted-foreground">{p.id}</p>
                     {r?.status === 'failed' && <p className="mt-0.5 text-xs text-destructive">{r.message}</p>}
-                    {!r && p.linkedInThisTenant && (
+                    {!r && p.linkedMode === 'platform' && (
                       <p className="mt-0.5 text-xs text-muted-foreground">已連結。勾選可重新連結並更新權杖，原本的對話紀錄會保留。</p>
                     )}
+                    {ownApp && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">已用自備應用程式連結。要更新權杖，請在渠道管理編輯該渠道。</p>
+                    )}
                   </div>
+                  {ownApp && <span className="shrink-0 text-xs text-muted-foreground">已連結</span>}
                   {r?.status === 'connected' && <span className="shrink-0 text-xs text-success">已連結</span>}
                   {r?.status === 'reconnected' && <span className="shrink-0 text-xs text-success">已重新連結</span>}
                 </label>

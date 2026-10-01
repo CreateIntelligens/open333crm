@@ -574,7 +574,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     await patchChannelSettings(prisma, id, tenantId, {
       ...autoBindingHandlePatch(pageInfo.username ?? pageInfo.id),
       fbGetStartedConfigured: getStartedConfigured,
-    });
+    }, ['tokenHealth']); // 權杖剛驗證有效：清掉排程留下的失效警示
 
     return { verified: true, pageInfo, getStartedConfigured };
   }
@@ -610,7 +610,7 @@ export async function verifyChannel(prisma: TenantDb, id: string, tenantId: stri
     await setExternalAccountId(prisma, id, tenantId, CHANNEL_TYPE.THREADS, igInfo.user_id);
     await prisma.channel.update({ where: { id }, data: { lastVerifiedAt: new Date() } });
     // IG username 供 ig.me 綁定連結使用
-    await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(igInfo.username));
+    await patchChannelSettings(prisma, id, tenantId, autoBindingHandlePatch(igInfo.username), ['tokenHealth']);
 
     return { verified: true, pageInfo: igInfo };
   }
