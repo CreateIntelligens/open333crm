@@ -2,6 +2,18 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-01]
+
+### Changed
+
+- **測試改由 Vitest 統一執行** — 原本每個測試檔用 `tsx` 個別執行，沒有統一指令，有些測試在 `main` 上失敗了幾個月也沒人發現。現在根目錄的 `pnpm test` 會執行所有套件的 unit 測試，不需要任何外部服務；`pnpm test:feature` 執行需要 PostgreSQL 與 Redis 的 feature 測試；`pnpm test:all` 兩組都跑。只想跑部分測試時用檔名篩選，例如 `pnpm --filter @open333crm/api test -- case.service`。原本逐檔執行的 `test:*` script 已移除。
+- **測試目錄改為 `tests/unit` 與 `tests/feature`** — 參照 Laravel 的 `tests/Unit` 與 `tests/Feature`，測試從 `src/__tests__` 搬到各套件的 `tests/` 底下，`tests/unit` 的目錄對應 `src/`；只測其他套件的測試搬到該套件。測試以 `#src/` 引用原始碼（`package.json` 的 `imports`）。workers、widget、channel-plugins 的測試原本放在 `src/` 內，會被編進 `dist/`，搬出後不再發生。
+- **feature 測試使用獨立的測試資料庫** — 不再寫入開發資料庫。執行前自動建立 `open333crm_test`、套用全部 migration、建立兩個固定測試租戶，並使用 Redis 的獨立資料庫；只允許連到本機。原本 8 個需要資料庫的測試檔在沒有 `DATABASE_URL` 時會默默跳過、看起來像通過，現在一律實際執行。
+
+### Fixed
+
+- **5 個在 `main` 上失敗的測試** — `cli-session-auth`、`passkey.service`、`tagging.service`、`sla-contract`、`inbox-realtime-source` 都是程式改了、測試沒跟上，逐一查證後沒有發現程式錯誤，已更新測試。刪除標籤另外新增契約測試，確認 route 在租戶交易內呼叫 `deleteTenantTag()`，因為 service 依序刪除，只有在這個交易內才是原子的。
+
 ## [2026-09-30]
 
 ### Fixed
