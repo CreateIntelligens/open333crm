@@ -36,7 +36,7 @@ import {
   BINDING_TEXT,
   buildBindingLink,
   buildInviteText,
-  channelDisplayLabel,
+  channelPublicLabel,
   matchesKeyword,
   parseIdentityBindingSettings,
   resolveBindingHandle,
@@ -282,7 +282,7 @@ export async function redeemBindingCode(
     select: {
       profileName: true,
       channelType: true,
-      channel: { select: { displayName: true } },
+      channel: { select: { settings: true } },
       contact: { select: { displayName: true } },
     },
   });
@@ -292,7 +292,7 @@ export async function redeemBindingCode(
     tenantId,
     actor.conversationId,
     BINDING_TEXT.confirmPrompt(
-      channelDisplayLabel(issuer?.channelType ?? '', issuer?.channel.displayName),
+      channelPublicLabel(issuer?.channelType ?? '', resolveBindingHandle(issuer?.channel.settings)),
       issuer?.profileName || issuer?.contact.displayName || '未命名',
       CONFIRM_KEYWORD,
       Math.round(PENDING_CONFIRM_TTL_MS / 60000),
@@ -437,7 +437,7 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
   const settings = await getIdentityBindingSettings(db, tenantId);
   const [issuerChannel, actorChannel] = await Promise.all(
     [payload.channelId, actor.channelId].map((id) =>
-      db.channel.findFirst({ where: { id, tenantId }, select: { channelType: true, displayName: true } }),
+      db.channel.findFirst({ where: { id, tenantId }, select: { channelType: true, settings: true } }),
     ),
   );
   const unbindKeyword = settings.unbindKeywords[0];
@@ -447,7 +447,7 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
     deps,
     tenantId,
     actor.conversationId,
-    BINDING_TEXT.bound(channelDisplayLabel(issuerChannel?.channelType ?? '', issuerChannel?.displayName), unbindKeyword),
+    BINDING_TEXT.bound(channelPublicLabel(issuerChannel?.channelType ?? '', resolveBindingHandle(issuerChannel?.settings)), unbindKeyword),
     'bound',
   );
   if (payload.conversationId !== actor.conversationId) {
@@ -456,7 +456,7 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
       deps,
       tenantId,
       payload.conversationId,
-      BINDING_TEXT.bound(channelDisplayLabel(actor.channelType, actorChannel?.displayName), unbindKeyword),
+      BINDING_TEXT.bound(channelPublicLabel(actor.channelType, resolveBindingHandle(actorChannel?.settings)), unbindKeyword),
       'bound',
     );
   }

@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-01]
+
+### Changed
+
+- **綁定訊息改用公開帳號名稱** — 跨渠道綁定的邀請、確認與完成訊息原本寫的是後台自取的渠道名稱（例如「Facebook（測試粉專）」「LINE（第二個line串接）」），顧客會看到內部命名。改為平台上的公開帳號：FB 用粉專 username、IG 用 @帳號、LINE 用官方帳號 Basic ID（例如「Facebook（my.shop）」「LINE（@abc1234）」）。FB 沒有 username 時只寫「Facebook」，不顯示數字粉專 ID。後台畫面（收件匣、聯絡人頁、渠道管理）仍顯示渠道名稱。
+
 ## [2026-09-30]
 
 ### Fixed

@@ -8,7 +8,7 @@ import { bumpCounter, extractBindingCode, generateBindingCode } from '../modules
 import { memBindingStore } from './helpers/mem-binding-store.js';
 import {
   buildBindingLink,
-  channelDisplayLabel,
+  channelPublicLabel,
   buildInviteText,
   matchesKeyword,
   parseIdentityBindingSettings,
@@ -99,6 +99,17 @@ test('邀請訊息：列出各渠道連結、純文字代碼退路、時效說�
   assert.ok(text.includes(`直接傳送這組代碼：${code}`));
   assert.ok(text.includes('30 分鐘'));
   assert.ok(!/\p{Extended_Pictographic}/u.test(text), '訊息不放 emoji');
+  // 標題用公開帳號，不出現後台渠道名稱
+  assert.ok(text.includes('【LINE：@abc1234】'));
+  assert.ok(text.includes('【Instagram：@my.shop】'));
+  assert.ok(!text.includes('總店') && !text.includes('官方 IG'), '不可出現後台自取的渠道名稱');
+});
+
+test('邀請訊息：FB 沒有 username 時標題只寫類型', () => {
+  const code = 'BIND-7K2M9QH4TX';
+  const text = buildInviteText([buildBindingLink({ channelType: 'FB', displayName: '測試粉專', handle: '1132326913296788' }, code)], code);
+  assert.ok(text.includes('【Facebook】'));
+  assert.ok(!text.includes('測試粉專'));
 });
 
 test('頻率計數器：沒有效期的 key（例如 INCR 與設效期之間過期）會被補上效期，不會永久擋人', async () => {
@@ -112,9 +123,12 @@ test('頻率計數器：沒有效期的 key（例如 INCR 與設效期之間過�
   assert.equal(await bumpCounter(store, 'k', 1000), 1, '過期後重新計數');
 });
 
-test('渠道稱呼：類型加渠道名稱，沒有名稱時只顯示類型', () => {
-  assert.equal(channelDisplayLabel('LINE', '總店官方帳號'), 'LINE（總店官方帳號）');
-  assert.equal(channelDisplayLabel('THREADS', ' 官方 IG '), 'Instagram（官方 IG）');
-  assert.equal(channelDisplayLabel('FB', ''), 'Facebook');
-  assert.equal(channelDisplayLabel('FB', null), 'Facebook');
+test('渠道稱呼：用平台上的公開帳號（粉專 username、IG／LINE @帳號），不用後台自取的渠道名稱', () => {
+  assert.equal(channelPublicLabel('FB', 'my.shop'), 'Facebook（my.shop）');
+  assert.equal(channelPublicLabel('FB', '1132326913296788'), 'Facebook', '沒有 username 時退回的純數字粉專 ID 不給顧客看');
+  assert.equal(channelPublicLabel('THREADS', ' my.shop '), 'Instagram（@my.shop）');
+  assert.equal(channelPublicLabel('LINE', '@abc1234'), 'LINE（@abc1234）');
+  assert.equal(channelPublicLabel('LINE', 'abc1234'), 'LINE（@abc1234）');
+  assert.equal(channelPublicLabel('FB', ''), 'Facebook');
+  assert.equal(channelPublicLabel('FB', null), 'Facebook');
 });
