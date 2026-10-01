@@ -30,7 +30,7 @@
 - [x] 3.1 `docs/ref/system/AUDIT.md`：移除 RLS-06 與 TRIAL-01，並新增一個項目記錄「非 LINE 渠道的 CSAT 無法運作」（提示格式不含工單 ID、FB 的 postback 沒有解析進 `postbackData`、`buildCsatChannelMessage()` 的 quick reply 沒有使用）
 - [x] 3.2 `docs/ref/system/AUDIT-REVIEWS.md`：記錄 RLS-06、TRIAL-01 的修正 commit，以及新增的項目
 - [x] 3.3 更新引用 RLS-06、TRIAL-01 的功能區文件（`docs/ref/features/` 下以 grep 找出）
-- [ ] 3.4 依 design 的 Migration Plan，把部署前查詢與修復的步驟寫進 PR 說明
+- [x] 3.4 依 design 的 Migration Plan，把部署前查詢與修復的步驟寫進 PR 說明
 
 ## 4. 完成的定義
 
