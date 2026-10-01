@@ -42,6 +42,8 @@ function createAgent(passwordHash: string) {
     isActive: true,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     teams: [],
+    // login() 驗完密碼後檢查租戶是否啟用
+    tenant: { isActive: true },
   };
 }
 
@@ -156,6 +158,8 @@ function createPrismaMock(agent: ReturnType<typeof createAgent>) {
 async function createApp(prisma: ReturnType<typeof createPrismaMock>) {
   const app = Fastify();
   app.decorate('prisma', prisma);
+  // 登入與 CLI token 驗證走 BYPASSRLS 連線（6bca767 起），兩者都指向同一個 mock。
+  app.decorate('prismaAdmin', prisma);
   loadEnvConfig();
   await app.register(errorHandlerPlugin);
   await app.register(authPlugin);
@@ -181,7 +185,7 @@ async function testCliSessionServiceLifecycle() {
   const verified = await verifyCliSession(prisma as never, token);
   assert.equal(verified.ok, true);
   if (!verified.ok) assert.fail('expected valid CLI token');
-  assert.deepEqual(verified.scopes, ['cli:status', 'cli:apis']);
+  assert.deepEqual(verified.scopes, ['cli:status', 'cli:apis', 'cli:analytics:read']);
   assert.equal(prisma.cliSession.update.calls.length, 1);
 
   prisma._sessions[0].expiresAt = new Date(Date.now() - 1_000);
@@ -191,7 +195,7 @@ async function testCliSessionServiceLifecycle() {
   prisma._sessions[0].expiresAt = new Date(Date.now() + 60_000);
   prisma._sessions[0].revokedAt = new Date();
   const revoked = await verifyCliSession(prisma as never, token);
-  assert.deepEqual(revoked, { ok: false, reason: 'CLI token revoked' });
+  assert.deepEqual(revoked, { ok: false, reason: 'CLI 權杖已被撤銷，請重新執行 open333 login' });
 }
 
 async function testCliAuthRoutes() {
@@ -273,10 +277,12 @@ async function testCliAnalyticsRoutes() {
   const app = await createApp(prisma);
 
   try {
+    // 預設 scope 已包含 cli:analytics:read（b493c17），這裡刻意建立沒有它的 token
     const { token } = await createCliSession(prisma as never, {
       tenantId: agent.tenantId,
       agentId: agent.id,
       name: 'analytics-test',
+      scopes: ['cli:status', 'cli:apis'],
     });
 
     const invalid = await app.inject({
