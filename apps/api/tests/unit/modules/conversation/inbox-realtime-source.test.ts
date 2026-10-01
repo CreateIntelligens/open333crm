@@ -31,7 +31,9 @@ async function testMarkReadContract() {
 
 async function testUpdatedAtOrderingAndPayloads() {
   const serviceSource = await readSource('modules/conversation/conversation.service.ts');
-  const webhookSource = await readSource('modules/webhook/webhook.service.ts');
+  // 入站管線在 0051dea 拆檔：推送由 inbound-side-effects 負責，payload 由 inbound-socket-presenter 組成
+  const inboundSideEffectsSource = await readSource('modules/webhook/inbound-side-effects.ts');
+  const inboundPresenterSource = await readSource('modules/webhook/inbound-socket-presenter.ts');
   const simulatorSource = await readSource('channels/simulator/simulator.service.ts');
   const automationWorkerSource = await readSource('modules/automation/automation.worker.ts');
   const actionExecutorSource = await readSource('modules/automation/engine/action-executor.ts');
@@ -39,7 +41,8 @@ async function testUpdatedAtOrderingAndPayloads() {
   assert.equal(serviceSource.includes("orderBy: { updatedAt: 'desc' }"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
   assert.equal(serviceSource.includes('updatedAt: now.toISOString()'), true);
-  assert.equal(webhookSource.includes('updatedAt: updatedConv.updatedAt.toISOString()'), true);
+  assert.equal(inboundSideEffectsSource.includes('buildConversationUpdatedPayload(updatedConv)'), true);
+  assert.equal(inboundPresenterSource.includes('updatedAt: conversation.updatedAt.toISOString()'), true);
   assert.equal(simulatorSource.includes('updatedAt: updatedConv.updatedAt.toISOString()'), true);
   assert.equal(automationWorkerSource.includes('ConversationUpdatedPayload'), true);
   assert.equal(actionExecutorSource.includes('ConversationUpdatedPayload'), true);
