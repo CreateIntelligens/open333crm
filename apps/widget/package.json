@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "license": "GPL-3.0-only",
   "private": true,
+  "imports": {
+    "#src/*": "./src/*"
+  },
   "scripts": {
     "dev": "pnpm --filter @open333crm/shared build && vite",
     "build": "pnpm --filter @open333crm/shared build && tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --project unit"
   },
   "dependencies": {
     "@open333crm/shared": "workspace:*",

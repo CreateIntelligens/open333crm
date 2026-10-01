@@ -11,6 +11,9 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "test": "turbo test",
+    "test:feature": "turbo test:feature --concurrency=1",
+    "test:all": "pnpm test && pnpm test:feature",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "db:generate": "pnpm --filter @open333crm/database exec prisma generate",
     "db:migrate": "pnpm --filter @open333crm/database exec prisma migrate dev",
@@ -23,11 +26,14 @@
     "cli:publish": "pnpm cli:sandbox && pnpm --filter @open333crm/cli exec npm publish --access public"
   },
   "devDependencies": {
+    "@types/node": "^24.19.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "eslint": "^9",
     "prettier": "^3.0.0",
-    "turbo": "^2.9.6"
+    "turbo": "^2.9.6",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.3"
   },
   "pnpm": {
     "overrides": {

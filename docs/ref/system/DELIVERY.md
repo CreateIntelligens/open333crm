@@ -4,7 +4,7 @@
 
 ## Workspace 與建置
 
-`pnpm-workspace.yaml` 納入 `packages/*` 與 `apps/*`。Turborepo 定義 `build`、`dev`、`lint`、`db:generate`、`db:migrate`、`db:seed`。
+`pnpm-workspace.yaml` 納入 `packages/*` 與 `apps/*`。Turborepo 定義 `build`、`dev`、`lint`、`test`、`test:feature`、`db:generate`、`db:migrate`、`db:seed`。
 
 `build` 使用 `dependsOn: ["^build"]`，因此先建置被相依的 package，再建置 app。
 
@@ -22,14 +22,32 @@ pnpm db:seed
 
 ## 測試
 
-API 測試檔使用 Vitest 的 API，但目前由 `tsx` 個別執行。專案沒有 Vitest 設定檔，也沒有根層級 `pnpm test`。
+測試由 Vitest 執行。每個套件把測試放在 `tests/` 底下，分成兩組：
+
+| 組別 | 位置 | 需要什麼 |
+| --- | --- | --- |
+| unit | `tests/unit/`，目錄對應 `src/` | 不需要外部服務；相依以 mock 注入 |
+| feature | `tests/feature/`，目前只有 `apps/api` 有 | PostgreSQL 與 Redis，即 `docker-compose.dev.yml` 的 `postgres`、`redis` |
 
 ```bash
-pnpm --filter @open333crm/api test:case
-tsx apps/api/src/__tests__/smoke.test.ts
+pnpm test                                      # 所有套件的 unit
+pnpm test:feature                              # feature，需先啟動 PostgreSQL 與 Redis
+pnpm test:all                                  # 兩組都跑
+pnpm --filter @open333crm/api test -- case     # 只跑檔名含 case 的測試檔
 ```
 
-其他可用 script 定義在 `apps/api/package.json`。
+兩組的設定在各套件的 `vitest.config.ts`。測試以 `#src/` 引用原始碼，對應 `package.json` 的 `imports`。
+
+feature 組不使用開發資料庫。`apps/api/tests/setup/` 會做下列準備：
+
+- 建立獨立的測試資料庫，套用全部 migration；
+- 替沒有密碼的 `app_tenant`、`app_admin` 設定測試用密碼；
+- 建立兩個固定的測試租戶；
+- 清空 Redis 的測試專用資料庫。
+
+連線的預設值與覆寫方式寫在 `feature-config.ts`。
+
+`apps/api/tests/manual/` 放對執行中的服務發請求的腳本。Vitest 不會執行這些腳本，需要手動執行。
 
 ## CI
 

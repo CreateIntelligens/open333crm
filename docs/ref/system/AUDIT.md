@@ -138,7 +138,6 @@
 | [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：`Conversation.teamId`、工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
-| [CI-03](#ci-03) | CI 與測試 | P4 | 未處理 | Vitest API 與 `tsx` 執行方式不一致 | 靜態確認 |
 
 ## 租戶隔離與權限
 
@@ -1738,17 +1737,12 @@ schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個�
 <a id="ci-01"></a>
 ### CI-01：沒有 CI 執行 API 測試
 
-沒有任何 CI workflow 執行 API 測試。API 測試也沒有統一入口。
+沒有任何 CI workflow 執行測試。測試只能在本機執行：根目錄的 `pnpm test` 執行各套件的 unit 測試，`pnpm test:feature` 執行需要 PostgreSQL 與 Redis 的 feature 測試。
 
 <a id="ci-02"></a>
 ### CI-02：沒有 CI 執行 lint
 
 `eslint.config.js` 與 `pnpm lint` 已存在，但沒有任何 CI workflow 執行 lint。
-
-<a id="ci-03"></a>
-### CI-03：測試工具未整合
-
-測試檔使用 Vitest API，卻由 `tsx` 個別執行。專案無法使用 Vitest 的統一執行、覆蓋率及 watch mode。
 
 ## 已查證後排除的項目
 
