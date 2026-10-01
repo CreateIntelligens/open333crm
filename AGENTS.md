@@ -49,18 +49,22 @@ Every change goes through four steps in this order:
 3. Write the code. Obey the structure rules.
 4. Check the definition of done.
 
-A small change can skip step 1. No change skips step 2.
+Some changes skip step 1 or step 2. This table tells which steps each type of change needs:
+
+| Change | Step 1: open an OpenSpec change? | Step 2: write a failing test first? |
+| ------ | -------------------------------- | ----------------------------------- |
+| A new feature, or a change in behavior that users, API clients or other modules can see | Yes | Yes |
+| A bug fix that restores behavior an existing spec already describes | No | Yes. The first test reproduces the bug |
+| A refactor with no behavior change | No | No. The tests that cover the code must pass before and after the change. If no test covers the code, first add a test that passes on the current code |
+| A dependency update | No | No. Run `pnpm test`. Also run `pnpm test:feature` if the dependency is used for the database or Redis |
+| A change to docs or OpenSpec files only | No | No. Run each command that the change adds or changes. Make sure that each path and link in the change exists |
 
 ### Step 1 — Spec the behavior (SDD)
 
 Plan changes in `openspec/`. Use the OpenSpec skills in `.agents/skills/`:
 `openspec-propose`, `openspec-apply-change` and `openspec-archive-change`.
 
-| Change | Open an OpenSpec change? |
-| ------ | ------------------------ |
-| A new feature, or a change in behavior that users, API clients or other modules can see | Yes |
-| A bug fix that restores behavior an existing spec already describes | No. The fix still needs a test (step 2) |
-| A refactor with no behavior change, docs, dependency updates | No |
+The table at the start of this section tells when to open a change.
 
 Each requirement in a spec has `#### Scenario:` blocks. Write each scenario as **WHEN** / **THEN**.
 
