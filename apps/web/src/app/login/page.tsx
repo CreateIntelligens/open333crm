@@ -50,8 +50,8 @@ function LoginForm() {
     try {
       await login(email, password, rememberMe);
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setError(axiosError.response?.data?.message || '登入失敗，請確認您的帳號密碼。');
+      // API 錯誤在 data.error.message（原本讀 data.message 永遠讀不到，帳號鎖定、停用都只顯示「請確認帳號密碼」）
+      setError(getApiErrorMessage(err, '登入失敗，請確認您的帳號密碼。'));
     } finally {
       setSubmitting(false);
     }

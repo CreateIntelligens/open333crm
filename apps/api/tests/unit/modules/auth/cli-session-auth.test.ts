@@ -19,6 +19,7 @@ import {
 import { hashPassword } from '#src/shared/utils/password.js';
 
 import { test } from 'vitest';
+import { memBindingStore } from '#tests/support/mem-binding-store.js';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -163,7 +164,7 @@ async function createApp(prisma: ReturnType<typeof createPrismaMock>) {
   loadEnvConfig();
   await app.register(errorHandlerPlugin);
   await app.register(authPlugin);
-  await app.register(authRoutes, { prefix: '/api/v1/auth' });
+  await app.register(authRoutes, { prefix: '/api/v1/auth', loginAttempts: memBindingStore() });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
   return app;
 }

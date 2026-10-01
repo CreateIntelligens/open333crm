@@ -3,8 +3,14 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { clearLoginFailures, isLoginLocked, recordLoginFailure, type LoginAttemptStore } from './login-attempts.js';
 
-export async function login(prisma: PrismaClient, email: string, password: string) {
+export async function login(prisma: PrismaClient, email: string, password: string, attempts: LoginAttemptStore) {
+  // 失敗達上限的帳號在區間內一律擋下，不驗密碼（否則鎖定期間仍可繼續猜）
+  if (await isLoginLocked(attempts, email)) {
+    throw new AppError('登入失敗次數過多，請 15 分鐘後再試', 'ACCOUNT_LOCKED', 429);
+  }
+
   // email 全域唯一：直接用 email 查出 agent，agent.tenantId 即為登入者所屬租戶
   // （後續 JWT 帶 tenantId、每個 request 從 token 解租戶，整條鏈路自動多租戶正確）
   const agent = await prisma.agent.findUnique({
@@ -27,16 +33,19 @@ export async function login(prisma: PrismaClient, email: string, password: strin
   });
 
   if (!agent) {
+    await recordLoginFailure(attempts, email);
     throw new AppError('電子郵件或密碼不正確', 'INVALID_CREDENTIALS', 401);
-  }
-
-  if (!agent.isActive) {
-    throw new AppError('此帳號已被停用，請聯繫管理員', 'ACCOUNT_DISABLED', 403);
   }
 
   const valid = await verifyPassword(password, agent.passwordHash);
   if (!valid) {
+    await recordLoginFailure(attempts, email);
     throw new AppError('電子郵件或密碼不正確', 'INVALID_CREDENTIALS', 401);
+  }
+
+  // 放在密碼驗證之後：不知道密碼的人不能藉 403 與 401 的差異確認某個 email 是停用帳號
+  if (!agent.isActive) {
+    throw new AppError('此帳號已被停用，請聯繫管理員', 'ACCOUNT_DISABLED', 403);
   }
 
   // 租戶被停用（例如欠費停權）時，即使帳號本身有效也擋下登入。
@@ -47,6 +56,8 @@ export async function login(prisma: PrismaClient, email: string, password: strin
   if (!agent.tenant?.isActive) {
     throw new AppError('此租戶已停用，請聯繫管理員', 'TENANT_DISABLED', 403);
   }
+
+  await clearLoginFailures(attempts, email);
 
   // 移除 passwordHash 與 join 進來的 tenant 物件，只回傳 agent 本身欄位
   const { passwordHash: _, tenant: __, ...agentData } = agent;

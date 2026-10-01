@@ -1,3 +1,11 @@
+{
+    # 信任主機 nginx（經 docker 閘道進來，屬私有網段）帶來的 X-Forwarded-For；
+    # 不設定的話 Caddy 會丟掉它、改成 docker 閘道 IP，api 看到所有人都是同一個 IP（AUDIT SEC-04）
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
+
 :80 {
     reverse_proxy /api/* api:3001
     reverse_proxy /mcp api:3001
