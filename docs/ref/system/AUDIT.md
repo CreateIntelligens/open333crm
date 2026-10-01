@@ -6,8 +6,9 @@
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
 - **執行時驗證日期**：2026-09-02
-- **最近複查日期**：2026-09-30
+- **最近複查日期**：2026-10-01
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
+- **部署決定**：組織因主機資源不足，決定不部署 Ollama（2026-10-01）。LLM 各項依這個決定判斷。
 
 ## 優先順序怎麼讀
 
@@ -22,7 +23,7 @@
 
 排序只反映「先修哪一個」，與修復成本無關。兩項同為 P1 時，先做哪一項由當時的人力與相依關係決定。
 
-最近一次標示日期為 2026-09-30。項目的內容改變時要一併重看它的優先順序。
+最近一次標示日期為 2026-10-01。項目的內容改變時要一併重看它的優先順序。
 
 ## 處理狀態怎麼讀
 
@@ -132,9 +133,10 @@
 | [ARCH-01](#arch-01) | 架構規則 | P4 | 未處理 | route 檔直接查詢資料庫 | 靜態確認 |
 | [ARCH-02](#arch-02) | 架構規則 | P4 | 未處理 | `ai` 模組 import `automation` 的 worker 檔 | 靜態確認 |
 | [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
-| [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Ollama base URL 預設指向容器自己 | 執行時重現 |
-| [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P3 | 未處理 | Compose 與資料庫的 Chat 模型預設不同 | 部分驗證 |
-| [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P3 | 部分修正 | `OLLAMA_BASE_URL`：Chat 生成已生效（`ee251c8`），Embedding、`listModels()`、`health()` 仍不讀；兩個 `*_MODEL` 變數仍無讀取端 | 靜態確認 |
+| [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 租戶的 Chat 與 Embedding 設定預設使用 Ollama，但組織不部署 Ollama | 靜態確認 |
+| [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P4 | 未處理 | 兩個 Compose 檔仍有 `ollama` 服務 | 靜態確認 |
+| [LLM-03](#llm-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `OLLAMA_*` 環境變數與 Chat 的位址補救已無作用 | 靜態確認 |
+| [LLM-04](#llm-04) | Storage、LLM 與資料庫 | P2 | 未處理 | Embedding 只能呼叫 Ollama，知識庫自動回覆、AI 建議回覆與語意搜尋都無法運作 | 靜態確認 |
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
@@ -1689,35 +1691,58 @@ Workers 的 `MinioStorageProvider` 讀取 `MINIO_*`，但 `.env.workers` 提供 
 執行時呼叫 `listBuckets()` 已重現 `ECONNREFUSED`。
 
 <a id="llm-01"></a>
-### LLM-01：Ollama 位址錯誤
+### LLM-01：AI 設定預設使用 Ollama
 
-`tenant_settings.chatBaseUrl` 與 `embeddingBaseUrl` 預設為 `http://localhost:11434`。在 API 容器內，這個位址指向 API 自己，不是 `ollama` 容器。執行時連線已重現 `Connection refused`。
+`tenant_settings` 的預設值指向 Ollama：
 
-Chat 生成路徑已有一層補救，做法見 LLM-03。Embedding 路徑沒有這層補救，仍然直接使用 `tenant_settings.embeddingBaseUrl`。
+- `chatProvider` 預設為 `ollama`，`chatBaseUrl` 預設為 `http://localhost:11434`。
+- `embeddingBaseUrl` 預設為 `http://localhost:11434`，`embeddingModel` 預設為 `bge-m3`。
+
+`chat-settings.service.ts` 的 `DEFAULT_CHAT_SETTINGS` 也使用同樣的值。組織不部署 Ollama，因此新租戶的 Chat 從建立起就連不上模型。
+
+即使部署了 Ollama 容器，這個預設位址仍然錯誤：在 API 容器內，`localhost` 指向 API 自己。執行時連線曾重現 `Connection refused`。
+
+Chat 可以繞過：租戶的 ADMIN 在 Chat 設定把供應商改成 Gemini。Embedding 沒有供應商可選，無法繞過，見 LLM-04。
 
 <a id="llm-02"></a>
-### LLM-02：Chat 模型預設不一致
+### LLM-02：Compose 仍部署 Ollama
 
-Compose 預設下載 `qwen2.5:0.5b`；資料庫欄位預設為 `qwen2.5:3b`。開發環境沒有 Ollama，因此只確認兩邊設定值不同。
+`docker-compose.yml` 與 `docker-compose.prod.yml` 都有 `ollama` 服務與 `ollama_data` volume。服務啟動時會下載 `OLLAMA_CHAT_MODEL` 與 `OLLAMA_EMBED_MODEL` 指定的模型，預設是 `qwen2.5:0.5b` 與 `bge-m3`。
+
+依照部署決定，這個服務不應該再啟動。只要依這兩個 Compose 檔部署，Ollama 仍會啟動並佔用主機資源。
 
 <a id="llm-03"></a>
-### LLM-03：部分生效的 API 環境變數
+### LLM-03：`OLLAMA_*` 環境變數已無作用
 
-Chat 與 Embedding 的實際設定來自 `tenant_settings`，不是環境變數。commit `ee251c8` 為其中一條路徑加上補救：`apps/api/src/modules/ai/providers/ollama.provider.ts` 的 `generate()` 與 `generateToolTurn()` 在租戶設定的 `baseUrl` 等於預設值 `http://localhost:11434` 時，改讀 `process.env.OLLAMA_BASE_URL`。
+`apps/api/src/config/env.ts` 定義三個變數：`OLLAMA_BASE_URL`、`OLLAMA_EMBED_MODEL` 與 `OLLAMA_CHAT_MODEL`。`.env.api.example` 提供 `OLLAMA_BASE_URL=http://ollama:11434`。
 
-因此 `OLLAMA_BASE_URL` 目前只在兩種條件同時成立時生效：呼叫的是 Chat 生成，而且租戶沒有改過 `chatBaseUrl`。租戶把 `chatBaseUrl` 改成其他值之後，即使那個值連不通，補救也不會套用。
+- `OLLAMA_BASE_URL` 只有一個讀取端：commit `ee251c8` 在 `ollama.provider.ts` 的 `generate()` 與 `generateToolTurn()` 加上的補救。當租戶的 `chatBaseUrl` 等於預設值時，補救改連這個變數的位址。Ollama 不部署之後，這個位址也連不上。
+- `OLLAMA_EMBED_MODEL` 與 `OLLAMA_CHAT_MODEL` 沒有任何程式讀取。
 
-以下路徑仍然不讀環境變數：
+<a id="llm-04"></a>
+### LLM-04：Embedding 只能呼叫 Ollama
 
-- 同一個檔案的 `listModels()` 與 `health()`。
-- Embedding 的所有路徑。
+`tenant_settings` 的 Chat 設定有 `chatProvider`，可以選 Ollama 或 Gemini。Embedding 設定沒有對應的供應商欄位。`embedding.service.ts` 的 `embedOnce()` 一律以 Ollama 的 embed API 格式呼叫 `embeddingBaseUrl`；`embedding-settings.service.ts` 的健康檢查與模型清單也只查 Ollama。
 
-`OLLAMA_EMBED_MODEL` 與 `OLLAMA_CHAT_MODEL` 仍然沒有任何程式讀取。
+組織不部署 Ollama，因此所有產生向量的路徑都會失敗：
+
+| 功能 | 失敗時的行為 |
+| --- | --- |
+| 知識庫自動回覆（`kb-autoreply.service.ts` 的 `attemptKbAutoReply()`） | 只記 error log，然後不回覆客人，也不轉真人 |
+| AI 建議回覆（`ai.service.ts` 的 `suggestReply()`） | 回傳空的建議清單 |
+| 知識庫語意搜尋（`knowledge.service.ts` 的 `semanticSearch()`） | 拋出錯誤 |
+| 建立或修改文章時產生向量（`embedArticle()`） | 在背景失敗，只記 log。文章仍可發布，但不會被檢索到 |
+
+自動回覆的失敗最不容易察覺：客人收不到回覆，對話也沒有轉給客服。
+
+改用其他 embedding 服務時，資料庫欄位的維度要配合新的模型，與 DB-01 一起處理。
 
 <a id="db-01"></a>
 ### DB-01：向量維度不一致
 
 Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embedding` 與 `long_term_memories.embedding` 欄位都是 `vector(1536)`。預設的 `bge-m3` 產生 1024 維向量，直接寫入會被資料庫拒絕。
+
+組織不部署 Ollama 之後，`bge-m3` 不再是可用的模型。正確的維度要等 LLM-04 選定新的 embedding 模型才能決定。
 
 <a id="db-02"></a>
 ### DB-02：`ContactTag.expiresAt` 沒有設定端，也沒有讀取端

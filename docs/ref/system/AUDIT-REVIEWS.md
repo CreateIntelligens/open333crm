@@ -4,6 +4,22 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：組織決定不部署 Ollama，重寫 LLM-01 至 LLM-03，新增 LLM-04
+
+組織因主機資源不足，決定不部署 Ollama。原本的 LLM-01 至 LLM-03 都假設 Ollama 有部署，問題在於「連錯位址」或「設定不一致」。這個決定之後，三項依新的前提重寫：
+
+| 項目 | 原本的問題 | 重寫後的問題 | 優先 |
+| --- | --- | --- | --- |
+| LLM-01 | Ollama 位址預設指向 API 容器自己 | 租戶的 Chat 與 Embedding 設定預設使用 Ollama | P2，不變 |
+| LLM-02 | Compose 與資料庫的 Chat 模型預設不同 | Compose 仍有 `ollama` 服務 | P3 → P4 |
+| LLM-03 | `OLLAMA_BASE_URL` 只對 Chat 生成生效（部分修正） | `OLLAMA_*` 環境變數已無作用 | P3 → P4，狀態改回未處理 |
+
+LLM-03 原本的「部分修正」指 `ee251c8` 的位址補救。這個補救改連的是 Ollama 容器。Ollama 不再部署，所以這個補救不再算修正。
+
+**LLM-04。** 本次查證「Chat 改用 Gemini 能否繞過 LLM-01」時發現：`tenant_settings` 的 Embedding 設定沒有供應商欄位，`embedding.service.ts` 只會呼叫 Ollama。逐一查看 `generateEmbedding()` 與 `embedArticle()` 的呼叫端，確認各功能失敗時的行為。其中 `attemptKbAutoReply()` 失敗時回傳 `false`，兩個呼叫端（`automation.worker.ts`、`action-executor.ts`）都不轉真人。
+
+DB-01 補上一句：正確的維度要等 LLM-04 選定新模型才能決定。
+
 ## 2026-10-01：改寫 AGENTS.md 的開發流程，新增 ARCH-01、ARCH-02、RLS-07
 
 起因是改寫 `AGENTS.md`：依 SDD、TDD、SOLID 把模組結構規則改成「開發流程」一節，每條規則附上理由與檢查指令。原本寫在 `AGENTS.md` 的例外清單已經過時，例如規則 1 列 5 個模組、規則 4 列 4 處 import，都與實際不符。因此依修正成本分開處理：
