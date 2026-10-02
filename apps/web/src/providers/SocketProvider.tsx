@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useAuth, getAccessToken } from './AuthProvider';
+import api from '@/lib/api';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -29,7 +30,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const s = getSocket(token);
+    // 重連時讀最新 token；被拒時打一支需要登入的 API，讓 api 攔截器自動換發 token
+    const s = getSocket({ getToken: getAccessToken, onAuthError: () => api.get('/auth/me') });
     setSocket(s);
 
     const onConnect = () => {

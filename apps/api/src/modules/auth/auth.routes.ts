@@ -11,6 +11,7 @@ import {
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
 import { getLoginAttemptStore, type LoginAttemptStore } from './login-attempts.js';
+import { ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE, isAgentRefreshToken } from '../../lib/agent-token.js';
 import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
 import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
 import { AppError, success } from '../../shared/utils/response.js';
@@ -43,7 +44,7 @@ import { notFound } from '../../shared/messages/resource.js';
 type TokenPayload = FastifyJWT['payload'];
 
 function signAccessToken(fastify: FastifyInstance, payload: TokenPayload, config: EnvConfig): string {
-  return fastify.jwt.sign(payload, { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN });
+  return fastify.jwt.sign({ ...payload, typ: ACCESS_TOKEN_TYPE }, { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN });
 }
 
 function signRefreshToken(
@@ -52,7 +53,7 @@ function signRefreshToken(
   config: EnvConfig,
   rememberMe: boolean,
 ): string {
-  return fastify.jwt.sign({ ...payload, rememberMe }, { expiresIn: config.REFRESH_TOKEN_EXPIRES_IN });
+  return fastify.jwt.sign({ ...payload, rememberMe, typ: REFRESH_TOKEN_TYPE }, { expiresIn: config.REFRESH_TOKEN_EXPIRES_IN });
 }
 
 function parseDurationToSeconds(duration: string): number {
@@ -606,6 +607,8 @@ export default async function authRoutes(fastify: FastifyInstance, opts: AuthRou
 
     try {
       const payload = fastify.jwt.verify<TokenPayload>(token);
+      // 只收 refresh token（含過渡期的舊格式）：access、粉絲等 token 不能拿來換發（AUDIT AUTH-05）
+      if (!isAgentRefreshToken(payload as unknown as Record<string, unknown>)) throw new Error('INVALID_TOKEN_PURPOSE');
 
       // 安全性：不沿用 token 內的舊 role/roleId，改從 DB 重讀當前值（帶 tenantId + 仍 isActive）。
       // 否則 admin 降權某成員後，該成員可靠 refresh 續命舊角色達 refresh TTL（可能 30 天）。

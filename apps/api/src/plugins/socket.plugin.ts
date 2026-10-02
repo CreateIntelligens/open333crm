@@ -1,4 +1,5 @@
 import fp from 'fastify-plugin';
+import { isAgentAccessToken } from '../lib/agent-token.js';
 import type { FastifyInstance } from 'fastify';
 import { Server as SocketIOServer } from 'socket.io';
 import IORedis from 'ioredis';
@@ -10,6 +11,19 @@ import {
   SOCKET_SUBSCRIPTION_RATE_WINDOW_MS,
   type SocketSubscriptionRateLimitState,
 } from '../modules/socket/socket-subscription-rate-limit.js';
+
+/**
+ * socket 連線的 token 驗證：只收客服 access token（AUDIT AUTH-05）。
+ * refresh token 或粉絲 token 連上會自動加入租戶房間，收到全租戶的訊息。驗證失敗丟錯，由呼叫端拒絕連線。
+ */
+export function decodeSocketAgentToken(
+  verify: (token: string) => unknown,
+  token: string,
+): { agentId: string; tenantId: string; role: string; roleId?: string | null } {
+  const decoded = verify(token) as Record<string, unknown>;
+  if (!isAgentAccessToken(decoded)) throw new Error('INVALID_TOKEN_PURPOSE');
+  return decoded as unknown as { agentId: string; tenantId: string; role: string; roleId?: string | null };
+}
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -39,12 +53,7 @@ async function socketPlugin(fastify: FastifyInstance) {
         return next(new Error('Authentication token required'));
       }
 
-      const decoded = fastify.jwt.verify<{
-        agentId: string;
-        tenantId: string;
-        role: string;
-        roleId?: string | null;
-      }>(token);
+      const decoded = decodeSocketAgentToken((t) => fastify.jwt.verify(t), token);
 
       socket.data.agentId = decoded.agentId;
       socket.data.tenantId = decoded.tenantId;
