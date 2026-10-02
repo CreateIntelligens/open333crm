@@ -4,6 +4,28 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：複查所有 P2 項目，移除 CONTACT-01，RBAC-04 改為部分修正
+
+P1 清空之後，在 `main` 的 `3cbad73` 逐項核對 44 項 P2：讀出每一項描述的具體事實，再到程式碼確認它仍然存在。結果是 43 項仍然存在，CONTACT-01 已經修好。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONTACT-01 | 已修正，從 `AUDIT.md` 移除 | `481452a`（#185，2026-09-30）新增 `contact-merge.service.ts` 的 `mergeContacts()`。手動合併（`contact.service.ts`）、LINE 與 FB 登入（`updateContactEmail()`）、合併建議與綁定代碼都呼叫它。被合併者改為封存，不再硬刪除；渠道身分、積分、活動提交、長期記憶、`IdentityMap`、聯絡人關係都會搬移，並可從合併紀錄解除 |
+| RBAC-04 | 部分修正 | 同一個 commit 讓聯絡人的 `/:id/conversations`、`/:id/cases`、`/:id/timeline` 依可見範圍過濾，清單與詳情只回傳可見渠道的身分。聯絡人本身仍會列出，合併不檢查渠道；socket 租戶房間、AI 輔助、`POST /cases`、`GET /cases/stats` 沒有變 |
+| IDENT-02 | 仍然存在，更正描述 | 公開的 `/authorize`、callback 不比對登入者、自動合併不經確認都還在。內文原本寫自動合併「硬刪除」，改為封存並可解除 |
+
+**為什麼這兩項一直沒有發現。** `481452a` 在 2026-09-30 12:08 合併；CONTACT-01 與 RBAC-04 的聯絡人部分，是同一天稍晚由 `05aabf8`（#188）寫進 `AUDIT.md`，依據的是 `481452a` 之前的分析。2026-10-01「對照 One ID 的合併」的紀錄已註明 CONTACT-01 可能過時，但沒有查證。
+
+**核對方式。** 其餘 41 項逐一確認描述中的程式寫法仍然存在，例如：
+
+- SLA-02：`sla.handler.ts` 的 `getActiveCases()` 仍是 `take: 100`。
+- CHAN-02：workers 的 `pluginRegistry` 仍只放 `linePlugin` 與 `fbPlugin`。
+- AUTH-03、AUTH-08：`schema.prisma` 仍沒有 `tokenVersion` 或 `passwordChangedAt`。
+- CONV-03：`conversation.service.ts` 的 `sendMessage()` 送出失敗時仍不寫 `metadata.deliveryFailed`。
+- DB-01：只有初始 migration 定義向量欄位為 `vector(1536)`，schema 是 `vector(1024)`。
+
+**連帶更新的文件。** `CONTACTS.md` 的「合併」一節改寫為統一合併引擎的行為，並更新可見範圍的描述；`PORTAL.md` 的積分改為合併時會搬移；`INBOX.md`、`PERMISSIONS.md` 的 RBAC-04 描述改為「聯絡人清單與合併」。
+
 ## 2026-10-02：AUTO-01 不再違反主規格，調回 P3
 
 上一筆紀錄把 AUTO-01 是否仍違反主規格記為「待重新判定」。本次對照歸檔後的主規格 `automation-engine` 的「Actions」判定：**不再違反，由 P2 調回 P3。**

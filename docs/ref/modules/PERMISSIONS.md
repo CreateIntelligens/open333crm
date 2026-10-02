@@ -164,7 +164,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 對話綁了團隊時，`assertConversationChannelVisible()` 另外要求成員是負責人或該團隊的成員。`Conversation.teamId` 沒有寫入端，這段檢查目前不會觸發；團隊本身也沒有建立的途徑。兩者都見 `../system/AUDIT.md` 的 TEAM-01。
 
-聯絡人、AI 輔助與租戶房間的即時事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。
+聯絡人清單與合併、AI 輔助與租戶房間的即時事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。聯絡人的對話、工單與時間軸有套用。
 
 ## Socket 房間
 
@@ -217,7 +217,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | RBAC-01 |
 | CLI token 只看 scope，`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 業務規則看舊的 `role`，不看細粒度角色 | RBAC-03 |
-| 渠道可見範圍沒有套用在租戶房間、聯絡人與 AI 輔助 | RBAC-04 |
+| 渠道可見範圍沒有套用在租戶房間、聯絡人清單與合併、AI 輔助 | RBAC-04 |
 | reconcile 腳本會覆蓋租戶對系統角色的修改，也不清除快取 | RBAC-05 |
 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all` | RBAC-06 |
 | 角色與權限頁不套方案天花板 | PLAN-08 |
