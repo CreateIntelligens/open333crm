@@ -97,7 +97,7 @@
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
 | [CASE-01](#case-01) | 對話、工單與自動化 | P2 | 已提建議 | 工單的狀態下拉選單不寫時間軸、不發布事件，選「已升級」不通知主管 | 靜態確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
-| [AUTO-01](#auto-01) | 對話、工單與自動化 | P2 | 部分修正 | 5 種自動化動作在 workers 沒有實作；已不能存進新規則，既有規則執行時略過 | 靜態確認 |
+| [AUTO-01](#auto-01) | 對話、工單與自動化 | P2 | 部分修正 | 4 種自動化動作在 workers 沒有實作（`create_case` 已於 #211 補上）；已不能存進新規則，既有規則執行時略過 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 未處理 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
@@ -1257,15 +1257,15 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - 既有規則仍然可以執行。workers 以 `allowUnsupportedActions` 驗證既有規則，照常執行其他動作，只略過這 5 種。規則列表與編輯頁會標示含這些動作的規則。
 - 刪除沒有呼叫端的 `action-executor.ts`。
 
-剩下的問題是這 5 種動作在 workers 沒有實作。issue #197 回報（2026-10-02）：用到這些動作的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的。真實客戶的租戶沒有這類規則。
+#211（2026-10-02）在 workers 補上 `create_case`，並從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除：條件命中時在觸發的對話上建立工單，套用 SLA、關聯對話、寫入工單事件並發出 `case.created`；只在有對話的事件提供，工單與 SLA 事件不提供。
 
-**規格依據。** 主規格 `openspec/specs/automation-engine/spec.md` 的「Actions」寫系統 SHALL 支援 `add_tag`、`send_message`、`create_case`、`update_case_status`、`notify_supervisor` 等動作。`create_case` 沒有實作，現況違反這條需求。
+剩下的問題是 `remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 四種動作在 workers 沒有實作。issue #197 回報（2026-10-02）：用到這 5 種動作的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的，但它另含不存在的動作 `auto_assign`，整條規則在驗證時就被跳過，要重新儲存一次才會執行。真實客戶的租戶沒有這類規則。
 
-#209 的 change `fix-automation-unsupported-actions` 尚未歸檔。它的 delta spec 以 ADDED 新增「拒絕 workers 尚未支援的動作」，但沒有修改「Actions」。照目前的寫法歸檔後，主規格會同時要求「支援 `create_case`」與「拒絕 `create_case`」。歸檔前應改為 MODIFIED「Actions」，寫明目前支援的動作，並把 5 種動作列為待實作。
+**規格依據。** 主規格 `openspec/specs/automation-engine/spec.md` 的「Actions」原本寫系統 SHALL 支援 `create_case` 等動作，現況違反這條需求。#211 把 #209 的 change `fix-automation-unsupported-actions` 改為 MODIFIED「Actions」後歸檔：主規格改寫為「workers 尚未實作的動作列在 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔拒絕」，不再同時要求支援與拒絕。#211 的 change `add-automation-create-case` 再以 MODIFIED「Actions」把 `create_case` 改為已支援，待 UAT 實測後歸檔。
 
 **優先順序是 P2。** 依影響判定是 P3：新規則已經存不進去，既有規則會在介面上標示，不再是「看起來有效、實際不執行」，剩下的是功能缺口，而且只有 Demo Tenant 用到。但現況違反主規格「Actions」，依「違反主規格的項目至少是 P2」標為 P2。
 
-**修正方向**：在 `executeWorkerAutomationActions()` 補上這 5 種動作，再從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除。補實作之前，可以先停用 Demo Tenant 那條啟用中的規則。
+**修正方向**：在 `executeWorkerAutomationActions()` 補上剩下 4 種動作，再從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除。
 
 <a id="auto-02"></a>
 ### AUTO-02：規則的執行紀錄與執行次數停止更新

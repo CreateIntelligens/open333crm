@@ -77,8 +77,8 @@
 | `escalate_case`、`set_case_priority` | 是 | 改工單優先級 |
 | `notify` 通知負責人 | 是 | 通知工單負責人 |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
-| `create_case` 建立工單 | **否** | 編輯器不提供，存檔時拒絕；既有規則執行時略過 |
-| `remove_tag` 移除標籤 | **否** | 同上 |
+| `create_case` 建立工單 | 是（#211） | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
+| `remove_tag` 移除標籤 | **否** | 編輯器不提供，存檔時拒絕；既有規則執行時略過 |
 | `assign_bot` 指派機器人 | **否** | 同上 |
 | `kb_auto_reply` KB 知識庫回覆 | **否** | 同上 |
 | `llm_reply` LLM 智能回覆 | **否** | 同上 |
