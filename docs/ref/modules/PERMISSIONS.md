@@ -162,7 +162,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 清單查詢 | `resolveChannelVisibility()` 取得可見的渠道集合，`channelIdWhereFilter()` 轉成 `where` 條件 | 持有 `channel.view_all` 時不加條件；集合為空時查不到任何資料 |
 | 單筆操作 | `assertConversationChannelVisible()`、`assertCaseChannelVisible()` | 看不到回 404；看得到但層級不足回 403。看不到時不回 403，是為了不透露其他分店的資料是否存在 |
 
-對話綁了團隊時，`assertConversationChannelVisible()` 另外要求成員是負責人或該團隊的成員。`Conversation.teamId` 沒有寫入端，這段檢查目前不會觸發，見 `../system/AUDIT.md` 的 DB-04。團隊本身也沒有建立的途徑，見 TEAM-01。
+對話綁了團隊時，`assertConversationChannelVisible()` 另外要求成員是負責人或該團隊的成員。`Conversation.teamId` 沒有寫入端，這段檢查目前不會觸發；團隊本身也沒有建立的途徑。兩者都見 `../system/AUDIT.md` 的 TEAM-01。
 
 聯絡人、AI 輔助與租戶房間的即時事件沒有套用可見範圍，見 `../system/AUDIT.md` 的 RBAC-04。
 
@@ -223,7 +223,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 角色與權限頁不套方案天花板 | PLAN-08 |
 | 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛 | PLAN-04 |
 | AI 不在功能天花板內 | PLAN-12 |
-| 團隊沒有建立的途徑；`Conversation.teamId` 沒有寫入端 | TEAM-01、DB-04 |
+| 團隊沒有建立的途徑；`Conversation.teamId` 沒有寫入端 | TEAM-01 |
 | 「JWT 或其他憑證」裝飾器的 JWT 分支沒有 `roleId`，有效權限為空 | AUTH-06 |
 
 ## 自己驗證的方法

@@ -21,7 +21,9 @@
 | P3 | `medium` | 設定與實際行為不符、介面與資料不一致、維運與稽核的落差。不影響現有功能的正確性 |
 | P4 | `low` | 殘留設定、命名不符、未接線的程式碼。移除或改名即可，不影響任何行為 |
 
-**違反主規格的項目至少是 P2。** 主規格是 `openspec/specs/` 底下的規格。一項的現況違反主規格中的 SHALL 或 MUST 時，即使依上表判定為 P3 或 P4，也標為 P2，並在內文的「規格依據」寫明違反哪一份規格的哪一條需求。只有歸檔 change 的設計文件或未完成的任務、沒有寫進主規格的，不適用這條規則。這條規則從 2026-10-02 開始適用，在那之前標示的項目沒有逐一對照主規格。
+**違反主規格的項目至少是 P2。** 主規格是 `openspec/specs/` 底下的規格。一項的現況違反主規格中的 SHALL 或 MUST 時，即使依上表判定為 P3 或 P4，也標為 P2，並在內文的「規格依據」寫明違反哪一份規格的哪一條需求。只有歸檔 change 的設計文件或未完成的任務、沒有寫進主規格的，不適用這條規則。2026-10-02 已把當時所有 P3、P4 項目逐一對照主規格。
+
+有些主規格描述的功能從來沒有實作，或已經被其他設計取代。這類項目在內文標示「主規格待確認」，暫時不套用這條規則，等確認規格要改寫、移出主規格還是保留之後再判定。
 
 排序只反映「先修哪一個」，與修復成本無關。兩項同為 P1 時，先做哪一項由當時的人力與相依關係決定。
 
@@ -47,14 +49,14 @@
 | [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
+| [RLS-07](#rls-07) | 租戶隔離與權限 | P2 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
 | [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已定方向 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all`，`admin` 少了稽核與資料權利的權限碼 | 靜態確認 |
-| [TEAM-01](#team-01) | 租戶隔離與權限 | P3 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用 | 靜態確認 |
+| [TEAM-01](#team-01) | 租戶隔離與權限 | P2 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用；進站訊息不依團隊分流 | 靜態確認 |
 | [A2A-01](#a2a-01) | 租戶隔離與權限 | P2 | 未處理 | A2A 橋接以最早建立的租戶執行所有外部任務，使用該租戶的金鑰與額度 | 靜態確認 |
 | [AUTH-01](#auth-01) | 帳號與登入 | P2 | 已定方向 | 租戶端沒有忘記密碼流程，唯一的 ADMIN 忘記密碼就沒有復原途徑 | 靜態確認 |
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
@@ -63,7 +65,7 @@
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
-| [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
+| [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
 | [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
@@ -97,24 +99,24 @@
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
 | [AUTO-01](#auto-01) | 對話、工單與自動化 | P2 | 部分修正 | 5 種自動化動作在 workers 沒有實作；已不能存進新規則，既有規則執行時略過 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 未處理 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新 | 靜態確認 |
-| [AUTO-03](#auto-03) | 對話、工單與自動化 | P3 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
+| [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 未處理 | 規則編輯器提供的部分觸發事件永遠不會觸發 | 靜態確認 |
 | [CONTACT-01](#contact-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 兩套聯絡人合併實作行為不一致：手動合併遺失積分，自動合併硬刪除並可能失敗 | 靜態確認 |
-| [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P4 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
+| [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
 | [IDENT-02](#ident-02) | 聯絡人、行銷與報表 | P2 | 已提建議 | LINE、Facebook 登入補 email 時不確認登入者就是該聯絡人，授權網址可由任何人以任意渠道身分產生 | 靜態確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 已提建議 | 群發可以重複執行，重送時不排除已送達的人 | 靜態確認 |
 | [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 記錄點擊的公開端點採信呼叫端提供的聯絡人與 LINE uid，也沒有速率限制 | 靜態確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時客人收不到任何回覆 | 靜態確認 |
-| [CHAN-03](#chan-03) | 渠道、稽核與資料權利 | P4 | 已提建議 | 進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | 靜態確認 |
+| [CHAN-03](#chan-03) | 渠道、稽核與資料權利 | P2 | 已提建議 | LINE 的簽章錯誤也回 200；進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | 靜態確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | [APP-01](#app-01) | 部署與應用程式 | P3 | 未處理 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
-| [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | Telegram 外掛未註冊 | 執行時確認 |
+| [APP-02](#app-02) | 部署與應用程式 | P2 | 未處理 | Telegram 外掛未註冊 | 執行時確認 |
 | [APP-03](#app-03) | 部署與應用程式 | P4 | 未處理 | 啟動 log 少列 Threads | 執行時確認 |
 | [APP-04](#app-04) | 部署與應用程式 | P4 | 未處理 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
 | [APP-05](#app-05) | 部署與應用程式 | P4 | 未處理 | API 行程訂閱的 `sla.warning`、`sla.breached` 沒有發布端 | 靜態確認 |
@@ -139,7 +141,7 @@
 | [DB-01](#db-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Prisma 與資料庫的向量維度不一致 | 執行時重現 |
 | [DB-02](#db-02) | Storage、LLM 與資料庫 | P4 | 未處理 | `ContactTag.expiresAt` 沒有設定端，也沒有讀取端 | 靜態確認 |
 | [DB-03](#db-03) | Storage、LLM 與資料庫 | P4 | 未處理 | `DailyStat` 每天寫入，報表不讀 | 靜態確認 |
-| [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：`Conversation.teamId`、工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
+| [DB-04](#db-04) | Storage、LLM 與資料庫 | P4 | 未處理 | schema 有、程式沒有讀寫的欄位：工單合併與關聯、`Contact.isBlocked` | 靜態確認 |
 | [CI-01](#ci-01) | CI 與測試 | P2 | 未處理 | 沒有 CI workflow 執行 API 測試 | 靜態確認 |
 | [CI-02](#ci-02) | CI 與測試 | P3 | 未處理 | 沒有 CI workflow 執行 lint | 靜態確認 |
 
@@ -187,6 +189,8 @@
 `207da85`（2026-09-22）修復短連結被 RLS 擋下時，讓 `shortlink/shortlink-redirect.routes.ts` 改用 `prismaAdmin` 查渠道的 LIFF ID 與租戶的追蹤碼設定，但沒有把這個檔案加進 `scripts/check-prisma-admin-usage.mjs` 的白名單。從那時起，這支檢查以 `--strict` 執行就會失敗。CI 沒有執行這支檢查，所以一直沒有人發現。2026-10-01 實際執行確認。
 
 用途看起來合理：這是不需要登入的公開路由，請求進來時還不知道是哪個租戶；路由先依短網址解析出連結，再只查該連結所屬租戶的資料。修正方式是把這個檔案加進白名單，並註明理由。
+
+**規格依據。** 主規格 `tenant-isolation-rls` 的「合法跨租戶操作走 BYPASSRLS 連線」規定 BYPASSRLS 連線 MUST 僅供白名單情境使用。這個檔案不在白名單，現況違反這條需求，因此由 P3 調為 P2。用途本身合理，修正只需要把檔案加進白名單。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
@@ -355,7 +359,7 @@ CLI token 的停用問題另見 AUTH-02。
 2. 兩份改為共用同一個來源，避免再次分歧。例如把預設權限移到 `core` 與 `database` 都能相依、而且不相依兩者的位置，或讓 demo seed 改由 API 的開通流程建立租戶。
 
 <a id="team-01"></a>
-### TEAM-01：團隊沒有建立與管理成員的途徑
+### TEAM-01：團隊沒有建立與管理成員的途徑，進站訊息也不依團隊分流
 
 `Team` 與 `AgentTeamMember` 沒有任何寫入端。API、workers、種子資料與前端都沒有建立團隊、加入成員或移除成員的功能。
 
@@ -363,7 +367,15 @@ CLI token 的停用問題另見 AUTH-02。
 
 - 渠道授權給團隊。渠道管理頁的團隊授權只能從 `GET /channels/teams` 列出的既有團隊中選擇。
 - 工單依團隊自動指派。`autoAssignCase()` 只在工單有 `teamId` 時觸發，候選人是該團隊的成員。
-- 對話的團隊限制。見 DB-04。
+
+**進站訊息不依團隊分流。** `Conversation.teamId` 沒有寫入端。`channel-visibility.ts` 的 `assertConversationChannelVisible()` 有一段「對話綁了團隊時，只有該團隊成員能操作」的檢查，因此永遠不會觸發。`apps/api/src/services/inbound-router.ts` 的 `InboundRouterService` 是依團隊分流的骨架：查詢對話與渠道預設團隊的程式只寫在註解裡，也沒有任何呼叫端。`Channel` 也沒有預設團隊的欄位，建立渠道時無法指定。
+
+**規格依據。** 主規格 `channel-team-access` 的兩條需求，現況都沒有做到：
+
+- 「Message Routing via ChannelTeamAccess」：新聯絡人的訊息 SHALL 分流到渠道的預設團隊，並建立帶有該 `teamId` 的對話。
+- 「Channel Creation with Default Team」：建立渠道時 SHALL 可以指定 `defaultTeamId`，並自動建立該團隊的授權。
+
+因此由 P3 調為 P2。主規格沒有要求團隊的建立與成員管理，這部分沒有規格依據。
 
 <a id="a2a-01"></a>
 ### A2A-01：A2A 橋接以最早建立的租戶執行外部任務
@@ -553,6 +565,8 @@ refresh token 外洩之後，持有者可以持續換發 access token，直到 r
 
 `/platform-users/:id/audit-logs` 查得到的是該帳號的操作紀錄，不包含登入事件。
 
+**規格依據。** 主規格 `platform-password-recovery` 的「使用者可用有效重設連結完成密碼重設」規定：重設成功後 SHALL 寫入 `PlatformAuditLog`。`reset-password` 沒有寫，現況違反這條需求，因此由 P3 調為 P2。同一份規格的「已登入平台管理員可自助改密碼」也要求寫稽核，`change-password` 有寫，符合規格。登入、忘記密碼與重寄開通信，主規格沒有要求寫稽核。
+
 <a id="sec-03"></a>
 ### SEC-03：rate-limit 在各路由模組內各自註冊
 
@@ -608,6 +622,8 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 `license.guard.ts` 使用 `apps/api/src/services/license.ts`。該實作直接建立寫死的授權資料，不會連線到授權伺服器。
 
 `packages/core/src/license/license-service.ts` 會呼叫 `LICENSE_FETCH_URL`，但沒有實際使用者。
+
+**主規格待確認。** 主規格 `license-service` 的「Centralized License Validation」規定系統 SHALL 每 60 分鐘從授權伺服器取得授權資料；`team-license` 也以這份授權資料描述各團隊的渠道與額度。現況與這兩份規格不符。但功能天花板與額度目前由 `tenant-plan`、`plan-limits-core` 負責，這兩份規格可能已經過時。確認規格要改寫還是封存之前，維持 P4（issue #197）。
 
 ## 試用
 
@@ -1269,6 +1285,8 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 - 同名的 `CASE`、`CONVERSATION` 或 `MATERIAL` 標籤可能被找到並貼到聯絡人上。`tagging.service.ts` 的 `assertTagScope()` 會拒絕這種組合，這條路徑繞過了它。
 - 找不到時，直接以這個名稱建立一個 `scope` 為預設 `CONTACT` 的新標籤。標籤被管理員刪除或改名後，規則下一次觸發就默默把舊名稱的標籤建回來。
 
+**規格依據。** 主規格 `tag-management` 的「Scoped tag assignment」規定：貼標 SHALL 檢查標籤的 scope 與對象類型相符。workers 的 `add_tag` 不論以 ID 或名稱找標籤，都不檢查 scope，現況違反這條需求，因此由 P3 調為 P2。`automation-engine` 的「Add Tag Worker Action」沒有規定 scope，與這個結論不衝突。
+
 <a id="auto-04"></a>
 ### AUTO-04：關鍵字回覆頁承諾的兩項保護都沒有生效
 
@@ -1325,6 +1343,8 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 ### IDENT-01：合併建議沒有產生端
 
 `packages/core/src/identity/identity-stitcher.ts` 的 `detectPhoneDuplicates()` 是唯一會建立 `MergeSuggestion` 的函式，它沒有任何呼叫端；同一個檔案的 `stitchByPhone()` 與 `stitchByLiffCookie()` 也沒有。`/api/v1/identity` 的審核端點因此永遠沒有資料可審。
+
+**規格依據。** 主規格 `identity-stitching-engine` 的「AI 合併建議」規定：系統發現不同渠道的聯絡人有相同手機號碼時，必須產生一筆合併建議，交給管理員核准。現況沒有任何程式產生建議，違反這條需求，因此由 P4 調為 P2。
 
 <a id="ident-02"></a>
 ### IDENT-02：LINE、Facebook 登入補 email 時，不確認登入者就是該聯絡人
@@ -1413,13 +1433,21 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 **修正方向**：workers 改用與 API 相同的註冊函式，註冊全部外掛；網站聊天室的訪客推送移進外掛或共用的送出函式；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
 
 <a id="chan-03"></a>
-### CHAN-03：webhook 驗簽的兩處細節
+### CHAN-03：webhook 驗簽的三處細節
+
+**LINE 的簽章錯誤也回 200。** `webhook.routes.ts` 的 `POST /line/:channelId` 先回 200，再在背景呼叫 `processWebhookEvent()`。驗簽失敗時，`processWebhookEvent()` 拋出 `Invalid webhook signature`，路由的 `catch` 只寫一筆 error log。因此簽章缺少或錯誤的請求，與正確的請求得到相同的回應。FB 與 Threads 的路由也是先回 200，但它們的主規格沒有規定回應碼。
+
+**規格依據。** 主規格 `line-webhook-events` 的「LINE Webhook signature verification」規定：簽章缺少或錯誤時，系統 SHALL 回 HTTP 403 並記錄。現況違反這條需求，因此由 P4 調為 P2。
 
 **進站路由不比對渠道本身的類型。** `webhook.routes.ts` 的 LINE、FB、Threads 路由各自把固定的 `channelType` 傳給 `processWebhookEvent()`，後者以這個值取得外掛與決定驗簽用的秘密，但不與 `channel.channelType` 比對。把 LINE 渠道的 ID 送到 Facebook 的路由，會以 Facebook 外掛、LINE 渠道的憑證處理。目前因為兩種渠道的憑證欄位不同（LINE 沒有 `appSecret`），驗簽會失敗；這個保護依賴於憑證欄位碰巧不同。
 
 **FB 與 Instagram 以一般字串比對簽章。** `facebook/index.ts` 與 `threads.ts` 的 `verifySignature()` 以 `===` 比對 HMAC，不是固定時間的比較。LINE 外掛使用 `crypto.timingSafeEqual()`，但沒有先比對長度，簽章長度不同時會拋出錯誤而不是回傳 `false`；錯誤被外層接住，只寫一筆 error log。
 
-**修正方向**：`processWebhookEvent()` 在取得渠道後比對類型，不符時丟棄；三個外掛統一以長度檢查加上 `timingSafeEqual()` 比對。
+**修正方向**：
+
+- LINE 路由在回應前完成驗簽，失敗時回 403；驗簽通過後才回 200，再於背景處理事件。驗簽只需要查渠道憑證與計算 HMAC，不影響「30 秒內回應」的需求。
+- `processWebhookEvent()` 在取得渠道後比對類型，不符時丟棄。
+- 三個外掛統一以長度檢查加上 `timingSafeEqual()` 比對。
 
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
@@ -1500,6 +1528,8 @@ CI 的部署不走這條路徑。`.github/workflows/deploy.yml` 用的是 `docke
 渠道套件只匯出 `TelegramPlugin` 類別，沒有 `telegramPlugin` 實例。API 因此無法將 Telegram 傳給 `registerChannelPlugin()`。執行時檢查顯示 LINE、Facebook、WebChat、Threads 已註冊，Telegram 未註冊。
 
 WhatsApp 也沒有註冊外掛，也沒有 webhook 路由，但 `channel.routes.ts` 的 `createChannelSchema` 接受 `WHATSAPP`。租戶可以建立 WhatsApp 渠道，卻收不到訊息也送不出去。
+
+**規格依據。** 主規格 `telegram-channel` 的「Telegram Plugin Registration」規定：應用程式啟動時，SHALL 以 `TELEGRAM` 註冊 Telegram 外掛。現況違反這條需求，因此由 P3 調為 P2。WhatsApp 沒有主規格。
 
 <a id="app-03"></a>
 ### APP-03：啟動 log 過時
@@ -1639,6 +1669,8 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 
 與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.service.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
 
+**主規格待確認。** 主規格 `line-analytics` 規定系統 SHALL 每天同步 LINE Insight、抓取每次群發的統計；`line-audience` 規定 SHALL 管理分眾名單並追蹤 Narrowcast 進度。上表的 `worker-insight-sync.ts`、`worker-narrowcast-progress.ts` 與 `extensions.audience` 是僅有的實作，都沒有呼叫端；`apps/*` 也沒有讀寫 `InsightSnapshot`。這兩份規格描述的功能從來沒有上線，比較像產品規劃。確認規格要保留、改寫還是移出主規格之前，維持 P4（issue #197）。
+
 ## Storage、LLM 與資料庫
 
 <a id="sto-01"></a>
@@ -1719,9 +1751,10 @@ schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個�
 
 | 欄位或資料表 | 現況 |
 | --- | --- |
-| `Conversation.teamId` | 沒有寫入端。`channel-visibility.ts` 的 `assertConversationChannelVisible()` 有一段「對話綁了團隊時只有該團隊成員能操作」的檢查，因此永遠不會觸發 |
 | `Case.mergedIntoId`、`Case.parentCaseId`、`CaseRelation` | `apps/api`、`apps/workers`、`apps/web` 都沒有讀寫。工單的合併、子工單與關聯沒有實作 |
 | `Contact.isBlocked` | `PATCH /contacts/:id` 可以寫入，前端沒有入口，也沒有任何程式讀取。設成 `true` 不會擋下訊息、機器人或群發 |
+
+`Conversation.teamId` 原本也列在這裡。它違反主規格 `channel-team-access`，2026-10-02 移到 TEAM-01。
 
 ## 架構規則
 
