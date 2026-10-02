@@ -249,6 +249,8 @@ request:
 - [ ] You archive with `openspec archive` or the `openspec-archive-change` skill. Do not move a
       change into `archive/` or copy its specs into `openspec/specs/` by hand. A hand copy can
       leave a main spec in a format that the CLI cannot read.
+- [ ] `npx openspec validate --specs` passes. Every main spec must be in a format that the CLI can
+      read, or the CLI cannot find a contradiction between specs.
 - [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, update
       that item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`, and update each feature or
       module document under `docs/ref/` that describes the changed behavior.
