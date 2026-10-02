@@ -13,7 +13,8 @@
 - 違反主規格的理由消失後，回到依影響判定的 P3：新規則存不進去，既有規則有標示，剩下的是功能缺口，而且只有 Demo Tenant 用到。
 
 **暫時的落差。** 主規格「Actions」的清單與「Unsupported action is rejected」情境仍以 `create_case` 為例，但 #211 已經實作 `create_case`。把 `create_case` 改為已支援的 change `add-automation-create-case` 還沒歸檔，要等任務 3.3 的 UAT 實測。這段期間主規格與程式不一致；change 歸檔後就一致，不另外列為落差。
-，修正「Actions」的規格矛盾
+
+## 2026-10-02：補上 AUTO-01 的 `create_case`，修正「Actions」的規格矛盾
 
 PR #211 在 workers 實作 `create_case`，並修正 #209 的 delta spec。AUTO-01 仍為部分修正。
 
