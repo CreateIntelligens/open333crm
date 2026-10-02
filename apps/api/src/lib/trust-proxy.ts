@@ -9,6 +9,8 @@
  * 保留 nginx 的 X-Forwarded-For（Caddyfile.local），否則所有請求的 IP 都會是 docker 閘道。
  * 限制：
  *   - 真實使用者本身在私有網段（例如同一個 VPC 或經 VPN）時會被當成代理略過，改採更左邊、可由使用者偽造的值。
+ *     目前部署的 api 只開在 127.0.0.1:3001、其餘經 docker 網路，私有網段的其他機器連不到，故信任整個私有網段；
+ *     若日後 api 埠對內網開放，要把清單縮到實際代理的位址。
  *   - 前面若加上 Cloudflare 等公網 CDN，所有人的 IP 都會變成 CDN 節點；屆時要把 CDN 的 IP 段加進清單。
  */
 export const TRUSTED_PROXIES = ['loopback', 'linklocal', 'uniquelocal'];

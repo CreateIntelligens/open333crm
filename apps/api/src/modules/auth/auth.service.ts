@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@open333crm/database';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
@@ -11,6 +11,10 @@ import { clearLoginAttempts, registerLoginAttempt, type LoginAttemptStore } from
  * 帳號不存在時也驗一次密碼（對這組雜湊），讓回應時間與存在的帳號相同，不能靠快慢判斷 email 是否存在。
  * 用正式的 hashPassword 產生（成本參數一致），明文是隨機值，不會有人猜中；第一次用到才算、之後重用。
  */
+function hashEmailForLog(email: string): string {
+  return createHash('sha256').update(email.trim().toLowerCase()).digest('hex').slice(0, 12);
+}
+
 let dummyPasswordHash: Promise<string> | undefined;
 function getDummyPasswordHash(): Promise<string> {
   // 產生失敗時清掉快取，下次重算；否則 rejected 的 Promise 會一直留著，之後不存在帳號的登入全部 500
@@ -29,6 +33,8 @@ export async function login(prisma: PrismaClient, email: string, password: strin
     return { locked: false as const };
   });
   if (attempt.locked) {
+    // 供監控：同一帳號持續被鎖、或短時間多個帳號被鎖，可能是有人故意鎖人或在撞庫（不記明文 email）
+    logger.warn('[Auth] 登入因失敗次數過多被擋', { emailHash: hashEmailForLog(email) });
     const minutes = Math.max(1, Math.ceil(attempt.retryAfterMs / 60_000));
     throw new AppError(`登入失敗次數過多，請 ${minutes} 分鐘後再試`, 'ACCOUNT_LOCKED', 429);
   }
