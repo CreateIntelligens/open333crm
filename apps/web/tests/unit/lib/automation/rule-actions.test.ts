@@ -11,7 +11,7 @@ test('載入既有規則：轉成編輯器格式並濾掉不支援的動作', ()
   assert.deepEqual(
     toEditorActions([
       { type: 'send_message', params: { text: 'hi' } },
-      { type: 'create_case', params: { title: '客訴' } },
+      { type: 'llm_reply', params: {} },
       { type: 'add_tag', payload: { tagName: 'VIP' } },
     ]),
     [
@@ -24,4 +24,20 @@ test('載入既有規則：轉成編輯器格式並濾掉不支援的動作', ()
 test('沒有動作或格式不對：回空陣列', () => {
   assert.deepEqual(toEditorActions(undefined), []);
   assert.deepEqual(toEditorActions('bad'), []);
+});
+
+test('選填的下拉參數：最前面加「不指定」，畫面顯示與實際存的值一致', async () => {
+  const { selectOptionsForParam } = await import('#src/lib/automation/rule-actions.js');
+  const values = [{ value: 'LOW', label: '低' }, { value: 'HIGH', label: '高' }];
+  assert.deepEqual(selectOptionsForParam({ key: 'priority', required: false, values }), [
+    { value: '', label: '不指定' },
+    { value: 'LOW', label: '低' },
+    { value: 'HIGH', label: '高' },
+  ]);
+  assert.equal(selectOptionsForParam({ key: 'category', values })[0]!.label, '不指定（由 AI 分類）');
+  assert.deepEqual(
+    selectOptionsForParam({ key: 'status', required: true, values }).map((o) => o.value),
+    ['LOW', 'HIGH'],
+    '必填的不加',
+  );
 });

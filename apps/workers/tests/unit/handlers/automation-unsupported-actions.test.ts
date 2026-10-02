@@ -8,12 +8,12 @@ import { handleAutomationJob } from '#src/handlers/automation.handler';
 
 test('含不支援動作的既有規則：照常評估並發出執行事件', async () => {
   const rule = {
-    id: 'rule-legacy-create-case',
-    name: '一般問題自動開案',
+    id: 'rule-legacy-llm-reply',
+    name: 'LLM 智能回覆（舊規則）',
     priority: 10,
     stopOnMatch: false,
     conditions: { all: [] },
-    actions: [{ type: 'create_case', params: { title: '客訴' } }],
+    actions: [{ type: 'llm_reply', params: {} }],
   };
   const prisma = { automationRule: { findMany: async () => [rule] } };
   const published: string[] = [];

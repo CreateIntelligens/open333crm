@@ -14,7 +14,7 @@
 | `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
 
-動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。workers 尚未實作的動作（`create_case`、`remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply`）列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔時拒絕，見 `../../system/AUDIT.md` 的 AUTO-01。
+動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。workers 尚未實作的動作（`remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply`；`create_case` 已於 2026-10-02 補上）列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔時拒絕，見 `../../system/AUDIT.md` 的 AUTO-01。
 
 ## 一條規則由什麼組成
 
@@ -77,8 +77,8 @@
 | `escalate_case`、`set_case_priority` | 是 | 改工單優先級 |
 | `notify` 通知負責人 | 是 | 通知工單負責人 |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
-| `create_case` 建立工單 | **否** | 編輯器不提供，存檔時拒絕；既有規則執行時略過 |
-| `remove_tag` 移除標籤 | **否** | 同上 |
+| `create_case` 建立工單 | 是（#211） | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
+| `remove_tag` 移除標籤 | **否** | 編輯器不提供，存檔時拒絕；既有規則執行時略過 |
 | `assign_bot` 指派機器人 | **否** | 同上 |
 | `kb_auto_reply` KB 知識庫回覆 | **否** | 同上 |
 | `llm_reply` LLM 智能回覆 | **否** | 同上 |

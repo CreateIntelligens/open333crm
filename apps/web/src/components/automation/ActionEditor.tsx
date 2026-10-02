@@ -6,6 +6,7 @@ import type { AutomationActionDefinition } from '@open333crm/automation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { selectOptionsForParam } from '@/lib/automation/rule-actions';
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
@@ -101,10 +102,7 @@ function ActionParamsForm({
                   {param.label}
                 </label>
                 <Select
-                  options={(param.values ?? []).map((option) => ({
-                    value: String(option.value),
-                    label: option.label,
-                  }))}
+                  options={selectOptionsForParam(param)}
                   value={value}
                   onChange={(e) => updateParam(param.key, e.target.value)}
                   className="h-8 text-sm"

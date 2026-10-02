@@ -13,7 +13,7 @@ import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
-import { classifyIssue } from '../ai/classify.service.js';
+import { autoClassifyNewCase } from '../ai/classify.service.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
@@ -496,24 +496,9 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
 
       // Auto-classify issue based on latest inbound message
       if (caseId && conversationId) {
-        try {
-          const latestMessage = await prisma.message.findFirst({
-            where: { conversationId, direction: 'INBOUND' },
-            orderBy: { createdAt: 'desc' },
-            select: { content: true },
-          });
-          const messageText = (latestMessage?.content as Record<string, unknown>)?.text as string | undefined;
-          if (messageText) {
-            const classification = await classifyIssue(prisma, event.tenantId, messageText);
-            await prisma.case.update({
-              where: { id: caseId },
-              data: { category: classification.category },
-            });
-            logger.info(`[AutomationWorker] Case ${caseId} auto-classified: ${classification.category} (confidence=${classification.confidence})`);
-          }
-        } catch (err) {
-          logger.error('[AutomationWorker] Auto-classification error:', err);
-        }
+        await autoClassifyNewCase(prisma, event.tenantId, caseId, conversationId).catch((err) =>
+          logger.error('[AutomationWorker] Auto-classification error:', err),
+        );
       }
     } catch (err) {
       logger.error('[AutomationWorker] Error handling case.created:', err);

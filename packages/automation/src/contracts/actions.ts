@@ -7,6 +7,19 @@ const casePriorityOptions = [
   { value: 'URGENT', label: '緊急' },
 ] satisfies AutomationValueOption[];
 
+// 與 @open333crm/shared 的 CASE_CATEGORIES 一致（本套件不依賴 shared；api 測試比對兩份清單）
+const caseCategoryOptions = [
+  '產品諮詢',
+  '訂單問題',
+  '退換貨',
+  '帳號問題',
+  '技術支援',
+  '投訴建議',
+  '付款問題',
+  '物流配送',
+  '其他',
+].map((value) => ({ value, label: value })) satisfies AutomationValueOption[];
+
 const caseStatusOptions = [
   { value: 'OPEN', label: '開啟' },
   { value: 'IN_PROGRESS', label: '處理中' },
@@ -69,7 +82,8 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
   {
     type: 'create_case',
     label: '建立工單',
-    requires: ['contact'],
+    // 工單的渠道取自觸發的對話；工單、SLA、聯絡人事件沒有對話，也避免「工單建立 → 建立工單」的迴圈
+    requires: ['contact', 'conversation'],
     mutates: ['case'],
     params: [
       { key: 'title', label: '工單標題', type: 'string', required: true },
@@ -79,7 +93,7 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
         type: 'select',
         values: casePriorityOptions,
       },
-      { key: 'category', label: '分類', type: 'string' },
+      { key: 'category', label: '分類', type: 'select', values: caseCategoryOptions },
     ],
   },
   {
@@ -180,10 +194,9 @@ export const AUTOMATION_ACTION_MAP: ReadonlyMap<string, AutomationActionDefiniti
  *   - 規則編輯器不提供（composer 預設排除）
  *   - 存檔時拒絕（validateAutomationRuleContract）
  *   - 既有規則在 workers 照常執行其他動作，只跳過這幾個（allowUnsupportedActions）
- * workers 補上實作後，從這裡移除即可。
+ * workers 補上實作後，從這裡移除即可（create_case 已於 2026-10-02 補上）。
  */
 export const UNSUPPORTED_AUTOMATION_ACTION_TYPES: ReadonlySet<string> = new Set([
-  'create_case',
   'remove_tag',
   'assign_bot',
   'kb_auto_reply',
