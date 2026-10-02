@@ -64,7 +64,7 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 
 ## 速率限制
 
-`platform.routes.ts` 在自己的 scope 內註冊 `@fastify/rate-limit`，以 `request.ip` 分組：
+`platform.routes.ts` 在自己的 scope 內註冊 `@fastify/rate-limit`，以來源 IP 分組：
 
 | 範圍 | 上限 |
 | --- | --- |
@@ -73,10 +73,9 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 | `POST /auth/forgot-password` | 每 10 分鐘 5 次 |
 | `POST /auth/reset-password` | 每 10 分鐘 10 次 |
 
-兩件事要知道：
+**沒有帳號層級的鎖定。** 限制按來源 IP 計算。同一個帳號被多個 IP 輪流嘗試不會觸發鎖定，帳號也不會因為連續失敗而鎖住。租戶端的密碼登入有帳號鎖定，平台端沒有，見 `../../system/AUDIT.md` 的 AUTH-04。
 
-- **沒有帳號層級的鎖定。** 限制按來源 IP 計算。同一個帳號被多個 IP 輪流嘗試不會觸發鎖定，帳號也不會因為連續失敗而鎖住。
-- **`request.ip` 可以由呼叫端決定**，因此上面所有限制都繞得過。`trustProxy: true` 讓 API 取 `X-Forwarded-For` 最左邊的值，而 repo 內的 nginx 是附加不是覆寫，偽造的值會原樣留在最左邊。詳見 `../../system/AUDIT.md` 的 SEC-04。
+來源 IP 是 `request.ip`。API 只信任私有網段與本機的代理（`apps/api/src/lib/trust-proxy.ts`），因此呼叫端自己帶的 `X-Forwarded-For` 不會被採用。API 前面若加上公網的 CDN，要把 CDN 的 IP 段加進信任清單，否則所有人的來源 IP 都會是 CDN 節點。
 
 這份 rate-limit 設定綁在路由 scope 內，拆檔會一起失效，見 `../../system/AUDIT.md` 的 SEC-03。
 

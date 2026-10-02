@@ -4,6 +4,30 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：記錄 SEC-04、SEC-05、SLA-01 的修正，新增 SEC-06 與 SLA-05
+
+PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT.md`。本次對照兩個 PR 的 diff，逐項確認 `AUDIT.md` 原本描述的問題都已修正，再從 `AUDIT.md` 移除：
+
+| 項目 | 修正的 commit | 修正內容 | 驗證 |
+| --- | --- | --- | --- |
+| SEC-04 | `44582d1`（#200） | `trustProxy` 由 `true` 改為 `lib/trust-proxy.ts` 的 `TRUSTED_PROXIES`（`loopback`、`linklocal`、`uniquelocal`）。`proxy-addr` 從連線來源往左略過受信任的代理，停在最外層代理附加的真實 IP，最左邊的偽造值不再被採用。`Caddyfile.local` 加上 `trusted_proxies static private_ranges`，保留主機 nginx 附加的 `X-Forwarded-For` | `tests/unit/lib/trust-proxy.test.ts`：經 nginx 與 Caddy 轉送、公網直接連到 API、沒有代理標頭 |
+| SEC-05 | `44582d1`（#200） | `POST /auth/login` 加上 `config.rateLimit`，每個 IP 每分鐘 10 次。`auth/login-attempts.ts` 依 email 計數，15 分鐘內第 6 次嘗試起鎖定；CLI 密碼登入共用計數。計數在驗證密碼之前原子遞增 | `tests/unit/modules/auth/` 的 `login-brute-force.test.ts`、`login-rate-limit-route.test.ts`、`login-timing.test.ts`、`cli-session-auth.test.ts` |
+| SLA-01 | `c99c40d`（#201） | `sendMessage()` 在工單關聯的對話送出客服訊息時呼叫 `markCaseFirstResponse()`；對話掛到既有工單時補上最早的客服回覆。既有工單用 `apps/api/src/scripts/backfill-case-first-response.ts` 補值 | `tests/feature/modules/case/case-first-response.test.ts`、`tests/unit/modules/conversation/send-message-first-response.test.ts` |
+
+**兩個部署環境的設定都已靜態核對。** `docker-compose.prod.yml` 的路徑是 nginx 容器到 API。nginx 容器的 IP 在 docker 網段（`uniquelocal`）內，API 把 nginx 容器當成代理略過，因此取到 nginx 附加的真實 IP。`docker-compose.yml` 的路徑是主機 nginx 到 Caddy 再到 API，靠 `Caddyfile.local` 的 `trusted_proxies` 保留真實 IP。`add-login-brute-force-protection` 的任務 3.3（部署後在 UAT 確認 API log 的 `remoteAddress` 是真實 IP）尚未完成，這個 change 也還沒歸檔。
+
+**SEC-05 的修正一併修掉一個帳號列舉的問題。** 原本的 `login()` 先檢查帳號是否停用，再驗證密碼，不需要密碼就能分辨一個 email 是不是停用的帳號。`44582d1` 把停用檢查移到密碼驗證之後，email 不存在時也對假雜湊比對一次，讓回應時間一致。
+
+**SEC-05 的修正留下一個取捨，記為 SEC-06。** 帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入。`login-attempts.ts` 的註解記下這個取捨，規格沒有提到，因此獨立成一項。
+
+**SLA-01 的修正留下一個缺口，記為 SLA-05。** 兩個寫入點都以「工單關聯的對話」為前提，手動建立、沒有關聯對話的工單仍然永遠沒有首次回應時間。`case-first-response.test.ts` 的「同一位顧客、沒有關聯工單的另一段對話」案例確認這是刻意的範圍，CHANGELOG 也寫明「另案處理」。
+
+**連帶更新的內容。**
+
+- AUTH-01 的前置條件原本是「SEC-04 應先修」，改為「新端點要自己設定速率限制」。
+- AUTH-04 原本寫平台登入的速率限制可以透過 SEC-04 繞過。改為寫明平台登入只有 IP 限流，沒有帳號鎖定。
+- ANA-01 原本寫平均首次回應時間因為 SLA-01 永遠是空值，改為指向 SLA-05。
+
 ## 2026-10-01：修正 RLS-06 與 TRIAL-01，新增 CASE-02
 
 依 change `fix-csat-intercept-and-trial-upgrade` 修正 P1 的第一批，兩項都從 `AUDIT.md` 移除：

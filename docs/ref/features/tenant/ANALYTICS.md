@@ -37,7 +37,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 
 **SLA 達成率**是已解決、而且 `resolvedAt` 不晚於 `slaDueAt` 的工單比例。沒有 SLA 期限的工單不計入。
 
-**平均首次回應時間永遠是空值。** 計算用的 `Case.firstResponseAt` 沒有任何程式寫入，見 `../../system/AUDIT.md` 的 SLA-01。
+**平均首次回應時間**取 `Case.firstResponseAt` 不為空的工單計算。客服在工單關聯的對話第一次送出訊息時寫入這個欄位，AI 與系統自動回覆不算。沒有關聯對話的工單不會有這個值，因此不計入，見 `../../system/AUDIT.md` 的 SLA-05。
 
 **CSAT 好評率**是 4 分與 5 分佔全部評分的比例。
 
@@ -61,7 +61,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 
 | 限制 | 說明 |
 | --- | --- |
-| **平均首次回應時間永遠是空值** | 詳見 `../../system/AUDIT.md` 的 SLA-01 |
+| 沒有關聯對話的工單不計入平均首次回應時間 | 詳見 `../../system/AUDIT.md` 的 SLA-05 |
 | 日期以 UTC 切分 | 詳見 `../../system/AUDIT.md` 的 ANA-01 |
 | 每天寫入的彙總沒有被使用 | 詳見 `../../system/AUDIT.md` 的 DB-03 |
 | 只有 `analytics.view.self` 的客服找不到入口 | 側欄的父選單要求 `analytics.view` |

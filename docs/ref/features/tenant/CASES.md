@@ -151,7 +151,7 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | 限制 | 說明 |
 | --- | --- |
 | 非 LINE 渠道無法回覆滿意度調查 | 詳見 `../../system/AUDIT.md` 的 CASE-02 |
-| **首次回應 SLA 必定逾時** | 詳見 `../../system/AUDIT.md` 的 SLA-01 |
+| **沒有關聯對話的工單，首次回應 SLA 必定逾時** | 詳見 `../../system/AUDIT.md` 的 SLA-05 |
 | 狀態下拉選單不寫時間軸、不發布事件 | 詳見 `../../system/AUDIT.md` 的 CASE-01 |
 | 自動指派看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | 工單以政策名稱連結 SLA | 詳見 `../../system/AUDIT.md` 的 SLA-04 |

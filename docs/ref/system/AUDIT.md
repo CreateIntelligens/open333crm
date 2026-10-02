@@ -6,7 +6,7 @@
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
 - **執行時驗證日期**：2026-09-02
-- **最近複查日期**：2026-10-01
+- **最近複查日期**：2026-10-02
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
 - **部署決定**：組織因主機資源不足，決定不部署 Ollama（2026-10-01）。LLM 各項依這個決定判斷。
 
@@ -64,8 +64,7 @@
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
-| [SEC-04](#sec-04) | 帳號與登入 | P1 | 未處理 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
-| [SEC-05](#sec-05) | 帳號與登入 | P1 | 已提建議 | 租戶的密碼登入沒有速率限制，也沒有帳號鎖定 | 靜態確認 |
+| [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
 | [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
@@ -86,10 +85,10 @@
 | [AI-01](#ai-01) | AI 用量與成本 | P2 | 未處理 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
 | [USAGE-01](#usage-01) | AI 用量與成本 | P3 | 未處理 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
 | [USAGE-02](#usage-02) | AI 用量與成本 | P2 | 已提建議 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
-| [SLA-01](#sla-01) | SLA | P1 | 未處理 | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
 | [SLA-02](#sla-02) | SLA | P2 | 未處理 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
 | [SLA-03](#sla-03) | SLA | P3 | 未處理 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | [SLA-04](#sla-04) | SLA | P2 | 未處理 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 已提建議 | 收件匣的下拉選單繞過關閉與指派的副作用；指派對話不會通知 | 靜態確認 |
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
@@ -434,7 +433,7 @@ Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticat
 
   設定值本身有驗證：`config/env.ts` 的 `superRefine` 規定 `resend` 模式必填 `RESEND_API_KEY` 與 `EMAIL_FROM`、`smtp` 模式必填 `SMTP_HOST`，缺少時 API 啟動就失敗。因此只要線上 API 啟動成功且模式不是 `log`，寄信設定就是完整的。要確認的只有模式本身。
 
-- **SEC-04 應先修。** 新增的是公開端點，擋暴力破解只能靠速率限制，而速率限制目前以可偽造的 `request.ip` 分組。
+- **新端點要自己設定速率限制。** 新增的是公開端點，擋濫用只能靠速率限制。`auth.routes.ts` 以 `global: false` 註冊速率限制外掛，新路由沒有設定 `config.rateLimit` 就不受限制。速率限制使用的來源 IP 已經無法偽造（`44582d1`）。
 
 <a id="auth-02"></a>
 ### AUTH-02：停用租戶不會中斷既有的連線與 token
@@ -484,7 +483,7 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 
 所有平台帳號的 JWT 都帶 `role: 'PLATFORM_SUPERUSER'`，平台側沒有權限表。平台端也沒有 MFA 或 passkey；passkey 只有租戶端有。
 
-這個身分可以跨租戶開通、停用、改方案、看用量，也能建立與停用其他平台帳號。單一密碼就是全部權限，而登入端點的速率限制又能透過 SEC-04 繞過。
+這個身分可以跨租戶開通、停用、改方案、看用量，也能建立與停用其他平台帳號。單一密碼就是全部權限。平台的登入端點只依來源 IP 限制每分鐘 10 次，沒有帳號層級的鎖定：從多個 IP 輪流嘗試，就能持續猜同一個帳號的密碼。租戶端的密碼登入已經有帳號鎖定（`44582d1`），平台端沒有。
 
 **同級帳號之間可以互相接管。**
 
@@ -591,50 +590,18 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 
 搬移之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。`platform` 模組沒有任何測試，這類改動不會被測試擋下。
 
-<a id="sec-04"></a>
-### SEC-04：`request.ip` 可由呼叫端偽造
+<a id="sec-06"></a>
+### SEC-06：帳號鎖定只依 email 計數
 
-`apps/api/src/index.ts` 建立 Fastify 實例時設定 `trustProxy: true`。這個值的意思是「信任所有上游」，Fastify 底層的 `proxy-addr` 因此取 `X-Forwarded-For` 的**最左邊**那一個位址當作 `request.ip`。最左邊是呼叫端自己寫的值。
+`44582d1` 為租戶的密碼登入加上帳號鎖定。`auth/login-attempts.ts` 以 email 為鍵，在 Redis 累計嘗試次數：15 分鐘內第 6 次嘗試起一律回 429 `ACCOUNT_LOCKED`，密碼正確也不放行，直到區間結束。`POST /auth/cli/login` 共用同一個計數。
 
-前面有沒有反向代理都一樣。`nginx/nginx.conf.template` 的六個 location 區塊全部用：
+計數只看 email，不看來源。知道某位成員 email 的人，每 15 分鐘故意輸錯 6 次密碼，就能讓這位成員一直無法以密碼登入，也無法以密碼登入 CLI。email 不存在時同樣計數，因此回應不透露帳號是否存在。攻擊者也因此不需要先確認 email 是否存在。
 
-```nginx
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-```
+可繞過的做法：被鎖的成員仍可用 Passkey 登入，Passkey 不經過這個計數。
 
-`$proxy_add_x_forwarded_for` 是**附加**，不是覆寫。呼叫端送 `X-Forwarded-For: 1.2.3.4`，經過 nginx 之後變成 `1.2.3.4, <真實 IP>`，而 API 取的是最左邊的 `1.2.3.4`。
+這是 `login-attempts.ts` 的註解記下的已知取捨，`add-login-brute-force-protection` 的規格沒有提到。帳號被鎖時，`login()` 會寫一筆 warn log（`[Auth] 登入因失敗次數過多被擋`，帶 email 雜湊），可以從 log 發現有人反覆鎖同一個帳號。
 
-同一份設定裡的 `X-Real-IP: $remote_addr` 是覆寫，值可信，但 API 沒有任何地方讀它。
-
-五個模組的速率限制，`keyGenerator` 都是 `request.ip`，因此每換一次標頭就等於換一個新的來源：
-
-| 位置 | 上限 |
-| --- | --- |
-| `platform.routes.ts` | scope 內每分鐘 30 次；登入每分鐘 10 次；忘記密碼每 10 分鐘 5 次 |
-| `auth/auth.routes.ts` | Passkey 各路由與 CLI 登入各每分鐘 10 次。外掛以 `global: false` 註冊，租戶的密碼登入 `/login` 沒有限制，見 SEC-05 |
-| `trial/trial.routes.ts` | scope 內每 10 分鐘 20 次；申請試用每 10 分鐘 5 次 |
-| `chatbox/chatbox.routes.ts` | scope 內每分鐘 60 次；建立 session 每分鐘 10 次 |
-| `webchat/webchat.routes.ts` | scope 內每分鐘 60 次；各路由每分鐘 10 到 30 次 |
-
-平台後台與租戶後台都沒有帳號層級的鎖定，速率限制是唯一擋暴力破解的機制。
-
-被影響的不只是速率限制。`request.ip` 還寫進兩種紀錄，兩者都會記到偽造的值：
-
-- `trial_signups.requestIp`，申請來源。
-- 租戶側稽核紀錄的 `ip` 欄位（`agent`、`role`、`contact`、`settings`、`channel`、`data-export` 等模組的異動路由）。
-
-生產環境的 `docker-compose.prod.yml` 只有 nginx 對外開 80 與 443，`api` 沒有對應的 host port。這一點不改變結論：偽造的標頭會原樣通過 nginx。
-
-<a id="sec-05"></a>
-### SEC-05：租戶的密碼登入沒有速率限制
-
-`auth.routes.ts` 以 `global: false` 註冊 `@fastify/rate-limit`，只有在路由的 `config.rateLimit` 個別設定的路由才受限。受限的是 Passkey 的各路由與 `POST /auth/cli/login`；`POST /auth/login` 沒有設定。2026-06-04 的 `00aa7ee` 註冊這個外掛時，就只加在 CLI 登入上，之後補上的是 Passkey 路由。
-
-`auth.service.ts` 的 `login()` 也沒有失敗次數的計數或帳號鎖定。任何人都可以對任一 email 無限次嘗試密碼。
-
-平台後台的登入有速率限制（每分鐘 10 次），租戶端沒有。即使補上，限制仍以可偽造的 `request.ip` 計算，見 SEC-04。
-
-**修正方向**：`/login` 加上 `config.rateLimit`，並以 email 加上真實來源 IP 為鍵；另外依帳號累計連續失敗次數，超過門檻時暫時鎖定或要求額外驗證。
+**修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。
 
 ## 金鑰與 License
 
@@ -1108,24 +1075,6 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 功能說明見[服務水準協議](../features/SLA.md)。
 
-<a id="sla-01"></a>
-### SLA-01：`Case.firstResponseAt` 沒有寫入端
-
-`packages/database/prisma/schema.prisma` 的 `Case` 宣告 `firstResponseAt`，對應的 migration 也建了欄位。三個地方讀這個欄位：
-
-- `apps/workers/src/handlers/sla.handler.ts` 的 `pollSlaCases()`，用它判定首次回應是否已達成。
-- `apps/api/src/modules/analytics/analytics.service.ts` 的 `getOverviewStats()` 與 `getAgentPerformance()`，用它計算平均首次回應時間。
-- `apps/web/src/components/inbox/ContactInfoPanel.tsx`，顯示給客服看。
-
-全 repo 沒有任何程式寫入這個欄位。以 `firstResponseAt` 為關鍵字搜尋 `apps/` 與 `packages/`，命中的都是 schema 宣告、型別宣告、`select` 子句或讀取端。
-
-兩個後果：
-
-1. 客服即使立刻回覆，工單仍會在 `createdAt + firstResponseMinutes` 到期時判定為 `first_response_breached`。系統接著通知負責人與該租戶的 `ADMIN`、`SUPERVISOR`，寫入 `CaseEvent`，並觸發租戶的自動化規則。每張套用政策的工單都會發生一次。
-2. 分析報表的平均首次回應時間永遠沒有數值。SQL 的 `FILTER (WHERE "firstResponseAt" IS NOT NULL)` 濾出空集合，`AVG()` 回傳 null。
-
-這一項會持續產生假警報，不需要特定操作觸發。
-
 <a id="sla-02"></a>
 ### SLA-02：掃描每輪上限 100 張工單
 
@@ -1156,6 +1105,22 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - 修改政策名稱之後，既有工單的 `slaPolicy` 仍是舊名稱。`getPolicy()` 回傳 null，`sla.handler.ts` 直接 `continue`，該工單從此不再受監控，而且沒有任何紀錄。
 - `sla_policies` 只有 `@@index([tenantId])`，沒有 `(tenantId, name)` 的唯一約束。同一租戶建立兩條同名政策時，`findFirst` 回傳哪一條不確定。
 - `DELETE /api/v1/sla-policies/:id` 是硬刪除，沒有引用檢查。`SlaPolicy` 沒有 `isActive` 欄位，因此無法套用 `AGENTS.md` 的 soft-delete 慣例。刪除後，引用該名稱的工單留下一個查不到政策的字串。
+
+<a id="sla-05"></a>
+### SLA-05：沒有關聯對話的工單沒有首次回應時間
+
+`c99c40d` 之後，客服在工單關聯的對話送出訊息時，`conversation.service.ts` 的 `sendMessage()` 呼叫 `case.service.ts` 的 `markCaseFirstResponse()` 寫入 `Case.firstResponseAt`。對話掛到既有工單時，`syncFirstResponseFromConversation()` 也會補上工單建立後最早的那則客服訊息。
+
+兩個寫入點都以「工單關聯的對話」為前提。`POST /api/v1/cases` 的 `createCase()` 只帶 `contactId` 與 `channelId`，不建立對話關聯。客服之後在這位聯絡人的對話裡回覆，只要那個對話沒有掛到這張工單，就不算這張工單的首次回應。
+
+這種工單套用 SLA 政策時：
+
+- `sla.handler.ts` 在 `createdAt + firstResponseMinutes` 到期時判定 `first_response_breached`，通知負責人與主管、寫入 `CaseEvent`、觸發自動化規則。去重的區間是 24 小時，工單沒有結案前每 24 小時再發一次。
+- 分析報表的平均首次回應時間不計入這種工單。
+
+`apps/api/src/scripts/backfill-case-first-response.ts` 為既有工單補值時，也只看關聯對話裡的客服訊息，同樣補不到這種工單。另一種補不到的情況是：客服只在工單建立之前回覆過，之後沒有再回覆。
+
+**修正方向**：手動建立工單時，若這位聯絡人在該渠道有進行中的對話，就把對話掛到工單上；或者讓首次回應改以「工單建立後，客服對這位聯絡人在該渠道送出的第一則訊息」判斷，不要求對話關聯。
 
 ## 對話、工單與自動化
 
@@ -1405,7 +1370,7 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 `analytics.service.ts` 以 `date_trunc('day' | 'week' | 'month', "createdAt")` 分組。時間欄位是不帶時區的 `TIMESTAMP(3)`，存的是 UTC，資料庫連線也以 UTC 計算。台灣時間凌晨 0 點到 8 點的訊息、工單與聯絡人，會被算進前一天；週與月的邊界也差 8 小時。
 
-同一份報表的「平均首次回應時間」讀 `Case.firstResponseAt`，因為 SLA-01 而永遠是空值。
+同一份報表的「平均首次回應時間」讀 `Case.firstResponseAt`。沒有關聯對話的工單不會有這個值，不計入平均，見 SLA-05。
 
 ## 渠道、稽核與資料權利
 

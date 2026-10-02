@@ -179,8 +179,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
 | `authenticate` 與 socket 不區分 JWT 種類，refresh token 能當客服 access token；粉絲 token 的簽發路徑接回之後，粉絲 token 也能 | AUTH-05 |
-| 租戶的密碼登入沒有速率限制，也沒有帳號鎖定 | SEC-05 |
-| 速率限制以 `request.ip` 計算，而 `request.ip` 可由呼叫端偽造 | SEC-04 |
+| 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員無法以密碼登入 | SEC-06 |
 | CLI token 只看 scope，不看角色與方案天花板；`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
 | `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |

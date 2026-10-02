@@ -115,15 +115,25 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 | 方式 | 端點 | 說明 |
 | --- | --- | --- |
-| 密碼 | `POST /auth/login` | 以 email 找出成員與租戶。檢查成員啟用、密碼正確、租戶啟用 |
+| 密碼 | `POST /auth/login` | 以 email 找出成員與租戶。依序檢查帳號是否鎖定、密碼是否正確、成員是否啟用、租戶是否啟用 |
 | Passkey | `POST /auth/passkeys/authentication/options`、`/verify` | 同樣檢查成員與租戶是否啟用 |
 | CLI | `POST /auth/cli/login` | 發出 CLI token，見 `../../system/AUDIT.md` 的 RBAC-02 |
 
 登入成功後回傳 access token，refresh token 放在 httpOnly cookie。兩者的有效期由 `ACCESS_TOKEN_EXPIRES_IN` 與 `REFRESH_TOKEN_EXPIRES_IN` 設定，預設 15 分鐘與 30 天。`POST /auth/refresh` 換發時會從資料庫重讀角色，並擋下已停用的成員與租戶。`POST /auth/logout` 只清掉 cookie，已發出的 token 在到期前仍然有效。
 
-**密碼登入沒有速率限制。** `auth.routes.ts` 以 `global: false` 註冊速率限制外掛，只有個別設定的路由受限：Passkey 的各路由與 CLI 登入。`POST /auth/login` 沒有設定，也沒有帳號鎖定，可以無限次嘗試密碼。見 `../../system/AUDIT.md` 的 SEC-05。有設定的路由以 `request.ip` 為單位計算，而 `request.ip` 可以被偽造，見 SEC-04。
+**密碼登入有兩層防暴力破解。**
 
-密碼登入先檢查帳號是否停用，再驗證密碼。因此不需要知道密碼，就能從回應分辨一個 email 是否屬於被停用的帳號。
+| 層 | 計算單位 | 上限 | 超過時 |
+| --- | --- | --- | --- |
+| 速率限制 | 來源 IP | 每分鐘 10 次 | 429 `RATE_LIMITED` |
+| 帳號鎖定（`auth/login-attempts.ts`） | email，不分大小寫 | 15 分鐘內 5 次。成功登入時清除計數 | 429 `ACCOUNT_LOCKED`，鎖到區間結束，密碼正確也不放行 |
+
+- CLI 的密碼登入（`POST /auth/cli/login`）共用同一個帳號計數。Passkey 登入不經過帳號計數。
+- email 不存在時同樣計數，也同樣比對一次密碼雜湊。回應內容與回應時間都不透露帳號是否存在。
+- 帳號計數存在 Redis。Redis 故障時略過帳號鎖定、照常登入，並寫 error log；IP 的速率限制仍然有效。
+- 停用成員與停用租戶的檢查在密碼驗證之後。不知道密碼的人無法從回應分辨帳號是否停用。
+
+帳號鎖定只看 email，知道某位成員 email 的人可以讓這位成員一直無法以密碼登入，見 `../../system/AUDIT.md` 的 SEC-06。
 
 各種 token 的簽發與驗證、停用成員或改角色之後多久生效，見[認證與憑證](../../modules/AUTHENTICATION.md)。其中最嚴重的問題是 token 不分種類：refresh token 能當客服的 access token 使用，粉絲 token 的簽發路徑接回之後，粉絲 token 也能，見 `../../system/AUDIT.md` 的 AUTH-05。
 
@@ -147,7 +157,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | 限制 | 說明 |
 | --- | --- |
 | **token 不分種類，refresh token 能當 access token** | 詳見 `../../system/AUDIT.md` 的 AUTH-05 |
-| **密碼登入沒有速率限制** | 詳見 `../../system/AUDIT.md` 的 SEC-05 |
+| 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
