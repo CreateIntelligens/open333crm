@@ -33,7 +33,6 @@ const WHITELIST = [
   /modules\/cli\//,                 // CLI 分析（自身 scope 機制）
   /modules\/line-login\//,          // OAuth 回調
   /modules\/fb-login\//,            // OAuth 回調
-  /modules\/line\/line-profile/,    // LINE profile（認證相關）
   /modules\/webhook\//,             // 公開入站 webhook（無 JWT，channel 反查）
   /modules\/chatbox\/chatbox\.routes/, // public Chatbox routes use validated session/channel scope
   /\.scheduler\./,                  // scheduler 掃全租戶
