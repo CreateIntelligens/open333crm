@@ -8,7 +8,8 @@
 - [x] 2.1 `packages/automation` 契約、composer、validation
 - [x] 2.2 workers 驗證選項與 log 等級；API `updateRule` 只在改動邏輯時驗證、錯誤訊息中文化
 - [x] 2.3 前端規則列表標示、編輯頁說明
-- [x] 2.4 刪除 `action-executor.ts`
+- [x] 2.4 刪除 `action-executor.ts`，更新 `docs/ref/features/tenant/AUTOMATION.md` 與主規格 `ai-usage-recording` 對它的引用
+- [x] 2.5 編輯頁載入既有規則時濾掉不支援的動作；測試 `apps/web/tests/unit/lib/automation/rule-actions.test.ts`
 
 ## 3. 完成檢查
 

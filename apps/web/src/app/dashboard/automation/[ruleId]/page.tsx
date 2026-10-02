@@ -21,6 +21,7 @@ import {
   type AutomationActionDefinition,
 } from '@open333crm/automation';
 import api from '@/lib/api';
+import { toEditorActions } from '@/lib/automation/rule-actions';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
 import { useAutomationRule } from '@/hooks/useAutomation';
 import { Topbar } from '@/components/layout/Topbar';
@@ -165,13 +166,8 @@ export default function AutomationRuleDetailPage() {
     } else {
       setQuery(DEFAULT_QUERY);
     }
-    // Normalize: backend stores { type, params }, frontend uses { type, payload }
-    setActions(
-      (rule.actions || []).map((a: any) => ({
-        type: a.type,
-        payload: a.payload || a.params || {},
-      }))
-    );
+    // 後端存 { type, params }、編輯器用 { type, payload }；同時濾掉 workers 尚未支援的動作（AUDIT AUTO-01）
+    setActions(toEditorActions(rule.actions));
   }, [rule]);
 
   // ---- handlers ----

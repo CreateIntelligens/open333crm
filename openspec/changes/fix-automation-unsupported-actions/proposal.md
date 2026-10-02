@@ -13,6 +13,7 @@ docs/ref/system/AUDIT.md AUTO-01（issue #197）：2026-05 自動化執行搬到
 - 前端：規則列表在含這些動作的規則旁標示「含未支援的動作」；編輯頁說明哪些動作不會執行、儲存時會被移除。
 - 更新規則時只有改到觸發、條件或動作才驗證契約（同 PR #124）：否則含這些動作的既有規則連停用都會被擋。
 - 契約驗證錯誤訊息開頭改為中文。
+- 編輯頁載入既有規則時直接濾掉這些動作（`lib/automation/rule-actions.ts`），儲存時不會被後端拒絕，與提示一致。
 - 刪除 API 端沒有呼叫端的 `modules/automation/engine/action-executor.ts`。
 
 ## Capabilities
@@ -25,3 +26,5 @@ docs/ref/system/AUDIT.md AUTO-01（issue #197）：2026-05 自動化執行搬到
 
 - `packages/automation`（需重新 build）、`apps/workers`、`apps/api/src/modules/automation`、`apps/web` 規則列表與編輯頁
 - 不需要 migration；既有規則資料不變。
+- 已知取捨：只改啟用狀態時不驗證契約，所以條件已不合現行契約的舊規則也能被重新啟用；workers 執行時會整條跳過並留 warn。換來的是管理員一定能停用不合規的規則。
+- 另發現（不在本次範圍）：`notify` 只在有負責人時執行，訊息類事件常沒有負責人而被跳過，屬部分支援，另行追蹤。
