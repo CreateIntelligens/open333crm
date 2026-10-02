@@ -9,8 +9,12 @@
 - [x] 2.2 契約：`create_case` 需要 conversation、移出不支援清單、分類改為下拉選單
 - [x] 2.3 審查補強：交易內條件式關聯（並行不重複開）、分類驗證；`autoClassifyNewCase` 不覆蓋既有分類（測試 `apps/api/tests/unit/modules/ai/auto-classify-new-case.test.ts`）
 
-## 3. 完成檢查
+## 3. 規格
 
-- [x] 3.1 API、workers、web 的 unit 測試與 `tsc` 通過
-- [x] 3.2 `CHANGELOG.md` 新增條目
-- [ ] 3.3 部署後在 UAT：Demo Tenant 的自動開案規則重新儲存並啟用，傳送命中的訊息，確認自動建立工單、收到通知
+- [x] 3.0 MODIFIED「Actions」：`create_case` 改為已支援並需要對話，待實作清單剩 4 種（#197 審查：不可用 ADDED 與主規格既有需求矛盾）
+
+## 4. 完成檢查
+
+- [x] 4.1 API、workers、web 的 unit 測試與 `tsc` 通過
+- [x] 4.2 `CHANGELOG.md` 新增條目
+- [ ] 4.3 部署後在 UAT：Demo Tenant 的自動開案規則重新儲存並啟用，傳送命中的訊息，確認自動建立工單、收到通知

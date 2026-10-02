@@ -15,4 +15,8 @@
 
 - [x] 3.1 API、workers、web 的 unit 測試與 `tsc` 通過
 - [x] 3.2 `CHANGELOG.md` 新增條目
-- [ ] 3.3 部署後在 UAT 確認：Demo Tenant 的「一般問題自動開案」在列表顯示「含未支援的動作」、可停用
+- [x] 3.3 部署後在 UAT 確認：~~Demo Tenant 的「一般問題自動開案」在列表顯示「含未支援的動作」、可停用~~ 改由 `add-automation-create-case` 3.3 驗證：該 change 補上 `create_case` 實作，這條規則不再含未支援的動作；可停用由 `automation-unsupported-actions.test.ts` 的 updateRule 測試涵蓋
+
+## 4. 規格修正（#197 審查）
+
+- [x] 4.1 delta 由 ADDED「拒絕 workers 尚未支援的動作」改為 MODIFIED「Actions」：主規格原本寫 SHALL 支援 `create_case`，ADDED 會讓主規格同時要求支援與拒絕
