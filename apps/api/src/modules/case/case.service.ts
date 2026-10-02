@@ -895,6 +895,9 @@ export async function linkConversationToCase(
     },
   });
 
+  // 客服可能在掛上工單前就已回覆：補上首次回應，否則 SLA 會判定逾時
+  await syncFirstResponseFromConversation(prisma, tenantId, caseId, conversationId, caseRecord.createdAt);
+
   io.to(`tenant:${tenantId}`).emit('case.updated', {
     id: caseId,
     conversationId,
@@ -1072,4 +1075,38 @@ export async function updateCase(
   io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
 
   return updated;
+}
+
+/**
+ * 記錄工單的首次回應時間（AUDIT SLA-01）：客服在工單關聯的對話送出訊息時呼叫。
+ * 只在回應時間不早於工單建立、且比已記錄的更早（或尚未記錄）時寫入；單一條件式 UPDATE，並發送出也不會寫錯。
+ * 首次回應只算客服（AI 與系統自動回覆不算），且在送到渠道之前就記錄：客服已經回覆，渠道送出失敗另有失敗標示。
+ * 原本沒有任何寫入端，套了 SLA 的工單時間一到必定判定首次回應逾時。
+ */
+export async function markCaseFirstResponse(prisma: TenantDb, tenantId: string, caseId: string, respondedAt: Date): Promise<void> {
+  await prisma.case.updateMany({
+    where: {
+      id: caseId,
+      tenantId,
+      createdAt: { lte: respondedAt },
+      OR: [{ firstResponseAt: null }, { firstResponseAt: { gt: respondedAt } }],
+    },
+    data: { firstResponseAt: respondedAt },
+  });
+}
+
+/** 對話掛到既有工單時：該對話中工單建立後最早的客服回覆，也算這張工單的首次回應 */
+async function syncFirstResponseFromConversation(prisma: TenantDb, tenantId: string, caseId: string, conversationId: string, caseCreatedAt: Date) {
+  const firstReply = await prisma.message.findFirst({
+    where: {
+      conversationId,
+      conversation: { tenantId },
+      direction: 'OUTBOUND',
+      senderType: 'AGENT',
+      createdAt: { gte: caseCreatedAt },
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { createdAt: true },
+  });
+  if (firstReply) await markCaseFirstResponse(prisma, tenantId, caseId, firstReply.createdAt);
 }

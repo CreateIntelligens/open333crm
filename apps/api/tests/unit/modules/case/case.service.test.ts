@@ -282,6 +282,8 @@ async function testLinkConversationToCase() {
       update: conversationUpdate,
     },
     caseEvent: { create: mockFn() },
+    // 掛上工單時會查該對話已有的客服回覆來補首次回應（AUDIT SLA-01）；這裡沒有回覆
+    message: { findFirst: mockFn(() => null) },
   };
 
   const result = await linkConversationToCase(
