@@ -28,7 +28,11 @@
 
 因此同一個人從 LINE 與 Facebook 進來，一開始是兩個聯絡人。要變成一個，只能經過[合併](#合併)。
 
-聯絡人的名稱與頭像取自渠道。LINE 另有 `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile` 可以重新抓取；這個端點沒有頁面，也不檢查租戶，見 `../../system/AUDIT.md` 的 RLS-05。
+聯絡人的名稱與頭像取自渠道。系統只在第一次建立聯絡人時向渠道抓取一次，之後不會自動更新。LINE 另有 `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile` 可以重新抓取，目前沒有頁面呼叫它。這個端點：
+
+- 要求 `contact.update` 權限，渠道也要在成員的可見範圍內。
+- 只接受自己租戶、啟用中的 LINE 渠道；其他情況一律回 404。
+- 只寫入 `ChannelIdentity` 的 `profileName` 與 `profilePic`，不改 `Contact` 的名稱與頭像，以保留客服的修改。
 
 ## 清單與編輯
 
@@ -106,7 +110,6 @@
 
 | 限制 | 說明 |
 | --- | --- |
-| **重抓 LINE 個人資料的端點不檢查租戶** | 詳見 `../../system/AUDIT.md` 的 RLS-05 |
 | **兩套合併實作行為不一致** | 手動合併不搬積分；登入時自動合併會硬刪除聯絡人，遇到積分則失敗。詳見 `../../system/AUDIT.md` 的 CONTACT-01 |
 | **聯絡人頁不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 自動化貼標不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |

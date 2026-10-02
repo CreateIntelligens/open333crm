@@ -45,7 +45,6 @@
 | [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效 | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| [RLS-05](#rls-05) | 租戶隔離與權限 | P2 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由不檢查權限碼 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
@@ -178,32 +177,6 @@
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
 `apps/workers/src/index.ts` 的 `main()` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
-
-<a id="rls-05"></a>
-### RLS-05：重抓 LINE 個人資料的端點不檢查租戶
-
-`apps/api/src/modules/line/line-profile.routes.ts` 註冊 `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile`。這條路由只掛 `fastify.authenticate`，沒有權限碼。它把路徑參數直接交給 `line-profile.service.ts` 的 `syncLineContactProfile(fastify.prismaAdmin, channelId, lineUid)`，沒有傳入 `request.agent.tenantId`。
-
-`syncLineContactProfile()` 以 `prismaAdmin`（BYPASSRLS）查 `channelIdentity` 與 `channel`，`where` 都沒有 `tenantId`。接著它用該渠道的憑證呼叫 LINE，再改寫 `channelIdentity`。
-
-兩層租戶隔離在這條路徑上都不生效。任何租戶的已登入成員，只要取得其他租戶的 `channelId` 與一個 LINE uid，就能：
-
-- 讓系統以對方渠道的憑證呼叫 LINE Profile API。
-- 改寫對方租戶的 `ChannelIdentity.profileName` 與 `profilePic`。
-- 從回應取得該 LINE 使用者的顯示名稱與頭像網址。
-
-`scripts/check-prisma-admin-usage.mjs` 把這個檔案列在白名單，註解寫「LINE profile（認證相關）」。這條路由是登入後的客服操作，不屬於白名單涵蓋的平台後台、auth、排程、OAuth callback 與公開 webhook。
-
-前端、CLI 與 MCP 都沒有呼叫這個端點。
-
-**優先順序是 P2，原因是兩個前提都很難取得：**
-
-- **對方 LINE 渠道的 `channelId`。** 這個 UUID 出現在 webhook 網址（`channel.service.ts` 組成 `/api/v1/webhooks/<渠道類型>/<channel.id>`），而 webhook 網址只設定在 LINE 後台。網頁嵌入的 widget 會公開 WebChat 渠道的 `channelId`，但對 WebChat 渠道呼叫這個端點時，LINE API 會失敗，端點回 502。
-- **該渠道底下的 LINE uid。** LINE 的 userId 依 provider 而不同，外人無法取得其他官方帳號的 uid。
-
-兩個前提都達成時，影響也有限。寫入的是 LINE 回傳的真實資料，攻擊者無法寫入偽造的內容；讀到的是攻擊者已知 uid 的顯示名稱與頭像。另外，攻擊者可以從 404 與 200 的差異確認 uid 是否存在，每次呼叫也會消耗對方渠道的 LINE API 額度。
-
-**修正方向**：路由改用 `request.tenantPrisma`，服務查 `channelIdentity` 與 `channel` 的條件都加上 `tenantId`，並把這個檔案移出白名單。確認沒有外部呼叫端的話，也可以直接移除這條路由。
 
 <a id="rls-07"></a>
 ### RLS-07：短連結轉址使用 `prismaAdmin`，但不在白名單
