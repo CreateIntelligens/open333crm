@@ -1,0 +1,57 @@
+## Why
+
+docs/ref/system/AUDIT.md RBAC-01（issue #197）：權限碼早已定義，但工單、對話、標籤、短連結四個模組的 45 條路由都沒有 `requirePermission`，只要登入就能操作。租戶在「角色與權限」設定的限制在這些模組完全不生效，例如沒有刪除權限的成員仍可永久刪除工單，只能檢視的角色仍可送訊息給客人。聯絡人模組已在 #185 補上，這次補齊其餘四個模組。
+
+## What Changes
+
+每條路由掛上對應的權限碼（權限碼與說明見 `packages/core/src/rbac/permissions.ts`）：
+
+| 模組 | 路由 | 權限碼 |
+| --- | --- | --- |
+| 工單 | `GET /cases`、`/cases/categories`、`/cases/stats`、`/cases/:id`、`/cases/:id/events` | `case.view` |
+| 工單 | `POST /cases`、`POST /cases/from-conversation/:conversationId`、`POST /conversations/:id/case` | `case.create` |
+| 工單 | `PATCH /cases/:id`、`POST /cases/:id/tags`、`DELETE /cases/:id/tags/:tagId`、`POST /cases/:id/notes`、`/resolve`、`/close`、`/reopen`、`/csat`、`POST /cases/:id/conversations/:conversationId/link` | `case.update` |
+| 工單 | `PATCH /cases/:id`、`POST /cases`、`POST /cases/from-conversation/:conversationId`、`POST /conversations/:id/case` 帶 `assigneeId` 或 `teamId`（含 null）時另需；`POST /cases/:id/assign` | `case.assign` |
+| 工單 | `PATCH /cases/:id` 把狀態改為 `ESCALATED` 時另需；`POST /cases/:id/escalate` | `case.escalate` |
+| 工單 | `DELETE /cases/:id` | `case.delete` |
+| 對話 | `GET /conversations`、`/conversations/:id`、`/conversations/:id/messages`、`POST /conversations/:id/read` | `inbox.view` |
+| 對話 | `POST /conversations/:id/messages`、`/send-image`、`/send-video`、`/typing` | `inbox.reply` |
+| 對話 | `PATCH /conversations/:id`、`POST /conversations/:id/close`、`/handoff`、`POST /conversations/:id/tags`、`DELETE /conversations/:id/tags/:tagId` | `inbox.manage` |
+| 標籤 | `GET /tags` | `tag.view` |
+| 標籤 | `POST /tags`、`PATCH /tags/:id`、`DELETE /tags/:id` | `tag.manage` |
+| 短連結 | `GET /shortlinks`、`/:id`、`/:id/stats`、`/:id/clicks`、`/:id/qrcode` | `shortlink.view` |
+| 短連結 | `POST /shortlinks`、`PATCH /shortlinks/:id`、`DELETE /shortlinks/:id` | `shortlink.manage` |
+
+工單與對話路由原有的渠道可見範圍與存取層級檢查（CM-173）保留，權限碼檢查疊加在前。條件式檢查以新的 `requirePermissionWhen(code, when)` 實作（`guards/rbac.guard.ts`）。
+
+不在這次範圍（審查列出）：AI 建議回覆與摘要（`ai.routes.ts`）只驗登入即可讀對話內容；socket 訂閱房間只檢查渠道可見範圍、不檢查權限碼；手動記錄 CSAT 只需 `case.update`，客服可替自己負責的工單評分，是否改為主管權限待產品決定。
+
+## Capabilities
+
+### Modified Capabilities
+
+- `case-management`、`core-inbox`：路由依權限碼授權。
+
+## Impact
+
+- `apps/api/src/modules/{case,conversation,tag,shortlink}/*.routes.ts`
+- **上線前必做：確認每位啟用中的成員都有細粒度角色**。沒有角色（`roleId` 為空）的成員權限為空集合，上線後這四個模組全部 403。下列查詢依租戶分組，`without_role` 應為 0（`agents.isActive` 為 NOT NULL）：
+
+  ```sql
+  SELECT t.name, count(*) FILTER (WHERE a."roleId" IS NULL AND a."isActive") AS without_role, count(*) AS agents
+  FROM agents a JOIN tenants t ON t.id = a."tenantId"
+  GROUP BY t.name;
+  ```
+
+  不為 0 時，依舊的 `role` 欄位補上同租戶的系統角色（只動 `roleId` 為空的列，可重複執行）：
+
+  ```sql
+  UPDATE agents a SET "roleId" = r.id
+  FROM roles r
+  WHERE a."roleId" IS NULL
+    AND r."tenantId" = a."tenantId" AND r."isSystem" AND r.slug = lower(a.role::text);
+  ```
+
+  UAT 執行紀錄（2026-10-02，以 owner 連線）：補角色前，Demo Tenant 有 2 位沒有角色（`daniel@aicreate360.com` ADMIN 啟用中、`erictsai@aicreate360.com` SUPERVISOR 已停用，皆為 RBAC 上線前建立且未回填），其他兩個租戶為 0；以上述 UPDATE（另限定這兩個 email）補為 admin 與 supervisor，`UPDATE 2`；重查全平台 17 位成員皆有角色。
+- 上線影響：UAT（目前唯一的部署環境）3 個租戶的所有角色都具備上表 13 個權限碼，13 個權限碼都屬於 `inbox` 功能模組、5 種方案都包含，上線後不會有既有成員被擋。新租戶的系統角色由種子資料提供，同樣具備。
+- 系統預設的 `agent` 角色目前含 `case.delete`，上線後客服仍可刪除工單，行為不變；是否收回由產品另行決定。

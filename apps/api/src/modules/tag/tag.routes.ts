@@ -5,6 +5,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { createTenantTag, deleteTenantTag, updateTenantTag } from './tagging.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 const createTagSchema = z.object({
   name: z.string().trim().min(1, '標籤名稱不可為空白').max(50, '標籤名稱不可超過 50 字'),
@@ -21,12 +22,18 @@ const updateTagSchema = z.object({
   description: z.string().optional(),
 });
 
+// 標籤路由的權限檢查（AUDIT RBAC-01）
+const perm = {
+  view: requirePermission('tag.view'),
+  manage: requirePermission('tag.manage'),
+};
+
 export default async function tagRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/tags
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: [perm.view] }, async (request, reply) => {
     const tags = await request.tenantPrisma.tag.findMany({
       where: { tenantId: request.agent.tenantId },
       orderBy: [
@@ -39,7 +46,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/tags
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = createTagSchema.parse(request.body);
 
     const tag = await createTenantTag(request.tenantPrisma, {
@@ -51,7 +58,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/tags/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = updateTagSchema.parse(request.body);
 
     const tag = await request.tenantPrisma.tag.findFirst({
@@ -72,7 +79,7 @@ export default async function tagRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/v1/tags/:id
-  fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string } }>('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const tag = await request.tenantPrisma.tag.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });

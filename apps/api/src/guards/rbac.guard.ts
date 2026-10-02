@@ -72,6 +72,18 @@ export const requirePermission = (code: string) => {
 };
 
 /**
+ * 條件式權限點 guard：`when(request)` 成立時才要求 `code`，否則放行。
+ * 用於同一條路由依 body 內容需要額外權限的情境（例如建立或編輯工單時順便指派，需要 case.assign）。
+ * 放在 preHandler 陣列中、排在基本權限 guard 之後；被拒時由 Fastify 中止後續 hook。
+ */
+export const requirePermissionWhen = (code: string, when: (request: FastifyRequest) => boolean) => {
+  const guard = requirePermission(code);
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    if (when(request)) return guard(request, reply);
+  };
+};
+
+/**
  * 權限點 guard（任一命中即放行）：當前 agent 的有效權限集合「不含任何一個」`codes` 時回 403。
  *
  * 用於同一條路由可被多種權限點滿足的情境
