@@ -11,7 +11,7 @@ PR #207（`efbd5f0`）與 #209（`8e25e1b`）修正了最後兩個 P1 項目，�
 | 項目 | 修正的 commit | 已修正 | 剩下的問題 | 優先順序 |
 | --- | --- | --- | --- | --- |
 | RBAC-01 | `efbd5f0`（#207） | `case`、`conversation`、`tag`、`shortlink` 的每一條路由都掛上 `requirePermission()` | 知識庫的 9 條讀取路由只驗登入；`agent.delete`、`billing.view` 沒有強制點 | P1 → P3 |
-| AUTO-01 | `8e25e1b`（#209） | 5 種不支援的動作不能存進新規則；既有規則在介面上標示；刪除 `action-executor.ts` | 5 種動作在 workers 沒有實作 | P1 → P3 |
+| AUTO-01 | `8e25e1b`（#209） | 5 種不支援的動作不能存進新規則；既有規則在介面上標示；刪除 `action-executor.ts` | 5 種動作在 workers 沒有實作 | P1 → P2（依影響是 P3，但違反主規格） |
 | PLAN-04 | `efbd5f0`（#207） | 收件匣一帶的路由開始套用方案天花板 | 行銷、知識庫、粉絲活動仍有路由沒掛；側欄的收件匣一帶選單不依方案過濾；`maxTags` 沒有強制點 | 維持 P2 |
 
 **核對方式。**
@@ -22,7 +22,7 @@ PR #207（`efbd5f0`）與 #209（`8e25e1b`）修正了最後兩個 P1 項目，�
 
 **依 issue #197 的回報調整評級（2026-10-02）。** UAT 主機就是客戶在用的環境，下列查詢都在這台主機上執行：
 
-- 用到 AUTO-01 那 5 種動作的規則共 6 條，全部在 Demo Tenant，真實客戶的租戶沒有。這是 AUTO-01 降為 P3 的依據之一。
+- 用到 AUTO-01 那 5 種動作的規則共 6 條，全部在 Demo Tenant，真實客戶的租戶沒有。這是 AUTO-01 依影響判定為 P3 的依據之一。
 - `interaction_flows` 與 `flow_executions` 都是 0 筆，沒有租戶使用 Canvas。RLS-01 的功能面不會影響任何租戶，維持 P2。
 
 **新增 APP-10：沒有獨立的正式環境。** `.github/workflows/deploy.yml` 只有「Deploy to UAT」，每次 push 到 `main` 都以 `docker compose up -d --force-recreate` 重建 UAT 主機上的所有服務。issue #197 回報這台主機同時是客戶在用的環境。repo 只能確認部署路徑，無法確認主機的用途，因此驗證狀態記為「間接確認」。
@@ -31,6 +31,8 @@ PR #207（`efbd5f0`）與 #209（`8e25e1b`）修正了最後兩個 P1 項目，�
 
 - #209 的 delta spec 以 ADDED 新增「拒絕 workers 尚未支援的動作」，沒有修改 `automation-engine` 既有的「Actions」（SHALL 支援 `create_case`）。照目前的寫法歸檔，主規格會自相矛盾，需要在歸檔前修正（issue #197）。
 - 主規格 `rbac` 仍以角色描述授權，與現行的權限碼不符。
+
+**新增規則：違反主規格的項目至少是 P2。** 寫進 `AUDIT.md` 的「優先順序怎麼讀」。套用後，AUTO-01 由 P3 調為 P2（違反 `automation-engine` 的「Actions」）；PLAN-04 原本就是 P2，不變。其他項目在這條規則之前標示，沒有逐一對照主規格。
 
 多個剩下的問題來自任務沒有做完就歸檔的 change：`rbac-granular-permissions`（任務 9.1 至 9.5）、`platform-control-plane`（任務 2.8、8.5）。
 
