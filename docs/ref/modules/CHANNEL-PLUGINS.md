@@ -68,7 +68,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 1. 以 `channelId` 找出啟用中的渠道。租戶停用時直接丟棄。
 2. 以**路由決定的** `channelType` 取得外掛，並解密渠道的憑證。
 3. 選擇驗簽用的秘密：`FB`、`THREADS` 用 `appSecret`，其他用 `channelSecret`。這是一處以 `channelType` 分支的程式。
-4. 呼叫外掛的 `verifySignature()`。失敗時拋出錯誤，只寫 log。
+4. 呼叫外掛的 `verifySignature()`。失敗時拋出錯誤，只寫 log。路由已經回了 200，因此簽章錯誤的請求也收到 200；LINE 的主規格要求回 403，見 CHAN-03。
 5. 渠道設定了下游轉發時，把原始內容轉發出去，見[渠道管理](../features/tenant/CHANNELS.md#webhook)。
 6. 呼叫外掛的 `parseWebhook()`，對每一則訊息執行 `processInboundMessage()`。建立新聯絡人時呼叫 `getProfile()`；訊息寫入後，若外掛有 `resolveInboundMedia()`，就在背景下載媒體。
 
@@ -148,7 +148,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時送不出去，機器人也不回覆 | CHAN-02 |
-| 進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | CHAN-03 |
+| LINE 的簽章錯誤也回 200；進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | CHAN-03 |
 | Telegram 沒有註冊；WhatsApp 可以建立但沒有外掛 | APP-02 |
 | 啟動 log 少列 Threads | APP-03 |
 | `./fb` 子路徑指向不存在的檔案 | PKG-02 |

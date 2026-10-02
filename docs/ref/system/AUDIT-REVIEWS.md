@@ -4,6 +4,49 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：以「違反主規格的項目至少是 P2」重看 P3、P4
+
+這條規則在上一筆紀錄加入時，只套用在 RBAC-01、AUTO-01、PLAN-04。本次把當時所有 P3、P4 項目，逐一對照 `openspec/specs/` 的主規格。原本就是 P2 的項目不受這條規則影響，沒有重看。
+
+**調為 P2 的項目。** 每一項的內文都補上「規格依據」：
+
+| 項目 | 原本 | 違反的主規格與需求 |
+| --- | --- | --- |
+| RLS-07 | P3 | `tenant-isolation-rls`：「合法跨租戶操作走 BYPASSRLS 連線」，BYPASSRLS 只能用在白名單情境 |
+| TEAM-01 | P3 | `channel-team-access`：「Message Routing via ChannelTeamAccess」與「Channel Creation with Default Team」 |
+| SEC-02 | P3 | `platform-password-recovery`：「使用者可用有效重設連結完成密碼重設」，重設後要寫 `PlatformAuditLog` |
+| AUTO-03 | P3 | `tag-management`：「Scoped tag assignment」，貼標要檢查 scope |
+| IDENT-01 | P4 | `identity-stitching-engine`：「AI 合併建議」 |
+| CHAN-03 | P4 | `line-webhook-events`：「LINE Webhook signature verification」，簽章錯誤要回 403 |
+| APP-02 | P3 | `telegram-channel`：「Telegram Plugin Registration」 |
+
+**項目內容的調整。**
+
+- CHAN-03 新增「LINE 的簽章錯誤也回 200」。`webhook.routes.ts` 先回 200，再在背景驗簽；驗簽失敗只寫 log。這一點原本只寫在 `CHANNEL-PLUGINS.md` 的處理步驟，沒有列為落差。
+- DB-04 的 `Conversation.teamId` 移到 TEAM-01。查證時另外確認：`inbound-router.ts` 的 `InboundRouterService` 只有骨架，沒有呼叫端；`Channel` 沒有預設團隊的欄位。
+
+**標示「主規格待確認」，維持原本的優先順序。** 下列主規格描述的功能從來沒有實作，或已經被其他設計取代。照規則調高，會把產品規劃列為 P2，因此先在 issue #197 確認規格要改寫、移出主規格還是保留：
+
+| 項目 | 主規格 | 現況 |
+| --- | --- | --- |
+| LIC-01、LIC-02 | `license-service`、`team-license` | API 使用寫死的授權資料；功能天花板與額度由 `tenant-plan`、`plan-limits-core` 負責 |
+| PKG-06 | `line-analytics`、`line-audience` | 僅有的實作是 `channel-plugins` 裡沒有呼叫端的 worker；`apps/*` 沒有讀寫 `InsightSnapshot` |
+
+主規格 `rbac` 仍以角色描述授權，已在上一筆紀錄指出，這次沒有另外標示。
+
+**判定為不違反的邊界情況。**
+
+- RLS-04：只有照 `.env.api.example` 部署時才會違反 `tenant-isolation-rls`。實際環境是否設定 `DATABASE_URL_TENANT`，repo 無法確認。
+- APP-01：`standalone-worker-runtime` 禁止 API 行程內的 SLA 輪詢計時器。`core` 建立的是沒有工作來源的 consumer，不是計時器。
+- SHORT-01：`shortlink-ua-strategy` 的情境明確寫出採用呼叫端給的 `cid`，以及沒有 `lineUid` 的點擊一律算一次不重複點擊。
+- PLAN-07：`granular-plan-entitlement` 要求的檢查機制有實作，缺的是方案資料。
+- AUTH-06：`km-ingestion` 的「Partner Doc Mutation Command」只描述夥伴金鑰的呼叫。
+- CHAN-01：違反的是 `AGENTS.md` 的軟刪除慣例，不是主規格。
+
+其餘 P3、P4 項目，主規格沒有涵蓋。
+
+**連帶更新的文件。** `INBOX.md`、`PERMISSIONS.md` 對 `Conversation.teamId` 的引用由 DB-04 改為 TEAM-01；`CHANNEL-PLUGINS.md` 的處理步驟與限制表加上 LINE 回 200 的落差。
+
 ## 2026-10-02：記錄 RBAC-01、AUTO-01 的修正，更新 PLAN-04、RLS-01，新增 APP-10
 
 PR #207（`efbd5f0`）與 #209（`8e25e1b`）修正了最後兩個 P1 項目，但沒有更新 `AUDIT.md`。本次對照 diff 核對，兩項都只修正了一部分，因此保留並改為「部分修正」。更新後，`AUDIT.md` 沒有 P1 項目。

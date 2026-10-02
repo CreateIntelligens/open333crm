@@ -137,7 +137,7 @@
 
 **即時事件沒有套用可見範圍。** 客服訂閱單一對話的房間時，`authorizeSocketRoom()` 用同一套規則檢查。但每條 socket 連線一建立就自動加入 `tenant:<租戶 ID>` 房間，而新訊息事件 `message.new` 會帶著訊息內容發到這個房間。因此只能看某些渠道的客服，仍會即時收到租戶內所有渠道的訊息。見 `../../system/AUDIT.md` 的 RBAC-04。
 
-`assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 DB-04。
+`assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
 可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。租戶房間的即時事件、聯絡人頁與 AI 輔助端點都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
 
