@@ -37,6 +37,18 @@ API SHALL 只信任私有網段與本機的代理：`request.ip` SHALL 為從連
 - **WHEN** 以 `Admin@x.dev` 失敗 3 次、`admin@x.dev` 失敗 2 次
 - **THEN** 下一次登入回傳 `ACCOUNT_LOCKED`
 
+#### Scenario: 同時送出大量猜測
+- **WHEN** 同一 email 同時送出 12 個密碼錯誤的登入請求
+- **THEN** 最多 5 個回傳 401 `INVALID_CREDENTIALS`，其餘回傳 429 `ACCOUNT_LOCKED`（不驗證密碼）
+
+#### Scenario: 計數儲存故障
+- **WHEN** 失敗計數的儲存（Redis）無法使用
+- **THEN** 登入照常依密碼判斷，並留下錯誤 log；不得因此讓所有人無法登入
+
+#### Scenario: 不存在的 email 回應時間一致
+- **WHEN** 以不存在的 email 登入
+- **THEN** 系統 SHALL 仍執行一次密碼雜湊比對，回應時間不透露帳號是否存在
+
 #### Scenario: 不存在的 email 也會鎖定
 - **WHEN** 不存在的 email 失敗 5 次後再嘗試
 - **THEN** 回傳 HTTP 429 `ACCOUNT_LOCKED`，與存在的帳號相同

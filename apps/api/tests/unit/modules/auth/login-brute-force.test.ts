@@ -98,3 +98,18 @@ test('停用帳號：密碼錯誤回 401 INVALID_CREDENTIALS，密碼正確才�
   assert.equal(await codeOf(login(db, 'off@x.dev', 'wrong', store)), 'INVALID_CREDENTIALS');
   assert.equal(await codeOf(login(db, 'off@x.dev', PASSWORD, store)), 'ACCOUNT_DISABLED');
 });
+
+test('同時送出大量猜測：最多只會驗證 5 次密碼，其餘直接鎖定', async () => {
+  const store = memBindingStore();
+  const db = prismaWith({ 'race@x.dev': {} });
+  const codes = await Promise.all(Array.from({ length: 12 }, () => codeOf(login(db, 'race@x.dev', 'wrong', store))));
+  assert.equal(codes.filter((c) => c === 'INVALID_CREDENTIALS').length, 5);
+  assert.equal(codes.filter((c) => c === 'ACCOUNT_LOCKED').length, 7);
+});
+
+test('失敗計數的儲存出錯（Redis 掛掉）：照常登入，不讓全站無法登入', async () => {
+  const broken = new Proxy({}, { get: () => async () => { throw new Error('redis down'); } }) as never;
+  const db = prismaWith({ 'redis-down@x.dev': {} });
+  assert.equal(await codeOf(login(db, 'redis-down@x.dev', PASSWORD, broken)), 'OK');
+  assert.equal(await codeOf(login(db, 'redis-down@x.dev', 'wrong', broken)), 'INVALID_CREDENTIALS');
+});

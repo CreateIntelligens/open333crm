@@ -1,14 +1,32 @@
 import type { PrismaClient } from '@open333crm/database';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { verifyPassword } from '../../shared/utils/password.js';
+import { randomUUID } from 'node:crypto';
+import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
 import { AppError } from '../../shared/utils/response.js';
 import { notFound } from '../../shared/messages/resource.js';
-import { clearLoginFailures, isLoginLocked, recordLoginFailure, type LoginAttemptStore } from './login-attempts.js';
+import { logger } from '@open333crm/core';
+import { clearLoginAttempts, registerLoginAttempt, type LoginAttemptStore } from './login-attempts.js';
+
+/**
+ * 帳號不存在時也驗一次密碼（對這組雜湊），讓回應時間與存在的帳號相同，不能靠快慢判斷 email 是否存在。
+ * 用正式的 hashPassword 產生（成本參數一致），明文是隨機值，不會有人猜中；第一次用到才算、之後重用。
+ */
+let dummyPasswordHash: Promise<string> | undefined;
+function getDummyPasswordHash(): Promise<string> {
+  dummyPasswordHash ??= hashPassword(randomUUID());
+  return dummyPasswordHash;
+}
 
 export async function login(prisma: PrismaClient, email: string, password: string, attempts: LoginAttemptStore) {
-  // 失敗達上限的帳號在區間內一律擋下，不驗密碼（否則鎖定期間仍可繼續猜）
-  if (await isLoginLocked(attempts, email)) {
-    throw new AppError('登入失敗次數過多，請 15 分鐘後再試', 'ACCOUNT_LOCKED', 429);
+  // 失敗達上限的帳號在區間內一律擋下，不驗密碼（否則鎖定期間仍可繼續猜）。
+  // 計數儲存（Redis）出錯時照常放行並留 log：不能因為 Redis 故障讓全站無法登入，IP 限流仍在。
+  const attempt = await registerLoginAttempt(attempts, email).catch((err: unknown) => {
+    logger.error('[Auth] 登入失敗計數無法使用，略過帳號鎖定', { error: err instanceof Error ? err.message : String(err) });
+    return { locked: false as const };
+  });
+  if (attempt.locked) {
+    const minutes = Math.max(1, Math.ceil(attempt.retryAfterMs / 60_000));
+    throw new AppError(`登入失敗次數過多，請 ${minutes} 分鐘後再試`, 'ACCOUNT_LOCKED', 429);
   }
 
   // email 全域唯一：直接用 email 查出 agent，agent.tenantId 即為登入者所屬租戶
@@ -33,13 +51,12 @@ export async function login(prisma: PrismaClient, email: string, password: strin
   });
 
   if (!agent) {
-    await recordLoginFailure(attempts, email);
+    await verifyPassword(password, await getDummyPasswordHash());
     throw new AppError('電子郵件或密碼不正確', 'INVALID_CREDENTIALS', 401);
   }
 
   const valid = await verifyPassword(password, agent.passwordHash);
   if (!valid) {
-    await recordLoginFailure(attempts, email);
     throw new AppError('電子郵件或密碼不正確', 'INVALID_CREDENTIALS', 401);
   }
 
@@ -57,7 +74,9 @@ export async function login(prisma: PrismaClient, email: string, password: strin
     throw new AppError('此租戶已停用，請聯繫管理員', 'TENANT_DISABLED', 403);
   }
 
-  await clearLoginFailures(attempts, email);
+  await clearLoginAttempts(attempts, email).catch((err: unknown) => {
+    logger.error('[Auth] 清除登入失敗計數失敗', { error: err instanceof Error ? err.message : String(err) });
+  });
 
   // 移除 passwordHash 與 join 進來的 tenant 物件，只回傳 agent 本身欄位
   const { passwordHash: _, tenant: __, ...agentData } = agent;

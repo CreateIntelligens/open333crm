@@ -1,6 +1,7 @@
 ## 1. 帳號鎖定與停用帳號回應順序（auth.service）
 
 - [x] 1.1 測試 `tests/unit/modules/auth/login-brute-force.test.ts`：連續失敗 5 次後鎖定、鎖定期滿後可登入、成功登入清除失敗次數、大小寫不同視為同一帳號、不存在的 email 也會鎖定、停用帳號密碼錯誤回 401、停用帳號密碼正確回 403
+- [x] 1.1b 測試（code review 補）：同時送出大量猜測、計數儲存故障；`login-timing.test.ts`：不存在的 email 回應時間一致
 - [x] 1.2 實作 `modules/auth/login-attempts.ts`（Redis 失敗計數，store 由呼叫端注入）與 `login()` 的鎖定檢查、`ACCOUNT_DISABLED` 移到密碼驗證之後
 
 ## 2. IP 限流與 429 回應（auth.routes、error-handler）

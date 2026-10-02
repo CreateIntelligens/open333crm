@@ -27,19 +27,27 @@ function failureKey(email: string): string {
   return `login:fail:${digest}`;
 }
 
-export async function isLoginLocked(store: LoginAttemptStore, email: string): Promise<boolean> {
-  return Number((await store.get(failureKey(email))) ?? 0) >= LOGIN_MAX_FAILURES;
-}
-
-/** 計數 +1；區間從第一次失敗起算，期滿自動清除 */
-export async function recordLoginFailure(store: LoginAttemptStore, email: string): Promise<void> {
+/**
+ * 每次嘗試一進來就原子 +1，超過上限即鎖定（成功登入時清除，所以等同計算失敗次數）。
+ * 不能「先查是否鎖定、驗完密碼失敗才 +1」：同時送出的大量請求會在 +1 之前全部通過檢查，一次猜很多組。
+ * 區間從第一次嘗試起算，期滿自動清除。
+ */
+export async function registerLoginAttempt(
+  store: LoginAttemptStore,
+  email: string,
+): Promise<{ locked: false } | { locked: true; retryAfterMs: number }> {
   const key = failureKey(email);
-  await store.incr(key);
+  const attempts = await store.incr(key);
+  let ttl = await store.pttl(key);
   // 沒有 TTL 就補上：兩個指令之間中斷也不會留下永不過期的計數把帳號永久鎖住
-  if ((await store.pttl(key)) < 0) await store.pexpire(key, LOGIN_FAILURE_WINDOW_MS);
+  if (ttl < 0) {
+    await store.pexpire(key, LOGIN_FAILURE_WINDOW_MS);
+    ttl = LOGIN_FAILURE_WINDOW_MS;
+  }
+  return attempts > LOGIN_MAX_FAILURES ? { locked: true, retryAfterMs: ttl } : { locked: false };
 }
 
-export async function clearLoginFailures(store: LoginAttemptStore, email: string): Promise<void> {
+export async function clearLoginAttempts(store: LoginAttemptStore, email: string): Promise<void> {
   await store.getdel(failureKey(email));
 }
 
