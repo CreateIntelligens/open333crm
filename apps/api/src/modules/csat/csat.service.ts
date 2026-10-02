@@ -190,6 +190,16 @@ function getFollowUpMessage(score: number): string {
 }
 
 /**
+ * 誰可以替這張工單評分：
+ * - tenantId：工單必須屬於這個租戶。
+ * - contactId：給了就必須是工單的聯絡人（進站評分）；客服操作不給。
+ */
+export interface CsatScope {
+  tenantId: string;
+  contactId?: string;
+}
+
+/**
  * Record CSAT score and handle follow-up actions.
  */
 export async function recordCsatScore(
@@ -197,10 +207,12 @@ export async function recordCsatScore(
   io: SocketIOServer,
   caseId: string,
   score: number,
-  comment?: string,
+  comment: string | undefined,
+  scope: CsatScope,
 ): Promise<boolean> {
-  const caseRecord = await prisma.case.findUnique({
-    where: { id: caseId },
+  // 進站管線用 prismaAdmin（BYPASSRLS），租戶與聯絡人只能靠這裡的條件擋（AUDIT RLS-06）
+  const caseRecord = await prisma.case.findFirst({
+    where: { id: caseId, tenantId: scope.tenantId, contactId: scope.contactId },
     include: {
       conversations: {
         select: { id: true },

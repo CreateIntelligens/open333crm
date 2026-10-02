@@ -5,9 +5,26 @@
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { resendTrial } from '../trial/trial.service.js';
+import { getTrialPolicy } from '../trial/trial-policy.service.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { notFound } from '../../shared/messages/resource.js';
+
+/**
+ * 試用租戶轉為付費方案時一併寫入：脫離試用（不再受到期與軟刪排程管轄）、恢復啟用、
+ * 清掉軟刪標記，避免付費租戶仍顯示「已清除」或被日後的硬刪選中。
+ * 轉付費與核准升級申請共用（change fix-csat-intercept-and-trial-upgrade）。
+ */
+export const TRIAL_EXIT_DATA = { trialEndsAt: null, purgedAt: null, isActive: true } as const;
+
+/**
+ * 試用方案不能當成升級或轉正式的目標：否則租戶留在試用方案、trialEndsAt 卻被清空，永遠不會到期。
+ * 試用方案由試用政策 trial.planSlug 決定（平台可改），不寫死 slug。
+ */
+export async function assertNotTrialPlan(prisma: PrismaClient, planSlug: string): Promise<void> {
+  const { planSlug: trialPlanSlug } = await getTrialPolicy(prisma);
+  if (planSlug === trialPlanSlug) throw new AppError('不能轉成試用方案', 'BAD_REQUEST', 400);
+}
 
 /** 列試用租戶（trialEndsAt 非 null），含剩餘天數與狀態。 */
 export async function listTrialTenants(prisma: PrismaClient) {
@@ -133,7 +150,7 @@ export async function extendTrial(prisma: PrismaClient, tenantId: string, addDay
 export async function convertToPaid(prisma: PrismaClient, tenantId: string, planSlug: string) {
   const plan = await prisma.plan.findUnique({ where: { slug: planSlug }, select: { id: true, slug: true } });
   if (!plan) throw new AppError(notFound('plan'), 'NOT_FOUND', 404);
-  if (plan.slug === 'trial') throw new AppError('不能轉成試用方案', 'BAD_REQUEST', 400);
+  await assertNotTrialPlan(prisma, plan.slug);
 
   const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
   if (!t) throw new AppError(notFound('tenant'), 'NOT_FOUND', 404);
@@ -142,8 +159,7 @@ export async function convertToPaid(prisma: PrismaClient, tenantId: string, plan
     where: { id: tenantId },
     data: {
       planId: plan.id,
-      trialEndsAt: null, // 清 = 脫離試用，不再受到期排程管轄
-      isActive: true,
+      ...TRIAL_EXIT_DATA,
     },
     select: { id: true, name: true, plan: { select: { name: true } } },
   });

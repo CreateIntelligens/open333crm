@@ -4,6 +4,27 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-01：修正 RLS-06 與 TRIAL-01，新增 CASE-02
+
+依 change `fix-csat-intercept-and-trial-upgrade` 修正 P1 的第一批，兩項都從 `AUDIT.md` 移除：
+
+| 項目 | 修正的 commit | 修正內容 | 驗證 |
+| --- | --- | --- | --- |
+| RLS-06 | `4369376` | `recordCsatScore()` 以 `tenantId` 與 `contactId` 條件查工單；進站攔截器傳入收訊租戶與傳訊聯絡人，不符條件時仍攔截但不寫入；`POST /cases/:id/csat` 傳入客服的租戶 | `tests/feature/modules/csat/csat-record-scope.test.ts` 以繞過 RLS 的連線驗證跨租戶與跨聯絡人都不寫入；`inbound-message-refactor.test.ts` 驗證攔截器查詢帶的條件 |
+| TRIAL-01 | `982486b` | `convertToPaid()` 與 `approveRequest()` 共用 `TRIAL_EXIT_DATA`，清除 `trialEndsAt`、`purgedAt` 並設 `isActive: true`；`approveRequest()` 只對試用租戶寫入，稽核記錄 `trialExited` | `tests/feature/modules/platform/plan-change-trial-exit.test.ts` 涵蓋核准升級、審核期間已軟刪、非試用租戶、加購、轉正式、編輯頁改方案，以及核准後執行到期排程 |
+
+**決策。**
+
+- **CSAT 仍接受文字訊息。** 加上租戶與聯絡人條件之後，以文字送出 `csat:<分數>:<工單 ID>` 只能替自己的工單評分。
+- **轉正式時一併清除 `purgedAt`。** 付費且啟用的租戶如果帶著 `purgedAt`，平台會顯示「已清除」，之後以 `purgedAt` 為條件的硬刪也會選中它。
+- **在租戶編輯頁改方案不脫離試用。** 改方案不代表轉正式，頁面改為提示。
+
+**TRIAL-01 的成因。** `trial-signup` 的設計（`archive/2026-09-15-trial-signup/design.md` 的 Non-Goals）把「試用轉正式」交給 plan-change-request，但 plan-change-request 的規格沒有提到試用。兩者在同一個 PR（`acb7568`）實作。
+
+**Codex review 發現的退化。** 對本分支執行 `codex review --base origin/main` 時，Codex 指出：核准 TRIAL-01 的修正之後，一筆「升級到試用方案」的申請會清掉 `trialEndsAt`，租戶留在試用方案卻永遠不會到期。`createPlanChangeRequest()` 接受任何存在的方案 slug，租戶的 ADMIN 可以直接呼叫 API 送出這種申請。修正方式是新增 `assertNotTrialPlan()`，由建立申請、核准申請與轉正式三處呼叫，並改以試用政策的 `trial.planSlug` 判斷試用方案；`convertToPaid()` 原本寫死比對 `trial`，平台修改 `trial.planSlug` 之後會失效。
+
+**新增 CASE-02。** 修 RLS-06 時發現，非 LINE 渠道的滿意度調查送出的是文字提示「回覆 csat:分數」，這個格式不含工單 ID，攔截器認不出來。`buildCsatChannelMessage()` 組的快速回覆沒有被使用，Facebook 的 postback 也沒有解析進 `postbackData`。`CASES.md` 原本寫 Facebook 與 WebChat 送快速回覆，與實際不符，一併改正。
+
 ## 2026-10-01：複查所有 P1 項目，全部仍然存在
 
 上一筆複查更新 RLS-02、AUTH-05、RBAC-01 之後，P1 剩下 10 項。本次在 `main`（`e775c07`）以靜態方式逐項複查，10 項都仍然存在：

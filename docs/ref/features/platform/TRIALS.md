@@ -89,7 +89,7 @@
 
 延長同時把 `isActive` 設成 `true`，因此已到期停用的租戶會恢復；並清空 `trialRemindersSent`，讓新週期重新發提醒。
 
-`convertToPaid(tenantId, planSlug)` 改 `planId`、把 `trialEndsAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是 `trial` 時擋下。
+`convertToPaid(tenantId, planSlug)` 改 `planId`，並寫入 `TRIAL_EXIT_DATA`：把 `trialEndsAt` 與 `purgedAt` 清成 `null`、把 `isActive` 設成 `true`。清空 `trialEndsAt` 是脫離試用的關鍵：排程只掃 `trialEndsAt` 不為 null 的租戶。目標方案是試用方案時回 400，試用方案以試用政策的 `trial.planSlug` 判斷（`assertNotTrialPlan()`）。
 
 `restorePurgedTenant(tenantId)` 清除 `purgedAt`，但**不動 `isActive`**，租戶維持停用。業務資料本來就是軟刪，復原只是讓平台方重新看到它不是「已清除」狀態。保留期滿時沒有任何資料被刪除，見 `../../system/AUDIT.md` 的 TRIAL-03。
 
@@ -99,10 +99,20 @@
 
 `updateTenantContract(tenantId, dates)` 只是記錄，不觸發任何自動生命週期行為。兩個日期都是選用的：傳 `undefined` 不動該欄、傳 `null` 清除、傳日期設值。更新後兩者都有值時，迄日必須不早於起日，否則回 422 `CONTRACT_DATE_INVALID`。這個檢查會合併資料庫現值比對，因此只傳其中一個日期也擋得住。
 
-## 升級的另一條路徑會留下問題
+## 哪些操作會讓租戶脫離試用
 
-試用租戶也可以走 `/api/v1/plan-change` 申請升級，由平台在 `/admin/plan-changes` 核准。這條路徑只改 `planId`，**不會清空 `trialEndsAt`**，租戶因此仍在排程的掃描範圍內，到了原本的到期日照樣被停用。詳見 `../../system/AUDIT.md` 的 TRIAL-01。
+`trialEndsAt` 不是 null 的租戶就是試用租戶。下列兩個操作讓租戶脫離試用，寫入的內容相同（`trial-admin.service.ts` 的 `TRIAL_EXIT_DATA`）：清空 `trialEndsAt` 與 `purgedAt`，並設 `isActive: true`。
 
-要讓租戶真正脫離試用，目前只能走 `/admin/trial` 的轉正式方案。
+| 操作 | 位置 |
+| --- | --- |
+| 轉正式 | `/admin/trial` 的「轉正式…」，`convertToPaid()` |
+| 核准升級申請 | `/admin/plan-changes` 核准 `upgrade` 申請，`approveRequest()`。只有試用租戶會脫離試用，稽核的 payload 記錄 `trialExited` |
+
+下列操作**不會**脫離試用：
+
+- 核准 `token_topup` 申請。試用租戶加購之後，到期仍會被停用。
+- 在 `/admin/tenants/:id` 改方案（`updateTenant()`）。頁面會提示這個租戶仍在試用中。
+
+試用方案不能當成「轉正式」或升級申請的目標。否則租戶留在試用方案、`trialEndsAt` 卻被清空，永遠不會到期。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

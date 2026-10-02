@@ -71,7 +71,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 渠道平台呼叫 `/api/v1/webhooks/<渠道>/:channelId`。`webhook` 模組驗證簽章之後，`webhook.service.ts` 的 `processInboundMessage()` 依序執行下表的步驟。
 
-收到 webhook 時還不知道是哪個租戶，因此整條管線使用 `prismaAdmin`（BYPASSRLS），租戶隔離完全靠每個查詢自己帶的條件。管線裡的 CSAT 攔截器沒有帶，見 `../../system/AUDIT.md` 的 RLS-06。
+收到 webhook 時還不知道是哪個租戶，因此整條管線使用 `prismaAdmin`（BYPASSRLS），租戶隔離完全靠每個查詢自己帶的條件。
 
 | 步驟 | 函式 | 做什麼 | 涉及的模組 |
 | --- | --- | --- | --- |
@@ -136,7 +136,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | --- | --- | --- | --- |
 | refresh token 能通過客服認證 | 外洩的 refresh token，或被停用成員手上的 refresh token，能讀取收件匣並收到即時訊息，最長 30 天。粉絲 token 的簽發路徑接回之後，粉絲 token 也能 | [人員與角色](./MEMBERS.md#登入)、[粉絲活動](./PORTAL.md) | AUTH-05 |
 | 密碼登入沒有速率限制 | 可以無限次嘗試密碼 | [人員與角色](./MEMBERS.md#登入) | SEC-05 |
-| CSAT 攔截器與重抓 LINE 個人資料的端點不檢查租戶 | 可以改寫或讀取其他租戶的資料 | [工單](./CASES.md#解決之後)、[聯絡人與標籤](./CONTACTS.md) | RLS-06、RLS-05 |
+| 重抓 LINE 個人資料的端點不檢查租戶 | 可以讀取與改寫其他租戶的聯絡人資料 | [聯絡人與標籤](./CONTACTS.md) | RLS-05 |
 | 部分自動化動作與觸發事件不會生效 | 規則可以儲存、看起來正常，實際什麼都不做 | [自動化](./AUTOMATION.md) | AUTO-01、AUTO-05 |
 | 渠道可見範圍有多處沒有套用 | 分店客服看得到其他分店的訊息 | [收件匣與對話](./INBOX.md#誰看得到哪些對話) | RBAC-04 |
 | 收件匣一帶的路由沒有權限碼 | 角色與方案限制不到這些功能 | 各文件的「權限」一節 | RBAC-01、PLAN-04 |

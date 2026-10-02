@@ -184,7 +184,7 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
       create: mockFn(() => inboundMessage),
     },
     case: {
-      findUnique: mockFn(() => null),
+      findFirst: mockFn(() => null),
     },
     // 跨渠道綁定攔截會先讀租戶設定；沒有設定＝未啟用，行為與改版前相同
     tenantSettings: {
@@ -212,9 +212,68 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
 
   assert.equal(prisma.message.create.calls.length, 1);
   assert.equal(prisma.conversation.update.calls.length, 1);
-  assert.equal(prisma.case.findUnique.calls.length, 1);
+  assert.equal(prisma.case.findFirst.calls.length, 1);
   assert.equal(prisma.tenantSettings.findFirst.calls.length, 1, '綁定攔截有檢查租戶設定');
   assert.equal(events.some((event) => event.name === 'message.received'), false);
+}
+
+// 規格 Scenario: CSAT response for a case of another tenant（change fix-csat-intercept-and-trial-upgrade）
+// 進站用 prismaAdmin，RLS 擋不住；查工單必須帶收訊租戶與傳訊聯絡人，查不到時仍攔截。
+async function testCsatLookupScopedToTenantAndSender() {
+  const { io } = createIoMock();
+  const conversation = createConversation();
+  const caseId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const inboundMessage = createInboundMessage({ content: { text: `csat:1:${caseId}` } });
+  const prisma = {
+    channelIdentity: {
+      findUnique: mockFn(() => ({ id: 'identity-1', contactId: 'contact-1', contact: { id: 'contact-1' } })),
+    },
+    conversation: {
+      findFirst: mockFn(() => conversation),
+      update: mockFn(() => ({ ...conversation, unreadCount: 1, lastMessageAt: new Date() })),
+    },
+    message: {
+      count: mockFn(() => 0),
+      findFirst: mockFn(() => null),
+      create: mockFn(() => inboundMessage),
+    },
+    case: {
+      // 別的租戶的工單：帶了 tenantId 與 contactId 條件就查不到
+      findFirst: mockFn(() => null),
+      update: mockFn(() => {
+        throw new Error('不得寫入別人的工單');
+      }),
+    },
+    tenantSettings: {
+      findFirst: mockFn(() => null),
+    },
+  };
+
+  const events = await captureEvents(async () => {
+    await processInboundMessage(
+      prisma as never,
+      io as never,
+      {},
+      { id: 'channel-1', channelType: 'WEBCHAT' },
+      'tenant-1',
+      {
+        contactUid: 'visitor-1',
+        channelMsgId: 'channel-msg-1',
+        timestamp: new Date(),
+        contentType: 'text',
+        content: { text: `csat:1:${caseId}` },
+      },
+    );
+  });
+
+  assert.equal(prisma.case.findFirst.calls.length, 1);
+  assert.deepEqual(prisma.case.findFirst.calls[0][0].where, {
+    id: caseId,
+    tenantId: 'tenant-1',
+    contactId: 'contact-1',
+  });
+  assert.equal(prisma.case.update.calls.length, 0);
+  assert.equal(events.some((event) => event.name === 'message.received'), false, '仍然攔截，不落入 AI 與自動化');
 }
 
 async function testFacadeAndCallerContractsFromSource() {
@@ -266,5 +325,6 @@ async function testRefactorStructureFromSource() {
 test('missing contact uid short circuits', testMissingContactUidShortCircuits);
 test('duplicate client message returns existing message', testDuplicateClientMessageReturnsExistingMessage);
 test('csat intercept does not publish message received', testCsatInterceptDoesNotPublishMessageReceived);
+test('csat lookup is scoped to receiving tenant and sending contact', testCsatLookupScopedToTenantAndSender);
 test('facade and caller contracts from source', testFacadeAndCallerContractsFromSource);
 test('refactor structure from source', testRefactorStructureFromSource);

@@ -8,6 +8,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
 import { clearTokenQuotaCache } from '../trial/token-quota.service.js';
+import { TRIAL_EXIT_DATA, assertNotTrialPlan } from './trial-admin.service.js';
 
 // ── 租戶側 ──
 
@@ -27,6 +28,7 @@ export async function createPlanChangeRequest(
     if (!input.targetPlanSlug) throw new AppError('缺少目標方案', 'BAD_REQUEST', 400);
     const plan = await prisma.plan.findUnique({ where: { slug: input.targetPlanSlug }, select: { id: true } });
     if (!plan) throw new AppError('目標方案不存在', 'NOT_FOUND', 404);
+    await assertNotTrialPlan(prisma, input.targetPlanSlug);
   } else {
     if (!input.topupTokens || input.topupTokens <= 0) throw new AppError('加購 token 數需為正整數', 'BAD_REQUEST', 400);
   }
@@ -73,7 +75,10 @@ export async function listPendingRequests(prisma: PrismaClient) {
   }));
 }
 
-/** 核准申請：upgrade 改方案、token_topup 提高額度。 */
+/**
+ * 核准申請：upgrade 改方案、token_topup 提高額度。
+ * 試用租戶核准 upgrade 即轉正式、脫離試用；回傳的 trialExited 供稽核記錄。
+ */
 export async function approveRequest(
   prisma: PrismaClient,
   requestId: string,
@@ -84,10 +89,17 @@ export async function approveRequest(
   if (!req) throw new AppError('申請不存在', 'NOT_FOUND', 404);
   if (req.status !== 'pending') throw new AppError('此申請已處理', 'BAD_REQUEST', 400);
 
+  let trialExited = false;
   if (req.type === 'upgrade') {
     const plan = await prisma.plan.findUnique({ where: { slug: req.targetPlanSlug! }, select: { id: true } });
     if (!plan) throw new AppError('目標方案不存在', 'NOT_FOUND', 404);
-    await prisma.tenant.update({ where: { id: req.tenantId }, data: { planId: plan.id } });
+    await assertNotTrialPlan(prisma, req.targetPlanSlug!);
+    const tenant = await prisma.tenant.findUnique({ where: { id: req.tenantId }, select: { trialEndsAt: true } });
+    trialExited = tenant?.trialEndsAt != null;
+    await prisma.tenant.update({
+      where: { id: req.tenantId },
+      data: trialExited ? { planId: plan.id, ...TRIAL_EXIT_DATA } : { planId: plan.id },
+    });
     // 方案變動 → 失效權限天花板快取 + 租戶 plan 快取
     await invalidatePlanPermissions(prisma, plan.id);
     invalidateTenantPlan(req.tenantId);
@@ -117,10 +129,11 @@ export async function approveRequest(
     await clearTokenQuotaCache(req.tenantId); // 讓硬擋重讀新額度
   }
 
-  return prisma.planChangeRequest.update({
+  const approved = await prisma.planChangeRequest.update({
     where: { id: requestId },
     data: { status: 'approved', reviewedBy: platformUserId, reviewedAt: new Date(), reviewNote },
   });
+  return { ...approved, trialExited };
 }
 
 /** 駁回申請。 */

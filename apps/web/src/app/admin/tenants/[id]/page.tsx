@@ -235,6 +235,14 @@ export default function TenantDetailPage() {
               </option>
             ))}
           </select>
+          {tenant.trialEndsAt && (
+            // 改方案不代表轉正式：試用到期日仍會停用租戶；「轉正式」才會脫離試用
+            <p style={{ color: '#b7791f', fontSize: 12, margin: '6px 0 0' }}>
+              此租戶仍在試用中。在這裡改方案不會脫離試用，到期仍會被停用；要轉為付費，請使用
+              <Link href="/admin/trial" style={{ color: '#0d9488' }}>試用管理</Link>
+              的「轉正式」。
+            </p>
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button onClick={saveBasic} disabled={saving || !form.name.trim()} style={saveBtn}>
               儲存
