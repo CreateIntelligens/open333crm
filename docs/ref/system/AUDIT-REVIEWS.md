@@ -30,6 +30,8 @@ PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT
 
 **依 issue #197 更正 RBAC-01 的描述。** 原本寫工單、對話、標籤、短連結的路由「只驗身分」。`case.routes.ts` 與 `conversation.routes.ts` 其實檢查渠道可見範圍，只是不檢查權限碼；只驗身分的是 `tag.routes.ts` 與 `shortlink.routes.ts`。AUTH-05 引用 RBAC-01 的段落也一併更正。
 
+**PLAN-08 由 P1 改為 P3。** 這一項的權限判斷是正確的：`requirePermission()` 確實套用方案天花板。問題只在角色與權限頁的勾選狀態與 403 的訊息沒有反映天花板，符合 P3 定義中的「介面與資料不一致」。issue #197 的查證提出同樣的建議。
+
 ## 2026-10-01：修正 RLS-06 與 TRIAL-01，新增 CASE-02
 
 依 change `fix-csat-intercept-and-trial-upgrade` 修正 P1 的第一批，兩項都從 `AUDIT.md` 移除：
