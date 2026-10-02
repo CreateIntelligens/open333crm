@@ -15,6 +15,7 @@ import {
   getClickLogs,
 } from './shortlink.service.js';
 import { generateQrCode } from './qrcode.service.js';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 // 轉址頁會把 targetUrl 丟進 window.location.replace() 與 <noscript><a href>，
 // 兩者都是執行 sink：不限制 scheme 等於留下儲存型 XSS（javascript:、data:）。
@@ -87,11 +88,17 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
+// 短連結路由的權限檢查（AUDIT RBAC-01）
+const perm = {
+  view: requirePermission('shortlink.view'),
+  manage: requirePermission('shortlink.manage'),
+};
+
 export default async function shortlinkRoutes(app: FastifyInstance) {
   // All routes require agent JWT
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: [perm.view] }, async (request) => {
     const { isActive, q, page, limit } = listQuerySchema.parse(request.query);
     const result = await listShortLinks(request.tenantPrisma, request.agent.tenantId, {
       isActive,
@@ -102,7 +109,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: [perm.manage] }, async (request, reply) => {
     const body = createShortlinkSchema.parse(request.body);
     try {
       const link = await createShortLink(request.tenantPrisma, request.agent.tenantId, request.agent.id, body as Parameters<typeof createShortLink>[3]);
@@ -112,14 +119,14 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/:id', async (request, reply) => {
+  app.get('/:id', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: link };
   });
 
-  app.patch('/:id', async (request, reply) => {
+  app.patch('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateShortlinkSchema.parse(request.body);
     const link = await updateShortLink(request.tenantPrisma, id, request.agent.tenantId, body as Parameters<typeof updateShortLink>[3]);
@@ -127,21 +134,21 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
     return { success: true, data: link };
   });
 
-  app.delete('/:id', async (request, reply) => {
+  app.delete('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const result = await deleteShortLink(request.tenantPrisma, id, request.agent.tenantId);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true };
   });
 
-  app.get('/:id/stats', async (request, reply) => {
+  app.get('/:id/stats', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const stats = await getClickStats(request.tenantPrisma, id, request.agent.tenantId);
     if (!stats) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });
     return { success: true, data: stats };
   });
 
-  app.get('/:id/clicks', async (request, reply) => {
+  app.get('/:id/clicks', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { page, limit } = request.query as Record<string, string>;
     // getClickLogs 的 skip 同樣是 (page-1)*limit，未夾制會負 skip → 500
@@ -154,7 +161,7 @@ export default async function shortlinkRoutes(app: FastifyInstance) {
     return { success: true, data: result.items, meta: { total: result.total, page: result.page, limit: result.limit } };
   });
 
-  app.get('/:id/qrcode', async (request, reply) => {
+  app.get('/:id/qrcode', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const link = await getShortLink(request.tenantPrisma, id, request.agent.tenantId);
     if (!link) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到此短連結，可能已被刪除' } });

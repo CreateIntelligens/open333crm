@@ -21,6 +21,7 @@ import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { validateOutboundMessage } from '@open333crm/shared';
+import { requirePermission } from '../../guards/rbac.guard.js';
 
 interface MediaUploadConfig {
   allowedMimes: readonly string[];
@@ -164,12 +165,21 @@ const createCaseFromConvSchema = z.object({
   teamId: z.string().uuid().optional(),
 });
 
+// 對話路由的權限檢查集中在這裡（AUDIT RBAC-01）；渠道可見範圍與存取層級（CM-173）另在各路由內檢查，兩者疊加。
+// 新增對話路由時請從這張表選用；路由層測試見 tests/feature/modules/route-permission-guards.test.ts
+const perm = {
+  view: requirePermission('inbox.view'),
+  reply: requirePermission('inbox.reply'),
+  manage: requirePermission('inbox.manage'),
+  caseCreate: requirePermission('case.create'),
+};
+
 export default async function conversationRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/conversations
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: [perm.view] }, async (request, reply) => {
     const query = listQuerySchema.parse(request.query);
     const { page, limit, ...filters } = query;
 
@@ -188,7 +198,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/conversations/:id
-  fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id', { preHandler: [perm.view] }, async (request, reply) => {
     const conversation = await getConversation(
       request.tenantPrisma,
       request.params.id,
@@ -210,7 +220,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/conversations/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = updateConversationSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：改狀態/指派為管理操作
 
@@ -226,7 +236,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/read
-  fastify.post<{ Params: { id: string } }>('/:id/read', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/read', { preHandler: [perm.view] }, async (request, reply) => {
     await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得改已讀狀態
     const conversation = await markConversationRead(
       request.tenantPrisma,
@@ -239,7 +249,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/tags
-  fastify.post<{ Params: { id: string } }>('/:id/tags', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/tags', { preHandler: [perm.manage] }, async (request, reply) => {
     const body = addTagSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id); // CM-173
     const conversationTag = await addTagToTarget(request.tenantPrisma, {
@@ -255,7 +265,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/conversations/:id/tags/:tagId
   fastify.delete<{ Params: { id: string; tagId: string } }>(
-    '/:id/tags/:tagId',
+    '/:id/tags/:tagId', { preHandler: [perm.manage] },
     async (request, reply) => {
       await assertConversationChannelVisible(request, request.params.id); // CM-173
       const removed = await removeTagFromTarget(request.tenantPrisma, {
@@ -270,7 +280,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   );
 
   // GET /api/v1/conversations/:id/messages
-  fastify.get<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/messages', { preHandler: [perm.view] }, async (request, reply) => {
     const query = messagesQuerySchema.parse(request.query);
     await assertConversationChannelVisible(request, request.params.id, 'read_only'); // CM-173：渠道不可見不得讀訊息歷史
 
@@ -286,7 +296,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/messages
-  fastify.post<{ Params: { id: string } }>('/:id/messages', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/messages', { preHandler: [perm.reply] }, async (request, reply) => {
     const data = sendMessageSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id); // CM-173
 
@@ -303,7 +313,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/close - close conversation with optional reason
-  fastify.post<{ Params: { id: string } }>('/:id/close', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/close', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = z.object({
       reason: z.string().max(1000).optional(),
     }).parse(request.body ?? {});
@@ -325,7 +335,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/handoff - handoff from bot to agent
-  fastify.post<{ Params: { id: string } }>('/:id/handoff', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/handoff', { preHandler: [perm.manage] }, async (request, reply) => {
     const data = z.object({
       assignToId: z.string().uuid().optional(),
       handoffMessage: z.string().optional(),
@@ -345,7 +355,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/typing - emit typing event
-  fastify.post<{ Params: { id: string } }>('/:id/typing', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/typing', { preHandler: [perm.reply] }, async (request, reply) => {
     const { action } = z.object({
       action: z.enum(['start', 'stop']),
     }).parse(request.body);
@@ -362,7 +372,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/case - create case from conversation
-  fastify.post<{ Params: { id: string } }>('/:id/case', async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/case', { preHandler: [perm.view, perm.caseCreate] }, async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：建工單為管理操作
 
@@ -380,12 +390,12 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/send-image
-  fastify.post<{ Params: { id: string } }>('/:id/send-image', (request, reply) =>
+  fastify.post<{ Params: { id: string } }>('/:id/send-image', { preHandler: [perm.reply] }, (request, reply) =>
     handleSendMedia(fastify, request, reply, SEND_IMAGE_CONFIG),
   );
 
   // POST /api/v1/conversations/:id/send-video
-  fastify.post<{ Params: { id: string } }>('/:id/send-video', (request, reply) =>
+  fastify.post<{ Params: { id: string } }>('/:id/send-video', { preHandler: [perm.reply] }, (request, reply) =>
     handleSendMedia(fastify, request, reply, SEND_VIDEO_CONFIG),
   );
 }
