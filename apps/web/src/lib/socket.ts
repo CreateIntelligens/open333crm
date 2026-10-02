@@ -28,10 +28,12 @@ export function getSocket({ getToken, onAuthError, onGiveUp }: SocketAuthOptions
   });
 
   let authRetries = 0;
+  let gaveUp = false;
   const s = socket;
 
   s.on('connect', () => {
     authRetries = 0;
+    gaveUp = false;
     console.log('[Socket] Connected:', s.id);
   });
 
@@ -42,9 +44,13 @@ export function getSocket({ getToken, onAuthError, onGiveUp }: SocketAuthOptions
   s.on('connect_error', async (err) => {
     console.error('[Socket] Connection error:', err.message);
     // active 為 true 代表 socket.io 會自己重試（網路斷線等）；false 代表被伺服器拒絕（token 過期或無效），要換發後手動重連
-    if (s.active) return;
+    // 已不是目前在用的連線（登出、換人後舊連線晚到的事件）：一律不處理，避免改到新連線的畫面狀態
+    if (s.active || socket !== s) return;
     if (authRetries >= MAX_AUTH_RETRIES) {
-      onGiveUp?.();
+      if (!gaveUp) {
+        gaveUp = true;
+        onGiveUp?.();
+      }
       return;
     }
     authRetries++;

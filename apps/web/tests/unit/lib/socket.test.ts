@@ -100,3 +100,19 @@ test('重試用完仍連不上：通知呼叫端顯示連線中斷', async () =>
   await fake.fire('connect_error', new Error('x'));
   assert.equal(gaveUp, 1);
 });
+
+test('舊連線（已登出或換人）晚到的錯誤：不通知連線中斷', async () => {
+  let gaveUp = 0;
+  getSocket({ getToken: () => 't', onAuthError: async () => {}, onGiveUp: () => { gaveUp++; } });
+  for (let i = 0; i < 3; i++) await fake.fire('connect_error', new Error('x'));
+  disconnectSocket(); // 使用者登出：這條連線已不是目前在用的
+  await fake.fire('connect_error', new Error('x'));
+  assert.equal(gaveUp, 0);
+});
+
+test('連線中斷只通知一次', async () => {
+  let gaveUp = 0;
+  getSocket({ getToken: () => 't', onAuthError: async () => {}, onGiveUp: () => { gaveUp++; } });
+  for (let i = 0; i < 6; i++) await fake.fire('connect_error', new Error('x'));
+  assert.equal(gaveUp, 1);
+});
