@@ -37,6 +37,10 @@ Actions that the workers do not implement yet SHALL be listed in `UNSUPPORTED_AU
 - **WHEN** an administrator changes only the active state or name of a rule that contains an unsupported action
 - **THEN** the update succeeds
 
+#### Scenario: Rule list marks the rule
+- **WHEN** a rule contains an unsupported action
+- **THEN** the rule list shows「含未支援的動作」next to it, and the editor explains which actions will not run and will be removed on save
+
 ## ADDED Requirements
 
 ### Requirement: 自動化建立工單

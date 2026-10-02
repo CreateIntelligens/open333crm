@@ -4,6 +4,24 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：補上 AUTO-01 的 `create_case`，修正「Actions」的規格矛盾
+
+PR #211 在 workers 實作 `create_case`，並修正 #209 的 delta spec。AUTO-01 仍為部分修正。
+
+| 項目 | 修正的 PR | 已修正 | 剩下的問題 | 優先順序 |
+| --- | --- | --- | --- | --- |
+| AUTO-01 | #211 | workers 實作 `create_case`，從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除；只在有對話的事件提供 | `remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 在 workers 沒有實作 | 維持 P2（主規格「Actions」已改寫為「未實作的動作列在 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`」，是否仍違反主規格待重新判定） |
+
+**核對方式。**
+
+- `apps/workers/src/lib/automation-actions.ts` 新增 `createCaseFromAutomation()`：建單、關聯對話、寫工單事件在同一個交易，關聯以條件式更新防止並行重複開單；觸發事件是工單或 SLA 相關、沒有對話、對話已有未結案工單時不建立。
+- 契約 `create_case` 的 `requires` 改為 `contact`、`conversation`，分類改為下拉選單並以測試比對 `CASE_CATEGORIES`。
+- `apps/workers/tests/unit/lib/automation-create-case.test.ts` 涵蓋建單、並行、跨租戶與迴圈防護。
+
+**規格矛盾的修正。** #209 的 change `fix-automation-unsupported-actions` 改為 MODIFIED「Actions」後以 `openspec archive` 歸檔；#211 的 change `add-automation-create-case` 再以 MODIFIED「Actions」把 `create_case` 改為已支援，保留既有的全部 Scenario，UAT 實測後歸檔。
+
+**另外修正的既有問題。** API 收到 `case.created` 時的自動分類原本一律覆寫 `category`，客服手動建單選的分類會被蓋掉。改為工單已有分類就不分類（`autoClassifyNewCase()`）。
+
 ## 2026-10-02：以「違反主規格的項目至少是 P2」重看 P3、P4
 
 這條規則在上一筆紀錄加入時，只套用在 RBAC-01、AUTO-01、PLAN-04。本次把當時所有 P3、P4 項目，逐一對照 `openspec/specs/` 的主規格。原本就是 P2 的項目不受這條規則影響，沒有重看。
