@@ -11,9 +11,11 @@ export interface SocketAuthOptions {
   getToken: () => string | null;
   /** 驗證失敗時觸發 token 換發（例如呼叫一支需要登入的 API，讓攔截器自動 refresh） */
   onAuthError: () => Promise<unknown>;
+  /** 重試用完仍連不上時呼叫，讓畫面顯示連線中斷（不可只留 console） */
+  onGiveUp?: () => void;
 }
 
-export function getSocket({ getToken, onAuthError }: SocketAuthOptions): Socket {
+export function getSocket({ getToken, onAuthError, onGiveUp }: SocketAuthOptions): Socket {
   if (socket && socket.connected) {
     return socket;
   }
@@ -40,9 +42,15 @@ export function getSocket({ getToken, onAuthError }: SocketAuthOptions): Socket 
   s.on('connect_error', async (err) => {
     console.error('[Socket] Connection error:', err.message);
     // active 為 true 代表 socket.io 會自己重試（網路斷線等）；false 代表被伺服器拒絕（token 過期或無效），要換發後手動重連
-    if (s.active || authRetries >= MAX_AUTH_RETRIES) return;
+    if (s.active) return;
+    if (authRetries >= MAX_AUTH_RETRIES) {
+      onGiveUp?.();
+      return;
+    }
     authRetries++;
     await onAuthError().catch(() => {});
+    // 換發期間使用者可能已登出或換人（連線已被關閉、換成新的）：不可把舊連線連回去，否則會留下沒人管的連線
+    if (socket !== s) return;
     s.connect();
   });
 

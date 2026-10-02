@@ -1,6 +1,10 @@
 /**
  * socket 重連使用最新的 access token；被伺服器以驗證失敗拒絕時先換發再重連（change fix-agent-token-purpose）。
  * 原本建立連線時把 token 固定在設定裡，access token 15 分鐘過期後、API 重啟（部署）就再也連不上。
+ *
+ * 這裡用假的 socket，手動設定 active。真實行為依 socket.io-client 4.8.3 原始碼確認：伺服器 middleware 拒絕連線時
+ * 走 CONNECT_ERROR，先 destroy()（subs 清空 → active 為 false）再發 connect_error；網路錯誤時 active 仍為 true，
+ * 由 socket.io 自己重試。升級 socket.io-client 時要重新確認。
  */
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
@@ -76,4 +80,23 @@ test('連線還在自動重試中（網路斷線等）：不介入', async () =>
   await fake.fire('connect_error', new Error('xhr poll error'));
   assert.equal(refreshes, 0);
   assert.equal(fake.connectCalls, 0);
+});
+
+test('換發途中使用者登出（連線已被關閉）：不再把舊連線連回去', async () => {
+  let release!: () => void;
+  getSocket({ getToken: () => null, onAuthError: () => new Promise<void>((r) => { release = r; }) });
+  const pending = fake.fire('connect_error', new Error('登入已過期，請重新登入'));
+  disconnectSocket();
+  release();
+  await pending;
+  assert.equal(fake.connectCalls, 0);
+});
+
+test('重試用完仍連不上：通知呼叫端顯示連線中斷', async () => {
+  let gaveUp = 0;
+  getSocket({ getToken: () => 't', onAuthError: async () => {}, onGiveUp: () => { gaveUp++; } });
+  for (let i = 0; i < 3; i++) await fake.fire('connect_error', new Error('x'));
+  assert.equal(gaveUp, 0);
+  await fake.fire('connect_error', new Error('x'));
+  assert.equal(gaveUp, 1);
 });

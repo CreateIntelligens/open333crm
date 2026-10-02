@@ -18,6 +18,7 @@ const { default: authRoutes } = await import('#src/modules/auth/auth.routes.js')
 const { loadEnvConfig } = await import('#src/config/env.js');
 const { memBindingStore } = await import('#tests/support/mem-binding-store.js');
 
+const PASSWORD = 'Correct-Pass-1';
 const agentRow = { id: 'a1', tenantId: 't1', email: 'a@x.dev', name: 'A', role: 'ADMIN', roleId: null, avatarUrl: null };
 const claims = { agentId: 'a1', tenantId: 't1', role: 'ADMIN', roleId: null };
 let app: FastifyInstance;
@@ -33,6 +34,8 @@ beforeAll(async () => {
   await app.register(authPlugin);
   await app.register(authRoutes, { prefix: '/api/v1/auth', loginAttempts: memBindingStore() });
   app.get('/probe', { preHandler: [app.authenticate] }, async (req) => ({ agentId: req.agent.id }));
+  app.get('/probe-cli', { preHandler: [app.authenticateJwtOrCliSession] }, async (req) => ({ agentId: req.agent.id }));
+  app.get('/probe-partner', { preHandler: [app.authenticateJwtOrPartnerKey] }, async (req) => ({ agentId: req.agent.id }));
   await app.ready();
 });
 afterAll(async () => {
@@ -75,4 +78,26 @@ test('換發：舊格式 refresh token 可換發，新 token 帶用途', async (
   const cookie = res.cookies.find((c) => c.name === 'refreshToken');
   assert.equal(app.jwt.decode<{ typ?: string }>(cookie!.value)?.typ, 'refresh');
   assert.equal((await probe(res.json().data.accessToken)).statusCode, 200, '換發後的 access token 可用');
+});
+
+test('另外兩個「JWT 或其他憑證」驗證：同樣只收 access token', async () => {
+  const refreshToken = app.jwt.sign({ ...claims, typ: 'refresh', rememberMe: true });
+  const accessToken = app.jwt.sign({ ...claims, typ: 'access' });
+  for (const url of ['/probe-cli', '/probe-partner']) {
+    const get = (t: string) => app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${t}` } });
+    assert.equal((await get(refreshToken)).statusCode, 401, `${url} 不收 refresh token`);
+    assert.equal((await get(accessToken)).statusCode, 200, `${url} 收 access token`);
+  }
+});
+
+test('密碼登入簽出的 access 與 refresh token 都帶用途', async () => {
+  const { hashPassword } = await import('#src/shared/utils/password.js');
+  const hash = await hashPassword(PASSWORD);
+  const prisma = app.prismaAdmin as unknown as { agent: Record<string, unknown> };
+  prisma.agent.findUnique = async () => ({ ...agentRow, passwordHash: hash, isActive: true, tenant: { isActive: true } });
+  const res = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: 'a@x.dev', password: PASSWORD } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(app.jwt.decode<{ typ?: string }>(res.json().data.accessToken)?.typ, 'access');
+  const cookie = res.cookies.find((c) => c.name === 'refreshToken');
+  assert.equal(app.jwt.decode<{ typ?: string }>(cookie!.value)?.typ, 'refresh');
 });

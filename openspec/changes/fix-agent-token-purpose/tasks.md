@@ -9,6 +9,7 @@
 
 - [x] 2.1 測試 `apps/web/tests/unit/lib/socket.test.ts`：重連使用最新 token、驗證失敗時換發後重連且最多 3 次
 - [x] 2.2 實作 `lib/socket.ts`、`SocketProvider.tsx`
+- [x] 2.3 審查補強：換發途中登出不把舊連線連回去；重試用完後 Topbar 顯示「即時連線中斷，請重新整理」；補另外兩個驗證分支與密碼登入簽發帶 typ 的測試
 
 ## 3. 完成檢查
 
