@@ -162,3 +162,19 @@
 #### Scenario: FB 沒有 username
 - **WHEN** FB 渠道未設定 page username 但有 pageId
 - **THEN** 產生的連結 SHALL 使用 `https://m.me/{pageId}?ref={代碼}`
+
+### Requirement: AI 不得產生綁定代碼
+綁定代碼 SHALL 只由綁定流程產生。AI 回覆（一般 AI 回覆與知識庫自動回覆）讀取的對話紀錄 SHALL 不含系統發出的綁定訊息，其他訊息中的代碼 SHALL 遮蔽；AI 回覆含 `BIND-` 代碼時，系統 SHALL 將整則回覆換成固定說明，並在該則訊息標記 `bindingCodeBlocked`。
+
+#### Scenario: 打錯關鍵字交給 AI
+- **WHEN** 顧客傳送與綁定關鍵字不完全相符的訊息（例如「綁定帳號綁定帳號」），AI 照對話紀錄產生含 `BIND-` 代碼的回覆
+- **THEN** 顧客 SHALL 收到「如需綁定其他帳號，請直接傳送『綁定帳號』…」的固定說明，不含任何代碼與連結
+
+#### Scenario: 租戶未啟用綁定
+- **WHEN** 未啟用綁定的租戶，AI 回覆含 `BIND-` 代碼
+- **THEN** 顧客 SHALL 收到請洽客服的固定說明，不提及綁定關鍵字
+
+#### Scenario: AI 看不到綁定訊息
+- **WHEN** 對話紀錄中有系統發出的綁定導流訊息與顧客送出的代碼
+- **THEN** 交給 AI 的歷史 SHALL 不含該導流訊息，顧客訊息中的代碼 SHALL 顯示為「[綁定代碼]」
+

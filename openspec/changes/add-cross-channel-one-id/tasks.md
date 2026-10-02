@@ -75,9 +75,11 @@
 
 ### 9.1 本 change 上線前必做
 
-- [ ] 9.1.1 push 分支並開 PR（目前 13 個 commit 皆只在本地）
-- [ ] 9.1.2 UAT 部署：2 支 migration（`20260929100000_add_contact_merge_log`、`20260929110000_add_identity_binding_settings`）、跑 `backfill-binding-handles.ts` 補抓既有渠道導流識別（見 design.md Migration Plan）
-- [ ] 9.1.3 UAT 真機驗證（即 0.4）：FB／IG 新舊對話四種情境、LINE 加好友流程、**兌換後回覆「確認綁定」的確認步驟**、解除綁定、客服代發按鈕
+- [x] 9.1.1 push 分支並開 PR（PR #185，已 merge）
+- [x] 9.1.2 UAT 部署（2026-10-01 查證：兩支 migration 已套用，LINE 與 FB 渠道已有導流識別；IG333 因權杖解不開尚無，見 uat-checklist.md P2）：2 支 migration（`20260929100000_add_contact_merge_log`、`20260929110000_add_identity_binding_settings`）、跑 `backfill-binding-handles.ts` 補抓既有渠道導流識別（見 design.md Migration Plan）
+- [ ] 9.1.3 UAT 真機驗證（即 0.4，清單見 `uat-checklist.md`）：FB／IG 新舊對話四種情境、LINE 加好友流程、**兌換後回覆「確認綁定」的確認步驟**、解除綁定、客服代發按鈕
+- [x] 9.1.5 測試：AI 回覆與知識庫自動回覆的歷史排除綁定訊息、遮蔽代碼；AI 回覆含代碼時換成固定說明（UAT 實測 AI 偽造代碼 `BIND-5W5PZ472M9`）
+- [x] 9.1.6 實作：`identity-binding/ai-guard.ts`，接到 `agent.service.ts` 與 `kb-autoreply.service.ts`
 - [ ] 9.1.4 第六輪 review 的修正（2b2622f）尚未再經 review；是否再跑一輪由負責人決定
 
 ### 9.2 demo 觀察到、尚未改善的體驗
