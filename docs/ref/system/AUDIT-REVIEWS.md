@@ -4,6 +4,33 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：修正 RLS-05
+
+`f4c76b5` 修正 RLS-05，從 `AUDIT.md` 移除：
+
+| 修正方向 | 實作 |
+| --- | --- |
+| 路由改用 `request.tenantPrisma` | 路由傳入 `request.tenantPrisma` 與 `request.agent.tenantId` |
+| 服務查 `channelIdentity` 與 `channel` 的條件都加上 `tenantId` | 渠道以 `tenantId`、`isActive` 與 LINE 類型查詢；身分以 `channel.tenantId` 查詢 |
+| 把這個檔案移出白名單 | `check-prisma-admin-usage.mjs` 移除 `line-profile` |
+
+另外加上兩道檢查：`requirePermission('contact.update')`，以及渠道可見範圍。看不到的渠道回 404，與其他租戶的渠道相同。
+
+**決策：保留端點，不刪除。** AUDIT 的修正方向也提到「確認沒有外部呼叫端的話，可以直接移除這條路由」。這次選擇保留，原因有兩個：
+
+- 這個端點是 change `line-webhook-image-profile-sync`（2026-04-21）規劃的「客服手動刷新 LINE 個人資料」。原規格只要求登入，沒有提到租戶；補上租戶條件不改變原本的設計意圖。
+- 系統只在第一次建立聯絡人時呼叫 `getProfile()`（`inbound-contact-resolver.ts`），之後不會自動更新。這個端點是目前唯一能刷新的途徑，只是還沒有頁面。
+
+**驗證。**
+
+- `tests/feature/modules/line/line-profile-sync.test.ts`：其他租戶的渠道、沒有 `contact.update`、渠道不在可見範圍、非 LINE 渠道，都回 404 或 403，不呼叫 LINE；自己租戶的渠道寫入 `ChannelIdentity`，不改 `Contact`。修正前，跨租戶、權限、可見範圍、非 LINE 四個案例都失敗。
+- `tests/unit/modules/line/line-profile.service.test.ts`：以不受 RLS 約束的 executor 呼叫 service，確認 service 自己帶 `tenantId` 條件。
+- 突變驗證：分別拿掉權限檢查、可見範圍檢查、LINE 類型條件、service 的 `tenantId` 條件，各有一個測試失敗。只拿掉 service 的 `tenantId` 條件時，feature 測試仍然通過，原因是可見範圍檢查先以租戶連線擋下；因此另外補了 unit 測試。
+
+**補上主規格。** `line-contact-profile-sync` 的規格原本只存在於歸檔的 change：該 change 在 `980781d5` 直接放進 `archive/`，沒有經過 `openspec archive`。這次以 change `sync-line-contact-profile-spec` 補上原規格與 RLS-05 的行為，歸檔後套用到 `openspec/specs/line-contact-profile-sync/spec.md`。feature 測試的名稱與規格的情境一一對應。
+
+同一個歷史 change 的另一份 delta spec `line-webhook-events`（LINE 圖片的 `contentProvider`）也沒有套用到主規格，另案處理。
+
 ## 2026-10-02：記錄 AUTH-05 的修正，新增 AUTH-08
 
 PR #202（`e12103c`）修正了 AUTH-05，但沒有更新 `AUDIT.md`。本次對照 diff 確認 AUTH-05 的修正方向都已實作，再從 `AUDIT.md` 移除：

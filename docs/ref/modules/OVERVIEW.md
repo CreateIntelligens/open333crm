@@ -117,7 +117,7 @@
 | `channel` | `/api/v1/channels` | `/dashboard/settings/channels` | `channel.view`、`channel.create`、`channel.update`、`channel.delete`、`channel.assign_team` | [渠道管理](../features/tenant/CHANNELS.md) |
 | `line` | `/api/v1/line/rich-menus`、`/api/v1/line/quick-reply-presets` | `/dashboard/line/*` | `richmenu.manage`、`quickreply.manage` | [LINE 工具](../features/tenant/LINE.md) |
 | `storage` | `/api/v1/files` | 各上傳介面 | 僅需登入 | 無 |
-| `line`（line-profile 部分） | `/api/v1/channels/:channelId/contacts/:lineUid/sync-profile` | 無頁面 | 僅需登入 | [聯絡人與標籤](../features/tenant/CONTACTS.md) |
+| `line`（line-profile 部分） | `/api/v1/channels/:channelId/contacts/:lineUid/sync-profile` | 無頁面 | `contact.update` | [聯絡人與標籤](../features/tenant/CONTACTS.md) |
 | `channels/simulator` | `/api/v1/simulator` | 開發環境的模擬器面板 | 僅需登入 | 無 |
 
 ### 自動化
