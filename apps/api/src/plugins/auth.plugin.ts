@@ -1,4 +1,5 @@
 import fp from 'fastify-plugin';
+import { isAgentAccessToken } from '../lib/agent-token.js';
 import fastifyJwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getConfig } from '../config/env.js';
@@ -103,6 +104,8 @@ declare module '@fastify/jwt' {
       role: string;
       roleId?: string | null;
       rememberMe?: boolean;
+      /** token 用途（change fix-agent-token-purpose）；舊格式沒有 */
+      typ?: 'access' | 'refresh';
     };
     user: {
       agentId: string;
@@ -184,9 +187,15 @@ async function authPlugin(fastify: FastifyInstance) {
     },
   );
 
+  /** 只收客服 access token：refresh、粉絲、MCP 確認與舊格式 token 一律視為未登入（AUDIT AUTH-05） */
+  function assertAgentAccessToken(user: unknown): void {
+    if (!isAgentAccessToken(user as Record<string, unknown>)) throw new Error('INVALID_TOKEN_PURPOSE');
+  }
+
   fastify.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
+      assertAgentAccessToken(request.user);
       const payload = request.user;
       request.agent = {
         id: payload.agentId,
@@ -249,6 +258,7 @@ async function authPlugin(fastify: FastifyInstance) {
 
       try {
         await request.jwtVerify();
+        assertAgentAccessToken(request.user);
         const payload = request.user;
         request.agent = {
           id: payload.agentId,
@@ -299,6 +309,7 @@ async function authPlugin(fastify: FastifyInstance) {
       // Fall back to JWT
       try {
         await request.jwtVerify();
+        assertAgentAccessToken(request.user);
         const payload = request.user;
         request.agent = {
           id: payload.agentId,

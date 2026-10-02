@@ -3,30 +3,64 @@ import { REALTIME_ORIGIN } from './constants';
 
 let socket: Socket | null = null;
 
-export function getSocket(token: string): Socket {
+/** 被伺服器以驗證失敗拒絕時，換發 token 後重連的次數上限（連上後歸零） */
+const MAX_AUTH_RETRIES = 3;
+
+export interface SocketAuthOptions {
+  /** 每次連線（含重連）時讀取當下的 access token */
+  getToken: () => string | null;
+  /** 驗證失敗時觸發 token 換發（例如呼叫一支需要登入的 API，讓攔截器自動 refresh） */
+  onAuthError: () => Promise<unknown>;
+  /** 重試用完仍連不上時呼叫，讓畫面顯示連線中斷（不可只留 console） */
+  onGiveUp?: () => void;
+}
+
+export function getSocket({ getToken, onAuthError, onGiveUp }: SocketAuthOptions): Socket {
   if (socket && socket.connected) {
     return socket;
   }
 
   socket = io(REALTIME_ORIGIN || undefined, {
-    auth: { token },
+    // 用函式而不是固定值：access token 15 分鐘就過期，斷線重連（例如 API 重啟）要用換發後的新 token
+    auth: (cb) => cb({ token: getToken() }),
     transports: ['websocket', 'polling'],
     autoConnect: true,
   });
 
-  socket.on('connect', () => {
-    console.log('[Socket] Connected:', socket?.id);
+  let authRetries = 0;
+  let gaveUp = false;
+  const s = socket;
+
+  s.on('connect', () => {
+    authRetries = 0;
+    gaveUp = false;
+    console.log('[Socket] Connected:', s.id);
   });
 
-  socket.on('disconnect', (reason) => {
+  s.on('disconnect', (reason) => {
     console.log('[Socket] Disconnected:', reason);
   });
 
-  socket.on('connect_error', (err) => {
+  s.on('connect_error', async (err) => {
     console.error('[Socket] Connection error:', err.message);
+    // active 為 true 代表 socket.io 會自己重試（網路斷線等）；false 代表被伺服器拒絕（token 過期或無效），要換發後手動重連
+    // 已不是目前在用的連線（登出、換人後舊連線晚到的事件）：一律不處理，避免改到新連線的畫面狀態
+    if (s.active || socket !== s) return;
+    if (authRetries >= MAX_AUTH_RETRIES) {
+      if (!gaveUp) {
+        gaveUp = true;
+        onGiveUp?.();
+      }
+      return;
+    }
+    authRetries++;
+    await onAuthError().catch(() => {});
+    // 換發期間使用者可能已登出或換人（連線已被關閉、換成新的）：不可把舊連線連回去，否則會留下沒人管的連線
+    if (socket !== s) return;
+    s.connect();
   });
 
-  return socket;
+  return s;
 }
 
 export function disconnectSocket(): void {

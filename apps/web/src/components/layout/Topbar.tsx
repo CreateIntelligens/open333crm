@@ -15,7 +15,7 @@ interface TopbarProps {
 
 export function Topbar({ title, children }: TopbarProps) {
   const { agent, logout } = useAuth();
-  const { isConnected } = useSocket();
+  const { isConnected, connectionLost } = useSocket();
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-6">
@@ -32,9 +32,20 @@ export function Topbar({ title, children }: TopbarProps) {
               isConnected ? "bg-success" : "bg-destructive"
             }`}
           />
-          <span className="text-xs text-muted-foreground">
-            {isConnected ? "已連線" : "未連線"}
-          </span>
+          {connectionLost ? (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="text-xs text-destructive underline-offset-2 hover:underline"
+              title="即時訊息連線中斷，重新整理頁面以恢復"
+            >
+              即時連線中斷，請重新整理
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {isConnected ? "已連線" : "未連線"}
+            </span>
+          )}
         </div>
 
         {/* 操作說明手冊 */}
