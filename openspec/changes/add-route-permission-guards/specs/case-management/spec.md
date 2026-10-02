@@ -19,6 +19,10 @@
 - **WHEN** 只有 `case.view` 與 `case.update` 的成員以 `PATCH /cases/:id` 把狀態改為 `ESCALATED`
 - **THEN** 回傳 HTTP 403
 
+#### Scenario: 建立工單時順便指派
+- **WHEN** 只有 `case.view` 與 `case.create` 的成員建立工單時帶 `assigneeId` 或 `teamId`
+- **THEN** 回傳 HTTP 403，缺少的權限碼為 `case.assign`
+
 #### Scenario: 只有編輯權限時改標題
 - **WHEN** 只有 `case.view` 與 `case.update` 的成員以 `PATCH /cases/:id` 修改標題
 - **THEN** 通過權限檢查

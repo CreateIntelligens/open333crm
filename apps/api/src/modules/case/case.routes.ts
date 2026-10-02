@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   listCases,
@@ -23,7 +23,8 @@ import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { CASE_CATEGORIES, LEGACY_CASE_CATEGORIES } from '@open333crm/shared';
-import { requirePermission } from '../../guards/rbac.guard.js';
+import { requirePermission, requirePermissionWhen } from '../../guards/rbac.guard.js';
+import { caseAssignIfAssigning } from './case-permission.js';
 
 
 // 篩選值正規化為大寫再驗證，避免呼叫端送小寫（如 status=open）直塞 Prisma enum 炸 400
@@ -137,26 +138,19 @@ const createCaseFromConvSchema = z.object({
 
 // 工單路由的權限檢查集中在這裡（AUDIT RBAC-01；權限碼見 packages/core/src/rbac/permissions.ts）。
 // 新增工單路由時請從這張表選用；路由層測試見 tests/feature/modules/route-permission-guards.test.ts
-const caseAssign = requirePermission('case.assign');
-const caseEscalate = requirePermission('case.escalate');
 const perm = {
   view: requirePermission('case.view'),
   create: requirePermission('case.create'),
   update: requirePermission('case.update'),
-  assign: caseAssign,
-  escalate: caseEscalate,
+  assign: requirePermission('case.assign'),
+  escalate: requirePermission('case.escalate'),
   delete: requirePermission('case.delete'),
-  /**
-   * PATCH 可以順便改負責人、團隊或改成「已升級」：不另外檢查的話，只有編輯權限的人就能繞過指派與升級權限
-   */
-  patchExtras: async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = (request.body ?? {}) as { assigneeId?: unknown; teamId?: unknown; status?: unknown };
-    if (body.assigneeId !== undefined || body.teamId !== undefined) {
-      await caseAssign(request, reply);
-      if (reply.sent) return;
-    }
-    if (body.status === 'ESCALATED') await caseEscalate(request, reply);
-  },
+  // 建立或編輯時順便改負責人／團隊、或改成「已升級」：不另外檢查的話，只有建立或編輯權限就能繞過指派與升級權限
+  assignIfAssigning: caseAssignIfAssigning,
+  escalateIfEscalating: requirePermissionWhen(
+    'case.escalate',
+    (request) => (request.body as { status?: unknown } | undefined)?.status === 'ESCALATED',
+  ),
 };
 
 export default async function caseRoutes(fastify: FastifyInstance) {
@@ -194,7 +188,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/cases
-  fastify.post('/', { preHandler: [perm.create] }, async (request, reply) => {
+  fastify.post('/', { preHandler: [perm.create, perm.assignIfAssigning] }, async (request, reply) => {
     const data = createCaseSchema.parse(request.body);
 
     const caseRecord = await createCase(
@@ -232,7 +226,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/v1/cases/:id
-  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [perm.update, perm.patchExtras] }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string } }>('/:id', { preHandler: [perm.update, perm.assignIfAssigning, perm.escalateIfEscalating] }, async (request, reply) => {
     const data = updateCaseSchema.parse(request.body);
     await assertCaseChannelVisible(request, request.params.id, 'full'); // CM-173：改工單為管理操作
 
@@ -446,7 +440,7 @@ export default async function caseRoutes(fastify: FastifyInstance) {
 
   // POST /api/v1/cases/from-conversation/:conversationId
   fastify.post<{ Params: { conversationId: string } }>(
-    '/from-conversation/:conversationId', { preHandler: [perm.create] },
+    '/from-conversation/:conversationId', { preHandler: [perm.create, perm.assignIfAssigning] },
     async (request, reply) => {
       const data = createCaseFromConvSchema.parse(request.body);
 

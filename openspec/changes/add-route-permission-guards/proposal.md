@@ -11,7 +11,7 @@ docs/ref/system/AUDIT.md RBAC-01（issue #197）：權限碼早已定義，但�
 | 工單 | `GET /cases`、`/cases/categories`、`/cases/stats`、`/cases/:id`、`/cases/:id/events` | `case.view` |
 | 工單 | `POST /cases`、`POST /cases/from-conversation/:conversationId`、`POST /conversations/:id/case` | `case.create` |
 | 工單 | `PATCH /cases/:id`、`POST /cases/:id/tags`、`DELETE /cases/:id/tags/:tagId`、`POST /cases/:id/notes`、`/resolve`、`/close`、`/reopen`、`/csat`、`POST /cases/:id/conversations/:conversationId/link` | `case.update` |
-| 工單 | `PATCH /cases/:id` 帶 `assigneeId` 或 `teamId` 時另需；`POST /cases/:id/assign` | `case.assign` |
+| 工單 | `PATCH /cases/:id`、`POST /cases`、`POST /cases/from-conversation/:conversationId`、`POST /conversations/:id/case` 帶 `assigneeId` 或 `teamId`（含 null）時另需；`POST /cases/:id/assign` | `case.assign` |
 | 工單 | `PATCH /cases/:id` 把狀態改為 `ESCALATED` 時另需；`POST /cases/:id/escalate` | `case.escalate` |
 | 工單 | `DELETE /cases/:id` | `case.delete` |
 | 對話 | `GET /conversations`、`/conversations/:id`、`/conversations/:id/messages`、`POST /conversations/:id/read` | `inbox.view` |
@@ -22,7 +22,9 @@ docs/ref/system/AUDIT.md RBAC-01（issue #197）：權限碼早已定義，但�
 | 短連結 | `GET /shortlinks`、`/:id`、`/:id/stats`、`/:id/clicks`、`/:id/qrcode` | `shortlink.view` |
 | 短連結 | `POST /shortlinks`、`PATCH /shortlinks/:id`、`DELETE /shortlinks/:id` | `shortlink.manage` |
 
-工單與對話路由原有的渠道可見範圍與存取層級檢查（CM-173）保留，權限碼檢查疊加在前。
+工單與對話路由原有的渠道可見範圍與存取層級檢查（CM-173）保留，權限碼檢查疊加在前。條件式檢查以新的 `requirePermissionWhen(code, when)` 實作（`guards/rbac.guard.ts`）。
+
+不在這次範圍（審查列出）：AI 建議回覆與摘要（`ai.routes.ts`）只驗登入即可讀對話內容；socket 訂閱房間只檢查渠道可見範圍、不檢查權限碼；手動記錄 CSAT 只需 `case.update`，客服可替自己負責的工單評分，是否改為主管權限待產品決定。
 
 ## Capabilities
 
@@ -33,5 +35,6 @@ docs/ref/system/AUDIT.md RBAC-01（issue #197）：權限碼早已定義，但�
 ## Impact
 
 - `apps/api/src/modules/{case,conversation,tag,shortlink}/*.routes.ts`
+- **上線前必做**：查 `SELECT email FROM agents WHERE "roleId" IS NULL AND "isActive"`。沒有細粒度角色的成員權限為空集合，上線後這四個模組全部 403；UAT 有 1 位（RBAC 上線前建立的帳號），須先補上該租戶的系統角色。
 - 上線影響：UAT（目前唯一的部署環境）3 個租戶的所有角色都具備上表 13 個權限碼，13 個權限碼都屬於 `inbox` 功能模組、5 種方案都包含，上線後不會有既有成員被擋。新租戶的系統角色由種子資料提供，同樣具備。
 - 系統預設的 `agent` 角色目前含 `case.delete`，上線後客服仍可刪除工單，行為不變；是否收回由產品另行決定。

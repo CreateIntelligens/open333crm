@@ -22,6 +22,7 @@ import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { validateOutboundMessage } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { caseAssignIfAssigning } from '../case/case-permission.js';
 
 interface MediaUploadConfig {
   allowedMimes: readonly string[];
@@ -172,6 +173,7 @@ const perm = {
   reply: requirePermission('inbox.reply'),
   manage: requirePermission('inbox.manage'),
   caseCreate: requirePermission('case.create'),
+  caseAssignIfAssigning,
 };
 
 export default async function conversationRoutes(fastify: FastifyInstance) {
@@ -372,7 +374,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/conversations/:id/case - create case from conversation
-  fastify.post<{ Params: { id: string } }>('/:id/case', { preHandler: [perm.view, perm.caseCreate] }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/:id/case', { preHandler: [perm.view, perm.caseCreate, perm.caseAssignIfAssigning] }, async (request, reply) => {
     const data = createCaseFromConvSchema.parse(request.body);
     await assertConversationChannelVisible(request, request.params.id, 'full'); // CM-173：建工單為管理操作
 

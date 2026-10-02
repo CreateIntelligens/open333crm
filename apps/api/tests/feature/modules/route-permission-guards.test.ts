@@ -152,7 +152,9 @@ test('缺少該路由需要的權限碼（其他全都有）：回 403', async (
       byMissing.set(missing, app);
     }
     const res = await call(app, r);
-    if (res.statusCode !== 403) leaks.push(`${label(r)} 缺 ${missing} → ${res.statusCode}`);
+    // 確認是這個權限碼擋下的，不是渠道可見範圍等其他檢查
+    const required = res.statusCode === 403 ? res.json()?.error?.details?.requiredPermission : undefined;
+    if (res.statusCode !== 403 || required !== missing) leaks.push(`${label(r)} 缺 ${missing} → ${res.statusCode} ${required ?? ''}`);
   }
   assert.deepEqual(leaks, [], `以下路由沒檢查到正確的權限碼：\n${leaks.join('\n')}`);
 });
@@ -176,6 +178,14 @@ test('只具備該路由需要的權限碼：通過權限檢查（不回 403）'
 test('只有 case.view + case.update：PATCH 改負責人或升級回 403，改標題通過', async () => {
   const app = await buildApp((await createRole('case-update', ['case.view', 'case.update'])).id);
   const patch = (payload: object) => app.inject({ method: 'PATCH', url: `/api/v1/cases/${ID}`, payload });
+  const denied = async (payload: object, code: string) => {
+    const res = await patch(payload);
+    assert.equal(res.statusCode, 403, JSON.stringify(payload));
+    assert.equal(res.json().error.details.requiredPermission, code);
+  };
+  await denied({ assigneeId: ID }, 'case.assign');
+  await denied({ assigneeId: null }, 'case.assign');
+  await denied({ status: 'ESCALATED' }, 'case.escalate');
   assert.equal((await patch({ assigneeId: ID })).statusCode, 403, '改負責人需要 case.assign');
   assert.equal((await patch({ teamId: ID })).statusCode, 403, '改團隊需要 case.assign');
   assert.equal((await patch({ status: 'ESCALATED' })).statusCode, 403, '升級需要 case.escalate');
@@ -184,6 +194,30 @@ test('只有 case.view + case.update：PATCH 改負責人或升級回 403，改�
 
   const assignApp = await buildApp((await createRole('case-assign', ['case.view', 'case.update', 'case.assign'])).id);
   assert.notEqual((await assignApp.inject({ method: 'PATCH', url: `/api/v1/cases/${ID}`, payload: { assigneeId: ID } })).statusCode, 403);
+});
+
+test('建立工單時順便指派：另需 case.assign（三條建立工單的路由）', async () => {
+  const app = await buildApp((await createRole('case-create', ['case.view', 'case.create', 'inbox.view'])).id);
+  const creates = [
+    (extra: object) => app.inject({ method: 'POST', url: '/api/v1/cases', payload: { contactId: ID, channelId: ID, title: 'x', ...extra } }),
+    (extra: object) => app.inject({ method: 'POST', url: `/api/v1/cases/from-conversation/${ID}`, payload: { title: 'x', ...extra } }),
+    (extra: object) => app.inject({ method: 'POST', url: `/api/v1/conversations/${ID}/case`, payload: { title: 'x', ...extra } }),
+  ];
+  for (const create of creates) {
+    for (const extra of [{ assigneeId: ID }, { teamId: ID }]) {
+      const res = await create(extra);
+      assert.equal(res.statusCode, 403, JSON.stringify(extra));
+      assert.equal(res.json().error.details.requiredPermission, 'case.assign');
+    }
+    assert.notEqual((await create({})).statusCode, 403, '不指派時只需 case.create');
+  }
+});
+
+test('從對話頁建工單：缺 inbox.view 也擋', async () => {
+  const app = await buildApp((await createRole('case-only', ['case.view', 'case.create'])).id);
+  const res = await app.inject({ method: 'POST', url: `/api/v1/conversations/${ID}/case`, payload: { title: 'x' } });
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.json().error.details.requiredPermission, 'inbox.view');
 });
 
 afterAll(async () => {
