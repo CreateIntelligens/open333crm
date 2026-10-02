@@ -126,7 +126,7 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 側欄顯示，API 回 403 | 「設定」底下的「渠道管理」「人員管理」「SLA 政策」「營業時間」等分頁在側欄沒有 `perm`，所有成員都看得到；對應的 API 需要 `channel.view`、`agent.view`、`sla.manage` 或 `settings.manage` |
 | 側欄隱藏，API 放行 | 「我的績效」掛在「報表」底下，側欄要求 `analytics.view`；`GET /analytics/my` 只要有 `analytics.view.self` 就放行，但只有這個權限碼的客服在側欄找不到入口。「短連結」在側欄要求 `shortlink.view`；`/api/v1/shortlinks` 只需要登入 |
 
-收件匣與工單一帶的路由沒有權限碼，只驗登入，見 `../../system/AUDIT.md` 的 RBAC-01。各功能區的權限細節見各文件的「權限」一節。
+收件匣與工單一帶的路由不檢查權限碼。對話與工單只檢查渠道可見範圍，標籤與短連結只驗登入，見 `../../system/AUDIT.md` 的 RBAC-01。各功能區的權限細節見各文件的「權限」一節。
 
 ## 最需要注意的問題
 

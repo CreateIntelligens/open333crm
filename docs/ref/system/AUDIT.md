@@ -47,7 +47,7 @@
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
-| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由只驗身分 | 靜態確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由不檢查權限碼 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
@@ -223,7 +223,12 @@
 
 `inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由與聯絡人模組上，不在收件匣本身。
 
-結果是 `case`、`conversation`、`tag`、`shortlink` 這幾個模組的路由只有 `fastify.authenticate`，沒有任何授權判斷。租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
+結果是 `case`、`conversation`、`tag`、`shortlink` 這幾個模組的路由都不檢查權限碼：
+
+- `case.routes.ts` 與 `conversation.routes.ts` 檢查渠道可見範圍（`resolveChannelVisibility()`、`assertConversationChannelVisible()`），成員只能操作自己看得到的渠道。渠道可見範圍決定「能操作哪些資料」，不決定「能做哪些動作」。
+- `tag.routes.ts` 與 `shortlink.routes.ts` 只有 `fastify.authenticate`，沒有任何授權判斷。
+
+租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
 
 一個例外要分辨：`channel.view_all` 也沒有出現在 `requirePermission()` 裡，但它透過 `getEffectiveTenantPermissions()` 在 `services/channel-visibility.ts` 與 socket 房間授權中判斷，屬於有強制點的情況。
 
@@ -516,7 +521,7 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 **粉絲 token 的簽發路徑接回之後，粉絲 token 也能通過客服認證。** `openspec/changes/add-cross-channel-one-id/tasks.md` 的 9.3.3 預計接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。接回之後，持有粉絲 token 的人呼叫客服 API 時，`request.agent` 為 `{ id: undefined, tenantId, role: undefined, roleId: null }`：
 
 - `requirePermission()` 以 `roleId` 計算權限，得到空集合，掛權限碼的路由回 403。
-- 只驗登入的路由全部放行：對話、訊息、工單、標籤、通知、AI 輔助、短連結、檔案、訊息模擬器，也包括送出訊息給客人。見 RBAC-01。
+- 不檢查權限碼的路由全部放行：對話、訊息、工單、標籤、通知、AI 輔助、短連結、檔案、訊息模擬器，也包括送出訊息給客人。對話與工單另有渠道可見範圍的檢查，但下一點說明粉絲 token 也能通過。見 RBAC-01。
 - 渠道可見範圍的 `resolveRoleId()` 以 `agent.findFirst({ where: { id: undefined, tenantId } })` 查角色。Prisma 忽略值為 `undefined` 的條件，查到的是該租戶的任一成員，於是沿用那個人的角色。即使沒有 `channel.view_all`，沒有綁定成員或團隊的渠道本來就所有人可見。
 - 以粉絲 token 連 socket，會自動加入租戶房間，即時收到全租戶的新訊息內容。見 RBAC-04。
 

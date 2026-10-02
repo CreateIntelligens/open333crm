@@ -14,7 +14,7 @@ PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT
 | SEC-05 | `44582d1`（#200） | `POST /auth/login` 加上 `config.rateLimit`，每個 IP 每分鐘 10 次。`auth/login-attempts.ts` 依 email 計數，15 分鐘內第 6 次嘗試起鎖定；CLI 密碼登入共用計數。計數在驗證密碼之前原子遞增 | `tests/unit/modules/auth/` 的 `login-brute-force.test.ts`、`login-rate-limit-route.test.ts`、`login-timing.test.ts`、`cli-session-auth.test.ts` |
 | SLA-01 | `c99c40d`（#201） | `sendMessage()` 在工單關聯的對話送出客服訊息時呼叫 `markCaseFirstResponse()`；對話掛到既有工單時補上最早的客服回覆。既有工單用 `apps/api/src/scripts/backfill-case-first-response.ts` 補值 | `tests/feature/modules/case/case-first-response.test.ts`、`tests/unit/modules/conversation/send-message-first-response.test.ts` |
 
-**兩個部署環境的設定都已靜態核對。** `docker-compose.prod.yml` 的路徑是 nginx 容器到 API。nginx 容器的 IP 在 docker 網段（`uniquelocal`）內，API 把 nginx 容器當成代理略過，因此取到 nginx 附加的真實 IP。`docker-compose.yml` 的路徑是主機 nginx 到 Caddy 再到 API，靠 `Caddyfile.local` 的 `trusted_proxies` 保留真實 IP。`add-login-brute-force-protection` 的任務 3.3（部署後在 UAT 確認 API log 的 `remoteAddress` 是真實 IP）尚未完成，這個 change 也還沒歸檔。
+**兩個部署環境的設定都已靜態核對。** `docker-compose.prod.yml` 的路徑是 nginx 容器到 API。nginx 容器的 IP 在 docker 網段（`uniquelocal`）內，API 把 nginx 容器當成代理略過，因此取到 nginx 附加的真實 IP。`docker-compose.yml` 的路徑是主機 nginx 到 Caddy 再到 API，靠 `Caddyfile.local` 的 `trusted_proxies` 保留真實 IP。Daniel-7788 在 issue #197 回報已在 UAT 實測：修正後 API 記到真實 IP，偽造的 `X-Forwarded-For` 不會被採用。`add-login-brute-force-protection` 的任務 3.3 是同一項確認，在 `tasks.md` 中仍未勾選，這個 change 也還沒歸檔。
 
 **SEC-05 的修正一併修掉一個帳號列舉的問題。** 原本的 `login()` 先檢查帳號是否停用，再驗證密碼，不需要密碼就能分辨一個 email 是不是停用的帳號。`44582d1` 把停用檢查移到密碼驗證之後，email 不存在時也對假雜湊比對一次，讓回應時間一致。
 
@@ -27,6 +27,8 @@ PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT
 - AUTH-01 的前置條件原本是「SEC-04 應先修」，改為「新端點要自己設定速率限制」。
 - AUTH-04 原本寫平台登入的速率限制可以透過 SEC-04 繞過。改為寫明平台登入只有 IP 限流，沒有帳號鎖定。
 - ANA-01 原本寫平均首次回應時間因為 SLA-01 永遠是空值，改為指向 SLA-05。
+
+**依 issue #197 更正 RBAC-01 的描述。** 原本寫工單、對話、標籤、短連結的路由「只驗身分」。`case.routes.ts` 與 `conversation.routes.ts` 其實檢查渠道可見範圍，只是不檢查權限碼；只驗身分的是 `tag.routes.ts` 與 `shortlink.routes.ts`。AUTH-05 引用 RBAC-01 的段落也一併更正。
 
 ## 2026-10-01：修正 RLS-06 與 TRIAL-01，新增 CASE-02
 
