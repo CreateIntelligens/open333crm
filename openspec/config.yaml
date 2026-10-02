@@ -18,6 +18,8 @@ rules:
   specs:
     - Write each scenario as WHEN / THEN. Name the input and the result that a caller can see, so that a test can check the scenario.
     - Include the failure cases and boundary cases that change behavior. Examples are data of another tenant, missing permissions and invalid input.
+    - Before you write a delta, search openspec/specs/ for a requirement that already covers the behavior. If one exists, put the new version under "## MODIFIED Requirements" with the same requirement name. Use "## ADDED Requirements" only for behavior that no requirement covers. An ADDED requirement that contradicts an existing one makes the main spec contradict itself after the archive.
+    - A MODIFIED requirement must keep each existing "#### Scenario:" name. If you rename or drop a scenario, openspec validate passes, but openspec archive stops and changes no file.
   tasks:
     - For each scenario, put a task that writes its failing test before the task that implements the scenario.
     - In each test task, name the test file and the scenario that it covers. The test file is in tests/unit/ or tests/feature/ of the package (see AGENTS.md).

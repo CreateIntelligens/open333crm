@@ -243,6 +243,15 @@ request:
       added. `docs/ref/system/AUDIT.md` records the violations that already exist on `main`.
 - [ ] `CHANGELOG.md` has an entry for each `feat`, `fix` or architecture change (see Conventions).
 - [ ] All OpenSpec tasks of the change have a check mark. Archive the change when all tasks are done.
+- [ ] Each delta spec uses `MODIFIED` for a requirement that already exists in `openspec/specs/`.
+      Use `ADDED` only for a new requirement. An `ADDED` requirement that changes an existing one
+      makes the main spec contradict itself after the archive.
+- [ ] You archive with `openspec archive` or the `openspec-archive-change` skill. Do not move a
+      change into `archive/` or copy its specs into `openspec/specs/` by hand. A hand copy can
+      leave a main spec in a format that the CLI cannot read.
+- [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, update
+      that item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`, and update each feature or
+      module document under `docs/ref/` that describes the changed behavior.
 
 ## Multi-Tenancy: Two Enforcement Layers (Critical)
 
