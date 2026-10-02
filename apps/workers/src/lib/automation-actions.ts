@@ -263,7 +263,8 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
-      logger.info(`[automation] Unsupported worker action "${action.type}" skipped`);
+      // 規則編輯頁與列表會標示含不支援動作的規則（AUDIT AUTO-01）；這裡留 warn 供追查
+      logger.warn(`[automation] Unsupported worker action "${action.type}" skipped`);
     } catch (err) {
       logger.error(`[automation] Worker action "${action.type}" failed`, { err });
     }

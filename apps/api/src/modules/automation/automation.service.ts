@@ -145,13 +145,19 @@ export async function updateRule(
     throw new AppError(notFound('automationRule'), 'NOT_FOUND', 404);
   }
 
-  const existingTrigger = existing.trigger as Record<string, unknown>;
-  const nextEventType = String(
-    data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',
-  );
-  const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
-  const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
-  validateRuleContract(nextEventType, nextConditions, nextActions);
+  // 只在實際改動 trigger／conditions／actions 時驗證契約（同 PR #124）。
+  // 只改啟用狀態、名稱、優先序不可被既有不合規的動作卡住：契約會演進（例如 AUDIT AUTO-01 起拒絕
+  // workers 尚未支援的動作），舊規則可能不合新版契約，但管理員至少要能停用它
+  const touchesContract = data.trigger !== undefined || data.conditions !== undefined || data.actions !== undefined;
+  if (touchesContract) {
+    const existingTrigger = existing.trigger as Record<string, unknown>;
+    const nextEventType = String(
+      data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',
+    );
+    const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
+    const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
+    validateRuleContract(nextEventType, nextConditions, nextActions);
+  }
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};
   if (data.name !== undefined) updateData.name = data.name;
@@ -199,7 +205,7 @@ function validateRuleContract(
   });
   if (!result.valid) {
     throw new AppError(
-      `Invalid automation rule contract: ${result.errors.join('; ')}`,
+      `自動化規則設定有誤：${result.errors.join('；')}`,
       'VALIDATION_ERROR',
       400,
     );

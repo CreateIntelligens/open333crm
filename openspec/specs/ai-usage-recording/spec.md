@@ -50,5 +50,5 @@ provider 拋出錯誤時，`generateReply()` MUST 寫入一筆 `success=false`�
 各呼叫端 MUST 傳入 feature 標記（`kb-autoreply`、`suggestion`、`summary`、`classify`、`sentiment`、`automation`），未傳時記為 `unknown`。`AiUsage` 查詢 MUST 以 tenantId 過濾（依租戶隔離鐵律）。
 
 #### Scenario: 自動化規則觸發的 AI 動作
-- **WHEN** automation action-executor 經 `generateReply()` 呼叫 LLM
+- **WHEN** 自動化動作經 `generateReply()` 呼叫 LLM（目前 workers 尚未實作 `llm_reply`、`kb_auto_reply`，見 AUDIT AUTO-01）
 - **THEN** 該筆 AiUsage 的 `feature` MUST 為 `'automation'`

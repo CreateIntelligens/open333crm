@@ -14,7 +14,7 @@
 | `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
 
-`automation/engine/` 底下還有 `action-executor.ts`，但自 2026-05-12 的 `9255245` 起沒有任何呼叫端，讀程式時不要以它為準，見 `../../system/AUDIT.md` 的 AUTO-01。
+動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。workers 尚未實作的動作（`create_case`、`remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply`）列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔時拒絕，見 `../../system/AUDIT.md` 的 AUTO-01。
 
 ## 一條規則由什麼組成
 

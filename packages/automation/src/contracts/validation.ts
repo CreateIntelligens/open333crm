@@ -10,6 +10,7 @@ import type {
   AutomationOperator,
   ComposeAutomationContractOptions,
 } from './types.js';
+import { AUTOMATION_ACTION_MAP, UNSUPPORTED_AUTOMATION_ACTION_TYPES } from './actions.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -92,6 +93,12 @@ function validateAction(
   const type = action.type;
   if (typeof type !== 'string') {
     errors.push(`actions[${index}].type must be a string`);
+    return;
+  }
+
+  if (UNSUPPORTED_AUTOMATION_ACTION_TYPES.has(type) && !options.allowUnsupportedActions) {
+    const label = AUTOMATION_ACTION_MAP.get(type)?.label ?? type;
+    errors.push(`actions[${index}]：「${label}」目前尚未支援自動執行，請改用其他動作`);
     return;
   }
 
