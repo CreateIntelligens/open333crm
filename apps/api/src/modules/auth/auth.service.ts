@@ -13,7 +13,11 @@ import { clearLoginAttempts, registerLoginAttempt, type LoginAttemptStore } from
  */
 let dummyPasswordHash: Promise<string> | undefined;
 function getDummyPasswordHash(): Promise<string> {
-  dummyPasswordHash ??= hashPassword(randomUUID());
+  // 產生失敗時清掉快取，下次重算；否則 rejected 的 Promise 會一直留著，之後不存在帳號的登入全部 500
+  dummyPasswordHash ??= hashPassword(randomUUID()).catch((err: unknown) => {
+    dummyPasswordHash = undefined;
+    throw err;
+  });
   return dummyPasswordHash;
 }
 

@@ -28,4 +28,6 @@
 - `apps/api/src/plugins/error-handler.plugin.ts`
 - 使用 Redis（既有 `REDIS_URL`），不需要 migration。
 - `apps/api/src/lib/trust-proxy.ts`、`apps/api/src/index.ts`、`Caddyfile.local`。部署會 `--force-recreate` 重建 Caddy，新設定隨部署生效。
-- 限制：真實使用者本身在私有網段（例如經 VPN 連入）時會被當成代理略過。
+- 限制：真實使用者本身在私有網段（例如經 VPN 連入）時會被當成代理略過，可偽造 IP；前面若加公網 CDN 要把 CDN 的 IP 段加進信任清單。
+- 已知取捨：鎖定只看 email，知道某人 email 的攻擊者可以每 15 分鐘故意錯 6 次，讓對方一直無法用密碼登入（passkey 不受影響）。若被濫用再改為「email + IP」計數。
+- 未涵蓋：平台後台登入（`/platform/auth/login`）只有 IP 限流、沒有帳號鎖定，另案處理。

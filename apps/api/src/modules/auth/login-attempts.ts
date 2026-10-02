@@ -1,8 +1,12 @@
 /**
  * 登入失敗計數與帳號鎖定（change add-login-brute-force-protection，AUDIT SEC-05）。
  *
- * 依 email 計數而非 IP：IP 限流可被偽造的 X-Forwarded-For 或分散的來源繞過，帳號鎖定不受影響。
+ * 依 email 計數而非 IP：IP 限流可被分散的來源繞過，帳號鎖定不受影響。
  * 不存在的 email 也照樣計數，回應與存在的帳號一致，不透露帳號是否存在。
+ *
+ * 已知取捨：知道某人 email 的攻擊者，每 15 分鐘故意錯 6 次就能讓對方一直登不進來（鎖定只看 email）。
+ * 被鎖的人仍可用 passkey 登入（不經過這裡）。日後若被濫用，可改為「email + IP」計數。
+ * 計數的是每次嘗試（成功時清除）；清除剛好遇到 Redis 出錯時，計數會留到區間結束。
  */
 import crypto from 'node:crypto';
 import IORedis from 'ioredis';
