@@ -4,7 +4,16 @@
 
 新的複查紀錄加在最上方。
 
-## 2026-10-02：補上 AUTO-01 的 `create_case`，修正「Actions」的規格矛盾
+## 2026-10-02：AUTO-01 不再違反主規格，調回 P3
+
+上一筆紀錄把 AUTO-01 是否仍違反主規格記為「待重新判定」。本次對照歸檔後的主規格 `automation-engine` 的「Actions」判定：**不再違反，由 P2 調回 P3。**
+
+- 「Actions」現在規定：workers 尚未實作的動作 SHALL 列在 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供，API 拒絕含這些動作的新規則或修改；既有規則照常執行其他動作，只略過這些動作，並在規則列表與編輯頁標示。
+- 剩下的 `remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 都在 `packages/automation/src/contracts/actions.ts` 的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 裡，現況符合這條需求。
+- 違反主規格的理由消失後，回到依影響判定的 P3：新規則存不進去，既有規則有標示，剩下的是功能缺口，而且只有 Demo Tenant 用到。
+
+**暫時的落差。** 主規格「Actions」的清單與「Unsupported action is rejected」情境仍以 `create_case` 為例，但 #211 已經實作 `create_case`。把 `create_case` 改為已支援的 change `add-automation-create-case` 還沒歸檔，要等任務 3.3 的 UAT 實測。這段期間主規格與程式不一致；change 歸檔後就一致，不另外列為落差。
+，修正「Actions」的規格矛盾
 
 PR #211 在 workers 實作 `create_case`，並修正 #209 的 delta spec。AUTO-01 仍為部分修正。
 
