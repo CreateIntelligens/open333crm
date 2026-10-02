@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義正式部署的 nginx 反向代理：網域由環境變數注入、HTTP 導向 HTTPS、路由規則與 Caddyfile 一致，以及 Let's Encrypt 憑證的自動簽發與續約。
+
+## Requirements
 
 ### Requirement: Domain is injected via environment variable
 The system SHALL read the `DOMAIN` environment variable to configure the nginx server_name and certbot domain. The entrypoint script MUST validate that `DOMAIN` is non-empty and exit with a non-zero code if it is missing.

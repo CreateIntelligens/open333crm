@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義檔案儲存層：與儲存服務無關的抽象介面，以及收到媒體時立即下載並保存，避免平台的暫存網址過期。
+
+## Requirements
 
 ### Requirement: Agnostic Storage Abstraction
 The system SHALL isolate all file operations (upload, URL generation, deletion) behind a common Storage Layer interface.

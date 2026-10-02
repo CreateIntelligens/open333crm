@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義獨立的 workers 行程：啟動方式、SLA 與群發的週期性 BullMQ 任務、自動化與通知任務的消費，以及經 Redis pub/sub 轉送 socket 事件的規則。
+
+## Requirements
 
 ### Requirement: Standalone Worker Process Bootstrap
 The `apps/workers/` process SHALL initialize a `PrismaClient` instance, a Redis connection (via `@open333crm/core`), a logger (via `@open333crm/core`), and the channel plugin registry (via `@open333crm/channel-plugins`) before registering any BullMQ queue consumers. If any of these initializations fail, the process SHALL log the error and exit with a non-zero status code.

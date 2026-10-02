@@ -1,3 +1,6 @@
+## Purpose
+定義自動化規則契約：事件、事實、動作的目錄，依事件組合可用的條件與動作，解析器語意，前端可直接使用的契約資料，以及規則與事件的相容性驗證。
+
 ## Requirements
 
 ### Requirement: Automation Contract Catalog

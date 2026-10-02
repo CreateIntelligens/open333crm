@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 LINE Webhook 的處理：簽章驗證、30 秒內回應、解析所有 LINE 事件類型，以及收到媒體訊息時立即下載保存。
+
+## Requirements
 
 ### Requirement: LINE Webhook signature verification
 The system SHALL verify every incoming LINE Webhook request using HMAC-SHA256 computed from `channelSecret` and the raw request body, compared against the `X-Line-Signature` header.

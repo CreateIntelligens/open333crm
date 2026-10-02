@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 LINE Account Link：簽發帳號連結權杖，並在收到 accountLink webhook 時完成連結，把 LINE 使用者與系統帳號對應起來。
+
+## Requirements
 
 ### Requirement: Issue Account Link Token
 The system SHALL issue a one-time LINE Account Link Token to initiate the identity binding process.

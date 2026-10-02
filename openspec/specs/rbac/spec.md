@@ -1,3 +1,8 @@
+## Purpose
+定義依權限點的存取控制：guard 的建立方式與掛載順序、403 回應格式，以及成員、渠道、自動化規則、設定、報表與行銷等功能的存取要求。
+
+## Requirements
+
 ### Requirement: Guard Factory
 The API SHALL provide a `requireRole(allowedRoles: AgentRole[])` Fastify preHandler factory exported from `apps/api/src/guards/rbac.guard.ts` that returns HTTP 403 if `request.agent.role` is not in `allowedRoles`.
 

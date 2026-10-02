@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 LINE LIFF 應用程式的管理：在系統內建立、查詢、更新與刪除各 LINE 渠道的 LIFF App。
+
+## Requirements
 
 ### Requirement: LIFF App management
 The system SHALL allow administrators to manage LIFF (LINE Front-end Framework) Apps associated with a LINE OA channel.

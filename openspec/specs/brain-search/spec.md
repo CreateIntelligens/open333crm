@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義知識檢索（brain）的搜尋行為：語意向量與 BM25 混合搜尋，以及依版本與團隊等中繼資料過濾搜尋結果。
+
+## Requirements
 
 ### Requirement: Hybrid Search (Semantic + BM25)
 The brain service SHALL perform a hybrid search that combines vector similarity from LanceDB with keyword relevance from a BM25 index to ensure high retrieval quality for both semantic meaning and specific technical terms.

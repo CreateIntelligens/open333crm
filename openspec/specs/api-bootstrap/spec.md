@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 API 的啟動入口：apps/api/src/index.ts 是唯一的權威入口，其他過渡入口只能委派給它，整併入口時不得改變執行中的行為。
+
+## Requirements
 
 ### Requirement: Single Authoritative API Entrypoint
 The API service SHALL use `apps/api/src/index.ts` as its sole authoritative runtime bootstrap entrypoint.

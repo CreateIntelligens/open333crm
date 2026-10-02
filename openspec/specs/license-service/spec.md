@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義授權服務：集中驗證授權資料，並依授權內容全域開關功能。
+
+## Requirements
 
 ### Requirement: Centralized License Validation
 The system SHALL periodically fetch and cache an encrypted License JSON from the central platform server.
