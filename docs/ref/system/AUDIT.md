@@ -1259,7 +1259,7 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 #211（2026-10-02）在 workers 補上 `create_case`，並從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除：條件命中時在觸發的對話上建立工單，套用 SLA、關聯對話、寫入工單事件並發出 `case.created`；只在有對話的事件提供，工單與 SLA 事件不提供。
 
-剩下的問題是 `remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 四種動作在 workers 沒有實作。issue #197 回報（2026-10-02）：用到這 5 種動作的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的，但它另含不存在的動作 `auto_assign`，整條規則在驗證時就被跳過，要重新儲存一次才會執行。真實客戶的租戶沒有這類規則。
+剩下的問題是 `remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 四種動作在 workers 沒有實作。issue #197 回報（2026-10-02，#209 之前的稽核狀態）：用到當時這 5 種動作（含 `create_case`）的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的，但它另含不存在的動作 `auto_assign`，整條規則在驗證時就被跳過，要重新儲存一次才會執行。真實客戶的租戶沒有這類規則。
 
 **規格依據。** 主規格 `openspec/specs/automation-engine/spec.md` 的「Actions」原本寫系統 SHALL 支援 `create_case` 等動作，現況違反這條需求。#211 把 #209 的 change `fix-automation-unsupported-actions` 改為 MODIFIED「Actions」後歸檔：主規格改寫為「workers 尚未實作的動作列在 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔拒絕」，不再同時要求支援與拒絕。#211 的 change `add-automation-create-case` 再以 MODIFIED「Actions」把 `create_case` 改為已支援，待 UAT 實測後歸檔。
 
