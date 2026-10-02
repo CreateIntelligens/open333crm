@@ -16,4 +16,4 @@
 - [x] 3.1 `pnpm test` 通過；API 與 web `tsc` 通過
 - [x] 3.2 `check-tenant-scoping.mjs --strict` 通過
 - [x] 3.3 `CHANGELOG.md` 新增條目
-- [ ] 3.4 部署後在 UAT 確認：登入中的使用者不會被登出、收件匣即時訊息仍會更新
+- [x] 3.4 部署後在 UAT 確認：登入中的使用者不會被登出、收件匣即時訊息仍會更新（2026-10-02 實測：舊 token 401 → refresh 200 → 重試 200 → socket 重連，使用者未被登出）

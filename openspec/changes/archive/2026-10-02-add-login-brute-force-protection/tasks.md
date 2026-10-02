@@ -15,7 +15,7 @@
 
 - [x] 3.1 測試 `tests/unit/lib/trust-proxy.test.ts`：經 nginx 與 Caddy 轉送、公網直接連到 API、沒有代理標頭
 - [x] 3.2 實作 `lib/trust-proxy.ts` 並套用到 `index.ts`；`Caddyfile.local` 加 `trusted_proxies static private_ranges`（`caddy validate` 通過）
-- [ ] 3.3 部署後在 UAT 確認 API log 的 `remoteAddress` 是使用者真實 IP，不再是 `172.18.0.1`
+- [x] 3.3 部署後在 UAT 確認 API log 的 `remoteAddress` 是使用者真實 IP，不再是 `172.18.0.1`（2026-10-02 實測：記到公司出口 IP，偽造 XFF 無效，第 6 次登入回 ACCOUNT_LOCKED）
 
 ## 4. 完成檢查
 
