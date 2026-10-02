@@ -11,10 +11,11 @@
  */
 import assert from 'node:assert/strict';
 import { afterAll, beforeEach, test, vi } from 'vitest';
-import Fastify, { type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
+import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import lineProfileRoutes from '#src/modules/line/line-profile.routes.js';
 
 const getProfile = vi.fn();
@@ -54,9 +55,13 @@ async function createAgent(tenantId: string, roleId: string, slug: string) {
 }
 
 /** 建立一個 LINE 渠道，以及一位聯絡人在該渠道的身分 */
-async function createLineIdentity(tenantId: string, slug: string, channelType: 'LINE' | 'WEBCHAT' = 'LINE') {
+async function createLineIdentity(
+  tenantId: string,
+  slug: string,
+  { channelType = 'LINE', isActive = true }: { channelType?: 'LINE' | 'WEBCHAT'; isActive?: boolean } = {},
+) {
   const channel = await owner.channel.create({
-    data: { tenantId, channelType, displayName: `${MARK}-${slug}`, credentialsEncrypted: 'x' },
+    data: { tenantId, channelType, isActive, displayName: `${MARK}-${slug}`, credentialsEncrypted: 'x' },
   });
   const contact = await owner.contact.create({ data: { tenantId, displayName: `${MARK}-${slug}` } });
   const uid = `U${MARK}-${slug}`;
@@ -66,11 +71,16 @@ async function createLineIdentity(tenantId: string, slug: string, channelType: '
   return { channel, contact, uid };
 }
 
-async function buildApp(tenantId: string, agentId: string, roleId: string) {
+/** roleId 為 null 時模擬未登入：authenticate 回 401，與 auth.plugin 相同 */
+async function buildApp(tenantId: string, agentId: string, roleId: string | null) {
   const app = Fastify();
+  await app.register(errorHandlerPlugin);
   app.decorate('prisma', owner);
   app.decorate('prismaAdmin', owner);
-  app.decorate('authenticate', async (request: FastifyRequest) => {
+  app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (roleId === null) {
+      return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: '請先登入' } });
+    }
     request.agent = { id: agentId, tenantId, role: 'AGENT', roleId } as never;
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(tenantDb, tenantId);
   });
@@ -95,10 +105,18 @@ const foreign = await createLineIdentity(B, 'foreign');
 const hidden = await createLineIdentity(A, 'hidden');
 // 渠道只綁給另一位成員：agentA 看不到這個渠道
 await owner.agentChannelAccess.create({ data: { channelId: hidden.channel.id, agentId: otherAgentA.id } });
-const webchat = await createLineIdentity(A, 'webchat', 'WEBCHAT');
+const webchat = await createLineIdentity(A, 'webchat', { channelType: 'WEBCHAT' });
+const inactive = await createLineIdentity(A, 'inactive', { isActive: false });
+// 同一個渠道的另一位聯絡人：同步 own 時不應被改到
+const siblingContact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-sibling` } });
+const sibling = { channel: own.channel, uid: `U${MARK}-sibling` };
+await owner.channelIdentity.create({
+  data: { contactId: siblingContact.id, channelId: own.channel.id, channelType: 'LINE', uid: sibling.uid, profileName: 'original' },
+});
 
 const appA = await buildApp(A, agentA.id, updater.id);
 const viewerApp = await buildApp(A, agentA.id, viewer.id);
+const anonymousApp = await buildApp(A, agentA.id, null);
 
 beforeEach(() => {
   getProfile.mockReset();
@@ -108,6 +126,7 @@ beforeEach(() => {
 afterAll(async () => {
   await appA.close();
   await viewerApp.close();
+  await anonymousApp.close();
   await owner.channel.deleteMany({ where: { displayName: { startsWith: MARK } } });
   await owner.contact.deleteMany({ where: { displayName: { startsWith: MARK } } });
   await owner.agent.deleteMany({ where: { name: MARK } });
@@ -116,7 +135,66 @@ afterAll(async () => {
   await tenantDb.$disconnect();
 });
 
-test('其他租戶的渠道：回 404，不呼叫 LINE，也不改寫對方的 ChannelIdentity', async () => {
+// ── Requirement：客服可以重抓 LINE 聯絡人的個人資料 ──
+
+test('同步成功', async () => {
+  const res = await sync(appA, own.channel.id, own.uid);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json().data, { uid: own.uid, profileName: 'Synced Name', profilePic: 'https://example.test/a.png' });
+  assert.equal(getProfile.mock.calls[0]?.[0], own.uid);
+  const stored = await identityOf(own.channel.id, own.uid);
+  assert.equal(stored.profileName, 'Synced Name');
+  assert.equal(stored.profilePic, 'https://example.test/a.png');
+});
+
+test('不改聯絡人本身', async () => {
+  await sync(appA, own.channel.id, own.uid);
+
+  const contact = await owner.contact.findUniqueOrThrow({ where: { id: own.contact.id } });
+  assert.equal(contact.displayName, `${MARK}-own`);
+  assert.equal(contact.avatarUrl, null);
+});
+
+test('只改目標那一筆身分', async () => {
+  await sync(appA, own.channel.id, own.uid);
+
+  assert.equal((await identityOf(sibling.channel.id, sibling.uid)).profileName, 'original');
+});
+
+test('找不到身分', async () => {
+  const res = await sync(appA, own.channel.id, 'U-does-not-exist');
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(getProfile.mock.calls.length, 0);
+});
+
+test('未登入', async () => {
+  const res = await sync(anonymousApp, own.channel.id, own.uid);
+
+  assert.equal(res.statusCode, 401);
+  assert.equal(getProfile.mock.calls.length, 0);
+});
+
+test('LINE 回錯誤', async () => {
+  getProfile.mockRejectedValue(new Error('LINE API 404'));
+
+  const res = await sync(appA, own.channel.id, own.uid);
+
+  assert.equal(res.statusCode, 502);
+  assert.equal(res.json().error.code, 'UPSTREAM_ERROR');
+});
+
+test('channelId 格式錯誤', async () => {
+  const res = await sync(appA, 'not-a-uuid', own.uid);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(getProfile.mock.calls.length, 0);
+});
+
+// ── Requirement：只能同步自己租戶、看得到、啟用中的 LINE 渠道 ──
+
+test('其他租戶的渠道', async () => {
   const res = await sync(appA, foreign.channel.id, foreign.uid);
 
   assert.equal(res.statusCode, 404);
@@ -124,23 +202,7 @@ test('其他租戶的渠道：回 404，不呼叫 LINE，也不改寫對方的 C
   assert.equal((await identityOf(foreign.channel.id, foreign.uid)).profileName, 'original');
 });
 
-test('自己租戶的渠道：寫入 ChannelIdentity 的名稱與頭像，不改 Contact', async () => {
-  const res = await sync(appA, own.channel.id, own.uid);
-
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.json().data, { uid: own.uid, profileName: 'Synced Name', profilePic: 'https://example.test/a.png' });
-  const contact = await owner.contact.findUniqueOrThrow({ where: { id: own.contact.id } });
-  assert.equal(contact.displayName, `${MARK}-own`);
-});
-
-test('沒有 contact.update：回 403，不呼叫 LINE', async () => {
-  const res = await sync(viewerApp, own.channel.id, own.uid);
-
-  assert.equal(res.statusCode, 403);
-  assert.equal(getProfile.mock.calls.length, 0);
-});
-
-test('渠道不在成員的可見範圍：回 404，不呼叫 LINE', async () => {
+test('渠道不在成員的可見範圍', async () => {
   const res = await sync(appA, hidden.channel.id, hidden.uid);
 
   assert.equal(res.statusCode, 404);
@@ -148,9 +210,25 @@ test('渠道不在成員的可見範圍：回 404，不呼叫 LINE', async () =>
   assert.equal((await identityOf(hidden.channel.id, hidden.uid)).profileName, 'original');
 });
 
-test('非 LINE 渠道：回 404，不呼叫 LINE', async () => {
+test('渠道已停用', async () => {
+  const res = await sync(appA, inactive.channel.id, inactive.uid);
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(getProfile.mock.calls.length, 0);
+});
+
+test('非 LINE 渠道', async () => {
   const res = await sync(appA, webchat.channel.id, webchat.uid);
 
   assert.equal(res.statusCode, 404);
+  assert.equal(getProfile.mock.calls.length, 0);
+});
+
+// ── Requirement：重抓個人資料需要 contact.update 權限 ──
+
+test('沒有 contact.update', async () => {
+  const res = await sync(viewerApp, own.channel.id, own.uid);
+
+  assert.equal(res.statusCode, 403);
   assert.equal(getProfile.mock.calls.length, 0);
 });

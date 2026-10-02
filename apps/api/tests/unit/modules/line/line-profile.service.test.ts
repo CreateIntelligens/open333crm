@@ -55,7 +55,7 @@ beforeEach(() => {
   getProfile.mockResolvedValue({ uid: 'U-b', displayName: 'Synced' });
 });
 
-test('其他租戶的渠道：即使 executor 不受 RLS 約束，也回 404 且不呼叫 LINE、不寫入', async () => {
+test('其他租戶的渠道（executor 不受 RLS 約束時）', async () => {
   const { prisma, updates } = createPrismaMock();
 
   await assert.rejects(
@@ -66,7 +66,7 @@ test('其他租戶的渠道：即使 executor 不受 RLS 約束，也回 404 且
   assert.deepEqual(updates, []);
 });
 
-test('自己租戶的渠道：呼叫 LINE 並寫入該筆 ChannelIdentity', async () => {
+test('同步成功', async () => {
   const { prisma, updates } = createPrismaMock();
 
   const result = await syncLineContactProfile(prisma as never, TENANT_B, CHANNEL_B, 'U-b');
