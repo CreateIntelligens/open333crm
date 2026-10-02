@@ -1,5 +1,5 @@
 ## Purpose
-定義跨渠道身分整合引擎：處理 LIFF 登入時的身分碰撞，以及由 AI 產生聯絡人合併建議。
+定義跨渠道身分整合引擎：處理 LIFF 登入時的身分碰撞，以及由 AI 產生聯絡人合併建議。進站訊息依渠道 UID 找聯絡人的規則見 `inbound-contact-resolution`；管理員手動合併聯絡人見 `contact-management`。
 
 ## Requirements
 

@@ -1,5 +1,5 @@
 ## Purpose
-定義檔案儲存層：與儲存服務無關的抽象介面，以及收到媒體時立即下載並保存，避免平台的暫存網址過期。
+定義檔案儲存層：與儲存服務無關的抽象介面，以及收到媒體時立即下載並保存，避免平台的暫存網址過期。檔案的內容類型檢查見 `upload-content-detection`；LINE 媒體的下載時機見 `line-webhook-events`。
 
 ## Requirements
 

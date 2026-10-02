@@ -1,5 +1,5 @@
 ## Purpose
-定義客服在對話中傳送媒體：可在 FB 對話傳送圖片，並可在 LINE 與 FB 對話傳送影片。
+定義客服在對話中傳送媒體：可在 FB 對話傳送圖片，並可在 LINE 與 FB 對話傳送影片。網站聊天室的媒體傳送見 `webchat-widget`。
 
 ## Requirements
 

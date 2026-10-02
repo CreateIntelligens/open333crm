@@ -1,5 +1,5 @@
 ## Purpose
-定義授權服務：集中驗證授權資料，並依授權內容全域開關功能。
+定義授權服務：集中驗證授權資料，並依授權內容全域開關功能。方案的功能天花板與數量上限見 `tenant-plan` 與 `plan-limits-core`。
 
 ## Requirements
 
