@@ -21,6 +21,8 @@
 | P3 | `medium` | 設定與實際行為不符、介面與資料不一致、維運與稽核的落差。不影響現有功能的正確性 |
 | P4 | `low` | 殘留設定、命名不符、未接線的程式碼。移除或改名即可，不影響任何行為 |
 
+**違反主規格的項目至少是 P2。** 主規格是 `openspec/specs/` 底下的規格。一項的現況違反主規格中的 SHALL 或 MUST 時，即使依上表判定為 P3 或 P4，也標為 P2，並在內文的「規格依據」寫明違反哪一份規格的哪一條需求。只有歸檔 change 的設計文件或未完成的任務、沒有寫進主規格的，不適用這條規則。這條規則從 2026-10-02 開始適用，在那之前標示的項目沒有逐一對照主規格。
+
 排序只反映「先修哪一個」，與修復成本無關。兩項同為 P1 時，先做哪一項由當時的人力與相依關係決定。
 
 最近一次標示日期為 2026-10-02。項目的內容改變時要一併重看它的優先順序。
@@ -42,11 +44,11 @@
 
 | ID | 範圍 | 優先 | 處理狀態 | 問題 | 驗證狀態 |
 | --- | --- | --- | --- | --- | --- |
-| [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效 | 靜態確認 |
+| [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
-| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由不檢查權限碼 | 靜態確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
@@ -72,7 +74,7 @@
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | [PLAN-03](#plan-03) | 方案與額度 | P3 | 未處理 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
-| [PLAN-04](#plan-04) | 方案與額度 | P2 | 未處理 | 方案的功能天花板在收件匣一帶沒有咬合點，關掉 `inbox` 不影響使用 | 靜態確認 |
+| [PLAN-04](#plan-04) | 方案與額度 | P2 | 部分修正 | 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛，`maxTags` 沒有強制點 | 靜態確認 |
 | [PLAN-05](#plan-05) | 方案與額度 | P2 | 未處理 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
 | [PLAN-06](#plan-06) | 方案與額度 | P2 | 未處理 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
 | [PLAN-07](#plan-07) | 方案與額度 | P3 | 未處理 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
@@ -93,7 +95,7 @@
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
 | [CASE-01](#case-01) | 對話、工單與自動化 | P2 | 已提建議 | 工單的狀態下拉選單不寫時間軸、不發布事件，選「已升級」不通知主管 | 靜態確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
-| [AUTO-01](#auto-01) | 對話、工單與自動化 | P1 | 已提建議 | 部分自動化動作可以儲存、也會命中，workers 執行時卻略過 | 靜態確認 |
+| [AUTO-01](#auto-01) | 對話、工單與自動化 | P2 | 部分修正 | 5 種自動化動作在 workers 沒有實作；已不能存進新規則，既有規則執行時略過 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 未處理 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P3 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
@@ -120,6 +122,7 @@
 | [APP-07](#app-07) | 部署與應用程式 | P4 | 已提建議 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | 靜態確認 |
 | [APP-08](#app-08) | 部署與應用程式 | P3 | 已提建議 | 多數 BullMQ 佇列永遠保留已完成的工作，Redis 沒有記憶體上限 | 靜態確認 |
 | [APP-09](#app-09) | 部署與應用程式 | P3 | 已提建議 | API 行程假設只有一份：排程沒有鎖、Redis 廣播會重複處理，無法水平擴充 | 靜態確認 |
+| [APP-10](#app-10) | 部署與應用程式 | P2 | 已提建議 | 沒有獨立的正式環境：合併到 `main` 就直接部署到客戶在用的環境 | 間接確認 |
 | [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
 | [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
 | [PKG-03](#pkg-03) | 共用套件 | P4 | 未處理 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
@@ -158,7 +161,7 @@
 
 `DATABASE_URL` 同時決定 API 的租戶連線：`prisma.plugin.ts` 在沒有設定 `DATABASE_URL_TENANT` 時，租戶連線就用 `DATABASE_URL`。因此 API 要讓 RLS 生效，通常 `DATABASE_URL` 就指向 `app_tenant`，Canvas 落在第二種情況。這時 `inbound-side-effects.ts` 每處理一則進站訊息，都呼叫 `canvas.webhook.ts` 的 `handleWebhookFlowTrigger()`；這個函式以 singleton 查 `interactionFlow`，結果是空陣列，流程永遠不會觸發，也沒有錯誤。
 
-**優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`；正式環境有沒有啟用中的流程，尚未查證。
+**優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
 
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
@@ -188,41 +191,45 @@
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
 
-**部分修正。** `481452a`（2026-09-30）讓 `contact.routes.ts` 的每一條路由都掛上 `requirePermission()`：讀取用 `contact.view`，修改與貼標用 `contact.update`，合併與解除合併用 `contact.merge`；聯絡人的對話另外要求 `inbox.view`，聯絡人的工單另外要求 `case.view`。工單、對話、標籤與短連結模組的路由仍然沒有授權判斷。
+**部分修正。** 兩個 commit 修正了大部分的路由：
 
-`packages/core/src/rbac/permissions.ts` 宣告 56 個權限碼（2026-10-01 核對）。其中 12 個在 `apps/api/src` 完全沒有出現：
-
-| feature | 沒有出現的權限碼 |
+| commit | 修正的路由 |
 | --- | --- |
-| `inbox` | `inbox.manage`、`case.create`、`case.update`、`case.assign`、`case.escalate`、`tag.view`、`tag.manage`、`shortlink.view`、`shortlink.manage` |
-| `core` | `agent.delete`、`billing.view` |
-| `knowledge` | `knowledge.view` |
+| `481452a`（2026-09-30） | `contact.routes.ts` 的每一條路由 |
+| `efbd5f0`（#207，2026-10-02） | `case`、`conversation`、`tag`、`shortlink` 四個模組的每一條路由。改負責人或團隊另外要求 `case.assign`，改成 `ESCALATED` 另外要求 `case.escalate` |
 
-其中 `billing.view` 的描述是「租戶站內方案/用量頁」，而那個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表，看不到方案內容、價格或已用額度（見 PLAN-10）。
+`packages/core/src/rbac/permissions.ts` 宣告 56 個權限碼（2026-10-02 核對）。其中 3 個在 `apps/api/src` 完全沒有出現：
 
-另有兩個碼有出現，但沒有守在對應的路由上：
+| 權限碼 | 現況 |
+| --- | --- |
+| `knowledge.view` | `knowledge.routes.ts` 以 `addHook('preHandler')` 只檢查登入。寫入路由另外要求 `knowledge.manage` 或 `knowledge.admin`，但 9 條讀取路由（文章列表、單篇、來源、分類、搜尋、embedding 狀態、模型、回饋數量、回饋列表）沒有權限碼檢查 |
+| `agent.delete` | 註冊表標示「已淘汰，改用 `agent.deactivate` / `agent.purge`」 |
+| `billing.view` | 描述是「租戶站內方案/用量頁」，但這個頁面不存在：租戶端的 `/dashboard/plan` 只有升級與加購的申請表，以及自己的申請列表（見 PLAN-10） |
 
-- `case.delete` 只以稽核紀錄的 `action` 字串出現（`case.routes.ts` 的 `action: 'case.delete'`），不是檢查。
-- `case.view` 只守在聯絡人模組的 `GET /contacts/:id/cases`，`case.routes.ts` 本身不檢查。
+知識庫的讀取路由因此有兩個後果：
 
-`inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由與聯絡人模組上，不在收件匣本身。
+- 角色設定取消勾選「檢視知識庫」，成員仍然讀得到文章。
+- 方案的功能天花板不含 `knowledge` 時，租戶的成員仍然讀得到文章。寫入路由會被天花板擋下。
 
-結果是 `case`、`conversation`、`tag`、`shortlink` 這幾個模組的路由都不檢查權限碼：
+**規格依據。** 這三項都沒有主規格支持，只有歸檔 change 的設計文件與未完成的任務：
 
-- `case.routes.ts` 與 `conversation.routes.ts` 檢查渠道可見範圍（`resolveChannelVisibility()`、`assertConversationChannelVisible()`），成員只能操作自己看得到的渠道。渠道可見範圍決定「能操作哪些資料」，不決定「能做哪些動作」。
-- `tag.routes.ts` 與 `shortlink.routes.ts` 只有 `fastify.authenticate`，沒有任何授權判斷。
+| 權限碼 | 依據 |
+| --- | --- |
+| `knowledge.view` | `openspec/changes/archive/2026-09-15-rbac-granular-permissions/SPEC.md` 寫明 `knowledge.view` 守「列表、來源、分類、搜尋、feedback」。該 change 的任務 9.2（分批切換路由 guard）沒有勾選就歸檔 |
+| `agent.delete` | `openspec/changes/archive/2026-09-15-agent-deactivate-vs-delete/proposal.md` 寫「`agent.delete` 保留相容或標記淘汰」，沒有做決定 |
+| `billing.view` | `openspec/changes/archive/2026-09-15-platform-control-plane/tasks.md` 的任務 8.5「新增權限點 `billing.view` 控管此頁存取」沒有勾選，頁面也沒有實作 |
 
-租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
+主規格 `openspec/specs/rbac/spec.md` 也不能當依據：它仍以角色（`ADMIN`、`SUPERVISOR`、`AGENT`）描述授權，例如「Agent Management Access」要求 `ADMIN` 或 `SUPERVISOR`，與現行的權限碼不符。
 
-一個例外要分辨：`channel.view_all` 也沒有出現在 `requirePermission()` 裡，但它透過 `getEffectiveTenantPermissions()` 在 `services/channel-visibility.ts` 與 socket 房間授權中判斷，屬於有強制點的情況。
-
-**這是未完成的遷移，不是設計決策。** `openspec/changes/archive/2026-09-15-rbac-granular-permissions/tasks.md` 的第 9.2 項「分批灰度切換路由 guard（新舊並存），監控 403 異常」沒有打勾，該 change 就已歸檔。同一節的 9.1、9.3、9.4、9.5 也都沒有打勾。
-
-舊的角色守門也已經不在：`requireRole()`、`requireAdmin()`、`requireSupervisor()` 仍由 `guards/rbac.guard.ts` 匯出，但 `apps/api/src` 沒有任何呼叫端。`case.routes.ts` 的 git 歷史也查不到曾經使用過。因此這些路由不是「從舊守門切到新守門時漏掉」，而是從頭就沒有授權判斷。
+**優先順序是 P3。** 收件匣、工單、標籤與短連結都已經有權限檢查。剩下的知識庫內容是租戶內部的資料，沒有跨租戶的風險，主規格也沒有要求。
 
 啟動時的檢查只驗單向：`validateRouteCodes()` 確認路由用到的碼都存在於 registry，不檢查 registry 的碼有沒有人用。因此宣告了卻沒有強制點的碼不會產生任何警告。
 
-對方案天花板的連帶影響見 PLAN-04。
+**修正方向**：
+
+- 知識庫的讀取路由加上 `requirePermission('knowledge.view')`。
+- `agent.delete` 從註冊表移除。移除前要確認沒有角色仍持有這個碼，或在 reconcile 時一併清掉。
+- `billing.view` 等租戶端的方案與用量頁實作時再接上，或先從註冊表移除。
 
 <a id="rbac-02"></a>
 ### RBAC-02：CLI token 以 scope 授權，繞過角色權限與方案天花板
@@ -747,7 +754,9 @@ PlatformSetting（KV，不知道型別）
 生產環境目前只跑一個 `api` 容器（`docker-compose.prod.yml` 沒有 replicas 設定），因此第三點尚未顯現。水平擴充時會出現。
 
 <a id="plan-04"></a>
-### PLAN-04：功能天花板在收件匣一帶沒有咬合點
+### PLAN-04：功能天花板只在掛了權限檢查的路由生效
+
+**部分修正。** `efbd5f0`（#207，2026-10-02）為 `case`、`conversation`、`tag`、`shortlink` 的每一條路由掛上 `requirePermission()`；`contact` 已在 `481452a` 掛上。因此把 `inbox` 從方案拿掉之後，API 會擋下收件匣一帶的路由。其他 feature 的覆蓋情況沒有改變。
 
 方案用三種手段限制租戶，效力不同：
 
@@ -762,7 +771,7 @@ PlatformSetting（KV，不知道型別）
 
 功能天花板的公式是「角色權限 ∩ 方案天花板」，而這個交集只在 `requirePermission()` 執行時才被計算。沒有呼叫它的路由，方案開不開都一樣。
 
-以 feature 分組統計各模組的路由數與權限檢查數（2026-09-24 核對）：
+以 feature 分組統計各模組的路由數與權限檢查數。除了 `inbox` 那一列於 2026-10-02 更新，其餘是 2026-09-24 的核對結果：
 
 | feature | 路由層的覆蓋情況 | 關掉這個 feature |
 | --- | --- | --- |
@@ -772,14 +781,30 @@ PlatformSetting（KV，不知道型別）
 | `marketing` | 36 條中 21 條 | 大部分擋得住，仍有未檢查的路由 |
 | `knowledge` | 21 條中 12 條 | 同上 |
 | `portal` | 17 條中 8 條 | 同上 |
-| `inbox` | `case` 19 條、`conversation` 14 條、`contact` 10 條、`tag` 4 條、`shortlink` 8 條，**全部 0 處檢查** | **沒有效果** |
+| `inbox` | `case`、`conversation`、`contact`、`tag`、`shortlink` 的每一條路由都有檢查 | 擋得住 |
 | `core` | 恆開，方案不會關 | 不適用 |
 
-也就是說，把 `inbox` 從方案的 `features` 拿掉之後，該租戶的收件匣、對話、案件、聯絡人、標籤與短連結全部照常使用。前端也擋不住：`apps/web` 的 `Sidebar.tsx` 會依權限過濾選單，但「收件匣」「工單」「聯繫人」「通知」四個節點沒有 `perm` 欄位，一律顯示。
+剩下的缺口：
+
+- **行銷、知識庫、粉絲活動仍有路由沒有權限檢查。** 方案不含這些 feature 時，這些路由照常可用。知識庫的部分見 RBAC-01。
+- **側欄不依方案過濾收件匣一帶的選單。** `apps/web` 的 `Sidebar.tsx` 會依權限過濾選單，但「收件匣」「工單」「聯絡人」「通知」四個節點沒有 `perm` 欄位，一律顯示。方案不含 `inbox` 時，成員看得到「收件匣」「工單」「聯絡人」，點進去卻收到 403。「通知」的路由只檢查登入，不受影響。
 
 `maxTags` 是另一種形狀的失效：它在 `apps/api/src` 只出現在 `plan-limits.service.ts` 的 `LimitKey` 型別宣告，沒有任何地方拿它比對，與 PLAN-01 的 `Plan.isActive` 相同。
 
 成因見 RBAC-01。
+
+**規格依據。** 各缺口的依據強度不同：
+
+| 缺口 | 依據 |
+| --- | --- |
+| 側欄不依權限隱藏收件匣一帶的選單 | **違反主規格。** `openspec/specs/dashboard-tree-navigation/spec.md` 的「Permission-aware tree rendering」要求使用者沒有權限的目的地 SHALL 不顯示 |
+| 行銷的路由沒有全部套用天花板 | **違反主規格。** `openspec/specs/tenant-plan/spec.md` 的「功能天花板交集」有情境「trial 方案未含 marketing」：呼叫 marketing API MUST 被 `requirePermission` 擋下 |
+| 知識庫、粉絲活動的路由沒有全部套用天花板 | 間接。同一條需求只寫到「移除 `knowledge` 後有效權限不再含知識庫權限碼」，沒有寫 API 要擋 |
+| `maxTags` 沒有強制點 | 沒有主規格。`openspec/changes/archive/2026-09-15-platform-control-plane/tasks.md` 的任務 2.8「createTag 前檢查 maxTags」沒有勾選；平台後台的方案頁卻可以設定「分眾標籤數」 |
+
+前兩項違反主規格，依「違反主規格的項目至少是 P2」，這一項至少是 P2。依影響判定也是 P2：只影響方案不含該功能的租戶，而且 API 仍會以 403 擋下收件匣一帶的操作。
+
+**修正方向**：為行銷、知識庫、粉絲活動沒有檢查的路由掛上 `requirePermission()`；側欄的四個節點加上對應的 `perm`；`maxTags` 在建立標籤前比對。
 
 <a id="plan-05"></a>
 ### PLAN-05：加購過的租戶升級方案，額度反而變低
@@ -954,7 +979,7 @@ PLAN-04 記的是天花板沒有咬合點、設定了也不生效。這一項相
 | --- | --- | --- |
 | `ai.routes.ts` 的 `/suggest-reply`、`/summarize`、`/analyze-sentiment`、`/classify`、`/rewrite` | 客服操作 | 只有 `fastify.authenticate`，沒有權限碼 |
 | `ai.routes.ts` 的 `/agent/run`、`/agent/runs/:id` | 客服操作 | `requirePermission('inbox.reply')`、`('inbox.view')` |
-| `kb-autoreply`（`automation.worker.ts`）、自動化動作（`engine/action-executor.ts`） | 客人傳訊息、規則命中 | 不經過路由，沒有請求可以掛 guard |
+| `kb-autoreply`（`automation.worker.ts`）、自動化動作（workers 的 `lib/automation-actions.ts`） | 客人傳訊息、規則命中 | 不經過路由，沒有請求可以掛 guard |
 
 後兩個入口沒有使用者按下任何按鈕，因此不存在可以檢查權限的時機。
 
@@ -1124,7 +1149,7 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 | 關閉 | `POST /:id/close` 經 `closeConversation()`：記錄關閉原因、來源、時間與操作者，發布 `conversation.closed` | 只改 `status`，不記原因，不發布事件 |
 | 指派 | 沒有專用路徑 | 只改 `assignedToId`，不發布任何事件 |
 
-**`conversation.assigned` 沒有發布端。** `notification.worker.ts` 訂閱了這個事件，要通知被指派的客服；但 API 行程裡沒有任何程式發布它（唯一的 `emit` 在沒有呼叫端的 `action-executor.ts`，而且是 socket 事件）。因此指派對話從來不會通知被指派的人，訂閱這個事件的對外 Webhook 也收不到。
+**`conversation.assigned` 沒有發布端。** `notification.worker.ts` 訂閱了這個事件，要通知被指派的客服；但 API 行程裡沒有任何程式發布它（唯一的 `emit` 原本在沒有呼叫端的 `action-executor.ts`，而且是 socket 事件；這個檔案已在 `8e25e1b` 刪除）。因此指派對話從來不會通知被指派的人，訂閱這個事件的對外 Webhook 也收不到。
 
 狀態選單的標籤也容易誤解：「已處理」送出的值是 `AGENT_HANDLED`，意思是「由客服處理中」。
 
@@ -1210,19 +1235,26 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 結果：租戶可以建立「收到訊息 → 建立工單」這類規則。規則儲存成功、條件命中，前端也收到 `automation.executed` socket 事件，但工單從未建立。
 
-API 行程的 `modules/automation/engine/action-executor.ts` 的 `executeActions()` 實作了上表的動作，但自 `9255245` 起沒有任何檔案 import 它。
+**部分修正。** `8e25e1b`（#209，2026-10-02）讓這 5 種動作不再悄悄失效：
 
-**修正方向**：兩個方向擇一：
+- 契約 `actions.ts` 的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 列出這 5 種動作。規則編輯器不提供這些動作，`validateAutomationRuleContract()` 在新增或修改規則時拒絕。
+- 既有規則仍然可以執行。workers 以 `allowUnsupportedActions` 驗證既有規則，照常執行其他動作，只略過這 5 種。規則列表與編輯頁會標示含這些動作的規則。
+- 刪除沒有呼叫端的 `action-executor.ts`。
 
-- 把缺少的動作補進 `executeWorkerAutomationActions()`。
-- 在契約標出 workers 支援哪些動作，讓前端與 `validateAutomationRuleContract()` 拒絕其他動作。
+剩下的問題是這 5 種動作在 workers 沒有實作。issue #197 回報（2026-10-02）：用到這些動作的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的。真實客戶的租戶沒有這類規則。
 
-不論選哪一個，都應刪除 API 端沒有呼叫端的 `action-executor.ts`，避免讀程式的人以為它在運作。
+**規格依據。** 主規格 `openspec/specs/automation-engine/spec.md` 的「Actions」寫系統 SHALL 支援 `add_tag`、`send_message`、`create_case`、`update_case_status`、`notify_supervisor` 等動作。`create_case` 沒有實作，現況違反這條需求。
+
+#209 的 change `fix-automation-unsupported-actions` 尚未歸檔。它的 delta spec 以 ADDED 新增「拒絕 workers 尚未支援的動作」，但沒有修改「Actions」。照目前的寫法歸檔後，主規格會同時要求「支援 `create_case`」與「拒絕 `create_case`」。歸檔前應改為 MODIFIED「Actions」，寫明目前支援的動作，並把 5 種動作列為待實作。
+
+**優先順序是 P2。** 依影響判定是 P3：新規則已經存不進去，既有規則會在介面上標示，不再是「看起來有效、實際不執行」，剩下的是功能缺口，而且只有 Demo Tenant 用到。但現況違反主規格「Actions」，依「違反主規格的項目至少是 P2」標為 P2。
+
+**修正方向**：在 `executeWorkerAutomationActions()` 補上這 5 種動作，再從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除。補實作之前，可以先停用 Demo Tenant 那條啟用中的規則。
 
 <a id="auto-02"></a>
 ### AUTO-02：規則的執行紀錄與執行次數停止更新
 
-寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端（見 AUTO-01），workers 的執行路徑也不寫這些欄位。
+寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，原本只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端，檔案已在 `8e25e1b` 刪除（見 AUTO-01）。workers 的執行路徑不寫這些欄位，因此目前沒有任何程式寫入。
 
 - 自動化頁的規則清單顯示的執行次數與最後執行時間，停在搬遷前的值。搬遷後建立的規則永遠顯示 0。
 - `GET /automation/logs` 查不到搬遷後的任何執行。前端沒有呼叫這個端點。
@@ -1248,7 +1280,7 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 兩條都沒有實作在實際執行的路徑上：
 
 - `automation.worker.ts` 的 `checkKeywordTriggers()` 對所有對話都比對關鍵字並發布 `keyword.matched`；workers 的 `send_material` 也不檢查對話狀態。
-- 每小時上限 `RATE_LIMIT_MAX` 只寫在沒有呼叫端的 `action-executor.ts`。這段是 2026-05-28 的 `fff80d8` 加入的，當時 `action-executor.ts` 已經因 `9255245` 而沒有呼叫端。
+- 每小時上限 `RATE_LIMIT_MAX` 原本只寫在沒有呼叫端的 `action-executor.ts`，這個檔案已在 `8e25e1b` 刪除，因此目前沒有任何程式實作這個上限。這段是 2026-05-28 的 `fff80d8` 加入的，當時 `action-executor.ts` 已經因 `9255245` 而沒有呼叫端。
 
 結果：客服接手對話後，客人訊息含關鍵字時仍會收到自動回覆；客人重複傳同一個關鍵字，每次都會收到回覆。另外，一則訊息命中多條關鍵字規則時，每條各回一次。
 
@@ -1539,6 +1571,28 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 這些問題分散在各模組，單獨看都像是小事，但合起來代表 API 目前無法水平擴充。
 
 **修正方向**：定期工作移到 workers 以 BullMQ 重複工作執行；Redis 廣播改成 BullMQ 佇列，或在接收端以事件 ID 去重；行程記憶體的狀態改存 Redis；Socket.IO 接上 Redis adapter。
+
+<a id="app-10"></a>
+### APP-10：沒有獨立的正式環境
+
+`.github/workflows/deploy.yml` 的名稱是「Deploy to UAT」。它在每次 push 到 `main` 時，於標籤為 `uat` 的 self-hosted runner 上，把程式同步到 `/srv/open333crm`，再以 `docker-compose.yml` 重建並重啟服務。repo 裡沒有其他部署 workflow，`docker-compose.prod.yml` 也沒有任何 workflow 使用。
+
+issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create360.ai`）同時是客戶「創造智能」實際在用的環境，沒有另一套正式環境。repo 只能確認部署路徑，無法確認主機的用途，因此驗證狀態是「間接確認」。
+
+這代表：
+
+- **合併到 `main` 就直接部署到客戶在用的環境。** 每次合併都會重啟 API 與 Caddy。2026-10-02 一天合併 6 個 PR，觸發 6 次部署；其中 #200 改變來源 IP 與登入規則，#202 讓所有既有的 access token 失效，兩者都是上線之後才在同一個環境驗證。
+- **測試資料與客戶資料在同一個資料庫。** Demo Tenant 的測試規則、E2E 測試租戶、Meta 審查用的帳號，與客戶的對話放在一起。回填腳本與修資料的 SQL 只能直接對客戶資料執行。
+- **主機與其他服務共用。** issue #197 回報，同一台主機還執行另一個客戶的正式容器，磁碟也曾因 build cache 塞滿而導致部署失敗。
+- **文件的部署步驟沒有地方能照做。** 本文件的「部署前要先做」、各 OpenSpec change 的 Migration Plan，都假設先在別的環境驗證、再上正式環境。
+
+**修正方向**（issue #197 提出的最小做法）：
+
+- 另開一台正式環境的主機，或至少獨立一套 compose 與資料庫。
+- 正式環境改成手動發布，例如以 tag 或 release 觸發，不跟著 `main` 自動部署。
+- UAT 維持 `main` 自動部署，作為上線前的驗證站。
+
+這一項需要決定主機資源與成本，不是程式修正。
 
 ## 共用套件
 

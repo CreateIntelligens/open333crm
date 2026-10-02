@@ -77,13 +77,13 @@
 | `escalate_case`、`set_case_priority` | 是 | 改工單優先級 |
 | `notify` 通知負責人 | 是 | 通知工單負責人 |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
-| `create_case` 建立工單 | **否** | 略過，只記 log |
+| `create_case` 建立工單 | **否** | 編輯器不提供，存檔時拒絕；既有規則執行時略過 |
 | `remove_tag` 移除標籤 | **否** | 同上 |
 | `assign_bot` 指派機器人 | **否** | 同上 |
 | `kb_auto_reply` KB 知識庫回覆 | **否** | 同上 |
 | `llm_reply` LLM 智能回覆 | **否** | 同上 |
 
-未實作的動作可以選、可以儲存，規則也會命中，只是動作被略過，見 `../../system/AUDIT.md` 的 AUTO-01。
+未實作的動作列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`。新增或修改規則時，API 拒絕含這些動作的規則。2026-10-02 之前建立的規則若含這些動作，仍然會執行其他動作，只略過這些動作；規則列表與編輯頁會標示「含未支援的動作」。見 `../../system/AUDIT.md` 的 AUTO-01。
 
 **`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標後，workers 經由 Redis 的 `domain:event` 頻道把 `contact.tagged` 送回 API 行程，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，用來避免無限迴圈。
 
@@ -105,13 +105,13 @@
 
 訊息會命中關鍵字規則時，機器人的 AI 與知識庫回覆會讓步，避免客人同時收到兩種回覆。
 
-關鍵字回覆頁寫著兩條規則：只在機器人負責的對話觸發，以及同一個聯絡人對同一條規則每小時最多觸發三次。這兩條目前都沒有生效：`checkKeywordTriggers()` 對所有對話都執行，每小時的上限只寫在沒有呼叫端的 `action-executor.ts`。見 `../../system/AUDIT.md` 的 AUTO-04。
+關鍵字回覆頁寫著兩條規則：只在機器人負責的對話觸發，以及同一個聯絡人對同一條規則每小時最多觸發三次。這兩條目前都沒有生效：`checkKeywordTriggers()` 對所有對話都執行，每小時的上限只寫在已刪除的 `action-executor.ts`，目前沒有任何程式實作。見 `../../system/AUDIT.md` 的 AUTO-04。
 
 ## 試跑與紀錄
 
 `POST /automation/rules/:id/test` 以請求帶入的事實評估這一條規則，回傳是否命中。試跑不執行動作，也不查資料庫組事實；沒帶事實時，以空物件評估。
 
-`GET /automation/logs` 讀 `AutomationLog`。規則清單顯示的執行次數與最後執行時間，讀的是 `AutomationRule.runCount` 與 `lastRunAt`。這三個值都只由 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。
+`GET /automation/logs` 讀 `AutomationLog`。規則清單顯示的執行次數與最後執行時間，讀的是 `AutomationRule.runCount` 與 `lastRunAt`。這三個值原本只由已刪除的 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。
 
 ## 權限
 
@@ -127,7 +127,7 @@
 
 | 限制 | 說明 |
 | --- | --- |
-| **部分動作不會執行** | 詳見 `../../system/AUDIT.md` 的 AUTO-01 |
+| **5 種動作沒有實作** | 新規則不能使用，既有規則執行時略過。詳見 `../../system/AUDIT.md` 的 AUTO-01 |
 | **部分觸發事件永遠不會觸發** | 詳見 `../../system/AUDIT.md` 的 AUTO-05 |
 | **關鍵字回覆在 Instagram 私訊與網站聊天室送不出去** | 規則不限渠道，命中時機器人讓步，但 workers 沒有這兩種渠道的外掛，客人收不到任何回覆。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | **關鍵字回覆頁承諾的兩項保護沒有生效** | 客服接手後仍會自動回覆，也沒有頻率上限。詳見 `../../system/AUDIT.md` 的 AUTO-04 |

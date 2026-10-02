@@ -68,7 +68,7 @@ GA 與 Meta Pixel 的 ID 在「設定 → 追蹤設定」填寫，見[其他設�
 
 ## 權限
 
-後台路由只驗登入，沒有權限碼。側欄的「短連結」要求 `shortlink.view` 才顯示，但 API 不檢查這個權限碼，也不檢查 `shortlink.manage`，見 `../../system/AUDIT.md` 的 RBAC-01。
+後台路由讀取要 `shortlink.view`，建立、修改與刪除要 `shortlink.manage`。側欄的「短連結」也要求 `shortlink.view` 才顯示。
 
 ## 目前的限制
 
@@ -77,6 +77,5 @@ GA 與 Meta Pixel 的 ID 在「設定 → 追蹤設定」填寫，見[其他設�
 | **記錄點擊的端點採信呼叫端的身分，沒有速率限制** | 詳見 `../../system/AUDIT.md` 的 SHORT-01 |
 | 自訂代碼與其他租戶重複時回伺服器錯誤 | 同租戶內的檢查看不到其他租戶的代碼 |
 | 沒有 LINE uid 的點擊都算不重複點擊 | 一般瀏覽器的不重複點擊數等於總點擊數 |
-| 後台路由沒有權限碼 | 詳見 `../../system/AUDIT.md` 的 RBAC-01 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
