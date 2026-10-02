@@ -48,6 +48,110 @@ async function getSupervisorAndAdminIds(
   return agents.map((agent) => agent.id);
 }
 
+const CASE_PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+/** 已結案的工單：對話上掛的是這種工單時，自動化可以開新單並改關聯 */
+const CLOSED_CASE_STATUSES = new Set(['RESOLVED', 'CLOSED']);
+
+/**
+ * create_case：條件命中時自動建立工單（AUDIT AUTO-01 補實作）。行為與手動「由對話建立工單」一致：
+ * 依優先度套 SLA 政策、對話關聯到新工單、寫入工單事件（actorType automation）、即時推播，
+ * 並經 domain event 橋接發出 case.created，讓通知與「工單建立」觸發的規則照常運作。
+ *
+ * 不建立的情況（皆留 warn）：
+ *   - 觸發事件是工單或 SLA 相關：工單已存在，而且「工單建立 → 建立工單」會無限迴圈
+ *   - 沒有對話：工單的渠道取自對話
+ *   - 對話已關聯未結案的工單：不重複開，避免顧客一直傳訊息就開一堆工單
+ * 成功時回傳新工單 id，呼叫端寫回 context.caseId，同一條規則的後續動作（指派、改狀態）作用在新工單上。
+ */
+async function createCaseFromAutomation(
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  params: Record<string, unknown>,
+  context: WorkerActionContext,
+): Promise<string | null> {
+  const { tenantId } = context;
+  if (context.trigger && /^(case|sla)\./.test(context.trigger)) {
+    logger.warn(`[automation] create_case skipped: trigger "${context.trigger}" is a case/SLA event`);
+    return null;
+  }
+  const title = typeof params['title'] === 'string' ? params['title'].trim() : '';
+  if (!title || !context.conversationId) {
+    logger.warn('[automation] create_case skipped: missing title or conversation', { tenantId });
+    return null;
+  }
+
+  // worker 走 BYPASSRLS 連線：每個查詢都要自帶 tenantId
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: context.conversationId, tenantId },
+    select: { id: true, contactId: true, channelId: true, caseId: true },
+  });
+  if (!conversation) {
+    logger.warn('[automation] create_case skipped: conversation not found in tenant', { tenantId });
+    return null;
+  }
+  if (conversation.caseId) {
+    const existing = await prisma.case.findFirst({
+      where: { id: conversation.caseId, tenantId },
+      select: { id: true, status: true },
+    });
+    if (existing && !CLOSED_CASE_STATUSES.has(existing.status)) {
+      logger.info(`[automation] create_case skipped: conversation already has open case ${existing.id}`);
+      return existing.id;
+    }
+  }
+
+  const priority =
+    typeof params['priority'] === 'string' && CASE_PRIORITIES.has(params['priority']) ? params['priority'] : 'MEDIUM';
+  const category = typeof params['category'] === 'string' && params['category'].trim() ? params['category'].trim() : null;
+  const slaPolicy = await prisma.slaPolicy.findFirst({ where: { tenantId, priority: priority as any } });
+  const slaDueAt = slaPolicy ? new Date(Date.now() + slaPolicy.resolutionMinutes * 60_000) : null;
+
+  const created = await prisma.case.create({
+    data: {
+      tenantId,
+      contactId: conversation.contactId,
+      channelId: conversation.channelId,
+      title,
+      priority: priority as any,
+      category,
+      status: 'OPEN',
+      slaPolicy: slaPolicy?.name ?? null,
+      slaDueAt,
+    },
+  });
+  await prisma.conversation.updateMany({
+    where: { id: conversation.id, tenantId },
+    data: { caseId: created.id },
+  });
+  await prisma.caseEvent.create({
+    data: {
+      caseId: created.id,
+      actorType: 'automation',
+      actorId: null,
+      eventType: 'created',
+      payload: { title, priority, category, trigger: context.trigger ?? null },
+    },
+  });
+
+  await publishSocketEvent(redisPublisher, `tenant:${tenantId}`, 'case.created', {
+    id: created.id,
+    status: 'OPEN',
+    priority,
+    assigneeId: null,
+    title,
+  });
+  await publishDomainEvent(redisPublisher, 'case.created', tenantId, {
+    caseId: created.id,
+    contactId: conversation.contactId,
+    channelId: conversation.channelId,
+    title,
+    priority,
+    status: 'OPEN',
+    conversationId: conversation.id,
+  }).catch((err) => logger.warn('[automation] publish case.created bridge failed:', err));
+  return created.id;
+}
+
 export async function executeWorkerAutomationActions(
   prisma: PrismaClient,
   redisPublisher: IORedis,
@@ -57,6 +161,12 @@ export async function executeWorkerAutomationActions(
   for (const action of actions) {
     try {
       const params = action.params ?? action.payload ?? {};
+
+      if (action.type === 'create_case') {
+        const caseId = await createCaseFromAutomation(prisma, redisPublisher, params, context);
+        if (caseId) context.caseId = caseId;
+        continue;
+      }
 
       if (action.type === 'assign_agent') {
         const agentId = params['agentId'];

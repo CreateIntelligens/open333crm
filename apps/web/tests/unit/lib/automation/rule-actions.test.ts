@@ -11,7 +11,7 @@ test('載入既有規則：轉成編輯器格式並濾掉不支援的動作', ()
   assert.deepEqual(
     toEditorActions([
       { type: 'send_message', params: { text: 'hi' } },
-      { type: 'create_case', params: { title: '客訴' } },
+      { type: 'llm_reply', params: {} },
       { type: 'add_tag', payload: { tagName: 'VIP' } },
     ]),
     [

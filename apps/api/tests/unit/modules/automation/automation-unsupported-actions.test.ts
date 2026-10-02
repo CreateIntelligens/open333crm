@@ -14,9 +14,9 @@ import {
 } from '@open333crm/automation';
 
 const EVENT = AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED;
-const UNSUPPORTED = ['create_case', 'remove_tag', 'assign_bot', 'kb_auto_reply', 'llm_reply'];
+const UNSUPPORTED = ['remove_tag', 'assign_bot', 'kb_auto_reply', 'llm_reply'];
 
-test('不支援的動作清單就是這 5 種', () => {
+test('不支援的動作清單就是這 4 種（create_case 已補上實作）', () => {
   assert.deepEqual([...UNSUPPORTED_AUTOMATION_ACTION_TYPES].sort(), [...UNSUPPORTED].sort());
 });
 
@@ -32,17 +32,17 @@ test('存檔驗證：含不支援的動作就拒絕，訊息說明是哪個動�
   const result = validateAutomationRuleContract({
     eventName: EVENT,
     conditions: { all: [] },
-    actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'create_case', params: { title: '客訴' } }],
+    actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'llm_reply', params: {} }],
   });
   assert.equal(result.valid, false);
-  assert.ok(result.errors.some((e) => e.includes('建立工單') && e.includes('尚未支援')), result.errors.join('; '));
+  assert.ok(result.errors.some((e) => e.includes('LLM 智能回覆') && e.includes('尚未支援')), result.errors.join('; '));
 });
 
 test('執行時（workers）：既有規則照常通過驗證，只在執行時跳過不支援的動作', () => {
   const result = validateAutomationRuleContract({
     eventName: EVENT,
     conditions: { all: [] },
-    actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'create_case', params: { title: '客訴' } }],
+    actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'llm_reply', params: {} }],
     options: { allowUnsupportedActions: true },
   });
   assert.deepEqual(result, { valid: true, errors: [] });
@@ -50,9 +50,9 @@ test('執行時（workers）：既有規則照常通過驗證，只在執行時�
 
 test('找出規則中不支援的動作（給規則列表與編輯頁提示用）', () => {
   assert.deepEqual(
-    findUnsupportedAutomationActions([{ type: 'send_message' }, { type: 'create_case' }, { type: 'llm_reply' }, 'bad']),
+    findUnsupportedAutomationActions([{ type: 'send_message' }, { type: 'remove_tag' }, { type: 'llm_reply' }, 'bad']),
     [
-      { type: 'create_case', label: '建立工單' },
+      { type: 'remove_tag', label: '移除標籤' },
       { type: 'llm_reply', label: 'LLM 智能回覆' },
     ],
   );
@@ -67,7 +67,7 @@ test('既有規則含不支援的動作：只改啟用狀態或名稱照常成�
     eventType: EVENT,
     trigger: { type: EVENT },
     conditions: { all: [] },
-    actions: [{ type: 'create_case', params: { title: '客訴' } }],
+    actions: [{ type: 'llm_reply', params: {} }],
   };
   const updates: unknown[] = [];
   const prisma = {
@@ -83,7 +83,23 @@ test('既有規則含不支援的動作：只改啟用狀態或名稱照常成�
   await updateRule(prisma, 'r1', 't1', { name: '改名' });
   assert.equal(updates.length, 2);
   await assert.rejects(
-    () => updateRule(prisma, 'r1', 't1', { actions: [{ type: 'create_case', params: { title: 'x' } }] }),
+    () => updateRule(prisma, 'r1', 't1', { actions: [{ type: 'llm_reply', params: {} }] }),
     /尚未支援/,
   );
+});
+
+test('建立工單：收到訊息、關鍵字、對話建立可用；工單、SLA、聯絡人事件不提供（工單渠道取自對話，也避免迴圈）', () => {
+  const offered = (event: string) => getAutomationActionOptionsForEvent(event).map((o) => o.value).includes('create_case');
+  for (const e of [AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED, AUTOMATION_EVENT_NAMES.KEYWORD_MATCHED, AUTOMATION_EVENT_NAMES.CONVERSATION_CREATED]) {
+    assert.equal(offered(e), true, e);
+  }
+  for (const e of [AUTOMATION_EVENT_NAMES.CASE_CREATED, AUTOMATION_EVENT_NAMES.SLA_RESOLUTION_BREACHED, AUTOMATION_EVENT_NAMES.CONTACT_TAGGED]) {
+    assert.equal(offered(e), false, e);
+  }
+  const ok = validateAutomationRuleContract({
+    eventName: AUTOMATION_EVENT_NAMES.KEYWORD_MATCHED,
+    conditions: { all: [] },
+    actions: [{ type: 'create_case', params: { title: '客訴', priority: 'HIGH' } }],
+  });
+  assert.deepEqual(ok, { valid: true, errors: [] });
 });

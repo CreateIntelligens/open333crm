@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-02]
 
+### Added
+
+- **自動化規則可以自動建立工單** — 規則條件命中時（例如顧客訊息含「客訴」「故障」）自動在該對話上開工單：依優先度套用 SLA、對話關聯到新工單、即時通知，同一條規則後面的動作（例如指派客服）會作用在這張新工單上。同一段對話已有未結案的工單時不重複開。只在收到訊息、關鍵字命中、對話建立這類有對話的觸發事件提供，工單與 SLA 事件不提供，避免工單開工單。
+
 ### Security
 
 - **重抓 LINE 個人資料的端點限定自己租戶** — `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile` 原本只驗登入，以繞過 RLS 的連線查渠道與身分、條件不帶租戶：任一租戶的成員只要知道其他租戶 LINE 渠道的 ID 與一個 LINE uid，就能用對方渠道的憑證呼叫 LINE，並改寫對方聯絡人的名稱與頭像（AUDIT RLS-05）。現在改走租戶連線，查詢帶 `tenantId`，要求 `contact.update` 權限與渠道可見範圍；其他租戶、看不到、已停用或非 LINE 的渠道一律回 404。前端、CLI 與 MCP 都沒有呼叫這個端點，不影響現有功能。這個端點的規格原本沒有套用到主規格，現在補在 `openspec/specs/line-contact-profile-sync/spec.md`。
