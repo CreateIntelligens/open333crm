@@ -36,3 +36,23 @@ test('工單沒有分類：依最新的顧客訊息分類，只在仍無分類�
   assert.equal(await autoClassifyNewCase(prisma, 't1', 'case-1', 'conv-1', classifier), '退換貨');
   assert.deepEqual(updates, [{ where: { id: 'case-1', tenantId: 't1', category: null }, data: { category: '退換貨' } }]);
 });
+
+test('分類是空字串（舊路由可存入）：視為已處理，不呼叫 AI（寫回條件是 null，對不上只會白算）', async () => {
+  const { prisma, updates } = mockPrisma('');
+  let called = 0;
+  assert.equal(await autoClassifyNewCase(prisma, 't1', 'case-1', 'conv-1', async () => (called++, classifier())), null);
+  assert.equal(called, 0);
+  assert.equal(updates.length, 0);
+});
+
+test('沒有顧客文字訊息：不分類、不寫入', async () => {
+  const updates: unknown[] = [];
+  let called = 0;
+  const prisma = {
+    case: { findFirst: async () => ({ category: null }), updateMany: async (a: unknown) => (updates.push(a), { count: 1 }) },
+    message: { findFirst: async () => ({ content: { imageUrl: 'x' } }) },
+  } as never;
+  assert.equal(await autoClassifyNewCase(prisma, 't1', 'case-1', 'conv-1', async () => (called++, classifier())), null);
+  assert.equal(called, 0);
+  assert.equal(updates.length, 0);
+});

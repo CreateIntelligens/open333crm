@@ -188,3 +188,22 @@ test('建單期間對話已被別的工作關聯到未結案工單（並行）�
   assert.deepEqual(cases.map((c) => c.id), ['case-raced'], '交易回滾，不留孤兒工單');
   assert.equal(convs[0]!.caseId, 'case-raced');
 });
+
+test('原工單已結案、建單期間對話被別人改關聯到新工單：回滾，不開第二張', async () => {
+  cases.push({ id: 'case-old', tenantId: T, status: 'CLOSED' }, { id: 'case-other', tenantId: T, status: 'OPEN' });
+  convs[0]!.caseId = 'case-old';
+  const originalFindFirst = prisma.conversation.findFirst;
+  prisma.conversation.findFirst = async (args: any) => {
+    const found = await originalFindFirst(args);
+    const snapshot = found ? { ...found } : null;
+    if (found) found.caseId = 'case-other';
+    return snapshot;
+  };
+  try {
+    await run([createCase()], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
+  } finally {
+    prisma.conversation.findFirst = originalFindFirst;
+  }
+  assert.deepEqual(cases.map((c) => c.id), ['case-old', 'case-other']);
+  assert.equal(convs[0]!.caseId, 'case-other');
+});

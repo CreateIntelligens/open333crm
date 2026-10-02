@@ -13,3 +13,20 @@ export function toEditorActions(actions: unknown): Array<{ type: string; payload
     return [{ type: a.type, payload: a.payload || a.params || {} }];
   });
 }
+
+/** 選填參數空值時的標籤；分類不指定時由系統依顧客訊息自動分類 */
+const EMPTY_OPTION_LABELS: Record<string, string> = { category: '不指定（由 AI 分類）' };
+
+/**
+ * 下拉參數的選項。選填的參數在最前面加值為空的「不指定」：
+ * 原本沒有這個選項，值為空時畫面會顯示第一個選項（例如分類顯示「產品諮詢」、優先級顯示「低」），
+ * 實際卻存成空值，使用者看到的與存的不一致，選過之後也改不回「不指定」。
+ */
+export function selectOptionsForParam(param: {
+  key: string;
+  required?: boolean;
+  values?: ReadonlyArray<{ value: string | number | boolean; label: string }>;
+}): Array<{ value: string; label: string }> {
+  const options = (param.values ?? []).map((o) => ({ value: String(o.value), label: o.label }));
+  return param.required ? options : [{ value: '', label: EMPTY_OPTION_LABELS[param.key] ?? '不指定' }, ...options];
+}

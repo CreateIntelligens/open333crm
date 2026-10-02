@@ -106,7 +106,8 @@ export async function autoClassifyNewCase(
   classify: (db: PrismaClient | TenantDb, tenantId: string, text: string) => Promise<ClassifyResult> = classifyIssue,
 ): Promise<string | null> {
   const current = await prisma.case.findFirst({ where: { id: caseId, tenantId }, select: { category: true } });
-  if (!current || current.category) return null;
+  // null 才是「沒有分類」；空字串（舊路由可存入）也視為已處理，否則會白白呼叫 AI 卻寫不回去
+  if (!current || current.category !== null) return null;
   const latest = await prisma.message.findFirst({
     where: { conversationId, conversation: { tenantId }, direction: 'INBOUND' },
     orderBy: { createdAt: 'desc' },
