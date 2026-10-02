@@ -172,3 +172,30 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
 
 export const AUTOMATION_ACTION_MAP: ReadonlyMap<string, AutomationActionDefinition> =
   new Map(AUTOMATION_ACTION_DEFINITIONS.map((action) => [action.type, action]));
+
+/**
+ * workers 尚未實作的動作（AUDIT AUTO-01）。
+ * 2026-05 自動化執行搬到 apps/workers 時，這幾種動作沒有搬過去：規則可以存檔、條件也會命中，
+ * 但 workers 只記一行 log 就略過，租戶以為規則有效。在 workers 補上實作之前：
+ *   - 規則編輯器不提供（composer 預設排除）
+ *   - 存檔時拒絕（validateAutomationRuleContract）
+ *   - 既有規則在 workers 照常執行其他動作，只跳過這幾個（allowUnsupportedActions）
+ * workers 補上實作後，從這裡移除即可。
+ */
+export const UNSUPPORTED_AUTOMATION_ACTION_TYPES: ReadonlySet<string> = new Set([
+  'create_case',
+  'remove_tag',
+  'assign_bot',
+  'kb_auto_reply',
+  'llm_reply',
+]);
+
+/** 規則動作中 workers 尚未支援的項目（給規則列表、編輯頁提示用） */
+export function findUnsupportedAutomationActions(actions: unknown): Array<{ type: string; label: string }> {
+  if (!Array.isArray(actions)) return [];
+  return actions.flatMap((action) => {
+    const type = (action as { type?: unknown } | null)?.type;
+    if (typeof type !== 'string' || !UNSUPPORTED_AUTOMATION_ACTION_TYPES.has(type)) return [];
+    return [{ type, label: AUTOMATION_ACTION_MAP.get(type)?.label ?? type }];
+  });
+}

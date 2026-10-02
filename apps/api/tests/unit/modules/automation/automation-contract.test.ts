@@ -93,7 +93,7 @@ async function testApiCreateRuleRejectsInvalidContractBeforeWrite() {
         },
         actions: [{ type: 'notify', params: { message: 'invalid' } }],
       }),
-    /Invalid automation rule contract/,
+    /自動化規則設定有誤/,
   );
 
   assert.equal(createCalled, false);

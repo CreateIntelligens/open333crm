@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAutomationRules } from '@/hooks/useAutomation';
+import { findUnsupportedAutomationActions } from '@open333crm/automation';
 
 export default function AutomationPage() {
   const router = useRouter();
@@ -104,6 +105,19 @@ export default function AutomationPage() {
                           {rule.trigger?.type || rule.triggerEvent}
                         </Badge>
                       )}
+                      {/* AUDIT AUTO-01：含系統尚未支援自動執行的動作，這些動作命中時不會執行 */}
+                      {(() => {
+                        const unsupported = findUnsupportedAutomationActions(rule.actions);
+                        return unsupported.length > 0 ? (
+                          <Badge
+                            variant="destructive"
+                            className="ml-1 mt-1 text-xs"
+                            title={`不會執行的動作：${unsupported.map((a) => a.label).join('、')}`}
+                          >
+                            含未支援的動作
+                          </Badge>
+                        ) : null;
+                      })()}
                     </td>
 
                     {/* Description */}

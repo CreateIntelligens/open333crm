@@ -15,6 +15,7 @@ import Link from 'next/link';
 import type { Field, RuleGroupType, ValueEditorType } from 'react-querybuilder';
 import {
   AUTOMATION_EVENT_DEFINITIONS,
+  findUnsupportedAutomationActions,
   getAutomationActionOptionsForEvent,
   getAutomationFieldOptionsForEvent,
   type AutomationActionDefinition,
@@ -97,6 +98,7 @@ export default function AutomationRuleDetailPage() {
 
   // SWR for existing rules
   const { rule, isLoading, mutate } = useAutomationRule(isNew ? null : ruleId);
+  const unsupportedActions = useMemo(() => findUnsupportedAutomationActions(rule?.actions), [rule]);
 
   // Local form state
   const [form, setForm] = useState<RuleForm>(DEFAULT_FORM);
@@ -484,6 +486,15 @@ export default function AutomationRuleDetailPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 定義當上述條件滿足時要執行的動作。動作將依序執行。
               </p>
+              {/* 既有規則含系統尚未支援自動執行的動作（AUDIT AUTO-01）：編輯器已不提供、也存不進去，
+                  這裡要明講，否則動作從畫面上消失、儲存後被移除，管理員不會發現 */}
+              {unsupportedActions.length > 0 && (
+                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  此規則含有系統尚未支援自動執行的動作：
+                  {unsupportedActions.map((a) => `「${a.label}」`).join('、')}。
+                  這些動作目前不會執行，編輯器已不提供；儲存時會從規則中移除，其他動作照常執行。
+                </div>
+              )}
               <ActionList
                 actions={actions}
                 onChange={setActions}

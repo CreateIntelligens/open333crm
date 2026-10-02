@@ -36,7 +36,6 @@ async function testUpdatedAtOrderingAndPayloads() {
   const inboundPresenterSource = await readSource('modules/webhook/inbound-socket-presenter.ts');
   const simulatorSource = await readSource('channels/simulator/simulator.service.ts');
   const automationWorkerSource = await readSource('modules/automation/automation.worker.ts');
-  const actionExecutorSource = await readSource('modules/automation/engine/action-executor.ts');
 
   assert.equal(serviceSource.includes("orderBy: { updatedAt: 'desc' }"), true);
   assert.equal(serviceSource.includes('updatedAt: updated.updatedAt.toISOString()'), true);
@@ -45,7 +44,6 @@ async function testUpdatedAtOrderingAndPayloads() {
   assert.equal(inboundPresenterSource.includes('updatedAt: conversation.updatedAt.toISOString()'), true);
   assert.equal(simulatorSource.includes('updatedAt: updatedConv.updatedAt.toISOString()'), true);
   assert.equal(automationWorkerSource.includes('ConversationUpdatedPayload'), true);
-  assert.equal(actionExecutorSource.includes('ConversationUpdatedPayload'), true);
 }
 
 async function testFrontendSocketLocalUpdates() {

@@ -25,6 +25,8 @@ export function useAutomationRules() {
       description?: string;
       trigger?: { type: string; keywords?: string[]; match_mode?: string };
       triggerEvent?: string;
+      /** 用來標示含系統尚未支援動作的規則（AUDIT AUTO-01） */
+      actions?: unknown;
       isActive: boolean;
       stopOnMatch: boolean;
       priority: number;
