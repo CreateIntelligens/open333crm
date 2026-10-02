@@ -42,10 +42,10 @@
 
 | ID | 範圍 | 優先 | 處理狀態 | 問題 | 驗證狀態 |
 | --- | --- | --- | --- | --- | --- |
-| [RLS-01](#rls-01) | 租戶隔離與權限 | P1 | 未處理 | Canvas 引擎不走租戶連線 | 靜態確認 |
+| [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效 | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
+| [RLS-05](#rls-05) | 租戶隔離與權限 | P2 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由不檢查權限碼 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
@@ -157,6 +157,10 @@
 - 指向 superuser 或帶 BYPASSRLS 的 role（`.env.api.example` 的 `crm` 屬於這類）：Canvas 的所有讀寫跳過 RLS。
 - 指向 `app_tenant`：singleton 的連線沒有 `app.current_tenant`，policy fail-closed，`FlowRunner.run()` 在第一個 `findUniqueOrThrow` 就查不到列，Canvas 會靜默停止運作。
 
+`DATABASE_URL` 同時決定 API 的租戶連線：`prisma.plugin.ts` 在沒有設定 `DATABASE_URL_TENANT` 時，租戶連線就用 `DATABASE_URL`。因此 API 要讓 RLS 生效，通常 `DATABASE_URL` 就指向 `app_tenant`，Canvas 落在第二種情況。這時 `inbound-side-effects.ts` 每處理一則進站訊息，都呼叫 `canvas.webhook.ts` 的 `handleWebhookFlowTrigger()`；這個函式以 singleton 查 `interactionFlow`，結果是空陣列，流程永遠不會觸發，也沒有錯誤。
+
+**優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`；正式環境有沒有啟用中的流程，尚未查證。
+
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
 
@@ -191,6 +195,13 @@
 `scripts/check-prisma-admin-usage.mjs` 把這個檔案列在白名單，註解寫「LINE profile（認證相關）」。這條路由是登入後的客服操作，不屬於白名單涵蓋的平台後台、auth、排程、OAuth callback 與公開 webhook。
 
 前端、CLI 與 MCP 都沒有呼叫這個端點。
+
+**優先順序是 P2，原因是兩個前提都很難取得：**
+
+- **對方 LINE 渠道的 `channelId`。** 這個 UUID 出現在 webhook 網址（`channel.service.ts` 組成 `/api/v1/webhooks/<渠道類型>/<channel.id>`），而 webhook 網址只設定在 LINE 後台。網頁嵌入的 widget 會公開 WebChat 渠道的 `channelId`，但對 WebChat 渠道呼叫這個端點時，LINE API 會失敗，端點回 502。
+- **該渠道底下的 LINE uid。** LINE 的 userId 依 provider 而不同，外人無法取得其他官方帳號的 uid。
+
+兩個前提都達成時，影響也有限。寫入的是 LINE 回傳的真實資料，攻擊者無法寫入偽造的內容；讀到的是攻擊者已知 uid 的顯示名稱與頭像。另外，攻擊者可以從 404 與 200 的差異確認 uid 是否存在，每次呼叫也會消耗對方渠道的 LINE API 額度。
 
 **修正方向**：路由改用 `request.tenantPrisma`，服務查 `channelIdentity` 與 `channel` 的條件都加上 `tenantId`，並把這個檔案移出白名單。確認沒有外部呼叫端的話，也可以直接移除這條路由。
 

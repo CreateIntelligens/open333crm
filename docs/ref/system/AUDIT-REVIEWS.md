@@ -30,6 +30,10 @@ PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT
 
 **依 issue #197 更正 RBAC-01 的描述。** 原本寫工單、對話、標籤、短連結的路由「只驗身分」。`case.routes.ts` 與 `conversation.routes.ts` 其實檢查渠道可見範圍，只是不檢查權限碼；只驗身分的是 `tag.routes.ts` 與 `shortlink.routes.ts`。AUTH-05 引用 RBAC-01 的段落也一併更正。
 
+**RLS-05 由 P1 改為 P2。** issue #197 指出攻擊者要同時知道對方的 `channelId` 與 LINE uid。本次核對 `line-profile.routes.ts` 與 `line-profile.service.ts`，確認兩個前提都很難取得：LINE 渠道的 `channelId` 只出現在設定於 LINE 後台的 webhook 網址；widget 公開的是 WebChat 渠道的 `channelId`，拿來呼叫這個端點只會得到 502。LINE uid 依 provider 而不同。寫入的內容是 LINE 回傳的真實資料。
+
+**RLS-01 由 P1 改為 P2。** issue #197 指出正式環境的 `DATABASE_URL` 指向 `app_tenant`，查詢被 RLS 擋下，不會漏資料。本次核對 `canvas.webhook.ts` 與 `inbound-side-effects.ts`，確認進入 Canvas 的 `tenantId` 由進站管線解析、`executionId` 由租戶連線建立，安全面是 P2。功能面另外記在內文：`DATABASE_URL` 指向 `app_tenant` 時 Canvas 靜默失效。有租戶使用 Canvas 時應該回到 P1，正式環境有沒有啟用中的流程尚未查證。正式環境的 `DATABASE_URL` 不在 repo 內，本次無法驗證，依 #197 的回報記錄。
+
 **PLAN-08 由 P1 改為 P3。** 這一項的權限判斷是正確的：`requirePermission()` 確實套用方案天花板。問題只在角色與權限頁的勾選狀態與 403 的訊息沒有反映天花板，符合 P3 定義中的「介面與資料不一致」。issue #197 的查證提出同樣的建議。
 
 ## 2026-10-01：修正 RLS-06 與 TRIAL-01，新增 CASE-02
