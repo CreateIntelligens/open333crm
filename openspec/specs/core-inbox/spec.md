@@ -1,5 +1,5 @@
 ## Purpose
-定義客服收件匣的核心行為：即時訊息推播、對話列表與對話操作，以及對話、標籤、短連結路由的權限要求。
+定義客服收件匣的核心行為：即時訊息推播、對話列表與對話操作，以及對話、標籤、短連結路由的權限要求。工單的狀態轉換與刪除見 `case-management`；進站訊息的處理流程見 `inbound-message-processing`。
 ## Requirements
 ### Requirement: Real-time WebSocket Broadcasting
 The system SHALL push new messages to connected frontend clients in real-time through the authoritative API bootstrap rooted at `apps/api/src/index.ts`.
