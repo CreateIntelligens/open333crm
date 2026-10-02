@@ -6,11 +6,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Security
 
+- **refresh token 不能再當 access token 使用** — 客服的 access token、refresh token、粉絲 token 與 MCP 確認 token 都以同一把 `JWT_SECRET` 簽發，驗證端只看簽章：refresh token（30 天）可以直接拿來呼叫 API，成員被停用後也擋不住；日後接回粉絲 token 的簽發（One ID tasks 9.3.3，優惠券的 Account Link）時，粉絲 token 也會通過客服認證，並透過 socket 收到全租戶的訊息（AUDIT AUTH-05）。access 與 refresh token 改帶用途欄位 `typ`，客服 API 與 socket 只收 access token，`/auth/refresh` 只收 refresh token。上線當下既有的 access token 會失效、由前端自動換發，使用者不會被登出（過渡期接受舊格式的 refresh token）。
 - **登入防暴力破解** — `POST /api/v1/auth/login` 原本沒有速率限制也沒有失敗鎖定，可無限次嘗試密碼；登入頁的夾娃娃機小遊戲只在前端判斷，直接呼叫 API 就能繞過（AUDIT SEC-05，issue #197）。現在同一 IP 每分鐘最多 10 次；同一帳號（email 不分大小寫）15 分鐘內失敗 5 次即鎖定到區間結束，鎖定期間密碼正確也不放行，CLI 密碼登入共用同一個計數；每次嘗試一進來就原子計數，同時送出大量請求也最多只驗 5 次密碼；不存在的 email 一樣計數，也一樣做一次密碼雜湊比對，回應內容與時間都不透露帳號是否存在；計數用的 Redis 故障時照常登入並留 log，不會讓全站無法登入。停用帳號改在密碼驗證通過後才回「此帳號已被停用」，避免不知道密碼的人確認某個 email 是停用帳號。
 - **來源 IP 無法再偽造** — API 原本設 `trustProxy: true`，`request.ip` 取 `X-Forwarded-For` 最左邊的值，使用者自己帶標頭就能偽造 IP；而部署環境的 Caddy 會丟掉主機 nginx 帶來的標頭，API 看到所有人都是 docker 閘道 IP，所有依 IP 的限流變成全站共用一個額度（AUDIT SEC-04）。改為只信任私有網段與本機的代理，Caddy 設定 `trusted_proxies` 保留 nginx 附加的真實 IP。
 
 ### Fixed
 
+- **即時通知在 API 重啟後斷掉** — 前端 socket 建立時把當下的 access token 固定在連線設定，斷線重連一律沿用；access token 15 分鐘就過期，每次部署重啟 API 後，超過 15 分鐘沒換頁的使用者就收不到即時訊息。改為每次連線讀取最新的 token，被拒時先換發再重連（連續最多 3 次）；仍連不上時，頂端列的連線狀態顯示「即時連線中斷，請重新整理」，點一下即可重新整理。
 - **工單「首次回應逾時」假警報** — `Case.firstResponseAt` 原本沒有任何程式寫入，套了 SLA 的工單時間一到必定判定首次回應逾時，通知負責人與主管、寫入工單事件、觸發自動化，而且工單沒結案前每 24 小時再發一次；報表的平均首次回應時間也永遠是空的（AUDIT SLA-01，issue #197；UAT 已累積 74 筆相關事件）。現在客服在工單關聯的對話第一次送出訊息時寫入首次回應時間（不早於工單建立時間；AI 與系統自動回覆不算）；把已有客服回覆的對話掛到既有工單時，也會補上工單建立後最早的那則回覆。記錄失敗不會影響訊息送出。
 - **部署注意** — 既有工單以 `apps/api/src/scripts/backfill-case-first-response.ts` 補值（預設 dry-run，`--apply` 才寫入，可重複執行）：取工單建立後、關聯對話中最早一則客服訊息的時間。工單建立前客服已回覆、之後沒再回覆的工單補不到值，仍會判定逾時；手動建立、沒有關聯任何對話的工單永遠不會有首次回應時間，套 SLA 時同樣會判定逾時（另案處理）。
 - **「操作太頻繁」顯示成「請求格式不正確」** — 所有限流端點超過上限時，全域錯誤處理把 429 改寫成「請求格式不正確，請重新操作」；改回 `RATE_LIMITED`「操作太頻繁，請稍候再試」。
