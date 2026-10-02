@@ -27,7 +27,9 @@
 - `tests/unit/modules/line/line-profile.service.test.ts`：以不受 RLS 約束的 executor 呼叫 service，確認 service 自己帶 `tenantId` 條件。
 - 突變驗證：分別拿掉權限檢查、可見範圍檢查、LINE 類型條件、service 的 `tenantId` 條件，各有一個測試失敗。只拿掉 service 的 `tenantId` 條件時，feature 測試仍然通過，原因是可見範圍檢查先以租戶連線擋下；因此另外補了 unit 測試。
 
-**原規格沒有同步進主規格。** `line-contact-profile-sync` 的規格只存在於歸檔的 change，`openspec/specs/` 沒有這份規格。這次沒有補。
+**補上主規格。** `line-contact-profile-sync` 的規格原本只存在於歸檔的 change：該 change 在 `980781d5` 直接放進 `archive/`，沒有經過 `openspec archive`。這次以 change `sync-line-contact-profile-spec` 補上原規格與 RLS-05 的行為，歸檔後套用到 `openspec/specs/line-contact-profile-sync/spec.md`。feature 測試的名稱與規格的情境一一對應。
+
+同一個歷史 change 的另一份 delta spec `line-webhook-events`（LINE 圖片的 `contentProvider`）也沒有套用到主規格，另案處理。
 
 ## 2026-10-02：記錄 AUTH-05 的修正，新增 AUTH-08
 

@@ -16,4 +16,4 @@
 - [x] 2.1 `pnpm --filter @open333crm/api test` 與 `test:feature` 通過；`tsc --noEmit` 通過
 - [x] 2.2 `check-tenant-scoping.mjs --strict` 通過；`check-prisma-admin-usage.mjs --strict` 只有 `main` 既有的違規（RLS-07 與粉絲端路由），沒有新增
 - [x] 2.3 `CHANGELOG.md` 已在 `f4c76b5` 新增條目
-- [ ] 2.4 歸檔本 change，把 `line-contact-profile-sync` 套用到主規格
+- [x] 2.4 歸檔本 change，把 `line-contact-profile-sync` 套用到主規格
