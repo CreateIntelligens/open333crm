@@ -35,6 +35,6 @@ docs/ref/system/AUDIT.md RBAC-01（issue #197）：權限碼早已定義，但�
 ## Impact
 
 - `apps/api/src/modules/{case,conversation,tag,shortlink}/*.routes.ts`
-- **上線前必做**：查 `SELECT email FROM agents WHERE "roleId" IS NULL AND "isActive"`。沒有細粒度角色的成員權限為空集合，上線後這四個模組全部 403；UAT 有 1 位（RBAC 上線前建立的帳號），須先補上該租戶的系統角色。
+- **上線前必做**：查 `SELECT email FROM agents WHERE "roleId" IS NULL AND "isActive"`。沒有細粒度角色的成員權限為空集合，上線後這四個模組全部 403；UAT 原有 2 位（RBAC 上線前建立且未回填的帳號，其中 1 位啟用中），2026-10-02 已依 legacy `role` 補上該租戶的系統角色，目前 17 位成員都有角色。
 - 上線影響：UAT（目前唯一的部署環境）3 個租戶的所有角色都具備上表 13 個權限碼，13 個權限碼都屬於 `inbox` 功能模組、5 種方案都包含，上線後不會有既有成員被擋。新租戶的系統角色由種子資料提供，同樣具備。
 - 系統預設的 `agent` 角色目前含 `case.delete`，上線後客服仍可刪除工單，行為不變；是否收回由產品另行決定。
