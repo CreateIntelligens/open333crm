@@ -35,6 +35,23 @@ docs/ref/system/AUDIT.md RBAC-01（issue #197）：權限碼早已定義，但�
 ## Impact
 
 - `apps/api/src/modules/{case,conversation,tag,shortlink}/*.routes.ts`
-- **上線前必做**：查 `SELECT email FROM agents WHERE "roleId" IS NULL AND "isActive"`。沒有細粒度角色的成員權限為空集合，上線後這四個模組全部 403；UAT 原有 2 位（RBAC 上線前建立且未回填的帳號，其中 1 位啟用中），2026-10-02 已依 legacy `role` 補上該租戶的系統角色，目前 17 位成員都有角色。
+- **上線前必做：確認每位啟用中的成員都有細粒度角色**。沒有角色（`roleId` 為空）的成員權限為空集合，上線後這四個模組全部 403。下列查詢依租戶分組，`without_role` 應為 0（`agents.isActive` 為 NOT NULL）：
+
+  ```sql
+  SELECT t.name, count(*) FILTER (WHERE a."roleId" IS NULL AND a."isActive") AS without_role, count(*) AS agents
+  FROM agents a JOIN tenants t ON t.id = a."tenantId"
+  GROUP BY t.name;
+  ```
+
+  不為 0 時，依舊的 `role` 欄位補上同租戶的系統角色（只動 `roleId` 為空的列，可重複執行）：
+
+  ```sql
+  UPDATE agents a SET "roleId" = r.id
+  FROM roles r
+  WHERE a."roleId" IS NULL
+    AND r."tenantId" = a."tenantId" AND r."isSystem" AND r.slug = lower(a.role::text);
+  ```
+
+  UAT 執行紀錄（2026-10-02，以 owner 連線）：補角色前，Demo Tenant 有 2 位沒有角色（`daniel@aicreate360.com` ADMIN 啟用中、`erictsai@aicreate360.com` SUPERVISOR 已停用，皆為 RBAC 上線前建立且未回填），其他兩個租戶為 0；以上述 UPDATE（另限定這兩個 email）補為 admin 與 supervisor，`UPDATE 2`；重查全平台 17 位成員皆有角色。
 - 上線影響：UAT（目前唯一的部署環境）3 個租戶的所有角色都具備上表 13 個權限碼，13 個權限碼都屬於 `inbox` 功能模組、5 種方案都包含，上線後不會有既有成員被擋。新租戶的系統角色由種子資料提供，同樣具備。
 - 系統預設的 `agent` 角色目前含 `case.delete`，上線後客服仍可刪除工單，行為不變；是否收回由產品另行決定。
