@@ -105,7 +105,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。第�
 | 夥伴系統推送、重建型號白名單、標記回報已處理 | `knowledge.admin` |
 | Chat、Embedding、自備金鑰的設定 | `settings.manage` |
 
-側欄的「知識庫」要求 `knowledge.view`，但讀取類的路由只驗登入，沒有檢查這個權限碼。
+側欄的「知識庫」要求 `knowledge.view`，但讀取類的路由只驗登入，沒有檢查這個權限碼，也不受方案的功能天花板限制。見 `../../system/AUDIT.md` 的 RBAC-01。
 
 ## 目前的限制
 
@@ -117,7 +117,7 @@ Chat 與 Embedding 的設定都是租戶層級，存在 `TenantSettings`。第�
 | Chat 的預設供應商是 Ollama | 新租戶要先把 Chat 供應商改成 Gemini。詳見 `../../system/AUDIT.md` 的 LLM-01 |
 | 自備金鑰解密失敗時靜默改用平台金鑰 | 詳見 `../../system/AUDIT.md` 的 AI-01 |
 | AI 不在方案的功能天花板內 | 詳見 `../../system/AUDIT.md` 的 PLAN-12 |
-| 讀取類路由沒有權限碼 | 側欄要求 `knowledge.view`，API 不檢查 |
+| 讀取類路由沒有權限碼 | 側欄要求 `knowledge.view`，API 不檢查。詳見 `../../system/AUDIT.md` 的 RBAC-01 |
 | 網頁登入的成員呼叫夥伴推送端點一律 403 | 詳見 `../../system/AUDIT.md` 的 AUTH-06 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

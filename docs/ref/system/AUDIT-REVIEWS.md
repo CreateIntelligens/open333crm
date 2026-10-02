@@ -4,6 +4,31 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：記錄 RBAC-01、AUTO-01 的修正，更新 PLAN-04、RLS-01，新增 APP-10
+
+PR #207（`efbd5f0`）與 #209（`8e25e1b`）修正了最後兩個 P1 項目，但沒有更新 `AUDIT.md`。本次對照 diff 核對，兩項都只修正了一部分，因此保留並改為「部分修正」。更新後，`AUDIT.md` 沒有 P1 項目。
+
+| 項目 | 修正的 commit | 已修正 | 剩下的問題 | 優先順序 |
+| --- | --- | --- | --- | --- |
+| RBAC-01 | `efbd5f0`（#207） | `case`、`conversation`、`tag`、`shortlink` 的每一條路由都掛上 `requirePermission()` | 知識庫的 9 條讀取路由只驗登入；`agent.delete`、`billing.view` 沒有強制點 | P1 → P3 |
+| AUTO-01 | `8e25e1b`（#209） | 5 種不支援的動作不能存進新規則；既有規則在介面上標示；刪除 `action-executor.ts` | 5 種動作在 workers 沒有實作 | P1 → P3 |
+| PLAN-04 | `efbd5f0`（#207） | 收件匣一帶的路由開始套用方案天花板 | 行銷、知識庫、粉絲活動仍有路由沒掛；側欄的收件匣一帶選單不依方案過濾；`maxTags` 沒有強制點 | 維持 P2 |
+
+**核對方式。**
+
+- RBAC-01：逐條檢查四個模組的路由宣告，每一條都有權限檢查。再以 `permissions.ts` 的 56 個權限碼逐一搜尋 `apps/api/src`，沒有出現的從 12 個減為 3 個：`knowledge.view`、`agent.delete`、`billing.view`。`knowledge.routes.ts` 以 `addHook('preHandler')` 只呼叫 `authenticate`，讀取路由沒有 `requirePermission()`。
+- AUTO-01：`actions.ts` 新增 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，`validateAutomationRuleContract()` 拒絕這些動作，workers 以 `allowUnsupportedActions` 驗證既有規則。
+- PLAN-04：功能天花板由 `requirePermission()` 計算，四個模組掛上之後，收件匣一帶開始受天花板限制。`Sidebar.tsx` 的「收件匣」「工單」「聯絡人」「通知」仍然沒有 `perm` 欄位。
+
+**依 issue #197 的回報調整評級（2026-10-02）。** UAT 主機就是客戶在用的環境，下列查詢都在這台主機上執行：
+
+- 用到 AUTO-01 那 5 種動作的規則共 6 條，全部在 Demo Tenant，真實客戶的租戶沒有。這是 AUTO-01 降為 P3 的依據之一。
+- `interaction_flows` 與 `flow_executions` 都是 0 筆，沒有租戶使用 Canvas。RLS-01 的功能面不會影響任何租戶，維持 P2。
+
+**新增 APP-10：沒有獨立的正式環境。** `.github/workflows/deploy.yml` 只有「Deploy to UAT」，每次 push 到 `main` 都以 `docker compose up -d --force-recreate` 重建 UAT 主機上的所有服務。issue #197 回報這台主機同時是客戶在用的環境。repo 只能確認部署路徑，無法確認主機的用途，因此驗證狀態記為「間接確認」。
+
+**連帶更新的文件。** #207 與 #209 沒有更新功能文件。`INBOX.md`、`CASES.md` 新增「權限」一節；`CONTACTS.md`、`SHORTLINKS.md`、`KNOWLEDGE.md`、`tenant/README.md`、`PERMISSIONS.md` 改寫原本「只驗登入」的描述。AUDIT.md 的 AUTO-02、AUTO-04、CONV-02 與 `AUTOMATION.md` 原本把 `action-executor.ts` 寫成「存在但沒有呼叫端」，改為已在 `8e25e1b` 刪除。
+
 ## 2026-10-02：修正 RLS-05
 
 `f4c76b5` 修正 RLS-05，從 `AUDIT.md` 移除：

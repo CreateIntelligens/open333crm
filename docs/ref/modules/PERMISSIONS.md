@@ -28,7 +28,7 @@
 2. **渠道可見範圍**：同一個租戶內，成員看得到哪些渠道，以及在每個渠道能做到哪個層級。收件匣與工單的路由以 `assert*ChannelVisible()` 檢查。
 3. **舊的角色列舉 `role`**：`ADMIN`、`SUPERVISOR`、`AGENT`。不用來擋請求，但工單自動指派、通知收件人等業務規則依它決定對象，見 `../system/AUDIT.md` 的 RBAC-03。
 
-三者各自獨立。有 `inbox.reply` 權限碼、但渠道層級只有 `read_only` 的成員，回覆會被擋下；反過來，渠道層級是 `full`，也不會因此多出任何權限碼。**一條路由掛了哪幾種檢查，由路由自己決定**；收件匣一帶的路由完全沒有權限碼檢查，只有渠道可見範圍，見 `../system/AUDIT.md` 的 RBAC-01。
+三者各自獨立。有 `inbox.reply` 權限碼、但渠道層級只有 `read_only` 的成員，回覆會被擋下；反過來，渠道層級是 `full`，也不會因此多出任何權限碼。**一條路由掛了哪幾種檢查，由路由自己決定**；對話與工單的路由兩種都檢查，知識庫的讀取路由兩種都沒有，見 `../system/AUDIT.md` 的 RBAC-01。
 
 跨租戶的隔離不在這三者之內，由 RLS 與查詢的 `tenantId` 負責，見 [AGENTS.md 的多租戶一節](../../../AGENTS.md#multi-tenancy-two-enforcement-layers-critical)。
 
@@ -214,14 +214,14 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
-| 收件匣、工單、標籤、短連結的路由沒有權限碼檢查 | RBAC-01 |
+| 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | RBAC-01 |
 | CLI token 只看 scope，`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 業務規則看舊的 `role`，不看細粒度角色 | RBAC-03 |
 | 渠道可見範圍沒有套用在租戶房間、聯絡人與 AI 輔助 | RBAC-04 |
 | reconcile 腳本會覆蓋租戶對系統角色的修改，也不清除快取 | RBAC-05 |
 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all` | RBAC-06 |
 | 角色與權限頁不套方案天花板 | PLAN-08 |
-| 功能天花板在收件匣一帶沒有作用 | PLAN-04 |
+| 功能天花板只在掛了 `requirePermission()` 的路由生效；行銷、知識庫、粉絲活動仍有路由沒掛 | PLAN-04 |
 | AI 不在功能天花板內 | PLAN-12 |
 | 團隊沒有建立的途徑；`Conversation.teamId` 沒有寫入端 | TEAM-01、DB-04 |
 | 「JWT 或其他憑證」裝飾器的 JWT 分支沒有 `roleId`，有效權限為空 | AUTH-06 |

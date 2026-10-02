@@ -105,13 +105,13 @@
 
 訊息會命中關鍵字規則時，機器人的 AI 與知識庫回覆會讓步，避免客人同時收到兩種回覆。
 
-關鍵字回覆頁寫著兩條規則：只在機器人負責的對話觸發，以及同一個聯絡人對同一條規則每小時最多觸發三次。這兩條目前都沒有生效：`checkKeywordTriggers()` 對所有對話都執行，每小時的上限只寫在沒有呼叫端的 `action-executor.ts`。見 `../../system/AUDIT.md` 的 AUTO-04。
+關鍵字回覆頁寫著兩條規則：只在機器人負責的對話觸發，以及同一個聯絡人對同一條規則每小時最多觸發三次。這兩條目前都沒有生效：`checkKeywordTriggers()` 對所有對話都執行，每小時的上限只寫在已刪除的 `action-executor.ts`，目前沒有任何程式實作。見 `../../system/AUDIT.md` 的 AUTO-04。
 
 ## 試跑與紀錄
 
 `POST /automation/rules/:id/test` 以請求帶入的事實評估這一條規則，回傳是否命中。試跑不執行動作，也不查資料庫組事實；沒帶事實時，以空物件評估。
 
-`GET /automation/logs` 讀 `AutomationLog`。規則清單顯示的執行次數與最後執行時間，讀的是 `AutomationRule.runCount` 與 `lastRunAt`。這三個值都只由 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。
+`GET /automation/logs` 讀 `AutomationLog`。規則清單顯示的執行次數與最後執行時間，讀的是 `AutomationRule.runCount` 與 `lastRunAt`。這三個值原本只由已刪除的 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。
 
 ## 權限
 

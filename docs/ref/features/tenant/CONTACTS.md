@@ -102,7 +102,7 @@
 
 聯絡人的路由以權限碼守門：讀取要 `contact.view`，修改與貼標要 `contact.update`，合併與解除合併要 `contact.merge`。查看聯絡人的對話另外要 `inbox.view`，查看聯絡人的工單另外要 `case.view`。
 
-標籤的路由（`/api/v1/tags`）只驗登入，沒有權限碼。任何成員都能建立與刪除標籤，見 `../../system/AUDIT.md` 的 RBAC-01。
+標籤的路由（`/api/v1/tags`）讀取要 `tag.view`，建立、修改與刪除要 `tag.manage`。
 
 聯絡人的路由也不套用渠道可見範圍。只能看到某些渠道的成員，在聯絡人頁仍然看得到其他渠道的對話清單與最後一則訊息，見 `../../system/AUDIT.md` 的 RBAC-04。
 
@@ -116,6 +116,5 @@
 | **LINE、Facebook 登入補 email 時不確認登入者** | 知道渠道身分 ID 的人可以寫入自己的 email，並觸發自動合併。詳見 `../../system/AUDIT.md` 的 IDENT-02 |
 | 合併建議沒有產生端 | 詳見 `../../system/AUDIT.md` 的 IDENT-01 |
 | `isBlocked` 與 `ContactTag.expiresAt` 沒有作用 | 詳見 `../../system/AUDIT.md` 的 DB-04 與 DB-02 |
-| 標籤的路由沒有權限碼 | 詳見 `../../system/AUDIT.md` 的 RBAC-01 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
