@@ -92,3 +92,30 @@ export async function classifyIssue(
     return keywordFallback(text);
   }
 }
+
+/**
+ * 新工單的自動分類：依對話最新的顧客訊息分類。
+ * 工單已有分類（客服手動選的、或自動化規則指定的）就不分類、不覆蓋；寫入時也再以「仍無分類」為條件。
+ * 原本收到 case.created 一定分類並覆寫，手動選的分類會被 AI 結果蓋掉。
+ */
+export async function autoClassifyNewCase(
+  prisma: PrismaClient | TenantDb,
+  tenantId: string,
+  caseId: string,
+  conversationId: string,
+  classify: (db: PrismaClient | TenantDb, tenantId: string, text: string) => Promise<ClassifyResult> = classifyIssue,
+): Promise<string | null> {
+  const current = await prisma.case.findFirst({ where: { id: caseId, tenantId }, select: { category: true } });
+  if (!current || current.category) return null;
+  const latest = await prisma.message.findFirst({
+    where: { conversationId, conversation: { tenantId }, direction: 'INBOUND' },
+    orderBy: { createdAt: 'desc' },
+    select: { content: true },
+  });
+  const text = (latest?.content as Record<string, unknown> | null)?.text;
+  if (typeof text !== 'string' || !text) return null;
+  const result = await classify(prisma, tenantId, text);
+  await prisma.case.updateMany({ where: { id: caseId, tenantId, category: null }, data: { category: result.category } });
+  logger.info(`[Classify] Case ${caseId} auto-classified: ${result.category} (confidence=${result.confidence})`);
+  return result.category;
+}

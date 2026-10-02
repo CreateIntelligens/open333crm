@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type IORedis from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { bumpSlaPriority } from '@open333crm/shared';
+import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
 import { logger } from '@open333crm/core';
 import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
@@ -61,7 +61,8 @@ const CLOSED_CASE_STATUSES = new Set(['RESOLVED', 'CLOSED']);
  *   - 觸發事件是工單或 SLA 相關：工單已存在，而且「工單建立 → 建立工單」會無限迴圈
  *   - 沒有對話：工單的渠道取自對話
  *   - 對話已關聯未結案的工單：不重複開，避免顧客一直傳訊息就開一堆工單
- * 成功時回傳新工單 id，呼叫端寫回 context.caseId，同一條規則的後續動作（指派、改狀態）作用在新工單上。
+ * 成功時回傳新工單 id，呼叫端寫回 context.caseId。目前契約不允許訊息類事件使用工單動作（指派、改狀態需要 case 範圍），
+ * 寫回只是讓日後開放時，後續動作能作用在新工單上。
  */
 async function createCaseFromAutomation(
   prisma: PrismaClient,
@@ -102,36 +103,56 @@ async function createCaseFromAutomation(
 
   const priority =
     typeof params['priority'] === 'string' && CASE_PRIORITIES.has(params['priority']) ? params['priority'] : 'MEDIUM';
-  const category = typeof params['category'] === 'string' && params['category'].trim() ? params['category'].trim() : null;
+  // 分類只收系統清單內的值（與手動建單的驗證一致）；不合法就不寫分類，工單照開
+  const rawCategory = typeof params['category'] === 'string' ? params['category'].trim() : '';
+  const category = (CASE_CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : null;
+  if (rawCategory && !category) logger.warn(`[automation] create_case: unknown category "${rawCategory}" ignored`);
   const slaPolicy = await prisma.slaPolicy.findFirst({ where: { tenantId, priority: priority as any } });
   const slaDueAt = slaPolicy ? new Date(Date.now() + slaPolicy.resolutionMinutes * 60_000) : null;
 
-  const created = await prisma.case.create({
-    data: {
-      tenantId,
-      contactId: conversation.contactId,
-      channelId: conversation.channelId,
-      title,
-      priority: priority as any,
-      category,
-      status: 'OPEN',
-      slaPolicy: slaPolicy?.name ?? null,
-      slaDueAt,
-    },
-  });
-  await prisma.conversation.updateMany({
-    where: { id: conversation.id, tenantId },
-    data: { caseId: created.id },
-  });
-  await prisma.caseEvent.create({
-    data: {
-      caseId: created.id,
-      actorType: 'automation',
-      actorId: null,
-      eventType: 'created',
-      payload: { title, priority, category, trigger: context.trigger ?? null },
-    },
-  });
+  // 建單、關聯對話、寫事件放在同一個交易；關聯用條件式更新（對話仍是讀取時的狀態才寫入）：
+  // 多個 worker 同時處理同一段對話（例如 message.received 與 keyword.matched 兩個 job）時，
+  // 後到的會因條件不成立而回滾，不會開出兩張工單，也不會留下沒有對話的孤兒工單
+  const RACED = 'create_case_raced';
+  let created: { id: string };
+  try {
+    created = await prisma.$transaction(async (tx) => {
+      const c = await tx.case.create({
+        data: {
+          tenantId,
+          contactId: conversation.contactId,
+          channelId: conversation.channelId,
+          title,
+          priority: priority as any,
+          category,
+          status: 'OPEN',
+          slaPolicy: slaPolicy?.name ?? null,
+          slaDueAt,
+        },
+      });
+      const linked = await tx.conversation.updateMany({
+        where: { id: conversation.id, tenantId, OR: [{ caseId: conversation.caseId }] },
+        data: { caseId: c.id },
+      });
+      if (linked.count !== 1) throw new Error(RACED);
+      await tx.caseEvent.create({
+        data: {
+          caseId: c.id,
+          actorType: 'automation',
+          actorId: null,
+          eventType: 'created',
+          payload: { title, priority, category, trigger: context.trigger ?? null },
+        },
+      });
+      return c;
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === RACED) {
+      logger.info('[automation] create_case skipped: conversation was linked to a case concurrently');
+      return null;
+    }
+    throw err;
+  }
 
   await publishSocketEvent(redisPublisher, `tenant:${tenantId}`, 'case.created', {
     id: created.id,

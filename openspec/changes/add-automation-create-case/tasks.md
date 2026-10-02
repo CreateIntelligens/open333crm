@@ -6,7 +6,8 @@
 ## 2. 實作
 
 - [x] 2.1 workers `create_case`
-- [x] 2.2 契約：`create_case` 需要 conversation、移出不支援清單
+- [x] 2.2 契約：`create_case` 需要 conversation、移出不支援清單、分類改為下拉選單
+- [x] 2.3 審查補強：交易內條件式關聯（並行不重複開）、分類驗證；`autoClassifyNewCase` 不覆蓋既有分類（測試 `apps/api/tests/unit/modules/ai/auto-classify-new-case.test.ts`）
 
 ## 3. 完成檢查
 

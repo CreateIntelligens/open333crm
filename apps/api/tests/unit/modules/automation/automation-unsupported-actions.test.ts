@@ -103,3 +103,11 @@ test('建立工單：收到訊息、關鍵字、對話建立可用；工單、SL
   });
   assert.deepEqual(ok, { valid: true, errors: [] });
 });
+
+test('建立工單的分類選項與系統分類清單一致（避免兩份清單不同步）', async () => {
+  const { CASE_CATEGORIES } = await import('@open333crm/shared');
+  const { AUTOMATION_ACTION_MAP } = await import('@open333crm/automation');
+  const category = AUTOMATION_ACTION_MAP.get('create_case')!.params!.find((p) => p.key === 'category')!;
+  assert.equal(category.type, 'select');
+  assert.deepEqual(category.values!.map((v) => v.value), [...CASE_CATEGORIES]);
+});

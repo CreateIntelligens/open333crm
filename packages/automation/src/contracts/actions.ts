@@ -7,6 +7,19 @@ const casePriorityOptions = [
   { value: 'URGENT', label: '緊急' },
 ] satisfies AutomationValueOption[];
 
+// 與 @open333crm/shared 的 CASE_CATEGORIES 一致（本套件不依賴 shared；api 測試比對兩份清單）
+const caseCategoryOptions = [
+  '產品諮詢',
+  '訂單問題',
+  '退換貨',
+  '帳號問題',
+  '技術支援',
+  '投訴建議',
+  '付款問題',
+  '物流配送',
+  '其他',
+].map((value) => ({ value, label: value })) satisfies AutomationValueOption[];
+
 const caseStatusOptions = [
   { value: 'OPEN', label: '開啟' },
   { value: 'IN_PROGRESS', label: '處理中' },
@@ -80,7 +93,7 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
         type: 'select',
         values: casePriorityOptions,
       },
-      { key: 'category', label: '分類', type: 'string' },
+      { key: 'category', label: '分類', type: 'select', values: caseCategoryOptions },
     ],
   },
   {

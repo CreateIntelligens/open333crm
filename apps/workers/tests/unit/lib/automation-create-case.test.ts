@@ -24,13 +24,26 @@ beforeEach(() => {
   published = [];
 });
 
-const prisma = {
+const prisma: any = {
+  async $transaction(fn: (tx: unknown) => Promise<unknown>) {
+    // 交易失敗時回滾：還原工單與對話
+    const snapshot = { cases: [...cases], convs: convs.map((c) => ({ ...c })) };
+    try {
+      return await fn(prisma);
+    } catch (err) {
+      cases = snapshot.cases;
+      convs = snapshot.convs;
+      throw err;
+    }
+  },
   conversation: {
     async findFirst({ where }: { where: { id: string; tenantId: string } }) {
       return convs.find((c) => c.id === where.id && c.tenantId === where.tenantId) ?? null;
     },
-    async updateMany({ where, data }: { where: { id: string; tenantId: string }; data: { caseId: string } }) {
-      const c = convs.find((x) => x.id === where.id && x.tenantId === where.tenantId);
+    async updateMany({ where, data }: { where: { id: string; tenantId: string; OR?: Array<{ caseId: string | null }> }; data: { caseId: string } }) {
+      const c = convs.find(
+        (x) => x.id === where.id && x.tenantId === where.tenantId && (!where.OR || where.OR.some((o) => o.caseId === x.caseId)),
+      );
       if (c) c.caseId = data.caseId;
       return { count: c ? 1 : 0 };
     },
@@ -80,7 +93,7 @@ const createCase = (params: Record<string, unknown> = {}) => ({ type: 'create_ca
 
 test('收到訊息時建立工單：關聯對話、套用 SLA、寫事件、推播並發出 case.created', async () => {
   const before = Date.now();
-  await run([createCase({ priority: 'HIGH', category: 'complaint' })], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
+  await run([createCase({ priority: 'HIGH', category: '投訴建議' })], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
   assert.equal(cases.length, 1);
   const c = cases[0]!;
   assert.equal(c.tenantId, T);
@@ -88,7 +101,7 @@ test('收到訊息時建立工單：關聯對話、套用 SLA、寫事件、推�
   assert.equal(c.channelId, 'channel-1');
   assert.equal(c.title, '客訴');
   assert.equal(c.priority, 'HIGH');
-  assert.equal(c.category, 'complaint');
+  assert.equal(c.category, '投訴建議');
   assert.equal(c.status, 'OPEN');
   assert.equal(c.slaPolicy, '高優先 SLA');
   const due = (c.slaDueAt as Date).getTime();
@@ -149,4 +162,29 @@ test('工單或 SLA 事件觸發的規則：不建立工單（避免工單開工
     await run([createCase()], { trigger, conversationId: 'conv-1', contactId: 'contact-1', caseId: 'case-x' });
   }
   assert.equal(cases.length, 0);
+});
+
+test('分類不在系統清單：不寫入分類（工單照開）', async () => {
+  await run([createCase({ category: '亂填的分類' })], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0]!.category, null);
+});
+
+test('建單期間對話已被別的工作關聯到未結案工單（並行）：不留下多餘的工單', async () => {
+  const originalFindFirst = prisma.conversation.findFirst;
+  // 讀取時對話還沒有工單，寫入關聯前被另一個 worker 搶先關聯
+  prisma.conversation.findFirst = async (args: any) => {
+    const found = await originalFindFirst(args);
+    const snapshot = found ? { ...found } : null;
+    if (found) found.caseId = 'case-raced';
+    return snapshot;
+  };
+  cases.push({ id: 'case-raced', tenantId: T, status: 'OPEN' });
+  try {
+    await run([createCase()], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
+  } finally {
+    prisma.conversation.findFirst = originalFindFirst;
+  }
+  assert.deepEqual(cases.map((c) => c.id), ['case-raced'], '交易回滾，不留孤兒工單');
+  assert.equal(convs[0]!.caseId, 'case-raced');
 });
