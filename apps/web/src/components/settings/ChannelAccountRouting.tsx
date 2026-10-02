@@ -49,21 +49,43 @@ export function ChannelAccountRouting({
   channelType,
   externalAccountId,
   settings,
+  isActive = true,
 }: {
   channelType: string;
   externalAccountId?: string | null;
   settings?: Record<string, unknown>;
+  /** 已停用的渠道不持有帳號 ID、也不收訊，不顯示「請按測試連線」等提示，以免誤導 */
+  isActive?: boolean;
 }) {
   const label = ACCOUNT_LABEL[channelType];
   if (!label) return null;
+  if (!isActive) return null;
 
   const warning = settings?.webhookRouting as WebhookRoutingWarning | undefined;
   const text = warning?.reason ? warningText(warning) : null;
 
   const connectedViaPlatform = (settings?.metaConnect as { mode?: string } | undefined)?.mode === 'platform';
+  const tokenHealth = settings?.tokenHealth as { status?: string; checkedAt?: string } | undefined;
+  const tokenInvalid = tokenHealth?.status === 'invalid';
 
   return (
     <div className="mt-0.5 space-y-1">
+      {tokenInvalid && (
+        <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+          <div>
+            <p className="font-medium">存取權杖已失效，目前收不到也無法回覆訊息</p>
+            <p className="mt-0.5">
+              {connectedViaPlatform
+                ? '請按上方「用 Facebook 連結粉專」重新連結這個粉專，原本的對話紀錄會保留。'
+                : '請按編輯，貼上新的存取權杖後按「測試連線」。'}
+            </p>
+            {tokenHealth?.checkedAt && (
+              <p className="mt-0.5 opacity-80">檢查時間：{new Date(tokenHealth.checkedAt).toLocaleString('zh-TW')}</p>
+            )}
+          </div>
+        </div>
+      )}
       {connectedViaPlatform && <p className="text-xs text-muted-foreground">透過 Facebook 登入連結，不需另外設定 Webhook</p>}
       {externalAccountId && (
         <p className="text-xs text-muted-foreground">

@@ -98,14 +98,15 @@ export default async function metaConnectRoutes(fastify: FastifyInstance, opts: 
       const results = await connectPages(request.tenantPrisma, store(), connectId, actorOf(request), pageIds);
       // 與一般建立渠道相同，每個連結成功的渠道記一筆 channel.create
       for (const r of results) {
-        if (r.status !== 'connected') continue;
+        if (r.status === 'failed') continue;
         await writeTenantAudit(request.tenantPrisma, {
           tenantId: request.agent.tenantId,
           actorId: request.agent.id,
-          action: 'channel.create',
+          // 新建記 channel.create；重新連結（更新權杖）記 channel.update
+          action: r.status === 'connected' ? 'channel.create' : 'channel.update',
           targetType: 'channel',
           targetId: r.channelId,
-          payload: { channelType: 'FB', connectMode: 'platform', pageId: r.pageId },
+          payload: { channelType: 'FB', connectMode: 'platform', pageId: r.pageId, reconnected: r.status === 'reconnected' },
           ip: request.ip,
         });
       }
