@@ -121,6 +121,13 @@ async function errorHandlerPlugin(fastify: FastifyInstance) {
     // Fastify built-in errors (e.g., 404 from router)
     if ('statusCode' in error && typeof error.statusCode === 'number') {
       const statusCode = error.statusCode;
+      // @fastify/rate-limit 超過上限：原本落到下方變成「請求格式不正確」，使用者看不懂
+      if (statusCode === 429) {
+        return reply.status(429).send({
+          success: false,
+          error: { code: 'RATE_LIMITED', message: '操作太頻繁，請稍候再試' },
+        });
+      }
       // ⚠️ 原本回 error.message（框架原文，如 "Body must be object"）。
       // 原文已在 log 中，此處只回可讀說明。
       return reply.status(statusCode).send({

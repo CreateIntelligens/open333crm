@@ -19,6 +19,7 @@ import {
 import { hashPassword } from '#src/shared/utils/password.js';
 
 import { test } from 'vitest';
+import { memBindingStore } from '#tests/support/mem-binding-store.js';
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {
@@ -163,7 +164,7 @@ async function createApp(prisma: ReturnType<typeof createPrismaMock>) {
   loadEnvConfig();
   await app.register(errorHandlerPlugin);
   await app.register(authPlugin);
-  await app.register(authRoutes, { prefix: '/api/v1/auth' });
+  await app.register(authRoutes, { prefix: '/api/v1/auth', loginAttempts: memBindingStore() });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
   return app;
 }
@@ -348,4 +349,24 @@ async function testCliAnalyticsRoutes() {
 
 test('cli session service lifecycle', testCliSessionServiceLifecycle);
 test('cli auth routes', testCliAuthRoutes);
+
+test('網頁登入失敗 5 次後，CLI 密碼登入也被鎖定（共用計數）', async () => {
+  const agent = createAgent(await hashPassword('secret'));
+  const app = await createApp(createPrismaMock(agent));
+  try {
+    for (let i = 0; i < 5; i++) {
+      const res = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: agent.email, password: 'wrong-pass' } });
+      assert.equal(res.statusCode, 401);
+    }
+    const cli = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/cli/login',
+      payload: { email: agent.email, password: 'secret', profile: 'test' },
+    });
+    assert.equal(cli.statusCode, 429);
+    assert.equal(cli.json().error.code, 'ACCOUNT_LOCKED');
+  } finally {
+    await app.close();
+  }
+});
 test('cli analytics routes', testCliAnalyticsRoutes);

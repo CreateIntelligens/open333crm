@@ -10,6 +10,7 @@ import {
   passkeyRegistrationVerifySchema,
 } from './auth.schema.js';
 import { login, getActiveAgentForAuth, getAgentById } from './auth.service.js';
+import { getLoginAttemptStore, type LoginAttemptStore } from './login-attempts.js';
 import { getEffectiveTenantPermissions } from '../../services/permission.service.js';
 import { getTenantPlanId } from '../../services/tenant-plan.cache.js';
 import { AppError, success } from '../../shared/utils/response.js';
@@ -133,7 +134,14 @@ function invalidPasskeyError(): Error {
   return new AppError('Passkey 回應無效，請重新操作', 'UNAUTHORIZED', 401);
 }
 
-export default async function authRoutes(fastify: FastifyInstance) {
+export interface AuthRoutesOptions {
+  /** 登入失敗計數；預設用 Redis，測試注入記憶體版 */
+  loginAttempts?: LoginAttemptStore;
+}
+
+export default async function authRoutes(fastify: FastifyInstance, opts: AuthRoutesOptions = {}) {
+  const loginAttempts = () => opts.loginAttempts ?? getLoginAttemptStore();
+
   await fastify.register(rateLimit, {
     global: false,
     max: 10,
@@ -142,11 +150,19 @@ export default async function authRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/v1/auth/login
-  fastify.post('/login', async (request, reply) => {
+  // 依來源 IP 限流（每分鐘 10 次）；帳號鎖定另由 login() 依 email 計數，不依賴 IP
+  fastify.post('/login', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
     const config = getConfig();
     const body = loginRequestSchema.parse(request.body);
 
-    const agent = await login(fastify.prismaAdmin, body.email, body.password);
+    const agent = await login(fastify.prismaAdmin, body.email, body.password, loginAttempts());
 
     return reply.send(success(issueAgentSession(fastify, reply, agent, config, !!body.rememberMe)));
   });
@@ -533,7 +549,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     const body = cliLoginRequestSchema.parse(request.body);
-    const agent = await login(fastify.prismaAdmin, body.email, body.password);
+    // 與網頁登入共用同一個帳號的失敗計數，改打 CLI 端點也繞不過鎖定
+    const agent = await login(fastify.prismaAdmin, body.email, body.password, loginAttempts());
     const { token, session } = await createCliSession(fastify.prismaAdmin, {
       tenantId: agent.tenantId,
       agentId: agent.id,

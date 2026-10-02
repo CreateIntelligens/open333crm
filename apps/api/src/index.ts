@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { TRUSTED_PROXIES } from './lib/trust-proxy.js';
 import { dirname, resolve } from 'node:path';
 import dotenv from 'dotenv';
 
@@ -101,7 +102,7 @@ export async function bootstrap() {
   const app = Fastify({
     // API is exposed through the local reverse proxy; use the forwarded client
     // address for per-IP public WebChat limits.
-    trustProxy: true,
+    trustProxy: TRUSTED_PROXIES,
     // 30MB top-level body limit. Must be ≥ multipart fileSize so the
     // request isn't rejected before @fastify/multipart can stream-parse it.
     bodyLimit: 30 * 1024 * 1024,
