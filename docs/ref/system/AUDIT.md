@@ -209,7 +209,17 @@
 - 角色設定取消勾選「檢視知識庫」，成員仍然讀得到文章。
 - 方案的功能天花板不含 `knowledge` 時，租戶的成員仍然讀得到文章。寫入路由會被天花板擋下。
 
-**優先順序是 P3。** 收件匣、工單、標籤與短連結都已經有權限檢查。剩下的知識庫內容是租戶內部的資料，沒有跨租戶的風險。
+**規格依據。** 這三項都沒有主規格支持，只有歸檔 change 的設計文件與未完成的任務：
+
+| 權限碼 | 依據 |
+| --- | --- |
+| `knowledge.view` | `openspec/changes/archive/2026-09-15-rbac-granular-permissions/SPEC.md` 寫明 `knowledge.view` 守「列表、來源、分類、搜尋、feedback」。該 change 的任務 9.2（分批切換路由 guard）沒有勾選就歸檔 |
+| `agent.delete` | `openspec/changes/archive/2026-09-15-agent-deactivate-vs-delete/proposal.md` 寫「`agent.delete` 保留相容或標記淘汰」，沒有做決定 |
+| `billing.view` | `openspec/changes/archive/2026-09-15-platform-control-plane/tasks.md` 的任務 8.5「新增權限點 `billing.view` 控管此頁存取」沒有勾選，頁面也沒有實作 |
+
+主規格 `openspec/specs/rbac/spec.md` 也不能當依據：它仍以角色（`ADMIN`、`SUPERVISOR`、`AGENT`）描述授權，例如「Agent Management Access」要求 `ADMIN` 或 `SUPERVISOR`，與現行的權限碼不符。
+
+**優先順序是 P3。** 收件匣、工單、標籤與短連結都已經有權限檢查。剩下的知識庫內容是租戶內部的資料，沒有跨租戶的風險，主規格也沒有要求。
 
 啟動時的檢查只驗單向：`validateRouteCodes()` 確認路由用到的碼都存在於 registry，不檢查 registry 的碼有沒有人用。因此宣告了卻沒有強制點的碼不會產生任何警告。
 
@@ -781,6 +791,17 @@ PlatformSetting（KV，不知道型別）
 
 成因見 RBAC-01。
 
+**規格依據。** 各缺口的依據強度不同：
+
+| 缺口 | 依據 |
+| --- | --- |
+| 側欄不依權限隱藏收件匣一帶的選單 | **違反主規格。** `openspec/specs/dashboard-tree-navigation/spec.md` 的「Permission-aware tree rendering」要求使用者沒有權限的目的地 SHALL 不顯示 |
+| 行銷的路由沒有全部套用天花板 | **違反主規格。** `openspec/specs/tenant-plan/spec.md` 的「功能天花板交集」有情境「trial 方案未含 marketing」：呼叫 marketing API MUST 被 `requirePermission` 擋下 |
+| 知識庫、粉絲活動的路由沒有全部套用天花板 | 間接。同一條需求只寫到「移除 `knowledge` 後有效權限不再含知識庫權限碼」，沒有寫 API 要擋 |
+| `maxTags` 沒有強制點 | 沒有主規格。`openspec/changes/archive/2026-09-15-platform-control-plane/tasks.md` 的任務 2.8「createTag 前檢查 maxTags」沒有勾選；平台後台的方案頁卻可以設定「分眾標籤數」 |
+
+前兩項違反主規格，但影響的是方案不含該功能的租戶，而且 API 仍會以 403 擋下收件匣一帶的操作，因此維持 P2。
+
 **修正方向**：為行銷、知識庫、粉絲活動沒有檢查的路由掛上 `requirePermission()`；側欄的四個節點加上對應的 `perm`；`maxTags` 在建立標籤前比對。
 
 <a id="plan-05"></a>
@@ -1220,7 +1241,11 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 剩下的問題是這 5 種動作在 workers 沒有實作。issue #197 回報（2026-10-02）：用到這些動作的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的。真實客戶的租戶沒有這類規則。
 
-**優先順序是 P3。** 新規則已經存不進去，既有規則會在介面上標示，不再是「看起來有效、實際不執行」。剩下的是功能缺口。
+**規格依據。** 主規格 `openspec/specs/automation-engine/spec.md` 的「Actions」寫系統 SHALL 支援 `add_tag`、`send_message`、`create_case`、`update_case_status`、`notify_supervisor` 等動作。`create_case` 沒有實作，現況違反這條需求。
+
+#209 的 change `fix-automation-unsupported-actions` 尚未歸檔。它的 delta spec 以 ADDED 新增「拒絕 workers 尚未支援的動作」，但沒有修改「Actions」。照目前的寫法歸檔後，主規格會同時要求「支援 `create_case`」與「拒絕 `create_case`」。歸檔前應改為 MODIFIED「Actions」，寫明目前支援的動作，並把 5 種動作列為待實作。
+
+**優先順序是 P3。** 新規則已經存不進去，既有規則會在介面上標示，不再是「看起來有效、實際不執行」。剩下的是功能缺口。主規格要求支援 `create_case`，但只有 Demo Tenant 用到，因此不調高。
 
 **修正方向**：在 `executeWorkerAutomationActions()` 補上這 5 種動作，再從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除。補實作之前，可以先停用 Demo Tenant 那條啟用中的規則。
 

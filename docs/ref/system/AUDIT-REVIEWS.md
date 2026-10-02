@@ -27,6 +27,13 @@ PR #207（`efbd5f0`）與 #209（`8e25e1b`）修正了最後兩個 P1 項目，�
 
 **新增 APP-10：沒有獨立的正式環境。** `.github/workflows/deploy.yml` 只有「Deploy to UAT」，每次 push 到 `main` 都以 `docker compose up -d --force-recreate` 重建 UAT 主機上的所有服務。issue #197 回報這台主機同時是客戶在用的環境。repo 只能確認部署路徑，無法確認主機的用途，因此驗證狀態記為「間接確認」。
 
+**補上規格依據。** RBAC-01、AUTO-01、PLAN-04 的內文新增「規格依據」，逐項寫明剩下的問題是違反主規格、只有歸檔 change 的設計文件或未完成的任務，還是沒有依據。查證時另外發現兩個規格問題：
+
+- #209 的 delta spec 以 ADDED 新增「拒絕 workers 尚未支援的動作」，沒有修改 `automation-engine` 既有的「Actions」（SHALL 支援 `create_case`）。照目前的寫法歸檔，主規格會自相矛盾，需要在歸檔前修正（issue #197）。
+- 主規格 `rbac` 仍以角色描述授權，與現行的權限碼不符。
+
+多個剩下的問題來自任務沒有做完就歸檔的 change：`rbac-granular-permissions`（任務 9.1 至 9.5）、`platform-control-plane`（任務 2.8、8.5）。
+
 **連帶更新的文件。** #207 與 #209 沒有更新功能文件。`INBOX.md`、`CASES.md` 新增「權限」一節；`CONTACTS.md`、`SHORTLINKS.md`、`KNOWLEDGE.md`、`tenant/README.md`、`PERMISSIONS.md` 改寫原本「只驗登入」的描述。AUDIT.md 的 AUTO-02、AUTO-04、CONV-02 與 `AUTOMATION.md` 原本把 `action-executor.ts` 寫成「存在但沒有呼叫端」，改為已在 `8e25e1b` 刪除。
 
 ## 2026-10-02：修正 RLS-05
