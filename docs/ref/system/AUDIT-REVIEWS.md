@@ -4,6 +4,27 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：記錄 AUTH-05 的修正，新增 AUTH-08
+
+PR #202（`e12103c`）修正了 AUTH-05，但沒有更新 `AUDIT.md`。本次對照 diff 確認 AUTH-05 的修正方向都已實作，再從 `AUDIT.md` 移除：
+
+| 修正方向 | 實作 |
+| --- | --- |
+| 各種 token 加上用途欄位，`authenticate` 與 socket 驗證時檢查 | 簽發 access token 與 refresh token 時帶 `typ`。`lib/agent-token.ts` 的 `isAgentAccessToken()` 用在 `auth.plugin.ts` 的三個 JWT 分支與 `socket.plugin.ts` 的 `decodeSocketAgentToken()`；`isAgentRefreshToken()` 用在 `POST /auth/refresh` |
+| `authenticate` 要求 payload 帶 `agentId` | `isAgentAccessToken()` 要求 `agentId` 與 `tenantId` 都是非空字串 |
+
+**本次另外確認的事。**
+
+- **所有以 `JWT_SECRET` 驗證的入口都檢查用途。** 以 `jwtVerify`、`jwt.verify` 搜尋 `apps/api/src`，共有四處：上述客服入口、`POST /auth/refresh`、粉絲端的 `verifyFanToken()`（要求 `sub` 為 `fan`）、MCP 的 `verifyLineMcpConfirmation()`（要求 `v` 與 `op`）。客服 token 沒有 `sub`、`v`、`op`，無法通過後兩者。
+- **`request.agent.id` 為空的情況已經不存在。** 原本只有粉絲 token 會造成這個情況，使 `resolveRoleId()` 沿用租戶內任一成員的角色。現在 JWT 分支要求 `agentId`；CLI token 的 `id` 來自 session 的成員；Partner API 金鑰的 `id` 來自 `PartnerApiKey.createdById`，這個欄位不可為空。
+- **過渡期的相容判斷。** `isAgentRefreshToken()` 也接受沒有 `typ`、帶 `rememberMe`、沒有 `sub` 的舊格式 refresh token，`REFRESH_TOKEN_EXPIRES_IN`（30 天）之後可以移除。舊格式的 access token 不接受，前端會以 refresh token 換發。
+
+測試：`tests/unit/lib/agent-token.test.ts`、`tests/unit/modules/auth/token-purpose-route.test.ts`、`tests/unit/plugins/socket-token.test.ts`，以及 web 的 `tests/unit/lib/socket.test.ts`。
+
+**新增 AUTH-08。** `AUTHENTICATION.md` 原本把「`JWT_SECRET` 簽出的 token 沒有撤銷機制，登出只清 cookie」歸在 AUTH-05，但 AUTH-05 的內文沒有描述這一點。AUTH-05 修正後，refresh token 不能再當 access token 使用，但登出、改密碼與重設密碼仍然不會讓 refresh token 失效。平台端的同一個問題記在 AUTH-03（P2），租戶端比照記為 AUTH-08（P2）。
+
+**連帶更新的內容。** `PORTAL.md` 原本寫「接回簽發路徑之前，要先修 AUTH-05」，改為說明驗證端怎麼區分 token，並保留「接回時要從驗證過的憑證推導聯絡人」的要求。`AUTHENTICATION.md`、`MEMBERS.md`、`PERMISSIONS.md`、`INBOX.md`、`tenant/README.md` 移除或改寫引用 AUTH-05 的段落。
+
 ## 2026-10-02：記錄 SEC-04、SEC-05、SLA-01 的修正，新增 SEC-06 與 SLA-05
 
 PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT.md`。本次對照兩個 PR 的 diff，逐項確認 `AUDIT.md` 原本描述的問題都已修正，再從 `AUDIT.md` 移除：

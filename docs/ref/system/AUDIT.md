@@ -59,9 +59,9 @@
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| [AUTH-05](#auth-05) | 帳號與登入 | P2 | 部分修正 | 租戶端 JWT 不分用途，refresh token 能當客服 access token；粉絲 token 的簽發路徑接回後，粉絲 token 也能 | 靜態確認 |
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
+| [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
@@ -511,39 +511,6 @@ B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登
 
 A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
 
-<a id="auth-05"></a>
-### AUTH-05：租戶端的 JWT 不分用途，refresh token 能通過客服認證
-
-**部分修正。** `481452a`（2026-09-30）刪除了 `POST /api/v1/fan/auth`。這條路由只要 body 帶 `contactId` 與 `tenantId`、而且該聯絡人存在，就簽發粉絲 token，不驗證任何登入憑證。刪除之後，`signFanToken()` 沒有呼叫端，系統目前不簽發粉絲 token。驗證端沒有改：`authenticate` 仍然不區分 token 的種類。
-
-`JWT_SECRET` 同時簽發下列 token，`@fastify/jwt` 也以它驗證客服的 access token：
-
-| token | 簽發位置 | 內容 | 有效期 |
-| --- | --- | --- | --- |
-| 客服 access token | `auth.routes.ts` 的 `signAccessToken()` | `agentId`、`tenantId`、`role`、`roleId` | 預設 15 分鐘 |
-| 客服 refresh token | `auth.routes.ts` 的 `signRefreshToken()` | 同上，另加 `rememberMe` | 預設 30 天 |
-| 粉絲 token | `portal-auth.service.ts` 的 `signFanToken()`，目前沒有呼叫端 | `sub: 'fan'`、`contactId`、`tenantId` | 24 小時 |
-| MCP 確認 token | `mcp/line-mcp-confirmation.ts` 的 `createLineMcpConfirmation()` | `op`、`tenantId`、`agentId` 等 | 5 分鐘 |
-
-`auth.plugin.ts` 的 `authenticate` 只呼叫 `jwtVerify()`，不檢查 token 的種類，也不要求 payload 帶 `agentId`。`plugins/socket.plugin.ts` 的連線驗證同樣只驗簽章。因此這四種 token 都能當客服的 access token 使用。
-
-**refresh token 能當 access token 使用 30 天。** refresh token 放在 httpOnly cookie，前端程式讀不到，被第三方盜用的機會較低。但 refresh token 一旦外洩，就能當 access token 使用到過期，而且 `authenticate` 不檢查成員或租戶是否已停用。成員本人也能從瀏覽器取出自己的 refresh token：成員被停用之後，`POST /auth/refresh` 會擋下換發，但直接拿 refresh token 呼叫 API 不會被擋。AUTH-02 所說「REST 這一面是有界的」前提，在 refresh token 直接當 access token 時不成立。
-
-**粉絲 token 的簽發路徑接回之後，粉絲 token 也能通過客服認證。** `openspec/changes/add-cross-channel-one-id/tasks.md` 的 9.3.3 預計接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。接回之後，持有粉絲 token 的人呼叫客服 API 時，`request.agent` 為 `{ id: undefined, tenantId, role: undefined, roleId: null }`：
-
-- `requirePermission()` 以 `roleId` 計算權限，得到空集合，掛權限碼的路由回 403。
-- 不檢查權限碼的路由全部放行：對話、訊息、工單、標籤、通知、AI 輔助、短連結、檔案、訊息模擬器，也包括送出訊息給客人。對話與工單另有渠道可見範圍的檢查，但下一點說明粉絲 token 也能通過。見 RBAC-01。
-- 渠道可見範圍的 `resolveRoleId()` 以 `agent.findFirst({ where: { id: undefined, tenantId } })` 查角色。Prisma 忽略值為 `undefined` 的條件，查到的是該租戶的任一成員，於是沿用那個人的角色。即使沒有 `channel.view_all`，沒有綁定成員或團隊的渠道本來就所有人可見。
-- 以粉絲 token 連 socket，會自動加入租戶房間，即時收到全租戶的新訊息內容。見 RBAC-04。
-
-**優先順序。** 刪除 `/fan/auth` 之後，利用這一項需要先取得外洩的 refresh token，或曾經是該租戶的成員，因此從 P1 調為 P2。這一項必須在 9.3.3 接回簽發路徑之前修正。
-
-**修正方向**：
-
-- 各種 token 以不同的密鑰簽發，或加上用途欄位（例如 `typ`），由 `authenticate` 與 socket 驗證時檢查。
-- `authenticate` 要求 payload 帶 `agentId`。
-- 接回粉絲 token 的簽發路徑時，由驗證過的憑證（例如 LINE LIFF 的 ID token）推導出聯絡人，不接受呼叫端指定。
-
 <a id="auth-06"></a>
 ### AUTH-06：兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`
 
@@ -566,6 +533,27 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 `apps/api/src/config/env.ts` 定義了 `JWT_EXPIRES_IN`，預設 `7d`，程式沒有任何地方讀取。token 的有效期實際由 `ACCESS_TOKEN_EXPIRES_IN` 與 `REFRESH_TOKEN_EXPIRES_IN` 決定。
 
 `docs/10_TECH_STACK.md` 的環境變數範例列出 `JWT_EXPIRES_IN=7d`。讀者照著設定，會以為 token 有效 7 天，而實際的 access token 有效期不受影響。
+
+<a id="auth-08"></a>
+### AUTH-08：租戶成員登出或改密碼後，refresh token 仍然有效
+
+客服的 refresh token 是以 `JWT_SECRET` 簽發的 JWT，有效期是 `REFRESH_TOKEN_EXPIRES_IN`（預設 30 天），存在 httpOnly、`SameSite=strict` 的 cookie。`POST /auth/refresh` 驗完簽章後，以 `getActiveAgentForAuth()` 確認成員仍然啟用，就發出新的 access token 與 refresh token。
+
+`Agent` 沒有 `tokenVersion` 或 `passwordChangedAt` 這類欄位，換發時無從比對 token 的簽發時間。因此下列操作都不會讓已發出的 refresh token 失效：
+
+| 操作 | 位置 | 結果 |
+| --- | --- | --- |
+| 登出 | `POST /auth/logout` | 只清掉瀏覽器的 cookie |
+| 成員自己改密碼 | `agent.routes.ts` 的改密碼路由 | 不影響 token |
+| 管理員重設成員的密碼 | `agent.routes.ts` 的重設密碼路由 | 不影響 token |
+
+refresh token 外洩之後，持有者可以持續換發 access token，直到 refresh token 過期。成員發現帳號外洩而改密碼，也擋不下持有者。只有停用成員或停用租戶會讓換發失敗。
+
+`e12103c` 之前，refresh token 還能直接當 access token 使用，這個問題因此更嚴重。`e12103c` 之後，refresh token 只能用在 `POST /auth/refresh`。
+
+平台帳號有同樣的問題，見 AUTH-03。
+
+**修正方向**：`Agent` 加上 `tokenVersion`，refresh token 帶上這個值；改密碼、重設密碼與登出時遞增，`POST /auth/refresh` 比對不符就拒絕。
 
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄

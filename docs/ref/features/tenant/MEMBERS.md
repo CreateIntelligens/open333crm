@@ -135,7 +135,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 帳號鎖定只看 email，知道某位成員 email 的人可以讓這位成員一直無法以密碼登入，見 `../../system/AUDIT.md` 的 SEC-06。
 
-各種 token 的簽發與驗證、停用成員或改角色之後多久生效，見[認證與憑證](../../modules/AUTHENTICATION.md)。其中最嚴重的問題是 token 不分種類：refresh token 能當客服的 access token 使用，粉絲 token 的簽發路徑接回之後，粉絲 token 也能，見 `../../system/AUDIT.md` 的 AUTH-05。
+各種 token 的簽發與驗證、停用成員或改角色之後多久生效，見[認證與憑證](../../modules/AUTHENTICATION.md)。登出、改密碼或被重設密碼之後，已發出的 refresh token 仍可換發，最長 30 天，見 `../../system/AUDIT.md` 的 AUTH-08。
 
 ## 權限一覽
 
@@ -156,7 +156,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 
 | 限制 | 說明 |
 | --- | --- |
-| **token 不分種類，refresh token 能當 access token** | 詳見 `../../system/AUDIT.md` 的 AUTH-05 |
+| 登出或改密碼不會讓 refresh token 失效 | 詳見 `../../system/AUDIT.md` 的 AUTH-08 |
 | 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
