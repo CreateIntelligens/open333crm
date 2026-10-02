@@ -6,7 +6,7 @@
 
 - **驗證環境**：`docker compose -f docker-compose.dev.yml`
 - **執行時驗證日期**：2026-09-02
-- **最近複查日期**：2026-10-01
+- **最近複查日期**：2026-10-02
 - **限制**：開發環境沒有 Ollama，因此部分模型問題只能用設定與資料庫狀態驗證。
 - **部署決定**：組織因主機資源不足，決定不部署 Ollama（2026-10-01）。LLM 各項依這個決定判斷。
 
@@ -23,7 +23,7 @@
 
 排序只反映「先修哪一個」，與修復成本無關。兩項同為 P1 時，先做哪一項由當時的人力與相依關係決定。
 
-最近一次標示日期為 2026-10-01。項目的內容改變時要一併重看它的優先順序。
+最近一次標示日期為 2026-10-02。項目的內容改變時要一併重看它的優先順序。
 
 ## 處理狀態怎麼讀
 
@@ -42,12 +42,12 @@
 
 | ID | 範圍 | 優先 | 處理狀態 | 問題 | 驗證狀態 |
 | --- | --- | --- | --- | --- | --- |
-| [RLS-01](#rls-01) | 租戶隔離與權限 | P1 | 未處理 | Canvas 引擎不走租戶連線 | 靜態確認 |
+| [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效 | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| [RLS-05](#rls-05) | 租戶隔離與權限 | P1 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
+| [RLS-05](#rls-05) | 租戶隔離與權限 | P2 | 已提建議 | 重抓 LINE 個人資料的端點不檢查租戶，可讀寫其他租戶的聯絡人資料 | 靜態確認 |
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P3 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
-| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由只驗身分 | 靜態確認 |
+| [RBAC-01](#rbac-01) | 租戶隔離與權限 | P1 | 部分修正 | 權限碼有一部分沒有強制點，工單、對話、標籤、短連結的路由不檢查權限碼 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
@@ -59,13 +59,12 @@
 | [AUTH-02](#auth-02) | 帳號與登入 | P2 | 未處理 | 停用租戶不會中斷既有的 Socket 連線，CLI token 與 Partner API 金鑰也不受影響 | 靜態確認 |
 | [AUTH-03](#auth-03) | 帳號與登入 | P2 | 未處理 | 平台帳號改密碼或重設密碼後，已發出的 token 仍然有效 | 靜態確認 |
 | [AUTH-04](#auth-04) | 帳號與登入 | P2 | 未處理 | 平台帳號沒有權限分級也沒有第二因子，改 email 不通知原主而可被接管 | 靜態確認 |
-| [AUTH-05](#auth-05) | 帳號與登入 | P2 | 部分修正 | 租戶端 JWT 不分用途，refresh token 能當客服 access token；粉絲 token 的簽發路徑接回後，粉絲 token 也能 | 靜態確認 |
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
+| [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P3 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
-| [SEC-04](#sec-04) | 帳號與登入 | P1 | 未處理 | `trustProxy: true` 讓 `request.ip` 可由呼叫端偽造，速率限制形同虛設 | 靜態確認 |
-| [SEC-05](#sec-05) | 帳號與登入 | P1 | 已提建議 | 租戶的密碼登入沒有速率限制，也沒有帳號鎖定 | 靜態確認 |
+| [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
 | [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
@@ -78,7 +77,7 @@
 | [PLAN-05](#plan-05) | 方案與額度 | P2 | 未處理 | 加購過的租戶升級方案，AI 月額度反而停在升級前的數字 | 靜態確認 |
 | [PLAN-06](#plan-06) | 方案與額度 | P2 | 未處理 | 核准加購清掉的是用量計數器而非告警旗標，當月後續額度告警全部靜默 | 靜態確認 |
 | [PLAN-07](#plan-07) | 方案與額度 | P3 | 未處理 | 渠道的兩個分級欄位都沒有任何方案填過值，渠道維度完全不分級 | 靜態確認 |
-| [PLAN-08](#plan-08) | 方案與額度 | P1 | 未處理 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
+| [PLAN-08](#plan-08) | 方案與額度 | P3 | 未處理 | 角色權限的顯示與儲存都不套方案天花板，介面顯示的授予狀態與實際生效的權限不一致 | 靜態確認 |
 | [PLAN-09](#plan-09) | 方案與額度 | P3 | 未處理 | 改方案立即對該方案所有租戶生效，介面不顯示影響範圍，稽核不記舊值 | 靜態確認 |
 | [PLAN-10](#plan-10) | 方案與額度 | P3 | 未處理 | 加購沒有金額紀錄，覆寫值也拆不開，事後無法對帳 | 靜態確認 |
 | [PLAN-11](#plan-11) | 方案與額度 | P3 | 未處理 | 平台只查得到待審的方案異動申請，已核准與已駁回的沒有讀取途徑 | 靜態確認 |
@@ -86,10 +85,10 @@
 | [AI-01](#ai-01) | AI 用量與成本 | P2 | 未處理 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
 | [USAGE-01](#usage-01) | AI 用量與成本 | P3 | 未處理 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
 | [USAGE-02](#usage-02) | AI 用量與成本 | P2 | 已提建議 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
-| [SLA-01](#sla-01) | SLA | P1 | 未處理 | `Case.firstResponseAt` 沒有寫入端，首次回應 SLA 必定判定逾時 | 靜態確認 |
 | [SLA-02](#sla-02) | SLA | P2 | 未處理 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
 | [SLA-03](#sla-03) | SLA | P3 | 未處理 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | [SLA-04](#sla-04) | SLA | P2 | 未處理 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 已提建議 | 收件匣的下拉選單繞過關閉與指派的副作用；指派對話不會通知 | 靜態確認 |
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
@@ -158,6 +157,10 @@
 - 指向 superuser 或帶 BYPASSRLS 的 role（`.env.api.example` 的 `crm` 屬於這類）：Canvas 的所有讀寫跳過 RLS。
 - 指向 `app_tenant`：singleton 的連線沒有 `app.current_tenant`，policy fail-closed，`FlowRunner.run()` 在第一個 `findUniqueOrThrow` 就查不到列，Canvas 會靜默停止運作。
 
+`DATABASE_URL` 同時決定 API 的租戶連線：`prisma.plugin.ts` 在沒有設定 `DATABASE_URL_TENANT` 時，租戶連線就用 `DATABASE_URL`。因此 API 要讓 RLS 生效，通常 `DATABASE_URL` 就指向 `app_tenant`，Canvas 落在第二種情況。這時 `inbound-side-effects.ts` 每處理一則進站訊息，都呼叫 `canvas.webhook.ts` 的 `handleWebhookFlowTrigger()`；這個函式以 singleton 查 `interactionFlow`，結果是空陣列，流程永遠不會觸發，也沒有錯誤。
+
+**優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`；正式環境有沒有啟用中的流程，尚未查證。
+
 <a id="rls-03"></a>
 ### RLS-03：隔離檢查腳本掃不到 `packages/*`
 
@@ -193,6 +196,13 @@
 
 前端、CLI 與 MCP 都沒有呼叫這個端點。
 
+**優先順序是 P2，原因是兩個前提都很難取得：**
+
+- **對方 LINE 渠道的 `channelId`。** 這個 UUID 出現在 webhook 網址（`channel.service.ts` 組成 `/api/v1/webhooks/<渠道類型>/<channel.id>`），而 webhook 網址只設定在 LINE 後台。網頁嵌入的 widget 會公開 WebChat 渠道的 `channelId`，但對 WebChat 渠道呼叫這個端點時，LINE API 會失敗，端點回 502。
+- **該渠道底下的 LINE uid。** LINE 的 userId 依 provider 而不同，外人無法取得其他官方帳號的 uid。
+
+兩個前提都達成時，影響也有限。寫入的是 LINE 回傳的真實資料，攻擊者無法寫入偽造的內容；讀到的是攻擊者已知 uid 的顯示名稱與頭像。另外，攻擊者可以從 404 與 200 的差異確認 uid 是否存在，每次呼叫也會消耗對方渠道的 LINE API 額度。
+
 **修正方向**：路由改用 `request.tenantPrisma`，服務查 `channelIdentity` 與 `channel` 的條件都加上 `tenantId`，並把這個檔案移出白名單。確認沒有外部呼叫端的話，也可以直接移除這條路由。
 
 <a id="rls-07"></a>
@@ -224,7 +234,12 @@
 
 `inbox.view` 與 `inbox.reply` 有被 `requirePermission()` 使用，但掛在 `ai` 模組的兩條 agent 路由與聯絡人模組上，不在收件匣本身。
 
-結果是 `case`、`conversation`、`tag`、`shortlink` 這幾個模組的路由只有 `fastify.authenticate`，沒有任何授權判斷。租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
+結果是 `case`、`conversation`、`tag`、`shortlink` 這幾個模組的路由都不檢查權限碼：
+
+- `case.routes.ts` 與 `conversation.routes.ts` 檢查渠道可見範圍（`resolveChannelVisibility()`、`assertConversationChannelVisible()`），成員只能操作自己看得到的渠道。渠道可見範圍決定「能操作哪些資料」，不決定「能做哪些動作」。
+- `tag.routes.ts` 與 `shortlink.routes.ts` 只有 `fastify.authenticate`，沒有任何授權判斷。
+
+租戶的角色設定在這個區塊不生效：管理員在角色矩陣取消勾選「刪除案件」，該角色的成員仍然刪得掉。
 
 一個例外要分辨：`channel.view_all` 也沒有出現在 `requirePermission()` 裡，但它透過 `getEffectiveTenantPermissions()` 在 `services/channel-visibility.ts` 與 socket 房間授權中判斷，屬於有強制點的情況。
 
@@ -434,7 +449,7 @@ Passkey 不是復原途徑。註冊 passkey 的端點掛在 `fastify.authenticat
 
   設定值本身有驗證：`config/env.ts` 的 `superRefine` 規定 `resend` 模式必填 `RESEND_API_KEY` 與 `EMAIL_FROM`、`smtp` 模式必填 `SMTP_HOST`，缺少時 API 啟動就失敗。因此只要線上 API 啟動成功且模式不是 `log`，寄信設定就是完整的。要確認的只有模式本身。
 
-- **SEC-04 應先修。** 新增的是公開端點，擋暴力破解只能靠速率限制，而速率限制目前以可偽造的 `request.ip` 分組。
+- **新端點要自己設定速率限制。** 新增的是公開端點，擋濫用只能靠速率限制。`auth.routes.ts` 以 `global: false` 註冊速率限制外掛，新路由沒有設定 `config.rateLimit` 就不受限制。速率限制使用的來源 IP 已經無法偽造（`44582d1`）。
 
 <a id="auth-02"></a>
 ### AUTH-02：停用租戶不會中斷既有的連線與 token
@@ -484,7 +499,7 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 
 所有平台帳號的 JWT 都帶 `role: 'PLATFORM_SUPERUSER'`，平台側沒有權限表。平台端也沒有 MFA 或 passkey；passkey 只有租戶端有。
 
-這個身分可以跨租戶開通、停用、改方案、看用量，也能建立與停用其他平台帳號。單一密碼就是全部權限，而登入端點的速率限制又能透過 SEC-04 繞過。
+這個身分可以跨租戶開通、停用、改方案、看用量，也能建立與停用其他平台帳號。單一密碼就是全部權限。平台的登入端點只依來源 IP 限制每分鐘 10 次，沒有帳號層級的鎖定：從多個 IP 輪流嘗試，就能持續猜同一個帳號的密碼。租戶端的密碼登入已經有帳號鎖定（`44582d1`），平台端沒有。
 
 **同級帳號之間可以互相接管。**
 
@@ -495,39 +510,6 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 B 手上的 token 在過期前仍然可用（見 AUTH-03），過期後 B 就登不進來，而 B 自己走忘記密碼，信會寄到 A 的信箱。
 
 A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽核歸屬：之後的操作都記在 B 名下。事後的線索只有一條，就是第一步留下的 `platform_user.update` 稽核，payload 記著新的 email。第二、三步的忘記密碼與重設沒有稽核（見 SEC-02）。
-
-<a id="auth-05"></a>
-### AUTH-05：租戶端的 JWT 不分用途，refresh token 能通過客服認證
-
-**部分修正。** `481452a`（2026-09-30）刪除了 `POST /api/v1/fan/auth`。這條路由只要 body 帶 `contactId` 與 `tenantId`、而且該聯絡人存在，就簽發粉絲 token，不驗證任何登入憑證。刪除之後，`signFanToken()` 沒有呼叫端，系統目前不簽發粉絲 token。驗證端沒有改：`authenticate` 仍然不區分 token 的種類。
-
-`JWT_SECRET` 同時簽發下列 token，`@fastify/jwt` 也以它驗證客服的 access token：
-
-| token | 簽發位置 | 內容 | 有效期 |
-| --- | --- | --- | --- |
-| 客服 access token | `auth.routes.ts` 的 `signAccessToken()` | `agentId`、`tenantId`、`role`、`roleId` | 預設 15 分鐘 |
-| 客服 refresh token | `auth.routes.ts` 的 `signRefreshToken()` | 同上，另加 `rememberMe` | 預設 30 天 |
-| 粉絲 token | `portal-auth.service.ts` 的 `signFanToken()`，目前沒有呼叫端 | `sub: 'fan'`、`contactId`、`tenantId` | 24 小時 |
-| MCP 確認 token | `mcp/line-mcp-confirmation.ts` 的 `createLineMcpConfirmation()` | `op`、`tenantId`、`agentId` 等 | 5 分鐘 |
-
-`auth.plugin.ts` 的 `authenticate` 只呼叫 `jwtVerify()`，不檢查 token 的種類，也不要求 payload 帶 `agentId`。`plugins/socket.plugin.ts` 的連線驗證同樣只驗簽章。因此這四種 token 都能當客服的 access token 使用。
-
-**refresh token 能當 access token 使用 30 天。** refresh token 放在 httpOnly cookie，前端程式讀不到，被第三方盜用的機會較低。但 refresh token 一旦外洩，就能當 access token 使用到過期，而且 `authenticate` 不檢查成員或租戶是否已停用。成員本人也能從瀏覽器取出自己的 refresh token：成員被停用之後，`POST /auth/refresh` 會擋下換發，但直接拿 refresh token 呼叫 API 不會被擋。AUTH-02 所說「REST 這一面是有界的」前提，在 refresh token 直接當 access token 時不成立。
-
-**粉絲 token 的簽發路徑接回之後，粉絲 token 也能通過客服認證。** `openspec/changes/add-cross-channel-one-id/tasks.md` 的 9.3.3 預計接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。接回之後，持有粉絲 token 的人呼叫客服 API 時，`request.agent` 為 `{ id: undefined, tenantId, role: undefined, roleId: null }`：
-
-- `requirePermission()` 以 `roleId` 計算權限，得到空集合，掛權限碼的路由回 403。
-- 只驗登入的路由全部放行：對話、訊息、工單、標籤、通知、AI 輔助、短連結、檔案、訊息模擬器，也包括送出訊息給客人。見 RBAC-01。
-- 渠道可見範圍的 `resolveRoleId()` 以 `agent.findFirst({ where: { id: undefined, tenantId } })` 查角色。Prisma 忽略值為 `undefined` 的條件，查到的是該租戶的任一成員，於是沿用那個人的角色。即使沒有 `channel.view_all`，沒有綁定成員或團隊的渠道本來就所有人可見。
-- 以粉絲 token 連 socket，會自動加入租戶房間，即時收到全租戶的新訊息內容。見 RBAC-04。
-
-**優先順序。** 刪除 `/fan/auth` 之後，利用這一項需要先取得外洩的 refresh token，或曾經是該租戶的成員，因此從 P1 調為 P2。這一項必須在 9.3.3 接回簽發路徑之前修正。
-
-**修正方向**：
-
-- 各種 token 以不同的密鑰簽發，或加上用途欄位（例如 `typ`），由 `authenticate` 與 socket 驗證時檢查。
-- `authenticate` 要求 payload 帶 `agentId`。
-- 接回粉絲 token 的簽發路徑時，由驗證過的憑證（例如 LINE LIFF 的 ID token）推導出聯絡人，不接受呼叫端指定。
 
 <a id="auth-06"></a>
 ### AUTH-06：兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`
@@ -551,6 +533,27 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 `apps/api/src/config/env.ts` 定義了 `JWT_EXPIRES_IN`，預設 `7d`，程式沒有任何地方讀取。token 的有效期實際由 `ACCESS_TOKEN_EXPIRES_IN` 與 `REFRESH_TOKEN_EXPIRES_IN` 決定。
 
 `docs/10_TECH_STACK.md` 的環境變數範例列出 `JWT_EXPIRES_IN=7d`。讀者照著設定，會以為 token 有效 7 天，而實際的 access token 有效期不受影響。
+
+<a id="auth-08"></a>
+### AUTH-08：租戶成員登出或改密碼後，refresh token 仍然有效
+
+客服的 refresh token 是以 `JWT_SECRET` 簽發的 JWT，有效期是 `REFRESH_TOKEN_EXPIRES_IN`（預設 30 天），存在 httpOnly、`SameSite=strict` 的 cookie。`POST /auth/refresh` 驗完簽章後，以 `getActiveAgentForAuth()` 確認成員仍然啟用，就發出新的 access token 與 refresh token。
+
+`Agent` 沒有 `tokenVersion` 或 `passwordChangedAt` 這類欄位，換發時無從比對 token 的簽發時間。因此下列操作都不會讓已發出的 refresh token 失效：
+
+| 操作 | 位置 | 結果 |
+| --- | --- | --- |
+| 登出 | `POST /auth/logout` | 只清掉瀏覽器的 cookie |
+| 成員自己改密碼 | `agent.routes.ts` 的改密碼路由 | 不影響 token |
+| 管理員重設成員的密碼 | `agent.routes.ts` 的重設密碼路由 | 不影響 token |
+
+refresh token 外洩之後，持有者可以持續換發 access token，直到 refresh token 過期。成員發現帳號外洩而改密碼，也擋不下持有者。只有停用成員或停用租戶會讓換發失敗。
+
+`e12103c` 之前，refresh token 還能直接當 access token 使用，這個問題因此更嚴重。`e12103c` 之後，refresh token 只能用在 `POST /auth/refresh`。
+
+平台帳號有同樣的問題，見 AUTH-03。
+
+**修正方向**：`Agent` 加上 `tokenVersion`，refresh token 帶上這個值；改密碼、重設密碼與登出時遞增，`POST /auth/refresh` 比對不符就拒絕。
 
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
@@ -591,50 +594,18 @@ A 的權限沒有因此提高，所有平台帳號本來就同級。問題在稽
 
 搬移之前，要先把 rate-limit 的註冊移到根層，並以連續請求實際驗證 429 仍會出現。`platform` 模組沒有任何測試，這類改動不會被測試擋下。
 
-<a id="sec-04"></a>
-### SEC-04：`request.ip` 可由呼叫端偽造
+<a id="sec-06"></a>
+### SEC-06：帳號鎖定只依 email 計數
 
-`apps/api/src/index.ts` 建立 Fastify 實例時設定 `trustProxy: true`。這個值的意思是「信任所有上游」，Fastify 底層的 `proxy-addr` 因此取 `X-Forwarded-For` 的**最左邊**那一個位址當作 `request.ip`。最左邊是呼叫端自己寫的值。
+`44582d1` 為租戶的密碼登入加上帳號鎖定。`auth/login-attempts.ts` 以 email 為鍵，在 Redis 累計嘗試次數：15 分鐘內第 6 次嘗試起一律回 429 `ACCOUNT_LOCKED`，密碼正確也不放行，直到區間結束。`POST /auth/cli/login` 共用同一個計數。
 
-前面有沒有反向代理都一樣。`nginx/nginx.conf.template` 的六個 location 區塊全部用：
+計數只看 email，不看來源。知道某位成員 email 的人，每 15 分鐘故意輸錯 6 次密碼，就能讓這位成員一直無法以密碼登入，也無法以密碼登入 CLI。email 不存在時同樣計數，因此回應不透露帳號是否存在。攻擊者也因此不需要先確認 email 是否存在。
 
-```nginx
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-```
+可繞過的做法：被鎖的成員仍可用 Passkey 登入，Passkey 不經過這個計數。
 
-`$proxy_add_x_forwarded_for` 是**附加**，不是覆寫。呼叫端送 `X-Forwarded-For: 1.2.3.4`，經過 nginx 之後變成 `1.2.3.4, <真實 IP>`，而 API 取的是最左邊的 `1.2.3.4`。
+這是 `login-attempts.ts` 的註解記下的已知取捨，`add-login-brute-force-protection` 的規格沒有提到。帳號被鎖時，`login()` 會寫一筆 warn log（`[Auth] 登入因失敗次數過多被擋`，帶 email 雜湊），可以從 log 發現有人反覆鎖同一個帳號。
 
-同一份設定裡的 `X-Real-IP: $remote_addr` 是覆寫，值可信，但 API 沒有任何地方讀它。
-
-五個模組的速率限制，`keyGenerator` 都是 `request.ip`，因此每換一次標頭就等於換一個新的來源：
-
-| 位置 | 上限 |
-| --- | --- |
-| `platform.routes.ts` | scope 內每分鐘 30 次；登入每分鐘 10 次；忘記密碼每 10 分鐘 5 次 |
-| `auth/auth.routes.ts` | Passkey 各路由與 CLI 登入各每分鐘 10 次。外掛以 `global: false` 註冊，租戶的密碼登入 `/login` 沒有限制，見 SEC-05 |
-| `trial/trial.routes.ts` | scope 內每 10 分鐘 20 次；申請試用每 10 分鐘 5 次 |
-| `chatbox/chatbox.routes.ts` | scope 內每分鐘 60 次；建立 session 每分鐘 10 次 |
-| `webchat/webchat.routes.ts` | scope 內每分鐘 60 次；各路由每分鐘 10 到 30 次 |
-
-平台後台與租戶後台都沒有帳號層級的鎖定，速率限制是唯一擋暴力破解的機制。
-
-被影響的不只是速率限制。`request.ip` 還寫進兩種紀錄，兩者都會記到偽造的值：
-
-- `trial_signups.requestIp`，申請來源。
-- 租戶側稽核紀錄的 `ip` 欄位（`agent`、`role`、`contact`、`settings`、`channel`、`data-export` 等模組的異動路由）。
-
-生產環境的 `docker-compose.prod.yml` 只有 nginx 對外開 80 與 443，`api` 沒有對應的 host port。這一點不改變結論：偽造的標頭會原樣通過 nginx。
-
-<a id="sec-05"></a>
-### SEC-05：租戶的密碼登入沒有速率限制
-
-`auth.routes.ts` 以 `global: false` 註冊 `@fastify/rate-limit`，只有在路由的 `config.rateLimit` 個別設定的路由才受限。受限的是 Passkey 的各路由與 `POST /auth/cli/login`；`POST /auth/login` 沒有設定。2026-06-04 的 `00aa7ee` 註冊這個外掛時，就只加在 CLI 登入上，之後補上的是 Passkey 路由。
-
-`auth.service.ts` 的 `login()` 也沒有失敗次數的計數或帳號鎖定。任何人都可以對任一 email 無限次嘗試密碼。
-
-平台後台的登入有速率限制（每分鐘 10 次），租戶端沒有。即使補上，限制仍以可偽造的 `request.ip` 計算，見 SEC-04。
-
-**修正方向**：`/login` 加上 `config.rateLimit`，並以 email 加上真實來源 IP 為鍵；另外依帳號累計連續失敗次數，超過門檻時暫時鎖定或要求額外驗證。
+**修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。
 
 ## 金鑰與 License
 
@@ -1108,24 +1079,6 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 功能說明見[服務水準協議](../features/SLA.md)。
 
-<a id="sla-01"></a>
-### SLA-01：`Case.firstResponseAt` 沒有寫入端
-
-`packages/database/prisma/schema.prisma` 的 `Case` 宣告 `firstResponseAt`，對應的 migration 也建了欄位。三個地方讀這個欄位：
-
-- `apps/workers/src/handlers/sla.handler.ts` 的 `pollSlaCases()`，用它判定首次回應是否已達成。
-- `apps/api/src/modules/analytics/analytics.service.ts` 的 `getOverviewStats()` 與 `getAgentPerformance()`，用它計算平均首次回應時間。
-- `apps/web/src/components/inbox/ContactInfoPanel.tsx`，顯示給客服看。
-
-全 repo 沒有任何程式寫入這個欄位。以 `firstResponseAt` 為關鍵字搜尋 `apps/` 與 `packages/`，命中的都是 schema 宣告、型別宣告、`select` 子句或讀取端。
-
-兩個後果：
-
-1. 客服即使立刻回覆，工單仍會在 `createdAt + firstResponseMinutes` 到期時判定為 `first_response_breached`。系統接著通知負責人與該租戶的 `ADMIN`、`SUPERVISOR`，寫入 `CaseEvent`，並觸發租戶的自動化規則。每張套用政策的工單都會發生一次。
-2. 分析報表的平均首次回應時間永遠沒有數值。SQL 的 `FILTER (WHERE "firstResponseAt" IS NOT NULL)` 濾出空集合，`AVG()` 回傳 null。
-
-這一項會持續產生假警報，不需要特定操作觸發。
-
 <a id="sla-02"></a>
 ### SLA-02：掃描每輪上限 100 張工單
 
@@ -1156,6 +1109,22 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - 修改政策名稱之後，既有工單的 `slaPolicy` 仍是舊名稱。`getPolicy()` 回傳 null，`sla.handler.ts` 直接 `continue`，該工單從此不再受監控，而且沒有任何紀錄。
 - `sla_policies` 只有 `@@index([tenantId])`，沒有 `(tenantId, name)` 的唯一約束。同一租戶建立兩條同名政策時，`findFirst` 回傳哪一條不確定。
 - `DELETE /api/v1/sla-policies/:id` 是硬刪除，沒有引用檢查。`SlaPolicy` 沒有 `isActive` 欄位，因此無法套用 `AGENTS.md` 的 soft-delete 慣例。刪除後，引用該名稱的工單留下一個查不到政策的字串。
+
+<a id="sla-05"></a>
+### SLA-05：沒有關聯對話的工單沒有首次回應時間
+
+`c99c40d` 之後，客服在工單關聯的對話送出訊息時，`conversation.service.ts` 的 `sendMessage()` 呼叫 `case.service.ts` 的 `markCaseFirstResponse()` 寫入 `Case.firstResponseAt`。對話掛到既有工單時，`syncFirstResponseFromConversation()` 也會補上工單建立後最早的那則客服訊息。
+
+兩個寫入點都以「工單關聯的對話」為前提。`POST /api/v1/cases` 的 `createCase()` 只帶 `contactId` 與 `channelId`，不建立對話關聯。客服之後在這位聯絡人的對話裡回覆，只要那個對話沒有掛到這張工單，就不算這張工單的首次回應。
+
+這種工單套用 SLA 政策時：
+
+- `sla.handler.ts` 在 `createdAt + firstResponseMinutes` 到期時判定 `first_response_breached`，通知負責人與主管、寫入 `CaseEvent`、觸發自動化規則。去重的區間是 24 小時，工單沒有結案前每 24 小時再發一次。
+- 分析報表的平均首次回應時間不計入這種工單。
+
+`apps/api/src/scripts/backfill-case-first-response.ts` 為既有工單補值時，也只看關聯對話裡的客服訊息，同樣補不到這種工單。另一種補不到的情況是：客服只在工單建立之前回覆過，之後沒有再回覆。
+
+**修正方向**：手動建立工單時，若這位聯絡人在該渠道有進行中的對話，就把對話掛到工單上；或者讓首次回應改以「工單建立後，客服對這位聯絡人在該渠道送出的第一則訊息」判斷，不要求對話關聯。
 
 ## 對話、工單與自動化
 
@@ -1405,7 +1374,7 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 `analytics.service.ts` 以 `date_trunc('day' | 'week' | 'month', "createdAt")` 分組。時間欄位是不帶時區的 `TIMESTAMP(3)`，存的是 UTC，資料庫連線也以 UTC 計算。台灣時間凌晨 0 點到 8 點的訊息、工單與聯絡人，會被算進前一天；週與月的邊界也差 8 小時。
 
-同一份報表的「平均首次回應時間」讀 `Case.firstResponseAt`，因為 SLA-01 而永遠是空值。
+同一份報表的「平均首次回應時間」讀 `Case.firstResponseAt`。沒有關聯對話的工單不會有這個值，不計入平均，見 SLA-05。
 
 ## 渠道、稽核與資料權利
 

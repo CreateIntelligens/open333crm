@@ -67,11 +67,11 @@ Passkey 不是另一種 token。Passkey 驗證成功後，系統發出的是一�
 | 讀取者 | 讀的欄位 | 怎麼使用 |
 | --- | --- | --- |
 | `requirePermission()`、`requireAnyPermission()` | `isPartnerKey`、`isCliSession`、`roleId` | `isPartnerKey` 為真時，只放行 `PARTNER_KEY_ALLOWED` 列出的權限碼。`isCliSession` 為真時直接放行。`roleId` 為空時權限集合為空，一律回 403 |
-| 渠道可見範圍（`channel-visibility.ts` 的 `resolveRoleId()`） | `id` | 以 `id` 查成員再取角色。`id` 為 `undefined` 時，Prisma 忽略這個條件，查到租戶內任一成員 |
+| 渠道可見範圍（`channel-visibility.ts` 的 `resolveRoleId()`） | `id` | 以 `id` 查成員再取角色。`id` 為 `undefined` 時，Prisma 忽略這個條件，查到租戶內任一成員。目前每個認證入口都會填入 `id`，因此不會發生 |
 | 工單自動指派、通知收件人等業務規則 | `role` | 見 `../system/AUDIT.md` 的 RBAC-03 |
 | `request.tenantPrisma` | `tenantId` | 沒有 `request.agent` 時拋出錯誤 |
 
-`authenticate` 不檢查 token 的種類，也不要求 payload 帶 `agentId`。refresh token 與 MCP 確認 token 都能通過；粉絲 token 的簽發路徑接回之後，粉絲 token 也能通過。見 `../system/AUDIT.md` 的 AUTH-05。
+`authenticate`、兩個「JWT 或其他憑證」裝飾器的 JWT 分支，以及 socket 的連線驗證，都只接受客服的 access token：payload 的 `typ` 要是 `access`，而且帶 `agentId` 與 `tenantId`（`apps/api/src/lib/agent-token.ts` 的 `isAgentAccessToken()`）。refresh token、粉絲 token、MCP 確認 token 與沒有 `typ` 的舊格式 access token 都會被拒絕。`POST /auth/refresh` 反過來只接受 refresh token；過渡期也接受沒有 `typ` 的舊格式 refresh token。
 
 ## 客服的登入與換發
 
@@ -126,7 +126,7 @@ Socket.IO 的每個 namespace 各自認證：
 | 登出 | 有效到過期 | cookie 清除，token 本身仍有效 | 前端斷線 | 以 `POST /auth/cli/logout` 撤銷 | 不適用 |
 | 撤銷該憑證 | 無法撤銷 | 無法撤銷 | 無法撤銷 | 立即失效 | 立即失效 |
 
-「有效到過期」的上限是 `ACCESS_TOKEN_EXPIRES_IN`。但 refresh token 可以直接當 access token 使用，因此實際的上限是 `REFRESH_TOKEN_EXPIRES_IN`，見 `../system/AUDIT.md` 的 AUTH-05。
+「有效到過期」的上限是 `ACCESS_TOKEN_EXPIRES_IN`。登出與改密碼都不會讓 refresh token 失效，持有 refresh token 的人可以一直換發到 `REFRESH_TOKEN_EXPIRES_IN`，見 `../system/AUDIT.md` 的 AUTH-08。
 
 CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目不同：
 
@@ -148,7 +148,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | `CHATBOX_SESSION_SECRET` | Chatbox session。`.env.api.example` 沒有列出這個變數，所以未特別設定的部署都會退回 `JWT_SECRET` |
 | 渠道憑證（`channelSecret`、`appSecret`） | 驗證渠道平台送來的 webhook 簽章，加密存在 `Channel.credentialsEncrypted` |
 
-平台 JWT 與租戶 JWT 用不同的密鑰，兩邊的 token 無法互相通過。租戶端的各種 JWT 共用一把密鑰，而驗證端不區分種類，這是 AUTH-05 的根源。
+平台 JWT 與租戶 JWT 用不同的密鑰，兩邊的 token 無法互相通過。租戶端的各種 JWT 共用一把密鑰，驗證端以 payload 的欄位區分種類：客服 token 看 `typ`，粉絲 token 看 `sub`，MCP 確認 token 看 `v` 與 `op`。
 
 ## 對外端點
 
@@ -178,13 +178,11 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
-| `authenticate` 與 socket 不區分 JWT 種類，refresh token 能當客服 access token；粉絲 token 的簽發路徑接回之後，粉絲 token 也能 | AUTH-05 |
-| 租戶的密碼登入沒有速率限制，也沒有帳號鎖定 | SEC-05 |
-| 速率限制以 `request.ip` 計算，而 `request.ip` 可由呼叫端偽造 | SEC-04 |
+| 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員無法以密碼登入 | SEC-06 |
 | CLI token 只看 scope，不看角色與方案天花板；`requirePermission()` 對 CLI 直接放行 | RBAC-02 |
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
 | `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |
-| `JWT_SECRET` 簽出的 token 沒有撤銷機制，登出只清 cookie | AUTH-05 |
+| 登出、改密碼或重設密碼都不會讓已發出的 refresh token 失效 | AUTH-08 |
 | LINE、Facebook 登入補 email 時，不確認登入者就是該聯絡人；授權網址可由任何人以任意渠道身分產生 | IDENT-02 |
 | `config/env.ts` 的 `JWT_EXPIRES_IN` 沒有讀取端 | AUTH-07 |
 | 租戶端沒有忘記密碼流程 | AUTH-01 |

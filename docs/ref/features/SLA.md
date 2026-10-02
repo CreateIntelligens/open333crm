@@ -66,7 +66,14 @@ SLA 是租戶對工單回應速度的承諾：多久內要有第一次回覆，�
 | 結案 | 距 `Case.slaDueAt` 剩下 `warningBeforeMinutes` 以內 | 已過 `slaDueAt` | `sla.resolution.warning` / `sla.resolution.breached` |
 | 客戶枯等 | 無預警 | 最後一則客服回覆之後，客戶累積 3 則以上訊息 | `sla.customer_waiting.breached` |
 
-首次回應與結案比對時間，客戶枯等比對對話內容。客戶枯等的計算步驟如下：
+首次回應與結案比對時間，客戶枯等比對對話內容。
+
+`firstResponseAt` 在下列兩種情況寫入，只採計客服送出的訊息，AI 與系統自動回覆不算：
+
+- 客服在工單關聯的對話送出訊息時（`case.service.ts` 的 `markCaseFirstResponse()`）。早於工單建立時間的訊息不算。
+- 把對話掛到既有工單時，取該對話中工單建立後最早的客服訊息。
+
+客戶枯等的計算步驟如下：
 
 1. 取出該工單底下所有對話。
 2. 在這些對話中找出最後一則客服訊息，條件是 `direction` 為 `OUTBOUND` 且 `senderType` 為 `AGENT` 或 `SYSTEM`。
@@ -102,7 +109,7 @@ facts 由 `buildSlaFacts()` 組成，包含下列資料：
 
 | 限制 | 說明 |
 | --- | --- |
-| **首次回應 SLA 必定逾時** | `Case.firstResponseAt` 沒有任何程式寫入。客服即使立刻回覆，工單仍會在 `firstResponseMinutes` 到期時判定逾時；分析報表的平均首次回應時間也永遠沒有數值。詳見 `../system/AUDIT.md` 的 SLA-01 |
+| **沒有關聯對話的工單，首次回應 SLA 必定逾時** | `Case.firstResponseAt` 只在客服於工單關聯的對話送出訊息時寫入。手動建立、沒有關聯對話的工單永遠沒有這個值。詳見 `../system/AUDIT.md` 的 SLA-05 |
 | 每輪最多掃 100 張工單 | `getActiveCases()` 的 `take: 100` 是全系統共用，不是每個租戶各 100 張。詳見 `../system/AUDIT.md` 的 SLA-02 |
 | `isDefault` 沒有讀取端 | 路由維護「同一優先級只有一條預設」，但 `case.service.ts` 挑政策時不看這個欄位。詳見 `../system/AUDIT.md` 的 SLA-03 |
 | 改名或刪除政策會讓既有工單脫離監控 | 工單存的是政策名稱，不是外鍵。改名之後 `getPolicy()` 回查不到，`sla.handler.ts` 直接跳過該工單。詳見 `../system/AUDIT.md` 的 SLA-04 |

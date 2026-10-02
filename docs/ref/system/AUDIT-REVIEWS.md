@@ -4,6 +4,59 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-02：記錄 AUTH-05 的修正，新增 AUTH-08
+
+PR #202（`e12103c`）修正了 AUTH-05，但沒有更新 `AUDIT.md`。本次對照 diff 確認 AUTH-05 的修正方向都已實作，再從 `AUDIT.md` 移除：
+
+| 修正方向 | 實作 |
+| --- | --- |
+| 各種 token 加上用途欄位，`authenticate` 與 socket 驗證時檢查 | 簽發 access token 與 refresh token 時帶 `typ`。`lib/agent-token.ts` 的 `isAgentAccessToken()` 用在 `auth.plugin.ts` 的三個 JWT 分支與 `socket.plugin.ts` 的 `decodeSocketAgentToken()`；`isAgentRefreshToken()` 用在 `POST /auth/refresh` |
+| `authenticate` 要求 payload 帶 `agentId` | `isAgentAccessToken()` 要求 `agentId` 與 `tenantId` 都是非空字串 |
+
+**本次另外確認的事。**
+
+- **所有以 `JWT_SECRET` 驗證的入口都檢查用途。** 以 `jwtVerify`、`jwt.verify` 搜尋 `apps/api/src`，共有四處：上述客服入口、`POST /auth/refresh`、粉絲端的 `verifyFanToken()`（要求 `sub` 為 `fan`）、MCP 的 `verifyLineMcpConfirmation()`（要求 `v` 與 `op`）。客服 token 沒有 `sub`、`v`、`op`，無法通過後兩者。
+- **`request.agent.id` 為空的情況已經不存在。** 原本只有粉絲 token 會造成這個情況，使 `resolveRoleId()` 沿用租戶內任一成員的角色。現在 JWT 分支要求 `agentId`；CLI token 的 `id` 來自 session 的成員；Partner API 金鑰的 `id` 來自 `PartnerApiKey.createdById`，這個欄位不可為空。
+- **過渡期的相容判斷。** `isAgentRefreshToken()` 也接受沒有 `typ`、帶 `rememberMe`、沒有 `sub` 的舊格式 refresh token，`REFRESH_TOKEN_EXPIRES_IN`（30 天）之後可以移除。舊格式的 access token 不接受，前端會以 refresh token 換發。
+
+測試：`tests/unit/lib/agent-token.test.ts`、`tests/unit/modules/auth/token-purpose-route.test.ts`、`tests/unit/plugins/socket-token.test.ts`，以及 web 的 `tests/unit/lib/socket.test.ts`。
+
+**新增 AUTH-08。** `AUTHENTICATION.md` 原本把「`JWT_SECRET` 簽出的 token 沒有撤銷機制，登出只清 cookie」歸在 AUTH-05，但 AUTH-05 的內文沒有描述這一點。AUTH-05 修正後，refresh token 不能再當 access token 使用，但登出、改密碼與重設密碼仍然不會讓 refresh token 失效。平台端的同一個問題記在 AUTH-03（P2），租戶端比照記為 AUTH-08（P2）。
+
+**連帶更新的內容。** `PORTAL.md` 原本寫「接回簽發路徑之前，要先修 AUTH-05」，改為說明驗證端怎麼區分 token，並保留「接回時要從驗證過的憑證推導聯絡人」的要求。`AUTHENTICATION.md`、`MEMBERS.md`、`PERMISSIONS.md`、`INBOX.md`、`tenant/README.md` 移除或改寫引用 AUTH-05 的段落。
+
+## 2026-10-02：記錄 SEC-04、SEC-05、SLA-01 的修正，新增 SEC-06 與 SLA-05
+
+PR #200 與 #201 修正了三個 P1 項目，但兩個 PR 都沒有更新 `AUDIT.md`。本次對照兩個 PR 的 diff，逐項確認 `AUDIT.md` 原本描述的問題都已修正，再從 `AUDIT.md` 移除：
+
+| 項目 | 修正的 commit | 修正內容 | 驗證 |
+| --- | --- | --- | --- |
+| SEC-04 | `44582d1`（#200） | `trustProxy` 由 `true` 改為 `lib/trust-proxy.ts` 的 `TRUSTED_PROXIES`（`loopback`、`linklocal`、`uniquelocal`）。`proxy-addr` 從連線來源往左略過受信任的代理，停在最外層代理附加的真實 IP，最左邊的偽造值不再被採用。`Caddyfile.local` 加上 `trusted_proxies static private_ranges`，保留主機 nginx 附加的 `X-Forwarded-For` | `tests/unit/lib/trust-proxy.test.ts`：經 nginx 與 Caddy 轉送、公網直接連到 API、沒有代理標頭 |
+| SEC-05 | `44582d1`（#200） | `POST /auth/login` 加上 `config.rateLimit`，每個 IP 每分鐘 10 次。`auth/login-attempts.ts` 依 email 計數，15 分鐘內第 6 次嘗試起鎖定；CLI 密碼登入共用計數。計數在驗證密碼之前原子遞增 | `tests/unit/modules/auth/` 的 `login-brute-force.test.ts`、`login-rate-limit-route.test.ts`、`login-timing.test.ts`、`cli-session-auth.test.ts` |
+| SLA-01 | `c99c40d`（#201） | `sendMessage()` 在工單關聯的對話送出客服訊息時呼叫 `markCaseFirstResponse()`；對話掛到既有工單時補上最早的客服回覆。既有工單用 `apps/api/src/scripts/backfill-case-first-response.ts` 補值 | `tests/feature/modules/case/case-first-response.test.ts`、`tests/unit/modules/conversation/send-message-first-response.test.ts` |
+
+**兩個部署環境的設定都已靜態核對。** `docker-compose.prod.yml` 的路徑是 nginx 容器到 API。nginx 容器的 IP 在 docker 網段（`uniquelocal`）內，API 把 nginx 容器當成代理略過，因此取到 nginx 附加的真實 IP。`docker-compose.yml` 的路徑是主機 nginx 到 Caddy 再到 API，靠 `Caddyfile.local` 的 `trusted_proxies` 保留真實 IP。Daniel-7788 在 issue #197 回報已在 UAT 實測：修正後 API 記到真實 IP，偽造的 `X-Forwarded-For` 不會被採用。`add-login-brute-force-protection` 的任務 3.3 是同一項確認，在 `tasks.md` 中仍未勾選，這個 change 也還沒歸檔。
+
+**SEC-05 的修正一併修掉一個帳號列舉的問題。** 原本的 `login()` 先檢查帳號是否停用，再驗證密碼，不需要密碼就能分辨一個 email 是不是停用的帳號。`44582d1` 把停用檢查移到密碼驗證之後，email 不存在時也對假雜湊比對一次，讓回應時間一致。
+
+**SEC-05 的修正留下一個取捨，記為 SEC-06。** 帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入。`login-attempts.ts` 的註解記下這個取捨，規格沒有提到，因此獨立成一項。
+
+**SLA-01 的修正留下一個缺口，記為 SLA-05。** 兩個寫入點都以「工單關聯的對話」為前提，手動建立、沒有關聯對話的工單仍然永遠沒有首次回應時間。`case-first-response.test.ts` 的「同一位顧客、沒有關聯工單的另一段對話」案例確認這是刻意的範圍，CHANGELOG 也寫明「另案處理」。
+
+**連帶更新的內容。**
+
+- AUTH-01 的前置條件原本是「SEC-04 應先修」，改為「新端點要自己設定速率限制」。
+- AUTH-04 原本寫平台登入的速率限制可以透過 SEC-04 繞過。改為寫明平台登入只有 IP 限流，沒有帳號鎖定。
+- ANA-01 原本寫平均首次回應時間因為 SLA-01 永遠是空值，改為指向 SLA-05。
+
+**依 issue #197 更正 RBAC-01 的描述。** 原本寫工單、對話、標籤、短連結的路由「只驗身分」。`case.routes.ts` 與 `conversation.routes.ts` 其實檢查渠道可見範圍，只是不檢查權限碼；只驗身分的是 `tag.routes.ts` 與 `shortlink.routes.ts`。AUTH-05 引用 RBAC-01 的段落也一併更正。
+
+**RLS-05 由 P1 改為 P2。** issue #197 指出攻擊者要同時知道對方的 `channelId` 與 LINE uid。本次核對 `line-profile.routes.ts` 與 `line-profile.service.ts`，確認兩個前提都很難取得：LINE 渠道的 `channelId` 只出現在設定於 LINE 後台的 webhook 網址；widget 公開的是 WebChat 渠道的 `channelId`，拿來呼叫這個端點只會得到 502。LINE uid 依 provider 而不同。寫入的內容是 LINE 回傳的真實資料。
+
+**RLS-01 由 P1 改為 P2。** issue #197 指出正式環境的 `DATABASE_URL` 指向 `app_tenant`，查詢被 RLS 擋下，不會漏資料。本次核對 `canvas.webhook.ts` 與 `inbound-side-effects.ts`，確認進入 Canvas 的 `tenantId` 由進站管線解析、`executionId` 由租戶連線建立，安全面是 P2。功能面另外記在內文：`DATABASE_URL` 指向 `app_tenant` 時 Canvas 靜默失效。有租戶使用 Canvas 時應該回到 P1，正式環境有沒有啟用中的流程尚未查證。正式環境的 `DATABASE_URL` 不在 repo 內，本次無法驗證，依 #197 的回報記錄。
+
+**PLAN-08 由 P1 改為 P3。** 這一項的權限判斷是正確的：`requirePermission()` 確實套用方案天花板。問題只在角色與權限頁的勾選狀態與 403 的訊息沒有反映天花板，符合 P3 定義中的「介面與資料不一致」。issue #197 的查證提出同樣的建議。
+
 ## 2026-10-01：修正 RLS-06 與 TRIAL-01，新增 CASE-02
 
 依 change `fix-csat-intercept-and-trial-upgrade` 修正 P1 的第一批，兩項都從 `AUDIT.md` 移除：
