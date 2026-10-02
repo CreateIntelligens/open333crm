@@ -1073,3 +1073,15 @@ export async function updateCase(
 
   return updated;
 }
+
+/**
+ * 記錄工單的首次回應時間（AUDIT SLA-01）：客服第一次在工單關聯的對話送出訊息時呼叫。
+ * 只在尚未記錄、且回應時間不早於工單建立時才寫入（單一條件式 UPDATE，並發送出也只會寫一次）。
+ * 原本沒有任何寫入端，套了 SLA 的工單時間一到必定判定首次回應逾時。
+ */
+export async function markCaseFirstResponse(prisma: TenantDb, tenantId: string, caseId: string, respondedAt: Date): Promise<void> {
+  await prisma.case.updateMany({
+    where: { id: caseId, tenantId, firstResponseAt: null, createdAt: { lte: respondedAt } },
+    data: { firstResponseAt: respondedAt },
+  });
+}

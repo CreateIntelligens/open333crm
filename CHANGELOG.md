@@ -2,6 +2,13 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-02]
+
+### Fixed
+
+- **工單「首次回應逾時」假警報** — `Case.firstResponseAt` 原本沒有任何程式寫入，套了 SLA 的工單時間一到必定判定首次回應逾時，通知負責人與主管、寫入工單事件、觸發自動化，而且工單沒結案前每 24 小時再發一次；報表的平均首次回應時間也永遠是空的（AUDIT SLA-01，issue #197；UAT 已累積 74 筆相關事件）。現在客服在工單關聯的對話第一次送出訊息時寫入首次回應時間（只寫一次、不早於工單建立時間；AI 與系統自動回覆不算）。記錄失敗不會影響訊息送出。
+- **部署注意** — 既有工單以 `apps/api/src/scripts/backfill-case-first-response.ts` 補值（預設 dry-run，`--apply` 才寫入，可重複執行）：取工單建立後、關聯對話中最早一則客服訊息的時間。工單建立前客服已回覆、之後沒再回覆的工單補不到值，仍會判定逾時。
+
 ## [2026-10-01]
 
 ### Changed

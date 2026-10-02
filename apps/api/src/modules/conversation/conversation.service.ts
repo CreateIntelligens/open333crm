@@ -12,6 +12,7 @@ import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { notFound } from '../../shared/messages/resource.js';
+import { markCaseFirstResponse } from '../case/case.service.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -366,6 +367,17 @@ export async function sendMessage(
       unreadCount: 0,
     },
   });
+
+  // 對話關聯工單時，客服的第一則訊息即為首次回應（SLA 首次回應判斷依此欄位）。
+  // 記錄失敗不可擋住訊息送達：訊息已寫入，接下來還要推播與送到渠道
+  if (conversation.caseId) {
+    await markCaseFirstResponse(prisma, tenantId, conversation.caseId, now).catch((err: unknown) =>
+      logger.error('[Case] 記錄首次回應時間失敗', {
+        caseId: conversation.caseId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
 
   // Emit WebSocket event
   const wsPayload = {
