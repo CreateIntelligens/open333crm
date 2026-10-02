@@ -36,6 +36,11 @@ async function main() {
   );
   const candidates = await prisma.$queryRawUnsafe<Array<{ case_id: string; first_reply: Date }>>(FIRST_AGENT_REPLY);
   console.log(`工單共 ${total} 張，沒有首次回應時間 ${pending} 張，其中找得到客服回覆、可補值 ${candidates.length} 張`);
+  if (Number(total) === 0) {
+    // 以 app_tenant 等受 RLS 限制的帳號連線時，查詢會回 0 筆而不報錯
+    console.log('\n查到 0 張工單：若資料庫確實有工單，代表 DATABASE_URL 不是 owner／app_admin（受 RLS 限制），請改用 owner 連線');
+    return;
+  }
 
   if (!apply) {
     console.log('\n(dry-run) 加上 --apply 才會寫入');

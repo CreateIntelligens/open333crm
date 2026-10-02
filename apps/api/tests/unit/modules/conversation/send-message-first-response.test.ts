@@ -2,8 +2,10 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 
+const markCalls: unknown[][] = [];
 vi.mock('#src/modules/case/case.service.js', () => ({
-  markCaseFirstResponse: async () => {
+  markCaseFirstResponse: async (...args: unknown[]) => {
+    markCalls.push(args);
     throw new Error('db hiccup');
   },
 }));
@@ -26,5 +28,7 @@ test('markCaseFirstResponse 出錯：sendMessage 不中斷，照常推播訊息'
     },
   } as never;
   await sendMessage(prisma, io, 'c1', 'a1', 't1', { contentType: 'text', content: { text: 'hi' } });
+  assert.equal(markCalls.length, 1, '對話有關聯工單時要記錄首次回應');
+  assert.equal(markCalls[0]![2], 'case1');
   assert.ok(emitted.includes('message.new'), '訊息仍要推播');
 });

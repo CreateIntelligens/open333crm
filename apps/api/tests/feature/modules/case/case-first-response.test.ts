@@ -11,6 +11,7 @@ import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import { sendMessage } from '#src/modules/conversation/conversation.service.js';
+import { linkConversationToCase } from '#src/modules/case/case.service.js';
 
 loadEnvConfig();
 const prisma = new PrismaClient();
@@ -57,11 +58,36 @@ test('之後再送訊息：首次回應時間不變', async () => {
   assert.equal((await firstResponseOf(c.id))?.getTime(), first?.getTime());
 });
 
-test('沒有關聯工單的對話：送訊息不影響任何工單', async () => {
+test('同一位顧客、沒有關聯工單的另一段對話：送訊息不影響該顧客的工單', async () => {
   const { c } = await caseWithConversation();
   const conv = await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: channel.id, channelType: 'WEBCHAT' } });
   await sendMessage(db, io, conv.id, agent.id, T, { contentType: 'text', content: { text: '一般對話' } });
   assert.equal(await firstResponseOf(c.id), null);
+});
+
+test('回應時間早於工單建立：不寫入', async () => {
+  const { c, conv } = await caseWithConversation(new Date(Date.now() + 60 * 60_000));
+  await sendMessage(db, io, conv.id, agent.id, T, { contentType: 'text', content: { text: '工單建立前' } });
+  assert.equal(await firstResponseOf(c.id), null);
+});
+
+test('把已有客服回覆的對話掛到工單：補上工單建立後最早的客服回覆時間', async () => {
+  const caseCreated = new Date(Date.now() - 60 * 60_000);
+  const c = await prisma.case.create({
+    data: { tenantId: T, contactId: contact.id, channelId: channel.id, title: `CI 掛對話 ${stamp}`, slaPolicy: 'CI', createdAt: caseCreated },
+  });
+  const conv = await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: channel.id, channelType: 'WEBCHAT' } });
+  const at = (min: number) => new Date(caseCreated.getTime() + min * 60_000);
+  await prisma.message.createMany({
+    data: [
+      { conversationId: conv.id, direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: '工單建立前' }, createdAt: at(-5) },
+      { conversationId: conv.id, direction: 'OUTBOUND', senderType: 'BOT', contentType: 'text', content: { text: 'AI' }, createdAt: at(3) },
+      { conversationId: conv.id, direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: '客服' }, createdAt: at(10) },
+      { conversationId: conv.id, direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: '客服 2' }, createdAt: at(20) },
+    ],
+  });
+  await linkConversationToCase(db, io, c.id, conv.id, T, agent.id);
+  assert.equal((await firstResponseOf(c.id))?.getTime(), at(10).getTime());
 });
 
 afterAll(async () => {
