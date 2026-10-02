@@ -1,5 +1,6 @@
-## ADDED Requirements
-
+## Purpose
+定義客服收件匣的核心行為：即時訊息推播、對話列表與對話操作，以及對話、標籤、短連結路由的權限要求。
+## Requirements
 ### Requirement: Real-time WebSocket Broadcasting
 The system SHALL push new messages to connected frontend clients in real-time through the authoritative API bootstrap rooted at `apps/api/src/index.ts`.
 
@@ -157,3 +158,15 @@ The web inbox SHALL update its cached conversation list locally when `message.ne
 #### Scenario: Missing conversation cannot be built from socket payload
 - **WHEN** a socket event references a conversation that is not present in the cached list and the payload lacks the fields needed to render a full list item
 - **THEN** the web client revalidates `/conversations` through SWR as a fallback
+
+### Requirement: 對話、標籤、短連結路由依權限碼授權
+對話、標籤、短連結路由 SHALL 依 proposal 對照表檢查權限碼，缺少時回傳 HTTP 403；具備該權限碼（含其依賴的權限碼）時 SHALL 通過權限檢查。
+
+#### Scenario: 只能檢視的角色送訊息
+- **WHEN** 只有 `inbox.view` 的成員呼叫 `POST /conversations/:id/messages`
+- **THEN** 回傳 HTTP 403
+
+#### Scenario: 具備需要的權限碼
+- **WHEN** 成員只具備某條路由需要的權限碼（含依賴）
+- **THEN** 通過權限檢查（資料不存在時回 404 等，不回 403）
+
