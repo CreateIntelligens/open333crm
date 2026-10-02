@@ -51,21 +51,22 @@
 
 ## 合併
 
-系統有兩套合併實作，觸發方式與搬移的資料都不同：
+所有合併都經過同一個函式：`contact-merge.service.ts` 的 `mergeContacts()`。觸發來源有五種：
 
-| | 手動合併 | 登入時自動合併 |
+| 來源 | 觸發 | 人工確認 |
 | --- | --- | --- |
-| 觸發 | 客服在後台操作，`POST /contacts/merge` | 客人以 LINE 或 Facebook 登入並授權 email，同租戶已有另一個聯絡人使用同一個 email |
-| 程式 | `contact.service.ts` 的 `mergeContacts()` | `line-login.service.ts` 與 `fb-login.service.ts` 各有一份 `mergeContactIntoTarget()`，內容相同 |
-| 人工確認 | 有，前端先呼叫 `GET /contacts/merge-preview` 預覽 | 沒有 |
-| 被合併的聯絡人 | 封存（`isArchived`），`mergedIntoId` 指向主要聯絡人 | 硬刪除 |
-| 渠道身分 | 全部搬過去 | 只搬登入用的那一個，其他的隨聯絡人刪除 |
-| 對話、工單、標籤、屬性 | 搬過去 | 搬過去 |
-| 聯絡人關係 | 搬過去 | 不處理 |
-| 長期記憶、`IdentityMap` | 不處理 | 搬過去 |
-| 積分、活動提交 | 不處理，留在被封存的聯絡人 | 外鍵為 `RESTRICT`，來源有這兩種資料時整個合併失敗 |
+| `MANUAL` | 客服在後台操作，`POST /contacts/merge` | 有，前端先呼叫 `GET /contacts/merge-preview` 預覽 |
+| `SUGGESTION` | 管理員在 `/api/v1/identity` 核准合併建議 | 有 |
+| `LINE_LOGIN`、`FB_LOGIN` | 客人以 LINE 或 Facebook 登入並授權 email，同租戶已有另一個聯絡人使用同一個 email | 沒有 |
+| `BINDING_CODE` | 客人在另一個渠道送回跨渠道綁定代碼 | 客人自己確認 |
 
-手動合併會寫一筆 `contact.merge` 租戶稽核紀錄，只記兩個聯絡人的 ID。兩套實作的落差見 `../../system/AUDIT.md` 的 CONTACT-01。
+合併的結果不分來源：
+
+- 被合併的聯絡人改為封存（`isArchived`），`mergedIntoId` 指向主要聯絡人，不刪除。
+- 搬到主要聯絡人的資料：渠道身分、對話、工單、標籤、屬性、長期記憶、活動提交、積分、`IdentityMap`、點擊紀錄、互動流程執行、知識庫回饋、群發收件紀錄，以及聯絡人關係。主要聯絡人空白的基本欄位，以被合併者的值補上。
+- 每次合併寫一筆 `ContactMergeLog`，記錄搬了哪些資料。客服可以從 `GET /contacts/:id/merge-logs` 查看，以 `POST /contacts/merge-logs/:logId/revert` 解除合併，資料會搬回去。
+
+手動合併另外寫一筆 `contact.merge` 租戶稽核紀錄。
 
 **合併建議。** `packages/core/src/identity/` 設計了依電話號碼找出重複聯絡人、產生合併建議（`MergeSuggestion`）、再由人工在 `/api/v1/identity` 核准的流程。唯一會建立建議的函式 `detectPhoneDuplicates()` 沒有呼叫端，因此目前不會有任何建議產生，見 `../../system/AUDIT.md` 的 IDENT-01。
 
@@ -104,14 +105,13 @@
 
 標籤的路由（`/api/v1/tags`）讀取要 `tag.view`，建立、修改與刪除要 `tag.manage`。
 
-聯絡人的路由也不套用渠道可見範圍。只能看到某些渠道的成員，在聯絡人頁仍然看得到其他渠道的對話清單與最後一則訊息，見 `../../system/AUDIT.md` 的 RBAC-04。
+聯絡人的對話、工單與時間軸依渠道可見範圍過濾，清單與詳情也只回傳看得到的渠道身分。但聯絡人本身不過濾：只能看到某些渠道的成員，仍然看得到其他渠道聯絡人的姓名、電話與 email；合併也不檢查兩個聯絡人的渠道。見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 目前的限制
 
 | 限制 | 說明 |
 | --- | --- |
-| **兩套合併實作行為不一致** | 手動合併不搬積分；登入時自動合併會硬刪除聯絡人，遇到積分則失敗。詳見 `../../system/AUDIT.md` 的 CONTACT-01 |
-| **聯絡人頁不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
+| **聯絡人清單與合併不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 自動化貼標不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |
 | **LINE、Facebook 登入補 email 時不確認登入者** | 知道渠道身分 ID 的人可以寫入自己的 email，並觸發自動合併。詳見 `../../system/AUDIT.md` 的 IDENT-02 |
 | 合併建議沒有產生端 | 詳見 `../../system/AUDIT.md` 的 IDENT-01 |
