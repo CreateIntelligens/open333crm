@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義訊息範本的變數選擇器：提供可用變數清單的 API、範本編輯器中的變數挑選介面，以及插入變數後自動同步範本的變數清單。
+
+## Requirements
 
 ### Requirement: 可用變數清單 API
 系統 SHALL 提供 `GET /marketing/templates/available-variables` 端點，回傳依分類整理的可用變數清單，包含靜態變數（contact.*、case.*、storage.*）與該 tenant 的動態 contact attribute 變數（attribute.*）。

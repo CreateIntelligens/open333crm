@@ -1,3 +1,8 @@
+## Purpose
+定義租戶成員（客服帳號）的管理：建立成員、指派角色、成員自行修改密碼、管理員重設成員密碼，以及停用成員。
+
+## Requirements
+
 ### Requirement: Create Agent
 The API SHALL provide `POST /api/v1/agents` to create a new agent within the authenticated tenant. This endpoint SHALL be accessible only to agents with role `ADMIN` or `SUPERVISOR`. If the email already exists within the tenant, the API SHALL return HTTP 409.
 

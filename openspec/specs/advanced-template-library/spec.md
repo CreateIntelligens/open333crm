@@ -1,7 +1,10 @@
-## ADDED Requirements
+## Purpose
+定義進階範本庫：Email 拖拉式編輯器的資料模型、IM 互動訊息按鈕的觸發邏輯，以及 WhatsApp HSM 範本送審的待辦流程。
+
+## Requirements
 
 ### Requirement: Email 拖拉式編輯器資料模型
-系統必須能儲存與渲染基於 Block-based JSON 的 Email 模板。該模型必須能導出為 MJML 格式。
+系統 SHALL 能儲存與渲染基於 Block-based JSON 的 Email 模板。該模型必須能導出為 MJML 格式。
 
 #### Scenario: 渲染 Email 模板
 - **WHEN** 系統執行 Email 發送任務
@@ -15,7 +18,7 @@ LINE/FB 模板的按鈕必須支援「內建動作」。點擊按鈕除了開啟
 - **THEN** 系統立即在後台為該聯繫人加上 `interested_product` 標籤，並回覆下一則訊息
 
 ### Requirement: WhatsApp HSM 審核代辦
-系統必須提供與 Meta Graph API 的對接，自動提交 WhatsApp 模板進行審核。
+系統 SHALL 提供與 Meta Graph API 的對接，自動提交 WhatsApp 模板進行審核。
 
 #### Scenario: 提交審核
 - **WHEN** 管理員在後台完成 WhatsApp 模板編輯並點擊「提交審核」

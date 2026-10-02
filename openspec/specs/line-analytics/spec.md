@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 LINE 官方帳號的數據：每日洞察數據同步、每次群發的送達統計，以及資料保存期限的保護。
+
+## Requirements
 
 ### Requirement: Daily Insight sync
 The system SHALL synchronize LINE Insight data daily into the local `InsightSnapshot` table.

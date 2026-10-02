@@ -1,3 +1,8 @@
+## Purpose
+定義後端的結構化日誌：日誌輸出方式由環境變數設定、每日輪替並壓縮，以及後端程式一律使用 logger 取代 console。
+
+## Requirements
+
 ### Requirement: Configurable log transport via environment variables
 The logger SHALL read `LOG_TRANSPORT`, `LOG_DIR`, and `LOG_MAX_FILES` from the environment at startup to determine where logs are written.
 

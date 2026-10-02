@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 AI 長期記憶：依相似度擷取顧客過往的長期記憶，以及把對話摘要後向量化保存，供日後回覆參考。
+
+## Requirements
 
 ### Requirement: Similarity-triggered LTM Retrieval
 The system SHALL implement an on-demand retrieval strategy for contact-specific conversation history, triggering the lookup only when the current query's semantic similarity to past topics exceeds a configurable threshold (default 0.82).

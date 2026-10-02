@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義瀏覽器端的公開執行設定：前端與嵌入式元件的公開端點都由同一個 API 設定推導，並在建置時寫入前端程式。
+
+## Requirements
 
 ### Requirement: Browser runtimes derive public endpoints from one API setting
 The system SHALL derive browser-facing API and realtime endpoints from a single public API setting. `NEXT_PUBLIC_API_URL` MAY be provided as an absolute origin, an absolute `/api` base, or a relative `/api` base, and the runtime helper SHALL normalize it to an API base URL ending in `/api/v1` plus a corresponding realtime origin.

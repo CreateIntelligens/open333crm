@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義短連結的轉址策略：依 User-Agent 判斷來源，對爬蟲回 OG 預覽、對外部瀏覽器零點擊轉址、在 LINE 內經 LIFF 轉址，並記錄唯一一筆點擊與對應的聯絡人。
+
+## Requirements
 
 ### Requirement: Source detection by User-Agent selects a redirect strategy
 The system SHALL classify each `GET /s/:slug` request into a `SourceType` (`BOT`, `EXTERNAL_BROWSER`, `LINE_WEBVIEW`, or `FB_WEBVIEW`) by inspecting the `User-Agent`, and dispatch to the matching redirect strategy. Detection SHALL evaluate `BOT` first, then `LINE_WEBVIEW`, then `FB_WEBVIEW`, defaulting to `EXTERNAL_BROWSER`. The bot match list SHALL be a configurable array defaulting to at least `line-poker` and `facebookexternalhit` plus common social crawlers (`Twitterbot`, `Slackbot`, `Discordbot`, `TelegramBot`, `WhatsApp`, `Googlebot`, `bingbot`).

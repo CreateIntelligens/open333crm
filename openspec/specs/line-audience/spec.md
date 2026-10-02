@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+定義 LINE 受眾：受眾群組管理、依點擊與曝光建立的受眾，以及分眾群發（narrowcast）的進度追蹤。
+
+## Requirements
 
 ### Requirement: Audience Group management
 The system SHALL manage LINE Audience Groups to enable Narrowcast targeting.
