@@ -1,6 +1,9 @@
-/** 瀏覽器打得開的網址；排除 `line-content:<id>` 這類後端佔位值與 javascript: 等危險 scheme */
+/** 可以直接顯示的 data URI：只限點陣圖。svg、html 等 data URI 在點開時會執行 */
+const SAFE_DATA_IMAGE = /^data:image\/(png|jpeg|gif|webp)[;,]/i;
+
+/** 瀏覽器打得開的網址；排除 `line-content:<id>` 這類後端佔位值、javascript: 與不安全的 data: */
 function isOpenableUrl(value: unknown): value is string {
-  return typeof value === 'string' && /^(https?:|data:|\/)/i.test(value);
+  return typeof value === 'string' && (/^(https?:|\/)/i.test(value) || SAFE_DATA_IMAGE.test(value));
 }
 
 /**
@@ -15,7 +18,7 @@ export function extractMediaUrl(content: unknown): string | null {
     if (isOpenableUrl(obj.mediaUrl)) return obj.mediaUrl;
   }
   const text = typeof content === 'string' ? content : (content as { text?: unknown } | null)?.text;
-  if (typeof text === 'string' && (text.startsWith('data:image') || /^https?:/i.test(text))) return text;
+  if (typeof text === 'string' && (SAFE_DATA_IMAGE.test(text) || /^https?:/i.test(text))) return text;
   return null;
 }
 
@@ -51,6 +54,8 @@ export function describeMessageMedia(contentType: string, content: unknown): Mes
     return typeof obj.mediaError === 'string' && obj.mediaError ? { kind: 'text', error: obj.mediaError } : { kind: 'text' };
   }
   if (contentType === 'file') {
+    // 檔案連結會被點開或下載，不接受 data: 網址
+    if (url.startsWith('data:')) return { kind: 'text' };
     const fileName = typeof obj.fileName === 'string' && obj.fileName ? obj.fileName : '檔案';
     return { kind: 'file', url, fileName, sizeLabel: formatFileSize(obj.fileSize) };
   }

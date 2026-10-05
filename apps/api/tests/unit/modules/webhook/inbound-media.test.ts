@@ -81,3 +81,10 @@ test('下載失敗：原因寫進訊息並推送給收件匣', async () => {
   await new Promise((r) => setTimeout(r, 0));
   assert.ok(emitted.includes('message.new'), '要推送更新，收件匣才看得到失敗');
 });
+
+test('訊息內容是字串時：包成 { text } 再寫入，不展開成逐字元的鍵', async () => {
+  const { updated } = run(async () => {
+    throw new Error('LINE 內容下載失敗（404）');
+  }, 'hi' as never);
+  assert.deepEqual(await updated, { text: 'hi', mediaError: 'LINE 內容下載失敗（404）' });
+});

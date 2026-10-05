@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Inbox Shows Inbound Media
-The inbox message bubble SHALL show image, video, audio and file messages with their media. It SHALL use only a URL that a browser can open (`http:`, `https:`, `data:` or a path that starts with `/`), and SHALL try `content.url` before `content.mediaUrl`, in the same order as `getMediaUrl` in `@open333crm/shared`. When no such URL exists, it SHALL show the message text, followed by `content.mediaError` when the download failed. The inbox SHALL refetch messages after the last `message.new` event of a burst, so that the event sent when a download finishes is not dropped.
+The inbox message bubble SHALL show image, video, audio and file messages with their media. It SHALL use only a URL that a browser can open safely: `http:`, `https:`, a path that starts with `/`, or a `data:` URI of a PNG, JPEG, GIF or WebP image. A file link SHALL NOT use a `data:` URI. and SHALL try `content.url` before `content.mediaUrl`, in the same order as `getMediaUrl` in `@open333crm/shared`. When no such URL exists, it SHALL show the message text, followed by `content.mediaError` when the download failed. The inbox SHALL refetch messages after the last `message.new` event of a burst, so that the event sent when a download finishes is not dropped.
 
 #### Scenario: Audio message
 - **WHEN** an audio message has a Storage URL
@@ -26,3 +26,7 @@ The inbox message bubble SHALL show image, video, audio and file messages with t
 #### Scenario: Download finishes right after the message arrives
 - **WHEN** two `message.new` events for the conversation arrive 300 ms apart
 - **THEN** the inbox refetches messages once immediately and once more after 500 ms
+
+#### Scenario: Unsafe data URI
+- **WHEN** a message has `content.url`「data:image/svg+xml,<svg>」or「data:text/html,<p>」
+- **THEN** the bubble shows the message text and no media

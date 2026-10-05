@@ -68,3 +68,15 @@ test('檔案大小格式', () => {
 test('非媒體類型一律顯示文字', () => {
   assert.deepEqual(describeMessageMedia('text', { text: 'https://example.com' }), { kind: 'text' });
 });
+
+/* PR #223 審查：data: 網址原本全部接受，data:text/html、svg 會在點開時執行 */
+test('Unsafe data URI：data: 只接受 png、jpeg、gif、webp 圖片', () => {
+  assert.equal(extractMediaUrl({ url: 'data:image/png;base64,AAA' }), 'data:image/png;base64,AAA');
+  assert.equal(extractMediaUrl({ url: 'data:text/html,<script>alert(1)</script>' }), null);
+  assert.equal(extractMediaUrl({ url: 'data:image/svg+xml,<svg onload=alert(1)>' }), null);
+  assert.equal(extractMediaUrl({ text: 'data:image/svg+xml;base64,AAA' }), null);
+});
+
+test('檔案連結不接受 data: 網址', () => {
+  assert.deepEqual(describeMessageMedia('file', { url: 'data:image/png;base64,AAA', fileName: 'a.png' }), { kind: 'text' });
+});

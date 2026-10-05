@@ -22,6 +22,12 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
 
   const { plugin, content, contentType, credentials, tenantId, conversation, message, prisma, io } = ctx;
 
+  // content 照理是物件；舊資料若是字串，展開會變成逐字元的鍵，改包成 { text }
+  const baseContent: Record<string, unknown> =
+    typeof message.content === 'object' && message.content !== null
+      ? (message.content as Record<string, unknown>)
+      : { text: String(message.content ?? '') };
+
   const writeContent = async (updatedContent: Record<string, unknown>) => {
     await prisma.message.update({
       where: { id: message.id },
@@ -54,7 +60,7 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
       // LINE 的內容過期後也再也拿不到。外掛拋出的訊息是給客服看的中文原因。
       logger.error('[Webhook] Media resolution error (non-blocking):', err);
       const reason = err instanceof Error && /[\u4e00-\u9fff]/.test(err.message) ? err.message : '內容下載失敗';
-      await writeContent({ ...(message.content as Record<string, unknown>), mediaError: reason }).catch((writeErr) =>
+      await writeContent({ ...baseContent, mediaError: reason }).catch((writeErr) =>
         logger.error('[Webhook] Failed to record media error:', writeErr),
       );
       return;
@@ -63,7 +69,7 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
     try {
       // mediaUrl 也寫入儲存後的網址：前端與送出路徑都會讀它（issue #206）
       await writeContent({
-        ...(message.content as Record<string, unknown>),
+        ...baseContent,
         url: stored.url,
         mediaUrl: stored.url,
         storageKey: stored.storageKey,

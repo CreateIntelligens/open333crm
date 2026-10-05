@@ -23,9 +23,14 @@
 - [x] 4.6 實作 `describeMessageMedia()`、`createTrailingThrottle()`；`MessageBubble`、`useMessages` 改用它們
 - [x] 4.7 修正沒有呼叫端的 `worker-media-download.ts` 的誤導註解
 
-## 5. 完成檢查
+## 5. PR #223 bot 審查
 
-- [x] 5.1 `pnpm test` 通過；`packages/channel-plugins`、`apps/api`、`apps/web` 的 `tsc` 通過
-- [x] 5.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
-- [x] 5.3 `CHANGELOG.md` 新增條目；更新描述 LINE 進站媒體的功能文件
-- [x] 5.4 `openspec validate fix-line-audio-file-messages --strict` 通過
+- [x] 5.1 測試 `message-media.test.ts`：Unsafe data URI、檔案連結不接受 data:；`inbound-media.test.ts`：內容是字串時包成 `{ text }`
+- [x] 5.2 實作 data: 只接受點陣圖、檔案連結排除 data:；`resolveInboundMediaAsync()` 正規化字串內容
+
+## 6. 完成檢查
+
+- [x] 6.1 `pnpm test` 通過；`packages/channel-plugins`、`apps/api`、`apps/web` 的 `tsc` 通過
+- [x] 6.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
+- [x] 6.3 `CHANGELOG.md` 新增條目；更新描述 LINE 進站媒體的功能文件
+- [x] 6.4 `openspec validate fix-line-audio-file-messages --strict` 通過
