@@ -5,16 +5,18 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { Loader2, Plus, Zap } from 'lucide-react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAutomationRules } from '@/hooks/useAutomation';
 import { findUnsupportedAutomationActions } from '@open333crm/automation';
+import { findWorkerSkipErrors, ruleEventName } from '@/lib/automation/rule-actions';
 
 export default function AutomationPage() {
   const router = useRouter();
-  const { rules, isLoading, mutate } = useAutomationRules();
+  const { rules, isLoading, error, mutate } = useAutomationRules();
 
   const toggleActive = async (
     e: React.MouseEvent,
@@ -48,6 +50,14 @@ export default function AutomationPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : error && rules.length === 0 ? (
+          // 任一頁載入失敗時 rules 為空；不能顯示「沒有自動化規則」，管理員會以為規則全被刪了
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-sm text-destructive">
+            <p>{getApiErrorMessage(error, '載入自動化規則失敗，請稍後重試')}</p>
+            <Button variant="outline" size="sm" onClick={() => mutate()}>
+              重新載入
+            </Button>
           </div>
         ) : rules.length === 0 ? (
           <EmptyState
@@ -100,11 +110,22 @@ export default function AutomationPage() {
                     {/* Name */}
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium">{rule.name}</p>
-                      {(rule.trigger?.type || rule.triggerEvent) && (
-                        <Badge variant="secondary" className="mt-1 text-xs">
-                          {rule.trigger?.type || rule.triggerEvent}
-                        </Badge>
-                      )}
+                      <Badge variant="secondary" className="mt-1 text-xs">
+                        {ruleEventName(rule)}
+                      </Badge>
+                      {/* workers 驗證失敗會整條略過、只寫 log；列在這裡管理員才看得到 */}
+                      {(() => {
+                        const errors = findWorkerSkipErrors(rule);
+                        return errors.length > 0 ? (
+                          <Badge
+                            variant="destructive"
+                            className="ml-1 mt-1 text-xs"
+                            title={errors.join('\n')}
+                          >
+                            規則不會執行
+                          </Badge>
+                        ) : null;
+                      })()}
                       {/* AUDIT AUTO-01：含系統尚未支援自動執行的動作，這些動作命中時不會執行 */}
                       {(() => {
                         const unsupported = findUnsupportedAutomationActions(rule.actions);

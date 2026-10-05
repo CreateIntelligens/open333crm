@@ -30,6 +30,10 @@
 
 `packages/automation/src/contracts/` 定義了每個事件提供哪些資料（`requires`），以及每個動作需要哪些資料。建立與更新規則時，`validateRuleContract()` 依此檢查：事件不提供聯絡人時，就不能選需要聯絡人的動作。
 
+規則列表與關鍵字回覆列表顯示全部規則：`GET /api/v1/automation/rules` 每頁最多 100 條，依 priority、createdAt、id 排序，前端依 `meta.totalPages` 逐頁取回（`apps/web/src/lib/fetch-all-pages.ts`）。2026-10-05 之前規則列表只取第一頁的 20 條、關鍵字回覆只取 100 條，之後的規則在列表上看不到。任一頁載入失敗時，列表顯示錯誤，不顯示「沒有自動化規則」。
+
+**workers 會整條略過的規則。** workers 執行前以 `allowUnsupportedActions` 驗證契約，失敗就整條略過、只寫 log。規則列表用同樣的驗證，在這類規則旁標示「規則不會執行」，滑過可看錯誤（`findWorkerSkipErrors`）。
+
 ## 規則怎麼被執行
 
 1. 業務模組在 API 行程發布事件，例如 `case.created`。
@@ -84,6 +88,10 @@
 | `llm_reply` LLM 智能回覆 | **否** | 同上 |
 
 未實作的動作列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`。新增或修改規則時，API 拒絕含這些動作的規則。2026-10-02 之前建立的規則若含這些動作，仍然會執行其他動作，只略過這些動作；規則列表與編輯頁會標示「含未支援的動作」。見 `../../system/AUDIT.md` 的 AUTO-01。
+
+**編輯頁載入時移除契約外的動作。** 編輯既有規則時，編輯器依規則的觸發事件（`trigger.type`，沒有時用 `eventType`），移除契約沒有提供的所有動作：尚未支援的、不適用於這個事件的、契約從來沒有的舊動作（例如 UAT 舊規則的 `auto_assign`），以及格式錯誤的項目。編輯頁分兩類列出被移除的動作：尚未支援的動作只有自己不執行；其他動作會讓整條規則不執行，儲存後才恢復。改了觸發事件後不再顯示。實作在 `apps/web/src/lib/automation/rule-actions.ts` 的 `splitRuleActions`。
+
+**驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 2 個動作「auto_assign」不適用於「收到訊息」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約沒有的欄位或動作沿用原始代碼。
 
 **`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標後，workers 經由 Redis 的 `domain:event` 頻道把 `contact.tagged` 送回 API 行程，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，用來避免無限迴圈。
 

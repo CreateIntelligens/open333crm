@@ -15,13 +15,12 @@ import Link from 'next/link';
 import type { Field, RuleGroupType, ValueEditorType } from 'react-querybuilder';
 import {
   AUTOMATION_EVENT_DEFINITIONS,
-  findUnsupportedAutomationActions,
   getAutomationActionOptionsForEvent,
   getAutomationFieldOptionsForEvent,
   type AutomationActionDefinition,
 } from '@open333crm/automation';
 import api from '@/lib/api';
-import { toEditorActions } from '@/lib/automation/rule-actions';
+import { ruleEventName, splitRuleActions, type DroppedAction } from '@/lib/automation/rule-actions';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
 import { useAutomationRule } from '@/hooks/useAutomation';
 import { Topbar } from '@/components/layout/Topbar';
@@ -89,6 +88,29 @@ const DEFAULT_FORM: RuleForm = {
   matchMode: 'any',
 };
 
+function DroppedActionsNotice({ dropped }: { dropped: DroppedAction[] }) {
+  const skipsRule = dropped.filter((a) => a.skipsRule);
+  const unsupported = dropped.filter((a) => !a.skipsRule);
+  const names = (list: DroppedAction[]) => list.map((a) => `「${a.label}」`).join('、');
+  if (dropped.length === 0) return null;
+  return (
+    <div className="mb-3 space-y-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      {skipsRule.length > 0 && (
+        <p>
+          此規則含有不適用於這個觸發事件的動作：{names(skipsRule)}。
+          因此目前整條規則都不會執行。編輯器已移除這些動作，儲存後規則就會恢復執行。
+        </p>
+      )}
+      {unsupported.length > 0 && (
+        <p>
+          此規則含有系統尚未支援自動執行的動作：{names(unsupported)}。
+          這些動作目前不會執行{skipsRule.length === 0 && '，其他動作照常執行'}；編輯器已移除，儲存時會從規則中刪除。
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ---- page component ----
 
 export default function AutomationRuleDetailPage() {
@@ -99,7 +121,11 @@ export default function AutomationRuleDetailPage() {
 
   // SWR for existing rules
   const { rule, isLoading, mutate } = useAutomationRule(isNew ? null : ruleId);
-  const unsupportedActions = useMemo(() => findUnsupportedAutomationActions(rule?.actions), [rule]);
+  // 載入時依規則存的觸發事件拆出可編輯的動作與被移除的動作（見 splitRuleActions）
+  const loadedActions = useMemo(
+    () => (rule ? splitRuleActions(rule.actions, ruleEventName(rule)) : null),
+    [rule],
+  );
 
   // Local form state
   const [form, setForm] = useState<RuleForm>(DEFAULT_FORM);
@@ -140,11 +166,11 @@ export default function AutomationRuleDetailPage() {
 
   // Hydrate form from SWR data
   useEffect(() => {
-    if (!rule) return;
+    if (!rule || !loadedActions) return;
 
     // Read trigger data — backend stores trigger as { type, keywords?, match_mode? }
     const trigger = rule.trigger as { type?: string; keywords?: string[]; match_mode?: string } | undefined;
-    const triggerType = trigger?.type || rule.triggerEvent || 'message.received';
+    const triggerType = ruleEventName(rule);
 
     setForm({
       name: rule.name,
@@ -166,9 +192,9 @@ export default function AutomationRuleDetailPage() {
     } else {
       setQuery(DEFAULT_QUERY);
     }
-    // 後端存 { type, params }、編輯器用 { type, payload }；同時濾掉 workers 尚未支援的動作（AUDIT AUTO-01）
-    setActions(toEditorActions(rule.actions));
-  }, [rule]);
+    // 後端存 { type, params }、編輯器用 { type, payload }；同時濾掉這個觸發事件的契約沒有提供的動作
+    setActions(loadedActions.actions);
+  }, [rule, loadedActions]);
 
   // ---- handlers ----
 
@@ -184,11 +210,6 @@ export default function AutomationRuleDetailPage() {
     setQuery(DEFAULT_QUERY);
     setActions([]);
   };
-
-  useEffect(() => {
-    const allowedTypes = new Set(actionDefinitions.map((action) => action.type));
-    setActions((current) => current.filter((action) => allowedTypes.has(action.type)));
-  }, [actionDefinitions]);
 
   const addKeyword = () => {
     const kw = newKeyword.trim();
@@ -482,14 +503,10 @@ export default function AutomationRuleDetailPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 定義當上述條件滿足時要執行的動作。動作將依序執行。
               </p>
-              {/* 既有規則含系統尚未支援自動執行的動作（AUDIT AUTO-01）：編輯器已不提供、也存不進去，
-                  這裡要明講，否則動作從畫面上消失、儲存後被移除，管理員不會發現 */}
-              {unsupportedActions.length > 0 && (
-                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  此規則含有系統尚未支援自動執行的動作：
-                  {unsupportedActions.map((a) => `「${a.label}」`).join('、')}。
-                  這些動作目前不會執行，編輯器已不提供；儲存時會從規則中移除，其他動作照常執行。
-                </div>
+              {/* 載入時被移除的動作要明講，否則動作從畫面上消失、儲存後被刪除，管理員不會發現。
+                  改了觸發事件後動作已清空，提示講的是原本的事件，不再顯示 */}
+              {rule && loadedActions && form.triggerType === ruleEventName(rule) && (
+                <DroppedActionsNotice dropped={loadedActions.dropped} />
               )}
               <ActionList
                 actions={actions}

@@ -46,7 +46,7 @@ async function testValidationRejectsIncompatibleFacts() {
     actions: [{ type: 'notify', params: { message: 'case created' } }],
   });
   assert.equal(invalidCaseRule.valid, false);
-  assert.ok(invalidCaseRule.errors.some((error) => error.includes('message.text')));
+  assert.deepEqual(invalidCaseRule.errors, ['第 1 個條件的欄位「訊息內容」不適用於「工單建立」觸發']);
 
   const invalidMessageRule = validateAutomationRuleContract({
     eventName: AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED,
@@ -56,7 +56,7 @@ async function testValidationRejectsIncompatibleFacts() {
     actions: [{ type: 'notify', params: { message: 'message received' } }],
   });
   assert.equal(invalidMessageRule.valid, false);
-  assert.ok(invalidMessageRule.errors.some((error) => error.includes('case.priority')));
+  assert.deepEqual(invalidMessageRule.errors, ['第 1 個條件的欄位「案件優先級」不適用於「收到訊息」觸發']);
 }
 
 async function testValidationRejectsIncompatibleActions() {
@@ -69,7 +69,33 @@ async function testValidationRejectsIncompatibleActions() {
   });
 
   assert.equal(invalid.valid, false);
-  assert.ok(invalid.errors.some((error) => error.includes('send_message')));
+  assert.deepEqual(invalid.errors, ['第 1 個動作「傳送訊息」不適用於「工單關閉」觸發']);
+}
+
+/** 錯誤訊息原本是英文技術訊息（actions[1].type is not allowed for message.received: auto_assign），管理員看不懂 */
+async function testValidationErrorUsesChineseLabels() {
+  const result = validateAutomationRuleContract({
+    eventName: AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED,
+    conditions: {
+      all: [
+        { fact: 'case.open.count', operator: 'equal', value: 0 },
+        { fact: 'message.text', operator: 'contains' },
+      ],
+    },
+    actions: [
+      { type: 'create_case', params: { title: '一般問題' } },
+      { type: 'auto_assign', params: {} },
+      { type: 'add_tag', params: {} },
+    ],
+  });
+  assert.deepEqual(result.errors, [
+    '第 2 個條件「訊息內容」使用「包含」時必須填寫值',
+    '第 2 個動作「auto_assign」不適用於「收到訊息」觸發',
+    '第 3 個動作「新增標籤」必須填寫「標籤名稱」',
+  ]);
+  for (const error of result.errors) {
+    assert.doesNotMatch(error.replace('auto_assign', ''), /[A-Za-z]/, error);
+  }
 }
 
 async function testApiCreateRuleRejectsInvalidContractBeforeWrite() {
@@ -120,5 +146,6 @@ test('composer output by event', testComposerOutputByEvent);
 test('resolver default exclusion', testResolverDefaultExclusion);
 test('validation rejects incompatible facts', testValidationRejectsIncompatibleFacts);
 test('validation rejects incompatible actions', testValidationRejectsIncompatibleActions);
+test('validation error uses chinese labels', testValidationErrorUsesChineseLabels);
 test('api create rule rejects invalid contract before write', testApiCreateRuleRejectsInvalidContractBeforeWrite);
 test('frontend uses composer metadata', testFrontendUsesComposerMetadata);
