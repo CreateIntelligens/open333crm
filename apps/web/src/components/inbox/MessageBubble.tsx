@@ -3,7 +3,8 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Bot, ExternalLink } from 'lucide-react';
+import { Bot, ExternalLink, FileText } from 'lucide-react';
+import { describeMessageMedia } from '@/lib/inbox/message-media';
 
 /** 把 contentType 講成人話，用在送出失敗的提示裡（「這則影片沒有送出」）。 */
 function describeContentType(contentType: string): string {
@@ -33,18 +34,6 @@ function extractText(content: string | { text?: string } | unknown): string {
   // 物件但沒有 text（如 IG 貼圖/互動等 unknown 型別），避免顯示 [object Object]
   if (typeof content === 'object' && content !== null) return '[不支援的訊息類型]';
   return String(content ?? '');
-}
-
-function extractMediaUrl(content: string | { url?: string; mediaUrl?: string; text?: string } | unknown): string | null {
-  if (typeof content === 'object' && content !== null) {
-    const obj = content as Record<string, unknown>;
-    // 後端各 plugin inbound 圖片統一存 mediaUrl；url 為相容舊資料
-    if (typeof obj.mediaUrl === 'string' && obj.mediaUrl) return obj.mediaUrl;
-    if (typeof obj.url === 'string' && obj.url) return obj.url;
-  }
-  const text = extractText(content);
-  if (text.startsWith('data:image') || text.startsWith('http')) return text;
-  return null;
 }
 
 interface MessageBubbleProps {
@@ -179,38 +168,49 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
 
         {/* Content */}
-        {message.contentType === 'image' ? (
-          (() => {
-            const url = extractMediaUrl(message.content);
-            return url ? (
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={url}
-                  alt="Image message"
-                  className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                />
-              </a>
-            ) : (
-              <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
-            );
-          })()
-        ) : message.contentType === 'video' ? (
-          (() => {
-            const url = extractMediaUrl(message.content);
-            return url ? (
-              <video
-                src={url}
-                controls
-                className="max-w-full rounded-lg"
-                style={{ maxHeight: '320px' }}
-              />
-            ) : (
-              <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
-            );
-          })()
-        ) : (
-          <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
-        )}
+        {(() => {
+          const media = describeMessageMedia(message.contentType, message.content);
+          switch (media.kind) {
+            case 'image':
+              return (
+                <a href={media.url} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={media.url}
+                    alt="Image message"
+                    className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  />
+                </a>
+              );
+            case 'video':
+              return (
+                <video src={media.url} controls className="max-w-full rounded-lg" style={{ maxHeight: '320px' }} />
+              );
+            case 'audio':
+              return <audio src={media.url} controls className="max-w-full" />;
+            case 'file':
+              return (
+                <a
+                  href={media.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={media.fileName}
+                  className="flex items-center gap-2 text-sm underline-offset-2 hover:underline"
+                >
+                  <FileText className="h-4 w-4 shrink-0" />
+                  <span className="break-all">{media.fileName}</span>
+                  {media.sizeLabel && <span className="shrink-0 text-xs opacity-70">{media.sizeLabel}</span>}
+                </a>
+              );
+            default:
+              return (
+                <>
+                  <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
+                  {/* 媒體下載失敗要看得到，否則客服以為還在下載 */}
+                  {media.error && <p className="mt-1 text-xs text-destructive">{media.error}</p>}
+                </>
+              );
+          }
+        })()}
 
         {/* Bot extras: confidence + trigger type */}
         {isBot && (confidence !== null || triggerType) && (

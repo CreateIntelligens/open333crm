@@ -1,6 +1,7 @@
 // worker-media-download.ts — Task 3.2
-// BullMQ worker that downloads LINE media content and uploads to Storage Layer
-// Triggered by LinePlugin.parseWebhook() for image/video/audio/file messages
+// ⚠️ 沒有任何檔案 import 這支 worker（AUDIT PKG-06），不要接線或修這裡。
+// LINE 進站媒體實際由 LinePlugin.resolveInboundMedia() 下載，
+// 在 apps/api 的 inbound-side-effects.ts resolveInboundMediaAsync() 非同步執行（主規格 line-webhook-events）。
 
 import { Worker, Queue } from 'bullmq';
 import { redis } from '@open333crm/core';

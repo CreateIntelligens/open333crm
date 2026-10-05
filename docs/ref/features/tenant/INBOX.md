@@ -84,6 +84,7 @@
 - **客服回覆不會改變對話狀態。** 對話是 `BOT_HANDLED` 時客服直接回覆，機器人仍會繼續回應客人的下一則訊息。要讓機器人停下來，必須先接手。
 - **客服回覆不會指派對話。** 回覆的人不會自動成為負責人。
 - **客服回覆在 LINE 上用 push。** `sendMessage()` 沒有帶 reply token，LINE 外掛以 push 送出，會計入 LINE 官方帳號的訊息額度。機器人的回覆則在 reply token 有效期間內優先用 reply，由 `selectSafeLineStrategy()` 判斷。
+- **收到的媒體怎麼顯示。** 訊息泡泡顯示圖片、影片、語音播放器與檔案下載連結（檔名與大小），只採用瀏覽器打得開的網址（`apps/web/src/lib/inbox/message-media.ts`）。媒體還沒下載完成時顯示文字，例如「[語音]」「[檔案] 報價單.pdf」；下載失敗時在文字下方顯示原因（`content.mediaError`），例如「檔案超過 25 MB，未下載」。收到 `message.new` 後重新抓訊息，500 ms 內的多個事件合併，間隔結束後補抓一次，下載完成的通知不會被丟掉。2026-10-05 之前 LINE 的語音與檔案不會下載（issue #206），LINE 的圖片與影片也因為讀到 `line-content:` 佔位網址而顯示不出來。
 - **媒體有類型與大小限制。** 圖片限 PNG 與 JPEG，影片限 MP4 與 QuickTime，上限寫在 `conversation.routes.ts` 的 `SEND_IMAGE_CONFIG` 與 `SEND_VIDEO_CONFIG`。只支援 LINE、Facebook 與 WebChat，其他渠道回 501。
 - **文字內容會先驗證。** `validateOutboundMessage()` 擋掉空內容與不合法的 `contentType`，避免送一則空訊息給客人。
 

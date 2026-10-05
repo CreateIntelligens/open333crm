@@ -1,9 +1,10 @@
 'use client';
 
 import useSWR from 'swr';
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/providers/SocketProvider';
+import { createTrailingThrottle } from '@/lib/trailing-throttle';
 
 interface MessageFilters {
   page?: number;
@@ -23,8 +24,6 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
   const [hasMore, setHasMore] = useState(true);
   // Tracks the next page to fetch when loading older messages (page=1 is newest with order=desc)
   const olderPageRef = useRef(1);
-  // Deduplicates rapid mutate calls (e.g. sendMessage + socket message.new firing together)
-  const lastMutateRef = useRef(0);
 
   const params = new URLSearchParams();
   params.set('page', String(page));
@@ -37,12 +36,12 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
 
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);
 
-  const debouncedMutate = useCallback(() => {
-    const now = Date.now();
-    if (now - lastMutateRef.current < 500) return;
-    lastMutateRef.current = now;
-    mutate();
-  }, [mutate]);
+  // 合併短時間內的多次重新抓取（例如 sendMessage 與 socket message.new 同時發生）。
+  // 間隔內的最後一次不能丟：媒體下載完成的 message.new 常在 500 ms 內抵達（issue #206）
+  const mutateRef = useRef(mutate);
+  mutateRef.current = mutate;
+  const debouncedMutate = useMemo(() => createTrailingThrottle(() => mutateRef.current(), 500), []);
+  useEffect(() => () => debouncedMutate.cancel(), [debouncedMutate]);
 
   // Reset older messages when conversation changes
   useEffect(() => {

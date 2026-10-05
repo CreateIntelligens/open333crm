@@ -249,6 +249,31 @@ export function buildLineMessage(contentType: string, content: Record<string, un
 // LinePlugin
 // ─────────────────────────────────────────────────────────────────
 
+/** LINE 進站媒體下載上限 */
+const LINE_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+const MEDIA_TOO_LARGE_MESSAGE = '檔案超過 25 MB，未下載';
+
+/**
+ * 存檔用的副檔名。檔案沿用客人的副檔名（只取英數），否則儲存網址沒有副檔名，
+ * 跨網域時 `<a download>` 無效，客服下載到的檔案無法開啟。
+ */
+function mediaExtension(contentType: string, fileName: unknown): string {
+  const fixed: Record<string, string> = { image: '.jpg', video: '.mp4', audio: '.m4a' };
+  if (fixed[contentType]) return fixed[contentType];
+  const match = typeof fileName === 'string' ? /\.([A-Za-z0-9]{1,10})$/.exec(fileName) : null;
+  return match ? `.${match[1]!.toLowerCase()}` : '';
+}
+
+/**
+ * 存進公開儲存空間的 MIME。客人傳的檔案內容不受控：html、svg 若照原 MIME 存，
+ * 客服點開時會在儲存網域執行。只保留圖片（不含 svg）、影片、語音，其他一律下載。
+ */
+function safeStoredMime(served: string | null): string {
+  const mime = (served ?? '').split(';')[0]!.trim().toLowerCase();
+  if (/^(image\/(jpeg|png|gif|webp)|video\/[\w.+-]+|audio\/[\w.+-]+)$/.test(mime)) return mime;
+  return 'application/octet-stream';
+}
+
 export class LinePlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.LINE;
 
@@ -292,12 +317,30 @@ export class LinePlugin implements ChannelPlugin {
                   previewUrl: cp.previewImageUrl ?? cp.originalContentUrl,
                 };
               } else {
-                content = {
-                  text: `[${label}]`,
-                  contentId: m.id,
-                  mediaUrl: `line-content:${m.id}`,
-                };
+                // 不寫 mediaUrl 佔位值：contentId 已表示待下載，下載完成後才寫入真正的網址
+                content = { text: `[${label}]`, contentId: m.id };
               }
+              break;
+            }
+            // 980781d5 加入 contentProvider 判斷時誤刪了這兩種（issue #206），
+            // 語音與檔案落到 default、沒有 contentId，resolveInboundMedia() 永遠不會下載
+            case 'audio': {
+              const cp = (m as any).contentProvider as { type?: string; originalContentUrl?: string } | undefined;
+              const duration = (m as any).duration as number | undefined;
+              content =
+                cp?.type === 'external' && cp.originalContentUrl
+                  ? { text: '[語音]', url: cp.originalContentUrl, duration }
+                  : { text: '[語音]', contentId: m.id, duration };
+              break;
+            }
+            case 'file': {
+              const fileName = (m as any).fileName as string | undefined;
+              content = {
+                text: `[檔案] ${fileName ?? ''}`.trim(),
+                contentId: m.id,
+                fileName,
+                fileSize: (m as any).fileSize,
+              };
               break;
             }
             case 'location':
@@ -447,6 +490,7 @@ export class LinePlugin implements ChannelPlugin {
   // ─── resolveInboundMedia ─────────────────────────────────────
   // Called for LINE-hosted media (contentProvider.type === 'line').
   // External-provider messages already carry a URL; they never have contentId, so this returns null for them.
+  // 下載失敗或檔案過大時拋出中文錯誤，由呼叫端寫進訊息讓客服看得到（不只寫 log）。
   async resolveInboundMedia(
     content: Record<string, unknown>,
     contentType: string,
@@ -456,18 +500,22 @@ export class LinePlugin implements ChannelPlugin {
     const contentId = content.contentId as string | undefined;
     if (!contentId || !['image', 'video', 'audio', 'file'].includes(contentType)) return null;
 
+    // 整份讀進 API 行程記憶體，沒有上限時大檔案會拖垮行程；上限同客服上傳的隔離區（25 MB）
+    const declaredSize = typeof content.fileSize === 'number' ? content.fileSize : 0;
+    if (declaredSize > LINE_MEDIA_MAX_BYTES) throw new Error(MEDIA_TOO_LARGE_MESSAGE);
+
     const token = credentials.channelAccessToken as string;
     const res = await fetch(`https://api-data.line.me/v2/bot/message/${contentId}/content`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error(`LINE 內容下載失敗（${res.status}）`);
+    if (Number(res.headers.get('content-length') ?? 0) > LINE_MEDIA_MAX_BYTES) throw new Error(MEDIA_TOO_LARGE_MESSAGE);
 
     const buffer = Buffer.from(await res.arrayBuffer());
-    const mimeType = res.headers.get('content-type') || 'application/octet-stream';
-    const extMap: Record<string, string> = { image: '.jpg', video: '.mp4', audio: '.m4a', file: '' };
-    const filename = `line_${contentId}${extMap[contentType] ?? ''}`;
+    if (buffer.length > LINE_MEDIA_MAX_BYTES) throw new Error(MEDIA_TOO_LARGE_MESSAGE);
 
-    const result = await uploadFn(buffer, filename, mimeType);
+    const filename = `line_${contentId}${mediaExtension(contentType, content.fileName)}`;
+    const result = await uploadFn(buffer, filename, safeStoredMime(res.headers.get('content-type')));
     return { url: result.url, storageKey: result.key };
   }
 

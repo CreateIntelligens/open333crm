@@ -72,6 +72,8 @@ export interface ChannelPlugin {
    * Resolve inbound media that cannot be served directly from the webhook payload.
    * Called non-blocking after the Message is written to DB.
    * Return null when no resolution is needed (e.g. URL already present).
+   * 下載失敗或不能下載時拋出錯誤；錯誤訊息是給客服看的中文原因，
+   * 呼叫端會寫進 `content.mediaError` 並顯示在收件匣。
    */
   resolveInboundMedia?(
     content: Record<string, unknown>,
