@@ -5,11 +5,11 @@ LINE Account Link 原本寫在主規格 `line-account-link`，但系統從來沒
 - 沒有簽發 link token 的路由。
 - LINE 外掛會把 `accountLink` 事件解析出來，但 API 與 workers 都不處理這個事件。
 
-主規格描述沒有實作的功能，讀者會以為功能已經上線。`docs/ref/system/AUDIT.md` 的「違反主規格的項目至少是 P2」也會因此誤判。issue #217 決定把這份主規格移回 change，保留為規劃。
+主規格描述沒有實作的功能，讀者會以為功能已經上線。`docs/ref/system/AUDIT.md` 的「違反主規格的項目至少是 P2」也會因此誤判。issue #217 決定把這份主規格移回 change，保留為規劃。PR #224 移除了主規格，它的需求原封不動改為這個 change 的 ADDED delta spec。
 
 ## What Changes
 
-- 移除主規格 `line-account-link`。它的需求原封不動，改為這個 change 的 ADDED delta spec。
+- 新增 `line-account-link` 能力：簽發 Account Link 權杖，並在收到 `accountLink` webhook 時完成連結。
 - 這項功能目前沒有排程，這個 change 不修改程式。
 
 ## Capabilities
