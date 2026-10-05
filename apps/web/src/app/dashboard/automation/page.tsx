@@ -1,22 +1,49 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
-import { Loader2, Plus, Zap } from 'lucide-react';
+import { Loader2, Plus, Search, Zap } from 'lucide-react';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAutomationRules } from '@/hooks/useAutomation';
 import { findUnsupportedAutomationActions } from '@open333crm/automation';
-import { findWorkerSkipErrors, ruleEventName } from '@/lib/automation/rule-actions';
+import { findWorkerSkipErrors } from '@/lib/automation/rule-actions';
+import { filterRules, ruleEventLabel, type RuleStatusFilter } from '@/lib/automation/rule-list';
+import { summarizeRule } from '@/lib/automation/rule-summary';
+
+const STATUS_OPTIONS: Array<{ value: RuleStatusFilter; label: string }> = [
+  { value: 'all', label: '全部狀態' },
+  { value: 'active', label: '啟用中' },
+  { value: 'inactive', label: '已停用' },
+];
 
 export default function AutomationPage() {
   const router = useRouter();
   const { rules, isLoading, error, mutate } = useAutomationRules();
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<RuleStatusFilter>('all');
+  // 摘要與契約驗證只在規則資料變動時算一次；搜尋時只做篩選（規則可能上百條）
+  const derived = useMemo(
+    () =>
+      new Map(
+        rules.map((rule) => [
+          rule.id,
+          {
+            summary: summarizeRule(rule),
+            skipErrors: findWorkerSkipErrors(rule),
+            unsupported: findUnsupportedAutomationActions(rule.actions),
+          },
+        ]),
+      ),
+    [rules],
+  );
+  const visibleRules = useMemo(() => filterRules(rules, { query, status }), [rules, query, status]);
 
   const toggleActive = async (
     e: React.MouseEvent,
@@ -30,7 +57,8 @@ export default function AutomationPage() {
       });
       mutate();
     } catch (err) {
-      console.error('Failed to toggle rule:', err);
+      // 失敗要讓管理員看到，否則開關沒反應卻不知道原因
+      alert(getApiErrorMessage(err, currentActive ? '停用規則失敗，請稍後重試' : '啟用規則失敗，請稍後重試'));
     }
   };
 
@@ -62,8 +90,8 @@ export default function AutomationPage() {
         ) : rules.length === 0 ? (
           <EmptyState
             icon={<Zap className="h-12 w-12" />}
-            title="沒有自動化規則"
-            description="建立自動化規則以簡化您的工作流程"
+            title="還沒有自動化規則"
+            description="自動化規則可以在收到訊息、建立工單等時機，自動幫你貼標籤、開工單或通知同事"
             action={
               <Button
                 onClick={() => router.push('/dashboard/automation/new')}
@@ -74,131 +102,123 @@ export default function AutomationPage() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/50 text-left">
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    名稱
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    描述
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    優先級
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    啟用
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    命中後停止
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                    執行次數
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map((rule) => (
-                  <tr
-                    key={rule.id}
-                    className="cursor-pointer border-b transition-colors hover:bg-muted/50"
-                    onClick={() =>
-                      router.push(`/dashboard/automation/${rule.id}`)
-                    }
-                  >
-                    {/* Name */}
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium">{rule.name}</p>
-                      <Badge variant="secondary" className="mt-1 text-xs">
-                        {ruleEventName(rule)}
-                      </Badge>
-                      {/* workers 驗證失敗會整條略過、只寫 log；列在這裡管理員才看得到 */}
-                      {(() => {
-                        const errors = findWorkerSkipErrors(rule);
-                        return errors.length > 0 ? (
-                          <Badge
-                            variant="destructive"
-                            className="ml-1 mt-1 text-xs"
-                            title={errors.join('\n')}
-                          >
-                            規則不會執行
-                          </Badge>
-                        ) : null;
-                      })()}
-                      {/* AUDIT AUTO-01：含系統尚未支援自動執行的動作，這些動作命中時不會執行 */}
-                      {(() => {
-                        const unsupported = findUnsupportedAutomationActions(rule.actions);
-                        return unsupported.length > 0 ? (
-                          <Badge
-                            variant="destructive"
-                            className="ml-1 mt-1 text-xs"
-                            title={`不會執行的動作：${unsupported.map((a) => a.label).join('、')}`}
-                          >
-                            含未支援的動作
-                          </Badge>
-                        ) : null;
-                      })()}
-                    </td>
+          <>
+            <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="搜尋規則名稱"
+                  className="pl-9"
+                />
+              </div>
+              <Select
+                options={STATUS_OPTIONS}
+                value={status}
+                onChange={(e) => setStatus(e.target.value as RuleStatusFilter)}
+                className="w-36"
+              />
+              <span className="text-sm text-muted-foreground">
+                共 {visibleRules.length} 條{visibleRules.length !== rules.length && `（全部 ${rules.length} 條）`}
+              </span>
+            </div>
 
-                    {/* Description */}
-                    <td className="px-4 py-3">
-                      <p className="max-w-xs truncate text-sm text-muted-foreground">
-                        {rule.description || '--'}
-                      </p>
-                    </td>
-
-                    {/* Priority */}
-                    <td className="px-4 py-3 text-sm">{rule.priority}</td>
-
-                    {/* Active toggle */}
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={(e) => toggleActive(e, rule.id, rule.isActive)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          rule.isActive ? 'bg-primary' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            rule.isActive
-                              ? 'translate-x-6'
-                              : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </td>
-
-                    {/* Stop on Match */}
-                    <td className="px-4 py-3 text-sm">
-                      {rule.stopOnMatch ? (
-                        <Badge variant="outline" className="text-xs">
-                          是
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">否</span>
-                      )}
-                    </td>
-
-                    {/* Execution count */}
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {rule.runCount ?? 0}
-                      {rule.lastRunAt && (
-                        <span className="ml-2 text-xs">
-                          (最後執行：{' '}
-                          {format(
-                            new Date(rule.lastRunAt),
-                            'MMM d, HH:mm'
-                          )}
-                          )
-                        </span>
-                      )}
-                    </td>
+            {visibleRules.length === 0 ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">沒有符合條件的規則</p>
+            ) : (
+              <table className="w-full table-fixed">
+                <thead>
+                  <tr className="border-b bg-muted/50 text-left">
+                    <th className="px-4 py-3 text-xs font-medium text-muted-foreground">規則</th>
+                    <th className="w-36 px-4 py-3 text-xs font-medium text-muted-foreground">檢查時機</th>
+                    <th className="w-24 px-4 py-3 text-xs font-medium text-muted-foreground" title="數字越大越先檢查">
+                      執行順序
+                    </th>
+                    <th className="w-24 px-4 py-3 text-xs font-medium text-muted-foreground">啟用</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                {/* 不顯示執行次數：runCount、lastRunAt 自 9255245 起停止更新（AUDIT AUTO-02），數字會誤導 */}
+                <tbody>
+                  {visibleRules.map((rule) => {
+                    const { summary, skipErrors, unsupported } = derived.get(rule.id) ?? {
+                      summary: '',
+                      skipErrors: [],
+                      unsupported: [],
+                    };
+                    return (
+                      <tr
+                        key={rule.id}
+                        className="cursor-pointer border-b align-top transition-colors hover:bg-muted/50"
+                        onClick={() => router.push(`/dashboard/automation/${rule.id}`)}
+                      >
+                        {/* 名稱過長時截斷，其他欄位才看得到；摘要說明規則在做什麼 */}
+                        <td className="px-4 py-3">
+                          <p className="truncate text-sm font-medium" title={rule.name}>
+                            {rule.name}
+                          </p>
+                          {/* 摘要最多兩行；滑鼠移上去看完整摘要與說明 */}
+                          <p
+                            className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
+                            title={rule.description ? `${summary}\n\n說明：${rule.description}` : summary}
+                          >
+                            {summary}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1 empty:hidden">
+                            {/* workers 驗證失敗會整條略過、只寫 log；列在這裡管理員才看得到 */}
+                            {skipErrors.length > 0 && (
+                              <Badge variant="destructive" className="text-xs" title={skipErrors.join('\n')}>
+                                規則不會執行
+                              </Badge>
+                            )}
+                            {/* AUDIT AUTO-01：含系統尚未支援自動執行的動作，這些動作命中時不會執行 */}
+                            {unsupported.length > 0 && (
+                              <Badge
+                                variant="destructive"
+                                className="text-xs"
+                                title={`不會執行的動作：${unsupported.map((a) => a.label).join('、')}`}
+                              >
+                                含未支援的動作
+                              </Badge>
+                            )}
+                            {rule.stopOnMatch && (
+                              <Badge variant="outline" className="text-xs" title="這條規則執行後，不再檢查其他規則">
+                                執行後停止
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3 text-sm">{ruleEventLabel(rule)}</td>
+
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{rule.priority}</td>
+
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={rule.isActive}
+                            aria-label={rule.isActive ? '停用這條規則' : '啟用這條規則'}
+                            onClick={(e) => toggleActive(e, rule.id, rule.isActive)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              rule.isActive ? 'bg-primary' : 'bg-muted'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                rule.isActive ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </td>
+
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -6,7 +6,9 @@ import type { AutomationActionDefinition } from '@open333crm/automation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { selectOptionsForParam } from '@/lib/automation/rule-actions';
+import useSWR from 'swr';
+import api from '@/lib/api';
+import { agentOptions, selectOptionsForParam } from '@/lib/automation/rule-actions';
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
@@ -68,7 +70,7 @@ function PayloadField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-8 text-sm"
+        className="h-8 py-1 text-sm"
       />
     </div>
   );
@@ -95,6 +97,16 @@ function ActionParamsForm({
       <div className="space-y-2">
         {definition.params.map((param) => {
           const value = String(payload[param.key] ?? '');
+          if (param.type === 'agent') {
+            return (
+              <AgentSelectField
+                key={param.key}
+                label={param.label}
+                value={value}
+                onChange={(v) => updateParam(param.key, v)}
+              />
+            );
+          }
           if (param.type === 'select') {
             return (
               <div key={param.key}>
@@ -105,7 +117,7 @@ function ActionParamsForm({
                   options={selectOptionsForParam(param)}
                   value={value}
                   onChange={(e) => updateParam(param.key, e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-8 py-1 text-sm"
                 />
               </div>
             );
@@ -186,7 +198,7 @@ function ActionParamsForm({
                 options={CASE_PRIORITIES}
                 value={(payload.priority as string) || 'MEDIUM'}
                 onChange={(e) => updateParam('priority', e.target.value)}
-                className="h-8 text-sm"
+                className="h-8 py-1 text-sm"
               />
             </div>
             <PayloadField
@@ -209,7 +221,7 @@ function ActionParamsForm({
             options={CASE_STATUSES}
             value={(payload.status as string) || 'OPEN'}
             onChange={(e) => updateParam('status', e.target.value)}
-            className="h-8 text-sm"
+            className="h-8 py-1 text-sm"
           />
         </div>
       );
@@ -231,21 +243,11 @@ function ActionParamsForm({
               options={CASE_PRIORITIES}
               value={(payload.newPriority as string) || ''}
               onChange={(e) => updateParam('newPriority', e.target.value)}
-              className="h-8 text-sm"
+              className="h-8 py-1 text-sm"
               placeholder="留空自動提升一級"
             />
           </div>
         </div>
-      );
-
-    case 'assign_agent':
-      return (
-        <PayloadField
-          label="Agent UUID"
-          value={(payload.agentId as string) || ''}
-          onChange={(v) => updateParam('agentId', v)}
-          placeholder="輸入客服 Agent ID..."
-        />
       );
 
     case 'notify':
@@ -264,6 +266,41 @@ function ActionParamsForm({
       return <JsonFallbackEditor payload={payload} onChange={onChange} />;
     }
   }
+}
+
+/**
+ * 指派客服：從客服名單選人（原本要手動填 UUID）。
+ * 沒有 agent.view 權限或載入失敗時，退回文字輸入並說明原因。
+ */
+function AgentSelectField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { data, error } = useSWR('/agents', async (url: string) => (await api.get(url)).data?.data ?? []);
+  if (error) {
+    return (
+      <div>
+        <PayloadField label={label} value={value} onChange={onChange} placeholder="客服 ID" />
+        <p className="mt-1 text-xs text-muted-foreground">無法載入客服名單（可能沒有檢視客服的權限），請填入客服 ID。</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
+      <Select
+        options={agentOptions((data ?? []) as Array<{ id: string; name?: string; email?: string }>, value, data !== undefined)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 py-1 text-sm"
+      />
+    </div>
+  );
 }
 
 function JsonFallbackEditor({

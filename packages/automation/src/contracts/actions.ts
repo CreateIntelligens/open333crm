@@ -160,7 +160,7 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     label: '指派客服',
     requires: ['case'],
     mutates: ['case', 'agent'],
-    params: [{ key: 'agentId', label: 'Agent UUID', type: 'string', required: true }],
+    params: [{ key: 'agentId', label: '指派給', type: 'agent', required: true }],
   },
   {
     type: 'assign_bot',

@@ -92,6 +92,8 @@ export async function createRule(
     description?: string;
     priority?: number;
     stopOnMatch?: boolean;
+    /** 沒給時預設啟用（CLI、MCP 等既有呼叫端沒有送這個欄位） */
+    isActive?: boolean;
     trigger: Record<string, unknown>;
     conditions: Record<string, unknown>;
     actions: Array<Record<string, unknown>>;
@@ -114,7 +116,8 @@ export async function createRule(
       trigger: data.trigger as any,
       conditions: data.conditions as any,
       actions: data.actions as any,
-      isActive: true,
+      // 原本一律寫 true：新增規則頁「啟用」不勾也會建立成啟用、立刻開始執行
+      isActive: data.isActive ?? true,
     },
   });
 

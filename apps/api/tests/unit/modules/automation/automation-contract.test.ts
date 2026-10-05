@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  AUTOMATION_EVENT_DEFINITIONS,
   AUTOMATION_EVENT_NAMES,
   composeAutomationContract,
   validateAutomationRuleContract,
@@ -150,6 +151,31 @@ async function testFrontendUsesComposerMetadata() {
   assert.equal(pageSource.includes('getAutomationActionOptionsForEvent'), true);
   assert.equal(actionListSource.includes('actionDefinitions'), true);
 }
+
+/*
+ * 這 6 種事件沒有送進 automation queue（AUDIT AUTO-05），以它們觸發的規則永遠不會執行；
+ * 編輯器要能從契約知道，標示「目前不會觸發」。其餘事件都要有給管理員看的說明。
+ */
+test('Event that never triggers：契約標出不會觸發的事件，每個事件都有說明', () => {
+  const notDispatched = AUTOMATION_EVENT_DEFINITIONS.filter((e) => e.dispatched === false).map((e) => e.name).sort();
+  assert.deepEqual(notDispatched, [
+    'case.assigned',
+    'case.closed',
+    'case.status_changed',
+    'case.updated',
+    'contact.updated',
+    'message.postback',
+  ]);
+  for (const event of AUTOMATION_EVENT_DEFINITIONS) {
+    assert.ok(event.description && event.description.length >= 8, `${event.name} 缺少說明`);
+  }
+});
+
+/* 指派客服的參數原本是 string，前端用 key 名稱特判；改成 agent 型別，由型別決定用客服選單 */
+test('指派客服的參數型別是 agent', async () => {
+  const { AUTOMATION_ACTION_MAP } = await import('@open333crm/automation');
+  assert.equal(AUTOMATION_ACTION_MAP.get('assign_agent')?.params?.[0]?.type, 'agent');
+});
 
 test('composer output by event', testComposerOutputByEvent);
 test('resolver default exclusion', testResolverDefaultExclusion);

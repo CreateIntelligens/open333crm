@@ -32,6 +32,10 @@
 
 規則列表與關鍵字回覆列表顯示全部規則：`GET /api/v1/automation/rules` 每頁最多 100 條，依 priority、createdAt、id 排序，前端依 `meta.totalPages` 逐頁取回（`apps/web/src/lib/fetch-all-pages.ts`）。2026-10-05 之前規則列表只取第一頁的 20 條、關鍵字回覆只取 100 條，之後的規則在列表上看不到。任一頁載入失敗時，列表顯示錯誤，不顯示「沒有自動化規則」。
 
+**規則頁的用語。** 列表與編輯頁用一句話描述規則，例如「當收到訊息時，如果開啟案件數等於 0，就建立工單「客戶諮詢」」（`rule-summary.ts`）。列表顯示事件的中文名稱、可依名稱搜尋與依啟用狀態篩選。編輯頁把 `priority` 稱為「執行順序」（數字越大越先檢查），`stopOnMatch` 稱為「這條規則執行後，不再檢查其他規則」，條件建構器全部中文（`condition-builder-labels.ts`），觸發事件下方顯示契約的 `description`。契約中 `dispatched: false` 的事件在選單標示「（目前不會觸發）」。「指派客服」從客服名單選人，不必填 ID。
+
+**建立規則時的啟用狀態。** `POST /automation/rules` 依請求的 `isActive` 建立規則；沒送時預設啟用。2026-10-05 之前一律建立成啟用，新增規則頁「啟用」沒勾也會立刻開始執行。
+
 **workers 會整條略過的規則。** workers 執行前以 `allowUnsupportedActions` 驗證契約，失敗就整條略過、只寫 log。規則列表用同樣的驗證，在這類規則旁標示「規則不會執行」，滑過可看錯誤（`findWorkerSkipErrors`）。
 
 ## 規則怎麼被執行
@@ -119,7 +123,9 @@
 
 `POST /automation/rules/:id/test` 以請求帶入的事實評估這一條規則，回傳是否命中。試跑不執行動作，也不查資料庫組事實；沒帶事實時，以空物件評估。
 
-`GET /automation/logs` 讀 `AutomationLog`。規則清單顯示的執行次數與最後執行時間，讀的是 `AutomationRule.runCount` 與 `lastRunAt`。這三個值原本只由已刪除的 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。
+編輯頁的「試試看這條規則」依**已儲存**的條件產生表單：條件用到的每個欄位一格，名稱與輸入方式取自契約（`apps/web/src/lib/automation/rule-test-form.ts`），沒填的欄位不送。結果以中文顯示「會觸發」與會執行的動作，或「不會觸發：條件不符合」。
+
+`GET /automation/logs` 讀 `AutomationLog`。`AutomationRule.runCount` 與 `lastRunAt` 原本只由已刪除的 `action-executor.ts` 寫入，自 `9255245` 起停止更新，見 `../../system/AUDIT.md` 的 AUTO-02。規則列表因此不顯示執行次數，避免管理員看到停住的數字。
 
 ## 權限
 

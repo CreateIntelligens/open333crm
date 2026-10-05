@@ -22,6 +22,13 @@ import {
 import api from '@/lib/api';
 import { ruleEventName, splitRuleActions, type DroppedAction } from '@/lib/automation/rule-actions';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
+import { summarizeRule } from '@/lib/automation/rule-summary';
+import {
+  buildTestFacts,
+  describeTestResult,
+  noConditionNote,
+  testFormFields,
+} from '@/lib/automation/rule-test-form';
 import { useAutomationRule } from '@/hooks/useAutomation';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
@@ -36,9 +43,10 @@ import { getApiErrorMessage } from '@/lib/api-error';
 
 // ---- constants ----
 
+// 目前不會觸發的事件（AUDIT AUTO-05）在選單上就標出來，免得管理員建了規則卻永遠不會執行
 const TRIGGER_EVENTS = AUTOMATION_EVENT_DEFINITIONS.map((event) => ({
   value: event.name,
-  label: event.label,
+  label: event.dispatched === false ? `${event.label}（目前不會觸發）` : event.label,
 }));
 
 function contractFieldsToQueryBuilderFields(triggerType: string): Field[] {
@@ -137,18 +145,10 @@ export default function AutomationRuleDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testFactsText, setTestFactsText] = useState(
-    JSON.stringify(
-      {
-        'contact.name': 'Jane',
-        'contact.channel': 'LINE',
-        'message.text': 'Hello',
-      },
-      null,
-      2
-    )
-  );
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testValues, setTestValues] = useState<Record<string, string>>({});
+  const [testResult, setTestResult] = useState<
+    { triggered: boolean; headline: string; actions: string[] } | { error: string } | null
+  >(null);
   const [newKeyword, setNewKeyword] = useState('');
 
   const conditionFields = useMemo(
@@ -277,31 +277,41 @@ export default function AutomationRuleDetailPage() {
     }
   };
 
+  // 試跑的是已儲存的版本：表單欄位依「已儲存的條件」產生，與 API 實際評估的規則一致
+  const testFields = useMemo(() => testFormFields(rule?.conditions), [rule]);
+  // 儲存後規則重新載入：舊的試跑結果與填的值屬於舊版本，清掉
+  useEffect(() => {
+    setTestResult(null);
+    setTestValues({});
+  }, [rule]);
+
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
     try {
-      let facts: Record<string, unknown>;
-      try {
-        facts = JSON.parse(testFactsText);
-      } catch {
-        setTestResult('錯誤：測試 Facts 的 JSON 格式無效。');
-        setTesting(false);
-        return;
-      }
-
       const res = await api.post(`/automation/rules/${ruleId}/test`, {
-        facts,
+        facts: buildTestFacts(testFields, testValues),
       });
-      setTestResult(JSON.stringify(res.data, null, 2));
+      setTestResult(
+        describeTestResult(res.data?.data ?? {}, rule?.actions, {
+          isActive: rule?.isActive,
+          eventName: rule ? ruleEventName(rule) : undefined,
+        }),
+      );
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Test request failed';
-      setTestResult(`Error: ${message}`);
+      setTestResult({ error: getApiErrorMessage(err, '試跑失敗，請稍後重試') });
     } finally {
       setTesting(false);
     }
   };
+
+  // 依目前畫面上的設定（尚未儲存的修改也算）產生的一句話摘要
+  const summary = summarizeRule({
+    trigger: { type: form.triggerType },
+    conditions: qbToEngine(query),
+    actions: actions.map((a) => ({ type: a.type, params: a.payload })),
+  });
+  const selectedEvent = AUTOMATION_EVENT_DEFINITIONS.find((e) => e.name === form.triggerType);
 
   // ---- loading state ----
 
@@ -331,6 +341,12 @@ export default function AutomationRuleDetailPage() {
 
       <div className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-3xl space-y-6">
+          {/* ============ Summary ============ */}
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+            <p className="text-xs font-medium text-primary">這條規則會</p>
+            <p className="mt-1 text-sm leading-relaxed">{summary}</p>
+          </div>
+
           {/* ============ Basic Settings ============ */}
           <Card>
             <CardHeader>
@@ -343,19 +359,19 @@ export default function AutomationRuleDetailPage() {
                 <Input
                   value={form.name}
                   onChange={(e) => updateField('name', e.target.value)}
-                  placeholder="規則名稱..."
+                  placeholder="例如：客訴自動開工單"
                 />
               </div>
 
               {/* Description */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
-                  描述
+                  說明（選填）
                 </label>
                 <Textarea
                   value={form.description}
                   onChange={(e) => updateField('description', e.target.value)}
-                  placeholder="此規則的用途？"
+                  placeholder="寫下這條規則的用途，方便其他人了解"
                   rows={2}
                 />
               </div>
@@ -363,13 +379,21 @@ export default function AutomationRuleDetailPage() {
               {/* Trigger Event */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
-                  觸發事件
+                  什麼時候檢查這條規則
                 </label>
                 <Select
                   options={TRIGGER_EVENTS}
                   value={form.triggerType}
                   onChange={(e) => handleTriggerTypeChange(e.target.value)}
                 />
+                {selectedEvent?.description && (
+                  <p className="mt-1 text-xs text-muted-foreground">{selectedEvent.description}</p>
+                )}
+                {selectedEvent?.dispatched === false && (
+                  <p className="mt-1 text-xs text-destructive">
+                    系統目前不會送出這個事件，以它觸發的規則不會執行。請改選其他時機。
+                  </p>
+                )}
               </div>
 
               {/* Keyword.matched settings */}
@@ -424,7 +448,7 @@ export default function AutomationRuleDetailPage() {
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium">
-                      匹配模式
+                      比對方式
                     </label>
                     <Select
                       options={MATCH_MODES}
@@ -436,43 +460,49 @@ export default function AutomationRuleDetailPage() {
               )}
 
               {/* Priority + toggles */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    優先級
-                  </label>
-                  <Input
-                    type="number"
-                    value={form.priority}
-                    onChange={(e) =>
-                      updateField('priority', parseInt(e.target.value) || 0)
-                    }
+              <div>
+                <label className="mb-1 block text-sm font-medium">執行順序</label>
+                <Input
+                  type="number"
+                  className="max-w-[160px]"
+                  value={form.priority}
+                  onChange={(e) =>
+                    updateField('priority', parseInt(e.target.value) || 0)
+                  }
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  同一個時機有好幾條規則時，數字越大越先檢查。
+                </p>
+              </div>
+              <div className="space-y-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(e) => updateField('isActive', e.target.checked)}
+                    className="mt-0.5 rounded border-input"
                   />
-                </div>
-                <div className="space-y-3 pt-6">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={form.isActive}
-                      onChange={(e) =>
-                        updateField('isActive', e.target.checked)
-                      }
-                      className="rounded border-input"
-                    />
-                    啟用
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={form.stopOnMatch}
-                      onChange={(e) =>
-                        updateField('stopOnMatch', e.target.checked)
-                      }
-                      className="rounded border-input"
-                    />
-                    命中後停止
-                  </label>
-                </div>
+                  <span>
+                    啟用這條規則
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      不勾選的話，規則會先存起來，但不會執行。
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.stopOnMatch}
+                    onChange={(e) => updateField('stopOnMatch', e.target.checked)}
+                    className="mt-0.5 rounded border-input"
+                  />
+                  <span>
+                    這條規則執行後，不再檢查其他規則
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      勾選後，執行順序排在後面的規則就算符合也不會執行。
+                    </span>
+                  </span>
+                </label>
               </div>
             </CardContent>
           </Card>
@@ -480,11 +510,11 @@ export default function AutomationRuleDetailPage() {
           {/* ============ Conditions ============ */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">條件</CardTitle>
+              <CardTitle className="text-lg">在什麼情況下</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-sm text-muted-foreground">
-                定義觸發此規則所需滿足的條件。使用下方建構器組合 AND/OR 群組條件。
+                符合這些條件時才執行下方的動作。沒有設定條件的話，每次都會執行。
               </p>
               <ConditionBuilder
                 value={query}
@@ -497,11 +527,11 @@ export default function AutomationRuleDetailPage() {
           {/* ============ Actions ============ */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">動作</CardTitle>
+              <CardTitle className="text-lg">要做什麼</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-sm text-muted-foreground">
-                定義當上述條件滿足時要執行的動作。動作將依序執行。
+                符合條件時要做的事，會照順序一個一個執行。
               </p>
               {/* 載入時被移除的動作要明講，否則動作從畫面上消失、儲存後被刪除，管理員不會發現。
                   改了觸發事件後動作已清空，提示講的是原本的事件，不再顯示 */}
@@ -520,31 +550,62 @@ export default function AutomationRuleDetailPage() {
           {!isNew && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">測試 / 模擬執行</CardTitle>
+                <CardTitle className="text-lg">試試看這條規則</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  提供範例 Facts（JSON 格式）並以模擬模式執行此規則，驗證觸發是否正確。
+                  填入假設的情況，看看規則會不會執行。試跑的是<strong>已儲存</strong>的版本，修改後請先儲存；不會真的執行動作。
                 </p>
-                <textarea
-                  value={testFactsText}
-                  onChange={(e) => setTestFactsText(e.target.value)}
-                  rows={6}
-                  spellCheck={false}
-                  className="w-full rounded-md border border-input bg-muted/50 p-3 font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-                <Button
-                  variant="secondary"
-                  onClick={handleTest}
-                  disabled={testing}
-                >
+                {testFields.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{rule ? noConditionNote(rule) : ''}</p>
+                ) : (
+                  <div className="space-y-3">
+                    {testFields.map((field) => (
+                      <div key={field.key}>
+                        <label className="mb-1 block text-sm font-medium">{field.label}</label>
+                        {field.input === 'select' || field.input === 'boolean' ? (
+                          <Select
+                            options={[
+                              { value: '', label: '不指定' },
+                              ...(field.input === 'boolean'
+                                ? [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
+                                : field.options ?? []),
+                            ]}
+                            value={testValues[field.key] ?? ''}
+                            onChange={(e) => setTestValues((v) => ({ ...v, [field.key]: e.target.value }))}
+                          />
+                        ) : (
+                          <Input
+                            type={field.input === 'number' ? 'number' : field.input === 'datetime' ? 'datetime-local' : 'text'}
+                            value={testValues[field.key] ?? ''}
+                            placeholder={field.input === 'list' ? '多個值用「、」分開' : undefined}
+                            onChange={(e) => setTestValues((v) => ({ ...v, [field.key]: e.target.value }))}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Button variant="secondary" onClick={handleTest} disabled={testing}>
                   <Play className="mr-1 h-4 w-4" />
-                  {testing ? '執行中...' : '執行測試'}
+                  {testing ? '試跑中...' : '試試看'}
                 </Button>
-                {testResult && (
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">
-                    {testResult}
-                  </pre>
+                {testResult && 'error' in testResult && (
+                  <p className="text-sm text-destructive">{testResult.error}</p>
+                )}
+                {testResult && 'headline' in testResult && (
+                  <div
+                    className={
+                      testResult.triggered
+                        ? 'rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm'
+                        : 'rounded-md border bg-muted/50 px-3 py-2 text-sm'
+                    }
+                  >
+                    <p className="font-medium">{testResult.headline}</p>
+                    {testResult.actions.length > 0 && (
+                      <p className="mt-1 text-muted-foreground">會執行：{testResult.actions.join('、')}</p>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -111,3 +111,29 @@ test('選填的下拉參數：最前面加「不指定」，畫面顯示與實�
     '必填的不加',
   );
 });
+
+/* 「指派客服」原本要手動填 Agent UUID，一般管理員不可能知道 */
+test('指派客服的選項：顯示姓名與 email；已存的客服不在名單時明確標出', async () => {
+  const { agentOptions } = await import('#src/lib/automation/rule-actions.js');
+  const agents = [
+    { id: 'a1', name: '王小明', email: 'ming@example.com' },
+    { id: 'a2', name: '', email: 'li@example.com' },
+  ];
+  assert.deepEqual(agentOptions(agents, ''), [
+    { value: '', label: '請選擇客服' },
+    { value: 'a1', label: '王小明（ming@example.com）' },
+    { value: 'a2', label: 'li@example.com' },
+  ]);
+  assert.deepEqual(agentOptions(agents, 'gone-1234567890').at(-1), {
+    value: 'gone-1234567890',
+    label: '已停用或找不到的客服（gone-123）',
+  });
+});
+
+test('客服名單還沒載入時，不把已指派的客服標成已停用', async () => {
+  const { agentOptions } = await import('#src/lib/automation/rule-actions.js');
+  assert.deepEqual(agentOptions([], 'a1', false), [
+    { value: '', label: '請選擇客服' },
+    { value: 'a1', label: '載入客服名單中…' },
+  ]);
+});

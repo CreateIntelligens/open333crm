@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-05：AUTO-02、AUTO-05 改為部分修正
+
+change `improve-automation-page-readability` 改寫自動化規則頁，順帶緩解兩項，根本原因都沒有處理。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTO-02 | 部分修正 | 規則列表拿掉執行次數與最後執行時間，管理員不會再看到停住的數字。workers 仍然不寫 `runCount`、`lastRunAt` 與 `AutomationLog` |
+| AUTO-05 | 部分修正 | 契約的事件定義加上 `dispatched: false`（6 種事件，與內文的表格一致，由 `automation-contract.test.ts` 鎖定；`automation-dispatched-events.test.ts` 比對 `setupAutomationWorker()` 實際訂閱的事件，兩邊不一致時失敗）。編輯器在選單標示、選了之後警告，試跑說明條件符合仍不會執行。事件仍未送出；API 仍接受這些事件的規則，沒有在契約驗證擋下，因為擋下會讓 UAT 上這類既有規則改條件時存不進去，等 AUTO-05 決定要送出事件或拿掉事件時一併處理 |
+
 ## 2026-10-05：移除 13 份主規格，APP-02 調回 P3，LIC-01、LIC-02、PKG-06 不再標示「主規格待確認」
 
 issue #217 盤點了所有主規格。描述「沒有實作的規劃」、「已經被其他設計取代」或「一次性變更的紀錄」的主規格，依盤點的決定移除；`line-account-link` 仍在規劃中，移回 change `add-line-account-link`。每份主規格移除的理由，以及取代它的規格或文件（如果有），見 issue #217 與 PR #224。
