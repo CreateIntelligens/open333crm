@@ -98,3 +98,29 @@ export function selectOptionsForParam(param: {
   const options = (param.values ?? []).map((o) => ({ value: String(o.value), label: o.label }));
   return param.required ? options : [{ value: '', label: EMPTY_OPTION_LABELS[param.key] ?? '不指定' }, ...options];
 }
+
+/**
+ * 「指派客服」的下拉選項。原本要手動填 Agent UUID；改成從客服名單選人。
+ * 規則存的客服已停用或不在名單時保留原值並標出，不讓欄位默默變成空白。
+ */
+export function agentOptions(
+  agents: ReadonlyArray<{ id: string; name?: string | null; email?: string | null }>,
+  currentId: string,
+  /** 名單是否已載入；載入前不能判斷已指派的客服是否還在 */
+  loaded = true,
+): Array<{ value: string; label: string }> {
+  const options = [
+    { value: '', label: '請選擇客服' },
+    ...agents.map((a) => ({
+      value: a.id,
+      label: a.name ? `${a.name}${a.email ? `（${a.email}）` : ''}` : a.email || a.id,
+    })),
+  ];
+  if (currentId && !agents.some((a) => a.id === currentId)) {
+    options.push({
+      value: currentId,
+      label: loaded ? `已停用或找不到的客服（${currentId.slice(0, 8)}）` : '載入客服名單中…',
+    });
+  }
+  return options;
+}

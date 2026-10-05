@@ -916,7 +916,7 @@ test.describe('知識庫 — Embedding / Chat & Prompt 設定 @fields', () => {
 test.describe('自動化 — 規則編輯器欄位 @fields', () => {
   test('AU-01 新增規則頁欄位盤點（含 maxLength 比對）', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    await expect(page.getByPlaceholder('規則名稱...')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByPlaceholder('例如：客訴自動開工單')).toBeVisible({ timeout: 15_000 });
 
     const fields = await inventoryFields(page);
     console.log(formatFieldInventory(fields, '自動化 › 新增規則'));
@@ -934,7 +934,7 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
   test('AU-02 規則名稱必填：空白時儲存鈕 disabled（前端擋控）', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    const name = page.getByPlaceholder('規則名稱...');
+    const name = page.getByPlaceholder('例如：客訴自動開工單');
     await expect(name).toBeVisible({ timeout: 15_000 });
 
     const save = page.getByRole('button', { name: /儲存規則/ });
@@ -954,7 +954,7 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
   test('AU-03 【BUG】零動作儲存：後端 400 但前端靜默失敗（無任何錯誤提示）', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    const name = page.getByPlaceholder('規則名稱...');
+    const name = page.getByPlaceholder('例如：客訴自動開工單');
     await expect(name).toBeVisible({ timeout: 15_000 });
     await setField(name, `${RULE_NAME} 零動作`);
 
@@ -1072,7 +1072,7 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
   test('AU-07 keyword.matched 關鍵字欄位與匹配模式（UI 操作）', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    const name = page.getByPlaceholder('規則名稱...');
+    const name = page.getByPlaceholder('例如：客訴自動開工單');
     await expect(name).toBeVisible({ timeout: 15_000 });
 
     // 切到 keyword.matched → 關鍵字區塊才會出現
@@ -1166,10 +1166,10 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
   test('AU-09 條件建構器 UI：新增規則列後出現欄位/運算子/值三個控制項', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    await expect(page.getByPlaceholder('規則名稱...')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByPlaceholder('例如：客訴自動開工單')).toBeVisible({ timeout: 15_000 });
 
-    // react-querybuilder v7 的「新增規則」按鈕文案是套件內建英文 "+ Rule"（未客製 translations）
-    const addRule = page.locator('.condition-builder button', { hasText: '+ Rule' }).first();
+    // 條件建構器的新增按鈕已中文化（condition-builder-labels.ts）
+    const addRule = page.locator('.condition-builder button', { hasText: '+ 新增條件' }).first();
     await expect(addRule, '條件建構器應有新增規則按鈕').toBeVisible({ timeout: 10_000 });
     await addRule.click();
 
@@ -1251,7 +1251,7 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
   test('AU-12 「傳送通知」動作 UI：以 label「通知訊息」定位相鄰 input（Wave 3 踩坑）', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    await expect(page.getByPlaceholder('規則名稱...')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByPlaceholder('例如：客訴自動開工單')).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /新增動作/ }).click();
     const actionTypeSelect = page.locator('select').last();
@@ -1272,8 +1272,8 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
     await expect(msgInput).toHaveValue(`${E2E_PREFIX} 通知內容 ${FieldSamples.emoji}`);
   });
 
-  test('AU-13 dry-run Facts JSON：非法 JSON 前端擋下並顯示錯誤，合法 JSON 可送出', async ({ page }) => {
-    // 先用 API 建一條規則（dry-run 區塊只在非 new 頁顯示）
+  test('AU-13 試跑表單：欄位依條件產生，不需要 JSON，送出不得 5xx', async ({ page }) => {
+    // 先用 API 建一條規則（試跑區塊只在非 new 頁顯示）
     const res = await api.post('automation/rules', {
       data: ruleBody({ name: `${RULE_NAME} dryrun` }),
     });
@@ -1282,40 +1282,30 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
     createdRules.push(id);
 
     await gotoAndCheck(page, `/dashboard/automation/${id}`);
-    await expect(page.getByText('測試 / 模擬執行')).toBeVisible({ timeout: 15_000 });
-
-    const factsBox = page.locator('textarea.font-mono').first();
-    await expect(factsBox, '應有 Facts JSON 輸入框').toBeVisible({ timeout: 10_000 });
+    const card = page
+      .getByText('試試看這條規則', { exact: true })
+      .locator('xpath=ancestor::div[contains(@class,"rounded")][1]');
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('textarea.font-mono'), '原本的 Facts JSON 輸入框應已移除').toHaveCount(0);
 
     const fields = await inventoryFields(page);
-    console.log(formatFieldInventory(fields, '自動化 › 編輯規則（含 dry-run）'));
+    console.log(formatFieldInventory(fields, '自動化 › 編輯規則（含試跑）'));
 
-    // ① 非法 JSON → 前端 JSON.parse 失敗，不應發 API
-    await setField(factsBox, '{ 這不是 JSON');
-    const bad = await submitAndObserve(
-      page,
-      async () => page.getByRole('button', { name: /執行測試/ }).click(),
-      /\/automation\/rules\/[^/]+\/test$/,
-      'POST',
-      5_000,
-    );
-    expect(bad.requested, '非法 JSON 應被前端擋下，不發出 test 請求').toBe(false);
-    await expect(
-      page.getByText(/JSON 格式無效/),
-      '非法 JSON 應顯示明確錯誤訊息',
-    ).toBeVisible({ timeout: 10_000 });
-
-    // ② 合法 JSON → 應送出且不得 5xx
-    await setField(factsBox, JSON.stringify({ 'contact.name': 'probe' }, null, 2));
+    // 欄位依 VALID_CONDITIONS 產生；有欄位就填一個邊界值（emoji）
+    const firstInput = card.locator('input, select').first();
+    if ((await firstInput.count()) > 0 && (await firstInput.evaluate((el) => el.tagName)) === 'INPUT') {
+      await setField(firstInput, `probe ${FieldSamples.emoji}`);
+    }
     const good = await submitAndObserve(
       page,
-      async () => page.getByRole('button', { name: /執行測試/ }).click(),
+      async () => card.getByRole('button', { name: '試試看' }).click(),
       /\/automation\/rules\/[^/]+\/test$/,
       'POST',
       20_000,
     );
-    expect(good.requested, '合法 JSON 應發出 test 請求').toBe(true);
-    expect(good.status, `dry-run 不應回 5xx（實際 ${good.status}）`).toBeLessThan(500);
+    expect(good.requested, '應發出 test 請求').toBe(true);
+    expect(good.status, `試跑不應回 5xx（實際 ${good.status}）`).toBeLessThan(500);
+    await expect(card.locator('p.font-medium'), '結果應以中文說明').toHaveText(/觸發|不會執行/, { timeout: 15_000 });
   });
 
   test('AU-14 dry-run facts 型別驗證：非物件應被後端擋下', async () => {
@@ -1344,13 +1334,13 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
   test('AU-15 UI 端到端建規則：填名稱＋加動作→儲存成功（URL 變為真實 UUID）', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    const name = page.getByPlaceholder('規則名稱...');
+    const name = page.getByPlaceholder('例如：客訴自動開工單');
     await expect(name).toBeVisible({ timeout: 15_000 });
 
     const ruleName = `${RULE_NAME} ui-e2e`;
     await setField(name, ruleName);
 
-    const desc = page.getByPlaceholder('此規則的用途？');
+    const desc = page.getByPlaceholder('寫下這條規則的用途，方便其他人了解');
     await setField(desc, `${E2E_PREFIX} 描述 ${FieldSamples.emoji}`);
 
     // 必須先加至少一個動作，否則後端 actions.min(1) 會 400（見 AU-03）
@@ -1385,15 +1375,15 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
 
     // reload 後名稱與描述應完好（往返驗證）
     await page.reload({ waitUntil: 'networkidle' });
-    await expect(page.getByPlaceholder('規則名稱...')).toHaveValue(ruleName, { timeout: 15_000 });
-    await expect(page.getByPlaceholder('此規則的用途？')).toHaveValue(
+    await expect(page.getByPlaceholder('例如：客訴自動開工單')).toHaveValue(ruleName, { timeout: 15_000 });
+    await expect(page.getByPlaceholder('寫下這條規則的用途，方便其他人了解')).toHaveValue(
       `${E2E_PREFIX} 描述 ${FieldSamples.emoji}`,
     );
   });
 
   test('AU-16 優先級數字欄位：UI 非數字輸入不應送出 NaN', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/automation/new');
-    await expect(page.getByPlaceholder('規則名稱...')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByPlaceholder('例如：客訴自動開工單')).toBeVisible({ timeout: 15_000 });
 
     const priority = page.locator('input[type=number]').first();
     await expect(priority, '應有優先級數字輸入框').toBeVisible({ timeout: 10_000 });

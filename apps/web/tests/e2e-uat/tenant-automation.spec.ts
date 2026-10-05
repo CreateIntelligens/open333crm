@@ -32,7 +32,7 @@ import { E2E_PREFIX, newApiContext, gotoAndCheck } from './helpers';
  *
  * 5. `react-querybuilder` v7 渲染的是原生 `<select>`（欄位/運算子）+ 依欄位定義決定
  *    文字輸入或 `<select>`（值），標準 class 為 `.rule-fields` / `.rule-operators` /
- *    `.rule-value`，「新增規則」按鈕文案是套件內建英文 `+ Rule`（未在
+ *    `.rule-value`，新增條件按鈕已中文化為「+ 新增條件」（原本是套件內建英文 `+ Rule`，
  *    `ConditionBuilder.tsx` 客製化 translations，故非繁體中文，這裡如實使用該文案）。
  *
  * 6. 觸發事件下拉選單為原生 `<select>`（`src/components/ui/select.tsx` 的 `Select`
@@ -60,7 +60,7 @@ test.beforeAll(async () => {
  * 這裡改用 placeholder 定位 + `toHaveValue` 斷言達到相同效果。
  */
 async function expectRuleFormLoaded(page: import('@playwright/test').Page) {
-  const nameInput = page.getByPlaceholder('規則名稱...');
+  const nameInput = page.getByPlaceholder('例如：客訴自動開工單');
   await expect(nameInput).toHaveValue(RULE_NAME, { timeout: 15_000 });
 }
 
@@ -103,7 +103,7 @@ test.describe.serial('自動化規則 @automation', () => {
     });
 
     // 名稱
-    await page.getByPlaceholder('規則名稱...').fill(RULE_NAME);
+    await page.getByPlaceholder('例如：客訴自動開工單').fill(RULE_NAME);
 
     // 觸發事件：選「新對話建立」（conversation.created，非 keyword.matched，
     // 條件與動作可選欄位較單純，符合盤點建議的「減少複雜度」原則）
@@ -111,7 +111,7 @@ test.describe.serial('自動化規則 @automation', () => {
     await triggerSelect.selectOption({ label: '新對話建立' });
 
     // 沒有 keyword 子區塊出現
-    await expect(page.getByText('匹配模式')).toHaveCount(0);
+    await expect(page.getByText('比對方式')).toHaveCount(0);
 
     // 動作：預設「動作」卡片顯示尚未設定，點「新增動作」新增一個
     await expect(page.getByText('尚未設定動作')).toBeVisible();
@@ -139,6 +139,8 @@ test.describe.serial('自動化規則 @automation', () => {
     const body = await res.json();
     ruleId = body?.data?.id;
     expect(ruleId, '建立規則回應中應有 id').toBeTruthy();
+    // 新增頁「啟用這條規則」預設不勾：規則要建立成停用（原本 API 丟掉 isActive，一律啟用）
+    expect(body?.data?.isActive, '沒勾「啟用」時規則應建立成停用').toBe(false);
 
     await expect(page).toHaveURL(new RegExp(`/dashboard/automation/${ruleId}$`), {
       timeout: 15_000,
@@ -150,10 +152,10 @@ test.describe.serial('自動化規則 @automation', () => {
     await gotoAndCheck(page, `/dashboard/automation/${ruleId}`);
     await expectRuleFormLoaded(page);
 
-    // react-querybuilder：初始為空群組，點 "+ Rule"（套件內建英文文案，見檔頭說明 5）
+    // react-querybuilder：初始為空群組，點「+ 新增條件」（ConditionBuilder 以 translations 中文化）
     const qb = page.locator('.condition-builder');
     await expect(qb).toBeVisible({ timeout: 10_000 });
-    await qb.getByRole('button', { name: '+ Rule' }).click();
+    await qb.getByRole('button', { name: '+ 新增條件' }).click();
 
     const rule = qb.locator('.rule').first();
     await expect(rule).toBeVisible({ timeout: 10_000 });
@@ -247,61 +249,42 @@ test.describe.serial('自動化規則 @automation', () => {
     await expect(actionCards).toHaveCount(1, { timeout: 15_000 });
   });
 
-  test('@automation 05 dry-run 測試：合法 Facts JSON 執行測試 → 回應區塊出現結果', async ({ page }) => {
+  test('@automation 05 試跑表單：依條件填值 → 以中文顯示會不會觸發', async ({ page }) => {
     test.skip(!ruleId, '前置測試（案例 02）未成功建立規則');
     await gotoAndCheck(page, `/dashboard/automation/${ruleId}`);
     await expectRuleFormLoaded(page);
 
-    // 測試/模擬執行卡片只在既有規則（非 new）才顯示
-    await expect(page.getByText('測試 / 模擬執行')).toBeVisible({ timeout: 10_000 });
-
-    const factsTextarea = page.locator('textarea.font-mono');
-    await expect(factsTextarea).toBeVisible();
-    // 帶上案例 03 設定的條件欄位（contact.name），facts 不需要完全符合條件也能拿到回應
-    await factsTextarea.fill(
-      JSON.stringify({ 'contact.name': `${E2E_PREFIX} 條件值 ${RUN}` }, null, 2),
-    );
+    // 試跑卡片只在既有規則（非 new）才顯示；欄位依「已儲存的條件」產生（案例 03 存了聯絡人名稱）
+    const card = page
+      .getByText('試試看這條規則', { exact: true })
+      .locator('xpath=ancestor::div[contains(@class,"rounded")][1]');
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    const input = card.locator('input').first();
+    await expect(input).toBeVisible();
+    await input.fill(`${E2E_PREFIX} 條件值 ${RUN}`);
 
     const testRes = page.waitForResponse(
       (res) =>
         res.url().includes(`/automation/rules/${ruleId}/test`) &&
         res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: '執行測試' }).click();
+    await card.getByRole('button', { name: '試試看' }).click();
     const res = await testRes;
-    expect(res.ok(), `dry-run 測試失敗（${res.status()}）${await res.text()}`).toBeTruthy();
+    expect(res.ok(), `試跑失敗（${res.status()}）${await res.text()}`).toBeTruthy();
 
-    // 回應區塊（<pre>）出現，內容應含 matched 欄位（不斷言 true/false，只驗證流程跑得動）
-    const resultPre = page.locator('pre');
-    await expect(resultPre).toBeVisible({ timeout: 15_000 });
-    await expect(resultPre).toContainText('matched');
+    // 結果以中文說明；規則在案例 02 建立時未勾「啟用」，條件符合也要說明不會執行
+    await expect(card.locator('p.font-medium')).toHaveText(/觸發|不會執行/, { timeout: 15_000 });
   });
 
-  test('@automation 06 dry-run 測試：JSON 格式錯誤時前端擋下，不送出 API 請求', async ({ page }) => {
+  test('@automation 06 試跑表單：不需要手寫 JSON', async ({ page }) => {
     test.skip(!ruleId, '前置測試（案例 02）未成功建立規則');
     await gotoAndCheck(page, `/dashboard/automation/${ruleId}`);
     await expectRuleFormLoaded(page);
 
-    const factsTextarea = page.locator('textarea.font-mono');
-    await expect(factsTextarea).toBeVisible();
-    // 缺右括號的非法 JSON
-    await factsTextarea.fill('{ "contact.name": "缺右括號"');
-
-    let testCalled = false;
-    const listener = (url: string, method: string) => {
-      if (url.includes(`/automation/rules/${ruleId}/test`) && method === 'POST') {
-        testCalled = true;
-      }
-    };
-    page.on('request', (req) => listener(req.url(), req.method()));
-
-    await page.getByRole('button', { name: '執行測試' }).click();
-
-    // handleTest 在 JSON.parse 失敗時直接 setTestResult 錯誤字串、return，不呼叫 API
-    await expect(page.getByText('JSON 格式無效', { exact: false })).toBeVisible({
-      timeout: 10_000,
-    });
-    expect(testCalled, '前端應在 JSON.parse 失敗時擋下、不送出 /test 請求').toBe(false);
+    await expect(page.getByText('試試看這條規則', { exact: true })).toBeVisible({ timeout: 10_000 });
+    // 原本的 Facts JSON 輸入框已移除（一般管理員無法使用）
+    await expect(page.locator('textarea.font-mono')).toHaveCount(0);
+    await expect(page.getByText('JSON', { exact: false })).toHaveCount(0);
   });
 
   test('@automation 07 列表 toggle 啟用/停用：點擊後 PATCH 成功、reload 驗證狀態', async ({ page }) => {
@@ -312,8 +295,8 @@ test.describe.serial('自動化規則 @automation', () => {
     const row = page.locator('tbody tr', { hasText: RULE_NAME });
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    // toggleActive 用 PATCH { isActive: !currentActive }，新建規則預設 isActive=true，
-    // 點擊後應變 false。用 waitForResponse 確認落地，不直接斷言點擊瞬間的 UI（同
+    // toggleActive 用 PATCH { isActive: !currentActive }。案例 02 在新增頁沒勾「啟用」，
+    // 規則建立為停用（2026-10-05 起 API 依 isActive 建立；之前一律啟用），點擊後應變 true。用 waitForResponse 確認落地，不直接斷言點擊瞬間的 UI（同
     // 檔頭說明沿用 Wave 2 對 SWR 快取的保守做法）
     const toggleBtn = row.locator('button').first();
     await expect(toggleBtn).toBeVisible();
@@ -327,17 +310,17 @@ test.describe.serial('自動化規則 @automation', () => {
     await toggleBtn.click();
     const res = await patchRes;
     const body = await res.json();
-    expect(body?.data?.isActive, 'PATCH 後 isActive 應變為 false').toBe(false);
+    expect(body?.data?.isActive, 'PATCH 後 isActive 應變為 true').toBe(true);
 
     await page.reload({ waitUntil: 'networkidle' });
     const reloadedRow = page.locator('tbody tr', { hasText: RULE_NAME });
     await expect(reloadedRow).toBeVisible({ timeout: 15_000 });
-    // 停用狀態下 toggle 的內側圓點應在左側（translate-x-1），而非 translate-x-6
+    // 啟用狀態下 toggle 的內側圓點應在右側（translate-x-6）
     await expect(reloadedRow.locator('button').first().locator('span')).toHaveClass(
-      /translate-x-1/,
+      /translate-x-6/,
     );
 
-    // 切回啟用，避免影響案例 08（刪除）之外的其他潛在斷言/人工檢視
+    // 切回停用：E2E 規則不應在 UAT 上啟用執行
     const patchRes2 = page.waitForResponse(
       (res) =>
         res.url().includes(`/automation/rules/${ruleId}`) &&

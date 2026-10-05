@@ -77,6 +77,7 @@ const createRuleSchema = z.object({
   description: z.string().max(1000).optional(),
   priority: z.number().int().min(0).max(10000).optional(),
   stopOnMatch: z.boolean().optional(),
+  isActive: z.boolean().optional(),
   trigger: triggerSchema,
   conditions: z.record(z.unknown()),
   actions: z.array(
