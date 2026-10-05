@@ -359,5 +359,9 @@ test.describe.serial('自動化規則 @automation', () => {
     await expect(page).toHaveURL(/\/dashboard\/automation$/, { timeout: 15_000 });
     await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('tbody tr', { hasText: RULE_NAME })).toHaveCount(0);
+
+    // 單筆 GET 也要讀不到，不能只有列表過濾
+    const getRes = await api.get(`automation/rules/${ruleId}`);
+    expect(getRes.status(), '刪除後 GET 應回 404').toBe(404);
   });
 });

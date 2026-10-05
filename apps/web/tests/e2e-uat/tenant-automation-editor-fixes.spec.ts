@@ -51,13 +51,35 @@ async function legacyRuleHasAutoAssign(): Promise<boolean> {
 }
 
 test.describe('PR #221 自動化規則頁修正 @automation', () => {
-  test('01 規則列表顯示全部規則（超過 20 條）', async ({ page }) => {
-    const meta = (await (await api.get('automation/rules', { params: { limit: '1' } })).json())?.meta;
-    const total = Number(meta?.total);
-    expect(total, 'Demo Tenant 規則數應超過原本的單頁 20 條，才驗得到分頁').toBeGreaterThan(20);
+  test('01 規則列表顯示全部規則：第 21 條以後也看得到', async ({ page }) => {
+    // 原本列表只取第一頁 20 條。不依賴 Demo Tenant 既有的規則數：不足 21 條時先建 [E2E] 規則補足。
+    const metaOf = async () => (await (await api.get('automation/rules', { params: { limit: '1' } })).json())?.meta;
+    const missing = Math.max(0, 21 - Number((await metaOf())?.total ?? 0));
+    for (let i = 0; i < missing; i++) {
+      const res = await api.post('automation/rules', {
+        data: {
+          name: `${E2E_PREFIX} 分頁補足 ${RUN} ${i}`,
+          trigger: { type: 'message.received' },
+          isActive: false,
+          conditions: { all: [] },
+          actions: [{ type: 'add_tag', params: { tagName: 'E2E' } }],
+        },
+      });
+      expect(res.status(), await res.text()).toBe(201);
+      createdRuleIds.push((await res.json()).data.id);
+    }
+
+    // API 排序（priority、createdAt、id）第 21 名的規則：原本的列表不會顯示它
+    const page2 = (await (await api.get('automation/rules', { params: { page: '2', limit: '20' } })).json())?.data ?? [];
+    const beyond = page2[0] as { id: string; name: string } | undefined;
+    expect(beyond, 'API 第 2 頁應有規則').toBeTruthy();
 
     await gotoAndCheck(page, '/dashboard/automation');
-    await expect(page.locator('tbody tr')).toHaveCount(total, { timeout: 30_000 });
+    await page.getByPlaceholder('搜尋規則名稱').waitFor({ timeout: 30_000 });
+    await expect(
+      page.locator('tbody tr', { has: page.locator('p.font-medium', { hasText: beyond!.name }) }).first(),
+      `排在第 21 名的「${beyond!.name}」應出現在列表`,
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test('02 workers 會整條略過的規則：列表標示「規則不會執行」', async ({ page }) => {
