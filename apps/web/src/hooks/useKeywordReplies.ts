@@ -13,11 +13,7 @@
 
 import useSWR from 'swr';
 import api from '@/lib/api';
-
-const fetcher = async (url: string) => {
-  const res = await api.get(url);
-  return res.data;
-};
+import { fetchAllPages } from '@/lib/fetch-all-pages';
 
 interface AutomationRuleRaw {
   id: string;
@@ -73,11 +69,12 @@ function ruleToKeywordReply(rule: AutomationRuleDetail): KeywordReply | null {
  */
 export function useKeywordReplies() {
   const { data, error, isLoading, mutate } = useSWR(
-    '/automation/rules?trigger=keyword.matched&limit=100',
-    fetcher,
+    '/automation/rules?trigger=keyword.matched',
+    // 原本只取一頁 100 條，之後的關鍵字回覆在頁面上看不到
+    (url: string) => fetchAllPages<AutomationRuleRaw>((u, config) => api.get(u, config), url),
   );
 
-  const list = (data?.data ?? []) as AutomationRuleRaw[];
+  const list = data ?? [];
 
   // 用第二輪請求補 actions
   const { data: detailData } = useSWR(

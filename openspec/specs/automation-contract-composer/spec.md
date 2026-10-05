@@ -1,8 +1,6 @@
 ## Purpose
 定義自動化規則契約：事件、事實、動作的目錄，依事件組合可用的條件與動作，解析器語意，前端可直接使用的契約資料，以及規則與事件的相容性驗證。
-
 ## Requirements
-
 ### Requirement: Automation Contract Catalog
 The system SHALL define automation event, fact, action, operator, and scope metadata in a package-level contract that can be consumed by web, API, and worker code. Event definitions SHALL declare their event name, label, category, native provided scopes, and any explicitly resolvable scopes. Fact definitions SHALL declare their fact key, label, type, allowed operators, value options when applicable, and required scopes. Action definitions SHALL declare their action type, label, required scopes, mutated scopes, and parameter metadata.
 
@@ -64,7 +62,7 @@ The composed contract SHALL include UI-ready metadata for condition and action a
 - **THEN** it uses the action parameter metadata to render the required fields
 
 ### Requirement: Contract Compatibility Validation
-The system SHALL provide validation helpers that verify a rule's event name, condition tree, condition facts, operators, and actions against the composed contract for that event. Validation SHALL reject unknown events, unknown facts, unsupported operators, missing values for value-required operators, and actions whose required scopes are unavailable for the selected event.
+The system SHALL provide validation helpers that verify a rule's event name, condition tree, condition facts, operators, and actions against the composed contract for that event. Validation SHALL reject unknown events, unknown facts, unsupported operators, missing values for value-required operators, and actions whose required scopes are unavailable for the selected event. Each validation error SHALL be written in Traditional Chinese, name the position of the condition or action, and use the contract labels of the event, fact, operator, action and parameter. When the contract does not define a fact or an action at all, the error SHALL quote the raw value and say that the system does not provide it.
 
 #### Scenario: Invalid fact rejected
 - **WHEN** validation receives a `case.created` rule whose conditions reference `message.text`
@@ -77,3 +75,8 @@ The system SHALL provide validation helpers that verify a rule's event name, con
 #### Scenario: Valid rule accepted
 - **WHEN** validation receives a `message.received` rule using message facts and a conversation-compatible action
 - **THEN** validation succeeds
+
+#### Scenario: Error message uses Chinese labels
+- **WHEN** validation receives a `message.received` rule whose second action is `auto_assign`, which the contract does not define
+- **THEN** the error is「第 2 個動作「auto_assign」不是系統提供的動作，請刪除」and contains no English text other than the raw type
+

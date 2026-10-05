@@ -2,6 +2,7 @@
 
 import useSWR from 'swr';
 import api from '@/lib/api';
+import { fetchAllPages } from '@/lib/fetch-all-pages';
 
 const fetcher = async (url: string) => {
   const res = await api.get(url);
@@ -10,21 +11,24 @@ const fetcher = async (url: string) => {
 
 /**
  * SWR hook to fetch the list of automation rules.
+ * 列表沒有分頁 UI，所以逐頁取回全部規則（原本只取第一頁 20 條，之後的規則看不到）。
  */
 export function useAutomationRules() {
   const { data, error, isLoading, mutate } = useSWR(
     '/automation/rules',
-    fetcher,
+    (url: string) => fetchAllPages((u, config) => api.get(u, config), url),
     { refreshInterval: 30000 }
   );
 
   return {
-    rules: (data?.data ?? []) as Array<{
+    rules: (data ?? []) as Array<{
       id: string;
       name: string;
       description?: string;
       trigger?: { type: string; keywords?: string[]; match_mode?: string };
-      triggerEvent?: string;
+      eventType?: string;
+      /** 用來標示 workers 會整條略過的規則 */
+      conditions?: unknown;
       /** 用來標示含系統尚未支援動作的規則（AUDIT AUTO-01） */
       actions?: unknown;
       isActive: boolean;
@@ -56,7 +60,7 @@ export function useAutomationRule(ruleId: string | null) {
       name: string;
       description: string;
       trigger: { type: string; keywords?: string[]; match_mode?: string };
-      triggerEvent?: string;
+      eventType?: string;
       priority: number;
       isActive: boolean;
       stopOnMatch: boolean;

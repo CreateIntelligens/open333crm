@@ -5,25 +5,95 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { toEditorActions } from '#src/lib/automation/rule-actions.js';
+import {
+  findWorkerSkipErrors,
+  ruleEventName,
+  splitRuleActions,
+} from '#src/lib/automation/rule-actions.js';
 
 test('載入既有規則：轉成編輯器格式並濾掉不支援的動作', () => {
-  assert.deepEqual(
-    toEditorActions([
+  const { actions } = splitRuleActions(
+    [
       { type: 'send_message', params: { text: 'hi' } },
       { type: 'llm_reply', params: {} },
       { type: 'add_tag', payload: { tagName: 'VIP' } },
-    ]),
-    [
-      { type: 'send_message', payload: { text: 'hi' } },
-      { type: 'add_tag', payload: { tagName: 'VIP' } },
     ],
+    'message.received',
   );
+  assert.deepEqual(actions, [
+    { type: 'send_message', payload: { text: 'hi' } },
+    { type: 'add_tag', payload: { tagName: 'VIP' } },
+  ]);
 });
 
 test('沒有動作或格式不對：回空陣列', () => {
-  assert.deepEqual(toEditorActions(undefined), []);
-  assert.deepEqual(toEditorActions('bad'), []);
+  assert.deepEqual(splitRuleActions(undefined, 'message.received'), { actions: [], dropped: [] });
+  assert.deepEqual(splitRuleActions('bad', 'message.received'), { actions: [], dropped: [] });
+});
+
+/*
+ * 原本只濾掉 UNSUPPORTED_AUTOMATION_ACTION_TYPES 的 4 種動作。契約從來沒有的動作（例如 UAT 舊規則的
+ * auto_assign）留在表單上，儲存時被後端以 400 拒絕，畫面也沒說是哪個動作。
+ * 這類動作會讓 workers 略過整條規則，與「只略過該動作」的尚未支援動作要分開說明。
+ */
+test('Rule contains an action outside the contract：保留傳送訊息、移除 auto_assign，整條規則不會執行', () => {
+  const result = splitRuleActions(
+    [
+      { type: 'send_message', params: { text: 'hi' } },
+      { type: 'auto_assign', params: {} },
+    ],
+    'message.received',
+  );
+  assert.deepEqual(result.actions, [{ type: 'send_message', payload: { text: 'hi' } }]);
+  assert.deepEqual(result.dropped, [{ type: 'auto_assign', label: '未知動作（auto_assign）', skipsRule: true }]);
+});
+
+test('Rule contains an action that the event does not offer：工單關閉不能傳送訊息', () => {
+  const result = splitRuleActions([{ type: 'send_message', params: { text: 'bye' } }], 'case.closed');
+  assert.deepEqual(result.actions, []);
+  assert.deepEqual(result.dropped, [{ type: 'send_message', label: '傳送訊息', skipsRule: true }]);
+});
+
+test('Rule contains an unsupported action：移除 LLM 智能回覆，其他動作照常執行', () => {
+  const result = splitRuleActions([{ type: 'llm_reply', params: {} }], 'message.received');
+  assert.deepEqual(result.dropped, [{ type: 'llm_reply', label: 'LLM 智能回覆', skipsRule: false }]);
+});
+
+test('格式錯誤的動作：也列為被移除，不會默默消失', () => {
+  const result = splitRuleActions([null, { params: {} }], 'message.received');
+  assert.deepEqual(result.actions, []);
+  assert.deepEqual(result.dropped, [
+    { type: '', label: '格式錯誤的動作', skipsRule: true },
+    { type: '', label: '格式錯誤的動作', skipsRule: true },
+  ]);
+});
+
+test('Rule has no trigger type：改用 eventType', () => {
+  assert.equal(ruleEventName({ trigger: {}, eventType: 'case.created' }), 'case.created');
+  assert.equal(ruleEventName({ trigger: { type: 'keyword.matched' }, eventType: 'case.created' }), 'keyword.matched');
+  assert.equal(ruleEventName({}), 'message.received');
+});
+
+/* workers 驗證失敗時整條規則略過、只寫 log；列表要標出來，管理員才看得到 */
+test('Rule List Marks Rules The Workers Skip：含契約外動作的規則', () => {
+  const errors = findWorkerSkipErrors({
+    trigger: { type: 'message.received' },
+    conditions: { all: [] },
+    actions: [{ type: 'auto_assign', params: {} }],
+  });
+  assert.deepEqual(errors, ['第 1 個動作「auto_assign」不是系統提供的動作，請刪除']);
+});
+
+test('Rule List Marks Rules The Workers Skip：只含尚未支援的動作，不標示規則不會執行', () => {
+  const errors = findWorkerSkipErrors({
+    trigger: { type: 'message.received' },
+    conditions: { all: [] },
+    actions: [
+      { type: 'send_message', params: { text: 'hi' } },
+      { type: 'llm_reply', params: {} },
+    ],
+  });
+  assert.deepEqual(errors, []);
 });
 
 test('選填的下拉參數：最前面加「不指定」，畫面顯示與實際存的值一致', async () => {

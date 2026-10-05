@@ -51,7 +51,7 @@ export async function listRules(
   const [rules, total] = await Promise.all([
     prisma.automationRule.findMany({
       where,
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
       skip: (pagination.page - 1) * pagination.limit,
       take: pagination.limit,
     }),
