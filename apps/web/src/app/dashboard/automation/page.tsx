@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useAutomationRules } from '@/hooks/useAutomation';
-import { findUnsupportedAutomationActions } from '@open333crm/automation';
 import { findWorkerSkipErrors } from '@/lib/automation/rule-actions';
 import { filterRules, ruleEventLabel, type RuleStatusFilter } from '@/lib/automation/rule-list';
 import { summarizeRule } from '@/lib/automation/rule-summary';
@@ -37,7 +36,6 @@ export default function AutomationPage() {
           {
             summary: summarizeRule(rule),
             skipErrors: findWorkerSkipErrors(rule),
-            unsupported: findUnsupportedAutomationActions(rule.actions),
           },
         ]),
       ),
@@ -141,11 +139,7 @@ export default function AutomationPage() {
                 {/* 不顯示執行次數：runCount、lastRunAt 自 9255245 起停止更新（AUDIT AUTO-02），數字會誤導 */}
                 <tbody>
                   {visibleRules.map((rule) => {
-                    const { summary, skipErrors, unsupported } = derived.get(rule.id) ?? {
-                      summary: '',
-                      skipErrors: [],
-                      unsupported: [],
-                    };
+                    const { summary, skipErrors } = derived.get(rule.id) ?? { summary: '', skipErrors: [] };
                     return (
                       <tr
                         key={rule.id}
@@ -169,16 +163,6 @@ export default function AutomationPage() {
                             {skipErrors.length > 0 && (
                               <Badge variant="destructive" className="text-xs" title={skipErrors.join('\n')}>
                                 規則不會執行
-                              </Badge>
-                            )}
-                            {/* AUDIT AUTO-01：含系統尚未支援自動執行的動作，這些動作命中時不會執行 */}
-                            {unsupported.length > 0 && (
-                              <Badge
-                                variant="destructive"
-                                className="text-xs"
-                                title={`不會執行的動作：${unsupported.map((a) => a.label).join('、')}`}
-                              >
-                                含未支援的動作
                               </Badge>
                             )}
                             {rule.stopOnMatch && (

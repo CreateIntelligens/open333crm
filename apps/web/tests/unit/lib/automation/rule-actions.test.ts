@@ -45,26 +45,27 @@ test('Rule contains an action outside the contract：保留傳送訊息、移除
     'message.received',
   );
   assert.deepEqual(result.actions, [{ type: 'send_message', payload: { text: 'hi' } }]);
-  assert.deepEqual(result.dropped, [{ type: 'auto_assign', label: '未知動作（auto_assign）', skipsRule: true }]);
+  assert.deepEqual(result.dropped, [{ type: 'auto_assign', label: '未知動作（auto_assign）' }]);
 });
 
 test('Rule contains an action that the event does not offer：工單關閉不能傳送訊息', () => {
   const result = splitRuleActions([{ type: 'send_message', params: { text: 'bye' } }], 'case.closed');
   assert.deepEqual(result.actions, []);
-  assert.deepEqual(result.dropped, [{ type: 'send_message', label: '傳送訊息', skipsRule: true }]);
+  assert.deepEqual(result.dropped, [{ type: 'send_message', label: '傳送訊息' }]);
 });
 
-test('Rule contains an unsupported action：移除 LLM 智能回覆，其他動作照常執行', () => {
+/* llm_reply 已從契約拿掉（change fix-automation-remaining-actions）：和其他契約沒有的動作一樣，整條規則不會執行 */
+test('Rule contains an unsupported action：llm_reply 列為未知動作', () => {
   const result = splitRuleActions([{ type: 'llm_reply', params: {} }], 'message.received');
-  assert.deepEqual(result.dropped, [{ type: 'llm_reply', label: 'LLM 智能回覆', skipsRule: false }]);
+  assert.deepEqual(result.dropped, [{ type: 'llm_reply', label: '未知動作（llm_reply）' }]);
 });
 
 test('格式錯誤的動作：也列為被移除，不會默默消失', () => {
   const result = splitRuleActions([null, { params: {} }], 'message.received');
   assert.deepEqual(result.actions, []);
   assert.deepEqual(result.dropped, [
-    { type: '', label: '格式錯誤的動作', skipsRule: true },
-    { type: '', label: '格式錯誤的動作', skipsRule: true },
+    { type: '', label: '格式錯誤的動作' },
+    { type: '', label: '格式錯誤的動作' },
   ]);
 });
 
@@ -84,7 +85,7 @@ test('Rule List Marks Rules The Workers Skip：含契約外動作的規則', () 
   assert.deepEqual(errors, ['第 1 個動作「auto_assign」不是系統提供的動作，請刪除']);
 });
 
-test('Rule List Marks Rules The Workers Skip：只含尚未支援的動作，不標示規則不會執行', () => {
+test('Rule contains only unsupported actions besides valid ones：含 llm_reply 的規則標示不會執行', () => {
   const errors = findWorkerSkipErrors({
     trigger: { type: 'message.received' },
     conditions: { all: [] },
@@ -93,7 +94,7 @@ test('Rule List Marks Rules The Workers Skip：只含尚未支援的動作，不
       { type: 'llm_reply', params: {} },
     ],
   });
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, ['第 2 個動作「llm_reply」不是系統提供的動作，請刪除']);
 });
 
 test('選填的下拉參數：最前面加「不指定」，畫面顯示與實際存的值一致', async () => {

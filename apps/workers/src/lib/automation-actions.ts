@@ -251,6 +251,38 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
+      if (action.type === 'remove_tag') {
+        // 移除觸發對象（聯絡人）的標籤。和 add_tag 不同：找不到標籤時略過、不建立，
+        // 並只找 CONTACT scope，避免名稱相同的工單、對話標籤（AUDIT AUTO-03 是 add_tag 的同類問題）
+        const rawTagId = params['tagId'];
+        const rawTagName = params['tagName'];
+        const tagId = typeof rawTagId === 'string' && rawTagId ? rawTagId : null;
+        const tagName = typeof rawTagName === 'string' && rawTagName.trim() ? rawTagName.trim() : null;
+        if (!tagId && !tagName) {
+          logger.info('[automation] Worker action "remove_tag" skipped: missing tagId/tagName');
+          continue;
+        }
+        if (!context.contactId) {
+          logger.info('[automation] Worker action "remove_tag" skipped: no contact in context');
+          continue;
+        }
+        const tag = await prisma.tag.findFirst({
+          where: tagId
+            ? { id: tagId, tenantId: context.tenantId, scope: 'CONTACT' }
+            : { name: tagName!, tenantId: context.tenantId, scope: 'CONTACT' },
+          select: { id: true },
+        });
+        if (!tag) {
+          logger.info('[automation] Worker action "remove_tag" skipped: tag not found in tenant');
+          continue;
+        }
+        const removed = await prisma.contactTag.deleteMany({
+          where: { contactId: context.contactId, tagId: tag.id },
+        });
+        logger.info(`[automation] remove_tag: removed ${removed.count} tag ${tag.id} from contact ${context.contactId}`);
+        continue;
+      }
+
       if (action.type === 'update_case_status') {
         const status = params['status'];
         if (typeof status === 'string' && status && context.caseId) {

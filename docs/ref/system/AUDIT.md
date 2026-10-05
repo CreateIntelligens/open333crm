@@ -97,7 +97,6 @@
 | [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
 | [CASE-01](#case-01) | 對話、工單與自動化 | P2 | 已提建議 | 工單的狀態下拉選單不寫時間軸、不發布事件，選「已升級」不通知主管 | 靜態確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
-| [AUTO-01](#auto-01) | 對話、工單與自動化 | P3 | 部分修正 | 4 種自動化動作在 workers 沒有實作（`create_case` 已於 #211 補上）；已不能存進新規則，既有規則執行時略過 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
@@ -1233,47 +1232,10 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 
 結果是非 LINE 渠道的工單永遠不會有 CSAT 分數，報表的滿意度只反映 LINE 的客人。
 
-<a id="auto-01"></a>
-### AUTO-01：部分自動化動作可以儲存、也會命中，執行時卻被略過
-
-2026-05-12 的 `9255245` 把自動化規則的評估與執行，從 API 行程搬到 `apps/workers`。從那之後，`automation` queue 由 `apps/workers/src/handlers/automation.handler.ts` 消費，動作由 `lib/automation-actions.ts` 的 `executeWorkerAutomationActions()` 執行。
-
-搬遷時只實作了一部分動作。規則契約 `packages/automation/src/contracts/actions.ts` 的 `AUTOMATION_ACTION_DEFINITIONS` 與前端規則編輯器都提供下列動作，`executeWorkerAutomationActions()` 卻沒有對應的分支：
-
-| 動作 | 前端標籤 |
-| --- | --- |
-| `create_case` | 建立工單 |
-| `remove_tag` | 移除標籤 |
-| `assign_bot` | 指派機器人 |
-| `kb_auto_reply` | KB 知識庫回覆 |
-| `llm_reply` | LLM 智能回覆 |
-
-遇到上表的動作時，函式只記一行 info 等級的 log（`Unsupported worker action "…" skipped`），然後繼續執行下一個動作。規則能通過 `automation.handler.ts` 呼叫的 `validateAutomationRuleContract()`，因為契約只依事件提供的資料判斷動作是否允許，不管 workers 有沒有實作。
-
-結果：租戶可以建立「收到訊息 → 建立工單」這類規則。規則儲存成功、條件命中，前端也收到 `automation.executed` socket 事件，但工單從未建立。
-
-**部分修正。** `8e25e1b`（#209，2026-10-02）讓這 5 種動作不再悄悄失效：
-
-- 契約 `actions.ts` 的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 列出這 5 種動作。規則編輯器不提供這些動作，`validateAutomationRuleContract()` 在新增或修改規則時拒絕。
-- 既有規則仍然可以執行。workers 以 `allowUnsupportedActions` 驗證既有規則，照常執行其他動作，只略過這 5 種。規則列表與編輯頁會標示含這些動作的規則。
-- 刪除沒有呼叫端的 `action-executor.ts`。
-
-#211（2026-10-02）在 workers 補上 `create_case`，並從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除：條件命中時在觸發的對話上建立工單，套用 SLA、關聯對話、寫入工單事件並發出 `case.created`；只在有對話的事件提供，工單與 SLA 事件不提供。
-
-剩下的問題是 `remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply` 四種動作在 workers 沒有實作。issue #197 回報（2026-10-02，#209 之前的稽核狀態）：用到當時這 5 種動作（含 `create_case`）的規則共 6 條，全部在 Demo Tenant；其中只有「一般問題自動開案」（`create_case`）是啟用中的，但它另含不存在的動作 `auto_assign`，整條規則在驗證時就被跳過，要重新儲存一次才會執行。真實客戶的租戶沒有這類規則。
-
-**規格依據。** 主規格 `openspec/specs/automation-engine/spec.md` 的「Actions」原本寫系統 SHALL 支援 `create_case` 等動作，當時的現況違反這條需求。#211 把 #209 的 change `fix-automation-unsupported-actions` 改為 MODIFIED「Actions」後歸檔：主規格改寫為「workers 尚未實作的動作列在 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔拒絕」，不再同時要求支援與拒絕。#211 的 change `add-automation-create-case` 再以 MODIFIED「Actions」把 `create_case` 改為已支援，待 UAT 實測後歸檔。
-
-改寫後的「Actions」規定：尚未實作的動作 SHALL 列在 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、API 拒絕，既有規則只略過這些動作並加上標示。剩下的 4 種動作都在這份清單裡，**現況不再違反主規格**（2026-10-02 判定）。在 `add-automation-create-case` 歸檔之前，主規格的清單與情境仍以 `create_case` 為例，與程式暫時不一致。
-
-**優先順序是 P3。** 新規則已經存不進去，既有規則會在介面上標示，不再是「看起來有效、實際不執行」，剩下的是功能缺口，而且只有 Demo Tenant 用到。現況符合改寫後的主規格「Actions」，因此不適用「違反主規格的項目至少是 P2」。
-
-**修正方向**：在 `executeWorkerAutomationActions()` 補上剩下 4 種動作，再從 `UNSUPPORTED_AUTOMATION_ACTION_TYPES` 移除。
-
 <a id="auto-02"></a>
 ### AUTO-02：規則的執行紀錄與執行次數停止更新
 
-寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，原本只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端，檔案已在 `8e25e1b` 刪除（見 AUTO-01）。workers 的執行路徑不寫這些欄位，因此目前沒有任何程式寫入。
+寫入 `AutomationLog`、更新 `AutomationRule.runCount` 與 `lastRunAt` 的程式，原本只存在 API 端 `action-executor.ts` 的 `executeActions()`。這個函式自 `9255245` 起沒有呼叫端，檔案已在 `8e25e1b`（#209）刪除。workers 的執行路徑不寫這些欄位，因此目前沒有任何程式寫入。
 
 - 自動化頁的規則清單原本顯示執行次數與最後執行時間，停在搬遷前的值，搬遷後建立的規則永遠顯示 0。2026-10-05 起規則清單不再顯示這兩個值（change `improve-automation-page-readability`）；欄位本身仍然沒有更新。
 - `GET /automation/logs` 查不到搬遷後的任何執行。前端沒有呼叫這個端點。

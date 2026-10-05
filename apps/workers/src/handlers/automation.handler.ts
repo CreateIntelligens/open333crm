@@ -44,9 +44,8 @@ export async function handleAutomationJob(
       eventName: trigger,
       conditions: rule.conditions,
       actions: rule.actions,
-      // 既有規則可能含 workers 尚未支援的動作（AUDIT AUTO-01）：照常執行其他動作，執行到時再個別跳過，
-      // 不可整條規則跳過。新規則在存檔時就會被拒絕
-      options: { allowUnsupportedActions: true },
+      // 含契約沒有的動作（例如 2026-10-05 拿掉的 llm_reply）時驗證失敗、整條略過；
+      // 規則列表會標示「規則不會執行」，清理見 apps/api/src/scripts/remove-retired-automation-actions.ts
     });
     if (!result.valid) {
       logger.warn(

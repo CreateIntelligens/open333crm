@@ -45,26 +45,6 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     ],
   },
   {
-    type: 'llm_reply',
-    label: 'LLM 智能回覆',
-    requires: ['contact', 'conversation', 'message'],
-    mutates: ['conversation', 'message'],
-    params: [
-      {
-        key: 'systemPrompt',
-        label: '系統提示',
-        type: 'textarea',
-        placeholder: '自訂 LLM 系統提示，留空使用預設...',
-      },
-    ],
-  },
-  {
-    type: 'kb_auto_reply',
-    label: 'KB 知識庫回覆',
-    requires: ['contact', 'conversation', 'message'],
-    mutates: ['conversation', 'message'],
-  },
-  {
     type: 'send_material',
     label: '傳送素材',
     requires: ['contact', 'conversation'],
@@ -163,12 +143,6 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     params: [{ key: 'agentId', label: '指派給', type: 'agent', required: true }],
   },
   {
-    type: 'assign_bot',
-    label: '指派機器人',
-    requires: ['conversation'],
-    mutates: ['conversation'],
-  },
-  {
     type: 'notify',
     label: '傳送通知',
     requires: ['tenant'],
@@ -187,28 +161,9 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
 export const AUTOMATION_ACTION_MAP: ReadonlyMap<string, AutomationActionDefinition> =
   new Map(AUTOMATION_ACTION_DEFINITIONS.map((action) => [action.type, action]));
 
-/**
- * workers 尚未實作的動作（AUDIT AUTO-01）。
- * 2026-05 自動化執行搬到 apps/workers 時，這幾種動作沒有搬過去：規則可以存檔、條件也會命中，
- * 但 workers 只記一行 log 就略過，租戶以為規則有效。在 workers 補上實作之前：
- *   - 規則編輯器不提供（composer 預設排除）
- *   - 存檔時拒絕（validateAutomationRuleContract）
- *   - 既有規則在 workers 照常執行其他動作，只跳過這幾個（allowUnsupportedActions）
- * workers 補上實作後，從這裡移除即可（create_case 已於 2026-10-02 補上）。
+/*
+ * assign_bot、kb_auto_reply、llm_reply 已於 2026-10-05 從契約拿掉（AUDIT AUTO-01，issue #197）：
+ * workers 從未實作；機器人在負責的對話裡本來就會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。
+ * 既有規則若還含這些動作，契約驗證會失敗，workers 整條略過；清理見
+ * apps/api/src/scripts/remove-retired-automation-actions.ts。
  */
-export const UNSUPPORTED_AUTOMATION_ACTION_TYPES: ReadonlySet<string> = new Set([
-  'remove_tag',
-  'assign_bot',
-  'kb_auto_reply',
-  'llm_reply',
-]);
-
-/** 規則動作中 workers 尚未支援的項目（給規則列表、編輯頁提示用） */
-export function findUnsupportedAutomationActions(actions: unknown): Array<{ type: string; label: string }> {
-  if (!Array.isArray(actions)) return [];
-  return actions.flatMap((action) => {
-    const type = (action as { type?: unknown } | null)?.type;
-    if (typeof type !== 'string' || !UNSUPPORTED_AUTOMATION_ACTION_TYPES.has(type)) return [];
-    return [{ type, label: AUTOMATION_ACTION_MAP.get(type)?.label ?? type }];
-  });
-}

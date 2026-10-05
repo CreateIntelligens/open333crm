@@ -97,24 +97,11 @@ const DEFAULT_FORM: RuleForm = {
 };
 
 function DroppedActionsNotice({ dropped }: { dropped: DroppedAction[] }) {
-  const skipsRule = dropped.filter((a) => a.skipsRule);
-  const unsupported = dropped.filter((a) => !a.skipsRule);
-  const names = (list: DroppedAction[]) => list.map((a) => `「${a.label}」`).join('、');
   if (dropped.length === 0) return null;
   return (
-    <div className="mb-3 space-y-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      {skipsRule.length > 0 && (
-        <p>
-          此規則含有不適用於這個觸發事件的動作：{names(skipsRule)}。
-          因此目前整條規則都不會執行。編輯器已移除這些動作，儲存後規則就會恢復執行。
-        </p>
-      )}
-      {unsupported.length > 0 && (
-        <p>
-          此規則含有系統尚未支援自動執行的動作：{names(unsupported)}。
-          這些動作目前不會執行{skipsRule.length === 0 && '，其他動作照常執行'}；編輯器已移除，儲存時會從規則中刪除。
-        </p>
-      )}
+    <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      此規則含有不適用於這個觸發事件的動作：{dropped.map((a) => `「${a.label}」`).join('、')}。
+      因此目前整條規則都不會執行。編輯器已移除這些動作，儲存後規則就會恢復執行。
     </div>
   );
 }

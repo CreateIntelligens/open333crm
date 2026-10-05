@@ -103,11 +103,6 @@ export interface AutomationActionDefinition {
 
 export interface ComposeAutomationContractOptions {
   enabledResolvers?: readonly AutomationScope[];
-  /**
-   * 包含 workers 尚未支援的動作（AUDIT AUTO-01）。只給 workers 執行既有規則時用：
-   * 驗證照常通過，執行時再個別跳過。規則編輯器與存檔驗證都不帶，所以不會提供、也存不進去。
-   */
-  allowUnsupportedActions?: boolean;
 }
 
 export interface ComposedAutomationContract {

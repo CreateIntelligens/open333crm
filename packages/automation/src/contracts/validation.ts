@@ -10,7 +10,7 @@ import type {
   AutomationOperator,
   ComposeAutomationContractOptions,
 } from './types.js';
-import { AUTOMATION_ACTION_MAP, UNSUPPORTED_AUTOMATION_ACTION_TYPES } from './actions.js';
+import { AUTOMATION_ACTION_MAP } from './actions.js';
 import { AUTOMATION_EVENT_MAP } from './events.js';
 import { AUTOMATION_FACT_MAP } from './facts.js';
 
@@ -131,11 +131,6 @@ function validateAction(
 
   if (!AUTOMATION_ACTION_MAP.has(type)) {
     errors.push(`${position}「${type}」不是系統提供的動作，請刪除`);
-    return;
-  }
-
-  if (UNSUPPORTED_AUTOMATION_ACTION_TYPES.has(type) && !options.allowUnsupportedActions) {
-    errors.push(`${position}「${actionLabel(type)}」目前尚未支援自動執行，請改用其他動作`);
     return;
   }
 

@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-05：AUTO-01 結案
+
+change `fix-automation-remaining-actions` 依 issue #197 的決定處理剩下的 4 種動作：
+
+| 動作 | 處理 |
+| --- | --- |
+| `remove_tag` | workers 補上實作：依 `tagId` 或名稱找本租戶 `CONTACT` scope 的標籤並移除；找不到時略過、不建立 |
+| `assign_bot`、`kb_auto_reply`、`llm_reply` | 從契約拿掉。機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能重複回覆；後兩者也依賴向量化（LLM-04） |
+
+「尚未支援的動作」清單因此沒有成員，`UNSUPPORTED_AUTOMATION_ACTION_TYPES`、`allowUnsupportedActions`、`findUnsupportedAutomationActions` 與列表的「含未支援的動作」標示一併移除。契約沒有定義的動作，存檔時以「不是系統提供的動作」拒絕；既有規則含這 3 種動作時，workers 驗證失敗、整條略過，列表標示「規則不會執行」。`apps/api/src/scripts/remove-retired-automation-actions.ts` 可移除既有規則中的這 3 種動作（預設 dry-run）。
+
+UAT 以唯讀查詢確認（2026-10-05）：含這 3 種動作的規則只有 2 條，都在 Demo Tenant，而且都已刪除（`enabled = false`）、未啟用，沒有實際影響。
+
+主規格 `automation-engine` 的「Actions」改為 MODIFIED：契約不定義這 3 種動作，`remove_tag` 的行為寫入需求。AUTO-01 從 `AUDIT.md` 移除。
+
 ## 2026-10-05：AUTO-02、AUTO-05 改為部分修正
 
 change `improve-automation-page-readability` 改寫自動化規則頁，順帶緩解兩項，根本原因都沒有處理。
