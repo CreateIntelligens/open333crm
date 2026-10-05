@@ -249,13 +249,16 @@ request:
 - [ ] You archive with `openspec archive` or the `openspec-archive-change` skill. Do not move a
       change into `archive/` or copy its specs into `openspec/specs/` by hand. A hand copy can
       leave a main spec in a format that the CLI cannot read.
-- [ ] You delete a whole main spec (`openspec/specs/<name>/`) by hand only when the product does
-      not have its capability, or another spec or document now covers that capability. This is
-      the only case where you delete a directory under `openspec/specs/` by hand. A delta spec
-      cannot do this: `openspec archive` stops when a spec has no requirements left. In the pull
-      request description, give the reason for each deleted spec, and name the spec or document
-      that replaces it. If the capability is still planned, do not only delete the spec. Move its
-      requirements into a change as an `ADDED` delta spec.
+- [ ] You delete a whole main spec (`openspec/specs/<name>/`) by hand only in one of these cases:
+      - The product does not have the capability that the spec describes.
+      - Another spec or document now covers that capability.
+      - The spec records a one-time change, not behavior that the system keeps.
+
+      This is the only case where you delete a directory under `openspec/specs/` by hand. A delta
+      spec cannot do this: `openspec archive` stops when a spec has no requirements left. In the
+      pull request description, give the reason for each deleted spec. If a spec or document
+      replaces it, name that spec or document. If the capability is still planned, do not only
+      delete the spec. Move its requirements into a change as an `ADDED` delta spec.
 - [ ] `openspec validate --specs --strict` passes, if your change touches `openspec/`. All main
       specs pass this command on `main`. With `--strict`, a warning also fails the command. A
       common warning is a `## Purpose` section shorter than 50 characters.
