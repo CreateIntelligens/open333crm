@@ -1,7 +1,8 @@
 /**
  * 渠道級可見性（CM-173 / channel-scoped-visibility）核心解析器單元測試。
  *
- * 目標：驗證 getAccessibleChannelIds 的「分店/總店/legacy/fail-closed」語意，
+ * 目標：驗證 getAccessibleChannelIds 的「分店/總店/fail-closed」語意（沒有綁定的渠道不可見，
+ * change channel-visibility-fail-closed 移除了原本「沒有綁定＝全員可見」的 legacy 分支），
  * 以及 channelIdWhereFilter 把可見集合轉成 Prisma where 條件的三種結果。
  *
  * 走純函式路線（mock prisma.channel.findMany），不依賴真實 DB。
@@ -28,7 +29,8 @@ const teamA = '55555555-5555-4555-8555-555555555555';
 const teamB = '66666666-6666-4666-8666-666666666666';
 const CH_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; // 授權給 teamA
 const CH_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; // 授權給 teamB
-const CH_LEGACY = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'; // 無任何綁定（team 或 agent）
+const CH_LEGACY = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'; // 無任何綁定（team 或 agent）：fail-closed 後誰都看不到
+const agentEmpty = '77777777-7777-4777-8777-777777777777'; // 沒有任何團隊與直綁
 const CH_DIRECT = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'; // 直綁給 agentNone（AgentChannelAccess）
 
 /**
@@ -42,6 +44,7 @@ const agentTeams: Record<string, string[]> = {
   [agentSolo]: [teamA],
   [agentMulti]: [teamA, teamB],
   [agentNone]: [],
+  [agentEmpty]: [],
 };
 const channelTeams: Record<string, string[]> = {
   [CH_A]: [teamA],
@@ -123,7 +126,7 @@ async function testBranchAgentSeesOwnChannel() {
   });
   const set = asSet(accessible);
   assert.ok(set.has(CH_A), '應看得到自己團隊的 CH-A');
-  assert.ok(set.has(CH_LEGACY), '應看得到 legacy 渠道');
+  assert.ok(!set.has(CH_LEGACY), '沒有綁定的渠道不可見（fail-closed）');
   assert.ok(!set.has(CH_B), '不應看到別團隊的 CH-B');
   assert.ok(!set.has(CH_DIRECT), '不應看到直綁給別人的 CH-DIRECT');
 }
@@ -138,7 +141,7 @@ async function testMultiTeamUnion() {
   const set = asSet(accessible);
   assert.ok(set.has(CH_A), '多團隊應含 teamA 的 CH-A');
   assert.ok(set.has(CH_B), '多團隊應含 teamB 的 CH-B');
-  assert.ok(set.has(CH_LEGACY), '多團隊仍應含 legacy 渠道');
+  assert.ok(!set.has(CH_LEGACY), '沒有綁定的渠道不可見（fail-closed）');
 }
 
 // 案例 3：hasViewAll=true（總店）→ 回哨兵 ALL_CHANNELS，且完全不查 DB
@@ -161,15 +164,28 @@ async function testViewAllReturnsSentinel() {
   assert.equal(queried, false, '總店應短路、不查渠道表');
 }
 
-// 案例 4：legacy 渠道（無 teamAccesses）→ 對所有 agent 可見（含不屬任何 team 者）
-async function testLegacyChannelVisibleToAll() {
+// 案例 4：Unbound channel hidden from a member——沒有綁定的渠道，非總店成員看不到，單筆存取層級也是 null
+async function testUnboundChannelHidden() {
   const accessible = await getAccessibleChannelIds(createPrisma() as never, {
     tenantId,
     agentId: agentNone,
     hasViewAll: false,
   });
   const set = asSet(accessible);
-  assert.ok(set.has(CH_LEGACY), 'legacy 渠道對不屬任何團隊的 agent 也可見');
+  assert.ok(!set.has(CH_LEGACY), '沒有綁定的渠道對非總店成員不可見');
+  assert.equal(
+    await resolveChannelAccessLevel(levelPrisma({ teamCount: 0, agentCount: 0 }) as never, lctx(), CH_LEGACY),
+    null,
+    '沒有綁定的渠道，存取層級為 null',
+  );
+}
+
+// 案例 4b：Member without any binding——沒有任何團隊與直綁 → 空集合
+async function testMemberWithoutAnyBinding() {
+  const set = asSet(
+    await getAccessibleChannelIds(createPrisma() as never, { tenantId, agentId: agentEmpty, hasViewAll: false }),
+  );
+  assert.equal(set.size, 0, '沒有任何授權的成員看不到任何渠道');
 }
 
 // 案例 5：無授權且非總店（不屬任何 team、且無 legacy 情境）→ 空 Set（fail-closed）
@@ -237,7 +253,7 @@ async function testAgentDirectBinding() {
   });
   const set = asSet(accessible);
   assert.ok(set.has(CH_DIRECT), '直綁的 agent 應看得到 CH-DIRECT');
-  assert.ok(set.has(CH_LEGACY), '仍應看得到 legacy 渠道');
+  assert.ok(!set.has(CH_LEGACY), '沒有綁定的渠道不可見');
   assert.ok(!set.has(CH_A), '未經 team/直綁授權的 CH-A 不可見');
 
   // agentSolo（屬 teamA、無直綁）→ 看得到 CH_A，但看不到 CH_DIRECT（已被綁定＝限縮）
@@ -253,8 +269,9 @@ async function testAgentDirectBinding() {
 
 test('branch agent sees own channel', testBranchAgentSeesOwnChannel);
 test('multi team union', testMultiTeamUnion);
-test('view all returns sentinel', testViewAllReturnsSentinel);
-test('legacy channel visible to all', testLegacyChannelVisibleToAll);
+test('Head office sees every channel：view all returns sentinel', testViewAllReturnsSentinel);
+test('Unbound channel hidden from a member', testUnboundChannelHidden);
+test('Member without any binding', testMemberWithoutAnyBinding);
 test('fail closed empty set', testFailClosedEmptySet);
 test('channel id where filter', testChannelIdWhereFilter);
 test('agent direct binding', testAgentDirectBinding);
@@ -288,10 +305,10 @@ const lctx = (hasViewAll = false) => ({ tenantId, agentId: agentSolo, hasViewAll
 async function testResolveLevel() {
   // 總店 → full（不查 DB）
   assert.equal(await resolveChannelAccessLevel({} as never, lctx(true), CH_A), 'full', '總店回 full');
-  // legacy（無任何綁定）→ full
+  // 沒有任何綁定 → null（fail-closed）
   assert.equal(
     await resolveChannelAccessLevel(levelPrisma({ teamCount: 0, agentCount: 0 }) as never, lctx(), CH_LEGACY),
-    'full', 'legacy 回 full');
+    null, '沒有綁定回 null');
   // 多來源取最高：team read_only + agent reply_only → reply_only
   assert.equal(
     await resolveChannelAccessLevel(

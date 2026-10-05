@@ -28,7 +28,7 @@ import { generateEmbedCode } from './webchat-embed.service.js';
 import { uploadFile } from '../storage/storage.service.js';
 import { downstreamWebhookConfigSchema } from '../webhook/downstream-forwarder.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import { withTenant, type TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { ALL_CHANNELS, resolveChannelVisibility } from '../../services/channel-visibility.js';
@@ -76,6 +76,8 @@ const createChannelSchema = z.object({
   settings: z.record(z.unknown()).optional(),
   // 會被串成對外 webhook 位址；原本 ftp:/x、javascript: 都能通過
   webhookBaseUrl: httpUrlSchema.optional(),
+  // 可見此渠道的成員（直綁）。沒送時為所有啟用中的成員；可見範圍是 fail-closed，沒綁定的渠道只有總店看得到
+  visibleAgentIds: z.array(z.string().uuid()).max(500).optional(),
 }).superRefine((data, ctx) => {
   if (data.channelType === CHANNEL_TYPE.LINE) {
     const result = lineCredentialsSchema.safeParse(data.credentials);
@@ -194,12 +196,25 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: requirePermission('channel.create') }, async (request, reply) => {
     const data = createChannelSchema.parse(request.body);
 
-    // 系統維護欄位（分派警示、平台連結標記等）不接受租戶輸入
-    const channel = await createChannel(request.tenantPrisma, request.agent.tenantId, {
-      ...data,
-      credentials: stripSystemManagedCredentials(data.credentials),
-      settings: stripSystemManagedSettings(data.settings),
-    });
+    // 系統維護欄位（分派警示、平台連結標記等）不接受租戶輸入。
+    // 建立渠道與寫入可見成員在同一個交易：綁定失敗時不留下只有總店看得到的渠道。
+    // （此路由不帶 externalAccountId，不會走 createChannel 撞唯一索引後重試的流程，可安全包進交易）
+    const tenantId = request.agent.tenantId;
+    // 建立者不是總店時，自動把自己加進可見成員：否則建完自己就看不到、也管理不了這個渠道
+    let visibleAgentIds = data.visibleAgentIds;
+    if (visibleAgentIds && !visibleAgentIds.includes(request.agent.id)) {
+      const creatorSeesAll = (await resolveChannelVisibility(request)) === ALL_CHANNELS;
+      if (!creatorSeesAll) visibleAgentIds = [...visibleAgentIds, request.agent.id];
+    }
+    const channel = await withTenant(fastify.prisma, tenantId, (tx) =>
+      createChannel(tx, tenantId, {
+        ...data,
+        visibleAgentIds,
+        credentials: stripSystemManagedCredentials(data.credentials),
+        settings: stripSystemManagedSettings(data.settings),
+        grantedById: request.agent.id,
+      }),
+    );
 
     // 稽核：建立渠道（只放型別與顯示名，絕不放 credentials 憑證）
     await writeTenantAudit(request.tenantPrisma, {

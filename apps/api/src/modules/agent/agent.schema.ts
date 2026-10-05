@@ -10,6 +10,8 @@ export const createAgentSchema = z.object({
   // 細粒度 RBAC：自訂角色 / system role 皆可透過此欄位指派（同租戶）。提供時以此為準。
   roleId: z.string().uuid('Invalid roleId format').optional(),
   password: z.string().min(8, '密碼至少需要 8 個字元'),
+  // 新成員可見的渠道（直綁）。沒送時為建立者看得到的渠道；可見範圍是 fail-closed，沒有綁定就看不到
+  channelIds: z.array(z.string().uuid()).max(500).optional(),
 });
 
 export const updateAgentRoleSchema = z

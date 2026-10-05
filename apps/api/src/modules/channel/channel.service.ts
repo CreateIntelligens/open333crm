@@ -5,6 +5,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { resolveEffectiveLimit } from '../platform/plan-limits.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
 
 // --- Credential Encryption ---
 
@@ -83,6 +84,31 @@ export async function listChannels(
   return channels;
 }
 
+/**
+ * 新渠道要直綁給哪些成員（change channel-visibility-fail-closed）。可見範圍是 fail-closed：
+ * 沒有綁定的渠道只有總店（channel.view_all）看得到，所以建立時一併決定。
+ *   - 沒指定 → 租戶所有啟用中的成員（API 用戶端、Meta 串接維持「新渠道大家看得到」）
+ *   - 空陣列 → 不綁任何成員
+ *   - 指定的 ID 有任何一個不是本租戶啟用中的成員 → 400（在建立渠道之前檢查，不留半套）
+ */
+async function resolveVisibleAgentIds(
+  prisma: TenantDb,
+  tenantId: string,
+  requested: string[] | undefined,
+): Promise<string[]> {
+  if (requested === undefined) {
+    const agents = await prisma.agent.findMany({ where: { tenantId, isActive: true }, select: { id: true } });
+    return agents.map((a) => a.id);
+  }
+  const ids = Array.from(new Set(requested));
+  if (ids.length === 0) return [];
+  const found = await prisma.agent.findMany({ where: { tenantId, isActive: true, id: { in: ids } }, select: { id: true } });
+  if (found.length !== ids.length) {
+    throw new AppError('指定的成員中有部分不存在或已停用', 'BAD_REQUEST', 400);
+  }
+  return ids;
+}
+
 const accountAlreadyLinked = () =>
   new AppError('此粉專／IG 帳號已連結到其他渠道，同一個帳號只能連結一次', 'CHANNEL_ACCOUNT_ALREADY_LINKED', 409);
 
@@ -101,6 +127,10 @@ export async function createChannel(
      * 已被其他渠道連結時丟 409 CHANNEL_ACCOUNT_ALREADY_LINKED。
      */
     externalAccountId?: string;
+    /** 可見此渠道的成員（直綁 full）；沒指定時為所有啟用中的成員，見 resolveVisibleAgentIds */
+    visibleAgentIds?: string[];
+    /** 綁定的授權人（建立渠道的成員） */
+    grantedById?: string;
   },
 ) {
   // 方案層渠道管控（一次查 tenant+plan，供白名單與數量上限共用）。
@@ -135,6 +165,8 @@ export async function createChannel(
       });
     }
   }
+
+  const visibleAgentIds = await resolveVisibleAgentIds(prisma, tenantId, data.visibleAgentIds);
 
   const encrypted = encryptCredentials(data.credentials);
 
@@ -195,6 +227,19 @@ export async function createChannel(
       updatedAt: true,
     },
   });
+
+  try {
+    await insertAgentChannelAccess(
+      prisma,
+      visibleAgentIds.map((agentId) => ({ channelId: channel.id, agentId, accessLevel: 'full' })),
+      data.grantedById,
+    );
+  } catch (err) {
+    // 不留下沒有綁定（只有總店看得到）的渠道。POST /channels 在交易內，交易會整筆回滾、這裡的刪除
+    // 會失敗而被忽略；Meta 串接不在交易內（撞唯一索引後要重試），靠這裡清掉剛建立的渠道。
+    await prisma.channel.deleteMany({ where: { id: channel.id, tenantId } }).catch(() => undefined);
+    throw err;
+  }
 
   return updated;
 }

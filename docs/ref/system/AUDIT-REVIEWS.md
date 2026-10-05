@@ -4,6 +4,17 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-05：渠道可見範圍改回 fail-closed
+
+依 #217 的決定（留言 5990552133），change `channel-visibility-fail-closed` 移除 `services/channel-visibility.ts` 的相容分支：完全沒有綁定任何團隊或成員的渠道，原本所有成員都看得到（`full`），現在只有持有 `channel.view_all` 的成員看得到。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 沒有綁定的渠道全員可見 | 已修正，不新增 AUDIT 項目 | 後端原本要在 AUDIT 新增一項「現況違反 fail-closed」。本 change 在同一個 PR 移除相容分支並回填，因此不新增。`getAccessibleChannelIds()` 與 `resolveChannelAccessLevel()` 都不再把沒有綁定的渠道視為可見；REST、socket 房間與 MCP 都經由這兩個函式 |
+| 既有渠道的回填 | migration `20261005120000_backfill_unbound_channel_access` | 每個租戶中沒有綁定的渠道（含停用的渠道）直綁給所有啟用中的成員。執行身分不能略過 RLS 時中止，不會靜默寫入 0 筆。UAT 預估 Demo Tenant 40 筆、創造智能 0 筆 |
+| RBAC-04 | 不變 | 租戶房間的即時事件、聯絡人清單與合併、AI 輔助仍未套用可見範圍 |
+| TEAM-01 | 不變 | 團隊仍沒有建立的途徑；本 change 改用成員直綁回填，不依賴團隊 |
+
 ## 2026-10-05：AUTO-01 結案
 
 change `fix-automation-remaining-actions` 依 issue #197 的決定處理剩下的 4 種動作：

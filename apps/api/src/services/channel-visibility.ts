@@ -11,10 +11,11 @@
  *
  * 規則（與 socket-room-authorization.ts 既有邏輯對齊）：
  *   - 持有 `channel.view_all`（總店）→ 回哨兵 ALL_CHANNELS，查詢層略過渠道過濾。
- *   - 否則 → agent 所屬 team（AgentTeamMember）被授權的 channel（ChannelTeamAccess），
- *     外加「無任何 teamAccesses 綁定的 legacy channel」（向後相容：未指派團隊的渠道
- *     維持全租戶可見，避免上線當下有人突然看不到）。
- *   - fail-closed：非總店且無任何可見渠道 → 回空集合，查詢結果為空。
+ *   - 否則 → agent 直綁（AgentChannelAccess）與所屬 team（AgentTeamMember）被授權的 channel
+ *     （ChannelTeamAccess）取聯集。
+ *   - fail-closed：沒有綁定任何團隊或成員的渠道，非總店成員一律看不到；沒有任何授權 → 空集合。
+ *     原本「沒有綁定＝全員可見」的 legacy 分支已移除（change channel-visibility-fail-closed），
+ *     既有渠道由 migration 20261005120000 回填給所有啟用中的成員，新渠道與新成員在建立時指定。
  */
 import type { FastifyRequest } from 'fastify';
 import type { TenantDb } from '../lib/tenant-db.js';
@@ -45,8 +46,7 @@ export function levelMeets(level: ChannelAccessLevel, required: ChannelAccessLev
  * 解析 agent 對某渠道的「有效存取層級」（多來源取最高）：
  *   - 總店 view_all → full
  *   - agent 直綁（AgentChannelAccess）與所屬 team 授權（ChannelTeamAccess）各自層級取最高
- *   - 兩者皆無綁定的 legacy 渠道 → full（向後相容，維持原本全租戶可讀寫）
- *   - 完全無授權（非 legacy、非直綁、非 team）→ null（不可見）
+ *   - 沒有綁定給此 agent（含完全沒有綁定的渠道）→ null（不可見，fail-closed）
  */
 export async function resolveChannelAccessLevel(
   prisma: TenantDb,
@@ -58,7 +58,6 @@ export async function resolveChannelAccessLevel(
   const channel = await prisma.channel.findFirst({
     where: { id: channelId, tenantId: ctx.tenantId, isActive: true }, // 停用渠道視為不可見，與 socket 一致
     select: {
-      _count: { select: { teamAccesses: true, agentAccesses: true } },
       agentAccesses: {
         where: { agentId: ctx.agentId },
         select: { accessLevel: true },
@@ -72,15 +71,12 @@ export async function resolveChannelAccessLevel(
   });
   if (!channel) return null;
 
-  // legacy：完全未綁定 → full（相容）
-  if (channel._count.teamAccesses === 0 && channel._count.agentAccesses === 0) return 'full';
-
   const levels = [
     ...channel.agentAccesses.map((a) => a.accessLevel),
     ...channel.teamAccesses.map((t) => t.accessLevel),
   ].filter((l): l is ChannelAccessLevel => l === 'read_only' || l === 'reply_only' || l === 'full');
 
-  if (levels.length === 0) return null; // 有綁定但都不含此 agent → 不可見
+  if (levels.length === 0) return null; // 沒有綁定給此 agent → 不可見
   return levels.reduce((best, l) => (LEVEL_RANK[l] > LEVEL_RANK[best] ? l : best), 'read_only');
 }
 
@@ -106,13 +102,6 @@ export async function getAccessibleChannelIds(
       tenantId: ctx.tenantId,
       isActive: true, // 停用渠道不納入可見集合，與 socket canAccessChannel 一致
       OR: [
-        // legacy：未指派任何團隊「且」未直綁任何 agent 的渠道 → 全租戶可見（向後相容）
-        {
-          AND: [
-            { teamAccesses: { none: {} } },
-            { agentAccesses: { none: {} } },
-          ],
-        },
         // team 授權：agent 所屬 team 有被授權此渠道
         {
           teamAccesses: {
@@ -173,28 +162,75 @@ async function resolveRoleId(request: FastifyRequest): Promise<string | null> {
   return agent?.roleId ?? null;
 }
 
+/**
+ * 當前 agent 的有效權限（角色權限 ∩ 方案天花板，比照 requirePermission guard）。
+ * 可見範圍、指派範圍與層級解析共用這一份，避免各自計算而漂移。
+ */
+async function effectivePermissionsFromRequest(request: FastifyRequest): Promise<Set<string>> {
+  const roleId = await resolveRoleId(request);
+  const planId = await getTenantPlanId(request.server.prismaAdmin, request.agent.tenantId);
+  return getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
+}
+
 export async function resolveChannelVisibility(
   request: FastifyRequest,
 ): Promise<AccessibleChannels> {
-  const tenantId = request.agent.tenantId;
-  const agentId = request.agent.id;
-  const roleId = await resolveRoleId(request);
-  const planId = await getTenantPlanId(request.server.prismaAdmin, tenantId);
-  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
-  return getAccessibleChannelIds(request.tenantPrisma, {
-    tenantId,
-    agentId,
-    hasViewAll: eff.has('channel.view_all'),
+  return getAccessibleChannelIds(request.tenantPrisma, await visibilityCtxFromRequest(request));
+}
+
+/** 指派範圍：全部渠道（ALL_CHANNELS），或「渠道 → 指派者自己的層級」 */
+export type ChannelGrantScope = typeof ALL_CHANNELS | Map<string, ChannelAccessLevel>;
+
+/**
+ * agent 看得到的每個渠道與其有效層級（直綁與團隊授權取最高）。不含總店判斷，由呼叫端處理。
+ */
+export async function getAccessibleChannelLevels(
+  prisma: TenantDb,
+  ctx: Omit<VisibilityContext, 'hasViewAll'>,
+): Promise<Map<string, ChannelAccessLevel>> {
+  const channels = await prisma.channel.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      isActive: true,
+      OR: [
+        { teamAccesses: { some: { team: { tenantId: ctx.tenantId, members: { some: { agentId: ctx.agentId } } } } } },
+        { agentAccesses: { some: { agentId: ctx.agentId } } },
+      ],
+    },
+    select: {
+      id: true,
+      agentAccesses: { where: { agentId: ctx.agentId }, select: { accessLevel: true } },
+      teamAccesses: {
+        where: { team: { tenantId: ctx.tenantId, members: { some: { agentId: ctx.agentId } } } },
+        select: { accessLevel: true },
+      },
+    },
   });
+  const result = new Map<string, ChannelAccessLevel>();
+  for (const ch of channels) {
+    const levels = [...ch.agentAccesses, ...ch.teamAccesses]
+      .map((a) => a.accessLevel)
+      .filter((l): l is ChannelAccessLevel => l === 'read_only' || l === 'reply_only' || l === 'full');
+    if (levels.length > 0) result.set(ch.id, levels.reduce((best, l) => (LEVEL_RANK[l] > LEVEL_RANK[best] ? l : best), 'read_only'));
+  }
+  return result;
+}
+
+/**
+ * 指派渠道給其他成員時，可以指派的範圍與層級上限（change channel-visibility-fail-closed）：
+ *   - 持有 `channel.view_all`（總店）或 `channel.assign_team`（可設定成員可用渠道）→ 全部渠道，層級不限
+ *   - 否則 → 只能指派自己看得到的渠道，層級不高於自己的層級，避免藉由建立成員越權
+ */
+export async function resolveChannelGrantScope(request: FastifyRequest): Promise<ChannelGrantScope> {
+  const eff = await effectivePermissionsFromRequest(request);
+  if (eff.has('channel.view_all') || eff.has('channel.assign_team')) return ALL_CHANNELS;
+  return getAccessibleChannelLevels(request.tenantPrisma, { tenantId: request.agent.tenantId, agentId: request.agent.id });
 }
 
 /** request 層取 hasViewAll + agentId/tenantId，供層級解析用。 */
 async function visibilityCtxFromRequest(request: FastifyRequest): Promise<VisibilityContext> {
-  const tenantId = request.agent.tenantId;
-  const roleId = await resolveRoleId(request);
-  const planId = await getTenantPlanId(request.server.prismaAdmin, tenantId);
-  const eff = await getEffectiveTenantPermissions(request.server.prismaAdmin, roleId, planId);
-  return { tenantId, agentId: request.agent.id, hasViewAll: eff.has('channel.view_all') };
+  const eff = await effectivePermissionsFromRequest(request);
+  return { tenantId: request.agent.tenantId, agentId: request.agent.id, hasViewAll: eff.has('channel.view_all') };
 }
 
 /**

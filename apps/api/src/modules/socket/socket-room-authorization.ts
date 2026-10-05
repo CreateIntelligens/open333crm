@@ -106,12 +106,12 @@ async function canAccessChannel(
     }));
   }
 
-  // 共用 REST 的單一事實來源解析器（legacy/team/agent 直綁/isActive 全邏輯集中於此），
+  // 共用 REST 的單一事實來源解析器（team/agent 直綁/isActive 全邏輯集中於此；沒有綁定的渠道不可見），
   // 不再於 socket 複製一份 OR 查詢，避免兩層語意漂移（CM-173 review altitude）。
   const level = await resolveChannelAccessLevel(prisma, {
     tenantId: context.tenantId,
     agentId: context.agentId,
-    hasViewAll, // 此分支 hasViewAll=false；resolveChannelAccessLevel 會走完整 legacy/team/agent 解析
+    hasViewAll, // 此分支 hasViewAll=false；resolveChannelAccessLevel 會走完整 team/agent 直綁解析
   }, channelId);
   return level !== null;
 }

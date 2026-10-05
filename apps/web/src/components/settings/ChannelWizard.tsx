@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AccessChecklist, agentToItem } from './AccessChecklist';
 import { Loader2, CheckCircle, XCircle, Copy, Check } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,8 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
   const [createdWebhookInfo, setCreatedWebhookInfo] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
   const [verify, setVerify] = useState<VerifyState>({ status: 'idle' });
   const [error, setError] = useState<string | null>(null);
+  // 新渠道可見的成員（fail-closed：沒勾到的成員看不到）；null＝清單未載入，不送出由後端給所有成員
+  const [visibleAgentIds, setVisibleAgentIds] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
 
   const reset = () => {
@@ -68,6 +71,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
     setVerify({ status: 'idle' });
     setError(null);
     setCopied(false);
+    setVisibleAgentIds(null); // 回到預設的全選
   };
 
   const handleClose = () => {
@@ -131,6 +135,7 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
         credentials,
       };
       if (webhookBaseUrl?.trim()) payload.webhookBaseUrl = webhookBaseUrl.trim();
+      if (visibleAgentIds !== null) payload.visibleAgentIds = visibleAgentIds;
 
       const createRes = await api.post('/channels', payload);
       const newChannel = createRes.data?.data;
@@ -346,6 +351,19 @@ export function ChannelWizard({ open, onOpenChange, webhookBaseUrl, onComplete }
                   </p>
                 </div>
               )}
+
+              {/* 新渠道的可見成員：可見範圍是 fail-closed，建立時就要決定誰看得到 */}
+              <div className="border-t pt-4">
+                <AccessChecklist
+                  endpoint="/agents"
+                  toItem={agentToItem}
+                  label="誰看得到這個渠道"
+                  description="勾選的成員看得到這個渠道的對話與工單。沒有勾選的成員看不到；可檢視所有渠道的角色（總店）一律看得到。"
+                  emptyText="目前沒有其他成員"
+                  value={visibleAgentIds}
+                  onChange={setVisibleAgentIds}
+                />
+              </div>
             </div>
           )}
 
