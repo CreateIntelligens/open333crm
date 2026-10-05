@@ -17,4 +17,4 @@
 
 - [x] 4.1 API、workers、web 的 unit 測試與 `tsc` 通過
 - [x] 4.2 `CHANGELOG.md` 新增條目
-- [ ] 4.3 部署後在 UAT：Demo Tenant 的自動開案規則重新儲存並啟用，傳送命中的訊息，確認自動建立工單、收到通知
+- [x] 4.3 部署後在 UAT 驗證自動建單：改以 UAT E2E `apps/web/tests/e2e-uat/tenant-automation-editor-fixes.spec.ts` 案例 05 驗證（2026-10-05，PR #221 部署後）——建立 [E2E] 規則、從網站客服送出命中的訊息，自動建立工單、優先度正確、關聯觸發的對話；測後刪除規則。Demo Tenant 的「一般問題自動開案」沒有重新儲存：儲存後會對每位沒有未結案工單的聯絡人開單，由使用者決定
