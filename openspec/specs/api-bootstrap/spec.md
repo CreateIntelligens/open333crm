@@ -1,5 +1,5 @@
 ## Purpose
-定義 API 的啟動入口：apps/api/src/index.ts 是唯一的權威入口，其他過渡入口只能委派給它，整併入口時不得改變執行中的行為。
+定義 API 的啟動入口：`apps/api/src/index.ts` 是唯一的權威入口。開發與正式環境都從這個檔案或它的建置結果啟動 API，不另設其他啟動檔。
 
 ## Requirements
 
@@ -14,16 +14,3 @@ The API service SHALL use `apps/api/src/index.ts` as its sole authoritative runt
 - **WHEN** the built API service starts in production
 - **THEN** the process SHALL bootstrap the server from the build output generated from `apps/api/src/index.ts`
 
-### Requirement: Transitional Entrypoints Must Delegate
-Any retained transitional bootstrap file, including `apps/api/src/main.ts`, SHALL delegate into `apps/api/src/index.ts` and MUST NOT construct an independent server bootstrap.
-
-#### Scenario: Compatibility file remains in repository
-- **WHEN** `apps/api/src/main.ts` is retained for compatibility
-- **THEN** it SHALL delegate to `apps/api/src/index.ts` without defining a second plugin, route, or worker registration path
-
-### Requirement: Bootstrap Consolidation Preserves Active Runtime Behavior
-The authoritative `apps/api/src/index.ts` bootstrap SHALL preserve all active route, plugin, channel registration, and worker setup behavior that was reachable from the previous production bootstrap.
-
-#### Scenario: Entrypoint consolidation is completed
-- **WHEN** the API bootstrap is moved under `apps/api/src/index.ts`
-- **THEN** every route module, channel plugin, scheduler, and worker that was actively registered in the prior runtime path SHALL remain registered from `apps/api/src/index.ts`
