@@ -69,6 +69,8 @@ test.describe('PR #221 自動化規則頁修正 @automation', () => {
       createdRuleIds.push((await res.json()).data.id);
     }
 
+    expect(Number((await metaOf())?.total ?? 0), '補足後規則應至少 21 條').toBeGreaterThanOrEqual(21);
+
     // API 排序（priority、createdAt、id）第 21 名的規則：原本的列表不會顯示它
     const page2 = (await (await api.get('automation/rules', { params: { page: '2', limit: '20' } })).json())?.data ?? [];
     const beyond = page2[0] as { id: string; name: string } | undefined;
