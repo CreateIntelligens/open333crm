@@ -23,7 +23,7 @@
 
 **違反主規格的項目至少是 P2。** 主規格是 `openspec/specs/` 底下的規格。一項的現況違反主規格中的 SHALL 或 MUST 時，即使依上表判定為 P3 或 P4，也標為 P2，並在內文的「規格依據」寫明違反哪一份規格的哪一條需求。只有歸檔 change 的設計文件或未完成的任務、沒有寫進主規格的，不適用這條規則。2026-10-02 已把當時所有 P3、P4 項目逐一對照主規格。
 
-有些主規格描述的功能從來沒有實作，或已經被其他設計取代。這類項目在內文標示「主規格待確認」，暫時不套用這條規則，等確認規格要改寫、移出主規格還是保留之後再判定。
+主規格描述的功能從來沒有實作，或已經被其他設計取代時，不在本文件標示例外。這種主規格依 `AGENTS.md` Step 4 的規則移除，或移回 change。issue #217 的盤點之前，這類項目曾標示「主規格待確認」，暫時不套用這條規則；`AUDIT-REVIEWS.md` 的舊紀錄仍會出現這個標示。
 
 排序只反映「先修哪一個」，與修復成本無關。兩項同為 P1 時，先做哪一項由當時的人力與相依關係決定。
 
@@ -115,7 +115,7 @@
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | [APP-01](#app-01) | 部署與應用程式 | P3 | 未處理 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
-| [APP-02](#app-02) | 部署與應用程式 | P2 | 未處理 | Telegram 外掛未註冊 | 執行時確認 |
+| [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | 可以建立 WhatsApp 渠道，但沒有外掛，收不到也送不出訊息；Telegram 外掛未註冊 | 執行時確認 |
 | [APP-03](#app-03) | 部署與應用程式 | P4 | 未處理 | 啟動 log 少列 Threads | 執行時確認 |
 | [APP-04](#app-04) | 部署與應用程式 | P4 | 未處理 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
 | [APP-05](#app-05) | 部署與應用程式 | P4 | 未處理 | API 行程訂閱的 `sla.warning`、`sla.breached` 沒有發布端 | 靜態確認 |
@@ -624,7 +624,7 @@ Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失�
 
 `packages/core/src/license/license-service.ts` 會呼叫 `LICENSE_FETCH_URL`，但沒有實際使用者。
 
-**主規格待確認。** 主規格 `license-service` 的「Centralized License Validation」規定系統 SHALL 每 60 分鐘從授權伺服器取得授權資料；`team-license` 也以這份授權資料描述各團隊的渠道與額度。現況與這兩份規格不符。但功能天花板與額度目前由 `tenant-plan`、`plan-limits-core` 負責，這兩份規格可能已經過時。確認規格要改寫還是封存之前，維持 P4（issue #197）。
+**主規格已移除。** 主規格 `license-service` 與 `team-license` 描述系統從授權伺服器取得授權資料，與現況不符。issue #217 確認功能天花板與額度改由 `tenant-plan`、`plan-limits-core`、`granular-plan-entitlement` 負責，移除了這兩份主規格。這一項沒有違反主規格，維持 P4。
 
 ## 試用
 
@@ -1510,13 +1510,15 @@ CI 的部署不走這條路徑。`.github/workflows/deploy.yml` 用的是 `docke
 執行時匯入 `@open333crm/core` 會立即建立 Redis 連線，證實模組載入具有副作用。
 
 <a id="app-02"></a>
-### APP-02：Telegram 未註冊
+### APP-02：WhatsApp 與 Telegram 沒有註冊外掛
 
 渠道套件只匯出 `TelegramPlugin` 類別，沒有 `telegramPlugin` 實例。API 因此無法將 Telegram 傳給 `registerChannelPlugin()`。執行時檢查顯示 LINE、Facebook、WebChat、Threads 已註冊，Telegram 未註冊。
 
 WhatsApp 也沒有註冊外掛，也沒有 webhook 路由，但 `channel.routes.ts` 的 `createChannelSchema` 接受 `WHATSAPP`。租戶可以建立 WhatsApp 渠道，卻收不到訊息也送不出去。
 
-**規格依據。** 主規格 `telegram-channel` 的「Telegram Plugin Registration」規定：應用程式啟動時，SHALL 以 `TELEGRAM` 註冊 Telegram 外掛。現況違反這條需求，因此由 P3 調為 P2。WhatsApp 沒有主規格。
+Telegram 未註冊沒有實際影響：`createChannelSchema` 不接受 `TELEGRAM`，租戶無法建立 Telegram 渠道。
+
+**優先順序。** 主規格 `telegram-channel` 原本要求應用程式啟動時註冊 Telegram 外掛，這一項因此列為 P2。issue #217 確認 Telegram 沒有客戶需求，移除了這份主規格，這一項回到 P3。剩下的落差是 WhatsApp 渠道可以建立卻無法使用，屬於設定與實際行為不符。WhatsApp 沒有主規格。
 
 <a id="app-03"></a>
 ### APP-03：啟動 log 過時
@@ -1652,11 +1654,11 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 | `extensions.audience` | LINE 外掛有實作分眾名單 | 沒有 |
 | `line/worker-media-download.ts`、`worker-narrowcast-progress.ts`、`worker-insight-sync.ts` | 各自定義 BullMQ 佇列與 worker | 沒有任何檔案 import。LINE 媒體下載實際走 `resolveInboundMedia()` |
 | `getAllChannelPlugins()`、`hasChannelPlugin()`、`getPlugin()`、`registerPlugin` | 註冊表的輔助函式與舊名稱 | 沒有 |
-| `telegram.ts` 與 `telegram/index.ts` | 兩份 `TelegramPlugin` 類別；前者由 `./telegram` 子路徑匯出，後者由套件入口匯出 | 都沒有註冊，見 APP-02 |
+| `telegram.ts` | `TelegramPlugin` 類別，由套件入口與 `./telegram` 子路徑匯出 | 沒有註冊，見 APP-02 |
 
 與此同時，圖文選單的建立與發布寫在 API 的 `rich-menu.service.ts`，直接呼叫 LINE API，而外掛的 `extensions.ui` 只用在 workers 的綁定。同一種渠道能力一半在外掛、一半在模組內，新增渠道時不容易判斷該實作哪些方法。
 
-**主規格待確認。** 主規格 `line-analytics` 規定系統 SHALL 每天同步 LINE Insight、抓取每次群發的統計；`line-audience` 規定 SHALL 管理分眾名單並追蹤 Narrowcast 進度。上表的 `worker-insight-sync.ts`、`worker-narrowcast-progress.ts` 與 `extensions.audience` 是僅有的實作，都沒有呼叫端；`apps/*` 也沒有讀寫 `InsightSnapshot`。這兩份規格描述的功能從來沒有上線，比較像產品規劃。確認規格要保留、改寫還是移出主規格之前，維持 P4（issue #197）。
+**主規格已移除。** 主規格 `line-analytics` 與 `line-audience` 描述的 LINE Insight 同步與分眾名單從來沒有上線。issue #217 確認兩者都沒有排程，群發改為以分眾或標籤找出 UID 後用 Multicast 送出，移除了這兩份主規格。上表的 `worker-insight-sync.ts`、`worker-narrowcast-progress.ts` 與 `extensions.audience` 沒有主規格，也沒有呼叫端。這一項維持 P4。
 
 ## Storage、LLM 與資料庫
 

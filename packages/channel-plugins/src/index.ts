@@ -165,7 +165,7 @@ export function getPlugin(channelType: ChannelType): ChannelPlugin {
 
 // ── Exports ───────────────────────────────────────────────────────
 
-export { TelegramPlugin } from './telegram/index.js';
+export { TelegramPlugin } from './telegram.js';
 export { FbPlugin, fbPlugin } from './facebook/index.js';
 export { ThreadsPlugin, threadsPlugin }  from './threads.js';
 export {

@@ -51,14 +51,14 @@
 | `FB` | `facebook/index.ts` 的 `fbPlugin` | 有 | 有 | `/api/v1/webhooks/fb/:channelId` | `x-hub-signature-256`，以 `appSecret` 計算 |
 | `THREADS` | `threads.ts` 的 `threadsPlugin` | 有 | **沒有** | `/api/v1/webhooks/threads/:channelId` | 同 FB |
 | `WEBCHAT` | `webchat/index.ts` 的 `webchatPlugin` | 有 | **沒有** | 不走 webhook，由 `chatbox`、`webchat` 模組直接寫入 | 不驗證，一律回傳 `true` |
-| `TELEGRAM` | `TelegramPlugin` 類別，有兩份 | 沒有 | 沒有 | 沒有 | — |
+| `TELEGRAM` | `TelegramPlugin` 類別 | 沒有 | 沒有 | 沒有 | — |
 | `WHATSAPP` | 沒有 | 沒有 | 沒有 | 沒有 | — |
 
 各渠道要注意的地方：
 
 - **`THREADS` 其實是 Instagram 私訊。** 外掛呼叫的是 `graph.instagram.com`，憑證格式與 Facebook 相同。名稱沿用早期的規劃。
 - **`WEBCHAT` 的外掛幾乎是空殼。** 訪客的訊息由 `chatbox`、`webchat` 模組直接建立，不經過 `parseWebhook()`；`sendMessage()` 只寫 log 並回傳成功，真正推給訪客的是 `conversation.service.ts` 對 `visitor:<channelId>:<uid>` 房間的 socket 推送。
-- **`TELEGRAM` 有 `telegram.ts` 與 `telegram/index.ts` 兩份類別**，沒有匯出實例，也沒有註冊，見 APP-02。
+- **`TELEGRAM` 只有 `telegram.ts` 的類別**，沒有匯出實例，也沒有註冊，見 APP-02。
 - **`WHATSAPP` 可以建立渠道**，但沒有外掛也沒有路由，見 APP-02。
 
 ## 進站

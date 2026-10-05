@@ -4,6 +4,22 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-05：移除 13 份主規格，APP-02 調回 P3，LIC-01、LIC-02、PKG-06 不再標示「主規格待確認」
+
+issue #217 盤點了所有主規格。描述「沒有實作的規劃」、「已經被其他設計取代」或「一次性變更的紀錄」的主規格，依盤點的決定移除；`line-account-link` 仍在規劃中，移回 change `add-line-account-link`。每份主規格移除的理由，以及取代它的規格或文件（如果有），見 issue #217 與 PR #224。
+
+受影響的項目：
+
+| 項目 | 原本 | 調整後 | 理由 |
+| --- | --- | --- | --- |
+| APP-02 | P2 | P3 | 主規格 `telegram-channel` 已經移除。租戶無法建立 Telegram 渠道，所以 Telegram 未註冊沒有實際影響。剩下的落差是 WhatsApp 渠道可以建立卻無法使用 |
+| LIC-01、LIC-02 | P4，主規格待確認 | P4 | 主規格 `license-service`、`team-license` 已經移除 |
+| PKG-06 | P4，主規格待確認 | P4 | 主規格 `line-analytics`、`line-audience` 已經移除 |
+
+調整後，P2 共 42 項，P3 共 35 項。已經沒有項目標示「主規格待確認」。
+
+**同時刪除 Telegram 外掛的空殼。** `packages/channel-plugins/src/telegram/index.ts` 是 `TelegramPlugin` 的第二份類別。它的 `sendMessage()` 會把 bot token 寫進 log，而且沒有送出訊息就回傳成功。這份檔案已經刪除，套件入口改為匯出 `telegram.ts` 的類別。這個問題原本只記在 issue #217，沒有列為 AUDIT 項目。
+
 ## 2026-10-02：複查所有 P2 項目，移除 CONTACT-01，RBAC-04 改為部分修正
 
 P1 清空之後，在 `main` 的 `3cbad73` 逐項核對 44 項 P2：讀出每一項描述的具體事實，再到程式碼確認它仍然存在。結果是 43 項仍然存在，CONTACT-01 已經修好。

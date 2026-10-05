@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-05]
 
+### Security
+
+- **刪除會把 Telegram bot token 寫進 log 的外掛空殼** — `packages/channel-plugins/src/telegram/index.ts` 是 `TelegramPlugin` 的第二份類別，由套件入口匯出。它的 `sendMessage()` 把 bot token 寫進 info log，而且沒有呼叫 Telegram 就回傳成功。目前沒有程式註冊這個類別，租戶也無法建立 Telegram 渠道，所以沒有 token 實際外洩。這份檔案已經刪除，套件入口改為匯出 `telegram.ts` 的類別，與 `./telegram` 子路徑一致（issue #217）。
+
 ### Fixed
 
 - **LINE 的語音與檔案訊息收不到內容** — 客人從 LINE 傳語音或檔案，系統只記下「[audio]」「[file]」，沒有下載內容（issue #206）。原因是 `980781d5` 加入外部媒體判斷時誤刪了這兩種訊息的解析。現在恢復解析並下載：語音帶長度，檔案帶檔名與大小；收件匣的語音顯示播放器，檔案顯示可下載的檔名與大小。下載上限 25 MB；客人傳的檔案一律存成下載用的類型，避免 html、svg 在儲存網域執行；下載失敗時收件匣會顯示原因，不再只寫 log。收件匣收到新訊息後的重新整理也改為不丟掉最後一次通知，下載完成後畫面會更新。
