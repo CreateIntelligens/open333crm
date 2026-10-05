@@ -36,7 +36,7 @@
 | `getProfile()` | 是 | `inbound-contact-resolver.ts`（建立聯絡人時）、`line-profile.service.ts` | 取得聯絡人的名稱與頭像 |
 | `sendMessage()` | 是 | `conversation.service.ts`、workers 的 `channel-delivery.ts`、`canvas.worker.ts`、`csat.service.ts`、行銷群發等 | 送出一則訊息，回傳渠道的訊息 ID |
 | `setWebhook()` | 否 | 沒有呼叫端 | 在渠道平台設定 webhook 網址。LINE 的自動設定改由 `line-webhook-setup.service.ts` 直接呼叫 LINE API |
-| `resolveInboundMedia()` | 否 | `inbound-side-effects.ts` 的 `resolveInboundMediaAsync()` | 訊息寫入後，非同步下載渠道上的媒體並存到自己的儲存空間 |
+| `resolveInboundMedia()` | 否 | `inbound-side-effects.ts` 的 `resolveInboundMediaAsync()` | 訊息寫入後，非同步下載渠道上的媒體並存到自己的儲存空間，儲存後的網址寫入 `content.url` 與 `content.mediaUrl`。LINE 下載圖片、影片、語音與檔案：待下載以 `contentId` 表示；上限 25 MB；只保留圖片（不含 SVG）、影片、語音的 MIME，其他存成 `application/octet-stream`；檔案保留副檔名；`contentProvider` 為 `external` 時直接用對方的網址、不下載。失敗時外掛拋出中文原因，寫進 `content.mediaError` 並推送給收件匣 |
 | `extensions.ui` | 否 | workers 的 `rich-menu-bind.handler.ts` | 圖文選單的綁定與解除 |
 | `extensions.analytics` | 否 | `mcp.server.ts` | 查詢 LINE 的訊息額度 |
 | `extensions.audience` | 否 | 沒有呼叫端 | 分眾名單 |

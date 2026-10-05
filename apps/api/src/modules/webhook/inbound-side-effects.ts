@@ -22,34 +22,54 @@ export function resolveInboundMediaAsync(ctx: InboundMessageContext): void {
 
   const { plugin, content, contentType, credentials, tenantId, conversation, message, prisma, io } = ctx;
 
+  const writeContent = async (updatedContent: Record<string, unknown>) => {
+    await prisma.message.update({
+      where: { id: message.id },
+      data: { content: updatedContent as any },
+    });
+    emitToConversationAndTenant(
+      io,
+      message.conversationId,
+      tenantId,
+      'message.new',
+      buildMessageNewPayload(message, {
+        content: updatedContent,
+        includeSenderId: true,
+        includeTypePayload: true,
+      }),
+    );
+  };
+
   (async () => {
+    let stored: { url: string; storageKey: string } | null;
     try {
-      const stored = await plugin.resolveInboundMedia!(
+      stored = await plugin.resolveInboundMedia!(
         content,
         contentType,
         credentials,
         (buffer, filename, mime) => uploadFile(buffer, filename, mime, tenantId, 'media', conversation.id),
       );
-      if (stored) {
-        const updatedContent = { ...(message.content as Record<string, unknown>), url: stored.url, storageKey: stored.storageKey };
-        await prisma.message.update({
-          where: { id: message.id },
-          data: { content: updatedContent as any },
-        });
-        emitToConversationAndTenant(
-          io,
-          message.conversationId,
-          tenantId,
-          'message.new',
-          buildMessageNewPayload(message, {
-            content: updatedContent,
-            includeSenderId: true,
-            includeTypePayload: true,
-          }),
-        );
-      }
     } catch (err) {
+      // 失敗要寫進訊息：只寫 log 時客服分不出「還在下載」與「下載失敗」，
+      // LINE 的內容過期後也再也拿不到。外掛拋出的訊息是給客服看的中文原因。
       logger.error('[Webhook] Media resolution error (non-blocking):', err);
+      const reason = err instanceof Error && /[\u4e00-\u9fff]/.test(err.message) ? err.message : '內容下載失敗';
+      await writeContent({ ...(message.content as Record<string, unknown>), mediaError: reason }).catch((writeErr) =>
+        logger.error('[Webhook] Failed to record media error:', writeErr),
+      );
+      return;
+    }
+    if (!stored) return;
+    try {
+      // mediaUrl 也寫入儲存後的網址：前端與送出路徑都會讀它（issue #206）
+      await writeContent({
+        ...(message.content as Record<string, unknown>),
+        url: stored.url,
+        mediaUrl: stored.url,
+        storageKey: stored.storageKey,
+      });
+    } catch (err) {
+      logger.error('[Webhook] Failed to save resolved media:', err);
     }
   })();
 }
