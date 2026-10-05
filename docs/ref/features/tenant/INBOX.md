@@ -139,7 +139,7 @@
 
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
-可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。租戶房間的即時事件、聯絡人頁與 AI 輔助端點都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
+可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。租戶房間的即時事件、聯絡人清單與合併、AI 輔助端點都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## AI 輔助
 
@@ -173,7 +173,7 @@
 | --- | --- |
 | **客服回覆送出失敗時，介面沒有標示** | 詳見 `../../system/AUDIT.md` 的 CONV-03 |
 | **指派對話不會通知被指派的人** | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
-| **即時事件、聯絡人頁與 AI 輔助不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
+| **即時事件、聯絡人清單與 AI 輔助不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | 閒置時限沒有維護介面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 

@@ -53,7 +53,7 @@
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
-| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 未處理 | 渠道可見範圍在 socket 租戶房間、聯絡人、AI 輔助等處沒有套用 | 靜態確認 |
+| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、聯絡人清單與合併、AI 輔助等處沒有套用；聯絡人的對話、工單、時間軸已修正（`481452a`） | 靜態確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
 | [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已定方向 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all`，`admin` 少了稽核與資料權利的權限碼 | 靜態確認 |
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P2 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用；進站訊息不依團隊分流 | 靜態確認 |
@@ -102,7 +102,6 @@
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
 | [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 未處理 | 規則編輯器提供的部分觸發事件永遠不會觸發 | 靜態確認 |
-| [CONTACT-01](#contact-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 兩套聯絡人合併實作行為不一致：手動合併遺失積分，自動合併硬刪除並可能失敗 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
 | [IDENT-02](#ident-02) | 聯絡人、行銷與報表 | P2 | 已提建議 | LINE、Facebook 登入補 email 時不確認登入者就是該聯絡人，授權網址可由任何人以任意渠道身分產生 | 靜態確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 已提建議 | 群發可以重複執行，重送時不排除已送達的人 | 靜態確認 |
@@ -293,12 +292,14 @@ CLI token 的停用問題另見 AUTH-02。
 | 路徑 | 沒有套用的結果 |
 | --- | --- |
 | `plugins/socket.plugin.ts` 在連線時讓每條 socket 自動加入 `tenant:<租戶 ID>` | `conversation.service.ts` 的 `sendMessage()` 與 `webhook/inbound-socket-presenter.ts` 的 `emitToConversationAndTenant()` 都把含訊息內容的 `message.new` 發到租戶房間。受限的客服即時收到所有渠道的訊息 |
-| `contact.routes.ts` 的所有路由 | 聯絡人清單、`/:id/conversations`（含每個對話的最後一則訊息內容）、`/:id/cases`、`/:id/timeline` 與合併，都不過濾渠道 |
+| `contact.routes.ts` 的清單、詳情與合併 | 清單與詳情只過濾回傳的渠道身分，聯絡人本身照樣列出：其他渠道的聯絡人的姓名、電話、email 都看得到。`/merge-preview` 與 `/merge` 不檢查兩個聯絡人的渠道 |
 | `ai.routes.ts` 的 `/suggest-reply`、`/summarize` | 以 `conversationId` 讀整段對話，不檢查對話的渠道 |
 | `case.routes.ts` 的 `POST /` | 建立工單時不檢查 `channelId` 是否可見 |
 | `case.routes.ts` 的 `GET /stats` | 統計全租戶的工單 |
 
 第一項影響最大：只要受限客服的畫面連著 socket，渠道可見範圍在即時事件上等於不存在。
+
+**部分修正。** `481452a`（#185，2026-09-30）讓聯絡人的 `/:id/conversations`、`/:id/cases`、`/:id/timeline` 依可見範圍過濾，清單與詳情也只回傳可見渠道的身分。聯絡人本身要不要依渠道過濾，`add-cross-channel-one-id` 的任務 9.3.9 記為「跨渠道聯絡人的歸屬規則需另行設計」。
 
 <a id="rbac-05"></a>
 ### RBAC-05：reconcile 腳本會覆蓋租戶對系統角色的修改
@@ -1325,22 +1326,6 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 功能說明見[租戶後台](../features/tenant/README.md)底下的聯絡人與標籤、行銷、短連結、報表四份文件。
 
-<a id="contact-01"></a>
-### CONTACT-01：兩套聯絡人合併實作的行為不一致
-
-| | 手動合併 | 登入時自動合併 |
-| --- | --- | --- |
-| 程式 | `contact.service.ts` 的 `mergeContacts()` | `line-login.service.ts` 與 `fb-login.service.ts` 各一份 `mergeContactIntoTarget()`，內容相同 |
-| 觸發 | 客服在後台操作 | 客人以 LINE 或 Facebook 登入並授權 email，`updateContactEmail()` 在同租戶找到另一個同 email 的聯絡人 |
-| 人工確認 | 有 | 沒有 |
-| 被合併的聯絡人 | 封存，`mergedIntoId` 指向主要聯絡人 | 硬刪除 |
-| 渠道身分 | 全部搬移 | 只搬登入用的那一個；其他的因 `onDelete: Cascade` 隨聯絡人刪除 |
-| 積分、活動提交 | 不搬，留在被封存的聯絡人 | 外鍵為 `ON DELETE RESTRICT`，來源有這兩種資料時整個交易失敗，email 綁定也跟著失敗 |
-| 長期記憶、`IdentityMap` | 不搬 | 搬移 |
-| 聯絡人關係 | 搬移 | 不處理 |
-
-手動合併後，客人在粉絲活動累積的積分，留在已封存的聯絡人身上，主要聯絡人看不到。自動合併則會默默刪掉被合併者在其他渠道的身分；那些渠道的客人下次傳訊息時，會被建成一個新的聯絡人。
-
 <a id="ident-01"></a>
 ### IDENT-01：合併建議沒有產生端
 
@@ -1359,7 +1344,7 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 2. **callback 不比對登入者。** `/callback` 取出 state 記錄的 `lineUid`，把登入者的 email 寫到這個渠道身分所屬的聯絡人。`verifyIdToken()` 回傳的 `userId` 沒有被使用，因此系統不知道登入的人是不是這位聯絡人。LINE Login 的 channel 由 `LINE_LOGIN_CHANNEL_ID` 設定，全部署共用一個；它與租戶的 Messaging API channel 通常不屬於同一個 provider，同一個人在兩邊的 user ID 也不同，所以無法直接比對。
 3. **授權網址本身就是憑證。** 客人把收到的連結轉給別人，由別人完成登入，寫入的就是別人的 email。
 
-寫入的 email 會觸發自動合併：`updateContactEmail()` 在同租戶找到另一個同 email 的聯絡人時，把原聯絡人併進去並硬刪除，見 CONTACT-01。所以知道一組 `lineUid` 與 `channelId` 的人，可以用自己的 LINE 帳號完成登入，把該聯絡人併進自己的聯絡人。合併之後，客服看到的歷史對話與資料都歸在同一個聯絡人底下。
+寫入的 email 會觸發自動合併：`updateContactEmail()` 在同租戶找到另一個同 email 的聯絡人時，以 `contact-merge.service.ts` 的 `mergeContacts()` 把原聯絡人併進去，不經客服確認。被合併者會封存，客服事後可以從合併紀錄解除（`POST /contacts/merge-logs/:logId/revert`），但要先發現這次合併。所以知道一組 `lineUid` 與 `channelId` 的人，可以用自己的 LINE 帳號完成登入，把該聯絡人併進自己的聯絡人。合併之後，客服看到的歷史對話與資料都歸在同一個聯絡人底下。
 
 觸發的前提是知道目標的 `lineUid` 與 `channelId`。這兩個值不會出現在公開頁面，但租戶成員在聯絡人詳情頁看得到渠道身分的 ID，因此離職成員是最可能的來源。
 
