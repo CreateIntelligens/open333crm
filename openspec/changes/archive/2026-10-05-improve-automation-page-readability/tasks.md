@@ -41,10 +41,14 @@
 - [x] 7.3 條件樹走訪抽成 `condition-tree.ts`；列表的摘要與契約驗證改為依規則資料快取；摘要的滑鼠提示顯示完整摘要與說明
 - [x] 7.4 AU-15 的說明欄文案；操作手冊第 4 章（`apps/web/public/manual/ch04-automation.html`）改寫並更新列表截圖
 
-## 8. 完成檢查
+## 8. PR #225 bot 審查
 
-- [x] 8.1 `pnpm test` 通過；`packages/automation`、`apps/web`、`apps/api` 的 `tsc` 通過
-- [x] 8.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
-- [x] 8.3 `CHANGELOG.md` 新增條目；`docs/ref/features/tenant/AUTOMATION.md` 更新
-- [x] 8.4 `openspec validate improve-automation-page-readability --strict` 通過
-- [x] 8.5 在本機或 UAT 實際操作列表與編輯頁截圖確認
+- [x] 8.1 測試 `apps/api/tests/unit/modules/automation/automation-create-active-route.test.ts`：以 HTTP 請求驗證 `isActive` 經過 `createRuleSchema` 與路由傳到資料庫（暫時拿掉 schema 的 `isActive` 時失敗）
+
+## 9. 完成檢查
+
+- [x] 9.1 `pnpm test` 通過；`packages/automation`、`apps/web`、`apps/api` 的 `tsc` 通過
+- [x] 9.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
+- [x] 9.3 `CHANGELOG.md` 新增條目；`docs/ref/features/tenant/AUTOMATION.md` 更新
+- [x] 9.4 `openspec validate improve-automation-page-readability --strict` 通過
+- [x] 9.5 在本機或 UAT 實際操作列表與編輯頁截圖確認
