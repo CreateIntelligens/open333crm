@@ -20,9 +20,14 @@
 - [x] 4.1 測試 `apps/api/tests/unit/modules/automation/automation-contract.test.ts`：Error message uses Chinese labels；Invalid fact rejected、Invalid action rejected 改為檢查中文名稱
 - [x] 4.2 實作 `packages/automation/src/contracts/validation.ts` 的中文訊息
 
-## 5. 完成檢查
+## 5. PR #221 bot 審查
 
-- [x] 5.1 `pnpm test` 通過；`packages/automation`、`apps/web`、`apps/api` 的 `tsc` 通過
-- [x] 5.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
-- [x] 5.3 `CHANGELOG.md` 新增條目；`docs/ref/features/tenant/AUTOMATION.md` 更新
-- [x] 5.4 `openspec validate fix-automation-editor-bugs --strict` 通過
+- [x] 5.1 測試：Error message uses Chinese labels 改為「不是系統提供的動作」，契約沒有的欄位比照；Rule contains an action outside the contract 列為「未知動作（auto_assign）」
+- [x] 5.2 實作 `validation.ts` 與 `splitRuleActions` 的未知欄位、動作說明
+
+## 6. 完成檢查
+
+- [x] 6.1 `pnpm test` 通過；`packages/automation`、`apps/web`、`apps/api` 的 `tsc` 通過
+- [x] 6.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
+- [x] 6.3 `CHANGELOG.md` 新增條目；`docs/ref/features/tenant/AUTOMATION.md` 更新
+- [x] 6.4 `openspec validate fix-automation-editor-bugs --strict` 通過

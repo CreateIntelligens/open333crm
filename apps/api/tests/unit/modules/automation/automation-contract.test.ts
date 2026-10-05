@@ -73,6 +73,15 @@ async function testValidationRejectsIncompatibleActions() {
 }
 
 /** 錯誤訊息原本是英文技術訊息（actions[1].type is not allowed for message.received: auto_assign），管理員看不懂 */
+async function testValidationErrorNamesUnknownFact() {
+  const result = validateAutomationRuleContract({
+    eventName: AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED,
+    conditions: { all: [{ fact: 'contact.vipLevel', operator: 'equal', value: 1 }] },
+    actions: [],
+  });
+  assert.deepEqual(result.errors, ['第 1 個條件的欄位「contact.vipLevel」不是系統提供的欄位，請刪除']);
+}
+
 async function testValidationErrorUsesChineseLabels() {
   const result = validateAutomationRuleContract({
     eventName: AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED,
@@ -90,7 +99,7 @@ async function testValidationErrorUsesChineseLabels() {
   });
   assert.deepEqual(result.errors, [
     '第 2 個條件「訊息內容」使用「包含」時必須填寫值',
-    '第 2 個動作「auto_assign」不適用於「收到訊息」觸發',
+    '第 2 個動作「auto_assign」不是系統提供的動作，請刪除',
     '第 3 個動作「新增標籤」必須填寫「標籤名稱」',
   ]);
   for (const error of result.errors) {
@@ -147,5 +156,6 @@ test('resolver default exclusion', testResolverDefaultExclusion);
 test('validation rejects incompatible facts', testValidationRejectsIncompatibleFacts);
 test('validation rejects incompatible actions', testValidationRejectsIncompatibleActions);
 test('validation error uses chinese labels', testValidationErrorUsesChineseLabels);
+test('validation error names unknown fact', testValidationErrorNamesUnknownFact);
 test('api create rule rejects invalid contract before write', testApiCreateRuleRejectsInvalidContractBeforeWrite);
 test('frontend uses composer metadata', testFrontendUsesComposerMetadata);

@@ -26,7 +26,8 @@ function actionParams(action: unknown): Record<string, unknown> {
 
 /*
  * 錯誤訊息會原樣顯示給管理員（API 回 400，編輯頁 alert），所以一律中文，
- * 寫「第幾個條件／動作」並用契約的中文名稱；契約沒有的欄位或動作沿用原始代碼。
+ * 寫「第幾個條件／動作」並用契約的中文名稱；契約完全沒有的欄位或動作（例如舊規則的 auto_assign）
+ * 只有原始代碼，另外說明「不是系統提供的」，管理員才知道要刪除。
  */
 
 function eventLabel(eventName: string): string {
@@ -87,6 +88,11 @@ function validateConditionNode(
     return;
   }
 
+  if (!AUTOMATION_FACT_MAP.has(fact)) {
+    errors.push(`${position}的欄位「${fact}」不是系統提供的欄位，請刪除`);
+    return;
+  }
+
   const factDef = getAutomationFactForEvent(eventName, fact, options);
   if (!factDef) {
     errors.push(`${position}的欄位「${factLabel(fact)}」不適用於「${eventLabel(eventName)}」觸發`);
@@ -120,6 +126,11 @@ function validateAction(
   const type = action.type;
   if (typeof type !== 'string') {
     errors.push(`${position}沒有選擇動作類型`);
+    return;
+  }
+
+  if (!AUTOMATION_ACTION_MAP.has(type)) {
+    errors.push(`${position}「${type}」不是系統提供的動作，請刪除`);
     return;
   }
 

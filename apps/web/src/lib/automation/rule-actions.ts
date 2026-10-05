@@ -56,7 +56,7 @@ export function splitRuleActions(
     } else {
       result.dropped.push({
         type: a.type,
-        label: AUTOMATION_ACTION_MAP.get(a.type)?.label ?? a.type,
+        label: AUTOMATION_ACTION_MAP.get(a.type)?.label ?? `未知動作（${a.type}）`,
         skipsRule: !(UNSUPPORTED_AUTOMATION_ACTION_TYPES.has(a.type) && workerAccepted.has(a.type)),
       });
     }

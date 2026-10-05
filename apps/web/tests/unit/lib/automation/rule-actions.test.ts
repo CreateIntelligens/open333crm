@@ -45,7 +45,7 @@ test('Rule contains an action outside the contract：保留傳送訊息、移除
     'message.received',
   );
   assert.deepEqual(result.actions, [{ type: 'send_message', payload: { text: 'hi' } }]);
-  assert.deepEqual(result.dropped, [{ type: 'auto_assign', label: 'auto_assign', skipsRule: true }]);
+  assert.deepEqual(result.dropped, [{ type: 'auto_assign', label: '未知動作（auto_assign）', skipsRule: true }]);
 });
 
 test('Rule contains an action that the event does not offer：工單關閉不能傳送訊息', () => {
@@ -81,7 +81,7 @@ test('Rule List Marks Rules The Workers Skip：含契約外動作的規則', () 
     conditions: { all: [] },
     actions: [{ type: 'auto_assign', params: {} }],
   });
-  assert.deepEqual(errors, ['第 1 個動作「auto_assign」不適用於「收到訊息」觸發']);
+  assert.deepEqual(errors, ['第 1 個動作「auto_assign」不是系統提供的動作，請刪除']);
 });
 
 test('Rule List Marks Rules The Workers Skip：只含尚未支援的動作，不標示規則不會執行', () => {

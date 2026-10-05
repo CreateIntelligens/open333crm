@@ -91,7 +91,7 @@
 
 **編輯頁載入時移除契約外的動作。** 編輯既有規則時，編輯器依規則的觸發事件（`trigger.type`，沒有時用 `eventType`），移除契約沒有提供的所有動作：尚未支援的、不適用於這個事件的、契約從來沒有的舊動作（例如 UAT 舊規則的 `auto_assign`），以及格式錯誤的項目。編輯頁分兩類列出被移除的動作：尚未支援的動作只有自己不執行；其他動作會讓整條規則不執行，儲存後才恢復。改了觸發事件後不再顯示。實作在 `apps/web/src/lib/automation/rule-actions.ts` 的 `splitRuleActions`。
 
-**驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 2 個動作「auto_assign」不適用於「收到訊息」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約沒有的欄位或動作沿用原始代碼。
+**驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 1 個動作「傳送訊息」不適用於「工單關閉」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約完全沒有的欄位或動作只有原始代碼，訊息會說明「不是系統提供的」，例如「第 2 個動作「auto_assign」不是系統提供的動作，請刪除」；編輯頁列為「未知動作（auto_assign）」。
 
 **`add_tag` 以名稱找標籤。** 規則存的是標籤名稱。workers 依名稱找標籤時不限 scope；找不到就用這個名稱建立一個新的標籤。因此標籤被改名或刪除後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。貼標後，workers 經由 Redis 的 `domain:event` 頻道把 `contact.tagged` 送回 API 行程，讓以貼標為觸發的規則接著執行。事件帶著來源 `automation`，用來避免無限迴圈。
 
