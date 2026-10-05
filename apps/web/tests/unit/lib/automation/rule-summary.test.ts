@@ -109,3 +109,11 @@ test('認不得的條件不丟掉，標示無法顯示', () => {
     '（無法顯示的條件）',
   );
 });
+
+/* 已停用的動作用中文名稱標示，不顯示代碼（change fix-automation-remaining-actions） */
+test('已停用的動作：摘要顯示「LLM 智能回覆（已停用）」', () => {
+  assert.equal(
+    summarizeRule({ trigger: { type: 'message.received' }, conditions: {}, actions: [{ type: 'llm_reply', params: {} }] }),
+    '當收到訊息時，就LLM 智能回覆（已停用）',
+  );
+});

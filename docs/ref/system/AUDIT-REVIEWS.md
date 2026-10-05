@@ -10,10 +10,10 @@ change `fix-automation-remaining-actions` 依 issue #197 的決定處理剩下�
 
 | 動作 | 處理 |
 | --- | --- |
-| `remove_tag` | workers 補上實作：依 `tagId` 或名稱找本租戶 `CONTACT` scope 的標籤並移除；找不到時略過、不建立 |
+| `remove_tag` | workers 補上實作：刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立 |
 | `assign_bot`、`kb_auto_reply`、`llm_reply` | 從契約拿掉。機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能重複回覆；後兩者也依賴向量化（LLM-04） |
 
-「尚未支援的動作」清單因此沒有成員，`UNSUPPORTED_AUTOMATION_ACTION_TYPES`、`allowUnsupportedActions`、`findUnsupportedAutomationActions` 與列表的「含未支援的動作」標示一併移除。契約沒有定義的動作，存檔時以「不是系統提供的動作」拒絕；既有規則含這 3 種動作時，workers 驗證失敗、整條略過，列表標示「規則不會執行」。`apps/api/src/scripts/remove-retired-automation-actions.ts` 可移除既有規則中的這 3 種動作（預設 dry-run）。
+「尚未支援的動作」清單因此沒有成員，`UNSUPPORTED_AUTOMATION_ACTION_TYPES`、`allowUnsupportedActions`、`findUnsupportedAutomationActions` 與列表的「含未支援的動作」標示一併移除。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留這 3 種動作的中文名稱，存檔時以「已停用，請刪除」拒絕；規則若還含它們，workers 驗證失敗、整條略過，列表標示「規則不會執行」。資料 migration `20261005100000_remove_retired_automation_actions` 在部署時清理既有規則：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用，動作保留原樣。
 
 UAT 以唯讀查詢確認（2026-10-05）：含這 3 種動作的規則只有 2 條，都在 Demo Tenant，而且都已刪除（`enabled = false`）、未啟用，沒有實際影響。
 

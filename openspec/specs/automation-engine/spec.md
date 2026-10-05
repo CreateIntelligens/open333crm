@@ -39,9 +39,9 @@ The system SHALL support evaluating complex boolean conditions on message, conta
 ### Requirement: Actions
 The system SHALL support the automation actions defined in the contract `AUTOMATION_ACTION_DEFINITIONS`, such as `add_tag`, `remove_tag`, `send_message`, `create_case`, `update_case_status`, and `notify_supervisor`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations. Actions accepted from the frontend SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested. `create_case` SHALL require the contact and conversation scopes, so it is offered only for message, postback, keyword and conversation-created events.
 
-`remove_tag` SHALL remove from the contact a `CONTACT`-scope tag of the tenant found by `tagId` or by name, and SHALL skip without creating a tag when no such tag exists.
+`remove_tag` SHALL remove from the contact the tags of the tenant that match `tagId` or the name, whatever their scope, so that a tag attached by `add_tag` can be removed by the same name. When the contact has no such tag, `remove_tag` SHALL do nothing and SHALL NOT create a tag.
 
-The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`. The API SHALL reject a new or modified rule that contains an action the contract does not define, and the workers SHALL skip an existing rule that contains one. Updating only the active state, name, description or priority of a rule SHALL NOT re-validate its contract.
+The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`, and SHALL keep their Traditional Chinese labels in `RETIRED_AUTOMATION_ACTIONS` so that errors and the editor do not show the raw type. The API SHALL reject a new or modified rule that contains an action the contract does not define, and the workers SHALL skip an existing rule that contains one. A database migration SHALL remove these three actions from existing rules when the code is deployed, and SHALL deactivate a rule whose only actions are these, keeping its actions unchanged. Updating only the active state, name, description or priority of a rule SHALL NOT re-validate its contract.
 
 #### Scenario: Auto-tagging
 - **WHEN** a rule with `add_tag("hot_lead")` matches
@@ -65,7 +65,7 @@ The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`. The 
 
 #### Scenario: Unsupported action is rejected
 - **WHEN** an administrator creates or modifies a rule whose second action is `llm_reply`
-- **THEN** the API returns HTTP 400 with the error「第 2 個動作「llm_reply」不是系統提供的動作，請刪除」
+- **THEN** the API returns HTTP 400 with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
 
 #### Scenario: Existing rule still runs its other actions
 - **WHEN** an existing active rule contains `send_message` and `remove_tag`, and its conditions match
@@ -77,7 +77,7 @@ The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`. The 
 
 #### Scenario: Rule list marks the rule
 - **WHEN** a rule contains `llm_reply`
-- **THEN** the rule list shows「規則不會執行」next to it, and the editor lists「未知動作（llm_reply）」and says that the whole rule does not run until it is saved
+- **THEN** the rule list shows「規則不會執行」next to it, and the editor lists「LLM 智能回覆（已停用）」and says that the whole rule does not run until it is saved
 
 #### Scenario: Remove tag by name
 - **WHEN** a rule with `remove_tag("VIP")` matches and the contact has the `CONTACT`-scope tag「VIP」
@@ -86,6 +86,14 @@ The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`. The 
 #### Scenario: Remove a tag that does not exist
 - **WHEN** a rule with `remove_tag("不存在的標籤")` matches
 - **THEN** the workers skip the action and do not create a tag
+
+#### Scenario: Remove a tag of another scope added by add_tag
+- **WHEN** `add_tag("VIP")` attached a `CASE`-scope tag「VIP」to the contact, and a rule with `remove_tag("VIP")` matches
+- **THEN** the tag is removed from the contact
+
+#### Scenario: Migration cleans existing rules
+- **WHEN** the migration runs on a rule whose actions are `send_message` and `assign_bot`, and on an active rule whose only action is `llm_reply`
+- **THEN** the first rule keeps only `send_message`, and the second rule becomes inactive with its actions unchanged
 
 #### Scenario: Retired action in an existing rule
 - **WHEN** an existing active rule contains `send_message` and `llm_reply`, and its conditions match
@@ -327,7 +335,7 @@ The automation rule list SHALL show every rule of the tenant, however many rules
 - **THEN** the rule list shows a load error instead of the empty state
 
 ### Requirement: Rule Editor Loads Only Contract Actions
-When the rule editor loads an existing rule, it SHALL drop every action that the contract of the rule's event does not offer, including entries that are not valid action objects, and it SHALL list the dropped actions with their labels, or as「未知動作（<type>）」when the contract does not define the action. Because the workers skip a rule that contains such an action, the editor SHALL say that the whole rule does not run until it is saved. The editor SHALL read the rule's event from `trigger.type`, then `eventType`. The list of dropped actions SHALL be shown only while the selected event is the stored event.
+When the rule editor loads an existing rule, it SHALL drop every action that the contract of the rule's event does not offer, including entries that are not valid action objects, and it SHALL list the dropped actions with their labels, as「<label>（已停用）」for an action in `RETIRED_AUTOMATION_ACTIONS`, or as「未知動作（<type>）」when the contract does not know the action. Because the workers skip a rule that contains such an action, the editor SHALL say that the whole rule does not run until it is saved. The editor SHALL read the rule's event from `trigger.type`, then `eventType`. The list of dropped actions SHALL be shown only while the selected event is the stored event.
 
 #### Scenario: Rule contains an action outside the contract
 - **WHEN** an administrator opens a `message.received` rule whose actions are `send_message` and `auto_assign`
@@ -339,7 +347,7 @@ When the rule editor loads an existing rule, it SHALL drop every action that the
 
 #### Scenario: Rule contains an unsupported action
 - **WHEN** an administrator opens a `message.received` rule whose actions include `llm_reply`
-- **THEN** the editor drops `llm_reply`, lists it as「未知動作（llm_reply）」, and says that the whole rule does not run until it is saved
+- **THEN** the editor drops `llm_reply`, lists it as「LLM 智能回覆（已停用）」, and says that the whole rule does not run until it is saved
 
 #### Scenario: Rule has no trigger type
 - **WHEN** an administrator opens a rule whose `trigger` has no `type` and whose `eventType` is `case.created`
@@ -354,7 +362,7 @@ The rule list SHALL mark each rule that fails contract validation, because the w
 
 #### Scenario: Rule contains only unsupported actions besides valid ones
 - **WHEN** an active `message.received` rule contains `send_message` and `llm_reply`
-- **THEN** the rule list shows「規則不會執行」, with the error「第 2 個動作「llm_reply」不是系統提供的動作，請刪除」
+- **THEN** the rule list shows「規則不會執行」, with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
 
 ### Requirement: Rule Summary Sentence
 The rule list and the rule editor SHALL describe each rule in one Traditional Chinese sentence built from the contract labels: 「當<event>時，如果<conditions>，就<actions>」. Conditions in an `all` group SHALL be joined by「，而且」and in an `any` group by「，或」, with nested groups in parentheses. A rule with no conditions SHALL read「當<event>時，就<actions>」. For a `keyword.matched` rule with keywords, the event part SHALL name the keywords:「訊息含有「A」或「B」」for match mode `any` and「訊息同時含有「A」和「B」」for `all`. A condition node that the summary cannot describe, such as `not`, SHALL be shown as「（無法顯示的條件）」and SHALL NOT be dropped. Each action SHALL show its label and, when it has one, its main text parameter in「」. A parameter that holds an ID, such as `materialId` or `agentId`, SHALL NOT be shown.

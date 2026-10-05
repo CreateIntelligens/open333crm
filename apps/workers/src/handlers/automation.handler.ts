@@ -44,8 +44,8 @@ export async function handleAutomationJob(
       eventName: trigger,
       conditions: rule.conditions,
       actions: rule.actions,
-      // 含契約沒有的動作（例如 2026-10-05 拿掉的 llm_reply）時驗證失敗、整條略過；
-      // 規則列表會標示「規則不會執行」，清理見 apps/api/src/scripts/remove-retired-automation-actions.ts
+      // 含契約沒有的動作（例如 2026-10-05 拿掉的 llm_reply）時驗證失敗、整條略過，規則列表會標示「規則不會執行」。
+      // 既有規則中的這類動作已由 migration 20261005100000_remove_retired_automation_actions 清理
     });
     if (!result.valid) {
       logger.warn(

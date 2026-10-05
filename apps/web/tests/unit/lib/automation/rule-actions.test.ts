@@ -1,7 +1,7 @@
 /**
- * 編輯既有規則時，載入的動作要濾掉 workers 尚未支援的動作（AUDIT AUTO-01）。
+ * 編輯既有規則時，載入的動作要濾掉這個觸發事件的契約沒有提供的動作。
  * 原本靠「動作選項改變時」才過濾，規則觸發事件與預設相同（收到訊息）時不會重跑，
- * 不支援的動作留在表單裡，儲存時被後端以 400 拒絕，與畫面提示「儲存時會移除」不符。
+ * 這類動作留在表單裡，儲存時被後端以 400 拒絕，與畫面提示「儲存時會移除」不符。
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
@@ -32,9 +32,8 @@ test('沒有動作或格式不對：回空陣列', () => {
 });
 
 /*
- * 原本只濾掉 UNSUPPORTED_AUTOMATION_ACTION_TYPES 的 4 種動作。契約從來沒有的動作（例如 UAT 舊規則的
- * auto_assign）留在表單上，儲存時被後端以 400 拒絕，畫面也沒說是哪個動作。
- * 這類動作會讓 workers 略過整條規則，與「只略過該動作」的尚未支援動作要分開說明。
+ * 契約從來沒有的動作（例如 UAT 舊規則的 auto_assign）原本留在表單上，儲存時被後端以 400 拒絕，
+ * 畫面也沒說是哪個動作。這類動作會讓 workers 略過整條規則，編輯頁要說明。
  */
 test('Rule contains an action outside the contract：保留傳送訊息、移除 auto_assign，整條規則不會執行', () => {
   const result = splitRuleActions(
@@ -54,10 +53,10 @@ test('Rule contains an action that the event does not offer：工單關閉不能
   assert.deepEqual(result.dropped, [{ type: 'send_message', label: '傳送訊息' }]);
 });
 
-/* llm_reply 已從契約拿掉（change fix-automation-remaining-actions）：和其他契約沒有的動作一樣，整條規則不會執行 */
-test('Rule contains an unsupported action：llm_reply 列為未知動作', () => {
+/* llm_reply 已從契約拿掉（change fix-automation-remaining-actions）：整條規則不會執行，畫面用中文名稱標示已停用 */
+test('Rule contains an unsupported action：llm_reply 列為「LLM 智能回覆（已停用）」', () => {
   const result = splitRuleActions([{ type: 'llm_reply', params: {} }], 'message.received');
-  assert.deepEqual(result.dropped, [{ type: 'llm_reply', label: '未知動作（llm_reply）' }]);
+  assert.deepEqual(result.dropped, [{ type: 'llm_reply', label: 'LLM 智能回覆（已停用）' }]);
 });
 
 test('格式錯誤的動作：也列為被移除，不會默默消失', () => {
@@ -94,7 +93,7 @@ test('Rule contains only unsupported actions besides valid ones：含 llm_reply 
       { type: 'llm_reply', params: {} },
     ],
   });
-  assert.deepEqual(errors, ['第 2 個動作「llm_reply」不是系統提供的動作，請刪除']);
+  assert.deepEqual(errors, ['第 2 個動作「LLM 智能回覆」已停用，請刪除']);
 });
 
 test('選填的下拉參數：最前面加「不指定」，畫面顯示與實際存的值一致', async () => {

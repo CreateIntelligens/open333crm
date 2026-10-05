@@ -1,7 +1,7 @@
 /**
  * 從契約拿掉的自動化動作（change fix-automation-remaining-actions，AUDIT AUTO-01，issue #197）。
  * remove_tag 已在 workers 補上；assign_bot、kb_auto_reply、llm_reply 從契約拿掉，
- * 「尚未支援的動作」機制一併移除：契約沒有定義的動作，存檔時一律以「不是系統提供的動作」拒絕。
+ * 「尚未支援的動作」機制一併移除：已停用的動作存檔時以「已停用，請刪除」拒絕，契約保留它們的中文名稱。
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
@@ -24,19 +24,24 @@ test('契約不再定義 assign_bot、kb_auto_reply、llm_reply；remove_tag 照
   assert.ok(composeAutomationContract(EVENT)!.actions.some((a) => a.type === 'remove_tag'));
 });
 
-test('「尚未支援的動作」機制已移除', () => {
+test('「尚未支援的動作」機制已移除；已停用的動作保留中文名稱，供訊息與畫面使用', () => {
   const exported = automation as Record<string, unknown>;
   assert.equal(exported.UNSUPPORTED_AUTOMATION_ACTION_TYPES, undefined);
   assert.equal(exported.findUnsupportedAutomationActions, undefined);
+  assert.deepEqual([...automation.RETIRED_AUTOMATION_ACTIONS], [
+    ['assign_bot', '指派機器人'],
+    ['kb_auto_reply', 'KB 知識庫回覆'],
+    ['llm_reply', 'LLM 智能回覆'],
+  ]);
 });
 
-test('Unsupported action is rejected：含 llm_reply 的規則以「不是系統提供的動作」拒絕', () => {
+test('Unsupported action is rejected：含 llm_reply 的規則以「已停用」拒絕，訊息用中文名稱', () => {
   const result = validateAutomationRuleContract({
     eventName: EVENT,
     conditions: { all: [] },
     actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'llm_reply', params: {} }],
   });
-  assert.deepEqual(result.errors, ['第 2 個動作「llm_reply」不是系統提供的動作，請刪除']);
+  assert.deepEqual(result.errors, ['第 2 個動作「LLM 智能回覆」已停用，請刪除']);
 });
 
 test('Disabling a rule that contains an unsupported action：只改啟用狀態或名稱照常成功；改動作才驗證', async () => {
@@ -64,7 +69,7 @@ test('Disabling a rule that contains an unsupported action：只改啟用狀態�
   assert.equal(updates.length, 2);
   await assert.rejects(
     () => updateRule(prisma, 'r1', 't1', { actions: [{ type: 'llm_reply', params: {} }] }),
-    /不是系統提供的動作/,
+    /已停用/,
   );
 });
 

@@ -11,10 +11,10 @@ AUDIT AUTO-01（issue #197）：`remove_tag`、`assign_bot`、`kb_auto_reply`、
 
 ## What Changes
 
-- workers 的 `remove_tag`：依 `tagId` 或名稱找本租戶 `CONTACT` scope 的標籤，移除聯絡人的這個標籤；找不到標籤時略過，**不建立**。
+- workers 的 `remove_tag`：刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（和 `add_tag` 對稱：`add_tag` 依名稱找標籤時不分 scope，它貼上的標籤要能移除）；找不到時什麼都不做，**不建立**標籤。
 - 契約拿掉 `assign_bot`、`kb_auto_reply`、`llm_reply`；前端的舊選項清單與舊分支一併清掉。
-- 移除「尚未支援的動作」機制。契約沒有定義的動作，存檔時以「不是系統提供的動作」拒絕。
-- **行為改變（既有規則）**：含這 3 種動作的既有規則，workers 驗證失敗、**整條規則略過**（原本只略過這幾個動作），規則列表會標示「規則不會執行」。提供清理腳本 `apps/api/src/scripts/remove-retired-automation-actions.ts`（預設 dry-run，`--apply` 才寫入），把既有規則裡的這 3 種動作移除。
+- 移除「尚未支援的動作」機制。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留這 3 種動作的中文名稱：存檔時以「第 N 個動作「LLM 智能回覆」已停用，請刪除」拒絕，編輯頁列出「LLM 智能回覆（已停用）」。
+- **既有規則**：含這 3 種動作的規則，契約驗證會失敗、workers 整條略過（原本只略過這幾個動作）。為了不留空窗，以 Prisma 資料 migration `20261005100000_remove_retired_automation_actions` 在部署時一併清理：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用、動作保留原樣。
 - 主規格 `ai-usage-recording` 中「自動化動作呼叫 LLM」的情境改寫：自動化規則目前沒有呼叫 LLM 的動作。
 
 ## Capabilities
@@ -27,5 +27,5 @@ AUDIT AUTO-01（issue #197）：`remove_tag`、`assign_bot`、`kb_auto_reply`、
 ## Impact
 
 - `packages/automation`（需重新 build）、`apps/workers`、`apps/api`（腳本、測試）、`apps/web` 規則列表與編輯頁
-- 不需要 migration。
-- 部署後在 UAT 先以 dry-run 執行清理腳本確認範圍，再決定是否 `--apply`（UAT 受影響的規則清單見 PR 說明）。
+- 新增資料 migration（只動 `automation_rules` 的 `actions`、`isActive`、`updatedAt`，可重複執行）。`automation_rules` 開了 FORCE RLS，migration 以 owner 執行（UAT 的 `MIGRATE_DATABASE_URL` 為 superuser，具 BYPASSRLS）。
+- UAT 受影響的規則只有 2 條，都已刪除（清單見 PR 說明）。

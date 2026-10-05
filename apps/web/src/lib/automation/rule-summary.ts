@@ -4,7 +4,7 @@ import {
   AUTOMATION_OPERATOR_MAP,
   type AutomationOperator,
 } from '@open333crm/automation';
-import { ruleEventName } from './rule-actions';
+import { droppedActionLabel, ruleEventName } from './rule-actions';
 import { ruleEventLabel } from './rule-list';
 import { conditionGroup, conditionLeaf, isRecord } from './condition-tree';
 
@@ -62,7 +62,7 @@ export function summarizeConditions(conditions: unknown): string {
 export function summarizeAction(action: unknown): string {
   if (!isRecord(action) || typeof action.type !== 'string') return '格式錯誤的動作';
   const def = AUTOMATION_ACTION_MAP.get(action.type);
-  if (!def) return `未知動作（${action.type}）`;
+  if (!def) return droppedActionLabel(action.type);
   const params = (isRecord(action.params) ? action.params : isRecord(action.payload) ? action.payload : {}) as Record<string, unknown>;
   // 參數是 ID（素材、客服）時不顯示：管理員看不懂 UUID
   const main = (def.params ?? []).find(

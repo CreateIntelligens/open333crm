@@ -161,9 +161,15 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
 export const AUTOMATION_ACTION_MAP: ReadonlyMap<string, AutomationActionDefinition> =
   new Map(AUTOMATION_ACTION_DEFINITIONS.map((action) => [action.type, action]));
 
-/*
- * assign_bot、kb_auto_reply、llm_reply 已於 2026-10-05 從契約拿掉（AUDIT AUTO-01，issue #197）：
+/**
+ * 已於 2026-10-05 從契約拿掉的動作與中文名稱（AUDIT AUTO-01，issue #197）。
  * workers 從未實作；機器人在負責的對話裡本來就會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。
- * 既有規則若還含這些動作，契約驗證會失敗，workers 整條略過；清理見
- * apps/api/src/scripts/remove-retired-automation-actions.ts。
+ * 不在 AUTOMATION_ACTION_DEFINITIONS 裡，所以編輯器不提供、存檔時拒絕，含它們的既有規則 workers 整條略過；
+ * 既有規則中的這些動作由 migration 20261005100000_remove_retired_automation_actions 移除。
+ * 保留中文名稱，讓驗證訊息與畫面不必顯示代碼。
  */
+export const RETIRED_AUTOMATION_ACTIONS: ReadonlyMap<string, string> = new Map([
+  ['assign_bot', '指派機器人'],
+  ['kb_auto_reply', 'KB 知識庫回覆'],
+  ['llm_reply', 'LLM 智能回覆'],
+]);

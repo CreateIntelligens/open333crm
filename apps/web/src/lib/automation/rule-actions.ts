@@ -1,6 +1,7 @@
 import {
   AUTOMATION_ACTION_MAP,
   composeAutomationContract,
+  RETIRED_AUTOMATION_ACTIONS,
   validateAutomationRuleContract,
 } from '@open333crm/automation';
 
@@ -46,11 +47,19 @@ export function splitRuleActions(
     } else {
       result.dropped.push({
         type: a.type,
-        label: AUTOMATION_ACTION_MAP.get(a.type)?.label ?? `未知動作（${a.type}）`,
+        label: droppedActionLabel(a.type),
       });
     }
   }
   return result;
+}
+
+/** 被移除動作的名稱：契約有的用中文名稱，已停用的標示（已停用），其他是未知動作 */
+export function droppedActionLabel(type: string): string {
+  const label = AUTOMATION_ACTION_MAP.get(type)?.label;
+  if (label) return label;
+  const retired = RETIRED_AUTOMATION_ACTIONS.get(type);
+  return retired ? `${retired}（已停用）` : `未知動作（${type}）`;
 }
 
 /**

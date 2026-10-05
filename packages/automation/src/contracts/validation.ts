@@ -10,7 +10,7 @@ import type {
   AutomationOperator,
   ComposeAutomationContractOptions,
 } from './types.js';
-import { AUTOMATION_ACTION_MAP } from './actions.js';
+import { AUTOMATION_ACTION_MAP, RETIRED_AUTOMATION_ACTIONS } from './actions.js';
 import { AUTOMATION_EVENT_MAP } from './events.js';
 import { AUTOMATION_FACT_MAP } from './facts.js';
 
@@ -130,7 +130,8 @@ function validateAction(
   }
 
   if (!AUTOMATION_ACTION_MAP.has(type)) {
-    errors.push(`${position}「${type}」不是系統提供的動作，請刪除`);
+    const retired = RETIRED_AUTOMATION_ACTIONS.get(type);
+    errors.push(retired ? `${position}「${retired}」已停用，請刪除` : `${position}「${type}」不是系統提供的動作，請刪除`);
     return;
   }
 

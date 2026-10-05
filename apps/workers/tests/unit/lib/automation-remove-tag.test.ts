@@ -1,7 +1,9 @@
 /**
  * remove_tag worker 動作（change fix-automation-remaining-actions，AUDIT AUTO-01）。
  * 原本 workers 沒有這個分支，規則可以存檔、也會命中，執行時卻直接略過。
- * 與 add_tag 不同：找不到標籤時略過、不建立，也只找 CONTACT scope 的標籤（避免同名的工單標籤）。
+ * 只刪除「聯絡人身上、本租戶、名稱或 ID 相符」的標籤：找不到就什麼都不做，不建立標籤；
+ * 不限 scope，和 add_tag 對稱——add_tag 依名稱找標籤時不分 scope（AUDIT AUTO-03），
+ * 它貼上的標籤要能用同名的 remove_tag 移除。
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
@@ -19,30 +21,28 @@ interface FakeState {
   contactTags: Array<{ contactId: string; tagId: string }>;
 }
 
+type DeleteWhere = { contactId: string; tagId?: string; tag: { tenantId: string; name?: string } };
+
 function makePrisma(state: FakeState) {
   return {
     tag: {
-      async findFirst({ where }: { where: { id?: string; name?: string; tenantId: string; scope?: string } }) {
-        return (
-          state.tags.find(
-            (t) =>
-              t.tenantId === where.tenantId &&
-              (where.id === undefined || t.id === where.id) &&
-              (where.name === undefined || t.name === where.name) &&
-              (where.scope === undefined || t.scope === where.scope),
-          ) ?? null
-        );
-      },
       async create() {
         throw new Error('remove_tag 不應建立標籤');
       },
     },
     contactTag: {
-      async deleteMany({ where }: { where: { contactId: string; tagId: string } }) {
+      async deleteMany({ where }: { where: DeleteWhere }) {
         const before = state.contactTags.length;
-        state.contactTags = state.contactTags.filter(
-          (ct) => !(ct.contactId === where.contactId && ct.tagId === where.tagId),
-        );
+        state.contactTags = state.contactTags.filter((ct) => {
+          const tag = state.tags.find((t) => t.id === ct.tagId);
+          const match =
+            ct.contactId === where.contactId &&
+            !!tag &&
+            tag.tenantId === where.tag.tenantId &&
+            (where.tagId === undefined || ct.tagId === where.tagId) &&
+            (where.tag.name === undefined || tag.name === where.tag.name);
+          return !match;
+        });
         return { count: before - state.contactTags.length };
       },
     },
@@ -60,7 +60,7 @@ async function run(state: FakeState, params: Record<string, unknown>, contactId:
   );
 }
 
-test('Remove tag by name：移除聯絡人的這個標籤', async () => {
+test('Remove tag by name：只移除觸發聯絡人的這個標籤', async () => {
   const state: FakeState = {
     tags: [{ id: 'tag-vip', tenantId: 'tenant-1', name: 'VIP', scope: 'CONTACT' }],
     contactTags: [
@@ -69,7 +69,7 @@ test('Remove tag by name：移除聯絡人的這個標籤', async () => {
     ],
   };
   await run(state, { tagName: 'VIP' });
-  assert.deepEqual(state.contactTags, [{ contactId: 'contact-2', tagId: 'tag-vip' }], '只移除觸發對象的標籤');
+  assert.deepEqual(state.contactTags, [{ contactId: 'contact-2', tagId: 'tag-vip' }]);
 });
 
 test('Remove a tag that does not exist：略過，不建立標籤', async () => {
@@ -87,24 +87,22 @@ test('依 tagId 移除', async () => {
   assert.equal(state.contactTags.length, 0);
 });
 
-test('只找 CONTACT scope 的標籤：同名的工單標籤不影響', async () => {
+test('add_tag 貼上的其他 scope 同名標籤，也能用 remove_tag 移除（兩者對稱）', async () => {
   const state: FakeState = {
-    tags: [
-      { id: 'tag-case-vip', tenantId: 'tenant-1', name: 'VIP', scope: 'CASE' },
-      { id: 'tag-vip', tenantId: 'tenant-1', name: 'VIP', scope: 'CONTACT' },
-    ],
-    contactTags: [{ contactId: 'contact-1', tagId: 'tag-vip' }],
+    tags: [{ id: 'tag-case-vip', tenantId: 'tenant-1', name: 'VIP', scope: 'CASE' }],
+    contactTags: [{ contactId: 'contact-1', tagId: 'tag-case-vip' }],
   };
   await run(state, { tagName: 'VIP' });
-  assert.equal(state.contactTags.length, 0, '移除的是 CONTACT scope 的 VIP');
+  assert.equal(state.contactTags.length, 0);
 });
 
-test('其他租戶的標籤：略過', async () => {
+test('其他租戶的標籤：不移除', async () => {
   const state: FakeState = {
     tags: [{ id: 'tag-other', tenantId: 'tenant-2', name: 'VIP', scope: 'CONTACT' }],
     contactTags: [{ contactId: 'contact-1', tagId: 'tag-other' }],
   };
   await run(state, { tagId: 'tag-other' });
+  await run(state, { tagName: 'VIP' });
   assert.equal(state.contactTags.length, 1);
 });
 
