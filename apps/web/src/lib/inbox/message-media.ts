@@ -1,6 +1,11 @@
 /** 可以直接顯示的 data URI：只限點陣圖。svg、html 等 data URI 在點開時會執行 */
 const SAFE_DATA_IMAGE = /^data:image\/(png|jpeg|gif|webp)[;,]/i;
 
+/** scheme 不分大小寫（`DATA:` 也是 data URI），所有判斷都走這裡，避免各處大小寫規則不一致 */
+function isDataUri(value: string): boolean {
+  return /^data:/i.test(value);
+}
+
 /** 瀏覽器打得開的網址；排除 `line-content:<id>` 這類後端佔位值、javascript: 與不安全的 data: */
 function isOpenableUrl(value: unknown): value is string {
   return typeof value === 'string' && (/^(https?:|\/)/i.test(value) || SAFE_DATA_IMAGE.test(value));
@@ -55,7 +60,7 @@ export function describeMessageMedia(contentType: string, content: unknown): Mes
   }
   if (contentType === 'file') {
     // 檔案連結會被點開或下載，不接受 data: 網址
-    if (url.startsWith('data:')) return { kind: 'text' };
+    if (isDataUri(url)) return { kind: 'text' };
     const fileName = typeof obj.fileName === 'string' && obj.fileName ? obj.fileName : '檔案';
     return { kind: 'file', url, fileName, sizeLabel: formatFileSize(obj.fileSize) };
   }

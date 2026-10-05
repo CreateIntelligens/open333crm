@@ -80,3 +80,11 @@ test('Unsafe data URI：data: 只接受 png、jpeg、gif、webp 圖片', () => {
 test('檔案連結不接受 data: 網址', () => {
   assert.deepEqual(describeMessageMedia('file', { url: 'data:image/png;base64,AAA', fileName: 'a.png' }), { kind: 'text' });
 });
+
+/* PR #223 審查：data: 判斷要不分大小寫，url 與 mediaUrl 兩條路徑都要遵守 */
+test('大寫 DATA: 也不能當檔案連結；mediaUrl 一樣擋不安全的 data:', () => {
+  assert.deepEqual(describeMessageMedia('file', { url: 'DATA:image/png;base64,AAA', fileName: 'a.png' }), { kind: 'text' });
+  assert.deepEqual(describeMessageMedia('file', { mediaUrl: 'Data:image/png;base64,AAA', fileName: 'a.png' }), { kind: 'text' });
+  assert.equal(extractMediaUrl({ mediaUrl: 'DATA:text/html,<p>' }), null);
+  assert.equal(extractMediaUrl({ mediaUrl: 'data:image/svg+xml,<svg>' }), null);
+});
