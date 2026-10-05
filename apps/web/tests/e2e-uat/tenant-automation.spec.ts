@@ -155,7 +155,7 @@ test.describe.serial('自動化規則 @automation', () => {
     // react-querybuilder：初始為空群組，點「+ 新增條件」（ConditionBuilder 以 translations 中文化）
     const qb = page.locator('.condition-builder');
     await expect(qb).toBeVisible({ timeout: 10_000 });
-    await qb.getByRole('button', { name: '+ 新增條件' }).click();
+    await qb.getByRole('button', { name: '+ 新增條件', exact: true }).click();
 
     const rule = qb.locator('.rule').first();
     await expect(rule).toBeVisible({ timeout: 10_000 });
