@@ -371,30 +371,17 @@ test.describe('知識庫 — 文章表單 @fields', () => {
     expect(scriptCount, 'XSS payload 不應被解析成真正的 <script> 元素').toBe(0);
   });
 
-  test('KB-10 【BUG】純空白/全形空白標題被後端接受（zod 缺 .trim()）', async () => {
-    // 前端 <Input required> 只擋「完全空字串」，空白字元可通過 HTML 驗證；
-    // 後端 createArticleSchema 的 title 是 z.string().min(1) 沒有 .trim()，
-    // 因此 "   " 與全形空白 "　" 都算 1 個以上字元 → 201 入庫。
-    // 結果：知識庫出現「看起來沒有標題」的文章，且會被 AI 檢索到。
-    const junk: string[] = [];
+  test('KB-10 純空白/全形空白標題被後端擋下（6f7a7241 補上 .trim()）', async () => {
+    // 原本 createArticleSchema.title 是 z.string().min(1)，空白標題會 201 入庫（Wave 6 記為 P2）。
+    // 6f7a7241 改為 z.string().trim().min(1, '標題不可為空白')，現在應回 400。
     for (const [label, value] of [
       ['半形空白', FieldSamples.whitespace],
       ['全形空白', FieldSamples.fullwidthSpace],
     ] as const) {
       const res = await api.post('knowledge', { data: { title: value, content: 'x' } });
-      if (res.status() === 201) {
-        const id = (await res.json()).data.id;
-        junk.push(id);
-        createdArticles.push(id);
-      }
-      expect(
-        res.status(),
-        `【已知 BUG P2】KB 標題填${label}被後端接受（${res.status()}）：` +
-          `createArticleSchema.title 是 z.string().min(1) 缺 .trim()，` +
-          `應改為 z.string().trim().min(1)。此處刻意斷言目前的錯誤行為，修好後本斷言會 fail 提醒更新。`,
-      ).toBe(201);
+      if (res.status() === 201) createdArticles.push((await res.json()).data.id);
+      expect(res.status(), `KB 標題填${label}應被擋下`).toBe(400);
     }
-    expect(junk.length, '兩種空白標題皆應（目前）被接受＝bug 重現成功').toBe(2);
   });
 
   test('KB-11 編輯往返：PATCH 更新標題與內容後重讀一致', async () => {
@@ -625,9 +612,10 @@ test.describe('知識庫 — 搜尋 / 過濾 / 匯入 @fields', () => {
       8_000,
     );
     expect(wrapped.requested, '外層非陣列的 JSON 應被前端擋下，不發出 import 請求').toBe(false);
+    // 7a4e655c 起錯誤訊息改為中文（原本是 JSON must be an array）
     await expect(
-      page.getByText('JSON must be an array'),
-      '前端應顯示「JSON must be an array」錯誤',
+      page.getByText('JSON 最外層必須是陣列'),
+      '前端應顯示「JSON 最外層必須是陣列」錯誤',
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -687,14 +675,10 @@ test.describe('知識庫 — Embedding / Chat & Prompt 設定 @fields', () => {
     // 安全紅線：本案例只讀不寫，不點任何「重新嵌入 / bulk-embed」按鈕
   });
 
-  test('KB-31 Embedding Base URL 格式驗證（後端 z.string().url()）', async () => {
-    // ⚠️ z.string().url() 底層是 new URL()，只要「有 scheme」就算合法，
-    //    不限 http/https。FieldSamples.badUrls 中的 'ftp:/x' 因此會被接受（200），
-    //    與 KB-32 的 javascript: 是同一顆 bug（P2）。這裡只斷言「沒有 scheme」
-    //    的那幾個確實被擋，帶 scheme 的另外在 KB-32 記錄。
-    const noScheme = FieldSamples.badUrls.filter((u) => !/^[a-z][a-z0-9+.-]*:/i.test(u));
-    expect(noScheme.length, '應有不含 scheme 的非法 URL 樣本').toBeGreaterThan(0);
-    for (const bad of noScheme) {
+  test('KB-31 Embedding Base URL 格式驗證：只接受 http(s)（54aa1125）', async () => {
+    // 原本 z.string().url() 只要有 scheme 就算合法（ftp:/x 會 200）。
+    // 54aa1125 改用 httpUrlSchema 限定 http/https，所有非法值都應被擋。
+    for (const bad of [...FieldSamples.badUrls, 'ftp:/x']) {
       await apiFieldCheck(api, {
         path: 'settings/embedding',
         method: 'put',
@@ -703,43 +687,21 @@ test.describe('知識庫 — Embedding / Chat & Prompt 設定 @fields', () => {
         context: `Embedding baseUrl 非法值「${bad}」`,
       });
     }
-
-    // 帶 scheme 但非 http/https 的值（ftp:/x）目前會被接受 —— 就地記錄並立即還原
-    const ftp = await api.put('settings/embedding', { data: { baseUrl: 'ftp:/x' } });
-    const ftpStatus = ftp.status();
+    // 保險：萬一有值被接受，還原原值並確認
     await api.put('settings/embedding', { data: { baseUrl: originalEmbedding?.baseUrl } });
-    expect(
-      ftpStatus,
-      '【已知 BUG P2】Embedding baseUrl 接受非 http(s) scheme（ftp:/x）：' +
-        'z.string().url() 不限 scheme，應加 .refine(v => /^https?:\\/\\//.test(v))。' +
-        '此處斷言目前行為（200），修好後本斷言會 fail 提醒更新。',
-    ).toBe(200);
-
-    // 還原保險：確認被拒/已還原後設定乾淨
     const cur = (await (await api.get('settings/embedding')).json())?.data?.settings;
-    expect(cur.baseUrl, '測試後 baseUrl 必須還原為原值').toBe(originalEmbedding?.baseUrl);
+    expect(cur.baseUrl, '測試後 baseUrl 必須維持原值').toBe(originalEmbedding?.baseUrl);
   });
 
-  test('KB-32 【BUG】Embedding Base URL 接受 javascript: scheme（z.url() 不限 scheme）', async () => {
-    // z.string().url() 底層用 new URL()，javascript:/file:/data: 等 scheme 皆合法，
-    // 因此危險 scheme 可被寫入租戶設定。此值會被後端 fetch 使用（SSRF/scheme 濫用面）。
-    // 本案例寫入後「立即還原」，避免破壞 UAT 的 AI 功能。
+  test('KB-32 Embedding Base URL 拒絕 javascript: scheme（54aa1125）', async () => {
+    // 原本 javascript:/file:/data: 都能寫入（SSRF/scheme 濫用面）；54aa1125 起應回 400。
     const res = await api.put('settings/embedding', { data: { baseUrl: 'javascript:alert(1)' } });
     const status = res.status();
-    // 立刻還原（無論成敗）
-    await api.put('settings/embedding', { data: { baseUrl: originalEmbedding?.baseUrl } });
+    if (status < 400) await api.put('settings/embedding', { data: { baseUrl: originalEmbedding?.baseUrl } });
+    expect(status, 'javascript: scheme 應被擋下').toBe(400);
 
-    expect(
-      status,
-      '【已知 BUG P2】Embedding baseUrl 接受 javascript: scheme：' +
-        'embeddingSettingsSchema 應改用 .url().refine(v => /^https?:\\/\\//.test(v))。' +
-        '此處刻意斷言目前的錯誤行為（200），修好後本斷言會 fail 提醒更新。',
-    ).toBe(200);
-
-    // 確認還原成功，UAT 的 embedding 服務仍健康
     const health = (await (await api.get('settings/embedding')).json())?.data;
-    expect(health.settings.baseUrl, '測試後必須還原 baseUrl').toBe(originalEmbedding?.baseUrl);
-    expect(health.health?.reachable, '還原後 Ollama 應仍可連線').toBe(true);
+    expect(health.settings.baseUrl, '設定必須維持原值').toBe(originalEmbedding?.baseUrl);
   });
 
   test('KB-33 Embedding 模型名稱 / topK / threshold 邊界（後端直測，不落地）', async () => {
@@ -838,22 +800,25 @@ test.describe('知識庫 — Embedding / Chat & Prompt 設定 @fields', () => {
     expect(cur.maxTokens, '被拒的請求不應改動 maxTokens').toBe(originalChat?.maxTokens);
   });
 
-  test('KB-36 Prompt 文字框超長邊界：後端無上限，10 萬字可存並完整讀回（測後還原）', async () => {
-    // chatSystemPrompt 等四個欄位在 zod 是 z.string().optional()，完全沒有長度上限。
-    // 對「會被塞進 LLM context 的欄位」缺上限，實務上會直接撐爆 token 預算 → 記為 P2。
+  test('KB-36 Prompt 文字框長度上限：超過 8000 字回 400，8000 字以內可存並讀回（1c06ec5b）', async () => {
+    // 原本 summarizeSystemPrompt 沒有長度上限，10 萬字也照收（Wave 6 記為 P2）。
+    // 1c06ec5b 加上 MAX_SYSTEM_PROMPT_LENGTH = 8000。
     const huge = `${E2E_PREFIX} ${strOfLength(100_000, '長')}`;
-    const res = await api.put('settings/chat', { data: { summarizeSystemPrompt: huge } });
-    const status = res.status();
+    const tooLong = await api.put('settings/chat', { data: { summarizeSystemPrompt: huge } });
+    const tooLongStatus = tooLong.status();
+    if (tooLongStatus < 400) {
+      await api.put('settings/chat', { data: { summarizeSystemPrompt: originalChat?.summarizeSystemPrompt } });
+    }
+    expect(tooLongStatus, '超過 8000 字應被擋下').toBe(400);
 
-    // 無論結果先還原
+    // 邊界內：剛好 8000 字可存、完整讀回，測後還原
+    const atLimit = strOfLength(8000, '長');
+    const ok = await api.put('settings/chat', { data: { summarizeSystemPrompt: atLimit } });
+    const okStatus = ok.status();
+    const saved = (await (await api.get('settings/chat')).json())?.data?.settings?.summarizeSystemPrompt;
     await api.put('settings/chat', { data: { summarizeSystemPrompt: originalChat?.summarizeSystemPrompt } });
-
-    expect(
-      status,
-      '【已知現況 P2】summarizeSystemPrompt 無任何長度上限（z.string().optional()），' +
-        '10 萬字也照收。建議加 .max(N) 避免撐爆 LLM token 預算。' +
-        '此處斷言目前行為（200），加上上限後本斷言會 fail 提醒更新。',
-    ).toBe(200);
+    expect(okStatus, '8000 字應可儲存').toBe(200);
+    expect(saved, '8000 字應完整讀回').toBe(atLimit);
 
     const cur = (await (await api.get('settings/chat')).json())?.data?.settings;
     expect(cur.summarizeSystemPrompt, '測試後必須還原 prompt 原值').toBe(originalChat?.summarizeSystemPrompt);
@@ -1031,21 +996,16 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
     createdRules.push((await ok.json()).data.id);
   });
 
-  test('AU-05 【BUG】純空白/全形空白規則名稱被後端接受（zod 缺 .trim()）', async () => {
-    // 前端儲存鈕有 !form.name.trim() 擋控（AU-02 已驗），但後端 createRuleSchema
-    // 的 name 是 z.string().min(1) 沒有 .trim()，繞過 UI 直打 API 即可寫入空白名稱規則。
+  test('AU-05 純空白/全形空白規則名稱被後端擋下（6f7a7241 補上 .trim()）', async () => {
+    // 原本 createRuleSchema.name 是 z.string().min(1)，繞過 UI 直打 API 可寫入空白名稱（Wave 6 記為 P2）。
+    // 6f7a7241 改為 z.string().trim().min(1, '名稱不可為空白')，現在應回 400。
     for (const [label, value] of [
       ['半形空白', FieldSamples.whitespace],
       ['全形空白', FieldSamples.fullwidthSpace],
     ] as const) {
       const res = await api.post('automation/rules', { data: ruleBody({ name: value }) });
       if (res.status() === 201) createdRules.push((await res.json()).data.id);
-      expect(
-        res.status(),
-        `【已知 BUG P2】自動化規則名稱填${label}被後端接受（${res.status()}）：` +
-          'createRuleSchema.name 是 z.string().min(1) 缺 .trim()，前端擋控可被繞過。' +
-          '此處刻意斷言目前的錯誤行為，修好後本斷言會 fail 提醒更新。',
-      ).toBe(201);
+      expect(res.status(), `規則名稱填${label}應被擋下`).toBe(400);
     }
   });
 
@@ -1406,7 +1366,9 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
     console.log('前端優先級欄位無 min/max 屬性，超界值需靠後端 400 擋下（已於 AU-04 驗證）');
   });
 
-  test('AU-17 軟刪驗證：DELETE 後規則仍可讀取但 isActive=false', async () => {
+  test('AU-17 刪除後規則讀不到、列表不顯示（043cd782，CM-170）', async () => {
+    // 原本 DELETE 只把 isActive 設為 false，刪掉的規則仍可 GET、仍在列表。
+    // 043cd782 分開「刪除」（enabled=false）與「停用」（isActive=false）：刪除後 GET 回 404，列表不顯示。
     const res = await api.post('automation/rules', {
       data: ruleBody({ name: `${RULE_NAME} softdel` }),
     });
@@ -1417,8 +1379,9 @@ test.describe('自動化 — 規則編輯器欄位 @fields', () => {
     expect(del.status(), 'DELETE 應成功').toBe(200);
 
     const after = await api.get(`automation/rules/${id}`);
-    expect(after.status(), '自動化規則是軟刪（update isActive:false），刪除後仍可 GET').toBe(200);
-    const rule = (await after.json()).data;
-    expect(rule.isActive, '軟刪後 isActive 應為 false').toBe(false);
+    expect(after.status(), '刪除後應讀不到').toBe(404);
+    const list = (await (await api.get('automation/rules', { params: { limit: '100' } })).json())?.data ?? [];
+    expect(list.some((r: { id: string }) => r.id === id), '刪除後列表不應出現').toBe(false);
   });
+
 });
