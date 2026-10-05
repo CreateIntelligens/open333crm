@@ -5,8 +5,9 @@
  */
 import assert from 'node:assert/strict';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, test } from 'vitest';
 import automationRoutes from '#src/modules/automation/automation.routes.js';
+import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 
 let app: FastifyInstance;
 const created: Array<Record<string, unknown>> = [];
@@ -29,8 +30,13 @@ beforeAll(async () => {
   });
   app.decorateRequest('agent', null);
   app.decorateRequest('tenantPrisma', null);
+  await app.register(errorHandlerPlugin);
   await app.register(automationRoutes, { prefix: '/api/v1/automation' });
   await app.ready();
+});
+
+beforeEach(() => {
+  created.length = 0;
 });
 
 afterAll(async () => {
@@ -46,16 +52,22 @@ const body = (extra: Record<string, unknown>) => ({
 });
 
 test('Create an inactive rule：POST isActive false 存成停用', async () => {
-  created.length = 0;
   const res = await app.inject({ method: 'POST', url: '/api/v1/automation/rules', payload: body({ isActive: false }) });
   assert.equal(res.statusCode, 201, res.body);
+  assert.equal(created.length, 1, '應寫入資料庫一次');
   assert.equal(created[0]!.isActive, false);
   assert.equal(res.json().data.isActive, false);
 });
 
 test('Client that does not send the active state：POST 沒帶 isActive 存成啟用', async () => {
-  created.length = 0;
   const res = await app.inject({ method: 'POST', url: '/api/v1/automation/rules', payload: body({}) });
   assert.equal(res.statusCode, 201, res.body);
+  assert.equal(created.length, 1, '應寫入資料庫一次');
   assert.equal(created[0]!.isActive, true);
+});
+
+test('isActive 不是布林值：回 400，不寫入資料庫', async () => {
+  const res = await app.inject({ method: 'POST', url: '/api/v1/automation/rules', payload: body({ isActive: 'no' }) });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(created.length, 0);
 });
