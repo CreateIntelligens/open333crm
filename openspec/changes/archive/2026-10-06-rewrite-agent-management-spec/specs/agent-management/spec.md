@@ -1,23 +1,4 @@
-## Purpose
-定義租戶成員（客服帳號）的管理：建立成員、指派角色、成員修改自己的密碼，以及重設其他成員的密碼。停用與永久刪除見 `agent-lifecycle`；角色與越權防護見 `role-management`。
-
-## Requirements
-
-### Requirement: Change Own Password
-
-`PATCH /api/v1/agents/me/password` SHALL 讓登入的成員修改自己的密碼，不要求權限碼。請求 SHALL 帶目前的密碼與新密碼，新密碼至少 8 個字元。目前的密碼不正確時，系統 SHALL 回 HTTP 400（`INVALID_PASSWORD`），MUST NOT 修改密碼。
-
-#### Scenario: Agent changes password successfully
-- **WHEN** 登入的成員以 `{ currentPassword, newPassword }` 修改密碼，`currentPassword` 正確
-- **THEN** 系統回 HTTP 200，成員的密碼變成 `newPassword`
-
-#### Scenario: Wrong current password
-- **WHEN** 登入的成員修改密碼，`currentPassword` 不正確
-- **THEN** 系統回 HTTP 400，`error.code` 是 `INVALID_PASSWORD`，密碼不變
-
-#### Scenario: New password too short
-- **WHEN** 登入的成員修改密碼，`newPassword` 少於 8 個字元
-- **THEN** 系統回 HTTP 400，`error.code` 是 `VALIDATION_ERROR`，密碼不變
+## ADDED Requirements
 
 ### Requirement: 建立成員
 
@@ -85,3 +66,38 @@ email 在所有租戶之間唯一。email 已被任何租戶的成員使用時�
 - **WHEN** 租戶 A 有 `agent.password.reset` 的成員，重設租戶 B 的成員的密碼
 - **THEN** 系統回 HTTP 404，該成員的密碼不變
 
+## MODIFIED Requirements
+
+### Requirement: Change Own Password
+
+`PATCH /api/v1/agents/me/password` SHALL 讓登入的成員修改自己的密碼，不要求權限碼。請求 SHALL 帶目前的密碼與新密碼，新密碼至少 8 個字元。目前的密碼不正確時，系統 SHALL 回 HTTP 400（`INVALID_PASSWORD`），MUST NOT 修改密碼。
+
+#### Scenario: Agent changes password successfully
+- **WHEN** 登入的成員以 `{ currentPassword, newPassword }` 修改密碼，`currentPassword` 正確
+- **THEN** 系統回 HTTP 200，成員的密碼變成 `newPassword`
+
+#### Scenario: Wrong current password
+- **WHEN** 登入的成員修改密碼，`currentPassword` 不正確
+- **THEN** 系統回 HTTP 400，`error.code` 是 `INVALID_PASSWORD`，密碼不變
+
+#### Scenario: New password too short
+- **WHEN** 登入的成員修改密碼，`newPassword` 少於 8 個字元
+- **THEN** 系統回 HTTP 400，`error.code` 是 `VALIDATION_ERROR`，密碼不變
+
+## REMOVED Requirements
+
+### Requirement: Create Agent
+**Reason**: 這條需求以角色列舉授權：只有 `ADMIN` 與 `SUPERVISOR` 能建立成員，`SUPERVISOR` 不能建立 `ADMIN`。現行系統以權限碼 `agent.manage` 授權，並以越權防護取代固定的角色規則。email 也是在所有租戶之間唯一，不是在租戶內唯一。
+**Migration**: 見本規格的「建立成員」與 `role-management` 的「指派角色給成員的越權防護」。
+
+### Requirement: Assign Agent Role
+**Reason**: 這條需求以角色列舉授權：只有 `ADMIN` 與 `SUPERVISOR` 能指派角色，`SUPERVISOR` 不能指派 `ADMIN`。現行系統以權限碼 `agent.role.assign` 授權，並以越權防護取代固定的角色規則。
+**Migration**: 見本規格的「指派成員的角色」與 `role-management` 的「指派角色給成員的越權防護」。
+
+### Requirement: Admin Reset Agent Password
+**Reason**: 這條需求規定只有 `ADMIN` 能重設密碼。現行系統以權限碼 `agent.password.reset` 授權。
+**Migration**: 見本規格的「重設其他成員的密碼」。
+
+### Requirement: Deactivate Agent
+**Reason**: 這條需求規定 `DELETE /api/v1/agents/:id` 停用成員。change `agent-deactivate-vs-delete`（#172）把停用與永久刪除分成兩個動作：停用改為 `POST /api/v1/agents/:id/deactivate`，`DELETE` 改為永久刪除。
+**Migration**: 見 `agent-lifecycle`。

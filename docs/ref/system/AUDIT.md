@@ -52,7 +52,7 @@
 | [RLS-07](#rls-07) | 租戶隔離與權限 | P2 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
-| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P3 | 未處理 | 工單自動指派與通知收件人看舊的角色列舉，不看細粒度角色 | 靜態確認 |
+| [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色 | 靜態確認 |
 | [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、聯絡人清單與合併、AI 輔助等處沒有套用；聯絡人的對話、工單、時間軸已修正（`481452a`） | 靜態確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
 | [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已定方向 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all`，`admin` 少了稽核與資料權利的權限碼 | 靜態確認 |
@@ -65,6 +65,7 @@
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
+| [AUTH-09](#auth-09) | 帳號與登入 | P2 | 未處理 | 停用的成員無法重新啟用，管理員也看不到停用的成員 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
@@ -282,8 +283,11 @@ CLI token 的停用問題另見 AUTH-02。
 | `apps/workers/src/lib/automation-actions.ts` 的 `getSupervisorAndAdminAgentIds()` | 自動化的「通知主管」動作 |
 | `trial/trial.scheduler.ts` 的 `adminEmails()` | 試用到期的通知信只寄給 `ADMIN` |
 | `csat/csat.service.ts` 的 `recordCsatScore()` | CSAT 兩分以下只通知 `SUPERVISOR`，不含 `ADMIN` |
+| `agent/agent.service.ts` 的 `assertNotLastActiveAdmin()` | 停用與刪除成員時，「最後一位啟用中的管理員」把 `role` 為 `ADMIN` 的成員也算成管理員 |
 
 指派自訂角色時，`agent.service.ts` 的 `resolveRoleAssignment()` 讓 `role` 沿用成員原本的值。因此兩個同屬一個自訂角色的成員，行為可能正好相反：原本是 `ADMIN` 的人會收到所有主管通知，也永遠不會被自動指派工單；原本是 `AGENT` 的人則相反。「人員管理」頁只顯示細粒度角色，管理員看不到這個差異。
+
+**規格依據。** 主規格 `agent-lifecycle` 的「停用成員」與「永久刪除成員」規定：目標是租戶最後一位啟用中、角色為 `admin` 系統角色的成員時，系統 SHALL 拒絕。`assertNotLastActiveAdmin()` 把 `role` 為 `ADMIN`、但角色已改成自訂角色的成員也算進去。例如：租戶只剩一位 `admin` 系統角色的成員 M，另一位成員的角色列舉仍是 `ADMIN`。系統因此認為有兩位管理員，允許停用或刪除 M，租戶可能從此沒有人能管理角色。現況違反這兩條需求，因此由 P3 調為 P2。表中其他規則沒有主規格規定。
 
 <a id="rbac-04"></a>
 ### RBAC-04：渠道可見範圍有多處沒有套用
@@ -557,6 +561,23 @@ refresh token 外洩之後，持有者可以持續換發 access token，直到 r
 平台帳號有同樣的問題，見 AUTH-03。
 
 **修正方向**：`Agent` 加上 `tokenVersion`，refresh token 帶上這個值；改密碼、重設密碼與登出時遞增，`POST /auth/refresh` 比對不符就拒絕。
+
+<a id="auth-09"></a>
+### AUTH-09：停用的成員無法重新啟用，管理員也看不到停用的成員
+
+change `agent-deactivate-vs-delete`（#172）把「停用」與「永久刪除」分成兩個動作，差別在於停用可以復原。前端按下停用時，確認對話框也寫「帳號可日後再啟用」。但目前沒有任何復原的途徑：
+
+| 位置 | 現況 |
+| --- | --- |
+| `agent.routes.ts` | 只有 `POST /:id/deactivate`，沒有重新啟用的路由 |
+| `GET /api/v1/agents` | 只回傳 `isActive: true` 的成員 |
+| `AgentManagement.tsx` | 有「已停用」標籤，但列表的資料來自 `GET /agents`，標籤永遠不會出現 |
+
+停用之後，管理員在畫面上看不到這位成員，也無法重新啟用。要重新啟用只能直接改資料庫。這位成員的 email 仍然被佔用，無法用同一個 email 建立新成員。停用的成員不在畫面上，所以也無法從畫面刪除這位成員來釋放 email，只能直接呼叫 `DELETE /api/v1/agents/:id` 或改資料庫。
+
+**規格依據。** 主規格 `agent-lifecycle` 的「重新啟用成員」規定：有 `agent.deactivate` 的成員 SHALL 能查詢停用的成員，並把停用的成員重新啟用。現況違反這條需求。
+
+**修正方向**：新增查詢停用成員的方式與重新啟用的路由，前端在「人員管理」頁列出停用的成員。重新啟用時要不要檢查方案的人數上限，由實作的 change 決定：`plan-limits-core` 的「客服人數建立時硬擋」只在建立時檢查，停用的成員不計數。
 
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
