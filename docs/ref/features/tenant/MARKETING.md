@@ -126,7 +126,7 @@
 
 `GET /marketing/templates` 在同一個 plugin 內，因此收件匣插入範本也需要 `marketing.view`。沒有這個權限的客服在收件匣載入不到範本。
 
-群發選擇渠道時不套用渠道可見範圍，有 `marketing.broadcast` 的成員可以用租戶內任何渠道發送。
+群發選擇渠道時不套用渠道可見範圍，有 `marketing.broadcast` 的成員可以用租戶內任何渠道發送。這是刻意的設計：主規格 `channel-scoped-visibility` 的「存取層級」規定群發不受渠道存取層級限制（issue #217）。
 
 ## 目前的限制
 
