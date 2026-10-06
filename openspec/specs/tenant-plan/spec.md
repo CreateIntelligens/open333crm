@@ -14,7 +14,7 @@
 - **THEN** 每個 slug MUST 只存在一列
 
 ### Requirement: 功能天花板交集
-`getEffectivePermissions()` 回傳的有效權限 MUST 為「角色權限 ∩ 天花板」，其中天花板 = plan.features 內各 feature 的權限點集合 ∪ core feature 權限點（core 恆開）。`Tenant.planId` 為 null 時 MUST 不施加天花板（行為與導入前完全相同）。
+`getEffectiveTenantPermissions()` 回傳的有效權限 MUST 為「角色權限 ∩ 天花板」，其中天花板 = plan.features 內各 feature 的權限點集合 ∪ core feature 權限點（core 恆開）。`Tenant.planId` 為 null 時 MUST 不施加天花板（行為與導入前完全相同）。
 
 #### Scenario: trial 方案未含 marketing
 - **GIVEN** trial plan 的 features 不含 `marketing`，某 trial 租戶 admin 的角色權限含 `marketing.view`
