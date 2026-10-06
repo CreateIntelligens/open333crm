@@ -9,7 +9,7 @@
 
 | 模組 | 負責什麼 |
 | --- | --- |
-| `agent` | 成員的新增、改角色、重設密碼、停用、清除，以及成員直接可用的渠道 |
+| `agent` | 成員的新增、改角色、重設密碼、停用、永久刪除，以及成員直接可用的渠道 |
 | `role` | 角色的 CRUD 與權限碼設定 |
 | `auth` | 登入、token 更新、登出、Passkey、CLI 登入，以及 `/auth/me` 與 `/auth/me/permissions` |
 | `packages/core/src/rbac/` | 權限碼的註冊表（`permissions.ts`）與功能分組（`features.ts`） |
@@ -31,14 +31,14 @@
 
 新成員不會收到開通信，也不會被要求第一次登入時改密碼。管理員要自己把密碼交給成員。
 
-### 停用與清除
+### 停用與永久刪除
 
 | 動作 | 端點 | 結果 |
 | --- | --- | --- |
 | 停用 | `POST /agents/:id/deactivate` | `isActive` 設為 `false`。帳號保留，email 仍被佔用 |
-| 清除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值 |
+| 永久刪除 | `DELETE /agents/:id` | 刪除帳號並釋放 email。成員的通知、CLI token 與 Passkey 一併刪除；工單、對話與訊息上的成員欄位改成空值 |
 
-兩個動作都不能套用在租戶內最後一位啟用中的管理員，避免租戶沒有人能管理。清除不要求先停用。
+兩個動作都不能套用在租戶內最後一位啟用中的管理員，避免租戶沒有人能管理。永久刪除不要求先停用。
 
 **停用目前無法復原。** 主規格 `agent-lifecycle` 規定停用的成員可以重新啟用，但沒有重新啟用的路由，`GET /agents` 也不回傳停用的成員，所以管理員在畫面上看不到他們。見 `../../system/AUDIT.md` 的 AUTH-09。
 
@@ -151,7 +151,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | 指派角色 | `agent.role.assign` |
 | 重設他人密碼 | `agent.password.reset` |
 | 停用成員 | `agent.deactivate` |
-| 清除成員 | `agent.purge` |
+| 永久刪除成員 | `agent.purge` |
 | 查看角色 | `role.view` |
 | 管理角色與權限碼 | `role.manage` |
 
