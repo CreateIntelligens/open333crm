@@ -64,13 +64,17 @@ const ok = (data: unknown) => Promise.resolve({ data: { success: true, data } })
 /** 最近一次 GET /roles/:id/permissions 的回應。loaded() 等它完成。 */
 let permsResponse: Promise<unknown> | null = null;
 
-/** 第一個角色是被選取的角色。rolePerms 是各角色載入時的權限。 */
-function setup(roles: ReturnType<typeof role>[], rolePerms: Record<string, string[]>) {
+/** 第一個角色是被選取的角色。rolePerms 是各角色載入時的權限；給 Promise 可以控制回應的時間。 */
+function setup(roles: ReturnType<typeof role>[], rolePerms: Record<string, string[] | Promise<string[]>>) {
   api.get.mockImplementation((url: string) => {
     if (url === '/roles') return ok({ roles });
     if (url === '/roles/matrix') return ok({ groups: MATRIX });
     const m = url.match(/^\/roles\/([^/]+)\/permissions$/);
-    if (m) return (permsResponse = ok({ permissions: rolePerms[m[1]] ?? [] }));
+    if (m) {
+      return (permsResponse = Promise.resolve(rolePerms[m[1]] ?? []).then((permissions) => ({
+        data: { success: true, data: { permissions } },
+      })));
+    }
     return Promise.reject(new Error(`unexpected GET ${url}`));
   });
   render(<RolePermissionMatrix />);
@@ -93,8 +97,8 @@ const clickGroupButton = (name: string, label: '全開' | '全關') =>
   fireEvent.click(within(groupHeader(name)).getByRole('button', { name: label }));
 
 /**
- * 等角色的權限載入完成。只等勾選格出現不夠：角色清單載入後、權限回應前，
- * 勾選格會短暫可以操作，此時的勾選會被稍後到達的回應覆蓋。
+ * 等角色的權限載入完成。唯讀時勾選格一直是停用的，無法用勾選格判斷是否載入完成，
+ * 所以先等最近一次權限請求的回應。
  */
 async function loaded(code = 'inbox.view') {
   await screen.findByText(code);
@@ -139,6 +143,39 @@ describe('依群組顯示角色的權限', () => {
     assert.ok(screen.getByText('case.view'), '其他群組不受影響');
   });
 
+  test('權限載入完成前不能勾選', async () => {
+    setup([CUSTOM], { 'r-custom': new Promise<string[]>(() => {}) });
+    await screen.findByText('inbox.view');
+    for (const code of ALL_CODES) assert.equal(box(code).disabled, true, `${code} 應停用`);
+  });
+
+  test('快速切換角色時只採用目前角色的回應', async () => {
+    let resolveA!: (perms: string[]) => void;
+    const slowA = new Promise<string[]>((resolve) => (resolveA = resolve));
+    setup([CUSTOM, SUPERVISOR], { 'r-custom': slowA, 'r-sup': ['case.view'] });
+    await screen.findByText('inbox.view');
+
+    fireEvent.click(screen.getByText('主管'));
+    await waitFor(() => assert.equal(box('case.view').disabled, false));
+    assert.equal(checked('case.view'), true);
+
+    // 角色 A 較早送出的請求現在才回應
+    await act(async () => {
+      resolveA(['inbox.view', 'inbox.reply']);
+      await slowA;
+    });
+    assert.equal(checked('inbox.view'), false, '不應採用角色 A 的回應');
+    assert.equal(checked('case.view'), true);
+
+    api.put.mockReturnValue(ok({}));
+    click('contact.view');
+    fireEvent.click(screen.getByRole('button', { name: /儲存變更/ }));
+    await screen.findByText('已儲存');
+    const [url, body] = api.put.mock.calls[0];
+    assert.equal(url, '/roles/r-sup/permissions');
+    assert.deepEqual([...body.permissions].sort(), ['case.view', 'contact.view']);
+  });
+
   test('角色的權限載入失敗', async () => {
     api.get.mockImplementation((url: string) => {
       if (url === '/roles') return ok({ roles: [CUSTOM] });
@@ -172,6 +209,17 @@ describe('勾選時處理前置權限', () => {
     assert.equal(checked('inbox.reply'), true);
     absent(autoOnBadge('inbox.view'));
     absent(autoOnBadge('inbox.reply'));
+  });
+
+  test('取消勾選需要它的權限後不再顯示自動開啟', async () => {
+    setup([CUSTOM], { 'r-custom': [] });
+    await loaded();
+    click('inbox.reply');
+    assert.ok(autoOnBadge('inbox.view'), '前提：inbox.view 自動開啟');
+    click('inbox.reply');
+    assert.equal(checked('inbox.reply'), false);
+    assert.equal(checked('inbox.view'), true);
+    absent(autoOnBadge('inbox.view'), '需要它的權限已取消，不應再顯示自動開啟');
   });
 
   test('取消勾選前置權限時確認相依的權限', async () => {
@@ -241,7 +289,7 @@ describe('隱含權限只顯示說明', () => {
 describe('admin 角色的內建鎖定', () => {
   const LOCKED = ['agent.manage', 'role.manage', 'agent.view', 'role.view'];
 
-  test('admin 角色的內建鎖定權限不能操作', async () => {
+  test('admin 角色的內建鎖定權限不能取消勾選', async () => {
     setup([ADMIN], { 'r-admin': ALL_CODES });
     await loaded();
     for (const code of LOCKED) {
@@ -259,6 +307,23 @@ describe('admin 角色的內建鎖定', () => {
     clickGroupButton('人員與權限', '全關');
     for (const code of LOCKED) assert.equal(checked(code), true, `${code} 應維持勾選`);
     assert.equal(checked('agent.purge'), false);
+  });
+
+  test('admin 角色缺少內建鎖定的權限時可以補回：勾選', async () => {
+    setup([ADMIN], { 'r-admin': ALL_CODES.filter((c) => c !== 'role.manage') });
+    await loaded();
+    assert.equal(checked('role.manage'), false);
+    assert.equal(box('role.manage').disabled, false, '缺少時要能勾選');
+    click('role.manage');
+    assert.equal(checked('role.manage'), true);
+    assert.equal(box('role.manage').disabled, true, '勾選後鎖定');
+  });
+
+  test('admin 角色缺少內建鎖定的權限時可以補回：全開', async () => {
+    setup([ADMIN], { 'r-admin': ALL_CODES.filter((c) => c !== 'role.manage') });
+    await loaded();
+    clickGroupButton('人員與權限', '全開');
+    assert.equal(checked('role.manage'), true);
   });
 
   test('admin 以外的角色沒有內建鎖定', async () => {

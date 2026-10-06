@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 // useAuth() 回傳同一個物件，如同 AuthProvider 以 useCallback 保持 hasPermission 不變。
 // 每次渲染都給新的 hasPermission 會讓 Sidebar 的 effect 無限重跑。
 const { nav, auth, authValue } = vi.hoisted(() => {
-  const auth = { permissions: new Set<string>() };
+  const auth = { permissions: new Set<string>(), permissionsError: false };
   return {
     nav: { pathname: '/dashboard/inbox' },
     auth,
@@ -17,6 +17,10 @@ const { nav, auth, authValue } = vi.hoisted(() => {
       agent: { id: 'a1', name: '測試成員', email: 'a@example.com', role: 'AGENT' },
       logout: () => {},
       hasPermission: (code: string) => auth.permissions.has(code),
+      get permissionsError() {
+        return auth.permissionsError;
+      },
+      reloadPermissions: vi.fn(async () => {}),
     },
   };
 });
@@ -25,7 +29,7 @@ vi.mock('#src/providers/AuthProvider.js', () => ({ useAuth: () => authValue }));
 
 import { Sidebar } from '#src/components/layout/Sidebar.js';
 
-const visible = (label: string) => screen.queryAllByText(label).length > 0;
+const visible = (label: string | RegExp) => screen.queryAllByText(label).length > 0;
 
 /** 展開所有折疊的項目，讓檢查只看權限過濾，不受目前位置與分組方式影響。 */
 function renderExpanded() {
@@ -42,6 +46,20 @@ function renderExpanded() {
 beforeEach(() => {
   nav.pathname = '/dashboard/inbox';
   auth.permissions = new Set();
+  auth.permissionsError = false;
+  authValue.reloadPermissions.mockClear();
+});
+
+test('權限載入失敗時顯示提示並可重試：側邊選單', () => {
+  render(<Sidebar />);
+  assert.equal(visible(/無法載入你的權限/), false, '對照組：載入成功時不顯示');
+  cleanup();
+
+  auth.permissionsError = true;
+  render(<Sidebar />);
+  assert.equal(visible(/無法載入你的權限/), true);
+  fireEvent.click(screen.getByRole('button', { name: '重試' }));
+  assert.equal(authValue.reloadPermissions.mock.calls.length, 1);
 });
 
 test('沒有權限時隱藏選單項目', () => {

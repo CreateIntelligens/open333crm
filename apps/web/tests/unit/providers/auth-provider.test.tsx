@@ -73,15 +73,22 @@ test('以 Passkey 登入後載入權限', async () => {
   assert.equal(probe.canViewAnalytics, true);
 });
 
-test('權限載入失敗時權限集合是空的', async () => {
-  mockApi({
+test('權限載入失敗時顯示提示並可重試：權限集合', async () => {
+  const routes: Record<string, () => Promise<unknown>> = {
     'POST /auth/refresh': () => ok({ accessToken: 't' }),
     'GET /auth/me': () => ok(AGENT),
-  });
+  };
+  mockApi(routes);
   const probe = renderProvider();
   await waitFor(() => assert.equal(probe.auth.isLoading, false));
   assert.equal(probe.auth.agent?.id, 'a1', '恢復登入狀態成功');
   assert.ok(api.get.mock.calls.some(([url]) => url === '/auth/me/permissions'), '有嘗試載入權限');
   assert.equal(probe.auth.permissions.size, 0);
   assert.equal(probe.canViewAnalytics, false);
+  assert.equal(probe.auth.permissionsError, true);
+
+  routes['GET /auth/me/permissions'] = () => ok({ permissions: ['analytics.view'] });
+  await act(() => probe.auth.reloadPermissions());
+  assert.equal(probe.auth.permissionsError, false);
+  assert.equal(probe.canViewAnalytics, true);
 });

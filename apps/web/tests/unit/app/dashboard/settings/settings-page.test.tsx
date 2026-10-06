@@ -12,7 +12,8 @@ const { api } = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard/settings/roles' }));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
 vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: () => null }));
-vi.mock('#src/providers/AuthProvider.js', () => ({ usePermission: () => false }));
+// 只缺 role.view：檢查的若是別的權限碼，頁面會顯示角色設定頁，測試就會失敗。
+vi.mock('#src/providers/AuthProvider.js', () => ({ usePermission: (code: string) => code !== 'role.view' }));
 
 import SettingsPage from '#src/app/dashboard/settings/page.js';
 
