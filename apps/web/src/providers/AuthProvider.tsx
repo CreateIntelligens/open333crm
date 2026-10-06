@@ -121,9 +121,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { accessToken, agent: agentData } = verifyResponse.data.data;
       setAccessToken(accessToken);
       setAgent(agentData);
+      await loadPermissions();
       router.push('/dashboard/inbox');
     },
-    [router],
+    [router, loadPermissions],
   );
 
   const registerPasskey = useCallback(async (name: string) => {

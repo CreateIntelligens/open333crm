@@ -205,9 +205,15 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 ## 前端的顯示
 
-前端登入或重新載入頁面時，呼叫 `GET /auth/me/permissions` 取得有效權限（已套用方案天花板），存在 `AuthProvider.tsx`。元件以 `usePermission()` 判斷，側欄以 `NAV_TREE` 每一項的 `perm` 決定是否顯示。
+成員以密碼或 Passkey 登入、或重新載入頁面時，前端呼叫 `GET /auth/me/permissions` 取得有效權限（已套用方案天花板），存在 `AuthProvider.tsx`。載入失敗時權限集合是空的。元件以 `usePermission()` 判斷，側欄以 `NAV_TREE` 每一項的 `perm` 決定是否顯示。
 
 前端的判斷只影響顯示，不擋請求。側欄與 API 的權限碼不一定一致，兩者不一致的例子見[租戶後台](../features/tenant/README.md#側欄顯示與-api-權限)。
+
+角色與權限頁（`RolePermissionMatrix.tsx`）的行為由主規格 `role-settings-page` 規定：
+
+- 勾選一個碼時，頁面一併勾選它的 `dependsOn`。群組的「全開」「全關」也一併處理其他群組的前置與相依權限。
+- `admin` 系統角色的 `adminLock` 碼，以及這些碼的前置權限，在頁面上鎖定。
+- 頁面不預先停用越權與自我鎖定的變更。儲存時由後端拒絕，頁面顯示後端的錯誤訊息。
 
 角色與權限頁顯示的是角色本身的權限碼，沒有套用方案天花板，因此畫面上勾選的碼不一定生效，見 `../system/AUDIT.md` 的 PLAN-08。
 
