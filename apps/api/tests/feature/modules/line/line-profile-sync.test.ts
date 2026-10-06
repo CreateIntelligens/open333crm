@@ -107,6 +107,11 @@ const hidden = await createLineIdentity(A, 'hidden');
 await owner.agentChannelAccess.create({ data: { channelId: hidden.channel.id, agentId: otherAgentA.id } });
 const webchat = await createLineIdentity(A, 'webchat', { channelType: 'WEBCHAT' });
 const inactive = await createLineIdentity(A, 'inactive', { isActive: false });
+// 渠道可見範圍是 fail-closed（18c962b）：沒有綁定的渠道只有總店看得到。
+// 綁給 agentA，讓「非 LINE 渠道」測到的是渠道類型的檢查，而不是看不到渠道。
+await owner.agentChannelAccess.createMany({
+  data: [own, webchat].map(({ channel }) => ({ channelId: channel.id, agentId: agentA.id })),
+});
 // 同一個渠道的另一位聯絡人：同步 own 時不應被改到
 const siblingContact = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-sibling` } });
 const sibling = { channel: own.channel, uid: `U${MARK}-sibling` };
