@@ -172,6 +172,5 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | 停用成員不會中斷登入中的 token 與 socket | access token 有效到過期，socket 直到斷線。各憑證的生效時間見[認證與憑證](../../modules/AUTHENTICATION.md#停用與撤銷什麼時候生效) |
 | 沒有忘記密碼流程 | 詳見 `../../system/AUDIT.md` 的 AUTH-01 |
 | 登出不撤銷 token | 只清 cookie |
-| 登入回應透露帳號是否停用 | 停用檢查在密碼驗證之前 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
