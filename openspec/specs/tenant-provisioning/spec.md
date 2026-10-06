@@ -1,7 +1,8 @@
 # tenant-provisioning Specification
 
 ## Purpose
-TBD - created by archiving change platform-core-mvp. Update Purpose after archive.
+
+定義開通租戶的流程：在同一個交易內建立租戶、三個系統角色與第一位管理員，以及平台手動開通租戶的 API。試用申請的自動開通見 `trial-application`。
 
 ## Requirements
 

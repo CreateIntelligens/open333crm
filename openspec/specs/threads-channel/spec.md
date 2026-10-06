@@ -1,8 +1,11 @@
 # threads-channel Specification
 
 ## Purpose
-TBD - created by archiving change multi-channel-billing. Update Purpose after archive.
+
+定義 Instagram 私訊渠道：外掛註冊、webhook 驗證、訊息解析、取得個人資料與送出訊息。程式中的 `channelType` 是 `THREADS`，外掛是 `ThreadsPlugin`，透過 Instagram Graph API 收發 Instagram 私訊。
+
 ## Requirements
+
 ### Requirement: Threads Plugin Registration
 The system SHALL provide a ThreadsPlugin that implements the ChannelPlugin interface and can be registered in the Plugin Registry.
 

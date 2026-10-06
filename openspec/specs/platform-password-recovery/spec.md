@@ -1,7 +1,8 @@
 # platform-password-recovery Specification
 
 ## Purpose
-TBD - created by archiving change platform-user-management. Update Purpose after archive.
+
+定義平台帳號的密碼管理：登入後自助改密碼、以 email 申請忘記密碼重設信，以及以一次性的重設連結設定新密碼。租戶成員的密碼見 `agent-management`。
 
 ## Requirements
 

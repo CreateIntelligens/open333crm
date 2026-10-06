@@ -1,7 +1,8 @@
 # granular-plan-entitlement Specification
 
 ## Purpose
-TBD - created by archiving change add-granular-plan-entitlement. Update Purpose after archive.
+
+定義方案在功能之下的細分：以權限點為單位關閉個別權限、渠道數量上限、允許的渠道類型，以及平台後台設定這些項目的方式。方案與功能天花板本身見 `tenant-plan`。
 
 ## Requirements
 

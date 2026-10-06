@@ -1,7 +1,8 @@
 # trial-application Specification
 
 ## Purpose
-TBD - created by archiving change trial-signup. Update Purpose after archive.
+
+定義免費試用的申請與開通：公開的申請入口與總開關、防止枚舉 email 的統一回應、一個 email 只能申請一次、驗證連結的時效，以及點擊驗證連結即開通租戶。開通後的試用期管理見 `trial-lifecycle`。
 
 ## Requirements
 

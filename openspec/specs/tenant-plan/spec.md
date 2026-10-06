@@ -1,7 +1,8 @@
 # tenant-plan Specification
 
 ## Purpose
-TBD - created by archiving change platform-core-mvp. Update Purpose after archive.
+
+定義全域的方案（`Plan`）、租戶所屬的方案，以及方案的功能天花板：成員的有效權限是角色權限與方案功能的交集。數值上限見 `plan-limits-core`；權限點層級的關閉與渠道限制見 `granular-plan-entitlement`；有效權限的整體計算見 `permission-check`。
 
 ## Requirements
 
@@ -13,7 +14,7 @@ TBD - created by archiving change platform-core-mvp. Update Purpose after archiv
 - **THEN** 每個 slug MUST 只存在一列
 
 ### Requirement: 功能天花板交集
-`getEffectivePermissions()` 回傳的有效權限 MUST 為「角色權限 ∩ 天花板」，其中天花板 = plan.features 內各 feature 的權限點集合 ∪ core feature 權限點（core 恆開）。`Tenant.planId` 為 null 時 MUST 不施加天花板（行為與導入前完全相同）。
+`getEffectiveTenantPermissions()` 回傳的有效權限 MUST 為「角色權限 ∩ 天花板」，其中天花板 = plan.features 內各 feature 的權限點集合 ∪ core feature 權限點（core 恆開）。`Tenant.planId` 為 null 時 MUST 不施加天花板（行為與導入前完全相同）。
 
 #### Scenario: trial 方案未含 marketing
 - **GIVEN** trial plan 的 features 不含 `marketing`，某 trial 租戶 admin 的角色權限含 `marketing.view`

@@ -1,7 +1,8 @@
 # tenant-isolation-rls Specification
 
 ## Purpose
-TBD - created by archiving change add-postgres-rls. Update Purpose after archive.
+
+定義資料庫層的租戶隔離：每張租戶表的 Row-Level Security、在交易內注入租戶身分、合法跨租戶操作使用的 BYPASSRLS 連線、分階段上線與回滾，以及隔離的驗證測試。
 
 ## Requirements
 

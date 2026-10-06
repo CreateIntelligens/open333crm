@@ -1,7 +1,8 @@
 # plan-limits-core Specification
 
 ## Purpose
-TBD - created by archiving change platform-core-mvp. Update Purpose after archive.
+
+定義方案數值上限的解析：租戶的覆寫值優先於方案的設定值，租戶沒有方案時沒有上限。也定義建立成員時的客服人數上限。渠道數量上限見 `granular-plan-entitlement`。
 
 ## Requirements
 

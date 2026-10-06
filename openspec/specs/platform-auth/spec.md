@@ -1,7 +1,8 @@
 # platform-auth Specification
 
 ## Purpose
-TBD - created by archiving change platform-core-mvp. Update Purpose after archive.
+
+定義平台管理員（superuser）的認證與授權：獨立的平台登入與 JWT、保護所有平台路由的 guard，以及平台寫入操作的稽核紀錄。平台帳號的管理見 `platform-user-management`，密碼見 `platform-password-recovery`。
 
 ## Requirements
 

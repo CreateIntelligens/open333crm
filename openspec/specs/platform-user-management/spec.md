@@ -1,7 +1,8 @@
 # platform-user-management Specification
 
 ## Purpose
-TBD - created by archiving change platform-user-management. Update Purpose after archive.
+
+定義平台帳號的管理：開通帳號（臨時密碼、首次登入強制改密碼）、查詢、編輯、停用與重新啟用、重寄開通信，以及查詢帳號的稽核紀錄。登入見 `platform-auth`；改密碼與忘記密碼見 `platform-password-recovery`。
 
 ## Requirements
 
