@@ -405,6 +405,13 @@ CLI token 的停用問題另見 AUTH-02。
 
 只有一個租戶的部署不受影響。
 
+**規格依據。** 主規格 `a2a-agent-tenant-routing` 的「Explicit A2A Agent to tenant binding」規定兩件事：
+
+- 每個橋接身分 SHALL 先綁定明確設定的租戶，才能處理外部任務。
+- 沒有有效的綁定、或綁定的租戶已停用時，橋接 SHALL 拒絕新任務。
+
+現況沒有任何綁定，依建立時間選租戶；選中的租戶停用後，改由次早建立的租戶執行。現況違反這條需求。
+
 ## 帳號與登入
 
 功能說明見[平台帳號認證](../features/platform/AUTH.md)與[平台帳號管理](../features/platform/PLATFORM-USERS.md)。租戶端各種憑證的簽發、驗證與失效時間，見[認證與憑證](../modules/AUTHENTICATION.md)。
@@ -629,9 +636,11 @@ change `agent-deactivate-vs-delete`（#172）把「停用」與「永久刪除�
 
 可繞過的做法：被鎖的成員仍可用 Passkey 登入，Passkey 不經過這個計數。
 
-這是 `login-attempts.ts` 的註解記下的已知取捨，`add-login-brute-force-protection` 的規格沒有提到。帳號被鎖時，`login()` 會寫一筆 warn log（`[Auth] 登入因失敗次數過多被擋`，帶 email 雜湊），可以從 log 發現有人反覆鎖同一個帳號。
+**規格依據。** 這是規格明文規定的行為。主規格 `auth-session` 的「登入失敗達上限時鎖定帳號」規定：系統 SHALL 依 email 計算失敗次數，不存在的 email 以相同方式計算，CLI 的密碼登入共用同一個計數。現況符合這條需求；`login-attempts.ts` 的註解也記下這是已知的取捨。這一項列為 P2，是因為任何人都能讓指定的成員無法以密碼登入，與是否違反規格無關。
 
-**修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。
+帳號被鎖時，`login()` 會寫一筆 warn log（`[Auth] 登入因失敗次數過多被擋`，帶 email 雜湊），可以從 log 發現有人反覆鎖同一個帳號。
+
+**修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。兩種做法都會改變主規格規定的行為，修正的 PR 要以 MODIFIED 修改「登入失敗達上限時鎖定帳號」。
 
 ## 金鑰與 License
 

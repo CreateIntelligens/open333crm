@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-06：第一批 P2 對照主規格，A2A-01 與 SEC-06 補上規格依據
+
+把 #222 第一批的 P2 項目逐項對照主規格，檢查內文的「規格依據」有沒有缺漏或寫錯。RBAC-02、RBAC-05 已由 #232 補上；除了下表兩項，其他項目的規格依據不需要調整。
+
+| 項目 | 調整 | 依據 |
+| --- | --- | --- |
+| A2A-01 | 補上「規格依據」，維持 P2 | 違反 `a2a-agent-tenant-routing` 的「Explicit A2A Agent to tenant binding」：橋接要先綁定明確設定的租戶，沒有綁定或租戶停用時要拒絕任務。現況依建立時間選租戶 |
+| SEC-06 | 改正「規格沒有提到」，維持 P2 | `auth-session` 的「登入失敗達上限時鎖定帳號」明文規定依 email 計數，現況符合規格。優先順序來自實際影響。修正方向會改變這條需求，修正的 PR 要以 MODIFIED 修改它 |
+
 ## 2026-10-06：改寫主規格 `agent-management`，補回 `agent-lifecycle`，新增 AUTH-09
 
 #232 發現主規格 `agent-management` 有 4 條需求與現況不同。change `rewrite-agent-management-spec` 照現行程式改寫：建立成員、指派角色與重設密碼改以權限碼授權；停用與永久刪除移到新的主規格 `agent-lifecycle`，補回 `agent-deactivate-vs-delete` 在 `aa274cf0` 沒有套用的 delta spec（#228）。
