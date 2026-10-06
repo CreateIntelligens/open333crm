@@ -221,7 +221,7 @@
 | `agent.delete` | `openspec/changes/archive/2026-09-15-agent-deactivate-vs-delete/proposal.md` 寫「`agent.delete` 保留相容或標記淘汰」，沒有做決定 |
 | `billing.view` | `openspec/changes/archive/2026-09-15-platform-control-plane/tasks.md` 的任務 8.5「新增權限點 `billing.view` 控管此頁存取」沒有勾選，頁面也沒有實作 |
 
-主規格 `openspec/specs/rbac/spec.md` 也不能當依據：它仍以角色（`ADMIN`、`SUPERVISOR`、`AGENT`）描述授權，例如「Agent Management Access」要求 `ADMIN` 或 `SUPERVISOR`，與現行的權限碼不符。
+主規格 `rbac` 的「路由以權限碼授權」也不能當依據。這條需求規定需要授權的路由以 `requirePermission()` 檢查，但沒有規定哪些路由需要授權：各路由要求哪個權限碼，以程式為準。
 
 **優先順序是 P3。** 收件匣、工單、標籤與短連結都已經有權限檢查。剩下的知識庫內容是租戶內部的資料，沒有跨租戶的風險，主規格也沒有要求。
 
