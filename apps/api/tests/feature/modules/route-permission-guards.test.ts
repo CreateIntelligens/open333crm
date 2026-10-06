@@ -108,13 +108,13 @@ async function createRole(slug: string, permissions: string[]) {
   return role;
 }
 
-async function buildApp(roleId: string) {
+async function buildApp(roleId: string, role = 'AGENT') {
   const app = Fastify();
   app.decorate('prisma', prisma);
   app.decorate('prismaAdmin', prisma);
   app.decorate('io', { to: () => ({ emit: () => {} }), emit: () => {} } as never);
   app.decorate('authenticate', async (request: FastifyRequest) => {
-    request.agent = { id: ID, tenantId: T, role: 'AGENT', roleId } as never;
+    request.agent = { id: ID, tenantId: T, role, roleId } as never;
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(prisma, T);
   });
   await app.register(caseRoutes, { prefix: '/api/v1/cases' });
@@ -139,7 +139,7 @@ test('沒有任何權限的角色：45 條路由全部回 403', async () => {
   assert.deepEqual(leaks, [], `以下路由沒擋：\n${leaks.join('\n')}`);
 });
 
-test('缺少該路由需要的權限碼（其他全都有）：回 403', async () => {
+test('缺少路由要求的權限碼：其他權限碼都有，該路由回 403', async () => {
   const leaks: string[] = [];
   const byMissing = new Map<string, Awaited<ReturnType<typeof buildApp>>>();
   for (const r of ROUTES) {
@@ -159,7 +159,7 @@ test('缺少該路由需要的權限碼（其他全都有）：回 403', async (
   assert.deepEqual(leaks, [], `以下路由沒檢查到正確的權限碼：\n${leaks.join('\n')}`);
 });
 
-test('只具備該路由需要的權限碼：通過權限檢查（不回 403）', async () => {
+test('只有路由要求的權限碼：通過權限檢查（不回 403）', async () => {
   const blocked: string[] = [];
   const byNeeds = new Map<string, Awaited<ReturnType<typeof buildApp>>>();
   for (const r of ROUTES) {
@@ -196,21 +196,41 @@ test('只有 case.view + case.update：PATCH 改負責人或升級回 403，改�
   assert.notEqual((await assignApp.inject({ method: 'PATCH', url: `/api/v1/cases/${ID}`, payload: { assigneeId: ID } })).statusCode, 403);
 });
 
-test('建立工單時順便指派：另需 case.assign（三條建立工單的路由）', async () => {
-  const app = await buildApp((await createRole('case-create', ['case.view', 'case.create', 'inbox.view'])).id);
-  const creates = [
+/** 三條建立工單的路由，角色有 case.view、case.create 與 inbox.view，沒有 case.assign */
+async function caseCreates(slug: string) {
+  const app = await buildApp((await createRole(slug, ['case.view', 'case.create', 'inbox.view'])).id);
+  return [
     (extra: object) => app.inject({ method: 'POST', url: '/api/v1/cases', payload: { contactId: ID, channelId: ID, title: 'x', ...extra } }),
     (extra: object) => app.inject({ method: 'POST', url: `/api/v1/cases/from-conversation/${ID}`, payload: { title: 'x', ...extra } }),
     (extra: object) => app.inject({ method: 'POST', url: `/api/v1/conversations/${ID}/case`, payload: { title: 'x', ...extra } }),
   ];
-  for (const create of creates) {
+}
+
+test('建立工單時指派負責人需要 case.assign：三條建立工單的路由，指定負責人或團隊都回 403', async () => {
+  for (const create of await caseCreates('case-create-assign')) {
     for (const extra of [{ assigneeId: ID }, { teamId: ID }]) {
       const res = await create(extra);
       assert.equal(res.statusCode, 403, JSON.stringify(extra));
       assert.equal(res.json().error.details.requiredPermission, 'case.assign');
     }
+  }
+});
+
+test('建立工單時不指派就不需要 case.assign：三條建立工單的路由都不回 403', async () => {
+  for (const create of await caseCreates('case-create-plain')) {
     assert.notEqual((await create({})).statusCode, 403, '不指派時只需 case.create');
   }
+});
+
+// 主規格 rbac 的「路由以權限碼授權」（change restore-rbac-permission-specs）
+test('角色列舉不影響路由存取：角色列舉是 ADMIN、角色沒有權限碼，45 條路由全部回 403', async () => {
+  const app = await buildApp((await createRole('admin-enum-none', [])).id, 'ADMIN');
+  const leaks: string[] = [];
+  for (const r of ROUTES) {
+    const res = await call(app, r);
+    if (res.statusCode !== 403) leaks.push(`${label(r)} → ${res.statusCode}`);
+  }
+  assert.deepEqual(leaks, [], `以下路由依角色列舉放行：\n${leaks.join('\n')}`);
 });
 
 test('從對話頁建工單：缺 inbox.view 也擋', async () => {

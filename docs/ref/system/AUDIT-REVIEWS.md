@@ -4,6 +4,26 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-06：改寫主規格 `rbac`，補回權限相關的 3 份主規格，RBAC-02 與 RBAC-05 補上規格依據
+
+`rbac-granular-permissions` 也在 `aa274cf0` 以改名的方式搬進 `archive/`，它的 4 份 delta spec 從來沒有套用到主規格。主規格 `rbac` 因此仍然描述舊的角色白名單，RBAC-02 與 RBAC-05 沒有主規格可以依據。
+
+change `restore-rbac-permission-specs` 依 issue #217 的決定（留言 6008555780）照現行程式改寫 `rbac`，並新增 `permission-check`、`permission-model` 與 `role-management`。各模組的權限碼不在規格逐條列出，以程式為準。前端畫面的需求另開 change 處理。
+
+| 項目 | 調整 | 依據 |
+| --- | --- | --- |
+| RBAC-02 | 補上「規格依據」，維持 P2 | 違反 `rbac` 的「CLI token 的授權」 |
+| RBAC-05 | 補上「規格依據」，維持 P2 | 違反 `role-management` 的「系統角色權限可以調整，但有安全鎖」的情境「權限註冊表更新後，租戶對系統角色的修改仍然保留」 |
+
+**同時發現：主規格 `agent-management` 有 4 條需求與現況不同。** 這些需求留給另一個 change 改寫：
+
+| 需求 | 規格 | 現況 |
+| --- | --- | --- |
+| Create Agent | 只有 `ADMIN`、`SUPERVISOR` 能建立；SUPERVISOR 不能建立 ADMIN | 要求 `agent.manage`；不能指派權限比自己多的角色（`ROLE_ESCALATION`） |
+| Assign Agent Role | 只有 `ADMIN`、`SUPERVISOR` 能指派；SUPERVISOR 不能指派 ADMIN | 要求 `agent.role.assign`；越權防護同上，另有自我降級的 `SELF_LOCK` |
+| Admin Reset Agent Password | 只有 `ADMIN` 能重設 | 要求 `agent.password.reset` |
+| Deactivate Agent | `DELETE /agents/:id` 停用成員 | 停用改為 `POST /agents/:id/deactivate`（`agent.deactivate`）；`DELETE` 改為永久刪除（`agent.purge`，#172） |
+
 ## 2026-10-06：補回主規格 `channel-scoped-visibility`，RBAC-04 補上規格依據
 
 `channel-scoped-visibility` 在 `aa274cf0` 以改名的方式搬進 `openspec/changes/archive/`，沒有經過 `openspec archive`，它的 delta spec 從來沒有套用到主規格。RBAC-04 因此一直沒有主規格可以依據。

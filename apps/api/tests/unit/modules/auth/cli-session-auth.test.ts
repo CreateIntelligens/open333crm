@@ -369,4 +369,4 @@ test('網頁登入失敗 5 次後，CLI 密碼登入也被鎖定（共用計數�
     await app.close();
   }
 });
-test('cli analytics routes', testCliAnalyticsRoutes);
+test('scope 不足時被拒：CLI 報表路由依 token 的 scope 放行（主規格 rbac 的「CLI token 的授權」）', testCliAnalyticsRoutes);

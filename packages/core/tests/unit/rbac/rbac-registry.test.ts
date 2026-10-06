@@ -21,12 +21,14 @@ import {
   permsForFeatures,
   buildFeaturePerms,
   FEATURE_SLUGS,
+  PERMISSION_BY_CODE,
+  DEFAULT_ROLE_PERMISSIONS,
 } from '#src/rbac/index.js';
 
 import { test as t } from 'vitest';
 // ─── registry 完整性 ──────────────────────────────────────────────────────
 
-t('正式 registry 通過所有完整性驗證（無重複/懸空/成環/feature 缺失）', () => {
+t('正式的註冊表通過驗證：無重複、懸空參照、循環與不存在的功能', () => {
   assert.deepEqual(validatePermissionRegistry(), []);
 });
 
@@ -58,7 +60,7 @@ t('dependsOn / implies 參照的權限碼都存在', () => {
 
 // ─── resolveImplied（implies 遞迴閉包）───────────────────────────────────
 
-t('case.assign 展開後含 agent.view（跨模組隱含）', () => {
+t('implies 的權限碼遞迴加入：case.assign 展開後含 agent.view', () => {
   const eff = resolveImplied(['case.assign']);
   assert.ok(eff.has('case.assign'));
   assert.ok(eff.has('agent.view'), 'case.assign 應隱含 agent.view');
@@ -91,12 +93,48 @@ t('core feature 展開含 role.manage / agent.manage / settings.manage', () => {
 
 // ─── validateRouteCodes（route-to-registry 一致性）──────────────────────
 
-t('全部存在的碼 → 無錯', () => {
+t('路由用的權限碼都在註冊表內：沒有錯誤', () => {
   assert.deepEqual(validateRouteCodes(['inbox.view', 'channel.create']), []);
 });
 
-t('不存在的碼 → 報錯', () => {
-  const errors = validateRouteCodes(['nonexistent.code']);
+t('路由用了不在註冊表的權限碼：錯誤訊息含該碼', () => {
+  const errors = validateRouteCodes(['newfeature.action']);
   assert.equal(errors.length, 1);
-  assert.ok(errors[0].includes('nonexistent.code'), '錯誤訊息應指出是哪個碼');
+  assert.ok(errors[0].includes('newfeature.action'), '錯誤訊息應指出是哪個碼');
+});
+
+// ─── 主規格 permission-model（change restore-rbac-permission-specs）──────────
+
+t('每個權限點的必要欄位都有值：code、group、feature、label、description 不是空字串', () => {
+  for (const p of PERMISSIONS) {
+    for (const field of ['code', 'group', 'feature', 'label', 'description'] as const) {
+      assert.ok(p[field]?.trim(), `${p.code} 的 ${field} 是空的`);
+    }
+  }
+});
+
+t('註冊表的權限碼都符合命名規則：兩段以上的小寫片段，片段可含 - 與 _', () => {
+  for (const code of PERMISSION_CODES) {
+    assert.match(code, /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9_-]*)+$/, `${code} 不符合命名規則`);
+  }
+});
+
+const COMPLIANCE_CODES = ['audit.view', 'data.export', 'data.erase'];
+
+t('三個權限碼屬於 core 功能：audit.view、data.export、data.erase', () => {
+  for (const code of COMPLIANCE_CODES) {
+    assert.equal(PERMISSION_BY_CODE.get(code)?.feature, 'core', code);
+  }
+});
+
+t('data.erase 依賴 contact.view', () => {
+  assert.ok(PERMISSION_BY_CODE.get('data.erase')?.dependsOn?.includes('contact.view'));
+});
+
+t('預設只有 admin 有：supervisor 與 agent 的預設權限不含稽核與合規的權限碼', () => {
+  for (const code of COMPLIANCE_CODES) {
+    assert.ok(DEFAULT_ROLE_PERMISSIONS.admin.includes(code), `admin 應有 ${code}`);
+    assert.equal(DEFAULT_ROLE_PERMISSIONS.supervisor.includes(code), false, `supervisor 不應有 ${code}`);
+    assert.equal(DEFAULT_ROLE_PERMISSIONS.agent.includes(code), false, `agent 不應有 ${code}`);
+  }
 });
