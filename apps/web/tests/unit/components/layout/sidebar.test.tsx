@@ -21,9 +21,9 @@ const { nav, auth, authValue } = vi.hoisted(() => {
   };
 });
 vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
-vi.mock('@/providers/AuthProvider', () => ({ useAuth: () => authValue }));
+vi.mock('#src/providers/AuthProvider.js', () => ({ useAuth: () => authValue }));
 
-import { Sidebar } from '@/components/layout/Sidebar';
+import { Sidebar } from '#src/components/layout/Sidebar.js';
 
 const visible = (label: string) => screen.queryAllByText(label).length > 0;
 

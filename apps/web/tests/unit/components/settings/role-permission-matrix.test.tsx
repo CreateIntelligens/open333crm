@@ -11,12 +11,12 @@ const { api, auth } = vi.hoisted(() => ({
   api: { get: vi.fn(), put: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
   auth: { canManage: true },
 }));
-vi.mock('@/lib/api', () => ({ default: api }));
-vi.mock('@/providers/AuthProvider', () => ({
+vi.mock('#src/lib/api.js', () => ({ default: api }));
+vi.mock('#src/providers/AuthProvider.js', () => ({
   usePermission: (code: string) => (code === 'role.manage' ? auth.canManage : true),
 }));
 
-import { RolePermissionMatrix } from '@/components/settings/RolePermissionMatrix';
+import { RolePermissionMatrix } from '#src/components/settings/RolePermissionMatrix.js';
 
 type Perm = { code: string; label: string; dependsOn?: string[]; implies?: string[]; adminLock?: boolean };
 const group = (name: string, perms: Perm[]) => ({

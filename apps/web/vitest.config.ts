@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
 // on its first line: `// @vitest-environment jsdom`.
 export default defineConfig({
   resolve: {
+    // Tests import source through `#src/`. Source files import each other through `@/`.
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   oxc: { jsx: { runtime: 'automatic' } },

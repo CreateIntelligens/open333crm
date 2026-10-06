@@ -7,15 +7,15 @@ import { beforeEach, test, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 
 const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
-vi.mock('@/lib/api', () => ({ default: api }));
+vi.mock('#src/lib/api.js', () => ({ default: api }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('@/lib/webtalk', () => ({ unmountWebTalk: vi.fn() }));
+vi.mock('#src/lib/webtalk.js', () => ({ unmountWebTalk: vi.fn() }));
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: vi.fn(async () => ({ id: 'cred' })),
   startRegistration: vi.fn(),
 }));
 
-import { AuthProvider, setAccessToken, useAuth, usePermission } from '@/providers/AuthProvider';
+import { AuthProvider, setAccessToken, useAuth, usePermission } from '#src/providers/AuthProvider.js';
 
 const ok = (data: unknown) => Promise.resolve({ data: { success: true, data } });
 const AGENT = { id: 'a1', name: '測試成員', email: 'a@example.com', role: 'AGENT' };
