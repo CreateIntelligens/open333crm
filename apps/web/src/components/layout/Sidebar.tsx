@@ -24,76 +24,92 @@ interface NavNode {
 }
 
 const NAV_TREE: NavNode[] = [
-  { id: 'inbox', label: '收件匣', href: '/dashboard/inbox', icon: MessageSquare },
-  { id: 'cases', label: '工單', href: '/dashboard/cases', icon: Briefcase },
-  { id: 'contacts', label: '聯絡人', href: '/dashboard/contacts', icon: Users },
-  { id: 'notifications', label: '通知', href: '/dashboard/notifications', icon: Bell },
-  { id: 'automation', label: '自動化', href: '/dashboard/automation', icon: Zap, perm: 'automation.view' },
   {
-    id: 'knowledge', label: '知識庫', href: '/dashboard/knowledge', icon: BookOpen, perm: 'knowledge.view', children: [
-      { id: 'knowledge-articles', label: '文章管理', href: '/dashboard/knowledge/articles', icon: FileText },
-      { id: 'knowledge-search', label: '語義搜尋', href: '/dashboard/knowledge/search', icon: Gauge },
-      { id: 'knowledge-feedback', label: '回報調教', href: '/dashboard/knowledge/feedback', icon: FlaskConical },
+    id: 'service', label: '客服工作', icon: Briefcase, children: [
+      { id: 'inbox', label: '收件匣', href: '/dashboard/inbox', icon: MessageSquare },
+      { id: 'cases', label: '工單', href: '/dashboard/cases', icon: Briefcase },
+      { id: 'contacts', label: '聯絡人', href: '/dashboard/contacts', icon: Users },
+      { id: 'notifications', label: '通知', href: '/dashboard/notifications', icon: Bell },
+    ],
+  },
+  {
+    id: 'automation-content', label: '自動化與知識', icon: Zap, children: [
+      { id: 'automation', label: '自動化', href: '/dashboard/automation', icon: Zap, perm: 'automation.view' },
       {
-        id: 'knowledge-ai', label: 'AI 設定', icon: Network, children: [
-          { id: 'knowledge-embedding', label: 'Embedding', href: '/dashboard/knowledge/embedding', icon: Network },
-          { id: 'knowledge-chat', label: 'Chat & Prompt', href: '/dashboard/knowledge/chat-prompt', icon: MessageSquare },
+        id: 'knowledge', label: '知識庫', href: '/dashboard/knowledge', icon: BookOpen, perm: 'knowledge.view', children: [
+          { id: 'knowledge-articles', label: '文章管理', href: '/dashboard/knowledge/articles', icon: FileText },
+          { id: 'knowledge-search', label: '語義搜尋', href: '/dashboard/knowledge/search', icon: Gauge },
+          { id: 'knowledge-feedback', label: '回報調教', href: '/dashboard/knowledge/feedback', icon: FlaskConical },
+          {
+            id: 'knowledge-ai', label: 'AI 設定', icon: Network, children: [
+              { id: 'knowledge-embedding', label: 'Embedding', href: '/dashboard/knowledge/embedding', icon: Network },
+              { id: 'knowledge-chat', label: 'Chat & Prompt', href: '/dashboard/knowledge/chat-prompt', icon: MessageSquare },
+            ],
+          },
         ],
       },
     ],
   },
   {
-    id: 'marketing', label: '行銷', href: '/dashboard/marketing', icon: Send, perm: 'marketing.view', children: [
-      { id: 'marketing-campaigns', label: '行銷活動', href: '/dashboard/marketing/campaigns', icon: Send },
-      { id: 'marketing-broadcasts', label: '廣播', href: '/dashboard/marketing/broadcasts', icon: Send },
-      { id: 'marketing-segments', label: '受眾分群', href: '/dashboard/marketing/segments', icon: Users },
-      { id: 'marketing-materials', label: '素材庫', href: '/dashboard/marketing/materials', icon: FileText },
-    ],
-  },
-  {
-    id: 'channels', label: '渠道', href: '/dashboard/line/rich-menus', icon: Smartphone, perm: 'richmenu.manage', children: [
-      { id: 'line-rich-menus', label: 'LINE Rich Menu', href: '/dashboard/line/rich-menus', icon: Smartphone },
-      { id: 'line-keywords', label: 'LINE 關鍵字回覆', href: '/dashboard/line/keyword-replies', icon: MessageSquare },
-      { id: 'line-quick-replies', label: 'LINE 快速回覆', href: '/dashboard/line/quick-replies', icon: MessageSquare },
-    ],
-  },
-  {
-    id: 'portal', label: '粉絲活動', href: '/dashboard/portal', icon: Trophy, perm: 'portal.view', children: [
-      { id: 'portal-activities', label: '活動管理', href: '/dashboard/portal/activities', icon: Trophy },
-      { id: 'portal-submissions', label: '提交紀錄', href: '/dashboard/portal/submissions', icon: FileText },
-      { id: 'portal-points', label: '積分管理', href: '/dashboard/portal/points', icon: CreditCard },
-    ],
-  },
-  {
-    id: 'shortlinks', label: '短連結', href: '/dashboard/shortlinks', icon: Link2, perm: 'shortlink.view', children: [
-      { id: 'shortlinks-links', label: '連結管理', href: '/dashboard/shortlinks/links', icon: Link2 },
-      { id: 'shortlinks-stats', label: '統計分析', href: '/dashboard/shortlinks/stats', icon: BarChart3 },
-    ],
-  },
-  {
-    id: 'analytics', label: '報表', href: '/dashboard/analytics', icon: BarChart3, perm: 'analytics.view', children: [
-      { id: 'analytics-overview', label: '總覽', href: '/dashboard/analytics', icon: PieChart },
-      { id: 'analytics-my', label: '我的績效', href: '/dashboard/analytics/my', icon: BarChart3 },
-    ],
-  },
-  { id: 'plan', label: '方案／帳務', href: '/dashboard/plan', icon: CreditCard, perm: 'settings.manage' },
-  {
-    id: 'settings', label: '設定', href: '/dashboard/settings', icon: Settings, children: [
-      { id: 'settings-general', label: '一般設定', href: '/dashboard/settings/general', icon: Settings },
-      { id: 'settings-channels', label: '渠道管理', href: '/dashboard/settings/channels', icon: Smartphone },
-      { id: 'settings-agents', label: '人員管理', href: '/dashboard/settings/agents', icon: Users },
-      { id: 'settings-roles', label: '角色與權限', href: '/dashboard/settings/roles', icon: Users, perm: 'role.view' },
-      { id: 'settings-tags', label: '標籤管理', href: '/dashboard/settings/tags', icon: Tags },
-      { id: 'settings-sla', label: 'SLA 政策', href: '/dashboard/settings/sla', icon: Gauge },
-      { id: 'settings-office-hours', label: '營業時間', href: '/dashboard/settings/office-hours', icon: Gauge },
-      { id: 'settings-tracking', label: '追蹤設定', href: '/dashboard/settings/tracking', icon: Network },
-      { id: 'settings-identity-binding', label: '跨渠道綁定', href: '/dashboard/settings/identity-binding', icon: Link2, perm: 'settings.manage' },
-      { id: 'settings-api-keys', label: 'API 金鑰', href: '/dashboard/settings/api-keys', icon: Network },
-      { id: 'settings-cli', label: 'CLI 連線', href: '/dashboard/settings/cli-sessions', icon: Link2 },
-      { id: 'settings-passkeys', label: 'Passkey 登入', href: '/dashboard/settings/passkeys', icon: Network },
+    id: 'growth', label: '行銷與渠道', icon: Send, children: [
       {
-        id: 'settings-integrations', label: '整合', icon: Network, children: [
-          { id: 'settings-a2a', label: 'A2A', href: '/dashboard/settings/a2a', icon: Network, perm: 'settings.manage' },
+        id: 'marketing', label: '行銷', href: '/dashboard/marketing', icon: Send, perm: 'marketing.view', children: [
+          { id: 'marketing-campaigns', label: '行銷活動', href: '/dashboard/marketing/campaigns', icon: Send },
+          { id: 'marketing-broadcasts', label: '廣播', href: '/dashboard/marketing/broadcasts', icon: Send },
+          { id: 'marketing-segments', label: '受眾分群', href: '/dashboard/marketing/segments', icon: Users },
+          { id: 'marketing-materials', label: '素材庫', href: '/dashboard/marketing/materials', icon: FileText },
+        ],
+      },
+      {
+        id: 'channels', label: '渠道', href: '/dashboard/line/rich-menus', icon: Smartphone, perm: 'richmenu.manage', children: [
+          { id: 'line-rich-menus', label: 'LINE Rich Menu', href: '/dashboard/line/rich-menus', icon: Smartphone },
+          { id: 'line-keywords', label: 'LINE 關鍵字回覆', href: '/dashboard/line/keyword-replies', icon: MessageSquare },
+          { id: 'line-quick-replies', label: 'LINE 快速回覆', href: '/dashboard/line/quick-replies', icon: MessageSquare },
+        ],
+      },
+      {
+        id: 'portal', label: '粉絲活動', href: '/dashboard/portal', icon: Trophy, perm: 'portal.view', children: [
+          { id: 'portal-activities', label: '活動管理', href: '/dashboard/portal/activities', icon: Trophy },
+          { id: 'portal-submissions', label: '提交紀錄', href: '/dashboard/portal/submissions', icon: FileText },
+          { id: 'portal-points', label: '積分管理', href: '/dashboard/portal/points', icon: CreditCard },
+        ],
+      },
+      {
+        id: 'shortlinks', label: '短連結', href: '/dashboard/shortlinks', icon: Link2, perm: 'shortlink.view', children: [
+          { id: 'shortlinks-links', label: '連結管理', href: '/dashboard/shortlinks/links', icon: Link2 },
+          { id: 'shortlinks-stats', label: '統計分析', href: '/dashboard/shortlinks/stats', icon: BarChart3 },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'insights-admin', label: '分析與管理', icon: BarChart3, children: [
+      {
+        id: 'analytics', label: '報表', href: '/dashboard/analytics', icon: BarChart3, perm: 'analytics.view', children: [
+          { id: 'analytics-overview', label: '總覽', href: '/dashboard/analytics', icon: PieChart },
+          { id: 'analytics-my', label: '我的績效', href: '/dashboard/analytics/my', icon: BarChart3 },
+        ],
+      },
+      { id: 'plan', label: '方案／帳務', href: '/dashboard/plan', icon: CreditCard, perm: 'settings.manage' },
+      {
+        id: 'settings', label: '設定', href: '/dashboard/settings', icon: Settings, children: [
+          { id: 'settings-general', label: '一般設定', href: '/dashboard/settings/general', icon: Settings },
+          { id: 'settings-channels', label: '渠道管理', href: '/dashboard/settings/channels', icon: Smartphone },
+          { id: 'settings-agents', label: '人員管理', href: '/dashboard/settings/agents', icon: Users },
+          { id: 'settings-roles', label: '角色與權限', href: '/dashboard/settings/roles', icon: Users, perm: 'role.view' },
+          { id: 'settings-tags', label: '標籤管理', href: '/dashboard/settings/tags', icon: Tags },
+          { id: 'settings-sla', label: 'SLA 政策', href: '/dashboard/settings/sla', icon: Gauge },
+          { id: 'settings-office-hours', label: '營業時間', href: '/dashboard/settings/office-hours', icon: Gauge },
+          { id: 'settings-tracking', label: '追蹤設定', href: '/dashboard/settings/tracking', icon: Network },
+          { id: 'settings-identity-binding', label: '跨渠道綁定', href: '/dashboard/settings/identity-binding', icon: Link2, perm: 'settings.manage' },
+          { id: 'settings-api-keys', label: 'API 金鑰', href: '/dashboard/settings/api-keys', icon: Network },
+          { id: 'settings-cli', label: 'CLI 連線', href: '/dashboard/settings/cli-sessions', icon: Link2 },
+          { id: 'settings-passkeys', label: 'Passkey 登入', href: '/dashboard/settings/passkeys', icon: Network },
+          {
+            id: 'settings-integrations', label: '整合', icon: Network, children: [
+              { id: 'settings-a2a', label: 'A2A', href: '/dashboard/settings/a2a', icon: Network, perm: 'settings.manage' },
+            ],
+          },
         ],
       },
     ],
