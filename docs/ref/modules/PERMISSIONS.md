@@ -38,7 +38,7 @@
 
 | 欄位 | 作用 |
 | --- | --- |
-| `code` | 權限碼，格式是 `resource.action` |
+| `code` | 權限碼。兩段以上的小寫片段，以 `.` 分隔，第一段是資源；片段可含 `-` 與 `_`，例如 `channel.view_all` |
 | `feature` | 所屬的功能模組。方案以功能模組為單位開關，見下一節。功能模組定義在 `features.ts` 的 `FEATURES` |
 | `group`、`label`、`description` | 角色與權限頁的分組與顯示文字 |
 | `dependsOn` | 前置權限。勾選這個碼時，前置的碼也必須勾選 |

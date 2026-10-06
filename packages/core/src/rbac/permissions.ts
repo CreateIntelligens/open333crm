@@ -2,10 +2,10 @@
  * 權限點 Registry（Permission Registry）
  *
  * 全系統唯一事實來源：所有可授予的操作能力都在此宣告。
- * 對應規格書 SPEC.md §4（權限點清單）與 §3（命名/關聯機制）。
+ * 規則見主規格 `openspec/specs/permission-model/`。
  *
- * 命名規範：`resource.action`，resource 用 lowercase kebab-case，
- * action 用 CRUD 動詞（view/create/update/delete）或明確能力動詞（assign/export/send/manage 等）。
+ * 命名規範：兩段以上的小寫片段，以 `.` 分隔，第一段是資源（如 `channel.create`）；
+ * 片段可含 `-` 與 `_`（如 `channel.view_all`、`analytics.view.self`）。
  *
  * 關聯機制：
  * - dependsOn：同功能前置（進 DB、UI 顯示、勾選連動）——如 inbox.reply 需先有 inbox.view
@@ -15,7 +15,7 @@
  */
 
 export interface PermissionDef {
-  /** 權限碼，格式 resource.action，全域唯一 */
+  /** 權限碼，全域唯一；命名規範見檔頭 */
   code: string;
   /** UI 分群（使用者語言） */
   group: string;

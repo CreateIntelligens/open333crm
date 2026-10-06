@@ -265,6 +265,8 @@ CLI token 與網頁登入走兩套授權，兩套之間沒有對應：
 
 **`requirePermission()` 裡另有一段失效開放的程式碼。** 它遇到 `request.agent.isCliSession` 就直接放行，註解寫「防禦性放行」。目前沒有任何路由同時接受 CLI token 又掛 `requirePermission()`，所以碰不到。但哪天有路由改用 `authenticateJwtOrCliSession` 並保留 `requirePermission()`，那條路由對 CLI token 就完全沒有權限檢查。對照之下，`authenticateJwtOrCliSession` 的 JWT 分支沒有設定 `roleId`，網頁使用者在同一條路由上會拿到空的權限集合而被擋下。同一條路由，JWT 失效關閉，CLI 失效開放。
 
+**規格依據。** 主規格 `rbac` 的「CLI token 的授權」規定：CLI 路由與 MCP 工具 SHALL 同時檢查 token 的 scope 與成員的有效權限集合；權限檢查的 guard MUST NOT 直接放行 CLI token。後果一、後果二與失效開放的程式碼都違反這條需求。這條需求依 issue #217 的決定寫入（CLI 選項 A）。
+
 CLI token 的停用問題另見 AUTH-02。
 
 <a id="rbac-03"></a>
@@ -326,6 +328,8 @@ CLI token 的停用問題另見 AUTH-02。
 
 - 腳本不清除 Redis 的 `perms:*` 快取，重建後最多 10 分鐘才生效。`openspec/changes/archive/2026-09-15-channel-scoped-visibility/design.md` 把「清權限快取」列為部署時的手動步驟。
 - `.github/workflows/deploy.yml` 不執行這個腳本，執行與否完全依賴部署的人記得。漏掉時，新功能的路由對所有既有租戶回 403。
+
+**規格依據。** 主規格 `role-management` 的「系統角色權限可以調整，但有安全鎖」規定：租戶對系統角色權限的修改 SHALL 在權限註冊表更新之後保留。同步預設權限的流程 MUST NOT 重新授予租戶已經移除的權限碼，也 MUST NOT 移除租戶已經加上的權限碼。reconcile 腳本兩者都違反。規格只規定結果；新權限碼怎麼給既有租戶，由修正這一項的 change 決定（issue #217）。
 
 **修正方向**：reconcile 只補上「預設有、但租戶從未設定過」的新權限碼，不刪除也不重加既有的碼；這需要記錄每個角色已經同步到哪一版註冊表。腳本結束前清除 `perms:*` 快取，並納入部署流程。
 

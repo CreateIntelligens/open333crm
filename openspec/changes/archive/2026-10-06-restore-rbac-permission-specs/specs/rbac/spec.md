@@ -1,7 +1,4 @@
-## Purpose
-定義租戶路由以權限碼授權的規則，以及 Partner API 金鑰與 CLI token 兩種不經網頁登入的呼叫方怎麼授權。guard 的行為與有效權限集合見 `permission-check`，權限碼本身見 `permission-model`，角色見 `role-management`。
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 路由以權限碼授權
 
@@ -58,3 +55,44 @@ CLI token 是 `cli_` 開頭、由 CLI session 驗證的 token。CLI 路由與 MC
 - **WHEN** 一條路由接受 CLI token，並以 `requirePermission('analytics.view')` 檢查；成員的有效權限集合不含 `analytics.view`，以 CLI token 呼叫該路由
 - **THEN** 系統回 HTTP 403
 
+## REMOVED Requirements
+
+### Requirement: Guard Factory
+**Reason**: 這條需求描述角色白名單 guard `requireRole()`。路由改以權限碼授權後，沒有路由使用 `requireRole()`，它只是過渡用的 shim。
+**Migration**: 路由改用 `requirePermission()`。授權規則見本規格的「路由以權限碼授權」，guard 的行為見 `permission-check` 的「權限檢查 guard」。
+
+### Requirement: Convenience Guards
+**Reason**: `requireAdmin()` 與 `requireSupervisor()` 寫死角色白名單，已由權限碼取代。
+**Migration**: 改用 `requirePermission()`，見本規格的「路由以權限碼授權」。
+
+### Requirement: Guard Ordering
+**Reason**: guard 的順序移到 `permission-check` 的「權限檢查 guard」，並改寫成可以測試的結果：未登入的請求回 401，不回 403。
+**Migration**: 見 `permission-check` 的「權限檢查 guard」。
+
+### Requirement: 403 Response Shape
+**Reason**: 這條需求規定的 `{ code: 'FORBIDDEN', message: 'Insufficient role' }` 與現行回應不同。現行回應採用全站的錯誤格式，並在 `details` 記錄缺少的權限碼。
+**Migration**: 見 `permission-check` 的「權限檢查 guard」。用戶端以 `error.code` 的 `FORBIDDEN` 判斷，HTTP 狀態仍是 403。
+
+### Requirement: Agent Management Access
+**Reason**: 這條需求以角色列舉規定成員管理的存取，例如「SUPERVISOR 不能建立 ADMIN」。現行系統以權限碼授權，並以越權防護取代固定的角色規則。
+**Migration**: 路由的授權見本規格的「路由以權限碼授權」。指派角色的限制見 `role-management` 的「指派角色給成員的越權防護」。
+
+### Requirement: Channel Management Access
+**Reason**: 這條需求以角色列舉規定渠道管理的存取。現行系統以權限碼授權。逐條列出各模組的權限碼等於複製一份路由設定，路由改了規格就會過時，因此規格不再逐條列出。
+**Migration**: 見本規格的「路由以權限碼授權」。
+
+### Requirement: Automation Rule Access
+**Reason**: 同「Channel Management Access」：改以權限碼授權，規格不逐條列出各模組的權限碼。
+**Migration**: 見本規格的「路由以權限碼授權」。
+
+### Requirement: Settings Access
+**Reason**: 同「Channel Management Access」：改以權限碼授權，規格不逐條列出各模組的權限碼。
+**Migration**: 見本規格的「路由以權限碼授權」。
+
+### Requirement: Analytics Access
+**Reason**: 同「Channel Management Access」：改以權限碼授權，規格不逐條列出各模組的權限碼。
+**Migration**: 見本規格的「路由以權限碼授權」。
+
+### Requirement: Marketing Access
+**Reason**: 同「Channel Management Access」：改以權限碼授權，規格不逐條列出各模組的權限碼。
+**Migration**: 見本規格的「路由以權限碼授權」。
