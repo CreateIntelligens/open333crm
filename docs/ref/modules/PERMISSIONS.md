@@ -150,8 +150,9 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 | 有效權限含 `channel.view_all` | 所有渠道都是 `full` |
 | 直接綁給成員（`AgentChannelAccess`） | 綁定時指定 |
 | 綁給成員所屬的團隊（`ChannelTeamAccess`） | 綁定時指定 |
-| 渠道沒有綁定任何成員或團隊 | `full`，所有成員都看得到。這是為了相容功能上線前建立的渠道 |
-| 渠道有綁定，但沒有一筆包含這個成員 | 看不到 |
+| 渠道沒有綁定這個成員（包括完全沒有綁定的渠道） | 看不到 |
+
+2026-10-05 之前，完全沒有綁定的渠道所有成員都看得到（`full`）。這個相容分支已移除（change `channel-visibility-fail-closed`），當時既有的這類渠道由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。之後新增的渠道與成員，在建立時指定可見範圍。
 
 層級由低到高是 `read_only`、`reply_only`、`full`。停用的渠道一律看不到。收件匣的每個操作需要哪個層級，見[收件匣與對話](../features/tenant/INBOX.md#誰看得到哪些對話)。
 

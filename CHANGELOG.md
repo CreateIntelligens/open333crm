@@ -6,6 +6,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Security
 
+- **渠道可見範圍改回 fail-closed** — 沒有綁定任何團隊或成員的渠道，原本所有成員都看得到，而且是完整權限，管理員也無法在建立時限制（#217）。這是 `channel-scoped-visibility` 上線時沒做回填、改用相容分支頂替的過渡做法。現在沒有綁定的渠道只有總店（`channel.view_all`）看得到。上線時 migration 先把既有的這類渠道綁給該租戶所有啟用中的成員，每個人看到的渠道不變。新增渠道時可以選哪些成員看得到（預設全選；Facebook 登入連結的粉專一律給所有啟用中的成員），新增成員時可以選看得到哪些渠道（預設為建立者能選的全部渠道）。沒有總店權限的建立者不能把自己看不到的渠道指派給新成員，新成員的層級也不會高於建立者；建立渠道時建立者會自動加入可見成員。自動派案只派給看得到、而且能回覆該渠道的成員。
+
 - **刪除會把 Telegram bot token 寫進 log 的外掛空殼** — `packages/channel-plugins/src/telegram/index.ts` 是 `TelegramPlugin` 的第二份類別，由套件入口匯出。它的 `sendMessage()` 把 bot token 寫進 info log，而且沒有呼叫 Telegram 就回傳成功。目前沒有程式註冊這個類別，租戶也無法建立 Telegram 渠道，所以沒有 token 實際外洩。這份檔案已經刪除，套件入口改為匯出 `telegram.ts` 的類別，與 `./telegram` 子路徑一致（issue #217）。
 
 ### Changed

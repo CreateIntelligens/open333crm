@@ -24,6 +24,8 @@ export async function getNextAgent(
   prisma: TenantDb,
   tenantId: string,
   teamId?: string | null,
+  /** 工單的渠道：只派給看得到、而且能回覆這個渠道的成員（渠道可見範圍是 fail-closed） */
+  channelId?: string | null,
 ): Promise<{ id: string; name: string } | null> {
   // Build agent filter: must be active AGENT role
   const agentWhere: Record<string, unknown> = {
@@ -37,6 +39,16 @@ export async function getNextAgent(
     agentWhere.teams = {
       some: { teamId },
     };
+  }
+
+  // 只派給直綁或所屬團隊被授權該渠道、層級能回覆的成員：派給看不到的成員，工單會從他的
+  // 收件匣消失、打開回 404，卻還算在工作量裡（change channel-visibility-fail-closed）
+  if (channelId) {
+    const canReply = { in: ['reply_only', 'full'] };
+    agentWhere.OR = [
+      { channelAccesses: { some: { channelId, accessLevel: canReply } } },
+      { teams: { some: { team: { channelAccesses: { some: { channelId, accessLevel: canReply } } } } } },
+    ];
   }
 
   const agents = await prisma.agent.findMany({
@@ -84,8 +96,9 @@ export async function autoAssignCase(
   caseId: string,
   tenantId: string,
   teamId?: string | null,
+  channelId?: string | null,
 ): Promise<boolean> {
-  const agent = await getNextAgent(prisma, tenantId, teamId);
+  const agent = await getNextAgent(prisma, tenantId, teamId, channelId);
   if (!agent) {
     logger.info(`[AutoAssign] No available agent for case ${caseId}`);
     return false;

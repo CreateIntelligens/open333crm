@@ -409,7 +409,7 @@ export async function createCase(
 
   // Auto-assign if no assignee specified and teamId is set
   if (!data.assigneeId && caseRecord.teamId) {
-    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
+    autoAssignCase(prisma, io, caseRecord.id, tenantId, caseRecord.teamId, caseRecord.channelId).catch((err) => {
       logger.error(`[createCase] Auto-assign failed for case ${caseRecord.id}:`, err);
     });
   }
@@ -843,7 +843,7 @@ export async function createCaseFromConversation(
   const bg = tenantScopedClient(prisma, tenantId);
   trackBroadcastCase(bg, caseRecord.contactId, caseRecord.id).catch(() => {});
   if (!caseData.assigneeId && caseRecord.teamId) {
-    autoAssignCase(bg, io, caseRecord.id, tenantId, caseRecord.teamId).catch((err) => {
+    autoAssignCase(bg, io, caseRecord.id, tenantId, caseRecord.teamId, caseRecord.channelId).catch((err) => {
       logger.error(`[createCaseFromConversation] Auto-assign failed for case ${caseRecord.id}:`, err);
     });
   }

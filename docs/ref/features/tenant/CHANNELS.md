@@ -39,9 +39,13 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 
 1. 檢查方案允許的渠道類型（`Plan.allowedChannelTypes`）。
 2. 檢查方案的渠道數上限（`maxChannels`），只計算啟用中的渠道。
-3. 以 `CREDENTIAL_ENCRYPTION_KEY` 加密憑證後存入 `credentialsEncrypted`。
-4. 產生公開金鑰（`publicKey`），網站聊天室以它識別渠道。
-5. 組出 webhook 網址並存入 `webhookUrl`：`<API 位址>/api/v1/webhooks/<類型>/<渠道 ID>`。
+3. 決定可見的成員（`visibleAgentIds`）：有送就用送來的成員，每一位都要是本租戶啟用中的成員，否則回 400 並且不建立渠道；沒有送就是所有啟用中的成員。
+4. 以 `CREDENTIAL_ENCRYPTION_KEY` 加密憑證後存入 `credentialsEncrypted`。
+5. 產生公開金鑰（`publicKey`），網站聊天室以它識別渠道。
+6. 組出 webhook 網址並存入 `webhookUrl`：`<API 位址>/api/v1/webhooks/<類型>/<渠道 ID>`。
+7. 把渠道直綁給第 3 步的成員（`AgentChannelAccess`，`full`）。
+
+`POST /channels` 在同一個交易內建立渠道與綁定；建立者沒有 `channel.view_all` 又不在 `visibleAgentIds` 裡時，自動加入建立者。前端的新增渠道表單與精靈列出所有啟用中的成員，預設全選；全選時不送 `visibleAgentIds`。見[誰看得到這個渠道](#誰看得到這個渠道)。Facebook 登入連結粉專（Meta 串接）建立的渠道一律綁給所有啟用中的成員；這條路徑不在交易內，寫入綁定失敗時刪除剛建立的渠道。
 
 目前的種子方案都沒有填這兩個方案欄位，因此渠道的類型與數量實際上都不受限，見 `../../system/AUDIT.md` 的 PLAN-07。另外，停用的渠道重新啟用時不會再檢查數量上限。
 
@@ -106,7 +110,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 也可以直接授權給個別成員，這在人員管理頁設定，見[人員與角色](./MEMBERS.md)。
 
-沒有授權給任何團隊或成員的渠道，所有成員都看得到。可見範圍怎麼套用在收件匣與工單，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。
+沒有授權給任何團隊或成員的渠道，只有持有 `channel.view_all` 的成員（總店）看得到。所以新增渠道時就要決定誰看得到：表單與精靈列出所有啟用中的成員，預設全選。2026-10-05 之前，沒有授權的渠道所有成員都看得到；當時既有的這類渠道已由 migration `20261005120000_backfill_unbound_channel_access` 綁給所有啟用中的成員。可見範圍怎麼套用在收件匣與工單，見[收件匣與對話](./INBOX.md#誰看得到哪些對話)。
 
 ## 停用與刪除
 

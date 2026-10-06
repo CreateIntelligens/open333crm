@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { AccessChecklist, channelToItem } from './AccessChecklist';
 import { Loader2, Plus, Pencil, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth, usePermission } from '@/providers/AuthProvider';
@@ -102,14 +103,18 @@ interface CreateDialogProps {
   onOpenChange: (v: boolean) => void;
   roles: RoleItem[];
   onCreated: () => void;
+  /** 可設定成員可用渠道（channel.assign_team）：列出所有渠道；否則只列建立者看得到的渠道 */
+  canAssignChannels: boolean;
 }
 
-function CreateAgentDialog({ open, onOpenChange, roles, onCreated }: CreateDialogProps) {
+function CreateAgentDialog({ open, onOpenChange, roles, onCreated, canAssignChannels }: CreateDialogProps) {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   // 以角色 id 作為下拉選取值（涵蓋 system + custom）
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // 新成員看得到的渠道（fail-closed：沒勾到的渠道看不到）；null＝清單未載入，不送出由後端給建立者看得到的渠道
+  const [channelIds, setChannelIds] = useState<string[] | null>(null);
 
   // 對話開啟時預設選 agent 角色
   useEffect(() => {
@@ -118,6 +123,7 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated }: CreateDialo
       setSelectedRoleId(agentRole?.id ?? roles[0]?.id ?? '');
       setForm({ name: '', email: '', password: '' });
       setError('');
+      setChannelIds(null); // 回到預設的全選
     }
   }, [open, roles]);
 
@@ -136,7 +142,11 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated }: CreateDialo
     setSaving(true);
     setError('');
     try {
-      await api.post('/agents', { ...form, ...buildRolePayload(selected) });
+      await api.post('/agents', {
+        ...form,
+        ...buildRolePayload(selected),
+        ...(channelIds !== null ? { channelIds } : {}),
+      });
       onCreated();
       onOpenChange(false);
     } catch (err: unknown) {
@@ -191,6 +201,18 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated }: CreateDialo
               minLength={8}
             />
           </div>
+          {/* 可見範圍是 fail-closed：新成員沒有任何渠道就什麼都看不到 */}
+          {open && (
+            <AccessChecklist
+              endpoint={canAssignChannels ? '/channels/assignable' : '/channels'}
+              toItem={channelToItem}
+              label="看得到哪些渠道"
+              description="勾選的渠道，這位成員才看得到對話與工單。角色可檢視所有渠道（總店）時不受此限制。"
+              emptyText="目前沒有渠道"
+              value={channelIds}
+              onChange={setChannelIds}
+            />
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -418,9 +440,9 @@ function EditAgentDialog({
           )}
           {canAssignChannels && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">可使用的渠道 <span className="text-muted-foreground font-normal">（CM-173 分店可見性）</span></label>
+              <label className="text-sm font-medium">可使用的渠道</label>
               <p className="text-xs text-muted-foreground">
-                勾選此帳號能看到/操作哪些渠道的對話。全不勾＝不直綁（依團隊授權與未綁定的公用渠道決定）。
+                勾選此帳號能看到/操作哪些渠道的對話。沒有勾選的渠道就看不到（所屬團隊被授權的渠道除外）；角色可檢視所有渠道（總店）時不受此限制。
               </p>
               {channelOptions.length === 0 ? (
                 <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">尚無渠道</p>
@@ -789,6 +811,7 @@ export function AgentManagement() {
         onOpenChange={setCreateOpen}
         roles={effectiveRoles}
         onCreated={fetchAgents}
+        canAssignChannels={canAssignChannels}
       />
       <EditAgentDialog
         agent={editAgent}

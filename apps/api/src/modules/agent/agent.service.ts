@@ -1,4 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
+import { ALL_CHANNELS, type ChannelAccessLevel, type ChannelGrantScope } from '../../services/channel-visibility.js';
+import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { PERMISSIONS } from '@open333crm/core';
@@ -142,11 +144,52 @@ const agentSelect = {
   createdAt: true,
 } as const;
 
+/**
+ * 新成員要直綁哪些渠道、什麼層級（change channel-visibility-fail-closed）。可見範圍是 fail-closed：
+ * 沒有任何綁定的成員（非總店）什麼都看不到，所以建立時一併決定。
+ *   - 沒指定 → 建立者可指派的全部渠道（總店或有 channel.assign_team 為租戶所有渠道）
+ *   - 指定了建立者不能指派的渠道 → 403；指定了不屬於本租戶的渠道 → 400
+ *   - 層級：總店或有 channel.assign_team 時為 full；否則不高於建立者自己的層級，避免越權
+ * 都在建立成員之前檢查，不留下半套。
+ */
+async function resolveNewAgentChannels(
+  prisma: TenantDb,
+  tenantId: string,
+  requested: string[] | undefined,
+  grantable: ChannelGrantScope,
+): Promise<Array<{ channelId: string; accessLevel: ChannelAccessLevel }>> {
+  if (requested === undefined) {
+    if (grantable !== ALL_CHANNELS) {
+      return Array.from(grantable, ([channelId, accessLevel]) => ({ channelId, accessLevel }));
+    }
+    const channels = await prisma.channel.findMany({ where: { tenantId }, select: { id: true } });
+    return channels.map((c) => ({ channelId: c.id, accessLevel: 'full' }));
+  }
+  const ids = Array.from(new Set(requested));
+  if (ids.length === 0) return [];
+  if (grantable !== ALL_CHANNELS && ids.some((id) => !grantable.has(id))) {
+    throw new AppError('不能指派自己看不到的渠道', 'FORBIDDEN', 403);
+  }
+  const owned = await prisma.channel.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true } });
+  if (owned.length !== ids.length) {
+    throw new AppError('指定的渠道中有部分不存在或不屬於此租戶', 'BAD_REQUEST', 400);
+  }
+  return ids.map((channelId) => ({
+    channelId,
+    accessLevel: grantable === ALL_CHANNELS ? 'full' : grantable.get(channelId)!,
+  }));
+}
+
 export async function createAgent(
   prisma: TenantDb,
   tenantId: string,
   data: CreateAgentInput,
   assignerRoleId: string | null | undefined,
+  /**
+   * 新成員的可見渠道：建立者可指派的範圍與授權人。沒給時不寫入綁定（僅供既有內部呼叫）。
+   * passwordHash：呼叫端先在交易外雜湊好，避免 bcrypt 佔住交易與連線。
+   */
+  channelGrant?: { grantable: ChannelGrantScope; grantedById?: string; passwordHash?: string },
 ) {
   // email 全域唯一：跨租戶檢查是否已被使用（不限本租戶），
   // 否則跨租戶撞 email 會在 create 時冒 P2002 → 500，而非乾淨的 409
@@ -172,7 +215,11 @@ export async function createAgent(
     }
   }
 
-  const passwordHash = await hashPassword(data.password);
+  const channels = channelGrant
+    ? await resolveNewAgentChannels(prisma, tenantId, data.channelIds, channelGrant.grantable)
+    : [];
+
+  const passwordHash = channelGrant?.passwordHash ?? (await hashPassword(data.password));
   // 雙寫：legacy role enum + granular roleId。提供 roleId 時以 roleId 為準並做越權防護。
   const { role, roleId } = await resolveRoleAssignment(
     prisma,
@@ -193,6 +240,12 @@ export async function createAgent(
     },
     select: agentSelect,
   });
+
+  await insertAgentChannelAccess(
+    prisma,
+    channels.map((c) => ({ ...c, agentId: agent.id })),
+    channelGrant?.grantedById,
+  );
 
   return agent;
 }

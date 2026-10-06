@@ -18,6 +18,9 @@ import {
   purgeAgent,
 } from './agent.service.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { withTenant } from '../../lib/tenant-db.js';
+import { hashPassword } from '../../shared/utils/password.js';
+import { resolveChannelGrantScope } from '../../services/channel-visibility.js';
 
 export default async function agentRoutes(fastify: FastifyInstance) {
   // All routes require authentication
@@ -75,12 +78,18 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const body = createAgentSchema.parse(request.body);
 
-    // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403
-    const agent = await createAgent(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      body,
-      request.agent.roleId,
+    // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403。
+    // 渠道可見範圍是 fail-closed：建立成員與寫入可見渠道在同一個交易，可指派範圍依建立者的權限決定。
+    const tenantId = request.agent.tenantId;
+    const grantable = await resolveChannelGrantScope(request);
+    // bcrypt 在交易外先做，不佔住交易與連線
+    const passwordHash = await hashPassword(body.password);
+    const agent = await withTenant(fastify.prisma, tenantId, (tx) =>
+      createAgent(tx, tenantId, body, request.agent.roleId, {
+        grantable,
+        grantedById: request.agent.id,
+        passwordHash,
+      }),
     );
     // 稽核：建立成員（payload 只放非 PII 摘要——email 不入 payload，改用 targetId 對應 agent）
     await writeTenantAudit(request.tenantPrisma, {

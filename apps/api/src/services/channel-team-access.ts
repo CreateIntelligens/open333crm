@@ -129,6 +129,23 @@ export interface AgentChannelAccessRow {
   grantedById: string | null;
 }
 
+/**
+ * 寫入成員直綁（AgentChannelAccess）。建立成員、建立渠道與整組替換共用：
+ * 呼叫端先驗證 channel 與 agent 都屬本租戶，這裡只負責寫入（RLS 的雙 FK WITH CHECK 亦會擋跨租戶）。
+ */
+export async function insertAgentChannelAccess(
+  prisma: TenantDb,
+  rows: Array<{ channelId: string; agentId: string; accessLevel: ChannelTeamAccessLevel }>,
+  grantedById?: string | null,
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const res = await prisma.agentChannelAccess.createMany({
+    data: rows.map((r) => ({ ...r, grantedById: grantedById ?? null })),
+    skipDuplicates: true,
+  });
+  return res.count;
+}
+
 /** 某 agent 直綁了哪些渠道。 */
 export async function listChannelsForAgent(
   prisma: TenantDb,
@@ -165,15 +182,11 @@ export async function setAgentChannels(
     }
 
     await tx.agentChannelAccess.deleteMany({ where: { agentId } });
-    if (channelIds.length === 0) return { count: 0 };
-    const res = await tx.agentChannelAccess.createMany({
-      data: Array.from(new Set(channelIds)).map((channelId) => ({
-        channelId,
-        agentId,
-        accessLevel: 'full',
-        grantedById: grantedById ?? null,
-      })),
-    });
-    return { count: res.count };
+    const count = await insertAgentChannelAccess(
+      tx,
+      Array.from(new Set(channelIds)).map((channelId) => ({ channelId, agentId, accessLevel: 'full' })),
+      grantedById,
+    );
+    return { count };
   });
 }

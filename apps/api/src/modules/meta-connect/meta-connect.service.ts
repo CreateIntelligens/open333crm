@@ -383,6 +383,8 @@ export async function connectPages(
         credentials: { connectMode: 'platform', pageAccessToken: page.accessToken, pageId: page.id },
         settings: { metaConnect: { mode: 'platform', connectedAt: new Date().toISOString(), connectedBy: actor.agentId } },
         externalAccountId: page.id,
+        // 可見範圍是 fail-closed：沒指定 visibleAgentIds，createChannel 直綁給所有啟用中的成員
+        grantedById: actor.agentId,
       });
       channelId = channel.id;
     } catch (err) {

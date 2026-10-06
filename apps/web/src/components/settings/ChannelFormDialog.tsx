@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { AccessChecklist, agentToItem } from './AccessChecklist';
 import { Loader2, Copy, Check, HelpCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { ChannelBindingHandleField } from './ChannelBindingHandleField';
@@ -57,6 +58,8 @@ export function ChannelFormDialog({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 新渠道可見的成員（fail-closed：沒勾到的成員看不到）；null＝清單未載入，不送出由後端給所有成員
+  const [visibleAgentIds, setVisibleAgentIds] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
   const [showFieldGuide, setShowFieldGuide] = useState(false);
   // 編輯時，該渠道已儲存的憑證（後端回傳的遮罩版，如 5582...ac1a），供欄位說明對照顯示
@@ -79,6 +82,7 @@ export function ChannelFormDialog({
     setSavedCredentials({});
     setError(null);
     setCopied(false);
+    setVisibleAgentIds(null); // 每次開啟回到預設的全選
 
     // 編輯模式：取該渠道已存的遮罩憑證，供欄位說明顯示「目前設定值」
     if (channel && open) {
@@ -186,6 +190,9 @@ export function ChannelFormDialog({
         };
         if (webhookBaseUrl) {
           payload.webhookBaseUrl = webhookBaseUrl;
+        }
+        if (visibleAgentIds !== null) {
+          payload.visibleAgentIds = visibleAgentIds;
         }
         await api.post('/channels', payload);
       }
@@ -509,6 +516,21 @@ export function ChannelFormDialog({
                   3. 驗證權杖（Verify Token）填入：<code className="bg-primary-subtle px-1 rounded">{savedCredentials.verifyToken || '（讀取中，稍候重開此視窗）'}</code>{'\n'}
                   4. 訂閱欄位：messages
                 </p>
+              </div>
+            )}
+
+            {/* 新渠道的可見成員：可見範圍是 fail-closed，建立時就要決定誰看得到 */}
+            {!isEditing && (
+              <div className="border-t pt-4">
+                <AccessChecklist
+                  endpoint="/agents"
+                  toItem={agentToItem}
+                  label="誰看得到這個渠道"
+                  description="勾選的成員看得到這個渠道的對話與工單。沒有勾選的成員看不到；可檢視所有渠道的角色（總店）一律看得到。"
+                  emptyText="目前沒有其他成員"
+                  value={visibleAgentIds}
+                  onChange={setVisibleAgentIds}
+                />
               </div>
             )}
 

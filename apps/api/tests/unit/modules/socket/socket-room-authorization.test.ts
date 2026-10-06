@@ -31,12 +31,12 @@ function createPrisma() {
       ),
     },
     channel: {
-      // canAccessChannel 現共用 resolveChannelAccessLevel（CM-173 review altitude），
-      // 其 select 需 _count + agentAccesses + teamAccesses。channelA 無任何綁定
-      // → legacy → 全租戶可見（對應原測試「channelA 對 agentA 可見」語意）。
+      // canAccessChannel 共用 resolveChannelAccessLevel（CM-173 review altitude），select 需
+      // agentAccesses + teamAccesses。channelA 直綁給 agentA（fail-closed 後沒有綁定的渠道不可見，
+      // change channel-visibility-fail-closed）。
       findFirst: async ({ where }: { where: { id: string; tenantId: string } }) => (
         where.id === channelA && where.tenantId === tenantA
-          ? { _count: { teamAccesses: 0, agentAccesses: 0 }, agentAccesses: [], teamAccesses: [] }
+          ? { agentAccesses: [{ accessLevel: 'full' }], teamAccesses: [] }
           : null
       ),
     },
@@ -102,4 +102,12 @@ test('rejects another tenant', testRejectsAnotherTenant);
 test('rejects another agent private room', testRejectsAnotherAgentPrivateRoom);
 test('allows authorized conversation', testAllowsAuthorizedConversation);
 test('rejects conversation outside scope', testRejectsConversationOutsideScope);
+
+// Unbound channel hidden from a member：沒有綁定任何團隊或成員的渠道，對話房間也不能訂閱
+test('Unbound channel hidden from a member：沒有綁定的渠道不能訂閱對話房間', async () => {
+  const prisma = createPrisma();
+  prisma.channel.findFirst = async () => ({ agentAccesses: [], teamAccesses: [] });
+  const result = await authorizeSocketRoom(prisma as never, agentContext, `conversation:${conversationA}`);
+  assert.deepEqual(result, { ok: false, code: 'FORBIDDEN' });
+});
 test('team scoped conversation does not fall back to channel access', testTeamScopedConversationDoesNotFallBackToChannelAccess);
