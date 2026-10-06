@@ -15,7 +15,14 @@ change `restore-rbac-permission-specs` 依 issue #217 的決定（留言 6008555
 | RBAC-02 | 補上「規格依據」，維持 P2 | 違反 `rbac` 的「CLI token 的授權」 |
 | RBAC-05 | 補上「規格依據」，維持 P2 | 違反 `role-management` 的「系統角色權限可以調整，但有安全鎖」的情境「權限註冊表更新後，租戶對系統角色的修改仍然保留」 |
 
-**同時發現：** 主規格 `agent-management` 的「Create Agent」與「Assign Agent Role」仍然以角色列舉描述，與現行的權限碼授權及越權防護不一致。這兩條需求留給另一個 change 改寫。
+**同時發現：主規格 `agent-management` 有 4 條需求與現況不同。** 這些需求留給另一個 change 改寫：
+
+| 需求 | 規格 | 現況 |
+| --- | --- | --- |
+| Create Agent | 只有 `ADMIN`、`SUPERVISOR` 能建立；SUPERVISOR 不能建立 ADMIN | 要求 `agent.manage`；不能指派權限比自己多的角色（`ROLE_ESCALATION`） |
+| Assign Agent Role | 只有 `ADMIN`、`SUPERVISOR` 能指派；SUPERVISOR 不能指派 ADMIN | 要求 `agent.role.assign`；越權防護同上，另有自我降級的 `SELF_LOCK` |
+| Admin Reset Agent Password | 只有 `ADMIN` 能重設 | 要求 `agent.password.reset` |
+| Deactivate Agent | `DELETE /agents/:id` 停用成員 | 停用改為 `POST /agents/:id/deactivate`（`agent.deactivate`）；`DELETE` 改為永久刪除（`agent.purge`，#172） |
 
 ## 2026-10-06：補回主規格 `channel-scoped-visibility`，RBAC-04 補上規格依據
 

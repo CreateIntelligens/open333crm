@@ -52,6 +52,8 @@ issue #217 已經決定這次的寫法（comment 6008555780）。
 - 現況違反兩條規格，兩者都在 `docs/ref/system/AUDIT.md`，這次補上規格依據：
   - `rbac` 的「CLI token 的授權」：CLI 路由與 MCP 工具只檢查 scope，`requirePermission()` 對 CLI token 直接放行。見 RBAC-02。
   - `role-management` 的「權限註冊表更新後，租戶對系統角色的修改仍然保留」：reconcile 腳本會覆蓋租戶的修改。見 RBAC-05。
-- 主規格 `agent-management` 的「Create Agent」與「Assign Agent Role」仍然以角色列舉描述，例如「SUPERVISOR 不能指派 ADMIN」，與 `role-management` 的「指派角色給成員的越權防護」不一致。這兩條需求留給另一個 change 改寫。
+- 主規格 `agent-management` 有 4 條需求與現況不同，留給另一個 change 改寫：
+  - 「Create Agent」「Assign Agent Role」「Admin Reset Agent Password」以角色列舉描述授權，例如「SUPERVISOR 不能指派 ADMIN」。現況以權限碼授權，指派角色由 `role-management` 的「指派角色給成員的越權防護」規定。
+  - 「Deactivate Agent」規定 `DELETE /api/v1/agents/:id` 停用成員。#172 之後，停用改為 `POST /api/v1/agents/:id/deactivate`，`DELETE` 改為永久刪除，要求 `agent.purge`。
 - 歸檔 delta spec 中描述前端畫面的需求，這個 change 不納入：角色權限設定頁的版面、勾選連動、隱含權限的說明、鎖定的勾選格、暫存後明確儲存、依自己的權限唯讀，以及 `usePermission` 的選單控制。`apps/web` 的單元測試不渲染元件，這些情境目前寫不了測試。這些需求另開 change 處理，由 issue #228 追蹤。
 - 歸檔後，新增的 3 份主規格的 Purpose 是 CLI 產生的佔位文字，`rbac` 原有的 Purpose 也已經過時。4 份都要手動改寫。
