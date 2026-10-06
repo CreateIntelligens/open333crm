@@ -119,3 +119,7 @@
 
 - [ ] 9.7.1 本機仍在執行：API（3001）、前端 dev（3002）；3000 是 9/15 起的舊 next-server（非本次啟動）
 - [ ] 9.7.2 本機 DB 有兩個 demo 假渠道（名稱含「demo 用可刪」）與 demo 期間產生的聯絡人／對話；租戶設定 `identityBinding` 目前為**開啟**，清理時改回 `{}`
+
+### 9.8 歸檔後（#217 主規格盤點）
+
+- [ ] 9.8.1 本 change 歸檔、兩條 `inbound-message-processing` 需求（「Identity binding intercept precedes greeting and automation」「FB and Instagram referral events are parsed」）補進主規格後，刪除主規格中 5 條重構時寫的相容性需求（「Process inbound message facade remains compatible」「Inbound message behavior remains unchanged」「Postback intercept behavior remains unchanged」「Processing reuses caller-provided Prisma and per-message objects」「Refactor does not alter external contracts」），並改寫 Purpose。在本 change 歸檔前刪除，規格會沒有任何需求，`openspec validate --specs --strict` 會失敗
