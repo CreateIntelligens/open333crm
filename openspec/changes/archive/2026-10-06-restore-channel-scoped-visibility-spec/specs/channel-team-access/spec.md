@@ -1,9 +1,4 @@
-# channel-team-access Specification
-
-## Purpose
-定義渠道與團隊的授權：一個渠道可以授權給多個團隊，每筆授權帶一個存取層級；以及進站訊息依團隊分流、建立渠道時指定預設團隊。存取層級怎麼套用在操作上，見 `channel-scoped-visibility`。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Channel Multi-Team Authorization
 A Channel SHALL be shareable across multiple Teams via the `ChannelTeamAccess` relationship. Each grant SHALL carry an `accessLevel` of `read_only`, `reply_only` or `full`. The grant, revoke and list endpoints SHALL require the `channel.assign_team` permission. The channel and the team SHALL belong to the caller's tenant.
@@ -40,38 +35,16 @@ A Channel SHALL be shareable across multiple Teams via the `ChannelTeamAccess` r
 - **WHEN** a member without `channel.assign_team` calls any of these endpoints
 - **THEN** the API SHALL return HTTP 403 and SHALL NOT change any grant
 
-### Requirement: Message Routing via ChannelTeamAccess
-The system SHALL route inbound messages to the correct team using conversation context and team access rules.
+## REMOVED Requirements
 
-#### Scenario: Existing Conversation Routing
-- **WHEN** an inbound message arrives on a channel used by multiple teams
-- **AND** a matching open Conversation already exists
-- **THEN** the message SHALL be routed to the Conversation's current `teamId`
+### Requirement: Access Level Enforcement
 
-#### Scenario: New Contact Routing — Default Team
-- **WHEN** an inbound message arrives from a new contact on a channel with a `defaultTeamId` set
-- **THEN** the message SHALL be routed to the `defaultTeamId` and a new Conversation SHALL be created with that teamId
+**Reason**: The access levels apply to members bound directly (`AgentChannelAccess`) as well as through teams, and they control conversation and case operations, not broadcasts. Issue #217 decided that broadcasts are controlled by the `marketing.broadcast` permission and not by the channel access level. The scenario names of this requirement describe broadcast limits, so the requirement cannot be kept as a MODIFIED requirement.
 
-#### Scenario: New Contact Routing — Automation Rule
-- **WHEN** an inbound message arrives from a new contact and an AutomationRule matches
-- **THEN** the Automation SHALL determine the target `teamId` and override the default routing
+**Migration**: The access level rules are in the "存取層級" requirement of `channel-scoped-visibility`. The error code is `CHANNEL_ACCESS_LEVEL_INSUFFICIENT`.
 
-#### Scenario: No Routing Rule — Unassigned Queue
-- **WHEN** an inbound message arrives and no team routing rule matches
-- **THEN** the message SHALL be placed in an unassigned queue and an admin notification SHALL be sent
+### Requirement: Fee Attribution for Shared Channels
 
----
+**Reason**: The requirement depends on `ChannelUsage` and per-team credits from the license design. PR #224 removed the main specs `channel-billing` and `team-license` that described that design, and no code records `ChannelUsage` or deducts team credits.
 
-### Requirement: Channel Creation with Default Team
-During channel creation, an optional default team SHALL be assignable for initial routing.
-
-#### Scenario: Create Channel with Default Team
-- **WHEN** POST /api/v1/channels is called with `defaultTeamId` in the request body
-- **THEN** the channel SHALL be created and a ChannelTeamAccess record with `accessLevel: 'full'` SHALL be auto-created for that team
-
-#### Scenario: Create Channel without Default Team
-- **WHEN** POST /api/v1/channels is called without `defaultTeamId`
-- **THEN** the channel SHALL be created without any team access; an Admin MUST manually grant access before the channel can receive routed messages
-
----
-
+**Migration**: None. Plan limits and usage are in `tenant-plan`, `plan-limits-core` and `granular-plan-entitlement`.

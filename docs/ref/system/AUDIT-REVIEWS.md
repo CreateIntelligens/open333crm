@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-06：補回主規格 `channel-scoped-visibility`，RBAC-04 補上規格依據
+
+`channel-scoped-visibility` 在 `aa274cf0` 以改名的方式搬進 `openspec/changes/archive/`，沒有經過 `openspec archive`，它的 delta spec 從來沒有套用到主規格。RBAC-04 因此一直沒有主規格可以依據。
+
+change `restore-channel-scoped-visibility-spec` 照現行程式補回這份主規格。可見渠道的解析與 fail-closed 已經由 #230 的主規格 `channel-visibility-defaults` 描述，這次只補上其餘的部分：列表、單筆讀取與操作、存取層級、團隊對話、socket 推播與進站訊息。同一個 change 依 issue #217 的決定修改 `channel-team-access`：重複授權同一個團隊時更新層級；群發不受渠道存取層級限制。
+
+| 項目 | 調整 | 依據 |
+| --- | --- | --- |
+| RBAC-04 | 補上「規格依據」，維持 P2 | socket 租戶房間違反「與即時推播一致」；`ai.routes.ts` 違反「單筆讀取與操作的存取檢查」。聯絡人、`POST /cases`、`GET /cases/stats` 不在這份規格的範圍內 |
+
+原本打算新增一項「沒有綁定的渠道全員可見」。#230 已經回填綁定並移除相容分支，所以不新增。
+
+**同時發現：`aa274cf0` 一次手動搬了 32 個 change。** 比對這些 change 的 delta spec，其中 14 個 change 共 160 條 ADDED 與 MODIFIED 需求，在對應的主規格裡找不到同名需求。部分可能是之後改了名，或由其他主規格以不同名稱涵蓋，要逐條確認。逐個 change 的追蹤見 issue #228。
+
 ## 2026-10-05：渠道可見範圍改回 fail-closed
 
 依 #217 的決定（留言 5990552133），change `channel-visibility-fail-closed` 移除 `services/channel-visibility.ts` 的相容分支：完全沒有綁定任何團隊或成員的渠道，原本所有成員都看得到（`full`），現在只有持有 `channel.view_all` 的成員看得到。
