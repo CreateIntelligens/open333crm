@@ -164,7 +164,9 @@ export function RolePermissionMatrix() {
     [matrix]
   );
 
-  // 勾選 code 時補上它的前置權限；原本沒勾的前置權限記為自動開啟
+  // 勾選 code 時補上它的前置權限；原本沒勾的前置權限記為自動開啟。
+  // 這裡、dependents() 與 adminLockedCodes 都只處理一層 dependsOn。註冊表保證只有一層，
+  // 見 packages/core 的 rbac-registry.test.ts「dependsOn 只有一層」。
   function enablePrereqs(code: string, next: Set<string>, nextAuto: Map<string, string>) {
     const def = codeToDef.get(code);
     def?.dependsOn.forEach((d) => {

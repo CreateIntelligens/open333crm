@@ -41,7 +41,7 @@
 | `code` | 權限碼。兩段以上的小寫片段，以 `.` 分隔，第一段是資源；片段可含 `-` 與 `_`，例如 `channel.view_all` |
 | `feature` | 所屬的功能模組。方案以功能模組為單位開關，見下一節。功能模組定義在 `features.ts` 的 `FEATURES` |
 | `group`、`label`、`description` | 角色與權限頁的分組與顯示文字 |
-| `dependsOn` | 前置權限。勾選這個碼時，前置的碼也必須勾選 |
+| `dependsOn` | 前置權限。勾選這個碼時，前置的碼也必須勾選。只能一層：前置的碼本身不能再有 `dependsOn`，因為角色與權限頁只處理一層。`rbac-registry.test.ts` 檢查這條限制 |
 | `implies` | 隱含權限。擁有這個碼時，計算有效權限會自動加上隱含的碼 |
 | `adminLock` | `admin` 系統角色不能移除這個碼 |
 | `selfLock` | 成員不能從自己目前的角色移除這個碼 |

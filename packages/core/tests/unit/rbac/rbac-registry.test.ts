@@ -47,6 +47,23 @@ t('每個 feature 宣告的權限碼都存在於 registry（反向對應）', ()
   }
 });
 
+// 前端的角色與權限頁只處理一層 dependsOn：勾選時只補直接的前置權限，取消時只連帶直接的相依權限，
+// admin 內建鎖定也只鎖 adminLock 碼的直接前置權限。註冊表出現多層時，頁面會做出後端拒絕（422）的設定。
+t('dependsOn 只有一層：前置權限本身沒有 dependsOn', () => {
+  for (const p of PERMISSIONS) {
+    for (const d of p.dependsOn ?? []) {
+      const nested = PERMISSION_BY_CODE.get(d)?.dependsOn ?? [];
+      assert.deepEqual(
+        nested,
+        [],
+        `${p.code} 依賴 ${d}，${d} 又依賴 ${nested.join('、')}。` +
+          '要支援多層 dependsOn，先改 apps/web/src/components/settings/RolePermissionMatrix.tsx 的 ' +
+          'enablePrereqs()、dependents() 與 adminLockedCodes，改成遞迴處理，再調整這個測試',
+      );
+    }
+  }
+});
+
 t('dependsOn / implies 參照的權限碼都存在', () => {
   for (const p of PERMISSIONS) {
     for (const d of p.dependsOn ?? []) {
