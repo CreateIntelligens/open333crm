@@ -49,7 +49,6 @@
 | [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
-| [RLS-07](#rls-07) | 租戶隔離與權限 | P2 | 未處理 | 短連結轉址使用 `prismaAdmin`，但不在白名單，`check-prisma-admin-usage.mjs --strict` 因此失敗 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色 | 靜態確認 |
@@ -105,8 +104,10 @@
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
 | [IDENT-02](#ident-02) | 聯絡人、行銷與報表 | P2 | 已提建議 | LINE、Facebook 登入補 email 時不確認登入者就是該聯絡人，授權網址可由任何人以任意渠道身分產生 | 靜態確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 已提建議 | 群發可以重複執行，重送時不排除已送達的人 | 靜態確認 |
-| [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 記錄點擊的公開端點採信呼叫端提供的聯絡人與 LINE uid，也沒有速率限制 | 靜態確認 |
+| [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 部分修正 | 記錄點擊的公開端點採信呼叫端提供的同租戶聯絡人與 LINE uid，也沒有速率限制；其他租戶的聯絡人已擋下 | 靜態確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
+| [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；fanToken 簽發接回前要修 | 靜態確認 |
+| [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時客人收不到任何回覆 | 靜態確認 |
 | [CHAN-03](#chan-03) | 渠道、稽核與資料權利 | P2 | 已提建議 | LINE 的簽章錯誤也回 200；進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | 靜態確認 |
@@ -181,15 +182,6 @@
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
 `apps/workers/src/index.ts` 的 `main()` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
-
-<a id="rls-07"></a>
-### RLS-07：短連結轉址使用 `prismaAdmin`，但不在白名單
-
-`207da85`（2026-09-22）修復短連結被 RLS 擋下時，讓 `shortlink/shortlink-redirect.routes.ts` 改用 `prismaAdmin` 查渠道的 LIFF ID 與租戶的追蹤碼設定，但沒有把這個檔案加進 `scripts/check-prisma-admin-usage.mjs` 的白名單。從那時起，這支檢查以 `--strict` 執行就會失敗。CI 沒有執行這支檢查，所以一直沒有人發現。2026-10-01 實際執行確認。
-
-用途看起來合理：這是不需要登入的公開路由，請求進來時還不知道是哪個租戶；路由先依短網址解析出連結，再只查該連結所屬租戶的資料。修正方式是把這個檔案加進白名單，並註明理由。
-
-**規格依據。** 主規格 `tenant-isolation-rls` 的「合法跨租戶操作走 BYPASSRLS 連線」規定 BYPASSRLS 連線 MUST 僅供白名單情境使用。這個檔案不在白名單，現況違反這條需求，因此由 P3 調為 P2。用途本身合理，修正只需要把檔案加進白名單。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
@@ -1384,7 +1376,9 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 - 知道同租戶某個聯絡人的 ID 或 LINE uid，就能替他記一筆點擊，觸發 `tagOnClick` 貼標，以及訂閱 `contact.tagged`、`link.clicked` 的自動化規則，例如自動傳訊息給他。
 - 沒有 `lineUid` 的點擊，每次都算一次不重複點擊。點擊數與不重複點擊數都能被任意灌高。
 
-`addTagToTarget()` 會檢查聯絡人屬於短連結的租戶，所以貼標不會跨租戶。`ClickLog.contactId` 則不驗證，可以寫入任意值。
+`addTagToTarget()` 會檢查聯絡人屬於短連結的租戶，所以貼標不會跨租戶。
+
+**部分修正（2026-10-06，RLS-07 的修正一併處理）。** `trackClick()` 現在只採用格式正確、且屬於短連結租戶的 `cid`，其他租戶的聯絡人 ID 不再寫進 `ClickLog.contactId` 與 `link.clicked` 事件；不是 UUID 的 `cid` 視為匿名點擊（原本 `clickLog.create` 會拋錯，點擊默默沒有被記錄）。仍未處理：同租戶的聯絡人 ID 與 `lineUid` 仍可冒用，也仍然沒有速率限制。
 
 <a id="ana-01"></a>
 ### ANA-01：報表以 UTC 切分日期
@@ -1392,6 +1386,26 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 `analytics.service.ts` 以 `date_trunc('day' | 'week' | 'month', "createdAt")` 分組。時間欄位是不帶時區的 `TIMESTAMP(3)`，存的是 UTC，資料庫連線也以 UTC 計算。台灣時間凌晨 0 點到 8 點的訊息、工單與聯絡人，會被算進前一天；週與月的邊界也差 8 小時。
 
 同一份報表的「平均首次回應時間」讀 `Case.firstResponseAt`。沒有關聯對話的工單不會有這個值，不計入平均，見 SLA-05。
+
+<a id="portal-01"></a>
+### PORTAL-01：粉絲門戶的活動結果端點回傳測驗答案與未發布活動的結果
+
+`portal-public.routes.ts` 的 `GET /api/v1/fan/activities/:id/result` 呼叫 `portal.service.ts` 的 `getActivityResult()`：
+
+- 回傳每個選項的 `isCorrect`。活動列表與詳情的查詢刻意不選這個欄位，結果端點卻沒有。粉絲可以在作答前讀到測驗的正確答案，再送出滿分換取積分。
+- 只以活動 ID 與租戶查詢，不看活動的狀態與作答者。草稿、未發布或已下架活動的投票與作答統計，持有該租戶 fanToken 的人都讀得到。
+
+目前 `signFanToken()` 沒有呼叫端（見 `add-cross-channel-one-id` 任務 9.3.3），粉絲門戶的端點實際上無法進入，所以標為 P3。**接回 fanToken 的簽發之前要先修**：結果端點只對已發布的活動開放，測驗的 `isCorrect` 只在該粉絲作答後（或活動結束後）回傳。
+
+<a id="portal-02"></a>
+### PORTAL-02：粉絲門戶送出活動一律回 400
+
+`POST /api/v1/fan/activities/:id/submit` 以 `try/catch` 包住 `submitActivity()`，所有錯誤都回 400 `BAD_REQUEST`，`message` 是原始錯誤訊息。
+
+- `submitActivity()` 拋出的 `AppError` 本來帶有 404 `ACTIVITY_NOT_AVAILABLE`、409 `ACTIVITY_NOT_STARTED`、`ACTIVITY_ENDED`、`ALREADY_SUBMITTED` 等狀態碼與代碼，全部被改成 400，用戶端分不出「已經作答過」與「輸入錯誤」。
+- 非 `AppError` 的例外（例如 Prisma 錯誤）也把原始訊息回給公開用戶端，違反 `AGENTS.md` 的「Do not return raw errors」。
+
+與 PORTAL-01 相同，端點目前無法進入，標為 P3。修正方式是移除這段 `try/catch`，交給全域的錯誤處理。
 
 ## 渠道、稽核與資料權利
 

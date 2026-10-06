@@ -4,6 +4,27 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-06：修正 RLS-07
+
+`scripts/check-prisma-admin-usage.mjs --strict` 自 `207da85`（2026-09-22）起一直失敗，現在通過。修正過程中，本地 code review 推翻了第一版「整個檔案加白名單」的做法，以下是最後的結果。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RLS-07 | 已修正，從 `AUDIT.md` 移除 | `shortlink/shortlink-redirect.routes.ts` 是不需要登入的公開路由，請求進來時沒有租戶，以全域唯一的 slug 解析連結需要 BYPASSRLS，加進白名單。之後的 LIFF ID、追蹤碼設定、點擊紀錄都以該連結的 `id`／`tenantId` 為條件 |
+| 短連結 `/s/track` 的 `cid` | 修正 | 公開請求帶來的 `cid` 原本直接寫進 `clickLog.contactId` 與 `link.clicked` 事件，不檢查是否屬於該連結的租戶。現在必須是 UUID、且是該租戶的聯絡人才採用，否則視為匿名點擊。自動貼標原本就由 `assertTargetExists` 依租戶檢查聯絡人，沒有跨租戶寫入 |
+| 粉絲門戶 `portal/portal-public.routes.ts` | 不再使用 `prismaAdmin` | 租戶已由驗簽的 fanToken 確定，改以 `withTenant(app.prisma, fan.tenantId, …)` 執行，RLS 仍是第二道防線。第一版曾以「每個查詢都帶 tenantId」為由加進白名單，但 `/me/points` 的 `getPointBalance()` 沒帶 tenantId，在 BYPASSRLS 連線上只以 contactId 查，這個理由不成立；改用 `withTenant` 並補上 tenantId。目前 `signFanToken()` 沒有呼叫端，這些端點實際上無法進入 |
+| 檢查腳本的比對規則 | 修正 | 原本只認得 `fastify.`、`request.server.`、`app.`、`this.` 開頭，`req.server.prismaAdmin`、`server.prismaAdmin` 與解構都會漏掉。放寬後找出 `webchat/webchat.routes.ts` 的 5 處：它與已在白名單的 `chatbox/chatbox.routes.ts` 呼叫同一組 chatbox service（session 先經 `chatboxSessionVerifier` 驗證、再比對渠道），舊的建立 session 路由預設回 410，加進白名單。這次只確認它與 `chatbox.routes` 是同一種用法，沒有重新審查 chatbox service 內部的查詢 |
+
+另新增 `apps/api/tests/unit/prisma-admin-whitelist.test.ts`：`pnpm test` 時執行 `--strict`，並以測試用資料夾確認各種 `prismaAdmin` 寫法都抓得到。CI 恢復前，白名單外的新用法會讓 unit 測試失敗。
+
+**連帶調整的項目：**
+
+| 項目 | 調整 | 依據 |
+| --- | --- | --- |
+| SHORT-01 | 未處理 → 部分修正 | 上表 `/s/track` 的 `cid` 修正處理了「`ClickLog.contactId` 不驗證、可寫入任意值」中的跨租戶部分。同租戶的聯絡人 ID、`lineUid` 仍可冒用，也仍沒有速率限制 |
+| PORTAL-01 | 新增（P3） | `getActivityResult()` 回傳測驗選項的 `isCorrect`（列表與詳情刻意不回傳），且不看活動狀態，未發布活動的結果也讀得到。`signFanToken()` 沒有呼叫端、端點目前無法進入，所以是 P3；fanToken 簽發接回前要修。沒有主規格涵蓋粉絲門戶 |
+| PORTAL-02 | 新增（P3） | 送出活動的 `try/catch` 把所有錯誤都改成 400 `BAD_REQUEST`，並回傳原始錯誤訊息。端點目前無法進入，所以是 P3 |
+
 ## 2026-10-06：第一批 P2 對照主規格，A2A-01 與 SEC-06 補上規格依據
 
 把 #222 第一批的 P2 項目逐項對照主規格，檢查內文的「規格依據」有沒有缺漏或寫錯。RBAC-02、RBAC-05 已由 #232 補上；除了下表兩項，其他項目的規格依據不需要調整。
