@@ -14,6 +14,18 @@
 | [`DATABASE-ERD.md`](./DATABASE-ERD.md)                       | 資料表關聯與每張表儲存的資料類型                                                  | `packages/database/prisma/schema.prisma`                                           |
 | [`API-PLUGIN-ARCHITECTURE.md`](./API-PLUGIN-ARCHITECTURE.md) | `apps/api` 如何註冊外掛、隔離路由作用域，以及建立租戶資料庫 client                | `apps/api/src/index.ts`、`apps/api/src/plugins/*.ts`                               |
 
+## 引用程式碼的方式
+
+現況文件不寫行號，例如 `case.routes.ts:255`。程式碼改動後，行號會指到錯誤的位置，而且不會有任何提示。改用下列方式定位：
+
+- 檔名加函式名：`plan-limits.service.ts` 的 `resolveEffectiveLimit()`。
+- schema 的模型加欄位：`schema.prisma` 的 `Case.firstResponseAt`。
+- 沒有函式名可用時，引用一段可以 grep 的程式碼：`case.routes.ts` 的 `action: 'case.delete'`。
+
+函式改名或刪除時，grep 會直接找不到，比行號默默指錯更容易發現。
+
+有日期的紀錄可以寫行號，例如 [`system/AUDIT-REVIEWS.md`](./system/AUDIT-REVIEWS.md) 的每一則，因為它記的是當天的程式碼。
+
 ## 外部系統的參考文件
 
 [`legacy/`](./legacy/) 放的是**另一套 LINE CRM 系統**（Laravel 11 + Vue 3 + MongoDB）的文件，與本 repo 沒有共用程式碼。詳見 [`legacy/README.md`](./legacy/README.md)。

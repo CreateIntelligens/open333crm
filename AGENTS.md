@@ -100,6 +100,19 @@ shows this pattern.
 Use `node:assert/strict` for assertions, as most existing tests do. Some older tests import
 `node:assert`. Its `assert.equal` compares with `==`. Do not copy those tests.
 
+**Component tests render React in jsdom.** Only `apps/web` has them. They use
+`@testing-library/react`. Name the file `*.test.tsx` and write `// @vitest-environment jsdom` on
+its first line. Other unit tests run in Node.
+`apps/web/tests/unit/components/settings/role-permission-matrix.test.tsx` shows this pattern.
+
+- Replace `#src/lib/api.js` with `vi.mock()`. A component test does not send HTTP requests.
+- To check that an element does not exist, use `assert.ok(element === null)`. Do not give a DOM
+  node to `assert.equal()`. When that assertion fails, `node:assert` serializes the whole jsdom
+  tree, and the test worker runs out of memory.
+- A mocked hook must return the same function on each render, as `useCallback` does in the real
+  provider. If it returns a new function, an effect that depends on the function can run
+  without end.
+
 **Feature tests do not use the development database.** `apps/api/tests/setup/` does these steps:
 
 - It creates a separate test database and applies all migrations.
