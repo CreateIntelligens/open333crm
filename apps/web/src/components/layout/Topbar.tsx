@@ -79,19 +79,20 @@ export function Topbar({ title, children }: TopbarProps) {
         <DropdownMenu
           align="right"
           trigger={
-            <div className="flex items-center gap-2 cursor-pointer">
+            <span className="flex items-center gap-2">
               <Avatar alt={agent?.name || "使用者"} size="sm" />
               <span className="text-sm font-medium hidden sm:inline">
                 {agent?.name}
               </span>
-            </div>
+            </span>
           }
         >
-          <DropdownMenuItem>
-            <span className="text-sm text-muted-foreground">
-              {agent?.email}
-            </span>
-          </DropdownMenuItem>
+          <div
+            role="presentation"
+            className="px-2 py-2 text-xs text-muted-foreground"
+          >
+            {agent?.email}
+          </div>
           <DropdownMenuItem onClick={logout}>
             <LogOut className="mr-2 h-4 w-4" />
             <span>登出</span>
