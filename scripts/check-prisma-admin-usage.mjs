@@ -5,17 +5,21 @@
  * RLS 白名單檢查：`prismaAdmin`（BYPASSRLS 連線）只該用於白名單情境
  * （平台/認證/scheduler/OAuth 回調/公開 webhook）。非白名單檔案用 prismaAdmin
  * = 該走 RLS 卻 bypass = 隔離形同虛設。本腳本掃 apps/api/src，非白名單檔案
- * 使用 fastify.prismaAdmin / request.server.prismaAdmin / app.prismaAdmin 即報錯。
+ * 存取 `.prismaAdmin`（不論寫成 fastify. / app. / req.server. 或其他變數）或以解構取出即報錯。
  *
  * 用法：
  *   node scripts/check-prisma-admin-usage.mjs          # 印報告，exit 0
  *   node scripts/check-prisma-admin-usage.mjs --strict # 非白名單用 prismaAdmin → exit 1（CI）
+ *   --scan-dir <dir>                                     # 改掃指定資料夾（測試用）
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
-const SCAN_DIR = join(ROOT, 'apps/api/src');
+// fileURLToPath：路徑含空白或非 ASCII 字元時，URL.pathname 會是百分比編碼
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const scanDirArg = process.argv.indexOf('--scan-dir');
+const SCAN_DIR = scanDirArg >= 0 ? resolve(process.argv[scanDirArg + 1]) : join(ROOT, 'apps/api/src');
 const STRICT = process.argv.includes('--strict');
 
 // 白名單：合法可用 prismaAdmin（BYPASSRLS）的檔案（相對 apps/api/src）。
@@ -35,6 +39,12 @@ const WHITELIST = [
   /modules\/fb-login\//,            // OAuth 回調
   /modules\/webhook\//,             // 公開入站 webhook（無 JWT，channel 反查）
   /modules\/chatbox\/chatbox\.routes/, // public Chatbox routes use validated session/channel scope
+  // 公開短連結轉址（無登入、無 tenant context，AUDIT RLS-07）：以全域唯一的 slug 解析連結後，
+  // LIFF ID、追蹤碼設定與點擊紀錄都以該連結的 id／tenantId 為條件；/track 帶來的 cid 須屬於該租戶才採用
+  /modules\/shortlink\/shortlink-redirect\.routes/,
+  // 舊版 WebChat 公開端點：與 chatbox.routes 呼叫同一組 chatbox service（session 先經 chatboxSessionVerifier
+  // 驗證、再比對渠道）。舊的建立 session 路由預設回 410。原本的比對規則漏掉 req.server.prismaAdmin 才沒列出
+  /modules\/webchat\/webchat\.routes/,
   /\.scheduler\./,                  // scheduler 掃全租戶
   /\.worker\./,                     // worker 以 payload.tenantId 自 scope
   /index\.ts$/,                     // bootstrap 接線 scheduler/worker
@@ -54,7 +64,9 @@ function walk(dir, out = []) {
   return out;
 }
 
-const ADMIN_RE = /(?:fastify|request\.server|app|this)\.prismaAdmin\b/;
+// 任何 `.prismaAdmin` 存取，以及 `{ prismaAdmin } = ...` 解構。
+// 原本只認得 fastify. / request.server. / app. / this. 開頭，req.server.prismaAdmin 等寫法會漏掉
+const ADMIN_RE = /\.prismaAdmin\b|\{[^}]*\bprismaAdmin\b[^}]*\}\s*=/;
 
 const violations = [];
 for (const file of walk(SCAN_DIR)) {

@@ -13,6 +13,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **總覽資料載入失敗會顯示重試** — 統計、未讀對話與工單各自呈現載入和錯誤狀態；請求失敗不再當成零筆或空資料，並可單獨重試該區塊。
 - **帳號選單支援鍵盤操作** — 觸發器與登出項目改用按鈕及選單語意，支援方向鍵、Home／End、Escape、焦點提示與鍵盤開啟。
+- **BYPASSRLS 連線的白名單檢查恢復通過**（AUDIT RLS-07）— 短連結轉址自 `207da85` 起改用 `prismaAdmin`，但沒有加進 `check-prisma-admin-usage.mjs` 的白名單，`--strict` 一直失敗；CI 沒有執行這支檢查，所以沒人發現。短連結轉址加進白名單並註明理由；粉絲門戶改用 `withTenant` 綁定 fanToken 的租戶，不再使用 `prismaAdmin`（原本 `/me/points` 的積分餘額查詢漏帶 tenantId）。檢查腳本原本漏掉 `req.server.prismaAdmin` 等寫法，修正後找出的 WebChat 舊端點與已在白名單的 Chatbox 呼叫同一組 service，一併加入。另把這支檢查加進 `pnpm test`。
+- **短連結點擊紀錄不再寫入其他租戶的聯絡人** — 公開的 `/s/track` 帶來的 `cid` 原本不檢查就寫進點擊紀錄與 `link.clicked` 事件；現在必須是該短連結所屬租戶的聯絡人才採用。不是 UUID 的 `cid` 原本會讓點擊默默沒被記錄，現在當成匿名點擊。
 
 ## [2026-10-05]
 
