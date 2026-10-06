@@ -40,6 +40,8 @@
 
 兩個動作都不能套用在租戶內最後一位啟用中的管理員，避免租戶沒有人能管理。清除不要求先停用。
 
+**停用目前無法復原。** 主規格 `agent-lifecycle` 規定停用的成員可以重新啟用，但沒有重新啟用的路由，`GET /agents` 也不回傳停用的成員，所以管理員在畫面上看不到他們。見 `../../system/AUDIT.md` 的 AUTH-09。
+
 **停用不會立刻踢出登入中的成員。** `authenticate` 只驗 token 簽章，不回查帳號狀態。成員被停用後：
 
 - 手上的 access token 在到期前仍然有效，預設 15 分鐘。
@@ -162,7 +164,8 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | 登出或改密碼不會讓 refresh token 失效 | 詳見 `../../system/AUDIT.md` 的 AUTH-08 |
 | 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
-| 業務規則看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
+| **停用的成員無法重新啟用** | 管理員也看不到停用的成員。詳見 `../../system/AUDIT.md` 的 AUTH-09 |
+| 業務規則看舊的角色列舉 | 包含「最後一位管理員」的保護。詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | **reconcile 腳本覆蓋系統角色的修改** | 詳見 `../../system/AUDIT.md` 的 RBAC-05 |
 | 開發環境的 `supervisor` 看得到所有渠道 | 預設權限有兩份，demo 資料的 `supervisor` 多了 `channel.view_all`；正式租戶沒有，這是定案的行為。詳見 `../../system/AUDIT.md` 的 RBAC-06 |
 | 角色頁顯示的權限不套方案天花板 | 詳見 `../../system/AUDIT.md` 的 PLAN-08 |

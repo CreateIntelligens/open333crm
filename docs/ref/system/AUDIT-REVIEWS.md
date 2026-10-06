@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-06：改寫主規格 `agent-management`，補回 `agent-lifecycle`，新增 AUTH-09
+
+#232 發現主規格 `agent-management` 有 4 條需求與現況不同。change `rewrite-agent-management-spec` 照現行程式改寫：建立成員、指派角色與重設密碼改以權限碼授權；停用與永久刪除移到新的主規格 `agent-lifecycle`，補回 `agent-deactivate-vs-delete` 在 `aa274cf0` 沒有套用的 delta spec（#228）。
+
+| 項目 | 調整 | 依據 |
+| --- | --- | --- |
+| AUTH-09 | 新增，P2 | 違反 `agent-lifecycle` 的「重新啟用成員」：沒有重新啟用的路由，`GET /agents` 也不回傳停用的成員。歸檔的 delta spec 與前端的確認對話框都說停用可以復原 |
+| RBAC-03 | 加上「最後一位管理員」的保護，由 P3 調為 P2 | `assertNotLastActiveAdmin()` 把角色列舉為 `ADMIN` 的成員也算成管理員，違反 `agent-lifecycle` 的「停用成員」與「永久刪除成員」 |
+
 ## 2026-10-06：改寫主規格 `rbac`，補回權限相關的 3 份主規格，RBAC-02 與 RBAC-05 補上規格依據
 
 `rbac-granular-permissions` 也在 `aa274cf0` 以改名的方式搬進 `archive/`，它的 4 份 delta spec 從來沒有套用到主規格。主規格 `rbac` 因此仍然描述舊的角色白名單，RBAC-02 與 RBAC-05 沒有主規格可以依據。
