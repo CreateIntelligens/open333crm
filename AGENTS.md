@@ -249,6 +249,11 @@ request:
 - [ ] You archive with `openspec archive` or the `openspec-archive-change` skill. Do not move a
       change into `archive/` or copy its specs into `openspec/specs/` by hand. A hand copy can
       leave a main spec in a format that the CLI cannot read.
+
+      When the archive creates a new main spec, the CLI writes its `## Purpose` as
+      "TBD - created by archiving change …". `openspec validate --strict` does not reject this
+      text. Replace it with the purpose of the spec. This command must print nothing:
+      `grep -rl "TBD - created by archiving" openspec/specs`
 - [ ] To remove a whole main spec (`openspec/specs/<name>/`), first check whether its capability
       is still planned:
       1. If the capability is still planned, move the requirements of the spec into a change as an
