@@ -15,12 +15,8 @@ import { E2E_PREFIX, newApiContext, gotoAndCheck } from './helpers';
  * 2. 刪除規則同樣沒有 toast，`handleDelete` confirm 後呼叫 DELETE 成功就直接
  *    `router.push('/dashboard/automation')` 導回列表頁。
  *
- * 3. `DELETE /automation/rules/:id` 是軟刪（`automation.service.ts` 的 `deleteRule`
- *    只做 `update({ isActive: false })`），且 `GET /automation/rules`（列表頁預設請求，
- *    無查詢參數）沒有帶 `isActive` 過濾，列表 UI（`page.tsx`）本身也沒有針對
- *    isActive=false 做任何隱藏/樣式處理——跟 `tenant-line-materials.spec.ts` 案例 09
- *    記錄的關鍵字回覆刪除同一顆後端 bug（同一份 `automation.service.ts`）。
- *    因此本 spec 的刪除案例改用 API 驗證 isActive=false，不斷言列表消失；
+ * 3. `DELETE /automation/rules/:id` 是軟刪：043cd782（CM-170）起分開「刪除」（enabled=false）
+ *    與「停用」（isActive=false），已刪除的規則列表不顯示、GET 回 404。
  *    afterAll 清理直接用同一支 DELETE（軟刪即符合清理語意，不會留下真孤兒資料）。
  *
  * 4. 儲存按鈕沒有「至少一個動作」的前端擋控：`handleSave` 只檢查
@@ -155,7 +151,7 @@ test.describe.serial('自動化規則 @automation', () => {
     // react-querybuilder：初始為空群組，點「+ 新增條件」（ConditionBuilder 以 translations 中文化）
     const qb = page.locator('.condition-builder');
     await expect(qb).toBeVisible({ timeout: 10_000 });
-    await qb.getByRole('button', { name: '+ 新增條件' }).click();
+    await qb.getByRole('button', { name: '+ 新增條件', exact: true }).click();
 
     const rule = qb.locator('.rule').first();
     await expect(rule).toBeVisible({ timeout: 10_000 });
@@ -331,7 +327,7 @@ test.describe.serial('自動化規則 @automation', () => {
     await patchRes2;
   });
 
-  test('@automation 08 刪除規則：編輯頁點刪除（confirm）→ API 驗證軟刪（isActive=false）', async ({
+  test('@automation 08 刪除規則：編輯頁點刪除（confirm）→ 列表不再顯示（043cd782，CM-170）', async ({
     page,
   }) => {
     test.skip(!ruleId, '前置測試（案例 02）未成功建立規則');
@@ -355,15 +351,17 @@ test.describe.serial('自動化規則 @automation', () => {
     expect(await dialogMsg).toContain('確定要刪除此規則嗎');
     const res = await deleteRes;
 
-    // 見檔頭說明 3：後端是軟刪，這裡直接用 API 回應驗證真實狀態，
-    // 不斷言列表消失（列表沒有過濾 isActive，刪除後這筆規則仍會出現在 /dashboard/automation）
+    // 刪除是軟刪（enabled=false），043cd782（CM-170）起列表與 GET 都不再出現已刪除的規則
     const body = await res.json();
     expect(body?.data?.isActive, '刪除後 isActive 應為 false（軟刪）').toBe(false);
 
     // handleDelete 成功後 router.push 回列表頁（無 toast，見檔頭說明 2）
     await expect(page).toHaveURL(/\/dashboard\/automation$/, { timeout: 15_000 });
-    await expect(page.locator('tbody tr', { hasText: RULE_NAME })).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('tbody tr', { hasText: RULE_NAME })).toHaveCount(0);
+
+    // 單筆 GET 也要讀不到，不能只有列表過濾
+    const getRes = await api.get(`automation/rules/${ruleId}`);
+    expect(getRes.status(), '刪除後 GET 應回 404').toBe(404);
   });
 });
