@@ -58,6 +58,7 @@ Some changes skip step 1 or step 2. This table tells which steps each type of ch
 | A refactor with no behavior change | No | No. The tests that cover the code must pass before and after the change. If no test covers the code, first add a test that passes on the current code |
 | A dependency update | No | No. Run `pnpm test`. Also run `pnpm test:feature` if the dependency is used for the database or Redis |
 | A change to docs or OpenSpec files only | No | No. Run each command that the change adds or changes. Make sure that each path and link in the change exists |
+| Specs and tests for behavior that the code already has | Yes | No. The tests pass when you write them. Verify each test with a mutation instead (see "When a test passes as soon as you write it") |
 
 ### Step 1 — Spec the behavior (SDD)
 
@@ -117,6 +118,25 @@ Keep the data of each test separate from other tests. Use one of these two metho
 it. These tests fail after a rename or a move, even when the behavior stays the same. Write this
 type of test only for a guarantee that a behavior test cannot reach. An example is "this route
 calls the service inside `withTenant`".
+
+**When a test passes as soon as you write it.** A test for behavior that the code already has
+cannot fail first. Verify the test with a mutation:
+
+1. Change the code that the scenario covers so that the behavior breaks. For example, remove a
+   permission check or invert a condition.
+2. Run the test. It must fail.
+3. Restore the code.
+
+If the test still passes, it does not check the behavior. Fix the test, not the code. List the
+mutations in `tasks.md` of the change. A common cause is a second check that gives the same
+result. For example, two guards can both return 403. Assert the field that names the check, such
+as `error.details.requiredPermission`.
+
+If the code breaks a scenario, write the scenario as the behavior should be. Then do one of
+these:
+
+- Fix the code in the same change. Write a test that fails first, as for a bug fix.
+- Record the problem in `docs/ref/system/AUDIT.md`. The scenario has no test until the fix.
 
 **When an existing test fails, do not change the assertion before you know which side is correct.**
 
@@ -389,10 +409,10 @@ Redis connection.
 ## Conventions
 
 - **CHANGELOG Maintenance (MANDATORY)**: when you implement a feature (`feat`), a bug fix (`fix`)
-  or an architecture change, you **MUST update `CHANGELOG.md`**. The same applies when you
-  complete an OpenSpec change or a PR. Write the entry under the latest release section, in a
-  category such as `Added`, `Changed` or `Fixed`. Do not submit a code change without an entry
-  in `CHANGELOG.md`.
+  or an architecture change, you **MUST update `CHANGELOG.md`**. A pull request that changes only
+  docs, OpenSpec files or tests does not need an entry. Write the entry under the latest release
+  section, in a category such as `Added`, `Changed` or `Fixed`. Do not submit a code change
+  without an entry in `CHANGELOG.md`.
 - **CHANGELOG Date Format (CRITICAL / MANDATORY)**: each new or updated release section **MUST**
   use the date-only heading format `## [YYYY-MM-DD]`. **Never create or restore `## [Unreleased]`**.
   Do not change existing version headings, unless the user explicitly asks for a history rewrite.
