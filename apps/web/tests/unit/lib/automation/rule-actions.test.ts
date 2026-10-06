@@ -137,3 +137,22 @@ test('客服名單還沒載入時，不把已指派的客服標成已停用', as
     { value: 'a1', label: '載入客服名單中…' },
   ]);
 });
+
+/*
+ * 編輯頁紅框的說明：原本一律寫「不適用於這個觸發事件」「儲存後規則就會恢復執行」。
+ * 已停用的動作不是「不適用」；移除後沒有任何動作時，存檔會被擋，也不會恢復執行。
+ */
+test('紅框說明：已停用的動作說明已停用；移除後沒有動作時請管理員新增或刪除', async () => {
+  const { droppedActionsMessage } = await import('#src/lib/automation/rule-actions.js');
+  const retired = { type: 'llm_reply', label: 'LLM 智能回覆（已停用）', skipsRule: true };
+  const invalid = { type: 'send_message', label: '傳送訊息', skipsRule: true };
+  assert.equal(
+    droppedActionsMessage([retired], 0),
+    '此規則含有系統已停用的動作：「LLM 智能回覆（已停用）」，目前整條規則都不會執行。編輯器已移除這些動作，規則目前沒有任何動作：請新增動作後再儲存，或刪除這條規則。',
+  );
+  assert.equal(
+    droppedActionsMessage([invalid, retired], 1),
+    '此規則含有不適用於這個觸發事件的動作：「傳送訊息」；系統已停用的動作：「LLM 智能回覆（已停用）」，目前整條規則都不會執行。編輯器已移除這些動作，儲存後其他動作就會照常執行。',
+  );
+  assert.equal(droppedActionsMessage([], 1), '');
+});

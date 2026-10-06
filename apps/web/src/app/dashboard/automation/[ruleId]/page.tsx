@@ -20,7 +20,7 @@ import {
   type AutomationActionDefinition,
 } from '@open333crm/automation';
 import api from '@/lib/api';
-import { ruleEventName, splitRuleActions, type DroppedAction } from '@/lib/automation/rule-actions';
+import { droppedActionsMessage, ruleEventName, splitRuleActions, type DroppedAction } from '@/lib/automation/rule-actions';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
 import { summarizeRule } from '@/lib/automation/rule-summary';
 import {
@@ -96,12 +96,12 @@ const DEFAULT_FORM: RuleForm = {
   matchMode: 'any',
 };
 
-function DroppedActionsNotice({ dropped }: { dropped: DroppedAction[] }) {
-  if (dropped.length === 0) return null;
+function DroppedActionsNotice({ dropped, remainingCount }: { dropped: DroppedAction[]; remainingCount: number }) {
+  const message = droppedActionsMessage(dropped, remainingCount);
+  if (!message) return null;
   return (
     <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      此規則含有不適用於這個觸發事件的動作：{dropped.map((a) => `「${a.label}」`).join('、')}。
-      因此目前整條規則都不會執行。編輯器已移除這些動作，儲存後規則就會恢復執行。
+      {message}
     </div>
   );
 }
@@ -523,7 +523,7 @@ export default function AutomationRuleDetailPage() {
               {/* 載入時被移除的動作要明講，否則動作從畫面上消失、儲存後被刪除，管理員不會發現。
                   改了觸發事件後動作已清空，提示講的是原本的事件，不再顯示 */}
               {rule && loadedActions && form.triggerType === ruleEventName(rule) && (
-                <DroppedActionsNotice dropped={loadedActions.dropped} />
+                <DroppedActionsNotice dropped={loadedActions.dropped} remainingCount={loadedActions.actions.length} />
               )}
               <ActionList
                 actions={actions}

@@ -121,3 +121,23 @@ export function agentOptions(
   }
   return options;
 }
+
+/**
+ * 編輯頁紅框的說明。已停用的動作與不適用於觸發事件的動作分開寫原因；
+ * 移除後沒有任何動作時存檔會被擋（至少要一個動作），不能說「儲存後就會恢復執行」。
+ */
+export function droppedActionsMessage(dropped: DroppedAction[], remainingCount: number): string {
+  if (dropped.length === 0) return '';
+  const names = (list: DroppedAction[]) => list.map((a) => `「${a.label}」`).join('、');
+  const retired = dropped.filter((a) => RETIRED_AUTOMATION_ACTIONS.has(a.type));
+  const invalid = dropped.filter((a) => !RETIRED_AUTOMATION_ACTIONS.has(a.type));
+  const parts = [
+    invalid.length > 0 ? `不適用於這個觸發事件的動作：${names(invalid)}` : '',
+    retired.length > 0 ? `系統已停用的動作：${names(retired)}` : '',
+  ].filter(Boolean);
+  const next =
+    remainingCount === 0
+      ? '編輯器已移除這些動作，規則目前沒有任何動作：請新增動作後再儲存，或刪除這條規則。'
+      : '編輯器已移除這些動作，儲存後其他動作就會照常執行。';
+  return `此規則含有${parts.join('；')}，目前整條規則都不會執行。${next}`;
+}
