@@ -66,9 +66,11 @@ test.describe('@settings-channels 設定頁渠道管理', () => {
     await api.dispose();
   });
 
+  // 670e8eab（2026-09-15）起設定頁改為側欄樹狀導覽，各頁有自己的網址；
+  // c81f5900（2026-09-22）起 /dashboard/settings 本身是個人資料頁
   async function gotoChannelsTab(page: import('@playwright/test').Page) {
-    await gotoAndCheck(page, '/dashboard/settings');
-    await expect(page.getByRole('heading', { name: '渠道管理' })).toBeVisible({ timeout: 15_000 });
+    await gotoAndCheck(page, '/dashboard/settings/channels');
+    await expect(page.getByRole('button', { name: '新增渠道' })).toBeVisible({ timeout: 15_000 });
   }
 
   // ── 1. 渠道管理 tab 載入：渠道列表可見 ──────────────────────────────────
