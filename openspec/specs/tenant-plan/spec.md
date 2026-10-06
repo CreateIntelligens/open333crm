@@ -1,7 +1,8 @@
 # tenant-plan Specification
 
 ## Purpose
-TBD - created by archiving change platform-core-mvp. Update Purpose after archive.
+
+定義全域的方案（`Plan`）、租戶所屬的方案，以及方案的功能天花板：成員的有效權限是角色權限與方案功能的交集。數值上限見 `plan-limits-core`；權限點層級的關閉與渠道限制見 `granular-plan-entitlement`；有效權限的整體計算見 `permission-check`。
 
 ## Requirements
 

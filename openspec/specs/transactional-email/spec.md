@@ -1,7 +1,8 @@
 # transactional-email Specification
 
 ## Purpose
-TBD - created by archiving change trial-signup. Update Purpose after archive.
+
+定義試用流程的系統信件：SMTP 寄送模式，以及驗證信、到期提醒信、到期通知信與開通完成信的模板。各種寄送模式（含 Resend）的共同規則見 `email-delivery`。
 
 ## Requirements
 

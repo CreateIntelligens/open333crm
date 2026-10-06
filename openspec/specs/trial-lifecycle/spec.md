@@ -1,7 +1,8 @@
 # trial-lifecycle Specification
 
 ## Purpose
-TBD - created by archiving change trial-signup. Update Purpose after archive.
+
+定義試用租戶開通之後的生命週期：試用政策的參數、到期前提醒、到期自動停用、試用期間的 AI token 額度，以及轉為付費方案時脫離試用。申請與開通見 `trial-application`。
 
 ## Requirements
 

@@ -1,7 +1,8 @@
 # material-action-tagging Specification
 
 ## Purpose
-TBD - created by archiving change material-action-tagging. Update Purpose after archive.
+
+定義 LINE 素材的「點擊後貼標」：素材上每個可點擊的 action 都能設定要貼的聯絡人標籤，postback 與 uri 兩種點擊各自觸發貼標。標籤本身的規則見 `tag-management`。
 
 ## Requirements
 

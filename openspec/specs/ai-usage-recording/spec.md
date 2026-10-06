@@ -1,8 +1,11 @@
 # ai-usage-recording Specification
 
 ## Purpose
-TBD - created by archiving change ai-usage-tracking. Update Purpose after archive.
+
+定義 AI 呼叫的用量記錄：provider 回傳 token 用量，每次 LLM 呼叫（含失敗的呼叫）寫入一筆 `AiUsage`，並標記呼叫來源。成本怎麼計算見 `model-pricing`。
+
 ## Requirements
+
 ### Requirement: Provider 回傳 token 用量
 `ChatProvider.generate()` MUST 回傳 `{ text, usage? }`；`usage` 含 `promptTokens`、`cachedTokens`、`candidatesTokens`、`thoughtsTokens`（缺項以 0 補齊）。Gemini provider MUST 從回應 `usageMetadata` 取值；Ollama provider MUST 從 `prompt_eval_count` / `eval_count` 取值。provider 無法取得用量時 MUST 回傳 `usage: undefined` 而 MUST NOT 使呼叫失敗。
 

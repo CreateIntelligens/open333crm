@@ -1,7 +1,8 @@
 # model-pricing Specification
 
 ## Purpose
-TBD - created by archiving change ai-usage-tracking. Update Purpose after archive.
+
+定義 AI 模型的單價與成本計算：單價以 `ModelPricing` 表依生效時間版本化儲存，成本依 token 數以 Decimal 計算後寫入 `AiUsage.costUsd`。用量記錄本身見 `ai-usage-recording`。
 
 ## Requirements
 
