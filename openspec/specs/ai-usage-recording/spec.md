@@ -2,9 +2,7 @@
 
 ## Purpose
 TBD - created by archiving change ai-usage-tracking. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Provider 回傳 token 用量
 `ChatProvider.generate()` MUST 回傳 `{ text, usage? }`；`usage` 含 `promptTokens`、`cachedTokens`、`candidatesTokens`、`thoughtsTokens`（缺項以 0 補齊）。Gemini provider MUST 從回應 `usageMetadata` 取值；Ollama provider MUST 從 `prompt_eval_count` / `eval_count` 取值。provider 無法取得用量時 MUST 回傳 `usage: undefined` 而 MUST NOT 使呼叫失敗。
 
@@ -50,5 +48,6 @@ provider 拋出錯誤時，`generateReply()` MUST 寫入一筆 `success=false`�
 各呼叫端 MUST 傳入 feature 標記（`kb-autoreply`、`suggestion`、`summary`、`classify`、`sentiment`、`automation`），未傳時記為 `unknown`。`AiUsage` 查詢 MUST 以 tenantId 過濾（依租戶隔離鐵律）。
 
 #### Scenario: 自動化規則觸發的 AI 動作
-- **WHEN** 自動化動作經 `generateReply()` 呼叫 LLM（目前 workers 尚未實作 `llm_reply`、`kb_auto_reply`，見 AUDIT AUTO-01）
+- **WHEN** 自動化動作經 `generateReply()` 呼叫 LLM（自動化規則目前沒有呼叫 LLM 的動作：`llm_reply`、`kb_auto_reply` 已於 2026-10-05 從契約移除。之後新增時適用本情境）
 - **THEN** 該筆 AiUsage 的 `feature` MUST 為 `'automation'`
+

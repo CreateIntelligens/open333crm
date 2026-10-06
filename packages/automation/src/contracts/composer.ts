@@ -1,6 +1,5 @@
 import {
   AUTOMATION_ACTION_DEFINITIONS,
-  UNSUPPORTED_AUTOMATION_ACTION_TYPES,
   AUTOMATION_ACTION_MAP,
 } from './actions.js';
 import { AUTOMATION_EVENT_MAP } from './events.js';
@@ -57,11 +56,7 @@ export function composeAutomationContract(
     return !fact.events || fact.events.includes(event.name);
   });
 
-  const actions = AUTOMATION_ACTION_DEFINITIONS.filter(
-    (action) =>
-      hasAllScopes(availableScopes, action.requires) &&
-      (options.allowUnsupportedActions || !UNSUPPORTED_AUTOMATION_ACTION_TYPES.has(action.type)),
-  );
+  const actions = AUTOMATION_ACTION_DEFINITIONS.filter((action) => hasAllScopes(availableScopes, action.requires));
 
   return {
     event,

@@ -29,7 +29,7 @@ export function useAutomationRules() {
       eventType?: string;
       /** 用來標示 workers 會整條略過的規則 */
       conditions?: unknown;
-      /** 用來標示含系統尚未支援動作的規則（AUDIT AUTO-01） */
+      /** 組摘要句與標示 workers 會整條略過的規則 */
       actions?: unknown;
       isActive: boolean;
       stopOnMatch: boolean;

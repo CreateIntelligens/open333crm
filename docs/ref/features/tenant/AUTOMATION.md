@@ -14,7 +14,7 @@
 | `apps/workers` 的 `automation.handler.ts` | workers | 取出該事件的啟用規則、組出事實、評估條件、執行動作 |
 | `packages/automation` | 兩邊共用 | 規則契約（事件、事實、動作的定義）與規則引擎 |
 
-動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。workers 尚未實作的動作（`remove_tag`、`assign_bot`、`kb_auto_reply`、`llm_reply`；`create_case` 已於 2026-10-02 補上）列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`，編輯器不提供、存檔時拒絕，見 `../../system/AUDIT.md` 的 AUTO-01。
+動作只由 workers 的 `lib/automation-actions.ts` 執行。API 端原本的 `automation/engine/action-executor.ts` 自 2026-05-12 的 `9255245` 起沒有呼叫端，已於 2026-10-02 刪除。契約定義的動作，workers 都有實作。`assign_bot`、`kb_auto_reply`、`llm_reply` 從未實作，已於 2026-10-05 從契約拿掉（issue #197）。
 
 ## 一條規則由什麼組成
 
@@ -73,7 +73,7 @@
 
 ## 哪些動作會執行
 
-規則編輯器依契約提供動作。workers 只實作了一部分：
+規則編輯器依契約提供動作，workers 都有實作：
 
 | 動作 | workers 有實作 | 做什麼 |
 | --- | --- | --- |
@@ -86,14 +86,11 @@
 | `notify` 通知負責人 | 是 | 通知工單負責人 |
 | `notify_supervisor` 通知主管 | 是 | 通知所有 `ADMIN` 與 `SUPERVISOR` |
 | `create_case` 建立工單 | 是（#211） | 只在有對話的事件提供；在觸發的對話上建立工單，套用 SLA、關聯對話；對話已有未結案工單時不重複開 |
-| `remove_tag` 移除標籤 | **否** | 編輯器不提供，存檔時拒絕；既有規則執行時略過 |
-| `assign_bot` 指派機器人 | **否** | 同上 |
-| `kb_auto_reply` KB 知識庫回覆 | **否** | 同上 |
-| `llm_reply` LLM 智能回覆 | **否** | 同上 |
+| `remove_tag` 移除標籤 | 是（2026-10-05） | 刪除聯絡人身上、本租戶、`tagId` 或名稱相符的標籤，不限 scope（與 `add_tag` 對稱）；找不到時不做任何事、不建立標籤 |
 
-未實作的動作列在契約的 `UNSUPPORTED_AUTOMATION_ACTION_TYPES`。新增或修改規則時，API 拒絕含這些動作的規則。2026-10-02 之前建立的規則若含這些動作，仍然會執行其他動作，只略過這些動作；規則列表與編輯頁會標示「含未支援的動作」。見 `../../system/AUDIT.md` 的 AUTO-01。
+**已拿掉的動作。** `assign_bot`、`kb_auto_reply`、`llm_reply` 從未在 workers 實作，2026-10-05 從契約拿掉（issue #197）：機器人在負責的對話裡已會用知識庫與 AI 回覆，規則再觸發一次可能讓客人收到兩則回覆。契約以 `RETIRED_AUTOMATION_ACTIONS` 保留它們的中文名稱：新增或修改規則時，API 以「第 N 個動作「LLM 智能回覆」已停用，請刪除」拒絕，編輯頁列出「LLM 智能回覆（已停用）」。規則若還含這些動作，workers 驗證失敗、整條略過，規則列表標示「規則不會執行」。資料 migration `20261005100000_remove_retired_automation_actions` 在部署時清理既有規則：還有其他動作的規則移除這 3 種動作、繼續執行；只有這 3 種動作的規則停用，動作保留原樣。
 
-**編輯頁載入時移除契約外的動作。** 編輯既有規則時，編輯器依規則的觸發事件（`trigger.type`，沒有時用 `eventType`），移除契約沒有提供的所有動作：尚未支援的、不適用於這個事件的、契約從來沒有的舊動作（例如 UAT 舊規則的 `auto_assign`），以及格式錯誤的項目。編輯頁分兩類列出被移除的動作：尚未支援的動作只有自己不執行；其他動作會讓整條規則不執行，儲存後才恢復。改了觸發事件後不再顯示。實作在 `apps/web/src/lib/automation/rule-actions.ts` 的 `splitRuleActions`。
+**編輯頁載入時移除契約外的動作。** 編輯既有規則時，編輯器依規則的觸發事件（`trigger.type`，沒有時用 `eventType`），移除契約沒有提供的所有動作：不適用於這個事件的、已停用的（列為「LLM 智能回覆（已停用）」）、契約不認得的舊動作（例如 UAT 舊規則的 `auto_assign`，列為「未知動作（auto_assign）」），以及格式錯誤的項目。這些動作會讓整條規則不執行，編輯頁列出被移除的動作，儲存後恢復。改了觸發事件後不再顯示。實作在 `apps/web/src/lib/automation/rule-actions.ts` 的 `splitRuleActions`。
 
 **驗證錯誤訊息。** 契約驗證（`packages/automation/src/contracts/validation.ts`）的錯誤訊息一律中文，寫第幾個條件或動作，並用契約的中文名稱，例如「第 1 個動作「傳送訊息」不適用於「工單關閉」觸發」。條件依畫面順序編號，巢狀群組裡的條件連續計數。契約完全沒有的欄位或動作只有原始代碼，訊息會說明「不是系統提供的」，例如「第 2 個動作「auto_assign」不是系統提供的動作，請刪除」；編輯頁列為「未知動作（auto_assign）」。
 
@@ -141,7 +138,6 @@
 
 | 限制 | 說明 |
 | --- | --- |
-| **5 種動作沒有實作** | 新規則不能使用，既有規則執行時略過。詳見 `../../system/AUDIT.md` 的 AUTO-01 |
 | **部分觸發事件永遠不會觸發** | 詳見 `../../system/AUDIT.md` 的 AUTO-05 |
 | **關鍵字回覆在 Instagram 私訊與網站聊天室送不出去** | 規則不限渠道，命中時機器人讓步，但 workers 沒有這兩種渠道的外掛，客人收不到任何回覆。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | **關鍵字回覆頁承諾的兩項保護沒有生效** | 客服接手後仍會自動回覆，也沒有頻率上限。詳見 `../../system/AUDIT.md` 的 AUTO-04 |

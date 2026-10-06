@@ -1,65 +1,50 @@
 /**
- * workers 尚未支援的自動化動作：存檔時擋下、前端不提供、既有規則照常只跳過該動作（AUDIT AUTO-01）。
- * 原本這 5 種動作可以存檔、也會命中，workers 卻只記一行 info log 就略過，租戶以為規則有效。
+ * 從契約拿掉的自動化動作（change fix-automation-remaining-actions，AUDIT AUTO-01，issue #197）。
+ * remove_tag 已在 workers 補上；assign_bot、kb_auto_reply、llm_reply 從契約拿掉，
+ * 「尚未支援的動作」機制一併移除：已停用的動作存檔時以「已停用，請刪除」拒絕，契約保留它們的中文名稱。
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
+import * as automation from '@open333crm/automation';
 import {
+  AUTOMATION_ACTION_MAP,
   AUTOMATION_EVENT_NAMES,
-  UNSUPPORTED_AUTOMATION_ACTION_TYPES,
   composeAutomationContract,
-  findUnsupportedAutomationActions,
   getAutomationActionOptionsForEvent,
   validateAutomationRuleContract,
 } from '@open333crm/automation';
 
 const EVENT = AUTOMATION_EVENT_NAMES.MESSAGE_RECEIVED;
-const UNSUPPORTED = ['remove_tag', 'assign_bot', 'kb_auto_reply', 'llm_reply'];
+const RETIRED = ['assign_bot', 'kb_auto_reply', 'llm_reply'];
 
-test('不支援的動作清單就是這 4 種（create_case 已補上實作）', () => {
-  assert.deepEqual([...UNSUPPORTED_AUTOMATION_ACTION_TYPES].sort(), [...UNSUPPORTED].sort());
+test('契約不再定義 assign_bot、kb_auto_reply、llm_reply；remove_tag 照常提供', () => {
+  for (const t of RETIRED) assert.equal(AUTOMATION_ACTION_MAP.has(t), false, t);
+  const offered = getAutomationActionOptionsForEvent(EVENT).map((o) => o.value);
+  assert.ok(offered.includes('remove_tag'), 'remove_tag 已有實作，編輯器要提供');
+  assert.ok(composeAutomationContract(EVENT)!.actions.some((a) => a.type === 'remove_tag'));
 });
 
-test('規則編輯器的動作選項不含不支援的動作', () => {
-  const types = getAutomationActionOptionsForEvent(EVENT).map((o) => o.value);
-  for (const t of UNSUPPORTED) assert.ok(!types.includes(t), t);
-  assert.ok(types.includes('send_message'), '支援的動作照常提供');
-  const contractTypes = composeAutomationContract(EVENT)!.actions.map((a) => a.type);
-  for (const t of UNSUPPORTED) assert.ok(!contractTypes.includes(t), t);
+test('「尚未支援的動作」機制已移除；已停用的動作保留中文名稱，供訊息與畫面使用', () => {
+  const exported = automation as Record<string, unknown>;
+  assert.equal(exported.UNSUPPORTED_AUTOMATION_ACTION_TYPES, undefined);
+  assert.equal(exported.findUnsupportedAutomationActions, undefined);
+  assert.deepEqual([...automation.RETIRED_AUTOMATION_ACTIONS], [
+    ['assign_bot', '指派機器人'],
+    ['kb_auto_reply', 'KB 知識庫回覆'],
+    ['llm_reply', 'LLM 智能回覆'],
+  ]);
 });
 
-test('存檔驗證：含不支援的動作就拒絕，訊息說明是哪個動作', () => {
+test('Unsupported action is rejected：含 llm_reply 的規則以「已停用」拒絕，訊息用中文名稱', () => {
   const result = validateAutomationRuleContract({
     eventName: EVENT,
     conditions: { all: [] },
     actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'llm_reply', params: {} }],
   });
-  assert.equal(result.valid, false);
-  assert.ok(result.errors.some((e) => e.includes('LLM 智能回覆') && e.includes('尚未支援')), result.errors.join('; '));
+  assert.deepEqual(result.errors, ['第 2 個動作「LLM 智能回覆」已停用，請刪除']);
 });
 
-test('執行時（workers）：既有規則照常通過驗證，只在執行時跳過不支援的動作', () => {
-  const result = validateAutomationRuleContract({
-    eventName: EVENT,
-    conditions: { all: [] },
-    actions: [{ type: 'send_message', params: { text: 'hi' } }, { type: 'llm_reply', params: {} }],
-    options: { allowUnsupportedActions: true },
-  });
-  assert.deepEqual(result, { valid: true, errors: [] });
-});
-
-test('找出規則中不支援的動作（給規則列表與編輯頁提示用）', () => {
-  assert.deepEqual(
-    findUnsupportedAutomationActions([{ type: 'send_message' }, { type: 'remove_tag' }, { type: 'llm_reply' }, 'bad']),
-    [
-      { type: 'remove_tag', label: '移除標籤' },
-      { type: 'llm_reply', label: 'LLM 智能回覆' },
-    ],
-  );
-  assert.deepEqual(findUnsupportedAutomationActions(undefined), []);
-});
-
-test('既有規則含不支援的動作：只改啟用狀態或名稱照常成功（停用壞掉的規則不能被擋）；改動作才驗證', async () => {
+test('Disabling a rule that contains an unsupported action：只改啟用狀態或名稱照常成功；改動作才驗證', async () => {
   const { updateRule } = await import('#src/modules/automation/automation.service.js');
   const existing = {
     id: 'r1',
@@ -84,7 +69,7 @@ test('既有規則含不支援的動作：只改啟用狀態或名稱照常成�
   assert.equal(updates.length, 2);
   await assert.rejects(
     () => updateRule(prisma, 'r1', 't1', { actions: [{ type: 'llm_reply', params: {} }] }),
-    /尚未支援/,
+    /已停用/,
   );
 });
 

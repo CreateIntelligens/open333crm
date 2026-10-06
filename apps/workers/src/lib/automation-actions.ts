@@ -251,6 +251,30 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
+      if (action.type === 'remove_tag') {
+        // 移除觸發對象（聯絡人）身上、本租戶、ID 或名稱相符的標籤。和 add_tag 不同：找不到時什麼都不做、不建立標籤。
+        // 不限 scope：add_tag 依名稱找標籤時不分 scope（AUDIT AUTO-03），它貼上的標籤要能用同名的 remove_tag 移除
+        const rawTagId = params['tagId'];
+        const rawTagName = params['tagName'];
+        const tagId = typeof rawTagId === 'string' && rawTagId ? rawTagId : null;
+        const tagName = typeof rawTagName === 'string' && rawTagName.trim() ? rawTagName.trim() : null;
+        if (!tagId && !tagName) {
+          logger.info('[automation] Worker action "remove_tag" skipped: missing tagId/tagName');
+          continue;
+        }
+        if (!context.contactId) {
+          logger.info('[automation] Worker action "remove_tag" skipped: no contact in context');
+          continue;
+        }
+        const removed = await prisma.contactTag.deleteMany({
+          where: tagId
+            ? { contactId: context.contactId, tagId, tag: { tenantId: context.tenantId } }
+            : { contactId: context.contactId, tag: { tenantId: context.tenantId, name: tagName! } },
+        });
+        logger.info(`[automation] remove_tag: removed ${removed.count} tag(s) from contact ${context.contactId}`);
+        continue;
+      }
+
       if (action.type === 'update_case_status') {
         const status = params['status'];
         if (typeof status === 'string' && status && context.caseId) {
@@ -394,7 +418,7 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
-      // 規則編輯頁與列表會標示含不支援動作的規則（AUDIT AUTO-01）；這裡留 warn 供追查
+      // 契約定義的動作都有分支；走到這裡代表契約與 workers 不一致（驗證已擋下契約外的動作），留 warn 供追查
       logger.warn(`[automation] Unsupported worker action "${action.type}" skipped`);
     } catch (err) {
       logger.error(`[automation] Worker action "${action.type}" failed`, { err });

@@ -37,9 +37,11 @@ The system SHALL support evaluating complex boolean conditions on message, conta
 - **THEN** the API rejects the rule with a validation error and does not persist the invalid condition
 
 ### Requirement: Actions
-The system SHALL support automation actions such as `add_tag`, `send_message`, `update_case_status`, and `notify_supervisor`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations. Actions accepted from the frontend SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested.
+The system SHALL support the automation actions defined in the contract `AUTOMATION_ACTION_DEFINITIONS`, such as `add_tag`, `remove_tag`, `send_message`, `create_case`, `update_case_status`, and `notify_supervisor`. The system SHALL persist automation rule actions using the `actions` JSON field in the Prisma `AutomationRule` model. The field SHALL NOT be written using any alias such as `actionsJson` in database operations. Actions accepted from the frontend SHALL be validated against the composed automation contract for the selected event before an active rule is saved or tested. `create_case` SHALL require the contact and conversation scopes, so it is offered only for message, postback, keyword and conversation-created events.
 
-Actions that the workers do not implement yet SHALL be listed in `UNSUPPORTED_AUTOMATION_ACTION_TYPES` (`create_case`, `remove_tag`, `assign_bot`, `kb_auto_reply`, `llm_reply`). The rule editor SHALL NOT offer them, and the API SHALL reject a new or modified rule that contains them. The workers SHALL still run the other actions of an existing rule that contains them, skip only those actions, and the rule list and editor SHALL mark such rules. Updating only the active state, name, description or priority of a rule SHALL NOT re-validate its contract.
+`remove_tag` SHALL remove from the contact the tags of the tenant that match `tagId` or the name, whatever their scope, so that a tag attached by `add_tag` can be removed by the same name. When the contact has no such tag, `remove_tag` SHALL do nothing and SHALL NOT create a tag.
+
+The contract SHALL NOT define `assign_bot`, `kb_auto_reply` or `llm_reply`, and SHALL keep their Traditional Chinese labels in `RETIRED_AUTOMATION_ACTIONS` so that errors and the editor do not show the raw type. The API SHALL reject a new or modified rule that contains an action the contract does not define, and the workers SHALL skip an existing rule that contains one. A database migration SHALL remove these three actions from existing rules when the code is deployed, and SHALL deactivate a rule whose only actions are these, keeping its actions unchanged. Updating only the active state, name, description or priority of a rule SHALL NOT re-validate its contract.
 
 #### Scenario: Auto-tagging
 - **WHEN** a rule with `add_tag("hot_lead")` matches
@@ -57,21 +59,45 @@ Actions that the workers do not implement yet SHALL be listed in `UNSUPPORTED_AU
 - **WHEN** the frontend or API submits an action whose required context is not available for the selected event
 - **THEN** the API rejects the rule with a validation error and does not persist the invalid action
 
+#### Scenario: Create case is offered only for events with a conversation
+- **WHEN** an administrator edits a rule triggered by `case.created`, an SLA event or a contact event
+- **THEN** the editor does not offer「建立工單」, and the API rejects a rule that contains it
+
 #### Scenario: Unsupported action is rejected
-- **WHEN** an administrator creates or modifies a rule whose actions include `create_case`
-- **THEN** the API returns HTTP 400 with a message that「建立工單」is not supported for automatic execution yet
+- **WHEN** an administrator creates or modifies a rule whose second action is `llm_reply`
+- **THEN** the API returns HTTP 400 with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
 
 #### Scenario: Existing rule still runs its other actions
-- **WHEN** an existing active rule contains `send_message` and `create_case`, and its conditions match
-- **THEN** the workers run `send_message`, skip `create_case`, and do not skip the whole rule
+- **WHEN** an existing active rule contains `send_message` and `remove_tag`, and its conditions match
+- **THEN** the workers run both actions
 
 #### Scenario: Disabling a rule that contains an unsupported action
-- **WHEN** an administrator changes only the active state or name of a rule that contains an unsupported action
+- **WHEN** an administrator changes only the active state or name of a rule that contains `llm_reply`
 - **THEN** the update succeeds
 
 #### Scenario: Rule list marks the rule
-- **WHEN** a rule contains an unsupported action
-- **THEN** the rule list shows「含未支援的動作」next to it, and the editor explains which actions will not run and will be removed on save
+- **WHEN** a rule contains `llm_reply`
+- **THEN** the rule list shows「規則不會執行」next to it, and the editor lists「LLM 智能回覆（已停用）」and says that the whole rule does not run until it is saved
+
+#### Scenario: Remove tag by name
+- **WHEN** a rule with `remove_tag("VIP")` matches and the contact has the `CONTACT`-scope tag「VIP」
+- **THEN** the tag is removed from the contact
+
+#### Scenario: Remove a tag that does not exist
+- **WHEN** a rule with `remove_tag("不存在的標籤")` matches
+- **THEN** the workers skip the action and do not create a tag
+
+#### Scenario: Remove a tag of another scope added by add_tag
+- **WHEN** `add_tag("VIP")` attached a `CASE`-scope tag「VIP」to the contact, and a rule with `remove_tag("VIP")` matches
+- **THEN** the tag is removed from the contact
+
+#### Scenario: Migration cleans existing rules
+- **WHEN** the migration runs on a rule whose actions are `send_message` and `assign_bot`, and on an active rule whose only action is `llm_reply`
+- **THEN** the first rule keeps only `send_message`, and the second rule becomes inactive with its actions unchanged
+
+#### Scenario: Retired action in an existing rule
+- **WHEN** an existing active rule contains `send_message` and `llm_reply`, and its conditions match
+- **THEN** the workers skip the whole rule and log the validation error
 
 ### Requirement: Worker-Owned Automation Triggering
 The automation engine SHALL use the BullMQ worker path for event-triggered automation rule evaluation. When the API's EventBus automation subscriber fires, it SHALL enqueue a job on the `automation` BullMQ queue with the trigger event name and entity context as the job payload. The API process SHALL NOT call `triggerAutomation()` inline from event subscribers. The standalone worker process consumes this job, builds automation facts using its own `PrismaClient` instance, evaluates rule conditions with `json-rules-engine`, and executes actions only for matched rules.
@@ -309,7 +335,7 @@ The automation rule list SHALL show every rule of the tenant, however many rules
 - **THEN** the rule list shows a load error instead of the empty state
 
 ### Requirement: Rule Editor Loads Only Contract Actions
-When the rule editor loads an existing rule, it SHALL drop every action that the contract of the rule's event does not offer, including entries that are not valid action objects, and it SHALL list the dropped actions with their labels, or as「未知動作（<type>）」when the contract does not define the action. The editor SHALL tell apart actions that the workers skip one by one (`UNSUPPORTED_AUTOMATION_ACTION_TYPES` that the event offers) from actions that make the workers skip the whole rule. The editor SHALL read the rule's event from `trigger.type`, then `eventType`. The list of dropped actions SHALL be shown only while the selected event is the stored event.
+When the rule editor loads an existing rule, it SHALL drop every action that the contract of the rule's event does not offer, including entries that are not valid action objects, and it SHALL list the dropped actions with their labels, as「<label>（已停用）」for an action in `RETIRED_AUTOMATION_ACTIONS`, or as「未知動作（<type>）」when the contract does not know the action. Because the workers skip a rule that contains such an action, the editor SHALL say that the whole rule does not run until it is saved. The editor SHALL read the rule's event from `trigger.type`, then `eventType`. The list of dropped actions SHALL be shown only while the selected event is the stored event.
 
 #### Scenario: Rule contains an action outside the contract
 - **WHEN** an administrator opens a `message.received` rule whose actions are `send_message` and `auto_assign`
@@ -321,14 +347,14 @@ When the rule editor loads an existing rule, it SHALL drop every action that the
 
 #### Scenario: Rule contains an unsupported action
 - **WHEN** an administrator opens a `message.received` rule whose actions include `llm_reply`
-- **THEN** the editor drops `llm_reply` and says that the other actions still run
+- **THEN** the editor drops `llm_reply`, lists it as「LLM 智能回覆（已停用）」, and says that the whole rule does not run until it is saved
 
 #### Scenario: Rule has no trigger type
 - **WHEN** an administrator opens a rule whose `trigger` has no `type` and whose `eventType` is `case.created`
 - **THEN** the editor filters the actions against the `case.created` contract
 
 ### Requirement: Rule List Marks Rules The Workers Skip
-The rule list SHALL mark each rule that fails contract validation with the options that the workers use (`allowUnsupportedActions`), because the workers skip such a rule entirely and record the reason only in a log. The mark SHALL show the validation errors.
+The rule list SHALL mark each rule that fails contract validation, because the workers skip such a rule entirely and record the reason only in a log. The mark SHALL show the validation errors.
 
 #### Scenario: Rule contains an action outside the contract
 - **WHEN** an active `message.received` rule contains `auto_assign`
@@ -336,7 +362,7 @@ The rule list SHALL mark each rule that fails contract validation with the optio
 
 #### Scenario: Rule contains only unsupported actions besides valid ones
 - **WHEN** an active `message.received` rule contains `send_message` and `llm_reply`
-- **THEN** the rule list shows「含未支援的動作」and does not show「規則不會執行」
+- **THEN** the rule list shows「規則不會執行」, with the error「第 2 個動作「LLM 智能回覆」已停用，請刪除」
 
 ### Requirement: Rule Summary Sentence
 The rule list and the rule editor SHALL describe each rule in one Traditional Chinese sentence built from the contract labels: 「當<event>時，如果<conditions>，就<actions>」. Conditions in an `all` group SHALL be joined by「，而且」and in an `any` group by「，或」, with nested groups in parentheses. A rule with no conditions SHALL read「當<event>時，就<actions>」. For a `keyword.matched` rule with keywords, the event part SHALL name the keywords:「訊息含有「A」或「B」」for match mode `any` and「訊息同時含有「A」和「B」」for `all`. A condition node that the summary cannot describe, such as `not`, SHALL be shown as「（無法顯示的條件）」and SHALL NOT be dropped. Each action SHALL show its label and, when it has one, its main text parameter in「」. A parameter that holds an ID, such as `materialId` or `agentId`, SHALL NOT be shown.
@@ -428,4 +454,34 @@ Creating a rule SHALL store the active state that the request sends in `isActive
 #### Scenario: Client that does not send the active state
 - **WHEN** an API client creates a rule without `isActive`
 - **THEN** the rule is created active
+
+### Requirement: 自動化建立工單
+規則的 `create_case` 動作 SHALL 在觸發的對話上建立工單：套用同優先度的 SLA 政策、對話關聯到新工單、寫入 `actorType: automation` 的工單事件、推播並發出 `case.created`；分類 SHALL 只接受系統分類清單內的值。觸發事件為工單或 SLA 相關、沒有對話、或對話已有未結案工單時 SHALL NOT 建立。
+
+#### Scenario: 關鍵字命中時建立工單
+- **WHEN** 規則「關鍵字命中『客訴』→ 建立工單（標題『客訴』、優先度 HIGH）」命中，對話尚未關聯工單
+- **THEN** 建立一張 OPEN 工單，渠道與聯絡人取自該對話，套用 HIGH 的 SLA 政策，對話關聯到這張工單
+
+#### Scenario: 對話已有未結案工單
+- **WHEN** 對話已關聯一張處理中的工單，規則再次命中
+- **THEN** 不建立新工單
+
+#### Scenario: 原工單已結案
+- **WHEN** 對話關聯的工單已結案，規則再次命中
+- **THEN** 建立新工單，對話改關聯到新工單
+
+#### Scenario: 工單事件觸發
+- **WHEN** 觸發事件是 `case.created` 等工單或 SLA 事件
+- **THEN** 不建立工單；規則編輯器在這些事件也不提供「建立工單」
+
+#### Scenario: 並行處理同一段對話
+- **WHEN** 兩個 worker 幾乎同時對同一段尚無工單的對話執行建立工單
+- **THEN** 只有一張工單被建立並關聯，另一個回滾、不留下工單
+
+### Requirement: 新工單的自動分類不覆蓋既有分類
+API 收到 `case.created` 時 SHALL 只在工單尚無分類時，依對話最新的顧客訊息自動分類。
+
+#### Scenario: 已有分類
+- **WHEN** 客服手動建單時選了分類，或自動化規則指定了分類
+- **THEN** 不執行自動分類，分類維持原值
 

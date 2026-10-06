@@ -12,15 +12,12 @@ import { agentOptions, selectOptionsForParam } from '@/lib/automation/rule-actio
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
-  { value: 'llm_reply', label: 'LLM 智能回覆' },
-  { value: 'kb_auto_reply', label: 'KB 知識庫回覆' },
   { value: 'create_case', label: '建立工單' },
   { value: 'update_case_status', label: '更新工單狀態' },
   { value: 'escalate_case', label: '升級工單' },
   { value: 'add_tag', label: '新增標籤' },
   { value: 'remove_tag', label: '移除標籤' },
   { value: 'assign_agent', label: '指派客服' },
-  { value: 'assign_bot', label: '指派機器人' },
   { value: 'notify', label: '傳送通知' },
   { value: 'notify_supervisor', label: '通知主管' },
 ];
@@ -151,22 +148,6 @@ function ActionParamsForm({
           onChange={(v) => updateParam('text', v)}
           placeholder="輸入要發送的訊息..."
         />
-      );
-
-    case 'llm_reply':
-      return (
-        <PayloadField
-          label="系統提示（選填）"
-          value={(payload.systemPrompt as string) || ''}
-          onChange={(v) => updateParam('systemPrompt', v)}
-          placeholder="自訂 LLM 系統提示，留空使用預設..."
-        />
-      );
-
-    case 'kb_auto_reply':
-    case 'assign_bot':
-      return (
-        <p className="text-xs text-muted-foreground">此動作無需額外參數</p>
       );
 
     case 'add_tag':
