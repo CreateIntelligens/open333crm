@@ -113,9 +113,11 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     });
     if (!run) return reply.status(404).send({ code: 'NOT_FOUND', message: '找不到此執行紀錄，可能已過保留期限' });
     // 執行紀錄含對話內容（finalText、工具參數與結果），關聯的對話渠道不可見時回 404（AUDIT RBAC-04）
-    if (run.conversationId) {
-      await assertConversationChannelVisible(request, run.conversationId, 'read_only');
+    const { conversationId, ...body } = run;
+    if (conversationId) {
+      await assertConversationChannelVisible(request, conversationId, 'read_only');
     }
-    return reply.send(success(run));
+    // conversationId 只用於上面的檢查，回應維持原本的欄位
+    return reply.send(success(body));
   });
 }

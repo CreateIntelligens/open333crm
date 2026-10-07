@@ -15,10 +15,12 @@ const serviceCalls: string[] = [];
 const RUN_HIDDEN = '33333333-3333-4333-8333-333333333333';
 const RUN_VISIBLE = '44444444-4444-4444-8444-444444444444';
 const RUN_NO_CONV = '55555555-5555-4555-8555-555555555555';
-const runs = new Map<string, { id: string; conversationId: string | null; finalText: string }>([
-  [RUN_HIDDEN, { id: RUN_HIDDEN, conversationId: HIDDEN_ID, finalText: 'secret' }],
-  [RUN_VISIBLE, { id: RUN_VISIBLE, conversationId: VISIBLE_ID, finalText: 'ok' }],
-  [RUN_NO_CONV, { id: RUN_NO_CONV, conversationId: null, finalText: 'manual' }],
+const RUN_OTHER_TENANT = '66666666-6666-4666-8666-666666666666';
+const runs = new Map<string, { id: string; tenantId: string; conversationId: string | null; finalText: string }>([
+  [RUN_HIDDEN, { id: RUN_HIDDEN, tenantId: 'tenant-1', conversationId: HIDDEN_ID, finalText: 'secret' }],
+  [RUN_VISIBLE, { id: RUN_VISIBLE, tenantId: 'tenant-1', conversationId: VISIBLE_ID, finalText: 'ok' }],
+  [RUN_NO_CONV, { id: RUN_NO_CONV, tenantId: 'tenant-1', conversationId: null, finalText: 'manual' }],
+  [RUN_OTHER_TENANT, { id: RUN_OTHER_TENANT, tenantId: 'tenant-2', conversationId: null, finalText: 'other-tenant' }],
 ]);
 
 vi.mock('#src/services/channel-visibility.js', () => ({
@@ -51,7 +53,13 @@ async function buildApp() {
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => {
     request.agent = { id: 'agent-1', tenantId: 'tenant-1' };
-    request.tenantPrisma = { agentRun: { findFirst: async ({ where }: any) => runs.get(where.id) ?? null } };
+    request.tenantPrisma = { agentRun: { findFirst: async ({ where }: any) => {
+      const run = runs.get(where.id);
+      // 模擬 Prisma：只有 id 與 tenantId 都符合才回傳
+      if (!run || run.tenantId !== where.tenantId) return null;
+      const { tenantId: _t, ...selected } = run;
+      return selected;
+    } } };
   });
   app.decorateRequest('tenantPrisma', null);
   app.setErrorHandler((err: any, _req, reply) => {
@@ -113,6 +121,8 @@ test('/agent/runs/:id：關聯可見對話的執行紀錄照常回傳', async ()
   const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_VISIBLE}` });
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().data.finalText, 'ok');
+  // conversationId 只用於檢查，不加進回應
+  assert.equal('conversationId' in res.json().data, false);
 });
 
 test('/agent/runs/:id：沒有關聯對話的執行紀錄不檢查渠道', async () => {
@@ -120,4 +130,11 @@ test('/agent/runs/:id：沒有關聯對話的執行紀錄不檢查渠道', async
   const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_NO_CONV}` });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(guardCalls, []);
+});
+
+test('/agent/runs/:id：其他租戶的執行紀錄回 404', async () => {
+  const app = await buildApp();
+  const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_OTHER_TENANT}` });
+  assert.equal(res.statusCode, 404);
+  assert.ok(!res.body.includes('other-tenant'));
 });
