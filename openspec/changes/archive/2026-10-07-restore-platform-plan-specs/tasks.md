@@ -8,10 +8,12 @@
 - `audit`：`apps/api/tests/unit/modules/platform/platform-audit-routes.test.ts`
 - `limits`：`apps/api/tests/unit/modules/platform/plan-limits.test.ts`
 - `page`：`apps/web/tests/unit/app/admin/plans-page.test.tsx`
+- `channel`：`apps/api/tests/unit/modules/channel/channel-plan-limits.test.ts`
 
 | 主規格 | 需求 | 情境 | 測試 |
 | --- | --- | --- | --- |
 | `platform-auth` | 平台操作稽核 | 改 plan 留稽核 | `audit` |
+| `platform-auth` | 平台操作稽核 | 列出的寫入操作都寫入稽核 | `audit`：逐條打 22 種寫入請求 |
 | `platform-auth` | 平台操作稽核 | 開通租戶的稽核不含管理員密碼 | `audit` |
 | `platform-auth` | 平台操作稽核 | 更新平台設定的稽核不含設定值 | `audit` |
 | `tenant-plan` | 平台變更租戶的方案 | 變更方案後立即生效 | `plan` |
@@ -29,13 +31,17 @@
 | `plan-limits-core` | 有效上限解析 | 無 plan 無上限 | `limits` |
 | `plan-limits-core` | 有效上限解析 | 覆寫成 null 時沒有上限 | `limits` |
 | `plan-limits-core` | 有效上限解析 | 方案沒有設定這個上限 | `limits` |
+| `granular-plan-entitlement` | 渠道數量上限 | 達渠道數上限擋新建 | `channel` |
+| `granular-plan-entitlement` | 渠道數量上限 | 無上限不擋 | `channel` |
+| `granular-plan-entitlement` | 渠道數量上限 | 停用的渠道不計數 | `channel` |
+| `granular-plan-entitlement` | 渠道數量上限 | 租戶覆寫渠道數上限 | `channel` |
 
 - [x] 1.1 寫上表的測試
 - [x] 1.2 執行 `pnpm test`
 
 ## 2. 突變驗證
 
-每個突變改壞一處程式，執行對應的測試，確認測試失敗，再還原程式。22 個突變都讓測試失敗。
+每個突變改壞一處程式，執行對應的測試，確認測試失敗，再還原程式。33 個突變都讓測試失敗。
 
 | 情境 | 突變 | 結果 |
 | --- | --- | --- |
@@ -61,6 +67,17 @@
 | 無 plan 無上限 | 沒有方案時上限為 0 | 失敗 |
 | 覆寫成 null 時沒有上限 | 覆寫成 null 時改用方案的值 | 失敗 |
 | 方案沒有設定這個上限 | 方案沒有這個 key 時上限為 0 | 失敗 |
+| 列出的寫入操作都寫入稽核 | 合約日期的 action 改名 | 失敗 |
+| 列出的寫入操作都寫入稽核 | 駁回方案申請不寫稽核 | 失敗 |
+| 列出的寫入操作都寫入稽核 | 把試用申請標為失敗時不寫稽核 | 失敗 |
+| 列出的寫入操作都寫入稽核 | 重寄平台帳號的開通信時不寫稽核 | 失敗 |
+| 列出的寫入操作都寫入稽核 | 自助改密碼時不寫稽核 | 失敗 |
+| 列出的寫入操作都寫入稽核 | 停用平台帳號記成啟用 | 失敗 |
+| 達渠道數上限擋新建 | 不檢查渠道數上限 | 失敗 |
+| 達渠道數上限擋新建 | 渠道數等於上限時放行 | 失敗 |
+| 無上限不擋 | 沒有上限時當成 0 | 失敗 |
+| 停用的渠道不計數 | 停用的渠道也計數 | 失敗 |
+| 租戶覆寫渠道數上限 | 不採用租戶的覆寫 | 失敗 |
 
 「升回原方案後恢復權限」的突變一開始沒有讓測試失敗：角色權限的快取仍然含被刪除的權限。測試改成升回之後先清除快取，確認權限來自角色仍然保留的設定。
 

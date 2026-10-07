@@ -15,6 +15,10 @@ payload MUST NOT 含密碼，也 MUST NOT 含平台設定的值。
 - **WHEN** superuser 更新 trial plan 的 limits
 - **THEN** MUST 新增一筆 PlatformAuditLog，action 含 plan 更新與目標 plan id
 
+#### Scenario: 列出的寫入操作都寫入稽核
+- **WHEN** 平台管理員執行上列任一種寫入操作，操作成功
+- **THEN** API 寫入一筆稽核，platformUserId 是這位平台管理員，action 對應這種操作
+
 #### Scenario: 開通租戶的稽核不含管理員密碼
 - **WHEN** 平台管理員以 `POST /api/v1/platform/tenants` 開通租戶，body 含管理員的密碼
 - **THEN** API 寫入 action 為 `tenant.provision` 的稽核，payload 只含方案的 slug 與租戶名稱

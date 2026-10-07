@@ -10,11 +10,12 @@ change `platform-control-plane` 在 `aa274cf0` 以改名的方式搬進 `archive
 
 ## What Changes
 
-- `platform-auth`：修改「平台操作稽核」，列出實際寫稽核的操作，並規定 payload 不含密碼與平台設定的值。
+- `platform-auth`：修改「平台操作稽核」，列出實際寫稽核的操作，並規定 payload 不含密碼與平台設定的值。新增情境「列出的寫入操作都寫入稽核」，測試逐條打每種寫入請求。
 - `tenant-plan`：
   - 新增「平台變更租戶的方案」：方案變更後立即生效；降級不刪除角色的權限設定，升回後恢復；寫入稽核。
   - 修改「功能天花板交集」：新增情境「方案的 features 不含 core」。
   - 修改「方案管理 API」：平台後台的方案設定頁不能取消 `core`。
+- `granular-plan-entitlement`：修改「渠道數量上限」。原本的 `limitOverrides.maxChannels ?? plan.limits.maxChannels` 與 `plan-limits-core` 的問題相同，改為引用「有效上限解析」；另寫明只計算啟用中的渠道，新增情境「停用的渠道不計數」「租戶覆寫渠道數上限」。
 - `plan-limits-core`：修改「有效上限解析」。解析規則改寫成依「覆寫有沒有這個 key」判斷，不再寫成 `??` 公式與函式簽名。新增情境：沒有覆寫時採用方案的值；租戶覆寫成 null 時沒有上限；方案沒有設定某個上限時也沒有上限。
 
 ### 歸檔需求的處理方式
@@ -62,6 +63,7 @@ change `platform-control-plane` 在 `aa274cf0` 以改名的方式搬進 `archive
 - `platform-auth`：平台操作稽核的範圍與 payload 內容。
 - `tenant-plan`：平台變更租戶的方案、core 恆開。
 - `plan-limits-core`：覆寫成 null 與方案沒有設定時的有效上限。
+- `granular-plan-entitlement`：渠道數量上限改為引用有效上限解析，只計算啟用中的渠道。
 
 ## Impact
 
