@@ -122,7 +122,7 @@ export async function verifyWebhookRequest(
     try {
       signatureOk = plugin.verifySignature(rawBody, headers, secret);
     } catch (err) {
-      logger.warn('[Webhook] Signature verification threw', { channelId, channelType, error: (err as Error)?.message });
+      logger.warn('[Webhook] Signature verification threw', { channelId, channelType, error: err instanceof Error ? err.message : String(err) });
     }
   }
   if (!signatureOk) {
