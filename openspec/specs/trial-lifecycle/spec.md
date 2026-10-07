@@ -42,13 +42,12 @@
 - **AND** 其渠道 inbound 訊息 MUST 被丟棄且資料完整保留
 
 ### Requirement: 試用 token 額度硬擋（簡化版）
-`generateReply()` 呼叫 LLM 前，若租戶有效 `monthlyTokens` 非無上限，MUST 檢查當月 AiUsage 的 totalTokens 加總；已達上限 MUST 擋下 AI 回覆並回 `PLAN_LIMIT_EXCEEDED`。真人回覆 MUST 不受影響。無上限（null 或無 plan）MUST NOT 檢查。
+試用租戶的 AI 月額度 SHALL 與其他租戶相同，由 `token-quota` 的「呼叫 LLM 之前檢查月額度」執行。本月用量達到試用方案的有效 `monthlyTokens` 時，系統 MUST NOT 呼叫 LLM，MUST 拋出 `PLAN_LIMIT_EXCEEDED`。
 
 #### Scenario: 試用租戶用盡 token
-- **GIVEN** trial 方案 monthlyTokens=200000，某試用租戶當月 AiUsage 加總已達 200000
+- **GIVEN** trial 方案 monthlyTokens=200000，某試用租戶本月的用量已達 200000
 - **WHEN** 新的 inbound 訊息觸發 AI 自動回覆
 - **THEN** LLM MUST NOT 被呼叫，錯誤 MUST 為 PLAN_LIMIT_EXCEEDED
-- **AND** 客服人員手動回覆 MUST 照常送出
 
 ### Requirement: 轉為付費方案時脫離試用
 試用租戶是 `trialEndsAt` 不是 null 的租戶。下列兩個操作 MUST 讓試用租戶脫離試用：
