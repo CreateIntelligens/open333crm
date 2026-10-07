@@ -27,7 +27,8 @@ export function ContactEmailField({ contactId, email, onUpdate, onRequestMerge }
   const [value, setValue] = useState(email ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<{ id: string; displayName: string } | null>(null);
+  // id 為 null：對方只在看不到的渠道有身分，後端不回傳對方資料，只能仍要儲存或取消
+  const [conflict, setConflict] = useState<{ id: string | null; displayName: string } | null>(null);
 
   const reset = () => {
     setEditing(false);
@@ -46,8 +47,12 @@ export function ContactEmailField({ contactId, email, onUpdate, onRequestMerge }
       onUpdate();
     } catch (err) {
       const details = getApiErrorDetails(err);
-      if (getApiErrorCode(err) === 'EMAIL_IN_USE' && typeof details?.contactId === 'string') {
-        setConflict({ id: details.contactId, displayName: String(details.displayName ?? '未命名') });
+      if (getApiErrorCode(err) === 'EMAIL_IN_USE') {
+        setConflict(
+          typeof details?.contactId === 'string'
+            ? { id: details.contactId, displayName: String(details.displayName ?? '未命名') }
+            : { id: null, displayName: '' },
+        );
       } else {
         setError(getApiErrorMessage(err, '儲存 email 失敗，請稍後重試'));
       }
@@ -103,12 +108,20 @@ export function ContactEmailField({ contactId, email, onUpdate, onRequestMerge }
       {error && <p className="text-xs text-destructive">{error}</p>}
       {conflict && (
         <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-          <p>
-            這個 email 已由聯絡人「{conflict.displayName}」使用。如果是同一個人，可以把兩位聯絡人合併，合併後兩邊的對話會整合在一起。
-          </p>
+          {conflict.id ? (
+            <p>
+              這個 email 已由聯絡人「{conflict.displayName}」使用。如果是同一個人，可以把兩位聯絡人合併，合併後兩邊的對話會整合在一起。
+            </p>
+          ) : (
+            <p>這個 email 已由其他聯絡人使用，該聯絡人不在你可查看的渠道中。可以仍要儲存（不合併）或取消。</p>
+          )}
           <div className="flex flex-wrap gap-2">
-            {canMerge && (
-              <Button size="sm" disabled={saving} onClick={() => onRequestMerge(conflict, value.trim())}>
+            {canMerge && conflict.id && (
+              <Button
+                size="sm"
+                disabled={saving}
+                onClick={() => onRequestMerge({ id: conflict.id!, displayName: conflict.displayName }, value.trim())}
+              >
                 與「{conflict.displayName}」合併
               </Button>
             )}

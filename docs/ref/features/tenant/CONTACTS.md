@@ -45,7 +45,7 @@
 | `channelType` | 只列出在這個渠道類型有身分的聯絡人 |
 | `excludeChannelType` | 排除這些渠道類型的身分 |
 
-`PATCH /contacts/:id` 可以改名稱、電話、email、語言與 `isBlocked`。email 改成同租戶另一位未封存聯絡人已使用的 email 時，回 409 `EMAIL_IN_USE`，`details` 帶對方的 `contactId` 與 `displayName`，不更改資料。聯絡人頁據此讓客服選擇：合併（要 `contact.merge`，經合併預覽，來源 `MANUAL`，合併後再寫入 email）、仍要儲存（帶 `allowDuplicateEmail: true` 重送，不合併）或取消。`isBlocked` 沒有任何程式讀取，設成 `true` 不會擋下訊息、機器人或群發，見 `../../system/AUDIT.md` 的 DB-04。
+`PATCH /contacts/:id` 可以改名稱、電話、email、語言與 `isBlocked`。email 改成同租戶另一位未封存聯絡人已使用的 email 時，回 409 `EMAIL_IN_USE`，`details` 帶對方的 `contactId` 與 `displayName`，不更改資料；對方只在成員看不到的渠道有身分時不帶 `details`，聯絡人頁只提供仍要儲存或取消。email 沒有改變（不分大小寫）時不檢查。聯絡人頁據此讓客服選擇：合併（要 `contact.merge`，經合併預覽，來源 `MANUAL`，合併後再寫入 email）、仍要儲存（帶 `allowDuplicateEmail: true` 重送，不合併）或取消。`isBlocked` 沒有任何程式讀取，設成 `true` 不會擋下訊息、機器人或群發，見 `../../system/AUDIT.md` 的 DB-04。
 
 聯絡人詳情頁另外提供該聯絡人的對話、工單與時間軸。時間軸合併了對話、工單與標籤的紀錄。
 
@@ -83,7 +83,7 @@
 3. 登記頁（`GET /api/v1/public/email-registration/:token`）只顯示渠道與客人在該渠道的名稱。客人送出 email（`POST` 同一網址），格式錯誤回 400、連結仍有效；連結不存在、過期、已使用或租戶已關閉功能都回 410。公開端點每個 IP 每分鐘 20 次。查詢以 `withTenant` 綁定 token 的租戶，不使用 `prismaAdmin`。
 4. email 去除空白、轉小寫後比對同租戶未封存的其他聯絡人：
    - 沒有：寫到這位聯絡人（覆蓋原值），對話回覆已登記。
-   - 有：不經人工確認，把這位聯絡人併入對方（多位時併入最早建立的一位），來源 `EMAIL`，並寫入 `IdentityMap`（`EMAIL_MATCH`）。登記的對話，以及對方最近一段對話，各收到一則整合通知。
+   - 有：不經人工確認，把這位聯絡人併入使用這個 email、最早建立的一位（最早的就是登記者自己時不合併），來源 `EMAIL`，並寫入 `IdentityMap`（`EMAIL_MATCH`）。登記的對話，以及對方最近一段對話，各收到一則整合通知。
    - 雙方在同一個渠道都有身分：不合併、不寫入 email，對話回覆無法自動整合。
 5. 合併後 7 天內，登記方或收到通知的對方傳送解除關鍵字，即解除這次合併。客服可以隨時從合併紀錄解除。
 

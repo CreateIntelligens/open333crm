@@ -218,11 +218,14 @@ async function registerEmail(
   if (!registrantId) return { result: { status: 'expired' }, notices: [] };
   const conversationId = payload.conversationId;
 
-  const existing = await db.contact.findFirst({
-    where: { tenantId, isArchived: false, id: { not: registrantId }, email: { equals: email, mode: 'insensitive' } },
+  // 最早使用這個 email 的聯絡人代表這個 One ID（含登記方自己）：登記方就是最早的一位時不合併，
+  // 否則會把最早的一位併入較新的一位
+  const earliest = await db.contact.findFirst({
+    where: { tenantId, isArchived: false, email: { equals: email, mode: 'insensitive' } },
     orderBy: { createdAt: 'asc' },
     select: { id: true, displayName: true },
   });
+  const existing = earliest && earliest.id !== registrantId ? earliest : null;
 
   if (!existing) {
     await db.contact.updateMany({ where: { id: registrantId, tenantId }, data: { email } });

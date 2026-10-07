@@ -318,6 +318,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(success(contact));

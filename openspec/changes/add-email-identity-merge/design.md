@@ -53,11 +53,13 @@
 - **原因**：租戶已由 token 決定，不需要 BYPASSRLS，也不必把新檔案加進 `prismaAdmin` 白名單。
 - 端點註冊 `@fastify/rate-limit`，每個 IP 每分鐘 20 次。
 - token 不存在與過期都回 410，回應內容相同。
+- 請求 log 的網址遮掉路徑中的 token（`log-redact.ts`），連結即憑證，不可留在 log。
+- 通知不在交易內送出（交易逾時會連「沒有送出」的紀錄一起回滾），以 `tenantScopedClient` 逐筆綁定租戶；通知失敗只記 log，登記結果照常回傳。
 
 ### D5：合併方向與比對
 
 - 比對條件：同租戶、`isArchived = false`、`lower(email) = lower(輸入值)`、不是登記者目前的聯絡人。多筆時取 `createdAt` 最早的一位。
-- 已經有這個 email 的聯絡人為 survivor，登記者的聯絡人被併入。
+- 已經有這個 email 的聯絡人為 survivor，登記者的聯絡人被併入。最早使用這個 email 的就是登記者自己時不合併，避免把最早的一位併入較新的一位。
   - **原因**：email 已經在某位聯絡人身上，那位聯絡人代表這個 One ID；顧客在新渠道登記，是把新渠道加進去。與舊的 `line-login` 方向一致。
 - 合併前的同渠道衝突檢查，從 `identity-binding.service.ts` 的 `checkBindable()` 抽出共用函式，綁定代碼與 email 登記都呼叫它。
 - 合併以 `mergeContacts(tx, { source: 'EMAIL', meta })` 在 `withTenant` 的交易內執行，同一交易內 upsert `IdentityMap`（`source: 'EMAIL_MATCH'`，`confidence: 1`）。
@@ -79,6 +81,10 @@
   - **仍要儲存**：重送並帶上 `allowDuplicateEmail: true`。
   - **取消**。
 - 手動合併沿用 `POST /contacts/merge`，來源 `MANUAL`，不新增端點。
+
+### D8-1：設定頁儲存時沿用未送出的 email 欄位
+
+`PUT /settings/identity-binding` 的 `emailEnabled`、`emailKeywords` 為選填，沒送時沿用已儲存的值（`applyIdentityBindingUpdate()`）。部署後仍開著舊版設定頁的分頁，存一次不會把 email 登記關掉。
 
 ### D9：跨渠道訊息 API
 
@@ -112,7 +118,7 @@
 
 - **[知道別人 email 就能合併]** → 合併後雙邊通知；7 天內雙方都可自助解除；客服可從合併紀錄解除；同渠道衝突時拒絕合併；AI 指示不主動複述其他渠道的個資。
 - **[可探測 email 是否被使用]** 合併成功的通知會透露對方渠道與名稱 → 每小時 5 個連結、每個連結只能成功一次、IP 速率限制，提高大量探測的成本。這是不驗證 email 的固有代價，已在 D2 接受。
-- **[AI 讀到錯誤合併對象的對話]** → 解除合併後立即不再讀到（D10）；範圍限 30 天、10 則。
+- **[AI 讀到錯誤合併對象的對話]** → 解除合併後立即不再讀到（D10）；範圍限 30 天、10 則。提示詞只要求 AI 不「主動」複述個資，冒用者直接詢問「我上次在 LINE 說了什麼」時，AI 仍可能回答。這是不驗證 email 加上讓 AI 讀其他渠道的代價，主要防線是雙邊通知與 7 天內自助解除。
 - **[AI 成本增加]** 每次回覆多約 10 則訊息 → 上限固定，且只有歸戶過的聯絡人才有。
 - **[多筆相同 email 時選最早建立的]** 可能不是顧客心中的那一位 → 客服可解除後手動合併到正確的聯絡人。
 

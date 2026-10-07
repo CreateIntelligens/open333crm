@@ -81,3 +81,14 @@ test('沒有編輯權限時不顯示編輯按鈕', () => {
   assert.ok(screen.getByText('x@example.com'));
   assert.ok(screen.queryByRole('button', { name: '編輯 email' }) === null);
 });
+
+test('對方在看不到的渠道：只提供仍要儲存與取消', async () => {
+  const hidden = Object.assign(new Error('409'), {
+    response: { status: 409, data: { success: false, error: { code: 'EMAIL_IN_USE', message: '此 email 已由其他聯絡人使用' } } },
+  });
+  api.patch.mockRejectedValueOnce(hidden);
+  await editTo('amy@example.com');
+  await screen.findByText(/這個 email 已由其他聯絡人使用/);
+  assert.ok(screen.getByRole('button', { name: '仍要儲存' }));
+  assert.ok(screen.queryByRole('button', { name: /合併/ }) === null);
+});

@@ -6,7 +6,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { mergeContacts as runMergeEngine } from './contact-merge.service.js';
-import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 export interface ContactFilters {
   q?: string;
@@ -185,6 +185,13 @@ export async function getContact(
   return contact;
 }
 
+/** 聯絡人在可見渠道有身分、或沒有任何渠道身分（客服手動建立）時視為看得到 */
+async function isContactVisible(prisma: TenantDb, contactId: string, accessibleChannels: AccessibleChannels): Promise<boolean> {
+  if (accessibleChannels === ALL_CHANNELS) return true;
+  const identities = await prisma.channelIdentity.findMany({ where: { contactId }, select: { channelId: true } });
+  return identities.length === 0 || identities.some((i) => accessibleChannels.has(i.channelId));
+}
+
 export async function updateContact(
   prisma: TenantDb,
   id: string,
@@ -198,6 +205,8 @@ export async function updateContact(
     /** email 與其他聯絡人重複時，客服確認仍要儲存（不合併） */
     allowDuplicateEmail?: boolean;
   },
+  /** CM-173：email 撞到的聯絡人只在看不到的渠道有身分時，409 不帶對方的 id 與名稱 */
+  accessibleChannels: AccessibleChannels = ALL_CHANNELS,
 ) {
   const { allowDuplicateEmail, ...fields } = data;
   const contact = await prisma.contact.findFirst({
@@ -209,17 +218,22 @@ export async function updateContact(
   }
 
   // email 與同租戶另一位聯絡人相同時先讓客服決定：合併、仍要儲存或取消（change add-email-identity-merge）
-  if (fields.email && !allowDuplicateEmail) {
+  // email 沒有改變（不分大小寫）時不檢查：先前已確認共用的 email，重存時不再詢問
+  const emailChanged = (fields.email ?? '').toLowerCase() !== (contact.email ?? '').toLowerCase();
+  if (fields.email && emailChanged && !allowDuplicateEmail) {
     const other = await prisma.contact.findFirst({
       where: { tenantId, isArchived: false, id: { not: id }, email: { equals: fields.email, mode: 'insensitive' } },
       orderBy: { createdAt: 'asc' },
       select: { id: true, displayName: true },
     });
     if (other) {
-      throw new AppError('此 email 已由其他聯絡人使用', 'EMAIL_IN_USE', 409, {
-        contactId: other.id,
-        displayName: other.displayName,
-      });
+      const visible = await isContactVisible(prisma, other.id, accessibleChannels);
+      throw new AppError(
+        '此 email 已由其他聯絡人使用',
+        'EMAIL_IN_USE',
+        409,
+        visible ? { contactId: other.id, displayName: other.displayName } : undefined,
+      );
     }
   }
 

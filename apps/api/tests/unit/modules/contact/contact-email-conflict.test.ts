@@ -5,10 +5,14 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { updateContact } from '#src/modules/contact/contact.service.js';
 import { AppError } from '#src/shared/utils/response.js';
+import { ALL_CHANNELS } from '#src/services/channel-visibility.js';
 
 const TENANT = 'tenant-1';
 
-function mockDb(contacts: Array<{ id: string; displayName: string; email: string | null; isArchived?: boolean }>) {
+function mockDb(
+  contacts: Array<{ id: string; displayName: string; email: string | null; isArchived?: boolean }>,
+  identities: Array<{ contactId: string; channelId: string }> = [],
+) {
   const updates: Array<{ where: unknown; data: Record<string, unknown> }> = [];
   const matches = (c: (typeof contacts)[number], where: Record<string, any>) => {
     if (where.id && typeof where.id === 'string' && c.id !== where.id) return false;
@@ -25,10 +29,14 @@ function mockDb(contacts: Array<{ id: string; displayName: string; email: string
   const db = {
     contact: {
       findFirst: async ({ where }: { where: Record<string, any> }) => contacts.find((c) => matches(c, where)) ?? null,
+      updateMany: async () => ({ count: 1 }),
       update: async (args: { where: unknown; data: Record<string, unknown> }) => {
         updates.push(args);
         return { id: 'a', ...args.data };
       },
+    },
+    channelIdentity: {
+      findMany: async ({ where }: { where: { contactId: string } }) => identities.filter((i) => i.contactId === where.contactId),
     },
   };
   return { db: db as never, updates };
@@ -69,4 +77,37 @@ test('沒有他人使用、清除 email、或只改其他欄位時不檢查', as
   await updateContact(db, 'a', TENANT, { email: null });
   await updateContact(db, 'a', TENANT, { displayName: '小明二號' });
   assert.equal(updates.length, 4);
+});
+
+test('重存已確認共用的 email 不再回 409', async () => {
+  const { db, updates } = mockDb([
+    { id: 'a', displayName: '小明', email: 'Amy@example.com' },
+    { id: 'b', displayName: '王小美', email: 'amy@example.com' },
+  ]);
+  await updateContact(db, 'a', TENANT, { email: 'amy@example.com', displayName: '小明' });
+  assert.equal(updates.length, 1);
+});
+
+test('對方只在看不到的渠道有身分時，409 不帶對方的資料', async () => {
+  const { db } = mockDb(people(), [{ contactId: 'b', channelId: 'ch-hidden' }]);
+  await assert.rejects(
+    () => updateContact(db, 'a', TENANT, { email: 'amy@example.com' }, new Set(['ch-visible'])),
+    (err: unknown) => {
+      assert.ok(err instanceof AppError);
+      assert.equal(err.code, 'EMAIL_IN_USE');
+      assert.equal(err.details, undefined, '不洩漏看不到的聯絡人');
+      return true;
+    },
+  );
+  // 看得到的渠道、或沒有渠道身分的聯絡人，照常帶資料
+  const visible = mockDb(people(), [{ contactId: 'b', channelId: 'ch-visible' }]);
+  await assert.rejects(
+    () => updateContact(visible.db, 'a', TENANT, { email: 'amy@example.com' }, new Set(['ch-visible'])),
+    (err: unknown) => (err as AppError).details?.contactId === 'b',
+  );
+  const all = mockDb(people(), [{ contactId: 'b', channelId: 'ch-hidden' }]);
+  await assert.rejects(
+    () => updateContact(all.db, 'a', TENANT, { email: 'amy@example.com' }, ALL_CHANNELS),
+    (err: unknown) => (err as AppError).details?.contactId === 'b',
+  );
 });

@@ -81,3 +81,9 @@ test('短時間大量送出：顯示稍後再試', async () => {
   await submit('amy@example.com');
   await screen.findByText('操作太頻繁，請稍候再試');
 });
+
+test('格式不符的連結不送出任何請求', async () => {
+  render(<EmailRegistrationForm token="..%2F..%2Fcontacts%2Fabc" />);
+  await screen.findByText('連結無法使用，請回到對話重新取得');
+  assert.equal(api.get.mock.calls.length, 0);
+});

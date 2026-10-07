@@ -81,6 +81,18 @@
 - [ ] 10.5 UAT 驗證：LINE 與 FB 各一個帳號用同一個 email 登記後歸戶、雙邊通知、解除、客服收件匣看到另一渠道的對話、AI 回覆引用另一渠道的問題
 - [ ] 10.6 先歸檔 `add-cross-channel-one-id`，再以 `pnpm exec openspec archive add-email-identity-merge` 歸檔
 
+## 11. Code review 修正
+
+每項都先寫會失敗的測試，再修正：
+
+- [x] 11.1 登記方本身就是最早使用該 email 的聯絡人時不合併（feature `email-registration.test.ts`）
+- [x] 11.2 整合通知不在交易內送出，失敗只記 log、登記結果照常回傳（`email-registration-routes.test.ts`「通知送出時發生錯誤」）
+- [x] 11.3 設定頁沒送 email 欄位時沿用已儲存的值（`identity-binding-settings-schema.test.ts`）
+- [x] 11.4 email 沒有改變時不檢查重複；對方只在看不到的渠道有身分時 409 不帶對方資料（`contact-email-conflict.test.ts`、`email-conflict-dialog.test.tsx`）
+- [x] 11.5 請求 log 遮掉登記連結路徑中的 token（`tests/unit/lib/log-redact.test.ts`）
+- [x] 11.6 登記頁先檢查 token 格式並編碼後才送請求（`email-registration-form.test.tsx`）
+- [x] 11.7 合併後重設 email 欄位、改選他人時不寫入 email（頁面層 `contact-detail-page.test.tsx`）；切換對話時清空其他渠道的對話；傳送結果只顯示在原對話；設定儲存後清除收件匣快取；測試改用 `assert.ok(x === null)`
+
 ## 突變驗證
 
 實作後才寫、或寫好就通過的測試，以下列突變確認會失敗（每次改完都還原）：

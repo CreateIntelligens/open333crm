@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { identityBindingSettingsSchema } from '#src/modules/settings/settings.routes.js';
+import { applyIdentityBindingUpdate } from '#src/modules/identity-binding/binding-links.js';
 
 const base = { enabled: true, bindKeywords: ['綁定帳號'], unbindKeywords: ['解除綁定'] };
 
@@ -13,10 +14,19 @@ test('接受 email 登記開關與關鍵字', () => {
   assert.deepEqual(data.emailKeywords, ['登記信箱']);
 });
 
-test('舊版前端沒送 email 欄位時，預設關閉並帶預設關鍵字', () => {
+test('沒送 email 欄位時沿用已儲存的設定，不會把 email 登記關掉', () => {
   const data = identityBindingSettingsSchema.parse(base);
-  assert.equal(data.emailEnabled, false);
-  assert.deepEqual(data.emailKeywords, ['登記email']);
+  assert.equal(data.emailEnabled, undefined);
+  const stored = { ...base, emailEnabled: true, emailKeywords: ['登記信箱'] };
+  const next = applyIdentityBindingUpdate(stored, data);
+  assert.equal(next.emailEnabled, true);
+  assert.deepEqual(next.emailKeywords, ['登記信箱']);
+  // 從未設定過時為預設值
+  const fresh = applyIdentityBindingUpdate(null, data);
+  assert.equal(fresh.emailEnabled, false);
+  assert.deepEqual(fresh.emailKeywords, ['登記email']);
+  // 有送就以送來的值為準
+  assert.equal(applyIdentityBindingUpdate(stored, { ...data, emailEnabled: false }).emailEnabled, false);
 });
 
 test('email 登記關鍵字不可與綁定、解除關鍵字或確認字相同', () => {

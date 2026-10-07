@@ -19,6 +19,10 @@ type Phase =
   | { kind: 'form'; info: RegistrationInfo }
   | { kind: 'done'; status: string };
 
+/** 與後端相同的格式（32 bytes base64url）；不符就不送請求，避免被組成其他 API 路徑 */
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const INVALID_LINK = '連結無法使用，請回到對話重新取得';
+
 const RESULT: Record<string, { title: string; body: string }> = {
   registered: { title: '已登記您的 email', body: '結果也已傳到您的對話中，可以關閉此頁面。' },
   merged: {
@@ -42,14 +46,18 @@ export function EmailRegistrationForm({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!TOKEN_PATTERN.test(token)) {
+      setPhase({ kind: 'invalid', message: INVALID_LINK });
+      return;
+    }
     let cancelled = false;
     api
-      .get(`/public/email-registration/${token}`)
+      .get(`/public/email-registration/${encodeURIComponent(token)}`)
       .then((res) => {
         if (!cancelled) setPhase({ kind: 'form', info: res.data.data as RegistrationInfo });
       })
       .catch((err) => {
-        if (!cancelled) setPhase({ kind: 'invalid', message: getApiErrorMessage(err, '連結無法使用，請回到對話重新取得') });
+        if (!cancelled) setPhase({ kind: 'invalid', message: getApiErrorMessage(err, INVALID_LINK) });
       });
     return () => {
       cancelled = true;
@@ -61,7 +69,7 @@ export function EmailRegistrationForm({ token }: { token: string }) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.post(`/public/email-registration/${token}`, { email: email.trim() });
+      const res = await api.post(`/public/email-registration/${encodeURIComponent(token)}`, { email: email.trim() });
       setPhase({ kind: 'done', status: (res.data.data as { status: string }).status });
     } catch (err) {
       const status = (err as { response?: { status?: number } }).response?.status;

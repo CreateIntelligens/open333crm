@@ -21,7 +21,9 @@ const T = TENANT_A;
 const stamp = `er-route-${Date.now()}`;
 const store = memBindingStore();
 const sent: Array<{ conversationId: string; text: string }> = [];
+let deliverThrows = false;
 const deliver = async (_db: unknown, conversationId: string, text: string) => {
+  if (deliverThrows) throw new Error('推播逾時');
   sent.push({ conversationId, text });
   return true;
 };
@@ -132,6 +134,18 @@ test('連結使用後失效', async () => {
   assert.ok(sent.some((s) => s.conversationId === fixture.conversation.id && s.text === '已登記您的 email。'), '對話收到登記完成');
   const again = await app.inject({ method: 'POST', url: url(token), payload: { email: `${stamp}@example.com` } });
   assert.equal(again.statusCode, 410);
+});
+
+test('通知送出時發生錯誤，登記結果仍回傳成功', async () => {
+  const token = await newToken();
+  deliverThrows = true;
+  try {
+    const res = await app.inject({ method: 'POST', url: url(token), payload: { email: `${stamp}-2@example.com` } });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().data.status, 'registered');
+  } finally {
+    deliverThrows = false;
+  }
 });
 
 test('租戶關閉 email 登記後，已發出的連結失效', async () => {

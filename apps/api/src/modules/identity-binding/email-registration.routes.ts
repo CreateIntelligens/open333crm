@@ -9,7 +9,8 @@ import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { AppError, success } from '../../shared/utils/response.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import { logger } from '@open333crm/core';
+import { tenantScopedClient, withTenant } from '../../lib/tenant-db.js';
 import { getBindingStore, type BindingStore } from './binding-code.js';
 import type { BindingDeps } from './binding-common.js';
 import {
@@ -73,8 +74,13 @@ export default async function emailRegistrationRoutes(fastify: FastifyInstance, 
     if (result.status === 'invalid_email') throw new AppError('email 格式不正確', 'INVALID_EMAIL', 400);
     if (result.status === 'expired') throw expired();
 
-    // 資料已寫入後才送通知：推播是外部呼叫，不放在合併的交易內
-    await withTenant(fastify.prisma, payload.tenantId, (tx) => sendEmailRegistrationNotices(tx, deps(), payload.tenantId, notices));
+    // 資料已寫入後才送通知。推播是外部呼叫，不放在交易內（交易逾時會連失敗紀錄一起回滾），
+    // 每個查詢各自綁定租戶。通知失敗不影響已完成的登記或合併：送不出去的訊息已在對話標示，其他錯誤記 log
+    try {
+      await sendEmailRegistrationNotices(tenantScopedClient(fastify.prisma, payload.tenantId), deps(), payload.tenantId, notices);
+    } catch (err) {
+      logger.error('[EmailRegistration] 通知送出失敗，登記結果不受影響', err);
+    }
     return reply.send(success({ status: result.status }));
   });
 }

@@ -41,7 +41,7 @@ import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
-import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
+import { applyIdentityBindingUpdate, parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
 import { CONFIRM_KEYWORD, DEFAULT_EMAIL_KEYWORDS } from "../identity-binding/binding-code.js";
 import {
   getIdentityBindingSettings,
@@ -85,9 +85,9 @@ export const identityBindingSettingsSchema = z
     enabled: z.boolean(),
     bindKeywords: bindingKeywordsSchema,
     unbindKeywords: bindingKeywordsSchema,
-    // email 登記（change add-email-identity-merge）：舊版前端不送時維持關閉
-    emailEnabled: z.boolean().default(false),
-    emailKeywords: bindingKeywordsSchema.default(DEFAULT_EMAIL_KEYWORDS),
+    // email 登記（change add-email-identity-merge）：沒送時沿用已儲存的值（見 applyIdentityBindingUpdate）
+    emailEnabled: z.boolean().optional(),
+    emailKeywords: bindingKeywordsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
@@ -108,7 +108,7 @@ export const identityBindingSettingsSchema = z
       });
     }
     const taken = new Set([...data.bindKeywords, ...data.unbindKeywords, CONFIRM_KEYWORD].map((k) => k.toLowerCase()));
-    if (data.emailKeywords.some((k) => taken.has(k.toLowerCase()))) {
+    if ((data.emailKeywords ?? DEFAULT_EMAIL_KEYWORDS).some((k) => taken.has(k.toLowerCase()))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["emailKeywords"],
@@ -213,13 +213,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.put("/identity-binding", async (request, reply) => {
     const data = identityBindingSettingsSchema.parse(request.body);
     const tenantId = request.agent.tenantId;
-    const value = {
-      enabled: data.enabled,
-      bindKeywords: data.bindKeywords,
-      unbindKeywords: data.unbindKeywords,
-      emailEnabled: data.emailEnabled,
-      emailKeywords: data.emailKeywords,
-    };
+    const value = applyIdentityBindingUpdate(await getIdentityBindingSettings(request.tenantPrisma, tenantId), data);
     await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
       create: { tenantId, identityBinding: value },
@@ -231,7 +225,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       actorId: request.agent.id,
       action: "settings.update",
       targetType: "settings",
-      payload: { section: "identity-binding", enabled: data.enabled, emailEnabled: data.emailEnabled },
+      payload: { section: "identity-binding", enabled: value.enabled, emailEnabled: value.emailEnabled },
       ip: request.ip,
     });
     return reply.send(success(parseIdentityBindingSettings(value)));

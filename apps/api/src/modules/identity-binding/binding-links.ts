@@ -30,6 +30,24 @@ export function parseIdentityBindingSettings(raw: unknown): IdentityBindingSetti
   };
 }
 
+/**
+ * 設定頁儲存時合併：沒送的 email 登記欄位沿用已儲存的值。
+ * 部署後仍開著舊版設定頁、或只送綁定代碼欄位的呼叫端，存一次不會把 email 登記關掉。
+ */
+export function applyIdentityBindingUpdate(
+  stored: unknown,
+  data: { enabled: boolean; bindKeywords: string[]; unbindKeywords: string[]; emailEnabled?: boolean; emailKeywords?: string[] },
+): IdentityBindingSettings {
+  const current = parseIdentityBindingSettings(stored);
+  return {
+    enabled: data.enabled,
+    bindKeywords: data.bindKeywords,
+    unbindKeywords: data.unbindKeywords,
+    emailEnabled: data.emailEnabled ?? current.emailEnabled,
+    emailKeywords: data.emailKeywords ?? current.emailKeywords,
+  };
+}
+
 /** 關鍵字比對：整句相符（去頭尾空白、不分大小寫），避免一般對話裡提到「綁定帳號」就被攔截 */
 export function matchesKeyword(text: string, keywords: string[]): boolean {
   const t = text.trim().toLowerCase();

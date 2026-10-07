@@ -13,6 +13,10 @@
 - **WHEN** 租戶未啟用 email 登記，顧客傳送「登記email」
 - **THEN** 系統不回覆登記連結，訊息照一般流程交給自動化與 AI
 
+#### Scenario: 設定頁沒送 email 欄位
+- **WHEN** 已啟用 email 登記的租戶，以只含綁定代碼欄位的內容儲存跨渠道綁定設定
+- **THEN** email 登記維持啟用，關鍵字不變
+
 #### Scenario: 未啟用時客服無法傳送連結
 - **WHEN** 租戶未啟用 email 登記，客服呼叫傳送 email 登記連結端點
 - **THEN** 系統回 400，錯誤碼為 `EMAIL_REGISTRATION_DISABLED`，不送出任何訊息
@@ -85,7 +89,7 @@
 - **THEN** 系統只寫入 email，不合併任何聯絡人
 
 ### Requirement: 相同 email 自動合併
-送出的 email 與同租戶另一位未封存聯絡人的 email 相同（不分大小寫）時，系統 SHALL 不經人工確認，把連結對應的聯絡人併入那位聯絡人，合併紀錄的來源為 `EMAIL`。有多位聯絡人使用該 email 時，併入其中建立時間最早的一位。合併後，渠道身分、對話、案件與其他關聯資料都屬於被併入的那位聯絡人。
+送出的 email 與同租戶另一位未封存聯絡人的 email 相同（不分大小寫）時，系統 SHALL 不經人工確認，把連結對應的聯絡人併入使用該 email、建立時間最早的聯絡人，合併紀錄的來源為 `EMAIL`。最早的一位就是登記方自己時，不合併。合併後，渠道身分、對話、案件與其他關聯資料都屬於被併入的那位聯絡人。
 
 #### Scenario: 不同渠道的同一個人
 - **WHEN** FB 聯絡人 B 的 email 是 `amy@example.com`，LINE 聯絡人 A 透過登記連結送出 `AMY@example.com`
@@ -94,6 +98,10 @@
 #### Scenario: 多位聯絡人使用相同 email
 - **WHEN** 聯絡人 B（較早建立）與 C 都使用 `amy@example.com`，A 送出這個 email
 - **THEN** A 併入 B，C 不變
+
+#### Scenario: 登記方本身就是最早使用該 email 的聯絡人
+- **WHEN** 聯絡人 B（較早建立）與 C 都使用 `amy@example.com`，B 的渠道身分送出這個 email
+- **THEN** 系統只寫入 email，B 與 C 都不合併
 
 #### Scenario: 已封存的聯絡人不列入比對
 - **WHEN** 唯一使用相同 email 的聯絡人已被封存
@@ -144,11 +152,19 @@
 - **THEN** 超過的請求回 429
 
 ### Requirement: 客服修改 email 與他人重複時須確認
-客服以 `PATCH /api/v1/contacts/:id` 把 email 改成同租戶另一位未封存聯絡人已使用的 email 時，系統 SHALL 回 409，回應包含該聯絡人的 id 與名稱，不更改資料。客服 SHALL 能選擇合併（需 `contact.merge`，合併紀錄的來源為 `MANUAL`），或帶上確認旗標仍要儲存而不合併。
+客服以 `PATCH /api/v1/contacts/:id` 把 email 改成同租戶另一位未封存聯絡人已使用的 email 時，系統 SHALL 回 409，回應包含該聯絡人的 id 與名稱（該聯絡人只在客服看不到的渠道有身分時不包含），不更改資料。email 沒有改變時不檢查。客服 SHALL 能選擇合併（需 `contact.merge`，合併紀錄的來源為 `MANUAL`），或帶上確認旗標仍要儲存而不合併。
 
 #### Scenario: 改成他人的 email
 - **WHEN** 客服把聯絡人 A 的 email 改成聯絡人 B 使用的 `amy@example.com`
 - **THEN** 系統回 409，回應含 B 的 id 與名稱，A 的 email 不變
+
+#### Scenario: 對方在看不到的渠道
+- **WHEN** 只能看 LINE 渠道的客服把 email 改成只在 FB 有身分的聯絡人 B 使用的 email
+- **THEN** 系統回 409，回應不含 B 的 id 與名稱；介面只提供「仍要儲存」與「取消」
+
+#### Scenario: 重存已確認共用的 email
+- **WHEN** A 已以確認旗標儲存與 B 相同的 email，客服再次儲存 A 而 email 沒有改變
+- **THEN** 系統直接儲存，不回 409
 
 #### Scenario: 確認後仍要儲存
 - **WHEN** 客服帶上確認旗標再次送出同一個修改

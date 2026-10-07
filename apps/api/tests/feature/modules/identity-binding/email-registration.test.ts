@@ -239,6 +239,15 @@ scenario('多位聯絡人使用相同 email', async (f) => {
   assert.equal((await f.tx.contact.findFirst({ where: { id: c.contactId } }))?.isArchived, false);
 });
 
+scenario('登記方本身就是最早使用該 email 的聯絡人', async (f) => {
+  const b = await f.person('B', { email: 'amy@example.com', createdAt: new Date(Date.now() - 2 * DAY) });
+  const c = await f.person('C', { channel: f.fbCh, email: 'amy@example.com', createdAt: new Date(Date.now() - DAY) });
+  const result = await submit(f, await linkFor(f, b), 'amy@example.com');
+  assert.equal(result.status, 'registered', '不把最早的一位併入較新的一位');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: b.contactId } }))?.isArchived, false);
+  assert.equal((await f.tx.contact.findFirst({ where: { id: c.contactId } }))?.isArchived, false);
+});
+
 scenario('已封存的聯絡人不列入比對', async (f) => {
   await f.person('B', { channel: f.fbCh, email: 'amy@example.com', archived: true });
   const a = await f.person('A');
