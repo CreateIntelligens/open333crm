@@ -9,6 +9,7 @@ import { runAgentReply } from './agent/agent.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
+import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
   // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
@@ -20,6 +21,8 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ conversationId: z.string().uuid() })
       .parse(request.body);
 
+    // 不可見渠道的對話回 404，不把對話內容送進 AI（AUDIT RBAC-04）
+    await assertConversationChannelVisible(request, conversationId, 'read_only');
     const result = await suggestReply(request.tenantPrisma, conversationId);
     return reply.send(success(result));
   });
@@ -30,6 +33,8 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       .object({ conversationId: z.string().uuid() })
       .parse(request.body);
 
+    // 不可見渠道的對話回 404，不把對話內容送進 AI（AUDIT RBAC-04）
+    await assertConversationChannelVisible(request, conversationId, 'read_only');
     const result = await summarizeConversation(request.tenantPrisma, conversationId);
     return reply.send(success(result));
   });
@@ -77,6 +82,10 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       userMessage: z.string().trim().min(1).max(20_000),
       conversationId: z.string().uuid().optional(),
     }).parse(request.body);
+    // 帶了 conversationId 時 Agent 會讀該對話的歷史訊息，先檢查渠道可見範圍（AUDIT RBAC-04）
+    if (data.conversationId) {
+      await assertConversationChannelVisible(request, data.conversationId, 'read_only');
+    }
     const result = await runAgentReply(request.tenantPrisma, {
       tenantId: request.agent.tenantId,
       userMessage: data.userMessage,

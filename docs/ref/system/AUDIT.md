@@ -52,7 +52,7 @@
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色 | 靜態確認 |
-| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、聯絡人清單與合併、AI 輔助等處沒有套用；聯絡人的對話、工單、時間軸已修正（`481452a`） | 靜態確認 |
+| [RBAC-04](#rbac-04) | 租戶隔離與權限 | P2 | 部分修正 | 渠道可見範圍在 socket 租戶房間、聯絡人清單與合併、`POST /cases`、`GET /cases/stats` 沒有套用；聯絡人的對話、工單、時間軸（`481452a`）與 AI 輔助端點已修正 | 靜態確認 |
 | [RBAC-05](#rbac-05) | 租戶隔離與權限 | P2 | 已提建議 | reconcile 腳本會覆蓋租戶對系統角色的修改，收回的權限被重新授予 | 靜態確認 |
 | [RBAC-06](#rbac-06) | 租戶隔離與權限 | P3 | 已定方向 | 預設角色的權限有兩份，內容已經不同；demo 資料的 `supervisor` 多了 `channel.view_all`，`admin` 少了稽核與資料權利的權限碼 | 靜態確認 |
 | [TEAM-01](#team-01) | 租戶隔離與權限 | P2 | 未處理 | 團隊沒有建立與管理成員的途徑，依團隊授權與指派都無法使用；進站訊息不依團隊分流 | 靜態確認 |
@@ -290,20 +290,20 @@ CLI token 的停用問題另見 AUTH-02。
 | --- | --- |
 | `plugins/socket.plugin.ts` 在連線時讓每條 socket 自動加入 `tenant:<租戶 ID>` | `conversation.service.ts` 的 `sendMessage()` 與 `webhook/inbound-socket-presenter.ts` 的 `emitToConversationAndTenant()` 都把含訊息內容的 `message.new` 發到租戶房間。受限的客服即時收到所有渠道的訊息 |
 | `contact.routes.ts` 的清單、詳情與合併 | 清單與詳情只過濾回傳的渠道身分，聯絡人本身照樣列出：其他渠道的聯絡人的姓名、電話、email 都看得到。`/merge-preview` 與 `/merge` 不檢查兩個聯絡人的渠道 |
-| `ai.routes.ts` 的 `/suggest-reply`、`/summarize` | 以 `conversationId` 讀整段對話，不檢查對話的渠道 |
 | `case.routes.ts` 的 `POST /` | 建立工單時不檢查 `channelId` 是否可見 |
 | `case.routes.ts` 的 `GET /stats` | 統計全租戶的工單 |
 
 第一項影響最大：只要受限客服的畫面連著 socket，渠道可見範圍在即時事件上等於不存在。
 
-**規格依據。** 主規格 `channel-scoped-visibility` 的兩條需求，現況沒有做到：
+**規格依據。** 主規格 `channel-scoped-visibility` 的「與即時推播一致」，現況沒有做到：
 
 - 「與即時推播一致」：不可見渠道的訊息事件 MUST NOT 送達成員，包括送到租戶房間的事件。第一項違反這條需求。
-- 「單筆讀取與操作的存取檢查」：以 ID 讀取不可見渠道的對話時，系統要回 404。`ai.routes.ts` 以 `conversationId` 讀整段對話並回傳摘要或建議回覆，違反這條需求。
 
 聯絡人、`POST /cases` 與 `GET /cases/stats` 不在這份規格的範圍內：規格只規定對話與工單的列表、單筆讀取與操作。
 
 **部分修正。** `481452a`（#185，2026-09-30）讓聯絡人的 `/:id/conversations`、`/:id/cases`、`/:id/timeline` 依可見範圍過濾，清單與詳情也只回傳可見渠道的身分。聯絡人本身要不要依渠道過濾，`add-cross-channel-one-id` 的任務 9.3.9 記為「跨渠道聯絡人的歸屬規則需另行設計」。
+
+2026-10-07，`ai.routes.ts` 的 `/suggest-reply`、`/summarize`，以及帶 `conversationId` 的 `/agent/run`，改為先以 `assertConversationChannelVisible(…, 'read_only')` 檢查；不可見渠道的對話回 404，不呼叫 AI。
 
 <a id="rbac-05"></a>
 ### RBAC-05：reconcile 腳本會覆蓋租戶對系統角色的修改

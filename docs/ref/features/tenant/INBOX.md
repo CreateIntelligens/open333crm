@@ -140,7 +140,7 @@
 
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
-可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。租戶房間的即時事件、聯絡人清單與合併、AI 輔助端點都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
+可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。AI 輔助端點以 `conversationId` 讀對話時也會檢查。租戶房間的即時事件、聯絡人清單與合併都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## AI 輔助
 
@@ -155,7 +155,7 @@
 | `POST /ai/rewrite` | 文字與動作 | 潤稿、縮短或改語氣 |
 | `POST /ai/agent/run` | 文字 | 手動執行 AI agent。需要 `inbox.reply`，而且 `AGENTIC_LLM_ENABLED` 為 `true` |
 
-除了 `/ai/agent/run`，其他端點只驗登入，沒有權限碼，見 `../../system/AUDIT.md` 的 PLAN-12。以 `conversationId` 為輸入的端點不檢查渠道可見範圍，見 RBAC-04。
+除了 `/ai/agent/run`，其他端點只驗登入，沒有權限碼，見 `../../system/AUDIT.md` 的 PLAN-12。以 `conversationId` 為輸入的端點（含帶 `conversationId` 的 `/ai/agent/run`）會檢查渠道可見範圍，對話的渠道不可見時回 404。
 
 ## 權限
 
@@ -174,7 +174,7 @@
 | --- | --- |
 | **客服回覆送出失敗時，介面沒有標示** | 詳見 `../../system/AUDIT.md` 的 CONV-03 |
 | **指派對話不會通知被指派的人** | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
-| **即時事件、聯絡人清單與 AI 輔助不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
+| **即時事件與聯絡人清單不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | 閒置時限沒有維護介面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 

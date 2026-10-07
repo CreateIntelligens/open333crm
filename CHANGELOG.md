@@ -8,6 +8,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **固定 OpenSpec CLI 的版本** — 根目錄的 devDependencies 固定 `@fission-ai/openspec` 1.14.1，請改用 `pnpm exec openspec`，不要用全域安裝或 `npx`。原本每個人的版本不同（1.3.1、1.6.0、1.14.1），同一份主規格在 1.3.1 有 1 份、在 1.14.1 有 14 份驗證失敗。主規格的驗證改用 `node scripts/validate-openspec.mjs --specs`：它執行 `validate --strict`，只略過主規格「需求內文超過 500 字元」的警告；change 裡新寫的需求超過 500 字元時照樣失敗。
 
+### Fixed
+
+- **AI 輔助不再讀取看不到的渠道的對話**（AUDIT RBAC-04 的一部分）— `/ai/suggest-reply`、`/ai/summarize` 與帶 `conversationId` 的 `/ai/agent/run` 原本不檢查對話的渠道，只能看分店渠道的成員可以對其他渠道的對話產生摘要或建議回覆。現在對話的渠道不可見時回 404，不呼叫 AI。
+
 ## [2026-10-06]
 
 ### Changed
