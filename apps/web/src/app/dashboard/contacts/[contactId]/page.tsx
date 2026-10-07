@@ -13,7 +13,7 @@ import { ContactTimeline } from '@/components/contact/ContactTimeline';
 import { ContactMergeModal } from '@/components/contact/ContactMergeModal';
 import { ContactConversationHistory } from '@/components/contact/ContactConversationHistory';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ContactDetailPage() {
   const params = useParams();
@@ -166,22 +166,22 @@ export default function ContactDetailPage() {
           {/* Right - Timeline / 對話紀錄 */}
           <div>
             <Card>
-              <Tabs value={rightTab} onValueChange={(v) => setRightTab(v as 'timeline' | 'messages')}>
-                <CardHeader>
+              <CardHeader>
+                {/* Tabs 只把選中的值傳給直接子元件，TabsList 必須是 Tabs 的直接子元件 */}
+                <Tabs value={rightTab} onValueChange={(v) => setRightTab(v as 'timeline' | 'messages')}>
                   <TabsList>
                     <TabsTrigger value="timeline">活動時間軸</TabsTrigger>
                     <TabsTrigger value="messages">對話紀錄</TabsTrigger>
                   </TabsList>
-                </CardHeader>
-                <CardContent>
-                  <TabsContent value="timeline">
-                    <ContactTimeline events={timeline} />
-                  </TabsContent>
-                  <TabsContent value="messages">
-                    {rightTab === 'messages' && <ContactConversationHistory key={historyKey} contactId={contactId} />}
-                  </TabsContent>
-                </CardContent>
-              </Tabs>
+                </Tabs>
+              </CardHeader>
+              <CardContent>
+                {rightTab === 'timeline' ? (
+                  <ContactTimeline events={timeline} />
+                ) : (
+                  <ContactConversationHistory key={historyKey} contactId={contactId} />
+                )}
+              </CardContent>
             </Card>
           </div>
         </div>
