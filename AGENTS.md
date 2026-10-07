@@ -65,6 +65,11 @@ Some changes skip step 1 or step 2. This table tells which steps each type of ch
 Plan changes in `openspec/`. Use the OpenSpec skills in `.agents/skills/`:
 `openspec-propose`, `openspec-apply-change` and `openspec-archive-change`.
 
+The root `package.json` pins the version of the OpenSpec CLI (`@fission-ai/openspec`). Run the
+CLI as `pnpm exec openspec`. Do not use a global install or `npx openspec`. Other versions
+validate the same spec differently: for example, a spec that passes on one version fails on
+another.
+
 The table at the start of this section tells when to open a change.
 
 Each requirement in a spec has `#### Scenario:` blocks. Write each scenario as **WHEN** / **THEN**.
@@ -279,14 +284,13 @@ request:
 - [ ] Each delta spec uses `MODIFIED` for a requirement that already exists in `openspec/specs/`.
       Use `ADDED` only for a new requirement. An `ADDED` requirement that changes an existing one
       makes the main spec contradict itself after the archive.
-- [ ] You archive with `openspec archive` or the `openspec-archive-change` skill. Do not move a
+- [ ] You archive with `pnpm exec openspec archive` or the `openspec-archive-change` skill. Do not move a
       change into `archive/` or copy its specs into `openspec/specs/` by hand. A hand copy can
       leave a main spec in a format that the CLI cannot read.
 
       When the archive creates a new main spec, the CLI writes its `## Purpose` as
-      "TBD - created by archiving change …". `openspec validate --strict` does not reject this
-      text. Replace it with the purpose of the spec. This command must print nothing:
-      `grep -rl "TBD - created by archiving" openspec/specs`
+      "TBD - created by archiving change …". Replace it with the purpose of the spec. The
+      validation in the next items rejects this text.
 - [ ] To remove a whole main spec (`openspec/specs/<name>/`), first check whether its capability
       is still planned:
       1. If the capability is still planned, move the requirements of the spec into a change as an
@@ -300,9 +304,16 @@ request:
       by hand. A delta spec cannot do this: `openspec archive` stops when a spec has no
       requirements left. In the pull request description, give the reason for each removed spec.
       If a spec or document replaces it, name that spec or document.
-- [ ] `openspec validate --specs --strict` passes, if your change touches `openspec/`. All main
-      specs pass this command on `main`. With `--strict`, a warning also fails the command. A
-      common warning is a `## Purpose` section shorter than 50 characters.
+- [ ] `node scripts/validate-openspec.mjs --specs` passes, if your change touches `openspec/`.
+      Before you archive a change, `node scripts/validate-openspec.mjs <change-name>` also
+      passes. All main specs pass on `main`.
+
+      The script runs `pnpm exec openspec validate --strict`. With `--strict`, a warning also
+      fails the command. A common warning is a `## Purpose` section shorter than 50 characters.
+      The script ignores one warning, only in main specs: a requirement text longer than 500
+      characters. Many main specs have such requirements, and until they are split, `--strict`
+      always fails on them. In a change, the script does not ignore this warning. Split a new
+      requirement that is too long.
 - [ ] If your change fixes an item in `docs/ref/system/AUDIT.md` completely or in part, update
       that item, add an entry to `docs/ref/system/AUDIT-REVIEWS.md`, and update each feature or
       module document under `docs/ref/` that describes the changed behavior.
