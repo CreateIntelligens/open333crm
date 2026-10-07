@@ -63,6 +63,6 @@ export function roleLoginErrorMessage(roles: AppRole[], passwords = appRolePassw
     envLines,
     '  2. 開發環境沒有以這些角色連線時，把角色密碼改成測試設定的密碼（只在本機執行）：',
     sqlLines,
-    '     例如：docker exec -i open333crm-dev-postgres-1 psql -U crm -d postgres',
+    '     例如：docker exec -it open333crm-dev-postgres-1 psql -U crm -d postgres',
   ].join('\n');
 }
