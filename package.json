@@ -26,6 +26,7 @@
     "cli:publish": "pnpm cli:sandbox && pnpm --filter @open333crm/cli exec npm publish --access public"
   },
   "devDependencies": {
+    "@fission-ai/openspec": "1.14.1",
     "@types/node": "^24.19.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",

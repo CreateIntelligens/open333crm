@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-07]
+
+### Changed
+
+- **固定 OpenSpec CLI 的版本** — 根目錄的 devDependencies 固定 `@fission-ai/openspec` 1.14.1，請改用 `pnpm exec openspec`，不要用全域安裝或 `npx`。原本每個人的版本不同（1.3.1、1.6.0、1.14.1），同一份主規格在 1.3.1 有 1 份、在 1.14.1 有 14 份驗證失敗。主規格的驗證改用 `node scripts/validate-openspec.mjs --specs`：它執行 `validate --strict`，只略過主規格「需求內文超過 500 字元」的警告；change 裡新寫的需求超過 500 字元時照樣失敗。
+
 ## [2026-10-06]
 
 ### Changed
