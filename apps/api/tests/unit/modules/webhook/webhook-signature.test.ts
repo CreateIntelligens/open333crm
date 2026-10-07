@@ -14,13 +14,19 @@ const FB_CHANNEL = '22222222-2222-4222-8222-222222222222';
 const SECRET = 'line-channel-secret';
 
 const fbVerifyCalls = vi.hoisted(() => ({ count: 0 }));
+const decryptState = vi.hoisted(() => ({ fail: false }));
+const fbState = vi.hoisted(() => ({ throwOnVerify: false }));
 const linePlugin = new LinePlugin();
 
 vi.mock('@open333crm/channel-plugins', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@open333crm/channel-plugins')>();
   const fbPlugin = {
     channelType: 'FB',
-    verifySignature: () => { fbVerifyCalls.count += 1; return true; },
+    verifySignature: () => {
+      fbVerifyCalls.count += 1;
+      if (fbState.throwOnVerify) throw new TypeError('signature.startsWith is not a function');
+      return true;
+    },
     parseWebhook: async () => [],
   };
   return {
@@ -31,12 +37,18 @@ vi.mock('@open333crm/channel-plugins', async (importOriginal) => {
 
 vi.mock('#src/modules/channel/channel.service.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  decryptCredentials: () => ({ channelSecret: SECRET, appSecret: 'fb-app-secret' }),
+  decryptCredentials: () => {
+    if (decryptState.fail) throw new Error('Unsupported state or unable to authenticate data');
+    return { channelSecret: SECRET, appSecret: 'fb-app-secret' };
+  },
 }));
 
-const channels: Record<string, { id: string; tenantId: string; channelType: string }> = {
+const DISABLED_TENANT_CHANNEL = '33333333-3333-4333-8333-333333333333';
+const MISSING_CHANNEL = '44444444-4444-4444-8444-444444444444';
+const channels: Record<string, { id: string; tenantId: string; channelType: string; tenantActive?: boolean }> = {
   [LINE_CHANNEL]: { id: LINE_CHANNEL, tenantId: 'tenant-1', channelType: 'LINE' },
   [FB_CHANNEL]: { id: FB_CHANNEL, tenantId: 'tenant-1', channelType: 'FB' },
+  [DISABLED_TENANT_CHANNEL]: { id: DISABLED_TENANT_CHANNEL, tenantId: 'tenant-2', channelType: 'LINE', tenantActive: false },
 };
 
 function prismaMock() {
@@ -44,7 +56,9 @@ function prismaMock() {
     channel: {
       findFirst: async ({ where }: any) => {
         const c = channels[where.id];
-        return c ? { ...c, isActive: true, credentialsEncrypted: 'x', settings: {}, externalAccountId: null, tenant: { isActive: true } } : null;
+        if (!c) return null;
+        const { tenantActive = true, ...rest } = c;
+        return { ...rest, isActive: true, credentialsEncrypted: 'x', settings: {}, externalAccountId: null, tenant: { isActive: tenantActive } };
       },
     },
   } as any;
@@ -62,7 +76,7 @@ async function buildApp() {
   return app;
 }
 
-beforeEach(() => { fbVerifyCalls.count = 0; });
+beforeEach(() => { fbVerifyCalls.count = 0; decryptState.fail = false; fbState.throwOnVerify = false; });
 
 test('LINE webhook：簽章錯誤回 403', async () => {
   const app = await buildApp();
@@ -117,4 +131,50 @@ test('processWebhookEvent：渠道類型與路由不符時丟棄，不以路由�
     processWebhookEvent(prismaMock(), io, LINE_CHANNEL, 'FB', Buffer.from('{}'), { 'x-hub-signature-256': 'sha256=x' }),
   );
   assert.equal(fbVerifyCalls.count, 0);
+});
+
+test('LINE webhook：重複的簽章標頭視為驗簽失敗，回 403', async () => {
+  const app = await buildApp();
+  const res = await app.inject({
+    method: 'POST', url: `/line/${LINE_CHANNEL}`, payload: lineBody,
+    headers: { 'content-type': 'application/json', 'x-line-signature': [sign(lineBody), sign(lineBody)] as any },
+  });
+  assert.equal(res.statusCode, 403);
+});
+
+test('verifyWebhookRequest：外掛驗簽拋出錯誤時視為驗簽失敗', async () => {
+  // 例如標頭重複時值是陣列，Facebook 外掛的 startsWith 會拋出錯誤
+  fbState.throwOnVerify = true;
+  const { verifyWebhookRequest } = await import('#src/modules/webhook/webhook.service.js');
+  const r = await verifyWebhookRequest(prismaMock(), FB_CHANNEL, 'FB', Buffer.from('{}'), {})
+    .catch((err: Error) => ({ threw: err.message }));
+  assert.deepEqual(r, { ok: false, reason: 'invalid_signature' });
+});
+
+test('LINE webhook：渠道憑證無法解密時回 500', async () => {
+  decryptState.fail = true;
+  const app = await buildApp();
+  const res = await app.inject({
+    method: 'POST', url: `/line/${LINE_CHANNEL}`, payload: lineBody,
+    headers: { 'content-type': 'application/json', 'x-line-signature': sign(lineBody) },
+  });
+  assert.equal(res.statusCode, 500);
+});
+
+test('LINE webhook：渠道不存在時維持回 200 並丟棄', async () => {
+  const app = await buildApp();
+  const res = await app.inject({
+    method: 'POST', url: `/line/${MISSING_CHANNEL}`, payload: lineBody,
+    headers: { 'content-type': 'application/json', 'x-line-signature': sign(lineBody) },
+  });
+  assert.equal(res.statusCode, 200);
+});
+
+test('LINE webhook：租戶停用時維持回 200 並丟棄', async () => {
+  const app = await buildApp();
+  const res = await app.inject({
+    method: 'POST', url: `/line/${DISABLED_TENANT_CHANNEL}`, payload: lineBody,
+    headers: { 'content-type': 'application/json', 'x-line-signature': sign(lineBody) },
+  });
+  assert.equal(res.statusCode, 200);
 });

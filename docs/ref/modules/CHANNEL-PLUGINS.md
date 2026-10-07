@@ -70,7 +70,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 3. 選擇驗簽用的秘密：`FB`、`THREADS` 用 `appSecret`，其他用 `channelSecret`。這是一處以 `channelType` 分支的程式。
 4. 呼叫外掛的 `verifySignature()`。LINE、Facebook、Instagram 外掛都以 `packages/channel-plugins/src/signature.ts` 的 `signaturesMatch()` 做固定時間比較，簽章長度不同時回傳 `false`。
 
-**回應碼。** LINE 路由在回應前執行步驟 1 到 4：簽章缺少或錯誤、或渠道類型不符時回 403；渠道不存在或租戶停用時回 200 並丟棄；驗證過程拋出錯誤（例如憑證無法解密）時回 500。驗證通過才回 200，事件在背景處理。Facebook 與 Instagram 路由立刻回 200，再在背景驗證與處理；它們的主規格沒有規定回應碼。
+**回應碼。** LINE 路由在回應前執行步驟 1 到 4：簽章缺少或錯誤、或渠道類型不符時回 403；渠道不存在或租戶停用時回 200 並丟棄；憑證無法解密時回 500；外掛驗簽本身拋出錯誤時視為驗簽失敗。驗證通過才回 200，事件在背景處理。Facebook 與 Instagram 路由立刻回 200，再在背景驗證與處理；它們的主規格沒有規定回應碼。
 5. 渠道設定了下游轉發時，把原始內容轉發出去，見[渠道管理](../features/tenant/CHANNELS.md#webhook)。
 6. 呼叫外掛的 `parseWebhook()`，對每一則訊息執行 `processInboundMessage()`。建立新聯絡人時呼叫 `getProfile()`；訊息寫入後，若外掛有 `resolveInboundMedia()`，就在背景下載媒體。
 

@@ -116,7 +116,16 @@ export async function verifyWebhookRequest(
     logger.error('[Webhook] Channel has no signing secret configured', { channelId, channelType });
     return { ok: false, reason: 'invalid_signature' };
   }
-  if (!rawBody || !plugin.verifySignature(rawBody, headers, secret)) {
+  // 外掛驗簽拋出錯誤（例如重複的標頭讓值變成陣列）是格式錯誤的請求，視為驗簽失敗，不當成伺服器錯誤
+  let signatureOk = false;
+  if (rawBody) {
+    try {
+      signatureOk = plugin.verifySignature(rawBody, headers, secret);
+    } catch (err) {
+      logger.warn('[Webhook] Signature verification threw', { channelId, channelType, error: (err as Error)?.message });
+    }
+  }
+  if (!signatureOk) {
     logger.warn('[Webhook] Signature verification failed', { channelId, channelType });
     return { ok: false, reason: 'invalid_signature' };
   }
