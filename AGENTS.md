@@ -57,7 +57,7 @@ Some changes skip step 1 or step 2. This table tells which steps each type of ch
 | A bug fix that restores behavior an existing spec already describes | No | Yes. The first test reproduces the bug |
 | A refactor with no behavior change | No | No. The tests that cover the code must pass before and after the change. If no test covers the code, first add a test that passes on the current code |
 | A dependency update | No | No. Run `pnpm test`. Also run `pnpm test:feature` if the dependency is used for the database or Redis |
-| A change to docs or OpenSpec files only | No | No. Run each command that the change adds or changes. Make sure that each path and link in the change exists |
+| A change to docs or OpenSpec files only | No. Exception: to remove a whole main spec, open a change (see Step 4) | No. Run each command that the change adds or changes. Make sure that each path and link in the change exists |
 | Specs and tests for behavior that the code already has | Yes | No. The tests pass when you write them. Verify each test with a mutation instead (see "When a test passes as soon as you write it") |
 
 ### Step 1 — Spec the behavior (SDD)
@@ -293,17 +293,23 @@ request:
       validation in the next items rejects this text.
 - [ ] To remove a whole main spec (`openspec/specs/<name>/`), first check whether its capability
       is still planned:
-      1. If the capability is still planned, move the requirements of the spec into a change as an
-         `ADDED` delta spec.
-      2. If the capability is not planned, delete the spec only in one of these cases:
-         - The product does not have the capability that the spec describes.
+      1. If the capability is still planned, copy the requirements of the main spec into a change
+         for that capability. Write them as an `ADDED` delta spec.
+      2. If the capability is not planned, remove the main spec only in one of these cases:
+         - The product does not have the capability that the main spec describes.
          - Another spec or document now covers that capability.
-         - The spec records a one-time change, not behavior that the system keeps.
+         - The main spec records a one-time task, not behavior that the system keeps.
 
-      Removing a whole spec is the only time that you delete a directory under `openspec/specs/`
-      by hand. A delta spec cannot do this: `openspec archive` stops when a spec has no
-      requirements left. In the pull request description, give the reason for each removed spec.
-      If a spec or document replaces it, name that spec or document.
+      Do not delete the directory of the main spec by hand. Remove the main spec with a change
+      that has these two items:
+      - A delta spec that lists each requirement of the main spec under
+        `## REMOVED Requirements`.
+      - `retire_capabilities: true` in the `.openspec.yaml` of the change. Without this line,
+        `pnpm exec openspec archive` fails when it removes the last requirement of a main spec.
+
+      When you archive the change, the CLI deletes the directory of the main spec. In the
+      `proposal.md` of the change, give the reason for each removed main spec. If a spec or
+      document replaces the removed main spec, name that spec or document.
 - [ ] `node scripts/validate-openspec.mjs --specs` passes, if your change touches `openspec/`.
       Before you archive a change, `node scripts/validate-openspec.mjs <change-name>` also
       passes. All main specs pass on `main`.
