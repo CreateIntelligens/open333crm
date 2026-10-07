@@ -497,6 +497,13 @@ Redis connection.
   superuser, and a superuser bypasses RLS. A query without its tenant binding works locally, but
   returns no rows in production. The feature tests connect as `app_tenant`.
   `rls-isolation.test.ts` is the test that checks RLS.
+- **The feature tests need the passwords of `app_tenant` and `app_admin`.** These roles belong to
+  the whole PostgreSQL server, so the development database shares them. The global setup sets
+  their passwords (`app_tenant_local`, `app_admin_local`) only when a role has no password yet. If
+  a role already has a different password, the setup stops before any test runs and tells you how
+  to fix it: give the current passwords in `TEST_APP_TENANT_PASSWORD` and
+  `TEST_APP_ADMIN_PASSWORD`, or change the role passwords. Before this check, every test that
+  used these roles failed with `500 INTERNAL_ERROR` and showed no cause.
 - **Next.js compiles `NEXT_PUBLIC_*` values into the browser bundle.** Do not set such a value to
   a Compose service name such as `api:3001`. The browser cannot resolve a Compose service name.
   Use `http://localhost:3001/api` locally.
