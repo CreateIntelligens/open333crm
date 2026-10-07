@@ -167,7 +167,7 @@
 | `chatbox` | `/api/v1/chatbox/sessions`、`/sessions/verify`、`/messages`、`/media` | 嵌入式 chatbox | `chatboxSessionVerifier` | [渠道管理](../features/tenant/CHANNELS.md) |
 | `portal`（public 部分） | `/api/v1/fan` | LINE 粉絲（LIFF） | `authenticateFan` | [粉絲活動](../features/tenant/PORTAL.md) |
 | `trial` | `/api/v1/trial/signups`、`/verify`、`/resend` | 試用申請者 | 信箱驗證 token | [試用管理](../features/platform/TRIALS.md) |
-| `line-login`、`fb-login` | `/api/v1/auth/line`、`/api/v1/auth/fb` | OAuth 授權流程 | `/authorize` 與 `/callback` 公開；`/request-email` 需客服登入 | [聯絡人與標籤](../features/tenant/CONTACTS.md) |
+| `identity-binding`（email 登記部分） | `/api/v1/public/email-registration/:token` | 客人（登記 email） | 一次性登記 token，每個 IP 每分鐘 20 次 | [聯絡人與標籤](../features/tenant/CONTACTS.md#email-登記) |
 | `shortlink`（redirect 部分） | `/s/:slug`、`/s/track` | 點擊短連結的人 | 無 | [短連結](../features/tenant/SHORTLINKS.md) |
 | `storage`（imagemap 部分） | `/line-imagemap/:tenantId/:imageId/:width` | LINE 平台抓圖 | 無 | 無 |
 

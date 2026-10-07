@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-07：修正 IDENT-02，改以 email 登記歸戶
+
+change `add-email-identity-merge` 依 2026-10-06 需求會議的決定，以 email 作為跨渠道的 One ID，並移除 LINE、Facebook 登入補 email 的流程。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| IDENT-02 的公開授權端點與不比對登入者 | 修正，從 `AUDIT.md` 移除 | `line-login`、`fb-login` 模組與 `/auth/line/*`、`/auth/fb/*` 路由整個刪除，`prismaAdmin` 白名單一併移除這兩個模組。UAT 查詢（2026-10-07）：API 沒有設定 `LINE_LOGIN_*`、`FB_LOGIN_*`，`contact_merge_logs` 沒有 `LINE_LOGIN`、`FB_LOGIN` 紀錄，移除不影響現有資料 |
+| state 存在行程記憶體 | 隨流程移除 | 新的 email 登記 token 存在 Redis，綁定租戶、渠道身分與對話，成功送出時以 `GETDEL` 取出，只能用一次 |
+| email 寫入後自動合併 | 改為明確的產品決定 | 需求會議決定相同 email 自動歸戶、不寄驗證信。合併前檢查同渠道衝突，合併後雙邊通知，7 天內雙方都可自助解除。客服修改 email 撞到他人時不自動合併，回 409 由客服決定 |
+
+新增主規格（歸檔後）：`email-identity-merge`、`cross-channel-conversation-view`、`ai-cross-channel-context`。測試：`apps/api/tests/feature/modules/identity-binding/email-registration*.test.ts`、`apps/api/tests/feature/modules/contact/contact-messages.test.ts`、`apps/api/tests/feature/modules/ai/other-channel-context.test.ts`，以及 web 的對應元件測試。實作後才寫的測試以突變驗證，清單在 change 的 `tasks.md`。
+
+DB-02 的內文原本說 `ContactTag.expiresAt` 只出現在 LINE、Facebook 登入的合併；改為 `contact-merge.service.ts` 搬移標籤時保留原值。
+
 ## 2026-10-07：補回 webchat 的主規格，修正 CHAN-04、CHAN-05
 
 change `restore-webchat-abuse-specs` 補回 `fix-security-audit-findings` 剩下的 delta spec（issue #228）：新增主規格 `webchat-public-abuse-controls`，並修改 `webchat-widget` 的 3 條需求，把 `visitorToken` 的寫法改成現行的 chatbox 工作階段。對照程式的結果：

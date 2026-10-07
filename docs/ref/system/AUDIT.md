@@ -101,7 +101,6 @@
 | [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
-| [IDENT-02](#ident-02) | 聯絡人、行銷與報表 | P2 | 已提建議 | LINE、Facebook 登入補 email 時不確認登入者就是該聯絡人，授權網址可由任何人以任意渠道身分產生 | 靜態確認 |
 | [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 已提建議 | 群發可以重複執行，重送時不排除已送達的人 | 靜態確認 |
 | [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 部分修正 | 記錄點擊的公開端點採信呼叫端提供的同租戶聯絡人與 LINE uid，也沒有速率限制；其他租戶的聯絡人已擋下 | 靜態確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
@@ -1316,29 +1315,6 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 **規格依據。** 主規格 `identity-stitching-engine` 的「AI 合併建議」規定：系統發現不同渠道的聯絡人有相同手機號碼時，必須產生一筆合併建議，交給管理員核准。現況沒有任何程式產生建議，違反這條需求，因此由 P4 調為 P2。
 
-<a id="ident-02"></a>
-### IDENT-02：LINE、Facebook 登入補 email 時，不確認登入者就是該聯絡人
-
-客服在對話中按「索取 email」時，`line-login.routes.ts` 的 `POST /auth/line/request-email` 產生一個 LINE Login 授權網址，以訊息傳給客人。客人登入並同意提供 email 之後，callback 把 email 寫到聯絡人上。Facebook 的 `fb-login` 模組是同一套流程，以 `psid` 取代 `lineUid`。
-
-這個流程有三個缺口：
-
-1. **授權網址可以由任何人產生。** `GET /auth/line/authorize` 與 `GET /auth/fb/authorize` 是公開端點，接受呼叫端指定的 `lineUid`（或 `psid`）與 `channelId`，直接產生帶 state 的授權網址。前端沒有任何地方呼叫這兩個端點。
-2. **callback 不比對登入者。** `/callback` 取出 state 記錄的 `lineUid`，把登入者的 email 寫到這個渠道身分所屬的聯絡人。`verifyIdToken()` 回傳的 `userId` 沒有被使用，因此系統不知道登入的人是不是這位聯絡人。LINE Login 的 channel 由 `LINE_LOGIN_CHANNEL_ID` 設定，全部署共用一個；它與租戶的 Messaging API channel 通常不屬於同一個 provider，同一個人在兩邊的 user ID 也不同，所以無法直接比對。
-3. **授權網址本身就是憑證。** 客人把收到的連結轉給別人，由別人完成登入，寫入的就是別人的 email。
-
-寫入的 email 會觸發自動合併：`updateContactEmail()` 在同租戶找到另一個同 email 的聯絡人時，以 `contact-merge.service.ts` 的 `mergeContacts()` 把原聯絡人併進去，不經客服確認。被合併者會封存，客服事後可以從合併紀錄解除（`POST /contacts/merge-logs/:logId/revert`），但要先發現這次合併。所以知道一組 `lineUid` 與 `channelId` 的人，可以用自己的 LINE 帳號完成登入，把該聯絡人併進自己的聯絡人。合併之後，客服看到的歷史對話與資料都歸在同一個聯絡人底下。
-
-觸發的前提是知道目標的 `lineUid` 與 `channelId`。這兩個值不會出現在公開頁面，但租戶成員在聯絡人詳情頁看得到渠道身分的 ID，因此離職成員是最可能的來源。
-
-另外，state 存在 API 行程的記憶體（`line-login.service.ts` 與 `fb-login.service.ts` 各自的 `stateStore`）。API 重啟之後，還沒完成的授權全部失效；部署多個 API 行程時，callback 若落在另一個行程也會失敗。
-
-**修正方向**：
-
-- 移除公開的 `/authorize`，授權網址只由 `request-email` 產生。
-- state 與產生它的對話綁定，存在 Redis，並設定一次性使用。
-- email 寫入之後不自動合併，改為產生合併建議，由客服確認。
-
 <a id="mkt-01"></a>
 ### MKT-01：群發可以重複執行，重送時不排除已送達的人
 
@@ -1572,7 +1548,7 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 | API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發在兩個行程都查到同一筆 `scheduled` 時，因 `executeBroadcast()` 接受 `sending` 狀態而兩邊都執行，見 MKT-01 |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
 | `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
-| 行程記憶體的狀態 | OAuth 的 state（IDENT-02）、非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
+| 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
 | Socket.IO | 沒有 Redis adapter。`@socket.io/redis-adapter` 列在 `apps/api/package.json`，但程式沒有使用。API 直接推送的事件只送到同一個行程的客戶端 |
 
 這些問題分散在各模組，單獨看都像是小事，但合起來代表 API 目前無法水平擴充。
@@ -1714,7 +1690,7 @@ Prisma schema 與程式常數使用 1024 維。執行中的 `km_articles.embeddi
 <a id="db-02"></a>
 ### DB-02：`ContactTag.expiresAt` 沒有設定端，也沒有讀取端
 
-schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個欄位，也沒有任何查詢或排程依它過濾或清除標籤。它唯一出現的地方，是 `line-login.service.ts` 與 `fb-login.service.ts` 合併聯絡人時，把舊值原樣抄到新的一筆。
+schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個欄位，也沒有任何查詢或排程依它過濾或清除標籤。它唯一出現的地方，是 `contact-merge.service.ts` 合併聯絡人時以 `updateMany` 搬移標籤，保留原值。
 
 <a id="db-03"></a>
 ### DB-03：`DailyStat` 每天寫入，沒有讀取端
