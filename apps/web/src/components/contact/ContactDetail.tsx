@@ -1,13 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Phone, Mail } from 'lucide-react';
+import { Phone } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ChannelIdentityList } from './ChannelIdentityList';
 import { TagManager } from './TagManager';
 import { ContactMergeHistory } from './ContactMergeHistory';
+import { ContactEmailField } from './ContactEmailField';
 
 interface ContactDetailProps {
   contact: {
@@ -31,9 +32,11 @@ interface ContactDetailProps {
     attributes?: Record<string, string>;
   };
   onUpdate: () => void;
+  /** email 與另一位聯絡人相同、客服選擇合併時呼叫（見 ContactEmailField） */
+  onRequestEmailMerge: (other: { id: string; displayName: string }, email: string) => void;
 }
 
-export function ContactDetail({ contact, onUpdate }: ContactDetailProps) {
+export function ContactDetail({ contact, onUpdate, onRequestEmailMerge }: ContactDetailProps) {
   return (
     <div className="space-y-6">
       {/* Contact Info */}
@@ -44,7 +47,7 @@ export function ContactDetail({ contact, onUpdate }: ContactDetailProps) {
         <CardContent>
           <div className="flex items-start gap-4">
             <Avatar alt={contact.name} src={contact.avatar} size="lg" />
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="text-lg font-semibold">{contact.name}</h3>
               {contact.phone && (
                 <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -52,12 +55,12 @@ export function ContactDetail({ contact, onUpdate }: ContactDetailProps) {
                   <span>{contact.phone}</span>
                 </div>
               )}
-              {contact.email && (
-                <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Mail className="h-4 w-4" />
-                  <span>{contact.email}</span>
-                </div>
-              )}
+              <ContactEmailField
+                contactId={contact.id}
+                email={contact.email}
+                onUpdate={onUpdate}
+                onRequestMerge={onRequestEmailMerge}
+              />
             </div>
           </div>
         </CardContent>

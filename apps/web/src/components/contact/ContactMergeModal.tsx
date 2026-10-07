@@ -26,6 +26,8 @@ interface ContactMergeModalProps {
     }>;
   };
   onMergeComplete: () => void;
+  /** 開啟時預先選好的合併對象（例如 email 與另一位聯絡人相同時） */
+  initialSecondary?: { id: string; displayName: string } | null;
 }
 
 interface SearchResult {
@@ -87,6 +89,7 @@ export function ContactMergeModal({
   onOpenChange,
   primaryContact,
   onMergeComplete,
+  initialSecondary,
 }: ContactMergeModalProps) {
   const [step, setStep] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,6 +101,10 @@ export function ContactMergeModal({
   const [confirmed, setConfirmed] = useState(false);
   const [merging, setMerging] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open && initialSecondary) setSelectedSecondary(initialSecondary);
+  }, [open, initialSecondary]);
 
   // Reset state when modal closes
   useEffect(() => {

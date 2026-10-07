@@ -5,12 +5,15 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Loader2, Merge } from 'lucide-react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
 import { Topbar } from '@/components/layout/Topbar';
 import { ContactDetail } from '@/components/contact/ContactDetail';
 import { ContactTimeline } from '@/components/contact/ContactTimeline';
 import { ContactMergeModal } from '@/components/contact/ContactMergeModal';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ContactConversationHistory } from '@/components/contact/ContactConversationHistory';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ContactDetailPage() {
   const params = useParams();
@@ -24,6 +27,13 @@ export default function ContactDetailPage() {
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  // 右欄：活動時間軸／跨渠道對話紀錄（change add-email-identity-merge）
+  const [rightTab, setRightTab] = useState<'timeline' | 'messages'>('timeline');
+  // 合併或解除後重新載入對話紀錄
+  const [historyKey, setHistoryKey] = useState(0);
+  // 修改 email 時與另一位聯絡人相同、客服選擇合併：合併完成後再寫入 email（change add-email-identity-merge）
+  const [emailMerge, setEmailMerge] = useState<{ other: { id: string; displayName: string }; email: string } | null>(null);
+  const [emailMergeError, setEmailMergeError] = useState<string | null>(null);
 
   const fetchContact = useCallback(async () => {
     try {
@@ -96,6 +106,7 @@ export default function ContactDetailPage() {
         <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
           {/* Left - Contact Info */}
           <div>
+            {emailMergeError && <p className="mb-3 text-sm text-destructive">{emailMergeError}</p>}
             <ContactDetail
               contact={{
                 id: contact.id as string,
@@ -138,23 +149,39 @@ export default function ContactDetailPage() {
                     )
                   : undefined,
               }}
+              onRequestEmailMerge={(other, email) => {
+                setEmailMergeError(null);
+                setEmailMerge({ other, email });
+                setShowMergeModal(true);
+              }}
               onUpdate={() => {
                 fetchContact();
-                // 解除合併會把對話搬回另一位聯絡人，時間軸也要跟著更新
+                // 解除合併會把對話搬回另一位聯絡人，時間軸與對話紀錄也要跟著更新
                 fetchTimeline();
+                setHistoryKey((k) => k + 1);
               }}
             />
           </div>
 
-          {/* Right - Timeline */}
+          {/* Right - Timeline / 對話紀錄 */}
           <div>
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">活動時間軸</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ContactTimeline events={timeline} />
-              </CardContent>
+              <Tabs value={rightTab} onValueChange={(v) => setRightTab(v as 'timeline' | 'messages')}>
+                <CardHeader>
+                  <TabsList>
+                    <TabsTrigger value="timeline">活動時間軸</TabsTrigger>
+                    <TabsTrigger value="messages">對話紀錄</TabsTrigger>
+                  </TabsList>
+                </CardHeader>
+                <CardContent>
+                  <TabsContent value="timeline">
+                    <ContactTimeline events={timeline} />
+                  </TabsContent>
+                  <TabsContent value="messages">
+                    {rightTab === 'messages' && <ContactConversationHistory key={historyKey} contactId={contactId} />}
+                  </TabsContent>
+                </CardContent>
+              </Tabs>
             </Card>
           </div>
         </div>
@@ -162,7 +189,6 @@ export default function ContactDetailPage() {
 
       <ContactMergeModal
         open={showMergeModal}
-        onOpenChange={setShowMergeModal}
         primaryContact={{
           id: contact.id as string,
           displayName: (contact.displayName || contact.name) as string,
@@ -177,9 +203,24 @@ export default function ContactDetailPage() {
             }> | undefined
           ),
         }}
-        onMergeComplete={() => {
+        initialSecondary={emailMerge?.other ?? null}
+        onOpenChange={(open) => {
+          setShowMergeModal(open);
+          if (!open) setEmailMerge(null);
+        }}
+        onMergeComplete={async () => {
+          // 對方已封存，email 不再重複，直接寫入
+          if (emailMerge) {
+            try {
+              await api.patch(`/contacts/${contactId}`, { email: emailMerge.email || null });
+            } catch (err) {
+              setEmailMergeError(getApiErrorMessage(err, '已合併，但 email 沒有寫入，請重新編輯 email'));
+            }
+            setEmailMerge(null);
+          }
           fetchContact();
           fetchTimeline();
+          setHistoryKey((k) => k + 1);
         }}
       />
     </div>
