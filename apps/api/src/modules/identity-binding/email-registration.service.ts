@@ -222,7 +222,8 @@ async function registerEmail(
   // 否則會把最早的一位併入較新的一位
   const earliest = await db.contact.findFirst({
     where: { tenantId, isArchived: false, email: { equals: email, mode: 'insensitive' } },
-    orderBy: { createdAt: 'asc' },
+    // 建立時間相同時以 id 排序，結果固定
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     select: { id: true, displayName: true },
   });
   const existing = earliest && earliest.id !== registrantId ? earliest : null;
@@ -310,6 +311,7 @@ async function registerEmail(
 
 /**
  * 送出 submitEmailRegistration 回傳的通知。送不出去的訊息會在對話標示「沒有送出」，合併結果不受影響。
+ * 每則各自處理：一則拋錯不影響其他則。
  */
 export async function sendEmailRegistrationNotices(
   db: TenantDb,
@@ -318,6 +320,10 @@ export async function sendEmailRegistrationNotices(
   notices: EmailNotice[],
 ): Promise<void> {
   for (const n of notices) {
-    await sendBindingMessage(db, deps, tenantId, n.conversationId, n.text, n.kind);
+    try {
+      await sendBindingMessage(db, deps, tenantId, n.conversationId, n.text, n.kind);
+    } catch (err) {
+      logger.error(`[EmailRegistration] 通知送出失敗（conversation=${n.conversationId}, kind=${n.kind}）:`, err);
+    }
   }
 }

@@ -12,6 +12,7 @@ import {
   EMAIL_REG_TTL_MS,
   issueEmailRegistrationLink,
   readEmailRegistration,
+  sendEmailRegistrationNotices,
 } from '#src/modules/identity-binding/email-registration.service.js';
 import type { BindingActor } from '#src/modules/identity-binding/binding-common.js';
 
@@ -148,4 +149,18 @@ test('送不出去時作廢 token', async () => {
   };
   assert.deepEqual(await issueEmailRegistrationLink(f.db, f.deps, f.actor), { status: 'delivery_failed' });
   assert.equal(await readEmailRegistration(f.store, tokenIn(f.sent[0].text)!), null);
+});
+
+test('其中一則通知送出時拋錯，其他通知照常送出', async () => {
+  const f = issueFixture();
+  f.deps.deliver = async (_db, conversationId, text) => {
+    if (conversationId === 'conv-a') throw new Error('推播逾時');
+    f.sent.push({ conversationId, text });
+    return true;
+  };
+  await sendEmailRegistrationNotices(f.db, f.deps, f.actor.tenantId, [
+    { conversationId: 'conv-a', text: '通知 A', kind: 'email_merged' },
+    { conversationId: 'conv-b', text: '通知 B', kind: 'email_merged' },
+  ]);
+  assert.deepEqual(f.sent.map((s) => s.conversationId), ['conv-b']);
 });

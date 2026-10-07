@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { success } from "../../shared/utils/response.js";
+import { AppError, success } from "../../shared/utils/response.js";
 import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
 import {
   getEmbeddingSettings,
@@ -41,8 +41,12 @@ import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
-import { applyIdentityBindingUpdate, parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
-import { CONFIRM_KEYWORD, DEFAULT_EMAIL_KEYWORDS } from "../identity-binding/binding-code.js";
+import {
+  applyIdentityBindingUpdate,
+  findIdentityBindingKeywordIssue,
+  parseIdentityBindingSettings,
+} from "../identity-binding/binding-links.js";
+import { CONFIRM_KEYWORD } from "../identity-binding/binding-code.js";
 import {
   getIdentityBindingSettings,
   invalidateIdentityBindingSettings,
@@ -107,14 +111,7 @@ export const identityBindingSettingsSchema = z
         message: "綁定與解除關鍵字不可相同",
       });
     }
-    const taken = new Set([...data.bindKeywords, ...data.unbindKeywords, CONFIRM_KEYWORD].map((k) => k.toLowerCase()));
-    if ((data.emailKeywords ?? DEFAULT_EMAIL_KEYWORDS).some((k) => taken.has(k.toLowerCase()))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["emailKeywords"],
-        message: "email 登記關鍵字不可與綁定、解除關鍵字或「確認綁定」相同",
-      });
-    }
+    // email 登記關鍵字的衝突在路由對合併後的設定檢查（findIdentityBindingKeywordIssue）
   });
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
@@ -214,6 +211,8 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     const data = identityBindingSettingsSchema.parse(request.body);
     const tenantId = request.agent.tenantId;
     const value = applyIdentityBindingUpdate(await getIdentityBindingSettings(request.tenantPrisma, tenantId), data);
+    const issue = findIdentityBindingKeywordIssue(value);
+    if (issue) throw new AppError(issue.message, "VALIDATION_ERROR", 400, { issues: [issue] });
     await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
       create: { tenantId, identityBinding: value },

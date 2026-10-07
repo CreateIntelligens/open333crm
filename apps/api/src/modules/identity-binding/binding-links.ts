@@ -1,7 +1,13 @@
 /**
  * 跨渠道綁定：租戶設定讀取、導流識別解析、導流連結與顧客看到的訊息文字（design D6 / D10）。
  */
-import { BINDING_CODE_TTL_MS, DEFAULT_BIND_KEYWORDS, DEFAULT_EMAIL_KEYWORDS, DEFAULT_UNBIND_KEYWORDS } from './binding-code.js';
+import {
+  BINDING_CODE_TTL_MS,
+  CONFIRM_KEYWORD,
+  DEFAULT_BIND_KEYWORDS,
+  DEFAULT_EMAIL_KEYWORDS,
+  DEFAULT_UNBIND_KEYWORDS,
+} from './binding-code.js';
 
 export interface IdentityBindingSettings {
   enabled: boolean;
@@ -46,6 +52,18 @@ export function applyIdentityBindingUpdate(
     emailEnabled: data.emailEnabled ?? current.emailEnabled,
     emailKeywords: data.emailKeywords ?? current.emailKeywords,
   };
+}
+
+/**
+ * 檢查要儲存的設定：email 登記關鍵字不可與綁定、解除關鍵字或確認字相同。
+ * 要對合併後的完整設定檢查（沒送的欄位沿用已儲存的值），只檢查請求內容會漏掉衝突。
+ */
+export function findIdentityBindingKeywordIssue(value: IdentityBindingSettings): { path: string; message: string } | null {
+  const taken = new Set([...value.bindKeywords, ...value.unbindKeywords, CONFIRM_KEYWORD].map((k) => k.toLowerCase()));
+  if (value.emailKeywords.some((k) => taken.has(k.toLowerCase()))) {
+    return { path: 'emailKeywords', message: 'email 登記關鍵字不可與綁定、解除關鍵字或「確認綁定」相同' };
+  }
+  return null;
 }
 
 /** 關鍵字比對：整句相符（去頭尾空白、不分大小寫），避免一般對話裡提到「綁定帳號」就被攔截 */

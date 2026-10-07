@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { identityBindingSettingsSchema } from '#src/modules/settings/settings.routes.js';
-import { applyIdentityBindingUpdate } from '#src/modules/identity-binding/binding-links.js';
+import { applyIdentityBindingUpdate, findIdentityBindingKeywordIssue } from '#src/modules/identity-binding/binding-links.js';
 
 const base = { enabled: true, bindKeywords: ['綁定帳號'], unbindKeywords: ['解除綁定'] };
 
@@ -29,10 +29,16 @@ test('沒送 email 欄位時沿用已儲存的設定，不會把 email 登記關
   assert.equal(applyIdentityBindingUpdate(stored, { ...data, emailEnabled: false }).emailEnabled, false);
 });
 
-test('email 登記關鍵字不可與綁定、解除關鍵字或確認字相同', () => {
+test('email 登記關鍵字不可與綁定、解除關鍵字或確認字相同（檢查合併後要儲存的設定）', () => {
   for (const kw of ['綁定帳號', '解除綁定', '確認綁定']) {
-    const r = identityBindingSettingsSchema.safeParse({ ...base, emailEnabled: true, emailKeywords: [kw] });
-    assert.equal(r.success, false, kw);
-    assert.ok(r.error?.issues.some((i) => i.path[0] === 'emailKeywords'), kw);
+    const value = applyIdentityBindingUpdate(null, identityBindingSettingsSchema.parse({ ...base, emailEnabled: true, emailKeywords: [kw] }));
+    assert.equal(findIdentityBindingKeywordIssue(value)?.path, 'emailKeywords', kw);
   }
+  assert.equal(findIdentityBindingKeywordIssue(applyIdentityBindingUpdate(null, identityBindingSettingsSchema.parse(base))), null);
+});
+
+test('沒送 email 關鍵字時，已儲存的自訂關鍵字與新的綁定關鍵字衝突也要擋下', () => {
+  const stored = { ...base, emailEnabled: true, emailKeywords: ['自訂關鍵字'] };
+  const data = identityBindingSettingsSchema.parse({ ...base, bindKeywords: ['自訂關鍵字'] });
+  assert.equal(findIdentityBindingKeywordIssue(applyIdentityBindingUpdate(stored, data))?.path, 'emailKeywords');
 });
