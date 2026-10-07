@@ -58,6 +58,12 @@ Plan MUST 支援 `plan.limits.maxChannels`（number，null=無上限）。有效
 - **WHEN** 建立渠道
 - **THEN** 渠道建立成功
 
+#### Scenario: 租戶覆寫成 null 時不限制渠道數
+
+- **GIVEN** 某方案 `maxChannels=1`，租戶的 `limitOverrides` 有 `maxChannels` 這個 key，值是 null，租戶已有 1 個啟用中的渠道
+- **WHEN** 建立渠道
+- **THEN** 渠道建立成功
+
 ### Requirement: 渠道 provider 類型限定
 
 Plan MUST 支援 `Plan.allowedChannelTypes`（渠道類型白名單 `string[]`；空/null=不限制）。建立渠道時，若白名單非空且欲建的 `channelType` 不在白名單內，MUST 拒絕（`CHANNEL_TYPE_NOT_ALLOWED` 403）。白名單縮小 MUST NOT 影響既有已建渠道的運作（僅擋新建）。白名單值 MUST 為合法 `channelType`。

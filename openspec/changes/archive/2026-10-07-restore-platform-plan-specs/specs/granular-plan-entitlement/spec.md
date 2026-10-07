@@ -29,3 +29,9 @@ Plan MUST 支援 `plan.limits.maxChannels`（number，null=無上限）。有效
 - **GIVEN** 某方案 `maxChannels=1`，租戶的 `limitOverrides.maxChannels` 是 2，租戶已有 1 個啟用中的渠道
 - **WHEN** 建立渠道
 - **THEN** 渠道建立成功
+
+#### Scenario: 租戶覆寫成 null 時不限制渠道數
+
+- **GIVEN** 某方案 `maxChannels=1`，租戶的 `limitOverrides` 有 `maxChannels` 這個 key，值是 null，租戶已有 1 個啟用中的渠道
+- **WHEN** 建立渠道
+- **THEN** 渠道建立成功

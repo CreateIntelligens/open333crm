@@ -73,3 +73,10 @@ test('租戶覆寫渠道數上限：方案 maxChannels=1、覆寫為 2、已有 
   await create(db);
   assert.equal(db.created.length, 1);
 });
+
+test('租戶覆寫成 null 時不限制渠道數：方案 maxChannels=1、覆寫為 null、已有 1 個渠道時建立渠道', async () => {
+  const db = createDb({ limits: { maxChannels: 1 }, limitOverrides: { maxChannels: null }, channels: [{ isActive: true }] });
+
+  await create(db);
+  assert.equal(db.created.length, 1);
+});
