@@ -45,19 +45,19 @@ API SHALL 在儲存訊息或檔案之前，拒絕超過下列限制的公開 Web
 公開 WebChat 工作階段的有效期限 SHALL NOT 超過三天：
 
 - API 啟動時的環境變數驗證拒絕大於 4320 分鐘的 `CHATBOX_SESSION_TTL_MINUTES`，API 不啟動。
-- 建立工作階段時，即使 `CHATBOX_SESSION_TTL_MINUTES` 大於 4320，有效期限仍以三天計算。
+- 計算新工作階段的有效期限時，系統另外把有效期限限制在三天內。這是第二道檢查：環境變數驗證沒有執行時，例如程式直接呼叫計算函式，有效期限仍不超過三天。
 
 #### Scenario: 設定的有效期限超過三天
 - **WHEN** API 的環境變數 `CHATBOX_SESSION_TTL_MINUTES` 是 4321
 - **THEN** 環境變數驗證失敗，錯誤訊息指出 `CHATBOX_SESSION_TTL_MINUTES`
 
 #### Scenario: 建立工作階段時的有效期限
-- **WHEN** `CHATBOX_SESSION_TTL_MINUTES` 是四天的分鐘數，系統計算新工作階段的有效期限
+- **WHEN** 環境變數驗證沒有執行，`CHATBOX_SESSION_TTL_MINUTES` 是四天的分鐘數，系統計算新工作階段的有效期限
 - **THEN** 有效期限是三天
 
 ### Requirement: 訊息與上傳請求的頻率限制
 
-API SHALL 依來源 IP、工作階段與渠道，計算公開的訊息與上傳請求次數：
+API SHALL 計算公開的訊息與上傳請求次數。每種請求的計數範圍如下：
 
 - 訊息：每個來源 IP、每個工作階段、每個渠道各有每分鐘的上限；每個工作階段、每個渠道另有每小時的上限。每小時的上限用來控制訪客能觸發多少自動化與 AI 工作。
 - 上傳：每個來源 IP、每個工作階段各有每分鐘的上限。訊息與上傳的來源 IP 上限分開計算。
