@@ -93,6 +93,7 @@
 - [x] 11.6 登記頁先檢查 token 格式並編碼後才送請求（`email-registration-form.test.tsx`）
 - [x] 11.7 合併後重設 email 欄位、改選他人時不寫入 email（頁面層 `contact-detail-page.test.tsx`）；切換對話時清空其他渠道的對話；傳送結果只顯示在原對話；設定儲存後清除收件匣快取；測試改用 `assert.ok(x === null)`
 - [x] 11.8 PR Agent 審查：email 關鍵字衝突改對合併後要儲存的設定檢查，沒送 email 關鍵字時也擋得下（`identity-binding-settings-schema.test.ts`）；通知逐則處理，一則拋錯不影響其他則（`email-registration.test.ts`）；比對最早聯絡人時以 id 作第二排序
+- [x] 11.9 PR Agent 第二輪：補設定路由的整合測試 `apps/api/tests/feature/modules/settings/identity-binding-settings-route.test.ts`（沒送 email 欄位沿用、合併後衝突回 400 且 `path` 為字串，與全站 Zod 錯誤格式一致）
 
 ## 突變驗證
 
@@ -116,3 +117,5 @@
 | 對話清單的 `hiddenCount` 固定為 0 | CM-173：分店帳號看聯絡人的對話… |
 | KB 自動回覆與 Agent 不傳其他渠道的訊息 | KB 自動回覆、Agent 模式（接線測試） |
 | 傳送按鈕讀 `enabled` 而不是 `emailEnabled` | 啟用時送出連結並顯示結果、沒送到顧客時顯示失敗原因 |
+| 設定路由不檢查合併後的設定 | 沒送 email 關鍵字時，與已儲存的 email 關鍵字衝突也回 400 |
+| 設定路由不沿用已儲存的 email 欄位 | 設定頁沒送 email 欄位 |
