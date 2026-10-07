@@ -3,6 +3,7 @@
 // ref: docs/03_CHANNEL_PLUGINS/LINE_OA.md
 
 import * as crypto from 'node:crypto';
+import { signaturesMatch } from '../signature.js';
 import type {
   ChannelPlugin,
   ChannelUiExtension,
@@ -284,7 +285,7 @@ export class LinePlugin implements ChannelPlugin {
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(rawBody);
     const digest = hmac.digest('base64');
-    return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
+    return signaturesMatch(digest, signature);
   }
 
   // ─── parseWebhook ──────────────────────────────────────────────

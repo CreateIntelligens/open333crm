@@ -110,7 +110,6 @@
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時客人收不到任何回覆 | 靜態確認 |
-| [CHAN-03](#chan-03) | 渠道、稽核與資料權利 | P2 | 已提建議 | LINE 的簽章錯誤也回 200；進站路由不比對渠道本身的類型；FB 與 Instagram 以一般字串比對簽章 | 靜態確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
@@ -1437,23 +1436,6 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 網站聊天室即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
 
 **修正方向**：workers 改用與 API 相同的註冊函式，註冊全部外掛；網站聊天室的訪客推送移進外掛或共用的送出函式；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
-
-<a id="chan-03"></a>
-### CHAN-03：webhook 驗簽的三處細節
-
-**LINE 的簽章錯誤也回 200。** `webhook.routes.ts` 的 `POST /line/:channelId` 先回 200，再在背景呼叫 `processWebhookEvent()`。驗簽失敗時，`processWebhookEvent()` 拋出 `Invalid webhook signature`，路由的 `catch` 只寫一筆 error log。因此簽章缺少或錯誤的請求，與正確的請求得到相同的回應。FB 與 Threads 的路由也是先回 200，但它們的主規格沒有規定回應碼。
-
-**規格依據。** 主規格 `line-webhook-events` 的「LINE Webhook signature verification」規定：簽章缺少或錯誤時，系統 SHALL 回 HTTP 403 並記錄。現況違反這條需求，因此由 P4 調為 P2。
-
-**進站路由不比對渠道本身的類型。** `webhook.routes.ts` 的 LINE、FB、Threads 路由各自把固定的 `channelType` 傳給 `processWebhookEvent()`，後者以這個值取得外掛與決定驗簽用的秘密，但不與 `channel.channelType` 比對。把 LINE 渠道的 ID 送到 Facebook 的路由，會以 Facebook 外掛、LINE 渠道的憑證處理。目前因為兩種渠道的憑證欄位不同（LINE 沒有 `appSecret`），驗簽會失敗；這個保護依賴於憑證欄位碰巧不同。
-
-**FB 與 Instagram 以一般字串比對簽章。** `facebook/index.ts` 與 `threads.ts` 的 `verifySignature()` 以 `===` 比對 HMAC，不是固定時間的比較。LINE 外掛使用 `crypto.timingSafeEqual()`，但沒有先比對長度，簽章長度不同時會拋出錯誤而不是回傳 `false`；錯誤被外層接住，只寫一筆 error log。
-
-**修正方向**：
-
-- LINE 路由在回應前完成驗簽，失敗時回 403；驗簽通過後才回 200，再於背景處理事件。驗簽只需要查渠道憑證與計算 HMAC，不影響「30 秒內回應」的需求。
-- `processWebhookEvent()` 在取得渠道後比對類型，不符時丟棄。
-- 三個外掛統一以長度檢查加上 `timingSafeEqual()` 比對。
 
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作

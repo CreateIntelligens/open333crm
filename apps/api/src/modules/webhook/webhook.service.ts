@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
-import type { ParsedWebhookMessage } from '@open333crm/channel-plugins';
+import type { ChannelPlugin, ParsedWebhookMessage } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import {
@@ -34,43 +34,72 @@ import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
 
 // TODO(rls): 入站 webhook 為公開端點（無認證租戶），tenant 由 channel 反查得出，
 // 且下游 resolver / InboundMessageContext 皆以 PrismaClient 型別串接，故此路徑不套 RLS，維持 PrismaClient。
-export async function processWebhookEvent(
-  prisma: PrismaClient,
-  io: SocketIOServer,
-  channelId: string,
-  channelType: string,
-  rawBody: Buffer,
-  headers: Record<string, string>,
-) {
-  logger.info('[Webhook] Received', { channelId, channelType, bodyBytes: rawBody?.length ?? 0 });
+/** 進站 webhook 被拒的原因（AUDIT CHAN-03） */
+export type WebhookRejectReason =
+  | 'channel_not_found'
+  | 'tenant_disabled'
+  | 'channel_type_mismatch'
+  | 'no_plugin'
+  | 'invalid_signature';
 
-  // 1. Load channel from DB（一併載入所屬租戶的啟用狀態）
-  const channel = await prisma.channel.findFirst({
+async function loadWebhookChannel(prisma: PrismaClient, channelId: string) {
+  return prisma.channel.findFirst({
     where: { id: channelId, isActive: true },
     include: { tenant: { select: { isActive: true } } },
   });
+}
+
+export interface VerifiedWebhook {
+  channel: NonNullable<Awaited<ReturnType<typeof loadWebhookChannel>>>;
+  plugin: ChannelPlugin;
+  credentials: Record<string, unknown>;
+  secret: string;
+}
+
+export type WebhookVerification =
+  | { ok: true; verified: VerifiedWebhook }
+  | { ok: false; reason: WebhookRejectReason };
+
+/**
+ * 載入網址的渠道並驗證簽章，不處理事件。
+ * LINE 路由在回應前呼叫，驗簽失敗時回 403（主規格 line-webhook-events）；processWebhookEvent 也以此為第一步。
+ */
+export async function verifyWebhookRequest(
+  prisma: PrismaClient,
+  channelId: string,
+  channelType: string,
+  rawBody: Buffer | undefined,
+  headers: Record<string, string>,
+): Promise<WebhookVerification> {
+  // 1. Load channel from DB（一併載入所屬租戶的啟用狀態）
+  const channel = await loadWebhookChannel(prisma, channelId);
 
   if (!channel) {
     logger.warn('[Webhook] Channel not found or inactive', { channelId });
-    throw new Error(`Channel not found or inactive: ${channelId}`);
+    return { ok: false, reason: 'channel_not_found' };
   }
 
   // 租戶被停用（例如欠費停權）時，即使 channel 本身 active 也不處理其 inbound 訊息。
-  // 這是預期內情況（非錯誤）：route 早已回 200，此處安靜 return 丟棄即可，
-  // 用 throw 會冒 error 級堆疊噪音、看起來像故障。用 optional chaining 防孤兒列。
+  // 用 optional chaining 防孤兒列。
   if (!channel.tenant?.isActive) {
     logger.warn('[Webhook] Tenant is disabled, dropping event', { channelId, tenantId: channel.tenantId });
-    return;
+    return { ok: false, reason: 'tenant_disabled' };
+  }
+
+  // 網址的路由類型必須與渠道本身的類型一致；否則會以其他類型的外掛與憑證處理（AUDIT CHAN-03）
+  if (channel.channelType !== channelType) {
+    logger.warn('[Webhook] Channel type does not match the webhook route, dropping event', {
+      channelId, routeType: channelType, channelType: channel.channelType,
+    });
+    return { ok: false, reason: 'channel_type_mismatch' };
   }
   logger.info('[Webhook] Channel found', { channelId, channelType: channel.channelType, tenantId: channel.tenantId });
-
-  const tenantId = channel.tenantId;
 
   // 2. Get plugin and decrypt credentials
   const plugin = getChannelPlugin(channelType);
   if (!plugin) {
     logger.warn('[Webhook] No plugin registered for channel type', { channelType });
-    throw new Error(`No plugin for channel type: ${channelType}`);
+    return { ok: false, reason: 'no_plugin' };
   }
 
   const credentials = decryptCredentials(channel.credentialsEncrypted);
@@ -83,11 +112,61 @@ export async function processWebhookEvent(
   logger.info('[Webhook] Verifying signature', { channelId, channelType, hasSecret: !!secret });
 
   // 3. Verify signature
-  if (!plugin.verifySignature(rawBody, headers, secret)) {
+  if (!secret) {
+    logger.error('[Webhook] Channel has no signing secret configured', { channelId, channelType });
+    return { ok: false, reason: 'invalid_signature' };
+  }
+  // 外掛驗簽拋出錯誤（例如重複的標頭讓值變成陣列）是格式錯誤的請求，視為驗簽失敗，不當成伺服器錯誤
+  let signatureOk = false;
+  if (rawBody) {
+    try {
+      signatureOk = plugin.verifySignature(rawBody, headers, secret);
+    } catch (err) {
+      logger.warn('[Webhook] Signature verification threw', { channelId, channelType, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  if (!signatureOk) {
     logger.warn('[Webhook] Signature verification failed', { channelId, channelType });
-    throw new Error('Invalid webhook signature');
+    return { ok: false, reason: 'invalid_signature' };
   }
   logger.info('[Webhook] Signature OK', { channelId, channelType });
+
+  return { ok: true, verified: { channel, plugin, credentials, secret } };
+}
+
+export async function processWebhookEvent(
+  prisma: PrismaClient,
+  io: SocketIOServer,
+  channelId: string,
+  channelType: string,
+  rawBody: Buffer,
+  headers: Record<string, string>,
+  /** 路由已在回應前驗簽時傳入，避免重複查詢與驗簽 */
+  preverified?: VerifiedWebhook,
+) {
+  logger.info('[Webhook] Received', { channelId, channelType, bodyBytes: rawBody?.length ?? 0 });
+
+  let verified = preverified;
+  if (!verified) {
+    const result = await verifyWebhookRequest(prisma, channelId, channelType, rawBody, headers);
+    if (!result.ok) {
+      switch (result.reason) {
+        case 'channel_not_found':
+          throw new Error(`Channel not found or inactive: ${channelId}`);
+        case 'no_plugin':
+          throw new Error(`No plugin for channel type: ${channelType}`);
+        case 'invalid_signature':
+          throw new Error('Invalid webhook signature');
+        // 租戶停用與類型不符是預期內情況（非錯誤）：route 早已回 200，安靜丟棄即可
+        case 'tenant_disabled':
+        case 'channel_type_mismatch':
+          return;
+      }
+    }
+    verified = result.verified;
+  }
+  const { channel, plugin, credentials, secret } = verified;
+  const tenantId = channel.tenantId;
 
   // 4. Parse webhook into normalized messages
   const parsedMessages = await plugin.parseWebhook(rawBody, headers);

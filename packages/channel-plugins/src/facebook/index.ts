@@ -2,6 +2,7 @@ import { ChannelPlugin, ParsedWebhookMessage, OutboundPayload } from '../index.j
 import crypto from 'crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { refOf } from '../referral.js';
+import { signaturesMatch } from '../signature.js';
 
 const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
 
@@ -17,7 +18,7 @@ export class FbPlugin implements ChannelPlugin {
       .update(rawBody)
       .digest('hex');
 
-    return signature === `sha256=${expectedSignature}`;
+    return signaturesMatch(`sha256=${expectedSignature}`, signature);
   }
 
   async parseWebhook(rawBody: Buffer, _headers: Record<string, string>): Promise<ParsedWebhookMessage[]> {

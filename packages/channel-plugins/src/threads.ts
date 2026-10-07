@@ -10,6 +10,7 @@ import type {
 import { createHmac } from 'node:crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { refOf } from './referral.js';
+import { signaturesMatch } from './signature.js';
 
 interface ThreadsCredentials {
   appId: string;
@@ -33,7 +34,7 @@ export class ThreadsPlugin implements ChannelPlugin {
     const sig = headers['x-hub-signature-256'];
     if (!sig) return false;
     const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
-    return sig === expected;
+    return signaturesMatch(expected, sig);
   }
 
   async parseWebhook(
