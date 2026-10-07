@@ -26,4 +26,4 @@ rules:
     - For each scenario, put a task that writes its failing test before the task that implements the scenario.
     - If the code already has the behavior of a scenario, the test cannot fail first. Its test task verifies the test with a mutation instead, as AGENTS.md describes.
     - In each test task, name the test file and the scenario that it covers. The test file is in tests/unit/ or tests/feature/ of the package (see AGENTS.md).
-    - End the list with the definition-of-done checks from AGENTS.md. These checks include the CHANGELOG.md update.
+    - End the list with the definition-of-done checks from AGENTS.md. These checks include the CHANGELOG.md update when AGENTS.md requires one.
