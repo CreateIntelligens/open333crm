@@ -97,26 +97,21 @@ test.describe('@settings-team 設定頁：人員與權限／角色與權限／�
     await api.dispose();
   });
 
-  async function gotoSettings(page: Page) {
-    await gotoAndCheck(page, '/dashboard/settings');
-  }
-
+  // 670e8eab（2026-09-15）起設定頁改為側欄樹狀導覽，各頁有自己的網址，不再是同一頁的分頁按鈕；
+  // c81f5900（2026-09-22）起 /dashboard/settings 本身是個人資料頁
   async function gotoAgentsTab(page: Page) {
-    await gotoSettings(page);
-    await page.getByRole('button', { name: '人員與權限' }).click();
-    await expect(page.getByRole('button', { name: '新增人員' })).toBeVisible({ timeout: 10_000 });
+    await gotoAndCheck(page, '/dashboard/settings/agents');
+    await expect(page.getByRole('button', { name: '新增人員' })).toBeVisible({ timeout: 15_000 });
   }
 
   async function gotoRolesTab(page: Page) {
-    await gotoSettings(page);
-    await page.getByRole('button', { name: '角色與權限' }).click();
-    await expect(page.getByRole('heading', { name: '角色與權限' })).toBeVisible({ timeout: 10_000 });
+    await gotoAndCheck(page, '/dashboard/settings/roles');
+    await expect(page.getByRole('heading', { name: '角色與權限' })).toBeVisible({ timeout: 15_000 });
   }
 
   async function gotoTagsTab(page: Page) {
-    await gotoSettings(page);
-    await page.getByRole('button', { name: '標籤管理' }).click();
-    await expect(page.getByRole('button', { name: '新增標籤' })).toBeVisible({ timeout: 10_000 });
+    await gotoAndCheck(page, '/dashboard/settings/tags');
+    await expect(page.getByRole('button', { name: '新增標籤' })).toBeVisible({ timeout: 15_000 });
   }
 
   // ── 1. 人員管理 tab 載入：篩選按鈕 + 既有人員列表 ──────────────────────
@@ -219,7 +214,9 @@ test.describe('@settings-team 設定頁：人員與權限／角色與權限／�
   });
 
   // ── 5. 停用該測試人員（confirm，軟刪）──────────────────────────────────
-  test('@settings-team 停用人員：確認後從啟用列表消失（軟刪 isActive=false）', async ({ page }) => {
+  test('@settings-team 停用人員：確認後從列表消失（4382dc32，CM-174）', async ({ page }) => {
+    // CM-174 把「停用」與「刪除」拆成兩個動作：按鈕改叫「停用」，改打 POST /agents/:id/deactivate。
+    // GET /agents 只回啟用中的人員（agent.routes.ts），停用後從列表消失
     expect(testAgentId, '前置測試 2 應已建立 testAgentId').toBeTruthy();
     await gotoAgentsTab(page);
 
@@ -231,19 +228,17 @@ test.describe('@settings-team 設定頁：人員與權限／角色與權限／�
     await expect(dialog.getByText(`編輯人員 — ${agentName}`)).toBeVisible();
 
     const dialogPromise = acceptNextDialog(page);
-    const deleteRes = page.waitForResponse(
-      (res) => res.url().includes(`/agents/${testAgentId}`) && res.request().method() === 'DELETE',
+    const deactivateRes = page.waitForResponse(
+      (res) => res.url().includes(`/agents/${testAgentId}/deactivate`) && res.request().method() === 'POST',
     );
-    await dialog.getByRole('button', { name: '停用帳號' }).click();
+    await dialog.getByRole('button', { name: '停用', exact: true }).click();
     const msg = await dialogPromise;
     expect(msg).toContain('確定要停用');
-    const res = await deleteRes;
+    const res = await deactivateRes;
     expect(res.ok(), `停用人員失敗：${await res.text()}`).toBeTruthy();
 
     await expect(dialog).toBeHidden({ timeout: 10_000 });
-    // GET /agents 只回 isActive: true 的人員（見 agent.routes.ts where: { isActive: true }），
-    // 停用後應從（啟用）列表消失
-    await expect(page.getByText(agentName, { exact: true })).toBeHidden({ timeout: 10_000 });
+    await expect(page.getByText(agentName, { exact: true }), '停用後應從列表消失').toBeHidden({ timeout: 10_000 });
   });
 
   // ── 6. 角色與權限 tab：建立一個 [E2E] 測試角色 ──────────────────────────
@@ -311,7 +306,7 @@ test.describe('@settings-team 設定頁：人員與權限／角色與權限／�
     await page.getByRole('button', { name: '儲存變更' }).click();
     const res = await saveRes;
     expect(res.ok(), `儲存角色權限失敗：${await res.text()}`).toBeTruthy();
-    await expect(page.getByText('✓ 已儲存')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('已儲存', { exact: true })).toBeVisible({ timeout: 5_000 });
 
     // reload 驗證持久化：重新進頁、重新選中該角色，checkbox 應維持勾選狀態
     await gotoRolesTab(page);
