@@ -98,7 +98,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | `FB`、`THREADS` | `appSecret`、`pageAccessToken` |
 | 其他 | 不檢查 |
 
-解密函式有兩份：API 的 `channel.service.ts` 與 workers 的 `lib/credentials.ts`。兩者的演算法相同，但 workers 在缺少金鑰時退回原始碼裡的固定字串，見 `../system/AUDIT.md` 的 SEC-01。
+解密函式有兩份：API 的 `channel.service.ts` 與 workers 的 `lib/credentials.ts`。兩者的演算法相同，`CREDENTIAL_ENCRYPTION_KEY` 缺少或短於 32 個字元時都拋出錯誤（主規格 `credential-encryption`）。
 
 ## 外掛之外的渠道專屬程式
 
@@ -152,7 +152,6 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 啟動 log 少列 Threads | APP-03 |
 | `./fb` 子路徑指向不存在的檔案 | PKG-02 |
 | 渠道型別在兩個套件各有一份 | PKG-01 |
-| workers 的解密函式有金鑰備援值 | SEC-01 |
 | 外掛套件裡有沒有呼叫端的程式 | PKG-06 |
 | 刪除渠道會因外鍵而失敗 | CHAN-01 |
 

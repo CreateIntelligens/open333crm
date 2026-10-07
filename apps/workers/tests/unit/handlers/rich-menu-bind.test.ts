@@ -11,10 +11,12 @@ import { handleRichMenuBindJob } from '#src/handlers/rich-menu-bind.handler';
  * channel 不屬租戶則 skip、uids 空則不呼叫。
  */
 
+// Workers 缺少金鑰時拒絕解密（credential-encryption），測試自己設定金鑰
+process.env.CREDENTIAL_ENCRYPTION_KEY ||= 'test-credential-encryption-key-32-bytes!!';
 const ALGORITHM = 'aes-256-gcm';
 function encryptCredentials(plain: Record<string, unknown>): string {
   const key = scryptSync(
-    process.env.CREDENTIAL_ENCRYPTION_KEY ?? 'fallback-open333crm-key',
+    process.env.CREDENTIAL_ENCRYPTION_KEY!,
     'open333crm-credentials',
     32,
   );
