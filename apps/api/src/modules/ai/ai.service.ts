@@ -8,10 +8,10 @@ import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
 
-export async function suggestReply(prisma: TenantDb, conversationId: string) {
+export async function suggestReply(prisma: TenantDb, tenantId: string, conversationId: string) {
   // Fetch last few inbound messages for context
   const messages = await prisma.message.findMany({
-    where: { conversationId },
+    where: { conversationId, conversation: { tenantId } },
     orderBy: { createdAt: 'desc' },
     take: 5,
     select: { content: true, senderType: true },
@@ -28,8 +28,8 @@ export async function suggestReply(prisma: TenantDb, conversationId: string) {
   }
 
   // Look up conversation tenantId
-  const conversation = await prisma.conversation.findUnique({
-    where: { id: conversationId },
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId },
     select: { tenantId: true },
   });
 
@@ -77,9 +77,9 @@ export async function suggestReply(prisma: TenantDb, conversationId: string) {
   }
 }
 
-export async function summarizeConversation(prisma: TenantDb, conversationId: string) {
-  const conversation = await prisma.conversation.findUnique({
-    where: { id: conversationId },
+export async function summarizeConversation(prisma: TenantDb, tenantId: string, conversationId: string) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId },
     include: {
       contact: { select: { displayName: true } },
       messages: {

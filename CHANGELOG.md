@@ -10,7 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
-- **AI 輔助不再讀取看不到的渠道的對話**（AUDIT RBAC-04 的一部分）— `/ai/suggest-reply`、`/ai/summarize` 與帶 `conversationId` 的 `/ai/agent/run` 原本不檢查對話的渠道，只能看分店渠道的成員可以對其他渠道的對話產生摘要或建議回覆。現在對話的渠道不可見時回 404，不呼叫 AI。
+- **AI 輔助不再讀取看不到的渠道的對話**（AUDIT RBAC-04 的一部分）— `/ai/suggest-reply`、`/ai/summarize` 與帶 `conversationId` 的 `/ai/agent/run` 原本不檢查對話的渠道，只能看分店渠道的成員可以對其他渠道的對話產生摘要或建議回覆。現在對話的渠道不可見時回 404，不呼叫 AI。查看 AI agent 執行紀錄（`GET /ai/agent/runs/:id`）也一樣：紀錄關聯的對話看不到時回 404。AI 輔助讀對話的查詢另補上 tenantId 條件，不再只靠 RLS。
 
 ## [2026-10-06]
 

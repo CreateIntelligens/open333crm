@@ -303,7 +303,7 @@ CLI token 的停用問題另見 AUTH-02。
 
 **部分修正。** `481452a`（#185，2026-09-30）讓聯絡人的 `/:id/conversations`、`/:id/cases`、`/:id/timeline` 依可見範圍過濾，清單與詳情也只回傳可見渠道的身分。聯絡人本身要不要依渠道過濾，`add-cross-channel-one-id` 的任務 9.3.9 記為「跨渠道聯絡人的歸屬規則需另行設計」。
 
-2026-10-07，`ai.routes.ts` 的 `/suggest-reply`、`/summarize`，以及帶 `conversationId` 的 `/agent/run`，改為先以 `assertConversationChannelVisible(…, 'read_only')` 檢查；不可見渠道的對話回 404，不呼叫 AI。
+2026-10-07，`ai.routes.ts` 的 `/suggest-reply`、`/summarize`、帶 `conversationId` 的 `/agent/run`，以及關聯對話的 `GET /agent/runs/:id`，改為先以 `assertConversationChannelVisible(…, 'read_only')` 檢查；不可見渠道的對話回 404，不呼叫 AI。
 
 <a id="rbac-05"></a>
 ### RBAC-05：reconcile 腳本會覆蓋租戶對系統角色的修改

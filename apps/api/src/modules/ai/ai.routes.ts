@@ -23,7 +23,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
 
     // 不可見渠道的對話回 404，不把對話內容送進 AI（AUDIT RBAC-04）
     await assertConversationChannelVisible(request, conversationId, 'read_only');
-    const result = await suggestReply(request.tenantPrisma, conversationId);
+    const result = await suggestReply(request.tenantPrisma, request.agent.tenantId, conversationId);
     return reply.send(success(result));
   });
 
@@ -35,7 +35,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
 
     // 不可見渠道的對話回 404，不把對話內容送進 AI（AUDIT RBAC-04）
     await assertConversationChannelVisible(request, conversationId, 'read_only');
-    const result = await summarizeConversation(request.tenantPrisma, conversationId);
+    const result = await summarizeConversation(request.tenantPrisma, request.agent.tenantId, conversationId);
     return reply.send(success(result));
   });
 
@@ -102,7 +102,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     const run = await request.tenantPrisma.agentRun.findFirst({
       where: { id: params.id, tenantId: request.agent.tenantId },
       select: {
-        id: true, status: true, provider: true, model: true, finalText: true,
+        id: true, conversationId: true, status: true, provider: true, model: true, finalText: true,
         stopReason: true, turnCount: true, toolCallCount: true, expiresAt: true,
         completedAt: true, createdAt: true,
         toolCalls: {
@@ -112,6 +112,10 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       },
     });
     if (!run) return reply.status(404).send({ code: 'NOT_FOUND', message: '找不到此執行紀錄，可能已過保留期限' });
+    // 執行紀錄含對話內容（finalText、工具參數與結果），關聯的對話渠道不可見時回 404（AUDIT RBAC-04）
+    if (run.conversationId) {
+      await assertConversationChannelVisible(request, run.conversationId, 'read_only');
+    }
     return reply.send(success(run));
   });
 }

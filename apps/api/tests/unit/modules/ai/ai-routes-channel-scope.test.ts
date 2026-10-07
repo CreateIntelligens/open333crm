@@ -12,6 +12,15 @@ const HIDDEN_ID = '22222222-2222-4222-8222-222222222222';
 const guardCalls: Array<{ conversationId: string; level: string | undefined }> = [];
 const serviceCalls: string[] = [];
 
+const RUN_HIDDEN = '33333333-3333-4333-8333-333333333333';
+const RUN_VISIBLE = '44444444-4444-4444-8444-444444444444';
+const RUN_NO_CONV = '55555555-5555-4555-8555-555555555555';
+const runs = new Map<string, { id: string; conversationId: string | null; finalText: string }>([
+  [RUN_HIDDEN, { id: RUN_HIDDEN, conversationId: HIDDEN_ID, finalText: 'secret' }],
+  [RUN_VISIBLE, { id: RUN_VISIBLE, conversationId: VISIBLE_ID, finalText: 'ok' }],
+  [RUN_NO_CONV, { id: RUN_NO_CONV, conversationId: null, finalText: 'manual' }],
+]);
+
 vi.mock('#src/services/channel-visibility.js', () => ({
   assertConversationChannelVisible: async (_req: unknown, conversationId: string, level?: string) => {
     guardCalls.push({ conversationId, level });
@@ -20,8 +29,8 @@ vi.mock('#src/services/channel-visibility.js', () => ({
 }));
 
 vi.mock('#src/modules/ai/ai.service.js', () => ({
-  suggestReply: async (_p: unknown, id: string) => { serviceCalls.push(`suggest:${id}`); return { suggestion: 'hi' }; },
-  summarizeConversation: async (_p: unknown, id: string) => { serviceCalls.push(`summarize:${id}`); return { summary: 's' }; },
+  suggestReply: async (_p: unknown, tenantId: string, id: string) => { serviceCalls.push(`suggest:${tenantId}:${id}`); return { suggestion: 'hi' }; },
+  summarizeConversation: async (_p: unknown, tenantId: string, id: string) => { serviceCalls.push(`summarize:${tenantId}:${id}`); return { summary: 's' }; },
 }));
 
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
@@ -42,6 +51,7 @@ async function buildApp() {
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => {
     request.agent = { id: 'agent-1', tenantId: 'tenant-1' };
+    request.tenantPrisma = { agentRun: { findFirst: async ({ where }: any) => runs.get(where.id) ?? null } };
   });
   app.decorateRequest('tenantPrisma', null);
   app.setErrorHandler((err: any, _req, reply) => {
@@ -69,7 +79,7 @@ for (const [path, svc] of [['/suggest-reply', 'suggest'], ['/summarize', 'summar
     const app = await buildApp();
     const res = await app.inject({ method: 'POST', url: path, payload: { conversationId: VISIBLE_ID } });
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(serviceCalls, [`${svc}:${VISIBLE_ID}`]);
+    assert.deepEqual(serviceCalls, [`${svc}:tenant-1:${VISIBLE_ID}`]);
   });
 }
 
@@ -88,4 +98,26 @@ test('/agent/run：沒帶 conversationId 時不檢查渠道', async () => {
   assert.equal(res.statusCode, 200);
   assert.deepEqual(guardCalls, []);
   assert.deepEqual(serviceCalls, ['agent:none']);
+});
+
+test('/agent/runs/:id：關聯不可見渠道對話的執行紀錄回 404，不回傳內容', async () => {
+  const app = await buildApp();
+  const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_HIDDEN}` });
+  assert.equal(res.statusCode, 404);
+  assert.ok(!res.body.includes('secret'));
+  assert.deepEqual(guardCalls, [{ conversationId: HIDDEN_ID, level: 'read_only' }]);
+});
+
+test('/agent/runs/:id：關聯可見對話的執行紀錄照常回傳', async () => {
+  const app = await buildApp();
+  const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_VISIBLE}` });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().data.finalText, 'ok');
+});
+
+test('/agent/runs/:id：沒有關聯對話的執行紀錄不檢查渠道', async () => {
+  const app = await buildApp();
+  const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_NO_CONV}` });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(guardCalls, []);
 });
