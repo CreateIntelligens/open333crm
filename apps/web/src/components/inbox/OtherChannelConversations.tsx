@@ -72,6 +72,10 @@ export function OtherChannelConversations({
 
   useEffect(() => {
     let cancelled = false;
+    // 切換對話時先清空，避免在新資料回來前顯示上一位顧客的對話
+    setConversations([]);
+    setHiddenCount(0);
+    setMessages({});
     setExpanded(null);
     setError(null);
     api

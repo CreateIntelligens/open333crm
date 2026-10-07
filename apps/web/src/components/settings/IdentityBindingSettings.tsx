@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
 import { getApiErrorMessage, getFieldErrors } from "@/lib/api-error";
+import { resetIdentityBindingStatusCache } from "@/components/inbox/identity-binding-status";
 
 interface IdentityBindingSettingsData {
   enabled: boolean;
@@ -78,6 +79,8 @@ export function IdentityBindingSettings() {
         emailKeywords: toList(emailText),
       });
       apply(res.data.data);
+      // 收件匣的代發按鈕依啟用狀態顯示，同一個分頁內立即反映
+      resetIdentityBindingStatusCache();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {

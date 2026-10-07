@@ -45,7 +45,7 @@ test('歸戶後查看 FB 對話', async () => {
   render(<OtherChannelConversations contactId="c1" currentConversationId="line1" />);
   await screen.findByText('其他渠道的對話');
   assert.ok(screen.getByText('官方粉專'));
-  assert.equal(screen.queryByText('目前這段'), null, '不列出目前這段對話');
+  assert.ok(screen.queryByText('目前這段') === null, '不列出目前這段對話');
   fireEvent.click(screen.getByRole('button', { name: /官方粉專/ }));
   await screen.findByText('請先關閉電源');
   const texts = screen.getAllByTestId('other-channel-message').map((el) => el.textContent ?? '');

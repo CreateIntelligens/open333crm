@@ -43,7 +43,7 @@ test('合併後的時間軸', async () => {
   assert.ok(rows[0].textContent?.includes('LINE 第一則') && rows[0].textContent?.includes('LINE'));
   assert.ok(rows[1].textContent?.includes('FB 第一則') && rows[1].textContent?.includes('FB'));
   assert.ok(rows[2].textContent?.includes('客服'), '標示方向');
-  assert.equal(screen.queryByRole('button', { name: '載入更早的訊息' }), null, '沒有更早的訊息時不顯示按鈕');
+  assert.ok(screen.queryByRole('button', { name: '載入更早的訊息' }) === null, '沒有更早的訊息時不顯示按鈕');
 });
 
 test('載入更早的訊息', async () => {

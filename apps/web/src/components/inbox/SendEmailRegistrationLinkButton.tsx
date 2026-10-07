@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
@@ -39,23 +39,32 @@ export function SendEmailRegistrationLinkButton({ contactId, conversationId }: {
     };
   }, [canReply]);
 
-  useEffect(() => setNotice(null), [conversationId]);
+  // 結果只顯示在送出時的對話：請求還沒回來就切到別的對話時，不顯示
+  const currentConversation = useRef(conversationId);
+  useEffect(() => {
+    currentConversation.current = conversationId;
+    setNotice(null);
+  }, [conversationId]);
 
   if (!canReply || !enabled) return null;
 
   const handleClick = async () => {
+    const sentFor = conversationId;
+    const show = (n: { tone: 'success' | 'warning' | 'error'; text: string }) => {
+      if (currentConversation.current === sentFor) setNotice(n);
+    };
     setSending(true);
     setNotice(null);
     try {
       const res = await api.post(`/contacts/${contactId}/email-registration-link`, { conversationId });
       const { status } = res.data.data as { status: string };
       if (status === 'sent') {
-        setNotice({ tone: 'success', text: '已在對話中送出 email 登記連結' });
+        show({ tone: 'success', text: '已在對話中送出 email 登記連結' });
       } else {
-        setNotice({ tone: status === 'delivery_failed' ? 'error' : 'warning', text: RESULT_TEXT[status] ?? '登記連結沒有送出' });
+        show({ tone: status === 'delivery_failed' ? 'error' : 'warning', text: RESULT_TEXT[status] ?? '登記連結沒有送出' });
       }
     } catch (err) {
-      setNotice({ tone: 'error', text: getApiErrorMessage(err, '傳送登記連結失敗，請稍後重試') });
+      show({ tone: 'error', text: getApiErrorMessage(err, '傳送登記連結失敗，請稍後重試') });
     } finally {
       setSending(false);
     }

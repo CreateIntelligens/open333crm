@@ -34,9 +34,11 @@ interface ContactDetailProps {
   onUpdate: () => void;
   /** email 與另一位聯絡人相同、客服選擇合併時呼叫（見 ContactEmailField） */
   onRequestEmailMerge: (other: { id: string; displayName: string }, email: string) => void;
+  /** 改變時重設 email 欄位（例如合併完成後） */
+  emailFieldKey?: number;
 }
 
-export function ContactDetail({ contact, onUpdate, onRequestEmailMerge }: ContactDetailProps) {
+export function ContactDetail({ contact, onUpdate, onRequestEmailMerge, emailFieldKey }: ContactDetailProps) {
   return (
     <div className="space-y-6">
       {/* Contact Info */}
@@ -56,6 +58,7 @@ export function ContactDetail({ contact, onUpdate, onRequestEmailMerge }: Contac
                 </div>
               )}
               <ContactEmailField
+                key={emailFieldKey}
                 contactId={contact.id}
                 email={contact.email}
                 onUpdate={onUpdate}

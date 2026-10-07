@@ -42,7 +42,7 @@ test('連結過期', async () => {
   api.get.mockRejectedValue(httpError(410, 'EMAIL_REGISTRATION_EXPIRED', '連結已失效，請回到對話重新取得'));
   render(<EmailRegistrationForm token={TOKEN} />);
   await screen.findByText('連結已失效，請回到對話重新取得');
-  assert.equal(screen.queryByLabelText('Email'), null);
+  assert.ok(screen.queryByLabelText('Email') === null);
 });
 
 test('沒有相同 email：顯示登記完成', async () => {

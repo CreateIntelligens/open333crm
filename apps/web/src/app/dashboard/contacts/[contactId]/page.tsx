@@ -34,6 +34,8 @@ export default function ContactDetailPage() {
   // 修改 email 時與另一位聯絡人相同、客服選擇合併：合併完成後再寫入 email（change add-email-identity-merge）
   const [emailMerge, setEmailMerge] = useState<{ other: { id: string; displayName: string }; email: string } | null>(null);
   const [emailMergeError, setEmailMergeError] = useState<string | null>(null);
+  // 合併完成後重設 email 欄位（離開編輯與衝突提示）
+  const [emailFieldKey, setEmailFieldKey] = useState(0);
 
   const fetchContact = useCallback(async () => {
     try {
@@ -149,6 +151,7 @@ export default function ContactDetailPage() {
                     )
                   : undefined,
               }}
+              emailFieldKey={emailFieldKey}
               onRequestEmailMerge={(other, email) => {
                 setEmailMergeError(null);
                 setEmailMerge({ other, email });
@@ -208,16 +211,17 @@ export default function ContactDetailPage() {
           setShowMergeModal(open);
           if (!open) setEmailMerge(null);
         }}
-        onMergeComplete={async () => {
-          // 對方已封存，email 不再重複，直接寫入
-          if (emailMerge) {
+        onMergeComplete={async (mergedContactId) => {
+          // 對方已封存，email 不再重複，直接寫入。客服在視窗中改選了別人時，原本的 email 仍屬於對方，不寫入
+          if (emailMerge && mergedContactId === emailMerge.other.id) {
             try {
               await api.patch(`/contacts/${contactId}`, { email: emailMerge.email || null });
             } catch (err) {
               setEmailMergeError(getApiErrorMessage(err, '已合併，但 email 沒有寫入，請重新編輯 email'));
             }
-            setEmailMerge(null);
+            setEmailFieldKey((k) => k + 1);
           }
+          setEmailMerge(null);
           fetchContact();
           fetchTimeline();
           setHistoryKey((k) => k + 1);

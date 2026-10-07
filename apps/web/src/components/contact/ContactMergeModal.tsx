@@ -25,7 +25,8 @@ interface ContactMergeModalProps {
       profileName?: string;
     }>;
   };
-  onMergeComplete: () => void;
+  /** 參數為被併入的聯絡人 id */
+  onMergeComplete: (mergedContactId: string) => void;
   /** 開啟時預先選好的合併對象（例如 email 與另一位聯絡人相同時） */
   initialSecondary?: { id: string; displayName: string } | null;
 }
@@ -191,7 +192,7 @@ export function ContactMergeModal({
         secondaryContactId: selectedSecondary.id,
       });
       onOpenChange(false);
-      onMergeComplete();
+      onMergeComplete(selectedSecondary.id);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } };
       setError(axiosErr.response?.data?.message || '合併失敗');
