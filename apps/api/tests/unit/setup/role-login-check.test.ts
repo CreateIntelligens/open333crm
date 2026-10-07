@@ -37,3 +37,9 @@ test('錯誤訊息列出角色，並說明兩種修正方式', () => {
   assert.match(message, /TEST_APP_ADMIN_PASSWORD/);
   assert.match(message, /ALTER ROLE app_tenant PASSWORD 'app_tenant_local'/);
 });
+
+test('以環境變數提供的密碼不出現在錯誤訊息中', () => {
+  const message = roleLoginErrorMessage(['app_tenant'], { app_tenant: "s3cret'pw", app_admin: 'app_admin_local' });
+  assert.doesNotMatch(message, /s3cret/);
+  assert.match(message, /\\password app_tenant/);
+});

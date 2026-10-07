@@ -9,6 +9,12 @@ import { appRolePasswords } from './feature-config.js';
 
 export type AppRole = keyof typeof appRolePasswords;
 
+/** 程式內建的預設密碼，本來就公開，可以直接寫進建議的 SQL */
+const DEFAULT_PASSWORDS: Record<AppRole, string> = {
+  app_tenant: 'app_tenant_local',
+  app_admin: 'app_admin_local',
+};
+
 const ENV_VAR: Record<AppRole, string> = {
   app_tenant: 'TEST_APP_TENANT_PASSWORD',
   app_admin: 'TEST_APP_ADMIN_PASSWORD',
@@ -43,7 +49,12 @@ export async function findRolesWithWrongPassword(
 /** 說明哪些角色登不進去，以及兩種修正方式 */
 export function roleLoginErrorMessage(roles: AppRole[], passwords = appRolePasswords): string {
   const envLines = roles.map((role) => `    ${ENV_VAR[role]}=<${role} 目前的密碼>`).join('\n');
-  const sqlLines = roles.map((role) => `    ALTER ROLE ${role} PASSWORD '${passwords[role]}';`).join('\n');
+  // 以環境變數提供的密碼不寫進訊息（會留在終端機與 CI log），改用 psql 的 \password 互動輸入
+  const sqlLines = roles
+    .map((role) => (passwords[role] === DEFAULT_PASSWORDS[role]
+      ? `    ALTER ROLE ${role} PASSWORD '${DEFAULT_PASSWORDS[role]}';`
+      : `    \\password ${role}    （輸入 ${ENV_VAR[role]} 的值）`))
+    .join('\n');
   return [
     `Feature 測試無法以 ${roles.join('、')} 登入測試資料庫：密碼錯誤。`,
     '這兩個角色屬於整個 PostgreSQL，與開發資料庫共用；角色已經有密碼時，setup 不會修改它。',
