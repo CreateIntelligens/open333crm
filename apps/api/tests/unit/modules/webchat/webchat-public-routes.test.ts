@@ -372,6 +372,29 @@ for (const family of families) {
     assert.equal(service.uploadChatboxMedia.mock.calls.length, accepted);
     await app.close();
   });
+
+  test(`訊息達到來源 IP 的上限後仍可上傳（${family.name}）：訊息不佔用上傳的 IP 計數`, async () => {
+    // 先量出同一個 IP 每分鐘能上傳幾次，再用新的 app 與計數，從同一個 IP 送出同樣多則訊息
+    const probe = await buildApp();
+    let uploadLimit = 0;
+    for (let i = 0; i < 100; i += 1) {
+      const response = await uploadMedia(probe, family.media, { sessionId: sessionId(i), claimToken: CLAIM_TOKEN }, '10.0.0.4');
+      if (response.statusCode !== 200) break;
+      uploadLimit += 1;
+    }
+    await probe.close();
+    resetPublicWebchatLimits();
+
+    const app = await buildApp();
+    for (let i = 0; i < uploadLimit; i += 1) {
+      const response = await postMessage(app, family.messages, messageBody(sessionId(`m${i}`)), '10.0.0.4');
+      assert.equal(response.statusCode, 200, '訊息要在訊息的上限以內');
+    }
+
+    const upload = await uploadMedia(app, family.media, { sessionId: sessionId('after'), claimToken: CLAIM_TOKEN }, '10.0.0.4');
+    assert.equal(upload.statusCode, 200);
+    await app.close();
+  });
 }
 
 // ── 建立工作階段與訪客 socket 連線的頻率限制 ──────────────────

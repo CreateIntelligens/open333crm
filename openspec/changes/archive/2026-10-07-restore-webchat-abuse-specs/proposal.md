@@ -18,9 +18,9 @@ change `fix-security-audit-findings` 在 `aa274cf0` 以改名的方式搬進 `ar
   - 「Visitor session initialization」：每次載入建立並 claim 新的工作階段，不產生、不儲存 visitor token。
   - 「Visitor message sending」：訊息與上傳都帶 `sessionId` 與 claim token，API 拒絕屬於其他渠道的工作階段。
   - 「Real-time message delivery to visitor」：socket 的房間由工作階段紀錄決定，不採用用戶端送來的值。
-- 對照程式時發現 2 個問題，依決定記錄到 `docs/ref/system/AUDIT.md`，這個 change 不修正：
-  - CHAN-04：widget 送出訊息失敗時，畫面上沒有提示。違反「Message send fails」。
-  - CHAN-05：webchat 的訊息與上傳共用來源 IP 的計數。違反「訊息達到來源 IP 的上限後仍可上傳」。
+- 修正對照程式時發現的 2 個問題：
+  - CHAN-04：widget 送出文字訊息或媒體訊息失敗時，畫面上沒有提示，違反「Message send fails」。現在在那則訊息標示「[傳送失敗]」。
+  - CHAN-05：`/webchat/:channelId/media` 與訊息路由共用來源 IP 的計數，違反「訊息達到來源 IP 的上限後仍可上傳」。現在上傳改用 `ip-media` 計數，與 `/chatbox/media` 相同。
 - `apps/widget` 新增開發相依套件 `jsdom`，版本與 `apps/web` 相同。widget 在載入時操作 DOM，沒有 jsdom 就無法測試。
 
 歸檔規格的寫法與決定：
@@ -45,7 +45,9 @@ change `fix-security-audit-findings` 在 `aa274cf0` 以改名的方式搬進 `ar
 
 ## Impact
 
-- 這個 change 只新增規格、測試與文件，不修改程式。
+- `apps/widget/src/index.ts`：修正 CHAN-04。
+- `apps/api/src/modules/webchat/webchat.routes.ts`：修正 CHAN-05。
 - `apps/widget/package.json` 與 `pnpm-lock.yaml`：新增 `jsdom`。
-- `docs/ref/system/AUDIT.md` 新增 CHAN-04、CHAN-05；`docs/ref/system/AUDIT-REVIEWS.md` 新增複查紀錄。
+- `docs/ref/system/AUDIT-REVIEWS.md` 新增複查紀錄。CHAN-04、CHAN-05 在同一個 PR 發現並修正，沒有列入 `AUDIT.md`。
+- `CHANGELOG.md`：CHAN-04、CHAN-05 的修正。
 - 歸檔後，新主規格的 Purpose 是 CLI 產生的佔位文字，要手動改寫。

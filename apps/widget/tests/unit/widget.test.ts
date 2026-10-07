@@ -24,12 +24,14 @@ let requests: Request[];
 let sessionCount: number;
 let greeting: string | null;
 let messageStatus: number;
+let messageThrows: boolean;
 
 beforeEach(() => {
   requests = [];
   sessionCount = 0;
   greeting = null;
   messageStatus = 200;
+  messageThrows = false;
   socket.handlers = [];
   socket.connectVisitorSocket.mockReset().mockImplementation(() => ({
     onAgentMessage: (cb: (msg: unknown) => void) => socket.handlers.push(cb),
@@ -62,6 +64,7 @@ beforeEach(() => {
       const type = ((init?.body as FormData).get('file') as File).type;
       return json({ data: { url: 'https://cdn.test/file', contentType: type.startsWith('image/') ? 'image' : 'video' } });
     }
+    if (messageThrows) throw new TypeError('Failed to fetch');
     return json({ data: { ok: true } }, messageStatus);
   }) as typeof fetch;
 });
@@ -195,6 +198,31 @@ for (const media of [
     assert.deepEqual(body.payload, { url: 'https://cdn.test/file' });
   });
 }
+
+test('Message send fails：文字訊息被 API 拒絕或請求失敗時，在那則訊息標示傳送失敗', async () => {
+  const { messages, input, sendBtn } = await loadWidget();
+
+  messageStatus = 401;
+  input.value = 'rejected';
+  sendBtn.click();
+  await vi.waitFor(() => assert.match(messages.lastElementChild?.textContent ?? '', /\[傳送失敗\]/));
+  assert.match(messages.lastElementChild!.textContent!, /^rejected/);
+
+  messageThrows = true;
+  input.value = 'offline';
+  sendBtn.click();
+  await vi.waitFor(() => assert.match(messages.lastElementChild?.textContent ?? '', /^offline.*\[傳送失敗\]/));
+  assert.match(messages.children[0]!.textContent!, /^rejected.*\[傳送失敗\]/, '前一則的標示不變');
+});
+
+test('Message send fails：上傳成功但媒體訊息被 API 拒絕時，標示傳送失敗，不顯示圖片', async () => {
+  const { messages, fileInput } = await loadWidget();
+
+  messageStatus = 401;
+  selectFile(fileInput, fileOf('photo.png', 'image/png', 1024));
+  await vi.waitFor(() => assert.equal(messages.lastElementChild?.textContent, '[傳送失敗]'));
+  assert.equal(messages.querySelector('img'), null);
+});
 
 test('File too large：圖片超過 20 MB、影片超過 25 MB 或其他類型時跳出提示，不呼叫上傳 API', async () => {
   const { fileInput } = await loadWidget();

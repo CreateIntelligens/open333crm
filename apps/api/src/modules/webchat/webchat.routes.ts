@@ -177,7 +177,7 @@ export default async function webchatRoutes(app: FastifyInstance) {
       }
 
       if (!checkPublicLimit(reply, [
-        { key: getPublicWebchatKey('ip', req.ip), max: 10 },
+        { key: getPublicWebchatKey('ip-media', req.ip), max: 10 },
         { key: getPublicWebchatKey('channel-media', channelId), max: 100 },
       ])) return;
 

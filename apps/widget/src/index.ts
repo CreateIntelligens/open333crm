@@ -87,7 +87,12 @@ async function boot(): Promise<void> {
       content: { text },
     };
     appendMessage(messagesEl, outMsg, false);
+    // appendMessage is synchronous, so the last child is the message just sent
+    const outEl = messagesEl.lastElementChild;
     input.value = '';
+    const markFailed = () => {
+      if (outEl) outEl.textContent = `${text} [傳送失敗]`;
+    };
 
     try {
       const res = await fetch(`${apiBaseUrl}/webchat/${channelId}/messages`, {
@@ -103,9 +108,11 @@ async function boot(): Promise<void> {
         }),
       });
       if (!res.ok) {
+        markFailed();
         console.error('[Open333CRM] Message send failed:', res.status);
       }
     } catch (err) {
+      markFailed();
       console.error('[Open333CRM] Message send error:', err);
     }
   }
@@ -155,7 +162,7 @@ async function boot(): Promise<void> {
 
       const { data } = await uploadRes.json() as { data: { url: string; contentType: 'image' | 'video' } };
 
-      await fetch(`${apiBaseUrl}/webchat/${channelId}/messages`, {
+      const messageRes = await fetch(`${apiBaseUrl}/webchat/${channelId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -167,6 +174,12 @@ async function boot(): Promise<void> {
           fingerprint,
         }),
       });
+
+      if (!messageRes.ok) {
+        placeholderEl.textContent = '[傳送失敗]';
+        console.error('[Open333CRM] Media message send failed:', messageRes.status);
+        return;
+      }
 
       // Replace placeholder with actual media
       placeholderEl.textContent = '';

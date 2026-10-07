@@ -1,6 +1,6 @@
 ## 1. 測試
 
-測試名稱以情境名稱開頭。這些情境描述現行行為，測試寫好時就通過，所以改以突變驗證（第 3 節）。違反情境的 2 個問題記錄在 `AUDIT.md`，修正前沒有測試。
+測試名稱以情境名稱開頭。大部分情境描述現行行為，測試寫好時就通過，所以改以突變驗證（第 3 節）。標「修正前失敗」的 3 個測試描述 bug，先在修正前執行，確認以斷言失敗。
 
 情境同時適用 `/api/v1/chatbox/*` 與 `/api/v1/webchat/:channelId/*` 兩組路由時，每組路由各有一個測試。
 
@@ -33,7 +33,7 @@
 | 訊息與上傳請求的頻率限制 | 同一個工作階段的訊息超過每小時上限 | `routes` |
 | 訊息與上傳請求的頻率限制 | 同一個渠道的訊息超過每小時上限 | `routes` |
 | 訊息與上傳請求的頻率限制 | 上傳超過每分鐘上限 | `routes` |
-| 訊息與上傳請求的頻率限制 | 訊息達到來源 IP 的上限後仍可上傳 | 沒有測試：webchat 路由違反（AUDIT CHAN-05） |
+| 訊息與上傳請求的頻率限制 | 訊息達到來源 IP 的上限後仍可上傳 | `routes`。webchat 的測試修正前失敗：`429 !== 200`（CHAN-05）；chatbox 的測試修正前就通過 |
 | 建立工作階段與訪客 socket 連線的頻率限制 | 同一個來源 IP 建立工作階段超過上限 | `routes` |
 | 建立工作階段與訪客 socket 連線的頻率限制 | 同一個來源 IP 的訪客 socket 連線超過上限 | `socket` |
 | 頻率限制的計數鍵與日誌不含原始的工作階段憑證 | 以工作階段計數 | `keys`；`routes` 的日誌測試也檢查計數鍵是摘要 |
@@ -53,7 +53,7 @@
 | Visitor message sending | Visitor sends a video | `widget`、`limits` |
 | Visitor message sending | Invalid visitorToken | `routes` |
 | Visitor message sending | Session belongs to another channel | `routes` |
-| Visitor message sending | Message send fails | 沒有測試：widget 違反（AUDIT CHAN-04） |
+| Visitor message sending | Message send fails | `widget`（兩個測試）。修正前都失敗：文字訊息仍是 `'rejected'`，沒有「[傳送失敗]」；媒體訊息是 `'' !== '[傳送失敗]'`（CHAN-04） |
 | Visitor message sending | File too large | `widget` |
 | Real-time message delivery to visitor | Widget connects with the claimed session | `wsock`、`widget` |
 | Real-time message delivery to visitor | Verified socket joins the session room | `socket` |
@@ -61,13 +61,15 @@
 | Real-time message delivery to visitor | Bot replies to visitor | `delivery` |
 | Real-time message delivery to visitor | Visitor Socket.IO auth fails | `socket` |
 
-- [x] 1.1 寫上表的測試
+- [x] 1.1 寫上表的測試，確認標「修正前失敗」的 3 個測試在修正前以斷言失敗
 - [x] 1.2 `apps/widget` 新增開發相依套件 `jsdom`，讓 `widget` 測試在 DOM 環境執行
 
-## 2. 文件
+## 2. 修正與文件
 
-- [x] 2.1 `docs/ref/system/AUDIT.md` 新增 CHAN-04、CHAN-05
-- [x] 2.2 `docs/ref/system/AUDIT-REVIEWS.md` 新增複查紀錄
+- [x] 2.1 `apps/api/src/modules/webchat/webchat.routes.ts`：上傳改用 `ip-media` 計數來源 IP（CHAN-05）
+- [x] 2.2 `apps/widget/src/index.ts`：文字訊息與媒體訊息送出失敗時，在那則訊息標示「[傳送失敗]」（CHAN-04）
+- [x] 2.3 `docs/ref/system/AUDIT-REVIEWS.md` 新增複查紀錄；CHAN-04、CHAN-05 在這個 change 發現並修正，不列入 `AUDIT.md`
+- [x] 2.4 `CHANGELOG.md` 新增 CHAN-04、CHAN-05 的修正
 
 ## 3. 突變驗證
 
@@ -143,8 +145,12 @@
 | `socket.ts` | widget socket 不帶 claim token | Widget connects with the claimed session |
 | `page.tsx` | chatbox 頁面 socket 不帶 claim token | Chatbox mode uses session id instead of visitor token |
 | `page.tsx` | chatbox 頁面建立訪客 token | Chatbox mode uses session id instead of visitor token |
+| `webchat.routes.ts` | webchat 上傳改回共用 IP 計數 | 訊息達到來源 IP 的上限後仍可上傳（webchat） |
+| `index.ts` | widget 文字被拒絕時不標示 | Message send fails：文字訊息 |
+| `index.ts` | widget 文字請求例外時不標示 | Message send fails：文字訊息 |
+| `index.ts` | widget 媒體訊息不檢查回應 | Message send fails：媒體訊息 |
 
-68 個突變中，66 個讓測試失敗。存活的 2 個在預期內。訊息路由自己的來源 IP 計數，與同一條路由的 `@fastify/rate-limit` 上限都是每分鐘 30 次。只拿掉其中一個時，另一個以相同的上限擋下請求，行為不變。兩個都拿掉時（「webchat 訊息不限 IP」），測試失敗。
+72 個突變中，70 個讓測試失敗。最後 4 個突變把 CHAN-04、CHAN-05 的修正改回修正前的寫法。存活的 2 個在預期內。訊息路由自己的來源 IP 計數，與同一條路由的 `@fastify/rate-limit` 上限都是每分鐘 30 次。只拿掉其中一個時，另一個以相同的上限擋下請求，行為不變。兩個都拿掉時（「webchat 訊息不限 IP」），測試失敗。
 
 頻率限制的上限互相重疊，例如驗證通過的工作階段一定先碰到每小時的上限。因此測試除了檢查 429，也從 warn 日誌的計數鍵確認擋下請求的是情境指的那一個上限。
 
