@@ -32,9 +32,47 @@
 - **WHEN** superuser 從 trial plan 移除 `knowledge`
 - **THEN** 該方案所有租戶的有效權限 MUST 在快取失效後不再含 knowledge 權限點，無需改碼或重新部署
 
+#### Scenario: 方案的 features 不含 core
+- **GIVEN** 方案的 features 只有 `inbox`，不含 `core`，某個成員的角色授予 `role.manage`
+- **WHEN** 取得這個成員的有效權限
+- **THEN** 結果含 `role.manage`
+
 ### Requirement: 方案管理 API
 平台 API SHALL 提供 plans 列表與更新（name/features/limits/priceMonthly/isActive）。更新 features/limits MUST 觸發該 plan 相關權限快取失效。
+
+平台後台的方案設定頁 MUST NOT 讓平台管理員取消 `core` 功能。
 
 #### Scenario: 更新 limits
 - **WHEN** superuser 把 trial plan 的 `limits.maxAgents` 從 3 改為 5
 - **THEN** 該方案所有租戶的有效 maxAgents（無 override 者）MUST 變為 5
+
+#### Scenario: 平台後台不能取消 core
+- **WHEN** 平台管理員開啟方案設定頁
+- **THEN** 每個方案的 `core` 勾選框都是停用狀態，其他功能的勾選框可以操作
+
+### Requirement: 平台變更租戶的方案
+平台管理員以 `PATCH /api/v1/platform/tenants/:id` 帶 `planSlug` 變更租戶的方案時，API SHALL 更新 `Tenant.planId`，並清除這個租戶的方案快取。成員之後的權限檢查 MUST 依新方案計算天花板。
+
+變更方案 MUST NOT 新增或刪除任何角色的權限設定（`RolePermission`）。降級後被天花板擋下的權限仍然留在角色上。租戶升回原方案時，這些權限自動恢復生效。
+
+API MUST 寫入 action 為 `tenant.update` 的平台稽核，payload 含 `planSlug`。
+
+#### Scenario: 變更方案後立即生效
+- **GIVEN** API 已經讀過某個租戶的方案
+- **WHEN** 平台管理員把這個租戶改到另一個方案
+- **THEN** API 下一次讀這個租戶的方案時，得到新的方案
+
+#### Scenario: 降級不刪除角色的權限設定
+- **GIVEN** 租戶的方案含 `marketing`，某個成員的角色授予 `marketing.view`
+- **WHEN** 平台管理員把租戶改到不含 `marketing` 的方案
+- **THEN** 這個成員的有效權限不含 `marketing.view`
+- **AND** 成員角色的 `RolePermission` 仍然含 `marketing.view`
+
+#### Scenario: 升回原方案後恢復權限
+- **GIVEN** 租戶已經從含 `marketing` 的方案降級，某個成員的角色仍然授予 `marketing.view`
+- **WHEN** 平台管理員把租戶改回含 `marketing` 的方案
+- **THEN** 這個成員的有效權限再次含 `marketing.view`，租戶不需要重新設定角色
+
+#### Scenario: 變更方案留稽核
+- **WHEN** 平台管理員以 `PATCH /api/v1/platform/tenants/:id` 把租戶改到 `standard` 方案
+- **THEN** API 寫入 action 為 `tenant.update` 的稽核，payload 的 `planSlug` 為 `standard`
