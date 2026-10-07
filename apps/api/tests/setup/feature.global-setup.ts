@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import IORedis from 'ioredis';
 import { TENANT_A, TENANT_B, appRolePasswords, assertLocal, testDatabaseName, urls } from './feature-config.js';
+import { findRolesWithWrongPassword, roleLoginErrorMessage, type AppRole } from './role-login-check.js';
 
 const databasePackage = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../../packages/database');
 
@@ -40,6 +41,20 @@ async function setRolePasswords() {
   } finally {
     await db.$disconnect();
   }
+}
+
+/** 角色已有其他密碼時 setRolePasswords 不會修改，先試登入，失敗就停下來說明（見 role-login-check.ts） */
+async function assertRoleLogins() {
+  const roleUrls: Record<AppRole, string> = { app_tenant: urls.tenant, app_admin: urls.admin };
+  const wrong = await findRolesWithWrongPassword(['app_tenant', 'app_admin'], async (role) => {
+    const db = new PrismaClient({ datasources: { db: { url: roleUrls[role] } } });
+    try {
+      await db.$queryRaw`SELECT 1`;
+    } finally {
+      await db.$disconnect();
+    }
+  });
+  if (wrong.length > 0) throw new Error(roleLoginErrorMessage(wrong));
 }
 
 function migrate() {
@@ -83,6 +98,7 @@ export default async function setup() {
   }
   migrate();
   await setRolePasswords();
+  await assertRoleLogins();
   await insertFixtures();
   await flushRedis();
 }
