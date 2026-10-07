@@ -1,6 +1,7 @@
 /**
  * PUT /api/v1/settings/identity-binding（change add-email-identity-merge，spec email-identity-merge
- * 「設定頁沒送 email 欄位」）。路由層整合測試，走真實權限計算；結束時還原租戶設定。
+ * 「設定頁沒送 email 欄位」）。通過認證之後的路由層整合測試：認證以注入的成員取代，
+ * 權限由真實的 requirePermission 依角色計算。結束時還原租戶設定（原本沒有設定列就刪除）。
  */
 import assert from 'node:assert/strict';
 import { afterAll, beforeEach, test } from 'vitest';
@@ -60,7 +61,9 @@ beforeEach(async () => {
 afterAll(async () => {
   await app.close();
   await withTenant(prisma, T, (tx) =>
-    tx.tenantSettings.updateMany({ where: { tenantId: T }, data: { identityBinding: (original?.identityBinding ?? {}) as object } }),
+    original
+      ? tx.tenantSettings.updateMany({ where: { tenantId: T }, data: { identityBinding: (original.identityBinding ?? {}) as object } })
+      : tx.tenantSettings.deleteMany({ where: { tenantId: T } }),
   );
   invalidateIdentityBindingSettings();
   await prisma.tenantAuditLog.deleteMany({ where: { tenantId: T, actorId: agent.id } }).catch(() => {});

@@ -94,10 +94,12 @@ afterAll(async () => {
     await tx.channelIdentity.deleteMany({ where: { id: fixture.identity.id } });
     await tx.contact.deleteMany({ where: { id: fixture.contact.id } });
     await tx.channel.deleteMany({ where: { id: fixture.channel.id } });
-    await tx.tenantSettings.updateMany({
-      where: { tenantId: T },
-      data: { identityBinding: (original?.identityBinding ?? {}) as object },
-    });
+    // 原本沒有設定列就刪除，不留下測試建立的資料
+    if (original) {
+      await tx.tenantSettings.updateMany({ where: { tenantId: T }, data: { identityBinding: (original.identityBinding ?? {}) as object } });
+    } else {
+      await tx.tenantSettings.deleteMany({ where: { tenantId: T } });
+    }
   });
   invalidateIdentityBindingSettings();
   await prisma.$disconnect();
