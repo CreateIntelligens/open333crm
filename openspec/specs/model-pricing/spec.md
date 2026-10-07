@@ -23,6 +23,8 @@
 ### Requirement: 成本計算公式
 成本 MUST 依下式以 Decimal 全程計算（不得經 float）：`(promptTokens − cachedTokens) × inputPer1M/1e6 + cachedTokens × cachedPer1M/1e6 + (candidatesTokens + thoughtsTokens) × outputPer1M/1e6`。若該模型設有 `tierThreshold` 且 `promptTokens > tierThreshold`，整筆 MUST 改用 tier 單價。計算結果 MUST 以 Decimal 存入 `AiUsage.costUsd`。
 
+使用租戶自備金鑰（`keySource` 是 `byok`）的呼叫，成本由租戶自付：系統 MUST NOT 查詢 ModelPricing，`costUsd` 是 0，`usageMissing` 是 false。
+
 #### Scenario: 含快取與 thinking 的成本
 - **GIVEN** `gemini-2.5-flash` 單價 input $0.30 / output $2.50 / cached $0.03
 - **WHEN** usage 為 promptTokens=3000、cachedTokens=1000、candidatesTokens=200、thoughtsTokens=500
@@ -36,6 +38,10 @@
 #### Scenario: Ollama 本機模型成本為零
 - **WHEN** provider 為 ollama
 - **THEN** costUsd MUST 為 0（不查 ModelPricing）
+
+#### Scenario: 自備金鑰的呼叫成本為零
+- **WHEN** 一次使用租戶自備金鑰的 Gemini 呼叫成功
+- **THEN** 系統不查詢 ModelPricing，這筆 `AiUsage` 的 `costUsd` 是 0、`usageMissing` 是 false
 
 ### Requirement: 價目種子資料
 seed MUST 以 idempotent 方式建立現行 Gemini 價目（至少涵蓋 provider 白名單內模型：2.5-flash、2.5-flash-lite、2.5-pro 及其分級價）。seed 重複執行 MUST NOT 產生重複列。

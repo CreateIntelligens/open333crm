@@ -8,6 +8,7 @@ import type { HistoryMessage } from '../providers/types.js';
 import { resolveGeminiKey } from '../ai-key.service.js';
 import { isMonthlyTokenExceeded } from '../../trial/token-quota.service.js';
 import { recordAiUsage } from '../llm.service.js';
+import { AppError } from '../../../shared/utils/response.js';
 import { addRetentionExpiry } from './retention.js';
 import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
 import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
@@ -48,7 +49,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
   const provider = getChatProvider(settings.provider);
   const key = provider.id === 'gemini' ? await resolveGeminiKey(prisma, input.tenantId) : { key: undefined, source: 'platform' as const };
   if (key.source === 'platform' && await isMonthlyTokenExceeded(prisma, input.tenantId)) {
-    throw new Error('已達方案 AI 月額度上限');
+    throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
   }
 
   const now = new Date();
