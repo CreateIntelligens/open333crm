@@ -41,7 +41,7 @@
 | `code` | 權限碼。兩段以上的小寫片段，以 `.` 分隔，第一段是資源；片段可含 `-` 與 `_`，例如 `channel.view_all` |
 | `feature` | 所屬的功能模組。方案以功能模組為單位開關，見下一節。功能模組定義在 `features.ts` 的 `FEATURES` |
 | `group`、`label`、`description` | 角色與權限頁的分組與顯示文字 |
-| `dependsOn` | 前置權限。勾選這個碼時，前置的碼也必須勾選 |
+| `dependsOn` | 前置權限。勾選這個碼時，前置的碼也必須勾選。只能一層：前置的碼本身不能再有 `dependsOn`，因為角色與權限頁只處理一層。`rbac-registry.test.ts` 檢查這條限制 |
 | `implies` | 隱含權限。擁有這個碼時，計算有效權限會自動加上隱含的碼 |
 | `adminLock` | `admin` 系統角色不能移除這個碼 |
 | `selfLock` | 成員不能從自己目前的角色移除這個碼 |
@@ -205,9 +205,15 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 ## 前端的顯示
 
-前端登入或重新載入頁面時，呼叫 `GET /auth/me/permissions` 取得有效權限（已套用方案天花板），存在 `AuthProvider.tsx`。元件以 `usePermission()` 判斷，側欄以 `NAV_TREE` 每一項的 `perm` 決定是否顯示。
+成員以密碼或 Passkey 登入、或重新載入頁面時，前端呼叫 `GET /auth/me/permissions` 取得有效權限（已套用方案天花板），存在 `AuthProvider.tsx`。載入失敗時權限集合是空的，側欄顯示載入失敗的提示與「重試」。元件以 `usePermission()` 判斷，側欄以 `NAV_TREE` 每一項的 `perm` 決定是否顯示。
 
 前端的判斷只影響顯示，不擋請求。側欄與 API 的權限碼不一定一致，兩者不一致的例子見[租戶後台](../features/tenant/README.md#側欄顯示與-api-權限)。
+
+角色與權限頁（`RolePermissionMatrix.tsx`）的行為由主規格 `role-settings-page` 規定：
+
+- 勾選一個碼時，頁面一併勾選它的 `dependsOn`。群組的「全開」「全關」也一併處理其他群組的前置與相依權限。
+- `admin` 系統角色的 `adminLock` 碼，以及這些碼的前置權限，在頁面上鎖定：已勾選時不能取消。新增權限碼後，既有租戶的 `admin` 不會自動取得（見上一節），這時頁面可以勾選或用「全開」補回。
+- 頁面不預先停用越權與自我鎖定的變更。儲存時由後端拒絕，頁面顯示後端的錯誤訊息。
 
 角色與權限頁顯示的是角色本身的權限碼，沒有套用方案天花板，因此畫面上勾選的碼不一定生效，見 `../system/AUDIT.md` 的 PLAN-08。
 

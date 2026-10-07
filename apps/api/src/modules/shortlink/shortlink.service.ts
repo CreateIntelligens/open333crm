@@ -284,6 +284,8 @@ function buildTargetUrl(link: {
   return url.toString();
 }
 
+const CONTACT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function isLive(link: { isActive: boolean; expiresAt: Date | null }): boolean {
   if (!link.isActive) return false;
   if (link.expiresAt && link.expiresAt < new Date()) return false;
@@ -342,7 +344,17 @@ export async function trackClick(
   if (!link || !isLive(link)) return null;
 
   // Who actually clicked: the lineUid's contact wins; otherwise the cid from the URL.
-  let contactId = meta.contactId;
+  // cid 來自公開請求、這裡又走 BYPASSRLS：必須是這個短連結所屬租戶的聯絡人才採用，
+  // 否則其他租戶的聯絡人 ID 會寫進點擊紀錄與 link.clicked 事件（AUDIT RLS-07 的 code review）。
+  // 不是 UUID 時當成匿名點擊（原本 clickLog.create 會拋錯，點擊默默沒被記錄）。
+  let contactId: string | undefined;
+  if (meta.contactId && CONTACT_ID_RE.test(meta.contactId)) {
+    const own = await prisma.contact.findFirst({
+      where: { id: meta.contactId, tenantId: link.tenantId },
+      select: { id: true },
+    });
+    contactId = own?.id;
+  }
   if (meta.lineUid && link.lineChannelId) {
     const resolved = await resolveContactByLineUid(prisma, link.lineChannelId, meta.lineUid);
     if (resolved) contactId = resolved;

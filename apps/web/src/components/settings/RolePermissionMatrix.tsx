@@ -4,12 +4,14 @@
  * 角色與權限設定頁（對應 rbac-granular-permissions 的租戶層 RBAC UI）
  *
  * 逐角色編輯：左選角色 → 右依 group 折疊勾選權限。
- * 含 dependsOn 連動、implies 唯讀說明、狀態視覺（越權/鎖定/防自鎖）、
+ * 含 dependsOn 連動、implies 唯讀說明、admin 內建鎖定、
  * 編輯緩衝 + 明確儲存、新增/改名/刪除自訂角色。
+ * 越權與防自鎖不在前端預先停用，由後端拒絕後顯示錯誤。
  * 前端 gating 為 UX，後端 requirePermission 為權威。
+ * 規格：openspec/specs/role-settings-page
  */
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2, ChevronDown, Search, Lock, Info } from 'lucide-react';
 import api from '@/lib/api';
 import { usePermission } from '@/providers/AuthProvider';
@@ -55,6 +57,8 @@ export function RolePermissionMatrix() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Set<string>>(new Set());
   const [baseline, setBaseline] = useState<Set<string>>(new Set());
+  // 這次編輯中因 dependsOn 被自動勾選的前置權限 → 需要它的權限碼
+  const [autoOn, setAutoOn] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +67,10 @@ export function RolePermissionMatrix() {
   // 逐角色權限載入失敗旗標：避免用「舊角色」的 draft/baseline 誤存到「新角色」
   const [permLoadError, setPermLoadError] = useState(false);
   const [permLoading, setPermLoading] = useState(false);
+  // draft/baseline 屬於哪個角色。與 selectedId 不同時（切換後尚未載入完成）禁止編輯與儲存
+  const [loadedRoleId, setLoadedRoleId] = useState<string | null>(null);
+  // 最近一次請求的角色：較早送出、較晚回應的請求要丟掉，否則會把舊角色的權限寫進新角色
+  const requestedRoleRef = useRef<string | null>(null);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
@@ -82,6 +90,19 @@ export function RolePermissionMatrix() {
 
   const selectedRole = roles.find((r) => r.id === selectedId) ?? null;
 
+  // admin 內建鎖定：adminLock 的權限與它們的前置權限（移除前置權限會讓 adminLock 權限失去前置）
+  const adminLockedCodes = useMemo(() => {
+    const locked = new Set<string>();
+    matrix.forEach((g) =>
+      g.permissions.forEach((p) => {
+        if (!p.adminLock) return;
+        locked.add(p.code);
+        p.dependsOn.forEach((d) => locked.add(d));
+      })
+    );
+    return locked;
+  }, [matrix]);
+
   // 初次載入：角色 + 權限矩陣
   useEffect(() => {
     Promise.all([api.get('/roles'), api.get('/roles/matrix')])
@@ -97,31 +118,44 @@ export function RolePermissionMatrix() {
 
   // 切換角色：載入其權限
   const loadRolePerms = useCallback((roleId: string) => {
+    requestedRoleRef.current = roleId;
     setError(null);
     setOkMsg(null);
     setPermLoadError(false);
     setPermLoading(true);
+    setLoadedRoleId(null);
+    const isStale = () => requestedRoleRef.current !== roleId;
     api
       .get(`/roles/${roleId}/permissions`)
       .then((res) => {
+        if (isStale()) return;
         const perms = new Set<string>(res.data.data.permissions);
         setDraft(new Set(perms));
         setBaseline(new Set(perms));
+        setAutoOn(new Map());
+        setLoadedRoleId(roleId);
       })
       .catch(() => {
+        if (isStale()) return;
         // 關鍵：載入失敗時清空 draft/baseline，避免沿用「上一個角色」的權限，
         // 否則使用者以為在編輯新角色、按下儲存會把新角色權限覆蓋成錯的集合。
         setDraft(new Set());
         setBaseline(new Set());
+        setAutoOn(new Map());
         setPermLoadError(true);
         setError('載入角色權限失敗，請重試');
       })
-      .finally(() => setPermLoading(false));
+      .finally(() => {
+        if (!isStale()) setPermLoading(false);
+      });
   }, []);
 
   useEffect(() => {
     if (selectedId) loadRolePerms(selectedId);
   }, [selectedId, loadRolePerms]);
+
+  // 草稿屬於目前選取的角色、且已載入完成，才可以編輯與儲存
+  const ready = selectedId !== null && loadedRoleId === selectedId && !permLoadError && !permLoading;
 
   const hasChanges = useMemo(() => {
     if (draft.size !== baseline.size) return true;
@@ -145,64 +179,98 @@ export function RolePermissionMatrix() {
     [matrix]
   );
 
+  // 勾選 code 時補上它的前置權限；原本沒勾的前置權限記為自動開啟（記下需要它的 code）。
+  // 這裡、dependents() 與 adminLockedCodes 都只處理一層 dependsOn。註冊表保證只有一層，
+  // 見 packages/core 的 rbac-registry.test.ts「dependsOn 只有一層」。
+  function enablePrereqs(code: string, next: Set<string>, nextAuto: Map<string, string>) {
+    const def = codeToDef.get(code);
+    def?.dependsOn.forEach((d) => {
+      if (next.has(d)) return;
+      next.add(d);
+      nextAuto.set(d, code);
+    });
+  }
+
+  function labels(codes: string[]) {
+    return codes.map((c) => codeToDef.get(c)?.label ?? c).join('、');
+  }
+
+  // 取消勾選 removed：移除它們自己的自動開啟紀錄，以及因它們而自動開啟的紀錄（前置權限維持勾選）
+  function forgetAutoOn(removed: Iterable<string>, nextAuto: Map<string, string>) {
+    const gone = new Set(removed);
+    for (const [code, by] of [...nextAuto]) {
+      if (gone.has(code) || gone.has(by)) nextAuto.delete(code);
+    }
+  }
+
   function togglePerm(code: string, want: boolean) {
     if (!canManage) return;
-    // 載入中或載入失敗時 draft 不可信，禁止編輯
-    if (permLoadError || permLoading) return;
+    // 載入中、載入失敗或切換角色後尚未載入時 draft 不可信，禁止編輯
+    if (!ready) return;
+    // 內建鎖定只擋取消；admin 缺少鎖定權限時要能補回，否則後端一律回 422 ADMIN_LOCK
+    if (!want && isAdminLocked(code)) return;
     const next = new Set(draft);
-    const def = codeToDef.get(code);
+    const nextAuto = new Map(autoOn);
     if (want) {
       next.add(code);
-      // dependsOn：自動補前置
-      def?.dependsOn.forEach((d) => next.add(d));
+      nextAuto.delete(code);
+      enablePrereqs(code, next, nextAuto);
     } else {
       // 取消父權限 → 連帶關閉相依子權限（先確認）
       const kids = dependents(code).filter((c) => next.has(c));
       if (kids.length) {
-        const names = kids.map((c) => codeToDef.get(c)?.label ?? c).join('、');
-        if (!confirm(`關閉「${codeToDef.get(code)?.label}」會一併關閉相依的：${names}。確定？`)) return;
-        kids.forEach((c) => next.delete(c));
+        if (!confirm(`關閉「${codeToDef.get(code)?.label}」會一併關閉相依的：${labels(kids)}。確定？`)) return;
       }
-      next.delete(code);
+      [code, ...kids].forEach((c) => next.delete(c));
+      forgetAutoOn([code, ...kids], nextAuto);
     }
     setDraft(next);
+    setAutoOn(nextAuto);
   }
 
   function toggleGroup(g: MatrixGroup, turnOn: boolean) {
     if (!canManage) return;
-    if (permLoadError || permLoading) return;
+    if (!ready) return;
     const next = new Set(draft);
-    g.permissions.forEach((p) => {
-      if (isBlocked(p)) return;
-      if (turnOn) {
-        next.add(p.code);
-        p.dependsOn.forEach((d) => next.add(d));
-      } else {
-        next.delete(p.code);
+    const nextAuto = new Map(autoOn);
+    if (turnOn) {
+      const targets = g.permissions.map((p) => p.code);
+      targets.forEach((c) => {
+        next.add(c);
+        nextAuto.delete(c);
+      });
+      // 先開完整組，組內的前置權限就不算自動開啟；只有組外的才標示
+      targets.forEach((c) => enablePrereqs(c, next, nextAuto));
+    } else {
+      // 全關略過內建鎖定的權限
+      const removing = new Set(g.permissions.map((p) => p.code).filter((c) => !isAdminLocked(c)));
+      // 其他群組以這組權限為前置的，也要一起關（先確認）
+      const outside = [...new Set([...removing].flatMap(dependents))].filter((c) => next.has(c) && !removing.has(c));
+      if (outside.length) {
+        if (!confirm(`關閉「${g.group}」會一併關閉其他群組相依的：${labels(outside)}。確定？`)) return;
       }
-    });
+      [...removing, ...outside].forEach((c) => next.delete(c));
+      forgetAutoOn([...removing, ...outside], nextAuto);
+    }
     setDraft(next);
+    setAutoOn(nextAuto);
   }
 
-  // 越權：admin 角色以外，超出「自己有效權限」無法授予。前端無法完全知道自己的權限集合，
-  // 這裡以「後端會擋」為權威；前端僅對 adminLock/自身角色做視覺提示，越權交後端 403。
-  function isBlocked(_p: PermDef) {
-    return !canManage;
-  }
-  function isAdminLocked(p: PermDef) {
-    return selectedRole?.slug === 'admin' && selectedRole?.isSystem && p.adminLock;
+  function isAdminLocked(code: string) {
+    return selectedRole?.slug === 'admin' && !!selectedRole?.isSystem && adminLockedCodes.has(code);
   }
 
   async function save() {
     if (!selectedId) return;
-    // 載入失敗時 draft/baseline 已被清空，禁止儲存以免把角色權限覆寫成空集合
-    if (permLoadError || permLoading) return;
+    // 載入失敗時 draft/baseline 已被清空；切換角色後 draft 還是上一個角色的。都禁止儲存
+    if (!ready) return;
     setSaving(true);
     setError(null);
     setOkMsg(null);
     try {
       await api.put(`/roles/${selectedId}/permissions`, { permissions: [...draft] });
       setBaseline(new Set(draft));
+      setAutoOn(new Map());
       setOkMsg('已儲存');
       // 更新左欄權限數
       setRoles((rs) => rs.map((r) => (r.id === selectedId ? { ...r, permissionCount: draft.size } : r)));
@@ -216,6 +284,7 @@ export function RolePermissionMatrix() {
 
   function discard() {
     setDraft(new Set(baseline));
+    setAutoOn(new Map());
     setError(null);
   }
 
@@ -464,10 +533,10 @@ export function RolePermissionMatrix() {
                     <div className="pb-2">
                       {visible.map((p) => {
                         const on = draft.has(p.code);
-                        const adminLocked = isAdminLocked(p);
-                        const autoOn =
-                          on && p.dependsOn.some((d) => draft.has(d)) && p.dependsOn.length > 0;
-                        const disabled = !canManage || adminLocked || permLoadError || permLoading;
+                        const adminLocked = isAdminLocked(p.code);
+                        const autoByCode = autoOn.get(p.code);
+                        const autoBy = autoByCode && (codeToDef.get(autoByCode)?.label ?? autoByCode);
+                        const disabled = !canManage || (adminLocked && on) || !ready;
                         return (
                           <div
                             key={p.code}
@@ -495,9 +564,12 @@ export function RolePermissionMatrix() {
                                   </span>
                                 )}
                                 <span className="font-mono text-[11px] text-muted-foreground">{p.code}</span>
-                                {autoOn && (
-                                  <span className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-semibold text-warning-foreground">
-                                    ↳ 自動開啟
+                                {autoBy && (
+                                  <span
+                                    title={`因「${autoBy}」需要而自動開啟`}
+                                    className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-semibold text-warning-foreground"
+                                  >
+                                    自動開啟
                                   </span>
                                 )}
                                 {adminLocked && (
@@ -529,7 +601,7 @@ export function RolePermissionMatrix() {
           <Button variant="outline" size="sm" onClick={discard} disabled={saving}>
             放棄
           </Button>
-          <Button size="sm" onClick={save} loading={saving} disabled={permLoadError || permLoading}>
+          <Button size="sm" onClick={save} loading={saving} disabled={!ready}>
 
             儲存變更
           </Button>

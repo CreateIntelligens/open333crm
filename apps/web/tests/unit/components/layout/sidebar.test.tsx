@@ -1,0 +1,88 @@
+// @vitest-environment jsdom
+/**
+ * 側邊選單依權限顯示項目（openspec/specs/permission-check「前端依權限顯示選單」）。
+ */
+import assert from 'node:assert/strict';
+import { beforeEach, test, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+
+// useAuth() 回傳同一個物件，如同 AuthProvider 以 useCallback 保持 hasPermission 不變。
+// 每次渲染都給新的 hasPermission 會讓 Sidebar 的 effect 無限重跑。
+const { nav, auth, authValue } = vi.hoisted(() => {
+  const auth = { permissions: new Set<string>(), permissionsError: false };
+  return {
+    nav: { pathname: '/dashboard/inbox' },
+    auth,
+    authValue: {
+      agent: { id: 'a1', name: '測試成員', email: 'a@example.com', role: 'AGENT' },
+      logout: () => {},
+      hasPermission: (code: string) => auth.permissions.has(code),
+      get permissionsError() {
+        return auth.permissionsError;
+      },
+      reloadPermissions: vi.fn(async () => {}),
+    },
+  };
+});
+vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
+vi.mock('#src/providers/AuthProvider.js', () => ({ useAuth: () => authValue }));
+
+import { Sidebar } from '#src/components/layout/Sidebar.js';
+
+const visible = (label: string | RegExp) => screen.queryAllByText(label).length > 0;
+
+/** 展開所有折疊的項目，讓檢查只看權限過濾，不受目前位置與分組方式影響。 */
+function renderExpanded() {
+  const { container } = render(<Sidebar />);
+  for (let i = 0; i < 100; i++) {
+    // 每次只點一個：同一個項目可能有兩個展開按鈕，連點兩個會再收合。
+    const collapsed = container.querySelector('[aria-expanded="false"]');
+    if (!collapsed) return;
+    fireEvent.click(collapsed);
+  }
+  throw new Error('展開側邊選單超過 100 次，仍有項目是收合的');
+}
+
+beforeEach(() => {
+  nav.pathname = '/dashboard/inbox';
+  auth.permissions = new Set();
+  auth.permissionsError = false;
+  authValue.reloadPermissions.mockClear();
+});
+
+test('權限載入失敗時顯示提示並可重試：側邊選單', () => {
+  render(<Sidebar />);
+  assert.equal(visible(/無法載入你的權限/), false, '對照組：載入成功時不顯示');
+  cleanup();
+
+  auth.permissionsError = true;
+  render(<Sidebar />);
+  assert.equal(visible(/無法載入你的權限/), true);
+  fireEvent.click(screen.getByRole('button', { name: '重試' }));
+  assert.equal(authValue.reloadPermissions.mock.calls.length, 1);
+});
+
+test('沒有權限時隱藏選單項目', () => {
+  auth.permissions = new Set(['automation.view']);
+  renderExpanded();
+  assert.equal(visible('自動化'), true, '對照組：有權限的項目要顯示');
+  assert.equal(visible('報表'), false);
+});
+
+test('有權限時顯示選單項目', () => {
+  auth.permissions = new Set(['analytics.view']);
+  renderExpanded();
+  assert.equal(visible('報表'), true);
+});
+
+test('子項目全部隱藏時隱藏上層項目', () => {
+  auth.permissions = new Set(['role.view', 'analytics.view']);
+  renderExpanded();
+  assert.equal(visible('一般設定'), true, '對照組：「設定」已展開');
+  assert.equal(visible('整合'), false);
+
+  cleanup();
+  auth.permissions = new Set(['role.view', 'analytics.view', 'settings.manage']);
+  renderExpanded();
+  assert.equal(visible('整合'), true, '對照組：有 settings.manage 時顯示「整合」');
+});

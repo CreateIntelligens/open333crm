@@ -25,7 +25,10 @@ export interface PermissionDef {
   label: string;
   /** 說明 */
   description: string;
-  /** 同功能前置權限（進 DB、勾選連動） */
+  /**
+   * 同功能前置權限（進 DB、勾選連動）。只能一層：前置權限本身不能再有 dependsOn，
+   * 因為角色與權限頁只處理一層（rbac-registry.test.ts 的「dependsOn 只有一層」）。
+   */
   dependsOn?: string[];
   /** 跨模組隱含權限（不進 DB、解析時補） */
   implies?: string[];

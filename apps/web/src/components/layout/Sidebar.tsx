@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  BarChart3, Bell, BookOpen, Briefcase, ChevronDown, ChevronRight, CreditCard,
+  AlertTriangle, BarChart3, Bell, BookOpen, Briefcase, ChevronDown, ChevronRight, CreditCard,
   FileText, FlaskConical, Gauge, Link2, LogOut, Menu, MessageSquare,
   Network, PanelLeftClose, PanelLeftOpen, PieChart, Send, Settings,
   Smartphone, Tags, Trophy, Users, X, Zap, type LucideIcon,
@@ -209,7 +209,7 @@ function TreeNode({ node, pathname, depth, expanded, onToggle, onNavigate }: {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { agent, logout, hasPermission } = useAuth();
+  const { agent, logout, hasPermission, permissionsError, reloadPermissions } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const navTree = useMemo(() => filterTree(NAV_TREE, hasPermission), [hasPermission]);
@@ -241,6 +241,12 @@ export function Sidebar() {
         </div>
         <Separator />
         <nav aria-label="主要導覽" className="flex-1 overflow-y-auto px-2 py-4">
+          {/* 權限載入失敗時選單只剩不需權限的項目：說明原因並提供重試，不要讓選單默默變少 */}
+          {permissionsError && (collapsed ? (
+            <button type="button" onClick={() => void reloadPermissions()} aria-label="無法載入你的權限，重試" title="無法載入你的權限，按此重試" className="mb-2 flex h-10 w-full items-center justify-center rounded-md text-destructive hover:bg-destructive/10"><AlertTriangle className="h-4 w-4" /></button>
+          ) : (
+            <div role="alert" className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"><p>無法載入你的權限，部分選單沒有顯示。</p><button type="button" onClick={() => void reloadPermissions()} className="mt-1 font-semibold underline">重試</button></div>
+          ))}
           {collapsed ? (
             <ul className="space-y-1">{navTree.map((node) => { const Icon = node.icon; const active = nodeContainsPath(node, pathname); const href = node.href ?? node.children?.find((child) => child.href)?.href ?? '/dashboard/inbox'; return <li key={node.id}><Link href={href} aria-label={node.label} title={node.label} className={cn('flex h-10 items-center justify-center rounded-md', active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent')}><Icon className="h-4 w-4" /></Link></li>; })}</ul>
           ) : <ul className="space-y-1">{navTree.map((node) => <TreeNode key={node.id} node={node} pathname={pathname} depth={0} expanded={expanded} onToggle={toggle} onNavigate={() => setMobileOpen(false)} />)}</ul>}

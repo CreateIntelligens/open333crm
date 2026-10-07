@@ -22,6 +22,10 @@ interface AuthContextType {
   permissions: Set<string>;
   /** 判斷是否擁有某權限 */
   hasPermission: (code: string) => boolean;
+  /** 權限載入失敗。此時 permissions 是空集合（fail-closed），畫面要提示並提供重試 */
+  permissionsError: boolean;
+  /** 重新載入權限 */
+  reloadPermissions: () => Promise<void>;
   passkeyEnabled: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   loginWithPasskey: (email?: string, rememberMe?: boolean) => Promise<void>;
@@ -43,6 +47,7 @@ export function setAccessToken(token: string | null): void {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
+  const [permissionsError, setPermissionsError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [passkeyEnabled, setPasskeyEnabled] = useState(false);
   const router = useRouter();
@@ -52,10 +57,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.get('/auth/me/permissions');
       setPermissions(new Set<string>(res.data.data.permissions ?? []));
+      setPermissionsError(false);
     } catch {
       setPermissions(new Set());
+      setPermissionsError(true);
     }
   }, []);
+
+  // 兩種登入方式共用的登入後步驟。新增登入方式時也呼叫它，才不會漏掉載入權限
+  const completeLogin = useCallback(
+    async (accessToken: string, agentData: Agent) => {
+      setAccessToken(accessToken);
+      setAgent(agentData);
+      await loadPermissions();
+      router.push('/dashboard/inbox');
+    },
+    [router, loadPermissions]
+  );
 
   // On mount: restore session
   // If access token already in memory (e.g. just logged in), skip refresh
@@ -98,12 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string, rememberMe = false) => {
       const res = await api.post('/auth/login', { email, password, rememberMe });
       const { accessToken, agent: agentData } = res.data.data;
-      setAccessToken(accessToken);
-      setAgent(agentData);
-      await loadPermissions();
-      router.push('/dashboard/inbox');
+      await completeLogin(accessToken, agentData);
     },
-    [router, loadPermissions]
+    [completeLogin]
   );
 
   const loginWithPasskey = useCallback(
@@ -119,11 +134,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         response,
       });
       const { accessToken, agent: agentData } = verifyResponse.data.data;
-      setAccessToken(accessToken);
-      setAgent(agentData);
-      router.push('/dashboard/inbox');
+      await completeLogin(accessToken, agentData);
     },
-    [router],
+    [completeLogin],
   );
 
   const registerPasskey = useCallback(async (name: string) => {
@@ -144,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAccessToken(null);
     setAgent(null);
     setPermissions(new Set());
+    setPermissionsError(false);
     router.push('/login');
   }, [router]);
 
@@ -153,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ agent, isLoading, permissions, hasPermission, passkeyEnabled, login, loginWithPasskey, registerPasskey, logout }}>
+    <AuthContext.Provider value={{ agent, isLoading, permissions, hasPermission, permissionsError, reloadPermissions: loadPermissions, passkeyEnabled, login, loginWithPasskey, registerPasskey, logout }}>
 
       {children}
     </AuthContext.Provider>

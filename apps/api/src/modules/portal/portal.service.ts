@@ -2,7 +2,7 @@
  * Portal activity service — CRUD, submissions, draw.
  */
 
-import type { PrismaClient, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { eventBus } from '../../events/event-bus.js';
 import { addPointTransaction } from './points.service.js';
@@ -261,7 +261,7 @@ export async function listSubmissions(
 }
 
 export async function submitActivity(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   activityId: string,
   contactId: string,
   tenantId: string,
@@ -367,13 +367,13 @@ export async function drawWinners(
 // ─── Activity result stats (public) ─────────────────────────────────────────
 
 export async function getActivityResult(
-  prisma: PrismaClient,
+  prisma: TenantDb,
   activityId: string,
   tenantId: string,
 ) {
-  // tenantId 為必填：本函式的唯一呼叫端是公開的粉絲門戶（走 prismaAdmin
-  // 繞過 RLS），若不在查詢條件內限定租戶，任何粉絲都能拿活動 id 讀到
-  // 其他租戶的投票／問卷結果。
+  // tenantId 為必填：本函式的唯一呼叫端是公開的粉絲門戶。呼叫端已以 withTenant 綁定 fanToken 的租戶，
+  // 查詢條件仍明確限定租戶，不只倚賴 RLS。
+  // 已知問題（AUDIT PORTAL-01）：回傳測驗選項的 isCorrect，也不看活動狀態。
   const activity = await prisma.portalActivity.findFirst({
     where: { id: activityId, tenantId },
     include: { options: { orderBy: { sortOrder: 'asc' } } },

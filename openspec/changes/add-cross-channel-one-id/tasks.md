@@ -92,7 +92,7 @@
 - [x] 9.3.1 **聯絡人路由權限守門**（2026-09-30 補上）：原本 10 條 `/api/v1/contacts/*` 路由只要登入即可讀寫（無權限角色可直接列出聯絡人、看其對話與案件）。現依 `contact.view`／`contact.update`／`contact.merge` 守門，聯絡人的對話另需 `inbox.view`、案件另需 `case.view`；路由層測試 `test:contact-routes-permission`。聯絡人層級的渠道可見性（CM-173：分店帳號只看自己渠道的聯絡人）仍未處理，見 9.3.8
 - [ ] 9.3.2 Redis 連線單例重複：passkey、downstream-loop-guard、identity-binding 各自 `new IORedis`，建議抽共用 client
 - [ ] 9.3.3 移除 `fan/auth` 後暫無簽發 fan token 的路徑，粉絲門戶受保護路由（活動、點數）暫不可用；待優惠券分支 Account Link 或 P2 會員登入頁接上
-- [ ] 9.3.4 `check-prisma-admin-usage --strict` 在 main 上就失敗（shortlink-redirect、portal-public 共 5 處），非本次造成
+- [x] 9.3.4 `check-prisma-admin-usage --strict` 在 main 上就失敗（shortlink-redirect、portal-public 共 5 處），非本次造成。2026-10-06 修正 RLS-07：短連結轉址加進白名單並註明理由，粉絲門戶改用 `withTenant`、不再使用 `prismaAdmin`，`--strict` 通過
 - [ ] 9.3.5 `.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
 - [ ] 9.3.6 Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
 - [x] 9.3.8 聯絡人的對話／案件／時間軸已套用 CM-173 渠道可見性（2026-09-30）
