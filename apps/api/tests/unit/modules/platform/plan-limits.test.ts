@@ -8,6 +8,11 @@ test('覆寫優先：方案 maxAgents=3、租戶覆寫 5，有效上限是 5', (
   assert.equal(resolveEffectiveLimit(tenant, 'maxAgents'), 5);
 });
 
+test('沒有覆寫時採用方案的值：limitOverrides 沒有 maxAgents，有效上限是方案的 3', () => {
+  const tenant = { limitOverrides: { maxChannels: 1 }, plan: { limits: { maxAgents: 3 } } };
+  assert.equal(resolveEffectiveLimit(tenant, 'maxAgents'), 3);
+});
+
 test('無 plan 無上限：租戶沒有方案時，每個上限都是 null', () => {
   const tenant = { limitOverrides: {}, plan: null };
   for (const key of ['maxAgents', 'maxTags', 'monthlyTokens', 'maxChannels'] as const) {

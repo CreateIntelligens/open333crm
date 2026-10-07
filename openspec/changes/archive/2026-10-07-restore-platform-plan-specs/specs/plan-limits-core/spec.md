@@ -1,9 +1,13 @@
 ## MODIFIED Requirements
 
 ### Requirement: 有效上限解析
-系統 SHALL 提供 `getEffectiveLimit(tenant, key)`：回傳 `Tenant.limitOverrides[key] ?? Plan.limits[key]`；值為 null 或租戶無 plan 時 MUST 視為無上限。
+系統 SHALL 依下列順序解析租戶某個上限的有效值：
 
-`Tenant.limitOverrides` 有這個 key 時，系統 MUST 採用覆寫值，即使覆寫值是 null。方案的 `limits` 沒有這個 key 時，系統 MUST 視為無上限。
+1. `Tenant.limitOverrides` 有這個 key 時，採用覆寫值，即使覆寫值是 null。
+2. 租戶沒有覆寫、但有方案，而且方案的 `limits` 有這個 key 時，採用 `Plan.limits[key]`。
+3. 其他情況，有效值是 null。
+
+有效值是 null 時，系統 MUST 視為無上限。
 
 #### Scenario: 覆寫優先
 - **GIVEN** plan.limits.maxAgents=3、tenant.limitOverrides.maxAgents=5
@@ -15,8 +19,13 @@
 - **WHEN** 解析任一 limit
 - **THEN** MUST 為無上限
 
+#### Scenario: 沒有覆寫時採用方案的值
+- **GIVEN** plan.limits.maxAgents=3，tenant.limitOverrides 沒有 `maxAgents` 這個 key
+- **WHEN** 解析有效 maxAgents
+- **THEN** 結果是 3
+
 #### Scenario: 覆寫成 null 時沒有上限
-- **GIVEN** plan.limits.maxAgents=3，tenant.limitOverrides.maxAgents 為 null
+- **GIVEN** plan.limits.maxAgents=3，tenant.limitOverrides 有 `maxAgents` 這個 key，值是 null
 - **WHEN** 解析有效 maxAgents
 - **THEN** 結果是無上限，不採用方案的 3
 
