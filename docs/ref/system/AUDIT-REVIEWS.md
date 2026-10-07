@@ -4,6 +4,25 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-07：補回 webchat 的主規格，新增 CHAN-04、CHAN-05
+
+change `restore-webchat-abuse-specs` 補回 `fix-security-audit-findings` 剩下的 delta spec（issue #228）：新增主規格 `webchat-public-abuse-controls`，並修改 `webchat-widget` 的 3 條需求，把 `visitorToken` 的寫法改成現行的 chatbox 工作階段。對照程式的結果：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 舊的工作階段路由 | 符合規格 | `POST /webchat/:channelId/sessions` 預設回 410。`WEBCHAT_LEGACY_ROUTES_ENABLED` 是 `true` 時，改以 chatbox 的流程建立工作階段，不採用請求帶來的 `visitorToken` |
+| 大小限制與有效期限 | 符合規格 | 文字最多 4000 個字元，訊息 body 最多 128 KB，上傳只收 PNG、JPEG、MP4、MOV。`CHATBOX_SESSION_TTL_MINUTES` 由環境變數驗證限制在三天內，計算有效期限時也再限制一次 |
+| 頻率限制 | 部分不符，新增 CHAN-05 | 訊息、上傳、建立工作階段與 `/visitor` 連線都有上限，計數鍵是 SHA-256 摘要，日誌不含 `sessionId` 與 claim token。webchat 的上傳與訊息共用來源 IP 的計數；以 Fastify inject 重現：同一個 IP 送出 10 則訊息後，上傳回 429 |
+| widget 的工作階段與送出 | 部分不符，新增 CHAN-04 | widget 每次載入都建立並 claim 新的工作階段，不使用 `sessionStorage`，訊息與上傳都帶 `sessionId` 與 claim token。文字訊息與媒體訊息送出失敗時，畫面上沒有提示 |
+| 回覆推送給訪客 | 符合規格 | 客服回覆由 `sendMessage()` 直接推送到 `visitor:<channelId>:<uid>`，機器人回覆由 `deliverToChannel()` 經 Redis 轉送。workers 的送出路徑不推送給訪客，已記錄於 CHAN-02 |
+
+規格中每個情境的測試都以突變驗證，清單在 change 的 `tasks.md`。CHAN-04 與 CHAN-05 違反的情境在修正前沒有測試。
+
+另外發現兩處重疊的上限，不影響行為，所以沒有列入 `AUDIT.md`：
+
+- 訊息與上傳路由自己的來源 IP 計數，與同一條路由的 `@fastify/rate-limit` 上限相同（每分鐘 30 次與 10 次）。外掛先執行，所以路由自己的計數不會先擋下請求。
+- 訊息的「每個工作階段每分鐘 30 次」大於「每個工作階段每小時 20 次」。驗證通過的工作階段一定先碰到每小時的上限。每分鐘的上限只對驗證失敗的請求有作用：這個計數在驗證之前，同一個 `sessionId` 反覆驗證失敗時，超過 30 次後不再驗證。
+
 ## 2026-10-07：修正 SEC-01，補回安全稽核的主規格
 
 change `restore-security-audit-specs` 補回 `fix-security-audit-findings` 沒有套用的 delta spec（issue #228），新增主規格 `socket-room-authorization`、`credential-encryption` 與 `webhook-subscription-egress`。對照程式的結果：

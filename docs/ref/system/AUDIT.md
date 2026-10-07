@@ -109,6 +109,8 @@
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時客人收不到任何回覆 | 靜態確認 |
+| [CHAN-04](#chan-04) | 渠道、稽核與資料權利 | P2 | 未處理 | 網站聊天室的訪客送出訊息失敗時，畫面上沒有任何提示 | 靜態確認 |
+| [CHAN-05](#chan-05) | 渠道、稽核與資料權利 | P2 | 未處理 | 網站聊天室的訊息與上傳共用來源 IP 的計數，同一個 IP 一分鐘內送出 10 則訊息後無法上傳 | 執行時重現 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
@@ -1423,6 +1425,35 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 網站聊天室即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
 
 **修正方向**：workers 改用與 API 相同的註冊函式，註冊全部外掛；網站聊天室的訪客推送移進外掛或共用的送出函式；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
+
+<a id="chan-04"></a>
+### CHAN-04：網站聊天室的訪客送出訊息失敗時，畫面上沒有任何提示
+
+widget（`apps/widget/src/index.ts`）送出文字訊息時，先把訊息顯示在畫面上，再呼叫 `POST /api/v1/webchat/:channelId/messages`。API 回應不是 2xx，或請求拋出例外時，widget 只寫 `console.error`，畫面上的訊息與送出成功的訊息相同。
+
+媒體分兩步送出。上傳失敗時，widget 把佔位文字改成「[傳送失敗]」。上傳成功後，widget 送出媒體訊息，但不檢查這個請求的回應，失敗時仍顯示圖片或影片。
+
+工作階段過期、claim token 失效，或請求超過頻率限制時，訪客都會以為客服已經收到訊息。客服端的對應問題是 CONV-03。
+
+**規格依據。** 主規格 `webchat-widget` 的「Visitor message sending」規定：「When a send fails, the widget SHALL show an error.」（情境「Message send fails」）。
+
+**修正方向**：文字訊息與媒體訊息送出失敗時，在那則訊息標示「[傳送失敗]」，與上傳失敗的做法相同。
+
+<a id="chan-05"></a>
+### CHAN-05：網站聊天室的訊息與上傳共用來源 IP 的計數
+
+`webchat.routes.ts` 的訊息路由與上傳路由，都以 `getPublicWebchatKey('ip', req.ip)` 計算來源 IP 的請求次數。訊息的上限是每分鐘 30 次，上傳是每分鐘 10 次。兩條路由共用同一個計數，所以：
+
+- 同一個 IP 在一分鐘內送出 10 則訊息後，上傳一律回 429，直到計算區間結束。
+- 每次上傳也佔用訊息的 30 次。
+
+多位訪客在同一個 NAT 後面共用 IP 時，更容易碰到這個上限。
+
+`chatbox.routes.ts` 的上傳用另一個鍵 `ip-media` 計數，沒有這個問題。兩組路由在同一個 commit（`f507fe1f`）加入，所以 webchat 路由應該是疏漏。
+
+**規格依據。** 主規格 `webchat-public-abuse-controls` 的「訊息與上傳請求的頻率限制」規定：訊息與上傳的來源 IP 上限分開計算（情境「訊息達到來源 IP 的上限後仍可上傳」）。
+
+**修正方向**：webchat 的上傳改用 `ip-media` 鍵，與 `chatbox.routes.ts` 相同。
 
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作
