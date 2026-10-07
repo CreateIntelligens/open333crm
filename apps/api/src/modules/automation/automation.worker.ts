@@ -130,7 +130,7 @@ async function checkAutoHandoff(
       let summary = '';
       try {
         const { summarizeConversation } = await import('../ai/ai.service.js');
-        const summaryResult = await summarizeConversation(prisma, conversationId);
+        const summaryResult = await summarizeConversation(prisma, tenantId, conversationId);
         summary = summaryResult.summary;
       } catch (err) {
         logger.error('[AutoHandoff] Failed to generate summary:', err);

@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-07：修正 RBAC-04 的 AI 輔助端點
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 的 `ai.routes.ts` | 修正，RBAC-04 維持部分修正 | `/suggest-reply`、`/summarize` 以 `conversationId` 讀整段對話，原本不檢查渠道，違反 `channel-scoped-visibility` 的「單筆讀取與操作的存取檢查」。現在先以 `assertConversationChannelVisible(…, 'read_only')` 檢查，不可見回 404、不呼叫 AI。複查時另發現 `/agent/run` 帶 `conversationId` 時會讀該對話的歷史訊息（`loadAgentHistory()`），同樣沒有檢查，一併修正。測試：`apps/api/tests/unit/modules/ai/ai-routes-channel-scope.test.ts` |
+| `GET /ai/agent/runs/:id` | 修正 | 本地 code review 發現。執行紀錄的 `finalText`、工具參數與結果含對話內容，原本只要求 `inbox.view`。現在紀錄關聯對話時，先檢查該對話的渠道，不可見回 404 |
+| `ai.service.ts` 的租戶條件 | 修正 | 本地 code review 發現。`suggestReply()`、`summarizeConversation()` 只以 `conversationId` 查詢，只靠 RLS 隔離租戶；渠道檢查在對話不存在時交給下游處理，這時只剩 RLS 一層。兩個函式改為接收 `tenantId` 並帶進查詢條件。測試：`apps/api/tests/unit/modules/ai/ai.service-tenant-scope.test.ts` |
+
+RBAC-04 剩下 socket 租戶房間、聯絡人清單與合併、`POST /cases`、`GET /cases/stats`。這次沒有處理 INBOX.md 記載的另一個問題：除了 `/agent/run`，AI 端點只驗登入、沒有權限碼（PLAN-12）。
+
 ## 2026-10-06：修正 RLS-07
 
 `scripts/check-prisma-admin-usage.mjs --strict` 自 `207da85`（2026-09-22）起一直失敗，現在通過。修正過程中，本地 code review 推翻了第一版「整個檔案加白名單」的做法，以下是最後的結果。
