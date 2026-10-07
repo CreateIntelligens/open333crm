@@ -11,6 +11,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **AI 輔助不再讀取看不到的渠道的對話**（AUDIT RBAC-04 的一部分）— `/ai/suggest-reply`、`/ai/summarize` 與帶 `conversationId` 的 `/ai/agent/run` 原本不檢查對話的渠道，只能看分店渠道的成員可以對其他渠道的對話產生摘要或建議回覆。現在對話的渠道不可見時回 404，不呼叫 AI。查看 AI agent 執行紀錄（`GET /ai/agent/runs/:id`）也一樣：紀錄關聯的對話看不到時回 404。AI 輔助讀對話的查詢另補上 tenantId 條件，不再只靠 RLS。
+- **LINE webhook 的簽章錯誤改回 403**（AUDIT CHAN-03）— 原本先回 200 再在背景驗簽，簽章缺少或錯誤的請求與正確的請求得到相同回應，違反主規格 `line-webhook-events`。現在 LINE 路由在回應前驗簽，失敗時回 403；驗簽通過才回 200，事件仍在背景處理。進站 webhook 另會比對路由與渠道本身的類型，不符時丟棄，不再以其他類型的外掛與憑證處理。LINE、Facebook、Instagram 外掛的簽章比對統一改為固定時間比較；簽章長度不同時，LINE 原本會拋出錯誤，現在回傳不相符。
 
 ## [2026-10-06]
 

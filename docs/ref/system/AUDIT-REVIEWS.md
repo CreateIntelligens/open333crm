@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-07：修正 CHAN-03
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| LINE 的簽章錯誤也回 200 | 修正 | `webhook.service.ts` 拆出 `verifyWebhookRequest()`，LINE 路由在回應前呼叫：簽章缺少或錯誤時回 403，符合 `line-webhook-events` 的「LINE Webhook signature verification」。渠道不存在或租戶停用時維持原本的 200；驗證過程拋出錯誤（例如憑證無法解密）時回 500，原本是 200 且只寫 log。Facebook 與 Instagram 路由維持先回 200，它們的主規格沒有規定回應碼 |
+| 進站路由不比對渠道類型 | 修正 | `verifyWebhookRequest()` 比對路由與 `channel.channelType`，不符時丟棄（LINE 路由回 403），不取得路由類型的外掛 |
+| FB 與 Instagram 以一般字串比對簽章 | 修正 | 三個外掛改用 `packages/channel-plugins/src/signature.ts` 的 `signaturesMatch()`：先比長度，再以 `timingSafeEqual()` 比對。LINE 原本在長度不同時拋出錯誤，現在回傳 `false` |
+
+CHAN-03 從 `AUDIT.md` 移除。測試：`packages/channel-plugins/tests/unit/signature-verification.test.ts`、`apps/api/tests/unit/modules/webhook/webhook-signature.test.ts`。
+
+沒有處理：`telegram.ts` 的 `verifySignature()` 仍以 `===` 比對 secret token；Telegram 外掛沒有註冊，租戶也無法建立 Telegram 渠道（APP-02）。
+
 ## 2026-10-07：修正 RBAC-04 的 AI 輔助端點
 
 | 項目 | 結果 | 依據 |

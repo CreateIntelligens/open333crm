@@ -1,6 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { processPlatformMetaWebhook, processWebhookEvent } from './webhook.service.js';
+import {
+  processPlatformMetaWebhook,
+  processWebhookEvent,
+  verifyWebhookRequest,
+  type WebhookVerification,
+} from './webhook.service.js';
 import { getMetaAppConfig } from '../meta-connect/meta-connect.service.js';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { logger } from '@open333crm/core';
@@ -37,8 +42,24 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
       const rawBody = (body as any).__rawBody as Buffer;
       const headers = request.headers as Record<string, string>;
 
-      // Respond 200 immediately - LINE expects quick responses
-      // Process asynchronously
+      // 回應前先驗簽：簽章缺少或錯誤時回 403（主規格 line-webhook-events，AUDIT CHAN-03）。
+      // 驗簽只查渠道與計算 HMAC，不影響 30 秒內回應；事件處理仍在回 200 之後於背景執行。
+      let verification: WebhookVerification;
+      try {
+        verification = await verifyWebhookRequest(fastify.prismaAdmin, channelId, CHANNEL_TYPE.LINE, rawBody, headers);
+      } catch (err: any) {
+        logger.error('[Webhook] LINE verification failed', { channelId, error: err?.message ?? String(err), stack: err?.stack });
+        return reply.status(500).send({ success: false });
+      }
+
+      if (!verification.ok) {
+        if (verification.reason === 'invalid_signature' || verification.reason === 'channel_type_mismatch') {
+          return reply.status(403).send({ success: false });
+        }
+        // 渠道不存在或租戶停用：維持原本的 200，丟棄事件
+        return reply.status(200).send({ success: true });
+      }
+
       processWebhookEvent(
         fastify.prismaAdmin,
         fastify.io,
@@ -46,6 +67,7 @@ export default async function webhookRoutes(fastify: FastifyInstance) {
         CHANNEL_TYPE.LINE,
         rawBody,
         headers,
+        verification.verified,
       ).catch((err) => {
         logger.error('[Webhook] LINE processing failed', { channelId, error: err?.message ?? String(err), stack: err?.stack });
       });
