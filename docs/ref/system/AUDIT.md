@@ -68,7 +68,6 @@
 | [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
-| [SEC-01](#sec-01) | 金鑰與 License | P2 | 部分修正 | 渠道加密金鑰的硬編碼備援值：API 已修正（`f507fe1`），Workers 仍保留 | 靜態確認 |
 | [LIC-01](#lic-01) | 金鑰與 License | P4 | 未處理 | API 使用寫死的授權資料 | 間接確認 |
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | [TRIAL-02](#trial-02) | 試用 | P3 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
@@ -634,18 +633,6 @@ change `agent-deactivate-vs-delete`（#172）把「停用」與「永久刪除�
 **修正方向**：`login-attempts.ts` 的註解建議改以 email 加來源 IP 計數。改用這個鍵之後，攻擊者的失敗嘗試只鎖住攻擊者自己的 IP，成員從其他 IP 仍可登入。代價是：從多個 IP 分散猜同一個帳號時，每個 IP 各自計數，只剩每個 IP 的速率限制能擋。另一個做法是保留 email 計數，但鎖定期間改為要求額外驗證，而不是直接拒絕。兩種做法都會改變主規格規定的行為，修正的 PR 要以 MODIFIED 修改「登入失敗達上限時鎖定帳號」。
 
 ## 金鑰與 License
-
-<a id="sec-01"></a>
-### SEC-01：渠道加密金鑰備援值
-
-盤點時，API 的 `channel.service.ts` 與 Workers 的 `apps/workers/src/lib/credentials.ts` 都有同一個備援字串。缺少 `CREDENTIAL_ENCRYPTION_KEY` 時，兩個檔案都改用這個公開在原始碼中的字串。
-
-Commit `f507fe1` 修正了 API 端：
-
-- `channel.service.ts` 在金鑰缺少或長度不足時拋出錯誤。
-- API 啟動時的環境變數驗證要求這個變數，設定缺失會讓 API 啟動失敗。
-
-Workers 端尚未修正。`credentials.ts` 仍保留備援字串，設定缺失不會讓 Workers 啟動失敗。Workers 只用這把金鑰解密，因此不會用備援值加密新資料。Workers 缺少金鑰時，這項設定錯誤要到 Workers 解密渠道憑證時才會出現。
 
 <a id="lic-01"></a>
 <a id="lic-02"></a>

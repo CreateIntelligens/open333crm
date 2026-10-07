@@ -145,7 +145,6 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 | WhatsApp 渠道可以建立但無法使用 | 詳見 `../../system/AUDIT.md` 的 APP-02 |
 | **自動化在 Instagram 私訊與網站聊天室送不出訊息** | workers 只註冊 LINE 與 FB 外掛。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | 方案沒有限制渠道類型與數量 | 重新啟用也不檢查數量。詳見 `../../system/AUDIT.md` 的 PLAN-07 |
-| 渠道加密金鑰有硬編碼的備援值 | 詳見 `../../system/AUDIT.md` 的 SEC-01 |
 | Facebook token 沒有定期檢查 | 只有查詢狀態時才檢查，token 過期前不會通知 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

@@ -4,6 +4,18 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-07：修正 SEC-01，補回安全稽核的主規格
+
+change `restore-security-audit-specs` 補回 `fix-security-audit-findings` 沒有套用的 delta spec（issue #228），新增主規格 `socket-room-authorization`、`credential-encryption` 與 `webhook-subscription-egress`。對照程式的結果：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| SEC-01 的 Workers 端 | 修正，從 `AUDIT.md` 移除 | `apps/workers/src/lib/credentials.ts` 在 `CREDENTIAL_ENCRYPTION_KEY` 缺少或短於 32 個字元時拋出錯誤，不再改用原始碼裡的字串，符合 `credential-encryption` 的「缺少加密金鑰時拒絕加解密」。Workers 啟動時仍不檢查金鑰，第一次解密時才失敗；主規格允許這個做法。測試：`apps/workers/tests/unit/lib/credentials.test.ts` |
+| socket 房間的訂閱 | 符合規格 | `subscribe`、`unsubscribe` 經 `authorizeSocketRoom()` 授權，每個連線每 60 秒最多 60 次。房間處理從 `socket.plugin.ts` 移到 `modules/socket/socket-room-handlers.ts`，行為不變 |
+| webhook 訂閱的網址 | 符合規格 | 建立與更新時、每次派送前都以 `isBlockedUrl()` 檢查；派送使用 `redirect: 'error'`，不跟隨轉址 |
+
+規格中每個情境的測試都以突變驗證，清單在 change 的 `tasks.md`。
+
 ## 2026-10-07：修正 CHAN-03
 
 | 項目 | 結果 | 依據 |

@@ -3,7 +3,10 @@ import { createDecipheriv, scryptSync } from 'node:crypto';
 const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY ?? 'fallback-open333crm-key';
+  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY;
+  if (!secret || secret.length < 32) {
+    throw new Error('CREDENTIAL_ENCRYPTION_KEY must be set to at least 32 characters');
+  }
   return scryptSync(secret, 'open333crm-credentials', 32) as Buffer;
 }
 
