@@ -42,7 +42,7 @@ import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
-import { CONFIRM_KEYWORD } from "../identity-binding/binding-code.js";
+import { CONFIRM_KEYWORD, DEFAULT_EMAIL_KEYWORDS } from "../identity-binding/binding-code.js";
 import {
   getIdentityBindingSettings,
   invalidateIdentityBindingSettings,
@@ -80,11 +80,14 @@ const bindingKeywordsSchema = z
   .min(1, "至少需要一個關鍵字")
   .max(5, "最多 5 個關鍵字");
 
-const identityBindingSettingsSchema = z
+export const identityBindingSettingsSchema = z
   .object({
     enabled: z.boolean(),
     bindKeywords: bindingKeywordsSchema,
     unbindKeywords: bindingKeywordsSchema,
+    // email 登記（change add-email-identity-merge）：舊版前端不送時維持關閉
+    emailEnabled: z.boolean().default(false),
+    emailKeywords: bindingKeywordsSchema.default(DEFAULT_EMAIL_KEYWORDS),
   })
   .superRefine((data, ctx) => {
     for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
@@ -102,6 +105,14 @@ const identityBindingSettingsSchema = z
         code: z.ZodIssueCode.custom,
         path: ["unbindKeywords"],
         message: "綁定與解除關鍵字不可相同",
+      });
+    }
+    const taken = new Set([...data.bindKeywords, ...data.unbindKeywords, CONFIRM_KEYWORD].map((k) => k.toLowerCase()));
+    if (data.emailKeywords.some((k) => taken.has(k.toLowerCase()))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["emailKeywords"],
+        message: "email 登記關鍵字不可與綁定、解除關鍵字或「確認綁定」相同",
       });
     }
   });
@@ -206,6 +217,8 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       enabled: data.enabled,
       bindKeywords: data.bindKeywords,
       unbindKeywords: data.unbindKeywords,
+      emailEnabled: data.emailEnabled,
+      emailKeywords: data.emailKeywords,
     };
     await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
@@ -218,7 +231,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       actorId: request.agent.id,
       action: "settings.update",
       targetType: "settings",
-      payload: { section: "identity-binding", enabled: data.enabled },
+      payload: { section: "identity-binding", enabled: data.enabled, emailEnabled: data.emailEnabled },
       ip: request.ip,
     });
     return reply.send(success(parseIdentityBindingSettings(value)));

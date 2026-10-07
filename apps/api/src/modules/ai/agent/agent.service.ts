@@ -12,6 +12,7 @@ import { addRetentionExpiry } from './retention.js';
 import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
 import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
+import { loadOtherChannelContext, withOtherChannelContext } from '../other-channel-context.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 
 export const AGENT_SYSTEM_PROMPT =
@@ -111,7 +112,11 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     : [];
   const result = await runAgent({
     provider,
-    systemPrompt: settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
+    systemPrompt: withOtherChannelContext(
+      settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
+      // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
+      input.conversationId ? await loadOtherChannelContext(prisma, input.tenantId, input.conversationId) : '',
+    ),
     userMessage: input.userMessage,
     history: history.map((message) => ({ ...message })),
     tools: getAgentToolDefinitions({ canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH }),

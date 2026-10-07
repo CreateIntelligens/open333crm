@@ -1,12 +1,15 @@
 /**
  * 跨渠道綁定：租戶設定讀取、導流識別解析、導流連結與顧客看到的訊息文字（design D6 / D10）。
  */
-import { BINDING_CODE_TTL_MS, DEFAULT_BIND_KEYWORDS, DEFAULT_UNBIND_KEYWORDS } from './binding-code.js';
+import { BINDING_CODE_TTL_MS, DEFAULT_BIND_KEYWORDS, DEFAULT_EMAIL_KEYWORDS, DEFAULT_UNBIND_KEYWORDS } from './binding-code.js';
 
 export interface IdentityBindingSettings {
   enabled: boolean;
   bindKeywords: string[];
   unbindKeywords: string[];
+  /** email 登記（change add-email-identity-merge）：與綁定代碼分開啟用 */
+  emailEnabled: boolean;
+  emailKeywords: string[];
 }
 
 function keywordList(raw: unknown, fallback: string[]): string[] {
@@ -22,6 +25,8 @@ export function parseIdentityBindingSettings(raw: unknown): IdentityBindingSetti
     enabled: obj.enabled === true,
     bindKeywords: keywordList(obj.bindKeywords, DEFAULT_BIND_KEYWORDS),
     unbindKeywords: keywordList(obj.unbindKeywords, DEFAULT_UNBIND_KEYWORDS),
+    emailEnabled: obj.emailEnabled === true,
+    emailKeywords: keywordList(obj.emailKeywords, DEFAULT_EMAIL_KEYWORDS),
   };
 }
 
@@ -157,4 +162,23 @@ export const BINDING_TEXT = {
     `已完成帳號綁定：此帳號已與您的 ${accountOf(otherLabel)}合併為同一位顧客。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
   unbound: '已解除帳號綁定，兩個帳號恢復為各自獨立。',
   deliveryFailed: '綁定通知沒有送到顧客（綁定結果不受影響）',
+} as const;
+
+/** email 登記的顧客訊息（純文字、不放 emoji；change add-email-identity-merge） */
+export const EMAIL_TEXT = {
+  invite: (url: string, minutes: number) =>
+    [
+      '請點選下方連結登記您的 email。登記後，使用相同 email 的其他帳號（例如 LINE、Facebook）會整合為同一位顧客，對話紀錄會合併在一起。',
+      url,
+      `連結 ${minutes} 分鐘內有效，只能使用一次，請勿轉傳給他人。`,
+    ].join('\n\n'),
+  rateLimited: 'email 登記連結申請次數過多，請一小時後再試。',
+  registered: '已登記您的 email。',
+  channelConflict: '無法自動整合帳號：這個 email 已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
+  /** 通知登記的一方；對方沒有任何渠道時 otherLabel 為 null */
+  mergedToRegistrant: (otherLabel: string | null, otherName: string, unbindKeyword: string) =>
+    `已完成帳號整合：此帳號已與${otherLabel ? `您的 ${accountOf(otherLabel)}` : '相同 email 的顧客資料'}「${otherName}」整合為同一位顧客，對話紀錄會合併在一起。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
+  /** 通知原本就使用這個 email 的一方 */
+  mergedToExisting: (registrantLabel: string, registrantName: string, unbindKeyword: string) =>
+    `您的帳號已與 ${accountOf(registrantLabel)}「${registrantName}」整合為同一位顧客（以相同 email 登記）。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
 } as const;

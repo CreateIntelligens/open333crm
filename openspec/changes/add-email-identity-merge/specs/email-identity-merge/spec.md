@@ -7,7 +7,7 @@
 ## ADDED Requirements
 
 ### Requirement: Email 登記須由租戶啟用
-系統 SHALL 只在租戶設定 `identityBinding.emailEnabled` 為 true 時提供 email 登記。未啟用時，email 登記關鍵字不攔截，交給一般訊息處理；客服的傳送連結端點回 403；公開登記端點回 404。
+系統 SHALL 只在租戶設定 `identityBinding.emailEnabled` 為 true 時提供 email 登記。未啟用時，email 登記關鍵字不攔截，交給一般訊息處理；客服的傳送連結端點回 400（與傳送綁定連結相同）；已發出的登記連結回 410。
 
 #### Scenario: 未啟用時關鍵字不攔截
 - **WHEN** 租戶未啟用 email 登記，顧客傳送「登記email」
@@ -15,7 +15,7 @@
 
 #### Scenario: 未啟用時客服無法傳送連結
 - **WHEN** 租戶未啟用 email 登記，客服呼叫傳送 email 登記連結端點
-- **THEN** 系統回 403，不送出任何訊息
+- **THEN** 系統回 400，錯誤碼為 `EMAIL_REGISTRATION_DISABLED`，不送出任何訊息
 
 ### Requirement: 顧客可在對話中取得 email 登記連結
 租戶啟用 email 登記時，顧客傳送的文字去除頭尾空白後與 email 登記關鍵字整句相符（不分大小寫）時，系統 SHALL 在同一個對話回覆一則含登記連結的訊息，這則訊息不交給自動化與 AI。關鍵字預設為「登記email」，租戶可自訂。
