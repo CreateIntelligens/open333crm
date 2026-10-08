@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Semantic intent is available to automation rules
-The automation contract SHALL expose a tenant-scoped `intent.detected` event with the inbound message, conversation, contact, intent key, confidence, and decision feature context required by compatible rule conditions.
+The automation contract SHALL expose a tenant-scoped `intent.detected` event with the inbound message, conversation, contact, intent key, confidence, and decision feature context required by compatible rule conditions. Allowed intent keys SHALL be `product_inquiry`, `order_issue`, `return_exchange`, `payment_issue`, `shipping_delivery`, `account_issue`, `technical_support`, `complaint_feedback`, `faq`, `general_assistance`, and `other`.
 
 #### Scenario: Inbound intent matches an active rule
 - **WHEN** Clef returns an allowed intent above the configured confidence threshold and an active `intent.detected` rule matches

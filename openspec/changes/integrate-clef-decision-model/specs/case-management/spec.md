@@ -32,6 +32,10 @@ For an eligible new Case without an explicitly supplied priority, the system SHA
 - **WHEN** Clef is unavailable, returns an invalid score, or returns confidence below the configured threshold
 - **THEN** the Case keeps its existing priority and creation continues without a decision error
 
+#### Scenario: Urgency score maps to the most probable priority
+- **WHEN** Clef returns a valid urgency score whose highest probability is the `HIGH` legend entry
+- **THEN** the system maps that entry to Case priority `HIGH` when priority was omitted
+
 ### Requirement: Tenant-scoped team recommendation for case assignment
 When a new Case has no explicitly selected team, the system SHALL request a team recommendation using only active teams eligible for the Case tenant and channel, and SHALL validate the result against that candidate set before assignment.
 

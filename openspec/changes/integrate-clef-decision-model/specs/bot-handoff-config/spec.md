@@ -3,10 +3,10 @@
 ## ADDED Requirements
 
 ### Requirement: Detect semantic requests for a human agent
-For eligible inbound text in a `BOT_HANDLED` conversation, the system SHALL use a confident Clef `noul` decision to detect a customer request for a human agent and hand off through the existing idempotent handoff behavior.
+For eligible inbound text in a `BOT_HANDLED` conversation, the system SHALL use the Clef `noul` probability for a human-agent request and hand off through the existing idempotent handoff behavior only when that probability meets the configured threshold.
 
 #### Scenario: Customer requests a human agent by paraphrase
-- **WHEN** inbound text expresses a request for a human agent, Clef returns a positive decision at or above the configured confidence threshold, and the conversation is `BOT_HANDLED`
+- **WHEN** inbound text expresses a request for a human agent, Clef returns `noul` at or above the configured probability threshold, and the conversation is `BOT_HANDLED`
 - **THEN** the conversation changes to `AGENT_HANDLED`, records a semantic handoff reason, sends the configured handoff message, and publishes `conversation.handoff`
 
 #### Scenario: Explicit handoff keyword remains available

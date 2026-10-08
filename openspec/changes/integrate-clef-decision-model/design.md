@@ -21,6 +21,19 @@ See proposal.md for motivation and the delta specs for observable behavior. The 
 
 ## Decisions
 
+### Decision matrix
+
+| Workflow | Clef question | Criteria / input | CRM behavior after confidence validation | Fallback |
+|---|---|---|---|---|
+| Inbound intent | `intent` / `choice` | Current text; `product_inquiry`, `order_issue`, `return_exchange`, `payment_issue`, `shipping_delivery`, `account_issue`, `technical_support`, `complaint_feedback`, `faq`, `general_assistance`, `other` | Publish `intent.detected` for matching tenant automation. `faq` follows existing KB eligibility and grounding; `general_assistance` follows existing Agent/bot-mode eligibility. At most one reply is sent. | Existing exact keyword rules, then existing Agent/KB routing. |
+| Handoff request | `handoff_request` / `noul` | Current text; `noul` is the probability that the customer asks for a human agent | At `noul` ≥ 0.90, transition an eligible `BOT_HANDLED` conversation using the existing idempotent handoff flow. | Explicit `handoff_request` postback and configured handoff keywords remain immediate; Clef failure leaves other messages in the existing Agent/KB path. |
+| Sentiment | `sentiment` / `choice` | Current text; `positive`, `neutral`, `negative` | Persist the existing sentiment fact; publish `sentiment.negative` at confidence ≥ 0.60. | Existing sentiment LLM and keyword fallback. |
+| Case category | `case_category` / `choice` | Latest inbound case text; `產品諮詢`, `訂單問題`, `退換貨`, `帳號問題`, `技術支援`, `投訴建議`, `付款問題`, `物流配送`, `其他` | At confidence ≥ 0.70, fill category only when unset. | Existing classifier and its keyword fallback. |
+| Case urgency | `case_urgency` / `score` | Case text; ordered `LOW`, `MEDIUM`, `HIGH`, `URGENT` criteria mapped to Case priority | At confidence ≥ 0.70, map the legend entry with the highest probability only when creation omitted priority. | Keep current Case priority. |
+| Team recommendation | `team_recommendation` / `choice` | Case text; IDs and labels of active teams eligible for the tenant and channel | At confidence ≥ 0.70 and only when creation omitted team, validate the returned ID and use that team; existing round-robin chooses an eligible agent. | Existing team selection and round-robin assignment. |
+
+The model classifies and recommends. It does not execute automation actions, send replies, change identity bindings, or bypass tenant and channel checks. Shared question keys and criteria live in one catalog so the request builder, worker, editor, and tests use the same values.
+
 ### One API-side typed client, domain fallbacks at call sites
 
 Add a small API module that uses the runtime's `fetch` and the documented `/v1/systemone` JSON contract. Keep transport outcomes as a discriminated available/unavailable result. It validates question types and answer criteria, maps `usage.input_tokens` and `latency_seconds`, and records bounded error codes. Domain services choose the fallback because the correct fallback differs by workflow: configured handoff keywords, existing classifier, sentiment provider, current assignment, or no semantic action.

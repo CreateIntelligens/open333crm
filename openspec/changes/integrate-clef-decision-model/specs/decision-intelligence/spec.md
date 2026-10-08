@@ -17,6 +17,25 @@ The system SHALL send Clef requests using the documented `model`, `state`, and k
 - **WHEN** a caller submits a `choice` without a criteria map, a `score` without ordered criteria, or an unsupported question type
 - **THEN** the decision service returns an unavailable result with a validation reason and does not call Clef
 
+### Requirement: CRM decision catalog defines business choices
+The system SHALL use a shared decision catalog that defines the question keys, question types, criteria, and result mappings used by CRM workflows.
+
+#### Scenario: Inbound message decision set
+- **WHEN** an eligible inbound text needs semantic evaluation
+- **THEN** the catalog provides `intent` as a `choice` over `product_inquiry`, `order_issue`, `return_exchange`, `payment_issue`, `shipping_delivery`, `account_issue`, `technical_support`, `complaint_feedback`, `faq`, `general_assistance`, and `other`; `handoff_request` as a `noul`; and `sentiment` as a `choice` over `positive`, `neutral`, and `negative`
+
+#### Scenario: Case decision set
+- **WHEN** a new case needs decision assistance
+- **THEN** the catalog provides `case_category` as a `choice` over `產品諮詢`, `訂單問題`, `退換貨`, `帳號問題`, `技術支援`, `投訴建議`, `付款問題`, `物流配送`, and `其他`; `case_urgency` as an ordered `score` from `LOW` to `MEDIUM` to `HIGH` to `URGENT`; and `team_recommendation` as a `choice` over eligible tenant teams
+
+#### Scenario: Score result selects its most probable level
+- **WHEN** Clef returns a valid `score` answer with a legend and probability distribution
+- **THEN** the catalog maps the level with the highest probability to the corresponding CRM value and uses its confidence for threshold evaluation
+
+#### Scenario: Decision results map to CRM behavior
+- **WHEN** a valid decision passes its feature confidence threshold
+- **THEN** the workflow maps the answer using the shared catalog and applies it only through the existing automation, handoff, sentiment, or case-management behavior
+
 ### Requirement: Validate Clef decision responses
 The system SHALL validate each Clef response against the requested question type and the allowed criteria before exposing a decision to a workflow.
 

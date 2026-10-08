@@ -10,6 +10,8 @@
 - [ ] 1.6 Implement `CLEF_BASE_URL`, `CLEF_MODEL`, `CLEF_TIMEOUT_MS`, and `CLEF_DECISIONS_ENABLED` configuration and bounded failure conversion; verify task 1.5 passes.
 - [ ] 1.7 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.tenant-scope.test.ts` for the `Bound decision inputs and preserve tenant context` scenarios: reject a foreign team id and do not submit context without verified tenant ownership.
 - [ ] 1.8 Implement minimal decision-state construction and candidate-ID validation; verify task 1.7 passes.
+- [ ] 1.9 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.catalog.test.ts` for the `CRM decision catalog defines business choices` scenarios: assert the exact inbound intent keys, handoff/sentiment question types, nine case categories, ordered priorities, and dynamic eligible-team criteria.
+- [ ] 1.10 Implement and export the shared question catalog and CRM result mappings; verify task 1.9 passes and the worker, editor, and tests use the same keys.
 
 ## 2. Decision usage and provider health
 
@@ -20,7 +22,7 @@
 
 ## 3. Inbound semantic decisions and automation
 
-- [ ] 3.1 Add failing tests in `apps/api/tests/unit/modules/automation/clef-intent-automation.test.ts` for the `Semantic intent is available to automation rules` scenarios: confident active rule, below-threshold intent, and Clef unavailable fallback to keyword/Agent/KB processing.
+- [ ] 3.1 Add failing tests in `apps/api/tests/unit/modules/automation/clef-intent-automation.test.ts` for the `Semantic intent is available to automation rules` scenarios: each allowed intent key, confident active rule, below-threshold intent, and Clef unavailable fallback to keyword/Agent/KB processing.
 - [ ] 3.2 Add failing tests in `apps/api/tests/unit/modules/automation/clef-intent-automation.test.ts` for the `Semantic automation does not duplicate a reply` scenarios: handled rule, no matching rule, FAQ-to-KB route, and general-assistance-to-Agent route, each sending at most one reply.
 - [ ] 3.3 Add failing contract tests in `apps/api/tests/unit/modules/automation/clef-intent-contract.test.ts` for the `Automation editor authors semantic intent rules` scenarios: valid intent authoring and rejection of an unknown intent.
 - [ ] 3.4 Implement the shared `intent.detected` event/fact contract, API validation, worker dispatch, and web authoring metadata; verify tasks 3.1–3.3 pass.
@@ -35,8 +37,8 @@
 
 ## 5. Decision-assisted case management
 
-- [ ] 5.1 Add failing tests in `apps/api/tests/unit/modules/ai/clef-case-decisions.test.ts` for the `Decision-assisted case classification` scenarios: save a confident allowed category, preserve an existing category, and use the existing classifier on unavailable/invalid/low-confidence outcomes.
-- [ ] 5.2 Add failing tests in `apps/api/tests/unit/modules/case/clef-case-urgency.test.ts` for the `Decision-assisted case urgency` scenarios: map a confident score when priority was omitted, preserve explicit priority, and retain current priority on unavailable/invalid/low-confidence outcomes.
+- [ ] 5.1 Add failing tests in `apps/api/tests/unit/modules/ai/clef-case-decisions.test.ts` for the `Decision-assisted case classification` scenarios: cover all nine existing categories, preserve an existing category, and use the existing classifier on unavailable/invalid/low-confidence outcomes.
+- [ ] 5.2 Add failing tests in `apps/api/tests/unit/modules/case/clef-case-urgency.test.ts` for the `Decision-assisted case urgency` scenarios: map the highest-probability ordered `LOW`/`MEDIUM`/`HIGH`/`URGENT` legend entry when priority was omitted, preserve explicit priority, and retain current priority on unavailable/invalid/low-confidence outcomes.
 - [ ] 5.3 Add failing tests in `apps/api/tests/unit/modules/case/clef-team-recommendation.test.ts` for the `Tenant-scoped team recommendation for case assignment` scenarios: valid eligible team, out-of-set or low-confidence result, explicit team, and no eligible candidates.
 - [ ] 5.4 Implement one batched case decision request and apply only allowed values to unset fields; retain current round-robin assignment on fallback and verify tasks 5.1–5.3 pass.
 
