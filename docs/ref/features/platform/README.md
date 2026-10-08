@@ -61,6 +61,7 @@
 | 權限天花板快取 | `invalidatePlanPermissions(prisma, planId)` | `services/permission.service.ts` | Redis，600 秒 |
 | 租戶方案快取 | `invalidateTenantPlan(tenantId)` | `services/tenant-plan.cache.ts` | 行程內，60 秒 |
 | AI 額度計數器 | `clearTokenQuotaCache(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月，月底過期 |
+| 額度告警旗標 | `clearQuotaAlertFlags(tenantId)` | `modules/trial/token-quota.service.ts` | Redis，key 帶年月與門檻，月底過期 |
 
 改動方案的地方有好幾處，各自需要失效的快取不同：
 
@@ -69,7 +70,7 @@
 | `plan.service.ts` 的 `updatePlan()` | `features` 或 `permissionOverrides` 有變更時，失效權限天花板快取 |
 | `platform-tenant.service.ts` 的 `updateTenant()` 帶 `planSlug` | 權限天花板快取 + 租戶方案快取 |
 | `plan-change.service.ts` 核准 `upgrade` | 權限天花板快取 + 租戶方案快取 |
-| `plan-change.service.ts` 核准 `token_topup` | 租戶方案快取 + AI 額度計數器 |
+| `plan-change.service.ts` 核准 `token_topup` | 租戶方案快取 + AI 額度計數器 + 額度告警旗標 |
 | `trial-admin.service.ts` 的 `convertToPaid()` | 權限天花板快取 + 租戶方案快取 |
 
 `convertToPaid()` 的註解說明了漏掉的後果。租戶方案快取存活 60 秒，不失效的話，剛付費的租戶在這 60 秒內仍沿用舊的試用天花板，新功能會被 guard 誤擋成 403。權限天花板快取存活 600 秒，漏掉的影響時間更長。
