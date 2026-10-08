@@ -2,7 +2,7 @@
 
 測試名稱以情境名稱開頭。`platform-auth-disabled.test.ts` 測沒有設定 `PLATFORM_JWT_SECRET` 的情境，其他情境在 `platform-auth-guard.test.ts`。兩個檔案都走真實的 `auth.plugin.ts` 與 `platform.routes.ts`，Prisma 換成只有平台帳號的記憶體版本。
 
-`platform-auth-guard.test.ts` 以 Fastify 的 `onRoute` 收集所有平台路由，逐條呼叫。之後新增的平台路由不必改測試，也會被檢查。
+兩個測試檔都以 Fastify 的 `onRoute` 收集所有平台路由，逐條呼叫。之後新增的平台路由不必改測試，也會被檢查。
 
 情境都描述現行行為，測試寫好時就通過，所以改以突變驗證（第 2 節）。
 
@@ -30,7 +30,7 @@
 
 | 情境 | 突變 | 結果 |
 | --- | --- | --- |
-| 未帶 token 存取平台 API、租戶 JWT 打平台 API | `GET /plans` 不掛 guard | 失敗 |
+| 未帶 token 存取平台 API、租戶 JWT 打平台 API、沒有設定 PLATFORM_JWT_SECRET | `GET /plans` 不掛 guard | 失敗 |
 | 只有 3 個公開端點不需要 token、平台帳號登入成功 | 登入也要求 token | 失敗 |
 | 平台帳號登入成功 | 登入簽出的 `role` 不是 `PLATFORM_SUPERUSER` | 失敗 |
 | 租戶 JWT 打平台 API | 平台 JWT 改用租戶的 secret | 失敗 |
