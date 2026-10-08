@@ -176,8 +176,8 @@ export async function checkQuotaThresholdCrossing(
 export async function clearTokenQuotaCache(tenantId?: string): Promise<void> {
   try {
     if (tenantId) await redis.del(counterKey(tenantId));
-  } catch {
-    /* 忽略 */
+  } catch (err) {
+    logger.warn('[TokenQuota] clear counter failed, skip:', err);
   }
 }
 
@@ -187,7 +187,7 @@ export async function clearQuotaAlertFlags(tenantId: string): Promise<void> {
     await Promise.all(
       QUOTA_ALERT_THRESHOLDS.map(({ level }) => redis.del(alertFlagKey(tenantId, level))),
     );
-  } catch {
-    /* 忽略 */
+  } catch (err) {
+    logger.warn('[TokenQuota] clear alert flags failed, skip:', err);
   }
 }
