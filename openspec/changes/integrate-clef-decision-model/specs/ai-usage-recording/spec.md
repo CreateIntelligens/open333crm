@@ -2,17 +2,17 @@
 
 ## ADDED Requirements
 
-### Requirement: Clef inference is recorded in AI usage history
-Each Clef inference attempt SHALL be recorded for its tenant and decision feature, including model, success, input-token count when available, latency when available, and a bounded error code on failure.
+### Requirement: Decision provider attempts are recorded in AI usage history
+Each decision-provider attempt SHALL be recorded for its tenant and decision feature, including provider instance, model, success, input-token count when available, latency when available, and a bounded error code on failure.
 
-#### Scenario: Clef success usage is recorded
-- **WHEN** Clef returns a valid answer with `usage.input_tokens` and `latency_seconds`
-- **THEN** the usage history records provider `clef`, model `clef-flash`, the decision feature, input tokens, zero generated tokens, latency, and success
+#### Scenario: Provider success usage is recorded
+- **WHEN** a provider returns a valid answer with input-token and latency metadata
+- **THEN** the usage history records its provider family and instance, model, decision feature, input tokens, zero generated tokens, latency, and success
 
-#### Scenario: Clef failure usage is recorded
-- **WHEN** a Clef request times out, fails, or returns an invalid answer
-- **THEN** the usage history records a failed Clef attempt and bounded error code without changing the fallback result
+#### Scenario: Fallback provider failure usage is recorded
+- **WHEN** a provider request times out, fails, or returns an invalid answer before the next provider is tried
+- **THEN** the usage history records that failed attempt and bounded error code without changing the fallback result
 
-#### Scenario: Clef request state is private
-- **WHEN** a Clef inference attempt is recorded
+#### Scenario: Provider request state is private
+- **WHEN** a decision-provider attempt is recorded
 - **THEN** the usage history does not store the raw customer message or full request state

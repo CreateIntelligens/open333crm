@@ -1,53 +1,53 @@
 # Tasks
 
-## 1. Clef decision client and resilience
+## 1. Tenant provider configuration and RLS
 
-- [ ] 1.1 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.client.test.ts` for the `Typed Clef decision requests` scenarios: batched keyed `choice`/`noul`/`score` questions and invalid question definitions; verify invalid definitions do not call the HTTP client.
-- [ ] 1.2 Implement the typed Clef request builder and response decoder; verify task 1.1 passes.
-- [ ] 1.3 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.client.test.ts` for the `Validate Clef decision responses` scenarios: valid choice, malformed response, missing answer, unknown choice, invalid probability, and question/answer type mismatch.
-- [ ] 1.4 Implement response validation and typed available/unavailable outcomes; verify task 1.3 passes.
-- [ ] 1.5 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.resilience.test.ts` for the `Clef failures produce bounded unavailable results` scenarios: unreachable provider, non-2xx response, timeout, customer flow continuation, and no guessed action when no fallback exists.
-- [ ] 1.6 Implement `CLEF_BASE_URL`, `CLEF_MODEL`, `CLEF_TIMEOUT_MS`, and `CLEF_DECISIONS_ENABLED` configuration and bounded failure conversion; verify task 1.5 passes.
-- [ ] 1.7 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.tenant-scope.test.ts` for the `Bound decision inputs and preserve tenant context` scenarios: reject a foreign team id and do not submit context without verified tenant ownership.
-- [ ] 1.8 Implement minimal decision-state construction and candidate-ID validation; verify task 1.7 passes.
-- [ ] 1.9 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision.catalog.test.ts` for the `CRM decision catalog defines business choices` scenarios: assert the exact inbound intent keys, handoff/sentiment question types, nine case categories, ordered priorities, and dynamic eligible-team criteria.
-- [ ] 1.10 Implement and export the shared question catalog and CRM result mappings; verify task 1.9 passes and the worker, editor, and tests use the same keys.
+- [ ] 1.1 Add failing unit tests in `apps/api/tests/unit/modules/settings/decision-provider-settings.test.ts` for `Tenant administrators manage provider instances` and `Provider credentials are encrypted and write-only`: configure duplicate Clef instances plus OpenAI/JEV, reject incomplete enabled configurations, require `settings.manage`, mask keys, replace/clear keys, and omit secrets from audit data.
+- [ ] 1.2 Add a failing feature test in `apps/api/tests/feature/modules/settings/decision-provider-rls.test.ts` for `Provider configuration is tenant-isolated`: tenant A cannot read/update tenant B provider rows and RLS rejects cross-tenant insert/update.
+- [ ] 1.3 Implement the tenant-scoped provider table, encrypted credentials, additive migration with ENABLE/FORCE RLS and tenant policy, settings CRUD routes/services, audit events, and strict tenantId filters; verify tasks 1.1–1.2 pass.
 
-## 2. Decision usage and provider health
+## 2. Provider settings and editable order
 
-- [ ] 2.1 Add failing unit tests in `apps/api/tests/unit/modules/ai/clef-decision-usage.test.ts` for the `Record decision usage and latency` scenarios: successful usage metadata, bounded failure record, and no raw message/state in usage data.
-- [ ] 2.2 Add nullable Clef latency storage and usage recording; map input tokens to prompt tokens, generated tokens to zero, and leave Clef cost unpriced without a pricing entry; verify task 2.1 passes.
-- [ ] 2.3 Add a failing route test in `apps/api/tests/unit/modules/ai/clef-health-route.test.ts` for the `Clef provider health is inspectable` scenarios: authorized healthy and unavailable results while general CRM health stays operational.
-- [ ] 2.4 Implement the authenticated provider health check and verify task 2.3 passes.
+- [ ] 2.1 Add failing component tests in `apps/web/tests/unit/components/settings/decision-provider-settings.test.tsx` for `Administrators control fallback order`: add/edit/disable instances, reorder Clef A → Clef B → OpenAI → JEV, display masked key state, and reject invalid provider IDs/order.
+- [ ] 2.2 Add failing route tests in `apps/api/tests/unit/modules/settings/decision-provider-health.test.ts` for `Provider connectivity can be tested safely`: successful and failed checks use saved configuration and return no credential or raw provider response body.
+- [ ] 2.3 Implement the AI settings editor, reorder API, provider test action, and sanitized health results; verify tasks 2.1–2.2 pass.
 
-## 3. Inbound semantic decisions and automation
+## 3. Provider adapters and shared decision catalog
 
-- [ ] 3.1 Add failing tests in `apps/api/tests/unit/modules/automation/clef-intent-automation.test.ts` for the `Semantic intent is available to automation rules` scenarios: each allowed intent key, confident active rule, below-threshold intent, and Clef unavailable fallback to keyword/Agent/KB processing.
-- [ ] 3.2 Add failing tests in `apps/api/tests/unit/modules/automation/clef-intent-automation.test.ts` for the `Semantic automation does not duplicate a reply` scenarios: handled rule, no matching rule, FAQ-to-KB route, and general-assistance-to-Agent route, each sending at most one reply.
-- [ ] 3.3 Add failing contract tests in `apps/api/tests/unit/modules/automation/clef-intent-contract.test.ts` for the `Automation editor authors semantic intent rules` scenarios: valid intent authoring and rejection of an unknown intent.
-- [ ] 3.4 Implement the shared `intent.detected` event/fact contract, API validation, worker dispatch, and web authoring metadata; verify tasks 3.1–3.3 pass.
-- [ ] 3.5 Add failing tests in `apps/api/tests/unit/modules/automation/clef-sentiment.test.ts` for the `Clef sentiment results feed existing sentiment automation` scenarios: confident negative result publishes the existing event and unavailable/invalid/uncertain results fall back to existing sentiment analysis.
-- [ ] 3.6 Implement batched inbound intent, route, handoff, and sentiment decisions without changing webhook response timing; verify task 3.5 passes.
+- [ ] 3.1 Add failing unit tests in `apps/api/tests/unit/modules/ai/decision-catalog.test.ts` for `CRM decision catalog defines business choices`: exact intent keys, handoff/sentiment types, nine case categories, ordered priorities, score-to-legend mapping, and tenant-filtered team candidates.
+- [ ] 3.2 Implement and export the shared decision catalog and result mappings; verify task 3.1 passes.
+- [ ] 3.3 Add failing adapter tests in `apps/api/tests/unit/modules/ai/decision-provider-adapters.test.ts` for `Provider adapters normalize decision answers`: Clef SystemOne mapping, OpenAI mapping, JEV mapping from its confirmed API contract, and unsupported question-type outcomes.
+- [ ] 3.4 Implement typed Clef, OpenAI, and JEV adapters using configured Base URL, model, credential, and timeout; verify task 3.3 passes.
+- [ ] 3.5 Add failing tests in `apps/api/tests/unit/modules/ai/decision-provider-adapters.test.ts` for `Validate provider decision responses`: valid choice/score/noul, malformed data, missing answers, unknown options, invalid probabilities, and answer-type mismatch across adapters.
+- [ ] 3.6 Implement common response validation and normalized available/unavailable results; verify task 3.5 passes.
 
-## 4. Semantic handoff
+## 4. Ordered fallback execution and usage
 
-- [ ] 4.1 Add failing tests in `apps/api/tests/unit/modules/automation/clef-semantic-handoff.test.ts` for the `Detect semantic requests for a human agent` scenarios: confident paraphrase handoff, negative/below-threshold result, and no status change for `AGENT_HANDLED` conversations.
-- [ ] 4.2 Add failing regression tests in `apps/api/tests/unit/modules/automation/clef-semantic-handoff.test.ts` for explicit keyword and handoff-postback behavior when Clef is disabled or unavailable.
-- [ ] 4.3 Implement confidence-gated semantic handoff through the existing idempotent transition and verify tasks 4.1–4.2 pass.
+- [ ] 4.1 Add failing unit tests in `apps/api/tests/unit/modules/ai/decision-chain.test.ts` for `Ordered provider fallback resolves each question`: accept the first valid answer, fall through on outage/timeout/invalid/unsupported/low-confidence answers, resolve different questions at different providers, use existing fallbacks when exhausted, and stop at the total time budget.
+- [ ] 4.2 Implement per-question sequential fallback using the tenant's enabled provider order, per-provider timeouts, `DECISION_ENGINE_ENABLED`, and a total chain budget; verify task 4.1 passes and customer-facing flows receive unavailable results rather than thrown provider errors.
+- [ ] 4.3 Add failing tests in `apps/api/tests/unit/modules/ai/decision-provider-usage.test.ts` for `Decision provider attempts are recorded in AI usage history`: record each Clef/OpenAI/JEV success and failed fallback attempt, input tokens and latency, and no raw state.
+- [ ] 4.4 Add nullable `AiUsage.latencyMs` storage and write one tenant-scoped usage record per attempt with provider instance, bounded error code, and no inferred cost; verify task 4.3 passes.
 
-## 5. Decision-assisted case management
+## 5. Inbound intent, automation, handoff, and sentiment
 
-- [ ] 5.1 Add failing tests in `apps/api/tests/unit/modules/ai/clef-case-decisions.test.ts` for the `Decision-assisted case classification` scenarios: cover all nine existing categories, preserve an existing category, and use the existing classifier on unavailable/invalid/low-confidence outcomes.
-- [ ] 5.2 Add failing tests in `apps/api/tests/unit/modules/case/clef-case-urgency.test.ts` for the `Decision-assisted case urgency` scenarios: map the highest-probability ordered `LOW`/`MEDIUM`/`HIGH`/`URGENT` legend entry when priority was omitted, preserve explicit priority, and retain current priority on unavailable/invalid/low-confidence outcomes.
-- [ ] 5.3 Add failing tests in `apps/api/tests/unit/modules/case/clef-team-recommendation.test.ts` for the `Tenant-scoped team recommendation for case assignment` scenarios: valid eligible team, out-of-set or low-confidence result, explicit team, and no eligible candidates.
-- [ ] 5.4 Implement one batched case decision request and apply only allowed values to unset fields; retain current round-robin assignment on fallback and verify tasks 5.1–5.3 pass.
+- [ ] 5.1 Add failing tests in `apps/api/tests/unit/modules/automation/decision-intent-automation.test.ts` for `Semantic intent is available to automation rules`, `Semantic automation does not duplicate a reply`, and `Automation editor authors semantic intent rules`: all allowed intent keys, confidence gate, provider-chain exhaustion, rule match, FAQ-to-KB, general-assistance-to-Agent, and unknown intent rejection.
+- [ ] 5.2 Add failing tests in `apps/api/tests/unit/modules/automation/semantic-handoff.test.ts` for `Detect semantic requests for a human agent`: `noul` probability threshold, provider fallback, agent-handled no-op, and explicit keyword/postback precedence.
+- [ ] 5.3 Add failing tests in `apps/api/tests/unit/modules/automation/provider-sentiment.test.ts` for `Provider sentiment results feed existing sentiment automation`: confident negative event and fallback to current sentiment provider/keyword behavior.
+- [ ] 5.4 Implement shared `intent.detected` contracts, authoring/API validation, worker routing, semantic handoff, and sentiment decisions through the ordered chain; verify tasks 5.1–5.3 pass with at most one customer reply.
 
-## 6. Integration and completion
+## 6. Case classification, urgency, and team recommendation
 
-- [ ] 6.1 Add a feature test in `apps/api/tests/feature/modules/ai/clef-decision-tenant-scope.test.ts` for tenant-scoped usage and candidate-team writes; verify a decision cannot read or update another tenant's data.
-- [ ] 6.2 Update AI configuration/API documentation with Clef environment variables, decision features, confidence defaults, failure fallbacks, provider health behavior, and external text handling; verify all documented names match runtime configuration.
-- [ ] 6.3 Add a `CHANGELOG.md` entry under the latest date-only release heading for this feature.
-- [ ] 6.4 Run `pnpm test` and `pnpm test:feature`; verify both suites pass.
-- [ ] 6.5 Run `node scripts/check-tenant-scoping.mjs --strict` and `node scripts/check-prisma-admin-usage.mjs --strict`; verify this change adds no violations.
-- [ ] 6.6 Run `node scripts/validate-openspec.mjs integrate-clef-decision-model` and `node scripts/validate-openspec.mjs --specs`; verify both pass.
-- [ ] 6.7 Verify every implementation task is complete and the change is ready to archive through `pnpm exec openspec archive`.
+- [ ] 6.1 Add failing tests in `apps/api/tests/unit/modules/ai/decision-case-classification.test.ts` for `Decision-assisted case classification`: all nine category values, preserve existing category, and current classifier fallback after chain exhaustion.
+- [ ] 6.2 Add failing tests in `apps/api/tests/unit/modules/case/decision-case-urgency.test.ts` for `Decision-assisted case urgency`: map the highest-probability `LOW`/`MEDIUM`/`HIGH`/`URGENT` legend entry only when priority is omitted, and preserve explicit priority or current priority on fallback.
+- [ ] 6.3 Add failing tests in `apps/api/tests/unit/modules/case/decision-team-recommendation.test.ts` for `Tenant-scoped team recommendation for case assignment`: valid candidate, out-of-set result, low confidence, explicit team, no eligible teams, and round-robin fallback.
+- [ ] 6.4 Implement one batched case decision bundle through the ordered chain, validate candidate IDs against the tenant/channel candidate set, and apply answers only to unset fields; verify tasks 6.1–6.3 pass.
+
+## 7. Integration and completion
+
+- [ ] 7.1 Add a feature test in `apps/api/tests/feature/modules/ai/decision-provider-tenant-scope.test.ts` for provider configuration, encrypted-key metadata, usage, and candidate-team writes; verify tenant A cannot read or change tenant B data under real RLS.
+- [ ] 7.2 Update AI settings/API documentation with provider configuration, Base URL/key handling, ordering, JEV protocol, timeouts, confidence defaults, fallback behavior, health tests, and notice that enabled providers may receive the decision state; verify documented names match implementation.
+- [ ] 7.3 Add a `CHANGELOG.md` entry under the latest date-only release heading.
+- [ ] 7.4 Run `pnpm test` and `pnpm test:feature`; verify both suites pass.
+- [ ] 7.5 Run `node scripts/check-tenant-scoping.mjs --strict` and `node scripts/check-prisma-admin-usage.mjs --strict`; verify this change adds no violations.
+- [ ] 7.6 Run `node scripts/validate-openspec.mjs integrate-clef-decision-model` and `node scripts/validate-openspec.mjs --specs`; verify both pass.
+- [ ] 7.7 Verify every implementation task is complete and the change is ready to archive through `pnpm exec openspec archive`.
