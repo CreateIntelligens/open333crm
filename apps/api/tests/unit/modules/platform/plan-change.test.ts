@@ -48,7 +48,6 @@ import { getTenantPlanId } from '#src/services/tenant-plan.cache.js';
 import {
   approveRequest,
   createPlanChangeRequest,
-  listPendingRequests,
   listTenantPlanChangeRequests,
   rejectRequest,
 } from '#src/modules/platform/plan-change.service.js';
@@ -174,6 +173,9 @@ function createDb() {
     platformSetting: {
       findUnique: async () => null,
     },
+    platformAuditLog: {
+      create: async () => ({}),
+    },
     aiUsage: {
       aggregate: async ({ where }: { where: { tenantId: string } }) => ({
         _sum: { totalTokens: monthlyUsage.get(where.tenantId) ?? 0 },
@@ -260,6 +262,21 @@ async function tenantApp(db: Db, tenantId: string, roleCodes: string[]) {
   });
   await app.register(errorHandlerPlugin);
   await app.register(planChangeRoutes, { prefix: '/api/v1/plan-change' });
+  return app;
+}
+
+/** 平台側的路由：登入的平台管理員是 REVIEWER */
+async function platformApp(db: Db) {
+  const { default: errorHandlerPlugin } = await import('#src/plugins/error-handler.plugin.js');
+  const { default: platformRoutes } = await import('#src/modules/platform/platform.routes.js');
+  const app = Fastify();
+  app.decorate('prismaAdmin', db.prisma);
+  app.decorateRequest('platformUser', null);
+  app.decorate('authenticatePlatformSuperuser', async (request: never) => {
+    (request as { platformUser: unknown }).platformUser = { id: REVIEWER, role: 'PLATFORM_SUPERUSER', mustChangePassword: false };
+  });
+  await app.register(errorHandlerPlugin);
+  await app.register(platformRoutes, { prefix: '/api/v1/platform' });
   return app;
 }
 
@@ -388,7 +405,11 @@ test('只列出待審的申請：舊的在前，附租戶名稱與目前方案',
   db.addRequest(b.id, { type: 'token_topup', topupTokens: 1000, status: 'rejected' });
   const second = db.addRequest(b.id, { type: 'token_topup', topupTokens: 5000 });
 
-  const rows = await listPendingRequests(db.prisma);
+  const app = await platformApp(db);
+  const res = await app.inject({ method: 'GET', url: '/api/v1/platform/plan-change-requests' });
+
+  assert.equal(res.statusCode, 200, res.body);
+  const rows = res.json().data as Array<{ id: string; tenantName: string; currentPlan: string | null }>;
   assert.deepEqual(
     rows.map((r) => [r.id, r.tenantName, r.currentPlan]),
     [
@@ -412,14 +433,21 @@ test('核准升級後立即生效：新方案的權限立即可用，申請記�
   const req = db.addRequest(tenant.id, { type: 'upgrade', targetPlanSlug: 'standard' });
 
   const before = Date.now();
-  const result = await approveRequest(db.prisma, req.id, REVIEWER, '已收款');
+  const app = await platformApp(db);
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/platform/plan-change-requests/${req.id}/approve`,
+    payload: { note: '已收款' },
+  });
 
+  assert.equal(res.statusCode, 200, res.body);
   assert.equal(db.tenant(tenant.id).planId, standard.id);
   assert.equal((await permissions()).has('marketing.view'), true);
-  assert.equal(result.status, 'approved');
-  assert.equal(result.reviewedBy, REVIEWER);
-  assert.equal(result.reviewNote, '已收款');
-  assert.ok(result.reviewedAt instanceof Date && result.reviewedAt.getTime() >= before);
+  const saved = db.requests[0]!;
+  assert.equal(saved.status, 'approved');
+  assert.equal(saved.reviewedBy, REVIEWER);
+  assert.equal(saved.reviewNote, '已收款');
+  assert.ok(saved.reviewedAt instanceof Date && saved.reviewedAt.getTime() >= before);
 });
 
 test('目標方案已不存在：回 404，租戶的方案與申請都不變', async () => {
@@ -513,12 +541,19 @@ test('駁回不改變租戶：申請改成 rejected 並記錄審核者、時間�
   const tenant = db.addTenant(light.id, { monthlyTokens: 1_200_000 });
   const upgrade = db.addRequest(tenant.id, { type: 'upgrade', targetPlanSlug: 'standard' });
 
-  const result = await rejectRequest(db.prisma, upgrade.id, REVIEWER, '尚未收款');
+  const app = await platformApp(db);
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/api/v1/platform/plan-change-requests/${upgrade.id}/reject`,
+    payload: { note: '尚未收款' },
+  });
 
-  assert.equal(result.status, 'rejected');
-  assert.equal(result.reviewedBy, REVIEWER);
-  assert.equal(result.reviewNote, '尚未收款');
-  assert.ok(result.reviewedAt instanceof Date);
+  assert.equal(res.statusCode, 200, res.body);
+  const saved = db.requests[0]!;
+  assert.equal(saved.status, 'rejected');
+  assert.equal(saved.reviewedBy, REVIEWER);
+  assert.equal(saved.reviewNote, '尚未收款');
+  assert.ok(saved.reviewedAt instanceof Date);
   assert.equal(db.tenant(tenant.id).planId, light.id);
   assert.deepEqual(db.tenant(tenant.id).limitOverrides, { monthlyTokens: 1_200_000 });
 });
@@ -554,6 +589,9 @@ test('已處理的申請不能駁回：回 400，申請維持原本的狀態', a
 
 test('申請不存在：核准與駁回都回 404', async () => {
   const db = createDb();
-  await rejectsWith(approveRequest(db.prisma, uuid(), REVIEWER), 404);
-  await rejectsWith(rejectRequest(db.prisma, uuid(), REVIEWER), 404);
+  const app = await platformApp(db);
+  for (const action of ['approve', 'reject']) {
+    const res = await app.inject({ method: 'PATCH', url: `/api/v1/platform/plan-change-requests/${uuid()}/${action}`, payload: {} });
+    assert.equal(res.statusCode, 404, `${action}：${res.body}`);
+  }
 });

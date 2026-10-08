@@ -1,6 +1,6 @@
 ## 1. 測試
 
-測試名稱以情境名稱開頭，全部在 `apps/api/tests/unit/modules/platform/plan-change.test.ts`。Prisma 與 Redis 換成記憶體版本，租戶側的路由以 Fastify inject 呼叫。大部分情境描述現行行為，測試寫好時就通過，所以改以突變驗證（第 3 節）。標「修正前失敗」的測試描述 bug，先在修正前執行，確認以斷言失敗。
+測試名稱以情境名稱開頭，全部在 `apps/api/tests/unit/modules/platform/plan-change.test.ts`。Prisma 與 Redis 換成記憶體版本，租戶側與平台側的路由以 Fastify inject 呼叫。平台側的測試以假的平台登入取代平台 JWT 的驗證。平台 guard 的測試不在這個 change 的範圍內。大部分情境描述現行行為，測試寫好時就通過，所以改以突變驗證（第 3 節）。標「修正前失敗」的測試描述 bug，先在修正前執行，確認以斷言失敗。
 
 | 主規格 | 需求 | 情境 |
 | --- | --- | --- |
@@ -33,7 +33,7 @@
 ## 2. 修正
 
 - [x] 2.1 `plan-change.service.ts`：核准加購時呼叫 `clearQuotaAlertFlags(req.tenantId)`。刪除用量計數器的 `clearTokenQuotaCache()` 保留
-- [x] 2.2 `token-quota.service.ts`：`clearQuotaAlertFlags()` 的註解改為說明核准加購時呼叫
+- [x] 2.2 `token-quota.service.ts`：`clearQuotaAlertFlags()` 與 `clearTokenQuotaCache()` 的註解改為說明核准加購時呼叫，不再寫「測試用」
 - [x] 2.3 `CHANGELOG.md` 新增修正；`AUDIT.md` 移除 PLAN-06，新增 PLAN-13、USAGE-03；`AUDIT-REVIEWS.md` 新增複查紀錄；更新 `docs/ref/features/platform/` 的 `PLAN-CHANGES.md`、`README.md`、`USAGE.md`
 - [x] 2.4 執行 `pnpm test`
 
@@ -41,7 +41,7 @@
 
 每個突變改壞一處程式，執行對應的測試，確認測試失敗，再還原程式。
 
-36 個突變中，35 個讓測試失敗。
+42 個突變中，41 個讓測試失敗。表中最後 6 個突變改壞的是平台的路由（`platform.routes.ts`）。
 
 | 情境 | 突變 | 結果 |
 | --- | --- | --- |
@@ -81,6 +81,12 @@
 | 已處理的申請不能駁回 | 駁回不檢查狀態 | 失敗 |
 | 申請不存在 | 核准不檢查申請存在 | 失敗 |
 | 申請不存在 | 駁回不檢查申請存在 | 失敗 |
+| 只列出待審的申請 | 路由回傳空陣列 | 失敗 |
+| 核准升級後立即生效 | 路由傳給服務的審核者不是登入的平台帳號 | 失敗 |
+| 核准升級後立即生效 | 路由不傳備註 | 失敗 |
+| 駁回不改變租戶 | 路由傳給服務的審核者不是登入的平台帳號 | 失敗 |
+| 駁回不改變租戶 | 路由不傳備註 | 失敗 |
+| 申請不存在 | 駁回的路由在申請不存在時回 200 | 失敗 |
 
 「不清權限天花板快取」沒有讓測試失敗，這不是測試的漏洞。權限天花板快取的 key 是 `perms:tenant:{roleId}:{planId}`，換方案之後讀的是新方案的 key，舊方案的快取不會被讀到。核准升級時的 `invalidatePlanPermissions()` 清的是新方案的 key，沒有可以觀察到的效果。
 
