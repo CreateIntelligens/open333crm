@@ -12,6 +12,7 @@ Open333CRM already makes customer-service decisions through substring keyword ru
 - Encrypt provider API keys at rest, return only masked key status, allow administrators to replace or clear a key, and keep secrets out of logs and audit payloads.
 - Record inference usage and latency across every attempted provider, and expose provider-level connectivity checks.
 - Use the provider decision chain for these explicit business questions: what the inbound message is about; whether it asks for a human; whether its intent should trigger a tenant automation or use the existing KB/Agent route; whether sentiment is positive, neutral, or negative; which existing case category applies; whether a new case priority is LOW, MEDIUM, HIGH, or URGENT; and which eligible tenant team should receive a new case.
+- Push accepted sentiment results to authorized inbox clients so an open conversation updates the matching message badge without a page reload.
 - Route decision outcomes through existing automation contracts and case/handoff services; keep tenant-authored exact keyword rules and explicit identity-binding commands available as deterministic paths.
 - Add configurable per-decision confidence thresholds, per-provider timeouts, an overall chain time budget, and a global kill switch so provider failures never interrupt customer-facing processing.
 
@@ -25,6 +26,7 @@ Open333CRM already makes customer-service decisions through substring keyword ru
 ### Modified Capabilities
 
 - `automation-engine`: Make semantic intent results available to automation rules while preserving keyword triggers and worker-owned execution.
+- `core-inbox`: Show accepted sentiment results on the matching inbound message in an open conversation through a real-time socket update.
 - `bot-handoff-config`: Add semantic customer request detection as a handoff path alongside explicit postbacks and configured keywords.
 - `case-management`: Add decision-assisted case classification, urgency scoring, and team recommendation with existing tenant and permission constraints.
 - `ai-usage-recording`: Record each provider attempt, fallback result, token usage, latency, and bounded failure code.
@@ -33,6 +35,7 @@ Open333CRM already makes customer-service decisions through substring keyword ru
 
 - API and worker: `apps/api/src/modules/automation/automation.worker.ts`, `apps/api/src/modules/ai/classify.service.ts`, `apps/api/src/modules/ai/sentiment.service.ts`, `apps/api/src/modules/ai/kb-autoreply.service.ts`, case assignment services, and new decision provider registry/adapter modules.
 - Shared contracts and authoring: `packages/automation`, automation API validation, and the web automation editor.
+- Inbox real-time updates: `apps/api/src/modules/automation/automation.worker.ts` and `apps/web/src/hooks/useMessages.ts`.
 - Configuration and observability: tenant-scoped provider records, RLS, encrypted credentials, `AiUsage` latency, logs, health checks, and settings UI/API.
 - External services: local Clef endpoints plus configured OpenAI and JEV decision endpoints. Customer text sent for enabled decisions requires bounded payloads, timeout handling, and documented data handling.
 - No decision may bypass tenant scoping, authorization, existing idempotency, or explicit confirmation for identity-binding actions.

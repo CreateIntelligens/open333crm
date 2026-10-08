@@ -33,7 +33,8 @@
 - [ ] 5.1 Add failing tests in `apps/api/tests/unit/modules/automation/decision-intent-automation.test.ts` for `Semantic intent is available to automation rules`, `Semantic automation does not duplicate a reply`, and `Automation editor authors semantic intent rules`: all allowed intent keys, confidence gate, provider-chain exhaustion, rule match, FAQ-to-KB, general-assistance-to-Agent, and unknown intent rejection.
 - [ ] 5.2 Add failing tests in `apps/api/tests/unit/modules/automation/semantic-handoff.test.ts` for `Detect semantic requests for a human agent`: `noul` probability threshold, provider fallback, agent-handled no-op, and explicit keyword/postback precedence.
 - [ ] 5.3 Add failing tests in `apps/api/tests/unit/modules/automation/provider-sentiment.test.ts` for `Provider sentiment results feed existing sentiment automation`: confident negative event and fallback to current sentiment provider/keyword behavior.
-- [ ] 5.4 Implement shared `intent.detected` contracts, authoring/API validation, worker routing, semantic handoff, and sentiment decisions through the ordered chain; verify tasks 5.1–5.3 pass with at most one customer reply.
+- [ ] 5.4 Add failing tests for `Sentiment result updates an open conversation` in `apps/api/tests/unit/modules/automation/provider-sentiment-socket.test.ts` and `apps/web/tests/unit/hooks/useMessages.test.tsx`: after sentiment persistence, emit `message.sentiment.updated`; update the matching open conversation message immediately; ignore events for another conversation.
+- [ ] 5.5 Implement shared `intent.detected` contracts, authoring/API validation, worker routing, semantic handoff, and sentiment decisions through the ordered chain. Emit `message.sentiment.updated` after persisting an accepted result and update the matching cached message in the inbox; verify tasks 5.1–5.4 pass with at most one customer reply.
 
 ## 6. Case classification, urgency, and team recommendation
 

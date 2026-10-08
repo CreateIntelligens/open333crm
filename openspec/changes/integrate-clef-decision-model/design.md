@@ -62,6 +62,10 @@ For an eligible inbound text message, request intent, handoff, and sentiment ans
 
 The current worker checks handoff and reply routing on `message.received`; it can perform decision inference there without adding work to the webhook HTTP request. Exact configured handoff/automation keywords and explicit handoff postbacks retain their immediate existing paths. Providers do not select a reply body.
 
+### Push accepted sentiment to the open inbox
+
+After the worker persists an accepted sentiment result in the message metadata, the API emits `message.sentiment.updated` to the authorized conversation and tenant rooms. The payload contains the conversation ID, message ID, sentiment, score, and confidence; it does not contain message text or provider request state. The web `useMessages` hook applies the payload to the matching cached message so `MessageBubble` renders the sentiment badge without waiting for a refetch. Events for a different conversation do not alter the selected conversation.
+
 ### Minimize state and validate candidates before use
 
 Send the current inbound text plus only the small structured fields needed for the decision. Do not send conversation history by default. For team routing, build candidate IDs from active teams already eligible for the tenant and channel, include only those candidates in Clef criteria, and verify the returned ID against that same set before writing `Case.teamId`. Keep all database reads and writes within the caller's tenant context.
