@@ -172,7 +172,7 @@ export async function checkQuotaThresholdCrossing(
   return crossed;
 }
 
-/** 測試用：清某租戶當月計數器。 */
+/** 清某租戶當月的用量計數器。下次讀取時，系統從 `AiUsage` 的加總補建計數器。`approveRequest()` 核准加購時呼叫這個函式，校正少算的用量（AUDIT USAGE-03）。 */
 export async function clearTokenQuotaCache(tenantId?: string): Promise<void> {
   try {
     if (tenantId) await redis.del(counterKey(tenantId));
