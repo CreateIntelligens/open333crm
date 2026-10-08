@@ -7,7 +7,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import { AppError } from '../../shared/utils/response.js';
 import { invalidatePlanPermissions } from '../../services/permission.service.js';
 import { invalidateTenantPlan } from '../../services/tenant-plan.cache.js';
-import { clearTokenQuotaCache } from '../trial/token-quota.service.js';
+import { clearQuotaAlertFlags, clearTokenQuotaCache } from '../trial/token-quota.service.js';
 import { TRIAL_EXIT_DATA, assertNotTrialPlan } from './trial-admin.service.js';
 
 // ── 租戶側 ──
@@ -127,6 +127,8 @@ export async function approveRequest(
     });
     invalidateTenantPlan(req.tenantId);
     await clearTokenQuotaCache(req.tenantId); // 讓硬擋重讀新額度
+    // 本月的告警旗標還在的話，用量跨越新上限的 80%／100% 時不會再通知（AUDIT PLAN-06）
+    await clearQuotaAlertFlags(req.tenantId);
   }
 
   const approved = await prisma.planChangeRequest.update({

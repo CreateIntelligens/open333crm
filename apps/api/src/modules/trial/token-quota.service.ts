@@ -181,7 +181,7 @@ export async function clearTokenQuotaCache(tenantId?: string): Promise<void> {
   }
 }
 
-/** 測試用：清某租戶當月所有告警旗標（供整合測試重跑）。 */
+/** 清某租戶當月所有告警旗標。核准加購提高上限後呼叫，讓新上限的門檻可以再次告警。 */
 export async function clearQuotaAlertFlags(tenantId: string): Promise<void> {
   try {
     await Promise.all(
