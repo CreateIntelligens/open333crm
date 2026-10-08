@@ -2,8 +2,8 @@
 
 收件匣是客服的主畫面。左欄是對話清單，右欄是訊息與聯絡人資料。客服在這裡回覆客人、把對話從機器人手上接過來、指派給同事、關閉對話，或把對話開成工單。
 
-- **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/web/src/components/inbox/*`
-- **核對日期**：2026-09-30
+- **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/web/src/components/inbox/*`
+- **核對日期**：2026-10-07
 
 ## 負責的模組
 
@@ -49,6 +49,7 @@
 2. **決定由誰回覆**。只處理純文字訊息。訊息會命中關鍵字規則時，讓給關鍵字規則回覆，AI 不回。
    - `botMode` 是 `llm` 或 `keyword_then_llm`，而且環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，先由 AI agent 回覆。
    - AI agent 沒有處理時，改由 `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` 依知識庫回覆。知識庫回覆怎麼決定內容，見[知識庫與 AI](./KNOWLEDGE.md#機器人怎麼用知識庫回答)。
+   - 兩種回覆除了目前對話最近 10 則訊息，還會讀這位聯絡人在其他對話中最近 30 天、最多 10 則的文字訊息（`other-channel-context.ts`）。這些訊息以獨立的系統指示提供，每則標示渠道、時間與發話方，並要求 AI 不主動複述其中的電話、地址、email、訂單或會員編號。系統發的綁定與 email 登記訊息不提供，代碼與登記連結會遮蔽。只有[歸戶](./CONTACTS.md#合併)過的聯絡人才有其他對話；合併解除後，對話搬回原聯絡人，AI 就讀不到。
 
 同一個處理器接著對所有對話做情緒分析、送出規則評估與比對關鍵字，見[自動化](./AUTOMATION.md)。
 
@@ -141,6 +142,13 @@
 `assertConversationChannelVisible()` 另外有一段團隊限制：對話綁了團隊時，只有負責人與該團隊成員能操作。`Conversation.teamId` 目前沒有任何寫入端，因此這段檢查不會觸發，見 `../../system/AUDIT.md` 的 TEAM-01。
 
 可見範圍只套用在收件匣與工單的 REST 路由，以及單一對話的 socket 房間。AI 輔助端點以 `conversationId` 讀對話時也會檢查。租戶房間的即時事件、聯絡人清單與合併都沒有套用，見 `../../system/AUDIT.md` 的 RBAC-04。
+
+## 右側面板的跨渠道功能
+
+收件匣右側的聯絡人面板有兩個跨渠道的區塊：
+
+- **其他渠道的對話**：列出這位聯絡人在其他渠道、且成員看得到的對話（`GET /contacts/:id/conversations`），點開顯示該對話最近 20 則訊息（`GET /conversations/:id/messages`）。看不到的渠道只顯示「另有 N 段其他渠道的對話」。沒有其他對話時不顯示這個區塊。
+- **傳送 email 登記連結**：租戶開啟 email 登記、成員有 `inbox.reply` 時才顯示。按下後在目前的對話送出登記連結，結果顯示在按鈕下方。流程見[聯絡人與標籤](./CONTACTS.md#email-登記)。原本只在 LINE、Facebook 對話顯示的「請求 Email」按鈕已移除。
 
 ## AI 輔助
 

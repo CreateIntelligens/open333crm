@@ -74,6 +74,8 @@ test('設定：未設定＝關閉並帶預設關鍵字；空陣列退回預設',
     enabled: false,
     bindKeywords: ['綁定帳號'],
     unbindKeywords: ['解除綁定'],
+    emailEnabled: false,
+    emailKeywords: ['登記email'],
   });
   assert.equal(parseIdentityBindingSettings({ enabled: 'true' }).enabled, false, '只接受布林 true');
   assert.deepEqual(parseIdentityBindingSettings({ enabled: true, bindKeywords: [] }).bindKeywords, ['綁定帳號']);

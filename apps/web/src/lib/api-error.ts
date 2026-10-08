@@ -92,3 +92,8 @@ export function getFieldErrors(err: unknown): Record<string, string> {
 export function getApiErrorCode(err: unknown): string | undefined {
   return extract(err).error?.code;
 }
+
+/** 取錯誤的 details（例如 409 EMAIL_IN_USE 帶的另一位聯絡人）。不可直接顯示給使用者。 */
+export function getApiErrorDetails(err: unknown): Record<string, unknown> | undefined {
+  return extract(err).error?.details;
+}

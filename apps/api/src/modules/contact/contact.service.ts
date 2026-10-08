@@ -6,7 +6,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { mergeContacts as runMergeEngine } from './contact-merge.service.js';
-import { channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 
 export interface ContactFilters {
   q?: string;
@@ -185,6 +185,13 @@ export async function getContact(
   return contact;
 }
 
+/** 聯絡人在可見渠道有身分、或沒有任何渠道身分（客服手動建立）時視為看得到 */
+async function isContactVisible(prisma: TenantDb, contactId: string, accessibleChannels: AccessibleChannels): Promise<boolean> {
+  if (accessibleChannels === ALL_CHANNELS) return true;
+  const identities = await prisma.channelIdentity.findMany({ where: { contactId }, select: { channelId: true } });
+  return identities.length === 0 || identities.some((i) => accessibleChannels.has(i.channelId));
+}
+
 export async function updateContact(
   prisma: TenantDb,
   id: string,
@@ -195,8 +202,13 @@ export async function updateContact(
     email?: string | null;
     language?: string;
     isBlocked?: boolean;
+    /** email 與其他聯絡人重複時，客服確認仍要儲存（不合併） */
+    allowDuplicateEmail?: boolean;
   },
+  /** CM-173：email 撞到的聯絡人只在看不到的渠道有身分時，409 不帶對方的 id 與名稱 */
+  accessibleChannels: AccessibleChannels = ALL_CHANNELS,
 ) {
+  const { allowDuplicateEmail, ...fields } = data;
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
   });
@@ -205,9 +217,29 @@ export async function updateContact(
     throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
   }
 
+  // email 與同租戶另一位聯絡人相同時先讓客服決定：合併、仍要儲存或取消（change add-email-identity-merge）
+  // email 沒有改變（不分大小寫）時不檢查：先前已確認共用的 email，重存時不再詢問
+  const emailChanged = (fields.email ?? '').toLowerCase() !== (contact.email ?? '').toLowerCase();
+  if (fields.email && emailChanged && !allowDuplicateEmail) {
+    const other = await prisma.contact.findFirst({
+      where: { tenantId, isArchived: false, id: { not: id }, email: { equals: fields.email, mode: 'insensitive' } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, displayName: true },
+    });
+    if (other) {
+      const visible = await isContactVisible(prisma, other.id, accessibleChannels);
+      throw new AppError(
+        '此 email 已由其他聯絡人使用',
+        'EMAIL_IN_USE',
+        409,
+        visible ? { contactId: other.id, displayName: other.displayName } : undefined,
+      );
+    }
+  }
+
   const updated = await prisma.contact.update({
     where: { id },
-    data,
+    data: fields,
     include: {
       channelIdentities: {
         select: {
@@ -226,6 +258,76 @@ export async function updateContact(
   });
 
   return updated;
+}
+
+/** 跨渠道訊息的游標：最後一則的時間與 id（同一毫秒有多則時以 id 區分，不重複也不遺漏） */
+function encodeMessageCursor(createdAt: Date, id: string): string {
+  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url');
+}
+
+function decodeMessageCursor(cursor: string): { createdAt: Date; id: string } | null {
+  const [iso, id] = Buffer.from(cursor, 'base64url').toString().split('|');
+  const createdAt = new Date(iso ?? '');
+  return id && !Number.isNaN(createdAt.getTime()) ? { createdAt, id } : null;
+}
+
+/**
+ * 聯絡人在所有可見渠道的訊息，依時間排成一條（change add-email-identity-merge，design D9）。
+ * 每頁取最新的 limit 則、以由舊到新回傳；`before` 為上一頁回傳的 nextCursor。
+ * 看不到的渠道只回傳對話數量，不回傳內容或渠道名稱。
+ */
+export async function getContactMessages(
+  prisma: TenantDb,
+  contactId: string,
+  tenantId: string,
+  accessibleChannels: AccessibleChannels,
+  opts: { before?: string; limit: number },
+) {
+  const contact = await prisma.contact.findFirst({ where: { id: contactId, tenantId }, select: { id: true } });
+  if (!contact) throw new AppError(notFound('contact'), 'NOT_FOUND', 404);
+
+  const channelId = channelIdWhereFilter(accessibleChannels);
+  const cursor = opts.before ? decodeMessageCursor(opts.before) : null;
+  if (opts.before && !cursor) throw new AppError('分頁參數格式錯誤', 'VALIDATION_ERROR', 400);
+
+  const [rows, hiddenConversationCount] = await Promise.all([
+    prisma.message.findMany({
+      where: {
+        conversation: { contactId, tenantId, ...(channelId ? { channelId } : {}) },
+        ...(cursor
+          ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: opts.limit + 1,
+      select: {
+        id: true,
+        conversationId: true,
+        direction: true,
+        senderType: true,
+        contentType: true,
+        content: true,
+        createdAt: true,
+        conversation: { select: { channelId: true, channelType: true, channel: { select: { displayName: true } } } },
+      },
+    }),
+    channelId
+      ? prisma.conversation.count({ where: { contactId, tenantId, channelId: { notIn: channelId.in } } })
+      : Promise.resolve(0),
+  ]);
+
+  const page = rows.slice(0, opts.limit);
+  const oldest = page.at(-1);
+  return {
+    messages: page.reverse().map(({ conversation, ...m }) => ({
+      ...m,
+      channelId: conversation.channelId,
+      channelType: conversation.channelType,
+      channelName: conversation.channel.displayName,
+    })),
+    hiddenConversationCount,
+    nextCursor: rows.length > opts.limit && oldest ? encodeMessageCursor(oldest.createdAt, oldest.id) : null,
+  };
 }
 
 export async function getContactConversations(
@@ -280,6 +382,10 @@ export async function getContactConversations(
     }),
     prisma.conversation.count({ where }),
   ]);
+  // 看不到的渠道只給數量（收件匣顯示「另有 N 段其他渠道的對話」），不給內容或渠道名稱
+  const hiddenCount = channelId
+    ? await prisma.conversation.count({ where: { contactId, tenantId, channelId: { notIn: channelId.in } } })
+    : 0;
 
   const result = conversations.map((conv) => {
     const { messages, ...rest } = conv;
@@ -289,7 +395,7 @@ export async function getContactConversations(
     };
   });
 
-  return { conversations: result, total };
+  return { conversations: result, total, hiddenCount };
 }
 
 export async function getContactCases(

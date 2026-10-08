@@ -24,3 +24,12 @@ test('沒有參數或空值時原樣回傳', () => {
   assert.equal(redactSensitiveQuery('/health'), '/health');
   assert.equal(redactSensitiveQuery(undefined), undefined);
 });
+
+test('遮掉 email 登記連結路徑中的 token（change add-email-identity-merge）', () => {
+  const token = 'eYdEfE0_y93ritRETIJcNSdf_fGbvBcRriwo-eMY7zk';
+  assert.equal(
+    redactSensitiveQuery(`/api/v1/public/email-registration/${token}`),
+    '/api/v1/public/email-registration/<redacted>',
+  );
+  assert.equal(redactSensitiveQuery(`/api/v1/public/email-registration/${token}?x=1`), '/api/v1/public/email-registration/<redacted>?x=1');
+});
