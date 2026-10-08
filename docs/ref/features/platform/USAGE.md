@@ -81,6 +81,6 @@ BYOK 是 Bring Your Own Key，指租戶自備 API 金鑰。這個系統只有 Ge
 | 區間 | 呼叫端指定，預設最近 30 天 | 當月，UTC 月初起算 |
 | 來源 | 每次都查資料庫 | Redis 計數器，miss 時從資料庫回填 |
 
-BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器偏低之後當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
+BYOK 的呼叫出現在用量統計裡，但不計入額度，也不會被額度擋下。額度的判斷見 `apps/api/src/modules/trial/token-quota.service.ts`。計數器少算用量之後，當月不會校正，見 `../../system/AUDIT.md` 的 USAGE-03。
 
 平台後台的共通機制（與租戶後台的隔離、快取連鎖、稽核、資料模型）見[平台後台](./README.md)。

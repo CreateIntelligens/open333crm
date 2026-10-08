@@ -87,7 +87,7 @@
 | [AI-01](#ai-01) | AI 用量與成本 | P2 | 未處理 | BYOK 金鑰解密失敗會靜默退回平台金鑰，成本轉由平台承擔且開始計入租戶額度 | 靜態確認 |
 | [USAGE-01](#usage-01) | AI 用量與成本 | P3 | 未處理 | 用量頁沒有標示統計的母體與筆數上限，相鄰兩張卡的母體不同 | 靜態確認 |
 | [USAGE-02](#usage-02) | AI 用量與成本 | P2 | 已提建議 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
-| [USAGE-03](#usage-03) | AI 用量與成本 | P2 | 未處理 | AI 額度計數器漏記之後，當月不會再從資料庫校正，租戶可以用超過月額度 | 靜態確認 |
+| [USAGE-03](#usage-03) | AI 用量與成本 | P2 | 未處理 | AI 額度計數器少算用量之後，當月不會再從資料庫校正，租戶可以用超過月額度 | 靜態確認 |
 | [SLA-02](#sla-02) | SLA | P2 | 未處理 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
 | [SLA-03](#sla-03) | SLA | P3 | 未處理 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
 | [SLA-04](#sla-04) | SLA | P2 | 未處理 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
@@ -1110,22 +1110,22 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 
 <a id="usage-03"></a>
-### USAGE-03：AI 額度計數器漏記之後，當月不會再校正
+### USAGE-03：AI 額度計數器少算用量之後，當月不會再校正
 
-`token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}`。只有計數器**不存在**時，`getMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在但數字偏低時，沒有任何程式會再拿 `AiUsage` 校正，偏差一直留到月底 key 過期。
+`token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}`。只有計數器**不存在**時，`getMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在、但少算了用量時（計數器的數字小於 `AiUsage` 的實際加總），沒有任何程式會再拿 `AiUsage` 校正，少算的用量一直留到月底 key 過期。
 
-有兩種情況會讓計數器偏低：
+有兩種情況會讓計數器少算用量：
 
 - **累加失敗。** `recordAiUsage()` 寫入 `AiUsage` 之後，以 fire-and-forget 呼叫 `incrMonthlyTokens()`。`incrby` 失敗時只記一則 warn log，這次的 token 不會再加進計數器。
 - **Redis 重啟後還原舊的快照。** `docker-compose.yml` 與 `docker-compose.dev.yml` 的 Redis 掛載資料 volume，沒有指定設定檔，使用 image 預設的 RDB 快照，沒有開啟 AOF。重啟時還原最後一次快照，快照之後的累加都會遺失，而計數器仍然存在，所以不會補建。
 
-計數器偏低時，月額度檢查放行已經用完額度的租戶，平台多付這段期間的 LLM 費用。用量告警也以累加後的計數判斷，同樣會晚發或不發。
+計數器少算用量時，月額度檢查放行已經用完額度的租戶，平台多付這段期間的 LLM 費用。用量告警也以累加後的計數判斷，同樣會晚發或不發。
 
 **規格依據**：主規格 `token-quota` 的「本月 AI 用量的計數」規定，只有成功、`keySource` 是 `platform` 的呼叫會累加，而且累加量是這次呼叫的 totalTokens。累加失敗之後，計數器與這條需求的計數不一致。
 
 另有一個方向相反、影響較小的情況：計數器剛建立時，同時有多個請求在累加。`incrMonthlyTokens()` 用 `SET NX` 補建計數器，沒搶到的一方一律再 `incrby` 這次的 token。搶到的一方補建時，`AiUsage` 的加總可能已經包含這次的 token，這時這次的 token 會被算兩次。偏差最多是同時進行的呼叫的 token 數。
 
-核准加購時，`approveRequest()` 會呼叫 `clearTokenQuotaCache()` 刪除計數器，下一次讀取時從 `AiUsage` 補建。這一步順便校正了偏低的計數器，但只發生在核准加購時。
+核准加購時，`approveRequest()` 會呼叫 `clearTokenQuotaCache()` 刪除計數器，下一次讀取時從 `AiUsage` 補建。這一步順便校正了少算用量的計數器，但只發生在核准加購時。
 ## SLA
 
 功能說明見[服務水準協議](../features/SLA.md)。
