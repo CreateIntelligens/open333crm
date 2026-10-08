@@ -11,6 +11,7 @@ import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 import { sendQuotaWarningEmail, sendQuotaCriticalEmail } from '../trial/usage-alert-emails.js';
+import { getConfig } from '../../config/env.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -256,7 +257,8 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         usedTokens: usedTokens.toLocaleString(),
         limitTokens: limitTokens.toLocaleString(),
         monthKey,
-        usageUrl: '/dashboard/plan',
+        // 信件在郵件客戶端開啟，要用絕對網址；站內通知的 clickUrl 維持相對路徑
+        usageUrl: `${getConfig().WEB_BASE_URL}/dashboard/plan`,
       };
 
       // 逐 ADMIN 隔離：站內通知 + email，任一失敗不影響其他

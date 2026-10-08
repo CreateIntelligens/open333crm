@@ -21,6 +21,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **Agent 回覆達到 AI 月額度時回 403** — `POST /ai/agent/run` 在租戶用完本月的 AI 額度時，原本拋出一般的錯誤，API 回 500。現在與一般的 AI 回覆相同，回 403 `PLAN_LIMIT_EXCEEDED`，details 含 `limitKey: 'monthlyTokens'`。
+- **AI 用量告警信的按鈕可以開啟站台** — 用量達到 80% 與 100% 的告警信，按鈕原本連到相對路徑 `/dashboard/plan`，在郵件客戶端開不了站台。現在改用 `WEB_BASE_URL` 組成完整網址。
 - **網站聊天室的訪客送出訊息失敗時會看到提示**（AUDIT CHAN-04）— widget 原本在文字訊息送出失敗時只寫 `console.error`，畫面上的訊息與送出成功的相同；媒體上傳成功後，送出媒體訊息的請求失敗時，也仍顯示圖片或影片。現在兩種情況都在那則訊息標示「[傳送失敗]」，與上傳失敗的做法相同。
 - **網站聊天室傳過訊息後仍可上傳圖片與影片**（AUDIT CHAN-05）— `/webchat/:channelId/media` 原本與訊息路由共用來源 IP 的計數，同一個 IP 一分鐘內送出 10 則訊息後，上傳一律回 429。現在上傳改用獨立的計數，與 `/chatbox/media` 相同。
 - **Workers 缺少渠道加密金鑰時拒絕解密**（AUDIT SEC-01）— Workers 原本在 `CREDENTIAL_ENCRYPTION_KEY` 沒有設定時，改用寫在原始碼裡的固定字串解密渠道憑證。現在金鑰缺少或短於 32 個字元時，解密拋出錯誤，Workers 送不出需要渠道憑證的訊息，與 API 的行為一致。部署 Workers 時要設定與 API 相同的 `CREDENTIAL_ENCRYPTION_KEY`。

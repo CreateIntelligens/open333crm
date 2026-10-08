@@ -18,6 +18,22 @@ change `add-email-identity-merge` 依 2026-10-06 需求會議的決定，以 ema
 
 DB-02 的內文原本說 `ContactTag.expiresAt` 只出現在 LINE、Facebook 登入的合併；改為 `contact-merge.service.ts` 搬移標籤時保留原值。
 
+## 2026-10-07：補回 AI 用量與額度的主規格，修正 Agent 的額度錯誤與告警信的連結
+
+change `restore-platform-usage-specs` 補回 `platform-control-plane` 的 `platform-usage`、`token-quota`，以及 `add-usage-quota-alerts`（issue #228）：新增主規格 `token-quota`、`usage-quota-alerts`、`platform-usage`，並修改 `ai-usage-recording`、`model-pricing`、`trial-lifecycle`。對照程式的結果：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 本月用量的計數 | 符合規格 | Redis 計數器只累加平台金鑰的成功呼叫；計數器不存在時從 `AiUsage` 回填，Redis 無法使用時改用資料庫的加總 |
+| 呼叫 LLM 之前檢查月額度 | 已修正 | `generateReply()` 達到上限時拋出 403 `PLAN_LIMIT_EXCEEDED`。Agent 回覆（`runAgentReply()`）原本拋出一般的 `Error`，`POST /ai/agent/run` 因此回 500；現在與 `generateReply()` 相同 |
+| 用量告警 | 已修正 | 門檻、冪等與範圍符合規格。email 的按鈕原本連到相對路徑 `/dashboard/plan`，在郵件客戶端開不了站台；現在改用 `WEB_BASE_URL` 組成絕對網址。告警的收件人依角色列舉判斷，已記錄在 RBAC-03 |
+| 金鑰來源與成本 | 符合規格 | 自備金鑰的呼叫記為 `byok`，不查價目表，成本為 0 |
+| 平台用量查詢 | 符合規格 | 3 條路由只計成功的呼叫，預設期間是最近 30 天 |
+
+描述現行行為的測試以突變驗證，清單在 change 的 `tasks.md`。2 項修正的測試在修正前以斷言失敗。這 2 項在同一個 PR 發現並修正，所以沒有列入 `AUDIT.md`。
+
+另外發現：額度用完時，知識庫自動回覆捕捉 `PLAN_LIMIT_EXCEEDED` 後改送文章的原文，所以告警信寫的「AI 自動回覆已暫停」不完全正確。歸檔規格要求的「回覆客人固定訊息」也沒有實作。這兩點要先決定行為，會在 #228 請 Daniel 決定，所以沒有列入 `AUDIT.md`。
+
 ## 2026-10-07：補回 webchat 的主規格，修正 CHAN-04、CHAN-05
 
 change `restore-webchat-abuse-specs` 補回 `fix-security-audit-findings` 剩下的 delta spec（issue #228）：新增主規格 `webchat-public-abuse-controls`，並修改 `webchat-widget` 的 3 條需求，把 `visitorToken` 的寫法改成現行的 chatbox 工作階段。對照程式的結果：
