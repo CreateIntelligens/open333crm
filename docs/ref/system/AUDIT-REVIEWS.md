@@ -4,6 +4,29 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-08：補回方案異動申請的主規格，修正 PLAN-06
+
+change `restore-plan-change-request-specs` 補回 `platform-control-plane` 的 `plan-change-request`（issue #228）：新增主規格 `plan-change-request`，並修改 `usage-quota-alerts` 的「每個門檻每月最多告警一次」。對照程式的結果：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 租戶送出與查詢申請 | 符合規格 | 需要 `settings.manage`。一個租戶同時只能有一筆待審的申請；查詢只回傳自己租戶的申請，最多 50 筆 |
+| 平台查詢待審的申請 | 符合規格 | 只回傳 `pending` 的申請，依建立時間由舊到新。查不到已處理的申請，已記錄在 PLAN-11 |
+| 核准升級 | 符合規格 | 改方案並清除租戶方案快取，新方案立即生效。`invalidatePlanPermissions()` 清的是新方案的快取，沒有可以觀察到的效果，因為快取的 key 帶方案 id |
+| 核准加購 | PLAN-06，已修正 | 加購量加進 `limitOverrides.monthlyTokens`。原本只刪除用量計數器，本月的告警旗標保留到月底，用量跨越新上限的門檻時不再通知。現在也清除告警旗標 |
+| 駁回與重複審核 | 符合規格 | 只處理 `pending` 的申請，已處理的回 400，不存在的回 404 |
+
+描述現行行為的測試以突變驗證，清單在 change 的 `tasks.md`。PLAN-06 的測試在修正前以斷言失敗。PLAN-06 已完全修正，從 `AUDIT.md` 移除。
+
+PLAN-06 原本寫「刪除計數器沒有必要，也沒有效果」。這只在計數器準確時成立。計數器可能偏低，而偏低之後不會自己校正，見新增的 USAGE-03；這時刪除計數器會從 `AiUsage` 補建出正確的值。所以修正保留了刪除計數器的那一行。
+
+新增的 2 項：
+
+- **PLAN-13**：換方案（`updateTenant()`、核准 `upgrade`、`convertToPaid()`）或調高方案的 `monthlyTokens`（`updatePlan()`）時，系統不清除告警旗標，當月的告警不會再發。結果與 PLAN-06 相同，只是入口不同。
+- **USAGE-03**：計數器只在不存在時從 `AiUsage` 補建。`incrby` 失敗，或 Redis 重啟後還原舊的快照時，計數器偏低到月底，月額度檢查放行已經用完額度的租戶。
+
+另外發現 2 項沒有實作的需求：申請不記錄送出的成員（`requestedBy`），以及稽核不記錄變更前後的方案與額度。這兩項要先決定是否要做，會在 #228 請 Daniel 決定，所以沒有列入 `AUDIT.md`。
+
 ## 2026-10-07：補回 AI 用量與額度的主規格，修正 Agent 的額度錯誤與告警信的連結
 
 change `restore-platform-usage-specs` 補回 `platform-control-plane` 的 `platform-usage`、`token-quota`，以及 `add-usage-quota-alerts`（issue #228）：新增主規格 `token-quota`、`usage-quota-alerts`、`platform-usage`，並修改 `ai-usage-recording`、`model-pricing`、`trial-lifecycle`。對照程式的結果：
