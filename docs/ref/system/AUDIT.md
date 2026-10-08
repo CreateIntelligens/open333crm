@@ -1114,10 +1114,11 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 `token-quota.service.ts` 的月額度檢查讀 Redis 計數器 `aiquota:{tenantId}:{YYYY-MM}`。只有計數器**不存在**時，`getMonthlyTokens()` 與 `incrMonthlyTokens()` 才會從 `AiUsage` 的加總補建。計數器存在、但少算了用量時（計數器的數字小於 `AiUsage` 的實際加總），沒有任何程式會再拿 `AiUsage` 校正，少算的用量一直留到月底 key 過期。
 
-有兩種情況會讓計數器少算用量：
+有三種情況會讓計數器少算用量：
 
 - **累加失敗。** `recordAiUsage()` 寫入 `AiUsage` 之後，以 fire-and-forget 呼叫 `incrMonthlyTokens()`。`incrby` 失敗時只記一則 warn log，這次的 token 不會再加進計數器。
 - **Redis 重啟後還原舊的快照。** `docker-compose.yml` 與 `docker-compose.dev.yml` 的 Redis 掛載資料 volume，沒有指定設定檔，使用 image 預設的 RDB 快照，沒有開啟 AOF。重啟時還原最後一次快照，快照之後的累加都會遺失，而計數器仍然存在，所以不會補建。
+- **核准加購刪除計數器時，有一筆累加正在進行。** `incrMonthlyTokens()` 先用 `exists()` 確認計數器存在，再呼叫 `incrby()`，這兩步不是原子操作。`approveRequest()` 在兩步之間刪除計數器時，`incrby()` 會建立一個新的計數器，值只有這次呼叫的 token 數。計數器存在，所以不會從 `AiUsage` 補建。這個新的 key 也沒有過期時間，月底之後仍留在 Redis。
 
 計數器少算用量時，月額度檢查放行已經用完額度的租戶，平台多付這段期間的 LLM 費用。用量告警也以累加後的計數判斷，同樣會晚發或不發。
 
@@ -1125,7 +1126,12 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 另有一個方向相反、影響較小的情況：計數器剛建立時，同時有多個請求在累加。`incrMonthlyTokens()` 用 `SET NX` 補建計數器，沒搶到的一方一律再 `incrby` 這次的 token。搶到的一方補建時，`AiUsage` 的加總可能已經包含這次的 token，這時這次的 token 會被算兩次。偏差最多是同時進行的呼叫的 token 數。
 
-核准加購時，`approveRequest()` 會呼叫 `clearTokenQuotaCache()` 刪除計數器，下一次讀取時從 `AiUsage` 補建。這一步順便校正了少算用量的計數器，但只發生在核准加購時。
+核准加購時，`approveRequest()` 會呼叫 `clearTokenQuotaCache()` 刪除計數器，下一次讀取時從 `AiUsage` 補建。這一步順便校正了少算用量的計數器，但只發生在核准加購時。刪除計數器本身也可能造成少算，見上面的第三種情況。
+
+**修正方向**：
+
+- 讓 `incrMonthlyTokens()` 的「確認計數器存在」與「累加」變成一個原子操作，例如用 Lua script：計數器存在時才 `incrby`，不存在時由呼叫端從 `AiUsage` 補建。這樣刪除計數器之後，進行中的累加不會建立只有一次用量的計數器。
+- 原子操作只解決第三種情況。累加失敗與 Redis 還原舊快照造成的少算，仍要另外拿 `AiUsage` 的加總校正計數器。
 ## SLA
 
 功能說明見[服務水準協議](../features/SLA.md)。
