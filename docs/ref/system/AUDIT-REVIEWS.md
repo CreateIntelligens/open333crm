@@ -6,17 +6,30 @@
 
 ## 2026-10-12：查 UAT 的同渠道雙身分聯絡人（IDENT-03）
 
-IDENT-03 修正後（PR #255），在 UAT 以唯讀交易查詢 `channel_identities` 依 `(contactId, channelId)` 分組超過 1 筆的聯絡人。只讀 ID、渠道類型、建立時間與數量，沒有讀名稱、email 等個資。
+IDENT-03 修正後（PR #255），在 UAT 以唯讀交易（`BEGIN READ ONLY`）查詢 `channel_identities` 依 `(contactId, channelId)` 分組超過 1 筆的聯絡人。只讀 ID、渠道類型、建立時間與數量，沒有讀名稱、email 等個資，沒有寫入。查詢時 UAT 部署的版本是 `4585025d`。
 
 | 項目 | 結果 |
 | --- | --- |
 | 數量 | 119 位聯絡人、130 個渠道身分中，8 位聯絡人在同一個渠道有 2 個身分 |
 | 渠道 | 全部是預設租戶的 WebChat 渠道「tatung」；LINE、FB、Instagram 沒有 |
-| 建立時間 | 2026-09-03～09-04，與 UAT E2E 測試 Wave 1 相同 |
-| 來源 | 沒有合併紀錄、沒有 `IdentityMap` 紀錄，不是合併或縫合產生。每位各 2 段 chatbox 對話，間隔 1～2 秒建立，全部已結案 |
-| 原因 | 未查明。讀現行程式找不到產生這種資料的路徑；當天合併了 WebChat 安全修正 `f507fe1f` |
+| 建立時間 | 2026-09-03～09-04 |
+| 來源 | 每位都恰好有 1 位已封存、`mergedIntoId` 指向它的聯絡人，每位各 2 段 chatbox 對話（間隔 1～2 秒建立），全部已結案。沒有 `ContactMergeLog`、沒有 `IdentityMap` 紀錄 |
+| 原因 | UAT E2E 測試 `apps/web/tests/e2e-uat/tenant-contacts.spec.ts` 的「合併執行」：先種兩個 chatbox 訪客（同一個 WebChat 渠道），再把次要方併入主要方。`ContactMergeLog` 在 2026-09-30（`481452a4`）才建立，當時的合併不寫紀錄 |
 
-`AUDIT.md` 的 IDENT-03 驗證狀態改為執行時確認，未修正部分改寫為查詢結果，修正方向改為先刪除這 8 位測試聯絡人，再加 `(contactId, channelId)` 唯一限制。
+8 位聯絡人（保留方）的 id：
+
+- `01c15e7d-fa6a-42ab-a5d7-f4276f59a519`
+- `5d6b5397-68ec-4920-a22e-8bcc284be1b9`
+- `770a8618-2bf6-4857-b6b3-da0db8908912`
+- `a1c765c6-d526-4bf5-8fa8-62b142b09076`
+- `a2233bb3-7eca-4e52-988c-1e9c3bed6edd`
+- `b770bb60-1e02-4d08-b529-c285ac4a3d14`
+- `b87ba98c-94ab-48b4-bf4d-3e03b629c3c6`
+- `f742c0bf-e441-4b7e-9449-a273681aeb22`
+
+第一次判讀時，因為沒有合併紀錄，誤以為不是合併產生；再查 `mergedIntoId` 才確認是合併。
+
+`AUDIT.md` 的 IDENT-03 驗證狀態改為執行時確認，未修正部分改寫為查詢結果，修正方向改為先刪除這 8 位測試聯絡人（及各自被併入的封存聯絡人），再加 `(contactId, channelId)` 唯一限制。
 
 ## 2026-10-12：IDENT-03 部分修正、IDENT-04 修正
 
