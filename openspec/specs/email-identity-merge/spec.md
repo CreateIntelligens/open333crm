@@ -111,11 +111,15 @@
 - **THEN** 系統不合併，回覆已登記
 
 ### Requirement: 同一渠道雙方都有身分時拒絕合併
-相同 email 的兩位聯絡人在同一個渠道都有身分時，系統 SHALL NOT 合併、SHALL NOT 寫入 email，並在原對話回覆無法自動整合、請聯繫客服。
+相同 email 的兩位聯絡人在同一個渠道都有身分時，系統 SHALL NOT 合併、SHALL NOT 寫入 email，並在原對話回覆無法自動整合、請聯繫客服。合併前檢查時通過、合併時才被合併引擎以 `SAME_CHANNEL_CONFLICT` 拒絕時（另一個合併同時進行），系統 SHALL 以相同方式處理。
 
 #### Scenario: 同一個 LINE OA 的兩個帳號
 - **WHEN** 聯絡人 A 與 B 在同一個 LINE 渠道都有身分，A 送出 B 的 email
 - **THEN** 不合併，A 的 email 不變，A 的對話收到無法自動整合的說明
+
+#### Scenario: 合併時才發現同一渠道
+- **WHEN** A 送出 B 的 email，合併前檢查通過，但合併時合併引擎以 `SAME_CHANNEL_CONFLICT` 拒絕
+- **THEN** 不合併，A 的 email 不變，A 的對話收到無法自動整合的說明，登記結果為 `channel_conflict`
 
 ### Requirement: Email 歸戶須在雙邊通知
 自動合併後，系統 SHALL 在登記的對話回覆已整合，說明對方帳號的渠道與名稱及 7 天內可回覆解除關鍵字；並在被併入聯絡人最近一次對話的渠道送出同樣的通知。被併入的聯絡人沒有任何對話時，只通知登記方。通知送不出去時，合併結果不變，並在對話中留下客服看得到的失敗紀錄。
@@ -176,3 +180,14 @@
 #### Scenario: 沒有合併權限
 - **WHEN** 沒有 `contact.merge` 權限的客服收到 409
 - **THEN** 介面只提供「仍要儲存」與「取消」，不顯示合併
+
+### Requirement: 同一個 email 的登記依序處理
+同一個租戶內，系統 SHALL 依序處理送出相同 email（不分大小寫）的登記：後送出的登記在前一個完成之後才查詢使用這個 email 的聯絡人。
+
+#### Scenario: 兩位聯絡人同時登記同一個新的 email
+- **WHEN** 沒有任何聯絡人使用 `amy@example.com`，LINE 聯絡人 A（較早建立）與 FB 聯絡人 B 同時送出 `amy@example.com`
+- **THEN** 兩個登記都完成後，A 與 B SHALL 是同一位未封存的聯絡人，使用 `amy@example.com`
+
+#### Scenario: 不同 email 不互相等待
+- **WHEN** A 送出 `amy@example.com` 的同時，B 送出 `bob@example.com`
+- **THEN** 兩個登記 SHALL 各自完成，不合併
