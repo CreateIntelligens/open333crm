@@ -64,11 +64,10 @@ JWT 的內容只有 `platformUserId` 與 `role: 'PLATFORM_SUPERUSER'`，有效�
 
 ## 速率限制
 
-`platform.routes.ts` 在自己的 scope 內註冊 `@fastify/rate-limit`，以來源 IP 分組：
+`platform.routes.ts` 在自己的 scope 內註冊 `@fastify/rate-limit`，以來源 IP 分組。註冊時設定 `global: false`，所以只有帶 `config.rateLimit` 的路由受限，也就是下表的 3 個公開端點。其他平台路由沒有速率限制。註冊時設定的 `max: 30` 沒有任何路由用到。
 
-| 範圍 | 上限 |
+| 路由 | 上限 |
 | --- | --- |
-| 這個 scope 的所有路由 | 每分鐘 30 次 |
 | `POST /auth/login` | 每分鐘 10 次 |
 | `POST /auth/forgot-password` | 每 10 分鐘 5 次 |
 | `POST /auth/reset-password` | 每 10 分鐘 10 次 |
