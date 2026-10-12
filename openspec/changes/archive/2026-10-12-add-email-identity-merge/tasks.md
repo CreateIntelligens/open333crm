@@ -2,7 +2,7 @@
 
 ## 0. 前置
 
-- [ ] 0.1 與 `add-cross-channel-one-id` 負責人確認歸檔順序：該 change 先歸檔（design.md「歸檔順序」），未完成的 9.x 追蹤項目移到 issue
+- [x] 0.1 與 `add-cross-channel-one-id` 負責人確認歸檔順序：該 change 先歸檔（design.md「歸檔順序」），未完成的 9.x 追蹤項目移到 issue
 
 ## 1. 租戶設定與登記連結
 
@@ -78,8 +78,8 @@
 - [x] 10.2 `pnpm test:feature` 通過
 - [x] 10.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-workspace-esm.mjs --strict` 沒有新增違規
 - [x] 10.4 `node scripts/validate-openspec.mjs add-email-identity-merge` 與 `--specs` 通過
-- [ ] 10.5 UAT 驗證：LINE 與 FB 各一個帳號用同一個 email 登記後歸戶、雙邊通知、解除、客服收件匣看到另一渠道的對話、AI 回覆引用另一渠道的問題
-- [ ] 10.6 先歸檔 `add-cross-channel-one-id`，再以 `pnpm exec openspec archive add-email-identity-merge` 歸檔
+- [x] 10.5 2026-10-12 UAT 實測通過（LINE 與 FB 同一 email 自動合併、雙邊通知、客人自助解除與雙邊通知、AI 回覆、收件匣跨渠道對話）：UAT 驗證：LINE 與 FB 各一個帳號用同一個 email 登記後歸戶、雙邊通知、解除、客服收件匣看到另一渠道的對話、AI 回覆引用另一渠道的問題
+- [x] 10.6 先歸檔 `add-cross-channel-one-id`，再以 `pnpm exec openspec archive add-email-identity-merge` 歸檔
 
 ## 11. Code review 修正
 

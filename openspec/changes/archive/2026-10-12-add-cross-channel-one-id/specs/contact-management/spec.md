@@ -30,7 +30,7 @@ The system SHALL merge two contact records through a single merge engine used by
 ## ADDED Requirements
 
 ### Requirement: Merge Reversal
-The system SHALL allow a user with `contact.merge` permission to revert any non-reverted merge log entry. Reversal SHALL un-archive the merged contact and move back every record listed in the log that still points to the survivor (or to whoever the survivor was later merged into): channel identities, conversations, cases, long-term memories, portal submissions, point transactions, identity map entries, click logs, flow executions, KB feedback and broadcast recipients. Conversations and cases created on the survivor after the merge on a channel whose identity is moved back SHALL also move back. Tags and attributes SHALL NOT be taken back. The log SHALL record `revertedAt` and `revertedBy`.
+The system SHALL allow a user with `contact.merge` permission to revert any non-reverted merge log entry. Reversal SHALL un-archive the merged contact, and the log SHALL record `revertedAt` and `revertedBy`.
 
 #### Scenario: Agent reverts a binding
 - **WHEN** an agent reverts the merge log that bound a LINE identity into a FB contact
@@ -40,25 +40,31 @@ The system SHALL allow a user with `contact.merge` permission to revert any non-
 - **WHEN** a user whose role lacks `contact.merge` calls the revert endpoint
 - **THEN** the system SHALL respond 403 and change nothing
 
+#### Scenario: Already reverted
+- **WHEN** a merge log that is already reverted is reverted again
+- **THEN** the system SHALL reject the request and change nothing
+
+### Requirement: Merge Reversal Moves Records Back
+Reversal SHALL move back every record listed in the merge log that still points to the survivor, or to whoever the survivor was later merged into: channel identities, conversations, cases, long-term memories, portal submissions, point transactions, identity map entries, click logs, flow executions, KB feedback and broadcast recipients. Tags and attributes SHALL NOT be taken back.
+
 #### Scenario: Points transferred back on reversal
 - **WHEN** a merge that transferred 50 points is reverted and the survivor has spent all but 30 of its points since
 - **THEN** 30 points SHALL be transferred back and the survivor's balance SHALL NOT go negative
-
-#### Scenario: Survivor's own conversations stay
-- **WHEN** both contacts had an identity on the same channel and the survivor opened a new conversation on it after the merge
-- **THEN** reversal SHALL NOT move that conversation
 
 #### Scenario: Long-term memory is not left with the other person
 - **WHEN** a binding made with a forwarded code is reverted
 - **THEN** the merged contact's long-term memories SHALL move back and SHALL NOT remain on the survivor
 
+### Requirement: Merge Reversal Moves Later Conversations Back
+Conversations and cases created on the survivor after the merge, on a channel whose identity is moved back, SHALL also move back to the restored contact.
+
 #### Scenario: Conversation opened after the merge
 - **WHEN** the customer started a new FB conversation after the merge and the merge is then reverted
 - **THEN** that conversation SHALL move back to the restored contact together with the FB identity
 
-#### Scenario: Already reverted
-- **WHEN** a merge log that is already reverted is reverted again
-- **THEN** the system SHALL reject the request and change nothing
+#### Scenario: Survivor's own conversations stay
+- **WHEN** both contacts had an identity on the same channel and the survivor opened a new conversation on it after the merge
+- **THEN** reversal SHALL NOT move that conversation
 
 ### Requirement: Contact Merge History Display
 The contact detail page SHALL list the contact's merge history (source, time, actor, merged contact's channel identities) and show a revert action for each non-reverted entry to users with `contact.merge` permission.
