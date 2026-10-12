@@ -20,6 +20,7 @@ interface Fixture {
   tx: TenantDb;
   contactId: string;
   conv: (channelType: 'LINE' | 'FB' | 'WEBCHAT', contactId?: string) => Promise<string>;
+  channelOf: (conversationId: string) => Promise<string>;
   say: (conversationId: string, text: string, ago: number, opts?: { direction?: 'INBOUND' | 'OUTBOUND'; metadata?: object }) => Promise<void>;
 }
 
@@ -38,6 +39,8 @@ function scenario(name: string, fn: (f: Fixture) => Promise<void>) {
             const c = await tx.conversation.create({ data: { tenantId: T, contactId, channelId: ch.id, channelType } });
             return c.id;
           },
+          channelOf: async (conversationId) =>
+            (await tx.conversation.findFirstOrThrow({ where: { id: conversationId }, select: { channelId: true } })).channelId,
           say: async (conversationId, text, ago, opts = {}) => {
             const direction = opts.direction ?? 'INBOUND';
             await tx.message.create({
@@ -129,4 +132,17 @@ scenario('提示包含個資規則', async (f) => {
   await f.say(line, '我的電話是 0912345678', 60_000);
   const ctx = await loadOtherChannelContext(f.tx, T, fb, NOW);
   assert.ok(ctx.includes('不主動') && ctx.includes('電話') && ctx.includes('地址') && ctx.includes('訂單'), ctx);
+});
+
+scenario('客服觸發時只讀客服看得到的渠道', async (f) => {
+  const line = await f.conv('LINE');
+  const fb = await f.conv('FB');
+  const web = await f.conv('WEBCHAT');
+  await f.say(fb, '總部 FB 的問題', 2 * 60_000);
+  await f.say(web, '網站上的問題', 60_000);
+  const visible = new Set([await f.channelOf(line), await f.channelOf(web)]);
+  const ctx = await loadOtherChannelContext(f.tx, T, line, NOW, visible);
+  assert.ok(ctx.includes('網站上的問題'), ctx);
+  assert.ok(!ctx.includes('總部 FB'), '看不到的渠道不提供給 AI');
+  assert.equal(await loadOtherChannelContext(f.tx, T, line, NOW, new Set([await f.channelOf(line)])), '', '只看得到目前渠道時沒有其他訊息');
 });

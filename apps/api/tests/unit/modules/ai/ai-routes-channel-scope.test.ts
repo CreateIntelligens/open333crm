@@ -11,6 +11,8 @@ const HIDDEN_ID = '22222222-2222-4222-8222-222222222222';
 
 const guardCalls: Array<{ conversationId: string; level: string | undefined }> = [];
 const serviceCalls: string[] = [];
+const agentInputs: Array<{ accessibleChannels?: unknown }> = [];
+const BRANCH_CHANNELS = new Set(['ch-branch']);
 
 const RUN_HIDDEN = '33333333-3333-4333-8333-333333333333';
 const RUN_VISIBLE = '44444444-4444-4444-8444-444444444444';
@@ -28,6 +30,7 @@ vi.mock('#src/services/channel-visibility.js', () => ({
     guardCalls.push({ conversationId, level });
     if (conversationId === HIDDEN_ID) throw new AppError('找不到此對話', 'NOT_FOUND', 404);
   },
+  resolveChannelVisibility: async () => BRANCH_CHANNELS,
 }));
 
 vi.mock('#src/modules/ai/ai.service.js', () => ({
@@ -36,7 +39,8 @@ vi.mock('#src/modules/ai/ai.service.js', () => ({
 }));
 
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
-  runAgentReply: async (_p: unknown, input: { conversationId?: string }) => {
+  runAgentReply: async (_p: unknown, input: { conversationId?: string; accessibleChannels?: unknown }) => {
+    agentInputs.push(input);
     serviceCalls.push(`agent:${input.conversationId ?? 'none'}`);
     return { handled: true, text: 'ok' };
   },
@@ -137,4 +141,13 @@ test('/agent/runs/:id：其他租戶的執行紀錄回 404', async () => {
   const res = await app.inject({ method: 'GET', url: `/agent/runs/${RUN_OTHER_TENANT}` });
   assert.equal(res.statusCode, 404);
   assert.ok(!res.body.includes('other-tenant'));
+});
+
+// change add-email-identity-merge（spec ai-cross-channel-context「客服觸發時只讀客服看得到的渠道」）
+test('/agent/run：把客服的可見渠道交給 Agent，其他渠道的訊息依此過濾', async () => {
+  const app = await buildApp();
+  agentInputs.length = 0;
+  const res = await app.inject({ method: 'POST', url: '/agent/run', payload: { userMessage: 'hello', conversationId: VISIBLE_ID } });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(agentInputs[0].accessibleChannels, BRANCH_CHANNELS);
 });

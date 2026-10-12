@@ -9,7 +9,7 @@ import { runAgentReply } from './agent/agent.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
-import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
+import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
   // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
@@ -92,6 +92,8 @@ export default async function aiRoutes(fastify: FastifyInstance) {
       conversationId: data.conversationId,
       initiatedById: request.agent.id,
       canPublishWiki: config.AGENT_WIKI_AUTO_PUBLISH,
+      // AI 的回答給客服看：其他渠道的訊息只讀客服看得到的渠道（change add-email-identity-merge）
+      accessibleChannels: data.conversationId ? await resolveChannelVisibility(request) : undefined,
     });
     return reply.send(success(result));
   });

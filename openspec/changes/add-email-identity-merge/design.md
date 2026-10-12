@@ -100,6 +100,7 @@
 - 結果組成一段系統訊息「顧客在其他渠道的近期訊息」，每行格式為 `[渠道 相對時間] 顧客／客服：內容`，並附上「只用來理解問題，不主動複述其中的電話、地址、email、訂單或會員編號」的規則。
 - **原因**：不和目前對話的 user／assistant turn 交錯。交錯會讓模型以為那些回覆是在這個渠道說的，也會讓既有的 `HISTORY_LIMIT` 語意改變。
 - 查詢一律以聯絡人目前擁有的對話為準，所以解除合併後自動不再讀到。
+- 客服在後台觸發 AI agent（`/ai/agent/run`）時，AI 的回答給客服看，路由以 `resolveChannelVisibility()` 取得客服的可見渠道傳給 `loadOtherChannelContext()` 過濾，與 `getContactMessages()` 相同。KB 自動回覆與自動化觸發的 agent 回覆對象是客人本人，不過濾（PR #248 review）。
 - **替代方案**：交錯進 turn。實作較短，但有上述問題，不採用。
 
 ### D11：移除 LINE／FB 登入補 email

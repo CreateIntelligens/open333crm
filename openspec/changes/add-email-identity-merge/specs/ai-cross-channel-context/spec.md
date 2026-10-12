@@ -25,6 +25,17 @@ KB 自動回覆與 Agent 模式產生回覆時，除了目前對話的紀錄，�
 - **WHEN** 聯絡人只有目前這一段對話
 - **THEN** AI 收到的對話紀錄與未實作本需求前相同
 
+### Requirement: 客服觸發時只讀客服看得到的渠道
+客服在後台觸發 AI agent（`POST /api/v1/ai/agent/run` 帶 `conversationId`）時，AI 的回答會給客服看。系統 SHALL 只提供該客服可見渠道的其他渠道訊息，SHALL NOT 讓客服透過 AI 讀到看不到的渠道。回覆對象是客人本人時（KB 自動回覆、自動化觸發的 AI agent），不套用這項限制。
+
+#### Scenario: 分店客服觸發 AI agent
+- **WHEN** 只能看「分店 LINE」與網站客服的客服，在分店 LINE 的對話觸發 AI agent，這位客人歸戶後在「總部 FB」與網站客服也有訊息
+- **THEN** AI 收到的其他渠道訊息只包含網站客服的訊息，不包含總部 FB 的訊息
+
+#### Scenario: 客人觸發的回覆不受客服可見範圍限制
+- **WHEN** 同一位客人在分店 LINE 傳訊息，觸發 KB 自動回覆或自動化的 AI agent
+- **THEN** AI 收到的其他渠道訊息包含總部 FB 與網站客服的訊息
+
 ### Requirement: 解除合併後不再讀取對方的訊息
 系統 SHALL 以讀取當下聯絡人擁有的對話決定其他渠道的訊息。合併被解除、對話搬回原聯絡人之後，AI 回覆 SHALL NOT 再讀到那些對話的訊息。
 

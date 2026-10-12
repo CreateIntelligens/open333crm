@@ -14,6 +14,7 @@ import { executeAgentTool, getAgentToolDefinitions } from './tool-registry.js';
 import { runAgent, type AgentRunResult, type AgentRunStore } from './runner.js';
 import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { loadOtherChannelContext, withOtherChannelContext } from '../other-channel-context.js';
+import type { AccessibleChannels } from '../../../services/channel-visibility.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
 
 export const AGENT_SYSTEM_PROMPT =
@@ -35,6 +36,8 @@ export interface AgentReplyInput {
   receivedAt?: string;
   deliver?: boolean;
   io?: Server;
+  /** 客服在後台觸發時傳入客服的可見渠道；讀其他渠道的訊息時依此過濾。客人觸發時不傳（不限制） */
+  accessibleChannels?: AccessibleChannels;
 }
 
 export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): Promise<AgentRunResult & { handled: boolean; runId: string }> {
@@ -116,7 +119,9 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     systemPrompt: withOtherChannelContext(
       settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
       // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
-      input.conversationId ? await loadOtherChannelContext(prisma, input.tenantId, input.conversationId) : '',
+      input.conversationId
+        ? await loadOtherChannelContext(prisma, input.tenantId, input.conversationId, undefined, input.accessibleChannels)
+        : '',
     ),
     userMessage: input.userMessage,
     history: history.map((message) => ({ ...message })),

@@ -5,6 +5,7 @@
  * 是在這個渠道說的。一律以「聯絡人目前擁有的對話」查詢，合併解除、對話搬回原聯絡人後自然讀不到。
  */
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { ALL_CHANNELS, channelIdWhereFilter, type AccessibleChannels } from '../../services/channel-visibility.js';
 import { AI_HISTORY_FETCH_FACTOR, toAiHistory } from '../identity-binding/ai-guard.js';
 import { channelLabel } from '../identity-binding/binding-links.js';
 
@@ -23,19 +24,25 @@ function ago(ms: number): string {
   return `${Math.floor(hours / 24)} 天前`;
 }
 
-/** 回傳要附在系統指示後面的文字；沒有其他渠道的訊息時回空字串 */
+/**
+ * 回傳要附在系統指示後面的文字；沒有其他渠道的訊息時回空字串。
+ * @param accessibleChannels 客服在後台觸發 AI 時傳入客服的可見渠道：AI 的回答會給客服看，
+ *   不可透過 AI 讀到客服看不到的渠道（CM-173）。回覆對象是客人本人時（KB 自動回覆、自動化觸發）不限制
+ */
 export async function loadOtherChannelContext(
   db: TenantDb,
   tenantId: string,
   conversationId: string,
   now: number = Date.now(),
+  accessibleChannels: AccessibleChannels = ALL_CHANNELS,
 ): Promise<string> {
+  const channelId = channelIdWhereFilter(accessibleChannels);
   const current = await db.conversation.findFirst({ where: { id: conversationId, tenantId }, select: { contactId: true } });
   if (!current) return '';
 
   const rows = await db.message.findMany({
     where: {
-      conversation: { tenantId, contactId: current.contactId, id: { not: conversationId } },
+      conversation: { tenantId, contactId: current.contactId, id: { not: conversationId }, ...(channelId ? { channelId } : {}) },
       createdAt: { gte: new Date(now - OTHER_CHANNEL_WINDOW_MS) },
     },
     orderBy: { createdAt: 'desc' },

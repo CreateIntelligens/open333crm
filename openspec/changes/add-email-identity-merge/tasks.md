@@ -94,6 +94,7 @@
 - [x] 11.7 合併後重設 email 欄位、改選他人時不寫入 email（頁面層 `contact-detail-page.test.tsx`）；切換對話時清空其他渠道的對話；傳送結果只顯示在原對話；設定儲存後清除收件匣快取；測試改用 `assert.ok(x === null)`
 - [x] 11.8 PR Agent 審查：email 關鍵字衝突改對合併後要儲存的設定檢查，沒送 email 關鍵字時也擋得下（`identity-binding-settings-schema.test.ts`）；通知逐則處理，一則拋錯不影響其他則（`email-registration.test.ts`）；比對最早聯絡人時以 id 作第二排序
 - [x] 11.9 PR Agent 第二輪：補設定路由的整合測試 `apps/api/tests/feature/modules/settings/identity-binding-settings-route.test.ts`（沒送 email 欄位沿用、合併後衝突回 400 且 `path` 為字串，與全站 Zod 錯誤格式一致）
+- [x] 11.10 PR #248 review（yunfish0302）：客服觸發 `/ai/agent/run` 時，其他渠道的訊息依客服的可見渠道過濾。測試：`ai-routes-channel-scope.test.ts`（路由傳入可見渠道）、`other-channel-context-wiring.test.ts`（Agent 轉交）、feature `other-channel-context.test.ts`「客服觸發時只讀客服看得到的渠道」，皆先失敗
 
 ## 突變驗證
 
