@@ -173,6 +173,15 @@ test.describe('@inbox 收件匣功能層', () => {
         Math.round(box!.x + box!.width),
         `寬 ${width} 時，右側面板的「建立工單」按鈕右緣超出畫面`,
       ).toBeLessThanOrEqual(width);
+      // 主區域內的三欄合計不可超過主區域（超過的部分被 overflow-hidden 切掉，不只單一按鈕）
+      const overflow = await page
+        .locator('main')
+        .first()
+        .evaluate((main) => {
+          const row = main.firstElementChild as HTMLElement | null;
+          return row ? row.scrollWidth - main.clientWidth : 0;
+        });
+      expect(overflow, `寬 ${width} 時，收件匣主區域橫向溢出 ${overflow}px`).toBeLessThanOrEqual(0);
     }
   });
 
