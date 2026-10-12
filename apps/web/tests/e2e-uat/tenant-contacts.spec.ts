@@ -257,8 +257,9 @@ test.describe('@contacts 聯絡人功能', () => {
     expect(error?.code).toBe('SAME_CHANNEL_CONFLICT');
     expect(error?.details?.channels?.length, 'details.channels 應列出衝突的渠道').toBeGreaterThan(0);
 
-    // 視窗維持開啟並顯示 API 的原因
-    await expect(dialog.getByText(/都有帳號，合併後回覆會送錯人，無法合併/)).toBeVisible();
+    // 視窗維持開啟並顯示 API 回傳的原因（比對 API 的 message，不寫死文案）
+    expect(error?.message, 'API 應回傳拒絕原因').toBeTruthy();
+    await expect(dialog.getByText(error.message, { exact: true })).toBeVisible();
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: '取消' }).click();
     await expect(dialog).toBeHidden();
