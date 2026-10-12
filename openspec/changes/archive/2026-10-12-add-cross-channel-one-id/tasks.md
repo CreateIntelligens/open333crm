@@ -3,7 +3,7 @@
 - [x] 0.1 查證 FB `m.me?ref=`：既有對話送 `messaging_referrals`、新對話 ref 附在 Get Started postback（Meta 官方文件，已寫入 design D4）
 - [x] 0.2 查證 IG `ig.me?ref=`：既有對話送 `messaging_referral`、新對話 ref 附在第一次互動、不支援網頁版、App 須 Live（Meta 官方文件，已寫入 design D4）
 - [x] 0.3 LINE 非好友須先加好友（使用者確認），導流改兩步（design D6）
-- [ ] 0.4 UAT 真機驗證：FB/IG 新舊對話四種情境與 LINE 加好友流程的實際體驗，確認說明文字與純文字代碼退路可用
+- [x] 0.4 部分驗證，其餘移至 #253（2026-10-12 UAT 驗到綁定代碼合併的自助解除與雙邊通知）：UAT 真機驗證：FB/IG 新舊對話四種情境與 LINE 加好友流程的實際體驗，確認說明文字與純文字代碼退路可用
 
 ## 1. P0：移除 fan/auth 漏洞
 
@@ -77,49 +77,49 @@
 
 - [x] 9.1.1 push 分支並開 PR（PR #185，已 merge）
 - [x] 9.1.2 UAT 部署（2026-10-01 查證：兩支 migration 已套用，LINE 與 FB 渠道已有導流識別；IG333 因權杖解不開尚無，見 uat-checklist.md P2）：2 支 migration（`20260929100000_add_contact_merge_log`、`20260929110000_add_identity_binding_settings`）、跑 `backfill-binding-handles.ts` 補抓既有渠道導流識別（見 design.md Migration Plan）
-- [ ] 9.1.3 UAT 真機驗證（即 0.4，清單見 `uat-checklist.md`）：FB／IG 新舊對話四種情境、LINE 加好友流程、**兌換後回覆「確認綁定」的確認步驟**、解除綁定、客服代發按鈕
+- [x] 9.1.3 部分驗證，其餘移至 #253（同 0.4）：UAT 真機驗證（即 0.4，清單見 `uat-checklist.md`）：FB／IG 新舊對話四種情境、LINE 加好友流程、**兌換後回覆「確認綁定」的確認步驟**、解除綁定、客服代發按鈕
 - [x] 9.1.5 測試：AI 回覆與知識庫自動回覆的歷史排除綁定訊息、遮蔽代碼；AI 回覆含代碼時換成固定說明（UAT 實測 AI 偽造代碼 `BIND-5W5PZ472M9`）
 - [x] 9.1.6 實作：`identity-binding/ai-guard.ts`，接到 `agent.service.ts` 與 `kb-autoreply.service.ts`
-- [ ] 9.1.4 第六輪 review 的修正（2b2622f）尚未再經 review；是否再跑一輪由負責人決定
+- [x] 9.1.4 移至 #253：第六輪 review 的修正（2b2622f）尚未再經 review；是否再跑一輪由負責人決定
 
 ### 9.2 demo 觀察到、尚未改善的體驗
 
-- [ ] 9.2.1 LINE「送出代碼」連結的預填中文被編碼成很長的 `%E6%88%91…`，顧客可能不敢點；考慮縮短預填文字（例如只放代碼）
-- [ ] 9.2.2 網站客服（WebChat）視窗內的網址是純文字、不能點（LINE／FB 會自動變連結，不受影響）
+- [x] 9.2.1 移至 #253：LINE「送出代碼」連結的預填中文被編碼成很長的 `%E6%88%91…`，顧客可能不敢點；考慮縮短預填文字（例如只放代碼）
+- [x] 9.2.2 移至 #253：網站客服（WebChat）視窗內的網址是純文字、不能點（LINE／FB 會自動變連結，不受影響）
 
 ### 9.3 本次發現、建議另開單（不在本 change 範圍）
 
 - [x] 9.3.1 **聯絡人路由權限守門**（2026-09-30 補上）：原本 10 條 `/api/v1/contacts/*` 路由只要登入即可讀寫（無權限角色可直接列出聯絡人、看其對話與案件）。現依 `contact.view`／`contact.update`／`contact.merge` 守門，聯絡人的對話另需 `inbox.view`、案件另需 `case.view`；路由層測試 `test:contact-routes-permission`。聯絡人層級的渠道可見性（CM-173：分店帳號只看自己渠道的聯絡人）仍未處理，見 9.3.8
-- [ ] 9.3.2 Redis 連線單例重複：passkey、downstream-loop-guard、identity-binding 各自 `new IORedis`，建議抽共用 client
-- [ ] 9.3.3 移除 `fan/auth` 後暫無簽發 fan token 的路徑，粉絲門戶受保護路由（活動、點數）暫不可用；待優惠券分支 Account Link 或 P2 會員登入頁接上
+- [x] 9.3.2 移至 #253：Redis 連線單例重複：passkey、downstream-loop-guard、identity-binding 各自 `new IORedis`，建議抽共用 client
+- [x] 9.3.3 移至 #253：移除 `fan/auth` 後暫無簽發 fan token 的路徑，粉絲門戶受保護路由（活動、點數）暫不可用；待優惠券分支 Account Link 或 P2 會員登入頁接上
 - [x] 9.3.4 `check-prisma-admin-usage --strict` 在 main 上就失敗（shortlink-redirect、portal-public 共 5 處），非本次造成。2026-10-06 修正 RLS-07：短連結轉址加進白名單並註明理由，粉絲門戶改用 `withTenant`、不再使用 `prismaAdmin`，`--strict` 通過
-- [ ] 9.3.5 `.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
-- [ ] 9.3.6 Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
+- [x] 9.3.5 不在本 change 追蹤，CI 是否恢復由大衛決定：`.github/workflows/ci.yml` 已被刪除（AGENTS.md 已記載），租戶隔離檢查與 RLS 整合測試目前沒有 CI 在跑
+- [x] 9.3.6 移至 #253：Web 的 ESLint 設定在本機載入失敗（模組解析錯誤），前端只能靠 tsc 檢查
 - [x] 9.3.8 聯絡人的對話／案件／時間軸已套用 CM-173 渠道可見性（2026-09-30）
-- [ ] 9.3.9 聯絡人**列表與詳情**本身仍未依渠道過濾：分店帳號看得到其他渠道顧客的聯絡人基本資料（跨渠道聯絡人的歸屬規則需另行設計）。**已先收掉**：列表與詳情回傳的「渠道身份」只列出可見渠道，不再洩漏其他渠道的名稱、uid、暱稱；聯絡人本身是否列出仍待設計。MCP 工具的渠道可見性已補（見 9.3.10）
+- [x] 9.3.9 移至 #253：聯絡人**列表與詳情**本身仍未依渠道過濾：分店帳號看得到其他渠道顧客的聯絡人基本資料（跨渠道聯絡人的歸屬規則需另行設計）。**已先收掉**：列表與詳情回傳的「渠道身份」只列出可見渠道，不再洩漏其他渠道的名稱、uid、暱稱；聯絡人本身是否列出仍待設計。MCP 工具的渠道可見性已補（見 9.3.10）
 - [x] 9.3.10 **MCP 工具套用 CM-173**（既有缺口，原本任何持有 CLI token 的分店帳號可經 MCP 讀其他渠道資料、對看不到的渠道發 LINE）：`mcp.routes.ts` 依 request 建立 `McpChannelAccess` 傳進 `createMcpServer`；聯絡人搜尋／詳情、案件列表、對話列表只回可見渠道，單筆案件／對話渠道不可見時丟出與「查無資料」相同的例外（回應無法區分他店與不存在；direct send 以 channelId+contactId 查對話時亦同），LINE direct send 預覽與確認送出前各檢查一次回覆層級（先守門再記 confirmed，被擋記 rejected），權限解析失敗回通用錯誤不外洩內部訊息。`case.service`／`conversation.service`／`channel.service` 的 `accessibleChannels` 改必填（「指派用渠道清單」明確傳 ALL_CHANNELS）。測試：`mcp.routes.test.ts`（注入解析，逐工具突變驗證）、`mcp-channel-visibility.test.ts`（正式接線＋真資料庫）
-- [ ] 9.3.11 仍未套 CM-173 的地方（REST 與 MCP 行為一致，屬既有狀態）：①單筆對話／案件回傳的 `contact.channelIdentities` 含其他渠道身份（`getConversation`／`getCase` 的 include 未過濾）②群發（marketing broadcast）與報表（analytics）不依渠道限制，MCP `crm_line_broadcast_initiate`／`crm_line_get_broadcast`／統計工具亦同
-- [ ] 9.3.7 API 啟動 log 寫「Registered channel plugins: LINE, FB, WEBCHAT」漏了 THREADS（實際有註冊，僅文字過時）
+- [x] 9.3.11 移至 #253：仍未套 CM-173 的地方（REST 與 MCP 行為一致，屬既有狀態）：①單筆對話／案件回傳的 `contact.channelIdentities` 含其他渠道身份（`getConversation`／`getCase` 的 include 未過濾）②群發（marketing broadcast）與報表（analytics）不依渠道限制，MCP `crm_line_broadcast_initiate`／`crm_line_get_broadcast`／統計工具亦同
+- [x] 9.3.7 移至 #253：API 啟動 log 寫「Registered channel plugins: LINE, FB, WEBCHAT」漏了 THREADS（實際有註冊，僅文字過時）
 
 ### 9.4 與其他分支的交集
 
-- [ ] 9.4.1 優惠券分支 `feat/coupon-system` rebase 後：把 `CouponInstance`（帶 contactId）加入 `contact-merge.service.ts` 搬移清單與解除搬回；更新該 change 的 D6「不做跨渠道歸戶」描述
+- [x] 9.4.1 移至 #253：優惠券分支 `feat/coupon-system` rebase 後：把 `CouponInstance`（帶 contactId）加入 `contact-merge.service.ts` 搬移清單與解除搬回；更新該 change 的 D6「不做跨渠道歸戶」描述
 
 ### 9.5 後續階段（另開 change）
 
-- [ ] 9.5.1 P2：會員登入頁（比對客戶會員 API／串客戶自家登入）→ 登入後發綁定代碼
-- [ ] 9.5.2 P3：簡訊／Email OTP、LIFF 版綁定頁、後台身分衝突清單、手機重複合併建議（`detectPhoneDuplicates` 目前無呼叫者）
+- [x] 9.5.1 移至 #253：P2：會員登入頁（比對客戶會員 API／串客戶自家登入）→ 登入後發綁定代碼
+- [x] 9.5.2 移至 #253：P3：簡訊／Email OTP、LIFF 版綁定頁、後台身分衝突清單、手機重複合併建議（`detectPhoneDuplicates` 目前無呼叫者）
 
 ### 9.6 測試覆蓋缺口
 
-- [ ] 9.6.1 缺路由層測試：`/channels/:id/binding-handle` 非法 id 回 400、`/contacts/:id/binding-link` 的 CM-173 渠道存取守門（聯絡人路由的權限守門已有 `test:contact-routes-permission`）
-- [ ] 9.6.2 `inTransaction` 擋 tenant-scoped client 的守門、stitcher 排除封存聯絡人，目前沒有專屬測試
+- [x] 9.6.1 移至 #253：缺路由層測試：`/channels/:id/binding-handle` 非法 id 回 400、`/contacts/:id/binding-link` 的 CM-173 渠道存取守門（聯絡人路由的權限守門已有 `test:contact-routes-permission`）
+- [x] 9.6.2 移至 #253：`inTransaction` 擋 tenant-scoped client 的守門、stitcher 排除封存聯絡人，目前沒有專屬測試
 
 ### 9.7 本機環境（demo 用，驗證完需清理）
 
-- [ ] 9.7.1 本機仍在執行：API（3001）、前端 dev（3002）；3000 是 9/15 起的舊 next-server（非本次啟動）
-- [ ] 9.7.2 本機 DB 有兩個 demo 假渠道（名稱含「demo 用可刪」）與 demo 期間產生的聯絡人／對話；租戶設定 `identityBinding` 目前為**開啟**，清理時改回 `{}`
+- [x] 9.7.1 不再追蹤（本機 demo 環境，與上線無關）：本機仍在執行：API（3001）、前端 dev（3002）；3000 是 9/15 起的舊 next-server（非本次啟動）
+- [x] 9.7.2 不再追蹤（本機 demo 環境，與上線無關）：本機 DB 有兩個 demo 假渠道（名稱含「demo 用可刪」）與 demo 期間產生的聯絡人／對話；租戶設定 `identityBinding` 目前為**開啟**，清理時改回 `{}`
 
 ### 9.8 歸檔後（#217 主規格盤點）
 
-- [ ] 9.8.1 本 change 歸檔、兩條 `inbound-message-processing` 需求（「Identity binding intercept precedes greeting and automation」「FB and Instagram referral events are parsed」）補進主規格後，刪除主規格中 5 條重構時寫的相容性需求（「Process inbound message facade remains compatible」「Inbound message behavior remains unchanged」「Postback intercept behavior remains unchanged」「Processing reuses caller-provided Prisma and per-message objects」「Refactor does not alter external contracts」），並改寫 Purpose。在本 change 歸檔前刪除，規格會沒有任何需求，`openspec validate --specs --strict` 會失敗
+- [x] 9.8.1 移至 #217（主規格盤點；刪除主規格需求須另開 change 以 REMOVED delta 處理，不在歸檔 PR 手動刪）：本 change 歸檔、兩條 `inbound-message-processing` 需求（「Identity binding intercept precedes greeting and automation」「FB and Instagram referral events are parsed」）補進主規格後，刪除主規格中 5 條重構時寫的相容性需求（「Process inbound message facade remains compatible」「Inbound message behavior remains unchanged」「Postback intercept behavior remains unchanged」「Processing reuses caller-provided Prisma and per-message objects」「Refactor does not alter external contracts」），並改寫 Purpose。在本 change 歸檔前刪除，規格會沒有任何需求，`openspec validate --specs --strict` 會失敗

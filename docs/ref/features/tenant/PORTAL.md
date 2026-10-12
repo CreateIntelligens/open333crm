@@ -18,7 +18,7 @@
 
 租戶後台的前端頁面有活動管理、提交紀錄與積分管理。粉絲端的前端不在這個 repo，`/api/v1/fan` 沒有已知的呼叫端。
 
-**粉絲端目前無法使用。** 系統目前沒有簽發粉絲 token 的路徑，因此粉絲端的每條路由都會回 401。原本簽發 token 的 `POST /api/v1/fan/auth` 不驗證身分，已在 `481452a`（2026-09-30）刪除。`openspec/changes/add-cross-channel-one-id/tasks.md` 的 9.3.3 預計接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。
+**粉絲端目前無法使用。** 系統目前沒有簽發粉絲 token 的路徑，因此粉絲端的每條路由都會回 401。原本簽發 token 的 `POST /api/v1/fan/auth` 不驗證身分，已在 `481452a`（2026-09-30）刪除。issue #253（原 `add-cross-channel-one-id` tasks 9.3.3）追蹤接回簽發路徑，由優惠券分支的 Account Link 或之後的會員登入頁簽發。
 
 ## 活動
 
