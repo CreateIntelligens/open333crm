@@ -109,8 +109,9 @@ const escalateSchema = z.object({
   note: z.string().max(500).optional(),
   newPriority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   assigneeId: z.string().uuid().optional(),
-  // 升級通知對象：主管與管理員、升級前的指派人（升級視窗的兩個勾選）
-  notifyTargets: z.array(z.enum(['supervisor', 'original_assignee'])).optional(),
+  // 升級通知對象：主管與管理員、升級前的指派人、團隊（升級視窗的三個勾選）。
+  // team 目前沒有收件人（系統沒有「通知團隊」的實作），只接受、不通知
+  notifyTargets: z.array(z.enum(['supervisor', 'original_assignee', 'team'])).optional(),
 });
 
 const addNoteSchema = z.object({
