@@ -72,22 +72,22 @@ test.describe('@contacts 聯絡人功能', () => {
   /** 開自種訪客的詳情頁並等主要內容渲染完（Topbar + 聯絡人資訊卡） */
   async function gotoContactDetail(page: Page, contactId: string) {
     await gotoAndCheck(page, `/dashboard/contacts/${contactId}`);
-    await expect(page.getByText('聯繫人詳情').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('聯絡人詳情').first()).toBeVisible({ timeout: 15_000 });
   }
 
   // ── 1. 列表頁載入（唯讀，用既有真實資料） ─────────────────────────────
   test('@contacts 列表頁載入：表格有資料列、分頁資訊存在', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/contacts');
-    await expect(page.getByText('聯繫人').first()).toBeVisible();
+    await expect(page.getByText('聯絡人').first()).toBeVisible();
 
     // 等 loading spinner 結束：出現資料列或空狀態其中之一
     const rows = page.locator('tbody tr');
     await expect(
-      rows.first().or(page.getByText('找不到聯繫人')),
+      rows.first().or(page.getByText('找不到聯絡人')),
       '列表既沒有資料列也沒有空狀態',
     ).toBeVisible({ timeout: 15_000 });
 
-    if (await page.getByText('找不到聯繫人').isVisible().catch(() => false)) {
+    if (await page.getByText('找不到聯絡人').isVisible().catch(() => false)) {
       test.skip(true, 'UAT 聯絡人列表為空（excludeChannelType=WEBCHAT 後無資料），無法做唯讀驗證');
     }
 
@@ -113,17 +113,17 @@ test.describe('@contacts 聯絡人功能', () => {
   test('@contacts 列表搜尋：以第一列聯絡人名前兩字搜尋，結果包含該名', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/contacts');
     const rows = page.locator('tbody tr');
-    await expect(rows.first().or(page.getByText('找不到聯繫人'))).toBeVisible({ timeout: 15_000 });
-    if (await page.getByText('找不到聯繫人').isVisible().catch(() => false)) {
+    await expect(rows.first().or(page.getByText('找不到聯絡人'))).toBeVisible({ timeout: 15_000 });
+    if (await page.getByText('找不到聯絡人').isVisible().catch(() => false)) {
       test.skip(true, 'UAT 聯絡人列表為空，無法做搜尋驗證');
     }
 
-    // 第一欄是「聯繫人」名（Avatar + span）
+    // 第一欄是「聯絡人」名（Avatar + span）
     const firstName = (await rows.first().locator('td').first().innerText()).trim();
     expect(firstName, '第一列取不到聯絡人名').toBeTruthy();
     const keyword = firstName.slice(0, 2);
 
-    await page.getByPlaceholder('搜尋聯繫人...').fill(keyword);
+    await page.getByPlaceholder('搜尋聯絡人...').fill(keyword);
     // SearchInput debounce 300ms + API 往返，等含關鍵字的結果列出現
     await expect(
       page.locator('tbody tr', { hasText: keyword }).first(),
@@ -194,15 +194,15 @@ test.describe('@contacts 聯絡人功能', () => {
 
   /** 走合併精靈 Step 1（搜尋+選取次要方）→ Step 2（預覽），停在預覽畫面 */
   async function openMergeWizardToPreview(page: Page) {
-    await page.getByRole('button', { name: '合併聯繫人' }).click();
+    await page.getByRole('button', { name: '合併聯絡人' }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('合併聯繫人').first()).toBeVisible();
-    await expect(dialog.getByText('主要聯繫人（保留）')).toBeVisible();
+    await expect(dialog.getByText('合併聯絡人').first()).toBeVisible();
+    await expect(dialog.getByText('主要聯絡人（保留）')).toBeVisible();
 
     // 用次要方名稱的尾碼搜尋（Chatbox Visitor 的最後 6 碼較唯一）；
     // 合併 Modal 的 /contacts?q= 不排除 WEBCHAT，搜得到自種訪客
     const suffix = visitorB.contactName.split(' ').pop() ?? visitorB.contactName;
-    await dialog.getByPlaceholder('搜尋聯繫人...').fill(suffix);
+    await dialog.getByPlaceholder('搜尋聯絡人...').fill(suffix);
     await dialog
       .locator('button', { hasText: visitorB.contactName })
       .first()
