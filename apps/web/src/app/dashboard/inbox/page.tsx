@@ -114,7 +114,8 @@ export default function InboxPage() {
       </div>
 
       {/* Center panel - Chat Window */}
-      <div className="relative flex-1">
+      {/* min-w-0：flex 子項預設不會縮到比內容窄，聊天區撐寬時會把右側面板擠出畫面、被切掉 */}
+      <div className="relative min-w-0 flex-1">
         <ChatWindow
           conversation={chatConversation}
           onShowAiSuggest={() => setShowAiSuggest((v) => !v)}

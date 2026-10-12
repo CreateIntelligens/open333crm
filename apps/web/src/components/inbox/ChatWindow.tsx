@@ -199,10 +199,11 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   return (
     <div className="relative flex h-full flex-col">
       {/* Chat Header */}
-      <div className="flex items-center gap-3 border-b px-4 py-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold">
+      {/* 收件匣在 1280 寬時聊天區只剩約 400px：允許換行、名稱截斷，避免撐寬把右側面板擠出畫面 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="min-w-0 max-w-full truncate font-semibold">
               {conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人'}
             </h3>
             <ChannelLabel
