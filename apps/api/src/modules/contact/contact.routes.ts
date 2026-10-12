@@ -38,7 +38,15 @@ const listQuerySchema = z.object({
 
 const updateContactSchema = z.object({
   displayName: z.string().trim().min(1, '名稱不可為空白').max(200, '名稱不可超過 200 字').optional(),
-  phone: z.string().nullable().optional(),
+  // 只限字元與長度（國際號碼、分機都能存），不判斷國碼或位數；純空白視為清除
+  phone: z
+    .string()
+    .trim()
+    .max(30, '電話不可超過 30 字')
+    .regex(/^[0-9+\-()# ]*$/, '電話只能包含數字、空白與 + - ( ) #')
+    .transform((v) => (v === '' ? null : v))
+    .nullable()
+    .optional(),
   email: z.string().trim().email().nullable().optional(),
   language: z.string().optional(),
   isBlocked: z.boolean().optional(),

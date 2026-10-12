@@ -84,7 +84,7 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 | `botConfig` | 機器人的行為 | 見[收件匣與對話](./INBOX.md#機器人什麼時候回覆) |
 | `firstContactGreeting` | 聯絡人第一次進站時的招呼語 | 空字串代表不送 |
 | `downstreamWebhook` | 轉發給下游 | 見上方 |
-| `liffId` | LINE LIFF 的 ID | 短連結靠它辨識點擊者，見[短連結](./SHORTLINKS.md) |
+| `liffConfig.liffId` | LINE LIFF 的 ID | 短連結靠它辨識點擊者，見[短連結](./SHORTLINKS.md)。儲存時去頭尾空白並檢查格式（10 位數字、`-`、8 個英數字，例如 `1234567890-AbcdEfgh`），不符回 400；空字串表示清除 |
 
 ## 網站聊天室
 

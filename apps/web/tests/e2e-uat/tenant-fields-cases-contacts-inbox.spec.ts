@@ -841,9 +841,9 @@ test.describe('工單 — 升級 Modal 欄位', () => {
     });
   });
 
-  test.fail('[BUG-W6-06] escalate notifyTargets 應為列舉，目前接受任意字串', async () => {
-    // notifyTargets: z.array(z.string()) — 前端只會送 supervisor/original_assignee/team，
-    // 後端卻接受任何字串陣列，通知路由端只能靠下游默默忽略。
+  test('[BUG-W6-06 已修] escalate notifyTargets 應為列舉', async () => {
+    // 修正前：notifyTargets 是 z.array(z.string())，任何字串都收，而且通知 worker 根本不讀它。
+    // 現在只接受 supervisor／original_assignee，並依勾選通知（change fix-w6-field-validation）。
     const id = await createCase(`${E2E_PREFIX} 通知對象缺口 ${RUN}`);
     if (agentId) await api.post(`cases/${id}/assign`, { data: { assigneeId: agentId } });
     await apiFieldCheck(api, {
@@ -1179,8 +1179,9 @@ test.describe('聯絡人 — 欄位', () => {
     });
   });
 
-  test.fail('[BUG-W6-08] 聯絡人 phone 應有格式與長度驗證（目前 z.string() 全開）', async () => {
-    // phone: z.string().nullable().optional() — 任何字串都收，包含 5000 字與 <script>。
+  test('[BUG-W6-08 已修] 聯絡人 phone 應有格式與長度驗證', async () => {
+    // 修正前：phone 是 z.string()，任何字串都收，包含 5000 字與 <script>。
+    // 現在去頭尾空白後最多 30 字，只能有數字、空白與 + - ( ) #（change fix-w6-field-validation）。
     await apiFieldCheck(api, {
       path: `contacts/${seeded.contactId}`,
       method: 'patch',

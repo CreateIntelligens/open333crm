@@ -35,7 +35,7 @@
 | --- | --- | --- | --- |
 | 客人傳訊息 | `new_message` | 對話已指派時通知負責人；未指派時通知所有 `ADMIN` 與 `SUPERVISOR` | `message.received` |
 | 工單被指派 | `case_assigned` | 被指派的成員 | `case.assigned` |
-| 工單升級 | `case_escalated` | 所有 `ADMIN` 與 `SUPERVISOR` | `case.escalated` |
+| 工單升級 | `case_escalated` | 依升級對話框的勾選：所有 `ADMIN` 與 `SUPERVISOR`、升級前的負責人，見[工單](./CASES.md#升級) | `case.escalated` |
 | CSAT 兩分以下 | `csat_low_score` | 所有 `SUPERVISOR`，不含 `ADMIN` | `recordCsatScore()` |
 | SLA 預警與逾時 | `sla_warning`、`sla_breached` | 見[服務水準協議](../SLA.md) | workers |
 | AI 額度達 80% 或 100% | `usage_quota_warning`、`usage_quota_critical` | 所有 `ADMIN`，另外寄 email | `usage.quota.threshold` |
