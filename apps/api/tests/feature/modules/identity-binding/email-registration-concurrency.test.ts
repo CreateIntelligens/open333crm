@@ -15,6 +15,7 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { withTenant, type TenantDb } from '#src/lib/tenant-db.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
+import { waitForLockWait } from '#tests/support/wait-for-lock-wait.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import type { BindingActor } from '#src/modules/identity-binding/binding-common.js';
 import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
@@ -27,8 +28,8 @@ import {
 const prisma = new PrismaClient();
 const T = TENANT_A;
 const stamp = Date.now();
-/** 後開的交易被鎖擋住時，等這麼久再放開前一個交易（足以讓它走到鎖） */
-const HOLD_MS = 1000;
+/** 不該被擋住的交易，最多等這麼久完成 */
+const NOT_BLOCKED_TIMEOUT_MS = 10_000;
 
 const created = { channels: [] as string[], contacts: [] as string[], uids: [] as string[] };
 const db = <R>(fn: (tx: TenantDb) => Promise<R>) => withTenant(prisma, T, fn);
@@ -90,10 +91,16 @@ async function tokenFor(actor: BindingActor): Promise<string> {
 }
 
 /**
- * 先在交易 1 送出 first，停在提交前；交易 1 做完後才開始交易 2 送出 second，HOLD_MS 後放開交易 1。
+ * 先在交易 1 送出 first，停在提交前；交易 1 做完後才開始交易 2 送出 second。
+ * secondBlocks：交易 2 應卡在交易 1 的鎖上——確認它在等鎖後才放開交易 1；
+ * 否則等交易 2 自己完成（逾時就放開）再放開交易 1。
  * 回傳兩邊的結果與交易 2 是否在交易 1 提交前就完成。
  */
-async function raceSubmit(first: { token: string; email: string }, second: { token: string; email: string }) {
+async function raceSubmit(
+  first: { token: string; email: string },
+  second: { token: string; email: string },
+  { secondBlocks }: { secondBlocks: boolean },
+) {
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
   let firstDone!: () => void;
@@ -114,7 +121,11 @@ async function raceSubmit(first: { token: string; email: string }, second: { tok
     secondFinishedBeforeFirstCommit = !firstCommitted;
     return out;
   });
-  await new Promise((r) => setTimeout(r, HOLD_MS));
+  if (secondBlocks) {
+    await waitForLockWait(prisma);
+  } else {
+    await Promise.race([tx2.catch(() => {}), new Promise((r) => setTimeout(r, NOT_BLOCKED_TIMEOUT_MS))]);
+  }
   release();
   const [r1, r2] = await Promise.allSettled([tx1, tx2]);
   return { r1, r2, secondFinishedBeforeFirstCommit };
@@ -160,7 +171,8 @@ test('合併時才發現同一渠道：登記方 channel_conflict、email 不變
   });
   await firstMerged;
   const tx2 = db((tx) => submitEmailRegistration(tx, deps, t2, email));
-  await new Promise((r) => setTimeout(r, HOLD_MS));
+  // 登記方通過合併前檢查（看不到還沒提交的合併），卡在 B 的列鎖上，才放開客服的合併
+  await waitForLockWait(prisma);
   release();
   const [r1, r2] = await Promise.allSettled([tx1, tx2]);
 
@@ -188,7 +200,7 @@ test('兩位聯絡人同時登記同一個新的 email：完成後是同一位�
   const ta = await tokenFor(a);
   const tb = await tokenFor(b);
 
-  const { r1, r2 } = await raceSubmit({ token: ta, email }, { token: tb, email });
+  const { r1, r2 } = await raceSubmit({ token: ta, email }, { token: tb, email }, { secondBlocks: true });
   assert.equal(r1.status, 'fulfilled');
   assert.equal(r2.status, 'fulfilled');
 
@@ -209,6 +221,7 @@ test('不同 email 不互相等待：各自完成、不合併', async () => {
   const { r1, r2, secondFinishedBeforeFirstCommit } = await raceSubmit(
     { token: ta, email: `amy-${stamp}@example.com` },
     { token: tb, email: `bob-${stamp}@example.com` },
+    { secondBlocks: false },
   );
   assert.equal(r1.status === 'fulfilled' && r1.value.result.status, 'registered');
   assert.equal(r2.status === 'fulfilled' && r2.value.result.status, 'registered');

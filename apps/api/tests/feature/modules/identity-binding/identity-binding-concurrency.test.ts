@@ -13,6 +13,7 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { withTenant, type TenantDb } from '#src/lib/tenant-db.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
+import { waitForLockWait } from '#tests/support/wait-for-lock-wait.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import { extractBindingCode } from '#src/modules/identity-binding/binding-code.js';
 import { BINDING_TEXT } from '#src/modules/identity-binding/binding-links.js';
@@ -27,7 +28,6 @@ import {
 const prisma = new PrismaClient();
 const T = TENANT_A;
 const stamp = Date.now();
-const HOLD_MS = 1000;
 
 const created = { channels: [] as string[], contacts: [] as string[], uids: [] as string[] };
 const db = <R>(fn: (tx: TenantDb) => Promise<R>) => withTenant(prisma, T, fn);
@@ -123,7 +123,8 @@ test('確認時另一個綁定剛完成：後確認的一方收到同一渠道�
   });
   await firstConfirmed;
   const tx2 = db((tx) => confirmBinding(tx, deps, a2));
-  await new Promise((r) => setTimeout(r, HOLD_MS));
+  // 後確認的一方通過確認前檢查，卡在發碼方的列鎖上，才放開先確認的一方
+  await waitForLockWait(prisma);
   release();
   const [r1, r2] = await Promise.allSettled([tx1, tx2]);
 
