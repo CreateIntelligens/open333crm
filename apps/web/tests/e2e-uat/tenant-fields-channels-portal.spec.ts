@@ -93,6 +93,13 @@ test.describe('CM-171 / CM-172 UAT 現況驗證', () => {
     expect(hit, '新建活動應出現在列表（不應靜默回空）').toBe(true);
   });
 
+  test('短連結列表 limit 上限為 100：101 回 400', async () => {
+    const ok = await api.get('shortlinks', { params: { limit: '100' } });
+    expect(ok.status(), 'limit=100 應被接受').toBe(200);
+    const over = await api.get('shortlinks', { params: { limit: '101' } });
+    expect(over.status(), 'limit=101 超過上限應回 400').toBe(400);
+  });
+
   test('CM-171 短連結 admin API 已修復：建立後列表讀得回', async () => {
     const created = await createLink({
       targetUrl: 'https://example.com/cm171',
@@ -108,7 +115,7 @@ test.describe('CM-171 / CM-172 UAT 現況驗證', () => {
   });
 
   /**
-   * ⚠️ P0 — CM-171 只修了 admin routes，公開轉址仍壞。
+   * 回歸測試（原 P0，已修）。修正前：CM-171 只修了 admin routes，公開轉址仍壞。
    * shortlink-redirect.routes.ts 的 getLinkForRedirect(app.prisma, slug) 用的是
    * **未綁租戶的 app.prisma**，RLS 下查不到任何 link → 一律走 renderExpiredPage() 回 404。
    * 結果：所有已發出去的短連結全部失效，點擊數也記不到（/s/track 回 410）。
@@ -193,7 +200,7 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   });
 
   /**
-   * ⚠️ P1 — 後端對 targetUrl 完全沒有格式驗證。
+   * 回歸測試（原 P1，已修）。修正前：後端對 targetUrl 完全沒有格式驗證。
    * shortlink.routes.ts 直接 `body as ...` 轉型丟進 service，沒有任何 zod schema。
    * 前端也只有 `if (!targetUrl) return`（非空即可）。
    */
@@ -208,11 +215,10 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   );
 
   /**
-   * ⚠️ P1（安全性）— javascript: scheme 可存入。
+   * 回歸測試（原 P1（安全性），已修）。修正前：javascript: scheme 可存入。
    * 轉址頁把 targetUrl 丟進 window.location.replace(target) 與 <noscript> 的 href，
    * 兩者都是 javascript: 的執行 sink。HTML/JS 跳脫本身有做（render-utils.ts 正確），
    * 但沒有 scheme 白名單 → 具 shortlink 建立權限者可做成點擊即執行腳本的連結。
-   * 目前因轉址頁被 RLS 擋下（上方 P0）而無法實際觸發，一旦 P0 修好即成為可利用漏洞。
    */
   test('[已修，原 P1] 目標 URL 應限制 http/https scheme', async () => {
     const r = await createLink({
@@ -231,7 +237,7 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   });
 
   /**
-   * ⚠️ P1 — slug 沒有任何字元集/長度驗證。
+   * 回歸測試（原 P1，已修）。修正前：slug 沒有任何字元集/長度驗證。
    * 含 `/` 的 slug 會讓公開路由 /s/:slug 永遠配不到（單段參數吃不到斜線），
    * 等於建出一條永遠打不開的死連結；500 字 slug 也照收。
    */
@@ -272,7 +278,7 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
     expect(JSON.stringify(second.body)).toContain('自訂代碼已經被使用');
   });
 
-  /** ⚠️ P1 — targetUrl 空字串可存入（前端擋住但後端沒擋，API 可直接繞過） */
+  /** 回歸測試（原 P1，已修）。修正前：targetUrl 空字串可存入（前端擋住但後端沒擋，API 可直接繞過） */
   test('[已修，原 P1] 後端應擋下空字串 targetUrl（前端擋控可被繞過）', async () => {
     const r = await createLink({ targetUrl: '', title: `${E2E_PREFIX} emptyurl` });
     expect(r.status, '空字串 targetUrl 應被後端擋下').toBeGreaterThanOrEqual(400);
@@ -284,7 +290,7 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   });
 
   /**
-   * ⚠️ P2 — 缺必填欄位時回傳的錯誤訊息把 Prisma 內部呼叫細節整段吐出來
+   * 回歸測試（原 P2，已修）。修正前：缺必填欄位時回傳的錯誤訊息把 Prisma 內部呼叫細節整段吐出來
    * （"Invalid `prisma.shortLink.create()` invocation: { data: { tenantId: ... } }"），
    * 洩漏 schema 結構與內部欄位名，且對使用者毫無意義。
    */
@@ -672,7 +678,7 @@ test.describe('粉絲門戶 — 積分調整欄位', () => {
   });
 
   /**
-   * ⚠️ P1 — 超出 Int32 的 amount 造成 500（未處理例外）。
+   * 回歸測試（原 P1，已修）。修正前：超出 Int32 的 amount 造成 500（未處理例外）。
    * 後端無 zod，數值直接進 Prisma Int 欄位 → 溢位炸成 INTERNAL_ERROR。
    */
   test('[已修，原 P1] 超大 amount 應回 4xx', async () => {
@@ -684,7 +690,7 @@ test.describe('粉絲門戶 — 積分調整欄位', () => {
   });
 
   /**
-   * ⚠️ P2 — 小數 amount 被靜默無條件捨去（1.5 → 1），
+   * 回歸測試（原 P2，已修）。修正前：小數 amount 被靜默無條件捨去（1.5 → 1），
    * 使用者以為加了 1.5 分實際只加 1 分，且無任何提示。
    */
   test('[已修，原 P2] 小數 amount 應被拒絕', async () => {
@@ -862,11 +868,10 @@ test.describe('渠道設定 — 欄位驗證', () => {
   });
 
   /**
-   * ⚠️ P2 — zod 的 `z.string().url()` 只是包 `new URL()`，**不限制 scheme**，
+   * 回歸測試（原 P2，已修）。修正前：zod 的 `z.string().url()` 只是包 `new URL()`，**不限制 scheme**，
    * 因此 `ftp:/x`、`javascript:...`、`mailto:...` 全部通過驗證。
    * webhookBaseUrl 會被直接串成渠道的 webhookUrl
    * （實測產出 `ftp:/x/api/v1/webhooks/webchat/<id>`），造成一條永遠收不到訊息的死 webhook。
-   * 建議：改為 `.refine(u => /^https?:\/\//.test(u))`（下游 webhook 已有此把關，此處漏掉）。
    */
   test('[已修，原 P2] webhookBaseUrl 應限制 http/https scheme', async () => {
     const res = await api.post('channels', {

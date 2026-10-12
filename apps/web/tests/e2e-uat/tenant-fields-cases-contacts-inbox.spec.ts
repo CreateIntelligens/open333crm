@@ -9,6 +9,7 @@ import {
   gotoAndCheck,
   SeededConversation,
 } from './helpers';
+import { CASE_CATEGORIES } from '@open333crm/shared';
 import {
   FieldSamples,
   boundarySamples,
@@ -62,9 +63,6 @@ let webchatChannelId = WEBCHAT_CHANNEL_ID;
 // ---------------------------------------------------------------------------
 // 後端 zod 約束（讀自 apps/api/src/modules/*，作為邊界測試的真實來源）
 // ---------------------------------------------------------------------------
-/** 工單分類，與 packages/shared/src/constants/case-categories.ts 的 CASE_CATEGORIES 相同 */
-const CASE_CATEGORIES = ['產品諮詢', '訂單問題', '退換貨', '帳號問題', '技術支援', '投訴建議', '付款問題', '物流配送', '其他'];
-
 const LIMITS = {
   caseTitle: 100, // createCaseSchema/updateCaseSchema: z.string().min(1).max(100)
   caseDescription: 2000, // z.string().max(2000)
@@ -447,13 +445,13 @@ test.describe('工單 — 建立 API 欄位驗證', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 已知 bug：標記為 expected failure，修好後 Playwright 會報 "unexpected pass"
+  // 回歸測試：Wave 6 找到的 bug，已修好（原以 test.fail 標記）。註解記錄修正前的行為
   // ─────────────────────────────────────────────────────────────────────────
 
   test(
     '[BUG-W6-01 已修] title 純空白 / 全形空白應被後端擋下',
     async () => {
-      // 前端有 .trim() 擋控，但後端 z.string().min(1) 對 "   " 判定為長度 3 → 放行。
+      // 修正前：前端有 .trim() 擋控，但後端 z.string().min(1) 對 "   " 判定為長度 3 → 放行。
       // 結果：工單標題實際存成空白，列表上顯示為空白列，無法搜尋也看不出是什麼工單。
       for (const blank of [FieldSamples.whitespace, FieldSamples.fullwidthSpace]) {
         await apiFieldCheck(api, {
@@ -467,7 +465,7 @@ test.describe('工單 — 建立 API 欄位驗證', () => {
   );
 
   test('[BUG-W6-02 已修] category 應為列舉且有長度上限', async () => {
-    // 影響：①分類篩選會被汙染 ②可塞入超長字串造成列表/報表版面爆開 ③可塞 HTML。
+    // 修正前的影響：①分類篩選會被汙染 ②可塞入超長字串造成列表/報表版面爆開 ③可塞 HTML。
     await apiFieldCheck(api, {
       path: 'cases',
       payload: { ...base(), title: `${E2E_PREFIX}cat ${RUN}`, category: `不存在的分類${strOfLength(500)}` },
@@ -667,11 +665,11 @@ test.describe('工單 — 詳情頁欄位', () => {
     const detailCats = (
       await sel.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))
     ).filter(Boolean);
-    expect(detailCats).toEqual(CASE_CATEGORIES);
+    expect(detailCats).toEqual([...CASE_CATEGORIES]);
   });
 
   test('[BUG-W6-03 已修] 備註 content 應有長度上限', async () => {
-    // 前端 Textarea 未設 maxLength，後端亦無 max → 可寫入任意長度字串。
+    // 修正前：前端 Textarea 未設 maxLength，後端亦無 max → 可寫入任意長度字串。
     // 50000 字實測成功寫入；時間軸渲染整段內容，頁面會被撐爆。
     const id = await createCase(`${E2E_PREFIX} 備註長度 ${RUN}`);
     await apiFieldCheck(api, {
@@ -683,7 +681,7 @@ test.describe('工單 — 詳情頁欄位', () => {
   });
 
   test('[BUG-W6-04 已修] 備註 content 純空白應被後端擋下', async () => {
-    // 前端有 trim 擋控，後端 min(1) 對 "   " 放行 → 時間軸出現空白備註列。
+    // 修正前：前端有 trim 擋控，後端 min(1) 對 "   " 放行 → 時間軸出現空白備註列。
     const id = await createCase(`${E2E_PREFIX} 備註空白 ${RUN}`);
     await apiFieldCheck(api, {
       path: `cases/${id}/notes`,
@@ -830,7 +828,7 @@ test.describe('工單 — 升級 Modal 欄位', () => {
   });
 
   test('[BUG-W6-05 已修] escalate reason 應有長度上限且拒絕純空白', async () => {
-    // reason: z.string().min(1) — 無 max、未 trim。
+    // 修正前：reason: z.string().min(1) — 無 max、未 trim。
     // 實測：reason="   " 成功升級，事件 metadata 存 reason:"   "，
     //       時間軸顯示空白升級原因；10000 字亦可寫入。
     const id = await createCase(`${E2E_PREFIX} 升級原因缺口 ${RUN}`);
@@ -1170,7 +1168,7 @@ test.describe('聯絡人 — 欄位', () => {
   });
 
   test('[BUG-W6-07 已修] 聯絡人 displayName 應有長度上限且拒絕純空白', async () => {
-    // updateContactSchema.displayName: z.string().min(1) — 無 max、未 trim。
+    // 修正前：updateContactSchema.displayName: z.string().min(1) — 無 max、未 trim。
     // 實測：純空白成功寫入（聯絡人在列表變成空白列）、10000 字亦成功寫入。
     await apiFieldCheck(api, {
       path: `contacts/${seeded.contactId}`,
@@ -1527,13 +1525,13 @@ test.describe('收件匣 — 欄位', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 已知 bug
+  // 回歸測試：Wave 6 找到的 bug，已修好（原以 test.fail 標記）。註解記錄修正前的行為
   // ─────────────────────────────────────────────────────────────────────────
 
   test(
     '[BUG-W6-09 已修] 送出訊息 content 應擋下空物件 / 空字串 / 缺 text',
     async () => {
-      // sendMessageSchema: { contentType: z.string().default('text'), content: z.record(z.unknown()) }
+      // 修正前：sendMessageSchema: { contentType: z.string().default('text'), content: z.record(z.unknown()) }
       // content 只要是物件就通過 —— 沒有要求 text 存在、非空、有長度上限。
       // 實測：{}、{text:""}、{text:"   "}、{foo:"bar"} 全部回 201 並以 OUTBOUND 存入對話。
       // 影響：客服端可產生空泡泡訊息；若走真實渠道（LINE/FB）將送出無效 payload。
@@ -1547,7 +1545,7 @@ test.describe('收件匣 — 欄位', () => {
   );
 
   test('[BUG-W6-09b 已修] contentType 應為列舉', async () => {
-    // contentType: z.string().default('text') —— 實測 contentType:"wut" 回 201 並存入，
+    // 修正前：contentType: z.string().default('text') —— 實測 contentType:"wut" 回 201 並存入，
     // 前端 MessageBubble 對未知型別無對應渲染分支。
     await apiFieldCheck(api, {
       path: `conversations/${seeded.conversationId}/messages`,
