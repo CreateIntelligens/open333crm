@@ -177,24 +177,26 @@ test.describe('@shortlinks 短連結功能層', () => {
   async function gotoShortlinks(page: Page, tab?: 'links' | 'stats') {
     await gotoAndCheck(page, '/dashboard/shortlinks');
     if (tab === 'stats') {
-      await page.getByRole('button', { name: '統計分析', exact: true }).click();
+      await page.getByRole('link', { name: '統計分析', exact: true }).click();
       await expect(page.getByText('來源分布')).toBeVisible({ timeout: 10_000 });
     }
   }
 
-  test('@shortlinks 頁面載入：連結管理/統計分析 tab 皆可切換', async ({ page }) => {
+  test('@shortlinks 頁面載入：側欄的連結管理/統計分析皆可切換', async ({ page }) => {
+    // 「連結管理」「統計分析」已由頁內 tab 改為側欄子項目（/dashboard/shortlinks/links、/stats）
     await gotoShortlinks(page);
-    await expect(page.getByRole('button', { name: '連結管理', exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: '建立連結' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '建立連結' })).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole('button', { name: '統計分析', exact: true }).click();
+    await page.getByRole('link', { name: '統計分析', exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard\/shortlinks\/stats/);
     // 「選擇連結」是收合 select 裡的 <option>，收合狀態天生 hidden，不能用 toBeVisible；
     // 改斷言該 select 本身存在（ClickStatsView 的下拉容器）
     await expect(
       page.locator('select').filter({ has: page.getByText('選擇連結') }),
     ).toBeVisible({ timeout: 10_000 });
 
-    await page.getByRole('button', { name: '連結管理', exact: true }).click();
+    await page.getByRole('link', { name: '連結管理', exact: true }).click();
+    await expect(page).toHaveURL(/\/dashboard\/shortlinks\/links/);
     await expect(page.getByRole('button', { name: '建立連結' })).toBeVisible({ timeout: 10_000 });
   });
 
@@ -318,13 +320,15 @@ test.describe('@portal 粉絲門戶功能層', () => {
   });
 
   async function gotoPortal(page: Page, tab?: 'activities' | 'submissions' | 'points') {
-    await gotoAndCheck(page, '/dashboard/portal');
+    // 活動管理／提交紀錄／積分管理已由頁內 tab 改為側欄子項目，各有自己的網址
     if (tab === 'submissions') {
-      await page.getByRole('button', { name: '提交紀錄', exact: true }).click();
+      await gotoAndCheck(page, '/dashboard/portal/submissions');
       await expect(page.getByText('選擇活動')).toBeVisible({ timeout: 10_000 });
     } else if (tab === 'points') {
-      await page.getByRole('button', { name: '積分管理', exact: true }).click();
+      await gotoAndCheck(page, '/dashboard/portal/points');
       await expect(page.getByPlaceholder('搜尋聯絡人（名稱、電話、Email）')).toBeVisible({ timeout: 10_000 });
+    } else {
+      await gotoAndCheck(page, '/dashboard/portal');
     }
   }
 

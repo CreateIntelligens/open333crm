@@ -93,6 +93,13 @@ test.describe('CM-171 / CM-172 UAT 現況驗證', () => {
     expect(hit, '新建活動應出現在列表（不應靜默回空）').toBe(true);
   });
 
+  test('短連結列表 limit 上限為 100：101 回 400', async () => {
+    const ok = await api.get('shortlinks', { params: { limit: '100' } });
+    expect(ok.status(), 'limit=100 應被接受').toBe(200);
+    const over = await api.get('shortlinks', { params: { limit: '101' } });
+    expect(over.status(), 'limit=101 超過上限應回 400').toBe(400);
+  });
+
   test('CM-171 短連結 admin API 已修復：建立後列表讀得回', async () => {
     const created = await createLink({
       targetUrl: 'https://example.com/cm171',
@@ -100,20 +107,21 @@ test.describe('CM-171 / CM-172 UAT 現況驗證', () => {
     });
     expect(created.status, 'POST shortlinks 應成功（非 500）').toBe(200);
 
-    const list = await api.get('shortlinks', { params: { limit: '200' } });
+    // 短連結列表的 limit 上限是 100（207da85a，夾制 page/limit 修 500），超過會回 400
+    const list = await api.get('shortlinks', { params: { limit: '100' } });
     const body = await list.json();
     const hit = (body.data || []).some((l: any) => l.id === created.id);
     expect(hit, '新建短連結應出現在列表（不應靜默回空）').toBe(true);
   });
 
   /**
-   * ⚠️ P0 — CM-171 只修了 admin routes，公開轉址仍壞。
+   * 回歸測試（原 P0，已修）。修正前：CM-171 只修了 admin routes，公開轉址仍壞。
    * shortlink-redirect.routes.ts 的 getLinkForRedirect(app.prisma, slug) 用的是
    * **未綁租戶的 app.prisma**，RLS 下查不到任何 link → 一律走 renderExpiredPage() 回 404。
    * 結果：所有已發出去的短連結全部失效，點擊數也記不到（/s/track 回 410）。
    */
-  test.fail(
-    '[已知 P0 bug] 公開轉址 /s/:slug 應能解析有效短連結（實際被 RLS 擋下回 404）',
+  test(
+    '[已修，原 P0] 公開轉址 /s/:slug 應能解析有效短連結',
     async () => {
       const created = await createLink({
         targetUrl: 'https://example.com/redirect-check',
@@ -192,12 +200,12 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   });
 
   /**
-   * ⚠️ P1 — 後端對 targetUrl 完全沒有格式驗證。
+   * 回歸測試（原 P1，已修）。修正前：後端對 targetUrl 完全沒有格式驗證。
    * shortlink.routes.ts 直接 `body as ...` 轉型丟進 service，沒有任何 zod schema。
    * 前端也只有 `if (!targetUrl) return`（非空即可）。
    */
-  test.fail(
-    '[已知 P1 bug] 目標 URL 應驗證格式（實際 notaurl / example.com 等皆可存入）',
+  test(
+    '[已修，原 P1] 目標 URL 應驗證格式',
     async () => {
       for (const bad of FieldSamples.badUrls) {
         const r = await createLink({ targetUrl: bad, title: `${E2E_PREFIX} badurl` });
@@ -207,13 +215,12 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   );
 
   /**
-   * ⚠️ P1（安全性）— javascript: scheme 可存入。
+   * 回歸測試（原 P1（安全性），已修）。修正前：javascript: scheme 可存入。
    * 轉址頁把 targetUrl 丟進 window.location.replace(target) 與 <noscript> 的 href，
    * 兩者都是 javascript: 的執行 sink。HTML/JS 跳脫本身有做（render-utils.ts 正確），
    * 但沒有 scheme 白名單 → 具 shortlink 建立權限者可做成點擊即執行腳本的連結。
-   * 目前因轉址頁被 RLS 擋下（上方 P0）而無法實際觸發，一旦 P0 修好即成為可利用漏洞。
    */
-  test.fail('[已知 P1 bug] 目標 URL 應限制 http/https scheme（實際接受 javascript:）', async () => {
+  test('[已修，原 P1] 目標 URL 應限制 http/https scheme', async () => {
     const r = await createLink({
       targetUrl: 'javascript:alert(1)',
       title: `${E2E_PREFIX} jsscheme`,
@@ -230,11 +237,11 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   });
 
   /**
-   * ⚠️ P1 — slug 沒有任何字元集/長度驗證。
+   * 回歸測試（原 P1，已修）。修正前：slug 沒有任何字元集/長度驗證。
    * 含 `/` 的 slug 會讓公開路由 /s/:slug 永遠配不到（單段參數吃不到斜線），
    * 等於建出一條永遠打不開的死連結；500 字 slug 也照收。
    */
-  test.fail('[已知 P1 bug] 自訂 slug 應限制字元集（實際接受 a/b/c 這種含斜線值）', async () => {
+  test('[已修，原 P1] 自訂 slug 應限制字元集', async () => {
     const r = await createLink({
       targetUrl: 'https://example.com',
       slug: 'a/b/c',
@@ -243,7 +250,7 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
     expect(r.status, '含 / 的 slug 應被拒絕（會產生打不開的連結）').toBeGreaterThanOrEqual(400);
   });
 
-  test.fail('[已知 P1 bug] 自訂 slug 應限制長度（實際接受 500 字）', async () => {
+  test('[已修，原 P1] 自訂 slug 應限制長度', async () => {
     const r = await createLink({
       targetUrl: 'https://example.com',
       slug: strOfLength(500, 'z'),
@@ -271,23 +278,23 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
     expect(JSON.stringify(second.body)).toContain('自訂代碼已經被使用');
   });
 
-  /** ⚠️ P1 — targetUrl 空字串可存入（前端擋住但後端沒擋，API 可直接繞過） */
-  test.fail('[已知 P1 bug] 後端應擋下空字串 targetUrl（前端擋控可被繞過）', async () => {
+  /** 回歸測試（原 P1，已修）。修正前：targetUrl 空字串可存入（前端擋住但後端沒擋，API 可直接繞過） */
+  test('[已修，原 P1] 後端應擋下空字串 targetUrl（前端擋控可被繞過）', async () => {
     const r = await createLink({ targetUrl: '', title: `${E2E_PREFIX} emptyurl` });
     expect(r.status, '空字串 targetUrl 應被後端擋下').toBeGreaterThanOrEqual(400);
   });
 
-  test.fail('[已知 P1 bug] 後端應擋下純空白 targetUrl', async () => {
+  test('[已修，原 P1] 後端應擋下純空白 targetUrl', async () => {
     const r = await createLink({ targetUrl: '   ', title: `${E2E_PREFIX} wsurl` });
     expect(r.status, '純空白 targetUrl 應被後端擋下').toBeGreaterThanOrEqual(400);
   });
 
   /**
-   * ⚠️ P2 — 缺必填欄位時回傳的錯誤訊息把 Prisma 內部呼叫細節整段吐出來
+   * 回歸測試（原 P2，已修）。修正前：缺必填欄位時回傳的錯誤訊息把 Prisma 內部呼叫細節整段吐出來
    * （"Invalid `prisma.shortLink.create()` invocation: { data: { tenantId: ... } }"），
    * 洩漏 schema 結構與內部欄位名，且對使用者毫無意義。
    */
-  test.fail('[已知 P2 bug] 錯誤訊息不應洩漏 Prisma 內部細節', async () => {
+  test('[已修，原 P2] 錯誤訊息不應洩漏 Prisma 內部細節', async () => {
     const res = await api.post('shortlinks', { data: { title: `${E2E_PREFIX} nourl` } });
     const text = await res.text();
     expect(res.status(), '缺 targetUrl 應回 4xx').toBe(400);
@@ -308,7 +315,8 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
     await expectNoXssExecuted(page);
   });
 
-  test('標題：emoji / 前後空白 / 換行應原樣往返', async () => {
+  test('標題：emoji / 換行原樣往返，前後空白會去掉', async () => {
+    // 標題 schema 為 z.string().trim()（207da85a），前後空白刻意去掉；emoji 與換行要原樣保留
     for (const sample of [FieldSamples.emoji, FieldSamples.padded, FieldSamples.newline]) {
       const created = await createLink({
         targetUrl: 'https://example.com/roundtrip',
@@ -318,8 +326,8 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
 
       const read = await api.get(`shortlinks/${created.id}`);
       const body = await read.json();
-      expect(body?.data?.title, `標題 "${sample}" 應原樣讀回（未被 trim/截斷/編碼壞掉）`).toBe(
-        `${E2E_PREFIX}${sample}`,
+      expect(body?.data?.title, `標題 "${sample}" 讀回時只去掉前後空白（未被截斷/編碼壞掉）`).toBe(
+        `${E2E_PREFIX}${sample}`.trim(),
       );
     }
   });
@@ -484,13 +492,14 @@ test.describe('粉絲門戶 /dashboard/portal 欄位', () => {
     expect(r.status, '結束早於開始應被擋下').toBeGreaterThanOrEqual(400);
   });
 
-  test('標題：emoji / 前後空白應原樣往返', async () => {
+  test('標題：emoji 原樣往返，前後空白會去掉', async () => {
+    // 活動標題 schema 為 z.string().trim()（9d12f547），前後空白刻意去掉
     for (const sample of [FieldSamples.emoji, FieldSamples.padded]) {
       const created = await createActivity({ type: 'POLL', title: `${E2E_PREFIX}${sample}` });
       expect(created.status).toBe(200);
       const read = await api.get(`portal/activities/${created.id}`);
       const body = await read.json();
-      expect(body?.data?.title, `標題 "${sample}" 應原樣讀回`).toBe(`${E2E_PREFIX}${sample}`);
+      expect(body?.data?.title, `標題 "${sample}" 讀回時只去掉前後空白`).toBe(`${E2E_PREFIX}${sample}`.trim());
     }
   });
 
@@ -669,10 +678,10 @@ test.describe('粉絲門戶 — 積分調整欄位', () => {
   });
 
   /**
-   * ⚠️ P1 — 超出 Int32 的 amount 造成 500（未處理例外）。
+   * 回歸測試（原 P1，已修）。修正前：超出 Int32 的 amount 造成 500（未處理例外）。
    * 後端無 zod，數值直接進 Prisma Int 欄位 → 溢位炸成 INTERNAL_ERROR。
    */
-  test.fail('[已知 P1 bug] 超大 amount 應回 4xx（實際回 500）', async () => {
+  test('[已修，原 P1] 超大 amount 應回 4xx', async () => {
     const contactId = await pickContact();
     const res = await api.post('portal/points/adjust', {
       data: { contactId, amount: 999999999999999, note: `${E2E_PREFIX} 溢位` },
@@ -681,10 +690,10 @@ test.describe('粉絲門戶 — 積分調整欄位', () => {
   });
 
   /**
-   * ⚠️ P2 — 小數 amount 被靜默無條件捨去（1.5 → 1），
+   * 回歸測試（原 P2，已修）。修正前：小數 amount 被靜默無條件捨去（1.5 → 1），
    * 使用者以為加了 1.5 分實際只加 1 分，且無任何提示。
    */
-  test.fail('[已知 P2 bug] 小數 amount 應被拒絕（實際靜默截斷為整數）', async () => {
+  test('[已修，原 P2] 小數 amount 應被拒絕', async () => {
     const contactId = await pickContact();
     const before = (await (await api.get(`portal/points/balance/${contactId}`)).json())?.data?.balance ?? 0;
     const res = await api.post('portal/points/adjust', {
@@ -721,7 +730,8 @@ test.describe('渠道設定 — 欄位驗證', () => {
     /** 各渠道型別預期出現的金鑰欄位（WEBCHAT 沿用 Channel Secret/Token 當自訂金鑰，非 LINE 欄位殘留） */
     const expected: Record<string, string[]> = {
       LINE: ['Channel Secret', 'Channel Access Token'],
-      FB: ['App ID', 'App Secret', 'Page Access Token', 'Page ID'],
+      // Page ID 不再手動填：測試連線時以 Page Access Token 向 Facebook 取得（3f0774a1，#187）
+      FB: ['App ID', 'App Secret', 'Page Access Token'],
       THREADS: ['App ID', 'App Secret', 'Page Access Token'],
       WEBCHAT: ['Channel Secret', 'Channel Access Token'],
     };
@@ -744,8 +754,8 @@ test.describe('渠道設定 — 欄位驗證', () => {
           'Page Access Token',
         );
       }
-      if (type === 'THREADS') {
-        expect(visibleLabels, 'THREADS 不應出現 FB 專屬的 Page ID').not.toContain('Page ID');
+      if (type === 'FB' || type === 'THREADS') {
+        expect(visibleLabels, `${type} 不應要求手動填 Page ID`).not.toContain('Page ID');
       }
     }
 
@@ -858,13 +868,12 @@ test.describe('渠道設定 — 欄位驗證', () => {
   });
 
   /**
-   * ⚠️ P2 — zod 的 `z.string().url()` 只是包 `new URL()`，**不限制 scheme**，
+   * 回歸測試（原 P2，已修）。修正前：zod 的 `z.string().url()` 只是包 `new URL()`，**不限制 scheme**，
    * 因此 `ftp:/x`、`javascript:...`、`mailto:...` 全部通過驗證。
    * webhookBaseUrl 會被直接串成渠道的 webhookUrl
    * （實測產出 `ftp:/x/api/v1/webhooks/webchat/<id>`），造成一條永遠收不到訊息的死 webhook。
-   * 建議：改為 `.refine(u => /^https?:\/\//.test(u))`（下游 webhook 已有此把關，此處漏掉）。
    */
-  test.fail('[已知 P2 bug] webhookBaseUrl 應限制 http/https scheme（實際 ftp:/x 可存入）', async () => {
+  test('[已修，原 P2] webhookBaseUrl 應限制 http/https scheme', async () => {
     const res = await api.post('channels', {
       data: {
         channelType: 'WEBCHAT',
@@ -1037,7 +1046,9 @@ test.describe('分析 /dashboard/analytics', () => {
     const res = await api.get('analytics/overview', { params: { from: 'garbage', to: 'alsobad' } });
     expect(res.status(), '非法日期應回 400').toBe(400);
     const body = await res.json();
-    expect(JSON.stringify(body), '錯誤應指出 from/to 欄位').toContain('Invalid date');
+    // 錯誤訊息已中文化（87b29e6e），以 details.issues 的欄位路徑判斷
+    const paths = ((body?.error?.details?.issues ?? []) as Array<{ path?: string }>).map((i) => i.path);
+    expect(paths, '錯誤應指出 from/to 欄位').toEqual(expect.arrayContaining(['from', 'to']));
   });
 
   /**
