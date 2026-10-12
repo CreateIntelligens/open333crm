@@ -45,7 +45,7 @@
 | `channelType` | 只列出在這個渠道類型有身分的聯絡人 |
 | `excludeChannelType` | 排除這些渠道類型的身分 |
 
-`PATCH /contacts/:id` 可以改名稱、電話、email、語言與 `isBlocked`。email 改成同租戶另一位未封存聯絡人已使用的 email 時，回 409 `EMAIL_IN_USE`，`details` 帶對方的 `contactId` 與 `displayName`，不更改資料；對方只在成員看不到的渠道有身分時不帶 `details`，聯絡人頁只提供仍要儲存或取消。email 沒有改變（不分大小寫）時不檢查。聯絡人頁據此讓客服選擇：合併（要 `contact.merge`，經合併預覽，來源 `MANUAL`，合併後再寫入 email）、仍要儲存（帶 `allowDuplicateEmail: true` 重送，不合併）或取消。`isBlocked` 沒有任何程式讀取，設成 `true` 不會擋下訊息、機器人或群發，見 `../../system/AUDIT.md` 的 DB-04。
+`PATCH /contacts/:id` 可以改名稱、電話、email、語言與 `isBlocked`。電話去頭尾空白後最多 30 字，只能有數字、空白與 `+ - ( ) #`（台灣與國際號碼、分機都能存，不判斷國碼或位數），純空白視為清除；不符時回 400 並指出 `phone`。email 改成同租戶另一位未封存聯絡人已使用的 email 時，回 409 `EMAIL_IN_USE`，`details` 帶對方的 `contactId` 與 `displayName`，不更改資料；對方只在成員看不到的渠道有身分時不帶 `details`，聯絡人頁只提供仍要儲存或取消。email 沒有改變（不分大小寫）時不檢查。聯絡人頁據此讓客服選擇：合併（要 `contact.merge`，經合併預覽，來源 `MANUAL`，合併後再寫入 email）、仍要儲存（帶 `allowDuplicateEmail: true` 重送，不合併）或取消。`isBlocked` 沒有任何程式讀取，設成 `true` 不會擋下訊息、機器人或群發，見 `../../system/AUDIT.md` 的 DB-04。
 
 聯絡人詳情頁另外提供該聯絡人的對話、工單與時間軸。時間軸合併了對話、工單與標籤的紀錄。
 

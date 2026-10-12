@@ -82,7 +82,14 @@
 
 升級走 `POST /cases/:id/escalate`，需要填原因。可以同時指定新的優先級與新的負責人。沒指定優先級時，自動提高一級；已經是 `URGENT` 就維持不變。
 
-升級會發布 `case.escalated`，租戶內所有 `ADMIN` 與 `SUPERVISOR` 會收到通知。請求中的 `notifyTargets` 只記在事件裡，不影響誰收到通知。
+升級會發布 `case.escalated`。誰收到通知由請求的 `notifyTargets` 決定（升級對話框的兩個勾選），只接受下列值，其他值回 400：
+
+| 值 | 收到通知的人 |
+| --- | --- |
+| `supervisor` | 租戶內在職的 `ADMIN` 與 `SUPERVISOR` |
+| `original_assignee` | 升級前的負責人；已停用時不通知 |
+
+升級的人自己不會收到通知，同一個人只收到一則。沒帶 `notifyTargets`（例如舊的呼叫端）時只通知 `ADMIN` 與 `SUPERVISOR`；帶空陣列表示兩個都沒勾，不送通知。收件人由 `notification.service.ts` 的 `resolveEscalationRecipients()` 計算。
 
 SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準協議](../SLA.md)。
 

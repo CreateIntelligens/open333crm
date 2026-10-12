@@ -69,6 +69,37 @@ const fbCredentialsSchema = z.object({
 
 const webchatCredentialsSchema = z.record(z.unknown());
 
+/** LIFF ID：10 位數字、-、8 個英數字（LINE 文件範例 1234567890-AbcdEfgh） */
+const LIFF_ID_PATTERN = /^\d{10}-[A-Za-z0-9]{8}$/;
+
+/**
+ * 驗證 `settings.liffConfig.liffId`（BotConfigForm 寫入、短連結的 LIFF 轉址讀取）。
+ * 去頭尾空白後比對格式；空字串表示清除。沒有這個鍵時不檢查。
+ */
+function validateLiffIdSettings(settings: Record<string, unknown> | undefined, ctx: z.RefinementCtx): void {
+  const liffConfig = settings?.liffConfig as { liffId?: unknown } | undefined;
+  if (!liffConfig || liffConfig.liffId === undefined || liffConfig.liffId === null) return;
+  const value = typeof liffConfig.liffId === 'string' ? liffConfig.liffId.trim() : liffConfig.liffId;
+  if (value === '') return;
+  if (typeof value !== 'string' || !LIFF_ID_PATTERN.test(value)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['settings', 'liffConfig', 'liffId'],
+      message: 'LIFF ID 格式不正確，應為「10 位數字-8 個英數字」，例如 1234567890-AbcdEfgh',
+    });
+  }
+}
+
+/** 存入前去掉 LIFF ID 的頭尾空白 */
+function normalizeLiffIdSettings<T extends { settings?: Record<string, unknown> }>(data: T): T {
+  const liffConfig = data.settings?.liffConfig as { liffId?: unknown } | undefined;
+  if (!liffConfig || typeof liffConfig.liffId !== 'string') return data;
+  return {
+    ...data,
+    settings: { ...data.settings, liffConfig: { ...liffConfig, liffId: liffConfig.liffId.trim() } },
+  };
+}
+
 const createChannelSchema = z.object({
   channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
   displayName: z.string().min(1).max(100),
@@ -96,7 +127,8 @@ const createChannelSchema = z.object({
     }
   }
   validateDownstreamWebhookSettings(data.settings, ctx);
-});
+  validateLiffIdSettings(data.settings, ctx);
+}).transform(normalizeLiffIdSettings);
 
 const updateWebhookBaseUrlSchema = z.object({
   baseUrl: z.string().min(1),
@@ -115,7 +147,9 @@ const updateChannelSchema = z
   })
   .superRefine((data, ctx) => {
     validateDownstreamWebhookSettings(data.settings, ctx);
-  });
+    validateLiffIdSettings(data.settings, ctx);
+  })
+  .transform(normalizeLiffIdSettings);
 
 // 渠道↔團隊指派 body 驗證（CM-173）：teamId 需為 UUID、accessLevel 三選一
 // teamId 以 uuid() 驗證，非法格式在路由層回 400，避免傳進 Prisma 型別轉換爆 500

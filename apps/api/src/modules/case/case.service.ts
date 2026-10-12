@@ -750,6 +750,10 @@ export async function escalateCase(
       newPriority: updated.priority,
       status: updated.status,
       reason: body?.reason ?? null,
+      // 通知 worker 依這三個欄位決定通知誰（resolveEscalationRecipients）
+      notifyTargets: body?.notifyTargets,
+      previousAssigneeId: caseRecord.assigneeId ?? null,
+      actorId: agentId,
     },
   });
 

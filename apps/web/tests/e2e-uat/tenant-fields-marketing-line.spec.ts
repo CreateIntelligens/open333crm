@@ -81,11 +81,34 @@ import {
 // config 已設 workers:1 + fullyParallel:false，執行順序仍為由上而下。
 // 唯一的跨案例相依（15 建草稿 → 16 讀該草稿）已在案例 16 內自行容錯。
 
-// ─── UAT 既有 fixture（_probe 探測取得，皆為既有資料，本檔唯讀不修改）───
-const FB_CHANNEL_ID = '56298974-9293-4ec2-b81b-5938cfe6530c';
-const LINE_CHANNEL_ID = 'c4ca29ba-45f9-4f0f-adc9-8fb967469c1b';
-const FB_MATERIAL_ID = '26ac505b-fbef-476c-ba03-531205d53957';
-const LINE_MATERIAL_ID = 'dfee6ccb-8cfe-43da-8892-ed9416903bf5';
+// ─── UAT 既有 fixture（皆為既有資料，本檔唯讀不修改）───
+// 原本寫死 id，渠道或素材被停用後測試就選不到（2026-10-12 的 FB 渠道與 LINE 素材都已停用）。
+// 改為 beforeAll 以 API 取「目前啟用」的第一個（resolveFixtures）。
+let FB_CHANNEL_ID = '';
+let LINE_CHANNEL_ID = '';
+let FB_MATERIAL_ID = '';
+let LINE_MATERIAL_ID = '';
+
+/** 取目前啟用的 FB／LINE 渠道與素材 id；找不到就讓測試失敗並說明缺什麼 */
+async function resolveFixtures(api: APIRequestContext) {
+  const channels = ((await (await api.get('channels')).json())?.data ?? []) as Array<{
+    id: string;
+    channelType: string;
+    isActive: boolean;
+  }>;
+  const activeChannel = (type: string) => channels.find((c) => c.channelType === type && c.isActive)?.id ?? '';
+  const firstMaterial = async (channelType: string) => {
+    const res = await api.get('marketing/materials', { params: { channelType, limit: '1' } });
+    return (((await res.json())?.data ?? []) as Array<{ id: string }>)[0]?.id ?? '';
+  };
+  FB_CHANNEL_ID = activeChannel('FB');
+  LINE_CHANNEL_ID = activeChannel('LINE');
+  FB_MATERIAL_ID = await firstMaterial('fb');
+  LINE_MATERIAL_ID = await firstMaterial('line');
+  for (const [name, id] of Object.entries({ FB_CHANNEL_ID, LINE_CHANNEL_ID, FB_MATERIAL_ID, LINE_MATERIAL_ID })) {
+    if (!id) throw new Error(`UAT 找不到啟用中的 ${name}，行銷測試需要它`);
+  }
+}
 
 const runId = randomUUID().slice(0, 6);
 const nameOf = (what: string) => `${E2E_PREFIX} ${what} ${runId}`;
@@ -132,6 +155,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
 
   test.beforeAll(async () => {
     api = await newApiContext();
+    await resolveFixtures(api);
   });
 
   test.afterAll(async () => {
@@ -245,8 +269,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
   });
 
   // 【已知 bug CM-W6-05】name 的 z.string().min(1) 不 trim，純空白/全形空白可建出無名活動
-  test('2b. 活動-名稱：純空白 / 全形空白應被擋【已知 bug CM-W6-05】', async ({ page }) => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('2b. 活動-名稱：純空白 / 全形空白應被擋【已修，原 CM-W6-05】', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/marketing/campaigns');
     const openDialog = async () => {
       await page.getByRole('button', { name: '新增活動' }).click();
@@ -475,8 +498,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
     });
   });
 
-  test('10b. 分群-名稱：純空白應被擋【已知 bug CM-W6-05】', async ({ page }) => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('10b. 分群-名稱：純空白應被擋【已修，原 CM-W6-05】', async ({ page }) => {
     // 與活動名稱同一個根因：z.string().min(1) 不 trim
     await gotoAndCheck(page, '/dashboard/marketing/segments');
     await page.getByRole('button', { name: '新增分群' }).click();
@@ -995,8 +1017,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
     });
   });
 
-  test('22b. RichMenu-chatBarText：純空白應被擋【已知 bug CM-W6-05】', async () => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('22b. RichMenu-chatBarText：純空白應被擋【已修，原 CM-W6-05】', async () => {
     // chatBarText 是「使用者在 LINE 上真的看得到」的按鈕文字，
     // 純空白會在 LINE 選單列顯示成一塊空白按鈕。
     // service 層 validateChatBarText 只檢查 length===0，不 trim。
@@ -1097,8 +1118,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
   });
 
   // 【已知 bug CM-W6-03】uri action 無 scheme 白名單（LINE 只允許 http/https/line/tel）
-  test('24. RichMenu-uri action：危險 scheme 應被擋【已知 bug CM-W6-03】', async () => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('24. RichMenu-uri action：危險 scheme 應被擋【已修，原 CM-W6-03】', async () => {
     // LINE 官方（reference/messaging-api：URI action）只允許 http / https / line / tel，
     // 其他 scheme LINE 會回 400 Bad Request。
     // 後端 actionSchema.uri 只有 z.string()（無 .url()），service validateAction 也只檢查非空。
@@ -1304,8 +1324,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
   });
 
   // 【已知 bug CM-170】刪除為軟刪（isActive=false）且列表未過濾
-  test('30. 關鍵字回覆-刪除是軟刪且列表未過濾【已知 bug CM-170】', async () => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('30. 關鍵字回覆-刪除是軟刪且列表未過濾【已修，原 CM-170】', async () => {
     const created = await createAndTrack(
       'automation/rules',
       keywordReplyPayload({ name: nameOf('軟刪驗證') }),

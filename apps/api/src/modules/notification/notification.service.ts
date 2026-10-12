@@ -109,3 +109,42 @@ export async function markAllAsRead(
 
   return result.count;
 }
+
+export type EscalationNotifyTarget = 'supervisor' | 'original_assignee';
+
+/**
+ * 升級工單時要通知的客服 id（不重複）。
+ * - supervisor：同租戶在職的主管與管理員
+ * - original_assignee：升級前的指派人（同租戶、在職）
+ * 升級的客服本人一律不通知
+ * notifyTargets 沒帶（舊呼叫端、自動化）時只通知主管與管理員；空陣列表示兩個都沒勾，不通知。
+ */
+export async function resolveEscalationRecipients(
+  db: TenantDb,
+  tenantId: string,
+  input: { notifyTargets?: readonly string[]; previousAssigneeId?: string | null; actorId?: string | null },
+): Promise<string[]> {
+  const targets = input.notifyTargets ?? ['supervisor'];
+  const ids = new Set<string>();
+
+  if (targets.includes('supervisor')) {
+    const supervisors = await db.agent.findMany({
+      where: { tenantId, role: { in: ['SUPERVISOR', 'ADMIN'] }, isActive: true },
+      select: { id: true },
+    });
+    for (const a of supervisors) ids.add(a.id);
+  }
+
+  const original = input.previousAssigneeId;
+  if (targets.includes('original_assignee') && original && original !== input.actorId) {
+    const found = await db.agent.findMany({
+      where: { tenantId, id: { in: [original] }, isActive: true },
+      select: { id: true },
+    });
+    for (const a of found) ids.add(a.id);
+  }
+
+  // 升級的客服本人不收自己的升級通知（主管自己升級時也一樣）
+  if (input.actorId) ids.delete(input.actorId);
+  return [...ids];
+}

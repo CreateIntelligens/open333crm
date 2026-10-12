@@ -186,10 +186,10 @@ test.describe('短連結 /dashboard/shortlinks 欄位', () => {
   });
 
   /**
-   * ⚠️ P3 — 前端只用 `!targetUrl`（非空即可）判斷，純空白字串會讓按鈕解鎖並成功送出，
+   * 回歸測試（原 P3，已修）。修正前：前端只用 `!targetUrl`（非空即可）判斷，純空白字串會讓按鈕解鎖並成功送出，
    * 後端又無驗證（見下方 P1），最終存入一筆 targetUrl="   " 的死連結。
    */
-  test.fail('[已知 P3 bug] 純空白目標 URL 應被前端擋下（實際可送出）', async ({ page }) => {
+  test('[已修，原 P3] 純空白目標 URL 應被前端擋下', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/shortlinks');
     await page.getByRole('button', { name: /建立|新增/ }).first().click();
     await expect(page.getByRole('heading', { name: '建立短連結' })).toBeVisible({ timeout: 10_000 });
@@ -988,11 +988,11 @@ test.describe('渠道設定 — 欄位驗證', () => {
   });
 
   /**
-   * ⚠️ P2 — settings 是 z.record(z.unknown())，除 downstreamWebhook 外全不驗證。
+   * 回歸測試（原 P2，已修）。修正前：settings 是 z.record(z.unknown())，除 downstreamWebhook 外全不驗證。
    * botConfig 的問候語/LIFF ID/轉接關鍵字可存入任意型別與任意長度。
    * 此處以 LIFF ID 為代表記錄（前端 placeholder 標示應為 "1660xxxxxx-xxxxxxxx" 格式）。
    */
-  test.fail('[已知 P2 bug] botConfig.liffId 應驗證格式（實際任意字串皆可存入）', async () => {
+  test('[已修，原 P2] LIFF ID 應驗證格式', async () => {
     const created = await api.post('channels', {
       data: { channelType: 'WEBCHAT', displayName: `${E2E_PREFIX} botcfg`, credentials: {} },
     });
@@ -1000,7 +1000,9 @@ test.describe('渠道設定 — 欄位驗證', () => {
     if (id) trash.channels.push(id);
 
     const res = await api.patch(`channels/${id}`, {
-      data: { settings: { botConfig: { liffId: '<script>alert(1)</script>' } } },
+      // LIFF ID 實際存在 settings.liffConfig.liffId（BotConfigForm 寫入、短連結 LIFF 轉址讀取），
+      // 原本測試送的 botConfig.liffId 不是系統使用的欄位
+      data: { settings: { liffConfig: { liffId: '<script>alert(1)</script>' } } },
     });
     expect(res.status(), '非法 LIFF ID 應被擋下').toBeGreaterThanOrEqual(400);
   });
@@ -1052,10 +1054,10 @@ test.describe('分析 /dashboard/analytics', () => {
   });
 
   /**
-   * ⚠️ P2 — 起訖日顛倒（from > to）不被擋下，回傳全 0 的空報表，
+   * 回歸測試（原 P2，已修）。修正前：起訖日顛倒（from > to）不被擋下，回傳全 0 的空報表，
    * 使用者看到「資料都是 0」而不知道是自己選錯區間。
    */
-  test.fail('[已知 P2 bug] 起始日晚於結束日應被擋下（實際回全 0 空報表）', async () => {
+  test('[已修，原 P2] 起始日晚於結束日應被擋下', async () => {
     const res = await api.get('analytics/overview', {
       params: { from: '2026-12-31', to: '2020-01-01' },
     });

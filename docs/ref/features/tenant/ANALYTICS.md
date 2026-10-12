@@ -29,7 +29,7 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | `GET /analytics/my` | 自己本月的績效，以及手上待處理與快到期的工單 |
 | `POST /analytics/export` | 匯出 CSV，可選總覽、工單、客服或渠道 |
 
-期間以 `from` 與 `to` 指定，預設最近 30 天。「我的績效」固定看本月。
+期間以 `from` 與 `to` 指定，預設最近 30 天。`from` 晚於 `to` 時回 400 並指出 `from`，不再回傳全 0 的報表。「我的績效」固定看本月。
 
 ## 數字怎麼算
 

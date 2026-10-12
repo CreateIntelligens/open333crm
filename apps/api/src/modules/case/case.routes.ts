@@ -109,7 +109,8 @@ const escalateSchema = z.object({
   note: z.string().max(500).optional(),
   newPriority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   assigneeId: z.string().uuid().optional(),
-  notifyTargets: z.array(z.string()).optional(),
+  // 升級通知對象：主管與管理員、升級前的指派人（升級視窗的兩個勾選）
+  notifyTargets: z.array(z.enum(['supervisor', 'original_assignee'])).optional(),
 });
 
 const addNoteSchema = z.object({

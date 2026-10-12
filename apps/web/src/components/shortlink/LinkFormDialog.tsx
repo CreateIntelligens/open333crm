@@ -84,7 +84,7 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
   }, [editData, open]);
 
   const handleSave = async () => {
-    if (!targetUrl) return;
+    if (!targetUrl.trim()) return;
     setError('');
     setSaving(true);
     try {
@@ -223,7 +223,7 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={handleSave} disabled={saving || !targetUrl}>
+          <Button onClick={handleSave} disabled={saving || !targetUrl.trim()}>
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {editData ? '儲存' : '建立'}
           </Button>

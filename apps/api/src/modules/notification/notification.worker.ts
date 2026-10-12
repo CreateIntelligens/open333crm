@@ -12,6 +12,7 @@ import type { AppEvent } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 import { sendQuotaWarningEmail, sendQuotaCriticalEmail } from '../trial/usage-alert-emails.js';
 import { getConfig } from '../../config/env.js';
+import { resolveEscalationRecipients } from './notification.service.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -70,14 +71,22 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   // ── case.escalated ─────────────────────────────────────────────────────
   eventBus.subscribe('case.escalated', async (event: AppEvent) => {
     try {
-      const { caseId, reason } = event.payload as {
+      const { caseId, reason, notifyTargets, previousAssigneeId, actorId } = event.payload as {
         caseId: string;
         reason?: string;
+        notifyTargets?: string[];
+        previousAssigneeId?: string | null;
+        actorId?: string | null;
       };
 
-      const supervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
+      // 依升級視窗的勾選決定通知誰（主管與管理員／升級前的指派人）
+      const recipientIds = await resolveEscalationRecipients(prisma, event.tenantId, {
+        notifyTargets,
+        previousAssigneeId,
+        actorId,
+      });
 
-      for (const agentId of supervisorIds) {
+      for (const agentId of recipientIds) {
         await notificationQueue().add('notification:dispatch', {
           tenantId: event.tenantId,
           agentId,
@@ -88,7 +97,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
         }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue case.escalated', err));
       }
 
-      logger.info(`[NotificationWorker] case.escalated → ${supervisorIds.length} supervisor(s)/admin(s)`);
+      logger.info(`[NotificationWorker] case.escalated → ${recipientIds.length} recipient(s)`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling case.escalated:', err);
     }

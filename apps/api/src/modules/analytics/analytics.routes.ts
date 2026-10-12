@@ -13,29 +13,45 @@ import {
 import { success } from '../../shared/utils/response.js';
 import { requirePermission, requireAnyPermission } from '../../guards/rbac.guard.js';
 
-const dateRangeSchema = z.object({
+const dateRangeFields = z.object({
   from: z.coerce.date().default(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
   to: z.coerce.date().default(() => new Date()),
 });
 
-const messageTrendSchema = dateRangeSchema.extend({
-  groupBy: z.enum(['day', 'week', 'month']).default('day'),
-});
+/** 起始日晚於結束日時擋下：原本會回傳全 0 報表，使用者以為沒有資料 */
+function ordered<T extends z.ZodTypeAny>(schema: T) {
+  return schema.refine((d: { from: Date; to: Date }) => d.from <= d.to, {
+    path: ['from'],
+    message: '起始日不可晚於結束日',
+  });
+}
 
-const caseStatsSchema = dateRangeSchema.extend({
-  groupBy: z.enum(['day', 'week', 'month']).default('day'),
-  category: z.string().optional(),
-});
+const dateRangeSchema = ordered(dateRangeFields);
 
-const agentSchema = dateRangeSchema.extend({
-  agentId: z.string().uuid().optional(),
-});
+const messageTrendSchema = ordered(
+  dateRangeFields.extend({
+    groupBy: z.enum(['day', 'week', 'month']).default('day'),
+  }),
+);
 
-const exportSchema = z.object({
-  reportType: z.enum(['overview', 'cases', 'agents', 'channels']),
-  from: z.coerce.date().default(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
-  to: z.coerce.date().default(() => new Date()),
-});
+const caseStatsSchema = ordered(
+  dateRangeFields.extend({
+    groupBy: z.enum(['day', 'week', 'month']).default('day'),
+    category: z.string().optional(),
+  }),
+);
+
+const agentSchema = ordered(
+  dateRangeFields.extend({
+    agentId: z.string().uuid().optional(),
+  }),
+);
+
+const exportSchema = ordered(
+  dateRangeFields.extend({
+    reportType: z.enum(['overview', 'cases', 'agents', 'channels']),
+  }),
+);
 
 export default async function analyticsRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
