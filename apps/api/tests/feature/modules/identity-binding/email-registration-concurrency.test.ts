@@ -15,7 +15,7 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { withTenant, type TenantDb } from '#src/lib/tenant-db.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
-import { waitForLockWait } from '#tests/support/wait-for-lock-wait.js';
+import { backendPid, waitUntilBlockedBy } from '#tests/support/wait-for-lock-wait.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import type { BindingActor } from '#src/modules/identity-binding/binding-common.js';
 import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
@@ -103,30 +103,34 @@ async function raceSubmit(
 ) {
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
-  let firstDone!: () => void;
-  const firstSubmitted = new Promise<void>((r) => (firstDone = r));
+  let firstDone!: (pid: number) => void;
+  const firstSubmitted = new Promise<number>((r) => (firstDone = r));
   let firstCommitted = false;
 
   const tx1 = db(async (tx) => {
     const out = await submitEmailRegistration(tx, deps, first.token, first.email);
-    firstDone();
+    firstDone(await backendPid(tx));
     await gate;
     return out;
   }).finally(() => {
     firstCommitted = true;
   });
-  await firstSubmitted;
+  const firstPid = await firstSubmitted;
   let secondFinishedBeforeFirstCommit = false;
   const tx2 = db((tx) => submitEmailRegistration(tx, deps, second.token, second.email)).then((out) => {
     secondFinishedBeforeFirstCommit = !firstCommitted;
     return out;
   });
-  if (secondBlocks) {
-    await waitForLockWait(prisma);
-  } else {
-    await Promise.race([tx2.catch(() => {}), new Promise((r) => setTimeout(r, NOT_BLOCKED_TIMEOUT_MS))]);
+  try {
+    if (secondBlocks) {
+      await waitUntilBlockedBy(prisma, firstPid);
+    } else {
+      await Promise.race([tx2.catch(() => {}), new Promise((r) => setTimeout(r, NOT_BLOCKED_TIMEOUT_MS))]);
+    }
+  } finally {
+    // 等不到時也要放開，否則交易 1 一直開著
+    release();
   }
-  release();
   const [r1, r2] = await Promise.allSettled([tx1, tx2]);
   return { r1, r2, secondFinishedBeforeFirstCommit };
 }
@@ -162,18 +166,21 @@ test('合併時才發現同一渠道：登記方 channel_conflict、email 不變
 
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
-  let firstDone!: () => void;
-  const firstMerged = new Promise<void>((r) => (firstDone = r));
+  let firstDone!: (pid: number) => void;
+  const firstMerged = new Promise<number>((r) => (firstDone = r));
   const tx1 = db(async (tx) => {
     await mergeContacts(tx, { tenantId: T, survivorId: b.contactId, mergedId: a1.contactId, source: 'MANUAL' });
-    firstDone();
+    firstDone(await backendPid(tx));
     await gate;
   });
-  await firstMerged;
+  const firstPid = await firstMerged;
   const tx2 = db((tx) => submitEmailRegistration(tx, deps, t2, email));
-  // 登記方通過合併前檢查（看不到還沒提交的合併），卡在 B 的列鎖上，才放開客服的合併
-  await waitForLockWait(prisma);
-  release();
+  try {
+    // 登記方通過合併前檢查（看不到還沒提交的合併），卡在 B 的列鎖上，才放開客服的合併
+    await waitUntilBlockedBy(prisma, firstPid);
+  } finally {
+    release();
+  }
   const [r1, r2] = await Promise.allSettled([tx1, tx2]);
 
   assert.equal(r1.status, 'fulfilled');

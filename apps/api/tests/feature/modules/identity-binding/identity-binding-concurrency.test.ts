@@ -13,7 +13,7 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { withTenant, type TenantDb } from '#src/lib/tenant-db.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
-import { waitForLockWait } from '#tests/support/wait-for-lock-wait.js';
+import { backendPid, waitUntilBlockedBy } from '#tests/support/wait-for-lock-wait.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import { extractBindingCode } from '#src/modules/identity-binding/binding-code.js';
 import { BINDING_TEXT } from '#src/modules/identity-binding/binding-links.js';
@@ -113,19 +113,22 @@ test('確認時另一個綁定剛完成：後確認的一方收到同一渠道�
 
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
-  let firstDone!: () => void;
-  const firstConfirmed = new Promise<void>((r) => (firstDone = r));
+  let firstDone!: (pid: number) => void;
+  const firstConfirmed = new Promise<number>((r) => (firstDone = r));
   const tx1 = db(async (tx) => {
     const out = await confirmBinding(tx, deps, a1);
-    firstDone();
+    firstDone(await backendPid(tx));
     await gate;
     return out;
   });
-  await firstConfirmed;
+  const firstPid = await firstConfirmed;
   const tx2 = db((tx) => confirmBinding(tx, deps, a2));
-  // 後確認的一方通過確認前檢查，卡在發碼方的列鎖上，才放開先確認的一方
-  await waitForLockWait(prisma);
-  release();
+  try {
+    // 後確認的一方通過確認前檢查，卡在發碼方的列鎖上，才放開先確認的一方
+    await waitUntilBlockedBy(prisma, firstPid);
+  } finally {
+    release();
+  }
   const [r1, r2] = await Promise.allSettled([tx1, tx2]);
 
   assert.equal(r1.status === 'fulfilled' && r1.value.status, 'bound');
