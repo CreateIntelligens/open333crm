@@ -149,6 +149,36 @@ async function transferPoints(
   return value;
 }
 
+/** mergeContacts 因雙方在同一個渠道都有身分而拒絕（見 assertNoSharedChannel） */
+export function isSameChannelConflict(err: unknown): boolean {
+  return err instanceof AppError && err.code === 'SAME_CHANNEL_CONFLICT';
+}
+
+/**
+ * 雙方在同一個渠道都有身分時丟出 409 SAME_CHANNEL_CONFLICT，details.channels 列出衝突的渠道。
+ */
+async function assertNoSharedChannel(db: TenantDb, tenantId: string, survivorId: string, mergedId: string): Promise<void> {
+  const [survivorChannels, mergedChannels] = await Promise.all([
+    db.channelIdentity.findMany({ where: { contactId: survivorId }, select: { channelId: true } }),
+    db.channelIdentity.findMany({ where: { contactId: mergedId }, select: { channelId: true } }),
+  ]);
+  const occupied = new Set(survivorChannels.map((c) => c.channelId));
+  const shared = [...new Set(mergedChannels.map((c) => c.channelId).filter((id) => occupied.has(id)))];
+  if (shared.length === 0) return;
+
+  const channels = await db.channel.findMany({
+    where: { tenantId, id: { in: shared } },
+    select: { id: true, displayName: true, channelType: true },
+  });
+  const names = channels.map((c) => c.displayName).join('、');
+  throw new AppError(
+    `兩位聯絡人在同一個渠道（${names}）都有帳號，合併後回覆會送錯人，無法合併`,
+    'SAME_CHANNEL_CONFLICT',
+    409,
+    { channels },
+  );
+}
+
 /**
  * 將 mergedId 合併進 survivorId。
  *
@@ -189,6 +219,21 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     if (locked.count === 0) {
       throw new AppError('聯絡人已被封存或合併，請重新整理後再試', 'CONFLICT', 409);
     }
+  }
+
+  // 同一渠道只能有一個身分：合併後同一渠道有兩個身分時，收發訊息以「聯絡人 + 渠道」查詢會送錯人
+  // （AUDIT IDENT-03）。必須在鎖定之後檢查：同時併入同一位 survivor 的另一個合併，要等它提交後
+  // 才拿得到 survivor 的鎖，此時（read committed）才看得到它搬過來的渠道身分
+  try {
+    await assertNoSharedChannel(db, tenantId, survivorId, mergedId);
+  } catch (err) {
+    // 鎖定時已把被合併方標為封存；email 登記與綁定代碼會接住這個錯誤回覆顧客、讓交易照常提交，
+    // 所以在這裡還原，不能只靠呼叫端回滾（鎖仍持有到交易結束）
+    await db.contact.updateMany({
+      where: { id: mergedId, tenantId },
+      data: { isArchived: false, mergedIntoId: merged.mergedIntoId },
+    });
+    throw err;
   }
 
   const to = { contactId: survivorId };

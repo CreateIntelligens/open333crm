@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, Check, Loader2, Search, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -159,8 +160,7 @@ export function ContactMergeModal({
       );
       setPreview(res.data.data);
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string } } };
-      setError(axiosErr.response?.data?.message || '載入預覽失敗');
+      setError(getApiErrorMessage(err, '載入預覽失敗'));
     } finally {
       setLoadingPreview(false);
     }
@@ -194,8 +194,8 @@ export function ContactMergeModal({
       onOpenChange(false);
       onMergeComplete(selectedSecondary.id);
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string } } };
-      setError(axiosErr.response?.data?.message || '合併失敗');
+      // 例如雙方在同一個渠道都有帳號（SAME_CHANNEL_CONFLICT），訊息會說是哪個渠道
+      setError(getApiErrorMessage(err, '合併失敗'));
     } finally {
       setMerging(false);
     }
