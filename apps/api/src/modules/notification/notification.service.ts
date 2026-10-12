@@ -115,7 +115,8 @@ export type EscalationNotifyTarget = 'supervisor' | 'original_assignee';
 /**
  * 升級工單時要通知的客服 id（不重複）。
  * - supervisor：同租戶在職的主管與管理員
- * - original_assignee：升級前的指派人（同租戶、在職，且不是升級的客服本人）
+ * - original_assignee：升級前的指派人（同租戶、在職）
+ * 升級的客服本人一律不通知
  * notifyTargets 沒帶（舊呼叫端、自動化）時只通知主管與管理員；空陣列表示兩個都沒勾，不通知。
  */
 export async function resolveEscalationRecipients(
@@ -143,5 +144,7 @@ export async function resolveEscalationRecipients(
     for (const a of found) ids.add(a.id);
   }
 
+  // 升級的客服本人不收自己的升級通知（主管自己升級時也一樣）
+  if (input.actorId) ids.delete(input.actorId);
   return [...ids];
 }

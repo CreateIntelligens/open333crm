@@ -101,3 +101,12 @@ test('原指派人已停用、不存在或屬於其他租戶時不通知', async
     assert.deepEqual(ids, [], `previousAssigneeId=${previousAssigneeId}`);
   }
 });
+
+test('Supervisor escalates a case：主管自己升級時不通知自己', async () => {
+  const ids = await resolveEscalationRecipients(db, T, {
+    notifyTargets: ['supervisor'],
+    previousAssigneeId: 'agent-b',
+    actorId: 'sup',
+  });
+  assert.deepEqual(ids, ['admin']);
+});

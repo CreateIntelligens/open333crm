@@ -8,7 +8,7 @@
 - **THEN** the system SHALL respond 400 and the case SHALL not change
 
 ### Requirement: Escalation Notifies The Selected Targets
-After escalation the system SHALL notify, for `supervisor`, every active supervisor and admin of the tenant, and for `original_assignee`, the agent assigned before the escalation when that agent is active and did not escalate the case. Each agent SHALL receive at most one notification. When `notifyTargets` is omitted, only supervisors and admins SHALL be notified.
+After escalation the system SHALL notify, for `supervisor`, every active supervisor and admin of the tenant, and for `original_assignee`, the active agent assigned before the escalation. The agent who escalated SHALL NOT be notified, and each agent SHALL receive at most one notification. When `notifyTargets` is omitted, only supervisors and admins SHALL be notified.
 
 #### Scenario: Notify the original assignee
 - **WHEN** agent A escalates a case previously assigned to agent B with `notifyTargets: ["original_assignee"]`
@@ -29,3 +29,7 @@ After escalation the system SHALL notify, for `supervisor`, every active supervi
 #### Scenario: Empty notify targets
 - **WHEN** a case is escalated with `notifyTargets: []`
 - **THEN** no escalation notification SHALL be sent
+
+#### Scenario: Supervisor escalates a case
+- **WHEN** supervisor S escalates a case with `notifyTargets: ["supervisor"]`
+- **THEN** every other active supervisor and admin SHALL be notified, and S SHALL NOT be notified

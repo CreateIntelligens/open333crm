@@ -87,9 +87,9 @@
 | 值 | 收到通知的人 |
 | --- | --- |
 | `supervisor` | 租戶內在職的 `ADMIN` 與 `SUPERVISOR` |
-| `original_assignee` | 升級前的負責人；已停用或就是升級的人時不通知 |
+| `original_assignee` | 升級前的負責人；已停用時不通知 |
 
-同一個人只收到一則。沒帶 `notifyTargets`（例如舊的呼叫端）時只通知 `ADMIN` 與 `SUPERVISOR`；帶空陣列表示兩個都沒勾，不送通知。收件人由 `notification.service.ts` 的 `resolveEscalationRecipients()` 計算。
+升級的人自己不會收到通知，同一個人只收到一則。沒帶 `notifyTargets`（例如舊的呼叫端）時只通知 `ADMIN` 與 `SUPERVISOR`；帶空陣列表示兩個都沒勾，不送通知。收件人由 `notification.service.ts` 的 `resolveEscalationRecipients()` 計算。
 
 SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準協議](../SLA.md)。
 
