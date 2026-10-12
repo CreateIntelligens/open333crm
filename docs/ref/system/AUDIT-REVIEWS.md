@@ -11,8 +11,8 @@ change `enforce-merge-same-channel-guard`（`89014327`）依 #252 的決定（�
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
 | IDENT-03 的合併入口 | 已修正 | `contact-merge.service.ts` 的 `mergeContacts()` 鎖定雙方之後呼叫 `assertNoSharedChannel()`，衝突時還原被合併方並丟出 409 `SAME_CHANNEL_CONFLICT`。4 個入口都呼叫 `mergeContacts()`。測試：`contact-merge.test.ts`（引擎）、`contact-merge-same-channel.test.ts`（手動合併與核准建議的路由、兩個合併同時併入同一位聯絡人） |
-| IDENT-03 的並行 | 已修正 | 把檢查移到鎖定之前，並行測試失敗；放在鎖定之後通過（突變驗證，見 change 的 tasks.md）。email 登記與綁定代碼確認時接住 `SAME_CHANNEL_CONFLICT` 回覆客人：`email-registration-concurrency.test.ts`、`identity-binding-concurrency.test.ts` |
-| IDENT-03 的既有資料 | 未修正 | 修正前合併產生的同渠道雙身分聯絡人沒有查過，資料庫也沒有 `(contactId, channelId)` 唯一限制。IDENT-03 改為部分修正 |
+| IDENT-03 的並行 | 已修正 | 把檢查移到鎖定之前，並行測試失敗；放在鎖定之後通過（突變驗證，見 change 的 tasks.md）。email 登記與綁定代碼確認時接住 `SAME_CHANNEL_CONFLICT` 回覆客人：`email-registration-concurrency.test.ts`（以客服手動合併當另一個合併；同 email 的兩個登記會被 email 鎖依序處理，走不到這條路）、`identity-binding-concurrency.test.ts`。拿掉接住錯誤的分支，兩個測試都失敗 |
+| IDENT-03 的既有資料與其他路徑 | 未修正 | 修正前合併產生的同渠道雙身分聯絡人沒有查過，資料庫也沒有 `(contactId, channelId)` 唯一限制；入站以 `IdentityMap` 接上的渠道身分不經過合併的檢查。IDENT-03 改為部分修正 |
 | IDENT-04 | 已修正，從 `AUDIT.md` 移除 | `registerEmail()` 查詢前以 `email-registration:{tenantId}:{email}` 取得 `pg_advisory_xact_lock`。`email-registration-concurrency.test.ts` 的兩個案例：拿掉鎖時同一個 email 的案例失敗，key 不含 email 時不同 email 的案例失敗 |
 
 另外修正合併視窗 `ContactMergeModal.tsx` 讀錯錯誤欄位（`response.data.message`），任何錯誤都只顯示「合併失敗」的問題，改用 `getApiErrorMessage()`。

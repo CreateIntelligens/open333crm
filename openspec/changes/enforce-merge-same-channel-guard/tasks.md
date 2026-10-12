@@ -38,7 +38,12 @@
 | `contact-merge-same-channel.test.ts`「Two merges into the same survivor at the same time」 | 把 `assertNoSharedChannel()` 移到鎖定之前 | 失敗（連跑三次），其他兩個通過：確認檢查必須在鎖定之後 |
 | `email-registration-concurrency.test.ts`「不同 email 不互相等待」 | 鎖的 key 拿掉 email（只剩租戶） | 失敗 |
 | `email-registration-concurrency.test.ts`「兩位聯絡人同時登記同一個新的 email」 | 拿掉 `pg_advisory_xact_lock` | 失敗 |
+| `email-registration-concurrency.test.ts`「合併時才發現同一渠道」（code review 後改寫） | 拿掉 `registerEmail()` 接住 `SAME_CHANNEL_CONFLICT` 的分支 | 失敗 |
+| `identity-binding-concurrency.test.ts`「確認時另一個綁定剛完成」 | 停用 `confirmBinding()` 接住 `SAME_CHANNEL_CONFLICT` 的分支 | 失敗 |
+| `identity-binding-concurrency.test.ts`「確認時另一個綁定剛完成」 | 不放回代碼 | 失敗（`代碼仍可兌換`） |
 
 其餘案例寫在實作之前，並確認在實作前因斷言失敗：1.1（`Missing expected rejection`）、引擎拒絕時還原被合併方（`被合併方不可留在封存狀態`）、2.1 與 3.1（`後送出／後確認的一方不可丟錯`）、2.3（`B 應併入 A`）、4.1（找不到 API 訊息，只顯示「合併失敗」）。
 
 實作 2.2 時發現：`inTransaction()` 已在交易內時不開 savepoint，引擎在鎖定後拒絕時，被合併方已被標為封存，email 登記接住錯誤後交易照常提交會留下錯誤的封存。改為引擎拒絕前自己還原被合併方，並在 `contact-merge.test.ts` 加上斷言（先失敗後通過）。
+
+Code review 修正：原本的「合併時才發現同一渠道」以兩個同 email 的登記並行。2.4 加上 email 鎖之後，後一個登記被鎖擋住，改由合併前的檢查回覆，接住引擎拒絕的分支沒有被測到（拿掉也會通過）。改為以客服手動合併當另一個合併（design D6），並補上上表的突變驗證。綁定代碼的並行測試補上「代碼仍可兌換」的斷言。兩個並行測試的等待時間由 500ms 改為 1000ms。

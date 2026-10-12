@@ -16,7 +16,7 @@
 - email 登記在查詢之前，以租戶與 email（不分大小寫）取得交易層級的鎖（`pg_advisory_xact_lock`），同一個 email 的登記依序處理。
 - 前端合併視窗顯示後端回傳的錯誤訊息。目前視窗讀錯欄位（`response.data.message`），任何錯誤都只顯示「合併失敗」。
 
-不做：`channel_identities` 加 `(contactId, channelId)` 唯一限制（IDENT-03 做法 B，要先查 UAT 是否已有重複資料）、`Conversation` 記錄渠道身分（做法 C）。已經存在的同渠道雙身分聯絡人不在本 change 處理。
+不做：`channel_identities` 加 `(contactId, channelId)` 唯一限制（要先查 UAT 是否已有重複資料）、`Conversation` 記錄渠道身分。已經存在的同渠道雙身分聯絡人不在本 change 處理。
 
 ## Capabilities
 

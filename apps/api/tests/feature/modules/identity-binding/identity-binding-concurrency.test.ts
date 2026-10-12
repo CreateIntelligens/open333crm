@@ -27,7 +27,7 @@ import {
 const prisma = new PrismaClient();
 const T = TENANT_A;
 const stamp = Date.now();
-const HOLD_MS = 500;
+const HOLD_MS = 1000;
 
 const created = { channels: [] as string[], contacts: [] as string[], uids: [] as string[] };
 const db = <R>(fn: (tx: TenantDb) => Promise<R>) => withTenant(prisma, T, fn);
@@ -85,6 +85,7 @@ async function codeFrom(issuer: BindingActor): Promise<string> {
 
 const line = await channel('LINE', { bindingHandleAuto: `@line${stamp}` });
 const fb = await channel('FB', { bindingHandle: `page.${stamp}` });
+const line2 = await channel('LINE', { bindingHandleAuto: `@line2${stamp}` });
 
 afterAll(async () => {
   await db(async (tx) => {
@@ -138,4 +139,7 @@ test('確認時另一個綁定剛完成：後確認的一方收到同一渠道�
   assert.equal(a2Row?.isArchived, false);
   assert.equal(a2Row?.mergedIntoId, null);
   assert.equal((await db((tx) => confirmBinding(tx, deps, a2))).status, 'no_pending', '不恢復待確認狀態');
+  // 代碼放回剩餘效期：本人在其他渠道（這裡是另一個 LINE 官方帳號）仍可兌換
+  const other = await person('A2-OTHER', line2);
+  assert.equal((await db((tx) => redeemBindingCode(tx, deps, other, code2))).status, 'pending_confirm', '代碼仍可兌換');
 });

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Merge Rejects Same-Channel Identities
-The merge engine SHALL reject a merge when the survivor and the merged contact both have an identity on the same channel, on every merge path. The check SHALL run after both contacts are locked. A rejected merge SHALL respond 409 with code `SAME_CHANNEL_CONFLICT`, list the conflicting channels in `details.channels`, and change nothing.
+The merge engine SHALL reject a merge when the survivor and the merged contact both have an identity on the same channel, on every merge path. The check SHALL run after both contacts are locked. A rejected merge SHALL respond 409 with code `SAME_CHANNEL_CONFLICT`, list the conflicting channels in `details.channels`, SHALL NOT archive either contact, move any record, or write a merge log.
 
 #### Scenario: Agent merges two contacts on the same LINE channel
 - **WHEN** an agent with `contact.merge` merges contact A into contact B, and both have an identity on the same LINE channel

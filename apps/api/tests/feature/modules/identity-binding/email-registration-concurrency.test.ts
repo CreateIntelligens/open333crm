@@ -17,6 +17,7 @@ import { withTenant, type TenantDb } from '#src/lib/tenant-db.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import type { BindingActor } from '#src/modules/identity-binding/binding-common.js';
+import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
 import {
   issueEmailRegistrationLink,
   submitEmailRegistration,
@@ -27,7 +28,7 @@ const prisma = new PrismaClient();
 const T = TENANT_A;
 const stamp = Date.now();
 /** 後開的交易被鎖擋住時，等這麼久再放開前一個交易（足以讓它走到鎖） */
-const HOLD_MS = 500;
+const HOLD_MS = 1000;
 
 const created = { channels: [] as string[], contacts: [] as string[], uids: [] as string[] };
 const db = <R>(fn: (tx: TenantDb) => Promise<R>) => withTenant(prisma, T, fn);
@@ -139,19 +140,32 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test('合併時才發現同一渠道：後送出的一方 channel_conflict、email 不變、收到說明、未被封存', async () => {
+test('合併時才發現同一渠道：登記方 channel_conflict、email 不變、收到說明、未被封存', async () => {
+  // 另一個併入 B 的合併不能是同一個 email 的登記：那會被 email 鎖擋住，後一方在合併前的檢查就被攔下，
+  // 測不到合併引擎拒絕的這條路。這裡用客服手動合併把 A1 併入 B，停在提交前
   const email = `same-ch-${stamp}@example.com`;
   const b = await person('B', fb, email);
   const a1 = await person('A1', line);
   const a2 = await person('A2', line);
-  const t1 = await tokenFor(a1);
   const t2 = await tokenFor(a2);
 
-  const { r1, r2 } = await raceSubmit({ token: t1, email }, { token: t2, email });
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let firstDone!: () => void;
+  const firstMerged = new Promise<void>((r) => (firstDone = r));
+  const tx1 = db(async (tx) => {
+    await mergeContacts(tx, { tenantId: T, survivorId: b.contactId, mergedId: a1.contactId, source: 'MANUAL' });
+    firstDone();
+    await gate;
+  });
+  await firstMerged;
+  const tx2 = db((tx) => submitEmailRegistration(tx, deps, t2, email));
+  await new Promise((r) => setTimeout(r, HOLD_MS));
+  release();
+  const [r1, r2] = await Promise.allSettled([tx1, tx2]);
 
   assert.equal(r1.status, 'fulfilled');
-  assert.equal(r1.status === 'fulfilled' && r1.value.result.status, 'merged');
-  assert.equal(r2.status, 'fulfilled', `後送出的一方不可丟錯：${r2.status === 'rejected' ? String(r2.reason) : ''}`);
+  assert.equal(r2.status, 'fulfilled', `登記方不可丟錯：${r2.status === 'rejected' ? String(r2.reason) : ''}`);
   const second = (r2 as PromiseFulfilledResult<Awaited<ReturnType<typeof submitEmailRegistration>>>).value;
   assert.equal(second.result.status, 'channel_conflict');
   assert.deepEqual(

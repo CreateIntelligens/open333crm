@@ -1359,6 +1359,9 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 - 修正之前合併產生的同渠道雙身分聯絡人還在，收發訊息仍會對錯人。沒有查過 UAT 有沒有這種聯絡人。
 - `channel_identities` 的唯一限制只有 `(channelId, uid)`，資料庫不擋一位聯絡人在同一個渠道有兩個身分。
+- 入站時以 `IdentityMap` 把新的 uid 接到既有聯絡人（`inbound-contact-resolver.ts`），直接建立渠道身分，不鎖聯絡人的列，也不檢查同渠道。這筆身分與一個合併同時寫入同一位聯絡人時，合併的檢查看不到它。條件少見：同一個 provider 的另一個官方帳號第一次收到這個 uid 的訊息，同時有合併併入同一位聯絡人。
+- 合併建議的兩位聯絡人在同一個渠道都有身分時，核准一律回 409，建議一直停在 `PENDING`。目前沒有程式產生建議（IDENT-01）。
+- 409 的訊息與 `details.channels` 列出衝突渠道的名稱，不依成員可見的渠道過濾，與 RBAC-04「聯絡人合併沒有套用渠道可見範圍」同一個缺口。
 
 **修正方向**：先查 UAT 有沒有同一個 `contactId` 在同一個 `channelId` 有多筆 `channel_identities`。有的話由客服解除那些合併；沒有之後，加上 `(contactId, channelId)` 唯一限制當第二道防線，合併違反限制時把資料庫錯誤轉成 `AppError`。不建議讓 `Conversation` 記錄渠道身分，產品沒有「一位客人在同一個官方帳號使用兩個帳號」的需求。
 
