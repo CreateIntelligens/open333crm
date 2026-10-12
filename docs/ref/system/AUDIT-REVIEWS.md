@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-12：查 UAT 的同渠道雙身分聯絡人（IDENT-03）
+
+IDENT-03 修正後（PR #255），在 UAT 以唯讀交易查詢 `channel_identities` 依 `(contactId, channelId)` 分組超過 1 筆的聯絡人。只讀 ID、渠道類型、建立時間與數量，沒有讀名稱、email 等個資。
+
+| 項目 | 結果 |
+| --- | --- |
+| 數量 | 119 位聯絡人、130 個渠道身分中，8 位聯絡人在同一個渠道有 2 個身分 |
+| 渠道 | 全部是預設租戶的 WebChat 渠道「tatung」；LINE、FB、Instagram 沒有 |
+| 建立時間 | 2026-09-03～09-04，與 UAT E2E 測試 Wave 1 相同 |
+| 來源 | 沒有合併紀錄、沒有 `IdentityMap` 紀錄，不是合併或縫合產生。每位各 2 段 chatbox 對話，間隔 1～2 秒建立，全部已結案 |
+| 原因 | 未查明。讀現行程式找不到產生這種資料的路徑；當天合併了 WebChat 安全修正 `f507fe1f` |
+
+`AUDIT.md` 的 IDENT-03 驗證狀態改為執行時確認，未修正部分改寫為查詢結果，修正方向改為先刪除這 8 位測試聯絡人，再加 `(contactId, channelId)` 唯一限制。
+
 ## 2026-10-12：IDENT-03 部分修正、IDENT-04 修正
 
 change `enforce-merge-same-channel-guard`（`89014327`）依 #252 的決定（客服不可以合併同一個渠道的兩位聯絡人）實作 IDENT-03 的做法 A 與 IDENT-04 的修正方向：
