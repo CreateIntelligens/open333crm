@@ -158,7 +158,7 @@ Wave 6 全部只送第三種，所以測不出前兩種被擋掉。不確定前�
 |---|---|---|
 | `tenant-inbox.spec.ts` | 列表搜尋、WEBCHAT 端到端收發、接管 Bot、指派、狀態、標籤、建工單、結案+已關閉分頁+重開 | ✅ 12/12 |
 | `tenant-cases.spec.ts` | 統計卡、Tabs/搜尋/篩選、內聯編輯、優先級/分類/指派、備註、升級、狀態流轉、刪除 | ✅ 11/11 |
-| `tenant-contacts.spec.ts` | 列表/搜尋（唯讀）、詳情/時間軸、標籤、合併三步（自種訪客間執行） | ✅ 8/8 |
+| `tenant-contacts.spec.ts` | 列表/搜尋（唯讀）、詳情/時間軸、標籤、合併三步（自種訪客在同一個 WebChat 渠道，2026-10-12 起驗證合併被拒絕） | ✅ 8/8（改寫後尚未在 UAT 執行） |
 
 Wave 1 實作備忘（後續 Wave 沿用）：
 - **種資料走新版 secure Chatbox flow**（舊 `/webchat/:id/sessions` 已除役回 410）：`chatbox-link` 拿 publicKey → `POST /chatbox/sessions` → `verify` 拿 claimToken → `messages`；全程 fingerprint 必須一致；sessions rate limit 10 次/分/IP

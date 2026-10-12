@@ -15,14 +15,13 @@ import {
  *   → 列表相關測試（1、2）只用既有真實資料做「唯讀」驗證。
  * - 「詳情頁」可直接以 URL 開自種訪客 → 詳情/時間軸/標籤/合併測試（3-8）
  *   全部只操作 beforeAll 自種的兩個 [E2E] webchat 訪客。
- * - 破壞性操作（合併）只做在兩個自種訪客之間，絕不合併真實資料；
+ * - 合併只在兩個自種訪客之間嘗試，絕不合併真實資料；
  *   合併 Modal 的搜尋 GET /contacts?q= 不排除 WEBCHAT，所以搜得到自種訪客。
+ * - 兩個自種訪客都在同一個 WebChat 渠道。合併會拒絕同一個渠道的兩個身分
+ *   （409 SAME_CHANNEL_CONFLICT，AUDIT IDENT-03），所以測試 7、8 驗證拒絕，不會封存任何人。
+ *   2026-10-12 之前這兩個測試真的執行合併，在 UAT 留下 8 位同渠道雙身分的聯絡人。
  * - 標籤測試用 API 先建 [E2E] 專用 CONTACT 標籤，afterAll 刪除。
  *
- * 已知行為（讀 contact.service.ts 確認）：
- * - 合併後次要聯絡人被 isArchived=true + mergedIntoId 封存，列表查詢過濾
- *   isArchived:false，但 getContact（詳情 API）「不」過濾 → 直開封存聯絡人
- *   詳情頁仍會正常載入（非 404），僅渠道身份已被搬走。測試 8 以此實際行為斷言。
  */
 
 test.describe.configure({ mode: 'serial' });
@@ -31,7 +30,7 @@ test.describe('@contacts 聯絡人功能', () => {
   let api: APIRequestContext;
   /** 合併測試的主要聯絡人（保留方） */
   let visitorA: SeededConversation;
-  /** 合併測試的次要聯絡人（會被永久封存——這正是我們要的隔離） */
+  /** 合併測試的次要聯絡人（同一個 WebChat 渠道，合併會被拒絕） */
   let visitorB: SeededConversation;
   /** [E2E] 專用 CONTACT 標籤（beforeAll 建、afterAll 刪） */
   let e2eTagId = '';
@@ -61,7 +60,7 @@ test.describe('@contacts 聯絡人功能', () => {
   });
 
   test.afterAll(async () => {
-    // 清掉 [E2E] 標籤；自種訪客不刪（次要方已封存、主要方留作可追溯的測試痕跡）
+    // 清掉 [E2E] 標籤；自種訪客不刪（留作可追溯的測試痕跡）
     if (api) {
       if (e2eTagId) {
         await api.delete(`tags/${e2eTagId}`).catch(() => {});
@@ -237,8 +236,8 @@ test.describe('@contacts 聯絡人功能', () => {
     await expect(dialog).toBeHidden();
   });
 
-  // ── 7. 合併執行（破壞性：只在兩個自種訪客之間） ───────────────────────
-  test('@contacts 合併執行：確認後完成合併，主聯絡人詳情頁仍可開', async ({ page }) => {
+  // ── 7. 合併執行：同一個渠道的兩位訪客被拒絕 ──────────────────────────
+  test('@contacts 合併執行：同一個渠道的兩位訪客被拒絕，視窗顯示原因', async ({ page }) => {
     await gotoContactDetail(page, visitorA.contactId);
     const dialog = await openMergeWizardToPreview(page);
 
@@ -246,44 +245,43 @@ test.describe('@contacts 聯絡人功能', () => {
     await dialog.getByRole('button', { name: '下一步' }).click();
     await expect(dialog.getByText(/將永久封存，此操作無法復原/)).toBeVisible();
     await dialog.getByRole('checkbox').check();
+    const mergeResponse = page.waitForResponse(
+      (r) => r.url().includes('/contacts/merge') && r.request().method() === 'POST',
+    );
     await dialog.getByRole('button', { name: '確認合併' }).click();
 
-    // 成功後 Modal 關閉（合併 API 完成才會 onOpenChange(false)）
-    await expect(dialog).toBeHidden({ timeout: 20_000 });
+    // API 回 409 SAME_CHANNEL_CONFLICT，details.channels 列出衝突的 WebChat 渠道
+    const res = await mergeResponse;
+    expect(res.status(), '同一個渠道的兩位聯絡人應拒絕合併').toBe(409);
+    const error = (await res.json())?.error;
+    expect(error?.code).toBe('SAME_CHANNEL_CONFLICT');
+    expect(error?.details?.channels?.length, 'details.channels 應列出衝突的渠道').toBeGreaterThan(0);
 
-    // 主聯絡人詳情頁仍可開，且次要方的 WebChat 渠道身份已併入（共 2 個徽章）。
-    // 用 exact match 只數渠道身份的 ChannelBadge——時間軸的「新對話 · WebChat · …」
-    // 是整段文字，exact 不會誤中
-    await page.reload({ waitUntil: 'networkidle' });
+    // 視窗維持開啟並顯示 API 的原因
+    await expect(dialog.getByText(/都有帳號，合併後回覆會送錯人，無法合併/)).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: '取消' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  // ── 8. 拒絕後驗證：兩位訪客都沒有變 ──────────────────────────────────
+  test('@contacts 合併被拒絕後：次要聯絡人未封存，雙方各自保留渠道身份', async ({ page }) => {
+    const res = await api.get(`contacts/${visitorB.contactId}`);
+    expect(res.status()).toBe(200);
+    const secondary = (await res.json())?.data;
+    expect(secondary?.isArchived, '次要聯絡人不應被封存').toBe(false);
+    expect(secondary?.mergedIntoId ?? null, '次要聯絡人不應指向主要方').toBe(null);
+
+    // 主要方詳情頁只有自己的一個 WebChat 渠道身份
+    await gotoContactDetail(page, visitorA.contactId);
     await expect(page.getByRole('heading', { name: visitorA.contactName })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText('WebChat', { exact: true })).toHaveCount(2, { timeout: 15_000 });
+    await expect(page.getByText('WebChat', { exact: true })).toHaveCount(1, { timeout: 15_000 });
 
-    // API 佐證：次要方已被封存並指向主要方
-    const res = await api.get(`contacts/${visitorB.contactId}`);
-    expect(res.status(), '封存後的次要聯絡人詳情 API 仍應可查（實際行為）').toBe(200);
-    const merged = (await res.json())?.data;
-    expect(merged?.isArchived, '次要聯絡人應為 isArchived=true').toBe(true);
-    expect(merged?.mergedIntoId, '次要聯絡人 mergedIntoId 應指向主要方').toBe(visitorA.contactId);
-  });
-
-  // ── 8. 合併後驗證：直開次要方 contactId 的實際行為 ────────────────────
-  test('@contacts 合併後驗證：被封存的次要聯絡人詳情頁仍可載入但渠道身份已清空', async ({
-    page,
-  }) => {
-    // 實際行為（讀 contact.service.ts getContact 確認）：詳情 API 不過濾
-    // isArchived → 不會 404 也不會導回列表，頁面照常載入封存的聯絡人；
-    // 只有列表查詢會過濾掉。此處依實際行為斷言。
+    // 次要方詳情頁仍有自己的渠道身份
     await gotoContactDetail(page, visitorB.contactId);
-
-    // 不是「找不到聯繫人」錯誤畫面，名稱照常顯示
-    await expect(page.getByText('找不到聯繫人')).toBeHidden();
-    await expect(page.getByRole('heading', { name: visitorB.contactName })).toBeVisible();
-
-    // 渠道身份已全部搬到主要方 → 顯示「沒有渠道身份」
-    await expect(page.getByText('沒有渠道身份')).toBeVisible();
-    // 對話也已搬走 → 時間軸不再有屬於它的新對話事件（顯示尚無活動記錄）
-    await expect(page.getByText('尚無活動記錄')).toBeVisible();
+    await expect(page.getByText('沒有渠道身份')).toBeHidden();
+    await expect(page.getByText('WebChat', { exact: true })).toHaveCount(1, { timeout: 15_000 });
   });
 });
