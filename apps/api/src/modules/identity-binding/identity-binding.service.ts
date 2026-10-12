@@ -10,7 +10,7 @@
 import { logger } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { mergeContacts, resolveMergeChain, revertMerge, type MovedRecords } from '../contact/contact-merge.service.js';
+import { isSameChannelConflict, mergeContacts, resolveMergeChain, revertMerge, type MovedRecords } from '../contact/contact-merge.service.js';
 import {
   hasSharedChannel,
   inTransaction,
@@ -373,9 +373,19 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
     });
     return result;
   }).catch(async (err) => {
+    if (isSameChannelConflict(err)) {
+      // 確認前的檢查與合併之間，另一個綁定剛把同渠道的身分併進發碼方：比照確認前的檢查不通過處理，
+      // 只放回代碼（本人仍可在其他渠道使用），不恢復待確認（再確認一次也會被拒絕）
+      const remaining = payload.issuedAt + BINDING_CODE_TTL_MS - (deps.now ?? Date.now)();
+      if (remaining > 0) await deps.store.set(codeKey(tenantId, code), raw, 'PX', remaining, 'NX');
+      logger.warn('[IdentityBinding] 合併時發現雙方在同一渠道都有帳號，拒絕合併', { tenantId, survivorId, redeemerId });
+      await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.channelConflict, 'channel_conflict');
+      return null;
+    }
     await restore();
     throw err;
   });
+  if (!merge) return { status: 'channel_conflict' };
 
   deps.io?.to(`tenant:${tenantId}`).emit('contact.merged', {
     primaryContactId: survivorId,

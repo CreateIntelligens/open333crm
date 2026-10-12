@@ -196,6 +196,11 @@ function makeDb() {
       { id: 'sug-other', tenantId: T, status: 'PENDING', primaryContactId: 'X', secondaryContactId: 'S' },
     ]),
     contactMergeLog: table([]),
+    channel: table([
+      { id: 'ch-line', tenantId: T, displayName: '總店 LINE', channelType: 'LINE' },
+      { id: 'ch-fb', tenantId: T, displayName: '總店粉專', channelType: 'FB' },
+      { id: 'ch-ig', tenantId: T, displayName: '總店 IG', channelType: 'THREADS' },
+    ]),
   };
   return db;
 }
@@ -396,11 +401,14 @@ test('解除：AI 長期記憶與合併後才新開的該渠道對話／案件�
   assert.equal(owner(db, 'conversation', 'conv-s'), 'S', 'survivor 原有 LINE 對話不動');
 });
 
-test('解除：雙方在同一渠道都有身分（手動合併不擋）時，不搬 survivor 自己的新對話', async () => {
+test('解除：雙方在同一渠道都有身分（本 change 之前的合併）時，不搬 survivor 自己的新對話', async () => {
   const db = makeDb();
-  // M 也有一個 LINE（同渠道 ch-line）身分；手動合併不會擋
-  db.channelIdentity.rows.push({ id: 'ci-m-line', contactId: 'M', channelId: 'ch-line' });
   const { mergeLogId } = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  // 引擎現在拒絕同渠道合併（change enforce-merge-same-channel-guard），這裡直接寫資料，
+  // 代表之前就存在的合併：M 也有一個 LINE（同渠道 ch-line）身分，當時被搬到 S
+  db.channelIdentity.rows.push({ id: 'ci-m-line', contactId: 'S', channelId: 'ch-line' });
+  const log = db.contactMergeLog.rows.find((r) => r.id === mergeLogId)!;
+  (log.movedRecords as MovedRecords).channelIdentity.push('ci-m-line');
   // 合併後 S 自己的 LINE 帳號開了新對話
   db.conversation.rows.push({ id: 'conv-s-after', tenantId: T, contactId: 'S', channelId: 'ch-line', createdAt: new Date(Date.now() + 1000) });
 
@@ -521,4 +529,36 @@ test('解除：survivor 之後又被併入別人，資料從最終持有者身�
   assert.equal(owner(db, 'conversation', 'conv-m'), 'M');
   assert.equal(owner(db, 'channelIdentity', 'ci-m-ig'), 'M');
   assert.equal(owner(db, 'conversation', 'conv-s'), 'X', '不屬於該次合併的資料不動');
+});
+
+test('Contacts on different channels：雙方渠道不重疊時合併成功', async () => {
+  const db = makeDb();
+  const result = await mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' });
+  assert.ok(result.mergeLogId);
+  assert.equal(db.contact.rows.find((c) => c.id === 'M')!.isArchived, true);
+});
+
+test('合併：雙方在同一渠道都有身分時回 409 SAME_CHANNEL_CONFLICT，不動任何資料', async () => {
+  const db = makeDb();
+  db.channelIdentity.rows.push({ id: 'ci-m-line', contactId: 'M', channelId: 'ch-line' });
+  const before = JSON.stringify(db);
+
+  await assert.rejects(
+    mergeContacts(asDb(db), { tenantId: T, survivorId: 'S', mergedId: 'M', source: 'MANUAL' }),
+    (e: { statusCode?: number; code?: string; details?: { channels?: Array<{ id: string; displayName: string }> } }) => {
+      assert.equal(e.statusCode, 409);
+      assert.equal(e.code, 'SAME_CHANNEL_CONFLICT');
+      assert.deepEqual(
+        e.details?.channels?.map((c) => [c.id, c.displayName]),
+        [['ch-line', '總店 LINE']],
+      );
+      return true;
+    },
+  );
+  // 呼叫端（email 登記、綁定代碼）會接住這個錯誤並讓交易照常提交，所以引擎自己要還原鎖定時的寫入
+  const m = db.contact.rows.find((c) => c.id === 'M')!;
+  assert.equal(m.isArchived, false, '被合併方不可留在封存狀態');
+  assert.equal(m.mergedIntoId, null);
+  assert.deepEqual(db.channelIdentity.rows, JSON.parse(before).channelIdentity.rows);
+  assert.equal(db.contactMergeLog.rows.length, 0, '不寫合併紀錄');
 });

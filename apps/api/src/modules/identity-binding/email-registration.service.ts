@@ -10,7 +10,8 @@ import { z } from 'zod';
 import { logger } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { mergeContacts } from '../contact/contact-merge.service.js';
+import type { Prisma } from '@prisma/client';
+import { isSameChannelConflict, mergeContacts } from '../contact/contact-merge.service.js';
 import { MAX_ISSUES_PER_HOUR, bumpCounter, type BindingStore } from './binding-code.js';
 import {
   hasSharedChannel,
@@ -218,6 +219,11 @@ async function registerEmail(
   if (!registrantId) return { result: { status: 'expired' }, notices: [] };
   const conversationId = payload.conversationId;
 
+  // 同一個 email 的登記依序處理（AUDIT IDENT-04）：沒有這個鎖時，兩位聯絡人同時登記一個新的 email，
+  // 兩邊都查不到使用者、都寫入 email 但不合併。鎖在交易結束時釋放，db 必須是 withTenant 的 tx
+  const lockKey = `email-registration:${tenantId}:${email}`;
+  await (db as Prisma.TransactionClient).$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
   // 最早使用這個 email 的聯絡人代表這個 One ID（含登記方自己）：登記方就是最早的一位時不合併，
   // 否則會把最早的一位併入較新的一位
   const earliest = await db.contact.findFirst({
@@ -236,13 +242,14 @@ async function registerEmail(
     };
   }
 
-  if (await hasSharedChannel(db, existing.id, registrantId)) {
+  const channelConflict = (): { result: SubmitEmailResult; notices: EmailNotice[] } => {
     logger.warn('[EmailRegistration] 雙方在同一渠道都有帳號，拒絕合併', { tenantId, existingId: existing.id, registrantId });
     return {
       result: { status: 'channel_conflict' },
       notices: [{ conversationId, text: EMAIL_TEXT.channelConflict, kind: 'email_channel_conflict' }],
     };
-  }
+  };
+  if (await hasSharedChannel(db, existing.id, registrantId)) return channelConflict();
 
   // 合併前先找既有方最近的對話：合併後登記方的對話也會屬於既有方
   const existingConversation = await db.conversation.findFirst({
@@ -257,6 +264,8 @@ async function registerEmail(
       })
     : null;
 
+  // 上面的檢查與合併之間，另一個合併可能剛把同渠道的身分併進既有方：引擎鎖定後再檢查一次並拒絕，
+  // 比照上面的檢查回覆顧客（引擎已還原被合併方，交易可照常提交）
   const merge = await inTransaction(db, async (tx) => {
     const result = await mergeContacts(tx, {
       tenantId,
@@ -281,7 +290,11 @@ async function registerEmail(
       update: { contactId: existing.id, source: 'EMAIL_MATCH', confidence: 1, mergedAt: new Date() },
     });
     return result;
+  }).catch((err: unknown) => {
+    if (isSameChannelConflict(err)) return null;
+    throw err;
   });
+  if (!merge) return channelConflict();
 
   const settingsRow = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
   const unbindKeyword = parseIdentityBindingSettings(settingsRow?.identityBinding).unbindKeywords[0];
