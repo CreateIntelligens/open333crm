@@ -324,7 +324,7 @@ test.describe('@portal 粉絲門戶功能層', () => {
       await expect(page.getByText('選擇活動')).toBeVisible({ timeout: 10_000 });
     } else if (tab === 'points') {
       await page.getByRole('button', { name: '積分管理', exact: true }).click();
-      await expect(page.getByPlaceholder('搜尋聯繫人（名稱、電話、Email）')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByPlaceholder('搜尋聯絡人（名稱、電話、Email）')).toBeVisible({ timeout: 10_000 });
     }
   }
 
@@ -410,9 +410,9 @@ test.describe('@portal 粉絲門戶功能層', () => {
 
   test('@portal 積分管理 tab：僅驗證唯讀介面（不對真實聯絡人做積分調整）', async ({ page }) => {
     await gotoPortal(page, 'points');
-    await expect(page.getByPlaceholder('搜尋聯繫人（名稱、電話、Email）')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByPlaceholder('搜尋聯絡人（名稱、電話、Email）')).toBeVisible({ timeout: 10_000 });
     // 搜尋按鈕（放大鏡圖示，無文字 label）緊鄰搜尋輸入框，驗證存在即可，不執行搜尋
-    const searchInput = page.getByPlaceholder('搜尋聯繫人（名稱、電話、Email）');
+    const searchInput = page.getByPlaceholder('搜尋聯絡人（名稱、電話、Email）');
     const searchButton = searchInput.locator('xpath=following-sibling::button[1]');
     await expect(searchButton).toBeVisible();
   });

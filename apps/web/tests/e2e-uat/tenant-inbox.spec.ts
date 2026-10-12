@@ -95,7 +95,7 @@ test.describe('@inbox 收件匣功能層', () => {
     await page.goto(`${BASE_URL}/dashboard/inbox?conv=${seeded.conversationId}`, {
       waitUntil: 'networkidle',
     });
-    // 等 chat header 的聯繫人名字出現，代表對話已載入
+    // 等 chat header 的聯絡人名字出現，代表對話已載入
     await expect(
       page.getByRole('heading', { name: seeded.contactName || 'Chatbox Visitor' }).first(),
     ).toBeVisible({ timeout: 20_000 });
@@ -147,7 +147,7 @@ test.describe('@inbox 收件匣功能層', () => {
   test('@inbox 1. 列表搜尋能找到剛種的對話', async ({ page }) => {
     await page.goto(`${BASE_URL}/dashboard/inbox`, { waitUntil: 'networkidle' });
 
-    // 搜尋是前端過濾（比對聯繫人名稱與最後訊息文字）；名稱拿不到時退而用 marker
+    // 搜尋是前端過濾（比對聯絡人名稱與最後訊息文字）；名稱拿不到時退而用 marker
     const query = seeded.contactName || seeded.marker;
     await page.getByPlaceholder('搜尋對話...').fill(query);
 
