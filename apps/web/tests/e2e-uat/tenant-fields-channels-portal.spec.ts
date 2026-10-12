@@ -594,13 +594,13 @@ test.describe('粉絲門戶 /dashboard/portal 欄位', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe('粉絲門戶 — 積分調整欄位', () => {
-  /** 取一個既有聯繫人做積分測試；每次調整後都回沖，維持餘額不變 */
+  /** 取一個既有聯絡人做積分測試；每次調整後都回沖，維持餘額不變 */
   async function pickContact(): Promise<string> {
     const res = await api.get('contacts', { params: { limit: '1' } });
     const body = await res.json();
     const items = body?.data?.items ?? body?.data ?? [];
     const id = items[0]?.id;
-    expect(id, '需要至少一個聯繫人才能測積分').toBeTruthy();
+    expect(id, '需要至少一個聯絡人才能測積分').toBeTruthy();
     return id as string;
   }
 

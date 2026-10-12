@@ -24,7 +24,7 @@ import {
 } from './field-helpers';
 
 /**
- * Wave 6 欄位級測試：工單（Cases）+ 聯繫人（Contacts）+ 收件匣（Inbox）
+ * Wave 6 欄位級測試：工單（Cases）+ 聯絡人（Contacts）+ 收件匣（Inbox）
  *
  * ── 測試策略 ──────────────────────────────────────────────────────────────
  * 1. UI 層：對使用者真的看得到的欄位做「必填擋控 / 長度上限 / 往返 / XSS」，
@@ -36,9 +36,9 @@ import {
  *
  * ── 種資料 / 清理 ─────────────────────────────────────────────────────────
  * - seedWebchatConversation 只在 beforeAll 呼叫「一次」（rate limit 10 次/分/IP），
- *   整份 spec 重複利用同一條對話與其訪客聯繫人。
+ *   整份 spec 重複利用同一條對話與其訪客聯絡人。
  * - 所有自建工單一律 [E2E] 前綴，afterAll 以 API 刪除。
- * - 合併聯繫人：依安全限制「只對自種訪客做」，但單條 seed 無法產出第二個可犧牲
+ * - 合併聯絡人：依安全限制「只對自種訪客做」，但單條 seed 無法產出第二個可犧牲
  *   的訪客（再 seed 會逼近 rate limit 且留下孤兒資料），因此合併「只測前兩步
  *   （選擇對象 + 預覽）與第三步的確認閘門欄位」，不按下最終不可逆的合併鍵。
  *
@@ -114,12 +114,12 @@ async function createCase(title: string, extra: Record<string, unknown> = {}): P
  * ⚠️ 實測發現：CaseCreateModal 只掛在 Inbox 的 ContactInfoPanel（「建立工單」鈕），
  *    /dashboard/cases 列表頁「沒有」任何建立入口（見 BUG-W6-11）。
  *    因此建立 Modal 的欄位測試一律從收件匣進入，且必然是 isFromInbox 模式
- *    （聯繫人欄位被 prefill 且 disabled，走 /cases/from-conversation/:id）。
+ *    （聯絡人欄位被 prefill 且 disabled，走 /cases/from-conversation/:id）。
  */
 async function openCaseCreateModal(page: Page): Promise<void> {
   await gotoAndCheck(page, `/dashboard/inbox?conv=${seeded.conversationId}`);
   const btn = page.locator('button', { hasText: '建立工單' }).first();
-  await expect(btn, '收件匣右側聯繫人面板應有「建立工單」鈕').toBeVisible({ timeout: 20_000 });
+  await expect(btn, '收件匣右側聯絡人面板應有「建立工單」鈕').toBeVisible({ timeout: 20_000 });
   await btn.click();
   await expect(page.getByText('建立案件').first()).toBeVisible({ timeout: 10_000 });
 }
@@ -188,12 +188,12 @@ test.describe('工單 — 建立 Modal 欄位', () => {
     const fields = await inventoryFields(page, DIALOG_SCOPE);
     console.log(formatFieldInventory(fields, '建立工單 Modal'));
 
-    // 盤點必須涵蓋：聯繫人（唯讀）、標題、描述、優先級、分類、指派、團隊、SLA
+    // 盤點必須涵蓋：聯絡人（唯讀）、標題、描述、優先級、分類、指派、團隊、SLA
     expect(fields.length, '建立 Modal 應掃到 ≥ 7 個輸入元素').toBeGreaterThanOrEqual(7);
 
-    // inbox 模式下聯繫人欄位是 prefill + disabled（不可改綁別的聯繫人）
+    // inbox 模式下聯絡人欄位是 prefill + disabled（不可改綁別的聯絡人）
     const contactField = fields.find((f) => f.disabled && f.tag === 'input');
-    expect(contactField, 'inbox 模式的聯繫人欄位應為 disabled 唯讀').toBeTruthy();
+    expect(contactField, 'inbox 模式的聯絡人欄位應為 disabled 唯讀').toBeTruthy();
 
     // 前端 maxLength 與後端 zod max 一致性檢查
     const titleField = fields.find((f) => f.placeholder?.includes('案件標題'));
@@ -235,7 +235,7 @@ test.describe('工單 — 建立 Modal 欄位', () => {
     const dialog = openDialog(page);
     const submit = dialog.locator('button', { hasText: /建立案件|建立中/ }).last();
 
-    // inbox 模式聯繫人已 prefill，唯一還缺的必填就是分類
+    // inbox 模式聯絡人已 prefill，唯一還缺的必填就是分類
     await setField(dialog.getByPlaceholder('案件標題...'), `${E2E_PREFIX} 分類必填 ${RUN}`);
     await expect(submit, '填了標題但未選分類時送出鍵應 disabled').toBeDisabled();
 
@@ -280,21 +280,21 @@ test.describe('工單 — 建立 Modal 欄位', () => {
     ).toBe(LIMITS.caseDescription);
   });
 
-  test('聯繫人欄位（inbox 模式）：prefill 為來源對話的聯繫人且不可編輯', async ({ page }) => {
+  test('聯絡人欄位（inbox 模式）：prefill 為來源對話的聯絡人且不可編輯', async ({ page }) => {
     await openCaseCreateModal(page);
     const dialog = openDialog(page);
 
-    // inbox 模式不提供聯繫人搜尋框，只有唯讀 input
+    // inbox 模式不提供聯絡人搜尋框，只有唯讀 input
     expect(
-      await dialog.getByPlaceholder('搜尋聯繫人姓名...').count(),
-      'inbox 模式不應出現聯繫人搜尋框（聯繫人由對話決定）',
+      await dialog.getByPlaceholder('搜尋聯絡人姓名...').count(),
+      'inbox 模式不應出現聯絡人搜尋框（聯絡人由對話決定）',
     ).toBe(0);
 
     const readonly = dialog.locator('input[disabled]').first();
-    await expect(readonly, '聯繫人欄位應存在且 disabled').toBeVisible();
+    await expect(readonly, '聯絡人欄位應存在且 disabled').toBeVisible();
     expect(
       await readonly.inputValue(),
-      '聯繫人欄位應帶入來源對話的訪客名稱',
+      '聯絡人欄位應帶入來源對話的訪客名稱',
     ).toContain(seeded.contactName.slice(0, 10));
   });
 
@@ -957,32 +957,32 @@ test.describe('工單 — 列表篩選欄位', () => {
 });
 
 // ===========================================================================
-// 六、聯繫人（Contacts）
+// 六、聯絡人（Contacts）
 // ===========================================================================
 
-test.describe('聯繫人 — 欄位', () => {
-  test('欄位盤點：聯繫人列表頁 + 詳情頁', async ({ page }) => {
+test.describe('聯絡人 — 欄位', () => {
+  test('欄位盤點：聯絡人列表頁 + 詳情頁', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/contacts');
     const listFields = await inventoryFields(page);
-    console.log(formatFieldInventory(listFields, '聯繫人列表頁'));
+    console.log(formatFieldInventory(listFields, '聯絡人列表頁'));
     expect(
-      listFields.some((f) => f.placeholder?.includes('搜尋聯繫人')),
-      '列表頁應有搜尋聯繫人輸入框',
+      listFields.some((f) => f.placeholder?.includes('搜尋聯絡人')),
+      '列表頁應有搜尋聯絡人輸入框',
     ).toBe(true);
 
     await gotoAndCheck(page, `/dashboard/contacts/${seeded.contactId}`);
     const detailFields = await inventoryFields(page);
-    console.log(formatFieldInventory(detailFields, '聯繫人詳情頁'));
+    console.log(formatFieldInventory(detailFields, '聯絡人詳情頁'));
   });
 
   test('搜尋框：server-side 查詢，關鍵字進 q 參數', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/contacts');
-    const search = page.getByPlaceholder('搜尋聯繫人', { exact: false });
+    const search = page.getByPlaceholder('搜尋聯絡人', { exact: false });
     await expect(search).toBeVisible({ timeout: 15_000 });
 
-    // ⚠️ 重要現況：聯繫人列表頁的 useContacts 寫死 `excludeChannelType: 'WEBCHAT'`
+    // ⚠️ 重要現況：聯絡人列表頁的 useContacts 寫死 `excludeChannelType: 'WEBCHAT'`
     //    （src/app/dashboard/contacts/page.tsx），因此自種的 Chatbox 訪客
-    //    「永遠不會」出現在這個列表。搜尋斷言因此改用一個真的看得到的聯繫人。
+    //    「永遠不會」出現在這個列表。搜尋斷言因此改用一個真的看得到的聯絡人。
     const visible = await api.get('contacts', {
       params: { excludeChannelType: 'WEBCHAT', limit: '5' },
     });
@@ -990,10 +990,10 @@ test.describe('聯繫人 — 欄位', () => {
       id: string;
       displayName?: string;
     }>;
-    test.skip(visibleList.length === 0, '租戶沒有非 WEBCHAT 聯繫人，無法驗證列表搜尋');
+    test.skip(visibleList.length === 0, '租戶沒有非 WEBCHAT 聯絡人，無法驗證列表搜尋');
     const target = visibleList[0];
     const keyword = (target.displayName || '').slice(0, 6);
-    test.skip(keyword.trim().length < 2, '取樣到的聯繫人顯示名過短，無法當搜尋關鍵字');
+    test.skip(keyword.trim().length < 2, '取樣到的聯絡人顯示名過短，無法當搜尋關鍵字');
 
     // 輸入關鍵字 → 應發出帶 q 的 server-side 查詢
     const result = await submitAndObserve(
@@ -1011,7 +1011,7 @@ test.describe('聯繫人 — 欄位', () => {
     await expect
       .poll(async () => page.locator('tbody tr').count(), { timeout: 15_000 })
       .toBe(returned.length);
-    expect(returned.length, '以既有聯繫人名搜尋應至少命中 1 筆').toBeGreaterThan(0);
+    expect(returned.length, '以既有聯絡人名搜尋應至少命中 1 筆').toBeGreaterThan(0);
 
     // 不可能命中的關鍵字 → 應收斂為 0 列
     const none = await submitAndObserve(
@@ -1043,7 +1043,7 @@ test.describe('聯繫人 — 欄位', () => {
     }
   });
 
-  test('聯繫人標籤：新增後可讀回，移除後消失', async ({ page }) => {
+  test('聯絡人標籤：新增後可讀回，移除後消失', async ({ page }) => {
     // 取一個 CONTACT scope 的既有標籤（不新建標籤，避免汙染 Settings 資料）
     const tagsRes = await api.get('tags');
     const tags = ((await tagsRes.json())?.data ?? []) as Array<{
@@ -1056,7 +1056,7 @@ test.describe('聯繫人 — 欄位', () => {
     );
     test.skip(!contactTag, '租戶沒有可用的 CONTACT scope 標籤，跳過標籤增刪測試');
 
-    // TagManager 的 availableTags 會濾掉「已掛在該聯繫人身上」的標籤，
+    // TagManager 的 availableTags 會濾掉「已掛在該聯絡人身上」的標籤，
     // 導致下拉沒有該選項。先確保乾淨起始狀態（移除後再測新增）。
     await api.delete(`contacts/${seeded.contactId}/tags/${contactTag!.id}`).catch(() => {});
 
@@ -1075,13 +1075,13 @@ test.describe('聯繫人 — 欄位', () => {
       'POST',
       10_000,
     );
-    expectAccepted(add, '新增聯繫人標籤');
+    expectAccepted(add, '新增聯絡人標籤');
 
     // 往返：reload 後標籤仍在
     await page.reload({ waitUntil: 'networkidle' });
     await expect(
       page.getByText(contactTag!.name, { exact: false }).first(),
-      'reload 後標籤應仍掛在聯繫人上',
+      'reload 後標籤應仍掛在聯絡人上',
     ).toBeVisible({ timeout: 15_000 });
 
     // 移除（清理自己加的標籤）
@@ -1104,7 +1104,7 @@ test.describe('聯繫人 — 欄位', () => {
     expect(res.status()).toBeLessThan(500);
   });
 
-  test('聯繫人 PATCH：displayName 空字串、email 格式、isBlocked 型別被擋', async () => {
+  test('聯絡人 PATCH：displayName 空字串、email 格式、isBlocked 型別被擋', async () => {
     await apiFieldCheck(api, {
       path: `contacts/${seeded.contactId}`,
       method: 'patch',
@@ -1132,13 +1132,13 @@ test.describe('聯繫人 — 欄位', () => {
 
   test('合併精靈：三步欄位可走到最終確認閘門（不執行不可逆合併）', async ({ page }) => {
     await gotoAndCheck(page, `/dashboard/contacts/${seeded.contactId}`);
-    const mergeBtn = page.locator('button', { hasText: '合併聯繫人' }).first();
+    const mergeBtn = page.locator('button', { hasText: '合併聯絡人' }).first();
     await expect(mergeBtn).toBeVisible({ timeout: 15_000 });
     await mergeBtn.click();
 
     const dialog = openDialog(page);
     const fields = await inventoryFields(page, DIALOG_SCOPE);
-    console.log(formatFieldInventory(fields, '合併聯繫人精靈 — 步驟 1'));
+    console.log(formatFieldInventory(fields, '合併聯絡人精靈 — 步驟 1'));
 
     // 步驟 1：未選合併對象時「下一步」應 disabled（必選擋控）
     const next = dialog.locator('button', { hasText: '下一步' }).first();
@@ -1174,13 +1174,13 @@ test.describe('聯繫人 — 欄位', () => {
     const same = await api.post('contacts/merge', {
       data: { primaryContactId: seeded.contactId, secondaryContactId: seeded.contactId },
     });
-    expect(same.status(), '主次為同一聯繫人時應回 4xx').toBeGreaterThanOrEqual(400);
-    expect(same.status(), '主次為同一聯繫人時應回 4xx 而非 5xx').toBeLessThan(500);
+    expect(same.status(), '主次為同一聯絡人時應回 4xx').toBeGreaterThanOrEqual(400);
+    expect(same.status(), '主次為同一聯絡人時應回 4xx 而非 5xx').toBeLessThan(500);
   });
 
-  test.fail('[BUG-W6-07] 聯繫人 displayName 應有長度上限且拒絕純空白', async () => {
+  test.fail('[BUG-W6-07] 聯絡人 displayName 應有長度上限且拒絕純空白', async () => {
     // updateContactSchema.displayName: z.string().min(1) — 無 max、未 trim。
-    // 實測：純空白成功寫入（聯繫人在列表變成空白列）、10000 字亦成功寫入。
+    // 實測：純空白成功寫入（聯絡人在列表變成空白列）、10000 字亦成功寫入。
     await apiFieldCheck(api, {
       path: `contacts/${seeded.contactId}`,
       method: 'patch',
@@ -1190,7 +1190,7 @@ test.describe('聯繫人 — 欄位', () => {
     });
   });
 
-  test.fail('[BUG-W6-08] 聯繫人 phone 應有格式與長度驗證（目前 z.string() 全開）', async () => {
+  test.fail('[BUG-W6-08] 聯絡人 phone 應有格式與長度驗證（目前 z.string() 全開）', async () => {
     // phone: z.string().nullable().optional() — 任何字串都收，包含 5000 字與 <script>。
     await apiFieldCheck(api, {
       path: `contacts/${seeded.contactId}`,

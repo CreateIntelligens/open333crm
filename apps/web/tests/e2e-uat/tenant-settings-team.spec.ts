@@ -39,7 +39,7 @@ import {
  * - 標籤管理（TagManagement）刪除已讀碼確認是**硬刪**
  *   （apps/api/src/modules/tag/tagging.service.ts deleteTenantTag：依序刪光 ContactTag/
  *   CaseTag/ConversationTag 關聯後 `prisma.tag.delete`），非軟刪。刪除觸發原生
- *   `confirm('確定要刪除此標籤嗎？已套用在聯繫人、對話和案件上的標籤也會一併移除。')`。
+ *   `confirm('確定要刪除此標籤嗎？已套用在聯絡人、對話和案件上的標籤也會一併移除。')`。
  * - 標籤建立時可選「適用範圍」（CONTACT/CONVERSATION/CASE），編輯時範圍唯讀不可改
  *   （TagManagement.tsx `editingTag` 分支只顯示文字，無 Select）。
  * - Dialog 元件是原生 `<dialog>`（見 src/components/ui/dialog.tsx），Playwright
