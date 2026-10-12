@@ -28,12 +28,6 @@ const envSchema = z.object({
   CACHE_SEGMENT: z.string().default('open333crm'),
   CACHE_REDIS_DB: z.coerce.number().int().optional(),
   CACHE_EXPIRES_IN: z.coerce.number().int().optional(),
-  LINE_LOGIN_CHANNEL_ID: z.string().optional(),
-  LINE_LOGIN_CHANNEL_SECRET: z.string().optional(),
-  LINE_LOGIN_CALLBACK_URL: z.string().optional(),
-  FB_LOGIN_APP_ID: z.string().optional(),
-  FB_LOGIN_APP_SECRET: z.string().optional(),
-  FB_LOGIN_CALLBACK_URL: z.string().optional(),
   // 平台持有的 Meta App（change fix-meta-webhook-page-routing 第 3 階段）：租戶以 Facebook 登入連結粉專，
   // 事件統一打到 /api/v1/webhooks/meta。四個都設定才啟用；未設定時相關端點回 503
   META_APP_ID: z.string().optional(),

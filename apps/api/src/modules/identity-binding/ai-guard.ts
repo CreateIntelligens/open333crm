@@ -15,6 +15,9 @@ import { getIdentityBindingSettingsCached } from './identity-binding.service.js'
 /** 寬鬆比對：AI 編的代碼長度、大小寫不一定正確，也可能藏在網址編碼裡；前面接英文字母的（如 REBIND-）不算 */
 const LOOSE_CODE_PATTERN = /(?<![A-Za-z])BIND-[0-9A-Za-z]{4,}/gi;
 const REDACTED = '[綁定代碼]';
+/** email 登記連結（change add-email-identity-merge）：連結即憑證，不給 AI 看也不讓 AI 照抄 */
+const EMAIL_LINK_PATTERN = /\S*\/bind\/email\/[A-Za-z0-9_-]+/g;
+const REDACTED_EMAIL_LINK = '[登記連結]';
 const BINDING_MESSAGE_SOURCE = 'identity_binding';
 
 /**
@@ -28,7 +31,7 @@ export function containsBindingCode(text: string): boolean {
 }
 
 function redactBindingCodes(text: string): string {
-  return text.replace(LOOSE_CODE_PATTERN, REDACTED);
+  return text.replace(LOOSE_CODE_PATTERN, REDACTED).replace(EMAIL_LINK_PATTERN, REDACTED_EMAIL_LINK);
 }
 
 export interface HistoryRow {

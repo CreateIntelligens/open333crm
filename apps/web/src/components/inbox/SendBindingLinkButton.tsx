@@ -6,16 +6,7 @@ import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { usePermission } from '@/providers/AuthProvider';
-
-// 租戶是否啟用跨渠道綁定：切換對話不必每次重查（設定變更最多延遲 1 分鐘反映）
-let enabledCache: { value: boolean; at: number } | null = null;
-async function fetchBindingEnabled(): Promise<boolean> {
-  if (enabledCache && Date.now() - enabledCache.at < 60_000) return enabledCache.value;
-  const res = await api.get('/contacts/identity-binding/status');
-  const value = Boolean(res.data?.data?.enabled);
-  enabledCache = { value, at: Date.now() };
-  return value;
-}
+import { fetchIdentityBindingStatus } from './identity-binding-status';
 
 const RESULT_TEXT: Record<string, string> = {
   no_targets: '沒有其他可綁定的渠道，請先到「渠道管理」設定各渠道的導流識別。',
@@ -37,9 +28,9 @@ export function SendBindingLinkButton({ contactId, conversationId }: { contactId
   useEffect(() => {
     if (!canUpdate) return;
     let cancelled = false;
-    fetchBindingEnabled()
-      .then((value) => {
-        if (!cancelled) setEnabled(value);
+    fetchIdentityBindingStatus()
+      .then((status) => {
+        if (!cancelled) setEnabled(status.enabled);
       })
       .catch(() => {
         // 查不到就不顯示按鈕（功能預設關閉），不影響收件匣其他操作

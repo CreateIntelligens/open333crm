@@ -6,11 +6,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
 import { getApiErrorMessage, getFieldErrors } from "@/lib/api-error";
+import { resetIdentityBindingStatusCache } from "@/components/inbox/identity-binding-status";
 
 interface IdentityBindingSettingsData {
   enabled: boolean;
   bindKeywords: string[];
   unbindKeywords: string[];
+  emailEnabled: boolean;
+  emailKeywords: string[];
 }
 
 /** 以頓號／逗號／換行分隔的關鍵字字串 ↔ 陣列 */
@@ -29,6 +32,8 @@ export function IdentityBindingSettings() {
   const [enabled, setEnabled] = useState(false);
   const [bindText, setBindText] = useState("");
   const [unbindText, setUnbindText] = useState("");
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [emailText, setEmailText] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -40,6 +45,8 @@ export function IdentityBindingSettings() {
     setEnabled(data.enabled);
     setBindText(toText(data.bindKeywords));
     setUnbindText(toText(data.unbindKeywords));
+    setEmailEnabled(Boolean(data.emailEnabled));
+    setEmailText(toText(data.emailKeywords ?? []));
   };
 
   const fetchSettings = useCallback(async () => {
@@ -68,8 +75,12 @@ export function IdentityBindingSettings() {
         enabled,
         bindKeywords: toList(bindText),
         unbindKeywords: toList(unbindText),
+        emailEnabled,
+        emailKeywords: toList(emailText),
       });
       apply(res.data.data);
+      // 收件匣的代發按鈕依啟用狀態顯示，同一個分頁內立即反映
+      resetIdentityBindingStatusCache();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -134,6 +145,33 @@ export function IdentityBindingSettings() {
           綁定後 7 天內，顧客傳送此關鍵字可自行解除；超過 7 天需由客服在聯絡人頁面解除。
         </p>
         {fieldError("unbindKeywords") && <p className="text-xs text-destructive">{fieldError("unbindKeywords")}</p>}
+      </div>
+
+      <div className="space-y-4 border-t pt-6">
+        <div>
+          <h3 className="mb-1 text-base font-semibold">Email 登記</h3>
+          <p className="text-sm text-muted-foreground">
+            顧客傳送登記關鍵字，系統回覆一個登記網頁連結。顧客填入 email 後，若有其他聯絡人使用相同的 email，系統會自動把兩位聯絡人合併，
+            並在雙方的對話中通知；顧客可在 7 天內傳送解除關鍵字自行解除。客服也可以在收件匣代顧客傳送登記連結。
+          </p>
+        </div>
+        <label className="flex items-start gap-3 rounded-lg border p-4">
+          <Checkbox checked={emailEnabled} onCheckedChange={setEmailEnabled} className="mt-0.5" />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium">啟用 email 登記</span>
+            <span className="block text-xs text-muted-foreground">
+              系統不寄驗證信，填入他人 email 也會合併；合併後雙方都會收到通知，可自行解除，客服也可以在聯絡人頁的合併紀錄解除。
+            </span>
+          </span>
+        </label>
+        <div className="space-y-2">
+          <label className="text-sm font-medium" htmlFor="email-keywords">
+            Email 登記關鍵字
+          </label>
+          <Input id="email-keywords" value={emailText} onChange={(e) => setEmailText(e.target.value)} placeholder="登記email" className="max-w-md" />
+          <p className="text-xs text-muted-foreground">不可與綁定、解除關鍵字相同；解除關鍵字兩種方式共用。</p>
+          {fieldError("emailKeywords") && <p className="text-xs text-destructive">{fieldError("emailKeywords")}</p>}
+        </div>
       </div>
 
       <div className="rounded-lg border bg-muted/40 p-4 text-sm">

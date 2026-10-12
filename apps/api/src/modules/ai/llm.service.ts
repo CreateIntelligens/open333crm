@@ -9,6 +9,7 @@
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
+import { withOtherChannelContext } from './other-channel-context.js';
 import { logger } from '@open333crm/core';
 import { getChatProvider } from './providers/index.js';
 import type { HistoryMessage } from './providers/index.js';
@@ -242,6 +243,8 @@ export async function generateReply(
     promptKind?: PromptKind;
     overrideSystemPrompt?: string;
     history?: HistoryMessage[];
+    /** 同一位顧客在其他渠道的近期訊息（loadOtherChannelContext 的結果），接在系統指示後面 */
+    otherChannelContext?: string;
     /** 用量記錄的來源標記與關聯（未傳 feature 記為 unknown） */
     meta?: AiUsageMeta;
   } = {},
@@ -284,7 +287,7 @@ export async function generateReply(
   try {
     result = await provider.generate({
       // 知識庫約束在此組裝完成，provider 只負責傳輸（CM-178）
-      systemPrompt: buildSystemPrompt(systemPrompt, kbContext),
+      systemPrompt: buildSystemPrompt(withOtherChannelContext(systemPrompt, options.otherChannelContext ?? ''), kbContext),
       userMessage,
       history: options.history,
       model: settings.model,

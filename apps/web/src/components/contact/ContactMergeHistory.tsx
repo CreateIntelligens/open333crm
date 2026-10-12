@@ -25,6 +25,7 @@ const SOURCE_LABEL: Record<string, string> = {
   LINE_LOGIN: 'LINE Login',
   FB_LOGIN: 'Facebook Login',
   BINDING_CODE: '跨渠道綁定',
+  EMAIL: 'Email 登記',
 };
 
 /**

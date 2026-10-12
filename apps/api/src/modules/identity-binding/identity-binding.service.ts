@@ -7,14 +7,19 @@
  * 所有函式接受呼叫端的 Prisma 執行器：webhook 路徑是 prismaAdmin（白名單，查詢一律自帶 tenantId），
  * 客服路徑是 withTenant 的 tx。合併與解除在交易內執行。
  */
-import type { Prisma } from '@prisma/client';
-import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { deliverToChannel } from '../conversation/conversation.service.js';
 import { mergeContacts, resolveMergeChain, revertMerge, type MovedRecords } from '../contact/contact-merge.service.js';
-import { buildMessageNewPayload, emitToConversationAndTenant } from '../webhook/inbound-socket-presenter.js';
+import {
+  hasSharedChannel,
+  inTransaction,
+  resolveLiveContactId,
+  sendBindingMessage,
+  type BindingActor,
+  type BindingDeps,
+} from './binding-common.js';
+import { issueEmailRegistrationLink } from './email-registration.service.js';
 import {
   BINDING_CODE_TTL_MS,
   CONFIRM_KEYWORD,
@@ -30,7 +35,6 @@ import {
   issueCounterKey,
   readCounter,
   type BindingCodePayload,
-  type BindingStore,
 } from './binding-code.js';
 import {
   BINDING_TEXT,
@@ -44,42 +48,9 @@ import {
   type IdentityBindingSettings,
 } from './binding-links.js';
 
-export interface BindingDeps {
-  store: BindingStore;
-  /** 有 io 才推送 socket 事件（測試可省略） */
-  io?: SocketIOServer;
-  /** 送出訊息到渠道，回傳是否成功；預設走 deliverToChannel */
-  deliver?: (db: TenantDb, conversationId: string, text: string) => Promise<boolean>;
-  now?: () => number;
-}
-
-/** 發碼／兌換／解除時，顧客目前所在的渠道身分 */
-export interface BindingActor {
-  tenantId: string;
-  channelId: string;
-  channelType: string;
-  channelIdentityId: string;
-  uid: string;
-  contactId: string;
-  conversationId: string;
-}
+export type { BindingActor, BindingDeps } from './binding-common.js';
 
 const BINDABLE_TYPES: BindableChannelType[] = ['LINE', 'FB', 'THREADS'];
-
-async function inTransaction<T>(db: TenantDb, fn: (tx: TenantDb) => Promise<T>): Promise<T> {
-  const client = db as unknown as {
-    $transaction?: (cb: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
-    $isTenantScoped?: () => true;
-  };
-  // request.tenantPrisma 的 $transaction 不帶租戶、查詢也各自開交易，合併會失去原子性且被 RLS 擋掉；
-  // 需要合併／解除的呼叫端必須傳 withTenant 的 tx（或白名單的 prismaAdmin）
-  if (typeof client.$isTenantScoped === 'function') {
-    throw new Error('identity-binding：合併／解除需在 withTenant 交易內執行，請勿傳入 request.tenantPrisma');
-  }
-  // 已在交易內（TransactionClient 沒有 $transaction）就直接執行，避免巢狀
-  if (typeof client.$transaction === 'function') return client.$transaction((tx) => fn(tx));
-  return fn(db);
-}
 
 export async function getIdentityBindingSettings(db: TenantDb, tenantId: string): Promise<IdentityBindingSettings> {
   const row = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
@@ -105,41 +76,33 @@ export function invalidateIdentityBindingSettings(tenantId?: string): void {
 }
 
 /**
- * 送出一則綁定訊息並寫入對話紀錄（以 Bot 訊息呈現，保留換行，客服看得出顧客收到了什麼）。
- * 送出失敗時比照 worker 的 recordDeliveryFailure 慣例，在該則訊息標 metadata.deliveryFailed，
- * 收件匣會顯示成紅色「沒有送出」提示，不讓失敗只留在 log。
+ * 客服代發時，找出聯絡人在指定對話的渠道身分；對話不屬於該聯絡人或沒有身分時回 null。
  */
-async function sendBindingMessage(
+export async function findBindingActorForConversation(
   db: TenantDb,
-  deps: BindingDeps,
   tenantId: string,
+  contactId: string,
   conversationId: string,
-  text: string,
-  kind: string,
-): Promise<boolean> {
-  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, text);
-  if (!ok) logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });
-
-  const message = await db.message.create({
-    data: {
-      conversationId,
-      direction: 'OUTBOUND',
-      senderType: 'BOT',
-      contentType: 'text',
-      content: { text },
-      metadata: {
-        source: 'identity_binding',
-        kind,
-        ...(ok ? {} : { deliveryFailed: true, deliveryError: BINDING_TEXT.deliveryFailed }),
-      },
-    },
+): Promise<BindingActor | null> {
+  const conversation = await db.conversation.findFirst({
+    where: { id: conversationId, tenantId, contactId },
+    select: { id: true, channelId: true, channel: { select: { channelType: true } } },
   });
-  await db.conversation.updateMany({ where: { id: conversationId, tenantId }, data: { lastMessageAt: new Date() } });
-  if (deps.io) {
-    const payload = buildMessageNewPayload(message, { content: { text }, includeTypePayload: true, includeMetadata: true });
-    emitToConversationAndTenant(deps.io, conversationId, tenantId, 'message.new', payload);
-  }
-  return ok;
+  if (!conversation) return null;
+  const identity = await db.channelIdentity.findFirst({
+    where: { contactId, channelId: conversation.channelId, contact: { tenantId } },
+    select: { id: true, uid: true },
+  });
+  if (!identity) return null;
+  return {
+    tenantId,
+    channelId: conversation.channelId,
+    channelType: conversation.channel.channelType,
+    channelIdentityId: identity.id,
+    uid: identity.uid,
+    contactId,
+    conversationId: conversation.id,
+  };
 }
 
 // ── 發碼 ────────────────────────────────────────────────────────────────────
@@ -225,14 +188,6 @@ export type RedeemResult =
   | { status: 'same_identity' }
   | { status: 'channel_conflict' }
   | { status: 'already_bound' };
-
-/** 沿 mergedIntoId 找到目前仍在使用的聯絡人（發碼方可能在兌換前已被併入別人）；找不到或已封存回 null */
-async function resolveLiveContactId(db: TenantDb, tenantId: string, contactId: string): Promise<string | null> {
-  const chain = await resolveMergeChain(db, tenantId, contactId);
-  const holder = chain[chain.length - 1];
-  const c = await db.contact.findFirst({ where: { id: holder, tenantId }, select: { isArchived: true } });
-  return c && !c.isArchived ? holder : null;
-}
 
 export async function redeemBindingCode(
   db: TenantDb,
@@ -346,12 +301,7 @@ async function checkBindable(
 
   // 同一渠道只能有一個帳號：雙方在同一個渠道都有身分（例如代碼被轉給同一個 LINE OA 的朋友），
   // 合併後同一渠道會有兩個身分，回覆會送錯人、對話會混在一起 → 拒絕
-  const [survivorChannels, redeemerChannels] = await Promise.all([
-    db.channelIdentity.findMany({ where: { contactId: survivorId }, select: { channelId: true } }),
-    db.channelIdentity.findMany({ where: { contactId: redeemerId }, select: { channelId: true } }),
-  ]);
-  const occupied = new Set(survivorChannels.map((c) => c.channelId));
-  if (redeemerChannels.some((c) => occupied.has(c.channelId))) {
+  if (await hasSharedChannel(db, survivorId, redeemerId)) {
     logger.warn('[IdentityBinding] 雙方在同一渠道都有帳號，拒絕合併', { tenantId, survivorId, redeemerId });
     await sendBindingMessage(db, deps, tenantId, actor.conversationId, BINDING_TEXT.channelConflict, 'channel_conflict');
     return { status: 'channel_conflict' };
@@ -468,8 +418,8 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
 // ── 解除 ────────────────────────────────────────────────────────────────────
 
 /**
- * 找出與顧客「目前所在渠道身分」有關、最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼）。
- * 有關＝該身分是當次被併入的身分之一，或是當次的發碼身分。
+ * 找出與顧客「目前所在渠道身分」有關、最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼或 email 登記）。
+ * 有關＝該身分是當次被併入的身分之一、當次的發碼身分，或 email 登記時收到通知的既有方身分。
  * - 只看 survivor 會拆錯筆：顧客綁了 FB 又綁了 IG，在 FB 回「解除綁定」應拆 FB 那筆。
  * - 以身分查而不是以 survivorId 查：survivor 之後可能又被併入別人，顧客目前的聯絡人已不是當初的 survivor。
  *   查到後再確認這筆綁定的持有者（沿合併鏈）就是顧客目前的聯絡人。
@@ -478,11 +428,13 @@ async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId:
   const logs = await db.contactMergeLog.findMany({
     where: {
       tenantId,
-      source: 'BINDING_CODE',
+      // email 登記的合併也可自助解除（change add-email-identity-merge，design D6）
+      source: { in: ['BINDING_CODE', 'EMAIL'] },
       revertedAt: null,
       OR: [
         { movedRecords: { path: ['channelIdentity'], array_contains: [channelIdentityId] } },
         { movedRecords: { path: ['meta', 'issuerChannelIdentityId'], equals: channelIdentityId } },
+        { movedRecords: { path: ['meta', 'notifiedChannelIdentityId'], equals: channelIdentityId } },
       ],
     },
     orderBy: { createdAt: 'desc' },
@@ -567,6 +519,7 @@ export type BindingIntent =
   | { kind: 'redeem'; code: string }
   | { kind: 'confirm' }
   | { kind: 'issue' }
+  | { kind: 'email_link' }
   | { kind: 'unbind'; mergeLogId: string };
 
 /**
@@ -587,11 +540,13 @@ export async function detectBindingIntent(
   },
 ): Promise<BindingIntent | null> {
   const settings = await getIdentityBindingSettingsCached(db, input.tenantId);
-  if (!settings.enabled) return null;
-  if (input.code) return { kind: 'redeem', code: input.code };
+  // 綁定代碼與 email 登記各自啟用；兩者都會產生可自助解除的合併，所以任一啟用就要處理解除關鍵字
+  if (!settings.enabled && !settings.emailEnabled) return null;
+  if (settings.enabled && input.code) return { kind: 'redeem', code: input.code };
 
-  if (matchesKeyword(input.text, settings.bindKeywords)) return { kind: 'issue' };
-  if (matchesKeyword(input.text, [CONFIRM_KEYWORD])) {
+  if (settings.emailEnabled && matchesKeyword(input.text, settings.emailKeywords)) return { kind: 'email_link' };
+  if (settings.enabled && matchesKeyword(input.text, settings.bindKeywords)) return { kind: 'issue' };
+  if (settings.enabled && matchesKeyword(input.text, [CONFIRM_KEYWORD])) {
     return (await input.hasPendingConfirm()) ? { kind: 'confirm' } : null;
   }
   if (matchesKeyword(input.text, settings.unbindKeywords)) {
@@ -613,5 +568,6 @@ export async function executeBindingIntent(
   if (intent.kind === 'redeem') return (await redeemBindingCode(db, deps, actor, intent.code)).status;
   if (intent.kind === 'confirm') return (await confirmBinding(db, deps, actor)).status;
   if (intent.kind === 'issue') return (await issueBindingCode(db, deps, actor)).status;
+  if (intent.kind === 'email_link') return (await issueEmailRegistrationLink(db, deps, actor)).status;
   return (await unbindByCustomer(db, deps, actor, intent.mergeLogId)).status;
 }

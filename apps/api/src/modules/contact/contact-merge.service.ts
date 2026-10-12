@@ -16,7 +16,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { addPointTransaction, getLatestPointEntry } from '../portal/points.service.js';
 
-export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE';
+export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL';
 
 /** 單次合併搬移的紀錄（存於 ContactMergeLog.movedRecords） */
 export interface MovedRecords {
@@ -48,7 +48,13 @@ export interface MovedRecords {
   /** 原本 mergedIntoId 指向被合併方、合併時改指 survivor 的聯絡人（解除時改回） */
   repointedContacts?: string[];
   /** 呼叫端附加的脈絡（例如綁定代碼的發碼身分），供解除時判斷用 */
-  meta?: { issuerChannelIdentityId?: string };
+  meta?: {
+    issuerChannelIdentityId?: string;
+    /** email 登記：登記方的渠道身分 */
+    registrantChannelIdentityId?: string;
+    /** email 登記：收到整合通知的既有方渠道身分（可在該身分自助解除） */
+    notifiedChannelIdentityId?: string;
+  };
 }
 
 export interface MergeContactsInput {

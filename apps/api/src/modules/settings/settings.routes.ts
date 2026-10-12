@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { success } from "../../shared/utils/response.js";
+import { AppError, success } from "../../shared/utils/response.js";
 import { getOfficeHours, updateOfficeHours } from "./office-hours.service.js";
 import {
   getEmbeddingSettings,
@@ -41,7 +41,11 @@ import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
-import { parseIdentityBindingSettings } from "../identity-binding/binding-links.js";
+import {
+  applyIdentityBindingUpdate,
+  findIdentityBindingKeywordIssue,
+  parseIdentityBindingSettings,
+} from "../identity-binding/binding-links.js";
 import { CONFIRM_KEYWORD } from "../identity-binding/binding-code.js";
 import {
   getIdentityBindingSettings,
@@ -80,11 +84,14 @@ const bindingKeywordsSchema = z
   .min(1, "至少需要一個關鍵字")
   .max(5, "最多 5 個關鍵字");
 
-const identityBindingSettingsSchema = z
+export const identityBindingSettingsSchema = z
   .object({
     enabled: z.boolean(),
     bindKeywords: bindingKeywordsSchema,
     unbindKeywords: bindingKeywordsSchema,
+    // email 登記（change add-email-identity-merge）：沒送時沿用已儲存的值（見 applyIdentityBindingUpdate）
+    emailEnabled: z.boolean().optional(),
+    emailKeywords: bindingKeywordsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
@@ -104,6 +111,7 @@ const identityBindingSettingsSchema = z
         message: "綁定與解除關鍵字不可相同",
       });
     }
+    // email 登記關鍵字的衝突在路由對合併後的設定檢查（findIdentityBindingKeywordIssue）
   });
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
@@ -202,11 +210,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.put("/identity-binding", async (request, reply) => {
     const data = identityBindingSettingsSchema.parse(request.body);
     const tenantId = request.agent.tenantId;
-    const value = {
-      enabled: data.enabled,
-      bindKeywords: data.bindKeywords,
-      unbindKeywords: data.unbindKeywords,
-    };
+    const value = applyIdentityBindingUpdate(await getIdentityBindingSettings(request.tenantPrisma, tenantId), data);
+    const issue = findIdentityBindingKeywordIssue(value);
+    if (issue) throw new AppError(issue.message, "VALIDATION_ERROR", 400, { issues: [issue] });
     await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
       create: { tenantId, identityBinding: value },
@@ -218,7 +224,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       actorId: request.agent.id,
       action: "settings.update",
       targetType: "settings",
-      payload: { section: "identity-binding", enabled: data.enabled },
+      payload: { section: "identity-binding", enabled: value.enabled, emailEnabled: value.emailEnabled },
       ip: request.ip,
     });
     return reply.send(success(parseIdentityBindingSettings(value)));

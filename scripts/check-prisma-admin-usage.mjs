@@ -35,8 +35,6 @@ const WHITELIST = [
   /modules\/auth\//,                // 登入 email 全域解析、passkey
   /modules\/trial\//,               // trial 防濫用跨租戶
   /modules\/cli\//,                 // CLI 分析（自身 scope 機制）
-  /modules\/line-login\//,          // OAuth 回調
-  /modules\/fb-login\//,            // OAuth 回調
   /modules\/webhook\//,             // 公開入站 webhook（無 JWT，channel 反查）
   /modules\/chatbox\/chatbox\.routes/, // public Chatbox routes use validated session/channel scope
   // 公開短連結轉址（無登入、無 tenant context，AUDIT RLS-07）：以全域唯一的 slug 解析連結後，

@@ -24,6 +24,7 @@ import type { HistoryMessage } from './llm.service.js';
 import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
 import { getKnownModelKeys } from './model-registry.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { loadOtherChannelContext } from './other-channel-context.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
   hasMatchingKeywordRule,
@@ -139,6 +140,8 @@ export async function attemptKbAutoReply(
 
   // 5. Fetch conversation history (excluding the just-arrived message we're replying to)
   const history = await loadKbHistory(prisma, conversationId);
+  // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
+  const otherChannelContext = await loadOtherChannelContext(prisma, tenantId, conversationId);
 
   // 6. Generate embedding for inbound message
   let queryEmbedding: number[];
@@ -187,6 +190,7 @@ export async function attemptKbAutoReply(
       replyText = await generateReply(prisma, tenantId, messageText, guideContext, {
         overrideSystemPrompt: chatSettings.modelGuideSystemPrompt || MODEL_GUIDE_SYSTEM_PROMPT,
         history,
+        otherChannelContext,
         meta: { feature: 'kb-autoreply', conversationId },
       });
     } catch (err) {
@@ -245,6 +249,7 @@ export async function attemptKbAutoReply(
         const llmReply = await generateReply(prisma, tenantId, messageText, '', {
           overrideSystemPrompt: overridePrompt,
           history,
+          otherChannelContext,
           meta: { feature: 'kb-autoreply', conversationId },
         });
         replyText = llmReply;
@@ -266,6 +271,7 @@ export async function attemptKbAutoReply(
     try {
       const llmReply = await generateReply(prisma, tenantId, messageText, kbContext, {
         history,
+        otherChannelContext,
         meta: { feature: 'kb-autoreply', conversationId },
       });
       replyText = llmReply;

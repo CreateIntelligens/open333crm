@@ -53,10 +53,12 @@ const ROUTES: Array<{ method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; url: string; 
   { method: 'POST', url: `/api/v1/contacts/merge-logs/${SOME_ID}/revert` },
   { method: 'GET', url: '/api/v1/contacts/identity-binding/status' },
   { method: 'POST', url: `/api/v1/contacts/${SOME_ID}/binding-link`, payload: { conversationId: SOME_ID } },
+  { method: 'POST', url: `/api/v1/contacts/${SOME_ID}/email-registration-link`, payload: { conversationId: SOME_ID } },
   { method: 'GET', url: `/api/v1/contacts/${SOME_ID}/merge-logs` },
   { method: 'GET', url: `/api/v1/contacts/${SOME_ID}` },
   { method: 'PATCH', url: `/api/v1/contacts/${SOME_ID}`, payload: { displayName: 'x' } },
   { method: 'GET', url: `/api/v1/contacts/${SOME_ID}/conversations` },
+  { method: 'GET', url: `/api/v1/contacts/${SOME_ID}/messages` },
   { method: 'GET', url: `/api/v1/contacts/${SOME_ID}/cases` },
   { method: 'POST', url: `/api/v1/contacts/${SOME_ID}/tags`, payload: { tagId: SOME_ID } },
   { method: 'DELETE', url: `/api/v1/contacts/${SOME_ID}/tags/${SOME_ID}` },
@@ -114,6 +116,7 @@ test('只有 contact.view：修改、貼標、移除標籤、合併、合併預�
     route('merge-preview'),
     route('/revert'),
     route('/binding-link'),
+    route('/email-registration-link'),
   ]) {
     assert.equal((await call(viewApp, r)).statusCode, 403, `${r.method} ${r.url}`);
   }
@@ -136,6 +139,11 @@ test('代發綁定連結屬回覆層級：有 inbox.reply 通過守門，只有 
   assert.notEqual((await call(replyApp, route('/identity-binding/status'))).statusCode, 403);
   assert.notEqual((await call(replyApp, route('/binding-link'))).statusCode, 403);
   assert.equal((await call(updateApp, route('/binding-link'))).statusCode, 403);
+});
+
+test('代發 email 登記連結屬回覆層級：有 inbox.reply 通過守門，只有 contact.update 被擋', async () => {
+  assert.notEqual((await call(replyApp, route('/email-registration-link'))).statusCode, 403);
+  assert.equal((await call(updateApp, route('/email-registration-link'))).statusCode, 403);
 });
 
 // ── CM-173 渠道可見性：分店帳號只綁渠道 A，看不到同一位聯絡人在渠道 B 的對話與案件 ──
@@ -183,6 +191,7 @@ test('CM-173：分店帳號看聯絡人的對話、案件、時間軸，只看�
   assert.equal(convs.statusCode, 200);
   const convChannels = (convs.json().data as Array<{ channelId: string }>).map((c) => c.channelId);
   assert.deepEqual(convChannels, [chA.id], '不可看到渠道 B 的對話');
+  assert.equal(convs.json().meta.hiddenCount, 1, '只回傳看不到的對話數量（收件匣顯示「另有 1 段其他渠道的對話」）');
 
   const cases = await branchApp.inject({ method: 'GET', url: `/api/v1/contacts/${contact.id}/cases` });
   assert.equal(cases.statusCode, 200);
@@ -244,6 +253,40 @@ test('CM-173：代發綁定連結檢查渠道層級（看不到的渠道 404、�
   });
   assert.equal(toA.statusCode, 403, `唯讀渠道應回 403，實際 ${toA.statusCode} ${toA.body}`);
   assert.equal(toA.json().error?.code ?? toA.json().code, 'CHANNEL_ACCESS_LEVEL_INSUFFICIENT');
+});
+
+test('CM-173：代發 email 登記連結檢查渠道層級（看不到的渠道 404、唯讀渠道 403）', async () => {
+  const toB = await branchApp.inject({
+    method: 'POST',
+    url: `/api/v1/contacts/${contact.id}/email-registration-link`,
+    payload: { conversationId: convByChannel.get(chB.id) },
+  });
+  assert.equal(toB.statusCode, 404, `看不到的渠道應回 404，實際 ${toB.statusCode} ${toB.body}`);
+  const toA = await branchApp.inject({
+    method: 'POST',
+    url: `/api/v1/contacts/${contact.id}/email-registration-link`,
+    payload: { conversationId: convByChannel.get(chA.id) },
+  });
+  assert.equal(toA.statusCode, 403, `唯讀渠道應回 403，實際 ${toA.statusCode} ${toA.body}`);
+});
+
+test('未啟用時客服無法傳送連結', async () => {
+  // 分店帳號對這個渠道有完整權限，才測得到後面的啟用檢查；測試租戶預設沒有啟用 email 登記
+  const chOpen = await mkChannel('open');
+  await prisma.agentChannelAccess.create({ data: { agentId: agent.id, channelId: chOpen.id, accessLevel: 'full' } });
+  const conv = await prisma.conversation.create({ data: { tenantId: T, contactId: contact.id, channelId: chOpen.id, channelType: 'WEBCHAT' } });
+  cleanup.unshift(async () => {
+    await prisma.conversation.deleteMany({ where: { id: conv.id, tenantId: T } });
+    await prisma.agentChannelAccess.deleteMany({ where: { channelId: chOpen.id } });
+    await prisma.channel.deleteMany({ where: { id: chOpen.id, tenantId: T } });
+  });
+  const res = await branchApp.inject({
+    method: 'POST',
+    url: `/api/v1/contacts/${contact.id}/email-registration-link`,
+    payload: { conversationId: conv.id },
+  });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error?.code ?? res.json().code, 'EMAIL_REGISTRATION_DISABLED');
 });
 
 afterAll(async () => {

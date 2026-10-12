@@ -2,7 +2,7 @@
 
 本文件說明 API 怎麼確認呼叫者是誰：系統發出哪些憑證、每種憑證在哪裡驗證、驗證後在請求上留下哪些欄位，以及停用或撤銷之後多久生效。權限碼怎麼計算、渠道可見範圍怎麼判斷，見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)；平台帳號的登入流程見[平台帳號認證](../features/platform/AUTH.md)。
 
-- **資料來源**：`apps/api/src/plugins/auth.plugin.ts`、`apps/api/src/plugins/socket.plugin.ts`、`apps/api/src/plugins/chatbox.plugin.ts`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/modules/auth/*`、`apps/api/src/modules/mcp/*`、`apps/api/src/modules/portal/portal-auth.service.ts`、`apps/api/src/modules/portal/portal-public.routes.ts`、`apps/api/src/modules/chatbox/chatbox.service.ts`、`apps/api/src/modules/webchat/webchat.socket.ts`、`apps/api/src/modules/line-login/*`、`apps/api/src/modules/fb-login/*`、`apps/api/src/modules/webhook/webhook.service.ts`、`apps/api/src/config/env.ts`
+- **資料來源**：`apps/api/src/plugins/auth.plugin.ts`、`apps/api/src/plugins/socket.plugin.ts`、`apps/api/src/plugins/chatbox.plugin.ts`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/modules/auth/*`、`apps/api/src/modules/mcp/*`、`apps/api/src/modules/portal/portal-auth.service.ts`、`apps/api/src/modules/portal/portal-public.routes.ts`、`apps/api/src/modules/chatbox/chatbox.service.ts`、`apps/api/src/modules/webchat/webchat.socket.ts`、`apps/api/src/modules/identity-binding/email-registration.*`、`apps/api/src/modules/webhook/webhook.service.ts`、`apps/api/src/config/env.ts`
 - **核對日期**：2026-09-30
 
 ## 這份文件回答的問題
@@ -42,7 +42,7 @@
 | MCP 確認 token | MCP 客戶端 | 呼叫 LINE 發送或群發工具、但沒帶確認 token 時，工具回傳預覽與這個 token | JWT，以 `JWT_SECRET` 簽發 | `verifyLineMcpConfirmation()`，比對操作種類、租戶、成員與 CLI session | 5 分鐘 |
 | Chatbox session 與 claim token | 網站訪客 | `POST /chatbox/sessions` 建立 session，`POST /chatbox/sessions/verify` 取得 claim token | session ID 是加密字串；`ChatboxSession` 存 session，claim token 的 HMAC 存在 Redis | `chatboxSessionVerifier`，REST 與 `/visitor` socket 共用 | `CHATBOX_SESSION_TTL_MINUTES`，程式上限 3 天 |
 | 試用驗證 token | 試用申請者 | 送出試用申請後寄到信箱 | 隨機字元。`TrialSignup` 存 SHA-256 | `GET /trial/verify` | 試用政策的 `verifyTokenTtlHours` |
-| LINE、Facebook 登入的 state | 客人 | 客服在對話中索取 email 時，系統把授權連結傳給客人；也可以直接呼叫公開的 `/auth/line/authorize` 或 `/auth/fb/authorize` | 隨機字元，存在 API 行程的記憶體 | 各自的 `/callback`，取出後刪除 | 10 分鐘 |
+| Email 登記 token | 客人 | 客人在對話中傳送 email 登記關鍵字，或客服代發登記連結 | 32 bytes 隨機值（base64url）。存在 Redis，綁定租戶、渠道身分與對話 | `/api/v1/public/email-registration/:token`，成功送出 email 時以 `GETDEL` 取出 | 30 分鐘 |
 
 各有效期的預設值在 `apps/api/src/config/env.ts`。
 
@@ -183,7 +183,6 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
 | `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |
 | 登出、改密碼或重設密碼都不會讓已發出的 refresh token 失效 | AUTH-08 |
-| LINE、Facebook 登入補 email 時，不確認登入者就是該聯絡人；授權網址可由任何人以任意渠道身分產生 | IDENT-02 |
 | `config/env.ts` 的 `JWT_EXPIRES_IN` 沒有讀取端 | AUTH-07 |
 | 租戶端沒有忘記密碼流程 | AUTH-01 |
 

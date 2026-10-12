@@ -111,7 +111,6 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | 檢查 access token 是否過期 | `fb-token-monitor.service.ts` | FB |
 | 圖文選單的建立與發布 | `line/rich-menu.service.ts`，直接呼叫 LINE API | LINE。綁定使用者則走外掛的 `extensions.ui` |
 | 重抓個人資料 | `line/line-profile.service.ts` | LINE |
-| 索取 email | `line-login`、`fb-login` 模組 | LINE、FB |
 | MCP 的 LINE 工具 | `mcp.server.ts` | LINE |
 | 素材的格式檢查 | `marketing/material.service.ts`，呼叫 LINE 的訊息驗證 API | LINE。素材以自己的小寫 `channelType`（`line`、`fb`）區分，與 `Channel.channelType` 不同 |
 
@@ -129,7 +128,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 
 檢查指令也會找到另外兩種程式，它們不算違規：
 
-- 只擋不支援渠道的檢查。這些功能本來就只為一種渠道而做：`mcp`、`line` 的圖文選單、`line-login`、`fb-login`、`chatbox`。
+- 只擋不支援渠道的檢查。這些功能本來就只為一種渠道而做：`mcp`、`line` 的圖文選單、`chatbox`。
 - 比對設定值的條件，例如 `canvas.webhook.ts` 比對流程觸發條件裡的 `channelType`。
 
 ## 新增一種渠道

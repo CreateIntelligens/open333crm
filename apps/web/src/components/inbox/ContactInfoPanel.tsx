@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Phone, Mail, ExternalLink, Plus, Bot, Star, Clock, Send } from 'lucide-react';
+import { Phone, Mail, ExternalLink, Plus, Bot, Star, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,8 @@ import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
 import { SendBindingLinkButton } from './SendBindingLinkButton';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { SendEmailRegistrationLinkButton } from './SendEmailRegistrationLinkButton';
+import { OtherChannelConversations } from './OtherChannelConversations';
 
 interface ContactInfoPanelProps {
   conversation: {
@@ -72,7 +73,6 @@ interface ContactInfoPanelProps {
 export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelProps) {
   const [contact, setContact] = useState<Record<string, unknown> | null>(null);
   const [showCreateCase, setShowCreateCase] = useState(false);
-  const [requestingEmail, setRequestingEmail] = useState(false);
 
   useEffect(() => {
     if (!conversation?.contact?.id) {
@@ -236,6 +236,9 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
 
       <Separator />
 
+      {/* 歸戶後同一位顧客在其他渠道的對話（change add-email-identity-merge） */}
+      <OtherChannelConversations contactId={conversation.contact.id} currentConversationId={conversation.id} />
+
       {/* Contact Tags */}
       <div className="p-4">
         <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
@@ -298,31 +301,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
 
       {/* Actions */}
       <div className="p-4 space-y-2">
-        {(conversation.channelType === CHANNEL_TYPE.LINE || conversation.channelType === CHANNEL_TYPE.FB) && !(c as Record<string, unknown>).email && (
-          <Button
-            variant="outline"
-            className="w-full"
-            disabled={requestingEmail}
-            onClick={async () => {
-              setRequestingEmail(true);
-              try {
-                const endpoint = conversation.channelType === CHANNEL_TYPE.LINE
-                  ? '/auth/line/request-email'
-                  : '/auth/fb/request-email';
-                await api.post(endpoint, {
-                  conversationId: conversation.id,
-                });
-              } catch {
-                // Error handled silently — message appears via WebSocket
-              } finally {
-                setRequestingEmail(false);
-              }
-            }}
-          >
-            <Send className="mr-2 h-4 w-4" />
-            {requestingEmail ? '傳送中...' : '請求 Email'}
-          </Button>
-        )}
+        <SendEmailRegistrationLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <SendBindingLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <Button
           variant="outline"

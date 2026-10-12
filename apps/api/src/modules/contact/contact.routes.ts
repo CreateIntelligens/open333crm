@@ -5,6 +5,7 @@ import {
   getContact,
   updateContact,
   getContactConversations,
+  getContactMessages,
   getContactCases,
   addContactTag,
   removeContactTag,
@@ -14,7 +15,12 @@ import {
 } from './contact.service.js';
 import { listMergeLogs, revertMerge } from './contact-merge.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
-import { getIdentityBindingSettings, issueBindingCode } from '../identity-binding/identity-binding.service.js';
+import {
+  findBindingActorForConversation,
+  getIdentityBindingSettings,
+  issueBindingCode,
+} from '../identity-binding/identity-binding.service.js';
+import { issueEmailRegistrationLink } from '../identity-binding/email-registration.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
@@ -33,9 +39,16 @@ const listQuerySchema = z.object({
 const updateContactSchema = z.object({
   displayName: z.string().trim().min(1, '名稱不可為空白').max(200, '名稱不可超過 200 字').optional(),
   phone: z.string().nullable().optional(),
-  email: z.string().email().nullable().optional(),
+  email: z.string().trim().email().nullable().optional(),
   language: z.string().optional(),
   isBlocked: z.boolean().optional(),
+  /** email 與其他聯絡人重複（409 EMAIL_IN_USE）後，客服確認仍要儲存 */
+  allowDuplicateEmail: z.boolean().optional(),
+});
+
+const contactMessagesQuerySchema = z.object({
+  before: z.string().max(200).optional(),
+  limit: z.coerce.number().int().positive().max(100).default(50),
 });
 
 const paginationQuerySchema = z.object({
@@ -181,7 +194,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // （完整設定 API 需 settings.manage，一般客服讀不到；這裡只回是否啟用）
   fastify.get('/identity-binding/status', { preHandler: [perm.inboxReply] }, async (request, reply) => {
     const settings = await getIdentityBindingSettings(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success({ enabled: settings.enabled }));
+    return reply.send(success({ enabled: settings.enabled, emailEnabled: settings.emailEnabled }));
   });
 
   // POST /api/v1/contacts/:id/binding-link — 客服代顧客在指定對話送出跨渠道綁定連結
@@ -239,6 +252,44 @@ export default async function contactRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // POST /api/v1/contacts/:id/email-registration-link — 客服代顧客在指定對話送出 email 登記連結
+  // （change add-email-identity-merge）。權限與渠道層級同傳送綁定連結
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/email-registration-link',
+    { preHandler: [perm.inboxReply] },
+    async (request, reply) => {
+      const { id } = contactIdParamsSchema.parse(request.params);
+      const { conversationId } = bindingLinkBodySchema.parse(request.body);
+      const tenantId = request.agent.tenantId;
+
+      await assertConversationChannelVisible(request, conversationId, 'reply_only');
+
+      const db = request.tenantPrisma;
+      const settings = await getIdentityBindingSettings(db, tenantId);
+      if (!settings.emailEnabled) {
+        throw new AppError('尚未開啟 email 登記，請先到「設定」啟用', 'EMAIL_REGISTRATION_DISABLED', 400);
+      }
+      const actor = await findBindingActorForConversation(db, tenantId, id, conversationId);
+      if (!actor) throw new AppError('找不到此聯絡人在這個對話的渠道身分', 'NOT_FOUND', 404);
+
+      // 不包在交易內：推播到渠道是外部呼叫（同傳送綁定連結）
+      const result = await issueEmailRegistrationLink(db, { store: getBindingStore(), io: fastify.io }, actor, 'agent');
+
+      await writeTenantAudit(request.tenantPrisma, {
+        tenantId,
+        actorId: request.agent.id,
+        action: 'contact.email_registration_link_send',
+        targetType: 'contact',
+        targetId: id,
+        payload: { conversationId, status: result.status },
+        ip: request.ip,
+      });
+
+      // 不回傳連結本身：連結即憑證，只該出現在顧客的對話裡
+      return reply.send(success({ status: result.status }));
+    },
+  );
+
   // GET /api/v1/contacts/:id/merge-logs — 此聯絡人相關的合併紀錄（新到舊）
   fastify.get<{ Params: { id: string } }>('/:id/merge-logs', { preHandler: [perm.view] }, async (request, reply) => {
     const { id } = contactIdParamsSchema.parse(request.params);
@@ -267,6 +318,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      await resolveChannelVisibility(request),
     );
 
     return reply.send(success(contact));
@@ -276,7 +328,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id/conversations', { preHandler: [perm.view, perm.inboxView] }, async (request, reply) => {
     const query = paginationQuerySchema.parse(request.query);
 
-    const { conversations, total } = await getContactConversations(
+    const { conversations, total, hiddenCount } = await getContactConversations(
       request.tenantPrisma,
       request.params.id,
       request.agent.tenantId,
@@ -286,7 +338,29 @@ export default async function contactRoutes(fastify: FastifyInstance) {
       await resolveChannelVisibility(request),
     );
 
-    return reply.send(paginated(conversations, total, query.page, query.limit));
+    return reply.send(
+      success(conversations, {
+        total,
+        page: query.page,
+        limit: query.limit,
+        totalPages: Math.ceil(total / query.limit),
+        hiddenCount,
+      }),
+    );
+  });
+
+  // GET /api/v1/contacts/:id/messages — 所有可見渠道的訊息，依時間排成一條（change add-email-identity-merge）
+  fastify.get<{ Params: { id: string } }>('/:id/messages', { preHandler: [perm.view, perm.inboxView] }, async (request, reply) => {
+    const { id } = contactIdParamsSchema.parse(request.params);
+    const query = contactMessagesQuerySchema.parse(request.query);
+    const result = await getContactMessages(
+      request.tenantPrisma,
+      id,
+      request.agent.tenantId,
+      await resolveChannelVisibility(request),
+      query,
+    );
+    return reply.send(success(result));
   });
 
   // GET /api/v1/contacts/:id/cases
