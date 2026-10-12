@@ -136,6 +136,8 @@
 | 自動化貼標不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |
 | Email 登記不驗證 email | 知道別人 email 的人可以登記並觸發合併。合併後雙邊通知，7 天內可自助解除，見 [Email 登記](#email-登記) |
 | 合併建議沒有產生端 | 詳見 `../../system/AUDIT.md` 的 IDENT-01 |
+| 一位聯絡人在同一個渠道可以有兩個身分，收發訊息會對錯人 | 客服手動合併不檢查同渠道。詳見 `../../system/AUDIT.md` 的 IDENT-03 |
+| 兩位聯絡人同時登記同一個新的 email 時不合併 | 詳見 `../../system/AUDIT.md` 的 IDENT-04 |
 | `isBlocked` 與 `ContactTag.expiresAt` 沒有作用 | 詳見 `../../system/AUDIT.md` 的 DB-04 與 DB-02 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

@@ -4,6 +4,23 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-12：新增 IDENT-03、IDENT-04，記錄歸戶後同渠道有兩個身分的問題
+
+PR #248（email 登記歸戶）的審查發現 2 項並行的限制。兩項都要在不同的對話裡幾乎同時送出才會發生，依序送出時行為正確，所以沒有擋 #248 合併，改記在 `AUDIT.md`。#248 合併後，對照 `main` 的程式再查證一次，並追查合併的其他入口：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| IDENT-03 的收發訊息 | 新增，P2 | `Conversation` 沒有記錄渠道身分。`sendMessage()` 查詢渠道身分時 `take: 1`，`deliverToChannel()` 以 `find()` 取第一個符合渠道的身分，`inbound-conversation-resolver.ts` 以聯絡人與渠道找最近一段未關閉的對話。`channel_identities` 的唯一限制只有 `(channelId, uid)` |
+| IDENT-03 的客服手動合併 | 審查時沒有發現，這次追查入口時發現 | `mergeContacts()` 的呼叫端有 4 個。`POST /contacts/merge` 與 `canvas.routes.ts` 的核准合併建議直接呼叫，沒有呼叫 `hasSharedChannel()`。`ContactEmailField.tsx` 的「與對方合併」開啟 `ContactMergeModal.tsx`，送出 `POST /contacts/merge` |
+| IDENT-03 的並行 | #248 審查時發現 | `registerEmail()` 先呼叫 `hasSharedChannel()`，`confirmBinding()` 先呼叫 `checkBindable()`，之後才呼叫 `mergeContacts()`。`mergeContacts()` 以條件式更新鎖定雙方，鎖定之後只搬移資料，沒有檢查同渠道 |
+| IDENT-04 | 新增，P3 | `registerEmail()` 以 `contact.findFirst()` 查詢最早使用這個 email 的聯絡人，查不到就以 `contact.updateMany()` 寫入 email，兩步之間沒有鎖定。`schema.prisma` 的 `Contact.email` 只有索引，沒有唯一限制 |
+
+**優先順序的判斷。** IDENT-03 會讓回覆送到另一位客人，但要客服合併同一個渠道的兩位聯絡人，或兩個合併同時進行才觸發，標為 P2。IDENT-04 只讓兩位聯絡人使用同一個 email 而沒有合併，之後有途徑補上合併，標為 P3。歸戶的規格還在 change `add-cross-channel-one-id` 與 `add-email-identity-merge`，沒有歸檔成主規格，所以「違反主規格的項目至少是 P2」不適用。
+
+**修正方向。** IDENT-03 列了 3 種做法，建議在 `mergeContacts()` 鎖定雙方之後檢查同渠道。這個檢查要不要套用到客服手動合併，取決於客服可不可以合併同一個渠道的兩位聯絡人，這一點還沒有決定。
+
+**沒有查證的地方。** 兩項都只以讀程式確認，沒有實際重現。沒有查 UAT 的資料庫有沒有同渠道兩個身分的聯絡人。客服合併同一個渠道的兩位聯絡人之後，解除合併能不能把兩個身分分回去，也沒有確認。
+
 ## 2026-10-08：補回方案異動申請的主規格，修正 PLAN-06
 
 change `restore-plan-change-request-specs` 補回 `platform-control-plane` 的 `plan-change-request`（issue #228）：新增主規格 `plan-change-request`，並修改 `usage-quota-alerts` 的「每個門檻每月最多告警一次」。對照程式的結果：
