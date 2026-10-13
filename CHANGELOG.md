@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-13]
+
+### Fixed
+
+- **LINE 圖文訊息的底圖在 UAT 打不開**（UAT E2E 發現）— 底圖網址 `/line-imagemap/...` 由 API 提供，但 Caddy 只把 `/api/*`、`/mcp`、`/socket.io/*`、`/s/*` 轉給 API，這個路徑落到前端回 404。素材存檔會成功（LINE 只驗格式），發出去客人看到的是破圖，編輯器預覽也是破圖。`Caddyfile.local` 補上轉發。
+
 ## [2026-10-12]
 
 ### Fixed
