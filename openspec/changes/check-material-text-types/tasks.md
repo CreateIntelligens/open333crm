@@ -2,6 +2,7 @@
 
 - [x] 1.1 測試先行：`apps/api/tests/unit/modules/marketing/material-line-validation-wiring.test.ts`「Numeric text」「String text」
 - [x] 1.2 實作：`material.service.ts` 在呼叫 LINE validate 前檢查 `line_text` 的 `text` 型別
+- [x] 1.3 補測（PR #271 bot 建議）：「Numeric text：沒有啟用中的 LINE 渠道時也擋」。mutation：把型別檢查移到取得 LINE 渠道之後 → 只有這個測試失敗，還原後通過
 
 ## 2. FB 優惠碼（material-system）
 

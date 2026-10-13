@@ -207,6 +207,7 @@ test('Coupon code with a space：折扣碼含空白或不是文字時擋下', ()
 test('Coupon code without whitespace、Empty coupon code：沒有空白或沒填都通過', () => {
   validateFbMaterialBody('fb_coupon', { ...clone('fb_coupon'), coupon_code: 'E2E90' });
   validateFbMaterialBody('fb_coupon', { ...clone('fb_coupon'), coupon_code: '' });
+  validateFbMaterialBody('fb_coupon', { ...clone('fb_coupon'), coupon_code: null });
   const { coupon_code: _omit, ...withoutCode } = clone('fb_coupon');
   validateFbMaterialBody('fb_coupon', withoutCode);
 });

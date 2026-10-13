@@ -81,6 +81,17 @@ test('Numeric text：純文字的 text 是數字時回 400 指出 body.text，�
   assert.equal(writes.length, 0);
 });
 
+test('Numeric text：沒有啟用中的 LINE 渠道時也擋', async () => {
+  const { db, writes } = fakeDb();
+  (db as unknown as { channel: { findFirst: () => Promise<null> } }).channel.findFirst = async () => null;
+  await assert.rejects(
+    createMaterial(db, T, { name: '[E2E] 數字', channelType: 'line', contentType: 'line_text', body: { text: 12345 } }),
+    (e: { statusCode?: number; details?: { issues?: Array<{ path: string }> } }) =>
+      e.statusCode === 400 && e.details?.issues?.[0]?.path === 'body.text',
+  );
+  assert.equal(writes.length, 0);
+});
+
 test('String text：數字組成的字串照常交給 LINE 驗證', async () => {
   const { db, writes } = fakeDb();
   await createMaterial(db, T, { name: '[E2E] 字串', channelType: 'line', contentType: 'line_text', body: { text: '12345' } });
