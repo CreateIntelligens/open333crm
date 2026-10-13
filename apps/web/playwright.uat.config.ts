@@ -60,5 +60,17 @@ export default defineConfig({
       testMatch: /\/cross-[^/]+\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'] },
     },
+    // 只手動跑的探測（manual-*.spec.ts）：未設 RUN_MATERIAL_PROBES=1 時連 project 都不存在，
+    // 一般回歸（不帶 --project 跑全部）不會選到。
+    // 跑法：RUN_MATERIAL_PROBES=1 npx playwright test --config playwright.uat.config.ts --project=manual
+    ...(process.env.RUN_MATERIAL_PROBES === '1'
+      ? [
+          {
+            name: 'manual',
+            testMatch: /\/manual-[^/]+\.spec\.ts$/,
+            use: { ...devices['Desktop Chrome'], storageState: assertStorageState('auth-state.json') },
+          },
+        ]
+      : []),
   ],
 });

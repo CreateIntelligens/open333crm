@@ -125,7 +125,11 @@ export interface SubmitResult {
  *
  * @param urlPattern 目標 API 的 URL 比對（如 /\/cases$/）
  * @param method     HTTP method（預設 POST）
- * @param waitMs     等待 API 發出的時間，逾時視為前端擋下
+ * @param waitMs     等待 API 回應的時間上限，逾時視為前端擋下
+ * @param opts.blockedSignal 選填：前端擋下時一定會出現的元素（如「名稱必填」提示）。
+ *   在請求送出前看到它就立刻判定為前端擋下，不必等滿 waitMs；
+ *   請求一旦送出就不再看它（後端錯誤也可能顯示同一個提示區）。
+ *   送出前就已經顯示的提示（上一次探測留下的）不算，改為等滿 waitMs。
  */
 export async function submitAndObserve(
   page: Page,
@@ -133,11 +137,17 @@ export async function submitAndObserve(
   urlPattern: RegExp,
   method = 'POST',
   waitMs = 5_000,
+  opts: { blockedSignal?: Locator } = {},
 ): Promise<SubmitResult> {
   // 用陣列收集而非 let 變數：TS 的控制流分析會把「宣告為 null、只在 callback
   // 內賦值」的變數窄化成 never，讀取其屬性會報 TS2339。陣列沒有這個問題。
   type Captured = { status: number; body: unknown };
   const captures: Captured[] = [];
+  const sent: boolean[] = [];
+
+  const requestHandler = (req: import('@playwright/test').Request) => {
+    if (req.method() === method && urlPattern.test(req.url())) sent.push(true);
+  };
 
   const handler = async (response: import('@playwright/test').Response) => {
     if (captures.length) return;
@@ -153,14 +163,26 @@ export async function submitAndObserve(
     captures.push({ status: response.status(), body });
   };
 
+  // 送出前就看得到的提示不能當成這次被擋的證據，否則請求還沒發出就會誤判成前端擋下
+  const signal =
+    opts.blockedSignal && !(await opts.blockedSignal.isVisible().catch(() => false)) ? opts.blockedSignal : null;
+  page.on('request', requestHandler);
   page.on('response', handler);
   try {
     await submit();
     const deadline = Date.now() + waitMs;
     while (!captures.length && Date.now() < deadline) {
+      if (
+        signal &&
+        !sent.length &&
+        (await signal.isVisible().catch(() => false))
+      ) {
+        break;
+      }
       await page.waitForTimeout(150);
     }
   } finally {
+    page.off('request', requestHandler);
     page.off('response', handler);
   }
 

@@ -69,6 +69,8 @@ node scripts/check-workspace-esm.mjs --strict
 
 `.github/workflows/deploy.yml` 將程式碼 rsync 到 UAT，確認環境檔存在，清理 Docker build cache，重新建置並啟動容器，最後驗證部署結果。
 
+同一時間只跑一個部署（`concurrency: deploy-uat`）。每次部署 checkout 觸發它的 commit，所以接連合併多個 PR 時，排隊中的部署只保留最新一個，較舊的會自動取消；進行中的部署不中斷，避免做到一半留下半套版本。
+
 ## OpenSpec 與文件
 
 - OpenSpec change 位於 `openspec/changes/`，完成後移到 `openspec/changes/archive/`。

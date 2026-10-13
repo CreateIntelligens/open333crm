@@ -22,6 +22,18 @@ const LIMIT = { text: 2000, buttonText: 640, title: 80, subtitle: 80, buttonTitl
 const isObject = (v: unknown): v is Body => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
+/** http(s) 網址：可解析、有網域、不含空白（http:///path、https://? 這類沒有網域的不算） */
+function isHttpUrl(v: string): boolean {
+  // // 後面要直接接網域：瀏覽器的 URL 解析會把 http:///path 正規化成網域 path，所以先檢查原字串
+  if (/\s/.test(v) || !/^https?:\/\/[^/?#\\]/i.test(v)) return false;
+  try {
+    const u = new URL(v);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 class Checker {
   issues: Issue[] = [];
 
@@ -50,7 +62,7 @@ class Checker {
       if (required) this.add(path, `${label}為必填`);
       return;
     }
-    const ok = /^https?:\/\/[^\s]+$/i.test(v) || (v.startsWith('/') && !v.startsWith('//'));
+    const ok = isHttpUrl(v) || (v.startsWith('/') && !v.startsWith('//'));
     if (!ok) this.add(path, `${label}必須是 http:// 或 https:// 開頭的網址`);
   }
 
