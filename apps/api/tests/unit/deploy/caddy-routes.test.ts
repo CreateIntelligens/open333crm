@@ -38,7 +38,7 @@ test('每個根路徑前綴在 Caddyfile.local 都轉給 api:3001', () => {
 test('每個根路徑前綴在 nginx.conf.template 都有轉給 api 的 location', () => {
   const missing = rootPrefixes.filter((p) => {
     const m = new RegExp(`^\\s*location\\s+${escapeRe(p)}/\\s*\\{([^}]*)\\}`, 'm').exec(nginxTemplate);
-    return !m || !/proxy_pass\s+http:\/\/api_upstream/.test(m[1]);
+    return !m || !/^\s*proxy_pass\s+http:\/\/api_upstream/m.test(m[1]);
   });
   assert.deepEqual(missing, [], `nginx 沒有轉給 api 的路由：${missing.join(', ')}`);
 });
@@ -46,4 +46,9 @@ test('每個根路徑前綴在 nginx.conf.template 都有轉給 api 的 location
 test('被註解掉的設定行不算數', () => {
   const commented = '    # reverse_proxy /line-imagemap/* api:3001\n';
   assert.equal(new RegExp(`^\\s*reverse_proxy\\s+/line-imagemap/\\*\\s+api:3001`, 'm').test(commented), false);
+});
+
+test('location 內被註解掉的 proxy_pass 不算數', () => {
+  const block = '\n        # proxy_pass http://api_upstream;\n        proxy_set_header Host $host;\n';
+  assert.equal(/^\s*proxy_pass\s+http:\/\/api_upstream/m.test(block), false);
 });

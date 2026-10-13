@@ -23,3 +23,8 @@ test('示範用的靜態圖與空值原樣回傳', () => {
   assert.equal(imagemapPreviewSrc(''), '');
   assert.equal(imagemapPreviewSrc(undefined), '');
 });
+
+test('不是上傳產生的 baseUrl 形狀時原樣回傳', () => {
+  assert.equal(imagemapPreviewSrc('https://cdn.example.com/a/line-imagemap/x.jpg'), 'https://cdn.example.com/a/line-imagemap/x.jpg');
+  assert.equal(imagemapPreviewSrc(`${BASE}?v=1`), `${BASE}?v=1`);
+});

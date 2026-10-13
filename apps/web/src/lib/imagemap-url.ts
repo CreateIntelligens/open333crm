@@ -7,6 +7,7 @@
  */
 export function imagemapPreviewSrc(url: string | undefined): string {
   if (!url) return '';
-  if (url.includes('/line-imagemap/') && !/\/\d+$/.test(url)) return `${url}/1040`;
+  // 只處理上傳產生的 baseUrl：…/line-imagemap/{tenantId}/{imageId}（剛好兩段、結尾不帶寬度）
+  if (/\/line-imagemap\/[^/?#]+\/[^/?#]+$/.test(url)) return `${url}/1040`;
   return url;
 }
