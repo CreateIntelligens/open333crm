@@ -20,4 +20,4 @@
 - [x] 4.2 `CHANGELOG.md`、`docs/ref/features/tenant/MARKETING.md`、部署文件（nginx `/open333crm/` 的 `client_max_body_size`）
 - [x] 4.3 `pnpm test` 通過；`check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 4.4 `node scripts/validate-openspec.mjs line-video-direct-upload` 通過
-- [ ] 4.5 部署前改 UAT 主機 nginx；部署後在 UAT 上傳一支超過 25 MB 的 LINE 影片
+- [x] 4.5 部署前改 UAT 主機 nginx；部署後在 UAT 上傳一支超過 25 MB 的 LINE 影片（2026-10-13：nginx `/open333crm/` 加 `client_max_body_size 210m`、`proxy_request_buffering off`；41 MB mp4 presign 200 → PUT 200 → complete 201 `video/mp4`、公開網址 HEAD 200 大小一致，測試檔已刪除；`generic` 申請 41 MB 回 413）

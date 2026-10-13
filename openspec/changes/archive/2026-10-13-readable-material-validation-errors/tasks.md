@@ -26,4 +26,4 @@
 - [x] 5.2 `pnpm test` 通過
 - [x] 5.3 `check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 5.4 `node scripts/validate-openspec.mjs readable-material-validation-errors` 通過
-- [ ] 5.5 部署後在 UAT 重跑素材欄位探測，確認 LINE 錯誤訊息為中文
+- [x] 5.5 部署後在 UAT 重跑素材欄位探測，確認 LINE 錯誤訊息為中文（2026-10-13：LINE 5 種版型 27 則探測全過，錯誤訊息皆為欄位名稱加中文說明，沒有 LINE 原文或 JSON 路徑）
