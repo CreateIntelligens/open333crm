@@ -32,7 +32,7 @@
 - [x] 6.3 `pnpm test`、`pnpm test:feature` 通過
 - [x] 6.4 `check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 6.5 `node scripts/validate-openspec.mjs fix-w6-field-validation` 通過
-- [ ] 6.6 合併部署後在 UAT 重跑相關 E2E
+- [x] 6.6 合併部署後在 UAT 重跑相關 E2E（#261 部署後 128 通過；發現「通知團隊」送 team 回 400 的回歸，#262 修正並部署後升級相關 8 個 E2E 全數通過）
 
 ## 備註
 

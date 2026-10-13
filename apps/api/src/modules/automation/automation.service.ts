@@ -84,6 +84,40 @@ export async function getRule(
   return rule;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 「傳送素材」動作要指向同租戶、啟用中的素材。契約只檢查 materialId 非空，
+ * 非 UUID 或不存在的素材都能存，規則建起來卻永遠發不出訊息（UAT E2E CM-W6-04）。
+ */
+async function assertSendMaterialReferences(
+  prisma: TenantDb,
+  tenantId: string,
+  actions: Array<Record<string, unknown>>,
+): Promise<void> {
+  const ids = actions
+    .filter((a) => a.type === 'send_material')
+    .map((a) => (a.params as { materialId?: unknown } | undefined)?.materialId);
+  if (ids.length === 0) return;
+
+  // 用 some 而不是 find：find 找到的元素本身是 undefined 時會被當成「沒找到」
+  if (ids.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) {
+    throw new AppError('傳送素材的素材 ID 格式不正確', 'VALIDATION_ERROR', 400, {
+      issues: [{ path: 'actions', message: '傳送素材的素材 ID 格式不正確' }],
+    });
+  }
+  const unique = [...new Set(ids as string[])];
+  const found = await prisma.material.findMany({
+    where: { tenantId, isActive: true, id: { in: unique } },
+    select: { id: true },
+  });
+  if (found.length !== unique.length) {
+    throw new AppError('找不到要傳送的素材，或素材已停用', 'VALIDATION_ERROR', 400, {
+      issues: [{ path: 'actions', message: '找不到要傳送的素材，或素材已停用' }],
+    });
+  }
+}
+
 export async function createRule(
   prisma: TenantDb,
   tenantId: string,
@@ -101,6 +135,7 @@ export async function createRule(
 ) {
   const eventType = String(data.trigger.type ?? '');
   validateRuleContract(eventType, data.conditions, data.actions);
+  await assertSendMaterialReferences(prisma, tenantId, data.actions);
 
   const rule = await prisma.automationRule.create({
     data: {
@@ -160,6 +195,7 @@ export async function updateRule(
     const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
     const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
     validateRuleContract(nextEventType, nextConditions, nextActions);
+    if (data.actions !== undefined) await assertSendMaterialReferences(prisma, tenantId, nextActions);
   }
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};

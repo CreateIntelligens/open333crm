@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Loader2,
@@ -27,6 +27,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { toLocalInputValue } from '@/lib/datetime-local';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────
 
@@ -210,6 +211,11 @@ function BroadcastTab() {
   const { campaigns } = useCampaigns();
   const { segments } = useSegments();
   const [dialogOpen, setDialogOpen] = useState(false);
+  // 排程欄位的最小值：對話框開啟時算一次（一分鐘後），不隨每次重繪往前移動
+  const scheduleMin = useMemo(
+    () => (dialogOpen ? toLocalInputValue(new Date(Date.now() + 60_000).toISOString()) : ''),
+    [dialogOpen],
+  );
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -490,6 +496,8 @@ function BroadcastTab() {
               <Input
                 type="datetime-local"
                 value={formData.scheduledAt}
+                // 只能選未來的時間：排到過去後端會擋下（排程器會立即發送）。只是提示，後端才是保證
+                min={scheduleMin}
                 onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })}
               />
             </div>
