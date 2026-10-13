@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { CompactImageField } from './CompactImageField';
 import { CompactVideoField } from './CompactVideoField';
 
+const FB_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
+
 interface EditorProps<T = Record<string, unknown>> {
   body: T;
   onChange: (next: T) => void;
@@ -102,6 +104,8 @@ export function FbVideoEditor({ body, onChange }: EditorProps<{ url?: string; me
         value={(body.url ?? body.mediaUrl) ?? ''}
         onChange={(url) => onChange({ ...body, url })}
         placeholder="https://...mp4"
+        // FB Messenger 附件上限 25MB（與一般上傳相同）
+        maxBytes={FB_VIDEO_MAX_BYTES}
         validateUrl={null}
       />
     </div>

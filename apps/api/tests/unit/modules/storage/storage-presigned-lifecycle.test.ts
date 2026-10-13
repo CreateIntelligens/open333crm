@@ -34,6 +34,16 @@ test('storage-presigned-lifecycle', async () => {
     getSignedUrl: async (key) => `https://storage.example/signed/${key}`,
     getPublicUrl: (key) => `https://storage.example/${key}`,
     getObject: async (key) => objects.get(key) ?? null,
+    headObject: async (key: string) => {
+      const o = objects.get(key);
+      return o ? { size: o.buffer.length } : null;
+    },
+    getObjectRange: async (key: string, start: number, end: number) => objects.get(key)?.buffer.subarray(start, end + 1) ?? null,
+    copy: async (from: string, to: string, mimeType: string) => {
+      uploaded.push(to);
+      objects.set(to, { buffer: objects.get(from)!.buffer, contentType: mimeType });
+      return { key: to, url: `https://storage.example/${to}` };
+    },
     delete: async (key) => {
       deleted.push(key);
       objects.delete(key);
@@ -44,7 +54,7 @@ test('storage-presigned-lifecycle', async () => {
 
   const acceptedKey = buildQuarantineKey(tenantId, 'README.md', 'media');
   objects.set(acceptedKey, { buffer: Buffer.from('# Open333\nKnowledge base'), contentType: 'text/markdown' });
-  const accepted = await completePresignedUpload(tenantId, acceptedKey, 'README.md', 'text/markdown');
+  const accepted = await completePresignedUpload(tenantId, { key: acceptedKey, filename: 'README.md', mimeType: 'text/markdown' });
   assert.match(accepted.key, new RegExp(`^${tenantId}/media/`));
   assert.equal(accepted.detectedMime, 'text/markdown');
   assert.equal(objects.has(acceptedKey), false);
@@ -54,7 +64,7 @@ test('storage-presigned-lifecycle', async () => {
   const rejectedKey = buildQuarantineKey(tenantId, 'document.pdf', 'media');
   objects.set(rejectedKey, { buffer: png, contentType: 'image/png' });
   await assert.rejects(
-    completePresignedUpload(tenantId, rejectedKey, 'document.pdf', 'image/png'),
+    completePresignedUpload(tenantId, { key: rejectedKey, filename: 'document.pdf', mimeType: 'image/png' }),
     (error: unknown) => (error as { code?: string }).code === 'INVALID_FILE_TYPE',
   );
   assert.equal(objects.has(rejectedKey), false);

@@ -4,6 +4,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-13]
 
+### Added
+
+- **LINE 影片可以上傳到 200 MB** — 原本 LINE 與 FB 影片都只能上傳 25 MB（API 的 multipart 上限），超過的只能自己找地方放再貼網址。LINE 影片訊息的上限是 200 MB，現在 LINE 影片改為從瀏覽器直接上傳到 MinIO/S3，不經過 API，上傳時顯示進度；FB 影片維持 25 MB（Messenger 附件上限）。原有的直傳流程（`/files/presign-upload` → `/files/complete-upload`）沒有前端在用，而且在 UAT 用不了：上傳網址用內部位址 `minio:9000` 簽名，瀏覽器連不到；檢查時把整個檔案讀進 API；簽名不限檔案大小。現在上傳網址用 `S3_PUBLIC_URL` 簽名、檔案大小簽進網址（大小不符 storage 拒收）、依用途限制上限（一般 25 MB、LINE 影片 200 MB 只收 mp4），檢查只讀檔案頭尾，再在 storage 端複製成正式檔。⚠️ 部署前要放寬主機 nginx `/open333crm/` 的 `client_max_body_size`（見 `docs/ref/system/DEPLOYMENT.md`）。
+
 ### Fixed
 
 - **LINE 素材存檔錯誤是英文原文與 JSON 路徑**（UAT E2E 發現）— 純文字、圖片、影片、卡片、圖文被 LINE 擋下時，畫面顯示「messages[0].previewImageUrl: Must be a valid HTTPS URL」這類訊息，表單上沒有這些路徑。現在改用編輯器的欄位名稱與中文說明，例如「縮圖網址必須是 https:// 開頭的公開網址」「第 1 頁第 1 個按鈕的連結不可空白」；對應不到的保留原文。直接編輯 JSON 的 Flex 版型維持原文。

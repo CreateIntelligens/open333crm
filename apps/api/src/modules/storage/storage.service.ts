@@ -13,6 +13,8 @@ import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
+import { LINE_VIDEO_MAX_BYTES } from '@open333crm/shared';
+import type { UploadDetectionPolicy } from '../upload/upload-content-detector.js';
 
 let _provider: StorageProvider | null = null;
 
@@ -38,7 +40,24 @@ export function setStorageProviderForTests(provider: StorageProvider | null): vo
 
 export type StorageDirectory = 'media' | 'templates' | 'exports' | 'avatars' | 'imagemap';
 export type QuarantineDirectory = StorageDirectory | 'knowledge';
-export const MAX_QUARANTINE_BYTES = 25 * 1024 * 1024;
+
+/**
+ * 直傳的用途：大小上限與允許的內容類型（spec upload-content-detection「Presigned upload limits by purpose」）。
+ * generic 與 multipart 上傳（@fastify/multipart fileSize）同為 25MB；line-video 是 LINE 影片訊息的上限。
+ */
+export const UPLOAD_PURPOSES = {
+  generic: { maxBytes: 25 * 1024 * 1024, policy: UPLOAD_POLICIES.generic },
+  'line-video': { maxBytes: LINE_VIDEO_MAX_BYTES, policy: UPLOAD_POLICIES.lineVideo },
+} as const satisfies Record<string, { maxBytes: number; policy: UploadDetectionPolicy }>;
+export type UploadPurpose = keyof typeof UPLOAD_PURPOSES;
+
+/** 內容偵測只需要開頭（file-type、Office zip 判斷）與結尾（Magika）；小於此大小整份讀 */
+const SAMPLE_HEAD_BYTES = 1024 * 1024;
+const SAMPLE_TAIL_BYTES = 64 * 1024;
+
+function tooLarge(maxBytes: number): AppError {
+  return new AppError(`檔案超過上限 ${Math.round(maxBytes / 1024 / 1024)} MB`, 'FILE_TOO_LARGE', 413, { maxBytes });
+}
 
 /**
  * Build an organized storage key: {tenantId}/{directory}/{subPath?}/{uuid}.{ext}
@@ -126,43 +145,56 @@ export async function deleteFile(key: string): Promise<void> {
 }
 
 /**
- * Generate a presigned PUT URL for direct client upload.
- * Returns the storage key and upload URL (valid for 15 minutes by default).
+ * 簽發直傳網址（15 分鐘內有效）。宣告的大小簽進網址，超過用途上限時不簽發。
  */
 export async function presignUpload(
   tenantId: string,
-  filename: string,
-  mimeType: string,
-  directory: StorageDirectory = 'media',
+  input: { filename: string; mimeType: string; size: number; purpose?: UploadPurpose; directory?: StorageDirectory },
 ): Promise<{ key: string; uploadUrl: string }> {
-  const key = buildQuarantineKey(tenantId, filename, directory);
-  return getProvider().presignUpload(key, mimeType);
+  const { maxBytes } = UPLOAD_PURPOSES[input.purpose ?? 'generic'];
+  if (input.size > maxBytes) throw tooLarge(maxBytes);
+  const key = buildQuarantineKey(tenantId, input.filename, input.directory ?? 'media');
+  return getProvider().presignUpload(key, input.mimeType, input.size);
 }
 
+/** 讀取偵測用的片段：大檔只讀開頭與結尾，接在一起後偵測結果與整份相同 */
+async function readDetectionSample(provider: StorageProvider, key: string, size: number): Promise<Buffer | null> {
+  if (size <= SAMPLE_HEAD_BYTES + SAMPLE_TAIL_BYTES) {
+    return size === 0 ? Buffer.alloc(0) : provider.getObjectRange(key, 0, size - 1);
+  }
+  const head = await provider.getObjectRange(key, 0, SAMPLE_HEAD_BYTES - 1);
+  const tail = await provider.getObjectRange(key, size - SAMPLE_TAIL_BYTES, size - 1);
+  return head && tail ? Buffer.concat([head, tail]) : null;
+}
+
+/**
+ * 直傳完成：檢查大小與內容，通過後用 storage 端複製轉成正式檔（內容不經過 API），刪除隔離檔。
+ */
 export async function completePresignedUpload(
   tenantId: string,
-  key: string,
-  filename: string,
-  mimeType: string,
-  directory: StorageDirectory = 'media',
+  input: { key: string; filename: string; mimeType: string; purpose?: UploadPurpose; directory?: StorageDirectory },
 ): Promise<{ key: string; url: string; detectedMime?: string }> {
+  const { key, filename, mimeType } = input;
   if (!isTenantQuarantineKey(key, tenantId)) {
     throw new AppError('隔離區檔案不正確', 'FORBIDDEN', 403);
   }
+  const { maxBytes, policy } = UPLOAD_PURPOSES[input.purpose ?? 'generic'];
+  const provider = getProvider();
 
-  const object = await getProvider().getObject(key, MAX_QUARANTINE_BYTES);
-  if (!object) {
-    throw new AppError('找不到此檔案，或檔案超過可掃描的大小上限', 'NOT_FOUND', 404);
+  const head = await provider.headObject(key);
+  if (!head) {
+    throw new AppError('找不到此檔案', 'NOT_FOUND', 404);
   }
 
   let promotedKey: string | undefined;
   try {
-    const detected = await assertUploadContent(
-      { buffer: object.buffer, filename, clientMime: mimeType },
-      UPLOAD_POLICIES.generic,
-    );
+    if (head.size > maxBytes) throw tooLarge(maxBytes);
+    const sample = await readDetectionSample(provider, key, head.size);
+    if (!sample) throw new AppError('找不到此檔案', 'NOT_FOUND', 404);
+
+    const detected = await assertUploadContent({ buffer: sample, filename, clientMime: mimeType }, policy);
     const detectedMime = detected.detectedMime ?? mimeType;
-    const promoted = await uploadFile(object.buffer, filename, detectedMime, tenantId, directory);
+    const promoted = await provider.copy(key, buildStorageKey(tenantId, input.directory ?? 'media', filename), detectedMime);
     promotedKey = promoted.key;
     await deleteFile(key);
     return { ...promoted, detectedMime };
@@ -173,7 +205,6 @@ export async function completePresignedUpload(
   }
 }
 
-/** 取出物件內容為 Buffer（供公開圖端 route 代理讀取）。找不到回 null。 */
 export async function getObject(key: string, maxBytes?: number): Promise<{ buffer: Buffer; contentType?: string } | null> {
   return getProvider().getObject(key, maxBytes);
 }
