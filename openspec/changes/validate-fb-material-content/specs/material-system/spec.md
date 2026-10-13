@@ -22,6 +22,13 @@ An `fb_generic` material SHALL have 1 to 10 cards, each with at most 3 buttons; 
 - **WHEN** a user saves an `fb_generic` material with no cards
 - **THEN** the system SHALL respond 400 naming `body.elements`
 
+### Requirement: FB Material Button Types
+Every button of an `fb_*` material SHALL have `type` `web_url` or `postback`; a `postback` button SHALL have a non-empty `payload`. Otherwise the system SHALL respond 400 naming the button field.
+
+#### Scenario: Unsupported button type
+- **WHEN** a user saves an `fb_button` material whose first button has `type = "phone_number"`
+- **THEN** the system SHALL respond 400 naming `body.buttons.0.type`
+
 ### Requirement: FB Material URLs Use Safe Schemes
 Every URL field of an `fb_*` material that is sent to FB (image and video `url`, card `image_url`, `web_url` button `url`, coupon `image_url`) SHALL be an `http://` or `https://` URL or a site path starting with a single `/`. Other values SHALL be rejected with 400 naming the field. `fb_image` and `fb_video` SHALL require a URL; `fb_media` SHALL require a URL or an `attachment_id`.
 
@@ -34,7 +41,7 @@ Every URL field of an `fb_*` material that is sent to FB (image and video `url`,
 - **THEN** the material SHALL be saved
 
 ### Requirement: FB Material Numbers And Enumerations
-An `fb_*` material SHALL use only these values, otherwise the system SHALL respond 400 naming the field: `fb_media` `media_type` is `image` or `video`; button `type` is `web_url` or `postback`, and a `postback` button has a non-empty `payload`; `fb_receipt` `currency` is three uppercase letters and `summary.total_cost` is a number not less than 0; `fb_feedback` `question_type` is `csat`, `nps` or `ces`, and `expires_in_days` is an integer from 1 to 7.
+When present, these `fb_*` fields SHALL use only these values, otherwise the system SHALL respond 400 naming the field: `fb_media` `media_type` is `image` or `video`; `fb_receipt` `currency` is three uppercase letters; `fb_feedback` `question_type` is `csat`, `nps` or `ces`, and `expires_in_days` is an integer from 1 to 7. `fb_receipt` `summary.total_cost` SHALL always be a number not less than 0.
 
 #### Scenario: Negative total
 - **WHEN** a user saves an `fb_receipt` material with `summary.total_cost = -1`
@@ -47,3 +54,14 @@ An `fb_*` material SHALL use only these values, otherwise the system SHALL respo
 #### Scenario: Free-text media type
 - **WHEN** a user saves an `fb_media` material with `media_type = "abc"`
 - **THEN** the system SHALL respond 400 naming `body.media_type`
+
+#### Scenario: Missing field shown with an editor default
+- **WHEN** a user saves an `fb_receipt` material without `currency`, which the editor shows as `TWD`
+- **THEN** the material SHALL be saved
+
+### Requirement: Restoring An FB Material Version Is Validated
+When a user restores an `fb_*` material to an earlier version, the system SHALL apply the FB content rules to that version's body and SHALL respond 400 without changing the material when the body does not comply.
+
+#### Scenario: Restore a version saved before validation
+- **WHEN** a user restores an `fb_coupon` material to a version whose `image_url` is `javascript:alert(1)`
+- **THEN** the system SHALL respond 400 naming `body.image_url` and the material SHALL not change

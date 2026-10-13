@@ -9,6 +9,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
+import { validateFbMaterialBody } from './fb-material-validation.js';
 import {
   renderTemplateBody,
   buildVariableMap,
@@ -440,6 +441,8 @@ export async function createMaterial(
   }
 
   // 儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
+  // FB 版型沒有官方檢核 API，由本機規則檢查；LINE 版型呼叫 LINE validate
+  validateFbMaterialBody(contentType, body);
   await validateLineMaterialWithLineApi(prisma, tenantId, contentType, body);
 
   const material = await prisma.material.create({
@@ -521,6 +524,7 @@ export async function updateMaterial(
 
   // body 有更新時，儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
   if (input.body !== undefined) {
+    validateFbMaterialBody(existing.contentType, data.body as Record<string, unknown>);
     await validateLineMaterialWithLineApi(prisma, tenantId, existing.contentType, data.body as Record<string, unknown>);
   }
 
@@ -997,6 +1001,8 @@ export async function restoreMaterialVersion(
   if (!version) {
     throw new AppError(notFound('version'), 'VERSION_NOT_FOUND', 404);
   }
+  // 舊版可能是 FB 檢查上線前存的內容（例如 javascript: 網址），還原等於重新寫入，一樣要檢查
+  validateFbMaterialBody(material.contentType, (version.body ?? {}) as Record<string, unknown>);
   const updated = await prisma.material.update({
     where: { id: materialId },
     data: {
