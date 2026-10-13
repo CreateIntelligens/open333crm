@@ -96,9 +96,11 @@ packages/types/dist/index.js
 
 | 路徑 | 目標 |
 | --- | --- |
-| `/api/*`、`/mcp`、`/socket.io/*`、`/s/*` | `api:3001` |
+| `/api/*`、`/mcp`、`/socket.io/*`、`/s/*`、`/line-imagemap/*` | `api:3001` |
 | `/webchat/*` | `web:3000` |
 | 其他路徑 | `web:3000` |
+
+`/line-imagemap/*` 是 LINE 圖文訊息的底圖，LINE 會匿名依 `baseUrl/{寬度}` 抓圖。API 在 `/api` 以外註冊的路由，Caddy 與 Nginx 都要轉給 API，`apps/api/tests/unit/deploy/caddy-routes.test.ts` 會檢查。
 
 正式環境改用 Nginx。Nginx entrypoint 讀取 `nginx.conf.template` 產生設定，Certbot 負責申請與續約 Let's Encrypt 憑證。
 
