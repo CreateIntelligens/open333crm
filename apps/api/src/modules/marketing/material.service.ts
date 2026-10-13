@@ -10,6 +10,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateFbMaterialBody } from './fb-material-validation.js';
+import { formatLineValidateError } from './line-validate-error.js';
 import {
   renderTemplateBody,
   buildVariableMap,
@@ -171,36 +172,6 @@ function toLineFlexValidateMessage(body: LineFlexMessageBody): Record<string, un
   };
 }
 
-/**
- * 把 LINE 的 Flex 驗證錯誤整理成「屬性: 說明」。
- *
- * ⚠️ 此處**刻意保留 LINE 原文**，與其他第三方錯誤的處理方式不同：
- * 這是版型編輯器的回饋，使用者需要知道是哪個屬性不合規才能修正。
- * 隱藏細節會讓此功能失去價值。LINE 的驗證回應只含版型結構資訊，
- * 不含帳號或系統內部資料。
- */
-function formatLineValidateError(status: number, body: unknown): string {
-  if (body && typeof body === 'object') {
-    const record = body as Record<string, unknown>;
-    const message = typeof record.message === 'string' ? record.message : undefined;
-    const details = Array.isArray(record.details)
-      ? record.details
-          .map((detail) => {
-            if (!detail || typeof detail !== 'object') return undefined;
-            const item = detail as Record<string, unknown>;
-            const property = typeof item.property === 'string' ? item.property : undefined;
-            const detailMessage = typeof item.message === 'string' ? item.message : undefined;
-            if (property && detailMessage) return `${property}: ${detailMessage}`;
-            return detailMessage;
-          })
-          .filter(Boolean)
-          .join('; ')
-      : undefined;
-    return [message, details].filter(Boolean).join(' - ') || `LINE validate API failed (${status})`;
-  }
-  return `LINE validate API failed (${status})`;
-}
-
 async function getLineChannelAccessToken(prisma: TenantDb, tenantId: string): Promise<string> {
   const channel = await prisma.channel.findFirst({
     where: { tenantId, channelType: 'LINE', isActive: true },
@@ -239,7 +210,7 @@ async function validateLineFlexMessageWithLineApi(
   const responseBody = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new AppError(
-      formatLineValidateError(response.status, responseBody),
+      formatLineValidateError('line_flex_template', response.status, responseBody),
       'LINE_FLEX_VALIDATE_FAILED',
       400,
       {
@@ -268,6 +239,16 @@ async function validateLineMaterialWithLineApi(
   // 只驗 LINE 版型；flex_showcase / flex_template 已有專屬 validate（import 時），這裡涵蓋其餘。
   if (!contentType.startsWith('line_')) return;
   if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
+
+  // LINE carousel 最多 12 個 bubble；buildLineCarousel() 會截掉多的，存檔時先擋，免得發送時默默少頁
+  if (contentType === 'line_carousel') {
+    const pages = Array.isArray(body.pages) ? body.pages.length : 0;
+    if (pages + (body.endPage ? 1 : 0) > 12) {
+      throw new AppError('卡片訊息最多 12 頁（含結尾頁）', 'VALIDATION_ERROR', 400, {
+        issues: [{ path: 'body.pages', message: '卡片訊息最多 12 頁（含結尾頁）' }],
+      });
+    }
+  }
 
   // 影片網址先本機驗一次：LINE 的 validate API 只檢查結構，不會告訴你
   // 「YouTube 連結播不出來」——那是送出後客戶點開才發現的問題。
@@ -315,7 +296,7 @@ async function validateLineMaterialWithLineApi(
   if (!response.ok) {
     const responseBody = await response.json().catch(() => ({}));
     throw new AppError(
-      `素材格式不符合 LINE 規範：${formatLineValidateError(response.status, responseBody)}`,
+      `素材格式不符合 LINE 規範：${formatLineValidateError(contentType, response.status, responseBody)}`,
       'LINE_MATERIAL_VALIDATE_FAILED',
       400,
       { status: response.status, line: responseBody },

@@ -28,6 +28,8 @@ interface Props {
    * 但實際還會被後端 multipart 的 25MB 擋住——見下方 MAX_UPLOAD_BYTES 說明。
    */
   maxBytes?: number;
+  /** 網址的即時檢查；預設是 LINE 的規則，傳 null 不檢查（訊息寫的是 LINE，FB 不適用） */
+  validateUrl?: ((url: string) => string | null) | null;
 }
 
 /**
@@ -43,13 +45,13 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function CompactVideoField({ value, onChange, placeholder, maxBytes }: Props) {
+export function CompactVideoField({ value, onChange, placeholder, maxBytes, validateUrl = validateLineVideoUrl }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 網址本身的問題（貼 YouTube 等）即時提示；空值不提示，留給必填擋控。
-  const urlError = value.trim() ? validateLineVideoUrl(value) : null;
+  const urlError = value.trim() && validateUrl ? validateUrl(value) : null;
 
   const uploadLimit = Math.min(maxBytes ?? LINE_VIDEO_MAX_BYTES, MAX_UPLOAD_BYTES);
 

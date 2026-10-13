@@ -107,7 +107,8 @@ function PreviewBody({ contentType, body }: { contentType: string; body: Record<
   // FB
   if (contentType === 'fb_text') return <BubbleText text={b.text ?? ''} />;
   if (contentType === 'fb_image') return <MediaCard kind="image" url={b.url ?? b.mediaUrl} />;
-  if (contentType === 'fb_video') return <MediaCard kind="video" url={b.url ?? b.mediaUrl} />;
+  // FB 影片沒有封面圖：直接載入影片顯示第一格，不能把 mp4 當成圖片
+  if (contentType === 'fb_video') return <MediaCard kind="video" videoSrc={b.url ?? b.mediaUrl} />;
   if (contentType === 'fb_generic') return <CarouselPreview cards={fbGenericToCards(b)} />;
   if (contentType === 'fb_button') return <ButtonsPreview text={b.text} buttons={fbButtonsToUniversal(b.buttons ?? [])} />;
   if (contentType === 'fb_media') return <MediaCard kind="image" url={b.url} />;
@@ -121,17 +122,23 @@ function PreviewBody({ contentType, body }: { contentType: string; body: Record<
 
 function BubbleText({ text }: { text: string }) {
   return (
-    <div className="max-w-xs rounded-2xl rounded-tl-md bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">
+    <div className="max-w-xs whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">
       {text || <span className="text-slate-400">（空訊息）</span>}
     </div>
   );
 }
 
-function MediaCard({ kind, url }: { kind: 'image' | 'video'; url?: string }) {
+/** url 是圖片（影片則是封面圖）；videoSrc 是沒有封面圖時的影片網址 */
+function MediaCard({ kind, url, videoSrc }: { kind: 'image' | 'video'; url?: string; videoSrc?: string }) {
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
       <div className="relative flex h-40 items-center justify-center bg-slate-200 text-slate-400">
-        {url ? (
+        {videoSrc ? (
+          <>
+            <video src={videoSrc} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+            <VideoIcon className="absolute h-12 w-12 text-white opacity-80" />
+          </>
+        ) : url ? (
           kind === 'image' ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={url} alt="" className="h-full w-full object-cover" />

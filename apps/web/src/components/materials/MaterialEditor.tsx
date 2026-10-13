@@ -151,17 +151,18 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
             <div className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">基本資訊</div>
             <div className="space-y-3.5">
               <div>
+                {/* 字數上限與後端 Zod 一致（material.routes.ts），超過時後端只回籠統的「輸入內容有誤」 */}
                 <label className="mb-1.5 block text-xs font-semibold text-foreground">素材名稱 <span className="text-primary">*</span></label>
-                <Input value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} placeholder="如：母親節新品推播" />
+                <Input maxLength={200} value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} placeholder="如：母親節新品推播" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-foreground">分類</label>
-                  <Input value={draft.category ?? ''} onChange={(e) => onChange({ ...draft, category: e.target.value })} placeholder="行銷類 / 服務類 …" />
+                  <Input maxLength={100} value={draft.category ?? ''} onChange={(e) => onChange({ ...draft, category: e.target.value })} placeholder="行銷類 / 服務類 …" />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-foreground">描述 <span className="font-normal text-muted-foreground">（選填）</span></label>
-                  <Input value={draft.description ?? ''} onChange={(e) => onChange({ ...draft, description: e.target.value })} placeholder="簡短描述用途" />
+                  <Input maxLength={500} value={draft.description ?? ''} onChange={(e) => onChange({ ...draft, description: e.target.value })} placeholder="簡短描述用途" />
                 </div>
               </div>
             </div>

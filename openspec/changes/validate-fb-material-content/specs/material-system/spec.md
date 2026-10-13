@@ -36,6 +36,10 @@ Every URL field of an `fb_*` material that is sent to FB (image and video `url`,
 - **WHEN** a user saves an `fb_image` material with `url = "javascript:alert(1)"`
 - **THEN** the system SHALL respond 400 naming `body.url`
 
+#### Scenario: http URL without a host
+- **WHEN** a user saves an `fb_image` material with `url = "http:///a.jpg"`
+- **THEN** the system SHALL respond 400 naming `body.url` with a message saying a host must follow `http(s)://`
+
 #### Scenario: Sample image path
 - **WHEN** a user saves an `fb_generic` card whose `image_url` is `/material-samples/product.jpeg`
 - **THEN** the material SHALL be saved

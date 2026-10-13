@@ -17,7 +17,6 @@ const DEMO = {
   person: '/material-samples/person.jpeg',
   imagemap: '/material-samples/promo-banner.jpeg',
   videoCover: '/material-samples/promo-banner.jpeg',
-  endCard: '/material-samples/promo-banner.jpeg',
   coupon: '/material-samples/coupon.jpeg',
 };
 
@@ -27,19 +26,16 @@ export const DEFAULT_BODY_FOR_TYPE: Record<string, Record<string, unknown>> = {
     text: '您好，這是一則 LINE 文字訊息範例。\n換行也支援。',
   },
 
+  // 不設縮圖：縮圖選填、預設使用圖片；設成示範圖的話只換主圖時會留下示範縮圖（LINE 擋下站內路徑）
   line_image: {
     mediaUrl: DEMO.cafe,
-    previewUrl: DEMO.cafe,
   },
 
   line_video: {
     videoUrl: 'https://example.com/sample.mp4',
     previewImageUrl: DEMO.videoCover,
-    endCard: {
-      imageUrl: DEMO.endCard,
-      label: '了解更多',
-      action: { type: 'uri', label: '了解更多', uri: 'https://example.com' },
-    },
+    // 不放 endCard：結束畫面已從編輯器移除、發送時也不送（見 LineVideoEditor）；
+    // 存進示範值的話，以後補上發送時舊素材會多送一張連到 example.com 的卡片
   },
 
   line_carousel: {

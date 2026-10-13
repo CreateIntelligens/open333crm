@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { CompactImageField } from './CompactImageField';
+import { CompactVideoField } from './CompactVideoField';
 
 interface EditorProps<T = Record<string, unknown>> {
   body: T;
@@ -93,23 +94,87 @@ export function FbImageEditor({ body, onChange }: EditorProps<{ url?: string; me
 }
 
 export function FbVideoEditor({ body, onChange }: EditorProps<{ url?: string; mediaUrl?: string }>) {
-  // 影片格只貼 URL（mp4），不適合上傳；保留 URL 輸入
+  // 可貼 mp4 網址或直接上傳；即時檢查訊息是 LINE 專用的，FB 不顯示（後端會檢查網址格式）
   return (
     <div className="space-y-2">
-      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">影片網址</label>
-      <Input value={(body.url ?? body.mediaUrl) ?? ''} onChange={(e) => onChange({ ...body, url: e.target.value })} placeholder="https://...mp4" />
+      <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">影片</label>
+      <CompactVideoField
+        value={(body.url ?? body.mediaUrl) ?? ''}
+        onChange={(url) => onChange({ ...body, url })}
+        placeholder="https://...mp4"
+        validateUrl={null}
+      />
     </div>
   );
 }
 
 // ─── FB 既有 6 個版型編輯器 ──────────────────────────────
 
+type FbButton = { type: string; title: string; url?: string; payload?: string };
+
+/**
+ * FB 按鈕清單：網址按鈕（web_url）或回傳按鈕（postback）。
+ * 換類型時清空網址／回傳值（網址當回傳值沒有意義），也不會留下另一種類型的欄位。
+ */
+function FbButtonsField({ buttons, max, onChange }: { buttons: FbButton[]; max: number; onChange: (next: FbButton[]) => void }) {
+  const update = (idx: number, next: FbButton) => onChange(buttons.map((b, i) => (i === idx ? next : b)));
+  return (
+    <div>
+      {buttons.map((btn, idx) => {
+        const isUrl = btn.type === 'web_url';
+        return (
+          <div key={idx} className="mb-2 flex items-center gap-2">
+            <select
+              aria-label={`第 ${idx + 1} 顆按鈕的類型`}
+              className="rounded-md border border-slate-200 px-2 py-2 text-sm"
+              value={isUrl ? 'web_url' : 'postback'}
+              onChange={(e) =>
+                update(
+                  idx,
+                  e.target.value === 'web_url'
+                    ? { type: 'web_url', title: btn.title, url: '' }
+                    : { type: 'postback', title: btn.title, payload: '' },
+                )
+              }
+            >
+              <option value="web_url">開啟網址</option>
+              <option value="postback">回傳資料</option>
+            </select>
+            <Input
+              placeholder="按鈕文字"
+              maxLength={20}
+              value={btn.title ?? ''}
+              onChange={(e) => update(idx, { ...btn, title: e.target.value })}
+              className="flex-1"
+            />
+            <Input
+              placeholder={isUrl ? '網址' : '回傳資料'}
+              value={(isUrl ? btn.url : btn.payload) ?? ''}
+              onChange={(e) => update(idx, { ...btn, [isUrl ? 'url' : 'payload']: e.target.value })}
+              className="flex-1"
+            />
+            <Button variant="ghost" size="sm" aria-label={`刪除第 ${idx + 1} 顆按鈕`} onClick={() => onChange(buttons.filter((_, i) => i !== idx))}>
+              <Trash2 className="h-3 w-3 text-red-600" />
+            </Button>
+          </div>
+        );
+      })}
+      {buttons.length < max && (
+        <Button variant="outline" size="sm" onClick={() => onChange([...buttons, { type: 'web_url', title: '', url: '' }])}>
+          <Plus className="mr-1 h-3 w-3" />新增按鈕（{buttons.length}/{max}）
+        </Button>
+      )}
+    </div>
+  );
+}
+
+
 interface FbGenericBody {
   elements?: Array<{
     title: string;
     subtitle?: string;
     image_url?: string;
-    buttons?: Array<{ type: string; title: string; url?: string; payload?: string }>;
+    buttons?: FbButton[];
   }>;
 }
 
@@ -155,6 +220,18 @@ export function FbGenericEditor({ body, onChange }: EditorProps<FbGenericBody>) 
               }}
             />
           </div>
+          <div>
+            <label className="mb-1 block text-[11px] text-slate-500">按鈕（選填，最多 3 顆）</label>
+            <FbButtonsField
+              buttons={el.buttons ?? []}
+              max={3}
+              onChange={(buttons) => {
+                const newElements = [...elements];
+                newElements[idx] = { ...el, buttons };
+                onChange({ ...body, elements: newElements });
+              }}
+            />
+          </div>
         </div>
       ))}
       {elements.length < 10 && (
@@ -168,7 +245,7 @@ export function FbGenericEditor({ body, onChange }: EditorProps<FbGenericBody>) 
 
 interface FbButtonBody {
   text?: string;
-  buttons?: Array<{ type: string; title: string; url?: string; payload?: string }>;
+  buttons?: FbButton[];
 }
 
 export function FbButtonEditor({ body, onChange }: EditorProps<FbButtonBody>) {
@@ -181,39 +258,7 @@ export function FbButtonEditor({ body, onChange }: EditorProps<FbButtonBody>) {
       </div>
       <div>
         <label className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1 block">按鈕（1-3 顆）</label>
-        {buttons.map((btn, idx) => (
-          <div key={idx} className="mb-2 flex items-center gap-2">
-            <Input
-              placeholder="按鈕文字"
-              value={btn.title ?? ''}
-              onChange={(e) => {
-                const newButtons = [...buttons];
-                newButtons[idx] = { ...btn, title: e.target.value };
-                onChange({ ...body, buttons: newButtons });
-              }}
-              className="flex-1"
-            />
-            <Input
-              placeholder={btn.type === 'web_url' ? '網址' : '回傳資料'}
-              value={(btn.url ?? btn.payload) ?? ''}
-              onChange={(e) => {
-                const newButtons = [...buttons];
-                const key = btn.type === 'web_url' ? 'url' : 'payload';
-                newButtons[idx] = { ...btn, [key]: e.target.value };
-                onChange({ ...body, buttons: newButtons });
-              }}
-              className="flex-1"
-            />
-            <Button variant="ghost" size="sm" onClick={() => onChange({ ...body, buttons: buttons.filter((_, i) => i !== idx) })}>
-              <Trash2 className="h-3 w-3 text-red-600" />
-            </Button>
-          </div>
-        ))}
-        {buttons.length < 3 && (
-          <Button variant="outline" size="sm" onClick={() => onChange({ ...body, buttons: [...buttons, { type: 'web_url', title: '', url: '' }] })}>
-            <Plus className="mr-1 h-3 w-3" />新增按鈕（{buttons.length}/3）
-          </Button>
-        )}
+        <FbButtonsField buttons={buttons} max={3} onChange={(next) => onChange({ ...body, buttons: next })} />
       </div>
     </div>
   );
@@ -228,8 +273,16 @@ export function FbMediaEditor({ body, onChange }: EditorProps) {
         FB 大圖／影片廣告須使用 Facebook 託管的素材 ID 或 URL，不接受外部網址。
       </div>
       <div>
-        <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">媒體類型</label>
-        <Input value={b.media_type ?? 'image'} onChange={(e) => onChange({ ...b, media_type: e.target.value })} placeholder="image / video" />
+        <label htmlFor="fb-media-type" className="text-xs font-semibold uppercase tracking-wide text-slate-600">媒體類型</label>
+        <select
+          id="fb-media-type"
+          className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+          value={b.media_type === 'video' ? 'video' : 'image'}
+          onChange={(e) => onChange({ ...b, media_type: e.target.value })}
+        >
+          <option value="image">圖片</option>
+          <option value="video">影片</option>
+        </select>
       </div>
       <div>
         <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">attachment_id（建議）</label>
