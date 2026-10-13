@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { imagemapPreviewSrc } from '@/lib/imagemap-url';
 import { Image as ImageIcon, Video as VideoIcon, MapPin, Clock, Phone } from 'lucide-react';
 import {
   FlexMessagePreview,
@@ -94,7 +95,7 @@ function PreviewBody({ contentType, body }: { contentType: string; body: Record<
     return <LineCarouselPreview body={b} />;
   }
   if (contentType === 'line_imagemap') {
-    return <MediaCard kind="image" url={b.baseImageUrl} />;
+    return <MediaCard kind="image" url={imagemapPreviewSrc(b.baseImageUrl)} />;
   }
   if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') {
     const flex = b.type === 'flex' ? b.contents : b.contents ?? b;

@@ -11,6 +11,8 @@
     reverse_proxy /mcp api:3001
     reverse_proxy /socket.io/* api:3001
     reverse_proxy /s/* api:3001
+    # LINE 圖文訊息底圖（LINE 依 baseUrl/{寬度} 抓圖），api 掛在根路徑 /line-imagemap
+    reverse_proxy /line-imagemap/* api:3001
     reverse_proxy /webchat/* web:3000
     reverse_proxy /* web:3000
 }

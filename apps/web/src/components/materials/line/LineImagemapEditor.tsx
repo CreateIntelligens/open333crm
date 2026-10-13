@@ -12,6 +12,7 @@
  */
 
 import React, { useState } from 'react';
+import { imagemapPreviewSrc } from '@/lib/imagemap-url';
 import { Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -186,7 +187,7 @@ function ImagemapPreview({
       <div className="relative" style={{ paddingBottom: `${(height / width) * 100}%` }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={baseImageUrl}
+          src={imagemapPreviewSrc(baseImageUrl)}
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
           onError={(e) => ((e.currentTarget.style.display = 'none'))}
