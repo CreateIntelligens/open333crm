@@ -62,3 +62,9 @@ test('No schedule：沒有排程時間建立為草稿', async () => {
   await createBroadcast(db, T, 'agent-1', base);
   assert.equal(created[0]?.status, 'draft');
 });
+
+test('空字串的排程時間視為沒有排程，建立為草稿（不會發送）', async () => {
+  const { db, created } = fakeDb();
+  await createBroadcast(db, T, 'agent-1', { ...base, scheduledAt: '' });
+  assert.equal(created[0]?.status, 'draft');
+});

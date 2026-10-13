@@ -31,5 +31,5 @@ When a broadcast is created with `scheduledAt`, the system SHALL require a parse
 - **THEN** the broadcast SHALL be created with status `scheduled`
 
 #### Scenario: No schedule
-- **WHEN** a user creates a broadcast without `scheduledAt`
+- **WHEN** a user creates a broadcast without `scheduledAt`, or with an empty `scheduledAt`
 - **THEN** the broadcast SHALL be created as a draft

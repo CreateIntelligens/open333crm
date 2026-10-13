@@ -100,8 +100,8 @@ async function assertSendMaterialReferences(
     .map((a) => (a.params as { materialId?: unknown } | undefined)?.materialId);
   if (ids.length === 0) return;
 
-  const invalid = ids.find((id) => typeof id !== 'string' || !UUID_RE.test(id));
-  if (invalid !== undefined) {
+  // 用 some 而不是 find：find 找到的元素本身是 undefined 時會被當成「沒找到」
+  if (ids.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) {
     throw new AppError('傳送素材的素材 ID 格式不正確', 'VALIDATION_ERROR', 400, {
       issues: [{ path: 'actions', message: '傳送素材的素材 ID 格式不正確' }],
     });
