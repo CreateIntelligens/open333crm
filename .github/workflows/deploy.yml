@@ -5,6 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 同一時間只跑一個部署。checkout 會取觸發這次部署的 commit，沒有這個設定時，排在後面的舊部署
+# 會把 UAT 蓋回舊版（2026-10-13：#264 的部署排在 #265、#266 之後，手動取消才沒有退版）。
+# 同一組裡排隊中的部署只保留最新一個（較舊的會被自動取消），進行中的部署不中斷，
+# 避免 rsync 或重建容器做到一半留下半套版本。
+concurrency:
+  group: deploy-uat
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: [self-hosted, linux, arm64, uat]
