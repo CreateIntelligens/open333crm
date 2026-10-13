@@ -147,3 +147,34 @@ test('沒有值的欄位以編輯器顯示的預設值處理，不擋（media_ty
   delete feedback.expires_in_days;
   assert.doesNotThrow(() => validateFbMaterialBody('fb_feedback', feedback));
 });
+
+test('格式錯誤、沒有網域的 http(s) 網址擋下', () => {
+  for (const bad of ['http:///path', 'https://?', 'https://#', 'https://', 'http://exa mple.com/a.jpg']) {
+    rejects('fb_image', { url: bad }, 'body.url');
+  }
+  assert.doesNotThrow(() => validateFbMaterialBody('fb_image', { url: 'https://cdn.example.com/a b.jpg'.replace(' ', '%20') }));
+});
+
+test('按鈕太少時錯誤訊息說明需要的數量', () => {
+  assert.throws(
+    () => validateFbMaterialBody('fb_button', { ...clone('fb_button'), buttons: [] }),
+    (e: { details?: { issues?: Array<{ path: string; message: string }> } }) => {
+      const issue = e.details?.issues?.find((i) => i.path === 'body.buttons');
+      assert.ok(issue, '應指出 body.buttons');
+      assert.match(issue.message, /需要 1～3 個/);
+      return true;
+    },
+  );
+});
+
+test('多個欄位同時出錯時全部列出', () => {
+  const body = { ...clone('fb_receipt'), recipient_name: '', currency: 'xx', summary: { total_cost: -5 } };
+  assert.throws(
+    () => validateFbMaterialBody('fb_receipt', body),
+    (e: { details?: { issues?: Array<{ path: string }> } }) => {
+      const paths = (e.details?.issues ?? []).map((i) => i.path).sort();
+      assert.deepEqual(paths, ['body.currency', 'body.recipient_name', 'body.summary.total_cost']);
+      return true;
+    },
+  );
+});
