@@ -325,13 +325,18 @@ GET    /api/v1/storage/signed-url/:key     # 取 presigned URL（private 檔案�
 
 # 前端直傳支援（減少 API server 流量）
 POST /api/v1/files/presign-upload          # 取得前端直傳 URL
-  Body: { filename, contentType, folder }
+  Body: { filename, mimeType, size, purpose?, directory? }
   Response: { uploadUrl, key }             # key 位於 tenant-scoped quarantine
 
 POST /api/v1/files/complete-upload          # PUT 成功後必須呼叫
-  Body: { key, filename, mimeType, directory }
+  Body: { key, filename, mimeType, purpose?, directory? }
   Response: { key, url, detectedMime }      # 只有此 url 可供業務流程使用
 ```
+
+直傳的用途（`purpose`）決定大小上限與允許的類型：`generic`（預設）25 MB、沿用一般上傳的允許清單；`line-video` 200 MB、只收 mp4。
+
+- 上傳網址以 `S3_PUBLIC_URL` 簽名，瀏覽器直接 PUT 到 storage；`size` 簽進網址，實際大小不同時 storage 回 403。PUT 只能帶 `Content-Type`，不可帶登入 token。
+- complete 先查物件大小，超過用途上限回 413 並刪除隔離檔；內容偵測只讀開頭 1 MB 與結尾 64 KB；通過後在 storage 端複製成正式檔，檔案不經過 API。
 
 所有 multipart 與 presigned upload 都會在進入正式 storage/parser 前執行內容類型偵測。API image 內建固定版本的 Magika model/config（`standard_v3_3`），API 啟動時 preload 本地檔案；runtime 不從外部 URL 下載。`UPLOAD_CONTENT_DETECTION_ENABLED` 預設為 `true`，只可在偵測器故障時暫時設為 `false`，並在修復後重啟 API 恢復。
 

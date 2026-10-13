@@ -104,6 +104,15 @@ packages/types/dist/index.js
 
 正式環境改用 Nginx。Nginx entrypoint 讀取 `nginx.conf.template` 產生設定，Certbot 負責申請與續約 Let's Encrypt 憑證。
 
+### 檔案網址與直傳
+
+上傳的檔案網址是 `{S3_PUBLIC_URL}/{S3_BUCKET}/{key}`，瀏覽器直傳（例如 LINE 影片，最多 200 MB）也是 PUT 到這個網址。所以 `S3_PUBLIC_URL` 前面的反向代理要把 `/{S3_BUCKET}/` 轉給 MinIO，並且：
+
+- 不改 `Host`（`proxy_set_header Host $host`）：上傳網址的簽名包含主機名稱，改了 MinIO 回 `SignatureDoesNotMatch`。
+- 放寬請求大小：Nginx 預設 `client_max_body_size` 是 1 MB，要設 `210m`，並加 `proxy_request_buffering off`，大檔不先暫存在代理。
+
+UAT 的這一段在主機的 `/etc/nginx/conf.d/uat.open333crm.create360.ai.conf`（`location /open333crm/`），不在 repo 內，不會隨部署更新。`nginx.conf.template` 目前沒有轉發 MinIO 的 location，用這份範本部署時要補上。
+
 ## 與早期設計稿的差異
 
 `docs/02_SYSTEM_ARCHITECTURE.md` 的 Compose 服務清單是規劃稿。現在的實作有四項主要差異：

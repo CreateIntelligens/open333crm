@@ -61,6 +61,11 @@ export const UPLOAD_POLICIES = {
     name: 'conversation-video',
     allowedMimes: ['video/mp4', 'video/quicktime'],
   },
+  /** LINE 影片訊息只收 mp4 */
+  lineVideo: {
+    name: 'line-video',
+    allowedMimes: ['video/mp4'],
+  },
   imagemap: {
     name: 'line-imagemap',
     allowedMimes: ['image/jpeg', 'image/png', 'image/webp'],

@@ -20,5 +20,14 @@ export interface StorageProvider {
   getObject(key: string, maxBytes?: number): Promise<{ buffer: Buffer; contentType?: string } | null>;
   delete(key: string): Promise<void>;
   ensureBucket(): Promise<void>;
-  presignUpload(key: string, mimeType: string, expiresInSeconds?: number): Promise<PresignResult>;
+  /** 只查大小，不讀內容；找不到回 null */
+  headObject(key: string): Promise<{ size: number } | null>;
+  /** 讀取 [start, end]（含 end）的片段；找不到回 null */
+  getObjectRange(key: string, start: number, end: number): Promise<Buffer | null>;
+  /** storage 端複製成新物件，內容不經過 API */
+  copy(fromKey: string, toKey: string, mimeType: string): Promise<UploadResult>;
+  /**
+   * 簽發瀏覽器用的上傳網址。contentLength 簽進網址，實際上傳的大小不同時 storage 拒收。
+   */
+  presignUpload(key: string, mimeType: string, contentLength: number, expiresInSeconds?: number): Promise<PresignResult>;
 }
