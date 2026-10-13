@@ -137,6 +137,20 @@ export async function createBroadcast(
     throw new AppError('素材與版型請擇一提供，不可同時或都不填', 'INVALID_INPUT', 400);
   }
 
+  // 排程時間必須晚於現在：排程器每 60 秒取 scheduledAt <= now 的廣播執行，
+  // 排到過去等於一分鐘內立即發送給客人。REST 與 MCP 都經過這裡
+  if (data.scheduledAt) {
+    const at = new Date(data.scheduledAt);
+    const message = Number.isNaN(at.getTime())
+      ? '排程時間格式不正確'
+      : at.getTime() <= Date.now()
+        ? '排程時間必須晚於現在；要立即發送請不要設定排程時間'
+        : null;
+    if (message) {
+      throw new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'scheduledAt', message }] });
+    }
+  }
+
   // 驗證來源（Material 或舊 Template）
   if (data.materialId) {
     const material = await prisma.material.findFirst({
