@@ -34,6 +34,13 @@
 - `line_` 開頭的內容類型只能用在 LINE 素材，`fb_` 開頭的只能用在 Facebook 素材。
 - LINE Flex Message 可以匯入 JSON、先驗證格式，也可以用 AI 從描述產生（`POST /materials/line-flex/ai-generate`，會使用租戶的 AI 額度）。
 
+存檔時會檢查內容，不符合時回 400 並指出欄位：
+
+- **LINE**：呼叫 LINE 的 `validate/push` API 檢查（沒有啟用中的 LINE 渠道時略過）。
+- **FB**：FB 沒有檢核 API，由 `fb-material-validation.ts` 依版型檢查必填與長度、卡片與按鈕數量、按鈕類型、網址（只接受 `http(s)://` 與站內路徑 `/...`，擋下 `javascript:` 等）、金額與幣別、問卷類型與有效天數（1～7）。建立、修改內容與還原版本時都會檢查；只改名稱、分類或標籤時不檢查。
+
+編輯器預設的示範圖是站內路徑 `/material-samples/...`，存檔不會被擋，但發送前要換成公開網址，否則客人看不到圖。
+
 素材的其他功能：
 
 | 功能 | 說明 |
