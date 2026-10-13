@@ -72,6 +72,24 @@ export async function getCampaign(prisma: TenantDb, id: string, tenantId: string
   return { ...campaign, metrics };
 }
 
+/** 回 400，details.issues 指出欄位（與 zod 驗證錯誤同格式） */
+function fieldError(path: string, message: string): AppError {
+  return new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path, message }] });
+}
+
+/** 解析活動日期；undefined 表示沒傳、null 表示清除，無法解析時回 400 */
+function parseCampaignDate(field: 'startDate' | 'endDate', value: string | null | undefined): Date | null | undefined {
+  if (value === undefined || value === null || value === '') return value === '' ? null : value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw fieldError(field, '日期格式不正確');
+  return date;
+}
+
+/** 結束日不可早於開始日（同一天可以） */
+function assertCampaignPeriod(start: Date | null, end: Date | null): void {
+  if (start && end && end < start) throw fieldError('endDate', '結束日期不可早於開始日期');
+}
+
 export async function createCampaign(
   prisma: TenantDb,
   tenantId: string,
@@ -83,13 +101,17 @@ export async function createCampaign(
     endDate?: string;
   },
 ) {
+  const startDate = parseCampaignDate('startDate', data.startDate) ?? null;
+  const endDate = parseCampaignDate('endDate', data.endDate) ?? null;
+  assertCampaignPeriod(startDate, endDate);
+
   const campaign = await prisma.campaign.create({
     data: {
       tenantId,
       name: data.name,
       description: data.description || null,
-      startDate: data.startDate ? new Date(data.startDate) : null,
-      endDate: data.endDate ? new Date(data.endDate) : null,
+      startDate,
+      endDate,
       createdById: agentId,
     },
   });
@@ -135,8 +157,15 @@ export async function updateCampaign(
   if (data.name !== undefined) updateData.name = data.name;
   if (data.description !== undefined) updateData.description = data.description;
   if (data.status !== undefined) updateData.status = data.status;
-  if (data.startDate !== undefined) updateData.startDate = data.startDate ? new Date(data.startDate) : null;
-  if (data.endDate !== undefined) updateData.endDate = data.endDate ? new Date(data.endDate) : null;
+  const startDate = parseCampaignDate('startDate', data.startDate);
+  const endDate = parseCampaignDate('endDate', data.endDate);
+  // 以更新後的起訖比對：只改其中一個時，另一個沿用既有值
+  assertCampaignPeriod(
+    startDate === undefined ? existing.startDate : startDate,
+    endDate === undefined ? existing.endDate : endDate,
+  );
+  if (startDate !== undefined) updateData.startDate = startDate;
+  if (endDate !== undefined) updateData.endDate = endDate;
 
   const campaign = await prisma.campaign.update({
     where: { id },

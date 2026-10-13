@@ -339,8 +339,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
   });
 
   // 【已知 bug CM-W6-01】前後端皆無 endDate > startDate 跨欄位驗證
-  test('4. 活動-日期：結束早於開始應被擋【已知 bug CM-W6-01】', async ({ page }) => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('4. 活動-日期：結束早於開始應被擋【已修，原 CM-W6-01】', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/marketing/campaigns');
     await page.getByRole('button', { name: '新增活動' }).click();
     const dialog = page.getByRole('dialog');
@@ -357,7 +356,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
     );
     if (result.status === 201) trash.campaigns.push((result.body as any)?.data?.id);
 
-    // 預期行為：應被擋下。實際：201 建立成功（前後端皆無跨欄位驗證）
+    // 修正前：201 建立成功（前後端皆無跨欄位驗證）
     expectRejected(result, '活動結束日期早於開始日期');
   });
 
@@ -637,8 +636,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
   });
 
   // 【已知 bug CM-W6-02】scheduledAt 無「須為未來」驗證
-  test('14. 廣播-建立草稿 + 排程時間（過去時間應被擋）【已知 bug CM-W6-02】', async ({ page }) => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
+  test('14. 廣播-建立草稿 + 排程時間（過去時間應被擋）【已修，原 CM-W6-02】', async ({ page }) => {
     await gotoAndCheck(page, '/dashboard/marketing/broadcasts');
     await page.getByRole('button', { name: '建立廣播' }).click();
     const dialog = page.getByRole('dialog');
@@ -656,7 +654,7 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
     );
     if ((result.body as any)?.data?.id) trash.broadcasts.push((result.body as any).data.id);
 
-    // 預期：排程到過去應被擋。實際：201 且 status=scheduled（無未來性檢查）
+    // 修正前：201 且 status=scheduled，排程器一分鐘內就會立即發送
     expectRejected(result, '廣播排程時間=過去時間（2020-01-01）');
   });
 
@@ -1207,10 +1205,9 @@ test.describe('@fields 行銷 + LINE 素材 欄位級驗證', () => {
   });
 
   // 【已知 bug CM-W6-04】automation trigger 是 .passthrough()，keywords/match_mode 完全不驗
-  test('27. 關鍵字回覆-後端驗證缺口【已知 bug CM-W6-04】', async () => {
-    test.fail(); // 預期失敗：記錄已知 bug；修復後會變 unexpected pass，提醒移除此標記
-    // automation.routes.ts 的 trigger 是 z.object({type}).passthrough()，
-    // keywords / match_mode 完全不驗證 → 以下全部應被擋但實際可能被接受
+  test('27. 關鍵字回覆-後端驗證缺口【已修，原 CM-W6-04】', async () => {
+    // 修正前：trigger 是 z.object({type}).passthrough()，keywords／match_mode 不驗證（7a4e655c 已修）；
+    // send_material 的 materialId 只檢查非空，非 UUID 或不存在的素材都能存（fix-w6-marketing-validation 已修）
     const cases: Array<{ label: string; payload: Record<string, unknown> }> = [
       {
         label: 'keywords 空陣列（等同無關鍵字，規則永不觸發）',
