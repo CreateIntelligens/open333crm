@@ -146,9 +146,11 @@ t('第三方原文不再被串進 message 字串', () => {
 });
 
 t('Flex 版型驗證刻意保留細節（編輯器回饋，非外洩）', () => {
-  const s = src('modules/marketing/material.service.ts');
+  // 格式化移到 line-validate-error.ts（change readable-material-validation-errors）：
+  // 表單版型改用中文欄位名稱，Flex 版型仍保留原文
+  const s = src('modules/marketing/line-validate-error.ts');
   assert.ok(s.includes('刻意保留 LINE 原文'), '缺少說明此處為何與其他處不同');
-  assert.ok(s.includes('formatLineValidateError'), '格式化函式應保留');
+  assert.ok(src('modules/marketing/material.service.ts').includes('formatLineValidateError'), '格式化函式應保留');
 });
 
 // ── Zod 中文化 ──

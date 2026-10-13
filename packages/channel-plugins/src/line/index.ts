@@ -155,7 +155,9 @@ export function buildLineMessage(contentType: string, content: Record<string, un
       return {
         type: 'image',
         originalContentUrl: content.mediaUrl,
-        previewImageUrl: content.previewUrl ?? content.mediaUrl,
+        // 縮圖選填：編輯器清空時送出空字串，?? 接不住，空白也改用圖片
+        previewImageUrl:
+          typeof content.previewUrl === 'string' && content.previewUrl.trim() ? content.previewUrl : content.mediaUrl,
         ...base,
       };
     case 'line_video':
