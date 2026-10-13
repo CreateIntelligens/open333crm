@@ -44,3 +44,10 @@ A short link SHALL optionally carry a `materialId` referencing the material that
 
 - **WHEN** a short link is created without a `materialId` (manual short link)
 - **THEN** it behaves exactly as before, with no material attribution
+
+### Requirement: Short Link Form Rejects Blank Target URL
+The short link create and edit form SHALL keep its save button disabled while the target URL is empty after trimming whitespace.
+
+#### Scenario: Whitespace-only target URL
+- **WHEN** a user types only spaces into the target URL field
+- **THEN** the save button SHALL be disabled and no request SHALL be sent
