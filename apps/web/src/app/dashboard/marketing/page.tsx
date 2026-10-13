@@ -27,6 +27,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { toLocalInputValue } from '@/lib/datetime-local';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────
 
@@ -490,6 +491,8 @@ function BroadcastTab() {
               <Input
                 type="datetime-local"
                 value={formData.scheduledAt}
+                // 只能選未來的時間：排到過去後端會擋下（排程器會立即發送）
+                min={toLocalInputValue(new Date(Date.now() + 60_000).toISOString())}
                 onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })}
               />
             </div>

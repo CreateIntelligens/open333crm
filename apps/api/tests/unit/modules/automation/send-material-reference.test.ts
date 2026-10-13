@@ -20,7 +20,7 @@ const materials = [
   { id: MAT_OTHER_TENANT, tenantId: 'tenant-b', isActive: true },
 ];
 
-function fakeDb() {
+function fakeDb(existingMaterialId = MAT_OK) {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
     material: {
@@ -43,7 +43,7 @@ function fakeDb() {
         eventType: 'keyword.matched',
         trigger: { type: 'keyword.matched', keywords: ['hi'], match_mode: 'any' },
         conditions: { all: [] },
-        actions: [{ type: 'send_material', params: { materialId: MAT_OK } }],
+        actions: [{ type: 'send_material', params: { materialId: existingMaterialId } }],
       }),
       update: async ({ data }: { data: Record<string, unknown> }) => {
         writes.push(data);
@@ -91,10 +91,16 @@ test('Existing active material：建立成功', async () => {
   assert.equal(writes.length, 1);
 });
 
-test('更新動作時同樣檢查；只改名稱不檢查', async () => {
+test('更新動作時同樣檢查', async () => {
   const { db, writes } = fakeDb();
   await assert.rejects(updateRule(db, 'r1', T, { actions: rule(MAT_MISSING).actions }), is400);
   assert.equal(writes.length, 0);
+});
+
+test('沒有送 actions 時不檢查：既有規則指向已停用的素材，只改名稱或啟用狀態仍可成功', async () => {
+  // 管理員要能停用或改名一條指向已停用素材的規則（關鍵字回覆頁編輯時會送完整 actions，會被檢查）
+  const { db, writes } = fakeDb(MAT_OFF);
   await updateRule(db, 'r1', T, { name: '改名' });
-  assert.equal(writes.length, 1);
+  await updateRule(db, 'r1', T, { isActive: false });
+  assert.equal(writes.length, 2);
 });

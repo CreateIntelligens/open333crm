@@ -159,11 +159,14 @@ export async function updateCampaign(
   if (data.status !== undefined) updateData.status = data.status;
   const startDate = parseCampaignDate('startDate', data.startDate);
   const endDate = parseCampaignDate('endDate', data.endDate);
-  // 以更新後的起訖比對：只改其中一個時，另一個沿用既有值
-  assertCampaignPeriod(
-    startDate === undefined ? existing.startDate : startDate,
-    endDate === undefined ? existing.endDate : endDate,
-  );
+  // 有改日期才比對（以更新後的起訖：只改其中一個時，另一個沿用既有值）。
+  // 只改狀態、名稱時不檢查：修正前建立的起訖相反活動仍要能啟動、完成或取消
+  if (startDate !== undefined || endDate !== undefined) {
+    assertCampaignPeriod(
+      startDate === undefined ? existing.startDate : startDate,
+      endDate === undefined ? existing.endDate : endDate,
+    );
+  }
   if (startDate !== undefined) updateData.startDate = startDate;
   if (endDate !== undefined) updateData.endDate = endDate;
 

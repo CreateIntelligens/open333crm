@@ -79,3 +79,15 @@ test('清除結束日（null）不檢查先後', async () => {
   await updateCampaign(db, 'c1', T, { endDate: null });
   assert.equal(writes.length, 1);
 });
+
+test('Update status only on a legacy campaign：修正前建立的起訖相反活動，只改狀態仍可成功', async () => {
+  const { db, writes } = fakeDb({
+    id: 'c1',
+    status: 'draft',
+    startDate: new Date('2026-12-31T00:00:00Z'),
+    endDate: new Date('2026-01-01T00:00:00Z'),
+  });
+  await updateCampaign(db, 'c1', T, { status: 'cancelled' });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.status, 'cancelled');
+});

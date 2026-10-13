@@ -26,3 +26,4 @@
 
 - 每個測試都先確認因斷言失敗（`Missing expected rejection`）再實作。
 - 3.1 調查時發現：CM-W6-04 的關鍵字驗證已在 `7a4e655c`（2026-09-22）修好，E2E 仍失敗是因為同一個測試的 `materialId` 兩個案例（非 UUID、不存在的 UUID）還會被接受。
+- Code review 修正：活動只改狀態時不檢查日期（修正前建立的起訖相反活動仍能取消，新增情境「Update status only on a legacy campaign」，先失敗後通過）；「沒有送 actions 時不檢查」的測試改用指向已停用素材的既有規則（突變：一律檢查時失敗）；廣播排程欄位加 `min`。

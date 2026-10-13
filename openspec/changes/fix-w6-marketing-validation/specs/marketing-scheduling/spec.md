@@ -5,7 +5,7 @@
 ## ADDED Requirements
 
 ### Requirement: Campaign End Date Is Not Before Start Date
-When a marketing campaign is created or updated, the system SHALL reject with 400 naming `endDate` a campaign whose end date is earlier than its start date. On update the system SHALL compare the dates the campaign will have after the update. A date string that cannot be parsed SHALL be rejected with 400.
+When a marketing campaign is created or updated, the system SHALL reject with 400 naming `endDate` a campaign whose end date is earlier than its start date. On update the system SHALL check only when `startDate` or `endDate` is changed, comparing the dates the campaign will have after the update. A date string that cannot be parsed SHALL be rejected with 400.
 
 #### Scenario: Create with reversed dates
 - **WHEN** a user creates a campaign with `startDate = 2026-12-31` and `endDate = 2026-01-01`
@@ -14,6 +14,10 @@ When a marketing campaign is created or updated, the system SHALL reject with 40
 #### Scenario: Update only the end date
 - **WHEN** a campaign starts on 2026-06-01 and a user updates only `endDate` to 2026-05-01
 - **THEN** the system SHALL respond 400 naming `endDate` and the campaign SHALL not change
+
+#### Scenario: Update status only on a legacy campaign
+- **WHEN** a campaign created before this rule has an end date earlier than its start date, and a user changes only its status to `cancelled`
+- **THEN** the update SHALL succeed
 
 #### Scenario: Same day
 - **WHEN** a user creates a campaign whose start and end dates are both 2026-06-01
