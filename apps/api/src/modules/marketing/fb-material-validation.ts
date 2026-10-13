@@ -134,6 +134,11 @@ export function validateFbMaterialBody(contentType: string, body: Body): void {
       c.required(body, 'title', LIMIT.title, 'title', '優惠券標題');
       c.optional(body, 'subtitle', LIMIT.subtitle, 'subtitle', '優惠券副標題');
       c.url(body, 'image_url', false, 'image_url', '優惠券圖片網址');
+      // 折扣碼選填；編輯器輸入時就去掉空白，API 直打的也要一樣
+      if (body.coupon_code !== undefined && body.coupon_code !== null && body.coupon_code !== '') {
+        if (typeof body.coupon_code !== 'string') c.add('coupon_code', '折扣碼必須是文字');
+        else if (/\s/.test(body.coupon_code)) c.add('coupon_code', '折扣碼不可含空白');
+      }
       break;
     case 'fb_receipt': {
       c.required(body, 'recipient_name', LIMIT.title, 'recipient_name', '收件人');

@@ -67,6 +67,27 @@ test('LINE 擋下圖片素材時，錯誤訊息用編輯器的欄位名稱', asy
   assert.equal(writes.length, 0);
 });
 
+test('Numeric text：純文字的 text 是數字時回 400 指出 body.text，不呼叫 LINE、不建立', async () => {
+  const { db, writes } = fakeDb();
+  await assert.rejects(
+    createMaterial(db, T, { name: '[E2E] 數字', channelType: 'line', contentType: 'line_text', body: { text: 12345 } }),
+    (e: { statusCode?: number; details?: { issues?: Array<{ path: string }> } }) => {
+      assert.equal(e.statusCode, 400);
+      assert.deepEqual(e.details?.issues?.map((i) => i.path), ['body.text']);
+      return true;
+    },
+  );
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(writes.length, 0);
+});
+
+test('String text：數字組成的字串照常交給 LINE 驗證', async () => {
+  const { db, writes } = fakeDb();
+  await createMaterial(db, T, { name: '[E2E] 字串', channelType: 'line', contentType: 'line_text', body: { text: '12345' } });
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(writes.length, 1);
+});
+
 const page = (i: number) => ({ title: `E2E ${i}`, action1: { type: 'uri', label: '看看', uri: 'https://example.com' } });
 const endPage = { label: '看更多', action: { type: 'uri', label: '看更多', uri: 'https://example.com' } };
 

@@ -195,3 +195,18 @@ test('多個欄位同時出錯時全部列出', () => {
     },
   );
 });
+
+// change check-material-text-types：編輯器的折扣碼欄位輸入時就去掉空白，API 直打要一樣擋
+test('Coupon code with a space：折扣碼含空白或不是文字時擋下', () => {
+  rejects('fb_coupon', { ...clone('fb_coupon'), coupon_code: 'AB C' }, 'body.coupon_code');
+  rejects('fb_coupon', { ...clone('fb_coupon'), coupon_code: ' E2E90' }, 'body.coupon_code');
+  rejects('fb_coupon', { ...clone('fb_coupon'), coupon_code: 'E2E\t90' }, 'body.coupon_code');
+  rejects('fb_coupon', { ...clone('fb_coupon'), coupon_code: 90 }, 'body.coupon_code');
+});
+
+test('Coupon code without whitespace、Empty coupon code：沒有空白或沒填都通過', () => {
+  validateFbMaterialBody('fb_coupon', { ...clone('fb_coupon'), coupon_code: 'E2E90' });
+  validateFbMaterialBody('fb_coupon', { ...clone('fb_coupon'), coupon_code: '' });
+  const { coupon_code: _omit, ...withoutCode } = clone('fb_coupon');
+  validateFbMaterialBody('fb_coupon', withoutCode);
+});
