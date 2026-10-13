@@ -20,7 +20,7 @@
 - [x] 4.3 `pnpm test`、`pnpm test:feature` 通過
 - [x] 4.4 `check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 4.5 `node scripts/validate-openspec.mjs fix-w6-marketing-validation` 通過
-- [ ] 4.6 合併部署後在 UAT 重跑行銷 LINE 的 E2E
+- [x] 4.6 合併部署後在 UAT 重跑行銷 LINE 的 E2E（2026-10-13：`tenant-fields-marketing-line.spec.ts` 31 passed、2 skipped，CM-W6-01／02／04 通過；skip 為不存在的預算欄位與 UAT 沒有 published Rich Menu）
 
 ## 備註
 

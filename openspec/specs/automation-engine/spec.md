@@ -1,7 +1,9 @@
 ## Purpose
 
 Define automation rule triggers, conditions evaluation, action execution, and SLA contracts for open333CRM.
+
 ## Requirements
+
 ### Requirement: Event Trigger
 The system SHALL trigger automation rules when an event occurs, such as `message.received`.
 
@@ -485,3 +487,21 @@ API 收到 `case.created` 時 SHALL 只在工單尚無分類時，依對話最�
 - **WHEN** 客服手動建單時選了分類，或自動化規則指定了分類
 - **THEN** 不執行自動分類，分類維持原值
 
+### Requirement: Send Material Action References An Existing Material
+When an automation rule is created, or updated with new actions, every `send_material` action SHALL have a `materialId` that refers to an active material of the same tenant. Otherwise the system SHALL respond 400 and SHALL NOT save the rule.
+
+#### Scenario: Material ID is not a UUID
+- **WHEN** a user creates a keyword reply whose `send_material` action has `materialId = "not-a-uuid"`
+- **THEN** the system SHALL respond 400 and SHALL NOT create the rule
+
+#### Scenario: Material does not exist
+- **WHEN** a user creates a rule whose `send_material` action refers to a UUID with no material in the tenant
+- **THEN** the system SHALL respond 400 and SHALL NOT create the rule
+
+#### Scenario: Material of another tenant
+- **WHEN** a user creates a rule whose `send_material` action refers to an active material of another tenant
+- **THEN** the system SHALL respond 400
+
+#### Scenario: Existing active material
+- **WHEN** a user creates a rule whose `send_material` action refers to an active material of the same tenant
+- **THEN** the rule SHALL be created
