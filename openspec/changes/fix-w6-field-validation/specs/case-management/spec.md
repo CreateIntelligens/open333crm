@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Escalation Notify Targets Are Validated
-`POST /api/v1/cases/:id/escalate` SHALL accept `notifyTargets` only as an array of `supervisor` and `original_assignee`; any other value SHALL be rejected with 400 and the case SHALL not change.
+`POST /api/v1/cases/:id/escalate` SHALL accept `notifyTargets` only as an array of `supervisor`, `original_assignee` and `team`; any other value SHALL be rejected with 400 and the case SHALL not change. `team` is accepted but currently notifies no one.
 
 #### Scenario: Invalid notify target
 - **WHEN** an agent escalates a case with `notifyTargets: ["everyone"]`
@@ -33,3 +33,7 @@ After escalation the system SHALL notify, for `supervisor`, every active supervi
 #### Scenario: Supervisor escalates a case
 - **WHEN** supervisor S escalates a case with `notifyTargets: ["supervisor"]`
 - **THEN** every other active supervisor and admin SHALL be notified, and S SHALL NOT be notified
+
+#### Scenario: Escalation dialog selects notify team
+- **WHEN** an agent escalates a case from the escalation dialog with `notifyTargets: ["supervisor", "original_assignee", "team"]`
+- **THEN** the escalation SHALL succeed
