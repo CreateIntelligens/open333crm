@@ -240,6 +240,13 @@ async function validateLineMaterialWithLineApi(
   if (!contentType.startsWith('line_')) return;
   if (contentType === 'line_flex_showcase' || contentType === 'line_flex_template') return;
 
+  // LINE 的 validate API 收到數字的 text 也會過，數字就這樣存進去；編輯器與其他程式都把 text 當字串
+  if (contentType === 'line_text' && typeof body.text !== 'string') {
+    throw new AppError('訊息內容必須是文字', 'VALIDATION_ERROR', 400, {
+      issues: [{ path: 'body.text', message: '訊息內容必須是文字' }],
+    });
+  }
+
   // LINE carousel 最多 12 個 bubble；buildLineCarousel() 會截掉多的，存檔時先擋，免得發送時默默少頁
   if (contentType === 'line_carousel') {
     const pages = Array.isArray(body.pages) ? body.pages.length : 0;
