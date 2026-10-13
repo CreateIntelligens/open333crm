@@ -129,6 +129,7 @@ export interface SubmitResult {
  * @param opts.blockedSignal 選填：前端擋下時一定會出現的元素（如「名稱必填」提示）。
  *   在請求送出前看到它就立刻判定為前端擋下，不必等滿 waitMs；
  *   請求一旦送出就不再看它（後端錯誤也可能顯示同一個提示區）。
+ *   送出前就已經顯示的提示（上一次探測留下的）不算，改為等滿 waitMs。
  */
 export async function submitAndObserve(
   page: Page,
@@ -162,6 +163,9 @@ export async function submitAndObserve(
     captures.push({ status: response.status(), body });
   };
 
+  // 送出前就看得到的提示不能當成這次被擋的證據，否則請求還沒發出就會誤判成前端擋下
+  const signal =
+    opts.blockedSignal && !(await opts.blockedSignal.isVisible().catch(() => false)) ? opts.blockedSignal : null;
   page.on('request', requestHandler);
   page.on('response', handler);
   try {
@@ -169,9 +173,9 @@ export async function submitAndObserve(
     const deadline = Date.now() + waitMs;
     while (!captures.length && Date.now() < deadline) {
       if (
-        opts.blockedSignal &&
+        signal &&
         !sent.length &&
-        (await opts.blockedSignal.isVisible().catch(() => false))
+        (await signal.isVisible().catch(() => false))
       ) {
         break;
       }
