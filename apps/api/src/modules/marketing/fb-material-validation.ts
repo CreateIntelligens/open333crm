@@ -62,8 +62,10 @@ class Checker {
       if (required) this.add(path, `${label}為必填`);
       return;
     }
-    const ok = isHttpUrl(v) || (v.startsWith('/') && !v.startsWith('//'));
-    if (!ok) this.add(path, `${label}必須是 http:// 或 https:// 開頭的網址`);
+    if (isHttpUrl(v) || (v.startsWith('/') && !v.startsWith('//'))) return;
+    // http(s):// 開頭卻不合格時，說「要 http(s) 開頭」會讓人看不出錯在哪
+    if (/^https?:\/\//i.test(v)) this.add(path, `${label}格式不正確：http(s):// 後面要接網域，且不可有空白`);
+    else this.add(path, `${label}必須是 http:// 或 https:// 開頭的網址`);
   }
 
   buttons(list: unknown, path: string, min: number, max: number) {

@@ -155,6 +155,23 @@ test('格式錯誤、沒有網域的 http(s) 網址擋下', () => {
   assert.doesNotThrow(() => validateFbMaterialBody('fb_image', { url: 'https://cdn.example.com/a b.jpg'.replace(' ', '%20') }));
 });
 
+test('http(s) 開頭但格式錯的網址，錯誤訊息說明要接網域；其他 scheme 說明要 http(s)', () => {
+  const messageOf = (url: string) => {
+    try {
+      validateFbMaterialBody('fb_image', { url });
+    } catch (e) {
+      return (e as { details: { issues: Array<{ message: string }> } }).details.issues[0].message;
+    }
+    return null;
+  };
+  for (const bad of ['http:///path', 'https://?', 'HTTPS://', 'http://exa mple.com/a.jpg']) {
+    assert.equal(messageOf(bad), '圖片網址格式不正確：http(s):// 後面要接網域，且不可有空白', bad);
+  }
+  for (const bad of ['javascript:alert(1)', 'notaurl']) {
+    assert.equal(messageOf(bad), '圖片網址必須是 http:// 或 https:// 開頭的網址', bad);
+  }
+});
+
 test('按鈕太少時錯誤訊息說明需要的數量', () => {
   assert.throws(
     () => validateFbMaterialBody('fb_button', { ...clone('fb_button'), buttons: [] }),
