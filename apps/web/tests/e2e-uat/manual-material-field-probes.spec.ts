@@ -58,6 +58,8 @@ test.setTimeout(2 * 60_000);
 const FINDINGS_FILE =
   process.env.E2E_FINDINGS_FILE || path.join(os.tmpdir(), `material-field-probes-${RUN_TAG}.jsonl`);
 const JS_URL = 'javascript:alert(1)';
+// 沒有網域的網址：瀏覽器會把 http:///path 正規化成網域 path，後端要先檢查原字串（PR #267）
+const HOSTLESS_URLS = [['沒有網域 http:///', 'http:///e2e-probe.jpg'], ['只有 https://?', 'https://?']] as const;
 const IMG = 'https://example.com/e2e-probe.jpg';
 
 let api: APIRequestContext;
@@ -418,7 +420,7 @@ test.describe('fb_image 欄位探測', () => {
   const m = useProbeMaterial('fb', 'fb_image', { url: IMG });
   const urlBox = (p: Page) => field(p, '圖片', { exact: true });
 
-  for (const [label, value] of [['javascript:', JS_URL], ['空值', ''], ['非網址 notaurl', 'notaurl']] as const) {
+  for (const [label, value] of [['javascript:', JS_URL], ['空值', ''], ['非網址 notaurl', 'notaurl'], ...HOSTLESS_URLS] as const) {
     test(`url ${label} → 應被擋`, async ({ page }) => {
       await probeRejected(page, m(), `url=${value || '(空)'}`, (p) => setVal(urlBox(p), value));
     });
@@ -429,7 +431,7 @@ test.describe('fb_video 欄位探測', () => {
   const m = useProbeMaterial('fb', 'fb_video', { url: 'https://example.com/e2e-probe.mp4' });
   const urlBox = (p: Page) => p.getByPlaceholder('https://...mp4');
 
-  for (const [label, value] of [['javascript:', JS_URL], ['空值', '']] as const) {
+  for (const [label, value] of [['javascript:', JS_URL], ['空值', ''], ...HOSTLESS_URLS] as const) {
     test(`url ${label} → 應被擋`, async ({ page }) => {
       await probeRejected(page, m(), `url=${value || '(空)'}`, (p) => setVal(urlBox(p), value));
     });
