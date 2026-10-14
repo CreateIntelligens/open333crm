@@ -88,7 +88,7 @@
 | --- | --- |
 | `supervisor` | 租戶內在職的 `ADMIN` 與 `SUPERVISOR` |
 | `original_assignee` | 升級前的負責人；已停用時不通知 |
-| `team` | 目前不通知任何人：升級對話框有「通知團隊」勾選，但系統沒有實作 |
+| `team` | 不通知任何人。系統沒有實作通知團隊，升級對話框不提供這個選項；API 仍接受，舊頁面送出不會回 400 |
 
 升級的人自己不會收到通知，同一個人只收到一則。沒帶 `notifyTargets`（例如舊的呼叫端）時只通知 `ADMIN` 與 `SUPERVISOR`；帶空陣列表示兩個都沒勾，不送通知。收件人由 `notification.service.ts` 的 `resolveEscalationRecipients()` 計算。
 
