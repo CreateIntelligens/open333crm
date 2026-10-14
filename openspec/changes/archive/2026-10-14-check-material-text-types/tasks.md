@@ -14,4 +14,4 @@
 - [x] 3.1 `CHANGELOG.md` 新增 Fixed 條目；更新 `docs/ref/features/tenant/MARKETING.md`
 - [x] 3.2 `pnpm test` 通過；`check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 3.3 `node scripts/validate-openspec.mjs check-material-text-types` 通過
-- [ ] 3.4 部署後在 UAT 重跑 `line_text`、`fb_coupon` 的素材欄位探測
+- [x] 3.4 部署後在 UAT 重跑 `line_text`、`fb_coupon` 的素材欄位探測（2026-10-14 UAT：數字 text→400「訊息內容必須是文字」、"AB C"→400「折扣碼不可含空白」、空折扣碼→200，7 passed）
