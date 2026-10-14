@@ -28,6 +28,13 @@
     --shell-end: 0 0% 90%;               /* #E6E6E6 圖示欄漸層底端 */
     --tertiary-foreground: 0 0% 43%;     /* #6D6D6D text/tertiary（未選中選單、圖示） */
 
+    /* Figma Design System 其他狀態色 */
+    --neutral: 0 0% 57%;                 /* #919191 Status/Neutral */
+    --robot: 275 37% 45%;                /* #79489C Status/Accent（Tag Robot） */
+    --online: 148 100% 34%;              /* #00AB50 Status/Online（Tag Success 實心） */
+    --control-disabled: 217 25% 82%;     /* #C6CFDD Action/Disabled（Switch 關、計數字） */
+    --disabled-solid: 0 0% 82%;          /* #D0D0D0 主要按鈕停用 */
+
     /* 主色 (品牌藍) */
     --primary: 210 71% 54%;              /* #378ADD */
     --primary-foreground: 0 0% 100%;     /* 白字 */
@@ -91,6 +98,11 @@
     --shell: 222 20% 9%;
     --shell-end: 222 20% 7%;
     --tertiary-foreground: 215 12% 68%;
+    --neutral: 0 0% 55%;
+    --robot: 275 45% 68%;
+    --online: 148 70% 45%;
+    --control-disabled: 217 15% 35%;
+    --disabled-solid: 0 0% 35%;
 
     /* 主色在暗底提亮以維持對比 */
     --primary: 210 80% 62%;              /* 提亮的 #378ADD */

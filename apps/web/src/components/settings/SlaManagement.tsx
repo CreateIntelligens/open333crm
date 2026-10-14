@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 
 interface SlaPolicy {
   id: string;
@@ -233,13 +233,13 @@ export function SlaManagement() {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
+      <PageDialog section="設定" parent="SLA 政策" open={showDialog} onOpenChange={setShowDialog}>
+        <PageDialogContent>
+          <PageDialogHeader>
+            <PageDialogTitle>
               {editingPolicy ? '編輯 SLA 政策' : '建立 SLA 政策'}
-            </DialogTitle>
-          </DialogHeader>
+            </PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium">政策名稱</label>
@@ -303,7 +303,7 @@ export function SlaManagement() {
               <p className="text-sm text-destructive">{error}</p>
             )}
           </div>
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saving}>
               取消
             </Button>
@@ -317,9 +317,9 @@ export function SlaManagement() {
                 '儲存政策'
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
     </div>
   );
 }

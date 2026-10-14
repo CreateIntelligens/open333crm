@@ -30,21 +30,23 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
 
   const pages = buildPageRange(page, totalPages);
 
+  // 依 Figma「Pagination Item」(1787:18681)：40×40、圓角 8；目前頁白底＋#E2E8F0 框、16px 500 深字；其他頁 #707E93
+  const item = 'flex h-10 min-w-10 items-center justify-center rounded-md px-2 text-base font-medium leading-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
-    <div className={cn('flex items-center justify-center gap-1', className)}>
+    <nav aria-label="分頁" className={cn('flex items-center justify-center gap-1', className)}>
       <button
         type="button"
-        className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
+        aria-label="上一頁"
+        className={cn(item, 'text-muted-foreground hover:bg-shell disabled:pointer-events-none disabled:opacity-40')}
         disabled={page <= 1}
         onClick={() => onPageChange(page - 1)}
       >
-        <ChevronLeft className="h-4 w-4" />
-        上一頁
+        <ChevronLeft className="h-5 w-5" />
       </button>
 
       {pages.map((p, i) =>
         p === 'ellipsis' ? (
-          <span key={`e${i}`} className="px-2 text-sm text-muted-foreground">
+          <span key={`e${i}`} className="flex h-10 w-10 items-center justify-center text-base text-muted-foreground" aria-hidden="true">
             …
           </span>
         ) : (
@@ -52,11 +54,10 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
             key={p}
             type="button"
             onClick={() => onPageChange(p)}
+            aria-current={p === page ? 'page' : undefined}
             className={cn(
-              'min-w-9 rounded-md border px-2.5 py-1.5 text-sm',
-              p === page
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'hover:bg-accent',
+              item,
+              p === page ? 'border border-border bg-background text-foreground' : 'text-muted-foreground hover:bg-shell',
             )}
           >
             {p}
@@ -66,13 +67,13 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
 
       <button
         type="button"
-        className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
+        aria-label="下一頁"
+        className={cn(item, 'text-muted-foreground hover:bg-shell disabled:pointer-events-none disabled:opacity-40')}
         disabled={page >= totalPages}
         onClick={() => onPageChange(page + 1)}
       >
-        下一頁
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-5 w-5" />
       </button>
-    </div>
+    </nav>
   );
 }

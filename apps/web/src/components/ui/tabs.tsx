@@ -4,8 +4,9 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Tabs — 對齊 Figma「Tab / Underline」與 Pill 兩種樣式。
- * variant="pill" (預設，灰底浮起) 或 "underline" (底線)。
+ * Tabs — 依 Figma「Tab / Underline」(589:10108) 與「Segmented Control」(922:33662)
+ * variant="pill"（預設）：#F8FAFC 底、內距 4、間距 4、圓角 8；選中項白底
+ * variant="underline"：每項內距 12/12/8、14px；選中藍字 600＋藍色底線，未選中 #707E93 500
  * API 與原本相容：<Tabs value onValueChange>。
  */
 
@@ -53,8 +54,8 @@ function TabsList({ children, className, activeValue, onValueChange }: TabsListP
       className={cn(
         'inline-flex items-center justify-start text-muted-foreground',
         variant === 'pill'
-          ? 'h-10 rounded-lg bg-muted p-1'
-          : 'h-11 gap-1 border-b border-border',
+          ? 'h-9 gap-1 rounded-md bg-muted p-1'
+          : 'gap-1 border-b border-border',
         className
       )}
     >
@@ -84,13 +85,16 @@ function TabsTrigger({ value, children, className, activeValue, onValueChange }:
   const isActive = activeValue === value;
   return (
     <button
+      type="button"
+      role="tab"
+      aria-selected={isActive}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50',
         variant === 'pill'
-          ? cn('rounded-md px-3 py-1.5', isActive && 'bg-background text-foreground shadow-soft')
+          ? cn('h-7 rounded-md px-4 text-foreground', isActive ? 'bg-background font-medium' : 'font-normal hover:bg-background/60')
           : cn(
-              'relative -mb-px h-11 border-b-2 border-transparent px-3',
-              isActive ? 'border-primary text-primary' : 'hover:text-foreground'
+              'relative -mb-px border-b-2 px-3 pb-2 pt-3',
+              isActive ? 'border-primary font-semibold text-primary' : 'border-transparent font-medium text-muted-foreground hover:text-foreground'
             ),
         className
       )}

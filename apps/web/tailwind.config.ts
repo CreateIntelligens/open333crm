@@ -64,6 +64,11 @@ const config: Config = {
         tertiary: {
           foreground: 'hsl(var(--tertiary-foreground))',
         },
+        'status-neutral': 'hsl(var(--neutral))', // 不覆蓋 Tailwind 內建 neutral 色階
+        robot: 'hsl(var(--robot))',
+        online: 'hsl(var(--online))',
+        'control-disabled': 'hsl(var(--control-disabled))',
+        'disabled-solid': 'hsl(var(--disabled-solid))',
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',

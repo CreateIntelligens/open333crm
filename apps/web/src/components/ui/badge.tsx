@@ -5,24 +5,38 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 /**
- * Badge / Tag — 對齊 Figma 標籤系統 (Tag/CaseStatus、Tag/Priority、Tag/Metadata)
- * 圓角 12px (rounded-lg)、12px 半粗字。語意色皆「深字 + 淺底」成對。
+ * Badge — 依 Figma Design System「Tag」(1697:14324)
+ * 高 22、圓角 12、左右內距 12、12px 字。
+ * Style：Solid（實心白字 600）／Soft（淡底深字）／Outline（淡底＋同色框）
+ * Color：Neutral / Primary / Success / Danger / Warning / Robot
+ * 舊的 variant 名稱保留並對應到 Figma 樣式，既有頁面不用改。
  */
 const badgeVariants = cva(
-  'inline-flex items-center gap-1 rounded-lg border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+  'inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-lg border border-transparent px-3 text-xs font-semibold leading-4 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-primary text-primary-foreground',
-        secondary: 'border-transparent bg-secondary text-secondary-foreground',
-        destructive: 'border-transparent bg-destructive text-destructive-foreground',
-        outline: 'border-border text-foreground',
-        // 語意「淺底深字」變體 (對齊 Figma 狀態標籤)
-        success: 'border-transparent bg-success-subtle text-success',
-        warning: 'border-transparent bg-warning-subtle text-warning',
-        danger: 'border-transparent bg-destructive-subtle text-destructive',
-        info: 'border-transparent bg-primary-subtle text-primary',
-        ai: 'border-transparent bg-ai-subtle text-ai',
+        // Solid
+        default: 'bg-primary text-white',
+        destructive: 'bg-destructive text-white',
+        'solid-neutral': 'bg-status-neutral text-white',
+        'solid-success': 'bg-online text-white',
+        'solid-warning': 'bg-warning text-white',
+        'solid-robot': 'bg-robot text-white',
+        // Soft
+        secondary: 'bg-shell text-tertiary-foreground',
+        info: 'bg-primary-subtle text-primary-hover',
+        success: 'bg-success-subtle text-success',
+        danger: 'bg-destructive-subtle font-medium text-destructive',
+        warning: 'bg-warning-subtle font-medium text-warning',
+        ai: 'bg-ai-subtle font-medium text-robot',
+        // Outline
+        outline: 'border-control-disabled bg-shell text-tertiary-foreground',
+        'outline-primary': 'border-primary bg-primary-subtle text-primary-hover',
+        'outline-success': 'border-success bg-success-subtle text-success',
+        'outline-danger': 'border-destructive bg-destructive-subtle font-medium text-destructive',
+        'outline-warning': 'border-warning bg-warning-subtle font-medium text-warning',
+        'outline-robot': 'border-robot bg-ai-subtle font-medium text-robot',
       },
     },
     defaultVariants: {

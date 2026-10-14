@@ -18,6 +18,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 
 interface Agent {
   id: string;
@@ -157,11 +164,11 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated, canAssignChan
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>新增人員</DialogTitle>
-        </DialogHeader>
+    <PageDialog section="設定" parent="人員管理" open={open} onOpenChange={onOpenChange}>
+      <PageDialogContent>
+        <PageDialogHeader>
+          <PageDialogTitle>新增人員</PageDialogTitle>
+        </PageDialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">姓名</label>
@@ -214,7 +221,7 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated, canAssignChan
             />
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
+          <PageDialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               取消
             </Button>
@@ -222,10 +229,10 @@ function CreateAgentDialog({ open, onOpenChange, roles, onCreated, canAssignChan
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               建立
             </Button>
-          </DialogFooter>
+          </PageDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </PageDialogContent>
+    </PageDialog>
   );
 }
 
@@ -408,11 +415,11 @@ function EditAgentDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>編輯人員 — {agent?.name}</DialogTitle>
-        </DialogHeader>
+    <PageDialog section="設定" parent="人員管理" open={open} onOpenChange={onOpenChange}>
+      <PageDialogContent>
+        <PageDialogHeader>
+          <PageDialogTitle>編輯人員 — {agent?.name}</PageDialogTitle>
+        </PageDialogHeader>
         <form onSubmit={handleSave} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">角色</label>
@@ -464,7 +471,7 @@ function EditAgentDialog({
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+          <PageDialogFooter className="flex-row items-center justify-between sm:justify-between">
             <div className="flex gap-2">
               {canDeactivate && !isSelf && agent?.isActive && (
                 <Button
@@ -500,10 +507,10 @@ function EditAgentDialog({
                 儲存
               </Button>
             </div>
-          </DialogFooter>
+          </PageDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </PageDialogContent>
+    </PageDialog>
   );
 }
 

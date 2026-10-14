@@ -36,7 +36,7 @@ test('切換到「對話紀錄」顯示跨渠道訊息', async () => {
     return { data: { data: [] } };
   });
   render(<ContactDetailPage />);
-  fireEvent.click(await screen.findByRole('button', { name: '對話紀錄' }));
+  fireEvent.click(await screen.findByRole('tab', { name: '對話紀錄' }));
   await screen.findByText('冷氣漏水');
 });
 

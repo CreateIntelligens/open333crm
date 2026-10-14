@@ -11,6 +11,7 @@ import { SimulatorPanel } from '@/components/shared/SimulatorPanel';
 import { WebTalkGlobal } from '@/components/webtalk/WebTalkGlobal';
 import { WebMcpProvider } from '@/components/ai/WebMcpProvider';
 import { Loader2 } from 'lucide-react';
+import { PAGE_DIALOG_ROOT_ID } from '@/components/ui/page-dialog';
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { agent, isLoading } = useAuth();
@@ -43,7 +44,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 flex-1">
           <Sidebar />
           <SectionNav />
-          <main className="min-w-0 flex-1 overflow-y-auto bg-background lg:rounded-tl-3xl lg:shadow-[0_0_2px_rgba(0,0,0,0.25)]">{children}</main>
+          <main className="relative min-w-0 flex-1 overflow-hidden bg-background lg:rounded-tl-3xl lg:shadow-[0_0_2px_rgba(0,0,0,0.25)]">
+            <div className="h-full overflow-y-auto">{children}</div>
+            {/* 「下一頁」式表單（PageDialog）會蓋在這裡，側欄與頂部列不動 */}
+            <div id={PAGE_DIALOG_ROOT_ID} />
+          </main>
         </div>
       </div>
       <MobileNav open={menuOpen} onClose={() => setMenuOpen(false)} />

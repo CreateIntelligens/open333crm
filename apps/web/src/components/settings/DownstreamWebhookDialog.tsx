@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 
 type ForwardMode = 'immediate' | 'after';
 
@@ -83,11 +83,11 @@ export function DownstreamWebhookDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>下游 Webhook 轉發 — {channel?.displayName}</DialogTitle>
-        </DialogHeader>
+    <PageDialog section="設定" parent="渠道管理" open={open} onOpenChange={onOpenChange}>
+      <PageDialogContent className="max-w-lg">
+        <PageDialogHeader>
+          <PageDialogTitle>下游 Webhook 轉發 — {channel?.displayName}</PageDialogTitle>
+        </PageDialogHeader>
 
         <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
           <p className="text-xs text-muted-foreground">
@@ -148,7 +148,7 @@ export function DownstreamWebhookDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <PageDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
@@ -162,8 +162,8 @@ export function DownstreamWebhookDialog({
               '儲存'
             )}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </PageDialogFooter>
+      </PageDialogContent>
+    </PageDialog>
   );
 }
