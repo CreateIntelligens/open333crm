@@ -241,7 +241,7 @@ To add a channel, register a plugin. Do not add a branch.
 Register the plugin in both processes:
 
 - `registerChannelPlugin()` in `apps/api/src/index.ts`.
-- The `pluginRegistry` map in `apps/workers/src/index.ts`.
+- `createWorkerPluginRegistry()` in `apps/workers/src/lib/plugin-registry.ts`.
 
 The workers map does not read the shared registry. Thus a plugin that only the API registers
 cannot send messages from automation rules.

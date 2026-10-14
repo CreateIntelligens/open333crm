@@ -46,7 +46,7 @@
 `setupAutomationWorker()` 收到 `message.received` 後，對 `BOT_HANDLED` 的對話依序做下列事情：
 
 1. **檢查自動轉真人**（`checkAutoHandoff()`）。見[轉真人](#轉真人)。
-2. **決定由誰回覆**。只處理純文字訊息。訊息會命中關鍵字規則時，讓給關鍵字規則回覆，AI 不回。
+2. **決定由誰回覆**。只處理純文字訊息。訊息會命中關鍵字規則、而且規則能在這個渠道回覆時，讓給關鍵字規則回覆，AI 不回（見[自動化](./AUTOMATION.md)）。
    - `botMode` 是 `llm` 或 `keyword_then_llm`，而且環境變數 `AGENTIC_LLM_ENABLED` 為 `true` 時，先由 AI agent 回覆。
    - AI agent 沒有處理時，改由 `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` 依知識庫回覆。知識庫回覆怎麼決定內容，見[知識庫與 AI](./KNOWLEDGE.md#機器人怎麼用知識庫回答)。
    - 兩種回覆除了目前對話最近 10 則訊息，還會讀這位聯絡人在其他對話中最近 30 天、最多 10 則的文字訊息（`other-channel-context.ts`）。這些訊息以獨立的系統指示提供，每則標示渠道、時間與發話方，並要求 AI 不主動複述其中的電話、地址、email、訂單或會員編號。系統發的綁定與 email、手機登記訊息不提供，代碼與登記連結會遮蔽。只有[歸戶](./CONTACTS.md#合併)過的聯絡人才有其他對話；合併解除後，對話搬回原聯絡人，AI 就讀不到。客服在後台以 `/ai/agent/run` 觸發時，AI 的回答給客服看，因此只讀客服可見渠道的訊息。

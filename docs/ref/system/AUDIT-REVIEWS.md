@@ -4,6 +4,21 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-14：CHAN-02 部分修正
+
+UAT 創造智能接上 Instagram 渠道後，以唯讀查詢確認第一則私訊沒有任何回覆：對話的 bot 回覆次數為 0；workers 的 log 顯示訊息命中關鍵字規則「Hi」（關鍵字 `Hi`、`你好`），規則的 `send_material` 是 LINE 素材，因渠道不符被略過（`send_material skipped: material channel "line" != conversation channel "threads"`）。只讀狀態、時間、規則定義與 log，沒有讀訊息內容，沒有寫入。
+
+change `fix-keyword-yield-ig-delivery`（`95d68fc8`）：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| workers 的 Instagram 外掛 | 已修正 | `createWorkerPluginRegistry()` 加入 `threadsPlugin`。測試：`apps/workers/tests/unit/lib/plugin-registry.test.ts` |
+| AI 讓步判斷 | 已修正 | `hasMatchingKeywordRule()` 只計入能在該渠道回覆的規則。測試：`apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts` |
+| 素材渠道不符 | 已修正 | 對話寫入「沒有送出」紀錄。測試：`apps/workers/tests/unit/lib/automation-material-channel-mismatch.test.ts` |
+| 網站聊天室 | 未修正 | workers 仍沒有 `webchatPlugin`，訪客推送也不在 workers 的送出路徑 |
+
+`AUDIT.md` 的 CHAN-02 改為部分修正、執行時確認。
+
 ## 2026-10-12：查 UAT 的同渠道雙身分聯絡人（IDENT-03）
 
 IDENT-03 修正後（PR #255），在 UAT 以唯讀交易（`BEGIN READ ONLY`）查詢 `channel_identities` 依 `(contactId, channelId)` 分組超過 1 筆的聯絡人。只讀 ID、渠道類型、建立時間與數量，沒有讀名稱、email 等個資，沒有寫入。查詢時 UAT 部署的版本是 `4585025d`。

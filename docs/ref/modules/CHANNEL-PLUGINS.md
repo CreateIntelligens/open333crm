@@ -136,7 +136,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 1. 在 `schema.prisma` 的 `ChannelType` 與 `packages/shared`、`packages/types` 的渠道型別加入新類型。兩個套件各有一份，見 PKG-01。
 2. 在 `packages/channel-plugins/src/` 實作 `ChannelPlugin`，匯出一個實例，並在 `package.json` 的 `exports` 加上子路徑（確認路徑與實際輸出一致，見 PKG-02）。
 3. 在 `apps/api/src/index.ts` 以 `registerChannelPlugin()` 註冊，並更新同檔的啟動 log（見 APP-03）。
-4. 在 `apps/workers/src/index.ts` 的 `pluginRegistry` 加入同一個外掛，否則自動化與關鍵字回覆送不出去。
+4. 在 `apps/workers/src/lib/plugin-registry.ts` 的 `createWorkerPluginRegistry()` 加入同一個外掛，否則自動化與關鍵字回覆送不出去。
 5. 在 `webhook.routes.ts` 加上進站路由；驗簽用的秘密不是 `appSecret` 或 `channelSecret` 時，修改 `processWebhookEvent()` 的選擇。
 6. 在 `channel.routes.ts` 的 `createChannelSchema` 加入新類型，並定義憑證欄位的檢查。
 7. 需要的話，在 `channel.service.ts` 加上驗證憑證的分支，並在前端的渠道管理頁加上表單。
@@ -146,7 +146,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 
 | 限制 | 詳見 `../system/AUDIT.md` |
 | --- | --- |
-| workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時送不出去，機器人也不回覆 | CHAN-02 |
+| workers 沒有網站聊天室外掛；關鍵字回覆不限渠道，在網站聊天室命中時送不出去，機器人也不回覆 | CHAN-02 |
 | Telegram 沒有註冊；WhatsApp 可以建立但沒有外掛 | APP-02 |
 | 啟動 log 少列 Threads | APP-03 |
 | `./fb` 子路徑指向不存在的檔案 | PKG-02 |
@@ -159,7 +159,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 ```bash
 # 兩個行程各註冊了哪些外掛
 grep -n "registerChannelPlugin" apps/api/src/index.ts
-grep -n "pluginRegistry.set" apps/workers/src/index.ts
+grep -n "Plugin" apps/workers/src/lib/plugin-registry.ts
 
 # 以 channelType 分支的程式
 grep -rn "channelType *[!=]==\|[!=]== *CHANNEL_TYPE" apps/api/src apps/workers/src --include='*.ts'
