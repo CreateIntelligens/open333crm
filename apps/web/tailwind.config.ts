@@ -57,6 +57,13 @@ const config: Config = {
           DEFAULT: 'hsl(var(--accent))',
           foreground: 'hsl(var(--accent-foreground))',
         },
+        shell: {
+          DEFAULT: 'hsl(var(--shell))',
+          end: 'hsl(var(--shell-end))',
+        },
+        tertiary: {
+          foreground: 'hsl(var(--tertiary-foreground))',
+        },
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',

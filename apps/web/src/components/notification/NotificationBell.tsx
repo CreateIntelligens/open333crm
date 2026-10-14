@@ -2,9 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, AlertTriangle, MessageSquare, UserCheck, Clock, CheckCheck } from 'lucide-react';
+import { AlertTriangle, Bell, MessageSquare, UserCheck, Clock, CheckCheck } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
+import { BellIcon } from '@/components/icons/figma-icons';
 import { useNotifications, useUnreadCount, useNotificationActions } from '@/hooks/useNotifications';
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
@@ -67,13 +68,16 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={dropdownRef}>
+      {/* 樣式依 Figma 頂部列：24px 圖示區、紅色 22×11 數字徽章 */}
       <button
-        className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        type="button"
+        aria-label={count > 0 ? `通知，${displayCount} 則未讀` : '通知'}
+        className="relative flex h-6 w-6 items-center justify-center rounded-md pt-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Bell className="h-5 w-5" />
+        <BellIcon />
         {count > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+          <span className="absolute left-[9px] top-[-1px] flex h-[11px] min-w-[22px] items-center justify-center rounded-[6px] bg-destructive px-1 text-[8px] font-semibold leading-[8px] text-white">
             {displayCount}
           </span>
         )}

@@ -37,13 +37,13 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SocketProvider>
-      {/* 外框底色 #EEF1F5 取自設計稿；暗色模式退回一般背景 */}
-      <div className="flex h-screen flex-col overflow-hidden bg-[#eef1f5] dark:bg-muted">
+      {/* 外框依 Figma：#F5F5F5 底（shell token），內容區白底、左上圓角 24、淡陰影 */}
+      <div className="flex h-screen flex-col overflow-hidden bg-shell">
         <AppHeader onOpenMenu={() => setMenuOpen(true)} />
         <div className="flex min-h-0 flex-1">
           <Sidebar />
           <SectionNav />
-          <main className="min-w-0 flex-1 overflow-y-auto bg-background lg:rounded-tl-2xl">{children}</main>
+          <main className="min-w-0 flex-1 overflow-y-auto bg-background lg:rounded-tl-3xl lg:shadow-[0_0_2px_rgba(0,0,0,0.25)]">{children}</main>
         </div>
       </div>
       <MobileNav open={menuOpen} onClose={() => setMenuOpen(false)} />

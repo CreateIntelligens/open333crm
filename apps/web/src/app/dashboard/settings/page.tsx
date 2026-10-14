@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Topbar } from "@/components/layout/Topbar";
 import { ChannelManagement } from "@/components/settings/ChannelManagement";
 import { AgentManagement } from "@/components/settings/AgentManagement";
 import { TagManagement } from "@/components/settings/TagManagement";
@@ -21,8 +20,8 @@ import api from "@/lib/api";
 
 const SETTINGS_TABS = [
   { key: "channels", label: "渠道管理" },
-  { key: "agents", label: "人員與權限" },
-  { key: "roles", label: "角色與權限", perm: "role.view" },
+  { key: "agents", label: "人員管理" },
+  { key: "roles", label: "角色權限", perm: "role.view" },
   { key: "tags", label: "標籤管理" },
   { key: "sla", label: "SLA 政策" },
   { key: "office-hours", label: "營業時間" },
@@ -45,10 +44,11 @@ export default function SettingsPage() {
   const canManageSettings = usePermission("settings.manage");
 
   return (
-    <div className="flex h-full flex-col">
-      <Topbar title="設定" />
+    // 依 Figma：設定頁不再有上方標題列，內容區內距 32，最上方是麵包屑
+    <div className="flex min-h-full flex-col gap-3 p-8">
+      <p className="text-sm leading-5 text-foreground">設定 &gt; {SETTINGS_TABS.find((tab) => tab.key === activeTab)?.label}</p>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div>
           {activeTab === "channels" && <ChannelManagement />}
           {activeTab === "agents" && <AgentManagement />}
           {activeTab === "roles" && (canViewRoles ? <RolePermissionMatrix /> : <PermissionDenied />)}
