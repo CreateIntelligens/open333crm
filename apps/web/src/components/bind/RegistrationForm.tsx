@@ -46,6 +46,10 @@ function resultText(noun: string): Record<string, { title: string; body: string 
       title: '無法自動整合帳號',
       body: `這個${noun}已由同一類帳號中的另一個帳號使用。如需協助，請直接在對話中留言，客服會為您處理。`,
     },
+    identity_conflict: {
+      title: '無法自動整合帳號',
+      body: `使用這個${noun}的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在對話中與您聯繫。`,
+    },
   };
 }
 

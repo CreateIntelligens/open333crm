@@ -9,6 +9,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import type { BindingStore } from './binding-code.js';
 import type { BindingActor, BindingDeps } from './binding-common.js';
 import { EMAIL_TEXT } from './binding-links.js';
+import { samePhone } from './phone-registration.service.js';
 import {
   REGISTRATION_TTL_MS,
   describeRegistration,
@@ -24,6 +25,7 @@ import {
   type RegistrationNotice,
   type RegistrationPayload,
   type SubmitRegistrationResult,
+  valuesConflict,
 } from './identifier-registration.js';
 
 /** 登記連結有效期（design D3） */
@@ -49,6 +51,7 @@ export const EMAIL_REGISTRATION: RegistrationKind = {
   pathSegment: 'email',
   logTag: 'EmailRegistration',
   isEnabled: (settings) => settings.emailEnabled,
+  otherIdentifierConflicts: (a, b) => valuesConflict(a.phone, b.phone, samePhone),
   normalize: normalizeEmail,
   findEarliest: (db, tenantId, email) =>
     db.contact.findFirst({

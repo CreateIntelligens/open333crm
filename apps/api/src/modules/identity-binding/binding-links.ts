@@ -231,6 +231,7 @@ export const EMAIL_TEXT = {
   rateLimited: 'email 登記連結申請次數過多，請一小時後再試。',
   registered: '已登記您的 email。',
   channelConflict: '無法自動整合帳號：這個 email 已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
+  identityConflict: '無法自動整合帳號：使用這個 email 的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在這個對話與您聯繫。',
   /** 通知登記的一方；對方沒有任何渠道時 otherLabel 為 null */
   mergedToRegistrant: (otherLabel: string | null, otherName: string, unbindKeyword: string) =>
     `已完成帳號整合：此帳號已與${otherLabel ? `您的 ${accountOf(otherLabel)}` : '相同 email 的顧客資料'}「${otherName}」整合為同一位顧客，對話紀錄會合併在一起。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
@@ -254,6 +255,7 @@ export const PHONE_TEXT = {
   rateLimited: '手機登記連結申請次數過多，請一小時後再試。',
   registered: '已登記您的手機號碼。',
   channelConflict: '無法自動整合帳號：這個手機號碼已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
+  identityConflict: '無法自動整合帳號：使用這個手機號碼的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在這個對話與您聯繫。',
   mergedToRegistrant: (otherLabel: string | null, _otherName: string, unbindKeyword: string) =>
     `已完成帳號整合：此帳號已與${otherLabel ? `您的 ${accountOf(otherLabel)}` : '相同手機號碼的顧客資料'}整合為同一位顧客，對話紀錄會合併在一起。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
   mergedToExisting: (registrantLabel: string, registrantName: string, unbindKeyword: string) =>

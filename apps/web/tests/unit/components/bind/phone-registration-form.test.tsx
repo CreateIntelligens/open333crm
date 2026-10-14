@@ -71,3 +71,10 @@ test('連結過期', async () => {
   await screen.findByText('連結已失效，請回到對話重新取得');
   assert.ok(screen.queryByLabelText('手機號碼') === null);
 });
+
+test('兩邊的 email 不同：顯示需要客服確認', async () => {
+  open();
+  api.post.mockResolvedValue({ data: { data: { status: 'identity_conflict' } } });
+  await submit('0912345678');
+  await screen.findByText(/需要客服確認/);
+});

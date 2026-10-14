@@ -35,6 +35,8 @@ export interface RegistrationText {
   rateLimited: string;
   registered: string;
   channelConflict: string;
+  /** 兩位聯絡人的另一種識別不一致，需要客服確認（design D6） */
+  identityConflict: string;
   /** 通知登記的一方；對方沒有任何渠道時 otherLabel 為 null */
   mergedToRegistrant: (otherLabel: string | null, otherName: string, unbindKeyword: string) => string;
   /** 通知原本就使用這個值的一方 */
@@ -56,9 +58,26 @@ export interface RegistrationKind {
   /** 最早使用這個值的未封存聯絡人（含登記方自己） */
   findEarliest: (db: TenantDb, tenantId: string, value: string) => Promise<{ id: string; displayName: string } | null>;
   write: (db: TenantDb, tenantId: string, contactId: string, value: string) => Promise<void>;
+  /**
+   * 兩位聯絡人的另一種識別（email 登記看電話、手機登記看 email）是否矛盾：兩邊都有值且不同。
+   * 矛盾時不自動合併（add-phone-identity-merge design D6）
+   */
+  otherIdentifierConflicts: (registrant: ContactIdentifiers, existing: ContactIdentifiers) => boolean;
   mergeSource: MergeSource;
   stitchSource: 'EMAIL_MATCH' | 'PHONE_MATCH';
   text: RegistrationText;
+}
+
+export interface ContactIdentifiers {
+  email: string | null;
+  phone: string | null;
+}
+
+/** 兩邊都有值、且依 same 比較後不同 */
+export function valuesConflict(a: string | null, b: string | null, same: (x: string, y: string) => boolean): boolean {
+  const x = a?.trim();
+  const y = b?.trim();
+  return Boolean(x) && Boolean(y) && !same(x!, y!);
 }
 
 export interface RegistrationPayload {
@@ -187,6 +206,7 @@ export type SubmitRegistrationResult =
   | { status: 'expired' }
   | { status: 'registered'; contactId: string }
   | { status: 'channel_conflict' }
+  | { status: 'identity_conflict' }
   | { status: 'merged'; survivorId: string; mergedId: string; mergeLogId: string };
 
 /**
@@ -277,6 +297,21 @@ async function register(
     };
   };
   if (await hasSharedChannel(db, existing.id, registrantId)) return channelConflict();
+
+  // 另一種識別矛盾：可能是不同的人（共用號碼的家人），也可能是兩組各自歸戶過的資料，交給客服確認。
+  // 不寫入，否則兩位未封存的聯絡人會使用同一個值
+  const [registrantIds, existingIds] = await Promise.all(
+    [registrantId, existing.id].map((id) =>
+      db.contact.findFirst({ where: { id, tenantId }, select: { email: true, phone: true } }),
+    ),
+  );
+  if (registrantIds && existingIds && kind.otherIdentifierConflicts(registrantIds, existingIds)) {
+    logger.warn(`[${kind.logTag}] 另一種識別不一致，不自動合併`, { tenantId, existingId: existing.id, registrantId });
+    return {
+      result: { status: 'identity_conflict' },
+      notices: [{ conversationId, text: kind.text.identityConflict, kind: `${kind.name}_identity_conflict` }],
+    };
+  }
 
   // 合併前先找既有方最近的對話：合併後登記方的對話也會屬於既有方
   const existingConversation = await db.conversation.findFirst({

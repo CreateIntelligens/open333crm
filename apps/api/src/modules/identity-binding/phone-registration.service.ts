@@ -23,6 +23,7 @@ import {
   type RegistrationNotice,
   type RegistrationPayload,
   type SubmitRegistrationResult,
+  valuesConflict,
 } from './identifier-registration.js';
 
 export const PHONE_REG_TTL_MS = REGISTRATION_TTL_MS;
@@ -40,12 +41,21 @@ export function normalizeTaiwanMobile(raw: unknown): string | null {
   return intl[1].startsWith('0') ? intl[1] : `0${intl[1]}`;
 }
 
+/** 兩個電話是否同一支：台灣手機比統一格式，其他號碼只比數字 */
+export function samePhone(a: string, b: string): boolean {
+  const key = (v: string) => normalizeTaiwanMobile(v) ?? v.replace(/\D/g, '');
+  return key(a) === key(b);
+}
+
+const sameEmail = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 export const PHONE_REGISTRATION: RegistrationKind = {
   name: 'phone',
   redisPrefix: 'phonereg',
   pathSegment: 'phone',
   logTag: 'PhoneRegistration',
   isEnabled: (settings) => settings.phoneEnabled,
+  otherIdentifierConflicts: (a, b) => valuesConflict(a.email, b.email, sameEmail),
   normalize: normalizeTaiwanMobile,
   findEarliest: async (db, tenantId, phone) => {
     const rows = await (db as Prisma.TransactionClient).$queryRaw<Array<{ id: string; displayName: string }>>`

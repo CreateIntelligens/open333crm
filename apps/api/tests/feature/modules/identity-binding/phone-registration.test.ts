@@ -330,3 +330,37 @@ scenario('超過 7 天', async (f) => {
   assert.equal(await sendUnbind(f, a, b.contactId), 'expired');
   assert.equal((await f.tx.contact.findFirst({ where: { id: a.contactId } }))?.isArchived, true, '合併不變');
 });
+
+// ── 另一種識別不一致（design D6） ────────────────────────────────────────────
+
+scenario('兩邊的 email 不同', async (f) => {
+  const b = await f.person('B', { channel: f.fbCh, phone: '0912345678', email: 'b@example.com' });
+  const a = await f.person('A', { email: 'a@example.com' });
+  assert.equal((await submit(f, await linkFor(f, a), '0912345678')).status, 'identity_conflict');
+  assert.equal(await phoneOf(f, a.contactId), null, '不寫入電話');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: a.contactId } }))?.isArchived, false, '不合併');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: b.contactId } }))?.isArchived, false);
+  assert.ok(textsTo(f, a.conversationId).some((t) => t.includes('客服確認')), '對話收到需要客服確認的說明');
+  assert.equal(textsTo(f, b.conversationId).length, 0, '不通知對方');
+});
+
+scenario('兩邊的 email 相同', async (f) => {
+  const b = await f.person('B', { channel: f.fbCh, phone: '0912345678', email: 'Amy@Example.com' });
+  const a = await f.person('A', { email: 'amy@example.com' });
+  const result = await submit(f, await linkFor(f, a), '0912345678');
+  assert.equal(result.status === 'merged' && result.survivorId, b.contactId);
+});
+
+scenario('一邊已經用 email 歸戶過', async (f) => {
+  // A（LINE）先以 a@example.com 與 FB 帳號歸戶：歸戶後的聯絡人留有 a@example.com
+  const fbA = await f.person('A-FB', { channel: f.fbCh, email: 'a@example.com', createdAt: new Date(Date.now() - DAY) });
+  const a = await f.person('A');
+  const { mergeContacts } = await import('#src/modules/contact/contact-merge.service.js');
+  await mergeContacts(f.tx, { tenantId: T, survivorId: fbA.contactId, mergedId: a.contactId, source: 'EMAIL' });
+  const ig = await f.tx.channel.create({ data: { tenantId: T, channelType: 'THREADS', displayName: '測試 IG', credentialsEncrypted: 'x', isActive: true } });
+  const b = await f.person('B', { channel: { id: ig.id, channelType: 'THREADS' }, phone: '0912345678', email: 'b@example.com' });
+  const result = await submit(f, await linkFor(f, { ...a, contactId: fbA.contactId }), '0912345678');
+  assert.equal(result.status, 'identity_conflict');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: b.contactId } }))?.isArchived, false);
+  assert.equal((await f.tx.contact.findFirst({ where: { id: fbA.contactId } }))?.isArchived, false);
+});

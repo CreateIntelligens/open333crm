@@ -87,3 +87,10 @@ test('格式不符的連結不送出任何請求', async () => {
   await screen.findByText('連結無法使用，請回到對話重新取得');
   assert.equal(api.get.mock.calls.length, 0);
 });
+
+test('兩邊的手機不同：顯示需要客服確認', async () => {
+  open();
+  api.post.mockResolvedValue({ data: { data: { status: 'identity_conflict' } } });
+  await submit('amy@example.com');
+  await screen.findByText(/需要客服確認/);
+});

@@ -93,7 +93,7 @@
 - **THEN** 系統只寫入電話，不合併任何聯絡人
 
 ### Requirement: 相同手機號碼自動合併
-送出的號碼與同租戶另一位未封存聯絡人的電話（統一格式後）相同時，系統 SHALL 不經人工確認，把連結對應的聯絡人併入使用這支手機、建立時間最早的聯絡人，合併紀錄的來源為 `PHONE`。最早的一位就是登記方自己時，不合併。
+送出的號碼與同租戶另一位未封存聯絡人的電話（統一格式後）相同時，系統 SHALL 不經人工確認，把連結對應的聯絡人併入使用這支手機、建立時間最早的聯絡人，合併紀錄的來源為 `PHONE`。最早的一位就是登記方自己時，不合併。兩位聯絡人的 email 不一致時不自動合併（見「email 不一致時不自動合併」）。
 
 #### Scenario: 既有電話是其他格式
 - **WHEN** FB 聯絡人 B 的電話是客服輸入的 `0912-345-678`，LINE 聯絡人 A 送出 `+886912345678`
@@ -114,6 +114,21 @@
 #### Scenario: 含分機的電話不列入比對
 - **WHEN** 唯一使用相近號碼的聯絡人電話是 `0912345678#12`
 - **THEN** 系統只寫入電話，不合併
+
+### Requirement: email 不一致時不自動合併
+相同手機的兩位聯絡人都有 email、且不分大小寫比較後不同時，系統 SHALL NOT 合併、SHALL NOT 寫入電話，登記結果為 `identity_conflict`，並在原對話回覆需要客服確認。其中一位沒有 email，或 email 相同時，照常合併。
+
+#### Scenario: 兩邊的 email 不同
+- **WHEN** FB 聯絡人 B 的電話是 `0912345678`、email 是 `b@example.com`，email 為 `a@example.com` 的 LINE 聯絡人 A 送出 `0912345678`
+- **THEN** 不合併，A 的電話不變，A 的對話收到需要客服確認的說明，登記結果為 `identity_conflict`
+
+#### Scenario: 兩邊的 email 相同
+- **WHEN** B 的 email 是 `Amy@Example.com`，email 為 `amy@example.com` 的 A 送出 B 的手機
+- **THEN** A 併入 B
+
+#### Scenario: 一邊已經用 email 歸戶過
+- **WHEN** LINE 聯絡人 A 已用 `a@example.com` 與 FB 聯絡人歸戶，之後送出聯絡人 B（email 為 `b@example.com`）的手機
+- **THEN** 不合併，登記結果為 `identity_conflict`
 
 ### Requirement: 同一渠道雙方都有手機登記身分時拒絕合併
 相同號碼的兩位聯絡人在同一個渠道都有身分時，系統 SHALL NOT 合併、SHALL NOT 寫入電話，並在原對話回覆無法自動整合、請聯繫客服。合併時才被合併引擎以 `SAME_CHANNEL_CONFLICT` 拒絕時，系統 SHALL 以相同方式處理。

@@ -27,6 +27,12 @@
 - [x] 5.1 元件測試：手機登記頁（顯示帳號、送出號碼、410 顯示失效）、設定頁手機開關與關鍵字、收件匣「傳送手機登記連結」（先確認失敗）
 - [x] 5.2 實作 `/bind/phone/[token]`、設定頁、收件匣按鈕、合併紀錄來源標籤「手機登記」
 
+## 7. 另一種識別不一致時交給客服（design D6）
+
+- [x] 7.1 feature 測試 `phone-registration.test.ts`：「兩邊的 email 不同」「兩邊的 email 相同」「一邊已經用 email 歸戶過」；`email-registration.test.ts`：「兩邊的手機不同」「兩邊的手機寫法不同但是同一支」（先確認失敗）
+- [x] 7.2 實作：合併前比較另一種識別，不一致時回 `identity_conflict`、不寫入、回覆顧客
+- [x] 7.3 元件測試：登記頁顯示 `identity_conflict` 的說明（先確認失敗），再實作
+
 ## 6. 完成檢查
 
 - [x] 6.1 `pnpm test`、`pnpm test:feature`、web 型別檢查
