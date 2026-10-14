@@ -12,6 +12,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **案件升級對話框拿掉「團隊群組通知」** — 勾了不會通知任何人（系統沒有實作通知團隊，也沒有建立團隊的介面），客服卻以為已經通知到了。現在通知對象只有「主管」與「原負責客服」。API 仍接受 `team`，部署前載入的舊頁面送出不會回 400。
 
+### Fixed
+
+- **IG 渠道表單指向錯的密鑰** — 新增與編輯 IG 渠道時，App Secret 的提示寫「Settings → Basic → App Secret」，照著填會拿到 Facebook 應用程式的密鑰；IG 登入路線驗證訊息要用「含有 Instagram 登入的 API 設定」頁的 Instagram 應用程式密鑰，填錯每則訊息都驗不過、收不到任何私訊。三個欄位改用 Meta 後台的名稱（Instagram 應用程式編號、Instagram 應用程式密鑰、Instagram 存取權杖），提示改為指向該頁的位置與取得步驟。
+
 ## [2026-10-13]
 
 ### Added
