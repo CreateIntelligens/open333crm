@@ -52,7 +52,6 @@ export function EscalationModal({
   const [assigneeId, setAssigneeId] = useState('');
   const [notifySupervisor, setNotifySupervisor] = useState(true);
   const [notifyOriginal, setNotifyOriginal] = useState(true);
-  const [notifyTeam, setNotifyTeam] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [agents, setAgents] = useState<Array<{ id: string; name: string; _count?: { assignedCases: number } }>>([]);
@@ -77,7 +76,6 @@ export function EscalationModal({
       setAssigneeId('');
       setNotifySupervisor(true);
       setNotifyOriginal(true);
-      setNotifyTeam(false);
       setError('');
     }
   }, [open, caseData.priority]);
@@ -109,7 +107,6 @@ export function EscalationModal({
     const notifyTargets: string[] = [];
     if (notifySupervisor) notifyTargets.push('supervisor');
     if (notifyOriginal) notifyTargets.push('original_assignee');
-    if (notifyTeam) notifyTargets.push('team');
 
     try {
       await api.post(`/cases/${caseData.id}/escalate`, {
@@ -270,15 +267,6 @@ export function EscalationModal({
                   className="rounded border-input"
                 />
                 原負責客服
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={notifyTeam}
-                  onChange={(e) => setNotifyTeam(e.target.checked)}
-                  className="rounded border-input"
-                />
-                團隊群組通知
               </label>
             </div>
           </div>
