@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import React, { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { Plus, Copy, QrCode, BarChart3, Loader2, ExternalLink } from 'lucide-react';
 import { useShortLinks } from '@/hooks/useShortLinks';
-import { LinkFormDialog } from '@/components/shortlink/LinkFormDialog';
 import { ClickStatsView } from '@/components/shortlink/ClickStatsView';
 import { QrCodeDialog } from '@/components/shortlink/QrCodeDialog';
 import { Topbar } from '@/components/layout/Topbar';
@@ -15,20 +14,12 @@ import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 
 function LinkList() {
+  const router = useRouter();
   const { links, isLoading, mutate } = useShortLinks();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrLinkId, setQrLinkId] = useState<string | null>(null);
   const [qrTitle, setQrTitle] = useState('');
-  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
   const [copied, setCopied] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.get('/tags').then((res) => {
-      setTags((res.data.data || []).map((t: Record<string, unknown>) => ({ id: t.id as string, name: t.name as string })));
-    }).catch(() => {});
-  }, []);
 
   const baseUrl = typeof window !== 'undefined'
     ? window.location.origin.replace(/^http:\/\/localhost:3000$/, 'http://localhost')
@@ -55,7 +46,7 @@ function LinkList() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => { setEditData(null); setDialogOpen(true); }}>
+        <Button onClick={() => router.push('/dashboard/shortlinks/links/new')}>
           <Plus className="h-4 w-4 mr-1" /> 建立連結
         </Button>
       </div>
@@ -123,7 +114,7 @@ function LinkList() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => { setEditData(l); setDialogOpen(true); }}
+                          onClick={() => router.push(`/dashboard/shortlinks/links/${l.id as string}/edit`)}
                           title="編輯"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
@@ -153,14 +144,6 @@ function LinkList() {
           </table>
         </div>
       )}
-
-      <LinkFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSaved={() => mutate()}
-        editData={editData}
-        tags={tags}
-      />
 
       <QrCodeDialog
         open={qrOpen}
