@@ -98,11 +98,15 @@ The `/dashboard/cases` page SHALL NOT display the standalone create-case button 
 - **THEN** 通過權限檢查
 
 ### Requirement: Escalation Notify Targets Are Validated
-`POST /api/v1/cases/:id/escalate` SHALL accept `notifyTargets` only as an array of `supervisor`, `original_assignee` and `team`; any other value SHALL be rejected with 400 and the case SHALL not change. `team` is accepted but currently notifies no one.
+`POST /api/v1/cases/:id/escalate` SHALL accept `notifyTargets` only as an array of `supervisor`, `original_assignee` and `team`; any other value SHALL be rejected with 400 and the case SHALL not change. `team` is accepted for compatibility but notifies no one. The escalation dialog SHALL offer only `supervisor` and `original_assignee` as notify targets.
 
 #### Scenario: Invalid notify target
 - **WHEN** an agent escalates a case with `notifyTargets: ["everyone"]`
 - **THEN** the system SHALL respond 400 and the case SHALL not change
+
+#### Scenario: Escalation dialog offers no team option
+- **WHEN** an agent opens the escalation dialog, keeps every notify target checked and submits
+- **THEN** the dialog SHALL show only the supervisor and original assignee options, and the request SHALL send `notifyTargets: ["supervisor", "original_assignee"]`
 
 ### Requirement: Escalation Notifies The Selected Targets
 After escalation the system SHALL notify, for `supervisor`, every active supervisor and admin of the tenant, and for `original_assignee`, the active agent assigned before the escalation. The agent who escalated SHALL NOT be notified, and each agent SHALL receive at most one notification. When `notifyTargets` is omitted, only supervisors and admins SHALL be notified.
@@ -132,5 +136,5 @@ After escalation the system SHALL notify, for `supervisor`, every active supervi
 - **THEN** every other active supervisor and admin SHALL be notified, and S SHALL NOT be notified
 
 #### Scenario: Escalation dialog selects notify team
-- **WHEN** an agent escalates a case from the escalation dialog with `notifyTargets: ["supervisor", "original_assignee", "team"]`
+- **WHEN** an escalation dialog loaded before the team option was removed escalates a case with `notifyTargets: ["supervisor", "original_assignee", "team"]`
 - **THEN** the escalation SHALL succeed
