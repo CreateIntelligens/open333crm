@@ -146,6 +146,13 @@ test('發出的連結指向手機登記頁，30 分鐘後失效', async () => {
   assert.equal(await readPhoneRegistration(f.store, token), null);
 });
 
+test('連結資料缺少發出時間時視為失效', async () => {
+  const f = issueFixture();
+  const token = 'B'.repeat(43);
+  await f.store.set(`phonereg:${token}`, JSON.stringify({ tenantId: 't1', channelIdentityId: 'ci1' }), 'PX', 60_000);
+  assert.equal(await readPhoneRegistration(f.store, token), null);
+});
+
 test('超過發連結次數', async () => {
   const f = issueFixture();
   for (let i = 0; i < 5; i++) assert.equal((await issuePhoneRegistrationLink(f.db, f.deps, f.actor)).status, 'sent');

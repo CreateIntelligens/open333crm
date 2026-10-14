@@ -150,7 +150,10 @@ function parsePayload(raw: string | null): RegistrationPayload | null {
   if (!raw) return null;
   try {
     const p = JSON.parse(raw) as RegistrationPayload;
-    return typeof p.tenantId === 'string' && typeof p.channelIdentityId === 'string' ? p : null;
+    // 缺發出時間就算不出剩餘有效期，送出失敗時無法放回連結
+    return typeof p.tenantId === 'string' && typeof p.channelIdentityId === 'string' && Number.isFinite(p.issuedAt)
+      ? p
+      : null;
   } catch {
     return null;
   }
