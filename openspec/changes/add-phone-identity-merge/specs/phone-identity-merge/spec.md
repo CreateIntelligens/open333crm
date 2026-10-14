@@ -130,6 +130,17 @@
 - **WHEN** LINE 聯絡人 A 已用 `a@example.com` 與 FB 聯絡人歸戶，之後送出聯絡人 B（email 為 `b@example.com`）的手機
 - **THEN** 不合併，登記結果為 `identity_conflict`
 
+### Requirement: 客服在對話中看得出需要處理的登記結果
+收件匣顯示 email、手機登記或綁定代碼送出的系統訊息時，SHALL 標示為系統自動發送。結果為 `identity_conflict` 或 `channel_conflict` 的訊息 SHALL 另外顯示提示，說明需要客服確認是否為同一人並可到聯絡人頁手動合併。訊息送出失敗時，SHALL 仍顯示訊息內容，並標示沒有送出與原因。
+
+#### Scenario: 需要客服確認
+- **WHEN** 客服開啟收到 `phone_identity_conflict` 訊息的對話
+- **THEN** 該訊息顯示「系統自動發送」標示、訊息內容，以及需要客服處理的提示
+
+#### Scenario: 通知沒有送出
+- **WHEN** 一則手機登記通知送出失敗
+- **THEN** 對話中仍顯示這則通知的內容，並標示沒有送出與失敗原因
+
 ### Requirement: 同一渠道雙方都有手機登記身分時拒絕合併
 相同號碼的兩位聯絡人在同一個渠道都有身分時，系統 SHALL NOT 合併、SHALL NOT 寫入電話，並在原對話回覆無法自動整合、請聯繫客服。合併時才被合併引擎以 `SAME_CHANNEL_CONFLICT` 拒絕時，系統 SHALL 以相同方式處理。
 

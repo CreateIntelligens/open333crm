@@ -3,7 +3,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Bot, ExternalLink, FileText } from 'lucide-react';
+import { AlertCircle, Bot, ExternalLink, FileText, Settings2 } from 'lucide-react';
 import { describeMessageMedia } from '@/lib/inbox/message-media';
 
 /** 把 contentType 講成人話，用在送出失敗的提示裡（「這則影片沒有送出」）。 */
@@ -25,6 +25,17 @@ function describeContentType(contentType: string): string {
   };
   return map[contentType] ?? '訊息';
 }
+
+/**
+ * 綁定代碼、email／手機登記的系統訊息中，需要客服接手的結果（change add-phone-identity-merge）。
+ * 系統無法自動整合，顧客被告知「客服會協助」，客服要看得出這則需要處理。
+ */
+const AGENT_ACTION_KINDS = new Set([
+  'email_identity_conflict',
+  'phone_identity_conflict',
+  'email_channel_conflict',
+  'phone_channel_conflict',
+]);
 
 function extractText(content: string | { text?: string } | unknown): string {
   if (typeof content === 'string') return content;
@@ -65,27 +76,14 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const deliveryFailed = metadata.deliveryFailed === true;
   const deliveryError = typeof metadata.deliveryError === 'string' ? metadata.deliveryError : '';
 
-  // ⚠️ 要擋在 isSystem 之前：失敗紀錄的 contentType 可能是 line_video 這種
-  // 沒有 text 的型別，走下面的 system 分支會顯示成一條空白灰底，等於沒講。
-  if (deliveryFailed) {
-    return (
-      <div className="flex justify-center py-2">
-        <div
-          role="alert"
-          className="max-w-[min(32rem,90%)] rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-        >
-          <p className="font-medium">
-            這則{describeContentType(message.contentType)}沒有送出，對方並未收到
-          </p>
-          {deliveryError && (
-            <p className="mt-1 break-words font-normal opacity-90">{deliveryError}</p>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // 綁定與登記流程自動送出的訊息（binding-common.ts 的 sendBindingMessage）：不是 AI 回覆
+  const isIdentityNotice = metadata.source === 'identity_binding';
+  const needsAgentAction = isIdentityNotice && typeof metadata.kind === 'string' && AGENT_ACTION_KINDS.has(metadata.kind);
 
-  if (isSystem) {
+  // 送出失敗仍顯示訊息內容（客服要知道沒送到的是什麼），泡泡下方標示沒有送出與原因。
+  // ⚠️ 失敗紀錄不走 system 分支：contentType 可能是 line_video 這種沒有 text 的型別，
+  // 走 system 分支會顯示成一條空白灰底，等於沒講。
+  if (isSystem && !deliveryFailed) {
     return (
       <div className="flex justify-center py-2">
         <span className="rounded-lg bg-muted px-3 py-1 text-xs italic text-muted-foreground">
@@ -153,9 +151,24 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     <div
       className={cn('flex w-full gap-2 px-4 py-1', isInbound || isBot ? 'justify-start' : 'justify-end')}
     >
-      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2.5', getBubbleClasses())}>
+      <div className={cn('flex max-w-[70%] flex-col gap-1', isInbound || isBot ? 'items-start' : 'items-end')}>
+      <div
+        className={cn(
+          'max-w-full rounded-2xl px-4 py-2.5',
+          getBubbleClasses(),
+          deliveryFailed && 'border border-dashed border-destructive/50 opacity-80',
+        )}
+      >
+        {/* 系統訊息標示：綁定、登記流程自動送出，不是 AI 回覆 */}
+        {isIdentityNotice && (
+          <div className="mb-1 flex items-center gap-1">
+            <Settings2 className="h-3 w-3 text-muted-foreground" />
+            <span className="text-[10px] font-semibold text-muted-foreground">系統自動發送</span>
+          </div>
+        )}
+
         {/* Bot label */}
-        {isBot && (
+        {isBot && !isIdentityNotice && (
           <div className="mb-1 flex items-center gap-1">
             <Bot className="h-3 w-3 text-ai" />
             <span className="text-[10px] font-semibold text-ai">Bot 回覆</span>
@@ -265,6 +278,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <p className={cn('mt-1 text-[10px]', getTimeClasses())}>
           {format(new Date(message.createdAt), 'HH:mm')}
         </p>
+      </div>
+
+      {deliveryFailed && (
+        <div role="alert" className="flex max-w-full items-start gap-1 px-1 text-xs text-destructive">
+          <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+          <span className="break-words">
+            這則{describeContentType(message.contentType)}沒有送出，對方並未收到
+            {deliveryError && <span className="opacity-90">：{deliveryError}</span>}
+          </span>
+        </div>
+      )}
+
+      {needsAgentAction && (
+        <div className="max-w-full rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
+          <p className="font-semibold">需要客服處理</p>
+          <p className="mt-0.5">
+            系統無法自動整合這位顧客的帳號，已請顧客等候客服。請確認是否為同一人，需要時到聯絡人頁手動合併。
+          </p>
+        </div>
+      )}
       </div>
     </div>
   );

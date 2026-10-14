@@ -33,6 +33,11 @@
 - [x] 7.2 實作：合併前比較另一種識別，不一致時回 `identity_conflict`、不寫入、回覆顧客
 - [x] 7.3 元件測試：登記頁顯示 `identity_conflict` 的說明（先確認失敗），再實作
 
+## 8. 收件匣顯示（2026-10-14 本機檢視回饋）
+
+- [x] 8.1 元件測試 `apps/web/tests/unit/components/inbox/message-bubble.test.tsx`：「需要客服確認」「通知沒有送出」（先確認失敗）
+- [x] 8.2 實作 `MessageBubble`：系統自動發送標示、需要客服處理提示、失敗訊息仍顯示內容
+
 ## 6. 完成檢查
 
 - [x] 6.1 `pnpm test`、`pnpm test:feature`、web 型別檢查
