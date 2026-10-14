@@ -16,7 +16,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { addPointTransaction, getLatestPointEntry } from '../portal/points.service.js';
 
-export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL';
+export type MergeSource = 'MANUAL' | 'SUGGESTION' | 'LINE_LOGIN' | 'FB_LOGIN' | 'BINDING_CODE' | 'EMAIL' | 'PHONE';
 
 /** 單次合併搬移的紀錄（存於 ContactMergeLog.movedRecords） */
 export interface MovedRecords {

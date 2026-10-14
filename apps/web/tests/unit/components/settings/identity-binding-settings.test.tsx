@@ -46,3 +46,41 @@ test('載入既有設定', async () => {
   assert.equal(box.getAttribute('aria-checked') ?? String((box as HTMLInputElement).checked), 'true');
   assert.equal((screen.getByLabelText('Email 登記關鍵字') as HTMLInputElement).value, '登記信箱');
 });
+
+// ── 手機登記（change add-phone-identity-merge，spec phone-identity-merge「手機登記須由租戶啟用」） ──
+
+test('開啟手機登記並修改關鍵字後儲存', async () => {
+  api.get.mockResolvedValue({ data: { data: settings({ phoneEnabled: false, phoneKeywords: ['登記手機'] }) } });
+  api.put.mockImplementation(async (_url: string, body: object) => ({ data: { data: body } }));
+  render(<IdentityBindingSettings />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: /^啟用手機登記/ }));
+  fireEvent.change(screen.getByLabelText('手機登記關鍵字'), { target: { value: '登記電話、留手機' } });
+  fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
+  await waitFor(() => assert.equal(api.put.mock.calls.length, 1));
+  const body = api.put.mock.calls[0][1] as Record<string, unknown>;
+  assert.equal(body.phoneEnabled, true);
+  assert.deepEqual(body.phoneKeywords, ['登記電話', '留手機']);
+  assert.equal(body.emailEnabled, false, '不影響 email 登記的開關');
+});
+
+test('手機關鍵字衝突時在欄位下顯示原因', async () => {
+  api.get.mockResolvedValue({ data: { data: settings({ phoneEnabled: true, phoneKeywords: ['登記'] }) } });
+  api.put.mockRejectedValue(
+    Object.assign(new Error('400'), {
+      response: {
+        status: 400,
+        data: {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: '輸入內容有誤',
+            details: { issues: [{ path: 'phoneKeywords', message: '手機登記關鍵字不可與綁定、解除、email 登記關鍵字或「確認綁定」相同' }] },
+          },
+        },
+      },
+    }),
+  );
+  render(<IdentityBindingSettings />);
+  fireEvent.click(await screen.findByRole('button', { name: '儲存設定' }));
+  await screen.findByText('手機登記關鍵字不可與綁定、解除、email 登記關鍵字或「確認綁定」相同');
+});

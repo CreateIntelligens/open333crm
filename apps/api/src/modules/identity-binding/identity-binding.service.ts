@@ -20,6 +20,7 @@ import {
   type BindingDeps,
 } from './binding-common.js';
 import { issueEmailRegistrationLink } from './email-registration.service.js';
+import { issuePhoneRegistrationLink } from './phone-registration.service.js';
 import {
   BINDING_CODE_TTL_MS,
   CONFIRM_KEYWORD,
@@ -428,7 +429,7 @@ export async function confirmBinding(db: TenantDb, deps: BindingDeps, actor: Bin
 // ── 解除 ────────────────────────────────────────────────────────────────────
 
 /**
- * 找出與顧客「目前所在渠道身分」有關、最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼或 email 登記）。
+ * 找出與顧客「目前所在渠道身分」有關、最近一筆可自助解除的綁定（未撤銷、來源為綁定代碼、email 或手機登記）。
  * 有關＝該身分是當次被併入的身分之一、當次的發碼身分，或 email 登記時收到通知的既有方身分。
  * - 只看 survivor 會拆錯筆：顧客綁了 FB 又綁了 IG，在 FB 回「解除綁定」應拆 FB 那筆。
  * - 以身分查而不是以 survivorId 查：survivor 之後可能又被併入別人，顧客目前的聯絡人已不是當初的 survivor。
@@ -438,8 +439,8 @@ async function findBindingForIdentity(db: TenantDb, tenantId: string, contactId:
   const logs = await db.contactMergeLog.findMany({
     where: {
       tenantId,
-      // email 登記的合併也可自助解除（change add-email-identity-merge，design D6）
-      source: { in: ['BINDING_CODE', 'EMAIL'] },
+      // email、手機登記的合併也可自助解除（change add-email-identity-merge design D6、add-phone-identity-merge）
+      source: { in: ['BINDING_CODE', 'EMAIL', 'PHONE'] },
       revertedAt: null,
       OR: [
         { movedRecords: { path: ['channelIdentity'], array_contains: [channelIdentityId] } },
@@ -530,6 +531,7 @@ export type BindingIntent =
   | { kind: 'confirm' }
   | { kind: 'issue' }
   | { kind: 'email_link' }
+  | { kind: 'phone_link' }
   | { kind: 'unbind'; mergeLogId: string };
 
 /**
@@ -550,11 +552,12 @@ export async function detectBindingIntent(
   },
 ): Promise<BindingIntent | null> {
   const settings = await getIdentityBindingSettingsCached(db, input.tenantId);
-  // 綁定代碼與 email 登記各自啟用；兩者都會產生可自助解除的合併，所以任一啟用就要處理解除關鍵字
-  if (!settings.enabled && !settings.emailEnabled) return null;
+  // 綁定代碼、email 與手機登記各自啟用；都會產生可自助解除的合併，所以任一啟用就要處理解除關鍵字
+  if (!settings.enabled && !settings.emailEnabled && !settings.phoneEnabled) return null;
   if (settings.enabled && input.code) return { kind: 'redeem', code: input.code };
 
   if (settings.emailEnabled && matchesKeyword(input.text, settings.emailKeywords)) return { kind: 'email_link' };
+  if (settings.phoneEnabled && matchesKeyword(input.text, settings.phoneKeywords)) return { kind: 'phone_link' };
   if (settings.enabled && matchesKeyword(input.text, settings.bindKeywords)) return { kind: 'issue' };
   if (settings.enabled && matchesKeyword(input.text, [CONFIRM_KEYWORD])) {
     return (await input.hasPendingConfirm()) ? { kind: 'confirm' } : null;
@@ -579,5 +582,6 @@ export async function executeBindingIntent(
   if (intent.kind === 'confirm') return (await confirmBinding(db, deps, actor)).status;
   if (intent.kind === 'issue') return (await issueBindingCode(db, deps, actor)).status;
   if (intent.kind === 'email_link') return (await issueEmailRegistrationLink(db, deps, actor)).status;
+  if (intent.kind === 'phone_link') return (await issuePhoneRegistrationLink(db, deps, actor)).status;
   return (await unbindByCustomer(db, deps, actor, intent.mergeLogId)).status;
 }

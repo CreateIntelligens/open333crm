@@ -24,6 +24,8 @@ export const DEFAULT_BIND_KEYWORDS = ['綁定帳號'];
 export const DEFAULT_UNBIND_KEYWORDS = ['解除綁定'];
 /** email 登記關鍵字預設值（change add-email-identity-merge，design D1） */
 export const DEFAULT_EMAIL_KEYWORDS = ['登記email'];
+/** 手機登記關鍵字預設值（change add-phone-identity-merge，design D5） */
+export const DEFAULT_PHONE_KEYWORDS = ['登記手機'];
 
 const CODE_PREFIX = 'BIND-';
 const CODE_LENGTH = 10;

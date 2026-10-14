@@ -21,6 +21,7 @@ import {
   issueBindingCode,
 } from '../identity-binding/identity-binding.service.js';
 import { issueEmailRegistrationLink } from '../identity-binding/email-registration.service.js';
+import { issuePhoneRegistrationLink } from '../identity-binding/phone-registration.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
@@ -202,7 +203,7 @@ export default async function contactRoutes(fastify: FastifyInstance) {
   // （完整設定 API 需 settings.manage，一般客服讀不到；這裡只回是否啟用）
   fastify.get('/identity-binding/status', { preHandler: [perm.inboxReply] }, async (request, reply) => {
     const settings = await getIdentityBindingSettings(request.tenantPrisma, request.agent.tenantId);
-    return reply.send(success({ enabled: settings.enabled, emailEnabled: settings.emailEnabled }));
+    return reply.send(success({ enabled: settings.enabled, emailEnabled: settings.emailEnabled, phoneEnabled: settings.phoneEnabled }));
   });
 
   // POST /api/v1/contacts/:id/binding-link — 客服代顧客在指定對話送出跨渠道綁定連結
@@ -287,6 +288,44 @@ export default async function contactRoutes(fastify: FastifyInstance) {
         tenantId,
         actorId: request.agent.id,
         action: 'contact.email_registration_link_send',
+        targetType: 'contact',
+        targetId: id,
+        payload: { conversationId, status: result.status },
+        ip: request.ip,
+      });
+
+      // 不回傳連結本身：連結即憑證，只該出現在顧客的對話裡
+      return reply.send(success({ status: result.status }));
+    },
+  );
+
+  // POST /api/v1/contacts/:id/phone-registration-link — 客服代顧客在指定對話送出手機登記連結
+  // （change add-phone-identity-merge）。權限與渠道層級同傳送 email 登記連結
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/phone-registration-link',
+    { preHandler: [perm.inboxReply] },
+    async (request, reply) => {
+      const { id } = contactIdParamsSchema.parse(request.params);
+      const { conversationId } = bindingLinkBodySchema.parse(request.body);
+      const tenantId = request.agent.tenantId;
+
+      await assertConversationChannelVisible(request, conversationId, 'reply_only');
+
+      const db = request.tenantPrisma;
+      const settings = await getIdentityBindingSettings(db, tenantId);
+      if (!settings.phoneEnabled) {
+        throw new AppError('尚未開啟手機登記，請先到「設定」啟用', 'PHONE_REGISTRATION_DISABLED', 400);
+      }
+      const actor = await findBindingActorForConversation(db, tenantId, id, conversationId);
+      if (!actor) throw new AppError('找不到此聯絡人在這個對話的渠道身分', 'NOT_FOUND', 404);
+
+      // 不包在交易內：推播到渠道是外部呼叫（同傳送綁定連結）
+      const result = await issuePhoneRegistrationLink(db, { store: getBindingStore(), io: fastify.io }, actor, 'agent');
+
+      await writeTenantAudit(request.tenantPrisma, {
+        tenantId,
+        actorId: request.agent.id,
+        action: 'contact.phone_registration_link_send',
         targetType: 'contact',
         targetId: id,
         payload: { conversationId, status: result.status },

@@ -14,6 +14,8 @@ interface IdentityBindingSettingsData {
   unbindKeywords: string[];
   emailEnabled: boolean;
   emailKeywords: string[];
+  phoneEnabled: boolean;
+  phoneKeywords: string[];
 }
 
 /** 以頓號／逗號／換行分隔的關鍵字字串 ↔ 陣列 */
@@ -34,6 +36,8 @@ export function IdentityBindingSettings() {
   const [unbindText, setUnbindText] = useState("");
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [emailText, setEmailText] = useState("");
+  const [phoneEnabled, setPhoneEnabled] = useState(false);
+  const [phoneText, setPhoneText] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -47,6 +51,8 @@ export function IdentityBindingSettings() {
     setUnbindText(toText(data.unbindKeywords));
     setEmailEnabled(Boolean(data.emailEnabled));
     setEmailText(toText(data.emailKeywords ?? []));
+    setPhoneEnabled(Boolean(data.phoneEnabled));
+    setPhoneText(toText(data.phoneKeywords ?? []));
   };
 
   const fetchSettings = useCallback(async () => {
@@ -77,6 +83,8 @@ export function IdentityBindingSettings() {
         unbindKeywords: toList(unbindText),
         emailEnabled,
         emailKeywords: toList(emailText),
+        phoneEnabled,
+        phoneKeywords: toList(phoneText),
       });
       apply(res.data.data);
       // 收件匣的代發按鈕依啟用狀態顯示，同一個分頁內立即反映
@@ -169,8 +177,37 @@ export function IdentityBindingSettings() {
             Email 登記關鍵字
           </label>
           <Input id="email-keywords" value={emailText} onChange={(e) => setEmailText(e.target.value)} placeholder="登記email" className="max-w-md" />
-          <p className="text-xs text-muted-foreground">不可與綁定、解除關鍵字相同；解除關鍵字兩種方式共用。</p>
+          <p className="text-xs text-muted-foreground">不可與綁定、解除關鍵字相同；解除關鍵字各種方式共用。</p>
           {fieldError("emailKeywords") && <p className="text-xs text-destructive">{fieldError("emailKeywords")}</p>}
+        </div>
+      </div>
+
+      <div className="space-y-4 border-t pt-6">
+        <div>
+          <h3 className="mb-1 text-base font-semibold">手機登記</h3>
+          <p className="text-sm text-muted-foreground">
+            顧客傳送登記關鍵字，系統回覆一個登記網頁連結。顧客填入手機號碼後，若有其他聯絡人使用相同的手機（包含客服或匯入時輸入的
+            0912-345-678、+886 912 345 678 等寫法），系統會自動把兩位聯絡人合併，並在雙方的對話中通知；顧客可在 7 天內傳送解除關鍵字自行解除。
+            只接受台灣手機號碼。
+          </p>
+        </div>
+        <label className="flex items-start gap-3 rounded-lg border p-4">
+          <Checkbox checked={phoneEnabled} onCheckedChange={setPhoneEnabled} className="mt-0.5" />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium">啟用手機登記</span>
+            <span className="block text-xs text-muted-foreground">
+              系統不發簡訊驗證，填入他人手機也會合併。手機號碼比 email 容易被他人得知，登記的一方不會看到對方的名稱；
+              合併後雙方都會收到通知，可自行解除，客服也可以在聯絡人頁的合併紀錄解除。
+            </span>
+          </span>
+        </label>
+        <div className="space-y-2">
+          <label className="text-sm font-medium" htmlFor="phone-keywords">
+            手機登記關鍵字
+          </label>
+          <Input id="phone-keywords" value={phoneText} onChange={(e) => setPhoneText(e.target.value)} placeholder="登記手機" className="max-w-md" />
+          <p className="text-xs text-muted-foreground">不可與綁定、解除、email 登記關鍵字相同。</p>
+          {fieldError("phoneKeywords") && <p className="text-xs text-destructive">{fieldError("phoneKeywords")}</p>}
         </div>
       </div>
 

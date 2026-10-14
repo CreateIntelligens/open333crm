@@ -2,7 +2,7 @@
 
 聯絡人是「客人是誰」。同一個人可能從 LINE、Facebook、網站聊天室各進來一次，系統一開始會把他當成不同的聯絡人，之後可以合併。標籤是貼在聯絡人、對話、工單與素材上的分類，自動化規則與群發都靠它挑對象。
 
-- **資料來源**：`apps/api/src/modules/contact/*`、`apps/api/src/modules/tag/*`、`apps/api/src/modules/webhook/inbound-contact-resolver.ts`、`apps/api/src/modules/identity-binding/email-registration.*`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/api/src/modules/line/line-profile.*`、`packages/core/src/identity/*`、`apps/workers/src/lib/automation-actions.ts`
+- **資料來源**：`apps/api/src/modules/contact/*`、`apps/api/src/modules/tag/*`、`apps/api/src/modules/webhook/inbound-contact-resolver.ts`、`apps/api/src/modules/identity-binding/email-registration.*`、`apps/api/src/modules/identity-binding/phone-registration.*`、`apps/api/src/modules/identity-binding/identifier-registration.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/api/src/modules/line/line-profile.*`、`packages/core/src/identity/*`、`apps/workers/src/lib/automation-actions.ts`
 - **核對日期**：2026-10-07
 
 ## 負責的模組
@@ -12,7 +12,7 @@
 | `contact` | 聯絡人清單與搜尋、資料編輯、歷史對話與工單、時間軸、跨渠道訊息、手動合併 |
 | `tag` | 標籤的 CRUD，以及對聯絡人、對話、工單貼標與移除（`tagging.service.ts`） |
 | `webhook` 的 `inbound-contact-resolver.ts` | 訊息進站時找出或建立聯絡人 |
-| `identity-binding` | 跨渠道綁定代碼，以及 email 登記：客人在登記頁填入 email，並依 email 自動合併 |
+| `identity-binding` | 跨渠道綁定代碼，以及 email 與手機登記：客人在登記頁填入 email 或手機，並依相同的值自動合併 |
 | `canvas` 的 identity 部分 | 審核系統產生的合併建議。沒有頁面 |
 | `line` 的 line-profile 部分 | 重新向 LINE 抓取聯絡人的名稱與頭像。沒有頁面 |
 
@@ -23,7 +23,7 @@
 訊息進站時，`resolveInboundContact()` 依下列順序找聯絡人：
 
 1. 查 `ChannelIdentity`，看這個渠道與 uid 是否已有身分。有就用它的聯絡人。
-2. 沒有的話，查 `IdentityMap`，看這個渠道類型與 uid 是否已經對應到某個聯絡人。這張表由綁定代碼與 email 登記的合併寫入。有的話，為那個聯絡人建立這個渠道的身分。
+2. 沒有的話，查 `IdentityMap`，看這個渠道類型與 uid 是否已經對應到某個聯絡人。這張表由綁定代碼與 email、手機登記的合併寫入。有的話，為那個聯絡人建立這個渠道的身分。
 3. 都找不到就建立新的聯絡人與渠道身分。
 
 因此同一個人從 LINE 與 Facebook 進來，一開始是兩個聯絡人。要變成一個，只能經過[合併](#合併)。
@@ -60,13 +60,14 @@
 | `MANUAL` | 客服在後台操作，`POST /contacts/merge` | 有，前端先呼叫 `GET /contacts/merge-preview` 預覽 |
 | `SUGGESTION` | 管理員在 `/api/v1/identity` 核准合併建議 | 有 |
 | `EMAIL` | 客人在 email 登記頁填入 email，同租戶已有另一位未封存聯絡人使用同一個 email（不分大小寫），見 [Email 登記](#email-登記) | 沒有；合併後雙邊通知，7 天內客人可自行解除 |
+| `PHONE` | 客人在手機登記頁填入手機，同租戶已有另一位未封存聯絡人使用同一支手機（統一格式後比對），見 [手機登記](#手機登記) | 沒有；合併後雙邊通知，7 天內客人可自行解除 |
 | `BINDING_CODE` | 客人在另一個渠道送回跨渠道綁定代碼 | 客人自己確認 |
 
 合併的結果不分來源：
 
 - 被合併的聯絡人改為封存（`isArchived`），`mergedIntoId` 指向主要聯絡人，不刪除。
 - 搬到主要聯絡人的資料：渠道身分、對話、工單、標籤、屬性、長期記憶、活動提交、積分、`IdentityMap`、點擊紀錄、互動流程執行、知識庫回饋、群發收件紀錄，以及聯絡人關係。主要聯絡人空白的基本欄位，以被合併者的值補上。
-- 兩位聯絡人在同一個渠道都有身分時，合併被拒絕，回 409 `SAME_CHANNEL_CONFLICT`，`details.channels` 列出衝突的渠道，資料不變。檢查在鎖定雙方之後執行，兩個合併同時併入同一位聯絡人時也擋得住。合併後同一個渠道有兩個身分，回覆會送錯人，見 `../../system/AUDIT.md` 的 IDENT-03。email 登記與綁定代碼遇到這種情況時回覆客人「同一渠道只能綁定一個帳號」。
+- 兩位聯絡人在同一個渠道都有身分時，合併被拒絕，回 409 `SAME_CHANNEL_CONFLICT`，`details.channels` 列出衝突的渠道，資料不變。檢查在鎖定雙方之後執行，兩個合併同時併入同一位聯絡人時也擋得住。合併後同一個渠道有兩個身分，回覆會送錯人，見 `../../system/AUDIT.md` 的 IDENT-03。email、手機登記與綁定代碼遇到這種情況時回覆客人「同一渠道只能綁定一個帳號」。
 - 每次合併寫一筆 `ContactMergeLog`，記錄搬了哪些資料。客服可以從 `GET /contacts/:id/merge-logs` 查看，以 `POST /contacts/merge-logs/:logId/revert` 解除合併，資料會搬回去。
 
 手動合併另外寫一筆 `contact.merge` 租戶稽核紀錄。
@@ -89,6 +90,18 @@
 5. 合併後 7 天內，登記方或收到通知的對方傳送解除關鍵字，即解除這次合併。客服可以隨時從合併紀錄解除。
 
 系統不寄驗證信（2026-10-07 決定），知道別人 email 的人也能登記並合併。以雙邊通知、自助解除與同渠道檢查降低影響。
+
+## 手機登記
+
+與 [Email 登記](#email-登記) 流程相同、各自啟用，以台灣手機號碼當作 One ID（`identityBinding.phoneEnabled`，預設關閉；關鍵字預設「登記手機」）。兩者共用 `identifier-registration.ts` 的流程，差異如下：
+
+- 連結為 `${WEB_BASE_URL}/bind/phone/<token>`，公開端點 `/api/v1/public/phone-registration/:token`，客服代發 `POST /contacts/:id/phone-registration-link`。
+- 只接受台灣手機：去掉空白、`-`、`(`、`)` 後為 `09` 加 8 碼，或 `+886`／`886` 接 `9` 或 `09` 開頭的同一支手機，統一存成 `09xxxxxxxx`（覆蓋原值）。其他號碼回 400 `INVALID_PHONE`，連結仍有效。
+- 比對既有聯絡人時，在 SQL 對 `contacts.phone` 去掉非數字、`886` 換成 `0` 後比較，客服或匯入存的 `0912-345-678`、`+886 912 345 678` 也算相同；含分機的電話位數不符，不列入比對。鎖以統一格式後的號碼為 key。
+- 合併來源 `PHONE`，`IdentityMap` 來源 `PHONE_MATCH`。
+- 登記方收到的整合通知只寫對方的渠道，不寫對方的名稱：手機號碼容易取得也猜得到，否則輸入號碼就能查出號碼主人。被併入的一方仍看得到登記方的渠道與名稱。
+
+系統不發簡訊驗證（2026-10-14 決定），知道別人手機的人也能登記並合併，風險比 email 高。
 
 歸戶之後，AI 回覆會讀這位聯絡人在其他渠道最近 30 天、最多 10 則的訊息，見[收件匣](./INBOX.md)。
 
@@ -136,6 +149,7 @@
 | **聯絡人清單與合併不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
 | 自動化貼標不限 scope，會重建已刪除的標籤 | 詳見 `../../system/AUDIT.md` 的 AUTO-03 |
 | Email 登記不驗證 email | 知道別人 email 的人可以登記並觸發合併。合併後雙邊通知，7 天內可自助解除，見 [Email 登記](#email-登記) |
+| 手機登記不驗證手機 | 知道別人手機的人可以登記並觸發合併；共用號碼與門號回收也會併錯人。合併後雙邊通知，7 天內可自助解除，見 [手機登記](#手機登記) |
 | 合併建議沒有產生端 | 詳見 `../../system/AUDIT.md` 的 IDENT-01 |
 | 資料庫不擋一位聯絡人在同一個渠道有兩個身分，有的話收發訊息會對錯人 | 現在的合併會拒絕同一個渠道的兩個身分；UAT 只查到 8 位修正前 E2E 測試合併產生的 WebChat 測試聯絡人。詳見 `../../system/AUDIT.md` 的 IDENT-03 |
 | `isBlocked` 與 `ContactTag.expiresAt` 沒有作用 | 詳見 `../../system/AUDIT.md` 的 DB-04 與 DB-02 |

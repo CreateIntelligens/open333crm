@@ -42,3 +42,29 @@ test('沒送 email 關鍵字時，已儲存的自訂關鍵字與新的綁定關�
   const data = identityBindingSettingsSchema.parse({ ...base, bindKeywords: ['自訂關鍵字'] });
   assert.equal(findIdentityBindingKeywordIssue(applyIdentityBindingUpdate(stored, data))?.path, 'emailKeywords');
 });
+
+// ── 手機登記（change add-phone-identity-merge，design D5） ────────────────────
+
+test('接受手機登記開關與關鍵字；沒送時沿用已儲存的設定', () => {
+  const data = identityBindingSettingsSchema.parse({ ...base, phoneEnabled: true, phoneKeywords: ['登記電話'] });
+  assert.equal(data.phoneEnabled, true);
+  assert.deepEqual(data.phoneKeywords, ['登記電話']);
+  const next = applyIdentityBindingUpdate({ ...base, phoneEnabled: true, phoneKeywords: ['登記電話'] }, identityBindingSettingsSchema.parse(base));
+  assert.equal(next.phoneEnabled, true);
+  assert.deepEqual(next.phoneKeywords, ['登記電話']);
+});
+
+test('與 email 關鍵字相同', () => {
+  const value = applyIdentityBindingUpdate(
+    null,
+    identityBindingSettingsSchema.parse({ ...base, emailEnabled: true, emailKeywords: ['登記'], phoneEnabled: true, phoneKeywords: ['登記'] }),
+  );
+  assert.equal(findIdentityBindingKeywordIssue(value)?.path, 'phoneKeywords');
+});
+
+test('手機登記關鍵字不可與綁定、解除關鍵字或確認字相同', () => {
+  for (const kw of ['綁定帳號', '解除綁定', '確認綁定']) {
+    const value = applyIdentityBindingUpdate(null, identityBindingSettingsSchema.parse({ ...base, phoneEnabled: true, phoneKeywords: [kw] }));
+    assert.equal(findIdentityBindingKeywordIssue(value)?.path, 'phoneKeywords', kw);
+  }
+});
