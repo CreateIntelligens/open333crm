@@ -93,13 +93,6 @@ export async function attemptKbAutoReply(
   // 1. Global enable check
   if (!config.KB_AUTO_REPLY_ENABLED) return false;
 
-  // 1.5 若有 keyword.matched 規則命中此訊息，讓步給 keyword 規則處理。
-  // 避免 KB 走 clarify_handoff 把對話改成 AGENT_HANDLED，後續 keyword rule 觸發後也無法回。
-  if (await hasMatchingKeywordRule(prisma, tenantId, messageText)) {
-    logger.info(`[KbAutoReply] conv=${conversationId} skipped: keyword rule will handle`);
-    return false;
-  }
-
   // 2. Only proceed for BOT_HANDLED conversations
   const conversation = await prisma.conversation.findFirst({
     where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
@@ -115,6 +108,14 @@ export async function attemptKbAutoReply(
     },
   });
   if (!conversation) return false;
+
+  // 2.5 若有 keyword.matched 規則命中此訊息、且能在這個渠道回覆，讓步給 keyword 規則處理。
+  // 避免 KB 走 clarify_handoff 把對話改成 AGENT_HANDLED，後續 keyword rule 觸發後也無法回。
+  // 規則送不到這個渠道時照常回覆，否則顧客什麼都收不到（change fix-keyword-yield-ig-delivery）
+  if (await hasMatchingKeywordRule(prisma, tenantId, messageText, conversation.channel.channelType)) {
+    logger.info(`[KbAutoReply] conv=${conversationId} skipped: keyword rule will handle`);
+    return false;
+  }
 
   // 3. Channel botMode gating + 解析完整 botConfig（含 handoff prompt 設定）
   // spread 對 undefined 才 fallback；空字串 / 不合法 enum 會覆蓋預設，需另外清理。

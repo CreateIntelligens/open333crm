@@ -109,7 +109,7 @@
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；fanToken 簽發接回前要修 | 靜態確認 |
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
-| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | workers 只註冊 LINE 與 FB 外掛；關鍵字回覆不限渠道，在 Instagram 私訊與網站聊天室命中時客人收不到任何回覆 | 靜態確認 |
+| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
@@ -1436,21 +1436,21 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 - 沒有對話的渠道刪除時，`ChannelIdentity`、`ChannelTeamAccess`、`AgentChannelAccess` 與 `ChatboxSession` 因 `onDelete: Cascade` 一併刪除。
 
 <a id="chan-02"></a>
-### CHAN-02：workers 只註冊 LINE 與 FB 外掛，關鍵字回覆在其他渠道送不出去
+### CHAN-02：workers 沒有網站聊天室外掛，關鍵字回覆在網站聊天室送不出去
 
-API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四個外掛。workers 行程不用這個註冊表，`apps/workers/src/index.ts` 另建一個 `pluginRegistry`，只放 `linePlugin` 與 `fbPlugin`。自動化的 `send_message`、`send_material` 在 workers 執行，由 `channel-delivery.ts` 的 `deliverToChannelFromWorker()` 以這個 `Map` 找外掛；找不到時寫入一則失敗訊息「系統未載入 … 渠道外掛，無法送出」。
+API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四個外掛。workers 行程不用這個註冊表，而是用 `apps/workers/src/lib/plugin-registry.ts` 的 `createWorkerPluginRegistry()`。自動化的 `send_message`、`send_material` 在 workers 執行，由 `channel-delivery.ts` 的 `deliverToChannelFromWorker()` 以這份清單找外掛；找不到時寫入一則失敗訊息「系統未載入 … 渠道外掛，無法送出」。
 
-這個缺口在關鍵字回覆上最明顯：
+**已修正**（`95d68fc8`，change `fix-keyword-yield-ig-delivery`）：
 
-1. 「LINE 關鍵字回覆」頁建立規則時，`useKeywordReplies.ts` 送出的 `conditions` 是 `{ all: [] }`，沒有限定渠道。所以 Instagram 私訊（`THREADS`）與網站聊天室的訊息也會命中。
-2. 命中時，`kb-autoreply.service.ts` 以 `automation.worker.ts` 的 `hasMatchingKeywordRule()` 判斷後讓知識庫與 AI 的機器人回覆讓步，避免客人同時收到兩種回覆。
-3. workers 收到 `keyword.matched` 後執行 `send_material`，因為沒有外掛而失敗。
+- workers 的清單加入 `threadsPlugin`，規則可以回覆 Instagram 私訊。
+- `hasMatchingKeywordRule()` 只把能在這個渠道回覆的規則算進去（`send_message`，或素材渠道與對話相同的 `send_material`），而且渠道要在 `channel-plugins` 的 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 裡。只加標籤、素材是別的渠道的規則，或網站聊天室的對話，不再讓知識庫與 AI 讓步。
+- `send_material` 因素材渠道與對話不同而略過時，在對話寫入「沒有送出」的紀錄。
 
-結果是客人**沒有收到任何回覆**。一般的自動化規則若含 `send_message` 動作，在這兩種渠道也同樣送不出去。
+2026-10-14 在 UAT 確認原本的問題：創造智能接上 Instagram 後，第一則私訊含「你好」，命中只送 LINE 素材的規則，AI 讓步、素材被略過，客人沒有收到任何回覆，失敗只在 workers 的 log。
 
-網站聊天室即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
+**未修正**：workers 的清單仍沒有 `webchatPlugin`，關鍵字與自動化規則的回覆送不到網站聊天室（收件匣有失敗紀錄）。AI 不會因此讓步，訪客仍收到 AI 回覆。即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
 
-**修正方向**：workers 改用與 API 相同的註冊函式，註冊全部外掛；網站聊天室的訪客推送移進外掛或共用的送出函式；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
+**修正方向**：網站聊天室的訪客推送移進外掛或共用的送出函式，再加入 workers 的清單；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
 
 <a id="aud-01"></a>
 ### AUD-01：租戶稽核只涵蓋部分操作

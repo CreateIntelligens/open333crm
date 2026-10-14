@@ -5,7 +5,7 @@ import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
 import { logger } from '@open333crm/core';
 import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
-import { deliverToChannelFromWorker, renderTemplateBody } from './channel-delivery.js';
+import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -172,6 +172,9 @@ async function createCaseFromAutomation(
   }).catch((err) => logger.warn('[automation] publish case.created bridge failed:', err));
   return created.id;
 }
+
+const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網頁聊天' };
+const channelLabel = (channelType: string) => CHANNEL_LABELS[channelType] ?? channelType;
 
 export async function executeWorkerAutomationActions(
   prisma: PrismaClient,
@@ -382,7 +385,7 @@ export async function executeWorkerAutomationActions(
         }
         const material = await prisma.material.findFirst({
           where: { id: materialId, tenantId: context.tenantId },
-          select: { contentType: true, body: true, channelType: true },
+          select: { name: true, contentType: true, body: true, channelType: true },
         });
         if (!material) {
           logger.warn(`[automation] send_material skipped: material ${materialId} not found`);
@@ -400,6 +403,16 @@ export async function executeWorkerAutomationActions(
           logger.warn(
             `[automation] send_material skipped: material channel "${matChannelType}" != conversation channel "${convChannelType}"`,
           );
+          // 只寫 log 的話收件匣看不出規則有觸發卻沒送（change fix-keyword-yield-ig-delivery）
+          if (conv) {
+            await recordSkippedDelivery(
+              prisma,
+              redisPublisher,
+              conv,
+              { contentType: 'text', content: { text: `自動化規則的素材「${material.name ?? ''}」` } },
+              `素材是 ${channelLabel(matChannelType)} 素材，這個對話是 ${channelLabel(convChannelType)}，沒有送出`,
+            );
+          }
           continue;
         }
 

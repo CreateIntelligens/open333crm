@@ -161,7 +161,7 @@ export function ChannelFormDialog({
         } else if (channelType === CHANNEL_TYPE.THREADS) {
           // IG(Threads)走 IG Login 路線，憑證同 FB（appSecret 驗簽、pageAccessToken 收發）
           if (!appSecret || !pageAccessToken) {
-            setError('請填寫 App Secret 和 Page Access Token');
+            setError('請填寫 Instagram 應用程式密鑰和存取權杖');
             setSaving(false);
             return;
           }
@@ -369,45 +369,45 @@ export function ChannelFormDialog({
               <>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
-                    App ID
+                    Instagram 應用程式編號
                   </label>
                   <Input
                     value={appId}
                     onChange={(e) => setAppId(e.target.value)}
-                    placeholder={isEditing ? '留空表示不更新' : 'Meta App ID'}
+                    placeholder={isEditing ? '留空表示不更新' : '一串數字'}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Meta App → Settings → Basic → App ID
+                    Meta 應用程式 → 使用案例 → Instagram API →「含有 Instagram 登入的 API 設定」頁上方
                   </p>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
-                    App Secret
+                    Instagram 應用程式密鑰
                   </label>
                   <Input
                     type="password"
                     value={appSecret}
                     onChange={(e) => setAppSecret(e.target.value)}
-                    placeholder={isEditing ? '留空表示不更新' : 'Meta App Secret'}
+                    placeholder={isEditing ? '留空表示不更新' : '32 碼英數字'}
                     required={!isEditing}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Settings → Basic → App Secret（用於 Webhook 簽名驗證）
+                    同一頁上方按「顯示」複製，用於驗證訊息來源。不是「應用程式設定 → 基本資料」的 App Secret，填錯會收不到任何訊息
                   </p>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
-                    Page Access Token
+                    Instagram 存取權杖
                   </label>
                   <Input
                     type="password"
                     value={pageAccessToken}
                     onChange={(e) => setPageAccessToken(e.target.value)}
-                    placeholder={isEditing ? '留空表示不更新' : 'IGQ... 開頭的 Token'}
+                    placeholder={isEditing ? '留空表示不更新' : 'IG 開頭的長字串'}
                     required={!isEditing}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    IG 專業帳號授權後取得（graph.instagram.com）
+                    同一頁「產生存取權杖」：按「新增帳號」登入 IG 專業帳號，再按該帳號的「產生權杖」
                   </p>
                 </div>
               </>

@@ -17,6 +17,7 @@ import { autoClassifyNewCase } from '../ai/classify.service.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
+import { AUTOMATION_DELIVERY_CHANNEL_TYPES } from '@open333crm/channel-plugins';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -220,38 +221,55 @@ async function checkAutoHandoff(
 }
 
 /**
- * Pure check：訊息文字有沒有命中任何 active keyword.matched rule。
- * 給 kb-autoreply 前置判斷用（命中就讓 keyword 規則處理，不走 KB）。
+ * 訊息命中的 active keyword.matched 規則中，有沒有能在這個渠道回覆顧客的動作。
+ * agent 與 KB 自動回覆用來決定是否讓步（命中就讓 keyword 規則回，避免一次兩則）。
+ * 只加標籤、或素材是別的渠道的規則不算：workers 不會替它回覆，AI 讓步的話顧客什麼都收不到
+ * （change fix-keyword-yield-ig-delivery）。
  */
 export async function hasMatchingKeywordRule(
   prisma: PrismaClient,
   tenantId: string,
   messageText: string,
+  channelType: string,
 ): Promise<boolean> {
   if (!messageText) return false;
+  // workers 送不到的渠道，規則命中也回覆不了顧客
+  if (!AUTOMATION_DELIVERY_CHANNEL_TYPES.includes(channelType.toUpperCase())) return false;
   const rules = await prisma.automationRule.findMany({
     where: { tenantId, isActive: true },
   });
-  const keywordRules = rules.filter((rule) => {
-    const trigger = rule.trigger as Record<string, unknown>;
-    return trigger?.type === 'keyword.matched';
-  });
-  if (keywordRules.length === 0) return false;
-
   const lowerText = messageText.toLowerCase();
-  for (const rule of keywordRules) {
+  const matchedRules = rules.filter((rule) => {
     const trigger = rule.trigger as Record<string, unknown>;
-    const keywords = (trigger.keywords as string[]) || [];
+    if (trigger?.type !== 'keyword.matched') return false;
+    // 存檔資料可能有非字串或空白值；空字串會命中所有訊息，一併排除
+    const keywords = Array.isArray(trigger.keywords)
+      ? trigger.keywords.filter((kw): kw is string => typeof kw === 'string' && kw.trim().length > 0)
+      : [];
     const matchMode = (trigger.match_mode as string) || 'any';
-    if (keywords.length === 0) continue;
+    if (keywords.length === 0) return false;
+    return matchMode === 'all'
+      ? keywords.every((kw) => lowerText.includes(kw.toLowerCase()))
+      : keywords.some((kw) => lowerText.includes(kw.toLowerCase()));
+  });
+  if (matchedRules.length === 0) return false;
 
-    const matched =
-      matchMode === 'all'
-        ? keywords.every((kw) => lowerText.includes(kw.toLowerCase()))
-        : keywords.some((kw) => lowerText.includes(kw.toLowerCase()));
-    if (matched) return true;
-  }
-  return false;
+  const actions = matchedRules.flatMap((rule) =>
+    Array.isArray(rule.actions) ? (rule.actions as Array<{ type?: string; params?: Record<string, unknown> }>) : [],
+  );
+  if (actions.some((a) => a.type === 'send_message')) return true;
+
+  // 與 workers 的 send_material 相同：素材渠道與對話渠道不同時不會送出
+  const materialIds = actions
+    .filter((a) => a.type === 'send_material' && typeof a.params?.materialId === 'string')
+    .map((a) => a.params!.materialId as string);
+  if (materialIds.length === 0) return false;
+  const materials = await prisma.material.findMany({
+    where: { id: { in: materialIds }, tenantId },
+    select: { channelType: true },
+  });
+  const target = channelType.toLowerCase();
+  return materials.some((m) => m.channelType?.toLowerCase() === target);
 }
 
 /**
@@ -365,7 +383,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
         // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
         // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
         // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
-        const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text);
+        const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text, channelType ?? '');
         if (keywordWillHandle) {
           logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：關鍵字規則將處理`);
         }

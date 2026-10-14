@@ -104,6 +104,17 @@ async function recordDeliveryFailure(
   }
 }
 
+/** 沒有呼叫渠道就決定不送時（例如素材渠道不符），比照送出失敗在對話留下可見紀錄 */
+export async function recordSkippedDelivery(
+  prisma: PrismaClient,
+  redis: IORedis,
+  conv: { id: string; tenantId: string; channel: { channelType: string } },
+  payload: DeliverPayload,
+  reason: string,
+): Promise<void> {
+  await recordDeliveryFailure(prisma, redis, conv, payload, new Error(reason), new Date());
+}
+
 /**
  * 把訊息送出 channel，並寫 OUTBOUND message + emit message.new。
  * 回傳是否送出成功（找不到 conversation/identity/plugin 會 return false）。

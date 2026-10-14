@@ -136,6 +136,13 @@ export interface ChannelCredentials {
 
 // ── Plugin Registry ───────────────────────────────────────────────
 
+/**
+ * workers 執行自動化與關鍵字規則時送得到的渠道（`apps/workers/src/lib/plugin-registry.ts` 依此註冊外掛）。
+ * API 判斷關鍵字規則能否回覆、AI 要不要讓步時也用這份清單，兩邊才不會不一致。
+ * 沒有 WEBCHAT：訪客的即時推送不在 workers 的送出路徑（AUDIT CHAN-02）。
+ */
+export const AUTOMATION_DELIVERY_CHANNEL_TYPES: readonly string[] = ['LINE', 'FB', 'THREADS'];
+
 const plugins = new Map<string, ChannelPlugin>();
 
 export function registerChannelPlugin(plugin: ChannelPlugin): void {
