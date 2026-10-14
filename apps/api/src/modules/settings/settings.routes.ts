@@ -92,6 +92,9 @@ export const identityBindingSettingsSchema = z
     // email 登記（change add-email-identity-merge）：沒送時沿用已儲存的值（見 applyIdentityBindingUpdate）
     emailEnabled: z.boolean().optional(),
     emailKeywords: bindingKeywordsSchema.optional(),
+    // 手機登記（change add-phone-identity-merge）：同 email，沒送時沿用已儲存的值
+    phoneEnabled: z.boolean().optional(),
+    phoneKeywords: bindingKeywordsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     for (const [path, list] of [["bindKeywords", data.bindKeywords], ["unbindKeywords", data.unbindKeywords]] as const) {
@@ -111,7 +114,7 @@ export const identityBindingSettingsSchema = z
         message: "綁定與解除關鍵字不可相同",
       });
     }
-    // email 登記關鍵字的衝突在路由對合併後的設定檢查（findIdentityBindingKeywordIssue）
+    // email、手機登記關鍵字的衝突在路由對合併後的設定檢查（findIdentityBindingKeywordIssue）
   });
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
@@ -224,7 +227,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       actorId: request.agent.id,
       action: "settings.update",
       targetType: "settings",
-      payload: { section: "identity-binding", enabled: value.enabled, emailEnabled: value.emailEnabled },
+      payload: { section: "identity-binding", enabled: value.enabled, emailEnabled: value.emailEnabled, phoneEnabled: value.phoneEnabled },
       ip: request.ip,
     });
     return reply.send(success(parseIdentityBindingSettings(value)));

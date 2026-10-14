@@ -12,7 +12,7 @@ import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
 import { SendBindingLinkButton } from './SendBindingLinkButton';
-import { SendEmailRegistrationLinkButton } from './SendEmailRegistrationLinkButton';
+import { SendEmailRegistrationLinkButton, SendPhoneRegistrationLinkButton } from './RegistrationLinkButtons';
 import { OtherChannelConversations } from './OtherChannelConversations';
 
 interface ContactInfoPanelProps {
@@ -302,6 +302,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {/* Actions */}
       <div className="p-4 space-y-2">
         <SendEmailRegistrationLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
+        <SendPhoneRegistrationLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <SendBindingLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <Button
           variant="outline"

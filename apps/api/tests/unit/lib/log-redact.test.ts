@@ -33,3 +33,8 @@ test('遮掉 email 登記連結路徑中的 token（change add-email-identity-me
   );
   assert.equal(redactSensitiveQuery(`/api/v1/public/email-registration/${token}?x=1`), '/api/v1/public/email-registration/<redacted>?x=1');
 });
+
+test('遮掉手機登記連結路徑中的 token（change add-phone-identity-merge）', () => {
+  const token = 'eYdEfE0_y93ritRETIJcNSdf_fGbvBcRriwo-eMY7zk';
+  assert.equal(redactSensitiveQuery(`/api/v1/public/phone-registration/${token}`), '/api/v1/public/phone-registration/<redacted>');
+});

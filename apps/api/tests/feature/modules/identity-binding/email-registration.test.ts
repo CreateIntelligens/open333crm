@@ -363,3 +363,24 @@ scenario('解除後回覆', async (f) => {
   assert.equal(await sendUnbind(f, a, b.contactId), 'unbound');
   assert.ok(!(await loadOtherChannelContext(f.tx, T, b.conversationId)).includes('A 在 LINE 的問題'), '解除後讀不到');
 });
+
+// ── 另一種識別不一致（change add-phone-identity-merge，design D6） ────────────
+
+scenario('兩邊的手機不同', async (f) => {
+  const b = await f.tx.contact.create({ data: { tenantId: T, displayName: 'B', email: 'amy@example.com', phone: '0912-345-678' } });
+  const a = await f.person('A');
+  await f.tx.contact.update({ where: { id: a.contactId }, data: { phone: '0988000111' } });
+  assert.equal((await submit(f, await linkFor(f, a), 'amy@example.com')).status, 'identity_conflict');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: a.contactId } }))?.email, null, '不寫入 email');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: b.id } }))?.isArchived, false);
+  assert.ok(textsTo(f, a.conversationId).some((t) => t.includes('客服確認')));
+});
+
+scenario('兩邊的手機寫法不同但是同一支', async (f) => {
+  const b = await f.person('B', { channel: f.fbCh, email: 'amy@example.com' });
+  await f.tx.contact.update({ where: { id: b.contactId }, data: { phone: '0912-345-678' } });
+  const a = await f.person('A');
+  await f.tx.contact.update({ where: { id: a.contactId }, data: { phone: '+886 912 345 678' } });
+  const result = await submit(f, await linkFor(f, a), 'amy@example.com');
+  assert.equal(result.status === 'merged' && result.survivorId, b.contactId);
+});

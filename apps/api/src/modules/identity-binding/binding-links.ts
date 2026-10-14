@@ -6,6 +6,7 @@ import {
   CONFIRM_KEYWORD,
   DEFAULT_BIND_KEYWORDS,
   DEFAULT_EMAIL_KEYWORDS,
+  DEFAULT_PHONE_KEYWORDS,
   DEFAULT_UNBIND_KEYWORDS,
 } from './binding-code.js';
 
@@ -16,6 +17,9 @@ export interface IdentityBindingSettings {
   /** email 登記（change add-email-identity-merge）：與綁定代碼分開啟用 */
   emailEnabled: boolean;
   emailKeywords: string[];
+  /** 手機登記（change add-phone-identity-merge）：與 email 登記分開啟用 */
+  phoneEnabled: boolean;
+  phoneKeywords: string[];
 }
 
 function keywordList(raw: unknown, fallback: string[]): string[] {
@@ -33,16 +37,26 @@ export function parseIdentityBindingSettings(raw: unknown): IdentityBindingSetti
     unbindKeywords: keywordList(obj.unbindKeywords, DEFAULT_UNBIND_KEYWORDS),
     emailEnabled: obj.emailEnabled === true,
     emailKeywords: keywordList(obj.emailKeywords, DEFAULT_EMAIL_KEYWORDS),
+    phoneEnabled: obj.phoneEnabled === true,
+    phoneKeywords: keywordList(obj.phoneKeywords, DEFAULT_PHONE_KEYWORDS),
   };
 }
 
 /**
- * 設定頁儲存時合併：沒送的 email 登記欄位沿用已儲存的值。
+ * 設定頁儲存時合併：沒送的 email、手機登記欄位沿用已儲存的值。
  * 部署後仍開著舊版設定頁、或只送綁定代碼欄位的呼叫端，存一次不會把 email 登記關掉。
  */
 export function applyIdentityBindingUpdate(
   stored: unknown,
-  data: { enabled: boolean; bindKeywords: string[]; unbindKeywords: string[]; emailEnabled?: boolean; emailKeywords?: string[] },
+  data: {
+    enabled: boolean;
+    bindKeywords: string[];
+    unbindKeywords: string[];
+    emailEnabled?: boolean;
+    emailKeywords?: string[];
+    phoneEnabled?: boolean;
+    phoneKeywords?: string[];
+  },
 ): IdentityBindingSettings {
   const current = parseIdentityBindingSettings(stored);
   return {
@@ -51,17 +65,23 @@ export function applyIdentityBindingUpdate(
     unbindKeywords: data.unbindKeywords,
     emailEnabled: data.emailEnabled ?? current.emailEnabled,
     emailKeywords: data.emailKeywords ?? current.emailKeywords,
+    phoneEnabled: data.phoneEnabled ?? current.phoneEnabled,
+    phoneKeywords: data.phoneKeywords ?? current.phoneKeywords,
   };
 }
 
 /**
- * 檢查要儲存的設定：email 登記關鍵字不可與綁定、解除關鍵字或確認字相同。
+ * 檢查要儲存的設定：email、手機登記關鍵字不可與綁定、解除關鍵字、確認字或彼此相同。
  * 要對合併後的完整設定檢查（沒送的欄位沿用已儲存的值），只檢查請求內容會漏掉衝突。
  */
 export function findIdentityBindingKeywordIssue(value: IdentityBindingSettings): { path: string; message: string } | null {
   const taken = new Set([...value.bindKeywords, ...value.unbindKeywords, CONFIRM_KEYWORD].map((k) => k.toLowerCase()));
   if (value.emailKeywords.some((k) => taken.has(k.toLowerCase()))) {
     return { path: 'emailKeywords', message: 'email 登記關鍵字不可與綁定、解除關鍵字或「確認綁定」相同' };
+  }
+  const takenByEmail = new Set([...taken, ...value.emailKeywords.map((k) => k.toLowerCase())]);
+  if (value.phoneKeywords.some((k) => takenByEmail.has(k.toLowerCase()))) {
+    return { path: 'phoneKeywords', message: '手機登記關鍵字不可與綁定、解除、email 登記關鍵字或「確認綁定」相同' };
   }
   return null;
 }
@@ -211,10 +231,33 @@ export const EMAIL_TEXT = {
   rateLimited: 'email 登記連結申請次數過多，請一小時後再試。',
   registered: '已登記您的 email。',
   channelConflict: '無法自動整合帳號：這個 email 已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
+  identityConflict: '無法自動整合帳號：使用這個 email 的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在這個對話與您聯繫。',
   /** 通知登記的一方；對方沒有任何渠道時 otherLabel 為 null */
   mergedToRegistrant: (otherLabel: string | null, otherName: string, unbindKeyword: string) =>
     `已完成帳號整合：此帳號已與${otherLabel ? `您的 ${accountOf(otherLabel)}` : '相同 email 的顧客資料'}「${otherName}」整合為同一位顧客，對話紀錄會合併在一起。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
   /** 通知原本就使用這個 email 的一方 */
   mergedToExisting: (registrantLabel: string, registrantName: string, unbindKeyword: string) =>
     `您的帳號已與 ${accountOf(registrantLabel)}「${registrantName}」整合為同一位顧客（以相同 email 登記）。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
+} as const;
+
+/**
+ * 手機登記的顧客訊息（change add-phone-identity-merge）。
+ * 手機號碼容易取得也猜得到：通知登記方時不顯示對方的名稱（design D4），否則輸入號碼就能查出號碼主人。
+ * 被併入的一方仍看得到登記方是誰，方便發現冒用。
+ */
+export const PHONE_TEXT = {
+  invite: (url: string, minutes: number) =>
+    [
+      '請點選下方連結登記您的手機號碼。登記後，使用相同手機號碼的其他帳號（例如 LINE、Facebook）會整合為同一位顧客，對話紀錄會合併在一起。',
+      url,
+      `連結 ${minutes} 分鐘內有效，只能使用一次，請勿轉傳給他人。`,
+    ].join('\n\n'),
+  rateLimited: '手機登記連結申請次數過多，請一小時後再試。',
+  registered: '已登記您的手機號碼。',
+  channelConflict: '無法自動整合帳號：這個手機號碼已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
+  identityConflict: '無法自動整合帳號：使用這個手機號碼的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在這個對話與您聯繫。',
+  mergedToRegistrant: (otherLabel: string | null, _otherName: string, unbindKeyword: string) =>
+    `已完成帳號整合：此帳號已與${otherLabel ? `您的 ${accountOf(otherLabel)}` : '相同手機號碼的顧客資料'}整合為同一位顧客，對話紀錄會合併在一起。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
+  mergedToExisting: (registrantLabel: string, registrantName: string, unbindKeyword: string) =>
+    `您的帳號已與 ${accountOf(registrantLabel)}「${registrantName}」整合為同一位顧客（以相同手機號碼登記）。若非本人操作，請於 7 天內回覆「${unbindKeyword}」。`,
 } as const;
