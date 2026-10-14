@@ -109,7 +109,7 @@
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；fanToken 簽發接回前要修 | 靜態確認 |
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
-| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字回覆在網站聊天室命中時客人收不到任何回覆；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
+| [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
@@ -1443,12 +1443,12 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 **已修正**（`95d68fc8`，change `fix-keyword-yield-ig-delivery`）：
 
 - workers 的清單加入 `threadsPlugin`，規則可以回覆 Instagram 私訊。
-- `hasMatchingKeywordRule()` 只把能在這個渠道回覆的規則算進去（`send_message`，或素材渠道與對話相同的 `send_material`）。只加標籤、或素材是別的渠道的規則，不再讓知識庫與 AI 讓步。
+- `hasMatchingKeywordRule()` 只把能在這個渠道回覆的規則算進去（`send_message`，或素材渠道與對話相同的 `send_material`），而且渠道要在 `channel-plugins` 的 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 裡。只加標籤、素材是別的渠道的規則，或網站聊天室的對話，不再讓知識庫與 AI 讓步。
 - `send_material` 因素材渠道與對話不同而略過時，在對話寫入「沒有送出」的紀錄。
 
 2026-10-14 在 UAT 確認原本的問題：創造智能接上 Instagram 後，第一則私訊含「你好」，命中只送 LINE 素材的規則，AI 讓步、素材被略過，客人沒有收到任何回覆，失敗只在 workers 的 log。
 
-**未修正**：workers 的清單仍沒有 `webchatPlugin`。網站聊天室的訊息命中含 `send_message` 的規則時，AI 讓步，workers 找不到外掛，客人收不到回覆（收件匣有失敗紀錄）。即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
+**未修正**：workers 的清單仍沒有 `webchatPlugin`，關鍵字與自動化規則的回覆送不到網站聊天室（收件匣有失敗紀錄）。AI 不會因此讓步，訪客仍收到 AI 回覆。即使補上外掛也不夠：`webchatPlugin.sendMessage()` 只寫 log，訪客看到訊息靠的是 API 的 `conversation.service.ts` 推送到 `visitor:<channelId>:<uid>` 房間，workers 的送出路徑沒有這一步。
 
 **修正方向**：網站聊天室的訪客推送移進外掛或共用的送出函式，再加入 workers 的清單；關鍵字回覆頁建立的規則加上渠道條件，或在頁面上註明會套用到所有渠道。
 

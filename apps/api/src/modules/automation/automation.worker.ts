@@ -17,6 +17,7 @@ import { autoClassifyNewCase } from '../ai/classify.service.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { logger } from '@open333crm/core';
+import { AUTOMATION_DELIVERY_CHANNEL_TYPES } from '@open333crm/channel-plugins';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -232,6 +233,8 @@ export async function hasMatchingKeywordRule(
   channelType: string,
 ): Promise<boolean> {
   if (!messageText) return false;
+  // workers 送不到的渠道，規則命中也回覆不了顧客
+  if (!AUTOMATION_DELIVERY_CHANNEL_TYPES.includes(channelType.toUpperCase())) return false;
   const rules = await prisma.automationRule.findMany({
     where: { tenantId, isActive: true },
   });
@@ -239,7 +242,10 @@ export async function hasMatchingKeywordRule(
   const matchedRules = rules.filter((rule) => {
     const trigger = rule.trigger as Record<string, unknown>;
     if (trigger?.type !== 'keyword.matched') return false;
-    const keywords = (trigger.keywords as string[]) || [];
+    // 存檔資料可能有非字串或空白值；空字串會命中所有訊息，一併排除
+    const keywords = Array.isArray(trigger.keywords)
+      ? trigger.keywords.filter((kw): kw is string => typeof kw === 'string' && kw.trim().length > 0)
+      : [];
     const matchMode = (trigger.match_mode as string) || 'any';
     if (keywords.length === 0) return false;
     return matchMode === 'all'

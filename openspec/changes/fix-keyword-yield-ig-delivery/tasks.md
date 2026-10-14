@@ -2,6 +2,7 @@
 
 - [x] 1.1 測試 `apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts`：「規則的素材是這個渠道的」「規則的素材是別的渠道的」「規則傳送文字」「規則不回覆顧客」「沒有命中任何規則」，先確認失敗
 - [x] 1.2 `hasMatchingKeywordRule` 多收對話渠道，只把有能回覆動作的規則算進去；agent 路徑（`automation.worker.ts`）與 KB 路徑（`kb-autoreply.service.ts`）都傳入渠道
+- [x] 1.4 測試「網站聊天室的規則送不出去」先確認失敗；`channel-plugins` 新增 `AUTOMATION_DELIVERY_CHANNEL_TYPES`，API 依此判斷，workers 測試檢查外掛清單與它一致（PR #276 bot review）
 - [x] 1.3 更新 `keyword-suppresses-ai.test.ts` 的原始碼比對（呼叫多了渠道參數），commit 說明是本 change 有意改變
 
 ## 2. 素材渠道不符時留下紀錄

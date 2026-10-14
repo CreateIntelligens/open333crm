@@ -159,7 +159,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 ```bash
 # 兩個行程各註冊了哪些外掛
 grep -n "registerChannelPlugin" apps/api/src/index.ts
-grep -n "Plugin" apps/workers/src/lib/plugin-registry.ts
+grep -nE "(line|fb|threads|webchat)Plugin" apps/workers/src/lib/plugin-registry.ts
 
 # 以 channelType 分支的程式
 grep -rn "channelType *[!=]==\|[!=]== *CHANNEL_TYPE" apps/api/src apps/workers/src --include='*.ts'

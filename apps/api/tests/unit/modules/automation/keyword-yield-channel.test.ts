@@ -50,3 +50,21 @@ test('沒有命中任何規則', async () => {
   const prisma = db([{ type: 'send_message', params: { text: '您好' } }]);
   assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '請問營業時間', 'THREADS'), false);
 });
+
+test('網站聊天室的規則送不出去', async () => {
+  // workers 送不到網站聊天室（AUDIT CHAN-02），讓步的話訪客什麼都收不到
+  const prisma = db([{ type: 'send_message', params: { text: '您好' } }]);
+  assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'WEBCHAT'), false);
+});
+
+test('關鍵字資料有非字串值時不拋錯', async () => {
+  const prisma = {
+    automationRule: {
+      findMany: async () => [
+        { id: 'r1', trigger: { type: 'keyword.matched', keywords: [null, 42, '', '你好'] }, actions: [{ type: 'send_message', params: { text: '您好' } }] },
+      ],
+    },
+  } as never;
+  assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'LINE'), true);
+  assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '請問營業時間', 'LINE'), false, '空字串關鍵字不會命中所有訊息');
+});

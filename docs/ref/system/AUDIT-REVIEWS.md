@@ -15,7 +15,7 @@ change `fix-keyword-yield-ig-delivery`（`95d68fc8`）：
 | workers 的 Instagram 外掛 | 已修正 | `createWorkerPluginRegistry()` 加入 `threadsPlugin`。測試：`apps/workers/tests/unit/lib/plugin-registry.test.ts` |
 | AI 讓步判斷 | 已修正 | `hasMatchingKeywordRule()` 只計入能在該渠道回覆的規則。測試：`apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts` |
 | 素材渠道不符 | 已修正 | 對話寫入「沒有送出」紀錄。測試：`apps/workers/tests/unit/lib/automation-material-channel-mismatch.test.ts` |
-| 網站聊天室 | 未修正 | workers 仍沒有 `webchatPlugin`，訪客推送也不在 workers 的送出路徑 |
+| 網站聊天室 | 未修正 | workers 仍沒有 `webchatPlugin`，訪客推送也不在 workers 的送出路徑。AI 不再讓步（`AUTOMATION_DELIVERY_CHANNEL_TYPES` 不含 WEBCHAT），訪客至少收到 AI 回覆 |
 
 `AUDIT.md` 的 CHAN-02 改為部分修正、執行時確認。
 
