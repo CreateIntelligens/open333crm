@@ -521,7 +521,7 @@ When a `line_text` material is created, or updated with a new body, the system S
 - **THEN** the system SHALL pass the body to the LINE validate API as before
 
 ### Requirement: FB Coupon Code Has No Whitespace
-When an `fb_coupon` material is created, or updated with a new body, the system SHALL reject with 400 naming `body.coupon_code` a `coupon_code` that is not a string or that contains whitespace. An empty string, `null` or missing `coupon_code` SHALL be accepted.
+When an `fb_coupon` material is created, or updated with a new body, the system SHALL reject with 400 naming `body.coupon_code` a `coupon_code` that is neither `null` nor a string, or a string that contains whitespace. An empty string, `null` or missing `coupon_code` SHALL be accepted.
 
 #### Scenario: Coupon code with a space
 - **WHEN** a user saves an `fb_coupon` material through the API with `coupon_code = "AB C"`
@@ -534,3 +534,11 @@ When an `fb_coupon` material is created, or updated with a new body, the system 
 #### Scenario: Empty coupon code
 - **WHEN** a user saves an `fb_coupon` material without a `coupon_code`
 - **THEN** the material SHALL be saved
+
+#### Scenario: Null coupon code
+- **WHEN** a user saves an `fb_coupon` material with `coupon_code = null`
+- **THEN** the material SHALL be saved
+
+#### Scenario: Non-string coupon code
+- **WHEN** a user saves an `fb_coupon` material with `coupon_code = 90` (a number)
+- **THEN** the system SHALL respond 400 naming `body.coupon_code` and SHALL NOT save the material
