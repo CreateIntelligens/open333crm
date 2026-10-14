@@ -26,8 +26,7 @@ import { Worker, Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
-import { linePlugin, fbPlugin } from '@open333crm/channel-plugins';
-import type { ChannelPlugin } from '@open333crm/channel-plugins';
+import { createWorkerPluginRegistry } from './lib/plugin-registry.js';
 import { handleSlaPoll } from './handlers/sla.handler.js';
 // Broadcast 排程改由 apps/api 端負責（含完整 executeBroadcast 邏輯：變數替換 / multicast / recipient 記錄）。
 // Worker 端不再 polling broadcasts 避免雙發 race。
@@ -73,10 +72,7 @@ async function main() {
   const redisPublisher = new IORedis(process.env.REDIS_URL!);
 
   // ── Channel plugin registry ──────────────────────────────────────────────────
-  const pluginRegistry = new Map<string, ChannelPlugin>();
-
-  pluginRegistry.set(linePlugin.channelType, linePlugin);
-  pluginRegistry.set(fbPlugin.channelType, fbPlugin);
+  const pluginRegistry = createWorkerPluginRegistry();
 
   logger.info('Workers starting...');
 

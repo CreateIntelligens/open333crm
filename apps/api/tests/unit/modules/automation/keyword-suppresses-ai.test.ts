@@ -90,7 +90,8 @@ t('KB 路徑：原本就有的讓步判斷不可被移除', () => {
   // 這裡若沒擋，等於把「AI 回一則」換成「KB 回一則」，問題沒解。
   const code = src('modules/ai/kb-autoreply.service.ts');
   assert.ok(
-    /if \(await hasMatchingKeywordRule\(prisma, tenantId, messageText\)\) \{/.test(code),
+    // change fix-keyword-yield-ig-delivery 起多傳對話渠道，只在規則能回覆這個渠道時讓步
+    /if \(await hasMatchingKeywordRule\(prisma, tenantId, messageText, conversation\.channel\.channelType\)\) \{/.test(code),
     'KB 的關鍵字讓步判斷不見了',
   );
 });
