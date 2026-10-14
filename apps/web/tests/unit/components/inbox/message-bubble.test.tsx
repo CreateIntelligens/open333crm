@@ -34,6 +34,14 @@ test('需要客服確認', () => {
   assert.ok(screen.getByText(/手動合併/));
 });
 
+test.each(['email_identity_conflict', 'phone_identity_conflict', 'email_channel_conflict', 'phone_channel_conflict'])(
+  '需要客服確認的結果都顯示提示：%s',
+  (kind) => {
+    render(<MessageBubble message={{ ...base, content: { text: '無法自動整合帳號' }, metadata: { source: 'identity_binding', kind } }} />);
+    assert.ok(screen.getByText(/需要客服處理/));
+  },
+);
+
 test('一般的登記完成訊息只標示系統自動發送，不顯示需要處理', () => {
   render(
     <MessageBubble
@@ -57,6 +65,7 @@ test('通知沒有送出', () => {
   assert.ok(screen.getByText(/已完成帳號整合/), '仍顯示訊息內容');
   assert.ok(screen.getByText(/沒有送出/));
   assert.ok(screen.getByText(/綁定通知沒有送到顧客/), '顯示失敗原因');
+  assert.ok(screen.getByText('系統自動發送'), '失敗時仍標示系統自動發送');
 });
 
 test('沒有文字的訊息送出失敗時顯示類型', () => {
