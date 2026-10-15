@@ -85,3 +85,22 @@ test('停用的 FB 渠道不查詢', async () => {
   await waitFor(() => assert.ok(api.get.mock.calls.some(([url]) => url === '/channels/on/status')));
   assert.equal(api.get.mock.calls.some(([url]) => url === '/channels/off/status'), false);
 });
+
+test('從卡片停用渠道', async () => {
+  channelsState.channels = [channel('a', 'LINE', true), channel('z', 'LINE', false)];
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(<ChannelManagement />);
+  fireEvent.click(screen.getByRole('button', { name: '停用' }));
+  assert.equal(confirmSpy.mock.calls.length, 1);
+  await waitFor(() => {
+    const call = api.patch.mock.calls.find(([url]) => url === '/channels/a');
+    assert.deepEqual(call?.[1], { isActive: false });
+  });
+
+  // 停用的渠道可以重新啟用（不需確認）
+  fireEvent.click(screen.getByRole('button', { name: '啟用' }));
+  await waitFor(() => {
+    const call = api.patch.mock.calls.find(([url]) => url === '/channels/z');
+    assert.deepEqual(call?.[1], { isActive: true });
+  });
+});

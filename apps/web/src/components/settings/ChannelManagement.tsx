@@ -168,13 +168,24 @@ export function ChannelManagement() {
     }
   };
 
+  // 收過對話的渠道刪不掉（外鍵），改用停用；停用保留歷史資料、可隨時重新啟用（G15）
+  const handleToggleActive = async (ch: Channel) => {
+    const next = !ch.isActive;
+    if (!next && !confirm(`確定要停用「${ch.displayName}」嗎？停用後此渠道不再收發訊息，歷史對話會保留，之後可以重新啟用。`)) return;
+    try {
+      await api.patch(`/channels/${ch.id}`, { isActive: next });
+      mutate();
+    } catch (err) {
+      alert(getApiErrorMessage(err, next ? '啟用渠道失敗，請稍後重試' : '停用渠道失敗，請稍後重試'));
+    }
+  };
+
   const handleDelete = async (channelId: string) => {
-    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。')) return;
+    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。收過對話的渠道無法刪除，請改用「停用」。')) return;
     try {
       await api.delete(`/channels/${channelId}`);
       mutate();
     } catch (err) {
-      console.error('Failed to delete channel:', err);
       alert(getApiErrorMessage(err, '刪除渠道失敗，請稍後重試'));
     }
   };
@@ -518,6 +529,14 @@ export function ChannelManagement() {
                       !verifyResult[ch.id].success && (
                         <XCircle className="h-4 w-4 text-destructive" />
                       )}
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleToggleActive(ch)}
+                    >
+                      {ch.isActive ? '停用' : '啟用'}
+                    </Button>
 
                     <Button
                       size="sm"
