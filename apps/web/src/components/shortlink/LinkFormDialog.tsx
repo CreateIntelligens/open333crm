@@ -134,6 +134,11 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         </DialogHeader>
 
         <div className="space-y-4">
+          {Boolean(editData?.materialId) && (
+            <div className="rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+              這是廣播自動建立的素材連結，已經發給客人的訊息裡用的就是這個網址。修改目標網址或到期時間，客人點開已發出的訊息時也會跟著改變或失效。
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium">目標 URL *</label>
             <Input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://example.com/page" />
