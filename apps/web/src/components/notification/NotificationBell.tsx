@@ -13,6 +13,9 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string }> = 
   sla_warning: { icon: Clock, color: 'text-warning' },
   sla_breached: { icon: AlertTriangle, color: 'text-destructive' },
   new_message: { icon: MessageSquare, color: 'text-success' },
+  first_response_warning: { icon: Clock, color: 'text-warning' },
+  first_response_breached: { icon: AlertTriangle, color: 'text-destructive' },
+  customer_waiting_breached: { icon: AlertTriangle, color: 'text-destructive' },
 };
 
 export function NotificationBell() {

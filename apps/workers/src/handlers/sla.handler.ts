@@ -19,7 +19,6 @@ import {
   getSupervisorAndAdminAgentIds,
 } from '../lib/automation-actions.js';
 
-const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CUSTOMER_WAITING_THRESHOLD = 3;
 
 type RuleAction = { type: string; params: Record<string, unknown> };
@@ -73,18 +72,22 @@ async function getActiveCases(prisma: PrismaClient): Promise<SlaCase[]> {
   });
 }
 
-async function hasRecentCaseEvent(
+/**
+ * 同一個期限的 SLA 結果只記錄一次（change fix-sla-outcome-repeat）。
+ * 原本用「24 小時內有沒有同類事件」去重，逾期的工單每天重寫一次時間軸、重發一次通知（S01、S02）。
+ * 改成看去重起點（期限、警告時間點或上次客服回覆）之後是否已有同類事件。
+ */
+async function hasCaseEventSince(
   prisma: PrismaClient,
   caseId: string,
   eventType: string,
-  now: Date,
+  since: Date,
 ): Promise<boolean> {
-  const dedupCutoff = new Date(now.getTime() - DEDUP_WINDOW_MS);
   const existing = await prisma.caseEvent.findFirst({
     where: {
       caseId,
       eventType,
-      createdAt: { gte: dedupCutoff },
+      createdAt: { gte: since },
     },
     select: { id: true },
   });
@@ -268,6 +271,8 @@ async function dispatchSlaOutcome(
     dueAt?: Date | null;
     warningBeforeMinutes?: number | null;
     customerWaiting?: Awaited<ReturnType<typeof getCustomerWaitingFacts>>;
+    /** 去重起點：這個時間點之後已有同類事件就略過（不寫事件、不通知、不跑規則） */
+    dedupSince: Date;
     defaultNotification: {
       type: string;
       title: string;
@@ -280,7 +285,7 @@ async function dispatchSlaOutcome(
   const { c, eventName, eventType, kind, state } = params;
   const now = new Date();
 
-  if (await hasRecentCaseEvent(prisma, c.id, eventType, now)) return;
+  if (await hasCaseEventSince(prisma, c.id, eventType, params.dedupSince)) return;
 
   let nextPriority = c.priority;
   if (params.applyPriorityBump) {
@@ -396,10 +401,11 @@ async function pollSlaCases(prisma: PrismaClient, redisPublisher: IORedis): Prom
           state: 'breached',
           dueAt: firstResponseDeadline,
           warningBeforeMinutes: policy.warningBeforeMinutes,
+          dedupSince: firstResponseDeadline,
           defaultNotification: {
             type: 'first_response_breached',
-            title: 'First response SLA breached',
-            body: `Case "${c.title}" has not received a first response in time.`,
+            title: '首次回應已逾期',
+            body: `工單「${c.title}」超過首次回應期限仍未回覆客戶。`,
             notifySupervisors: true,
           },
         });
@@ -412,14 +418,19 @@ async function pollSlaCases(prisma: PrismaClient, redisPublisher: IORedis): Prom
           state: 'warning',
           dueAt: firstResponseDeadline,
           warningBeforeMinutes: policy.warningBeforeMinutes,
+          dedupSince: firstResponseWarningAt,
           defaultNotification: {
             type: 'first_response_warning',
-            title: 'First response SLA warning',
-            body: `Case "${c.title}" needs a first response soon.`,
+            title: '首次回應即將逾期',
+            body: `工單「${c.title}」即將超過首次回應期限，請盡快回覆客戶。`,
             notifySupervisors: false,
           },
         });
       }
+
+      const resolutionWarningAt = c.slaDueAt
+        ? new Date(c.slaDueAt.getTime() - policy.warningBeforeMinutes * 60_000)
+        : null;
 
       if (c.slaDueAt && now >= c.slaDueAt) {
         await dispatchSlaOutcome(prisma, redisPublisher, {
@@ -431,17 +442,15 @@ async function pollSlaCases(prisma: PrismaClient, redisPublisher: IORedis): Prom
           dueAt: c.slaDueAt,
           warningBeforeMinutes: policy.warningBeforeMinutes,
           applyPriorityBump: true,
+          dedupSince: c.slaDueAt,
           defaultNotification: {
             type: 'sla_breached',
-            title: 'Resolution SLA breached',
-            body: `Case "${c.title}" is past its resolution SLA.`,
+            title: '解決期限已逾期',
+            body: `工單「${c.title}」已超過解決期限。`,
             notifySupervisors: true,
           },
         });
-      } else if (
-        c.slaDueAt &&
-        now >= new Date(c.slaDueAt.getTime() - policy.warningBeforeMinutes * 60_000)
-      ) {
+      } else if (c.slaDueAt && resolutionWarningAt && now >= resolutionWarningAt) {
         await dispatchSlaOutcome(prisma, redisPublisher, {
           c,
           eventName: SLA_EVENT_NAMES.RESOLUTION_WARNING,
@@ -450,10 +459,11 @@ async function pollSlaCases(prisma: PrismaClient, redisPublisher: IORedis): Prom
           state: 'warning',
           dueAt: c.slaDueAt,
           warningBeforeMinutes: policy.warningBeforeMinutes,
+          dedupSince: resolutionWarningAt,
           defaultNotification: {
             type: 'sla_warning',
-            title: 'Resolution SLA warning',
-            body: `Case "${c.title}" is close to its resolution SLA.`,
+            title: '解決期限即將逾期',
+            body: `工單「${c.title}」即將超過解決期限。`,
             notifySupervisors: false,
           },
         });
@@ -471,10 +481,14 @@ async function pollSlaCases(prisma: PrismaClient, redisPublisher: IORedis): Prom
           kind: 'customer_waiting',
           state: 'breached',
           customerWaiting,
+          // 同一段等待只記一次：客服回覆後客戶又連續傳訊，才重新記錄
+          dedupSince: customerWaiting.lastAgentReplyAt
+            ? new Date(customerWaiting.lastAgentReplyAt.getTime() + 1)
+            : new Date(0),
           defaultNotification: {
             type: 'customer_waiting_breached',
-            title: 'Customer waiting SLA breached',
-            body: `Case "${c.title}" has ${customerWaiting.count} customer messages without an agent reply.`,
+            title: '客戶等待過久',
+            body: `工單「${c.title}」有 ${customerWaiting.count} 則客戶訊息尚未回覆。`,
             notifySupervisors: true,
           },
         });

@@ -48,6 +48,11 @@ async function getSupervisorAndAdminIds(
   return agents.map((agent) => agent.id);
 }
 
+// 自動化「通知」動作的站內通知文案（S12：原本是英文「SLA rule matched」）。
+// SLA 與一般自動化規則共用這兩個動作，所以標題不寫 SLA
+const AUTOMATION_NOTIFY_TITLE = '自動化規則通知';
+const AUTOMATION_NOTIFY_DEFAULT_BODY = '自動化規則的條件已成立，請查看相關工單。';
+
 const CASE_PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
 /** 已結案的工單：對話上掛的是這種工單時，自動化可以開新單並改關聯 */
 const CLOSED_CASE_STATUSES = new Set(['RESOLVED', 'CLOSED']);
@@ -329,8 +334,8 @@ export async function executeWorkerAutomationActions(
           tenantId: context.tenantId,
           agentId: context.assigneeId,
           type: 'sla_rule',
-          title: 'SLA rule matched',
-          body: String(params['message'] ?? 'A SLA rule matched.'),
+          title: AUTOMATION_NOTIFY_TITLE,
+          body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
           clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
         });
         continue;
@@ -343,8 +348,8 @@ export async function executeWorkerAutomationActions(
             tenantId: context.tenantId,
             agentId,
             type: 'sla_rule',
-            title: 'SLA rule matched',
-            body: String(params['message'] ?? 'A SLA rule matched.'),
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
             clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
           });
         }

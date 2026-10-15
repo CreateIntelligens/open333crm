@@ -64,6 +64,26 @@ function formatEventDescription(
       return '案件已關閉';
     case 'reopened':
       return '案件已重新開啟';
+    // SLA 掃描（workers）寫入的系統事件（S01：原本直接顯示英文代碼）
+    case 'sla_breached': {
+      const prev = PRIORITY_LABELS[payload?.previousPriority as string];
+      const next = PRIORITY_LABELS[payload?.newPriority as string];
+      return prev && next && prev !== next
+        ? `解決期限已逾期，優先級 ${prev} → ${next}`
+        : '解決期限已逾期';
+    }
+    case 'sla_warning':
+      return '解決期限即將逾期';
+    case 'first_response_breached':
+      return '首次回應已逾期';
+    case 'first_response_warning':
+      return '首次回應即將逾期';
+    case 'customer_waiting_breached':
+      return '客戶等待過久，有多則訊息尚未回覆';
+    case 'auto_assigned':
+      return `自動指派給 ${payload?.assigneeName || '客服'}`;
+    case 'conversation_linked':
+      return '關聯了一個對話';
     default:
       return eventType;
   }
@@ -139,7 +159,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
         type: evtType,
         content: formatEventDescription(evtType, payload),
         isInternal: e.isInternal || false,
-        author: e.actor?.name || e.agentName || e.createdBy || 'System',
+        author: e.actor?.name || e.agentName || e.createdBy || '系統',
         createdAt: e.createdAt,
         isNote: false,
       };
@@ -149,7 +169,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
       type: 'note',
       content: n.content,
       isInternal: n.isInternal,
-      author: n.agentName || 'Agent',
+      author: n.agentName || '客服',
       createdAt: n.createdAt,
       isNote: true,
     })),
