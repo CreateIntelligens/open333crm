@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { unmountWebTalk } from '@/lib/webtalk';
+import { navigateWithFullReload, teardownWebTalk } from '@/lib/webtalk';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 interface Agent {
@@ -147,7 +147,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    unmountWebTalk();
+    // 卸載 WebTalk 並清除本機聊天紀錄；SDK 載入過時要整頁導向，才能關閉它的信令連線
+    const webTalkLoaded = teardownWebTalk();
 
     try {
       await api.post('/auth/logout');
@@ -158,7 +159,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAgent(null);
     setPermissions(new Set());
     setPermissionsError(false);
-    router.push('/login');
+    if (webTalkLoaded) {
+      navigateWithFullReload('/login');
+    } else {
+      router.push('/login');
+    }
   }, [router]);
 
   const hasPermission = useCallback(

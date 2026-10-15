@@ -1,6 +1,6 @@
 # 其他設定
 
-「設定」頁有十幾個分頁，其中渠道、人員、角色、標籤與 SLA 各有專文。本文件說明剩下的分頁：一般設定、營業時間、追蹤設定、API 金鑰、CLI 連線、Passkey 登入與 A2A。Chat 與 Embedding 設定在知識庫底下，見[知識庫與 AI](./KNOWLEDGE.md#ai-設定)。
+「設定」頁有十幾個分頁，其中渠道、人員、角色、標籤與 SLA 各有專文。本文件說明剩下的分頁：一般設定、營業時間、追蹤設定、WebTalk 協作、API 金鑰、CLI 連線、Passkey 登入與 A2A。Chat 與 Embedding 設定在知識庫底下，見[知識庫與 AI](./KNOWLEDGE.md#ai-設定)。
 
 - **資料來源**：`apps/api/src/modules/settings/*`、`apps/api/src/modules/auth/partner-api-key.service.ts`、`apps/api/src/modules/auth/cli-session.service.ts`、`apps/api/src/modules/auth/passkey.service.ts`、`apps/api/src/modules/webhook/inbound-side-effects.ts`、`apps/web/src/app/dashboard/settings/page.tsx`
 - **核對日期**：2026-09-30
@@ -19,6 +19,7 @@
 | 營業時間、追蹤設定、API 金鑰、CLI 連線 | `settings` | 本文件 |
 | Passkey 登入 | `auth` | 本文件 |
 | A2A | `settings` | 本文件 |
+| WebTalk 協作 | `webtalk` | 本文件 |
 
 `settings` 模組在整個 plugin 掛了 `requirePermission("settings.manage")`，所以營業時間、追蹤設定、API 金鑰、CLI 連線、A2A，以及 Chat、Embedding 與自備金鑰的設定，全部需要 `settings.manage`。
 
@@ -112,3 +113,32 @@ API 金鑰與 CLI token 的建立和撤銷**沒有**寫入稽核。這兩種都�
 | 營業時間不影響 SLA 計時 | SLA 以自然時間計算 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
+
+## WebTalk 協作
+
+WebTalk 是後台右下角的多人聊天工具列（外部 SDK），讓同一個租戶的成員即時討論。資料來源：`apps/api/src/modules/webtalk/*`、`apps/web/src/lib/webtalk.ts`、`apps/web/src/components/webtalk/WebTalkGlobal.tsx`、`apps/web/src/components/settings/WebTalkSettings.tsx`。SDK 行為的研究見 `openspec/changes/webtalk-multi-tenant/design.md`（歸檔後在 `openspec/changes/archive/`）。
+
+**房間隔離**：SDK 沒有伺服器端驗證，知道房間代號就能加入。所以房間代號由 API 發放：`GET /webtalk/session` 以 `WEBTALK_ROOM_SECRET` 對 `WEBTALK_SITE_ID`、租戶 ID 與房間版本做 HMAC-SHA256，只回給已登入的真人成員（Partner API key、CLI session 回 403）。不同租戶、不同環境不會同房。伺服器沒有設定密鑰或 SDK 網址時回 `enabled: false`，前端完全不載入 SDK。
+
+**租戶設定**（`TenantSettings`，需要 `settings.manage`）：
+
+| 欄位 | 預設 | 說明 |
+| --- | --- | --- |
+| `webtalkEnabled` | 開 | 關閉時後台不載入 SDK，也不連線到外部服務 |
+| `webtalkAiEnabled` | 關 | AI 摘要會把整頁文字（含顧客個資）送到 `WEBTALK_AI_ENDPOINT`。伺服器沒有設定該端點時，開啟也不生效 |
+| `webtalkRoomVersion` | 0 | 按「重新產生房間代號」（`POST /webtalk/settings/rotate-room`）時加一，舊代號從此對不到這個租戶 |
+
+設定變更在成員重新整理頁面後生效。變更與重新產生房間代號都寫入租戶稽核（`settings.update`，`section: "webtalk"`）。
+
+**AI 摘要關閉時**：SDK 一定會顯示 AI 按鈕，前端把 SDK 的 AI 端點指向 `POST /webtalk/ai-disabled`。這個端點在解析 body 前就回 403 `WEBTALK_AI_DISABLED`，頁面內容不會送到外部。
+
+**身分**：SDK 沒有讓宿主帶入身分的選項。前端在掛載前把成員 ID 與名稱寫進 SDK 的 localStorage，同事看到的是本名。這只是顯示：使用者仍可在 SDK 設定改名，房間內任何人都能宣稱任何名稱。
+
+**登出與換帳號**：卸載 SDK，並刪除 localStorage 與 IndexedDB（`keyval-store`）中 `WEB_TALK_` 開頭的資料。SDK 載入過時，登出改用整頁導向，關閉 SDK 的信令連線。
+
+**殘餘風險**：
+
+- 房間代號外流（例如離職成員）時，對方仍可加入，直到重新產生房間代號或更換 `WEBTALK_ROOM_SECRET`。
+- 信令伺服器 `0.artico.dev` 是第三方，看得到房間代號與連線 IP；訊息內容走 WebRTC 加密通道，不經過信令伺服器。
+- SDK 網址沒有版本號。控管 vercel 專案的人可以隨時換掉 script，在所有租戶的後台執行任意程式碼。建議確認專案控管權，並改為自行託管、鎖版本、設定 `WEBTALK_SDK_INTEGRITY`。
+

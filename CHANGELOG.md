@@ -8,6 +8,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **收件匣可以把對話交回 Bot** — 客服接手後，對話停在客服處理，後台沒有辦法讓機器人繼續回，只能結案等客人再傳訊息開新對話；狀態選單也沒有 Bot 處理中，從 API 改狀態又不會把機器人回覆次數歸零，因次數到上限轉真人的對話會馬上再轉回真人。對話上方新增「交回 Bot」按鈕（`POST /conversations/:id/return-to-bot`）：客服處理中或進行中的對話改回 Bot 處理，回覆次數歸零、清除轉真人原因、保留指派的客服，並寫一則只給客服看的系統訊息。已結案、已經是 Bot 處理或渠道的機器人已關閉時不改狀態並說明原因。權限與接手對話相同（`inbox.manage`）。
 
+### Fixed
+
+- **WebTalk 協作工具列跨租戶互通** — 後台的 WebTalk 以寫死的 `siteId: 'open333crm-uat'`、`scope: 'origin'` 掛載，SDK 依網域算出房間，同一網域上所有租戶的客服進同一個房間，互相看得到在線名單、訊息與網頁摘要。房間代號改由 API 發放（`GET /api/v1/webtalk/session`）：以 `WEBTALK_ROOM_SECRET` 對環境、租戶與房間版本做 HMAC，只發給已登入的成員，不同租戶與不同環境不會同房；密鑰或 SDK 網址沒有設定時不載入 WebTalk（fail-closed）。SDK 網址、環境識別與 AI 端點改由 API 環境變數提供，前端不再寫死。設定頁新增「WebTalk 協作」（`settings.manage`）：租戶可關閉 WebTalk（預設開）與 AI 摘要（預設關，因為會把整頁文字含顧客個資送到外部），也可在成員離職時重新產生房間代號。AI 摘要關閉時，SDK 的 AI 請求改打 CRM API 的 `/webtalk/ai-disabled`，在讀取內容前就拒絕。掛載前帶入客服本名；登出、換帳號時卸載並清除 SDK 留在瀏覽器的聊天紀錄，修正同一分頁重新登入後無法再次掛載。新增 migration `20261015100000_add_webtalk_tenant_settings`。
+
 ## [2026-10-14]
 
 ### Added

@@ -66,6 +66,19 @@ Chat 有 Ollama 與 Gemini 兩個 provider。Embedding 沒有 provider 可選，
 
 每個租戶各自設定渠道憑證。系統以 `CREDENTIAL_ENCRYPTION_KEY` 進行 AES-256-GCM 加密，再寫入 `channels.credentialsEncrypted`。
 
+## WebTalk 協作工具列
+
+後台的 WebTalk 是外部 SDK，由瀏覽器直接連線，API 不代理：
+
+| 用途 | 外部網域 | 設定 |
+| --- | --- | --- |
+| SDK script | `WEBTALK_SDK_URL`（目前為 `webtalk-nine.vercel.app`） | `.env.api` |
+| 信令（WebRTC 配對） | `0.artico.dev`（SDK 內建，不可設定） | 無 |
+| STUN | `stun.l.google.com`、`stun1.l.google.com` | 無 |
+| AI 摘要（租戶開啟時） | `WEBTALK_AI_ENDPOINT` | `.env.api` |
+
+`WEBTALK_ROOM_SECRET` 或 `WEBTALK_SDK_URL` 沒有設定時，所有租戶都不載入 WebTalk。房間隔離與殘餘風險見[其他設定](../features/tenant/SETTINGS.md#webtalk-協作)。
+
 ## Webhook 方向
 
 - `apps/api/src/modules/webhook` 接收渠道平台送入的 Webhook。
