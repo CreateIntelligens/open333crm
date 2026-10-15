@@ -50,7 +50,8 @@ export default function NewRichMenuPage() {
       name: `新 Rich Menu（${layout.label}）`,
       chatBarText: '菜單',
       size: layout.size,
-      selected: true,
+      // 預設不設為所有好友的預設選單：一發布就會換掉所有好友目前的選單
+      selected: false,
       areas: layout.defaultAreas.map((a) => ({
         bounds: a.bounds,
         action: { type: 'postback', data: '', label: '' },
