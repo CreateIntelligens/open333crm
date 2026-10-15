@@ -83,7 +83,7 @@ export function TrackingSettings() {
           className="max-w-md"
         />
         <p className="text-xs text-muted-foreground">
-          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭加英數字。
+          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭加大寫英文字母或數字。
         </p>
       </div>
 

@@ -522,7 +522,7 @@ const trackingIdSchema = (pattern: RegExp, message: string) =>
     .optional();
 
 export const trackingSettingsSchema = z.object({
-  gaId: trackingIdSchema(GA4_ID_PATTERN, "GA4 ID 格式不正確，應為 G- 開頭加英數字，例如 G-ABC123XYZ9"),
+  gaId: trackingIdSchema(GA4_ID_PATTERN, "GA4 ID 格式不正確，應為 G- 開頭加大寫英文字母或數字，例如 G-ABC123XYZ9"),
   metaPixelId: trackingIdSchema(META_PIXEL_ID_PATTERN, "Meta Pixel ID 格式不正確，應為 5～20 位數字"),
 });
 

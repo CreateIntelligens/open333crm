@@ -17,6 +17,12 @@ test('含程式碼的 GA ID 被拒', () => {
   assert.equal(trackingSettingsSchema.safeParse({ gaId: 'UA-12345-1' }).success, false);
 });
 
+test('含小寫字母的 GA ID 被拒', () => {
+  // gtag.js 只把大寫 G- 當 GA4 ID；小寫載入的是空設定，點擊不會被追蹤
+  assert.equal(trackingSettingsSchema.safeParse({ gaId: 'g-ABC123XYZ9' }).success, false);
+  assert.equal(trackingSettingsSchema.safeParse({ gaId: 'G-abc123xyz9' }).success, false);
+});
+
 test('非數字的 Pixel ID 被拒', () => {
   assert.equal(
     trackingSettingsSchema.safeParse({ metaPixelId: '123</script><script>alert(1)</script>' }).success,

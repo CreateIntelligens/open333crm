@@ -4,7 +4,7 @@
 
 `PUT /api/v1/settings/tracking` SHALL 只接受下列格式，頭尾空白先去掉；空字串與 `null` 表示清除：
 
-- `gaId`：`G-` 加 4～20 個英文字母或數字。
+- `gaId`：`G-` 加 4～20 個大寫英文字母或數字。系統不接受小寫的 `g-`，也不接受其他小寫字母。原因是 gtag.js 只把大寫 `G-` 當成 GA4 ID，含小寫字母的 ID 不會追蹤。
 - `metaPixelId`：5～20 位數字。
 
 格式不符時，系統 SHALL 回 HTTP 400，`error.code` 是 `VALIDATION_ERROR`，不修改已儲存的設定。
@@ -20,6 +20,10 @@
 #### Scenario: 非數字的 Pixel ID 被拒
 - **WHEN** 成員送出 `metaPixelId` 為 `123</script><script>alert(1)</script>`
 - **THEN** 系統回 HTTP 400，已儲存的 `metaPixelId` 不變
+
+#### Scenario: 含小寫字母的 GA ID 被拒
+- **WHEN** 成員送出 `gaId` 為 `g-ABC123XYZ9` 或 `G-abc123xyz9`
+- **THEN** 系統回 HTTP 400，`error.code` 是 `VALIDATION_ERROR`，已儲存的 `gaId` 不變
 
 #### Scenario: 空字串清除設定
 - **WHEN** 成員送出 `{ gaId: "", metaPixelId: null }`
