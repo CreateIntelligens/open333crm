@@ -88,21 +88,23 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
     setError('');
     setSaving(true);
     try {
+      // 編輯時清空的選填欄位送空字串（後端存成 null）；送 undefined 會被當成「這欄不動」，清不掉
+      const optional = (v: string) => (editData ? v : v || undefined);
       const payload: Record<string, unknown> = {
         targetUrl,
-        title: title || undefined,
-        utmSource: utmSource || undefined,
-        utmMedium: utmMedium || undefined,
-        utmCampaign: utmCampaign || undefined,
-        utmContent: utmContent || undefined,
-        utmTerm: utmTerm || undefined,
-        tagOnClick: tagOnClick || undefined,
+        title: optional(title),
+        utmSource: optional(utmSource),
+        utmMedium: optional(utmMedium),
+        utmCampaign: optional(utmCampaign),
+        utmContent: optional(utmContent),
+        utmTerm: optional(utmTerm),
+        tagOnClick: optional(tagOnClick),
         // 第二參數 = 可清除：編輯時清空要送 null，否則後端當成「這欄不動」
         expiresAt: toIsoForApi(expiresAt, Boolean(editData)),
         lineChannelId: lineChannelId || null,
-        ogTitle: ogTitle || undefined,
-        ogDescription: ogDescription || undefined,
-        ogImage: ogImage || undefined,
+        ogTitle: optional(ogTitle),
+        ogDescription: optional(ogDescription),
+        ogImage: optional(ogImage),
       };
 
       if (!editData && slug) {
