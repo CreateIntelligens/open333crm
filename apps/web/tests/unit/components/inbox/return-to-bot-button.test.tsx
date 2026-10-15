@@ -59,3 +59,15 @@ test('切換對話時不殘留上一筆的錯誤', async () => {
   rerender(<ReturnToBotButton conversationId="c1" status="AGENT_HANDLED" onDone={() => {}} />);
   assert.ok(screen.queryByText('對話狀態已變更，請重新整理後再試') === null, '切回原對話也不顯示舊錯誤');
 });
+
+test('請求還沒回來就切換對話，失敗不顯示在新對話', async () => {
+  let reject!: (e: unknown) => void;
+  api.post.mockImplementation(() => new Promise((_, r) => { reject = r; }));
+  const { rerender } = render(<ReturnToBotButton conversationId="c1" status="AGENT_HANDLED" onDone={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: /交回 Bot/ }));
+  rerender(<ReturnToBotButton conversationId="c2" status="AGENT_HANDLED" onDone={() => {}} />);
+  assert.equal((screen.getByRole('button', { name: /交回 Bot/ }) as HTMLButtonElement).disabled, false, '新對話的按鈕可以按');
+  reject(Object.assign(new Error('400'), { response: { status: 400, data: { error: { message: '對話狀態已變更，請重新整理後再試' } } } }));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(screen.queryByText('對話狀態已變更，請重新整理後再試') === null);
+});
