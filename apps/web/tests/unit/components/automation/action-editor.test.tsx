@@ -60,3 +60,22 @@ test('選填下拉維持「不指定」', () => {
   const select = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
   assert.equal(selectedLabel(select), '不指定');
 });
+
+// ── 傳送通知的收件人（change fix-automation-rule-gaps，問題清單 A03）──
+test('傳送通知可選「通知誰」，不指定時說明會通知負責人', async () => {
+  api.get.mockResolvedValue({ data: { data: [{ id: 'a1', name: '王小明', email: 'ming@example.com' }] } });
+  const onChange = vi.fn();
+  render(
+    <ActionEditor
+      action={{ type: 'notify', payload: { message: '請處理' } }}
+      actionDefinitions={definitions}
+      onChange={onChange}
+      onRemove={() => {}}
+    />,
+  );
+  const select = (await screen.findAllByRole('combobox'))[1] as HTMLSelectElement;
+  assert.equal(selectedLabel(select), '不指定（通知負責人，沒有負責人時通知主管）');
+  await screen.findByRole('option', { name: '王小明（ming@example.com）' });
+  fireEvent.change(select, { target: { value: 'a1' } });
+  assert.deepEqual(onChange.mock.calls.at(-1)?.[0].payload, { message: '請處理', agentId: 'a1' });
+});

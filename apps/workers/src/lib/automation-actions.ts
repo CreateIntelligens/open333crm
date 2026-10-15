@@ -48,6 +48,40 @@ async function getSupervisorAndAdminIds(
   return agents.map((agent) => agent.id);
 }
 
+/**
+ * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個存在的：
+ * 指定的客服（同租戶、啟用中）→ 工單負責人 → 對話負責客服 → 所有主管與管理員。
+ * 原本只送工單負責人，沒有工單的觸發選了這個動作永遠不會送（問題清單 A03）。
+ * worker 走 BYPASSRLS 連線：每個查詢都要自帶 tenantId。
+ */
+async function resolveNotifyRecipients(
+  prisma: PrismaClient,
+  params: Record<string, unknown>,
+  context: WorkerActionContext,
+): Promise<string[]> {
+  const { tenantId } = context;
+  const chosen = typeof params['agentId'] === 'string' ? params['agentId'].trim() : '';
+  if (chosen) {
+    const agent = await prisma.agent.findFirst({
+      where: { id: chosen, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (agent) return [agent.id];
+    logger.warn(`[automation] notify: agent ${chosen} is inactive or not in tenant, falling back`);
+  }
+  if (context.assigneeId) return [context.assigneeId];
+  if (context.conversationId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: context.conversationId, tenantId },
+      select: { assignedToId: true },
+    });
+    if (conversation?.assignedToId) return [conversation.assignedToId];
+  }
+  const fallback = await getSupervisorAndAdminIds(prisma, tenantId);
+  if (fallback.length === 0) logger.warn('[automation] notify skipped: no recipient in tenant', { tenantId });
+  return fallback;
+}
+
 const CASE_PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
 /** 已結案的工單：對話上掛的是這種工單時，自動化可以開新單並改關聯 */
 const CLOSED_CASE_STATUSES = new Set(['RESOLVED', 'CLOSED']);
@@ -324,15 +358,22 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
-      if (action.type === 'notify' && context.assigneeId) {
-        await enqueueNotification({
-          tenantId: context.tenantId,
-          agentId: context.assigneeId,
-          type: 'sla_rule',
-          title: 'SLA rule matched',
-          body: String(params['message'] ?? 'A SLA rule matched.'),
-          clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
-        });
+      if (action.type === 'notify') {
+        const recipients = await resolveNotifyRecipients(prisma, params, context);
+        for (const agentId of recipients) {
+          await enqueueNotification({
+            tenantId: context.tenantId,
+            agentId,
+            type: 'sla_rule',
+            title: 'SLA rule matched',
+            body: String(params['message'] ?? 'A SLA rule matched.'),
+            clickUrl: context.caseId
+              ? `/dashboard/cases/${context.caseId}`
+              : context.conversationId
+                ? `/dashboard/inbox?conv=${context.conversationId}`
+                : undefined,
+          });
+        }
         continue;
       }
 

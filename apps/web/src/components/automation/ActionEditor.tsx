@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import useSWR from 'swr';
 import api from '@/lib/api';
-import { agentOptions, selectOptionsForParam } from '@/lib/automation/rule-actions';
+import { agentOptions, emptyOptionLabel, selectOptionsForParam } from '@/lib/automation/rule-actions';
 
 const ACTION_TYPES = [
   { value: 'send_message', label: '傳送訊息' },
@@ -99,6 +99,7 @@ function ActionParamsForm({
               <AgentSelectField
                 key={param.key}
                 label={param.label}
+                emptyLabel={param.required ? '請選擇客服' : emptyOptionLabel(param.key)}
                 value={value}
                 onChange={(v) => updateParam(param.key, v)}
               />
@@ -257,10 +258,12 @@ function ActionParamsForm({
  */
 function AgentSelectField({
   label,
+  emptyLabel,
   value,
   onChange,
 }: {
   label: string;
+  emptyLabel: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -277,7 +280,7 @@ function AgentSelectField({
     <div>
       <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
       <Select
-        options={agentOptions((data ?? []) as Array<{ id: string; name?: string; email?: string }>, value, data !== undefined)}
+        options={agentOptions((data ?? []) as Array<{ id: string; name?: string; email?: string }>, value, data !== undefined, emptyLabel)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-8 py-1 text-sm"

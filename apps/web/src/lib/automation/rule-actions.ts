@@ -79,8 +79,16 @@ export function findWorkerSkipErrors(rule: {
   }).errors;
 }
 
-/** 選填參數空值時的標籤；分類不指定時由系統依顧客訊息自動分類 */
-const EMPTY_OPTION_LABELS: Record<string, string> = { category: '不指定（由 AI 分類）' };
+/** 選填參數空值時的標籤；分類不指定時由系統依顧客訊息自動分類，通知不指定時送給負責人 */
+const EMPTY_OPTION_LABELS: Record<string, string> = {
+  category: '不指定（由 AI 分類）',
+  agentId: '不指定（通知負責人，沒有負責人時通知主管）',
+};
+
+/** 選填參數空值時的標籤，下拉與客服選單共用 */
+export function emptyOptionLabel(key: string): string {
+  return EMPTY_OPTION_LABELS[key] ?? '不指定';
+}
 
 /**
  * 下拉參數的選項。選填的參數在最前面加值為空的「不指定」：
@@ -93,7 +101,7 @@ export function selectOptionsForParam(param: {
   values?: ReadonlyArray<{ value: string | number | boolean; label: string }>;
 }): Array<{ value: string; label: string }> {
   const options = (param.values ?? []).map((o) => ({ value: String(o.value), label: o.label }));
-  return param.required ? options : [{ value: '', label: EMPTY_OPTION_LABELS[param.key] ?? '不指定' }, ...options];
+  return param.required ? options : [{ value: '', label: emptyOptionLabel(param.key) }, ...options];
 }
 
 /**
@@ -105,9 +113,11 @@ export function agentOptions(
   currentId: string,
   /** 名單是否已載入；載入前不能判斷已指派的客服是否還在 */
   loaded = true,
+  /** 空值選項的文字；選填欄位（例如傳送通知的「通知誰」）說明不指定時的行為 */
+  emptyLabel = '請選擇客服',
 ): Array<{ value: string; label: string }> {
   const options = [
-    { value: '', label: '請選擇客服' },
+    { value: '', label: emptyLabel },
     ...agents.map((a) => ({
       value: a.id,
       label: a.name ? `${a.name}${a.email ? `（${a.email}）` : ''}` : a.email || a.id,
