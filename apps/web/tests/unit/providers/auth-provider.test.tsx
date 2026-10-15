@@ -7,10 +7,14 @@ import { beforeEach, test, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { mutate as globalMutate, useSWRConfig } from 'swr';
 
-const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
+const { api, push, webtalk } = vi.hoisted(() => ({
+  api: { get: vi.fn(), post: vi.fn() },
+  push: vi.fn(),
+  webtalk: { teardownWebTalk: vi.fn(() => false), navigateWithFullReload: vi.fn() },
+}));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('#src/lib/webtalk.js', () => ({ unmountWebTalk: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+vi.mock('#src/lib/webtalk.js', () => webtalk);
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: vi.fn(async () => ({ id: 'cred' })),
   startRegistration: vi.fn(),
@@ -113,4 +117,40 @@ test('登出時清掉 SWR 快取', async () => {
 
   await act(() => probe.auth.logout());
   assert.equal(probe.swrCache.get('automation:active-materials')?.data, undefined);
+});
+
+// ── WebTalk（change webtalk-multi-tenant，spec webtalk-collaboration「WebTalk unmounts during logout」） ──
+
+test('WebTalk unmounts during logout：SDK 載入過時整頁導向登入頁', async () => {
+  mockApi({
+    'POST /auth/refresh': () => ok({ accessToken: 't' }),
+    'GET /auth/me': () => ok(AGENT),
+    'GET /auth/me/permissions': () => ok({ permissions: [] }),
+    'POST /auth/logout': () => ok({}),
+  });
+  webtalk.teardownWebTalk.mockReturnValue(true);
+  const probe = renderProvider();
+  await waitFor(() => assert.equal(probe.auth.agent?.id, 'a1'));
+
+  await act(() => probe.auth.logout());
+  assert.equal(webtalk.teardownWebTalk.mock.calls.length, 1);
+  assert.deepEqual(webtalk.navigateWithFullReload.mock.calls, [['/login']]);
+  assert.equal(push.mock.calls.length, 0, '不使用 client-side 導向');
+});
+
+test('WebTalk unmounts during logout：SDK 沒載入過時維持 client-side 導向', async () => {
+  mockApi({
+    'POST /auth/refresh': () => ok({ accessToken: 't' }),
+    'GET /auth/me': () => ok(AGENT),
+    'GET /auth/me/permissions': () => ok({ permissions: [] }),
+    'POST /auth/logout': () => ok({}),
+  });
+  webtalk.teardownWebTalk.mockReturnValue(false);
+  const probe = renderProvider();
+  await waitFor(() => assert.equal(probe.auth.agent?.id, 'a1'));
+
+  await act(() => probe.auth.logout());
+  assert.equal(webtalk.teardownWebTalk.mock.calls.length, 1);
+  assert.equal(webtalk.navigateWithFullReload.mock.calls.length, 0);
+  assert.deepEqual(push.mock.calls, [['/login']]);
 });

@@ -126,6 +126,9 @@
     },
     {
       "name": "webhook-subscriptions"
+    },
+    {
+      "name": "webtalk"
     }
   ],
   "x-tagGroups": [
@@ -166,7 +169,8 @@
         "trial",
         "webchat",
         "webhook",
-        "webhook-subscriptions"
+        "webhook-subscriptions",
+        "webtalk"
       ]
     }
   ],
@@ -11843,6 +11847,145 @@
             "schema": {
               "type": "string"
             }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "Generic JSON editor for Try it out. The exact request schema is undocumented.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Response contract is not documented yet."
+          }
+        },
+        "x-contract-status": "undocumented"
+      }
+    },
+    "/api/v1/webtalk/ai-disabled": {
+      "post": {
+        "operationId": "post_api_v1_webtalk_ai_disabled",
+        "tags": [
+          "webtalk"
+        ],
+        "summary": "POST /api/v1/webtalk/ai-disabled",
+        "description": "Source: modules/webtalk/webtalk.routes.ts. Request and response schemas require route-level documentation.",
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "description": "Generic JSON editor for Try it out. The exact request schema is undocumented.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Response contract is not documented yet."
+          }
+        },
+        "x-contract-status": "undocumented"
+      }
+    },
+    "/api/v1/webtalk/session": {
+      "get": {
+        "operationId": "get_api_v1_webtalk_session",
+        "tags": [
+          "webtalk"
+        ],
+        "summary": "GET /api/v1/webtalk/session",
+        "description": "Source: modules/webtalk/webtalk.routes.ts. Request and response schemas require route-level documentation.",
+        "parameters": [],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Response contract is not documented yet."
+          }
+        },
+        "x-contract-status": "undocumented"
+      }
+    },
+    "/api/v1/webtalk/settings": {
+      "get": {
+        "operationId": "get_api_v1_webtalk_settings",
+        "tags": [
+          "webtalk"
+        ],
+        "summary": "GET /api/v1/webtalk/settings",
+        "description": "Source: modules/webtalk/webtalk.routes.ts. Request and response schemas require route-level documentation.",
+        "parameters": [],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Response contract is not documented yet."
+          }
+        },
+        "x-contract-status": "undocumented"
+      },
+      "put": {
+        "operationId": "put_api_v1_webtalk_settings",
+        "tags": [
+          "webtalk"
+        ],
+        "summary": "PUT /api/v1/webtalk/settings",
+        "description": "Source: modules/webtalk/webtalk.routes.ts. Request and response schemas require route-level documentation.",
+        "parameters": [],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "Generic JSON editor for Try it out. The exact request schema is undocumented.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Response contract is not documented yet."
+          }
+        },
+        "x-contract-status": "undocumented"
+      }
+    },
+    "/api/v1/webtalk/settings/rotate-room": {
+      "post": {
+        "operationId": "post_api_v1_webtalk_settings_rotate_room",
+        "tags": [
+          "webtalk"
+        ],
+        "summary": "POST /api/v1/webtalk/settings/rotate-room",
+        "description": "Source: modules/webtalk/webtalk.routes.ts. Request and response schemas require route-level documentation.",
+        "parameters": [],
+        "security": [
+          {
+            "BearerAuth": []
           }
         ],
         "requestBody": {
