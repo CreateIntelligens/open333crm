@@ -409,3 +409,34 @@ img { max-width: 100%; }
   text-align: center; color: #C7D6EA; font-size: 13px; padding: 0 24px;
 }
 @keyframes lb-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── 操作影片（v4） ───────────────────────────── */
+.video {
+  margin: 18px 0 24px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  background: var(--bg-card); box-shadow: 0 6px 24px rgba(30, 20, 60, .06); max-width: 100%;
+}
+.video video { display: block; width: 100%; height: auto; background: #111; aspect-ratio: 16 / 10; }
+.video figcaption {
+  display: flex; gap: 10px; align-items: baseline; font-size: 13px; color: var(--text-muted);
+  padding: 10px 14px; background: var(--bg-soft); border-top: 1px solid var(--border);
+}
+.video figcaption .tag {
+  flex: none; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em;
+  color: var(--brand); background: var(--brand-subtle); padding: 4px 7px; border-radius: 6px;
+}
+/* 「這頁能做什麼」快速清單 */
+.quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 10px; margin: 16px 0; }
+.quick a {
+  display: block; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg-card); color: var(--text-body); text-decoration: none; font-size: 14px;
+}
+.quick a b { display: block; color: var(--text-title); margin-bottom: 2px; }
+.quick a:hover { border-color: var(--brand); }
+/* 步驟清單 */
+ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+ol.steps > li { counter-increment: s; position: relative; padding: 4px 0 12px 40px; }
+ol.steps > li::before {
+  content: counter(s); position: absolute; left: 0; top: 2px; width: 26px; height: 26px; border-radius: 8px;
+  background: var(--brand); color: #fff; font: 700 13px/26px ui-monospace, Menlo, monospace; text-align: center;
+}
+@media print { .video video { display: none; } .video figcaption::before { content: '（線上版可觀看操作影片）'; } }

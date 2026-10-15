@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知識庫 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=4">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">06 · 知識庫</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 文章列表</a>
+    <a href="#p3"><span class="n">3</span> 新增與編輯文章</a>
+    <a href="#p4"><span class="n">4</span> 發布、封存、刪除</a>
+    <a href="#p5"><span class="n">5</span> 匯入文章</a>
+    <a href="#p6"><span class="n">6</span> 語義搜尋</a>
+    <a href="#p7"><span class="n">7</span> 回報調教</a>
+    <a href="#p8"><span class="n">8</span> 讓 AI 答得更好</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 06 · 自動化與知識</div>
+        <h1>知識庫</h1>
+        <p>把常見問題、產品說明寫成文章並發布，AI 客服就會拿它來回答客人。這章教你寫文章、發布、匯入現成檔案、測試 AI 找不找得到答案，以及修正 AI 答錯的地方。</p>
+      </div>
+    </section>
+
+<section class="doc" id="p1">
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>知識庫是 AI 客服的「參考書」。客人發問時，AI 會先到知識庫裡找最相關的文章，再照文章內容回答。文章寫得越清楚、越完整，AI 就答得越準；知識庫裡沒有的，AI 不會亂編，而是請客人轉給真人。</p>
+      <p>從左側選單「自動化與知識 → 知識庫」進入，底下有「文章管理」「語義搜尋」「回報調教」三頁。</p>
+      <p>請先記住這條路，文章要走完才會被 AI 用到：</p>
+      <div class="flow">
+        <div class="flow-step"><div class="fn">STEP 1</div><div class="ft">寫文章</div><div class="fd">新增或匯入，存檔後是「草稿」</div></div>
+        <div class="flow-step"><div class="fn">STEP 2</div><div class="ft">發布</div><div class="fd">狀態變成「已發布」</div></div>
+        <div class="flow-step"><div class="fn">STEP 3</div><div class="ft">AI 讀進去</div><div class="fd">標題前出現綠色小圖示</div></div>
+        <div class="flow-step"><div class="fn">STEP 4</div><div class="ft">AI 客服引用</div><div class="fd">客人問到時拿來回答</div></div>
+      </div>
+      <div class="warn"><span>⚠️</span><div><b>只有「已發布」而且標題前有綠色小圖示的文章，AI 客服才會用。</b>草稿和已封存的文章，AI 完全看不到。寫完記得發布。</div></div>
+      <div class="quick">
+        <a href="#p2"><b>文章列表</b>找文章、看狀態、看 AI 讀進去沒</a>
+        <a href="#p3"><b>新增與編輯</b>寫一篇新的問答</a>
+        <a href="#p4"><b>發布、封存、刪除</b>讓文章生效或下架</a>
+        <a href="#p5"><b>匯入文章</b>把現成的 FAQ 檔一次匯進來</a>
+        <a href="#p6"><b>語義搜尋</b>測 AI 找不找得到答案</a>
+        <a href="#p7"><b>回報調教</b>修正客人說「沒幫到我」的回答</a>
+        <a href="#p8"><b>讓 AI 答得更好</b>寫文章的小撇步</a>
+      </div>
+      <div class="info"><span>ℹ️</span><div>看文章只要有「檢視知識庫」權限；新增、編輯、發布、匯入需要「管理知識庫」權限。沒有權限的人按了會收到「權限不足」，請找管理員開通。</div></div>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 文章列表</h2>
+      <p>「文章管理」列出所有文章。你可以在這裡找文章、看它有沒有生效。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch06-articles.jpg">
+          <source src="uploads/videos/ch06-articles.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>切換狀態分頁、認識綠色小圖示和右邊的操作按鈕（約 25 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>在「搜尋文章...」輸入關鍵字，會比對標題、摘要、內容和標籤。</li>
+        <li>用「全部分類」「全部來源」下拉縮小範圍。來源是「手動建立」或合作夥伴系統匯入的名稱。</li>
+        <li>點上方「全部／草稿／已發布／已封存」切換狀態。</li>
+        <li>點某篇文章的標籤，可以只看有這個標籤的文章；再點上方的標籤小方塊就能取消。</li>
+        <li>文章超過 50 篇時，底部會出現頁碼。</li>
+      </ol>
+      <figure class="shot">
+        <img src="uploads/shots/ch06-articles.png" alt="文章管理頁：搜尋列、狀態分頁、文章表格與頁碼" loading="lazy">
+        <figcaption>文章管理：上方搜尋與篩選，中間是文章表格，右上是「匯入文章」「新增文章」。</figcaption>
+      </figure>
+      <h3>表格欄位怎麼看</h3>
+      <table>
+        <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>標題</td><td>文章標題，下面一行是摘要。<b>標題前的綠色小圖示</b>代表 AI 已經讀進這篇（滑鼠移上去會顯示「已向量化」）</td></tr>
+          <tr><td>分類</td><td>你自己訂的分類，例如「常見問題」「保固」</td></tr>
+          <tr><td>狀態</td><td>草稿、已發布、已封存，意思見下表</td></tr>
+          <tr><td>標籤</td><td>方便分類和篩選的小標記</td></tr>
+          <tr><td>瀏覽數</td><td>這篇在後台被打開編輯的次數，<b>不是</b>客人看過的次數，參考就好</td></tr>
+          <tr><td>更新時間</td><td>最後修改時間，目前以英文月份顯示，例如「Oct 15, 14:00」是 10 月 15 日</td></tr>
+          <tr><td>操作</td><td>從左到右：鉛筆＝編輯、地球＝發布、箱子＝封存、紅色垃圾桶＝刪除。按鈕只有圖示，滑鼠移上去會顯示名稱</td></tr>
+        </tbody>
+      </table>
+      <figure class="shot">
+        <img src="uploads/shots/ch06-article-row.png" alt="單篇文章列：標題前綠色小圖示、已發布狀態、右側編輯封存刪除按鈕" loading="lazy">
+        <figcaption>一篇已生效的文章：標題前有綠色小圖示、狀態是「已發布」。</figcaption>
+      </figure>
+      <h3>三種狀態</h3>
+      <table>
+        <thead><tr><th>狀態</th><th>意思</th><th>AI 客服會用嗎</th></tr></thead>
+        <tbody>
+          <tr><td>草稿</td><td>剛建立、還在寫</td><td>不會</td></tr>
+          <tr><td>已發布</td><td>正式上線</td><td>會（要有綠色小圖示）</td></tr>
+          <tr><td>已封存</td><td>暫時下架、先收起來</td><td>不會</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 列表載入失敗時沒有錯誤畫面，會顯示「尚無文章」；篩選沒結果也顯示同一句。 -->
+      <div class="info"><span>ℹ️</span><div>如果列表突然顯示「尚無文章」，先清掉搜尋字和篩選條件，再重新整理頁面。目前「篩選後沒有結果」和「載入失敗」都會顯示這句話，不代表文章不見了。</div></div>
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> 新增與編輯文章</h2>
+      <p>一篇文章就是一組「客人會問的問題」加上「正確答案」。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch06-article-new.jpg">
+          <source src="uploads/videos/ch06-article-new.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開「新增文章」，填標題、分類、內容和標籤（約 34 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>在「文章管理」按右上角「新增文章」。要修改既有文章，按該列的鉛筆圖示。</li>
+        <li>填「標題」和「內容」，這兩欄一定要填。其他欄位可以留空。</li>
+        <li>想檢查內容，按內容欄右上角的「預覽」，再按「編輯」回來修改。</li>
+        <li>按「儲存」。對話框會直接關閉，沒有額外提示，回到列表就看得到這篇。</li>
+        <li><b>新文章一律先存成「草稿」</b>，接著到列表按「發布」才會生效（見下一節）。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch06-article-dialog.png" alt="新增文章對話框：標題、分類、摘要、內容、標籤欄位與取消、儲存按鈕" loading="lazy">
+        <figcaption>新增文章對話框（畫面中是示範文字）。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>必填</th><th>怎麼填</th></tr></thead>
+        <tbody>
+          <tr><td>標題</td><td>是</td><td>寫成客人會問的樣子，例如「門市營業時間是幾點？」。最多 200 字</td></tr>
+          <tr><td>分類</td><td></td><td>自己打字，例如「常見問題」。留空會自動歸到「一般」。同一類請用同一個寫法，不要一下「FAQ」一下「常見問題」。最多 100 字</td></tr>
+          <tr><td>摘要</td><td></td><td>一兩句重點，列表和搜尋結果會顯示。最多 500 字</td></tr>
+          <tr><td>內容</td><td>是</td><td>完整答案。寫具體：時間、金額、步驟、聯絡方式都寫出來</td></tr>
+          <tr><td>標籤</td><td></td><td>用逗號隔開，例如「退貨, 退款, 政策」</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>「預覽」目前只顯示純文字，不會把粗體、清單等格式排出來，看起來和輸入的一樣是正常的。</li>
+          <li>超過字數上限不會即時提醒，按儲存時才會出現「儲存失敗，請檢查輸入資料」。看到這句，先檢查標題、摘要是不是太長。</li>
+          <li>只改分類或標籤，AI 不需要重讀；改了標題、摘要或內容，系統會自動讓 AI 重讀，綠色小圖示可能會晚幾秒才出現。</li>
+          <li>從合作夥伴系統匯入的文章，對話框上方會多一塊「合作方匯入」資訊，這類文章通常由對方系統更新，不需要手動改。</li>
+        </ul>
+      </div></div>
+      <!-- KNOWN-ISSUE: 開啟編輯時如果讀取文章失敗，會用列表資料代替，內容欄是空的。 -->
+      <div class="warn"><span>⚠️</span><div>按鉛筆打開文章時，如果「內容」欄是空的，<b>不要直接儲存</b>。這代表文章沒有讀取成功，請按「取消」，重新整理頁面後再打開一次。</div></div>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 發布、封存、刪除</h2>
+      <p>這三個按鈕在每篇文章的最右邊，都是圖示按鈕。</p>
+      <h3>發布：讓文章生效</h3>
+      <ol class="steps">
+        <li>在列表找到要上線的文章（可以先點「草稿」分頁）。</li>
+        <li>按那一列的地球圖示（滑鼠移上去會顯示「發布」）。</li>
+        <li>狀態徽章會從「草稿」變成「已發布」。畫面不會跳成功提示，看徽章變了就是成功。</li>
+        <li>過幾秒，標題前出現綠色小圖示，就代表 AI 客服已經可以用這篇了。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>發布後過了一兩分鐘、重新整理頁面，綠色小圖示還是沒出現，代表 AI 沒讀成功。請管理員到「AI 設定 → Embedding」檢查服務狀態，並按「重新嵌入全部已發布文章」補做（見<a href="ch07-ai-settings.html">第 07 章</a>）。</div></div>
+      <h3>封存：暫時下架</h3>
+      <p>活動結束、資訊暫時不適用時，按箱子圖示（「封存」）。文章會留著，但 AI 不會再用。想再上線時，按地球圖示重新發布即可。</p>
+      <h3>刪除：永久移除</h3>
+      <p>按紅色垃圾桶，會跳出「確定要刪除這篇文章嗎？」，按確定後文章就永久刪除。</p>
+      <div class="warn"><span>⚠️</span><div><b>刪除無法復原。</b>確認框沒有特別提醒這一點。如果只是暫時不用，請改用「封存」，之後還能重新發布。</div></div>
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 匯入文章</h2>
+      <p>已經有整理好的 FAQ 表、產品說明書，不用一篇一篇打，直接匯入。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch06-import.jpg">
+          <source src="uploads/videos/ch06-import.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開「匯入文章」、選一個 FAQ 表格（示範到選檔為止，沒有真的上傳）（約 24 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>在「文章管理」按右上角「匯入文章」。</li>
+        <li>按「選擇檔案」，可以一次選多個檔案。</li>
+        <li>確認列出的檔案沒錯，按「上傳 N 個檔案」。</li>
+        <li>每個檔案旁邊會顯示成功或失敗原因，最下面有「上傳完成：成功 N 個，失敗 M 個」。</li>
+        <li>按「關閉」，回列表檢查匯入的文章。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch06-import-dialog.png" alt="匯入文章對話框：支援格式說明、選擇檔案按鈕、已選檔案清單、上傳按鈕" loading="lazy">
+        <figcaption>匯入文章：選好檔案後會列出來，按「上傳」才會真的匯入。</figcaption>
+      </figure>
+      <h3>不同檔案，匯入後的結果不一樣</h3>
+      <table>
+        <thead><tr><th>檔案</th><th>會變成</th><th>匯入後狀態</th></tr></thead>
+        <tbody>
+          <tr><td><b>Excel（.xlsx）或 CSV，而且有「問題」「答案」欄</b></td><td>每一列拆成一篇文章：問題當標題、答案當內容</td><td><b>直接「已發布」</b>，AI 馬上會用</td></tr>
+          <tr><td>Excel 或 CSV，但找不到問答欄</td><td>整個表格變成一篇文章</td><td>草稿</td></tr>
+          <tr><td>PDF、Word（.docx）、HTML、Markdown、純文字（.txt）</td><td>整個檔案變成一篇文章</td><td>草稿</td></tr>
+          <tr><td>JSON</td><td>每一筆變成一篇文章（格式見下方）</td><td>草稿；有寫 <code>"status": "PUBLISHED"</code> 的那筆會直接發布</td></tr>
+        </tbody>
+      </table>
+      <div class="warn"><span>⚠️</span><div><b>問答表格會跳過草稿、直接上線。</b>上傳前請先在 Excel 裡檢查一遍：答案是否正確、有沒有過期的價格或活動、有沒有內部用的備註。匯入後，在「已發布」分頁再抽查幾篇；有問題就馬上「封存」或修改。</div></div>
+      <h3>問答表格怎麼準備</h3>
+      <p>第一列放欄位名稱，系統認得下面這些名稱（英文不分大小寫）：</p>
+      <table>
+        <thead><tr><th>欄位</th><th>可以用的名稱</th></tr></thead>
+        <tbody>
+          <tr><td>問題欄</td><td>問題、問、標題、question、q、title</td></tr>
+          <tr><td>答案欄</td><td>答案、答、內容、回覆、answer、a、content</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>從第二列開始一列一題。問題或答案其中一格是空的，那一列會被略過。</li>
+        <li>一模一樣的問答只會匯入一次。</li>
+        <li>Excel 有多個工作表時，每個有問答欄的工作表都會匯入。</li>
+      </ul>
+      <h3>JSON 格式</h3>
+      <p>最外層必須是方括號 <code>[ ]</code> 包起來的清單，每一筆至少要有標題和內容：</p>
+      <pre style="overflow-x:auto;padding:12px 14px;border-radius:var(--radius-sm);background:var(--bg-soft);border:1px solid var(--border);font-family:var(--font-mono);font-size:12.5px;line-height:1.6;color:var(--text-body)"><code>[
+  { "title": "範例：門市營業時間是幾點？", "content": "範例：週一至週五 10:00–21:00。", "category": "門市資訊", "tags": ["門市"] },
+  { "title": "範例：可以開統編嗎？", "content": "範例：可以，結帳時告訴店員即可。" }
+]</code></pre>
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>JSON 只要有一筆格式不對（例如標題空白），<b>整個檔案都不會匯入</b>。改好那一筆再重新上傳。</li>
+          <li>外層寫成 <code>{"articles": [...]}</code> 會失敗，畫面顯示「JSON 最外層必須是陣列」。</li>
+          <li>檔案讀不出文字（例如掃描成圖片的 PDF）會顯示英文錯誤「No content could be extracted from 檔名」。請改用可以選取文字的檔案。</li>
+          <li>單次上傳最多等 120 秒，很大的檔案請拆小一點。</li>
+        </ul>
+      </div></div>
+      <!-- KNOWN-ISSUE: 按「取消／關閉」不會清掉上次的結果，再開對話框時「上傳」按鈕不見、選同一個檔案也沒反應。 -->
+      <div class="warn"><span>⚠️</span><div>匯入完按「關閉」後，如果要再匯入一批，<b>請先重新整理頁面</b>再按「匯入文章」。目前不重新整理的話，對話框會停在上次的結果，沒辦法選新檔案。</div></div>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 語義搜尋</h2>
+      <p>「語義搜尋」是知識庫的健康檢查：模擬客人的問法，看 AI 會找到哪幾篇文章。它比對的是「意思」，不是字面，所以「冰箱不冷」也找得到標題寫「冷藏室溫度異常」的文章。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch06-search.jpg">
+          <source src="uploads/videos/ch06-search.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>輸入「冰箱不冷怎麼辦」，看 AI 找到哪些文章（約 27 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>左側選單點「知識庫 → 語義搜尋」。</li>
+        <li>在搜尋框輸入客人可能的問法，用口語就好，例如「冰箱不冷怎麼辦」。</li>
+        <li>按 Enter 或「搜尋」。</li>
+        <li>看結果：每張卡片是一篇文章，右上角的「xx.x% 匹配」越高，代表越接近客人的問題。</li>
+      </ol>
+      <figure class="shot">
+        <img src="uploads/shots/ch06-search.png" alt="語義搜尋結果：多張文章卡片，右上角顯示匹配百分比" loading="lazy">
+        <figcaption>搜尋「冰箱不冷怎麼辦」的結果，依匹配程度由高到低排列。</figcaption>
+      </figure>
+      <div class="tip-ai"><span>✨</span><div>用真實客人的問法測，不要拿文章標題測。常見問題搜不到、或搜到的文章不對題，就代表該補一篇或改寫標題。</div></div>
+      <!-- KNOWN-ISSUE: 還沒按搜尋，一輸入字就顯示「沒有找到相關文章」。 -->
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>輸入文字後，畫面可能先顯示「沒有找到相關文章」。這是還沒搜尋，按下「搜尋」才是真正的結果。</li>
+          <li>這裡只搜「已發布」而且 AI 已讀進去的文章。剛寫好的草稿搜不到是正常的，發布後再試。</li>
+          <li>找幾篇、多相關才算數，是由管理員在「AI 設定 → Embedding」設定的，和 AI 客服回答時用的是同一套標準。</li>
+        </ul>
+      </div></div>
+    </section>
+
+    <section class="doc" id="p7">
+      <h2><span class="idx">7</span> 回報調教</h2>
+      <p>AI 用知識庫回答後，答案下方會附一個「沒幫到我」按鈕。客人一按，這次問答就會出現在「回報調教」。你可以看 AI 哪裡答不好，直接修文章。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch06-feedback.jpg">
+          <source src="uploads/videos/ch06-feedback.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>看一筆回報：客人問什麼、AI 怎麼答、參考了哪篇文章（約 19 秒）</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="uploads/shots/ch06-feedback-card.png" alt="一筆回報：時間、相似度、使用者問、Bot 回答、命中文章，右側有編輯文章和標為已處理" loading="lazy">
+        <figcaption>一筆回報卡片。「相似度」越低，代表 AI 找到的文章越不對題。</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>左側選單點「知識庫 → 回報調教」。</li>
+        <li>每筆回報看三件事：「使用者問：」客人問什麼、「Bot 回答：」AI 怎麼答、「命中文章：」AI 參考了哪一篇。</li>
+        <li>判斷原因：
+          <ul>
+            <li>文章內容寫錯或不夠清楚 → 按「編輯文章」直接修改，按「儲存」後 AI 會自動重讀。</li>
+            <li>根本沒有對應的文章 → 到「文章管理」新增一篇，記得發布。</li>
+          </ul>
+        </li>
+        <li>處理好後按「標為已處理」，這筆就會從清單移除（只有主管和管理員有這個按鈕）。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>只有主管和管理員看得到「標為已處理」按鈕。一般客服的畫面上方會提醒：可以先修正文章，處理完再請主管或管理員標為已處理。</div></div>
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>清單只顯示還沒處理的回報。標為已處理後就看不到了，目前也不能復原。</li>
+          <li>沒有待處理的回報時會顯示「目前沒有待處理的回報」。如果你確定應該有回報卻看到這句，請重新整理頁面。</li>
+          <li>「命中文章」那篇如果已經被刪除，按「編輯文章」會出現「找不到此文章，可能已被刪除」，請直接新增一篇。</li>
+        </ul>
+      </div></div>
+    </section>
+
+    <section class="doc" id="p8">
+      <h2><span class="idx">8</span> 讓 AI 答得更好</h2>
+      <p>AI 客服回答的流程很簡單：客人發問 → AI 在已發布的文章裡找最相關的幾篇 → 照文章內容回答。找到的文章很相關，就直接回答；有點相關，就回答並附上「可以轉真人」的提示；都不太相關，就先反問客人，問不清楚再轉真人。</p>
+      <ul>
+        <li><b>一篇只講一件事。</b>「退貨流程」和「退款多久入帳」分成兩篇，AI 比較容易找對。</li>
+        <li><b>標題用客人的話。</b>客人說「東西壞了怎麼辦」，就別只寫「產品保固政策」。</li>
+        <li><b>答案寫具體。</b>型號、價格、時間、電話都要寫進去。知識庫沒寫的，AI 不會回答，會請客人轉真人。</li>
+        <li><b>定期看「回報調教」。</b>客人按「沒幫到我」的地方，就是最該補強的地方。</li>
+        <li><b>過期資訊記得封存。</b>活動結束、價格調整後，舊文章要下架，避免 AI 拿舊資料回答。</li>
+      </ul>
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch05-automation.html">← 05 · 自動化</a></span>
+      <span>下一章：<a href="ch07-ai-settings.html">07 · AI 設定 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>粉絲活動 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=4">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">11 · 粉絲活動</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 三種活動怎麼選</a>
+    <a href="#p3"><span class="n">3</span> 建立活動</a>
+    <a href="#p4"><span class="n">4</span> 活動狀態與按鈕</a>
+    <a href="#p5"><span class="n">5</span> 提交紀錄與抽獎</a>
+    <a href="#p6"><span class="n">6</span> 積分管理</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 11 · 行銷與渠道</div>
+        <h1>粉絲活動</h1>
+        <p>在後台準備投票、表單、競猜三種互動活動，查看參加紀錄、抽出中獎者，並幫客戶手動加點或扣點。</p>
+      </div>
+    </section>
+
+    <section class="doc" id="p1">
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>「粉絲活動」是讓客戶跟品牌互動的小活動，例如「選出你最愛的商品」投票、「留下資料抽好禮」表單、「猜猜看答案」競猜。你可以在後台設計活動、看誰參加、抽出中獎者，也可以替客戶加點、扣點。側欄「行銷與渠道 &gt; 粉絲活動」底下有三個選單：<b>活動管理</b>、<b>提交紀錄</b>、<b>積分管理</b>。</p>
+      <!-- KNOWN-ISSUE: 粉絲端目前沒有入口，也沒有粉絲活動頁。接上入口後要改寫本章的開頭警告與第 4、5 節。 -->
+      <div class="warn"><span>⚠️</span><div><b>目前狀態：客戶還沒有地方可以參加活動。</b>後台可以建立和發布活動，但給客戶參加的頁面還沒有開放，所以發布後「參加人數」會一直是 0，「提交紀錄」也會是空的，抽獎與活動送點數暫時用不到。現在真正能用的是「積分管理」的<b>手動調整點數</b>。你可以先把活動建成草稿準備好，等客戶入口開放後再發布。</div></div>
+      <div class="quick">
+        <a href="#p2"><b>三種活動怎麼選</b>投票、表單、競猜的差別</a>
+        <a href="#p3"><b>建立活動</b>設定標題、時間、選項或欄位</a>
+        <a href="#p4"><b>活動狀態與按鈕</b>草稿、進行中、已結束、已封存</a>
+        <a href="#p5"><b>提交紀錄與抽獎</b>看誰參加、抽出中獎者</a>
+        <a href="#p6"><b>積分管理</b>查客戶點數、手動加點扣點</a>
+      </div>
+      <p>這一章的功能需要管理員開給你「檢視粉絲活動」權限才看得到；要建立活動、抽獎或調整點數，還要有「管理粉絲活動」權限。</p>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 三種活動怎麼選</h2>
+      <p>建立活動時第一個要選的就是「類型」。三種類型差在「客戶要做什麼」：</p>
+      <table>
+        <thead><tr><th>類型</th><th>適合用在</th><th>你要設定的內容</th><th>客戶要做的事</th></tr></thead>
+        <tbody>
+          <tr><td><b>投票</b></td><td>人氣票選、新品口味調查</td><td>一組「選項」，例如：保溫杯、帆布袋</td><td>從選項裡挑一個</td></tr>
+          <tr><td><b>表單</b></td><td>報名、留資料抽獎、問卷</td><td>一組「欄位」，例如：姓名、電話、生日</td><td>把欄位填完送出</td></tr>
+          <tr><td><b>競猜</b></td><td>有獎徵答、猜謎</td><td>一組「選項」，並勾出哪個是「正確」答案</td><td>選出答案，系統會算分數</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>類型只能在建立時選，建好之後就不能改。如果選錯了，刪掉草稿重建一個就好。</div></div>
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> 建立活動</h2>
+      <p>先把活動內容準備好。新建的活動一律是「草稿」，客戶看不到，你可以隨時修改。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch11-activities.jpg">
+          <source src="uploads/videos/ch11-activities.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>建立一個投票活動，並看看換成競猜、表單時有什麼不同（約 35 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>側欄點「粉絲活動 &gt; 活動管理」，按右上角「建立活動」。</li>
+        <li>在「類型」選投票、表單或競猜。</li>
+        <li>填「標題」（必填），需要的話再填「描述」、「開始時間」、「結束時間」和「每次提交積分」。</li>
+        <li>投票、競猜：在「選項」輸入每個選項，按「新增」加一列。競猜要在正確答案旁勾「正確」。</li>
+        <li>表單：在「欄位」每一列填「欄位 key」和「顯示名稱」，選型態，必要時勾「必填」。</li>
+        <li>按「建立」。活動會以「草稿」出現在列表上。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch11-activity-form.png" alt="建立活動對話框：類型、標題、描述、開始與結束時間、每次提交積分、選項" loading="lazy">
+        <figcaption>建立活動：選類型、填標題，再依類型設定選項或欄位。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>類型</td><td>投票、表單或競猜，建好後不能改。</td></tr>
+          <tr><td>標題</td><td>活動名稱，必填，最多 200 字。</td></tr>
+          <tr><td>描述</td><td>活動說明，例如規則、獎品。</td></tr>
+          <tr><td>開始時間／結束時間</td><td>活動開放的期間。結束時間要晚於開始時間，不然存不了。</td></tr>
+          <tr><td>每次提交積分</td><td>客戶每參加一次可以拿到幾點，不送點就填 0。</td></tr>
+          <tr><td>選項（投票、競猜）</td><td>每列一個選項，空白的列會自動略過。競猜要勾出「正確」答案。</td></tr>
+          <tr><td>欄位（表單）</td><td>「欄位 key」是系統用的英文代號（例如 <code>name</code>、<code>phone</code>），每列不要重複；「顯示名稱」是客戶看到的文字；型態有文字、多行、Email、電話、日期、選單。</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 表單欄位型態「選單」沒有地方輸入選單選項，建出來是空選單；只填 key 或只填名稱的欄位會被靜默丟掉；每次提交積分可輸入負數。 -->
+      <div class="warn"><span>⚠️</span><div>
+        <b>填表單時請注意三件事：</b><br>
+        1. 欄位型態先不要選「選單」：目前沒有地方填選單的選項，建出來會是空的。需要讓客戶選擇時，改用投票活動。<br>
+        2. 每個欄位的「欄位 key」和「顯示名稱」都要填。只填一個的那列，按「建立」後會直接消失，系統不會提醒。<br>
+        3. 「每次提交積分」請填 0 或正數，不要填負數。
+      </div></div>
+      <div class="info"><span>ℹ️</span><div>投票和競猜至少要放兩個選項，競猜要記得勾正確答案。系統不會替你檢查，建立前自己看一遍。</div></div>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 活動狀態與按鈕</h2>
+      <p>每張卡片右上角是狀態，底下的按鈕會跟著狀態改變。活動照這個順序往前走：</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch11-activity-list.png" alt="活動管理列表：每張卡片顯示類型、狀態、參加人數與操作按鈕" loading="lazy">
+        <figcaption>活動管理：草稿卡片有「發布」「編輯」「刪除」，已結束的卡片只剩「封存」。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>狀態</th><th>代表什麼</th><th>可以按的按鈕</th></tr></thead>
+        <tbody>
+          <tr><td><b>草稿</b></td><td>還在準備，客戶看不到</td><td>「發布」「編輯」「刪除」</td></tr>
+          <tr><td><b>進行中</b></td><td>已經發布</td><td>「結束」</td></tr>
+          <tr><td><b>已結束</b></td><td>活動停止，紀錄還在</td><td>「封存」</td></tr>
+          <tr><td><b>已封存</b></td><td>收起來，不出現在列表</td><td>「取消封存」（回到已結束）</td></tr>
+        </tbody>
+      </table>
+      <ol class="steps">
+        <li>要修改內容：只有「草稿」可以按「編輯」，改完按「儲存」。發布後就不能改了。</li>
+        <li>要收起已結束的活動：按「封存」，確認後活動就從列表消失，參加紀錄會保留。</li>
+        <li>要找回封存的活動：按左上角「查看已封存」，在該活動按「取消封存」；按「返回活動列表」回到原本的清單。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: 發布、結束沒有確認視窗，結束不可逆。 -->
+      <div class="warn"><span>⚠️</span><div><b>「發布」和「結束」按下去就立刻生效，不會再問你一次。</b>結束之後沒辦法重新開始，只能再建一個新活動。「刪除」只有草稿才有，刪了就救不回來。</div></div>
+      <div class="info"><span>ℹ️</span><div>活動清單會列出所有活動，不會只顯示前幾筆。用不到的活動結束後記得「封存」，清單比較好找。</div></div>
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 提交紀錄與抽獎</h2>
+      <p>「提交紀錄」用來看某個活動有誰參加、填了什麼，也可以從參加者裡隨機抽出中獎者。客戶入口開放之前，這裡都會顯示「尚無提交記錄」。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch11-submissions.jpg">
+          <source src="uploads/videos/ch11-submissions.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>選一個活動、看參加者表格和「抽獎」按鈕的位置（約 18 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>側欄點「粉絲活動 &gt; 提交紀錄」。</li>
+        <li>在「選擇活動」下拉選單挑一個活動，下方會出現參加者表格。</li>
+        <li>要抽獎：按「抽獎」，在「隨機抽獎」視窗填「抽出人數」，再按視窗裡的「抽獎」。中獎名單會顯示在視窗下方，表格的「中獎」欄也會標出來。</li>
+      </ol>
+      <table>
+        <thead><tr><th>表格欄位</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>聯絡人</td><td>參加的客戶</td></tr>
+          <tr><td>提交時間</td><td>客戶送出的時間</td></tr>
+          <tr><td>答案摘要</td><td>目前只顯示選了幾個選項、填了幾個欄位，看不到實際內容</td></tr>
+          <tr><td>得分</td><td>只有競猜活動才有</td></tr>
+          <tr><td>中獎</td><td>抽中的人會顯示「中獎」</td></tr>
+          <tr><td>積分</td><td>這次參加拿到的點數</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 抽獎沒有確認、可重複加抽、不可撤銷；封存的活動不出現在下拉。 -->
+      <div class="warn"><span>⚠️</span><div><b>抽獎結果會直接存下來，不能收回。</b>同一個視窗再按一次「抽獎」，會從還沒中獎的人裡<b>再多抽一批</b>，不是重抽。按之前先確認人數。另外，封存的活動不會出現在「選擇活動」裡，要抽獎請在封存前完成。</div></div>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 積分管理</h2>
+      <p>查詢某位客戶目前有幾點、點數怎麼來的，也可以手動加點（例如客訴補償）或扣點。</p>
+      <!-- RESHOOT: 積分搜尋改版：客戶名稱旁多了電話與 Email、多位符合時會列出候選清單，手動調整視窗多一行「調整對象」；影片是舊畫面 -->
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch11-points.jpg">
+          <source src="uploads/videos/ch11-points.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>搜尋客戶、核對名稱，再打開「手動調整」填金額與備註（約 25 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>側欄點「粉絲活動 &gt; 積分管理」。</li>
+        <li>在搜尋框輸入客戶的名稱、電話或 Email，按 Enter 或放大鏡。</li>
+        <li>只有一位符合時，系統會直接帶出這位客戶。有好幾位符合時，畫面會顯示「有 N 位符合，請選擇要調整的聯絡人」，並列出每一位的名稱、電話與 Email，<b>點選你要的那一位</b>。</li>
+        <li>核對畫面上的客戶名稱、電話與 Email，確定是你要找的人。名稱旁邊是目前點數，下方是交易紀錄。</li>
+        <li>按「手動調整」，在「調整金額（正數加、負數扣）」填數字，例如加 50 點填 <code>50</code>、扣 20 點填 <code>-20</code>。</li>
+        <li>在「備註」寫原因，例如「客訴補償」，之後查紀錄才知道為什麼。</li>
+        <li>視窗上方會再顯示一次「調整對象」，確認無誤後按「確認調整」。視窗關閉、點數更新就是成功了。</li>
+      </ol>
+      <!-- RESHOOT: 客戶名稱旁現在會顯示電話與 Email，截圖沒有 -->
+      <figure class="shot">
+        <img src="uploads/shots/ch11-points.png" alt="積分管理：搜尋框、客戶名稱、點數與交易紀錄表" loading="lazy">
+        <figcaption>搜尋後會顯示客戶名稱、目前點數和交易紀錄。</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div>
+        符合的人太多（超過 20 位）時只會列出前 20 位，畫面會提醒你輸入更完整的電話或 Email 再搜尋。搜尋不到人時會顯示「找不到符合的聯絡人」。<br>
+        按「確認調整」後如果沒有成功，視窗裡會用紅字顯示原因（例如你沒有調整權限），請依提示處理或找管理員確認，不要一直重按。
+      </div></div>
+      <!-- RESHOOT: 手動調整視窗現在上方多一行「調整對象：名稱 電話・Email」，截圖沒有 -->
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch11-points-adjust.png" alt="手動調整積分視窗：調整金額與備註" loading="lazy">
+        <figcaption>手動調整：正數加點、負數扣點，記得寫備註。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>交易類型</th><th>代表什麼</th></tr></thead>
+        <tbody>
+          <tr><td>活動參與</td><td>客戶參加活動自動拿到的點數</td></tr>
+          <tr><td>人工調整</td><td>同事用「手動調整」加的或扣的點數</td></tr>
+          <tr><td>兌換扣除</td><td>保留給之後的點數兌換功能，目前不會出現</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>調整金額只能是整數，輸入小數會被自動去掉小數點後面的數字。交易紀錄會列出這位客戶的所有紀錄。</div></div>
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch10-line.html">← 10 · LINE 渠道工具</a></span>
+      <span>下一章：<a href="ch12-shortlinks.html">12 · 短連結 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>

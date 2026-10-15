@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>收件匣 · open333CRM 操作手冊</title>
 <script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-<link rel="stylesheet" href="design-system.css?v=3">
+<link rel="stylesheet" href="design-system.css?v=4">
 </head>
 <body>
 
@@ -23,259 +23,314 @@
 <div class="manual-layout">
   <aside class="manual-toc">
     <p class="toc-title">本章目錄</p>
-    <a href="#p1"><span class="n">1</span> 功能總覽</a>
-    <a href="#p2"><span class="n">2</span> 三欄式版面</a>
-    <a href="#p3"><span class="n">3</span> 對話列表</a>
-    <a href="#p4"><span class="n">4</span> 進階篩選</a>
-    <a href="#p5"><span class="n">5</span> 聊天視窗表頭</a>
-    <a href="#p6"><span class="n">6</span> 回覆訊息</a>
-    <a href="#p7"><span class="n">7</span> 套用模板</a>
-    <a href="#p8"><span class="n">8</span> AI 建議回覆</a>
-    <a href="#p9"><span class="n">9</span> 接管 Bot 對話</a>
-    <a href="#p10"><span class="n">10</span> 結案與滿意度</a>
-    <a href="#p11"><span class="n">11</span> 聯繫人資訊面板</a>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 對話列表與篩選</a>
+    <a href="#p3"><span class="n">3</span> 打開對話與顧客資料</a>
+    <a href="#p4"><span class="n">4</span> 接管 Bot 與交回 Bot</a>
+    <a href="#p5"><span class="n">5</span> 回覆訊息</a>
+    <a href="#p6"><span class="n">6</span> 插入模板</a>
+    <a href="#p7"><span class="n">7</span> AI 建議回覆</a>
+    <a href="#p8"><span class="n">8</span> 結案</a>
+    <a href="#p9"><span class="n">9</span> 從對話建立工單</a>
+    <a href="#p10"><span class="n">10</span> 登記連結與綁定連結</a>
   </aside>
 
   <main class="manual-main">
     <section class="hero">
       <div class="inner">
-        <div class="eyebrow">CHAPTER 01 · 日常客服作業</div>
+        <div class="eyebrow">CHAPTER 01 · 客服工作</div>
         <h1>收件匣</h1>
-        <p>在單一畫面接收與回覆來自 LINE、Facebook、網頁聊天的所有客戶訊息。取用 AI 建議回覆、從 Bot 接管對話、套用模板、建立工單，並在對話結束後發送滿意度調查。</p>
+        <p>LINE、Facebook、Instagram、網頁聊天的訊息全部集中在這裡。你可以看 Bot 回了什麼、需要時接手親自回覆、處理完結案或開工單追蹤。</p>
       </div>
     </section>
 
     <section class="doc" id="p1">
-      <h2><span class="idx">1</span> 功能總覽</h2>
-      <p>「收件匣」是客服人員每天的主要工作區。所有通道的客戶訊息都會匯集到這裡，以三欄式介面呈現。客服在這裡即時收發訊息、管理對話狀態、指派客服、接管 Bot 對話、取用 AI 建議回覆、套用模板、加入標籤，以及從對話直接建立工單。</p>
-      <div class="flow">
-        <div class="flow-step"><div class="fn">STEP 1</div><div class="ft">選對話</div><div class="fd">從左欄挑一則進行中的對話</div></div>
-        <div class="flow-step"><div class="fn">STEP 2</div><div class="ft">看脈絡</div><div class="fd">右欄查看聯繫人與歷史</div></div>
-        <div class="flow-step"><div class="fn">STEP 3</div><div class="ft">回覆</div><div class="fd">打字、套模板或用 AI 建議</div></div>
-        <div class="flow-step"><div class="fn">STEP 4</div><div class="ft">結案</div><div class="fd">問題解決後結案並調查滿意度</div></div>
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>收件匣是客服每天最常待的地方。畫面分三欄：左邊是對話列表，中間是聊天內容，右邊是這位顧客的資料。從左側選單「客服工作 → 收件匣」進入。</p>
+      <div class="quick">
+        <a href="#p2"><b>找對話</b>切換進行中、已關閉，搜尋或篩選</a>
+        <a href="#p3"><b>看顧客資料</b>渠道、標籤、其他渠道的對話</a>
+        <a href="#p4"><b>接管與交回 Bot</b>需要真人時接手，處理完交回</a>
+        <a href="#p5"><b>回覆訊息</b>打字、加快速回覆按鈕、傳圖片</a>
+        <a href="#p6"><b>插入模板</b>常用回覆一鍵帶入</a>
+        <a href="#p7"><b>AI 建議回覆</b>參考知識庫給的回覆建議</a>
+        <a href="#p8"><b>結案</b>問題處理完把對話關掉</a>
+        <a href="#p9"><b>建立工單</b>需要後續追蹤的問題開成工單</a>
       </div>
-      <div class="info"><span>ℹ️</span><div><b>進入方式：</b>登入後點左側選單「收件匣」，或直接開啟網址 <code>/dashboard/inbox</code>。</div></div>
+      <figure class="shot">
+        <img src="uploads/shots/ch01-overview.png" alt="收件匣三欄畫面：左邊對話列表、中間聊天內容、右邊顧客資料" loading="lazy">
+        <figcaption>收件匣三欄：對話列表、聊天內容、顧客資料。（顧客姓名與訊息已模糊處理）</figcaption>
+      </figure>
     </section>
 
     <section class="doc" id="p2">
-      <h2><span class="idx">2</span> 三欄式版面</h2>
-      <p>收件匣採三欄佈局，各司其職：</p>
-      <figure class="shot">
-        <img src="uploads/shots/page-inbox.png" alt="收件匣三欄介面：左對話列表、中聊天視窗、右聯繫人資訊" loading="lazy">
-        <figcaption>收件匣完整介面：左對話列表、中聊天視窗、右聯繫人資訊面板。</figcaption>
+      <h2><span class="idx">2</span> 對話列表與篩選</h2>
+      <p>左欄列出所有對話，最新的在最上面。用上方的分頁和搜尋，很快就能找到你要處理的那一筆。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-list.jpg">
+          <source src="uploads/videos/ch01-list.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>切換分頁、搜尋、用進階篩選找對話（約 40 秒）</figcaption>
       </figure>
+      <ol class="steps">
+        <li>上方切換「進行中」或「已關閉」。看已關閉的對話時，可以選「最近 7 天／最近 30 天／最近 90 天」。</li>
+        <li>「進行中」底下再分「全部」「未讀」「我的」（指派給你的）。</li>
+        <li>在「搜尋對話...」輸入聯絡人名稱或訊息內容。</li>
+        <li>要更精準，按搜尋框右邊的滑桿按鈕，打開「進階篩選」，勾選「對話狀態」「渠道」，選「指派」對象，再按「套用篩選」。</li>
+        <li>套用後，列表上方會出現篩選條件和「篩選結果：N 個對話」。按條件旁的 X 移除，或回到進階篩選按「清除全部」。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch01-filter.png" alt="進階篩選：對話狀態、渠道、指派" loading="lazy">
+        <figcaption>進階篩選：依狀態、渠道、指派對象過濾。</figcaption>
+      </figure>
+      <h3>列表上的小標記</h3>
       <table>
-        <thead><tr><th>欄位</th><th>內容</th><th>用途</th></tr></thead>
+        <thead><tr><th>看到什麼</th><th>代表</th></tr></thead>
         <tbody>
-          <tr><td>左欄</td><td>對話列表</td><td>切換分頁、搜尋與篩選、點選要處理的對話</td></tr>
-          <tr><td>中欄</td><td>聊天視窗</td><td>收發訊息、指派客服、變更狀態、AI 建議、結案</td></tr>
-          <tr><td>右欄</td><td>聯繫人資訊</td><td>查看客戶資料、標籤、渠道身份，並可建立工單</td></tr>
+          <tr><td>頭像右下角的小圖示</td><td>這筆對話來自哪個渠道（LINE、Facebook…）</td></tr>
+          <tr><td>第三行的小字</td><td>渠道名稱。同時有好幾個 LINE 官方帳號時，用它分辨</td></tr>
+          <tr><td>紫色「Bot」</td><td>目前由 Bot 自動回覆中</td></tr>
+          <tr><td>藍色數字</td><td>還沒讀的訊息數</td></tr>
+          <tr><td>檔案小圖示</td><td>這筆對話已經開了工單</td></tr>
+          <tr><td>紅字預覽</td><td>最後一則訊息沒有送出，顧客沒收到</td></tr>
         </tbody>
       </table>
+      <div class="info"><span>ℹ️</span><div>列表一次顯示最近的 50 筆對話。「未讀」「我的」和搜尋框都只在這 50 筆裡找。找不到比較舊的對話時，請改到「聯絡人」頁找到這位顧客，再看他的對話紀錄。</div></div>
+      <!-- KNOWN-ISSUE: 列表固定只載入 50 筆、無載入更多，子分頁與搜尋只在前端過濾 -->
     </section>
 
     <section class="doc" id="p3">
-      <h2><span class="idx">3</span> 對話列表</h2>
-      <p>左欄頂端有「<b>進行中</b>」與「<b>已關閉</b>」兩個主分頁。「進行中」分頁下另有「全部 / 未讀 / 我的」子分頁；「已關閉」分頁則提供時間範圍下拉（最近 7 / 30 / 90 天，預設 30 天）。搜尋框可即時過濾（比對聯繫人名稱與最後訊息內容）。</p>
-
-      <h3>對話項目上的標記</h3>
-      <p>每則對話會顯示頭像、聯繫人名稱、相對時間、渠道徽章與最後訊息預覽，並依情況出現以下標記：</p>
+      <h2><span class="idx">3</span> 打開對話與顧客資料</h2>
+      <p>點左欄任一筆對話，中間會顯示聊天內容，右邊顯示這位顧客的資料。回覆前先看一眼右邊，能少問很多問題。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-open.jpg">
+          <source src="uploads/videos/ch01-open.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開一筆對話，看表頭、訊息與右側顧客資料（約 25 秒）</figcaption>
+      </figure>
+      <h3>表頭</h3>
+      <figure class="shot">
+        <img src="uploads/shots/ch01-header.png" alt="聊天視窗表頭：聯絡人、渠道、狀態、負責客服與操作按鈕" loading="lazy">
+        <figcaption>表頭：聯絡人名稱、渠道、目前狀態、負責客服，右邊是操作按鈕。</figcaption>
+      </figure>
       <table>
-        <thead><tr><th>標記</th><th>意義</th></tr></thead>
+        <thead><tr><th>看到什麼</th><th>說明</th></tr></thead>
         <tbody>
-          <tr><td><span class="tag purple">Bot 中</span></td><td>此對話正由 Bot 自動處理</td></tr>
-          <tr><td><span class="tag green">● 綠點</span></td><td>最後訊息情緒為正面</td></tr>
-          <tr><td><span class="tag red">● 紅點</span></td><td>最後訊息情緒為負面</td></tr>
-          <tr><td>檔案圖示</td><td>此對話已關聯工單</td></tr>
-          <tr><td>未讀數徽章</td><td>未讀訊息數（超過 99 顯示「99+」）</td></tr>
+          <tr><td>渠道標籤</td><td>顧客從哪個渠道傳來，例如「LINE」加上官方帳號名稱</td></tr>
+          <tr><td>狀態</td><td>「Bot 處理中」表示 Bot 在回；「已處理」表示客服已接手處理中；「已關閉」表示已結案</td></tr>
+          <tr><td>負責客服下拉（顯示「未指派」或客服名字）</td><td>把這筆對話交給某位客服。選了就立刻生效</td></tr>
+          <tr><td>燈泡按鈕</td><td>AI 建議回覆，見第 7 節</td></tr>
+          <tr><td>「交回 Bot」</td><td>客服接手後才會出現，見第 4 節</td></tr>
+          <tr><td>紅色「結案」</td><td>關閉這筆對話，見第 8 節</td></tr>
         </tbody>
       </table>
-      <p>「已關閉」分頁的對話項目還會顯示 CSAT 星等分數。非文字訊息的預覽會顯示類型標示，例如 <code>[圖片]</code>、<code>[檔案]</code>、<code>[卡片訊息]</code>、<code>[貼圖]</code>、<code>[影片]</code>、<code>[語音]</code>、<code>[位置]</code>。</p>
+      <div class="warn"><span>⚠️</span><div>要關閉對話時，請用紅色「結案」按鈕，<b>不要</b>用表頭最右邊的狀態下拉直接選「已關閉」。用下拉關閉不會留下結案原因，系統也不會把它當成正式結案。</div></div>
+      <!-- KNOWN-ISSUE: 狀態下拉選「已關閉」不會記錄結案原因與時間，也不觸發結案後續流程 -->
+      <div class="info"><span>ℹ️</span><div>改負責客服或狀態沒有成功時，聊天視窗上方會出現一行紅字說明原因，下拉也會回到原本的值。如果原因是權限不足，請找管理員開通「管理對話」權限。</div></div>
+
+      <h3>訊息泡泡</h3>
+      <table>
+        <thead><tr><th>看到什麼</th><th>代表</th></tr></thead>
+        <tbody>
+          <tr><td>白色泡泡（靠左）</td><td>顧客傳來的訊息。下方會標情緒（正面／中性／負面）</td></tr>
+          <tr><td>紫色泡泡，標「Bot 回覆」</td><td>Bot 自動回覆。會顯示「信心值」、怎麼找到答案（關鍵字命中、知識庫命中…）與「參考來源」</td></tr>
+          <tr><td>藍色泡泡（靠右）</td><td>客服回覆的訊息</td></tr>
+          <tr><td>標「系統自動發送」</td><td>系統替顧客送出的登記或綁定訊息，不是 AI 回的</td></tr>
+          <tr><td>紅字「這則訊息沒有送出，對方並未收到」</td><td>這則訊息沒送到顧客那邊，冒號後面會寫原因。客服自己回的訊息、自動送出的訊息都會這樣標示。請確認原因後重新回覆一次，或改用其他方式聯繫</td></tr>
+          <tr><td>黃框「需要客服處理」</td><td>系統沒辦法自動把這位顧客的帳號整合起來，請到「聯絡人」頁手動合併</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>聊天視窗顯示最近 50 則訊息，訊息時間只顯示幾點幾分。要看更早的內容，請到「聯絡人」頁的「對話紀錄」。</div></div>
+      <!-- KNOWN-ISSUE: 對話只載入最新 50 則，畫面上沒有載入更早訊息的方式 -->
+
+      <h3>右側顧客資料</h3>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch01-contact-panel.png" alt="右側顧客資料面板：渠道、其他渠道的對話、標籤與操作按鈕" loading="lazy">
+        <figcaption>右側顧客資料：渠道、其他渠道的對話、標籤與按鈕。（姓名與對話內容已模糊）</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>區塊</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>BOT 狀態</td><td>Bot 處理中時顯示，看得到 Bot 已經回了幾次</td></tr>
+          <tr><td>結案資訊</td><td>已結案且有工單時顯示：滿意度評分、首次回覆時間、關閉時間</td></tr>
+          <tr><td>渠道</td><td>這位顧客用過的渠道</td></tr>
+          <tr><td>其他渠道的對話</td><td>同一位顧客在別的渠道的對話（例如 LINE 和 Facebook 都有傳訊息）。點一下展開最近 20 則訊息</td></tr>
+          <tr><td>聯絡人標籤</td><td>貼在顧客身上的標籤，這裡只能看。要改請到「聯絡人」頁</td></tr>
+          <tr><td>對話標籤</td><td>貼在這筆對話上的標籤。從「選擇標籤...」挑一個按「+」加上，按標籤上的 X 移除</td></tr>
+          <tr><td>自訂屬性</td><td>顧客的其他資料，例如會員等級</td></tr>
+          <tr><td>「建立工單」「查看完整資料」</td><td>開工單（第 9 節），或到聯絡人頁看完整資料</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>「對話標籤」沒有可選的標籤時，請管理員先到「設定 → 標籤管理」建立對話用的標籤。看到紅字「其他渠道的對話載入失敗」，通常是帳號沒有「查看聯絡人」權限，請找管理員開通，重新整理沒有用。</div></div>
+      <!-- KNOWN-ISSUE: 沒有查看聯絡人權限時，其他渠道的對話每筆都顯示紅字 -->
     </section>
 
     <section class="doc" id="p4">
-      <h2><span class="idx">4</span> 進階篩選</h2>
-      <p>點搜尋框右側的滑桿圖示，從左側滑出「<b>進階篩選</b>」抽屜，可依三組條件精確過濾對話。</p>
-      <figure class="shot shot-narrow">
-        <img src="uploads/shots/inbox-filter.png" alt="進階篩選抽屜：對話狀態、渠道、指派" loading="lazy">
-        <figcaption>進階篩選：勾選對話狀態與渠道、選擇指派，按「套用篩選」。</figcaption>
+      <h2><span class="idx">4</span> 接管 Bot 與交回 Bot</h2>
+      <p>Bot 處理中的對話，輸入框是鎖住的。顧客需要真人協助時，由你「接管」；處理完再「交回 Bot」，讓 Bot 繼續自動回覆。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-takeover.jpg">
+          <source src="uploads/videos/ch01-takeover.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>「接管對話」與「交回 Bot」按鈕在哪裡（約 25 秒）</figcaption>
       </figure>
-      <table>
-        <thead><tr><th>條件</th><th>可選值</th><th>選法</th></tr></thead>
-        <tbody>
-          <tr><td>對話狀態</td><td>進行中、Bot 處理中、等待客服、已關閉</td><td>複選</td></tr>
-          <tr><td>渠道</td><td>LINE、Facebook、WebChat、WhatsApp</td><td>複選</td></tr>
-          <tr><td>指派</td><td>所有、我的對話、未指派</td><td>單選</td></tr>
-        </tbody>
-      </table>
-      <p>套用後，列表上方會出現可移除的<b>篩選膠囊</b>，並顯示「篩選結果：N 個對話」。要清除所有條件，點抽屜底部的「清除全部」。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch01-bot-banner.png" alt="Bot 自動處理中橫幅與接管對話按鈕" loading="lazy">
+        <figcaption>Bot 處理中時，訊息區上方會出現「Bot 自動處理中」和「接管對話」。</figcaption>
+      </figure>
+      <h3>接管對話</h3>
+      <ol class="steps">
+        <li>打開一筆標著「Bot」的對話。</li>
+        <li>按上方橫幅或輸入框上方的「接管對話」。</li>
+        <li>對話會指派給你，狀態變成「已處理」（客服處理中），輸入框就能打字了。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div><b>一按「接管對話」就會生效，不會再問一次。</b>系統會立刻傳一句「稍等，正在為您轉接客服人員」給顧客。確定要親自回覆再按。</div></div>
+      <!-- KNOWN-ISSUE: 接管時不會出現確認視窗，直接送出預設銜接訊息 -->
+      <h3>交回 Bot</h3>
+      <ol class="steps">
+        <li>處理完後，按表頭紫色的「交回 Bot」。</li>
+        <li>狀態變回「Bot 處理中」，訊息區出現一行「（你的名字）把對話交回 Bot」。之後顧客再傳訊息，Bot 會接著回。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>「交回 Bot」也是一按就生效。如果按鈕旁出現紅字，例如「這個渠道的機器人已關閉，無法交回 Bot」，表示這個渠道沒有開 Bot，請直接繼續由真人回覆，或把對話結案。</div></div>
     </section>
 
     <section class="doc" id="p5">
-      <h2><span class="idx">5</span> 聊天視窗表頭</h2>
-      <p>選定對話後，中欄上方的表頭顯示聯繫人名稱、渠道徽章、狀態徽章，以及一排操作控制項。下圖為一個「Bot 自動處理中」的對話，可看到狀態橫幅、鎖定的輸入區與「接管對話」按鈕：</p>
-      <figure class="shot">
-        <img src="uploads/shots/inbox-chatview.png" alt="聊天視窗：表頭控制項、Bot 自動處理中橫幅、接管對話按鈕、右欄 Bot 狀態" loading="lazy">
-        <figcaption>聊天視窗：表頭（指派/狀態/AI 建議/結案）、Bot 處理中橫幅、鎖定輸入區、右欄聯繫人面板。</figcaption>
+      <h2><span class="idx">5</span> 回覆訊息</h2>
+      <p>接管後，在下方輸入框打字回覆。訊息會從顧客原本的渠道送出，例如 LINE 的對話就回到 LINE。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-reply.jpg">
+          <source src="uploads/videos/ch01-reply.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>在輸入框打字，並替 LINE 訊息加上快速回覆按鈕（約 35 秒）</figcaption>
       </figure>
-      <p>表頭的操作控制項：</p>
-      <table>
-        <thead><tr><th>控制項</th><th>功能</th></tr></thead>
-        <tbody>
-          <tr><td>指派客服下拉</td><td>把對話指派給某位客服（第一項為「未指派」）</td></tr>
-          <tr><td>狀態下拉</td><td>切換對話狀態：進行中、已處理、已關閉</td></tr>
-          <tr><td>AI 建議（燈泡圖示）</td><td>開啟 AI 建議回覆面板（對話未關閉時顯示）</td></tr>
-          <tr><td>結案</td><td>結束此對話（未關閉時顯示）</td></tr>
-        </tbody>
-      </table>
-      <h3>狀態橫幅</h3>
-      <p>依對話狀態，聊天區上方會出現橫幅：</p>
-      <ul>
-        <li><b>Bot 自動處理中</b>：附「接管對話」按鈕（見第 9 節）</li>
-        <li><b>此對話已關閉</b>：附「重新開啟對話」按鈕</li>
-      </ul>
-      <div class="info"><span>ℹ️</span><div>對話狀態徽章文字對照：ACTIVE=進行中、BOT_HANDLED=Bot 處理中、AGENT_HANDLED=已處理、CLOSED=已關閉。</div></div>
+      <ol class="steps">
+        <li>在「輸入訊息...」框打字。按 Enter 送出，Shift+Enter 換行。用注音輸入法選字時按 Enter 不會誤送。</li>
+        <li>或按右邊的紙飛機按鈕送出。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>一則訊息最多 5000 字。如果沒送出去，輸入框下方會出現紅字「沒有送出：」加上原因，你打的字會留在框裡，修正後再按一次送出就好。</div></div>
+      <div class="info"><span>ℹ️</span><div>有時候訊息在後台送出了，卻在送到 LINE、Facebook 等渠道時失敗（例如渠道設定有問題）。這時那則訊息下方會出現紅字「這則訊息沒有送出，對方並未收到」和原因，顧客那邊收不到，請處理後重新回覆。</div></div>
+
+      <h3>LINE 快速回覆按鈕</h3>
+      <p>LINE 的對話可以在訊息下方附上按鈕，顧客點一下就能回覆，不用自己打字。</p>
+      <ol class="steps">
+        <li>按輸入框左邊的閃電按鈕（只有 LINE 對話才有）。</li>
+        <li>輸入「按鈕文字」（20 字以內）。「點擊後送出文字」可以留空，留空就送出按鈕上的字。</li>
+        <li>按「加入」。最多可以加 13 個按鈕。有設定好的常用組合時，也可以從「套用預設組」一次帶入。</li>
+        <li>打好訊息後送出，按鈕會跟著這則訊息出現在顧客的 LINE 裡。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>常用的按鈕組合，可以請管理員到「LINE 渠道工具 → 快速回覆」先設定好，見「<a href="ch10-line.html">10 · LINE 渠道工具</a>」。</div></div>
+
+      <h3>傳送圖片</h3>
+      <ol class="steps">
+        <li>按輸入框左邊的迴紋針按鈕。</li>
+        <li>選一張 PNG 或 JPG 圖片（20MB 以內）。選好就會直接送出，不會先預覽，請確認是對的圖再選。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>目前 LINE、Facebook、網頁聊天的對話可以傳圖片；Instagram 的對話還不能傳圖片。</div></div>
+      <!-- KNOWN-ISSUE: 前端允許 IG 上傳但後端回 501 -->
     </section>
 
     <section class="doc" id="p6">
-      <h2><span class="idx">6</span> 回覆訊息</h2>
-      <p>在中欄聊天視窗底部的輸入區打字即可回覆。<b>Enter 傳送、Shift+Enter 換行</b>（支援中文輸入法組字判斷，不會誤送）。輸入區左側有三個工具按鈕：</p>
-      <table>
-        <thead><tr><th>按鈕</th><th>功能</th></tr></thead>
-        <tbody>
-          <tr><td>附件</td><td>上傳圖片。僅支援 PNG / JPG，上限 20MB；且僅 LINE / FB / Webchat 可傳圖</td></tr>
-          <tr><td>模板</td><td>開啟「選擇模板」（見第 7 節）</td></tr>
-          <tr><td>快速回覆</td><td>（僅 LINE）加入快速回覆按鈕，上限 13 個、每個文字上限 20 字</td></tr>
-        </tbody>
-      </table>
-      <div class="warn"><span>⚠️</span><div>當對話為 <b>Bot 處理中</b> 或 <b>已關閉</b> 時無法直接輸入。Bot 處理中需先「接管對話」；已關閉需先「重新開啟對話」。輸入框會顯示對應提示（如「Bot 處理中，點擊「接管對話」以開始回覆」）。</div></div>
+      <h2><span class="idx">6</span> 插入模板</h2>
+      <p>常常要回的話，例如營業時間、退換貨說明，可以用模板一鍵帶進輸入框，再視情況修改。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-template.jpg">
+          <source src="uploads/videos/ch01-template.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開模板、切換分類與搜尋、選一個模板（約 20 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>按輸入框左邊的模板按鈕（滑鼠移上去顯示「模板」）。</li>
+        <li>下方出現「選擇模板」。用上方分類切換，或在「搜尋模板...」輸入關鍵字。</li>
+        <li>點一個模板。沒有要填的內容，就直接帶進輸入框。</li>
+        <li>標著「含變數」的模板，會先出現「填入變數值：」畫面，例如顧客姓名。填好看一下預覽，按「插入」。</li>
+        <li>帶進輸入框後，確認內容再送出。模板有附快速回覆按鈕的話，也會一起帶入。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>看到「沒有找到模板」，可能是你的帳號沒有「查看行銷」權限，或公司還沒有建立模板，請找管理員確認。</div></div>
+      <!-- KNOWN-ISSUE: 沒有行銷檢視權限時只顯示「沒有找到模板」；範本管理畫面已下線 -->
     </section>
 
     <section class="doc" id="p7">
-      <h2><span class="idx">7</span> 套用模板</h2>
-      <p>模板是預先寫好的罐頭訊息，可加快回覆速度、確保用語一致。點輸入區的<b>模板按鈕</b>，會從聊天視窗底部滑出「選擇模板」面板。整個流程分兩個階段。</p>
-
-      <h3>階段一：挑選模板</h3>
-      <p>面板上方是搜尋框（placeholder「搜尋模板...」），下方是分類分頁，再下方是模板清單。</p>
-      <table>
-        <thead><tr><th>元素</th><th>說明</th></tr></thead>
-        <tbody>
-          <tr><td>搜尋框</td><td>輸入關鍵字即時過濾模板名稱</td></tr>
-          <tr><td>分類分頁</td><td>全部 / 一般 / 服務類 / 行銷類 / 產品資訊 / 互動類 / FB / 問候，點分頁只顯示該分類的模板</td></tr>
-          <tr><td>模板項目</td><td>每筆顯示模板名稱、分類徽章、內容預覽首行</td></tr>
-        </tbody>
-      </table>
-      <p>每個模板項目上的徽章代表：</p>
-      <table>
-        <thead><tr><th>徽章</th><th>意義</th></tr></thead>
-        <tbody>
-          <tr><td><span class="tag gray">分類名</span></td><td>此模板所屬分類（如「服務類」）</td></tr>
-          <tr><td><span class="tag blue">含變數</span></td><td>此模板內含 <code>{{變數}}</code>，選取後需先填值</td></tr>
-        </tbody>
-      </table>
-      <div class="info"><span>ℹ️</span><div>找不到符合的模板時，清單會顯示「沒有找到模板」。模板清單也會依<b>目前對話的渠道</b>過濾（例如 FB 模板只在 FB 對話出現）。</div></div>
-
-      <h3>階段二：填入變數（僅含變數的模板）</h3>
-      <p>模板分兩種情況：</p>
-      <div class="flow">
-        <div class="flow-step"><div class="fn">情況 A</div><div class="ft">無變數</div><div class="fd">點模板 → 內容直接插入輸入框</div></div>
-        <div class="flow-step"><div class="fn">情況 B</div><div class="ft">含變數</div><div class="fd">點模板 → 進入填值畫面 → 填完按「插入」</div></div>
-      </div>
-      <p>選到含 <code>{{變數}}</code> 的模板（例如 <code>{{contact_name}}</code>、<code>{{order_id}}</code>），會進入「<b>填入變數值</b>」畫面：</p>
-      <ul>
-        <li>每個變數一欄，左側顯示變數的<b>顯示名稱</b>（若模板有定義），右側是輸入框</li>
-        <li>有<b>預設值</b>的變數會自動帶入，可直接沿用或修改</li>
-        <li>下方「<b>預覽</b>」區即時顯示變數替換後的<b>最終訊息內容</b>——所見即所送</li>
-        <li>確認無誤後按右下角「<b>插入</b>」，把渲染好的完整內容帶進輸入框</li>
-        <li>左上角的返回箭頭可回到模板清單重選</li>
-      </ul>
-      <div class="warn"><span>⚠️</span><div>沒填的變數會在送出時<b>維持原樣</b>（顯示成 <code>{{變數名}}</code>），插入前務必檢查預覽區確認每個變數都已替換。</div></div>
-      <div class="tip-ai"><span>✨</span><div>模板的內容、分類與變數定義在「行銷 → 素材庫」與範本系統中建立管理，詳見「<a href="ch06-marketing.html">06 · 行銷推播</a>」。善用變數可讓罐頭訊息也帶個人化稱呼，兼顧效率與溫度。</div></div>
+      <h2><span class="idx">7</span> AI 建議回覆</h2>
+      <p>不確定怎麼回時，可以請 AI 根據顧客最後一則文字訊息，到知識庫找答案，給你幾則建議回覆參考。</p>
+      <ol class="steps">
+        <li>按表頭的燈泡按鈕（「AI 建議回覆」）。對話已結案時不會顯示。</li>
+        <li>聊天區右上角出現「AI 建議回覆」，每則建議附上信心值（綠色最有把握、黃色普通、紅色較沒把握）和參考的知識庫文章。</li>
+        <li>挑一則合適的，按它下方的「採用」。建議的文字會帶進輸入框，面板同時關閉。</li>
+        <li>視情況修改文字，確認後再送出。「採用」不會直接送出，送出前你都可以改。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>出現「無法取得建議」時，常見原因是：顧客最後傳的是圖片不是文字、知識庫裡沒有相關文章，或 AI 服務暫時無法使用。請直接自己回覆。</div></div>
     </section>
 
     <section class="doc" id="p8">
-      <h2><span class="idx">8</span> AI 建議回覆</h2>
-      <p>點聊天視窗表頭的<b>燈泡圖示</b>（AI 建議回覆），系統會依對話脈絡與知識庫產生數則建議回覆，於右側浮出面板。</p>
-      <p>每則建議顯示：</p>
-      <ul>
-        <li><b>建議內文</b></li>
-        <li><b>信心值百分比</b>：<span class="tag green">≥80% 綠</span> / <span class="tag orange">≥50% 黃</span> / <span class="tag red">其餘紅</span></li>
-        <li><b>知識庫參考連結</b>：這則建議引用了哪些 KB 文章</li>
-        <li><b>採用按鈕</b>：把該建議帶入輸入框</li>
-      </ul>
-      <div class="tip-ai"><span>✨</span><div>AI 建議是<b>輔助</b>——採用後仍可編輯再送出，最終內容由你把關。信心值低的建議請特別留意是否正確。</div></div>
+      <h2><span class="idx">8</span> 結案</h2>
+      <p>問題處理完，就把對話結案。結案後對話會從「進行中」移到「已關閉」；顧客之後再傳訊息，系統會自動開一筆新對話。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-close.jpg">
+          <source src="uploads/videos/ch01-close.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開結案對話框、填結案原因（示範中按取消）（約 15 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>按表頭紅色的「結案」。</li>
+        <li>跳出「結案此對話」，可以在「結案原因（選填）」寫一句，例如「問題已解決」「客戶未回覆」。</li>
+        <li>按「確認結案」。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch01-close-dialog.png" alt="結案此對話對話框，含結案原因欄位" loading="lazy">
+        <figcaption>結案對話框：結案原因可以不填。</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div>已結案的對話，訊息區上方會顯示「此對話已關閉」，要繼續處理就按「重新開啟對話」。</div></div>
+      <div class="warn"><span>⚠️</span><div>聊天紀錄裡的滿意度評分卡（「請評價此次服務體驗」）是給顧客填的，<b>請不要在後台點星星</b>，點了會變成以顧客名義送出評分，讓滿意度數字不準。</div></div>
+      <!-- KNOWN-ISSUE: 客服後台的 CSAT 卡片可點選並送出評分 -->
     </section>
 
     <section class="doc" id="p9">
-      <h2><span class="idx">9</span> 接管 Bot 對話</h2>
-      <p>當對話由 Bot 自動處理時，狀態橫幅會顯示「Bot 自動處理中」與「接管對話」按鈕。點「接管對話」開啟接管視窗，內含：</p>
-      <table>
-        <thead><tr><th>區塊</th><th>內容</th></tr></thead>
-        <tbody>
-          <tr><td>Bot 對話摘要</td><td>AI 自動整理目前為止的對話重點</td></tr>
-          <tr><td>Bot 回覆記錄</td><td>列出 Bot 已回覆的訊息</td></tr>
-          <tr><td>指派客服</td><td>預設「自動指派（我自己）」，指派策略為「最少負荷」</td></tr>
-          <tr><td>銜接訊息</td><td>預設「稍等，正在為您轉接客服人員」，可自訂</td></tr>
-        </tbody>
-      </table>
-      <p>確認後按「確認接管」，對話即轉為由你處理，輸入區解鎖可回覆。</p>
+      <h2><span class="idx">9</span> 從對話建立工單</h2>
+      <p>需要後續追蹤的問題（例如要等廠商回覆、要安排維修），從對話直接開一張工單。顧客和這筆對話會自動帶進工單，不用另外找。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch01-case.jpg">
+          <source src="uploads/videos/ch01-case.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>從右側「建立工單」打開表單、填標題與分類（示範中按取消）（約 20 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>按右側的「建立工單」，跳出「建立案件」。</li>
+        <li>「來源對話」和「聯絡人」已經自動帶入，不能修改。</li>
+        <li>填「案件標題」（必填，100 字以內），需要的話寫「問題描述」。</li>
+        <li>選「優先級」（預設「中」）和「分類」（必填）。</li>
+        <li>「指派給」「SLA 政策」可以先不選；SLA 政策留著「依優先級自動套用」就好。</li>
+        <li>按「建立案件」，系統會直接帶你到這張工單的頁面。</li>
+      </ol>
+      <p>工單的欄位與後續處理，請看「<a href="ch02-cases.html">02 · 工單</a>」。</p>
     </section>
 
     <section class="doc" id="p10">
-      <h2><span class="idx">10</span> 結案與滿意度</h2>
-      <p>問題解決後，點表頭紅色的「<b>結案</b>」按鈕，系統會彈出確認對話框：</p>
-      <figure class="shot shot-narrow">
-        <img src="uploads/shots/inbox-close.png" alt="結案對話框：說明、結案原因輸入框、取消/確認結案按鈕" loading="lazy">
-        <figcaption>結案對話框：可填選填的結案原因，按「確認結案」完成。</figcaption>
-      </figure>
-      <p>對話框說明「結案後此對話將從 Inbox 列表移出。客戶若再次傳訊將自動開新對話。」可填寫選填的結案原因（例：問題已解決 / 客戶未回覆 / 重複對話），按「確認結案」。</p>
-      <h3>滿意度調查（CSAT）</h3>
-      <p>結案後系統可對客戶發送滿意度評分卡（1–5 星）。星等對應：</p>
+      <h2><span class="idx">10</span> 登記連結與綁定連結</h2>
+      <p>同一位顧客可能同時用 LINE 和 Facebook 找你。右側的這幾個按鈕，可以請顧客留下 Email、手機，或綁定其他渠道的帳號，系統就能認出「這是同一個人」，把資料整合在一起。</p>
       <table>
-        <thead><tr><th>星數</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
-        <tbody><tr><td>意義</td><td>非常不滿意</td><td>不滿意</td><td>一般</td><td>滿意</td><td>非常滿意</td></tr></tbody>
-      </table>
-      <div class="info"><span>ℹ️</span><div>低分（≤2）會自動通知主管介入關懷。詳細的滿意度統計見「<a href="ch10-analytics.html">10 · 數據報表</a>」。</div></div>
-    </section>
-
-    <section class="doc" id="p11">
-      <h2><span class="idx">11</span> 聯繫人資訊面板</h2>
-      <p>右欄由上而下顯示客戶的完整脈絡，讓你回應前先掌握對象：</p>
-      <figure class="shot shot-narrow">
-        <img src="uploads/shots/inbox-contactpanel.png" alt="聯繫人資訊面板：頭像、Bot 狀態、渠道、標籤、建立工單/查看完整資料按鈕" loading="lazy">
-        <figcaption>聯繫人資訊面板：頭像姓名、Bot 狀態、渠道、標籤，底部「建立工單」與「查看完整資料」。</figcaption>
-      </figure>
-      <table>
-        <thead><tr><th>區塊</th><th>內容</th></tr></thead>
+        <thead><tr><th>按鈕</th><th>做什麼</th></tr></thead>
         <tbody>
-          <tr><td>基本資料</td><td>頭像、姓名、電話、Email</td></tr>
-          <tr><td>Bot 狀態</td><td>（Bot 處理中時）模式、已回覆次數</td></tr>
-          <tr><td>結案資訊</td><td>（已關閉且有工單時）CSAT 評分、首回覆時間、關閉時間</td></tr>
-          <tr><td>渠道 / 標籤 / 自訂屬性</td><td>渠道徽章、聯繫人與對話標籤、自訂屬性</td></tr>
+          <tr><td>「傳送 email 登記連結」</td><td>在對話裡傳一個連結，請顧客填 Email</td></tr>
+          <tr><td>「傳送手機登記連結」</td><td>在對話裡傳一個連結，請顧客填手機號碼</td></tr>
+          <tr><td>「傳送跨渠道綁定連結」</td><td>傳一組綁定代碼，顧客到其他渠道輸入後就會綁在一起</td></tr>
         </tbody>
       </table>
-      <h3>底部操作</h3>
-      <table>
-        <thead><tr><th>按鈕</th><th>說明</th></tr></thead>
-        <tbody>
-          <tr><td>請求 Email</td><td>（LINE / FB 且尚無 email 時）向客戶發送索取 Email 的請求</td></tr>
-          <tr><td>建立工單</td><td>從此對話直接建立服務工單，聯繫人與來源對話自動帶入。詳見「<a href="ch02-cases.html">02 · 工單管理</a>」</td></tr>
-          <tr><td>查看完整資料</td><td>跳至該聯繫人的完整詳情頁</td></tr>
-        </tbody>
-      </table>
+      <ol class="steps">
+        <li>按右側對應的按鈕。</li>
+        <li>按鈕下方出現綠字「已在對話中送出…」就成功了。黃字是提醒（例如申請次數太多、沒有其他可綁定的渠道），紅字表示沒有送到顧客。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div>這幾個按鈕<b>按下就直接傳給顧客</b>，不會再確認。請先跟顧客說明要傳什麼，再按。</div></div>
+      <div class="info"><span>ℹ️</span><div>按鈕只有在管理員於「設定 → 跨渠道綁定」開啟對應功能後才會出現，見「<a href="ch17-settings.html">17 · 其他設定</a>」。切換到下一位顧客時，如果綁定按鈕下方還留著上一位的「已送出」訊息，那是上一位的結果，可以忽略。</div></div>
+      <!-- KNOWN-ISSUE: 切換對話時，發送綁定連結的結果訊息不會清掉 -->
     </section>
 
     <footer class="manual-footer">
-      <span><a href="index.html">← 回總目錄</a></span>
-      <span>下一章：<a href="ch02-cases.html">02 · 工單管理 →</a></span>
+      <span><a href="index.html">← 總目錄</a></span>
+      <span>下一章：<a href="ch02-cases.html">02 · 工單 →</a></span>
     </footer>
   </main>
 </div>
 
-<script>
-(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
-(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var y=window.scrollY+120;var idx=0;secs.forEach(function(s,i){if(s&&s.offsetTop<=y)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
-</script>
 <!-- 圖片放大 Lightbox -->
 <div id="lightbox" role="dialog" aria-modal="true">
   <button class="lb-close" aria-label="關閉">&times;</button>
@@ -300,6 +355,9 @@
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
 })();
 </script>
-
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
 </body>
 </html>
