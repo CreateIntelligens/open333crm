@@ -221,6 +221,13 @@ async function checkAutoHandoff(
   }
 }
 
+/** 規則有沒有條件。`{ all: [] }`、`{ any: [] }` 或沒有條件時，json-rules-engine 一律視為成立 */
+function hasRuleConditions(conditions: unknown): boolean {
+  if (!conditions || typeof conditions !== 'object') return false;
+  const { all, any } = conditions as { all?: unknown; any?: unknown };
+  return (Array.isArray(all) && all.length > 0) || (Array.isArray(any) && any.length > 0);
+}
+
 /**
  * 訊息命中的 active keyword.matched 規則中，有沒有能在這個渠道回覆顧客的動作。
  * agent 與 KB 自動回覆用來決定是否讓步（命中就讓 keyword 規則回，避免一次兩則）。
@@ -269,15 +276,33 @@ export async function hasMatchingKeywordRule(
   );
   if (validRules.length === 0) return false;
 
-  // 條件不成立時 workers 不執行規則，AI 讓步的話顧客什麼都收不到（問題清單 A09）
-  const facts = await buildAutomationFacts(prisma, {
-    tenantId,
-    conversationId: factContext.conversationId,
-    contactId: factContext.contactId,
-    messageContent: messageText,
-  });
+  // 條件不成立時 workers 不執行規則，AI 讓步的話顧客什麼都收不到（問題清單 A09）。
+  // 沒有條件的規則一定成立，不必讀條件資料。有條件的規則在無法評估時（沒有對話與聯絡人、
+  // 或讀取失敗）視為不成立：寧可 AI 照常回覆，也不要讓顧客收不到回覆（review #282）
+  const unconditionalRules = validRules.filter((rule) => !hasRuleConditions(rule.conditions));
+  let evaluableRules = validRules;
+  let facts: Record<string, unknown> = {};
+  if (unconditionalRules.length < validRules.length) {
+    if (!factContext.conversationId && !factContext.contactId) {
+      logger.warn('[KeywordYield] 沒有對話與聯絡人，有條件的規則無法評估，不讓步', { tenantId });
+      evaluableRules = unconditionalRules;
+    } else {
+      try {
+        facts = await buildAutomationFacts(prisma, {
+          tenantId,
+          conversationId: factContext.conversationId,
+          contactId: factContext.contactId,
+          messageContent: messageText,
+        });
+      } catch (err) {
+        logger.warn('[KeywordYield] 讀取條件資料失敗，有條件的規則不讓步', { tenantId, err });
+        evaluableRules = unconditionalRules;
+      }
+    }
+  }
+  if (evaluableRules.length === 0) return false;
   const passed = await evaluateRules(
-    validRules.map((rule) => ({
+    evaluableRules.map((rule) => ({
       id: rule.id,
       name: rule.name,
       priority: rule.priority,

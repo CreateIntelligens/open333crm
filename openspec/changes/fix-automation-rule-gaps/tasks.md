@@ -3,6 +3,7 @@
 - [x] 1.1 測試 `apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts`：「規則條件不成立」「規則不合契約」先確認失敗；「規則條件成立」與既有 6 個情境維持通過
 - [x] 1.2 `buildAutomationFacts` 移到 `packages/automation`（收 Prisma executor），workers 改用套件版本
 - [x] 1.3 `hasMatchingKeywordRule` 略過契約驗證失敗的規則，條件不成立的規則不算；兩個呼叫端傳入對話與聯絡人
+- [x] 1.4 測試「條件資料讀取失敗」「沒有對話與聯絡人時的條件規則」「沒有條件的規則」，先確認失敗；只在有條件的規則時讀條件資料，無法評估時不讓步（review #282）
 
 ## 2. 傳送通知的收件人（A03）
 

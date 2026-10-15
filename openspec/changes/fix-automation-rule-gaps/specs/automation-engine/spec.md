@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: AI 只在關鍵字規則能在該渠道回覆時讓步
-收到文字訊息時，若同租戶有啟用中的 `keyword.matched` 規則命中這則訊息，而且該規則通過契約驗證、條件成立，並至少有一個能在這則訊息的渠道回覆的動作，系統 SHALL 不送出 agent 或 KB 自動回覆。能回覆的動作是 `send_message`，或素材渠道與對話渠道相同的 `send_material`；而且 workers 要能送到這個渠道（`AUTOMATION_DELIVERY_CHANNEL_TYPES`，目前是 LINE、FB、Instagram）。沒有這樣的規則時，系統 SHALL 照常嘗試 AI 回覆。
+收到文字訊息時，若同租戶有啟用中的 `keyword.matched` 規則命中這則訊息，而且該規則通過契約驗證、條件成立，並至少有一個能在這則訊息的渠道回覆的動作，系統 SHALL 不送出 agent 或 KB 自動回覆。能回覆的動作是 `send_message`，或素材渠道與對話渠道相同的 `send_material`；而且 workers 要能送到這個渠道（`AUTOMATION_DELIVERY_CHANNEL_TYPES`，目前是 LINE、FB、Instagram）。沒有這樣的規則時，系統 SHALL 照常嘗試 AI 回覆。有條件的規則無法評估時（沒有對話與聯絡人，或讀取條件資料失敗），系統 SHALL 視為條件不成立；沒有條件的規則 SHALL 視為成立，不讀取條件資料。
 
 #### Scenario: 規則的素材是這個渠道的
 - **WHEN** IG 對話收到「你好」，命中的規則動作是 IG 素材的 `send_material`
@@ -34,6 +34,18 @@
 #### Scenario: 規則條件成立
 - **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，條件是「對話渠道等於 LINE」
 - **THEN** 不送出 AI 回覆
+
+#### Scenario: 條件資料讀取失敗
+- **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，有條件，讀取條件資料失敗
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 沒有對話與聯絡人時的條件規則
+- **WHEN** 收到「你好」，沒有對話與聯絡人，命中的規則動作是 `send_message`，條件是「對話渠道不等於 Facebook」
+- **THEN** 系統照常嘗試 AI 回覆
+
+#### Scenario: 沒有條件的規則
+- **WHEN** LINE 對話收到「你好」，命中的規則動作是 `send_message`，沒有條件
+- **THEN** 不送出 AI 回覆，也不讀取條件資料
 
 #### Scenario: 規則不合契約
 - **WHEN** LINE 對話收到「你好」，命中的規則有 `send_message` 和契約沒有的動作 `auto_assign`
