@@ -68,10 +68,18 @@ test('權杖無效：Graph API 回傳錯誤時回 400 CHANNEL_VERIFY_FAILED，de
   });
 });
 
-test('讀取 Instagram 渠道的憑證：verifyToken 完整回傳，appSecret 遮罩', async () => {
-  const { db } = igDb({ verifyToken: 'verify-abc', appSecret: 'secret-1234567890', pageAccessToken: 'token-abcdefghijk' });
+test('讀取 Instagram 渠道的憑證：verifyToken、appId、pageId 完整回傳，appSecret 與 pageAccessToken 遮罩', async () => {
+  const { db } = igDb({
+    verifyToken: 'verify-abc',
+    appId: 'app-1234567890',
+    pageId: 'page-1234567890',
+    appSecret: 'secret-1234567890',
+    pageAccessToken: 'token-abcdefghijk',
+  });
   const channel = await getChannel(db as never, CHANNEL, TENANT);
   assert.equal(channel.credentials.verifyToken, 'verify-abc');
+  assert.equal(channel.credentials.appId, 'app-1234567890');
+  assert.equal(channel.credentials.pageId, 'page-1234567890');
   assert.equal(channel.credentials.appSecret, 'secr...7890');
   assert.notEqual(channel.credentials.pageAccessToken, 'token-abcdefghijk');
 });

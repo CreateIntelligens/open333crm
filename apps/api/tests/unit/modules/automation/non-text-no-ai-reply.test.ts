@@ -69,7 +69,7 @@ beforeEach(() => {
 });
 
 /** 發布 message.received，等處理流程走到最後一步（排入自動化規則的佇列） */
-async function receive(contentType: string, content: Record<string, unknown>) {
+async function receive(contentType: string | undefined, content: Record<string, unknown>) {
   eventBus.publish({
     name: 'message.received',
     tenantId: 'tenant-1',
@@ -101,4 +101,9 @@ test('客人傳文字：執行 AI 自動回覆', async () => {
   await receive('text', { text: '請問營業時間' });
   assert.deepEqual(calls.agent, ['請問營業時間']);
   assert.equal(conversation.status, 'BOT_HANDLED');
+});
+
+test('事件沒有 contentType：視為文字訊息，執行 AI 自動回覆', async () => {
+  await receive(undefined, { text: '請問營業時間' });
+  assert.deepEqual(calls.agent, ['請問營業時間']);
 });
