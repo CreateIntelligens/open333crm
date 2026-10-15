@@ -64,6 +64,7 @@
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
+| [AUTH-10](#auth-10) | 帳號與登入 | P3 | 未處理 | 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | 執行時確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
@@ -556,6 +557,34 @@ refresh token 外洩之後，持有者可以持續換發 access token，直到 r
 平台帳號有同樣的問題，見 AUTH-03。
 
 **修正方向**：`Agent` 加上 `tokenVersion`，refresh token 帶上這個值；改密碼、重設密碼與登出時遞增，`POST /auth/refresh` 比對不符就拒絕。
+
+<a id="auth-10"></a>
+### AUTH-10：成員的 email 區分大小寫
+
+`Agent.email` 的唯一約束是 `@@unique([email])`，資料庫以原字串比對。寫入與查詢 email 的程式都沒有先轉成小寫：
+
+| 位置 | 用途 |
+| --- | --- |
+| `auth.service.ts` 的 `login()` | 網頁登入與 CLI 密碼登入，`findUnique({ where: { email } })` |
+| `auth.routes.ts` 的 passkey 登入選項 | 依 email 找成員的 passkey |
+| `agent.service.ts` 的 `createAgent()` | 建立成員前查重 |
+| `platform-tenant.service.ts` | 平台改成員的 email、開通租戶時建立第一位管理員，兩處都先查重 |
+
+只有登入失敗的計數（`login-attempts.ts`）先轉成小寫，因此主規格 `auth-session` 的「登入失敗達上限時鎖定帳號」把大小寫不同的 email 視為同一個帳號。
+
+2026-10-15 在本機開發環境確認：
+
+- 以 `Admin@open333crm.dev` 與正確密碼登入既有的 `admin@open333crm.dev`，回 401 `INVALID_CREDENTIALS`。
+- 已有 `agent@open333crm.dev` 時，建立 `AGENT@open333crm.dev` 回 201，資料庫多了一位成員。
+
+結果：
+
+- 成員輸入的 email 大小寫和建立時不同，就無法登入，畫面顯示的是「電子郵件或密碼不正確」。
+- 同一個信箱可以以不同的大小寫建立兩位成員，分屬不同租戶也可以。主規格 `auth-session` 的「登入依 email 解析所屬租戶」要求 email 在所有租戶之間唯一，但沒有規定大小寫，因此不算違反主規格。
+
+UAT 上有沒有只差大小寫的成員，還沒有查過。
+
+**修正方向**：建立、修改與登入時都先把 email 去掉頭尾空白並轉成小寫，查詢也以小寫比對。上線前先查出只差大小寫的成員，決定保留哪一位，再把既有的 email 全部轉成小寫。主規格補上「email 不分大小寫」。
 
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
