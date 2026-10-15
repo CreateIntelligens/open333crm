@@ -55,6 +55,7 @@
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> Rich Menu：建立選單</h2>
       <p>Rich Menu 是 LINE 聊天室最下面那一塊可以點的圖片選單，例如「會員專區／最新優惠／門市資訊」。在這裡做好之後發布到 LINE，好友打開聊天室就會看到。</p>
+      <!-- RESHOOT: 影片中「預設展開選單（使用者開啟對話時自動展開）」為舊標籤且預設勾選，字幕也是舊說法；現在是「設為所有好友的預設選單」、預設不勾、勾選會跳確認 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch10-richmenu-new.jpg">
           <source src="uploads/videos/ch10-richmenu-new.mp4" type="video/mp4">
@@ -66,7 +67,7 @@
         <li>按「建立 Rich Menu」（還沒有任何選單時是「建立第一個 Rich Menu」）。</li>
         <li>選一個版型（見下方表格，請選建議的版型）。</li>
         <li>填「名稱」（只給內部辨識用）和「底部按鈕文字」（好友在 LINE 看到的選單開關文字，最多 14 字，例如「會員專區」）。</li>
-        <li>決定要不要勾「預設展開選單」（請先看下方提醒）。</li>
+        <li>決定要不要勾「設為所有好友的預設選單」（見下方說明，預設不勾）。</li>
         <li>「背景圖」按「上傳」，上傳設計好的選單圖片（尺寸見下方）。</li>
         <li>在「區域設定」逐一點開「區域 1、2…」，設定每一塊點了要做什麼（第 3 節）。</li>
         <li>按「儲存草稿」。草稿只存在系統裡，不會影響 LINE 上的選單。</li>
@@ -76,24 +77,34 @@
         <figcaption>選擇版型：分大選單與小選單，格子位置不能改。</figcaption>
       </figure>
       <table>
-        <thead><tr><th>版型</th><th>大小</th><th>背景圖尺寸</th><th>可以用嗎</th></tr></thead>
+        <thead><tr><th>版型</th><th>大小</th><th>背景圖尺寸</th></tr></thead>
         <tbody>
-          <tr><td>2 × 2（四等分）</td><td>大選單</td><td>2500 × 1686</td><td>建議使用</td></tr>
-          <tr><td>上 1 + 下 2</td><td>大選單</td><td>2500 × 1686</td><td>建議使用</td></tr>
-          <tr><td>上 2 + 下 1</td><td>大選單</td><td>2500 × 1686</td><td>建議使用</td></tr>
-          <tr><td>上下 2 條</td><td>大選單</td><td>2500 × 1686</td><td>建議使用</td></tr>
-          <tr><td>全寬單格</td><td>小選單</td><td>2500 × 843</td><td>建議使用</td></tr>
-          <tr><td>上 1 + 下 3、3 × 2（六等分）、3 等寬、左 1 + 右 2、左 2 + 右 1</td><td>—</td><td>—</td><td>目前無法儲存，請先不要選</td></tr>
+          <tr><td>2 × 2（四等分）</td><td>大選單</td><td>2500 × 1686</td></tr>
+          <tr><td>上 1 + 下 2</td><td>大選單</td><td>2500 × 1686</td></tr>
+          <tr><td>上 2 + 下 1</td><td>大選單</td><td>2500 × 1686</td></tr>
+          <tr><td>上 1 + 下 3</td><td>大選單</td><td>2500 × 1686</td></tr>
+          <tr><td>上下 2 條</td><td>大選單</td><td>2500 × 1686</td></tr>
+          <tr><td>3 × 2（六等分）</td><td>大選單</td><td>2500 × 1686</td></tr>
+          <tr><td>3 等寬</td><td>小選單</td><td>2500 × 843</td></tr>
+          <tr><td>左 1 + 右 2</td><td>小選單</td><td>2500 × 843</td></tr>
+          <tr><td>左 2 + 右 1</td><td>小選單</td><td>2500 × 843</td></tr>
+          <tr><td>全寬單格</td><td>小選單</td><td>2500 × 843</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 5 種版型區域座標不是整數（2500/3、843/2），後端 boundsSchema 要求 int，按儲存草稿必定 400 apps/web/src/components/line/rich-menu/layouts.ts:86-152、apps/api/src/modules/line/rich-menu.routes.ts:32-37 -->
+      <p>10 種版型都可以使用，依你的選單需要幾個按鈕來挑。</p>
       <p>背景圖要用 JPG 或 PNG，1MB 以內，尺寸要和版型一致（大選單 2500 × 1686、小選單 2500 × 843）。用「上傳」按鈕上傳時系統會幫你檢查；直接在「圖片網址」貼網址則不會檢查，要等到發布才知道有沒有問題，建議用上傳。</p>
+      <!-- RESHOOT: 截圖中選項仍是舊標籤「預設展開選單（使用者開啟對話時自動展開）」且已勾選；現在是「設為所有好友的預設選單」、預設不勾，下方多一行說明 -->
       <figure class="shot">
         <img src="uploads/shots/ch10-richmenu-editor.png" alt="Rich Menu 編輯器：基本資訊、背景圖、區域設定，右邊即時預覽標出區域編號" loading="lazy">
         <figcaption>編輯器：左邊填資料，右邊預覽會標出每個區域的編號。</figcaption>
       </figure>
-      <div class="warn"><span>⚠️</span><div><b>「預設展開選單」會套用到這個官方帳號的所有好友。</b>畫面上寫的是「使用者開啟對話時自動展開」，但勾了這個選項再發布，這張選單會<b>取代所有好友目前看到的選單</b>；之後取消發布它，所有好友的選單會直接消失。新建選單時這個選項<b>預設是勾選的</b>，只想給部分好友看的選單，請記得取消勾選，再用「綁定受眾」（第 4 節）。</div></div>
-      <!-- KNOWN-ISSUE: selected=true 發布時會 DELETE 全體預設再設為全體好友預設；新建預設勾選；取消發布會清掉全體預設 apps/web/src/app/dashboard/line/rich-menus/new/page.tsx:53、apps/api/src/modules/line/rich-menu.service.ts:495-511,539-546 -->
+      <h3>設為所有好友的預設選單</h3>
+      <p>編輯器裡有一個「設為所有好友的預設選單」選項。勾了它再發布，這張選單會成為這個官方帳號<b>所有好友</b>的選單，換掉大家目前看到的選單，好友開啟對話時也會自動展開。</p>
+      <ul>
+        <li>新建選單時這個選項<b>預設不勾</b>。只想給部分好友看的選單，維持不勾，發布後用「綁定受眾」（第 4 節）。</li>
+        <li>勾選時會先跳出確認視窗，提醒你這會影響所有好友，按「確定」才會勾上。</li>
+        <li>之後發布或取消發布這張選單時，確認視窗也會再提醒一次。取消發布預設選單，所有好友的預設選單會消失，直到你再發布另一張預設選單。</li>
+      </ul>
     </section>
 
     <section class="doc" id="p3">
@@ -135,14 +146,14 @@
       <!-- KNOWN-ISSUE: 發布失敗（error）狀態卡片沒有發布/取消發布按鈕，編輯與刪除會被後端以「已發布」訊息拒絕 apps/web/src/app/dashboard/line/rich-menus/page.tsx:222-239、apps/api/src/modules/line/rich-menu.service.ts:234-240,271-277 -->
       <h3>發布到 LINE</h3>
       <ol class="steps">
-        <li>確認草稿內容正確，尤其是「預設展開選單」有沒有勾（見第 2 節提醒）。</li>
-        <li>在列表按「發布」，確認視窗按「確定」。</li>
-        <li>勾了「預設展開選單」的選單，發布後所有好友都會看到；沒勾的選單發布後，要再用「綁定受眾」指定給某群人才看得到。</li>
+        <li>確認草稿內容正確，尤其是「設為所有好友的預設選單」有沒有勾（見第 2 節）。</li>
+        <li>在列表按「發布」。確認視窗會告訴你這張是不是預設選單、會不會換掉好友目前的選單，看清楚後按「確定」。</li>
+        <li>勾了「設為所有好友的預設選單」的選單，發布後所有好友都會看到；沒勾的選單發布後，要再用「綁定受眾」指定給某群人才看得到。</li>
       </ol>
-      <div class="warn"><span>⚠️</span><div><b>發布和取消發布都會立刻改變好友在 LINE 上看到的選單。</b>勾了「預設展開選單」的選單一發布，所有好友的選單都會被換掉；取消發布則會讓好友的選單消失。請在離峰時間、確認內容後再操作。在編輯頁按「發布到 LINE」時，系統發布的是<b>上次存檔的內容</b>，請先按「儲存草稿」再發布。</div></div>
+      <div class="warn"><span>⚠️</span><div><b>發布和取消發布都會立刻改變好友在 LINE 上看到的選單。</b>勾了「設為所有好友的預設選單」的選單一發布，所有好友的選單都會被換掉；取消發布則會讓好友的選單消失。請在離峰時間、確認內容後再操作。在編輯頁按「發布到 LINE」時，系統發布的是<b>上次存檔的內容</b>，請先按「儲存草稿」再發布。</div></div>
       <!-- KNOWN-ISSUE: 編輯頁「發布到 LINE」不會先儲存，發布的是 DB 舊版本 apps/web/src/app/dashboard/line/rich-menus/[id]/page.tsx:73-86；設預設選單失敗只寫 log rich-menu.service.ts:506-510 -->
       <h3>綁定受眾（給某群人看不同選單）</h3>
-      <p>沒勾「預設展開選單」的選單發布後，可以指定只給某個受眾分群的好友看，其他人維持原本的選單。例如 VIP 會員看到專屬選單。</p>
+      <p>沒勾「設為所有好友的預設選單」的選單發布後，可以指定只給某個受眾分群的好友看，其他人維持原本的選單。例如 VIP 會員看到專屬選單。</p>
       <ol class="steps">
         <li>先到「行銷 › 受眾分群」建好分群（第 08 章）。</li>
         <li>在已發布的選單卡片按「綁定受眾」。</li>
@@ -152,7 +163,7 @@
       <!-- KNOWN-ISSUE: 沒有解除綁定 UI 也沒有綁定紀錄；背景綁定失敗只寫 log apps/web/src/hooks/useRichMenus.ts:144、apps/workers/src/handlers/rich-menu-bind.handler.ts:36,44 -->
       <h3>複製與刪除</h3>
       <ul>
-        <li><b>複製</b>：「⋯ › 複製」會做出一張「（副本）」草稿，連「預設展開選單」的設定也會一起複製，發布前請再檢查一次。</li>
+        <li><b>複製</b>：「⋯ › 複製」會做出一張「（副本）」草稿，連「設為所有好友的預設選單」的設定也會一起複製，發布前請再檢查一次。</li>
         <li><b>刪除</b>：只有草稿可以刪除，刪了就無法復原。</li>
       </ul>
     </section>
@@ -160,6 +171,7 @@
     <section class="doc" id="p5">
       <h2><span class="idx">5</span> 關鍵字回覆</h2>
       <p>客戶在 LINE 傳來的訊息裡出現你設定的關鍵字，系統就自動回一則素材。例如客戶問「營業時間」，自動回營業時間的圖卡。</p>
+      <!-- RESHOOT: 影片開頭「怎麼用？」框的橘色說明仍是舊文字（只在 bot 模式觸發、每小時 3 次），現已改為實際行為說明 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch10-keyword-create.jpg">
           <source src="uploads/videos/ch10-keyword-create.mp4" type="video/mp4">
@@ -193,9 +205,7 @@
         <li>只會回覆 LINE 的對話，而且公司有多個 LINE 官方帳號時，<b>每個帳號都會套用</b>同一組規則。</li>
       </ul>
       <h3>什麼時候會觸發</h3>
-      <p>只要客戶傳來的文字含有關鍵字，就會自動回覆，<b>即使這段對話已經由客服接手</b>也一樣，也沒有次數限制（客戶每打一次就回一次）。命中關鍵字時，AI 客服不會再另外回覆，避免客戶一次收到兩則。</p>
-      <div class="info"><span>ℹ️</span><div>頁面上「怎麼用？」框裡的橘色說明寫「只在 bot 模式才會觸發」「每個聯絡人 1 小時最多 3 次」，這兩點和目前系統實際行為不同，請以本手冊為準。</div></div>
-      <!-- KNOWN-ISSUE: 頁面說明宣稱只在 BOT_HANDLED 觸發、每人每規則每小時 3 次；已查 apps/api/src/modules/automation/automation.worker.ts:278-345,459-468 與 apps/workers/src/handlers/automation.handler.ts，皆無對話狀態判斷與頻率限制。說明文字在 apps/web/src/app/dashboard/line/keyword-replies/page.tsx:96 -->
+      <p>客戶每傳一則含有關鍵字的訊息，就會自動回覆一次，沒有次數上限；<b>即使這段對話已經由客服接手</b>也會回。命中的規則能在這段對話的渠道送出回覆時，AI 客服就不會再另外回覆，避免客戶一次收到兩則。頁面上「怎麼用？」框裡的說明也是這樣寫的。</p>
       <h3>管理規則</h3>
       <ul>
         <li>列表最左邊的「啟用／停用」膠囊點一下就會切換，<b>立即生效</b>。暫時不想自動回覆，就切成停用。</li>
@@ -204,8 +214,7 @@
       </ul>
       <div class="warn"><span>⚠️</span><div>關鍵字回覆的規則也會出現在「自動化」頁（第 05 章）。如果你在自動化頁替同一條規則加了其他動作（例如貼標籤），之後<b>再從這頁編輯並儲存，那些動作會被清掉</b>。加過其他動作的規則，請只在自動化頁修改。</div></div>
       <!-- KNOWN-ISSUE: 從關鍵字頁編輯會以 PATCH 覆蓋 actions 與 conditions apps/web/src/hooks/useKeywordReplies.ts:106-134 -->
-      <div class="info"><span>ℹ️</span><div>回覆用的素材不要放 <code>{{contact.name}}</code> 這類變數，關鍵字回覆不會替換，客戶會直接看到大括號。</div></div>
-      <!-- KNOWN-ISSUE: 對話框寫「會以預設值送出」，但 workers 送素材時 variables 為空，{{key}} 原樣送出 apps/web/src/components/line/keyword-reply/KeywordReplyEditDialog.tsx:208、apps/workers/src/lib/automation-actions.ts:419-423 -->
+      <div class="info"><span>ℹ️</span><div>回覆用的素材可以放 <code>{{contact.name}}</code> 這類變數（寫法見第 08 章第 6 節），送出時會換成客戶自己的資料。客戶沒有那筆資料時改用素材的預設值；連預設值也沒有就留空，不會出現大括號。選了含變數的素材，對話框會列出有哪些變數。</div></div>
     </section>
 
     <section class="doc" id="p6">

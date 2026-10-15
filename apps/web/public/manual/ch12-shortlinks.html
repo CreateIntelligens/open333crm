@@ -58,12 +58,14 @@
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 連結管理</h2>
       <p>「連結管理」用表格列出短連結，點擊數會自動更新，不用重新整理。</p>
+      <!-- RESHOOT: 列表中廣播自動建立的連結標題現在顯示「素材連結（廣播自動建立）」，影片仍是一排「-」 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch12-list.jpg">
           <source src="uploads/videos/ch12-list.mp4" type="video/mp4">
         </video>
         <figcaption><span class="tag">影片</span>認識列表欄位和操作圖示，打開 QR Code（約 21 秒）</figcaption>
       </figure>
+      <!-- RESHOOT: 標題欄的「-」若為廣播素材連結，現在會顯示「素材連結（廣播自動建立）」，截圖是舊畫面 -->
       <figure class="shot">
         <img src="uploads/shots/ch12-list.png" alt="短連結列表：標題、短網址、目標 URL、總點擊、唯一、狀態、到期、操作" loading="lazy">
         <figcaption>連結管理（目標 URL 欄已模糊處理）。</figcaption>
@@ -71,7 +73,7 @@
       <table>
         <thead><tr><th>欄位</th><th>說明</th></tr></thead>
         <tbody>
-          <tr><td>標題</td><td>自己看的說明。顯示「-」的多半是系統自動產生的（見下方提醒）</td></tr>
+          <tr><td>標題</td><td>自己看的說明。廣播自動建立的連結會標示「素材連結（廣播自動建立）」（見下方提醒）；沒填標題的會顯示「-」</td></tr>
           <tr><td>短網址</td><td>短連結的代碼</td></tr>
           <tr><td>目標 URL</td><td>點了之後會被帶到的原始網址</td></tr>
           <tr><td>總點擊／唯一</td><td>總共被點幾次、大約有幾個人點（差別見第 4 節）</td></tr>
@@ -89,10 +91,8 @@
           <tr><td>紅色 ×</td><td>刪除</td><td>永久刪除（第 6 節）</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 廣播自動產生的素材短連結沒有標題、與手動連結混在一起，刪除或改目標會讓已發出的訊息連結失效（apps/api/src/modules/shortlink/shortlink.service.ts:174-203）。 -->
-      <div class="warn"><span>⚠️</span><div><b>標題顯示「-」的連結，請不要編輯或刪除。</b>發廣播時，系統會把訊息裡的網址自動換成短連結來統計點擊，這些連結沒有標題。它們已經在客戶的聊天室裡了，改了目標網址，客戶會被帶到別的地方；刪掉的話，客戶點了只會看到「連結已失效」。</div></div>
-      <!-- KNOWN-ISSUE: 列表與統計下拉只取後端前 20 筆，沒有分頁或搜尋（apps/web/src/hooks/useShortLinks.ts:46-53）。 -->
-      <div class="info"><span>ℹ️</span><div>清單目前只顯示<b>最新的 20 筆</b>連結，更早建立的連結在這裡看不到，「統計分析」的下拉選單也一樣。建立重要的連結時記得取個好認的標題，並在活動期間就把成效記下來。</div></div>
+      <div class="warn"><span>⚠️</span><div><b>標題欄寫著「素材連結（廣播自動建立）」的連結，請盡量不要編輯或刪除。</b>發廣播時，系統會把訊息裡的網址自動換成短連結來統計點擊。這些連結已經在客戶的聊天室裡了，改了目標網址，客戶會被帶到別的地方；刪掉的話，客戶點了只會看到「連結已失效」。編輯或刪除這類連結時，系統也會先跳出提醒。</div></div>
+      <div class="info"><span>ℹ️</span><div>清單會列出所有連結，「統計分析」的下拉選單也一樣。建立重要的連結時記得取個好認的標題，比較好找。</div></div>
     </section>
 
     <section class="doc" id="p3">
@@ -135,11 +135,8 @@
       <ol class="steps">
         <li>在列表按該列的「編輯」（↗ 圖示），改完按「儲存」。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 編輯時清空標題、UTM、社群預覽、把貼標改回「不貼標」都送 undefined，後端視為不變更，清不掉（apps/web/src/components/shortlink/LinkFormDialog.tsx:92-104）。 -->
-      <div class="warn"><span>⚠️</span><div>
-        <b>改「目標 URL」會影響已經發出去的連結。</b>客戶手上的短網址不變，但點了之後會被帶到新的網址。<br>
-        目前編輯時<b>把標題、UTM、社群預覽清空，或把自動貼標改回「不貼標」，儲存後不會生效</b>，舊的值還在。要換成別的值可以，要拿掉的話，請重新建一個新連結。
-      </div></div>
+      <div class="warn"><span>⚠️</span><div><b>改「目標 URL」會影響已經發出去的連結。</b>客戶手上的短網址不變，但點了之後會被帶到新的網址。編輯廣播自動建立的素材連結時，對話框上方會出現黃色提醒。</div></div>
+      <div class="info"><span>ℹ️</span><div>編輯時可以把標題、UTM、社群預覽清空，或把自動貼標改回「不貼標」，按「儲存」後就會拿掉舊的值。</div></div>
     </section>
 
     <section class="doc" id="p4">
@@ -183,7 +180,7 @@
           <tr><td>按「刪除」（紅色 ×）</td><td>連結和它的所有點擊統計一起<b>永久刪除</b>，無法復原</td><td>確定是建錯、完全用不到的連結</td></tr>
         </tbody>
       </table>
-      <div class="warn"><span>⚠️</span><div>刪除前會跳出「確定刪除此短連結？」，按確定就救不回來了。標題是「-」的廣播連結請不要刪（見第 2 節）。</div></div>
+      <div class="warn"><span>⚠️</span><div>刪除前會跳出「確定刪除此短連結？」，按確定就救不回來了。如果是廣播自動建立的素材連結，提醒會說明已發出的訊息會失效、點擊紀錄也會一併刪除，請盡量不要刪（見第 2 節）。</div></div>
     </section>
 
     <section class="doc" id="p7">

@@ -48,6 +48,7 @@
         <a href="#p4"><b>點了跳去哪</b>每種通知帶你到的頁面</a>
         <a href="#p5"><b>誰會收到</b>依角色決定誰收到哪些通知</a>
       </div>
+      <!-- RESHOOT: 影片中通知標題是英文（Resolution SLA breached、First response SLA breached），現已改中文並有「首次回應逾期」等類型徽章 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch04-notifications.jpg">
           <source src="uploads/videos/ch04-notifications.mp4" type="video/mp4">
@@ -59,6 +60,7 @@
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 鈴鐺：隨時看最新通知</h2>
       <p>不管你在哪一頁，右上角都有一個鈴鐺。鈴鐺上的紅色數字是你還沒看的通知數，超過 99 會顯示「99+」。新通知進來時數字會自動更新，不用重新整理頁面。</p>
+      <!-- RESHOOT: 截圖中通知標題是英文 Resolution／First response SLA breached，現在新通知為中文 -->
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch04-bell.png" alt="鈴鐺下拉：通知標題、全部已讀、通知清單、查看全部通知" loading="lazy">
         <figcaption>點鈴鐺會展開最新 10 則通知。右邊有藍點的是還沒看的。</figcaption>
@@ -75,6 +77,7 @@
     <section class="doc" id="p3">
       <h2><span class="idx">3</span> 通知列表</h2>
       <p>側欄點「通知」，或在鈴鐺按「查看全部通知」，就能看到你所有的通知。</p>
+      <!-- RESHOOT: 截圖中通知標題英文、首次回應逾期只顯示「通知」徽章，現在為中文標題與「首次回應逾期」徽章 -->
       <figure class="shot">
         <img src="uploads/shots/ch04-page.png" alt="通知列表頁：全部、未讀、已讀分頁與通知卡片" loading="lazy">
         <figcaption>通知列表。每張卡片左上角的小標籤說明是哪一類通知。</figcaption>
@@ -90,12 +93,11 @@
         <thead><tr><th>畫面上的樣子</th><th>意思</th></tr></thead>
         <tbody>
           <tr><td>底色較深、右邊有藍點</td><td>還沒看的通知</td></tr>
-          <tr><td>小標籤「工單指派」「工單升級」「SLA 警告」「SLA 逾期」「新訊息」</td><td>通知的類型。其他類型（例如權杖失效、AI 用量、低分評價）一律顯示「通知」</td></tr>
+          <tr><td>小標籤「工單指派」「工單升級」「SLA 警告」「SLA 逾期」「首次回應警告」「首次回應逾期」「客戶等待逾時」「自動化通知」「新訊息」</td><td>通知的類型。其他類型（例如權杖失效、AI 用量、低分評價）一律顯示「通知」</td></tr>
           <tr><td>「3 分鐘前」「大約 1 小時前」</td><td>通知送出的時間</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: SLA 逾期／預警通知與自動化「通知」動作的標題和內容是英文（如 First response SLA breached、SLA rule matched）。apps/workers/src/handlers/sla.handler.ts:401-477、apps/workers/src/lib/automation-actions.ts:333-334, 346-348 -->
-      <div class="info"><span>ℹ️</span><div>目前有幾種通知的標題還是英文，看到時可以這樣對照：<b>First response SLA breached / warning</b> = 首次回應已逾期／快逾期；<b>Resolution SLA breached / warning</b> = 解決期限已逾期／快逾期；<b>Customer waiting SLA breached</b> = 客人等待太久；<b>SLA rule matched</b> = 自動化規則送來的通知，內容寫在下面那行。</div></div>
+      <div class="info"><span>ℹ️</span><div>時限相關的通知標題會直接寫出發生什麼事：「首次回應即將逾期」「首次回應已逾期」「解決期限即將逾期」「解決期限已逾期」「客戶等待過久」。自動化規則送來的通知，標題都是「自動化規則通知」，規則設定的訊息內容寫在標題下面那行。</div></div>
       <!-- KNOWN-ISSUE: 通知列表讀取失敗時顯示「目前沒有通知」；標記已讀失敗沒有任何提示。web/app/dashboard/notifications/page.tsx:39-43, 52-78 -->
       <div class="info"><span>ℹ️</span><div>如果明明鈴鐺有紅色數字，列表卻顯示「目前沒有通知」，或按了「全部已讀」沒反應，請重新整理頁面再試一次。通知目前不能刪除，也不能關掉某一類通知。</div></div>
     </section>
@@ -108,7 +110,8 @@
         <tbody>
           <tr><td>工單已指派給您</td><td>那張工單的詳情頁</td></tr>
           <tr><td>工單已升級</td><td>那張工單的詳情頁</td></tr>
-          <tr><td>SLA 即將到期／SLA 已逾期（含上面的英文 SLA 通知）</td><td>那張工單的詳情頁</td></tr>
+          <tr><td>首次回應／解決期限即將逾期、已逾期，客戶等待過久</td><td>那張工單的詳情頁</td></tr>
+          <tr><td>自動化規則通知</td><td>有工單時到那張工單的詳情頁；沒有工單時到收件匣那段對話</td></tr>
           <tr><td>收到新訊息／對話已指派給您</td><td>收件匣，並直接打開那段對話</td></tr>
           <tr><td>Facebook／Instagram 渠道「某某」權杖已失效</td><td>設定 → 渠道管理，去更新權杖（見「<a href="ch15-channels.html">15 · 渠道管理</a>」）</td></tr>
           <tr><td>AI 用量已達 80%／AI 用量已達上限</td><td>方案與帳務（見「<a href="ch14-plan.html">14 · 方案與帳務</a>」）</td></tr>
@@ -138,7 +141,7 @@
           <tr><td>Facebook／Instagram 渠道權杖失效</td><td>所有管理員，另外寄 Email</td></tr>
           <tr><td>AI 用量達 80% 或用完</td><td>所有管理員，另外寄 Email</td></tr>
           <tr><td>自動化規則的「通知主管」動作</td><td>所有主管與管理員</td></tr>
-          <tr><td>自動化規則的「傳送通知」動作</td><td>只有工單負責人（見「<a href="ch05-automation.html#p6">05 · 自動化</a>」）</td></tr>
+          <tr><td>自動化規則的「傳送通知」動作</td><td>規則裡「通知誰」指定的客服；沒指定時依序找工單負責人、對話負責客服，都沒有就通知所有主管與管理員（見「<a href="ch05-automation.html#p6">05 · 自動化</a>」）</td></tr>
         </tbody>
       </table>
       <!-- KNOWN-ISSUE: 未指派對話的每一則進站訊息都會通知所有 ADMIN／SUPERVISOR，量大時會洗版。apps/api/src/modules/notification/notification.worker.ts:199-210 -->

@@ -135,8 +135,7 @@
       </ol>
       <!-- KNOWN-ISSUE: 發布、結束沒有確認視窗，結束不可逆（apps/web/src/app/dashboard/portal/page.tsx:56-80）。 -->
       <div class="warn"><span>⚠️</span><div><b>「發布」和「結束」按下去就立刻生效，不會再問你一次。</b>結束之後沒辦法重新開始，只能再建一個新活動。「刪除」只有草稿才有，刪了就救不回來。</div></div>
-      <!-- KNOWN-ISSUE: 活動列表、提交紀錄、積分交易都只拿前 20 筆、沒有下一頁（apps/web/src/hooks/usePortal.ts:16,44,59）。 -->
-      <div class="info"><span>ℹ️</span><div>活動清單目前最多顯示 20 個活動。用不到的活動結束後記得「封存」，清單才不會塞滿、看不到新的活動。</div></div>
+      <div class="info"><span>ℹ️</span><div>活動清單會列出所有活動，不會只顯示前幾筆。用不到的活動結束後記得「封存」，清單比較好找。</div></div>
     </section>
 
     <section class="doc" id="p5">
@@ -171,6 +170,7 @@
     <section class="doc" id="p6">
       <h2><span class="idx">6</span> 積分管理</h2>
       <p>查詢某位客戶目前有幾點、點數怎麼來的，也可以手動加點（例如客訴補償）或扣點。</p>
+      <!-- RESHOOT: 積分搜尋改版：客戶名稱旁多了電話與 Email、多位符合時會列出候選清單，手動調整視窗多一行「調整對象」；影片是舊畫面 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch11-points.jpg">
           <source src="uploads/videos/ch11-points.mp4" type="video/mp4">
@@ -180,21 +180,22 @@
       <ol class="steps">
         <li>側欄點「粉絲活動 &gt; 積分管理」。</li>
         <li>在搜尋框輸入客戶的名稱、電話或 Email，按 Enter 或放大鏡。</li>
-        <li><b>先核對畫面上出現的客戶名稱</b>，確定是你要找的人。名稱旁邊是目前點數，下方是交易紀錄。</li>
+        <li>只有一位符合時，系統會直接帶出這位客戶。有好幾位符合時，畫面會顯示「有 N 位符合，請選擇要調整的聯絡人」，並列出每一位的名稱、電話與 Email，<b>點選你要的那一位</b>。</li>
+        <li>核對畫面上的客戶名稱、電話與 Email，確定是你要找的人。名稱旁邊是目前點數，下方是交易紀錄。</li>
         <li>按「手動調整」，在「調整金額（正數加、負數扣）」填數字，例如加 50 點填 <code>50</code>、扣 20 點填 <code>-20</code>。</li>
         <li>在「備註」寫原因，例如「客訴補償」，之後查紀錄才知道為什麼。</li>
-        <li>確認無誤後按「確認調整」。視窗關閉、點數更新就是成功了。</li>
+        <li>視窗上方會再顯示一次「調整對象」，確認無誤後按「確認調整」。視窗關閉、點數更新就是成功了。</li>
       </ol>
+      <!-- RESHOOT: 客戶名稱旁現在會顯示電話與 Email，截圖沒有 -->
       <figure class="shot">
         <img src="uploads/shots/ch11-points.png" alt="積分管理：搜尋框、客戶名稱、點數與交易紀錄表" loading="lazy">
         <figcaption>搜尋後會顯示客戶名稱、目前點數和交易紀錄。</figcaption>
       </figure>
-      <!-- KNOWN-ISSUE: 積分搜尋只取第一筆結果（limit=1），同名時會選錯人（apps/web/src/components/portal/PointsTab.tsx:36-40,97）；找不到或失敗時沒有任何提示（:41-47）；調整失敗只寫 console、不提示（:66-67）。 -->
-      <div class="warn"><span>⚠️</span><div>
-        <b>搜尋只會帶出「第一個」符合的客戶。</b>如果有同名或名字很像的客戶，可能會跳出別人。調整前一定要核對名稱；名字常見的話，改用完整的電話或 Email 搜尋比較準。<br>
-        搜尋找不到人時畫面不會有任何提示，只是不顯示結果，請換個關鍵字再試。<br>
-        按「確認調整」後如果視窗沒有關閉，表示沒有成功（例如你沒有調整權限）。<b>不要一直重按</b>，先關掉視窗、重新搜尋確認點數，再找管理員確認權限。
+      <div class="info"><span>ℹ️</span><div>
+        符合的人太多（超過 20 位）時只會列出前 20 位，畫面會提醒你輸入更完整的電話或 Email 再搜尋。搜尋不到人時會顯示「找不到符合的聯絡人」。<br>
+        按「確認調整」後如果沒有成功，視窗裡會用紅字顯示原因（例如你沒有調整權限），請依提示處理或找管理員確認，不要一直重按。
       </div></div>
+      <!-- RESHOOT: 手動調整視窗現在上方多一行「調整對象：名稱 電話・Email」，截圖沒有 -->
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch11-points-adjust.png" alt="手動調整積分視窗：調整金額與備註" loading="lazy">
         <figcaption>手動調整：正數加點、負數扣點，記得寫備註。</figcaption>
@@ -207,7 +208,7 @@
           <tr><td>兌換扣除</td><td>保留給之後的點數兌換功能，目前不會出現</td></tr>
         </tbody>
       </table>
-      <div class="info"><span>ℹ️</span><div>調整金額只能是整數，輸入小數會被自動去掉小數點後面的數字。交易紀錄目前只顯示最近 20 筆。</div></div>
+      <div class="info"><span>ℹ️</span><div>調整金額只能是整數，輸入小數會被自動去掉小數點後面的數字。交易紀錄會列出這位客戶的所有紀錄。</div></div>
     </section>
 
     <footer class="manual-footer">

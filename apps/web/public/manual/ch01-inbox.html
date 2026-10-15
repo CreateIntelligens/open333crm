@@ -126,8 +126,7 @@
       </table>
       <div class="warn"><span>⚠️</span><div>要關閉對話時，請用紅色「結案」按鈕，<b>不要</b>用表頭最右邊的狀態下拉直接選「已關閉」。用下拉關閉不會留下結案原因，系統也不會把它當成正式結案。</div></div>
       <!-- KNOWN-ISSUE: 狀態下拉選「已關閉」走 updateConversation，不寫 closeReason/closedAt、不發 conversation.closed web/components/inbox/ChatWindow.tsx:85-89、api/conversation/conversation.service.ts:844-846 -->
-      <div class="info"><span>ℹ️</span><div>如果改負責客服或狀態之後畫面沒有變，通常是你的帳號沒有「管理對話」權限，請找管理員開通。</div></div>
-      <!-- KNOWN-ISSUE: 指派、狀態、重新開啟失敗沒有任何提示 web/components/inbox/ChatWindow.tsx:78-95 -->
+      <div class="info"><span>ℹ️</span><div>改負責客服或狀態沒有成功時，聊天視窗上方會出現一行紅字說明原因，下拉也會回到原本的值。如果原因是權限不足，請找管理員開通「管理對話」權限。</div></div>
 
       <h3>訊息泡泡</h3>
       <table>
@@ -137,7 +136,7 @@
           <tr><td>紫色泡泡，標「Bot 回覆」</td><td>Bot 自動回覆。會顯示「信心值」、怎麼找到答案（關鍵字命中、知識庫命中…）與「參考來源」</td></tr>
           <tr><td>藍色泡泡（靠右）</td><td>客服回覆的訊息</td></tr>
           <tr><td>標「系統自動發送」</td><td>系統替顧客送出的登記或綁定訊息，不是 AI 回的</td></tr>
-          <tr><td>紅色虛線框加紅字「沒有送出，對方並未收到」</td><td>這則訊息沒送到顧客那邊，請改用其他方式聯繫，或重新回覆一次</td></tr>
+          <tr><td>紅字「這則訊息沒有送出，對方並未收到」</td><td>這則訊息沒送到顧客那邊，冒號後面會寫原因。客服自己回的訊息、自動送出的訊息都會這樣標示。請確認原因後重新回覆一次，或改用其他方式聯繫</td></tr>
           <tr><td>黃框「需要客服處理」</td><td>系統沒辦法自動把這位顧客的帳號整合起來，請到「聯絡人」頁手動合併</td></tr>
         </tbody>
       </table>
@@ -208,8 +207,8 @@
         <li>在「輸入訊息...」框打字。按 Enter 送出，Shift+Enter 換行。用注音輸入法選字時按 Enter 不會誤送。</li>
         <li>或按右邊的紙飛機按鈕送出。</li>
       </ol>
-      <div class="info"><span>ℹ️</span><div>一則訊息最多 5000 字。如果按了送出、文字卻還留在框裡，表示沒有送出去：可能字數太多，或你的帳號沒有「回覆對話」權限。</div></div>
-      <!-- KNOWN-ISSUE: 送出失敗只寫 console 無提示 web/components/inbox/MessageInput.tsx:78-80；客服手動回覆送到渠道失敗時後台不顯示紅字 api/conversation/conversation.service.ts:476-477 -->
+      <div class="info"><span>ℹ️</span><div>一則訊息最多 5000 字。如果沒送出去，輸入框下方會出現紅字「沒有送出：」加上原因，你打的字會留在框裡，修正後再按一次送出就好。</div></div>
+      <div class="info"><span>ℹ️</span><div>有時候訊息在後台送出了，卻在送到 LINE、Facebook 等渠道時失敗（例如渠道設定有問題）。這時那則訊息下方會出現紅字「這則訊息沒有送出，對方並未收到」和原因，顧客那邊收不到，請處理後重新回覆。</div></div>
 
       <h3>LINE 快速回覆按鈕</h3>
       <p>LINE 的對話可以在訊息下方附上按鈕，顧客點一下就能回覆，不用自己打字。</p>
@@ -256,10 +255,9 @@
       <ol class="steps">
         <li>按表頭的燈泡按鈕（「AI 建議回覆」）。對話已結案時不會顯示。</li>
         <li>聊天區右上角出現「AI 建議回覆」，每則建議附上信心值（綠色最有把握、黃色普通、紅色較沒把握）和參考的知識庫文章。</li>
-        <li>挑一則合適的，參考它的內容在輸入框打出你的回覆，再送出。</li>
+        <li>挑一則合適的，按它下方的「採用」。建議的文字會帶進輸入框，面板同時關閉。</li>
+        <li>視情況修改文字，確認後再送出。「採用」不會直接送出，送出前你都可以改。</li>
       </ol>
-      <div class="warn"><span>⚠️</span><div>建議下方的「採用」按鈕目前<b>不會</b>把文字帶進輸入框，按了面板只會關掉。請先自己複製或照著內容打字，修好後會再更新這份說明。</div></div>
-      <!-- KNOWN-ISSUE: 「採用」送出 ai-adopt 事件但沒有任何監聽者 web/app/dashboard/inbox/page.tsx:130-135 -->
       <div class="info"><span>ℹ️</span><div>出現「無法取得建議」時，常見原因是：顧客最後傳的是圖片不是文字、知識庫裡沒有相關文章，或 AI 服務暫時無法使用。請直接自己回覆。</div></div>
     </section>
 

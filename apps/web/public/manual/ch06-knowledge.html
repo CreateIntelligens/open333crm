@@ -291,10 +291,9 @@
             <li>根本沒有對應的文章 → 到「文章管理」新增一篇，記得發布。</li>
           </ul>
         </li>
-        <li>處理好後按「標為已處理」，這筆就會從清單移除。</li>
+        <li>處理好後按「標為已處理」，這筆就會從清單移除（只有主管和管理員有這個按鈕）。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 「標為已處理」需要知識庫進階權限，一般客服預設沒有但按鈕照樣顯示，按了會跳權限不足。apps/api/src/modules/knowledge/knowledge.routes.ts:395、packages/core/src/rbac/default-roles.ts:61 -->
-      <div class="warn"><span>⚠️</span><div>「標為已處理」需要「知識庫進階」權限，一般客服預設沒有。客服可以先修好文章，再請主管或管理員按「標為已處理」。</div></div>
+      <div class="info"><span>ℹ️</span><div>只有主管和管理員看得到「標為已處理」按鈕。一般客服的畫面上方會提醒：可以先修正文章，處理完再請主管或管理員標為已處理。</div></div>
       <div class="info"><span>ℹ️</span><div>
         <ul>
           <li>清單只顯示還沒處理的回報。標為已處理後就看不到了，目前也不能復原。</li>

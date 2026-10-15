@@ -29,9 +29,10 @@
     <a href="#p4"><span class="n">4</span> 營業時間</a>
     <a href="#p5"><span class="n">5</span> 追蹤設定</a>
     <a href="#p6"><span class="n">6</span> 跨渠道綁定</a>
-    <a href="#p7"><span class="n">7</span> API 金鑰</a>
-    <a href="#p8"><span class="n">8</span> CLI 連線</a>
-    <a href="#p9"><span class="n">9</span> A2A</a>
+    <a href="#p7"><span class="n">7</span> WebTalk 協作</a>
+    <a href="#p8"><span class="n">8</span> API 金鑰</a>
+    <a href="#p9"><span class="n">9</span> CLI 連線</a>
+    <a href="#p10"><span class="n">10</span> A2A</a>
   </aside>
 
   <main class="manual-main">
@@ -52,9 +53,10 @@
         <a href="#p4"><b>營業時間</b>下班時間自動回覆客人</a>
         <a href="#p5"><b>追蹤設定</b>短連結點擊同步到 GA4、Meta Pixel</a>
         <a href="#p6"><b>跨渠道綁定</b>同一位客人用 LINE 和 FB 找你，認成同一人</a>
-        <a href="#p7"><b>API 金鑰</b>給合作廠商推送知識庫文件用</a>
-        <a href="#p8"><b>CLI 連線</b>給 AI 工具或指令列工具連線用</a>
-        <a href="#p9"><b>A2A</b>查看 AI 代理連線狀態</a>
+        <a href="#p7"><b>WebTalk 協作</b>後台右下角的同事即時聊天工具列</a>
+        <a href="#p8"><b>API 金鑰</b>給合作廠商推送知識庫文件用</a>
+        <a href="#p9"><b>CLI 連線</b>產生給 AI 工具連線用的 Token</a>
+        <a href="#p10"><b>A2A</b>查看 AI 代理連線狀態</a>
       </div>
     </section>
 
@@ -139,10 +141,14 @@
         <img src="uploads/shots/ch17-sla-add.png" alt="建立 SLA 政策對話框：政策名稱、套用優先級、三個分鐘數欄位、設為此優先級預設" loading="lazy">
         <figcaption>建立 SLA 政策：三個時間都以分鐘填寫。</figcaption>
       </figure>
-      <div class="warn"><span>⚠️</span><div><b>每個優先級請只建一個政策。</b>對話框裡的「設為此優先級預設」目前沒有作用：同一個優先級有兩個以上政策時，系統套用哪一個是不固定的，跟你勾了哪個「預設」無關。如果真的需要特殊時限（例如 VIP），建立工單時在「SLA 政策」欄直接選那個政策，不要用「依優先級自動套用」。</div></div>
-      <!-- KNOWN-ISSUE: 建工單挑 SLA 用 findFirst({tenantId, priority}) 不看 isDefault apps/api/src/modules/case/case.service.ts:273-283、apps/workers/src/lib/automation-actions.ts:110 -->
-      <div class="warn"><span>⚠️</span><div><b>政策建好後，盡量不要改名或刪除。</b>工單是用政策名稱連到政策的，改名或刪除後，已經套用這個政策的工單會停止預警與逾時判斷，畫面上也不會提示。要調整時限，直接改分鐘數就好，名稱保持不變。</div></div>
-      <!-- KNOWN-ISSUE: 工單只存政策名稱，worker 用名稱找政策，找不到就跳過 apps/api/src/modules/case/case.service.ts:307、apps/workers/src/handlers/sla.handler.ts:94-110 -->
+      <h3>同一個優先級有好幾個政策時</h3>
+      <p>同一個優先級可以建好幾個政策，例如一般的「高優先」和給 VIP 的「高優先（VIP）」。新工單自動套用時，系統會先用勾了「設為此優先級預設」的那個；都沒勾的話，用最早建立的那個。需要特殊時限的工單，建立時在「SLA 政策」欄直接選那個政策就好。</p>
+      <h3>改名與刪除</h3>
+      <ul>
+        <li>政策名稱不能重複。儲存時如果跟別的政策撞名，對話框會告訴你，請換一個名稱。</li>
+        <li>可以放心改名：已經套用這個政策的工單會一起換成新名稱，預警和逾時判斷照常進行。</li>
+        <li>還有未結案的工單在用這個政策時，不能刪除。系統會告訴你還有幾張工單在用，請等那些工單結案後再刪，或改用「編輯」調整時限。</li>
+      </ul>
       <div class="info"><span>ℹ️</span><div>分鐘數請填大於 0 的整數。欄位留空或填 0，系統會悄悄換成預設值（首次回應 15、解決 60、預警 10 分鐘）並顯示儲存成功，存完請看一下列表上的時間對不對。預警時間也請設得比首次回應時間短，不然工單一建立就會馬上收到提醒。</div></div>
       <!-- KNOWN-ISSUE: 數字欄位 parseInt(...) || 預設值，空白或 0 靜默換成 15/60/10 apps/web/src/components/settings/SlaManagement.tsx:118-120 -->
       <p>修改分鐘數只影響之後新建立的工單的解決期限；已經建立的工單，解決期限不會跟著改。</p>
@@ -169,8 +175,7 @@
         <img src="uploads/shots/ch17-office-hours.png" alt="營業時間設定頁：總開關、時區、每週排程、假日、非營業時間自動回覆訊息" loading="lazy">
         <figcaption>營業時間：週一到週五 9:00–18:00、週末休息的設定範例。</figcaption>
       </figure>
-      <div class="warn"><span>⚠️</span><div><b>打開頁面時如果看到「未啟用營業時間」，但你確定之前設定過，請先重新整理頁面，不要直接按儲存。</b>資料讀取失敗時，頁面會顯示預設值，這時按「儲存設定」會把原本的設定整個蓋掉。</div></div>
-      <!-- KNOWN-ISSUE: 讀取失敗只 console.error，畫面維持預設值，儲存會覆蓋正式設定 apps/web/src/components/settings/OfficeHoursSettings.tsx:48,54-65,268-270 -->
+      <div class="info"><span>ℹ️</span><div>如果頁面顯示「無法讀取營業時間設定」，代表這次沒讀到原本的設定。為了不讓預設值蓋掉你們的設定，這時不會出現表單，也不能儲存。請按「重新載入」再試一次。</div></div>
       <ul>
         <li><b>同一位客人 30 分鐘內只會收到一次</b>自動回覆，不會每傳一句就回一次。</li>
         <li>自動回覆訊息清空後儲存，系統會改用預設文字「您好！目前為非營業時間，我們將在營業時間內盡速回覆您。」</li>
@@ -184,18 +189,21 @@
     <section class="doc" id="p5">
       <h2><span class="idx">5</span> 追蹤設定</h2>
       <p>如果你們有用 Google Analytics 4 或 Meta（Facebook）廣告像素，在這裡填入 ID，客人點短連結時的資料就會同步送到 GA4 和 Meta，方便你在廣告後台看成效。短連結的用法見「<a href="ch12-shortlinks.html">12 · 短連結</a>」。</p>
+      <!-- RESHOOT: 欄位下方說明已改為「格式為 G- 開頭加英數字」「5～20 位純數字」，截圖仍是舊文字 -->
       <figure class="shot">
         <img src="uploads/shots/ch17-tracking.png" alt="追蹤設定頁：Google Analytics 4 ID 與 Meta Pixel ID 兩個欄位" loading="lazy">
         <figcaption>追蹤設定：兩個欄位都留空代表不送追蹤資料。</figcaption>
       </figure>
       <ol class="steps">
         <li>到「設定 → 追蹤設定」。</li>
-        <li>在「Google Analytics 4 ID」貼上 GA4 的評估 ID（在 GA 的資料串流設定裡，<code>G-</code> 開頭）。</li>
-        <li>在「Meta Pixel ID」貼上像素 ID（在 Meta 事件管理工具裡，純數字）。</li>
+        <li>在「Google Analytics 4 ID」貼上 GA4 的評估 ID（在 GA 的資料串流設定裡，G- 開頭加英數字，例如 G-ABC123XYZ9）。</li>
+        <li>在「Meta Pixel ID」貼上像素 ID（在 Meta 事件管理工具裡，5～20 位純數字）。</li>
         <li>按「儲存設定」，旁邊出現「已儲存」即完成。不想再追蹤時，清空欄位再儲存。</li>
       </ol>
-      <div class="warn"><span>⚠️</span><div><b>請從 GA、Meta 後台直接複製貼上，不要手打，儲存前再核對一次。</b>系統目前不會檢查格式，多一個空白或符號，所有短連結的追蹤都會失效。另外，打開頁面時如果兩個欄位是空的，但你確定之前填過，請先重新整理，不要直接儲存，以免把原本的 ID 清掉。</div></div>
-      <!-- KNOWN-ISSUE: GA/Pixel ID 前後端都沒驗證，原字串直接拼進短連結中轉頁 script（stored XSS 風險）；讀取失敗顯示空白，儲存會覆寫成 null apps/api/src/modules/shortlink/strategies/tracking-snippet.ts:15,20,44、apps/api/src/modules/settings/settings.routes.ts:529-532、apps/web/src/components/settings/TrackingSettings.tsx:21-22 -->
+      <ul>
+        <li>儲存時系統會檢查格式。格式不對時會跳出提醒，告訴你是哪一個 ID 填錯，原本的設定不會被改掉。前後多打的空白會自動去掉。</li>
+        <li>如果頁面顯示「無法讀取追蹤設定」，代表這次沒讀到原本的 ID，這時不會出現表單，也就不會誤把 ID 清掉。請按「重新載入」再試一次。</li>
+      </ul>
     </section>
 
     <section class="doc" id="p6">
@@ -249,7 +257,38 @@
     </section>
 
     <section class="doc" id="p7">
-      <h2><span class="idx">7</span> API 金鑰</h2>
+      <h2><span class="idx">7</span> WebTalk 協作</h2>
+      <p>WebTalk 是後台右下角的協作工具列，讓同一家公司的同事在後台即時聊天、討論手上的客人或工單，不用另外切到其他通訊軟體。每家公司有自己的聊天房間，只有你們公司的同事會在同一個房間，其他公司看不到你們的在線名單和訊息。</p>
+      <p>設定頁在「設定 → WebTalk 協作」，只有能管理系統設定的人（通常是管理員）看得到。一般同事不用設定，打開後台就能在右下角使用。</p>
+      <!-- RESHOOT: 新增小節，尚無 WebTalk 設定頁與右下角工具列的截圖 -->
+      <ol class="steps">
+        <li>到「設定 → WebTalk 協作」。</li>
+        <li>勾選「啟用 WebTalk」，後台就會出現協作工具列；取消勾選，後台就不會載入這個工具列。</li>
+        <li>需要時再勾選「啟用 AI 摘要」（說明見下方提醒）。</li>
+        <li>按「儲存設定」，旁邊出現「已儲存」即完成。</li>
+        <li>請同事重新整理後台頁面，新的設定才會生效。</li>
+      </ol>
+      <table>
+        <thead><tr><th>設定</th><th>預設</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>啟用 WebTalk</td><td>開啟</td><td>關閉後，後台不顯示協作工具列，也不會連線到 WebTalk 的外部服務。</td></tr>
+          <tr><td>啟用 AI 摘要</td><td>關閉</td><td>開啟後，同事在工具列按「網頁摘要」，可以讓 AI 幫忙整理目前這一頁的重點。</td></tr>
+          <tr><td>重新產生房間代號</td><td>—</td><td>換一個新的聊天房間，舊房間的人就進不來了。</td></tr>
+        </tbody>
+      </table>
+      <div class="warn"><span>⚠️</span><div><b>開啟 AI 摘要前，請先確認公司的個資政策。</b>按下「網頁摘要」時，目前頁面上的所有文字，包含客人的姓名、電話和對話內容，都會送到外部 AI 服務整理。所以這個選項預設是關閉的；關閉時，摘要功能會顯示已停用，頁面內容不會送出去。</div></div>
+      <h3>同事離職時：重新產生房間代號</h3>
+      <p>知道房間代號的人都能加入你們的聊天房間。同事離職，或你懷疑代號外流時，請重新產生一個。</p>
+      <ol class="steps">
+        <li>在「房間代號」區塊按「重新產生房間代號」。</li>
+        <li>跳出確認視窗後按「確定」。</li>
+        <li>畫面出現「已重新產生房間代號。請通知成員重新整理頁面。」後，請通知同事重新整理後台。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>換了房間代號後，原本房間的聊天紀錄不會帶到新房間。如果設定了卻一直看不到右下角的工具列，可能是你們的系統還沒開通 WebTalk，請洽系統維運人員。</div></div>
+    </section>
+
+    <section class="doc" id="p8">
+      <h2><span class="idx">8</span> API 金鑰</h2>
       <p>這頁給<b>需要串接合作廠商的管理員</b>使用。頁面標題是「Partner API 金鑰」，產生的金鑰只有一個用途：讓合作廠商的系統把文件自動推送到你們的知識庫（知識庫見「<a href="ch06-knowledge.html">06 · 知識庫</a>」）。一般客服不需要碰這頁。</p>
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch17-apikey-add.png" alt="建立 API 金鑰對話框：名稱與過期時間" loading="lazy">
@@ -269,9 +308,9 @@
       <div class="info"><span>ℹ️</span><div>金鑰建立後畫面上的使用範例是給工程師參考的，實際串接格式請以工程人員提供的串接文件為準。</div></div>
     </section>
 
-    <section class="doc" id="p8">
-      <h2><span class="idx">8</span> CLI 連線</h2>
-      <p>這頁給<b>會用 AI 助理或指令列工具的技術人員</b>使用。頁面標題是「CLI / LLM 連線」，在這裡產生的 Token 可以讓 Claude、ChatGPT 這類 AI 工具，或 open333 指令列工具，用你的身分查詢系統資料（預設只能讀、不能改）。一般客服不需要碰這頁。</p>
+    <section class="doc" id="p9">
+      <h2><span class="idx">9</span> CLI 連線</h2>
+      <p>這頁給<b>會用 AI 助理或指令列工具的技術人員</b>使用。頁面標題是「CLI / LLM 連線」，在這裡產生的 Token 可以讓 Claude、ChatGPT 這類 AI 工具用你的身分查詢系統資料（預設只能讀、不能改）。一般客服不需要碰這頁。</p>
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch17-cli-add.png" alt="產生 CLI Token 對話框：名稱、過期時間、授予 MCP 唯讀權限" loading="lazy">
         <figcaption>產生 CLI Token：填名稱、選過期時間，需要時勾選 MCP 唯讀權限。</figcaption>
@@ -281,18 +320,16 @@
         <li>「名稱」寫用途，例如「Claude Code」；選「過期時間」；如果 AI 工具要透過 MCP 查資料，勾選「授予 MCP 唯讀權限」。</li>
         <li>按「產生 Token」，完整 Token <b>只會顯示這一次</b>，按「複製」保存好，再按「我已保存，關閉」。</li>
       </ol>
-      <div class="warn"><span>⚠️</span><div><b>「永不過期」目前實際上是 30 天。</b>選了永不過期，Token 一樣會在 30 天後失效，請記得到期前重新產生。</div></div>
-      <!-- KNOWN-ISSUE: 選永不過期前端不送 expiresInDays，後端套預設 30 天 apps/web/src/components/settings/CliSessionManagement.tsx:51-52,270、apps/api/src/modules/auth/cli-session.service.ts:48-50,87 -->
-      <!-- KNOWN-ISSUE: 對話框「使用方式」寫 open333 login 後貼上 token，實際 CLI login 是帳密登入並自行產生新 token apps/web/src/components/settings/CliSessionManagement.tsx:437-441、apps/cli/src/commands/login.ts:17-30 -->
       <ul>
-        <li>產生後對話框裡的「使用方式」範例目前不正確，實際設定方式請以工程人員的說明為準。</li>
+        <li>「過期時間」可選 7 天、30 天、90 天或 1 年，預設 30 天。每個 Token 都有到期日，到期前請記得重新產生。</li>
+        <li>這裡產生的 Token 是給 AI 工具用的。<b>open333 指令列工具不需要它</b>：在電腦上執行 <code>open333 login</code>，用你的 Email 和密碼登入，工具會自己產生並保存一個 Token，那個 Token 也會出現在這個列表。</li>
         <li>這個列表會列出<b>公司所有人</b>的 Token，包含別人用 open333 指令登入時自動產生的。撤銷前請確認是誰在用，撤銷後對方的工具會立刻斷線。</li>
         <li>已過期的 Token 仍會留在列表上，不會特別標示，請看「過期時間」欄判斷。</li>
       </ul>
     </section>
 
-    <section class="doc" id="p9">
-      <h2><span class="idx">9</span> A2A</h2>
+    <section class="doc" id="p10">
+      <h2><span class="idx">10</span> A2A</h2>
       <p>位置在「設定 → 整合 → A2A」，只有管理員和主管看得到。這頁顯示系統和外部 AI 代理之間的連線資訊，<b>全部是唯讀</b>，由系統維運人員在伺服器上設定，你不需要也無法在這裡修改。如果有人請你確認 A2A 狀態，看「目前狀態」那一欄就可以。</p>
       <!-- KNOWN-ISSUE: A2A 是部署層級設定卻對每個租戶顯示，「目前狀態」只要有設 A2A_AGENT_ID 就回 connected，「Tenant 綁定」寫死 Default Tenant apps/api/src/modules/settings/a2a-status.service.ts:30,42 -->
     </section>

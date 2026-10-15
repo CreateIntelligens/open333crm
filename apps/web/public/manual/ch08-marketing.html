@@ -113,7 +113,7 @@
       <ol class="steps">
         <li>側欄點「行銷 › 受眾分群」，右上角按「新增分群」。</li>
         <li>填「名稱」，例如「LINE 好友」。</li>
-        <li>在「條件規則」選條件種類，再<b>一定要</b>選右邊的值（例如「渠道類型」選「LINE」）。</li>
+        <li>在「條件規則」選條件種類，再選右邊的值（例如「渠道類型」選「LINE」）。每一條條件都要有值，沒填完的話對話框下方會提醒你，「預覽人數」和「建立」也按不下去。</li>
         <li>要再加條件就按「新增條件」。有多個條件時，用「條件邏輯」決定要「全部符合」還是「任一符合」。</li>
         <li>按「預覽人數」，看看「符合人數」是不是你預期的數字。</li>
         <li>確認無誤後按「建立」。</li>
@@ -131,15 +131,13 @@
           <tr><td>建立日期（之前）</td><td>在這天之前加入的聯絡人。注意：選的那一天<b>大多不包含</b>在內，想包含某天請選隔天。</td></tr>
         </tbody>
       </table>
-      <div class="warn"><span>⚠️</span><div><b>條件的值一定要填。</b>值留空的條件會被直接忽略；如果所有條件都沒填值，這個分群就會變成「全部聯絡人」。例如只填了名稱「LINE 好友」就按「建立」，它其實包含所有人。建立前請務必先按「預覽人數」確認數字。</div></div>
-      <!-- KNOWN-ISSUE: 條件值空白會被濾掉，0 條件時後端回全部聯絡人，前端沒有擋 apps/web/src/app/dashboard/marketing/page.tsx:567-570、apps/api/src/modules/marketing/segment.service.ts:119-126 -->
+      <div class="info"><span>ℹ️</span><div>分群至少要有一條條件，而且每條都要填值。多出來不需要的條件，請按旁邊的刪除把它拿掉，不要留空。</div></div>
       <h3>建好之後要知道的事</h3>
       <ul>
         <li>列表上的「N 人」是<b>建立當下</b>的人數，之後不會自己更新。實際發廣播時，系統會用條件重新計算一次，人數可能和列表不一樣。</li>
         <li>分群建好後不能修改條件，建錯了請刪掉重建。刪除在每一列最右邊的垃圾桶。</li>
       </ul>
-      <div class="warn"><span>⚠️</span><div><b>刪除分群前，先確認沒有「草稿」或「已排程」的廣播正在用它。</b>如果廣播用的分群被刪掉了，那則廣播發送時會改成發給該渠道的所有聯絡人。</div></div>
-      <!-- KNOWN-ISSUE: 刪除分群不檢查使用中廣播；分群查不到時 resolveAudience 不加條件＝全渠道 apps/api/src/modules/marketing/segment.service.ts:100、marketing.service.ts:629 -->
+      <div class="info"><span>ℹ️</span><div>刪除分群前，先確認沒有「草稿」或「已排程」的廣播正在用它。如果廣播用的分群被刪掉了，那則廣播時間到時<b>不會發送</b>，會顯示「失敗」，請重新建立廣播並選另一個分群。</div></div>
     </section>
 
     <section class="doc" id="p4">
@@ -155,9 +153,9 @@
         <li>先到「素材庫」把要發的訊息做好（見第 09 章）。要發給特定一群人的話，也先建好受眾分群（第 3 節）。</li>
         <li>側欄點「行銷 › 廣播」，右上角按「建立廣播」。</li>
         <li>填「名稱」，選「渠道」（要從哪個 LINE 官方帳號或 Facebook 粉專發出去）。</li>
-        <li>選「素材」。選好後下方會出現「素材預覽」，確認內容是對的。</li>
+        <li>選「素材」。清單只會列出這個渠道平台的素材（選 LINE 渠道只看得到 LINE 素材）。選好後下方會出現「素材預覽」，確認內容是對的。</li>
         <li>要掛進某個行銷活動，就在「關聯活動」選它；不需要就維持「無（獨立廣播）」。</li>
-        <li>「受眾」選「全部聯絡人」或「受眾分群」。選「受眾分群」時，下方「選擇分群」一定要選一個。</li>
+        <li>選「受眾」：「全部聯絡人」、「受眾分群」或「依標籤篩選」。選「受眾分群」時，要在下方「選擇分群」選一個；選「依標籤篩選」時，要勾選至少一個標籤。</li>
         <li>「排程發送」留空＝存成草稿；填了時間＝時間到自動發送。</li>
         <li>按「建立」。</li>
       </ol>
@@ -173,18 +171,16 @@
         <thead><tr><th>欄位</th><th>說明</th></tr></thead>
         <tbody>
           <tr><td>名稱（必填）</td><td>只給內部辨識用，客戶看不到。</td></tr>
-          <tr><td>渠道（必填）</td><td>從哪個帳號發出去。請只選 LINE 或 Facebook 渠道，素材庫只有這兩種平台的素材。</td></tr>
-          <tr><td>素材（必填）</td><td>要發的訊息。選項後面括號是素材類型：<code>line_</code> 開頭是 LINE 素材、<code>fb_</code> 開頭是 Facebook 素材。<b>請選和渠道同平台的素材</b>。</td></tr>
+          <tr><td>渠道（必填）</td><td>從哪個帳號發出去。素材庫只有 LINE 和 Facebook 的素材，選其他渠道時素材清單會顯示「此渠道尚無可用素材」。</td></tr>
+          <tr><td>素材（必填）</td><td>要發的訊息。清單只列出和渠道同平台的素材，選項後面括號是素材類型。</td></tr>
           <tr><td>關聯活動</td><td>把這則廣播掛進某個行銷活動，方便看合計成效。</td></tr>
-          <tr><td>受眾</td><td>發給誰。請只用「全部聯絡人」或「受眾分群」（見下方提醒）。「全部聯絡人」是指在你選的渠道上的所有聯絡人。</td></tr>
+          <tr><td>受眾</td><td>發給誰。「全部聯絡人」是指在你選的渠道上的所有聯絡人；「受眾分群」發給一個已建好的分群；「依標籤篩選」發給身上有你勾選的任一標籤的人。</td></tr>
           <tr><td>選擇分群</td><td>受眾選「受眾分群」時才會出現。括號裡的人數是分群建立當下的數字，實際發送會重新計算。</td></tr>
+          <tr><td>選擇標籤</td><td>受眾選「依標籤篩選」時才會出現。有勾選標籤裡任何一個的聯絡人都會收到。還沒有標籤的話，請先到「設定」建立標籤。</td></tr>
           <tr><td>排程發送（留空為草稿）</td><td>只能選未來的時間。時間一到系統就會自動發送。</td></tr>
         </tbody>
       </table>
-      <div class="warn"><span>⚠️</span><div><b>受眾請只用「全部聯絡人」或「受眾分群」。</b>「依標籤篩選」和「手動選擇」目前沒有地方可以挑標籤或挑人，選了之後會<b>發給這個渠道的所有聯絡人</b>。想發給有某個標籤的人，請先建一個「標籤」條件的受眾分群，再選那個分群。另外，選了「受眾分群」卻沒有選分群，一樣會發給所有人。</div></div>
-      <!-- KNOWN-ISSUE: 受眾「依標籤篩選／手動選擇」沒有挑選 UI，targetConfig 為空 → 全渠道；選分群卻沒選也一樣 apps/web/src/app/dashboard/marketing/page.tsx:254-264,305-310、apps/api/src/modules/marketing/marketing.service.ts:624-659 -->
-      <div class="warn"><span>⚠️</span><div><b>素材要自己對好平台。</b>對話框寫「先選渠道，才能看到對應的素材」，但目前素材清單會同時列出 LINE 和 Facebook 的素材。把 Facebook 素材排給 LINE 渠道（或反過來）發送時會整批失敗。</div></div>
-      <!-- KNOWN-ISSUE: 渠道→素材過濾用小寫 channelType 比對，永遠比不中 → 列出全部素材；後端也不檢查素材與渠道相符 apps/web/src/app/dashboard/marketing/page.tsx:234-240、marketing.service.ts:155-161 -->
+      <div class="info"><span>ℹ️</span><div>受眾沒選完整時（選了「受眾分群」卻沒選分群、選了「依標籤篩選」卻沒勾標籤），對話框下方會用紅字提醒，「建立」按不下去。系統不會因為沒選好受眾就改成發給所有人。</div></div>
       <div class="info"><span>ℹ️</span><div>填了排程時間、按下「建立」之後，時間一到就會自動發給客戶。還沒確定內容前，請讓排程留空，先存成草稿。</div></div>
     </section>
 
@@ -202,25 +198,24 @@
           <tr><td>已排程</td><td>設定了發送時間，時間到會自動發。</td></tr>
           <tr><td>發送中</td><td>正在發送。發完後要重新整理頁面才會看到最新結果。</td></tr>
           <tr><td>已完成</td><td>發送完畢。「成功」「失敗」欄是送達與失敗的人數。</td></tr>
-          <tr><td>失敗</td><td>整則廣播沒有發出去。</td></tr>
+          <tr><td>失敗</td><td>整則廣播沒有發出去。例如當初選的分群已被刪除，系統會停止發送並標成失敗，不會改發給所有人。</td></tr>
           <tr><td>已取消</td><td>被取消，不會再發送。</td></tr>
         </tbody>
       </table>
       <h3>立即發送與取消</h3>
       <p>「草稿」和「已排程」的廣播，在最右邊「操作」欄會有兩個小圖示按鈕（滑鼠移上去會顯示名稱）：</p>
       <ul>
-        <li><b>播放圖示＝「立即發送」</b>：跳出「確定要立即發送嗎？」，按確定就會<b>馬上發給客戶</b>。</li>
+        <li><b>播放圖示＝「立即發送」</b>：跳出「確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。」，按確定就會<b>馬上發給客戶</b>。</li>
         <li><b>圓圈叉叉圖示＝「取消」</b>：取消這則廣播，之後不會再發送。已排程但想暫停的廣播，請用這個。</li>
       </ul>
-      <div class="warn"><span>⚠️</span><div><b>「立即發送」只按一次。</b>人數多的時候系統要花一段時間才發完，這段時間畫面不會有變化。請耐心等候，<b>不要因為沒反應就再按一次</b>，否則客戶可能收到兩次。要確認結果，請稍後重新整理頁面。</div></div>
-      <!-- KNOWN-ISSUE: 立即發送按鈕沒有 loading/disabled，後端允許 sending/failed 再執行，可能重複群發 apps/web/src/app/dashboard/marketing/page.tsx:285-293、apps/api/src/modules/marketing/marketing.service.ts:305-320 -->
+      <div class="info"><span>ℹ️</span><div>按下「立即發送」後，播放圖示會變成轉圈圈，發送期間其他廣播的發送按鈕也會暫時按不了。人數多的時候要花一點時間，請耐心等候；已經在發送中的廣播不會被重複送出。要確認結果，請稍後重新整理頁面。</div></div>
       <div class="info"><span>ℹ️</span><div>廣播顯示「失敗」或失敗人數很多時，畫面上目前看不到失敗原因，失敗的廣播也無法在這裡重新發送。常見原因是素材和渠道平台不同（見第 4 節）、渠道憑證失效，或該渠道沒有可以發送的對象。查不出原因時請聯絡系統管理員。</div></div>
       <!-- KNOWN-ISSUE: 失敗原因只寫 log、不存錯誤訊息；failed 狀態沒有重試/取消按鈕 apps/api/src/modules/marketing/broadcast.scheduler.ts:28、marketing.service.ts:596-600、apps/web/src/app/dashboard/marketing/page.tsx:369 -->
     </section>
 
     <section class="doc" id="p6">
       <h2><span class="idx">6</span> 在訊息放客戶姓名（變數）</h2>
-      <p>廣播發送時，系統可以把素材文字裡的「變數」換成每位客戶自己的資料，例如「陳小明您好」。在素材的文字欄位裡，照下面的寫法打進去就可以（含兩層大括號、中間有一個英文句點）：</p>
+      <p>發送素材時，系統可以把素材文字裡的「變數」換成每位客戶自己的資料，例如「陳小明您好」。在素材的文字欄位裡，照下面的寫法打進去就可以（含兩層大括號、中間有一個英文句點）：</p>
       <table>
         <thead><tr><th>寫法</th><th>會換成</th><th>範例</th></tr></thead>
         <tbody>
@@ -231,8 +226,8 @@
       </table>
       <p>例如在 LINE 純文字素材寫「<code>{{contact.name}} 您好，週年慶開跑囉！</code>」，陳小明收到的就是「陳小明 您好，週年慶開跑囉！」。</p>
       <div class="warn"><span>⚠️</span><div><b>寫法要完全一樣。</b>舊版手冊寫的 <code>{{contact_name}}</code>（底線）是錯的，系統認不得，客戶會原封不動收到「{{contact_name}}」。另外，如果某位客戶沒有電話或 Email，<code>{{contact.phone}}</code>、<code>{{contact.email}}</code> 也會原樣顯示大括號給他，所以群發時建議只用 <code>{{contact.name}}</code>。</div></div>
-      <div class="info"><span>ℹ️</span><div>變數只有在「廣播」發送時才會換成客戶資料。關鍵字回覆（第 10 章）用的素材請不要放變數，客戶會直接看到大括號。</div></div>
-      <!-- KNOWN-ISSUE: 素材編輯器沒有變數插入或說明 apps/web/src/components/materials/MaterialEditor.tsx；關鍵字回覆送素材時 variables 為空，{{key}} 原樣送出 apps/workers/src/lib/automation-actions.ts:419-423 -->
+      <div class="info"><span>ℹ️</span><div>關鍵字回覆和自動化規則（第 10 章、第 05 章）送出的素材也會代入變數。這兩種情況下，客戶沒有那筆資料時會改用素材設定的預設值；連預設值也沒有，就留空，不會出現大括號。</div></div>
+      <!-- KNOWN-ISSUE: 素材編輯器沒有變數插入或說明 apps/web/src/components/materials/MaterialEditor.tsx；廣播缺值時仍原樣保留 {{key}} apps/api/src/modules/marketing/template-renderer.ts:26 -->
     </section>
 
     <footer class="manual-footer">

@@ -72,19 +72,11 @@
         <li>要指定日期，在兩個日期框分別選開始日和結束日。</li>
         <li>上方四個分頁「概覽」「案件報表」「客服績效」「渠道分析」都會套用同一段期間。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 自訂日期以 UTC 解析，迄日只算到當天 08:00（台灣時間），起日從前一天 08:00 算起；起日輸入框選「今天」時會顯示昨天日期。apps/web/src/components/analytics/DateRangePicker.tsx:34,39,61 -->
-      <div class="warn"><span>⚠️</span><div>
-        <b>優先用「今天／7 天／30 天／90 天」按鈕，數字最準。</b>自訂日期目前有時差問題：結束日只會算到那天早上 8 點，開始日則會多算前一天早上 8 點以後的資料。
-        <ul>
-          <li>要包含結束日一整天，請把結束日選成<b>隔天</b>。例如要看 10/1～10/15，結束日選 10/16。</li>
-          <li>開始日會多算到前一天晚上的一小段，看數字時心裡有個底即可。</li>
-        </ul>
-      </div></div>
-      <!-- KNOWN-ISSUE: 日期框清空會讓整頁崩潰（Invalid Date toISOString）。apps/web/src/components/analytics/DateRangePicker.tsx:34,39,61,68 -->
+      <div class="info"><span>ℹ️</span><div>自訂日期會把<b>開始日和結束日都算一整天</b>。例如要看 10/1～10/15，開始日選 10/1、結束日選 10/15 就好。</div></div>
       <!-- KNOWN-ISSUE: 開始日晚於結束日時後端回 400，畫面只顯示「-」和「尚無資料」。apps/web/src/app/dashboard/analytics/page.tsx:35-39 -->
       <div class="info"><span>ℹ️</span><div>
         <ul>
-          <li>改日期時直接選新日期，<b>不要把日期框整個清空</b>，否則頁面會變空白。萬一發生，重新整理頁面就好。</li>
+          <li>不小心把日期框清空也沒關係，報表會維持原本的期間，再選一次日期就好。</li>
           <li>開始日不能晚於結束日。選反了畫面只會顯示「-」或「尚無資料」，不會有錯誤提示。</li>
           <li>頁面不會自動加入你打開之後才進來的新訊息。想看最新數字，再按一次期間按鈕，或重新整理頁面。</li>
         </ul>
@@ -198,24 +190,9 @@
         <li>按右上角「匯出 CSV」。</li>
         <li>瀏覽器會下載一個檔案，例如 <code>cases_report.csv</code>。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 沒有匯出權限時被 403 擋下，前端 catch 後完全沒提示。apps/web/src/app/dashboard/analytics/page.tsx:64-66 -->
-      <div class="warn"><span>⚠️</span><div>匯出需要「匯出報表」權限。沒有權限時，按了按鈕<b>不會有任何反應</b>，也不會跳錯誤。按了沒下載，請找管理員確認權限。</div></div>
-      <h3>用 Excel 開啟出現亂碼怎麼辦</h3>
-      <!-- KNOWN-ISSUE: 匯出的 CSV 沒有 UTF-8 BOM，Excel 直接雙擊開啟中文會亂碼。apps/api/src/modules/analytics/analytics.service.ts:613-697、apps/web/src/app/dashboard/analytics/page.tsx:57 -->
-      <p>匯出的檔案是 UTF-8 編碼，直接在 Excel 雙擊打開，中文會變成亂碼。請改用下面任一種方式開：</p>
-      <p><b>方法一：Google 試算表（最簡單）</b></p>
-      <ol class="steps">
-        <li>打開 Google 試算表，建立空白試算表。</li>
-        <li>選「檔案 → 匯入 → 上傳」，把 CSV 拖進去。</li>
-        <li>按「匯入資料」，中文會正常顯示。</li>
-      </ol>
-      <p><b>方法二：Excel 用「匯入」開啟</b></p>
-      <ol class="steps">
-        <li>開一個空白活頁簿。</li>
-        <li>選「資料 → 從文字/CSV」，選下載的檔案。</li>
-        <li>「檔案原點」選「65001: Unicode (UTF-8)」，確認預覽的中文正常。</li>
-        <li>按「載入」。</li>
-      </ol>
+      <div class="info"><span>ℹ️</span><div>匯出需要管理員開給你「匯出報表」權限，沒有權限的人看不到「匯出 CSV」按鈕。匯出失敗時，按鈕下方會用紅字寫出原因，照著處理或稍後再試。</div></div>
+      <h3>用 Excel 或 Google 試算表開啟</h3>
+      <p>下載的檔案在 Excel 直接雙擊就能打開，中文會正常顯示。也可以在 Google 試算表選「檔案 → 匯入 → 上傳」把檔案拖進去。</p>
       <h3>概覽 CSV 的欄位名稱</h3>
       <p>案件、客服、渠道三種 CSV 的欄名是中文。概覽 CSV 目前是英文欄名，對照如下：</p>
       <table>
@@ -240,12 +217,8 @@
     <section class="doc" id="p8">
       <h2><span class="idx">8</span> 我的績效</h2>
       <p>「我的績效」只看你自己：現在手上有多少案件、有沒有快逾時的，以及這個月的成績。</p>
-      <!-- KNOWN-ISSUE: 側欄「報表」父節點要求檢視報表權限，只有檢視個人數據的一般客服連「我的績效」也看不到。apps/web/src/components/layout/Sidebar.tsx:88-90；後端 /analytics/my 只要 analytics.view.self（apps/api/src/modules/analytics/analytics.routes.ts:115） -->
       <h3>怎麼進入</h3>
-      <ul>
-        <li><b>主管、管理員</b>：左側選單「分析與管理 → 報表 → 我的績效」。</li>
-        <li><b>一般客服</b>：目前左側選單看不到「報表」。請在瀏覽器網址列，把網址最後改成 <code>/dashboard/analytics/my</code> 後按 Enter（例如目前網址是 <code>…/dashboard/inbox</code>，就把 <code>inbox</code> 換成 <code>analytics/my</code>），打開後<b>加入書籤</b>，之後點書籤就能直接進來。</li>
-      </ul>
+      <p>點左側選單「分析與管理 → 報表 → 我的績效」。一般客服也看得到這個項目；只能看個人數據的帳號，「報表」底下只會出現「我的績效」，不會有「總覽」。</p>
       <figure class="shot">
         <img src="uploads/shots/ch13-my.png" alt="我的績效：待處理案件、SLA 即將到期兩張提醒卡，以及本月績效六張卡" loading="lazy">
         <figcaption>一般客服帳號打開「我的績效」的畫面。</figcaption>
@@ -270,9 +243,8 @@
           <tr><td>SLA 達成率</td><td>在時限內解決的比例</td><td>90% 以上</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 平均首次回應先格式化成「1 時 5 分」再 parseFloat 得 1，超過 1 小時也會判定達標顯示綠勾。apps/web/src/app/dashboard/analytics/my/page.tsx:21,114 -->
       <!-- KNOWN-ISSUE: 「目標: 15」沒有單位；沒有資料時顯示「-%」「- / 5」。apps/web/src/app/dashboard/analytics/my/page.tsx:38,46,117 -->
-      <div class="warn"><span>⚠️</span><div>數字旁邊的綠勾或黃色警示是自動判斷的。「平均首次回應」超過 1 小時時，目前仍可能錯誤地顯示綠勾，<b>請直接看數字</b>：顯示「x 時 x 分」就代表超過 15 分鐘的目標了。</div></div>
+      <div class="info"><span>ℹ️</span><div>有目標的卡片，數字旁邊會自動標示：綠勾代表達標，黃色警示代表還沒達標。「平均首次回應」的目標是 15 分鐘，卡片上寫的「目標: 15」就是 15 分鐘。</div></div>
       <div class="info"><span>ℹ️</span><div>
         <ul>
           <li>沒有資料時會顯示「-」「-%」或「- / 5」，代表這個月還沒有可以計算的案件。</li>

@@ -166,8 +166,7 @@
         <figcaption>編輯人員：角色、重設密碼、可使用的渠道；左下角是「停用」與「刪除」。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>為了避免有人越權，系統有幾道保護：不能把別人改成比自己權限更高的角色；不能把自己改成沒辦法管理角色的角色；公司最後一位管理員不能被停用或刪除。</div></div>
-      <div class="warn"><span>⚠️</span><div><b>主管編輯人員時，目前可能存不進去。</b>主管在編輯自己或管理員那一列按「儲存」時，常會跳出「無法將自己改為此角色」或「無法指派權限高於您自己的角色」，即使沒有改角色也一樣；而且這次填的密碼、渠道也不會存。遇到時請請管理員代為調整。</div></div>
-      <!-- KNOWN-ISSUE: 編輯對話框每次儲存都無條件重送角色，主管編自己/編管理員必失敗且中止後續密碼與渠道更新 apps/web/src/components/settings/AgentManagement.tsx:348-363、apps/api/src/modules/agent/agent.service.ts:283-294 -->
+      <div class="info"><span>ℹ️</span><div>主管也可以編輯人員。只改密碼或渠道、沒動「角色」時，系統不會重新檢查角色，可以直接儲存；要把別人換成比自己權限更高的角色，才會被擋下來。</div></div>
     </section>
 
     <section class="doc" id="p6">
@@ -176,18 +175,29 @@
       <table>
         <thead><tr><th>按鈕</th><th>結果</th></tr></thead>
         <tbody>
-          <tr><td>停用</td><td>他再也無法登入，電子信箱仍被這個帳號佔著，不能再拿來開新帳號</td></tr>
+          <tr><td>停用</td><td>他無法登入，電子信箱仍被這個帳號佔著，不能再拿來開新帳號。之後可以重新啟用</td></tr>
           <tr><td>刪除</td><td>永久刪除帳號、釋放電子信箱（可以再用同一個信箱開帳號）。他經手的對話與工單會解除指派，歷史紀錄保留。<b>無法復原</b></td></tr>
         </tbody>
       </table>
-      <div class="warn"><span>⚠️</span><div><b>目前停用之後就無法從畫面上復原。</b>確認框寫「帳號可日後再啟用」，但現在系統還沒有「重新啟用」的按鈕；停用的人會直接從列表消失，之後也沒辦法再從畫面上把他刪除、釋放電子信箱。建議：
+      <h3>停用同事</h3>
+      <ol class="steps">
+        <li>在人員列表那位同事那列按「編輯」。</li>
+        <li>按左下角「停用」，確認視窗按「確定」。</li>
+        <li>他會從上方的人員列表移到頁面下方的「已停用的人員」區塊。</li>
+      </ol>
+      <h3>重新啟用</h3>
+      <p>同事回來上班、或停用錯人時，可以把帳號找回來。</p>
+      <ol class="steps">
+        <li>到「設定 → 人員管理」，往下捲到「已停用的人員」區塊（有停用的人才會出現）。</li>
+        <li>在那位同事那列按「重新啟用」。</li>
+        <li>他會回到上方的人員列表，用原本的帳號密碼登入，角色維持停用前的設定。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>
         <ul>
-          <li>同事只是暫時不用（例如請長假），先不要停用，必要時改他的密碼即可。</li>
-          <li>確定離職、之後不會再用這個信箱：可以直接按「刪除」。</li>
-          <li>停用前，先把他的自訂角色改成內建角色（原因見<a href="#p7">第 7 節</a>）。</li>
+          <li>同事只是暫時不用（例如請長假），用「停用」就好，之後隨時能重新啟用。</li>
+          <li>確定離職、想把電子信箱釋放出來另作他用，請用「刪除」。已停用的人也能在「已停用的人員」那列按「編輯」，再按左下角「刪除」。</li>
         </ul>
       </div></div>
-      <!-- KNOWN-ISSUE: 人員列表 GET /agents 寫死 isActive:true，停用者消失且沒有 reactivate 路由；確認框與權限說明卻寫可再啟用 apps/api/src/modules/agent/agent.routes.ts:30-35、apps/web/src/components/settings/AgentManagement.tsx:375、packages/core/src/rbac/permissions.ts:114 -->
     </section>
 
     <section class="doc" id="p7">
@@ -223,8 +233,7 @@
         <li>回到「人員管理」，編輯成員，在「角色」選這個新角色（會顯示為「名稱（自訂）」）。</li>
       </ol>
       <p>自訂角色可以改名或刪除：把滑鼠移到左邊的自訂角色上，會出現鉛筆（改名）和垃圾桶（刪除）圖示。</p>
-      <div class="warn"><span>⚠️</span><div><b>自訂角色常常刪不掉。</b>還有人使用中的角色不能刪除，但目前畫面只會顯示「刪除失敗」，不會告訴你原因。請先到「人員管理」把使用這個角色的人都改成其他角色再刪。如果列表上已經沒人用、還是刪不掉，多半是<b>已停用的同事</b>還掛著這個角色（停用的人不會出現在列表，見<a href="#p6">第 6 節</a>），這種情況請聯絡系統維運人員協助。</div></div>
-      <!-- KNOWN-ISSUE: 刪除角色以 agent.count({roleId}) 計數含停用者，但列表看不到停用者；前端讀錯錯誤欄位只顯示「刪除失敗」 apps/api/src/modules/role/role.service.ts:90-95、apps/web/src/components/settings/RolePermissionMatrix.tsx:314,327 -->
+      <div class="info"><span>ℹ️</span><div>還有人使用中的角色不能刪除。這時刪除視窗會列出還在用這個角色的成員姓名，已停用的人會標「（已停用）」。請先到「人員管理」把他們改成其他角色（已停用的人在「已停用的人員」區塊按「編輯」處理，見<a href="#p6">第 6 節</a>），再回來刪除。</div></div>
       <div class="info"><span>ℹ️</span><div>「系統設定」這一項權限一次涵蓋營業時間、追蹤設定、跨渠道綁定、API 金鑰、CLI 連線、方案與帳務等好幾頁，沒辦法只開其中一頁。「刪除成員（舊）」是已淘汰的項目，勾不勾都沒有作用。</div></div>
     </section>
 

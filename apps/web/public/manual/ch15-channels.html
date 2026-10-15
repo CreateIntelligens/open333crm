@@ -68,23 +68,26 @@
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 看懂渠道卡片</h2>
       <p>每張卡片是一個渠道。左邊是類型標籤和名稱，右邊是狀態與操作按鈕。</p>
+      <!-- RESHOOT: 影片中的渠道卡片沒有新的「停用／啟用」按鈕，Webhook 公開網址卡片仍是舊文案 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch15-overview.jpg">
           <source src="uploads/videos/ch15-overview.mp4" type="video/mp4">
         </video>
-        <figcaption><span class="tag">影片</span>認識渠道卡片上的按鈕、權杖失效的紅框，以及上方不要動的「Webhook 公開網址」（約 26 秒）</figcaption>
+        <figcaption><span class="tag">影片</span>認識渠道卡片上的按鈕、權杖失效的紅框，以及上方一般不用改的「Webhook 公開網址」（約 26 秒）</figcaption>
       </figure>
+      <!-- RESHOOT: 卡片新增「停用／啟用」按鈕，舊截圖與 alt 只有五個操作按鈕 -->
       <figure class="shot">
-        <img src="uploads/shots/ch15-card-line.png" alt="一張 LINE 渠道卡片：名稱、Webhook 網址、最後驗證時間、啟用標籤與五個操作按鈕" loading="lazy">
+        <img src="uploads/shots/ch15-card-line.png" alt="一張 LINE 渠道卡片：名稱、Webhook 網址、最後驗證時間、啟用標籤與操作按鈕" loading="lazy">
         <figcaption>LINE 渠道卡片（網址已遮蔽）。</figcaption>
       </figure>
       <table>
         <thead><tr><th>卡片上的東西</th><th>意思</th></tr></thead>
         <tbody>
           <tr><td>網址與複製圖示</td><td>這個渠道的 Webhook 網址，要貼到 LINE 或 Meta 後台，讓訊息送進系統</td></tr>
-          <tr><td>最後驗證</td><td>上次檢查金鑰的時間</td></tr>
+          <tr><td>最後驗證</td><td>上次按「測試連線」成功的時間。系統背景的權杖檢查不會改這個時間</td></tr>
           <tr><td>粉專 ID／IG 帳號 ID</td><td>Facebook、Instagram 渠道才有，按「測試連線」後系統自動取得</td></tr>
-          <tr><td>啟用／停用</td><td>渠道目前有沒有在收訊息</td></tr>
+          <tr><td>啟用／停用標籤</td><td>渠道目前有沒有在收訊息</td></tr>
+          <tr><td>「停用」／「啟用」按鈕</td><td>暫時讓渠道下架或重新上線。停用後不再收發訊息，歷史對話會保留，見第 11 節</td></tr>
           <tr><td>「測試連線」</td><td>用目前的金鑰向 LINE 或 Meta 確認還能用。成功出現綠色勾勾，失敗會在名稱下方顯示紅字原因</td></tr>
           <tr><td>機器人圖示</td><td>「Bot 設定」，見第 8 節</td></tr>
           <tr><td>分岔箭頭圖示</td><td>「下游 Webhook 轉發」，工程師串接其他系統用，見第 11 節</td></tr>
@@ -299,7 +302,7 @@
             「僅關鍵字回覆」：只回符合關鍵字的訊息，其他留給真人。<br>
             「關閉（直接人工）」：Bot 不回，全部交給真人客服。
           </td></tr>
-          <tr><td>Bot 最大回覆次數</td><td>Bot 回了這麼多次還沒解決，就自動轉給真人。建議 1～50 之間</td></tr>
+          <tr><td>Bot 最大回覆次數</td><td>Bot 回了這麼多次還沒解決，就自動轉給真人。可填 1～50</td></tr>
           <tr><td>轉接關鍵字</td><td>客戶訊息裡出現這些字（例如「真人」「客服」），就直接轉給真人。輸入後按「新增」或 Enter，按小 X 刪除</td></tr>
           <tr><td>轉接訊息</td><td>轉給真人時，自動傳給客戶的話，例如「稍等，正在為您轉接客服人員」</td></tr>
           <tr><td>轉接真人提示</td><td>AI 回答但不太確定時，要不要在回答下面提示客戶「可以轉真人」。打開後可選「提示方式」和「按鈕文字」（最多 20 字）</td></tr>
@@ -333,13 +336,10 @@
         <li>按「儲存」。</li>
       </ol>
       <p>新增同事時，也可以在「看得到哪些渠道」直接勾好。詳細操作見「<a href="ch16-team.html">16 · 人員、角色與權限</a>」。</p>
-      <!-- KNOWN-ISSUE: 「指派團隊」說明寫「未指派任何團隊或成員時，此渠道維持全租戶公開（向後相容）」，與現在的 fail-closed 行為相反（apps/web/src/components/settings/ChannelTeamAssignment.tsx:153-155 vs apps/api/src/services/channel-visibility.ts:17）；系統沒有建立團隊的介面，空狀態卻叫人去人員管理建立團隊（ChannelTeamAssignment.tsx:236-238）；指派與撤銷即時生效，外層「取消」無效。 -->
-      <div class="warn"><span>⚠️</span><div>
-        「編輯渠道」視窗下方的「指派團隊」區塊目前<b>請先不要使用</b>：<br>
-        1. 那裡的說明寫「未指派任何團隊或成員時，此渠道維持全租戶公開」，<b>這段說明已經過時</b>。實際上沒被勾選的同事一律看不到。<br>
-        2. 系統目前沒有建立團隊的地方，所以通常也選不到團隊。<br>
-        3. 在這個區塊按「新增」或撤銷的 X 會立刻生效，之後按「取消」也不會復原。<br>
-        要調整誰看得到，請照上面的步驟到「人員管理」改。
+      <!-- KNOWN-ISSUE: 系統沒有建立團隊的介面，空狀態卻叫人去人員管理建立團隊（apps/web/src/components/settings/ChannelTeamAssignment.tsx:236-238）；指派與撤銷即時生效，外層「取消」無效。 -->
+      <div class="info"><span>ℹ️</span><div>
+        「編輯渠道」視窗下方還有一個「指派團隊」區塊。那裡的說明寫得很清楚：<b>未指派任何團隊或成員時，只有總店看得到</b>（也就是有「檢視所有渠道」權限的人）。<br>
+        不過系統目前沒有建立團隊的地方，通常選不到團隊；而且在這個區塊按「新增」或撤銷的 X 會立刻生效，之後按「取消」不會復原。要調整誰看得到，建議照上面的步驟到「人員管理」改。
       </div></div>
     </section>
 
@@ -398,21 +398,31 @@
         「跨渠道綁定」區塊有自己的「儲存」按鈕，改完要按它，不要在輸入框裡按 Enter（會變成按到下面的「儲存」，綁定的值沒存到）。這個值系統通常會自動取得，一般不用改。
       </div></div>
       <h3>刪除渠道</h3>
-      <!-- KNOWN-ISSUE: 渠道刪除是硬刪除，收過對話的渠道會被資料庫擋下，錯誤訊息只寫「資料處理失敗」；前端也沒有停用按鈕（apps/api/src/modules/channel/channel.service.ts:392、docs/ref/system/AUDIT.md CHAN-01、ChannelManagement.tsx:502-504）。 -->
-      <div class="warn"><span>⚠️</span><div>
-        <b>只有「剛建錯、還沒收過任何訊息」的渠道才刪得掉。</b>按紅色垃圾桶、確認後就會永久刪除。<br>
-        收過對話的渠道目前刪不掉，會出現「資料處理失敗」的訊息，畫面上也沒有停用按鈕。如果要讓某個渠道下架，請聯絡系統管理員協助處理，不要重複嘗試刪除。
-      </div></div>
+      <p>按紅色垃圾桶、確認後就會<b>永久刪除</b>。只有剛建錯、還沒收過任何對話的渠道才刪得掉。</p>
+      <h3>停用與重新啟用渠道</h3>
+      <p>收過對話的渠道不能刪除，要讓它下架請改用「停用」。停用後這個渠道不再收發訊息，但歷史對話和工單都會保留，之後隨時可以再啟用。</p>
+      <ol class="steps">
+        <li>在要下架的渠道卡片上按「停用」。</li>
+        <li>確認視窗會說明停用的影響，按「確定」。</li>
+        <li>卡片的標籤變成「停用」。要恢復時，按同一個位置的「啟用」即可，不會再跳確認。</li>
+      </ol>
       <h3>下游 Webhook 轉發（工程師用）</h3>
       <p>卡片上的分岔箭頭圖示。用來把這個渠道收到的訊息，同時轉一份給公司其他系統。一般使用者不需要設定，請交給工程師。</p>
       <div class="warn"><span>⚠️</span><div>「轉發模式」如果選「立即轉發（下游接手，本系統不再處理）」，這個渠道的訊息<b>就不會進收件匣</b>，Bot 也不會回。不確定的話請保持「最後轉發」或不要開啟。</div></div>
-      <h3>Webhook 公開網址：請不要修改</h3>
+      <h3>Webhook 公開網址（一般不用改）</h3>
+      <!-- RESHOOT: 卡片說明文字已改為「填入本系統對外的正式網域（https 開頭）…」，placeholder 改為 https://crm.example.com，舊截圖可能仍是舊文案 -->
       <figure class="shot">
         <img src="uploads/shots/ch15-webhook-base.png" alt="頁面上方的 Webhook 公開網址設定卡片與 WebChat 網頁版連結" loading="lazy">
-        <figcaption>頁面最上方的「Webhook 公開網址」卡片，請保持原樣。</figcaption>
+        <figcaption>頁面最上方的「Webhook 公開網址」卡片，一般保持原樣即可。</figcaption>
       </figure>
-      <!-- KNOWN-ISSUE: 「套用」會一次改寫租戶所有渠道的 webhook 網址，沒有確認、不驗證網址格式，說明文字叫人填 ngrok（apps/web/src/components/settings/ChannelManagement.tsx:110-133、283-286；apps/api/src/modules/channel/channel.service.ts:666-697）；值只存在瀏覽器 localStorage（ChannelManagement.tsx:103-108）。 -->
-      <div class="warn"><span>⚠️</span><div><b>不要在「Webhook 公開網址」填任何東西，也不要按「套用」。</b>這是工程師在測試環境用的設定，按一次「套用」就會把<b>所有渠道</b>的 Webhook 網址一起改掉，填錯的話全部渠道都會收不到訊息，而且不會先問你確認。</div></div>
+      <p>這裡填的是本系統對外的正式網域，系統會依它改寫<b>所有渠道</b>的 Webhook 網址。平常不需要修改，只有公司換網域時才用得到。</p>
+      <ol class="steps">
+        <li>在「Webhook 公開網址」填入正式網域，必須是 <code>https://</code> 開頭，例如 <code>https://crm.example.com</code>。</li>
+        <li>按「套用」。</li>
+        <li>確認視窗會寫出這次會改寫幾個渠道的網址，確定沒問題再按「確定」。</li>
+        <li>套用後，到 LINE、Meta 後台確認各渠道的 Webhook 網址已經是新的。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div>網址填錯的話，所有渠道都會收不到訊息。不確定時請不要按「套用」，先問工程師。</div></div>
     </section>
 
     <footer class="manual-footer">

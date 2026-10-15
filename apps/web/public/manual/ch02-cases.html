@@ -60,12 +60,14 @@
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 工單列表與篩選</h2>
       <p>列表依 SLA 到期時間排序，越快到期的排越上面，先處理最急的就對了。</p>
+      <!-- RESHOOT: 影片中狀態徽章仍是英文 OPEN、SLA 倒數是「-2203h 14m」舊格式，現已改為中文徽章與「逾期 91 天 18 小時」 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch02-list.jpg">
           <source src="uploads/videos/ch02-list.mp4" type="video/mp4">
         </video>
         <figcaption><span class="tag">影片</span>看統計卡、搜尋、用下拉與狀態分頁篩選工單（約 25 秒）</figcaption>
       </figure>
+      <!-- RESHOOT: 截圖狀態欄是英文 OPEN、SLA 是「-2203h 14m 40s」、建立時間是「Jul 14, 16:34」，現已改為中文徽章、「逾期 … 天 … 小時」與 yyyy/MM/dd HH:mm -->
       <figure class="shot">
         <img src="uploads/shots/ch02-list.png" alt="工單列表：統計卡、搜尋、篩選下拉、狀態分頁與表格" loading="lazy">
         <figcaption>工單列表：上方統計卡，中間篩選，下方表格。（聯絡人姓名已模糊）</figcaption>
@@ -96,25 +98,24 @@
           <tr><td>ID</td><td>工單編號的前 8 碼，跟同事溝通時可以報這個</td></tr>
           <tr><td>標題、聯絡人、分類</td><td>工單在處理什麼、是哪位顧客</td></tr>
           <tr><td>優先級</td><td>緊急（紅）、高、中、低</td></tr>
-          <tr><td>狀態</td><td>目前處理到哪一步，對照見下表</td></tr>
+          <tr><td>狀態</td><td>目前處理到哪一步，見下表</td></tr>
           <tr><td>負責人</td><td>負責的客服；沒有指派時顯示「未指派」</td></tr>
-          <tr><td>SLA</td><td>離處理時限還剩多久。顯示負數（例如 -2h 10m）表示已經逾時</td></tr>
-          <tr><td>建立時間</td><td>工單開立的時間</td></tr>
+          <tr><td>SLA</td><td>離處理時限還剩多久，例如「剩 12 分 30 秒」；已經超過時限會顯示「逾期 3 天 5 小時」</td></tr>
+          <tr><td>建立時間</td><td>工單開立的時間，例如 2026/10/14 16:34</td></tr>
         </tbody>
       </table>
-      <p>「狀態」欄目前顯示英文代碼，對照如下：</p>
+      <p>「狀態」欄的徽章代表工單處理到哪一步：</p>
       <table>
-        <thead><tr><th>畫面上看到</th><th>意思</th></tr></thead>
+        <thead><tr><th>狀態</th><th>意思</th></tr></thead>
         <tbody>
-          <tr><td>OPEN</td><td>開啟：剛建立，還沒開始處理</td></tr>
-          <tr><td>IN_PROGRESS</td><td>處理中</td></tr>
-          <tr><td>PENDING</td><td>待處理：在等顧客或其他人回覆</td></tr>
-          <tr><td>ESCALATED</td><td>已升級：交給主管處理</td></tr>
-          <tr><td>RESOLVED</td><td>已解決</td></tr>
-          <tr><td>CLOSED</td><td>已關閉</td></tr>
+          <tr><td>開啟</td><td>剛建立，還沒開始處理</td></tr>
+          <tr><td>處理中</td><td>有人正在處理</td></tr>
+          <tr><td>待處理</td><td>在等顧客或其他人回覆</td></tr>
+          <tr><td>已升級</td><td>交給主管處理</td></tr>
+          <tr><td>已解決</td><td>問題已經解決</td></tr>
+          <tr><td>已關閉</td><td>工單已結束</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 狀態徽章 statusConfig 鍵為小寫、查詢用大寫，永遠顯示英文代碼 web/components/case/CaseStatusBadge.tsx:15-28；修好後把這張對照表改成中文名稱 -->
       <div class="info"><span>ℹ️</span><div>分類前面的小機器人圖示，不一定代表是 AI 分的，人工選的分類也會顯示。</div></div>
       <!-- KNOWN-ISSUE: 分類欄任何分類都顯示 AI 圖示 web/components/case/CaseList.tsx:129、CaseDetail.tsx:263-265 -->
     </section>
@@ -122,6 +123,7 @@
     <section class="doc" id="p3">
       <h2><span class="idx">3</span> 新增工單</h2>
       <p>不是從對話來的問題（例如顧客打電話來），可以在列表頁直接開工單。</p>
+      <!-- RESHOOT: 影片中選好聯絡人後沒有示範新的「渠道」欄（只有一個渠道時顯示「渠道：…」、多個時要下拉選），也可能拍到已移除的「建立新聯絡人」 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch02-create.jpg">
           <source src="uploads/videos/ch02-create.mp4" type="video/mp4">
@@ -131,6 +133,7 @@
       <ol class="steps">
         <li>按右上角「新增工單」，跳出「建立案件」。</li>
         <li>在「聯絡人」輸入至少 2 個字，從下拉名單點選顧客。</li>
+        <li>確認工單的渠道。顧客只用過一個渠道時，下方會直接顯示「渠道：（渠道名稱）」；用過好幾個渠道時，從「渠道」下拉選這次問題來自哪個渠道。</li>
         <li>填「案件標題」，選「分類」。</li>
         <li>其他欄位視需要填寫，按「建立案件」。系統會直接帶你到這張工單的頁面。</li>
       </ol>
@@ -142,6 +145,7 @@
         <thead><tr><th>欄位</th><th>必填</th><th>說明</th></tr></thead>
         <tbody>
           <tr><td>聯絡人</td><td>是</td><td>這張工單是哪位顧客的。輸入名字搜尋後點選</td></tr>
+          <tr><td>渠道</td><td>是</td><td>選好聯絡人後才出現。只列出這位顧客用過、而且你看得到的渠道；只有一個就自動帶入</td></tr>
           <tr><td>案件標題</td><td>是</td><td>一句話說明問題，100 字以內</td></tr>
           <tr><td>問題描述</td><td></td><td>詳細情況，2000 字以內</td></tr>
           <tr><td>優先級</td><td>是</td><td>低、中、高、緊急，預設「中」。會影響處理時限</td></tr>
@@ -151,10 +155,8 @@
           <tr><td>SLA 政策</td><td></td><td>處理時限的規則。留著「依優先級自動套用」就好</td></tr>
         </tbody>
       </table>
-      <div class="warn"><span>⚠️</span><div>顧客如果是從 LINE、Facebook 等渠道聯繫的，<b>請從收件匣那筆對話開工單</b>，不要在這裡開。在這裡開的工單會被歸到系統裡的第一個渠道，不一定是顧客實際用的渠道，可能讓負責那個渠道的同事看不到這張單。</div></div>
-      <!-- KNOWN-ISSUE: 獨立建立時 channelId 取 /channels 第一個渠道 web/components/case/CaseCreateModal.tsx:201-211、api/case/case.routes.ts:193-205 -->
-      <div class="info"><span>ℹ️</span><div>找不到聯絡人時，名單上會出現「建立新聯絡人」，但這個入口目前沒辦法用。請先確認顧客的名字拼法，或請顧客先透過任一渠道傳一則訊息，系統就會自動建立聯絡人。</div></div>
-      <!-- KNOWN-ISSUE: 「+ 建立新聯絡人」開 /dashboard/contacts?action=create，聯絡人頁不支援 web/components/case/CaseCreateModal.tsx:308-318 -->
+      <div class="info"><span>ℹ️</span><div>如果選了聯絡人後出現「這位聯絡人在你看得到的渠道沒有帳號，沒有可建立工單的渠道」，就沒辦法在這裡開單，請改從收件匣的對話建立工單。</div></div>
+      <div class="info"><span>ℹ️</span><div>搜尋不到聯絡人時，名單會顯示「找不到聯絡人」。聯絡人不能在這裡手動新增：顧客透過任一渠道傳訊息後，系統就會自動建立聯絡人。也可以先確認名字拼法再搜尋一次。</div></div>
       <div class="info"><span>ℹ️</span><div>「建立案件」按鈕是灰色按不下去時，表示還有必填欄位沒填（聯絡人、標題或分類）。</div></div>
     </section>
 
@@ -167,6 +169,7 @@
         </video>
         <figcaption><span class="tag">影片</span>詳情頁的各個欄位、SLA 區塊與右上角按鈕（約 30 秒）</figcaption>
       </figure>
+      <!-- RESHOOT: 截圖中右上狀態徽章是英文 OPEN、「開啟」狀態仍顯示「標記解決」「升級」（現在只有處理中才出現）、時間軸是英文 sla_breached 並逐日重複；影片 ch02-detail.mp4 同樣需要重錄 -->
       <figure class="shot">
         <img src="uploads/shots/ch02-detail.png" alt="工單詳情頁：左邊工單欄位、右邊時間軸與備註" loading="lazy">
         <figcaption>工單詳情：左邊改欄位，右邊看紀錄、寫備註。</figcaption>
@@ -179,7 +182,7 @@
           <tr><td>優先級、分類</td><td>選了就自動儲存</td></tr>
           <tr><td>負責人</td><td>選了就自動儲存。工單還是「開啟」時，指派負責人會自動變成「處理中」</td></tr>
           <tr><td>團隊</td><td>通常不用動</td></tr>
-          <tr><td>SLA</td><td>顯示套用的政策、首次回應有沒有達標、解決時限與倒數</td></tr>
+          <tr><td>SLA</td><td>顯示套用的政策、首次回應有沒有達標、解決目標與倒數（例如「剩 3 小時 20 分」）</td></tr>
           <tr><td>關聯對話</td><td>按「查看對話」回到收件匣的那筆對話</td></tr>
           <tr><td>案件標籤</td><td>替工單貼標籤，方便日後分類統計</td></tr>
           <tr><td>聯絡人</td><td>顧客資料，可以點進聯絡人頁</td></tr>
@@ -198,11 +201,9 @@
         <li><b>結束</b>：按右上角「關閉案件」。</li>
         <li><b>又有問題</b>：已關閉的工單，右上角會出現「重新開啟」。</li>
       </ol>
-      <div class="warn"><span>⚠️</span><div>剛建立、還是「開啟」的工單，<b>請先照第 1 步改成「處理中」</b>，再按「標記解決」。直接按會跳出英文錯誤訊息，工單不會變更。「待處理」和「已升級」的工單也一樣，要先改回「處理中」才能標記解決。</div></div>
-      <!-- KNOWN-ISSUE: OPEN 狀態仍顯示「標記解決」「升級」，後端狀態機回 422 英文訊息 web/app/dashboard/cases/[caseId]/page.tsx:62-63、apps/api/src/modules/case/case-state-machine.ts:7-12 -->
-      <div class="warn"><span>⚠️</span><div>要把工單改成「已解決」「已關閉」或「已升級」時，<b>請用右上角的按鈕</b>，不要用左邊的「狀態」下拉。用下拉改不會留下時間軸紀錄，也不會寄滿意度調查給顧客、不會通知主管。</div></div>
-      <!-- KNOWN-ISSUE: 狀態下拉 PATCH 不寫時間軸、不發 case.resolved/closed/escalated 事件 apps/api/src/modules/case/case.service.ts:1005-1088 -->
-      <div class="info"><span>ℹ️</span><div>右上角「關閉案件」按下就直接關閉，不會再確認。</div></div>
+      <div class="info"><span>ℹ️</span><div>右上角只會出現現在可以按的按鈕。剛建立、還是「開啟」的工單，要先照第 1 步改成「處理中」，才會出現「標記解決」和「升級」。「待處理」「已升級」的工單要先改回「處理中」，才能標記解決。</div></div>
+      <div class="info"><span>ℹ️</span><div>用右上角的按鈕，或用左邊的「狀態」下拉改狀態，效果都一樣：都會記在時間軸上，解決或關閉時會寄滿意度調查給顧客、觸發自動化規則。下拉選「已升級」會打開和「升級」按鈕一樣的升級視窗（見第 6 節）；下拉選「已關閉」會先問你「確定要關閉此案件嗎？」。</div></div>
+      <div class="info"><span>ℹ️</span><div>右上角「關閉案件」按下就直接關閉，不會再確認。狀態改不成功時會跳出說明，例如「工單狀態不能從『開啟』直接改成『已解決』」，並列出可以改成哪些狀態。</div></div>
     </section>
 
     <section class="doc" id="p6">
@@ -239,14 +240,14 @@
         <li>「內部備註」預設是勾選的，保持勾選即可。</li>
         <li>按「新增備註」，備註會出現在時間軸最上面。</li>
       </ol>
+      <!-- RESHOOT: 截圖中時間軸是英文 sla_breached／first_response_breached 且每天重複，現已改中文並只記一次；截圖本身也過長（整條時間軸） -->
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch02-timeline.png" alt="時間軸與備註：新增備註欄位與事件紀錄" loading="lazy">
         <figcaption>時間軸與備註。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>所有備註都只在後台看得到，不會傳給顧客。勾「內部備註」只是在備註上多一個「內部」標記。備註的作者目前都顯示為「Agent」，需要的話請在內容裡寫上你的名字。</div></div>
       <!-- KNOWN-ISSUE: 備註作者固定顯示 Agent web/components/case/CaseTimeline.tsx:152；新增備註失敗無提示 CaseTimeline.tsx:125-127 -->
-      <div class="info"><span>ℹ️</span><div>時間軸上的「sla_breached」表示工單超過解決時限，「first_response_breached」表示超過首次回應時限，這兩種是系統自動寫入的提醒。</div></div>
-      <!-- KNOWN-ISSUE（實機新發現）: sla_breached / first_response_breached 事件沒有中文文案，時間軸直接顯示英文代碼，且每天重複出現；寫入於 apps/workers/src/handlers/sla.handler.ts:394,428，顯示於 web/components/case/CaseTimeline.tsx:41-68 -->
+      <div class="info"><span>ℹ️</span><div>系統也會自動在時間軸寫入時限提醒：「首次回應即將逾期」「首次回應已逾期」「解決期限即將逾期」「解決期限已逾期」，以及「客戶等待過久，有多則訊息尚未回覆」。同一個期限只會記一次，不會每天重複出現。</div></div>
     </section>
 
     <section class="doc" id="p8">
@@ -257,7 +258,7 @@
         <tbody>
           <tr><td>正常顏色的倒數</td><td>時間還夠</td></tr>
           <tr><td>橘色</td><td>剩不到 2 小時</td></tr>
-          <tr><td>紅色、負數</td><td>已經超過時限</td></tr>
+          <tr><td>紅色「逾期 …」</td><td>已經超過時限，例如「逾期 3 天 5 小時」</td></tr>
           <tr><td>「無 SLA」</td><td>這張工單沒有套用時限</td></tr>
         </tbody>
       </table>

@@ -83,12 +83,11 @@
           <tr><td>檢查時機</td><td>規則在什麼時候被檢查（見第 4 節）</td></tr>
           <tr><td>執行順序</td><td>同一個時機有好幾條規則時，<b>數字越大越先檢查</b></td></tr>
           <tr><td>啟用</td><td>開關打開（藍色）才會執行</td></tr>
-          <tr><td><span class="tag red">規則不會執行</span></td><td>規則裡有系統不認得的時機或動作，整條會被跳過。滑鼠移上去會說明原因，請進去修正</td></tr>
+          <tr><td><span class="tag red">規則不會執行</span></td><td>規則裡有系統不認得的時機或動作，整條會被跳過，也不能被啟用。滑鼠移上去會說明原因，請進去修正</td></tr>
           <tr><td><span class="tag gray">執行後停止</span></td><td>這條規則執行後，不再檢查後面的規則</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 啟用帶「規則不會執行」標記的規則沒有任何警告，開關照樣變藍。web/app/dashboard/automation/page.tsx、apps/workers/src/handlers/automation.handler.ts:42-57 -->
-      <div class="warn"><span>⚠️</span><div>帶有「規則不會執行」標記的規則，就算把開關打開也<b>不會執行</b>，畫面不會另外提醒。請先進編輯頁把問題修好。</div></div>
+      <div class="info"><span>ℹ️</span><div>帶有「規則不會執行」標記的規則<b>不能被啟用</b>：打開開關時會跳出訊息說明原因（例如用了系統不認得的時機或動作）。請先進編輯頁把問題修好，再回來啟用。停用則隨時都可以。</div></div>
       <!-- KNOWN-ISSUE: 自動化執行紀錄沒有畫面，workers 也不寫入（AUDIT AUTO-02）。apps/api/src/modules/automation/automation.service.ts:72-77 -->
       <div class="info"><span>ℹ️</span><div>目前沒有「執行紀錄」可以查規則實際跑了幾次。想確認規則有沒有作用，請用第 8 節的「試試看」，或到收件匣、工單看結果。</div></div>
     </section>
@@ -166,6 +165,7 @@
         <img src="uploads/shots/ch05-not-dispatched.png" alt="選到目前不會觸發的時機時出現紅字提醒" loading="lazy">
         <figcaption>選到「目前不會觸發」的時機，下方會出現紅字提醒，請改選其他時機。</figcaption>
       </figure>
+      <p>舊規則如果用了系統已經沒有的時機，打開編輯頁時「什麼時候檢查這條規則」會顯示「未知觸發事件（…）」，下方紅字寫「系統沒有這個觸發事件，這條規則不會執行」。請改選一個上表的時機再儲存。</p>
       <!-- KNOWN-ISSUE: 「短連結被點擊」說明寫可依連結決定要做什麼，但條件選不到任何短連結欄位。packages/automation/src/contracts/events.ts:135、packages/automation/src/contracts/facts.ts -->
       <div class="info"><span>ℹ️</span><div>選「短連結被點擊」時，下方說明寫「可以依是哪一條連結決定要做什麼」，但目前條件裡還選不到「哪一條連結」。這種規則會對<b>所有</b>短連結生效，想依連結分別處理，可以改用短連結本身的「點擊時自動貼標」（見「<a href="ch12-shortlinks.html">12 · 短連結</a>」）。</div></div>
     </section>
@@ -217,7 +217,7 @@
         <thead><tr><th>動作</th><th>會做什麼</th><th>要填什麼</th><th>什麼時機能用</th></tr></thead>
         <tbody>
           <tr><td>傳送訊息</td><td>自動回一則文字給客人</td><td>訊息內容</td><td>收到訊息、關鍵字命中、新對話建立</td></tr>
-          <tr><td>傳送素材</td><td>自動回一則素材庫裡的素材（圖文、Flex 等）</td><td>素材 ID（見下方說明）</td><td>同上</td></tr>
+          <tr><td>傳送素材</td><td>自動回一則素材庫裡的素材（圖文、Flex 等）</td><td>素材（從素材庫下拉選）</td><td>同上</td></tr>
           <tr><td>建立工單</td><td>幫這段對話開一張工單</td><td>工單標題；優先級、分類可選「不指定」（分類不指定時由 AI 分類）</td><td>同上。這段對話已經有還沒結案的工單時，不會再開新的</td></tr>
           <tr><td>更新工單狀態</td><td>把工單改成開啟、處理中、已升級、已解決或已關閉</td><td>目標狀態</td><td>工單類與 SLA 類時機</td></tr>
           <tr><td>升級工單</td><td>提高工單的優先級</td><td>新優先級（不指定時自動升一級）</td><td>工單類與 SLA 類時機</td></tr>
@@ -225,19 +225,24 @@
           <tr><td>新增標籤</td><td>幫客人貼標籤，標籤不存在時會自動建立</td><td>標籤名稱</td><td>有聯絡人的時機（SLA 類除外，見下方）</td></tr>
           <tr><td>移除標籤</td><td>把客人身上的標籤拿掉</td><td>標籤名稱</td><td>同上</td></tr>
           <tr><td>指派客服</td><td>把工單指派給某位客服</td><td>指派給（從名單選人）</td><td>工單類與 SLA 類時機</td></tr>
-          <tr><td>傳送通知</td><td>發一則站內通知給<b>工單負責人</b></td><td>通知訊息</td><td>只在工單類與 SLA 類時機有效（見下方）</td></tr>
+          <tr><td>傳送通知</td><td>發一則站內通知給指定的同事，沒指定時自動找負責的人（見下方）</td><td>通知訊息；「通知誰」可選可不選</td><td>所有時機</td></tr>
           <tr><td>通知主管</td><td>發一則站內通知給所有主管與管理員</td><td>通知訊息</td><td>所有時機</td></tr>
         </tbody>
       </table>
 
-      <!-- KNOWN-ISSUE: 「傳送通知」只在有工單負責人時送給負責人，其他觸發選了也不會送；標題寫死英文 SLA rule matched。apps/workers/src/lib/automation-actions.ts:327-336, 435 -->
-      <div class="warn"><span>⚠️</span><div><b>「傳送通知」只會送給工單負責人。</b>在「收到訊息」「新對話建立」「聯繫人建立」「短連結被點擊」這類還沒有工單的時機，或工單還沒有負責人時，選了也<b>不會送出任何通知</b>。想在這些時機提醒同事，請改用「<b>通知主管</b>」。通知送到後，標題會顯示英文「SLA rule matched」，你寫的內容在標題下面那一行。</div></div>
+      <h3>「傳送通知」會送給誰</h3>
+      <p>「通知誰」可以從名單挑一位客服；不挑的話，系統會照下面的順序找第一個有人的對象：</p>
+      <ol class="steps">
+        <li>你在「通知誰」指定的客服。</li>
+        <li>工單的負責人。</li>
+        <li>對話的負責客服。</li>
+        <li>以上都沒有時，通知所有主管與管理員。</li>
+      </ol>
+      <p>所以在「收到訊息」「新對話建立」這類還沒有工單的時機也能用。通知送到後，標題是「自動化規則通知」，你寫的內容在標題下面那一行。</p>
 
-      <!-- KNOWN-ISSUE: 「傳送素材」是純文字框，要手動貼素材 ID，placeholder 卻寫「從素材庫選擇」。packages/automation/src/contracts/actions.ts:54-58、web/components/automation/ActionEditor.tsx:123-131 -->
-      <div class="info"><span>ℹ️</span><div><b>「傳送素材」目前要自己貼素材 ID</b>，欄位裡雖然寫「從素材庫選擇要送出的素材」，但還不能直接挑選。取得 ID 的方法：到素材庫打開那則素材，網址列最後一段（<code>/materials/</code> 後面那一長串英數字）就是素材 ID，整段複製貼上。另外，素材是哪個渠道做的，就只能送到同一個渠道，例如 LINE 素材不會送到 Facebook 對話。如果只是想在 LINE 依關鍵字回素材，用「<a href="ch10-line.html">10 · LINE 渠道工具</a>」的關鍵字回覆可以直接從素材庫挑，比較方便。</div></div>
+      <div class="info"><span>ℹ️</span><div><b>「傳送素材」從素材庫直接挑。</b>「素材」下拉會列出素材庫裡啟用中的素材和它的渠道。素材是哪個渠道做的，就只能送到同一個渠道，例如 LINE 素材不會送到 Facebook 對話。如果下拉載不出來，通常是你沒有檢視素材庫的權限，請洽管理員。只想在 LINE 依關鍵字回素材，也可以用「<a href="ch10-line.html">10 · LINE 渠道工具</a>」的關鍵字回覆。</div></div>
 
-      <!-- KNOWN-ISSUE: 「更新工單狀態」的目標狀態、「設定工單優先級」的優先級下拉沒有空白選項，畫面顯示「開啟」「低」但實際是空值，存檔被拒。web/lib/automation/rule-actions.ts:96、web/components/ui/select.tsx:22-30 -->
-      <div class="warn"><span>⚠️</span><div><b>「更新工單狀態」和「設定工單優先級」的下拉要真的選一次。</b>剛加入動作時，畫面會先顯示「開啟」或「低」，但其實還沒選，直接儲存會被拒絕並提示「必須填寫」。如果你要的剛好就是「開啟」或「低」，請先選別的選項，再選回來。</div></div>
+      <p>「更新工單狀態」的目標狀態、「設定工單優先級」的優先級是必填，剛加入動作時會顯示「請選擇…」，記得選好再儲存。</p>
 
       <!-- KNOWN-ISSUE: SLA 類時機的新增／移除標籤不會執行（SLA 路徑沒有 contactId）；升級工單只改優先級、升級原因不記錄。apps/workers/src/lib/automation-actions.ts:222-225, 297-325、apps/workers/src/handlers/sla.handler.ts:249-254 -->
       <div class="info"><span>ℹ️</span><div>
@@ -278,8 +283,7 @@
         </tbody>
       </table>
       <p>這個讓步只發生在 LINE、Facebook、Instagram。網站聊天視窗（WebChat）的關鍵字規則目前<b>送不出回覆</b>，WebChat 的客人請交給 AI 或客服回答。</p>
-      <!-- KNOWN-ISSUE: AI 讓步只比對關鍵字與動作類型、不看規則條件，條件不成立時 AI 讓步但規則不執行，客人收不到任何回覆。apps/api/src/modules/automation/automation.worker.ts:229-273 -->
-      <div class="warn"><span>⚠️</span><div><b>關鍵字回覆規則請不要再加「在什麼情況下」的條件。</b>系統判斷 AI 要不要讓開時，只看關鍵字有沒有命中，不看條件。如果你另外加了條件（例如「對話渠道 等於 LINE」）而條件沒成立，AI 已經讓開、規則又沒執行，<b>客人會完全收不到回覆</b>。想依渠道回不同內容，請把關鍵字寫得更明確，或分成不同的關鍵字。</div></div>
+      <p>如果關鍵字規則另外加了「在什麼情況下」的條件（例如「對話渠道 等於 LINE」），系統會連條件一起判斷：<b>條件不成立時，規則不執行，AI 照常回覆</b>，客人不會沒人理。</p>
       <!-- KNOWN-ISSUE: 關鍵字規則各自觸發，「執行後不再檢查其他規則」無效；客服接手後仍會自動回覆（AUDIT AUTO-04）。apps/api/src/modules/automation/automation.worker.ts:326-338、apps/workers/src/handlers/automation.handler.ts:36 -->
       <div class="warn"><span>⚠️</span><div>
         <b>同一個關鍵字不要設在好幾條規則裡。</b>一則訊息命中幾條關鍵字規則，就會回幾次，「這條規則執行後，不再檢查其他規則」對關鍵字規則沒有作用。<br>
@@ -299,8 +303,7 @@
         <li>依畫面上列出的條件欄位填值。可以填好幾個值的欄位，用「、」分開。</li>
         <li>按「試試看」，看結果和「會執行：…」那一行。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 試跑不反映 workers 實際會略過的情況（傳送通知沒有負責人、已有未結案工單不建單）。apps/api/src/modules/automation/automation.service.ts:284-328 -->
-      <div class="info"><span>ℹ️</span><div>試跑只檢查條件會不會成立。像「傳送通知」沒有工單負責人、「建立工單」時對話已經有未結案工單這類情況，試跑會顯示「會執行」，實際上不會做。請搭配第 6 節的說明判斷。</div></div>
+      <div class="info"><span>ℹ️</span><div>試跑只檢查條件會不會成立。像「建立工單」時對話已經有還沒結案的工單，試跑會顯示「會執行」，實際上不會再開新單。</div></div>
     </section>
 
     <section class="doc" id="p9">
