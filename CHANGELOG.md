@@ -10,7 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
-- **WebTalk 協作工具列跨租戶互通** — 後台的 WebTalk 以寫死的 `siteId: 'open333crm-uat'`、`scope: 'origin'` 掛載，SDK 依網域算出房間，同一網域上所有租戶的客服進同一個房間，互相看得到在線名單、訊息與網頁摘要。房間代號改由 API 發放（`GET /api/v1/webtalk/session`）：以 `WEBTALK_ROOM_SECRET` 對環境、租戶與房間版本做 HMAC，只發給已登入的成員，不同租戶與不同環境不會同房；密鑰或 SDK 網址沒有設定時不載入 WebTalk（fail-closed）。SDK 網址、環境識別與 AI 端點改由 API 環境變數提供，前端不再寫死。設定頁新增「WebTalk 協作」（`settings.manage`）：租戶可關閉 WebTalk（預設開）與 AI 摘要（預設關，因為會把整頁文字含顧客個資送到外部），也可在成員離職時重新產生房間代號。AI 摘要關閉時，SDK 的 AI 請求改打 CRM API 的 `/webtalk/ai-disabled`，在讀取內容前就拒絕。掛載前帶入客服本名；登出、換帳號時卸載並清除 SDK 留在瀏覽器的聊天紀錄，修正同一分頁重新登入後無法再次掛載。新增 migration `20261015100000_add_webtalk_tenant_settings`。
+- **WebTalk 協作工具列跨租戶互通** — 後台的 WebTalk 以寫死的 `siteId: 'open333crm-uat'`、`scope: 'origin'` 掛載，SDK 依網域算出房間，同一網域上所有租戶的客服進同一個房間，互相看得到在線名單、訊息與網頁摘要。房間代號改由 API 發放（`GET /api/v1/webtalk/session`）：以 `WEBTALK_ROOM_SECRET` 對環境、租戶與房間版本做 HMAC，只發給已登入的成員，不同租戶與不同環境不會同房；密鑰或 SDK 網址沒有設定時不載入 WebTalk（fail-closed）。SDK 網址、環境識別與 AI 端點改由 API 環境變數提供，前端不再寫死。設定頁新增「WebTalk 協作」（`settings.manage`）：租戶可關閉 WebTalk（預設開）與 AI 摘要（預設關，因為會把整頁文字含顧客個資送到外部），也可在成員離職時重新產生房間代號。AI 摘要關閉時，SDK 的 AI 請求改打 CRM API 的 `/webtalk/ai-disabled`，在讀取內容前就拒絕。掛載前帶入客服本名；登出、換帳號時卸載並清除 SDK 留在瀏覽器的聊天紀錄，修正同一分頁重新登入後無法再次掛載。新增 migration `20261015100000_add_webtalk_tenant_settings`。頁面上已有 SDK script 時，只在網址與 SRI 雜湊都和這次設定相同時才重用，否則移除後依設定重新載入，避免繞過 SRI；SDK 不論是新載入或頁面上已存在，登出都改整頁導向以關閉信令連線；元件在 SDK 載入或掛載途中卸載時，完成後會再卸載一次，不留下背景連線。
 
 ## [2026-10-14]
 

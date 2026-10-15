@@ -56,6 +56,8 @@ const IDB_STORE = 'keyval';
 let sdkLoadPromise: Promise<WebTalkApi['mount']> | null = null;
 /** SDK 的 unmount() 會把 window.WebTalk 設為 undefined，所以保留第一次拿到的 mount 才能再次掛載 */
 let cachedMount: WebTalkApi['mount'] | null = null;
+/** 同理保留 unmount：mount 完成前 window.WebTalk 可能已被 unmount 清掉，仍要能再次卸載 */
+let cachedUnmount: WebTalkApi['unmount'] | null = null;
 /** 這個頁面是否載入過 SDK（SDK 載入時就連上信令伺服器，unmount 不會關閉） */
 let sdkLoadedInPage = false;
 
@@ -74,6 +76,25 @@ function findExistingScript(): HTMLScriptElement | null {
   return document.querySelector<HTMLScriptElement>('script[data-open333-webtalk-sdk="true"]');
 }
 
+/** 既有 script 的網址與 SRI 都和這次 session 相同才可重用，避免重用舊環境或被注入的 script 而繞過 SRI。 */
+function isReusableScript(script: HTMLScriptElement, src: string, integrity: string | null): boolean {
+  let expectedSrc: string;
+  try {
+    expectedSrc = new URL(src, document.baseURI).href;
+  } catch {
+    return false;
+  }
+  return script.src === expectedSrc && (script.getAttribute('integrity') ?? null) === (integrity ?? null);
+}
+
+/** 記錄取得的 SDK 函式；不論經由哪條路徑取得，都代表 SDK 已在這個頁面執行（信令連線已建立）。 */
+function rememberSdk(api: WebTalkApi): WebTalkApi['mount'] {
+  sdkLoadedInPage = true;
+  cachedMount = api.mount;
+  if (typeof api.unmount === 'function') cachedUnmount = api.unmount;
+  return api.mount;
+}
+
 /**
  * @description 載入 WebTalk SDK（同一頁只插入一次 script），回傳可重複使用的 mount 函式。
  * @param src SDK 網址（來自 session）
@@ -83,15 +104,21 @@ export function loadWebTalkSdk(src: string, integrity: string | null): Promise<W
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('WebTalk SDK can only be loaded in the browser'));
   }
-  if (cachedMount) return Promise.resolve(cachedMount);
-  if (window.WebTalk?.mount) {
-    cachedMount = window.WebTalk.mount;
+  if (cachedMount) {
+    sdkLoadedInPage = true;
     return Promise.resolve(cachedMount);
+  }
+  if (window.WebTalk?.mount) {
+    return Promise.resolve(rememberSdk(window.WebTalk));
   }
   if (sdkLoadPromise) return sdkLoadPromise;
 
   sdkLoadPromise = new Promise<WebTalkApi['mount']>((resolve, reject) => {
-    const existing = findExistingScript();
+    let existing = findExistingScript();
+    if (existing && !isReusableScript(existing, src, integrity)) {
+      existing.remove();
+      existing = null;
+    }
     const script = existing ?? document.createElement('script');
 
     if (!existing) {
@@ -113,14 +140,13 @@ export function loadWebTalkSdk(src: string, integrity: string | null): Promise<W
     const handleLoad = () => {
       cleanup();
       sdkLoadedInPage = true;
-      const mount = window.WebTalk?.mount;
-      if (!mount) {
+      const sdk = window.WebTalk;
+      if (!sdk?.mount) {
         sdkLoadPromise = null;
         reject(new Error('WebTalk SDK is loaded but window.WebTalk.mount is unavailable'));
         return;
       }
-      cachedMount = mount;
-      resolve(mount);
+      resolve(rememberSdk(sdk));
     };
 
     const handleError = () => {
@@ -250,7 +276,8 @@ export async function clearWebTalkLocalData(): Promise<void> {
 export function teardownWebTalk(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    void window.WebTalk?.unmount();
+    const unmount = window.WebTalk?.unmount ?? cachedUnmount;
+    void unmount?.();
   } catch (error) {
     console.warn('Failed to unmount WebTalk', error);
   }

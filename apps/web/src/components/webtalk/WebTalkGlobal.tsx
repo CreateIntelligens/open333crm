@@ -29,13 +29,19 @@ export function WebTalkGlobal() {
       const session = await fetchWebTalkSession();
       if (cancelled || !session.enabled) return;
       const mount = await loadWebTalkSdk(session.sdkUrl, session.sdkIntegrity);
-      if (cancelled) return;
+      // 卸載時 SDK 可能還沒載完，清理那時沒有東西可卸載，所以載完後要再卸載一次
+      if (cancelled) {
+        teardownWebTalk();
+        return;
+      }
       seedWebTalkIdentity({ id: agentId, name: agentName ?? '', avatar: agentAvatar });
       await mount({
         roomId: session.roomId,
         aiEndpoint: session.aiEndpoint ?? getWebTalkAiDisabledEndpoint(),
         enableVirtualRoom: false,
       });
+      // mount() 進行中卸載時，清理可能早於 SDK 建好畫面，完成後再卸載一次
+      if (cancelled) teardownWebTalk();
     })().catch((error) => {
       console.error('Failed to initialize WebTalk', error);
     });

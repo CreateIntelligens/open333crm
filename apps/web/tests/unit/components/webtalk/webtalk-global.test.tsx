@@ -194,3 +194,29 @@ test('WebTalk remounts after the operator changes', async () => {
   assert.equal((sdk.userInfoAtMount[1] as Record<string, unknown>).name, '李小華');
   assert.equal(api.get.mock.calls.length, 2, '重新取得 session');
 });
+
+test('元件在 SDK 載入期間卸載時，SDK 載完後卸載且不掛載', async () => {
+  api.get.mockResolvedValue({ data: { data: enabledSession() } });
+  const WebTalkGlobal = await loadComponent();
+  const view = render(<WebTalkGlobal />);
+  await waitFor(() => assert.equal(sdkScripts().length, 1));
+  view.unmount();
+  installFakeSdk();
+  sdkScripts()[0]!.dispatchEvent(new Event('load'));
+  await waitFor(() => assert.equal(sdk.unmount.mock.calls.length, 1));
+  assert.equal(sdk.mount.mock.calls.length, 0, '已卸載的元件不掛載');
+});
+
+test('元件在 mount() 進行中卸載時，mount 完成後再次卸載', async () => {
+  api.get.mockResolvedValue({ data: { data: enabledSession() } });
+  let finishMount!: () => void;
+  sdk.mount.mockImplementation(() => new Promise<void>((resolve) => { finishMount = resolve; }));
+  const WebTalkGlobal = await loadComponent();
+  const view = render(<WebTalkGlobal />);
+  await finishSdkLoad();
+  await waitFor(() => assert.equal(sdk.mount.mock.calls.length, 1));
+  view.unmount();
+  assert.equal(sdk.unmount.mock.calls.length, 1, '元件清理時卸載一次');
+  finishMount();
+  await waitFor(() => assert.equal(sdk.unmount.mock.calls.length, 2, 'mount 完成後再卸載一次'));
+});
