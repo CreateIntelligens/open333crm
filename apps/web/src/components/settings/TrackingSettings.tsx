@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { LoadErrorNotice } from "@/components/shared/LoadErrorNotice";
 
 export function TrackingSettings() {
   const [gaId, setGaId] = useState("");
@@ -13,14 +14,19 @@ export function TrackingSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // 讀取失敗時不顯示空白表單：按儲存會把已設定的 ID 清掉（G13）
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get("/settings/tracking");
       const data = res.data.data;
       setGaId(data.gaId || "");
       setMetaPixelId(data.metaPixelId || "");
     } catch (err) {
-      console.error("Failed to fetch tracking settings:", err);
+      setLoadError(getApiErrorMessage(err, "請稍後重試"));
     } finally {
       setLoading(false);
     }
@@ -50,6 +56,10 @@ export function TrackingSettings() {
 
   if (loading) {
     return <div className="p-4 text-muted-foreground">載入中...</div>;
+  }
+
+  if (loadError) {
+    return <LoadErrorNotice title="無法讀取追蹤設定" message={loadError} onRetry={fetchSettings} />;
   }
 
   return (
