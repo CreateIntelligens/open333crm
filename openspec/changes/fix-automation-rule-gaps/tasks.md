@@ -24,8 +24,8 @@
 
 ## 5. 完成檢查
 
-- [ ] 5.1 `pnpm test` 通過
-- [ ] 5.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
-- [ ] 5.3 `CHANGELOG.md` 補 Fixed
-- [ ] 5.4 `node scripts/validate-openspec.mjs fix-automation-rule-gaps` 通過
+- [x] 5.1 `pnpm test` 通過
+- [x] 5.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
+- [x] 5.3 `CHANGELOG.md` 補 Fixed
+- [x] 5.4 `node scripts/validate-openspec.mjs fix-automation-rule-gaps` 通過
 - [ ] 5.5 部署後在 UAT 先以 dry-run 執行資料腳本、確認清單後加 `--apply`
