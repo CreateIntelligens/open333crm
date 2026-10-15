@@ -38,6 +38,63 @@ function resolveRouteFile(importPath) {
   return file.endsWith('.routes.ts') ? file : `${file}.routes.ts`;
 }
 
+function readOptionObject(source, afterPath) {
+  let cursor = afterPath;
+  while (/\s/.test(source[cursor] ?? '')) cursor += 1;
+  if (source[cursor] !== ',') return '';
+  cursor += 1;
+  while (/\s/.test(source[cursor] ?? '')) cursor += 1;
+  if (source[cursor] !== '{') return '';
+
+  const start = cursor;
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  for (; cursor < source.length; cursor += 1) {
+    const char = source[cursor];
+    const next = source[cursor + 1];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      cursor = source.indexOf('\n', cursor);
+      if (cursor < 0) return '';
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      cursor = source.indexOf('*/', cursor + 2);
+      if (cursor < 0) return '';
+      cursor += 1;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}' && --depth === 0) return source.slice(start, cursor + 1);
+  }
+  return '';
+}
+
+function authenticatedRoute(source, options) {
+  const hasPluginAuth = /\b(?:fastify|app)\.addHook\(\s*['"](?:preHandler|onRequest)['"]\s*,\s*(?:\[[^\]]*\]\s*,?\s*)?(?:fastify|app)\.authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?\b/.test(source);
+  const authGuards = new Set();
+  const authHandlers = new Set();
+  for (const match of source.matchAll(/(?:const|let)\s+(\w+)\s*=\s*[\[{][\s\S]{0,220}?(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)/g)) {
+    authGuards.add(match[1]);
+  }
+  for (const match of source.matchAll(/(?:const|let)\s+(\w+)\s*=\s*async\b[\s\S]{0,350}?(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)|(?:const|let)\s+(\w+)\s*=\s*async\b[\s\S]{0,350}?\bauthenticateMcp\b/g)) {
+    authHandlers.add(match[1] ?? match[2]);
+  }
+  if (hasPluginAuth) return true;
+  if (/\b(?:fastify|app)\.(?:authenticate(?:PlatformSuperuser|JwtOrCliSession|JwtOrPartnerKey|CliSession)?|requirePermission|requireRole)\b|\bauthenticateMcp\b/.test(options)) return true;
+  return [...authGuards, ...authHandlers].some((name) => new RegExp(`\\b${name}\\b`).test(options));
+}
+
 export function collectOpenApiRoutes(apiSource, routeSourceByFile) {
   const imports = parseImports(apiSource);
   const mountPrefixes = new Map();
@@ -69,7 +126,14 @@ export function collectOpenApiRoutes(apiSource, routeSourceByFile) {
       const localPath = match[3];
       for (const prefix of prefixes) {
         const path = toOpenApiPath(`${prefix.replace(/\/$/, '')}/${localPath.replace(/^\//, '')}`.replace(/\/$/, '') || '/');
-        routes.push({ method, path, tag: routeTag(file), source: file.replace(`${sourceRoot}/`, '') });
+      const options = readOptionObject(sourceText, match.index + match[0].length);
+      routes.push({
+        method,
+        path,
+        tag: routeTag(file),
+        source: file.replace(`${sourceRoot}/`, ''),
+        authenticated: authenticatedRoute(sourceText, options),
+      });
       }
     }
   };
@@ -82,22 +146,7 @@ export function collectOpenApiRoutes(apiSource, routeSourceByFile) {
   return routes.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 }
 
-export async function generateOpenApi(outputPath = resolve(repoRoot, 'apps/web/public/openapi.json')) {
-  const apiSource = await readFile(resolve(sourceRoot, 'index.ts'), 'utf8');
-  const imports = parseImports(apiSource);
-  const sources = new Map();
-  for (const routeFile of new Set(imports.values())) {
-    const file = resolveRouteFile(routeFile);
-    try {
-      sources.set(file, await readFile(file, 'utf8'));
-    } catch {
-      // The check below reports unresolved route modules instead of silently omitting them.
-    }
-  }
-  const missing = [...new Set(imports.values())].map(resolveRouteFile).filter((file) => !sources.has(file));
-  if (missing.length) throw new Error(`Cannot resolve registered route files: ${missing.join(', ')}`);
-
-  const routes = collectOpenApiRoutes(apiSource, sources);
+export function buildOpenApiDocument(routes) {
   if (!routes.length) throw new Error('No HTTP routes were discovered');
   const paths = {};
   for (const route of routes) {
@@ -120,6 +169,14 @@ export async function generateOpenApi(outputPath = resolve(repoRoot, 'apps/web/p
         ? `MCP Streamable HTTP transport. JSON-RPC methods are described in the MCP protocol documentation. Source: ${route.source}.`
         : `Source: ${route.source}. Request and response schemas require route-level documentation.`,
       parameters,
+      ...(route.authenticated ? { security: [{ BearerAuth: [] }] } : {}),
+      ...(['post', 'put', 'patch'].includes(route.method) ? {
+        requestBody: {
+          required: false,
+          description: 'Generic JSON editor for Try it out. The exact request schema is undocumented.',
+          content: { 'application/json': { schema: { type: 'object', additionalProperties: true } } },
+        },
+      } : {}),
       responses: { default: { description: 'Response contract is not documented yet.' } },
       'x-contract-status': isMcp ? 'protocol-documentation' : 'undocumented',
     };
@@ -129,12 +186,43 @@ export async function generateOpenApi(outputPath = resolve(repoRoot, 'apps/web/p
     info: {
       title: 'Open333CRM API',
       version: '1.0.0',
-      description: 'HTTP API route inventory. Socket.IO and MCP use separate protocol documentation. Request and response contracts marked undocumented need authored schemas.',
+      description: 'HTTP API reference with interactive requests. Operations marked undocumented use generic request bodies where applicable. Socket.IO events and MCP JSON-RPC methods have separate protocol documentation.',
+    },
+    servers: [{ url: '/', description: 'Current origin' }],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT or API token',
+          description: 'Enter a tenant access JWT, CLI session token, partner API key, or platform token as permitted by the operation.',
+        },
+      },
     },
     tags: [...new Set(routes.map((route) => route.tag))].sort().map((name) => ({ name })),
     'x-tagGroups': [{ name: 'HTTP API', tags: [...new Set(routes.map((route) => route.tag))].sort() }],
     paths,
   };
+  return document;
+}
+
+export async function generateOpenApi(outputPath = resolve(repoRoot, 'apps/web/public/openapi.json')) {
+  const apiSource = await readFile(resolve(sourceRoot, 'index.ts'), 'utf8');
+  const imports = parseImports(apiSource);
+  const sources = new Map();
+  for (const routeFile of new Set(imports.values())) {
+    const file = resolveRouteFile(routeFile);
+    try {
+      sources.set(file, await readFile(file, 'utf8'));
+    } catch {
+      // The check below reports unresolved route modules instead of silently omitting them.
+    }
+  }
+  const missing = [...new Set(imports.values())].map(resolveRouteFile).filter((file) => !sources.has(file));
+  if (missing.length) throw new Error(`Cannot resolve registered route files: ${missing.join(', ')}`);
+
+  const routes = collectOpenApiRoutes(apiSource, sources);
+  const document = buildOpenApiDocument(routes);
   await writeFile(outputPath, `${JSON.stringify(document, null, 2)}\n`);
   return document;
 }

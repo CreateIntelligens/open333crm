@@ -14,6 +14,9 @@ export default function ApiReferencePage() {
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
           This reference lists registered HTTP endpoints, including the MCP transport endpoint. Operations marked as undocumented still need request or response schemas. MCP JSON-RPC methods and Socket.IO events use separate protocol documentation.
         </p>
+        <a className="mt-4 inline-flex font-medium text-indigo-700 underline underline-offset-4" href="/swagger-ui.html">
+          Open the standalone Swagger UI to execute requests
+        </a>
       </header>
       <ApiReferenceViewer />
     </main>

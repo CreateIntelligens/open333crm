@@ -13,6 +13,7 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Added
 
 - **集中 API 參考頁** — 新增 `/api-reference` Redoc 頁面與 OpenAPI 路由目錄產生器，依 API 實際掛載前綴列出 HTTP endpoints，並標示尚未文件化的 request/response schema。Socket.IO 與 MCP 維持各自協定文件範圍。
+- **Swagger API 執行頁** — 新增獨立 `/swagger-ui.html`，支援 Try it out、同源 API 呼叫與 Bearer token 授權；Redoc 保留作為閱讀 API 文件的入口。
 
 - **手機號碼 One ID** — 與 email 登記並存、各自啟用（設定頁「手機登記」，預設關閉）。顧客在對話傳送「登記手機」或由客服在收件匣代發，取得一次性登記連結，填入手機號碼後，同租戶使用同一支手機的聯絡人自動合併到最早的一位。只接受台灣手機，`0912-345-678`、`+886 912 345 678` 等寫法統一存成 `0912345678`，比對既有聯絡人時也統一格式，客服或匯入存的電話同樣比對得到。比照 email 版不做 OTP 驗證，沿用同渠道衝突拒絕、雙邊通知、7 天自助解除、公開端點限頻與同號碼依序處理；手機號碼較容易被他人得知，登記方收到的整合通知不顯示對方名稱。email 與手機登記可以同時開啟；要合併的兩位聯絡人另一種識別不一致時（手機登記時雙方 email 不同、email 登記時雙方手機不同），不自動合併，回覆顧客需要客服確認，避免共用號碼的家人或兩組已歸戶的資料被連鎖併成一位。email 與手機登記改用同一套流程（`identifier-registration.ts`），email 的行為不變。
 
