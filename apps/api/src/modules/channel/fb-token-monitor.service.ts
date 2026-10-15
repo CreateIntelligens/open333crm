@@ -1,9 +1,13 @@
 /**
  * Facebook Token Monitor Service — checks FB page access token health.
+ *
+ * 只讀：渠道管理頁每次開啟都會對 FB 卡片呼叫 GET /channels/:id/status，
+ * 這裡不可寫入 lastVerifiedAt 或 settings（G03）。「最後驗證」只由測試連線
+ * （POST /channels/:id/verify）更新；權杖健康狀態由排程（meta-token-health）維護。
  */
 
 import type { TenantDb } from '../../lib/tenant-db.js';
-import { decryptCredentials, patchChannelSettings } from './channel.service.js';
+import { decryptCredentials } from './channel.service.js';
 import { AppError } from '../../shared/utils/response.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
@@ -79,19 +83,6 @@ export async function checkFbTokenStatus(
           }
         }
 
-        // Store token expiry in channel settings
-        // 以資料庫端 JSON 合併原子寫入：不拿開頭讀到的 settings 快照整包寫回，
-        // 否則會蓋掉期間由驗證或 webhook 寫入的系統欄位（導流識別、分派警示等）
-        // 沒有到期日（永久權杖）時移除舊值，避免換成永久權杖後仍顯示即將過期
-        await patchChannelSettings(
-          prisma,
-          channelId,
-          channel.tenantId,
-          expiresAt ? { tokenExpiresAt: expiresAt } : {},
-          expiresAt ? [] : ['tokenExpiresAt'],
-        );
-        await prisma.channel.update({ where: { id: channelId }, data: { lastVerifiedAt: new Date() } });
-
         if (!isValid) {
           return { valid: false, expiresAt, daysRemaining, warning: tokenData.error?.message || 'Token 無效' };
         }
@@ -110,10 +101,6 @@ export async function checkFbTokenStatus(
     );
 
     if (response.ok) {
-      await prisma.channel.update({
-        where: { id: channelId },
-        data: { lastVerifiedAt: new Date() },
-      });
       return { valid: true };
     }
 

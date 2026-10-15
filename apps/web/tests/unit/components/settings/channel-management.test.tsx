@@ -78,3 +78,10 @@ test('說明文字不要求填 ngrok', () => {
   assert.equal(screen.queryAllByText(/ngrok/).length, 0);
   assert.equal(screen.queryAllByPlaceholderText(/ngrok/).length, 0);
 });
+
+test('停用的 FB 渠道不查詢', async () => {
+  channelsState.channels = [channel('on', 'FB', true), channel('off', 'FB', false)];
+  render(<ChannelManagement />);
+  await waitFor(() => assert.ok(api.get.mock.calls.some(([url]) => url === '/channels/on/status')));
+  assert.equal(api.get.mock.calls.some(([url]) => url === '/channels/off/status'), false);
+});

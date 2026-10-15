@@ -264,7 +264,8 @@ export function ChannelManagement() {
   // Load FB token status for FB channels
   useEffect(() => {
     if (!channels || channels.length === 0) return;
-    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB);
+    // 停用的渠道不查（G03）：權杖狀態對停用的渠道沒有意義
+    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB && ch.isActive);
     for (const ch of fbChannels) {
       api.get(`/channels/${ch.id}/status`).then((res) => {
         const tokenStatus = res.data?.data?.tokenStatus;
