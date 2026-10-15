@@ -92,16 +92,13 @@
 | [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 已提建議 | 收件匣的下拉選單繞過關閉與指派的副作用；指派對話不會通知 | 靜態確認 |
-| [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 已提建議 | 客服回覆送出失敗時，介面沒有任何標示 | 靜態確認 |
-| [CASE-01](#case-01) | 對話、工單與自動化 | P2 | 已提建議 | 工單的狀態下拉選單不寫時間軸、不發布事件，選「已升級」不通知主管 | 靜態確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
-| [AUTO-04](#auto-04) | 對話、工單與自動化 | P2 | 未處理 | 關鍵字回覆頁承諾的「只在機器人對話觸發」與「每小時上限」都沒有生效 | 靜態確認 |
 | [AUTO-05](#auto-05) | 對話、工單與自動化 | P2 | 部分修正 | 規則編輯器提供的部分觸發事件永遠不會觸發；編輯器已標示並警告，事件仍未送出 | 靜態確認 |
 | [IDENT-01](#ident-01) | 聯絡人、行銷與報表 | P2 | 未處理 | 合併建議沒有產生端，審核端點永遠沒有資料 | 靜態確認 |
 | [IDENT-03](#ident-03) | 聯絡人、行銷與報表 | P2 | 部分修正 | 一位聯絡人在同一個渠道可以有兩個身分，回覆會送給另一位客人，進站訊息會放進另一段對話；合併已改為拒絕（`89014327`）；UAT 有 8 位 WebChat 測試聯絡人有兩個身分，是修正前 E2E 測試的合併產生；資料庫沒有限制 | 執行時確認 |
-| [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 已提建議 | 群發可以重複執行，重送時不排除已送達的人 | 靜態確認 |
+| [MKT-01](#mkt-01) | 聯絡人、行銷與報表 | P2 | 部分修正 | 群發失敗後重試，逐人送出的群發會對全部對象重送；連按兩次與排程重疊已擋下 | 靜態確認 |
 | [SHORT-01](#short-01) | 聯絡人、行銷與報表 | P3 | 部分修正 | 記錄點擊的公開端點採信呼叫端提供的同租戶聯絡人與 LINE uid，也沒有速率限制；其他租戶的聯絡人已擋下 | 靜態確認 |
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；fanToken 簽發接回前要修 | 靜態確認 |
@@ -1192,48 +1189,6 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 **修正方向**：`updateConversation()` 收到 `CLOSED` 時改走 `closeConversation()`；指派時發布 `conversation.assigned`，讓通知與對外 Webhook 接得到。
 
-<a id="conv-03"></a>
-### CONV-03：客服回覆送出失敗時，介面沒有任何標示
-
-`conversation.service.ts` 的 `sendMessage()` 先寫入一則 `OUTBOUND` 訊息、推送到收件匣，再呼叫渠道外掛送出。送出失敗時：
-
-- LINE 只把 `metadata.lineDeliveryStatus` 寫成 `failed`。
-- 其他渠道什麼都不寫。
-- 例外被捕捉後只寫 log。
-
-前端的 `MessageBubble.tsx` 與對話清單只認 `metadata.deliveryFailed`，這個欄位只有 workers 的 `channel-delivery.ts`（自動化發送）會寫。`POST /conversations/:id/messages` 也把 `sendMessage()` 回傳的 `delivery` 丟掉，只回傳訊息本身。
-
-因此客服手動回覆的訊息送不出去時，例如 token 失效或 LINE 訊息額度用完，畫面上和成功送出的訊息一模一樣。客服會以為客人已經收到。
-
-**修正方向**：送出失敗時一律寫入 `metadata.deliveryFailed` 與錯誤說明，並推送更新；文字回覆的路由把 `delivery` 回傳給前端。
-
-<a id="case-01"></a>
-### CASE-01：工單的狀態下拉選單繞過狀態轉換的副作用
-
-工單改狀態有兩類路徑：
-
-| 路徑 | 呼叫端 | 服務函式 |
-| --- | --- | --- |
-| `POST /cases/:id/resolve`、`/close`、`/reopen` | 工單詳情頁的按鈕 | `case.service.ts` 的 `transitionCase()` |
-| `POST /cases/:id/escalate` | 升級對話框 `EscalationModal.tsx` | `case.service.ts` 的 `escalateCase()` |
-| `PATCH /cases/:id` 帶 `status` | 工單詳情頁的狀態下拉選單，`CaseDetail.tsx` 的 `handleStatusChange()` | `case.service.ts` 的 `updateCase()` |
-
-兩類路徑都經過 `validateTransition()`，允許的轉換相同。差別在副作用：
-
-| 副作用 | 專用端點 | `PATCH /cases/:id` |
-| --- | --- | --- |
-| 寫入 `CaseEvent`（工單時間軸） | 有 | 沒有 |
-| 發布 `case.resolved`、`case.closed` | 有 | 沒有 |
-| 發布 `case.escalated`（通知主管、觸發自動化） | 有 | 沒有 |
-| 記錄升級原因 | 有 | 沒有 |
-| 設定 `resolvedAt`、`closedAt` | 有 | 有 |
-
-下拉選單的選項包含「已升級」。客服從下拉選單把工單改成 `ESCALATED` 時，主管不會收到通知，訂閱 `case.escalated` 的自動化規則也不會觸發。從下拉選單解決或關閉的工單，時間軸上沒有這筆紀錄，訂閱 `case.resolved`、`case.closed` 的對外 Webhook 也收不到事件。
-
-`resolvedAt` 仍然會寫入，因此 CSAT 排程照常發送調查。
-
-**修正方向**：`updateCase()` 收到 `status` 時改走 `transitionCase()`，收到 `ESCALATED` 時拒絕並要求改用 `/escalate`。另一個做法是讓前端的下拉選單改呼叫專用端點。
-
 <a id="case-02"></a>
 ### CASE-02：非 LINE 渠道的滿意度調查無法回覆
 
@@ -1272,21 +1227,6 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 - 找不到時，直接以這個名稱建立一個 `scope` 為預設 `CONTACT` 的新標籤。標籤被管理員刪除或改名後，規則下一次觸發就默默把舊名稱的標籤建回來。
 
 **規格依據。** 主規格 `tag-management` 的「Scoped tag assignment」規定：貼標 SHALL 檢查標籤的 scope 與對象類型相符。workers 的 `add_tag` 不論以 ID 或名稱找標籤，都不檢查 scope，現況違反這條需求，因此由 P3 調為 P2。`automation-engine` 的「Add Tag Worker Action」沒有規定 scope，與這個結論不衝突。
-
-<a id="auto-04"></a>
-### AUTO-04：關鍵字回覆頁承諾的兩項保護都沒有生效
-
-`line/keyword-replies/page.tsx` 在頁面上寫著兩條規則：
-
-1. 規則只在機器人負責（`BOT_HANDLED`）的對話觸發，客服接手的對話不會自動回覆。
-2. 同一個聯絡人對同一條規則，每小時最多觸發三次。
-
-兩條都沒有實作在實際執行的路徑上：
-
-- `automation.worker.ts` 的 `checkKeywordTriggers()` 對所有對話都比對關鍵字並發布 `keyword.matched`；workers 的 `send_material` 也不檢查對話狀態。
-- 每小時上限 `RATE_LIMIT_MAX` 原本只寫在沒有呼叫端的 `action-executor.ts`，這個檔案已在 `8e25e1b` 刪除，因此目前沒有任何程式實作這個上限。這段是 2026-05-28 的 `fff80d8` 加入的，當時 `action-executor.ts` 已經因 `9255245` 而沒有呼叫端。
-
-結果：客服接手對話後，客人訊息含關鍵字時仍會收到自動回覆；客人重複傳同一個關鍵字，每次都會收到回覆。另外，一則訊息命中多條關鍵字規則時，每條各回一次。
 
 <a id="auto-05"></a>
 ### AUTO-05：規則編輯器提供的部分觸發事件永遠不會觸發
@@ -1346,19 +1286,26 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會被拒絕（409 `SAME_CHANNEL_CONFLICT`），要改成兩個不同渠道的聯絡人，或改為驗證拒絕訊息。
 
 <a id="mkt-01"></a>
-### MKT-01：群發可以重複執行，重送時不排除已送達的人
+### MKT-01：群發失敗後重試，逐人送出的群發會重送給已送達的人
 
 `POST /marketing/broadcasts/:id/send` 在 HTTP 請求內 `await` `marketing.service.ts` 的 `executeBroadcast()`，整筆群發送完才回應。
 
-`executeBroadcast()` 允許狀態為 `draft`、`scheduled`、`sending`、`failed` 的群發執行。它先讀狀態、再把狀態改成 `sending`，兩步不是原子操作。重新執行時會重新解析發送對象，對所有人再送一次，不看既有的 `BroadcastRecipient` 紀錄。
+**部分修正（`f0d88b0e`，#283，2026-10-15）。** 同一筆群發不會再同時執行兩次：
 
-下列情況都會讓客人收到重複的群發：
+- `executeBroadcast()` 以條件更新（`status in (draft, scheduled, failed)`）搶占執行權，改成 `sending`。兩個請求同時送出，或請求與排程器同時執行時，只有一個搶得到。
+- 狀態是 `sending` 的群發再送出時回 409 `BROADCAST_ALREADY_SENDING`。
+- 「立即發送」的按鈕在請求期間停用。
 
-- 管理員連按兩次送出。
-- 逐人送出的群發（Facebook，或素材含變數）人數多，請求逾時；狀態停在 `sending`，管理員再按一次。
-- 群發中途發生例外，狀態變成 `failed`，管理員重試。
+立即發送的路由、排程器與 MCP 工具都呼叫 `executeBroadcast()`，所以三條路徑都受這個保護。
 
-**修正方向**：送出改成背景工作；以條件更新（`status in (draft, scheduled)`）原子地搶到執行權；重試時跳過已有成功收件紀錄的聯絡人。
+**仍未修正：**
+
+| 情況 | 現況 |
+| --- | --- |
+| 群發中途發生例外，狀態變成 `failed`，管理員重試 | 重試會重新解析發送對象。逐人送出的群發（Facebook，或素材含變數）對全部對象再送一次，不看既有的 `BroadcastRecipient` 紀錄。LINE 的 multicast 依批次編號（`BroadcastDeliveryAttempt.batchIndex`）跳過已被 LINE 接受的批次；兩次執行之間受眾改變時，同一個批次編號的對象會不同 |
+| 行程在送出途中結束 | 狀態停在 `sending`。再送出一律回 409，這筆群發只能取消，不能重送 |
+
+**修正方向**：送出改成背景工作；重試時跳過已有成功收件紀錄的聯絡人；為停在 `sending` 的群發提供逾時或復原的途徑。
 
 <a id="short-01"></a>
 ### SHORT-01：記錄點擊的公開端點採信呼叫端提供的身分
@@ -1577,7 +1524,7 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 
 | 機制 | 多個 API 行程時 |
 | --- | --- |
-| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發在兩個行程都查到同一筆 `scheduled` 時，因 `executeBroadcast()` 接受 `sending` 狀態而兩邊都執行，見 MKT-01 |
+| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發不受影響：`executeBroadcast()` 以條件更新搶占執行權，兩個行程查到同一筆 `scheduled` 時只有一個會執行（MKT-01 的部分修正） |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
 | `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
 | 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |

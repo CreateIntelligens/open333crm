@@ -169,7 +169,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 | 機制 | 多個行程時 |
 | --- | --- |
-| API 行程內的排程 | 每個行程各自執行，沒有鎖。例如兩個行程在同一輪都查到同一筆 `scheduled` 的群發；`executeBroadcast()` 接受 `sending` 狀態，所以兩邊都會執行，見 MKT-01 |
+| API 行程內的排程 | 每個行程各自執行，沒有鎖。群發是例外：`executeBroadcast()` 以條件更新搶占執行權，兩個行程查到同一筆 `scheduled` 的群發時，只有一個會執行 |
 | `crm:events` | 每個行程的 `canvas.worker.ts` 都收到，同一則 Canvas 訊息發送多次 |
 | `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
 | 行程記憶體的狀態 | 各行程各算各的：非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取 |

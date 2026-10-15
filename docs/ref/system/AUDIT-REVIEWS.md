@@ -4,6 +4,19 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-15：CASE-01、CONV-03、AUTO-04 結案，MKT-01 部分修正
+
+Daniel 的 #281～#285 合併後，逐項對照仍開著的 AUDIT 項目。#284 已自行更新 AUDIT（見下一筆），#281、#282、#283、#285 沒有改到 AUDIT。這次讀 `60573c58` 的程式碼與測試，沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CASE-01 | 已修正，從 `AUDIT.md` 移除 | `ee79c5ae`（#281，S05、S06）：`updateCase()` 改狀態時，`ESCALATED` 交給 `escalateCase()`，其他狀態交給 `transitionCase()`，時間軸與事件和專用端點相同。前端下拉選單選「已升級」時開啟升級對話框。測試：`apps/api/tests/unit/modules/case/case-status-patch-side-effects.test.ts`、`apps/web/tests/unit/app/cases/case-detail-actions.test.tsx` |
+| CONV-03 | 已修正，從 `AUDIT.md` 移除 | `ee79c5ae`（#281，S08）：`sendMessage()` 在 5 種送出失敗的情況都寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`；`POST /conversations/:id/messages` 回傳 `delivery`。測試：`apps/api/tests/unit/modules/conversation/send-message-delivery-failed.test.ts` |
+| AUTO-04 | 結案，從 `AUDIT.md` 移除 | `f0d88b0e`（#283，M11）：關鍵字回覆頁的說明改成實際行為（每則都觸發、客服接手也會回），不新增限制。主規格（`automation-engine`、`bot-handoff-config`、`inbound-message-processing`）都沒有要求「只在 `BOT_HANDLED` 觸發」或「每小時上限」，頁面也不再承諾，所以現況不構成落差 |
+| MKT-01 | 部分修正 | `f0d88b0e`（#283，M03～M09）：條件更新搶占執行權，`sending` 再送出回 409 `BROADCAST_ALREADY_SENDING`，按鈕在請求期間停用。立即發送、排程器、MCP 三條路徑都經過 `executeBroadcast()`。未修：從 `failed` 重試時，逐人送出的群發仍對全部對象重送；行程中途結束時群發停在 `sending`，只能取消 |
+
+也查過這幾項，都沒有修正：CONV-02（S09 只補失敗提示，`conversation.assigned` 仍沒有發布端）、AUTO-05（A02 處理的是舊 seed 的未知事件與動作）、SLA-02（`getActiveCases()` 仍是 `take: 100`，也不分租戶）、CHAN-02（workers 仍沒有網站聊天室外掛）。
+
 ## 2026-10-15：AUTH-09、SLA-03 修正，SLA-04、CHAN-01 部分修正
 
 重寫操作手冊時盤點「分析與管理」群組（問題清單 G03–G20），change `fix-admin-settings-safeguards` 修正其中四項 AUDIT 項目。只讀程式碼與本機測試，沒有連線 UAT。
