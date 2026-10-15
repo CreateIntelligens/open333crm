@@ -166,6 +166,21 @@ export function MessageInput({
     }, 100);
   };
 
+  // AI 建議回覆按「採用」：收件匣頁送出 ai-adopt 事件，把建議文字帶進輸入框（S07：原本沒有元件接收）
+  React.useEffect(() => {
+    const handleAdopt = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: unknown }>).detail?.text;
+      if (typeof text === 'string' && text) {
+        setMessage(text);
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 100);
+      }
+    };
+    window.addEventListener('ai-adopt', handleAdopt);
+    return () => window.removeEventListener('ai-adopt', handleAdopt);
+  }, []);
+
   // Expose setMessageFromTemplate via a ref callback attached to a data attribute
   React.useEffect(() => {
     const textarea = textareaRef.current;
