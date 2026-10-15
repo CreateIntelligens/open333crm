@@ -22,7 +22,8 @@ const statusConfig: Record<string, { className: string; label: string }> = {
 };
 
 export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
-  const config = statusConfig[status] || {
+  // API 回傳大寫列舉（OPEN、IN_PROGRESS…），對照表的鍵是小寫，查詢前先轉小寫
+  const config = statusConfig[status?.toLowerCase()] || {
     className: 'bg-muted text-muted-foreground',
     label: status,
   };

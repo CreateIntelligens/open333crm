@@ -187,7 +187,10 @@ export async function updateRule(
   // 只改啟用狀態、名稱、優先序不可被既有不合規的動作卡住：契約會演進（動作可能被拿掉），
   // 舊規則可能不合新版契約，但管理員至少要能停用它
   const touchesContract = data.trigger !== undefined || data.conditions !== undefined || data.actions !== undefined;
-  if (touchesContract) {
+  // 改為啟用時也要驗證：workers 會整條略過不合契約的規則，開關打開卻不會執行（問題清單 A02，
+  // change fix-automation-rule-gaps）。停用不驗證，管理員永遠可以關掉舊規則
+  const activates = data.isActive === true;
+  if (touchesContract || activates) {
     const existingTrigger = existing.trigger as Record<string, unknown>;
     const nextEventType = String(
       data.trigger?.type ?? existingTrigger?.type ?? existing.eventType ?? '',

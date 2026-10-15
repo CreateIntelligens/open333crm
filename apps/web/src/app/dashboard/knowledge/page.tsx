@@ -19,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
+import { usePermission } from '@/providers/AuthProvider';
 
 const statusTabs = [
   { value: 'all', label: '全部' },
@@ -54,6 +55,8 @@ export default function KnowledgePage() {
           : 'articles';
 
   // KB 回報（調教）
+  // 「標為已處理」後端要求 knowledge.admin（預設只有主管、管理員有），沒有權限時不顯示按鈕
+  const canResolveFeedback = usePermission('knowledge.admin');
   const { feedback, isLoading: feedbackLoading, mutate: mutateFeedback } = useKbFeedbackList({ status: 'open' });
 
   const handleResolveFeedback = useCallback(async (id: string) => {
@@ -369,6 +372,11 @@ export default function KnowledgePage() {
               <p className="text-sm text-muted-foreground">
                 使用者在 LINE 點「👎 沒幫到我」的回報。點「編輯文章」修正知識庫內容（存檔後自動重新嵌入），處理完點「標為已處理」。
               </p>
+              {!canResolveFeedback && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  「標為已處理」需要「知識庫進階」權限，你可以修正文章，處理完請主管或管理員標為已處理。
+                </p>
+              )}
             </div>
             <div className="flex-1 min-h-0 overflow-auto py-2">
               {feedbackLoading ? (
@@ -421,14 +429,16 @@ export default function KnowledgePage() {
                             <Pencil className="mr-1 h-3 w-3" />
                             編輯文章
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleResolveFeedback(f.id)}
-                          >
-                            <Check className="mr-1 h-3 w-3" />
-                            標為已處理
-                          </Button>
+                          {canResolveFeedback && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleResolveFeedback(f.id)}
+                            >
+                              <Check className="mr-1 h-3 w-3" />
+                              標為已處理
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>

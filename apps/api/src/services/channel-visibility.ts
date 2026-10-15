@@ -295,6 +295,20 @@ export async function assertConversationChannelVisible(
 }
 
 /**
+ * 操作守門：assert 當前 agent 對指定渠道有「達到 requiredLevel」的存取（例如建立工單時指定的渠道）。
+ * 看不到的渠道（含不存在）→ 404；看得到但層級不足 → 403。總店（channel.view_all）直接放行。
+ */
+export async function assertChannelVisible(
+  request: FastifyRequest,
+  channelId: string,
+  requiredLevel: ChannelAccessLevel = 'reply_only',
+): Promise<void> {
+  const ctx = await visibilityCtxFromRequest(request);
+  if (ctx.hasViewAll) return;
+  await assertEntityChannelVisible(request, channelId, requiredLevel, '找不到渠道', ctx);
+}
+
+/**
  * 操作守門：assert 當前 agent 對某工單的渠道有「達到 requiredLevel」的存取，否則丟 403/404。
  * 用於 case 操作端點——與對話端點對稱，避免分店 agent 讀/改他店工單。
  *
