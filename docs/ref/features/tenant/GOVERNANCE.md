@@ -91,7 +91,7 @@
 - 單次逾時 10 秒，失敗重試兩次，間隔逐次拉長。重試在 API 行程內等待，API 重新啟動時尚未完成的重試會遺失。
 - 每次送出寫一筆 `WebhookDelivery`。
 
-**只收得到 API 行程 eventBus 上的事件。** 有些事件在介面或文件上存在，卻不會送出：`conversation.assigned` 與兩個 SLA 事件沒有發布端；從工單下拉選單改狀態不會發布事件。見 `../../system/AUDIT.md` 的 CONV-02、APP-05 與 CASE-01。
+**只收得到 API 行程 eventBus 上的事件。** 有些事件在介面或文件上存在，卻不會送出：`conversation.assigned` 與兩個 SLA 事件沒有發布端。見 `../../system/AUDIT.md` 的 CONV-02 與 APP-05。
 
 **事件名稱沒有白名單。** 訂閱時可以填任意字串，打錯的事件名稱不會報錯，只是永遠收不到。
 

@@ -86,7 +86,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 
 **LINE 的 reply 與 push。** LINE 的 reply 不計入訊息額度，但 reply token 只在收到訊息後短時間內有效。`packages/shared/src/safe-reply.ts` 的 `selectSafeLineStrategy()` 決定用哪一種：帶著 reply token、而且收到訊息未滿 `LINE_REPLY_SAFE_WINDOW_MS` 時用 reply，否則用 push。API 與 workers 共用這個函式，但 reply 失敗後改用 push 的處理各寫一份。
 
-**送出失敗時。** workers 的 `deliverToChannelFromWorker()` 找不到渠道身分、外掛或無法解密憑證時，以 `recordDeliveryFailure()` 寫入一則標示失敗的訊息。API 端的客服回覆失敗時，介面沒有標示，見 CONV-03。
+**送出失敗時。** workers 的 `deliverToChannelFromWorker()` 找不到渠道身分、外掛或無法解密憑證時，以 `recordDeliveryFailure()` 寫入一則標示失敗的訊息。API 端的客服回覆送出失敗時，`sendMessage()` 在訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`。這組欄位與 workers 相同，收件匣依此標示沒有送出的訊息。
 
 ## 憑證
 

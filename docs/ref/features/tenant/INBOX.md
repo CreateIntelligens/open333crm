@@ -90,7 +90,7 @@
 
 要知道的事：
 
-- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡，看起來像已送出，見 `../../system/AUDIT.md` 的 CONV-03。
+- **訊息先寫入、後送出。** 渠道送出失敗時，訊息仍然留在對話裡。`sendMessage()` 在這則訊息的 `metadata` 寫入 `deliveryFailed` 與 `deliveryError`，再推送一次 `message.new`，收件匣就把這則訊息標成沒有送出並顯示原因。API 的回應也用 `delivery` 帶回送出結果。
 - **客服回覆不會改變對話狀態。** 對話是 `BOT_HANDLED` 時客服直接回覆，機器人仍會繼續回應客人的下一則訊息。要讓機器人停下來，必須先接手。
 - **客服回覆不會指派對話。** 回覆的人不會自動成為負責人。
 - **客服回覆在 LINE 上用 push。** `sendMessage()` 沒有帶 reply token，LINE 外掛以 push 送出，會計入 LINE 官方帳號的訊息額度。機器人的回覆則在 reply token 有效期間內優先用 reply，由 `selectSafeLineStrategy()` 判斷。
@@ -190,10 +190,9 @@
 
 | 限制 | 說明 |
 | --- | --- |
-| **客服回覆送出失敗時，介面沒有標示** | 詳見 `../../system/AUDIT.md` 的 CONV-03 |
 | **指派對話不會通知被指派的人** | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | **即時事件與聯絡人清單不套用渠道可見範圍** | 詳見 `../../system/AUDIT.md` 的 RBAC-04 |
-| 狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
+| 對話的狀態下拉選單繞過關閉的紀錄與事件 | 詳見 `../../system/AUDIT.md` 的 CONV-02 |
 | 閒置時限沒有維護介面 | 詳見 `../../system/AUDIT.md` 的 CONV-01 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

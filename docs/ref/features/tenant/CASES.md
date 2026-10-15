@@ -60,9 +60,9 @@
 | --- | --- | --- | --- |
 | `POST /cases/:id/resolve`、`/close`、`/reopen` | 工單詳情頁的按鈕 | 有 | `case.resolved`、`case.closed` |
 | `POST /cases/:id/escalate` | 升級對話框 | 有 | `case.escalated` |
-| `PATCH /cases/:id` 帶 `status` | 工單詳情頁的狀態下拉選單 | 沒有 | 沒有 |
+| `PATCH /cases/:id` 帶 `status` | 工單詳情頁的狀態下拉選單 | 有 | 與上面兩列相同 |
 
-各路徑允許的轉換相同，都會寫入 `resolvedAt` 與 `closedAt`。差別在時間軸與事件：從下拉選單改的狀態不留紀錄，也不會觸發通知、自動化與對外 Webhook。從下拉選單選「已升級」時，主管不會收到通知。詳見 `../../system/AUDIT.md` 的 CASE-01。
+各路徑允許的轉換相同，副作用也相同。`PATCH /cases/:id` 帶 `status` 時，`updateCase()` 把改成 `ESCALATED` 的請求交給 `escalateCase()`，其他狀態交給 `transitionCase()`。因此從下拉選單改狀態，一樣會寫時間軸、發布事件，也會觸發通知、自動化與對外 Webhook。詳情頁的下拉選單選「已關閉」時先要求確認，選「已升級」時開啟升級對話框。
 
 ## 指派
 
@@ -173,7 +173,6 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | --- | --- |
 | 非 LINE 渠道無法回覆滿意度調查 | 詳見 `../../system/AUDIT.md` 的 CASE-02 |
 | **沒有關聯對話的工單，首次回應 SLA 必定逾時** | 詳見 `../../system/AUDIT.md` 的 SLA-05 |
-| 狀態下拉選單不寫時間軸、不發布事件 | 詳見 `../../system/AUDIT.md` 的 CASE-01 |
 | 自動指派看舊的角色列舉 | 詳見 `../../system/AUDIT.md` 的 RBAC-03 |
 | 工單以政策名稱連結 SLA | 詳見 `../../system/AUDIT.md` 的 SLA-04 |
 | 合併、子工單與工單關聯沒有實作 | schema 有 `mergedIntoId`、`parentCaseId` 與 `CaseRelation`，API 沒有讀寫。詳見 `../../system/AUDIT.md` 的 DB-04 |
