@@ -10,6 +10,7 @@
 | `auth-session` | 停用租戶的成員不能登入或換發 token | 停用租戶的成員密碼錯誤 | 新增 |
 | `auth-session` | 停用租戶的成員不能登入或換發 token | 停用租戶的成員換發 token | 新增 |
 | `inbound-message-processing` | 停用租戶的進站事件直接丟棄 | 停用租戶的渠道收到訊息 | 新增 |
+| `inbound-message-processing` | 停用租戶的進站事件直接丟棄 | LINE 的 webhook 路由照常回 200 | 既有：`apps/api/tests/unit/modules/webhook/webhook-signature.test.ts` 的「LINE webhook：租戶停用時維持回 200 並丟棄」 |
 
 「停用租戶的長效憑證與既有連線失效」的 3 個情境沒有測試：現行程式違反這條需求（AUDIT AUTH-02），測試要等修正時一起寫。
 
@@ -26,6 +27,7 @@
 | `getActiveAgentForAuth()` 的查詢拿掉 `tenant: { isActive: true }` | 停用租戶的成員換發 token |
 | `webhook.service.ts` 拿掉 `channel.tenant?.isActive` 檢查 | 停用租戶的渠道收到訊息 |
 | `auth.routes.ts` 簽發 token 時把 `tenantId` 寫死成固定的租戶 | 登入的 token 帶成員所屬的租戶 |
+| `webhook.routes.ts` 的 LINE 路由在租戶停用時回 403 | LINE webhook：租戶停用時維持回 200 並丟棄 |
 
 - [x] 2.1 執行上表的突變並還原
 
