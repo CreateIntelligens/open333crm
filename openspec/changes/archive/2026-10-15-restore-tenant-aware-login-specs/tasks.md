@@ -40,4 +40,5 @@
 
 - [x] 4.1 `pnpm test` 與 `pnpm test:feature` 通過
 - [x] 4.2 `node scripts/validate-openspec.mjs restore-tenant-aware-login-specs` 與 `--specs` 通過
-- [ ] 4.3 PR 合併後以 `pnpm exec openspec archive restore-tenant-aware-login-specs` 歸檔，比較歸檔前後 `validate-openspec.mjs --specs` 印出的「略過 N 則」，並在 #228 勾選 `add-tenant-aware-login`
+- [x] 4.3 在同一個 PR 以 `pnpm exec openspec archive restore-tenant-aware-login-specs` 歸檔。歸檔前後 `validate-openspec.mjs --specs` 都印出「略過 35 則」，新增的需求都沒有超過 500 字元
+- [ ] 4.4 PR 合併後在 #228 勾選 `add-tenant-aware-login`

@@ -135,3 +135,16 @@ The FB and Instagram channel plugins SHALL parse referral events (FB `messaging_
 #### Scenario: 兩個相同的請求同時寫入
 - **WHEN** 查重時沒有 `channelMsgId` 為 `m-1` 的訊息，建立訊息時資料庫回傳唯一限制錯誤（P2002），再查詢時找到另一個請求剛建立的訊息
 - **THEN** `processInboundMessage` 回傳那則訊息與 `duplicate: true`，沒有更新對話，也沒有發布 `message.received`
+
+### Requirement: 停用租戶的進站事件直接丟棄
+渠道所屬的租戶停用時，即使渠道本身仍啟用，系統 SHALL 丟棄該渠道收到的進站事件：不建立渠道身分、聯絡人、對話與訊息，只記錄 warn log。
+
+租戶停用是預期內的情況，不是錯誤。LINE 的 webhook 路由 SHALL 照常回 HTTP 200，平台不會因此重送事件。
+
+#### Scenario: 停用租戶的渠道收到訊息
+- **WHEN** 租戶已停用、渠道仍啟用，渠道收到一則簽章正確的訊息事件
+- **THEN** 系統沒有建立渠道身分、聯絡人、對話與訊息；同時間啟用中租戶的渠道收到的訊息照常建立渠道身分
+
+#### Scenario: LINE 的 webhook 路由照常回 200
+- **WHEN** 租戶已停用，該租戶的 LINE 渠道收到一則簽章正確的 webhook 請求
+- **THEN** 路由回 HTTP 200
