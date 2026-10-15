@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 設定 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=4">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">07 · AI 設定</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 誰該動這兩頁</a>
+    <a href="#p3"><span class="n">3</span> Embedding</a>
+    <a href="#p4"><span class="n">4</span> Chat &amp; Prompt</a>
+    <a href="#p5"><span class="n">5</span> 提示詞與多輪追問</a>
+    <a href="#p6"><span class="n">6</span> 改壞了怎麼還原</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 07 · 自動化與知識</div>
+        <h1>AI 設定</h1>
+        <p>決定 AI 客服用哪個模型、怎麼讀知識庫、用什麼語氣回話。這兩頁平常不需要動，這章告訴你誰該動、改了會怎樣，以及改壞了怎麼還原。</p>
+      </div>
+    </section>
+
+<section class="doc" id="p1">
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>「AI 設定」在左側選單「自動化與知識 → 知識庫 → AI 設定」底下，分成兩頁：</p>
+      <ul>
+        <li><b>Embedding</b>：管 AI 怎麼「讀懂」知識庫文章，以及回答前要找幾篇、多相關才算數。</li>
+        <li><b>Chat &amp; Prompt</b>：管 AI 用哪個模型回話、語氣多保守、回答多長，以及給 AI 的工作守則（提示詞）。</li>
+      </ul>
+      <div class="quick">
+        <a href="#p2"><b>誰該動這兩頁</b>大多數人只要看，不用改</a>
+        <a href="#p3"><b>Embedding</b>檢查狀態、找幾篇、補讀文章</a>
+        <a href="#p4"><b>Chat &amp; Prompt</b>模型、語氣、回答長度</a>
+        <a href="#p5"><b>提示詞</b>給 AI 的工作守則</a>
+        <a href="#p6"><b>改壞了怎麼還原</b>每個設定的預設值</a>
+      </div>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 誰該動這兩頁</h2>
+      <p>這兩頁的設定會<b>立刻影響所有 AI 客服的回答</b>，所以只有具備「系統設定」權限的管理員能修改。一般客服和行銷人員只需要知道：AI 答得怪怪的，先回<a href="ch06-knowledge.html">知識庫</a>修文章，大多數問題都出在文章，不在這裡。</p>
+      <table>
+        <thead><tr><th>情況</th><th>該做什麼</th></tr></thead>
+        <tbody>
+          <tr><td>AI 答錯某個問題</td><td>修知識庫文章（第 06 章），不用動這裡</td></tr>
+          <tr><td>新文章發布後一直沒有綠色小圖示</td><td>管理員到 Embedding 頁看服務狀態、補讀文章</td></tr>
+          <tr><td>AI 回答太長、太短、太天馬行空</td><td>管理員到 Chat &amp; Prompt 調「生成參數」</td></tr>
+          <tr><td>想改 AI 的語氣、開場白、禁止事項</td><td>管理員改「客服回覆 System Prompt」</td></tr>
+          <tr><td>要換 AI 模型或服務</td><td>先和系統管理者討論，不要自己改</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 一般客服看得到 AI 設定選單，但讀不到設定，畫面顯示寫死的預設值與「異常」「未安裝」，只寫 console。apps/web/src/components/layout/Sidebar.tsx:39-46、apps/web/src/components/knowledge/EmbeddingSettings.tsx:44-49,76-78、ChatPromptSettings.tsx:58-70,104-106 -->
+      <div class="warn"><span>⚠️</span><div>沒有「系統設定」權限的人目前仍看得到這兩頁，但畫面上的數字<b>不是真正的設定</b>：狀態會顯示「異常」「未安裝」，網址和模型也是假的預設值。這不代表 AI 壞了，請不要依照這個畫面做任何修改。</div></div>
+      <figure class="shot">
+        <img src="uploads/shots/ch07-agent-view.png" alt="一般客服打開 Embedding 頁：狀態顯示異常、未安裝" loading="lazy">
+        <figcaption>一般客服帳號看到的畫面：「異常」「未安裝」只是因為沒有權限讀取設定，AI 實際上是正常的。</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div><b>改設定前先截圖。</b>這兩頁大多數設定沒有「還原」按鈕。動手前把整頁截圖存起來，改壞了照著截圖改回去最快。</div></div>
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> Embedding</h2>
+      <p>這頁決定 AI 怎麼讀懂文章、回答前怎麼找資料。平常只需要看「服務狀態」和「批次重新嵌入」兩塊。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch07-embedding.jpg">
+          <source src="uploads/videos/ch07-embedding.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>Embedding 頁四個區塊各管什麼（只看不改，服務網址已遮蔽）（約 23 秒）</figcaption>
+      </figure>
+
+      <h3>服務狀態：先看這裡</h3>
+      <p>「Ollama 服務狀態」顯示 AI 讀文章的服務是否正常。看到「連線正常」和「已安裝」就沒問題。按「重新檢測」可以再檢查一次。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch07-embedding-status.png" alt="服務狀態：連線正常、目前模型已安裝" loading="lazy">
+        <figcaption>正常的樣子：「連線正常」「已安裝」。</figcaption>
+      </figure>
+      <p>如果顯示「異常」或「未安裝」，新發布的文章 AI 會讀不進去，請聯絡系統管理者處理。</p>
+
+      <h3>模型設定：平常不要動</h3>
+      <p>「模型設定」裡的服務網址和「Embedding 模型」是系統架設時就設好的。</p>
+      <div class="warn"><span>⚠️</span><div><b>換模型等於讓 AI 忘掉所有文章。</b>換了「Embedding 模型」後，系統會跳出「確認切換模型？」，確認後所有文章都要重新讀過，讀完之前 AI 客服幾乎找不到任何答案。除非系統管理者要求，請不要更動這一塊。</div></div>
+      <!-- KNOWN-ISSUE: 「語意搜尋參數」的儲存會一併存下模型設定且不跳切換確認。apps/web/src/components/knowledge/EmbeddingSettings.tsx:116,125-127 -->
+      <div class="info"><span>ℹ️</span><div>這頁兩個「儲存」按鈕都會把<b>整頁</b>設定一起存起來。如果你不小心動了模型，又按了下方「語意搜尋參數」的儲存，模型也會被換掉，而且不會跳確認。改之前先重新整理頁面，確定只改到你要改的地方。</div></div>
+
+      <h3>語意搜尋參數：AI 回答前找幾篇、多相關</h3>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch07-embedding-search.png" alt="語意搜尋參數：取前幾筆與相似度門檻兩個滑桿" loading="lazy">
+        <figcaption>兩個滑桿，拖好後按該區的「儲存」。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>畫面上的名稱</th><th>白話意思</th><th>調高</th><th>調低</th></tr></thead>
+        <tbody>
+          <tr><td>topK（取前幾筆）</td><td>AI 每次最多參考幾篇文章</td><td>比較不會漏掉答案，但可能混進不相干的內容</td><td>答案更聚焦，但可能漏掉相關文章</td></tr>
+          <tr><td>相似度門檻</td><td>文章要多像客人的問題才算數</td><td>只用很相關的文章，找不到就轉真人，比較常轉接</td><td>勉強相關的也會用，比較容易答非所問</td></tr>
+        </tbody>
+      </table>
+      <p>這兩個值也會影響知識庫的「語義搜尋」結果。建議一次只調一點，再用語義搜尋測幾個常見問題確認效果。</p>
+
+      <h3>批次重新嵌入：讓 AI 補讀文章</h3>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch07-embedding-reembed.png" alt="批次重新嵌入：總文章數、已嵌入、未嵌入三個數字與重新嵌入按鈕" loading="lazy">
+        <figcaption>「未嵌入」是 0 就代表所有已發布文章 AI 都讀過了。</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>看三個數字：「總文章數」是已發布的文章數（不含草稿和封存）、「已嵌入」是 AI 讀過的、「未嵌入」是還沒讀的。</li>
+        <li>「未嵌入」不是 0，或換過模型後，按「重新嵌入全部已發布文章」。</li>
+        <li>系統會在背景慢慢處理，文章多時要好幾分鐘。</li>
+        <li>過幾分鐘<b>重新整理整個頁面</b>，看「未嵌入」有沒有變成 0。按「重新檢測」不會更新這三個數字。</li>
+      </ol>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> Chat &amp; Prompt</h2>
+      <p>這頁決定 AI 用哪個模型回話、怎麼說話。知識庫自動回覆、收件匣的 AI 建議回覆、對話摘要都會用到這裡的設定。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch07-chat.jpg">
+          <source src="uploads/videos/ch07-chat.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>Chat &amp; Prompt 頁各區塊導覽（只看不改，金鑰與提示詞內容已遮蔽）（約 26 秒）</figcaption>
+      </figure>
+
+      <h3>服務狀態</h3>
+      <p>和 Embedding 頁一樣，「連線正常」就代表 AI 能正常回覆。</p>
+
+      <h3>AI 模型（Provider 與模型）</h3>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch07-chat-provider.png" alt="Provider 與模型：選擇服務、自備金鑰狀態（已遮蔽）、模型下拉" loading="lazy">
+        <figcaption>選用哪一家服務、哪一個模型。自備金鑰已遮蔽。</figcaption>
+      </figure>
+      <ul>
+        <li><b>Provider</b>：用哪一家的 AI。換了之後，模型會自動換成那一家的預設模型，記得再確認「模型」。</li>
+        <li><b>模型</b>：同一家通常有便宜、標準、聰明等選項，下拉選單裡有寫。正式服務建議選標示「推薦」或穩定版；名稱有 Preview 的是測試版，可能不穩定。</li>
+        <li><b>Gemini API Key（自備金鑰，選填）</b>：公司有自己的 Google AI 帳號時才填。填了之後 AI 費用直接算在公司的帳號上；按「移除」就改回用平台提供的金鑰。金鑰屬於機密，不要截圖或貼給別人。</li>
+      </ul>
+
+      <h3>生成參數</h3>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch07-chat-params.png" alt="生成參數：Temperature 與 Max Tokens 兩個滑桿" loading="lazy">
+        <figcaption>兩個滑桿：回答要多保守、最長多少。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>畫面上的名稱</th><th>白話意思</th><th>建議</th></tr></thead>
+        <tbody>
+          <tr><td>Temperature</td><td>回答的「發揮程度」。往左越照本宣科，往右越有變化</td><td>客服要準確，保持偏左（預設 0.30）</td></tr>
+          <tr><td>Max Tokens（回覆長度上限）</td><td>一次回覆最長多少</td><td>太小會講到一半被切斷；常被切斷就往右調一點（預設 500）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 提示詞與多輪追問</h2>
+      <p>提示詞（System Prompt）是給 AI 的工作守則，例如「只根據知識庫回答」「查不到就請客人轉真人」「語氣親切」。每一段下方有字數；顯示「（將使用預設）」代表這段是空的，系統用內建的版本。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch07-chat-prompt.png" alt="客服回覆 System Prompt 區塊：還原預設按鈕、提示詞內容（已遮蔽）、字數與儲存" loading="lazy">
+        <figcaption>客服回覆提示詞區塊（內容已遮蔽）。右上角是「還原預設」。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>區塊</th><th>用在哪裡</th></tr></thead>
+        <tbody>
+          <tr><td>客服回覆 System Prompt</td><td>知識庫自動回覆、收件匣的 AI 建議回覆。決定 AI 的語氣和規矩</td></tr>
+          <tr><td>對話摘要 System Prompt</td><td>收件匣「AI 摘要對話」功能，決定摘要怎麼寫</td></tr>
+          <tr><td>型號引導 System Prompt</td><td>客人說了一個知識庫裡找不到的產品型號（可能打錯）時，AI 怎麼引導他確認正確型號</td></tr>
+          <tr><td>多輪追問（Clarify）的提示詞</td><td>客人的問題太模糊時，AI 怎麼反問</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 客服回覆提示詞的說明仍寫「自動化規則的 LLM Reply 動作」，該動作已停用。apps/web/src/components/knowledge/ChatPromptSettings.tsx:460 -->
+
+      <h3>修改提示詞</h3>
+      <ol class="steps">
+        <li>先把原本的內容整段複製，存到記事本當備份。</li>
+        <li>在框裡修改。每段最多 8000 字。</li>
+        <li>按這一段下方的「儲存」。</li>
+        <li>到收件匣或 LINE 實際問幾個問題，確認 AI 的回答符合預期。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: 儲存失敗一律只顯示「儲存失敗」，不顯示原因（超過 8000 字、權限不足、網址格式）。apps/web/src/components/knowledge/ChatPromptSettings.tsx:158-160 -->
+      <div class="warn"><span>⚠️</span><div>
+        <ul>
+          <li><b>這頁每個「儲存」都會把整頁設定一起存起來</b>，不只存那一段。請一次只改一個地方、改完馬上存；改到一半想放棄，先重新整理頁面再做別的事。</li>
+          <li>儲存成功不會跳提示。如果跳出「儲存失敗」，最常見的原因是提示詞超過 8000 字（請看下方字數），或你沒有「系統設定」權限。</li>
+        </ul>
+      </div></div>
+
+      <h3>改壞了：還原成系統預設</h3>
+      <p>有兩種做法，效果不一樣：</p>
+      <table>
+        <thead><tr><th>做法</th><th>結果</th><th>適合</th></tr></thead>
+        <tbody>
+          <tr><td><b>把框整段清空</b>，再按「儲存」</td><td>字數顯示「0 字（將使用預設）」。之後系統更新預設提示詞，你會自動用到新版</td><td>想完全回到系統預設（建議）</td></tr>
+          <tr><td>按「還原預設」，再按「儲存」</td><td>把目前的系統預設文字<b>複製進框裡</b>。存檔後算是你的自訂版本，之後系統更新預設時不會跟著更新</td><td>想以系統版本為底稿再微調</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>按「還原預設」只是把文字填進框裡，沒有按「儲存」就不會生效；不想要的話重新整理頁面即可。</div></div>
+
+      <h3>多輪追問（Clarify）</h3>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch07-chat-clarify.png" alt="多輪追問區塊：觸發門檻、最大追問次數滑桿與提示詞" loading="lazy">
+        <figcaption>多輪追問：問題不清楚時，AI 先反問，問不清楚再轉真人。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>畫面上的名稱</th><th>白話意思</th></tr></thead>
+        <tbody>
+          <tr><td>觸發門檻</td><td>AI 找到的文章相關程度低於這個值，就先反問客人，不硬答。往左越少追問，往右越常追問（預設 0.50）</td></tr>
+          <tr><td>最大追問次數</td><td>最多反問幾次，超過就自動轉給真人客服（預設 2 次）</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 觸發門檻滑桿下方的「0.00（總是追問）／1.00（從不追問）」標示與實際相反；後端是相似度低於門檻就追問，所以越往右越常追問。apps/web/src/components/knowledge/ChatPromptSettings.tsx:605-607、apps/api/src/modules/ai/kb-autoreply.service.ts:234 -->
+      <div class="warn"><span>⚠️</span><div>「觸發門檻」滑桿下方的小字目前寫反了：畫面寫「0.00（總是追問）」「1.00（從不追問）」，實際上是<b>越往右越常追問、越往左越少追問</b>。請照本手冊的說明調整。</div></div>
+      <p>「型號引導」區塊下方另有「立即刷新型號清單」：系統每 10 分鐘左右會從文章標題整理一次產品型號清單，剛新增型號文章、想馬上生效時才需要按。這個按鈕需要「知識庫進階」權限。</p>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 改壞了怎麼還原</h2>
+      <p>下表是系統的預設值。改壞了又沒有截圖時，照這張表改回來。</p>
+      <table>
+        <thead><tr><th>頁面</th><th>設定</th><th>預設值</th></tr></thead>
+        <tbody>
+          <tr><td>Embedding</td><td>Embedding 模型</td><td>bge-m3（換回後要「重新嵌入全部已發布文章」）</td></tr>
+          <tr><td>Embedding</td><td>服務網址（Ollama Base URL）</td><td>依系統架設而定，請洽系統管理者，不要自己猜</td></tr>
+          <tr><td>Embedding</td><td>topK（取前幾筆）</td><td>5</td></tr>
+          <tr><td>Embedding</td><td>相似度門檻</td><td>0.30</td></tr>
+          <tr><td>Chat &amp; Prompt</td><td>Temperature</td><td>0.30</td></tr>
+          <tr><td>Chat &amp; Prompt</td><td>Max Tokens</td><td>500</td></tr>
+          <tr><td>Chat &amp; Prompt</td><td>四段提示詞</td><td>清空後儲存，就會使用系統預設</td></tr>
+          <tr><td>Chat &amp; Prompt</td><td>多輪追問：觸發門檻</td><td>0.50</td></tr>
+          <tr><td>Chat &amp; Prompt</td><td>多輪追問：最大追問次數</td><td>2</td></tr>
+          <tr><td>Chat &amp; Prompt</td><td>Provider 與模型</td><td>依你們的合約與用量決定，請洽系統管理者</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch06-knowledge.html">← 06 · 知識庫</a></span>
+      <span>下一章：<a href="ch08-marketing.html">08 · 行銷活動、廣播與分群 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>

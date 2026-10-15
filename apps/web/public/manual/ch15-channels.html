@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>渠道管理 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=4">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">15 · 渠道管理</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 看懂渠道卡片</a>
+    <a href="#p3"><span class="n">3</span> 新增渠道的三種方式</a>
+    <a href="#p4"><span class="n">4</span> 串接 LINE</a>
+    <a href="#p5"><span class="n">5</span> 串接 Facebook</a>
+    <a href="#p6"><span class="n">6</span> 串接 Instagram</a>
+    <a href="#p7"><span class="n">7</span> 官網聊天（WebChat）</a>
+    <a href="#p8"><span class="n">8</span> Bot 設定</a>
+    <a href="#p9"><span class="n">9</span> 誰看得到這個渠道</a>
+    <a href="#p10"><span class="n">10</span> 權杖失效與重新連結</a>
+    <a href="#p11"><span class="n">11</span> 修改、刪除與進階設定</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 15 · 分析與管理</div>
+        <h1>渠道管理</h1>
+        <p>把 LINE 官方帳號、Facebook 粉專、Instagram 和官網聊天視窗接進系統，設定自動回覆的 Bot，並決定哪些同事看得到哪個渠道的對話。</p>
+      </div>
+    </section>
+
+    <section class="doc" id="p1">
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>「渠道」就是客戶跟你聯絡的地方：一個 LINE 官方帳號、一個 Facebook 粉專、一個 Instagram 帳號，或官網上的聊天視窗。把渠道接進系統後，客戶的訊息才會進到收件匣，Bot 才能自動回覆。這頁在側欄「分析與管理 &gt; 設定 &gt; 渠道管理」。</p>
+      <div class="quick">
+        <a href="#p2"><b>看懂渠道卡片</b>每個圖示和狀態的意思</a>
+        <a href="#p3"><b>新增渠道的三種方式</b>精靈、手動填寫、用 Facebook 登入</a>
+        <a href="#p4"><b>串接 LINE</b>兩組金鑰去哪裡拿</a>
+        <a href="#p5"><b>串接 Facebook</b>用 Facebook 登入或自備應用程式</a>
+        <a href="#p6"><b>串接 Instagram</b>三個欄位與 Webhook 設定</a>
+        <a href="#p7"><b>官網聊天（WebChat）</b>嵌入碼、網頁版連結、背景</a>
+        <a href="#p8"><b>Bot 設定</b>自動回覆、轉真人、招呼語</a>
+        <a href="#p9"><b>誰看得到這個渠道</b>控制同事能看哪些對話</a>
+        <a href="#p10"><b>權杖失效與重新連結</b>收不到訊息時怎麼辦</a>
+        <a href="#p11"><b>修改、刪除與進階設定</b>換金鑰、轉發、注意事項</a>
+      </div>
+      <p>這頁通常只有管理員會用到。要看到渠道清單需要「檢視渠道」權限；新增、編輯、刪除分別需要「新增渠道」「編輯渠道」「刪除渠道」權限。沒有權限的人按下按鈕會跳出錯誤。</p>
+      <!-- KNOWN-ISSUE: 沒有「檢視渠道」權限或載入失敗時，畫面會顯示「沒有渠道」空狀態，看起來像真的沒有渠道（apps/web/src/hooks/useChannels.ts:11-18、apps/web/src/components/settings/ChannelManagement.tsx:390-400）。 -->
+      <div class="info"><span>ℹ️</span><div>如果你明明知道公司有接渠道，這頁卻顯示「沒有渠道」，通常是你沒有「檢視渠道」權限，請找管理員確認，不要再新增一個。</div></div>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 看懂渠道卡片</h2>
+      <p>每張卡片是一個渠道。左邊是類型標籤和名稱，右邊是狀態與操作按鈕。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch15-overview.jpg">
+          <source src="uploads/videos/ch15-overview.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>認識渠道卡片上的按鈕、權杖失效的紅框，以及上方不要動的「Webhook 公開網址」（約 26 秒）</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="uploads/shots/ch15-card-line.png" alt="一張 LINE 渠道卡片：名稱、Webhook 網址、最後驗證時間、啟用標籤與五個操作按鈕" loading="lazy">
+        <figcaption>LINE 渠道卡片（網址已遮蔽）。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>卡片上的東西</th><th>意思</th></tr></thead>
+        <tbody>
+          <tr><td>網址與複製圖示</td><td>這個渠道的 Webhook 網址，要貼到 LINE 或 Meta 後台，讓訊息送進系統</td></tr>
+          <tr><td>最後驗證</td><td>上次檢查金鑰的時間</td></tr>
+          <tr><td>粉專 ID／IG 帳號 ID</td><td>Facebook、Instagram 渠道才有，按「測試連線」後系統自動取得</td></tr>
+          <tr><td>啟用／停用</td><td>渠道目前有沒有在收訊息</td></tr>
+          <tr><td>「測試連線」</td><td>用目前的金鑰向 LINE 或 Meta 確認還能用。成功出現綠色勾勾，失敗會在名稱下方顯示紅字原因</td></tr>
+          <tr><td>機器人圖示</td><td>「Bot 設定」，見第 8 節</td></tr>
+          <tr><td>分岔箭頭圖示</td><td>「下游 Webhook 轉發」，工程師串接其他系統用，見第 11 節</td></tr>
+          <tr><td>鉛筆圖示</td><td>編輯渠道（畫面提示寫「按編輯」時就是指它）</td></tr>
+          <tr><td>紅色垃圾桶</td><td>刪除渠道，見第 11 節</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: LINE 測試連線只驗 Access Token，不驗 Channel Secret（apps/api/src/modules/channel/channel.service.ts:562-568）；WebChat 按測試連線必定失敗「不支援的渠道類型: WEBCHAT」（channel.service.ts:663）。 -->
+      <div class="info"><span>ℹ️</span><div>
+        「測試連線」不會改到客戶看到的任何東西，可以放心按。但有兩點要知道：<br>
+        1. LINE 的測試連線只檢查 Channel Access Token。就算 Channel Secret 填錯也會顯示成功，但之後會收不到訊息，所以貼 Secret 時要特別仔細。<br>
+        2. 官網聊天（WebChat）渠道不需要測試連線，按了一定會顯示失敗，不用理會。
+      </div></div>
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> 新增渠道的三種方式</h2>
+      <p>頁面右上角有三個按鈕，挑一個適合你的：</p>
+      <table>
+        <thead><tr><th>按鈕</th><th>適合</th><th>特色</th></tr></thead>
+        <tbody>
+          <tr><td><b>「設定精靈」</b>（推薦）</td><td>第一次接 LINE、Facebook、Instagram 或官網聊天</td><td>分 4 步帶你填，建立後自動測試連線；LINE 會自動幫你把 Webhook 設好，FB／IG 會直接給你要貼到 Meta 的網址與驗證權杖</td></tr>
+          <tr><td><b>「新增渠道」</b></td><td>熟悉流程、只想快速填完</td><td>一個視窗填完；LINE、Facebook 有「欄位說明」告訴你去哪裡拿</td></tr>
+          <tr><td><b>「用 Facebook 連結粉專」</b></td><td>接 Facebook 粉專最簡單的方式</td><td>用 Facebook 帳號登入、勾選粉專就完成，不用自己準備應用程式和金鑰。只有平台有開放這個功能時才會出現</td></tr>
+        </tbody>
+      </table>
+      <h3>用設定精靈</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch15-wizard.jpg">
+          <source src="uploads/videos/ch15-wizard.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>設定精靈的第 1、2 步（約 23 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>按「設定精靈」。</li>
+        <li>步驟 1：選「渠道類型」，填「顯示名稱」（例如「門市 LINE 官方帳號」），按「下一步」。</li>
+        <li>步驟 2：貼上金鑰（各渠道要填什麼見第 4～7 節），在「誰看得到這個渠道」勾選同事（見第 9 節），按「建立並驗證」。</li>
+        <li>步驟 3：系統自動建立並測試連線，稍等幾秒。</li>
+        <li>步驟 4：看結果。LINE 會顯示 Webhook 已自動設定；Facebook、Instagram 會顯示「回呼網址」和「驗證權杖」，照著貼到 Meta 後台；官網聊天會直接給你嵌入碼。按「完成」。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: 在步驟 4 用 X、Esc 或點背景關閉不會刷新列表（apps/web/src/components/settings/ChannelWizard.tsx:77-80、229）。 -->
+      <div class="warn"><span>⚠️</span><div>最後一步請按「<b>完成</b>」關閉精靈。如果按 Esc 或點旁邊空白處關掉，列表不會更新，看起來像沒建成功。這時請重新整理頁面確認，<b>不要再建一次</b>。</div></div>
+      <h3>用「新增渠道」</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch15-add.jpg">
+          <source src="uploads/videos/ch15-add.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開「新增渠道」，看 LINE 的欄位說明、可見範圍，以及切換成 Facebook、Instagram 時的欄位（約 35 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>按「新增渠道」，選「渠道類型」，填「顯示名稱」。</li>
+        <li>依渠道類型填金鑰。不知道去哪拿，按「欄位說明：這些值要去哪裡取得？」（LINE、Facebook 才有）。</li>
+        <li>在「誰看得到這個渠道」勾選同事。</li>
+        <li>按「儲存」。視窗關閉、列表多一張卡片就是成功了（不會跳成功訊息）。</li>
+        <li>LINE：記得到 LINE 後台設定 Webhook（第 4 節）。Facebook、Instagram：按卡片上的「測試連線」，再到 Meta 後台設定 Webhook（第 5、6 節）。</li>
+      </ol>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 串接 LINE</h2>
+      <p>LINE 官方帳號要填兩組金鑰，都在 <b>LINE Developers Console</b>（<code>developers.line.biz/console</code>）你的 Messaging API channel 裡。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch15-add-line.png" alt="新增渠道：LINE 類型的欄位 Channel Secret、Channel Access Token 與誰看得到這個渠道" loading="lazy">
+        <figcaption>新增 LINE 渠道（同事姓名已模糊）。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>要填的欄位</th><th>去哪裡拿</th></tr></thead>
+        <tbody>
+          <tr><td>Channel Secret</td><td>LINE Developers Console → 選你的 channel →「Basic settings」分頁 → 往下找「Channel secret」，按複製圖示</td></tr>
+          <tr><td>Channel Access Token</td><td>同一個 channel →「Messaging API」分頁 → 拉到最下面「Channel access token (long-lived)」，按複製圖示。如果是空的，按「Issue」產生一組</td></tr>
+        </tbody>
+      </table>
+      <figure class="shot">
+        <img src="../channel-guide/line/line-secret.png" alt="LINE Developers Console 的 Channel secret 欄位位置（值已隱碼）" loading="lazy">
+        <figcaption>LINE Developers Console「Basic settings」的 Channel secret（值已隱碼）。</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="../channel-guide/line/line-token.png" alt="LINE Developers Console 的 Channel access token 欄位位置（值已隱碼）" loading="lazy">
+        <figcaption>「Messaging API」分頁最下方的 Channel access token（值已隱碼）。</figcaption>
+      </figure>
+      <div class="warn"><span>⚠️</span><div>如果這個 LINE 官方帳號已經在用了，<b>不要按 Channel secret 旁邊的「Issue」或 Access token 的「Reissue」</b>。重新產生會讓舊的金鑰失效，正在用的系統會立刻收不到或發不出訊息。直接按複製圖示就好。</div></div>
+      <h3>設定 Webhook（讓訊息送進系統）</h3>
+      <p>用<b>設定精靈</b>建立的話，系統會自動幫你設好，可以跳過。用「新增渠道」建立的話，要自己做：</p>
+      <ol class="steps">
+        <li>回到渠道管理，按 LINE 卡片網址旁的複製圖示，複製 Webhook 網址。</li>
+        <li>到 LINE Developers Console 的「Messaging API」分頁，找到「Webhook settings」，在「Webhook URL」貼上，按「Update」。</li>
+        <li>把「Use webhook」打開。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>
+        要接好幾個 LINE 官方帳號時，請把它們建在 LINE Developers Console 的<b>同一個 Provider</b> 底下。不同 Provider 的帳號，系統沒辦法認出是同一位客戶，而且 channel 建立後無法搬到別的 Provider，接之前先跟管理員確認。<br>
+        建議到 LINE Official Account Manager 把 LINE 內建的「自動回應訊息」關掉，避免和系統的 Bot 同時回覆客戶。
+      </div></div>
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 串接 Facebook</h2>
+      <h3>方法一：用 Facebook 連結粉專（推薦）</h3>
+      <p>不用自己準備應用程式和金鑰，也不用設定 Webhook。</p>
+      <ol class="steps">
+        <li>按右上角「用 Facebook 連結粉專」，會跳到 Facebook 登入授權。請用<b>管理這個粉專</b>的 Facebook 帳號登入，並勾選要連結的粉專。</li>
+        <li>授權完會回到渠道管理，自動跳出「選擇要連結的粉專」。</li>
+        <li>勾選粉專，按「連結所選粉專」。每列顯示「已連結」就成功了，按「完成」。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>用這個方法連結的粉專，<b>所有同事都看得到</b>，連結時不能選人。要限制誰看得到，連結後到「設定 &gt; 人員管理」調整（見第 9 節）。同一個粉專只能連結一次；清單裡寫「已用自備應用程式連結」的粉專不能在這裡操作。</div></div>
+      <h3>方法二：自備 Meta 應用程式</h3>
+      <p>公司已經有自己的 Meta 應用程式時用這個方法。三個欄位都在 <b>Meta for Developers</b>（<code>developers.facebook.com/apps</code>）你的應用程式裡。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch15-add-fb.png" alt="新增渠道：Facebook 類型的欄位 App ID、App Secret、Page Access Token" loading="lazy">
+        <figcaption>新增 Facebook 渠道。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>要填的欄位</th><th>去哪裡拿</th></tr></thead>
+        <tbody>
+          <tr><td>App ID</td><td>應用程式左側「應用程式設定」→「基本資料」→「應用程式編號」。建議填，系統才能提早提醒你權杖快到期</td></tr>
+          <tr><td>App Secret</td><td>同一頁「應用程式密鑰」，按「顯示」、輸入密碼後複製。用來確認訊息真的是 Facebook 送來的</td></tr>
+          <tr><td>Page Access Token</td><td>左側「使用案例」→「透過 Messenger from Meta 與顧客互動」右邊的「自訂」→「Messenger API 設定」→「2. 產生存取權杖」，在你的粉專那列按「產生」，複製 EAA 開頭的長字串</td></tr>
+          <tr><td>粉專 ID</td><td>不用填。儲存後按「測試連線」，系統會自動取得並顯示在卡片上</td></tr>
+        </tbody>
+      </table>
+      <ol class="steps">
+        <li>填好三個欄位，勾選誰看得到，按「儲存」。</li>
+        <li>按這張卡片的「測試連線」，成功後卡片會出現「粉專 ID」。</li>
+        <li>按卡片的鉛筆圖示打開「編輯渠道」，下方「Facebook Webhook 設定提示」有 Webhook 網址和「驗證權杖（Verify Token）」。</li>
+        <li>到 Meta 應用程式的 Messenger Webhooks 設定，「回呼網址」貼 Webhook 網址，「驗證權杖」貼 Verify Token，訂閱 <code>messages</code> 和 <code>messaging_postbacks</code>。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>多個粉專共用同一個 Meta 應用程式沒關係，系統會依粉專 ID 分辨訊息屬於哪個渠道。所以每個粉專渠道建好後，都要按一次「測試連線」讓系統拿到粉專 ID。</div></div>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 串接 Instagram</h2>
+      <p>接的是 Instagram 專業帳號的私訊。渠道類型選「Instagram (私訊)」，三個欄位都在 Meta 應用程式 →「使用案例」→「Instagram API」→「含有 Instagram 登入的 API 設定」這一頁。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch15-add-ig.png" alt="新增渠道：Instagram 類型的欄位 Instagram 應用程式編號、應用程式密鑰、存取權杖" loading="lazy">
+        <figcaption>新增 Instagram 渠道：每個欄位下方都有取得位置的提示。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>要填的欄位</th><th>去哪裡拿</th></tr></thead>
+        <tbody>
+          <tr><td>Instagram 應用程式編號</td><td>這一頁上方的一串數字</td></tr>
+          <tr><td>Instagram 應用程式密鑰</td><td>同一頁上方，按「顯示」後複製</td></tr>
+          <tr><td>Instagram 存取權杖</td><td>同一頁「產生存取權杖」：按「新增帳號」登入 IG 專業帳號，再按該帳號的「產生權杖」，複製 IG 開頭的長字串</td></tr>
+        </tbody>
+      </table>
+      <div class="warn"><span>⚠️</span><div><b>「Instagram 應用程式密鑰」不是「應用程式設定 → 基本資料」裡的 App Secret。</b>兩個長得很像，填錯的話一則訊息都收不到，而且不會有錯誤提示。</div></div>
+      <ol class="steps">
+        <li>填好三個欄位，勾選誰看得到，按「儲存」。</li>
+        <li>按這張卡片的「測試連線」，讓系統取得 IG 帳號 ID。</li>
+        <li>按鉛筆圖示打開「編輯渠道」，下方「Instagram Webhook 設定提示」有 Webhook 網址和驗證權杖。</li>
+        <li>到 Meta 應用程式的 Instagram Webhooks 設定，「回呼網址」貼 Webhook 網址，「驗證權杖」貼 Verify Token，訂閱 <code>messages</code>。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: 編輯 IG 渠道時 Webhook URL 下方寫「此為系統內部使用的 Webhook URL」，與下方叫人貼到 Meta 的提示矛盾（apps/web/src/components/settings/ChannelFormDialog.tsx:482-487）。 -->
+      <div class="info"><span>ℹ️</span><div>編輯 Instagram 渠道時，Webhook 網址下方寫著「此為系統內部使用的 Webhook URL」，這句說明有誤，這個網址<b>就是要貼到 Meta 的回呼網址</b>。另外，Meta 應用程式要切換成「上線（Live）」模式才收得到客戶私訊，開發模式只收得到測試帳號的訊息。</div></div>
+    </section>
+
+    <section class="doc" id="p7">
+      <h2><span class="idx">7</span> 官網聊天（WebChat）</h2>
+      <p>在你的官網右下角放一個聊天視窗，客戶的訊息會跟 LINE、FB 一樣進到收件匣。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch15-webchat.jpg">
+          <source src="uploads/videos/ch15-webchat.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>取得嵌入碼、打開背景設定（約 20 秒）</figcaption>
+      </figure>
+      <h3>建立</h3>
+      <ol class="steps">
+        <li>建議用「設定精靈」，渠道類型選「WebChat (網頁聊天)」。WebChat 不需要任何外部金鑰，系統會自動產生，完成後直接給你嵌入碼。</li>
+        <li>如果用「新增渠道」，畫面會要你填「Channel Secret」和「Channel Access Token」，這兩格隨便填一串英文數字就可以（例如 <code>webchat-key-001</code>），它們不會用在別的地方。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: WebChat 在「新增渠道」要求填兩個任意字串，精靈卻說不需要（apps/web/src/components/settings/ChannelFormDialog.tsx:417-444 vs ChannelWizard.tsx:356-362）。 -->
+      <h3>放到官網上</h3>
+      <ol class="steps">
+        <li>在 WebChat 卡片按「取得嵌入碼」。</li>
+        <li>按「複製」，把整段程式碼交給網站管理員，請他貼到網頁的 <code>&lt;body&gt;</code> 裡。</li>
+        <li>這個視窗沒有關閉按鈕，按鍵盤 <b>Esc</b> 關掉。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch15-embed.png" alt="WebChat 嵌入碼視窗（程式碼已模糊）" loading="lazy">
+        <figcaption>WebChat 嵌入碼（程式碼已模糊）。</figcaption>
+      </figure>
+      <h3>其他功能</h3>
+      <table>
+        <thead><tr><th>在哪裡</th><th>做什麼</th></tr></thead>
+        <tbody>
+          <tr><td>卡片上的「預覽」</td><td>在這個頁面右下角先試開聊天視窗，看看長什麼樣子，再按「關閉預覽」收起來</td></tr>
+          <tr><td>卡片上的「背景」</td><td>換聊天頁的背景圖：選「尺寸」（Cover 填滿、Contain 完整顯示）、「位置」（一般用 <code>center</code>），再「上傳背景圖片」（png、jpeg、webp），按「儲存」</td></tr>
+          <tr><td>頁面上方「WebChat 網頁版連結」</td><td>不用放到官網也能聊的獨立聊天頁。按「複製連結」，可以貼在 Email、社群貼文或做成 QR Code</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 背景上傳／儲存失敗時沒有任何畫面提示（apps/web/src/components/settings/ChannelManagement.tsx:226-255）。 -->
+      <div class="info"><span>ℹ️</span><div>上傳背景圖後如果畫面沒變化，可能是檔案太大或格式不對（系統不會跳錯誤訊息），請換一張較小的 png 或 jpeg 再試。</div></div>
+    </section>
+
+    <section class="doc" id="p8">
+      <h2><span class="idx">8</span> Bot 設定</h2>
+      <p>每個渠道都可以設定客戶來訊時，要先由 Bot 自動回覆，還是直接交給真人客服。按卡片上的機器人圖示打開「Bot 設定」。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch15-bot.jpg">
+          <source src="uploads/videos/ch15-bot.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>逐一看 Bot 模式、轉接設定、招呼語與非營業時間問候語（約 27 秒）</figcaption>
+      </figure>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch15-bot.png" alt="Bot 設定視窗：Bot 模式、Bot 最大回覆次數、轉接關鍵字、轉接訊息、轉接真人提示" loading="lazy">
+        <figcaption>Bot 設定（視窗可以往下捲，還有招呼語和 LIFF 設定）。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>Bot 模式</td><td>
+            「關鍵字 + LLM（推薦）」：先看有沒有符合的關鍵字回覆，沒有再由 AI 回答。<br>
+            「僅 LLM 回覆」：所有訊息都由 AI 回答。<br>
+            「僅關鍵字回覆」：只回符合關鍵字的訊息，其他留給真人。<br>
+            「關閉（直接人工）」：Bot 不回，全部交給真人客服。
+          </td></tr>
+          <tr><td>Bot 最大回覆次數</td><td>Bot 回了這麼多次還沒解決，就自動轉給真人。建議 1～50 之間</td></tr>
+          <tr><td>轉接關鍵字</td><td>客戶訊息裡出現這些字（例如「真人」「客服」），就直接轉給真人。輸入後按「新增」或 Enter，按小 X 刪除</td></tr>
+          <tr><td>轉接訊息</td><td>轉給真人時，自動傳給客戶的話，例如「稍等，正在為您轉接客服人員」</td></tr>
+          <tr><td>轉接真人提示</td><td>AI 回答但不太確定時，要不要在回答下面提示客戶「可以轉真人」。打開後可選「提示方式」和「按鈕文字」（最多 20 字）</td></tr>
+          <tr><td>首次進站招呼語</td><td>客戶第一次加好友或第一次傳訊息時自動送出，每人每個渠道只送一次。可以放 <code>{{contact.name}}</code> 帶入客戶名字。留空就不送</td></tr>
+          <tr><td>非營業時間問候語</td><td>在營業時間以外收到訊息時的自動回覆。留空會用系統預設的內容。營業時間在「設定 &gt; 營業時間」設定</td></tr>
+          <tr><td>LIFF App ID（短連結身份收集）</td><td>LINE 渠道才需要。填了之後，短連結在 LINE 裡被點擊時能認出是哪位客戶（見「<a href="ch12-shortlinks.html#p3">12 · 短連結</a>」）。格式像 <code>1660000000-AbCdEfGh</code>，請找負責 LINE 的工程師或管理員提供</td></tr>
+        </tbody>
+      </table>
+      <ol class="steps">
+        <li>按卡片上的機器人圖示。</li>
+        <li>調整需要的欄位，視窗可以往下捲。</li>
+        <li>按「儲存」。視窗關閉就是存好了，馬上生效。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>「關鍵字回覆」的規則在「LINE 渠道工具」設定（見「<a href="ch10-line.html">10 · LINE 渠道工具</a>」），AI 怎麼回答在「AI 設定」與知識庫調整（見「<a href="ch07-ai-settings.html">07 · AI 設定</a>」）。</div></div>
+    </section>
+
+    <section class="doc" id="p9">
+      <h2><span class="idx">9</span> 誰看得到這個渠道</h2>
+      <p>你可以控制每位同事看得到哪些渠道的對話與工單。例如總店看全部，A 分店只看 A 分店的 LINE。規則很簡單：</p>
+      <ul>
+        <li><b>有被勾選的同事</b>才看得到這個渠道的對話與工單。</li>
+        <li><b>沒被勾選的同事看不到</b>，在收件匣也找不到這些對話。</li>
+        <li>角色有「檢視所有渠道（總店）」權限的人，不管有沒有勾選都看得到全部。</li>
+      </ul>
+      <h3>建立渠道時決定</h3>
+      <p>「設定精靈」和「新增渠道」都有「誰看得到這個渠道」清單，預設全部勾選。取消勾選的同事就看不到。你自己就算沒勾，建立後也一定看得到。</p>
+      <h3>之後要改</h3>
+      <ol class="steps">
+        <li>到「設定 &gt; 人員管理」，在要調整的同事那列按「編輯」。</li>
+        <li>在「可使用的渠道」勾選或取消渠道。</li>
+        <li>按「儲存」。</li>
+      </ol>
+      <p>新增同事時，也可以在「看得到哪些渠道」直接勾好。詳細操作見「<a href="ch16-team.html">16 · 人員、角色與權限</a>」。</p>
+      <!-- KNOWN-ISSUE: 「指派團隊」說明寫「未指派任何團隊或成員時，此渠道維持全租戶公開（向後相容）」，與現在的 fail-closed 行為相反（apps/web/src/components/settings/ChannelTeamAssignment.tsx:153-155 vs apps/api/src/services/channel-visibility.ts:17）；系統沒有建立團隊的介面，空狀態卻叫人去人員管理建立團隊（ChannelTeamAssignment.tsx:236-238）；指派與撤銷即時生效，外層「取消」無效。 -->
+      <div class="warn"><span>⚠️</span><div>
+        「編輯渠道」視窗下方的「指派團隊」區塊目前<b>請先不要使用</b>：<br>
+        1. 那裡的說明寫「未指派任何團隊或成員時，此渠道維持全租戶公開」，<b>這段說明已經過時</b>。實際上沒被勾選的同事一律看不到。<br>
+        2. 系統目前沒有建立團隊的地方，所以通常也選不到團隊。<br>
+        3. 在這個區塊按「新增」或撤銷的 X 會立刻生效，之後按「取消」也不會復原。<br>
+        要調整誰看得到，請照上面的步驟到「人員管理」改。
+      </div></div>
+    </section>
+
+    <section class="doc" id="p10">
+      <h2><span class="idx">10</span> 權杖失效與重新連結</h2>
+      <p>Facebook 和 Instagram 的權杖可能因為改密碼、移除管理員、過期等原因失效。失效後這個渠道<b>收不到也回不了訊息</b>。系統每 6 小時檢查一次，發現失效會：</p>
+      <ul>
+        <li>在渠道卡片顯示紅框「存取權杖已失效，目前收不到也無法回覆訊息」。</li>
+        <li>用站內通知和 Email 通知管理員，沒修好的話每 3 天再提醒一次。</li>
+      </ul>
+      <figure class="shot">
+        <img src="uploads/shots/ch15-token-expired.png" alt="Instagram 渠道卡片上的紅框：存取權杖已失效，目前收不到也無法回覆訊息" loading="lazy">
+        <figcaption>權杖失效時，卡片會出現紅框，並告訴你該怎麼修。</figcaption>
+      </figure>
+      <h3>怎麼修</h3>
+      <table>
+        <thead><tr><th>這個渠道是怎麼接的</th><th>修復方式</th></tr></thead>
+        <tbody>
+          <tr><td>用「用 Facebook 連結粉專」接的（卡片寫「透過 Facebook 登入連結」）</td><td>按右上角「用 Facebook 連結粉專」，重新授權，在清單勾選同一個粉專，按「連結所選粉專」。顯示「已重新連結」就好了，原本的對話紀錄都會保留</td></tr>
+          <tr><td>自己填金鑰接的</td><td>到 Meta 後台重新產生權杖（位置見第 5、6 節）→ 回到渠道管理按鉛筆圖示 → 在權杖欄貼上新的值，其他欄位留空 → 按「儲存」→ 再按卡片的「測試連線」，紅框消失就好了</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>紅框是排程檢查的結果，剛失效的前幾個小時可能還沒出現。如果客戶反映訊息沒人回，可以先按該渠道的「測試連線」確認。</div></div>
+      <h3>卡片上的其他提醒</h3>
+      <table>
+        <thead><tr><th>提醒文字</th><th>意思與處理</th></tr></thead>
+        <tbody>
+          <tr><td>尚未取得粉專 ID（或 IG 帳號 ID），請按「測試連線」</td><td>按一下「測試連線」就會補上</td></tr>
+          <tr><td>收到不屬於此渠道的帳號的訊息，已略過</td><td>同一個 Meta 應用程式還連了別的粉專，但系統裡沒有那個渠道。需要的話替那個粉專新增渠道</td></tr>
+          <tr><td>訊息來自不同的 Meta 應用程式，已略過</td><td>通常是應用程式密鑰填錯，請檢查並重新貼上</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc" id="p11">
+      <h2><span class="idx">11</span> 修改、刪除與進階設定</h2>
+      <h3>修改渠道（換名稱、換金鑰）</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch15-edit.jpg">
+          <source src="uploads/videos/ch15-edit.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開「編輯渠道」，看金鑰欄、跨渠道綁定和 Webhook 網址（約 19 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>按卡片上的鉛筆圖示，打開「編輯渠道」。</li>
+        <li>要改名字就改「顯示名稱」。要換金鑰就在金鑰欄貼新的值；<b>留空表示不更換</b>。</li>
+        <li>按「儲存」。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch15-edit-line.png" alt="編輯渠道：顯示名稱、留空表示不更新的金鑰欄、跨渠道綁定、Webhook URL" loading="lazy">
+        <figcaption>編輯 LINE 渠道（網址與帳號 ID 已遮蔽）。</figcaption>
+      </figure>
+      <!-- KNOWN-ISSUE: LINE 只填其中一個憑證時前端默默不送，視窗照樣關閉（apps/web/src/components/settings/ChannelFormDialog.tsx:135-140）；跨渠道綁定輸入框按 Enter 會送出外層表單（ChannelBindingHandleField.tsx:118-122）。 -->
+      <div class="warn"><span>⚠️</span><div>
+        <b>換 LINE 金鑰時，Channel Secret 和 Channel Access Token 兩格都要重新貼上。</b>只填一格的話，視窗會照常關閉，但金鑰其實沒有換。Facebook、Instagram 可以只換其中一格。<br>
+        「跨渠道綁定」區塊有自己的「儲存」按鈕，改完要按它，不要在輸入框裡按 Enter（會變成按到下面的「儲存」，綁定的值沒存到）。這個值系統通常會自動取得，一般不用改。
+      </div></div>
+      <h3>刪除渠道</h3>
+      <!-- KNOWN-ISSUE: 渠道刪除是硬刪除，收過對話的渠道會被資料庫擋下，錯誤訊息只寫「資料處理失敗」；前端也沒有停用按鈕（apps/api/src/modules/channel/channel.service.ts:392、docs/ref/system/AUDIT.md CHAN-01、ChannelManagement.tsx:502-504）。 -->
+      <div class="warn"><span>⚠️</span><div>
+        <b>只有「剛建錯、還沒收過任何訊息」的渠道才刪得掉。</b>按紅色垃圾桶、確認後就會永久刪除。<br>
+        收過對話的渠道目前刪不掉，會出現「資料處理失敗」的訊息，畫面上也沒有停用按鈕。如果要讓某個渠道下架，請聯絡系統管理員協助處理，不要重複嘗試刪除。
+      </div></div>
+      <h3>下游 Webhook 轉發（工程師用）</h3>
+      <p>卡片上的分岔箭頭圖示。用來把這個渠道收到的訊息，同時轉一份給公司其他系統。一般使用者不需要設定，請交給工程師。</p>
+      <div class="warn"><span>⚠️</span><div>「轉發模式」如果選「立即轉發（下游接手，本系統不再處理）」，這個渠道的訊息<b>就不會進收件匣</b>，Bot 也不會回。不確定的話請保持「最後轉發」或不要開啟。</div></div>
+      <h3>Webhook 公開網址：請不要修改</h3>
+      <figure class="shot">
+        <img src="uploads/shots/ch15-webhook-base.png" alt="頁面上方的 Webhook 公開網址設定卡片與 WebChat 網頁版連結" loading="lazy">
+        <figcaption>頁面最上方的「Webhook 公開網址」卡片，請保持原樣。</figcaption>
+      </figure>
+      <!-- KNOWN-ISSUE: 「套用」會一次改寫租戶所有渠道的 webhook 網址，沒有確認、不驗證網址格式，說明文字叫人填 ngrok（apps/web/src/components/settings/ChannelManagement.tsx:110-133、283-286；apps/api/src/modules/channel/channel.service.ts:666-697）；值只存在瀏覽器 localStorage（ChannelManagement.tsx:103-108）。 -->
+      <div class="warn"><span>⚠️</span><div><b>不要在「Webhook 公開網址」填任何東西，也不要按「套用」。</b>這是工程師在測試環境用的設定，按一次「套用」就會把<b>所有渠道</b>的 Webhook 網址一起改掉，填錯的話全部渠道都會收不到訊息，而且不會先問你確認。</div></div>
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch14-plan.html">← 14 · 方案與帳務</a></span>
+      <span>下一章：<a href="ch16-team.html">16 · 人員、角色與權限 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>

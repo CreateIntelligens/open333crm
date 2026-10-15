@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>其他設定 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=4">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">17 · 其他設定</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 標籤管理</a>
+    <a href="#p3"><span class="n">3</span> SLA 政策</a>
+    <a href="#p4"><span class="n">4</span> 營業時間</a>
+    <a href="#p5"><span class="n">5</span> 追蹤設定</a>
+    <a href="#p6"><span class="n">6</span> 跨渠道綁定</a>
+    <a href="#p7"><span class="n">7</span> API 金鑰</a>
+    <a href="#p8"><span class="n">8</span> CLI 連線</a>
+    <a href="#p9"><span class="n">9</span> A2A</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 17 · 分析與管理</div>
+        <h1>其他設定</h1>
+        <p>標籤、回覆時限、營業時間、廣告追蹤、把同一位客人在不同渠道的帳號認成同一人，以及給技術人員用的金鑰與連線設定。</p>
+      </div>
+    </section>
+
+    <section class="doc" id="p1">
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>這一章的功能都在左側選單「分析與管理 → 設定」底下，每個子頁一節。除了「標籤管理」大家都能用之外，其他頁預設只有管理員和主管能修改。沒有權限的人可能還是看得到選單，但打開會是空白，按儲存會失敗。</p>
+      <div class="quick">
+        <a href="#p2"><b>標籤管理</b>建立聯絡人、對話、工單、素材用的分類標籤</a>
+        <a href="#p3"><b>SLA 政策</b>規定多快要回覆、多快要解決</a>
+        <a href="#p4"><b>營業時間</b>下班時間自動回覆客人</a>
+        <a href="#p5"><b>追蹤設定</b>短連結點擊同步到 GA4、Meta Pixel</a>
+        <a href="#p6"><b>跨渠道綁定</b>同一位客人用 LINE 和 FB 找你，認成同一人</a>
+        <a href="#p7"><b>API 金鑰</b>給合作廠商推送知識庫文件用</a>
+        <a href="#p8"><b>CLI 連線</b>給 AI 工具或指令列工具連線用</a>
+        <a href="#p9"><b>A2A</b>查看 AI 代理連線狀態</a>
+      </div>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 標籤管理</h2>
+      <p>標籤是貼在客人、對話、工單或素材上的分類小貼紙，例如「VIP」「客訴」「冰箱客戶」。在這裡統一建立，大家貼的時候就會用同一套名稱。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch17-tags.jpg">
+          <source src="uploads/videos/ch17-tags.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>依範圍篩選標籤、填寫新增標籤對話框（約 24 秒，示範最後按取消）</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="uploads/shots/ch17-tags.png" alt="標籤管理頁：上方依範圍篩選，下方標籤卡片，每張卡片右側有編輯與刪除圖示" loading="lazy">
+        <figcaption>標籤管理：上方依範圍篩選；每張卡片右邊的鉛筆是編輯，紅色垃圾桶是刪除。</figcaption>
+      </figure>
+      <h3>新增標籤</h3>
+      <ol class="steps">
+        <li>到「設定 → 標籤管理」，按右上「新增標籤」。</li>
+        <li>填「標籤名稱」，最多 50 字。</li>
+        <li>在「顏色」點一個顏色，或點最右邊的色塊自選顏色。</li>
+        <li>在「適用範圍」選這個標籤要貼在哪裡：聯絡人、對話、案件或素材。建立後就不能改範圍。</li>
+        <li>需要的話填「說明（選填）」，讓同事知道什麼時候該貼。</li>
+        <li>看一下下方「預覽」，按「儲存」。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch17-tag-add.png" alt="新增標籤對話框：標籤名稱、顏色、適用範圍、說明、預覽" loading="lazy">
+        <figcaption>新增標籤：選好適用範圍，下方會預覽標籤的樣子。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>適用範圍</th><th>貼在哪裡</th></tr></thead>
+        <tbody>
+          <tr><td>聯絡人</td><td>客人身上，例如「VIP」「保固中」。行銷分群常用</td></tr>
+          <tr><td>對話</td><td>某一段對話，例如「詢價」</td></tr>
+          <tr><td>案件</td><td>工單，例如「客訴」「緊急」</td></tr>
+          <tr><td>素材</td><td>素材庫裡的圖文素材，方便分類查找</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>同一個範圍裡不能有兩個同名標籤；不同範圍可以同名（例如聯絡人和案件都有「客訴」）。</li>
+        <li>編輯：按卡片右邊的鉛筆，可以改名稱、顏色、說明。素材標籤改名後，所有素材上的標籤也會一起改。</li>
+      </ul>
+      <div class="warn"><span>⚠️</span><div><b>刪除標籤會從所有地方一起拿掉</b>，包含已經貼在聯絡人、對話、工單和素材上的，無法復原。預設連客服都能刪除標籤，如果擔心被誤刪，請管理員到「角色與權限」收回客服的「管理標籤」權限。</div></div>
+      <div class="info"><span>ℹ️</span><div>編輯時把「說明」整段刪掉再儲存，舊的說明目前會留著。想改說明時，請直接改成新的文字。</div></div>
+      <!-- KNOWN-ISSUE: 說明清空時前端送 undefined，後端不更新，舊說明殘留 apps/web/src/components/settings/TagManagement.tsx:114、apps/api/src/modules/tag/tagging.service.ts:270 -->
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> SLA 政策</h2>
+      <p>SLA 是「服務承諾時限」：答應客人多久內一定回覆、多久內把問題處理完。你可以依工單的優先級（緊急／高／中／低）設不同的時限，系統會在工單上倒數，快到期時提醒負責人。</p>
+      <h3>首次回應時間、解決時間和工單倒數的關係</h3>
+      <table>
+        <thead><tr><th>設定</th><th>意思</th><th>在工單上會看到</th></tr></thead>
+        <tbody>
+          <tr><td>首次回應目標</td><td>工單建立後，多久內要回客人第一句話</td><td>工單詳情的 SLA 區塊顯示「首次回應：已達／未達／待回應」</td></tr>
+          <tr><td>解決時間目標</td><td>工單建立後，多久內要處理完</td><td>工單詳情的倒數計時，以及列表的 SLA 欄；超過就算「SLA 違規」</td></tr>
+          <tr><td>到期前預警</td><td>到期前多久先提醒</td><td>時間一到，系統通知工單負責人；真的逾時再通知主管</td></tr>
+        </tbody>
+      </table>
+      <p>舉例：「高」優先的政策設首次回應 60 分鐘、解決 240 分鐘、預警 15 分鐘。上午 10:00 建立一張高優先工單，10:45 系統提醒負責人要回覆，14:00 前要處理完。</p>
+      <div class="warn"><span>⚠️</span><div><b>時限是 24 小時連續計算，不會扣掉下班時間和假日。</b>例如解決時間設 480 分鐘（8 小時），下午 5 點建立的工單，半夜 1 點就算逾時，不是隔天下午。設定時請把下班時間考慮進去，營業時間的設定也不會讓倒數暫停。</div></div>
+      <!-- KNOWN-ISSUE: SLA 以日曆時間連續計算，不扣營業時間 apps/api/src/modules/case/case.service.ts:292、apps/workers/src/handlers/sla.handler.ts:382-388 -->
+      <figure class="shot">
+        <img src="uploads/shots/ch17-sla.png" alt="SLA 政策列表：政策名稱、優先級、首回時間、解決時間、預警" loading="lazy">
+        <figcaption>SLA 政策列表：每列一個政策，時間會自動換算成小時、天。</figcaption>
+      </figure>
+      <h3>建立 SLA 政策</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch17-sla.jpg">
+          <source src="uploads/videos/ch17-sla.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>填寫建立 SLA 政策對話框（約 21 秒，示範最後按取消）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「設定 → SLA 政策」，按右上「建立 SLA 政策」。</li>
+        <li>填「政策名稱」，例如「高優先」。</li>
+        <li>在「套用優先級」選這個政策要套用到哪個優先級的工單。</li>
+        <li>填「首次回應目標（分鐘）」「解決時間目標（分鐘）」「到期前預警（分鐘）」，都以<b>分鐘</b>為單位，例如 1 天就填 1440。</li>
+        <li>按「儲存政策」。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch17-sla-add.png" alt="建立 SLA 政策對話框：政策名稱、套用優先級、三個分鐘數欄位、設為此優先級預設" loading="lazy">
+        <figcaption>建立 SLA 政策：三個時間都以分鐘填寫。</figcaption>
+      </figure>
+      <div class="warn"><span>⚠️</span><div><b>每個優先級請只建一個政策。</b>對話框裡的「設為此優先級預設」目前沒有作用：同一個優先級有兩個以上政策時，系統套用哪一個是不固定的，跟你勾了哪個「預設」無關。如果真的需要特殊時限（例如 VIP），建立工單時在「SLA 政策」欄直接選那個政策，不要用「依優先級自動套用」。</div></div>
+      <!-- KNOWN-ISSUE: 建工單挑 SLA 用 findFirst({tenantId, priority}) 不看 isDefault apps/api/src/modules/case/case.service.ts:273-283、apps/workers/src/lib/automation-actions.ts:110 -->
+      <div class="warn"><span>⚠️</span><div><b>政策建好後，盡量不要改名或刪除。</b>工單是用政策名稱連到政策的，改名或刪除後，已經套用這個政策的工單會停止預警與逾時判斷，畫面上也不會提示。要調整時限，直接改分鐘數就好，名稱保持不變。</div></div>
+      <!-- KNOWN-ISSUE: 工單只存政策名稱，worker 用名稱找政策，找不到就跳過 apps/api/src/modules/case/case.service.ts:307、apps/workers/src/handlers/sla.handler.ts:94-110 -->
+      <div class="info"><span>ℹ️</span><div>分鐘數請填大於 0 的整數。欄位留空或填 0，系統會悄悄換成預設值（首次回應 15、解決 60、預警 10 分鐘）並顯示儲存成功，存完請看一下列表上的時間對不對。預警時間也請設得比首次回應時間短，不然工單一建立就會馬上收到提醒。</div></div>
+      <!-- KNOWN-ISSUE: 數字欄位 parseInt(...) || 預設值，空白或 0 靜默換成 15/60/10 apps/web/src/components/settings/SlaManagement.tsx:118-120 -->
+      <p>修改分鐘數只影響之後新建立的工單的解決期限；已經建立的工單，解決期限不會跟著改。</p>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 營業時間</h2>
+      <p>設定公司的上班時間後，客人在下班時間或假日傳訊息，系統會自動回一段話，讓客人知道你們會晚點回覆。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch17-office-hours.jpg">
+          <source src="uploads/videos/ch17-office-hours.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>打開總開關、設定每週排程與假日、查看自動回覆訊息（約 17 秒，示範不儲存）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「設定 → 營業時間」，點開關讓它顯示「已啟用營業時間」。關閉時系統一律當作營業中，不會自動回覆。</li>
+        <li>在「時區」選你們公司所在的時區（台灣選 Asia/Taipei）。</li>
+        <li>在「每週排程」逐天設定：有上班的日子打開開關，填上下班時間；休息的日子關掉，會顯示「休息」。</li>
+        <li>國定假日、店休日：在「假日（非營業日）」選日期，按「新增」。日期旁的 × 可以移除。</li>
+        <li>在「非營業時間自動回覆訊息」寫下要回給客人的話。</li>
+        <li>按最下方「儲存設定」。</li>
+      </ol>
+      <figure class="shot">
+        <img src="uploads/shots/ch17-office-hours.png" alt="營業時間設定頁：總開關、時區、每週排程、假日、非營業時間自動回覆訊息" loading="lazy">
+        <figcaption>營業時間：週一到週五 9:00–18:00、週末休息的設定範例。</figcaption>
+      </figure>
+      <div class="warn"><span>⚠️</span><div><b>打開頁面時如果看到「未啟用營業時間」，但你確定之前設定過，請先重新整理頁面，不要直接按儲存。</b>資料讀取失敗時，頁面會顯示預設值，這時按「儲存設定」會把原本的設定整個蓋掉。</div></div>
+      <!-- KNOWN-ISSUE: 讀取失敗只 console.error，畫面維持預設值，儲存會覆蓋正式設定 apps/web/src/components/settings/OfficeHoursSettings.tsx:48,54-65,268-270 -->
+      <ul>
+        <li><b>同一位客人 30 分鐘內只會收到一次</b>自動回覆，不會每傳一句就回一次。</li>
+        <li>自動回覆訊息清空後儲存，系統會改用預設文字「您好！目前為非營業時間，我們將在營業時間內盡速回覆您。」</li>
+        <li>如果某個渠道在「渠道管理 → Bot 設定」填了「非營業時間問候語」，那個渠道會改用 Bot 設定的內容，這裡的訊息不會送出。改了這裡卻沒效果時，請先檢查 Bot 設定（見「<a href="ch15-channels.html">15 · 渠道管理</a>」）。</li>
+        <li>營業時間只影響這個自動回覆，<b>不會</b>暫停 SLA 倒數，也不影響工單派送。</li>
+      </ul>
+      <div class="warn"><span>⚠️</span><div><b>不支援跨過午夜的時段。</b>例如營業到凌晨 2 點，請不要填「22:00 至 02:00」，系統會整段都當成下班。請把結束時間設在當天 23:59 之前。</div></div>
+      <!-- KNOWN-ISSUE: 迄 ≤ 起時 current >= start && current < end 永遠為假，前後端都沒擋 apps/api/src/modules/settings/office-hours.service.ts:146-151 -->
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 追蹤設定</h2>
+      <p>如果你們有用 Google Analytics 4 或 Meta（Facebook）廣告像素，在這裡填入 ID，客人點短連結時的資料就會同步送到 GA4 和 Meta，方便你在廣告後台看成效。短連結的用法見「<a href="ch12-shortlinks.html">12 · 短連結</a>」。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch17-tracking.png" alt="追蹤設定頁：Google Analytics 4 ID 與 Meta Pixel ID 兩個欄位" loading="lazy">
+        <figcaption>追蹤設定：兩個欄位都留空代表不送追蹤資料。</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「設定 → 追蹤設定」。</li>
+        <li>在「Google Analytics 4 ID」貼上 GA4 的評估 ID（在 GA 的資料串流設定裡，<code>G-</code> 開頭）。</li>
+        <li>在「Meta Pixel ID」貼上像素 ID（在 Meta 事件管理工具裡，純數字）。</li>
+        <li>按「儲存設定」，旁邊出現「已儲存」即完成。不想再追蹤時，清空欄位再儲存。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div><b>請從 GA、Meta 後台直接複製貼上，不要手打，儲存前再核對一次。</b>系統目前不會檢查格式，多一個空白或符號，所有短連結的追蹤都會失效。另外，打開頁面時如果兩個欄位是空的，但你確定之前填過，請先重新整理，不要直接儲存，以免把原本的 ID 清掉。</div></div>
+      <!-- KNOWN-ISSUE: GA/Pixel ID 前後端都沒驗證，原字串直接拼進短連結中轉頁 script（stored XSS 風險）；讀取失敗顯示空白，儲存會覆寫成 null apps/api/src/modules/shortlink/strategies/tracking-snippet.ts:15,20,44、apps/api/src/modules/settings/settings.routes.ts:529-532、apps/web/src/components/settings/TrackingSettings.tsx:21-22 -->
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 跨渠道綁定</h2>
+      <p>同一位客人可能先用 LINE 問問題，過幾天又從 Facebook 私訊你。系統一開始會把他當成兩位不同的聯絡人。開啟跨渠道綁定後，客人可以自己完成「認領」，兩個帳號就會合併成同一位聯絡人，對話紀錄、標籤、點數都集中在一起。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch17-identity-binding.jpg">
+          <source src="uploads/videos/ch17-identity-binding.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>瀏覽跨渠道綁定頁的三種方式與啟用前確認清單（約 18 秒，只瀏覽不修改）</figcaption>
+      </figure>
+      <h3>從客人的角度看：三種認人方式</h3>
+      <p>以「王小姐先加了你的 LINE，後來又到 FB 粉專私訊」為例：</p>
+      <table>
+        <thead><tr><th>方式</th><th>王小姐要做什麼</th><th>結果</th></tr></thead>
+        <tbody>
+          <tr><td><b>綁定代碼</b></td><td>在 LINE 傳「綁定帳號」，收到一組代碼和 FB 粉專的連結；點連結到 FB 私訊送出代碼，再回覆「確認綁定」</td><td>LINE 和 FB 的王小姐合併成同一位聯絡人</td></tr>
+          <tr><td><b>Email 登記</b></td><td>在 LINE 傳「登記email」，點系統回的網頁填自己的 email；之後在 FB 也做一次，填同一個 email</td><td>email 相同的兩位聯絡人自動合併</td></tr>
+          <tr><td><b>手機登記</b></td><td>同上，改傳「登記手機」並填手機號碼（只接受台灣手機）</td><td>手機號碼相同的聯絡人自動合併，<code>0912-345-678</code>、<code>+886 912 345 678</code> 這類寫法都會被認成同一支</td></tr>
+        </tbody>
+      </table>
+      <p>合併後雙方的對話裡都會收到通知。合併後 7 天內，客人傳「解除綁定」可以自己取消；超過 7 天，由客服在聯絡人頁的「合併紀錄」解除（見「<a href="ch03-contacts.html">03 · 聯絡人</a>」）。客服也可以在收件匣按「傳送跨渠道綁定連結」或「傳送 email 登記連結」「傳送手機登記連結」，代客人發出（見「<a href="ch01-inbox.html">01 · 收件匣</a>」）。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch17-identity-binding.png" alt="跨渠道綁定設定頁：啟用跨渠道綁定、綁定關鍵字、解除關鍵字、Email 登記" loading="lazy">
+        <figcaption>跨渠道綁定設定頁的上半部：綁定代碼與 Email 登記。往下還有手機登記和啟用前確認清單。</figcaption>
+      </figure>
+      <h3>設定步驟</h3>
+      <ol class="steps">
+        <li>到「設定 → 跨渠道綁定」。這頁只有管理員和主管看得到。</li>
+        <li>先看最下方「啟用前請確認」清單，確認各渠道都準備好了（見下方提醒）。</li>
+        <li>要用綁定代碼：勾選「啟用跨渠道綁定」，確認「綁定關鍵字」和「解除關鍵字」。</li>
+        <li>要用 email 自動歸戶：勾選「啟用 email 登記」，確認「Email 登記關鍵字」。</li>
+        <li>要用手機自動歸戶：勾選「啟用手機登記」，確認「手機登記關鍵字」。</li>
+        <li>按「儲存設定」，出現「已儲存」後約 15 秒內生效。</li>
+      </ol>
+      <ul>
+        <li>關鍵字要客人傳的訊息「完全一樣」才會觸發（英文不分大小寫）。可以設多個，用頓號或逗號分隔，最多 5 個，每個最多 20 字。</li>
+        <li>各方式的關鍵字不能重複，也不能用「確認綁定」當關鍵字。解除關鍵字三種方式共用。</li>
+        <li>代碼和登記連結 30 分鐘內有效。</li>
+        <li>同一個渠道的兩個帳號（例如同一個 LINE 官方帳號的兩個 LINE 帳號）不能合併，客人會收到無法合併的回覆。</li>
+      </ul>
+      <div class="warn"><span>⚠️</span><div><b>Email 和手機登記不會寄驗證信或簡訊。</b>客人填了別人的 email 或手機，也會跟那個人合併。系統會通知雙方、可以解除，但請在開啟前想清楚，按「儲存設定」後不會再跳確認視窗，馬上生效。</div></div>
+      <div class="info"><span>ℹ️</span><div>啟用前請確認：
+        <ul>
+          <li>各渠道已在「渠道管理」設定導流識別（LINE Basic ID、粉專 username、IG 帳號），沒設定的渠道不會出現在給客人的連結裡（見「<a href="ch15-channels.html">15 · 渠道管理</a>」）。</li>
+          <li>Facebook 粉專要設定「開始使用」按鈕，第一次私訊的客人才收得到代碼。</li>
+          <li>Instagram 的綁定連結只能在手機 App 上用。</li>
+          <li>同一品牌的多個 LINE 官方帳號要建在同一個 Provider 底下，否則系統認不出是同一人。</li>
+        </ul>
+      </div></div>
+    </section>
+
+    <section class="doc" id="p7">
+      <h2><span class="idx">7</span> API 金鑰</h2>
+      <p>這頁給<b>需要串接合作廠商的管理員</b>使用。頁面標題是「Partner API 金鑰」，產生的金鑰只有一個用途：讓合作廠商的系統把文件自動推送到你們的知識庫（知識庫見「<a href="ch06-knowledge.html">06 · 知識庫</a>」）。一般客服不需要碰這頁。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch17-apikey-add.png" alt="建立 API 金鑰對話框：名稱與過期時間" loading="lazy">
+        <figcaption>建立 API 金鑰：填名稱、選過期時間。</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「設定 → API 金鑰」，按「建立金鑰」。</li>
+        <li>「名稱」寫這把金鑰是給誰用的，例如「某某廠商」；「過期時間」可選永不過期、30 天、90 天、180 天或 1 年。</li>
+        <li>按「建立」後，完整金鑰<b>只會顯示這一次</b>。按「複製」，用安全的方式交給合作廠商，再按「我已保存，關閉」。</li>
+      </ol>
+      <ul>
+        <li>不再合作或金鑰外流時，按那一列的垃圾桶圖示「撤銷」，立刻失效、無法復原。撤銷的金鑰仍會留在列表，狀態顯示「已撤銷」。</li>
+        <li>沒有「重新產生」功能，要換金鑰就先撤銷，再建一把新的。</li>
+        <li>列表的「狀態」目前只看有沒有撤銷，已過期的金鑰仍會顯示「啟用中」，請一併看「過期時間」欄。</li>
+      </ul>
+      <!-- KNOWN-ISSUE: 狀態只看 isActive 不比對 expiresAt；對話框內 curl 範例缺少必填 cmd 欄位 apps/web/src/components/settings/ApiKeyManagement.tsx:126,350-354 -->
+      <div class="info"><span>ℹ️</span><div>金鑰建立後畫面上的使用範例是給工程師參考的，實際串接格式請以工程人員提供的串接文件為準。</div></div>
+    </section>
+
+    <section class="doc" id="p8">
+      <h2><span class="idx">8</span> CLI 連線</h2>
+      <p>這頁給<b>會用 AI 助理或指令列工具的技術人員</b>使用。頁面標題是「CLI / LLM 連線」，在這裡產生的 Token 可以讓 Claude、ChatGPT 這類 AI 工具，或 open333 指令列工具，用你的身分查詢系統資料（預設只能讀、不能改）。一般客服不需要碰這頁。</p>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch17-cli-add.png" alt="產生 CLI Token 對話框：名稱、過期時間、授予 MCP 唯讀權限" loading="lazy">
+        <figcaption>產生 CLI Token：填名稱、選過期時間，需要時勾選 MCP 唯讀權限。</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「設定 → CLI 連線」，按「產生 Token」。</li>
+        <li>「名稱」寫用途，例如「Claude Code」；選「過期時間」；如果 AI 工具要透過 MCP 查資料，勾選「授予 MCP 唯讀權限」。</li>
+        <li>按「產生 Token」，完整 Token <b>只會顯示這一次</b>，按「複製」保存好，再按「我已保存，關閉」。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div><b>「永不過期」目前實際上是 30 天。</b>選了永不過期，Token 一樣會在 30 天後失效，請記得到期前重新產生。</div></div>
+      <!-- KNOWN-ISSUE: 選永不過期前端不送 expiresInDays，後端套預設 30 天 apps/web/src/components/settings/CliSessionManagement.tsx:51-52,270、apps/api/src/modules/auth/cli-session.service.ts:48-50,87 -->
+      <!-- KNOWN-ISSUE: 對話框「使用方式」寫 open333 login 後貼上 token，實際 CLI login 是帳密登入並自行產生新 token apps/web/src/components/settings/CliSessionManagement.tsx:437-441、apps/cli/src/commands/login.ts:17-30 -->
+      <ul>
+        <li>產生後對話框裡的「使用方式」範例目前不正確，實際設定方式請以工程人員的說明為準。</li>
+        <li>這個列表會列出<b>公司所有人</b>的 Token，包含別人用 open333 指令登入時自動產生的。撤銷前請確認是誰在用，撤銷後對方的工具會立刻斷線。</li>
+        <li>已過期的 Token 仍會留在列表上，不會特別標示，請看「過期時間」欄判斷。</li>
+      </ul>
+    </section>
+
+    <section class="doc" id="p9">
+      <h2><span class="idx">9</span> A2A</h2>
+      <p>位置在「設定 → 整合 → A2A」，只有管理員和主管看得到。這頁顯示系統和外部 AI 代理之間的連線資訊，<b>全部是唯讀</b>，由系統維運人員在伺服器上設定，你不需要也無法在這裡修改。如果有人請你確認 A2A 狀態，看「目前狀態」那一欄就可以。</p>
+      <!-- KNOWN-ISSUE: A2A 是部署層級設定卻對每個租戶顯示，「目前狀態」只要有設 A2A_AGENT_ID 就回 connected，「Tenant 綁定」寫死 Default Tenant apps/api/src/modules/settings/a2a-status.service.ts:30,42 -->
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch16-team.html">← 16 · 人員、角色與權限</a></span>
+      <span><a href="index.html">回總目錄 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>

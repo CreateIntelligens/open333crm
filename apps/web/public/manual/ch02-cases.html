@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>工單管理 · open333CRM 操作手冊</title>
+<title>工單 · open333CRM 操作手冊</title>
 <script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-<link rel="stylesheet" href="design-system.css?v=3">
+<link rel="stylesheet" href="design-system.css?v=4">
 </head>
 <body>
 
 <nav class="manual-nav">
   <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
-  <span class="chap">02 · 工單管理</span>
+  <span class="chap">02 · 工單</span>
   <span class="spacer"></span>
   <button class="nav-btn" id="theme-toggle" title="切換深淺色">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
@@ -23,207 +23,256 @@
 <div class="manual-layout">
   <aside class="manual-toc">
     <p class="toc-title">本章目錄</p>
-    <a href="#p1"><span class="n">1</span> 功能總覽</a>
-    <a href="#p2"><span class="n">2</span> 工單列表</a>
-    <a href="#p3"><span class="n">3</span> 統計卡與篩選</a>
-    <a href="#p4"><span class="n">4</span> 建立工單</a>
-    <a href="#p5"><span class="n">5</span> 工單詳情與編輯</a>
-    <a href="#p6"><span class="n">6</span> 狀態轉移規則</a>
-    <a href="#p7"><span class="n">7</span> 升級案件</a>
-    <a href="#p8"><span class="n">8</span> SLA 計時與自動行為</a>
-    <a href="#p9"><span class="n">9</span> 時間軸與備註</a>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 工單列表與篩選</a>
+    <a href="#p3"><span class="n">3</span> 新增工單</a>
+    <a href="#p4"><span class="n">4</span> 工單詳情</a>
+    <a href="#p5"><span class="n">5</span> 推進工單狀態</a>
+    <a href="#p6"><span class="n">6</span> 升級工單</a>
+    <a href="#p7"><span class="n">7</span> 時間軸與內部備註</a>
+    <a href="#p8"><span class="n">8</span> SLA 時限</a>
+    <a href="#p9"><span class="n">9</span> 刪除工單</a>
   </aside>
 
   <main class="manual-main">
     <section class="hero">
       <div class="inner">
-        <div class="eyebrow">CHAPTER 02 · 日常客服作業</div>
-        <h1>工單管理</h1>
-        <p>把客戶的每一件服務需求，變成一張可追蹤、可指派、有 SLA 計時的工單。從建立、處理、升級到結案，全程留下時間軸記錄。</p>
+        <div class="eyebrow">CHAPTER 02 · 客服工作</div>
+        <h1>工單</h1>
+        <p>一次回覆解決不了的問題，就開成工單。誰負責、處理到哪、還剩多少時間，全都記在同一張單上，交接也不怕漏。</p>
       </div>
     </section>
 
     <section class="doc" id="p1">
-      <h2><span class="idx">1</span> 功能總覽</h2>
-      <p>「工單」（案件）是把一次客戶服務需求正式立案追蹤的單位。相較於收件匣的「即時對話」，工單是「有始有終的任務」——它有狀態、優先級、分類、負責人、SLA 計時，以及一條完整記錄「誰在什麼時候做了什麼」的時間軸。</p>
-      <div class="flow">
-        <div class="flow-step"><div class="fn">STEP 1</div><div class="ft">建立</div><div class="fd">從對話或獨立建立工單</div></div>
-        <div class="flow-step"><div class="fn">STEP 2</div><div class="ft">指派處理</div><div class="fd">分配負責人、設定優先級</div></div>
-        <div class="flow-step"><div class="fn">STEP 3</div><div class="ft">追蹤</div><div class="fd">SLA 計時、時間軸記錄、必要時升級</div></div>
-        <div class="flow-step"><div class="fn">STEP 4</div><div class="ft">結案</div><div class="fd">標記解決 → 關閉</div></div>
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>工單（畫面上有些地方也叫「案件」，意思一樣）用來追蹤需要多花時間處理的問題，例如維修、退換貨、等廠商回覆。從左側選單「客服工作 → 工單」進入。</p>
+      <div class="quick">
+        <a href="#p2"><b>看工單列表</b>統計卡、搜尋、篩選、狀態分頁</a>
+        <a href="#p3"><b>新增工單</b>選聯絡人、填標題與分類</a>
+        <a href="#p4"><b>工單詳情</b>改狀態、優先級、負責人</a>
+        <a href="#p5"><b>推進狀態</b>處理中、標記解決、關閉、重新開啟</a>
+        <a href="#p6"><b>升級</b>處理不了時交給主管</a>
+        <a href="#p7"><b>內部備註</b>寫下進度，同事一看就懂</a>
       </div>
-      <div class="info"><span>ℹ️</span><div>一條對話只能綁一個工單。工單詳情可反查「關聯對話」跳回收件匣，形成「對話 ↔ 工單」的雙向連結。</div></div>
+      <div class="info"><span>ℹ️</span><div>大部分工單是從收件匣的對話開的，顧客與對話會自動帶入，見「<a href="ch01-inbox.html#p9">01 · 收件匣 → 從對話建立工單</a>」。</div></div>
     </section>
 
     <section class="doc" id="p2">
-      <h2><span class="idx">2</span> 工單列表</h2>
-      <p>工單列表以表格呈現所有工單，<b>預設依 SLA 到期時間排序</b>——快到期的排最上面，讓最急的工單先被看到（無 SLA 的排最後）。</p>
-      <figure class="shot">
-        <img src="uploads/shots/page-cases.png" alt="工單列表頁：統計卡、篩選列、狀態分頁與表格" loading="lazy">
-        <figcaption>工單列表：統計卡 + 多維篩選 + 狀態分頁 + 工單表格。（聯繫人欄已去識別化）</figcaption>
+      <h2><span class="idx">2</span> 工單列表與篩選</h2>
+      <p>列表依 SLA 到期時間排序，越快到期的排越上面，先處理最急的就對了。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch02-list.jpg">
+          <source src="uploads/videos/ch02-list.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>看統計卡、搜尋、用下拉與狀態分頁篩選工單（約 25 秒）</figcaption>
       </figure>
+      <figure class="shot">
+        <img src="uploads/shots/ch02-list.png" alt="工單列表：統計卡、搜尋、篩選下拉、狀態分頁與表格" loading="lazy">
+        <figcaption>工單列表：上方統計卡，中間篩選，下方表格。（聯絡人姓名已模糊）</figcaption>
+      </figure>
+      <h3>統計卡</h3>
+      <table>
+        <thead><tr><th>卡片</th><th>意思</th></tr></thead>
+        <tbody>
+          <tr><td>開啟中</td><td>還沒處理完的工單數</td></tr>
+          <tr><td>SLA 違規</td><td>已經超過處理時限的工單數</td></tr>
+          <tr><td>即將到期</td><td>30 分鐘內就要到期的工單數</td></tr>
+          <tr><td>今日解決</td><td>今天已經解決的工單數</td></tr>
+        </tbody>
+      </table>
+      <h3>找工單</h3>
+      <ol class="steps">
+        <li>在「搜尋工單標題或描述...」輸入至少 2 個字。</li>
+        <li>用四個下拉選單縮小範圍：「所有負責人」「所有優先級」「所有分類」「所有 SLA」。</li>
+        <li>點狀態分頁：「全部」「開啟」「處理中」「待處理」「已升級」「已解決」「已關閉」。分頁旁的數字是該狀態的工單數。</li>
+        <li>點任一列，進入工單詳情。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>搜尋只會找<b>目前這一頁</b>的 20 筆。工單很多時，請先用下拉或狀態分頁縮小範圍再搜尋。另外，「所有 SLA」選「正常」目前不會過濾，結果和「所有 SLA」一樣。</div></div>
+      <!-- KNOWN-ISSUE: 搜尋只在當頁 20 筆前端過濾 web/app/dashboard/cases/page.tsx:66-76；SLA「正常」後端不加條件 api/case/case.service.ts:73 -->
+      <h3>表格欄位</h3>
       <table>
         <thead><tr><th>欄位</th><th>說明</th></tr></thead>
         <tbody>
-          <tr><td>ID</td><td>工單編號（取前 8 碼）</td></tr>
-          <tr><td>標題 / 聯繫人</td><td>工單主旨與所屬客戶</td></tr>
-          <tr><td>分類</td><td>有值時前面帶 🤖（代表是 AI 自動分類，可手動改）</td></tr>
-          <tr><td>優先級 / 狀態</td><td>彩色徽章（見第 6 節）</td></tr>
-          <tr><td>負責人</td><td>未指派顯示「未指派」</td></tr>
-          <tr><td>SLA</td><td>即時倒數（格式時分秒）；逾期轉紅並顯示負號；無截止顯示「無 SLA」</td></tr>
-          <tr><td>建立時間 / 操作</td><td>建立時間與刪除按鈕</td></tr>
+          <tr><td>ID</td><td>工單編號的前 8 碼，跟同事溝通時可以報這個</td></tr>
+          <tr><td>標題、聯絡人、分類</td><td>工單在處理什麼、是哪位顧客</td></tr>
+          <tr><td>優先級</td><td>緊急（紅）、高、中、低</td></tr>
+          <tr><td>狀態</td><td>目前處理到哪一步，對照見下表</td></tr>
+          <tr><td>負責人</td><td>負責的客服；沒有指派時顯示「未指派」</td></tr>
+          <tr><td>SLA</td><td>離處理時限還剩多久。顯示負數（例如 -2h 10m）表示已經逾時</td></tr>
+          <tr><td>建立時間</td><td>工單開立的時間</td></tr>
         </tbody>
       </table>
-      <p>列表左緣有依優先級著色的<b>色條</b>，一眼分辨急件。每頁 20 筆。</p>
-      <div class="warn"><span>⚠️</span><div>列表操作欄的「刪除」是<b>永久刪除</b>（不是封存），刪除前會解除關聯對話、且<b>無法復原</b>。要暫時收起工單請用「關閉」而非刪除。</div></div>
+      <p>「狀態」欄目前顯示英文代碼，對照如下：</p>
+      <table>
+        <thead><tr><th>畫面上看到</th><th>意思</th></tr></thead>
+        <tbody>
+          <tr><td>OPEN</td><td>開啟：剛建立，還沒開始處理</td></tr>
+          <tr><td>IN_PROGRESS</td><td>處理中</td></tr>
+          <tr><td>PENDING</td><td>待處理：在等顧客或其他人回覆</td></tr>
+          <tr><td>ESCALATED</td><td>已升級：交給主管處理</td></tr>
+          <tr><td>RESOLVED</td><td>已解決</td></tr>
+          <tr><td>CLOSED</td><td>已關閉</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 狀態徽章 statusConfig 鍵為小寫、查詢用大寫，永遠顯示英文代碼 web/components/case/CaseStatusBadge.tsx:15-28；修好後把這張對照表改成中文名稱 -->
+      <div class="info"><span>ℹ️</span><div>分類前面的小機器人圖示，不一定代表是 AI 分的，人工選的分類也會顯示。</div></div>
+      <!-- KNOWN-ISSUE: 分類欄任何分類都顯示 AI 圖示 web/components/case/CaseList.tsx:129、CaseDetail.tsx:263-265 -->
     </section>
 
     <section class="doc" id="p3">
-      <h2><span class="idx">3</span> 統計卡與篩選</h2>
-      <p>頁面頂端四張統計卡是「當下的即時快照」，快速掌握團隊負荷：</p>
-      <table>
-        <thead><tr><th>統計卡</th><th>意義</th></tr></thead>
-        <tbody>
-          <tr><td><span class="tag blue">開啟中</span></td><td>還在處理的工單（開啟 + 處理中）</td></tr>
-          <tr><td><span class="tag red">SLA 違規</span></td><td>未結案且已超過解決期限的工單</td></tr>
-          <tr><td><span class="tag orange">即將到期</span></td><td>未結案且在 30 分鐘內就要到期的工單</td></tr>
-          <tr><td><span class="tag green">今日解決</span></td><td>今天已解決的工單數</td></tr>
-        </tbody>
-      </table>
-      <h3>搜尋與篩選</h3>
-      <p>搜尋框依標題或描述過濾（需至少 2 個字）。下方四個下拉可任意組合：</p>
-      <table>
-        <thead><tr><th>篩選</th><th>可選值 / 說明</th></tr></thead>
-        <tbody>
-          <tr><td>負責人</td><td>所有負責人 + 客服名單</td></tr>
-          <tr><td>優先級</td><td>所有 / 緊急 / 高 / 中 / 低</td></tr>
-          <tr><td>分類</td><td>所有 / 維修 / 查詢 / 投訴 / 其他</td></tr>
-          <tr><td>SLA</td><td>SLA 違規（已逾期）/ 即將到期（30 分內）/ 正常</td></tr>
-        </tbody>
-      </table>
-      <p>再下方是狀態分頁：全部 / 開啟 / 處理中 / 待處理 / 已升級 / 已解決 / 已關閉，每個分頁尾端顯示數量。</p>
-    </section>
-
-    <section class="doc" id="p4">
-      <h2><span class="idx">4</span> 建立工單</h2>
-      <p>工單有兩種建立路徑，欄位相同但來源不同：</p>
-      <ul>
-        <li><b>從收件匣對話帶入</b>（最常用）：在收件匣右欄點「建立工單」，聯繫人與來源對話自動帶入且唯讀，畫面上方會顯示「來源對話」標籤。</li>
-        <li><b>獨立建立</b>：需自己搜尋選聯繫人。若系統完全沒有渠道，會擋下並提示「系統尚無可用渠道，請先建立渠道」。</li>
-      </ul>
-      <figure class="shot shot-narrow">
-        <img src="uploads/shots/dlg-case-create.png" alt="建立案件對話框：來源對話、聯繫人、標題、描述、優先級、分類等欄位" loading="lazy">
-        <figcaption>建立案件對話框：填標題、描述，選優先級與分類，可指派負責人與團隊。</figcaption>
+      <h2><span class="idx">3</span> 新增工單</h2>
+      <p>不是從對話來的問題（例如顧客打電話來），可以在列表頁直接開工單。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch02-create.jpg">
+          <source src="uploads/videos/ch02-create.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>按「新增工單」，選聯絡人、填標題與分類（示範中按取消）（約 25 秒）</figcaption>
       </figure>
-      <h3>逐欄位說明</h3>
-      <table>
-        <thead><tr><th>欄位</th><th>必填</th><th>規則與留空行為</th></tr></thead>
-        <tbody>
-          <tr><td>聯繫人</td><td>✓</td><td>獨立建立時搜尋（需輸入至少 2 個字），找不到可當場「建立新聯繫人」；未選提示「請選擇聯繫人」</td></tr>
-          <tr><td>案件標題</td><td>✓</td><td>上限 100 字（即時顯示字數）；空白提示「請輸入案件標題」</td></tr>
-          <tr><td>問題描述</td><td></td><td>上限 2000 字，可留空</td></tr>
-          <tr><td>優先級</td><td>✓</td><td>低 / 中 / 高 / 緊急，預設「中」</td></tr>
-          <tr><td>分類</td><td>✓</td><td>維修 / 查詢 / 投訴 / 其他；未選提示「請選擇分類」</td></tr>
-          <tr><td>指派給 / 團隊</td><td></td><td>選客服會自動帶入其團隊</td></tr>
-          <tr><td>SLA 政策</td><td></td><td>預設「依優先級自動套用」——留空時系統依優先級找對應政策</td></tr>
-        </tbody>
-      </table>
-      <h3>按下「建立案件」後系統做了什麼</h3>
-      <p>一個動作連鎖觸發多件事：①依優先級或指定政策算出 SLA 解決期限（建立時間 + 解決分鐘數）②狀態設為「開啟」並寫時間軸 ③工單即時出現在列表 ④觸發<b>AI 自動分類</b>（若有關聯對話，抓最新客訊自動填分類，顯示 🤖）⑤若「沒指定負責人但有指定團隊」，觸發自動指派（見下）。建立成功後直接跳到該工單詳情頁。</p>
-      <div class="info"><span>ℹ️</span><div><b>注意分類欄的落差</b>：建立畫面只有 4 個分類（維修/查詢/投訴/其他），但詳情頁的分類下拉有 10 個更細的選項（產品諮詢/訂單問題/退換貨…）。建立後可在詳情頁改用更細的分類。</div></div>
-    </section>
-
-    <section class="doc" id="p5">
-      <h2><span class="idx">5</span> 工單詳情與編輯</h2>
-      <p>點列表任一工單進入詳情頁。左欄可就地編輯各項欄位，右欄是時間軸。頂部依狀態顯示操作按鈕：<b>標記解決</b>、<b>關閉案件</b>、<b>重新開啟</b>、<b>升級</b>。</p>
-      <h3>各欄位與操作的實際行為</h3>
-      <table>
-        <thead><tr><th>操作</th><th>按下去會發生什麼</th></tr></thead>
-        <tbody>
-          <tr><td>標題</td><td>點擊就地編輯，Enter 儲存、Esc 取消，上限 100 字</td></tr>
-          <tr><td>指派負責人</td><td>若工單當時是「開啟」，指派會<b>自動把狀態推到「處理中」</b>，並通知被指派人</td></tr>
-          <tr><td>標記解決</td><td>狀態轉「已解決」、記錄解決時間，並觸發 <b>CSAT 滿意度調查</b>流程</td></tr>
-          <tr><td>關閉案件</td><td>先跳確認框「確定要關閉此案件嗎？關閉後可從已關閉清單重新開啟」，確認後結案</td></tr>
-          <tr><td>重新開啟</td><td>已關閉的工單轉回「開啟」</td></tr>
-        </tbody>
-      </table>
-      <p>詳情頁分類若由 AI 填入會顯示「🤖 AI 自動分類」，你可隨時手動改。SLA 區塊顯示政策、首次回應達成狀態（已達 ✓ / 未達 ✗ / 待回應）、解決目標與即時倒數。</p>
-    </section>
-
-    <section class="doc" id="p6">
-      <h2><span class="idx">6</span> 狀態轉移規則</h2>
-      <p>工單狀態<b>不能隨意亂跳</b>——只能依合法路徑轉移，避免流程錯亂。狀態下拉只會列出目前狀態能去的方向。六種狀態的意義：</p>
-      <table>
-        <thead><tr><th>狀態</th><th>意義</th><th>能轉移到</th></tr></thead>
-        <tbody>
-          <tr><td><span class="tag blue">開啟</span></td><td>剛建立、還沒人處理</td><td>處理中、已關閉</td></tr>
-          <tr><td><span class="tag orange">處理中</span></td><td>已指派或客服開始處理</td><td>待處理、已解決、已升級、已關閉</td></tr>
-          <tr><td><span class="tag blue">待處理</span></td><td>等待中（等客戶回覆或第三方）</td><td>處理中、已升級、已關閉</td></tr>
-          <tr><td><span class="tag green">已解決</span></td><td>問題處理完，等關閉或客戶確認</td><td>已關閉、處理中（可退回）</td></tr>
-          <tr><td><span class="tag red">已升級</span></td><td>已升級給更高層/更高優先</td><td>處理中、已關閉</td></tr>
-          <tr><td><span class="tag gray">已關閉</span></td><td>結案</td><td>重新開啟（回到開啟）</td></tr>
-        </tbody>
-      </table>
-      <div class="warn"><span>⚠️</span><div>幾個常踩的坑：①<b>「開啟」不能直接跳「已解決」或「已升級」</b>，必須先進「處理中」。②「已解決」可退回「處理中」重啟；「已關閉」只能「重新開啟」——這兩條是唯二的「回頭路」。</div></div>
-    </section>
-
-    <section class="doc" id="p7">
-      <h2><span class="idx">7</span> 升級案件</h2>
-      <p>當工單需要主管介入或提高處理層級，點詳情頁的「升級」開啟升級視窗。升級是獨立動作，會把狀態轉為「已升級」、優先級提高，並通知相關人。</p>
+      <ol class="steps">
+        <li>按右上角「新增工單」，跳出「建立案件」。</li>
+        <li>在「聯絡人」輸入至少 2 個字，從下拉名單點選顧客。</li>
+        <li>填「案件標題」，選「分類」。</li>
+        <li>其他欄位視需要填寫，按「建立案件」。系統會直接帶你到這張工單的頁面。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch02-create-dialog.png" alt="建立案件對話框：聯絡人、案件標題、問題描述、優先級、分類、指派給、團隊、SLA 政策" loading="lazy">
+        <figcaption>建立案件：有紅色星號的欄位必填。</figcaption>
+      </figure>
       <table>
         <thead><tr><th>欄位</th><th>必填</th><th>說明</th></tr></thead>
         <tbody>
-          <tr><td>升級原因</td><td>✓</td><td>SLA 即將違規 / SLA 已違規 / 客戶多次催促 / 負面情緒 / 其他（附快選膠囊）</td></tr>
-          <tr><td>補充說明</td><td></td><td>上限 500 字</td></tr>
-          <tr><td>升級後優先級</td><td>✓</td><td>預設自動帶「高一級」，<b>只能選比目前更高的</b>（已緊急則維持緊急）</td></tr>
-          <tr><td>重新指派給</td><td></td><td>可維持原負責人，或改派（選項顯示各客服目前「(N 件)」負荷）</td></tr>
-          <tr><td>通知對象</td><td></td><td>主管（預設勾）、原負責客服（預設勾）、團隊群組（預設不勾）</td></tr>
+          <tr><td>聯絡人</td><td>是</td><td>這張工單是哪位顧客的。輸入名字搜尋後點選</td></tr>
+          <tr><td>案件標題</td><td>是</td><td>一句話說明問題，100 字以內</td></tr>
+          <tr><td>問題描述</td><td></td><td>詳細情況，2000 字以內</td></tr>
+          <tr><td>優先級</td><td>是</td><td>低、中、高、緊急，預設「中」。會影響處理時限</td></tr>
+          <tr><td>分類</td><td>是</td><td>產品諮詢、訂單問題、退換貨、帳號問題、技術支援、投訴建議、付款問題、物流配送、其他</td></tr>
+          <tr><td>指派給</td><td></td><td>交給哪位客服。先不指派也可以</td></tr>
+          <tr><td>團隊</td><td></td><td>選了負責客服後會自動帶入，通常不用動</td></tr>
+          <tr><td>SLA 政策</td><td></td><td>處理時限的規則。留著「依優先級自動套用」就好</td></tr>
         </tbody>
       </table>
-      <div class="info"><span>ℹ️</span><div>各升級原因的使用時機：「SLA 即將/已違規」對應系統偵測到的到期告警；「客戶多次催促」對應同一案客戶連續發訊；「負面情緒」對應系統情緒分析判定為負面。升級成功後會寫時間軸並發通知（通知是稍後非同步送達主管的，不會卡住你的操作）。</div></div>
+      <div class="warn"><span>⚠️</span><div>顧客如果是從 LINE、Facebook 等渠道聯繫的，<b>請從收件匣那筆對話開工單</b>，不要在這裡開。在這裡開的工單會被歸到系統裡的第一個渠道，不一定是顧客實際用的渠道，可能讓負責那個渠道的同事看不到這張單。</div></div>
+      <!-- KNOWN-ISSUE: 獨立建立時 channelId 取 /channels 第一個渠道 web/components/case/CaseCreateModal.tsx:201-211、api/case/case.routes.ts:193-205 -->
+      <div class="info"><span>ℹ️</span><div>找不到聯絡人時，名單上會出現「建立新聯絡人」，但這個入口目前沒辦法用。請先確認顧客的名字拼法，或請顧客先透過任一渠道傳一則訊息，系統就會自動建立聯絡人。</div></div>
+      <!-- KNOWN-ISSUE: 「+ 建立新聯絡人」開 /dashboard/contacts?action=create，聯絡人頁不支援 web/components/case/CaseCreateModal.tsx:308-318 -->
+      <div class="info"><span>ℹ️</span><div>「建立案件」按鈕是灰色按不下去時，表示還有必填欄位沒填（聯絡人、標題或分類）。</div></div>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 工單詳情</h2>
+      <p>點列表任一列進入詳情。左邊是工單資料，可以直接修改；右邊是時間軸與備註。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch02-detail.jpg">
+          <source src="uploads/videos/ch02-detail.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>詳情頁的各個欄位、SLA 區塊與右上角按鈕（約 30 秒）</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="uploads/shots/ch02-detail.png" alt="工單詳情頁：左邊工單欄位、右邊時間軸與備註" loading="lazy">
+        <figcaption>工單詳情：左邊改欄位，右邊看紀錄、寫備註。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>怎麼改</th></tr></thead>
+        <tbody>
+          <tr><td>標題</td><td>點標題就能改，按 Enter 或點旁邊空白處儲存，按 Esc 放棄</td></tr>
+          <tr><td>狀態</td><td>下拉只會列出現在可以改成的狀態，見第 5 節</td></tr>
+          <tr><td>優先級、分類</td><td>選了就自動儲存</td></tr>
+          <tr><td>負責人</td><td>選了就自動儲存。工單還是「開啟」時，指派負責人會自動變成「處理中」</td></tr>
+          <tr><td>團隊</td><td>通常不用動</td></tr>
+          <tr><td>SLA</td><td>顯示套用的政策、首次回應有沒有達標、解決時限與倒數</td></tr>
+          <tr><td>關聯對話</td><td>按「查看對話」回到收件匣的那筆對話</td></tr>
+          <tr><td>案件標籤</td><td>替工單貼標籤，方便日後分類統計</td></tr>
+          <tr><td>聯絡人</td><td>顧客資料，可以點進聯絡人頁</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>欄位存檔成功不會跳提示，畫面直接更新就代表存好了。改負責人之後重新整理，名字又變回原本的，表示沒有存成功，通常是帳號沒有「指派工單」權限，請找管理員。問題描述目前只能看、不能改，要補充請寫在備註。</div></div>
+      <!-- KNOWN-ISSUE: 改負責人失敗無 catch、無提示 web/components/case/CaseDetail.tsx:165-172 -->
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 推進工單狀態</h2>
+      <p>一張工單通常這樣走：<b>開啟 → 處理中 → 已解決 → 已關閉</b>。中途要等顧客回覆，可以先改成「待處理」。</p>
+      <ol class="steps">
+        <li><b>開始處理</b>：在左邊「負責人」選定處理的人，工單會自動變成「處理中」。已經有負責人的工單，就從「狀態」下拉改成「處理中」。</li>
+        <li><b>解決了</b>：按右上角「標記解決」。</li>
+        <li><b>結束</b>：按右上角「關閉案件」。</li>
+        <li><b>又有問題</b>：已關閉的工單，右上角會出現「重新開啟」。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div>剛建立、還是「開啟」的工單，<b>請先照第 1 步改成「處理中」</b>，再按「標記解決」。直接按會跳出英文錯誤訊息，工單不會變更。「待處理」和「已升級」的工單也一樣，要先改回「處理中」才能標記解決。</div></div>
+      <!-- KNOWN-ISSUE: OPEN 狀態仍顯示「標記解決」「升級」，後端狀態機回 422 英文訊息 web/app/dashboard/cases/[caseId]/page.tsx:62-63、apps/api/src/modules/case/case-state-machine.ts:7-12 -->
+      <div class="warn"><span>⚠️</span><div>要把工單改成「已解決」「已關閉」或「已升級」時，<b>請用右上角的按鈕</b>，不要用左邊的「狀態」下拉。用下拉改不會留下時間軸紀錄，也不會寄滿意度調查給顧客、不會通知主管。</div></div>
+      <!-- KNOWN-ISSUE: 狀態下拉 PATCH 不寫時間軸、不發 case.resolved/closed/escalated 事件 apps/api/src/modules/case/case.service.ts:1005-1088 -->
+      <div class="info"><span>ℹ️</span><div>右上角「關閉案件」按下就直接關閉，不會再確認。</div></div>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 升級工單</h2>
+      <p>自己處理不了、顧客一直催、或快超過時限時，把工單「升級」給主管。</p>
+      <ol class="steps">
+        <li>確認工單是「處理中」或「待處理」（「開啟」的工單請先照第 5 節改成處理中）。</li>
+        <li>按右上角紅色「升級」，跳出「案件升級」。</li>
+        <li>選「升級原因」（必填），可以直接點下方的快選按鈕，例如「客戶多次催促」。</li>
+        <li>需要的話寫「補充說明」（500 字以內）。</li>
+        <li>確認「升級後優先級」，預設會比現在高一級。</li>
+        <li>要換人處理就選「重新指派給」，不換就留「維持原負責人」。</li>
+        <li>勾選「通知對象」（預設兩個都勾），按「確認升級」。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch02-escalate.png" alt="案件升級對話框：升級原因、補充說明、升級後優先級、重新指派、通知對象" loading="lazy">
+        <figcaption>案件升級：選原因、確認優先級與通知對象。</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div>「Supervisor（主管）」會通知所有主管和管理員；你自己按升級不會收到通知。重新指派的新負責人目前<b>不會</b>收到通知，請另外告訴他。兩個通知對象都取消勾選的話，就沒有人會收到通知。</div></div>
+      <!-- KNOWN-ISSUE: 升級時改派的新負責人不在通知收件人裡 apps/api/src/modules/case/case.service.ts:675-690,742-759 -->
+    </section>
+
+    <section class="doc" id="p7">
+      <h2><span class="idx">7</span> 時間軸與內部備註</h2>
+      <p>右邊的「時間軸與備註」由新到舊列出這張工單發生過的事：誰指派、改了什麼狀態、什麼時候升級。處理進度寫成備註，交接時同事一看就懂。</p>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch02-notes.jpg">
+          <source src="uploads/videos/ch02-notes.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>在時間軸寫一則內部備註（示範中不送出）（約 20 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>在「新增備註」的「撰寫備註...」輸入內容，最多 5000 字。</li>
+        <li>「內部備註」預設是勾選的，保持勾選即可。</li>
+        <li>按「新增備註」，備註會出現在時間軸最上面。</li>
+      </ol>
+      <figure class="shot shot-narrow">
+        <img src="uploads/shots/ch02-timeline.png" alt="時間軸與備註：新增備註欄位與事件紀錄" loading="lazy">
+        <figcaption>時間軸與備註。</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div>所有備註都只在後台看得到，不會傳給顧客。勾「內部備註」只是在備註上多一個「內部」標記。備註的作者目前都顯示為「Agent」，需要的話請在內容裡寫上你的名字。</div></div>
+      <!-- KNOWN-ISSUE: 備註作者固定顯示 Agent web/components/case/CaseTimeline.tsx:152；新增備註失敗無提示 CaseTimeline.tsx:125-127 -->
+      <div class="info"><span>ℹ️</span><div>時間軸上的「sla_breached」表示工單超過解決時限，「first_response_breached」表示超過首次回應時限，這兩種是系統自動寫入的提醒。</div></div>
+      <!-- KNOWN-ISSUE（實機新發現）: sla_breached / first_response_breached 事件沒有中文文案，時間軸直接顯示英文代碼，且每天重複出現；寫入於 apps/workers/src/handlers/sla.handler.ts:394,428，顯示於 web/components/case/CaseTimeline.tsx:41-68 -->
     </section>
 
     <section class="doc" id="p8">
-      <h2><span class="idx">8</span> SLA 計時與自動行為</h2>
-      <p>SLA（服務等級承諾）是工單「該多快處理完」的計時器。系統背景會持續掃描進行中的工單，在關鍵時間點自動告警、甚至自動升級。理解它，才知道那些通知從哪來。</p>
-      <h3>三種 SLA 計時（各自獨立）</h3>
+      <h2><span class="idx">8</span> SLA 時限</h2>
+      <p>SLA 是「這種問題最晚多久要處理完」的承諾。建立工單時，系統會依優先級套用對應的時限，列表和詳情頁都會倒數。</p>
       <table>
-        <thead><tr><th>類型</th><th>計時什麼</th><th>逾期會怎樣</th></tr></thead>
+        <thead><tr><th>看到什麼</th><th>代表</th></tr></thead>
         <tbody>
-          <tr><td>首次回應</td><td>建立後多久內要第一次回覆客戶</td><td>發告警給負責人（違規時加通知主管）</td></tr>
-          <tr><td>解決期限</td><td>多久內要解決（決定工單的到期倒數）</td><td>發告警；<b>逾期會自動把優先級升一級</b>並通知主管</td></tr>
-          <tr><td>客戶等待</td><td>客服回覆後客戶又連續發訊</td><td>累積達 3 則沒回應就告警</td></tr>
+          <tr><td>正常顏色的倒數</td><td>時間還夠</td></tr>
+          <tr><td>橘色</td><td>剩不到 2 小時</td></tr>
+          <tr><td>紅色、負數</td><td>已經超過時限</td></tr>
+          <tr><td>「無 SLA」</td><td>這張工單沒有套用時限</td></tr>
         </tbody>
       </table>
-      <p>每種都有「預警」（到期前 N 分鐘先提醒，N 由政策決定、出廠預設 30 分）與「違規」（過期）兩個時間點。同一工單同類告警在 24 小時內只發一次，不會連環轟炸。</p>
-      <div class="highlight"><span>💡</span><div>三個「即將到期」的門檻在不同地方略有差異：列表倒數器約在<b>到期前 2 小時</b>轉黃提醒你、統計卡與 SLA 篩選用的是<b>到期前 30 分鐘</b>、實際告警通知用的是政策設定的<b>預警分鐘</b>。所以「看起來快到期」和「真的發通知」時間點可能不同，以政策設定為準。</div></div>
-      <div class="info"><span>ℹ️</span><div>SLA 政策在「設定 → SLA 政策」為每個優先級設定（見「<a href="ch11-settings.html">11 · 系統設定</a>」）。若沒設政策，工單一律顯示「無 SLA」。</div></div>
-      <h3>自動指派（round-robin）</h3>
-      <p>建立工單時若「沒指定負責人但有指定團隊」，系統會自動從團隊裡挑一位客服：<b>選目前手上開啟中案件最少的人</b>，同票時輪流。被指派後工單自動轉「處理中」並通知該客服。找不到可用客服就暫不指派。</p>
+      <div class="info"><span>ℹ️</span><div>統計卡和篩選的「即將到期」，算的是 30 分鐘內到期的工單。工單建立後再改優先級，時限不會重算。SLA 規則由管理員在「設定 → SLA」調整，見「<a href="ch17-settings.html">17 · 其他設定</a>」。</div></div>
     </section>
 
     <section class="doc" id="p9">
-      <h2><span class="idx">9</span> 時間軸與備註</h2>
-      <p>詳情頁右欄的時間軸自動記錄工單的所有事件，依語意著色圖示，倒序顯示：</p>
-      <table>
-        <thead><tr><th>事件</th><th>時間軸顯示（範例）</th></tr></thead>
-        <tbody>
-          <tr><td>建立</td><td>建立了案件「冰箱維修」</td></tr>
-          <tr><td>狀態變更</td><td>狀態：處理中 → 已解決</td></tr>
-          <tr><td>指派</td><td>指派給 王小明（藍色圖示）</td></tr>
-          <tr><td>升級</td><td>案件升級（中 → 高，原因：客戶多次催促）（紅色圖示）</td></tr>
-          <tr><td>解決 / 關閉 / 重開</td><td>對應事件（解決為綠色圖示）</td></tr>
-        </tbody>
-      </table>
-      <h3>新增備註</h3>
-      <p>在「新增備註」區撰寫內容，可勾選「<b>內部備註</b>」（預設勾選）。內部備註只給團隊看、會在時間軸標紅底「內部」徽章。</p>
-      <div class="warn"><span>⚠️</span><div>「內部備註」預設是勾選的。若你要寫的是對外/一般性質的內容，記得取消勾選——別把內部溝通誤設成對外可見。</div></div>
-      <div class="info"><span>ℹ️</span><div>工單的 SLA 事件、狀態變更等都能觸發「<a href="ch04-automation.html">04 · 自動化規則</a>」，讓系統自動回應（例如 SLA 違規自動通知主管、負面情緒自動升級）。</div></div>
+      <h2><span class="idx">9</span> 刪除工單</h2>
+      <p>開錯或重複的工單可以刪除。在列表最右邊「操作」欄按垃圾桶圖示，瀏覽器會問「確定要刪除此工單…嗎？」，按確定就刪除。</p>
+      <div class="warn"><span>⚠️</span><div><b>刪除是永久的，沒辦法復原</b>，工單的時間軸與備註也會一起消失。只是處理完的工單請用「關閉案件」，不要刪除。看到「刪除工單失敗」，通常是你的帳號沒有刪除權限。</div></div>
     </section>
 
     <footer class="manual-footer">
       <span><a href="ch01-inbox.html">← 01 · 收件匣</a></span>
-      <span>下一章：<a href="ch03-contacts.html">03 · 聯繫人 →</a></span>
+      <span>下一章：<a href="ch03-contacts.html">03 · 聯絡人 →</a></span>
     </footer>
   </main>
 </div>
@@ -254,7 +303,7 @@
 </script>
 <script>
 (function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
-(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var y=window.scrollY+120;var idx=0;secs.forEach(function(s,i){if(s&&s.offsetTop<=y)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
 </script>
 </body>
 </html>

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>報表 · open333CRM 操作手冊</title>
+<script>(function(){try{var t=localStorage.getItem('manual-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="design-system.css?v=4">
+</head>
+<body>
+
+<nav class="manual-nav">
+  <a class="brand" href="index.html"><span class="logo">O3</span> open333CRM</a>
+  <span class="chap">13 · 報表</span>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="theme-toggle" title="切換深淺色">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+  </button>
+  <a class="nav-btn" href="index.html">← 回總目錄</a>
+  <button class="nav-btn" onclick="window.print()">列印</button>
+</nav>
+
+<div class="manual-layout">
+  <aside class="manual-toc">
+    <p class="toc-title">本章目錄</p>
+    <a href="#p1"><span class="n">1</span> 這頁能做什麼</a>
+    <a href="#p2"><span class="n">2</span> 選期間</a>
+    <a href="#p3"><span class="n">3</span> 概覽</a>
+    <a href="#p4"><span class="n">4</span> 案件報表</a>
+    <a href="#p5"><span class="n">5</span> 客服績效</a>
+    <a href="#p6"><span class="n">6</span> 渠道分析</a>
+    <a href="#p7"><span class="n">7</span> 匯出 CSV</a>
+    <a href="#p8"><span class="n">8</span> 我的績效</a>
+  </aside>
+
+  <main class="manual-main">
+    <section class="hero">
+      <div class="inner">
+        <div class="eyebrow">CHAPTER 13 · 分析與管理</div>
+        <h1>報表</h1>
+        <p>用數字看團隊的服務成績：訊息量、案件處理、SLA 達成、客戶滿意度、各渠道來客。客服也能看自己這個月的績效。</p>
+      </div>
+    </section>
+
+<section class="doc" id="p1">
+      <h2><span class="idx">1</span> 這頁能做什麼</h2>
+      <p>報表把客服的工作變成數字：這段時間來了多少訊息、開了多少案件、有沒有在時限內處理完、客人滿不滿意、客人都從哪個渠道來。主管可以用它看團隊狀況，客服可以看自己這個月的成績。</p>
+      <p>從左側選單「分析與管理 → 報表」進入，底下有「總覽」和「我的績效」。總覽頁上方標題是「數據報表」。</p>
+      <div class="quick">
+        <a href="#p2"><b>選期間</b>今天、7 天、30 天、90 天或自訂</a>
+        <a href="#p3"><b>概覽</b>四個最重要的數字和趨勢</a>
+        <a href="#p4"><b>案件報表</b>案件量、分類、SLA 違規、升級率</a>
+        <a href="#p5"><b>客服績效</b>每位客服的處理量與速度</a>
+        <a href="#p6"><b>渠道分析</b>客人從哪個渠道來</a>
+        <a href="#p7"><b>匯出 CSV</b>下載成表格留存</a>
+        <a href="#p8"><b>我的績效</b>自己這個月的成績</a>
+      </div>
+      <div class="info"><span>ℹ️</span><div>看「總覽」需要「檢視報表」權限，主管和管理員預設都有。一般客服預設只有「檢視個人數據」，請看第 8 節「我的績效」的進入方式。</div></div>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch13-analytics.jpg">
+          <source src="uploads/videos/ch13-analytics.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>切換期間、瀏覽四個分頁、找到匯出按鈕（客服姓名已模糊）（約 28 秒）</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="p2">
+      <h2><span class="idx">2</span> 選期間</h2>
+      <p>頁面右上角決定報表要看哪一段時間，預設是近 30 天。</p>
+      <ol class="steps">
+        <li>點「今天」「7 天」「30 天」「90 天」其中一個，報表會馬上更新。</li>
+        <li>要指定日期，在兩個日期框分別選開始日和結束日。</li>
+        <li>上方四個分頁「概覽」「案件報表」「客服績效」「渠道分析」都會套用同一段期間。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: 自訂日期以 UTC 解析，迄日只算到當天 08:00（台灣時間），起日從前一天 08:00 算起；起日輸入框選「今天」時會顯示昨天日期。apps/web/src/components/analytics/DateRangePicker.tsx:34,39,61 -->
+      <div class="warn"><span>⚠️</span><div>
+        <b>優先用「今天／7 天／30 天／90 天」按鈕，數字最準。</b>自訂日期目前有時差問題：結束日只會算到那天早上 8 點，開始日則會多算前一天早上 8 點以後的資料。
+        <ul>
+          <li>要包含結束日一整天，請把結束日選成<b>隔天</b>。例如要看 10/1～10/15，結束日選 10/16。</li>
+          <li>開始日會多算到前一天晚上的一小段，看數字時心裡有個底即可。</li>
+        </ul>
+      </div></div>
+      <!-- KNOWN-ISSUE: 日期框清空會讓整頁崩潰（Invalid Date toISOString）。apps/web/src/components/analytics/DateRangePicker.tsx:34,39,61,68 -->
+      <!-- KNOWN-ISSUE: 開始日晚於結束日時後端回 400，畫面只顯示「-」和「尚無資料」。apps/web/src/app/dashboard/analytics/page.tsx:35-39 -->
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>改日期時直接選新日期，<b>不要把日期框整個清空</b>，否則頁面會變空白。萬一發生，重新整理頁面就好。</li>
+          <li>開始日不能晚於結束日。選反了畫面只會顯示「-」或「尚無資料」，不會有錯誤提示。</li>
+          <li>頁面不會自動加入你打開之後才進來的新訊息。想看最新數字，再按一次期間按鈕，或重新整理頁面。</li>
+        </ul>
+      </div></div>
+    </section>
+
+    <section class="doc" id="p3">
+      <h2><span class="idx">3</span> 概覽</h2>
+      <p>「概覽」是一眼看懂團隊狀況的地方：上面四張數字卡、中間訊息趨勢、下面案件分類和客服前五名。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch13-overview.png" alt="數據報表概覽：四張數字卡、訊息趨勢折線圖、案件分類圓餅圖、客服績效前五名" loading="lazy">
+        <figcaption>概覽分頁。（客服姓名已模糊處理）</figcaption>
+      </figure>
+      <h3>四張數字卡</h3>
+      <table>
+        <thead><tr><th>卡片</th><th>白話意思</th><th>注意</th></tr></thead>
+        <tbody>
+          <tr><td>訊息總量</td><td>這段期間所有訊息的數量，包含客人傳來的、客服回的和 Bot 回的</td><td>Bot 回得多，這個數字也會變大</td></tr>
+          <tr><td>開啟中案件</td><td><b>現在</b>還沒結案的案件（工單）數，包含開啟、處理中、等待中、已升級</td><td>不受上方期間影響，永遠是當下的數字</td></tr>
+          <tr><td>SLA 達成率</td><td>這段期間解決的案件裡，有幾成是在規定時限內解決的</td><td>只算有設定處理時限（SLA）的案件；沒有這類案件時顯示「-」</td></tr>
+          <tr><td>CSAT 分數</td><td>客人滿意度評分的平均，滿分 5 分</td><td>依案件<b>建立</b>的日期歸到期間，不是依評分的日期；沒人評分時顯示「-」</td></tr>
+        </tbody>
+      </table>
+      <h3>訊息趨勢</h3>
+      <p>每天各渠道的訊息量折線圖，可以看出哪幾天特別忙。</p>
+      <!-- KNOWN-ISSUE: 訊息趨勢只畫 LINE／Facebook／WebChat 三條線，Instagram 私訊與 WhatsApp 沒有線。apps/web/src/components/analytics/MessageTrendChart.tsx:62-85 -->
+      <!-- KNOWN-ISSUE: 每日分組用資料庫時區（UTC），台灣凌晨 0-8 點的訊息會算到前一天。apps/api/src/modules/analytics/analytics.service.ts:16-20,212 -->
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>圖上目前只有 LINE、Facebook、WebChat 三條線。Instagram 私訊有算進「訊息總量」，但圖上沒有自己的線。</li>
+          <li>每日圖表目前以國際標準時間切日，台灣凌晨 0 點到 8 點的訊息會算在前一天。</li>
+        </ul>
+      </div></div>
+    </section>
+
+    <section class="doc" id="p4">
+      <h2><span class="idx">4</span> 案件報表</h2>
+      <p>看案件（工單）的量、種類和有沒有逾時。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch13-cases.png" alt="案件報表：案件量趨勢長條圖、案件分類分布與案件優先級分布圓餅圖" loading="lazy">
+        <figcaption>案件報表分頁上半部。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>圖表</th><th>白話意思</th></tr></thead>
+        <tbody>
+          <tr><td>案件量趨勢</td><td>每天新開幾件案件（橘色「新開案」）。綠色「已解決」是<b>當天新開的案件裡，到現在已經解決的數量</b>，不是「當天解決了幾件」</td></tr>
+          <tr><td>案件分類分布</td><td>各分類案件佔多少比例，看客人最常為了什麼事找你們</td></tr>
+          <tr><td>案件優先級分布</td><td>各優先級的比例。圖上目前顯示英文：URGENT＝緊急、HIGH＝高、MEDIUM＝中、LOW＝低</td></tr>
+          <tr><td>SLA 違規案件</td><td><b>現在</b>已經超過處理時限、還沒結案的案件，最多列 50 筆。表格的「狀態」欄目前顯示英文，例如 OPEN＝開啟、IN_PROGRESS＝處理中。沒有的話顯示「無 SLA 違規案件」</td></tr>
+          <tr><td>升級率</td><td>這段期間建立的案件中，<b>目前</b>狀態還是「已升級」的比例。升級後已經解決的案件不會算進去，所以這個數字通常偏低</td></tr>
+        </tbody>
+      </table>
+      <div class="tip-ai"><span>✨</span><div>「SLA 違規案件」是主管每天最該看的清單：裡面的案件都已經逾時，請優先指派或催辦。這張表不受上方期間影響。</div></div>
+    </section>
+
+    <section class="doc" id="p5">
+      <h2><span class="idx">5</span> 客服績效</h2>
+      <p>列出每位在職客服的成績。按欄位標題可以排序，例如按「處理案件」看誰最忙。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch13-agents.png" alt="客服績效表：客服、處理案件、已解決、平均首次回應、CSAT、SLA 達成" loading="lazy">
+        <figcaption>全部客服績效。（客服姓名已模糊處理）</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>欄位</th><th>白話意思</th></tr></thead>
+        <tbody>
+          <tr><td>客服</td><td>姓名與角色</td></tr>
+          <tr><td>處理案件</td><td>這段期間建立、<b>目前</b>指派給這位客服的案件數</td></tr>
+          <tr><td>已解決</td><td>上面那些案件中已經解決的數量</td></tr>
+          <tr><td>平均首次回應</td><td>案件建立後，平均多久第一次回覆客人。越短越好</td></tr>
+          <tr><td>CSAT</td><td>這位客服負責的案件，客人滿意度平均分數</td></tr>
+          <tr><td>SLA 達成</td><td>這位客服在時限內解決的比例</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>案件是算在「目前的負責人」身上。案件中途轉給別人，整筆成績就會跟著移到新的負責人。</div></div>
+    </section>
+
+    <section class="doc" id="p6">
+      <h2><span class="idx">6</span> 渠道分析</h2>
+      <p>看客人都從哪個渠道來、有多少是 Bot 自己處理掉的。</p>
+      <figure class="shot">
+        <img src="uploads/shots/ch13-channels.png" alt="渠道分析：渠道訊息分布圓餅圖、Bot vs 人工圓餅圖、各渠道對話數長條圖" loading="lazy">
+        <figcaption>渠道分析的三張圖。</figcaption>
+      </figure>
+      <table>
+        <thead><tr><th>圖表</th><th>白話意思</th></tr></thead>
+        <tbody>
+          <tr><td>渠道訊息分布</td><td>各渠道訊息量佔比</td></tr>
+          <tr><td>Bot vs 人工</td><td>這段期間建立、目前還沒結束的對話中，由 Bot 處理和由真人處理的比例。已結束的對話不算</td></tr>
+          <tr><td>各渠道對話數</td><td>各渠道有幾段對話</td></tr>
+        </tbody>
+      </table>
+      <p>圖上的渠道名稱目前是系統代號，對照如下：</p>
+      <table>
+        <thead><tr><th>圖上顯示</th><th>實際渠道</th></tr></thead>
+        <tbody>
+          <tr><td>LINE</td><td>LINE 官方帳號</td></tr>
+          <tr><td>FB</td><td>Facebook Messenger</td></tr>
+          <tr><td>THREADS</td><td>Instagram 私訊</td></tr>
+          <tr><td>WEBCHAT</td><td>網站聊天視窗</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 圓餅圖的文字標籤在卡片邊緣被切掉（例如「WEBCHAT 77%」只剩「3CHAT 77%」、Bot vs 人工只剩「理 100%」）。apps/web/src/components/analytics/ChannelDistributionChart.tsx:78,110 -->
+      <div class="info"><span>ℹ️</span><div>圓餅圖旁的文字有時會被切掉一半，看不清楚時，把滑鼠移到色塊上，就會顯示完整名稱和數字。</div></div>
+    </section>
+
+    <section class="doc" id="p7">
+      <h2><span class="idx">7</span> 匯出 CSV</h2>
+      <p>需要做簡報或留存時，可以把<b>目前這個分頁</b>的資料下載成表格檔。</p>
+      <ol class="steps">
+        <li>先選好期間，再切到要匯出的分頁（概覽、案件報表、客服績效或渠道分析）。</li>
+        <li>按右上角「匯出 CSV」。</li>
+        <li>瀏覽器會下載一個檔案，例如 <code>cases_report.csv</code>。</li>
+      </ol>
+      <!-- KNOWN-ISSUE: 沒有匯出權限時被 403 擋下，前端 catch 後完全沒提示。apps/web/src/app/dashboard/analytics/page.tsx:64-66 -->
+      <div class="warn"><span>⚠️</span><div>匯出需要「匯出報表」權限。沒有權限時，按了按鈕<b>不會有任何反應</b>，也不會跳錯誤。按了沒下載，請找管理員確認權限。</div></div>
+      <h3>用 Excel 開啟出現亂碼怎麼辦</h3>
+      <!-- KNOWN-ISSUE: 匯出的 CSV 沒有 UTF-8 BOM，Excel 直接雙擊開啟中文會亂碼。apps/api/src/modules/analytics/analytics.service.ts:613-697、apps/web/src/app/dashboard/analytics/page.tsx:57 -->
+      <p>匯出的檔案是 UTF-8 編碼，直接在 Excel 雙擊打開，中文會變成亂碼。請改用下面任一種方式開：</p>
+      <p><b>方法一：Google 試算表（最簡單）</b></p>
+      <ol class="steps">
+        <li>打開 Google 試算表，建立空白試算表。</li>
+        <li>選「檔案 → 匯入 → 上傳」，把 CSV 拖進去。</li>
+        <li>按「匯入資料」，中文會正常顯示。</li>
+      </ol>
+      <p><b>方法二：Excel 用「匯入」開啟</b></p>
+      <ol class="steps">
+        <li>開一個空白活頁簿。</li>
+        <li>選「資料 → 從文字/CSV」，選下載的檔案。</li>
+        <li>「檔案原點」選「65001: Unicode (UTF-8)」，確認預覽的中文正常。</li>
+        <li>按「載入」。</li>
+      </ol>
+      <h3>概覽 CSV 的欄位名稱</h3>
+      <p>案件、客服、渠道三種 CSV 的欄名是中文。概覽 CSV 目前是英文欄名，對照如下：</p>
+      <table>
+        <thead><tr><th>欄名</th><th>意思</th></tr></thead>
+        <tbody>
+          <tr><td><code>totalMessages</code></td><td>訊息總量</td></tr>
+          <tr><td><code>inboundMessages</code></td><td>客人傳來的訊息數</td></tr>
+          <tr><td><code>outboundMessages</code></td><td>我方（客服與 Bot）送出的訊息數</td></tr>
+          <tr><td><code>openCases</code></td><td>開啟中案件（當下）</td></tr>
+          <tr><td><code>newCases</code></td><td>期間內新開案件數</td></tr>
+          <tr><td><code>resolvedCases</code></td><td>期間內解決的案件數</td></tr>
+          <tr><td><code>slaAchievementRate</code></td><td>SLA 達成率（%）</td></tr>
+          <tr><td><code>avgFirstResponseMinutes</code></td><td>平均首次回應（分鐘）</td></tr>
+          <tr><td><code>avgResolutionMinutes</code></td><td>平均解決時間（分鐘）</td></tr>
+          <tr><td><code>csatAvg</code></td><td>CSAT 平均分數</td></tr>
+          <tr><td><code>csatPositiveRate</code></td><td>好評比例（%）</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>匯出的檔案含客服姓名、聯絡人名稱和案件標題，屬於內部資料，請不要外傳。</div></div>
+    </section>
+
+    <section class="doc" id="p8">
+      <h2><span class="idx">8</span> 我的績效</h2>
+      <p>「我的績效」只看你自己：現在手上有多少案件、有沒有快逾時的，以及這個月的成績。</p>
+      <!-- KNOWN-ISSUE: 側欄「報表」父節點要求檢視報表權限，只有檢視個人數據的一般客服連「我的績效」也看不到。apps/web/src/components/layout/Sidebar.tsx:88-90；後端 /analytics/my 只要 analytics.view.self（apps/api/src/modules/analytics/analytics.routes.ts:115） -->
+      <h3>怎麼進入</h3>
+      <ul>
+        <li><b>主管、管理員</b>：左側選單「分析與管理 → 報表 → 我的績效」。</li>
+        <li><b>一般客服</b>：目前左側選單看不到「報表」。請在瀏覽器網址列，把網址最後改成 <code>/dashboard/analytics/my</code> 後按 Enter（例如目前網址是 <code>…/dashboard/inbox</code>，就把 <code>inbox</code> 換成 <code>analytics/my</code>），打開後<b>加入書籤</b>，之後點書籤就能直接進來。</li>
+      </ul>
+      <figure class="shot">
+        <img src="uploads/shots/ch13-my.png" alt="我的績效：待處理案件、SLA 即將到期兩張提醒卡，以及本月績效六張卡" loading="lazy">
+        <figcaption>一般客服帳號打開「我的績效」的畫面。</figcaption>
+      </figure>
+      <h3>上方兩張提醒卡</h3>
+      <table>
+        <thead><tr><th>卡片</th><th>白話意思</th></tr></thead>
+        <tbody>
+          <tr><td>待處理案件</td><td>現在指派給你、狀態是「開啟」或「處理中」的案件數。等待中、已升級的不算</td></tr>
+          <tr><td>SLA 即將到期</td><td>30 分鐘內就要超過處理時限的案件數，看到數字請優先處理</td></tr>
+        </tbody>
+      </table>
+      <h3>本月績效</h3>
+      <table>
+        <thead><tr><th>卡片</th><th>白話意思</th><th>目標</th></tr></thead>
+        <tbody>
+          <tr><td>處理案件數</td><td>這個月建立、指派給你的案件數</td><td></td></tr>
+          <tr><td>已解決案件</td><td>上面那些案件中已經解決的數量</td><td></td></tr>
+          <tr><td>平均首次回應</td><td>案件建立後平均多久第一次回覆</td><td>15 分鐘以內</td></tr>
+          <tr><td>平均解決時間</td><td>案件從建立到解決平均花多久</td><td></td></tr>
+          <tr><td>CSAT 分數</td><td>客人滿意度平均，滿分 5</td><td>4 分以上</td></tr>
+          <tr><td>SLA 達成率</td><td>在時限內解決的比例</td><td>90% 以上</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 平均首次回應先格式化成「1 時 5 分」再 parseFloat 得 1，超過 1 小時也會判定達標顯示綠勾。apps/web/src/app/dashboard/analytics/my/page.tsx:21,114 -->
+      <!-- KNOWN-ISSUE: 「目標: 15」沒有單位；沒有資料時顯示「-%」「- / 5」。apps/web/src/app/dashboard/analytics/my/page.tsx:38,46,117 -->
+      <div class="warn"><span>⚠️</span><div>數字旁邊的綠勾或黃色警示是自動判斷的。「平均首次回應」超過 1 小時時，目前仍可能錯誤地顯示綠勾，<b>請直接看數字</b>：顯示「x 時 x 分」就代表超過 15 分鐘的目標了。</div></div>
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>沒有資料時會顯示「-」「-%」或「- / 5」，代表這個月還沒有可以計算的案件。</li>
+          <li>「本月」目前以國際標準時間計算，每月 1 號凌晨 0 點到 8 點的案件會算在上個月。</li>
+          <li>頁面每分鐘自動更新一次，不能切換到其他月份。</li>
+        </ul>
+      </div></div>
+    </section>
+
+    <footer class="manual-footer">
+      <span><a href="ch12-shortlinks.html">← 12 · 短連結</a></span>
+      <span>下一章：<a href="ch14-plan.html">14 · 方案與帳務 →</a></span>
+    </footer>
+  </main>
+</div>
+
+<!-- 圖片放大 Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button class="lb-close" aria-label="關閉">&times;</button>
+  <img alt="放大圖">
+  <div class="lb-cap"></div>
+</div>
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  if(!lb) return;
+  var lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+  function open(src, cap){ lbImg.src = src; lbCap.textContent = cap || ''; lb.classList.add('open'); document.body.style.overflow='hidden'; }
+  function close(){ lb.classList.remove('open'); document.body.style.overflow=''; lbImg.src=''; }
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.addEventListener('click', function(){
+      var fig = img.closest('figure');
+      var cap = fig ? (fig.querySelector('figcaption')||{}).textContent : '';
+      open(img.currentSrc || img.src, cap);
+    });
+  });
+  lb.addEventListener('click', function(e){ if(e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+(function(){var b=document.getElementById('theme-toggle');b&&b.addEventListener('click',function(){var c=document.documentElement.getAttribute('data-theme');if(!c)c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('manual-theme',n);}catch(e){}});})();
+(function(){var links=[...document.querySelectorAll('.manual-toc a')];var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});function onScroll(){var idx=0;secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=140)idx=i;});links.forEach(function(a,i){a.classList.toggle('active',i===idx);});}window.addEventListener('scroll',onScroll,{passive:true});onScroll();})();
+</script>
+</body>
+</html>
