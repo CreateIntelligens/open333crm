@@ -8,9 +8,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const { api, channelsState, mutate } = vi.hoisted(() => ({
   api: {
-    get: vi.fn(async () => ({ data: { data: {} } })),
-    post: vi.fn(async () => ({ data: { data: [] } })),
-    patch: vi.fn(async () => ({ data: { data: {} } })),
+    get: vi.fn(async (..._args: unknown[]) => ({ data: { data: {} } })),
+    post: vi.fn(async (..._args: unknown[]) => ({ data: { data: [] } })),
+    patch: vi.fn(async (..._args: unknown[]) => ({ data: { data: {} } })),
     put: vi.fn(),
     delete: vi.fn(),
   },
