@@ -108,7 +108,14 @@ export function ChannelManagement() {
   }, []);
 
   const handleSaveBaseUrl = async () => {
-    const cleanUrl = webhookBaseUrlInput.replace(/\/+$/, '');
+    const cleanUrl = webhookBaseUrlInput.trim().replace(/\/+$/, '');
+    // 會改寫全租戶所有渠道的 webhook 網址，填錯所有渠道都收不到訊息（G08）
+    const count = (channels as Channel[]).length;
+    if (!confirm(
+      `確定要套用「${cleanUrl}」嗎？\n\n` +
+      `這會改寫全部 ${count} 個渠道的 Webhook 網址。網址填錯時，照新網址設定的渠道會收不到任何訊息。\n` +
+      `套用後，請到 LINE／Meta 後台確認各渠道的 Webhook 網址。`,
+    )) return;
     setUpdatingBaseUrl(true);
     setBaseUrlSaved(false);
 
@@ -161,13 +168,24 @@ export function ChannelManagement() {
     }
   };
 
+  // 收過對話的渠道刪不掉（外鍵），改用停用；停用保留歷史資料、可隨時重新啟用（G15）
+  const handleToggleActive = async (ch: Channel) => {
+    const next = !ch.isActive;
+    if (!next && !confirm(`確定要停用「${ch.displayName}」嗎？停用後此渠道不再收發訊息，歷史對話會保留，之後可以重新啟用。`)) return;
+    try {
+      await api.patch(`/channels/${ch.id}`, { isActive: next });
+      mutate();
+    } catch (err) {
+      alert(getApiErrorMessage(err, next ? '啟用渠道失敗，請稍後重試' : '停用渠道失敗，請稍後重試'));
+    }
+  };
+
   const handleDelete = async (channelId: string) => {
-    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。')) return;
+    if (!confirm('確定要刪除此渠道嗎？此操作無法復原。收過對話的渠道無法刪除，請改用「停用」。')) return;
     try {
       await api.delete(`/channels/${channelId}`);
       mutate();
     } catch (err) {
-      console.error('Failed to delete channel:', err);
       alert(getApiErrorMessage(err, '刪除渠道失敗，請稍後重試'));
     }
   };
@@ -257,7 +275,8 @@ export function ChannelManagement() {
   // Load FB token status for FB channels
   useEffect(() => {
     if (!channels || channels.length === 0) return;
-    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB);
+    // 停用的渠道不查（G03）：權杖狀態對停用的渠道沒有意義
+    const fbChannels = (channels as Channel[]).filter((ch) => ch.channelType === CHANNEL_TYPE.FB && ch.isActive);
     for (const ch of fbChannels) {
       api.get(`/channels/${ch.id}/status`).then((res) => {
         const tokenStatus = res.data?.data?.tokenStatus;
@@ -282,14 +301,14 @@ export function ChannelManagement() {
               <div>
                 <p className="font-medium text-sm">Webhook 公開網址</p>
                 <p className="text-xs text-muted-foreground">
-                  填入 ngrok 或其他隧道工具產生的公開網址，系統會自動更新所有渠道的 Webhook URL
+                  填入本系統對外的正式網域（https 開頭），系統會依此改寫所有渠道的 Webhook 網址。一般不需要修改，填錯會讓所有渠道收不到訊息。
                 </p>
               </div>
               <div className="flex gap-2">
                 <Input
                   value={webhookBaseUrlInput}
                   onChange={(e) => setWebhookBaseUrlInput(e.target.value)}
-                  placeholder="例：https://xxxx.ngrok-free.app"
+                  placeholder="例：https://crm.example.com"
                   className="font-mono text-sm"
                 />
                 <Button
@@ -510,6 +529,14 @@ export function ChannelManagement() {
                       !verifyResult[ch.id].success && (
                         <XCircle className="h-4 w-4 text-destructive" />
                       )}
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleToggleActive(ch)}
+                    >
+                      {ch.isActive ? '停用' : '啟用'}
+                    </Button>
 
                     <Button
                       size="sm"

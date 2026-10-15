@@ -1,13 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
-import { AppError } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { notFound } from '../../shared/messages/resource.js';
+import { createSlaPolicy, deleteSlaPolicy, listSlaPolicies, updateSlaPolicy } from './sla.service.js';
 import { slaMinutesSchema } from '../../shared/utils/numeric-bounds.js';
 
 const createSlaSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   firstResponseMinutes: slaMinutesSchema,
   resolutionMinutes: slaMinutesSchema,
@@ -16,7 +15,7 @@ const createSlaSchema = z.object({
 });
 
 const updateSlaSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   firstResponseMinutes: slaMinutesSchema.optional(),
   resolutionMinutes: slaMinutesSchema.optional(),
@@ -30,88 +29,25 @@ export default async function slaRoutes(fastify: FastifyInstance) {
 
   // GET /api/v1/sla-policies
   fastify.get('/', async (request, reply) => {
-    const policies = await request.tenantPrisma.slaPolicy.findMany({
-      where: { tenantId: request.agent.tenantId },
-      orderBy: { priority: 'asc' },
-    });
-
-    return reply.send(success(policies));
+    return reply.send(success(await listSlaPolicies(request.tenantPrisma, request.agent.tenantId)));
   });
 
-  // POST /api/v1/sla-policies
+  // POST /api/v1/sla-policies — 名稱在租戶內不可重複（工單以名稱記錄政策）
   fastify.post('/', async (request, reply) => {
     const data = createSlaSchema.parse(request.body);
-
-    // If setting as default, unset other defaults for same priority
-    if (data.isDefault) {
-      await request.tenantPrisma.slaPolicy.updateMany({
-        where: {
-          tenantId: request.agent.tenantId,
-          priority: data.priority,
-          isDefault: true,
-        },
-        data: { isDefault: false },
-      });
-    }
-
-    const policy = await request.tenantPrisma.slaPolicy.create({
-      data: {
-        tenantId: request.agent.tenantId,
-        ...data,
-      },
-    });
-
+    const policy = await createSlaPolicy(fastify.prisma, request.agent.tenantId, data);
     return reply.status(201).send(success(policy));
   });
 
-  // PATCH /api/v1/sla-policies/:id
+  // PATCH /api/v1/sla-policies/:id — 改名時同步工單上記的政策名稱
   fastify.patch<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const data = updateSlaSchema.parse(request.body);
-
-    const policy = await request.tenantPrisma.slaPolicy.findFirst({
-      where: { id: request.params.id, tenantId: request.agent.tenantId },
-    });
-
-    if (!policy) {
-      throw new AppError(notFound('slaPolicy'), 'NOT_FOUND', 404);
-    }
-
-    // If setting as default, unset other defaults for same priority
-    if (data.isDefault) {
-      const targetPriority = data.priority || policy.priority;
-      await request.tenantPrisma.slaPolicy.updateMany({
-        where: {
-          tenantId: request.agent.tenantId,
-          priority: targetPriority,
-          isDefault: true,
-          id: { not: request.params.id },
-        },
-        data: { isDefault: false },
-      });
-    }
-
-    const updated = await request.tenantPrisma.slaPolicy.update({
-      where: { id: request.params.id },
-      data,
-    });
-
+    const updated = await updateSlaPolicy(fastify.prisma, request.agent.tenantId, request.params.id, data);
     return reply.send(success(updated));
   });
 
-  // DELETE /api/v1/sla-policies/:id
+  // DELETE /api/v1/sla-policies/:id — 仍有未結案工單使用時回 409
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    const policy = await request.tenantPrisma.slaPolicy.findFirst({
-      where: { id: request.params.id, tenantId: request.agent.tenantId },
-    });
-
-    if (!policy) {
-      throw new AppError(notFound('slaPolicy'), 'NOT_FOUND', 404);
-    }
-
-    await request.tenantPrisma.slaPolicy.delete({
-      where: { id: request.params.id },
-    });
-
-    return reply.send(success({ deleted: true }));
+    return reply.send(success(await deleteSlaPolicy(fastify.prisma, request.agent.tenantId, request.params.id)));
   });
 }

@@ -14,6 +14,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
+import { LoadErrorNotice } from '@/components/shared/LoadErrorNotice';
 
 interface ApiKey {
   id: string;
@@ -48,12 +50,15 @@ export function ApiKeyManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const fetchKeys = useCallback(async () => {
+    setLoadError(null);
     try {
       const res = await api.get<{ data: ApiKey[] }>('/settings/api-keys');
       setKeys(res.data.data);
     } catch (err) {
-      console.error('Failed to fetch API keys:', err);
+      setLoadError(getApiErrorMessage(err, '請稍後重試'));
     } finally {
       setLoading(false);
     }
@@ -93,6 +98,12 @@ export function ApiKeyManagement() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : loadError ? (
+        <LoadErrorNotice
+          title="無法讀取 API 金鑰"
+          message={loadError}
+          onRetry={() => { setLoading(true); fetchKeys(); }}
+        />
       ) : keys.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
           <Key className="mb-3 h-10 w-10 text-muted-foreground" />

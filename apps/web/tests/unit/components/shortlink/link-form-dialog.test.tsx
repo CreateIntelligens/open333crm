@@ -29,3 +29,26 @@ test('Whitespace-only target URL：目標網址只有空白時「建立」不可
   fireEvent.change(input, { target: { value: 'https://example.com/ok' } });
   assert.equal((screen.getByRole('button', { name: '建立' }) as HTMLButtonElement).disabled, false);
 });
+
+test('編輯時清空標題與 UTM：送出空字串讓後端清除（M02）', async () => {
+  api.patch.mockReset();
+  api.patch.mockResolvedValue({ data: { data: {} } });
+  const editData = {
+    id: 'l-1',
+    targetUrl: 'https://example.com',
+    title: '舊標題',
+    utmSource: 'line',
+    ogImage: 'https://example.com/og.png',
+  };
+  render(<LinkFormDialog open onClose={() => {}} onSaved={() => {}} editData={editData} />);
+  fireEvent.change(screen.getByDisplayValue('舊標題'), { target: { value: '' } });
+  fireEvent.change(screen.getByDisplayValue('line'), { target: { value: '' } });
+  fireEvent.change(screen.getByDisplayValue('https://example.com/og.png'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(api.patch.mock.calls.length, 1);
+  const payload = api.patch.mock.calls[0][1];
+  assert.equal(payload.title, '');
+  assert.equal(payload.utmSource, '');
+  assert.equal(payload.ogImage, '');
+});

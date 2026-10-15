@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2, ChevronDown, Search, Lock, Info } from 'lucide-react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { usePermission } from '@/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -310,8 +311,9 @@ export function RolePermissionMatrix() {
         setRoles((rs) => rs.map((r) => (r.id === dialogTarget.id ? { ...r, name } : r)));
       }
       setDialogMode(null);
-    } catch (e: any) {
-      setDialogErr(e?.response?.data?.message ?? '操作失敗');
+    } catch (e: unknown) {
+      // 後端錯誤訊息在 error.message（原本讀 data.message，永遠是 undefined）
+      setDialogErr(getApiErrorMessage(e, '操作失敗，請稍後重試'));
     }
   }
 
@@ -322,9 +324,9 @@ export function RolePermissionMatrix() {
       setRoles((rs) => rs.filter((r) => r.id !== delTarget.id));
       if (selectedId === delTarget.id) setSelectedId(roles.find((r) => r.id !== delTarget.id)?.id ?? null);
       setDelTarget(null);
-    } catch (e: any) {
-      // 仍被指派 → 顯示阻擋訊息（保留 dialog）
-      setDialogErr(e?.response?.data?.message ?? '刪除失敗');
+    } catch (e: unknown) {
+      // 仍被指派 → 顯示阻擋訊息與佔用的成員（保留 dialog，G18）
+      setDialogErr(getApiErrorMessage(e, '刪除失敗，請稍後重試'));
     }
   }
 

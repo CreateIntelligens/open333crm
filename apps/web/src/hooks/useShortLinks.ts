@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import useSWR from 'swr';
 import api from '@/lib/api';
 import { useSocket } from '@/providers/SocketProvider';
+import { fetchAllPages } from '@/lib/fetch-all-pages';
 
 const fetcher = async (url: string) => {
   const res = await api.get(url);
@@ -50,7 +51,12 @@ export function useShortLinks(filters?: { isActive?: string; q?: string }) {
   if (filters?.q) params.set('q', filters.q);
 
   const key = `/shortlinks?${params.toString()}`;
-  const { data, error, isLoading, mutate } = useSWR(key, fetcher);
+  // 列表沒有分頁 UI：逐頁取回全部，以前只拿到前 20 筆（M13）
+  const { data, error, isLoading, mutate } = useSWR(key, async (url: string) => ({
+    // 回傳型別維持原本 SWR 的 any，呼叫端以各自的型別使用
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: await fetchAllPages<any>((u, config) => api.get(u, config), url),
+  }));
 
   useEffect(() => {
     if (!socket) return;
@@ -63,7 +69,6 @@ export function useShortLinks(filters?: { isActive?: string; q?: string }) {
 
   return {
     links: data?.data || [],
-    meta: data?.meta,
     isLoading,
     error,
     mutate,

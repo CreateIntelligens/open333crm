@@ -50,6 +50,7 @@ import metaConnectRoutes from './modules/meta-connect/meta-connect.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import analyticsRoutes from './modules/analytics/analytics.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
+import webtalkRoutes from './modules/webtalk/webtalk.routes.js';
 import storageRoutes from './modules/storage/storage.routes.js';
 import lineImagemapRoutes from './modules/storage/line-imagemap.routes.js';
 import { ensureBucket } from './modules/storage/storage.service.js';
@@ -179,6 +180,7 @@ export async function bootstrap() {
   await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(analyticsRoutes, { prefix: '/api/v1/analytics' });
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
+  await app.register(webtalkRoutes, { prefix: '/api/v1/webtalk' });
   await app.register(storageRoutes, { prefix: '/api/v1/files' });
   await app.register(webhookSubscriptionRoutes, { prefix: '/api/v1/webhook-subscriptions' });
   await app.register(portalRoutes, { prefix: '/api/v1/portal' });

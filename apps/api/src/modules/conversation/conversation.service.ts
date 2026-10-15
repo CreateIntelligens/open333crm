@@ -403,6 +403,10 @@ export async function sendMessage(
 
   // --- Channel Delivery: route outbound message through channel plugin ---
   let delivery: { success: boolean; requestId?: string; error?: string } | null = null;
+  // 送不出去的原因（S08）：寫進訊息 metadata.deliveryFailed／deliveryError，後台才看得到，
+  // 與自動化送出失敗（workers channel-delivery）同一組欄位，MessageBubble 依此顯示紅框
+  let failureReason: string | null = null;
+  let latestMetadata: unknown = message.metadata;
   try {
     const convWithChannel = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -430,12 +434,15 @@ export async function sendMessage(
 
     if (!channel?.isActive) {
       logger.info('[ChannelDelivery] Skipped: channel inactive or missing', { conversationId });
+      failureReason = '渠道已停用或不存在，訊息沒有送到顧客';
     } else if (!identity) {
       logger.info('[ChannelDelivery] Skipped: no channelIdentity found for contact', { conversationId, channelType: channel.channelType });
+      failureReason = '找不到這位聯絡人在此渠道的帳號，訊息沒有送到顧客';
     } else {
       const plugin = getChannelPlugin(channel.channelType);
       if (!plugin) {
         logger.warn('[ChannelDelivery] Skipped: no plugin for channel type', { channelType: channel.channelType });
+        failureReason = '這個渠道類型目前無法從後台送出訊息';
       } else {
         const credentials = channel.channelType === CHANNEL_TYPE.WEBCHAT
           ? {}
@@ -459,6 +466,9 @@ export async function sendMessage(
         );
 
         delivery = { success: result.success, requestId: result.requestId, error: result.error };
+        if (!result.success) {
+          failureReason = (result.error || '渠道沒有接受這則訊息').slice(0, 500);
+        }
 
         const updateData: Prisma.MessageUpdateInput = {};
         if (result.success && result.channelMsgId) {
@@ -466,6 +476,7 @@ export async function sendMessage(
         }
         if (channel.channelType === CHANNEL_TYPE.LINE) {
           updateData.metadata = mergeLineDeliveryMetadata(message.metadata, message.id, result) as Prisma.InputJsonValue;
+          latestMetadata = updateData.metadata;
         }
         if (Object.keys(updateData).length > 0) {
           await prisma.message.update({
@@ -490,6 +501,28 @@ export async function sendMessage(
     // 原始例外（可能含第三方 API 原文、堆疊）只寫 log；回給前端的是可讀說明
     logger.error('[ChannelDelivery] Unexpected error', { error: String(err) });
     delivery = { success: false, error: '訊息未能送出，請稍後重試；若持續失敗請確認渠道設定與額度' };
+    failureReason = delivery.error!;
+  }
+
+  let returnedMessage = message;
+  if (failureReason) {
+    const base = latestMetadata && typeof latestMetadata === 'object' && !Array.isArray(latestMetadata)
+      ? latestMetadata as Record<string, unknown>
+      : {};
+    const metadata = { ...base, deliveryFailed: true, deliveryError: failureReason };
+    try {
+      await prisma.message.update({
+        where: { id: message.id },
+        data: { metadata: metadata as Prisma.InputJsonValue },
+      });
+      returnedMessage = { ...message, metadata: metadata as Prisma.JsonValue };
+      // 再推一次 message.new：聊天視窗重新載入，顯示「沒有送出」的紅框
+      const failedPayload = { ...wsPayload, message: { ...wsPayload.message, metadata } };
+      io.to(`conversation:${conversationId}`).emit('message.new', failedPayload);
+      io.to(`tenant:${tenantId}`).emit('message.new', failedPayload);
+    } catch (err) {
+      logger.error('[ChannelDelivery] 記錄送出失敗標示失敗', { messageId: message.id, error: String(err) });
+    }
   }
 
   // Publish to EventBus
@@ -504,7 +537,7 @@ export async function sendMessage(
     },
   });
 
-  return { message, delivery };
+  return { message: returnedMessage, delivery };
 }
 
 /**

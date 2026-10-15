@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { SettingsLoadError, describeSettingsLoadError } from './SettingsLoadError';
 
 interface EmbeddingSettingsData {
   baseUrl: string;
@@ -62,11 +63,13 @@ export function EmbeddingSettings() {
   const [reembedResult, setReembedResult] = useState<{ started: boolean; total: number; message: string } | null>(null);
   const [confirmModelChange, setConfirmModelChange] = useState<{ from: string; to: string } | null>(null);
   const [customModel, setCustomModel] = useState(false);
+  const [loadError, setLoadError] = useState<{ forbidden: boolean; message: string } | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
       const res = await api.get<{ data: SettingsResponse }>('/settings/embedding');
       const data = res.data.data;
+      setLoadError(null);
       setSettings(data.settings);
       setOriginalModel(data.settings.model);
       setHealth(data.health);
@@ -75,6 +78,7 @@ export function EmbeddingSettings() {
       setVectorDim(data.vectorDim);
     } catch (err) {
       console.error('Failed to fetch embedding settings:', err);
+      setLoadError(describeSettingsLoadError(err, '無法載入 Embedding 設定，請稍後重試'));
     } finally {
       setLoading(false);
     }
@@ -148,6 +152,18 @@ export function EmbeddingSettings() {
 
   if (loading) {
     return <div className="text-sm text-muted-foreground">載入中…</div>;
+  }
+
+  if (loadError) {
+    return (
+      <SettingsLoadError
+        {...loadError}
+        onRetry={() => {
+          setLoading(true);
+          fetchAll();
+        }}
+      />
+    );
   }
 
   const healthBadge = health?.ok ? (

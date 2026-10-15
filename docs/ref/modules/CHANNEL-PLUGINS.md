@@ -152,7 +152,7 @@ LINE、Facebook、Instagram 私訊的 webhook 由 `webhook.routes.ts` 接收。�
 | `./fb` 子路徑指向不存在的檔案 | PKG-02 |
 | 渠道型別在兩個套件各有一份 | PKG-01 |
 | 外掛套件裡有沒有呼叫端的程式 | PKG-06 |
-| 刪除渠道會因外鍵而失敗 | CHAN-01 |
+| 有對話的渠道刪除回 409，只能停用 | CHAN-01 |
 
 ## 自己驗證的方法
 

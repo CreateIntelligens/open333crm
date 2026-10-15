@@ -12,6 +12,40 @@ export interface SegmentRules {
   logic: 'AND' | 'OR';
 }
 
+function hasValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
+/**
+ * 分群規則中「有值」的條件。值空白的條件不能拿來篩選：
+ * Prisma 遇到 undefined 會略過條件，空字串也篩不出有意義的結果。
+ */
+export function effectiveSegmentConditions(rules: SegmentRules | null | undefined) {
+  const conditions = Array.isArray(rules?.conditions) ? rules.conditions : [];
+  return conditions.filter((c) => hasValue(c.value));
+}
+
+/**
+ * 建立／修改分群時檢查規則：至少一條條件，且每條都要有值。
+ * 沒有條件的分群以前會被當成「全部聯絡人」，拿去廣播就是全發。
+ */
+export function assertSegmentRulesHaveValues(rules: SegmentRules) {
+  const conditions = Array.isArray(rules?.conditions) ? rules.conditions : [];
+  const message =
+    conditions.length === 0
+      ? '分群至少要有一條條件'
+      : conditions.some((c) => !hasValue(c.value))
+        ? '每條條件都要選擇或填入值，請補齊或刪除空白的條件'
+        : null;
+  if (message) {
+    throw new AppError(message, 'INVALID_SEGMENT_RULES', 400, {
+      issues: [{ path: 'rules.conditions', message }],
+    });
+  }
+}
+
 export async function listSegments(
   prisma: TenantDb,
   tenantId: string,
@@ -47,6 +81,7 @@ export async function createSegment(
   agentId: string,
   data: { name: string; description?: string; rules: SegmentRules },
 ) {
+  assertSegmentRulesHaveValues(data.rules);
   // Calculate initial contact count
   const { contactIds } = await calculateSegmentContacts(prisma, tenantId, data.rules);
 
@@ -70,6 +105,7 @@ export async function updateSegment(
   tenantId: string,
   data: { name?: string; description?: string; rules?: SegmentRules },
 ) {
+  if (data.rules !== undefined) assertSegmentRulesHaveValues(data.rules);
   const existing = await prisma.segment.findFirst({ where: { id, tenantId } });
   if (!existing) {
     throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
@@ -103,6 +139,7 @@ export async function deleteSegment(prisma: TenantDb, id: string, tenantId: stri
 
 /**
  * Calculate contacts matching segment rules.
+ * 沒有有效條件（值空白）的規則算 0 人，不是全部聯絡人。
  * Supported condition fields:
  *  - tag: contact has a specific tag (value = tagId)
  *  - channelType: contact has an identity on a specific channel type (value = 'LINE'|'FB'|...)
@@ -114,15 +151,12 @@ export async function calculateSegmentContacts(
   tenantId: string,
   rules: SegmentRules,
 ): Promise<{ count: number; contactIds: string[] }> {
-  const { conditions, logic } = rules;
+  const { logic } = rules;
+  const conditions = effectiveSegmentConditions(rules);
 
-  if (!conditions || conditions.length === 0) {
-    // No conditions => all contacts
-    const contacts = await prisma.contact.findMany({
-      where: { tenantId, isArchived: false },
-      select: { id: true },
-    });
-    return { count: contacts.length, contactIds: contacts.map((c) => c.id) };
+  // 沒有有效條件 => 0 人（fail-closed）。以前回傳全部聯絡人，廣播會發給所有人
+  if (conditions.length === 0) {
+    return { count: 0, contactIds: [] };
   }
 
   const filters: any[] = [];

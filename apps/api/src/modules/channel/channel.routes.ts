@@ -90,6 +90,27 @@ function validateLiffIdSettings(settings: Record<string, unknown> | undefined, c
   }
 }
 
+/** Bot 最大回覆次數：與設定畫面的範圍一致（G04，原本後端不驗，可存 9999） */
+export const MAX_BOT_REPLIES_RANGE = { min: 1, max: 50 } as const;
+
+function validateBotConfigSettings(settings: Record<string, unknown> | undefined, ctx: z.RefinementCtx): void {
+  const botConfig = settings?.botConfig as { maxBotReplies?: unknown } | undefined;
+  if (!botConfig || typeof botConfig !== 'object' || botConfig.maxBotReplies === undefined) return;
+  const value = botConfig.maxBotReplies;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < MAX_BOT_REPLIES_RANGE.min ||
+    value > MAX_BOT_REPLIES_RANGE.max
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['settings', 'botConfig', 'maxBotReplies'],
+      message: `Bot 最大回覆次數須為 ${MAX_BOT_REPLIES_RANGE.min}～${MAX_BOT_REPLIES_RANGE.max} 的整數`,
+    });
+  }
+}
+
 /** 存入前去掉 LIFF ID 的頭尾空白 */
 function normalizeLiffIdSettings<T extends { settings?: Record<string, unknown> }>(data: T): T {
   const liffConfig = data.settings?.liffConfig as { liffId?: unknown } | undefined;
@@ -100,7 +121,7 @@ function normalizeLiffIdSettings<T extends { settings?: Record<string, unknown> 
   };
 }
 
-const createChannelSchema = z.object({
+export const createChannelSchema = z.object({
   channelType: z.enum([CHANNEL_TYPE.LINE, CHANNEL_TYPE.FB, CHANNEL_TYPE.THREADS, CHANNEL_TYPE.WEBCHAT, CHANNEL_TYPE.WHATSAPP] as [string, ...string[]]),
   displayName: z.string().min(1).max(100),
   credentials: z.record(z.unknown()),
@@ -128,17 +149,41 @@ const createChannelSchema = z.object({
   }
   validateDownstreamWebhookSettings(data.settings, ctx);
   validateLiffIdSettings(data.settings, ctx);
+  validateBotConfigSettings(data.settings, ctx);
 }).transform(normalizeLiffIdSettings);
 
-const updateWebhookBaseUrlSchema = z.object({
-  baseUrl: z.string().min(1),
+/**
+ * Webhook 公開網址會改寫全租戶所有渠道的 webhook 網址（G08）。
+ * LINE／Meta 只接受 https；查詢字串、片段或帳密拼上路徑後會變成無效的 webhook 網址。
+ */
+export const updateWebhookBaseUrlSchema = z.object({
+  baseUrl: z
+    .string()
+    .trim()
+    .min(1)
+    .superRefine((value, ctx) => {
+      let url: URL;
+      try {
+        url = new URL(value);
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '網址格式不正確，請填 https:// 開頭的公開網址' });
+        return;
+      }
+      if (url.protocol !== 'https:') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Webhook 公開網址必須是 https:// 開頭' });
+      } else if (url.search || url.hash || value.includes('?') || value.includes('#')) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Webhook 公開網址不可包含 ? 或 # 之後的內容' });
+      } else if (url.username || url.password) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Webhook 公開網址不可包含帳號密碼' });
+      }
+    }),
 });
 
 const chatboxLinkSchema = z.object({
   domain: z.string().url(),
 });
 
-const updateChannelSchema = z
+export const updateChannelSchema = z
   .object({
     displayName: z.string().min(1).max(100).optional(),
     isActive: z.boolean().optional(),
@@ -148,6 +193,7 @@ const updateChannelSchema = z
   .superRefine((data, ctx) => {
     validateDownstreamWebhookSettings(data.settings, ctx);
     validateLiffIdSettings(data.settings, ctx);
+    validateBotConfigSettings(data.settings, ctx);
   })
   .transform(normalizeLiffIdSettings);
 

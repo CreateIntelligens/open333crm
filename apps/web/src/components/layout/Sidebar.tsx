@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   AlertTriangle, BarChart3, Bell, BookOpen, Briefcase, ChevronDown, ChevronRight, CreditCard,
-  FileText, FlaskConical, Gauge, Link2, LogOut, Menu, MessageSquare,
+  FileText, FlaskConical, Gauge, Link2, LogOut, Menu, MessageSquare, MessagesSquare,
   Network, PanelLeftClose, PanelLeftOpen, PieChart, Send, Settings,
   Smartphone, Tags, Trophy, Users, X, Zap, type LucideIcon,
 } from 'lucide-react';
@@ -41,7 +41,8 @@ const NAV_TREE: NavNode[] = [
           { id: 'knowledge-search', label: '語義搜尋', href: '/dashboard/knowledge/search', icon: Gauge },
           { id: 'knowledge-feedback', label: '回報調教', href: '/dashboard/knowledge/feedback', icon: FlaskConical },
           {
-            id: 'knowledge-ai', label: 'AI 設定', icon: Network, children: [
+            // AI 設定的 API 都要 settings.manage，沒有權限只會看到假資料（A06）
+            id: 'knowledge-ai', label: 'AI 設定', icon: Network, perm: 'settings.manage', children: [
               { id: 'knowledge-embedding', label: 'Embedding', href: '/dashboard/knowledge/embedding', icon: Network },
               { id: 'knowledge-chat', label: 'Chat & Prompt', href: '/dashboard/knowledge/chat-prompt', icon: MessageSquare },
             ],
@@ -85,9 +86,11 @@ const NAV_TREE: NavNode[] = [
   {
     id: 'insights-admin', label: '分析與管理', icon: BarChart3, children: [
       {
-        id: 'analytics', label: '報表', href: '/dashboard/analytics', icon: BarChart3, perm: 'analytics.view', children: [
-          { id: 'analytics-overview', label: '總覽', href: '/dashboard/analytics', icon: PieChart },
-          { id: 'analytics-my', label: '我的績效', href: '/dashboard/analytics/my', icon: BarChart3 },
+        // 權限放在子項目，與後端一致：總覽要 analytics.view，我的績效只要 analytics.view.self（G09）。
+        // 上層不設連結，兩個子項目都沒有權限時整個「報表」隱藏。
+        id: 'analytics', label: '報表', icon: BarChart3, children: [
+          { id: 'analytics-overview', label: '總覽', href: '/dashboard/analytics', icon: PieChart, perm: 'analytics.view' },
+          { id: 'analytics-my', label: '我的績效', href: '/dashboard/analytics/my', icon: BarChart3, perm: 'analytics.view.self' },
         ],
       },
       { id: 'plan', label: '方案／帳務', href: '/dashboard/plan', icon: CreditCard, perm: 'settings.manage' },
@@ -102,6 +105,7 @@ const NAV_TREE: NavNode[] = [
           { id: 'settings-office-hours', label: '營業時間', href: '/dashboard/settings/office-hours', icon: Gauge },
           { id: 'settings-tracking', label: '追蹤設定', href: '/dashboard/settings/tracking', icon: Network },
           { id: 'settings-identity-binding', label: '跨渠道綁定', href: '/dashboard/settings/identity-binding', icon: Link2, perm: 'settings.manage' },
+          { id: 'settings-webtalk', label: 'WebTalk 協作', href: '/dashboard/settings/webtalk', icon: MessagesSquare, perm: 'settings.manage' },
           { id: 'settings-api-keys', label: 'API 金鑰', href: '/dashboard/settings/api-keys', icon: Network },
           { id: 'settings-cli', label: 'CLI 連線', href: '/dashboard/settings/cli-sessions', icon: Link2 },
           { id: 'settings-passkeys', label: 'Passkey 登入', href: '/dashboard/settings/passkeys', icon: Network },

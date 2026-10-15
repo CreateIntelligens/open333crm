@@ -227,6 +227,9 @@ export async function updateShortLink(
   const link = await prisma.shortLink.findFirst({ where: { id, tenantId } });
   if (!link) return null;
 
+  // 選填文字欄位：undefined = 這欄不動；空字串 = 使用者清空了，存成 null
+  const clearable = (v: string | undefined) => (v === undefined ? undefined : v === '' ? null : v);
+
   if (data.lineChannelId) {
     await assertLineChannel(prisma, tenantId, data.lineChannelId);
   }
@@ -235,17 +238,17 @@ export async function updateShortLink(
     where: { id },
     data: {
       targetUrl: data.targetUrl,
-      title: data.title,
-      ogTitle: data.ogTitle,
-      ogDescription: data.ogDescription,
-      ogImage: data.ogImage,
+      title: clearable(data.title),
+      ogTitle: clearable(data.ogTitle),
+      ogDescription: clearable(data.ogDescription),
+      ogImage: clearable(data.ogImage),
       lineChannelId: data.lineChannelId === undefined ? undefined : data.lineChannelId || null,
-      utmSource: data.utmSource,
-      utmMedium: data.utmMedium,
-      utmCampaign: data.utmCampaign,
-      utmContent: data.utmContent,
-      utmTerm: data.utmTerm,
-      tagOnClick: data.tagOnClick,
+      utmSource: clearable(data.utmSource),
+      utmMedium: clearable(data.utmMedium),
+      utmCampaign: clearable(data.utmCampaign),
+      utmContent: clearable(data.utmContent),
+      utmTerm: clearable(data.utmTerm),
+      tagOnClick: clearable(data.tagOnClick),
       isActive: data.isActive,
       expiresAt: data.expiresAt,
     },

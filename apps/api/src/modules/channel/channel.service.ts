@@ -389,7 +389,20 @@ export async function deleteChannel(prisma: TenantDb, id: string, tenantId: stri
     throw new AppError(notFound('channel'), 'NOT_FOUND', 404);
   }
 
-  await prisma.channel.delete({ where: { id } });
+  try {
+    await prisma.channel.delete({ where: { id } });
+  } catch (err) {
+    // 對話、用量、Rich Menu 指向渠道的外鍵是 RESTRICT（AUDIT CHAN-01）：
+    // 收過對話的渠道刪不掉，改給清楚的說明而非泛用的 500（G15）
+    if ((err as { code?: string }).code === 'P2003') {
+      throw new AppError(
+        '此渠道已有對話或其他資料，無法刪除。若不再使用，請改用「停用」，歷史資料會保留。',
+        'CHANNEL_IN_USE',
+        409,
+      );
+    }
+    throw err;
+  }
 
   // 平台模式（Facebook 登入連結）的粉專：刪除成功後取消它對平台 App 的訂閱，平台不再收到這個粉專的事件。
   // 動態 import 避免與 meta-connect 模組互相引用；盡力而為，失敗只記 log

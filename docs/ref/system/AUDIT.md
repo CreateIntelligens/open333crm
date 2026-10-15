@@ -64,7 +64,6 @@
 | [AUTH-06](#auth-06) | 帳號與登入 | P3 | 已提建議 | 兩個「JWT 或其他憑證」裝飾器的 JWT 分支不填 `roleId`，網頁登入的成員呼叫 `partner-ingest` 一律 403 | 靜態確認 |
 | [AUTH-07](#auth-07) | 帳號與登入 | P4 | 未處理 | `JWT_EXPIRES_IN` 沒有讀取端，技術文件卻列為 token 有效期 | 靜態確認 |
 | [AUTH-08](#auth-08) | 帳號與登入 | P2 | 未處理 | 租戶成員登出、改密碼或被重設密碼後，已發出的 refresh token 仍可換發，最長 30 天 | 靜態確認 |
-| [AUTH-09](#auth-09) | 帳號與登入 | P2 | 未處理 | 停用的成員無法重新啟用，管理員也看不到停用的成員 | 靜態確認 |
 | [SEC-02](#sec-02) | 帳號與登入 | P2 | 未處理 | 平台帳號的登入與密碼重設沒有寫入稽核紀錄 | 靜態確認 |
 | [SEC-03](#sec-03) | 帳號與登入 | P3 | 未處理 | rate-limit 在各路由模組內各自註冊，搬移路由時設定會被靜默忽略 | 靜態確認 |
 | [SEC-06](#sec-06) | 帳號與登入 | P2 | 已提建議 | 租戶的帳號鎖定只依 email 計數，知道 email 的人可以讓該成員一直無法以密碼登入 | 靜態確認 |
@@ -89,8 +88,7 @@
 | [USAGE-02](#usage-02) | AI 用量與成本 | P2 | 已提建議 | 價目表只能改 seed 或資料庫，缺價期間的成本永久記 0 | 靜態確認 |
 | [USAGE-03](#usage-03) | AI 用量與成本 | P2 | 未處理 | AI 額度計數器少算用量之後，當月不會再從資料庫校正，租戶可以用超過月額度 | 靜態確認 |
 | [SLA-02](#sla-02) | SLA | P2 | 未處理 | SLA 掃描每輪上限 100 張工單，且不分租戶 | 靜態確認 |
-| [SLA-03](#sla-03) | SLA | P3 | 未處理 | `isDefault` 沒有讀取端，預設政策記帳不影響挑選結果 | 靜態確認 |
-| [SLA-04](#sla-04) | SLA | P2 | 未處理 | 工單以政策名稱連結，改名或刪除即脫鉤 | 靜態確認 |
+| [SLA-04](#sla-04) | SLA | P3 | 部分修正 | 工單以政策名稱連結；改名會同步工單、使用中的政策不能刪除、名稱不可重複，但資料庫沒有關聯與唯一約束 | 靜態確認 |
 | [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 已提建議 | 收件匣的下拉選單繞過關閉與指派的副作用；指派對話不會通知 | 靜態確認 |
@@ -108,7 +106,7 @@
 | [ANA-01](#ana-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 報表以 UTC 切分日期，台灣凌晨的資料算到前一天 | 靜態確認 |
 | [PORTAL-01](#portal-01) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶的活動結果端點回傳測驗的正確答案，也回傳未發布活動的結果；fanToken 簽發接回前要修 | 靜態確認 |
 | [PORTAL-02](#portal-02) | 聯絡人、行銷與報表 | P3 | 未處理 | 粉絲門戶送出活動一律回 400，丟掉 404／409 等狀態碼，並把原始錯誤訊息回給公開用戶端 | 靜態確認 |
-| [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 渠道刪除是硬刪除，有對話的渠道刪不掉並回一般錯誤 | 靜態確認 |
+| [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
@@ -560,23 +558,6 @@ refresh token 外洩之後，持有者可以持續換發 access token，直到 r
 
 **修正方向**：`Agent` 加上 `tokenVersion`，refresh token 帶上這個值；改密碼、重設密碼與登出時遞增，`POST /auth/refresh` 比對不符就拒絕。
 
-<a id="auth-09"></a>
-### AUTH-09：停用的成員無法重新啟用，管理員也看不到停用的成員
-
-change `agent-deactivate-vs-delete`（#172）把「停用」與「永久刪除」分成兩個動作，差別在於停用可以復原。前端按下停用時，確認對話框也寫「帳號可日後再啟用」。但目前沒有任何復原的途徑：
-
-| 位置 | 現況 |
-| --- | --- |
-| `agent.routes.ts` | 只有 `POST /:id/deactivate`，沒有重新啟用的路由 |
-| `GET /api/v1/agents` | 只回傳 `isActive: true` 的成員 |
-| `AgentManagement.tsx` | 有「已停用」標籤，但列表的資料來自 `GET /agents`，標籤永遠不會出現 |
-
-停用之後，管理員在畫面上看不到這位成員，也無法重新啟用。要重新啟用只能直接改資料庫。這位成員的 email 仍然被佔用，無法用同一個 email 建立新成員。停用的成員不在畫面上，所以也無法從畫面刪除這位成員來釋放 email，只能直接呼叫 `DELETE /api/v1/agents/:id` 或改資料庫。
-
-**規格依據。** 主規格 `agent-lifecycle` 的「重新啟用成員」規定：有 `agent.deactivate` 的成員 SHALL 能查詢停用的成員，並把停用的成員重新啟用。現況違反這條需求。
-
-**修正方向**：新增查詢停用成員的方式與重新啟用的路由，前端在「人員管理」頁列出停用的成員。重新啟用時要不要檢查方案的人數上限，由實作的 change 決定：`plan-limits-core` 的「客服人數建立時硬擋」只在建立時檢查，停用的成員不計數。
-
 <a id="sec-02"></a>
 ### SEC-02：平台帳號的登入與密碼重設沒有稽核紀錄
 
@@ -741,7 +722,7 @@ PlatformSetting（KV，不知道型別）
 
 因此把一個方案設為停售，只會改變 `/admin/plans` 上的顯示。它仍然可以被指派給新的或既有的租戶，既有租戶也完全不受影響。
 
-這與 SLA-03 是同一種形狀：欄位有寫入端與介面，沒有讀取端，操作者以為的效果不會發生。
+這與已修正的 SLA-03（SLA 政策的 `isDefault`，見 `AUDIT-REVIEWS.md` 2026-10-15）是同一種形狀：欄位有寫入端與介面，沒有讀取端，操作者以為的效果不會發生。
 
 <a id="plan-02"></a>
 ### PLAN-02：加購 token 是永久提高每月額度
@@ -1143,19 +1124,6 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 
 全系統符合條件的工單超過 100 張時，超出的部分在該輪不會被檢查。沒有 `orderBy`，因此每輪取到哪 100 張由資料庫決定，不保證輪替。掃描間隔是 300 秒。
 
-<a id="sla-03"></a>
-### SLA-03：`isDefault` 沒有讀取端
-
-`apps/api/src/modules/sla/sla.routes.ts` 的建立與修改路由各有一段邏輯，維持「同一優先級只有一條政策的 `isDefault` 是 `true`」。`apps/web/src/components/settings/SlaManagement.tsx` 也顯示這個標記。
-
-但 `apps/api/src/modules/case/case.service.ts` 的 `createCaseRecord()` 在呼叫端沒有指定 `slaPolicyId` 時，是這樣挑政策的：
-
-```ts
-await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
-```
-
-沒有 `isDefault: true`，也沒有 `orderBy`。同一優先級有多條政策時，挑中哪一條由資料庫決定，與 `isDefault` 無關。
-
 <a id="sla-04"></a>
 ### SLA-04：工單以政策名稱連結政策
 
@@ -1166,6 +1134,16 @@ await prisma.slaPolicy.findFirst({ where: { tenantId, priority } })
 - 修改政策名稱之後，既有工單的 `slaPolicy` 仍是舊名稱。`getPolicy()` 回傳 null，`sla.handler.ts` 直接 `continue`，該工單從此不再受監控，而且沒有任何紀錄。
 - `sla_policies` 只有 `@@index([tenantId])`，沒有 `(tenantId, name)` 的唯一約束。同一租戶建立兩條同名政策時，`findFirst` 回傳哪一條不確定。
 - `DELETE /api/v1/sla-policies/:id` 是硬刪除，沒有引用檢查。`SlaPolicy` 沒有 `isActive` 欄位，因此無法套用 `AGENTS.md` 的 soft-delete 慣例。刪除後，引用該名稱的工單留下一個查不到政策的字串。
+
+**部分修正（change `fix-admin-settings-safeguards`，2026-10-15）。** 新增 `sla.service.ts`，三個問題的應用層補強如下，資料模型沒有改：
+
+| 問題 | 現況 |
+| --- | --- |
+| 改名 | 已修正：改名在同一個交易內把本租戶工單的 `slaPolicy` 從舊名稱改成新名稱 |
+| 同名政策 | 部分修正：建立或改名撞名回 409 `DUPLICATE`。資料庫仍沒有 `(tenantId, name)` 的唯一約束，修正前已存在的同名政策不受影響，改名時兩條同名政策的工單會一起改 |
+| 刪除 | 部分修正：仍有未結案工單（狀態不是 `RESOLVED`、`CLOSED`）時回 409 `SLA_POLICY_IN_USE`。只有已結案工單時仍是硬刪除 |
+
+徹底的修法仍是 `Case` 改以外鍵連結 `SlaPolicy`，需要 migration 與回填。
 
 <a id="sla-05"></a>
 ### SLA-05：沒有關聯對話的工單沒有首次回應時間
@@ -1434,6 +1412,8 @@ UAT E2E 的「合併執行」測試合併兩個同渠道的訪客，修正後會
 
 - 有對話的渠道刪除時，資料庫拒絕。repo 沒有處理 Prisma 的外鍵錯誤（`P2003`），前端收到一般的伺服器錯誤，看不出原因。
 - 沒有對話的渠道刪除時，`ChannelIdentity`、`ChannelTeamAccess`、`AgentChannelAccess` 與 `ChatboxSession` 因 `onDelete: Cascade` 一併刪除。
+
+**部分修正（change `fix-admin-settings-safeguards`，2026-10-15）。** `deleteChannel()` 把 `P2003` 轉成 409 `CHANNEL_IN_USE`，訊息建議改用停用；渠道管理頁每張卡片新增「停用」與「啟用」按鈕（`PATCH /channels/:id` 的 `isActive`）。沒有對話的渠道刪除時仍是硬刪除，上面第二點沒有改。
 
 <a id="chan-02"></a>
 ### CHAN-02：workers 沒有網站聊天室外掛，關鍵字回覆在網站聊天室送不出去

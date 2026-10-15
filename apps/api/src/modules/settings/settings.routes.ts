@@ -37,6 +37,8 @@ import {
 } from "../ai/llm.service.js";
 import { getTenantGeminiKeyStatus, setTenantGeminiKey, resolveGeminiKey } from "../ai/ai-key.service.js";
 import { requirePermission } from "../../guards/rbac.guard.js";
+import { getTrackingSettings, updateTrackingSettings } from "./tracking-settings.service.js";
+import { GA4_ID_PATTERN, META_PIXEL_ID_PATTERN } from "../shortlink/strategies/tracking-snippet.js";
 import { writeTenantAudit } from "../tenant-audit/tenant-audit.service.js";
 import { getConfig } from "../../config/env.js";
 import { buildA2AStatus } from "./a2a-status.service.js";
@@ -156,36 +158,16 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   // ─── Tracking Settings ──────────────────────────────────────────────────
   // GET /api/v1/settings/tracking
   fastify.get("/tracking", async (request, reply) => {
-    const tenantId = request.agent.tenantId;
-    let settings = await request.tenantPrisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { gaId: true, metaPixelId: true },
-    });
-    if (!settings) {
-      settings = await request.tenantPrisma.tenantSettings.create({
-        data: { tenantId },
-        select: { gaId: true, metaPixelId: true },
-      });
-    }
-    return reply.send(success(settings));
+    return reply.send(success(await getTrackingSettings(request.tenantPrisma, request.agent.tenantId)));
   });
 
   // PUT /api/v1/settings/tracking
   fastify.put("/tracking", async (request, reply) => {
     const data = trackingSettingsSchema.parse(request.body);
     const tenantId = request.agent.tenantId;
-    const settings = await request.tenantPrisma.tenantSettings.upsert({
-      where: { tenantId },
-      create: {
-        tenantId,
-        gaId: data.gaId ?? null,
-        metaPixelId: data.metaPixelId ?? null,
-      },
-      update: {
-        gaId: data.gaId ?? null,
-        metaPixelId: data.metaPixelId ?? null,
-      },
-      select: { gaId: true, metaPixelId: true },
+    const settings = await updateTrackingSettings(request.tenantPrisma, tenantId, {
+      gaId: data.gaId ?? null,
+      metaPixelId: data.metaPixelId ?? null,
     });
     // 稽核：變更追蹤設定（只記有無設定 GA/Pixel，不放 ID 值）
     await writeTenantAudit(request.tenantPrisma, {
@@ -526,9 +508,22 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   );
 }
 
-const trackingSettingsSchema = z.object({
-  gaId: z.string().nullable().optional(),
-  metaPixelId: z.string().nullable().optional(),
+/**
+ * 追蹤 ID 會被拼進短連結公開中轉頁的 <script>：只收固定格式，否則是儲存型 XSS（G06）。
+ * 空字串視為清除（null）。
+ */
+const trackingIdSchema = (pattern: RegExp, message: string) =>
+  z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v))
+    .refine((v) => v === null || pattern.test(v), { message })
+    .nullable()
+    .optional();
+
+export const trackingSettingsSchema = z.object({
+  gaId: trackingIdSchema(GA4_ID_PATTERN, "GA4 ID 格式不正確，應為 G- 開頭加英數字，例如 G-ABC123XYZ9"),
+  metaPixelId: trackingIdSchema(META_PIXEL_ID_PATTERN, "Meta Pixel ID 格式不正確，應為 5～20 位數字"),
 });
 
 const createApiKeySchema = z.object({
