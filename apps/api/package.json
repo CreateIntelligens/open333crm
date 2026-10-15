@@ -12,6 +12,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "openapi:generate": "node src/lib/openapi-inventory.cli.mjs",
     "test": "vitest run --project unit",
     "test:feature": "vitest run --project feature"
   },
