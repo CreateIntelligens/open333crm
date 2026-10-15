@@ -55,6 +55,8 @@
 
 填入 Google Analytics 的 `gaId` 與 Meta Pixel 的 `metaPixelId`。短連結在一般瀏覽器轉址時，會先載入這兩個追蹤碼再轉到目標網址，見[短連結](./SHORTLINKS.md#點擊時發生什麼)。
 
+ID 會被放進公開頁面的 `<script>`，因此只收固定格式：`gaId` 是 `G-` 加 4～20 個英數字，`metaPixelId` 是 5～20 位數字，其他值回 400。產生頁面時會再檢查一次，資料庫裡不合格的舊值不會輸出。
+
 修改時會寫一筆 `settings.update` 租戶稽核，只記錄有沒有填，不記錄 ID 值。
 
 ## API 金鑰

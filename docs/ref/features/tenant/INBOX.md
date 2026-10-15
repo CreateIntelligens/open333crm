@@ -37,7 +37,7 @@
 | 欄位 | 作用 |
 | --- | --- |
 | `botMode` | `keyword`、`llm`、`keyword_then_llm` 或 `off`。`off` 讓新對話直接交給客服 |
-| `maxBotReplies` | 機器人在同一個對話最多回覆幾次，超過就自動轉真人 |
+| `maxBotReplies` | 機器人在同一個對話最多回覆幾次，超過就自動轉真人。1～50 的整數，後端驗證 |
 | `handoffKeywords` | 客人訊息含任一個關鍵字時，自動轉真人 |
 | `handoffMessage` | 轉真人時送給客人的訊息 |
 | `offlineGreeting` | 營業時間外的自動回覆，優先於營業時間設定的訊息 |
