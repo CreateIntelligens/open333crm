@@ -16,9 +16,10 @@ vi.mock('@open333crm/channel-plugins', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@open333crm/channel-plugins')>();
   const threads = {
     channelType: 'THREADS',
-    verifySignature: (_raw: Buffer, _headers: unknown, secret: string) => {
+    // 簽章是 sha256=valid 而且用 appSecret 驗證時才通過（HMAC 的計算由外掛的 signature-verification.test.ts 涵蓋）
+    verifySignature: (_raw: Buffer, headers: Record<string, string>, secret: string) => {
       seen.secrets.push(secret);
-      return secret === 'ig-app-secret';
+      return secret === 'ig-app-secret' && headers['x-hub-signature-256'] === 'sha256=valid';
     },
     parseWebhook: async () => {
       seen.parsed += 1;
@@ -97,7 +98,7 @@ test('Webhook Message：以 appSecret 驗簽，通過後交給外掛解析', asy
   const res = await app.inject({
     method: 'POST', url: `/threads/${IG_CHANNEL}`,
     payload: JSON.stringify({ object: 'instagram', entry: [] }),
-    headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=whatever' },
+    headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=valid' },
   });
   assert.equal(res.statusCode, 200);
   await waitFor(() => seen.parsed > 0);
@@ -109,7 +110,25 @@ test('處理事件失敗仍回 200', async () => {
   const res = await app.inject({
     method: 'POST', url: `/threads/${BROKEN_CHANNEL}`,
     payload: JSON.stringify({ object: 'instagram', entry: [] }),
-    headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=whatever' },
+    headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=valid' },
   });
   assert.equal(res.statusCode, 200);
+});
+
+test('簽章不符：不交給外掛解析', async () => {
+  // 直接呼叫處理函式，等它結束再檢查；路由不論結果都回 200，見「處理事件失敗仍回 200」
+  const { processWebhookEvent } = await import('#src/modules/webhook/webhook.service.js');
+  await assert.rejects(
+    processWebhookEvent(
+      prismaMock() as never,
+      { to: () => ({ emit() {} }) } as never,
+      IG_CHANNEL,
+      'THREADS',
+      Buffer.from(JSON.stringify({ object: 'instagram', entry: [] })),
+      { 'x-hub-signature-256': 'sha256=tampered' },
+    ),
+    /Invalid webhook signature/,
+  );
+  assert.deepEqual(seen.secrets, ['ig-app-secret']);
+  assert.equal(seen.parsed, 0);
 });
