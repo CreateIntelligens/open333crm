@@ -17,4 +17,4 @@
 - [x] 3.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 3.3 `CHANGELOG.md` 補 Added；`docs/ref/features/tenant/INBOX.md` 補交回 Bot 的說明
 - [x] 3.4 `node scripts/validate-openspec.mjs add-return-conversation-to-bot` 與 `--specs` 通過
-- [ ] 3.5 部署後在 UAT 把客服接手的 IG 對話交回 Bot，顧客再傳訊息時 bot 有回覆
+- [x] 3.5 部署後在 UAT 把客服接手的 IG 對話交回 Bot，顧客再傳訊息時 bot 有回覆

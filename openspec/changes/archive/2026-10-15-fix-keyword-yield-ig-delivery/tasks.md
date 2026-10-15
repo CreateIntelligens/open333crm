@@ -21,4 +21,4 @@
 - [x] 4.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 4.3 `CHANGELOG.md` 補 Fixed
 - [x] 4.4 `node scripts/validate-openspec.mjs fix-keyword-yield-ig-delivery` 與 `--specs` 通過
-- [ ] 4.5 部署後在 UAT 用 IG 傳「你好」，確認 AI 有回覆，且對話有「素材沒有送出」的紀錄
+- [x] 4.5 部署後在 UAT 用 IG 傳「你好」，確認 AI 有回覆，且對話有「素材沒有送出」的紀錄
