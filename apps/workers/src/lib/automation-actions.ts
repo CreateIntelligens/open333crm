@@ -53,6 +53,49 @@ async function getSupervisorAndAdminIds(
 const AUTOMATION_NOTIFY_TITLE = '自動化規則通知';
 const AUTOMATION_NOTIFY_DEFAULT_BODY = '自動化規則的條件已成立，請查看相關工單。';
 
+/**
+ * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個「同租戶、啟用中」的客服：
+ * 指定的客服 → 工單負責人 → 對話負責客服；都不合格時送所有主管與管理員。
+ * 原本只送工單負責人，沒有工單的觸發選了這個動作永遠不會送（問題清單 A03）。
+ * 每個候選都要驗證：工單或對話可能留著已停用客服的指派，不可送給他們（review #282）。
+ * worker 走 BYPASSRLS 連線：每個查詢都要自帶 tenantId。
+ */
+async function resolveNotifyRecipients(
+  prisma: PrismaClient,
+  params: Record<string, unknown>,
+  context: WorkerActionContext,
+): Promise<string[]> {
+  const { tenantId } = context;
+  const findActiveAgent = async (id: string | null | undefined, source: string): Promise<string | null> => {
+    if (!id) return null;
+    const agent = await prisma.agent.findFirst({
+      where: { id, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!agent) logger.warn(`[automation] notify: ${source} ${id} is inactive or not in tenant, falling back`);
+    return agent?.id ?? null;
+  };
+
+  const chosen = typeof params['agentId'] === 'string' ? params['agentId'].trim() : '';
+  const chosenAgent = await findActiveAgent(chosen, 'chosen agent');
+  if (chosenAgent) return [chosenAgent];
+
+  const caseAssignee = await findActiveAgent(context.assigneeId, 'case assignee');
+  if (caseAssignee) return [caseAssignee];
+
+  if (context.conversationId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: context.conversationId, tenantId },
+      select: { assignedToId: true },
+    });
+    const conversationAssignee = await findActiveAgent(conversation?.assignedToId, 'conversation assignee');
+    if (conversationAssignee) return [conversationAssignee];
+  }
+  const fallback = await getSupervisorAndAdminIds(prisma, tenantId);
+  if (fallback.length === 0) logger.warn('[automation] notify skipped: no recipient in tenant', { tenantId });
+  return fallback;
+}
+
 const CASE_PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
 /** 已結案的工單：對話上掛的是這種工單時，自動化可以開新單並改關聯 */
 const CLOSED_CASE_STATUSES = new Set(['RESOLVED', 'CLOSED']);
@@ -329,15 +372,22 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
-      if (action.type === 'notify' && context.assigneeId) {
-        await enqueueNotification({
-          tenantId: context.tenantId,
-          agentId: context.assigneeId,
-          type: 'sla_rule',
-          title: AUTOMATION_NOTIFY_TITLE,
-          body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
-          clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
-        });
+      if (action.type === 'notify') {
+        const recipients = await resolveNotifyRecipients(prisma, params, context);
+        for (const agentId of recipients) {
+          await enqueueNotification({
+            tenantId: context.tenantId,
+            agentId,
+            type: 'sla_rule',
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
+            clickUrl: context.caseId
+              ? `/dashboard/cases/${context.caseId}`
+              : context.conversationId
+                ? `/dashboard/inbox?conv=${context.conversationId}`
+                : undefined,
+          });
+        }
         continue;
       }
 

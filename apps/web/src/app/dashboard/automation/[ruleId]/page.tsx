@@ -20,7 +20,7 @@ import {
   type AutomationActionDefinition,
 } from '@open333crm/automation';
 import api from '@/lib/api';
-import { droppedActionsMessage, ruleEventName, splitRuleActions, type DroppedAction } from '@/lib/automation/rule-actions';
+import { droppedActionsMessage, ruleEventName, splitRuleActions, triggerEventOptions, type DroppedAction } from '@/lib/automation/rule-actions';
 import { qbToEngine, engineToQb } from '@/lib/automation/qb-to-engine';
 import { summarizeRule } from '@/lib/automation/rule-summary';
 import {
@@ -43,11 +43,6 @@ import { getApiErrorMessage } from '@/lib/api-error';
 
 // ---- constants ----
 
-// 目前不會觸發的事件（AUDIT AUTO-05）在選單上就標出來，免得管理員建了規則卻永遠不會執行
-const TRIGGER_EVENTS = AUTOMATION_EVENT_DEFINITIONS.map((event) => ({
-  value: event.name,
-  label: event.dispatched === false ? `${event.label}（目前不會觸發）` : event.label,
-}));
 
 function contractFieldsToQueryBuilderFields(triggerType: string): Field[] {
   return getAutomationFieldOptionsForEvent(triggerType).map((field) => ({
@@ -369,10 +364,15 @@ export default function AutomationRuleDetailPage() {
                   什麼時候檢查這條規則
                 </label>
                 <Select
-                  options={TRIGGER_EVENTS}
+                  options={triggerEventOptions(form.triggerType)}
                   value={form.triggerType}
                   onChange={(e) => handleTriggerTypeChange(e.target.value)}
                 />
+                {!selectedEvent && (
+                  <p className="mt-1 text-xs text-destructive">
+                    系統沒有這個觸發事件，這條規則不會執行。請改選其他時機後再儲存。
+                  </p>
+                )}
                 {selectedEvent?.description && (
                   <p className="mt-1 text-xs text-muted-foreground">{selectedEvent.description}</p>
                 )}
