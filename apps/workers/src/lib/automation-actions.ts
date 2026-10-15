@@ -49,9 +49,10 @@ async function getSupervisorAndAdminIds(
 }
 
 /**
- * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個存在的：
- * 指定的客服（同租戶、啟用中）→ 工單負責人 → 對話負責客服 → 所有主管與管理員。
+ * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個「同租戶、啟用中」的客服：
+ * 指定的客服 → 工單負責人 → 對話負責客服；都不合格時送所有主管與管理員。
  * 原本只送工單負責人，沒有工單的觸發選了這個動作永遠不會送（問題清單 A03）。
+ * 每個候選都要驗證：工單或對話可能留著已停用客服的指派，不可送給他們（review #282）。
  * worker 走 BYPASSRLS 連線：每個查詢都要自帶 tenantId。
  */
 async function resolveNotifyRecipients(
@@ -60,22 +61,30 @@ async function resolveNotifyRecipients(
   context: WorkerActionContext,
 ): Promise<string[]> {
   const { tenantId } = context;
-  const chosen = typeof params['agentId'] === 'string' ? params['agentId'].trim() : '';
-  if (chosen) {
+  const findActiveAgent = async (id: string | null | undefined, source: string): Promise<string | null> => {
+    if (!id) return null;
     const agent = await prisma.agent.findFirst({
-      where: { id: chosen, tenantId, isActive: true },
+      where: { id, tenantId, isActive: true },
       select: { id: true },
     });
-    if (agent) return [agent.id];
-    logger.warn(`[automation] notify: agent ${chosen} is inactive or not in tenant, falling back`);
-  }
-  if (context.assigneeId) return [context.assigneeId];
+    if (!agent) logger.warn(`[automation] notify: ${source} ${id} is inactive or not in tenant, falling back`);
+    return agent?.id ?? null;
+  };
+
+  const chosen = typeof params['agentId'] === 'string' ? params['agentId'].trim() : '';
+  const chosenAgent = await findActiveAgent(chosen, 'chosen agent');
+  if (chosenAgent) return [chosenAgent];
+
+  const caseAssignee = await findActiveAgent(context.assigneeId, 'case assignee');
+  if (caseAssignee) return [caseAssignee];
+
   if (context.conversationId) {
     const conversation = await prisma.conversation.findFirst({
       where: { id: context.conversationId, tenantId },
       select: { assignedToId: true },
     });
-    if (conversation?.assignedToId) return [conversation.assignedToId];
+    const conversationAssignee = await findActiveAgent(conversation?.assignedToId, 'conversation assignee');
+    if (conversationAssignee) return [conversationAssignee];
   }
   const fallback = await getSupervisorAndAdminIds(prisma, tenantId);
   if (fallback.length === 0) logger.warn('[automation] notify skipped: no recipient in tenant', { tenantId });

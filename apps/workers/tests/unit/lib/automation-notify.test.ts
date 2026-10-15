@@ -17,12 +17,20 @@ import { executeWorkerAutomationActions } from '#src/lib/automation-actions.js';
 const TENANT = 't1';
 const agents = [
   { id: 'agent-a', tenantId: TENANT, isActive: true, role: 'AGENT' },
+  { id: 'agent-b', tenantId: TENANT, isActive: true, role: 'AGENT' },
+  { id: 'agent-c', tenantId: TENANT, isActive: true, role: 'AGENT' },
   { id: 'agent-off', tenantId: TENANT, isActive: false, role: 'AGENT' },
   { id: 'agent-other', tenantId: 't2', isActive: true, role: 'AGENT' },
   { id: 'sup-1', tenantId: TENANT, isActive: true, role: 'SUPERVISOR' },
   { id: 'admin-1', tenantId: TENANT, isActive: true, role: 'ADMIN' },
   { id: 'sup-other', tenantId: 't2', isActive: true, role: 'SUPERVISOR' },
 ];
+
+const conversations: Record<string, { assignedToId: string | null }> = {
+  'conv-1': { assignedToId: 'agent-c' },
+  'conv-off': { assignedToId: 'agent-off' },
+  'conv-other': { assignedToId: 'agent-other' },
+};
 
 const prisma = {
   agent: {
@@ -37,7 +45,8 @@ const prisma = {
   },
   conversation: {
     async findFirst({ where }: { where: { id: string; tenantId: string } }) {
-      return where.id === 'conv-1' && where.tenantId === TENANT ? { assignedToId: 'agent-c' } : null;
+      if (where.tenantId !== TENANT) return null;
+      return conversations[where.id] ?? null;
     },
   },
 };
@@ -76,4 +85,22 @@ test('指定的客服已停用或屬於別的租戶', async () => {
   assert.deepEqual(await run({ agentId: 'agent-off' }, { trigger: 'case.created', caseId: 'case-1', assigneeId: 'agent-b' }), ['agent-b']);
   sent.length = 0;
   assert.deepEqual(await run({ agentId: 'agent-other' }, { trigger: 'case.created', caseId: 'case-1', assigneeId: 'agent-b' }), ['agent-b']);
+});
+
+test('工單負責人已停用或屬於別的租戶', async () => {
+  assert.deepEqual(
+    await run({}, { trigger: 'message.received', caseId: 'case-1', assigneeId: 'agent-off', conversationId: 'conv-1' }),
+    ['agent-c'],
+  );
+  sent.length = 0;
+  assert.deepEqual(
+    await run({}, { trigger: 'case.created', caseId: 'case-1', assigneeId: 'agent-other' }),
+    ['admin-1', 'sup-1'],
+  );
+});
+
+test('對話負責客服已停用或屬於別的租戶', async () => {
+  assert.deepEqual(await run({}, { trigger: 'message.received', conversationId: 'conv-off' }), ['admin-1', 'sup-1']);
+  sent.length = 0;
+  assert.deepEqual(await run({}, { trigger: 'message.received', conversationId: 'conv-other' }), ['admin-1', 'sup-1']);
 });
