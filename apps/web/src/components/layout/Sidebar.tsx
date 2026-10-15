@@ -137,12 +137,21 @@ function useActiveItem(rail: RailItem[]) {
   return rail.find((item) => under(pathname, item.match ?? item.href));
 }
 
-/** 子選單中目前所在的連結：取路徑最長的那個，避免「總覽」和「我的績效」同時亮起 */
-function activeLinkId(groups: NavGroup[], pathname: string) {
+/** 點圖示時要去的頁面：有子選單的區塊直接進第一個（有權限的）子頁，沒有子選單就是區塊本身 */
+function entryHref(item: RailItem) {
+  return item.sections?.[0]?.items[0]?.href ?? item.href;
+}
+
+/**
+ * 子選單中目前所在的連結：取路徑最長的那個，避免「總覽」和「我的績效」同時亮起。
+ * 網址剛好停在區塊首頁（例如 /dashboard/knowledge）時，視為第一個子頁，讓第一項呈現選中。
+ */
+function activeLinkId(groups: NavGroup[], pathname: string, sectionHref?: string) {
   let best: NavLink | undefined;
   for (const link of groups.flatMap((g) => g.items)) {
     if (under(pathname, link.href) && (!best || link.href.length > best.href.length)) best = link;
   }
+  if (!best && sectionHref && pathname === sectionHref) best = groups[0]?.items[0];
   return best?.id;
 }
 
@@ -167,10 +176,14 @@ export function useNavTrail(): NavTrail {
   if (!active) return { atLink: false };
   const section = { label: active.label, href: active.href };
   if (!active.sections?.length) return { section, atLink: pathname === active.href };
-  const id = activeLinkId(active.sections, pathname);
+  const id = activeLinkId(active.sections, pathname, active.href);
   const found = active.sections.flatMap((g) => g.items).find((l) => l.id === id);
   if (!found) return { section, atLink: false };
-  return { section, link: { label: found.label, href: found.href }, atLink: pathname === found.href };
+  return {
+    section,
+    link: { label: found.label, href: found.href },
+    atLink: pathname === found.href || pathname === active.href,
+  };
 }
 
 // ─── 左側圖示欄（桌機；依 Figma Sidebar：寬 66、上內距 12、項目間距 12、項目內距 8、圓角 8） ──
@@ -202,7 +215,7 @@ export function Sidebar() {
           return (
             <li key={item.id}>
               <Link
-                href={item.href}
+                href={entryHref(item)}
                 title={item.label}
                 aria-label={item.label}
                 aria-current={isActive ? 'page' : undefined}
@@ -241,7 +254,7 @@ export function SectionNav() {
   const active = useActiveItem(rail);
   const pathname = usePathname();
   if (!active?.sections?.length) return null;
-  const current = activeLinkId(active.sections, pathname);
+  const current = activeLinkId(active.sections, pathname, active.href);
 
   return (
     <nav aria-label={`${active.label}選單`} className="hidden w-[230px] flex-none flex-col gap-3.5 overflow-y-auto py-5 pl-2 pr-4 lg:flex">
@@ -292,11 +305,11 @@ export function MobileNav({ open, onClose }: { open: boolean; onClose: () => voi
         <ul className="flex-1 overflow-y-auto px-2 pb-4">
           {rail.map((item) => {
             const isActive = item.id === active?.id;
-            const current = isActive && item.sections ? activeLinkId(item.sections, pathname) : undefined;
+            const current = isActive && item.sections ? activeLinkId(item.sections, pathname, item.href) : undefined;
             return (
               <li key={item.id}>
                 <Link
-                  href={item.href}
+                  href={entryHref(item)}
                   aria-current={isActive && !current ? 'page' : undefined}
                   className={cn('flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium', isActive ? 'text-primary' : 'text-foreground hover:bg-muted')}
                 >

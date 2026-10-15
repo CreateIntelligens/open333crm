@@ -82,3 +82,24 @@ test('沒有子頁的區塊不顯示子選單', () => {
   const { container } = render(<SectionNav />);
   assert.equal(container.innerHTML, '');
 });
+
+test('點有子選單的圖示會直接進第一個子頁', () => {
+  auth.permissions = new Set(['knowledge.view']);
+  render(<Sidebar />);
+  const link = screen.getByRole('link', { name: '知識庫' });
+  assert.equal(link.getAttribute('href'), '/dashboard/knowledge/articles');
+  assert.equal(
+    screen.getByRole('link', { name: '收件匣' }).getAttribute('href'),
+    '/dashboard/inbox',
+    '對照組：沒有子選單的區塊維持原本網址',
+  );
+});
+
+test('停在區塊首頁時，子選單第一項呈現選中', () => {
+  auth.permissions = new Set(['knowledge.view']);
+  nav.pathname = '/dashboard/knowledge';
+  render(<SectionNav />);
+  assert.equal(screen.getByRole('link', { name: '文章管理' }).getAttribute('aria-current'), 'page');
+  assert.equal(screen.getByRole('link', { name: '語義搜尋' }).getAttribute('aria-current'), null);
+  assert.equal(screen.queryAllByRole('link', { name: '知識庫' }).length, 0, '子選單標題不是連結');
+});
