@@ -81,22 +81,25 @@ export interface Recorder {
 const timing = new WeakMap<Page, { t0: number; first?: number }>();
 
 /**
- * 正式環境保險：擋下所有會改資料的 API 請求（非 GET），只放行登入續期
- * 與呼叫端明確列出的「唯讀但用 POST」端點（例如語義搜尋、分群人數預覽）。
+ * 正式環境保險：攔截瀏覽器送出的「所有」請求（不限 /api/v1/），非 GET／HEAD／OPTIONS 一律擋下，
+ * 只放行登入續期與呼叫端明確列出的「唯讀但用 POST」端點（例如語義搜尋、分群人數預覽）。
+ * Next.js server action／RSC 的 POST、socket.io 輪詢的 POST 也一併擋下——錄影只看畫面。
  * 被擋的請求印在 console，前端會看到網路錯誤——錄影時本來就不該按送出。
  */
 export async function guardWrites(context: BrowserContext, allowPost: RegExp[] = []) {
-  // 手冊畫面不要出現右緣的 WebTalk 協作工具列（第三方 SDK，非 CRM 本身功能）
-  await context.route('https://webtalk-nine.vercel.app/**', (route) => route.abort('blockedbyclient'));
-  await context.route('**/api/v1/**', (route) => {
+  await context.route('**/*', (route) => {
     const req = route.request();
     const url = req.url();
-    if (req.method() === 'GET' || req.method() === 'OPTIONS') return route.continue();
+    const method = req.method();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return route.continue();
     if (url.includes('/auth/refresh')) return route.continue();
     if (allowPost.some((re) => re.test(url))) return route.continue();
-    console.log(`🛡️ 已攔截寫入請求 ${req.method()} ${url.replace(/^.*\/api\/v1/, '')}`);
+    console.log(`已攔截寫入請求 ${method} ${url}`);
     return route.abort('blockedbyclient');
   });
+  // 手冊畫面不要出現右緣的 WebTalk 協作工具列（第三方 SDK，非 CRM 本身功能）。
+  // Playwright 依「後註冊者先處理」，這條要放在 '**/*' 之後才會先於全攔截生效。
+  await context.route('https://webtalk-nine.vercel.app/**', (route) => route.abort('blockedbyclient'));
 }
 
 export async function startRecording(
