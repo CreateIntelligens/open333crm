@@ -107,7 +107,11 @@ async function createCaseFromAutomation(
   const rawCategory = typeof params['category'] === 'string' ? params['category'].trim() : '';
   const category = (CASE_CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : null;
   if (rawCategory && !category) logger.warn(`[automation] create_case: unknown category "${rawCategory}" ignored`);
-  const slaPolicy = await prisma.slaPolicy.findFirst({ where: { tenantId, priority: priority as any } });
+  // 與手動建單一致：預設政策優先，沒有預設時取最早建立的（G20，AUDIT SLA-03）
+  const slaPolicy = await prisma.slaPolicy.findFirst({
+    where: { tenantId, priority: priority as any },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+  });
   const slaDueAt = slaPolicy ? new Date(Date.now() + slaPolicy.resolutionMinutes * 60_000) : null;
 
   // 建單、關聯對話、寫事件放在同一個交易；關聯用條件式更新（對話仍是讀取時的狀態才寫入）：
