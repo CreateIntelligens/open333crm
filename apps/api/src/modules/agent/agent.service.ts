@@ -448,3 +448,59 @@ export async function purgeAgent(
     await tx.agent.delete({ where: { id: agentId } });
   });
 }
+
+/** 成員列表的欄位（含角色與團隊）。啟用中與停用的列表共用 */
+const agentListSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  roleId: true,
+  // 帶出指派的角色資訊，供前端顯示自訂角色名與精準預選
+  roleRef: { select: { id: true, name: true, slug: true, isSystem: true } },
+  avatarUrl: true,
+  isActive: true,
+  teams: { include: { team: { select: { id: true, name: true } } } },
+  _count: { select: { assignedCases: true } },
+} as const;
+
+/** 本租戶的成員列表。isActive=false 時列出停用的成員（供重新啟用，AUDIT AUTH-09） */
+export async function listAgents(prisma: TenantDb, tenantId: string, isActive: boolean) {
+  return prisma.agent.findMany({
+    where: { tenantId, isActive },
+    select: agentListSelect,
+    orderBy: { name: 'asc' },
+  });
+}
+
+/**
+ * 重新啟用停用的成員（G17，AUDIT AUTH-09）。角色維持停用前的角色。
+ * 套用方案人數上限：否則「停用 → 建立新成員 → 重新啟用」可繞過建立時的上限。
+ */
+export async function reactivateAgent(prisma: TenantDb, tenantId: string, agentId: string): Promise<void> {
+  const existing = await prisma.agent.findFirst({
+    where: { id: agentId, tenantId },
+    select: { id: true, isActive: true },
+  });
+  if (!existing) {
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
+  }
+  if (existing.isActive) return;
+
+  const maxAgents = await getEffectiveLimit(prisma, tenantId, 'maxAgents');
+  if (maxAgents !== null) {
+    const activeCount = await prisma.agent.count({ where: { tenantId, isActive: true } });
+    if (activeCount >= maxAgents) {
+      throw new AppError('已達方案客服人數上限，無法重新啟用，請先停用其他成員或升級方案', 'PLAN_LIMIT_EXCEEDED', 403, {
+        limitKey: 'maxAgents',
+        current: activeCount,
+        max: maxAgents,
+      });
+    }
+  }
+
+  await prisma.agent.update({
+    where: { id: agentId },
+    data: { isActive: true },
+  });
+}
