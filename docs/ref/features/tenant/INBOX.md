@@ -69,6 +69,15 @@
 
 客人在對話已經是 `AGENT_HANDLED` 時再按轉接按鈕，系統只重送 `handoffMessage`，不改任何狀態。
 
+## 交回 Bot
+
+客服在對話上方按「交回 Bot」（`POST /conversations/:id/return-to-bot`，`conversation.service.ts` 的 `returnConversationToBot()`），把 `AGENT_HANDLED` 或 `ACTIVE` 的對話改回 `BOT_HANDLED`。權限與接手相同：`inbox.manage`，而且能完整存取該渠道。
+
+- 機器人回覆次數（`botRepliesCount`）歸零、清除轉真人原因。不歸零的話，因次數達到 `maxBotReplies` 轉真人的對話，下一則訊息又會轉回真人。
+- 保留指派的客服，機器人處理不了再轉真人時回到同一位。
+- 寫一則系統訊息記錄是誰交回的，這則訊息不送給客人。
+- 已結案（要先重新開啟）、已經是 `BOT_HANDLED`，或渠道的 `botMode` 是 `off` 時回 400，按鈕旁顯示原因。
+
 ## 客服回覆怎麼送出
 
 客服送出文字走 `POST /conversations/:id/messages`，圖片與影片走 `/send-image`、`/send-video`。這些路由最後都呼叫 `sendMessage()`，依序做下列事情：

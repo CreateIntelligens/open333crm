@@ -7,6 +7,7 @@ import { useMessages } from '@/hooks/useMessages';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { StatusBanner } from './StatusBanner';
+import { ReturnToBotButton } from './ReturnToBotButton';
 import { TemplatePicker } from './TemplatePicker';
 import { TypingIndicator } from './TypingIndicator';
 import { CsatMessage } from './CsatMessage';
@@ -239,6 +240,11 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               <Lightbulb className="h-4 w-4" />
             </Button>
           )}
+          <ReturnToBotButton
+            conversationId={conversation.id}
+            status={conversation.status}
+            onDone={() => globalMutate(`/conversations/${conversation.id}`)}
+          />
           {!isClosed && (
             <Button
               variant="ghost"
