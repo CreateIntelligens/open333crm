@@ -104,3 +104,16 @@ test('只改標題：不寫狀態事件、不發布狀態事件', async () => {
   assert.ok(!published.some((e) => e.name.startsWith('case.')));
   assert.deepEqual(s.emitted, ['case.updated']);
 });
+
+test('同時改標題與不合法的狀態：回 422，標題不會先被存起來', async () => {
+  const s = setup('OPEN');
+  await assert.rejects(
+    () => updateCase(s.prisma as never, s.io as never, 'case-1', TENANT_ID, { title: '新標題', status: 'RESOLVED' }, { actorId: 'agent-1' }),
+    (err: { code?: string; statusCode?: number }) => err.code === 'INVALID_TRANSITION' && err.statusCode === 422,
+  );
+
+  assert.equal(s.row.title, '冷氣不冷');
+  assert.equal(s.row.status, 'OPEN');
+  assert.equal(s.caseEvents.length, 0);
+  assert.deepEqual(s.emitted, []);
+});
