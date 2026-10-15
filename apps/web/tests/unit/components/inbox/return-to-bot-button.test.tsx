@@ -45,3 +45,15 @@ test('交回失敗時顯示原因', async () => {
   fireEvent.click(screen.getByRole('button', { name: /交回 Bot/ }));
   await screen.findByText('這個渠道的機器人已關閉，無法交回 Bot');
 });
+
+test('切換對話時不殘留上一筆的錯誤', async () => {
+  // ChatWindow 切換對話時元件不會重建，錯誤訊息要跟著對話走
+  api.post.mockImplementation(async () => {
+    throw Object.assign(new Error('400'), { response: { status: 400, data: { error: { message: '對話狀態已變更，請重新整理後再試' } } } });
+  });
+  const { rerender } = render(<ReturnToBotButton conversationId="c1" status="AGENT_HANDLED" onDone={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: /交回 Bot/ }));
+  await screen.findByText('對話狀態已變更，請重新整理後再試');
+  rerender(<ReturnToBotButton conversationId="c2" status="AGENT_HANDLED" onDone={() => {}} />);
+  assert.ok(screen.queryByText('對話狀態已變更，請重新整理後再試') === null);
+});

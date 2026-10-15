@@ -6,8 +6,9 @@ import { test } from 'vitest';
 import { returnConversationToBot } from '#src/modules/conversation/conversation.service.js';
 import { AppError } from '#src/shared/utils/response.js';
 
-function fixture(conv: { status: string; botMode?: string }) {
+function fixture(conv: { status: string; botMode?: string }, opts: { closedMeanwhile?: boolean } = {}) {
   const updates: Array<Record<string, unknown>> = [];
+  const updateWheres: Array<Record<string, unknown>> = [];
   const messages: Array<Record<string, unknown>> = [];
   const emitted: string[] = [];
   const prisma = {
@@ -21,10 +22,13 @@ function fixture(conv: { status: string; botMode?: string }) {
         assignedToId: 'agent-a',
         channel: { settings: conv.botMode ? { botConfig: { botMode: conv.botMode } } : {} },
       }),
-      update: async (args: { data: Record<string, unknown> }) => {
+      updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        updateWheres.push(args.where);
+        if (opts.closedMeanwhile) return { count: 0 };
         updates.push(args.data);
-        return { id: 'c1', status: 'BOT_HANDLED', assignedToId: 'agent-a', unreadCount: 0, updatedAt: new Date(), ...args.data };
+        return { count: 1 };
       },
+      findFirstOrThrow: async () => ({ id: 'c1', status: 'BOT_HANDLED', assignedToId: 'agent-a', unreadCount: 0, updatedAt: new Date() }),
     },
     agent: { findFirst: async () => ({ name: '小美' }) },
     message: {
@@ -35,7 +39,7 @@ function fixture(conv: { status: string; botMode?: string }) {
     },
   } as never;
   const io = { to: () => ({ emit: (event: string) => emitted.push(event) }) } as never;
-  return { prisma, io, updates, messages, emitted };
+  return { prisma, io, updates, updateWheres, messages, emitted };
 }
 
 async function rejects400(p: Promise<unknown>, pattern?: RegExp) {
@@ -57,6 +61,15 @@ test('客服接手的對話交回 Bot', async () => {
   assert.equal(f.messages[0].senderType, 'SYSTEM');
   assert.match(JSON.stringify(f.messages[0].content), /小美.*交回 Bot/);
   assert.ok(f.emitted.includes('conversation.updated') && f.emitted.includes('message.new'));
+  assert.equal(f.updateWheres[0].tenantId, 't1', '更新條件帶租戶');
+});
+
+test('檢查後對話被結案時不改狀態', async () => {
+  // 讀到 AGENT_HANDLED 之後、更新之前，另一位客服把對話結案：不可以把已結案的對話改回 Bot
+  const f = fixture({ status: 'AGENT_HANDLED' }, { closedMeanwhile: true });
+  await rejects400(returnConversationToBot(f.prisma, f.io, 'c1', 't1', 'agent-b'));
+  assert.equal(f.updates.length, 0);
+  assert.equal(f.messages.length, 0, '沒有交回就不寫系統訊息');
 });
 
 test('已結案的對話', async () => {

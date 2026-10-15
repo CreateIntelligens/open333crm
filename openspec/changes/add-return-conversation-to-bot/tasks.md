@@ -9,6 +9,7 @@
 
 - [x] 2.1 測試 `apps/web/tests/unit/components/inbox/return-to-bot-button.test.tsx`：「收件匣的交回 Bot 按鈕」，先確認失敗
 - [x] 2.2 新增 `ReturnToBotButton.tsx`，放進 `ChatWindow.tsx` 對話上方
+- [x] 2.3 code review 修正：改狀態用帶租戶與狀態條件的 `updateMany`（測試「檢查後對話被結案」）；按鈕的錯誤訊息跟著對話，切換對話不殘留（測試「切換對話時不殘留上一筆的錯誤」），兩個測試都先確認失敗
 
 ## 3. 完成檢查
 

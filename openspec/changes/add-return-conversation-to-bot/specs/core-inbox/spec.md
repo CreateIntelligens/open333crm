@@ -11,6 +11,10 @@
 - **WHEN** 對話狀態為 `CLOSED`，成員呼叫交回 Bot
 - **THEN** 回 400，說明要先重新開啟對話，狀態不變
 
+#### Scenario: 檢查後對話被結案
+- **WHEN** 系統讀到對話為 `AGENT_HANDLED` 之後、改狀態之前，另一位成員把對話結案
+- **THEN** 回 400，對話維持結案，不寫系統訊息
+
 #### Scenario: 已經是 Bot 處理
 - **WHEN** 對話狀態為 `BOT_HANDLED`，成員呼叫交回 Bot
 - **THEN** 回 400，狀態不變

@@ -537,10 +537,15 @@ export async function returnConversationToBot(
     throw new AppError('這個渠道的機器人已關閉，無法交回 Bot', 'BAD_REQUEST', 400);
   }
 
-  const updated = await prisma.conversation.update({
-    where: { id: conversationId },
+  // 條件更新：檢查之後若有人把對話結案或已交回，不可以覆蓋（否則已結案的對話會被改回 Bot）
+  const { count } = await prisma.conversation.updateMany({
+    where: { id: conversationId, tenantId, status: { in: ['AGENT_HANDLED', 'ACTIVE'] } },
     data: { status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null },
   });
+  if (count === 0) {
+    throw new AppError('對話狀態已變更，請重新整理後再試', 'BAD_REQUEST', 400);
+  }
+  const updated = await prisma.conversation.findFirstOrThrow({ where: { id: conversationId, tenantId } });
 
   const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
   const now = new Date();
