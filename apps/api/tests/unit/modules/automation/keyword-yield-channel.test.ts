@@ -14,7 +14,7 @@ function db(actions: unknown[], materials: Array<{ id: string; channelType: stri
   return {
     automationRule: {
       findMany: async () => [
-        { id: 'r1', trigger: { type: 'keyword.matched', keywords: ['Hi', '你好'], match_mode: 'any' }, actions },
+        { id: 'r1', trigger: { type: 'keyword.matched', keywords: ['Hi', '你好'], match_mode: 'any' }, conditions: { all: [] }, actions },
       ],
     },
     material: {
@@ -61,10 +61,48 @@ test('關鍵字資料有非字串值時不拋錯', async () => {
   const prisma = {
     automationRule: {
       findMany: async () => [
-        { id: 'r1', trigger: { type: 'keyword.matched', keywords: [null, 42, '', '你好'] }, actions: [{ type: 'send_message', params: { text: '您好' } }] },
+        { id: 'r1', trigger: { type: 'keyword.matched', keywords: [null, 42, '', '你好'] }, conditions: { all: [] }, actions: [{ type: 'send_message', params: { text: '您好' } }] },
       ],
     },
   } as never;
   assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'LINE'), true);
   assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '請問營業時間', 'LINE'), false, '空字串關鍵字不會命中所有訊息');
+});
+
+// ── 讓步看規則條件與契約（change fix-automation-rule-gaps，問題清單 A09）──
+
+function dbWithRule(rule: { conditions: unknown; actions: unknown[] }, conversation = { channelType: 'LINE' }) {
+  return {
+    automationRule: {
+      findMany: async () => [
+        { id: 'r1', trigger: { type: 'keyword.matched', keywords: ['你好'], match_mode: 'any' }, ...rule },
+      ],
+    },
+    conversation: {
+      findFirst: async ({ where }: { where: { id: string; tenantId: string } }) =>
+        where.id === 'conv-1' && where.tenantId === TENANT
+          ? { channelType: conversation.channelType, status: 'BOT_HANDLED', assignedToId: null, caseId: null }
+          : null,
+    },
+    contact: { findFirst: async () => null },
+    case: { findFirst: async () => null, count: async () => 0 },
+  } as never;
+}
+
+const channelIs = (value: string) => ({ all: [{ fact: 'conversation.channelType', operator: 'equal', value }] });
+const reply = [{ type: 'send_message', params: { text: '您好' } }];
+
+test('規則條件不成立', async () => {
+  const prisma = dbWithRule({ conditions: channelIs('FB'), actions: reply });
+  assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'LINE', { conversationId: 'conv-1' }), false);
+});
+
+test('規則條件成立', async () => {
+  const prisma = dbWithRule({ conditions: channelIs('LINE'), actions: reply });
+  assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'LINE', { conversationId: 'conv-1' }), true);
+});
+
+test('規則不合契約', async () => {
+  const prisma = dbWithRule({ conditions: { all: [] }, actions: [...reply, { type: 'auto_assign', params: {} }] });
+  assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'LINE', { conversationId: 'conv-1' }), false);
 });
