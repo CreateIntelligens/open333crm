@@ -19,7 +19,7 @@ function routeTag(source) {
 
 function parseImports(source) {
   const imports = new Map();
-  for (const match of source.matchAll(/^import\s+([^;]+?)\s+from\s*['"]([^'"]+routes\.js)['"];?/gm)) {
+  for (const match of source.matchAll(/^[ \t]*import\s+([^;]+?)\s+from\s*['"]([^'"]+routes\.js)['"];?/gm)) {
     const [, clause, importPath] = match;
     const routePath = importPath.replace(/\.js$/, '.ts');
     const defaultName = clause.match(/^\s*(\w+)/)?.[1];
