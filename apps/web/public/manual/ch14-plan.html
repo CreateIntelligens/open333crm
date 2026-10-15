@@ -48,8 +48,8 @@
         <a href="#p4"><b>申請記錄</b>看審核進度</a>
       </div>
       <div class="info"><span>ℹ️</span><div>這頁<b>不會顯示目前的方案和用量</b>，只能提出申請。送出升級前，請先向公司窗口或平台方確認你們現在是哪個方案，避免申請到同級或更低的方案。</div></div>
-      <!-- KNOWN-ISSUE: 頁面不顯示目前方案與用量，也不擋升級到同級或更低方案。apps/web/src/app/dashboard/plan/page.tsx:17-21、apps/api/src/modules/plan-change/plan-change.service.ts:27-31 -->
-      <!-- KNOWN-ISSUE: 這頁沒有上方工具列，看不到通知鈴與右上使用者選單。apps/web/src/app/dashboard/plan/page.tsx:62-64 -->
+      <!-- KNOWN-ISSUE: 頁面不顯示目前方案與用量，也不擋升級到同級或更低方案。 -->
+      <!-- KNOWN-ISSUE: 這頁沒有上方工具列，看不到通知鈴與右上使用者選單。 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch14-plan.jpg">
           <source src="uploads/videos/ch14-plan.mp4" type="video/mp4">
@@ -94,7 +94,7 @@
           <li>送出失敗的訊息目前也是綠色底，請看文字內容判斷，不要看顏色。</li>
         </ul>
       </div></div>
-      <!-- KNOWN-ISSUE: 送出失敗的錯誤訊息與成功訊息都用綠色成功樣式。apps/web/src/app/dashboard/plan/page.tsx:55-56,67；備註前端無 maxLength（:113），後端 max(500)。 -->
+      <!-- KNOWN-ISSUE: 送出失敗的錯誤訊息與成功訊息都用綠色成功樣式；備註輸入框沒有字數上限，超過 500 字送出才失敗。 -->
     </section>
 
     <section class="doc" id="p4">
@@ -113,8 +113,8 @@
         </tbody>
       </table>
       <p>升級申請在記錄裡會顯示英文方案代號，對照如下：<code>standard</code>＝標準版、<code>professional</code>＝專業版、<code>enterprise</code>＝企業版。記錄目前沒有顯示申請日期。</p>
-      <!-- KNOWN-ISSUE: 申請記錄顯示原始代號（升級 → standard），沒有日期與駁回原因。apps/web/src/app/dashboard/plan/page.tsx:129 -->
-      <!-- KNOWN-ISSUE: 申請記錄載入失敗沒有處理，會顯示「尚無申請記錄。」。apps/web/src/app/dashboard/plan/page.tsx:39-40,137 -->
+      <!-- KNOWN-ISSUE: 申請記錄顯示原始代號（升級 → standard），沒有日期與駁回原因。 -->
+      <!-- KNOWN-ISSUE: 申請記錄載入失敗沒有處理，會顯示「尚無申請記錄。」。 -->
       <div class="info"><span>ℹ️</span><div>如果「申請記錄」顯示「尚無申請記錄。」但你記得送過申請，請重新整理頁面。目前讀取失敗時也會顯示這句話。</div></div>
     </section>
 

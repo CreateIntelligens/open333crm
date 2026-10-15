@@ -98,7 +98,7 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>時限相關的通知標題會直接寫出發生什麼事：「首次回應即將逾期」「首次回應已逾期」「解決期限即將逾期」「解決期限已逾期」「客戶等待過久」。自動化規則送來的通知，標題都是「自動化規則通知」，規則設定的訊息內容寫在標題下面那行。</div></div>
-      <!-- KNOWN-ISSUE: 通知列表讀取失敗時顯示「目前沒有通知」；標記已讀失敗沒有任何提示。web/app/dashboard/notifications/page.tsx:39-43, 52-78 -->
+      <!-- KNOWN-ISSUE: 通知列表讀取失敗時顯示「目前沒有通知」；標記已讀失敗沒有任何提示。 -->
       <div class="info"><span>ℹ️</span><div>如果明明鈴鐺有紅色數字，列表卻顯示「目前沒有通知」，或按了「全部已讀」沒反應，請重新整理頁面再試一次。通知目前不能刪除，也不能關掉某一類通知。</div></div>
     </section>
 
@@ -119,8 +119,8 @@
           <tr><td>資料匯出完成、資料刪除完成</td><td>見下方說明</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: CSAT 低分通知連到 /dashboard/cases?id=...，工單列表不會開那張工單。apps/api/src/modules/csat/csat.service.ts:298 -->
-      <!-- KNOWN-ISSUE: 資料匯出通知連到 /dashboard/settings/data-export/{id}，前端沒有這個頁面。apps/workers/src/handlers/data-export.handler.ts:210 -->
+      <!-- KNOWN-ISSUE: CSAT 低分通知連到 /dashboard/cases?id=...，工單列表不會開那張工單。 -->
+      <!-- KNOWN-ISSUE: 資料匯出通知連到 /dashboard/settings/data-export/{id}，前端沒有這個頁面。 -->
       <div class="info"><span>ℹ️</span><div><b>CSAT 低分警報</b>點了只會到工單列表，不會直接打開那張工單；請照通知內容寫的工單名稱，在工單列表搜尋。<b>資料匯出完成</b>的通知目前點了會找不到頁面，需要匯出檔時請洽系統管理員協助。<b>資料刪除完成</b>只是告知，沒有連結。</div></div>
     </section>
 
@@ -144,7 +144,7 @@
           <tr><td>自動化規則的「傳送通知」動作</td><td>規則裡「通知誰」指定的客服；沒指定時依序找工單負責人、對話負責客服，都沒有就通知所有主管與管理員（見「<a href="ch05-automation.html#p6">05 · 自動化</a>」）</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 未指派對話的每一則進站訊息都會通知所有 ADMIN／SUPERVISOR，量大時會洗版。apps/api/src/modules/notification/notification.worker.ts:199-210 -->
+      <!-- KNOWN-ISSUE: 未指派對話的每一則進站訊息都會通知所有 ADMIN／SUPERVISOR，量大時會洗版。 -->
       <div class="tip-ai"><span>✨</span><div><b>管理員和主管的通知太多？</b>沒有負責人的對話，每來一則訊息就會通知所有管理員與主管。在收件匣把對話指派給負責的客服（做法見「<a href="ch01-inbox.html">01 · 收件匣</a>」），之後這段對話的新訊息就只會通知那位負責人。</div></div>
     </section>
 

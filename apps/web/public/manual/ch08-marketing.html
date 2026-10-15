@@ -58,7 +58,7 @@
         <a href="#p6"><b>在訊息放客戶姓名</b>變數的正確寫法</a>
       </div>
       <div class="info"><span>ℹ️</span><div>看得到這些頁面需要管理員開給你「檢視行銷」權限；要新增或修改活動、分群、廣播，還需要「管理行銷」；要按「立即發送」或取消廣播，需要「執行群發」。目前畫面上的按鈕不會因為權限不同而隱藏，沒有權限的人按下去會看到錯誤訊息。</div></div>
-      <!-- KNOWN-ISSUE: 行銷頁面沒有依權限隱藏按鈕，只有檢視權限的人也看得到「新增活動／建立廣播／立即發送」 apps/web/src/app/dashboard/marketing/page.tsx（無 usePermission） -->
+      <!-- KNOWN-ISSUE: 行銷頁面沒有依權限隱藏按鈕，只有檢視權限的人也看得到「新增活動／建立廣播／立即發送」 -->
     </section>
 
     <section class="doc" id="p2">
@@ -97,7 +97,7 @@
       </figure>
       <p>活動右上角的按鈕可以改狀態：草稿可以「啟動」，進行中可以「完成」或「取消」。草稿狀態的活動，可以在列表卡片右下角的垃圾桶刪除。</p>
       <div class="info"><span>ℹ️</span><div>活動的狀態和起訖日期都只是標記，<b>不會</b>自動發送或停止任何廣播。活動按了「完成」或「取消」，底下已排程的廣播時間到還是會發送；要停止廣播，請到「廣播」頁把那則廣播取消（見第 5 節）。</div></div>
-      <!-- KNOWN-ISSUE: 活動詳情頁不能編輯名稱、描述、日期，也沒有「在此活動建立廣播」入口；要回廣播頁建立時選「關聯活動」 apps/web/src/app/dashboard/marketing/campaigns/[campaignId]/page.tsx -->
+      <!-- KNOWN-ISSUE: 活動詳情頁不能編輯名稱、描述、日期，也沒有「在此活動建立廣播」入口；要回廣播頁建立時選「關聯活動」 -->
       <p>要把廣播掛進活動，是在建立廣播時的「關聯活動」欄位選擇（見第 4 節）。</p>
     </section>
 
@@ -210,7 +210,7 @@
       </ul>
       <div class="info"><span>ℹ️</span><div>按下「立即發送」後，播放圖示會變成轉圈圈，發送期間其他廣播的發送按鈕也會暫時按不了。人數多的時候要花一點時間，請耐心等候；已經在發送中的廣播不會被重複送出。要確認結果，請稍後重新整理頁面。</div></div>
       <div class="info"><span>ℹ️</span><div>廣播顯示「失敗」或失敗人數很多時，畫面上目前看不到失敗原因，失敗的廣播也無法在這裡重新發送。常見原因是素材和渠道平台不同（見第 4 節）、渠道憑證失效，或該渠道沒有可以發送的對象。查不出原因時請聯絡系統管理員。</div></div>
-      <!-- KNOWN-ISSUE: 失敗原因只寫 log、不存錯誤訊息；failed 狀態沒有重試/取消按鈕 apps/api/src/modules/marketing/broadcast.scheduler.ts:28、marketing.service.ts:596-600、apps/web/src/app/dashboard/marketing/page.tsx:369 -->
+      <!-- KNOWN-ISSUE: 發送失敗原因沒有顯示在畫面上；失敗狀態沒有重試／取消按鈕 -->
     </section>
 
     <section class="doc" id="p6">
@@ -227,7 +227,7 @@
       <p>例如在 LINE 純文字素材寫「<code>{{contact.name}} 您好，週年慶開跑囉！</code>」，陳小明收到的就是「陳小明 您好，週年慶開跑囉！」。</p>
       <div class="warn"><span>⚠️</span><div><b>寫法要完全一樣。</b>舊版手冊寫的 <code>{{contact_name}}</code>（底線）是錯的，系統認不得，客戶會原封不動收到「{{contact_name}}」。另外，如果某位客戶沒有電話或 Email，<code>{{contact.phone}}</code>、<code>{{contact.email}}</code> 也會原樣顯示大括號給他，所以群發時建議只用 <code>{{contact.name}}</code>。</div></div>
       <div class="info"><span>ℹ️</span><div>關鍵字回覆和自動化規則（第 10 章、第 05 章）送出的素材也會代入變數。這兩種情況下，客戶沒有那筆資料時會改用素材設定的預設值；連預設值也沒有，就留空，不會出現大括號。</div></div>
-      <!-- KNOWN-ISSUE: 素材編輯器沒有變數插入或說明 apps/web/src/components/materials/MaterialEditor.tsx；廣播缺值時仍原樣保留 {{key}} apps/api/src/modules/marketing/template-renderer.ts:26 -->
+      <!-- KNOWN-ISSUE: 素材編輯器沒有變數插入或說明；廣播時變數缺值會原樣顯示變數名稱 -->
     </section>
 
     <footer class="manual-footer">

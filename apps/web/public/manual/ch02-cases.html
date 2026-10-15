@@ -90,7 +90,7 @@
         <li>點任一列，進入工單詳情。</li>
       </ol>
       <div class="info"><span>ℹ️</span><div>搜尋只會找<b>目前這一頁</b>的 20 筆。工單很多時，請先用下拉或狀態分頁縮小範圍再搜尋。另外，「所有 SLA」選「正常」目前不會過濾，結果和「所有 SLA」一樣。</div></div>
-      <!-- KNOWN-ISSUE: 搜尋只在當頁 20 筆前端過濾 web/app/dashboard/cases/page.tsx:66-76；SLA「正常」後端不加條件 api/case/case.service.ts:73 -->
+      <!-- KNOWN-ISSUE: 搜尋只過濾當頁 20 筆；SLA「正常」篩選沒有作用 -->
       <h3>表格欄位</h3>
       <table>
         <thead><tr><th>欄位</th><th>說明</th></tr></thead>
@@ -117,7 +117,7 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>分類前面的小機器人圖示，不一定代表是 AI 分的，人工選的分類也會顯示。</div></div>
-      <!-- KNOWN-ISSUE: 分類欄任何分類都顯示 AI 圖示 web/components/case/CaseList.tsx:129、CaseDetail.tsx:263-265 -->
+      <!-- KNOWN-ISSUE: 分類欄任何分類都顯示 AI 圖示 -->
     </section>
 
     <section class="doc" id="p3">
@@ -189,7 +189,7 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>欄位存檔成功不會跳提示，畫面直接更新就代表存好了。改負責人之後重新整理，名字又變回原本的，表示沒有存成功，通常是帳號沒有「指派工單」權限，請找管理員。問題描述目前只能看、不能改，要補充請寫在備註。</div></div>
-      <!-- KNOWN-ISSUE: 改負責人失敗無 catch、無提示 web/components/case/CaseDetail.tsx:165-172 -->
+      <!-- KNOWN-ISSUE: 改負責人失敗時沒有任何提示 -->
     </section>
 
     <section class="doc" id="p5">
@@ -223,7 +223,7 @@
         <figcaption>案件升級：選原因、確認優先級與通知對象。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>「Supervisor（主管）」會通知所有主管和管理員；你自己按升級不會收到通知。重新指派的新負責人目前<b>不會</b>收到通知，請另外告訴他。兩個通知對象都取消勾選的話，就沒有人會收到通知。</div></div>
-      <!-- KNOWN-ISSUE: 升級時改派的新負責人不在通知收件人裡 apps/api/src/modules/case/case.service.ts:675-690,742-759 -->
+      <!-- KNOWN-ISSUE: 升級時改派的新負責人不在通知收件人裡 -->
     </section>
 
     <section class="doc" id="p7">
@@ -246,7 +246,7 @@
         <figcaption>時間軸與備註。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>所有備註都只在後台看得到，不會傳給顧客。勾「內部備註」只是在備註上多一個「內部」標記。備註的作者目前都顯示為「Agent」，需要的話請在內容裡寫上你的名字。</div></div>
-      <!-- KNOWN-ISSUE: 備註作者固定顯示 Agent web/components/case/CaseTimeline.tsx:152；新增備註失敗無提示 CaseTimeline.tsx:125-127 -->
+      <!-- KNOWN-ISSUE: 備註作者固定顯示 Agent；新增備註失敗沒有提示 -->
       <div class="info"><span>ℹ️</span><div>系統也會自動在時間軸寫入時限提醒：「首次回應即將逾期」「首次回應已逾期」「解決期限即將逾期」「解決期限已逾期」，以及「客戶等待過久，有多則訊息尚未回覆」。同一個期限只會記一次，不會每天重複出現。</div></div>
     </section>
 

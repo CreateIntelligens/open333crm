@@ -73,7 +73,7 @@
         <li>上方四個分頁「概覽」「案件報表」「客服績效」「渠道分析」都會套用同一段期間。</li>
       </ol>
       <div class="info"><span>ℹ️</span><div>自訂日期會把<b>開始日和結束日都算一整天</b>。例如要看 10/1～10/15，開始日選 10/1、結束日選 10/15 就好。</div></div>
-      <!-- KNOWN-ISSUE: 開始日晚於結束日時後端回 400，畫面只顯示「-」和「尚無資料」。apps/web/src/app/dashboard/analytics/page.tsx:35-39 -->
+      <!-- KNOWN-ISSUE: 開始日晚於結束日時後端回 400，畫面只顯示「-」和「尚無資料」。 -->
       <div class="info"><span>ℹ️</span><div>
         <ul>
           <li>不小心把日期框清空也沒關係，報表會維持原本的期間，再選一次日期就好。</li>
@@ -102,8 +102,8 @@
       </table>
       <h3>訊息趨勢</h3>
       <p>每天各渠道的訊息量折線圖，可以看出哪幾天特別忙。</p>
-      <!-- KNOWN-ISSUE: 訊息趨勢只畫 LINE／Facebook／WebChat 三條線，Instagram 私訊與 WhatsApp 沒有線。apps/web/src/components/analytics/MessageTrendChart.tsx:62-85 -->
-      <!-- KNOWN-ISSUE: 每日分組用資料庫時區（UTC），台灣凌晨 0-8 點的訊息會算到前一天。apps/api/src/modules/analytics/analytics.service.ts:16-20,212 -->
+      <!-- KNOWN-ISSUE: 訊息趨勢只畫 LINE／Facebook／WebChat 三條線，Instagram 私訊與 WhatsApp 沒有線。 -->
+      <!-- KNOWN-ISSUE: 每日分組用資料庫時區（UTC），台灣凌晨 0-8 點的訊息會算到前一天。 -->
       <div class="info"><span>ℹ️</span><div>
         <ul>
           <li>圖上目前只有 LINE、Facebook、WebChat 三條線。Instagram 私訊有算進「訊息總量」，但圖上沒有自己的線。</li>
@@ -178,7 +178,7 @@
           <tr><td>WEBCHAT</td><td>網站聊天視窗</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 圓餅圖的文字標籤在卡片邊緣被切掉（例如「WEBCHAT 77%」只剩「3CHAT 77%」、Bot vs 人工只剩「理 100%」）。apps/web/src/components/analytics/ChannelDistributionChart.tsx:78,110 -->
+      <!-- KNOWN-ISSUE: 圓餅圖的文字標籤在卡片邊緣被切掉（例如「WEBCHAT 77%」只剩「3CHAT 77%」、Bot 與人工只剩「理 100%」）。 -->
       <div class="info"><span>ℹ️</span><div>圓餅圖旁的文字有時會被切掉一半，看不清楚時，把滑鼠移到色塊上，就會顯示完整名稱和數字。</div></div>
     </section>
 
@@ -243,7 +243,7 @@
           <tr><td>SLA 達成率</td><td>在時限內解決的比例</td><td>90% 以上</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 「目標: 15」沒有單位；沒有資料時顯示「-%」「- / 5」。apps/web/src/app/dashboard/analytics/my/page.tsx:38,46,117 -->
+      <!-- KNOWN-ISSUE: 「目標: 15」沒有單位；沒有資料時顯示「-%」「- / 5」。 -->
       <div class="info"><span>ℹ️</span><div>有目標的卡片，數字旁邊會自動標示：綠勾代表達標，黃色警示代表還沒達標。「平均首次回應」的目標是 15 分鐘，卡片上寫的「目標: 15」就是 15 分鐘。</div></div>
       <div class="info"><span>ℹ️</span><div>
         <ul>

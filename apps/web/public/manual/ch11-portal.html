@@ -43,7 +43,7 @@
     <section class="doc" id="p1">
       <h2><span class="idx">1</span> 這頁能做什麼</h2>
       <p>「粉絲活動」是讓客戶跟品牌互動的小活動，例如「選出你最愛的商品」投票、「留下資料抽好禮」表單、「猜猜看答案」競猜。你可以在後台設計活動、看誰參加、抽出中獎者，也可以替客戶加點、扣點。側欄「行銷與渠道 &gt; 粉絲活動」底下有三個選單：<b>活動管理</b>、<b>提交紀錄</b>、<b>積分管理</b>。</p>
-      <!-- KNOWN-ISSUE: 粉絲端沒有入口。簽發 fanToken 的 signFanToken() 沒有任何呼叫端（apps/api/src/modules/portal/portal-auth.service.ts:18），前端也沒有粉絲活動頁；docs/ref/system/AUDIT.md PORTAL-01、PORTAL-02。接上入口後要改寫本章的開頭警告與第 4、5 節。 -->
+      <!-- KNOWN-ISSUE: 粉絲端目前沒有入口，也沒有粉絲活動頁。接上入口後要改寫本章的開頭警告與第 4、5 節。 -->
       <div class="warn"><span>⚠️</span><div><b>目前狀態：客戶還沒有地方可以參加活動。</b>後台可以建立和發布活動，但給客戶參加的頁面還沒有開放，所以發布後「參加人數」會一直是 0，「提交紀錄」也會是空的，抽獎與活動送點數暫時用不到。現在真正能用的是「積分管理」的<b>手動調整點數</b>。你可以先把活動建成草稿準備好，等客戶入口開放後再發布。</div></div>
       <div class="quick">
         <a href="#p2"><b>三種活動怎麼選</b>投票、表單、競猜的差別</a>
@@ -102,7 +102,7 @@
           <tr><td>欄位（表單）</td><td>「欄位 key」是系統用的英文代號（例如 <code>name</code>、<code>phone</code>），每列不要重複；「顯示名稱」是客戶看到的文字；型態有文字、多行、Email、電話、日期、選單。</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 表單欄位型態「選單」沒有地方輸入選單選項，建出來是空選單（apps/web/src/components/portal/ActivityFormDialog.tsx:251-267）；只填 key 或只填名稱的欄位會被靜默丟掉（同檔:103）；每次提交積分可輸入負數（同檔:169）。 -->
+      <!-- KNOWN-ISSUE: 表單欄位型態「選單」沒有地方輸入選單選項，建出來是空選單；只填 key 或只填名稱的欄位會被靜默丟掉；每次提交積分可輸入負數。 -->
       <div class="warn"><span>⚠️</span><div>
         <b>填表單時請注意三件事：</b><br>
         1. 欄位型態先不要選「選單」：目前沒有地方填選單的選項，建出來會是空的。需要讓客戶選擇時，改用投票活動。<br>
@@ -133,7 +133,7 @@
         <li>要收起已結束的活動：按「封存」，確認後活動就從列表消失，參加紀錄會保留。</li>
         <li>要找回封存的活動：按左上角「查看已封存」，在該活動按「取消封存」；按「返回活動列表」回到原本的清單。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 發布、結束沒有確認視窗，結束不可逆（apps/web/src/app/dashboard/portal/page.tsx:56-80）。 -->
+      <!-- KNOWN-ISSUE: 發布、結束沒有確認視窗，結束不可逆。 -->
       <div class="warn"><span>⚠️</span><div><b>「發布」和「結束」按下去就立刻生效，不會再問你一次。</b>結束之後沒辦法重新開始，只能再建一個新活動。「刪除」只有草稿才有，刪了就救不回來。</div></div>
       <div class="info"><span>ℹ️</span><div>活動清單會列出所有活動，不會只顯示前幾筆。用不到的活動結束後記得「封存」，清單比較好找。</div></div>
     </section>
@@ -163,7 +163,7 @@
           <tr><td>積分</td><td>這次參加拿到的點數</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 抽獎沒有確認、可重複加抽、不可撤銷（apps/web/src/components/portal/SubmissionsView.tsx:29-42,141；apps/api/src/modules/portal/portal.service.ts:344-359）；封存的活動不出現在下拉（SubmissionsView.tsx:21）。 -->
+      <!-- KNOWN-ISSUE: 抽獎沒有確認、可重複加抽、不可撤銷；封存的活動不出現在下拉。 -->
       <div class="warn"><span>⚠️</span><div><b>抽獎結果會直接存下來，不能收回。</b>同一個視窗再按一次「抽獎」，會從還沒中獎的人裡<b>再多抽一批</b>，不是重抽。按之前先確認人數。另外，封存的活動不會出現在「選擇活動」裡，要抽獎請在封存前完成。</div></div>
     </section>
 

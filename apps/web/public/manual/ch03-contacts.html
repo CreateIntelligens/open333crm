@@ -90,7 +90,7 @@
         <b>搜尋小技巧</b>：名稱、電話、Email 三個欄位都會一起找，不分大小寫，打一部分也找得到。電話要照存的樣子打，例如存成「0912-345-678」，就要打「0912-345」才找得到。<br>
         <b>為什麼有些人沒出現</b>：列表只列出至少有一個 LINE、Facebook 或 Instagram 帳號的客人。只在網站聊天視窗（WebChat）聊過的訪客，以及已經被合併掉的那一筆，都不會出現在這裡。
       </div></div>
-      <!-- KNOWN-ISSUE: 沒有「查看聯絡人」權限時列表也只顯示「找不到聯絡人」，看不出是沒權限。web/app/dashboard/contacts/page.tsx:14、web/components/contact/ContactList.tsx:78-85 -->
+      <!-- KNOWN-ISSUE: 沒有「查看聯絡人」權限時列表也只顯示「找不到聯絡人」，看不出是沒權限。 -->
       <div class="info"><span>ℹ️</span><div>如果你點進來只看到「找不到聯絡人」，但同事看得到資料，通常是你的帳號還沒有「查看聯絡人」的權限，請找管理員幫你開。另外，你只看得到自己可見渠道的帳號與對話。</div></div>
     </section>
 
@@ -147,11 +147,11 @@
         <li>按右邊的「＋」，標籤就貼上了。</li>
         <li>要拿掉標籤，點標籤右邊的「×」。這個動作<b>不會再問一次</b>，點了就移除。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 讀不到標籤或沒有可用標籤時，整個下拉選單會直接消失，沒有說明。web/components/contact/TagManager.tsx:39-44, 105 -->
+      <!-- KNOWN-ISSUE: 讀不到標籤或沒有可用標籤時，整個下拉選單會直接消失，沒有說明。 -->
       <div class="info"><span>ℹ️</span><div>下拉選單只會列出「給聯絡人用」而且還沒貼上的標籤。如果看不到下拉選單，代表還沒有可用的標籤，請管理員到「設定 → 標籤管理」先建立（見「<a href="ch17-settings.html">17 · 其他設定</a>」）。沒有「編輯聯絡人」權限的人點了會跳出失敗訊息。</div></div>
       <h3>VIP 標籤</h3>
       <p>把重要客人貼上 <b>VIP</b> 標籤，自動化規則就能用「聯絡人是 VIP」當條件，對他們特別處理，例如 VIP 一來訊息就通知主管、VIP 的工單快逾期時提早升級（見「<a href="ch05-automation.html">05 · 自動化</a>」）。</p>
-      <!-- KNOWN-ISSUE: 自動化一般時機只認大寫「VIP」，SLA 時機不分大小寫，兩邊不一致。apps/api/src/modules/automation/engine/fact-builder.ts:114-115、apps/workers/src/lib/automation-facts.ts:101-102、apps/workers/src/handlers/sla.handler.ts:128-129 -->
+      <!-- KNOWN-ISSUE: 自動化一般時機只認大寫「VIP」，SLA 時機不分大小寫，兩邊不一致。 -->
       <div class="warn"><span>⚠️</span><div>標籤名稱請用<b>大寫的「VIP」</b>。寫成小寫「vip」時，只有 SLA 類的規則會把他當 VIP，「收到訊息」等其他時機的規則不會，結果會不一致。</div></div>
     </section>
 
@@ -182,7 +182,7 @@
         <li>這裡只能看。要回覆客人，請到收件匣。</li>
         <li>如果客人在你看不到的渠道也有對話，底下會寫「另有 N 段其他渠道的對話，你沒有權限查看」。</li>
       </ul>
-      <!-- KNOWN-ISSUE: 沒有收件匣權限時分頁仍可點，進去才顯示「對話紀錄載入失敗」。web/app/dashboard/contacts/[contactId]/page.tsx:174-179 -->
+      <!-- KNOWN-ISSUE: 沒有收件匣權限時分頁仍可點，進去才顯示「對話紀錄載入失敗」。 -->
       <div class="info"><span>ℹ️</span><div>看到「對話紀錄載入失敗」，通常是你的帳號沒有「查看收件匣」權限，請找管理員。</div></div>
     </section>
 
@@ -231,12 +231,12 @@
           <tr><td>被併進來的那一筆</td><td>封存起來，不再出現在列表</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 同一渠道帳號衝突要到第 3 步按「確認合併」才被擋，第 2 步預覽以渠道類型比對、看不出衝突。apps/api/src/modules/contact/contact.service.ts:640-643、contact-merge.service.ts:160-183 -->
+      <!-- KNOWN-ISSUE: 同一渠道帳號衝突要到第 3 步按「確認合併」才被擋，第 2 步預覽以渠道類型比對、看不出衝突。 -->
       <div class="warn"><span>⚠️</span><div>
         <b>同一個渠道帳號下的兩個身分不能合併</b>。例如兩筆都在「總店 LINE OA」有帳號，合併後回覆會送錯人，系統會在按「確認合併」時擋下來，並在視窗上方顯示紅色訊息。第 2 步的預覽目前看不出這種情況，請先在兩位的「渠道身份」確認他們不是在同一個官方帳號或粉專。<br>
         <b>第 3 步寫「此操作無法復原」</b>，其實合錯了還可以到「合併紀錄」解除（見下一節），但解除時<b>標籤與自訂屬性不會搬回去</b>，所以合併前還是要確認清楚。
       </div></div>
-      <!-- KNOWN-ISSUE: 「合併聯絡人」按鈕不檢查權限，沒權限的人到第 2 步才看到錯誤。web/app/dashboard/contacts/[contactId]/page.tsx:97-104 -->
+      <!-- KNOWN-ISSUE: 「合併聯絡人」按鈕不檢查權限，沒權限的人到第 2 步才看到錯誤。 -->
       <div class="info"><span>ℹ️</span><div>沒有「合併聯絡人」權限的人也看得到這個按鈕，但走到第 2 步會出現錯誤。要換成「保留另一位」，請到另一位的詳情頁再按「合併聯絡人」。</div></div>
     </section>
 

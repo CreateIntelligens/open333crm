@@ -112,7 +112,7 @@
           <tr><td>已封存</td><td>暫時下架、先收起來</td><td>不會</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 列表載入失敗時沒有錯誤畫面，會顯示「尚無文章」；篩選沒結果也顯示同一句。apps/web/src/app/dashboard/knowledge/page.tsx:84-92、apps/web/src/components/knowledge/ArticleList.tsx:65-73 -->
+      <!-- KNOWN-ISSUE: 列表載入失敗時沒有錯誤畫面，會顯示「尚無文章」；篩選沒結果也顯示同一句。 -->
       <div class="info"><span>ℹ️</span><div>如果列表突然顯示「尚無文章」，先清掉搜尋字和篩選條件，再重新整理頁面。目前「篩選後沒有結果」和「載入失敗」都會顯示這句話，不代表文章不見了。</div></div>
     </section>
 
@@ -154,7 +154,7 @@
           <li>從合作夥伴系統匯入的文章，對話框上方會多一塊「合作方匯入」資訊，這類文章通常由對方系統更新，不需要手動改。</li>
         </ul>
       </div></div>
-      <!-- KNOWN-ISSUE: 開啟編輯時如果讀取文章失敗，會用列表資料代替，內容欄是空的。apps/web/src/app/dashboard/knowledge/page.tsx:110-113 -->
+      <!-- KNOWN-ISSUE: 開啟編輯時如果讀取文章失敗，會用列表資料代替，內容欄是空的。 -->
       <div class="warn"><span>⚠️</span><div>按鉛筆打開文章時，如果「內容」欄是空的，<b>不要直接儲存</b>。這代表文章沒有讀取成功，請按「取消」，重新整理頁面後再打開一次。</div></div>
     </section>
 
@@ -235,7 +235,7 @@
           <li>單次上傳最多等 120 秒，很大的檔案請拆小一點。</li>
         </ul>
       </div></div>
-      <!-- KNOWN-ISSUE: 按「取消／關閉」不會清掉上次的結果，再開對話框時「上傳」按鈕不見、選同一個檔案也沒反應。apps/web/src/components/knowledge/ImportDialog.tsx:135-137,197 -->
+      <!-- KNOWN-ISSUE: 按「取消／關閉」不會清掉上次的結果，再開對話框時「上傳」按鈕不見、選同一個檔案也沒反應。 -->
       <div class="warn"><span>⚠️</span><div>匯入完按「關閉」後，如果要再匯入一批，<b>請先重新整理頁面</b>再按「匯入文章」。目前不重新整理的話，對話框會停在上次的結果，沒辦法選新檔案。</div></div>
     </section>
 
@@ -259,7 +259,7 @@
         <figcaption>搜尋「冰箱不冷怎麼辦」的結果，依匹配程度由高到低排列。</figcaption>
       </figure>
       <div class="tip-ai"><span>✨</span><div>用真實客人的問法測，不要拿文章標題測。常見問題搜不到、或搜到的文章不對題，就代表該補一篇或改寫標題。</div></div>
-      <!-- KNOWN-ISSUE: 還沒按搜尋，一輸入字就顯示「沒有找到相關文章」。apps/web/src/app/dashboard/knowledge/page.tsx:352-356 -->
+      <!-- KNOWN-ISSUE: 還沒按搜尋，一輸入字就顯示「沒有找到相關文章」。 -->
       <div class="info"><span>ℹ️</span><div>
         <ul>
           <li>輸入文字後，畫面可能先顯示「沒有找到相關文章」。這是還沒搜尋，按下「搜尋」才是真正的結果。</li>

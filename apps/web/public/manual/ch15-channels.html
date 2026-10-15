@@ -61,7 +61,7 @@
         <a href="#p11"><b>修改、刪除與進階設定</b>換金鑰、轉發、注意事項</a>
       </div>
       <p>這頁通常只有管理員會用到。要看到渠道清單需要「檢視渠道」權限；新增、編輯、刪除分別需要「新增渠道」「編輯渠道」「刪除渠道」權限。沒有權限的人按下按鈕會跳出錯誤。</p>
-      <!-- KNOWN-ISSUE: 沒有「檢視渠道」權限或載入失敗時，畫面會顯示「沒有渠道」空狀態，看起來像真的沒有渠道（apps/web/src/hooks/useChannels.ts:11-18、apps/web/src/components/settings/ChannelManagement.tsx:390-400）。 -->
+      <!-- KNOWN-ISSUE: 沒有「檢視渠道」權限或載入失敗時，畫面會顯示「沒有渠道」空狀態，看起來像真的沒有渠道。 -->
       <div class="info"><span>ℹ️</span><div>如果你明明知道公司有接渠道，這頁卻顯示「沒有渠道」，通常是你沒有「檢視渠道」權限，請找管理員確認，不要再新增一個。</div></div>
     </section>
 
@@ -95,7 +95,7 @@
           <tr><td>紅色垃圾桶</td><td>刪除渠道，見第 11 節</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: LINE 測試連線只驗 Access Token，不驗 Channel Secret（apps/api/src/modules/channel/channel.service.ts:562-568）；WebChat 按測試連線必定失敗「不支援的渠道類型: WEBCHAT」（channel.service.ts:663）。 -->
+      <!-- KNOWN-ISSUE: LINE 測試連線只驗 Access Token，不驗 Channel Secret；WebChat 按測試連線必定失敗「不支援的渠道類型: WEBCHAT」。 -->
       <div class="info"><span>ℹ️</span><div>
         「測試連線」不會改到客戶看到的任何東西，可以放心按。但有兩點要知道：<br>
         1. LINE 的測試連線只檢查 Channel Access Token。就算 Channel Secret 填錯也會顯示成功，但之後會收不到訊息，所以貼 Secret 時要特別仔細。<br>
@@ -128,7 +128,7 @@
         <li>步驟 3：系統自動建立並測試連線，稍等幾秒。</li>
         <li>步驟 4：看結果。LINE 會顯示 Webhook 已自動設定；Facebook、Instagram 會顯示「回呼網址」和「驗證權杖」，照著貼到 Meta 後台；官網聊天會直接給你嵌入碼。按「完成」。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 在步驟 4 用 X、Esc 或點背景關閉不會刷新列表（apps/web/src/components/settings/ChannelWizard.tsx:77-80、229）。 -->
+      <!-- KNOWN-ISSUE: 在步驟 4 用 X、Esc 或點背景關閉不會刷新列表。 -->
       <div class="warn"><span>⚠️</span><div>最後一步請按「<b>完成</b>」關閉精靈。如果按 Esc 或點旁邊空白處關掉，列表不會更新，看起來像沒建成功。這時請重新整理頁面確認，<b>不要再建一次</b>。</div></div>
       <h3>用「新增渠道」</h3>
       <figure class="video">
@@ -238,7 +238,7 @@
         <li>按鉛筆圖示打開「編輯渠道」，下方「Instagram Webhook 設定提示」有 Webhook 網址和驗證權杖。</li>
         <li>到 Meta 應用程式的 Instagram Webhooks 設定，「回呼網址」貼 Webhook 網址，「驗證權杖」貼 Verify Token，訂閱 <code>messages</code>。</li>
       </ol>
-      <!-- KNOWN-ISSUE: 編輯 IG 渠道時 Webhook URL 下方寫「此為系統內部使用的 Webhook URL」，與下方叫人貼到 Meta 的提示矛盾（apps/web/src/components/settings/ChannelFormDialog.tsx:482-487）。 -->
+      <!-- KNOWN-ISSUE: 編輯 IG 渠道時 Webhook URL 下方寫「此為系統內部使用的 Webhook URL」，與下方叫人貼到 Meta 的提示矛盾。 -->
       <div class="info"><span>ℹ️</span><div>編輯 Instagram 渠道時，Webhook 網址下方寫著「此為系統內部使用的 Webhook URL」，這句說明有誤，這個網址<b>就是要貼到 Meta 的回呼網址</b>。另外，Meta 應用程式要切換成「上線（Live）」模式才收得到客戶私訊，開發模式只收得到測試帳號的訊息。</div></div>
     </section>
 
@@ -256,7 +256,7 @@
         <li>建議用「設定精靈」，渠道類型選「WebChat (網頁聊天)」。WebChat 不需要任何外部金鑰，系統會自動產生，完成後直接給你嵌入碼。</li>
         <li>如果用「新增渠道」，畫面會要你填「Channel Secret」和「Channel Access Token」，這兩格隨便填一串英文數字就可以（例如 <code>webchat-key-001</code>），它們不會用在別的地方。</li>
       </ol>
-      <!-- KNOWN-ISSUE: WebChat 在「新增渠道」要求填兩個任意字串，精靈卻說不需要（apps/web/src/components/settings/ChannelFormDialog.tsx:417-444 vs ChannelWizard.tsx:356-362）。 -->
+      <!-- KNOWN-ISSUE: WebChat 在「新增渠道」要求填兩個任意字串，精靈卻說不需要。 -->
       <h3>放到官網上</h3>
       <ol class="steps">
         <li>在 WebChat 卡片按「取得嵌入碼」。</li>
@@ -276,7 +276,7 @@
           <tr><td>頁面上方「WebChat 網頁版連結」</td><td>不用放到官網也能聊的獨立聊天頁。按「複製連結」，可以貼在 Email、社群貼文或做成 QR Code</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 背景上傳／儲存失敗時沒有任何畫面提示（apps/web/src/components/settings/ChannelManagement.tsx:226-255）。 -->
+      <!-- KNOWN-ISSUE: 背景上傳／儲存失敗時沒有任何畫面提示。 -->
       <div class="info"><span>ℹ️</span><div>上傳背景圖後如果畫面沒變化，可能是檔案太大或格式不對（系統不會跳錯誤訊息），請換一張較小的 png 或 jpeg 再試。</div></div>
     </section>
 
@@ -336,7 +336,7 @@
         <li>按「儲存」。</li>
       </ol>
       <p>新增同事時，也可以在「看得到哪些渠道」直接勾好。詳細操作見「<a href="ch16-team.html">16 · 人員、角色與權限</a>」。</p>
-      <!-- KNOWN-ISSUE: 系統沒有建立團隊的介面，空狀態卻叫人去人員管理建立團隊（apps/web/src/components/settings/ChannelTeamAssignment.tsx:236-238）；指派與撤銷即時生效，外層「取消」無效。 -->
+      <!-- KNOWN-ISSUE: 系統沒有建立團隊的介面，空狀態卻叫人去人員管理建立團隊；指派與撤銷即時生效，外層「取消」無效。 -->
       <div class="info"><span>ℹ️</span><div>
         「編輯渠道」視窗下方還有一個「指派團隊」區塊。那裡的說明寫得很清楚：<b>未指派任何團隊或成員時，只有總店看得到</b>（也就是有「檢視所有渠道」權限的人）。<br>
         不過系統目前沒有建立團隊的地方，通常選不到團隊；而且在這個區塊按「新增」或撤銷的 X 會立刻生效，之後按「取消」不會復原。要調整誰看得到，建議照上面的步驟到「人員管理」改。
@@ -392,7 +392,7 @@
         <img src="uploads/shots/ch15-edit-line.png" alt="編輯渠道：顯示名稱、留空表示不更新的金鑰欄、跨渠道綁定、Webhook URL" loading="lazy">
         <figcaption>編輯 LINE 渠道（網址與帳號 ID 已遮蔽）。</figcaption>
       </figure>
-      <!-- KNOWN-ISSUE: LINE 只填其中一個憑證時前端默默不送，視窗照樣關閉（apps/web/src/components/settings/ChannelFormDialog.tsx:135-140）；跨渠道綁定輸入框按 Enter 會送出外層表單（ChannelBindingHandleField.tsx:118-122）。 -->
+      <!-- KNOWN-ISSUE: LINE 只填其中一個憑證時前端默默不送，視窗照樣關閉；跨渠道綁定輸入框按 Enter 會送出外層表單。 -->
       <div class="warn"><span>⚠️</span><div>
         <b>換 LINE 金鑰時，Channel Secret 和 Channel Access Token 兩格都要重新貼上。</b>只填一格的話，視窗會照常關閉，但金鑰其實沒有換。Facebook、Instagram 可以只換其中一格。<br>
         「跨渠道綁定」區塊有自己的「儲存」按鈕，改完要按它，不要在輸入框裡按 Enter（會變成按到下面的「儲存」，綁定的值沒存到）。這個值系統通常會自動取得，一般不用改。

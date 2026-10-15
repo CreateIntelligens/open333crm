@@ -99,7 +99,7 @@
       <h3>模型設定：平常不要動</h3>
       <p>「模型設定」裡的服務網址和「Embedding 模型」是系統架設時就設好的。</p>
       <div class="warn"><span>⚠️</span><div><b>換模型等於讓 AI 忘掉所有文章。</b>換了「Embedding 模型」後，系統會跳出「確認切換模型？」，確認後所有文章都要重新讀過，讀完之前 AI 客服幾乎找不到任何答案。除非系統管理者要求，請不要更動這一塊。</div></div>
-      <!-- KNOWN-ISSUE: 「語意搜尋參數」的儲存會一併存下模型設定且不跳切換確認。apps/web/src/components/knowledge/EmbeddingSettings.tsx:116,125-127 -->
+      <!-- KNOWN-ISSUE: 「語意搜尋參數」的儲存會一併存下模型設定且不跳切換確認。 -->
       <div class="info"><span>ℹ️</span><div>這頁兩個「儲存」按鈕都會把<b>整頁</b>設定一起存起來。如果你不小心動了模型，又按了下方「語意搜尋參數」的儲存，模型也會被換掉，而且不會跳確認。改之前先重新整理頁面，確定只改到你要改的地方。</div></div>
 
       <h3>語意搜尋參數：AI 回答前找幾篇、多相關</h3>
@@ -184,7 +184,7 @@
           <tr><td>多輪追問（Clarify）的提示詞</td><td>客人的問題太模糊時，AI 怎麼反問</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 客服回覆提示詞的說明仍寫「自動化規則的 LLM Reply 動作」，該動作已停用。apps/web/src/components/knowledge/ChatPromptSettings.tsx:460 -->
+      <!-- KNOWN-ISSUE: 客服回覆提示詞的說明仍寫「自動化規則的 LLM Reply 動作」，該動作已停用。 -->
 
       <h3>修改提示詞</h3>
       <ol class="steps">

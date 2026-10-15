@@ -87,7 +87,7 @@
       </table>
       <div class="info"><span>ℹ️</span><div>預設的客服權限其實不小：<b>可以刪除工單、合併聯絡人、刪除全公司共用的標籤</b>。如果你希望客服只做回覆與處理工單，請管理員到「角色與權限」把 Agent 的這幾項取消勾選。</div></div>
       <div class="info"><span>ℹ️</span><div>人員管理頁下方的角色說明（例如「Agent：只能看自己負責的對話/案件」）是舊的寫法，和目前的實際分工不同，請以這張表和「角色與權限」頁為準。</div></div>
-      <!-- KNOWN-ISSUE: 人員管理頁下方角色說明寫死舊文案，與細粒度權限及渠道可見範圍不符 apps/web/src/components/settings/AgentManagement.tsx:801-806 -->
+      <!-- KNOWN-ISSUE: 人員管理頁下方角色說明寫死舊文案，與細粒度權限及渠道可見範圍不符 -->
     </section>
 
     <section class="doc" id="p3">
@@ -107,7 +107,7 @@
           <tr><td>操作</td><td>「編輯」：換角色、重設密碼、調整渠道、停用或刪除</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 「開啟案件」實際是所有指派過的案件數（含已結案） apps/api/src/modules/agent/agent.routes.ts:63-67 -->
+      <!-- KNOWN-ISSUE: 「開啟案件」實際是所有指派過的案件數（含已結案） -->
       <div class="info"><span>ℹ️</span><div>如果列表顯示「沒有符合條件的人員」，通常不是公司沒人，而是你的帳號沒有「檢視成員」權限，或資料暫時讀取失敗。請重新整理，仍然一樣就找管理員確認。</div></div>
     </section>
 
@@ -139,9 +139,9 @@
         <li>角色若有「檢視所有渠道（總店）」權限（預設只有管理員有），不受這個清單限制，一律看得到全部。</li>
         <li>如果全部取消勾選，畫面會出現「只有總店…看得到」的提示，意思是：<b>這位同事什麼渠道都看不到</b>。</li>
       </ul>
-      <!-- KNOWN-ISSUE: 全部取消後的提示文案是給「建立渠道」用的，放在建立成員語意顛倒 apps/web/src/components/settings/AccessChecklist.tsx:107-109 -->
+      <!-- KNOWN-ISSUE: 全部取消後的提示文案是給「建立渠道」用的，放在建立成員語意顛倒 -->
       <div class="warn"><span>⚠️</span><div><b>電子信箱請一律用小寫輸入。</b>系統目前會照你打的大小寫存起來，但登入時大小寫要完全一致，例如你輸入 <code>Amy@Example.com</code>，同事用小寫登入會失敗。</div></div>
-      <!-- KNOWN-ISSUE: 建立成員 email 不轉小寫，登入精確比對 apps/api/src/modules/agent/agent.schema.ts:7、apps/api/src/modules/auth/auth.service.ts:45 -->
+      <!-- KNOWN-ISSUE: 建立成員 email 不轉小寫，登入精確比對 -->
       <div class="info"><span>ℹ️</span><div>如果跳出「已達方案客服人數上限，請升級方案」，代表啟用中的人數已經用完方案額度。可以先刪除不再使用的帳號，或到「方案／帳務」了解升級方式。一個電子信箱在整個系統只能用一次，跳出「Email 已被使用」時請換一個。</div></div>
     </section>
 
@@ -257,9 +257,9 @@
         <figcaption>一般設定：上方個人資料唯讀，下方修改密碼。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>新密碼欄位的提示文字寫「至少 6 個字元」，實際上要 <b>8 個字</b>以上。角色欄目前會顯示英文（例如 ADMIN），不會顯示自訂角色名稱。</div></div>
-      <!-- KNOWN-ISSUE: 新密碼 placeholder 寫 6 字元但驗證是 8；角色 roleLabels 用小寫 key 對不上大寫 enum apps/web/src/components/settings/GeneralSettings.tsx:217、:22-26 -->
+      <!-- KNOWN-ISSUE: 新密碼提示寫 6 字元但驗證要求 8 字元；角色名稱顯示對不上 -->
       <div class="warn"><span>⚠️</span><div>如果懷疑帳號被別人登入，改密碼<b>不會</b>把其他電腦上已登入的人登出。請同時通知管理員處理。</div></div>
-      <!-- KNOWN-ISSUE: 改密碼不會讓其他 session／refresh token 失效 apps/api/src/modules/agent/agent.service.ts:325-329 -->
+      <!-- KNOWN-ISSUE: 改密碼不會讓其他已登入的裝置登出 -->
       <p>人員管理頁右上角的「修改密碼」按鈕也能改自己的密碼，但那裡沒有「確認新密碼」欄，建議用一般設定這頁比較不會打錯。忘記自己的密碼時，請管理員用<a href="#p5">編輯人員</a>的「重設密碼」幫你設一組新的。</p>
     </section>
 
@@ -293,7 +293,7 @@
         <li>垃圾桶圖示：撤銷。電腦遺失或不再使用時請撤銷，撤銷後那台裝置就不能再用 Passkey 登入。</li>
       </ul>
       <div class="info"><span>ℹ️</span><div>如果「綁定 Passkey」按鈕是灰色的，並出現「Passkey 尚未啟用…」的提示，代表系統還沒開放這個功能，請聯絡系統維運人員。綁定時如果你在驗證視窗按了取消，對話框會停在原地、看不到錯誤訊息，按「取消」關掉重來即可。</div></div>
-      <!-- KNOWN-ISSUE: 綁定失敗的錯誤訊息渲染在對話框外被遮住；未啟用提示直接顯示環境變數名 apps/web/src/components/settings/PasskeyManagement.tsx:67-74,224-236 -->
+      <!-- KNOWN-ISSUE: 綁定失敗的錯誤訊息被對話框遮住；未啟用時的提示直接顯示系統設定名稱 -->
     </section>
 
     <footer class="manual-footer">

@@ -84,7 +84,7 @@
       </ul>
       <p>表格每列可以看到平台（LINE／FB 標籤）、名稱、使用次數與最後使用時間。按「編輯」修改內容；按「⋯」可以「複製」一份或「刪除」。</p>
       <div class="info"><span>ℹ️</span><div>列表一次最多顯示 50 個素材。素材很多時，請用分類、搜尋或 LINE／FB 篩選縮小範圍。「狀態」欄目前都會顯示「草稿」，這不影響素材能不能被廣播使用。刪除後的素材不會出現在列表，畫面上也沒有復原功能，刪除前請確認。</div></div>
-      <!-- KNOWN-ISSUE: 列表 limit 50 無分頁 apps/api/src/modules/marketing/material.routes.ts:256；狀態無法設定且不影響發送 MaterialGovernancePanel.tsx；刪除確認寫可復原但無復原入口 apps/web/src/app/dashboard/marketing/materials/page.tsx:81 -->
+      <!-- KNOWN-ISSUE: 列表最多 50 筆、沒有分頁；狀態無法設定且不影響發送；刪除確認寫可復原但沒有復原入口 -->
     </section>
 
     <section class="doc" id="p3">
@@ -113,9 +113,9 @@
         <figcaption>編輯器：左邊填內容，右邊是即時預覽與「分類與標籤」。</figcaption>
       </figure>
       <div class="info"><span>ℹ️</span><div>編輯器一開始會帶入示範內容（示範圖片、<code>example.com</code> 網址等），方便你看版面。<b>請把示範內容全部換成你自己的</b>，不然客戶會收到示範圖和示範連結。</div></div>
-      <!-- KNOWN-ISSUE: 示範內容（站內示範圖、example.com）可原樣存檔並被廣播選用 apps/web/src/components/materials/default-bodies.ts -->
+      <!-- KNOWN-ISSUE: 示範內容（站內示範圖、example.com）可原樣存檔並被廣播選用 -->
       <div class="info"><span>ℹ️</span><div>「基本資訊」裡也有一個「分類」文字欄，那是舊欄位，列表的分類篩選用不到。要替素材分類，請用右邊「分類與標籤」裡的「分類」下拉選單（第 7 節）。</div></div>
-      <!-- KNOWN-ISSUE: 同畫面兩個「分類」，基本資訊的是舊字串欄位 apps/web/src/components/materials/MaterialEditor.tsx:160-161 -->
+      <!-- KNOWN-ISSUE: 同畫面兩個「分類」，基本資訊的是舊字串欄位 -->
       <h3>存檔時的檢查</h3>
       <ul>
         <li>LINE 素材存檔時，系統會把內容送去 LINE 檢查格式（只檢查、不會發送）。不符合 LINE 規定時，上方會出現紅框，告訴你哪個欄位有問題。</li>
@@ -152,7 +152,7 @@
         <li>想在最後放一張「看更多」的卡片，勾選「新增結尾頁」。</li>
       </ol>
       <div class="warn"><span>⚠️</span><div><b>「頁面類型」請在一開始就決定好。</b>做到一半才切換頁面類型，已經設定的結尾頁和快速回覆按鈕會被清掉，而且不會有提示。</div></div>
-      <!-- KNOWN-ISSUE: changePageType 沒保留 body 其他欄位，結尾頁/快速回覆/替代文字被清空 apps/web/src/components/materials/line/LineCarouselEditor.tsx:76-80 -->
+      <!-- KNOWN-ISSUE: 切換頁面類型時，結尾頁／快速回覆／替代文字會被清空 -->
       <h3>圖文訊息</h3>
       <ol class="steps">
         <li>在「版型」按「選擇版型」（或「變更版型」），從正方形、橫長、縱長裡挑一種切法。</li>
@@ -160,7 +160,7 @@
         <li>在「互動區域」替每個區域設定點了要做什麼（傳一段文字，或開一個網址）。每個區域都要設定。</li>
       </ol>
       <div class="info"><span>ℹ️</span><div>版型清單裡還有「自訂」，但自訂版型目前固定是正方形，上傳非正方形的圖時點擊區域會對不準，建議先用正方形、橫長、縱長的現成版型。</div></div>
-      <!-- KNOWN-ISSUE: 自訂版型上傳後不會回寫 height，永遠 1040×1040 apps/web/src/components/materials/line/imagemap-layouts.ts:383-389、LineImagemapEditor.tsx:103-106 -->
+      <!-- KNOWN-ISSUE: 自訂版型上傳後不會更新高度，永遠是 1040×1040 -->
       <div class="info"><span>ℹ️</span><div>以前建立的「精選範本」「匯入 Flex JSON」素材仍可以打開編輯和使用，但這兩種版型目前不能新建。</div></div>
     </section>
 
@@ -184,7 +184,7 @@
           <tr><td>滿意度調查</td><td>請客戶評分的問卷（滿意度 5 級、推薦度 11 級、費力度 7 級）</td><td>服務結束後收集回饋。「標題」必填，「有效天數」只能填 1～7。</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: FB 大圖／影片廣告選「影片」時仍是圖片上傳元件，且沒有按鈕欄位 apps/web/src/components/materials/editors.tsx:271-301 -->
+      <!-- KNOWN-ISSUE: FB 大圖／影片廣告選「影片」時仍是圖片上傳元件，且沒有按鈕欄位 -->
       <div class="info"><span>ℹ️</span><div>這裡的「優惠券」只是 Facebook 的一種訊息樣式，用來把折扣碼發給客戶，不會記錄誰領了、誰用了。</div></div>
     </section>
 
@@ -263,7 +263,7 @@
           <tr><td>開案數</td><td>收到廣播後開了工單的數量。</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 面板說明寫「點擊率＝點擊數÷使用次數」，後端實際除以收件人總數 apps/web/src/components/materials/MaterialStatsPanel.tsx:66、apps/api/src/modules/marketing/material.service.ts:1046-1051 -->
+      <!-- KNOWN-ISSUE: 面板說明寫「點擊率＝點擊數÷使用次數」，後端實際除以收件人總數 -->
       <h3>版本歷史</h3>
       <p>每次按「存為素材」都會留下一個版本（v1、v2、v3…），最新的標「目前」。改壞了可以回到舊版本：</p>
       <ol class="steps">

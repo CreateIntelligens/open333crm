@@ -101,7 +101,7 @@
       </ul>
       <div class="warn"><span>⚠️</span><div><b>刪除標籤會從所有地方一起拿掉</b>，包含已經貼在聯絡人、對話、工單和素材上的，無法復原。預設連客服都能刪除標籤，如果擔心被誤刪，請管理員到「角色與權限」收回客服的「管理標籤」權限。</div></div>
       <div class="info"><span>ℹ️</span><div>編輯時把「說明」整段刪掉再儲存，舊的說明目前會留著。想改說明時，請直接改成新的文字。</div></div>
-      <!-- KNOWN-ISSUE: 說明清空時前端送 undefined，後端不更新，舊說明殘留 apps/web/src/components/settings/TagManagement.tsx:114、apps/api/src/modules/tag/tagging.service.ts:270 -->
+      <!-- KNOWN-ISSUE: 把說明清空後儲存，舊說明仍會保留 -->
     </section>
 
     <section class="doc" id="p3">
@@ -118,7 +118,7 @@
       </table>
       <p>舉例：「高」優先的政策設首次回應 60 分鐘、解決 240 分鐘、預警 15 分鐘。上午 10:00 建立一張高優先工單，10:45 系統提醒負責人要回覆，14:00 前要處理完。</p>
       <div class="warn"><span>⚠️</span><div><b>時限是 24 小時連續計算，不會扣掉下班時間和假日。</b>例如解決時間設 480 分鐘（8 小時），下午 5 點建立的工單，半夜 1 點就算逾時，不是隔天下午。設定時請把下班時間考慮進去，營業時間的設定也不會讓倒數暫停。</div></div>
-      <!-- KNOWN-ISSUE: SLA 以日曆時間連續計算，不扣營業時間 apps/api/src/modules/case/case.service.ts:292、apps/workers/src/handlers/sla.handler.ts:382-388 -->
+      <!-- KNOWN-ISSUE: SLA 以日曆時間連續計算，不扣營業時間 -->
       <figure class="shot">
         <img src="uploads/shots/ch17-sla.png" alt="SLA 政策列表：政策名稱、優先級、首回時間、解決時間、預警" loading="lazy">
         <figcaption>SLA 政策列表：每列一個政策，時間會自動換算成小時、天。</figcaption>
@@ -150,7 +150,7 @@
         <li>還有未結案的工單在用這個政策時，不能刪除。系統會告訴你還有幾張工單在用，請等那些工單結案後再刪，或改用「編輯」調整時限。</li>
       </ul>
       <div class="info"><span>ℹ️</span><div>分鐘數請填大於 0 的整數。欄位留空或填 0，系統會悄悄換成預設值（首次回應 15、解決 60、預警 10 分鐘）並顯示儲存成功，存完請看一下列表上的時間對不對。預警時間也請設得比首次回應時間短，不然工單一建立就會馬上收到提醒。</div></div>
-      <!-- KNOWN-ISSUE: 數字欄位 parseInt(...) || 預設值，空白或 0 靜默換成 15/60/10 apps/web/src/components/settings/SlaManagement.tsx:118-120 -->
+      <!-- KNOWN-ISSUE: 數字欄位留空或填 0 時，會被默默換成預設值 15/60/10 -->
       <p>修改分鐘數只影響之後新建立的工單的解決期限；已經建立的工單，解決期限不會跟著改。</p>
     </section>
 
@@ -183,7 +183,7 @@
         <li>營業時間只影響這個自動回覆，<b>不會</b>暫停 SLA 倒數，也不影響工單派送。</li>
       </ul>
       <div class="warn"><span>⚠️</span><div><b>不支援跨過午夜的時段。</b>例如營業到凌晨 2 點，請不要填「22:00 至 02:00」，系統會整段都當成下班。請把結束時間設在當天 23:59 之前。</div></div>
-      <!-- KNOWN-ISSUE: 迄 ≤ 起時 current >= start && current < end 永遠為假，前後端都沒擋 apps/api/src/modules/settings/office-hours.service.ts:146-151 -->
+      <!-- KNOWN-ISSUE: 結束時間早於或等於開始時間時，該時段永遠不算營業，畫面也沒有擋 -->
     </section>
 
     <section class="doc" id="p5">
@@ -304,7 +304,7 @@
         <li>沒有「重新產生」功能，要換金鑰就先撤銷，再建一把新的。</li>
         <li>列表的「狀態」目前只看有沒有撤銷，已過期的金鑰仍會顯示「啟用中」，請一併看「過期時間」欄。</li>
       </ul>
-      <!-- KNOWN-ISSUE: 狀態只看 isActive 不比對 expiresAt；對話框內 curl 範例缺少必填 cmd 欄位 apps/web/src/components/settings/ApiKeyManagement.tsx:126,350-354 -->
+      <!-- KNOWN-ISSUE: 狀態不考慮到期日；對話框內的範例指令缺少必填欄位 -->
       <div class="info"><span>ℹ️</span><div>金鑰建立後畫面上的使用範例是給工程師參考的，實際串接格式請以工程人員提供的串接文件為準。</div></div>
     </section>
 
@@ -331,7 +331,7 @@
     <section class="doc" id="p10">
       <h2><span class="idx">10</span> A2A</h2>
       <p>位置在「設定 → 整合 → A2A」，只有管理員和主管看得到。這頁顯示系統和外部 AI 代理之間的連線資訊，<b>全部是唯讀</b>，由系統維運人員在伺服器上設定，你不需要也無法在這裡修改。如果有人請你確認 A2A 狀態，看「目前狀態」那一欄就可以。</p>
-      <!-- KNOWN-ISSUE: A2A 是部署層級設定卻對每個租戶顯示，「目前狀態」只要有設 A2A_AGENT_ID 就回 connected，「Tenant 綁定」寫死 Default Tenant apps/api/src/modules/settings/a2a-status.service.ts:30,42 -->
+      <!-- KNOWN-ISSUE: A2A 是整個系統的設定卻對每個租戶顯示，「目前狀態」與「Tenant 綁定」不一定反映實際情況 -->
     </section>
 
     <footer class="manual-footer">

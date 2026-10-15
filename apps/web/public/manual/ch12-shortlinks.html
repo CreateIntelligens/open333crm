@@ -129,7 +129,7 @@
           <tr><td>社群預覽（OG）</td><td>把短連結貼到 LINE、Facebook 時跳出來的預覽卡標題、描述、圖片。三格都留空，系統會自動抓原始網頁的預覽</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 選了 LINE 渠道但該渠道沒設 LIFF App ID 時會靜默退回一般模式（apps/api/src/modules/shortlink/strategies/line-webview.strategy.ts:30-33）。 -->
+      <!-- KNOWN-ISSUE: 選了 LINE 渠道但該渠道沒設 LIFF App ID 時會靜默退回一般模式。 -->
       <div class="info"><span>ℹ️</span><div>「LINE 渠道」要生效，那個 LINE 渠道必須先在「設定 &gt; 渠道管理 &gt; Bot 設定」填好「LIFF App ID」（見「<a href="ch15-channels.html#p8">15 · 渠道管理</a>」）。沒填的話系統不會報錯，只會當成一般點擊，認不出客戶是誰。不確定有沒有設定，請問管理員。</div></div>
       <h3>編輯連結時要注意</h3>
       <ol class="steps">
@@ -210,7 +210,7 @@
           <tr><td>來源分布</td><td>最近 30 天點擊是從哪個網頁帶過來的，取前 10 名，沒有來源的算「direct」</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 識別率/趨勢/來源只算近 30 天，總點擊/唯一是累計（apps/api/src/modules/shortlink/shortlink.service.ts:452-455,483-489）；來源分布抓的是中轉頁的 Referer，幾乎都是 direct 或短連結本身（shortlink.service.ts:470-471）；每日趨勢用 UTC 分日（:463）。 -->
+      <!-- KNOWN-ISSUE: 識別率/趨勢/來源只算近 30 天，總點擊/唯一是累計；來源分布抓的是中轉頁的 Referer，幾乎都是 direct 或短連結本身；每日趨勢用 UTC 分日。 -->
       <div class="info"><span>ℹ️</span><div>
         上方的「總點擊」「唯一」是累計數字，旁邊的「識別率」和兩張圖只算<b>最近 30 天</b>，所以老連結可能出現「總點擊 17、圖表是空的」的情況，這是正常的。<br>
         「來源分布」目前大多只會顯示 direct，參考就好；想知道客戶從哪個管道來，建議用不同的 UTM 或建不同的短連結來區分。<br>

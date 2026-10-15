@@ -49,7 +49,7 @@
         <a href="#p6"><b>LINE 快速回覆</b>存好常用按鈕組，客服一鍵帶入</a>
       </div>
       <div class="info"><span>ℹ️</span><div>側欄看得到「渠道」需要管理員開給你「管理圖文選單」權限。另外，關鍵字回覆的頁面需要「檢視自動化」（新增修改要「管理自動化」）；快速回覆的新增、修改、刪除需要「管理快速回覆」。權限不夠時，關鍵字回覆頁可能看起來像「尚未建立任何關鍵字回覆」，請找管理員確認。</div></div>
-      <!-- KNOWN-ISSUE: 側欄用 richmenu.manage，但關鍵字回覆 API 要 automation.view/manage，403 被顯示成空狀態 apps/web/src/components/layout/Sidebar.tsx:64、apps/web/src/app/dashboard/line/keyword-replies/page.tsx:26 -->
+      <!-- KNOWN-ISSUE: 側欄入口與關鍵字回覆頁需要的權限不同，沒權限時會顯示成空狀態 -->
     </section>
 
     <section class="doc" id="p2">
@@ -125,7 +125,7 @@
       </table>
       <p>每個區域還可以填「標籤」（最多 20 字，選填），是給視障輔助工具讀的文字。</p>
       <div class="info"><span>ℹ️</span><div>新建選單時，每個區域預設都是「回傳資料」而且「Data」是空的，只要有一格沒填，按「儲存草稿」就會出現「postback 動作必須填寫資料」，但不會告訴你是第幾個區域，請逐一點開檢查。「桌面端網址」如果打了字又刪掉，也可能存不了，遇到時請把整個區域的動作類型切換一次再重填。</div></div>
-      <!-- KNOWN-ISSUE: 切換 Rich Menu 要 alias 但系統沒有設 alias 的功能；日期時間 placeholder 格式與預設模式不符；桌面端網址清空送出空字串 400；錯誤不指出第幾區 apps/web/src/components/line/rich-menu/AreaActionEditor.tsx:99,104-147、apps/api/src/modules/line/rich-menu.service.ts:91-123 -->
+      <!-- KNOWN-ISSUE: 切換 Rich Menu 的動作缺少必要設定入口；日期時間提示格式與預設模式不符；桌面端網址清空後儲存會失敗；錯誤不指出第幾區 -->
     </section>
 
     <section class="doc" id="p4">
@@ -143,7 +143,7 @@
           <tr><td>發布失敗</td><td>按「編輯」進去，直接按「發布到 LINE」重試。這個狀態下不能修改內容；如果是圖片或區域設定有問題，請用「⋯ › 複製」做一張新草稿修改後再發布。</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 發布失敗（error）狀態卡片沒有發布/取消發布按鈕，編輯與刪除會被後端以「已發布」訊息拒絕 apps/web/src/app/dashboard/line/rich-menus/page.tsx:222-239、apps/api/src/modules/line/rich-menu.service.ts:234-240,271-277 -->
+      <!-- KNOWN-ISSUE: 發布失敗狀態的卡片沒有發布／取消發布按鈕，編輯與刪除會被以「已發布」訊息拒絕 -->
       <h3>發布到 LINE</h3>
       <ol class="steps">
         <li>確認草稿內容正確，尤其是「設為所有好友的預設選單」有沒有勾（見第 2 節）。</li>
@@ -151,7 +151,7 @@
         <li>勾了「設為所有好友的預設選單」的選單，發布後所有好友都會看到；沒勾的選單發布後，要再用「綁定受眾」指定給某群人才看得到。</li>
       </ol>
       <div class="warn"><span>⚠️</span><div><b>發布和取消發布都會立刻改變好友在 LINE 上看到的選單。</b>勾了「設為所有好友的預設選單」的選單一發布，所有好友的選單都會被換掉；取消發布則會讓好友的選單消失。請在離峰時間、確認內容後再操作。在編輯頁按「發布到 LINE」時，系統發布的是<b>上次存檔的內容</b>，請先按「儲存草稿」再發布。</div></div>
-      <!-- KNOWN-ISSUE: 編輯頁「發布到 LINE」不會先儲存，發布的是 DB 舊版本 apps/web/src/app/dashboard/line/rich-menus/[id]/page.tsx:73-86；設預設選單失敗只寫 log rich-menu.service.ts:506-510 -->
+      <!-- KNOWN-ISSUE: 編輯頁「發布到 LINE」不會先儲存，發布的是上次儲存的版本；設預設選單失敗沒有畫面提示 -->
       <h3>綁定受眾（給某群人看不同選單）</h3>
       <p>沒勾「設為所有好友的預設選單」的選單發布後，可以指定只給某個受眾分群的好友看，其他人維持原本的選單。例如 VIP 會員看到專屬選單。</p>
       <ol class="steps">
@@ -160,7 +160,7 @@
         <li>「受眾分群」選一個分群，按「綁定」。畫面會顯示「已送出綁定給 N 位有 LINE 身分的使用者（背景執行中）」，按「完成」。</li>
       </ol>
       <div class="warn"><span>⚠️</span><div>按下「綁定」後，分群裡的好友選單會<b>立刻被換掉</b>，而且目前畫面上沒有「解除綁定」，也看不到哪張選單綁了哪個分群，請先確認分群人數正確。綁定只對「按下當時」在分群裡的人有效，之後才符合條件的人不會自動換選單，需要再綁定一次。</div></div>
-      <!-- KNOWN-ISSUE: 沒有解除綁定 UI 也沒有綁定紀錄；背景綁定失敗只寫 log apps/web/src/hooks/useRichMenus.ts:144、apps/workers/src/handlers/rich-menu-bind.handler.ts:36,44 -->
+      <!-- KNOWN-ISSUE: 沒有解除綁定的介面也沒有綁定紀錄；背景綁定失敗沒有畫面提示 -->
       <h3>複製與刪除</h3>
       <ul>
         <li><b>複製</b>：「⋯ › 複製」會做出一張「（副本）」草稿，連「設為所有好友的預設選單」的設定也會一起複製，發布前請再檢查一次。</li>
@@ -213,7 +213,7 @@
         <li>回覆素材顯示「素材已被刪除」時，代表那則素材被刪了、停用了，或素材太多沒載入到，請編輯規則重新選素材。</li>
       </ul>
       <div class="warn"><span>⚠️</span><div>關鍵字回覆的規則也會出現在「自動化」頁（第 05 章）。如果你在自動化頁替同一條規則加了其他動作（例如貼標籤），之後<b>再從這頁編輯並儲存，那些動作會被清掉</b>。加過其他動作的規則，請只在自動化頁修改。</div></div>
-      <!-- KNOWN-ISSUE: 從關鍵字頁編輯會以 PATCH 覆蓋 actions 與 conditions apps/web/src/hooks/useKeywordReplies.ts:106-134 -->
+      <!-- KNOWN-ISSUE: 從關鍵字頁編輯會覆蓋該規則原有的條件與動作 -->
       <div class="info"><span>ℹ️</span><div>回覆用的素材可以放 <code>{{contact.name}}</code> 這類變數（寫法見第 08 章第 6 節），送出時會換成客戶自己的資料。客戶沒有那筆資料時改用素材的預設值；連預設值也沒有就留空，不會出現大括號。選了含變數的素材，對話框會列出有哪些變數。</div></div>
     </section>
 

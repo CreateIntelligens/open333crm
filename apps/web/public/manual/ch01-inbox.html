@@ -96,7 +96,7 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>列表一次顯示最近的 50 筆對話。「未讀」「我的」和搜尋框都只在這 50 筆裡找。找不到比較舊的對話時，請改到「聯絡人」頁找到這位顧客，再看他的對話紀錄。</div></div>
-      <!-- KNOWN-ISSUE: 列表固定只載入 50 筆、無載入更多，子分頁與搜尋只在前端過濾 web/hooks/useConversations.ts:130、web/components/inbox/ConversationList.tsx:79-104 -->
+      <!-- KNOWN-ISSUE: 列表固定只載入 50 筆、無載入更多，子分頁與搜尋只在前端過濾 -->
     </section>
 
     <section class="doc" id="p3">
@@ -125,7 +125,7 @@
         </tbody>
       </table>
       <div class="warn"><span>⚠️</span><div>要關閉對話時，請用紅色「結案」按鈕，<b>不要</b>用表頭最右邊的狀態下拉直接選「已關閉」。用下拉關閉不會留下結案原因，系統也不會把它當成正式結案。</div></div>
-      <!-- KNOWN-ISSUE: 狀態下拉選「已關閉」走 updateConversation，不寫 closeReason/closedAt、不發 conversation.closed web/components/inbox/ChatWindow.tsx:85-89、api/conversation/conversation.service.ts:844-846 -->
+      <!-- KNOWN-ISSUE: 狀態下拉選「已關閉」不會記錄結案原因與時間，也不觸發結案後續流程 -->
       <div class="info"><span>ℹ️</span><div>改負責客服或狀態沒有成功時，聊天視窗上方會出現一行紅字說明原因，下拉也會回到原本的值。如果原因是權限不足，請找管理員開通「管理對話」權限。</div></div>
 
       <h3>訊息泡泡</h3>
@@ -141,7 +141,7 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>聊天視窗顯示最近 50 則訊息，訊息時間只顯示幾點幾分。要看更早的內容，請到「聯絡人」頁的「對話紀錄」。</div></div>
-      <!-- KNOWN-ISSUE: 只載入最新 50 則、loadOlder 未接 UI web/hooks/useMessages.ts:20 -->
+      <!-- KNOWN-ISSUE: 對話只載入最新 50 則，畫面上沒有載入更早訊息的方式 -->
 
       <h3>右側顧客資料</h3>
       <figure class="shot shot-narrow">
@@ -162,7 +162,7 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>「對話標籤」沒有可選的標籤時，請管理員先到「設定 → 標籤管理」建立對話用的標籤。看到紅字「其他渠道的對話載入失敗」，通常是帳號沒有「查看聯絡人」權限，請找管理員開通，重新整理沒有用。</div></div>
-      <!-- KNOWN-ISSUE: 沒有 contact.view 時其他渠道的對話每筆都顯示紅字 web/components/inbox/OtherChannelConversations.tsx:89-94,122-133 -->
+      <!-- KNOWN-ISSUE: 沒有查看聯絡人權限時，其他渠道的對話每筆都顯示紅字 -->
     </section>
 
     <section class="doc" id="p4">
@@ -185,7 +185,7 @@
         <li>對話會指派給你，狀態變成「已處理」（客服處理中），輸入框就能打字了。</li>
       </ol>
       <div class="warn"><span>⚠️</span><div><b>一按「接管對話」就會生效，不會再問一次。</b>系統會立刻傳一句「稍等，正在為您轉接客服人員」給顧客。確定要親自回覆再按。</div></div>
-      <!-- KNOWN-ISSUE: 接管視窗 HandoffModal 沒有任何地方開啟，接管直接送出預設銜接訊息 web/app/dashboard/inbox/page.tsx:19,139-146、api/conversation/conversation.service.ts:628,647 -->
+      <!-- KNOWN-ISSUE: 接管時不會出現確認視窗，直接送出預設銜接訊息 -->
       <h3>交回 Bot</h3>
       <ol class="steps">
         <li>處理完後，按表頭紫色的「交回 Bot」。</li>
@@ -226,7 +226,7 @@
         <li>選一張 PNG 或 JPG 圖片（20MB 以內）。選好就會直接送出，不會先預覽，請確認是對的圖再選。</li>
       </ol>
       <div class="info"><span>ℹ️</span><div>目前 LINE、Facebook、網頁聊天的對話可以傳圖片；Instagram 的對話還不能傳圖片。</div></div>
-      <!-- KNOWN-ISSUE: 前端允許 IG 上傳但後端回 501 web/components/inbox/MessageInput.tsx:135、api/conversation/conversation.routes.ts:41,92-96 -->
+      <!-- KNOWN-ISSUE: 前端允許 IG 上傳但後端回 501 -->
     </section>
 
     <section class="doc" id="p6">
@@ -246,7 +246,7 @@
         <li>帶進輸入框後，確認內容再送出。模板有附快速回覆按鈕的話，也會一起帶入。</li>
       </ol>
       <div class="info"><span>ℹ️</span><div>看到「沒有找到模板」，可能是你的帳號沒有「查看行銷」權限，或公司還沒有建立模板，請找管理員確認。</div></div>
-      <!-- KNOWN-ISSUE: 模板 API 需要 marketing.view，403 時只顯示「沒有找到模板」；範本管理 UI 已下線 web/components/inbox/TemplatePicker.tsx:252-253、api/marketing/marketing.routes.ts:96-100 -->
+      <!-- KNOWN-ISSUE: 沒有行銷檢視權限時只顯示「沒有找到模板」；範本管理畫面已下線 -->
     </section>
 
     <section class="doc" id="p7">
@@ -281,7 +281,7 @@
       </figure>
       <div class="info"><span>ℹ️</span><div>已結案的對話，訊息區上方會顯示「此對話已關閉」，要繼續處理就按「重新開啟對話」。</div></div>
       <div class="warn"><span>⚠️</span><div>聊天紀錄裡的滿意度評分卡（「請評價此次服務體驗」）是給顧客填的，<b>請不要在後台點星星</b>，點了會變成以顧客名義送出評分，讓滿意度數字不準。</div></div>
-      <!-- KNOWN-ISSUE: 客服後台的 CSAT 卡片可點選並送出評分 web/components/inbox/ChatWindow.tsx:296、web/components/inbox/CsatMessage.tsx:21-34 -->
+      <!-- KNOWN-ISSUE: 客服後台的 CSAT 卡片可點選並送出評分 -->
     </section>
 
     <section class="doc" id="p9">
@@ -321,7 +321,7 @@
       </ol>
       <div class="warn"><span>⚠️</span><div>這幾個按鈕<b>按下就直接傳給顧客</b>，不會再確認。請先跟顧客說明要傳什麼，再按。</div></div>
       <div class="info"><span>ℹ️</span><div>按鈕只有在管理員於「設定 → 跨渠道綁定」開啟對應功能後才會出現，見「<a href="ch17-settings.html">17 · 其他設定</a>」。切換到下一位顧客時，如果綁定按鈕下方還留著上一位的「已送出」訊息，那是上一位的結果，可以忽略。</div></div>
-      <!-- KNOWN-ISSUE: SendBindingLinkButton 切換對話不清結果訊息 web/components/inbox/SendBindingLinkButton.tsx:21-62 -->
+      <!-- KNOWN-ISSUE: 切換對話時，發送綁定連結的結果訊息不會清掉 -->
     </section>
 
     <footer class="manual-footer">
