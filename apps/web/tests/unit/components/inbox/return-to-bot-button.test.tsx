@@ -24,6 +24,7 @@ test('收件匣的交回 Bot 按鈕', async () => {
     render(<ReturnToBotButton conversationId="c1" status={status} onDone={onDone} />);
     fireEvent.click(screen.getByRole('button', { name: /交回 Bot/ }));
     await waitFor(() => assert.equal(onDone.mock.calls.length, 1));
+    assert.equal(onDone.mock.calls[0][0], 'c1', '回報交回的是哪筆對話');
     assert.equal(api.post.mock.calls.at(-1)![0], '/conversations/c1/return-to-bot');
     cleanup();
   }

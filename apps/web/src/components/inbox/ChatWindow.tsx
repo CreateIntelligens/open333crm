@@ -243,7 +243,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           <ReturnToBotButton
             conversationId={conversation.id}
             status={conversation.status}
-            onDone={() => globalMutate(`/conversations/${conversation.id}`)}
+            onDone={(id) => globalMutate(`/conversations/${id}`)}
           />
           {!isClosed && (
             <Button

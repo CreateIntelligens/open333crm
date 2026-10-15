@@ -9,8 +9,8 @@ import { getApiErrorMessage } from '@/lib/api-error';
 interface ReturnToBotButtonProps {
   conversationId: string;
   status: string;
-  /** 交回成功後重新載入對話 */
-  onDone: () => void;
+  /** 交回成功後重新載入對話；傳入的是按下時的對話 id（請求回來時畫面可能已換到別的對話） */
+  onDone: (conversationId: string) => void;
 }
 
 /**
@@ -23,7 +23,7 @@ export function ReturnToBotButton({ conversationId, status, onDone }: ReturnToBo
   const [busyFor, setBusyFor] = useState<string | null>(null);
   const [error, setError] = useState<{ conversationId: string; message: string } | null>(null);
 
-  // 換對話就清掉錯誤，切回原對話也不顯示舊的
+  // 換對話就清掉之前的錯誤；切換後才回來的失敗仍記在原對話，切回去時會看到
   useEffect(() => {
     setError(null);
   }, [conversationId]);
@@ -36,7 +36,7 @@ export function ReturnToBotButton({ conversationId, status, onDone }: ReturnToBo
     setError(null);
     try {
       await api.post(`/conversations/${target}/return-to-bot`, {});
-      onDone();
+      onDone(target);
     } catch (err) {
       setError({ conversationId: target, message: getApiErrorMessage(err, '交回 Bot 失敗，請稍後重試') });
     } finally {
