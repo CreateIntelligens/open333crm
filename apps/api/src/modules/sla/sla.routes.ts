@@ -48,6 +48,6 @@ export default async function slaRoutes(fastify: FastifyInstance) {
 
   // DELETE /api/v1/sla-policies/:id — 仍有未結案工單使用時回 409
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
-    return reply.send(success(await deleteSlaPolicy(request.tenantPrisma, request.agent.tenantId, request.params.id)));
+    return reply.send(success(await deleteSlaPolicy(fastify.prisma, request.agent.tenantId, request.params.id)));
   });
 }
