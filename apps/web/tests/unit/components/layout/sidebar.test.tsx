@@ -86,3 +86,30 @@ test('子項目全部隱藏時隱藏上層項目', () => {
   renderExpanded();
   assert.equal(visible('整合'), true, '對照組：有 settings.manage 時顯示「整合」');
 });
+
+test('只有個人報表權限時顯示我的績效', () => {
+  auth.permissions = new Set(['analytics.view.self']);
+  renderExpanded();
+  assert.equal(visible('報表'), true);
+  assert.equal(visible('我的績效'), true);
+  assert.equal(visible('總覽'), false);
+
+  cleanup();
+  auth.permissions = new Set(['analytics.view', 'analytics.view.self']);
+  renderExpanded();
+  assert.equal(visible('總覽'), true, '對照組：有 analytics.view 時顯示「總覽」');
+});
+
+test('沒有設定權限時隱藏 AI 設定', () => {
+  auth.permissions = new Set(['knowledge.view']);
+  renderExpanded();
+  assert.equal(visible('知識庫'), true, '對照組：「知識庫」已顯示');
+  assert.equal(visible('AI 設定'), false);
+  assert.equal(visible('Embedding'), false);
+  assert.equal(visible('Chat & Prompt'), false);
+
+  cleanup();
+  auth.permissions = new Set(['knowledge.view', 'settings.manage']);
+  renderExpanded();
+  assert.equal(visible('Embedding'), true, '對照組：有 settings.manage 時顯示');
+});

@@ -16,6 +16,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **打開渠道管理頁就會更新 FB 渠道的「最後驗證」**（G03）— 每次開頁，每張 FB 卡片（含已停用）都會查 Meta 的權杖狀態並寫回資料庫，權杖已失效也照樣更新「最後驗證」，看起來剛驗證過其實不能用。現在權杖狀態查詢只讀不寫、只查啟用中的 FB 渠道，「最後驗證」只由「測試連線」更新。
 - **Bot 最大回覆次數可以存成 9999**（G04）— 設定畫面限制 1～50，後端不驗證，直接呼叫 API 可以存任意值（UAT 實際存了 9999，等於永遠不轉真人）。現在建立或更新渠道時，`settings.botConfig.maxBotReplies` 有值就必須是 1～50 的整數，否則回 400。既有超出範圍的渠道，下次儲存 Bot 設定時要改成範圍內的值。
 - **渠道欄位說明圖片露出 App ID 與粉專 ID**（G05）— 新增 FB 渠道時的說明圖 `fb-app-basic.png` 完整顯示 Meta App 的應用程式編號，`fb-page-token.png` 隱約看得到粉專 ID。兩處改為馬賽克遮蔽。
+- **一般客服看不到「我的績效」、卻看得到 AI 設定**（G09、A06）— 側邊選單的「報表」整組要 `analytics.view`，只有個人報表權限（`analytics.view.self`，客服預設角色）的人連「我的績效」都看不到，後端其實允許。「AI 設定」（Embedding、Chat & Prompt）沒有設權限，客服點進去 API 回 403，畫面顯示寫死的預設值與「異常」。現在「總覽」要 `analytics.view`、「我的績效」要 `analytics.view.self`，「AI 設定」要 `settings.manage`。
 
 ## [2026-10-14]
 
