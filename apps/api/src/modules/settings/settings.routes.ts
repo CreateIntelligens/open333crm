@@ -526,9 +526,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   );
 }
 
+// 追蹤碼會被注入短連結轉址頁的 <script>，字元必須限制在安全集合，否則可構成儲存型 XSS。
+// GA4 Measurement ID：G- 開頭加大寫英數（官方範例 G-PSW1MY7HB4 為前綴後 10 碼，長度取寬鬆邊界）。
+// Meta Pixel ID：純數字（常見 15~16 位）。字元類別是防 XSS 的關鍵，長度只作合理範圍。
+// 前端 TrackingSettings.tsx 用同一組規則先擋一次。
+const GA4_ID_RE = /^G-[A-Z0-9]{4,20}$/;
+const META_PIXEL_ID_RE = /^\d{10,20}$/;
 const trackingSettingsSchema = z.object({
-  gaId: z.string().nullable().optional(),
-  metaPixelId: z.string().nullable().optional(),
+  gaId: z.string().regex(GA4_ID_RE, 'GA4 ID 格式不正確（須為 G- 開頭的大寫英數）').nullable().optional(),
+  metaPixelId: z.string().regex(META_PIXEL_ID_RE, 'Meta Pixel ID 格式不正確（須為純數字）').nullable().optional(),
 });
 
 const createApiKeySchema = z.object({

@@ -8,6 +8,10 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **收件匣可以把對話交回 Bot** — 客服接手後，對話停在客服處理，後台沒有辦法讓機器人繼續回，只能結案等客人再傳訊息開新對話；狀態選單也沒有 Bot 處理中，從 API 改狀態又不會把機器人回覆次數歸零，因次數到上限轉真人的對話會馬上再轉回真人。對話上方新增「交回 Bot」按鈕（`POST /conversations/:id/return-to-bot`）：客服處理中或進行中的對話改回 Bot 處理，回覆次數歸零、清除轉真人原因、保留指派的客服，並寫一則只給客服看的系統訊息。已結案、已經是 Bot 處理或渠道的機器人已關閉時不改狀態並說明原因。權限與接手對話相同（`inbox.manage`）。
 
+### Fixed
+
+- **短連結追蹤碼可注入腳本（儲存型 XSS）** — 追蹤設定的 `gaId`、`metaPixelId` 原本不驗格式，任何字串都收，並原樣寫進短連結轉址頁的 `<script>`。有 `settings.manage` 的租戶管理員可存入一段可執行的字串。之後只要有人用已登入後台的瀏覽器點開該租戶的短連結，瀏覽器就會執行該字串。前後端都加上格式驗證：GA4 ID 須為 `G-` 開頭的大寫英數，Meta Pixel ID 須為純數字，畸形值回 400。轉址頁注入 ID 時一律跳脫（`escapeHtmlAttr`、`jsonForScript`），即使畸形值從其他途徑寫進資料庫也無法脫出 `<script>`。
+
 ## [2026-10-14]
 
 ### Added

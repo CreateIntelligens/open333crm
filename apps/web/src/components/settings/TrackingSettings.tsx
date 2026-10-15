@@ -5,9 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
 
+// 追蹤碼會被注入短連結轉址頁的 <script>，字元必須限制在安全集合，否則可構成儲存型 XSS。
+// 與後端 settings.routes.ts 的 GA4_ID_RE / META_PIXEL_ID_RE 同一組規則。
+const GA4_ID_RE = /^G-[A-Z0-9]{4,20}$/;
+const META_PIXEL_ID_RE = /^\d{10,20}$/;
+
 export function TrackingSettings() {
   const [gaId, setGaId] = useState("");
   const [metaPixelId, setMetaPixelId] = useState("");
+  const [gaError, setGaError] = useState("");
+  const [pixelError, setPixelError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -30,12 +37,20 @@ export function TrackingSettings() {
   }, [fetchSettings]);
 
   const handleSave = async () => {
+    const ga = gaId.trim();
+    const pixel = metaPixelId.trim();
+    const gaMsg = ga && !GA4_ID_RE.test(ga) ? "GA4 ID 格式不正確（須為 G- 開頭的大寫英數）" : "";
+    const pixelMsg = pixel && !META_PIXEL_ID_RE.test(pixel) ? "Meta Pixel ID 格式不正確（須為純數字）" : "";
+    setGaError(gaMsg);
+    setPixelError(pixelMsg);
+    if (gaMsg || pixelMsg) return;
+
     setSaving(true);
     setSaved(false);
     try {
       await api.put("/settings/tracking", {
-        gaId: gaId.trim() || null,
-        metaPixelId: metaPixelId.trim() || null,
+        gaId: ga || null,
+        metaPixelId: pixel || null,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -64,30 +79,40 @@ export function TrackingSettings() {
 
       {/* Google Analytics 4 */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">Google Analytics 4 ID</label>
+        <label htmlFor="ga-id" className="text-sm font-medium">Google Analytics 4 ID</label>
         <Input
+          id="ga-id"
           value={gaId}
           onChange={(e) => setGaId(e.target.value)}
           placeholder="G-XXXXXXXXXX"
           className="max-w-md"
         />
-        <p className="text-xs text-muted-foreground">
-          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭。
-        </p>
+        {gaError ? (
+          <p className="text-xs text-destructive">{gaError}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭。
+          </p>
+        )}
       </div>
 
       {/* Meta Pixel */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">Meta Pixel ID</label>
+        <label htmlFor="meta-pixel-id" className="text-sm font-medium">Meta Pixel ID</label>
         <Input
+          id="meta-pixel-id"
           value={metaPixelId}
           onChange={(e) => setMetaPixelId(e.target.value)}
           placeholder="1234567890"
           className="max-w-md"
         />
-        <p className="text-xs text-muted-foreground">
-          從 Meta Events Manager 取得。純數字 ID。
-        </p>
+        {pixelError ? (
+          <p className="text-xs text-destructive">{pixelError}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            從 Meta Events Manager 取得。純數字 ID。
+          </p>
+        )}
       </div>
 
       {/* Save button */}

@@ -4,6 +4,22 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-15：發現並修復短連結追蹤碼的儲存型 XSS
+
+盤點 `add-tenant-tracking-pixels`（#228）時發現：追蹤設定的 `gaId`、`metaPixelId` 原本是 `z.string()`，不驗格式；短連結轉址頁的 `tracking-snippet.ts` 又把值原樣插進 `<script>` 與 script src 屬性。有 `settings.manage` 的租戶管理員可存入可執行的字串，構成儲存型 XSS。
+
+在本機開發環境以同源反向代理（Caddy，`/`、`/api`、`/s` 同一個來源，比照正式環境的路由）實測確認：存入含攻擊字串的 ID 後，轉址頁的 HTML 原樣輸出 `</script><script>…</script>`，兩種注入手法（`gaId` 用 `</script>`、`metaPixelId` 用單引號）都脫出 `<script>`。另以直接呼叫驗證憑證可用性：平台 token 可呼叫 `GET /platform/tenants`（回 200）；只憑客服的 refresh cookie 可換發新 access token 並讀取租戶資料。測試資料僅存在本機開發資料庫，測後還原為 null。
+
+此問題在同一個變更發現並修復，從未進入 `main`，因此不列入 `AUDIT.md` 的索引表。
+
+change `fix/tracking-pixel-id-validation`：
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 後端輸入驗證 | 已修正 | `settings.routes.ts` 加 `GA4_ID_RE`、`META_PIXEL_ID_RE`，畸形值回 400。測試：`apps/api/tests/feature/modules/settings/tracking-settings-route.test.ts` |
+| 前端輸入驗證 | 已修正 | `TrackingSettings.tsx` 以同一組正則擋在送出前。測試：`apps/web/tests/unit/components/settings/tracking-settings.test.tsx` |
+| 注入點輸出跳脫 | 已修正 | `tracking-snippet.ts` 改用 `escapeHtmlAttr`、`jsonForScript`，畸形值即使從其他途徑寫入也脫不出 `<script>`。測試：`apps/api/tests/unit/modules/shortlink/tracking-snippet-escape.test.ts` |
+
 ## 2026-10-14：CHAN-02 部分修正
 
 UAT 創造智能接上 Instagram 渠道後，以唯讀查詢確認第一則私訊沒有任何回覆：對話的 bot 回覆次數為 0；workers 的 log 顯示訊息命中關鍵字規則「Hi」（關鍵字 `Hi`、`你好`），規則的 `send_material` 是 LINE 素材，因渠道不符被略過（`send_material skipped: material channel "line" != conversation channel "threads"`）。只讀狀態、時間、規則定義與 log，沒有讀訊息內容，沒有寫入。

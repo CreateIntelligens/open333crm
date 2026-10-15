@@ -1,7 +1,14 @@
 /**
  * Tracking script snippet generators for external analytics services.
  * Returns HTML string fragments to inject into redirect micro-pages.
+ *
+ * The IDs come from tenant settings. The settings route validates their format
+ * (settings.routes.ts), but these builders also escape every value they inline:
+ * a value that reaches the DB another way must not break out of the <script>
+ * tag or the JS string and run as code (stored XSS). `escapeHtmlAttr` covers the
+ * attribute context, `jsonForScript` the inline-script context.
  */
+import { escapeHtmlAttr, jsonForScript } from "./render-utils.js";
 
 /**
  * Build Google Analytics 4 gtag.js snippet.
@@ -12,12 +19,12 @@ export function buildGa4Snippet(gaId: string | null | undefined): string {
   const id = gaId.trim();
   if (!id) return "";
 
-  return `<script async src="https://www.googletagmanager.com/gtag/js?id=${id}"></script>
+  return `<script async src="${escapeHtmlAttr(`https://www.googletagmanager.com/gtag/js?id=${id}`)}"></script>
 <script>
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${id}');
+gtag('config', ${jsonForScript(id)});
 </script>`;
 }
 
@@ -41,7 +48,7 @@ n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '${id}');
+fbq('init', ${jsonForScript(id)});
 fbq('track', 'PageView');
 </script>`;
 }
