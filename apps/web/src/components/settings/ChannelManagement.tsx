@@ -108,7 +108,14 @@ export function ChannelManagement() {
   }, []);
 
   const handleSaveBaseUrl = async () => {
-    const cleanUrl = webhookBaseUrlInput.replace(/\/+$/, '');
+    const cleanUrl = webhookBaseUrlInput.trim().replace(/\/+$/, '');
+    // 會改寫全租戶所有渠道的 webhook 網址，填錯所有渠道都收不到訊息（G08）
+    const count = (channels as Channel[]).length;
+    if (!confirm(
+      `確定要套用「${cleanUrl}」嗎？\n\n` +
+      `這會改寫全部 ${count} 個渠道的 Webhook 網址。網址填錯時，照新網址設定的渠道會收不到任何訊息。\n` +
+      `套用後，請到 LINE／Meta 後台確認各渠道的 Webhook 網址。`,
+    )) return;
     setUpdatingBaseUrl(true);
     setBaseUrlSaved(false);
 
@@ -282,14 +289,14 @@ export function ChannelManagement() {
               <div>
                 <p className="font-medium text-sm">Webhook 公開網址</p>
                 <p className="text-xs text-muted-foreground">
-                  填入 ngrok 或其他隧道工具產生的公開網址，系統會自動更新所有渠道的 Webhook URL
+                  填入本系統對外的正式網域（https 開頭），系統會依此改寫所有渠道的 Webhook 網址。一般不需要修改，填錯會讓所有渠道收不到訊息。
                 </p>
               </div>
               <div className="flex gap-2">
                 <Input
                   value={webhookBaseUrlInput}
                   onChange={(e) => setWebhookBaseUrlInput(e.target.value)}
-                  placeholder="例：https://xxxx.ngrok-free.app"
+                  placeholder="例：https://crm.example.com"
                   className="font-mono text-sm"
                 />
                 <Button
