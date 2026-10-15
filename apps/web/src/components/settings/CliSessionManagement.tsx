@@ -50,8 +50,9 @@ interface CreatedSession {
   };
 }
 
+// CLI token 一定有到期日（cli_sessions.expiresAt 不可為空，沒給時後端預設 30 天），
+// 所以不提供「永不過期」（G14：原本選了實際上 30 天就過期）
 const EXPIRY_OPTIONS = [
-  { value: "0", label: "永不過期" },
   { value: "7", label: "7 天" },
   { value: "30", label: "30 天" },
   { value: "90", label: "90 天" },
@@ -448,10 +449,12 @@ Bearer Token: ${sessionData.token}
 在 Headers 中加上：
 Authorization: Bearer <token>`}
               </pre>
-              <p className="mt-2">或使用 CLI：</p>
+              <p className="mt-2">
+                open333 CLI 不使用這個 token。要用 CLI 時，請執行下列指令並以 Email 與密碼登入，CLI
+                會自行產生並保存自己的 token（同樣會出現在這個列表）：
+              </p>
               <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
-                {`open333 login --host https://uat.open333crm.create360.ai
-# 然後貼上 token`}
+                {`open333 login --host https://uat.open333crm.create360.ai`}
               </pre>
             </div>
 
