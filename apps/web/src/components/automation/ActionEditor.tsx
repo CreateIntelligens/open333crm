@@ -112,6 +112,8 @@ function ActionParamsForm({
                 </label>
                 <Select
                   options={selectOptionsForParam(param)}
+                  // 必填參數沒有「不指定」；未選時要顯示「請選擇…」，否則畫面顯示第一個選項，實際卻是空值
+                  placeholder={param.required ? `請選擇${param.label}` : undefined}
                   value={value}
                   onChange={(e) => updateParam(param.key, e.target.value)}
                   className="h-8 py-1 text-sm"
