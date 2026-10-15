@@ -62,6 +62,7 @@ test('客服接手的對話交回 Bot', async () => {
   assert.match(JSON.stringify(f.messages[0].content), /小美.*交回 Bot/);
   assert.ok(f.emitted.includes('conversation.updated') && f.emitted.includes('message.new'));
   assert.equal(f.updateWheres[0].tenantId, 't1', '更新條件帶租戶');
+  assert.deepEqual(f.updateWheres[0].status, { in: ['AGENT_HANDLED', 'ACTIVE'] }, '只更新仍是客服處理中或進行中的對話');
 });
 
 test('檢查後對話被結案時不改狀態', async () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
@@ -19,8 +19,12 @@ interface ReturnToBotButtonProps {
  */
 export function ReturnToBotButton({ conversationId, status, onDone }: ReturnToBotButtonProps) {
   const [busy, setBusy] = useState(false);
-  // 錯誤記下是哪筆對話的：ChatWindow 切換對話時不重建這個元件，不能讓上一筆的錯誤留著
-  const [error, setError] = useState<{ conversationId: string; message: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // ChatWindow 切換對話時不重建這個元件：換對話就清掉錯誤，切回來也不顯示舊的
+  useEffect(() => {
+    setError(null);
+  }, [conversationId]);
 
   if (status !== 'AGENT_HANDLED' && status !== 'ACTIVE') return null;
 
@@ -31,7 +35,7 @@ export function ReturnToBotButton({ conversationId, status, onDone }: ReturnToBo
       await api.post(`/conversations/${conversationId}/return-to-bot`, {});
       onDone();
     } catch (err) {
-      setError({ conversationId, message: getApiErrorMessage(err, '交回 Bot 失敗，請稍後重試') });
+      setError(getApiErrorMessage(err, '交回 Bot 失敗，請稍後重試'));
     } finally {
       setBusy(false);
     }
@@ -39,7 +43,7 @@ export function ReturnToBotButton({ conversationId, status, onDone }: ReturnToBo
 
   return (
     <div className="flex items-center gap-2">
-      {error?.conversationId === conversationId && <span className="text-xs text-destructive">{error.message}</span>}
+      {error && <span className="text-xs text-destructive">{error}</span>}
       <Button
         variant="ghost"
         size="sm"

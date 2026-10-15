@@ -56,4 +56,6 @@ test('切換對話時不殘留上一筆的錯誤', async () => {
   await screen.findByText('對話狀態已變更，請重新整理後再試');
   rerender(<ReturnToBotButton conversationId="c2" status="AGENT_HANDLED" onDone={() => {}} />);
   assert.ok(screen.queryByText('對話狀態已變更，請重新整理後再試') === null);
+  rerender(<ReturnToBotButton conversationId="c1" status="AGENT_HANDLED" onDone={() => {}} />);
+  assert.ok(screen.queryByText('對話狀態已變更，請重新整理後再試') === null, '切回原對話也不顯示舊錯誤');
 });
