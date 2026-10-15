@@ -273,6 +273,8 @@ function EditAgentDialog({
 }: EditAgentDialogProps) {
   // 以角色 id 作為下拉選取值
   const [selectedRoleId, setSelectedRoleId] = useState('');
+  // 開啟時預選的角色：儲存時只有改了角色才送 PATCH /role（G19）
+  const [initialRoleId, setInitialRoleId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
@@ -297,6 +299,7 @@ function EditAgentDialog({
         ? roles.find((r) => r.id === agent.roleId)
         : roles.find((r) => r.isSystem && SLUG_TO_ENUM[r.slug] === agent.role);
       setSelectedRoleId(match?.id ?? '');
+      setInitialRoleId(match?.id ?? '');
       setNewPassword('');
       setError('');
       setChannelsDirty(false);
@@ -345,7 +348,9 @@ function EditAgentDialog({
     setSaving(true);
     setError('');
     try {
-      if (canAssignRole) {
+      // 角色沒改就不送：重送相同角色也要過越權檢查，主管編輯自己或管理員一定被拒，
+      // 而且會中斷後面密碼與渠道的儲存（G19）
+      if (canAssignRole && selectedRoleId !== initialRoleId) {
         const selected = roles.find((r) => r.id === selectedRoleId);
         if (!selected) {
           setError('請選擇角色');

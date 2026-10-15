@@ -68,3 +68,29 @@ test('沒有 agent.deactivate 時不查詢停用的成員', async () => {
   assert.equal(api.get.mock.calls.some(([url]) => url === '/agents/inactive'), false);
   assert.equal(screen.queryAllByText('已停用的人員').length, 0);
 });
+
+test('編輯時角色沒改就不重送角色', async () => {
+  // G19：每次儲存都重送角色，主管編輯自己或管理員一定失敗，同一次改的密碼與渠道也沒存
+  auth.perms = new Set(['agent.view', 'agent.role.assign', 'agent.password.reset']);
+  mockApi();
+  render(<AgentManagement />);
+  await screen.findByText('王小明');
+  fireEvent.click(screen.getByRole('button', { name: /編輯/ }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(within(dialog).getByPlaceholderText('至少 8 個字元'), { target: { value: 'new-password-1' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '儲存' }));
+  await waitFor(() => assert.ok(api.patch.mock.calls.some(([url]) => url === '/agents/a1/password')));
+  assert.equal(api.patch.mock.calls.some(([url]) => url === '/agents/a1/role'), false);
+});
+
+test('編輯時改了角色才送角色', async () => {
+  auth.perms = new Set(['agent.view', 'agent.role.assign']);
+  mockApi();
+  render(<AgentManagement />);
+  await screen.findByText('王小明');
+  fireEvent.click(screen.getByRole('button', { name: /編輯/ }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'r-admin' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '儲存' }));
+  await waitFor(() => assert.ok(api.patch.mock.calls.some(([url]) => url === '/agents/a1/role')));
+});
