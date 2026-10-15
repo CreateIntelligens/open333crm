@@ -16,7 +16,11 @@ vi.mock('#src/lib/notification-queue', () => ({
 import { executeWorkerAutomationActions } from '#src/lib/automation-actions';
 
 const prisma: any = {
-  agent: { async findMany() { return [{ id: 'supervisor-1' }]; } },
+  agent: {
+    async findMany() { return [{ id: 'supervisor-1' }]; },
+    // 「傳送通知」會先確認收件人是同租戶、啟用中的客服（#282 的收件人驗證）
+    async findFirst({ where }: { where: { id: string } }) { return where.id === 'agent-1' ? { id: 'agent-1' } : null; },
+  },
 };
 
 beforeEach(() => {
