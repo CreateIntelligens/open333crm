@@ -116,15 +116,19 @@ test('處理事件失敗仍回 200', async () => {
 });
 
 test('簽章不符：不交給外掛解析', async () => {
-  const res = await app.inject({
-    method: 'POST', url: `/threads/${IG_CHANNEL}`,
-    payload: JSON.stringify({ object: 'instagram', entry: [] }),
-    headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=tampered' },
-  });
-  assert.equal(res.statusCode, 200);
-  await waitFor(() => seen.secrets.length > 0);
-  // 驗簽之後還有一段非同步處理；多等一下，確認外掛沒有被叫去解析
-  await new Promise((r) => setTimeout(r, 100));
+  // 直接呼叫處理函式，等它結束再檢查；路由不論結果都回 200，見「處理事件失敗仍回 200」
+  const { processWebhookEvent } = await import('#src/modules/webhook/webhook.service.js');
+  await assert.rejects(
+    processWebhookEvent(
+      prismaMock() as never,
+      { to: () => ({ emit() {} }) } as never,
+      IG_CHANNEL,
+      'THREADS',
+      Buffer.from(JSON.stringify({ object: 'instagram', entry: [] })),
+      { 'x-hub-signature-256': 'sha256=tampered' },
+    ),
+    /Invalid webhook signature/,
+  );
   assert.deepEqual(seen.secrets, ['ig-app-secret']);
   assert.equal(seen.parsed, 0);
 });
