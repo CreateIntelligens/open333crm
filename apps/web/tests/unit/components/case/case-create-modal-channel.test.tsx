@@ -83,3 +83,14 @@ test('聯絡人在看得到的渠道都沒有帳號：不能建立，並說明�
   assert.ok(within(dialog).queryByText(/沒有可建立工單的渠道/) !== null);
   assert.equal((within(dialog).getByRole('button', { name: '建立案件' }) as HTMLButtonElement).disabled, true);
 });
+
+test('找不到聯絡人（S11）：不提供走不通的「建立新聯絡人」，改說明聯絡人從哪裡來', async () => {
+  contacts = [];
+  render(<CaseCreateModal open onOpenChange={vi.fn()} />);
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(within(dialog).getByPlaceholderText('搜尋聯絡人姓名...'), { target: { value: '不存在' } });
+
+  await within(dialog).findByText(/找不到聯絡人/);
+  assert.ok(within(dialog).queryByText(/建立新聯絡人/) === null, '不應出現建立新聯絡人');
+  assert.ok(within(dialog).queryByText(/顧客透過渠道傳訊息後/) !== null, '應說明聯絡人的來源');
+});

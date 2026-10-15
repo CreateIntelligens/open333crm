@@ -321,19 +321,13 @@ export function CaseCreateModal({
                         </button>
                       ))
                     ) : contactSearch.length >= 2 ? (
+                      // S11：原本有「+ 建立新聯絡人」連到 contacts?action=create，但系統沒有手動建立聯絡人的功能，
+                      // 而且工單必須掛在聯絡人所在的渠道，手動建立的聯絡人也無法開單
                       <div className="px-3 py-2 text-sm text-muted-foreground">
-                        找不到聯絡人
-                        <button
-                          type="button"
-                          className="ml-1 text-primary hover:underline font-medium"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setShowContactDropdown(false);
-                            window.open('/dashboard/contacts?action=create', '_blank');
-                          }}
-                        >
-                          + 建立新聯絡人
-                        </button>
+                        <p>找不到聯絡人</p>
+                        <p className="mt-0.5 text-xs">
+                          顧客透過渠道傳訊息後，系統會自動建立聯絡人。也可以從收件匣的對話直接建立工單。
+                        </p>
                       </div>
                     ) : null}
                   </div>
