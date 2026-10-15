@@ -1524,7 +1524,7 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 
 | 機制 | 多個 API 行程時 |
 | --- | --- |
-| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發不受影響：`executeBroadcast()` 以條件更新搶占執行權，兩個行程查到同一筆 `scheduled` 時只有一個會執行（MKT-01 的部分修正） |
+| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發是例外：`executeBroadcast()` 以條件更新搶占執行權，兩個行程查到同一筆 `scheduled` 時只有一個會執行（MKT-01 的部分修正） |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
 | `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
 | 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
