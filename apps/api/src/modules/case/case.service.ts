@@ -1002,6 +1002,12 @@ export async function getCaseStats(
   return { openCount, breachedCount, warningCount, resolvedTodayCount, statusCounts };
 }
 
+/**
+ * @description 就地編輯工單欄位（詳情頁的下拉與標題）。
+ * 狀態改變時和頂部按鈕走同一條路徑（S06）：改成已升級交給 escalateCase，其餘交給 transitionCase，
+ * 才會寫時間軸事件、發布 case.resolved／case.closed／case.escalated（CSAT、自動化、升級通知依此觸發）。
+ * @param options.actorId 操作的客服；改狀態時必填，寫進時間軸事件
+ */
 export async function updateCase(
   prisma: TenantDb,
   io: SocketIOServer,
@@ -1016,6 +1022,7 @@ export async function updateCase(
     assigneeId?: string | null;
     teamId?: string | null;
   },
+  options: { actorId?: string } = {},
 ) {
   const caseRecord = await prisma.case.findFirst({
     where: { id, tenantId },
@@ -1025,60 +1032,82 @@ export async function updateCase(
     throw new AppError(notFound('case'), 'NOT_FOUND', 404);
   }
 
-  const updateData: Prisma.CaseUpdateInput = {};
-  if (data.title !== undefined) updateData.title = data.title;
-  if (data.description !== undefined) updateData.description = data.description;
-  if (data.priority !== undefined) updateData.priority = data.priority as any;
-  if (data.category !== undefined) updateData.category = data.category;
-  if (data.assigneeId !== undefined) {
-    updateData.assignee = data.assigneeId ? { connect: { id: data.assigneeId } } : { disconnect: true };
-  }
-  if (data.teamId !== undefined) {
-    updateData.team = data.teamId ? { connect: { id: data.teamId } } : { disconnect: true };
-  }
-  if (data.status !== undefined) {
-    validateTransition(caseRecord.status as CaseStatus, data.status as CaseStatus);
-    updateData.status = data.status as any;
-    if (data.status === 'RESOLVED') updateData.resolvedAt = new Date();
-    if (data.status === 'CLOSED') updateData.closedAt = new Date();
+  const { status, ...fields } = data;
+  // 先驗證狀態轉換，避免其他欄位已經存了、狀態才被擋下
+  if (status !== undefined) {
+    validateTransition(caseRecord.status as CaseStatus, status as CaseStatus);
+    if (!options.actorId) {
+      throw new AppError('缺少操作的客服，無法變更工單狀態', 'INTERNAL_ERROR', 500);
+    }
   }
 
-  const updated = await prisma.case.update({
-    where: { id },
-    data: updateData,
-    include: {
-      contact: {
-        select: {
-          id: true,
-          displayName: true,
-        },
-      },
-      assignee: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      team: {
-        select: {
-          id: true,
-          name: true,
-        },
+  const updateData: Prisma.CaseUpdateInput = {};
+  if (fields.title !== undefined) updateData.title = fields.title;
+  if (fields.description !== undefined) updateData.description = fields.description;
+  if (fields.priority !== undefined) updateData.priority = fields.priority as any;
+  if (fields.category !== undefined) updateData.category = fields.category;
+  if (fields.assigneeId !== undefined) {
+    updateData.assignee = fields.assigneeId ? { connect: { id: fields.assigneeId } } : { disconnect: true };
+  }
+  if (fields.teamId !== undefined) {
+    updateData.team = fields.teamId ? { connect: { id: fields.teamId } } : { disconnect: true };
+  }
+
+  const include = {
+    contact: {
+      select: {
+        id: true,
+        displayName: true,
       },
     },
+    assignee: {
+      select: {
+        id: true,
+        name: true,
+      },
+    },
+    team: {
+      select: {
+        id: true,
+        name: true,
+      },
+    },
+  } satisfies Prisma.CaseInclude;
+
+  if (status === undefined || Object.keys(updateData).length > 0) {
+    const updated = await prisma.case.update({
+      where: { id },
+      data: updateData,
+      include,
+    });
+
+    if (status === undefined) {
+      // Emit WebSocket event
+      io.to(`tenant:${tenantId}`).emit('case.updated', {
+        id: updated.id,
+        status: updated.status,
+        priority: updated.priority,
+        assigneeId: updated.assigneeId,
+      });
+      return updated;
+    }
+  }
+
+  // 狀態改變：與頂部按鈕同一條路徑（各自會發 case.updated socket 事件）
+  if (status === 'ESCALATED') {
+    await escalateCase(prisma, io, id, tenantId, options.actorId!);
+  } else {
+    await transitionCase(prisma, io, id, tenantId, options.actorId!, status as CaseStatus);
+  }
+
+  const result = await prisma.case.findFirst({
+    where: { id, tenantId },
+    include,
   });
-
-  // Emit WebSocket event
-  const wsPayload = {
-    id: updated.id,
-    status: updated.status,
-    priority: updated.priority,
-    assigneeId: updated.assigneeId,
-  };
-
-  io.to(`tenant:${tenantId}`).emit('case.updated', wsPayload);
-
-  return updated;
+  if (!result) {
+    throw new AppError(notFound('case'), 'NOT_FOUND', 404);
+  }
+  return result;
 }
 
 /**
