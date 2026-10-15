@@ -19,7 +19,7 @@ import { recordCsatScore } from '../csat/csat.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
-import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible } from '../../services/channel-visibility.js';
+import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible, assertChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { CASE_CATEGORIES, LEGACY_CASE_CATEGORIES } from '@open333crm/shared';
@@ -192,6 +192,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
   // POST /api/v1/cases
   fastify.post('/', { preHandler: [perm.create, perm.assignIfAssigning] }, async (request, reply) => {
     const data = createCaseSchema.parse(request.body);
+    // S10：工單渠道必須是操作者看得到的渠道；建立工單為管理操作（同從對話建立）
+    await assertChannelVisible(request, data.channelId, 'full');
 
     const caseRecord = await createCase(
       request.tenantPrisma,

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { CASE_CATEGORIES } from '@open333crm/shared';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface CaseCreateModalProps {
   open: boolean;
@@ -30,6 +31,8 @@ interface ContactOption {
   displayName: string;
   phone?: string;
   email?: string;
+  /** 聯絡人在看得到的渠道上的帳號（GET /contacts 已依渠道可見範圍過濾） */
+  channelIdentities?: Array<{ channel?: { id: string; displayName: string; channelType: string } | null }>;
 }
 
 interface AgentOption {
@@ -47,8 +50,17 @@ interface SlaPolicy {
 
 interface ChannelOption {
   id: string;
-  name: string;
-  type: string;
+  displayName: string;
+}
+
+/** 聯絡人所在的渠道（去重）；工單渠道只能從這裡選 */
+function contactChannels(contact: ContactOption): ChannelOption[] {
+  const result: ChannelOption[] = [];
+  for (const identity of contact.channelIdentities ?? []) {
+    const ch = identity.channel;
+    if (ch && !result.some((c) => c.id === ch.id)) result.push({ id: ch.id, displayName: ch.displayName });
+  }
+  return result;
 }
 
 const PRIORITIES = [
@@ -84,6 +96,9 @@ export function CaseCreateModal({
   const [assigneeId, setAssigneeId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [selectedSlaPolicyId, setSelectedSlaPolicyId] = useState('');
+  // S10：工單渠道取聯絡人所在的渠道（原本取 /channels 的第一個，工單被歸到任意渠道）
+  const [contactChannelOptions, setContactChannelOptions] = useState<ChannelOption[] | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -96,7 +111,6 @@ export function CaseCreateModal({
   // Reference data
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [slaPolicies, setSlaPolicies] = useState<SlaPolicy[]>([]);
-  const [channels, setChannels] = useState<ChannelOption[]>([]);
 
   // Load reference data when modal opens
   useEffect(() => {
@@ -104,11 +118,9 @@ export function CaseCreateModal({
     Promise.all([
       api.get('/agents').catch(() => ({ data: { data: [] } })),
       api.get('/sla-policies').catch(() => ({ data: { data: [] } })),
-      api.get('/channels').catch(() => ({ data: { data: [] } })),
-    ]).then(([agentsRes, slaRes, channelsRes]) => {
+    ]).then(([agentsRes, slaRes]) => {
       setAgents(agentsRes.data.data || []);
       setSlaPolicies(slaRes.data.data || []);
-      setChannels(channelsRes.data.data || []);
     });
   }, [open]);
 
@@ -156,6 +168,8 @@ export function CaseCreateModal({
     if (!isFromInbox) {
       setSelectedContactId('');
       setSelectedContactName('');
+      setContactChannelOptions(null);
+      setSelectedChannelId('');
     }
     setAssigneeId('');
     setTeamId('');
@@ -198,10 +212,9 @@ export function CaseCreateModal({
         });
         caseId = res.data.data?.id;
       } else {
-        // Use first available channel
-        const effectiveChannelId = channels[0]?.id;
+        const effectiveChannelId = selectedChannelId;
         if (!effectiveChannelId) {
-          setError('系統尚無可用渠道，請先建立渠道');
+          setError('請選擇工單所屬的渠道');
           setIsSubmitting(false);
           return;
         }
@@ -226,8 +239,8 @@ export function CaseCreateModal({
         router.push(`/dashboard/cases/${caseId}`);
       }
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setError(axiosError.response?.data?.message || '建立案件失敗');
+      // 後端錯誤格式是 { error: { message } }；原本讀 data.message，永遠只顯示「建立案件失敗」
+      setError(getApiErrorMessage(err, '建立案件失敗'));
     } finally {
       setIsSubmitting(false);
     }
@@ -236,7 +249,7 @@ export function CaseCreateModal({
   // Form validation: title + contact + priority + category all required
   const isFormValid = !!(
     title.trim() &&
-    (selectedContactId || isFromInbox) &&
+    (isFromInbox || (selectedContactId && selectedChannelId)) &&
     priority &&
     category
   );
@@ -276,6 +289,8 @@ export function CaseCreateModal({
                     setContactSearch(e.target.value);
                     setSelectedContactId('');
                     setSelectedContactName('');
+                    setContactChannelOptions(null);
+                    setSelectedChannelId('');
                     setShowContactDropdown(true);
                   }}
                   onFocus={() => contactOptions.length > 0 && setShowContactDropdown(true)}
@@ -294,6 +309,9 @@ export function CaseCreateModal({
                           onClick={() => {
                             setSelectedContactId(c.id);
                             setSelectedContactName(c.displayName);
+                            const options = contactChannels(c);
+                            setContactChannelOptions(options);
+                            setSelectedChannelId(options.length === 1 ? options[0].id : '');
                             setContactSearch('');
                             setShowContactDropdown(false);
                           }}
@@ -323,6 +341,31 @@ export function CaseCreateModal({
               </div>
             )}
           </div>
+
+          {/* Channel：聯絡人所在的渠道（列表頁建立時） */}
+          {!isFromInbox && contactChannelOptions && (
+            contactChannelOptions.length === 0 ? (
+              <p className="text-sm text-destructive">
+                這位聯絡人在你看得到的渠道沒有帳號，沒有可建立工單的渠道。請從收件匣的對話建立工單。
+              </p>
+            ) : contactChannelOptions.length > 1 ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  渠道 <span className="text-destructive">*</span>
+                </label>
+                <Select
+                  value={selectedChannelId}
+                  onChange={(e) => setSelectedChannelId(e.target.value)}
+                  options={[
+                    { value: '', label: '請選擇聯絡人所在的渠道' },
+                    ...contactChannelOptions.map((c) => ({ value: c.id, label: c.displayName })),
+                  ]}
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">渠道：{contactChannelOptions[0].displayName}</p>
+            )
+          )}
 
           {/* Title */}
           <div>

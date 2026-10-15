@@ -401,6 +401,20 @@ export async function createCase(
     slaPolicyId?: string;
   },
 ) {
+  // S10：工單渠道必須是聯絡人所在的渠道。原本前端取第一個渠道，工單被歸到任意渠道，
+  // 影響渠道可見範圍、報表歸因與 CSAT 從哪個渠道送出
+  const identity = await prisma.channelIdentity.findFirst({
+    where: { contactId: data.contactId, channelId: data.channelId, contact: { tenantId } },
+    select: { id: true },
+  });
+  if (!identity) {
+    throw new AppError(
+      '這位聯絡人不在所選的渠道，請改選聯絡人所在的渠道',
+      'CONTACT_NOT_ON_CHANNEL',
+      400,
+    );
+  }
+
   const caseRecord = await createCaseRecord(prisma, tenantId, agentId, data);
   emitCaseCreated(io, tenantId, caseRecord, null);
 
