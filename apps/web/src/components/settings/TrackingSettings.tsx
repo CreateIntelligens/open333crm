@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 export function TrackingSettings() {
   const [gaId, setGaId] = useState("");
@@ -40,8 +41,8 @@ export function TrackingSettings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      console.error("Failed to save tracking settings:", err);
-      alert("儲存失敗");
+      // 後端會說明哪個 ID 格式不對（G06）
+      alert(getApiErrorMessage(err, "儲存失敗，請稍後重試"));
     } finally {
       setSaving(false);
     }
@@ -72,7 +73,7 @@ export function TrackingSettings() {
           className="max-w-md"
         />
         <p className="text-xs text-muted-foreground">
-          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭。
+          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭加英數字。
         </p>
       </div>
 
@@ -86,7 +87,7 @@ export function TrackingSettings() {
           className="max-w-md"
         />
         <p className="text-xs text-muted-foreground">
-          從 Meta Events Manager 取得。純數字 ID。
+          從 Meta Events Manager 取得。5～20 位純數字。
         </p>
       </div>
 
