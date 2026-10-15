@@ -29,6 +29,9 @@ let now: number;
 let caseRow: Record<string, any>;
 let events: Ev[];
 let messages: Msg[];
+// 模擬 pg_advisory_xact_lock：同一把鎖在交易結束前，其他交易要等
+let locks: Map<string, Promise<void>>;
+let lockKeys: string[];
 
 function inRange(date: Date, cond?: { gte?: Date; gt?: Date }): boolean {
   if (!cond) return true;
@@ -38,6 +41,25 @@ function inRange(date: Date, cond?: { gte?: Date; gt?: Date }): boolean {
 }
 
 const prisma: any = {
+  async $transaction(fn: (tx: any) => Promise<unknown>) {
+    const releases: Array<() => void> = [];
+    const tx = Object.create(prisma);
+    tx.$executeRaw = async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (!strings.join('?').includes('pg_advisory_xact_lock')) return 0;
+      const key = String(values[0]);
+      lockKeys.push(key);
+      while (locks.has(key)) await locks.get(key);
+      let release!: () => void;
+      locks.set(key, new Promise<void>((r) => { release = r; }));
+      releases.push(() => { locks.delete(key); release(); });
+      return 1;
+    };
+    try {
+      return await fn(tx);
+    } finally {
+      for (const r of releases) r();
+    }
+  },
   case: {
     async findMany() {
       return [caseRow];
@@ -92,6 +114,8 @@ beforeEach(() => {
   notifications.length = 0;
   events = [];
   messages = [];
+  locks = new Map();
+  lockKeys = [];
   caseRow = {
     id: 'case-1',
     tenantId: T,
@@ -164,5 +188,14 @@ test('SLA 預設通知的標題與內容是中文', async () => {
     assert.ok(!/SLA (breached|warning)|Case "/.test(n.title + n.body), `通知仍是英文：${n.title} / ${n.body}`);
     assert.match(n.title, /[一-鿿]/, `標題應為中文：${n.title}`);
   }
+  vi.useRealTimers();
+});
+
+test('Overlapping polls record the outcome once：兩次掃描同時跑，只寫一筆事件、只通知一次', async () => {
+  await Promise.all([handleSlaPoll(prisma, {} as any), handleSlaPoll(prisma, {} as any)]);
+
+  assert.equal(events.filter((e) => e.eventType === 'sla_breached').length, 1);
+  assert.equal(notifications.filter((n) => n.type === 'sla_breached').length, 2); // 負責人 + 主管各一則
+  assert.ok(lockKeys.includes('sla:case-1:sla_breached'));
   vi.useRealTimers();
 });

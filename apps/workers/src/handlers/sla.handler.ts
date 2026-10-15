@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type IORedis from 'ioredis';
 import { evaluateRules } from '@open333crm/automation';
 import {
@@ -78,7 +78,7 @@ async function getActiveCases(prisma: PrismaClient): Promise<SlaCase[]> {
  * 改成看去重起點（期限、警告時間點或上次客服回覆）之後是否已有同類事件。
  */
 async function hasCaseEventSince(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   caseId: string,
   eventType: string,
   since: Date,
@@ -113,7 +113,7 @@ async function getPolicy(
   });
 }
 
-async function getSlaBreachCount(prisma: PrismaClient, caseId: string): Promise<number> {
+async function getSlaBreachCount(prisma: PrismaClient | Prisma.TransactionClient, caseId: string): Promise<number> {
   return prisma.caseEvent.count({
     where: {
       caseId,
@@ -285,64 +285,77 @@ async function dispatchSlaOutcome(
   const { c, eventName, eventType, kind, state } = params;
   const now = new Date();
 
-  if (await hasCaseEventSince(prisma, c.id, eventType, params.dedupSince)) return;
+  // 查重與寫入放在同一個交易，並以 advisory lock 鎖住「同一工單 + 同類事件」：
+  // 兩次掃描重疊（例如 BullMQ 判定 stalled 後重跑）時，第二次會等第一次提交後再查，
+  // 看到已寫入的事件就略過。只有真正寫入事件的那次才發 socket、通知與自動化規則。
+  const recorded = await prisma.$transaction(async (tx) => {
+    const lockKey = `sla:${c.id}:${eventType}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 
-  let nextPriority = c.priority;
-  if (params.applyPriorityBump) {
-    nextPriority = String(bumpSlaPriority(c.priority));
-    if (nextPriority !== c.priority) {
-      await prisma.case.update({
-        where: { id: c.id },
-        data: { priority: nextPriority as any },
-      });
+    if (await hasCaseEventSince(tx, c.id, eventType, params.dedupSince)) return null;
+
+    let nextPriority = c.priority;
+    if (params.applyPriorityBump) {
+      nextPriority = String(bumpSlaPriority(c.priority));
+      if (nextPriority !== c.priority) {
+        await tx.case.update({
+          where: { id: c.id },
+          data: { priority: nextPriority as any },
+        });
+      }
     }
-  }
 
-  const breachCount = await getSlaBreachCount(prisma, c.id);
-  const dueAt = params.dueAt ?? null;
-  const customerWaiting = params.customerWaiting;
+    const breachCount = await getSlaBreachCount(tx, c.id);
+    const dueAt = params.dueAt ?? null;
+    const customerWaiting = params.customerWaiting;
 
-  const facts = {
-    ...buildSlaFacts({
-      caseId: c.id,
-      tenantId: c.tenantId,
-      status: c.status,
-      priority: nextPriority,
-      assigneeId: c.assigneeId,
-      teamId: c.teamId,
-      kind,
-      state,
-      dueAt,
-      remainingMinutes: dueAt ? Math.max(0, minutesUntil(dueAt, now)) : null,
-      overdueMinutes: dueAt ? minutesOverdue(dueAt, now) : 0,
-      warningBeforeMinutes: params.warningBeforeMinutes ?? null,
-      breachCount,
-      escalationLevel: breachCount,
-      customerMessagesSinceLastAgentReply: customerWaiting?.count ?? 0,
-      lastAgentReplyAt: customerWaiting?.lastAgentReplyAt ?? null,
-      lastCustomerMessageAt: customerWaiting?.lastCustomerMessageAt ?? null,
-      contactIsVip: isVip(c),
-      contactTags: contactTags(c),
-      sentimentLatest: customerWaiting?.sentimentLatest ?? null,
-      sentimentNegativeCount: customerWaiting?.sentimentNegativeCount ?? 0,
-    }),
-    'event.type': eventName,
-    'event.timestamp': now.toISOString(),
-  };
+    const facts = {
+      ...buildSlaFacts({
+        caseId: c.id,
+        tenantId: c.tenantId,
+        status: c.status,
+        priority: nextPriority,
+        assigneeId: c.assigneeId,
+        teamId: c.teamId,
+        kind,
+        state,
+        dueAt,
+        remainingMinutes: dueAt ? Math.max(0, minutesUntil(dueAt, now)) : null,
+        overdueMinutes: dueAt ? minutesOverdue(dueAt, now) : 0,
+        warningBeforeMinutes: params.warningBeforeMinutes ?? null,
+        breachCount,
+        escalationLevel: breachCount,
+        customerMessagesSinceLastAgentReply: customerWaiting?.count ?? 0,
+        lastAgentReplyAt: customerWaiting?.lastAgentReplyAt ?? null,
+        lastCustomerMessageAt: customerWaiting?.lastCustomerMessageAt ?? null,
+        contactIsVip: isVip(c),
+        contactTags: contactTags(c),
+        sentimentLatest: customerWaiting?.sentimentLatest ?? null,
+        sentimentNegativeCount: customerWaiting?.sentimentNegativeCount ?? 0,
+      }),
+      'event.type': eventName,
+      'event.timestamp': now.toISOString(),
+    };
 
-  await prisma.caseEvent.create({
-    data: {
-      caseId: c.id,
-      actorType: 'system',
-      eventType,
-      payload: {
-        eventName,
-        facts,
-        previousPriority: c.priority,
-        newPriority: nextPriority,
+    await tx.caseEvent.create({
+      data: {
+        caseId: c.id,
+        actorType: 'system',
+        eventType,
+        payload: {
+          eventName,
+          facts,
+          previousPriority: c.priority,
+          newPriority: nextPriority,
+        },
       },
-    },
+    });
+
+    return { nextPriority, facts };
   });
+
+  if (!recorded) return;
+  const { nextPriority, facts } = recorded;
 
   if (params.applyPriorityBump && nextPriority !== c.priority) {
     await publishSocketEvent(redisPublisher, `tenant:${c.tenantId}`, 'case.updated', {
