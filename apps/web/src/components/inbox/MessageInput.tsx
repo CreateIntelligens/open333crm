@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { useQuickReplyPresets } from '@/hooks/useQuickReplyPresets';
+import { getApiErrorMessage } from '@/lib/api-error';
 
 interface QuickReplyItem {
   label: string;
@@ -42,6 +43,8 @@ export function MessageInput({
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  // 送出失敗的原因（S09：原本只寫 console，按鈕轉一下就恢復，客服不知道沒送出）
+  const [sendError, setSendError] = useState<string | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReplyItem[]>([]);
   const [quickReplyEditorOpen, setQuickReplyEditorOpen] = useState(false);
   const [draftLabel, setDraftLabel] = useState('');
@@ -67,6 +70,7 @@ export function MessageInput({
     if (!trimmed || isDisabled) return;
 
     setSending(true);
+    setSendError(null);
     try {
       const contentData = quickReplies.length > 0 ? { quickReplies } : undefined;
       await onSend(trimmed, 'text', contentData);
@@ -77,6 +81,7 @@ export function MessageInput({
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      setSendError(getApiErrorMessage(err, '訊息送出失敗，請稍後重試'));
     } finally {
       setSending(false);
     }
@@ -144,7 +149,7 @@ export function MessageInput({
       }
     } catch (err: any) {
       console.error('Failed to send image:', err);
-      alert(`傳送失敗：${err?.response?.data?.message ?? err?.message ?? '未知錯誤'}`);
+      setSendError(getApiErrorMessage(err, '圖片傳送失敗，請稍後重試'));
     } finally {
       setSending(false);
       if (fileInputRef.current) {
@@ -165,6 +170,21 @@ export function MessageInput({
       textareaRef.current?.focus();
     }, 100);
   };
+
+  // AI 建議回覆按「採用」：收件匣頁送出 ai-adopt 事件，把建議文字帶進輸入框（S07：原本沒有元件接收）
+  React.useEffect(() => {
+    const handleAdopt = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: unknown }>).detail?.text;
+      if (typeof text === 'string' && text) {
+        setMessage(text);
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 100);
+      }
+    };
+    window.addEventListener('ai-adopt', handleAdopt);
+    return () => window.removeEventListener('ai-adopt', handleAdopt);
+  }, []);
 
   // Expose setMessageFromTemplate via a ref callback attached to a data attribute
   React.useEffect(() => {
@@ -380,6 +400,11 @@ export function MessageInput({
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        {sendError && (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            沒有送出：{sendError}
+          </p>
+        )}
       </div>
     </div>
   );

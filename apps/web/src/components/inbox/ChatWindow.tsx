@@ -57,6 +57,12 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [closeReason, setCloseReason] = useState('');
   const [closing, setClosing] = useState(false);
+  // 指派、改狀態、重新開啟失敗的原因（S09：原本沒有 try/catch，下拉看起來沒反應）
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActionError(null);
+  }, [conversation?.id]);
 
   // Agent list
   const { data: agentsData } = useSWR('/agents', (url: string) =>
@@ -75,23 +81,30 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     { value: 'CLOSED', label: '已關閉' },
   ];
 
-  const handleAssign = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const patchConversation = async (data: Record<string, unknown>, fallback: string) => {
     if (!conversation) return;
-    const value = e.target.value || null;
-    await api.patch(`/conversations/${conversation.id}`, { assignedToId: value });
-    globalMutate(`/conversations/${conversation.id}`);
+    setActionError(null);
+    try {
+      await api.patch(`/conversations/${conversation.id}`, data);
+    } catch (err) {
+      console.error('Update conversation failed:', err);
+      setActionError(getApiErrorMessage(err, fallback));
+    } finally {
+      // 失敗時也重新載入，讓下拉回到實際的值
+      globalMutate(`/conversations/${conversation.id}`);
+    }
+  };
+
+  const handleAssign = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    await patchConversation({ assignedToId: e.target.value || null }, '指派失敗，請稍後重試');
   };
 
   const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!conversation) return;
-    await api.patch(`/conversations/${conversation.id}`, { status: e.target.value });
-    globalMutate(`/conversations/${conversation.id}`);
+    await patchConversation({ status: e.target.value }, '變更狀態失敗，請稍後重試');
   };
 
   const handleReopen = async () => {
-    if (!conversation) return;
-    await api.patch(`/conversations/${conversation.id}`, { status: 'ACTIVE' });
-    globalMutate(`/conversations/${conversation.id}`);
+    await patchConversation({ status: 'ACTIVE' }, '重新開啟失敗，請稍後重試');
   };
 
   const handleTakeover = async () => {
@@ -265,6 +278,12 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           />
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="border-b bg-destructive-subtle px-4 py-2 text-xs text-destructive">
+          {actionError}
+        </div>
+      )}
 
       {/* Status Banner */}
       <StatusBanner
