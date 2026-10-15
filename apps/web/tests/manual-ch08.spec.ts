@@ -15,6 +15,7 @@ import { shot, SHOTS_DIR } from './manual-helpers';
 import * as path from 'path';
 
 const SEGMENT_PREVIEW = [/\/api\/v1\/marketing\/segments\/preview$/];
+// 以下兩個是 UAT 示範租戶的固定 LINE 渠道 id（錄製手冊專用）；換環境或渠道重建後要改成新的 id。
 const OA_EMPTY = 'a2e0d432-16b2-46fc-a0ed-25ff1edf5845'; // 「第二個line串接」：沒有任何 Rich Menu，示範用
 const OA_MAIN = 'c4ca29ba-45f9-4f0f-adc9-8fb967469c1b'; // 「LINE OA」：只截圖，不按任何按鈕
 
