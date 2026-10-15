@@ -52,8 +52,8 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     params: [
       {
         key: 'materialId',
-        label: '素材 ID',
-        type: 'string',
+        label: '素材',
+        type: 'material',
         required: true,
         placeholder: '從素材庫選擇要送出的素材',
       },

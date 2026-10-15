@@ -132,6 +132,41 @@ export function agentOptions(
   return options;
 }
 
+const MATERIAL_CHANNEL_LABELS: Record<string, string> = {
+  line: 'LINE',
+  fb: 'Facebook',
+  threads: 'Instagram',
+  webchat: '網頁聊天',
+};
+
+/**
+ * 「傳送素材」的下拉選項。原本要手動貼素材 UUID（問題清單 A04）；改成從素材庫選。
+ * 選項顯示名稱與渠道：素材渠道與對話不同時不會送出，管理員要看得出是哪個渠道的素材。
+ * 規則存的素材已停用或不在清單時保留原值並標出。
+ */
+export function materialOptions(
+  materials: ReadonlyArray<{ id: string; name?: string | null; channelType?: string | null }>,
+  currentId: string,
+  /** 清單是否已載入；載入前不能判斷已選的素材是否還在 */
+  loaded = true,
+): Array<{ value: string; label: string }> {
+  const options = [
+    { value: '', label: '請選擇素材' },
+    ...materials.map((m) => {
+      const channel = m.channelType ? MATERIAL_CHANNEL_LABELS[m.channelType.toLowerCase()] ?? m.channelType : '';
+      const name = m.name || m.id;
+      return { value: m.id, label: channel ? `${name}（${channel}）` : name };
+    }),
+  ];
+  if (currentId && !materials.some((m) => m.id === currentId)) {
+    options.push({
+      value: currentId,
+      label: loaded ? `已停用或找不到的素材（${currentId.slice(0, 8)}）` : '載入素材清單中…',
+    });
+  }
+  return options;
+}
+
 /**
  * 編輯頁紅框的說明。已停用的動作與不適用於觸發事件的動作分開寫原因；
  * 移除後沒有任何動作時存檔會被擋（至少要一個動作），不能說「儲存後就會恢復執行」。

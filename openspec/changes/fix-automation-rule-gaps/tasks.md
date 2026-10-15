@@ -12,8 +12,8 @@
 
 ## 3. 傳送素材從素材庫挑選（A04）
 
-- [ ] 3.1 測試 `apps/web/tests/unit/components/automation/action-editor.test.tsx`：「從清單選素材」「已存的素材被停用」「沒有素材檢視權限」，先確認失敗
-- [ ] 3.2 契約新增參數型別 `material`，`send_material.materialId` 改用它；`ActionEditor` 新增素材下拉
+- [x] 3.1 測試 `apps/web/tests/unit/components/automation/action-editor.test.tsx`：「從清單選素材」「已存的素材被停用」「沒有素材檢視權限」，先確認失敗
+- [x] 3.2 契約新增參數型別 `material`，`send_material.materialId` 改用它；`ActionEditor` 新增素材下拉
 
 ## 4. 不合契約的規則不可啟用（A02）
 
