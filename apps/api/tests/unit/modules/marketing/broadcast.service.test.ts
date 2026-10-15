@@ -164,6 +164,14 @@ function setupFixture({
         Object.assign(currentBroadcastState, args.data);
         return currentBroadcastState;
       }),
+      // executeBroadcast 以條件更新搶占 sending（change fix-broadcast-audience-fail-closed）
+      updateMany: mockFn(async (args: { where: { id: string; status?: { in: string[] } }; data: Record<string, unknown> }) => {
+        const allowed = args.where.status?.in;
+        if (allowed && !allowed.includes(currentBroadcastState.status)) return { count: 0 };
+        broadcastUpdates.push({ where: { id: args.where.id }, data: args.data });
+        Object.assign(currentBroadcastState, args.data);
+        return { count: 1 };
+      }),
     },
     material: {
       findFirst: mockFn(async () => material),
