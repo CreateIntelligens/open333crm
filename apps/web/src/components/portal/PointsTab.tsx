@@ -15,10 +15,28 @@ import {
 } from '@/components/ui/dialog';
 import api from '@/lib/api';
 
+interface ContactCandidate {
+  id: string;
+  displayName: string;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/** 名稱可能重複：附上電話與 Email 讓使用者分辨是哪一位 */
+function contactDetail(c: ContactCandidate): string {
+  return [c.phone, c.email].filter(Boolean).join('・') || '沒有電話與 Email';
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || fallback;
+}
+
 export function PointsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [contactId, setContactId] = useState<string | null>(null);
-  const [contactName, setContactName] = useState('');
+  const [selected, setSelected] = useState<ContactCandidate | null>(null);
+  const [candidates, setCandidates] = useState<ContactCandidate[]>([]);
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const { transactions, mutate: mutateTx } = usePoints(contactId);
   const { balance, mutate: mutateBalance } = usePointBalance(contactId);
@@ -28,22 +46,39 @@ export function PointsTab() {
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [adjustNote, setAdjustNote] = useState('');
   const [adjusting, setAdjusting] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
 
+  const selectContact = (c: ContactCandidate | null) => {
+    setSelected(c);
+    setContactId(c?.id ?? null);
+  };
+
+  // 以前只取第一筆（limit=1），同名或部分相符時會選到別人，接著加扣到錯的客戶。
+  // 現在只有剛好一筆時才自動選；多筆時列出名稱、電話、Email 讓使用者挑。
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;
     setSearching(true);
+    setSearchMessage(null);
+    setCandidates([]);
+    selectContact(null);
     try {
-      const res = await api.get(`/contacts?q=${encodeURIComponent(searchTerm)}&limit=1`);
-      const contacts = res.data.data || [];
-      if (contacts.length > 0) {
-        setContactId(contacts[0].id);
-        setContactName(contacts[0].displayName);
+      const res = await api.get(`/contacts?q=${encodeURIComponent(searchTerm.trim())}&limit=20`);
+      const contacts: ContactCandidate[] = res.data.data || [];
+      const total: number = res.data.meta?.total ?? contacts.length;
+      if (contacts.length === 0) {
+        setSearchMessage('找不到符合的聯絡人');
+      } else if (contacts.length === 1) {
+        selectContact(contacts[0]);
       } else {
-        setContactId(null);
-        setContactName('');
+        setCandidates(contacts);
+        setSearchMessage(
+          total > contacts.length
+            ? `符合的聯絡人超過 ${contacts.length} 位，只列出前 ${contacts.length} 位，請輸入更完整的電話或 Email`
+            : `有 ${contacts.length} 位符合，請選擇要調整的聯絡人`,
+        );
       }
     } catch (err) {
-      console.error('Search error:', err);
+      setSearchMessage(errorMessage(err, '搜尋失敗，請稍後再試'));
     } finally {
       setSearching(false);
     }
@@ -52,6 +87,7 @@ export function PointsTab() {
   const handleAdjust = async () => {
     if (!contactId || !adjustAmount) return;
     setAdjusting(true);
+    setAdjustError(null);
     try {
       await api.post('/portal/points/adjust', {
         contactId,
@@ -64,7 +100,7 @@ export function PointsTab() {
       mutateTx();
       mutateBalance();
     } catch (err) {
-      console.error('Adjust error:', err);
+      setAdjustError(errorMessage(err, '調整失敗，請稍後再試'));
     } finally {
       setAdjusting(false);
     }
@@ -91,15 +127,34 @@ export function PointsTab() {
         </Button>
       </div>
 
-      {contactId && (
+      {searchMessage && <p className="text-sm text-muted-foreground">{searchMessage}</p>}
+
+      {candidates.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-lg border p-2">
+          {candidates.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => selectContact(c)}
+              className={`rounded px-3 py-2 text-left text-sm hover:bg-muted ${selected?.id === c.id ? 'bg-muted font-medium' : ''}`}
+            >
+              {c.displayName}
+              <span className="ml-2 text-xs text-muted-foreground">{contactDetail(c)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {contactId && selected && (
         <>
           <div className="flex items-center gap-4">
-            <span className="font-medium">{contactName}</span>
+            <span className="font-medium">{selected.displayName}</span>
+            <span className="text-xs text-muted-foreground">{contactDetail(selected)}</span>
             <Badge color="#8b5cf6">
               <Coins className="h-3 w-3 mr-1 inline" />
               {balance} 點
             </Badge>
-            <Button size="sm" variant="outline" onClick={() => setAdjustOpen(true)}>
+            <Button size="sm" variant="outline" onClick={() => { setAdjustError(null); setAdjustOpen(true); }}>
               手動調整
             </Button>
           </div>
@@ -150,6 +205,12 @@ export function PointsTab() {
             <DialogTitle>手動調整積分</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {selected && (
+              <p className="text-sm">
+                調整對象：<span className="font-medium">{selected.displayName}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{contactDetail(selected)}</span>
+              </p>
+            )}
             <div>
               <label className="text-sm font-medium">調整金額（正數加、負數扣）</label>
               <Input type="number" value={adjustAmount} onChange={(e) => setAdjustAmount(parseInt(e.target.value) || 0)} />
@@ -158,6 +219,7 @@ export function PointsTab() {
               <label className="text-sm font-medium">備註</label>
               <Input value={adjustNote} onChange={(e) => setAdjustNote(e.target.value)} placeholder="調整原因" />
             </div>
+            {adjustError && <p className="text-sm text-destructive">{adjustError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdjustOpen(false)}>取消</Button>

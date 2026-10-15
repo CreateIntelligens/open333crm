@@ -15,6 +15,52 @@ import {
 import { resolveContext } from './template-context.js';
 import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
+
+// --- Broadcast audience ---
+
+type BroadcastTargetConfig = { tagIds?: string[]; contactIds?: string[] };
+
+function audienceError(path: string, message: string): AppError {
+  return new AppError(message, 'INVALID_AUDIENCE', 400, { issues: [{ path, message }] });
+}
+
+/**
+ * 受眾欄位必須能解析成明確的名單。名單為空時一律拒絕，絕不退化成「發給渠道全部聯絡人」。
+ * 建立廣播與發送廣播（含排程器、修正前建立的舊草稿）都經過這裡。
+ */
+export function assertBroadcastAudience(broadcast: {
+  targetType: string;
+  segmentId?: string | null;
+  targetConfig?: unknown;
+}) {
+  const config = (broadcast.targetConfig || {}) as BroadcastTargetConfig;
+  if (broadcast.targetType === 'segment' && !broadcast.segmentId) {
+    throw audienceError('segmentId', '選擇「受眾分群」時必須指定一個分群');
+  }
+  if (broadcast.targetType === 'tags' && !config.tagIds?.length) {
+    throw audienceError('targetConfig.tagIds', '選擇「依標籤篩選」時至少要選一個標籤');
+  }
+  if (broadcast.targetType === 'contacts' && !config.contactIds?.length) {
+    throw audienceError('targetConfig.contactIds', '選擇「手動選擇」時至少要選一位聯絡人');
+  }
+}
+
+function assertSegmentUsable(segment: { rules: unknown } | null) {
+  if (!segment) {
+    throw audienceError('segmentId', '所選分群已不存在。為避免發給全部聯絡人，已停止發送，請重新選擇分群');
+  }
+  if (effectiveSegmentConditions(segment.rules as SegmentRules).length === 0) {
+    throw audienceError('segmentId', '所選分群沒有任何有效條件。為避免發給全部聯絡人，請先替分群設定條件');
+  }
+}
+
+/** 素材的 channelType（line / fb）對應渠道的 ChannelType 列舉（LINE / FB） */
+function materialMatchesChannel(materialChannelType: unknown, channelType: unknown) {
+  return typeof materialChannelType === 'string'
+    && typeof channelType === 'string'
+    && materialChannelType.toLowerCase() === channelType.toLowerCase();
+}
 
 // --- Template CRUD ---
 
@@ -137,6 +183,8 @@ export async function createBroadcast(
     throw new AppError('素材與版型請擇一提供，不可同時或都不填', 'INVALID_INPUT', 400);
   }
 
+  assertBroadcastAudience(data);
+
   // 排程時間必須晚於現在：排程器每 60 秒取 scheduledAt <= now 的廣播執行，
   // 排到過去等於一分鐘內立即發送給客人。REST 與 MCP 都經過這裡
   if (data.scheduledAt) {
@@ -152,6 +200,7 @@ export async function createBroadcast(
   }
 
   // 驗證來源（Material 或舊 Template）
+  let materialChannelType: string | null = null;
   if (data.materialId) {
     const material = await prisma.material.findFirst({
       where: { id: data.materialId, tenantId, isActive: true },
@@ -159,6 +208,7 @@ export async function createBroadcast(
     if (!material) {
       throw new AppError(notFound('material'), 'NOT_FOUND', 404);
     }
+    materialChannelType = material.channelType;
   } else {
     const template = await prisma.messageTemplate.findFirst({
       where: {
@@ -179,6 +229,12 @@ export async function createBroadcast(
     throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
   }
 
+  // 素材與渠道要相符：FB 素材排給 LINE 渠道，發送時才會整批失敗
+  if (data.materialId && !materialMatchesChannel(materialChannelType, channel.channelType)) {
+    const message = '素材的渠道與廣播渠道不符，請選擇此渠道的素材';
+    throw new AppError(message, 'MATERIAL_CHANNEL_MISMATCH', 400, { issues: [{ path: 'materialId', message }] });
+  }
+
   // Validate campaign if provided
   if (data.campaignId) {
     const campaign = await prisma.campaign.findFirst({
@@ -197,6 +253,7 @@ export async function createBroadcast(
     if (!segment) {
       throw new AppError(notFound('segment'), 'NOT_FOUND', 404);
     }
+    if (data.targetType === 'segment') assertSegmentUsable(segment);
   }
 
   const status = data.scheduledAt ? 'scheduled' : 'draft';
@@ -294,6 +351,12 @@ async function convertBodyUrlsToShortLinks(
   return clone as Record<string, unknown>;
 }
 
+const SENDABLE_STATUSES = ['draft', 'scheduled', 'failed'];
+
+function alreadySendingError() {
+  return new AppError('此廣播正在發送中或已開始發送，請勿重複發送，稍後重新整理查看結果', 'BROADCAST_ALREADY_SENDING', 409);
+}
+
 /**
  * Execute a broadcast: resolve audience, send personalized messages, update stats.
  */
@@ -308,16 +371,22 @@ export async function executeBroadcast(
   if (!broadcast) {
     throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
   }
-  // 同上：狀態清單取 main（支援重試），訊息取中文版
-  if (!['draft', 'scheduled', 'sending', 'failed'].includes(broadcast.status)) {
+  // 只有草稿、已排程、失敗（重試）可以開始發送；發送中的廣播不可再發，避免重複群發
+  if (broadcast.status === 'sending') {
+    throw alreadySendingError();
+  }
+  if (!SENDABLE_STATUSES.includes(broadcast.status)) {
     throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
   }
 
-  // Mark as sending
-  await prisma.broadcast.update({
-    where: { id: broadcastId },
+  // 以單一條件更新搶占 sending：兩個請求（重複按、或與排程器同時）只有一個搶得到
+  const claimed = await prisma.broadcast.updateMany({
+    where: { id: broadcastId, tenantId: broadcast.tenantId, status: { in: SENDABLE_STATUSES } },
     data: { status: 'sending', sentAt: new Date() },
   });
+  if (claimed.count === 0) {
+    throw alreadySendingError();
+  }
 
   try {
     if (!broadcast.channelId || !broadcast.tenantId || !broadcast.createdById) {
@@ -614,7 +683,10 @@ async function resolveAudience(
     targetConfig: unknown;
   },
 ) {
-  const config = (broadcast.targetConfig || {}) as { tagIds?: string[]; contactIds?: string[] };
+  const config = (broadcast.targetConfig || {}) as BroadcastTargetConfig;
+
+  // fail-closed：名單為空（含修正前建立的舊草稿）一律拒絕，不可落到下方「全渠道」查詢
+  assertBroadcastAudience(broadcast);
 
   const identityWhere: Record<string, unknown> = {
     channelId: broadcast.channelId,
@@ -624,20 +696,19 @@ async function resolveAudience(
   if (broadcast.targetType === 'segment' && broadcast.segmentId) {
     // Use segment rules to find contacts
     const segment = await prisma.segment.findFirst({
-      where: { id: broadcast.segmentId },
+      where: { id: broadcast.segmentId, tenantId: broadcast.tenantId },
     });
-    if (segment) {
-      const { calculateSegmentContacts } = await import('./segment.service.js');
-      const { contactIds } = await calculateSegmentContacts(
-        prisma,
-        broadcast.tenantId,
-        segment.rules as any,
-      );
-      if (contactIds.length > 0) {
-        identityWhere.contactId = { in: contactIds };
-      } else {
-        return [];
-      }
+    // 分群被刪除或沒有有效條件：停止發送，絕不退化成全渠道
+    assertSegmentUsable(segment);
+    const { contactIds } = await calculateSegmentContacts(
+      prisma,
+      broadcast.tenantId,
+      segment!.rules as unknown as SegmentRules,
+    );
+    if (contactIds.length > 0) {
+      identityWhere.contactId = { in: contactIds };
+    } else {
+      return [];
     }
   } else if (broadcast.targetType === 'tags' && config.tagIds?.length) {
     identityWhere.contact = {

@@ -14,8 +14,8 @@ const T = 'tenant-a';
 function fakeDb() {
   const created: Array<Record<string, unknown>> = [];
   const db = {
-    material: { findFirst: async () => ({ id: 'mat-1', tenantId: T }) },
-    channel: { findFirst: async () => ({ id: 'ch-1', tenantId: T, isActive: true }) },
+    material: { findFirst: async () => ({ id: 'mat-1', tenantId: T, channelType: 'line' }) },
+    channel: { findFirst: async () => ({ id: 'ch-1', tenantId: T, isActive: true, channelType: 'LINE' }) },
     broadcast: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         created.push(data);

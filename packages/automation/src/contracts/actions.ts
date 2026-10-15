@@ -52,8 +52,8 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     params: [
       {
         key: 'materialId',
-        label: '素材 ID',
-        type: 'string',
+        label: '素材',
+        type: 'material',
         required: true,
         placeholder: '從素材庫選擇要送出的素材',
       },
@@ -147,7 +147,11 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     label: '傳送通知',
     requires: ['tenant'],
     mutates: [],
-    params: [{ key: 'message', label: '通知訊息', type: 'string', required: true }],
+    params: [
+      { key: 'message', label: '通知訊息', type: 'string', required: true },
+      // 不指定時依序通知工單負責人、對話負責客服，都沒有時通知主管與管理員（change fix-automation-rule-gaps）
+      { key: 'agentId', label: '通知誰', type: 'agent' },
+    ],
   },
   {
     type: 'notify_supervisor',

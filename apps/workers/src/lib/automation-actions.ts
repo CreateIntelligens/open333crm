@@ -6,6 +6,7 @@ import { logger } from '@open333crm/core';
 import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
+import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -46,6 +47,54 @@ async function getSupervisorAndAdminIds(
     select: { id: true },
   });
   return agents.map((agent) => agent.id);
+}
+
+// 自動化「通知」動作的站內通知文案（S12：原本是英文「SLA rule matched」）。
+// SLA 與一般自動化規則共用這兩個動作，所以標題不寫 SLA
+const AUTOMATION_NOTIFY_TITLE = '自動化規則通知';
+const AUTOMATION_NOTIFY_DEFAULT_BODY = '自動化規則的條件已成立，請查看相關工單。';
+
+/**
+ * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個「同租戶、啟用中」的客服：
+ * 指定的客服 → 工單負責人 → 對話負責客服；都不合格時送所有主管與管理員。
+ * 原本只送工單負責人，沒有工單的觸發選了這個動作永遠不會送（問題清單 A03）。
+ * 每個候選都要驗證：工單或對話可能留著已停用客服的指派，不可送給他們（review #282）。
+ * worker 走 BYPASSRLS 連線：每個查詢都要自帶 tenantId。
+ */
+async function resolveNotifyRecipients(
+  prisma: PrismaClient,
+  params: Record<string, unknown>,
+  context: WorkerActionContext,
+): Promise<string[]> {
+  const { tenantId } = context;
+  const findActiveAgent = async (id: string | null | undefined, source: string): Promise<string | null> => {
+    if (!id) return null;
+    const agent = await prisma.agent.findFirst({
+      where: { id, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!agent) logger.warn(`[automation] notify: ${source} ${id} is inactive or not in tenant, falling back`);
+    return agent?.id ?? null;
+  };
+
+  const chosen = typeof params['agentId'] === 'string' ? params['agentId'].trim() : '';
+  const chosenAgent = await findActiveAgent(chosen, 'chosen agent');
+  if (chosenAgent) return [chosenAgent];
+
+  const caseAssignee = await findActiveAgent(context.assigneeId, 'case assignee');
+  if (caseAssignee) return [caseAssignee];
+
+  if (context.conversationId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: context.conversationId, tenantId },
+      select: { assignedToId: true },
+    });
+    const conversationAssignee = await findActiveAgent(conversation?.assignedToId, 'conversation assignee');
+    if (conversationAssignee) return [conversationAssignee];
+  }
+  const fallback = await getSupervisorAndAdminIds(prisma, tenantId);
+  if (fallback.length === 0) logger.warn('[automation] notify skipped: no recipient in tenant', { tenantId });
+  return fallback;
 }
 
 const CASE_PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
@@ -328,15 +377,22 @@ export async function executeWorkerAutomationActions(
         continue;
       }
 
-      if (action.type === 'notify' && context.assigneeId) {
-        await enqueueNotification({
-          tenantId: context.tenantId,
-          agentId: context.assigneeId,
-          type: 'sla_rule',
-          title: 'SLA rule matched',
-          body: String(params['message'] ?? 'A SLA rule matched.'),
-          clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
-        });
+      if (action.type === 'notify') {
+        const recipients = await resolveNotifyRecipients(prisma, params, context);
+        for (const agentId of recipients) {
+          await enqueueNotification({
+            tenantId: context.tenantId,
+            agentId,
+            type: 'sla_rule',
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
+            clickUrl: context.caseId
+              ? `/dashboard/cases/${context.caseId}`
+              : context.conversationId
+                ? `/dashboard/inbox?conv=${context.conversationId}`
+                : undefined,
+          });
+        }
         continue;
       }
 
@@ -347,8 +403,8 @@ export async function executeWorkerAutomationActions(
             tenantId: context.tenantId,
             agentId,
             type: 'sla_rule',
-            title: 'SLA rule matched',
-            body: String(params['message'] ?? 'A SLA rule matched.'),
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
             clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
           });
         }
@@ -389,7 +445,7 @@ export async function executeWorkerAutomationActions(
         }
         const material = await prisma.material.findFirst({
           where: { id: materialId, tenantId: context.tenantId },
-          select: { name: true, contentType: true, body: true, channelType: true },
+          select: { name: true, contentType: true, body: true, channelType: true, variables: true },
         });
         if (!material) {
           logger.warn(`[automation] send_material skipped: material ${materialId} not found`);
@@ -420,10 +476,16 @@ export async function executeWorkerAutomationActions(
           continue;
         }
 
-        const variables = (params['variables'] as Record<string, string> | undefined) ?? {};
-        const renderedBody = renderTemplateBody(
-          material.body as Record<string, unknown>,
-          variables,
+        // 變數用對話聯絡人的資料代入（比照廣播），缺值用素材預設值，仍沒有值的留空，
+        // 不把 {{contact.name}} 原樣送給客人
+        const variables = await resolveMaterialVariables(prisma, {
+          tenantId: context.tenantId,
+          contactId: context.contactId ?? conv?.contactId ?? null,
+          materialVariables: material.variables,
+          ruleVariables: params['variables'] as Record<string, string> | undefined,
+        });
+        const renderedBody = stripUnresolvedPlaceholders(
+          renderTemplateBody(material.body as Record<string, unknown>, variables),
         );
         await deliverToChannelFromWorker(
           prisma,

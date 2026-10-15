@@ -20,17 +20,7 @@ import { CaseStatusBadge } from './CaseStatusBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { CASE_CATEGORY_OPTIONS } from '@open333crm/shared';
-
-// Valid transitions per spec
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  OPEN: ['IN_PROGRESS', 'CLOSED'],
-  IN_PROGRESS: ['PENDING', 'RESOLVED', 'ESCALATED', 'CLOSED'],
-  PENDING: ['IN_PROGRESS', 'ESCALATED', 'CLOSED'],
-  RESOLVED: ['CLOSED', 'IN_PROGRESS'],
-  ESCALATED: ['IN_PROGRESS', 'CLOSED'],
-  CLOSED: ['OPEN'],
-};
+import { CASE_CATEGORY_OPTIONS, VALID_CASE_TRANSITIONS, type CaseStatus } from '@open333crm/shared';
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: '開啟',
@@ -81,6 +71,8 @@ interface CaseDetailProps {
     updatedAt: string;
   };
   onRefresh: () => void;
+  /** 狀態下拉選「已升級」時改開升級對話框，和頂部「升級」按鈕相同（要填原因與通知對象） */
+  onRequestEscalate?: () => void;
 }
 
 const CHANNEL_TYPE_LABELS: Record<string, string> = {
@@ -93,7 +85,7 @@ const CHANNEL_TYPE_LABELS: Record<string, string> = {
   API: 'API',
 };
 
-export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
+export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetailProps) {
   const [agents, setAgents] = useState<Array<{ id: string; name: string; team?: { id: string; name: string } | null }>>([]);
   const [saving, setSaving] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -154,6 +146,10 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
       setShowCloseConfirm(true);
       return;
     }
+    if (newStatus === 'ESCALATED' && onRequestEscalate) {
+      onRequestEscalate();
+      return;
+    }
     await handlePatch({ status: newStatus });
   };
 
@@ -172,7 +168,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
   };
 
   // Build status transition options
-  const allowedStatuses = VALID_TRANSITIONS[caseData.status] || [];
+  const allowedStatuses: string[] = VALID_CASE_TRANSITIONS[caseData.status as CaseStatus] || [];
   const statusOptions = [
     { value: caseData.status, label: `${STATUS_LABELS[caseData.status] || caseData.status}（目前）` },
     ...allowedStatuses.map((s) => ({ value: s, label: STATUS_LABELS[s] || s })),
@@ -429,11 +425,11 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         <div className="flex gap-6 text-xs text-muted-foreground">
           <div>
             <span className="font-medium">建立時間：</span>{' '}
-            {format(new Date(caseData.createdAt), 'MMM d, yyyy HH:mm')}
+            {format(new Date(caseData.createdAt), 'yyyy/MM/dd HH:mm')}
           </div>
           <div>
             <span className="font-medium">更新時間：</span>{' '}
-            {format(new Date(caseData.updatedAt), 'MMM d, yyyy HH:mm')}
+            {format(new Date(caseData.updatedAt), 'yyyy/MM/dd HH:mm')}
           </div>
         </div>
       </CardContent>

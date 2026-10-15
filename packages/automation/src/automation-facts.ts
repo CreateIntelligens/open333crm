@@ -1,5 +1,18 @@
-import type { PrismaClient } from '@prisma/client';
-import { AUTOMATION_FACT_KEYS } from '@open333crm/automation';
+/**
+ * 自動化規則評估用的 facts。workers 執行規則與 API 判斷 AI 是否讓步（hasMatchingKeywordRule）共用，
+ * 兩邊才會對同一則訊息得出相同的條件結果（change fix-automation-rule-gaps）。
+ *
+ * 收呼叫端的 Prisma executor（AGENTS.md 結構規則 2）；workers 與 API 這條路徑都走 BYPASSRLS 連線，
+ * 每個查詢都自帶 tenantId。
+ */
+import { AUTOMATION_FACT_KEYS } from './contracts/facts.js';
+
+/** buildAutomationFacts 用到的 Prisma model 方法。PrismaClient 與交易 client 都符合 */
+export interface AutomationFactsDb {
+  contact: { findFirst(args: any): PromiseLike<any> };
+  conversation: { findFirst(args: any): PromiseLike<any> };
+  case: { findFirst(args: any): PromiseLike<any>; count(args: any): PromiseLike<number> };
+}
 
 export interface AutomationFactContext {
   tenantId: string;
@@ -11,7 +24,7 @@ export interface AutomationFactContext {
 }
 
 export async function buildAutomationFacts(
-  prisma: PrismaClient,
+  prisma: AutomationFactsDb,
   context: AutomationFactContext,
 ): Promise<Record<string, unknown>> {
   let contact: {

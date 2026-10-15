@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { mutate as mutateSwrCache } from 'swr';
 import api from '@/lib/api';
 import { unmountWebTalk } from '@/lib/webtalk';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
@@ -158,6 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAgent(null);
     setPermissions(new Set());
     setPermissionsError(false);
+    // 登出是前端導向、不整頁重載，SWR 快取會留到下一次登入。key 不帶租戶（例如 `/agents`），
+    // 不清掉的話改登入別的租戶時，會先看到上一個租戶的資料（review #282）
+    await mutateSwrCache(() => true, undefined, { revalidate: false });
     router.push('/login');
   }, [router]);
 

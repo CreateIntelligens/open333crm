@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
+import { mutate as globalMutate, useSWRConfig } from 'swr';
 
 const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
@@ -20,12 +21,13 @@ import { AuthProvider, setAccessToken, useAuth, usePermission } from '#src/provi
 const ok = (data: unknown) => Promise.resolve({ data: { success: true, data } });
 const AGENT = { id: 'a1', name: '測試成員', email: 'a@example.com', role: 'AGENT' };
 
-type Probe = { auth: ReturnType<typeof useAuth>; canViewAnalytics: boolean };
+type Probe = { auth: ReturnType<typeof useAuth>; canViewAnalytics: boolean; swrCache: ReturnType<typeof useSWRConfig>['cache'] };
 function renderProvider() {
   const probe = {} as Probe;
   function Capture() {
     probe.auth = useAuth();
     probe.canViewAnalytics = usePermission('analytics.view');
+    probe.swrCache = useSWRConfig().cache;
     return null;
   }
   render(<AuthProvider><Capture /></AuthProvider>);
@@ -91,4 +93,24 @@ test('權限載入失敗時顯示提示並可重試：權限集合', async () =>
   await act(() => probe.auth.reloadPermissions());
   assert.equal(probe.auth.permissionsError, false);
   assert.equal(probe.canViewAnalytics, true);
+});
+
+/**
+ * 登出後改登入別的租戶時，頁面是前端導向、不會整頁重載；SWR 的 key 不帶租戶（例如 `/agents`），
+ * 不清快取的話，新租戶會先看到上一個租戶的客服與素材名單（review #282）。
+ */
+test('登出時清掉 SWR 快取', async () => {
+  mockApi({
+    'POST /auth/login': () => ok({ accessToken: 't', agent: AGENT }),
+    'GET /auth/me/permissions': () => ok({ permissions: [] }),
+    'POST /auth/logout': () => ok({}),
+  });
+  const probe = renderProvider();
+  await waitFor(() => assert.equal(probe.auth.isLoading, false));
+  await act(() => probe.auth.login('a@example.com', 'pw'));
+  await act(() => globalMutate('automation:active-materials', [{ id: 'm1', name: 'A 租戶的素材' }], { revalidate: false }));
+  assert.ok(probe.swrCache.get('automation:active-materials')?.data, '對照組：登出前有快取');
+
+  await act(() => probe.auth.logout());
+  assert.equal(probe.swrCache.get('automation:active-materials')?.data, undefined);
 });
