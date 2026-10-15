@@ -477,6 +477,8 @@ REST 這一面是有界的：`authenticate` 只驗簽章不回查資料庫，但
 
 對照平台端：`authenticatePlatformSuperuser` 每個請求都回查 `platform_users`，停用即時生效，而平台後台沒有 Socket 或 CLI 通道。兩邊的差距不是刻意設計，是租戶端多了兩個當初沒有一起處理的入口。
 
+**規格依據。** 主規格 `auth-session` 的「停用租戶的長效憑證與既有連線失效」規定：租戶停用之後，系統 SHALL 拒絕 CLI token 與 Partner API 金鑰，並 SHALL 中斷既有的 Socket.IO 連線。現況違反這條需求。REST 的延遲在同一份主規格的「停用租戶的成員不能登入或換發 token」中明訂為可接受，最長一個 access token 的有效期。
+
 <a id="auth-03"></a>
 ### AUTH-03：平台帳號改密碼後，已發出的 token 仍然有效
 
@@ -1677,6 +1679,8 @@ schema 為聯絡人標籤留了到期時間。貼標的程式都不設定這個�
 `analytics.scheduler.ts` 的 `setupAnalyticsScheduler()` 每天對每個啟用中的租戶呼叫 `analytics.aggregator.ts` 的 `runDailyAggregation()`，把總覽、工單、客服、渠道與聯絡人的彙總寫入 `DailyStat`。
 
 `analytics.service.ts` 的報表函式都在查詢當下從原始資料表計算，沒有任何程式讀 `DailyStat`。排程每天為每個租戶做一次完整計算，結果沒有用途。
+
+change `add-tenant-aware-login` 的歸檔規格有「每日統計對每個啟用中的租戶各跑一次」這條需求。change `restore-tenant-aware-login-specs` 刻意沒有補回這條需求，等這一項決定報表改讀 `DailyStat`，或刪除排程。
 
 <a id="db-04"></a>
 ### DB-04：schema 有、程式沒有讀寫的欄位與資料表

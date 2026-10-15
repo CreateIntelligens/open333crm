@@ -191,8 +191,8 @@ export async function createAgent(
    */
   channelGrant?: { grantable: ChannelGrantScope; grantedById?: string; passwordHash?: string },
 ) {
-  // email 全域唯一：跨租戶檢查是否已被使用（不限本租戶），
-  // 否則跨租戶撞 email 會在 create 時冒 P2002 → 500，而非乾淨的 409
+  // email 全域唯一。這裡只查得到同租戶的成員：路由以綁定租戶的連線呼叫，RLS 會藏起其他租戶的成員。
+  // 跨租戶撞 email 時由資料庫的唯一約束擋下（P2002），error-handler.plugin.ts 轉成 409 CONFLICT。
   const existing = await prisma.agent.findUnique({
     where: { email: data.email },
   });
