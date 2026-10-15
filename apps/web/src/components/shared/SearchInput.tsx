@@ -53,13 +53,15 @@ export function SearchInput({
   };
 
   return (
+    // 樣式依 Figma「Input / Bar」（Type=Search）：高 44、圓角 12、#F8FAFC 底、左側 20px 放大鏡
     <div className={cn('relative', className)}>
-      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
       <Input
         value={internalValue}
         onChange={handleChange}
         placeholder={placeholder}
-        className="pl-9"
+        aria-label={placeholder}
+        className="h-11 bg-muted pl-10 pr-3"
       />
     </div>
   );

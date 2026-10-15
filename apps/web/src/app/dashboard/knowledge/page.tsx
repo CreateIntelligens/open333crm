@@ -2,10 +2,12 @@
 
 import React, { useState, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Plus, Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
+import { Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
 import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
 import { ArticleList } from '@/components/knowledge/ArticleList';
+import { Chip } from '@/components/ui/chip';
+import { AddIcon } from '@/components/icons/figma-icons';
 import { ArticleFormDialog } from '@/components/knowledge/ArticleFormDialog';
 import { ImportDialog } from '@/components/knowledge/ImportDialog';
 import { EmbeddingSettings } from '@/components/knowledge/EmbeddingSettings';
@@ -15,7 +17,7 @@ import { SearchInput } from '@/components/shared/SearchInput';
 import { Pagination } from '@/components/shared/Pagination';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import api from '@/lib/api';
@@ -191,7 +193,24 @@ export default function KnowledgePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <Topbar title={pageTab === 'chat' ? 'Chat & Prompt' : pageTab === 'embedding' ? 'Embedding 設定' : pageTab === 'search' ? '語義搜尋' : pageTab === 'feedback' ? '回報調教' : '文章管理'} />
+      {/* 說明文字：Figma 6.1.1 的說明是從人員管理頁複製來的佔位文字，這裡改成知識庫的說明 */}
+      <Topbar
+        title={pageTab === 'chat' ? 'Chat & Prompt' : pageTab === 'embedding' ? 'Embedding 設定' : pageTab === 'search' ? '語義搜尋' : pageTab === 'feedback' ? '回報調教' : '文章管理'}
+        description={pageTab === 'articles' ? '管理 AI 回覆時參考的知識文章，發布後才會被搜尋到' : undefined}
+      >
+        {pageTab === 'articles' && (
+          <>
+            <Button variant="outline" size="lg" className="w-[140px]" onClick={() => setImportOpen(true)}>
+              <Upload />
+              匯入文章
+            </Button>
+            <Button size="lg" className="w-[140px]" onClick={handleNewArticle}>
+              <AddIcon />
+              新增文章
+            </Button>
+          </>
+        )}
+      </Topbar>
 
       {/* Top-level page tabs: articles vs semantic search */}
       <div className="flex-1 overflow-hidden px-8">
@@ -207,21 +226,31 @@ export default function KnowledgePage() {
           */}
           <TabsContent
             value="articles"
-            className="flex h-[calc(100vh-130px)] flex-col"
+            className="mt-0 flex h-[calc(100vh-51px-160px)] flex-col pb-6"
           >
-            <div className="border-b py-3 shrink-0">
-              <div className="flex items-center gap-3">
-                <SearchInput
-                  placeholder="搜尋文章..."
-                  onSearch={setSearch}
-                  className="max-w-sm"
-                />
+            {/* 篩選列依 Figma：狀態膠囊（Chip / Filter Large）＋分類、來源下拉＋搜尋，間距 16 */}
+            <div className="flex shrink-0 flex-wrap items-center gap-4 pb-5">
+              <div role="group" aria-label="文章狀態" className="flex flex-wrap items-center gap-4">
+                {statusTabs.map((tab) => (
+                  <Chip
+                    key={tab.value}
+                    size="lg"
+                    tone={statusFilter === tab.value ? 'primary' : 'default'}
+                    selected={statusFilter === tab.value}
+                    onClick={() => setStatusFilter(tab.value)}
+                  >
+                    {tab.label}
+                  </Chip>
+                ))}
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-4">
                 {categories.length > 0 && (
                   <Select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
                     options={categoryOptions}
-                    className="w-40"
+                    aria-label="分類"
+                    className="w-[180px]"
                   />
                 )}
                 {sources.length > 0 && (
@@ -229,45 +258,20 @@ export default function KnowledgePage() {
                     value={sourceFilter}
                     onChange={(e) => setSourceFilter(e.target.value)}
                     options={sourceOptions}
-                    className="w-48"
+                    aria-label="來源"
+                    className="w-[180px]"
                   />
                 )}
-                {tagFilter && (
-                  <Badge
-                    variant="default"
-                    className="cursor-pointer gap-1"
-                    onClick={() => setTagFilter('')}
-                    title="點擊清除 tag 篩選"
-                  >
-                    Tag: {tagFilter} ✕
-                  </Badge>
-                )}
-                <div className="ml-auto flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-                    <Upload className="mr-1.5 h-4 w-4" />
-                    匯入文章
-                  </Button>
-                  <Button onClick={handleNewArticle}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    新增文章
-                  </Button>
-                </div>
+                <SearchInput placeholder="搜尋文章" onSearch={setSearch} className="w-[210px]" />
               </div>
+              {tagFilter && (
+                <Chip size="lg" tone="outline" onClick={() => setTagFilter('')} title="點擊清除標籤篩選">
+                  標籤：{tagFilter} ✕
+                </Chip>
+              )}
             </div>
 
-            <div className="border-b pt-2 shrink-0">
-              <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                <TabsList>
-                  {statusTabs.map((tab) => (
-                    <TabsTrigger key={tab.value} value={tab.value}>
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               <ArticleList
                 articles={articles}
                 isLoading={isLoading}
@@ -278,16 +282,15 @@ export default function KnowledgePage() {
                 onTagClick={setTagFilter}
               />
             </div>
-            {totalPages > 1 && (
-              <div className="flex shrink-0 items-center justify-between gap-4 border-t bg-background px-4 py-3">
-                <span className="text-sm text-muted-foreground">
-                  共 {total} 篇 · 第 {page} / {totalPages} 頁
+
+            {articles.length > 0 && (
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-7 pl-3 pt-5">
+                <span className="text-base font-medium text-muted-foreground">
+                  顯示 {(page - 1) * PAGE_SIZE + 1}-{(page - 1) * PAGE_SIZE + articles.length} 篇，共 {total} 篇
                 </span>
-                <Pagination
-                  page={page}
-                  totalPages={totalPages}
-                  onPageChange={setPage}
-                />
+                {totalPages > 1 && (
+                  <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+                )}
               </div>
             )}
           </TabsContent>

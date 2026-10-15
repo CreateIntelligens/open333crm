@@ -2,9 +2,9 @@
 
 import React from 'react';
 import { format } from 'date-fns';
-import { Loader2, BookOpen, Edit, Globe, Archive, Trash2, Brain, Paperclip } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Loader2, BookOpen, Globe, Archive, Brain, Paperclip } from 'lucide-react';
+import { Chip } from '@/components/ui/chip';
+import { DeleteIcon, EditIcon, KnowledgeArticleIcon } from '@/components/icons/figma-icons';
 import { EmptyState } from '@/components/shared/EmptyState';
 
 interface Article {
@@ -39,11 +39,38 @@ const statusLabel: Record<string, string> = {
   ARCHIVED: '已封存',
 };
 
-const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  DRAFT: 'secondary',
-  PUBLISHED: 'default',
+const statusTone: Record<string, 'primary' | 'default' | 'outline'> = {
+  PUBLISHED: 'primary',
+  DRAFT: 'default',
   ARCHIVED: 'outline',
 };
+
+// 欄寬依 Figma 6.1.1 知識庫列表：標題彈性（Figma 500）、分類 140、狀態 80、標籤 80、瀏覽數 71、更新時間 170；
+// 「操作」欄 Figma 沒有畫，保留原本的編輯／發布／封存／刪除
+const COLS = 'grid grid-cols-[minmax(0,1fr)_140px_80px_80px_71px_120px_136px] items-center gap-4 px-5';
+
+function TagPill({ children, onClick, title }: { children: React.ReactNode; onClick?: () => void; title?: string }) {
+  const cls = 'inline-flex max-w-full items-center truncate rounded-lg border border-border bg-muted px-2 text-[10px] leading-[15px] text-muted-foreground';
+  return onClick ? (
+    <button type="button" onClick={onClick} title={title} className={`${cls} hover:border-primary hover:text-primary`}>{children}</button>
+  ) : (
+    <span title={title} className={cls}>{children}</span>
+  );
+}
+
+function IconAction({ label, onClick, className, children }: { label: string; onClick: () => void; className?: string; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex h-7 w-7 items-center justify-center rounded-md text-tertiary-foreground hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className ?? ''}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function ArticleList({
   articles,
@@ -73,153 +100,94 @@ export function ArticleList({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b bg-muted/50 text-left">
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              標題
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              分類
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              狀態
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              標籤
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              瀏覽數
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              更新時間
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {articles.map((article) => (
-            <tr key={article.id} className="border-b transition-colors hover:bg-muted/50">
-              <td className="px-4 py-3">
-                <div className="flex items-start gap-1.5">
-                  {article.hasEmbedding && (
-                    <span title="已向量化">
-                      <Brain className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-                    </span>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">{article.title}</p>
-                    {article.summary && (
-                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-                        {article.summary}
-                      </p>
+    <div role="table" aria-label="文章列表" className="overflow-x-auto rounded-lg border border-border">
+      <div className="min-w-[1040px]">
+        <div role="row" className={`${COLS} border-b border-border bg-muted py-2 text-sm font-medium leading-7 text-muted-foreground`}>
+          <span role="columnheader">標題</span>
+          <span role="columnheader">分類</span>
+          <span role="columnheader">狀態</span>
+          <span role="columnheader">標籤</span>
+          <span role="columnheader">瀏覽數</span>
+          <span role="columnheader">更新時間</span>
+          <span role="columnheader">操作</span>
+        </div>
+
+        {articles.map((article) => (
+          <div
+            key={article.id}
+            role="row"
+            className={`${COLS} border-b border-border bg-background py-5 text-sm font-medium leading-5 text-muted-foreground transition-colors last:border-b-0 hover:bg-shell`}
+          >
+            <span role="cell" className="flex min-w-0 items-start gap-3">
+              <KnowledgeArticleIcon className="h-5 w-5 flex-none" />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-sm font-semibold text-foreground" title={article.title}>{article.title}</span>
+                {article.summary && (
+                  <span className="truncate text-xs font-normal leading-5 text-muted-foreground" title={article.summary}>{article.summary}</span>
+                )}
+                {(article.externalSource || article.externalDocId || (article._count?.attachments ?? 0) > 0 || article.hasEmbedding) && (
+                  <span className="flex flex-wrap items-center gap-2 text-xs font-normal leading-5 text-muted-foreground">
+                    {article.externalSource && <TagPill>{article.externalSource}</TagPill>}
+                    {article.externalDocId && (
+                      <span>DocID {article.externalDocId}{article.externalVer ? ` · v${article.externalVer}` : ''}</span>
                     )}
-                    {(article.externalSource || article.externalDocId || (article._count?.attachments ?? 0) > 0) && (
-                      <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-                        {article.externalSource && (
-                          <Badge variant="outline" className="px-1 py-0 text-[10px] font-normal">
-                            {article.externalSource}
-                          </Badge>
-                        )}
-                        {article.externalDocId && (
-                          <span>
-                            DocID {article.externalDocId}
-                            {article.externalVer ? ` · v${article.externalVer}` : ''}
-                          </span>
-                        )}
-                        {(article._count?.attachments ?? 0) > 0 && (
-                          <span className="inline-flex items-center gap-0.5">
-                            <Paperclip className="h-3 w-3" />
-                            {article._count?.attachments}
-                          </span>
-                        )}
-                      </div>
+                    {(article._count?.attachments ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-0.5" title="附件數">
+                        <Paperclip className="h-3 w-3" />
+                        {article._count?.attachments}
+                      </span>
                     )}
-                  </div>
-                </div>
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant="outline">{article.category}</Badge>
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant={statusVariant[article.status] || 'secondary'}>
-                  {statusLabel[article.status] || article.status}
-                </Badge>
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex flex-wrap gap-1">
-                  {article.tags.slice(0, 3).map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="secondary"
-                      className={onTagClick ? 'cursor-pointer text-xs hover:bg-primary hover:text-primary-foreground' : 'text-xs'}
-                      onClick={() => onTagClick?.(tag)}
-                      title={onTagClick ? `篩選 tag：${tag}` : undefined}
-                    >
-                      {tag}
-                    </Badge>
-                  ))}
-                  {article.tags.length > 3 && (
-                    <span className="text-xs text-muted-foreground">
-                      +{article.tags.length - 3}
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
-                {article.viewCount}
-              </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
-                {format(new Date(article.updatedAt), 'MMM d, HH:mm')}
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onEdit(article)}
-                    title="編輯"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  {article.status !== 'PUBLISHED' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onPublish(article.id)}
-                      title="發布"
-                    >
-                      <Globe className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {article.status !== 'ARCHIVED' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onArchive(article.id)}
-                      title="封存"
-                    >
-                      <Archive className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDelete(article.id)}
-                    title="刪除"
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                    {/* Figma 沒有畫向量化狀態，保留原有提示 */}
+                    {article.hasEmbedding && (
+                      <span className="inline-flex items-center gap-0.5 text-success" title="已向量化，AI 可以搜尋到這篇">
+                        <Brain className="h-3 w-3" />
+                        已向量化
+                      </span>
+                    )}
+                  </span>
+                )}
+              </span>
+            </span>
+
+            <span role="cell" className="line-clamp-2 break-words" title={article.category}>{article.category}</span>
+
+            <span role="cell">
+              <Chip tone={statusTone[article.status] || 'default'}>{statusLabel[article.status] || article.status}</Chip>
+            </span>
+
+            <span role="cell" className="flex min-w-0 flex-col items-start gap-1">
+              {article.tags.length === 0 && <span>---</span>}
+              {article.tags.slice(0, 2).map((tag) => (
+                <TagPill
+                  key={tag}
+                  onClick={onTagClick ? () => onTagClick(tag) : undefined}
+                  title={onTagClick ? `篩選標籤：${tag}` : tag}
+                >
+                  {tag}
+                </TagPill>
+              ))}
+              {article.tags.length > 2 && <span className="text-xs">+{article.tags.length - 2}</span>}
+            </span>
+
+            <span role="cell" className="tabular-nums">{article.viewCount}</span>
+
+            <span role="cell" className="tabular-nums">{format(new Date(article.updatedAt), 'MMM d, HH:mm')}</span>
+
+            <span role="cell" className="flex items-center gap-1">
+              <IconAction label="編輯" onClick={() => onEdit(article)}><EditIcon className="h-4 w-4" /></IconAction>
+              {article.status !== 'PUBLISHED' && (
+                <IconAction label="發布" onClick={() => onPublish(article.id)}><Globe className="h-4 w-4" /></IconAction>
+              )}
+              {article.status !== 'ARCHIVED' && (
+                <IconAction label="封存" onClick={() => onArchive(article.id)}><Archive className="h-4 w-4" /></IconAction>
+              )}
+              <IconAction label="刪除" onClick={() => onDelete(article.id)} className="text-destructive">
+                <DeleteIcon className="h-5 w-5" />
+              </IconAction>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
