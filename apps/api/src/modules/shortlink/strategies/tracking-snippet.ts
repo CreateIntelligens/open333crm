@@ -6,8 +6,8 @@
  * trackingSettingsSchema），這裡再驗一次——驗證上線前就存進資料庫的值不可輸出（G06）。
  */
 
-/** GA4 評估 ID：G- 加英數字 */
-export const GA4_ID_PATTERN = /^G-[A-Z0-9]{4,20}$/i;
+/** GA4 評估 ID：G- 加大寫英數字。gtag.js 只把大寫 G- 當 GA4 ID，小寫載入的是空設定、不會追蹤 */
+export const GA4_ID_PATTERN = /^G-[A-Z0-9]{4,20}$/;
 /** Meta Pixel ID：純數字 */
 export const META_PIXEL_ID_PATTERN = /^\d{5,20}$/;
 

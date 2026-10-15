@@ -13,6 +13,11 @@ test('舊資料裡不合格的 ID 不輸出', () => {
   assert.equal(html.includes('fbevents'), false);
 });
 
+test('舊資料裡含小寫字母的 GA ID 不輸出', () => {
+  assert.equal(buildTrackingSnippets('g-ABC123XYZ9', null).includes('googletagmanager'), false);
+  assert.equal(buildTrackingSnippets('G-abc123xyz9', null).includes('googletagmanager'), false);
+});
+
 test('合格的 ID 照常輸出', () => {
   const html = buildTrackingSnippets('G-ABC123XYZ9', '123456789012345');
   assert.ok(html.includes("gtag('config', 'G-ABC123XYZ9')"));

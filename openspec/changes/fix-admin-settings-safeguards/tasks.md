@@ -3,6 +3,8 @@
 - [x] 1.1 測試 `apps/api/tests/unit/modules/settings/tracking-settings.test.ts`：「合格的 ID 可以儲存」「含程式碼的 GA ID 被拒」「非數字的 Pixel ID 被拒」「空字串清除設定」，先確認失敗
 - [x] 1.2 測試 `apps/api/tests/unit/modules/shortlink/tracking-snippet.test.ts`：「舊資料裡不合格的 ID 不輸出」「合格的 ID 照常輸出」，先確認失敗
 - [x] 1.3 `trackingSettingsSchema` 加格式驗證；查詢移到 `tracking-settings.service.ts`；`tracking-snippet.ts` 輸出前驗證並跳脫；前端顯示後端的錯誤
+- [x] 1.4 測試 `apps/api/tests/feature/modules/settings/tracking-settings-route.test.ts`：走真實路由驗證 5 個 Scenario：3 種格式不符回 400 `VALIDATION_ERROR` 且已儲存的設定不變，合格的 ID 與空字串照常寫入。突變：路由改成不呼叫 `trackingSettingsSchema.parse`，除了「合格的 ID 可以儲存」之外的 4 個測試都失敗
+- [x] 1.5 測試「含小寫字母的 GA ID 被拒」「舊資料裡含小寫字母的 GA ID 不輸出」，先確認失敗；`GA4_ID_PATTERN` 拿掉 `/i`
 
 ## 2. 營業時間（G07）
 
