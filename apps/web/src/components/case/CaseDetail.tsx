@@ -429,11 +429,11 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
         <div className="flex gap-6 text-xs text-muted-foreground">
           <div>
             <span className="font-medium">建立時間：</span>{' '}
-            {format(new Date(caseData.createdAt), 'MMM d, yyyy HH:mm')}
+            {format(new Date(caseData.createdAt), 'yyyy/MM/dd HH:mm')}
           </div>
           <div>
             <span className="font-medium">更新時間：</span>{' '}
-            {format(new Date(caseData.updatedAt), 'MMM d, yyyy HH:mm')}
+            {format(new Date(caseData.updatedAt), 'yyyy/MM/dd HH:mm')}
           </div>
         </div>
       </CardContent>

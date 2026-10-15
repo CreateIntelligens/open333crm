@@ -234,7 +234,7 @@ export function CaseTimeline({ caseId, events, notes, onRefresh }: CaseTimelineP
                   </span>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {format(new Date(item.createdAt), 'MMM d, HH:mm')}
+                  {format(new Date(item.createdAt), 'yyyy/MM/dd HH:mm')}
                 </span>
               </div>
               <p className="mt-0.5 text-sm text-muted-foreground">{item.content}</p>
