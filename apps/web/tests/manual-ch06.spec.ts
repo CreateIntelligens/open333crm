@@ -2,11 +2,12 @@
  * 手冊第 06 章「知識庫」影片與截圖（對 UAT 正式環境，只開表單不送出）。
  * 唯一放行的 POST：/knowledge/search（語義搜尋，只讀：產生查詢向量後 SELECT，不寫資料）。
  */
+import * as path from 'path';
 import { test } from '@playwright/test';
 import { startRecording, stopRecording, poster, caption, point, tap, typeIn, go, newShotPage } from './manual-video-helpers';
 import { shot, shotPage } from './manual-helpers';
 
-const SAMPLE_CSV = '/private/tmp/claude-501/-Users-danielyang-Documents-opencrm-poc/d60edcc2-6f15-4406-b5fc-7cb731f17dc1/scratchpad/c6/範例FAQ.csv';
+const SAMPLE_CSV = path.resolve(__dirname, 'fixtures/manual-kb-sample.csv');
 const SEARCH_ONLY = [/\/api\/v1\/knowledge\/search$/];
 
 test('ch06-articles 文章列表與狀態', async ({ browser }) => {
