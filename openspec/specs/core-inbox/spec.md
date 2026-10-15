@@ -233,3 +233,10 @@ The inbox message bubble SHALL show image, video, audio and file messages with t
 #### Scenario: 收件匣的交回 Bot 按鈕
 - **WHEN** 客服在收件匣打開狀態為 `AGENT_HANDLED` 或 `ACTIVE` 的對話並按「交回 Bot」
 - **THEN** 前端呼叫 `POST /conversations/:id/return-to-bot`；狀態為 `BOT_HANDLED` 或 `CLOSED` 的對話不顯示這個按鈕
+
+### Requirement: 無法解析的訊息顯示佔位文字
+訊息的 `content` 是物件、但沒有 `text` 時，收件匣的訊息泡泡 SHALL 顯示「[不支援的訊息類型]」，SHALL NOT 顯示 `[object Object]`。
+
+#### Scenario: 無法解析的訊息
+- **WHEN** 收件匣顯示一則 `contentType` 為 `unknown`、`content` 為 `{}` 的訊息
+- **THEN** 訊息泡泡顯示「[不支援的訊息類型]」
