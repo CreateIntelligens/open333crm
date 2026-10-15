@@ -12,6 +12,7 @@ import { CaseTimeline } from '@/components/case/CaseTimeline';
 import { EscalationModal } from '@/components/case/EscalationModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { canTransition, type CaseStatus } from '@open333crm/shared';
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -58,11 +59,12 @@ export default function CaseDetailPage() {
     );
   }
 
-  const status = caseData.status as string;
-  const canEscalate = ['OPEN', 'IN_PROGRESS', 'PENDING'].includes(status);
-  const canResolve = ['OPEN', 'IN_PROGRESS', 'PENDING', 'ESCALATED'].includes(status);
-  const canClose = status !== 'CLOSED';
-  const canReopen = status === 'CLOSED';
+  // 按鈕只在狀態機允許時出現（S05：原本開啟、待處理、已升級也顯示「標記解決」，按下必定 422）
+  const status = caseData.status as CaseStatus;
+  const canEscalate = canTransition(status, 'ESCALATED');
+  const canResolve = canTransition(status, 'RESOLVED');
+  const canClose = canTransition(status, 'CLOSED');
+  const canReopen = status === 'CLOSED' && canTransition(status, 'OPEN');
 
   const handleResolve = async () => {
     try {
@@ -90,6 +92,7 @@ export default function CaseDetailPage() {
       fetchCase();
     } catch (err) {
       console.error('Failed to reopen case:', err);
+      alert(getApiErrorMessage(err, '重新開啟案件失敗，請稍後重試'));
     }
   };
 
@@ -201,6 +204,7 @@ export default function CaseDetailPage() {
                 updatedAt: caseData.updatedAt as string,
               }}
               onRefresh={fetchCase}
+              onRequestEscalate={() => setShowEscalation(true)}
             />
           </div>
 

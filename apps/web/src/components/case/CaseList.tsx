@@ -138,7 +138,7 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
                 <SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} />
               </td>
               <td className="px-4 py-3 text-sm text-muted-foreground">
-                {format(new Date(c.createdAt), 'MMM d, HH:mm')}
+                {format(new Date(c.createdAt), 'yyyy/MM/dd HH:mm')}
               </td>
               {onDelete && (
                 <td className="px-4 py-3 text-right">

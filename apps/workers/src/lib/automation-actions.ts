@@ -48,6 +48,11 @@ async function getSupervisorAndAdminIds(
   return agents.map((agent) => agent.id);
 }
 
+// 自動化「通知」動作的站內通知文案（S12：原本是英文「SLA rule matched」）。
+// SLA 與一般自動化規則共用這兩個動作，所以標題不寫 SLA
+const AUTOMATION_NOTIFY_TITLE = '自動化規則通知';
+const AUTOMATION_NOTIFY_DEFAULT_BODY = '自動化規則的條件已成立，請查看相關工單。';
+
 /**
  * 「傳送通知」的收件人（change fix-automation-rule-gaps）。依序取第一個「同租戶、啟用中」的客服：
  * 指定的客服 → 工單負責人 → 對話負責客服；都不合格時送所有主管與管理員。
@@ -374,8 +379,8 @@ export async function executeWorkerAutomationActions(
             tenantId: context.tenantId,
             agentId,
             type: 'sla_rule',
-            title: 'SLA rule matched',
-            body: String(params['message'] ?? 'A SLA rule matched.'),
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
             clickUrl: context.caseId
               ? `/dashboard/cases/${context.caseId}`
               : context.conversationId
@@ -393,8 +398,8 @@ export async function executeWorkerAutomationActions(
             tenantId: context.tenantId,
             agentId,
             type: 'sla_rule',
-            title: 'SLA rule matched',
-            body: String(params['message'] ?? 'A SLA rule matched.'),
+            title: AUTOMATION_NOTIFY_TITLE,
+            body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
             clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
           });
         }
