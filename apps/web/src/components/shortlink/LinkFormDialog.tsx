@@ -88,21 +88,23 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
     setError('');
     setSaving(true);
     try {
+      // 編輯時清空的選填欄位送空字串（後端存成 null）；送 undefined 會被當成「這欄不動」，清不掉
+      const optional = (v: string) => (editData ? v : v || undefined);
       const payload: Record<string, unknown> = {
         targetUrl,
-        title: title || undefined,
-        utmSource: utmSource || undefined,
-        utmMedium: utmMedium || undefined,
-        utmCampaign: utmCampaign || undefined,
-        utmContent: utmContent || undefined,
-        utmTerm: utmTerm || undefined,
-        tagOnClick: tagOnClick || undefined,
+        title: optional(title),
+        utmSource: optional(utmSource),
+        utmMedium: optional(utmMedium),
+        utmCampaign: optional(utmCampaign),
+        utmContent: optional(utmContent),
+        utmTerm: optional(utmTerm),
+        tagOnClick: optional(tagOnClick),
         // 第二參數 = 可清除：編輯時清空要送 null，否則後端當成「這欄不動」
         expiresAt: toIsoForApi(expiresAt, Boolean(editData)),
         lineChannelId: lineChannelId || null,
-        ogTitle: ogTitle || undefined,
-        ogDescription: ogDescription || undefined,
-        ogImage: ogImage || undefined,
+        ogTitle: optional(ogTitle),
+        ogDescription: optional(ogDescription),
+        ogImage: optional(ogImage),
       };
 
       if (!editData && slug) {
@@ -132,6 +134,11 @@ export function LinkFormDialog({ open, onClose, onSaved, editData, tags = [] }: 
         </DialogHeader>
 
         <div className="space-y-4">
+          {Boolean(editData?.materialId) && (
+            <div className="rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+              這是廣播自動建立的素材連結，已經發給客人的訊息裡用的就是這個網址。修改目標網址或到期時間，客人點開已發出的訊息時也會跟著改變或失效。
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium">目標 URL *</label>
             <Input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://example.com/page" />

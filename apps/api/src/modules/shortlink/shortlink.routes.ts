@@ -71,8 +71,10 @@ const createShortlinkSchema = z.object({
 });
 
 // 更新沿用同組規則，但全欄位可選（targetUrl 也可不帶）。
-const updateShortlinkSchema = createShortlinkSchema.partial().extend({
+export const updateShortlinkSchema = createShortlinkSchema.partial().extend({
   isActive: z.boolean().optional(),
+  // 編輯時清空社群預覽圖片送空字串（= 清除）；其他選填文字欄位本來就接受空字串
+  ogImage: createShortlinkSchema.shape.ogImage.or(z.literal('')),
   // expiresAt 要能被清掉：service 用 `=== null` 判斷「移除到期時間」，
   // schema 若不收 null 會被擋在 400，那段清除邏輯就永遠執行不到
   // ——到期時間一旦設了就拿不掉。

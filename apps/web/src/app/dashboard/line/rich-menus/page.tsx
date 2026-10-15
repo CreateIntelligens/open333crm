@@ -24,6 +24,7 @@ import {
   unpublishRichMenu,
   type RichMenu,
 } from '@/hooks/useRichMenus';
+import { richMenuPublishConfirm, richMenuUnpublishConfirm } from '@/lib/rich-menu-confirm';
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: '#94a3b8' },
@@ -80,7 +81,8 @@ export default function RichMenusPage() {
   };
 
   const handlePublish = async (id: string) => {
-    if (!confirm('確定發布到 LINE？發布後將無法直接編輯，需先取消發布。')) return;
+    const selected = Boolean(richMenus.find((m) => m.id === id)?.selected);
+    if (!confirm(richMenuPublishConfirm(selected))) return;
     try {
       await publishRichMenu(id);
       mutate();
@@ -91,7 +93,8 @@ export default function RichMenusPage() {
   };
 
   const handleUnpublish = async (id: string) => {
-    if (!confirm('確定取消發布？將從 LINE 移除此 Rich Menu。')) return;
+    const selected = Boolean(richMenus.find((m) => m.id === id)?.selected);
+    if (!confirm(richMenuUnpublishConfirm(selected))) return;
     try {
       await unpublishRichMenu(id);
       mutate();

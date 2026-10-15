@@ -6,6 +6,7 @@ import { logger } from '@open333crm/core';
 import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
+import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -440,7 +441,7 @@ export async function executeWorkerAutomationActions(
         }
         const material = await prisma.material.findFirst({
           where: { id: materialId, tenantId: context.tenantId },
-          select: { name: true, contentType: true, body: true, channelType: true },
+          select: { name: true, contentType: true, body: true, channelType: true, variables: true },
         });
         if (!material) {
           logger.warn(`[automation] send_material skipped: material ${materialId} not found`);
@@ -471,10 +472,16 @@ export async function executeWorkerAutomationActions(
           continue;
         }
 
-        const variables = (params['variables'] as Record<string, string> | undefined) ?? {};
-        const renderedBody = renderTemplateBody(
-          material.body as Record<string, unknown>,
-          variables,
+        // 變數用對話聯絡人的資料代入（比照廣播），缺值用素材預設值，仍沒有值的留空，
+        // 不把 {{contact.name}} 原樣送給客人
+        const variables = await resolveMaterialVariables(prisma, {
+          tenantId: context.tenantId,
+          contactId: context.contactId ?? conv?.contactId ?? null,
+          materialVariables: material.variables,
+          ruleVariables: params['variables'] as Record<string, string> | undefined,
+        });
+        const renderedBody = stripUnresolvedPlaceholders(
+          renderTemplateBody(material.body as Record<string, unknown>, variables),
         );
         await deliverToChannelFromWorker(
           prisma,
