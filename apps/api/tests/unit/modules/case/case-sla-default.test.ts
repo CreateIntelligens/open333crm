@@ -42,6 +42,8 @@ function mockPrisma(policies: Policy[]) {
     },
     caseEvent: { create: async () => ({}) },
     broadcastRecipient: { findFirst: async () => null },
+    // createCase 會檢查聯絡人在該渠道有帳號（S10，commit 7c53d9be）
+    channelIdentity: { findFirst: async () => ({ id: 'identity-1' }) },
   };
   return { prisma, created };
 }
