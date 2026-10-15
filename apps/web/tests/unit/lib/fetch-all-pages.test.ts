@@ -47,3 +47,17 @@ test('A page fails to load：拋出錯誤，不回傳只有部分資料的列表
   };
   await assert.rejects(fetchAllPages(get, '/automation/rules'), /timeout/);
 });
+
+test('meta 只有 total 與 limit（沒有 totalPages）：依 total / limit 算頁數（M13）', async () => {
+  const calls: number[] = [];
+  const get = async (_url: string, config: { params: { page: number; limit: number } }) => {
+    calls.push(config.params.page);
+    const { page, limit } = config.params;
+    const start = (page - 1) * limit;
+    const data = Array.from({ length: Math.max(0, Math.min(limit, 130 - start)) }, (_, i) => ({ id: start + i }));
+    return { data: { data, meta: { total: 130, page, limit } } };
+  };
+  const rows = await fetchAllPages<{ id: number }>(get, '/portal/activities');
+  assert.equal(rows.length, 130);
+  assert.deepEqual(calls, [1, 2]);
+});
