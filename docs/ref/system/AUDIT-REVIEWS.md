@@ -4,6 +4,17 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-15：AUTH-02 補上規格依據，DB-03 註明未補回的需求
+
+change `restore-tenant-aware-login-specs` 補回 `add-tenant-aware-login`（issue #228）。對照 `659570ac` 的程式碼與測試，沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTH-02 | 狀態不變，補上規格依據 | 新的主規格需求「停用租戶的長效憑證與既有連線失效」照應有的行為寫，現況違反。CLI token、Partner API 金鑰、既有的 socket 連線仍不檢查租戶是否停用。登入、refresh 換發與進站事件會擋下停用的租戶，新增測試 `apps/api/tests/feature/modules/auth/tenant-disabled-access.test.ts` |
+| DB-03 | 狀態不變 | 歸檔規格要求每日統計對每個啟用中的租戶各跑一次。報表不讀 `DailyStat`，這條需求沒有補回 |
+
+另外發現 `createAgent()` 的註解寫「跨租戶檢查 email」，但這個查詢在 RLS 下看不到其他租戶的成員。跨租戶的重複由資料庫的唯一約束擋下，`error-handler.plugin.ts` 把 P2002 轉成 409 `CONFLICT`，對外的結果正確，只修正註解。
+
 ## 2026-10-15：CASE-01、CONV-03、AUTO-04 結案，MKT-01 部分修正
 
 Daniel 的 #281～#285 合併後，逐項對照仍開著的 AUDIT 項目。#284 已自行更新 AUDIT（見下一筆），#281、#282、#283、#285 沒有改到 AUDIT。這次讀 `60573c58` 的程式碼與測試，沒有連線 UAT。
