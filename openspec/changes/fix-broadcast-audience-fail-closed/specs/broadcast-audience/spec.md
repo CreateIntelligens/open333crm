@@ -42,6 +42,13 @@ When a broadcast is sent, manually or by the scheduler, and its audience cannot 
 - **WHEN** a broadcast targets a segment whose conditions all have empty values
 - **THEN** no message SHALL be sent and the broadcast SHALL be `failed`
 
+### Requirement: Broadcast Send Fails When The Resolved Audience Is Empty
+When a broadcast audience is valid but resolves to no channel identity, the system SHALL send no message, SHALL mark the broadcast `failed`, and SHALL throw 400 with code `BROADCAST_NO_RECIPIENTS` and a reason in Chinese. This covers tags that no contact has, selected contacts that were deleted, and a segment whose conditions match no contact. When a segment matches no contact, the system SHALL NOT query the identities of the channel.
+
+#### Scenario: Resolved audience is empty
+- **WHEN** a broadcast targets a tag that no contact has, contacts that were all deleted, or a segment that matches no contact, and a user or the scheduler sends it
+- **THEN** no message SHALL be sent, the broadcast SHALL be `failed`, and the error code SHALL be `BROADCAST_NO_RECIPIENTS`
+
 ### Requirement: Segment Conditions Have Values
 When a segment is created or its rules are updated, the system SHALL require at least one condition, and every condition SHALL have a non-empty value. Otherwise it SHALL respond 400 with code `INVALID_SEGMENT_RULES`. When the system counts the contacts of rules that have no condition with a value, the count SHALL be 0, not all contacts.
 

@@ -8,6 +8,11 @@
 - [x] 2.1 測試先行：`broadcast-audience.test.ts`「Segment deleted before a scheduled send」「Legacy broadcast with an empty tag list」「Segment without conditions at send time」
 - [x] 2.2 實作：`resolveAudience()` 找不到分群、分群沒有有效條件、名單為空時拋 `INVALID_AUDIENCE`，由 `executeBroadcast()` 外層標 `failed`
 
+## 2A. 受眾解析後零人（Broadcast Send Fails When The Resolved Audience Is Empty，review #283）
+
+- [x] 2A.1 測試：`broadcast-audience.test.ts` 三個「Resolved audience is empty」（標籤沒人、聯絡人已刪除、分群查不到人）。程式已有此行為，測試寫好即通過，改用 mutation 驗證：拿掉 `executeBroadcast()` 的 `identities.length === 0` 檢查，三個測試都失敗；拿掉 `resolveAudience()` 分群 0 人時的 `return []`，分群案例失敗（會改查渠道全部身分）。驗證後已還原
+- [x] 2A.2 實作：不需改程式。`executeBroadcast()` 在 0 位收件人時拋 `BROADCAST_NO_RECIPIENTS`（中文原因），外層 catch 標 `failed`
+
 ## 3. 分群條件要有值（Segment Conditions Have Values）
 
 - [x] 3.1 測試先行：`apps/api/tests/unit/modules/marketing/segment-rules.test.ts`「Create a segment with an empty condition value」「Create a segment with no conditions」「Preview rules without conditions」

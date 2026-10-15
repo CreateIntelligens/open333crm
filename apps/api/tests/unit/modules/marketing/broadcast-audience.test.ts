@@ -147,7 +147,15 @@ function makePlugin() {
   return sends;
 }
 
-function sendDb(broadcast: Record<string, unknown>, opts: { segment?: Record<string, unknown> | null; claimFails?: boolean } = {}) {
+function sendDb(
+  broadcast: Record<string, unknown>,
+  opts: {
+    segment?: Record<string, unknown> | null;
+    claimFails?: boolean;
+    segmentContacts?: Array<{ id: string }>;
+    identities?: Array<{ uid: string; contactId: string }>;
+  } = {},
+) {
   const state = {
     id: 'bc-1',
     tenantId: T,
@@ -189,11 +197,11 @@ function sendDb(broadcast: Record<string, unknown>, opts: { segment?: Record<str
       }),
     },
     segment: { findFirst: async () => (opts.segment === undefined ? null : opts.segment) },
-    contact: { findMany: async () => [{ id: 'c-1' }] },
+    contact: { findMany: async () => opts.segmentContacts ?? [{ id: 'c-1' }] },
     channelIdentity: {
       findMany: async (args: unknown) => {
         identityQueries.push(args);
-        return [{ uid: 'u-1', contactId: 'c-1' }, { uid: 'u-2', contactId: 'c-2' }];
+        return opts.identities ?? [{ uid: 'u-1', contactId: 'c-1' }, { uid: 'u-2', contactId: 'c-2' }];
       },
     },
     broadcastDeliveryAttempt: {
@@ -285,4 +293,58 @@ test('依標籤篩選：只查有該標籤的聯絡人', async () => {
   await executeBroadcast(db, io, 'bc-1');
   const where = (identityQueries[0] as { where: { contact: { tags?: unknown } } }).where;
   assert.deepEqual(where.contact.tags, { some: { tagId: { in: [TAG_ID] } } });
+});
+
+// ─── 受眾設定有效、但解析後沒有任何收件人（review #283） ─────────────────
+// 標籤底下沒人、手動選的聯絡人已刪除、分群條件查不到人：一律不發送、標 failed，
+// 錯誤帶中文原因；絕不退回查渠道全部身分。
+
+function assertNoRecipients(e: AppErr & { message?: string }) {
+  assert.equal(e.statusCode, 400);
+  assert.equal(e.code, 'BROADCAST_NO_RECIPIENTS');
+  assert.ok(e.message && /沒有|未選擇/.test(e.message), `錯誤訊息應說明原因，實際：${e.message}`);
+  return true;
+}
+
+test('Resolved audience is empty：標籤底下沒有任何聯絡人，不發送、標 failed', async () => {
+  const sends = makePlugin();
+  const { db, state, identityQueries } = sendDb(
+    { status: 'draft', targetType: 'tags', targetConfig: { tagIds: [TAG_ID] } },
+    { identities: [] },
+  );
+  await assert.rejects(executeBroadcast(db, io, 'bc-1'), assertNoRecipients);
+  assert.equal(sends.length, 0);
+  assert.equal(state.status, 'failed');
+  assert.equal(identityQueries.length, 1, '只查一次，且不可退回查全渠道');
+  const where = (identityQueries[0] as { where: { contact: { tags?: unknown } } }).where;
+  assert.deepEqual(where.contact.tags, { some: { tagId: { in: [TAG_ID] } } });
+});
+
+test('Resolved audience is empty：手動選的聯絡人都已刪除，不發送、標 failed', async () => {
+  const sends = makePlugin();
+  const { db, state, identityQueries } = sendDb(
+    { status: 'draft', targetType: 'contacts', targetConfig: { contactIds: ['gone-1'] } },
+    { identities: [] },
+  );
+  await assert.rejects(executeBroadcast(db, io, 'bc-1'), assertNoRecipients);
+  assert.equal(sends.length, 0);
+  assert.equal(state.status, 'failed');
+  assert.equal(identityQueries.length, 1);
+  const where = (identityQueries[0] as { where: { contactId?: unknown } }).where;
+  assert.deepEqual(where.contactId, { in: ['gone-1'] });
+});
+
+test('Resolved audience is empty：分群條件查不到任何人，不發送、不查渠道身分、標 failed', async () => {
+  const sends = makePlugin();
+  const { db, state, identityQueries } = sendDb(
+    { status: 'scheduled', targetType: 'segment', segmentId: SEGMENT_ID },
+    {
+      segment: { id: SEGMENT_ID, tenantId: T, rules: { logic: 'AND', conditions: [{ field: 'tag', operator: 'eq', value: TAG_ID }] } },
+      segmentContacts: [],
+    },
+  );
+  await assert.rejects(executeBroadcast(db, io, 'bc-1'), assertNoRecipients);
+  assert.equal(sends.length, 0);
+  assert.equal(identityQueries.length, 0, '分群 0 人時不可查渠道全部身分');
+  assert.equal(state.status, 'failed');
 });
