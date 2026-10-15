@@ -61,3 +61,24 @@ test('meta 只有 total 與 limit（沒有 totalPages）：依 total / limit 算
   assert.equal(rows.length, 130);
   assert.deepEqual(calls, [1, 2]);
 });
+
+test('網址已帶 page / limit：先移除再由 params 帶入，不送出重複的分頁參數（review #283）', async () => {
+  const urls: string[] = [];
+  const get = async (url: string, config: { params: { page: number; limit: number } }) => {
+    urls.push(url);
+    return { data: { data: [{ id: config.params.page }], meta: { totalPages: 2 } } };
+  };
+  const rows = await fetchAllPages<{ id: number }>(get, '/shortlinks?limit=20&q=%E7%9F%AD&page=3&isActive=true');
+  assert.deepEqual(rows, [{ id: 1 }, { id: 2 }]);
+  assert.deepEqual(urls, ['/shortlinks?q=%E7%9F%AD&isActive=true', '/shortlinks?q=%E7%9F%AD&isActive=true']);
+});
+
+test('網址只有分頁參數：移除後不留下多餘的問號', async () => {
+  const urls: string[] = [];
+  const get = async (url: string) => {
+    urls.push(url);
+    return { data: { data: [] } };
+  };
+  await fetchAllPages(get, '/portal/activities?page=2&limit=20');
+  assert.deepEqual(urls, ['/portal/activities']);
+});
