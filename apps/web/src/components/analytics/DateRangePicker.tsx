@@ -17,6 +17,24 @@ const PRESETS = [
   { label: '90 天', days: 90 },
 ] as const;
 
+/**
+ * 日期框的值（YYYY-MM-DD）以本地時區解析（G10）。
+ * new Date('YYYY-MM-DD') 會當成 UTC 午夜，台灣時間的迄日只算到 08:00。
+ */
+function parseLocalDate(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** 以本地日期顯示；無效日期顯示空白，不可丟出 RangeError 讓整頁崩潰 */
+function formatLocalDate(date: Date): string {
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function DateRangePicker({ from, to, onChange, className }: DateRangePickerProps) {
   const [activePreset, setActivePreset] = React.useState<number | null>(30);
 
@@ -30,13 +48,19 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
   }
 
   function handleFromChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const date = parseLocalDate(e.target.value);
+    if (!date) return; // 清空日期框時維持原區間（G10）
     setActivePreset(null);
-    onChange(new Date(e.target.value), to);
+    onChange(date, to);
   }
 
   function handleToChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const date = parseLocalDate(e.target.value);
+    if (!date) return;
     setActivePreset(null);
-    onChange(from, new Date(e.target.value));
+    // 迄日要含當天整天
+    date.setHours(23, 59, 59, 999);
+    onChange(from, date);
   }
 
   return (
@@ -58,14 +82,14 @@ export function DateRangePicker({ from, to, onChange, className }: DateRangePick
       <div className="flex items-center gap-1 text-sm">
         <input
           type="date"
-          value={from.toISOString().slice(0, 10)}
+          value={formatLocalDate(from)}
           onChange={handleFromChange}
           className="h-8 rounded-md border bg-background px-2 text-xs"
         />
         <span className="text-muted-foreground">~</span>
         <input
           type="date"
-          value={to.toISOString().slice(0, 10)}
+          value={formatLocalDate(to)}
           onChange={handleToChange}
           className="h-8 rounded-md border bg-background px-2 text-xs"
         />

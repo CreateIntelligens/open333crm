@@ -3,10 +3,9 @@ import type { PrismaClient } from '@prisma/client';
 import type IORedis from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
-import { evaluateRules, validateAutomationRuleContract } from '@open333crm/automation';
+import { buildAutomationFacts, evaluateRules, validateAutomationRuleContract } from '@open333crm/automation';
 import { publishSocketEvent } from '../lib/socket-bridge.js';
 import { executeWorkerAutomationActions } from '../lib/automation-actions.js';
-import { buildAutomationFacts } from '../lib/automation-facts.js';
 
 interface AutomationJobData {
   tenantId: string;

@@ -82,7 +82,9 @@ export type AutomationActionParamType =
   | 'select'
   | 'textarea'
   /** 客服 ID。編輯器顯示客服名單讓人選，不要求填 ID */
-  | 'agent';
+  | 'agent'
+  /** 素材 ID。編輯器顯示素材庫讓人選，不要求填 ID */
+  | 'material';
 
 export interface AutomationActionParamDefinition {
   key: string;

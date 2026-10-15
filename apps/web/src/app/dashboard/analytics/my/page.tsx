@@ -9,16 +9,21 @@ import { useMyPerformance } from '@/hooks/useAnalytics';
 interface MetricCardProps {
   label: string;
   value: string | number | null;
+  /** 與目標比較用的數值。value 是格式化後的字串（例如「1 時 30 分」）時必須另外給，不可 parseFloat（G11） */
+  compareValue?: number | null;
   target?: number;
   unit?: string;
   higherIsBetter?: boolean;
   isLoading: boolean;
 }
 
-function MetricCard({ label, value, target, unit = '', higherIsBetter = true, isLoading }: MetricCardProps) {
+function MetricCard({ label, value, compareValue, target, unit = '', higherIsBetter = true, isLoading }: MetricCardProps) {
   let status: 'ok' | 'warning' | 'na' = 'na';
-  if (target != null && value != null) {
-    const numVal = typeof value === 'string' ? parseFloat(value) : value;
+  const numVal =
+    compareValue !== undefined ? compareValue
+      : typeof value === 'string' ? parseFloat(value)
+        : value;
+  if (target != null && numVal != null && !Number.isNaN(numVal)) {
     if (higherIsBetter) {
       status = numVal >= target ? 'ok' : 'warning';
     } else {
@@ -37,8 +42,8 @@ function MetricCard({ label, value, target, unit = '', higherIsBetter = true, is
             <p className="text-2xl font-bold">
               {value ?? '-'}{unit}
             </p>
-            {status === 'ok' && <CheckCircle2 className="h-5 w-5 text-success" />}
-            {status === 'warning' && <AlertTriangle className="h-5 w-5 text-warning" />}
+            {status === 'ok' && <CheckCircle2 className="h-5 w-5 text-success" aria-label="達標" role="img" />}
+            {status === 'warning' && <AlertTriangle className="h-5 w-5 text-warning" aria-label="未達標" role="img" />}
           </div>
         )}
         {target != null && (
@@ -112,6 +117,7 @@ export default function MyPerformancePage() {
           <MetricCard
             label="平均首次回應"
             value={data?.avgFirstResponseMinutes != null ? formatMinutes(data.avgFirstResponseMinutes) : null}
+            compareValue={data?.avgFirstResponseMinutes ?? null}
             target={15}
             unit=""
             higherIsBetter={false}

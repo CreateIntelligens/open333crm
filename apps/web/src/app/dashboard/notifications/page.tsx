@@ -24,6 +24,11 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; labe
   sla_warning: { icon: Clock, color: 'bg-warning-subtle text-warning', label: 'SLA 警告' },
   sla_breached: { icon: AlertTriangle, color: 'bg-destructive-subtle text-destructive', label: 'SLA 逾期' },
   new_message: { icon: MessageSquare, color: 'bg-success-subtle text-success', label: '新訊息' },
+  // workers SLA 掃描與自動化規則發的通知（S02：原本一律顯示「通知」）
+  first_response_warning: { icon: Clock, color: 'bg-warning-subtle text-warning', label: '首次回應警告' },
+  first_response_breached: { icon: AlertTriangle, color: 'bg-destructive-subtle text-destructive', label: '首次回應逾期' },
+  customer_waiting_breached: { icon: AlertTriangle, color: 'bg-destructive-subtle text-destructive', label: '客戶等待逾時' },
+  sla_rule: { icon: Bell, color: 'bg-primary-subtle text-primary', label: '自動化通知' },
 };
 
 type TabFilter = 'all' | 'unread' | 'read';

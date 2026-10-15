@@ -409,3 +409,20 @@ describe('沒有 role.manage 時唯讀', () => {
     assert.ok(screen.getByText(/此頁為唯讀/));
   });
 });
+
+describe('刪除使用中的角色', () => {
+  test('停用的成員佔用角色時列出姓名', async () => {
+    // change fix-admin-settings-safeguards（G18）：後端訊息在 error.message，原本讀 data.message 一律顯示「刪除失敗」
+    setup([CUSTOM], { 'r-custom': [] });
+    await loaded();
+    api.delete.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { success: false, error: { code: 'ROLE_IN_USE', message: '此角色仍有 1 位成員使用中：王停用（已停用）。請先改派其他角色' } },
+      },
+    });
+    fireEvent.click(screen.getByTitle('刪除'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '刪除' }));
+    assert.ok(await screen.findByText(/王停用（已停用）/));
+  });
+});

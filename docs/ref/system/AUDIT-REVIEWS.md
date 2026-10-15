@@ -4,6 +4,17 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-15：AUTH-09、SLA-03 修正，SLA-04、CHAN-01 部分修正
+
+重寫操作手冊時盤點「分析與管理」群組（問題清單 G03–G20），change `fix-admin-settings-safeguards` 修正其中四項 AUDIT 項目。只讀程式碼與本機測試，沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUTH-09 | 已修正，從 `AUDIT.md` 移除 | `9837b8e7`：`GET /agents/inactive`、`POST /agents/:id/reactivate`（`agent.deactivate`，套用方案人數上限），人員管理頁列出停用的成員。測試：`apps/api/tests/feature/modules/agent/agent-management.test.ts`、`apps/api/tests/unit/modules/agent/agent-reactivate.test.ts` |
+| SLA-03 | 已修正，從 `AUDIT.md` 移除 | `fcf6e5d2`：手動建單與自動化建單都依 `isDefault desc, createdAt asc` 挑政策。測試：`apps/api/tests/unit/modules/case/case-sla-default.test.ts`、`apps/workers/tests/unit/lib/automation-create-case.test.ts` |
+| SLA-04 | 部分修正，P2 改 P3 | `fcf6e5d2`：改名同步工單、撞名回 409、仍有未結案工單時不能刪除。資料庫仍以名稱連結、沒有唯一約束。測試：`apps/api/tests/unit/modules/sla/sla-policy.service.test.ts` |
+| CHAN-01 | 部分修正 | `cdf7c798`：外鍵擋下刪除時回 409 `CHANNEL_IN_USE`，卡片新增停用與啟用。沒有對話的渠道仍是硬刪除。測試：`apps/api/tests/unit/modules/channel/channel-delete-in-use.test.ts` |
+
 ## 2026-10-14：CHAN-02 部分修正
 
 UAT 創造智能接上 Instagram 渠道後，以唯讀查詢確認第一則私訊沒有任何回覆：對話的 bot 回覆次數為 0；workers 的 log 顯示訊息命中關鍵字規則「Hi」（關鍵字 `Hi`、`你好`），規則的 `send_material` 是 LINE 素材，因渠道不符被略過（`send_material skipped: material channel "line" != conversation channel "threads"`）。只讀狀態、時間、規則定義與 log，沒有讀訊息內容，沒有寫入。

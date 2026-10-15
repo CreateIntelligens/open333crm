@@ -55,7 +55,9 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | 其他報表 | `analytics.view` |
 | `POST /analytics/export` | `analytics.export` |
 
-側欄的「報表」要求 `analytics.view` 才顯示，而「我的績效」在它底下。因此只有 `analytics.view.self` 的客服在側欄找不到「我的績效」，只能直接輸入網址。
+側欄的「總覽」要 `analytics.view`，「我的績效」要 `analytics.view.self`；兩個都沒有時不顯示「報表」。「匯出 CSV」按鈕只對有 `analytics.export` 的成員顯示，匯出的 CSV 以 UTF-8 BOM 開頭，Excel 開啟中文不會亂碼。
+
+報表頁的自訂日期以瀏覽器的本地時區解析，迄日算到當天 23:59:59。
 
 ## 目前的限制
 
@@ -64,7 +66,6 @@ CLI 的 `/api/v1/cli/analytics/*` 呼叫同一組服務函式，但走 CLI 的 s
 | 沒有關聯對話的工單不計入平均首次回應時間 | 詳見 `../../system/AUDIT.md` 的 SLA-05 |
 | 日期以 UTC 切分 | 詳見 `../../system/AUDIT.md` 的 ANA-01 |
 | 每天寫入的彙總沒有被使用 | 詳見 `../../system/AUDIT.md` 的 DB-03 |
-| 只有 `analytics.view.self` 的客服找不到入口 | 側欄的父選單要求 `analytics.view` |
 | CLI 報表不受角色權限限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

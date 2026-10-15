@@ -128,9 +128,8 @@ export default function InboxPage() {
             onClose={() => setShowAiSuggest(false)}
             conversationId={convId}
             onAdopt={(text) => {
-              // We'll use a simple approach: set the text in MessageInput via state
               setShowAiSuggest(false);
-              // Trigger a custom event for the MessageInput to pick up
+              // MessageInput 監聽 ai-adopt，把建議文字帶進回覆輸入框
               window.dispatchEvent(new CustomEvent('ai-adopt', { detail: { text } }));
             }}
           />

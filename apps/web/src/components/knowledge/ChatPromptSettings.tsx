@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import api from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api-error';
+import { getApiErrorMessage, getFieldErrors } from '@/lib/api-error';
+import { SettingsLoadError, describeSettingsLoadError } from './SettingsLoadError';
 
 interface ChatSettingsData {
   provider: 'ollama' | 'gemini';
@@ -88,11 +89,13 @@ export function ChatPromptSettings() {
   const [byokStatus, setByokStatus] = useState<{ configured: boolean; masked: string | null }>({ configured: false, masked: null });
   const [byokInput, setByokInput] = useState('');
   const [byokSaving, setByokSaving] = useState(false);
+  const [loadError, setLoadError] = useState<{ forbidden: boolean; message: string } | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
       const res = await api.get<{ data: SettingsResponse }>('/settings/chat');
       const d = res.data.data;
+      setLoadError(null);
       setSettings(d.settings);
       setProviders(d.providers);
       setModels(d.models);
@@ -103,6 +106,7 @@ export function ChatPromptSettings() {
       setByokStatus(keyRes.data.data);
     } catch (err) {
       console.error('Failed to fetch chat settings:', err);
+      setLoadError(describeSettingsLoadError(err, '無法載入 Chat & Prompt 設定，請稍後重試'));
     } finally {
       setLoading(false);
     }
@@ -157,7 +161,13 @@ export function ChatPromptSettings() {
       await fetchAll();
     } catch (err) {
       console.error('Failed to save chat settings:', err);
-      alert('儲存失敗');
+      // 顯示後端原因：驗證錯誤時列出各欄位訊息（例如提示詞超過 8000 字、網址格式錯誤）
+      const fieldMessages = Array.from(new Set(Object.values(getFieldErrors(err))));
+      const reason =
+        fieldMessages.length > 0
+          ? fieldMessages.join('\n')
+          : getApiErrorMessage(err, '設定儲存失敗，請稍後重試');
+      alert(`儲存失敗：${reason}`);
     } finally {
       setSaving(false);
     }
@@ -189,6 +199,18 @@ export function ChatPromptSettings() {
   };
 
   if (loading) return <div className="text-sm text-muted-foreground">載入中…</div>;
+
+  if (loadError) {
+    return (
+      <SettingsLoadError
+        {...loadError}
+        onRetry={() => {
+          setLoading(true);
+          fetchAll();
+        }}
+      />
+    );
+  }
 
   const healthBadge = health?.ok ? (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-success-subtle px-2.5 py-0.5 text-xs font-medium text-success">
@@ -602,9 +624,9 @@ export function ChatPromptSettings() {
               className="w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>0.00（總是追問）</span>
+              <span>0.00（只在查無文章時追問）</span>
               <span>0.50</span>
-              <span>1.00（從不追問）</span>
+              <span>1.00（幾乎每次都追問）</span>
             </div>
           </div>
 

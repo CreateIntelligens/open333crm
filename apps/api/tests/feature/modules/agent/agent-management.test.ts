@@ -3,7 +3,6 @@
  *
  * 路由層整合測試：走真實的 requirePermission、agent.service 與 app_tenant 連線（RLS）。
  * 每次執行建立一個專用租戶並種入三個系統角色，結束時整個刪除。
- * 「重新啟用成員」的兩個情境現況違反（AUDIT），修正時再補測試。
  * 測試名稱以「情境名稱：說明」開頭。
  * 屬於 feature 組：連線設定與測試資料庫由 tests/setup/ 準備。
  */
@@ -289,6 +288,51 @@ test('不能停用最後一位管理員：回 422 LAST_ADMIN_PROTECTED，管理�
   assert.equal(res.statusCode, 422, res.body);
   assert.equal(res.json().error.code, 'LAST_ADMIN_PROTECTED');
   assert.equal((await reload(admin.id))!.isActive, true);
+});
+
+// ── agent-lifecycle：重新啟用成員（change fix-admin-settings-safeguards，AUDIT AUTH-09）──
+
+const listInactive = (app: typeof managerApp) => app.inject({ method: 'GET', url: '/api/v1/agents/inactive' });
+const reactivate = (app: typeof managerApp, id: string) =>
+  app.inject({ method: 'POST', url: `/api/v1/agents/${id}/reactivate` });
+
+test('管理員看得到停用的成員：GET /agents/inactive 含停用的成員，不含啟用中的成員', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await deactivate(managerApp, target.id)).statusCode, 204);
+  const res = await listInactive(managerApp);
+  assert.equal(res.statusCode, 200, res.body);
+  const ids = (res.json().data as Array<{ id: string; isActive: boolean }>).map((a) => a.id);
+  assert.ok(ids.includes(target.id));
+  assert.equal(ids.includes(manager.id), false);
+  assert.equal(ids.includes(foreign.id), false, '不含其他租戶的成員');
+});
+
+test('重新啟用後可以登入：回 204，isActive 是 true，原本的密碼可用，角色不變', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await deactivate(managerApp, target.id)).statusCode, 204);
+  const res = await reactivate(managerApp, target.id);
+  assert.equal(res.statusCode, 204, res.body);
+  const row = (await reload(target.id))!;
+  assert.equal(row.isActive, true);
+  assert.equal(row.roleId, plainRole.id);
+  assert.ok(await verifyPassword(PASSWORD, row.passwordHash));
+});
+
+test('重新啟用需權限：沒有 agent.deactivate 時查詢與重新啟用都回 403，成員維持停用', async () => {
+  const target = await createAgent(plainRole.id);
+  assert.equal((await deactivate(managerApp, target.id)).statusCode, 204);
+  const list = await listInactive(plainApp);
+  assert.equal(list.statusCode, 403, list.body);
+  assert.equal(list.json().error.details.requiredPermission, 'agent.deactivate');
+  const res = await reactivate(plainApp, target.id);
+  assert.equal(res.statusCode, 403, res.body);
+  assert.equal(res.json().error.details.requiredPermission, 'agent.deactivate');
+  assert.equal((await reload(target.id))!.isActive, false);
+});
+
+test('重新啟用其他租戶的成員回 404', async () => {
+  const res = await reactivate(managerApp, foreign.id);
+  assert.equal(res.statusCode, 404, res.body);
 });
 
 // ── agent-lifecycle：永久刪除成員 ──

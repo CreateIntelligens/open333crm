@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { LoadErrorNotice } from "@/components/shared/LoadErrorNotice";
 
 export function TrackingSettings() {
   const [gaId, setGaId] = useState("");
@@ -12,14 +14,19 @@ export function TrackingSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // 讀取失敗時不顯示空白表單：按儲存會把已設定的 ID 清掉（G13）
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get("/settings/tracking");
       const data = res.data.data;
       setGaId(data.gaId || "");
       setMetaPixelId(data.metaPixelId || "");
     } catch (err) {
-      console.error("Failed to fetch tracking settings:", err);
+      setLoadError(getApiErrorMessage(err, "請稍後重試"));
     } finally {
       setLoading(false);
     }
@@ -40,8 +47,8 @@ export function TrackingSettings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      console.error("Failed to save tracking settings:", err);
-      alert("儲存失敗");
+      // 後端會說明哪個 ID 格式不對（G06）
+      alert(getApiErrorMessage(err, "儲存失敗，請稍後重試"));
     } finally {
       setSaving(false);
     }
@@ -49,6 +56,10 @@ export function TrackingSettings() {
 
   if (loading) {
     return <div className="p-4 text-muted-foreground">載入中...</div>;
+  }
+
+  if (loadError) {
+    return <LoadErrorNotice title="無法讀取追蹤設定" message={loadError} onRetry={fetchSettings} />;
   }
 
   return (
@@ -72,7 +83,7 @@ export function TrackingSettings() {
           className="max-w-md"
         />
         <p className="text-xs text-muted-foreground">
-          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭。
+          從 Google Analytics 的資料串流設定中取得。格式為 G- 開頭加英數字。
         </p>
       </div>
 
@@ -86,7 +97,7 @@ export function TrackingSettings() {
           className="max-w-md"
         />
         <p className="text-xs text-muted-foreground">
-          從 Meta Events Manager 取得。純數字 ID。
+          從 Meta Events Manager 取得。5～20 位純數字。
         </p>
       </div>
 

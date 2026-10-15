@@ -1,15 +1,38 @@
 /**
  * Tracking script snippet generators for external analytics services.
  * Returns HTML string fragments to inject into redirect micro-pages.
+ *
+ * 安全：ID 會被拼進公開中轉頁的 <script>。設定 API 已驗證格式（settings.routes.ts
+ * trackingSettingsSchema），這裡再驗一次——驗證上線前就存進資料庫的值不可輸出（G06）。
  */
+
+/** GA4 評估 ID：G- 加英數字 */
+export const GA4_ID_PATTERN = /^G-[A-Z0-9]{4,20}$/i;
+/** Meta Pixel ID：純數字 */
+export const META_PIXEL_ID_PATTERN = /^\d{5,20}$/;
+
+/**
+ * 跳脫後才放進 JS 字串與 HTML 屬性。格式驗證過的 ID 不會含這些字元，
+ * 這層是驗證規則日後被放寬時的第二道防線。
+ */
+function escapeForScript(value: string): string {
+  return value.replace(/[^A-Za-z0-9-]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+/** 取出合格的 ID；空值或格式不符回 null */
+function validId(raw: string | null | undefined, pattern: RegExp): string | null {
+  if (!raw) return null;
+  const id = raw.trim();
+  if (!id || !pattern.test(id)) return null;
+  return escapeForScript(id);
+}
 
 /**
  * Build Google Analytics 4 gtag.js snippet.
- * Returns empty string if gaId is null/empty.
+ * Returns empty string if gaId is null/empty/invalid.
  */
 export function buildGa4Snippet(gaId: string | null | undefined): string {
-  if (!gaId) return "";
-  const id = gaId.trim();
+  const id = validId(gaId, GA4_ID_PATTERN);
   if (!id) return "";
 
   return `<script async src="https://www.googletagmanager.com/gtag/js?id=${id}"></script>
@@ -23,13 +46,12 @@ gtag('config', '${id}');
 
 /**
  * Build Meta (Facebook) Pixel base code snippet.
- * Returns empty string if metaPixelId is null/empty.
+ * Returns empty string if metaPixelId is null/empty/invalid.
  */
 export function buildMetaPixelSnippet(
   metaPixelId: string | null | undefined,
 ): string {
-  if (!metaPixelId) return "";
-  const id = metaPixelId.trim();
+  const id = validId(metaPixelId, META_PIXEL_ID_PATTERN);
   if (!id) return "";
 
   return `<script>

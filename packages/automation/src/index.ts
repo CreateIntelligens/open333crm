@@ -9,4 +9,5 @@ export * from "./dispatcher/index.js";
 export * from "./listeners/index.js";
 export * from "./rules/index.js";
 export * from "./contracts/index.js";
+export * from "./automation-facts.js";
 export { AutomationEngine };

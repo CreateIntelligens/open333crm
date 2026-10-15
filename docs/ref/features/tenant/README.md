@@ -119,12 +119,13 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 - 側欄以 `NAV_TREE` 每一項的 `perm` 決定是否顯示。
 - API 以路由上的 `requirePermission()` 決定是否放行。
 
-兩邊不一致時會出現兩種情況：
+兩邊不一致時，成員會看到點進去才回 403 的頁面：
 
 | 情況 | 例子 |
 | --- | --- |
 | 側欄顯示，API 回 403 | 「設定」底下的「渠道管理」「人員管理」「SLA 政策」「營業時間」等分頁在側欄沒有 `perm`，所有成員都看得到；對應的 API 需要 `channel.view`、`agent.view`、`sla.manage` 或 `settings.manage` |
-| 側欄隱藏，API 放行 | 「我的績效」掛在「報表」底下，側欄要求 `analytics.view`；`GET /analytics/my` 只要有 `analytics.view.self` 就放行，但只有這個權限碼的客服在側欄找不到入口。 |
+
+「報表」的「總覽」要 `analytics.view`、「我的績效」要 `analytics.view.self`，「知識庫」的「AI 設定」要 `settings.manage`，與 API 一致。
 
 收件匣、工單、聯絡人、標籤與短連結的路由都以權限碼檢查，對話與工單另外檢查渠道可見範圍。知識庫的讀取路由仍然只驗登入，見 `../../system/AUDIT.md` 的 RBAC-01。各功能區的權限細節見各文件的「權限」一節。
 

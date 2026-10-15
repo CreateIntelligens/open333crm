@@ -273,6 +273,8 @@ function EditAgentDialog({
 }: EditAgentDialogProps) {
   // 以角色 id 作為下拉選取值
   const [selectedRoleId, setSelectedRoleId] = useState('');
+  // 開啟時預選的角色：儲存時只有改了角色才送 PATCH /role（G19）
+  const [initialRoleId, setInitialRoleId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
@@ -297,6 +299,7 @@ function EditAgentDialog({
         ? roles.find((r) => r.id === agent.roleId)
         : roles.find((r) => r.isSystem && SLUG_TO_ENUM[r.slug] === agent.role);
       setSelectedRoleId(match?.id ?? '');
+      setInitialRoleId(match?.id ?? '');
       setNewPassword('');
       setError('');
       setChannelsDirty(false);
@@ -345,7 +348,9 @@ function EditAgentDialog({
     setSaving(true);
     setError('');
     try {
-      if (canAssignRole) {
+      // 角色沒改就不送：重送相同角色也要過越權檢查，主管編輯自己或管理員一定被拒，
+      // 而且會中斷後面密碼與渠道的儲存（G19）
+      if (canAssignRole && selectedRoleId !== initialRoleId) {
         const selected = roles.find((r) => r.id === selectedRoleId);
         if (!selected) {
           setError('請選擇角色');
@@ -372,7 +377,7 @@ function EditAgentDialog({
 
   async function handleDeactivate() {
     if (!agent) return;
-    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？帳號可日後再啟用；此 email 仍會被佔用，若要在其他地方重用請改用「刪除」。`)) return;
+    if (!confirm(`確定要停用「${agent.name}」的帳號嗎？之後可在「已停用的人員」重新啟用；此 email 仍會被佔用，若要在其他地方重用請改用「刪除」。`)) return;
     setDeactivating(true);
     setError('');
     try {
@@ -612,12 +617,36 @@ export function AgentManagement() {
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
+  // 停用的成員（AUDIT AUTH-09）：GET /agents 只回啟用中的成員，停用的另外查，才能重新啟用或永久刪除
+  const [inactiveAgents, setInactiveAgents] = useState<Agent[]>([]);
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
+
+  function fetchInactiveAgents() {
+    if (!canDeactivate) return;
+    api.get('/agents/inactive')
+      .then((res) => setInactiveAgents(res.data.data || []))
+      .catch(() => setInactiveAgents([]));
+  }
+
   function fetchAgents() {
     setLoading(true);
     api.get('/agents')
       .then((res) => setAgents(res.data.data || []))
       .catch(console.error)
       .finally(() => setLoading(false));
+    fetchInactiveAgents();
+  }
+
+  async function handleReactivate(target: Agent) {
+    setReactivatingId(target.id);
+    try {
+      await api.post(`/agents/${target.id}/reactivate`);
+      fetchAgents();
+    } catch (err: unknown) {
+      alert(resolveApiError(err, '重新啟用失敗，請再試一次'));
+    } finally {
+      setReactivatingId(null);
+    }
   }
 
   // 載入租戶角色清單（system + custom）。需 role.view 權限；失敗則靜默退回僅 legacy 角色。
@@ -628,6 +657,9 @@ export function AgentManagement() {
   }
 
   useEffect(() => { fetchAgents(); fetchRoles(); }, []);
+  // 權限可能在首次渲染後才載入完成
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchInactiveAgents(); }, [canDeactivate]);
 
   // 若 /roles 因權限不足而拿不到，退回 legacy 三角色，確保下拉仍可用
   const effectiveRoles: RoleItem[] = useMemo(() => {
@@ -778,6 +810,48 @@ export function AgentManagement() {
           </div>
         )}
       </div>
+
+      {/* 停用的成員：可重新啟用（角色維持停用前），或從編輯對話框永久刪除以釋放 email */}
+      {canDeactivate && inactiveAgents.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">已停用的人員</h3>
+          <p className="text-xs text-muted-foreground">
+            停用的人員無法登入，email 仍被佔用。重新啟用後以原本的帳號密碼登入，角色維持停用前的設定。
+          </p>
+          <div className="rounded-lg border">
+            {inactiveAgents.map((a) => {
+              const rc = roleBadgeForAgent(a);
+              return (
+                <div key={a.id} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
+                  <Avatar alt={a.name} src={a.avatarUrl} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-muted-foreground">{a.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{a.email}</p>
+                  </div>
+                  <Badge color={rc.color}>{rc.label}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={reactivatingId === a.id}
+                    onClick={() => handleReactivate(a)}
+                  >
+                    {reactivatingId === a.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    重新啟用
+                  </Button>
+                  {canPurge && (
+                    <button
+                      onClick={() => setEditAgent(a)}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      編輯
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Teams section */}
       {teams.length > 0 && (

@@ -205,7 +205,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
                 </div>
                 {selectedMaterial.variables && selectedMaterial.variables.length > 0 && (
                   <div className="mt-1 text-warning">
-                    ⚠️ 此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join(', ')}），會以預設值送出
+                    此素材含 {selectedMaterial.variables.length} 個變數（{selectedMaterial.variables.map((v) => v.key).join(', ')}），送出時代入客人的聯絡人資料；客人沒有這項資料時用素材的預設值，沒有預設值則留空
                   </div>
                 )}
               </div>

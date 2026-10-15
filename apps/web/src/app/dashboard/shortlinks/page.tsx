@@ -41,8 +41,12 @@ function LinkList() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('確定刪除此短連結？')) return;
+  const handleDelete = async (id: string, isMaterialLink: boolean) => {
+    // 素材短連結是廣播自動建立的，已經發給客人的訊息裡用的就是它
+    const message = isMaterialLink
+      ? '這是廣播自動建立的素材連結，已經發給客人的訊息裡用的就是這個網址。刪除後，客人點開會看到「連結已失效」，點擊紀錄也會一併刪除。確定刪除？'
+      : '確定刪除此短連結？';
+    if (!confirm(message)) return;
     try {
       await api.delete(`/shortlinks/${id}`);
       mutate();
@@ -83,9 +87,15 @@ function LinkList() {
               {links.map((l: Record<string, unknown>) => {
                 const isExpired = l.expiresAt && new Date(l.expiresAt as string) < new Date();
                 const isActive = l.isActive && !isExpired;
+                const isMaterialLink = Boolean(l.materialId);
                 return (
                   <tr key={l.id as string} className="border-t">
-                    <td className="p-3 font-medium">{(l.title as string) || '-'}</td>
+                    <td className="p-3 font-medium">
+                      {(l.title as string) || (isMaterialLink ? '' : '-')}
+                      {isMaterialLink && (
+                        <span className="block text-xs font-normal text-muted-foreground">素材連結（廣播自動建立）</span>
+                      )}
+                    </td>
                     <td className="p-3">
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded">/s/{l.slug as string}</code>
                     </td>
@@ -132,7 +142,7 @@ function LinkList() {
                           size="sm"
                           variant="ghost"
                           className="text-destructive"
-                          onClick={() => handleDelete(l.id as string)}
+                          onClick={() => handleDelete(l.id as string, isMaterialLink)}
                           title="刪除"
                         >
                           &times;

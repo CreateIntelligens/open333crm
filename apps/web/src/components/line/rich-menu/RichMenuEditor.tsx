@@ -20,6 +20,7 @@ import {
   LINE_RICH_MENU_MAX_WIDTH,
   LINE_RICH_MENU_MIN_HEIGHT,
 } from '@open333crm/shared';
+import { RICH_MENU_DEFAULT_CHECK_CONFIRM } from '@/lib/rich-menu-confirm';
 
 export interface RichMenuDraft {
   channelId: string;
@@ -76,10 +77,18 @@ export function RichMenuEditor({ draft, onChange }: Props) {
               <input
                 type="checkbox"
                 checked={draft.selected}
-                onChange={(e) => onChange({ ...draft, selected: e.target.checked })}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  // 勾選會影響所有好友，先確認；取消勾選不需要
+                  if (next && !confirm(RICH_MENU_DEFAULT_CHECK_CONFIRM)) return;
+                  onChange({ ...draft, selected: next });
+                }}
               />
-              <span>預設展開選單（使用者開啟對話時自動展開）</span>
+              <span>設為所有好友的預設選單</span>
             </label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              勾選後，發布時會換掉這個官方帳號所有好友目前看到的選單，好友開啟對話時也會自動展開。只想給部分好友看，請不要勾，發布後用「綁定受眾」。
+            </p>
           </div>
         </Section>
 

@@ -610,7 +610,20 @@ export async function getMyPerformance(
 /*  2h. CSV Export                                                             */
 /* -------------------------------------------------------------------------- */
 
+/** UTF-8 BOM：沒有它 Excel 會以系統編碼開啟，中文變亂碼（G12） */
+const UTF8_BOM = '\uFEFF';
+
 export async function exportCsv(
+  prisma: TenantDb,
+  tenantId: string,
+  reportType: string,
+  from: Date,
+  to: Date,
+): Promise<string> {
+  return UTF8_BOM + (await buildCsv(prisma, tenantId, reportType, from, to));
+}
+
+async function buildCsv(
   prisma: TenantDb,
   tenantId: string,
   reportType: string,

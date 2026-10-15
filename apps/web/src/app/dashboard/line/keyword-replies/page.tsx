@@ -93,7 +93,7 @@ export default function KeywordRepliesPage() {
               <li>用戶在 LINE 傳訊息含關鍵字 → bot 自動回覆對應素材</li>
             </ol>
             <div className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-1.5 text-xs text-warning">
-              ⚙️ 這條規則跑在 bot 模式（BOT_HANDLED 狀態的對話）才會觸發。已被客服接管的對話不會自動回。每個聯絡人對同一條規則 1 小時最多觸發 3 次（防轟炸）。
+              客人每傳一則含關鍵字的訊息就會觸發一次，沒有次數上限；客服接手的對話也會自動回覆。比對方式是「包含」且不分大小寫，例如關鍵字「價」也會命中「評價」，關鍵字請盡量具體。規則對所有 LINE 官方帳號生效；命中的規則能在這個對話的渠道送出回覆時，AI 就不再另外回覆。
             </div>
           </section>
 
