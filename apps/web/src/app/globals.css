@@ -157,3 +157,40 @@
     font-variant-numeric: tabular-nums lining-nums;
   }
 }
+
+
+/*
+ * 表格 — 依 Figma Design System「Table / Row」
+ * 表頭：#F8FAFC 底、內距 12/16、14px 500 #707E93；內容列：內距 16、14px 500 #37404C、
+ * 底線 #E2E8F0、滑過 #F5F5F5。
+ * 套用在 dashboard 內容區（.app-content）的所有表格，各頁原本寫的表格樣式會被統一；
+ * 個別表格不想套用時加 data-plain。
+ */
+.app-content table:not([data-plain]) thead th {
+  background-color: hsl(var(--muted));
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: nowrap;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.app-content table:not([data-plain]) tbody td {
+  padding: 16px;
+  font-size: 14px;
+  line-height: 20px;
+  color: hsl(var(--foreground));
+}
+.app-content table:not([data-plain]) tbody tr {
+  border-bottom: 1px solid hsl(var(--border));
+  transition: background-color 0.15s;
+}
+.app-content table:not([data-plain]) tbody tr:last-child {
+  border-bottom: 0;
+}
+.app-content table:not([data-plain]) tbody tr:hover {
+  background-color: hsl(var(--shell));
+}

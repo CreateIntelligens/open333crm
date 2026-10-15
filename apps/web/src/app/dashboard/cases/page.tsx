@@ -108,7 +108,7 @@ export default function CasesPage() {
       <Topbar title="工單" />
 
       {/* Dashboard Stats */}
-      <div className="border-b px-6 py-4">
+      <div className="border-b px-8 py-4">
         <CaseDashboardStats />
       </div>
 
@@ -241,6 +241,7 @@ export default function CasesPage() {
           顯示聯絡人搜尋與「建立新聯絡人」選項（收件匣模式則是 prefill + disabled）。
           建立成功後視窗自己會導向該工單詳情頁。 */}
       <CaseCreateModal
+        asPage
         open={createOpen}
         onOpenChange={(open) => {
           setCreateOpen(open);

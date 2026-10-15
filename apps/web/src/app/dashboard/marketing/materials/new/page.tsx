@@ -109,7 +109,7 @@ export default function NewMaterialPage() {
         </div>
       )}
       <Topbar title="行銷" />
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto px-8 pb-8">
         <div className="mx-auto max-w-6xl space-y-5">
           <Button
             variant="ghost"

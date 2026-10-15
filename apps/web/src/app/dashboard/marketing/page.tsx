@@ -20,12 +20,12 @@ import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  PageDialog,
+  PageDialogContent,
+  PageDialogHeader,
+  PageDialogTitle,
+  PageDialogFooter,
+} from '@/components/ui/page-dialog';
 import api from '@/lib/api';
 import { toLocalInputValue } from '@/lib/datetime-local';
 
@@ -147,11 +147,11 @@ function CampaignTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新增行銷活動</DialogTitle>
-          </DialogHeader>
+      <PageDialog section="行銷" parent="行銷活動" open={dialogOpen} onOpenChange={setDialogOpen}>
+        <PageDialogContent>
+          <PageDialogHeader>
+            <PageDialogTitle>新增行銷活動</PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
@@ -188,7 +188,7 @@ function CampaignTab() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
@@ -196,9 +196,9 @@ function CampaignTab() {
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
     </div>
   );
 }
@@ -385,11 +385,11 @@ function BroadcastTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>建立廣播</DialogTitle>
-          </DialogHeader>
+      <PageDialog section="行銷" parent="廣播" open={dialogOpen} onOpenChange={setDialogOpen}>
+        <PageDialogContent className="max-w-xl">
+          <PageDialogHeader>
+            <PageDialogTitle>建立廣播</PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
@@ -502,7 +502,7 @@ function BroadcastTab() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
@@ -513,9 +513,9 @@ function BroadcastTab() {
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
     </div>
   );
 }
@@ -682,11 +682,11 @@ function SegmentTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>新增受眾分群</DialogTitle>
-          </DialogHeader>
+      <PageDialog section="行銷" parent="受眾分群" open={dialogOpen} onOpenChange={setDialogOpen}>
+        <PageDialogContent className="max-w-xl">
+          <PageDialogHeader>
+            <PageDialogTitle>新增受眾分群</PageDialogTitle>
+          </PageDialogHeader>
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">名稱 *</label>
@@ -786,7 +786,7 @@ function SegmentTab() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <PageDialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
@@ -794,9 +794,9 @@ function SegmentTab() {
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </PageDialogFooter>
+        </PageDialogContent>
+      </PageDialog>
     </div>
   );
 }

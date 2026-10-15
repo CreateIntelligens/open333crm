@@ -91,7 +91,7 @@ export default function NotificationsPage() {
         </button>
       </Topbar>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto px-8 pb-8">
         {/* Tabs */}
         <Tabs value={tab} onValueChange={handleTabChange} className="mb-4">
           <TabsList>

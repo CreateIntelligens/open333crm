@@ -151,6 +151,28 @@ function RailIcon({ item, className }: { item: RailItem; className?: string }) {
   return <Icon className={className} aria-hidden="true" />;
 }
 
+// ─── 目前位置（給頁面標題列的麵包屑用） ────────────────────
+
+export interface NavTrail {
+  section?: { label: string; href: string };
+  link?: { label: string; href: string };
+  /** 目前網址剛好就是子選單那一頁（列表頁），而不是更深的詳情／新增頁 */
+  atLink: boolean;
+}
+
+export function useNavTrail(): NavTrail {
+  const rail = useVisibleRail();
+  const active = useActiveItem(rail);
+  const pathname = usePathname();
+  if (!active) return { atLink: false };
+  const section = { label: active.label, href: active.href };
+  if (!active.sections?.length) return { section, atLink: pathname === active.href };
+  const id = activeLinkId(active.sections, pathname);
+  const found = active.sections.flatMap((g) => g.items).find((l) => l.id === id);
+  if (!found) return { section, atLink: false };
+  return { section, link: { label: found.label, href: found.href }, atLink: pathname === found.href };
+}
+
 // ─── 左側圖示欄（桌機；依 Figma Sidebar：寬 66、上內距 12、項目間距 12、項目內距 8、圓角 8） ──
 
 export function Sidebar() {
@@ -161,7 +183,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="主要導覽"
-      className="hidden w-[66px] flex-none flex-col items-center bg-shell pt-3 lg:flex"
+      className="hidden w-[66px] flex-none flex-col items-center bg-gradient-to-b from-shell from-75% to-shell-end pt-3 lg:flex"
     >
       {permissionsError && (
         <button

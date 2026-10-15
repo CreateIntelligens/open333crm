@@ -29,7 +29,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <dialog
       ref={dialogRef}
-      className="fixed inset-0 z-50 m-auto w-fit rounded-xl border bg-background p-0 shadow-dropdown backdrop:bg-black/50"
+      className="fixed inset-0 z-50 m-auto w-fit rounded-xl border border-border bg-background p-0 shadow-dropdown backdrop:bg-black/40"
       onClose={() => onOpenChange(false)}
       onClick={(e) => {
         if (e.target === dialogRef.current) {
@@ -68,7 +68,7 @@ function DialogHeader({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn('flex flex-col space-y-1.5 pb-4', className)}>
+    <div className={cn('flex flex-col gap-1 pb-5', className)}>
       {children}
     </div>
   );
@@ -82,7 +82,7 @@ function DialogTitle({
   children: React.ReactNode;
 }) {
   return (
-    <h2 className={cn('text-lg font-semibold leading-none tracking-tight', className)}>
+    <h2 className={cn('text-xl font-semibold leading-7 text-foreground', className)}>
       {children}
     </h2>
   );
@@ -96,7 +96,7 @@ function DialogFooter({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 pt-4', className)}>
+    <div className={cn('flex flex-col-reverse gap-2.5 pt-5 sm:flex-row sm:justify-end', className)}>
       {children}
     </div>
   );

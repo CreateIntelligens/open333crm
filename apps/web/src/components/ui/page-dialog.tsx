@@ -83,7 +83,7 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
       <div
         role="region"
         aria-label={parent ? `${parent}表單` : '表單'}
-        className="absolute inset-0 z-20 overflow-y-auto bg-background lg:rounded-tl-3xl"
+        className="app-content absolute inset-0 z-20 overflow-y-auto bg-background lg:rounded-tl-3xl"
       >
         {children}
       </div>
@@ -103,8 +103,8 @@ function PageDialog({ open, onOpenChange, children, section, parent }: PageDialo
 function PageDialogContent({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <div className="px-8 pb-10 pt-7">
-      {/* 原本 dialog 傳進來的寬度（max-w-lg 等）不套用，表單頁統一 620px */}
-      <div className={cn('flex max-w-[620px] flex-col gap-6', className?.replace(/(^|\s)max-w-\S+/g, ' '))}>{children}</div>
+      {/* 原本 dialog 傳進來的寬度、高度與捲動（max-w-lg、max-h-[90vh]、overflow-y-auto）不套用：表單頁統一 620px，由整頁捲動 */}
+      <div className={cn('flex max-w-[620px] flex-col gap-6', className?.replace(/(^|\s)(max-w|max-h|overflow(-[xy])?)-\S+/g, ' '))}>{children}</div>
     </div>
   );
 }

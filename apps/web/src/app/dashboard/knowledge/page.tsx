@@ -194,7 +194,7 @@ export default function KnowledgePage() {
       <Topbar title={pageTab === 'chat' ? 'Chat & Prompt' : pageTab === 'embedding' ? 'Embedding 設定' : pageTab === 'search' ? '語義搜尋' : pageTab === 'feedback' ? '回報調教' : '文章管理'} />
 
       {/* Top-level page tabs: articles vs semantic search */}
-      <div className="flex-1 overflow-hidden px-6">
+      <div className="flex-1 overflow-hidden px-8">
         <Tabs value={pageTab} onValueChange={() => undefined}>
 
           {/* ── Articles Tab ──────────────────────────────────── */}

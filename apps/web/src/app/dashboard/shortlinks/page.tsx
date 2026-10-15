@@ -162,7 +162,7 @@ export default function ShortLinksPage() {
   return (
     <div className="flex flex-1 flex-col">
       <Topbar title="短連結" />
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto px-8 pb-8">
         <Tabs value={tab} onValueChange={() => undefined}>
 
           <TabsContent value="links" className="mt-4">

@@ -97,7 +97,7 @@ export default function EditMaterialPage() {
         </div>
       )}
       <Topbar title="行銷" />
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto px-8 pb-8">
         <div className="mx-auto max-w-6xl space-y-5">
           <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/marketing/materials')}>
             <ArrowLeft className="mr-1 h-4 w-4" />回到素材列表

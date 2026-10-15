@@ -32,7 +32,7 @@ export default function NewRichMenuPage() {
     return (
       <div className="flex h-screen flex-col bg-muted">
         <Topbar title="LINE 管理" />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto px-8 pb-8">
           <div className="mx-auto max-w-4xl rounded-lg border border-warning/30 bg-warning-subtle p-4 text-sm text-warning">
             缺少 channelId，請從列表頁點「建立 Rich Menu」按鈕進入。
             <Button className="mt-2 block" onClick={() => router.push('/dashboard/line/rich-menus')}>
@@ -82,7 +82,7 @@ export default function NewRichMenuPage() {
     <div className="flex h-screen flex-col bg-muted">
       <Topbar title="LINE 管理" />
 
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto px-8 pb-8">
         <div className="mx-auto max-w-6xl space-y-5">
           <Button
             variant="ghost"

@@ -45,7 +45,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           <Sidebar />
           <SectionNav />
           <main className="relative min-w-0 flex-1 overflow-hidden bg-background lg:rounded-tl-3xl lg:shadow-[0_0_2px_rgba(0,0,0,0.25)]">
-            <div className="h-full overflow-y-auto">{children}</div>
+            <div className="app-content h-full overflow-y-auto">{children}</div>
             {/* 「下一頁」式表單（PageDialog）會蓋在這裡，側欄與頂部列不動 */}
             <div id={PAGE_DIALOG_ROOT_ID} />
           </main>

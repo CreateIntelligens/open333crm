@@ -65,7 +65,7 @@ export default function MyPerformancePage() {
   return (
     <div className="flex h-full flex-col">
       <Topbar title="我的績效" />
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto px-8 pb-8">
         {/* Alert cards */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Card className="border-warning/30 bg-warning-subtle">

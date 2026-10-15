@@ -236,7 +236,7 @@ export default function PortalPage() {
   return (
     <div className="flex flex-1 flex-col">
       <Topbar title="粉絲活動" />
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto px-8 pb-8">
         <Tabs value={tab} onValueChange={() => undefined}>
 
           <TabsContent value="activities" className="mt-4">

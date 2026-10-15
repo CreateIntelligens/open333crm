@@ -226,7 +226,7 @@ export default function DashboardPage() {
   return (
     <div className="flex h-full flex-col">
       <Topbar title="總覽" />
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto px-8 pb-8">
         <section aria-labelledby="pending-conversations-title">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>

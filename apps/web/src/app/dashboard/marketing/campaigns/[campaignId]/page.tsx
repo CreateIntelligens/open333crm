@@ -85,7 +85,7 @@ export default function CampaignDetailPage() {
       <Topbar title="行銷活動詳情" />
 
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-4xl p-6">
+        <div className="max-w-4xl px-8 pb-8">
           {/* Header */}
           <div className="mb-6">
             <Button

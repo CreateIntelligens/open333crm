@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { PageDialog, PageDialogContent, PageDialogHeader, PageDialogTitle, PageDialogFooter } from '@/components/ui/page-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,6 +24,11 @@ interface CaseCreateModalProps {
   channelType?: string;
   /** From inbox: conversation time label */
   conversationTime?: string;
+  /**
+   * true：以「下一頁」形式顯示（工單頁使用）。
+   * 收件匣維持跳出視窗，讓客服建單時仍看得到對話。
+   */
+  asPage?: boolean;
 }
 
 interface ContactOption {
@@ -71,6 +77,7 @@ export function CaseCreateModal({
   contactId,
   channelType,
   conversationTime,
+  asPage,
 }: CaseCreateModalProps) {
   const router = useRouter();
   const isFromInbox = !!conversationId;
@@ -246,13 +253,20 @@ export function CaseCreateModal({
     ? `${contactName || '未知'} · ${channelType || '未知'} · ${conversationTime || ''}`
     : null;
 
+  const Root = (asPage ? PageDialog : Dialog) as React.ComponentType<{ open: boolean; onOpenChange: (v: boolean) => void; children: React.ReactNode; section?: string; parent?: string }>;
+  const Content = asPage ? PageDialogContent : DialogContent;
+  const Header = asPage ? PageDialogHeader : DialogHeader;
+  const Title = asPage ? PageDialogTitle : DialogTitle;
+  const Footer = asPage ? PageDialogFooter : DialogFooter;
+  const rootExtra = asPage ? { section: '工單', parent: '工單列表' } : {};
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>建立案件</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+    <Root open={open} onOpenChange={(v: boolean) => { onOpenChange(v); if (!v) resetForm(); }} {...rootExtra}>
+      <Content className="sm:max-w-lg">
+        <Header>
+          <Title>建立案件</Title>
+        </Header>
+        <form onSubmit={handleSubmit} className={asPage ? 'space-y-4' : 'space-y-4 max-h-[70vh] overflow-y-auto pr-1'}>
           {/* Source conversation (inbox mode only) */}
           {sourceLabel && (
             <div>
@@ -430,7 +444,7 @@ export function CaseCreateModal({
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <DialogFooter>
+          <Footer>
             <Button
               type="button"
               variant="outline"
@@ -441,9 +455,9 @@ export function CaseCreateModal({
             <Button type="submit" disabled={isSubmitting || !isFormValid}>
               {isSubmitting ? '建立中...' : '建立案件'}
             </Button>
-          </DialogFooter>
+          </Footer>
         </form>
-      </DialogContent>
-    </Dialog>
+      </Content>
+    </Root>
   );
 }
