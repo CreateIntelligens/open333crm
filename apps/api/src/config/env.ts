@@ -71,6 +71,13 @@ const envSchema = z.object({
   A2A_AGENT_ID: z.string().trim().min(1).optional(),
   A2A_AGENT_TOKEN: z.string().trim().min(1).optional(),
   A2A_HUB_KEY: z.string().trim().min(1).optional(),
+  // WebTalk 協作工具列（change webtalk-multi-tenant）。WEBTALK_ROOM_SECRET 與 WEBTALK_SDK_URL 任一缺少時，
+  // 所有租戶都不載入 WebTalk（fail-closed）；格式檢查在 webtalk.service 的 resolveWebTalkServerConfig。
+  WEBTALK_ROOM_SECRET: z.string().optional(),
+  WEBTALK_SITE_ID: z.string().trim().min(1).default('open333crm'),
+  WEBTALK_SDK_URL: z.string().optional(),
+  WEBTALK_SDK_INTEGRITY: z.string().optional(),
+  WEBTALK_AI_ENDPOINT: z.string().optional(),
   UPLOAD_CONTENT_DETECTION_ENABLED: z.string().transform((v) => v !== 'false').default('true'),
   EMAIL_DELIVERY_MODE: z.enum(['log', 'webhook', 'smtp', 'resend']).default('log'),
   EMAIL_WEBHOOK_URL: z.string().optional(),

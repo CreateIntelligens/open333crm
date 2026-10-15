@@ -1205,6 +1205,10 @@ model TenantSettings {
   metaPixelId            String?
   // 跨渠道綁定（One ID）：{ enabled, bindKeywords, unbindKeywords }，預設關閉
   identityBinding        Json     @default("{}")
+  // WebTalk 協作工具列（change webtalk-multi-tenant）：租戶開關、AI 摘要開關（個資外送，預設關）、房間版本（重新產生房間代號時 +1）
+  webtalkEnabled         Boolean  @default(true)
+  webtalkAiEnabled       Boolean  @default(false)
+  webtalkRoomVersion     Int      @default(0)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
