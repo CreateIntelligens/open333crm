@@ -10,6 +10,7 @@ import {
   updateConversation,
   closeConversation,
   handoffConversation,
+  returnConversationToBot,
 } from './conversation.service.js';
 import { createCaseFromConversation } from '../case/case.service.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
@@ -351,6 +352,21 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.agent.tenantId,
       request.agent.id,
       data,
+    );
+
+    return reply.send(success(conversation));
+  });
+
+  // POST /api/v1/conversations/:id/return-to-bot - 客服把對話交回 Bot（change add-return-conversation-to-bot）
+  fastify.post<{ Params: { id: string } }>('/:id/return-to-bot', { preHandler: [perm.manage] }, async (request, reply) => {
+    await assertConversationChannelVisible(request, request.params.id, 'full'); // 與接管對話相同，為管理操作
+
+    const conversation = await returnConversationToBot(
+      request.tenantPrisma,
+      fastify.io,
+      request.params.id,
+      request.agent.tenantId,
+      request.agent.id,
     );
 
     return reply.send(success(conversation));

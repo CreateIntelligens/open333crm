@@ -507,6 +507,91 @@ export async function sendMessage(
   return { message, delivery };
 }
 
+/**
+ * 客服把對話交回 Bot（change add-return-conversation-to-bot）。
+ * bot 回覆次數歸零、清除轉真人原因，否則曾因次數到上限轉真人的對話，下一則訊息又會轉回真人。
+ * 保留指派的客服：bot 處理不了再轉真人時回到同一位。系統訊息只給客服看，不送給顧客。
+ */
+export async function returnConversationToBot(
+  prisma: TenantDb,
+  io: SocketIOServer,
+  conversationId: string,
+  tenantId: string,
+  agentId: string,
+) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId },
+    include: { channel: { select: { settings: true } } },
+  });
+  if (!conversation) {
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
+  }
+  if (conversation.status === 'CLOSED') {
+    throw new AppError('對話已結案，請先重新開啟對話', 'BAD_REQUEST', 400);
+  }
+  if (conversation.status === 'BOT_HANDLED') {
+    throw new AppError('對話已經由機器人處理', 'BAD_REQUEST', 400);
+  }
+  const settings = (conversation.channel?.settings ?? {}) as { botConfig?: { botMode?: string } };
+  if (settings.botConfig?.botMode === 'off') {
+    throw new AppError('這個渠道的機器人已關閉，無法交回 Bot', 'BAD_REQUEST', 400);
+  }
+
+  // 條件更新：檢查之後若有人把對話結案或已交回，不可以覆蓋（否則已結案的對話會被改回 Bot）
+  const { count } = await prisma.conversation.updateMany({
+    where: { id: conversationId, tenantId, status: { in: ['AGENT_HANDLED', 'ACTIVE'] } },
+    data: { status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null },
+  });
+  if (count === 0) {
+    throw new AppError('對話狀態已變更，請重新整理後再試', 'BAD_REQUEST', 400);
+  }
+  const updated = await prisma.conversation.findFirstOrThrow({ where: { id: conversationId, tenantId } });
+
+  const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
+  const now = new Date();
+  const systemMessage = await prisma.message.create({
+    data: {
+      conversationId,
+      direction: 'OUTBOUND',
+      senderType: 'SYSTEM',
+      contentType: 'system',
+      content: { text: `${agent?.name ?? '客服'} 把對話交回 Bot` },
+      metadata: { type: 'return_to_bot', agentId },
+      isRead: true,
+      createdAt: now,
+    },
+  });
+
+  const wsPayload: ConversationUpdatedPayload = {
+    id: updated.id,
+    status: updated.status,
+    assignedToId: updated.assignedToId,
+    unreadCount: updated.unreadCount,
+    lastMessageAt: conversation.lastMessageAt?.toISOString() ?? now.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+  };
+  io.to(`conversation:${conversationId}`).emit('conversation.updated', wsPayload);
+  io.to(`tenant:${tenantId}`).emit('conversation.updated', wsPayload);
+
+  const msgPayload = {
+    conversationId,
+    message: {
+      id: systemMessage.id,
+      conversationId,
+      direction: systemMessage.direction,
+      senderType: systemMessage.senderType,
+      contentType: systemMessage.contentType,
+      content: systemMessage.content as Record<string, unknown>,
+      createdAt: systemMessage.createdAt.toISOString(),
+      sender: null,
+    },
+  };
+  io.to(`conversation:${conversationId}`).emit('message.new', msgPayload);
+  io.to(`tenant:${tenantId}`).emit('message.new', msgPayload);
+
+  return updated;
+}
+
 export async function handoffConversation(
   prisma: TenantDb,
   io: SocketIOServer,
