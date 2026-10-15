@@ -164,7 +164,7 @@ schema 的註解說明這是過渡期的雙寫。指派系統角色時，兩個�
 | 限制 | 說明 |
 | --- | --- |
 | 登出或改密碼不會讓 refresh token 失效 | 詳見 `../../system/AUDIT.md` 的 AUTH-08 |
-| email 區分大小寫，大小寫不同就無法登入 | 詳見 `../../system/AUDIT.md` 的 AUTH-10 |
+| email 區分大小寫，和建立時的大小寫不同就無法登入 | 詳見 `../../system/AUDIT.md` 的 AUTH-10 |
 | 知道 email 就能讓成員無法以密碼登入 | 詳見 `../../system/AUDIT.md` 的 SEC-06 |
 | **團隊沒有建立的途徑** | 詳見 `../../system/AUDIT.md` 的 TEAM-01 |
 | 業務規則看舊的角色列舉 | 包含「最後一位管理員」的保護。詳見 `../../system/AUDIT.md` 的 RBAC-03 |

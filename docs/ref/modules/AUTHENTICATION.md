@@ -184,7 +184,7 @@ CLI token 與 Partner API 金鑰每次請求都查資料庫，但檢查的項目
 | 停用租戶不中斷 socket 連線，也不影響 CLI token 與 Partner API 金鑰 | AUTH-02 |
 | `authenticateJwtOrCliSession` 與 `authenticateJwtOrPartnerKey` 的 JWT 分支不填 `roleId`，網頁登入的成員即使有權限也呼叫不了 `partner-ingest` | AUTH-06 |
 | 登出、改密碼或重設密碼都不會讓已發出的 refresh token 失效 | AUTH-08 |
-| 成員的 email 區分大小寫：大小寫不同就登入失敗，也可以建立只差大小寫的兩個帳號 | AUTH-10 |
+| 成員的 email 區分大小寫：和建立時的大小寫不同就無法登入，也可以建立只差大小寫的兩個帳號 | AUTH-10 |
 | `config/env.ts` 的 `JWT_EXPIRES_IN` 沒有讀取端 | AUTH-07 |
 | 租戶端沒有忘記密碼流程 | AUTH-01 |
 
