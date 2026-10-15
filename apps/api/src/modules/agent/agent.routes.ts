@@ -16,6 +16,8 @@ import {
   resetAgentPassword,
   deactivateAgent,
   purgeAgent,
+  listAgents,
+  reactivateAgent,
 } from './agent.service.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
@@ -26,50 +28,14 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
-  // GET /api/v1/agents
+  // GET /api/v1/agents — 啟用中的成員
   fastify.get('/', { preHandler: [requirePermission('agent.view')] }, async (request, reply) => {
-    const agents = await request.tenantPrisma.agent.findMany({
-      where: {
-        tenantId: request.agent.tenantId,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        roleId: true,
-        // 帶出指派的角色資訊，供前端顯示自訂角色名與精準預選
-        roleRef: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            isSystem: true,
-          },
-        },
-        avatarUrl: true,
-        isActive: true,
-        teams: {
-          include: {
-            team: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            assignedCases: true,
-          },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    return reply.send(success(await listAgents(request.tenantPrisma, request.agent.tenantId, true)));
+  });
 
-    return reply.send(success(agents));
+  // GET /api/v1/agents/inactive — 停用的成員（需 agent.deactivate，供重新啟用，AUDIT AUTH-09）
+  fastify.get('/inactive', { preHandler: [requirePermission('agent.deactivate')] }, async (request, reply) => {
+    return reply.send(success(await listAgents(request.tenantPrisma, request.agent.tenantId, false)));
   });
 
   // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護）
@@ -175,6 +141,23 @@ export default async function agentRoutes(fastify: FastifyInstance) {
       tenantId: request.agent.tenantId,
       actorId: request.agent.id,
       action: 'agent.deactivate',
+      targetType: 'agent',
+      targetId: id,
+      ip: request.ip,
+    });
+    return reply.status(204).send();
+  });
+
+  // POST /api/v1/agents/:id/reactivate — 需 agent.deactivate（停用可以復原，角色維持停用前）
+  fastify.post('/:id/reactivate', {
+    preHandler: [requirePermission('agent.deactivate')],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await reactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
+    await writeTenantAudit(request.tenantPrisma, {
+      tenantId: request.agent.tenantId,
+      actorId: request.agent.id,
+      action: 'agent.reactivate',
       targetType: 'agent',
       targetId: id,
       ip: request.ip,

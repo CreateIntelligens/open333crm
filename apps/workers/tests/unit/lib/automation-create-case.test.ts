@@ -207,3 +207,33 @@ test('原工單已結案、建單期間對話被別人改關聯到新工單：�
   assert.deepEqual(cases.map((c) => c.id), ['case-old', 'case-other']);
   assert.equal(convs[0]!.caseId, 'case-other');
 });
+
+test('同優先級有多條政策時套用預設（sla-policy-selection，G20）', async () => {
+  const original = prisma.slaPolicy.findFirst;
+  const policies = [
+    { name: '較早的政策', isDefault: false, createdAt: new Date('2026-01-01'), resolutionMinutes: 60 },
+    { name: '預設政策', isDefault: true, createdAt: new Date('2026-02-01'), resolutionMinutes: 240 },
+  ];
+  // 模擬資料庫：依 orderBy 排序，沒有 orderBy 時回傳第一筆
+  prisma.slaPolicy.findFirst = async ({ orderBy }: { orderBy?: Array<Record<string, 'asc' | 'desc'>> }) => {
+    const rows = [...policies];
+    if (orderBy) {
+      rows.sort((a: any, b: any) => {
+        for (const k of orderBy) {
+          const [f, dir] = Object.entries(k)[0]!;
+          const av = Number(a[f]);
+          const bv = Number(b[f]);
+          if (av !== bv) return dir === 'asc' ? av - bv : bv - av;
+        }
+        return 0;
+      });
+    }
+    return rows[0];
+  };
+  try {
+    await run([createCase({ priority: 'HIGH' })], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
+    assert.equal(cases[0]!.slaPolicy, '預設政策');
+  } finally {
+    prisma.slaPolicy.findFirst = original;
+  }
+});

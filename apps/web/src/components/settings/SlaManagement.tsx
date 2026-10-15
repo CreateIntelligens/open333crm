@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -141,9 +142,9 @@ export function SlaManagement() {
     try {
       await api.delete(`/sla-policies/${id}`);
       fetchPolicies();
-    } catch {
-      console.error('Failed to delete SLA policy');
-      alert('刪除 SLA 政策失敗，請稍後重試');
+    } catch (err) {
+      // 仍有未結案工單使用時後端回 409 並說明（G20）
+      alert(getApiErrorMessage(err, '刪除 SLA 政策失敗，請稍後重試'));
     }
   };
 

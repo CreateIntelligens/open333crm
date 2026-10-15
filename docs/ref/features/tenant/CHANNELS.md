@@ -64,9 +64,9 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 | 端點 | 作用 |
 | --- | --- |
 | `POST /channels/:id/setup-webhook` | 呼叫 LINE API，自動把 webhook 網址設到 LINE 官方帳號 |
-| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl` |
+| `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
 | `POST /channels/:id/verify` | 以目前的憑證呼叫渠道平台，確認憑證有效 |
-| `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期 |
+| `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期。只讀不寫，「最後驗證」只由 `verify` 更新；渠道管理頁只對啟用中的 FB 渠道呼叫 |
 
 **轉發給下游系統。** 渠道設定的 `settings.downstreamWebhook` 可以把收到的原始 webhook 轉發給另一個網址，例如租戶自己的另一套機器人。規則如下：
 
@@ -117,9 +117,9 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 | 動作 | 端點 | 結果 |
 | --- | --- | --- |
 | 停用 | `PATCH /channels/:id` 帶 `isActive: false` | 渠道保留。停用的渠道不收發訊息，也不出現在可見範圍 |
-| 刪除 | `DELETE /channels/:id` | 硬刪除 |
+| 刪除 | `DELETE /channels/:id` | 硬刪除。仍被對話等資料參照時回 409 `CHANNEL_IN_USE` |
 
-`AGENTS.md` 規定渠道要以 `isActive: false` 軟刪除，但 `deleteChannel()` 是硬刪除。已經有對話的渠道，因為外鍵不允許，刪除會失敗並回一般的伺服器錯誤；沒有對話的渠道，刪除時聯絡人在這個渠道的身分也一併刪除。見 `../../system/AUDIT.md` 的 CHAN-01。
+渠道管理頁每張卡片有「停用」與「啟用」按鈕。`AGENTS.md` 規定渠道要以 `isActive: false` 軟刪除，但 `deleteChannel()` 是硬刪除。已經有對話的渠道，因為外鍵不允許，刪除回 409 `CHANNEL_IN_USE` 並建議改用停用；沒有對話的渠道，刪除時聯絡人在這個渠道的身分也一併刪除。見 `../../system/AUDIT.md` 的 CHAN-01。
 
 刪除會寫一筆 `channel.delete` 租戶稽核紀錄。
 
@@ -141,7 +141,7 @@ WebChat 渠道提供一段嵌入碼，貼到租戶的網站上就會出現聊天
 
 | 限制 | 說明 |
 | --- | --- |
-| **刪除是硬刪除，有對話的渠道刪不掉** | 詳見 `../../system/AUDIT.md` 的 CHAN-01 |
+| 刪除是硬刪除，有對話的渠道只能停用 | 詳見 `../../system/AUDIT.md` 的 CHAN-01 |
 | WhatsApp 渠道可以建立但無法使用 | 詳見 `../../system/AUDIT.md` 的 APP-02 |
 | **自動化在網站聊天室送不出訊息** | workers 沒有網站聊天室外掛。詳見 `../../system/AUDIT.md` 的 CHAN-02 |
 | 方案沒有限制渠道類型與數量 | 重新啟用也不檢查數量。詳見 `../../system/AUDIT.md` 的 PLAN-07 |

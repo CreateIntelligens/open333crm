@@ -88,11 +88,20 @@ export async function renameRole(prisma: TenantDb, roleId: string, tenantId: str
 export async function deleteRole(prisma: TenantDb, roleId: string, tenantId: string) {
   const role = await loadTenantRole(prisma, roleId, tenantId);
   if (role.isSystem) throw new AppError('內建角色不可刪除', 'FORBIDDEN', 403);
-  const agentCount = await prisma.agent.count({ where: { roleId, tenantId } });
-  if (agentCount > 0) {
-    throw new AppError(`此角色仍有 ${agentCount} 位成員使用中，請先改派`, 'ROLE_IN_USE', 409, {
-      blockingAgentCount: agentCount,
-    });
+  // 停用的成員也算使用中，且不在成員列表上：列出姓名才知道要改派誰（G18）
+  const blockingAgents = await prisma.agent.findMany({
+    where: { roleId, tenantId },
+    select: { id: true, name: true, isActive: true },
+    orderBy: { name: 'asc' },
+  });
+  if (blockingAgents.length > 0) {
+    const names = blockingAgents.map((a) => (a.isActive ? a.name : `${a.name}（已停用）`)).join('、');
+    throw new AppError(
+      `此角色仍有 ${blockingAgents.length} 位成員使用中：${names}。請先改派其他角色（停用的成員可在人員管理的「已停用的人員」處理）`,
+      'ROLE_IN_USE',
+      409,
+      { blockingAgentCount: blockingAgents.length, blockingAgents },
+    );
   }
   await prisma.role.delete({ where: { id: roleId } }); // RolePermission 隨 Cascade 刪除
   await invalidateRolePermissions(roleId); // 清掉已刪角色的殘留快取

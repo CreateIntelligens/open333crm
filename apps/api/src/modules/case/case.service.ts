@@ -281,6 +281,8 @@ async function createCaseRecord(
           tenantId,
           priority,
         },
+        // 「設為此優先級預設」的政策優先，沒有預設時取最早建立的（G20，AUDIT SLA-03）
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       });
 
   if (data.slaPolicyId && !slaPolicy) {
