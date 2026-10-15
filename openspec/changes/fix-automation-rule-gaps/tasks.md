@@ -17,10 +17,10 @@
 
 ## 4. 不合契約的規則不可啟用（A02）
 
-- [ ] 4.1 測試 `apps/api/tests/unit/modules/automation/rule-activation.test.ts`：「開啟含未知動作的規則」先確認失敗；「停用不合契約的規則」「開啟合法的規則」以 mutation 驗證
-- [ ] 4.2 `updateRule` 在改為啟用時驗證儲存後的契約
-- [ ] 4.3 測試 `apps/web/tests/unit/lib/automation/rule-actions.test.ts`：「舊規則的觸發事件」先確認失敗；編輯器加上未知觸發事件選項與提示
-- [ ] 4.4 資料腳本 `scripts/disable-invalid-automation-rules.mjs`：預設 dry-run，`--apply` 才寫入；只停用啟用中但不合契約的規則，保留內容；可重複執行
+- [x] 4.1 測試 `apps/api/tests/unit/modules/automation/rule-activation.test.ts`：「開啟含未知動作的規則」先確認失敗；「停用不合契約的規則」「開啟合法的規則」以 mutation 驗證（把「改為啟用」條件改成「有送 isActive」時，「停用不合契約的規則」失敗）
+- [x] 4.2 `updateRule` 在改為啟用時驗證儲存後的契約
+- [x] 4.3 測試 `apps/web/tests/unit/lib/automation/rule-actions.test.ts`：「舊規則的觸發事件」先確認失敗；編輯器加上未知觸發事件選項與提示
+- [x] 4.4 資料腳本 `scripts/disable-invalid-automation-rules.mjs`：預設 dry-run，`--apply` 才寫入；只停用啟用中但不合契約的規則，保留內容；可重複執行
 
 ## 5. 完成檢查
 

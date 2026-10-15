@@ -1,5 +1,6 @@
 import {
   AUTOMATION_ACTION_MAP,
+  AUTOMATION_EVENT_DEFINITIONS,
   composeAutomationContract,
   RETIRED_AUTOMATION_ACTIONS,
   validateAutomationRuleContract,
@@ -18,6 +19,22 @@ export type DroppedAction = {
  */
 export function ruleEventName(rule: { trigger?: { type?: string } | null; eventType?: string }): string {
   return rule.trigger?.type || rule.eventType || 'message.received';
+}
+
+/**
+ * 觸發事件下拉的選項。目前不會觸發的事件（AUDIT AUTO-05）標出來；
+ * 規則存的事件不在契約內（例如舊 seed 的 sentiment.negative）時加一個「未知觸發事件」選項，
+ * 否則下拉會顯示成第一個選項「收到訊息」（change fix-automation-rule-gaps）。
+ */
+export function triggerEventOptions(current: string): Array<{ value: string; label: string }> {
+  const options = AUTOMATION_EVENT_DEFINITIONS.map((event) => ({
+    value: event.name,
+    label: event.dispatched === false ? `${event.label}（目前不會觸發）` : event.label,
+  }));
+  if (current && !options.some((o) => o.value === current)) {
+    options.push({ value: current, label: `未知觸發事件（${current}）` });
+  }
+  return options;
 }
 
 /**
