@@ -110,7 +110,7 @@ export function RichMenuEditor({ draft, onChange }: Props) {
               }}
             />
             <div className="text-[11px] text-muted-foreground">
-              ⚠ 需求尺寸 {draft.size.width} × {draft.size.height}（JPEG/PNG，≤ 1 MB，LINE 官方限制）
+              需求尺寸 {draft.size.width} × {draft.size.height}（JPEG/PNG，≤ 1 MB，LINE 官方限制）
             </div>
           </div>
         </Section>

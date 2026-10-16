@@ -126,7 +126,7 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
               <td className="px-4 py-3 text-sm">
                 {c.contact?.displayName || c.contact?.name || '-'}
               </td>
-              <td className="px-4 py-3 text-sm">{c.category ? `🤖 ${c.category}` : '-'}</td>
+              <td className="px-4 py-3 text-sm">{c.category || '-'}</td>
               {/* 短欄位不換行（#293）：1440 寬時「開啟」「未指派」與 SLA 倒數會被擠成兩行 */}
               <td className="px-4 py-3 whitespace-nowrap">
                 <CasePriorityBadge priority={c.priority} />

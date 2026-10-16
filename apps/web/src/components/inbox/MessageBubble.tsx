@@ -136,11 +136,6 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     if (s === 'negative') return 'bg-destructive-subtle text-destructive';
     return 'bg-muted text-muted-foreground';
   };
-  const getSentimentEmoji = (s: string) => {
-    if (s === 'positive') return '😊';
-    if (s === 'negative') return '😟';
-    return '😐';
-  };
   const getSentimentLabel = (s: string) => {
     if (s === 'positive') return '正面';
     if (s === 'negative') return '負面';
@@ -264,7 +259,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {isInbound && !isBot && sentiment && (
           <div className="mt-1.5 flex items-center gap-1.5">
             <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium', getSentimentColor(sentiment.sentiment))}>
-              {getSentimentEmoji(sentiment.sentiment)} {getSentimentLabel(sentiment.sentiment)}
+              {getSentimentLabel(sentiment.sentiment)}
             </span>
             {sentiment.confidence != null && (
               <span className="text-[10px] text-muted-foreground">

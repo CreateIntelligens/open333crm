@@ -138,6 +138,7 @@ test('從看不到的渠道的對話建立工單：回 404，不建立工單', a
   const conv = await createConversation(onHidden, hidden);
   const res = await createFromConversation(conv.id);
   assert.equal(res.statusCode, 404, res.body);
+  assert.equal(res.json().error.message, '找不到此對話，可能已被刪除或您沒有存取權限');
   assert.equal(await owner.case.count({ where: { channelId: hidden.id } }), 0);
 });
 
@@ -151,4 +152,13 @@ test('對話所屬渠道只有唯讀權限：回 403，不建立工單', async (
 test('對話不存在：回 404', async () => {
   const res = await createFromConversation('00000000-0000-4000-8000-00000000dead');
   assert.equal(res.statusCode, 404, res.body);
+});
+
+test('讀看不到的渠道的工單時間軸：回 404，錯誤訊息是中文', async () => {
+  const hiddenCase = await owner.case.create({
+    data: { tenantId: A, contactId: onHidden.id, channelId: hidden.id, title: `${MARK}-hidden-case`, category: '其他' },
+  });
+  const res = await app.inject({ method: 'GET', url: `/api/v1/cases/${hiddenCase.id}/events` });
+  assert.equal(res.statusCode, 404, res.body);
+  assert.equal(res.json().error.message, '找不到此案件，可能已被刪除或您沒有存取權限');
 });

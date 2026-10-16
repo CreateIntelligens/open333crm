@@ -331,7 +331,7 @@ function CreatedApiKeyDialog({
         {keyData && (
           <div className="mt-2 space-y-4">
             <div className="rounded-md border-2 border-warning/40 bg-warning-subtle p-3 text-xs text-warning">
-              ⚠️ <strong>請立刻複製並妥善保存</strong>。關閉視窗後將無法再次查看完整金鑰，列表只會顯示遮罩末 4 碼。
+              <strong>請立刻複製並妥善保存</strong>。關閉視窗後將無法再次查看完整金鑰，列表只會顯示遮罩末 4 碼。
             </div>
 
             <div>
