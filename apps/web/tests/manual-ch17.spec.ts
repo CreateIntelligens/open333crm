@@ -182,9 +182,3 @@ test('ch17 截圖', async ({ browser }) => {
   await shot(page, page.getByRole('dialog'), 'ch17-cli-add');
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
 });
-
-test('ch17-webtalk WebTalk 協作設定', async ({ browser }) => {
-  const page = await newShotPage(browser);
-  await go(page, '/dashboard/settings/webtalk');
-  await shot(page, page.locator('main'), 'ch17-webtalk');
-});

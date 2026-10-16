@@ -29,10 +29,9 @@
     <a href="#p4"><span class="n">4</span> 營業時間</a>
     <a href="#p5"><span class="n">5</span> 追蹤設定</a>
     <a href="#p6"><span class="n">6</span> 跨渠道綁定</a>
-    <a href="#p7"><span class="n">7</span> WebTalk 協作</a>
-    <a href="#p8"><span class="n">8</span> API 金鑰</a>
-    <a href="#p9"><span class="n">9</span> CLI 連線</a>
-    <a href="#p10"><span class="n">10</span> A2A</a>
+    <a href="#p7"><span class="n">7</span> API 金鑰</a>
+    <a href="#p8"><span class="n">8</span> CLI 連線</a>
+    <a href="#p9"><span class="n">9</span> A2A</a>
   </aside>
 
   <main class="manual-main">
@@ -53,10 +52,9 @@
         <a href="#p4"><b>營業時間</b>下班時間自動回覆客人</a>
         <a href="#p5"><b>追蹤設定</b>短連結點擊同步到 GA4、Meta Pixel</a>
         <a href="#p6"><b>跨渠道綁定</b>同一位客人用 LINE 和 FB 找你，認成同一人</a>
-        <a href="#p7"><b>WebTalk 協作</b>後台右下角的同事即時聊天工具列</a>
-        <a href="#p8"><b>API 金鑰</b>給合作廠商推送知識庫文件用</a>
-        <a href="#p9"><b>CLI 連線</b>產生給 AI 工具連線用的 Token</a>
-        <a href="#p10"><b>A2A</b>查看 AI 代理連線狀態</a>
+        <a href="#p7"><b>API 金鑰</b>給合作廠商推送知識庫文件用</a>
+        <a href="#p8"><b>CLI 連線</b>產生給 AI 工具連線用的 Token</a>
+        <a href="#p9"><b>A2A</b>查看 AI 代理連線狀態</a>
       </div>
     </section>
 
@@ -256,41 +254,7 @@
     </section>
 
     <section class="doc" id="p7">
-      <h2><span class="idx">7</span> WebTalk 協作</h2>
-      <p>WebTalk 是後台右下角的協作工具列，讓同一家公司的同事在後台即時聊天、討論手上的客人或工單，不用另外切到其他通訊軟體。每家公司有自己的聊天房間，只有你們公司的同事會在同一個房間，其他公司看不到你們的在線名單和訊息。</p>
-      <p>設定頁在「設定 → WebTalk 協作」，只有能管理系統設定的人（通常是管理員）看得到。一般同事不用設定，打開後台就能在右下角使用。</p>
-      <figure class="shot">
-        <img src="uploads/shots/ch17-webtalk.png" alt="WebTalk 協作設定頁：啟用 WebTalk、啟用 AI 摘要兩個勾選項、房間代號區塊與重新產生房間代號按鈕、儲存設定按鈕" loading="lazy">
-        <figcaption>WebTalk 協作設定：預設開啟 WebTalk、關閉 AI 摘要。成員離職時可以按「重新產生房間代號」。</figcaption>
-      </figure>
-      <ol class="steps">
-        <li>到「設定 → WebTalk 協作」。</li>
-        <li>勾選「啟用 WebTalk」，後台就會出現協作工具列；取消勾選，後台就不會載入這個工具列。</li>
-        <li>需要時再勾選「啟用 AI 摘要」（說明見下方提醒）。</li>
-        <li>按「儲存設定」，旁邊出現「已儲存」即完成。</li>
-        <li>請同事重新整理後台頁面，新的設定才會生效。</li>
-      </ol>
-      <table>
-        <thead><tr><th>設定</th><th>預設</th><th>說明</th></tr></thead>
-        <tbody>
-          <tr><td>啟用 WebTalk</td><td>開啟</td><td>關閉後，後台不顯示協作工具列，也不會連線到 WebTalk 的外部服務。</td></tr>
-          <tr><td>啟用 AI 摘要</td><td>關閉</td><td>開啟後，同事在工具列按「網頁摘要」，可以讓 AI 幫忙整理目前這一頁的重點。</td></tr>
-          <tr><td>重新產生房間代號</td><td>—</td><td>換一個新的聊天房間，舊房間的人就進不來了。</td></tr>
-        </tbody>
-      </table>
-      <div class="warn"><span>⚠️</span><div><b>開啟 AI 摘要前，請先確認公司的個資政策。</b>按下「網頁摘要」時，目前頁面上的所有文字，包含客人的姓名、電話和對話內容，都會送到外部 AI 服務整理。所以這個選項預設是關閉的；關閉時，摘要功能會顯示已停用，頁面內容不會送出去。</div></div>
-      <h3>同事離職時：重新產生房間代號</h3>
-      <p>知道房間代號的人都能加入你們的聊天房間。同事離職，或你懷疑代號外流時，請重新產生一個。</p>
-      <ol class="steps">
-        <li>在「房間代號」區塊按「重新產生房間代號」。</li>
-        <li>跳出確認視窗後按「確定」。</li>
-        <li>畫面出現「已重新產生房間代號。請通知成員重新整理頁面。」後，請通知同事重新整理後台。</li>
-      </ol>
-      <div class="info"><span>ℹ️</span><div>換了房間代號後，原本房間的聊天紀錄不會帶到新房間。如果設定了卻一直看不到右下角的工具列，可能是你們的系統還沒開通 WebTalk，請洽系統維運人員。</div></div>
-    </section>
-
-    <section class="doc" id="p8">
-      <h2><span class="idx">8</span> API 金鑰</h2>
+      <h2><span class="idx">7</span> API 金鑰</h2>
       <p>這頁給<b>需要串接合作廠商的管理員</b>使用。頁面標題是「Partner API 金鑰」，產生的金鑰只有一個用途：讓合作廠商的系統把文件自動推送到你們的知識庫（知識庫見「<a href="ch06-knowledge.html">06 · 知識庫</a>」）。一般客服不需要碰這頁。</p>
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch17-apikey-add.png" alt="建立 API 金鑰對話框：名稱與過期時間" loading="lazy">
@@ -310,8 +274,8 @@
       <div class="info"><span>ℹ️</span><div>金鑰建立後畫面上的使用範例是給工程師參考的，實際串接格式請以工程人員提供的串接文件為準。</div></div>
     </section>
 
-    <section class="doc" id="p9">
-      <h2><span class="idx">9</span> CLI 連線</h2>
+    <section class="doc" id="p8">
+      <h2><span class="idx">8</span> CLI 連線</h2>
       <p>這頁給<b>會用 AI 助理或指令列工具的技術人員</b>使用。頁面標題是「CLI / LLM 連線」，在這裡產生的 Token 可以讓 Claude、ChatGPT 這類 AI 工具用你的身分查詢系統資料（預設只能讀、不能改）。一般客服不需要碰這頁。</p>
       <figure class="shot shot-narrow">
         <img src="uploads/shots/ch17-cli-add.png" alt="產生 CLI Token 對話框：名稱、過期時間、授予 MCP 唯讀權限" loading="lazy">
@@ -330,8 +294,8 @@
       </ul>
     </section>
 
-    <section class="doc" id="p10">
-      <h2><span class="idx">10</span> A2A</h2>
+    <section class="doc" id="p9">
+      <h2><span class="idx">9</span> A2A</h2>
       <p>位置在「設定 → 整合 → A2A」，只有管理員和主管看得到。這頁顯示系統和外部 AI 代理之間的連線資訊，<b>全部是唯讀</b>，由系統維運人員在伺服器上設定，你不需要也無法在這裡修改。如果有人請你確認 A2A 狀態，看「目前狀態」那一欄就可以。</p>
       <!-- KNOWN-ISSUE: A2A 是整個系統的設定卻對每個租戶顯示，「目前狀態」與「Tenant 綁定」不一定反映實際情況 -->
     </section>
