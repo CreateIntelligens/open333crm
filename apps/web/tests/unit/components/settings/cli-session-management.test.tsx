@@ -50,3 +50,20 @@ test('使用方式不叫人把 token 貼給 open333 login', async () => {
   assert.equal(screen.queryAllByText(/然後貼上 token/).length, 0);
   assert.ok(screen.queryAllByText(/以 Email 與密碼登入/).length > 0);
 });
+
+test('使用方式的主機位址取自這個部署，不寫死 UAT', async () => {
+  const dialog = await openCreateDialog();
+  fireEvent.change(within(dialog).getByPlaceholderText(/Claude Code/), { target: { value: 'LLM' } });
+  api.post.mockResolvedValueOnce({
+    data: {
+      data: {
+        token: 'tok_abc',
+        session: { id: 's1', name: 'LLM', tokenPrefix: 'tok', tokenSuffix: 'abc', scopes: [], expiresAt: '2026-11-14T00:00:00Z', createdAt: '2026-10-15T00:00:00Z' },
+      },
+    },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: '產生 Token' }));
+  await screen.findByText('Token 已產生');
+  assert.equal(screen.queryAllByText(/uat\.open333crm/).length, 0);
+  assert.ok(screen.queryAllByText(/open333 login --host http:\/\/localhost:3001/).length > 0);
+});

@@ -24,6 +24,7 @@ import {
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { LoadErrorNotice } from "@/components/shared/LoadErrorNotice";
+import { getPublicApiHost } from "@/lib/public-api-host";
 
 interface CliSession {
   id: string;
@@ -443,7 +444,7 @@ function CreatedCliSessionDialog({
               <p className="font-medium text-foreground">使用方式</p>
               <p className="mt-1">將 token 貼給 LLM，並告訴它：</p>
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
-                {`API Base URL: https://uat.open333crm.create360.ai
+                {`API Base URL: ${getPublicApiHost()}
 Bearer Token: ${sessionData.token}
 
 在 Headers 中加上：
@@ -454,7 +455,7 @@ Authorization: Bearer <token>`}
                 會自行產生並保存自己的 token（同樣會出現在這個列表）：
               </p>
               <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
-                {`open333 login --host https://uat.open333crm.create360.ai`}
+                {`open333 login --host ${getPublicApiHost()}`}
               </pre>
             </div>
 
