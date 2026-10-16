@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **延長已清除的試用租戶，後台仍顯示「已清除」**（TRIAL-04）— `PATCH /platform/trial-tenants/:id/extend` 會啟用租戶並延後到期日，但不清除軟刪標記 `purgedAt`。直接呼叫 API 延長已清除的租戶後，租戶已經可以登入，試用管理頁仍顯示「已清除」，而且只剩「復原」。現在延長和轉正式一樣，會一併清除標記。
 - **發起資料刪除的稽核沒有記錄來源 IP**（AUD-02）— `POST /api/v1/tenant/data-erasure` 寫的 `data.erasure.request` 稽核，`ip` 一律是空的，帳號被盜用時查不到刪除是從哪裡發起的。現在和資料匯出一樣記錄發起請求的來源 IP。
 - 警告色（橘）的文字對比度不足：淺色模式的 `--warning` 原本是 `#FF6E00`，白底上只有 2.8:1、淺橘底上 2.5:1，「自動開啟」標籤、SLA 預警等橘色文字看不清楚。改為 `#B24D00`（白底 5.3:1、淺橘底 4.8:1，白字在橘底上 5.3:1）；深色模式的淺橘底調暗，橘字在上面從 4.1:1 提高到 4.8:1。新增測試檢查這幾組配色都至少 4.5:1。
 - CLI 連線頁與 API 金鑰頁的使用說明，主機位址原本寫死為 UAT（`https://uat.open333crm.create360.ai`），在其他環境照著做會連到 UAT。現在取自這個部署的 API 網址（`NEXT_PUBLIC_API_URL` 去掉結尾的 `/api/v1`，保留子路徑）；設成相對路徑時接在目前頁面的網址後面。

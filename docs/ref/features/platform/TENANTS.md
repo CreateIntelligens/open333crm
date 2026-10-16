@@ -14,7 +14,7 @@
 | 改名稱或方案 | `PATCH /tenants/:id` | 改方案會失效兩層快取，見下文 |
 | 改成員登入 email | `PATCH /tenants/:id/agents/:agentId` | 全域唯一，重複回 409 |
 | 重寄成員開通信 | `POST /tenants/:id/agents/:agentId/resend-welcome` | 信裡沒有密碼 |
-| 停用或啟用 | `PATCH /tenants/:id/active` | 只改 `isActive`，沒有任何防呆 |
+| 停用或啟用 | `PATCH /tenants/:id/active` | 只改 `isActive`，沒有任何防呆。啟用已過期的試用租戶，下一輪排程又會停用，見 `../../system/AUDIT.md` 的 TRIAL-04 |
 | 手動開通 | `POST /tenants` | 建租戶、角色與管理員帳號 |
 
 **沒有刪除租戶的途徑。** 停用只是把 `isActive` 設成 `false`；試用租戶的 `purgedAt` 也只是標記，業務資料一直留在資料庫裡。
