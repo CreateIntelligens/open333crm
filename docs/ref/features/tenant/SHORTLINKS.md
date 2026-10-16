@@ -45,11 +45,11 @@
 | 來源 | 回應 |
 | --- | --- |
 | 爬蟲 | OG 預覽頁，讓分享卡片顯示標題與圖片。不記錄點擊 |
-| LINE 內建瀏覽器，且綁定的渠道設有 `liffId` | 導向 LIFF 頁面。LIFF 取得點擊者的 LINE uid 後呼叫 `/s/track` |
+| LINE 內建瀏覽器，且綁定的渠道設有 `liffId` | 一個小頁面：載入 GA 與 Meta Pixel 追蹤碼，然後立刻導向 LIFF 頁面。LIFF 取得點擊者的 LINE uid 後呼叫 `/s/track` |
 | LINE 內建瀏覽器，但沒有 `liffId` | 與一般瀏覽器相同 |
 | Facebook 內建瀏覽器、一般瀏覽器 | 一個小頁面：載入 GA 與 Meta Pixel 追蹤碼、送出 `/s/track`，然後立刻轉到目標網址 |
 
-GA 與 Meta Pixel 的 ID 在「設定 → 追蹤設定」填寫，見[其他設定](./SETTINGS.md)。
+GA 與 Meta Pixel 的 ID 在「設定 → 追蹤設定」填寫，見[其他設定](./SETTINGS.md)。小頁面不等追蹤事件送出就轉址，目標網站回應得快時，GA 與 Meta 可能收不到事件。`/s/track` 用 sendBeacon 送出，轉址後仍會送達。
 
 `trackClick()` 記錄點擊時：
 
