@@ -30,4 +30,4 @@
 - [x] 5.2 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 5.3 `CHANGELOG.md` 補 Fixed
 - [x] 5.4 `node scripts/validate-openspec.mjs fix-automation-rule-gaps` 通過
-- [ ] 5.5 部署後在 UAT 先以 dry-run 執行資料腳本、確認清單後加 `--apply`
+- [x] 5.5 部署後在 UAT 先以 dry-run 執行資料腳本、確認清單後加 `--apply`（2026-10-15 已執行：停用示範租戶 2 條含無效動作的規則「負面情緒通知」「一般問題自動開案」）

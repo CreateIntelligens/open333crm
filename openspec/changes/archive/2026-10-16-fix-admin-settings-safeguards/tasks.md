@@ -55,4 +55,4 @@
 - [x] 8.3 `CHANGELOG.md` 補 Fixed／Changed
 - [x] 8.4 更新 `docs/ref/system/AUDIT.md` 的 AUTH-09、SLA-03、SLA-04、CHAN-01，並在 `AUDIT-REVIEWS.md` 加紀錄
 - [x] 8.5 `node scripts/validate-openspec.mjs fix-admin-settings-safeguards` 與 `--specs` 通過
-- [ ] 8.6 PR 合併後以 `pnpm exec openspec archive fix-admin-settings-safeguards` 歸檔，並替新的主規格（`tracking-settings`、`channel-management`、`sla-policy-selection`、`office-hours-settings`）寫 `## Purpose`
+- [x] 8.6 PR 合併後以 `pnpm exec openspec archive fix-admin-settings-safeguards` 歸檔，並替新的主規格（`tracking-settings`、`channel-management`、`sla-policy-selection`、`office-hours-settings`）寫 `## Purpose`
