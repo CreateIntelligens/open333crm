@@ -68,16 +68,14 @@
     <section class="doc" id="p2">
       <h2><span class="idx">2</span> 看懂渠道卡片</h2>
       <p>每張卡片是一個渠道。左邊是類型標籤和名稱，右邊是狀態與操作按鈕。</p>
-      <!-- RESHOOT: 影片中的渠道卡片沒有新的「停用／啟用」按鈕，Webhook 公開網址卡片仍是舊文案 -->
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch15-overview.jpg">
           <source src="uploads/videos/ch15-overview.mp4" type="video/mp4">
         </video>
-        <figcaption><span class="tag">影片</span>認識渠道卡片上的按鈕、權杖失效的紅框，以及上方一般不用改的「Webhook 公開網址」（約 26 秒）</figcaption>
+        <figcaption><span class="tag">影片</span>認識渠道卡片上的按鈕（含停用／啟用）、權杖失效的紅框，以及上方一般不用改的「Webhook 公開網址」（約 28 秒）</figcaption>
       </figure>
-      <!-- RESHOOT: 卡片新增「停用／啟用」按鈕，舊截圖與 alt 只有五個操作按鈕 -->
       <figure class="shot">
-        <img src="uploads/shots/ch15-card-line.png" alt="一張 LINE 渠道卡片：名稱、Webhook 網址、最後驗證時間、啟用標籤與操作按鈕" loading="lazy">
+        <img src="uploads/shots/ch15-card-line.png" alt="一張 LINE 渠道卡片：名稱、Webhook 網址、最後驗證時間、啟用標籤、停用、測試連線與其他操作按鈕" loading="lazy">
         <figcaption>LINE 渠道卡片（網址已遮蔽）。</figcaption>
       </figure>
       <table>
@@ -410,7 +408,6 @@
       <p>卡片上的分岔箭頭圖示。用來把這個渠道收到的訊息，同時轉一份給公司其他系統。一般使用者不需要設定，請交給工程師。</p>
       <div class="warn"><span>⚠️</span><div>「轉發模式」如果選「立即轉發（下游接手，本系統不再處理）」，這個渠道的訊息<b>就不會進收件匣</b>，Bot 也不會回。不確定的話請保持「最後轉發」或不要開啟。</div></div>
       <h3>Webhook 公開網址（一般不用改）</h3>
-      <!-- RESHOOT: 卡片說明文字已改為「填入本系統對外的正式網域（https 開頭）…」，placeholder 改為 https://crm.example.com，舊截圖可能仍是舊文案 -->
       <figure class="shot">
         <img src="uploads/shots/ch15-webhook-base.png" alt="頁面上方的 Webhook 公開網址設定卡片與 WebChat 網頁版連結" loading="lazy">
         <figcaption>頁面最上方的「Webhook 公開網址」卡片，一般保持原樣即可。</figcaption>
