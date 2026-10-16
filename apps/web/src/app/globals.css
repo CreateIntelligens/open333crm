@@ -53,7 +53,7 @@
     --success-subtle: 140 26% 95%;       /* #EEF5F0 淺綠底 */
 
     /* 警告 (橘) */
-    --warning: 26 100% 50%;              /* #FF6E00 */
+    --warning: 26 100% 35%;              /* #B24D00（原 #FF6E00 在白底只有 2.8:1，文字看不清楚） */
     --warning-foreground: 0 0% 100%;
     --warning-subtle: 28 100% 95%;       /* #FFF0E4 淺橘底 */
 
@@ -109,7 +109,7 @@
 
     --warning: 26 90% 58%;
     --warning-foreground: 222 20% 11%;
-    --warning-subtle: 26 50% 24%;
+    --warning-subtle: 26 50% 20%;
 
     --ai: 276 90% 68%;
     --ai-foreground: 222 20% 11%;
