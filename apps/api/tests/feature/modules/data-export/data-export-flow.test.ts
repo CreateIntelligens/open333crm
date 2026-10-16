@@ -59,18 +59,31 @@ const plain = await owner.agent.create({
   data: { tenantId: A, roleId: plainRole.id, email: `${MARK}-plain@example.test`, name: '一般成員', passwordHash: 'x' },
 });
 
-// 租戶 A：一位聯絡人、一則對話、一則訊息、一張工單；租戶 B：一位聯絡人
+// 租戶 A：一位聯絡人（含渠道身分、屬性、標籤）、一則對話（含標籤）、一則訊息、一張工單（含備註、事件、標籤）；
+// 租戶 B：一位聯絡人
 const channelA = await owner.channel.create({
   data: { tenantId: A, channelType: 'WEBCHAT', displayName: `${MARK}-ch`, credentialsEncrypted: 'x' },
 });
+const tagA = await owner.tag.create({ data: { tenantId: A, name: `${MARK}-tag` } });
 const contactA = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-客人A` } });
+await owner.channelIdentity.create({
+  data: { contactId: contactA.id, channelId: channelA.id, channelType: 'WEBCHAT', uid: `${MARK}-uid` },
+});
+await owner.contactAttribute.create({ data: { contactId: contactA.id, key: 'birthday', value: '1990-01-01' } });
+await owner.contactTag.create({ data: { contactId: contactA.id, tagId: tagA.id } });
 const conversationA = await owner.conversation.create({
   data: { tenantId: A, contactId: contactA.id, channelId: channelA.id, channelType: 'WEBCHAT' },
 });
+await owner.conversationTag.create({ data: { conversationId: conversationA.id, tagId: tagA.id } });
 await owner.message.create({
   data: { conversationId: conversationA.id, senderType: 'CONTACT', contentType: 'text', content: { text: '你好' } },
 });
-await owner.case.create({ data: { tenantId: A, contactId: contactA.id, channelId: channelA.id, title: `${MARK}-工單` } });
+const caseA = await owner.case.create({
+  data: { tenantId: A, contactId: contactA.id, channelId: channelA.id, title: `${MARK}-工單` },
+});
+await owner.caseNote.create({ data: { caseId: caseA.id, agentId: exporter.id, content: '備註內容' } });
+await owner.caseEvent.create({ data: { caseId: caseA.id, actorType: 'agent', eventType: 'created' } });
+await owner.caseTag.create({ data: { caseId: caseA.id, tagId: tagA.id } });
 await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-客人B` } });
 
 async function buildApp(agent: { id: string; roleId: string }) {
@@ -125,6 +138,7 @@ afterAll(async () => {
     await owner.case.deleteMany({ where: { tenantId } });
     await owner.conversation.deleteMany({ where: { tenantId } });
     await owner.contact.deleteMany({ where: { tenantId } });
+    await owner.tag.deleteMany({ where: { tenantId } });
     await owner.channel.deleteMany({ where: { tenantId } });
     await owner.agent.deleteMany({ where: { tenantId } });
     await owner.role.deleteMany({ where: { tenantId } });
@@ -156,8 +170,22 @@ test('匯出只含本租戶的資料', async () => {
   assert.equal(stored.fileSizeBytes, buffer.length);
 
   const files = readZip(buffer);
-  const contacts = JSON.parse(files.get('json/contacts.json')!) as Array<{ id: string; tenantId: string }>;
+  type Tagged = { tags: Array<{ tag: { name: string } }> };
+  const contacts = JSON.parse(files.get('json/contacts.json')!) as Array<
+    Tagged & { id: string; channelIdentities: Array<{ uid: string }>; attributes: Array<{ key: string }> }
+  >;
   assert.deepEqual(contacts.map((c) => c.id), [contactA.id]);
+  assert.deepEqual(contacts[0].channelIdentities.map((i) => i.uid), [`${MARK}-uid`], '聯絡人含渠道身分');
+  assert.deepEqual(contacts[0].attributes.map((a) => a.key), ['birthday'], '聯絡人含屬性');
+  assert.deepEqual(contacts[0].tags.map((t) => t.tag.name), [`${MARK}-tag`], '聯絡人含標籤');
+  const [conversation] = JSON.parse(files.get('json/conversations.json')!) as Tagged[];
+  assert.deepEqual(conversation.tags.map((t) => t.tag.name), [`${MARK}-tag`], '對話含標籤');
+  const [kase] = JSON.parse(files.get('json/cases.json')!) as Array<
+    Tagged & { notes: Array<{ content: string }>; events: Array<{ eventType: string }> }
+  >;
+  assert.deepEqual(kase.notes.map((n) => n.content), ['備註內容'], '工單含備註');
+  assert.deepEqual(kase.events.map((e) => e.eventType), ['created'], '工單含事件');
+  assert.deepEqual(kase.tags.map((t) => t.tag.name), [`${MARK}-tag`], '工單含標籤');
   const manifest = JSON.parse(files.get('manifest.json')!);
   assert.deepEqual(manifest.counts, { contacts: 1, conversations: 1, messages: 1, cases: 1 });
   assert.ok(files.has('csv/contacts.csv') && files.has('csv/messages.csv'));

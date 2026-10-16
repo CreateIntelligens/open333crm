@@ -21,6 +21,7 @@ zip 上傳物件儲存後，請求 SHALL 改為 `completed`，記錄 `fileKey`�
 #### Scenario: 匯出只含本租戶的資料
 - **WHEN** worker 處理租戶 A 的匯出工作，租戶 B 也有聯絡人
 - **THEN** 請求改為 `completed`，zip 裡的聯絡人只有租戶 A 的聯絡人，`manifest.json` 的筆數與 zip 內容相符，發起的成員收到完成通知
+- **AND** JSON 裡的聯絡人含渠道身分、屬性與標籤，對話含標籤，工單含備註、事件與標籤
 
 #### Scenario: 上傳失敗時記錄原因
 - **WHEN** worker 上傳 zip 時物件儲存回傳錯誤

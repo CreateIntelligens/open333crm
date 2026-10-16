@@ -53,8 +53,16 @@
 | `data-erasure.handler.ts` 硬刪除後不刪媒體檔 | 硬刪除連帶刪除對話與工單 |
 | `data-erasure.handler.ts` 完成稽核的 `payload` 多帶 `requestedBy` | 完成稽核不含個人資料 |
 | `data-erasure.handler.ts` 聯絡人不存在時直接結束，不拋錯 | 聯絡人已不存在時記錄失敗 |
+| `data-export.handler.ts` 匯出的聯絡人不含渠道身分 | 匯出只含本租戶的資料 |
+| `data-export.handler.ts` 匯出的對話不含標籤 | 匯出只含本租戶的資料 |
+| `data-export.handler.ts` 匯出的工單不含備註 | 匯出只含本租戶的資料 |
+| `data-export.handler.ts` 匯出的工單不含事件 | 匯出只含本租戶的資料 |
+| `data-erasure.handler.ts` 匿名化時不刪長期記憶 | 匿名化後無法從聯絡人與進站訊息識別客人 |
+| `data-erasure.handler.ts` 匿名化時不刪 `IdentityMap` | 匿名化後無法從聯絡人與進站訊息識別客人 |
+| `tenant-audit.service.ts` 的 `listTenantAudit()` 查詢拿掉 `tenantId` | `tenant-audit/tenant-audit.test.ts`（既有）的「listTenantAudit 跨租戶隔離：租戶 B 查不到租戶 A 的稽核」 |
+| `data-erasure.service.ts` 的 `requestErasure()` 查聯絡人時拿掉 `tenantId` | `apps/api/tests/unit/modules/data-erasure/data-erasure.test.ts`（既有）的「rejects foreign contact」 |
 
-兩個突變沒有讓測試失敗，所以沒有列入上表：`listTenantAudit()` 與 `requestErasure()` 的查詢拿掉 `tenantId`。測試的路由以 `app_tenant` 連線執行，RLS 仍然擋住其他租戶的資料。這是 RLS 這一層的保護，不是測試的缺口。
+最後兩列的突變，新增的測試沒有抓到，因為新測試的路由以 `app_tenant` 連線執行，RLS 仍然擋住其他租戶的資料。既有的測試以略過 RLS 的連線或 mock 執行，所以抓得到。
 
 - [x] 2.1 執行上表的突變並還原
 

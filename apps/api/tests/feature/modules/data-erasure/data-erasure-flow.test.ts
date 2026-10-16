@@ -1,6 +1,7 @@
 /**
  * 主規格 tenant-data-erasure 的路由與 worker 情境（change restore-tenant-audit-gdpr-specs）：
  * 發起匿名化、其他租戶的聯絡人被拒、沒有 data.erase 不能發起、匿名化、硬刪除、完成稽核與失敗紀錄。
+ * 測試資料涵蓋規格列出的每一類資料，逐類檢查匿名化與硬刪除的結果。
  *
  * 路由走真實的 requirePermission 與 app_tenant 連線（RLS），入列以 setEnqueueErasureJob 取代；
  * worker 直接呼叫 apps/workers 的 handler，資料庫是真的。物件儲存與通知佇列以 mock 取代。
@@ -62,17 +63,31 @@ const channel = await owner.channel.create({
   data: { tenantId: A, channelType: 'LINE', displayName: `${MARK}-ch`, credentialsEncrypted: 'x' },
 });
 const foreignContact = await owner.contact.create({ data: { tenantId: tenantB.id, displayName: `${MARK}-其他租戶` } });
+const tag = await owner.tag.create({ data: { tenantId: A, name: `${MARK}-tag` } });
+const activity = await owner.portalActivity.create({
+  data: { tenantId: A, type: 'FORM', title: `${MARK}-活動`, createdById: eraser.id },
+});
 
 const PII = { displayName: '王小明', phone: '0912345678', email: 'ming@example.test', avatarUrl: 'https://example.test/a.png' };
 
-/** 建一位有渠道身分、屬性、對話（進站與出站訊息）與工單的聯絡人 */
+/**
+ * 建一位聯絡人，帶齊規格提到的資料：渠道身分、屬性、IdentityMap、長期記憶、標籤、活動提交、積分紀錄、
+ * 對話（進站與出站訊息，進站訊息帶媒體檔）與工單。回傳的 storageKey 是這位聯絡人的媒體檔。
+ */
 async function createSubject() {
   seq += 1;
+  const uid = `${MARK}-uid-${seq}`;
+  const storageKey = `${MARK}/photo-${seq}.jpg`;
   const contact = await owner.contact.create({ data: { tenantId: A, ...PII } });
-  await owner.channelIdentity.create({
-    data: { contactId: contact.id, channelId: channel.id, channelType: 'LINE', uid: `${MARK}-uid-${seq}` },
-  });
+  await owner.channelIdentity.create({ data: { contactId: contact.id, channelId: channel.id, channelType: 'LINE', uid } });
   await owner.contactAttribute.create({ data: { contactId: contact.id, key: 'birthday', value: '1990-01-01' } });
+  await owner.identityMap.create({ data: { tenantId: A, contactId: contact.id, channelType: 'LINE', uid, source: 'MANUAL' } });
+  await owner.longTermMemory.create({ data: { contactId: contact.id, content: '客人住在台北' } });
+  await owner.contactTag.create({ data: { contactId: contact.id, tagId: tag.id } });
+  await owner.portalSubmission.create({
+    data: { tenantId: A, activityId: activity.id, contactId: contact.id, answers: { phone: PII.phone } },
+  });
+  await owner.pointTransaction.create({ data: { tenantId: A, contactId: contact.id, amount: 10, balance: 10, type: 'earn' } });
   const conversation = await owner.conversation.create({
     data: { tenantId: A, contactId: contact.id, channelId: channel.id, channelType: 'LINE' },
   });
@@ -82,14 +97,14 @@ async function createSubject() {
       senderType: 'CONTACT',
       direction: 'INBOUND',
       contentType: 'image',
-      content: { text: '我的電話是 0912345678', storageKey: `${MARK}/photo-${seq}.jpg` },
+      content: { text: '我的電話是 0912345678', storageKey },
     },
   });
   await owner.message.create({
     data: { conversationId: conversation.id, senderType: 'AGENT', direction: 'OUTBOUND', contentType: 'text', content: { text: '收到' } },
   });
   const kase = await owner.case.create({ data: { tenantId: A, contactId: contact.id, channelId: channel.id, title: `${MARK}-工單` } });
-  return { contact, conversation, kase };
+  return { contact, conversation, kase, storageKey };
 }
 
 async function createRequest(contactId: string, mode: 'anonymize' | 'hard_delete') {
@@ -135,9 +150,13 @@ afterAll(async () => {
   for (const tenantId of [A, tenantB.id]) {
     await owner.tenantAuditLog.deleteMany({ where: { tenantId } });
     await owner.dataErasureRequest.deleteMany({ where: { tenantId } });
+    await owner.portalSubmission.deleteMany({ where: { tenantId } });
+    await owner.pointTransaction.deleteMany({ where: { tenantId } });
     await owner.case.deleteMany({ where: { tenantId } });
     await owner.conversation.deleteMany({ where: { tenantId } });
     await owner.contact.deleteMany({ where: { tenantId } });
+    await owner.portalActivity.deleteMany({ where: { tenantId } });
+    await owner.tag.deleteMany({ where: { tenantId } });
     await owner.channel.deleteMany({ where: { tenantId } });
     await owner.agent.deleteMany({ where: { tenantId } });
     await owner.role.deleteMany({ where: { tenantId } });
@@ -193,6 +212,8 @@ test('匿名化後無法從聯絡人與進站訊息識別客人', async () => {
   assert.equal(after.avatarUrl, null);
   assert.equal(await owner.contactAttribute.count({ where: { contactId: contact.id } }), 0);
   assert.equal(await owner.channelIdentity.count({ where: { contactId: contact.id } }), 0);
+  assert.equal(await owner.identityMap.count({ where: { contactId: contact.id } }), 0);
+  assert.equal(await owner.longTermMemory.count({ where: { contactId: contact.id } }), 0);
 
   const messages = await owner.message.findMany({ where: { conversationId: conversation.id } });
   const inbound = messages.filter((m) => m.direction === 'INBOUND');
@@ -204,17 +225,22 @@ test('匿名化後無法從聯絡人與進站訊息識別客人', async () => {
 });
 
 test('硬刪除連帶刪除對話與工單', async () => {
-  const { contact, conversation, kase } = await createSubject();
+  const { contact, conversation, kase, storageKey } = await createSubject();
   await runJob(await createRequest(contact.id, 'hard_delete'));
 
-  assert.equal(await owner.contact.findUnique({ where: { id: contact.id } }), null);
+  const contactId = contact.id;
+  assert.equal(await owner.contact.findUnique({ where: { id: contactId } }), null);
   assert.equal(await owner.conversation.findUnique({ where: { id: conversation.id } }), null);
   assert.equal(await owner.message.count({ where: { conversationId: conversation.id } }), 0);
   assert.equal(await owner.case.findUnique({ where: { id: kase.id } }), null);
-  assert.ok(
-    mocks.remove.mock.calls.some(([, key]) => key === `${MARK}/photo-${seq}.jpg`),
-    '刪除訊息的媒體檔',
-  );
+  assert.equal(await owner.portalSubmission.count({ where: { contactId } }), 0, '活動提交');
+  assert.equal(await owner.pointTransaction.count({ where: { contactId } }), 0, '積分紀錄');
+  assert.equal(await owner.contactAttribute.count({ where: { contactId } }), 0, '屬性');
+  assert.equal(await owner.channelIdentity.count({ where: { contactId } }), 0, '渠道身分');
+  assert.equal(await owner.identityMap.count({ where: { contactId } }), 0, 'IdentityMap');
+  assert.equal(await owner.longTermMemory.count({ where: { contactId } }), 0, '長期記憶');
+  assert.equal(await owner.contactTag.count({ where: { contactId } }), 0, '標籤');
+  assert.ok(mocks.remove.mock.calls.some(([, key]) => key === storageKey), '刪除訊息的媒體檔');
 });
 
 test('硬刪除不影響其他聯絡人', async () => {
@@ -256,6 +282,8 @@ test('聯絡人已不存在時記錄失敗', async () => {
   const request = await createRequest(contact.id, 'hard_delete');
   await owner.case.deleteMany({ where: { contactId: contact.id } });
   await owner.conversation.deleteMany({ where: { contactId: contact.id } });
+  await owner.portalSubmission.deleteMany({ where: { contactId: contact.id } });
+  await owner.pointTransaction.deleteMany({ where: { contactId: contact.id } });
   await owner.contact.delete({ where: { id: contact.id } });
 
   await assert.rejects(runJob(request));
