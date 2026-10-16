@@ -148,10 +148,10 @@ async function testDownloadExpired() {
   assert.equal(prisma.dataExportRequest.updateMany.calls.length, 0);
 }
 
-test('creates pending request and audit', testCreatesPendingRequestAndAudit);
+test('發起匯出', testCreatesPendingRequestAndAudit);
 test('get export request is tenant scoped', testGetExportRequestIsTenantScoped);
 test('get export request not found', testGetExportRequestNotFound);
-test('download cross tenant rejected', testDownloadCrossTenantRejected);
+test('其他租戶的匯出不能下載', testDownloadCrossTenantRejected);
 test('download not ready', testDownloadNotReady);
-test('download expired', testDownloadExpired);
+test('過期的匯出不能下載', testDownloadExpired);
 await closeExportQueue();

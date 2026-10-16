@@ -31,7 +31,7 @@ test('writeTenantAudit 寫入正確欄位', async () => {
   assert.deepEqual(rows[0].payload, { section: 'chat' });
 });
 
-test('writeTenantAudit 失敗不拋（非阻斷）', async () => {
+test('稽核寫入失敗不拋錯', async () => {
   // 給不合法 tenantId（非 UUID）→ Prisma 會拋，但 writeTenantAudit 內部 try/catch 吞掉，不應拋出
   await assert.doesNotReject(
     writeTenantAudit(prisma, { tenantId: 'not-a-uuid', action: `${MARK}.bad` }),
@@ -46,7 +46,7 @@ test('listTenantAudit 跨租戶隔離：租戶 B 查不到租戶 A 的稽核', a
   assert.equal(aResult.rows.length, 1, '租戶 A 應看到自己的稽核');
 });
 
-test('listTenantAudit 分頁 + 日期篩選', async () => {
+test('分頁與日期篩選', async () => {
   const { rows, total, page, pageSize } = await listTenantAudit(prisma, {
     tenantId: TENANT_A,
     page: 1,

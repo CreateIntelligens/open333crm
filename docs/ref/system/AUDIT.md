@@ -107,7 +107,9 @@
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
-| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案 | 靜態確認 |
+| [AUD-02](#aud-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | 發起資料刪除的稽核沒有記錄來源 IP | 靜態確認 |
+| [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email 兩種模式都保留 | 靜態確認 |
+| [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | [APP-01](#app-01) | 部署與應用程式 | P3 | 未處理 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
@@ -1433,8 +1435,23 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 
 長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。
 
+<a id="aud-02"></a>
+### AUD-02：發起資料刪除的稽核沒有記錄來源 IP
+
+`POST /api/v1/tenant/data-erasure` 寫的 `data.erasure.request` 稽核，`ip` 一律是空的。`data-erasure.routes.ts` 沒有把 `request.ip` 傳給 `requestErasure()`，`RequestErasureInput` 也沒有 `ip` 欄位。
+
+其他由 HTTP 請求觸發的稽核都記錄 `request.ip`，包括同一個 PR（#153，`ad686d2d`）寫的資料匯出。刪除個人資料是最需要追查的操作之一，帳號被盜用時，這一筆卻查不到來源。
+
+刪除完成的 `data.erasure.complete` 由 workers 在背景寫入，沒有 HTTP 請求，不記錄 IP 是預期的行為，不在這一項的範圍。
+
+**規格依據**：`tenant-data-erasure` 的「發起聯絡人資料刪除」規定稽核 SHALL 記錄發起請求的來源 IP（Scenario「發起刪除的稽核記錄來源 IP」）。這個 Scenario 在修正前沒有測試。
+
+**修正方向**：`RequestErasureInput` 加上 `ip`，路由傳入 `request.ip`，比照 `requestExport()`。
+
 <a id="erase-01"></a>
 ### ERASE-01：資料刪除沒有涵蓋所有個人資料
+
+**涉及 GDPR。** 資料刪除對應個資法與 GDPR 的被遺忘權。下列資料在刪除後仍留在系統，客人要求刪除時無法完整履行。2026-10-16 決定暫時維持 P3。
 
 `apps/workers/src/handlers/data-erasure.handler.ts` 有兩種模式：
 
@@ -1451,8 +1468,28 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 | 工單標題、描述、備註、CSAT 留言 | 保留 | 刪除 |
 | `ClickLog`（含 IP、User-Agent、LINE uid） | 保留 | 保留 |
 | `BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` | 保留 | 保留 |
+| 被合併到這位聯絡人的封存聯絡人（姓名、電話、email、頭像） | 保留 | 保留 |
 
-最後兩列的資料表只存 `contactId` 字串，沒有外鍵，兩種模式都不處理。預設模式保留了客人上傳的圖片與表單答案，這兩類最可能含個人資料。
+`ClickLog`、`BroadcastRecipient`、`KbArticleFeedback`、`FlowExecution` 只存 `contactId` 字串，沒有外鍵，兩種模式都不處理。預設模式保留了客人上傳的圖片與表單答案，這兩類最可能含個人資料。
+
+最後一列來自聯絡人合併。`contact-merge.service.ts` 合併兩位聯絡人時，被併入的聯絡人只設定 `isArchived` 與 `mergedIntoId`，個人欄位不變。刪除的 handler 只處理請求指定的 `contactId`，不沿 `mergedIntoId` 找被併入的聯絡人。同一位客人在多個渠道各有一位聯絡人、後來合併時，刪除保留下來的那一位，其他渠道留下的姓名、電話與 email 仍在資料庫。封存的聯絡人可以另外以自己的 ID 發起刪除，但後台不列出封存的聯絡人，操作者不容易知道它們存在。
+
+**修正方向**：發起刪除時，一併處理 `mergedIntoId` 指向目標聯絡人的封存聯絡人（逐層往下找）。
+
+<a id="export-01"></a>
+### EXPORT-01：資料匯出的通知、範圍參數與記憶體用量
+
+`POST /api/v1/tenant/data-export` 與 `apps/workers/src/handlers/data-export.handler.ts` 有三個問題：
+
+| 問題 | 現況 |
+| --- | --- |
+| 完成通知的連結 | 成功與失敗的通知都連到 `/dashboard/settings/data-export/<請求 ID>`。前端沒有這個頁面，也沒有任何匯出、稽核或資料刪除的畫面 |
+| 範圍參數 | API 接受 `scope`（資料類型陣列）並存進請求，但 worker 不讀它，一律匯出聯絡人、對話、訊息與工單 |
+| 記憶體用量 | `fetchAllPaged()` 分頁查詢，卻把每一頁累加到同一個陣列，最後連同 JSON 字串與 zip 一起留在記憶體。函式註解寫「避免一次全載入記憶體」，實際上整個租戶的資料都載入 |
+
+前兩項讓使用者看到不存在的頁面，或以為只匯出了部分資料。第三項在資料量大的租戶可能讓 workers 的記憶體用盡，同一個行程的其他佇列也會中斷。
+
+**修正方向**：通知連結改到實際存在的頁面，或在前端做出匯出頁面之前拿掉連結；`scope` 要嘛在 worker 生效，要嘛從 API 移除；匯出改成逐表寫入 zip，不保留全部列。
 
 ## 部署與應用程式
 
