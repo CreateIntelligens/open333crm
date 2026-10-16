@@ -72,7 +72,7 @@
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | [TRIAL-02](#trial-02) | 試用 | P3 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
-| [TRIAL-04](#trial-04) | 試用 | P3 | 未處理 | 復原軟刪標記後，下一輪排程又會標記；延長試用與啟用租戶不清除標記 | 測試確認 |
+| [TRIAL-04](#trial-04) | 試用 | P3 | 未處理 | 復原軟刪標記後，下一輪排程又會標記；延長試用與啟用租戶不清除標記 | 執行時確認 |
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | [PLAN-03](#plan-03) | 方案與額度 | P3 | 未處理 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
@@ -746,7 +746,7 @@ PlatformSetting（KV，不知道型別）
 | 租戶頁的啟用（`PATCH /platform/tenants/:id/active`，`setTenantActive()`） | 只設 `isActive`，不清除 `purgedAt`。`trialEndsAt` 早已過期，下一輪到期排程又停用租戶 |
 | 轉正式（`convertToPaid()`） | 一起清除 `trialEndsAt`、`purgedAt` 並啟用租戶，沒有問題 |
 
-第一列以 feature 測試重現：排程標記後復原，再執行一次排程，`purgedAt` 又有值，`tenant.trial.purge` 稽核有 2 筆。
+第一列在本機的測試資料庫重現：排程標記後復原，再執行一次排程，`purgedAt` 又有值，`tenant.trial.purge` 稽核有 2 筆。重現用的測試沒有保留在 repo，修正時再補上會失敗的測試。
 
 `purgedAt` 不影響存取（TRIAL-03），所以影響只有平台後台的顯示與重複的稽核，不會刪除資料，也不會讓停用的租戶恢復存取。
 

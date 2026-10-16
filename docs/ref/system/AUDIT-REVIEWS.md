@@ -6,7 +6,7 @@
 
 ## 2026-10-16：新增 TRIAL-04
 
-change `restore-trial-data-purge-specs` 補回 `add-trial-data-purge`（issue #228）。對照 `8953095f` 的程式碼，並以 feature 測試重現。沒有連線 UAT。
+change `restore-trial-data-purge-specs` 補回 `add-trial-data-purge`（issue #228）。對照 `8953095f` 的程式碼，並在本機的測試資料庫重現。沒有連線 UAT。
 
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
