@@ -1282,6 +1282,8 @@ model Broadcast {
   totalCount     Int       @default(0)
   successCount   Int       @default(0)
   failedCount    Int       @default(0)
+  // 發送失敗的原因（中文，給後台顯示）：排程發送失敗時原本只寫 log，後台看不到（issue #287）
+  failureReason  String?
   totalSent      Int       @default(0)
   totalDelivered Int       @default(0)
   totalReplied   Int       @default(0)
