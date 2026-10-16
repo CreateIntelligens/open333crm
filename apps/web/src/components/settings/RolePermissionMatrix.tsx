@@ -569,7 +569,7 @@ export function RolePermissionMatrix() {
                                 {autoBy && (
                                   <span
                                     title={`因「${autoBy}」需要而自動開啟`}
-                                    className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-semibold text-warning-foreground"
+                                    className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-semibold text-warning"
                                   >
                                     自動開啟
                                   </span>
@@ -653,8 +653,9 @@ export function RolePermissionMatrix() {
             確定要刪除角色「{delTarget?.name}」嗎？此動作無法復原。
           </p>
           {dialogErr && (
-            <p className="rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning-foreground">
-              ⚠ {dialogErr}
+            // text-warning-foreground 在亮色主題是白色，疊在淺底上看不到；擋下刪除屬於錯誤，用紅色
+            <p role="alert" className="rounded-md bg-destructive-subtle px-3 py-2 text-sm text-destructive">
+              {dialogErr}
             </p>
           )}
           <DialogFooter>

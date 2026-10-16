@@ -70,3 +70,42 @@ test('改狀態失敗：聊天視窗顯示原因', async () => {
   await waitFor(() => assert.ok(screen.queryByRole('alert') !== null, '應顯示錯誤'));
   assert.match(screen.getByRole('alert').textContent ?? '', /管理對話/);
 });
+
+test('訊息超過 5000 字：不送出，直接說是字數超過上限（#293）', async () => {
+  const onSend = vi.fn(async () => {});
+  render(<MessageInput onSend={onSend} conversationId="conv-1" channelType="WEBCHAT" />);
+  const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+  const long = '字'.repeat(5001);
+  fireEvent.change(textarea, { target: { value: long } });
+  fireEvent.keyDown(textarea, { key: 'Enter' });
+
+  const alert = await screen.findByRole('alert');
+  assert.match(alert.textContent ?? '', /不可超過 5000 字/);
+  assert.equal(onSend.mock.calls.length, 0);
+  assert.equal(textarea.value, long);
+});
+
+test('後端驗證失敗：顯示欄位層級的原因，而不是泛用的「輸入內容有誤」（#293）', async () => {
+  const onSend = vi.fn(async () => {
+    throw {
+      response: {
+        status: 400,
+        data: {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: '輸入內容有誤，請檢查後重新送出',
+            details: { issues: [{ path: 'content', message: '訊息長度不可超過 5000 字' }] },
+          },
+        },
+      },
+    };
+  });
+  render(<MessageInput onSend={onSend} conversationId="conv-1" channelType="WEBCHAT" />);
+  const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+  fireEvent.change(textarea, { target: { value: '您好' } });
+  fireEvent.keyDown(textarea, { key: 'Enter' });
+
+  const alert = await screen.findByRole('alert');
+  assert.match(alert.textContent ?? '', /訊息長度不可超過 5000 字/);
+  assert.doesNotMatch(alert.textContent ?? '', /輸入內容有誤/);
+});

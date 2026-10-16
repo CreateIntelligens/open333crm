@@ -127,17 +127,18 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
                 {c.contact?.displayName || c.contact?.name || '-'}
               </td>
               <td className="px-4 py-3 text-sm">{c.category ? `🤖 ${c.category}` : '-'}</td>
-              <td className="px-4 py-3">
+              {/* 短欄位不換行（#293）：1440 寬時「開啟」「未指派」與 SLA 倒數會被擠成兩行 */}
+              <td className="px-4 py-3 whitespace-nowrap">
                 <CasePriorityBadge priority={c.priority} />
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3 whitespace-nowrap">
                 <CaseStatusBadge status={c.status} />
               </td>
-              <td className="px-4 py-3 text-sm">{c.assignee?.name || '未指派'}</td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3 text-sm whitespace-nowrap">{c.assignee?.name || '未指派'}</td>
+              <td className="px-4 py-3 whitespace-nowrap">
                 <SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} />
               </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
+              <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                 {format(new Date(c.createdAt), 'yyyy/MM/dd HH:mm')}
               </td>
               {onDelete && (

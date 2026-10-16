@@ -5,9 +5,9 @@ import { Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } from 'lucid
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
-import { CHANNEL_TYPE } from '@open333crm/shared';
+import { CHANNEL_TYPE, validateOutboundMessage } from '@open333crm/shared';
 import { useQuickReplyPresets } from '@/hooks/useQuickReplyPresets';
-import { getApiErrorMessage } from '@/lib/api-error';
+import { getApiErrorMessage, getFieldErrors } from '@/lib/api-error';
 
 interface QuickReplyItem {
   label: string;
@@ -69,6 +69,13 @@ export function MessageInput({
     const trimmed = message.trim();
     if (!trimmed || isDisabled) return;
 
+    // 送出前先用與後端相同的規則檢查（例如超過 5000 字），直接說原因，不必等後端回泛用的 400（#293）
+    const invalid = validateOutboundMessage('text', { text: trimmed });
+    if (invalid) {
+      setSendError(invalid);
+      return;
+    }
+
     setSending(true);
     setSendError(null);
     try {
@@ -81,7 +88,8 @@ export function MessageInput({
       }
     } catch (err) {
       console.error('Failed to send message:', err);
-      setSendError(getApiErrorMessage(err, '訊息送出失敗，請稍後重試'));
+      // 驗證錯誤的整體訊息是泛用的「輸入內容有誤」，訊息內容欄位的原因比較具體（#293）
+      setSendError(getFieldErrors(err).content ?? getApiErrorMessage(err, '訊息送出失敗，請稍後重試'));
     } finally {
       setSending(false);
     }
