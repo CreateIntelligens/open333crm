@@ -100,13 +100,13 @@
 
 ## 指派與狀態
 
-收件匣右上角有兩個下拉選單：負責人與狀態。兩者都呼叫 `PATCH /conversations/:id`，由 `updateConversation()` 直接改欄位。
+收件匣右上角有兩個下拉選單：負責人與狀態。負責人與「已關閉」以外的狀態呼叫 `PATCH /conversations/:id`，由 `updateConversation()` 直接改欄位；狀態選「已關閉」會開啟結案視窗，走 `POST /:id/close`。
 
 同一件事另有專用端點。兩條路的副作用不同：
 
 | 動作 | 專用端點 | `PATCH /conversations/:id` |
 | --- | --- | --- |
-| 關閉 | `POST /:id/close`：記錄關閉原因、來源與操作者，發布 `conversation.closed` | 只改 `status`，不記原因，不發布事件 |
+| 關閉 | `POST /:id/close`：記錄關閉原因、來源與操作者，發布 `conversation.closed` | `status` 改成 `CLOSED` 時同樣經 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布事件；PATCH 沒有原因欄位，`closeReason` 為 null |
 | 接手 | `POST /:id/handoff`：送出轉接訊息，寫系統訊息，指派給接手的人 | 狀態選單沒有 `BOT_HANDLED` → `AGENT_HANDLED` 以外的副作用 |
 | 指派 | 無 | 只改 `assignedToId`，不發布事件，不通知被指派的人 |
 
