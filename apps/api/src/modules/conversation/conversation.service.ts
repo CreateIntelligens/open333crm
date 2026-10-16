@@ -895,7 +895,7 @@ export async function updateConversation(
     return closeConversation(prisma, io, id, tenantId, {
       source: 'manual',
       closedById: options.actorId,
-      assignedTo: updateData.assignedTo,
+      assignedToId: data.assignedToId,
     });
   }
 
@@ -955,8 +955,8 @@ export async function closeConversation(
     reason?: string;
     source: 'manual' | 'inactivity' | 'csat' | 'case_resolved';
     closedById?: string;
-    /** 同時變更負責人（PATCH 帶 CLOSED 與 assignedToId 時），和結案寫在同一次 update */
-    assignedTo?: Prisma.ConversationUpdateInput['assignedTo'];
+    /** 同時變更負責人（PATCH 帶 CLOSED 與 assignedToId 時），和結案寫在同一次 update；null 為取消指派 */
+    assignedToId?: string | null;
   },
 ) {
   const conversation = await prisma.conversation.findFirst({
@@ -972,11 +972,16 @@ export async function closeConversation(
   const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
   const now = new Date();
 
-  const updated = await prisma.conversation.update({
-    where: { id },
+  // 以條件更新搶「未關閉 → 已關閉」：兩個請求同時關閉時只有一個寫入結案資料與發布事件
+  const include = {
+    contact: { select: { id: true, displayName: true, avatarUrl: true } },
+    assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+  } as const;
+  const { count } = await prisma.conversation.updateMany({
+    where: { id, tenantId, status: { not: 'CLOSED' } },
     data: {
       status: 'CLOSED',
-      ...(options.assignedTo ? { assignedTo: options.assignedTo } : {}),
+      ...(options.assignedToId !== undefined ? { assignedToId: options.assignedToId } : {}),
       metadata: {
         ...existingMeta,
         closeReason: options.reason ?? null,
@@ -985,11 +990,14 @@ export async function closeConversation(
         closedById: options.closedById ?? null,
       } as Prisma.InputJsonValue,
     },
-    include: {
-      contact: { select: { id: true, displayName: true, avatarUrl: true } },
-      assignedTo: { select: { id: true, name: true, avatarUrl: true } },
-    },
   });
+  const updated = await prisma.conversation.findFirst({ where: { id, tenantId }, include });
+  if (!updated) {
+    throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
+  }
+  if (count === 0) {
+    return updated;
+  }
 
   const wsPayload: ConversationUpdatedPayload = {
     id: updated.id,

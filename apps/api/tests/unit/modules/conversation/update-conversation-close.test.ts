@@ -7,7 +7,7 @@ import { test } from 'vitest';
 import { updateConversation } from '#src/modules/conversation/conversation.service.js';
 import { eventBus } from '#src/events/event-bus.js';
 
-function fixture(status: string, metadata: Record<string, unknown> = { existing: 1 }) {
+function fixture(status: string, metadata: Record<string, unknown> = { existing: 1 }, opts: { closedMeanwhile?: boolean } = {}) {
   const state: Record<string, unknown> = {
     id: 'c1',
     tenantId: 't1',
@@ -15,12 +15,24 @@ function fixture(status: string, metadata: Record<string, unknown> = { existing:
     assignedToId: 'agent-a',
     unreadCount: 0,
     lastMessageAt: null,
+    updatedAt: new Date(),
     metadata,
   };
   const updates: Array<Record<string, unknown>> = [];
   const prisma = {
     conversation: {
       findFirst: async () => ({ ...state }),
+      // 結案以條件更新搶狀態：只有還沒關閉的對話才寫入
+      updateMany: async (args: { where: { status?: { not?: string } }; data: Record<string, unknown> }) => {
+        if (opts.closedMeanwhile) {
+          state.status = 'CLOSED';
+          return { count: 0 };
+        }
+        if (args.where.status?.not && state.status === args.where.status.not) return { count: 0 };
+        updates.push(args.data);
+        Object.assign(state, args.data);
+        return { count: 1 };
+      },
       update: async (args: { data: Record<string, unknown> }) => {
         updates.push(args.data);
         const { assignedTo, ...rest } = args.data as { assignedTo?: { connect?: { id: string }; disconnect?: boolean } };
@@ -99,5 +111,17 @@ test('PATCH 改成 CLOSED 以外的狀態：只改狀態，不寫結案資料', 
   }
   assert.equal(f.state.status, 'AGENT_HANDLED');
   assert.equal((f.state.metadata as Record<string, unknown>).closeSource, undefined);
+  assert.equal(cap.events.length, 0);
+});
+
+test('兩個請求同時關閉：搶輸的那個不寫結案資料、不發事件', async () => {
+  const f = fixture('ACTIVE', { existing: 1 }, { closedMeanwhile: true });
+  const cap = captureClosed();
+  try {
+    await updateConversation(f.prisma, f.io, 'c1', 't1', { status: 'CLOSED' }, { actorId: 'agent-b' });
+  } finally {
+    cap.restore();
+  }
+  assert.equal((f.state.metadata as Record<string, unknown>).closedById, undefined);
   assert.equal(cap.events.length, 0);
 });
