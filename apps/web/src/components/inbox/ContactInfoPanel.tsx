@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Phone, Mail, ExternalLink, Plus, Bot, Star, Clock } from 'lucide-react';
+import { Phone, Mail, Plus, Bot, Star, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -131,14 +131,14 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      {/* Contact Header */}
-      <div className="flex flex-col items-center p-6 text-center">
+      {/* Contact Header：依 Claude Design — 頭像、姓名、聯絡方式，下方「查看聯繫人詳情」；依 Figma 微調 */}
+      <div className="flex flex-col items-center gap-1 px-5 pb-5 pt-6 text-center">
         <Avatar
           alt={conversation.contact.name || conversation.contact.displayName || '聯絡人'}
           src={conversation.contact.avatar || conversation.contact.avatarUrl}
           size="lg"
         />
-        <h3 className="mt-3 text-lg font-semibold">{conversation.contact.name || conversation.contact.displayName || '未知'}</h3>
+        <h3 className="mt-2 text-base font-semibold leading-6 text-foreground">{conversation.contact.name || conversation.contact.displayName || '未知'}</h3>
         {conversation.contact.phone && (
           <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
             <Phone className="h-3 w-3" />
@@ -151,6 +151,12 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
             <span>{conversation.contact.email}</span>
           </div>
         )}
+        <Link
+          href={`/dashboard/contacts/${conversation.contact.id}`}
+          className="mt-1 text-xs font-medium text-primary hover:text-primary-hover"
+        >
+          查看聯繫人詳情 →
+        </Link>
       </div>
 
       <Separator />
@@ -159,7 +165,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {isBotHandled && (
         <>
           <div className="p-4">
-            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground">
+            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold leading-[17px] text-muted-foreground">
               <Bot className="h-3.5 w-3.5 text-ai" />
               Bot 狀態
             </h4>
@@ -182,7 +188,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {isClosed && caseData && (
         <>
           <div className="p-4">
-            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground">
+            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold leading-[17px] text-muted-foreground">
               <Clock className="h-3.5 w-3.5" />
               結案資訊
             </h4>
@@ -223,7 +229,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {/* Channel Identities */}
       {channelIdentities && channelIdentities.length > 0 && (
         <div className="p-4">
-          <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+          <h4 className="mb-2 text-xs font-semibold leading-[17px] text-muted-foreground">
             渠道
           </h4>
           <div className="flex flex-col gap-1.5">
@@ -241,7 +247,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
 
       {/* Contact Tags */}
       <div className="p-4">
-        <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+        <h4 className="mb-2 text-xs font-semibold leading-[17px] text-muted-foreground">
           聯絡人標籤
         </h4>
         <div className="flex flex-wrap gap-1.5">
@@ -266,7 +272,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
 
       {/* Conversation Tags */}
       <div className="p-4">
-        <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+        <h4 className="mb-2 text-xs font-semibold leading-[17px] text-muted-foreground">
           對話標籤
         </h4>
         <TagManager
@@ -283,7 +289,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {attributes && attributes.length > 0 && (
         <>
           <div className="p-4">
-            <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+            <h4 className="mb-2 text-xs font-semibold leading-[17px] text-muted-foreground">
               自訂屬性
             </h4>
             <div className="space-y-1.5">
@@ -299,24 +305,15 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
         </>
       )}
 
-      {/* Actions */}
-      <div className="p-4 space-y-2">
+      {/* Actions：Claude Design 的「快速操作」 */}
+      <div className="flex flex-col gap-2 p-4">
+        <h4 className="text-xs font-semibold leading-[17px] text-muted-foreground">快速操作</h4>
         <SendEmailRegistrationLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
         <SendBindingLinkButton contactId={conversation.contact.id} conversationId={conversation.id} />
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => setShowCreateCase(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
+        <Button variant="subtle" size="sm" className="w-full justify-start" onClick={() => setShowCreateCase(true)}>
+          <Plus />
           建立工單
         </Button>
-        <Link href={`/dashboard/contacts/${conversation.contact.id}`}>
-          <Button variant="ghost" className="w-full">
-            <ExternalLink className="mr-2 h-4 w-4" />
-            查看完整資料
-          </Button>
-        </Link>
       </div>
 
       {/* Create Case Modal */}

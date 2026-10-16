@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } from 'lucide-react';
+import { Ticket, Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
@@ -309,75 +309,94 @@ export function MessageInput({
           </div>
         )}
 
-        <div className="flex items-end gap-2">
-          {/* Attachment button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={() => fileInputRef.current?.click()}
-            title="附件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_TYPES}
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-
-          {/* Template button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            disabled={isDisabled}
-            onClick={onOpenTemplates}
-            title="模板"
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </Button>
-
-          {/* Quick reply button (LINE only) */}
-          {supportsQuickReply && (
-            <Button
-              variant={quickReplies.length > 0 ? 'default' : 'ghost'}
-              size="icon"
-              className="h-9 w-9 shrink-0"
+        {/* 輸入區依 Claude Design「收件匣 v4」：外框包住輸入框與工具列，傳送按鈕在右側；依 Figma 微調 */}
+        <div className="flex items-end gap-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-[10px] border border-border bg-background px-3 py-2.5 transition-colors focus-within:border-primary">
+            <textarea
+              ref={textareaRef}
+              data-message-input
+              aria-label="訊息"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onInput={handleInput}
+              placeholder={placeholder}
               disabled={isDisabled}
-              onClick={() => setQuickReplyEditorOpen((v) => !v)}
-              title="加快速回覆按鈕"
-            >
-              <Zap className="h-4 w-4" />
-            </Button>
-          )}
+              rows={1}
+              className="w-full resize-none bg-transparent text-sm leading-5 text-foreground placeholder:text-status-neutral focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ minHeight: '40px', maxHeight: '120px' }}
+            />
+            <div className="flex items-center gap-1">
+              {/* Attachment button */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-7 w-7"
+                disabled={isDisabled}
+                onClick={() => fileInputRef.current?.click()}
+                title="附加檔案"
+                aria-label="附加檔案"
+              >
+                <Paperclip className="!size-4" />
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_TYPES}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
 
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            data-message-input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder={placeholder}
-            disabled={isDisabled}
-            rows={1}
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ minHeight: '40px', maxHeight: '120px' }}
-          />
+              {/* Template button */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-7 w-7"
+                disabled={isDisabled}
+                onClick={onOpenTemplates}
+                title="模板"
+                aria-label="模板"
+              >
+                <LayoutTemplate className="!size-4" />
+              </Button>
+
+              {/* Quick reply button (LINE only) */}
+              {supportsQuickReply && (
+                <Button
+                  variant={quickReplies.length > 0 ? 'secondary' : 'ghost'}
+                  size="icon-sm"
+                  className="h-7 w-7"
+                  disabled={isDisabled}
+                  onClick={() => setQuickReplyEditorOpen((v) => !v)}
+                  title="加快速回覆按鈕"
+                  aria-label="加快速回覆按鈕"
+                  aria-pressed={quickReplies.length > 0}
+                >
+                  <Zap className="!size-4" />
+                </Button>
+              )}
+
+              {/* 發送優惠券：Claude Design 有此按鈕，後端尚無優惠券 API，先保留位置（不可點） */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-7 w-7"
+                disabled
+                title="發送優惠券（功能尚未開放）"
+                aria-label="發送優惠券（功能尚未開放）"
+              >
+                <Ticket className="!size-4" />
+              </Button>
+
+              <div className="flex-1" />
+              <span className="text-[11px] leading-[15px] text-muted-foreground tabular-nums">{message.length}</span>
+            </div>
+          </div>
 
           {/* Send button */}
-          <Button
-            onClick={handleSend}
-            disabled={!message.trim() || isDisabled}
-            size="icon"
-            className="shrink-0"
-          >
-            <Send className="h-4 w-4" />
+          <Button onClick={handleSend} disabled={!message.trim() || isDisabled} size="lg" className="shrink-0">
+            <Send />
+            傳送
           </Button>
         </div>
       </div>

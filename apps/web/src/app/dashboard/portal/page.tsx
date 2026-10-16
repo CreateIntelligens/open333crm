@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
-import { usePathname } from 'next/navigation';
-import { Plus, Play, Square, Loader2, Users, Archive } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 import { useActivities } from '@/hooks/usePortal';
 import { ActivityFormDialog } from '@/components/portal/ActivityFormDialog';
 import { SubmissionsView } from '@/components/portal/SubmissionsView';
@@ -10,7 +10,8 @@ import { PointsTab } from '@/components/portal/PointsTab';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Chip } from '@/components/ui/chip';
+import { AddIcon } from '@/components/icons/figma-icons';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -29,199 +30,209 @@ interface ActivityItem {
   _count?: { submissions: number };
 }
 
-const typeMap: Record<string, { label: string; color: string }> = {
-  POLL: { label: '投票', color: '#3b82f6' },
-  FORM: { label: '表單', color: '#8b5cf6' },
-  QUIZ: { label: '競猜', color: '#f59e0b' },
-};
+// 類型：Claude Design 稿是投票／抽獎／問答／簽到，系統實際支援的是投票／表單／競猜，以系統為準
+const TYPE_LABEL: Record<string, string> = { POLL: '投票', FORM: '表單', QUIZ: '競猜' };
+const TYPES = ['ALL', 'POLL', 'FORM', 'QUIZ'] as const;
 
-const statusMap: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: '草稿', color: '#94a3b8' },
-  PUBLISHED: { label: '進行中', color: '#22c55e' },
-  ENDED: { label: '已結束', color: '#6b7280' },
-  ARCHIVED: { label: '已封存', color: '#94a3b8' },
+const STATUS_LABEL: Record<string, string> = { DRAFT: '草稿', PUBLISHED: '進行中', ENDED: '已結束', ARCHIVED: '已封存' };
+// 狀態標籤顏色依 Claude Design（進行中＝綠框淡綠底、已結束＝灰），換成 Figma Tag 的樣式
+const STATUS_VARIANT: Record<string, 'outline-success' | 'outline' | 'secondary' | 'warning'> = {
+  PUBLISHED: 'outline-success',
+  DRAFT: 'warning',
+  ENDED: 'outline',
+  ARCHIVED: 'secondary',
 };
+const STATUS_TABS = ['ALL', 'PUBLISHED', 'DRAFT', 'ENDED', 'ARCHIVED'] as const;
+type StatusTab = (typeof STATUS_TABS)[number];
 
-function ActivityList() {
-  // 封存的活動預設不顯示（後端 listActivities 會排除 ARCHIVED）。
-  // 沒有這個切換的話，封存等於單向操作——unarchiveActivity 端點存在卻無路徑可達。
-  const [showArchived, setShowArchived] = useState(false);
-  const { activities, isLoading, mutate } = useActivities(
-    showArchived ? { status: 'ARCHIVED' } : undefined,
-  );
-  const [dialogOpen, setDialogOpen] = useState(false);
+const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('zh-TW') : '');
+
+interface ActivityListProps {
+  dialogOpen: boolean;
+  setDialogOpen: (open: boolean) => void;
+}
+
+// 版面依 Claude Design「活動管理」：狀態分頁（附數量）＋類型膠囊、卡片排列、底部統計
+function ActivityList({ dialogOpen, setDialogOpen }: ActivityListProps) {
+  const router = useRouter();
+  const [statusTab, setStatusTab] = useState<StatusTab>('ALL');
+  const [typeFilter, setTypeFilter] = useState<(typeof TYPES)[number]>('ALL');
+  // 封存的活動後端預設不回傳，要另外查（unarchive 才有入口）
+  const showArchived = statusTab === 'ARCHIVED';
+  const { activities, isLoading, mutate } = useActivities(showArchived ? { status: 'ARCHIVED' } : undefined);
   const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
 
-  const handlePublish = async (id: string) => {
+  const all = activities as ActivityItem[];
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { ALL: all.length };
+    for (const a of all) c[a.status] = (c[a.status] ?? 0) + 1;
+    return c;
+  }, [all]);
+  const visible = all.filter(
+    (a) => (showArchived || statusTab === 'ALL' || a.status === statusTab) && (typeFilter === 'ALL' || a.type === typeFilter),
+  );
+  const filtered = visible.length !== all.length;
+
+  const run = async (id: string, action: () => Promise<unknown>, fallback: string) => {
     setActioning(id);
     try {
-      await api.post(`/portal/activities/${id}/publish`);
+      await action();
       mutate();
     } catch (err) {
-      console.error('Publish error:', err);
-      alert(getApiErrorMessage(err, '發布失敗，請稍後重試'));
+      console.error(fallback, err);
+      alert(getApiErrorMessage(err, fallback));
     } finally {
       setActioning(null);
     }
   };
 
-  const handleEnd = async (id: string) => {
-    setActioning(id);
-    try {
-      await api.post(`/portal/activities/${id}/end`);
-      mutate();
-    } catch (err) {
-      console.error('End error:', err);
-      alert(getApiErrorMessage(err, '結束活動失敗，請稍後重試'));
-    } finally {
-      setActioning(null);
-    }
+  const handlePublish = (id: string) => run(id, () => api.post(`/portal/activities/${id}/publish`), '發布失敗，請稍後重試');
+  const handleEnd = (id: string) => {
+    if (!confirm('提前結束後，前台將無法再參加此活動。確定結束？')) return;
+    run(id, () => api.post(`/portal/activities/${id}/end`), '結束活動失敗，請稍後重試');
   };
-
-  const handleArchive = async (id: string) => {
-    // 封存而非刪除：PortalSubmission 對活動是 Cascade，
-    // 硬刪會連帶清掉參與者的提交紀錄與積分依據。
+  // 封存而非刪除：PortalSubmission 對活動是 Cascade，硬刪會連帶清掉參與者的提交紀錄與積分依據
+  const handleArchive = (id: string) => {
     if (!confirm('封存後此活動不再顯示於列表，參與紀錄仍會保留。確定封存？')) return;
-    setActioning(id);
-    try {
-      await api.post(`/portal/activities/${id}/archive`);
-      mutate();
-    } catch (err) {
-      console.error('Archive error:', err);
-      alert(getApiErrorMessage(err, '封存失敗，請稍後重試'));
-    } finally {
-      setActioning(null);
-    }
+    run(id, () => api.post(`/portal/activities/${id}/archive`), '封存失敗，請稍後重試');
   };
-
-  const handleUnarchive = async (id: string) => {
-    setActioning(id);
-    try {
-      await api.post(`/portal/activities/${id}/unarchive`);
-      mutate();
-    } catch (err) {
-      console.error('Unarchive error:', err);
-      alert(getApiErrorMessage(err, '取消封存失敗，請稍後重試'));
-    } finally {
-      setActioning(null);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
+  const handleUnarchive = (id: string) => run(id, () => api.post(`/portal/activities/${id}/unarchive`), '取消封存失敗，請稍後重試');
+  const handleDelete = (id: string) => {
     if (!confirm('確定刪除此活動？')) return;
-    try {
-      await api.delete(`/portal/activities/${id}`);
-      mutate();
-    } catch (err) {
-      console.error('Delete error:', err);
-      alert(getApiErrorMessage(err, '刪除失敗，請稍後重試'));
-    }
+    run(id, () => api.delete(`/portal/activities/${id}`), '刪除失敗，請稍後重試');
   };
+  const openEdit = (a: ActivityItem) => { setEditData(a as unknown as Record<string, unknown>); setDialogOpen(true); };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Button
-          variant={showArchived ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setShowArchived((v) => !v)}
-        >
-          <Archive className="h-4 w-4 mr-1" />
-          {showArchived ? '返回活動列表' : '查看已封存'}
-        </Button>
-        <Button onClick={() => { setEditData(null); setDialogOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1" /> 建立活動
-        </Button>
+    <div className="flex flex-col gap-5">
+      {/* 篩選列：左邊狀態分頁（Segmented），右邊類型膠囊；依 Figma 微調 */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div role="tablist" aria-label="活動狀態" className="flex h-10 items-center gap-1 rounded-md bg-muted p-1">
+          {STATUS_TABS.map((s) => {
+            const on = statusTab === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => setStatusTab(s)}
+                className={`flex h-8 items-center gap-1.5 rounded-md px-4 text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  on ? 'bg-background font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {s === 'ALL' ? '全部狀態' : STATUS_LABEL[s]}
+                {/* 已封存的活動要另外查，所以兩邊的數量不會同時有：在封存分頁只顯示封存數，其他分頁不顯示封存數 */}
+                {(showArchived ? s === 'ARCHIVED' : s !== 'ARCHIVED') && (
+                  <span className="text-xs tabular-nums text-muted-foreground">{counts[s] ?? 0}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {TYPES.map((t) => (
+            <Chip
+              key={t}
+              size="lg"
+              tone={typeFilter === t ? 'primary' : 'outline'}
+              selected={typeFilter === t}
+              onClick={() => setTypeFilter(t)}
+            >
+              {t === 'ALL' ? '全部類型' : TYPE_LABEL[t]}
+            </Chip>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+          {all.length === 0 && !showArchived ? '還沒有活動，點右上角「新增活動」開始' : '此條件下沒有活動，換個狀態或類型看看'}
+        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(activities as ActivityItem[]).map((a) => {
-            const type = typeMap[a.type] || { label: a.type, color: '#6b7280' };
-            const status = statusMap[a.status] || { label: a.status, color: '#6b7280' };
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-5">
+          {visible.map((a) => {
             const count = a._count?.submissions ?? 0;
-
+            const busy = actioning === a.id;
             return (
-              <Card key={a.id}>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Badge color={type.color}>{type.label}</Badge>
-                    <Badge color={status.color}>{status.label}</Badge>
+              <div
+                key={a.id}
+                className={`flex flex-col gap-4 rounded-lg border border-border bg-background p-5 ${a.status === 'ENDED' || a.status === 'ARCHIVED' ? 'opacity-80' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Badge variant="info">{TYPE_LABEL[a.type] ?? a.type}</Badge>
+                  <Badge variant={STATUS_VARIANT[a.status] ?? 'secondary'}>{STATUS_LABEL[a.status] ?? a.status}</Badge>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <h3 className="line-clamp-1 text-base font-semibold leading-6 text-foreground" title={a.title}>{a.title}</h3>
+                  <p className="line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{a.description || '—'}</p>
+                </div>
+
+                <div className="flex items-stretch gap-4 rounded-md bg-muted px-4 py-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs text-muted-foreground">參加人數</span>
+                    <span className="text-base font-semibold tabular-nums text-foreground">
+                      {count.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">人</span>
+                    </span>
                   </div>
-
-                  <h3 className="font-medium">{a.title}</h3>
-                  {a.description ? (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{a.description}</p>
-                  ) : null}
-
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Users className="h-3.5 w-3.5" />
-                    <span>{count} 人參加</span>
+                  <div className="w-px bg-border" aria-hidden="true" />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-xs text-muted-foreground">活動期間</span>
+                    <span className="truncate text-sm font-medium tabular-nums text-foreground">
+                      {a.startsAt || a.endsAt ? `${fmtDate(a.startsAt)} ~ ${fmtDate(a.endsAt)}` : '尚未設定期間'}
+                    </span>
                   </div>
+                </div>
 
-                  {(a.startsAt || a.endsAt) ? (
-                    <p className="text-xs text-muted-foreground">
-                      {a.startsAt && new Date(a.startsAt).toLocaleDateString('zh-TW')}
-                      {a.startsAt && a.endsAt && ' ~ '}
-                      {a.endsAt && new Date(a.endsAt).toLocaleDateString('zh-TW')}
-                    </p>
-                  ) : null}
-
-                  <div className="flex items-center gap-2 pt-2 border-t">
-                    {a.status === 'DRAFT' && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => handlePublish(a.id)} disabled={actioning === a.id}>
-                          {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 mr-1" />}
-                          發布
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => { setEditData(a as unknown as Record<string, unknown>); setDialogOpen(true); }}>
-                          編輯
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(a.id)}>
-                          刪除
-                        </Button>
-                      </>
-                    )}
-                    {a.status === 'PUBLISHED' && (
-                      <Button size="sm" variant="outline" onClick={() => handleEnd(a.id)} disabled={actioning === a.id}>
-                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 mr-1" />}
-                        結束
-                      </Button>
-                    )}
-                    {a.status === 'ARCHIVED' && (
-                      <Button size="sm" variant="outline" onClick={() => handleUnarchive(a.id)} disabled={actioning === a.id}>
-                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3 mr-1" />}
-                        取消封存
-                      </Button>
-                    )}
-                    {a.status === 'ENDED' && (
-                      // 已結束的活動原本沒有任何操作，會永遠留在列表上
-                      <Button size="sm" variant="ghost" onClick={() => handleArchive(a.id)} disabled={actioning === a.id}>
-                        {actioning === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3 mr-1" />}
-                        封存
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                  {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="處理中" />}
+                  {a.status === 'DRAFT' && (
+                    <>
+                      <Button size="xs" onClick={() => handlePublish(a.id)} disabled={busy}>發布</Button>
+                      <Button size="xs" variant="ghost" onClick={() => openEdit(a)}>編輯</Button>
+                      <Button size="xs" variant="ghost" className="text-destructive" onClick={() => handleDelete(a.id)}>刪除</Button>
+                    </>
+                  )}
+                  {a.status === 'PUBLISHED' && (
+                    <>
+                      <Button size="xs" onClick={() => router.push('/dashboard/portal/submissions')}>查看參與紀錄</Button>
+                      <Button size="xs" variant="ghost" onClick={() => handleEnd(a.id)} disabled={busy}>提前結束</Button>
+                    </>
+                  )}
+                  {a.status === 'ENDED' && (
+                    <>
+                      <Button size="xs" onClick={() => router.push('/dashboard/portal/submissions')}>查看參與紀錄</Button>
+                      <Button size="xs" variant="ghost" onClick={() => handleArchive(a.id)} disabled={busy}>封存</Button>
+                    </>
+                  )}
+                  {a.status === 'ARCHIVED' && (
+                    <Button size="xs" variant="ghost" onClick={() => handleUnarchive(a.id)} disabled={busy}>取消封存</Button>
+                  )}
+                </div>
+              </div>
             );
           })}
-          {activities.length === 0 && (
-            <div className="col-span-full text-center py-12 text-muted-foreground">
-              尚無活動，點擊「建立活動」開始
-            </div>
+        </div>
+      )}
+
+      {!isLoading && all.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>共 {visible.length} 個活動{filtered ? `（篩選自 ${all.length} 個）` : ''}</span>
+          {!showArchived && (
+            <span>進行中 {counts.PUBLISHED ?? 0} · 草稿 {counts.DRAFT ?? 0} · 已結束 {counts.ENDED ?? 0}</span>
           )}
         </div>
       )}
 
       <ActivityFormDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => { setDialogOpen(false); setEditData(null); }}
         onSaved={() => mutate()}
         editData={editData}
       />
@@ -232,22 +243,30 @@ function ActivityList() {
 export default function PortalPage() {
   const section = usePathname().split('/').at(-1);
   const tab = section === 'submissions' || section === 'points' ? section : 'activities';
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   return (
     <div className="flex flex-1 flex-col">
-      <Topbar title="粉絲活動" />
+      <Topbar
+        title="粉絲活動"
+        description={tab === 'activities' ? '建立與追蹤投票、表單與競猜活動，草稿完成設定後即可發布至前台' : undefined}
+      >
+        {tab === 'activities' && (
+          <Button size="lg" className="w-[140px]" onClick={() => setDialogOpen(true)}>
+            <AddIcon />
+            新增活動
+          </Button>
+        )}
+      </Topbar>
       <div className="flex-1 overflow-auto px-8 pb-8">
         <Tabs value={tab} onValueChange={() => undefined}>
-
-          <TabsContent value="activities" className="mt-4">
-            <ActivityList />
+          <TabsContent value="activities" className="mt-0">
+            <ActivityList dialogOpen={dialogOpen} setDialogOpen={setDialogOpen} />
           </TabsContent>
-
-          <TabsContent value="submissions" className="mt-4">
+          <TabsContent value="submissions" className="mt-0">
             <SubmissionsView />
           </TabsContent>
-
-          <TabsContent value="points" className="mt-4">
+          <TabsContent value="points" className="mt-0">
             <PointsTab />
           </TabsContent>
         </Tabs>

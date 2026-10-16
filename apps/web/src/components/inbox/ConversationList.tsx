@@ -105,64 +105,54 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b px-4 py-3">
-        <h2 className="text-lg font-semibold">收件匣</h2>
-
-        {/* Main tabs: Active / Closed */}
-        <div className="mt-2">
-          <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'active' | 'closed')}>
-            <TabsList className="w-full">
-              <TabsTrigger value="active" className="flex-1">進行中</TabsTrigger>
-              <TabsTrigger value="closed" className="flex-1">已關閉</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* Search + Filter */}
-        <div className="mt-2 flex items-center gap-2">
-          <div className="flex-1">
-            <SearchInput
-              placeholder="搜尋對話..."
-              onSearch={setSearch}
-            />
-          </div>
+      {/* Header：版面依 Claude Design「收件匣 v4」— 標題列＋進階篩選、狀態分頁、搜尋、快速篩選；依 Figma 微調 */}
+      <div className="flex flex-none flex-col gap-3 border-b border-border px-[18px] pb-3.5 pt-5">
+        <div className="flex items-center gap-2.5">
+          <h2 className="flex-1 text-lg font-bold leading-[26px] text-foreground">收件匣</h2>
           <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 shrink-0"
+            variant="subtle"
+            size="icon-sm"
             onClick={() => setFilterOpen(true)}
+            aria-label="進階篩選"
+            title="進階篩選"
           >
-            <SlidersHorizontal className="h-4 w-4" />
+            <SlidersHorizontal />
           </Button>
         </div>
 
-        {/* Sub-tabs for active */}
+        {/* Main tabs: Active / Closed */}
+        <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'active' | 'closed')}>
+          <TabsList className="w-full">
+            <TabsTrigger value="active" className="flex-1">進行中</TabsTrigger>
+            <TabsTrigger value="closed" className="flex-1">已關閉</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <SearchInput placeholder="搜尋對話、聯繫人" onSearch={setSearch} />
+
+        {/* Sub-tabs for active：快速篩選 */}
         {mainTab === 'active' && (
-          <div className="mt-2">
-            <Tabs value={subTab} onValueChange={setSubTab}>
-              <TabsList className="w-full">
-                <TabsTrigger value="all">全部</TabsTrigger>
-                <TabsTrigger value="unread">未讀</TabsTrigger>
-                <TabsTrigger value="mine">我的</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+          <Tabs value={subTab} onValueChange={setSubTab}>
+            <TabsList className="w-full">
+              <TabsTrigger value="all" className="flex-1">全部</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1">未讀</TabsTrigger>
+              <TabsTrigger value="mine" className="flex-1">我的</TabsTrigger>
+            </TabsList>
+          </Tabs>
         )}
 
         {/* Closed range selector */}
         {mainTab === 'closed' && (
-          <div className="mt-2">
-            <select
-              value={closedRange}
-              onChange={(e) => setClosedRange(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-            >
-              <option value="7">最近 7 天</option>
-              <option value="30">最近 30 天</option>
-              <option value="90">最近 90 天</option>
-            </select>
-          </div>
+          <select
+            value={closedRange}
+            onChange={(e) => setClosedRange(e.target.value)}
+            aria-label="關閉時間範圍"
+            className="h-10 w-full cursor-pointer rounded-lg border border-input bg-muted px-3 text-sm font-medium text-foreground focus-visible:border-primary focus-visible:outline-none"
+          >
+            <option value="7">最近 7 天</option>
+            <option value="30">最近 30 天</option>
+            <option value="90">最近 90 天</option>
+          </select>
         )}
       </div>
 
@@ -186,7 +176,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
             description={mainTab === 'closed' ? '此時間範圍內沒有已關閉的對話' : '新對話將會顯示在這裡'}
           />
         ) : (
-          <div className="space-y-0.5 p-2">
+          <div>
             {filtered.map((conversation: ConversationRow) => (
               <ConversationListItem
                 key={conversation.id}

@@ -106,7 +106,7 @@ export default function InboxPage() {
   return (
     <div className="flex h-full">
       {/* Left panel - Conversation List */}
-      <div className="w-80 shrink-0 border-r">
+      <div className="w-80 shrink-0 border-r border-border bg-background">
         <ConversationList
           selectedId={convId}
           onSelect={handleSelectConversation}
@@ -147,7 +147,7 @@ export default function InboxPage() {
       </div>
 
       {/* Right panel - Contact Info */}
-      <div className="w-72 shrink-0 border-l">
+      <div className="w-72 shrink-0 border-l border-border bg-background">
         <ContactInfoPanel
           conversation={infoPanelConversation}
           onRefresh={() => mutateConversation()}

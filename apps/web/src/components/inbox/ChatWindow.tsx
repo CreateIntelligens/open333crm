@@ -200,10 +200,10 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
     <div className="relative flex h-full flex-col">
       {/* Chat Header */}
       {/* 收件匣在 1280 寬時聊天區只剩約 400px：允許換行、名稱截斷，避免撐寬把右側面板擠出畫面 */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-6 py-3.5">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="min-w-0 max-w-full truncate font-semibold">
+            <h3 className="min-w-0 max-w-full truncate text-base font-semibold leading-6 text-foreground">
               {conversation.contact?.name || conversation.contact?.displayName || '未知聯絡人'}
             </h3>
             <ChannelLabel
@@ -230,25 +230,26 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           {/* AI Suggest button */}
           {!isClosed && (
             <Button
-              variant={showAiSuggest ? 'default' : 'ghost'}
-              size="icon"
-              className="h-8 w-8"
+              variant={showAiSuggest ? 'secondary' : 'subtle'}
+              size="xs"
               onClick={onShowAiSuggest}
               title="AI 建議回覆"
+              aria-pressed={showAiSuggest}
             >
-              <Lightbulb className="h-4 w-4" />
+              <Lightbulb />
+              AI 建議
             </Button>
           )}
           {!isClosed && (
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              variant="subtle"
+              size="xs"
+              className="text-destructive"
               onClick={() => setCloseDialogOpen(true)}
               title="結案此對話"
             >
-              <XCircle className="h-4 w-4" />
-              <span className="text-xs">結案</span>
+              <XCircle />
+              結案
             </Button>
           )}
           <Select
@@ -268,7 +269,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       />
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-muted/30">
+      <div className="flex-1 overflow-y-auto bg-muted">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

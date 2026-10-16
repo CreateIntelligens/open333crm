@@ -65,6 +65,22 @@ function formatListTime(value: string | Date): string {
   return isSameYear(date, now) ? format(date, 'M/d') : format(date, 'yyyy/M/d');
 }
 
+// 處理狀態標籤（Claude Design：等待客服＝橘、機器人處理中＝藍、客服處理中＝綠、已關閉＝灰），顏色用 token
+function handlingOf(status?: string): { label: string; cls: string } | null {
+  switch (status) {
+    case 'ACTIVE':
+      return { label: '等待客服', cls: 'bg-orange-50 text-amber-800' };
+    case 'BOT_HANDLED':
+      return { label: '機器人處理中', cls: 'bg-primary-subtle text-primary-hover' };
+    case 'AGENT_HANDLED':
+      return { label: '客服處理中', cls: 'bg-success-subtle text-success' };
+    case 'CLOSED':
+      return { label: '已關閉', cls: 'bg-surface-hover text-muted-foreground' };
+    default:
+      return null;
+  }
+}
+
 export function ConversationListItem({
   conversation,
   isSelected,
@@ -76,16 +92,19 @@ export function ConversationListItem({
   const lastMessageFailed = isDeliveryFailed(conversation.lastMessage);
   const lastMessageTime = conversation.lastMessage?.createdAt || conversation.updatedAt;
   const unreadCount = conversation.unreadCount || 0;
-  const isBotHandled = conversation.status === 'BOT_HANDLED';
   const channelName = conversation.channel?.displayName?.trim();
 
+  const handling = handlingOf(conversation.status);
+
+  // 版面依 Claude Design「收件匣 v4」：整列、底線分隔，選中時淡藍底＋左側藍色條；依 Figma 微調
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-current={isSelected ? 'true' : undefined}
       className={cn(
-        'flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-accent',
-        isSelected && 'bg-primary-subtle ring-1 ring-primary-border',
-        unreadCount > 0 && !isSelected && 'bg-primary-subtle/40'
+        'flex w-full items-start gap-2.5 border-b border-border/60 px-4 py-[13px] text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        isSelected ? 'bg-primary-subtle shadow-[inset_3px_0_0_hsl(var(--primary))]' : 'bg-background hover:bg-surface-hover',
       )}
     >
       <span className="relative shrink-0">
@@ -103,8 +122,8 @@ export function ConversationListItem({
         <div className="flex items-center justify-between gap-2">
           <span
             className={cn(
-              'min-w-0 truncate text-sm',
-              unreadCount > 0 ? 'font-semibold' : 'font-medium'
+              'min-w-0 truncate text-sm leading-5 text-foreground',
+              unreadCount > 0 ? 'font-bold' : 'font-semibold'
             )}
           >
             {contactName}
@@ -143,12 +162,9 @@ export function ConversationListItem({
             {conversation.caseId && (
               <FileText className="h-3 w-3 text-warning" aria-label="已建立案件" />
             )}
-            {isBotHandled && (
-              <span
-                className="whitespace-nowrap rounded bg-ai-subtle px-1 text-[10px] font-medium leading-4 text-ai"
-                title="目前由 Bot 處理中"
-              >
-                Bot
+            {handling && (
+              <span className={cn('whitespace-nowrap rounded-[5px] px-[7px] py-px text-[10px] font-semibold leading-[15px]', handling.cls)}>
+                {handling.label}
               </span>
             )}
             {showCsat && conversation.csatScore != null && (
