@@ -87,12 +87,12 @@ test('ch11-points 查積分與手動調整', async ({ browser }) => {
   await typeIn(page, box, 'Visitor 3d');
   await box.press('Enter');
   await page.waitForTimeout(2000);
+  // 「Visitor 3d」在示範租戶會搜到 2 位，一定出現候選清單；沒出現就讓測試失敗，避免拍出與說明不符的畫面
   const candidate = page.locator('div.rounded-lg.border.p-2 > button').first();
-  if (await candidate.count()) {
-    await caption(page, '符合的人不只一位時會列出清單，名稱旁有電話與 Email 可以核對', 2600);
-    await point(page, candidate.locator('..'), 1600);
-    await tap(page, candidate, 1500);
-  }
+  await candidate.waitFor({ timeout: 10_000 });
+  await caption(page, '符合的人不只一位時會列出清單，名稱旁有電話與 Email 可以核對', 2600);
+  await point(page, candidate.locator('..'), 1600);
+  await tap(page, candidate, 1500);
   await caption(page, '選好的客戶與目前點數會顯示在這裡', 2400);
   await point(page, page.getByText(/\d+ 點/).first(), 1600);
   await tap(page, page.getByRole('button', { name: '手動調整' }));
@@ -132,10 +132,9 @@ test('ch11 截圖', async ({ browser }) => {
   await box.press('Enter');
   await page.waitForTimeout(2500);
   const candidate = page.locator('div.rounded-lg.border.p-2 > button').first();
-  if (await candidate.count()) {
-    await candidate.click();
-    await page.waitForTimeout(1500);
-  }
+  await candidate.waitFor({ timeout: 10_000 });
+  await candidate.click();
+  await page.waitForTimeout(1500);
   await page.getByRole('button', { name: '手動調整' }).click();
   await page.waitForTimeout(600);
   const adj = page.getByRole('dialog');
