@@ -309,7 +309,7 @@ export function ChatPromptSettings() {
               {byokStatus.configured ? (
                 <div className="flex items-center gap-2">
                   <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-mono">{byokStatus.masked}</span>
-                  <span className="text-xs text-green-600">✓ 使用自備金鑰</span>
+                  <span className="text-xs text-green-600">使用自備金鑰</span>
                   <button
                     type="button"
                     onClick={() => saveByokKey(null)}

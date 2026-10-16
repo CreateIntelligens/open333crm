@@ -22,6 +22,7 @@ import type { TenantDb } from '../lib/tenant-db.js';
 import { getEffectiveTenantPermissions } from './permission.service.js';
 import { getTenantPlanId } from './tenant-plan.cache.js';
 import { AppError } from '../shared/utils/response.js';
+import { notFound } from '../shared/messages/resource.js';
 
 /** 總店（channel.view_all）不受渠道限制的哨兵值。 */
 export const ALL_CHANNELS = Symbol('ALL_CHANNELS');
@@ -279,7 +280,7 @@ export async function assertConversationChannelVisible(
     where: { id: conversationId, tenantId: ctx.tenantId },
     select: { channelId: true, teamId: true, assignedToId: true },
   });
-  await assertEntityChannelVisible(request, conv?.channelId, requiredLevel, 'Conversation not found', ctx);
+  await assertEntityChannelVisible(request, conv?.channelId, requiredLevel, notFound('conversation'), ctx);
   if (!conv) return;
   // team-scoped 對話嚴格限 team 成員：對話綁了 team 且 agent 非被指派人、非該 team 成員
   // （且非總店，前已 return）→ 403，即使渠道可見亦不回退。與 socket canAccessConversation 一致。
@@ -305,7 +306,7 @@ export async function assertChannelVisible(
 ): Promise<void> {
   const ctx = await visibilityCtxFromRequest(request);
   if (ctx.hasViewAll) return;
-  await assertEntityChannelVisible(request, channelId, requiredLevel, '找不到渠道', ctx);
+  await assertEntityChannelVisible(request, channelId, requiredLevel, notFound('channel'), ctx);
 }
 
 /**
@@ -325,5 +326,5 @@ export async function assertCaseChannelVisible(
     where: { id: caseId, tenantId: ctx.tenantId },
     select: { channelId: true },
   });
-  await assertEntityChannelVisible(request, row?.channelId, requiredLevel, 'Case not found', ctx);
+  await assertEntityChannelVisible(request, row?.channelId, requiredLevel, notFound('case'), ctx);
 }

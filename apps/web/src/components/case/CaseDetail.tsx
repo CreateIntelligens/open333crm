@@ -257,7 +257,7 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetai
             className="max-w-xs"
           />
           {caseData.category && (
-            <p className="mt-1 text-[11px] text-muted-foreground">🤖 AI 自動分類</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">AI 自動分類</p>
           )}
         </div>
 
@@ -312,8 +312,8 @@ export function CaseDetail({ caseData, onRefresh, onRequestEscalate }: CaseDetai
             {caseData.slaPolicyData?.firstResponseMinutes != null && (
               <p className="text-muted-foreground">
                 首次回應：
-                {slaFirstResponseMet === true && <span className="text-success font-medium ml-1">已達 ✓</span>}
-                {slaFirstResponseMet === false && <span className="text-destructive font-medium ml-1">未達 ✗</span>}
+                {slaFirstResponseMet === true && <span className="text-success font-medium ml-1">已達</span>}
+                {slaFirstResponseMet === false && <span className="text-destructive font-medium ml-1">未達</span>}
                 {slaFirstResponseMet === null && <span className="text-warning ml-1">待回應</span>}
               </p>
             )}

@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Plus, Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil } from 'lucide-react';
+import { Plus, Upload, Search, Loader2, Brain, ThumbsDown, Check, Pencil, X } from 'lucide-react';
 import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
 import { ArticleList } from '@/components/knowledge/ArticleList';
@@ -242,7 +242,7 @@ export default function KnowledgePage() {
                     onClick={() => setTagFilter('')}
                     title="點擊清除 tag 篩選"
                   >
-                    Tag: {tagFilter} ✕
+                    Tag: {tagFilter} <X className="h-3 w-3" aria-hidden />
                   </Badge>
                 )}
                 <div className="ml-auto flex items-center gap-2">
@@ -385,7 +385,7 @@ export default function KnowledgePage() {
                 </div>
               ) : feedback.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">
-                  目前沒有待處理的回報 🎉
+                  目前沒有待處理的回報
                 </p>
               ) : (
                 <div className="space-y-3">

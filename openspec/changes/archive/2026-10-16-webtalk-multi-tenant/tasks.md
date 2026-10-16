@@ -29,4 +29,8 @@
 - [x] 5.3 `pnpm test` 通過；`pnpm test:feature -- webtalk` 通過
 - [x] 5.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規
 - [x] 5.5 `node scripts/validate-openspec.mjs webtalk-multi-tenant` 通過
-- [ ] 5.6 在真實瀏覽器以兩個租戶帳號驗證：不同租戶看不到彼此、AI 關閉時顯示停用訊息、登出後 localStorage 沒有 `WEB_TALK_` key（需要部署環境設定好 `WEBTALK_ROOM_SECRET` 與 `WEBTALK_SDK_URL`）
+- [x] 5.6 在真實瀏覽器以兩個租戶帳號驗證：不同租戶看不到彼此、AI 關閉時顯示停用訊息、登出後 localStorage 沒有 `WEB_TALK_` key（需要部署環境設定好 `WEBTALK_ROOM_SECRET` 與 `WEBTALK_SDK_URL`）
+  - 2026-10-16 在 UAT 以創造智能（Chrome）與示範租戶（Playwright）實測：
+    - 不同租戶看不到彼此：示範房間有 Admin 在線並送出「[驗證] 租戶隔離 示範租戶」；同時創造智能的房間顯示「目前聊天室尚無訊息」、在線 1 人。通過。
+    - AI 關閉：示範租戶（`aiEnabled: false`）的 AI 請求都打到 `/api/v1/webtalk/ai-disabled`，回 403 `WEBTALK_AI_DISABLED` 與中文訊息。AI 空間提問會顯示停用訊息（SDK 會在後面附加「請檢查 Groq API 設定」）；按「濃縮」時 SDK 不顯示錯誤，畫面沒有反應。此項以規格「Disabled AI endpoint refuses requests」（403 與中文訊息）驗收通過。「濃縮」不顯示訊息是外部 SDK 吞掉錯誤，列為已接受的限制，不在本 change 的需求內：WebTalk 是外加的外掛（2026-10-16 使用者確認），不再修改 SDK 或包裝它的錯誤顯示。
+    - 登出：登出前 localStorage 有 3 個 `WEB_TALK_` key，登出後為 0，頁面也沒有 `webtalk-widget`。通過。
