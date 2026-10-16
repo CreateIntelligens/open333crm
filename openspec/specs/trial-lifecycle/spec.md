@@ -33,7 +33,7 @@
 - **THEN** 7 天檔位的提醒 MUST 仍被補寄（判斷為 daysLeft ≤ 檔位且未寄）
 
 ### Requirement: 到期自動停用（資料保留）
-排程發現 `trialEndsAt < now` 且租戶仍 active 時，MUST 將 `Tenant.isActive` 設為 false、寄到期通知信、寫 PlatformAuditLog。停用後 MUST 套用既有停用行為：登入回 `TENANT_DISABLED`、inbound 訊息被丟棄。租戶資料 MUST 保留不刪除（清除屬後續 change，`trial.dataRetentionDays` 僅先儲存）。
+排程發現 `trialEndsAt < now` 且租戶仍 active 時，MUST 將 `Tenant.isActive` 設為 false、寄到期通知信、寫 PlatformAuditLog。停用後 MUST 套用既有停用行為：登入回 `TENANT_DISABLED`、inbound 訊息被丟棄。租戶資料 MUST 保留不刪除。保留期滿時，`trial-data-purge` 的排程只標記 `purgedAt`，同樣不刪除資料。
 
 #### Scenario: 到期停用
 - **GIVEN** 某試用租戶 trialEndsAt 已過
