@@ -1,5 +1,5 @@
 /**
- * CSAT 評分只能寫入「同租戶、同聯絡人」的工單（change fix-csat-intercept-and-trial-upgrade，AUDIT RLS-06）。
+ * CSAT 評分只能寫入「同租戶、同聯絡人」的工單（主規格 inbound-message-processing「CSAT 回覆的攔截」，AUDIT RLS-06）。
  *
  * 進站管線以 prismaAdmin（BYPASSRLS）呼叫 recordCsatScore()，RLS 擋不住跨租戶，
  * 因此這裡用同樣繞過 RLS 的 owner 連線，直接驗證應用層的查詢條件。
@@ -58,7 +58,7 @@ async function assertUntouched(tx: TenantDb, target: { caseId: string; conversat
   assert.equal(messages, 0, '對話沒有新的感謝訊息');
 }
 
-scenario('CSAT response intercepted：同租戶、同聯絡人的工單寫入評分', async (tx) => {
+scenario('同租戶、同聯絡人的工單寫入評分', async (tx) => {
   const own = await createCase(tx, TENANT_A, 'own');
   const recorded = await recordCsatScore(tx, io, own.caseId, 5, undefined, {
     tenantId: TENANT_A,
@@ -69,7 +69,7 @@ scenario('CSAT response intercepted：同租戶、同聯絡人的工單寫入評
   assert.equal(kase?.csatScore, 5);
 });
 
-scenario('CSAT response for a case of another tenant：不寫入、不送訊息', async (tx) => {
+scenario('其他租戶的工單：不寫入、不送訊息', async (tx) => {
   const victim = await createCase(tx, TENANT_B, 'victim');
   const attacker = await createCase(tx, TENANT_A, 'attacker');
   const recorded = await recordCsatScore(tx, io, victim.caseId, 1, undefined, {
@@ -80,7 +80,7 @@ scenario('CSAT response for a case of another tenant：不寫入、不送訊息'
   await assertUntouched(tx, victim);
 });
 
-scenario('CSAT response for a case of another contact：同租戶他人的工單不寫入', async (tx) => {
+scenario('同租戶其他聯絡人的工單：不寫入', async (tx) => {
   const victim = await createCase(tx, TENANT_A, 'victim');
   const attacker = await createCase(tx, TENANT_A, 'attacker');
   const recorded = await recordCsatScore(tx, io, victim.caseId, 1, undefined, {
@@ -91,7 +91,7 @@ scenario('CSAT response for a case of another contact：同租戶他人的工單
   await assertUntouched(tx, victim);
 });
 
-scenario('CSAT response for a case that does not exist：回傳 false', async (tx) => {
+scenario('不存在的工單：回傳 false', async (tx) => {
   const recorded = await recordCsatScore(tx, io, '00000000-0000-4000-8000-000000000000', 5, undefined, {
     tenantId: TENANT_A,
   });

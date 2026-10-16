@@ -96,23 +96,27 @@ async function testMissingContactUidShortCircuits() {
     channelIdentity: { findUnique: mockFn(() => assert.fail('channelIdentity should not be queried')) },
   };
 
-  const result = await processInboundMessage(
-    prisma as never,
-    io as never,
-    {},
-    { id: 'channel-1', channelType: 'WEBCHAT' },
-    'tenant-1',
-    {
-      contactUid: '',
-      timestamp: new Date(),
-      contentType: 'text',
-      content: { text: 'ignored' },
-    },
-  );
+  let result: unknown = 'not called';
+  const published = await captureEvents(async () => {
+    result = await processInboundMessage(
+      prisma as never,
+      io as never,
+      {},
+      { id: 'channel-1', channelType: 'WEBCHAT' },
+      'tenant-1',
+      {
+        contactUid: '',
+        timestamp: new Date(),
+        contentType: 'text',
+        content: { text: 'ignored' },
+      },
+    );
+  });
 
   assert.equal(result, undefined);
   assert.equal(prisma.channelIdentity.findUnique.calls.length, 0);
   assert.equal(events.length, 0);
+  assert.equal(published.length, 0, '不發布 EventBus 事件');
 }
 
 async function testDuplicateClientMessageReturnsExistingMessage() {
@@ -217,7 +221,7 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
   assert.equal(events.some((event) => event.name === 'message.received'), false);
 }
 
-// 規格 Scenario: CSAT response for a case of another tenant（change fix-csat-intercept-and-trial-upgrade）
+// 主規格 inbound-message-processing「CSAT 回覆的攔截」的 Scenario「其他租戶的工單」
 // 進站用 prismaAdmin，RLS 擋不住；查工單必須帶收訊租戶與傳訊聯絡人，查不到時仍攔截。
 async function testCsatLookupScopedToTenantAndSender() {
   const { io } = createIoMock();
@@ -322,9 +326,9 @@ async function testRefactorStructureFromSource() {
   assert.equal(combined.indexOf('handleKbFeedback') < combined.indexOf('handleHandoffRequest'), true);
 }
 
-test('missing contact uid short circuits', testMissingContactUidShortCircuits);
+test('進站事件沒有聯絡人 UID', testMissingContactUidShortCircuits);
 test('duplicate client message returns existing message', testDuplicateClientMessageReturnsExistingMessage);
-test('csat intercept does not publish message received', testCsatInterceptDoesNotPublishMessageReceived);
-test('csat lookup is scoped to receiving tenant and sending contact', testCsatLookupScopedToTenantAndSender);
+test('不存在的工單：仍攔截，不發布 message.received', testCsatInterceptDoesNotPublishMessageReceived);
+test('其他租戶的工單：查詢工單時帶收訊租戶與傳訊聯絡人', testCsatLookupScopedToTenantAndSender);
 test('facade and caller contracts from source', testFacadeAndCallerContractsFromSource);
 test('refactor structure from source', testRefactorStructureFromSource);
