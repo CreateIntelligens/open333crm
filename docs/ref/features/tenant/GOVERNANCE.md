@@ -23,11 +23,11 @@
 
 | 範圍 | 動作 |
 | --- | --- |
-| 成員 | `agent.create`、`agent.role.assign`、`agent.password.reset`、`agent.deactivate`、`agent.purge`、`agent.channels.set` |
+| 成員 | `agent.create`、`agent.role.assign`、`agent.password.reset`、`agent.deactivate`、`agent.reactivate`、`agent.purge`、`agent.channels.set` |
 | 角色 | `role.permission.update` |
 | 渠道 | `channel.create`、`channel.delete`、`channel.assign_team`、`channel.revoke_team` |
 | 設定 | `settings.update`，`payload.section` 記錄是哪一類設定 |
-| 資料 | `contact.merge`、`case.delete`、`data.export.request`、`data.erasure.request` |
+| 資料 | `contact.merge`、`contact.merge_revert`、`case.delete`、`data.export.request`、`data.erasure.request`、`data.erasure.complete` |
 
 `payload` 刻意不放個人資料，例如合併聯絡人只記兩個 ID。
 
@@ -47,8 +47,9 @@
 
 要知道的事：
 
+- **完成通知連到不存在的頁面。** 通知的連結是 `/dashboard/settings/data-export/<申請 ID>`，前端沒有這一頁。
 - **`scope` 參數沒有作用。** 申請可以帶 `scope`，系統會存下來，但打包時不讀它，一律匯出聯絡人、對話、訊息與工單。
-- **訊息全部讀進記憶體。** 打包時把租戶的所有訊息累積在一個陣列裡再寫成 JSON，訊息量大的租戶可能讓 workers 記憶體不足。
+- **資料全部讀進記憶體。** 打包時把租戶的聯絡人、對話、訊息與工單各自累積在陣列裡再寫成 JSON，資料量大的租戶可能讓 workers 記憶體不足。
 - **workers 連不上物件儲存時會失敗。** 開發環境的 workers 讀錯環境變數，見 `../../system/AUDIT.md` 的 STO-01。
 
 ## 資料刪除
@@ -70,8 +71,9 @@
 | 工單標題、描述、備註與 CSAT 留言 | 保留 | 刪除 |
 | 點擊紀錄（`ClickLog`，含 IP、User-Agent、LINE uid） | 保留 | 保留 |
 | 群發收件紀錄、知識庫回報、Canvas 執行紀錄 | 保留 | 保留 |
+| 被合併到這位聯絡人的封存聯絡人（名稱、電話、email、頭像） | 保留 | 保留 |
 
-最後一類資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。見 `../../system/AUDIT.md` 的 ERASE-01。
+點擊紀錄、群發收件紀錄、知識庫回報與 Canvas 執行紀錄的資料表只存 `contactId`，沒有外鍵，兩種模式都不處理。合併聯絡人時，被併入的聯絡人只會封存，個人欄位留著；刪除只處理指定的那一位，不會找到這些封存的聯絡人。見 `../../system/AUDIT.md` 的 ERASE-01。
 
 ## 對外 Webhook
 
@@ -117,8 +119,8 @@ scope 的常數定義在 `mcp.constants.ts`。工具只檢查 scope，不檢查�
 | 重要操作沒有稽核 | 詳見 `../../system/AUDIT.md` 的 AUD-01 |
 | 資料刪除沒有涵蓋所有個人資料 | 詳見 `../../system/AUDIT.md` 的 ERASE-01 |
 | MCP 與 CLI 不受角色與方案限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
-| 匯出的 `scope` 參數沒有作用 | 一律匯出全部 |
-| 匯出把所有訊息讀進記憶體 | 大租戶可能失敗 |
+| 匯出的 `scope` 參數沒有作用、完成通知連到不存在的頁面 | 詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
+| 匯出把所有資料讀進記憶體 | 大租戶可能失敗，詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
 | 對外 Webhook 的重試在記憶體中等待 | API 重新啟動會遺失 |
 | 對外 Webhook 的事件名稱沒有白名單 | 打錯不會報錯 |
 | 沒有後台頁面 | 只能透過 CLI、MCP 或直接呼叫 API |
