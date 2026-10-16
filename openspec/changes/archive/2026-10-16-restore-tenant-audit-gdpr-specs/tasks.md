@@ -34,7 +34,7 @@
 
 | 突變 | 失敗的測試 |
 | --- | --- |
-| `role.routes.ts` 的稽核 action 改成 `role.permission.updated` | 設定角色權限時寫稽核；依 action 篩選本租戶的稽核 |
+| `role.routes.ts` 的稽核 action 改成 `role.permission.updated` | 設定角色權限時寫稽核 |
 | `tenant-audit.service.ts` 的 `listTenantAudit()` 不套用 `action` 篩選 | 依 action 篩選本租戶的稽核 |
 | `tenant-audit.routes.ts` 拿掉 `requirePermission('audit.view')` | 沒有 audit.view 不能查詢 |
 | `data-export.routes.ts` 的 `POST /` 拿掉 `requirePermission('data.export')` | 沒有 data.export 不能發起 |

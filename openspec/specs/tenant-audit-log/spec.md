@@ -7,17 +7,17 @@
 
 ### Requirement: 記錄租戶內的敏感操作
 
-租戶內的敏感操作成功後，系統 SHALL 寫一筆 `TenantAuditLog`，內容包含 `tenantId`、`actorId`（操作的成員）、`action`、`targetType`、`targetId`、`payload`（變更摘要）、`ip` 與 `createdAt`。租戶稽核與平台的 `PlatformAuditLog` 分開存放。
-
-寫稽核的操作至少包含：
+下列操作成功後，系統 SHALL 寫一筆 `TenantAuditLog`，內容包含 `tenantId`、`actorId`（操作的成員）、`action`、`targetType`、`targetId`、`payload`（變更摘要）與 `createdAt`。租戶稽核與平台的 `PlatformAuditLog` 分開存放。
 
 - 成員：建立、停用、重新啟用、永久刪除、重設密碼、指派角色、設定可見渠道。
 - 角色：設定角色的權限。
 - 渠道：建立、刪除、授權團隊、撤銷團隊授權。
-- 設定：各設定頁的修改。
+- 設定：營業時間、追蹤設定、跨渠道綁定、Embedding、Chat、自備 Gemini 金鑰與 WebTalk 協作的修改。
 - 聯絡人：合併、撤銷合併。
 - 工單：刪除。
 - 資料權利：發起資料匯出、發起與完成資料刪除。
+
+其他敏感操作（例如登入、API 金鑰與 CLI token、修改渠道憑證）目前不寫稽核，記在 `docs/ref/system/AUDIT.md` 的 AUD-01。
 
 #### Scenario: 設定角色權限時寫稽核
 - **WHEN** 有 `role.manage` 的成員以 `PUT /api/v1/roles/:id/permissions` 設定角色的權限

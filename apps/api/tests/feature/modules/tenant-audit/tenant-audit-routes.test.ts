@@ -95,6 +95,10 @@ test('設定角色權限時寫稽核', async () => {
 });
 
 test('依 action 篩選本租戶的稽核', async () => {
+  // 這個測試自己建立符合與不符合篩選的稽核，不依賴其他測試寫入的資料
+  const matching = await owner.tenantAuditLog.create({
+    data: { tenantId: T, actorId: auditor.id, action: 'role.permission.update', targetType: 'role' },
+  });
   await owner.tenantAuditLog.create({ data: { tenantId: T, actorId: auditor.id, action: 'settings.update' } });
   const res = await auditorApp.inject({
     method: 'GET',
@@ -102,7 +106,7 @@ test('依 action 篩選本租戶的稽核', async () => {
   });
   assert.equal(res.statusCode, 200, res.body);
   const { rows, total } = res.json().data as { rows: Array<{ id: string; action: string }>; total: number };
-  assert.ok(rows.length > 0, '本租戶有 role.permission.update 的稽核');
+  assert.ok(rows.some((r) => r.id === matching.id), '含本租戶符合篩選的稽核');
   assert.ok(rows.every((r) => r.action === 'role.permission.update'), JSON.stringify(rows));
   assert.ok(!rows.some((r) => r.id === foreignLog.id), '不含租戶 B 的稽核');
   assert.equal(total, rows.length);
