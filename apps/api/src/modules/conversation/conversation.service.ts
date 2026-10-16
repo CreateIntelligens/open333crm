@@ -891,10 +891,12 @@ export async function updateConversation(
   }
 
   if (closing) {
-    if (Object.keys(updateData).length > 0) {
-      await prisma.conversation.update({ where: { id }, data: updateData });
-    }
-    return closeConversation(prisma, io, id, tenantId, { source: 'manual', closedById: options.actorId });
+    // 負責人與結案在同一次 update 寫入，避免改了負責人卻沒結案的半套狀態
+    return closeConversation(prisma, io, id, tenantId, {
+      source: 'manual',
+      closedById: options.actorId,
+      assignedTo: updateData.assignedTo,
+    });
   }
 
   const updated = await prisma.conversation.update({
@@ -953,6 +955,8 @@ export async function closeConversation(
     reason?: string;
     source: 'manual' | 'inactivity' | 'csat' | 'case_resolved';
     closedById?: string;
+    /** 同時變更負責人（PATCH 帶 CLOSED 與 assignedToId 時），和結案寫在同一次 update */
+    assignedTo?: Prisma.ConversationUpdateInput['assignedTo'];
   },
 ) {
   const conversation = await prisma.conversation.findFirst({
@@ -972,6 +976,7 @@ export async function closeConversation(
     where: { id },
     data: {
       status: 'CLOSED',
+      ...(options.assignedTo ? { assignedTo: options.assignedTo } : {}),
       metadata: {
         ...existingMeta,
         closeReason: options.reason ?? null,

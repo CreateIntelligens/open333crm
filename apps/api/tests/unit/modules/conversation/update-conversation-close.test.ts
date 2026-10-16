@@ -7,7 +7,7 @@ import { test } from 'vitest';
 import { updateConversation } from '#src/modules/conversation/conversation.service.js';
 import { eventBus } from '#src/events/event-bus.js';
 
-function fixture(status: string) {
+function fixture(status: string, metadata: Record<string, unknown> = { existing: 1 }) {
   const state: Record<string, unknown> = {
     id: 'c1',
     tenantId: 't1',
@@ -15,7 +15,7 @@ function fixture(status: string) {
     assignedToId: 'agent-a',
     unreadCount: 0,
     lastMessageAt: null,
-    metadata: { existing: 1 },
+    metadata,
   };
   const updates: Array<Record<string, unknown>> = [];
   const prisma = {
@@ -72,19 +72,20 @@ test('PATCH 同時改負責人與 CLOSED：負責人照改，結案資料照記'
   }
   assert.equal(f.state.assignedToId, 'agent-c');
   assert.equal(f.state.status, 'CLOSED');
+  assert.equal(f.updates.length, 1, '負責人與結案在同一次 update 寫入');
   assert.equal((f.state.metadata as Record<string, unknown>).closeSource, 'manual');
   assert.equal(cap.events.length, 1);
 });
 
 test('已結案的對話再 PATCH CLOSED：不重記結案資料、不重發事件', async () => {
-  const f = fixture('CLOSED');
+  const f = fixture('CLOSED', { closeSource: 'inactivity', closedById: null, closedAt: '2026-10-01T00:00:00.000Z' });
   const cap = captureClosed();
   try {
     await updateConversation(f.prisma, f.io, 'c1', 't1', { status: 'CLOSED' }, { actorId: 'agent-b' });
   } finally {
     cap.restore();
   }
-  assert.equal((f.state.metadata as Record<string, unknown>).closeSource, undefined);
+  assert.deepEqual(f.state.metadata, { closeSource: 'inactivity', closedById: null, closedAt: '2026-10-01T00:00:00.000Z' });
   assert.equal(cap.events.length, 0);
 });
 
