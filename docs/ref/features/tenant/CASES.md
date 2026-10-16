@@ -17,7 +17,7 @@
 
 | 來源 | 端點或位置 | 連結對話 |
 | --- | --- | --- |
-| 在收件匣從對話開工單 | `POST /conversations/:id/case` | 自動連結該對話 |
+| 在收件匣從對話開工單 | `POST /conversations/:id/case`（`POST /cases/from-conversation/:conversationId` 行為相同） | 自動連結該對話 |
 | 在工單頁直接建立 | `POST /cases` | 不連結，之後可用 `POST /cases/:id/conversations/:conversationId/link` 連結 |
 
 從對話開工單時，`createCaseFromConversation()` 在同一個交易內建立工單並連結對話。一個對話只能連結一個工單，已經連結的對話不能再開工單，也不能再連結到別的工單。一個工單可以連結多個對話。
@@ -163,9 +163,9 @@ SLA 逾時也會自動提高優先級，這由 workers 處理，見[服務水準
 | --- | --- |
 | `read_only` | 讀工單、讀時間軸 |
 | `reply_only` | 貼標、加備註 |
-| `full` | 改欄位、改狀態、指派、升級、連結對話、記錄 CSAT、刪除 |
+| `full` | 建立工單（含從對話建立）、改欄位、改狀態、指派、升級、連結對話、記錄 CSAT、刪除 |
 
-下列操作沒有套用可見範圍：`POST /cases` 不檢查 `channelId` 是否可見，`GET /cases/stats` 統計的是全租戶的工單。見 `../../system/AUDIT.md` 的 RBAC-04。
+建立工單時，看不到指定的渠道或對話所屬的渠道，回 404。`GET /cases/stats` 沒有套用可見範圍，統計的是全租戶的工單。見 `../../system/AUDIT.md` 的 RBAC-04。
 
 ## 目前的限制
 

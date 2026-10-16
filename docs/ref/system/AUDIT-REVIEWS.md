@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-16：RBAC-04 部分修正，補上兩條路由的守門
+
+對照 `origin/main`（`8baf76a0`）的程式碼，並以 feature 測試確認。沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RBAC-04 | 部分修正 | `POST /cases` 已由 #281 檢查渠道可見範圍，表格移除這一列。`POST /cases/from-conversation/:conversationId` 原本不檢查對話的渠道，改為和 `POST /conversations/:id/case` 相同的檢查（`tests/feature/modules/case/case-create-channel.test.ts`）|
+| 不屬於既有項目 | 修正 | `GET /channels/:id/status` 只驗登入。權限註冊表寫明 `channel.view` 涵蓋 status，現在要求 `channel.view`，並和渠道列表一樣只回看得到的渠道（`tests/feature/modules/channel/channel-status-guard.test.ts`）|
+
 ## 2026-10-16：MKT-01 補註後台的重新發送按鈕
 
 Daniel 的 #296（`8baf76a0`）合併後，對照 `8554ea06` 的程式碼。沒有連線 UAT。

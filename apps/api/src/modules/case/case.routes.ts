@@ -19,7 +19,7 @@ import { recordCsatScore } from '../csat/csat.service.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { addTagToTarget, removeTagFromTarget } from '../tag/tagging.service.js';
 import { success, paginated, AppError } from '../../shared/utils/response.js';
-import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible, assertChannelVisible } from '../../services/channel-visibility.js';
+import { resolveChannelVisibility, isChannelAccessible, assertCaseChannelVisible, assertChannelVisible, assertConversationChannelVisible } from '../../services/channel-visibility.js';
 import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { CASE_CATEGORIES, LEGACY_CASE_CATEGORIES } from '@open333crm/shared';
@@ -448,6 +448,8 @@ export default async function caseRoutes(fastify: FastifyInstance) {
     '/from-conversation/:conversationId', { preHandler: [perm.create, perm.assignIfAssigning] },
     async (request, reply) => {
       const data = createCaseFromConvSchema.parse(request.body);
+      // CM-173：與 POST /conversations/:id/case 一致，看不到對話所屬渠道不得替它建工單
+      await assertConversationChannelVisible(request, request.params.conversationId, 'full');
 
       // createCaseFromConversation 內部自管交易（DB 寫入 withTenant，副作用交易外）
       const caseRecord = await createCaseFromConversation(
