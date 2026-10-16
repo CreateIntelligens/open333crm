@@ -11,6 +11,7 @@ import { SearchInput } from '@/components/shared/SearchInput';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MessageSquare, Loader2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -74,6 +75,13 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     onSelect(conversation.id);
   };
 
+  // 快速篩選的數量（Claude Design：全部 6、未讀 3、我的 3），依目前載入的進行中對話計算
+  const quickCounts = {
+    all: conversations.length,
+    unread: conversations.filter((c: { unreadCount?: number }) => (c.unreadCount || 0) > 0).length,
+    mine: conversations.filter((c: { assignedToId?: string | null }) => c.assignedToId === agent?.id).length,
+  };
+
   // Client-side filter for sub-tabs and search
   let filtered = conversations;
   if (mainTab === 'active') {
@@ -130,15 +138,26 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
         <SearchInput placeholder="搜尋對話、聯繫人" onSearch={setSearch} />
 
-        {/* Sub-tabs for active：快速篩選 */}
+        {/* 快速篩選：Claude Design 為膠囊按鈕附數量 */}
         {mainTab === 'active' && (
-          <Tabs value={subTab} onValueChange={setSubTab}>
-            <TabsList className="w-full">
-              <TabsTrigger value="all" className="flex-1">全部</TabsTrigger>
-              <TabsTrigger value="unread" className="flex-1">未讀</TabsTrigger>
-              <TabsTrigger value="mine" className="flex-1">我的</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div role="group" aria-label="快速篩選" className="flex flex-wrap items-center gap-2">
+            {([
+              ['all', '全部'],
+              ['unread', '未讀'],
+              ['mine', '我的'],
+            ] as const).map(([value, label]) => (
+              <Chip
+                key={value}
+                size="lg"
+                tone={subTab === value ? 'primary' : 'outline'}
+                selected={subTab === value}
+                onClick={() => setSubTab(value)}
+              >
+                {label}
+                <span className={subTab === value ? 'ml-1 text-white/80' : 'ml-1 text-muted-foreground'}>{quickCounts[value]}</span>
+              </Chip>
+            ))}
+          </div>
         )}
 
         {/* Closed range selector */}

@@ -2,12 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Phone, Mail, Plus, Bot, Star, Clock } from 'lucide-react';
+import { Plus, Bot, Star, Clock } from 'lucide-react';
 import api from '@/lib/api';
 import { Avatar } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
@@ -69,6 +67,15 @@ interface ContactInfoPanelProps {
   } | null;
   onRefresh?: () => void;
 }
+
+const CASE_STATUS_LABEL: Record<string, string> = {
+  OPEN: '待處理',
+  IN_PROGRESS: '處理中',
+  PENDING: '等待中',
+  RESOLVED: '已解決',
+  CLOSED: '已結案',
+  ESCALATED: '已升級',
+};
 
 export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelProps) {
   const [contact, setContact] = useState<Record<string, unknown> | null>(null);
@@ -137,20 +144,9 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
           alt={conversation.contact.name || conversation.contact.displayName || '聯絡人'}
           src={conversation.contact.avatar || conversation.contact.avatarUrl}
           size="lg"
+          className="h-[52px] w-[52px] bg-primary-subtle text-[19px] text-primary-hover"
         />
         <h3 className="mt-2 text-base font-semibold leading-6 text-foreground">{conversation.contact.name || conversation.contact.displayName || '未知'}</h3>
-        {conversation.contact.phone && (
-          <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-            <Phone className="h-3 w-3" />
-            <span>{conversation.contact.phone}</span>
-          </div>
-        )}
-        {conversation.contact.email && (
-          <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-            <Mail className="h-3 w-3" />
-            <span>{conversation.contact.email}</span>
-          </div>
-        )}
         <Link
           href={`/dashboard/contacts/${conversation.contact.id}`}
           className="mt-1 text-xs font-medium text-primary hover:text-primary-hover"
@@ -159,7 +155,6 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
         </Link>
       </div>
 
-      <Separator />
 
       {/* Bot Status Block */}
       {isBotHandled && (
@@ -180,8 +175,7 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
               </div>
             </div>
           </div>
-          <Separator />
-        </>
+            </>
       )}
 
       {/* CSAT + Closed info */}
@@ -222,25 +216,30 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
               )}
             </div>
           </div>
-          <Separator />
-        </>
+            </>
       )}
 
-      {/* Channel Identities */}
-      {channelIdentities && channelIdentities.length > 0 && (
-        <div className="p-4">
-          <h4 className="mb-2 text-xs font-semibold leading-[17px] text-muted-foreground">
-            渠道
-          </h4>
-          <div className="flex flex-col gap-1.5">
-            {channelIdentities.map((ci) => (
-              <ChannelLabel key={ci.id} channelType={ci.channelType} channelName={ci.channel?.displayName} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* 聯繫人資訊：Claude Design 的欄位列表（標籤在左、值在右）；依 Figma 微調 */}
+      <div className="flex flex-col gap-2 p-4">
+        <h4 className="text-xs font-semibold leading-[17px] text-muted-foreground">聯繫人資訊</h4>
+        <dl className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+          <dt className="text-muted-foreground">電話</dt>
+          <dd className="truncate text-foreground">{conversation.contact.phone || '—'}</dd>
+          <dt className="text-muted-foreground">電子郵件</dt>
+          <dd className="truncate text-foreground" title={conversation.contact.email}>{conversation.contact.email || '—'}</dd>
+          {channelIdentities && channelIdentities.length > 0 && (
+            <>
+              <dt className="text-muted-foreground">渠道</dt>
+              <dd className="flex min-w-0 flex-col gap-1">
+                {channelIdentities.map((ci) => (
+                  <ChannelLabel key={ci.id} channelType={ci.channelType} channelName={ci.channel?.displayName} />
+                ))}
+              </dd>
+            </>
+          )}
+        </dl>
+      </div>
 
-      <Separator />
 
       {/* 歸戶後同一位顧客在其他渠道的對話（change add-email-identity-merge） */}
       <OtherChannelConversations contactId={conversation.contact.id} currentConversationId={conversation.id} />
@@ -248,27 +247,28 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       {/* Contact Tags */}
       <div className="p-4">
         <h4 className="mb-2 text-xs font-semibold leading-[17px] text-muted-foreground">
-          聯絡人標籤
+          聯繫人標籤
         </h4>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {tags && tags.length > 0 ? (
-            tags.map((tag) => (
-              <Badge
-                key={tag.tag?.id || tag.id}
-                variant="secondary"
-                color={tag.tag?.color || tag.color}
-                className="text-xs"
-              >
-                {tag.tag?.name || tag.name}
-              </Badge>
-            ))
+            tags.map((tag) => {
+              const color = tag.tag?.color || tag.color;
+              return (
+                <span
+                  key={tag.tag?.id || tag.id}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full bg-primary-subtle px-3 text-xs font-medium text-primary-hover"
+                >
+                  {color && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />}
+                  {tag.tag?.name || tag.name}
+                </span>
+              );
+            })
           ) : (
-            <span className="text-xs text-muted-foreground">沒有標籤</span>
+            <span className="text-sm text-muted-foreground">沒有標籤</span>
           )}
         </div>
       </div>
 
-      <Separator />
 
       {/* Conversation Tags */}
       <div className="p-4">
@@ -283,7 +283,6 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
         />
       </div>
 
-      <Separator />
 
       {/* Custom Attributes */}
       {attributes && attributes.length > 0 && (
@@ -301,9 +300,29 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
               ))}
             </div>
           </div>
-          <Separator />
-        </>
+            </>
       )}
+
+      {/* 工單：Claude Design 顯示此對話關聯的工單（編號、標題、狀態） */}
+      <div className="flex flex-col gap-2 px-4 pb-2 pt-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold leading-[17px] text-muted-foreground">工單</h4>
+          <span className="text-xs tabular-nums text-muted-foreground">{caseData ? 1 : 0}</span>
+        </div>
+        {caseData ? (
+          <Link
+            href={`/dashboard/cases/${caseData.id}`}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm transition-colors hover:bg-surface-hover"
+          >
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground">{caseData.title}</span>
+            <span className="shrink-0 rounded-full bg-surface-hover px-2 py-px text-[11px] font-medium text-muted-foreground">
+              {CASE_STATUS_LABEL[caseData.status] ?? caseData.status}
+            </span>
+          </Link>
+        ) : (
+          <p className="text-sm text-muted-foreground">尚無工單</p>
+        )}
+      </div>
 
       {/* Actions：Claude Design 的「快速操作」 */}
       <div className="flex flex-col gap-2 p-4">

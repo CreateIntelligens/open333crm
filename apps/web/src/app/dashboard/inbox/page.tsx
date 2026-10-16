@@ -147,7 +147,7 @@ export default function InboxPage() {
       </div>
 
       {/* Right panel - Contact Info */}
-      <div className="w-72 shrink-0 border-l border-border bg-background">
+      <div className="w-80 shrink-0 border-l border-border bg-background">
         <ContactInfoPanel
           conversation={infoPanelConversation}
           onRefresh={() => mutateConversation()}

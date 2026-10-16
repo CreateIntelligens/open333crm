@@ -96,7 +96,10 @@ export function ConversationListItem({
 
   const handling = handlingOf(conversation.status);
 
-  // 版面依 Claude Design「收件匣 v4」：整列、底線分隔，選中時淡藍底＋左側藍色條；依 Figma 微調
+  const channelLabel = channelName || channelTypeName(conversation.channelType);
+
+  // 版面依 Claude Design「收件匣 v4」：
+  // 第一行 名字＋時間；第二行 處理狀態＋渠道；第三行 最後一則訊息＋紅色未讀數。選中時整列藍框淡藍底
   return (
     <button
       type="button"
@@ -104,10 +107,10 @@ export function ConversationListItem({
       aria-current={isSelected ? 'true' : undefined}
       className={cn(
         'flex w-full items-start gap-2.5 border-b border-border/60 px-4 py-[13px] text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-        isSelected ? 'bg-primary-subtle shadow-[inset_3px_0_0_hsl(var(--primary))]' : 'bg-background hover:bg-surface-hover',
+        isSelected ? 'bg-primary-subtle ring-2 ring-inset ring-primary' : 'bg-background hover:bg-surface-hover',
       )}
     >
-      <span className="relative shrink-0">
+      <span className="relative mt-0.5 shrink-0">
         <Avatar
           alt={contactName}
           src={conversation.contact?.avatar || conversation.contact?.avatarUrl}
@@ -118,14 +121,11 @@ export function ConversationListItem({
           className="absolute -bottom-0.5 -right-0.5 h-4 w-4 ring-2 ring-background"
         />
       </span>
-      <div className="flex-1 overflow-hidden">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'min-w-0 truncate text-sm leading-5 text-foreground',
-              unreadCount > 0 ? 'font-bold' : 'font-semibold'
-            )}
-          >
+
+      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+        {/* 第一行：名字＋時間 */}
+        <div className="flex items-center gap-2">
+          <span className={cn('min-w-0 flex-1 truncate text-sm leading-5 text-foreground', unreadCount > 0 ? 'font-bold' : 'font-semibold')}>
             {contactName}
           </span>
           <span
@@ -135,58 +135,56 @@ export function ConversationListItem({
             {formatListTime(lastMessageTime)}
           </span>
         </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
+
+        {/* 第二行：處理狀態＋渠道（同類型可能接多個 LINE OA／粉專，顯示渠道名稱） */}
+        <div className="flex min-w-0 items-center gap-2">
+          {handling && (
+            <span className={cn('shrink-0 whitespace-nowrap rounded-[5px] px-[7px] py-px text-[10px] font-semibold leading-[15px]', handling.cls)}>
+              {handling.label}
+            </span>
+          )}
+          <span
+            className="min-w-0 truncate text-xs text-muted-foreground"
+            title={[channelTypeName(conversation.channelType), channelName].filter(Boolean).join('：')}
+          >
+            {channelLabel}
+          </span>
+          {conversation.caseId && <FileText className="h-3 w-3 shrink-0 text-warning" aria-label="已建立案件" />}
+          {conversation.lastMessageSentiment === 'positive' && (
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-success" title="正面情緒" />
+          )}
+          {conversation.lastMessageSentiment === 'negative' && (
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-destructive" title="負面情緒" />
+          )}
+          {showCsat && conversation.csatScore != null && (
+            <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-warning">
+              <Star className="h-3 w-3 fill-warning" />
+              {conversation.csatScore}
+            </span>
+          )}
+        </div>
+
+        {/* 第三行：最後一則訊息＋未讀數 */}
+        <div className="flex min-w-0 items-center gap-2">
           <p
             className={cn(
-              'truncate text-xs',
-              lastMessageFailed
-                ? 'text-destructive'
-                : unreadCount > 0
-                  ? 'font-medium text-foreground'
-                  : 'text-muted-foreground',
+              'min-w-0 flex-1 truncate text-sm leading-5',
+              lastMessageFailed ? 'text-destructive' : unreadCount > 0 ? 'text-foreground' : 'text-muted-foreground',
             )}
             title={lastMessageFailed ? '最後一則訊息沒有送出，對方並未收到' : undefined}
           >
-            {lastMessageFailed && (
-              <AlertCircle className="mr-1 inline-block h-3 w-3 shrink-0 align-[-2px]" />
-            )}
+            {lastMessageFailed && <AlertCircle className="mr-1 inline-block h-3 w-3 shrink-0 align-[-2px]" />}
             {lastMessageContent}
           </p>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {conversation.lastMessageSentiment === 'positive' && (
-              <span className="inline-block h-2 w-2 rounded-full bg-success" title="正面情緒" />
-            )}
-            {conversation.lastMessageSentiment === 'negative' && (
-              <span className="inline-block h-2 w-2 rounded-full bg-destructive" title="負面情緒" />
-            )}
-            {conversation.caseId && (
-              <FileText className="h-3 w-3 text-warning" aria-label="已建立案件" />
-            )}
-            {handling && (
-              <span className={cn('whitespace-nowrap rounded-[5px] px-[7px] py-px text-[10px] font-semibold leading-[15px]', handling.cls)}>
-                {handling.label}
-              </span>
-            )}
-            {showCsat && conversation.csatScore != null && (
-              <span className="flex items-center gap-0.5 text-[10px] text-warning">
-                <Star className="h-3 w-3 fill-warning" />
-                {conversation.csatScore}
-              </span>
-            )}
-            {unreadCount > 0 && (
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </div>
+          {unreadCount > 0 && (
+            <span
+              className="flex h-5 min-w-[22px] shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-bold text-white"
+              aria-label={`${unreadCount} 則未讀`}
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
         </div>
-        {/* 渠道名稱獨立一行：同類型可能接多個 LINE OA／粉專，給整行寬度才看得清楚；類型由頭像角落 logo 表示 */}
-        <p
-          className="mt-0.5 truncate text-[11px] text-muted-foreground"
-          title={[channelTypeName(conversation.channelType), channelName].filter(Boolean).join('：')}
-        >
-          {channelName || channelTypeName(conversation.channelType)}
-        </p>
       </div>
     </button>
   );
