@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-16：新增 TRIAL-04
+
+change `restore-trial-data-purge-specs` 補回 `add-trial-data-purge`（issue #228）。對照 `8953095f` 的程式碼，並在本機的測試資料庫重現。沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| TRIAL-04 | 新增，P3 | 排程標記後復原，再執行一次排程，`purgedAt` 又有值，`tenant.trial.purge` 稽核有 2 筆。延長試用與平台的啟用也不清除 `purgedAt`。修正方向待討論 |
+| TRIAL-03 | 狀態不變 | 新的主規格 `trial-data-purge` 照現況寫：標記不刪除資料，也不影響存取 |
+
 ## 2026-10-16：AUD-02 結案
 
 以 `587ec638` 為基礎修正，並以 feature 測試確認。沒有連線 UAT。

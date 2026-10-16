@@ -72,6 +72,7 @@
 | [LIC-02](#lic-02) | 金鑰與 License | P4 | 未處理 | 可連線的 Core LicenseService 沒有使用者 | 靜態確認 |
 | [TRIAL-02](#trial-02) | 試用 | P3 | 已定方向 | 試用政策存在無型別的 KV，錯誤的值會靜默失效或靜默生效 | 靜態確認 |
 | [TRIAL-03](#trial-03) | 試用 | P2 | 未處理 | 「資料保留天數」到期只做標記，租戶的業務資料永遠不會被刪除 | 靜態確認 |
+| [TRIAL-04](#trial-04) | 試用 | P3 | 未處理 | 復原軟刪標記後，下一輪排程又會標記；延長試用與啟用租戶不清除標記 | 執行時確認 |
 | [PLAN-01](#plan-01) | 方案與額度 | P3 | 未處理 | `Plan.isActive` 沒有讀取端，停售的方案仍可指派 | 靜態確認 |
 | [PLAN-02](#plan-02) | 方案與額度 | P3 | 未處理 | 加購 token 是永久提高每月額度，不是一次性配額 | 靜態確認 |
 | [PLAN-03](#plan-03) | 方案與額度 | P3 | 未處理 | 換方案不會回收既有的超額資源，也不會清除 `limitOverrides` | 靜態確認 |
@@ -732,6 +733,26 @@ PlatformSetting（KV，不知道型別）
 `purgedAt` 帶來的唯一行為差異是平台清單上的狀態顯示「已清除」。租戶在試用到期時已經被停用，因此標記前後，租戶端的存取沒有任何改變。入站 webhook 在停用時就已經不處理（`webhook.service.ts` 的 `processWebhookEvent()` 檢查 `tenant.isActive`），也與 `purgedAt` 無關。
 
 `trial.enabled` 的預設值是 `false`。正式環境若從未開放試用，目前沒有受影響的資料。這一點要到線上確認。
+
+<a id="trial-04"></a>
+### TRIAL-04：軟刪標記的復原不會維持
+
+試用生命週期排程每小時標記一次保留期滿的租戶，條件是 `trialEndsAt` 不是 null、`isActive` 是 false、`purgedAt` 是 null，而且距 `trialEndsAt` 已超過保留天數（`trial.scheduler.ts`）。除了轉正式，其他操作都只改其中一個欄位，結果如下：
+
+| 操作 | 結果 |
+| --- | --- |
+| 復原（`PATCH /platform/tenants/:id/restore`，`restorePurgedTenant()`） | 只清除 `purgedAt`。租戶仍符合全部條件，下一輪排程又標記，並再寫一筆 `tenant.trial.purge` 稽核 |
+| 延長試用（`extendTrial()`） | 啟用租戶並延後 `trialEndsAt`，但不清除 `purgedAt`。租戶已經可以登入，後台仍顯示「已清除」。試用管理頁對已清除的租戶不顯示「延長」，直接呼叫 API 才會發生 |
+| 租戶頁的啟用（`PATCH /platform/tenants/:id/active`，`setTenantActive()`） | 只設 `isActive`，不清除 `purgedAt`。`trialEndsAt` 早已過期，下一輪到期排程又停用租戶 |
+| 轉正式（`convertToPaid()`） | 一起清除 `trialEndsAt`、`purgedAt` 並啟用租戶，沒有問題 |
+
+第一列在本機的測試資料庫重現：排程標記後復原，再執行一次排程，`purgedAt` 又有值，`tenant.trial.purge` 稽核有 2 筆。重現用的測試沒有保留在 repo，修正時再補上會失敗的測試。
+
+`purgedAt` 不影響存取（TRIAL-03），所以影響只有平台後台的顯示與重複的稽核，不會刪除資料，也不會讓停用的租戶恢復存取。
+
+主規格 `trial-data-purge` 的「平台復原軟刪標記」沒有規定復原之後的狀態要維持多久，要等修法決定後再補。
+
+**修正方向**：待討論。
 
 ## 方案與額度
 

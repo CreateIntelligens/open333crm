@@ -129,6 +129,17 @@ test('變更方案留稽核：寫入 tenant.update，payload 的 planSlug 是新
   assert.equal((audits[0]!.payload as { planSlug: string }).planSlug, 'standard');
 });
 
+test('復原寫入平台稽核', async () => {
+  const res = await request('PATCH', `/tenants/${TENANT_ID}/restore`);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0]!.action, 'tenant.trial.restore');
+  assert.equal(audits[0]!.targetType, 'tenant');
+  assert.equal(audits[0]!.targetId, TENANT_ID);
+  assert.equal(audits[0]!.platformUserId, PLATFORM_USER_ID);
+});
+
 test('列出的寫入操作都寫入稽核：每條平台寫入路由成功後，寫入一筆對應 action 的稽核', async () => {
   const cases: Array<[string, 'POST' | 'PATCH' | 'PUT', string, unknown]> = [
     // 租戶
