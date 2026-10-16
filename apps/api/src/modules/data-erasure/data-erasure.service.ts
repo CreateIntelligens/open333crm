@@ -20,6 +20,8 @@ export interface RequestErasureInput {
   contactId: string;
   mode: ErasureMode;
   reason?: string;
+  /** 發起請求的來源 IP，寫進稽核。 */
+  ip?: string;
 }
 
 /** BullMQ job payload（只帶最小識別欄位，不含 PII）。 */
@@ -62,11 +64,11 @@ export function setEnqueueErasureJob(
  * 寫租戶稽核（action=data.erasure.request，payload 只放 contactId/mode，不含 PII）→ 入列 job。
  *
  * @param prisma Prisma client
- * @param input tenantId / requestedBy / contactId / mode / reason
+ * @param input tenantId / requestedBy / contactId / mode / reason / ip
  * @returns 建立的 DataErasureRequest（含 id/status）
  */
 export async function requestErasure(prisma: TenantDb, input: RequestErasureInput) {
-  const { tenantId, requestedBy, contactId, mode, reason } = input;
+  const { tenantId, requestedBy, contactId, mode, reason, ip } = input;
 
   // 1. 先驗目標聯絡人同租戶——避免跨租戶刪除他人資料
   const contact = await prisma.contact.findFirst({
@@ -97,6 +99,7 @@ export async function requestErasure(prisma: TenantDb, input: RequestErasureInpu
     targetType: 'contact',
     targetId: contactId,
     payload: { contactId, mode },
+    ip,
   });
 
   // 4. 入列 BullMQ job。入列失敗（如 Redis 不可用）時把請求標 failed 並拋，避免永久卡 pending。

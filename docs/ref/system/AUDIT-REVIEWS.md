@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-16：AUD-02 結案
+
+以 `587ec638` 為基礎修正，並以 feature 測試確認。沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUD-02 | 已修正，從 `AUDIT.md` 移除 | `POST /api/v1/tenant/data-erasure` 把 `request.ip` 傳給 `requestErasure()`，`data.erasure.request` 稽核記錄來源 IP，和資料匯出相同。`request.ip` 依 `trust-proxy.ts` 的信任清單取得，與其他稽核相同。測試：`apps/api/tests/feature/modules/data-erasure/data-erasure-flow.test.ts` 的「發起刪除的稽核記錄來源 IP」 |
+
 ## 2026-10-16：CONV-02 部分修正
 
 對照 `origin/main` 的程式碼，並以單元測試確認（`tests/unit/modules/conversation/update-conversation-close.test.ts`）。沒有連線 UAT。

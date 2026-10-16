@@ -107,7 +107,6 @@
 | [CHAN-01](#chan-01) | 渠道、稽核與資料權利 | P3 | 部分修正 | 渠道刪除是硬刪除；有對話的渠道刪除改回 409 並可從畫面停用，沒有對話的渠道刪除時仍連帶刪除聯絡人身分 | 靜態確認 |
 | [CHAN-02](#chan-02) | 渠道、稽核與資料權利 | P2 | 部分修正 | workers 沒有網站聊天室外掛，關鍵字與自動化規則的回覆送不到網站聊天室；Instagram 外掛與 AI 讓步判斷已修正（`95d68fc8`） | 執行時確認 |
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
-| [AUD-02](#aud-02) | 渠道、稽核與資料權利 | P2 | 已提建議 | 發起資料刪除的稽核沒有記錄來源 IP | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email 兩種模式都保留 | 靜態確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
@@ -1434,19 +1433,6 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 | 業務 | 送出群發、自動化規則的增刪改、刪除知識庫文章、刪除標籤 |
 
 長效憑證與渠道憑證的變更影響最大：事後無法查出是誰、在什麼時候建立了一把能長期存取租戶資料的金鑰。
-
-<a id="aud-02"></a>
-### AUD-02：發起資料刪除的稽核沒有記錄來源 IP
-
-`POST /api/v1/tenant/data-erasure` 寫的 `data.erasure.request` 稽核，`ip` 一律是空的。`data-erasure.routes.ts` 沒有把 `request.ip` 傳給 `requestErasure()`，`RequestErasureInput` 也沒有 `ip` 欄位。
-
-其他由 HTTP 請求觸發的稽核都記錄 `request.ip`，包括同一個 PR（#153，`ad686d2d`）寫的資料匯出。刪除個人資料是最需要追查的操作之一，帳號被盜用時，這一筆卻查不到來源。
-
-刪除完成的 `data.erasure.complete` 由 workers 在背景寫入，沒有 HTTP 請求，不記錄 IP 是預期的行為，不在這一項的範圍。
-
-**規格依據**：`tenant-data-erasure` 的「發起聯絡人資料刪除」規定稽核 SHALL 記錄發起請求的來源 IP（Scenario「發起刪除的稽核記錄來源 IP」）。這個 Scenario 在修正前沒有測試。
-
-**修正方向**：`RequestErasureInput` 加上 `ip`，路由傳入 `request.ip`，比照 `requestExport()`。
 
 <a id="erase-01"></a>
 ### ERASE-01：資料刪除沒有涵蓋所有個人資料
