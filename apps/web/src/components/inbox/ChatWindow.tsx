@@ -55,6 +55,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const [templateText, setTemplateText] = useState<string | null>(null);
   const [templateQuickReplies, setTemplateQuickReplies] = useState<Array<{ label: string; text?: string }> | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const [closeReason, setCloseReason] = useState('');
   const [closing, setClosing] = useState(false);
   // 指派、改狀態、重新開啟失敗的原因（S09：原本沒有 try/catch，下拉看起來沒反應）
@@ -100,6 +101,12 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   };
 
   const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    // 選「已關閉」走和「結案」按鈕相同的流程：直接改狀態不會記錄結案原因、時間與結案人
+    if (e.target.value === 'CLOSED') {
+      setCloseError(null);
+      setCloseDialogOpen(true);
+      return;
+    }
     await patchConversation({ status: e.target.value }, '變更狀態失敗，請稍後重試');
   };
 
@@ -121,6 +128,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
   const handleCloseConfirm = async () => {
     if (!conversation) return;
     setClosing(true);
+    setCloseError(null);
     try {
       const body: { reason?: string } = {};
       const trimmed = closeReason.trim();
@@ -131,7 +139,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
       globalMutate(`/conversations/${conversation.id}`);
     } catch (err) {
       console.error('Close conversation failed:', err);
-      alert('結案失敗，請稍後再試');
+      setCloseError(getApiErrorMessage(err, '結案失敗，請稍後再試'));
     } finally {
       setClosing(false);
     }
@@ -263,7 +271,10 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
               variant="ghost"
               size="sm"
               className="h-8 gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => setCloseDialogOpen(true)}
+              onClick={() => {
+                setCloseError(null);
+                setCloseDialogOpen(true);
+              }}
               title="結案此對話"
             >
               <XCircle className="h-4 w-4" />
@@ -371,6 +382,11 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
                 disabled={closing}
               />
             </div>
+            {closeError && (
+              <p role="alert" className="text-sm text-destructive">
+                沒有結案：{closeError}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button
