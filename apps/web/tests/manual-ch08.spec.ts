@@ -417,14 +417,25 @@ test('shots', async ({ browser }) => {
 
 /**
  * 廣播失敗原因與「重新發送」「取消」按鈕（#287）。
- * 先在示範租戶建一則「空標籤」的排程廣播（受眾為空，不會發出任何訊息），
- * 讓它真的以「所選標籤下沒有可在此渠道發送的對象」失敗，再拍「會員日優惠通知」這一列；拍完到後台取消。
+ *
+ * 前置資料（腳本不建立：截圖腳本會擋掉所有寫入請求，避免在正式環境誤發）：
+ * 1. 建一個沒有任何聯絡人的標籤（POST /tags，type MANUAL、scope CONTACT）。
+ * 2. 建一則名為「會員日優惠通知」的廣播：LINE 渠道、targetType 'tags' 指向該標籤、
+ *    scheduledAt 設在一兩分鐘後（POST /marketing/broadcasts）。
+ * 3. 等排程執行，狀態變成 failed、原因為「所選標籤下沒有可在此渠道發送的對象。」（受眾為空，不會發出訊息）。
+ * 拍完到後台取消這則廣播、刪除該標籤。
+ * 找不到符合的失敗廣播時，這個測試直接失敗並說明缺什麼，不會拍出錯的畫面。
  */
 test('ch08-broadcast-failed', async ({ browser }) => {
   const p = await newShotPage(browser);
   await go(p, '/dashboard/marketing/broadcasts');
   await hideTestData(p);
-  const row = p.locator('tbody tr', { hasText: '會員日優惠通知' }).first();
+  const row = p.locator('tbody tr', { hasText: '會員日優惠通知' }).filter({ hasText: '失敗' }).first();
+  await row.waitFor({ timeout: 15_000 }).catch(() => {
+    throw new Error('找不到狀態為「失敗」的「會員日優惠通知」廣播，請先依檔案註解建立前置資料');
+  });
+  const reason = (await row.innerText()).includes('所選標籤下沒有可在此渠道發送的對象');
+  if (!reason) throw new Error('「會員日優惠通知」沒有顯示失敗原因，請確認它是在 #287 上線後失敗的');
   await row.scrollIntoViewIfNeeded();
   await shot(p, p.locator('table').filter({ has: row }).first(), 'ch08-broadcast-failed');
 });
