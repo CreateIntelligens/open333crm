@@ -353,6 +353,19 @@ async function convertBodyUrlsToShortLinks(
 
 const SENDABLE_STATUSES = ['draft', 'scheduled', 'failed'];
 
+/** 非預期錯誤（不是 AppError）寫給後台看的原因：不外露內部錯誤內容（issue #287） */
+const UNEXPECTED_FAILURE_REASON = '發送時發生系統錯誤，請稍後重新發送；若持續失敗請聯絡管理員';
+
+/** 失敗原因寫進資料庫的長度上限：渠道錯誤可能很長 */
+const FAILURE_REASON_MAX_LENGTH = 500;
+
+/** 全部收件人都失敗時的原因：失敗人數加上第一個渠道錯誤，讓行銷人員知道要從哪裡修 */
+function allRecipientsFailedReason(count: number, firstError: string | null): string {
+  const head = `全部 ${count} 位對象都發送失敗`;
+  const reason = firstError ? `${head}。渠道回應：${firstError}` : `${head}，渠道沒有回傳原因`;
+  return reason.slice(0, FAILURE_REASON_MAX_LENGTH);
+}
+
 function alreadySendingError() {
   return new AppError('此廣播正在發送中或已開始發送，請勿重複發送，稍後重新整理查看結果', 'BROADCAST_ALREADY_SENDING', 409);
 }
@@ -382,7 +395,8 @@ export async function executeBroadcast(
   // 以單一條件更新搶占 sending：兩個請求（重複按、或與排程器同時）只有一個搶得到
   const claimed = await prisma.broadcast.updateMany({
     where: { id: broadcastId, tenantId: broadcast.tenantId, status: { in: SENDABLE_STATUSES } },
-    data: { status: 'sending', sentAt: new Date() },
+    // 開始發送時清掉上一次的失敗原因，重送成功後不留舊原因
+    data: { status: 'sending', sentAt: new Date(), failureReason: null },
   });
   if (claimed.count === 0) {
     throw alreadySendingError();
@@ -455,7 +469,7 @@ export async function executeBroadcast(
 
     const plugin = getChannelPlugin(channel.channelType);
     if (!plugin) {
-      throw new AppError(`No plugin for channel type: ${channel.channelType}`, 'UNSUPPORTED_CHANNEL', 400);
+      throw new AppError(`此渠道類型（${channel.channelType}）不支援發送廣播`, 'UNSUPPORTED_CHANNEL', 400);
     }
     // 憑證解密：金鑰不符（如從其他環境 sync 來的 token）會拋原生錯，
     // 包成友善 AppError 避免冒成裸 500「An unexpected error occurred」。
@@ -499,6 +513,12 @@ export async function executeBroadcast(
 
     let successCount = 0;
     let failedCount = 0;
+    // 第一個渠道錯誤：全部失敗時寫進 failureReason
+    let firstError: string | null = null;
+    const noteError = (err: unknown) => {
+      if (firstError || err == null) return;
+      firstError = err instanceof Error ? err.message : String(err);
+    };
     const now = new Date();
 
     // ── LINE multicast 路徑：無需 per-recipient 個人化 ──
@@ -555,6 +575,7 @@ export async function executeBroadcast(
               credentials,
             );
             chunkDelivered = result.success;
+            if (!result.success) noteError(result.error ?? null);
             await prisma.broadcastDeliveryAttempt.updateMany({
               where: { id: attempt.id, tenantId: broadcast.tenantId },
               data: {
@@ -568,6 +589,7 @@ export async function executeBroadcast(
           else failedCount += chunk.length;
         } catch (err) {
           logger.error(`[broadcast:${broadcastId}] multicast chunk send failed (chunk ${i / MULTICAST_CHUNK + 1})`, { err });
+          noteError(err);
           await prisma.broadcastDeliveryAttempt.updateMany({
             where: { id: attempt.id, tenantId: broadcast.tenantId },
             data: { status: 'failed', errorMessage: String(err) },
@@ -617,9 +639,11 @@ export async function executeBroadcast(
             delivered = true;
           } else {
             failedCount++;
+            noteError(result.error ?? null);
           }
-        } catch {
+        } catch (err) {
           failedCount++;
+          noteError(err);
         }
 
         // Create recipient record for tracking replies & cases
@@ -657,14 +681,21 @@ export async function executeBroadcast(
     const finalStatus = failedCount > 0 && failedCount === identities.length ? 'failed' : 'completed';
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { status: finalStatus, successCount, failedCount },
+      data: {
+        status: finalStatus,
+        successCount,
+        failedCount,
+        failureReason: finalStatus === 'failed' ? allRecipientsFailedReason(failedCount, firstError) : null,
+      },
     });
 
     return { total: identities.length, success: successCount, failed: failedCount };
   } catch (err) {
+    // 排程發送沒有人看得到回應：原因要寫進資料庫，後台才看得到（issue #287）
+    const failureReason = err instanceof AppError ? err.message.slice(0, FAILURE_REASON_MAX_LENGTH) : UNEXPECTED_FAILURE_REASON;
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { status: 'failed' },
+      data: { status: 'failed', failureReason },
     });
     throw err;
   }

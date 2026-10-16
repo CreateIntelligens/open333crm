@@ -156,3 +156,68 @@ test('分群條件值空白時不能建立', () => {
   fireEvent.change(valueSelect, { target: { value: 'LINE' } });
   assert.equal(createButton(dialog).disabled, false);
 });
+
+// ─── 失敗原因與重新發送（change broadcast-failure-reason，issue #287） ─────────
+
+test('Failed broadcast in the list：失敗的廣播顯示原因，並有「重新發送」', async () => {
+  data.broadcasts = [{
+    id: 'b-f', name: '週年慶', status: 'failed', targetType: 'tags', totalCount: 0, successCount: 0, failedCount: 0,
+    failureReason: '所選標籤下沒有可在此渠道發送的對象。',
+  }];
+  api.post.mockResolvedValue({ data: { data: {} } });
+  render(<MarketingPage />);
+  assert.ok(screen.queryByText('所選標籤下沒有可在此渠道發送的對象。') !== null, '應顯示失敗原因');
+  fireEvent.click(screen.getByTitle('重新發送'));
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  assert.equal(api.post.mock.calls[0][0], '/marketing/broadcasts/b-f/send');
+});
+
+test('Old failed broadcast without a reason：沒有原因的舊失敗廣播說明沒有記錄', () => {
+  data.broadcasts = [{ id: 'b-o', name: '舊廣播', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0, failureReason: null }];
+  render(<MarketingPage />);
+  assert.ok(screen.queryByText(/沒有記錄失敗原因/) !== null);
+});
+
+test('成功的廣播不顯示失敗原因、也沒有重新發送', () => {
+  data.broadcasts = [{ id: 'b-ok', name: '已完成', status: 'completed', targetType: 'all', totalCount: 2, successCount: 2, failedCount: 0, failureReason: null }];
+  render(<MarketingPage />);
+  assert.ok(screen.queryByText(/沒有記錄失敗原因/) === null);
+  assert.ok(screen.queryByTitle('重新發送') === null);
+});
+
+test('Cancel a failed broadcast：失敗的廣播可以取消', async () => {
+  data.broadcasts = [{
+    id: 'b-f', name: '週年慶', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0,
+    failureReason: '此渠道的憑證無法解密',
+  }];
+  api.post.mockResolvedValue({ data: { data: {} } });
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByTitle('取消'));
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  assert.equal(api.post.mock.calls[0][0], '/marketing/broadcasts/b-f/cancel');
+});
+
+test('Cancel a failed broadcast：確認視窗按取消就不送出', () => {
+  data.broadcasts = [{ id: 'b-f', name: '週年慶', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0, failureReason: 'x' }];
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: '取消廣播' }));
+  assert.equal(api.post.mock.calls.length, 0);
+});
+
+test('Cancel a failed broadcast：請求進行中按鈕停用，重按不會再送；完成後重新載入列表', async () => {
+  data.broadcasts = [{ id: 'b-f', name: '週年慶', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0, failureReason: 'x' }];
+  let resolveCancel: (v: unknown) => void = () => {};
+  api.post.mockImplementation(() => new Promise((r) => { resolveCancel = r; }));
+  mutate.mockClear();
+  render(<MarketingPage />);
+  const button = () => screen.getByRole('button', { name: '取消廣播' }) as HTMLButtonElement;
+  fireEvent.click(button());
+  await waitFor(() => assert.equal(button().disabled, true));
+  assert.equal((screen.getByRole('button', { name: '重新發送廣播' }) as HTMLButtonElement).disabled, true, '取消中也不能重新發送');
+  fireEvent.click(button());
+  assert.equal(api.post.mock.calls.length, 1);
+  resolveCancel({ data: { data: {} } });
+  await waitFor(() => assert.equal(button().disabled, false));
+  assert.ok(mutate.mock.calls.length > 0, '取消後應重新載入列表');
+});

@@ -8,6 +8,7 @@ import {
   Play,
   XCircle,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useChannels } from '@/hooks/useChannels';
@@ -226,6 +227,9 @@ function BroadcastTab() {
   const [saving, setSaving] = useState(false);
   // 正在「立即發送」的廣播：請求期間停用按鈕，避免重按造成重複群發
   const [sendingId, setSendingId] = useState<string | null>(null);
+  // 正在取消的廣播：請求期間停用取消與發送，避免連點重複送出
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const busy = sendingId !== null || cancellingId !== null;
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
   const [tagsError, setTagsError] = useState<string | null>(null);
   const emptyForm = {
@@ -306,9 +310,12 @@ function BroadcastTab() {
     }
   };
 
-  const handleSend = async (id: string) => {
+  const handleSend = async (id: string, resend = false) => {
     if (sendingId) return;
-    if (!confirm('確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。')) return;
+    const question = resend
+      ? '確定要重新發送嗎？請先確認失敗原因已排除。訊息會馬上送給所選受眾，送出後無法收回。'
+      : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
+    if (!confirm(question)) return;
     setSendingId(id);
     try {
       await api.post(`/marketing/broadcasts/${id}/send`);
@@ -321,12 +328,16 @@ function BroadcastTab() {
   };
 
   const handleCancel = async (id: string) => {
+    if (busy) return;
     if (!confirm('確定要取消嗎？')) return;
+    setCancellingId(id);
     try {
       await api.post(`/marketing/broadcasts/${id}/cancel`);
       mutate();
     } catch (err: any) {
       alert(err.response?.data?.error?.message || '取消失敗');
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -373,6 +384,12 @@ function BroadcastTab() {
                   </td>
                   <td className="py-3">
                     <StatusBadge status={b.status} map={broadcastStatusMap} />
+                    {/* 失敗原因：排程發送失敗時原本只寫 log，後台看不到（issue #287） */}
+                    {b.status === 'failed' && (
+                      <p className="mt-1 max-w-[240px] text-xs text-destructive">
+                        {b.failureReason || '沒有記錄失敗原因（此功能上線前失敗的廣播）'}
+                      </p>
+                    )}
                   </td>
                   <td className="py-3 text-muted-foreground">
                     {BROADCAST_TARGET_LABELS[b.targetType] ?? b.targetType}
@@ -406,6 +423,39 @@ function BroadcastTab() {
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleCancel(b.id)} title="取消">
                             <XCircle className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
+                      )}
+                      {b.status === 'failed' && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleSend(b.id, true)}
+                            title="重新發送"
+                            aria-label="重新發送廣播"
+                            disabled={busy}
+                          >
+                            {sendingId === b.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                          </Button>
+                          {/* 不打算重送的失敗廣播可以取消，後端允許從 failed 改成 cancelled */}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleCancel(b.id)}
+                            title="取消"
+                            aria-label="取消廣播"
+                            disabled={busy}
+                          >
+                            {cancellingId === b.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-destructive" />
+                            )}
                           </Button>
                         </>
                       )}
