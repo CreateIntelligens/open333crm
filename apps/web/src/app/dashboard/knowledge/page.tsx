@@ -7,7 +7,7 @@ import { useKnowledge, useCategories, useSources } from '@/hooks/useKnowledge';
 import { useKbFeedbackList, resolveKbFeedback } from '@/hooks/useKbFeedback';
 import { ArticleList } from '@/components/knowledge/ArticleList';
 import { Chip } from '@/components/ui/chip';
-import { AddIcon } from '@/components/icons/figma-icons';
+import { AddIcon, KnowledgeArticleIcon } from '@/components/icons/figma-icons';
 import { ArticleFormDialog } from '@/components/knowledge/ArticleFormDialog';
 import { ImportDialog } from '@/components/knowledge/ImportDialog';
 import { EmbeddingSettings } from '@/components/knowledge/EmbeddingSettings';
@@ -196,7 +196,13 @@ export default function KnowledgePage() {
       {/* 說明文字：Figma 6.1.1 的說明是從人員管理頁複製來的佔位文字，這裡改成知識庫的說明 */}
       <Topbar
         title={pageTab === 'chat' ? 'Chat & Prompt' : pageTab === 'embedding' ? 'Embedding 設定' : pageTab === 'search' ? '語義搜尋' : pageTab === 'feedback' ? '回報調教' : '文章管理'}
-        description={pageTab === 'articles' ? '管理 AI 回覆時參考的知識文章，發布後才會被搜尋到' : undefined}
+        description={{
+          articles: '管理 AI 回覆時參考的知識文章，發布後才會被搜尋到',
+          search: '輸入關鍵字進行語義搜尋，系統會根據向量相似度找到最相關的知識庫文章',
+          feedback: '使用者在 LINE 點「👎 沒幫到我」的回報。點「編輯文章」修正知識庫內容（存檔後自動重新嵌入），處理完點「標為已處理」',
+          embedding: '設定知識庫向量化所使用的 Ollama 服務、模型，以及語意搜尋的 topK 與相似度門檻',
+          chat: '設定 KB 自動回覆與對話摘要使用的 LLM 提供者、模型、生成參數，以及系統提示詞',
+        }[pageTab]}
       >
         {pageTab === 'articles' && (
           <>
@@ -296,84 +302,72 @@ export default function KnowledgePage() {
           </TabsContent>
 
           {/* ── Semantic Search Tab ───────────────────────────── */}
-          <TabsContent value="search">
-            <div className="py-4">
-              <div className="mb-4 flex items-center gap-3">
-                <Input
-                  placeholder="輸入查詢文字，例如：冰箱不冷怎麼辦..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSemanticSearch()}
-                  className="max-w-lg"
-                />
-                <Button onClick={handleSemanticSearch} disabled={searching || !searchQuery.trim()}>
-                  {searching ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Search className="mr-2 h-4 w-4" />
-                  )}
+          <TabsContent value="search" className="mt-0">
+            {/* 版面依 Figma 6.2.1／6.2.2 語意搜尋：搜尋框＋搜尋按鈕，結果為「標題｜匹配度」列表 */}
+            <div className="flex flex-col gap-7 pb-8">
+              <div className="flex max-w-[646px] items-center gap-4">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
+                  <Input
+                    placeholder="輸入查詢文字，例：冰箱不冷怎麼辦"
+                    aria-label="查詢文字"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSemanticSearch()}
+                    className="h-11 bg-muted pl-10"
+                  />
+                </div>
+                <Button size="lg" className="w-[98px]" onClick={handleSemanticSearch} disabled={searching || !searchQuery.trim()} loading={searching}>
                   搜尋
                 </Button>
               </div>
 
               {searchError && (
-                <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                <div role="alert" className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-destructive">
                   {searchError}
                 </div>
               )}
 
               {searchResults.length > 0 && (
-                <div className="space-y-3">
+                <div role="table" aria-label="搜尋結果" className="overflow-hidden rounded-lg border border-border">
+                  <div role="row" className="flex items-center gap-4 border-b border-border bg-muted px-5 py-2 text-sm font-medium leading-7 text-muted-foreground">
+                    <span role="columnheader" className="flex-1">標題</span>
+                    <span role="columnheader" className="w-[122px]">匹配度</span>
+                  </div>
                   {searchResults.map((r: any) => (
-                    <div
-                      key={r.id}
-                      className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Brain className="h-4 w-4 text-success" />
-                        <h3 className="text-sm font-medium">{r.title}</h3>
-                        <Badge variant="secondary" className="ml-auto text-xs">
+                    <div key={r.id} role="row" className="flex items-start gap-4 border-b border-border bg-background px-5 py-4 last:border-b-0">
+                      <span role="cell" className="flex min-w-0 flex-1 items-start gap-3">
+                        <KnowledgeArticleIcon className="h-5 w-5 flex-none" />
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="truncate text-sm font-semibold text-foreground">{r.title}</span>
+                          {r.summary && <span className="line-clamp-2 text-xs leading-5 text-muted-foreground">{r.summary}</span>}
+                          <span className="mt-1 flex flex-wrap items-center gap-2">
+                            {r.category && <Badge variant="outline">{r.category}</Badge>}
+                            {r.tags?.slice(0, 3).map((tag: string) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                          </span>
+                        </span>
+                      </span>
+                      <span role="cell" className="w-[122px]">
+                        {/* Figma「Tag / Custom」實心膠囊 */}
+                        <span className="inline-flex h-6 items-center rounded-full bg-primary px-4 text-xs font-medium tabular-nums text-white">
                           {(r.similarity * 100).toFixed(1)}% 匹配
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{r.summary}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {r.category}
-                        </Badge>
-                        {r.tags?.slice(0, 3).map((tag: string) => (
-                          <Badge key={tag} variant="secondary" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
+                        </span>
+                      </span>
                     </div>
                   ))}
                 </div>
               )}
 
               {!searching && searchResults.length === 0 && searchQuery && (
-                <p className="text-center text-sm text-muted-foreground py-8">
-                  沒有找到相關文章，請嘗試不同的查詢詞
-                </p>
-              )}
-
-              {!searching && !searchQuery && (
-                <p className="text-center text-sm text-muted-foreground py-8">
-                  輸入關鍵字進行語義搜尋，系統會根據向量相似度找到最相關的知識庫文章
-                </p>
+                <p className="py-8 text-center text-sm text-muted-foreground">沒有找到相關文章，請嘗試不同的查詢詞</p>
               )}
             </div>
           </TabsContent>
 
           {/* ── 回報調教 Tab ──────────────────────────────────── */}
-          <TabsContent value="feedback" className="flex h-[calc(100vh-130px)] flex-col">
-            <div className="border-b py-3 shrink-0">
-              <p className="text-sm text-muted-foreground">
-                使用者在 LINE 點「👎 沒幫到我」的回報。點「編輯文章」修正知識庫內容（存檔後自動重新嵌入），處理完點「標為已處理」。
-              </p>
-            </div>
-            <div className="flex-1 min-h-0 overflow-auto py-2">
+          <TabsContent value="feedback" className="mt-0 flex flex-col pb-8">
+            {/* 說明文字移到頁面標題列 */}
+            <div>
               {feedbackLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -385,7 +379,7 @@ export default function KnowledgePage() {
               ) : (
                 <div className="space-y-3">
                   {feedback.map((f) => (
-                    <div key={f.id} className="rounded-lg border p-4">
+                    <div key={f.id} className="rounded-lg border border-border bg-background p-4">
                       <div className="flex items-start gap-2">
                         <ThumbsDown className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                         <div className="min-w-0 flex-1">
@@ -442,15 +436,15 @@ export default function KnowledgePage() {
           </TabsContent>
 
           {/* ── Embedding Settings Tab ────────────────────────── */}
-          <TabsContent value="embedding">
-            <div className="h-[calc(100vh-180px)] overflow-y-auto py-4 pr-2">
+          <TabsContent value="embedding" className="mt-0">
+            <div className="pb-8">
               <EmbeddingSettings />
             </div>
           </TabsContent>
 
           {/* ── Chat & Prompt Settings Tab ────────────────────── */}
-          <TabsContent value="chat">
-            <div className="h-[calc(100vh-180px)] overflow-y-auto py-4 pr-2">
+          <TabsContent value="chat" className="mt-0">
+            <div className="pb-8">
               <ChatPromptSettings />
             </div>
           </TabsContent>

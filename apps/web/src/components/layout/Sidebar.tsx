@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, CreditCard, X } from 'lucide-react';
+import { AlertTriangle, CreditCard } from 'lucide-react';
 import {
   AutomationIcon, ChannelsIcon, ContactsIcon, InboxIcon, KnowledgeIcon, LinkIcon, LogoutIcon,
   MarketingIcon, PortalIcon, ReportIcon, SettingIcon, WorkCaseIcon,
@@ -39,7 +39,7 @@ interface RailItem {
 const RAIL: RailItem[] = [
   { id: 'inbox', label: '收件匣', href: '/dashboard/inbox', icon: InboxIcon },
   { id: 'cases', label: '工單', href: '/dashboard/cases', icon: WorkCaseIcon },
-  { id: 'contacts', label: '聯絡人', href: '/dashboard/contacts', icon: ContactsIcon },
+  { id: 'contacts', label: '聯繫人', href: '/dashboard/contacts', icon: ContactsIcon },
   { id: 'automation', label: '自動化', href: '/dashboard/automation', perm: 'automation.view', icon: AutomationIcon },
   {
     id: 'knowledge', label: '知識庫', href: '/dashboard/knowledge', perm: 'knowledge.view', icon: KnowledgeIcon,
@@ -186,18 +186,93 @@ export function useNavTrail(): NavTrail {
   };
 }
 
-// ─── 左側圖示欄（桌機；依 Figma Sidebar：寬 66、上內距 12、項目間距 12、項目內距 8、圓角 8） ──
+// ─── 版面寬度規則 ────────────────────────────────────────────
+// 圖示欄永遠顯示；子選單只在寬度 ≥ 1024px（Tailwind lg）時常駐，
+// 較窄時收起，點有子頁的圖示會從圖示欄旁彈出子選單。要調整切換點只改這裡和下方 SectionNav 的 lg: class。
+const SUBMENU_QUERY = '(min-width: 1024px)';
+
+function useWideScreen() {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(SUBMENU_QUERY);
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return wide;
+}
+
+// ─── 子選單內容（常駐的 SectionNav 與彈出的子選單共用） ─────────
+
+function SectionLinks({ item, current, onNavigate }: { item: RailItem; current?: string; onNavigate?: () => void }) {
+  return (
+    <>
+      <p className="px-2 text-xl font-semibold leading-6 text-foreground">{item.label}</p>
+      {item.sections?.map((group, i) => (
+        <div key={i} className="flex flex-col gap-2">
+          {group.label && <p className="px-3 text-xs text-muted-foreground">{group.label}</p>}
+          {group.items.map((link) => (
+            <Link
+              key={link.id}
+              href={link.href}
+              onClick={onNavigate}
+              aria-current={link.id === current ? 'page' : undefined}
+              className={cn(
+                'flex items-center rounded-md px-3 py-2 text-sm font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                link.id === current ? 'bg-primary-hover text-white' : 'text-tertiary-foreground hover:bg-black/5 hover:text-foreground',
+              )}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+// ─── 左側圖示欄（依 Figma Sidebar：寬 66、上內距 12、項目間距 12、項目內距 8、圓角 8） ──
 
 export function Sidebar() {
   const rail = useVisibleRail();
   const active = useActiveItem(rail);
+  const pathname = usePathname();
+  const wide = useWideScreen();
   const { logout, permissionsError, reloadPermissions } = useAuth();
+  // 窄螢幕時彈出的子選單（記住是哪一區）
+  const [flyoutId, setFlyoutId] = useState<string | null>(null);
+  const flyoutRef = useRef<HTMLDivElement>(null);
+  const flyout = rail.find((i) => i.id === flyoutId);
+
+  // 換頁、變寬螢幕時收起彈出選單
+  useEffect(() => { setFlyoutId(null); }, [pathname, wide]);
+
+  // 點外面或按 Esc 關閉
+  useEffect(() => {
+    if (!flyoutId) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (flyoutRef.current?.contains(target) || target.closest('[data-rail-trigger]')) return;
+      setFlyoutId(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFlyoutId(null); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [flyoutId]);
+
+  const itemCls = (isActive: boolean) =>
+    cn(
+      'flex h-9 w-9 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      isActive
+        ? 'bg-primary-hover text-white [--icon-cutout:hsl(var(--primary-hover))]'
+        : 'text-tertiary-foreground hover:bg-black/5 [--icon-cutout:hsl(var(--shell))]',
+    );
 
   return (
-    <nav
-      aria-label="主要導覽"
-      className="hidden w-[66px] flex-none flex-col items-center bg-gradient-to-b from-shell from-75% to-shell-end pt-3 lg:flex"
-    >
+    <nav aria-label="主要導覽" className="relative flex w-[66px] flex-none flex-col items-center bg-shell pt-3">
       {permissionsError && (
         <button
           type="button"
@@ -211,23 +286,36 @@ export function Sidebar() {
       )}
       <ul className="flex flex-col items-center gap-3 py-1">
         {rail.map((item) => {
-          const isActive = item.id === active?.id;
+          const isActive = item.id === active?.id || item.id === flyoutId;
+          const collapsible = !wide && Boolean(item.sections?.length);
           return (
             <li key={item.id}>
-              <Link
-                href={entryHref(item)}
-                title={item.label}
-                aria-label={item.label}
-                aria-current={isActive ? 'page' : undefined}
-                className={cn(
-                  'flex h-9 w-9 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  isActive
-                    ? 'bg-primary-hover text-white [--icon-cutout:hsl(var(--primary-hover))]'
-                    : 'text-tertiary-foreground hover:bg-black/5 [--icon-cutout:hsl(var(--shell))]',
-                )}
-              >
-                <RailIcon item={item} className="h-5 w-5" />
-              </Link>
+              {collapsible ? (
+                // 窄螢幕：有子頁的圖示改成按鈕，點了彈出子選單
+                <button
+                  type="button"
+                  data-rail-trigger
+                  onClick={() => setFlyoutId((id) => (id === item.id ? null : item.id))}
+                  title={item.label}
+                  aria-label={item.label}
+                  aria-expanded={flyoutId === item.id}
+                  aria-controls="rail-flyout"
+                  aria-current={item.id === active?.id ? 'page' : undefined}
+                  className={itemCls(isActive)}
+                >
+                  <RailIcon item={item} className="h-5 w-5" />
+                </button>
+              ) : (
+                <Link
+                  href={entryHref(item)}
+                  title={item.label}
+                  aria-label={item.label}
+                  aria-current={item.id === active?.id ? 'page' : undefined}
+                  className={itemCls(isActive)}
+                >
+                  <RailIcon item={item} className="h-5 w-5" />
+                </Link>
+              )}
             </li>
           );
         })}
@@ -243,97 +331,38 @@ export function Sidebar() {
       >
         <LogoutIcon className="h-5 w-5" />
       </button>
+
+      {/* 窄螢幕彈出的子選單：貼在圖示欄右側，蓋在內容上 */}
+      {flyout?.sections?.length ? (
+        <div
+          id="rail-flyout"
+          ref={flyoutRef}
+          role="dialog"
+          aria-label={`${flyout.label}選單`}
+          className="absolute left-full top-0 z-40 flex h-full w-[230px] flex-col gap-3.5 overflow-y-auto border-r border-border bg-shell py-5 pl-2 pr-4 shadow-[4px_0_16px_rgba(0,0,0,0.08)]"
+        >
+          <SectionLinks
+            item={flyout}
+            current={activeLinkId(flyout.sections, pathname, flyout.href)}
+            onNavigate={() => setFlyoutId(null)}
+          />
+        </div>
+      ) : null}
     </nav>
   );
 }
 
-// ─── 區塊子選單（依 Figma Sidebar Menu：寬 230、左 8 右 16 上下 20、標題 20/24 半粗、項目 12×8 圓角 8 間距 8） ──
+// ─── 區塊子選單（寬螢幕常駐；依 Figma Sidebar Menu：寬 230、左 8 右 16 上下 20） ──
 
 export function SectionNav() {
   const rail = useVisibleRail();
   const active = useActiveItem(rail);
   const pathname = usePathname();
   if (!active?.sections?.length) return null;
-  const current = activeLinkId(active.sections, pathname, active.href);
 
   return (
     <nav aria-label={`${active.label}選單`} className="hidden w-[230px] flex-none flex-col gap-3.5 overflow-y-auto py-5 pl-2 pr-4 lg:flex">
-      <p className="px-2 text-xl font-semibold leading-6 text-foreground">{active.label}</p>
-      {active.sections.map((group, i) => (
-        <div key={i} className="flex flex-col gap-2">
-          {group.label && <p className="px-3 text-xs text-muted-foreground">{group.label}</p>}
-          {group.items.map((link) => (
-            <Link
-              key={link.id}
-              href={link.href}
-              aria-current={link.id === current ? 'page' : undefined}
-              className={cn(
-                'flex items-center rounded-md px-3 py-2 text-sm font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                link.id === current ? 'bg-primary-hover text-white' : 'text-tertiary-foreground hover:bg-black/5 hover:text-foreground',
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      ))}
+      <SectionLinks item={active} current={activeLinkId(active.sections, pathname, active.href)} />
     </nav>
-  );
-}
-
-// ─── 手機版抽屜選單 ──────────────────────────────────────────
-
-export function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const rail = useVisibleRail();
-  const active = useActiveItem(rail);
-  const pathname = usePathname();
-  const { logout } = useAuth();
-
-  useEffect(() => { onClose(); }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      <button type="button" aria-label="關閉導覽選單" onClick={onClose} className="absolute inset-0 bg-black/30" />
-      <nav aria-label="主要導覽" className="absolute inset-y-0 left-0 flex w-72 flex-col bg-background shadow-xl">
-        <div className="flex h-[50px] items-center justify-between px-4">
-          <span className="text-sm font-medium">Admin Center</span>
-          <button type="button" aria-label="關閉導覽選單" onClick={onClose} className="rounded-md p-2 text-muted-foreground hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <ul className="flex-1 overflow-y-auto px-2 pb-4">
-          {rail.map((item) => {
-            const isActive = item.id === active?.id;
-            const current = isActive && item.sections ? activeLinkId(item.sections, pathname, item.href) : undefined;
-            return (
-              <li key={item.id}>
-                <Link
-                  href={entryHref(item)}
-                  aria-current={isActive && !current ? 'page' : undefined}
-                  className={cn('flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium', isActive ? 'text-primary' : 'text-foreground hover:bg-muted')}
-                >
-                  <RailIcon item={item} className="h-5 w-5" />
-                  {item.label}
-                </Link>
-                {isActive && item.sections?.flatMap((g) => g.items).map((link) => (
-                  <Link
-                    key={link.id}
-                    href={link.href}
-                    aria-current={link.id === current ? 'page' : undefined}
-                    className={cn('ml-9 flex h-9 items-center rounded-md px-3 text-sm', link.id === current ? 'bg-primary-subtle font-medium text-primary' : 'text-muted-foreground hover:bg-muted')}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </li>
-            );
-          })}
-        </ul>
-        <button type="button" onClick={logout} className="m-2 flex h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted">
-          <LogoutIcon className="h-5 w-5" /> 登出
-        </button>
-      </nav>
-    </div>
   );
 }

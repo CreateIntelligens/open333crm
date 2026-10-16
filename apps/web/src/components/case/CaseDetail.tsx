@@ -12,11 +12,10 @@ import {
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { CaseStatusBadge } from './CaseStatusBadge';
+import { CasePriorityBadge } from './CasePriorityBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
 import { TagManager } from '@/components/contact/TagManager';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -53,6 +52,8 @@ const PRIORITY_OPTIONS = [
 const CATEGORY_OPTIONS = [...CASE_CATEGORY_OPTIONS];
 
 interface CaseDetailProps {
+  /** header＝標題區、main＝左側主要內容、side＝右側欄（預設） */
+  section?: 'header' | 'main' | 'side';
   caseData: {
     id: string;
     title: string;
@@ -93,7 +94,7 @@ const CHANNEL_TYPE_LABELS: Record<string, string> = {
   API: 'API',
 };
 
-export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
+export function CaseDetail({ caseData, onRefresh, section = 'side' }: CaseDetailProps) {
   const [agents, setAgents] = useState<Array<{ id: string; name: string; team?: { id: string; name: string } | null }>>([]);
   const [saving, setSaving] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -180,14 +181,19 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
 
   const contactDisplayName = caseData.contact?.displayName || caseData.contact?.name || '未知';
 
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0 mr-3">
+  // 版面依 Claude Design「工單詳情」：上方標題區（header）、左側主要內容（main：SLA、案件說明、關聯對話）、
+  // 右側欄（side：案件屬性、案件標籤、聯繫人、時間戳記）。頁面用 section 把三塊放到對應位置；依 Figma 微調
+  if (section === 'header') {
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <CasePriorityBadge priority={caseData.priority} />
+          <CaseStatusBadge status={caseData.status} />
+          <span className="font-mono text-xs text-muted-foreground">#{caseData.id.slice(0, 8)}</span>
+        </div>
             {editingTitle ? (
               <input
-                className="w-full text-xl font-semibold border-b border-primary bg-transparent outline-none"
+                className="w-full text-2xl font-bold border-b border-primary bg-transparent outline-none"
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value.slice(0, 100))}
                 onBlur={handleTitleBlur}
@@ -196,111 +202,26 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
                 maxLength={100}
               />
             ) : (
-              <CardTitle
-                className="text-xl cursor-pointer hover:text-primary transition-colors"
+              <h1
+                className="cursor-pointer text-2xl font-bold leading-8 text-foreground transition-colors hover:text-primary"
                 onClick={() => { setTitleDraft(caseData.title); setEditingTitle(true); }}
                 title="點擊編輯標題"
               >
                 {caseData.title}
-              </CardTitle>
+              </h1>
             )}
-            <p className="mt-1 text-sm text-muted-foreground font-mono">
-              #{caseData.id.slice(0, 8)}
-            </p>
-          </div>
-          <CaseStatusBadge status={caseData.status} />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {/* Description */}
-        {caseData.description && (
-          <div>
-            <h4 className="mb-1 text-sm font-medium text-muted-foreground">描述</h4>
-            <p className="text-sm">{caseData.description}</p>
-          </div>
-        )}
 
-        <Separator />
+        <p className="text-sm text-muted-foreground">
+          建立於 {format(new Date(caseData.createdAt), 'yyyy/MM/dd HH:mm')} · 最後更新 {format(new Date(caseData.updatedAt), 'yyyy/MM/dd HH:mm')}
+        </p>
+      </div>
+    );
+  }
 
-        {/* Status Dropdown */}
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">狀態</h4>
-          <Select
-            value={caseData.status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            disabled={saving}
-            options={statusOptions}
-            className="max-w-xs"
-          />
-        </div>
-
-        <Separator />
-
-        {/* Priority Dropdown */}
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">優先級</h4>
-          <Select
-            value={caseData.priority}
-            onChange={(e) => handlePatch({ priority: e.target.value })}
-            disabled={saving}
-            options={PRIORITY_OPTIONS}
-            className="max-w-xs"
-          />
-        </div>
-
-        <Separator />
-
-        {/* Category Dropdown */}
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">分類</h4>
-          <Select
-            value={caseData.category || ''}
-            onChange={(e) => handlePatch({ category: e.target.value })}
-            disabled={saving}
-            options={CATEGORY_OPTIONS}
-            className="max-w-xs"
-          />
-          {caseData.category && (
-            <p className="mt-1 text-[11px] text-muted-foreground">🤖 AI 自動分類</p>
-          )}
-        </div>
-
-        <Separator />
-
-        {/* Assignee */}
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">負責人</h4>
-          <Select
-            value={caseData.assignee?.id || ''}
-            onChange={(e) => handleAssign(e.target.value)}
-            disabled={saving}
-            options={[
-              { value: '', label: '未指派' },
-              ...agents.map((a) => ({ value: a.id, label: a.name })),
-            ]}
-            className="max-w-xs"
-          />
-        </div>
-
-        <Separator />
-
-        {/* Team */}
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">團隊</h4>
-          <Select
-            value={caseData.team?.id || ''}
-            onChange={(e) => handlePatch({ teamId: e.target.value || null })}
-            disabled={saving}
-            options={[
-              { value: '', label: '未指定' },
-              ...teams.map((t) => ({ value: t.id, label: t.name })),
-            ]}
-            className="max-w-xs"
-          />
-        </div>
-
-        <Separator />
-
+  if (section === 'main') {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5 bg-muted">
         {/* SLA Block */}
         <div>
           <h4 className="mb-2 text-sm font-medium text-muted-foreground flex items-center gap-1">
@@ -332,14 +253,16 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             </div>
           </div>
         </div>
-
-        <Separator />
-
+        </div>
+        <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
+          <h3 className="text-sm font-semibold text-foreground">案件說明</h3>
+          <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{caseData.description || '（沒有說明）'}</p>
+        </div>
         {/* Linked Conversation */}
         {caseData.conversationId && (
           <>
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-5">
+              <h4 className="text-sm font-semibold text-foreground">
                 關聯對話
               </h4>
               <Link
@@ -347,15 +270,95 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
                 className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
               >
                 <MessageSquare className="h-4 w-4" />
-                查看對話
+                開啟對話 →
               </Link>
             </div>
-            <Separator />
           </>
         )}
+      </div>
+    );
+  }
 
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
+        <h3 className="text-sm font-semibold text-foreground">案件屬性</h3>
+        {/* Status Dropdown */}
         <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">案件標籤</h4>
+          <h4 className="mb-2 text-sm font-medium text-muted-foreground">狀態</h4>
+          <Select
+            value={caseData.status}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            disabled={saving}
+            options={statusOptions}
+            className="max-w-xs"
+          />
+        </div>
+
+
+        {/* Priority Dropdown */}
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-muted-foreground">優先級</h4>
+          <Select
+            value={caseData.priority}
+            onChange={(e) => handlePatch({ priority: e.target.value })}
+            disabled={saving}
+            options={PRIORITY_OPTIONS}
+            className="max-w-xs"
+          />
+        </div>
+
+
+        {/* Category Dropdown */}
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-muted-foreground">分類</h4>
+          <Select
+            value={caseData.category || ''}
+            onChange={(e) => handlePatch({ category: e.target.value })}
+            disabled={saving}
+            options={CATEGORY_OPTIONS}
+            className="max-w-xs"
+          />
+          {caseData.category && (
+            <p className="mt-1 text-[11px] text-muted-foreground">🤖 AI 自動分類</p>
+          )}
+        </div>
+
+
+        {/* Assignee */}
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-muted-foreground">負責人</h4>
+          <Select
+            value={caseData.assignee?.id || ''}
+            onChange={(e) => handleAssign(e.target.value)}
+            disabled={saving}
+            options={[
+              { value: '', label: '未指派' },
+              ...agents.map((a) => ({ value: a.id, label: a.name })),
+            ]}
+            className="max-w-xs"
+          />
+        </div>
+
+
+        {/* Team */}
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-muted-foreground">團隊</h4>
+          <Select
+            value={caseData.team?.id || ''}
+            onChange={(e) => handlePatch({ teamId: e.target.value || null })}
+            disabled={saving}
+            options={[
+              { value: '', label: '未指定' },
+              ...teams.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+            className="max-w-xs"
+          />
+        </div>
+      </div>
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
+        <div>
+          <h4 className="text-sm font-semibold text-foreground">案件標籤</h4>
           <TagManager
             targetType="CASE"
             targetId={caseData.id}
@@ -369,13 +372,12 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             onUpdate={onRefresh}
           />
         </div>
-        <Separator />
-
+      </div>
         {/* Contact Info */}
         {caseData.contact && (
           <>
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">聯絡人</h4>
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-5">
+              <h4 className="text-sm font-semibold text-foreground">聯繫人</h4>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
                 <Link
@@ -421,12 +423,12 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
                 </div>
               )}
             </div>
-            <Separator />
           </>
         )}
-
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-5">
+        <h3 className="text-sm font-semibold text-foreground">時間戳記</h3>
         {/* Timestamps */}
-        <div className="flex gap-6 text-xs text-muted-foreground">
+        <div className="flex flex-col gap-2 text-sm text-muted-foreground">
           <div>
             <span className="font-medium">建立時間：</span>{' '}
             {format(new Date(caseData.createdAt), 'MMM d, yyyy HH:mm')}
@@ -436,7 +438,7 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
             {format(new Date(caseData.updatedAt), 'MMM d, yyyy HH:mm')}
           </div>
         </div>
-      </CardContent>
+      </div>
 
       {/* Close Confirmation Dialog */}
       <Dialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
@@ -457,6 +459,6 @@ export function CaseDetail({ caseData, onRefresh }: CaseDetailProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

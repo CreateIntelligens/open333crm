@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { SWRConfig } from 'swr';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { SocketProvider } from '@/providers/SocketProvider';
-import { Sidebar, SectionNav, MobileNav } from '@/components/layout/Sidebar';
+import { Sidebar, SectionNav } from '@/components/layout/Sidebar';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { SimulatorPanel } from '@/components/shared/SimulatorPanel';
 import { WebTalkGlobal } from '@/components/webtalk/WebTalkGlobal';
@@ -16,7 +16,6 @@ import { PAGE_DIALOG_ROOT_ID } from '@/components/ui/page-dialog';
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { agent, isLoading } = useAuth();
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !agent) {
@@ -38,9 +37,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SocketProvider>
-      {/* 外框依 Figma：#F5F5F5 底（shell token），內容區白底、左上圓角 24、淡陰影 */}
+      {/* 外框：#EEF1F5 底（shell token，設計師決定改為偏藍灰，與文字、框線色調一致），內容區白底、左上圓角 24、淡陰影 */}
       <div className="flex h-screen flex-col overflow-hidden bg-shell">
-        <AppHeader onOpenMenu={() => setMenuOpen(true)} />
+        <AppHeader />
         <div className="flex min-h-0 flex-1">
           <Sidebar />
           <SectionNav />
@@ -51,7 +50,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
-      <MobileNav open={menuOpen} onClose={() => setMenuOpen(false)} />
       <SimulatorPanel />
       <WebTalkGlobal />
       <WebMcpProvider />

@@ -161,19 +161,14 @@ export function EmbeddingSettings() {
   );
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h2 className="text-lg font-semibold">AI / 向量設定</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          設定知識庫向量化所使用的 Ollama 服務、模型，以及語意搜尋的 topK 與相似度門檻。
-        </p>
-      </div>
+    // 版面依 Figma 6.4／6.5：標題與說明在頁面標題列，內容是一張張寬 760 的設定卡片（圓角 16、內距 20、間距 16）
+    <div className="flex max-w-[760px] flex-col gap-6">
 
       {/* ─── 服務狀態 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold">Ollama 服務狀態</h3>
+            <h3 className="text-lg font-semibold leading-6 text-foreground">Ollama 服務狀態</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               檢查 Ollama 是否可達，以及目前選擇的 embedding 模型是否已安裝。
             </p>
@@ -205,8 +200,8 @@ export function EmbeddingSettings() {
       </section>
 
       {/* ─── 模型設定 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">模型設定</h3>
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <h3 className="text-lg font-semibold leading-6 text-foreground">模型設定</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           向量維度固定為 <code className="rounded bg-muted px-1 py-0.5">{vectorDim}</code>
           ，請選擇相同維度的模型（例：bge-m3、multilingual-e5-large）。切換模型後現有向量會失效，需要重新嵌入。
@@ -272,8 +267,8 @@ export function EmbeddingSettings() {
       </section>
 
       {/* ─── 搜尋參數 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">語意搜尋參數</h3>
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <h3 className="text-lg font-semibold leading-6 text-foreground">語意搜尋參數</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           影響 KB 自動回覆與 RAG 檢索行為。topK 越大召回越多、threshold 越低越寬鬆。
         </p>
@@ -291,7 +286,7 @@ export function EmbeddingSettings() {
               step={1}
               value={settings.topK}
               onChange={(e) => setSettings({ ...settings, topK: Number(e.target.value) })}
-              className="w-full accent-primary"
+              className="accent-primary w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>1</span>
@@ -311,7 +306,7 @@ export function EmbeddingSettings() {
               step={0.05}
               value={settings.threshold}
               onChange={(e) => setSettings({ ...settings, threshold: Number(e.target.value) })}
-              className="w-full accent-primary"
+              className="accent-primary w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>0.00 寬鬆</span>
@@ -329,8 +324,8 @@ export function EmbeddingSettings() {
       </section>
 
       {/* ─── 批次重新嵌入 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">批次重新嵌入</h3>
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <h3 className="text-lg font-semibold leading-6 text-foreground">批次重新嵌入</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           重新計算所有「已發布」文章的向量。切換模型後請執行這個。
         </p>

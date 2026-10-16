@@ -212,19 +212,14 @@ export function ChatPromptSettings() {
     : null;
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h2 className="text-lg font-semibold">Chat & RAG 設定</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          設定 KB 自動回覆與對話摘要使用的 LLM 提供者、模型、生成參數，以及系統提示詞。
-        </p>
-      </div>
+    // 版面依 Figma 6.4／6.5：標題與說明在頁面標題列，內容是一張張寬 760 的設定卡片（圓角 16、內距 20、間距 16）
+    <div className="flex max-w-[760px] flex-col gap-6">
 
       {/* ─── 服務狀態 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold">服務狀態</h3>
+            <h3 className="text-lg font-semibold leading-6 text-foreground">服務狀態</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               檢查所選 Provider 是否可達，以及目前模型是否可用。
             </p>
@@ -253,8 +248,8 @@ export function ChatPromptSettings() {
       </section>
 
       {/* ─── Provider / 模型 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">Provider 與模型</h3>
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <h3 className="text-lg font-semibold leading-6 text-foreground">Provider 與模型</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           切換 Provider 後請接著選擇對應模型。Gemini 可自備 API key（BYOK），或留空使用平台提供的 key。
         </p>
@@ -394,8 +389,8 @@ export function ChatPromptSettings() {
       </section>
 
       {/* ─── 生成參數 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">生成參數</h3>
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <h3 className="text-lg font-semibold leading-6 text-foreground">生成參數</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           temperature 控制創意程度（越高越發散），max tokens 控制回覆長度上限。
         </p>
@@ -413,7 +408,7 @@ export function ChatPromptSettings() {
               step={0.05}
               value={settings.temperature}
               onChange={(e) => setSettings({ ...settings, temperature: Number(e.target.value) })}
-              className="w-full accent-primary"
+              className="accent-primary w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>0.00 嚴謹</span>
@@ -434,7 +429,7 @@ export function ChatPromptSettings() {
               step={50}
               value={settings.maxTokens}
               onChange={(e) => setSettings({ ...settings, maxTokens: Number(e.target.value) })}
-              className="w-full accent-primary"
+              className="accent-primary w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>50</span>
@@ -452,10 +447,10 @@ export function ChatPromptSettings() {
       </section>
 
       {/* ─── System Prompt：客服回覆 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold">客服回覆 System Prompt</h3>
+            <h3 className="text-lg font-semibold leading-6 text-foreground">客服回覆 System Prompt</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               用於 KB 自動回覆、Suggest Reply、自動化規則的 LLM Reply 動作。留空表示使用預設提示詞。
             </p>
@@ -486,10 +481,10 @@ export function ChatPromptSettings() {
       </section>
 
       {/* ─── System Prompt：對話摘要 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold">對話摘要 System Prompt</h3>
+            <h3 className="text-lg font-semibold leading-6 text-foreground">對話摘要 System Prompt</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               用於 「AI 摘要對話」功能。留空表示使用預設提示詞。
             </p>
@@ -522,10 +517,10 @@ export function ChatPromptSettings() {
       </section>
 
       {/* ─── System Prompt：型號守門引導 ────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold">型號引導 System Prompt</h3>
+            <h3 className="text-lg font-semibold leading-6 text-foreground">型號引導 System Prompt</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               當客戶提到「知識庫查不到的產品型號」（可能打錯/記錯）時，Bot 會用此提示詞引導客戶
               從相近型號清單確認正確型號，而不是拿相似型號的資料硬答。留空表示使用預設提示詞。
@@ -577,8 +572,8 @@ export function ChatPromptSettings() {
       </section>
 
       {/* ─── 多輪追問（Clarify）────────────────────────── */}
-      <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">多輪追問（Clarify）</h3>
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">
+        <h3 className="text-lg font-semibold leading-6 text-foreground">多輪追問（Clarify）</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           當客戶訊息資訊不足、知識庫信心低於門檻時，Bot 會用此提示詞反問一個澄清問題，
           而不是直接回覆或交給真人。達到追問次數上限後會自動轉接客服。
@@ -599,7 +594,7 @@ export function ChatPromptSettings() {
               onChange={(e) =>
                 setSettings({ ...settings, clarifyThreshold: Number(e.target.value) })
               }
-              className="w-full accent-primary"
+              className="accent-primary w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>0.00（總是追問）</span>
@@ -622,7 +617,7 @@ export function ChatPromptSettings() {
               onChange={(e) =>
                 setSettings({ ...settings, clarifyMaxAttempts: Number(e.target.value) })
               }
-              className="w-full accent-primary"
+              className="accent-primary w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>0</span>

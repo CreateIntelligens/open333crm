@@ -103,3 +103,27 @@ test('停在區塊首頁時，子選單第一項呈現選中', () => {
   assert.equal(screen.getByRole('link', { name: '語義搜尋' }).getAttribute('aria-current'), null);
   assert.equal(screen.queryAllByRole('link', { name: '知識庫' }).length, 0, '子選單標題不是連結');
 });
+
+test('窄螢幕：圖示欄常駐，點有子頁的圖示彈出子選單，選了就收起', () => {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: false, media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {},
+    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  try {
+    auth.permissions = new Set(['knowledge.view']);
+    render(<Sidebar />);
+    const trigger = screen.getByRole('button', { name: '知識庫' });
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(screen.queryAllByRole('link', { name: '文章管理' }).length, 0, '對照組：還沒點之前沒有子選單');
+    fireEvent.click(trigger);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    const link = screen.getByRole('link', { name: '文章管理' });
+    fireEvent.click(link);
+    assert.equal(screen.queryAllByRole('link', { name: '文章管理' }).length, 0, '選了之後子選單收起');
+    assert.equal(screen.getByRole('link', { name: '收件匣' }).getAttribute('href'), '/dashboard/inbox', '沒有子頁的圖示維持連結');
+  } finally {
+    window.matchMedia = original;
+  }
+});

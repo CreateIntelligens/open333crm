@@ -78,13 +78,13 @@ description: open333crm 前端（apps/web）的 UI 設計系統與版面規範�
 ```
 頂部列 AppHeader（高 51，bg-shell）
 ├─ 左側圖示欄 Sidebar（寬 66，bg-shell）
-├─ 子選單 SectionNav（寬 230，只有該區有子頁才出現）
+├─ 子選單 SectionNav（寬 230，只有該區有子頁、且螢幕 ≥ 1024px 才常駐）
 └─ 內容區 main（白底、左上 rounded-3xl、淡陰影）
      ├─ .app-content：頁面本身（自己捲動）
      └─ #page-dialog-root：下一頁式表單蓋在這裡
 ```
 
-**選單資料只有一份**：`components/layout/Sidebar.tsx` 的 `RAIL` 陣列。圖示欄、子選單、手機版抽屜、頁面麵包屑都讀它。
+**選單資料只有一份**：`components/layout/Sidebar.tsx` 的 `RAIL` 陣列。圖示欄、子選單、彈出子選單、頁面麵包屑都讀它。
 
 新增選單項目：
 - 新大項：在 `RAIL` 加一筆 `{ id, label, href, perm?, icon, sections? }`，`icon` 用 `components/icons/figma-icons.tsx` 的 Figma 圖示
@@ -97,6 +97,12 @@ description: open333crm 前端（apps/web）的 UI 設計系統與版面規範�
 - 子選單最上面的區塊名稱（例「知識庫」）**只是標題，不可點擊**
 - 網址停在區塊首頁（例 `/dashboard/knowledge`）時，視為第一個子頁，第一項一樣呈現選中
 - 所以 `sections` 的**第一項就是該區塊的入口頁**，調整順序時要注意
+
+**寬度規則（全域）：**
+- **左側圖示欄永遠顯示**，不會因為視窗變窄而消失（沒有手機版抽屜選單）
+- **子選單只在寬度 ≥ 1024px 時常駐**；較窄時收起，只剩圖示欄
+- 收起時，點有子頁的圖示會**從圖示欄右側彈出子選單**（不直接換頁），選了子頁就收起；點外面或按 Esc 也會收起
+- 切換點定義在 `Sidebar.tsx` 的 `SUBMENU_QUERY` 和 `SectionNav` 的 `lg:flex`，兩處要一起改
 
 選中樣式：圖示欄與子選單選中都是 `bg-primary-hover text-white`；未選中 `text-tertiary-foreground`。
 

@@ -2,30 +2,22 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { BookOpen, Bot, LogOut, Menu, User } from 'lucide-react';
+import { BookOpen, Bot, LogOut, User } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { NotificationBell } from '@/components/notification/NotificationBell';
 
 // 依 Figma 頂部列：高 51、右內距 24；logo 區寬 66（與左側圖示欄對齊）、logo 26px；右側鈴鐺與頭像各 24px
-export function AppHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
+export function AppHeader() {
   const { agent, logout } = useAuth();
 
   return (
     <header className="flex h-[51px] flex-none items-center justify-between bg-shell pr-6">
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="開啟導覽選單"
-          onClick={onOpenMenu}
-          className="ml-3 rounded-md p-2 text-foreground hover:bg-black/5 lg:hidden"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
         <Link
           href="/dashboard/inbox"
           aria-label="回到收件匣"
-          className="hidden h-[51px] w-[66px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:flex"
+          className="flex h-[51px] w-[66px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- 26px 靜態 logo，不需要 next/image 最佳化 */}
           <img src="/brand/logo-333.png" alt="333" width={26} height={26} className="h-[26px] w-[26px]" />

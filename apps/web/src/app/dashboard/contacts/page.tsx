@@ -30,31 +30,24 @@ export default function ContactsPage() {
     setPage(1);
   };
 
+  // 版面依 Figma 4.1.1 聯繫人
   return (
     <div className="flex h-full flex-col">
-      <Topbar title="聯絡人">
-        <SearchInput
-          placeholder="搜尋聯絡人..."
-          onSearch={handleSearch}
-          className="w-64"
-        />
+      {/* 說明文字：Figma 4.1.1 是從人員管理頁複製來的佔位文字，這裡改成聯繫人的說明 */}
+      <Topbar title="聯繫人" description="所有從各渠道傳訊息進來的客人，跨渠道的同一位客人會合併成一筆">
+        <SearchInput placeholder="搜尋聯繫人" onSearch={handleSearch} className="w-[337px]" />
       </Topbar>
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto px-8 pb-8">
         <ContactList contacts={contacts} isLoading={isLoading} />
-      </div>
-      {total > 0 ? (
-        <div className="flex flex-col gap-3 border-t bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-muted-foreground">
-            第 {rangeStart}-{rangeEnd} / 共 {total} 筆
+        {total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-7 pl-3 pt-5">
+            <span className="text-base font-medium text-muted-foreground">
+              顯示 {rangeStart}-{rangeEnd} 筆，共 {total} 筆
+            </span>
+            {totalPages > 1 && <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />}
           </div>
-          <Pagination
-            page={currentPage}
-            totalPages={totalPages}
-            onPageChange={setPage}
-            className="justify-start sm:justify-center"
-          />
-        </div>
-      ) : null}
+        )}
+      </div>
     </div>
   );
 }

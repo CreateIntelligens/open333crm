@@ -3,7 +3,9 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { Loader2, Briefcase, Trash2 } from 'lucide-react';
+import { Loader2, Briefcase } from 'lucide-react';
+import { Avatar } from '@/components/ui/avatar';
+import { DeleteIcon } from '@/components/icons/figma-icons';
 import { CaseStatusBadge } from './CaseStatusBadge';
 import { CasePriorityBadge } from './CasePriorityBadge';
 import { SlaCountdown } from '@/components/shared/SlaCountdown';
@@ -66,103 +68,89 @@ export function CaseList({ cases, isLoading, onDelete, deletingCaseId }: CaseLis
     );
   }
 
+  // 欄位與欄寬依 Claude Design「工單管理」：ID、標題（含優先級色條）、聯繫人、分類、優先級、狀態、負責人、SLA、建立時間、操作
+  const cols = onDelete
+    ? 'grid-cols-[110px_minmax(240px,1.5fr)_140px_110px_100px_110px_130px_150px_120px_90px]'
+    : 'grid-cols-[110px_minmax(240px,1.5fr)_140px_110px_100px_110px_130px_150px_120px]';
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b bg-muted/50 text-left">
-            <th className="w-1" />
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              ID
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              標題
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              聯絡人
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              分類
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              優先級
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              狀態
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              負責人
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              SLA
-            </th>
-            <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-              建立時間
-            </th>
-            {onDelete && (
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-muted-foreground">
-                操作
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {cases.map((c) => (
-            <tr
+    <div role="table" aria-label="工單列表" className="overflow-x-auto rounded-lg border border-border">
+      <div className="min-w-[1360px]">
+        <div role="row" className={`grid ${cols} items-center gap-3 border-b border-border bg-muted px-5 py-2 text-sm font-medium leading-7 text-muted-foreground`}>
+          <span role="columnheader">ID</span>
+          <span role="columnheader">標題</span>
+          <span role="columnheader">聯繫人</span>
+          <span role="columnheader">分類</span>
+          <span role="columnheader">優先級</span>
+          <span role="columnheader">狀態</span>
+          <span role="columnheader">負責人</span>
+          <span role="columnheader">SLA</span>
+          <span role="columnheader">建立時間</span>
+          {onDelete && <span role="columnheader" className="text-right">操作</span>}
+        </div>
+        {cases.map((c) => {
+          const contactName = c.contact?.displayName || c.contact?.name || '';
+          const created = new Date(c.createdAt);
+          const open = () => router.push(`/dashboard/cases/${c.id}`);
+          return (
+            <div
               key={c.id}
-              className="cursor-pointer border-b transition-colors hover:bg-muted/50 relative"
-              onClick={() => router.push(`/dashboard/cases/${c.id}`)}
+              role="row"
+              tabIndex={0}
+              onClick={open}
+              onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+              className={`grid ${cols} cursor-pointer items-center gap-3 border-b border-border bg-background px-5 py-3.5 text-sm transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none`}
             >
-              {/* Priority color bar */}
-              <td className="w-1 p-0">
-                <div className={`h-full w-1 ${PRIORITY_COLORS[c.priority] || 'bg-border'}`} />
-              </td>
-              <td className="px-4 py-3 text-sm font-mono text-muted-foreground">
-                {c.id.slice(0, 8)}
-              </td>
-              <td className="px-4 py-3 text-sm font-medium max-w-[200px] truncate" title={c.title}>
-                {c.title.length > 30 ? `${c.title.slice(0, 30)}…` : c.title}
-              </td>
-              <td className="px-4 py-3 text-sm">
-                {c.contact?.displayName || c.contact?.name || '-'}
-              </td>
-              <td className="px-4 py-3 text-sm">{c.category ? `🤖 ${c.category}` : '-'}</td>
-              <td className="px-4 py-3">
-                <CasePriorityBadge priority={c.priority} />
-              </td>
-              <td className="px-4 py-3">
-                <CaseStatusBadge status={c.status} />
-              </td>
-              <td className="px-4 py-3 text-sm">{c.assignee?.name || '未指派'}</td>
-              <td className="px-4 py-3">
-                <SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} />
-              </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
-                {format(new Date(c.createdAt), 'MMM d, HH:mm')}
-              </td>
+              <span role="cell" className="truncate font-mono text-xs text-muted-foreground" title={c.id}>{c.id.slice(0, 8)}</span>
+              <span role="cell" className="flex min-w-0 items-center gap-2.5">
+                {/* 優先級色條 */}
+                <span className={`h-8 w-1 flex-none rounded-full ${PRIORITY_COLORS[c.priority] || 'bg-border'}`} aria-hidden="true" />
+                <span className="truncate font-semibold text-foreground" title={c.title}>{c.title}</span>
+              </span>
+              <span role="cell" className="flex min-w-0 items-center gap-2">
+                {contactName ? (
+                  <>
+                    <Avatar alt={contactName} size="sm" className="h-6 w-6 text-[11px]" />
+                    <span className="truncate text-foreground">{contactName}</span>
+                  </>
+                ) : <span className="text-muted-foreground">—</span>}
+              </span>
+              <span role="cell" className="truncate text-muted-foreground">{c.category || '—'}</span>
+              <span role="cell"><CasePriorityBadge priority={c.priority} /></span>
+              <span role="cell"><CaseStatusBadge status={c.status} /></span>
+              <span role="cell" className="flex min-w-0 items-center gap-2">
+                {c.assignee?.name ? (
+                  <>
+                    <Avatar alt={c.assignee.name} size="sm" className="h-6 w-6 text-[11px]" />
+                    <span className="truncate text-foreground">{c.assignee.name}</span>
+                  </>
+                ) : <span className="text-muted-foreground">未指派</span>}
+              </span>
+              <span role="cell"><SlaCountdown deadline={c.slaDueAt || c.slaDeadline || null} /></span>
+              <span role="cell" className="flex flex-col text-xs leading-4 tabular-nums">
+                <span className="text-foreground">{format(created, 'yyyy/MM/dd')}</span>
+                <span className="text-muted-foreground">{format(created, 'HH:mm')}</span>
+              </span>
               {onDelete && (
-                <td className="px-4 py-3 text-right">
+                <span role="cell" className="flex justify-end">
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
+                    size="icon-sm"
+                    className="text-destructive"
                     disabled={deletingCaseId === c.id}
                     onClick={(event) => handleDeleteClick(event, c)}
                     aria-label={`刪除工單 ${c.title}`}
+                    title="刪除工單"
                   >
-                    {deletingCaseId === c.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
+                    {deletingCaseId === c.id ? <Loader2 className="animate-spin" /> : <DeleteIcon />}
                   </Button>
-                </td>
+                </span>
               )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
