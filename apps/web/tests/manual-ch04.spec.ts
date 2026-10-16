@@ -29,7 +29,11 @@ async function currentSlaTitles(context: BrowserContext) {
         if (map[t]) n.textContent = (n.textContent || '').replace(t, map[t]);
       }
     };
-    new MutationObserver(() => fix(document.body)).observe(document, { childList: true, subtree: true, characterData: true });
+    const run = () => {
+      if (document.body) fix(document.body);
+    };
+    new MutationObserver(run).observe(document, { childList: true, subtree: true, characterData: true });
+    run();
   });
 }
 
