@@ -71,11 +71,11 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await app.close();
+  // 原本沒有設定列時，刪掉測試的 PUT 建立的那一列
   await withTenant(prisma, T, (tx) =>
-    tx.tenantSettings.updateMany({
-      where: { tenantId: T },
-      data: { gaId: original?.gaId ?? null, metaPixelId: original?.metaPixelId ?? null },
-    }),
+    original
+      ? tx.tenantSettings.updateMany({ where: { tenantId: T }, data: { gaId: original.gaId, metaPixelId: original.metaPixelId } })
+      : tx.tenantSettings.deleteMany({ where: { tenantId: T } }),
   );
   await prisma.tenantAuditLog.deleteMany({ where: { tenantId: T, actorId: agent.id } }).catch(() => {});
   await prisma.agent.deleteMany({ where: { id: { in: [agent.id, plainAgent.id] } } });

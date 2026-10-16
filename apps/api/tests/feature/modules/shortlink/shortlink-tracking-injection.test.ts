@@ -73,9 +73,11 @@ afterAll(async () => {
   await prisma.shortLink.deleteMany({ where: { slug: { in: [slugA, slugLiff, slugB] } } });
   await prisma.channel.deleteMany({ where: { id: lineChannel.id } });
   await prisma.agent.deleteMany({ where: { id: { in: [agentA.id, agentB.id] } } });
+  // 原本沒有設定列的租戶刪掉測試建立的那一列，有的還原兩個 ID
   for (const tenantId of [TENANT_A, TENANT_B]) {
     const o = originals.find((r) => r.tenantId === tenantId);
-    await setTracking(tenantId, { gaId: o?.gaId ?? null, metaPixelId: o?.metaPixelId ?? null });
+    if (o) await prisma.tenantSettings.update({ where: { tenantId }, data: { gaId: o.gaId, metaPixelId: o.metaPixelId } });
+    else await prisma.tenantSettings.deleteMany({ where: { tenantId } });
   }
   await prisma.$disconnect();
 });
