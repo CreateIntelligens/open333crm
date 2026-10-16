@@ -39,3 +39,19 @@ test('平均首次回應在目標內顯示達標', () => {
   const card = firstResponseCard();
   assert.ok(within(card).queryByLabelText('達標') !== null);
 });
+
+test('平均首次回應的目標有單位：目標 15 分內', () => {
+  perf.data = { ...base, avgFirstResponseMinutes: 90 };
+  render(<MyPerformancePage />);
+  const card = firstResponseCard();
+  assert.ok(within(card).queryByText('目標：15 分內') !== null, `實際：${card.textContent}`);
+});
+
+test('沒有資料時只顯示 -，不接單位（不出現「-%」「- / 5」）', () => {
+  perf.data = { ...base, csatAvg: null, slaAchievementRate: null };
+  render(<MyPerformancePage />);
+  for (const label of ['CSAT 分數', 'SLA 達成率']) {
+    const card = screen.getByText(label).parentElement as HTMLElement;
+    assert.ok(within(card).queryByText('-') !== null, `${label} 實際：${card.textContent}`);
+  }
+});

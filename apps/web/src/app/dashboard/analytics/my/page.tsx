@@ -12,12 +12,14 @@ interface MetricCardProps {
   /** 與目標比較用的數值。value 是格式化後的字串（例如「1 時 30 分」）時必須另外給，不可 parseFloat（G11） */
   compareValue?: number | null;
   target?: number;
+  /** 目標的顯示文字。value 已格式化（例如「1 時 30 分」）、unit 留空時用它補上單位，例如「15 分內」 */
+  targetLabel?: string;
   unit?: string;
   higherIsBetter?: boolean;
   isLoading: boolean;
 }
 
-function MetricCard({ label, value, compareValue, target, unit = '', higherIsBetter = true, isLoading }: MetricCardProps) {
+function MetricCard({ label, value, compareValue, target, targetLabel, unit = '', higherIsBetter = true, isLoading }: MetricCardProps) {
   let status: 'ok' | 'warning' | 'na' = 'na';
   const numVal =
     compareValue !== undefined ? compareValue
@@ -40,7 +42,8 @@ function MetricCard({ label, value, compareValue, target, unit = '', higherIsBet
         ) : (
           <div className="mt-1 flex items-center gap-2">
             <p className="text-2xl font-bold">
-              {value ?? '-'}{unit}
+              {/* 沒有資料時只顯示「-」，不接單位（原本會出現「-%」「- / 5」） */}
+              {value == null ? '-' : `${value}${unit}`}
             </p>
             {status === 'ok' && <CheckCircle2 className="h-5 w-5 text-success" aria-label="達標" role="img" />}
             {status === 'warning' && <AlertTriangle className="h-5 w-5 text-warning" aria-label="未達標" role="img" />}
@@ -48,7 +51,7 @@ function MetricCard({ label, value, compareValue, target, unit = '', higherIsBet
         )}
         {target != null && (
           <p className="mt-0.5 text-xs text-muted-foreground">
-            目標: {target}{unit}
+            目標：{targetLabel ?? `${target}${unit}`}
           </p>
         )}
       </CardContent>
@@ -119,6 +122,7 @@ export default function MyPerformancePage() {
             value={data?.avgFirstResponseMinutes != null ? formatMinutes(data.avgFirstResponseMinutes) : null}
             compareValue={data?.avgFirstResponseMinutes ?? null}
             target={15}
+            targetLabel="15 分內"
             unit=""
             higherIsBetter={false}
             isLoading={isLoading}
