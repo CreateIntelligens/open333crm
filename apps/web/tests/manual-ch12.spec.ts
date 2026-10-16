@@ -74,7 +74,9 @@ test('ch12-list 列表與 QR Code', async ({ browser }) => {
   await caption(page, '可以下載 QR Code 圖片印在文宣上', 2400);
   await point(page, page.getByRole('button', { name: '下載' }), 1400);
   await tap(page, page.getByRole('button', { name: '關閉' }));
-  await caption(page, '標題是「-」的多半是廣播自動產生的，別改別刪', 2600);
+  await caption(page, '標題「素材連結（廣播自動建立）」是群發時自動產生的，別改別刪', 2800);
+  const auto = page.getByText('素材連結（廣播自動建立）').first();
+  if (await auto.count()) await point(page, auto, 1600);
   await stopRecording(rec);
   poster('ch12-list', 2);
 });

@@ -220,8 +220,8 @@ test('ch10-richmenu-new', async ({ browser }) => {
   await tap(p, p.getByRole('button', { name: /2 × 2（四等分）/ }), 1800);
   await retype(p, p.getByPlaceholder('如：主選單 v1'), '範例：會員主選單');
   await retype(p, p.getByPlaceholder('如：菜單'), '會員專區');
-  await caption(p, '注意：「預設展開選單」會套用到所有好友', 2800);
-  await tap(p, p.getByRole('checkbox'), 900);
+  await caption(p, '「設為所有好友的預設選單」預設不勾，勾了一發布就換掉所有好友的選單', 3200);
+  await point(p, p.getByText('設為所有好友的預設選單'), 1200);
   await caption(p, '背景圖要符合尺寸，1MB 以內');
   await point(p, p.getByRole('button', { name: '上傳' }));
   await caption(p, '展開每個區域，設定點了要做什麼');
@@ -413,4 +413,18 @@ test('shots', async ({ browser }) => {
   }
   await p.waitForTimeout(800);
   await shot(p, p.locator('div.fixed.inset-0 > div').first(), 'ch10-quickreply-dialog');
+});
+
+/**
+ * 廣播失敗原因與「重新發送」「取消」按鈕（#287）。
+ * 先在示範租戶建一則「空標籤」的排程廣播（受眾為空，不會發出任何訊息），
+ * 讓它真的以「所選標籤下沒有可在此渠道發送的對象」失敗，再拍「會員日優惠通知」這一列；拍完到後台取消。
+ */
+test('ch08-broadcast-failed', async ({ browser }) => {
+  const p = await newShotPage(browser);
+  await go(p, '/dashboard/marketing/broadcasts');
+  await hideTestData(p);
+  const row = p.locator('tbody tr', { hasText: '會員日優惠通知' }).first();
+  await row.scrollIntoViewIfNeeded();
+  await shot(p, p.locator('table').filter({ has: row }).first(), 'ch08-broadcast-failed');
 });

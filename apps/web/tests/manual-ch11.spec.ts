@@ -84,14 +84,21 @@ test('ch11-points 查積分與手動調整', async ({ browser }) => {
   await go(page, '/dashboard/portal/points');
   await caption(page, '粉絲活動 > 積分管理');
   const box = page.getByPlaceholder('搜尋聯絡人（名稱、電話、Email）');
-  await typeIn(page, box, 'Chatbox Visitor');
+  await typeIn(page, box, 'Visitor 3d');
   await box.press('Enter');
   await page.waitForTimeout(2000);
-  await caption(page, '找到的客戶名稱與目前點數會顯示在這裡', 2400);
+  const candidate = page.locator('div.rounded-lg.border.p-2 > button').first();
+  if (await candidate.count()) {
+    await caption(page, '符合的人不只一位時會列出清單，名稱旁有電話與 Email 可以核對', 2600);
+    await point(page, candidate.locator('..'), 1600);
+    await tap(page, candidate, 1500);
+  }
+  await caption(page, '選好的客戶與目前點數會顯示在這裡', 2400);
   await point(page, page.getByText(/\d+ 點/).first(), 1600);
-  await caption(page, '先核對名稱是不是你要找的人', 2400);
   await tap(page, page.getByRole('button', { name: '手動調整' }));
   const dialog = page.getByRole('dialog');
+  await caption(page, '視窗上方的「調整對象」再確認一次是誰', 1800);
+  await point(page, dialog.getByText(/調整對象/), 1600);
   await caption(page, '正數是加點，負數是扣點', 1200);
   const amt = dialog.locator('input[type="number"]');
   await point(page, amt, 500);
@@ -121,9 +128,14 @@ test('ch11 截圖', async ({ browser }) => {
 
   await go(page, '/dashboard/portal/points');
   const box = page.getByPlaceholder('搜尋聯絡人（名稱、電話、Email）');
-  await box.fill('Chatbox Visitor');
+  await box.fill('Visitor 3d');
   await box.press('Enter');
   await page.waitForTimeout(2500);
+  const candidate = page.locator('div.rounded-lg.border.p-2 > button').first();
+  if (await candidate.count()) {
+    await candidate.click();
+    await page.waitForTimeout(1500);
+  }
   await page.getByRole('button', { name: '手動調整' }).click();
   await page.waitForTimeout(600);
   const adj = page.getByRole('dialog');

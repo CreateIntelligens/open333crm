@@ -2,12 +2,35 @@
  * 手冊第 04 章「通知」：影片與截圖。
  * 正式環境：不按「全部已讀」「標記已讀」，也不點通知卡片（點了會標成已讀）。
  */
-import { test, Page } from '@playwright/test';
+import { test, Page, BrowserContext } from '@playwright/test';
 import { startRecording, stopRecording, poster, caption, point, tap, go, newShotPage } from './manual-video-helpers';
 import { shot, shotPage } from './manual-helpers';
 
 async function blurNames(page: Page) {
   await page.addStyleTag({ content: `table tbody td:first-child span.text-sm{filter:blur(6px)!important}` });
+}
+
+/**
+ * 2026-10-15 之前產生的 SLA 通知標題是英文，資料庫裡的舊通知仍是英文；之後產生的已是中文。
+ * 畫面上把這兩個舊標題換成系統現在的中文標題（apps/workers/src/handlers/sla.handler.ts），
+ * 讓手冊呈現目前的樣子。只改畫面上的文字，不改資料。
+ */
+async function currentSlaTitles(context: BrowserContext) {
+  await context.addInitScript(() => {
+    const map: Record<string, string> = {
+      'First response SLA breached': '首次回應已逾期',
+      'Resolution SLA breached': '解決期限已逾期',
+    };
+    const fix = (root: Node) => {
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let n: Node | null;
+      while ((n = w.nextNode())) {
+        const t = (n.textContent || '').trim();
+        if (map[t]) n.textContent = (n.textContent || '').replace(t, map[t]);
+      }
+    };
+    new MutationObserver(() => fix(document.body)).observe(document, { childList: true, subtree: true, characterData: true });
+  });
 }
 
 const bell = (page: Page) => page.locator('button:has(svg.lucide-bell)').first();
@@ -18,6 +41,7 @@ test('ch04-notifications', async ({ browser }) => {
   test.setTimeout(150_000);
   const rec = await startRecording(browser, 'ch04-notifications');
   const { page } = rec;
+  await currentSlaTitles(rec.context);
   await go(page, '/dashboard/contacts');
   await blurNames(page);
   await caption(page, '右上角的鈴鐺就是通知', 1200);
@@ -45,6 +69,7 @@ test('ch04-notifications', async ({ browser }) => {
 test('ch04 截圖', async ({ browser }) => {
   test.setTimeout(120_000);
   const page = await newShotPage(browser);
+  await currentSlaTitles(page.context());
   await go(page, '/dashboard/contacts');
   await blurNames(page);
   await bell(page).click();
