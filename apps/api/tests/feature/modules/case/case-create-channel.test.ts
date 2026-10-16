@@ -42,7 +42,9 @@ const createChannel = (slug: string) =>
   });
 const visible = await createChannel('visible');
 const hidden = await createChannel('hidden');
+const readOnly = await createChannel('read-only');
 await owner.agentChannelAccess.create({ data: { channelId: visible.id, agentId: agent.id, accessLevel: 'full' } });
+await owner.agentChannelAccess.create({ data: { channelId: readOnly.id, agentId: agent.id, accessLevel: 'read_only' } });
 await owner.agentChannelAccess.create({ data: { channelId: hidden.id, agentId: other.id, accessLevel: 'full' } });
 
 async function createContact(slug: string, channel?: { id: string }) {
@@ -56,6 +58,7 @@ async function createContact(slug: string, channel?: { id: string }) {
 }
 const onVisible = await createContact('on-visible', visible);
 const onHidden = await createContact('on-hidden', hidden);
+const onReadOnly = await createContact('on-read-only', readOnly);
 
 const app = Fastify();
 await app.register(errorHandlerPlugin);
@@ -71,7 +74,7 @@ await app.ready();
 
 afterAll(async () => {
   await app.close();
-  const channelIds = [visible.id, hidden.id];
+  const channelIds = [visible.id, hidden.id, readOnly.id];
   await owner.message.deleteMany({ where: { conversation: { channelId: { in: channelIds } } } });
   await owner.conversation.deleteMany({ where: { channelId: { in: channelIds } } });
   await owner.case.deleteMany({ where: { channelId: { in: channelIds } } });
@@ -136,4 +139,16 @@ test('從看不到的渠道的對話建立工單：回 404，不建立工單', a
   const res = await createFromConversation(conv.id);
   assert.equal(res.statusCode, 404, res.body);
   assert.equal(await owner.case.count({ where: { channelId: hidden.id } }), 0);
+});
+
+test('對話所屬渠道只有唯讀權限：回 403，不建立工單', async () => {
+  const conv = await createConversation(onReadOnly, readOnly);
+  const res = await createFromConversation(conv.id);
+  assert.equal(res.statusCode, 403, res.body);
+  assert.equal(await owner.case.count({ where: { channelId: readOnly.id } }), 0);
+});
+
+test('對話不存在：回 404', async () => {
+  const res = await createFromConversation('00000000-0000-4000-8000-00000000dead');
+  assert.equal(res.statusCode, 404, res.body);
 });
