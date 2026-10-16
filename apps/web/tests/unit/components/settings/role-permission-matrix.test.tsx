@@ -438,5 +438,8 @@ describe('刪除使用中的角色', () => {
     const alert = await within(screen.getByRole('dialog')).findByRole('alert');
     assert.match(alert.textContent ?? '', /王停用/);
     assert.ok(!alert.className.includes('text-warning-foreground'), `class：${alert.className}`);
+    // 擋下刪除屬於錯誤：用紅色警示配色（淺紅底、紅字）
+    assert.ok(alert.className.includes('bg-destructive-subtle'), `class：${alert.className}`);
+    assert.ok(alert.className.includes('text-destructive'), `class：${alert.className}`);
   });
 });
