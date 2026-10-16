@@ -117,6 +117,17 @@ scenario('復原已標記的租戶', async ({ tx, tenant }) => {
   assert.equal(t.isActive, false, '復原不啟用租戶');
 });
 
+scenario('復原後沒有延長，下一輪排程再標記', async ({ tx, tenant }) => {
+  const id = await tenant({ trialEndsAt: new Date(Date.now() - 40 * DAY), isActive: false });
+  await runTrialLifecycle(tx);
+  await restorePurgedTenant(tx, id);
+  assert.equal((await state(tx, id)).purgedAt, null);
+
+  await runTrialLifecycle(tx);
+
+  assert.ok((await state(tx, id)).purgedAt, '又有軟刪標記');
+});
+
 scenario('未標記的租戶不能復原', async ({ tx, tenant }) => {
   const id = await tenant({ trialEndsAt: new Date(Date.now() - 40 * DAY), isActive: false });
 
