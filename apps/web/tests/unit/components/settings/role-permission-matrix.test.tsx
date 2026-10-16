@@ -425,4 +425,18 @@ describe('刪除使用中的角色', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '刪除' }));
     assert.ok(await screen.findByText(/王停用（已停用）/));
   });
+
+  test('刪除失敗的原因以警示呈現，文字不是淺底白字', async () => {
+    // 原本用 text-warning-foreground（亮色主題為白色）疊在淺橘底上，幾乎看不到
+    setup([CUSTOM], { 'r-custom': [] });
+    await loaded();
+    api.delete.mockRejectedValueOnce({
+      response: { status: 409, data: { success: false, error: { code: 'ROLE_IN_USE', message: '此角色仍有 1 位成員使用中：王停用（已停用）' } } },
+    });
+    fireEvent.click(screen.getByTitle('刪除'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '刪除' }));
+    const alert = await within(screen.getByRole('dialog')).findByRole('alert');
+    assert.match(alert.textContent ?? '', /王停用/);
+    assert.ok(!alert.className.includes('text-warning-foreground'), `class：${alert.className}`);
+  });
 });
