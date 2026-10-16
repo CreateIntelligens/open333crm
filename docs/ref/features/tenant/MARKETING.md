@@ -112,7 +112,7 @@ LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 
 **在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。
 
-**同一筆群發只執行一次。** `executeBroadcast()` 以條件更新把狀態從 `draft`、`scheduled` 或 `failed` 改成 `sending`，只有搶到的請求會發送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或請求與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，但逐人送出的群發會對全部對象重新發送，見 `../../system/AUDIT.md` 的 MKT-01。
+**同一筆群發只執行一次。** `executeBroadcast()` 以條件更新把狀態從 `draft`、`scheduled` 或 `failed` 改成 `sending`，只有搶到的請求會發送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或請求與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，行銷頁的失敗群發有「重新發送」按鈕。逐人送出的群發重試時會對全部對象重新發送，送出途中失敗的群發會讓已送達的人再收到一次，見 `../../system/AUDIT.md` 的 MKT-01。
 
 ## 成效與歸因
 
