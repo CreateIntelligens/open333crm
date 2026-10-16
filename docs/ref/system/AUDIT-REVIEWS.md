@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-16：CONV-02 部分修正
+
+對照 `origin/main` 的程式碼，並以單元測試確認（`tests/unit/modules/conversation/update-conversation-close.test.ts`）。沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONV-02 | 部分修正 | `PATCH /conversations/:id` 帶 `status: CLOSED` 改走 `closeConversation()`，記錄結案來源、時間與操作者並發布 `conversation.closed`；已關閉的對話不重記。指派不發布 `conversation.assigned` 的部分未處理 |
+
 ## 2026-10-16：RBAC-04 部分修正，補上兩條路由的守門
 
 對照 `origin/main`（`8baf76a0`）的程式碼，並以 feature 測試確認。沒有連線 UAT。

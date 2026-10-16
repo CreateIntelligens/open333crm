@@ -233,6 +233,7 @@ export default async function conversationRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
       data,
+      { actorId: request.agent.id },
     );
 
     return reply.send(success(conversation));

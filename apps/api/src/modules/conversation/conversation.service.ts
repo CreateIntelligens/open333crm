@@ -863,6 +863,7 @@ export async function updateConversation(
   id: string,
   tenantId: string,
   data: { status?: string; assignedToId?: string | null },
+  options: { actorId?: string } = {},
 ) {
   const conversation = await prisma.conversation.findFirst({
     where: { id, tenantId },
@@ -872,9 +873,13 @@ export async function updateConversation(
     throw new AppError(notFound('conversation'), 'NOT_FOUND', 404);
   }
 
+  // CONV-02：改成 CLOSED 和 POST /:id/close 走同一條結案流程（記錄來源、時間、結案人並發布
+  // conversation.closed）。同時改負責人時先改負責人，再結案。已結案的對話照一般更新處理，不重記結案資料。
+  const closing = data.status === 'CLOSED' && conversation.status !== 'CLOSED';
+
   const updateData: Prisma.ConversationUpdateInput = {};
 
-  if (data.status !== undefined) {
+  if (data.status !== undefined && !closing) {
     updateData.status = data.status as any;
   }
   if (data.assignedToId !== undefined) {
@@ -883,6 +888,13 @@ export async function updateConversation(
     } else {
       updateData.assignedTo = { connect: { id: data.assignedToId } };
     }
+  }
+
+  if (closing) {
+    if (Object.keys(updateData).length > 0) {
+      await prisma.conversation.update({ where: { id }, data: updateData });
+    }
+    return closeConversation(prisma, io, id, tenantId, { source: 'manual', closedById: options.actorId });
   }
 
   const updated = await prisma.conversation.update({
