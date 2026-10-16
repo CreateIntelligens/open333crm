@@ -171,13 +171,16 @@ const post = (app: typeof eraserApp, payload: object) =>
 
 test('發起匿名化', async () => {
   const { contact } = await createSubject();
-  const res = await post(eraserApp, { contactId: contact.id });
+  const reason = '客人來信要求刪除';
+  const res = await post(eraserApp, { contactId: contact.id, reason });
   assert.equal(res.statusCode, 200, res.body);
 
   const request = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: res.json().data.id } });
   assert.equal(request.mode, 'anonymize');
   assert.equal(request.status, 'pending');
+  assert.equal(request.reason, reason, 'reason 存在請求上');
   assert.equal(enqueued.length, 1);
+  assert.ok(!JSON.stringify(enqueued[0]).includes(reason), '佇列的工作內容不含 reason');
 
   const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.erasure.request', targetId: contact.id } });
   assert.equal(logs.length, 1);

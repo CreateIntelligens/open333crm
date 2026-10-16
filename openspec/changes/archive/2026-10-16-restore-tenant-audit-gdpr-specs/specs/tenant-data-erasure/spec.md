@@ -2,13 +2,13 @@
 
 ### Requirement: 發起聯絡人資料刪除
 
-`POST /api/v1/tenant/data-erasure` SHALL 接受 `contactId`、`mode`（`anonymize` 或 `hard_delete`，預設 `anonymize`）與選填的 `reason`。聯絡人 SHALL 屬於目前的租戶，否則系統回 HTTP 404 `CONTACT_NOT_FOUND`，不建立請求。
+`POST /api/v1/tenant/data-erasure` SHALL 接受 `contactId`、`mode`（`anonymize` 或 `hard_delete`，預設 `anonymize`）與選填的 `reason`。`reason` SHALL 存在請求的 `reason` 欄位，SHALL NOT 寫進稽核的 `payload` 或佇列的工作內容。聯絡人 SHALL 屬於目前的租戶，否則系統回 HTTP 404 `CONTACT_NOT_FOUND`，不建立請求。
 
 聯絡人屬於目前的租戶時，系統 SHALL 建立一筆 `status` 是 `pending` 的 `DataErasureRequest`，寫一筆 `data.erasure.request` 稽核，再把刪除工作放進 `data-erasure` 佇列。稽核 SHALL 記錄發起請求的來源 IP。呼叫的成員 SHALL 有 `data.erase`，沒有時系統回 HTTP 403。
 
 #### Scenario: 發起匿名化
-- **WHEN** 有 `data.erase` 的成員對本租戶的聯絡人發起刪除，沒有指定 `mode`
-- **THEN** 系統建立 `mode` 是 `anonymize`、`status` 是 `pending` 的請求，寫一筆 `data.erasure.request` 稽核，`payload` 只有 `contactId` 與 `mode`
+- **WHEN** 有 `data.erase` 的成員對本租戶的聯絡人發起刪除，帶 `reason`、沒有指定 `mode`
+- **THEN** 系統建立 `mode` 是 `anonymize`、`status` 是 `pending` 的請求，`reason` 存在請求上，寫一筆 `data.erasure.request` 稽核，`payload` 只有 `contactId` 與 `mode`，佇列的工作內容不含 `reason`
 
 #### Scenario: 發起刪除的稽核記錄來源 IP
 - **WHEN** 有 `data.erase` 的成員從某個 IP 發起刪除

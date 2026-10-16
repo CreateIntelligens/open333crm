@@ -15,7 +15,8 @@
 | 產生匯出檔 | 上傳失敗時記錄原因 | 同上 |
 | 下載匯出檔與保留期 | 保留期內下載 | 同上 |
 | 下載匯出檔與保留期 | 過期的匯出不能下載 | `data-export/data-export.test.ts`（既有，改名） |
-| 下載匯出檔與保留期 | 其他租戶的匯出不能下載 | 同上 |
+| 下載匯出檔與保留期 | 清理後的匯出不能下載 | `data-export/data-export-flow.test.ts`（新增） |
+| 下載匯出檔與保留期 | 其他租戶的匯出不能下載 | `data-export/data-export.test.ts`（既有，改名） |
 | 下載匯出檔與保留期 | 清理過期的匯出 | `data-export/data-export-flow.test.ts`（新增） |
 | 發起聯絡人資料刪除 | 發起匿名化 | `data-erasure/data-erasure-flow.test.ts`（新增） |
 | 發起聯絡人資料刪除 | 發起刪除的稽核記錄來源 IP | **沒有測試**。現行程式違反這個 Scenario，記在 AUDIT AUD-02，修正時補測試 |
@@ -53,6 +54,10 @@
 | `data-erasure.handler.ts` 硬刪除後不刪媒體檔 | 硬刪除連帶刪除對話與工單 |
 | `data-erasure.handler.ts` 完成稽核的 `payload` 多帶 `requestedBy` | 完成稽核不含個人資料 |
 | `data-erasure.handler.ts` 聯絡人不存在時直接結束，不拋錯 | 聯絡人已不存在時記錄失敗 |
+| `data-export.service.ts` 的 `getExportDownload()` 對清理後的請求回 410 | 清理後的匯出不能下載 |
+| `data-erasure.service.ts` 的 `requestErasure()` 不保存 `reason` | 發起匿名化 |
+| `requestErasure()` 把 `reason` 放進佇列的工作內容 | 發起匿名化 |
+| `requestErasure()` 把 `reason` 寫進稽核的 `payload` | 發起匿名化 |
 | `data-export.handler.ts` 匯出的聯絡人不含渠道身分 | 匯出只含本租戶的資料 |
 | `data-export.handler.ts` 匯出的對話不含標籤 | 匯出只含本租戶的資料 |
 | `data-export.handler.ts` 匯出的工單不含備註 | 匯出只含本租戶的資料 |

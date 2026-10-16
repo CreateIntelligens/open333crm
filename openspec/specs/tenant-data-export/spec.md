@@ -37,8 +37,8 @@ zip 上傳物件儲存後，請求 SHALL 改為 `completed`，記錄 `fileKey`�
 `GET /api/v1/tenant/data-export/:id/download` SHALL 只回應同租戶、有 `data.export` 的成員：
 
 - 請求是 `completed` 且還沒到 `expiresAt` 時，回傳 15 分鐘有效的下載連結，並把 `downloadCount` 加 1。保留期內可以重複下載。
-- 請求不是 `completed` 時，回 HTTP 400 `EXPORT_NOT_READY`。
-- 已到 `expiresAt` 時，回 HTTP 410 `EXPORT_EXPIRED`。
+- 請求不是 `completed` 時，回 HTTP 400 `EXPORT_NOT_READY`。清理後改為 `expired` 的請求也是這個結果。
+- 請求仍是 `completed`、但已到 `expiresAt`（還沒清理）時，回 HTTP 410 `EXPORT_EXPIRED`。
 - 請求屬於其他租戶時，回 HTTP 404，不透露請求是否存在。
 
 workers SHALL 每小時清理一次：已到 `expiresAt` 的 `completed` 請求，刪除物件儲存的檔案，狀態改為 `expired`，`fileKey` 清成 `null`。
@@ -48,8 +48,12 @@ workers SHALL 每小時清理一次：已到 `expiresAt` 的 `completed` 請求�
 - **THEN** 系統回 HTTP 200 與下載連結，`downloadCount` 加 1
 
 #### Scenario: 過期的匯出不能下載
-- **WHEN** 成員下載已到 `expiresAt` 的匯出
+- **WHEN** 成員下載狀態仍是 `completed`、但已到 `expiresAt` 的匯出
 - **THEN** 系統回 HTTP 410，`error.code` 是 `EXPORT_EXPIRED`
+
+#### Scenario: 清理後的匯出不能下載
+- **WHEN** 成員下載已被清理、狀態是 `expired` 的匯出
+- **THEN** 系統回 HTTP 400，`error.code` 是 `EXPORT_NOT_READY`，不回傳下載連結
 
 #### Scenario: 其他租戶的匯出不能下載
 - **WHEN** 租戶 B 的成員下載租戶 A 的匯出

@@ -1,6 +1,6 @@
 /**
  * 主規格 tenant-data-export 的路由與 worker 情境（change restore-tenant-audit-gdpr-specs）：
- * 沒有 data.export 不能發起、匯出只含本租戶的資料、上傳失敗時記錄原因、保留期內下載、清理過期的匯出。
+ * 沒有 data.export 不能發起、匯出只含本租戶的資料、上傳失敗時記錄原因、保留期內下載、清理後的匯出不能下載、清理過期的匯出。
  *
  * 路由走真實的 requirePermission 與 app_tenant 連線（RLS）；worker 直接呼叫
  * apps/workers 的 handler，資料庫是真的。物件儲存、下載連結與通知佇列以 mock 取代。
@@ -220,6 +220,14 @@ test('保留期內下載', async () => {
     const stored = await owner.dataExportRequest.findUniqueOrThrow({ where: { id: req.id } });
     assert.equal(stored.downloadCount, expected, '保留期內可以重複下載，每次加 1');
   }
+});
+
+test('清理後的匯出不能下載', async () => {
+  const req = await createRequest({ status: 'expired', fileKey: null, expiresAt: new Date(Date.now() - 1000) });
+  const res = await exporterApp.inject({ method: 'GET', url: `/api/v1/tenant/data-export/${req.id}/download` });
+  assert.equal(res.statusCode, 400, res.body);
+  assert.equal(res.json().error.code, 'EXPORT_NOT_READY');
+  assert.equal(res.json().data, undefined);
 });
 
 test('清理過期的匯出', async () => {
