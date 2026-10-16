@@ -10,6 +10,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **看不到某個渠道的成員，可以替該渠道的對話建立工單** — `POST /cases/from-conversation/:conversationId` 不檢查對話所屬渠道的可見範圍，只要知道對話 ID 就能建立工單並連結對話。現在和 `POST /conversations/:id/case` 一樣要求該渠道的 `full` 存取，看不到的渠道回 404。
+- **沒有渠道權限的成員可以查渠道狀態** — `GET /channels/:id/status` 只驗登入，沒有 `channel.view` 也能查渠道是否啟用與 FB 權杖狀態。現在要求 `channel.view`，看不到的渠道回 404。
 - 渠道沒有對應 plugin 時，廣播的錯誤訊息改為中文。
 - 收件匣送出超過 5000 字的訊息時，輸入框下方直接說「訊息長度不可超過 5000 字」，不送出、訊息留在框裡；後端回驗證錯誤時也改顯示訊息欄位的具體原因，不再只有「輸入內容有誤」（#293）。
 - 工單列表的優先級、狀態、負責人、SLA 倒數與建立時間欄位不換行，「開啟」「未指派」不再被擠成兩行（#293）。

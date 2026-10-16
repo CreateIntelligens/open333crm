@@ -72,6 +72,8 @@ await app.ready();
 afterAll(async () => {
   await app.close();
   const channelIds = [visible.id, hidden.id];
+  await owner.message.deleteMany({ where: { conversation: { channelId: { in: channelIds } } } });
+  await owner.conversation.deleteMany({ where: { channelId: { in: channelIds } } });
   await owner.case.deleteMany({ where: { channelId: { in: channelIds } } });
   await owner.channelIdentity.deleteMany({ where: { channelId: { in: channelIds } } });
   await owner.agentChannelAccess.deleteMany({ where: { channelId: { in: channelIds } } });
@@ -107,4 +109,31 @@ test('聯絡人不在指定的渠道：回 400，不建立工單', async () => {
   assert.equal(res.statusCode, 400, res.body);
   assert.equal(res.json().error.code, 'CONTACT_NOT_ON_CHANNEL');
   assert.equal(await owner.case.count({ where: { contactId: onHidden.id } }), 0);
+});
+
+async function createConversation(contact: { id: string }, channel: { id: string }) {
+  return owner.conversation.create({
+    data: { tenantId: A, contactId: contact.id, channelId: channel.id, channelType: 'WEBCHAT' },
+  });
+}
+
+const createFromConversation = (conversationId: string) =>
+  app.inject({
+    method: 'POST',
+    url: `/api/v1/cases/from-conversation/${conversationId}`,
+    payload: { title: `${MARK}-from-conv`, category: '其他' },
+  });
+
+test('從看得到的渠道的對話建立工單：回 201', async () => {
+  const conv = await createConversation(onVisible, visible);
+  const res = await createFromConversation(conv.id);
+  assert.equal(res.statusCode, 201, res.body);
+  assert.equal(res.json().data.channelId, visible.id);
+});
+
+test('從看不到的渠道的對話建立工單：回 404，不建立工單', async () => {
+  const conv = await createConversation(onHidden, hidden);
+  const res = await createFromConversation(conv.id);
+  assert.equal(res.statusCode, 404, res.body);
+  assert.equal(await owner.case.count({ where: { channelId: hidden.id } }), 0);
 });

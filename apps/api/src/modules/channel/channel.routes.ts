@@ -31,7 +31,7 @@ import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import { withTenant, type TenantDb } from '../../lib/tenant-db.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
-import { ALL_CHANNELS, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { ALL_CHANNELS, resolveChannelVisibility, assertChannelVisible } from '../../services/channel-visibility.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { httpUrlSchema } from '../../shared/utils/url-schemes.js';
 import { resolveBindingHandle } from '../identity-binding/binding-links.js';
@@ -402,7 +402,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/v1/channels/:id/status — channel health status
-  fastify.get<{ Params: { id: string } }>('/:id/status', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/:id/status', { preHandler: requirePermission('channel.view') }, async (request, reply) => {
+    // 與渠道列表一致：看不到的渠道視為不存在（404）
+    await assertChannelVisible(request, request.params.id, 'read_only');
     const channel = await request.tenantPrisma.channel.findFirst({
       where: { id: request.params.id, tenantId: request.agent.tenantId },
     });

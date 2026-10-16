@@ -66,7 +66,7 @@ WhatsApp 渠道可以建立，但收不到訊息也送不出去。見 `../../sys
 | `POST /channels/:id/setup-webhook` | 呼叫 LINE API，自動把 webhook 網址設到 LINE 官方帳號 |
 | `POST /channels/webhook-base-url` | 更換 API 的對外位址時，重算租戶所有渠道的 `webhookUrl`。只收 `https` 網址，不可帶 `?`、`#` 或帳號密碼；畫面套用前會確認 |
 | `POST /channels/:id/verify` | 以目前的憑證呼叫渠道平台，確認憑證有效 |
-| `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期。只讀不寫，「最後驗證」只由 `verify` 更新；渠道管理頁只對啟用中的 FB 渠道呼叫 |
+| `GET /channels/:id/status` | 渠道的連線狀態。Facebook 會另外檢查 token 是否過期。需要 `channel.view`，看不到的渠道回 404。只讀不寫，「最後驗證」只由 `verify` 更新；渠道管理頁只對啟用中的 FB 渠道呼叫 |
 
 **轉發給下游系統。** 渠道設定的 `settings.downstreamWebhook` 可以把收到的原始 webhook 轉發給另一個網址，例如租戶自己的另一套機器人。規則如下：
 
