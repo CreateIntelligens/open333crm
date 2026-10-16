@@ -420,19 +420,25 @@ function BroadcastTab() {
                         </>
                       )}
                       {b.status === 'failed' && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleSend(b.id, true)}
-                          title="重新發送"
-                          disabled={sendingId !== null}
-                        >
-                          {sendingId === b.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <RotateCcw className="h-4 w-4" />
-                          )}
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleSend(b.id, true)}
+                            title="重新發送"
+                            disabled={sendingId !== null}
+                          >
+                            {sendingId === b.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                          </Button>
+                          {/* 不打算重送的失敗廣播可以取消，後端允許從 failed 改成 cancelled */}
+                          <Button size="sm" variant="ghost" onClick={() => handleCancel(b.id)} title="取消">
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </td>

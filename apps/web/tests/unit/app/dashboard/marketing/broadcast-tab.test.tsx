@@ -184,3 +184,15 @@ test('成功的廣播不顯示失敗原因、也沒有重新發送', () => {
   assert.ok(screen.queryByText(/沒有記錄失敗原因/) === null);
   assert.ok(screen.queryByTitle('重新發送') === null);
 });
+
+test('Cancel a failed broadcast：失敗的廣播可以取消', async () => {
+  data.broadcasts = [{
+    id: 'b-f', name: '週年慶', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0,
+    failureReason: '此渠道的憑證無法解密',
+  }];
+  api.post.mockResolvedValue({ data: { data: {} } });
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByTitle('取消'));
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  assert.equal(api.post.mock.calls[0][0], '/marketing/broadcasts/b-f/cancel');
+});

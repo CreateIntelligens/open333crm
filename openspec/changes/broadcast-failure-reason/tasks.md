@@ -12,10 +12,10 @@
 - [x] 3.1 測試先行：`broadcast-failure-reason.test.ts`「Resend a failed broadcast successfully」
 - [x] 3.2 實作：搶占 `sending` 的更新同時設 `failureReason: null`
 
-## 4. 畫面顯示與重送（Failed Broadcasts Show The Reason And Can Be Resent）
+## 4. 畫面顯示與重送（Failed Broadcasts Show The Reason And Can Be Resent Or Cancelled）
 
-- [x] 4.1 測試先行：`apps/web/tests/unit/app/dashboard/marketing/broadcast-tab.test.tsx`「Failed broadcast in the list」「Old failed broadcast without a reason」
-- [x] 4.2 實作（另加「成功的廣播不顯示失敗原因」；mutation：失敗原因改成所有狀態都顯示，此測試失敗，已還原；活動詳情另有 `campaign-detail-failure-reason.test.tsx`）：廣播列表在「失敗」徽章下方顯示原因、失敗的廣播顯示「重新發送」；活動詳情的廣播表格顯示原因
+- [x] 4.1 測試先行：`apps/web/tests/unit/app/dashboard/marketing/broadcast-tab.test.tsx`「Failed broadcast in the list」「Old failed broadcast without a reason」「Cancel a failed broadcast」
+- [x] 4.2 實作（另加「成功的廣播不顯示失敗原因」；mutation：失敗原因改成所有狀態都顯示，此測試失敗，已還原；活動詳情另有 `campaign-detail-failure-reason.test.tsx`）：廣播列表在「失敗」徽章下方顯示原因、失敗的廣播顯示「重新發送」與「取消」；活動詳情的廣播表格顯示原因
 
 ## 5. 完成定義
 

@@ -13,13 +13,13 @@ PR #283 讓廣播在受眾無法解析或解析後為零人時停止發送並標
   - 部分成功：狀態維持「已完成」，`failureReason` 為 null（失敗人數已在列表顯示）。
 - 開始發送（搶占 `sending`）時清空 `failureReason`，重送成功後不留舊原因。
 - 渠道沒有對應 plugin 的錯誤訊息改成中文（原為英文 `No plugin for channel type`）。
-- 前端：廣播列表與活動詳情的廣播表格，在「失敗」徽章下方顯示原因；失敗的廣播顯示「重新發送」按鈕。
+- 前端：廣播列表與活動詳情的廣播表格，在「失敗」徽章下方顯示原因；失敗的廣播顯示「重新發送」與「取消」按鈕（後端原本就允許取消失敗的廣播）。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `broadcast-failure-reason`：廣播發送失敗時記錄並顯示原因，失敗的廣播可以重送。
+- `broadcast-failure-reason`：廣播發送失敗時記錄並顯示原因，失敗的廣播可以重送或取消。
 
 ### Modified Capabilities
 

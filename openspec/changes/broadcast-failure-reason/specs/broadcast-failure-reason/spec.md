@@ -26,8 +26,8 @@ When a send starts, the system SHALL set `failureReason` to null in the same upd
 - **WHEN** a broadcast with a `failureReason` is sent again and a recipient succeeds
 - **THEN** the broadcast SHALL be `completed` and `failureReason` SHALL be null
 
-### Requirement: Failed Broadcasts Show The Reason And Can Be Resent
-The broadcast list and the broadcast table of a campaign SHALL show the `failureReason` of each `failed` broadcast next to its status. When a `failed` broadcast has no `failureReason`, the list SHALL say that no reason was recorded. The broadcast list SHALL show a resend button for each `failed` broadcast.
+### Requirement: Failed Broadcasts Show The Reason And Can Be Resent Or Cancelled
+The broadcast list and the broadcast table of a campaign SHALL show the `failureReason` of each `failed` broadcast next to its status. When a `failed` broadcast has no `failureReason`, the list SHALL say that no reason was recorded. The broadcast list SHALL show a resend button and a cancel button for each `failed` broadcast.
 
 #### Scenario: Failed broadcast in the list
 - **WHEN** the broadcast list shows a `failed` broadcast with a `failureReason`
@@ -36,3 +36,7 @@ The broadcast list and the broadcast table of a campaign SHALL show the `failure
 #### Scenario: Old failed broadcast without a reason
 - **WHEN** the broadcast list shows a `failed` broadcast whose `failureReason` is null
 - **THEN** the row SHALL say that no reason was recorded
+
+#### Scenario: Cancel a failed broadcast
+- **WHEN** a user presses the cancel button of a `failed` broadcast and confirms
+- **THEN** the system SHALL call the cancel API for that broadcast
