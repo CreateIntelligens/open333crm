@@ -8,6 +8,7 @@ import {
   Play,
   XCircle,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useChannels } from '@/hooks/useChannels';
@@ -306,9 +307,12 @@ function BroadcastTab() {
     }
   };
 
-  const handleSend = async (id: string) => {
+  const handleSend = async (id: string, resend = false) => {
     if (sendingId) return;
-    if (!confirm('確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。')) return;
+    const question = resend
+      ? '確定要重新發送嗎？請先確認失敗原因已排除。訊息會馬上送給所選受眾，送出後無法收回。'
+      : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
+    if (!confirm(question)) return;
     setSendingId(id);
     try {
       await api.post(`/marketing/broadcasts/${id}/send`);
@@ -373,6 +377,12 @@ function BroadcastTab() {
                   </td>
                   <td className="py-3">
                     <StatusBadge status={b.status} map={broadcastStatusMap} />
+                    {/* 失敗原因：排程發送失敗時原本只寫 log，後台看不到（issue #287） */}
+                    {b.status === 'failed' && (
+                      <p className="mt-1 max-w-[240px] text-xs text-destructive">
+                        {b.failureReason || '沒有記錄失敗原因（此功能上線前失敗的廣播）'}
+                      </p>
+                    )}
                   </td>
                   <td className="py-3 text-muted-foreground">
                     {BROADCAST_TARGET_LABELS[b.targetType] ?? b.targetType}
@@ -408,6 +418,21 @@ function BroadcastTab() {
                             <XCircle className="h-4 w-4 text-destructive" />
                           </Button>
                         </>
+                      )}
+                      {b.status === 'failed' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleSend(b.id, true)}
+                          title="重新發送"
+                          disabled={sendingId !== null}
+                        >
+                          {sendingId === b.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-4 w-4" />
+                          )}
+                        </Button>
                       )}
                     </div>
                   </td>

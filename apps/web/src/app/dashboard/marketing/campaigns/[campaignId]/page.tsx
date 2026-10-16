@@ -214,6 +214,12 @@ export default function CampaignDetailPage() {
                           <td className="py-3 font-medium">{b.name}</td>
                           <td className="py-3">
                             <Badge color={bStatus.color}>{bStatus.label}</Badge>
+                            {/* 失敗原因（issue #287） */}
+                            {b.status === 'failed' && (
+                              <p className="mt-1 max-w-[240px] text-xs text-destructive">
+                                {b.failureReason || '沒有記錄失敗原因（此功能上線前失敗的廣播）'}
+                              </p>
+                            )}
                           </td>
                           <td className="py-3 text-muted-foreground">
                             {b.targetType === 'all'
