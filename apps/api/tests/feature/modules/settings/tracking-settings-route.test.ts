@@ -148,11 +148,11 @@ test('沒有送的欄位被清除', async () => {
 });
 
 test('稽核不記錄 ID 的值', async () => {
-  const since = new Date();
+  // 以更新前已有的稽核 ID 排除舊紀錄。用時間篩選時，beforeEach 的那筆可能落在同一毫秒
+  const where = { tenantId: T, actorId: agent.id, action: 'settings.update' };
+  const before = new Set((await prisma.tenantAuditLog.findMany({ where, select: { id: true } })).map((l) => l.id));
   assert.equal((await put({ gaId: 'G-ABC123XYZ9', metaPixelId: null })).statusCode, 200);
-  const logs = await prisma.tenantAuditLog.findMany({
-    where: { tenantId: T, actorId: agent.id, action: 'settings.update', createdAt: { gte: since } },
-  });
+  const logs = (await prisma.tenantAuditLog.findMany({ where })).filter((l) => !before.has(l.id));
   assert.equal(logs.length, 1);
   assert.deepEqual(logs[0].payload, { section: 'tracking', gaIdSet: true, metaPixelIdSet: false });
   assert.ok(!JSON.stringify(logs[0].payload).includes('G-ABC123XYZ9'));
