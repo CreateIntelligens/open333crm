@@ -118,6 +118,7 @@ scope 的常數定義在 `mcp.constants.ts`。工具只檢查 scope，不檢查�
 | --- | --- |
 | 重要操作沒有稽核 | 詳見 `../../system/AUDIT.md` 的 AUD-01 |
 | 資料刪除沒有涵蓋所有個人資料 | 詳見 `../../system/AUDIT.md` 的 ERASE-01 |
+| 發起資料刪除的稽核沒有記錄來源 IP | 詳見 `../../system/AUDIT.md` 的 AUD-02 |
 | MCP 與 CLI 不受角色與方案限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
 | 匯出的 `scope` 參數沒有作用、完成通知連到不存在的頁面 | 詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
 | 匯出把所有資料讀進記憶體 | 大租戶可能失敗，詳見 `../../system/AUDIT.md` 的 EXPORT-01 |

@@ -18,7 +18,8 @@
 | 下載匯出檔與保留期 | 其他租戶的匯出不能下載 | 同上 |
 | 下載匯出檔與保留期 | 清理過期的匯出 | `data-export/data-export-flow.test.ts`（新增） |
 | 發起聯絡人資料刪除 | 發起匿名化 | `data-erasure/data-erasure-flow.test.ts`（新增） |
-| 發起聯絡人資料刪除 | 其他租戶的聯絡人被拒 | 同上 |
+| 發起聯絡人資料刪除 | 發起刪除的稽核記錄來源 IP | **沒有測試**。現行程式違反這個 Scenario，記在 AUDIT AUD-02，修正時補測試 |
+| 發起聯絡人資料刪除 | 其他租戶的聯絡人被拒 | `data-erasure/data-erasure-flow.test.ts`（新增） |
 | 發起聯絡人資料刪除 | 沒有 data.erase 不能發起 | 同上 |
 | 匿名化聯絡人 | 匿名化後無法從聯絡人與進站訊息識別客人 | 同上 |
 | 硬刪除聯絡人 | 硬刪除連帶刪除對話與工單 | 同上 |
@@ -59,7 +60,7 @@
 
 ## 3. 文件
 
-- [x] 3.1 `AUDIT.md`：ERASE-01 補上被合併的聯絡人，新增 EXPORT-01
+- [x] 3.1 `AUDIT.md`：ERASE-01 補上被合併的聯絡人，新增 EXPORT-01 與 AUD-02
 - [x] 3.2 `GOVERNANCE.md`：補上漏列的稽核動作、被合併的聯絡人與 EXPORT-01
 
 ## 4. 完成檢查
