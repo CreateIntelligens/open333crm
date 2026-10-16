@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- CLI 連線頁與 API 金鑰頁的使用說明，主機位址原本寫死為 UAT（`https://uat.open333crm.create360.ai`），在其他環境照著做會連到 UAT。現在取自這個部署的 API 網址（`NEXT_PUBLIC_API_URL` 去掉結尾的 `/api/v1`，保留子路徑）；設成相對路徑時接在目前頁面的網址後面。
 - **直接呼叫 API 把對話改成已關閉，不會留下結案紀錄**（CONV-02）— `PATCH /conversations/:id` 帶 `status: CLOSED` 只改狀態，不記結案來源、時間與結案人，也不發布 `conversation.closed`。現在和結案按鈕走同一個流程；已關閉的對話不會重記。
 - **看不到某個渠道的成員，可以替該渠道的對話建立工單** — `POST /cases/from-conversation/:conversationId` 不檢查對話所屬渠道的可見範圍，只要知道對話 ID 就能建立工單並連結對話。現在和 `POST /conversations/:id/case` 一樣要求該渠道的 `full` 存取，看不到的渠道回 404。
 - **沒有渠道權限的成員可以查渠道狀態** — `GET /channels/:id/status` 只驗登入，沒有 `channel.view` 也能查渠道是否啟用與 FB 權杖狀態。現在要求 `channel.view`，看不到的渠道回 404。

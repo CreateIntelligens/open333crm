@@ -16,6 +16,7 @@ import {
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { LoadErrorNotice } from '@/components/shared/LoadErrorNotice';
+import { getPublicApiHost } from '@/lib/public-api-host';
 
 interface ApiKey {
   id: string;
@@ -358,7 +359,7 @@ function CreatedApiKeyDialog({
             <div className="rounded-md bg-muted/30 p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">使用方式</p>
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
-{`curl -X POST https://uat.open333crm.create360.ai/api/v1/knowledge/partner-ingest \\
+{`curl -X POST ${getPublicApiHost()}/api/v1/knowledge/partner-ingest \\
   -H "Authorization: Bearer ${keyData.key}" \\
   -F "DocID=1234" \\
   -F "Ver=1" \\
