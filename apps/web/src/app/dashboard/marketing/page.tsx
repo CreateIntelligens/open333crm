@@ -227,6 +227,9 @@ function BroadcastTab() {
   const [saving, setSaving] = useState(false);
   // 正在「立即發送」的廣播：請求期間停用按鈕，避免重按造成重複群發
   const [sendingId, setSendingId] = useState<string | null>(null);
+  // 正在取消的廣播：請求期間停用取消與發送，避免連點重複送出
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const busy = sendingId !== null || cancellingId !== null;
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([]);
   const [tagsError, setTagsError] = useState<string | null>(null);
   const emptyForm = {
@@ -325,12 +328,16 @@ function BroadcastTab() {
   };
 
   const handleCancel = async (id: string) => {
+    if (busy) return;
     if (!confirm('確定要取消嗎？')) return;
+    setCancellingId(id);
     try {
       await api.post(`/marketing/broadcasts/${id}/cancel`);
       mutate();
     } catch (err: any) {
       alert(err.response?.data?.error?.message || '取消失敗');
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -426,7 +433,8 @@ function BroadcastTab() {
                             variant="ghost"
                             onClick={() => handleSend(b.id, true)}
                             title="重新發送"
-                            disabled={sendingId !== null}
+                            aria-label="重新發送廣播"
+                            disabled={busy}
                           >
                             {sendingId === b.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -435,8 +443,19 @@ function BroadcastTab() {
                             )}
                           </Button>
                           {/* 不打算重送的失敗廣播可以取消，後端允許從 failed 改成 cancelled */}
-                          <Button size="sm" variant="ghost" onClick={() => handleCancel(b.id)} title="取消">
-                            <XCircle className="h-4 w-4 text-destructive" />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleCancel(b.id)}
+                            title="取消"
+                            aria-label="取消廣播"
+                            disabled={busy}
+                          >
+                            {cancellingId === b.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-destructive" />
+                            )}
                           </Button>
                         </>
                       )}

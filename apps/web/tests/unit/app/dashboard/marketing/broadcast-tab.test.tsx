@@ -196,3 +196,28 @@ test('Cancel a failed broadcast：失敗的廣播可以取消', async () => {
   await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
   assert.equal(api.post.mock.calls[0][0], '/marketing/broadcasts/b-f/cancel');
 });
+
+test('Cancel a failed broadcast：確認視窗按取消就不送出', () => {
+  data.broadcasts = [{ id: 'b-f', name: '週年慶', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0, failureReason: 'x' }];
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: '取消廣播' }));
+  assert.equal(api.post.mock.calls.length, 0);
+});
+
+test('Cancel a failed broadcast：請求進行中按鈕停用，重按不會再送；完成後重新載入列表', async () => {
+  data.broadcasts = [{ id: 'b-f', name: '週年慶', status: 'failed', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0, failureReason: 'x' }];
+  let resolveCancel: (v: unknown) => void = () => {};
+  api.post.mockImplementation(() => new Promise((r) => { resolveCancel = r; }));
+  mutate.mockClear();
+  render(<MarketingPage />);
+  const button = () => screen.getByRole('button', { name: '取消廣播' }) as HTMLButtonElement;
+  fireEvent.click(button());
+  await waitFor(() => assert.equal(button().disabled, true));
+  assert.equal((screen.getByRole('button', { name: '重新發送廣播' }) as HTMLButtonElement).disabled, true, '取消中也不能重新發送');
+  fireEvent.click(button());
+  assert.equal(api.post.mock.calls.length, 1);
+  resolveCancel({ data: { data: {} } });
+  await waitFor(() => assert.equal(button().disabled, false));
+  assert.ok(mutate.mock.calls.length > 0, '取消後應重新載入列表');
+});

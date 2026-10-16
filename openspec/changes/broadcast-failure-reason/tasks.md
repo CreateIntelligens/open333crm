@@ -21,3 +21,7 @@
 
 - [x] 5.1 `pnpm test`、相關 feature 測試、`check-tenant-scoping --strict`、`check-prisma-admin-usage --strict`
 - [x] 5.2 CHANGELOG、`node scripts/validate-openspec.mjs broadcast-failure-reason`
+
+## 6. Review（PR #296）
+
+- [x] 6.1 取消按鈕補 `aria-label`、請求期間停用（含重新發送），測試「確認視窗按取消就不送出」「請求進行中按鈕停用…完成後重新載入列表」；前者寫好即通過（`handleCancel` 原本就有 confirm），mutation：拿掉 confirm 後此測試失敗，已還原
