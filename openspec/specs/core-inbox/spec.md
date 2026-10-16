@@ -8,9 +8,7 @@ The system SHALL push new messages to connected frontend clients in real-time th
 
 #### Scenario: Pushing to online agent
 - **WHEN** a new message is saved to an active conversation
-- **THEN** the system pushes a WebSocket event `message.created` to clients subscribed to that conversation using the server initialized from `apps/api/src/index.ts`
-
----
+- **THEN** the system pushes a WebSocket event `message.new` to clients subscribed to that conversation using the server initialized from `apps/api/src/index.ts`
 
 ### Requirement: Cross-Process WebSocket Event Emission via Redis Pub/Sub
 When WebSocket events are emitted from within the API process, the existing `io.to(room).emit(event, data)` call path SHALL remain unchanged.
