@@ -34,6 +34,7 @@ export default async function dataErasureRoutes(fastify: FastifyInstance) {
       contactId: body.contactId,
       mode: body.mode,
       reason: body.reason,
+      ip: request.ip,
     });
     return success(erasure);
   });

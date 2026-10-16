@@ -187,6 +187,21 @@ test('發起匿名化', async () => {
   assert.deepEqual(logs[0].payload, { contactId: contact.id, mode: 'anonymize' });
 });
 
+test('發起刪除的稽核記錄來源 IP', async () => {
+  const { contact } = await createSubject();
+  const res = await eraserApp.inject({
+    method: 'POST',
+    url: '/api/v1/tenant/data-erasure',
+    payload: { contactId: contact.id },
+    remoteAddress: '203.0.113.7',
+  });
+  assert.equal(res.statusCode, 200, res.body);
+
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: A, action: 'data.erasure.request', targetId: contact.id } });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].ip, '203.0.113.7');
+});
+
 test('其他租戶的聯絡人被拒', async () => {
   const before = await owner.dataErasureRequest.count({ where: { tenantId: A } });
   const res = await post(eraserApp, { contactId: foreignContact.id, mode: 'hard_delete' });
