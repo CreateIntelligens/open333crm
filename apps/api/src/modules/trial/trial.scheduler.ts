@@ -66,14 +66,15 @@ export async function runTrialLifecycle(prisma: PrismaClient): Promise<void> {
         .sort((a, b) => b - a)
         .find((m) => left <= m && !sent.includes(m));
       if (dueMilestone !== undefined) {
+        // 先寫標記再寄信：讀取之後被延長或停用就不寫也不寄（寄信失敗本來就只記 log，不會重寄）
+        const { count } = await prisma.tenant.updateMany({
+          where: { id: t.id, isActive: true, trialEndsAt: endsAt },
+          data: { trialRemindersSent: [...sent, dueMilestone] as Prisma.InputJsonValue },
+        });
+        if (count === 0) continue;
         const emails = await adminEmails(prisma, t.id);
         const expireDate = endsAt.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
         for (const e of emails) await sendReminderEmail(e, { siteName: t.name, daysLeft: left, expireDate });
-        // 到期日已被延長改過時不寫回，避免蓋掉延長清空的提醒標記
-        await prisma.tenant.updateMany({
-          where: { id: t.id, trialEndsAt: endsAt },
-          data: { trialRemindersSent: [...sent, dueMilestone] as Prisma.InputJsonValue },
-        });
         logger.info(`[TrialScheduler] tenant ${t.id} reminder sent (milestone=${dueMilestone}, left=${left})`);
       }
     } catch (err) {
