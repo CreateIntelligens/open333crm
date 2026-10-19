@@ -59,6 +59,11 @@ function tooLarge(maxBytes: number): AppError {
   return new AppError(`檔案超過上限 ${Math.round(maxBytes / 1024 / 1024)} MB`, 'FILE_TOO_LARGE', 413, { maxBytes });
 }
 
+/** API 對外可達的 base URL（imagemap baseUrl 用；隧道測試時設 API_PUBLIC_URL 指向 ngrok）。 */
+export function getApiPublicUrl(): string {
+  return (process.env.API_PUBLIC_URL || process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`).replace(/\/$/, '');
+}
+
 /**
  * Build an organized storage key: {tenantId}/{directory}/{subPath?}/{uuid}.{ext}
  */
