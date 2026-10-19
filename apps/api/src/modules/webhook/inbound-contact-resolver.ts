@@ -1,5 +1,7 @@
 import { resolveUidToContact, logger } from '@open333crm/core';
 import { eventBus } from '../../events/event-bus.js';
+import { recordStitchedIdentity } from '../contact/contact-merge.service.js';
+import { inTransaction } from '../identity-binding/binding-common.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 
 export async function resolveInboundContact(ctx: InboundMessageContext): Promise<void> {
@@ -28,17 +30,37 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
       });
 
       if (stitchedContact) {
+        // 渠道身分記這個平台上的個人資料，不沿用聯絡人的名稱與頭像（IDENT-05）：
+        // 聯絡人可能是合併後的另一個人，解除合併時這筆身分會搬回原本的人
+        let profileName: string | null = null;
+        let profilePic: string | null = null;
+        if (ctx.plugin) {
+          try {
+            const profile = await ctx.plugin.getProfile(ctx.contactUid, ctx.credentials);
+            profileName = profile.displayName;
+            profilePic = profile.avatarUrl ?? null;
+          } catch {
+            // 讀不到就留空
+          }
+        }
         try {
-          channelIdentity = await ctx.prisma.channelIdentity.create({
-            data: {
-              contactId: stitchedContact.id,
-              channelId: ctx.channel.id,
-              channelType: ctx.channel.channelType as never,
-              uid: ctx.contactUid,
-              profileName: stitchedContact.displayName,
-              profilePic: stitchedContact.avatarUrl ?? null,
-            },
-            include: { contact: true },
+          // 建立身分與記進合併紀錄放在同一個交易：記錄失敗時身分也不留下，下一則訊息會重新走這段，
+          // 不會出現「身分已在、合併紀錄沒有」而解除時搬不回的情況
+          channelIdentity = await inTransaction(ctx.prisma, async (tx) => {
+            const created = await tx.channelIdentity.create({
+              data: {
+                contactId: stitchedContact.id,
+                channelId: ctx.channel.id,
+                channelType: ctx.channel.channelType as never,
+                uid: ctx.contactUid,
+                profileName,
+                profilePic,
+              },
+              include: { contact: true },
+            });
+            // 這個 uid 若是合併帶進來的，把新身分記進那筆合併紀錄，解除時才會一起搬回
+            await recordStitchedIdentity(tx, ctx.tenantId, stitchedContact.id, created);
+            return created;
           });
           // 此 uid 在本渠道確實是第一次出現（聯絡人雖已存在於其他渠道）。
           ctx.isFirstContact = true;

@@ -646,6 +646,45 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
 }
 
 /** 列出與某聯絡人相關（作為 survivor 或被合併方）的合併紀錄，新到舊 */
+/**
+ * 收訊依 IdentityMap 把新的渠道身分直接掛到既有聯絡人（不經合併）之後呼叫：
+ * 這個 uid 若是某次合併帶進來的（同平台、同 uid 的身分記在一筆未解除的合併紀錄裡，且該紀錄的資料目前由
+ * contactId 持有），把新身分也記進那筆紀錄。解除合併與顧客自助解除都只看紀錄，新身分才會跟著搬回。
+ * 不是合併帶進來的（例如聯絡人自己原本的 uid）就不記，新身分屬於這位聯絡人。
+ */
+export async function recordStitchedIdentity(
+  db: TenantDb,
+  tenantId: string,
+  contactId: string,
+  identity: { id: string; channelType: string; uid: string },
+): Promise<void> {
+  const siblings = await db.channelIdentity.findMany({
+    where: { channelType: identity.channelType as never, uid: identity.uid, id: { not: identity.id }, contact: { tenantId } },
+    select: { id: true },
+  });
+  if (siblings.length === 0) return;
+
+  const logs = await db.contactMergeLog.findMany({
+    where: {
+      tenantId,
+      revertedAt: null,
+      OR: siblings.map((s) => ({ movedRecords: { path: ['channelIdentity'], array_contains: [s.id] } })),
+    },
+    select: { id: true, survivorId: true, movedRecords: true },
+  });
+  for (const log of logs) {
+    const chain = await resolveMergeChain(db, tenantId, log.survivorId);
+    if (chain[chain.length - 1] !== contactId) continue;
+    const moved = log.movedRecords as unknown as Partial<MovedRecords>;
+    const list = moved.channelIdentity ?? [];
+    if (list.includes(identity.id)) continue;
+    await db.contactMergeLog.update({
+      where: { id: log.id, tenantId },
+      data: { movedRecords: { ...moved, channelIdentity: [...list, identity.id] } as unknown as Prisma.InputJsonValue },
+    });
+  }
+}
+
 export async function listMergeLogs(db: TenantDb, tenantId: string, contactId: string) {
   return db.contactMergeLog.findMany({
     where: { tenantId, OR: [{ survivorId: contactId }, { mergedId: contactId }] },
