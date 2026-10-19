@@ -12,11 +12,11 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
 import { closeConversation } from './conversation.service.js';
+import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (inactivity is hourly-scale)
-const STARTUP_DELAY_MS = 30_000;
 
-export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOServer) {
+export function setupInactivityCloseWorker(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer) {
   async function pollInactivity() {
     try {
       // Group by tenant so each tenant's threshold applies independently.
@@ -61,8 +61,5 @@ export function setupInactivityCloseWorker(prisma: PrismaClient, io: SocketIOSer
     }
   }
 
-  setInterval(pollInactivity, POLL_INTERVAL_MS);
-  setTimeout(pollInactivity, STARTUP_DELAY_MS);
-
-  logger.info('[InactivityCloseWorker] Started — polling every 5min for inactive conversations');
+  scheduler.registerSchedule({ id: 'inactivity-close', every: POLL_INTERVAL_MS, run: pollInactivity });
 }

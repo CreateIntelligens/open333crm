@@ -4,6 +4,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-19]
 
+### Changed
+
+- **API 行程內的排程改由 BullMQ Job Scheduler 觸發**（APP-09 部分修正）— 群發、CSAT 發送與自動結案、Canvas 喚醒、閒置關閉、試用、權杖檢查與報表彙總，原本各自用 `setInterval`、`setTimeout` 觸發，API 有幾個行程就各跑幾份。現在各模組以 `registerSchedule()`（`apps/api/src/lib/job-scheduler.ts`）註冊，排程存在 Redis，不論有幾個 API 行程，每一期只產生一筆 job；執行中的行程被強制結束時，BullMQ 會重新執行這筆 job。頻率不變，報表彙總仍是行程時區的 02:00。行為改變：
+  - API 重啟不再立刻執行各排程，改為照原本的週期執行；報表彙總也不再在啟動時彙總前一天。過去每次部署都會額外執行一次。只有第一次部署（或 Redis 裡沒有排程資料）時，每隔固定時間的排程會一起立刻執行一次。
+  - Redis 斷線期間排程停止執行；Redis 恢復後，到期的那一期補跑一次。
+  - Canvas 喚醒與試用排程以 Redis 鎖防止兩期重疊。Canvas 的鎖取代只在單一行程有效的旗標。權杖檢查原本的 `withLeaderLock()`（`apps/api/src/lib/scheduler-lock.ts`）已移除。
+
 ### Fixed
 
 - **UAT 每次部署後，API 與 workers 的程式 log 都會消失**（#316）— UAT 設定 `LOG_TRANSPORT=file`，log 寫在容器內的 `/app/logs`，但 `docker-compose.yml` 沒有掛 volume，部署時 `--force-recreate` 重建容器就把 log 檔一起清掉，排程類工作（只寫 log 檔）在上次部署之前的執行紀錄都查不到。現在 api 與 workers 各掛一個 named volume（`api_logs`、`workers_logs`），log 檔跨部署保留，保留天數仍由 `LOG_MAX_FILES`（預設 14 天）控制。

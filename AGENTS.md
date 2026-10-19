@@ -417,6 +417,70 @@ await redisPublisher.publish(
 `eventBus` (`apps/api/src/events/event-bus.ts`) is an in-process EventEmitter only. It has no
 Redis connection.
 
+## Architecture: Scheduled Jobs in the API Process
+
+Do not use `setInterval` or `setTimeout` for a periodic job.
+
+Put a periodic job in the API process only if the job needs the API process, for example
+`fastify.io`. Put all other periodic jobs in `apps/workers`.
+
+To add a periodic job to the API process:
+
+1. Register the job with `registerSchedule()` from `apps/api/src/lib/job-scheduler.ts`:
+
+   ```ts
+   export function setupXxxScheduler(scheduler: JobScheduler, prisma: PrismaClient) {
+     scheduler.registerSchedule({ id: 'xxx', every: 60_000, run: () => runXxx(prisma) });
+   }
+   ```
+
+2. Call `setupXxxScheduler(jobScheduler, ...)` in `apps/api/src/index.ts`. Call it before
+   `jobScheduler.start()`.
+
+### Frequency
+
+- Give `every` (milliseconds) or `pattern` (cron). Do not give both.
+- A cron uses the time zone of the API process. The containers do not set `TZ`, so the time
+  zone is UTC.
+- An API restart does not run the job. The job runs at its next scheduled time.
+
+### One job for each period
+
+BullMQ Job Scheduler stores the schedule in Redis. Each period creates **one job only**. This is
+also true when more than one API process runs. Do not add a lock for this.
+
+### A job can run more than one time
+
+If the process stops while the job runs, BullMQ runs the job again. For example, Docker can
+stop the API during a deploy. A test with the default BullMQ settings showed the second run
+after approximately 60 seconds. The default settings are `lockDuration` 30 seconds and
+`stalledInterval` 30 seconds.
+
+Write `run` so that a second run does not do a side effect again. Before `run` sends a message
+or changes the state of a row, `run` must claim the row with a conditional update.
+
+### Two periods can overlap
+
+BullMQ creates the next job when a worker takes the current job. Thus the next period can
+start before the current period ends.
+
+If a job can run longer than its period, set `withoutOverlapping: { expiresInMs }`:
+
+- Set `expiresInMs` to the longest time that the job can run. Do not set it to the period.
+- The job releases the lock when the job ends.
+- If the process stops, the job does not release the lock. The lock then expires after
+  `expiresInMs`.
+- If the job runs longer than `expiresInMs`, the lock also expires. The next period can then
+  start while the job runs.
+
+The lock prevents overlap only while the lock is valid. The lock does not prevent a second run
+of the same job. Thus `run` needs conditional updates also when you set the lock.
+
+### Schedule ids
+
+The schedule id is also the job name and the lock key. `start()` removes each schedule in Redis
+that no code registers. Thus a renamed or removed id does not stay in Redis.
+
 ## Prisma Rules
 
 - Schema: `packages/database/prisma/schema.prisma`

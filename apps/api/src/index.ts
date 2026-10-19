@@ -72,6 +72,7 @@ import cliRoutes from './modules/cli/cli.routes.js';
 import mcpRoutes from './modules/mcp/mcp.routes.js';
 import { registerVisitorNamespace } from './modules/webchat/webchat.socket.js';
 import canvasRoutes, { identityRoutes } from './modules/canvas/canvas.routes.js';
+import { createBullJobScheduler } from './lib/job-scheduler.js';
 import { setupCanvasScheduler } from './modules/canvas/canvas.scheduler.js';
 import { setupTrialScheduler } from './modules/trial/trial.scheduler.js';
 import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
@@ -206,14 +207,20 @@ export async function bootstrap() {
 
   setupAutomationWorker(app.prismaAdmin, app.io);
   setupNotificationWorker(app.prismaAdmin);
-  setupAnalyticsScheduler(app.prismaAdmin);
-  setupBroadcastScheduler(app.prismaAdmin, app.io);
-  setupCsatScheduler(app.prismaAdmin, app.io);
-  setupMetaTokenHealthScheduler(app.prismaAdmin, app.io);
-  setupInactivityCloseWorker(app.prismaAdmin, app.io);
   setupCanvasWorker(app.prismaAdmin, app.io);
-  setupCanvasScheduler(app.prismaAdmin);
-  setupTrialScheduler(app.prismaAdmin);
+
+  // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，
+  // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始
+  const jobScheduler = createBullJobScheduler(config.REDIS_URL);
+  setupAnalyticsScheduler(jobScheduler, app.prismaAdmin);
+  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io);
+  setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
+  setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);
+  setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
+  setupCanvasScheduler(jobScheduler);
+  setupTrialScheduler(jobScheduler, app.prismaAdmin);
+  jobScheduler.start();
+  app.addHook('onClose', () => jobScheduler.close());
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
   setupWebhookDispatcher(app.prismaAdmin);
   startA2ABridgeWorker(app).catch((err) => app.log.warn({ err }, '[A2A] Bridge worker start failed'));

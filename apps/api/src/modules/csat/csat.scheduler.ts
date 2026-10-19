@@ -4,6 +4,7 @@ import { sendCsatSurvey } from './csat.service.js';
 import { closeConversationsForCase } from '../conversation/conversation.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
+import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 const CSAT_DELAY_MINUTES = 5; // POC: 5 minutes after resolution (design doc: 30 min)
@@ -14,7 +15,7 @@ const AUTO_CLOSE_HOURS = 72; // auto-close after 72h without CSAT response
  * 1. Send CSAT surveys for resolved cases after delay
  * 2. Auto-close cases that haven't received CSAT response within timeout
  */
-export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
+export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer) {
   /**
    * Poll for resolved cases that need CSAT survey sent.
    */
@@ -132,13 +133,6 @@ export function setupCsatScheduler(prisma: PrismaClient, io: SocketIOServer) {
     }
   }
 
-  // Poll every 60 seconds
-  setInterval(pollSendCsat, POLL_INTERVAL_MS);
-  setInterval(pollAutoClose, POLL_INTERVAL_MS);
-
-  // Run once on startup with delay
-  setTimeout(pollSendCsat, 8000);
-  setTimeout(pollAutoClose, 12000);
-
-  logger.info(`[CsatScheduler] Started — send delay: ${CSAT_DELAY_MINUTES}min, auto-close: ${AUTO_CLOSE_HOURS}h`);
+  scheduler.registerSchedule({ id: 'csat-send', every: POLL_INTERVAL_MS, run: pollSendCsat });
+  scheduler.registerSchedule({ id: 'csat-auto-close', every: POLL_INTERVAL_MS, run: pollAutoClose });
 }

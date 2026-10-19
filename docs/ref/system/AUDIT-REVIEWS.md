@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-19：APP-09 部分修正
+
+以 `91e00162` 為基礎修正，分支 `refactor/schedulers-bullmq`。以 unit 測試與 feature 測試確認，feature 測試連本機的 Redis。另在 UAT 唯讀檢查部署方式與各排程的資料量，沒有改動 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| APP-09 | 部分修正，改寫內容 | API 行程內的 8 個排程改由 BullMQ Job Scheduler 觸發。`apps/api/tests/feature/lib/job-scheduler.test.ts`：兩個實例註冊同一個排程，Redis 只有一筆待執行的 job；設定 `withoutOverlapping` 時，兩個實例的 `run` 不會同時執行。Redis 廣播、行程記憶體的狀態、Socket.IO 未處理 |
+
+本次另外發現：UAT 的 `docker-compose.yml` 為 api 設定 `container_name`，所以目前無法同時執行兩個 api 容器。APP-09 的修正方向已補上這一點。
+
 ## 2026-10-19：解除合併搬不回依 IdentityMap 掛上的身分；IDENT-05 新增並修正，新增 IDENT-06
 
 起因是示範租戶的一位測試聯絡人在客服解除合併後，LINE 與兩個 FB 身分仍在同一位聯絡人底下，畫面沒有可以解除的合併。以示範租戶的 API 唯讀查詢聯絡人、渠道身分與 `GET /contacts/:id/merge-logs`，沒有寫入 UAT；再對照 `d17aedea` 的程式碼，以 feature 測試重現。

@@ -35,7 +35,7 @@
             → purgedAt = 現在。只標記，業務資料不真刪，可復原
 ```
 
-排程是 `apps/api/src/modules/trial/trial.scheduler.ts` 的 `runTrialLifecycle()`，啟動時跑一次，之後每小時一次。逐租戶 try/catch，單一租戶失敗不影響其他租戶。
+排程是 `apps/api/src/modules/trial/trial.scheduler.ts` 的 `runTrialLifecycle()`，由 BullMQ Job Scheduler 每小時觸發一次。API 重啟不會額外執行。註冊時設定 `withoutOverlapping`（鎖的存活時間 30 分鐘），上一期還在跑時，這一期略過。逐租戶 try/catch，單一租戶失敗不影響其他租戶。
 
 它依序執行三步。每一步各讀一次租戶，條件不同：
 
@@ -53,7 +53,7 @@
 
 每一步都先讀出租戶，再逐一「認領」：用讀取條件加上租戶 id 做條件更新（`claimEach()`）。更新到這一筆租戶時，排程才寄信、寫稽核。讀取之後，租戶可能被平台人員延長、轉正式或停用。這時條件不成立，排程略過這一筆，不會用讀到的舊狀態蓋掉平台人員的操作。
 
-提醒的認領條件和讀取條件不同：`trialEndsAt` 與 `trialRemindersSent` 都要仍是讀到的值。比對 `trialRemindersSent` 是預防措施。目前只有一個 API 實例（`docker-compose.yml` 的 api 寫死 `container_name`），排程不會重疊執行。之後若有多個實例同時讀到同一筆，這個條件讓只有一個實例寄信。
+提醒的認領條件和讀取條件不同：`trialEndsAt` 與 `trialRemindersSent` 都要仍是讀到的值。比對 `trialRemindersSent` 是為了兩次排程重疊的情況。兩期重疊平常由 `withoutOverlapping` 的鎖擋住。一期跑超過 30 分鐘時，鎖會過期，下一期可能和這一期讀到同一筆。這個條件讓只有一次排程寄信。
 
 提醒是先寫標記再寄信。寄信失敗只寫 log（`trial-emails.ts` 的 `safeSend()`），本來就不會重寄，所以先寫標記不會讓原本會重寄的提醒漏寄。
 
