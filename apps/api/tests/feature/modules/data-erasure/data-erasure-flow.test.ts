@@ -114,6 +114,8 @@ async function createSubject(avatars: { contact?: string; identity?: string } = 
 
 /** 物件儲存裡頭像檔的 key 與公開網址（網址格式同 S3 provider：{publicUrl}/{bucket}/{key}） */
 const BUCKET = process.env.S3_BUCKET || 'open333crm';
+// workers 以 S3_PUBLIC_URL 確認頭像網址是自己物件儲存的檔案
+process.env.S3_PUBLIC_URL = 'https://files.example.test';
 function storedAvatar(tenantId: string, name: string) {
   // key 的格式與 avatar-mirror 上傳時相同：{tenantId}/avatars/{uuid}.{ext}
   const key = `${tenantId}/avatars/${randomUUID()}.jpg`;
@@ -327,9 +329,15 @@ test('不刪物件儲存以外或其他租戶的檔案', async () => {
   });
   // 在 avatars 目錄、但不是補存產生的檔名格式（{uuid}.{圖片副檔名}）
   const odd = await createSubject({ identity: `https://files.example.test/${BUCKET}/${A}/avatars/exports/report.csv` });
+  // 路徑與 key 都對，但主機不是物件儲存，或 bucket 不在路徑開頭
+  const elsewhere = await createSubject({
+    contact: `https://attacker.example/${BUCKET}/${own.key}`,
+    identity: `https://files.example.test/x/${BUCKET}/${own.key}`,
+  });
   const before = mocks.remove.mock.calls.length;
   await runJob(await createRequest(contact.id, 'anonymize'));
   await runJob(await createRequest(odd.contact.id, 'anonymize'));
+  await runJob(await createRequest(elsewhere.contact.id, 'anonymize'));
 
   assert.equal(mocks.remove.mock.calls.length, before, '平台網址、其他租戶與不符格式的檔案都不刪');
 });

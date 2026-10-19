@@ -16,7 +16,8 @@ const mirror = vi.hoisted(() => ({
   calls: [] as string[],
 }));
 vi.mock('#src/modules/storage/avatar-mirror.service.js', () => ({
-  isStoredAvatarUrl: (url: string) => url.startsWith('https://files.example.test/open333crm/'),
+  isStoredAvatarUrl: (tenantId: string, url: string) =>
+    url.startsWith(`https://files.example.test/open333crm/${tenantId}/avatars/`),
   mirrorAvatar: async (_tenantId: string, url: string) => {
     mirror.calls.push(url);
     return mirror.downloadable[url] ?? null;
@@ -163,6 +164,40 @@ test('已存過的頭像不再下載', async () => {
   assert.equal(mirror.calls.length, 0);
   assert.equal(profileCalls.length, 0);
   assert.equal(t.identityUpdates.length, 0);
+});
+
+test('其他租戶或不是 avatars 目錄的檔案要重新存', async () => {
+  const foreign = `${STORED}tenant-2/avatars/x.jpg`;
+  mirror.downloadable[foreign] = `${STORED}tenant-1/avatars/y.jpg`;
+  const t = createDb({
+    identity: existingIdentity(foreign),
+    contact: { id: 'contact-1', tenantId: TENANT, avatarUrl: foreign },
+  });
+  const { ctx } = createCtx(t.db, FRESH);
+
+  await resolveInboundContact(ctx);
+  await flushAvatarRefreshesForTests();
+
+  assert.equal(t.identity()!.profilePic, `${STORED}tenant-1/avatars/y.jpg`);
+});
+
+test('重試紀錄有上限，超過時淘汰最舊的', async () => {
+  resetAvatarRefreshThrottleForTests(2);
+  const run = async (id: string) => {
+    const t = createDb({
+      identity: { ...existingIdentity(EXPIRED), id },
+      contact: { id: 'contact-1', tenantId: TENANT, avatarUrl: EXPIRED },
+    });
+    const { ctx, profileCalls } = createCtx(t.db, FRESH); // 一律失敗
+    await resolveInboundContact(ctx);
+    await flushAvatarRefreshesForTests();
+    return profileCalls.length;
+  };
+  assert.equal(await run('i-1'), 1);
+  assert.equal(await run('i-2'), 1);
+  assert.equal(await run('i-3'), 1, '第三筆擠掉最舊的 i-1');
+  assert.equal(await run('i-2'), 0, 'i-2 還在紀錄裡，一小時內不重試');
+  assert.equal(await run('i-1'), 1, 'i-1 已被淘汰，所以會再試');
 });
 
 test('客服改過的聯絡人頭像不覆蓋', async () => {

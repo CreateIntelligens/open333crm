@@ -47,27 +47,42 @@ function collectStorageKeys(messages: { content: Prisma.JsonValue }[]): string[]
 }
 
 /**
+ * 物件儲存公開網址的來源與路徑前綴。格式是 {S3_PUBLIC_URL}/{bucket}/{key}（apps/api s3.provider）。
+ * S3_PUBLIC_URL 要與 api 相同；沒設定時不比對來源，只要求路徑從 /{bucket}/ 開始。
+ */
+function storagePublicBase(): { origin: string | null; prefix: string } {
+  const raw = process.env.S3_PUBLIC_URL;
+  if (!raw) return { origin: null, prefix: `/${MEDIA_BUCKET}/` };
+  const base = new URL(raw);
+  return { origin: base.origin, prefix: `${base.pathname.replace(/\/*$/, '')}/${MEDIA_BUCKET}/` };
+}
+
+/**
  * 從聯絡人的 avatarUrl 與渠道身分的 profilePic 抽出本租戶 avatars 目錄下的頭像檔 key。
- * 公開網址的格式是 {S3_PUBLIC_URL}/{bucket}/{key}（apps/api s3.provider），key 是 {tenantId}/avatars/{uuid}.{ext}。
- * 只看網址的路徑、而且 key 要完全符合這個格式；平台網址與其他租戶的檔案不收。
- * 不比對主機：workers 的 S3_PUBLIC_URL 不一定與 api 相同，比對主機會讓刪除悄悄跳過。
+ * 網址的來源要是物件儲存、路徑要從 {bucket}/ 開始，key 要完全是 {tenantId}/avatars/{uuid}.{ext}；
+ * 平台網址、其他租戶與其他格式的檔案不收。
  */
 function collectAvatarKeys(tenantId: string, urls: (string | null | undefined)[]): string[] {
+  const { origin, prefix } = storagePublicBase();
   const keyPattern = new RegExp(`^${tenantId}/avatars/[0-9a-f-]{36}\\.(?:jpg|png|webp|gif)$`);
-  const prefix = `/${MEDIA_BUCKET}/`;
   const keys = new Set<string>();
   for (const url of urls) {
     if (!url) continue;
-    let pathname: string;
+    let parsed: URL;
     try {
-      pathname = new URL(url).pathname;
+      parsed = new URL(url);
     } catch {
       continue;
     }
-    const at = pathname.lastIndexOf(prefix);
-    if (at < 0) continue;
-    const key = pathname.slice(at + prefix.length);
-    if (keyPattern.test(key)) keys.add(key);
+    if (!parsed.pathname.startsWith(prefix)) continue;
+    const key = parsed.pathname.slice(prefix.length);
+    if (!keyPattern.test(key)) continue;
+    if (origin && parsed.origin !== origin) {
+      // 看起來是本租戶的頭像檔、來源卻不同：多半是 workers 的 S3_PUBLIC_URL 與 api 不一致，記下來才查得到
+      logger.warn(`[data-erasure] 頭像網址的來源與 S3_PUBLIC_URL 不同，不刪除 origin=${parsed.origin}`);
+      continue;
+    }
+    keys.add(key);
   }
   return [...keys];
 }

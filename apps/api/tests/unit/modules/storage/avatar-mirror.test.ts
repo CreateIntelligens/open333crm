@@ -84,8 +84,27 @@ test('新聯絡人的頭像存進物件儲存：沿著轉址下載，上傳到�
   assert.match(uploads[0].key, new RegExp(`^${TENANT}/avatars/[0-9a-f-]+\\.jpg$`));
   assert.equal(uploads[0].mimeType, 'image/jpeg');
   assert.equal(url, `${PUBLIC_BASE}/${uploads[0].key}`);
-  assert.equal(isStoredAvatarUrl(url!), true);
-  assert.equal(isStoredAvatarUrl(source), false);
+  assert.equal(isStoredAvatarUrl(TENANT, url!), true);
+  assert.equal(isStoredAvatarUrl(TENANT, source), false);
+});
+
+test('只有本租戶 avatars 目錄的網址算已存好的頭像', () => {
+  const other = '22222222-2222-4222-8222-222222222222';
+  assert.equal(isStoredAvatarUrl(TENANT, `${PUBLIC_BASE}/${TENANT}/avatars/a.jpg`), true);
+  assert.equal(isStoredAvatarUrl(TENANT, `${PUBLIC_BASE}/${other}/avatars/a.jpg`), false, '其他租戶');
+  assert.equal(isStoredAvatarUrl(TENANT, `${PUBLIC_BASE}/${TENANT}/media/a.jpg`), false, '不是 avatars 目錄');
+});
+
+test('最多跟 3 次轉址', async () => {
+  const hop = (n: number) => `https://scontent.xx.fbcdn.net/v/hop${n}.jpg`;
+  const routes: Record<string, Route> = {};
+  for (let i = 0; i < 4; i++) routes[hop(i)] = { status: 302, location: hop(i + 1) };
+  routes[hop(4)] = { type: 'image/jpeg', body: JPEG };
+  stubFetch(routes);
+
+  assert.ok(await mirrorAvatar(TENANT, hop(1)), '3 次轉址可以');
+  assert.equal(await mirrorAvatar(TENANT, hop(0)), null, '4 次轉址不行');
+  assert.equal(uploads.length, 1);
 });
 
 test('不安全或不是圖片的網址不存：http 網址', async () => {
@@ -112,12 +131,19 @@ test('不安全或不是圖片的網址不存：回應不是允許的圖片類�
   assert.equal(uploads.length, 0);
 });
 
+test('不安全或不是圖片的網址不存：宣告是圖片、內容不是', async () => {
+  const source = 'https://scontent.xx.fbcdn.net/v/fake.jpg';
+  stubFetch({ [source]: { type: 'image/jpeg', body: Buffer.from('<html><script>alert(1)</script></html>') } });
+  assert.equal(await mirrorAvatar(TENANT, source), null);
+  assert.equal(uploads.length, 0);
+});
+
 test('不安全或不是圖片的網址不存：超過 5 MB', async () => {
   const declared = 'https://scontent.xx.fbcdn.net/v/declared.jpg';
   const undeclared = 'https://scontent.xx.fbcdn.net/v/undeclared.jpg';
   stubFetch({
     [declared]: { type: 'image/jpeg', length: String(6 * 1024 * 1024), body: JPEG },
-    [undeclared]: { type: 'image/jpeg', body: Buffer.alloc(5 * 1024 * 1024 + 1) },
+    [undeclared]: { type: 'image/jpeg', body: Buffer.concat([JPEG, Buffer.alloc(5 * 1024 * 1024)]) },
   });
   assert.equal(await mirrorAvatar(TENANT, declared), null, 'content-length 超過上限');
   assert.equal(await mirrorAvatar(TENANT, undeclared), null, '沒宣告長度、實際內容超過上限');

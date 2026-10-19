@@ -4,6 +4,7 @@
  * FB 的 profile_pic 網址會失效，存自己的網址才不會在收件匣變成縮寫。
  * 網址來自平台 API，仍當成外部輸入：只走 https、每次轉址都重新檢查不指向內部網路。
  */
+import { fileTypeFromBuffer } from 'file-type';
 import { logger } from '@open333crm/core';
 import { isBlockedUrl } from '../webhook/downstream-forwarder.js';
 import { deleteFile, getPublicUrl, uploadFile } from './storage.service.js';
@@ -19,16 +20,16 @@ const EXT_BY_TYPE: Record<string, string> = {
   'image/gif': '.gif',
 };
 
-/** 網址是否已經是我們物件儲存的檔案 */
-export function isStoredAvatarUrl(url: string): boolean {
-  return url.startsWith(getPublicUrl(''));
+/** 網址是否已經是本租戶 avatars 目錄的檔案；其他租戶或其他目錄的檔案要重新存 */
+export function isStoredAvatarUrl(tenantId: string, url: string): boolean {
+  return url.startsWith(getPublicUrl(`${tenantId}/avatars/`));
 }
 
 /** 刪除本租戶 avatars 目錄下的頭像檔；不是我們的網址或其他租戶的檔案不動。失敗只記 log */
 export async function deleteStoredAvatar(tenantId: string, url: string): Promise<void> {
-  if (!isStoredAvatarUrl(url)) return;
+  if (!isStoredAvatarUrl(tenantId, url)) return;
   const key = url.slice(getPublicUrl('').length);
-  if (!key.startsWith(`${tenantId}/avatars/`) || key.includes('..')) return;
+  if (key.includes('..')) return;
   await deleteFile(key).catch((err) => {
     logger.warn('[AvatarMirror] 刪除頭像檔失敗', err);
   });
@@ -80,16 +81,22 @@ export async function mirrorAvatar(tenantId: string, sourceUrl: string): Promise
         return null;
       }
 
-      const mimeType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
-      const ext = EXT_BY_TYPE[mimeType];
-      if (!ext) {
-        logger.warn(`[AvatarMirror] 頭像不是允許的圖片類型 type=${mimeType}`);
+      const declaredType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      if (!EXT_BY_TYPE[declaredType]) {
+        logger.warn(`[AvatarMirror] 頭像不是允許的圖片類型 type=${declaredType}`);
         return null;
       }
       const declared = Number(response.headers.get('content-length'));
       if (declared > AVATAR_MAX_BYTES) return null;
       const buffer = await readLimited(response, AVATAR_MAX_BYTES);
       if (!buffer || buffer.length === 0) return null;
+      // 回應標頭可以亂寫：以檔頭的 magic bytes 判斷實際類型，上傳時也用判斷出來的類型
+      const mimeType = (await fileTypeFromBuffer(buffer))?.mime ?? '';
+      const ext = EXT_BY_TYPE[mimeType];
+      if (!ext) {
+        logger.warn(`[AvatarMirror] 頭像內容不是允許的圖片 declared=${declaredType} detected=${mimeType || 'unknown'}`);
+        return null;
+      }
 
       const { url: storedUrl } = await uploadFile(buffer, `avatar${ext}`, mimeType, tenantId, 'avatars');
       return storedUrl;

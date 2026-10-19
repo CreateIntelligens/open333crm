@@ -9,7 +9,8 @@ import { deleteStoredAvatar, isStoredAvatarUrl, mirrorAvatar } from '../storage/
 import type { InboundMessageContext } from './inbound-message.types.js';
 
 const RETRY_AFTER_MS = 60 * 60 * 1000;
-const MAX_TRACKED = 10_000;
+const DEFAULT_MAX_TRACKED = 10_000;
+let maxTracked = DEFAULT_MAX_TRACKED;
 
 /** 身分 id → 上次嘗試補存的時間（只在這個程序內，重啟後重新計算） */
 const lastAttemptAt = new Map<string, number>();
@@ -24,9 +25,15 @@ export interface AvatarIdentity {
 function shouldAttempt(identityId: string, now: number): boolean {
   const last = lastAttemptAt.get(identityId);
   if (last !== undefined && now - last < RETRY_AFTER_MS) return false;
-  if (lastAttemptAt.size >= MAX_TRACKED) {
+  lastAttemptAt.delete(identityId); // 重新放到最後，Map 的順序就是嘗試時間的先後
+  if (lastAttemptAt.size >= maxTracked) {
     for (const [id, at] of lastAttemptAt) {
       if (now - at >= RETRY_AFTER_MS) lastAttemptAt.delete(id);
+    }
+    // 一小時內失敗的身分仍超過上限時，淘汰最舊的，記憶體才有上限
+    for (const id of lastAttemptAt.keys()) {
+      if (lastAttemptAt.size < maxTracked) break;
+      lastAttemptAt.delete(id);
     }
   }
   lastAttemptAt.set(identityId, now);
@@ -35,7 +42,7 @@ function shouldAttempt(identityId: string, now: number): boolean {
 
 async function refreshIdentityAvatar(ctx: InboundMessageContext, identity: AvatarIdentity): Promise<void> {
   const previous = identity.profilePic;
-  if (!previous || isStoredAvatarUrl(previous)) return;
+  if (!previous || isStoredAvatarUrl(ctx.tenantId, previous)) return;
   if (!shouldAttempt(identity.id, Date.now())) return;
 
   let stored = await mirrorAvatar(ctx.tenantId, previous);
@@ -83,7 +90,8 @@ export async function flushAvatarRefreshesForTests(): Promise<void> {
   await Promise.all([...pending]);
 }
 
-/** 測試用：清掉重試間隔的紀錄 */
-export function resetAvatarRefreshThrottleForTests(): void {
+/** 測試用：清掉重試間隔的紀錄，可另外指定紀錄上限 */
+export function resetAvatarRefreshThrottleForTests(limit = DEFAULT_MAX_TRACKED): void {
   lastAttemptAt.clear();
+  maxTracked = limit;
 }
