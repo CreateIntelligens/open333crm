@@ -21,7 +21,7 @@ The system SHALL support sending the following LINE message types: `text`, `imag
 The system SHALL support Reply, Push, Multicast, Broadcast, and Narrowcast sending strategies for LINE.
 
 | Strategy | API | Limit |
-|----------|-----|-------|
+|---|---|---|
 | Reply | `POST /v2/bot/message/reply` | replyToken required, 30s TTL |
 | Push | `POST /v2/bot/message/push` | 1 recipient |
 | Multicast | `POST /v2/bot/message/multicast` | max 500 userIds/request |

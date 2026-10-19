@@ -4,9 +4,7 @@
 ## Requirements
 
 ### Requirement: Unified channel plugin interface
-The system SHALL provide a unified adapter interface for all external IM channels through a single `ChannelPlugin` interface in `packages/channel-plugins/src/index.ts`. The interface SHALL use `ParsedWebhookMessage[]` as the return type for `parseWebhook`, and `registerChannelPlugin`/`getChannelPlugin` as registry functions. Plugin implementations for LINE, Facebook, and Webchat SHALL live in their respective channel subdirectories (`line/`, `facebook/`, `webchat/`) — no duplicate `adapters/` folder SHALL exist. Both `apps/api` and `apps/workers` SHALL import from `@open333crm/channel-plugins` only.
-
-`WebchatPlugin.sendMessage` SHALL return `{ success: true, channelMsgId }` but SHALL NOT be responsible for pushing the message to the visitor — actual delivery to the visitor Socket.IO room SHALL be handled by `conversation.service.ts` after the message is persisted.
+The system SHALL provide a unified adapter interface for all external IM channels through a single `ChannelPlugin` interface in `packages/channel-plugins/src/index.ts`. The interface SHALL use `ParsedWebhookMessage[]` as the return type for `parseWebhook`, and `registerChannelPlugin`/`getChannelPlugin` as registry functions. Both `apps/api` and `apps/workers` SHALL import from `@open333crm/channel-plugins` only.
 
 #### Scenario: Channel plugin receiving webhook
 - **WHEN** an external HTTP webhook hits a specific channel's adapter
@@ -16,9 +14,15 @@ The system SHALL provide a unified adapter interface for all external IM channel
 - **WHEN** any service in `apps/api` or `apps/workers` calls `getChannelPlugin(channelType)`
 - **THEN** the registry returns the plugin instance from `@open333crm/channel-plugins` (no `/webhook` sub-path)
 
+### Requirement: Each channel plugin has one implementation
+Plugin implementations for LINE, Facebook, and Webchat SHALL live in their respective channel subdirectories (`line/`, `facebook/`, `webchat/`) — no duplicate `adapters/` folder SHALL exist.
+
 #### Scenario: No adapter duplication
 - **WHEN** `packages/channel-plugins/src/` is inspected
 - **THEN** there SHALL be no `adapters/` directory and no `webhook-adapter.ts` file; LINE/FB/Webchat plugins SHALL each have exactly one implementation file in their own subdirectory
+
+### Requirement: Webchat plugin does not deliver to visitors
+`WebchatPlugin.sendMessage` SHALL return `{ success: true, channelMsgId }` but SHALL NOT be responsible for pushing the message to the visitor — actual delivery to the visitor Socket.IO room SHALL be handled by `conversation.service.ts` after the message is persisted.
 
 #### Scenario: WebchatPlugin sendMessage returns success
 - **WHEN** `webchatPlugin.sendMessage(to, payload, credentials)` is called

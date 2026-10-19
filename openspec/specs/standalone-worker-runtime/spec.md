@@ -59,7 +59,14 @@ SLA warning, breach, and customer-waiting outcomes detected by the standalone wo
 - **THEN** it publishes a `case.updated` socket payload via the Redis `socket:emit` bridge to the tenant room
 
 ### Requirement: Worker SLA Event Distribution
-The standalone SLA worker SHALL be responsible for converting scan outcomes into package-defined SLA-only events. For each detected first-response warning/breach, resolution warning/breach, or customer-waiting breach, the worker SHALL build facts, evaluate matching automation rules, persist required CaseEvents, and dispatch side effects through worker-safe queues or Redis socket bridge messages. The worker SHALL NOT emit raw upstream service events such as `message.received` or perform LLM sentiment analysis.
+The standalone SLA worker SHALL be responsible for converting scan outcomes into package-defined SLA-only events. The worker SHALL NOT emit raw upstream service events such as `message.received` or perform LLM sentiment analysis.
+
+#### Scenario: API does not distribute worker SLA event
+- **WHEN** the worker dispatches an SLA scan outcome
+- **THEN** it does not depend on API `eventBus` subscribers to distribute the event
+
+### Requirement: Worker SLA Event Dispatch
+For each detected first-response warning/breach, resolution warning/breach, or customer-waiting breach, the standalone SLA worker SHALL build facts, evaluate matching automation rules, persist required CaseEvents, and dispatch side effects through worker-safe queues or Redis socket bridge messages.
 
 #### Scenario: Worker dispatches warning event
 - **WHEN** the SLA scan detects a Case in warning state
@@ -72,10 +79,6 @@ The standalone SLA worker SHALL be responsible for converting scan outcomes into
 #### Scenario: Worker dispatches customer waiting event
 - **WHEN** the SLA scan detects a customer-waiting breach
 - **THEN** the worker dispatches `sla.customer_waiting.breached` with facts that can be evaluated by automation rules and notification dispatch
-
-#### Scenario: API does not distribute worker SLA event
-- **WHEN** the worker dispatches an SLA scan outcome
-- **THEN** it does not depend on API `eventBus` subscribers to distribute the event
 
 ---
 
@@ -114,11 +117,18 @@ The automation worker SHALL consume jobs from the `automation` queue. Each job p
 ---
 
 ### Requirement: Notification Job Consumer
-The `apps/workers` notification worker SHALL be the **sole** processor responsible for persisting notification records and delivering socket events for all notification types. The `apps/api` event-bus worker (`notification.worker.ts`) SHALL only enqueue BullMQ jobs onto the `notification` queue and SHALL NOT directly write to the database or emit socket events. Each job payload SHALL include the notification type, recipient identifiers, and relevant entity context. The handler SHALL create a notification record in the database via the standalone `PrismaClient` and publish a `socket:emit` message to Redis pub/sub so the API can forward the event to the appropriate Socket.IO room.
+The `apps/workers` notification worker SHALL be the **sole** processor responsible for persisting notification records and delivering socket events for all notification types. The `apps/api` event-bus worker (`notification.worker.ts`) SHALL only enqueue BullMQ jobs onto the `notification` queue and SHALL NOT directly write to the database or emit socket events.
 
 #### Scenario: Notification enqueued from API event bus
 - **WHEN** a domain event (e.g., `case.assigned`, `message.received`) is received by the API event-bus worker
 - **THEN** a BullMQ job is added to the `notification` queue with the full notification payload, and no direct DB write or socket emit occurs in the API process
+
+#### Scenario: Redis unavailable at enqueue time
+- **WHEN** the API event-bus worker attempts to enqueue a notification job and the Redis connection is unavailable
+- **THEN** the `notificationQueue.add` call throws, the error is caught and logged, and no duplicate processing occurs
+
+### Requirement: Notification Job Handling
+Each `notification` job payload SHALL include the notification type, recipient identifiers, and relevant entity context. The notification job handler SHALL create a notification record in the database via the standalone `PrismaClient` and publish a `socket:emit` message to Redis pub/sub so the API can forward the event to the appropriate Socket.IO room.
 
 #### Scenario: Notification job consumed by worker
 - **WHEN** the `notificationWorker` in `apps/workers` dequeues a `notification:dispatch` job
@@ -131,10 +141,6 @@ The `apps/workers` notification worker SHALL be the **sole** processor responsib
 #### Scenario: Database write fails
 - **WHEN** the notification DB write throws
 - **THEN** the job fails and BullMQ retries according to the queue's retry policy; no Redis publish is attempted
-
-#### Scenario: Redis unavailable at enqueue time
-- **WHEN** the API event-bus worker attempts to enqueue a notification job and the Redis connection is unavailable
-- **THEN** the `notificationQueue.add` call throws, the error is caught and logged, and no duplicate processing occurs
 
 ---
 
@@ -156,8 +162,13 @@ When a standalone worker needs to emit a WebSocket event to connected clients, i
 ---
 
 ### Requirement: Socket Event Routing Decision Rule
-When implementing any feature that needs to emit a socket event to the frontend, the implementor SHALL select the correct emission path based on the following criteria.
+When implementing any feature that needs to emit a socket event to the frontend, the implementor SHALL select Path A or Path B by the criteria below. Path B delivers the event through `eventBus.publish` → BullMQ job → `apps/workers` → Redis pub/sub emit. Implementors SHALL NOT use Path A for notifications whose recipient list is determined dynamically at emit time. Implementors SHALL NOT use Path B when the socket event is an immediate, latency-sensitive consequence of a user action.
 
+#### Scenario: Case assigned notification to agent
+- **WHEN** a case is assigned to an agent
+- **THEN** the notification to the assigned agent SHALL be dispatched via Path B (eventBus → BullMQ → workers) because it involves writing a `Notification` record and potentially querying supervisor IDs, which must not block the assignment HTTP response
+
+### Requirement: Socket Path A: API Process Direct Emit
 **Path A — API process direct emit** (`fastify.io.to(room).emit(event, data)`)
 SHALL be used when ALL of the following are true:
 - The socket event is the primary real-time consequence of the current HTTP request
@@ -165,22 +176,17 @@ SHALL be used when ALL of the following are true:
 - The target room is known without any additional database queries
 - The emit must occur before the HTTP response is returned to the caller
 
-**Path B — Async queue** (`eventBus.publish` → BullMQ job → `apps/workers` → Redis pub/sub emit)
+#### Scenario: New inbound message notification
+- **WHEN** a new inbound message is received via webhook and saved to the database
+- **THEN** the `message.new` socket event SHALL be emitted via Path A (direct `fastify.io.to(room).emit`) because the target conversation room is already known and the emit is the primary real-time update for the request
+
+### Requirement: Socket Path B: Async Queue
+**Path B — Async queue**
 SHALL be used when ANY of the following is true:
 - Determining the set of recipients requires additional database queries (e.g., look up all supervisors or admins in a tenant)
 - The notification is a side-effect that must not block or delay the HTTP response
 - The triggering event originates from a background job (SLA poll, automation rule, broadcast scheduler)
 - Multiple recipients with role-based or assignment-based targeting are involved
-
-Implementors SHALL NOT use Path A for notifications whose recipient list is determined dynamically at emit time. Implementors SHALL NOT use Path B when the socket event is an immediate, latency-sensitive consequence of a user action.
-
-#### Scenario: New inbound message notification
-- **WHEN** a new inbound message is received via webhook and saved to the database
-- **THEN** the `message.new` socket event SHALL be emitted via Path A (direct `fastify.io.to(room).emit`) because the target conversation room is already known and the emit is the primary real-time update for the request
-
-#### Scenario: Case assigned notification to agent
-- **WHEN** a case is assigned to an agent
-- **THEN** the notification to the assigned agent SHALL be dispatched via Path B (eventBus → BullMQ → workers) because it involves writing a `Notification` record and potentially querying supervisor IDs, which must not block the assignment HTTP response
 
 #### Scenario: SLA breach notification
 - **WHEN** the SLA poll detects a breached case
