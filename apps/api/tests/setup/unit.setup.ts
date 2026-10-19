@@ -24,7 +24,9 @@ function createFakeRedis(): object {
         if (prop === 'status') return 'end';
         if (EVENT_METHODS.has(prop)) return () => fake;
         if (prop === 'duplicate') return () => createFakeRedis();
-        if (prop === 'disconnect') return () => undefined;
+        // 關閉連線不算指令：Redis 斷線時關閉也不會失敗，失敗反而會在測試結束時留下未處理的錯誤
+        if (prop === 'disconnect' || prop === 'end') return () => undefined;
+        if (prop === 'quit') return async () => 'OK';
         // 其餘都當成 Redis 指令
         return () => Promise.reject(new Error('unit 測試不連 Redis'));
       },

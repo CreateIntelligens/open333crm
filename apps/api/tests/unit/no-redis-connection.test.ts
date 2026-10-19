@@ -12,3 +12,8 @@ import { redis } from '@open333crm/core';
 test('unit 測試裡，redis 的指令立刻失敗，不連到真的 Redis', async () => {
   await assert.rejects(redis.get('unit-test:no-redis'), /unit 測試不連 Redis/);
 });
+
+test('unit 測試裡，關閉 redis 的 quit()、end() 照常完成，不留下未處理的錯誤', async () => {
+  assert.equal(await redis.quit(), 'OK');
+  redis.end();
+});
