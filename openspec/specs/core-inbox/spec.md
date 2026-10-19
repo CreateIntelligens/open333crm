@@ -13,19 +13,7 @@ The system SHALL push new messages to connected frontend clients in real-time th
 ### Requirement: Cross-Process WebSocket Event Emission via Redis Pub/Sub
 When WebSocket events are emitted from within the API process, the existing `io.to(room).emit(event, data)` call path SHALL remain unchanged.
 
-When WebSocket events need to be emitted from **outside the API process** (e.g., from standalone worker handlers), the emitting process SHALL NOT import or directly connect to the API's Socket.IO server. Instead, it SHALL publish a JSON-serialized message to the Redis pub/sub channel `socket:emit` with the shape:
-
-```ts
-{
-  room: string;   // Socket.IO room name, e.g. "conversation:42" or "user:7"
-  event: string;  // Socket.IO event name, e.g. "notification:new"
-  data: unknown;  // Arbitrary serializable payload
-}
-```
-
-The API process SHALL subscribe to the `socket:emit` Redis channel at startup (inside the socket plugin initialization) and, upon receiving a valid message, forward it to the Socket.IO server using `io.to(room).emit(event, data)`.
-
-This bridge enables any Node.js process with Redis access to trigger real-time client updates without coupling to the API's internal Socket.IO instance.
+When WebSocket events need to be emitted from **outside the API process** (e.g., from standalone worker handlers), the emitting process SHALL NOT import or directly connect to the API's Socket.IO server. Instead, it SHALL publish a JSON-serialized message to the Redis pub/sub channel `socket:emit`.
 
 #### Scenario: Standalone worker emits a real-time notification
 - **WHEN** the standalone notification worker processes a job and needs to notify a connected user
@@ -35,9 +23,25 @@ This bridge enables any Node.js process with Redis access to trigger real-time c
 - **WHEN** the standalone automation worker updates a conversation's status
 - **THEN** the worker publishes `{ room: "conversation:42", event: "conversation:updated", data: { ... } }` to `socket:emit`, and the API forwards it to all clients subscribed to that conversation room
 
+### Requirement: socket:emit Message Shape
+Each message on the `socket:emit` Redis channel SHALL be JSON with the shape:
+
+```ts
+{
+  room: string;   // Socket.IO room name, e.g. "conversation:42" or "user:7"
+  event: string;  // Socket.IO event name, e.g. "notification:new"
+  data: unknown;  // Arbitrary serializable payload
+}
+```
+
 #### Scenario: Malformed message received on socket:emit channel
 - **WHEN** the API's Redis subscriber receives a message on `socket:emit` that cannot be parsed as JSON or is missing required fields (`room`, `event`)
 - **THEN** the API logs a warning with the raw message content and discards it without calling `io.emit`
+
+### Requirement: API Forwards socket:emit Messages
+The API process SHALL subscribe to the `socket:emit` Redis channel at startup (inside the socket plugin initialization) and, upon receiving a valid message, forward it to the Socket.IO server using `io.to(room).emit(event, data)`.
+
+This bridge enables any Node.js process with Redis access to trigger real-time client updates without coupling to the API's internal Socket.IO instance.
 
 #### Scenario: API process starts before Redis is available
 - **WHEN** the API attempts to subscribe to `socket:emit` during socket plugin initialization but Redis is not yet ready
@@ -171,7 +175,7 @@ The web inbox SHALL update its cached conversation list locally when `message.ne
 - **THEN** 通過權限檢查（資料不存在時回 404 等，不回 403）
 
 ### Requirement: Inbox Shows Inbound Media
-The inbox message bubble SHALL show image, video, audio and file messages with their media. It SHALL use only a URL that a browser can open safely: `http:`, `https:`, a path that starts with `/`, or a `data:` URI of a PNG, JPEG, GIF or WebP image. A file link SHALL NOT use a `data:` URI, whatever the case of the scheme. The bubble SHALL try `content.url` before `content.mediaUrl`, in the same order as `getMediaUrl` in `@open333crm/shared`. When no such URL exists, it SHALL show the message text, followed by `content.mediaError` when the download failed. The inbox SHALL refetch messages after the last `message.new` event of a burst, so that the event sent when a download finishes is not dropped.
+The inbox message bubble SHALL show image, video, audio and file messages with their media. The bubble SHALL try `content.url` before `content.mediaUrl`, in the same order as `getMediaUrl` in `@open333crm/shared`. When no such URL exists, it SHALL show the message text, followed by `content.mediaError` when the download failed.
 
 #### Scenario: Audio message
 - **WHEN** an audio message has a Storage URL
@@ -193,13 +197,19 @@ The inbox message bubble SHALL show image, video, audio and file messages with t
 - **WHEN** a file message has `content.mediaError`「檔案超過 25 MB，未下載」and no Storage URL
 - **THEN** the bubble shows the message text and「檔案超過 25 MB，未下載」
 
-#### Scenario: Download finishes right after the message arrives
-- **WHEN** two `message.new` events for the conversation arrive 300 ms apart
-- **THEN** the inbox refetches messages once immediately and once more after 500 ms
+### Requirement: Inbox Media URLs Are Safe
+The inbox message bubble SHALL use only a URL that a browser can open safely: `http:`, `https:`, a path that starts with `/`, or a `data:` URI of a PNG, JPEG, GIF or WebP image. A file link SHALL NOT use a `data:` URI, whatever the case of the scheme.
 
 #### Scenario: Unsafe data URI
 - **WHEN** a message has `content.url`「data:image/svg+xml,<svg>」or「data:text/html,<p>」
 - **THEN** the bubble shows the message text and no media
+
+### Requirement: Inbox Refetches After A Message Burst
+The inbox SHALL refetch messages after the last `message.new` event of a burst, so that the event sent when a download finishes is not dropped.
+
+#### Scenario: Download finishes right after the message arrives
+- **WHEN** two `message.new` events for the conversation arrive 300 ms apart
+- **THEN** the inbox refetches messages once immediately and once more after 500 ms
 
 ### Requirement: 客服把對話交回 Bot
 具備 `inbox.manage` 且能完整存取該渠道的成員呼叫 `POST /conversations/:id/return-to-bot` 時，對話狀態為 `AGENT_HANDLED` 或 `ACTIVE` 的，系統 SHALL 把狀態改為 `BOT_HANDLED`、bot 回覆次數歸零、清除轉真人原因，並保留指派的客服。系統 SHALL 在對話寫入一則系統訊息，記錄是哪位成員交回 Bot；這則訊息 SHALL NOT 送給顧客。對話已結案、已經是 `BOT_HANDLED`、或渠道的 bot 模式為 `off` 時，系統 SHALL 回 400 並說明原因，不改變對話。
