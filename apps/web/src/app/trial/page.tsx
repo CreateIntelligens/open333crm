@@ -58,7 +58,7 @@ export default function TrialSignupPage() {
           </>
         ) : (
           <>
-            <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>請至信箱完成驗證 📬</h1>
+            <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>請至信箱完成驗證</h1>
             <p style={{ color: '#66707f', fontSize: 14 }}>
               我們已寄出驗證信到 <strong>{form.email}</strong>。點擊信中連結即可完成開通。
             </p>

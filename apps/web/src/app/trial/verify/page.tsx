@@ -37,7 +37,7 @@ function VerifyInner() {
         {state === 'loading' && <p style={{ fontSize: 15 }}>驗證中…</p>}
         {state === 'ok' && (
           <>
-            <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>站台已開通 🎉</h1>
+            <h1 style={{ fontSize: 22, margin: '0 0 8px' }}>站台已開通</h1>
             <p style={{ color: '#66707f', fontSize: 14 }}>
               「{siteName}」已開通完成，使用您申請時的 email 與密碼即可登入。
             </p>

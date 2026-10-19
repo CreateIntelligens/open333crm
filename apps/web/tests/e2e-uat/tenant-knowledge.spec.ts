@@ -26,7 +26,7 @@ import { E2E_PREFIX, newApiContext, gotoAndCheck, acceptNextDialog } from './hel
  *   對它加寬容處理
  * - 語義搜尋結果卡片渲染 `r.similarity`，若 API 回傳缺 similarity 欄位會炸（*100).toFixed(1)`），
  *   包在 try/catch 內，只驗證流程跑得動不斷言內容
- * - 回報調教 tab 兩種狀態皆合法：載入中 spinner → 之後「目前沒有待處理的回報 🎉」（空）或列出回報卡片，
+ * - 回報調教 tab 兩種狀態皆合法：載入中 spinner → 之後「目前沒有待處理的回報」（空）或列出回報卡片，
  *   兩者都代表頁面正常運作，只需驗證沒有殘留 loading 狀態或錯誤
  * - Embedding 設定 / Chat & Prompt 皆為全租戶共用設定，本檔僅唯讀驗證頁面載入，不觸碰任何欄位/儲存按鈕
  * - 匯入文章：ImportDialog 走檔案選擇 input[type=file]，JSON 檔走 `POST /knowledge/import`

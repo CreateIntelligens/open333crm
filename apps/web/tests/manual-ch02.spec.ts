@@ -38,10 +38,17 @@ async function protect(context: BrowserContext, page: Page) {
 }
 
 /** 有指派負責人的工單（看起來最接近日常使用），找不到就用第一筆 */
+/** 「標記解決」「升級」只在處理中的工單出現，所以優先挑處理中的工單 */
+const pickRow = async (page: Page) => {
+  const inProgress = page.locator('tbody tr').filter({ hasText: '處理中' }).first();
+  if (await inProgress.count()) return inProgress;
+  const assigned = page.locator('tbody tr').filter({ hasNotText: '未指派' }).first();
+  return (await assigned.count()) ? assigned : page.locator('tbody tr').first();
+};
+
 async function openCase(page: Page) {
   await go(page, '/dashboard/cases');
-  const row = page.locator('tbody tr').filter({ hasNotText: '未指派' }).first();
-  await (await row.count() ? row : page.locator('tbody tr').first()).click();
+  await (await pickRow(page)).click();
   await page.getByText('時間軸與備註').waitFor();
   await page.waitForTimeout(1500);
 }
@@ -79,8 +86,7 @@ test('ch02-detail 工單詳情', async ({ browser }) => {
   await protect(rec.context, page);
   await go(page, '/dashboard/cases');
   await caption(page, '點一張工單打開詳情', 1700);
-  const row = page.locator('tbody tr').filter({ hasNotText: '未指派' }).first();
-  await tap(page, (await row.count()) ? row : page.locator('tbody tr').first(), 2000);
+  await tap(page, await pickRow(page), 2000);
   await page.getByText('時間軸與備註').waitFor();
   await caption(page, '左邊可以直接改狀態、優先級、分類', 1700);
   await point(page, page.locator('h4', { hasText: '狀態' }).locator('..'), 1400);
@@ -99,7 +105,7 @@ test('ch02-detail 工單詳情', async ({ browser }) => {
   await point(page, page.getByRole('button', { name: '標記解決' }), 1000);
   await point(page, page.getByRole('button', { name: '關閉案件' }), 1000);
   await point(page, page.getByRole('button', { name: '升級' }), 1200);
-  await caption(page, '新工單請先改成「處理中」再標記解決', 2400);
+  await caption(page, '「標記解決」「升級」只在處理中的工單出現，新工單請先改成處理中', 2600);
   await stopRecording(rec);
   poster('ch02-detail', 2);
 });
@@ -136,6 +142,9 @@ test('ch02-create 新增工單', async ({ browser }) => {
   await page.waitForTimeout(1500);
   const cand = dlg.locator('div.absolute.z-50 button, div.absolute.z-50 [role=option], div.absolute.z-50 div.cursor-pointer').first();
   if (await cand.count()) await tap(page, cand, 800);
+  await caption(page, '工單掛在聯絡人所在的渠道；有好幾個渠道時要選一個', 2200);
+  const ch = dlg.getByText(/^渠道/).first();
+  if (await ch.count()) await point(page, ch, 1400);
   await caption(page, '填案件標題', 1700);
   await typeIn(page, page.getByPlaceholder('案件標題...'), '範例：週年慶訂單查詢');
   await caption(page, '選分類，優先級預設是「中」', 1700);

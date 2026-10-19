@@ -67,6 +67,8 @@ test('ch15-overview 渠道管理總覽', async ({ browser }) => {
   await point(page, page.getByRole('button', { name: '設定精靈' }), 1200);
   await point(page, page.getByRole('button', { name: '新增渠道' }), 1200);
   const c = card(page, 'LINE OA');
+  await caption(page, '「停用」暫停收發訊息、保留歷史，可隨時重新啟用', 1600);
+  await point(page, c.getByRole('button', { name: '停用', exact: true }), 1600);
   await caption(page, '「測試連線」檢查帳號金鑰是否還有效', 1200);
   await point(page, c.getByRole('button', { name: '測試連線' }), 1600);
   await caption(page, '機器人圖示是 Bot 設定', 1000);
@@ -78,7 +80,7 @@ test('ch15-overview 渠道管理總覽', async ({ browser }) => {
   await point(page, page.getByText('存取權杖已失效，目前收不到也無法回覆訊息').first(), 2400);
   await page.mouse.wheel(0, -2000);
   await page.waitForTimeout(600);
-  await caption(page, '最上方的「Webhook 公開網址」請不要動', 1200);
+  await caption(page, '最上方的「Webhook 公開網址」一般不用改，填錯所有渠道都收不到訊息', 1800);
   await point(page, page.getByText('Webhook 公開網址').first(), 2400);
   await stopRecording(rec);
   poster('ch15-overview', 2);

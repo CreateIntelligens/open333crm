@@ -220,8 +220,8 @@ test('ch10-richmenu-new', async ({ browser }) => {
   await tap(p, p.getByRole('button', { name: /2 × 2（四等分）/ }), 1800);
   await retype(p, p.getByPlaceholder('如：主選單 v1'), '範例：會員主選單');
   await retype(p, p.getByPlaceholder('如：菜單'), '會員專區');
-  await caption(p, '注意：「預設展開選單」會套用到所有好友', 2800);
-  await tap(p, p.getByRole('checkbox'), 900);
+  await caption(p, '「設為所有好友的預設選單」預設不勾，勾了一發布就換掉所有好友的選單', 3200);
+  await point(p, p.getByText('設為所有好友的預設選單'), 1200);
   await caption(p, '背景圖要符合尺寸，1MB 以內');
   await point(p, p.getByRole('button', { name: '上傳' }));
   await caption(p, '展開每個區域，設定點了要做什麼');
@@ -413,4 +413,29 @@ test('shots', async ({ browser }) => {
   }
   await p.waitForTimeout(800);
   await shot(p, p.locator('div.fixed.inset-0 > div').first(), 'ch10-quickreply-dialog');
+});
+
+/**
+ * 廣播失敗原因與「重新發送」「取消」按鈕（#287）。
+ *
+ * 前置資料（腳本不建立：截圖腳本會擋掉所有寫入請求，避免在正式環境誤發）：
+ * 1. 建一個沒有任何聯絡人的標籤（POST /tags，type MANUAL、scope CONTACT）。
+ * 2. 建一則名為「會員日優惠通知」的廣播：LINE 渠道、targetType 'tags' 指向該標籤、
+ *    scheduledAt 設在一兩分鐘後（POST /marketing/broadcasts）。
+ * 3. 等排程執行，狀態變成 failed、原因為「所選標籤下沒有可在此渠道發送的對象。」（受眾為空，不會發出訊息）。
+ * 拍完到後台取消這則廣播、刪除該標籤。
+ * 找不到符合的失敗廣播時，這個測試直接失敗並說明缺什麼，不會拍出錯的畫面。
+ */
+test('ch08-broadcast-failed', async ({ browser }) => {
+  const p = await newShotPage(browser);
+  await go(p, '/dashboard/marketing/broadcasts');
+  await hideTestData(p);
+  const row = p.locator('tbody tr', { hasText: '會員日優惠通知' }).filter({ hasText: '失敗' }).first();
+  await row.waitFor({ timeout: 15_000 }).catch(() => {
+    throw new Error('找不到狀態為「失敗」的「會員日優惠通知」廣播，請先依檔案註解建立前置資料');
+  });
+  const reason = (await row.innerText()).includes('所選標籤下沒有可在此渠道發送的對象');
+  if (!reason) throw new Error('「會員日優惠通知」沒有顯示失敗原因，請確認它是在 #287 上線後失敗的');
+  await row.scrollIntoViewIfNeeded();
+  await shot(p, p.locator('table').filter({ has: row }).first(), 'ch08-broadcast-failed');
 });
