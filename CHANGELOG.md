@@ -2,6 +2,21 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-19]
+
+### Changed
+
+- **API 行程內的排程改由 BullMQ Job Scheduler 觸發**（APP-09 部分修正）— 群發、CSAT 發送與自動結案、Canvas 喚醒、閒置關閉、試用、權杖檢查與報表彙總，原本各自用 `setInterval`、`setTimeout` 觸發，API 有幾個行程就各跑幾份。現在各模組以 `registerSchedule()`（`apps/api/src/lib/job-scheduler.ts`）註冊，排程存在 Redis，不論有幾個 API 行程，每一期只產生一筆 job；執行中的行程被強制結束時，BullMQ 會重新執行這筆 job。頻率不變，報表彙總仍是行程時區的 02:00。行為改變：
+  - API 重啟不再立刻執行各排程，改為照原本的週期執行；報表彙總也不再在啟動時彙總前一天。過去每次部署都會額外執行一次。只有第一次部署（或 Redis 裡沒有排程資料）時，每隔固定時間的排程會一起立刻執行一次。
+  - Redis 斷線期間排程停止執行；Redis 恢復後，到期的那一期補跑一次。
+  - Canvas 喚醒與試用排程以 Redis 鎖防止兩期重疊。Canvas 的鎖取代只在單一行程有效的旗標。權杖檢查原本的 `withLeaderLock()`（`apps/api/src/lib/scheduler-lock.ts`）已移除。
+
+### Fixed
+
+- **UAT 每次部署後，API 與 workers 的程式 log 都會消失**（#316）— UAT 設定 `LOG_TRANSPORT=file`，log 寫在容器內的 `/app/logs`，但 `docker-compose.yml` 沒有掛 volume，部署時 `--force-recreate` 重建容器就把 log 檔一起清掉，排程類工作（只寫 log 檔）在上次部署之前的執行紀錄都查不到。現在 api 與 workers 各掛一個 named volume（`api_logs`、`workers_logs`），log 檔跨部署保留，保留天數仍由 `LOG_MAX_FILES`（預設 14 天）控制。
+
+- **解除合併後，顧客在其他渠道的身分與對話仍留在對方身上** — 合併之後，被合併的顧客從同一平台、同一組 ID 的另一個渠道（例如同一個 LINE provider 底下的另一個官方帳號）傳訊息時，系統依身分對照表把新的渠道身分直接掛到合併後的聯絡人，沒有記進合併紀錄。之後客服按「解除合併」或顧客回覆「解除綁定」，新身分和那個渠道的對話仍留在對方身上，也沒有按鈕可以拆；顧客在那個渠道回覆「解除綁定」還會被當成一般訊息。現在掛上身分時會記進把這個 ID 帶進來、且目前由這位聯絡人持有的每一筆未解除合併紀錄（連環合併時可能不只一筆），解除時一起搬回。這筆身分的名稱與頭像也改為向該平台讀取，不再沿用合併後聯絡人（可能是另一個人）的名稱與頭像（IDENT-05）。
+
 ## [2026-10-16]
 
 ### Added
@@ -10,10 +25,6 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
-- **API 行程內的排程改由 BullMQ Job Scheduler 觸發**（APP-09 部分修正）— 群發、CSAT 發送與自動結案、Canvas 喚醒、閒置關閉、試用、權杖檢查與報表彙總，原本各自用 `setInterval`、`setTimeout` 觸發，API 有幾個行程就各跑幾份。現在各模組以 `registerSchedule()`（`apps/api/src/lib/job-scheduler.ts`）註冊，排程存在 Redis，不論有幾個 API 行程，每一期只產生一筆 job；執行中的行程被強制結束時，BullMQ 會重新執行這筆 job。頻率不變，報表彙總仍是行程時區的 02:00。行為改變：
-  - API 重啟不再立刻執行各排程，改為照原本的週期執行；報表彙總也不再在啟動時彙總前一天。過去每次部署都會額外執行一次。只有第一次部署（或 Redis 裡沒有排程資料）時，每隔固定時間的排程會一起立刻執行一次。
-  - Redis 斷線期間排程停止執行；Redis 恢復後，到期的那一期補跑一次。
-  - Canvas 喚醒與試用排程以 Redis 鎖防止兩期重疊。Canvas 的鎖取代只在單一行程有效的旗標。權杖檢查原本的 `withLeaderLock()`（`apps/api/src/lib/scheduler-lock.ts`）已移除。
 - 試用排程 `runTrialLifecycle()` 拆成到期、提醒、軟刪三步，每一步都是「讀取 → 以條件更新認領 → 認領成功才寄信與寫稽核」，讀取與認領共用同一組條件。提醒的認領多比對讀取時的提醒標記：目前只有一個 API 實例，排程不會重疊執行；之後若有多個實例同時讀到同一個租戶，只有一個會寄提醒信。
 
 ### Fixed
