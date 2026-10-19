@@ -501,9 +501,11 @@ export async function updateMaterial(
     data.status = input.status;
   }
   if (input.body !== undefined) {
-    data.body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
-      ? assertLineFlexMessageBody(input.body)
-      : resolveLineSampleImageUrls(existing.contentType, input.body);
+    const body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
+      ? (assertLineFlexMessageBody(input.body) as unknown as Record<string, unknown>)
+      : input.body;
+    // 與 createMaterial() 相同：示範圖換成公開網址
+    data.body = resolveLineSampleImageUrls(existing.contentType, body);
   }
   if (input.variables !== undefined) data.variables = input.variables;
   if (existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE && input.body !== undefined) {

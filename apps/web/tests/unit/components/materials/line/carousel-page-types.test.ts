@@ -15,4 +15,7 @@ test('卡片訊息切換頁面類型時，完整網址的示範圖也換掉', ()
 test('使用者自己的圖切換頁面類型時保留', () => {
   const page = { imageUrl: 'https://cdn.example.com/my-photo.jpeg', title: '商品' };
   assert.equal(switchPageType(page, 'location').imageUrl, 'https://cdn.example.com/my-photo.jpeg');
+  // 只是結尾相同、路徑不是 /material-samples/... 的圖不算示範圖
+  const lookalike = { imageUrl: 'https://cdn.example.com/user/material-samples/product.jpeg', title: '商品' };
+  assert.equal(switchPageType(lookalike, 'location').imageUrl, 'https://cdn.example.com/user/material-samples/product.jpeg');
 });

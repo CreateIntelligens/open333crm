@@ -101,6 +101,17 @@ test('更新素材時一樣轉換', async () => {
   assert.equal((writes[0].body as any).mediaUrl, 'https://uat.example.com/material-samples/cafe.jpeg');
 });
 
+test('更新 Flex 素材時一樣轉換', async () => {
+  const { db, writes } = fakeDb({ id: 'm2', tenantId: T, channelType: 'line', contentType: 'line_flex_template', body: {} });
+  const flex = {
+    type: 'flex',
+    altText: 'a',
+    contents: { type: 'bubble', hero: { type: 'image', url: '/material-samples/cafe.jpeg' } },
+  };
+  await updateMaterial(db, 'm2', T, { body: flex });
+  assert.equal((writes[0].body as any).contents.hero.url, 'https://uat.example.com/material-samples/cafe.jpeg');
+});
+
 test('FB 素材不轉換', async () => {
   const fb = await save(
     'fb_generic',

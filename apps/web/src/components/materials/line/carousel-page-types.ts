@@ -74,11 +74,18 @@ const SAMPLE_IMAGE_FOR_PAGE: Record<CarouselPageType, string> = {
 
 /**
  * 判斷某 imageUrl 是否為內建示範圖（非使用者自己上傳的）。
- * 儲存時後端把示範圖換成完整網址（{WEB_BASE_URL}/material-samples/...），所以比對路徑結尾。
+ * 儲存時後端把示範圖換成完整網址（{WEB_BASE_URL}/material-samples/...），所以比對網址的完整路徑；
+ * 只是結尾相同的其他路徑（例如 /user/material-samples/...）是使用者的圖。
  */
 function isSampleImage(url: string | undefined): boolean {
   if (!url) return true;
-  return Object.values(SAMPLE_IMAGE_FOR_PAGE).some((sample) => url === sample || url.endsWith(sample));
+  let path = url;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    // 站內路徑不是完整網址，直接比對
+  }
+  return Object.values(SAMPLE_IMAGE_FOR_PAGE).includes(path);
 }
 
 export function createEmptyPage(pageType: CarouselPageType): CarouselPage {
