@@ -62,6 +62,11 @@ export interface JobSchedulerDeps {
 /**
  * 每個排程產生的 job 保留多少筆，註冊時寫進排程的 template。BullMQ 把 template 存在排程裡，
  * 所以改了這裡，upsertIfChanged() 會比對到不同而重新註冊，已存在的排程也會套用新值。
+ *
+ * 不要直接刪掉一個鍵：upsertIfChanged() 只比對這裡有的鍵，刪掉的鍵比對不到，已存在的排程
+ * 會一直保留舊值。要取消一個設定時，改成 BullMQ 的預設值，例如 `removeOnFail: false`
+ * （全部保留）。比對只看這裡的鍵，不反過來檢查 Redis 裡的鍵：BullMQ 若在 template 加了
+ * 別的鍵，每次啟動都會重新註冊，已到期的 cron 那一期就不會補跑。
  */
 const JOB_OPTIONS = { removeOnComplete: 100, removeOnFail: 50 };
 type JobOptions = typeof JOB_OPTIONS;
