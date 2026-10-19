@@ -8,7 +8,10 @@ import { createJobScheduler, type JobSchedulerDeps } from '#src/lib/job-schedule
 
 type Processor = (job: { name: string }) => Promise<void>;
 
-type StoredSchedule = { every?: number; pattern?: string };
+type StoredSchedule = { every?: number; pattern?: string; template?: { opts?: Record<string, unknown> } };
+
+/** 每筆 job 的保留數量，註冊時寫進排程的 template */
+const JOB_OPTS = { removeOnComplete: 100, removeOnFail: 50 };
 
 function fakeDeps(
   opts: {
@@ -77,20 +80,23 @@ test('every 排程：以排程 id 註冊 Job Scheduler，job 名稱等於 id', a
   const { deps, calls } = fakeDeps();
   createJobScheduler(deps).registerSchedule({ id: 'trial', every: 3_600_000, run: noop });
   await settle();
-  assert.deepEqual(calls.upserts, [['trial', { every: 3_600_000 }, { name: 'trial' }]]);
+  assert.deepEqual(calls.upserts, [['trial', { every: 3_600_000 }, { name: 'trial', opts: JOB_OPTS }]]);
 });
 
 test('pattern 排程：以 cron 註冊 Job Scheduler', async () => {
   const { deps, calls } = fakeDeps();
   createJobScheduler(deps).registerSchedule({ id: 'analytics', pattern: '0 2 * * *', run: noop });
   await settle();
-  assert.deepEqual(calls.upserts, [['analytics', { pattern: '0 2 * * *' }, { name: 'analytics' }]]);
+  assert.deepEqual(calls.upserts, [['analytics', { pattern: '0 2 * * *' }, { name: 'analytics', opts: JOB_OPTS }]]);
 });
 
 test('重啟後設定沒變：不重新註冊，保留已到期還沒執行的那一期', async () => {
   // BullMQ 重新註冊 cron 排程時，會把已到期的 job 換成下一個時間點，這一期就不會補跑
   const { deps, calls } = fakeDeps({
-    stored: { analytics: { pattern: '0 2 * * *' }, trial: { every: 3_600_000 } },
+    stored: {
+      analytics: { pattern: '0 2 * * *', template: { opts: { ...JOB_OPTS } } },
+      trial: { every: 3_600_000, template: { opts: { ...JOB_OPTS } } },
+    },
   });
   const scheduler = createJobScheduler(deps);
   scheduler.registerSchedule({ id: 'analytics', pattern: '0 2 * * *', run: noop });
@@ -101,15 +107,18 @@ test('重啟後設定沒變：不重新註冊，保留已到期還沒執行的�
 
 test('重啟後設定改了：重新註冊', async () => {
   const { deps, calls } = fakeDeps({
-    stored: { analytics: { pattern: '0 3 * * *' }, trial: { every: 60_000 } },
+    stored: {
+      analytics: { pattern: '0 3 * * *', template: { opts: { ...JOB_OPTS } } },
+      trial: { every: 60_000, template: { opts: { ...JOB_OPTS } } },
+    },
   });
   const scheduler = createJobScheduler(deps);
   scheduler.registerSchedule({ id: 'analytics', pattern: '0 2 * * *', run: noop });
   scheduler.registerSchedule({ id: 'trial', every: 3_600_000, run: noop });
   await settle();
   assert.deepEqual(calls.upserts, [
-    ['analytics', { pattern: '0 2 * * *' }, { name: 'analytics' }],
-    ['trial', { every: 3_600_000 }, { name: 'trial' }],
+    ['analytics', { pattern: '0 2 * * *' }, { name: 'analytics', opts: JOB_OPTS }],
+    ['trial', { every: 3_600_000 }, { name: 'trial', opts: JOB_OPTS }],
   ]);
 });
 
@@ -125,6 +134,15 @@ test('every 與 pattern 必須剛好設定一個', () => {
   const scheduler = createJobScheduler(deps);
   assert.throws(() => scheduler.registerSchedule({ id: 'none', run: noop }), /none/);
   assert.throws(() => scheduler.registerSchedule({ id: 'both', every: 1000, pattern: '* * * * *', run: noop }), /both/);
+});
+
+test('重啟後只有 job 的保留數量改了：重新註冊，讓已存在的排程套用新值', async () => {
+  const { deps, calls } = fakeDeps({
+    stored: { trial: { every: 3_600_000, template: { opts: { removeOnComplete: 100, removeOnFail: 10 } } } },
+  });
+  createJobScheduler(deps).registerSchedule({ id: 'trial', every: 3_600_000, run: noop });
+  await settle();
+  assert.deepEqual(calls.upserts, [['trial', { every: 3_600_000 }, { name: 'trial', opts: JOB_OPTS }]]);
 });
 
 test('Redis 連不上時註冊不阻塞：Redis 不回應，registerSchedule 仍立刻返回', () => {

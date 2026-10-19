@@ -44,8 +44,10 @@ type Processor = (job: { name: string }) => Promise<void>;
 
 export interface JobSchedulerDeps {
   queue: {
-    upsertJobScheduler(id: string, repeat: Omit<RepeatOptions, 'key'>, template: { name: string }): Promise<unknown>;
-    getJobScheduler(id: string): Promise<{ every?: number | string | null; pattern?: string | null } | undefined>;
+    upsertJobScheduler(id: string, repeat: Omit<RepeatOptions, 'key'>, template: { name: string; opts: JobOptions }): Promise<unknown>;
+    getJobScheduler(id: string): Promise<
+      { every?: number | string | null; pattern?: string | null; template?: { opts?: Record<string, unknown> } } | undefined
+    >;
     getJobSchedulers(): Promise<{ key: string }[]>;
     removeJobScheduler(id: string): Promise<boolean>;
     close(): Promise<void>;
@@ -56,6 +58,13 @@ export interface JobSchedulerDeps {
   };
   createWorker(processor: Processor, concurrency: number): { close(): Promise<void> };
 }
+
+/**
+ * 每個排程產生的 job 保留多少筆，註冊時寫進排程的 template。BullMQ 把 template 存在排程裡，
+ * 所以改了這裡，upsertIfChanged() 會比對到不同而重新註冊，已存在的排程也會套用新值。
+ */
+const JOB_OPTIONS = { removeOnComplete: 100, removeOnFail: 50 };
+type JobOptions = typeof JOB_OPTIONS;
 
 const RELEASE_LOCK_LUA =
   "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
@@ -80,16 +89,20 @@ export function createJobScheduler(deps: JobSchedulerDeps): JobScheduler {
   }
 
   /**
-   * Redis 裡已經有同樣設定的排程時，不重新註冊。BullMQ 重新註冊 cron 排程時，會把已到期、
+   * Redis 裡已經有同樣設定（every、pattern、JOB_OPTIONS）的排程時，不重新註冊。BullMQ 重新註冊 cron 排程時，會把已到期、
    * 還沒執行的 job 換成下一個時間點：API 停機跨過 02:00 再啟動，那一天的彙總就不會補跑。
    */
   async function upsertIfChanged(def: ScheduleDefinition): Promise<void> {
     const stored = await deps.queue.getJobScheduler(def.id);
-    const storedEvery = stored?.every == null ? undefined : Number(stored.every);
-    const storedPattern = stored?.pattern ?? undefined;
-    if (stored && storedEvery === def.every && storedPattern === def.pattern) return;
+    if (stored) {
+      const storedEvery = stored.every == null ? undefined : Number(stored.every);
+      const storedPattern = stored.pattern ?? undefined;
+      const storedOpts = stored.template?.opts ?? {};
+      const sameOpts = Object.entries(JOB_OPTIONS).every(([key, value]) => storedOpts[key] === value);
+      if (storedEvery === def.every && storedPattern === def.pattern && sameOpts) return;
+    }
     const repeat = def.every !== undefined ? { every: def.every } : { pattern: def.pattern };
-    await deps.queue.upsertJobScheduler(def.id, repeat, { name: def.id });
+    await deps.queue.upsertJobScheduler(def.id, repeat, { name: def.id, opts: JOB_OPTIONS });
   }
 
   async function removeUnregistered(): Promise<void> {
@@ -143,11 +156,7 @@ export function createJobScheduler(deps: JobSchedulerDeps): JobScheduler {
 /** @param queueName 只有測試需要改，用來和其他測試隔開 */
 export function createBullJobScheduler(redisUrl: string, queueName = 'api-scheduler'): JobScheduler {
   const connection = { url: redisUrl, maxRetriesPerRequest: null };
-  const queue = new Queue(queueName, {
-    connection,
-    // Job Scheduler 產生的 job 也套用這組設定（註冊時併進排程的 template）
-    defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50 },
-  });
+  const queue = new Queue(queueName, { connection });
   queue.on('error', (err) => logger.warn('[JobScheduler] Queue error:', err.message));
 
   return createJobScheduler({
