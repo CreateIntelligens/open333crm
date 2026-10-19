@@ -14,7 +14,7 @@
  */
 import type { Job } from 'bullmq';
 import type { PrismaClient, Prisma } from '@prisma/client';
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 import { logger, MinioStorageProvider } from '@open333crm/core';
 import { enqueueNotification } from '../lib/notification-queue.js';
 

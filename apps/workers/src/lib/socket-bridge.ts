@@ -1,4 +1,4 @@
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 
 const SOCKET_EMIT_CHANNEL = 'socket:emit';
 

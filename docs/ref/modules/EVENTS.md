@@ -94,7 +94,7 @@ Canvas 的流程引擎在 `packages/core`，無法 import API 的 eventBus，因
 | `canvas.action` | `FlowRunner` 的 `ACTION` 節點 | 同上，目前只處理 `add_tag` |
 | `flow.completed` | `FlowRunner` 流程結束時 | 無 |
 
-`packages/core` 裡另有 `CaseService` 與 `InboxService` 也發布到這個頻道，`automation/engine.ts` 的 `AutomationEngine` 也訂閱它，但這三者在 `apps/*` 都沒有呼叫端，見 `../system/AUDIT.md` 的 PKG-05。
+`packages/core` 裡另有 `InboxService` 也發布到這個頻道，但它在 `apps/*` 沒有呼叫端，見 `../system/AUDIT.md` 的 PKG-05。
 
 Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個 API 行程在跑，每則 `canvas.send_message` 就會被發送幾次，見[只能跑一個 API 行程](#只能跑一個-api-行程)。
 
@@ -117,7 +117,6 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 
 | 佇列 | 生產者 | 說明 |
 | --- | --- | --- |
-| `sla-monitoring` | `packages/core` 的 `CaseService` 在模組載入時建立 | 見 APP-01 |
 | `flow:resume` | `packages/core/src/canvas/scheduler.ts` 的 `scheduleWaitNode()` | 佇列名稱含冒號，BullMQ 建立佇列時直接拋出錯誤，所以從未成功送出；Canvas 實際靠資料庫輪詢喚醒。見 APP-07 |
 | `broadcast` | 舊版的 workers | 已不再使用。workers 啟動時清掉殘留的重複工作 |
 
@@ -207,11 +206,10 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 | `sla.warning`、`sla.breached` 沒有發布端 | APP-05 |
 | 自動化可選的部分事件沒有發布端 | AUTO-05 |
 | API 的 `*.worker.ts` 實際是佇列生產者 | APP-04 |
-| `packages/core` 載入時建立另一套 SLA 佇列 | APP-01 |
 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | APP-07 |
 | 多數佇列永遠保留已完成的工作，Redis 沒有記憶體上限 | APP-08 |
 | API 行程假設只有一份，無法水平擴充 | APP-09 |
-| `packages/core` 有未使用的服務與事件訂閱者 | PKG-05 |
+| `packages/core` 有未使用的服務 | PKG-05 |
 | 租戶房間的 `message.new` 不套用渠道可見範圍 | RBAC-04 |
 
 ## 自己驗證的方法

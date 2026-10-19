@@ -10,8 +10,10 @@ const RedisCtor = ((IORedis as any)?.default ?? IORedis) as new (
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
 
+// lazyConnect：第一次執行指令時才連線。import core 的行程與測試檔若沒有用到 Redis，就不連線（#327）。
 export const redis = new RedisCtor(REDIS_URL, {
   maxRetriesPerRequest: null, // Required for BullMQ
+  lazyConnect: true,
 });
 
 redis.on('error', (err: Error) => {

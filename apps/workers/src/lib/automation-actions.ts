@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
 import { logger } from '@open333crm/core';

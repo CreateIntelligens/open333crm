@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 import { evaluateRules } from '@open333crm/automation';
 import {
   SLA_ACTIVE_CASE_STATUSES,

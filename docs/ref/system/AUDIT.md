@@ -112,7 +112,6 @@
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
-| [APP-01](#app-01) | 部署與應用程式 | P3 | 未處理 | `core` 載入時啟動另一套 SLA consumer | 執行時確認 |
 | [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | 可以建立 WhatsApp 渠道，但沒有外掛，收不到也送不出訊息；Telegram 外掛未註冊 | 執行時確認 |
 | [APP-03](#app-03) | 部署與應用程式 | P4 | 未處理 | 啟動 log 少列 Threads | 執行時確認 |
 | [APP-04](#app-04) | 部署與應用程式 | P4 | 未處理 | API 的 `*.worker.ts` 實際是 Queue producer | 靜態確認 |
@@ -126,7 +125,7 @@
 | [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
 | [PKG-03](#pkg-03) | 共用套件 | P4 | 未處理 | `brain` 尚未接線，仍持續建置與監看 | 執行時確認 |
 | [PKG-04](#pkg-04) | 共用套件 | P4 | 未處理 | `ui` 是空殼，仍持續建置與監看 | 執行時確認 |
-| [PKG-05](#pkg-05) | 共用套件 | P4 | 未處理 | `core` 匯出沒有呼叫端的服務與事件訂閱者 | 靜態確認 |
+| [PKG-05](#pkg-05) | 共用套件 | P4 | 部分修正 | `core` 匯出沒有呼叫端的服務；`CaseService` 與 `AutomationEngine` 已刪除（#327） | 靜態確認 |
 | [PKG-06](#pkg-06) | 共用套件 | P4 | 未處理 | `channel-plugins` 有沒有呼叫端的方法、擴充與檔案 | 靜態確認 |
 | [ARCH-01](#arch-01) | 架構規則 | P4 | 未處理 | route 檔直接查詢資料庫 | 靜態確認 |
 | [ARCH-02](#arch-02) | 架構規則 | P4 | 未處理 | `ai` 模組 import `automation` 的 worker 檔 | 靜態確認 |
@@ -1524,13 +1523,6 @@ nginx 的 entrypoint 只用 `DOMAIN`，certbot 的 entrypoint 只用 `DOMAIN` �
 
 CI 的部署不走這條路徑。`.github/workflows/deploy.yml` 用的是 `docker-compose.yml`，而且有一步檢查 `.env.web`、`.env.api`、`.env.workers` 是否存在，缺一個就讓部署失敗。因此這個落差只影響照 `docker-compose.prod.yml` 手動部署的人。
 
-<a id="app-01"></a>
-### APP-01：兩套 SLA 機制
-
-`packages/core/src/cases/case-service.ts` 在模組載入時建立 `sla-monitoring` consumer。任何匯入 `@open333crm/core` 的程序都會產生副作用。`apps/workers` 另有正式的 `sla` consumer，因此 Redis 同時出現 `sla` 與 `sla-monitoring`。
-
-執行時匯入 `@open333crm/core` 會立即建立 Redis 連線，證實模組載入具有副作用。
-
 <a id="app-02"></a>
 ### APP-02：WhatsApp 與 Telegram 沒有註冊外掛
 
@@ -1656,18 +1648,18 @@ issue #197 回報（2026-10-02）：這台 UAT 主機（`uat.open333crm.create36
 `brain` 沒有 app 使用者；`ui` 只有空匯出。兩者仍由開發環境的 `packages` 服務建置並啟動 watch process。
 
 <a id="pkg-05"></a>
-### PKG-05：`core` 匯出沒有呼叫端的服務與事件訂閱者
+### PKG-05：`core` 匯出沒有呼叫端的服務
 
 `packages/core` 有一套以 Redis `crm:events` 頻道傳遞的 `EventBus`，與 API 行程的 eventBus 不相通。實際使用它的只有 Canvas：`FlowRunner` 發布、API 的 `canvas.worker.ts` 訂閱。同一個套件裡另有：
 
 | 程式 | 內容 | 呼叫端 |
 | --- | --- | --- |
-| `cases/case-service.ts` 的 `CaseService` | 工單的建立與狀態變更，並發布到 `crm:events` | `apps/*` 沒有。模組載入時建立 `sla-monitoring` 佇列，見 APP-01 |
 | `inbox/inbox-service.ts` 的 `InboxService` | 對話與訊息，並發布到 `crm:events` | `apps/*` 沒有 |
 | `contacts/contact-service.ts` 的 `ContactService` | 聯絡人 | `apps/*` 沒有 |
-| `automation/engine.ts` 的 `AutomationEngine` | 訂閱 `crm:events` 執行自動化規則 | 沒有從 `index.ts` 匯出，也沒有呼叫 `start()` 的程式 |
 
-這些與 API 的 `case`、`conversation`、`contact`、`automation` 模組功能重疊。讀程式時容易以為工單或自動化走這裡。
+這些與 API 的 `conversation`、`contact` 模組功能重疊。讀程式時容易以為對話或聯絡人走這裡。
+
+**已刪除的部分**：`cases/case-service.ts` 的 `CaseService` 與訂閱 `crm:events` 的 `automation/engine.ts` 的 `AutomationEngine`（#327）。`CaseService` 在模組載入時建立 `sla-monitoring` 的 Queue 與 Worker，`AutomationEngine` 是它唯一的使用者，沒有從 `index.ts` 匯出，也沒有呼叫 `start()` 的程式。
 
 <a id="pkg-06"></a>
 ### PKG-06：`channel-plugins` 有沒有呼叫端的程式

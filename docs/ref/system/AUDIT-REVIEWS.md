@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-19：APP-01 修正，PKG-05 部分修正
+
+以 `3b021778` 為基礎修正，分支 `fix/core-redis-lazy-load`，issue #327。以 unit 測試、feature 測試與本機啟動 workers 確認。另在 UAT 唯讀查詢 Redis，沒有改動 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| APP-01 | 修正，從 AUDIT.md 移除 | 刪除 `packages/core/src/cases/case-service.ts`，import core 不再建立 `sla-monitoring` 的 Queue 與 Worker。core 的 `redis` 加上 `lazyConnect`，第一次執行指令時才連線。`packages/core/tests/unit/load-without-redis.test.ts` 的 2 個測試在修正前都失敗（`redis.status` 是 `connecting`；建立了 `Queue sla-monitoring`、`Worker sla-monitoring`）。在 6399 開一個只計數連線的監聽、以 `REDIS_URL` 指向它跑 unit 測試：修正前 workers 有 66 次連線，修正後 api、workers、core、channel-plugins 都是 0 次。UAT 的 Redis 只剩 `bull:sla-monitoring:meta` 一個鍵，沒有 job |
+| PKG-05 | 部分修正 | 刪除 `CaseService` 與唯一使用它的 `automation/engine.ts` 的 `AutomationEngine`。兩者在 `apps/*` 與 `packages/*` 都沒有呼叫端，`AutomationEngine` 也沒有從 `index.ts` 匯出。`InboxService`、`ContactService` 仍在 |
+
+本次另外做的事：
+
+- `ioredis` 只留一個版本：`apps/api` 與 `packages/core` 鎖定 `5.9.3`，與 `apps/workers`、`bullmq@5.71.0` 相同。`pnpm why ioredis -r` 只列出 5.9.3。
+- `packages/channel-plugins` 改成 ESM 之後，`node scripts/check-workspace-esm.mjs --strict` 回報 CJS 的 `apps/workers` 匯入 `linePlugin`、`fbPlugin`、`threadsPlugin`，執行時會是 `undefined`（CM-175 的組合）。所以 `apps/workers` 也改成 ESM，`ioredis` 的預設匯入改成具名匯入 `{ Redis }`。改完後以 Node 載入 workers 的每個編譯檔與 channel-plugins 的每個子路徑，沒有 `undefined` 的匯出；`createWorkerPluginRegistry()` 的三個外掛都是物件；`node dist/index.js` 啟動到建立連線。`channel-plugins/fb` 仍載入失敗，是既有的 PKG-02。
+
 ## 2026-10-19：IDENT-06 修正
 
 以 `44a74350` 為基礎修正，分支 `fix/avatar-mirror`，change `mirror-channel-avatars`。以 unit 測試與 feature 測試確認，下載與物件儲存以替身取代，沒有連 UAT。

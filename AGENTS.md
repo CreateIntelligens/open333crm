@@ -104,11 +104,15 @@ only the model methods that the service calls. `apps/api/tests/unit/modules/case
 shows this pattern.
 
 **Unit tests in `apps/api` do not connect to Redis.** `apps/api/tests/setup/unit.setup.ts`
-replaces `ioredis` and the BullMQ `Queue` and `Worker` for all unit tests. Each Redis command
-fails at once, as when Redis is down. A test can replace these mocks with its own `vi.mock`.
-If your `vi.mock('bullmq')` keeps the original module, also replace `Worker`.
-`@open333crm/core` creates a `Worker` when it loads (issue #327). With the real `Worker`, the
-test run reports unhandled errors.
+replaces `ioredis` for all unit tests. Each Redis command fails at once, as when Redis is down.
+The mock also replaces the `redis` client of `@open333crm/core`. A test can replace this mock
+with its own `vi.mock('ioredis')`. Give the mock class an `on()` method that returns `this`.
+`@open333crm/core` calls `redis.on()` when it loads.
+
+The mock reaches `@open333crm/core` only because the repo installs one version of `ioredis`.
+`apps/api`, `apps/workers` and `packages/core` pin the version that `bullmq` pins. When you
+update `bullmq`, change all three. `pnpm why ioredis -r` must show one version.
+`apps/api/tests/unit/no-redis-connection.test.ts` fails when a second version appears.
 
 Use `node:assert/strict` for assertions, as most existing tests do. Some older tests import
 `node:assert`. Its `assert.equal` compares with `==`. Do not copy those tests.

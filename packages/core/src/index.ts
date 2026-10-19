@@ -6,7 +6,6 @@ export * from "./storage/minio-provider.js";
 export * from "./license/license-service.js";
 export * from "./inbox/inbox-service.js";
 export * from "./contacts/contact-service.js";
-export * from "./cases/case-service.js";
 export * from "./channels/channel-adapter.js";
 export * from "./canvas/flow-runner.js";
 export * from "./canvas/scheduler.js";
