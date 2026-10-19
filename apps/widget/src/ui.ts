@@ -133,9 +133,13 @@ export function applyPanelTheme(panel: HTMLElement, theme: PanelTheme): void {
   panel.style.backgroundRepeat = 'no-repeat';
 }
 
-export function appendMessage(container: HTMLElement, msg: Message, isOutbound: boolean): void {
+/**
+ * @param fromVisitor 訪客自己送出的訊息為 true（靠右）；客服、Bot 與問候語為 false（靠左）。
+ *   這是訪客畫面的左右，不是 CRM 的 direction：客服回覆對 CRM 是 OUTBOUND，但在這裡靠左。
+ */
+export function appendMessage(container: HTMLElement, msg: Message, fromVisitor: boolean): void {
   const el = document.createElement('div');
-  el.className = `o333-msg ${isOutbound ? 'o333-msg-out' : 'o333-msg-in'}`;
+  el.className = `o333-msg ${fromVisitor ? 'o333-msg-out' : 'o333-msg-in'}`;
 
   if (msg.contentType === 'image' && msg.content?.url) {
     el.classList.add('o333-msg-img');

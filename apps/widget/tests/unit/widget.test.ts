@@ -248,3 +248,48 @@ test('Agent replies to visitor（widget 端）：收到 agent:message 時顯示�
 
   assert.equal(messages.lastElementChild?.textContent, '客服回覆');
 });
+
+// ── Widget shows each message on the side of its sender ────
+
+function sideOf(el: Element | null | undefined): 'visitor' | 'other' | 'none' {
+  const out = el?.classList.contains('o333-msg-out') ?? false;
+  const inn = el?.classList.contains('o333-msg-in') ?? false;
+  if (out && !inn) return 'visitor';
+  if (inn && !out) return 'other';
+  return 'none';
+}
+
+test("Visitor message is on the visitor's side：訪客送出的文字靠右（o333-msg-out）", async () => {
+  const { messages, input, sendBtn } = await loadWidget();
+
+  input.value = 'hello';
+  sendBtn.click();
+
+  assert.equal(messages.lastElementChild?.textContent, 'hello');
+  assert.equal(sideOf(messages.lastElementChild), 'visitor');
+});
+
+test('Agent and bot messages are on the other side：問候語與 agent:message 靠左（o333-msg-in）', async () => {
+  greeting = '歡迎光臨';
+  const { messages } = await loadWidget();
+  assert.equal(sideOf(messages.children[0]), 'other', '問候語');
+
+  socket.handlers[0]!({ direction: 'OUTBOUND', senderType: 'AGENT', contentType: 'text', content: { text: '客服回覆' } });
+  assert.equal(sideOf(messages.lastElementChild), 'other', '客服回覆');
+
+  socket.handlers[0]!({ direction: 'OUTBOUND', senderType: 'BOT', contentType: 'image', content: { url: 'https://cdn.test/a.png' } });
+  assert.equal(sideOf(messages.lastElementChild), 'other', 'Bot 圖片');
+});
+
+test("Visitor media placeholder is on the visitor's side：上傳中的佔位訊息靠右", async () => {
+  const { messages, fileInput } = await loadWidget();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+    String(input) === `${API}/webchat/${CHANNEL_ID}/media` ? new Promise<Response>(() => undefined) : realFetch(input, init),
+  ) as typeof fetch;
+
+  selectFile(fileInput, fileOf('photo.png', 'image/png', 1024));
+
+  assert.equal(messages.lastElementChild?.textContent, '[傳送中...]');
+  assert.equal(sideOf(messages.lastElementChild), 'visitor');
+});
