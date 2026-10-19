@@ -1,5 +1,5 @@
 /**
- * 排程讀取租戶之後、更新之前，平台延長或停用租戶（PR #312 審查意見）。
+ * 排程讀取租戶之後、更新之前，平台延長或停用租戶，或另一次排程先處理（PR #312 審查意見）。
  *
  * 排程先撈出租戶清單，再逐一更新。平台的操作若發生在兩者之間，排程不能用讀到的
  * 舊狀態蓋掉操作的結果。測試把 tx 包一層：排程第一次讀到目標租戶時，先執行平台的
@@ -149,6 +149,15 @@ scenario('排程讀取後停用：不寄提醒，也不寫提醒標記', async (
 
   assert.equal(reminders(), 0);
   assert.deepEqual((await state(tx, id)).trialRemindersSent, []);
+});
+
+scenario('兩次排程同時讀到同一個租戶：提醒只寄一次', async ({ tx, tenant, reminders }) => {
+  const id = await tenant({ trialEndsAt: new Date(Date.now() + 5 * DAY), isActive: true });
+
+  await runTrialLifecycle(afterSnapshot(tx, id, () => runTrialLifecycle(tx)));
+
+  assert.equal(reminders(), 1);
+  assert.deepEqual((await state(tx, id)).trialRemindersSent, [7]);
 });
 
 scenario('沒有競態時照常寄提醒並寫入標記', async ({ tx, tenant, reminders }) => {
