@@ -18,8 +18,12 @@ import {
 } from '#src/modules/auth/cli-session.service.js';
 import { hashPassword } from '#src/shared/utils/password.js';
 
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
+
+// 這個檔案的 test 實際以 bcryptjs 雜湊與比對密碼，很吃 CPU。turbo 同時執行其他套件時，
+// 單一 test 可能超過預設的 5 秒（#299）
+vi.setConfig({ testTimeout: 20_000 });
 type MockFn = ((...args: any[]) => any) & { calls: any[][] };
 
 function mockFn(impl?: (...args: any[]) => any): MockFn {

@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 
 process.env.DATABASE_URL ||= 'postgresql://user:pass@localhost:5432/open333crm';
 process.env.REDIS_URL ||= 'redis://localhost:6379';
@@ -14,6 +14,10 @@ import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import authRoutes from '#src/modules/auth/auth.routes.js';
 import { loadEnvConfig } from '#src/config/env.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
+
+// 這個檔案的 test 實際以 bcryptjs 雜湊與比對密碼，很吃 CPU。turbo 同時執行其他套件時，
+// 單一 test 可能超過預設的 5 秒（#299）
+vi.setConfig({ testTimeout: 20_000 });
 
 test('同一 IP 一分鐘內第 11 次登入回 429 RATE_LIMITED，訊息可讀', async () => {
   const prisma = { agent: { findUnique: async () => null } };

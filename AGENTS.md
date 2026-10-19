@@ -103,6 +103,13 @@ For a bug fix, the first test reproduces the bug.
 only the model methods that the service calls. `apps/api/tests/unit/modules/case/case.service.test.ts`
 shows this pattern.
 
+**Unit tests in `apps/api` do not connect to Redis.** `apps/api/tests/setup/unit.setup.ts`
+replaces `ioredis` and the BullMQ `Queue` and `Worker` for all unit tests. Each Redis command
+fails at once, as when Redis is down. A test can replace these mocks with its own `vi.mock`.
+If your `vi.mock('bullmq')` keeps the original module, also replace `Worker`.
+`@open333crm/core` creates a `Worker` when it loads (issue #327). With the real `Worker`, the
+test run reports unhandled errors.
+
 Use `node:assert/strict` for assertions, as most existing tests do. Some older tests import
 `node:assert`. Its `assert.equal` compares with `==`. Do not copy those tests.
 

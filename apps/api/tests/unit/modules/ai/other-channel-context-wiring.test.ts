@@ -4,7 +4,7 @@
  * 讀取內容本身由 feature 測試 other-channel-context.test.ts 驗證，這裡只驗證接線。
  */
 import assert from 'node:assert/strict';
-import { beforeEach, test, vi } from 'vitest';
+import { beforeAll, beforeEach, test, vi } from 'vitest';
 
 const OTHER = '以下是同一位顧客最近在其他渠道的訊息…\n[LINE 2 天前] 顧客：冷氣漏水怎麼處理';
 const loadCalls: unknown[][] = [];
@@ -53,6 +53,16 @@ vi.mock('#src/config/env.js', async (orig) => ({
   }),
 }));
 
+let attemptKbAutoReply: typeof import('#src/modules/ai/kb-autoreply.service.js').attemptKbAutoReply;
+let runAgentReply: typeof import('#src/modules/ai/agent/agent.service.js').runAgentReply;
+
+// vi.mock 的 factory 用到上面宣告的變數，所以等檔案執行到這裡才載入。在 beforeAll 載入，
+// 載入時間不算進第一個 test 的時間上限：放在 test 裡時，turbo 同時執行其他套件就會逾時（#299）
+beforeAll(async () => {
+  ({ attemptKbAutoReply } = await import('#src/modules/ai/kb-autoreply.service.js'));
+  ({ runAgentReply } = await import('#src/modules/ai/agent/agent.service.js'));
+});
+
 beforeEach(() => {
   loadCalls.length = 0;
   generateReplyOptions.length = 0;
@@ -60,7 +70,6 @@ beforeEach(() => {
 });
 
 test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => {
-  const { attemptKbAutoReply } = await import('#src/modules/ai/kb-autoreply.service.js');
   const prisma = {
     automationRule: { findMany: async () => [] },
     conversation: {
@@ -81,7 +90,6 @@ test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => 
 });
 
 test('Agent 模式：系統指示包含其他渠道的訊息；沒有對話時不讀取', async () => {
-  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
   const prisma = {
     agentRun: { create: async () => ({ id: 'run1', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
     tenantSettings: { findFirst: async () => ({ identityBinding: {} }) },
@@ -97,7 +105,6 @@ test('Agent 模式：系統指示包含其他渠道的訊息；沒有對話時�
 });
 
 test('Agent 模式：有指定可見渠道時交給讀取函式；沒有指定時不限制（回覆對象是客人本人）', async () => {
-  const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
   const prisma = {
     agentRun: { create: async () => ({ id: 'run3', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
     tenantSettings: { findFirst: async () => ({ identityBinding: {} }) },

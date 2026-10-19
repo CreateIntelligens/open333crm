@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
-import { beforeEach, test, vi } from 'vitest';
+import { beforeAll, beforeEach, test, vi } from 'vitest';
 import { AppError } from '#src/shared/utils/response.js';
 
 // AUDIT RBAC-04（AI 部分）：以 conversationId 讀對話的 AI 路由要先檢查渠道可見範圍。
@@ -52,8 +52,15 @@ vi.mock('#src/config/env.js', () => ({
   getConfig: () => ({ AGENTIC_LLM_ENABLED: true, AGENT_WIKI_AUTO_PUBLISH: false }),
 }));
 
+let aiRoutes: typeof import('#src/modules/ai/ai.routes.js').default;
+
+// vi.mock 的 factory 用到上面宣告的變數，所以等檔案執行到這裡才載入。在 beforeAll 載入，
+// 載入時間不算進第一個 test 的時間上限：放在 test 裡時，turbo 同時執行其他套件就會逾時（#299）
+beforeAll(async () => {
+  ({ default: aiRoutes } = await import('#src/modules/ai/ai.routes.js'));
+});
+
 async function buildApp() {
-  const { default: aiRoutes } = await import('#src/modules/ai/ai.routes.js');
   const app = Fastify();
   app.decorate('authenticate', async (request: any) => {
     request.agent = { id: 'agent-1', tenantId: 'tenant-1' };

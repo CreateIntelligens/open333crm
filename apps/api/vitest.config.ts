@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // Two suites, in the spirit of Laravel's tests/Unit and tests/Feature:
@@ -12,6 +13,18 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['tests/unit/**/*.test.ts'],
+          setupFiles: ['tests/setup/unit.setup.ts'],
+          // unit.setup.ts 的 mock 要套用到 workspace 套件（例如 core 的 redis），這些套件要由 vite 處理：
+          // - core 等 ESM 套件設成 inline。
+          // - channel-plugins 編成 CJS，dist 用 require() 載入 core，vite 攔不到，會由 Node 另外載入
+          //   一份真的 core 並連到 Redis。所以改用它的 TypeScript 原始碼。
+          server: { deps: { inline: [/\/packages\/[^/]+\/dist\//] } },
+          alias: [
+            {
+              find: /^@open333crm\/channel-plugins$/,
+              replacement: fileURLToPath(new URL('../../packages/channel-plugins/src/index.ts', import.meta.url)),
+            },
+          ],
         },
       },
       {

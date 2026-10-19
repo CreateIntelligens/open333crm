@@ -15,6 +15,13 @@ vi.mock('bullmq', async (importOriginal) => ({
       calls.enqueued += 1;
     }
   },
+  // 這個 mock 蓋過 tests/setup/unit.setup.ts 的 bullmq。@open333crm/core 在 import 時建立 Worker，
+  // 真的 Worker 會呼叫假的 Redis 而失敗，所以 Worker 也要換掉
+  Worker: class {
+    on() {
+      return this;
+    }
+  },
 }));
 vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
   attemptKbAutoReply: async (_p: unknown, _io: unknown, _t: string, _c: string, text: string) => {
