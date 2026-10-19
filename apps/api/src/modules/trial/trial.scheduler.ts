@@ -6,8 +6,8 @@
  *   設 purgedAt=now（標記，不真刪 DB，可復原）+ 稽核
  *
  * 每一步都是「讀取 → 逐筆認領 → 認領成功才寄信與寫稽核」。認領是以讀取時的條件加上 id
- * 做條件更新：讀取之後租戶被延長、轉正式、停用，或被另一次排程先處理，條件就不成立，
- * 這一筆略過，不會用讀到的舊狀態蓋掉別人的結果。
+ * 做條件更新：讀取之後租戶被平台人員延長、轉正式或停用，條件就不成立，這一筆略過，
+ * 不會用讀到的舊狀態蓋掉平台人員的操作。
  * 逐租戶 try/catch，單一失敗不影響其他。DB 掃描每輪讀最新 trialEndsAt 與 policy。
  */
 import type { PrismaClient, Prisma } from '@prisma/client';
@@ -99,7 +99,8 @@ async function remindTrials(prisma: PrismaClient, now: number, milestones: numbe
     'reminder',
     due,
     (t) => ({
-      // trialRemindersSent 也要是讀到的值：兩次排程同時讀到同一筆時，只有一次寄信
+      // trialRemindersSent 也要是讀到的值。預防措施：目前只有一個 API 實例，排程不會重疊執行；
+      // 之後若有多個實例同時讀到同一筆，只有一個會寄信
       where: { isActive: true, trialEndsAt: t.endsAt, trialRemindersSent: { equals: t.sent } },
       data: { trialRemindersSent: [...t.sent, t.milestone] as Prisma.InputJsonValue },
     }),
