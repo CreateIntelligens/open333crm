@@ -48,29 +48,46 @@ function collectStorageKeys(messages: { content: Prisma.JsonValue }[]): string[]
 
 /**
  * 從聯絡人的 avatarUrl 與渠道身分的 profilePic 抽出本租戶 avatars 目錄下的頭像檔 key。
- * 公開網址的格式是 {S3_PUBLIC_URL}/{bucket}/{key}（apps/api s3.provider）；平台網址與其他租戶的檔案不收。
+ * 公開網址的格式是 {S3_PUBLIC_URL}/{bucket}/{key}（apps/api s3.provider），key 是 {tenantId}/avatars/{uuid}.{ext}。
+ * 只看網址的路徑、而且 key 要完全符合這個格式；平台網址與其他租戶的檔案不收。
+ * 不比對主機：workers 的 S3_PUBLIC_URL 不一定與 api 相同，比對主機會讓刪除悄悄跳過。
  */
 function collectAvatarKeys(tenantId: string, urls: (string | null | undefined)[]): string[] {
-  const marker = `/${MEDIA_BUCKET}/${tenantId}/avatars/`;
+  const keyPattern = new RegExp(`^${tenantId}/avatars/[0-9a-f-]{36}\\.(?:jpg|png|webp|gif)$`);
+  const prefix = `/${MEDIA_BUCKET}/`;
   const keys = new Set<string>();
   for (const url of urls) {
     if (!url) continue;
-    const at = url.indexOf(marker);
+    let pathname: string;
+    try {
+      pathname = new URL(url).pathname;
+    } catch {
+      continue;
+    }
+    const at = pathname.lastIndexOf(prefix);
     if (at < 0) continue;
-    const key = url.slice(at + MEDIA_BUCKET.length + 2).split(/[?#]/)[0];
-    if (!key.includes('..')) keys.add(key);
+    const key = pathname.slice(at + prefix.length);
+    if (keyPattern.test(key)) keys.add(key);
   }
   return [...keys];
 }
 
-/** 交易內讀出聯絡人與渠道身分的頭像檔 key（刪除前讀，刪除後就找不到了） */
+/**
+ * 交易內讀出聯絡人與渠道身分的頭像檔 key（刪除前讀，刪除後就找不到了）。
+ * 以 FOR UPDATE 鎖住這幾筆：背景補存頭像（apps/api inbound-avatar-refresh）正要寫回時，
+ * 刪除會等它寫完、讀到新的檔案；刪除先鎖住時，補存寫回找不到身分，會自己刪掉剛上傳的檔案。
+ */
 async function readAvatarKeys(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
-  const contact = await tx.contact.findFirst({ where: { id: contactId, tenantId }, select: { avatarUrl: true } });
-  const identities = await tx.channelIdentity.findMany({
-    where: { contactId, contact: { tenantId } },
-    select: { profilePic: true },
-  });
-  return collectAvatarKeys(tenantId, [contact?.avatarUrl, ...identities.map((i) => i.profilePic)]);
+  const contacts = await tx.$queryRaw<{ avatarUrl: string | null }[]>`
+    SELECT "avatarUrl" FROM contacts
+    WHERE id = ${contactId}::uuid AND "tenantId" = ${tenantId}::uuid
+    FOR UPDATE`;
+  const identities = await tx.$queryRaw<{ profilePic: string | null }[]>`
+    SELECT ci."profilePic" FROM channel_identities ci
+    JOIN contacts c ON c.id = ci."contactId"
+    WHERE ci."contactId" = ${contactId}::uuid AND c."tenantId" = ${tenantId}::uuid
+    FOR UPDATE OF ci`;
+  return collectAvatarKeys(tenantId, [...contacts.map((c) => c.avatarUrl), ...identities.map((i) => i.profilePic)]);
 }
 
 /** 刪除一批 MinIO 物件（單顆失敗只 log，不阻斷刪除流程）。 */

@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { afterAll, beforeEach, test, vi } from 'vitest';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 
 const mocks = vi.hoisted(() => ({
   remove: vi.fn(async (_bucket: string, _key: string) => undefined),
@@ -114,7 +115,8 @@ async function createSubject(avatars: { contact?: string; identity?: string } = 
 /** 物件儲存裡頭像檔的 key 與公開網址（網址格式同 S3 provider：{publicUrl}/{bucket}/{key}） */
 const BUCKET = process.env.S3_BUCKET || 'open333crm';
 function storedAvatar(tenantId: string, name: string) {
-  const key = `${tenantId}/avatars/${MARK}-${name}.jpg`;
+  // key 的格式與 avatar-mirror 上傳時相同：{tenantId}/avatars/{uuid}.{ext}
+  const key = `${tenantId}/avatars/${randomUUID()}.jpg`;
   return { key, url: `https://files.example.test/${BUCKET}/${key}` };
 }
 const removedKeys = () => mocks.remove.mock.calls.map(([, key]) => key);
@@ -285,16 +287,51 @@ for (const mode of ['anonymize', 'hard_delete'] as const) {
   });
 }
 
+test('刪除期間才寫回的頭像檔也會刪除', async () => {
+  // 模擬背景補存：刪除開始時，另一個交易正要把渠道身分的頭像改成剛上傳的檔案
+  const { contact } = await createSubject({
+    identity: 'https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=race',
+  });
+  const identity = await owner.channelIdentity.findFirstOrThrow({ where: { contactId: contact.id } });
+  const mirrored = storedAvatar(A, 'race');
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let written!: () => void;
+  const updated = new Promise<void>((resolve) => (written = resolve));
+  const refresh = owner.$transaction(
+    async (tx) => {
+      await tx.channelIdentity.update({ where: { id: identity.id }, data: { profilePic: mirrored.url } });
+      written();
+      await gate;
+    },
+    { timeout: 10_000 },
+  );
+  await updated;
+
+  const job = runJob(await createRequest(contact.id, 'anonymize'));
+  await new Promise((resolve) => setTimeout(resolve, 500)); // 讓刪除先讀到頭像
+  release();
+  await refresh;
+  await job;
+
+  assert.ok(removedKeys().includes(mirrored.key), '刪除要等補存寫完，再刪掉新的頭像檔');
+});
+
 test('不刪物件儲存以外或其他租戶的檔案', async () => {
   const foreign = storedAvatar(tenantB.id, 'foreign');
+  const own = storedAvatar(A, 'crafted');
   const { contact } = await createSubject({
-    contact: 'https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=1',
+    // 網址的路徑不是 avatars 檔案、只在查詢字串帶到本租戶的 key，也不算
+    contact: `https://platform-lookaside.fbsbx.com/platform/profilepic/?x=/${BUCKET}/${own.key}`,
     identity: foreign.url,
   });
+  // 在 avatars 目錄、但不是補存產生的檔名格式（{uuid}.{圖片副檔名}）
+  const odd = await createSubject({ identity: `https://files.example.test/${BUCKET}/${A}/avatars/exports/report.csv` });
   const before = mocks.remove.mock.calls.length;
   await runJob(await createRequest(contact.id, 'anonymize'));
+  await runJob(await createRequest(odd.contact.id, 'anonymize'));
 
-  assert.equal(mocks.remove.mock.calls.length, before, '平台網址與其他租戶的檔案都不刪');
+  assert.equal(mocks.remove.mock.calls.length, before, '平台網址、其他租戶與不符格式的檔案都不刪');
 });
 
 test('硬刪除不影響其他聯絡人', async () => {
