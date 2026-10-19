@@ -83,6 +83,9 @@ services:
         condition: service_healthy
     env_file:
       - .env.api
+    # LOG_TRANSPORT=file 時 log 寫在 /app/logs；掛 volume，部署重建容器後才不會消失
+    volumes:
+      - api_logs:/app/logs
     ports:
       - "127.0.0.1:3001:3001"
 
@@ -98,6 +101,8 @@ services:
         condition: service_healthy
     env_file:
       - .env.workers
+    volumes:
+      - workers_logs:/app/logs
     restart: unless-stopped
 
   web:
@@ -135,3 +140,5 @@ volumes:
   minio_data:
   caddy_data:
   caddy_config:
+  api_logs:
+  workers_logs:
