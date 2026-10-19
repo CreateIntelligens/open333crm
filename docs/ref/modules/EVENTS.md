@@ -32,7 +32,7 @@
 | `socket:emit` | Redis pub/sub | workers 到 API 行程，再推給前端 | 不會 |
 | `domain:event` | Redis pub/sub | workers 到 API 行程的 eventBus | 不會 |
 
-另外還有兩種定期工作：API 行程內以 `setInterval` 或 `setTimeout` 執行的排程，以及 workers 行程以 BullMQ 重複工作執行的排程。
+另外還有兩種定期工作：API 行程內以 BullMQ Job Scheduler 觸發的排程，以及 workers 行程以 BullMQ 重複工作執行的排程。
 
 名稱容易誤導的地方：API 裡的 `setupNotificationWorker`、`setupAutomationWorker` 雖然叫 worker，實際上是訂閱 eventBus、把工作送進佇列的生產者。真正消費佇列的只有 `apps/workers`，見 `../system/AUDIT.md` 的 APP-04。
 
@@ -136,19 +136,29 @@ workers 行程沒有 socket 連線，也無法發布到 API 的 eventBus，兩�
 
 ## API 行程內的排程
 
-這些排程在 `apps/api/src/index.ts` 啟動，跑在 API 行程內：
+這些排程在 `apps/api/src/index.ts` 啟動，跑在 API 行程內。各模組以 `registerSchedule()`（`apps/api/src/lib/job-scheduler.ts`）註冊，由 BullMQ Job Scheduler 觸發，queue 名稱是 `api-scheduler`：
 
-| 排程 | 所屬模組 | 頻率 | 做什麼 |
-| --- | --- | --- | --- |
-| `setupBroadcastScheduler()` | `marketing` | 每 60 秒 | 執行到期的排程群發，每次最多 10 筆 |
-| `setupCsatScheduler()` | `csat` | 每 60 秒 | 發送滿意度調查；逾時沒有回覆的工單自動結案 |
-| `setupCanvasScheduler()` | `canvas` | 每 60 秒 | 喚醒 `resumeAt` 已到期的 `WAITING` 流程 |
-| `setupInactivityCloseWorker()` | `conversation` | 每 5 分鐘 | 關閉閒置過久的對話 |
-| `setupTrialScheduler()` | `trial` | 啟動時一次，之後每小時 | 試用到期的提醒與停用 |
-| `setupAnalyticsScheduler()` | `analytics` | 每天 02:00（行程所在時區） | 把前一天的彙總寫入 `DailyStat` |
-| `startA2ABridgeWorker()` | `settings` | 常駐輪詢 | 從 A2A Hub 取任務，由 `A2A_BRIDGE_ENABLED` 控制 |
+| 排程 id | 註冊函式 | 所屬模組 | 頻率 | 做什麼 |
+| --- | --- | --- | --- | --- |
+| `broadcast-scheduled` | `setupBroadcastScheduler()` | `marketing` | 每 60 秒 | 執行到期的排程群發，每次最多 10 筆 |
+| `csat-send` | `setupCsatScheduler()` | `csat` | 每 60 秒 | 發送滿意度調查 |
+| `csat-auto-close` | `setupCsatScheduler()` | `csat` | 每 60 秒 | 逾時沒有回覆的工單自動結案 |
+| `canvas-resume` | `setupCanvasScheduler()` | `canvas` | 每 60 秒 | 喚醒 `resumeAt` 已到期的 `WAITING` 流程 |
+| `inactivity-close` | `setupInactivityCloseWorker()` | `conversation` | 每 5 分鐘 | 關閉閒置過久的對話 |
+| `trial-lifecycle` | `setupTrialScheduler()` | `trial` | 每小時 | 試用到期的提醒、停用與軟刪 |
+| `meta-token-health` | `setupMetaTokenHealthScheduler()` | `channel` | 每 6 小時 | 檢查 FB、IG 渠道的權杖，失效時通知租戶管理員 |
+| `analytics-daily` | `setupAnalyticsScheduler()` | `analytics` | 每天 02:00（行程所在時區） | 把前一天的彙總寫入 `DailyStat` |
 
-這些排程都沒有鎖。`setInterval` 不等上一輪結束，下一輪時間到就開始。避免重複處理，靠的是每一輪先改狀態再處理，例如 Canvas 先把流程改成 `RUNNING`；這只在單一行程內有效。
+`startA2ABridgeWorker()`（`settings`）也跑在 API 行程，但它是常駐輪詢 A2A Hub，不是排程，由 `A2A_BRIDGE_ENABLED` 控制。
+
+Job Scheduler 的行為：
+
+- 排程的定義存在 Redis。不論有幾個 API 行程，每一期只產生一筆 job，由一個行程執行。
+- 第一次註冊時，每隔固定時間的排程立刻執行一次；每天 02:00 的排程等到下一個 02:00。之後 API 重啟時再註冊，下次執行時間不變，所以重啟不會觸發額外的執行。
+- Redis 斷線期間，排程停止執行。Redis 恢復後，到期的那一期補跑一次，更早錯過的期數不補。
+- 部署時，API 收到 SIGTERM 後等執行中的 job 跑完；Docker 等 10 秒後強制結束。被強制結束的 job，約 60 秒後由新的行程重新執行一次。
+
+Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取走這一期的 job 時就產生下一期，所以一期跑得比週期久時，下一期可能在這一期跑完前開始。可能跑得比週期久的排程，註冊時設定 `withoutOverlapping`，目前只有 `canvas-resume` 設定。其他排程避免重複處理，靠的是資料庫的條件更新，例如群發以條件更新把狀態改成 `sending`。
 
 ## 失敗與重試
 
@@ -184,7 +194,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：送進 BullMQ 佇列，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。
 4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：用 `publishDomainEvent()`，事件名稱必須是 `AppEventName` 之一。
-6. **定期工作**：放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`，多個 workers 行程時只會執行一次。不要在 API 行程新增 `setInterval`。
+6. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時都只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
 
 新增事件之後，確認它同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。
 

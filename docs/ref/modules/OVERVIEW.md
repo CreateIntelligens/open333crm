@@ -204,7 +204,7 @@
 
 背景工作分在兩個行程執行，兩邊的機制不同。事件與佇列的發布端、消費端與失敗處理，見[事件與背景工作](./EVENTS.md)。
 
-- **API 行程**跑的是 in-process 的 eventBus 監聽器與 `setInterval` 排程。函式名稱裡的 `Worker` **不代表 BullMQ consumer**：`setupNotificationWorker` 與 `setupAutomationWorker` 訂閱 eventBus，再把工作送進 BullMQ queue，扮演的是 producer。
+- **API 行程**跑的是 in-process 的 eventBus 監聽器，以及由 BullMQ Job Scheduler 觸發的排程（`api-scheduler` queue 的 Worker 也在 API 行程內）。函式名稱裡的 `Worker` **不代表 BullMQ consumer**：`setupNotificationWorker` 與 `setupAutomationWorker` 訂閱 eventBus，再把工作送進 BullMQ queue，扮演的是 producer。
 - **`apps/workers` 行程**是唯一的 BullMQ consumer。
 
 在 API 行程啟動（`apps/api/src/index.ts`）：
@@ -215,12 +215,13 @@
 | `setupAutomationWorker` | `automation` | 訂閱 eventBus，送入 `automation` queue | [自動化](../features/tenant/AUTOMATION.md) |
 | `setupCanvasWorker` | `canvas` | 訂閱 eventBus，直接執行動作 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) |
 | `setupWebhookDispatcher` | `webhook-subscriptions` | 訂閱 eventBus，發送對外 Webhook | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
-| `setupCanvasScheduler` | `canvas` | `setInterval` 週期執行 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) |
-| `setupTrialScheduler` | `trial` | `setInterval` 週期執行 | [試用管理](../features/platform/TRIALS.md) |
-| `setupAnalyticsScheduler` | `analytics` | `setTimeout` 排定下一次執行 | [報表](../features/tenant/ANALYTICS.md) |
-| `setupBroadcastScheduler` | `marketing` | `setInterval` 週期執行 | [行銷](../features/tenant/MARKETING.md) |
-| `setupCsatScheduler` | `csat` | `setInterval` 週期執行 | [工單](../features/tenant/CASES.md) |
-| `setupInactivityCloseWorker` | `conversation` | `setInterval` 週期執行 | [收件匣與對話](../features/tenant/INBOX.md) |
+| `setupCanvasScheduler` | `canvas` | Job Scheduler 週期執行 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) |
+| `setupTrialScheduler` | `trial` | Job Scheduler 週期執行 | [試用管理](../features/platform/TRIALS.md) |
+| `setupAnalyticsScheduler` | `analytics` | Job Scheduler 每天 02:00 | [報表](../features/tenant/ANALYTICS.md) |
+| `setupBroadcastScheduler` | `marketing` | Job Scheduler 週期執行 | [行銷](../features/tenant/MARKETING.md) |
+| `setupCsatScheduler` | `csat` | Job Scheduler 週期執行 | [工單](../features/tenant/CASES.md) |
+| `setupInactivityCloseWorker` | `conversation` | Job Scheduler 週期執行 | [收件匣與對話](../features/tenant/INBOX.md) |
+| `setupMetaTokenHealthScheduler` | `channel` | Job Scheduler 週期執行 | [事件與背景工作](./EVENTS.md) |
 | `startA2ABridgeWorker` | `settings` | 常駐輪詢 A2A Hub，由 `A2A_BRIDGE_ENABLED` 控制 | [其他設定](../features/tenant/SETTINGS.md) |
 
 在 `apps/workers` 行程消費的 BullMQ queue（`apps/workers/src/index.ts`）：

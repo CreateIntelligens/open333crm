@@ -120,7 +120,7 @@
 | [APP-06](#app-06) | 部署與應用程式 | P3 | 未處理 | 訊息模擬器的 API 在正式環境可用，成員可偽造進站訊息 | 靜態確認 |
 | [APP-07](#app-07) | 部署與應用程式 | P4 | 已提建議 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | 靜態確認 |
 | [APP-08](#app-08) | 部署與應用程式 | P3 | 已提建議 | 多數 BullMQ 佇列永遠保留已完成的工作，Redis 沒有記憶體上限 | 靜態確認 |
-| [APP-09](#app-09) | 部署與應用程式 | P3 | 已提建議 | API 行程假設只有一份：排程沒有鎖、Redis 廣播會重複處理，無法水平擴充 | 靜態確認 |
+| [APP-09](#app-09) | 部署與應用程式 | P3 | 部分修正 | API 行程假設只有一份：Redis 廣播會重複處理、行程記憶體的狀態各自一份，無法水平擴充；排程已改為每一期只執行一次 | 靜態確認 |
 | [APP-10](#app-10) | 部署與應用程式 | P2 | 已提建議 | 沒有獨立的正式環境：合併到 `main` 就直接部署到客戶在用的環境 | 間接確認 |
 | [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
 | [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
@@ -1603,7 +1603,7 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 
 | 機制 | 多個 API 行程時 |
 | --- | --- |
-| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總） | 每個行程各自執行，沒有分散式鎖。群發是例外：`executeBroadcast()` 以條件更新搶占執行權，兩個行程查到同一筆 `scheduled` 時只有一個會執行（MKT-01 的部分修正） |
+| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總、權杖檢查） | **已修正。** 改由 BullMQ Job Scheduler 觸發（`apps/api/src/lib/job-scheduler.ts`），不論有幾個行程，每一期只執行一次。同一個排程的兩期仍可能重疊（一期跑超過週期時），Canvas 以 `withoutOverlapping` 防止。CSAT 發送、閒置關閉、Canvas 喚醒與使用者操作之間，資料庫仍沒有條件更新 |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
 | `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
 | 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
@@ -1611,7 +1611,9 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 
 這些問題分散在各模組，單獨看都像是小事，但合起來代表 API 目前無法水平擴充。
 
-**修正方向**：定期工作移到 workers 以 BullMQ 重複工作執行；Redis 廣播改成 BullMQ 佇列，或在接收端以事件 ID 去重；行程記憶體的狀態改存 Redis；Socket.IO 接上 Redis adapter。
+**修正方向**：Redis 廣播改成 BullMQ 佇列，或在接收端以事件 ID 去重；行程記憶體的狀態改存 Redis；Socket.IO 接上 Redis adapter。
+
+要同時執行多個 api 容器，還要先拿掉 `docker-compose.yml` 中 api 的 `container_name`。
 
 <a id="app-10"></a>
 ### APP-10：沒有獨立的正式環境

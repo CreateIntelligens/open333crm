@@ -417,6 +417,36 @@ await redisPublisher.publish(
 `eventBus` (`apps/api/src/events/event-bus.ts`) is an in-process EventEmitter only. It has no
 Redis connection.
 
+## Architecture: Scheduled Jobs in the API Process
+
+Do not use `setInterval` or `setTimeout` to run a periodic job. In the API process, register
+the job with `registerSchedule()` from `apps/api/src/lib/job-scheduler.ts`:
+
+```ts
+export function setupXxxScheduler(scheduler: JobScheduler, prisma: PrismaClient) {
+  scheduler.registerSchedule({ id: 'xxx', every: 60_000, run: () => runXxx(prisma) });
+}
+```
+
+Then call `setupXxxScheduler(jobScheduler, ...)` in `apps/api/src/index.ts`, before
+`jobScheduler.start()`.
+
+- BullMQ Job Scheduler stores the schedule in Redis. Each period runs **one time only**, also
+  when more than one API process runs. Do not add a lock for this.
+- Give `every` (milliseconds) or `pattern` (cron). Do not give both. A cron uses the time zone
+  of the API process. The containers do not set `TZ`, so the time zone is UTC.
+- An API restart does not run the job. The job runs at its next scheduled time.
+- Two periods of the same job **can overlap**. BullMQ creates the next job when a worker takes
+  the current job. If a job can run longer than its period, set
+  `withoutOverlapping: { expiresInMs }`. Set `expiresInMs` to the longest time that the job can
+  run, not to the period. The lock expires after this time only if the process that holds it
+  stops.
+- A schedule id is also the job name and the lock key. `start()` removes each schedule in Redis
+  that no code registers, so a renamed or removed id does not stay.
+
+Use this only for a job that needs the API process, for example `fastify.io`. Put other periodic
+jobs in `apps/workers`.
+
 ## Prisma Rules
 
 - Schema: `packages/database/prisma/schema.prisma`
