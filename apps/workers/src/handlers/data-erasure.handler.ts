@@ -46,6 +46,33 @@ function collectStorageKeys(messages: { content: Prisma.JsonValue }[]): string[]
   return [...keys];
 }
 
+/**
+ * 從聯絡人的 avatarUrl 與渠道身分的 profilePic 抽出本租戶 avatars 目錄下的頭像檔 key。
+ * 公開網址的格式是 {S3_PUBLIC_URL}/{bucket}/{key}（apps/api s3.provider）；平台網址與其他租戶的檔案不收。
+ */
+function collectAvatarKeys(tenantId: string, urls: (string | null | undefined)[]): string[] {
+  const marker = `/${MEDIA_BUCKET}/${tenantId}/avatars/`;
+  const keys = new Set<string>();
+  for (const url of urls) {
+    if (!url) continue;
+    const at = url.indexOf(marker);
+    if (at < 0) continue;
+    const key = url.slice(at + MEDIA_BUCKET.length + 2).split(/[?#]/)[0];
+    if (!key.includes('..')) keys.add(key);
+  }
+  return [...keys];
+}
+
+/** 交易內讀出聯絡人與渠道身分的頭像檔 key（刪除前讀，刪除後就找不到了） */
+async function readAvatarKeys(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<string[]> {
+  const contact = await tx.contact.findFirst({ where: { id: contactId, tenantId }, select: { avatarUrl: true } });
+  const identities = await tx.channelIdentity.findMany({
+    where: { contactId, contact: { tenantId } },
+    select: { profilePic: true },
+  });
+  return collectAvatarKeys(tenantId, [contact?.avatarUrl, ...identities.map((i) => i.profilePic)]);
+}
+
 /** 刪除一批 MinIO 物件（單顆失敗只 log，不阻斷刪除流程）。 */
 async function deleteMediaObjects(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
@@ -145,13 +172,17 @@ export async function handleDataErasureJob(
  *  - Contact：displayName→佔位、avatarUrl/phone/email→null
  *  - 刪 ContactAttribute / ChannelIdentity / IdentityMap / LongTermMemory（可識別子資料）
  *  - inbound 訊息 content 改為 redacted 佔位（保留 Conversation/Case/Message 骨架不刪）
+ *  - 交易後刪除聯絡人與渠道身分在物件儲存的頭像檔（IDENT-06 起頭像存在 avatars 目錄）
  */
 async function anonymize(
   prisma: PrismaClient,
   tenantId: string,
   contactId: string,
 ): Promise<Record<string, number>> {
-  return prisma.$transaction(async (tx) => {
+  let avatarKeys: string[] = [];
+  const affected = await prisma.$transaction(async (tx) => {
+    avatarKeys = await readAvatarKeys(tx, tenantId, contactId);
+
     // 抹 Contact PII
     await tx.contact.update({
       where: { id: contactId },
@@ -192,13 +223,17 @@ async function anonymize(
       messagesRedacted,
     };
   });
+
+  // 頭像檔在交易外刪（best-effort），與硬刪除的媒體檔相同
+  await deleteMediaObjects(avatarKeys);
+  return { ...affected, avatarObjects: avatarKeys.length };
 }
 
 /**
  * 硬刪：連鎖刪除該聯絡人的所有資料 + 聯絡人本身，並刪 MinIO 媒體附件。
  *
  * 刪除順序（因部分關聯為 Restrict，需在刪 Contact 前顯式刪）：
- *   1. 收集訊息 storageKey（供刪 MinIO）
+ *   1. 收集訊息 storageKey 與頭像檔 key（供刪 MinIO）
  *   2. 刪 Conversation（Cascade 帶走 Message / ConversationTag / ChatboxSession）
  *   3. 刪 Case（Conversation 已刪，caseId Restrict 已解除；Cascade 帶走 CaseEvent/CaseNote/CaseTag/CaseRelation）
  *   4. 刪 PortalSubmission / PointTransaction（Restrict，需顯式刪）
@@ -213,6 +248,7 @@ async function hardDelete(
   // storageKey 收集移進 transaction 內：與後續刪除共用同一交易快照，避免「收集後、刪除前」
   // 期間新增的對話/訊息其 MinIO 物件漏收（媒體洩漏）。DB 讀取在交易內、MinIO 刪除留到交易外。
   let storageKeys: string[] = [];
+  let avatarCount = 0;
   const affected = await prisma.$transaction(async (tx) => {
     const conversations = await tx.conversation.findMany({
       where: { contactId, tenantId },
@@ -227,6 +263,9 @@ async function hardDelete(
           })
         : [];
     storageKeys = collectStorageKeys(mediaMessages);
+    const avatarKeys = await readAvatarKeys(tx, tenantId, contactId);
+    avatarCount = avatarKeys.length;
+    storageKeys = [...new Set([...storageKeys, ...avatarKeys])];
 
     // 先算 affected 計數（刪除前）
     const [
@@ -278,5 +317,5 @@ async function hardDelete(
   // 6. 刪 MinIO 媒體物件（transaction 外，best-effort）
   await deleteMediaObjects(storageKeys);
 
-  return { ...affected, mediaObjects: storageKeys.length };
+  return { ...affected, mediaObjects: storageKeys.length - avatarCount, avatarObjects: avatarCount };
 }

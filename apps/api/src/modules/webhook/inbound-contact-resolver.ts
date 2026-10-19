@@ -2,6 +2,7 @@ import { resolveUidToContact, logger } from '@open333crm/core';
 import { eventBus } from '../../events/event-bus.js';
 import { recordStitchedIdentity } from '../contact/contact-merge.service.js';
 import { inTransaction } from '../identity-binding/binding-common.js';
+import { scheduleAvatarRefresh } from './inbound-avatar-refresh.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 
 export async function resolveInboundContact(ctx: InboundMessageContext): Promise<void> {
@@ -147,6 +148,9 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
 
   ctx.contactId = contactId;
   ctx.channelIdentity = channelIdentity;
+
+  // 頭像存進物件儲存，平台網址失效後才不會只剩縮寫（IDENT-06）。在背景執行，不延後訊息落地
+  if (channelIdentity) scheduleAvatarRefresh(ctx, channelIdentity);
 
   // 首次建立渠道身分時發布 contact.created，供自動化規則觸發。
   // fire-and-forget：事件發布失敗不得影響聯絡人/對話/訊息的落地。

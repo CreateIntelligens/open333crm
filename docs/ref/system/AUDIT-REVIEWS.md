@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-19：IDENT-06 修正
+
+以 `44a74350` 為基礎修正，分支 `fix/avatar-mirror`，change `mirror-channel-avatars`。以 unit 測試與 feature 測試確認，下載與物件儲存以替身取代，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| IDENT-06 | 修正，從 AUDIT.md 移除 | 進站解析出渠道身分後，`inbound-avatar-refresh.ts` 在背景把頭像下載到物件儲存的 `avatars` 目錄，`profilePic` 與（相同時的）`avatarUrl` 改成自己的網址。舊網址下載失敗時重新呼叫 plugin 的 `getProfile()`；失敗後一小時內同一身分不重試。下載只接受 https、每次轉址都以 `isBlockedUrl()` 檢查，只收 5 MB 以下的 JPEG、PNG、WebP、GIF。`apps/api/tests/unit/modules/storage/avatar-mirror.test.ts`、`apps/api/tests/unit/modules/webhook/inbound-avatar-refresh.test.ts` 共 11 個測試，14 個突變都被抓到。已失效、但顧客之後不再進站的頭像仍顯示縮寫 |
+| ERASE-01 | 改寫內容 | 系統開始保存頭像檔，資料刪除的兩種模式都改為刪除聯絡人與渠道身分在本租戶 `avatars` 目錄的頭像檔（`data-erasure-flow.test.ts` 新增 3 個測試）。封存聯絡人的頭像檔仍保留，與其他欄位相同 |
+
 ## 2026-10-19：APP-09 部分修正
 
 以 `91e00162` 為基礎修正，分支 `refactor/schedulers-bullmq`。以 unit 測試與 feature 測試確認，feature 測試連本機的 Redis。另在 UAT 唯讀檢查部署方式與各排程的資料量，沒有改動 UAT。

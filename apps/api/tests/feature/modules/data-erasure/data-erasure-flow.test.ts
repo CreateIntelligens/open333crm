@@ -74,12 +74,16 @@ const PII = { displayName: '王小明', phone: '0912345678', email: 'ming@exampl
  * 建一位聯絡人，帶齊規格提到的資料：渠道身分、屬性、IdentityMap、長期記憶、標籤、活動提交、積分紀錄、
  * 對話（進站與出站訊息，進站訊息帶媒體檔）與工單。回傳的 storageKey 是這位聯絡人的媒體檔。
  */
-async function createSubject() {
+async function createSubject(avatars: { contact?: string; identity?: string } = {}) {
   seq += 1;
   const uid = `${MARK}-uid-${seq}`;
   const storageKey = `${MARK}/photo-${seq}.jpg`;
-  const contact = await owner.contact.create({ data: { tenantId: A, ...PII } });
-  await owner.channelIdentity.create({ data: { contactId: contact.id, channelId: channel.id, channelType: 'LINE', uid } });
+  const contact = await owner.contact.create({
+    data: { tenantId: A, ...PII, ...(avatars.contact ? { avatarUrl: avatars.contact } : {}) },
+  });
+  await owner.channelIdentity.create({
+    data: { contactId: contact.id, channelId: channel.id, channelType: 'LINE', uid, profilePic: avatars.identity ?? null },
+  });
   await owner.contactAttribute.create({ data: { contactId: contact.id, key: 'birthday', value: '1990-01-01' } });
   await owner.identityMap.create({ data: { tenantId: A, contactId: contact.id, channelType: 'LINE', uid, source: 'MANUAL' } });
   await owner.longTermMemory.create({ data: { contactId: contact.id, content: '客人住在台北' } });
@@ -106,6 +110,14 @@ async function createSubject() {
   const kase = await owner.case.create({ data: { tenantId: A, contactId: contact.id, channelId: channel.id, title: `${MARK}-工單` } });
   return { contact, conversation, kase, storageKey };
 }
+
+/** 物件儲存裡頭像檔的 key 與公開網址（網址格式同 S3 provider：{publicUrl}/{bucket}/{key}） */
+const BUCKET = process.env.S3_BUCKET || 'open333crm';
+function storedAvatar(tenantId: string, name: string) {
+  const key = `${tenantId}/avatars/${MARK}-${name}.jpg`;
+  return { key, url: `https://files.example.test/${BUCKET}/${key}` };
+}
+const removedKeys = () => mocks.remove.mock.calls.map(([, key]) => key);
 
 async function createRequest(contactId: string, mode: 'anonymize' | 'hard_delete') {
   return owner.dataErasureRequest.create({ data: { tenantId: A, requestedBy: eraser.id, contactId, mode, status: 'pending' } });
@@ -259,6 +271,30 @@ test('硬刪除連帶刪除對話與工單', async () => {
   assert.equal(await owner.longTermMemory.count({ where: { contactId } }), 0, '長期記憶');
   assert.equal(await owner.contactTag.count({ where: { contactId } }), 0, '標籤');
   assert.ok(mocks.remove.mock.calls.some(([, key]) => key === storageKey), '刪除訊息的媒體檔');
+});
+
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(mode === 'anonymize' ? '匿名化刪除頭像檔' : '硬刪除刪除頭像檔', async () => {
+    const contactAvatar = storedAvatar(A, `${mode}-contact`);
+    const identityAvatar = storedAvatar(A, `${mode}-identity`);
+    const { contact } = await createSubject({ contact: contactAvatar.url, identity: identityAvatar.url });
+    await runJob(await createRequest(contact.id, mode));
+
+    assert.ok(removedKeys().includes(contactAvatar.key), '刪除聯絡人的頭像檔');
+    assert.ok(removedKeys().includes(identityAvatar.key), '刪除渠道身分的頭像檔');
+  });
+}
+
+test('不刪物件儲存以外或其他租戶的檔案', async () => {
+  const foreign = storedAvatar(tenantB.id, 'foreign');
+  const { contact } = await createSubject({
+    contact: 'https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=1',
+    identity: foreign.url,
+  });
+  const before = mocks.remove.mock.calls.length;
+  await runJob(await createRequest(contact.id, 'anonymize'));
+
+  assert.equal(mocks.remove.mock.calls.length, before, '平台網址與其他租戶的檔案都不刪');
 });
 
 test('硬刪除不影響其他聯絡人', async () => {
