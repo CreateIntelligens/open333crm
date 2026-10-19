@@ -80,6 +80,9 @@ services:
         condition: service_healthy
     env_file:
       - .env.api
+    # LOG_TRANSPORT=file 時 log 寫在 /app/logs；掛 volume，重建容器後才不會消失
+    volumes:
+      - api_logs:/app/logs
     restart: unless-stopped
 
   workers:
@@ -94,6 +97,8 @@ services:
         condition: service_healthy
     env_file:
       - .env.workers
+    volumes:
+      - workers_logs:/app/logs
     restart: unless-stopped
 
   web:
@@ -148,3 +153,5 @@ volumes:
   minio_data:
   certbot_certs:
   certbot_www:
+  api_logs:
+  workers_logs:
