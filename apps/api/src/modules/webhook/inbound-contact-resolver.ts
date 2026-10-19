@@ -1,6 +1,7 @@
 import { resolveUidToContact, logger } from '@open333crm/core';
 import { eventBus } from '../../events/event-bus.js';
 import { recordStitchedIdentity } from '../contact/contact-merge.service.js';
+import { inTransaction } from '../identity-binding/binding-common.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 
 export async function resolveInboundContact(ctx: InboundMessageContext): Promise<void> {
@@ -43,21 +44,26 @@ export async function resolveInboundContact(ctx: InboundMessageContext): Promise
           }
         }
         try {
-          channelIdentity = await ctx.prisma.channelIdentity.create({
-            data: {
-              contactId: stitchedContact.id,
-              channelId: ctx.channel.id,
-              channelType: ctx.channel.channelType as never,
-              uid: ctx.contactUid,
-              profileName,
-              profilePic,
-            },
-            include: { contact: true },
+          // 建立身分與記進合併紀錄放在同一個交易：記錄失敗時身分也不留下，下一則訊息會重新走這段，
+          // 不會出現「身分已在、合併紀錄沒有」而解除時搬不回的情況
+          channelIdentity = await inTransaction(ctx.prisma, async (tx) => {
+            const created = await tx.channelIdentity.create({
+              data: {
+                contactId: stitchedContact.id,
+                channelId: ctx.channel.id,
+                channelType: ctx.channel.channelType as never,
+                uid: ctx.contactUid,
+                profileName,
+                profilePic,
+              },
+              include: { contact: true },
+            });
+            // 這個 uid 若是合併帶進來的，把新身分記進那筆合併紀錄，解除時才會一起搬回
+            await recordStitchedIdentity(tx, ctx.tenantId, stitchedContact.id, created);
+            return created;
           });
           // 此 uid 在本渠道確實是第一次出現（聯絡人雖已存在於其他渠道）。
           ctx.isFirstContact = true;
-          // 這個 uid 若是合併帶進來的，把新身分記進那筆合併紀錄，解除時才會一起搬回
-          await recordStitchedIdentity(ctx.prisma, ctx.tenantId, stitchedContact.id, channelIdentity);
         } catch (err) {
           // 兩則訊息同時解析到同一 stitched contact 時，另一請求可能已先建立 identity。
           // 撞 P2002 表示對方才是首次，本次不標記。

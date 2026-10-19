@@ -14,7 +14,7 @@
 | IDENT-05 | 新增並修正 | 同一次查詢：依 `IdentityMap` 掛上的兩個 FB 身分，`profileName` 與 `profilePic` 是聯絡人原本的 LINE 名稱與 LINE 頭像網址（`sprofile.line-scdn.net`）。解除合併後，這筆身分會帶著另一個人的名稱與頭像搬回。現在改向該渠道的 plugin 讀取個人資料，讀不到就留空 |
 | IDENT-06 | 新增，P3 | 同一位顧客另一個 FB 身分存的頭像網址（`platform-lookaside.fbsbx.com`），2026-10-19 取用回 404「Profile Pic not found」，收件匣只顯示縮寫 |
 
-測試：`apps/api/tests/feature/modules/identity-binding/identity-binding.test.ts` 新增 7 個案例。突變驗證：拿掉 `recordStitchedIdentity()` 的呼叫，「綁定後顧客從同平台另一個渠道進站」與「在依 IdentityMap 掛上的渠道回覆解除綁定」失敗；改回沿用聯絡人名稱，「記這個平台的個人資料」失敗；拿掉持有者檢查，「接到不是該合併持有者的聯絡人，不記進合併紀錄」失敗。
+收訊建立這筆身分與寫入合併紀錄放在同一個交易（PR #314 的 bot 審查指出原本分開寫，記錄失敗時會留下記不到的身分）。測試：`apps/api/tests/feature/modules/identity-binding/identity-binding.test.ts` 新增 7 個案例；`apps/api/tests/unit/modules/webhook/inbound-first-contact-resolver.test.ts` 新增「寫入合併紀錄失敗時一起回滾」，拿掉交易後失敗。突變驗證：拿掉 `recordStitchedIdentity()` 的呼叫，「綁定後顧客從同平台另一個渠道進站」與「在依 IdentityMap 掛上的渠道回覆解除綁定」失敗；改回沿用聯絡人名稱，「記這個平台的個人資料」失敗；拿掉持有者檢查，「接到不是該合併持有者的聯絡人，不記進合併紀錄」失敗。
 
 **UAT 的既有資料。** 修正只影響之後掛上的身分。示範租戶那位聯絡人的兩個 FB 身分要另外以一次性 SQL 搬回被恢復的聯絡人，執行前要取得同意。
 
