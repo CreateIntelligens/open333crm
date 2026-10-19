@@ -21,8 +21,10 @@ import {
   type BindingActor,
   type BindingDeps,
 } from '#src/modules/identity-binding/identity-binding.service.js';
-import { mergeContacts } from '#src/modules/contact/contact-merge.service.js';
+import { mergeContacts, revertMerge } from '#src/modules/contact/contact-merge.service.js';
 import { patchChannelSettings, updateChannel } from '#src/modules/channel/channel.service.js';
+import { resolveInboundContact } from '#src/modules/webhook/inbound-contact-resolver.js';
+import type { InboundMessageContext } from '#src/modules/webhook/inbound-message.types.js';
 
 const prisma = new PrismaClient();
 const T = process.env.RLS_TEST_TENANT_A ?? 'a0000000-0000-0000-0000-000000000001';
@@ -498,6 +500,174 @@ scenario('解除：綁了兩個渠道，在其中一個回覆「解除綁定」�
   assert.equal(r.status, 'unbound');
   assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.line.contactId, 'LINE 被拆開');
   assert.equal(await contactOf(f.tx, d.channelIdentityId), f.fb.contactId, 'IG 仍綁著');
+});
+
+scenario('解除：綁定後顧客從同平台另一個渠道進站 → 依 IdentityMap 掛上的身分與對話一起搬回', async (f) => {
+  // A(FB) 發碼、B(LINE) 兌換：B 併入 A，IdentityMap 記下「LINE + B 的 uid → A」
+  await bind(f, f.line, await issueAndGetCode(f, f.fb));
+
+  // B 之後從同一平台的第二個渠道傳訊息：收訊依 IdentityMap 把新身分直接掛到 A 底下，沒有合併紀錄
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const ctx = {
+    prisma: f.tx,
+    tenantId: T,
+    channel: { id: line2.id, channelType: 'LINE' },
+    contactUid: f.line.uid,
+    plugin: undefined,
+    credentials: {},
+    now: new Date(f.clock.now),
+  } as unknown as InboundMessageContext;
+  await resolveInboundContact(ctx);
+  assert.equal(ctx.contactId, f.fb.contactId, '前提：新身分掛在 A 底下');
+  const stitched = await f.tx.channelIdentity.findFirst({ where: { channelId: line2.id, uid: f.line.uid } });
+  const conv2 = await f.tx.conversation.create({
+    data: { tenantId: T, contactId: f.fb.contactId, channelId: line2.id, channelType: 'LINE' },
+  });
+
+  const r = await unbindByCustomer(f.tx, f.deps, { ...f.line, contactId: f.fb.contactId });
+  assert.equal(r.status, 'unbound');
+  assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.line.contactId, '原本的 LINE 身分搬回');
+  assert.equal(await contactOf(f.tx, stitched!.id), f.line.contactId, '第二個 LINE 渠道的身分也搬回');
+  const conv2After = await f.tx.conversation.findFirst({ where: { id: conv2.id, tenantId: T } });
+  assert.equal(conv2After?.contactId, f.line.contactId, '第二個 LINE 渠道的對話也搬回');
+});
+
+scenario('解除：顧客在依 IdentityMap 掛上的渠道回覆「解除綁定」→ 找得到綁定並解除', async (f) => {
+  await bind(f, f.line, await issueAndGetCode(f, f.fb));
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const ctx = {
+    prisma: f.tx,
+    tenantId: T,
+    channel: { id: line2.id, channelType: 'LINE' },
+    contactUid: f.line.uid,
+    plugin: undefined,
+    credentials: {},
+    now: new Date(f.clock.now),
+  } as unknown as InboundMessageContext;
+  await resolveInboundContact(ctx);
+  const stitched = await f.tx.channelIdentity.findFirst({ where: { channelId: line2.id, uid: f.line.uid } });
+  const conv2 = await f.tx.conversation.create({
+    data: { tenantId: T, contactId: f.fb.contactId, channelId: line2.id, channelType: 'LINE' },
+  });
+
+  const r = await unbindByCustomer(f.tx, f.deps, {
+    ...f.line,
+    channelId: line2.id,
+    channelIdentityId: stitched!.id,
+    contactId: f.fb.contactId,
+    conversationId: conv2.id,
+  });
+  assert.equal(r.status, 'unbound');
+  assert.equal(await contactOf(f.tx, stitched!.id), f.line.contactId, '回覆所在渠道的身分搬回');
+  assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.line.contactId, '原本的 LINE 身分搬回');
+});
+
+scenario('解除：同平台另一個渠道的身分若在合併前就屬於發碼方，解除時不搬走', async (f) => {
+  // A 在合併前就有第二個 LINE 渠道的身分，uid 剛好與 B 相同（同一個人、同一組 ID，但不是這次合併帶來的）
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const own = await f.tx.channelIdentity.create({
+    data: { contactId: f.fb.contactId, channelId: line2.id, channelType: 'LINE', uid: f.line.uid, linkedAt: new Date(Date.now() - DAY) },
+  });
+  await bind(f, f.line, await issueAndGetCode(f, f.fb));
+
+  const r = await unbindByCustomer(f.tx, f.deps, { ...f.line, contactId: f.fb.contactId });
+  assert.equal(r.status, 'unbound');
+  assert.equal(await contactOf(f.tx, own.id), f.fb.contactId, '合併前就有的身分留在 A');
+});
+
+scenario('解除：發碼方合併前就有的同 uid 身分回覆「解除綁定」→ 不是這次綁定的身分，不解除', async (f) => {
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const own = await f.tx.channelIdentity.create({
+    data: { contactId: f.fb.contactId, channelId: line2.id, channelType: 'LINE', uid: f.line.uid },
+  });
+  await bind(f, f.line, await issueAndGetCode(f, f.fb));
+
+  const r = await unbindByCustomer(f.tx, f.deps, {
+    ...f.line,
+    channelId: line2.id,
+    channelIdentityId: own.id,
+    contactId: f.fb.contactId,
+  });
+  assert.equal(r.status, 'none');
+  assert.equal(await contactOf(f.tx, f.line.channelIdentityId), f.fb.contactId, '綁定維持');
+});
+
+scenario('解除：依 IdentityMap 掛上的身分記這個平台的個人資料，不沿用發碼方的名稱與頭像', async (f) => {
+  await f.tx.contact.update({ where: { id: f.fb.contactId }, data: { avatarUrl: 'https://example.test/a.png' } });
+  await bind(f, f.line, await issueAndGetCode(f, f.fb));
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const ctx = {
+    prisma: f.tx,
+    tenantId: T,
+    channel: { id: line2.id, channelType: 'LINE' },
+    contactUid: f.line.uid,
+    plugin: { getProfile: async () => ({ uid: f.line.uid, displayName: 'B 本人', avatarUrl: 'https://example.test/b.png' }) },
+    credentials: {},
+    now: new Date(f.clock.now),
+  } as unknown as InboundMessageContext;
+  await resolveInboundContact(ctx);
+  const stitched = await f.tx.channelIdentity.findFirst({ where: { channelId: line2.id, uid: f.line.uid } });
+  assert.equal(stitched?.profileName, 'B 本人');
+  assert.equal(stitched?.profilePic, 'https://example.test/b.png');
+});
+
+scenario('解除：同 uid 的身分若接到不是該合併持有者的聯絡人，不記進那筆合併紀錄', async (f) => {
+  // B 被手動併入 A；之後 IdentityMap 把同一個 uid 指向另一位聯絡人 C（例如手機比對）
+  const log = await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: f.line.contactId, source: 'MANUAL' });
+  const c = await f.tx.contact.create({ data: { tenantId: T, displayName: 'C' } });
+  await f.tx.identityMap.upsert({
+    where: { tenantId_channelType_uid: { tenantId: T, channelType: 'LINE', uid: f.line.uid } },
+    create: { tenantId: T, contactId: c.id, channelType: 'LINE', uid: f.line.uid, source: 'MANUAL', confidence: 1 },
+    update: { contactId: c.id },
+  });
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const ctx = {
+    prisma: f.tx,
+    tenantId: T,
+    channel: { id: line2.id, channelType: 'LINE' },
+    contactUid: f.line.uid,
+    plugin: undefined,
+    credentials: {},
+    now: new Date(f.clock.now),
+  } as unknown as InboundMessageContext;
+  await resolveInboundContact(ctx);
+  assert.equal(ctx.contactId, c.id, '前提：接到 C');
+
+  const stitched = await f.tx.channelIdentity.findFirst({ where: { channelId: line2.id, uid: f.line.uid } });
+  const after = await f.tx.contactMergeLog.findFirst({ where: { id: log.mergeLogId, tenantId: T } });
+  const ids = (after?.movedRecords as { channelIdentity?: string[] }).channelIdentity ?? [];
+  assert.ok(!ids.includes(stitched!.id), '合併紀錄沒有記入 C 的新身分');
+});
+
+scenario('解除：解除較早的合併，不會拿走較晚另一筆合併帶進來的同 uid 身分', async (f) => {
+  // B 被客服手動併入 A（第 1 筆）；B 沒有 IdentityMap，之後從第二個 LINE 進站成了新聯絡人 Z
+  const log1 = await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: f.line.contactId, source: 'MANUAL' });
+  const line2 = await f.tx.channel.create({
+    data: { tenantId: T, channelType: 'LINE', displayName: '第二個 LINE', credentialsEncrypted: 'x', settings: {}, isActive: true },
+  });
+  const z = await f.newActor(line2, 'Z');
+  await f.tx.channelIdentity.update({ where: { id: z.channelIdentityId }, data: { uid: f.line.uid } });
+  const log2 = await mergeContacts(f.tx, { tenantId: T, survivorId: f.fb.contactId, mergedId: z.contactId, source: 'MANUAL' });
+
+  await revertMerge(f.tx, { tenantId: T, mergeLogId: log1.mergeLogId, revertedBy: 'agent' });
+  assert.equal(await contactOf(f.tx, z.channelIdentityId), f.fb.contactId, 'Z 的身分仍由第 2 筆合併持有');
+
+  await revertMerge(f.tx, { tenantId: T, mergeLogId: log2.mergeLogId, revertedBy: 'agent' });
+  assert.equal(await contactOf(f.tx, z.channelIdentityId), z.contactId, '解除第 2 筆後回到 Z');
+  const conv = await f.tx.conversation.findFirst({ where: { id: z.conversationId, tenantId: T } });
+  assert.equal(conv?.contactId, z.contactId, 'Z 的對話回到 Z');
 });
 
 scenario('解除：發碼方之後又被併入別人 → 另一邊（目前持有者）仍收到解除通知', async (f) => {

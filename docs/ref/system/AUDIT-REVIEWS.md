@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-19：解除合併搬不回依 IdentityMap 掛上的身分；IDENT-05 新增並修正，新增 IDENT-06
+
+起因是示範租戶的一位測試聯絡人在客服解除合併後，LINE 與兩個 FB 身分仍在同一位聯絡人底下，畫面沒有可以解除的合併。以示範租戶的 API 唯讀查詢聯絡人、渠道身分與 `GET /contacts/:id/merge-logs`，沒有寫入 UAT；再對照 `d17aedea` 的程式碼，以 feature 測試重現。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| 不屬於既有項目 | 修正 | 綁定代碼合併後，`confirmBinding()` 寫入 `IdentityMap`（渠道類型 + uid → 合併後的聯絡人）。被合併方之後從同平台、同 uid 的另一個渠道進站，`inbound-contact-resolver.ts` 依 `IdentityMap` 直接在合併後的聯絡人建立渠道身分，沒有記進合併紀錄。`revertMerge()` 只搬回紀錄裡的身分，`findBindingForIdentity()` 也只比對紀錄裡的身分，所以解除後這筆身分與該渠道的對話留在持有方，顧客在該渠道回覆「解除綁定」也被當成一般訊息。UAT 那位聯絡人的 3 筆合併紀錄都已解除，兩個 FB 身分（與 test333 的 FB 身分 uid 相同）仍與 LINE 身分在同一位聯絡人底下。現在收訊建立這筆身分後呼叫 `recordStitchedIdentity()`，記進「同平台、同 uid 的身分在紀錄裡，且資料目前由這位聯絡人持有」的未解除合併紀錄；解除與自助解除照紀錄處理，不必改。第一版在解除時以 uid 與 `linkedAt` 推測，code review 指出會拿走較晚另一筆合併的身分、讓發碼方原有的同 uid 身分也能自助解除，改為現在的做法 |
+| IDENT-05 | 新增並修正 | 同一次查詢：依 `IdentityMap` 掛上的兩個 FB 身分，`profileName` 與 `profilePic` 是聯絡人原本的 LINE 名稱與 LINE 頭像網址（`sprofile.line-scdn.net`）。解除合併後，這筆身分會帶著另一個人的名稱與頭像搬回。現在改向該渠道的 plugin 讀取個人資料，讀不到就留空 |
+| IDENT-06 | 新增，P3 | 同一位顧客另一個 FB 身分存的頭像網址（`platform-lookaside.fbsbx.com`），2026-10-19 取用回 404「Profile Pic not found」，收件匣只顯示縮寫 |
+
+測試：`apps/api/tests/feature/modules/identity-binding/identity-binding.test.ts` 新增 7 個案例。突變驗證：拿掉 `recordStitchedIdentity()` 的呼叫，「綁定後顧客從同平台另一個渠道進站」與「在依 IdentityMap 掛上的渠道回覆解除綁定」失敗；改回沿用聯絡人名稱，「記這個平台的個人資料」失敗；拿掉持有者檢查，「接到不是該合併持有者的聯絡人，不記進合併紀錄」失敗。
+
+**UAT 的既有資料。** 修正只影響之後掛上的身分。示範租戶那位聯絡人的兩個 FB 身分要另外以一次性 SQL 搬回被恢復的聯絡人，執行前要取得同意。
+
 ## 2026-10-16：TRIAL-04 部分修正
 
 以 `2f90237a` 為基礎修正，並以 feature 測試確認。沒有連線 UAT。

@@ -61,6 +61,10 @@ function createDb(options: {
         identityRow = { ...data, id: 'identity-1', contact: { displayName: data.profileName } };
         return identityRow;
       },
+      // recordStitchedIdentity：沒有同 uid 的其他身分，不涉及合併紀錄
+      async findMany() {
+        return [];
+      },
     },
     identityMap: {
       async findUnique() {
