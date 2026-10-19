@@ -1,5 +1,5 @@
 /**
- * 試用生命週期排程：每小時一次（Job Scheduler 觸發，排程之間不重疊），依序執行三步。
+ * 試用生命週期排程：每小時一次（Job Scheduler 觸發，以 withoutOverlapping 防兩期重疊），依序執行三步。
  * - 到期：trialEndsAt < now 且仍 active → isActive=false + 到期信 + 稽核
  * - 提醒：剩餘天數到達 reminderDaysBefore 檔位且未寄過 → 標記 → 寄該租戶 ADMIN
  * - 軟刪：已停用試用租戶，trialEndsAt 距今 > dataRetentionDays 天且 purgedAt=null →
@@ -17,6 +17,8 @@ import { sendReminderEmail, sendExpiredEmail } from './trial-emails.js';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const HOUR_MS = 3600_000;
+// 鎖的存活時間：要長於最久的執行時間，也要短於週期。持鎖的行程被砍掉時，下一期不會被擋住
+const MAX_RUN_MS = 30 * 60_000;
 const DAY_MS = 86400_000;
 
 function daysLeft(trialEndsAt: Date, now: number): number {
@@ -100,8 +102,8 @@ async function remindTrials(prisma: PrismaClient, now: number, milestones: numbe
     'reminder',
     due,
     (t) => ({
-      // trialRemindersSent 也要是讀到的值。Job Scheduler 不保證兩次排程不重疊：一次跑超過週期，
-      // 或 BullMQ 判定 job stalled 而重跑時，兩次排程可能讀到同一筆，這個條件讓只有一個會寄信
+      // trialRemindersSent 也要是讀到的值。兩期重疊平常由 withoutOverlapping 的鎖擋住；
+      // 一期跑超過鎖的存活時間時，鎖過期，兩次排程可能讀到同一筆，這個條件讓只有一個會寄信
       where: { isActive: true, trialEndsAt: t.endsAt, trialRemindersSent: { equals: t.sent } },
       data: { trialRemindersSent: [...t.sent, t.milestone] as Prisma.InputJsonValue },
     }),
@@ -141,5 +143,10 @@ export async function runTrialLifecycle(prisma: PrismaClient): Promise<void> {
 }
 
 export function setupTrialScheduler(scheduler: JobScheduler, prisma: PrismaClient): void {
-  scheduler.registerSchedule({ id: 'trial-lifecycle', every: HOUR_MS, run: () => runTrialLifecycle(prisma) });
+  scheduler.registerSchedule({
+    id: 'trial-lifecycle',
+    every: HOUR_MS,
+    withoutOverlapping: { expiresInMs: MAX_RUN_MS },
+    run: () => runTrialLifecycle(prisma),
+  });
 }

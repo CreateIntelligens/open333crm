@@ -48,10 +48,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test('trial：每小時，不加鎖', () => {
+test('trial：每小時，以 withoutOverlapping 防重疊，鎖最久 30 分鐘（短於週期）', () => {
   const { scheduler, defs } = fakeScheduler();
   setupTrialScheduler(scheduler, prisma);
-  assert.deepEqual(defs.map(shape), [{ id: 'trial-lifecycle', every: 3_600_000, pattern: undefined, withoutOverlapping: undefined }]);
+  assert.deepEqual(defs.map(shape), [
+    { id: 'trial-lifecycle', every: 3_600_000, pattern: undefined, withoutOverlapping: { expiresInMs: 1_800_000 } },
+  ]);
 });
 
 test('analytics：每天 02:00（cron），不加鎖', () => {
