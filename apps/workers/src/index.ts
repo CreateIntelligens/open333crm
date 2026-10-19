@@ -23,7 +23,7 @@ function loadEnv(): void {
 loadEnv();
 
 import { Worker, Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis as IORedis } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { createWorkerPluginRegistry } from './lib/plugin-registry.js';

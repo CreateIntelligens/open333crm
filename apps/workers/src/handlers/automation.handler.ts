@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { buildAutomationFacts, evaluateRules, validateAutomationRuleContract } from '@open333crm/automation';

@@ -13,6 +13,10 @@ process.env.CREDENTIAL_ENCRYPTION_KEY ||= 'test-credential-encryption-key-32-byt
 const published = vi.hoisted(() => [] as Array<{ channel: string; message: string }>);
 vi.mock('ioredis', () => ({
   default: class {
+    // @open333crm/core 載入時註冊 error 與 connect 事件
+    on() {
+      return this;
+    }
     async publish(channel: string, message: string) {
       published.push({ channel, message });
       return 1;

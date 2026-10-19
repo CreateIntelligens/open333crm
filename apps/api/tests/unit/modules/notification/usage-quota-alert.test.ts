@@ -23,13 +23,6 @@ vi.mock('bullmq', async (importOriginal) => ({
       sent.jobs.push(data);
     }
   },
-  // 這個 mock 蓋過 tests/setup/unit.setup.ts 的 bullmq。@open333crm/core 在 import 時建立 Worker，
-  // 真的 Worker 會呼叫假的 Redis 而失敗，所以 Worker 也要換掉
-  Worker: class {
-    on() {
-      return this;
-    }
-  },
 }));
 vi.mock('#src/modules/email/email.service.js', () => ({
   sendEmail: async (input: { to: string; subject: string; html: string }) => {

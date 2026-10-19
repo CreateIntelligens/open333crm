@@ -11,6 +11,11 @@ All notable changes to **open333CRM** will be documented in this file.
   - Redis 斷線期間排程停止執行；Redis 恢復後，到期的那一期補跑一次。
   - Canvas 喚醒與試用排程以 Redis 鎖防止兩期重疊。Canvas 的鎖取代只在單一行程有效的旗標。權杖檢查原本的 `withLeaderLock()`（`apps/api/src/lib/scheduler-lock.ts`）已移除。
 
+- **import `@open333crm/core` 不再連 Redis，也不再多跑一個 SLA Worker**（#327，APP-01）— core 的 `redis` 原本在 import 時就連線，`cases/case-service.ts` 也在 import 時建立 `sla-monitoring` 的 Queue 與 Worker，所以 API、workers 與每個 import core 的測試檔都連到 Redis，並各跑一個沒有生產者的 SLA Worker。現在 `redis` 在第一次執行指令時才連線；`CaseService` 與唯一使用它的 `AutomationEngine` 沒有呼叫端，已刪除。其他改動：
+  - `ioredis` 只裝一個版本：`apps/api` 與 `packages/core` 改成和 `apps/workers`、bullmq 一樣鎖定 `5.9.3`。升級 bullmq 時要一起改。
+  - `packages/channel-plugins` 與 `apps/workers` 加上 `"type": "module"`，改編譯成 ESM。只改 channel-plugins 時，CJS 的 workers 匯入它轉發的外掛會變成 `undefined`（CM-175 的組合），所以兩個一起改。
+  - `apps/api` 的 unit 測試設定移除 #299 的暫時做法，只留一個 `vi.mock('ioredis')`。
+
 ### Fixed
 
 - **FB 頭像過一段時間就失效，收件匣只剩名稱縮寫**（IDENT-06）— 系統原本直接存平台給的頭像網址，FB 的網址會過期（回 404）。現在收到訊息時在背景把頭像下載到物件儲存，改存自己的網址；已存著舊網址的顧客，在下次傳訊息時補存，原網址失效就重新向平台取一次。適用所有渠道。聯絡人的頭像只有在和渠道頭像相同時才一起換，客服改過的不覆蓋。下載只走 https、不連內部網路，只收 5 MB 以下的圖片。資料刪除的兩種模式都會刪除這些頭像檔；同租戶其他聯絡人還在用的檔案保留。workers 需要設定與 api 相同的 `S3_PUBLIC_URL`，沒設定時頭像檔不刪，筆數記在刪除申請的 `affected`。

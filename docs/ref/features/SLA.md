@@ -112,4 +112,3 @@ facts 由 `buildSlaFacts()` 組成，包含下列資料：
 | **沒有關聯對話的工單，首次回應 SLA 必定逾時** | `Case.firstResponseAt` 只在客服於工單關聯的對話送出訊息時寫入。手動建立、沒有關聯對話的工單永遠沒有這個值。詳見 `../system/AUDIT.md` 的 SLA-05 |
 | 每輪最多掃 100 張工單 | `getActiveCases()` 的 `take: 100` 是全系統共用，不是每個租戶各 100 張。詳見 `../system/AUDIT.md` 的 SLA-02 |
 | 工單以政策名稱連結政策 | 工單存的是政策名稱，不是外鍵。改名會同步更新工單、使用中的政策不能刪除、名稱不可重複（`sla.service.ts`），但資料庫沒有關聯與唯一約束。詳見 `../system/AUDIT.md` 的 SLA-04 |
-| 存在第二套掃描機制 | `packages/core/src/cases/case-service.ts` 在模組載入時建立 `sla-monitoring` consumer。任何匯入 `@open333crm/core` 的行程都會產生這個副作用。詳見 `../system/AUDIT.md` 的 APP-01 |

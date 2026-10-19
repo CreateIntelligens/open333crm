@@ -9,7 +9,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
-import type IORedis from 'ioredis';
+import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
 import { selectSafeLineStrategy } from '@open333crm/shared';
