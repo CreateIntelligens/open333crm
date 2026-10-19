@@ -153,7 +153,8 @@ workers 行程沒有 socket 連線，也無法發布到 API 的 eventBus，兩�
 
 Job Scheduler 的行為：
 
-- 排程的定義存在 Redis。不論有幾個 API 行程，每一期只產生一筆 job，由一個行程執行。
+- 排程的定義存在 Redis。不論有幾個 API 行程，每一期只產生一筆 job。正常情況下，這筆 job 由一個行程執行一次。
+- 同一筆 job 可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行這筆 job（見下一項）。所以 `run` 要承受重跑：寄信、發通知或改狀態之前，先以條件更新認領這一筆資料，重跑時就不會重複處理。
 - 第一次註冊時，每隔固定時間的排程立刻執行一次；每天 02:00 的排程等到下一個 02:00。之後 API 重啟時再註冊，下次執行時間不變，所以重啟不會觸發額外的執行。
 - Redis 斷線期間，排程停止執行。Redis 恢復後，到期的那一期補跑一次，更早錯過的期數不補。
 - 部署時，API 收到 SIGTERM 後等執行中的 job 跑完；Docker 等 10 秒後強制結束。被強制結束的 job，約 60 秒後由新的行程重新執行一次。
@@ -194,7 +195,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：送進 BullMQ 佇列，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。
 4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：用 `publishDomainEvent()`，事件名稱必須是 `AppEventName` 之一。
-6. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時都只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
+6. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時都只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
 
 新增事件之後，確認它同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。
 

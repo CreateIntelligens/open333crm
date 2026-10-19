@@ -3,6 +3,8 @@
  *
  * 排程的定義存在 Redis。不論有幾個 API 實例，每一期只產生一筆 job，由一個 Worker 執行
  * （相當於 Laravel 的 onOneServer()，一律成立）。Worker 在 API 程序內執行，所以工作用得到 fastify.io。
+ * 同一筆 job 可能執行不只一次：執行中的行程被強制結束時，BullMQ 判定 job stalled 而重新執行。
+ * 所以 run 要承受重跑，寄信或改狀態之前先以條件更新認領資料。
  *
  * BullMQ 在 Worker 取走這一期的 job 時就產生下一期，不等這一期跑完。所以一個工作可能比週期
  * 跑得久時，設定 withoutOverlapping：Worker 先搶這個工作的 Redis 鎖，搶不到就略過這一期。

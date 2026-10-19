@@ -431,8 +431,12 @@ export function setupXxxScheduler(scheduler: JobScheduler, prisma: PrismaClient)
 Then call `setupXxxScheduler(jobScheduler, ...)` in `apps/api/src/index.ts`, before
 `jobScheduler.start()`.
 
-- BullMQ Job Scheduler stores the schedule in Redis. Each period runs **one time only**, also
+- BullMQ Job Scheduler stores the schedule in Redis. Each period creates **one job only**, also
   when more than one API process runs. Do not add a lock for this.
+- A job can run **more than one time**. If the process stops while the job runs (for example,
+  Docker kills the API during a deploy), BullMQ runs the job again after approximately 60
+  seconds. Write `run` so that a second run does not repeat a side effect: claim each row with a
+  conditional update before you send a message or change its state.
 - Give `every` (milliseconds) or `pattern` (cron). Do not give both. A cron uses the time zone
   of the API process. The containers do not set `TZ`, so the time zone is UTC.
 - An API restart does not run the job. The job runs at its next scheduled time.
