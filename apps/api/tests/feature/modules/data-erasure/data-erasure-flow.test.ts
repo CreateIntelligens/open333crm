@@ -342,6 +342,42 @@ test('不刪物件儲存以外或其他租戶的檔案', async () => {
   assert.equal(mocks.remove.mock.calls.length, before, '平台網址、其他租戶與不符格式的檔案都不刪');
 });
 
+for (const mode of ['anonymize', 'hard_delete'] as const) {
+  test(`其他聯絡人仍在用的頭像檔保留（${mode}）`, async () => {
+    // 合併時主聯絡人沒有頭像，會沿用被併入那位的 avatarUrl，兩位共用同一個檔案
+    const shared = storedAvatar(A, `${mode}-shared`);
+    const own = storedAvatar(A, `${mode}-own`);
+    const { contact } = await createSubject({ contact: shared.url, identity: own.url });
+    const other = await owner.contact.create({ data: { tenantId: A, displayName: `${MARK}-共用`, avatarUrl: shared.url } });
+    const request = await createRequest(contact.id, mode);
+    await runJob(request);
+
+    assert.ok(!removedKeys().includes(shared.key), '另一位聯絡人還在用，不刪');
+    assert.ok(removedKeys().includes(own.key), '只有這位在用的照樣刪');
+    const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+    assert.equal((stored.affected as Record<string, number>).avatarObjectsShared, 1, '保留的筆數記在 affected');
+    assert.equal((await owner.contact.findUniqueOrThrow({ where: { id: other.id } })).avatarUrl, shared.url);
+  });
+}
+
+test('沒有設定 S3_PUBLIC_URL 時不刪頭像檔，筆數記在 affected', async () => {
+  const avatar = storedAvatar(A, 'no-public-url');
+  const { contact } = await createSubject({ identity: avatar.url });
+  const request = await createRequest(contact.id, 'anonymize');
+  const saved = process.env.S3_PUBLIC_URL;
+  delete process.env.S3_PUBLIC_URL;
+  try {
+    await runJob(request);
+  } finally {
+    process.env.S3_PUBLIC_URL = saved;
+  }
+
+  assert.ok(!removedKeys().includes(avatar.key), '無法確認是自己的物件儲存，不刪');
+  const stored = await owner.dataErasureRequest.findUniqueOrThrow({ where: { id: request.id } });
+  assert.equal(stored.status, 'completed');
+  assert.equal((stored.affected as Record<string, number>).avatarObjectsSkipped, 1);
+});
+
 test('硬刪除不影響其他聯絡人', async () => {
   const target = await createSubject();
   const other = await createSubject();
