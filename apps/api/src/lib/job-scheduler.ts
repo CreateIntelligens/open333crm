@@ -9,8 +9,9 @@
  * 鎖的存活時間是「這個工作最久會跑多久」，只在持鎖的實例當掉時才會用到。
  *
  * 行為（2026-10-19 以 bullmq 5.71 實測）：
- * - 第一次註冊時，every 排程立刻執行一次；pattern 排程等到下一個時間點。之後重啟再註冊，
- *   下次執行時間不變，不會多跑。改了 every 的值再註冊，會立刻執行一次。
+ * - 第一次註冊時，every 排程立刻執行一次；pattern 排程等到下一個時間點。之後重啟時，
+ *   設定沒變就不重新註冊（見 upsertIfChanged），下次執行時間不變，已到期的那一期會補跑。
+ *   改了設定再註冊時，every 排程會立刻執行一次。
  * - Redis 斷線時，upsertJobScheduler() 會等到 Redis 恢復才完成，不會丟錯，所以註冊不 await。
  * - start() 時移除 Redis 裡沒有註冊的排程（id 改名或移除後留下的）。
  *   Redis 恢復後，到期的那一期補跑一次，更早錯過的期數不補。
@@ -44,6 +45,7 @@ type Processor = (job: { name: string }) => Promise<void>;
 export interface JobSchedulerDeps {
   queue: {
     upsertJobScheduler(id: string, repeat: Omit<RepeatOptions, 'key'>, template: { name: string }): Promise<unknown>;
+    getJobScheduler(id: string): Promise<{ every?: number | string | null; pattern?: string | null } | undefined>;
     getJobSchedulers(): Promise<{ key: string }[]>;
     removeJobScheduler(id: string): Promise<boolean>;
     close(): Promise<void>;
@@ -77,6 +79,19 @@ export function createJobScheduler(deps: JobSchedulerDeps): JobScheduler {
     }
   }
 
+  /**
+   * Redis 裡已經有同樣設定的排程時，不重新註冊。BullMQ 重新註冊 cron 排程時，會把已到期、
+   * 還沒執行的 job 換成下一個時間點：API 停機跨過 02:00 再啟動，那一天的彙總就不會補跑。
+   */
+  async function upsertIfChanged(def: ScheduleDefinition): Promise<void> {
+    const stored = await deps.queue.getJobScheduler(def.id);
+    const storedEvery = stored?.every == null ? undefined : Number(stored.every);
+    const storedPattern = stored?.pattern ?? undefined;
+    if (stored && storedEvery === def.every && storedPattern === def.pattern) return;
+    const repeat = def.every !== undefined ? { every: def.every } : { pattern: def.pattern };
+    await deps.queue.upsertJobScheduler(def.id, repeat, { name: def.id });
+  }
+
   async function removeUnregistered(): Promise<void> {
     for (const { key } of await deps.queue.getJobSchedulers()) {
       if (schedules.has(key)) continue;
@@ -103,8 +118,7 @@ export function createJobScheduler(deps: JobSchedulerDeps): JobScheduler {
         throw new Error(`[JobScheduler] every 與 pattern 要剛好設定一個: ${def.id}`);
       }
       schedules.set(def.id, def);
-      const repeat = def.every !== undefined ? { every: def.every } : { pattern: def.pattern };
-      deps.queue.upsertJobScheduler(def.id, repeat, { name: def.id }).catch((err: unknown) => {
+      upsertIfChanged(def).catch((err: unknown) => {
         logger.error(`[JobScheduler] 註冊排程 "${def.id}" 失敗:`, err);
       });
     },

@@ -8,7 +8,18 @@ import { createJobScheduler, type JobSchedulerDeps } from '#src/lib/job-schedule
 
 type Processor = (job: { name: string }) => Promise<void>;
 
-function fakeDeps(opts: { lockFree?: boolean; upsert?: () => Promise<unknown>; existing?: string[] } = {}) {
+type StoredSchedule = { every?: number; pattern?: string };
+
+function fakeDeps(
+  opts: {
+    lockFree?: boolean;
+    upsert?: () => Promise<unknown>;
+    existing?: string[];
+    /** Redis 裡已經有的排程設定（上次啟動註冊的） */
+    stored?: Record<string, StoredSchedule>;
+    getScheduler?: () => Promise<StoredSchedule | undefined>;
+  } = {},
+) {
   const calls = {
     upserts: [] as unknown[][],
     removed: [] as string[],
@@ -25,6 +36,7 @@ function fakeDeps(opts: { lockFree?: boolean; upsert?: () => Promise<unknown>; e
         calls.upserts.push(args);
         return opts.upsert ? opts.upsert() : undefined;
       },
+      getJobScheduler: async (id: string) => (opts.getScheduler ? opts.getScheduler() : opts.stored?.[id]),
       getJobSchedulers: async () => (opts.existing ?? []).map((key) => ({ key })),
       removeJobScheduler: async (id: string) => {
         calls.removed.push(id);
@@ -58,17 +70,47 @@ function fakeDeps(opts: { lockFree?: boolean; upsert?: () => Promise<unknown>; e
 }
 
 const noop = async () => {};
+/** 註冊是非同步完成的（先讀 Redis 裡的設定），等它跑完再檢查 */
+const settle = () => new Promise((r) => setTimeout(r, 0));
 
-test('every 排程：以排程 id 註冊 Job Scheduler，job 名稱等於 id', () => {
+test('every 排程：以排程 id 註冊 Job Scheduler，job 名稱等於 id', async () => {
   const { deps, calls } = fakeDeps();
   createJobScheduler(deps).registerSchedule({ id: 'trial', every: 3_600_000, run: noop });
+  await settle();
   assert.deepEqual(calls.upserts, [['trial', { every: 3_600_000 }, { name: 'trial' }]]);
 });
 
-test('pattern 排程：以 cron 註冊 Job Scheduler', () => {
+test('pattern 排程：以 cron 註冊 Job Scheduler', async () => {
   const { deps, calls } = fakeDeps();
   createJobScheduler(deps).registerSchedule({ id: 'analytics', pattern: '0 2 * * *', run: noop });
+  await settle();
   assert.deepEqual(calls.upserts, [['analytics', { pattern: '0 2 * * *' }, { name: 'analytics' }]]);
+});
+
+test('重啟後設定沒變：不重新註冊，保留已到期還沒執行的那一期', async () => {
+  // BullMQ 重新註冊 cron 排程時，會把已到期的 job 換成下一個時間點，這一期就不會補跑
+  const { deps, calls } = fakeDeps({
+    stored: { analytics: { pattern: '0 2 * * *' }, trial: { every: 3_600_000 } },
+  });
+  const scheduler = createJobScheduler(deps);
+  scheduler.registerSchedule({ id: 'analytics', pattern: '0 2 * * *', run: noop });
+  scheduler.registerSchedule({ id: 'trial', every: 3_600_000, run: noop });
+  await settle();
+  assert.deepEqual(calls.upserts, []);
+});
+
+test('重啟後設定改了：重新註冊', async () => {
+  const { deps, calls } = fakeDeps({
+    stored: { analytics: { pattern: '0 3 * * *' }, trial: { every: 60_000 } },
+  });
+  const scheduler = createJobScheduler(deps);
+  scheduler.registerSchedule({ id: 'analytics', pattern: '0 2 * * *', run: noop });
+  scheduler.registerSchedule({ id: 'trial', every: 3_600_000, run: noop });
+  await settle();
+  assert.deepEqual(calls.upserts, [
+    ['analytics', { pattern: '0 2 * * *' }, { name: 'analytics' }],
+    ['trial', { every: 3_600_000 }, { name: 'trial' }],
+  ]);
 });
 
 test('同一個 id 註冊兩次：丟錯', () => {
@@ -85,10 +127,12 @@ test('every 與 pattern 必須剛好設定一個', () => {
   assert.throws(() => scheduler.registerSchedule({ id: 'both', every: 1000, pattern: '* * * * *', run: noop }), /both/);
 });
 
-test('Redis 連不上時註冊不阻塞：upsertJobScheduler 不回應，registerSchedule 仍立刻返回', () => {
-  const { deps, calls } = fakeDeps({ upsert: () => new Promise(() => {}) });
-  createJobScheduler(deps).registerSchedule({ id: 'trial', every: 1000, run: noop });
-  assert.equal(calls.upserts.length, 1);
+test('Redis 連不上時註冊不阻塞：Redis 不回應，registerSchedule 仍立刻返回', () => {
+  const { deps } = fakeDeps({ getScheduler: () => new Promise(() => {}) });
+  const scheduler = createJobScheduler(deps);
+  scheduler.registerSchedule({ id: 'trial', every: 1000, run: noop });
+  // 沒有卡住：同步地接著註冊下一個排程
+  scheduler.registerSchedule({ id: 'csat', every: 1000, run: noop });
 });
 
 test('註冊失敗不丟出未處理的 rejection', async () => {
