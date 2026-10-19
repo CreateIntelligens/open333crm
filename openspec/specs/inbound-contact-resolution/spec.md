@@ -56,7 +56,7 @@
 
 ### Requirement: 渠道頭像存進物件儲存
 
-系統 SHALL 把渠道外掛 `getProfile()` 回傳的頭像下載到物件儲存的 `avatars` 目錄，並把渠道身分的 `profilePic` 改成物件儲存的網址。聯絡人的 `avatarUrl` 與該身分原本的頭像網址相同時，系統 SHALL 也改成同一個網址。下載在背景執行，SHALL NOT 延後訊息落地。系統 SHALL 只下載 https、不解析到內部網路的網址，並只接受 5 MB 以下、檔案內容是 JPEG、PNG、WebP 或 GIF 的頭像，最多跟 3 次轉址。
+系統 SHALL 把渠道外掛 `getProfile()` 回傳的頭像下載到物件儲存，key 是 `{tenantId}/avatars/{uuid}.{jpg|png|webp|gif}`，副檔名依檔案內容決定。寫回時，系統 SHALL 只在渠道身分的 `profilePic` 仍是下載前那個網址時改成物件儲存的網址；聯絡人的 `avatarUrl` 也只在仍等於該網址時一起改。下載在背景執行，SHALL NOT 延後訊息落地。系統 SHALL 只下載 https、不解析到內部網路的網址，最多跟 3 次轉址，只接受 5 MB 以下、檔案內容是 JPEG、PNG、WebP 或 GIF 的頭像；回應標頭的類型只當參考。
 
 #### Scenario: 新聯絡人的頭像存進物件儲存
 - **WHEN** 新的 uid 第一次進站，外掛回傳一個可下載的頭像網址
@@ -78,10 +78,16 @@
 - **WHEN** 聯絡人的 `avatarUrl` 與渠道身分的 `profilePic` 不同，系統補存該身分的頭像
 - **THEN** 只有 `profilePic` 改成物件儲存的網址，聯絡人的 `avatarUrl` 不變
 
+#### Scenario: 下載期間被改過的網址不覆蓋
+- **WHEN** 背景下載期間，客服改了聯絡人的頭像，或渠道身分的 `profilePic` 被其他流程改掉或刪除
+- **THEN** 系統不覆蓋這些新值；渠道身分沒有寫入時，刪除剛上傳的檔案
+
 #### Scenario: 不安全或不是圖片的網址不存
 - **WHEN** 頭像網址或它轉址到的網址不是 https 或解析到內部網路，或轉址超過 3 次，或檔案內容不是 JPEG、PNG、WebP、GIF（不論回應標頭怎麼寫），或超過 5 MB
 - **THEN** 系統不上傳檔案，`profilePic` 不變
 
 #### Scenario: 補存失敗後一小時內不重試
-- **WHEN** 同一個渠道身分補存失敗，一小時內同一位顧客再次進站
+- **WHEN** 同一個渠道身分補存失敗，一小時內同一位顧客的訊息再次由同一個 API 行程處理
 - **THEN** 系統不再呼叫 `getProfile()`，也不下載
+
+重試間隔只記在 API 行程的記憶體內：行程重啟或由另一個行程處理時會再試一次。

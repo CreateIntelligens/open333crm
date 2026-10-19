@@ -18,7 +18,7 @@ vi.mock('node:dns/promises', () => ({
   },
 }));
 
-import { mirrorAvatar, isStoredAvatarUrl } from '#src/modules/storage/avatar-mirror.service.js';
+import { deleteStoredAvatar, mirrorAvatar, isStoredAvatarUrl } from '#src/modules/storage/avatar-mirror.service.js';
 import { setStorageProviderForTests } from '#src/modules/storage/storage.service.js';
 import type { StorageProvider } from '#src/modules/storage/storage.provider.js';
 
@@ -122,6 +122,32 @@ test('不安全或不是圖片的網址不存：轉址到內部網路', async ()
   assert.equal(await mirrorAvatar(TENANT, source), null);
   assert.deepEqual(calls, [source], '內部網路的網址不送出請求');
   assert.equal(uploads.length, 0);
+});
+
+test('回應標頭只是參考：標成 octet-stream 或沒有標頭的圖片照樣存', async () => {
+  const octet = 'https://scontent.xx.fbcdn.net/v/octet.jpg';
+  const none = 'https://scontent.xx.fbcdn.net/v/none.jpg';
+  stubFetch({
+    [octet]: { type: 'application/octet-stream', body: JPEG },
+    [none]: { body: JPEG },
+  });
+  assert.ok(await mirrorAvatar(TENANT, octet));
+  assert.ok(await mirrorAvatar(TENANT, none));
+  assert.deepEqual(uploads.map((u) => u.mimeType), ['image/jpeg', 'image/jpeg'], '上傳用依內容判斷的類型');
+});
+
+test('只刪本租戶 avatars 目錄、補存產生格式的檔案', async () => {
+  const removed: string[] = [];
+  setStorageProviderForTests({
+    ...fakeProvider(),
+    delete: async (key: string) => void removed.push(key),
+  } as unknown as StorageProvider);
+  const good = `${TENANT}/avatars/0f8c7a1e-1111-4111-8111-111111111111.jpg`;
+  await deleteStoredAvatar(TENANT, `${PUBLIC_BASE}/${good}`);
+  await deleteStoredAvatar(TENANT, `${PUBLIC_BASE}/${TENANT}/avatars/exports/report.csv`);
+  await deleteStoredAvatar(TENANT, `${PUBLIC_BASE}/22222222-2222-4222-8222-222222222222/avatars/0f8c7a1e-1111-4111-8111-111111111111.jpg`);
+  await deleteStoredAvatar(TENANT, `https://attacker.example/x?${good}`);
+  assert.deepEqual(removed, [good]);
 });
 
 test('不安全或不是圖片的網址不存：回應不是允許的圖片類型', async () => {

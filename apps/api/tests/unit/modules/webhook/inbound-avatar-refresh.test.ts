@@ -14,15 +14,21 @@ const mirror = vi.hoisted(() => ({
   /** 可下載的來源網址 → 存好後的網址；不在表裡的網址視為下載失敗 */
   downloadable: {} as Record<string, string>,
   calls: [] as string[],
+  deleted: [] as string[],
+  /** 下載期間要執行的動作，模擬其他流程同時改資料 */
+  during: null as null | (() => void),
 }));
 vi.mock('#src/modules/storage/avatar-mirror.service.js', () => ({
   isStoredAvatarUrl: (tenantId: string, url: string) =>
     url.startsWith(`https://files.example.test/open333crm/${tenantId}/avatars/`),
   mirrorAvatar: async (_tenantId: string, url: string) => {
     mirror.calls.push(url);
+    mirror.during?.();
     return mirror.downloadable[url] ?? null;
   },
-  deleteStoredAvatar: async () => {},
+  deleteStoredAvatar: async (_tenantId: string, url: string) => {
+    mirror.deleted.push(url);
+  },
 }));
 
 import { resolveInboundContact } from '#src/modules/webhook/inbound-contact-resolver.js';
@@ -83,6 +89,9 @@ function createDb(options: { identity?: AnyRecord | null; contact?: AnyRecord })
   return {
     db,
     identity: () => identity,
+    setIdentity: (patch: AnyRecord) => {
+      identity = { ...identity!, ...patch };
+    },
     contact: (id: string) => contacts.find((c) => c.id === id),
     identityUpdates,
     contactUpdates,
@@ -115,6 +124,8 @@ function existingIdentity(profilePic: string | null) {
 beforeEach(() => {
   mirror.downloadable = {};
   mirror.calls = [];
+  mirror.deleted = [];
+  mirror.during = null;
   resetAvatarRefreshThrottleForTests();
 });
 
@@ -214,6 +225,25 @@ test('客服改過的聯絡人頭像不覆蓋', async () => {
 
   assert.equal(t.identity()!.profilePic, `${STORED}tenant-1/avatars/d.jpg`);
   assert.equal(t.contact('contact-1')!.avatarUrl, custom);
+});
+
+test('下載期間被改過的網址不覆蓋', async () => {
+  const stored = `${STORED}tenant-1/avatars/e.jpg`;
+  mirror.downloadable[FRESH] = stored;
+  const t = createDb({
+    identity: existingIdentity(FRESH),
+    contact: { id: 'contact-1', tenantId: TENANT, avatarUrl: FRESH },
+  });
+  // 下載期間，另一個流程（例如客服同步個人資料）把身分的頭像改掉
+  mirror.during = () => t.setIdentity({ profilePic: 'https://sprofile.line-scdn.net/synced' });
+  const { ctx } = createCtx(t.db, FRESH);
+
+  await resolveInboundContact(ctx);
+  await flushAvatarRefreshesForTests();
+
+  assert.equal(t.identity()!.profilePic, 'https://sprofile.line-scdn.net/synced', '不覆蓋新值');
+  assert.equal(t.contact('contact-1')!.avatarUrl, FRESH, '身分沒寫入時聯絡人也不改');
+  assert.deepEqual(mirror.deleted, [stored], '刪除剛上傳的檔案');
 });
 
 test('補存失敗後一小時內不重試', async () => {
