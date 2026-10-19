@@ -2,7 +2,8 @@
  * LINE 素材儲存前把內建示範圖換成公開網址（spec material-system「LINE 素材儲存時把示範圖換成公開網址」）。
  *
  * 編輯器預設帶入的示範圖是站內路徑（/material-samples/...，由 web 公開提供），LINE 只收 https 公開網址。
- * 只換「整個值就是示範圖路徑」的字串；使用者自己的網址與其他站內路徑原樣保留。
+ * 只換網址欄位（欄位名稱以 url 結尾，例如 mediaUrl、imageUrl、previewImageUrl、baseImageUrl、Flex 圖片的 url）
+ * 裡「整個值就是示範圖路徑」的字串；文字欄位、使用者自己的網址與其他站內路徑原樣保留。
  */
 import { getApiPublicUrl } from '../storage/storage.service.js';
 
@@ -15,13 +16,15 @@ function webBaseUrl(): string {
   return (process.env.WEB_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 }
 
-function resolveValue(value: unknown, base: string): unknown {
+const URL_KEY = /url$/i;
+
+function resolveValue(value: unknown, base: string, key = ''): unknown {
   if (typeof value === 'string') {
-    return value.startsWith(SAMPLE_PREFIX) ? `${base}${value}` : value;
+    return URL_KEY.test(key) && value.startsWith(SAMPLE_PREFIX) ? `${base}${value}` : value;
   }
-  if (Array.isArray(value)) return value.map((v) => resolveValue(v, base));
+  if (Array.isArray(value)) return value.map((v) => resolveValue(v, base, key));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveValue(v, base)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveValue(v, base, k)]));
   }
   return value;
 }

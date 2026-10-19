@@ -565,7 +565,7 @@ When an `fb_coupon` material is created, or updated with a new body, the system 
 
 ### Requirement: LINE 素材儲存時把示範圖換成公開網址
 
-建立 LINE 素材、或更新 LINE 素材的 body 時，系統 SHALL 在送 LINE 驗證與存檔之前，把 body 裡以 `/material-samples/` 開頭的網址換成 `{WEB_BASE_URL}/material-samples/...`。`line_imagemap` 的 `baseImageUrl` 若是舊的示範底圖 `promo-banner.jpeg`，系統 SHALL 換成 `{API 公開網址}/line-imagemap/demo`。其他網址 SHALL 不變。FB 素材不做這個轉換。
+建立 LINE 素材、或更新 LINE 素材的 body 時，系統 SHALL 在送 LINE 驗證與存檔之前，把 body 中網址欄位（欄位名稱以 `url` 結尾）裡以 `/material-samples/` 開頭的值換成 `{WEB_BASE_URL}/material-samples/...`；文字欄位不換。`line_imagemap` 的 `baseImageUrl` 若是舊的示範底圖 `promo-banner.jpeg`，系統 SHALL 換成 `{API 公開網址}/line-imagemap/demo`。其他網址 SHALL 不變。FB 素材不做這個轉換。
 
 #### Scenario: 圖片、影片與卡片訊息的示範圖換成公開網址
 - **WHEN** `WEB_BASE_URL` 是 `https://uat.example.com`，使用者儲存 `line_image`（`mediaUrl` 是 `/material-samples/cafe.jpeg`）、`line_video`（`previewImageUrl` 是 `/material-samples/promo-banner.jpeg`）或 `line_carousel`（某頁 `imageUrl` 是 `/material-samples/product.jpeg`）

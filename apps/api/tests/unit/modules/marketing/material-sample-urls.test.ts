@@ -93,6 +93,8 @@ test('不是示範圖的網址不變', async () => {
   assert.equal(sitePath.mediaUrl, '/uploads/a.jpg');
   const text = await save('line_text', { text: '請看 /material-samples/cafe.jpeg' });
   assert.equal(text.text, '請看 /material-samples/cafe.jpeg', '只換整個值就是示範圖路徑的欄位');
+  const exact = await save('line_text', { text: '/material-samples/cafe.jpeg' });
+  assert.equal(exact.text, '/material-samples/cafe.jpeg', '文字欄位就算整段是示範圖路徑也不換，只換網址欄位');
 });
 
 test('更新素材時一樣轉換', async () => {
