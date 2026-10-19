@@ -79,24 +79,12 @@ The system SHALL support Rich Menu Alias to enable instant switch between menus 
 
 系統 SHALL 提供 `RichMenu` 資料模型，儲存使用者建立的 Rich Menu 草稿。每筆 record MUST 綁定到一個 LINE 渠道（`channelId` 對應 `channels.id` 且 `channels.channelType = 'LINE'`），並隸屬於該 tenant。
 
-Record MUST 包含：
+Record MUST 包含下列識別與歸屬欄位：
 - `id` (UUID)
 - `tenantId` (UUID)
 - `channelId` (UUID，外鍵到 channels 表)
 - `name` (string，CRM 內部名稱)
-- `chatBarText` (string，使用者在 LINE 聊天列底部看到的按鈕文字，最多 14 字)
-- `size` (JSON，`{ width, height }`，必為 10 種版型其中之一的官方尺寸)
-- `selected` (boolean，是否預設展開選單)
-- `areas` (JSON 陣列，每筆 `{ bounds: { x, y, width, height }, action: { type, ... } }`)
-- `imageUrl` (string，MinIO 公開 URL)
-- `status` (string，預設 `draft`，本期僅允許 `draft`)
-- `lineRichMenuId` (string?，LINE 端 ID，本期不寫入，留給後續 publish 流程)
-- `publishedAt` (DateTime?，本期不寫入)
 - `createdAt` / `updatedAt`
-
-#### Scenario: 建立草稿成功
-- **WHEN** 使用者 POST `/api/v1/line/rich-menus` 並提供有效的 channelId、版型 size、areas、imageUrl
-- **THEN** 系統建立一筆 status=`draft` 的 RichMenu record，回傳 201 與完整 record
 
 #### Scenario: 拒絕非 LINE 渠道
 - **WHEN** 使用者建立 Rich Menu 時 channelId 對應的 channel `channelType` 不是 `'LINE'`
@@ -106,13 +94,37 @@ Record MUST 包含：
 - **WHEN** 使用者建立 Rich Menu 時 channelId 屬於其他 tenant
 - **THEN** 系統回應 404，錯誤碼 `NOT_FOUND`（避免洩露 channel 存在性）
 
+### Requirement: Rich Menu 草稿內容欄位
+
+RichMenu record MUST 包含下列內容與發布狀態欄位：
+- `chatBarText` (string，使用者在 LINE 聊天列底部看到的按鈕文字，最多 14 字)
+- `size` (JSON，`{ width, height }`，必為 10 種版型其中之一的官方尺寸)
+- `selected` (boolean，是否預設展開選單)
+- `areas` (JSON 陣列，每筆 `{ bounds: { x, y, width, height }, action: { type, ... } }`)
+- `imageUrl` (string，MinIO 公開 URL)
+- `status` (string，預設 `draft`，本期僅允許 `draft`)
+- `lineRichMenuId` (string?，LINE 端 ID，本期不寫入，留給後續 publish 流程)
+- `publishedAt` (DateTime?，本期不寫入)
+
+#### Scenario: 建立草稿成功
+- **WHEN** 使用者 POST `/api/v1/line/rich-menus` 並提供有效的 channelId、版型 size、areas、imageUrl
+- **THEN** 系統建立一筆 status=`draft` 的 RichMenu record，回傳 201 與完整 record
+
 ---
 
 ### Requirement: 10 種固定版型
 
 系統 SHALL 提供 LINE 官方 10 種固定版型供使用者選擇，不接受任意 size / areas 組合。
 
-版型清單：
+每個版型 MUST 包含預定義的 `defaultAreas`（座標已對齊像素），使用者只能調整 action 不能改 bounds。
+
+#### Scenario: 拒絕不在白名單的 size
+- **WHEN** 使用者繞過前端直接 POST 一筆 size = `{ width: 1000, height: 500 }` 的 record
+- **THEN** 系統回應 400，錯誤碼 `INVALID_LAYOUT`，訊息列出合法尺寸
+
+### Requirement: 10 種版型清單
+
+系統 SHALL 提供下列 10 種版型：
 - **大選單 (2500×1686 或 1200×810)**：6 種
   - `large-1`: 2×2 (4 areas)
   - `large-2`: 上 1 + 下 2 (3 areas)
@@ -126,15 +138,9 @@ Record MUST 包含：
   - `compact-3`: 2 + 1 (左兩格右大) — 對稱於 compact-2
   - `compact-4`: 全寬單格 (1 area)
 
-每個版型 MUST 包含預定義的 `defaultAreas`（座標已對齊像素），使用者只能調整 action 不能改 bounds。
-
 #### Scenario: 用版型 ID 建立 Rich Menu
 - **WHEN** 使用者選擇 `layoutId = 'large-1'`
 - **THEN** 前端載入該版型的 `size` 與 `defaultAreas`，使用者填入每個 area 的 action 後送出
-
-#### Scenario: 拒絕不在白名單的 size
-- **WHEN** 使用者繞過前端直接 POST 一筆 size = `{ width: 1000, height: 500 }` 的 record
-- **THEN** 系統回應 400，錯誤碼 `INVALID_LAYOUT`，訊息列出合法尺寸
 
 ---
 
@@ -325,13 +331,7 @@ UI 要求：
 
 ### Requirement: Rich Menu Audience Binding
 
-The system SHALL allow a published Rich Menu to be bound to an audience (a Segment or a tag), so that different audiences see different Rich Menus. Binding SHALL resolve the audience to contacts, then to their LINE user ids (via LINE channel identities), and link the menu to those users through LINE's bulk-link API. Binding SHALL only be allowed for a Rich Menu whose status is `published` (with a `lineRichMenuId`); draft or errored menus SHALL be rejected with a clear "publish first" error. Binding SHALL run as a background batch (audiences may be large and LINE bulk-link is rate-limited), and the API SHALL return immediately with the number of users queued.
-
-#### Scenario: Bind published menu to a segment
-
-- **WHEN** a user binds a published Rich Menu to a segment
-- **THEN** the segment's contacts with LINE identities are resolved to user ids and a background job links the menu to those users
-- **AND** the API returns the queued user count
+The system SHALL allow a published Rich Menu to be bound to an audience (a Segment or a tag), so that different audiences see different Rich Menus. Binding SHALL only be allowed for a Rich Menu whose status is `published` (with a `lineRichMenuId`); draft or errored menus SHALL be rejected with a clear "publish first" error.
 
 #### Scenario: Binding a draft menu is rejected
 
@@ -342,6 +342,16 @@ The system SHALL allow a published Rich Menu to be bound to an audience (a Segme
 
 - **WHEN** menu A is published as the all-default and menu B is bound to the VIP audience
 - **THEN** VIP users see menu B (per-user binding takes precedence over all-default) and everyone else sees menu A
+
+### Requirement: Rich Menu Audience Binding Runs In Background
+
+Audience binding SHALL resolve the audience to contacts, then to their LINE user ids (via LINE channel identities), and link the menu to those users through LINE's bulk-link API. Audience binding SHALL run as a background batch (audiences may be large and LINE bulk-link is rate-limited), and the API SHALL return immediately with the number of users queued.
+
+#### Scenario: Bind published menu to a segment
+
+- **WHEN** a user binds a published Rich Menu to a segment
+- **THEN** the segment's contacts with LINE identities are resolved to user ids and a background job links the menu to those users
+- **AND** the API returns the queued user count
 
 ### Requirement: Rich Menu Audience Unbinding
 
