@@ -34,7 +34,7 @@
 
 另外還有兩種定期工作：API 行程內以 BullMQ Job Scheduler 觸發的排程，以及 workers 行程以 BullMQ 重複工作執行的排程。
 
-名稱容易誤導的地方：API 裡的 `setupNotificationWorker`、`setupAutomationWorker` 雖然叫 worker，實際上是訂閱 eventBus、把工作送進佇列的生產者。真正消費佇列的只有 `apps/workers`，見 `../system/AUDIT.md` 的 APP-04。
+名稱容易誤導的地方：API 裡的 `setupNotificationWorker`、`setupAutomationWorker` 雖然叫 worker，實際上是訂閱 eventBus、把工作送進佇列的生產者。一般的佇列都由 `apps/workers` 消費，見 `../system/AUDIT.md` 的 APP-04。唯一的例外是 `api-scheduler`：這個佇列的 Worker 在 API 行程內，負責執行 API 行程內的排程（見「API 行程內的排程」）。
 
 ## 業務事件
 
@@ -195,7 +195,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：送進 BullMQ 佇列，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。
 4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：用 `publishDomainEvent()`，事件名稱必須是 `AppEventName` 之一。
-6. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時都只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
+6. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時，每一期都只產生一筆 job；但 job 可能在行程被強制結束後重跑，所以都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
 
 新增事件之後，確認它同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。
 

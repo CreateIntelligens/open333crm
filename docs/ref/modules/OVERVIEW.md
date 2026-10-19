@@ -205,7 +205,7 @@
 背景工作分在兩個行程執行，兩邊的機制不同。事件與佇列的發布端、消費端與失敗處理，見[事件與背景工作](./EVENTS.md)。
 
 - **API 行程**跑的是 in-process 的 eventBus 監聽器，以及由 BullMQ Job Scheduler 觸發的排程（`api-scheduler` queue 的 Worker 也在 API 行程內）。函式名稱裡的 `Worker` **不代表 BullMQ consumer**：`setupNotificationWorker` 與 `setupAutomationWorker` 訂閱 eventBus，再把工作送進 BullMQ queue，扮演的是 producer。
-- **`apps/workers` 行程**是唯一的 BullMQ consumer。
+- **`apps/workers` 行程**消費一般的 BullMQ queue。唯一的例外是 `api-scheduler`，它的 Worker 在 API 行程內，只執行 API 行程內的排程。
 
 在 API 行程啟動（`apps/api/src/index.ts`）：
 
