@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-16：TRIAL-04 部分修正
+
+以 `2f90237a` 為基礎修正，並以 feature 測試確認。沒有連線 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| TRIAL-04 | 部分修正，改寫內容 | `9f3c6c1a`：延長試用在同一次更新中清除 `purgedAt`（`apps/api/tests/feature/modules/trial/trial-extend.test.ts` 的「延長已清除的試用」）。復原後下一輪排程再標記，決定為預期行為，主規格寫明，從這一項移除。租戶頁的啟用決定暫時維持現狀，補上啟用後下一輪排程會重寄到期信 |
+
 ## 2026-10-16：新增 TRIAL-04
 
 change `restore-trial-data-purge-specs` 補回 `add-trial-data-purge`（issue #228）。對照 `8953095f` 的程式碼，並在本機的測試資料庫重現。沒有連線 UAT。

@@ -33,6 +33,8 @@
 
 租戶不存在時，系統回 HTTP 404 `NOT_FOUND`。`purgedAt` 是 null 時，系統回 HTTP 422 `NOT_PURGED`。
 
+復原只移除標記，讓平台人員接著延長試用或轉正式。復原之後租戶仍停用，沒有延長也沒有轉正式時，下一輪排程 SHALL 依「保留期滿標記軟刪」再標記這個租戶。
+
 #### Scenario: 復原已標記的租戶
 - **WHEN** 平台 superuser 復原一個 `purgedAt` 有值、`isActive` 是 false 的租戶
 - **THEN** 該租戶的 `purgedAt` 是 null，`isActive` 仍是 false
@@ -44,6 +46,10 @@
 #### Scenario: 未標記的租戶不能復原
 - **WHEN** 平台 superuser 復原一個 `purgedAt` 是 null 的租戶
 - **THEN** 系統回 HTTP 422 `NOT_PURGED`，租戶不變
+
+#### Scenario: 復原後沒有延長，下一輪排程再標記
+- **WHEN** 一個保留期已滿的停用試用租戶被復原，之後沒有延長也沒有轉正式，排程執行
+- **THEN** 該租戶的 `purgedAt` 又有值
 
 ### Requirement: 平台後台顯示軟刪狀態
 

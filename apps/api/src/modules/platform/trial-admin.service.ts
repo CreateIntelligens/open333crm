@@ -141,6 +141,7 @@ export async function extendTrial(prisma: PrismaClient, tenantId: string, addDay
       trialEndsAt: newEnd,
       isActive: true, // 延長 = 恢復啟用（若已到期停用）
       trialRemindersSent: [], // 重設提醒標記，新週期重新提醒
+      purgedAt: null, // 恢復試用就不再是「已清除」（AUDIT TRIAL-04）
     },
     select: { id: true, name: true, trialEndsAt: true, isActive: true },
   });
