@@ -59,10 +59,17 @@ async function refreshIdentityAvatar(ctx: InboundMessageContext, identity: Avata
   if (!stored) return;
 
   // 只在網址仍是補存前那一個時寫入：期間被客服同步或另一個程序先存好，就不覆蓋
-  const updated = await ctx.prisma.channelIdentity.updateMany({
-    where: { id: identity.id, profilePic: previous, contact: { tenantId: ctx.tenantId } },
-    data: { profilePic: stored },
-  });
+  let updated: { count: number };
+  try {
+    updated = await ctx.prisma.channelIdentity.updateMany({
+      where: { id: identity.id, profilePic: previous, contact: { tenantId: ctx.tenantId } },
+      data: { profilePic: stored },
+    });
+  } catch (err) {
+    // 沒寫進資料庫的檔案沒人找得到，資料刪除也刪不到，先刪掉
+    await deleteStoredAvatar(ctx.tenantId, stored);
+    throw err;
+  }
   if (updated.count === 0) {
     await deleteStoredAvatar(ctx.tenantId, stored);
     return;

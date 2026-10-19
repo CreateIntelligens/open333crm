@@ -246,6 +246,24 @@ test('下載期間被改過的網址不覆蓋', async () => {
   assert.deepEqual(mirror.deleted, [stored], '刪除剛上傳的檔案');
 });
 
+test('寫回資料庫失敗時刪掉剛上傳的檔案', async () => {
+  const stored = `${STORED}tenant-1/avatars/f.jpg`;
+  mirror.downloadable[FRESH] = stored;
+  const t = createDb({
+    identity: existingIdentity(FRESH),
+    contact: { id: 'contact-1', tenantId: TENANT, avatarUrl: FRESH },
+  });
+  t.db.channelIdentity.updateMany = async () => {
+    throw new Error('connection reset');
+  };
+  const { ctx } = createCtx(t.db, FRESH);
+
+  await resolveInboundContact(ctx);
+  await flushAvatarRefreshesForTests();
+
+  assert.deepEqual(mirror.deleted, [stored]);
+});
+
 test('補存失敗後一小時內不重試', async () => {
   vi.useFakeTimers({ now: new Date('2026-10-19T00:00:00Z'), toFake: ['Date'] });
   try {

@@ -58,3 +58,8 @@
 
 - 刪除不檢查其他聯絡人是否還在用 →「其他聯絡人仍在用的頭像檔保留」（anonymize、hard_delete 各一）
 - 沒有 `S3_PUBLIC_URL` 時不比對來源就刪 →「沒有設定 S3_PUBLIC_URL 時不刪頭像檔，筆數記在 affected」
+
+### Code review 第五輪（bot 審查 c2d352d8）
+
+- 寫回資料庫拋例外時不刪上傳的檔 →「寫回資料庫失敗時刪掉剛上傳的檔案」
+- 不處理：「檢查沒人在用」與刪檔之間另一流程開始引用同一檔（需引用計數表或全域鎖，成本遠大於風險）；`isBlockedUrl()` 的 DNS rebinding（repo 共用限制，頭像網址來自平台 API）
