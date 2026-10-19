@@ -1611,7 +1611,7 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 
 | 機制 | 多個 API 行程時 |
 | --- | --- |
-| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總、權杖檢查） | **已修正。** 改由 BullMQ Job Scheduler 觸發（`apps/api/src/lib/job-scheduler.ts`），不論有幾個行程，每一期只產生一筆 job。這筆 job 仍可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行。同一個排程的兩期也可能重疊（一期跑超過週期時），Canvas 與試用以 `withoutOverlapping` 防止。CSAT 發送、閒置關閉、Canvas 喚醒沒有以條件更新認領資料，所以重跑、或和使用者操作同時發生時，可能重複處理 |
+| API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總、權杖檢查） | **重複觸發已修正，重複處理未修正。** 改由 BullMQ Job Scheduler 觸發（`apps/api/src/lib/job-scheduler.ts`），不論有幾個行程，每一期只產生一筆 job。這筆 job 仍可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行。同一個排程的兩期也可能重疊（一期跑超過週期時），Canvas 與試用以 `withoutOverlapping` 防止。CSAT 發送、閒置關閉、Canvas 喚醒沒有以條件更新認領資料，所以重跑、或和使用者操作同時發生時，可能重複處理 |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
 | `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
 | 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |

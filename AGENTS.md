@@ -434,8 +434,9 @@ Then call `setupXxxScheduler(jobScheduler, ...)` in `apps/api/src/index.ts`, bef
 - BullMQ Job Scheduler stores the schedule in Redis. Each period creates **one job only**, also
   when more than one API process runs. Do not add a lock for this.
 - A job can run **more than one time**. If the process stops while the job runs (for example,
-  Docker kills the API during a deploy), BullMQ runs the job again after approximately 60
-  seconds. Write `run` so that a second run does not repeat a side effect: claim each row with a
+  Docker kills the API during a deploy), BullMQ runs the job again. With the default BullMQ
+  settings (`lockDuration` 30 seconds, `stalledInterval` 30 seconds), this happened after
+  approximately 60 seconds in a test. Write `run` so that a second run does not repeat a side effect: claim each row with a
   conditional update before you send a message or change its state.
 - Give `every` (milliseconds) or `pattern` (cron). Do not give both. A cron uses the time zone
   of the API process. The containers do not set `TZ`, so the time zone is UTC.
@@ -443,8 +444,10 @@ Then call `setupXxxScheduler(jobScheduler, ...)` in `apps/api/src/index.ts`, bef
 - Two periods of the same job **can overlap**. BullMQ creates the next job when a worker takes
   the current job. If a job can run longer than its period, set
   `withoutOverlapping: { expiresInMs }`. Set `expiresInMs` to the longest time that the job can
-  run, not to the period. The lock expires after this time only if the process that holds it
-  stops.
+  run, not to the period. The job releases the lock when it ends. If the job does not release
+  the lock (the process stops, or the job runs longer than `expiresInMs`), the lock expires
+  after `expiresInMs`, and the next period can start. The lock prevents overlap only while it is
+  valid. It does not prevent a rerun, so `run` still needs conditional updates.
 - A schedule id is also the job name and the lock key. `start()` removes each schedule in Redis
   that no code registers, so a renamed or removed id does not stay.
 
