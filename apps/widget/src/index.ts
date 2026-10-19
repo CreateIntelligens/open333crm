@@ -63,13 +63,13 @@ async function boot(): Promise<void> {
       contentType: 'text',
       content: { text: session.greeting },
     };
-    appendMessage(messagesEl, greetMsg, true);
+    appendMessage(messagesEl, greetMsg, false);
   }
 
   // Connect Socket.IO for real-time replies
   const sock = connectVisitorSocket(realtimeOrigin, session.sessionId, session.claimToken, fingerprint);
   sock.onAgentMessage((msg) => {
-    appendMessage(messagesEl, msg, true);
+    appendMessage(messagesEl, msg, false);
     if (!panelOpen) {
       launcher.innerHTML = '🔴';
     }
@@ -86,7 +86,7 @@ async function boot(): Promise<void> {
       contentType: 'text',
       content: { text },
     };
-    appendMessage(messagesEl, outMsg, false);
+    appendMessage(messagesEl, outMsg, true);
     // appendMessage is synchronous, so the last child is the message just sent
     const outEl = messagesEl.lastElementChild;
     input.value = '';
@@ -137,7 +137,7 @@ async function boot(): Promise<void> {
 
     // Optimistic placeholder
     const placeholderEl = document.createElement('div');
-    placeholderEl.className = 'o333-msg o333-msg-in';
+    placeholderEl.className = 'o333-msg o333-msg-out';
     placeholderEl.textContent = '[傳送中...]';
     messagesEl.appendChild(placeholderEl);
     messagesEl.scrollTop = messagesEl.scrollHeight;
