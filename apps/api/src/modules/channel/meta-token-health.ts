@@ -14,7 +14,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { getConfig } from '../../config/env.js';
-import { withLeaderLock } from '../../lib/scheduler-lock.js';
+import type { JobScheduler } from '../../lib/job-scheduler.js';
 import { createAndDispatch } from '../notification/notification.service.js';
 import { sendEmail } from '../email/email.service.js';
 import { decryptCredentials } from './channel.service.js';
@@ -202,13 +202,6 @@ export async function runMetaTokenHealthCheck(prisma: PrismaClient, io: SocketIO
   }
 }
 
-export function setupMetaTokenHealthScheduler(prisma: PrismaClient, io: SocketIOServer): void {
-  const tick = () =>
-    withLeaderLock('meta-token-health', Math.floor(CHECK_INTERVAL_MS * 0.9), () => runMetaTokenHealthCheck(prisma, io)).catch((err) =>
-      logger.error('[MetaTokenHealth] 排程執行失敗', err),
-    );
-  // 啟動 2 分鐘後先跑一次（避開部署當下的負載），之後每 6 小時
-  setTimeout(tick, 2 * 60_000);
-  setInterval(tick, CHECK_INTERVAL_MS);
-  logger.info('[MetaTokenHealth] Started — FB/IG token health check every 6h');
+export function setupMetaTokenHealthScheduler(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer): void {
+  scheduler.registerSchedule({ id: 'meta-token-health', every: CHECK_INTERVAL_MS, run: () => runMetaTokenHealthCheck(prisma, io) });
 }

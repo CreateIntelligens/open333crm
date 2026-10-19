@@ -1,5 +1,5 @@
 /**
- * 試用生命週期排程：每小時 + 啟動即跑一次，依序執行三步。
+ * 試用生命週期排程：每小時一次（Job Scheduler 觸發，排程之間不重疊），依序執行三步。
  * - 到期：trialEndsAt < now 且仍 active → isActive=false + 到期信 + 稽核
  * - 提醒：剩餘天數到達 reminderDaysBefore 檔位且未寄過 → 標記 → 寄該租戶 ADMIN
  * - 軟刪：已停用試用租戶，trialEndsAt 距今 > dataRetentionDays 天且 purgedAt=null →
@@ -14,6 +14,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { getTrialPolicy } from './trial-policy.service.js';
 import { sendReminderEmail, sendExpiredEmail } from './trial-emails.js';
+import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const HOUR_MS = 3600_000;
 const DAY_MS = 86400_000;
@@ -99,8 +100,8 @@ async function remindTrials(prisma: PrismaClient, now: number, milestones: numbe
     'reminder',
     due,
     (t) => ({
-      // trialRemindersSent 也要是讀到的值。預防措施：目前只有一個 API 實例，排程不會重疊執行；
-      // 之後若有多個實例同時讀到同一筆，只有一個會寄信
+      // trialRemindersSent 也要是讀到的值。Job Scheduler 不保證兩次排程不重疊：一次跑超過週期，
+      // 或 BullMQ 判定 job stalled 而重跑時，兩次排程可能讀到同一筆，這個條件讓只有一個會寄信
       where: { isActive: true, trialEndsAt: t.endsAt, trialRemindersSent: { equals: t.sent } },
       data: { trialRemindersSent: [...t.sent, t.milestone] as Prisma.InputJsonValue },
     }),
@@ -139,10 +140,6 @@ export async function runTrialLifecycle(prisma: PrismaClient): Promise<void> {
   await purgeTrials(prisma, now, policy.dataRetentionDays);
 }
 
-export function setupTrialScheduler(prisma: PrismaClient): void {
-  runTrialLifecycle(prisma).catch((err) => logger.error('[TrialScheduler] startup run failed:', err));
-  setInterval(() => {
-    runTrialLifecycle(prisma).catch((err) => logger.error('[TrialScheduler] periodic run failed:', err));
-  }, HOUR_MS);
-  logger.info('[TrialScheduler] Started — hourly trial reminder/expiry sweep');
+export function setupTrialScheduler(scheduler: JobScheduler, prisma: PrismaClient): void {
+  scheduler.registerSchedule({ id: 'trial-lifecycle', every: HOUR_MS, run: () => runTrialLifecycle(prisma) });
 }

@@ -2,13 +2,14 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server as SocketIOServer } from 'socket.io';
 import { executeBroadcast } from './marketing.service.js';
 import { logger } from '@open333crm/core';
+import type { JobScheduler } from '../../lib/job-scheduler.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 
 /**
  * Polls for scheduled broadcasts whose scheduledAt <= now and executes them.
  */
-export function setupBroadcastScheduler(prisma: PrismaClient, io: SocketIOServer) {
+export function setupBroadcastScheduler(scheduler: JobScheduler, prisma: PrismaClient, io: SocketIOServer) {
   async function pollScheduled() {
     try {
       const due = await prisma.broadcast.findMany({
@@ -33,11 +34,5 @@ export function setupBroadcastScheduler(prisma: PrismaClient, io: SocketIOServer
     }
   }
 
-  // Poll every 60 seconds
-  setInterval(pollScheduled, POLL_INTERVAL_MS);
-
-  // Also run once on startup (with a short delay)
-  setTimeout(pollScheduled, 5000);
-
-  logger.info(`[BroadcastScheduler] Started, polling every ${POLL_INTERVAL_MS / 1000}s`);
+  scheduler.registerSchedule({ id: 'broadcast-scheduled', every: POLL_INTERVAL_MS, run: pollScheduled });
 }
