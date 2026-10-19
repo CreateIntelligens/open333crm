@@ -28,7 +28,9 @@
 
 因此同一個人從 LINE 與 Facebook 進來，一開始是兩個聯絡人。要變成一個，只能經過[合併](#合併)。
 
-聯絡人的名稱與頭像取自渠道。系統只在第一次建立聯絡人時向渠道抓取一次，之後不會自動更新。LINE 另有 `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile` 可以重新抓取，目前沒有頁面呼叫它。這個端點：
+聯絡人的名稱與頭像取自渠道。系統只在第一次建立聯絡人時向渠道抓取一次，之後不會自動更新。
+
+平台給的頭像網址會失效（FB 的 `profile_pic` 一段時間後回 404），所以收訊時系統在背景把頭像下載到物件儲存的 `avatars` 目錄，改存自己的網址（`inbound-avatar-refresh.ts`）。聯絡人的頭像只在和渠道身分的頭像相同時才一起換，客服改過的不覆蓋。已存著平台網址的舊身分在顧客下次進站時補存，原網址失效就重新向平台取一次；失敗後一小時內同一身分不重試。下載只接受檔案內容（不看回應標頭）是 JPEG、PNG、WebP、GIF 的圖片。LINE 另有 `PATCH /api/v1/channels/:channelId/contacts/:lineUid/sync-profile` 可以重新抓取，目前沒有頁面呼叫它。這個端點：
 
 - 要求 `contact.update` 權限，渠道也要在成員的可見範圍內。
 - 只接受自己租戶、啟用中的 LINE 渠道；其他情況一律回 404。
