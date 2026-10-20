@@ -6,6 +6,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
+- **新增 `inTenant()`、`tenantHandler()`：入口開一個綁定租戶的交易，service 改收 `TenantCtx`**— service 原本收 `TenantDb`，傳入的是 `withTenant` 的交易、`request.tenantPrisma` 或 `prismaAdmin`，三者的 RLS 與交易保證不同，service 看不出自己受到什麼保護（#337，AUDIT RLS-08）。新寫法由入口開交易：交易內的寫入一起成功或一起失敗；`ctx.emit`、`ctx.publish` 登記的推播與事件在 commit 之後才送出，rollback 時丟棄；route 的回應也在 commit 之後才送出。新增 `scripts/check-tenant-ctx.mjs`，舊寫法在任一檔案增加時失敗，由 `pnpm test` 執行。本次不搬既有模組，既有程式的行為不變。
+
 - **平台可逐租戶強制啟用個資遮罩，預設關閉**— 平台租戶詳細頁增加開關，設定與操作稽核在同一交易內寫入，租戶端無法覆寫。啟用後，客服回覆、Agent 每輪上下文（含工具結果與巢狀參數）及 Embedding 文字先送至 2md 做完整類別標記遮罩，再交給模型；政策讀取或遮罩失敗時停止該次模型呼叫。服務回傳的原文 mapping 與 CSV 會被丟棄，原始客服紀錄仍依既有保存規則保留。使用既有平台設定儲存，無需 migration。
 
 - **FB／IG 群發只送給 24 小時內互動過的人，建立時可以看到可送達人數**— Meta 只允許對 24 小時內傳過訊息的人發一般訊息。原本群發把整份受眾送給 Meta，視窗外的人被擋下、算成發送失敗，大量被擋可能讓粉專被限制發訊，發送前也看不出實際送得到幾人。現在渠道 plugin 宣告訊息視窗（FB、IG 為 24 小時），群發只送給視窗內在該渠道傳過訊息的人，其他人略過、記在新欄位 `broadcasts.skippedCount`，列表顯示「略過 N」；全部被略過時群發標為失敗並寫出原因。新增 `POST /marketing/broadcasts/audience-preview` 預估符合條件與可送達人數，建立群發的表單選好渠道與受眾後顯示，並列出發送注意事項（視窗外的人略過不算失敗、要發給視窗外的人需要 Meta 付費的 Marketing Messages，本系統不支援）；FB／IG 群發按「立即發送」時確認視窗也會提醒。FB／IG 群發的受眾只有「24 小時內傳過訊息的人」，表單不提供分群與標籤。LINE 不受影響。需要跑 migration `20261020100000_add_broadcast_skipped_count`。

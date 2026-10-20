@@ -49,6 +49,7 @@
 | [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
+| [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色 | 靜態確認 |
@@ -178,6 +179,35 @@
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
 `apps/workers/src/index.ts` 的 `main()` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
+
+<a id="rls-08"></a>
+### RLS-08：service 收到的 client 決定了它的 RLS 與交易保證
+
+service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`），是三種 client 的聯集。三者的查詢寫法相同，保證不同：
+
+| 傳入的 client | RLS | 連續兩筆寫入是否在同一個交易 |
+| --- | --- | --- |
+| `withTenant` 的 `tx` | 有 | 是 |
+| `request.tenantPrisma` | 有 | 否，每個查詢各開一個交易；它的 `$transaction()` 不設定租戶 |
+| `prismaAdmin` | 繞過（BYPASSRLS） | 否，除非 service 自己開 `$transaction` |
+
+只讀 service 的程式，看不出它有沒有 RLS，也看不出寫入會不會一起成功或一起失敗，要往上追呼叫者。已經造成的影響：
+
+- PR #335 只看參數型別，誤判 `sendCsatSurvey()` 可能已在交易內；唯一的呼叫者其實傳 `prismaAdmin`。
+- `apps/api/src/index.ts` 把 `prismaAdmin` 傳給 automation、notification、canvas worker 與多數排程。這些路徑的租戶隔離只靠程式裡的 `where tenantId`。RLS-06 就發生在這類路徑上。
+- 聯集接近 TypeScript 的推導上限（`tenant-db.ts` 的註解）。
+- 在交易內呼叫 `io.emit`、`eventBus.publish` 的 service，會在 commit 之前送出推播與事件。
+
+**方向（#337，2026-10-20 定案）。** 全面改成「入口開一個綁定租戶的交易，service 只收 `TenantCtx`」。change `tenant-transaction-context` 建立了新寫法：`apps/api/src/lib/tenant-ctx.ts` 的 `inTenant()`、`tenantHandler()`，以及 `AGENTS.md` 結構規則 2。之後依 #337 的階段逐模組搬遷：
+
+1. 試做 tag、role。
+2. 事件改走 outbox（動手前先評估客人收到重複訊息的機率）。
+3. 搬沒有外部呼叫的模組，再搬有外部呼叫的模組。
+4. 背景工作改成「以 `prismaAdmin` 找出要處理的資料，每一筆各開自己租戶的交易」。
+5. Canvas 引擎（RLS-01）。
+6. 刪除 `TenantDb`、`tenantScopedClient`、`request.tenantPrisma`。
+
+搬遷進度看 `scripts/check-tenant-ctx.baseline.json`。`node scripts/check-tenant-ctx.mjs --strict` 在舊寫法增加時失敗。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點

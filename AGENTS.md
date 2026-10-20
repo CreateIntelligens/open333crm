@@ -202,21 +202,44 @@ query in `<name>.service.ts`.
 - **Check**: `grep -nE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update|delete|upsert|count|aggregate|groupBy)' apps/api/src/modules/*/*.routes.ts`
 - **Existing exceptions**: `docs/ref/system/AUDIT.md`, ARCH-01.
 
-#### 2. A service receives its Prisma executor and never imports one
+#### 2. A service receives a `TenantCtx` and never opens a transaction
 
-Each exported service function takes the executor as its first parameter:
+The entry point opens one transaction that is bound to the tenant. A route uses
+`tenantHandler()`. A background job uses `inTenant()`. Both are in `apps/api/src/lib/tenant-ctx.ts`.
+Each exported service function takes the `TenantCtx` as its first parameter:
 
 ```ts
-export async function listCases(prisma: TenantDb, tenantId: string, ...) { }
+export async function resolveCase(ctx: TenantCtx, caseId: string) {
+  const updated = await ctx.tx.case.updateMany({ where: { id: caseId, tenantId: ctx.tenantId }, ... });
+  ctx.emit(`tenant:${ctx.tenantId}`, 'case.updated', payload); // sent after commit
+  ctx.publish('case.resolved', payload);                        // sent after commit
+}
 ```
 
-- **Why**: a service that gets a client by itself can use a connection that the caller did not
-  select. RLS then shows data of other tenants, or returns no rows and no error. A unit test also
-  cannot run that service without a database. The "Prisma in shared packages" convention below
-  is this rule for `packages/*`.
-- **Check**: `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
-- **Existing exceptions**: the Canvas engine and unused services in `packages/core`.
-  `docs/ref/system/AUDIT.md`, RLS-01.
+A service obeys these rules:
+
+- Use `ctx.tx` for each query. Do not import a client, and do not open a transaction
+  (`withTenant`, `inTenant`, `$transaction`).
+- Do not call an external service (LINE, an LLM, S3) inside the transaction. The transaction has a
+  timeout of 5 seconds, and it holds a database connection. Split the flow into three steps:
+  transaction, external call, transaction. Before you split it, write in the spec whether the
+  external call happens at most once or at least once.
+- Send Socket events with `ctx.emit` and events with `ctx.publish`. Do not call `io.emit` or
+  `eventBus.publish` directly. `ctx` sends them after the commit and drops them after a rollback.
+
+- **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
+  and its writes succeed or fail together. With the old parameter type `TenantDb`, the caller
+  decides these guarantees: `prismaAdmin` has no RLS, and `request.tenantPrisma` runs each query
+  in a separate transaction. A unit test also cannot run a service without a database if the
+  service gets a client by itself. `tests/support/mock-tenant-ctx.ts` gives a `TenantCtx` for unit
+  tests. The "Prisma in shared packages" convention below is this rule for `packages/*`.
+- **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when the old forms (`TenantDb`,
+  `request.tenantPrisma`, a transaction opened in a service file) increase in a file. Also
+  `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
+- **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
+  module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of
+  these services for a different reason, you do not have to move it. The Canvas engine and unused
+  services in `packages/core` also import a client: `docs/ref/system/AUDIT.md`, RLS-01 and RLS-08.
 
 #### 3. One route file covers one resource
 
@@ -273,12 +296,14 @@ rule needs its principle name to be correct.
 | Rule | Principle |
 | ---- | --------- |
 | 1, 3 | Single responsibility |
-| 2 | Dependency inversion |
+| 2 | Dependency inversion, Liskov substitution |
 | 4 | Dependency inversion, interface segregation |
 | 5 | Open-closed |
 
-Liskov substitution has no rule here. The nearest equivalent in this codebase is the contract that
-each channel plugin implements. Rule 5 covers that contract.
+Rule 2 is Liskov substitution because a `TenantCtx` gives the same guarantees from each entry point.
+The old type `TenantDb` broke this principle: its three members have the same methods but different
+guarantees. The contract that each channel plugin implements is also Liskov substitution. Rule 5
+covers that contract.
 
 ### Step 4 — Check the definition of done
 
@@ -290,6 +315,8 @@ request:
 - [ ] `node scripts/check-tenant-scoping.mjs --strict` and
       `node scripts/check-prisma-admin-usage.mjs --strict` show no violation that your change
       added. `docs/ref/system/AUDIT.md` records the violations that already exist on `main`.
+- [ ] `node scripts/check-tenant-ctx.mjs --strict` passes. If your change removes old forms, run
+      `node scripts/check-tenant-ctx.mjs --update-baseline` and commit the baseline file.
 - [ ] `CHANGELOG.md` has an entry for each `feat`, `fix` or architecture change (see Conventions).
 - [ ] All OpenSpec tasks of the change have a check mark. Archive the change when all tasks are done.
 - [ ] Each delta spec uses `MODIFIED` for a requirement that already exists in `openspec/specs/`.
@@ -351,9 +378,11 @@ RLS. The skill named below gives the steps.
 
 | Client | Connection | When |
 | ------ | ---------- | ---- |
-| `fastify.prisma` | `app_tenant`, RLS enforced | default for tenant-scoped work |
-| `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | inside authenticated request handlers. Throws an error when the request is not authenticated |
-| `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | background jobs and each path that needs an explicit tenant |
+| `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | new and moved route handlers. Returns 401 when the request has no tenant. Sends the response after the commit. The `reply` inside has no `send()`: return the body instead |
+| `inTenant({ prisma, io }, tenantId, (ctx) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
+| `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
+| `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |
+| `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | old form, being moved (#337). `inTenant()` uses it internally |
 | `fastify.prismaAdmin` | `app_admin`, **BYPASSRLS** | whitelist only: platform console, auth, schedulers, OAuth callbacks, public webhooks |
 
 `withTenant` sets the session variable with `SET LOCAL` inside the transaction. Thus the variable
@@ -368,20 +397,21 @@ to add a table, and the troubleshooting guide. Do not write them again here.
 
 ### CI gates
 
-Two scripts check tenant isolation. With `--strict`, each script exits with code 1 when it finds
+Three scripts check tenant isolation. With `--strict`, each script exits with code 1 when it finds
 a violation:
 
 | Script | Rejects |
 | ------ | ------- |
 | `scripts/check-tenant-scoping.mjs` | a query on a tenant table with no `tenantId` reachable in scope |
 | `scripts/check-prisma-admin-usage.mjs` | `prismaAdmin` used from a file outside the whitelist |
+| `scripts/check-tenant-ctx.mjs` | more old forms in a file than `scripts/check-tenant-ctx.baseline.json` records (rule 2) |
 
 Run them without `--strict` to get a report instead of a failure.
 
 > **No CI workflow runs these checks now.** `.github/workflows/ci.yml` ran both scripts with
 > `--strict`. It also ran the RLS integration test `apps/api/tests/feature/rls-isolation.test.ts`.
 > Commit `4b384b7` deleted `ci.yml`. Commit `323deeb` restored only `deploy.yml`, which runs none
-> of these checks. Until `ci.yml` is restored, run both scripts with `--strict` before you open a
+> of these checks. Until `ci.yml` is restored, run the scripts with `--strict` before you open a
 > pull request.
 
 ## Architecture: Socket Event Routing (Critical)
@@ -391,8 +421,11 @@ There are two paths. Select the correct path.
 **Path A — Direct emit** (API process, inline):
 
 ```ts
-fastify.io.to(room).emit(event, data);
+ctx.emit(room, event, data); // inside tenantHandler() or inTenant(): sent after the commit
 ```
+
+Old code calls `fastify.io.to(room).emit(event, data)` directly. Inside a transaction, that call
+sends the event before the commit. Do not copy it (structure rule 2).
 
 Use path A when all of these conditions are true:
 
@@ -404,7 +437,7 @@ Use path A when all of these conditions are true:
 **Path B — Async queue** (eventBus → BullMQ → workers → Redis pub/sub):
 
 ```ts
-eventBus.publish({ name: "case.assigned", tenantId, timestamp: new Date(), payload }); // API process
+ctx.publish("case.assigned", payload); // API process, sent to eventBus after the commit
 // → notificationQueue.add(job)  // BullMQ
 // → apps/workers consume → publishSocketEvent(redis, room, event, data)
 ```

@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-20：新增 RLS-08
+
+以 `9b5d1ac9` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。讀程式確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RLS-08 | 新增，已定方向 | `TenantDb` 的三個成員（`withTenant` 的 `tx`、`request.tenantPrisma`、`prismaAdmin`）RLS 與交易的保證不同，service 看不出自己受到什麼保護。#337 決定全面改成入口開交易。本 change 新增 `inTenant()`、`tenantHandler()` 與 ratchet 檢查腳本 `scripts/check-tenant-ctx.mjs`，不搬既有模組。基準檔記錄當天的舊寫法：`TenantDb` 445 處、`request.tenantPrisma` 304 處、service 內的 `withTenant(` 8 處、`$transaction(` 5 處 |
+
 ## 2026-10-20：APP-09 的滿意度問卷排程修正
 
 以 `9ba3a8db` 為基礎修正，分支 `fix/csat-schedule-claims`，change `claim-csat-schedule-rows`，issue #333。以 unit 測試確認，沒有連 UAT。
