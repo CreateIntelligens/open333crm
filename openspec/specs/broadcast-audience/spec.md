@@ -158,3 +158,17 @@ When a broadcast is created with a material, the material's channel type SHALL m
 
 - **WHEN** 群發的 `skippedCount` 是 2
 - **THEN** 群發列表顯示「略過 2」
+
+### Requirement: FB 與 IG 群發不提供分眾
+
+建立群發的表單選了有訊息視窗的渠道（FB、THREADS）時，受眾 MUST 只提供一個選項「24 小時內傳過訊息的人」（`targetType="all"`），MUST NOT 顯示「受眾分群」與「依標籤篩選」。從其他受眾切換到這類渠道時，表單 MUST 改回 `targetType="all"` 並清掉已選的分群與標籤。LINE 渠道 MUST 照常提供分群與標籤。
+
+#### Scenario: 選 FB 渠道時只能發給 24 小時內互動過的人
+
+- **WHEN** 使用者在建立群發的表單先選「依標籤篩選」，再把渠道換成 FB
+- **THEN** 受眾下拉只有「24 小時內傳過訊息的人」，值是 `all`，也不顯示標籤勾選
+
+#### Scenario: LINE 渠道仍可分眾
+
+- **WHEN** 使用者把渠道換回 LINE
+- **THEN** 受眾下拉有「受眾分群」與「依標籤篩選」

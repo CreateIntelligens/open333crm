@@ -17,7 +17,12 @@
 - [x] 3.4 實作：前端表單與列表
 - [x] 3.5 表單的發送注意事項與 FB 立即發送確認的提醒。先寫實作後補測試，以 mutation 驗證：確認視窗的條件改成永遠不成立、注意事項拿掉「本系統」，兩個測試都失敗
 
-## 4. 收尾
+## 4. FB 與 IG 不提供分眾
 
-- [x] 4.1 CHANGELOG、`docs/ref/features/tenant/MARKETING.md`
-- [x] 4.2 `pnpm test`、typecheck、tenant scoping 檢查、`node scripts/validate-openspec.mjs broadcast-messaging-window`
+- [x] 4.1 測試：選 FB 渠道時受眾只有「24 小時內傳過訊息的人」、切換時改回全部；LINE 仍可分眾（`broadcast-tab.test.tsx`）
+- [x] 4.2 實作：`broadcastTargetOptions()`、切換渠道時重設受眾
+
+## 5. 收尾
+
+- [x] 5.1 CHANGELOG、`docs/ref/features/tenant/MARKETING.md`
+- [x] 5.2 `pnpm test`、typecheck、tenant scoping 檢查、`node scripts/validate-openspec.mjs broadcast-messaging-window`

@@ -25,6 +25,26 @@ export const BROADCAST_TARGET_OPTIONS = [
   { value: 'tags', label: '依標籤篩選' },
 ];
 
+/**
+ * 有 24 小時訊息視窗的渠道（FB、IG），與後端 plugin 的 messagingWindowHours 一致
+ * （change broadcast-messaging-window）。
+ */
+export const MESSAGING_WINDOW_CHANNEL_TYPES = ['FB', 'THREADS'];
+
+export function hasMessagingWindow(channelType: string | undefined | null): boolean {
+  return MESSAGING_WINDOW_CHANNEL_TYPES.includes((channelType ?? '').toUpperCase());
+}
+
+/**
+ * 依渠道給受眾選項。FB／IG 只能發給 24 小時內傳過訊息的人，人數本來就少，
+ * 不提供分群與標籤，避免讓人以為可以像 LINE 一樣分眾群發。
+ */
+export function broadcastTargetOptions(channelType: string | undefined | null) {
+  return hasMessagingWindow(channelType)
+    ? [{ value: 'all', label: '24 小時內傳過訊息的人' }]
+    : BROADCAST_TARGET_OPTIONS;
+}
+
 export const BROADCAST_TARGET_LABELS: Record<string, string> = {
   all: '全部',
   segment: '分群',

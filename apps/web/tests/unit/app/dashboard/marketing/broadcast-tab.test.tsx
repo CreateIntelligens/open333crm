@@ -277,3 +277,18 @@ test('FB 群發立即發送前提醒只會送給 24 小時內互動過的人', a
   fireEvent.click(igSend);
   assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息/, 'IG 也有 24 小時視窗');
 });
+
+test('FB 群發的受眾不提供分群與標籤', () => {
+  const { dialog, target } = openCreateDialog();
+  fireEvent.change(target, { target: { value: 'tags' } });
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  fireEvent.change(channel, { target: { value: 'ch-fb' } });
+  const labels = Array.from(target.options).map((o) => o.textContent);
+  assert.deepEqual(labels, ['24 小時內傳過訊息的人']);
+  assert.equal(target.value, 'all', '切到 FB 時改回全部');
+  assert.ok(within(dialog).queryByRole('checkbox', { name: 'VIP' }) === null, '不顯示標籤勾選');
+
+  fireEvent.change(channel, { target: { value: 'ch-line' } });
+  const lineLabels = Array.from(target.options).map((o) => o.textContent);
+  assert.ok(lineLabels.includes('受眾分群') && lineLabels.includes('依標籤篩選'), 'LINE 仍可分眾');
+});

@@ -31,8 +31,9 @@ import api from '@/lib/api';
 import { toLocalInputValue } from '@/lib/datetime-local';
 import {
   BROADCAST_TARGET_LABELS,
-  BROADCAST_TARGET_OPTIONS,
   broadcastAudienceError,
+  broadcastTargetOptions,
+  hasMessagingWindow,
   materialChannelKey,
   segmentConditionsError,
 } from '@/lib/marketing/broadcast-form';
@@ -216,8 +217,7 @@ function CampaignTab() {
 /** FB／IG 群發立即發送前的提醒（change broadcast-messaging-window） */
 const META_WINDOW_SEND_NOTICE =
   'Facebook／Instagram 只會送給 24 小時內傳過訊息給粉專或 IG 帳號的人，其他人會自動略過，不算發送失敗。';
-/** 有 24 小時訊息視窗的渠道，與後端 plugin 的 messagingWindowHours 一致 */
-const META_WINDOW_CHANNEL_TYPES = ['FB', 'THREADS'];
+
 
 function BroadcastTab() {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
@@ -352,7 +352,7 @@ function BroadcastTab() {
       : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
     const broadcast = broadcasts.find((b: any) => b.id === id);
     const channel = channels.find((c: any) => c.id === broadcast?.channelId);
-    const question = META_WINDOW_CHANNEL_TYPES.includes(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
+    const question = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
@@ -379,7 +379,7 @@ function BroadcastTab() {
     }
   };
 
-  const targetTypeOptions = BROADCAST_TARGET_OPTIONS;
+  const targetTypeOptions = broadcastTargetOptions(selectedChannel?.channelType);
 
   return (
     <div className="p-6">
@@ -531,7 +531,15 @@ function BroadcastTab() {
               <Select
                 value={formData.channelId}
                 onChange={(e) =>
-                  setFormData({ ...formData, channelId: e.target.value, materialId: '' })
+                  setFormData({
+                    ...formData,
+                    channelId: e.target.value,
+                    materialId: '',
+                    // FB／IG 不提供分群與標籤（只能發給 24 小時內互動過的人），切過去時改回全部
+                    ...(hasMessagingWindow(activeChannels.find((c: any) => c.id === e.target.value)?.channelType)
+                      ? { targetType: 'all', segmentId: '', tagIds: [] }
+                      : {}),
+                  })
                 }
                 options={[
                   { value: '', label: '請選擇渠道' },
