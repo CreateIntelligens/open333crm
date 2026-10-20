@@ -80,13 +80,18 @@ export function setupCsatScheduler(scheduler: JobScheduler, prisma: PrismaClient
       for (const c of cases) {
         try {
           const now = new Date();
-          await prisma.case.update({
-            where: { id: c.id },
+          // 以條件更新認領：讀取之後工單被重開、客人已評分，或別次執行已結案時，不再結案、不發事件
+          const { count } = await prisma.case.updateMany({
+            where: { id: c.id, tenantId: c.tenantId, status: 'RESOLVED', csatRespondedAt: null },
             data: {
               status: 'CLOSED',
               closedAt: now,
             },
           });
+          if (count === 0) {
+            logger.info(`[CsatScheduler] Skip auto-close for case ${c.id}: no longer RESOLVED or already rated`);
+            continue;
+          }
 
           // Publish case.closed event
           eventBus.publish({

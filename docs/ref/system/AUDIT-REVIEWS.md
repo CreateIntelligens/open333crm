@@ -4,6 +4,20 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-20：APP-09 的滿意度問卷排程修正
+
+以 `9ba3a8db` 為基礎修正，分支 `fix/csat-schedule-claims`，change `claim-csat-schedule-rows`，issue #333。以 unit 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| APP-09 | 部分修正，改寫內容 | 寄送滿意度問卷（`csat-send`）在建立問卷訊息之前，以 `case.updateMany` 認領工單（`RESOLVED`、沒有 `csatSentAt`）；問卷逾時結案（`csat-auto-close`）改成 `CLOSED` 時，條件加上 `RESOLVED`、沒有 `csatRespondedAt`。認領失敗就不寄、不結案、不發事件。`apps/api/tests/unit/modules/csat/csat.service.test.ts` 3 個測試、`csat.scheduler.test.ts` 4 個測試，修正前都在 assertion 失敗。重新核對時發現閒置關閉已由 #302 改成條件更新，AUDIT 原本列為未修。剩下 Canvas 等待節點喚醒，另開 #334 |
+
+本次另外發現（都已寫進 #333 或 #334，沒有新增 AUDIT 項目）：
+
+- Canvas 流程過不了等待節點：暫停時沒有把 `currentNodeId` 改成下一個節點，喚醒後又執行同一個等待節點（#334）。
+- 工單重新解決時 `csatSentAt` 不會清除，問卷逾時結案用舊的寄出時間計算。
+- 客人評分（`recordCsatScore()`）也是先在 JS 檢查再更新。
+
 ## 2026-10-19：APP-01 修正，PKG-05 部分修正
 
 以 `3b021778` 為基礎修正，分支 `fix/core-redis-lazy-load`，issue #327。以 unit 測試、feature 測試與本機啟動 workers 確認。另在 UAT 唯讀查詢 Redis，沒有改動 UAT。
