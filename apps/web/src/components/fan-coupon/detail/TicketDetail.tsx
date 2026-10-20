@@ -6,7 +6,7 @@
  * 只負責顯示；主按鈕由外層依核銷方式與狀態決定。
  */
 import React, { useEffect, useRef } from 'react';
-import { Gift, Timer } from 'lucide-react';
+import { Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FanCoupon } from '@/hooks/useFanCoupons';
 import { HOW_TO_USE, conditionText, faceValue, statusLabel, ymd, ymdhm, ymdhms, termsHtml } from '@/lib/fan-coupon/labels';
@@ -96,18 +96,16 @@ export function TicketDetail({ item, onAfterOpenTimeUp }: Props) {
       {/* 上半部：票券摘要 */}
       <div
         className={cn(
-          'relative flex min-h-[193px] flex-col gap-4 bg-gradient-to-br from-[#0b6b57] to-[#14876f] p-5 text-white',
+          'relative flex min-h-[193px] flex-col gap-4 bg-[#036d59] bg-cover bg-center p-5 text-white',
           inactive && 'grayscale',
         )}
-        style={
-          c.imageUrl
-            ? {
-                backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 100%), url(${c.imageUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }
-            : undefined
-        }
+        style={{
+          // 預設用設計稿的綠色底圖（右下有禮物插圖，取自 Figma，放在 public/coupon/）；
+          // 商家上傳券面圖時改用圖片並加深色漸層讓白字可讀
+          backgroundImage: c.imageUrl
+            ? `linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 100%), url(${c.imageUrl})`
+            : 'url(/coupon/ticket-default.png)',
+        }}
       >
         <div>
           <FanStatusBadge status={item.walletStatus} label={badge} />
@@ -122,7 +120,6 @@ export function TicketDetail({ item, onAfterOpenTimeUp }: Props) {
           {condition && <p className="text-sm leading-5 text-white/90">{condition}</p>}
           {c.description && <p className="text-sm leading-5 text-white/90">{c.description}</p>}
         </div>
-        {!c.imageUrl && <Gift aria-hidden className="absolute bottom-4 right-5 h-14 w-14 text-white/20" />}
       </div>
 
       {/* 撕線：左右半圓缺口＋虛線 */}

@@ -3,10 +3,10 @@
 /**
  * 券卡（列表型）：左側票根顯示面額，右側券名、日期與狀態。
  * 已使用、已過期、活動已結束整張灰階（設計稿 F.1）。
- * 票根預設為綠色漸層；商家上傳券面圖時改用圖片並加深色漸層讓白字可讀。
+ * 票根預設用設計稿的綠色底圖（含 SPECIAL COUPON 字樣與禮物小圖示）；商家上傳券面圖時改用圖片並加深色漸層讓白字可讀。
+ * 右下角的禮物插圖同設計稿，超出卡片的部分裁切。圖檔取自 Figma，放在 public/coupon/。
  */
 import React from 'react';
-import { Gift } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FanCoupon } from '@/hooks/useFanCoupons';
 import { cardSubtitle, faceValue, statusLabel } from '@/lib/fan-coupon/labels';
@@ -28,12 +28,12 @@ export function FanCouponCard({ item, onClick }: { item: FanCoupon; onClick?: ()
     >
       {/* 票根 */}
       <div
-        className="relative flex w-[108px] shrink-0 flex-col items-center justify-center bg-gradient-to-br from-[#0b6b57] to-[#14876f] text-white"
-        style={
-          item.coupon.imageUrl
-            ? { backgroundImage: `linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.55)), url(${item.coupon.imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-            : undefined
-        }
+        className="relative flex w-[108px] shrink-0 flex-col items-center justify-center bg-[#036d59] bg-cover bg-center text-white"
+        style={{
+          backgroundImage: item.coupon.imageUrl
+            ? `linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.7) 100%), url(${item.coupon.imageUrl})`
+            : 'url(/coupon/stub-default.png)',
+        }}
       >
         <div className="flex items-baseline gap-1">
           {face.prefix && <span className="text-sm font-bold">{face.prefix}</span>}
@@ -55,7 +55,13 @@ export function FanCouponCard({ item, onClick }: { item: FanCoupon; onClick?: ()
         <div>
           <FanStatusBadge status={item.walletStatus} label={statusLabel(item)} size="sm" />
         </div>
-        <Gift aria-hidden className="absolute bottom-2 right-3 h-8 w-8 text-primary/20" />
+        {/* eslint-disable-next-line @next/next/no-img-element -- 裝飾用小圖，不需要 next/image 的最佳化 */}
+        <img
+          src="/coupon/gift.png"
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute -bottom-4 -right-[19px] h-[103px] w-[155px] object-cover"
+        />
       </div>
     </Tag>
   );
