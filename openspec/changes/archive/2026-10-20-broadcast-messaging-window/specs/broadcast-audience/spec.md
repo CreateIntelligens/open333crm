@@ -30,7 +30,7 @@
 
 ### Requirement: 建立群發前可以看到可送達人數
 
-`POST /marketing/broadcasts/audience-preview` MUST 接受 `channelId`、`targetType`、`segmentId`、`targetConfig`，用和實際發送相同的受眾解析與視窗規則，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。`messagingWindowHours` 在渠道沒有視窗時是 `null`。渠道不屬於該租戶或已停用時 MUST 回 404；受眾設定不完整時 MUST 回和建立群發相同的 400 `INVALID_AUDIENCE`。建立群發的表單 MUST 在選好渠道與受眾後顯示符合條件人數；有視窗時 MUST 一併顯示可送達人數與視窗說明。群發列表 MUST 在 `skippedCount` 大於 0 時顯示略過人數。
+`POST /marketing/broadcasts/audience-preview` MUST 接受 `channelId`、`targetType`、`segmentId`、`targetConfig`，用和實際發送相同的受眾解析與視窗規則，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。`messagingWindowHours` 在渠道沒有視窗時是 `null`。渠道不屬於該租戶或已停用時 MUST 回 404；受眾設定不完整時 MUST 回和建立群發相同的 400 `INVALID_AUDIENCE`。建立群發的表單 MUST 在選好渠道與受眾後顯示符合條件人數；有視窗時 MUST 一併顯示可送達人數與發送注意事項（視窗規則、略過不算失敗、視窗外需要 Meta 付費的 Marketing Messages 而本系統不支援）。FB 渠道的群發按「立即發送」時，確認視窗 MUST 說明只會送給視窗內互動過的人。群發列表 MUST 在 `skippedCount` 大於 0 時顯示略過人數。
 
 #### Scenario: 預估 FB 群發的可送達人數
 
@@ -50,7 +50,14 @@
 #### Scenario: 表單顯示可送達人數
 
 - **WHEN** 使用者在建立群發的表單選了 FB 渠道與受眾，預估回傳 `{ matched: 3, reachable: 1, messagingWindowHours: 24 }`
-- **THEN** 表單顯示「符合條件 3 人，可送達 1 人」與「只能發給 24 小時內傳過訊息的人」的說明
+- **THEN** 表單顯示「符合條件 3 人，可送達 1 人」
+- **AND** 顯示發送注意事項：只能發給 24 小時內傳過訊息給粉專的人，其他人略過、不算失敗；要發給 24 小時外的人需要 Meta 付費的 Marketing Messages，本系統目前不支援
+
+#### Scenario: FB 群發立即發送前提醒
+
+- **WHEN** 使用者對 FB 渠道的群發按「立即發送」
+- **THEN** 確認視窗說明只會送給 24 小時內傳過訊息給粉專的人，其他人會略過
+- **AND** LINE 渠道的群發確認視窗沒有這段說明
 
 #### Scenario: 列表顯示略過人數
 

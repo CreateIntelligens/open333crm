@@ -238,7 +238,8 @@ test('表單顯示可送達人數', async () => {
   const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
   fireEvent.change(channel, { target: { value: 'ch-fb' } });
   await within(dialog).findByText('符合條件 3 人，可送達 1 人');
-  assert.ok(within(dialog).getByText(/只能發給 24 小時內傳過訊息的人/));
+  assert.ok(within(dialog).getByText(/只能發給 24 小時內傳過訊息給粉專的人/));
+  assert.ok(within(dialog).getByText(/Marketing Messages.*本系統目前不支援/));
   const preview = api.post.mock.calls.find(([u]) => u === '/marketing/broadcasts/audience-preview');
   assert.deepEqual(preview?.[1], { channelId: 'ch-fb', targetType: 'all' });
 });
@@ -257,4 +258,18 @@ test('列表顯示略過人數', () => {
   data.broadcasts = [{ id: 'b-s', name: 'FB 活動', status: 'completed', targetType: 'all', totalCount: 3, successCount: 1, failedCount: 0, skippedCount: 2 }];
   render(<MarketingPage />);
   assert.ok(screen.getByText('略過 2'));
+});
+
+test('FB 群發立即發送前提醒只會送給 24 小時內互動過的人', async () => {
+  data.broadcasts = [
+    { id: 'b-fb', name: 'FB 活動', status: 'draft', channelId: 'ch-fb', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+    { id: 'b-line', name: 'LINE 活動', status: 'draft', channelId: 'ch-line', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+  ];
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<MarketingPage />);
+  const [fbSend, lineSend] = screen.getAllByRole('button', { name: /立即發送/ });
+  fireEvent.click(fbSend);
+  assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息給粉專的人/);
+  fireEvent.click(lineSend);
+  assert.doesNotMatch(String(confirmSpy.mock.lastCall?.[0]), /24 小時/);
 });

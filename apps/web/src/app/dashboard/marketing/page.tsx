@@ -213,6 +213,10 @@ function CampaignTab() {
 
 // ─── Broadcast Tab ─────────────────────────────────────────────────────────
 
+/** FB 群發立即發送前的提醒（change broadcast-messaging-window） */
+const FB_WINDOW_SEND_NOTICE =
+  'Facebook 只會送給 24 小時內傳過訊息給粉專的人，其他人會自動略過，不算發送失敗。';
+
 function BroadcastTab() {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
   const { channels } = useChannels();
@@ -341,9 +345,12 @@ function BroadcastTab() {
 
   const handleSend = async (id: string, resend = false) => {
     if (sendingId) return;
-    const question = resend
+    const base = resend
       ? '確定要重新發送嗎？請先確認失敗原因已排除。訊息會馬上送給所選受眾，送出後無法收回。'
       : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
+    const broadcast = broadcasts.find((b: any) => b.id === id);
+    const channel = channels.find((c: any) => c.id === broadcast?.channelId);
+    const question = materialChannelKey(channel?.channelType) === 'fb' ? `${base}\n\n${FB_WINDOW_SEND_NOTICE}` : base;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
@@ -646,10 +653,18 @@ function BroadcastTab() {
                     : `符合條件 ${audiencePreview.matched} 人`}
                 </p>
                 {audiencePreview.messagingWindowHours && (
-                  <p className="mt-1 text-muted-foreground">
-                    此渠道只能發給 {audiencePreview.messagingWindowHours} 小時內傳過訊息的人，其他人會略過不送。
-                    {formData.scheduledAt && '排程發送時會依當時的互動紀錄重新計算。'}
-                  </p>
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    <p className="font-medium text-foreground">發送注意事項</p>
+                    <p>
+                      Meta 規定此渠道只能發給 {audiencePreview.messagingWindowHours} 小時內傳過訊息給粉專的人（包含按過訊息裡的按鈕）。
+                      其他人會自動略過、不會送出，也不算發送失敗。
+                    </p>
+                    <p>只按表情回應、或只點連結沒有傳訊息的人，也會被略過。</p>
+                    <p>
+                      想發給超過 {audiencePreview.messagingWindowHours} 小時沒互動的人，要用 Meta 付費的「Marketing Messages」（按送達則數計費），本系統目前不支援。
+                    </p>
+                    {formData.scheduledAt && <p>排程發送時，會依發送當下的互動紀錄重新計算可送達人數。</p>}
+                  </div>
                 )}
               </div>
             )}

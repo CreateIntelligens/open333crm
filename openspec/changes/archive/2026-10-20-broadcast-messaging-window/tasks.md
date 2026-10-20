@@ -15,6 +15,7 @@
 - [x] 3.2 實作：`previewBroadcastAudience` 與 `POST /marketing/broadcasts/audience-preview`
 - [x] 3.3 測試：建立群發表單顯示可送達人數、列表顯示略過人數（`apps/web/tests/unit/app/dashboard/marketing/`）
 - [x] 3.4 實作：前端表單與列表
+- [x] 3.5 表單的發送注意事項與 FB 立即發送確認的提醒。先寫實作後補測試，以 mutation 驗證：確認視窗的條件改成永遠不成立、注意事項拿掉「本系統」，兩個測試都失敗
 
 ## 4. 收尾
 
