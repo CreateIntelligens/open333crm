@@ -10,7 +10,7 @@
 
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
-| APP-09 | 部分修正，改寫內容 | 寄送滿意度問卷（`csat-send`）在建立問卷訊息之前，以 `case.updateMany` 認領工單（`RESOLVED`、沒有 `csatSentAt`）；問卷逾時結案（`csat-auto-close`）改成 `CLOSED` 時，條件加上 `RESOLVED`、沒有 `csatRespondedAt`。認領失敗就不寄、不結案、不發事件。`apps/api/tests/unit/modules/csat/csat.service.test.ts` 3 個測試、`csat.scheduler.test.ts` 4 個測試，修正前都在 assertion 失敗。重新核對時發現閒置關閉已由 #302 改成條件更新，AUDIT 原本列為未修。剩下 Canvas 等待節點喚醒，另開 #334 |
+| APP-09 | 部分修正，改寫內容 | 寄送滿意度問卷（`csat-send`）在建立問卷訊息之前，以 `case.updateMany` 認領工單（`RESOLVED`、沒有 `csatSentAt`）；問卷逾時結案（`csat-auto-close`）改成 `CLOSED` 時，條件加上 `RESOLVED`、沒有 `csatRespondedAt`。認領失敗就不寄、不結案、不發事件。`apps/api/tests/unit/modules/csat/csat.service.test.ts` 3 個測試、`csat.scheduler.test.ts` 4 個測試，修正前都在 assertion 失敗。寄送是「最多一次」：認領之後建立訊息或送到渠道失敗都不還原 `csatSentAt`，`csat.service.test.ts` 另有 2 個測試，以突變驗證。重新核對時發現閒置關閉已由 #302 改成條件更新，AUDIT 原本列為未修。剩下 Canvas 等待節點喚醒，另開 #334 |
 
 本次另外發現（都已寫進 #333 或 #334，沒有新增 AUDIT 項目）：
 

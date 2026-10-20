@@ -108,28 +108,18 @@ export async function sendCsatSurvey(
   }
 
   // Create CSAT system message in conversation
-  let csatMessage;
-  try {
-    csatMessage = await prisma.message.create({
-      data: {
-        conversationId,
-        direction: 'OUTBOUND',
-        senderType: 'SYSTEM',
-        contentType: 'csat',
-        content: { text: '滿意度調查', caseId },
-        metadata: { type: 'csat_survey', caseId },
-        isRead: true,
-        createdAt: now,
-      },
-    });
-  } catch (err) {
-    // 訊息還沒建立，還原自己的認領，讓下一期重試。訊息建立之後的步驟失敗時不還原，否則會再建一則
-    await prisma.case.updateMany({
-      where: { id: caseId, tenantId: caseRecord.tenantId, csatSentAt: now },
-      data: { csatSentAt: null },
-    });
-    throw err;
-  }
+  const csatMessage = await prisma.message.create({
+    data: {
+      conversationId,
+      direction: 'OUTBOUND',
+      senderType: 'SYSTEM',
+      contentType: 'csat',
+      content: { text: '滿意度調查', caseId },
+      metadata: { type: 'csat_survey', caseId },
+      isRead: true,
+      createdAt: now,
+    },
+  });
 
   // Update conversation lastMessageAt
   await prisma.conversation.update({

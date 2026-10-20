@@ -9,10 +9,12 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { TenantDb } from '#src/lib/tenant-db.js';
 
 const delivered = vi.hoisted(() => [] as unknown[][]);
+const delivery = vi.hoisted(() => ({ error: undefined as Error | undefined }));
 
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async (...args: unknown[]) => {
     delivered.push(args);
+    if (delivery.error) throw delivery.error;
     return true;
   },
 }));
@@ -109,17 +111,31 @@ test('工單到了寄送時間，寄出一份問卷', async () => {
   assert.deepEqual(order, ['case.updateMany', 'message.create']);
 });
 
-test('認領之後建立問卷訊息失敗，下一期重試', async () => {
+// 認領之後寄送最多執行一次：任何一步失敗都不還原 csatSentAt，避免訊息其實已寫入時重寄
+test('認領之後建立問卷訊息失敗', async () => {
   delivered.length = 0;
   const failure = new Error('connection reset');
   const { db, updateManyCalls } = createDb(1, failure);
 
   await assert.rejects(sendCsatSurvey(db, io, CASE_ID), failure);
 
-  assert.equal(updateManyCalls.length, 2);
-  const claim = updateManyCalls[0] as { data: { csatSentAt: Date } };
-  const release = updateManyCalls[1] as { where: Record<string, unknown>; data: Record<string, unknown> };
-  assert.deepEqual(release.where, { id: CASE_ID, tenantId: TENANT_ID, csatSentAt: claim.data.csatSentAt });
-  assert.deepEqual(release.data, { csatSentAt: null });
+  assert.equal(updateManyCalls.length, 1);
   assert.equal(delivered.length, 0);
+});
+
+test('送到客人的渠道失敗', async () => {
+  delivered.length = 0;
+  delivery.error = new Error('channel unavailable');
+  try {
+    const { db, updateManyCalls, messageCreateCalls } = createDb(1);
+
+    const sent = await sendCsatSurvey(db, io, CASE_ID);
+
+    assert.equal(sent, true);
+    assert.equal(messageCreateCalls.length, 1);
+    assert.equal(updateManyCalls.length, 1);
+    assert.equal(delivered.length, 1);
+  } finally {
+    delivery.error = undefined;
+  }
 });
