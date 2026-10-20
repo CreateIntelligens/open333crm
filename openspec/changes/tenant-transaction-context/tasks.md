@@ -37,8 +37,8 @@
 ## 6. 完成條件
 
 - [x] 6.1 `pnpm test` 通過
-- [ ] 6.2 `pnpm test:feature` 通過（1.3 新增了 feature 測試）
-  - 2026-10-20：486 通過、1 失敗。失敗的是 `tests/feature/modules/channel/channel-scoped-visibility.test.ts` 的「群發不檢查渠道層級」（VALIDATION_ERROR），在不含本 change 改動的 `37baf212` 上同樣失敗，應是 #338（`56cd9d71`）帶進 main。本 change 新增的 `tests/feature/lib/tenant-ctx.test.ts` 2 個測試通過。等 main 修好後重跑再打勾
+- [x] 6.2 `pnpm test:feature` 通過（1.3 新增了 feature 測試）
+  - 2026-10-20：58 個檔案、487 個測試全部通過。第一次跑時 `channel-scoped-visibility.test.ts` 的群發測試失敗（`VALIDATION_ERROR`），原因是本機的 Prisma client 在 #338 新增 `broadcasts.skippedCount` 之後沒有重新產生，`prisma.broadcast.update()` 丟出 `PrismaClientValidationError`。執行 `pnpm db:generate` 後通過，不是程式的問題
 - [x] 6.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict` 沒有本 change 新增的違規
 - [x] 6.4 `node scripts/validate-openspec.mjs tenant-transaction-context` 與 `node scripts/validate-openspec.mjs --specs` 通過
 
