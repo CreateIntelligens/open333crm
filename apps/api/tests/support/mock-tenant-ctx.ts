@@ -22,6 +22,10 @@ export function createMockTenantCtx(tx: unknown, tenantId: string = MOCK_TENANT_
     tx: tx as TenantCtx['tx'],
     tenantId,
     emit(room, event, data) {
+      // 與 inTenant() 相同：推到別的租戶房間是寫錯程式
+      if (room.startsWith('tenant:') && room !== `tenant:${tenantId}`) {
+        throw new Error(`createMockTenantCtx: 不能推播 ${event} 到別的租戶房間 ${room}`);
+      }
       emitted.push({ room, event, data });
     },
     publish(name, payload) {

@@ -46,6 +46,10 @@ export async function inTenant<T>(
         const io = deps.io;
         // 寫錯程式：在交易內丟錯讓它 rollback，不要等到 commit 後才默默丟掉推播
         if (!io) throw new Error(`inTenant: 沒有 io，不能推播 ${event}`);
+        // conversation:、agent: 等房間沒有租戶前綴，這裡擋不到；只擋明顯推到別的租戶
+        if (room.startsWith('tenant:') && room !== `tenant:${tenantId}`) {
+          throw new Error(`inTenant: 不能推播 ${event} 到別的租戶房間 ${room}`);
+        }
         effects.push({ label: `emit ${event}`, run: () => io.to(room).emit(event, data) });
       },
       publish(name, payload) {
@@ -79,22 +83,34 @@ export interface TenantReply {
   header(key: string, value: unknown): TenantReply;
 }
 
-function restrictReply(reply: FastifyReply): TenantReply {
+/**
+ * 狀態碼與 header 先存起來，commit 之後才套用到真正的 reply。
+ * 交易失敗時錯誤回應由 error handler 產生，不能帶著成功時才該有的 header（例如 Location）。
+ */
+function deferReply(): { reply: TenantReply; applyTo(reply: FastifyReply): void } {
+  let statusCode: number | undefined;
+  const headers: Array<[string, unknown]> = [];
   const restricted: TenantReply = {
-    code(statusCode) {
-      reply.code(statusCode);
+    code(code) {
+      statusCode = code;
       return restricted;
     },
-    status(statusCode) {
-      reply.status(statusCode);
+    status(code) {
+      statusCode = code;
       return restricted;
     },
     header(key, value) {
-      reply.header(key, value);
+      headers.push([key, value]);
       return restricted;
     },
   };
-  return restricted;
+  return {
+    reply: restricted,
+    applyTo(reply) {
+      if (statusCode !== undefined) reply.code(statusCode);
+      for (const [key, value] of headers) reply.header(key, value);
+    },
+  };
 }
 
 /**
@@ -109,10 +125,11 @@ export function tenantHandler<RouteGeneric extends RouteGenericInterface = Route
     const tenantId = request.agent?.tenantId;
     if (!tenantId) throw new AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401);
 
-    const restricted = restrictReply(reply);
+    const deferred = deferReply();
     const body = await inTenant({ prisma: fastify.prisma, io: fastify.io }, tenantId, (ctx) =>
-      handler(request, restricted, ctx),
+      handler(request, deferred.reply, ctx),
     );
+    deferred.applyTo(reply);
     return reply.send(body);
   };
 }

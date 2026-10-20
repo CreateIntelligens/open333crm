@@ -42,6 +42,15 @@
 - [x] 6.3 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict` 沒有本 change 新增的違規
 - [x] 6.4 `node scripts/validate-openspec.mjs tenant-transaction-context` 與 `node scripts/validate-openspec.mjs --specs` 通過
 
+## 7. PR #341 審查意見
+
+- [x] 7.1 寫失敗的測試：交易內程式設定 `Location` header 後丟錯、commit 失敗時，錯誤回應不帶該 header（「交易失敗時不帶交易內設定的 header」）。修正前兩個測試都失敗（header 仍是 `/created/1`）
+- [x] 7.2 `tenantHandler()` 改成先存狀態碼與 header，commit 之後才套用，讓 7.1 通過
+- [x] 7.3 寫失敗的測試：交易內推播到別的租戶房間時丟錯，登記的項目不送出（「推播到別的租戶房間」）。修正前失敗（Missing expected rejection）。另加測試確認自己的租戶房間與 `conversation:` 房間照常送出
+- [x] 7.4 `inTenant()` 與 `createMockTenantCtx()` 的 `emit` 檢查 `tenant:` 房間，讓 7.3 通過
+- [x] 7.5 寫失敗的測試：service 檔內的 `inTenant<string>(`、`withTenant <Row[]>(`、`prisma.$transaction (` 都算增加（Codex 審查，PR #341 實驗）。修正前失敗（exit 0）
+- [x] 7.6 `scripts/check-tenant-ctx.mjs` 的三個交易呼叫正規式允許泛型參數與空白，讓 7.5 通過。repo 本身的基準數字不變
+
 ## Workflow follow-up
 
 - 合併後以 `pnpm exec openspec archive tenant-transaction-context` 歸檔，把新主規格的 `## Purpose` 改成正式說明，再執行 `node scripts/validate-openspec.mjs --specs`，確認「略過 N 則」沒有變多。

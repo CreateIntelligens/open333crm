@@ -100,6 +100,18 @@ test('service 檔內自己開交易：inTenant(、withTenant(、$transaction( �
   assert.match(output, /\$transaction\(/);
 });
 
+test('service 檔內帶泛型參數或空白的交易呼叫也算增加', { timeout: 30_000 }, async () => {
+  await put('modules/a/a.service.ts', ['export async function f(prisma: TenantDb) {}']);
+  await put('modules/g1/g1.service.ts', ['await inTenant<string>(deps, tenantId, fn);']);
+  await put('modules/g2/g2.service.ts', ['await withTenant <Row[]>(prisma, tenantId, fn);']);
+  await put('modules/g3/g3.service.ts', ['await prisma.$transaction (fn);']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /modules\/g1\/g1\.service\.ts/);
+  assert.match(output, /modules\/g2\/g2\.service\.ts/);
+  assert.match(output, /modules\/g3\/g3\.service\.ts/);
+});
+
 test('route 檔內的 inTenant( 不算：入口本來就該開交易', { timeout: 30_000 }, async () => {
   await put('modules/a/a.routes.ts', [
     'const x = request.tenantPrisma;',

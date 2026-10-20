@@ -71,6 +71,22 @@ beforeAll(async () => {
     }),
   );
 
+  app.post(
+    '/conflict-after-header',
+    tenantHandler(app, async (_request, reply) => {
+      reply.code(201).header('location', '/created/1');
+      throw new AppError('重複', 'CONFLICT', 409);
+    }),
+  );
+
+  app.post(
+    '/header',
+    tenantHandler(app, async (_request, reply) => {
+      reply.code(201).header('location', '/created/1');
+      return { success: true };
+    }),
+  );
+
   await app.ready();
 });
 
@@ -109,6 +125,25 @@ test('commit 失敗：回應錯誤而不是成功', async () => {
   const res = await app.inject({ method: 'POST', url: '/ok', headers: { 'x-tenant': TENANT_ID } });
   assert.equal(res.statusCode, 500);
   assert.deepEqual(log, ['handler-end']);
+});
+
+test('交易內程式設定 header 後丟出錯誤：錯誤回應不帶該 header', async () => {
+  const res = await app.inject({ method: 'POST', url: '/conflict-after-header', headers: { 'x-tenant': TENANT_ID } });
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.headers.location, undefined);
+});
+
+test('commit 失敗：錯誤回應不帶交易內設定的 header', async () => {
+  commitError = new Error('commit failed');
+  const res = await app.inject({ method: 'POST', url: '/header', headers: { 'x-tenant': TENANT_ID } });
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.headers.location, undefined);
+});
+
+test('commit 成功：回應帶交易內設定的狀態碼與 header', async () => {
+  const res = await app.inject({ method: 'POST', url: '/header', headers: { 'x-tenant': TENANT_ID } });
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.headers.location, '/created/1');
 });
 
 test('型別：交易內程式拿到的 reply 不能送出回應', { timeout: 120_000 }, async () => {

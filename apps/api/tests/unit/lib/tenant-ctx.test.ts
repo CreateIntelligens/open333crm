@@ -153,11 +153,38 @@ test('沒有 io 時呼叫 emit：在交易內丟錯，交易 rollback', async ()
   assert.deepEqual(log, []);
 });
 
+test('推播到別的租戶房間：在交易內丟錯，交易 rollback', async () => {
+  const other = 'b0000000-0000-0000-0000-000000000002';
+  await assert.rejects(
+    inTenant(deps(), TENANT_ID, async (ctx) => {
+      ctx.publish('case.created', {});
+      ctx.emit(`tenant:${other}`, 'p1', {});
+    }),
+    /tenant:b0000000/,
+  );
+  assert.deepEqual(log, []);
+});
+
+test('推播到自己的租戶房間或非租戶房間：commit 後送出', async () => {
+  await inTenant(deps(), TENANT_ID, async (ctx) => {
+    ctx.emit(`tenant:${TENANT_ID}`, 'p1', {});
+    ctx.emit('conversation:c1', 'p2', {});
+  });
+  assert.deepEqual(log, ['commit', 'emit:p1', 'emit:p2']);
+});
+
 test('ctx 帶交易與綁定的 tenantId', async () => {
   await inTenant(deps(), TENANT_ID, async (ctx) => {
     assert.equal(ctx.tenantId, TENANT_ID);
     assert.equal(typeof ctx.tx.$executeRaw, 'function');
   });
+});
+
+test('createMockTenantCtx：推播到別的租戶房間時丟錯', async () => {
+  const { createMockTenantCtx } = await import('#tests/support/mock-tenant-ctx.js');
+  const { ctx, emitted } = createMockTenantCtx({});
+  assert.throws(() => ctx.emit('tenant:b0000000-0000-0000-0000-000000000002', 'p1', {}), /別的租戶房間/);
+  assert.deepEqual(emitted, []);
 });
 
 test('createMockTenantCtx：依呼叫順序記錄推播與事件', async () => {

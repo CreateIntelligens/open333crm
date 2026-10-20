@@ -39,10 +39,11 @@ const anyFile = () => true;
 const PATTERNS = [
   { name: 'TenantDb', re: /\bTenantDb\b/g, applies: anyFile },
   { name: 'request.tenantPrisma', re: /\b(?:request|req)\.tenantPrisma\b/g, applies: anyFile },
-  // service 不自己開交易：交易由入口開，service 只收 TenantCtx
-  { name: 'service 內的 withTenant(', re: /\bwithTenant\(/g, applies: isServiceFile },
-  { name: 'service 內的 $transaction(', re: /\$transaction\(/g, applies: isServiceFile },
-  { name: 'service 內的 inTenant(', re: /\binTenant\(/g, applies: isServiceFile },
+  // service 不自己開交易：交易由入口開，service 只收 TenantCtx。
+  // 呼叫可以帶泛型參數或空白（inTenant<T>(、$transaction (），都要算到
+  { name: 'service 內的 withTenant(', re: /\bwithTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
+  { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
+  { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
 ];
 
 function walk(dir, out = []) {

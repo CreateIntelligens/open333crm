@@ -49,6 +49,7 @@ export function inTenant<T>(
 - 每一項各自包 `try/catch`，失敗時用 `@open333crm/core` 的 `logger` 記錄，再繼續下一項。理由：資料已經 commit，回應不該因為推播失敗而變成錯誤。
 - `publish` 自己填 `tenantId` 與 `timestamp`，service 只給事件名稱與 payload。這樣事件的租戶一定等於交易綁定的租戶。
 - `deps.io` 是選填，因為部分背景工作沒有 `io`。沒有 `io` 時呼叫 `emit`，會在交易內立刻丟錯，讓交易 rollback。這是寫錯程式，要在測試階段就發現，不要等到 commit 之後才默默丟掉推播。
+- 房間以 `tenant:` 開頭、但不是 `tenant:<ctx.tenantId>` 時，`emit` 也在交易內丟錯（PR #341 審查意見）。`conversation:`、`agent:` 房間沒有租戶前綴，這個檢查擋不到，要由呼叫端確認 ID 屬於本租戶。不採用「`emit` 只能推到租戶房間」：既有程式有推到 `conversation:`、`agent:` 房間的需求。測試用的 `createMockTenantCtx()` 做同樣的檢查。
 
 替代方案：`ctx` 只放 `afterCommit(fn)` 一個方法，推播和事件都由 service 自己寫 callback。不採用的原因：階段 1b 要把事件改走 outbox，事件必須是資料（名稱加 payload），才能寫進資料表。callback 寫不進去。
 
@@ -67,6 +68,7 @@ fastify.post<{ Params: { id: string } }>('/:id/resolve', { preHandler: [perm.upd
 - 回傳一個 Fastify handler。這個 handler 從 `request.agent?.tenantId` 取租戶 ID，沒有時丟 `AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401)`，不開交易。
 - 交易內的程式回傳回應內容，`tenantHandler` 等 `inTenant()` 結束之後才把它交給 Fastify 送出。
 - 交易內的程式拿到的 `reply` 型別只有 `code()`、`status()`、`header()`，沒有 `send()`。在交易內送出回應，等於 commit 之前就告訴前端成功，所以用型別擋掉。
+- 交易內設定的狀態碼與 header 先存起來，commit 之後才套用到 Fastify 的 `reply`（PR #341 審查意見）。直接改 `reply` 的話，交易失敗時 error handler 雖然會重設狀態碼，但 `Location` 這類 header 會留在錯誤回應上。
 - 型別參數沿用 Fastify 的 `RouteGenericInterface`，`request.params`、`request.body` 的型別與現在的 route 相同。
 
 替代方案：用 Fastify hook 自動開交易，不必每個 route 手動包。Prisma 沒有手動 `BEGIN`／`COMMIT` 的 API，交易只在 `$transaction()` 的 callback 執行期間存在，但仍有兩種做法：

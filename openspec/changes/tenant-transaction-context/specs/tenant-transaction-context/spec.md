@@ -25,7 +25,7 @@
 
 ### Requirement: 推播與事件在 commit 之後才送出
 
-交易內登記的 Socket 推播與業務事件 MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的推播與事件 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。一項推播或事件送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
+交易內登記的 Socket 推播與業務事件 MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的推播與事件 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。推播的房間以 `tenant:` 開頭、但不是交易綁定租戶的房間時，系統 MUST 在交易內丟出錯誤，讓交易 rollback。一項推播或事件送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
 
 #### Scenario: commit 之前不送出
 
@@ -42,6 +42,11 @@
 - **WHEN** 交易內登記一則推播與一個事件，之後交易內的程式丟出錯誤
 - **THEN** 該推播與事件 MUST NOT 送出，呼叫端收到該錯誤
 
+#### Scenario: 推播到別的租戶房間
+
+- **WHEN** 綁定租戶 A 的交易內，登記一則推播到租戶 B 的房間 `tenant:<B 的 ID>`
+- **THEN** 系統 MUST 在交易內丟出錯誤，交易 rollback，交易內登記的推播與事件 MUST NOT 送出
+
 #### Scenario: 一項送出失敗不影響其他項
 
 - **WHEN** 交易 commit 之後，登記的第一則推播送出時丟出錯誤
@@ -49,7 +54,7 @@
 
 ### Requirement: 事件最多送出一次
 
-業務事件在 commit 之後交給 API 行程內的事件匯流排。行程在 commit 之後、事件送出之前結束時，該事件 MUST NOT 補送。這是規格接受的行為：事件的保證是最多一次，與事件直接交給行程內事件匯流排的寫法相同。
+業務事件在 commit 之後交給 API 行程內的事件匯流排。行程在 commit 之後、事件送出之前結束時，該事件 MUST NOT 補送。推播也一樣，MUST NOT 補送。這是規格接受的行為：事件的保證是最多一次，與事件直接交給行程內事件匯流排的寫法相同。
 
 #### Scenario: 事件不重複送出
 
@@ -58,7 +63,7 @@
 
 ### Requirement: route 的回應在 commit 之後才送出
 
-以綁定租戶的交易執行的 route，MUST 從已登入請求的租戶身分取得租戶 ID。route 的回應 MUST 在交易 commit 之後才送出，回應內容是交易內程式的回傳值，狀態碼依交易內程式的設定。交易內的程式丟出錯誤或 commit 失敗時，回應 MUST 是錯誤回應，MUST NOT 是成功回應。請求沒有租戶身分時，系統 MUST 回應 401，MUST NOT 開啟交易。
+以綁定租戶的交易執行的 route，MUST 從已登入請求的租戶身分取得租戶 ID。route 的回應 MUST 在交易 commit 之後才送出，回應內容是交易內程式的回傳值，狀態碼與 header 依交易內程式的設定，並在 commit 之後才套用到回應。交易內的程式丟出錯誤或 commit 失敗時，回應 MUST 是錯誤回應，MUST NOT 是成功回應。請求沒有租戶身分時，系統 MUST 回應 401，MUST NOT 開啟交易。
 
 #### Scenario: 成功時回應交易內程式的結果
 
@@ -69,6 +74,11 @@
 
 - **WHEN** 交易內的程式寫入一筆資料後，丟出狀態碼 409 的應用程式錯誤
 - **THEN** 回應的狀態碼 MUST 是 409，資料庫中 MUST NOT 有該筆資料，登記的推播 MUST NOT 送出
+
+#### Scenario: 交易失敗時不帶交易內設定的 header
+
+- **WHEN** 交易內的程式設定狀態碼 201 與 `Location` header，之後交易內的程式丟出錯誤，或 commit 失敗
+- **THEN** 回應 MUST 是錯誤回應，MUST NOT 帶該 `Location` header
 
 #### Scenario: 請求沒有租戶身分
 
