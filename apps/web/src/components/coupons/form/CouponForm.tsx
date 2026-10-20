@@ -539,7 +539,8 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount }: Prop
       </div>
 
       {/* 底部操作列：固定在捲動容器底部 */}
-      <div className="sticky bottom-0 z-10 border-t bg-background px-4 py-3 sm:px-8">
+      {/* 右側留白讓出全站右下角的浮動客服按鈕，避免蓋住發布鈕 */}
+      <div className="sticky bottom-0 z-10 border-t bg-background py-3 pl-4 pr-24 sm:pl-8 sm:pr-28">
         <div className="flex flex-wrap items-center gap-3">
           <Button type="button" variant="outline" onClick={() => guard.navigate(LIST_HREF)} disabled={busy}>
             取消

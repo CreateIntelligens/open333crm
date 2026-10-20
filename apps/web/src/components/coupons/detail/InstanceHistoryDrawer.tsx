@@ -6,6 +6,7 @@
  * 時間軸四步：發放 → 領取 → 開啟 → 核銷；已發生用實心點，未發生用空心灰點。
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CouponInstanceRow } from '@/hooks/useCoupons';
@@ -82,7 +83,8 @@ export function InstanceHistoryDrawer({ row, shared, onClose }: Props) {
   const title = shared ? `領取紀錄 · ${customer ?? '尚未領取'}` : row.code;
   const steps = buildSteps(row);
 
-  return (
+  // 掛到 body：頁面外層的容器會讓 fixed 定位偏移（遮罩上緣露出一條空白）
+  return createPortal(
     <div className="fixed inset-0 z-50" onKeyDown={handleKeyDown}>
       <div
         aria-hidden="true"
@@ -154,6 +156,7 @@ export function InstanceHistoryDrawer({ row, shared, onClose }: Props) {
           </ol>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

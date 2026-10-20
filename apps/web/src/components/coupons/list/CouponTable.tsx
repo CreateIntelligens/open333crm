@@ -14,7 +14,7 @@ import type { RowActionKey } from './row-actions';
 
 /** 欄寬依後台原型：券名稱 / 用途 / 狀態 / 已發放 / 已領取 / 核銷率 / 效期 / 操作 */
 export const COUPON_TABLE_COLUMNS =
-  'grid-cols-[minmax(240px,2fr)_100px_100px_90px_90px_minmax(160px,1fr)_170px_44px]';
+  'grid-cols-[minmax(220px,2fr)_90px_90px_80px_80px_minmax(150px,1fr)_150px_36px]';
 
 const HEAD_CELL = 'px-0 text-xs font-medium text-muted-foreground';
 
@@ -66,7 +66,7 @@ interface Props {
 
 export function CouponTable({ coupons, canManage, onOpen, onAction }: Props) {
   return (
-    <table className="w-full min-w-[1160px] border-collapse text-sm">
+    <table className="w-full min-w-[1080px] border-collapse text-sm">
       <thead>
         <tr className={cn('grid items-center gap-4 border-b border-border bg-muted/40 px-5 py-3', COUPON_TABLE_COLUMNS)}>
           <th scope="col" className={cn(HEAD_CELL, 'text-left')}>券名稱 / 券號</th>

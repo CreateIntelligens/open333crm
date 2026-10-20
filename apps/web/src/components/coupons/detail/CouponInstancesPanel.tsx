@@ -202,7 +202,8 @@ export function CouponInstancesPanel({ coupon, issuedCount, poolSize = null, sho
       )}
 
       {/* 篩選列 */}
-      <div className="grid gap-3 rounded-[10px] border border-border bg-muted/40 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(200px,1.6fr)_minmax(120px,0.7fr)_minmax(250px,1.3fr)_minmax(250px,1.3fr)]">
+      {/* 日期欄位有瀏覽器內建的最小寬度，四欄排一列在 1440 寬會溢出框外，故固定兩欄 */}
+      <div className="grid gap-3 rounded-[10px] border border-border bg-muted/40 p-3 sm:grid-cols-2">
         <div className="space-y-1">
           <label htmlFor="instance-search" className="text-xs font-medium text-foreground">
             {searchLabel}
@@ -378,7 +379,7 @@ function DateRange({
           id={`${idPrefix}-from`}
           type="date"
           aria-label={`${label}起`}
-          className={inputClass}
+          className={cn(inputClass, 'min-w-0 flex-1')}
           value={from}
           max={to || undefined}
           onChange={(e) => onFrom(e.target.value)}
@@ -390,7 +391,7 @@ function DateRange({
           id={`${idPrefix}-to`}
           type="date"
           aria-label={`${label}迄`}
-          className={inputClass}
+          className={cn(inputClass, 'min-w-0 flex-1')}
           value={to}
           min={from || undefined}
           onChange={(e) => onTo(e.target.value)}
