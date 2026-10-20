@@ -25,6 +25,7 @@ import {
   getWalletCoupon,
   startStaffCodeSession,
   redeemWithStaffCode,
+  getWalletQrCode,
   type WalletDeps,
 } from '#src/modules/coupon/coupon-wallet.service.js';
 
@@ -337,3 +338,39 @@ describe('店員掃碼後顧客端得知核銷完成', () => {
     assert.ok(view?.redeemedAt);
   });
 });
+
+describe('店員掃碼券的 QR Code 與驗證碼位數', () => {
+  it('只有可使用的店員掃碼券能取得 QR Code', async () => {
+    const scan = await withTenant(prisma, T, (tx) =>
+      createCoupon(tx, T, agentId, {
+        name: `${MARK} 掃碼券`, couponType: 'GIFT', giftName: '濾網', purpose: 'SERVICE', validityMode: 'AFTER_CLAIM',
+        afterClaimDays: 30, codeMode: 'UNIQUE_CODE', redeemMode: 'STAFF_SCAN', perContactLimit: 5,
+      }));
+    await withTenant(prisma, T, (tx) => changeStatus(tx, T, scan.id, 'ACTIVE'));
+    const p = await person('QR', lineChannel, 'LINE', { verified: true });
+    const { token, instanceId } = await issue(p, scan.id);
+    const fan = await fanOf(p, token);
+    const qr = await getWalletQrCode(prisma, fan, instanceId);
+    assert.ok(qr.ok, JSON.stringify(qr));
+    assert.ok(qr.ok && qr.dataUrl.startsWith('data:image/png;base64,'));
+
+    await owner.couponInstance.update({ where: { id: instanceId }, data: { status: 'REDEEMED', redeemedAt: new Date() } });
+    const used = await getWalletQrCode(prisma, fan, instanceId);
+    assert.equal(used.ok, false);
+
+    // 店員驗證碼券不是掃碼券
+    const staff = await issue(p);
+    const notScan = await getWalletQrCode(prisma, fan, staff.instanceId);
+    assert.equal(!notScan.ok && notScan.reason, 'NOT_STAFF_SCAN');
+  });
+
+  it('驗證碼輸入格數', async () => {
+    const p = await person('格數', lineChannel, 'LINE', { verified: true });
+    const { token, instanceId } = await issue(p);
+    const fan = await fanOf(p, token);
+    const view = await getWalletCoupon(prisma, fan, instanceId);
+    assert.equal(view?.coupon.staffCodeLength, 6);
+    assert.ok(!JSON.stringify(view).includes('582917'), '顧客端不可拿到驗證碼本身');
+  });
+});
+

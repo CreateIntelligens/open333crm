@@ -54,6 +54,8 @@ const COUPON_SELECT = {
   giftName: true, giftQty: true, exchangeItem: true, exchangeValueCap: true,
   validityMode: true, startAt: true, endAt: true, afterClaimDays: true, afterOpenMinutes: true,
   redeemMode: true, maskCodeBeforeStart: true,
+  // 只用來算位數，toFanView 不會輸出驗證碼本身
+  staffCode: true,
 } as const;
 
 export const COUPON_INCLUDE = { coupon: { select: COUPON_SELECT } } as const;
@@ -65,6 +67,7 @@ type FanCoupon = {
   exchangeItem?: string | null; exchangeValueCap?: number | null;
   validityMode: string | null; startAt: Date | null; endAt?: Date | null; afterClaimDays?: number | null;
   afterOpenMinutes: number | null; redeemMode: string | null; maskCodeBeforeStart?: boolean;
+  staffCode?: string | null;
 };
 
 /** 顧客端看得到的券欄位。刻意不含 claimToken、店員驗證碼與內部識別。 */
@@ -119,6 +122,8 @@ export function toFanView(
       endAt: i.coupon.endAt ?? null,
       redeemMode: i.coupon.redeemMode,
       afterOpenMinutes: i.coupon.afterOpenMinutes,
+      // 店員在顧客手機上輸入驗證碼時要顯示幾格；只給位數，不給碼
+      staffCodeLength: i.coupon.redeemMode === 'STAFF_CODE' && i.coupon.staffCode ? i.coupon.staffCode.length : null,
     },
   };
 }

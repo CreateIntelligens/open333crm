@@ -7,6 +7,7 @@
  * 票券連結與核銷時段存在 Redis（deps.store），測試注入記憶體版本。
  */
 import type { PrismaClient } from '@prisma/client';
+import QRCode from 'qrcode';
 import {
   buildCouponMessage,
   issueWalletToken,
@@ -298,4 +299,26 @@ export async function redeemWithStaffCode(
   const attemptsLeft = Math.max(0, MAX_CODE_ATTEMPTS - attempts);
   if (attemptsLeft === 0) await closeSession(deps.store, instanceId);
   return { ok: false, reason: 'STAFF_CODE_MISMATCH', attemptsLeft };
+}
+
+// ── 店員掃碼券的 QR Code ───────────────────────────────────────────────────
+
+/**
+ * 店員掃碼券的 QR Code（內容為券號，與店員手動輸入的序號相同）。
+ * 只在可使用時產生：已使用、已失效或未生效的券不回傳券號。
+ */
+export async function getWalletQrCode(
+  prisma: PrismaClient,
+  fan: FanIdentity,
+  instanceId: string,
+  now?: number,
+): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: 'NOT_FOUND' | 'NOT_STAFF_SCAN' | 'NOT_AVAILABLE' }> {
+  const view = await getFanCoupon(prisma, fan, instanceId, now);
+  if (!view) return { ok: false, reason: 'NOT_FOUND' };
+  if (view.coupon.redeemMode !== 'STAFF_SCAN') return { ok: false, reason: 'NOT_STAFF_SCAN' };
+  if (!view.code || (view.walletStatus !== 'AVAILABLE' && view.walletStatus !== 'EXPIRING')) {
+    return { ok: false, reason: 'NOT_AVAILABLE' };
+  }
+  const dataUrl = await QRCode.toDataURL(view.code, { margin: 1, width: 480, errorCorrectionLevel: 'M' });
+  return { ok: true, dataUrl };
 }

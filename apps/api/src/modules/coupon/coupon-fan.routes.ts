@@ -15,6 +15,7 @@ import { getBindingStore } from '../identity-binding/binding-code.js';
 import { claimByToken, openInstance, redeemCoupon } from './coupon-redeem.service.js';
 import { getFanCoupon, isOwnedByFan } from './coupon-fan.service.js';
 import {
+  getWalletQrCode,
   listWallet,
   openWalletSession,
   redeemWithStaffCode,
@@ -107,6 +108,21 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const fan = request.fanCoupon!;
     const { items, counts } = await listWallet(app.prisma, fan);
     return { success: true, data: items, meta: { counts } };
+  });
+
+  /** 店員掃碼券的 QR Code（data URL）。只在可使用時產生。 */
+  app.get('/:id/qrcode', { preHandler: authenticateFan }, async (request, reply) => {
+    const fan = request.fanCoupon!;
+    const { id } = request.params as { id: string };
+    const result = await getWalletQrCode(app.prisma, fan, id);
+    if (!result.ok) {
+      const messages = { NOT_FOUND: '查無此券', NOT_STAFF_SCAN: '此券不需出示 QR Code', NOT_AVAILABLE: '此券目前無法使用' };
+      return reply.status(result.reason === 'NOT_FOUND' ? 404 : 409).send({
+        success: false,
+        error: { code: result.reason, message: messages[result.reason] },
+      });
+    }
+    return { success: true, data: { dataUrl: result.dataUrl } };
   });
 
   /** 開始使用店員驗證碼券：開啟 5 分鐘的核銷時段，回傳結束時間。 */
