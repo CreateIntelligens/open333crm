@@ -15,3 +15,4 @@ export * from './sla/index.js';
 export * from './utils/runtime-endpoints.js';
 export * from './line-flex-template.js';
 export * from './safe-reply.js';
+export { staffCodeError, findLockedChanges, LOCKED_FIELDS } from './coupon/rules.js';

@@ -7,7 +7,7 @@ import {
   AlertTriangle, BarChart3, Bell, BookOpen, Briefcase, ChevronDown, ChevronRight, CreditCard,
   FileText, FlaskConical, Gauge, Link2, LogOut, Menu, MessageSquare, MessagesSquare,
   Network, PanelLeftClose, PanelLeftOpen, PieChart, Send, Settings,
-  Smartphone, Tags, Trophy, Users, X, Zap, type LucideIcon,
+  Smartphone, Tags, Ticket, Trophy, Users, X, Zap, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
@@ -59,6 +59,7 @@ const NAV_TREE: NavNode[] = [
           { id: 'marketing-broadcasts', label: '廣播', href: '/dashboard/marketing/broadcasts', icon: Send },
           { id: 'marketing-segments', label: '受眾分群', href: '/dashboard/marketing/segments', icon: Users },
           { id: 'marketing-materials', label: '素材庫', href: '/dashboard/marketing/materials', icon: FileText },
+          { id: 'marketing-coupons', label: '優惠券', href: '/dashboard/marketing/coupons', icon: Ticket, perm: 'coupon.view' },
         ],
       },
       {

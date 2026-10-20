@@ -12,21 +12,23 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface Props {
-  /** 目前 active 的 tab：campaigns / broadcasts / segments / templates / materials / quick-broadcast */
+  /** 目前 active 的 tab：campaigns / broadcasts / segments / materials / coupons */
   active: string;
 }
 
 export function MarketingTabs({ active }: Props) {
   const router = useRouter();
+  const { hasPermission } = useAuth();
 
   const handleChange = (v: string) => {
-    if (v === 'materials') {
-      router.push('/dashboard/marketing/materials');
+    if (v === 'materials' || v === 'coupons') {
+      router.push(`/dashboard/marketing/${v}`);
       return;
     }
-    if (active === 'materials') {
+    if (active === 'materials' || active === 'coupons') {
       // 從素材庫跳回主頁，並帶 query 讓主頁 sync activeTab
       router.push(`/dashboard/marketing?tab=${v}`);
       return;
@@ -43,6 +45,7 @@ export function MarketingTabs({ active }: Props) {
           <TabsTrigger value="broadcasts">廣播</TabsTrigger>
           <TabsTrigger value="segments">受眾分群</TabsTrigger>
           <TabsTrigger value="materials">素材庫</TabsTrigger>
+          {hasPermission('coupon.view') && <TabsTrigger value="coupons">優惠券</TabsTrigger>}
         </TabsList>
       </Tabs>
     </div>
