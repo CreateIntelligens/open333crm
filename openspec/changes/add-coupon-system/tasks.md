@@ -192,3 +192,46 @@
 
 - 對接特定客戶會員 API：端點、認證、請求／回應格式、欄位 mapping、錯誤處理
 - 提案前須向客戶確認：認證方式、端點規格、用什麼當 Key、是否雙向同步、測試環境
+
+## A8. 後台第一階段（依 CM-196 設計與《優惠券後台 UX 規則》）
+
+設計來源：Jira CM-196 附件（後台原型、UX 邏輯.pdf）。原型與 UX 規則不一致之處以 UX 規則為準。
+
+### 資料模型
+
+- [ ] 8.1 migration：券型、用途、效期模式、序號模式、核銷方式改為可留空（草稿用）；新增 displayCode、minSpend、percentCap、giftName、giftQty、exchangeItem、exchangeValueCap、maskCodeBeforeStart、claimTagTtlDays；CouponInstance 新增 issuedSourceName、issuedSourceMethod、issuedByName
+
+### 測試先行（feature：`apps/api/tests/feature/modules/coupon/coupon-admin.test.ts`；unit：`apps/api/tests/unit/modules/coupon/coupon-rules.test.ts`）
+
+- [ ] 8.2 測試「草稿只填券名即可儲存」「發布時檢查全部必填」
+- [ ] 8.3 測試「元折抵的折抵金額須小於門檻」「百分比超出範圍」「贈品券缺少贈品名稱」「兌換券缺少兌換品項」
+- [ ] 8.4 測試「驗證碼位數或字元不符」「驗證碼為連續或重複數字」（unit）、「開頭為 0 的驗證碼完整保留」
+- [ ] 8.5 測試「修改已發布券的鎖定欄位」「修改已發布券的可改欄位」「草稿可修改所有欄位」
+- [ ] 8.6 測試「調低發行總量不可低於已發放張數」「每人上限不可大於發行總量」
+- [ ] 8.7 測試「共用碼與其他券重複」「其他租戶使用相同共用碼」「共用碼格式不符」
+- [ ] 8.8 測試「建立券時產生券號」
+- [ ] 8.9 測試「依券名或券號搜尋」「狀態計數不受狀態篩選影響」「每列帶出發放與核銷張數」「列表不含其他租戶的券」
+- [ ] 8.10 測試「停用券使已發出的券失效」「暫停發放不影響已領取的券」「已結束的券不可恢復」
+- [ ] 8.11 測試「複製進行中的券」「刪除草稿」「刪除已發布的券」
+- [ ] 8.12 測試「序號搜尋忽略連字號與大小寫」「依狀態篩選」「每頁 50 筆」
+- [ ] 8.13 測試「對話發券記錄座席名稱」
+- [ ] 8.14 測試「標籤依時效自動移除」「商家關閉生效前遮蔽」
+
+### 實作
+
+- [ ] 8.15 service：草稿／發布驗證分離、券型面額欄位、驗證碼規則、鎖定欄位、總量下限、共用碼唯一、券號產生
+- [ ] 8.16 service：列表搜尋與計數、複製、只刪草稿、提前結束作廢未使用的券、序號明細篩選、發放來源快照、標籤時效、生效前遮蔽開關
+- [ ] 8.17 route：Zod 驗證新欄位；新增 `POST /:id/duplicate`、`GET /shared-code/check`
+- [ ] 8.18 前端：列表頁 `/dashboard/marketing/coupons`（搜尋、狀態分段、操作選單、確認框、系統狀態）
+- [ ] 8.19 前端：建立／編輯頁（七區塊、設定進度、發布確認框與最壞成本、離開提醒、鎖定欄位唯讀）
+- [ ] 8.20 前端：詳情頁（五指標卡、序號明細與歷程側欄、設定分頁、驗證碼遮蔽）
+- [ ] 8.21 前端元件測試：發布確認框列出鎖定設定、驗證碼前端格式檢查、離開提醒
+- [ ] 8.22 匯出序號明細超過 5,000 筆改背景產生並通知下載
+
+### 完成定義
+
+- [ ] 8.23 `pnpm test`、`pnpm test:feature` 通過
+- [ ] 8.24 `check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
+- [ ] 8.25 `node scripts/validate-openspec.mjs add-coupon-system` 通過
+- [ ] 8.26 CHANGELOG.md 新增條目
+
