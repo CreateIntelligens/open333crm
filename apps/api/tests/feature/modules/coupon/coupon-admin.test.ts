@@ -23,7 +23,8 @@ import {
 } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
-import { listInstances } from '#src/modules/coupon/coupon-stats.service.js';
+import { listInstances, getCouponStats } from '#src/modules/coupon/coupon-stats.service.js';
+import { importCodes } from '#src/modules/coupon/coupon-import.service.js';
 
 const owner = new PrismaClient();
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_TENANT } } });
@@ -421,6 +422,23 @@ describe('序號明細查詢', () => {
     assert.equal(r.total, 120);
     assert.equal(r.items.length, 20);
     assert.equal(r.limit, 50);
+  });
+});
+
+describe('序號包顯示庫存總數', () => {
+  it('序號包顯示庫存總數', async () => {
+    const c = await draft('序號包總數', {
+      ...PUBLISHABLE, codeMode: 'IMPORTED_CODES', codePrefix: null, perContactLimit: 1,
+    });
+    const stamp = Date.now().toString(36).toUpperCase();
+    await importCodes(prisma, tenantId, c.id, [1, 2, 3, 4, 5].map((n) => `POOL${stamp}${n}`).join('\n'));
+    await inTenant((tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'));
+    await issueCoupons(prisma, tenantId, c.id, {
+      contactIds: [await newContact('序號包甲'), await newContact('序號包乙')], issuedVia: 'inbox',
+    });
+    const stats = await inTenant((tx) => getCouponStats(tx, tenantId, c.id));
+    assert.equal(stats?.poolSize, 5);
+    assert.equal(stats?.issued, 2);
   });
 });
 

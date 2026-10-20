@@ -214,6 +214,7 @@
 - [x] 8.10 測試「停用券使已發出的券失效」「暫停發放不影響已領取的券」「已結束的券不可恢復」
 - [x] 8.11 測試「複製進行中的券」「刪除草稿」「刪除已發布的券」
 - [x] 8.12 測試「序號搜尋忽略連字號與大小寫」「依狀態篩選」「每頁 50 筆」
+- [x] 8.12a 測試「序號包顯示庫存總數」，並在成效 API 回傳 poolSize
 - [x] 8.13 測試「對話發券記錄座席名稱」
 - [x] 8.14 測試「標籤依時效自動移除」「商家關閉生效前遮蔽」
 
@@ -222,16 +223,16 @@
 - [x] 8.15 service：草稿／發布驗證分離、券型面額欄位、驗證碼規則、鎖定欄位、總量下限、共用碼唯一、券號產生
 - [x] 8.16 service：列表搜尋與計數、複製、只刪草稿、提前結束作廢未使用的券、序號明細篩選、發放來源快照、標籤時效、生效前遮蔽開關
 - [x] 8.17 route：Zod 驗證新欄位；新增 `POST /:id/duplicate`、`GET /shared-code/check`
-- [ ] 8.18 前端：列表頁 `/dashboard/marketing/coupons`（搜尋、狀態分段、操作選單、確認框、系統狀態）
-- [ ] 8.19 前端：建立／編輯頁（七區塊、設定進度、發布確認框與最壞成本、離開提醒、鎖定欄位唯讀）
-- [ ] 8.20 前端：詳情頁（五指標卡、序號明細與歷程側欄、設定分頁、驗證碼遮蔽）
-- [ ] 8.21 前端元件測試：發布確認框列出鎖定設定、驗證碼前端格式檢查、離開提醒
+- [x] 8.18 前端：列表頁 `/dashboard/marketing/coupons`（搜尋、狀態分段、操作選單、確認框、系統狀態）
+- [x] 8.19 前端：建立／編輯頁（七區塊、設定進度、發布確認框與最壞成本、離開提醒、鎖定欄位唯讀）
+- [x] 8.20 前端：詳情頁（五指標卡、序號明細與歷程側欄、設定分頁、驗證碼遮蔽）
+- [x] 8.21 前端元件測試：發布確認框列出鎖定設定、驗證碼前端格式檢查、離開提醒
 - [ ] 8.22 匯出序號明細超過 5,000 筆改背景產生並通知下載
 
 ### 完成定義
 
-- [ ] 8.23 `pnpm test`、`pnpm test:feature` 通過
-- [ ] 8.24 `check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
-- [ ] 8.25 `node scripts/validate-openspec.mjs add-coupon-system` 通過
-- [ ] 8.26 CHANGELOG.md 新增條目
+- [x] 8.23 `pnpm test`、`pnpm test:feature` 通過
+- [x] 8.24 `check-tenant-scoping.mjs --strict`、`check-prisma-admin-usage.mjs --strict` 沒有新增違規
+- [x] 8.25 `node scripts/validate-openspec.mjs add-coupon-system` 通過
+- [x] 8.26 CHANGELOG.md 新增條目
 

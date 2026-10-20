@@ -65,6 +65,8 @@ export type CouponInput = Partial<
 >;
 
 export interface CouponStats {
+  /** 序號包匯入的序號總數；非序號包模式為 null */
+  poolSize: number | null;
   issued: number;
   claimed: number;
   opened: number;

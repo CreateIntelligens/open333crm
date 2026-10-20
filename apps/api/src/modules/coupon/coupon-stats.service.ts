@@ -21,6 +21,8 @@ export interface CouponStats {
   revoked: number;
   /** 尚待領取（FB／IG 憑證未使用） */
   pendingClaim: number;
+  /** 序號包匯入的序號總數（含已配發）；非序號包模式為 null */
+  poolSize: number | null;
   /** 已核銷 ÷ 已領取。無人領取時為 null，不是 0——沒有分母不等於成效為零 */
   redeemRate: number | null;
   /** 已領取 ÷ 發出。衡量發券訊息的吸引力 */
@@ -32,7 +34,7 @@ export async function getCouponStats(
   tenantId: string,
   couponId: string,
 ): Promise<CouponStats | null> {
-  const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId }, select: { id: true } });
+  const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId }, select: { id: true, codeMode: true } });
   if (!coupon) return null;
 
   // 用逐一 count 而非 groupBy —— TenantDb 是三種 client 的聯集，
@@ -50,8 +52,14 @@ export async function getCouponStats(
   const claimed = claimedOnly + openedOnly + redeemed;
   const opened = openedOnly + redeemed;
 
+  const poolSize =
+    coupon.codeMode === 'IMPORTED_CODES'
+      ? await db.couponCode.count({ where: { couponId, tenantId } })
+      : null;
+
   return {
     couponId,
+    poolSize,
     issued,
     claimed,
     opened,
