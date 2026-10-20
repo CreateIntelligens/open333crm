@@ -236,3 +236,37 @@
 - [x] 8.25 `node scripts/validate-openspec.mjs add-coupon-system` 通過
 - [x] 8.26 CHANGELOG.md 新增條目
 
+## A9. 顧客票券夾第一階段（依 CM-197 與 design D12）
+
+設計來源：Figma「優惠券系統 (New)」顧客端、Jira CM-197 附件「顧客票券夾.html」。
+
+### 資料模型
+
+- [ ] 9.1 migration：Contact 新增 identityVerifiedAt、identityVerifiedVia
+
+### 測試先行（feature：`apps/api/tests/feature/modules/coupon/coupon-wallet.test.ts`、`apps/api/tests/feature/modules/identity-binding/identity-verified.test.ts`）
+
+- [ ] 9.2 測試「登記手機後記錄」「登記觸發合併」
+- [ ] 9.3 測試「已歸戶的顧客開啟票券連結」「未歸戶的顧客開啟票券連結」「客服手動填寫的手機不算歸戶」「租戶沒有啟用任何登記方式」「未經驗證的存取請求」
+- [ ] 9.4 測試「開啟有效連結」「連結過期」「聯絡人已合併」「只能存取自己的券」
+- [ ] 9.5 測試「FB 或 IG 對話中發出的券」
+- [ ] 9.6 測試「即將到期的券主動提示」「已過到期時間的券列為已失效」「活動提前結束的券註明原因」「分頁數量」（unit 測狀態判定）
+- [ ] 9.7 測試「時段內輸入正確驗證碼」「驗證碼錯誤」「錯誤達 5 次」「時段結束」「沒有開始就送出驗證碼」
+- [ ] 9.8 測試「店員掃碼後查詢」
+
+### 實作
+
+- [ ] 9.9 One ID 登記成功時寫入歸戶驗證時間；合併時保留
+- [ ] 9.10 票券連結權杖（core，API 與 workers 共用）、發券訊息改用票券連結
+- [ ] 9.11 `POST /fan/coupons/session`：權杖換顧客憑證或回傳驗證要求；登記頁支援送出後返回
+- [ ] 9.12 對話發券與自動化發券不再依渠道產生領取憑證；移除 Account Link（fan-auth、ticket 交換、webhook 分流）
+- [ ] 9.13 券夾狀態判定與分頁數量、券詳情欄位（面額、條件、效期、核銷方式說明）
+- [ ] 9.14 店員驗證碼核銷時段：`POST /:id/start`、`POST /:id/redeem-code`
+- [ ] 9.15 前端：`/coupon/open/[token]` 入口與驗證引導、`/coupon/wallet` 券夾、`/coupon/wallet/[id]` 詳情與三種核銷、核銷結果與例外狀態
+- [ ] 9.16 前端元件測試：驗證引導、倒數與驗證碼輸入、滑動核銷門檻、狀態頁
+
+### 完成定義
+
+- [ ] 9.17 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
+- [ ] 9.18 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+
