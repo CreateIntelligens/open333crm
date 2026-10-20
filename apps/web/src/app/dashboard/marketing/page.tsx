@@ -213,9 +213,11 @@ function CampaignTab() {
 
 // ─── Broadcast Tab ─────────────────────────────────────────────────────────
 
-/** FB 群發立即發送前的提醒（change broadcast-messaging-window） */
-const FB_WINDOW_SEND_NOTICE =
-  'Facebook 只會送給 24 小時內傳過訊息給粉專的人，其他人會自動略過，不算發送失敗。';
+/** FB／IG 群發立即發送前的提醒（change broadcast-messaging-window） */
+const META_WINDOW_SEND_NOTICE =
+  'Facebook／Instagram 只會送給 24 小時內傳過訊息給粉專或 IG 帳號的人，其他人會自動略過，不算發送失敗。';
+/** 有 24 小時訊息視窗的渠道，與後端 plugin 的 messagingWindowHours 一致 */
+const META_WINDOW_CHANNEL_TYPES = ['FB', 'THREADS'];
 
 function BroadcastTab() {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
@@ -350,7 +352,7 @@ function BroadcastTab() {
       : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
     const broadcast = broadcasts.find((b: any) => b.id === id);
     const channel = channels.find((c: any) => c.id === broadcast?.channelId);
-    const question = materialChannelKey(channel?.channelType) === 'fb' ? `${base}\n\n${FB_WINDOW_SEND_NOTICE}` : base;
+    const question = META_WINDOW_CHANNEL_TYPES.includes(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
     if (!confirm(question)) return;
     setSendingId(id);
     try {

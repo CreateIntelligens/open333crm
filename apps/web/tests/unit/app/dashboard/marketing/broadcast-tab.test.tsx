@@ -33,6 +33,7 @@ vi.mock('#src/hooks/useChannels.js', () => ({
     channels: [
       { id: 'ch-line', displayName: '官方 LINE', channelType: 'LINE', isActive: true },
       { id: 'ch-fb', displayName: '粉專', channelType: 'FB', isActive: true },
+      { id: 'ch-ig', displayName: 'IG', channelType: 'THREADS', isActive: true },
     ],
   }),
 }));
@@ -264,12 +265,15 @@ test('FB 群發立即發送前提醒只會送給 24 小時內互動過的人', a
   data.broadcasts = [
     { id: 'b-fb', name: 'FB 活動', status: 'draft', channelId: 'ch-fb', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
     { id: 'b-line', name: 'LINE 活動', status: 'draft', channelId: 'ch-line', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+    { id: 'b-ig', name: 'IG 活動', status: 'draft', channelId: 'ch-ig', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
   ];
   const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
   render(<MarketingPage />);
-  const [fbSend, lineSend] = screen.getAllByRole('button', { name: /立即發送/ });
+  const [fbSend, lineSend, igSend] = screen.getAllByRole('button', { name: /立即發送/ });
   fireEvent.click(fbSend);
-  assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息給粉專的人/);
+  assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息給粉專/);
   fireEvent.click(lineSend);
   assert.doesNotMatch(String(confirmSpy.mock.lastCall?.[0]), /24 小時/);
+  fireEvent.click(igSend);
+  assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息/, 'IG 也有 24 小時視窗');
 });
