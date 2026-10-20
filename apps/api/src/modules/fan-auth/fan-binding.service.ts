@@ -153,3 +153,33 @@ export async function isVerified(
     return attr != null;
   });
 }
+
+export type BindingTargetResult =
+  | { result: 'OK'; channel: { credentialsEncrypted: string } }
+  | { result: 'MISMATCH' }
+  | { result: 'CHANNEL_NOT_FOUND' };
+
+/**
+ * 驗證這組 channel／contact／uid 確實屬於同一租戶且彼此對應，
+ * 否則可拿他人 contactId 配自己的 lineUid 完成綁定。對應成立才回傳渠道憑證。
+ */
+export async function verifyBindingTarget(
+  prisma: PrismaClient,
+  params: { tenantId: string; channelId: string; contactId: string; lineUid: string },
+): Promise<BindingTargetResult> {
+  const { tenantId, channelId, contactId, lineUid } = params;
+  return withTenant(prisma, tenantId, async (tx) => {
+    const identity = await tx.channelIdentity.findFirst({
+      where: { channelId, uid: lineUid, contactId },
+      select: { id: true },
+    });
+    if (!identity) return { result: 'MISMATCH' };
+
+    const channel = await tx.channel.findFirst({
+      where: { id: channelId, tenantId },
+      select: { credentialsEncrypted: true },
+    });
+    if (!channel) return { result: 'CHANNEL_NOT_FOUND' };
+    return { result: 'OK', channel };
+  });
+}

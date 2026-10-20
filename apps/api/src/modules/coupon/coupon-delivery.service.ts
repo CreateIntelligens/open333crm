@@ -9,7 +9,7 @@ import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { getConfig } from '../../config/env.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import { withTenant, type TenantDb } from '../../lib/tenant-db.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 
 export type DeliveryStrategy = 'reply' | 'push';
@@ -117,4 +117,21 @@ export async function sendCouponMessage(
     });
     return { sent: false, reason: (err as Error).message };
   }
+}
+
+/**
+ * 對話發券的對象：從對話反查聯絡人與渠道。不接受請求指定 contactId，避免發券給非對話對象。
+ */
+export async function findConversationTarget(
+  db: TenantDb,
+  tenantId: string,
+  conversationId: string,
+) {
+  return db.conversation.findFirst({
+    where: { id: conversationId, tenantId },
+    select: {
+      contactId: true,
+      channel: { select: { channelType: true } },
+    },
+  });
 }

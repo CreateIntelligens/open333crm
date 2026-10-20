@@ -18,7 +18,7 @@ import {
 import { changeStatus } from './coupon-lifecycle.service.js';
 import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
-import { sendCouponMessage, requiresClaimToken } from './coupon-delivery.service.js';
+import { sendCouponMessage, requiresClaimToken, findConversationTarget } from './coupon-delivery.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 import {
   getCouponStats,
@@ -174,13 +174,7 @@ export default async function couponRoutes(app: FastifyInstance) {
     }
 
     // 從對話反查聯絡人與渠道——不接受請求指定 contactId，避免發券給非對話對象
-    const conversation = await request.tenantPrisma.conversation.findFirst({
-      where: { id: body.conversationId, tenantId },
-      select: {
-        contactId: true,
-        channel: { select: { channelType: true } },
-      },
-    });
+    const conversation = await findConversationTarget(request.tenantPrisma, tenantId, body.conversationId);
     if (!conversation?.contactId || !conversation.channel) {
       return reply.status(404).send({
         success: false,

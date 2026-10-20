@@ -9,8 +9,8 @@
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
 import { claimByToken, openInstance, redeemCoupon } from './coupon-redeem.service.js';
+import { listFanCoupons, getFanCoupon, isOwnedByFan } from './coupon-fan.service.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -29,61 +29,6 @@ async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
   }
   request.fanCoupon = payload;
 }
-
-/** 顧客端看得到的券欄位。刻意不含 claimToken 與內部識別。 */
-function toFanView(i: {
-  id: string;
-  code: string;
-  status: string;
-  expiresAt: Date | null;
-  claimedAt: Date | null;
-  openedAt: Date | null;
-  redeemedAt: Date | null;
-  coupon: {
-    name: string; description: string | null; terms: string | null; imageUrl: string | null;
-    couponType: string; discountAmount: number | null; discountPercent: number | null;
-    validityMode: string; startAt: Date | null; redeemMode: string; afterOpenMinutes: number | null;
-  };
-}) {
-  const now = new Date();
-  // 未到生效日不露券號（spec：遮蔽並說明原因，不是給空白）
-  const notYetValid =
-    i.coupon.validityMode === 'FIXED' && i.coupon.startAt != null && i.coupon.startAt > now;
-
-  return {
-    id: i.id,
-    code: notYetValid ? null : i.code,
-    codeHidden: notYetValid,
-    availableAt: notYetValid ? i.coupon.startAt : null,
-    status: i.status,
-    expiresAt: i.expiresAt,
-    claimedAt: i.claimedAt,
-    openedAt: i.openedAt,
-    redeemedAt: i.redeemedAt,
-    coupon: {
-      name: i.coupon.name,
-      description: i.coupon.description,
-      // 條款已於儲存時消毒，此處直接輸出，不再二次轉義
-      terms: i.coupon.terms,
-      imageUrl: i.coupon.imageUrl,
-      couponType: i.coupon.couponType,
-      discountAmount: i.coupon.discountAmount,
-      discountPercent: i.coupon.discountPercent,
-      redeemMode: i.coupon.redeemMode,
-      afterOpenMinutes: i.coupon.afterOpenMinutes,
-    },
-  };
-}
-
-const COUPON_INCLUDE = {
-  coupon: {
-    select: {
-      name: true, description: true, terms: true, imageUrl: true,
-      couponType: true, discountAmount: true, discountPercent: true,
-      validityMode: true, startAt: true, redeemMode: true, afterOpenMinutes: true,
-    },
-  },
-} as const;
 
 export default async function couponFanRoutes(app: FastifyInstance) {
   /**
@@ -119,36 +64,20 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const fan = request.fanCoupon!;
     const { status } = request.query as { status?: string };
 
-    const items = await withTenant(app.prisma, fan.tenantId, (tx) =>
-      tx.couponInstance.findMany({
-        where: {
-          tenantId: fan.tenantId,
-          contactId: fan.contactId,
-          // 未領取的券不屬於任何人的券夾——它還在等人用憑證來領
-          status: status
-            ? (status as never)
-            : { in: ['CLAIMED', 'OPENED', 'REDEEMED', 'EXPIRED'] },
-        },
-        include: COUPON_INCLUDE,
-        orderBy: [{ expiresAt: 'asc' }, { claimedAt: 'desc' }],
-      }));
+    const items = await listFanCoupons(app.prisma, fan, status);
 
-    return { success: true, data: items.map(toFanView) };
+    return { success: true, data: items };
   });
 
   app.get('/:id', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
     const { id } = request.params as { id: string };
 
-    const instance = await withTenant(app.prisma, fan.tenantId, (tx) =>
-      tx.couponInstance.findFirst({
-        where: { id, tenantId: fan.tenantId, contactId: fan.contactId },
-        include: COUPON_INCLUDE,
-      }));
+    const instance = await getFanCoupon(app.prisma, fan, id);
     if (!instance) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }
-    return { success: true, data: toFanView(instance) };
+    return { success: true, data: instance };
   });
 
   /** 開啟券。AFTER_OPEN 模式由此刻起算效期，故是有副作用的動作，用 POST。 */
@@ -175,11 +104,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
 
     // 先確認這張券屬於請求者，避免以他人 instanceId 觸發核銷
-    const owned = await withTenant(app.prisma, fan.tenantId, (tx) =>
-      tx.couponInstance.findFirst({
-        where: { id, tenantId: fan.tenantId, contactId: fan.contactId },
-        select: { id: true },
-      }));
+    const owned = await isOwnedByFan(app.prisma, fan, id);
     if (!owned) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }

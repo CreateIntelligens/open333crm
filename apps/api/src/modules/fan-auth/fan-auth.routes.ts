@@ -10,8 +10,7 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '@open333crm/core';
 import { decryptCredentials } from '../channel/channel.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
-import { startBinding } from './fan-binding.service.js';
+import { startBinding, verifyBindingTarget } from './fan-binding.service.js';
 import { takeBindingTicket, takeBindingFailure } from './binding-ticket-store.js';
 
 /** 綁定失敗原因對顧客的說明。技術細節留在 log，不外露。 */
@@ -44,31 +43,21 @@ export default async function fanAuthRoutes(app: FastifyInstance) {
       });
     }
 
-    // 驗證這組 channel／contact／uid 確實屬於同一租戶且彼此對應，
-    // 否則可拿他人 contactId 配自己的 lineUid 完成綁定
-    const valid = await withTenant(app.prisma, tenantId, async (tx) => {
-      const identity = await tx.channelIdentity.findFirst({
-        where: { channelId, uid: lineUid, contactId },
-        select: { id: true },
-      });
-      return identity != null;
-    });
-    if (!valid) {
+    const target = await verifyBindingTarget(app.prisma, { tenantId, channelId, contactId, lineUid });
+    if (target.result === 'MISMATCH') {
       logger.warn('[FanAuth] 綁定參數不對應', { tenantId, channelId });
       return reply.status(403).send({
         success: false,
         error: { code: 'FORBIDDEN', message: '參數不正確' },
       });
     }
-
-    const channel = await withTenant(app.prisma, tenantId, (tx) =>
-      tx.channel.findFirst({ where: { id: channelId, tenantId }, select: { credentialsEncrypted: true } }));
-    if (!channel) {
+    if (target.result === 'CHANNEL_NOT_FOUND') {
       return reply.status(404).send({
         success: false,
         error: { code: 'NOT_FOUND', message: '查無此渠道' },
       });
     }
+    const { channel } = target;
 
     try {
       const credentials = decryptCredentials(channel.credentialsEncrypted);
