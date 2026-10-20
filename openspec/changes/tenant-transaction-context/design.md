@@ -49,7 +49,7 @@ export function inTenant<T>(
 - 每一項各自包 `try/catch`，失敗時用 `@open333crm/core` 的 `logger` 記錄，再繼續下一項。理由：資料已經 commit，回應不該因為推播失敗而變成錯誤。
 - `publish` 自己填 `tenantId` 與 `timestamp`，service 只給事件名稱與 payload。這樣事件的租戶一定等於交易綁定的租戶。
 - `deps.io` 是選填，因為部分背景工作沒有 `io`。沒有 `io` 時呼叫 `emit`，會在交易內立刻丟錯，讓交易 rollback。這是寫錯程式，要在測試階段就發現，不要等到 commit 之後才默默丟掉推播。
-- 房間以 `tenant:` 開頭、但不是 `tenant:<ctx.tenantId>` 時，`emit` 也在交易內丟錯（PR #341 審查意見）。`conversation:`、`agent:` 房間沒有租戶前綴，這個檢查擋不到，要由呼叫端確認 ID 屬於本租戶。不採用「`emit` 只能推到租戶房間」：既有程式有推到 `conversation:`、`agent:` 房間的需求。測試用的 `createMockTenantCtx()` 做同樣的檢查。
+- 房間以 `tenant:` 開頭、但不是 `tenant:<ctx.tenantId>` 時，`emit` 也在交易內丟錯（PR #341 審查意見）。`conversation:`、`agent:` 房間沒有租戶前綴，這個檢查擋不到，要由呼叫端確認 ID 屬於本租戶。房間名稱統一帶租戶 ID 之後才能全面檢查，見 #342 與 AUDIT RLS-09。不採用「`emit` 只能推到租戶房間」：既有程式有推到 `conversation:`、`agent:` 房間的需求。測試用的 `createMockTenantCtx()` 做同樣的檢查。
 
 替代方案：`ctx` 只放 `afterCommit(fn)` 一個方法，推播和事件都由 service 自己寫 callback。不採用的原因：階段 1b 要把事件改走 outbox，事件必須是資料（名稱加 payload），才能寫進資料表。callback 寫不進去。
 
@@ -119,6 +119,7 @@ service 的單元測試只需要確認「登記了什麼」。「commit 之後�
 - [交易內的 `Promise.all` 會依序執行] → 同上，階段 2 量測。
 - [交易內有外部呼叫時，會超過 5 秒逾時] → AGENTS.md 的新規則寫明「外部呼叫不能放在交易內」。搬遷 PR 依 #337 的檢查清單逐檔確認。
 - [ratchet 只計數，不判斷語意] → 它的用途只是不讓舊寫法變多。新寫法是否正確，由 code review 與測試把關。
+- [ratchet 以正規式比對，擋不住刻意繞過的寫法] → 它防的是照舊習慣寫出的一般寫法，例如 `withTenant(`、`inTenant<T>(`。泛型參數內含括號這類寫法要靠 code review 發現。不採用 TypeScript AST：要重寫計數方式並重算基準，換來的只是擋住罕見寫法（PR #341 審查時決定）。
 - [`tenantHandler()` 的泛型與 Fastify 的型別推導不合] → 階段 2 試做時若推導不出 `request.params` 的型別，回頭調整 `tenantHandler()` 的型別，不在 route 裡加 `as`。
 
 ## Migration Plan

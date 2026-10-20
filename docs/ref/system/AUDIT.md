@@ -50,6 +50,7 @@
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
 | [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
+| [RLS-09](#rls-09) | 租戶隔離與權限 | P3 | 已定方向 | Socket 房間只有 `tenant:` 帶租戶 ID，推播端無法檢查 `conversation:`、`agent:` 等房間屬於哪個租戶 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色 | 靜態確認 |
@@ -208,6 +209,17 @@ service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`�
 6. 刪除 `TenantDb`、`tenantScopedClient`、`request.tenantPrisma`。
 
 搬遷進度看 `scripts/check-tenant-ctx.baseline.json`。`node scripts/check-tenant-ctx.mjs --strict` 在舊寫法增加時失敗。
+
+<a id="rls-09"></a>
+### RLS-09：推播端無法檢查房間屬於哪個租戶
+
+Socket.IO 房間只有 `tenant:<tenantId>` 帶租戶 ID。`conversation:<id>`、`agent:<id>`、`visitor:<channelId>:<token>`、`chatbox:<sessionId>` 只帶資料本身的 ID。
+
+前端訂閱房間時，`apps/api/src/modules/socket/socket-room-authorization.ts` 會檢查該資料屬於連線的租戶，所以別的租戶的連線進不了這些房間。推播端沒有對應的檢查：`io.to(room)` 與 `ctx.emit(room, …)` 只收一個字串。service 用了請求帶進來、沒有經過租戶查詢的 ID 時，推播會送到別的租戶的房間。用 `ctx.tx` 查出來的 ID 受 RLS 約束，不會有這個問題。目前沒有逐一檢查既有的推播呼叫，還沒有發現實際發生的路徑。
+
+`ctx.emit()`（`apps/api/src/lib/tenant-ctx.ts`）只擋得住一種情況：房間以 `tenant:` 開頭，但不是交易綁定的租戶。
+
+**方向（#342，2026-10-20 定案）。** 定義統一的房間名稱格式，所有房間都以 `tenant:<tenantId>` 開頭，用共用函式組成；`ctx.emit()` 只接受以 `ctx.tenantId` 開頭的房間。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點

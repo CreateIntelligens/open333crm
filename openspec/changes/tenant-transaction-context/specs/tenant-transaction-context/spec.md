@@ -25,7 +25,7 @@
 
 ### Requirement: 推播與事件在 commit 之後才送出
 
-交易內登記的 Socket 推播與業務事件 MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的推播與事件 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。推播的房間以 `tenant:` 開頭、但不是交易綁定租戶的房間時，系統 MUST 在交易內丟出錯誤，讓交易 rollback。一項推播或事件送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
+交易內登記的 Socket 推播與業務事件 MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的推播與事件 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。推播的房間以 `tenant:` 開頭、但不是交易綁定租戶的房間時，系統 MUST 在交易內丟出錯誤，讓交易 rollback。房間不以 `tenant:` 開頭時，系統不檢查房間所屬的租戶，呼叫端 MUST 只用交易內查詢取得的 ID 組成房間名稱。一項推播或事件送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
 
 #### Scenario: commit 之前不送出
 
@@ -87,7 +87,7 @@
 
 ### Requirement: 舊寫法的數量不得增加
 
-repo MUST 提供一個檢查腳本，計算下列寫法在 `apps/api/src` 中出現的次數，並與 repo 內的基準檔比較：`TenantDb` 型別、`request.tenantPrisma`，以及 service 檔內的 `withTenant(`、`$transaction(` 與開啟綁定租戶交易的呼叫。service 不自己開交易，所以最後一種寫法的基準是 0。以 `--strict` 執行時，任一寫法的次數比基準多，腳本 MUST 以 exit code 1 結束，並列出該寫法與出現的檔案。次數相同或減少時 MUST 以 exit code 0 結束；減少時 MUST 提示更新基準檔。不帶 `--strict` 時，腳本 MUST 只輸出報告並以 exit code 0 結束。
+repo MUST 提供一個檢查腳本，計算下列寫法在 `apps/api/src` 中出現的次數，並與 repo 內的基準檔比較：`TenantDb` 型別、`request.tenantPrisma`，以及 service 檔內的 `withTenant(`、`$transaction(` 與開啟綁定租戶交易的呼叫。service 不自己開交易，所以最後一種寫法的基準是 0。以 `--strict` 執行時，任一寫法的次數比基準多，腳本 MUST 以 exit code 1 結束，並列出該寫法與出現的檔案。次數相同或減少時 MUST 以 exit code 0 結束；減少時 MUST 提示更新基準檔。不帶 `--strict` 時，腳本 MUST 只輸出報告並以 exit code 0 結束。腳本以文字比對計數，涵蓋名稱後面接空白或簡單泛型參數的呼叫，不涵蓋刻意繞過的寫法，例如泛型參數內含括號。
 
 #### Scenario: 新增一處舊寫法
 

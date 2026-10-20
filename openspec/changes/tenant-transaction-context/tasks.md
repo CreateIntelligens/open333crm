@@ -50,6 +50,7 @@
 - [x] 7.4 `inTenant()` 與 `createMockTenantCtx()` 的 `emit` 檢查 `tenant:` 房間，讓 7.3 通過
 - [x] 7.5 寫失敗的測試：service 檔內的 `inTenant<string>(`、`withTenant <Row[]>(`、`prisma.$transaction (` 都算增加（Codex 審查，PR #341 實驗）。修正前失敗（exit 0）
 - [x] 7.6 `scripts/check-tenant-ctx.mjs` 的三個交易呼叫正規式允許泛型參數與空白，讓 7.5 通過。repo 本身的基準數字不變
+- [x] 7.7 PR 審查機器人第二輪的兩條意見不改程式，改在 spec 寫明保證的範圍：`ctx.emit()` 不檢查非 `tenant:` 房間的所屬租戶（另開 #342、AUDIT RLS-09）；ratchet 不涵蓋刻意繞過的寫法
 
 ## Workflow follow-up
 
