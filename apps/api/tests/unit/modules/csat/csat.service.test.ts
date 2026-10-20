@@ -28,7 +28,7 @@ const io = { to: () => ({ emit: () => {} }) } as unknown as SocketIOServer;
  * 讀取時工單還沒寄過問卷；認領時 updateMany 回傳 claimedCount。
  * claimedCount 為 0 代表讀取之後，別次執行已經寄出，或客服已經重開工單。
  */
-function createDb(claimedCount: number) {
+function createDb(claimedCount: number, messageCreateError?: Error) {
   const order: string[] = [];
   const updateManyCalls: unknown[] = [];
   const messageCreateCalls: unknown[] = [];
@@ -58,6 +58,7 @@ function createDb(claimedCount: number) {
       create: async (args: { data: Record<string, unknown> }) => {
         order.push('message.create');
         messageCreateCalls.push(args);
+        if (messageCreateError) throw messageCreateError;
         return { id: 'msg-1', ...args.data };
       },
     },
@@ -106,4 +107,19 @@ test('工單到了寄送時間，寄出一份問卷', async () => {
   assert.equal(messageCreateCalls.length, 1);
   assert.equal(delivered.length, 1);
   assert.deepEqual(order, ['case.updateMany', 'message.create']);
+});
+
+test('認領之後建立問卷訊息失敗，下一期重試', async () => {
+  delivered.length = 0;
+  const failure = new Error('connection reset');
+  const { db, updateManyCalls } = createDb(1, failure);
+
+  await assert.rejects(sendCsatSurvey(db, io, CASE_ID), failure);
+
+  assert.equal(updateManyCalls.length, 2);
+  const claim = updateManyCalls[0] as { data: { csatSentAt: Date } };
+  const release = updateManyCalls[1] as { where: Record<string, unknown>; data: Record<string, unknown> };
+  assert.deepEqual(release.where, { id: CASE_ID, tenantId: TENANT_ID, csatSentAt: claim.data.csatSentAt });
+  assert.deepEqual(release.data, { csatSentAt: null });
+  assert.equal(delivered.length, 0);
 });

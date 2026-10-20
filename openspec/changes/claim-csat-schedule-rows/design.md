@@ -33,6 +33,12 @@ AGENTS.md「A job can run more than one time」要求排程在寄信或改狀態
 - 送到渠道是外部呼叫，不能放進 transaction，所以 transaction 也擋不住「已送出但沒寫入」或「已寫入但沒送出」。
 - 現在渠道送信失敗時 `csatSentAt` 也照樣寫入，問卷不會重寄。先認領的行為與現況一致。
 
+不包 transaction，所以建立訊息失敗時要自己還原認領（PR #335 審查意見）。修正前建立訊息失敗時 `csatSentAt` 還沒寫入，下一期會重試；只改成先認領的話，這張工單之後每一期都認領失敗，問卷永遠不會寄出。
+
+- `message.create()` 丟錯時，以 `case.updateMany({ where: { id, csatSentAt: now }, data: { csatSentAt: null } })` 還原，再重新丟出錯誤。條件是這次寫入的時間，只還原自己的認領；認領之後別的執行都認領失敗，不會在還原前插進來。
+- 只還原 `message.create()` 的失敗。訊息建立之後的步驟失敗時不還原，否則下一期會再建立一則問卷訊息。
+- 行程在認領之後被強制結束時，還原的程式不會執行，仍是下面「Risks」的「少處理一次」。
+
 ### D2：逾時結案的認領就是結案本身
 
 `case.update({ where: { id } })` 改成 `case.updateMany({ where: { id, tenantId: c.tenantId, status: 'RESOLVED', csatRespondedAt: null }, data: { status: 'CLOSED', closedAt: now } })`。`count === 0` 時跳過這張工單，不發布事件、不推送、不關閉對話。

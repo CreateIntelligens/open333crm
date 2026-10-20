@@ -23,6 +23,11 @@
 - **WHEN** 排程讀到一張狀態是 `RESOLVED` 的工單，但在認領之前，客服把工單改成 `IN_PROGRESS`
 - **THEN** 系統不寄出問卷，這張工單的 `csatSentAt` 維持空值
 
+#### Scenario: 認領之後建立問卷訊息失敗，下一期重試
+
+- **WHEN** 排程認領了一張工單，但在對話中建立問卷訊息時發生錯誤
+- **THEN** 系統把這張工單的 `csatSentAt` 還原成空值，不把問卷送到客人的渠道；下一次執行可以再認領這張工單並寄出問卷
+
 ### Requirement: 問卷逾時結案不覆蓋已變更的工單
 
 問卷逾時結案的排程 SHALL 在結案之前認領工單：只有工單屬於該租戶、狀態是 `RESOLVED`、而且客人還沒有回覆（`csatRespondedAt` 是空值），系統才把工單改成 `CLOSED`。認領失敗時，系統 SHALL NOT 改變工單，SHALL NOT 發布 `case.closed`，SHALL NOT 推送 `case.updated`，SHALL NOT 關閉工單底下的對話。
