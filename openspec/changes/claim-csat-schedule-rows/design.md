@@ -56,4 +56,5 @@ AGENTS.md「A job can run more than one time」要求排程在寄信或改狀態
 ## Risks / Trade-offs
 
 - [認領之後、做完之前行程被強制結束，這張工單不會再處理] → 問卷少寄一次，或工單已結案但沒有發事件、沒有關閉對話。重複寄問卷與覆蓋客服的操作比少做一次更糟，所以接受。發生時 log 會缺少「Sent CSAT survey」或「Auto-closed case」那一行，可以從 log 查出。
+- [還原認領的 `updateMany` 本身也失敗] → 拋出的是還原的錯誤，`message.create()` 的原始錯誤不會被記錄，`csatSentAt` 留著，這份問卷不會再寄。兩次資料庫操作接連失敗通常是資料庫斷線，不會產生錯誤資料，所以不另外處理（review-loop 第 2 輪記錄）。
 - [認領失敗時沒有 log] → 加一行 info log，寫明工單 id 與「已被處理或狀態已改變」，方便事後查證。
