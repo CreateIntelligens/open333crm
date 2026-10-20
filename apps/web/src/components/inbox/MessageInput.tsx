@@ -19,7 +19,7 @@ const MAX_QUICK_REPLIES = 13;
 const QUICK_REPLY_LABEL_MAX = 20;
 
 interface MessageInputProps {
-  onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>) => Promise<void>;
+  onSend: (content: string, contentType?: string, contentData?: Record<string, unknown>, privacyMode?: 'mask' | 'original') => Promise<void>;
   conversationId: string;
   channelType: ChannelType | string;
   disabled?: boolean;
@@ -50,6 +50,8 @@ export function MessageInput({
   const [draftLabel, setDraftLabel] = useState('');
   const [draftText, setDraftText] = useState('');
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const [privacyEnabled, setPrivacyEnabled] = useState<boolean | null>(null);
+  const [privacyMode, setPrivacyMode] = useState<'mask' | 'original'>('mask');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,6 +60,19 @@ export function MessageInput({
 
   // 只在 LINE channel 載入 presets（避免其他 channel 多餘請求）
   const { presets } = useQuickReplyPresets();
+
+  React.useEffect(() => {
+    let active = true;
+    api.get('/ai/privacy/status').then((res) => {
+      if (!active) return;
+      const enabled = res.data.data?.enabled === true;
+      setPrivacyEnabled(enabled);
+      setPrivacyMode('mask');
+    }).catch(() => {
+      if (active) setPrivacyEnabled(false);
+    });
+    return () => { active = false; };
+  }, [conversationId]);
 
   const handleApplyPreset = (preset: { items: QuickReplyItem[] }) => {
     setQuickReplies(preset.items.slice(0, MAX_QUICK_REPLIES));
@@ -80,7 +95,7 @@ export function MessageInput({
     setSendError(null);
     try {
       const contentData = quickReplies.length > 0 ? { quickReplies } : undefined;
-      await onSend(trimmed, 'text', contentData);
+      await onSend(trimmed, 'text', contentData, privacyEnabled ? privacyMode : undefined);
       setMessage('');
       setQuickReplies([]);
       if (textareaRef.current) {
@@ -383,6 +398,20 @@ export function MessageInput({
             </Button>
           )}
 
+          {privacyEnabled && (
+            <Button
+              type="button"
+              variant={privacyMode === 'mask' ? 'default' : 'outline'}
+              size="sm"
+              className="mb-0.5 shrink-0 text-xs"
+              disabled={isDisabled}
+              onClick={() => setPrivacyMode((mode) => mode === 'mask' ? 'original' : 'mask')}
+              title={privacyMode === 'mask' ? '目前會遮罩個資；點擊可保留原文' : '目前保留原文；點擊可遮罩個資'}
+            >
+              {privacyMode === 'mask' ? '個資遮罩' : '保留原文'}
+            </Button>
+          )}
+
           {/* Textarea */}
           <textarea
             ref={textareaRef}
@@ -404,6 +433,7 @@ export function MessageInput({
             disabled={!message.trim() || isDisabled}
             size="icon"
             className="shrink-0"
+            aria-label="送出訊息"
           >
             <Send className="h-4 w-4" />
           </Button>

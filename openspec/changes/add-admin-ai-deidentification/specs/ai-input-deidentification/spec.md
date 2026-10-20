@@ -36,6 +36,38 @@ When enabled, the system SHALL apply full category-label masking through 2md to 
 - **WHEN** an enabled Agent makes a subsequent turn containing tool results and nested string arguments
 - **THEN** the text and argument values are masked before model dispatch while tool names, call identifiers and non-string values retain their protocol meaning
 
+### Requirement: Store a protected representation for every message content
+
+When enabled, the system SHALL de-identify every textual `Message.content` payload before it is persisted, including inbound channel events, agent and automation messages, and agent-authored outbound messages. It SHALL store a masked representation alongside the message without storing upstream mappings, CSV or score data. Model, summary, cross-channel context and embedding reads SHALL prefer that masked representation.
+
+#### Scenario: Inbound channel message keeps an operational original
+- **WHEN** a channel delivers a text message containing personal information to an enabled tenant
+- **THEN** the CRM stores the original message for authorized customer-service work, stores its masked representation with the message, and all later model-facing reads use the masked representation
+
+#### Scenario: System-created message is protected
+- **WHEN** an enabled tenant creates a Bot, Agent, automation or system text message
+- **THEN** the message write stores a masked representation and no model-facing read uses the original content
+
+#### Scenario: Masking storage failure preserves no unclassified model path
+- **WHEN** the de-identification service fails while an enabled tenant writes a message
+- **THEN** the write reports a bounded privacy-processing failure before downstream model work can consume the raw content
+
+### Requirement: Agent chooses the outbound content representation
+
+When an enabled tenant's agent composes a text reply, the message composer SHALL default to masked delivery and storage. The agent SHALL be able to explicitly select original delivery for that one message. Both choices SHALL persist a masked representation for later model-facing reads and shall clearly identify the selected representation in message metadata.
+
+#### Scenario: Default masked agent reply
+- **WHEN** an agent sends a text reply without changing the privacy control
+- **THEN** the CRM stores and delivers the masked content and records that masking was applied by default
+
+#### Scenario: Agent preserves original reply
+- **WHEN** an agent explicitly chooses to preserve original content before sending a text reply
+- **THEN** the CRM stores and delivers the original content, stores the masked representation alongside it, and records the explicit choice
+
+#### Scenario: Disabled policy does not add a forced mask
+- **WHEN** the policy is off and an agent sends a text reply
+- **THEN** the CRM stores and delivers the authored content without a de-identification request or privacy override control
+
 ### Requirement: Fail closed on privacy processing failure
 
 The system SHALL stop model dispatch when policy loading fails, a stored policy is invalid, or de-identification fails, times out, returns an invalid payload or exceeds configured size limits. Errors SHALL use a bounded message without upstream response bodies or customer input. It SHALL never retry the same model request with its original text as a privacy fallback.

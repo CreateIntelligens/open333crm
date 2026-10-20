@@ -10,6 +10,7 @@ import { resolveMergeChain } from '../contact/contact-merge.service.js';
 import { buildMessageNewPayload, emitToConversationAndTenant } from '../webhook/inbound-socket-presenter.js';
 import type { BindingStore } from './binding-code.js';
 import { BINDING_TEXT } from './binding-links.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 
 export interface BindingDeps {
   store: BindingStore;
@@ -59,7 +60,9 @@ export async function sendBindingMessage(
   text: string,
   kind: string,
 ): Promise<boolean> {
-  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, text);
+  const storedContent = await prepareStoredMessageContent(db, tenantId, { text }, 'system');
+  const operationalText = storedContent.content.text as string;
+  const ok = await (deps.deliver ?? deliverToChannel)(db, conversationId, operationalText);
   if (!ok) logger.warn('[IdentityBinding] 綁定訊息送出失敗', { conversationId, kind });
 
   const message = await db.message.create({
@@ -68,17 +71,18 @@ export async function sendBindingMessage(
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text },
+      content: storedContent.content,
       metadata: {
         source: 'identity_binding',
         kind,
+        ...storedContent.metadata,
         ...(ok ? {} : { deliveryFailed: true, deliveryError: BINDING_TEXT.deliveryFailed }),
       },
     },
   });
   await db.conversation.updateMany({ where: { id: conversationId, tenantId }, data: { lastMessageAt: new Date() } });
   if (deps.io) {
-    const payload = buildMessageNewPayload(message, { content: { text }, includeTypePayload: true, includeMetadata: true });
+    const payload = buildMessageNewPayload(message, { content: storedContent.content, includeTypePayload: true, includeMetadata: true });
     emitToConversationAndTenant(deps.io, conversationId, tenantId, 'message.new', payload);
   }
   return ok;

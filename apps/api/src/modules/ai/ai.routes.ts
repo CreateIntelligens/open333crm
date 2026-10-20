@@ -10,10 +10,16 @@ import { requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { assertConversationChannelVisible, resolveChannelVisibility } from '../../services/channel-visibility.js';
+import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
 
 export default async function aiRoutes(fastify: FastifyInstance) {
   // 傳入 embedding/llm 等尚未改造為 TenantDb 的跨模組服務；待相依服務全數放寬後，
   fastify.addHook('preHandler', fastify.authenticate);
+
+  // 可供客服編輯器決定預設送出表示法；只回目前租戶的布林狀態。
+  fastify.get('/privacy/status', async (request, reply) =>
+    reply.send(success(await readAiPrivacyPolicy(request.tenantPrisma, request.agent.tenantId))),
+  );
 
   // POST /api/v1/ai/suggest-reply
   fastify.post('/suggest-reply', async (request, reply) => {

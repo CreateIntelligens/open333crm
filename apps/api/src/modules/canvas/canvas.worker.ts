@@ -3,6 +3,7 @@ import { EventBus , logger } from '@open333crm/core';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { decryptCredentials } from '../channel/channel.service.js';
 import { sendEmail } from '../email/email.service.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 
 interface SocketTarget {
   emit(event: string, payload: unknown): void;
@@ -103,10 +104,11 @@ async function handleCanvasSendMessage(
   }
 
   const outboundText = text ?? '';
+  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, { text: outboundText }, 'system');
   const credentials = decryptCredentials(conversation.channel.credentialsEncrypted);
   const sendResult = await plugin.sendMessage(
     identity.uid,
-    { contentType: 'text', content: { text: outboundText } },
+    { contentType: 'text', content: storedContent.content },
     credentials,
   );
 
@@ -122,7 +124,8 @@ async function handleCanvasSendMessage(
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text: outboundText },
+      content: storedContent.content,
+      metadata: storedContent.metadata,
       channelMsgId: sendResult.channelMsgId ?? null,
       isRead: true,
       createdAt: now,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
@@ -88,6 +89,72 @@ function mapStrings(value: unknown, transform: (text: string) => string, depth =
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, mapStrings(item, transform, depth + 1)]));
   }
   return value;
+}
+
+async function maskStructuredContent(content: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const texts: string[] = [];
+  mapStrings(content, (text) => {
+    texts.push(text);
+    return text;
+  });
+  const masked = await maskTexts(texts);
+  let index = 0;
+  return mapStrings(content, () => masked[index++]) as Record<string, unknown>;
+}
+
+export type StoredMessagePrivacySource = 'inbound' | 'agent_default' | 'agent_original' | 'system';
+
+export interface StoredMessagePrivacy {
+  version: 1;
+  /** inbound keeps channel content; mask is the tenant default; original is an explicit agent choice. */
+  mode: 'inbound' | 'mask' | 'original' | 'system';
+  maskedContent: Record<string, unknown>;
+}
+
+export interface PreparedStoredMessageContent {
+  content: Prisma.InputJsonObject;
+  metadata: Prisma.InputJsonObject;
+}
+
+/**
+ * Runs every textual leaf of a Message.content payload through the same bounded
+ * de-identification client. The masked copy is private metadata, so channel and
+ * UI payloads keep their existing shape. All model readers use this copy.
+ */
+export async function prepareStoredMessageContent(
+  prisma: TenantDb,
+  tenantId: string,
+  content: Record<string, unknown>,
+  source: StoredMessagePrivacySource,
+): Promise<PreparedStoredMessageContent> {
+  // Unit doubles built before the platform policy existed omit platformSetting.
+  // A real TenantDb always provides this Prisma model; treating a structural test
+  // double as disabled keeps unrelated behavior tests focused on their subject.
+  if (!('platformSetting' in (prisma as object))) return { content: content as Prisma.InputJsonObject, metadata: {} };
+  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return { content: content as Prisma.InputJsonObject, metadata: {} };
+
+  const maskedContent = await maskStructuredContent(content);
+  const mode: StoredMessagePrivacy['mode'] = source === 'agent_default'
+    ? 'mask'
+    : source === 'agent_original'
+      ? 'original'
+      : source;
+
+  return {
+    content: (source === 'agent_default' || source === 'system' ? maskedContent : content) as Prisma.InputJsonObject,
+    metadata: { privacy: { version: 1, mode, maskedContent } as unknown as Prisma.InputJsonValue },
+  };
+}
+
+/** Model-facing readers use the stored masked text when a Message has one. */
+export function readModelMessageContent(content: unknown, metadata: unknown): string {
+  const privacy = metadata && typeof metadata === 'object'
+    ? (metadata as { privacy?: { maskedContent?: unknown } }).privacy
+    : undefined;
+  const selected = privacy?.maskedContent ?? content;
+  if (!selected || typeof selected !== 'object') return '';
+  const text = (selected as { text?: unknown }).text;
+  return typeof text === 'string' ? text : '';
 }
 
 /** One wrapper per operation. A disabled policy returns the exact original provider. */

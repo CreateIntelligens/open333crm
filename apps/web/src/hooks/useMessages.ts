@@ -97,12 +97,14 @@ export function useMessages(conversationId: string | null, filters: MessageFilte
       content: string,
       contentType: string = 'text',
       extraContent?: Record<string, unknown>,
+      privacyMode?: 'mask' | 'original',
     ) => {
       if (!conversationId) return;
 
-      const body: { content: Record<string, unknown> | string; contentType: string } = {
+      const body: { content: Record<string, unknown> | string; contentType: string; privacyMode?: 'mask' | 'original' } = {
         contentType,
         content: contentType === 'text' ? { text: content } : { url: content },
+        ...(contentType === 'text' && privacyMode ? { privacyMode } : {}),
       };
 
       if (contentType !== 'text') {

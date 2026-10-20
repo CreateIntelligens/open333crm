@@ -21,6 +21,17 @@
 - [x] 4.2 Run `pnpm test`, both strict tenant checks, relevant TypeScript checks, and the Impeccable detector; resolve any new violations and record pre-existing failures separately. Run feature tests if database schema, Redis, RLS or feature tests change.
 - [x] 4.3 Validate the change with `node scripts/validate-openspec.mjs add-admin-ai-deidentification` and main specs with `node scripts/validate-openspec.mjs --specs`; ensure every scenario is mapped to a test and all tracked tasks are complete.
 
+## 5. Protected message storage and agent choice
+
+- [x] 5.1 Add failing API unit tests in `apps/api/tests/unit/modules/privacy/message-content.test.ts` for Inbound channel message keeps an operational original, System-created message is protected, Masking storage failure preserves no unclassified model path, Default masked agent reply, Agent preserves original reply, and Disabled policy does not add a forced mask.
+- [x] 5.2 Implement a shared message-content privacy helper and wire every API message writer, inbound webhook writer, automation and Agent persistence path; make model history, summaries and cross-channel context read the stored masked representation. Pass the message content tests.
+- [x] 5.3 Add failing component tests in `apps/web/tests/unit/components/inbox/message-privacy-control.test.tsx` for default masked agent reply, explicit original selection, and the policy-off state.
+- [x] 5.4 Add the MessageInput privacy control and request contract; pass component tests and document agent choice, inbound retention and model-read behavior in `docs/ref/features/tenant/KNOWLEDGE.md`.
+
+## 6. Updated definition of done
+
+- [x] 6.1 Update the latest dated `CHANGELOG.md` entry and re-run the focused unit tests, `pnpm test`, strict tenant checks, relevant TypeScript checks, OpenSpec validation and the Impeccable detector.
+
 ## Workflow follow-up
 
 - Archive using the OpenSpec CLI after all tracked tasks are complete and validate resulting main specs.

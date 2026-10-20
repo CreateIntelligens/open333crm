@@ -5,6 +5,7 @@ import { AppError } from '../../shared/utils/response.js';
 import { eventBus } from '../../events/event-bus.js';
 import { trackBroadcastReply } from '../../modules/marketing/broadcast.tracking.js';
 import { notFound } from '../../shared/messages/resource.js';
+import { prepareStoredMessageContent } from '../../modules/ai/deidentification.service.js';
 
 export interface SimulatorMessageInput {
   channelType: string;
@@ -115,6 +116,7 @@ export async function simulateInboundMessage(
   }
 
   const now = new Date();
+  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, content, 'inbound');
 
   // 4. Create Message (INBOUND, CONTACT)
   const message = await prisma.message.create({
@@ -124,7 +126,8 @@ export async function simulateInboundMessage(
       senderType: 'CONTACT',
       senderId: null,
       contentType,
-      content: content as any,
+      content: storedContent.content as any,
+      metadata: storedContent.metadata as any,
       isRead: false,
       createdAt: now,
     },

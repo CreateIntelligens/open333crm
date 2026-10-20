@@ -4,7 +4,7 @@ import type { Server } from 'socket.io';
 import { getConfig } from '../../../config/env.js';
 import { getChatSettings } from '../../settings/chat-settings.service.js';
 import { getChatProvider } from '../providers/index.js';
-import { getPrivacyAwareChatProvider } from '../deidentification.service.js';
+import { getPrivacyAwareChatProvider, prepareStoredMessageContent } from '../deidentification.service.js';
 import type { HistoryMessage } from '../providers/types.js';
 import { resolveGeminiKey } from '../ai-key.service.js';
 import { isMonthlyTokenExceeded } from '../../trial/token-quota.service.js';
@@ -178,6 +178,7 @@ async function persistAndDeliverAgentReply(
   bindingCodeBlocked = false,
 ): Promise<void> {
   const now = new Date();
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text }, 'system');
   type PersistedAgentMessage = { id: string; metadata: unknown };
   const persist = async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
     const claimed = await db.conversation.updateMany({
@@ -192,8 +193,8 @@ async function persistAndDeliverAgentReply(
         direction: 'OUTBOUND',
         senderType: 'BOT',
         contentType: 'text',
-        content: { text },
-        metadata: { source: 'agentic_llm', agentRunId: runId, ...(bindingCodeBlocked ? { bindingCodeBlocked: true } : {}) },
+        content: storedContent.content,
+        metadata: { source: 'agentic_llm', agentRunId: runId, ...storedContent.metadata, ...(bindingCodeBlocked ? { bindingCodeBlocked: true } : {}) },
         createdAt: now,
       },
       select: { id: true, metadata: true },
@@ -214,7 +215,7 @@ async function persistAndDeliverAgentReply(
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text },
+      content: storedContent.content,
       metadata: message.metadata,
       createdAt: now.toISOString(),
       sender: null,
@@ -222,7 +223,7 @@ async function persistAndDeliverAgentReply(
   };
   io.to(`conversation:${conversationId}`).emit('message.new', payload);
   io.to(`tenant:${tenantId}`).emit('message.new', payload);
-  await deliverToChannel(prisma, conversationId, { contentType: 'text', content: { text }, delivery });
+  await deliverToChannel(prisma, conversationId, { contentType: 'text', content: storedContent.content, delivery });
 }
 
 export async function loadAgentHistory(prisma: TenantDb, tenantId: string, conversationId: string, excludeMessageId?: string): Promise<HistoryMessage[]> {

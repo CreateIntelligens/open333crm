@@ -20,6 +20,7 @@ import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
 import { getChatSettings } from '../settings/chat-settings.service.js';
 import { generateReply, CLARIFY_SYSTEM_PROMPT, MODEL_GUIDE_SYSTEM_PROMPT } from './llm.service.js';
+import { prepareStoredMessageContent } from './deidentification.service.js';
 import type { HistoryMessage } from './llm.service.js';
 import { detectModels, isKnownModel, findRelatedModels } from './model-matcher.js';
 import { getKnownModelKeys } from './model-registry.service.js';
@@ -391,6 +392,7 @@ async function persistAndDeliver(input: {
   // 綁定代碼只能由綁定流程產生：回覆含代碼（KB 內容或 LLM 生成）就整則換成固定說明
   const guarded = await guardAiReplyForTenant(prisma, tenantId, kbReply.text, { conversationId, source: 'kb_autoreply' });
   const finalText = guarded.text;
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: finalText }, 'system');
 
   // Persist BOT message
   const now = new Date();
@@ -400,7 +402,7 @@ async function persistAndDeliver(input: {
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text: finalText },
+      content: storedContent.content,
       metadata: {
         source: 'kb_auto_reply',
         replyKind,
@@ -409,6 +411,7 @@ async function persistAndDeliver(input: {
         articleTitle: topResult?.title,
         allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
         ...metadataExtras,
+        ...storedContent.metadata,
         ...(guarded.blocked ? { bindingCodeBlocked: true } : {}),
       },
       createdAt: now,
@@ -435,7 +438,7 @@ async function persistAndDeliver(input: {
       direction: 'OUTBOUND',
       senderType: 'BOT',
       contentType: 'text',
-      content: { text: finalText },
+      content: storedContent.content,
       metadata: botMessage.metadata,
       createdAt: now.toISOString(),
       sender: null,
@@ -466,13 +469,13 @@ async function persistAndDeliver(input: {
   if (quickReplies.length > 0) {
     await deliverToChannel(prisma, conversationId, {
       contentType: 'text',
-      content: { text: finalText, quickReplies },
+      content: { ...storedContent.content, quickReplies },
       delivery,
     });
   } else {
     await deliverToChannel(prisma, conversationId, {
       contentType: 'text',
-      content: { text: finalText },
+      content: storedContent.content,
       delivery,
     });
   }
