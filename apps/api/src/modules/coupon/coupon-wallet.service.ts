@@ -217,7 +217,7 @@ export async function startStaffCodeSession(
   deps: WalletDeps,
   fan: FanIdentity,
   instanceId: string,
-): Promise<{ ok: true; expiresAt: Date } | { ok: false; reason: StartFailure }> {
+): Promise<{ ok: true; expiresAt: Date; remainingMs: number } | { ok: false; reason: StartFailure }> {
   const now = nowOf(deps);
   const view = await getFanCoupon(prisma, fan, instanceId, now);
   if (!view) return { ok: false, reason: 'NOT_FOUND' };
@@ -226,13 +226,16 @@ export async function startStaffCodeSession(
   if (unavailable) return { ok: false, reason: unavailable };
 
   const current = await readSession(deps.store, instanceId);
-  if (current && current.expiresAt > now) return { ok: true, expiresAt: new Date(current.expiresAt) };
+  if (current && current.expiresAt > now) {
+    return { ok: true, expiresAt: new Date(current.expiresAt), remainingMs: current.expiresAt - now };
+  }
 
   await deps.store.getdel(sessionKey(instanceId));
   await deps.store.getdel(attemptsKey(instanceId));
   const expiresAt = now + REDEEM_SESSION_MS;
   await deps.store.set(sessionKey(instanceId), JSON.stringify({ expiresAt }), 'PX', SESSION_KEEP_MS, 'NX');
-  return { ok: true, expiresAt: new Date(expiresAt) };
+  // remainingMs 以伺服器時間計算：顧客手機時鐘不準時，前端以「收到回應的時間＋剩餘毫秒」倒數
+  return { ok: true, expiresAt: new Date(expiresAt), remainingMs: REDEEM_SESSION_MS };
 }
 
 async function readSession(store: BindingStore, instanceId: string): Promise<{ expiresAt: number } | null> {

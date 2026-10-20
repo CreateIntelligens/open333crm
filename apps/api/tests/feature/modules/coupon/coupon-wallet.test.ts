@@ -273,6 +273,8 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     const fan = await fanOf(p, token);
     const s = await startStaffCodeSession(prisma, deps, fan, instanceId);
     assert.ok(s.ok, `開始使用失敗：${JSON.stringify(s)}`);
+    // 回傳以伺服器時間算的剩餘毫秒：顧客手機時鐘不準時倒數也正確
+    assert.equal(s.ok && s.remainingMs, 5 * 60 * 1000);
     return { fan, instanceId };
   }
 

@@ -89,8 +89,11 @@ export async function getCouponQrCode(id: string): Promise<string> {
   return (await fanApi.get(`/fan/coupons/${id}/qrcode`)).data.data.dataUrl;
 }
 
-/** 開始使用店員驗證碼券：回傳核銷時段結束時間 */
-export async function startStaffCodeSession(id: string): Promise<{ expiresAt: string }> {
+/**
+ * 開始使用店員驗證碼券：回傳核銷時段結束時間與以伺服器時間算的剩餘毫秒。
+ * 倒數請用 remainingMs（手機時鐘可能不準），不要直接拿 expiresAt 和本機時間相減。
+ */
+export async function startStaffCodeSession(id: string): Promise<{ expiresAt: string; remainingMs: number }> {
   return (await fanApi.post(`/fan/coupons/${id}/start`, {})).data.data;
 }
 

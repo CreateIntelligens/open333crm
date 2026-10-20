@@ -262,15 +262,15 @@
 
 - [x] 9.9 One ID 登記成功時寫入歸戶驗證時間；合併時保留
 - [x] 9.10 票券連結權杖（core，API 與 workers 共用）、發券訊息改用票券連結
-- [ ] 9.11 `POST /fan/coupons/session`：權杖換顧客憑證或回傳驗證要求；登記頁支援送出後返回
+- [x] 9.11 `POST /fan/coupons/session`：權杖換顧客憑證或回傳驗證要求；登記頁支援送出後返回
 - [x] 9.12 對話發券與自動化發券不再依渠道產生領取憑證；移除 Account Link（fan-auth、ticket 交換、webhook 分流）
 - [x] 9.13 券夾狀態判定與分頁數量、券詳情欄位（面額、條件、效期、核銷方式說明）
 - [x] 9.14 店員驗證碼核銷時段：`POST /:id/start`、`POST /:id/redeem-code`
-- [ ] 9.15 前端：`/coupon/open/[token]` 入口與驗證引導、`/coupon/wallet` 券夾、`/coupon/wallet/[id]` 詳情與三種核銷、核銷結果與例外狀態
-- [ ] 9.16 前端元件測試：驗證引導、倒數與驗證碼輸入、滑動核銷門檻、狀態頁
+- [x] 9.15 前端：`/coupon/open/[token]` 入口與驗證引導、`/coupon/wallet` 券夾、`/coupon/wallet/[id]` 詳情與三種核銷、核銷結果與例外狀態
+- [x] 9.16 前端元件測試：驗證引導、倒數與驗證碼輸入、滑動核銷門檻、狀態頁
 
 ### 完成定義
 
-- [ ] 9.17 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
-- [ ] 9.18 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+- [x] 9.17 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
+- [x] 9.18 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
 

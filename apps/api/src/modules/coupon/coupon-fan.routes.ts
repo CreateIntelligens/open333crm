@@ -137,7 +137,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         error: { code: result.reason, message: result.reason === 'NOT_FOUND' ? '查無此券' : STAFF_CODE_MESSAGES[result.reason] },
       });
     }
-    return { success: true, data: { expiresAt: result.expiresAt } };
+    return { success: true, data: { expiresAt: result.expiresAt, remainingMs: result.remainingMs } };
   });
 
   /** 店員在顧客手機上輸入驗證碼核銷。錯誤時回報剩餘次數，不透露正確的碼。 */

@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { safeCouponReturnPath } from '@/lib/safe-return-path';
 
 interface RegistrationInfo {
   channelType: string;
@@ -22,6 +23,13 @@ type Phase =
 /** 與後端相同的格式（32 bytes base64url）；不符就不送請求，避免被組成其他 API 路徑 */
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const INVALID_LINK = '連結無法使用，請回到對話重新取得';
+/** 登記成功後可以回到原本頁面的結果（衝突、錯誤不導回） */
+const RETURNABLE = new Set(['registered', 'merged']);
+/**
+ * 登記成功後自動回到優惠券的等待時間，讓顧客先看到結果。
+ * 只用於 registered；merged 有「7 天內可解除整合」的重要說明，不自動離開，讓顧客讀完再按按鈕。
+ */
+const AUTO_RETURN_MS = 2000;
 
 /** 一種登記（email、手機）在登記頁上的差異 */
 export interface RegistrationFormKind {
@@ -63,6 +71,23 @@ export function RegistrationForm({ kind, token }: { kind: RegistrationFormKind; 
   const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 從票券連結過來時，登記完成後回到那張券（next 只接受 /coupon/open/ 的相對路徑）
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReturnTo(safeCouponReturnPath(new URLSearchParams(window.location.search).get('next')));
+  }, []);
+
+  const doneStatus = phase.kind === 'done' ? phase.status : null;
+  const canReturn = returnTo !== null && doneStatus !== null && RETURNABLE.has(doneStatus);
+  const autoReturn = canReturn && doneStatus === 'registered';
+
+  useEffect(() => {
+    if (!autoReturn || !returnTo) return;
+    // replace：返回鍵不會再回到已用過的登記頁
+    const timer = window.setTimeout(() => window.location.replace(returnTo), AUTO_RETURN_MS);
+    return () => window.clearTimeout(timer);
+  }, [autoReturn, returnTo]);
 
   useEffect(() => {
     if (!TOKEN_PATTERN.test(token)) {
@@ -146,6 +171,14 @@ export function RegistrationForm({ kind, token }: { kind: RegistrationFormKind; 
           <div className="space-y-2 text-center">
             <h1 className="text-lg font-semibold">{RESULT[phase.status]?.title ?? '已送出'}</h1>
             <p className="text-sm text-muted-foreground">{RESULT[phase.status]?.body ?? '可以關閉此頁面。'}</p>
+            {canReturn && returnTo && (
+              <a
+                href={returnTo}
+                className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                回到優惠券
+              </a>
+            )}
           </div>
         )}
       </div>
