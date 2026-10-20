@@ -16,6 +16,7 @@ import { WebTalkSettings } from "@/components/settings/WebTalkSettings";
 import { CliSessionManagement } from "@/components/settings/CliSessionManagement";
 import { RolePermissionMatrix } from "@/components/settings/RolePermissionMatrix";
 import { PasskeyManagement } from "@/components/settings/PasskeyManagement";
+import { StoreManagement } from "@/components/settings/stores/StoreManagement";
 import { Network } from "lucide-react";
 import { usePermission } from "@/providers/AuthProvider";
 import api from "@/lib/api";
@@ -28,6 +29,7 @@ const SETTINGS_TABS = [
   { key: "sla", label: "SLA 政策" },
   { key: "office-hours", label: "營業時間" },
   { key: "tracking", label: "追蹤設定" },
+  { key: "stores", label: "門市與核銷帳號", perm: "store.view" },
   { key: "identity-binding", label: "跨渠道綁定", perm: "settings.manage" },
   { key: "webtalk", label: "WebTalk 協作", perm: "settings.manage" },
   { key: "api-keys", label: "API 金鑰" },
@@ -45,6 +47,7 @@ export default function SettingsPage() {
   const activeTab = (SETTINGS_TABS.some((tab) => tab.key === section) ? section : "general") as SettingsTab;
   const canViewRoles = usePermission("role.view");
   const canManageSettings = usePermission("settings.manage");
+  const canViewStores = usePermission("store.view");
 
   return (
     <div className="flex h-full flex-col">
@@ -58,6 +61,7 @@ export default function SettingsPage() {
           {activeTab === "sla" && <SlaManagement />}
           {activeTab === "office-hours" && <OfficeHoursSettings />}
           {activeTab === "tracking" && <TrackingSettings />}
+          {activeTab === "stores" && (canViewStores ? <StoreManagement /> : <PermissionDenied />)}
           {activeTab === "identity-binding" && (canManageSettings ? <IdentityBindingSettings /> : <PermissionDenied />)}
           {activeTab === "webtalk" && (canManageSettings ? <WebTalkSettings /> : <PermissionDenied />)}
           {activeTab === "api-keys" && <ApiKeyManagement />}

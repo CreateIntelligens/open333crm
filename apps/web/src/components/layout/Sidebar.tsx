@@ -7,7 +7,7 @@ import {
   AlertTriangle, BarChart3, Bell, BookOpen, Briefcase, ChevronDown, ChevronRight, CreditCard,
   FileText, FlaskConical, Gauge, Link2, LogOut, Menu, MessageSquare, MessagesSquare,
   Network, PanelLeftClose, PanelLeftOpen, PieChart, Send, Settings,
-  Smartphone, Tags, Ticket, Trophy, Users, X, Zap, type LucideIcon,
+  Smartphone, Store, Tags, Ticket, Trophy, Users, X, Zap, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
@@ -105,6 +105,7 @@ const NAV_TREE: NavNode[] = [
           { id: 'settings-sla', label: 'SLA 政策', href: '/dashboard/settings/sla', icon: Gauge },
           { id: 'settings-office-hours', label: '營業時間', href: '/dashboard/settings/office-hours', icon: Gauge },
           { id: 'settings-tracking', label: '追蹤設定', href: '/dashboard/settings/tracking', icon: Network },
+          { id: 'settings-stores', label: '門市與核銷帳號', href: '/dashboard/settings/stores', icon: Store, perm: 'store.view' },
           { id: 'settings-identity-binding', label: '跨渠道綁定', href: '/dashboard/settings/identity-binding', icon: Link2, perm: 'settings.manage' },
           { id: 'settings-webtalk', label: 'WebTalk 協作', href: '/dashboard/settings/webtalk', icon: MessagesSquare, perm: 'settings.manage' },
           { id: 'settings-api-keys', label: 'API 金鑰', href: '/dashboard/settings/api-keys', icon: Network },

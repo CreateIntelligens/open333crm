@@ -116,8 +116,10 @@ describe('核銷台每次操作都檢查帳號狀態（HTTP）', () => {
   it('開啟海報的連結', async () => {
     const res = await viewApp.inject({ method: 'GET', url: `/api/v1/stores/${storeId}/poster` });
     assert.equal(res.statusCode, 200, res.body);
-    const data = res.json().data as { url: string; qrDataUrl: string; storeName: string };
+    const data = res.json().data as { url: string; shortUrl: string; qrDataUrl: string; storeName: string };
     assert.ok(data.url.endsWith(`/redeem?store=${storeId}`), data.url);
+    // 印在海報上給人手打的網址不帶門市 id（帳號本身綁定門市）
+    assert.ok(data.shortUrl.endsWith('/redeem'), data.shortUrl);
     assert.ok(data.qrDataUrl.startsWith('data:image/png;base64,'));
     assert.equal(data.storeName, `${MARK} 門市`);
     // QR 只帶網址，不含任何登入憑證

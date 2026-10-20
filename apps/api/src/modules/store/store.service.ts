@@ -165,7 +165,10 @@ export async function deleteStoreAccount(db: TenantDb, tenantId: string, id: str
 export async function getStorePoster(db: TenantDb, tenantId: string, id: string, webBaseUrl: string) {
   const store = await getStore(db, tenantId, id);
   if (!store) return null;
-  const url = `${webBaseUrl.replace(/\/+$/, '')}/redeem?store=${store.id}`;
+  const base = webBaseUrl.replace(/\/+$/, '');
+  // QR 帶門市 id，登入頁能先顯示門市名稱；印給人手打的網址不帶 id（帳號本身綁定門市，打 UUID 不實際）
+  const url = `${base}/redeem?store=${store.id}`;
+  const shortUrl = `${base}/redeem`;
   const qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 600, errorCorrectionLevel: 'M' });
-  return { storeName: store.name, url, qrDataUrl };
+  return { storeName: store.name, url, shortUrl, qrDataUrl };
 }
