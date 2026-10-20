@@ -23,6 +23,8 @@ export interface FanCoupon {
   claimedAt: string | null;
   openedAt: string | null;
   redeemedAt: string | null;
+  /** 在門市核銷台核銷時的門市名稱；顧客自助或店員驗證碼核銷為 null */
+  redeemedStoreName?: string | null;
   coupon: {
     name: string;
     description: string | null;

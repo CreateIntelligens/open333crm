@@ -165,6 +165,7 @@ export function TicketDetail({ item, onAfterOpenTimeUp }: Props) {
           <MetaRow label="有效期限" value={validityText(item)} />
           {item.claimedAt && <MetaRow label="領取時間" value={ymdhm(item.claimedAt)} />}
           {item.walletStatus === 'USED' && item.redeemedAt && <MetaRow label="使用時間" value={ymdhms(item.redeemedAt)} />}
+          {item.walletStatus === 'USED' && item.redeemedStoreName && <MetaRow label="使用門市" value={item.redeemedStoreName} />}
         </dl>
       </div>
     </article>

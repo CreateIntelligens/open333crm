@@ -153,6 +153,22 @@ describe('券詳情：主按鈕依核銷方式與狀態', () => {
     assert.deepEqual(h.router.push.mock.calls[0], ['/coupon/wallet']);
   });
 
+  test('門市核銷的券，顧客查看時顯示核銷門市', () => {
+    h.coupon = fanCoupon({
+      walletStatus: 'USED', walletTab: 'used', status: 'REDEEMED',
+      redeemedAt: '2026-10-05T06:31:07.000Z', redeemedStoreName: '內湖門市',
+    });
+    render(<CouponRedeemFlow id={ID} />);
+    assert.ok(screen.getByText('使用門市'));
+    assert.ok(screen.getByText('內湖門市'));
+  });
+
+  test('不是在門市核銷的已使用券不顯示使用門市', () => {
+    h.coupon = fanCoupon({ walletStatus: 'USED', walletTab: 'used', status: 'REDEEMED', redeemedAt: '2026-10-05T06:31:07.000Z', redeemedStoreName: null });
+    render(<CouponRedeemFlow id={ID} />);
+    assert.ok(screen.queryByText('使用門市') === null);
+  });
+
   test('已過期與活動已提前結束顯示各自說明', () => {
     h.coupon = fanCoupon({ walletStatus: 'EXPIRED', walletTab: 'invalid', expiresAt: '2026-09-30T08:00:00.000Z' });
     const { unmount } = render(<CouponRedeemFlow id={ID} />);
@@ -371,13 +387,14 @@ describe('店員掃碼', () => {
     assert.equal(h.refreshMs.at(-1), 3000);
 
     h.coupon = fanCoupon(
-      { code: 'AUTUMN-R9XU-X9RG', walletStatus: 'USED', walletTab: 'used', status: 'REDEEMED', redeemedAt: '2026-10-12T01:41:05.000Z' },
+      { code: 'AUTUMN-R9XU-X9RG', walletStatus: 'USED', walletTab: 'used', status: 'REDEEMED', redeemedAt: '2026-10-12T01:41:05.000Z', redeemedStoreName: '內湖門市' },
       { redeemMode: 'STAFF_SCAN', staffCodeLength: null },
     );
     rerender(<CouponRedeemFlow id={ID} />);
     await flush();
     assert.ok(screen.getByRole('heading', { name: '核銷結果' }));
     assert.ok(screen.getByText('店員掃碼'));
+    assert.ok(screen.getByText('內湖門市'));
   });
 
   test('QR 取得失敗顯示錯誤並可重試', async () => {

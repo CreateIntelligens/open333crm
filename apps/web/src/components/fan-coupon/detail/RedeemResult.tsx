@@ -61,6 +61,7 @@ export function RedeemResult({ item, redeemedAt, onClose }: Props) {
           <dl className="mt-1">
             <Row label="券名" value={item.coupon.name} />
             <Row label="核銷時間" value={ymdhms(redeemedAt)} />
+            {item.redeemedStoreName && <Row label="核銷門市" value={item.redeemedStoreName} />}
             {item.code && <Row label="券號" value={item.code} mono />}
             {item.coupon.redeemMode && <Row label="核銷方式" value={REDEEM_MODE_LABEL[item.coupon.redeemMode]} />}
           </dl>
