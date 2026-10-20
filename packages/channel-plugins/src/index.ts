@@ -47,6 +47,11 @@ export type MediaUploadFn = (
 
 export interface ChannelPlugin {
   readonly channelType: string;
+  /**
+   * 訊息視窗（小時）：只能對這段時間內傳過訊息的人主動發一般訊息（Meta 的 24 小時規則）。
+   * 沒有限制的渠道不設定。群發依此略過視窗外的人。
+   */
+  readonly messagingWindowHours?: number;
 
   /** Verify incoming webhook signature */
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean;

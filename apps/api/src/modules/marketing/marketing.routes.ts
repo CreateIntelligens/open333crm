@@ -7,6 +7,7 @@ import {
   createBroadcast,
   executeBroadcast,
   cancelBroadcast,
+  previewBroadcastAudience,
 } from './marketing.service.js';
 import {
   listSegments,
@@ -89,6 +90,18 @@ const createBroadcastSchema = z
     message: '素材與版型請擇一提供，不可同時或都不填',
     path: ['materialId'],
   });
+
+const broadcastAudiencePreviewSchema = z.object({
+  channelId: z.string().uuid(),
+  segmentId: z.string().uuid().optional(),
+  targetType: z.enum(['all', 'segment', 'tags', 'contacts']),
+  targetConfig: z
+    .object({
+      tagIds: z.array(z.string().uuid()).optional(),
+      contactIds: z.array(z.string().uuid()).optional(),
+    })
+    .optional(),
+});
 
 export default async function marketingRoutes(fastify: FastifyInstance) {
   // All routes require authentication
@@ -261,6 +274,13 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       data,
     );
     return reply.status(201).send(success(broadcast));
+  });
+
+  // POST /broadcasts/audience-preview — 預估符合條件與可送達人數（FB／IG 只算 24 小時內互動過的人），不建立群發
+  fastify.post('/broadcasts/audience-preview', async (request, reply) => {
+    const data = broadcastAudiencePreviewSchema.parse(request.body);
+    const result = await previewBroadcastAudience(request.tenantPrisma, request.agent.tenantId, data);
+    return reply.send(success(result));
   });
 
   fastify.get<{ Params: { id: string } }>('/broadcasts/:id', async (request, reply) => {

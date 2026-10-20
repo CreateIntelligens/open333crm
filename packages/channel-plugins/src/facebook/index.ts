@@ -8,6 +8,8 @@ const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
 
 export class FbPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.FB;
+  /** Messenger／IG 只能對 24 小時內互動過的人發一般訊息 */
+  readonly messagingWindowHours = 24;
 
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
     const signature = headers['x-hub-signature-256'];

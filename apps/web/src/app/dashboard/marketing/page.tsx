@@ -269,6 +269,35 @@ function BroadcastTab() {
   const materials = channelKey ? fetchedMaterials : [];
   const audienceError = broadcastAudienceError(formData);
 
+  // 預估符合條件與可送達人數：FB／IG 只能發給 24 小時內傳過訊息的人，送出前先讓使用者知道
+  const [audiencePreview, setAudiencePreview] = useState<
+    { matched: number; reachable: number; messagingWindowHours: number | null } | null
+  >(null);
+  const [audiencePreviewError, setAudiencePreviewError] = useState<string | null>(null);
+  const tagKey = formData.tagIds.join(',');
+  useEffect(() => {
+    setAudiencePreview(null);
+    setAudiencePreviewError(null);
+    if (!dialogOpen || !formData.channelId || audienceError) return;
+    let cancelled = false;
+    const payload: Record<string, unknown> = { channelId: formData.channelId, targetType: formData.targetType };
+    if (formData.targetType === 'segment' && formData.segmentId) payload.segmentId = formData.segmentId;
+    if (formData.targetType === 'tags') payload.targetConfig = { tagIds: formData.tagIds };
+    api
+      .post('/marketing/broadcasts/audience-preview', payload)
+      .then((res) => {
+        if (!cancelled) setAudiencePreview(res.data.data);
+      })
+      .catch((err: any) => {
+        if (!cancelled) setAudiencePreviewError(err.response?.data?.error?.message || '無法預估發送人數');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // tagIds 以字串比較，避免每次重繪產生新陣列就重新查詢
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError]);
+
   const toggleTag = (tagId: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -394,7 +423,13 @@ function BroadcastTab() {
                   <td className="py-3 text-muted-foreground">
                     {BROADCAST_TARGET_LABELS[b.targetType] ?? b.targetType}
                   </td>
-                  <td className="py-3">{b.totalCount}</td>
+                  <td className="py-3">
+                    {b.totalCount}
+                    {/* FB／IG 視窗外略過的人數（change broadcast-messaging-window） */}
+                    {b.skippedCount > 0 && (
+                      <span className="ml-1 text-xs text-muted-foreground">略過 {b.skippedCount}</span>
+                    )}
+                  </td>
                   <td className="py-3 text-success">{b.successCount}</td>
                   <td className="py-3 text-destructive">{b.failedCount}</td>
                   <td className="py-3 text-muted-foreground">
@@ -599,6 +634,24 @@ function BroadcastTab() {
             )}
             {audienceError && (
               <p className="text-xs text-destructive">{audienceError}</p>
+            )}
+            {audiencePreviewError && (
+              <p className="text-xs text-destructive">{audiencePreviewError}</p>
+            )}
+            {audiencePreview && (
+              <div className="rounded-md bg-muted px-3 py-2 text-xs">
+                <p className="font-medium">
+                  {audiencePreview.messagingWindowHours
+                    ? `符合條件 ${audiencePreview.matched} 人，可送達 ${audiencePreview.reachable} 人`
+                    : `符合條件 ${audiencePreview.matched} 人`}
+                </p>
+                {audiencePreview.messagingWindowHours && (
+                  <p className="mt-1 text-muted-foreground">
+                    此渠道只能發給 {audiencePreview.messagingWindowHours} 小時內傳過訊息的人，其他人會略過不送。
+                    {formData.scheduledAt && '排程發送時會依當時的互動紀錄重新計算。'}
+                  </p>
+                )}
+              </div>
             )}
             <div>
               <label className="mb-1 block text-sm font-medium">排程發送（留空為草稿）</label>

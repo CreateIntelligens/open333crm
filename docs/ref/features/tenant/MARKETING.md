@@ -87,6 +87,9 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 | 建立 | `POST /marketing/broadcasts` | `marketing.manage` |
 | 立即發送 | `POST /marketing/broadcasts/:id/send` | `marketing.broadcast` |
 | 取消 | `POST /marketing/broadcasts/:id/cancel` | `marketing.broadcast` |
+| 預估人數 | `POST /marketing/broadcasts/audience-preview` | `marketing.view` |
+
+預估人數用和發送相同的受眾解析與訊息視窗，回傳 `{ matched, reachable, messagingWindowHours }`，不建立群發。建立群發的表單選好渠道與受眾後顯示這兩個數字。排程群發在執行時重新計算，人數可能和建立時不同。
 
 排程的群發由 `broadcast.scheduler.ts` 在 API 行程定期檢查，時間到了就執行。`apps/workers` 啟動時會清掉 `broadcast` queue 裡的舊重複工作，避免兩個行程重複發送。
 
@@ -98,6 +101,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 2. 取出素材內容。素材內的外部連結換成帶素材 ID 的短連結，讓點擊能歸因到素材；轉換失敗就用原內容。
 3. 解析發送對象，見下表。
 4. 對象是零人時，把群發標為 `failed` 並回傳錯誤，不會顯示為完成。
+   渠道有訊息視窗時，略過視窗外的人，見下方「訊息視窗」。
 5. 送出，並逐一寫入收件紀錄（`BroadcastRecipient`）。
 6. 更新成功與失敗數。全部失敗時狀態為 `failed`；至少一人成功時為 `completed`，包含部分失敗。
 
@@ -112,13 +116,15 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 **兩種送法。** LINE 渠道而且素材沒有變數時，用 LINE 的 multicast 一次送給一批人，每批上限在 `executeBroadcast()` 的 `MULTICAST_CHUNK`。一批失敗只影響那一批。其他情況（Facebook，或素材含變數需要逐人代入）逐人送出。
 
+**訊息視窗。** 渠道 plugin 宣告 `messagingWindowHours` 時，群發只送給發送當下往前這段時間內，在這個渠道傳過訊息給我們的人（顧客傳入的訊息，含按鈕回應）。FB 與 IG（`THREADS`）是 24 小時，因為 Meta 只允許對 24 小時內互動過的人發一般訊息，送給其他人會被擋下，大量被擋可能讓粉專被限制發訊。略過的人不送出、不寫收件紀錄，人數記在 `skippedCount`，列表顯示「略過 N」；`totalCount` 仍是符合條件的人數。全部被略過時群發標為 `failed`（`BROADCAST_OUTSIDE_MESSAGING_WINDOW`）。只按表情回應、或點 m.me 連結但沒有傳訊息的人沒有存成訊息，會被略過。LINE 沒有訊息視窗。
+
 **在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。
 
 **同一筆群發只執行一次。** `executeBroadcast()` 以條件更新把狀態從 `draft`、`scheduled` 或 `failed` 改成 `sending`，只有搶到的請求會發送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或請求與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，行銷頁的失敗群發有「重新發送」按鈕。逐人送出的群發重試時會對全部對象重新發送，送出途中失敗的群發會讓已送達的人再收到一次，見 `../../system/AUDIT.md` 的 MKT-01。
 
 ## 成效與歸因
 
-群發本身記錄總數、成功數與失敗數。回覆與開工單的歸因由 `broadcast.tracking.ts` 處理：
+群發本身記錄總數、成功數、失敗數與略過數。回覆與開工單的歸因由 `broadcast.tracking.ts` 處理：
 
 - **回覆**：客人傳訊息進來時，進站管線呼叫 `trackBroadcastReply()`，把該聯絡人最近一筆、還沒標記回覆的收件紀錄標成已回覆。
 - **開工單**：建立工單時呼叫 `trackBroadcastCase()`，把工單歸因到該聯絡人最近一筆收件紀錄。
