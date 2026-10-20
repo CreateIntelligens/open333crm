@@ -542,3 +542,51 @@ When an `fb_coupon` material is created, or updated with a new body, the system 
 #### Scenario: Non-string coupon code
 - **WHEN** a user saves an `fb_coupon` material with `coupon_code = 90` (a number)
 - **THEN** the system SHALL respond 400 naming `body.coupon_code` and SHALL NOT save the material
+
+### Requirement: 圖文訊息的示範底圖符合 LINE imagemap 規格
+
+新建 `line_imagemap` 素材時，編輯器預設帶入的底圖 SHALL 是 `{API 來源}/line-imagemap/demo`。API SHALL 公開提供 `GET /line-imagemap/demo/:width`，對 LINE 規定的五種寬度（240、300、460、700、1040）回傳 JPEG，比例與預設版型相同（1040:700）；其他寬度回 HTTP 400。預覽 SHALL 以 `/1040` 顯示示範底圖。
+
+#### Scenario: 示範底圖提供 LINE 規定的五種寬度
+- **WHEN** 不帶登入呼叫 `GET /line-imagemap/demo/460`，或帶副檔名的 `GET /line-imagemap/demo/1040.jpg`
+- **THEN** 回 HTTP 200、`image/jpeg`，圖片寬度是請求的寬度，高度是寬度乘以 700/1040 四捨五入
+
+#### Scenario: 其他寬度不提供
+- **WHEN** 呼叫 `GET /line-imagemap/demo/500`
+- **THEN** 回 HTTP 400
+
+#### Scenario: 新建圖文訊息預設帶入公開的示範底圖
+- **WHEN** API 來源是 `https://uat.example.com`，使用者新建 `line_imagemap` 素材
+- **THEN** 預設 body 的 `baseImageUrl` 是 `https://uat.example.com/line-imagemap/demo`，`width` 是 1040、`height` 是 700
+
+#### Scenario: 預覽示範底圖
+- **WHEN** 預覽的 `baseImageUrl` 是 `https://uat.example.com/line-imagemap/demo`
+- **THEN** 預覽圖網址是 `https://uat.example.com/line-imagemap/demo/1040`
+
+### Requirement: LINE 素材儲存時把示範圖換成公開網址
+
+建立 LINE 素材、或更新 LINE 素材的 body 時，系統 SHALL 在送 LINE 驗證與存檔之前，把 body 中網址欄位（欄位名稱以 `url` 結尾）裡以 `/material-samples/` 開頭的值換成 `{WEB_BASE_URL}/material-samples/...`；文字欄位不換。`line_imagemap` 的 `baseImageUrl` 若是舊的示範底圖 `promo-banner.jpeg`，系統 SHALL 換成 `{API 公開網址}/line-imagemap/demo`。其他網址 SHALL 不變。FB 素材不做這個轉換。
+
+#### Scenario: 圖片、影片與卡片訊息的示範圖換成公開網址
+- **WHEN** `WEB_BASE_URL` 是 `https://uat.example.com`，使用者儲存 `line_image`（`mediaUrl` 是 `/material-samples/cafe.jpeg`）、`line_video`（`previewImageUrl` 是 `/material-samples/promo-banner.jpeg`）或 `line_carousel`（某頁 `imageUrl` 是 `/material-samples/product.jpeg`）
+- **THEN** 送給 LINE 驗證與存進資料庫的網址都是 `https://uat.example.com/material-samples/...`
+
+#### Scenario: 圖文訊息的舊示範底圖換成示範底圖端點
+- **WHEN** API 公開網址是 `https://uat.example.com`，使用者儲存 `baseImageUrl` 是 `/material-samples/promo-banner.jpeg` 的 `line_imagemap`
+- **THEN** 存進資料庫的 `baseImageUrl` 是 `https://uat.example.com/line-imagemap/demo`
+
+#### Scenario: 不是示範圖的網址不變
+- **WHEN** LINE 素材的網址是使用者自己的 `https://` 網址，或不是 `/material-samples/` 開頭的站內路徑
+- **THEN** 系統原樣送 LINE 驗證並存檔
+
+#### Scenario: 更新素材時一樣轉換
+- **WHEN** 使用者更新 LINE 素材的 body，body 仍有 `/material-samples/` 開頭的網址
+- **THEN** 存進資料庫的是 `{WEB_BASE_URL}/material-samples/...`
+
+#### Scenario: FB 素材不轉換
+- **WHEN** 使用者儲存 `fb_generic`，卡片的 `image_url` 是 `/material-samples/product.jpeg`
+- **THEN** 存進資料庫的仍是 `/material-samples/product.jpeg`
+
+#### Scenario: 卡片訊息切換頁面類型時，完整網址的示範圖也換掉
+- **WHEN** 卡片訊息某頁的圖片是 `https://uat.example.com/material-samples/product.jpeg`，使用者把這頁從商品切換成地點
+- **THEN** 這頁的圖片換成地點的示範圖

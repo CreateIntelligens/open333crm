@@ -10,6 +10,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateFbMaterialBody } from './fb-material-validation.js';
+import { resolveLineSampleImageUrls } from './material-sample-urls.js';
 import { formatLineValidateError } from './line-validate-error.js';
 import {
   renderTemplateBody,
@@ -226,9 +227,8 @@ async function validateLineFlexMessageWithLineApi(
  * 用「與實際發送相同的組裝邏輯」(buildLineMessage) 組出 LINE message，
  * 打 LINE validate/push API；不符時擋下並回詳細說明（哪個 property 不符 + LINE 的訊息）。
  *
- * 只驗真的能組成 LINE message 的版型；圖片/影片等含 URL 的仍會被 LINE 檢查結構，
- * 但本機相對路徑圖（/material-samples/...）LINE 抓不到 → 這類 URL 錯誤在儲存時不強制
- * （素材可先存，發送到有公開域名的環境才需真實可達 URL），只擋「結構/欄位」層級的格式錯誤。
+ * 只驗真的能組成 LINE message 的版型。編輯器的示範圖（/material-samples/...）在呼叫前已由
+ * resolveLineSampleImageUrls() 換成公開網址；其他不是 https 的網址 LINE 照樣擋下。
  */
 async function validateLineMaterialWithLineApi(
   prisma: TenantDb,
@@ -428,6 +428,9 @@ export async function createMaterial(
     await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
   }
 
+  // 示範圖換成公開網址，LINE 驗證與發送才收得到
+  body = resolveLineSampleImageUrls(contentType, body);
+
   // 儲存前跟 LINE 檢核格式（不符擋下、回詳細說明）。
   // FB 版型沒有官方檢核 API，由本機規則檢查；LINE 版型呼叫 LINE validate
   validateFbMaterialBody(contentType, body);
@@ -498,9 +501,11 @@ export async function updateMaterial(
     data.status = input.status;
   }
   if (input.body !== undefined) {
-    data.body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
-      ? assertLineFlexMessageBody(input.body)
+    const body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
+      ? (assertLineFlexMessageBody(input.body) as unknown as Record<string, unknown>)
       : input.body;
+    // 與 createMaterial() 相同：示範圖換成公開網址
+    data.body = resolveLineSampleImageUrls(existing.contentType, body);
   }
   if (input.variables !== undefined) data.variables = input.variables;
   if (existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE && input.body !== undefined) {

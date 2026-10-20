@@ -2,16 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { AppError } from '../../shared/utils/response.js';
-import { completePresignedUpload, uploadFile, deleteFile, presignUpload, uploadImagemapBase, UPLOAD_PURPOSES, type UploadPurpose } from './storage.service.js';
+import { completePresignedUpload, uploadFile, deleteFile, presignUpload, uploadImagemapBase, getApiPublicUrl, UPLOAD_PURPOSES, type UploadPurpose } from './storage.service.js';
 import { assertUploadContent } from '../upload/upload-validation.js';
 import { UPLOAD_POLICIES } from '../upload/upload-content-detector.js';
 
 const UPLOAD_PURPOSE_NAMES = Object.keys(UPLOAD_PURPOSES) as [UploadPurpose, ...UploadPurpose[]];
-
-/** API 對外可達的 base URL（imagemap baseUrl 用；隧道測試時設 API_PUBLIC_URL 指向 ngrok）。 */
-function apiPublicUrl(): string {
-  return (process.env.API_PUBLIC_URL || process.env.API_BASE_URL || `http://localhost:${process.env.API_PORT || 3001}`).replace(/\/$/, '');
-}
 
 export default async function storageRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -63,7 +58,7 @@ export default async function storageRoutes(fastify: FastifyInstance) {
       UPLOAD_POLICIES.imagemap,
     );
     const { imageId } = await uploadImagemapBase(buffer, request.agent.tenantId);
-    const baseUrl = `${apiPublicUrl()}/line-imagemap/${request.agent.tenantId}/${imageId}`;
+    const baseUrl = `${getApiPublicUrl()}/line-imagemap/${request.agent.tenantId}/${imageId}`;
 
     return reply.status(201).send(
       success({

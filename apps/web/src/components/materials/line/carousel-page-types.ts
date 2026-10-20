@@ -72,10 +72,22 @@ const SAMPLE_IMAGE_FOR_PAGE: Record<CarouselPageType, string> = {
   image_text: '/material-samples/cafe.jpeg',
 };
 
-/** 判斷某 imageUrl 是否為內建示範圖（非使用者自己上傳的）。 */
+/**
+ * 判斷某 imageUrl 是否為內建示範圖（非使用者自己上傳的）。
+ * 儲存時後端把示範圖換成網站自己的完整網址（{WEB_BASE_URL}/material-samples/...），
+ * 所以完整網址要來源等於網站（location.origin）、路徑完全等於示範圖；其他網域或路徑是使用者的圖。
+ */
 function isSampleImage(url: string | undefined): boolean {
   if (!url) return true;
-  return Object.values(SAMPLE_IMAGE_FOR_PAGE).includes(url);
+  const samples = Object.values(SAMPLE_IMAGE_FOR_PAGE);
+  if (samples.includes(url)) return true;
+  try {
+    const parsed = new URL(url);
+    const origin = typeof location === 'undefined' ? null : location.origin;
+    return origin !== null && parsed.origin === origin && samples.includes(parsed.pathname);
+  } catch {
+    return false;
+  }
 }
 
 export function createEmptyPage(pageType: CarouselPageType): CarouselPage {
