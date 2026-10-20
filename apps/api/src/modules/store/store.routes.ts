@@ -5,6 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { getConfig } from '../../config/env.js';
 import {
   listStores,
   createStore,
@@ -14,6 +15,7 @@ import {
   resetStoreAccountPassword,
   forceLogoutStoreAccount,
   deleteStoreAccount,
+  getStorePoster,
   StoreConflictError,
   StoreValidationError,
 } from './store.service.js';
@@ -38,6 +40,13 @@ export default async function storeRoutes(app: FastifyInstance) {
 
   app.get('/', view, async (request) => {
     return { success: true, data: await listStores(request.tenantPrisma, request.agent.tenantId) };
+  });
+
+  /** 櫃檯海報：核銷台登入頁網址與 QR Code */
+  app.get('/:id/poster', view, async (request, reply) => {
+    const { id } = idParam.parse(request.params);
+    const poster = await getStorePoster(request.tenantPrisma, request.agent.tenantId, id, getConfig().WEB_BASE_URL);
+    return poster ? { success: true, data: poster } : reply.status(404).send(notFound);
   });
 
   app.post('/', manage, async (request, reply) => {

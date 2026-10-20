@@ -113,6 +113,17 @@ describe('核銷台每次操作都檢查帳號狀態（HTTP）', () => {
     assert.equal(res.json().error.code, 'STORE_ACCOUNT_DISABLED');
   });
 
+  it('開啟海報的連結', async () => {
+    const res = await viewApp.inject({ method: 'GET', url: `/api/v1/stores/${storeId}/poster` });
+    assert.equal(res.statusCode, 200, res.body);
+    const data = res.json().data as { url: string; qrDataUrl: string; storeName: string };
+    assert.ok(data.url.endsWith(`/redeem?store=${storeId}`), data.url);
+    assert.ok(data.qrDataUrl.startsWith('data:image/png;base64,'));
+    assert.equal(data.storeName, `${MARK} 門市`);
+    // QR 只帶網址，不含任何登入憑證
+    assert.ok(!/token|password/i.test(data.url));
+  });
+
   it('登入頁依門市 id 顯示門市名稱', async () => {
     const res = await console.inject({ method: 'GET', url: `/api/v1/store-console/stores/${storeId}` });
     assert.equal(res.json().data.name, `${MARK} 門市`);

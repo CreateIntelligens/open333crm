@@ -5,6 +5,7 @@
  * 回應一律不含密碼雜湊。
  */
 import { Prisma } from '@prisma/client';
+import QRCode from 'qrcode';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { hashPassword } from '../../shared/utils/password.js';
 
@@ -155,4 +156,16 @@ export async function deleteStoreAccount(db: TenantDb, tenantId: string, id: str
     data: { deletedAt: new Date(), isActive: false },
   });
   return result.count > 0;
+}
+
+/**
+ * 櫃檯海報：QR Code 只開啟該門市的核銷台登入頁（網址帶門市 id，不帶任何憑證），
+ * 店員仍須輸入門市帳號與密碼。網址以設定的 WEB_BASE_URL 組成，不採用瀏覽器傳來的網址。
+ */
+export async function getStorePoster(db: TenantDb, tenantId: string, id: string, webBaseUrl: string) {
+  const store = await getStore(db, tenantId, id);
+  if (!store) return null;
+  const url = `${webBaseUrl.replace(/\/+$/, '')}/redeem?store=${store.id}`;
+  const qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 600, errorCorrectionLevel: 'M' });
+  return { storeName: store.name, url, qrDataUrl };
 }
