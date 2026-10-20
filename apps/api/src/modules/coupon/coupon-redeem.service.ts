@@ -10,7 +10,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
-import { addTagToTarget } from '../tag/tagging.service.js';
+import { applyClaimTag } from './coupon-tagging.js';
 
 export type RedeemFailure =
   | 'NOT_FOUND'
@@ -46,37 +46,6 @@ export interface RedeemError {
   redeemedAt?: Date;
 }
 
-/**
- * 領取時自動貼標（B4.1）。
- *
- * 失敗不影響領取——標籤是行銷輔助，券才是顧客要的東西。
- * 因貼標失敗而讓整筆領取回滾，顧客會看到「領取失敗」但券碼已被消耗。
- */
-async function applyClaimTag(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
-  contactId: string,
-  claimTagId: string | null,
-): Promise<void> {
-  if (!claimTagId) return;
-  try {
-    await addTagToTarget(tx, {
-      tenantId,
-      targetType: 'CONTACT',
-      targetId: contactId,
-      tagId: claimTagId,
-      // 非人工路徑，標記來源為 system 以便日後區分
-      addedBy: 'system',
-    });
-  } catch (err) {
-    logger.warn('[Coupon] 領取貼標失敗（不影響領取）', {
-      tenantId,
-      contactId,
-      tagId: claimTagId,
-      error: (err as Error).message,
-    });
-  }
-}
 
 /**
  * 以領取憑證換券並歸戶（design D10）。
@@ -128,7 +97,7 @@ export async function claimByToken(
     });
     if (taken.count === 0) return { ok: false as const, reason: 'CONFLICT' as const };
 
-    await applyClaimTag(tx, tenantId, contactId, instance.coupon.claimTagId);
+    await applyClaimTag(tx, tenantId, contactId, instance.coupon);
 
     return { ok: true as const, instanceId: instance.id, couponId: instance.couponId };
   });

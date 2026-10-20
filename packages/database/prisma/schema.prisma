@@ -2272,25 +2272,38 @@ model Coupon {
   /// 使用條款，支援有限 HTML；⚠️ 寫入前須經伺服器端 sanitizer 消毒（design D9）
   terms       String?
   imageUrl    String?
-  couponType  CouponType
-  purpose     CouponPurpose @default(MARKETING)
+  /// 後台顯示與搜尋用的券號（CP-XXXXXX），建立時產生、之後不變
+  displayCode String
+  /// 券型、用途、效期模式、序號模式、核銷方式：草稿可留空，發布時必填
+  couponType  CouponType?
+  purpose     CouponPurpose?
 
-  /// 折抵金額（DISCOUNT_AMOUNT）或折抵百分比（DISCOUNT_PERCENT）
+  /// 折抵金額（DISCOUNT_AMOUNT）或折掉的百分比（DISCOUNT_PERCENT，15 代表打 85 折）
   discountAmount  Int?
   discountPercent Int?
+  /// 最低消費門檻（DISCOUNT_AMOUNT）；0 或 null 表示不限
+  minSpend        Int?
+  /// 折抵上限（DISCOUNT_PERCENT）；null 表示不設上限
+  percentCap      Int?
+  /// 贈品名稱與每張可兌換數量（GIFT）
+  giftName        String?
+  giftQty         Int?
+  /// 兌換品項與價值上限（EXCHANGE）
+  exchangeItem     String?
+  exchangeValueCap Int?
 
-  validityMode     CouponValidityMode @default(FIXED)
+  validityMode     CouponValidityMode?
   startAt          DateTime?
   endAt            DateTime?
   afterClaimDays   Int?
   afterOpenMinutes Int?
 
-  codeMode   CouponCodeMode @default(UNIQUE_CODE)
+  codeMode   CouponCodeMode?
   sharedCode String?
   /// UNIQUE_CODE 模式的券碼前綴
   codePrefix String?
 
-  redeemMode CouponRedeemMode @default(STAFF_CODE)
+  redeemMode CouponRedeemMode?
   /// 店員核銷驗證碼（STAFF_CODE 模式）
   staffCode  String?
 
@@ -2300,6 +2313,10 @@ model Coupon {
   perContactLimit Int     @default(1)
   /// 領取後自動貼上的標籤
   claimTagId      String? @db.Uuid
+  /// 自動貼上的標籤幾天後移除；null 表示不移除
+  claimTagTtlDays Int?
+  /// 未到生效日時不給顧客看序號（預設開啟）
+  maskCodeBeforeStart Boolean @default(true)
 
   status      CouponStatus @default(DRAFT)
   createdById String       @db.Uuid
@@ -2310,6 +2327,7 @@ model Coupon {
   instances CouponInstance[]
   codes     CouponCode[]
 
+  @@unique([tenantId, displayCode])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, purpose, status])
@@ -2344,6 +2362,9 @@ model CouponInstance {
   /// 發放來源，供成效歸因；領取歸戶後不變更
   issuedVia   String?
   issuedRefId String?
+  /// 發放當下的來源名稱與發券座席名稱快照：來源或座席之後刪除、改名，明細仍顯示原名
+  issuedSourceName String?
+  issuedByName     String?
 
   /// 核銷者（店員模式為座席 id；自助模式為 null）
   redeemedBy    String?           @db.Uuid

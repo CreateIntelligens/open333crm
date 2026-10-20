@@ -57,10 +57,11 @@ export interface IssueOutcome {
 
 interface CouponForIssue {
   id: string;
-  codeMode: string;
+  /** 只會發已發布的券，發布時已檢查必填；草稿的 null 不會走到這裡 */
+  codeMode: string | null;
   sharedCode: string | null;
   codePrefix: string | null;
-  validityMode: string;
+  validityMode: string | null;
   endAt: Date | null;
   afterClaimDays: number | null;
   totalLimit: number | null;
@@ -120,6 +121,9 @@ export interface IssueParams {
   contactIds: string[];
   issuedVia?: string | null;
   issuedRefId?: string | null;
+  /** 發放當下的來源名稱與座席名稱快照；來源之後刪除或改名，明細仍顯示原名 */
+  issuedSourceName?: string | null;
+  issuedByName?: string | null;
   /** true → 建 ISSUED + claimToken（FB／IG、公開領券）；false → 直接 CLAIMED（LINE） */
   requireClaim: boolean;
   claimTokenHours?: number;
@@ -180,6 +184,8 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
         expiresAt: computeExpiresAt(coupon, !requireClaim),
         issuedVia: params.issuedVia ?? null,
         issuedRefId: params.issuedRefId ?? null,
+        issuedSourceName: params.issuedSourceName ?? null,
+        issuedByName: params.issuedByName ?? null,
       },
     });
 

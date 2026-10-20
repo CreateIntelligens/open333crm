@@ -5,32 +5,87 @@
  * 並走 withTenant。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
  */
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { getAgentById } from '../auth/auth.service.js';
 import {
   listCoupons,
   getCoupon,
   createCoupon,
   updateCoupon,
   deleteCoupon,
+  duplicateCoupon,
+  checkSharedCode,
   CouponValidationError,
-  type CouponInput,
+  CouponLockedError,
+  CouponConflictError,
 } from './coupon.service.js';
 import { changeStatus } from './coupon-lifecycle.service.js';
 import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
 import { sendCouponMessage, requiresClaimToken, findConversationTarget } from './coupon-delivery.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
-import {
-  getCouponStats,
-  listInstances,
-  exportInstancesCsv,
-  getBulkRedeemCounts,
-} from './coupon-stats.service.js';
+import { getBulkRedeemCounts } from './coupon-stats.service.js';
 
-/** 驗證錯誤轉 400 並帶可讀訊息；其餘往上拋，交給全域錯誤處理回 500。 */
+const int = z.number().int();
+// ⚠️ 日期一律用 z.coerce.date()，不可用 z.string().datetime()：前端的 date 欄位送的是「2026-10-31」
+const date = z.coerce.date({ errorMap: () => ({ message: '日期格式不正確' }) });
+
+/** 欄位格式在這裡擋；欄位間的相依（券型決定要哪些欄位、鎖定欄位）由 service 判斷。 */
+const couponInputSchema = z.object({
+  name: z.string().max(30, '券名稱上限 30 字'),
+  description: z.string().nullable(),
+  terms: z.string().nullable(),
+  imageUrl: z.string().nullable(),
+  couponType: z.enum(['DISCOUNT_AMOUNT', 'DISCOUNT_PERCENT', 'GIFT', 'EXCHANGE']).nullable(),
+  purpose: z.enum(['MARKETING', 'SERVICE']).nullable(),
+  discountAmount: int.nullable(),
+  discountPercent: int.nullable(),
+  minSpend: int.nullable(),
+  percentCap: int.nullable(),
+  giftName: z.string().max(50).nullable(),
+  giftQty: int.nullable(),
+  exchangeItem: z.string().max(50).nullable(),
+  exchangeValueCap: int.nullable(),
+  validityMode: z.enum(['FIXED', 'AFTER_CLAIM', 'AFTER_OPEN']).nullable(),
+  startAt: date.nullable(),
+  endAt: date.nullable(),
+  afterClaimDays: int.nullable(),
+  afterOpenMinutes: int.nullable(),
+  codeMode: z.enum(['SHARED_CODE', 'UNIQUE_CODE', 'IMPORTED_CODES']).nullable(),
+  sharedCode: z.string().nullable(),
+  codePrefix: z.string().max(12).nullable(),
+  redeemMode: z.enum(['STAFF_CODE', 'STAFF_SCAN', 'SELF']).nullable(),
+  // 驗證碼一律字串，數字型別會吃掉開頭的 0
+  staffCode: z.string().nullable(),
+  totalLimit: int.nullable(),
+  perContactLimit: int,
+  claimTagId: z.string().uuid('標籤 ID 格式不正確').nullable(),
+  claimTagTtlDays: int.nullable(),
+  maskCodeBeforeStart: z.boolean(),
+}).partial();
+
+const listQuerySchema = z.object({
+  status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ENDED']).optional(),
+  purpose: z.enum(['MARKETING', 'SERVICE']).optional(),
+  q: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50),
+});
+
+/** service 的錯誤轉成對應狀態碼；其餘往上拋，交給全域錯誤處理回 500。 */
 function handleError(err: unknown, reply: { status: (n: number) => { send: (b: unknown) => unknown } }) {
   if (err instanceof CouponValidationError) {
     return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: err.message } });
+  }
+  if (err instanceof CouponLockedError) {
+    return reply.status(409).send({
+      success: false,
+      error: { code: 'COUPON_LOCKED', message: err.message, details: { fields: err.fields } },
+    });
+  }
+  if (err instanceof CouponConflictError) {
+    return reply.status(409).send({ success: false, error: { code: 'CONFLICT', message: err.message } });
   }
   throw err;
 }
@@ -39,18 +94,12 @@ export default async function couponRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   app.get('/', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
-    const { status, purpose, q, page, limit } = request.query as Record<string, string>;
-    const result = await listCoupons(request.tenantPrisma, request.agent.tenantId, {
-      status,
-      purpose,
-      q,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-    });
+    const query = listQuerySchema.parse(request.query);
+    const result = await listCoupons(request.tenantPrisma, request.agent.tenantId, query);
     return {
       success: true,
       data: result.items,
-      meta: { total: result.total, page: result.page, limit: result.limit },
+      meta: { total: result.total, page: result.page, limit: result.limit, statusCounts: result.statusCounts },
     };
   });
 
@@ -69,7 +118,7 @@ export default async function couponRoutes(app: FastifyInstance) {
         request.tenantPrisma,
         request.agent.tenantId,
         request.agent.id,
-        request.body as CouponInput,
+        couponInputSchema.parse(request.body),
       );
       return { success: true, data: coupon };
     } catch (err) {
@@ -84,7 +133,7 @@ export default async function couponRoutes(app: FastifyInstance) {
         request.tenantPrisma,
         request.agent.tenantId,
         id,
-        request.body as CouponInput,
+        couponInputSchema.parse(request.body),
       );
       if (!coupon) {
         return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
@@ -93,6 +142,25 @@ export default async function couponRoutes(app: FastifyInstance) {
     } catch (err) {
       return handleError(err, reply);
     }
+  });
+
+  /** 複製為新草稿，回傳新券（前端導向其編輯頁）。 */
+  app.post('/:id/duplicate', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const copy = await duplicateCoupon(request.tenantPrisma, request.agent.tenantId, id, request.agent.id);
+    if (!copy) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
+    }
+    return { success: true, data: copy };
+  });
+
+  /** 共用碼即時檢查（表單失焦時呼叫）。excludeId 為正在編輯的券，自己不算重複。 */
+  app.get('/shared-code/check', { preHandler: [requirePermission('coupon.manage')] }, async (request) => {
+    const { code, excludeId } = z
+      .object({ code: z.string().min(1), excludeId: z.string().uuid().optional() })
+      .parse(request.query);
+    const result = await checkSharedCode(request.tenantPrisma, request.agent.tenantId, code, excludeId);
+    return { success: true, data: result };
   });
 
   app.delete('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
@@ -104,7 +172,7 @@ export default async function couponRoutes(app: FastifyInstance) {
       }
       return reply.status(409).send({
         success: false,
-        error: { code: 'HAS_INSTANCES', message: `此券已發出 ${result.issued} 張，無法刪除。請改為結束此券。` },
+        error: { code: 'NOT_DRAFT', message: '已發布的券無法刪除，請改為提前結束' },
       });
     }
     return { success: true };
@@ -127,7 +195,9 @@ export default async function couponRoutes(app: FastifyInstance) {
           }
           return reply.status(409).send({ success: false, error: { code: 'INVALID_TRANSITION', message: result.reason } });
         }
-        return { success: true };
+        // 提前結束時帶回已領取與未使用張數，供後台提示影響範圍
+        const { ok: _ok, ...data } = result;
+        return { success: true, data };
       } catch (err) {
         return handleError(err, reply);
       }
@@ -187,10 +257,13 @@ export default async function couponRoutes(app: FastifyInstance) {
     const requireClaim = requiresClaimToken(channelType);
 
     try {
+      // 保存發券座席當下的名稱，座席之後改名或刪除，序號明細仍顯示原名
+      const agent = await getAgentById(request.tenantPrisma, request.agent.id, tenantId);
       const result = await issueCoupons(app.prisma, tenantId, id, {
         contactIds: [conversation.contactId],
         issuedVia: 'inbox',
         issuedRefId: request.agent.id,
+        issuedByName: agent?.name ?? undefined,
         requireClaim,
       });
 
@@ -274,47 +347,6 @@ export default async function couponRoutes(app: FastifyInstance) {
       });
     }
     return { success: true };
-  });
-
-  // ── 成效與名單 ──
-
-  app.get('/:id/stats', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const stats = await getCouponStats(request.tenantPrisma, request.agent.tenantId, id);
-    if (!stats) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-    }
-    return { success: true, data: stats };
-  });
-
-  app.get('/:id/instances', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
-    const { id } = request.params as { id: string };
-    const { status, page, limit } = request.query as Record<string, string>;
-    const result = await listInstances(request.tenantPrisma, request.agent.tenantId, id, {
-      status,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-    });
-    return {
-      success: true,
-      data: result.items,
-      meta: { total: result.total, page: result.page, limit: result.limit },
-    };
-  });
-
-  app.get('/:id/instances/export', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const coupon = await getCoupon(request.tenantPrisma, request.agent.tenantId, id);
-    if (!coupon) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-    }
-    const csv = await exportInstancesCsv(request.tenantPrisma, request.agent.tenantId, id);
-    // 檔名只保留安全字元，避免券名中的引號或路徑符號破壞 header
-    const safeName = coupon.name.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 40);
-    return reply
-      .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="coupon_${safeName}.csv"`)
-      .send(csv);
   });
 
   // 核銷台。掃碼或手動輸入券號皆走此端點

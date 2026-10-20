@@ -8,11 +8,10 @@
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
  * TenantDb 不含 $transaction，故此處收 PrismaClient（見 lib/tenant-db.ts 註解）。
  */
-import type { PrismaClient, Prisma } from '@prisma/client';
-import { logger } from '@open333crm/core';
+import type { PrismaClient } from '@prisma/client';
 import { issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
-import { addTagToTarget } from '../tag/tagging.service.js';
+import { applyClaimTag } from './coupon-tagging.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export type { IssuedInstance };
@@ -29,7 +28,18 @@ export interface IssueOptions {
    */
   requireClaim?: boolean;
   claimTokenHours?: number;
+  /** 發放來源名稱快照；未給時依 issuedVia 帶預設名稱（例如 inbox → 對話發券） */
+  sourceName?: string;
+  /** 發券座席名稱快照（對話發券） */
+  issuedByName?: string;
 }
+
+/** 各發放方式的預設來源名稱。活動、廣播等有自己名稱的來源由呼叫端傳 sourceName。 */
+const DEFAULT_SOURCE_NAME: Record<string, string> = {
+  inbox: '對話發券',
+  automation: '自動化',
+  keyword: '關鍵字',
+};
 
 export interface IssueResult {
   issued: IssuedInstance[];
@@ -61,6 +71,8 @@ export async function issueCoupons(
       contactIds: opts.contactIds,
       issuedVia: opts.issuedVia,
       issuedRefId: opts.issuedRefId,
+      issuedSourceName: opts.sourceName ?? (opts.issuedVia ? DEFAULT_SOURCE_NAME[opts.issuedVia] : undefined),
+      issuedByName: opts.issuedByName,
       requireClaim,
       claimTokenHours: opts.claimTokenHours,
     });
@@ -70,36 +82,11 @@ export async function issueCoupons(
     if (!requireClaim && coupon.claimTagId) {
       for (const instance of outcome.issued) {
         if (instance.contactId) {
-          await applyClaimTag(tx, tenantId, instance.contactId, coupon.claimTagId);
+          await applyClaimTag(tx, tenantId, instance.contactId, coupon);
         }
       }
     }
 
     return outcome;
   });
-}
-
-/** 貼標失敗不影響發券——標籤是行銷輔助，券才是顧客要的東西。 */
-async function applyClaimTag(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
-  contactId: string,
-  tagId: string,
-): Promise<void> {
-  try {
-    await addTagToTarget(tx, {
-      tenantId,
-      targetType: 'CONTACT',
-      targetId: contactId,
-      tagId,
-      addedBy: 'system',
-    });
-  } catch (err) {
-    logger.warn('[Coupon] 發券貼標失敗（不影響發券）', {
-      tenantId,
-      contactId,
-      tagId,
-      error: (err as Error).message,
-    });
-  }
 }

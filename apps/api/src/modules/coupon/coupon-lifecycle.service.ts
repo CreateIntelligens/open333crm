@@ -24,6 +24,24 @@ export async function validateForPublish(db: TenantDb, tenantId: string, couponI
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) throw new CouponValidationError('查無此券');
 
+  // 草稿可以只有券名；這五項決定券怎麼算、怎麼發、怎麼核銷，發布時一定要有
+  const required: [unknown, string][] = [
+    [coupon.couponType, '請選擇券型'],
+    [coupon.purpose, '請選擇用途'],
+    [coupon.validityMode, '請選擇效期模式'],
+    [coupon.codeMode, '請選擇序號模式'],
+    [coupon.redeemMode, '請選擇核銷方式'],
+  ];
+  for (const [value, message] of required) {
+    if (!value) throw new CouponValidationError(message);
+  }
+
+  if (coupon.couponType === 'GIFT' && !coupon.giftName) {
+    throw new CouponValidationError('贈品券須填寫贈品名稱');
+  }
+  if (coupon.couponType === 'EXCHANGE' && !coupon.exchangeItem) {
+    throw new CouponValidationError('兌換券須填寫兌換品項');
+  }
   if (coupon.couponType === 'DISCOUNT_AMOUNT' && !coupon.discountAmount) {
     throw new CouponValidationError('折抵金額券須填寫折抵金額');
   }
@@ -64,12 +82,16 @@ export async function validateForPublish(db: TenantDb, tenantId: string, couponI
   }
 }
 
+export type ChangeStatusResult =
+  | { ok: true; claimed?: number; unredeemed?: number }
+  | { ok: false; reason: string };
+
 export async function changeStatus(
   db: TenantDb,
   tenantId: string,
   couponId: string,
   next: CouponStatus,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<ChangeStatusResult> {
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) return { ok: false, reason: 'NOT_FOUND' };
 
@@ -87,5 +109,24 @@ export async function changeStatus(
     data: { status: next },
   });
   if (result.count === 0) return { ok: false, reason: 'CONFLICT' };
+
+  if (next === 'ENDED') return { ok: true, ...(await revokeUnredeemed(db, tenantId, couponId)) };
   return { ok: true };
+}
+
+/**
+ * 提前結束：已發出但尚未核銷的券一律作廢，顧客不能再用。已核銷的維持原狀。
+ * 回傳結束前的已領取張數與其中未使用張數，供後台提示影響範圍。
+ */
+async function revokeUnredeemed(db: TenantDb, tenantId: string, couponId: string) {
+  const where = { tenantId, couponId };
+  const [claimed, unredeemed] = await Promise.all([
+    db.couponInstance.count({ where: { ...where, claimedAt: { not: null } } }),
+    db.couponInstance.count({ where: { ...where, status: { in: ['CLAIMED', 'OPENED'] } } }),
+  ]);
+  await db.couponInstance.updateMany({
+    where: { ...where, status: { in: ['ISSUED', 'CLAIMED', 'OPENED'] } },
+    data: { status: 'REVOKED' },
+  });
+  return { claimed, unredeemed };
 }

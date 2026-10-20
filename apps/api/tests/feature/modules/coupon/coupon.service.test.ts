@@ -71,9 +71,9 @@ let couponId = '';
 it('建立券並發布', async () => {
   const coupon = await withTenant(prisma, tenantId, (tx) =>
     createCoupon(tx, tenantId, agentId, {
-      name: '測試折價券', couponType: 'DISCOUNT_AMOUNT', discountAmount: 100,
+      name: '測試折價券', couponType: 'DISCOUNT_AMOUNT', discountAmount: 100, purpose: 'MARKETING',
       validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
-      codeMode: 'UNIQUE_CODE', redeemMode: 'STAFF_CODE', staffCode: '1234',
+      codeMode: 'UNIQUE_CODE', redeemMode: 'STAFF_CODE', staffCode: '1357',
       perContactLimit: 1,
     }));
   couponId = coupon.id;
@@ -84,8 +84,8 @@ it('建立券並發布', async () => {
 it('缺店員驗證碼的券不可發布', async () => {
   const c = await withTenant(prisma, tenantId, (tx) =>
     createCoupon(tx, tenantId, agentId, {
-      name: '缺碼券', couponType: 'GIFT', validityMode: 'FIXED',
-      startAt: '2026-01-01', endAt: '2030-12-31', redeemMode: 'STAFF_CODE',
+      name: '缺碼券', couponType: 'GIFT', giftName: '蒸架', purpose: 'MARKETING', validityMode: 'FIXED',
+      startAt: '2026-01-01', endAt: '2030-12-31', codeMode: 'UNIQUE_CODE', redeemMode: 'STAFF_CODE',
     }));
   await assert.rejects(
     () => withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE')),
@@ -167,12 +167,12 @@ it('非自助券不可由顧客端核銷', async () => {
 });
 
 it('驗證碼正確可核銷成功', async () => {
-  const r = await redeemCoupon(prisma, tenantId, { instanceId: redeemTarget, staffCode: '1234', redeemedBy: agentId });
+  const r = await redeemCoupon(prisma, tenantId, { instanceId: redeemTarget, staffCode: '1357', redeemedBy: agentId });
   assert.ok(r.ok, `核銷失敗：${JSON.stringify(r)}`);
 });
 
 it('重複核銷須回報已使用並附原核銷時間', async () => {
-  const r = await redeemCoupon(prisma, tenantId, { instanceId: redeemTarget, staffCode: '1234', redeemedBy: agentId });
+  const r = await redeemCoupon(prisma, tenantId, { instanceId: redeemTarget, staffCode: '1357', redeemedBy: agentId });
   assert.ok(!r.ok && r.reason === 'ALREADY_REDEEMED', `預期已使用，實得 ${JSON.stringify(r)}`);
   assert.ok(r.ok === false && r.redeemedAt, '未回報原核銷時間');
 });
@@ -182,7 +182,7 @@ it('併發核銷僅一個成功（核心保證）', async () => {
   const target = r.issued[0].id;
   const results = await Promise.all(
     Array.from({ length: 5 }, () =>
-      redeemCoupon(prisma, tenantId, { instanceId: target, staffCode: '1234', redeemedBy: agentId })),
+      redeemCoupon(prisma, tenantId, { instanceId: target, staffCode: '1357', redeemedBy: agentId })),
   );
   const ok = results.filter((x) => x.ok).length;
   assert.equal(ok, 1, `5 個併發請求有 ${ok} 個成功，應恰為 1`);
@@ -192,8 +192,8 @@ it('併發核銷僅一個成功（核心保證）', async () => {
 it('AFTER_OPEN 券於開啟時起算效期', async () => {
   const c = await withTenant(prisma, tenantId, (tx) =>
     createCoupon(tx, tenantId, agentId, {
-      name: '開啟後計時券', couponType: 'GIFT', validityMode: 'AFTER_OPEN',
-      afterOpenMinutes: 15, redeemMode: 'SELF', perContactLimit: 5,
+      name: '開啟後計時券', couponType: 'GIFT', giftName: '蒸架', purpose: 'MARKETING', validityMode: 'AFTER_OPEN',
+      afterOpenMinutes: 15, codeMode: 'UNIQUE_CODE', redeemMode: 'SELF', perContactLimit: 5,
     }));
   await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'));
   const r = await issueCoupons(prisma, tenantId, c.id, { contactIds: [contactA], requireClaim: false });
@@ -210,7 +210,7 @@ let importCouponId = '';
 it('建立序號包模式的券', async () => {
   const c = await withTenant(prisma, tenantId, (tx) =>
     createCoupon(tx, tenantId, agentId, {
-      name: '序號包券', couponType: 'EXCHANGE', codeMode: 'IMPORTED_CODES',
+      name: '序號包券', couponType: 'EXCHANGE', exchangeItem: '冷氣清洗', purpose: 'MARKETING', codeMode: 'IMPORTED_CODES',
       redeemMode: 'SELF', perContactLimit: 10,
       validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
     }));
@@ -317,9 +317,9 @@ it('CSV 匯出含 BOM 且不外洩領取憑證', async () => {
 it('CSV 欄位含逗號時不破壞格式', async () => {
   const c = await withTenant(prisma, tenantId, (tx) =>
     createCoupon(tx, tenantId, agentId, {
-      name: '含,逗號"引號的券', couponType: 'GIFT', perContactLimit: 5,
+      name: '含,逗號"引號的券', couponType: 'GIFT', giftName: '蒸架', purpose: 'MARKETING', perContactLimit: 5,
       validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
-      redeemMode: 'SELF',
+      codeMode: 'UNIQUE_CODE', redeemMode: 'SELF',
     }));
   await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'));
   await issueCoupons(prisma, tenantId, c.id, { contactIds: [contactA], requireClaim: false });

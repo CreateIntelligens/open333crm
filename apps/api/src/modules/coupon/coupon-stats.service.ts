@@ -5,6 +5,7 @@
  * 而非只有發送量。核銷率以「已核銷 ÷ 已領取」計算——用發送量當分母會把
  * 沒人領的券也算進去，讓數字失真。
  */
+import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 
 export interface CouponStats {
@@ -74,11 +75,28 @@ function formatDate(d: Date | null): string {
 }
 
 export interface InstanceListOptions {
+  /** 序號（忽略連字號、空白與大小寫）或顧客名稱 */
+  q?: string;
+  /** 「已領取」篩選同時包含已開啟（OPENED）——對客服而言兩者都是「在顧客手上、還沒用」 */
   status?: string;
+  claimedFrom?: Date;
+  claimedTo?: Date;
+  redeemedFrom?: Date;
+  redeemedTo?: Date;
   page?: number;
   limit?: number;
 }
 
+function dateRange(from?: Date, to?: Date) {
+  if (!from && !to) return undefined;
+  return { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+}
+
+/**
+ * 序號明細（每頁預設 50 筆，依領取時間由新到舊；未領取的排最後）。
+ * 序號搜尋要忽略連字號與大小寫，Prisma 的 where 做不到字串正規化，
+ * 故先以原生 SQL 找出符合的 id，再交給一般查詢套用其他篩選與分頁。
+ */
 export async function listInstances(
   db: TenantDb,
   tenantId: string,
@@ -87,17 +105,35 @@ export async function listInstances(
 ) {
   const page = Math.max(1, opts.page ?? 1);
   const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
-  const where = {
-    couponId,
-    tenantId,
-    ...(opts.status ? { status: opts.status as never } : {}),
-  };
+
+  const where: Prisma.CouponInstanceWhereInput = { couponId, tenantId };
+  if (opts.status === 'CLAIMED') where.status = { in: ['CLAIMED', 'OPENED'] };
+  else if (opts.status) where.status = opts.status as never;
+  const claimedAt = dateRange(opts.claimedFrom, opts.claimedTo);
+  if (claimedAt) where.claimedAt = claimedAt;
+  const redeemedAt = dateRange(opts.redeemedFrom, opts.redeemedTo);
+  if (redeemedAt) where.redeemedAt = redeemedAt;
+
+  const q = opts.q?.trim();
+  if (q) {
+    const normalized = q.replace(/[-\s]/g, '').toUpperCase();
+    const codeMatches = normalized
+      ? await db.$queryRaw<{ id: string }[]>`
+          SELECT id FROM coupon_instances
+          WHERE "tenantId" = ${tenantId}::uuid AND "couponId" = ${couponId}::uuid
+            AND upper(regexp_replace(code, '[-[:space:]]', '', 'g')) LIKE ${'%' + normalized + '%'}`
+      : [];
+    where.OR = [
+      { id: { in: codeMatches.map((r) => r.id) } },
+      { contact: { displayName: { contains: q, mode: 'insensitive' } } },
+    ];
+  }
 
   const [items, total] = await Promise.all([
     db.couponInstance.findMany({
       where,
       include: { contact: { select: { id: true, displayName: true } } },
-      orderBy: { issuedAt: 'desc' },
+      orderBy: [{ claimedAt: { sort: 'desc', nulls: 'last' } }, { issuedAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
     }),

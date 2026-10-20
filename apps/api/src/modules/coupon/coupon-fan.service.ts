@@ -19,19 +19,22 @@ export function toFanView(i: {
   redeemedAt: Date | null;
   coupon: {
     name: string; description: string | null; terms: string | null; imageUrl: string | null;
-    couponType: string; discountAmount: number | null; discountPercent: number | null;
-    validityMode: string; startAt: Date | null; redeemMode: string; afterOpenMinutes: number | null;
+    couponType: string | null; discountAmount: number | null; discountPercent: number | null;
+    validityMode: string | null; startAt: Date | null; redeemMode: string | null; afterOpenMinutes: number | null;
+    maskCodeBeforeStart?: boolean;
   };
 }) {
   const now = new Date();
   // 未到生效日不露券號（spec：遮蔽並說明原因，不是給空白）
   const notYetValid =
     i.coupon.validityMode === 'FIXED' && i.coupon.startAt != null && i.coupon.startAt > now;
+  // 商家可關閉生效前遮蔽；關閉時仍回傳 availableAt，讓前端停用使用按鈕
+  const hideCode = notYetValid && i.coupon.maskCodeBeforeStart !== false;
 
   return {
     id: i.id,
-    code: notYetValid ? null : i.code,
-    codeHidden: notYetValid,
+    code: hideCode ? null : i.code,
+    codeHidden: hideCode,
     availableAt: notYetValid ? i.coupon.startAt : null,
     status: i.status,
     expiresAt: i.expiresAt,
@@ -59,6 +62,7 @@ const COUPON_INCLUDE = {
       name: true, description: true, terms: true, imageUrl: true,
       couponType: true, discountAmount: true, discountPercent: true,
       validityMode: true, startAt: true, redeemMode: true, afterOpenMinutes: true,
+      maskCodeBeforeStart: true,
     },
   },
 } as const;
