@@ -80,6 +80,7 @@ export function toFanView(
     claimedAt: Date | null;
     openedAt: Date | null;
     redeemedAt: Date | null;
+    redeemedStoreName?: string | null;
     coupon: FanCoupon;
   },
   now: number = Date.now(),
@@ -102,6 +103,8 @@ export function toFanView(
     claimedAt: i.claimedAt,
     openedAt: i.openedAt,
     redeemedAt: i.redeemedAt,
+    /** 在核銷台核銷時的門市名稱（顧客自助或店員驗證碼核銷為 null） */
+    redeemedStoreName: i.redeemedStoreName ?? null,
     coupon: {
       name: i.coupon.name,
       description: i.coupon.description,

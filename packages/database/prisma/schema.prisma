@@ -264,6 +264,8 @@ model Tenant {
   couponCodes     CouponCode[]
 
 
+  stores         Store[]
+  storeAccounts  StoreAccount[]
   @@map("tenants")
 }
 
@@ -2372,6 +2374,10 @@ model CouponInstance {
 
   /// 核銷者（店員模式為座席 id；自助模式為 null）
   redeemedBy    String?           @db.Uuid
+  /// 在核銷台核銷時的門市與門市帳號；名稱存快照，門市之後改名或刪除仍顯示原名（design D13）
+  redeemedStoreId      String?    @db.Uuid
+  redeemedStoreName    String?
+  redeemedStoreAccount String?
   /// 核銷當下的方式，與 Coupon.redeemMode 分開存，避免事後改設定影響既有紀錄
   redeemMode    CouponRedeemMode?
   redeemChannel String?
@@ -2412,3 +2418,50 @@ model CouponCode {
   @@index([couponId, status])
   @@map("coupon_codes")
 }
+
+/// 門市（design D13）。停業的門市不能核銷。
+model Store {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  accounts StoreAccount[]
+
+  @@index([tenantId])
+  @@map("stores")
+}
+
+/// 門市共用帳號：同一門市的店員共用，登入核銷台（design D13）。
+model StoreAccount {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @db.Uuid
+  storeId          String    @db.Uuid
+  /// 登入用的帳號名稱，所有租戶間不可重複（登入時以它找出租戶）
+  username         String    @unique
+  passwordHash     String
+  canRedeem        Boolean   @default(true)
+  isActive         Boolean   @default(true)
+  /// 刪除時保留紀錄，讓已登入的裝置得知「帳號已刪除」
+  deletedAt        DateTime?
+  /// 重設密碼時加一；簽進門市憑證，不符即 PASSWORD_CHANGED
+  passwordVersion  Int       @default(0)
+  /// 強制登出時加一；簽進門市憑證，不符即 SESSION_REVOKED
+  sessionVersion   Int       @default(0)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  store  Store  @relation(fields: [storeId], references: [id])
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@map("store_accounts")
+}
+

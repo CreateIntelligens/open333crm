@@ -22,6 +22,8 @@ export type RedeemFailure =
   | 'STAFF_CODE_REQUIRED'
   | 'STAFF_CODE_MISMATCH'
   | 'SELF_REDEEM_NOT_ALLOWED'
+  /** 核銷台只核銷店員掃碼券（onlyMode），其他方式要在顧客手機上核銷 */
+  | 'WRONG_MODE'
   | 'CONFLICT';
 
 export type ClaimFailure =
@@ -44,6 +46,8 @@ export interface RedeemError {
   reason: RedeemFailure;
   /** 已核銷時附上原核銷時間，讓店員能判斷是否為同一次交易的重複掃描 */
   redeemedAt?: Date;
+  /** 已核銷時附上核銷門市（核銷台核銷的才有） */
+  redeemedStoreName?: string | null;
 }
 
 
@@ -147,6 +151,10 @@ export interface RedeemInput {
   /** 由顧客端發起時為 true，用於擋非自助券 */
   selfService?: boolean;
   redeemChannel?: string;
+  /** 只允許這種核銷方式（核銷台傳 STAFF_SCAN） */
+  onlyMode?: 'STAFF_SCAN';
+  /** 在核銷台核銷時記錄的門市與門市帳號（design D13） */
+  store?: { id: string; name: string; account: string };
 }
 
 export async function redeemCoupon(
@@ -169,6 +177,7 @@ export async function redeemCoupon(
         ok: false as const,
         reason: 'ALREADY_REDEEMED' as const,
         redeemedAt: instance.redeemedAt ?? undefined,
+        redeemedStoreName: instance.redeemedStoreName,
       };
     }
     if (instance.status === 'REVOKED') return { ok: false as const, reason: 'REVOKED' as const };
@@ -184,6 +193,9 @@ export async function redeemCoupon(
     }
 
     const redeemMode = instance.coupon.redeemMode;
+    if (input.onlyMode && redeemMode !== input.onlyMode) {
+      return { ok: false as const, reason: 'WRONG_MODE' as const };
+    }
 
     // 顧客端只能核銷自助券——非自助券須經店員，否則核銷方式的設定形同虛設
     if (input.selfService && redeemMode !== 'SELF') {
@@ -206,6 +218,9 @@ export async function redeemCoupon(
         // 存當下的核銷方式，日後改券設定不影響既有紀錄
         redeemMode,
         redeemChannel: input.redeemChannel ?? null,
+        ...(input.store
+          ? { redeemedStoreId: input.store.id, redeemedStoreName: input.store.name, redeemedStoreAccount: input.store.account }
+          : {}),
       },
     });
     if (claimed.count === 0) return { ok: false as const, reason: 'CONFLICT' as const };

@@ -101,6 +101,8 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   { code: 'coupon.manage', group: '優惠券', feature: 'marketing', label: '管理優惠券', description: '建/改/刪券、發布、暫停、結束、匯入序號', dependsOn: ['coupon.view'] },
   { code: 'coupon.issue', group: '優惠券', feature: 'marketing', label: '發放優惠券', description: '於對話或分眾發券給顧客', dependsOn: ['coupon.view'], implies: ['contact.view'] },
   { code: 'coupon.redeem', group: '優惠券', feature: 'marketing', label: '核銷優惠券', description: '核銷台掃碼或輸入券號核銷', dependsOn: ['coupon.view'] },
+  { code: 'store.view', group: '優惠券', feature: 'marketing', label: '檢視門市與核銷帳號', description: '門市列表、門市帳號與櫃檯海報' },
+  { code: 'store.manage', group: '優惠券', feature: 'marketing', label: '管理門市與核銷帳號', description: '新增門市、停業，建立門市帳號、重設密碼、開關核銷權限、停用與強制登出', dependsOn: ['store.view'] },
 
   // ── 粉絲活動（feature: portal）──
   { code: 'portal.view', group: '粉絲活動', feature: 'portal', label: '檢視粉絲活動', description: '活動、submissions、點數' },

@@ -280,23 +280,23 @@
 
 ### 資料模型與權限
 
-- [ ] 10.1 migration：stores、store_accounts（RLS）；coupon_instances 新增 redeemedStoreId、redeemedStoreName、redeemedByAccount
-- [ ] 10.2 新增權限點 `store.view`、`store.manage`（部署後要跑 reconcile）
+- [x] 10.1 migration：stores、store_accounts（RLS）；coupon_instances 新增 redeemedStoreId、redeemedStoreName、redeemedByAccount
+- [x] 10.2 新增權限點 `store.view`、`store.manage`（部署後要跑 reconcile）
 
 ### 測試先行（feature：`apps/api/tests/feature/modules/store/store-redemption.test.ts`、`store-admin.test.ts`）
 
-- [ ] 10.3 測試「建立門市帳號」「帳號名稱重複」「帳號名稱格式不符」「缺少權限」「列表不含其他租戶的門市」
-- [ ] 10.4 測試「登入成功」「帳號或密碼錯誤」「密碼錯誤 5 次後鎖定」「門市憑證不能用於後台」
-- [ ] 10.5 測試「帳號被停用」「密碼被重設」「強制登出」「沒有核銷權限」「門市停業」
-- [ ] 10.6 測試「查詢可核銷的券」「查詢無法核銷的券」「需在顧客手機上核銷」「查無此券」
-- [ ] 10.7 測試「確認核銷」「網路重試不重複核銷」「兩台手機同時核銷」
-- [ ] 10.8 測試「只顯示本門市今天的紀錄」
+- [x] 10.3 測試「建立門市帳號」（「缺少權限」在 `store-routes.test.ts`，突變驗證：把建立帳號的權限改成 store.view 時測試失敗）「帳號名稱重複」「帳號名稱格式不符」「缺少權限」「列表不含其他租戶的門市」
+- [x] 10.4 測試「登入成功」「帳號或密碼錯誤」「密碼錯誤 5 次後鎖定」「門市憑證不能用於後台」
+- [x] 10.5 測試「帳號被停用」「密碼被重設」「強制登出」「沒有核銷權限」「門市停業」
+- [x] 10.6 測試「查詢可核銷的券」「查詢無法核銷的券」「需在顧客手機上核銷」「查無此券」
+- [x] 10.7 測試「確認核銷」「網路重試不重複核銷」「兩台手機同時核銷」
+- [x] 10.8 測試「只顯示本門市今天的紀錄」
 
 ### 實作
 
-- [ ] 10.9 門市與門市帳號管理 service 與後台 API（`/api/v1/stores`）
-- [ ] 10.10 門市帳號登入、門市憑證、帳號狀態檢查（`/api/v1/store-console/*`）
-- [ ] 10.11 查券、核銷（重試鍵）、今日紀錄；顧客端券詳情帶核銷門市
+- [x] 10.9 門市與門市帳號管理 service 與後台 API（`/api/v1/stores`）
+- [x] 10.10 門市帳號登入、門市憑證、帳號狀態檢查（`/api/v1/store-console/*`）
+- [x] 10.11 查券、核銷（重試鍵）、今日紀錄；顧客端券詳情帶核銷門市
 - [ ] 10.12 前端：後台「門市與核銷帳號」設定頁與櫃檯海報
 - [ ] 10.13 前端：核銷台 `/redeem`（登入、掃描與手動、確認、結果、今日紀錄、帳號錯誤、相機權限）
 - [ ] 10.14 前端元件測試
