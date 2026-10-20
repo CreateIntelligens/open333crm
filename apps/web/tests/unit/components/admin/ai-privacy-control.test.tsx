@@ -36,8 +36,8 @@ afterEach(cleanup);
 test('Display and update privacy setting', async () => {
   render(<TenantDetailPage />);
   await screen.findByRole('heading', { name: '租戶測試' });
-  await waitFor(() => assert.ok(screen.queryByRole('switch', { name: '強制啟用 AI 去識別化' }) !== null));
-  const control = screen.getByRole('switch', { name: '強制啟用 AI 去識別化' }) as HTMLButtonElement;
+  await waitFor(() => assert.ok(screen.queryByRole('switch', { name: '強制啟用個資遮罩' }) !== null));
+  const control = screen.getByRole('switch', { name: '強制啟用個資遮罩' }) as HTMLButtonElement;
   await waitFor(() => assert.equal(control.disabled, false));
   assert.equal(control.getAttribute('aria-checked'), 'false');
   assert.ok(screen.getByText(/2md.ai/));

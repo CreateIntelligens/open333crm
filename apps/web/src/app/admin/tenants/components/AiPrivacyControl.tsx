@@ -44,7 +44,7 @@ export function AiPrivacyControl({ tenantId }: { tenantId: string }) {
       const confirmed = readEnabled(response.data.data);
       if (generation.current === current) {
         setEnabled(confirmed);
-        setNotice(confirmed ? '已強制啟用去識別化' : '已關閉去識別化');
+        setNotice(confirmed ? '已強制啟用個資遮罩' : '已關閉個資遮罩');
       }
     } catch {
       if (generation.current === current) setError('去識別化設定儲存失敗，請重試。');
@@ -55,16 +55,16 @@ export function AiPrivacyControl({ tenantId }: { tenantId: string }) {
 
   return (
     <section aria-labelledby={`${descriptionId}-heading`} style={{ background: '#fff', border: '1px solid #e3e8ef', borderRadius: 12, padding: 18, marginTop: 20, minWidth: 280 }}>
-      <h2 id={`${descriptionId}-heading`} style={{ fontSize: 16, margin: '0 0 12px' }}>AI 去識別化</h2>
+      <h2 id={`${descriptionId}-heading`} style={{ fontSize: 16, margin: '0 0 12px' }}>個資遮罩</h2>
       <p id={descriptionId} style={{ color: '#526071', fontSize: 13, lineHeight: 1.7, maxWidth: '72ch', margin: '0 0 14px' }}>
-        預設關閉。啟用後，此租戶送往 AI 的文字會先交由 2md.ai 處理，以類別標記遮罩個資。
+        預設關閉。啟用後，此租戶送往模型的文字會先交由 2md.ai 處理，以類別標記遮罩個資。
         平台強制啟用後由平台管理員控制，租戶端無法關閉；去識別化服務異常時，暫停該次模型呼叫。
         原始客服紀錄仍依既有保存規則保留。
       </p>
       <button
         type="button"
         role="switch"
-        aria-label="強制啟用 AI 去識別化"
+        aria-label="強制啟用個資遮罩"
         aria-checked={enabled ?? false}
         aria-describedby={descriptionId}
         disabled={enabled === null || saving}
@@ -72,7 +72,7 @@ export function AiPrivacyControl({ tenantId }: { tenantId: string }) {
         className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 enabled:hover:bg-teal-50 disabled:cursor-wait disabled:opacity-60"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 12, border: '1px solid #cdd5e0', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#334155', minHeight: 44 }}
       >
-        <span>強制啟用 AI 去識別化</span>
+        <span>強制啟用個資遮罩</span>
         <span style={{ color: enabled ? '#087f75' : '#526071', fontWeight: 600 }}>
           {saving ? '儲存中…' : enabled === null ? '讀取設定中…' : enabled ? '已啟用' : '已關閉'}
         </span>

@@ -5,9 +5,9 @@
 - **資料來源**：`apps/api/src/modules/knowledge/*`、`apps/api/src/modules/embedding/*`、`apps/api/src/modules/ai/*`、`apps/api/src/modules/settings/chat-settings.service.ts`、`apps/api/src/modules/settings/embedding-settings.service.ts`、`apps/api/src/modules/trial/token-quota.service.ts`、`apps/api/src/config/env.ts`
 - **核對日期**：2026-09-30
 
-## AI 文字去識別化
+## 模型輸入的個資遮罩
 
-功能預設關閉，由平台後台逐租戶強制啟用，租戶的模型與提示詞設定無法覆寫。平台操作與 API 見[租戶管理](../platform/TENANTS.md#平台控制-ai-去識別化)。
+功能預設關閉，由平台後台逐租戶強制啟用，租戶的模型與提示詞設定無法覆寫。平台操作與 API 見[租戶管理](../platform/TENANTS.md#平台控制個資遮罩)。
 
 啟用後，下列文字會先送至 2md 的 `/api/deid`，再把完整類別標記遮罩（`mode=label`、`retentionMode=none`）的結果送往模型：
 

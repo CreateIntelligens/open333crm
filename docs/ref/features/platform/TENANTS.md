@@ -11,8 +11,8 @@
 | --- | --- | --- |
 | 看清單 | `GET /tenants` | 全部租戶，依建立時間新到舊，不分頁。含方案與成員數 |
 | 看明細 | `GET /tenants/:id` | 成員清單，加上渠道、聯絡人、對話、工單的筆數統計 |
-| 看 AI 去識別化政策 | `GET /tenants/:id/ai-privacy` | 回傳 `{ enabled }`，預設 `false` |
-| 強制啟用或關閉 AI 去識別化 | `PATCH /tenants/:id/ai-privacy` | 只接受 `{ "enabled": true }` 或 `false`；設定與平台稽核在同一交易內寫入 |
+| 看個資遮罩政策 | `GET /tenants/:id/ai-privacy` | 回傳 `{ enabled }`，預設 `false` |
+| 強制啟用或關閉個資遮罩 | `PATCH /tenants/:id/ai-privacy` | 只接受 `{ "enabled": true }` 或 `false`；設定與平台稽核在同一交易內寫入 |
 | 改名稱或方案 | `PATCH /tenants/:id` | 改方案會失效兩層快取，見下文 |
 | 改成員登入 email | `PATCH /tenants/:id/agents/:agentId` | 全域唯一，重複回 409 |
 | 重寄成員開通信 | `POST /tenants/:id/agents/:agentId/resend-welcome` | 信裡沒有密碼 |
@@ -21,13 +21,13 @@
 
 **沒有刪除租戶的途徑。** 停用只是把 `isActive` 設成 `false`；試用租戶的 `purgedAt` 也只是標記，業務資料一直留在資料庫裡。
 
-## 平台控制 AI 去識別化
+## 平台控制個資遮罩
 
-平台租戶詳細頁 `/admin/tenants/:id` 的「AI 去識別化」區塊顯示目前設定。所有租戶預設關閉，平台管理員可逐租戶強制啟用或關閉；租戶設定頁不提供覆寫入口。開關載入與儲存時停用，失敗時顯示重試訊息並保留已確認的值。
+平台租戶詳細頁 `/admin/tenants/:id` 的「個資遮罩」區塊顯示目前設定。所有租戶預設關閉，平台管理員可逐租戶強制啟用或關閉；租戶設定頁不提供覆寫入口。開關載入與儲存時停用，失敗時顯示重試訊息並保留已確認的值。
 
 政策存放於 `PlatformSetting` 的 `ai.privacy.<tenantId>`，值為 `{ enabled: boolean }`。每次 AI 作業起始都重新讀取，跨 API 行程不使用政策快取。設定損壞或讀取失敗時停止該次模型呼叫。專用 API 沿用平台帳號認證與強制改密碼限制；目標租戶不存在回 404，無效 UUID、非 boolean 或額外欄位回 400。成功寫入 `tenant.ai_privacy.update` 稽核，payload 只有 `enabled`。
 
-啟用後，待處理原文會先送至 `https://2md.aiurl.tw/api/deid`，使用完整類別標記遮罩後再送往 Chat、Agent 或 Embedding 模型。2md 異常時停止該次模型呼叫。原始客服紀錄依既有規則保存；文字遮罩的完整範圍見[知識庫與 AI](../tenant/KNOWLEDGE.md#ai-文字去識別化)。
+啟用後，待處理原文會先送至 `https://2md.aiurl.tw/api/deid`，使用完整類別標記遮罩後再送往 Chat、Agent 或 Embedding 模型。2md 異常時停止該次模型呼叫。原始客服紀錄依既有規則保存；文字遮罩的完整範圍見[知識庫與 AI](../tenant/KNOWLEDGE.md#模型輸入的個資遮罩)。
 
 ## 開通一個租戶建立了什麼
 
