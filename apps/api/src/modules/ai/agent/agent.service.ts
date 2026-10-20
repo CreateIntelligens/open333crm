@@ -4,6 +4,7 @@ import type { Server } from 'socket.io';
 import { getConfig } from '../../../config/env.js';
 import { getChatSettings } from '../../settings/chat-settings.service.js';
 import { getChatProvider } from '../providers/index.js';
+import { getPrivacyAwareChatProvider } from '../deidentification.service.js';
 import type { HistoryMessage } from '../providers/types.js';
 import { resolveGeminiKey } from '../ai-key.service.js';
 import { isMonthlyTokenExceeded } from '../../trial/token-quota.service.js';
@@ -56,6 +57,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     throw new AppError('已達方案 AI 月額度上限', 'PLAN_LIMIT_EXCEEDED', 403, { limitKey: 'monthlyTokens' });
   }
 
+  const protectedProvider = await getPrivacyAwareChatProvider(prisma, input.tenantId, provider);
   const now = new Date();
   const run = await prisma.agentRun.create({
     data: {
@@ -115,7 +117,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     ? await loadAgentHistory(prisma, input.tenantId, input.conversationId, input.messageId)
     : [];
   const result = await runAgent({
-    provider,
+    provider: protectedProvider,
     systemPrompt: withOtherChannelContext(
       settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
       // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）

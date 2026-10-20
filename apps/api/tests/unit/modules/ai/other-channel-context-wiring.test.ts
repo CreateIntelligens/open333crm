@@ -92,6 +92,7 @@ test('KB 自動回覆：generateReply 收到其他渠道的訊息', async () => 
 test('Agent 模式：系統指示包含其他渠道的訊息；沒有對話時不讀取', async () => {
   const prisma = {
     agentRun: { create: async () => ({ id: 'run1', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: {} }) },
     conversation: { findFirst: async () => ({ id: 'c1' }) },
     message: { findMany: async () => [] },
@@ -107,6 +108,7 @@ test('Agent 模式：系統指示包含其他渠道的訊息；沒有對話時�
 test('Agent 模式：有指定可見渠道時交給讀取函式；沒有指定時不限制（回覆對象是客人本人）', async () => {
   const prisma = {
     agentRun: { create: async () => ({ id: 'run3', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: {} }) },
     conversation: { findFirst: async () => ({ id: 'c1' }) },
     message: { findMany: async () => [] },

@@ -32,6 +32,7 @@ import {
   resendWelcomeEmail,
 } from './platform-tenant.service.js';
 import { getPlatformSetting, setPlatformSetting } from './platform-setting.service.js';
+import aiPrivacyRoutes from './ai-privacy.routes.js';
 import {
   getUsageOverview,
   getTenantUsageRanking,
@@ -159,6 +160,7 @@ export default async function platformRoutes(fastify: FastifyInstance) {
     }
   };
   const guard = { preHandler: [fastify.authenticatePlatformSuperuser, blockIfMustChangePassword] };
+  await fastify.register(aiPrivacyRoutes, guard);
   // 只驗證身分，不擋 mustChangePassword（僅供改密碼路由使用）
   const authOnlyGuard = { preHandler: [fastify.authenticatePlatformSuperuser] };
 

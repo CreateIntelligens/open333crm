@@ -9,6 +9,7 @@
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { logger } from '@open333crm/core';
 import { getEmbeddingSettings } from '../settings/embedding-settings.service.js';
+import { deidentifyTenantText } from '../ai/deidentification.service.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -105,11 +106,12 @@ export async function generateEmbedding(
 ): Promise<number[]> {
   const settings = await getEmbeddingSettings(prisma, tenantId);
   const url = `${settings.baseUrl}/api/embed`;
+  const protectedText = await deidentifyTenantText(prisma, tenantId, text);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= EMBED_COLD_START_RETRIES; attempt++) {
     try {
-      return await embedOnce(url, settings.model, text, EMBED_TIMEOUT_MS);
+      return await embedOnce(url, settings.model, protectedText, EMBED_TIMEOUT_MS);
     } catch (err) {
       lastErr = err;
       // 冷啟動有兩種表現，都要重試：

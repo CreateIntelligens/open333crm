@@ -30,6 +30,7 @@ test('runAgentReply：AI 回覆含代碼 → 換成引導傳送綁定關鍵字�
   const { runAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
   const prisma = {
     agentRun: { create: async () => ({ id: 'run1', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },
+    platformSetting: { findUnique: async () => null },
     tenantSettings: { findFirst: async () => ({ identityBinding: { enabled: true, bindKeywords: ['綁定帳號'] } }) },
   } as never;
   const out = await runAgentReply(prisma, { tenantId: 'agent-guard-tenant', userMessage: '綁定帳號綁定帳號' });
@@ -51,6 +52,7 @@ test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說
   };
   const prisma = {
     ...tx,
+    platformSetting: { findUnique: async () => null },
     $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
     conversation: { ...tx.conversation, findFirst: async () => ({ id: 'c1' }) },
     agentRun: { create: async () => ({ id: 'run2', expiresAt: new Date() }), updateMany: async () => ({ count: 1 }) },

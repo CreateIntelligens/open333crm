@@ -100,6 +100,7 @@ function createDb(opts: { monthlyTokens?: number | null; byokKey?: string; slug?
   const pricingLookups: string[] = [];
   const limits = opts.monthlyTokens === undefined ? {} : { monthlyTokens: opts.monthlyTokens };
   const prisma = {
+    platformSetting: { findUnique: async () => null },
     tenant: {
       findUnique: async () => ({ limitOverrides: {}, plan: { slug: opts.slug ?? 'standard', limits } }),
     },

@@ -5,6 +5,22 @@
 - **資料來源**：`apps/api/src/modules/knowledge/*`、`apps/api/src/modules/embedding/*`、`apps/api/src/modules/ai/*`、`apps/api/src/modules/settings/chat-settings.service.ts`、`apps/api/src/modules/settings/embedding-settings.service.ts`、`apps/api/src/modules/trial/token-quota.service.ts`、`apps/api/src/config/env.ts`
 - **核對日期**：2026-09-30
 
+## AI 文字去識別化
+
+功能預設關閉，由平台後台逐租戶強制啟用，租戶的模型與提示詞設定無法覆寫。平台操作與 API 見[租戶管理](../platform/TENANTS.md#平台控制-ai-去識別化)。
+
+啟用後，下列文字會先送至 2md 的 `/api/deid`，再把完整類別標記遮罩（`mode=label`、`retentionMode=none`）的結果送往模型：
+
+- 一般 AI 回覆、摘要、分類、情緒分析、文字改寫與 Flex 產生所經過的 `generateReply`：包含最終組裝的系統提示、知識庫／跨渠道上下文、本次訊息及歷史。
+- Agent 每輪送往模型的訊息、工具結果與巢狀工具參數的文字值。保留角色、工具名稱、呼叫 ID 與非文字參數。OCR／文件擷取結果在進入後續模型時亦套用。
+- `generateEmbedding` 的文字輸入，涵蓋客戶查詢及新產生的知識庫向量。既有向量保留，啟用可能影響檢索排序。
+
+傳輸憑證不會送給去識別化服務。2md 回傳的 mapping、CSV 與隱私分數會被丟棄；此功能只消費遮罩文字，並不提供還原。每批處理最多並行 4 個請求、共用 10 秒逾時，每段文字最多 100,000 字元、每個回應最多 1 MiB，不跟隨重新導向，也不使用跨租戶或跨作業的文字快取。
+
+政策讀取失敗或資料損壞回 `AI_PRIVACY_POLICY_UNAVAILABLE`；去識別化處理失敗回 `AI_DEIDENTIFICATION_UNAVAILABLE`。兩者皆停止該次模型派送。Agent 的既有安全回覆／KB fallback 維持各自的錯誤處理，後續每個模型入口仍須通過相同政策，原文不作為繞過政策的 fallback。
+
+原始客服訊息、Agent 原始紀錄與媒體檔依既有規則保存。本功能處理模型輸入文字；影像像素、資料刪除與已存資料的整批去識別化仍使用各自流程。規則遮罩可能漏判或誤判，與完整匿名化的效果有所區別。
+
 ## 負責的模組
 
 | 模組 | 負責什麼 |

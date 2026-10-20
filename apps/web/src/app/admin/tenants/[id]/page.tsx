@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { platformApi } from '../../lib/platform-api';
 import { fmtNum } from '../../lib/format';
+import { AiPrivacyControl } from '../components/AiPrivacyControl';
 
 interface TenantDetail {
   id: string;
@@ -281,6 +282,8 @@ export default function TenantDetailPage() {
           </div>
         </div>
       </div>
+
+      <AiPrivacyControl key={tenant.id} tenantId={tenant.id} />
 
       {/* 成員 */}
       <h2 style={{ ...h2, margin: '28px 0 12px' }}>成員（{tenant.agents.length}）</h2>
