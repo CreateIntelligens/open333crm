@@ -63,14 +63,17 @@ export function MessageInput({
 
   React.useEffect(() => {
     let active = true;
-    api.get('/ai/privacy/status').then((res) => {
-      if (!active) return;
-      const enabled = res.data.data?.enabled === true;
-      setPrivacyEnabled(enabled);
-      setPrivacyMode('mask');
-    }).catch(() => {
-      if (active) setPrivacyEnabled(false);
-    });
+    void Promise.resolve()
+      .then(() => api.get('/ai/privacy/status'))
+      .then((res) => {
+        if (!active) return;
+        const enabled = res.data.data?.enabled === true;
+        setPrivacyEnabled(enabled);
+        setPrivacyMode('mask');
+      })
+      .catch(() => {
+        if (active) setPrivacyEnabled(false);
+      });
     return () => { active = false; };
   }, [conversationId]);
 

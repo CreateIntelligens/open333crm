@@ -38,6 +38,8 @@ const sanitize = (text: string) => text.replaceAll(PHONE, '[手機]').replaceAll
 const deidRequests: Array<Record<string, unknown>> = [];
 const embedRequests: Array<Record<string, unknown>> = [];
 const records: unknown[] = [];
+const agentRunUpdates: unknown[] = [];
+const agentToolCalls: unknown[] = [];
 let fetchMock: ReturnType<typeof vi.fn>;
 
 function db(value: unknown = { enabled: true }) {
@@ -45,10 +47,10 @@ function db(value: unknown = { enabled: true }) {
     platformSetting: { findUnique: vi.fn(async () => value === null ? null : { value }) },
     aiUsage: { create: async (args: unknown) => { records.push(args); } },
     agentRun: {
-      create: async () => ({ id: 'run', expiresAt: new Date() }),
-      updateMany: async (args: unknown) => { records.push(args); },
+      create: async (args: unknown) => { records.push(args); return { id: 'run', expiresAt: new Date() }; },
+      updateMany: async (args: unknown) => { records.push(args); agentRunUpdates.push(args); },
     },
-    agentToolCall: { create: async (args: unknown) => { records.push(args); } },
+    agentToolCall: { create: async (args: unknown) => { records.push(args); agentToolCalls.push(args); } },
   };
 }
 
@@ -64,6 +66,8 @@ beforeEach(() => {
   deidRequests.length = 0;
   embedRequests.length = 0;
   records.length = 0;
+  agentRunUpdates.length = 0;
+  agentToolCalls.length = 0;
   fetchMock = vi.fn(async (url: string, options: RequestInit) => {
     const body = JSON.parse(options.body as string);
     if (url.endsWith('/api/embed')) {
@@ -127,6 +131,43 @@ test('Agent tool result and arguments', async () => {
   assert.equal(call.arguments.query, PHONE, 'caller-owned tool arguments stay unchanged');
 });
 
+test('Agent execution record stores masked user input', async () => {
+  const prisma = db();
+  mocks.turn.mockResolvedValueOnce({ text: '已完成', toolCalls: [] });
+  await runAgentReply(prisma as never, { tenantId: TENANT, userMessage: `聯絡方式 ${PHONE}` });
+  const runCreate = records.find((entry) => JSON.stringify(entry).includes('userMessage'));
+  assert.ok(runCreate);
+  assert.equal(JSON.stringify(runCreate).includes(PHONE), false);
+  assert.equal(JSON.stringify(runCreate).includes('聯絡方式 [手機]'), true);
+});
+
+test('Agent trace masking failure marks the run failed without persisting raw trace text', async () => {
+  const call = { id: 'call-1', name: 'search_web', arguments: { query: 'safe query' } };
+  mocks.turn.mockResolvedValueOnce({ text: '查詢完成', toolCalls: [call] });
+  mocks.executeTool.mockResolvedValue({ text: `TRACE_CONTACT ${PHONE}` });
+  fetchMock.mockImplementation(async (url: string, options: RequestInit) => {
+    const body = JSON.parse(options.body as string);
+    if (url.endsWith('/api/deid') && body.text.includes('TRACE_CONTACT')) {
+      return new Response('unavailable', { status: 503 });
+    }
+    return deidResponse(body.text);
+  });
+
+  await assert.rejects(
+    runAgentReply(db() as never, { tenantId: TENANT, userMessage: 'safe question' }),
+    (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE',
+  );
+
+  const failed = agentRunUpdates.at(-1) as { data?: Record<string, unknown> } | undefined;
+  assert.equal(failed?.data?.status, 'FAILED');
+  assert.equal(failed?.data?.stopReason, 'privacy_processing_failed');
+  assert.ok(failed?.data?.completedAt instanceof Date);
+  assert.equal(mocks.turn.mock.calls.length, 1, 'the failed trace is not sent in a later model turn');
+  assert.equal(agentToolCalls.length, 0, 'the unmasked trace is not persisted');
+  assert.equal(JSON.stringify(records).includes(PHONE), false);
+  assert.equal(JSON.stringify(agentRunUpdates).includes(PHONE), false);
+});
+
 test('Privacy service unavailable', async () => {
   const failures = [
     async () => new Response(PHONE, { status: 503 }),
@@ -178,9 +219,9 @@ test('Privacy service unavailable blocks Embedding and Agent dispatch', async ()
   await assert.rejects(generateEmbedding(db() as never, TENANT, PHONE), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   assert.equal(embedRequests.length, 0);
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-  const result = await runAgentReply(db() as never, { tenantId: TENANT, userMessage: PHONE });
-  assert.equal(result.status, 'failed');
+  await assert.rejects(runAgentReply(db() as never, { tenantId: TENANT, userMessage: PHONE }), (error: any) => error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE');
   assert.equal(mocks.turn.mock.calls.length, 0);
+  assert.equal(records.length, 0, 'unmasked AgentRun input is not persisted');
   assert.equal(JSON.stringify(log.mock.calls).includes(PHONE), false);
 });
 

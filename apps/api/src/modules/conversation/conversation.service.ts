@@ -336,12 +336,14 @@ export async function sendMessage(
   const sequence = await prisma.message.count({
     where: { conversationId },
   }) + 1;
-  const stored = await prepareStoredMessageContent(
-    prisma,
-    tenantId,
-    data.content,
-    data.privacyMode === 'original' ? 'agent_original' : 'agent_default',
-  );
+  const stored = data.contentType === 'text'
+    ? await prepareStoredMessageContent(
+        prisma,
+        tenantId,
+        data.content,
+        data.privacyMode === 'original' ? 'agent_original' : 'agent_default',
+      )
+    : { content: data.content as Prisma.InputJsonObject, metadata: {} };
 
   const message = await prisma.message.create({
     data: {

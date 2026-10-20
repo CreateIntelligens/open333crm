@@ -56,7 +56,7 @@ export default function EditMaterialPage() {
     });
   }, [material]);
 
-  const handleSave = async () => {
+  const handleSave = async (privacyMode?: 'mask' | 'original') => {
     if (!draft) return;
     if (!draft.name.trim()) { setToast({ type: 'error', message: '素材名稱必填' }); return; }
     setSaving(true);
@@ -66,6 +66,7 @@ export default function EditMaterialPage() {
         categoryId: gov?.categoryId ?? null,
         tags: gov?.tags ?? [],
         status: gov?.status ?? 'draft',
+        privacyMode,
       });
       await mutate();
       setError(null);

@@ -91,15 +91,49 @@ function mapStrings(value: unknown, transform: (text: string) => string, depth =
   return value;
 }
 
-async function maskStructuredContent(content: Record<string, unknown>): Promise<Record<string, unknown>> {
+const MESSAGE_PROTOCOL_KEYS = new Set([
+  'url', 'mediaUrl', 'thumbnailUrl', 'previewImageUrl', 'storageKey', 'replyToken', 'postbackData',
+  'uri', 'videoUrl', 'previewUrl', 'originalContentUrl', 'channelMsgId', 'clientMessageId', 'contactUid',
+  'contactId', 'conversationId', 'caseId', 'strategy', 'retryKey', 'mimeType', 'contentType', 'messageId', 'id',
+]);
+const MATERIAL_PROTOCOL_KEYS = new Set([...MESSAGE_PROTOCOL_KEYS].filter((key) => ![
+  'url', 'mediaUrl', 'thumbnailUrl', 'previewImageUrl', 'uri', 'videoUrl', 'previewUrl', 'originalContentUrl',
+  'postbackData',
+].includes(key)));
+
+function mapMessageStrings(value: unknown, transform: (text: string) => string, key = '', depth = 0): unknown {
+  if (depth > 32) throw privacyFailure();
+  if (typeof value === 'string') return MESSAGE_PROTOCOL_KEYS.has(key) ? value : transform(value);
+  if (Array.isArray(value)) return value.map((item) => mapMessageStrings(item, transform, key, depth + 1));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, mapMessageStrings(item, transform, childKey, depth + 1)]));
+  }
+  return value;
+}
+
+function mapMaterialStrings(value: unknown, transform: (text: string) => string, key = '', depth = 0): unknown {
+  if (depth > 32) throw privacyFailure();
+  if (typeof value === 'string') return MATERIAL_PROTOCOL_KEYS.has(key) ? value : transform(value);
+  if (Array.isArray(value)) return value.map((item) => mapMaterialStrings(item, transform, key, depth + 1));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, mapMaterialStrings(item, transform, childKey, depth + 1)]));
+  }
+  return value;
+}
+
+async function maskStructuredContent(
+  content: Record<string, unknown>,
+  scope: 'message' | 'material' = 'message',
+): Promise<Record<string, unknown>> {
+  const mapFields = scope === 'material' ? mapMaterialStrings : mapMessageStrings;
   const texts: string[] = [];
-  mapStrings(content, (text) => {
+  mapFields(content, (text) => {
     texts.push(text);
     return text;
   });
   const masked = await maskTexts(texts);
   let index = 0;
-  return mapStrings(content, () => masked[index++]) as Record<string, unknown>;
+  return mapFields(content, () => masked[index++]) as Record<string, unknown>;
 }
 
 export type StoredMessagePrivacySource = 'inbound' | 'agent_default' | 'agent_original' | 'system';
@@ -114,6 +148,36 @@ export interface StoredMessagePrivacy {
 export interface PreparedStoredMessageContent {
   content: Prisma.InputJsonObject;
   metadata: Prisma.InputJsonObject;
+}
+
+export interface PreparedStoredMaterialBody {
+  body: Prisma.InputJsonObject;
+  maskedBody: Prisma.InputJsonObject | null;
+  privacyMode: 'mask' | 'original' | null;
+}
+
+/** Prepare a material body for storage and delivery with an explicit per-save mode. */
+export async function prepareStoredMaterialBody(
+  prisma: TenantDb,
+  tenantId: string,
+  body: Record<string, unknown>,
+  requestedMode: 'mask' | 'original' = 'mask',
+): Promise<PreparedStoredMaterialBody> {
+  // Structural DB doubles used by older unit tests do not expose this model.
+  if (!('platformSetting' in (prisma as object))) {
+    return { body: body as Prisma.InputJsonObject, maskedBody: null, privacyMode: null };
+  }
+  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) {
+    return { body: body as Prisma.InputJsonObject, maskedBody: null, privacyMode: null };
+  }
+
+  const maskedBody = await maskStructuredContent(body, 'material');
+  const privacyMode = requestedMode === 'original' ? 'original' : 'mask';
+  return {
+    body: (privacyMode === 'original' ? body : maskedBody) as Prisma.InputJsonObject,
+    maskedBody: maskedBody as Prisma.InputJsonObject,
+    privacyMode,
+  };
 }
 
 /**
@@ -204,4 +268,17 @@ export async function getPrivacyAwareChatProvider(
 export async function deidentifyTenantText(prisma: TenantDb, tenantId: string, text: string): Promise<string> {
   if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return text;
   return (await maskTexts([text]))[0];
+}
+
+/** De-identify every string value in a JSON trace before it is persisted. */
+export async function deidentifyTenantData(prisma: TenantDb, tenantId: string, value: unknown): Promise<unknown> {
+  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return value;
+  const strings: string[] = [];
+  mapStrings(value, (text) => {
+    strings.push(text);
+    return text;
+  });
+  const masked = await maskTexts(strings);
+  let index = 0;
+  return mapStrings(value, () => masked[index++]);
 }

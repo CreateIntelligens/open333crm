@@ -4,7 +4,7 @@ import type { Server } from 'socket.io';
 import { getConfig } from '../../../config/env.js';
 import { getChatSettings } from '../../settings/chat-settings.service.js';
 import { getChatProvider } from '../providers/index.js';
-import { getPrivacyAwareChatProvider, prepareStoredMessageContent } from '../deidentification.service.js';
+import { deidentifyTenantData, deidentifyTenantText, getPrivacyAwareChatProvider, prepareStoredMessageContent } from '../deidentification.service.js';
 import type { HistoryMessage } from '../providers/types.js';
 import { resolveGeminiKey } from '../ai-key.service.js';
 import { isMonthlyTokenExceeded } from '../../trial/token-quota.service.js';
@@ -58,6 +58,7 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
   }
 
   const protectedProvider = await getPrivacyAwareChatProvider(prisma, input.tenantId, provider);
+  const storedUserMessage = await deidentifyTenantText(prisma, input.tenantId, input.userMessage);
   const now = new Date();
   const run = await prisma.agentRun.create({
     data: {
@@ -66,21 +67,25 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
       initiatedById: input.initiatedById,
       provider: provider.id,
       model: settings.model,
-      userMessage: input.userMessage,
+      userMessage: storedUserMessage,
       expiresAt: addRetentionExpiry(now),
     },
   });
   const expiresAt = run.expiresAt;
   const store: AgentRunStore = {
     async recordToolCall(record) {
+      const safeTrace = await deidentifyTenantData(prisma, input.tenantId, {
+        arguments: record.call.arguments,
+        result: record.result,
+      }) as { arguments: Record<string, unknown>; result: string };
       await prisma.agentToolCall.create({
         data: {
           tenantId: input.tenantId,
           runId: run.id,
           turn: record.turn,
           toolName: record.call.name,
-          arguments: JSON.parse(JSON.stringify(record.call.arguments)),
-          result: record.result,
+          arguments: JSON.parse(JSON.stringify(safeTrace.arguments)),
+          result: safeTrace.result,
           status: record.status === 'success' ? 'SUCCESS' : 'FAILED',
           durationMs: record.durationMs,
           expiresAt,
@@ -99,6 +104,9 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
       });
     },
     async finishRun(result) {
+      const finalText = result.finalText === undefined
+        ? undefined
+        : await deidentifyTenantText(prisma, input.tenantId, result.finalText);
       await prisma.agentRun.updateMany({
         where: { id: run.id, tenantId: input.tenantId },
         data: {
@@ -106,53 +114,72 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
           stopReason: result.stopReason,
           turnCount: result.turns,
           toolCallCount: result.toolCalls,
-          finalText: result.finalText,
+          finalText,
           completedAt: new Date(),
         },
       });
     },
   };
 
-  const history = input.conversationId
-    ? await loadAgentHistory(prisma, input.tenantId, input.conversationId, input.messageId)
-    : [];
-  const result = await runAgent({
-    provider: protectedProvider,
-    systemPrompt: withOtherChannelContext(
-      settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
-      // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
-      input.conversationId
-        ? await loadOtherChannelContext(prisma, input.tenantId, input.conversationId, undefined, input.accessibleChannels)
-        : '',
-    ),
-    userMessage: input.userMessage,
-    history: history.map((message) => ({ ...message })),
-    tools: getAgentToolDefinitions({ canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH }),
-    executeTool: (name, args) => executeAgentTool(name, args, {
-      tenantId: input.tenantId,
-      runId: run.id,
-      canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH,
-      wikiApiToken: config.WIKI_API_TOKEN,
-      prisma,
-      onWikiPublished: async ({ path, shareUrl }) => {
-        await prisma.agentReportDraft.upsert({
-          where: { runId: run.id },
-          create: { tenantId: input.tenantId, runId: run.id, path, markdown: null, status: 'PUBLISHED', shareUrl, expiresAt },
-          update: { path, markdown: null, status: 'PUBLISHED', shareUrl },
-        });
-      },
-    }),
-    store,
-    model: settings.model,
-    temperature: settings.temperature,
-    maxTokens: settings.maxTokens,
-    maxTurns: config.AGENT_MAX_TURNS,
-    maxToolCalls: config.AGENT_MAX_TOOL_CALLS,
-    timeoutMs: config.AGENT_TIMEOUT_MS,
-    maxTotalTokens: config.AGENT_MAX_TOTAL_TOKENS,
-    baseUrl: settings.baseUrl,
-    apiKey: key.key,
-  });
+  let result: AgentRunResult;
+  try {
+    const history = input.conversationId
+      ? await loadAgentHistory(prisma, input.tenantId, input.conversationId, input.messageId)
+      : [];
+    result = await runAgent({
+      provider: protectedProvider,
+      systemPrompt: withOtherChannelContext(
+        settings.chatSystemPrompt ? `${AGENT_SYSTEM_PROMPT}\n\n租戶補充規則：\n${settings.chatSystemPrompt}` : AGENT_SYSTEM_PROMPT,
+        // 歸戶後同一位顧客在其他渠道問過的內容（change add-email-identity-merge）
+        input.conversationId
+          ? await loadOtherChannelContext(prisma, input.tenantId, input.conversationId, undefined, input.accessibleChannels)
+          : '',
+      ),
+      userMessage: input.userMessage,
+      history: history.map((message) => ({ ...message })),
+      tools: getAgentToolDefinitions({ canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH }),
+      executeTool: (name, args) => executeAgentTool(name, args, {
+        tenantId: input.tenantId,
+        runId: run.id,
+        canPublishWiki: input.canPublishWiki ?? config.AGENT_WIKI_AUTO_PUBLISH,
+        wikiApiToken: config.WIKI_API_TOKEN,
+        prisma,
+        onWikiPublished: async ({ path, shareUrl }) => {
+          await prisma.agentReportDraft.upsert({
+            where: { runId: run.id },
+            create: { tenantId: input.tenantId, runId: run.id, path, markdown: null, status: 'PUBLISHED', shareUrl, expiresAt },
+            update: { path, markdown: null, status: 'PUBLISHED', shareUrl },
+          });
+        },
+      }),
+      store,
+      model: settings.model,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+      maxTurns: config.AGENT_MAX_TURNS,
+      maxToolCalls: config.AGENT_MAX_TOOL_CALLS,
+      timeoutMs: config.AGENT_TIMEOUT_MS,
+      maxTotalTokens: config.AGENT_MAX_TOTAL_TOKENS,
+      baseUrl: settings.baseUrl,
+      apiKey: key.key,
+    });
+  } catch (error) {
+    const privacyFailure = error instanceof AppError &&
+      (error.code === 'AI_DEIDENTIFICATION_UNAVAILABLE' || error.code === 'AI_PRIVACY_POLICY_UNAVAILABLE');
+    try {
+      await prisma.agentRun.updateMany({
+        where: { id: run.id, tenantId: input.tenantId },
+        data: {
+          status: 'FAILED',
+          stopReason: privacyFailure ? 'privacy_processing_failed' : 'agent_execution_failed',
+          completedAt: new Date(),
+        },
+      });
+    } catch {
+      // Preserve the original bounded error and never persist unprocessed trace content.
+    }
+    throw error;
+  }
   // 綁定代碼只能由綁定流程產生：AI 回覆含代碼就整則換成固定說明
   const guarded = result.status === 'completed'
     ? await guardAiReplyForTenant(prisma, input.tenantId, result.text, { conversationId: input.conversationId, source: 'agentic_llm' })

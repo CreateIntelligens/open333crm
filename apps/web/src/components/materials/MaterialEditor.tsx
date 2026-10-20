@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Save, Eye } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ import { MaterialPreview } from './MaterialPreview';
 import { QuickReplyEditor, type QuickReplyItem } from './QuickReplyEditor';
 import type { MaterialVariable } from '@/hooks/useMaterials';
 import { validateMaterialBody } from './validate-body';
+import api from '@/lib/api';
 
 export interface MaterialDraft {
   name: string;
@@ -43,7 +44,7 @@ interface Props {
   templateName?: string;
   saving?: boolean;
   onChange: (next: MaterialDraft) => void;
-  onSave: () => void;
+  onSave: (privacyMode?: 'mask' | 'original') => void;
   onCancel: () => void;
   /** 右欄預覽下方的額外內容（如分類/標籤/狀態治理面板），一起收進 sticky 右欄 */
   rightPanelExtra?: React.ReactNode;
@@ -102,6 +103,23 @@ function bodyEditorFor(contentType: string) {
 export function MaterialEditor({ draft, templateName, saving, onChange, onSave, onCancel, rightPanelExtra }: Props) {
   const BodyEditor = useMemo(() => bodyEditorFor(draft.contentType), [draft.contentType]);
   const [showPreview, setShowPreview] = useState(true);
+  const [privacyEnabled, setPrivacyEnabled] = useState(false);
+  const [privacyMode, setPrivacyMode] = useState<'mask' | 'original'>('mask');
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve()
+      .then(() => api.get('/ai/privacy/status'))
+      .then((res) => {
+        if (!active) return;
+        const enabled = res.data.data?.enabled === true;
+        setPrivacyEnabled(enabled);
+        setPrivacyMode('mask');
+      })
+      .catch(() => {
+        if (active) setPrivacyEnabled(false);
+      });
+    return () => { active = false; };
+  }, []);
   // 存檔前擋控：內容有「存下去也一定不會動」的問題時禁用存檔鈕，
   // 避免使用者按了才被後端退（如 LINE 影片填了 YouTube 分享連結）。
   const blockReason = useMemo(
@@ -131,7 +149,21 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
           <Button variant="outline" onClick={() => setShowPreview((v) => !v)}>
             <Eye className="mr-1 h-4 w-4" />{showPreview ? '隱藏預覽' : '顯示預覽'}
           </Button>
-          <Button onClick={onSave} disabled={saving || !!blockReason} title={blockReason ?? undefined}>
+          {privacyEnabled && (
+            <Button
+              type="button"
+              variant={privacyMode === 'mask' ? 'default' : 'outline'}
+              size="sm"
+              className="shrink-0 text-xs"
+              disabled={saving}
+              aria-pressed={privacyMode === 'mask'}
+              onClick={() => setPrivacyMode((mode) => mode === 'mask' ? 'original' : 'mask')}
+              title={privacyMode === 'mask' ? '目前會遮罩個資；點擊可保留原文' : '目前保留原文；點擊可遮罩個資'}
+            >
+              {privacyMode === 'mask' ? '個資遮罩' : '保留原文'}
+            </Button>
+          )}
+          <Button onClick={() => onSave(privacyEnabled ? privacyMode : undefined)} disabled={saving || !!blockReason} title={blockReason ?? undefined}>
             <Save className="mr-1 h-4 w-4" />{saving ? '儲存中…' : '存為素材'}
           </Button>
         </div>
@@ -171,6 +203,11 @@ export function MaterialEditor({ draft, templateName, saving, onChange, onSave, 
           {/* 內容編輯 */}
           <section className="border-b border-border/60 py-6">
             <div className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">訊息內容</div>
+            {privacyEnabled && (
+              <p className="mb-3 text-xs text-muted-foreground">
+                此租戶已啟用個資遮罩，儲存時預設會遮罩內容；可用上方按鈕選擇保留原文。
+              </p>
+            )}
             {BodyEditor ? (
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               <BodyEditor body={draft.body as any} onChange={(next: any) => handleBodyChange(next)} />

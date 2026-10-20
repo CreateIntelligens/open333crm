@@ -32,6 +32,18 @@
 
 - [x] 6.1 Update the latest dated `CHANGELOG.md` entry and re-run the focused unit tests, `pnpm test`, strict tenant checks, relevant TypeScript checks, OpenSpec validation and the Impeccable detector.
 
+## 7. Protected marketing material storage
+
+- [x] 7.1 Add failing API unit tests for enabled material creation defaulting to masked body, explicit original mode retaining both representations, masked version snapshots on create/update, masking failure preventing writes, and disabled-policy behavior.
+- [x] 7.2 Extend the shared privacy helper for structured material bodies; add nullable `maskedBody` and `privacyMode` to Material and MaterialVersion; wire create/update/version services and route validation so the tenant policy is enforced server-side.
+- [x] 7.3 Add a failing MaterialEditor test for tenant-enabled default mask and explicit original choice; add the per-save control to create/edit UI and send its mode with material writes.
+- [ ] 7.4 Document material storage and retained history, update CHANGELOG, validate the Prisma schema and deployment migration, run API/Web tests, type checks, strict tenant checks and OpenSpec validation; run feature tests when local PostgreSQL and Redis are available.
+
+## 8. Agent trace failure state
+
+- [x] 8.1 Add a failing Agent service test for tool trace de-identification failure: no raw trace write and the AgentRun reaches a terminal failed state.
+- [x] 8.2 Catch post-creation Agent failures, mark the run failed with a bounded reason and timestamp, then preserve the original error without persisting unmasked text.
+
 ## Workflow follow-up
 
 - Archive using the OpenSpec CLI after all tracked tasks are complete and validate resulting main specs.
