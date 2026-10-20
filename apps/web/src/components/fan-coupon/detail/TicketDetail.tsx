@@ -9,7 +9,7 @@ import React, { useEffect, useRef } from 'react';
 import { Gift, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FanCoupon } from '@/hooks/useFanCoupons';
-import { HOW_TO_USE, conditionText, faceValue, statusLabel, ymd, ymdhm, ymdhms } from '@/lib/fan-coupon/labels';
+import { HOW_TO_USE, conditionText, faceValue, statusLabel, ymd, ymdhm, ymdhms, termsHtml } from '@/lib/fan-coupon/labels';
 import { FanStatusBadge } from '../FanStatusBadge';
 import { formatClock, md, mdhm } from './ui';
 import { useCountdown } from './useCountdown';
@@ -159,7 +159,7 @@ export function TicketDetail({ item, onAfterOpenTimeUp }: Props) {
             {/* terms 由後端 terms-sanitizer 消毒過（只留白名單標籤與屬性），可直接當 HTML 呈現 */}
             <div
               className="mt-2 text-sm font-medium leading-6 text-muted-foreground [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
-              dangerouslySetInnerHTML={{ __html: c.terms }}
+              dangerouslySetInnerHTML={{ __html: termsHtml(c.terms) }}
             />
           </section>
         )}

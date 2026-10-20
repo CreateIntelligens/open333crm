@@ -93,3 +93,15 @@ export const HOW_TO_USE: Record<NonNullable<FanCoupon['coupon']['redeemMode']>, 
   STAFF_SCAN: '結帳時出示，由店員掃描 QR Code 或輸入券號',
   SELF: '結帳時按「立即使用」並滑動確認',
 };
+
+/**
+ * 使用條款轉成要呈現的 HTML。後台的條款欄位是「一行一條」的純文字，也接受有限的標記（已由後端消毒）。
+ * 沒有清單或段落標記時，每一行轉成一個清單項目；已經是清單或段落的照原樣呈現。
+ * 每一行都是後端消毒過的內容，只是外面包上 <ul><li>，不會帶進新的標記。
+ */
+export function termsHtml(terms: string): string {
+  if (/<(ul|ol|li|p|br)\b/i.test(terms)) return terms;
+  const lines = terms.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return '';
+  return `<ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`;
+}

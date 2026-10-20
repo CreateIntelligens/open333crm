@@ -115,6 +115,14 @@ describe('券詳情：主按鈕依核銷方式與狀態', () => {
     assert.ok(screen.getByRole('heading', { name: '優惠券詳情' }));
   });
 
+  test('一行一條的使用條款顯示為清單', () => {
+    h.coupon = fanCoupon({}, { terms: '單筆訂單限用一張\n僅限本人使用\n核銷需由門市人員操作' });
+    render(<CouponRedeemFlow id={ID} />);
+    const items = document.querySelectorAll('section[aria-labelledby="coupon-terms-title"] li');
+    assert.equal(items.length, 3);
+    assert.equal(items[1].textContent, '僅限本人使用');
+  });
+
   test('店員掃碼券顯示「出示 QR Code 給店員」', () => {
     h.coupon = fanCoupon({}, { redeemMode: 'STAFF_SCAN', staffCodeLength: null });
     render(<CouponRedeemFlow id={ID} />);
