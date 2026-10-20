@@ -60,6 +60,8 @@
 
 ## A4a. fan auth 過渡：Account Link 驗證（不需 LINE Login channel）
 
+> 2026-10-20 已由 design D12（One ID 歸戶驗證）取代，Account Link 程式已移除。下列未完成項目不再進行。
+
 > **為何拆**：LIFF 須建於 LINE Login channel 之下，客戶短期內無法取得（design D11）。
 > 現況 fan auth 零驗證，不可作為過渡。本組先以 Account Link 補上身分驗證，**A4b 到位前這是唯一合法入口**。
 
@@ -242,26 +244,27 @@
 
 ### 資料模型
 
-- [ ] 9.1 migration：Contact 新增 identityVerifiedAt、identityVerifiedVia
+- [x] 9.1 migration：Contact 新增 identityVerifiedAt、identityVerifiedVia
 
 ### 測試先行（feature：`apps/api/tests/feature/modules/coupon/coupon-wallet.test.ts`、`apps/api/tests/feature/modules/identity-binding/identity-verified.test.ts`）
 
-- [ ] 9.2 測試「登記手機後記錄」「登記觸發合併」
-- [ ] 9.3 測試「已歸戶的顧客開啟票券連結」「未歸戶的顧客開啟票券連結」「客服手動填寫的手機不算歸戶」「租戶沒有啟用任何登記方式」「未經驗證的存取請求」
-- [ ] 9.4 測試「開啟有效連結」「連結過期」「聯絡人已合併」「只能存取自己的券」
-- [ ] 9.5 測試「FB 或 IG 對話中發出的券」
-- [ ] 9.6 測試「即將到期的券主動提示」「已過到期時間的券列為已失效」「活動提前結束的券註明原因」「分頁數量」（unit 測狀態判定）
-- [ ] 9.7 測試「時段內輸入正確驗證碼」「驗證碼錯誤」「錯誤達 5 次」「時段結束」「沒有開始就送出驗證碼」
-- [ ] 9.8 測試「店員掃碼後查詢」
+- [x] 9.2 測試「登記手機後記錄」「登記觸發合併」
+- [x] 9.3 測試「已歸戶的顧客開啟票券連結」「未歸戶的顧客開啟票券連結」「客服手動填寫的手機不算歸戶」「租戶沒有啟用任何登記方式」「未經驗證的存取請求」
+- [x] 9.4 測試「開啟有效連結」「連結過期」「聯絡人已合併」「只能存取自己的券」
+- [x] 9.5 測試「FB 或 IG 對話中發出的券」
+- [x] 9.6 測試「即將到期的券主動提示」「已過到期時間的券列為已失效」「活動提前結束的券註明原因」「分頁數量」（unit 測狀態判定）
+- [x] 9.7 測試「時段內輸入正確驗證碼」「驗證碼錯誤」「錯誤達 5 次」「時段結束」「沒有開始就送出驗證碼」
+- [x] 9.8 測試「店員掃碼後查詢」
+- [x] 9.8a 測試「合併後券在保留方的券夾」「合併時帶入歸戶驗證」「解除合併時券回到原聯絡人」（`coupon-merge.test.ts`），並修改合併引擎
 
 ### 實作
 
-- [ ] 9.9 One ID 登記成功時寫入歸戶驗證時間；合併時保留
-- [ ] 9.10 票券連結權杖（core，API 與 workers 共用）、發券訊息改用票券連結
+- [x] 9.9 One ID 登記成功時寫入歸戶驗證時間；合併時保留
+- [x] 9.10 票券連結權杖（core，API 與 workers 共用）、發券訊息改用票券連結
 - [ ] 9.11 `POST /fan/coupons/session`：權杖換顧客憑證或回傳驗證要求；登記頁支援送出後返回
-- [ ] 9.12 對話發券與自動化發券不再依渠道產生領取憑證；移除 Account Link（fan-auth、ticket 交換、webhook 分流）
-- [ ] 9.13 券夾狀態判定與分頁數量、券詳情欄位（面額、條件、效期、核銷方式說明）
-- [ ] 9.14 店員驗證碼核銷時段：`POST /:id/start`、`POST /:id/redeem-code`
+- [x] 9.12 對話發券與自動化發券不再依渠道產生領取憑證；移除 Account Link（fan-auth、ticket 交換、webhook 分流）
+- [x] 9.13 券夾狀態判定與分頁數量、券詳情欄位（面額、條件、效期、核銷方式說明）
+- [x] 9.14 店員驗證碼核銷時段：`POST /:id/start`、`POST /:id/redeem-code`
 - [ ] 9.15 前端：`/coupon/open/[token]` 入口與驗證引導、`/coupon/wallet` 券夾、`/coupon/wallet/[id]` 詳情與三種核銷、核銷結果與例外狀態
 - [ ] 9.16 前端元件測試：驗證引導、倒數與驗證碼輸入、滑動核銷門檻、狀態頁
 

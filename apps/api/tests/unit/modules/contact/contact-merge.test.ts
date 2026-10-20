@@ -158,6 +158,8 @@ function makeDb() {
     clickLog: table([{ id: 'cl-m', contactId: 'M' }]),
     flowExecution: table([{ id: 'fe-m', tenantId: T, contactId: 'M' }]),
     kbArticleFeedback: table([{ id: 'kb-m', tenantId: T, contactId: 'M' }]),
+    // 合併時券跟著移到保留方（add-coupon-system）
+    couponInstance: table([{ id: 'cpn-m', tenantId: T, contactId: 'M' }]),
     contactTag: table(
       [
         { id: 'tag-s-vip', contactId: 'S', tagId: 'vip', expiresAt: null },

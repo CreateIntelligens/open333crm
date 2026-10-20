@@ -494,6 +494,10 @@ model Contact {
   isBlocked    Boolean  @default(false)
   isArchived   Boolean  @default(false)
   mergedIntoId String?  @db.Uuid
+  /// 歸戶驗證：顧客本人透過 One ID 登記連結成功送出手機或 email 的時間與方式（'phone'／'email'）。
+  /// 客服在後台填寫的手機、email 不會寫入，優惠券票券夾以此判斷是否已歸戶（add-coupon-system D12）
+  identityVerifiedAt  DateTime?
+  identityVerifiedVia String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

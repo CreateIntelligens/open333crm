@@ -7,7 +7,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { withTenant } from '../../lib/tenant-db.js';
 import { verifyFanToken, type FanPayload } from './portal-auth.service.js';
-import { exchangeAuthTicket } from '../fan-auth/auth-ticket.service.js';
 import { submitActivity, getActivityResult } from './portal.service.js';
 import { getPointBalance, listPointTransactions } from './points.service.js';
 
@@ -41,40 +40,9 @@ export default async function portalPublicRoutes(app: FastifyInstance) {
   const inFanTenant = <T>(fan: FanPayload, fn: (tx: Prisma.TransactionClient) => Promise<T>) =>
     withTenant(app.prisma, fan.tenantId, fn);
 
-  // ── Auth (no JWT required) ────────────────────────────────────────────────
-
-  /**
-   * 以綁定票據換取 fan token。
-   *
-   * 舊版 POST /auth 憑任意 {contactId, tenantId} 即簽發 fanToken，不驗證呼叫者身分，
-   * 已於 add-cross-channel-one-id 移除。現行流程：顧客於 LINE 完成 Account Link →
-   * LINE 平台驗證身分 → webhook 收到 result=ok → 簽發一次性 ticket → 顧客端持 ticket
-   * 換 token（add-coupon-system design D11）。只接受 ticket，不接受 contactId。
-   */
-  app.post('/auth', async (request, reply) => {
-    const { ticket } = (request.body ?? {}) as { ticket?: string };
-    if (!ticket) {
-      return reply.status(400).send({
-        success: false,
-        error: { code: 'BAD_REQUEST', message: '需要綁定票據' },
-      });
-    }
-
-    const result = await exchangeAuthTicket(app.prisma, ticket);
-    if (!result.ok) {
-      // 票據查無／已使用／已過期——三者對顧客而言處理方式相同：重新操作
-      return result.reason === 'TICKET_INVALID'
-        ? reply.status(401).send({
-            success: false,
-            error: { code: 'TICKET_INVALID', message: '票據無效或已過期，請重新點選連結' },
-          })
-        : reply.status(404).send({
-            success: false,
-            error: { code: 'NOT_FOUND', message: '查無此聯絡人' },
-          });
-    }
-    return { success: true, data: result.data };
-  });
+  // 已移除 POST /auth：舊版憑任意 {contactId, tenantId} 即簽發 fanToken，
+  // 不驗證呼叫者身分（任何人都能冒充任一顧客）。fanToken 改由經平台驗證的流程
+  // 簽發（見 openspec change add-cross-channel-one-id）。
 
   // ── Protected routes (fan JWT) ────────────────────────────────────────────
 

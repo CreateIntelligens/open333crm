@@ -7,8 +7,7 @@ import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
 import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
-import { issueInstances } from '@open333crm/core';
-import { buildCouponMessage, requiresCouponClaimToken } from './coupon-message.js';
+import { issueInstances, issueWalletToken, walletLinkUrl, buildCouponMessage, type WalletTokenStore } from '@open333crm/core';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -530,16 +529,21 @@ export async function executeWorkerAutomationActions(
 
         const conv = await prisma.conversation.findFirst({
           where: { id: context.conversationId, tenantId: context.tenantId },
-          include: { channel: { select: { channelType: true } } },
+          select: { id: true, channelId: true, contactId: true },
         });
-        const channelType = conv?.channel?.channelType;
-        if (!channelType) {
-          logger.warn('[automation] issue_coupon skipped: conversation channel not found');
+        const identity = conv?.contactId
+          ? await prisma.channelIdentity.findFirst({
+              where: { contactId: conv.contactId, channelId: conv.channelId, contact: { tenantId: context.tenantId } },
+              select: { id: true },
+            })
+          : null;
+        if (!conv || !identity) {
+          logger.warn('[automation] issue_coupon skipped: conversation or channel identity not found');
           continue;
         }
 
-        // FB／IG 無可信平台身分，發出的券需帶領取憑證（design D10）
-        const requireClaim = requiresCouponClaimToken(channelType);
+        // 對話對象已知：所有渠道都直接歸戶，顧客開啟票券連結時再做 One ID 歸戶驗證（design D12）
+        const requireClaim = false;
 
         // 交易內完成配額檢查與建立，避免併發超發
         const outcome = await prisma.$transaction((tx) =>
@@ -558,6 +562,16 @@ export async function executeWorkerAutomationActions(
         }
 
         const instance = outcome.issued[0];
+        // 票券連結與文案與 API 對話發券共用 core 的同一套（design D12）
+        const walletToken = await issueWalletToken(redisPublisher as unknown as WalletTokenStore, {
+          tenantId: context.tenantId,
+          contactId: context.contactId as string,
+          channelIdentityId: identity.id,
+          channelId: conv.channelId,
+          conversationId: conv.id,
+          instanceId: instance.id,
+        });
+        const webBaseUrl = process.env.WEB_BASE_URL || 'http://localhost:3000';
         await deliverToChannelFromWorker(
           prisma,
           redisPublisher,
@@ -566,11 +580,7 @@ export async function executeWorkerAutomationActions(
           {
             contentType: 'text',
             content: {
-              text: buildCouponMessage({
-                couponName: coupon.name,
-                claimToken: instance.claimToken,
-                instanceId: instance.id,
-              }),
+              text: buildCouponMessage({ couponName: coupon.name, url: walletLinkUrl(webBaseUrl, walletToken) }),
             },
             // keyword.matched 帶 replyToken 時走 reply（免費）；否則自動落 push
             delivery: keywordReplyDelivery(context),

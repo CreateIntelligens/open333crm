@@ -21,3 +21,4 @@ export * from "./identity/identity-stitcher.js";
 export * from "./identity/merge-suggestion-service.js";
 export * from "./rbac/index.js";
 export * from "./coupon/issue.js";
+export * from "./coupon/wallet-link.js";

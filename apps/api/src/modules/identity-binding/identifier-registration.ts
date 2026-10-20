@@ -104,6 +104,31 @@ export function registrationUrl(kind: RegistrationKind, webBaseUrl: string, toke
 }
 
 /**
+ * 產生登記權杖（不送訊息）。與對話中發連結共用每小時次數上限。
+ * 優惠券票券夾用它把未歸戶的顧客直接帶到登記頁（add-coupon-system design D12）。
+ */
+export async function issueRegistrationToken(
+  kind: RegistrationKind,
+  deps: RegistrationDeps,
+  actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
+  initiatedBy: 'customer' | 'agent' = 'customer',
+): Promise<{ status: 'ok'; token: string; issued: number } | { status: 'rate_limited'; issued: number }> {
+  const issued = await bumpCounter(deps.store, issueKey(kind, actor.channelIdentityId, initiatedBy));
+  if (issued > MAX_ISSUES_PER_HOUR) return { status: 'rate_limited', issued };
+
+  const token = randomBytes(32).toString('base64url');
+  const payload: RegistrationPayload = {
+    tenantId: actor.tenantId,
+    channelIdentityId: actor.channelIdentityId,
+    channelId: actor.channelId,
+    conversationId: actor.conversationId,
+    issuedAt: (deps.now ?? Date.now)(),
+  };
+  await deps.store.set(tokenKey(kind, token), JSON.stringify(payload), 'PX', REGISTRATION_TTL_MS, 'NX');
+  return { status: 'ok', token, issued };
+}
+
+/**
  * 為顧客目前的渠道身分產生登記連結，並在該對話送出。
  * @param initiatedBy 'agent'＝客服在後台代發：另計次數，超限時只回報給客服，不在顧客對話送說明
  */
@@ -115,24 +140,15 @@ export async function issueRegistrationLink(
   initiatedBy: 'customer' | 'agent' = 'customer',
 ): Promise<IssueRegistrationLinkResult> {
   const { tenantId } = actor;
-  const issued = await bumpCounter(deps.store, issueKey(kind, actor.channelIdentityId, initiatedBy));
-  if (issued > MAX_ISSUES_PER_HOUR) {
+  const issuedToken = await issueRegistrationToken(kind, deps, actor, initiatedBy);
+  if (issuedToken.status === 'rate_limited') {
     // 只在第一次超過時回覆：每則回覆都佔推播額度，否則可被拿來洗訊息
-    if (initiatedBy === 'customer' && issued === MAX_ISSUES_PER_HOUR + 1) {
+    if (initiatedBy === 'customer' && issuedToken.issued === MAX_ISSUES_PER_HOUR + 1) {
       await sendBindingMessage(db, deps, tenantId, actor.conversationId, kind.text.rateLimited, `${kind.name}_rate_limited`);
     }
     return { status: 'rate_limited' };
   }
-
-  const token = randomBytes(32).toString('base64url');
-  const payload: RegistrationPayload = {
-    tenantId,
-    channelIdentityId: actor.channelIdentityId,
-    channelId: actor.channelId,
-    conversationId: actor.conversationId,
-    issuedAt: (deps.now ?? Date.now)(),
-  };
-  await deps.store.set(tokenKey(kind, token), JSON.stringify(payload), 'PX', REGISTRATION_TTL_MS, 'NX');
+  const { token } = issuedToken;
 
   const url = registrationUrl(kind, deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token);
   const text = kind.text.invite(url, Math.round(REGISTRATION_TTL_MS / 60000));
@@ -286,6 +302,7 @@ async function register(
 
   if (!existing) {
     await kind.write(db, tenantId, registrantId, value);
+    await markIdentityVerified(kind, db, tenantId, registrantId);
     return {
       result: { status: 'registered', contactId: registrantId },
       notices: [{ conversationId, text: kind.text.registered, kind: `${kind.name}_registered` }],
@@ -360,6 +377,7 @@ async function register(
     throw err;
   });
   if (!merge) return channelConflict();
+  await markIdentityVerified(kind, db, tenantId, existing.id);
 
   const settingsRow = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
   const unbindKeyword = parseIdentityBindingSettings(settingsRow?.identityBinding).unbindKeywords[0];
@@ -389,6 +407,17 @@ async function register(
     result: { status: 'merged', survivorId: existing.id, mergedId: registrantId, mergeLogId: merge.mergeLogId },
     notices,
   };
+}
+
+/**
+ * 記錄歸戶驗證：顧客本人用登記連結送出了這個值。優惠券票券夾以此判斷是否已歸戶（add-coupon-system D12）。
+ * 合併時記在保留方——合併後顧客的所有渠道身分都屬於它。
+ */
+async function markIdentityVerified(kind: RegistrationKind, db: TenantDb, tenantId: string, contactId: string): Promise<void> {
+  await db.contact.updateMany({
+    where: { id: contactId, tenantId },
+    data: { identityVerifiedAt: new Date(), identityVerifiedVia: kind.name },
+  });
 }
 
 /**
