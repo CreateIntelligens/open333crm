@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { CompactImageField } from '../CompactImageField';
 import { ActionConfigEditor } from './ActionConfigEditor';
+import { PreviewTextField } from './PreviewTextField';
 import {
   PAGE_TYPE_OPTIONS,
   LABEL_COLORS,
@@ -76,11 +77,13 @@ export function LineCarouselEditor({ body, onChange }: Props) {
   const changePageType = (newType: CarouselPageType) => {
     if (newType === body.pageType) return;
     // 保留共用欄位（圖片/標題/文字/動作），只重設類型專屬欄位；不清空、不需確認框。
-    onChange({ pageType: newType, pages: body.pages.map((p) => switchPageType(p, newType)) });
+    onChange({ ...body, pageType: newType, pages: body.pages.map((p) => switchPageType(p, newType)) });
   };
 
   return (
     <div className="space-y-4">
+      <PreviewTextField value={body.altText} fallback="多頁訊息" onChange={(altText) => onChange({ ...body, altText })} />
+
       {/* 頁面類型選擇 */}
       <div className="rounded-md border border-slate-200 p-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">頁面類型</div>

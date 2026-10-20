@@ -41,6 +41,8 @@
 
 LINE 圖片的縮圖選填，沒填或空白時發送用主圖。
 
+LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在聊天列表、手機通知與引用訊息。卡片訊息與圖文訊息沒填或空白時，分別用「多頁訊息」與「圖文訊息」；Flex 沒填時用「Flex Message」。
+
 影片可以貼網址或直接上傳，上限依渠道：LINE 200 MB（LINE 影片訊息的上限），FB 25 MB（Messenger 附件的上限）。LINE 影片走直傳（`apps/web/src/lib/direct-upload.ts`），檔案從瀏覽器直接上傳到 MinIO/S3，不經過 API，上傳時顯示進度；FB 影片走一般上傳 `/files/upload`。超過上限的檔案在選檔時就擋下。
 
 編輯器預設的示範圖是站內路徑 `/material-samples/...`，存檔不會被擋，但發送前要換成公開網址，否則客人看不到圖。
