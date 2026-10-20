@@ -97,6 +97,16 @@ export async function sendCsatSurvey(
 
   const now = new Date();
 
+  // 先以條件更新認領工單再寄出：job 重跑、兩期重疊，或讀取後工單被重開時，只有認領成功的一次會寄
+  const { count } = await prisma.case.updateMany({
+    where: { id: caseId, tenantId: caseRecord.tenantId, status: 'RESOLVED', csatSentAt: null },
+    data: { csatSentAt: now },
+  });
+  if (count === 0) {
+    logger.info(`[CsatService] Skip CSAT survey for case ${caseId}: already sent or no longer RESOLVED`);
+    return false;
+  }
+
   // Create CSAT system message in conversation
   const csatMessage = await prisma.message.create({
     data: {
@@ -109,12 +119,6 @@ export async function sendCsatSurvey(
       isRead: true,
       createdAt: now,
     },
-  });
-
-  // Update csatSentAt
-  await prisma.case.update({
-    where: { id: caseId },
-    data: { csatSentAt: now },
   });
 
   // Update conversation lastMessageAt
