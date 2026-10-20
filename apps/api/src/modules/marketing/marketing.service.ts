@@ -485,17 +485,21 @@ export async function executeBroadcast(
     }
 
     // Resolve audience
-    const identities = await resolveAudience(prisma, broadcast);
+    const matched = await resolveAudience(prisma, broadcast);
+    // FB／IG 只能發給視窗內互動過的人：視窗外的人送了也會被平台擋下，不送出
+    const windowHours = plugin.messagingWindowHours;
+    const identities = await filterByMessagingWindow(prisma, broadcast.tenantId, broadcast.channelId, matched, windowHours);
+    const skippedCount = matched.length - identities.length;
 
     // Update total count
     await prisma.broadcast.update({
       where: { id: broadcastId },
-      data: { totalCount: identities.length },
+      data: { totalCount: matched.length, skippedCount },
     });
 
     // 0 受眾：手動挑選/標籤/分群卻解析不到任何可發送對象時，回明確錯誤而非默默「完成」，
     // 避免使用者以為發成功了其實沒發（如手動挑選未選人、或選的人在此渠道沒有身分）。
-    if (identities.length === 0) {
+    if (matched.length === 0) {
       const reason =
         broadcast.targetType === 'contacts'
           ? '未選擇任何發送對象，或所選對象在此渠道沒有可發送的身分。請先挑選有加入此渠道的對象。'
@@ -506,6 +510,13 @@ export async function executeBroadcast(
               : '此渠道目前沒有可發送的對象。';
       // 拋出後由外層 catch 統一標 failed（0 受眾＝送不出去，算失敗）。
       throw new AppError(reason, 'BROADCAST_NO_RECIPIENTS', 400);
+    }
+    if (identities.length === 0) {
+      throw new AppError(
+        `符合條件的 ${skippedCount} 位對象都超過 ${windowHours} 小時沒有傳訊息給我們。此渠道只能發給 ${windowHours} 小時內傳過訊息的人，所以沒有送出。`,
+        'BROADCAST_OUTSIDE_MESSAGING_WINDOW',
+        400,
+      );
     }
 
     const extractedKeys = extractVariables(body);
@@ -689,7 +700,7 @@ export async function executeBroadcast(
       },
     });
 
-    return { total: identities.length, success: successCount, failed: failedCount };
+    return { total: matched.length, success: successCount, failed: failedCount, skipped: skippedCount };
   } catch (err) {
     // 排程發送沒有人看得到回應：原因要寫進資料庫，後台才看得到（issue #287）
     const failureReason = err instanceof AppError ? err.message.slice(0, FAILURE_REASON_MAX_LENGTH) : UNEXPECTED_FAILURE_REASON;
@@ -699,6 +710,72 @@ export async function executeBroadcast(
     });
     throw err;
   }
+}
+
+/** 一次查詢的聯絡人數上限：避免超過 Postgres 的參數個數上限 */
+const WINDOW_QUERY_CHUNK = 5000;
+
+/**
+ * 有訊息視窗的渠道（FB／IG 24 小時）只留下視窗內在此渠道傳過訊息的人。
+ * 視窗從顧客傳入的訊息（含按鈕回應）起算；沒有視窗的渠道原樣回傳。
+ */
+async function filterByMessagingWindow<T extends { contactId: string }>(
+  prisma: TenantDb,
+  tenantId: string,
+  channelId: string,
+  identities: T[],
+  windowHours: number | undefined,
+  now = new Date(),
+): Promise<T[]> {
+  if (!windowHours || identities.length === 0) return identities;
+  const since = new Date(now.getTime() - windowHours * 3600_000);
+  const contactIds = [...new Set(identities.map((i) => i.contactId))];
+  const active = new Set<string>();
+  for (let i = 0; i < contactIds.length; i += WINDOW_QUERY_CHUNK) {
+    const rows = await prisma.conversation.findMany({
+      where: {
+        tenantId,
+        channelId,
+        contactId: { in: contactIds.slice(i, i + WINDOW_QUERY_CHUNK) },
+        messages: { some: { direction: 'INBOUND', senderType: 'CONTACT', createdAt: { gte: since } } },
+      },
+      select: { contactId: true },
+    });
+    for (const row of rows) active.add(row.contactId);
+  }
+  return identities.filter((i) => active.has(i.contactId));
+}
+
+/**
+ * 預估群發受眾：用和實際發送相同的受眾解析與訊息視窗，回傳符合條件與可送達人數，不建立群發。
+ */
+export async function previewBroadcastAudience(
+  prisma: TenantDb,
+  tenantId: string,
+  input: {
+    channelId: string;
+    targetType: string;
+    segmentId?: string | null;
+    targetConfig?: BroadcastTargetConfig;
+  },
+) {
+  const channel = await prisma.channel.findFirst({
+    where: { id: input.channelId, tenantId, isActive: true },
+    select: { id: true, channelType: true },
+  });
+  if (!channel) {
+    throw new AppError('找不到此渠道或渠道已停用，請至設定確認', 'NOT_FOUND', 404);
+  }
+  const matched = await resolveAudience(prisma, {
+    tenantId,
+    channelId: channel.id,
+    targetType: input.targetType,
+    segmentId: input.segmentId ?? null,
+    targetConfig: input.targetConfig ?? {},
+  });
+  const windowHours = getChannelPlugin(channel.channelType)?.messagingWindowHours;
+  const reachable = await filterByMessagingWindow(prisma, tenantId, channel.id, matched, windowHours);
+  return { matched: matched.length, reachable: reachable.length, messagingWindowHours: windowHours ?? null };
 }
 
 /**

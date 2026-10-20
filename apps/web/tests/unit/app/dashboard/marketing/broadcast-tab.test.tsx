@@ -33,6 +33,7 @@ vi.mock('#src/hooks/useChannels.js', () => ({
     channels: [
       { id: 'ch-line', displayName: '官方 LINE', channelType: 'LINE', isActive: true },
       { id: 'ch-fb', displayName: '粉專', channelType: 'FB', isActive: true },
+      { id: 'ch-ig', displayName: 'IG', channelType: 'THREADS', isActive: true },
     ],
   }),
 }));
@@ -114,8 +115,10 @@ test('依標籤篩選：出現標籤多選，未選標籤不能建立，選了�
   fireEvent.click(vip);
   assert.equal(createButton(dialog).disabled, false);
   fireEvent.click(createButton(dialog));
-  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
-  const [url, payload] = api.post.mock.calls[0];
+  // 表單另外會呼叫 audience-preview 預估人數（change broadcast-messaging-window），只看建立的請求
+  const creates = () => api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts');
+  await waitFor(() => assert.equal(creates().length, 1));
+  const [url, payload] = creates()[0];
   assert.equal(url, '/marketing/broadcasts');
   assert.equal(payload.targetType, 'tags');
   assert.deepEqual(payload.targetConfig, { tagIds: ['tag-vip'] });
@@ -127,7 +130,8 @@ test('受眾分群：沒選分群不能建立', () => {
   fireEvent.change(target, { target: { value: 'segment' } });
   assert.equal(createButton(dialog).disabled, true);
   fireEvent.click(createButton(dialog));
-  assert.equal(api.post.mock.calls.length, 0);
+  // 選「全部」時表單會預估人數（audience-preview），只檢查沒有送出建立
+  assert.equal(api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts').length, 0);
 });
 
 test('Send button while sending：立即發送請求進行中時按鈕停用，重按不會再送', async () => {
@@ -220,4 +224,71 @@ test('Cancel a failed broadcast：請求進行中按鈕停用，重按不會再�
   resolveCancel({ data: { data: {} } });
   await waitFor(() => assert.equal(button().disabled, false));
   assert.ok(mutate.mock.calls.length > 0, '取消後應重新載入列表');
+});
+
+// ─── 可送達人數（change broadcast-messaging-window，spec broadcast-audience「建立群發前可以看到可送達人數」）───
+
+test('表單顯示可送達人數', async () => {
+  api.post.mockImplementation(async (url: string) =>
+    url === '/marketing/broadcasts/audience-preview'
+      ? { data: { data: { matched: 3, reachable: 1, messagingWindowHours: 24 } } }
+      : { data: { data: {} } });
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: /建立廣播/ }));
+  const dialog = screen.getByRole('dialog');
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  fireEvent.change(channel, { target: { value: 'ch-fb' } });
+  await within(dialog).findByText('符合條件 3 人，可送達 1 人');
+  assert.ok(within(dialog).getByText(/只能發給 24 小時內傳過訊息給粉專的人/));
+  assert.ok(within(dialog).getByText(/Marketing Messages.*本系統目前不支援/));
+  const preview = api.post.mock.calls.find(([u]) => u === '/marketing/broadcasts/audience-preview');
+  assert.deepEqual(preview?.[1], { channelId: 'ch-fb', targetType: 'all' });
+});
+
+test('沒有訊息視窗的渠道只顯示符合條件人數', async () => {
+  api.post.mockImplementation(async (url: string) =>
+    url === '/marketing/broadcasts/audience-preview'
+      ? { data: { data: { matched: 2, reachable: 2, messagingWindowHours: null } } }
+      : { data: { data: {} } });
+  const { dialog } = openCreateDialog();
+  await within(dialog).findByText('符合條件 2 人');
+  assert.ok(within(dialog).queryByText(/小時內傳過訊息/) === null);
+});
+
+test('列表顯示略過人數', () => {
+  data.broadcasts = [{ id: 'b-s', name: 'FB 活動', status: 'completed', targetType: 'all', totalCount: 3, successCount: 1, failedCount: 0, skippedCount: 2 }];
+  render(<MarketingPage />);
+  assert.ok(screen.getByText('略過 2'));
+});
+
+test('FB 群發立即發送前提醒只會送給 24 小時內互動過的人', async () => {
+  data.broadcasts = [
+    { id: 'b-fb', name: 'FB 活動', status: 'draft', channelId: 'ch-fb', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+    { id: 'b-line', name: 'LINE 活動', status: 'draft', channelId: 'ch-line', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+    { id: 'b-ig', name: 'IG 活動', status: 'draft', channelId: 'ch-ig', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 },
+  ];
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<MarketingPage />);
+  const [fbSend, lineSend, igSend] = screen.getAllByRole('button', { name: /立即發送/ });
+  fireEvent.click(fbSend);
+  assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息給粉專/);
+  fireEvent.click(lineSend);
+  assert.doesNotMatch(String(confirmSpy.mock.lastCall?.[0]), /24 小時/);
+  fireEvent.click(igSend);
+  assert.match(String(confirmSpy.mock.lastCall?.[0]), /24 小時內傳過訊息/, 'IG 也有 24 小時視窗');
+});
+
+test('FB 群發的受眾不提供分群與標籤', () => {
+  const { dialog, target } = openCreateDialog();
+  fireEvent.change(target, { target: { value: 'tags' } });
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  fireEvent.change(channel, { target: { value: 'ch-fb' } });
+  const labels = Array.from(target.options).map((o) => o.textContent);
+  assert.deepEqual(labels, ['24 小時內傳過訊息的人']);
+  assert.equal(target.value, 'all', '切到 FB 時改回全部');
+  assert.ok(within(dialog).queryByRole('checkbox', { name: 'VIP' }) === null, '不顯示標籤勾選');
+
+  fireEvent.change(channel, { target: { value: 'ch-line' } });
+  const lineLabels = Array.from(target.options).map((o) => o.textContent);
+  assert.ok(lineLabels.includes('受眾分群') && lineLabels.includes('依標籤篩選'), 'LINE 仍可分眾');
 });

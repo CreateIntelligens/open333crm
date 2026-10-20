@@ -31,8 +31,9 @@ import api from '@/lib/api';
 import { toLocalInputValue } from '@/lib/datetime-local';
 import {
   BROADCAST_TARGET_LABELS,
-  BROADCAST_TARGET_OPTIONS,
   broadcastAudienceError,
+  broadcastTargetOptions,
+  hasMessagingWindow,
   materialChannelKey,
   segmentConditionsError,
 } from '@/lib/marketing/broadcast-form';
@@ -213,6 +214,11 @@ function CampaignTab() {
 
 // ─── Broadcast Tab ─────────────────────────────────────────────────────────
 
+/** FB／IG 群發立即發送前的提醒（change broadcast-messaging-window） */
+const META_WINDOW_SEND_NOTICE =
+  'Facebook／Instagram 只會送給 24 小時內傳過訊息給粉專或 IG 帳號的人，其他人會自動略過，不算發送失敗。';
+
+
 function BroadcastTab() {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
   const { channels } = useChannels();
@@ -269,6 +275,35 @@ function BroadcastTab() {
   const materials = channelKey ? fetchedMaterials : [];
   const audienceError = broadcastAudienceError(formData);
 
+  // 預估符合條件與可送達人數：FB／IG 只能發給 24 小時內傳過訊息的人，送出前先讓使用者知道
+  const [audiencePreview, setAudiencePreview] = useState<
+    { matched: number; reachable: number; messagingWindowHours: number | null } | null
+  >(null);
+  const [audiencePreviewError, setAudiencePreviewError] = useState<string | null>(null);
+  const tagKey = formData.tagIds.join(',');
+  useEffect(() => {
+    setAudiencePreview(null);
+    setAudiencePreviewError(null);
+    if (!dialogOpen || !formData.channelId || audienceError) return;
+    let cancelled = false;
+    const payload: Record<string, unknown> = { channelId: formData.channelId, targetType: formData.targetType };
+    if (formData.targetType === 'segment' && formData.segmentId) payload.segmentId = formData.segmentId;
+    if (formData.targetType === 'tags') payload.targetConfig = { tagIds: formData.tagIds };
+    api
+      .post('/marketing/broadcasts/audience-preview', payload)
+      .then((res) => {
+        if (!cancelled) setAudiencePreview(res.data.data);
+      })
+      .catch((err: any) => {
+        if (!cancelled) setAudiencePreviewError(err.response?.data?.error?.message || '無法預估發送人數');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // tagIds 以字串比較，避免每次重繪產生新陣列就重新查詢
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError]);
+
   const toggleTag = (tagId: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -312,9 +347,12 @@ function BroadcastTab() {
 
   const handleSend = async (id: string, resend = false) => {
     if (sendingId) return;
-    const question = resend
+    const base = resend
       ? '確定要重新發送嗎？請先確認失敗原因已排除。訊息會馬上送給所選受眾，送出後無法收回。'
       : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
+    const broadcast = broadcasts.find((b: any) => b.id === id);
+    const channel = channels.find((c: any) => c.id === broadcast?.channelId);
+    const question = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
@@ -341,7 +379,7 @@ function BroadcastTab() {
     }
   };
 
-  const targetTypeOptions = BROADCAST_TARGET_OPTIONS;
+  const targetTypeOptions = broadcastTargetOptions(selectedChannel?.channelType);
 
   return (
     <div className="p-6">
@@ -394,7 +432,13 @@ function BroadcastTab() {
                   <td className="py-3 text-muted-foreground">
                     {BROADCAST_TARGET_LABELS[b.targetType] ?? b.targetType}
                   </td>
-                  <td className="py-3">{b.totalCount}</td>
+                  <td className="py-3">
+                    {b.totalCount}
+                    {/* FB／IG 視窗外略過的人數（change broadcast-messaging-window） */}
+                    {b.skippedCount > 0 && (
+                      <span className="ml-1 text-xs text-muted-foreground">略過 {b.skippedCount}</span>
+                    )}
+                  </td>
                   <td className="py-3 text-success">{b.successCount}</td>
                   <td className="py-3 text-destructive">{b.failedCount}</td>
                   <td className="py-3 text-muted-foreground">
@@ -487,7 +531,15 @@ function BroadcastTab() {
               <Select
                 value={formData.channelId}
                 onChange={(e) =>
-                  setFormData({ ...formData, channelId: e.target.value, materialId: '' })
+                  setFormData({
+                    ...formData,
+                    channelId: e.target.value,
+                    materialId: '',
+                    // FB／IG 不提供分群與標籤（只能發給 24 小時內互動過的人），切過去時改回全部
+                    ...(hasMessagingWindow(activeChannels.find((c: any) => c.id === e.target.value)?.channelType)
+                      ? { targetType: 'all', segmentId: '', tagIds: [] }
+                      : {}),
+                  })
                 }
                 options={[
                   { value: '', label: '請選擇渠道' },
@@ -599,6 +651,32 @@ function BroadcastTab() {
             )}
             {audienceError && (
               <p className="text-xs text-destructive">{audienceError}</p>
+            )}
+            {audiencePreviewError && (
+              <p className="text-xs text-destructive">{audiencePreviewError}</p>
+            )}
+            {audiencePreview && (
+              <div className="rounded-md bg-muted px-3 py-2 text-xs">
+                <p className="font-medium">
+                  {audiencePreview.messagingWindowHours
+                    ? `符合條件 ${audiencePreview.matched} 人，可送達 ${audiencePreview.reachable} 人`
+                    : `符合條件 ${audiencePreview.matched} 人`}
+                </p>
+                {audiencePreview.messagingWindowHours && (
+                  <div className="mt-2 space-y-1 text-muted-foreground">
+                    <p className="font-medium text-foreground">發送注意事項</p>
+                    <p>
+                      Meta 規定此渠道只能發給 {audiencePreview.messagingWindowHours} 小時內傳過訊息給粉專的人（包含按過訊息裡的按鈕）。
+                      其他人會自動略過、不會送出，也不算發送失敗。
+                    </p>
+                    <p>只按表情回應、或只點連結沒有傳訊息的人，也會被略過。</p>
+                    <p>
+                      想發給超過 {audiencePreview.messagingWindowHours} 小時沒互動的人，要用 Meta 付費的「Marketing Messages」（按送達則數計費），本系統目前不支援。
+                    </p>
+                    {formData.scheduledAt && <p>排程發送時，會依發送當下的互動紀錄重新計算可送達人數。</p>}
+                  </div>
+                )}
+              </div>
             )}
             <div>
               <label className="mb-1 block text-sm font-medium">排程發送（留空為草稿）</label>
