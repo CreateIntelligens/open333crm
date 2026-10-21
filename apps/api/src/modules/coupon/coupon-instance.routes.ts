@@ -57,11 +57,15 @@ export default async function couponInstanceRoutes(app: FastifyInstance) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }
     const csv = await exportInstancesCsv(request.tenantPrisma, request.agent.tenantId, id);
-    // 檔名只保留安全字元，避免券名中的引號或路徑符號破壞 header
+    // 檔名只保留安全字元，避免券名中的引號或路徑符號破壞 header。
+    // HTTP 標頭只能放 Latin-1：中文檔名放在 filename*（RFC 5987），filename 給不支援的瀏覽器備用
     const safeName = coupon.name.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 40);
     return reply
       .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="coupon_${safeName}.csv"`)
+      .header(
+        'Content-Disposition',
+        `attachment; filename="coupon.csv"; filename*=UTF-8''${encodeURIComponent(`coupon_${safeName}.csv`)}`,
+      )
       .send(csv);
   });
 }

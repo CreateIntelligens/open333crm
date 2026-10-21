@@ -362,7 +362,10 @@ describe('券可複製為草稿', () => {
     const copy = await inTenant((tx) => duplicateCoupon(tx, tenantId, src.id, agentId));
     assert.ok(copy);
     assert.equal(copy.status, 'DRAFT');
-    assert.equal(copy.name, `${src.name}（複製）`);
+    // 名稱加「（複製）」；原名太長時截斷，複製出來的草稿仍能儲存（2026-10-21 後台逐欄驗證 B6）
+    assert.ok(copy.name.endsWith('（複製）'));
+    assert.ok(copy.name.length <= 30, copy.name);
+    assert.ok(`${src.name}（複製）`.startsWith(copy.name.slice(0, -4)));
     assert.equal(copy.couponType, src.couponType);
     assert.equal(copy.discountAmount, src.discountAmount);
     assert.equal(copy.staffCode, null);

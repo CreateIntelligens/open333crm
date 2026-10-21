@@ -86,25 +86,43 @@ export async function importCodes(
   });
 }
 
-/** 匯入前試算，讓使用者在確認前看到會發生什麼。不寫入任何資料。 */
+/**
+ * 匯入前試算，讓使用者在確認前看到會發生什麼。不寫入任何資料。
+ * 帶 couponId 時，這張券自己已匯入的序號列為 alreadyImported，不算與其他券衝突。
+ */
 export async function previewImport(
   prisma: PrismaClient,
   tenantId: string,
   rawInput: string,
-): Promise<Omit<ImportResult, 'imported' | 'availableTotal'> & { willImport: number }> {
+  couponId?: string,
+): Promise<Omit<ImportResult, 'imported' | 'availableTotal'> & { willImport: number; alreadyImported: string[] }> {
   const parsed = parseCodeList(rawInput);
 
   return withTenant(prisma, tenantId, async (tx) => {
     const taken = await takenKeys(tx, tenantId, parsed.valid);
-    const conflicts = parsed.valid.filter((c) => taken.has(couponCodeKey(c)));
+    const own = couponId ? await ownKeys(tx, tenantId, couponId, parsed.valid) : new Set<string>();
+    const alreadyImported = parsed.valid.filter((c) => own.has(couponCodeKey(c)));
+    const conflicts = parsed.valid.filter((c) => taken.has(couponCodeKey(c)) && !own.has(couponCodeKey(c)));
 
     return {
-      willImport: parsed.valid.length - conflicts.length,
+      willImport: parsed.valid.length - conflicts.length - alreadyImported.length,
       duplicatesInInput: parsed.duplicatesInInput,
       conflicts,
+      alreadyImported,
       invalid: parsed.invalid,
     };
   });
+}
+
+/** 這張券自己庫存中的序號比對鍵 */
+async function ownKeys(tx: Prisma.TransactionClient, tenantId: string, couponId: string, codes: string[]): Promise<Set<string>> {
+  const keys = [...new Set(codes.map(couponCodeKey))];
+  if (keys.length === 0) return new Set();
+  const rows = await tx.$queryRaw<{ key: string }[]>`
+    SELECT upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) AS key FROM coupon_codes
+    WHERE "tenantId" = ${tenantId}::uuid AND "couponId" = ${couponId}::uuid
+      AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ANY(${keys}::text[])`;
+  return new Set(rows.map((r) => r.key));
 }
 
 /**

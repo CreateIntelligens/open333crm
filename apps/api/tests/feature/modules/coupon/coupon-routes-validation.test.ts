@@ -10,6 +10,7 @@ import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import couponRoutes from '#src/modules/coupon/coupon.routes.js';
+import couponInstanceRoutes from '#src/modules/coupon/coupon-instance.routes.js';
 import memberBindingRoutes from '#src/modules/member-binding/member-binding.routes.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 
@@ -50,13 +51,14 @@ beforeAll(async () => {
     (request as unknown as { tenantPrisma: unknown }).tenantPrisma = tenantScopedClient(prisma, T);
   });
   await app.register(couponRoutes, { prefix: '/api/v1/coupons' });
+  await app.register(couponInstanceRoutes, { prefix: '/api/v1/coupons' });
   await app.register(memberBindingRoutes, { prefix: '/api/v1/member-binding' });
   await app.ready();
 });
 
 afterAll(async () => {
   await app.close();
-  await owner.coupon.deleteMany({ where: { id: couponId } });
+  await owner.coupon.deleteMany({ where: { OR: [{ id: couponId }, { tenantId: T, createdById: SOME_ID }] } });
   await owner.role.deleteMany({ where: { id: roleId } });
   await owner.$disconnect();
   await prisma.$disconnect();
@@ -126,5 +128,66 @@ describe('會員綁定設定', () => {
   });
   it('代客綁定的輸入不是文字', async () => {
     await expect400('POST', `/api/v1/member-binding/contacts/${SOME_ID}`, { memberId: { $ne: null } });
+  });
+});
+
+describe('後台逐欄驗證找到的問題（2026-10-21）', () => {
+  async function draft(name = `${MARK} 草稿`) {
+    const res = await app.inject({ method: 'POST', url: '/api/v1/coupons', payload: { name } });
+    assert.equal(res.statusCode, 200, res.body);
+    return res.json().data.id as string;
+  }
+
+  it('券號前綴超過 8 碼或含符號回 400 與說明', async () => {
+    const id = await draft();
+    for (const codePrefix of ['ABCDEFGHI', 'ABCDEFGHIJKL', 'AB-1', 'AB 1']) {
+      const body = await expect400('PATCH', `/api/v1/coupons/${id}`, { codePrefix });
+      assert.match(body.error.details.issues[0].message, /前綴/, codePrefix);
+    }
+    const ok = await app.inject({ method: 'PATCH', url: `/api/v1/coupons/${id}`, payload: { codePrefix: 'autumn26' } });
+    assert.equal(ok.statusCode, 200, ok.body);
+    assert.equal(ok.json().data.codePrefix, 'AUTUMN26');
+  });
+
+  it('數字超過可存的範圍回 400', async () => {
+    const id = await draft();
+    for (const field of ['discountAmount', 'minSpend', 'percentCap', 'giftQty', 'exchangeValueCap', 'afterClaimDays', 'afterOpenMinutes', 'totalLimit', 'perContactLimit', 'claimTagTtlDays']) {
+      await expect400('PATCH', `/api/v1/coupons/${id}`, { [field]: 2147483648 });
+    }
+    const ok = await app.inject({ method: 'PATCH', url: `/api/v1/coupons/${id}`, payload: { discountAmount: 9_999_999 } });
+    assert.equal(ok.statusCode, 200, ok.body);
+  });
+
+  it('中文券名可以匯出 CSV，檔名保留中文', async () => {
+    const id = await draft(`${MARK} 秋季回饋`);
+    const res = await app.inject({ method: 'GET', url: `/api/v1/coupons/${id}/instances/export` });
+    assert.equal(res.statusCode, 200, res.body);
+    const disposition = String(res.headers['content-disposition']);
+    assert.match(disposition, /filename\*=UTF-8''/);
+    assert.ok(decodeURIComponent(disposition.split("UTF-8''")[1]).includes('秋季回饋'));
+  });
+
+  it('複製 30 字名稱的券，新名稱不超過 30 字且可再儲存', async () => {
+    const name = `複${'一'.repeat(29)}`;
+    const id = await draft(name);
+    const dup = await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/duplicate` });
+    assert.equal(dup.statusCode, 200, dup.body);
+    const copied = dup.json().data;
+    assert.ok([...copied.name].length <= 30, copied.name);
+    assert.ok(copied.name.endsWith('（複製）'));
+    const save = await app.inject({ method: 'PATCH', url: `/api/v1/coupons/${copied.id}`, payload: { name: copied.name } });
+    assert.equal(save.statusCode, 200, save.body);
+  });
+
+  it('序號包預覽：這張券自己已匯入的序號不算衝突', async () => {
+    const id = await draft();
+    await app.inject({ method: 'PATCH', url: `/api/v1/coupons/${id}`, payload: { codeMode: 'IMPORTED_CODES' } });
+    const code = `OWN${Date.now().toString(36).toUpperCase()}`;
+    const imported = await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/codes`, payload: { codes: code } });
+    assert.equal(imported.statusCode, 200, imported.body);
+    const preview = await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/codes/preview`, payload: { codes: code } });
+    assert.equal(preview.statusCode, 200, preview.body);
+    assert.deepEqual(preview.json().data.conflicts, []);
+    assert.deepEqual(preview.json().data.alreadyImported, [code]);
   });
 });

@@ -24,7 +24,8 @@ import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 
-const int = z.number().int();
+// 資料庫欄位是 int4：超過範圍時在這裡擋下，不讓資料庫丟錯變成 500
+const int = z.number().int('請輸入整數').min(-2_147_483_648, '數值過小').max(2_147_483_647, '數值過大，請確認輸入');
 // ⚠️ 日期一律用 z.coerce.date()，不可用 z.string().datetime()：前端的 date 欄位送的是「2026-10-31」
 const date = z.coerce.date({ errorMap: () => ({ message: '日期格式不正確' }) });
 
@@ -51,7 +52,7 @@ const couponInputSchema = z.object({
   afterOpenMinutes: int.nullable(),
   codeMode: z.enum(['SHARED_CODE', 'UNIQUE_CODE', 'IMPORTED_CODES']).nullable(),
   sharedCode: z.string().nullable(),
-  codePrefix: z.string().max(12).nullable(),
+  codePrefix: z.string().trim().max(8, '券號前綴最多 8 碼').regex(/^[A-Za-z0-9]*$/, '券號前綴只能使用英文與數字').nullable(),
   redeemMode: z.enum(['STAFF_CODE', 'STAFF_SCAN', 'SELF']).nullable(),
   // 驗證碼一律字串，數字型別會吃掉開頭的 0
   staffCode: z.string().nullable(),
@@ -242,10 +243,10 @@ export default async function couponRoutes(app: FastifyInstance) {
   // ── 序號包匯入 ──
 
   app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    idParams.parse(request.params);
+    const { id } = idParams.parse(request.params);
     const body = codesSchema.parse(request.body ?? {});
     try {
-      const result = await previewImport(app.prisma, request.agent.tenantId, body.codes);
+      const result = await previewImport(app.prisma, request.agent.tenantId, body.codes, id);
       return { success: true, data: result };
     } catch (err) {
       return handleError(err, reply);

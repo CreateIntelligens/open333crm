@@ -334,7 +334,17 @@ export async function duplicateCoupon(db: TenantDb, tenantId: string, id: string
     id: _id, displayCode: _code, status: _status, createdAt: _created, updatedAt: _updated,
     createdById: _by, staffCode: _staff, sharedCode: _shared, name, ...settings
   } = src;
-  return insertWithDisplayCode(db, { ...settings, name: `${name}（複製）`, status: 'DRAFT', createdById });
+  return insertWithDisplayCode(db, { ...settings, name: copyName(name), status: 'DRAFT', createdById });
+}
+
+const COPY_SUFFIX = '（複製）';
+const NAME_MAX = 30;
+
+/** 複製後的名稱：加上「（複製）」且不超過券名上限，原名過長時截斷（不切斷 emoji） */
+export function copyName(name: string): string {
+  const chars = [...name];
+  while (chars.length > 0 && (chars.join('') + COPY_SUFFIX).length > NAME_MAX) chars.pop();
+  return chars.join('') + COPY_SUFFIX;
 }
 
 /** 只有草稿可以刪除；已發布的券只能提前結束（顧客手上可能有券，刪掉會讓核銷時查無此券）。 */
