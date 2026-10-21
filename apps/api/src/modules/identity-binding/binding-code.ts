@@ -53,7 +53,8 @@ export function extractBindingCode(text: string | undefined | null): string | nu
 
 /** 綁定代碼用到的 Redis 指令子集；以介面注入，測試可換成記憶體實作 */
 export interface BindingStore {
-  set(key: string, value: string, mode: 'PX', ttlMs: number, condition: 'NX'): Promise<'OK' | null>;
+  /** NX：鍵不存在才寫；XX：鍵已存在才覆寫（把「處理中」換成結果，中間不留空窗） */
+  set(key: string, value: string, mode: 'PX', ttlMs: number, condition: 'NX' | 'XX'): Promise<'OK' | null>;
   getdel(key: string): Promise<string | null>;
   get(key: string): Promise<string | null>;
   incr(key: string): Promise<number>;

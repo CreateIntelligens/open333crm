@@ -185,6 +185,9 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const { id } = idParams.parse(request.params);
 
     const result = await openInstance(app.prisma, fan.tenantId, id, fan.contactId);
+    if (!result.ok && result.reason === 'NOT_FOUND') {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
+    }
     if (!result.ok) {
       return reply.status(409).send({
         success: false,

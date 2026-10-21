@@ -13,7 +13,7 @@ import QRCode from 'qrcode';
 import { loadEnvConfig, getConfig } from '#src/config/env.js';
 import { withTenant } from '#src/lib/tenant-db.js';
 import { isAgentAccessToken } from '#src/lib/agent-token.js';
-import { memBindingStore } from '#tests/support/mem-binding-store.js';
+import { memBindingStore, slowStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
@@ -337,6 +337,36 @@ describe('核銷台核銷記錄門市且可安全重試', () => {
     assert.equal(a.ok && b.ok && a.redeemedAt.getTime(), b.ok ? b.redeemedAt.getTime() : 0);
   });
 
+  it('同一個重試鍵換成別張券：不核銷別張，回報重試鍵已用過', async () => {
+    const a = await instance(scanCouponId, `${MARK}-RDM5`);
+    const b = await instance(scanCouponId, `${MARK}-RDM6`);
+    const key = randomUUID();
+    const first = await redeemAtStore(prisma, deps, session, a.code, key);
+    assert.ok(first.ok);
+    const other = await redeemAtStore(prisma, deps, session, b.code, key);
+    assert.equal(!other.ok && other.reason, 'KEY_REUSED');
+    assert.equal((await owner.couponInstance.findUnique({ where: { id: b.id } }))?.status, 'CLAIMED');
+  });
+
+  it('處理期間不斷以同一個重試鍵重送，都回同一個成功結果', async () => {
+    const inst = await instance(scanCouponId, `${MARK}-RDM7`);
+    const key = randomUUID();
+    const slow = { ...deps, store: slowStore(deps.store) };
+    let done = false;
+    const first = redeemAtStore(prisma, slow, session, inst.code, key).finally(() => { done = true; });
+    const retries: Promise<Awaited<ReturnType<typeof redeemAtStore>>>[] = [];
+    while (!done) {
+      retries.push(redeemAtStore(prisma, slow, session, inst.code, key));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    for (let i = 0; i < 20; i++) {
+      retries.push(redeemAtStore(prisma, slow, session, inst.code, key));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    assert.ok((await first).ok);
+    for (const r of await Promise.all(retries)) assert.ok(r.ok, JSON.stringify(r));
+  });
+
   it('網路重試不重複核銷', async () => {
     const inst = await instance(scanCouponId, `${MARK}-RDM2`);
     const key = randomUUID();
@@ -421,6 +451,9 @@ describe('共用碼券', () => {
     const r = await issueCoupons(prisma, T, sharedId, { contactIds: [contactId], issuedVia: 'keyword' });
     const inst = await owner.couponInstance.findUnique({ where: { id: r.issued[0].id } });
     assert.ok(inst && inst.code !== SHARED, '每張共用碼券有自己的內部券號');
+    // 「無法掃描請輸入券號」顯示的也是這張券自己的券號，店員手動輸入才找得到
+    const view = await getFanCoupon(prisma, { tenantId: T, contactId }, inst.id, clock.now);
+    assert.equal(view?.scanCode, inst.code);
     // 顧客手機上的 QR Code 內容是這張券自己的券號，不是共用碼
     const qr = await getWalletQrCode(prisma, { tenantId: T, contactId }, inst.id, clock.now);
     assert.ok(qr.ok);

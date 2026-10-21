@@ -363,3 +363,18 @@ it('應用層 where tenantId 擋掉他人的券', async () => {
     tx.coupon.count({ where: { tenantId: other } }));
   assert.equal(seen, 0, `帶錯 tenantId 竟查到 ${seen} 張券`);
 });
+
+it('開啟別人的券回報查無此券', async () => {
+  const c = await withTenant(prisma, tenantId, (tx) =>
+    createCoupon(tx, tenantId, agentId, {
+      name: '開啟測試券', couponType: 'GIFT', giftName: '濾網', purpose: 'MARKETING', validityMode: 'AFTER_OPEN',
+      afterOpenMinutes: 15, codeMode: 'UNIQUE_CODE', redeemMode: 'SELF', perContactLimit: 5,
+    }));
+  assert.ok((await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'))).ok);
+  const r = await issueCoupons(prisma, tenantId, c.id, { contactIds: [contactB], requireClaim: false });
+  const opened = await openInstance(prisma, tenantId, r.issued[0].id, contactA);
+  assert.equal(opened.ok, false);
+  assert.equal(!opened.ok && opened.reason, 'NOT_FOUND');
+  const own = await openInstance(prisma, tenantId, r.issued[0].id, contactB);
+  assert.equal(own.ok, true);
+});

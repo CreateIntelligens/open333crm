@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient, withTenant } from '#src/lib/tenant-db.js';
-import { memBindingStore } from '#tests/support/mem-binding-store.js';
+import { memBindingStore, slowStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
@@ -270,6 +270,27 @@ describe('同一次發券只成功一次', () => {
     const second = await issueInConversation(prisma, deps, req);
     assert.equal(first.ok, true, JSON.stringify(first));
     assert.deepEqual(second, first);
+    assert.equal(await heldBy(p), 1);
+  });
+
+  it('同一個發送鍵在處理期間不斷重送也只發一張', async () => {
+    const p = await person('並發重送');
+    const req = input(p, coupons.amount);
+    // 模擬 Redis 往返延遲，並在第一個請求處理期間持續重送，涵蓋「寫入結果前」的時間點
+    const slow = { ...deps, store: slowStore(deps.store) };
+    let done = false;
+    const first = issueInConversation(prisma, slow, req).finally(() => { done = true; });
+    const retries: Promise<unknown>[] = [];
+    while (!done) {
+      retries.push(issueInConversation(prisma, slow, req));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    for (let i = 0; i < 20; i++) {
+      retries.push(issueInConversation(prisma, slow, req));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    await Promise.all(retries);
+    assert.equal((await first).ok, true);
     assert.equal(await heldBy(p), 1);
   });
 

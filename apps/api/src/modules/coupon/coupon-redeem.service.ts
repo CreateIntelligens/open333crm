@@ -133,16 +133,19 @@ export async function openInstance(
   tenantId: string,
   instanceId: string,
   contactId: string,
-): Promise<{ ok: boolean; expiresAt: Date | null }> {
+): Promise<{ ok: true; expiresAt: Date | null } | { ok: false; reason: 'NOT_FOUND' | 'CANNOT_OPEN'; expiresAt: Date | null }> {
   return withTenant(prisma, tenantId, async (tx) => {
     const instance = await tx.couponInstance.findFirst({
       where: { id: instanceId, tenantId, contactId },
       include: { coupon: true },
     });
-    if (!instance) return { ok: false, expiresAt: null };
+    // 別人的券與不存在的券一樣回查無此券，不透露券是否存在
+    if (!instance) return { ok: false, reason: 'NOT_FOUND', expiresAt: null };
     // 已開啟過就不重設計時，否則顧客可反覆開啟來延長效期
     if (instance.status !== 'CLAIMED') {
-      return { ok: instance.status === 'OPENED', expiresAt: instance.expiresAt };
+      return instance.status === 'OPENED'
+        ? { ok: true, expiresAt: instance.expiresAt }
+        : { ok: false, reason: 'CANNOT_OPEN', expiresAt: instance.expiresAt };
     }
 
     const now = new Date();
@@ -155,7 +158,7 @@ export async function openInstance(
       where: { id: instanceId, tenantId, status: 'CLAIMED' },
       data: { status: 'OPENED', openedAt: now, expiresAt },
     });
-    if (updated.count === 0) return { ok: false, expiresAt: null };
+    if (updated.count === 0) return { ok: false, reason: 'CANNOT_OPEN', expiresAt: null };
     return { ok: true, expiresAt };
   });
 }

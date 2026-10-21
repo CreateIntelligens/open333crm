@@ -330,7 +330,9 @@ export type StoreRedeemFailure =
   | 'REVOKED'
   | 'WRONG_MODE'
   | 'NOT_CLAIMED'
-  | 'SHARED_CODE';
+  | 'SHARED_CODE'
+  /** 同一個重試鍵用在另一張券（前端每次確認都產生新鍵，正常操作不會發生） */
+  | 'KEY_REUSED';
 
 export type StoreRedeemResult =
   | { ok: true; redeemedAt: Date; storeName: string; coupon: StoreCouponView }
@@ -371,10 +373,12 @@ export async function redeemAtStore(
   key: string,
 ): Promise<StoreRedeemResult> {
   const cacheKey = idempotencyKey(session.accountId, key);
+  // 重試鍵綁定券號：同一個鍵換成別張券，不回傳上一張券的結果
+  const codeKey = couponCodeKey(rawCode);
   // 先佔住重試鍵再核銷：第一個請求還在處理時重送，等它的結果，不再核銷一次
   //（否則第二次會撞「已使用」，店員看到已使用而拒收）
-  const claimed = await deps.store.set(cacheKey, PENDING, 'PX', IDEMPOTENCY_TTL_MS, 'NX');
-  if (claimed !== 'OK') return waitForResult(deps.store, cacheKey);
+  const claimed = await deps.store.set(cacheKey, JSON.stringify({ pending: true, code: codeKey }), 'PX', IDEMPOTENCY_TTL_MS, 'NX');
+  if (claimed !== 'OK') return waitForResult(deps.store, cacheKey, codeKey);
 
   let result: StoreRedeemResult;
   try {
@@ -383,12 +387,11 @@ export async function redeemAtStore(
     await deps.store.getdel(cacheKey);
     throw err;
   }
-  await deps.store.getdel(cacheKey);
-  await deps.store.set(cacheKey, JSON.stringify(result), 'PX', IDEMPOTENCY_TTL_MS, 'NX');
+  // 以 XX 直接把「處理中」換成結果：先刪再寫會留下空窗，重送的請求會趁空窗再核銷一次
+  await deps.store.set(cacheKey, JSON.stringify({ code: codeKey, result }), 'PX', IDEMPOTENCY_TTL_MS, 'XX');
   return result;
 }
 
-const PENDING = '"pending"';
 /** 等待同一個重試鍵的第一個請求完成的最長時間 */
 const WAIT_RESULT_MS = 10_000;
 const WAIT_STEP_MS = 100;
@@ -401,12 +404,14 @@ export class StoreRedeemInProgressError extends Error {
   }
 }
 
-async function waitForResult(store: BindingStore, cacheKey: string): Promise<StoreRedeemResult> {
+async function waitForResult(store: BindingStore, cacheKey: string, codeKey: string): Promise<StoreRedeemResult> {
   for (let waited = 0; waited <= WAIT_RESULT_MS; waited += WAIT_STEP_MS) {
     const raw = await store.get(cacheKey);
-    if (raw && raw !== PENDING) return reviveDates(JSON.parse(raw) as StoreRedeemResult);
     // 第一個請求失敗並清掉了鍵：結果不明，交給店員重送
     if (!raw) break;
+    const stored = JSON.parse(raw) as { pending?: boolean; code?: string; result?: StoreRedeemResult };
+    if (stored.code !== codeKey) return { ok: false, reason: 'KEY_REUSED' };
+    if (stored.result) return reviveDates(stored.result);
     await new Promise((r) => setTimeout(r, WAIT_STEP_MS));
   }
   throw new StoreRedeemInProgressError();

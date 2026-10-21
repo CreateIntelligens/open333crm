@@ -253,6 +253,8 @@ export type InboxIssueFailure =
   | 'CONVERSATION_OUT_OF_SCOPE'
   | 'REPLY_WINDOW_EXPIRED'
   | 'ISSUE_IN_PROGRESS'
+  /** 同一個發送鍵用在不同的券或對話（前端每次確認都產生新鍵，正常操作不會發生） */
+  | 'KEY_REUSED'
   | 'ISSUE_FAILED';
 
 export type InboxIssueResult =
@@ -289,10 +291,13 @@ export async function issueInConversation(
   input: InboxIssueInput,
 ): Promise<InboxIssueResult> {
   const key = requestKeyOf(input.tenantId, input.requestKey);
-  const claimed = await deps.store.set(key, JSON.stringify({ state: 'pending' }), 'PX', REQUEST_KEEP_MS, 'NX');
+  // 發送鍵綁定這次發券的內容：同一個鍵換成別的券或對話，不回傳上一次的結果
+  const fingerprint = `${input.conversationId}:${input.couponId}`;
+  const claimed = await deps.store.set(key, JSON.stringify({ state: 'pending', for: fingerprint }), 'PX', REQUEST_KEEP_MS, 'NX');
   if (claimed !== 'OK') {
-    const existing = await readRequest(deps.store, key);
-    return existing.state === 'done' ? existing.result : { ok: false, reason: 'ISSUE_IN_PROGRESS' };
+    const existing = await readStored(deps.store, key);
+    if (existing && existing.for !== fingerprint) return { ok: false, reason: 'KEY_REUSED' };
+    return existing?.state === 'done' && existing.result ? existing.result : { ok: false, reason: 'ISSUE_IN_PROGRESS' };
   }
 
   let result: InboxIssueResult;
@@ -303,8 +308,8 @@ export async function issueInConversation(
     await deps.store.getdel(key);
     throw err;
   }
-  await deps.store.getdel(key);
-  await deps.store.set(key, JSON.stringify({ state: 'done', result }), 'PX', REQUEST_KEEP_MS, 'NX');
+  // 以 XX 直接把「處理中」換成結果：先刪再寫會留下空窗，重送的請求會趁空窗再發一次
+  await deps.store.set(key, JSON.stringify({ state: 'done', for: fingerprint, result }), 'PX', REQUEST_KEEP_MS, 'XX');
   return result;
 }
 
@@ -497,15 +502,27 @@ export type IssueRequestState =
   | { state: 'done'; result: InboxIssueResult }
   | { state: 'unknown' };
 
-async function readRequest(store: BindingStore, key: string): Promise<IssueRequestState> {
+interface StoredRequest {
+  state: 'pending' | 'done';
+  for?: string;
+  result?: InboxIssueResult;
+}
+
+async function readStored(store: BindingStore, key: string): Promise<StoredRequest | null> {
   const raw = await store.get(key);
-  if (!raw) return { state: 'unknown' };
+  if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as IssueRequestState;
-    return parsed.state === 'done' || parsed.state === 'pending' ? parsed : { state: 'unknown' };
+    const parsed = JSON.parse(raw) as StoredRequest;
+    return parsed.state === 'done' || parsed.state === 'pending' ? parsed : null;
   } catch {
-    return { state: 'unknown' };
+    return null;
   }
+}
+
+async function readRequest(store: BindingStore, key: string): Promise<IssueRequestState> {
+  const stored = await readStored(store, key);
+  if (!stored) return { state: 'unknown' };
+  return stored.state === 'done' && stored.result ? { state: 'done', result: stored.result } : { state: 'pending' };
 }
 
 /** 網路逾時後查詢這次發券的結果。鍵含租戶 id，查不到其他租戶的結果。 */

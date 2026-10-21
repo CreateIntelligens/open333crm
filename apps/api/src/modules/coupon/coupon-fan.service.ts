@@ -96,6 +96,8 @@ export function toFanView(
     // 共用碼券：顧客看到共用碼；內部券號只用在店員掃碼的 QR Code
     code: hideCode ? null : i.coupon.codeMode === 'SHARED_CODE' && i.coupon.sharedCode ? i.coupon.sharedCode : i.code,
     codeHidden: hideCode,
+    /** 店員掃碼券的券號（與 QR Code 內容相同）：共用碼券顧客看到共用碼，掃不到時要手動輸入這組 */
+    scanCode: !hideCode && i.coupon.redeemMode === 'STAFF_SCAN' ? i.code : null,
     availableAt: notYetValid ? i.coupon.startAt : null,
     status: i.status,
     walletStatus,

@@ -39,6 +39,7 @@ const FAILURES: Record<InboxIssueFailure, { status: number; message: string }> =
   CONVERSATION_OUT_OF_SCOPE: { status: 409, message: '此對話已不在你的處理範圍' },
   REPLY_WINDOW_EXPIRED: { status: 409, message: '已超過回覆期限，無法發送優惠券' },
   ISSUE_IN_PROGRESS: { status: 409, message: '這次發券還在處理中，請稍候' },
+  KEY_REUSED: { status: 409, message: '發送鍵已用於另一次發券，請重新選券' },
   ISSUE_FAILED: { status: 409, message: '發券失敗，券未發出，請重試' },
 };
 
