@@ -198,3 +198,19 @@ test('重設密碼後顯示新密碼一次，讓管理者交給店長', async ()
   assert.ok(within(dialog).getByText(generated));
   assert.ok(within(dialog).getByRole('button', { name: /複製/ }));
 });
+
+test('停用的帳號重新啟用：不需確認，送出 isActive=true 並顯示已啟用', async () => {
+  const disabled = { ...STORES[0].accounts[0], isActive: false };
+  api.get.mockImplementation(async (url: string) => {
+    if (url === '/stores') return { data: { success: true, data: [{ ...STORES[0], accounts: [disabled] }] } };
+    throw new Error(`未預期的 GET ${url}`);
+  });
+  await renderLoaded();
+  assert.ok(within(storeCard('內湖門市')).getByText('停用'));
+  fireEvent.click(screen.getByLabelText('dt3c-neihu 帳號操作'));
+  api.patch.mockResolvedValueOnce({ data: { success: true, data: { ...disabled, isActive: true } } });
+  fireEvent.click(await screen.findByText('啟用帳號'));
+  await waitFor(() => assert.equal(api.patch.mock.calls.length, 1));
+  assert.deepEqual(api.patch.mock.calls[0], ['/stores/accounts/acc-1', { isActive: true }]);
+  await screen.findByText('已啟用 dt3c-neihu');
+});

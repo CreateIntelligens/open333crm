@@ -71,6 +71,12 @@
 - **WHEN** 管理者停用該帳號後，店員查券
 - **THEN** 系統回報 403，錯誤碼為 STORE_ACCOUNT_DISABLED
 
+#### Scenario: 停用的帳號重新啟用後可以登入
+
+- **GIVEN** 管理者停用了一個門市帳號，店員登入回報 STORE_ACCOUNT_DISABLED
+- **WHEN** 管理者重新啟用這個帳號
+- **THEN** 店員可以再登入並核銷
+
 #### Scenario: 密碼被重設
 
 - **GIVEN** 店員已登入

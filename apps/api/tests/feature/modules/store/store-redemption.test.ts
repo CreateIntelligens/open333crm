@@ -211,6 +211,18 @@ describe('核銷台每次操作都檢查帳號狀態', () => {
     assert.equal(!r.ok && r.code, 'STORE_ACCOUNT_DISABLED');
   });
 
+  it('停用的帳號重新啟用後可以登入', async () => {
+    const username = await account('re-enable');
+    const session = await sessionOf(username);
+    await inTenant((tx) => updateStoreAccount(tx, T, session.accountId, { isActive: false }));
+    const blocked = await loginStoreAccount(prisma, deps, username, 'dt3c2026x', true);
+    assert.equal(!blocked.ok && blocked.code, 'STORE_ACCOUNT_DISABLED');
+    await inTenant((tx) => updateStoreAccount(tx, T, session.accountId, { isActive: true }));
+    const again = await sessionOf(username);
+    const r = await authorizeStoreSession(prisma, again, { requireRedeem: true });
+    assert.equal(r.ok, true, JSON.stringify(r));
+  });
+
   it('密碼被重設', async () => {
     const username = await account('pw-reset');
     const session = await sessionOf(username);
