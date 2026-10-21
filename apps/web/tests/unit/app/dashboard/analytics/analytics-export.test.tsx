@@ -23,6 +23,7 @@ vi.mock('#src/hooks/useAnalytics.js', () => ({
   useCaseAnalytics: () => empty,
   useAgentPerformance: () => empty,
   useChannelAnalytics: () => empty,
+  useCouponAnalytics: () => ({ ...empty, mutate: () => undefined }),
 }));
 for (const m of ['KpiCards', 'MessageTrendChart', 'CaseCategoryPieChart', 'CaseTrendChart', 'AgentPerformanceTable', 'ChannelDistributionChart']) {
   vi.doMock(`#src/components/analytics/${m}.js`, () => ({ [m]: () => null }));
