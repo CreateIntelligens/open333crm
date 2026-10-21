@@ -22,3 +22,10 @@ it('券碼清單解析可分類有效／重複／格式錯誤', () => {
   assert.deepEqual(r.duplicatesInInput, ['ABCD1234']);
   assert.deepEqual(r.invalid, ['XY']);
 });
+
+it('只有連字號的序號視為格式錯誤', () => {
+  // A-1-2 長度符合但只有 3 個英數字
+  const r = parseCodeList('----\nA-1-2\nAB-12\nABCD-1234');
+  assert.deepEqual(r.invalid, ['----', 'A-1-2']);
+  assert.deepEqual(r.valid, ['AB-12', 'ABCD-1234']);
+});

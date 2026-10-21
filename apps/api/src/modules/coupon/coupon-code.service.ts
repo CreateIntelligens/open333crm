@@ -64,7 +64,8 @@ export function parseCodeList(input: string): ParsedCodeList {
     const code = normalizeImportedCode(token);
     if (!code) continue;
     // 允許英數與連字號，長度 4-64——比產生器寬鬆，因為商家可能匯入既有系統的券碼
-    if (!/^[A-Z0-9-]{4,64}$/.test(code)) {
+    // 至少 4 個英數字：只有連字號的序號（----）去掉連字號後是空的，核銷台無法比對
+    if (!/^[A-Z0-9-]{4,64}$/.test(code) || couponCodeKey(code).length < 4) {
       invalid.push(code);
       continue;
     }

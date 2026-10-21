@@ -42,6 +42,50 @@ interface Props {
   warn?: string;
 }
 
+/** 序號的比對鍵：去掉連字號、轉大寫，與後端和核銷台一致（AB-1234 與 AB1234 視為同一組） */
+const codeKey = (code: string) => code.replace(/-/g, '').toUpperCase();
+
+/** 第一行若是欄位名稱（code、序號、券號），不是序號 */
+const HEADER_RE = /^(codes?|serials?|序號|券號|代碼)$/i;
+
+export interface ParsedCodeFile {
+  /** 檔案中的資料行數（不含空行與標題列） */
+  total: number;
+  ok: { line: number; code: string }[];
+  dup: number;
+  bad: number;
+  /** 錯誤清單：行號,序號,原因 */
+  errorRows: string[];
+}
+
+/** 解析序號 CSV：一行一碼，略過標題列；格式錯誤與檔內重複（去掉連字號後相同）各自記錄行號。 */
+export function parseCodeFile(text: string): ParsedCodeFile {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+  let rows = lines.map((l, i) => ({ line: i + 1, code: cellOf(l) })).filter((r) => r.code !== '');
+  if (rows.length > 0 && HEADER_RE.test(rows[0].code)) rows = rows.slice(1);
+
+  const seen = new Set<string>();
+  const ok: { line: number; code: string }[] = [];
+  const errorRows: string[] = [];
+  let dup = 0;
+  let bad = 0;
+  for (const r of rows) {
+    const code = r.code.toUpperCase();
+    // 至少 4 個英數字：只有連字號的序號去掉連字號後是空的，無法比對
+    if (!IMPORT_CODE_PATTERN.test(r.code) || codeKey(code).length < 4) {
+      bad++;
+      errorRows.push(`${r.line},${r.code},格式錯誤`);
+    } else if (seen.has(codeKey(code))) {
+      dup++;
+      errorRows.push(`${r.line},${r.code},重複`);
+    } else {
+      seen.add(codeKey(code));
+      ok.push({ line: r.line, code });
+    }
+  }
+  return { total: rows.length, ok, dup, bad, errorRows };
+}
+
 /** CSV 欄位可能被引號包住，也可能有 BOM；只取每行第一欄。 */
 function cellOf(line: string): string {
   const first = line.split(',')[0] ?? '';
@@ -64,37 +108,19 @@ export function CodeImportField({ id, state, onChange, ensureCouponId, missing, 
       onChange({ ...EMPTY_IMPORT, status: 'error', fileName: file.name, message: '無法讀取檔案，請重新上傳' });
       return;
     }
-    const lines = text.replace(/^﻿/, '').split(/\r?\n/);
-    const rows = lines.map((l, i) => ({ line: i + 1, code: cellOf(l) })).filter((r) => r.code !== '');
-    if (rows.length > MAX_IMPORT_CODES) {
+    const parsed = parseCodeFile(text);
+    if (parsed.total > MAX_IMPORT_CODES) {
       onChange({
         ...EMPTY_IMPORT,
         status: 'error',
         fileName: file.name,
-        message: `共 ${rows.length.toLocaleString('en-US')} 筆，超過上限 50,000 筆，請分批匯入`,
+        message: `共 ${parsed.total.toLocaleString('en-US')} 筆，超過上限 50,000 筆，請分批匯入`,
       });
       return;
     }
-
-    const seen = new Set<string>();
-    const ok: { line: number; code: string }[] = [];
-    const errorRows: string[] = [];
-    let dup = 0;
-    let bad = 0;
-    for (const r of rows) {
-      // 後端以大寫保存，大小寫不同視為同一組
-      const code = r.code.toUpperCase();
-      if (!IMPORT_CODE_PATTERN.test(r.code)) {
-        bad++;
-        errorRows.push(`${r.line},${r.code},格式錯誤`);
-      } else if (seen.has(code)) {
-        dup++;
-        errorRows.push(`${r.line},${r.code},重複`);
-      } else {
-        seen.add(code);
-        ok.push({ line: r.line, code });
-      }
-    }
+    const { ok, errorRows } = parsed;
+    let { dup } = parsed;
+    const { bad } = parsed;
 
     const couponId = await ensureCouponId();
     if (!couponId) {
@@ -102,11 +128,19 @@ export function CodeImportField({ id, state, onChange, ensureCouponId, missing, 
       return;
     }
     try {
-      const preview = (await previewCodeImport(couponId, ok.map((r) => r.code).join('\n'))) as { conflicts?: string[] };
-      const conflicts = new Set((preview?.conflicts ?? []).map((c) => c.toUpperCase()));
+      const preview = (await previewCodeImport(couponId, ok.map((r) => r.code).join('\n'))) as {
+        conflicts?: string[];
+        alreadyImported?: string[];
+      };
+      const conflicts = new Set((preview?.conflicts ?? []).map(codeKey));
+      // 這張券自己已匯入的序號（草稿發布失敗後再上傳同一份檔）：不是衝突，也不再匯入一次
+      const already = new Set((preview?.alreadyImported ?? []).map(codeKey));
       const codes: string[] = [];
       for (const r of ok) {
-        if (conflicts.has(r.code)) {
+        if (already.has(codeKey(r.code))) {
+          dup++;
+          errorRows.push(`${r.line},${r.code},已在這張券的序號包`);
+        } else if (conflicts.has(codeKey(r.code))) {
           dup++;
           errorRows.push(`${r.line},${r.code},與其他券的序號重複`);
         } else {

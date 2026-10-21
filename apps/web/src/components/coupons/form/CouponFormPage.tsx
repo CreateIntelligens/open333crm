@@ -85,7 +85,9 @@ export function EditCouponPage({ id }: { id: string }) {
   const canManage = useCanManage();
   const { coupon, error, isLoading, mutate } = useCoupon(canManage ? id : null);
   const isPublished = !!coupon && coupon.status !== 'DRAFT';
-  const { stats, isLoading: statsLoading } = useCouponStats(canManage && isPublished ? id : null);
+  // 已發布：發行總量下限要用已發放張數。序號包草稿：已匯入的序號（發布失敗後再回來編輯）算在序號包內
+  const needStats = !!coupon && (isPublished || coupon.codeMode === 'IMPORTED_CODES');
+  const { stats, isLoading: statsLoading } = useCouponStats(canManage && needStats ? id : null);
   const back = (
     <Button variant="outline" onClick={() => router.push(LIST_HREF)}>
       返回優惠券列表
@@ -95,7 +97,7 @@ export function EditCouponPage({ id }: { id: string }) {
   let body: React.ReactNode;
   if (!canManage) {
     body = <NoPermission />;
-  } else if (isLoading || (isPublished && statsLoading)) {
+  } else if (isLoading || (needStats && statsLoading)) {
     body = <FormSkeleton />;
   } else if (error && (error as { response?: { status?: number } }).response?.status !== 404) {
     body = (
@@ -126,6 +128,7 @@ export function EditCouponPage({ id }: { id: string }) {
         coupon={coupon}
         claimedCount={stats?.claimed ?? 0}
         issuedCount={stats?.issued}
+        existingCodes={coupon.status === 'DRAFT' ? stats?.poolSize ?? 0 : 0}
       />
     );
   }

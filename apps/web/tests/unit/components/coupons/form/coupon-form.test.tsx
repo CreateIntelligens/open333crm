@@ -349,3 +349,56 @@ describe('離開提醒', () => {
     assert.equal(dirty.defaultPrevented, true);
   });
 });
+
+describe('後台逐欄驗證找到的問題（2026-10-21）', () => {
+  test('券號前綴超過 8 碼：欄位說明上限，輸入框最多 8 碼', () => {
+    render(<CouponForm mode="draft" coupon={coupon()} />);
+    const prefix = screen.getByLabelText(/^券號前綴/) as HTMLInputElement;
+    assert.equal(prefix.maxLength, 8);
+    fireEvent.change(prefix, { target: { value: 'ABCDEFGHIJ' } });
+    assert.ok(screen.getByText('最多 8 碼，目前 10 碼'));
+  });
+
+  test('數字過大：欄位說明，不送出', () => {
+    render(<CouponForm mode="draft" coupon={coupon()} />);
+    fireEvent.change(screen.getByLabelText(/^折抵金額/), { target: { value: '9999999999' } });
+    assert.ok(screen.getByText('數值過大，請確認輸入'));
+  });
+
+  test('欄位格式有錯時不能存草稿，錯誤的值不會被默默清掉', async () => {
+    render(<CouponForm mode="draft" coupon={coupon()} />);
+    fireEvent.change(screen.getByLabelText(/^折抵金額/), { target: { value: '１００' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存草稿' }));
+    assert.ok(await screen.findByText(/^儲存草稿失敗：有 1 個欄位格式不正確/));
+    assert.equal(coupons.updateCoupon.mock.calls.length, 0);
+    assert.equal((screen.getByLabelText(/^折抵金額/) as HTMLInputElement).value, '１００');
+  });
+
+  test('使用條款含 & < > 時，編輯頁顯示原本輸入的文字，不是 &amp;', () => {
+    render(<CouponForm mode="draft" coupon={coupon({ terms: '滿 1000 &amp; 不含 &lt;稅&gt; 商品' })} />);
+    assert.equal((screen.getByLabelText(/^使用條款/) as HTMLTextAreaElement).value, '滿 1000 & 不含 <稅> 商品');
+  });
+
+  test('後端驗證錯誤帶欄位原因時，標在對應欄位', async () => {
+    coupons.updateCoupon.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: {
+          error: {
+            code: 'VALIDATION_ERROR', message: '輸入內容有誤，請檢查後重新送出',
+            details: { issues: [{ path: 'name', message: '券名稱上限 30 字' }] },
+          },
+        },
+      },
+    });
+    render(<CouponForm mode="draft" coupon={coupon()} />);
+    fireEvent.click(screen.getByRole('button', { name: '儲存草稿' }));
+    assert.ok((await screen.findAllByText('券名稱上限 30 字')).length > 0);
+  });
+
+  test('草稿已匯入的序號算在序號包內，可以發布', async () => {
+    render(<CouponForm mode="draft" coupon={coupon({ codeMode: 'IMPORTED_CODES', codePrefix: null })} existingCodes={2} />);
+    fireEvent.click(publishButton());
+    assert.ok(await screen.findByRole('alertdialog'));
+  });
+});

@@ -25,7 +25,7 @@ import {
 } from '@/hooks/useCoupons';
 import { useContactTags } from '@/hooks/useContactTags';
 import { faceValueText, REDEEM_MODE_LABEL, validityText } from '@/lib/coupon/labels';
-import { getApiErrorCode, getApiErrorMessage } from '@/lib/api-error';
+import { getApiErrorCode, getApiErrorMessage, getFieldErrors } from '@/lib/api-error';
 import { cn } from '@/lib/utils';
 import {
   codeSummary,
@@ -38,6 +38,7 @@ import {
   isLocked,
   isRequired,
   MAX_NAME,
+  PREFIX_MAX,
   missingItems,
   percentHint,
   risks as computeRisks,
@@ -77,6 +78,8 @@ interface Props {
   claimedCount?: number;
   /** 已發放張數（發行總量下限） */
   issuedCount?: number;
+  /** 這張券已匯入的序號數（草稿匯入後發布失敗、再回來編輯時），算在序號包內 */
+  existingCodes?: number;
 }
 
 const hm = () => {
@@ -95,7 +98,7 @@ function goTo(domId: string) {
   el.focus({ preventScroll: true });
 }
 
-export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount }: Props) {
+export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existingCodes = 0 }: Props) {
   const router = useRouter();
   const published = mode === 'published';
   const { tags, isLoading: tagsLoading } = useContactTags();
@@ -144,14 +147,19 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount }: Prop
   const ctx = useMemo(
     () => ({
       mode,
-      importOk: importState.status === 'done' ? importState.codes.length : null,
+      importOk:
+        importState.status === 'done' || existingCodes > 0
+          ? (importState.status === 'done' && !importState.imported ? importState.codes.length : 0) + existingCodes
+          : null,
       issuedCount,
     }),
-    [mode, importState, issuedCount],
+    [mode, importState, issuedCount, existingCodes],
   );
 
   // ---- 驗證 ----
   const formatErrors = useMemo(() => validate(values, ctx), [values, ctx]);
+  const formatErrorsRef = useRef(formatErrors);
+  formatErrorsRef.current = formatErrors;
   const errors = useMemo(() => {
     const e: Partial<Record<FieldKey, string>> = { ...formatErrors };
     for (const [k, msg] of Object.entries(serverErrors)) if (msg && !e[k as FieldKey]) e[k as FieldKey] = msg;
@@ -196,6 +204,14 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount }: Prop
       goTo(fieldDomId('name'));
       return null;
     }
+    // 格式錯誤的值轉不成 API 欄位（例如全形數字），存下去會被默默清成空白
+    const badFields = (Object.keys(formatErrorsRef.current) as FieldKey[]).filter((k) => formatErrorsRef.current[k]);
+    if (badFields.length > 0) {
+      setAttempted(true);
+      setDraftError(`儲存草稿失敗：有 ${badFields.length} 個欄位格式不正確，請修正後再儲存`);
+      goTo(fieldDomId(badFields[0]));
+      return null;
+    }
     setSavingDraft(true);
     setDraftError('');
     try {
@@ -210,9 +226,16 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount }: Prop
       setDraftAt(hm());
       return newId;
     } catch (err) {
-      const msg = getApiErrorMessage(err, '網路連線逾時。');
-      const field = fieldForServerMessage(msg);
-      if (field) setServerErrors((s) => ({ ...s, [field]: msg }));
+      // 後端 Zod 錯誤帶欄位原因：直接標在對應欄位（路徑與表單欄位同名）
+      const byField = getFieldErrors(err);
+      const fieldEntries = Object.entries(byField).filter(([k]) => k in valuesRef.current);
+      const msg = fieldEntries[0]?.[1] ?? getApiErrorMessage(err, '網路連線逾時。');
+      if (fieldEntries.length > 0) {
+        setServerErrors((s) => ({ ...s, ...Object.fromEntries(fieldEntries) }));
+      } else {
+        const field = fieldForServerMessage(msg);
+        if (field) setServerErrors((s) => ({ ...s, [field]: msg }));
+      }
       setDraftError(`儲存草稿失敗：${msg}`);
       return null;
     } finally {
@@ -776,7 +799,7 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount }: Prop
                       onChange={(v) => setVal('codePrefix', v.toUpperCase())}
                       placeholder="例如 AUTUMN"
                       mono
-                      maxLength={12}
+                      maxLength={PREFIX_MAX}
                     />
                     <Note>
                       產生格式如 <span className="font-mono">{(values.codePrefix || 'AUTUMN').toUpperCase()}-7K2P-4M9X</span>，每人不同，可精準追蹤到個人。

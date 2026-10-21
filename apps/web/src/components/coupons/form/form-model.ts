@@ -210,11 +210,25 @@ export function emptyValues(today = ymd(new Date())): FormValues {
 
 const str = (n: number | null | undefined) => (n == null ? '' : String(n));
 
+/**
+ * 使用條款存的是消毒後的 HTML（& < > 會被轉成實體字元），編輯框是純文字：
+ * 讀回時把實體字元轉回原字，否則管理者看到 &amp;。再存一次由後端重新消毒，不會重複轉義。
+ */
+export function termsForEditing(html: string): string {
+  return html
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
 export function valuesFromCoupon(c: Coupon): FormValues {
   const base = emptyValues();
   return {
     name: c.name ?? '',
-    terms: c.terms ?? '',
+    terms: termsForEditing(c.terms ?? ''),
     imageUrl: c.imageUrl ?? '',
     couponType: c.couponType ?? '',
     discountAmount: str(c.discountAmount),
@@ -405,6 +419,11 @@ const NUMERIC: FieldKey[] = [
   'afterClaimDays', 'afterOpenMinutes', 'totalLimit', 'perContactLimit', 'claimTagTtlDays',
 ];
 
+/** 數字欄位上限：資料庫欄位是 int4，與後端 Zod 一致 */
+export const MAX_INT = 2_147_483_647;
+/** 券號前綴上限，與後端一致（過長會擠壓亂數部分） */
+export const PREFIX_MAX = 8;
+
 /**
  * 欄位格式錯誤（不含「此欄位必填」）。只檢查目前看得到、而且沒有鎖定的欄位。
  * 文案逐字依規格 2.3。
@@ -420,7 +439,12 @@ export function validate(v: FormValues, ctx: FormContext): Partial<Record<FieldK
   for (const f of NUMERIC) {
     if (!check(f)) continue;
     const s = String(v[f as keyof FormValues]).trim();
-    if (s === '' || /^\d+$/.test(s) || /^-\d+$/.test(s)) continue;
+    if (s === '' || /^-\d+$/.test(s)) continue;
+    if (/^\d+$/.test(s)) {
+      // 資料庫欄位是 int4，與後端 Zod 上限一致
+      if (Number(s) > MAX_INT) e[f] = '數值過大，請確認輸入';
+      continue;
+    }
     e[f] = '只能輸入數字，請移除文字或符號';
   }
   const amount = (f: FieldKey, zeroMsg: string) => {
@@ -476,8 +500,9 @@ export function validate(v: FormValues, ctx: FormContext): Partial<Record<FieldK
     if (!/^[A-Za-z0-9]+$/.test(c)) e.sharedCode = '只能使用英文與數字，請移除空白或符號';
     else if (c.length < 4 || c.length > 20) e.sharedCode = `需 4–20 字，目前 ${c.length} 字`;
   }
-  if (check('codePrefix') && v.codePrefix && !/^[A-Za-z0-9]+$/.test(v.codePrefix)) {
-    e.codePrefix = '只能使用英文與數字，請移除空白或符號';
+  if (check('codePrefix') && v.codePrefix) {
+    if (!/^[A-Za-z0-9]+$/.test(v.codePrefix)) e.codePrefix = '只能使用英文與數字，請移除空白或符號';
+    else if (v.codePrefix.length > PREFIX_MAX) e.codePrefix = `最多 ${PREFIX_MAX} 碼，目前 ${v.codePrefix.length} 碼`;
   }
 
   const total = n('totalLimit');
