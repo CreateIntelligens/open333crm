@@ -14,9 +14,9 @@ vi.mock('#src/events/subscriber-workers.js', async (importOriginal) => {
   return { ...original, createEventRouter: vi.fn(original.createEventRouter) };
 });
 
-test('契約標為會送出的事件，就是送進自動化佇列、且自動化訂閱者會處理的事件（SLA 事件由 workers 自己查規則）', async () => {
+test('契約標為會送出的事件，就是送進自動化佇列、且自動化訂閱者會處理的事件（SLA 與關鍵字規則由 workers 自己查規則）', async () => {
   const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
-  setupAutomationWorker({} as never, {} as never);
+  setupAutomationWorker({} as never, {} as never, {} as never);
   const router = vi.mocked(createEventRouter).mock.results[0].value as ReturnType<typeof createEventRouter>;
   const handled = new Set(router.names());
   // 送進自動化佇列（core 的訂閱清單）而且有處理程式，才算會送出
@@ -25,7 +25,8 @@ test('契約標為會送出的事件，就是送進自動化佇列、且自動�
   );
 
   for (const event of AUTOMATION_EVENT_DEFINITIONS) {
-    const delivered = event.name.startsWith('sla.') || subscribed.has(event.name);
+    // keyword.matched 規則由 workers 處理 message.received 時比對（change outbox-event-delivery），不經自動化佇列
+    const delivered = event.name.startsWith('sla.') || event.name === 'keyword.matched' || subscribed.has(event.name);
     assert.equal(
       event.dispatched !== false,
       delivered,

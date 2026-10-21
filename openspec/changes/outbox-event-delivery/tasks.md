@@ -54,19 +54,21 @@
 - [x] 8.1 把 `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與關鍵字比對搬進 `packages/automation`（design 決策 8），`kb-autoreply.service.ts`、`automation.worker.ts` 與 workers 改 import 新位置。既有測試 `keyword-suppresses-ai.test.ts`、`keyword-yield-channel.test.ts` 改 import 路徑，搬移前後都通過（重構）。之後 ARCH-02 的檢查指令沒有輸出
 - [x] 8.2 `packages/automation` 目前沒有測試設定：照 `packages/core` 加上 Vitest、`test` script 與 `#src/` imports。接著寫失敗的單元測試 `packages/automation/tests/unit/keyword-match.test.ts`，涵蓋 automation-engine 的 Scenario「舊資料含空白關鍵字」「訊息沒有命中」
 - [x] 8.3 統一關鍵字比對，讓 8.2 通過
-- [ ] 8.4 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/auto-handoff.test.ts`，涵蓋 bot-handoff-config 的 Scenario「同一則訊息處理兩次」「兩次處理同時進行」（第二個 `claimOne` 回傳 false）「寫入系統訊息失敗」
-- [ ] 8.5 改寫自動轉接（design 決策 8）：摘要與 `prepareStoredMessageContent()` 在交易之前，交易內只做認領與寫入。讓 8.4 通過
-- [ ] 8.6 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/bot-reply-claim.test.ts`，涵蓋 automation-engine 的 Scenario「同一則訊息處理兩次」（每則入站訊息最多一則機器人回覆）、「agent 失敗改由 KB 回覆」「已認領就不呼叫 LLM」
-- [ ] 8.7 agent 與 KB 的回覆改成認領 `bot_reply`，拆掉 `persistAndDeliverAgentReply()` 自己開的交易（design 決策 8）。LLM、遮罩與 KB 檢索在交易之外，照舊用 `prismaAdmin`。讓 8.6 通過
-- [ ] 8.8 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/sentiment-claim.test.ts`，涵蓋 Scenario「同一則訊息處理兩次」（情緒分析）、「兩次處理同時進行」
-- [ ] 8.9 情緒分析改成認領 `sentiment`、經 `ctx.publish` 發出 `sentiment.negative`。讓 8.8 通過
-- [ ] 8.10 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/automation.worker.test.ts`，涵蓋 automation-engine 的 Scenario「Automation event enqueued by API」「Same event delivered twice」（job id 是事件 id），並斷言 API 不再發出 `keyword.matched`、`message.received` 的 context 帶 `messageId`
-- [ ] 8.11 自動化訂閱者送出 `automation:evaluate` 時帶事件 id 當 job id，`message.received` 的 context 加上 `messageId`（design 決策 9），移除 `checkKeywordTriggers()`。讓 8.10 通過；「Standalone worker is down when job is enqueued」以既有測試確認
+- [x] 8.4 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/auto-handoff.test.ts`，涵蓋 bot-handoff-config 的 Scenario「同一則訊息處理兩次」「兩次處理同時進行」（第二個 `claimOne` 回傳 false）「寫入系統訊息失敗」
+- [x] 8.5 改寫自動轉接（design 決策 8）：摘要與 `prepareStoredMessageContent()` 在交易之前，交易內只做認領與寫入。讓 8.4 通過
+- [x] 8.6 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/bot-reply-claim.test.ts`，涵蓋 automation-engine 的 Scenario「同一則訊息處理兩次」（每則入站訊息最多一則機器人回覆）、「agent 失敗改由 KB 回覆」「已認領就不呼叫 LLM」
+- [x] 8.7 agent 與 KB 的回覆改成認領 `bot_reply`，拆掉 `persistAndDeliverAgentReply()` 自己開的交易（design 決策 8）。LLM、遮罩與 KB 檢索在交易之外，照舊用 `prismaAdmin`。讓 8.6 通過
+- [x] 8.8 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/sentiment-claim.test.ts`，涵蓋 Scenario「同一則訊息處理兩次」（情緒分析）、「兩次處理同時進行」
+- [x] 8.9 情緒分析改成認領 `sentiment`、經 `ctx.publish` 發出 `sentiment.negative`。讓 8.8 通過
+- [x] 8.10 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/automation.worker.test.ts`，涵蓋 automation-engine 的 Scenario「Automation event enqueued by API」「Same event delivered twice」（job id 是事件 id），並斷言 API 不再發出 `keyword.matched`、`message.received` 的 context 帶 `messageId`
+- [x] 8.11 自動化訂閱者送出 `automation:evaluate` 時帶事件 id 當 job id，`message.received` 的 context 加上 `messageId`（design 決策 9），移除 `checkKeywordTriggers()`。讓 8.10 通過；「Standalone worker is down when job is enqueued」以既有測試確認
+  - `automation` 佇列的 job id 是事件 id，所以 `attempts` 與以時間計算的保留期限在這裡一起改（9.8 的 api 端）。core 的自動化訂閱清單移除 `keyword.matched`
 
 ## 9. workers 的規則評估
 
-- [ ] 9.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/automation.handler.test.ts`，涵蓋 automation-engine 的 Scenario「訊息命中關鍵字規則」（以 `keyword.matched` 執行、LINE 用 reply）與「keyword.matched 每則訊息每條規則最多發出一次」的「同一則訊息評估兩次」。既有測試 `automation-keyword-scope.test.ts`、`automation-keyword-reply.test.ts` 以 `keyword.matched` job 為前提，改成以 `message.received` job 觸發關鍵字規則；改動前先以 `git log -S` 確認這些斷言的來源
-- [ ] 9.2 實作 design 決策 9 的關鍵字規則評估與 `keyword_matched` 認領，讓 9.1 通過
+- [x] 9.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/automation.handler.test.ts`，涵蓋 automation-engine 的 Scenario「訊息命中關鍵字規則」（以 `keyword.matched` 執行、LINE 用 reply）與「keyword.matched 每則訊息每條規則最多發出一次」的「同一則訊息評估兩次」。既有測試 `automation-keyword-scope.test.ts`、`automation-keyword-reply.test.ts` 以 `keyword.matched` job 為前提，改成以 `message.received` job 觸發關鍵字規則；改動前先以 `git log -S` 確認這些斷言的來源
+- [x] 9.2 實作 design 決策 9 的關鍵字規則評估與 `keyword_matched` 認領，讓 9.1 通過
+  - `automation-keyword-scope.test.ts` 不改：API 部署前已送出的 `keyword.matched` job 仍只評估 `ruleId` 那條規則，避免部署時重複回覆（`8217364b`）。`automation-keyword-reply.test.ts` 測的是 `executeWorkerAutomationActions()` 以 `keyword.matched` 執行時用 reply，行為沒變，也不改
 - [ ] 9.3 寫失敗的單元測試 `apps/workers/tests/unit/lib/automation-actions.test.ts`，涵蓋 Scenario「同一個事件評估兩次」「升級工單不重複升級」「不同事件各自執行」，另外斷言 context 沒有 `eventId` 時不寫認領紀錄（SLA 路徑，design 決策 9）；`sla-outcome-once.test.ts` 照常通過
 - [ ] 9.4 每個動作執行前認領 `automation_action`，`notify` 的 job id 照 design 決策 9。讓 9.3 通過
 - [ ] 9.5 寫失敗的測試，涵蓋 event-delivery 的 Scenario「建立工單與事件一起寫入」「建立工單失敗」，以及 automation-engine「Unified Contact Tagging Emits contact.tagged」的 Scenario「Automation add_tag emits event」

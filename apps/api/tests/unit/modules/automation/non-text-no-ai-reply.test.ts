@@ -52,15 +52,29 @@ const prisma = {
       Object.assign(conversation, data);
       return { ...conversation, assignedToId: null, unreadCount: 0, lastMessageAt: new Date(), updatedAt: new Date() };
     },
+    // 自動轉接以條件更新認領對話（change outbox-event-delivery）
+    updateMany: async ({ where, data }: { where: { status?: string }; data: Record<string, unknown> }) => {
+      if (where.status && where.status !== conversation.status) return { count: 0 };
+      Object.assign(conversation, data);
+      return { count: 1 };
+    },
+    findUnique: async () => ({ ...conversation, assignedToId: null, unreadCount: 0, lastMessageAt: new Date(), updatedAt: new Date() }),
   },
   message: { create: async ({ data }: { data: { content: unknown } }) => ({ id: 'sys-1', content: data.content }) },
   automationRule: { findMany: async () => [] },
+  sideEffectClaim: { createMany: async () => ({ count: 1 }), count: async () => 0 },
+  outbox: {
+    create: async ({ data }: { data: Record<string, unknown> }) => ({ id: crypto.randomUUID(), ...data, createdAt: new Date() }),
+    updateMany: async () => ({ count: 1 }),
+  },
+  // inTenant() 的交易：這個測試不需要 rollback
+  $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({ ...prisma, $executeRaw: async () => 1 }),
 };
 
 let handle: Awaited<ReturnType<typeof setupAutomationWorker>>;
 
 beforeAll(() => {
-  handle = setupAutomationWorker(prisma as never, { to: () => ({ emit: () => {} }) } as never);
+  handle = setupAutomationWorker(prisma as never, { to: () => ({ emit: () => {} }) } as never, prisma as never);
 });
 
 beforeEach(() => {
@@ -75,7 +89,7 @@ async function receive(contentType: string | undefined, content: Record<string, 
   void handle({
     id: crypto.randomUUID(),
     name: 'message.received',
-    tenantId: 'tenant-1',
+    tenantId: 'a0000000-0000-0000-0000-000000000001',
     timestamp: new Date(),
     payload: {
       conversationId: 'conv-1', messageId: 'msg-1', contactId: 'contact-1', channelId: 'ch-1', channelType: 'THREADS',

@@ -2,18 +2,35 @@ import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { logger } from '@open333crm/core';
-import { buildAutomationFacts, evaluateRules, validateAutomationRuleContract } from '@open333crm/automation';
+import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox } from '@open333crm/core';
+import {
+  buildAutomationFacts,
+  evaluateRules,
+  matchKeywordTrigger,
+  validateAutomationRuleContract,
+} from '@open333crm/automation';
 import { publishSocketEvent } from '../lib/socket-bridge.js';
 import { executeWorkerAutomationActions } from '../lib/automation-actions.js';
 
 interface AutomationJobData {
   tenantId: string;
+  /** 觸發事件的 id，規則動作以它認領（change outbox-event-delivery）。API 部署前送出的 job 沒有 */
+  eventId?: string;
   trigger: string;
   context: Record<string, unknown>;
 }
 
 type RuleAction = { type: string; params: Record<string, unknown> };
+
+type RuleRow = {
+  id: string;
+  name: string;
+  priority: number;
+  stopOnMatch: boolean;
+  conditions: unknown;
+  actions: unknown;
+  trigger?: unknown;
+};
 
 export async function handleAutomationJob(
   job: Job,
@@ -21,7 +38,8 @@ export async function handleAutomationJob(
   redisPublisher: IORedis,
   pluginRegistry?: Map<string, ChannelPlugin>,
 ): Promise<void> {
-  const { tenantId, trigger, context } = job.data as AutomationJobData;
+  const { tenantId, eventId, trigger, context } = job.data as AutomationJobData;
+  // API 部署前送出的 keyword.matched job 帶 ruleId，只評估那一條規則
   const matchedKeywordRuleId =
     trigger === 'keyword.matched' && typeof context.ruleId === 'string'
       ? context.ruleId
@@ -35,7 +53,84 @@ export async function handleAutomationJob(
       ...(matchedKeywordRuleId ? { id: matchedKeywordRuleId } : {}),
     },
   });
+  await evaluateAndExecute(prisma, redisPublisher, pluginRegistry, { tenantId, eventId, trigger, context, rules });
 
+  // 關鍵字規則在處理收到的訊息時比對（design 決策 9）：API 不再發出 keyword.matched 事件
+  if (trigger === 'message.received' && typeof context.messageContent === 'string' && context.messageContent) {
+    await evaluateKeywordRules(prisma, redisPublisher, pluginRegistry, { tenantId, eventId, context, text: context.messageContent });
+  }
+}
+
+/**
+ * 命中的每條關鍵字規則：發出 keyword.matched 給對外 webhook（每則訊息每條規則最多一次），
+ * 再以 trigger = 'keyword.matched' 執行規則，讓 LINE 照舊用 reply 回覆。
+ */
+async function evaluateKeywordRules(
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  pluginRegistry: Map<string, ChannelPlugin> | undefined,
+  input: { tenantId: string; eventId?: string; context: Record<string, unknown>; text: string },
+) {
+  const keywordRules = await prisma.automationRule.findMany({
+    where: { tenantId: input.tenantId, eventType: 'keyword.matched', isActive: true },
+  });
+  for (const rule of keywordRules) {
+    const match = matchKeywordTrigger(rule.trigger, input.text);
+    if (!match) continue;
+    logger.info(`[automation] keyword.matched: rule="${rule.name}", keywords=[${match.matchedKeywords.join(', ')}]`);
+
+    const context = {
+      ...input.context,
+      ruleId: rule.id,
+      matchedKeywords: match.matchedKeywords,
+      matchMode: match.matchMode,
+    };
+    await emitKeywordMatched(prisma, input.tenantId, input.eventId, rule.id, context);
+    await evaluateAndExecute(prisma, redisPublisher, pluginRegistry, {
+      tenantId: input.tenantId,
+      eventId: input.eventId,
+      trigger: 'keyword.matched',
+      context,
+      rules: [rule],
+    });
+  }
+}
+
+/**
+ * 以「keyword_matched + 入站訊息 id + 規則 id」認領，成功才在同一個交易寫 outbox。
+ * 舊的 job 沒有入站訊息 id 時，改用事件 id 認領；兩者都沒有就不發出。
+ */
+async function emitKeywordMatched(
+  prisma: PrismaClient,
+  tenantId: string,
+  eventId: string | undefined,
+  ruleId: string,
+  context: Record<string, unknown>,
+) {
+  const sourceId = typeof context.messageId === 'string' ? context.messageId : eventId;
+  if (!sourceId) {
+    logger.warn(`[automation] keyword.matched not emitted: job has no messageId or eventId (rule ${ruleId})`);
+    return;
+  }
+  try {
+    const row = await prisma.$transaction(async (tx) => {
+      if (!(await claimSideEffect(tx, { tenantId, kind: 'keyword_matched', sourceId, subKey: ruleId }))) return null;
+      return writeOutbox(tx, { tenantId, kind: 'event', name: 'keyword.matched', payload: context });
+    });
+    // 快路徑；失敗時資料列留在 outbox，由 API 的 outbox-relay 補送
+    if (row) await dispatchOutboxRows(prisma, [row]);
+  } catch (err) {
+    logger.error(`[automation] keyword.matched emit failed (rule ${ruleId})`, err);
+  }
+}
+
+async function evaluateAndExecute(
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  pluginRegistry: Map<string, ChannelPlugin> | undefined,
+  input: { tenantId: string; eventId?: string; trigger: string; context: Record<string, unknown>; rules: RuleRow[] },
+) {
+  const { tenantId, eventId, trigger, context, rules } = input;
   if (rules.length === 0) return;
 
   const compatibleRules = rules.filter((rule) => {
@@ -91,6 +186,8 @@ export async function handleAutomationJob(
 
     await executeWorkerAutomationActions(prisma, redisPublisher, match.actions, {
       tenantId,
+      eventId: eventId ?? null,
+      ruleId: match.ruleId,
       caseId,
       conversationId,
       contactId,

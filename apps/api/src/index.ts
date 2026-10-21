@@ -237,7 +237,7 @@ export async function bootstrap() {
   const subscriberWorkers = startQueueWorkers(
     {
       [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin)),
-      [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io)),
+      [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io, app.prisma)),
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,

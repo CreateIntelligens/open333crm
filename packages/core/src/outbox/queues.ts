@@ -25,11 +25,9 @@ const NOTIFICATION_EVENTS: ReadonlySet<string> = new Set<AppEventName>([
   'usage.quota.threshold',
 ]);
 
-// TODO(outbox-event-delivery 8.11)：keyword.matched 改由 workers 處理 message.received 時直接比對
-// （design 決策 9），之後從這裡移除
+// keyword.matched 不在這裡：關鍵字規則由 workers 處理 message.received 時直接比對（design 決策 9）
 const AUTOMATION_EVENTS: ReadonlySet<string> = new Set<AppEventName>([
   'message.received',
-  'keyword.matched',
   'case.created',
   'conversation.created',
   'contact.tagged',

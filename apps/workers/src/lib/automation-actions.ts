@@ -26,6 +26,10 @@ export interface WorkerAutomationAction {
 
 export interface WorkerActionContext {
   tenantId: string;
+  /** 觸發事件的 id。有值時每個動作執行前以 automation_action 認領；SLA 排程沒有事件 id，不認領 */
+  eventId?: string | null;
+  /** 動作所屬的規則，認領的子鍵是 <規則 id>#<動作序號> */
+  ruleId?: string | null;
   caseId?: string | null;
   conversationId?: string | null;
   contactId?: string | null;
