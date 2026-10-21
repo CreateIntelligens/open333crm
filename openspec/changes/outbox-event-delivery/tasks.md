@@ -5,7 +5,7 @@
 
 ## 2. 共用模組 `packages/core/src/outbox/`
 
-- [ ] 2.1 把 `apps/api/src/lib/db-invariants.ts` 搬到 `packages/core`，api 改從 `@open333crm/core` import。`apps/api/tests/unit/lib/db-invariants.test.ts` 跟著搬到 `packages/core/tests/unit/`，搬移前後都通過（重構，不改行為）
+- [ ] 2.1 把 `apps/api/src/lib/db-invariants.ts` 搬到 `packages/core`，api 改從 `@open333crm/core` import。`apps/api/tests/unit/lib/db-invariants.test.ts` 跟著搬到 `packages/core/tests/unit/`；`apps/api/tests/feature/lib/db-invariants.test.ts` 留在 api，改從 `@open333crm/core` import。兩個測試搬移前後都通過（重構，不改行為）
 - [ ] 2.2 寫失敗的單元測試 `packages/core/tests/unit/outbox/claim.test.ts`，以 mock 的交易涵蓋 side-effect-claims 的 Scenario「第一次認領」「已經認領過」「子鍵不同」
 - [ ] 2.3 實作 `claimSideEffect()`（design 決策 3），讓 2.2 通過
 - [ ] 2.4 寫 feature 測試 `apps/api/tests/feature/lib/side-effect-claims.test.ts`，以兩個真實交易涵蓋 Scenario「已經認領過」（之後的查詢成功）、「兩個交易同時認領同一個鍵」「先認領的交易 rollback」。這些行為來自 PostgreSQL 的 `ON CONFLICT DO NOTHING`，測試寫好就會通過，以突變驗證：把 `skipDuplicates` 拿掉，確認「已經認領過」失敗，再還原。突變記在本項下方
@@ -31,7 +31,7 @@
 - [ ] 5.1 寫失敗的單元測試 `apps/api/tests/unit/events/event-bus.test.ts`，涵蓋 Scenario「舊寫法發出事件」：`eventBus.publish()` 為每個訂閱者佇列 `add()` 一個帶事件 id 的 job，不寫 outbox
 - [ ] 5.2 把 `eventBus` 改成轉送器（design 決策 7），讓 5.1 通過
 - [ ] 5.3 寫失敗的單元測試 `apps/api/tests/unit/events/subscriber-workers.test.ts`，涵蓋 Scenario「webhook 失敗重試」：webhook job 失敗時，自動化佇列沒有新增 job
-- [ ] 5.4 在 API 行程建立三個訂閱者佇列的 `Worker`（design 決策 4），三個訂閱者改從佇列取得事件，不再訂閱 `eventBus`。讓 5.3 通過
+- [ ] 5.4 在 API 行程建立三個訂閱者佇列的 `Worker`（design 決策 4），三個訂閱者改從佇列取得事件，不再訂閱 `eventBus`。job data 的 `timestamp` 轉回 `Date` 再交給處理程式，5.3 一併斷言處理程式收到的 `timestamp` 是 `Date`。讓 5.3 通過
 
 ## 6. 通知訂閱者
 
@@ -40,46 +40,56 @@
 
 ## 7. 對外 webhook
 
-- [ ] 7.1 寫失敗的單元測試 `apps/api/tests/unit/modules/webhook-subscriptions/webhook-dispatcher.test.ts`，涵蓋 webhook-subscription-egress 的 Scenario「清單內的事件」「不在清單內的名稱」「同一個事件送出兩次」「一個網址失敗」
-- [ ] 7.2 實作 design 決策 11：`event-webhook` 拆成每個訂閱一個 `webhook-delivery` job、payload 的 `id`、`X-Webhook-Event-Id`、送出紀錄以 `createOrFindExisting()` 建立。`POST /webhook-subscriptions/:id/test` 用新產生的事件 id。讓 7.1 通過
+- [ ] 7.1 寫失敗的單元測試 `apps/api/tests/unit/modules/webhook-subscriptions/webhook-dispatcher.test.ts`，涵蓋 webhook-subscription-egress 的 Scenario「清單內的事件」「不在清單內的名稱」「同一個事件送出兩次」「一個網址失敗」「測試網址回傳 500」
+- [ ] 7.2 實作 design 決策 11：`event-webhook` 拆成每個訂閱一個 `webhook-delivery` job、payload 的 `id`、`X-Webhook-Event-Id`、送出紀錄以 `createOrFindExisting()` 建立。`POST /webhook-subscriptions/:id/test` 改成在請求內只送一次、用新產生的事件 id。刪掉 `dispatchWebhook()` 的行程內重試迴圈，`webhook-delivery` job 與測試路由共用「送出一次 HTTP」的函式。讓 7.1 通過
 - [ ] 7.3 寫 feature 測試涵蓋 Scenario「重試期間 API 重新啟動」：第一次失敗後關閉 `Worker`、再建立新的 `Worker`，第二次照常送出
 
 ## 8. 自動化訂閱者（API）
 
-- [ ] 8.1 把 `hasMatchingKeywordRule()`、`BotConfig` 與關鍵字比對搬進 `packages/automation`，`kb-autoreply.service.ts` 與 workers 改 import 新位置。既有的 `hasMatchingKeywordRule` 測試搬移前後都通過（重構）
+- [ ] 8.1 把 `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與關鍵字比對搬進 `packages/automation`（design 決策 8），`kb-autoreply.service.ts`、`automation.worker.ts` 與 workers 改 import 新位置。既有測試 `keyword-suppresses-ai.test.ts`、`keyword-yield-channel.test.ts` 改 import 路徑，搬移前後都通過（重構）。之後 ARCH-02 的檢查指令沒有輸出
 - [ ] 8.2 `packages/automation` 目前沒有測試設定：照 `packages/core` 加上 Vitest、`test` script 與 `#src/` imports。接著寫失敗的單元測試 `packages/automation/tests/unit/keyword-match.test.ts`，涵蓋 automation-engine 的 Scenario「舊資料含空白關鍵字」「訊息沒有命中」
 - [ ] 8.3 統一關鍵字比對，讓 8.2 通過
 - [ ] 8.4 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/auto-handoff.test.ts`，涵蓋 bot-handoff-config 的 Scenario「同一則訊息處理兩次」「兩次處理同時進行」（第二個 `claimOne` 回傳 false）「寫入系統訊息失敗」
-- [ ] 8.5 改寫自動轉接（design 決策 8），讓 8.4 通過
+- [ ] 8.5 改寫自動轉接（design 決策 8）：摘要與 `prepareStoredMessageContent()` 在交易之前，交易內只做認領與寫入。讓 8.4 通過
 - [ ] 8.6 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/bot-reply-claim.test.ts`，涵蓋 automation-engine 的 Scenario「同一則訊息處理兩次」（每則入站訊息最多一則機器人回覆）、「agent 失敗改由 KB 回覆」「已認領就不呼叫 LLM」
-- [ ] 8.7 agent 與 KB 的回覆改成認領 `bot_reply`，拆掉 `persistAndDeliverAgentReply()` 自己開的交易（design 決策 8）。讓 8.6 通過
+- [ ] 8.7 agent 與 KB 的回覆改成認領 `bot_reply`，拆掉 `persistAndDeliverAgentReply()` 自己開的交易（design 決策 8）。LLM、遮罩與 KB 檢索在交易之外，照舊用 `prismaAdmin`。讓 8.6 通過
 - [ ] 8.8 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/sentiment-claim.test.ts`，涵蓋 Scenario「同一則訊息處理兩次」（情緒分析）、「兩次處理同時進行」
 - [ ] 8.9 情緒分析改成認領 `sentiment`、經 `ctx.publish` 發出 `sentiment.negative`。讓 8.8 通過
-- [ ] 8.10 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/automation.worker.test.ts`，涵蓋 automation-engine 的 Scenario「Automation event enqueued by API」「Same event delivered twice」（job id 是事件 id），並斷言 API 不再發出 `keyword.matched`
-- [ ] 8.11 自動化訂閱者送出 `automation:evaluate` 時帶事件 id 當 job id，移除 `checkKeywordTriggers()`。讓 8.10 通過；「Standalone worker is down when job is enqueued」以既有測試確認
+- [ ] 8.10 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/automation.worker.test.ts`，涵蓋 automation-engine 的 Scenario「Automation event enqueued by API」「Same event delivered twice」（job id 是事件 id），並斷言 API 不再發出 `keyword.matched`、`message.received` 的 context 帶 `messageId`
+- [ ] 8.11 自動化訂閱者送出 `automation:evaluate` 時帶事件 id 當 job id，`message.received` 的 context 加上 `messageId`（design 決策 9），移除 `checkKeywordTriggers()`。讓 8.10 通過；「Standalone worker is down when job is enqueued」以既有測試確認
 
 ## 9. workers 的規則評估
 
-- [ ] 9.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/automation.handler.test.ts`，涵蓋 automation-engine 的 Scenario「訊息命中關鍵字規則」（以 `keyword.matched` 執行、LINE 用 reply）與「keyword.matched 每則訊息每條規則最多發出一次」的「同一則訊息評估兩次」
+- [ ] 9.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/automation.handler.test.ts`，涵蓋 automation-engine 的 Scenario「訊息命中關鍵字規則」（以 `keyword.matched` 執行、LINE 用 reply）與「keyword.matched 每則訊息每條規則最多發出一次」的「同一則訊息評估兩次」。既有測試 `automation-keyword-scope.test.ts`、`automation-keyword-reply.test.ts` 以 `keyword.matched` job 為前提，改成以 `message.received` job 觸發關鍵字規則；改動前先以 `git log -S` 確認這些斷言的來源
 - [ ] 9.2 實作 design 決策 9 的關鍵字規則評估與 `keyword_matched` 認領，讓 9.1 通過
-- [ ] 9.3 寫失敗的單元測試 `apps/workers/tests/unit/lib/automation-actions.test.ts`，涵蓋 Scenario「同一個事件評估兩次」「升級工單不重複升級」「不同事件各自執行」
+- [ ] 9.3 寫失敗的單元測試 `apps/workers/tests/unit/lib/automation-actions.test.ts`，涵蓋 Scenario「同一個事件評估兩次」「升級工單不重複升級」「不同事件各自執行」，另外斷言 context 沒有 `eventId` 時不寫認領紀錄（SLA 路徑，design 決策 9）；`sla-outcome-once.test.ts` 照常通過
 - [ ] 9.4 每個動作執行前認領 `automation_action`，`notify` 的 job id 照 design 決策 9。讓 9.3 通過
 - [ ] 9.5 寫失敗的測試，涵蓋 event-delivery 的 Scenario「建立工單與事件一起寫入」「建立工單失敗」，以及 automation-engine「Unified Contact Tagging Emits contact.tagged」的 Scenario「Automation add_tag emits event」
 - [ ] 9.6 `create_case`、`add_tag` 改寫 outbox 並在 commit 之後呼叫快路徑；移除 `publishDomainEvent()` 與 `socket.plugin.ts` 的 `domain:event` 訂閱。讓 9.5 通過
 - [ ] 9.7 寫 feature 測試涵蓋 Scenario「API 行程沒有在執行」：workers 寫入 outbox 時沒有訂閱者 `Worker`，之後建立 `Worker`，事件照常處理
-- [ ] 9.8 `automation`、`notification` 佇列改成 design 決策 9、10 的 `attempts` 與保留期限
+- [ ] 9.8 `automation`、`notification` 佇列改成 design 決策 9、10 的 `attempts` 與保留期限。`notification` 佇列的兩個發送端（api 的 `notification.worker.ts`、workers 的 `lib/notification-queue.ts`）都要改
 
 ## 10. data-export 與 data-erasure
 
-- [ ] 10.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-erasure.handler.test.ts`，重現 bug：Scenario「已完成的請求再執行一次」（第二次執行把 `completed` 改成 `failed`），並涵蓋「處理中的請求再執行一次」。確認失敗是 assertion 失敗
-- [ ] 10.2 `data-erasure` worker 開頭以條件更新認領（design 決策 12），讓 10.1 通過；tenant-data-erasure 既有的 Scenario「聯絡人已不存在時記錄失敗」照常通過
-- [ ] 10.3 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-export.handler.test.ts`，涵蓋 tenant-data-export 的 Scenario「已完成的請求再執行一次」
-- [ ] 10.4 `data-export` worker 開頭以條件更新認領，讓 10.3 通過
+- [ ] 10.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-erasure.handler.test.ts`，重現 bug：Scenario「已完成的請求再執行一次」（第二次執行把 `completed` 改成 `failed`），並涵蓋「上一次執行中途結束」。確認失敗是 assertion 失敗
+- [ ] 10.2 `data-erasure` worker 照 design 決策 12 修改：開頭認領 `pending` 或 `processing`；`completed` 的條件更新放在刪除交易的第一個語句；`failed` 以 `processing` 為條件。讓 10.1 通過；tenant-data-erasure 既有的 Scenario「聯絡人已不存在時記錄失敗」照常通過
+- [ ] 10.3 在 10.1 的測試檔加上 tenant-data-erasure 的 Scenario「兩次同時執行」：mock 的交易讓第二次執行的 `completed` 條件更新回傳 0 筆，斷言第二次執行的交易 rollback、請求維持 `completed`、`error` 是空值、只送進一個完成通知的 job。列鎖讓後到的交易等待，這是 PostgreSQL 的行為；workers 沒有 feature 測試套件，所以不以真實資料庫測試
+- [ ] 10.4 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-export.handler.test.ts`，涵蓋 tenant-data-export 的 Scenario「已完成的請求再執行一次」「上一次執行中途結束」「兩次同時執行」（第二次的 `completed` 條件更新回傳 0 筆）
+- [ ] 10.5 `data-export` worker 開頭認領 `pending` 或 `processing`，`completed` 與 `failed` 以 `processing` 為條件（design 決策 12）。讓 10.4 通過
 
 ## 11. 文件與完成檢查
 
-- [ ] 11.1 更新 `docs/ref/modules/EVENTS.md`（訂閱者、佇列、outbox、對外事件清單）、`docs/ref/features/tenant/GOVERNANCE.md`（webhook 的重試與事件 id）、`AGENTS.md`（Socket Event Routing 的 Path B 改寫 outbox；若有提到 `domain:event` 一併改）
-- [ ] 11.2 更新 `docs/ref/system/AUDIT.md`：RLS-08 的進度、ARCH-02 移除、HOOK-01 改為部分修正（有了對外事件清單，`replyToken` 仍待決定），並在 `AUDIT-REVIEWS.md` 記錄
+- [ ] 11.1 更新文件：
+  - `docs/ref/modules/EVENTS.md`：訂閱者、佇列、outbox、對外事件清單。
+  - `docs/ref/features/tenant/GOVERNANCE.md`：webhook 的重試、事件 id 與測試送出。
+  - `AGENTS.md`：Socket Event Routing 的 Path B 改寫 outbox。
+  - 提到 `domain:event` 的文件改成 outbox：`docs/ref/features/tenant/CONTACTS.md`、`docs/ref/features/tenant/README.md`、`docs/ref/features/tenant/AUTOMATION.md`、`docs/ref/system/INFRASTRUCTURE.md`。完成後 `grep -rn "domain:event" docs AGENTS.md` 只剩 AUDIT 的歷史紀錄
+- [ ] 11.2 更新 `docs/ref/system/AUDIT.md`，並在 `AUDIT-REVIEWS.md` 記錄：
+  - RLS-08 的進度。
+  - ARCH-02 移除。
+  - HOOK-01 改為部分修正：有了對外事件清單，`replyToken` 仍待決定。
+  - APP-08 改為部分修正：新的佇列與 `automation`、`notification` 以時間保留 job。
+  - APP-09：`domain:event` 那一列移除。
 - [ ] 11.3 `CHANGELOG.md`：`Changed` 寫事件改走 outbox 與 webhook 的改動，`Fixed` 寫 data-erasure 重跑的 bug 與自動轉接的並行重複
 - [ ] 11.4 `pnpm test`、`pnpm test:feature` 通過
 - [ ] 11.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規；`node scripts/check-tenant-ctx.mjs --strict` 通過，舊寫法減少時以 `--update-baseline` 更新基準檔

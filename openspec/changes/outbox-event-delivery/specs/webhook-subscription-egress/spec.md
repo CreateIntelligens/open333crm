@@ -38,3 +38,12 @@
 
 - **WHEN** U1 第一次回傳 500，API 在重試之前重新啟動
 - **THEN** API 啟動之後，系統 MUST 繼續送出 U1 的第二次
+
+### Requirement: 測試送出只送一次
+
+`POST /webhook-subscriptions/:id/test` MUST 在請求內送出一次，MUST NOT 重試，回應 MUST 帶這次送出的結果。送出的 JSON 的 `id` MUST 是新產生的事件 id，送出紀錄的事件 id MUST 是同一個值。
+
+#### Scenario: 測試網址回傳 500
+
+- **WHEN** 有 `webhook.manage` 的成員對一個訂閱送出測試，訂閱網址回傳 500
+- **THEN** 回應結果的 `success` MUST 是 false，`statusCode` MUST 是 500；訂閱網址 MUST 只收到一次，送出紀錄的 `attempts` MUST 是 1
