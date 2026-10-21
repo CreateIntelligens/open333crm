@@ -85,7 +85,8 @@ describe('數據報表呈現優惠券成效', () => {
     const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
     const day = (d: string) => r.trend.find((t) => t.date === d);
     assert.equal(day('2020-03-02')?.issued, 1);
-    assert.equal(day('2020-03-01')?.issued ?? 0, 0);
+    assert.equal(r.trend.length, 31, '3/1 到 3/31 每一天都有資料');
+    assert.deepEqual(day('2020-03-01'), { date: '2020-03-01', issued: 0, redeemed: 0 });
     assert.equal(day('2020-03-05')?.issued, 2);
     assert.equal(day('2020-03-05')?.redeemed, 2);
   });

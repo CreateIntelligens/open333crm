@@ -62,6 +62,7 @@ export function CouponAnalyticsPanel({ data, isLoading, error, onRetry }: Props)
   }
 
   const { totals, trend, topCoupons } = data;
+  const showDots = trend.length <= 14;
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -89,8 +90,9 @@ export function CouponAnalyticsPanel({ data, isLoading, error, onRetry }: Props)
                   <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="issued" name="發出" stroke="var(--series-issued)" strokeWidth={2} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="redeemed" name="核銷" stroke="var(--series-redeemed)" strokeWidth={2} dot={{ r: 4 }} />
+                  {/* 每日張數是離散值，用直線不用平滑曲線；天數多時只在滑過時顯示點 */}
+                  <Line type="linear" dataKey="issued" name="發出" stroke="var(--series-issued)" strokeWidth={2} dot={showDots && { r: 4 }} activeDot={{ r: 5 }} />
+                  <Line type="linear" dataKey="redeemed" name="核銷" stroke="var(--series-redeemed)" strokeWidth={2} dot={showDots && { r: 4 }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
               <details className="mt-3 text-sm">

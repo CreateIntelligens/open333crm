@@ -6,6 +6,7 @@
  * 沒人領的券也算進去，讓數字失真。
  */
 import type { Prisma } from '@prisma/client';
+import { taipeiDateStart, taipeiDateString } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 
 export interface CouponStats {
@@ -222,10 +223,20 @@ export async function getBulkRedeemCounts(
 export interface CouponAnalytics {
   /** 期間內發出的券（依發出時間），以及其中已領取、已核銷的張數 */
   totals: { issued: number; claimed: number; redeemed: number; redeemRate: number | null };
-  /** 每日發出與核銷張數（台灣日期，design D17）；只列有資料的日期 */
+  /** 每日發出與核銷張數（台灣日期，design D17）；期間內每一天都有一筆，沒有資料為 0 */
   trend: { date: string; issued: number; redeemed: number }[];
   /** 期間內發出的券依核銷數排序，前 10 名 */
   topCoupons: { couponId: string; name: string; issued: number; claimed: number; redeemed: number; redeemRate: number | null }[];
+}
+
+/** 補齊期間內每一天（台灣日期），圖表的時間軸才是連續的；超過 400 天只列有資料的日期，避免回應過大 */
+const MAX_FILL_DAYS = 400;
+function fillDays(from: Date, to: Date): string[] {
+  const days: string[] = [];
+  for (let d = taipeiDateStart(taipeiDateString(from)); d <= to && days.length <= MAX_FILL_DAYS; d = new Date(d.getTime() + 86_400_000)) {
+    days.push(taipeiDateString(d));
+  }
+  return days.length > MAX_FILL_DAYS ? [] : days;
 }
 
 const rate = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
@@ -267,7 +278,9 @@ export async function getCouponAnalytics(db: TenantDb, tenantId: string, from: D
     GROUP BY day
     ORDER BY day
   `;
-  const trend = trendRows.map((r) => ({ date: r.day, issued: Number(r.issued), redeemed: Number(r.redeemed) }));
+  const byDay = new Map(trendRows.map((r) => [r.day, { date: r.day, issued: Number(r.issued), redeemed: Number(r.redeemed) }]));
+  const days = fillDays(from, to);
+  const trend = days.length > 0 ? days.map((date) => byDay.get(date) ?? { date, issued: 0, redeemed: 0 }) : [...byDay.values()];
 
   const topCoupons = [...coupons]
     .sort((a, b) => b.redeemed - a.redeemed || b.issued - a.issued || a.name.localeCompare(b.name))

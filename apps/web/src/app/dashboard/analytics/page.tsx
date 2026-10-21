@@ -98,7 +98,8 @@ export default function AnalyticsPage() {
     <div className="flex h-full flex-col">
       <Topbar title="數據報表">
         <DateRangePicker from={from} to={to} onChange={handleDateChange} />
-        {canExport && (
+        {/* 優惠券成效沒有對應的匯出；券的名單匯出在各張券的詳情頁 */}
+        {canExport && tab !== 'coupons' && (
           <button
             onClick={handleExport}
             disabled={exporting}
