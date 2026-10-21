@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-21：新增 CONV-03
+
+以 main `1a348740` 為基礎，issue #337 階段 1b 盤點事件的發出點與訂閱者時發現。讀程式確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONV-03 | 新增，P2，未處理 | `grep -rn "conversation.handoff" apps/api/src` 只找到兩個發布點（`inbound-postback-interceptors.ts`、`automation.worker.ts`），沒有 `eventBus.subscribe('conversation.handoff', …)`。`notification.worker.ts` 訂閱的事件不含 `conversation.handoff`。主規格 `bot-handoff-config` 要求這個事件讓主管與管理員收到通知 |
+
 ## 2026-10-21：RLS-09 的新寫法推播改由系統組成房間
 
 以 `f50e5181` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。以 unit 測試確認，沒有連 UAT。
