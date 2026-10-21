@@ -124,7 +124,7 @@ scope 的常數定義在 `mcp.constants.ts`。工具只檢查 scope，不檢查�
 | 匯出的 `scope` 參數沒有作用、完成通知連到不存在的頁面 | 詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
 | 匯出把所有資料讀進記憶體 | 大租戶可能失敗，詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
 | 對外 Webhook 的重試在記憶體中等待 | API 重新啟動會遺失 |
-| 對外 Webhook 的事件名稱沒有白名單 | 打錯不會報錯 |
+| 對外 Webhook 的事件名稱沒有白名單 | 打錯不會報錯；內部事件也會轉送，`message.received` 帶出 `replyToken`。詳見 `../../system/AUDIT.md` 的 HOOK-01 |
 | 沒有後台頁面 | 只能透過 CLI、MCP 或直接呼叫 API |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。
