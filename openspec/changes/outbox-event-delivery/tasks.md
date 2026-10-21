@@ -1,7 +1,7 @@
 ## 1. schema 與 RLS
 
-- [ ] 1.1 寫失敗的 feature 測試 `apps/api/tests/feature/lib/outbox-rls.test.ts`，以 `app_tenant` 連線涵蓋 Scenario「寫入別的租戶的事件」（event-delivery），並對 `side_effect_claims` 做同樣的檢查（side-effect-claims「認領紀錄受租戶隔離並保存 30 天」的隔離部分）。執行後確認失敗原因是資料表不存在，再進入 1.2
-- [ ] 1.2 在 `schema.prisma` 新增 `Outbox`、`SideEffectClaim`（design 決策 1、2），`WebhookDelivery` 新增 `eventId` 與 `@@unique([subscriptionId, eventId])`。建立 migration，含兩張表的 `ENABLE`、`FORCE ROW LEVEL SECURITY` 與 `tenant_isolation` policy（`postgres-rls-tenant-isolation` skill）。讓 1.1 通過
+- [x] 1.1 寫失敗的 feature 測試 `apps/api/tests/feature/lib/outbox-rls.test.ts`，以 `app_tenant` 連線涵蓋 Scenario「寫入別的租戶的事件」（event-delivery），並對 `side_effect_claims` 做同樣的檢查（side-effect-claims「認領紀錄受租戶隔離並保存 30 天」的隔離部分）。執行後確認失敗原因是資料表不存在，再進入 1.2
+- [x] 1.2 在 `schema.prisma` 新增 `Outbox`、`SideEffectClaim`（design 決策 1、2），`WebhookDelivery` 新增 `eventId` 與 `@@unique([subscriptionId, eventId])`。建立 migration，含兩張表的 `ENABLE`、`FORCE ROW LEVEL SECURITY` 與 `tenant_isolation` policy（`postgres-rls-tenant-isolation` skill）。讓 1.1 通過
 
 ## 2. 共用模組 `packages/core/src/outbox/`
 
