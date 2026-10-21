@@ -4,8 +4,7 @@ import { dirname, resolve } from 'node:path';
 import dotenv from 'dotenv';
 
 // Load env BEFORE any module that captures process.env at import time
-// (e.g. BullMQ Queue constructed with `connection: { url: process.env.REDIS_URL }`
-// in notification.worker.ts / automation.worker.ts).
+// (e.g. BullMQ Queue constructed with `connection: { url: process.env.REDIS_URL }`).
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, '..', '..', '..', '.env') });
@@ -13,7 +12,14 @@ dotenv.config({ path: resolve(__dirname, '..', '..', '..', '.env') });
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 
-import { validatePermissionRegistry, validateRouteCodes } from '@open333crm/core';
+import {
+  EVENT_AUTOMATION_QUEUE,
+  EVENT_NOTIFICATION_QUEUE,
+  EVENT_WEBHOOK_QUEUE,
+  closeOutboxQueues,
+  validatePermissionRegistry,
+  validateRouteCodes,
+} from '@open333crm/core';
 import { usedPermissionCodes } from './guards/rbac.guard.js';
 import { loadEnvConfig } from './config/env.js';
 import { installZodChineseLocale } from './config/zod-locale.js';
@@ -88,6 +94,7 @@ import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
 import { setupNotificationWorker } from './modules/notification/notification.worker.js';
 import { setupOutboxSchedulers } from './modules/outbox/outbox.scheduler.js';
+import { bullWorkerFactory, startQueueWorkers, subscriberProcessor } from './events/subscriber-workers.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
@@ -223,8 +230,16 @@ export async function bootstrap() {
   // 屬 RLS 白名單基礎設施，用 prismaAdmin（BYPASSRLS）連線，避免 FORCE 後 fail-closed。
   registerVisitorNamespace(app.io, app.prismaAdmin, app.chatboxSessionVerifier);
 
-  setupAutomationWorker(app.prismaAdmin, app.io);
-  setupNotificationWorker(app.prismaAdmin);
+  // 訂閱者從各自的佇列取得事件（change outbox-event-delivery）；job 失敗時只重試該訂閱者的 job
+  const subscriberWorkers = startQueueWorkers(
+    {
+      [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin)),
+      [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io)),
+      [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
+    },
+    bullWorkerFactory(config.REDIS_URL),
+  );
+  app.addHook('onClose', () => subscriberWorkers.close());
   setupCanvasWorker(app.prismaAdmin, app.io);
 
   // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，
@@ -241,8 +256,8 @@ export async function bootstrap() {
   setupOutboxSchedulers(jobScheduler, app.prismaAdmin);
   jobScheduler.start();
   app.addHook('onClose', () => jobScheduler.close());
+  app.addHook('onClose', () => closeOutboxQueues());
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
-  setupWebhookDispatcher(app.prismaAdmin);
   startA2ABridgeWorker(app).catch((err) => app.log.warn({ err }, '[A2A] Bridge worker start failed'));
 
   // RBAC: 路由都註冊完後，驗證所有 requirePermission(code) 的 code 都存在於 registry

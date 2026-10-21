@@ -11,6 +11,7 @@ import type { ConversationUpdatedPayload } from '@open333crm/shared';
 import { Queue } from 'bullmq';
 import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
+import { createEventRouter, type EventHandler } from '../../events/subscriber-workers.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
@@ -407,9 +408,11 @@ async function checkKeywordTriggers(
   }
 }
 
-export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
+export function setupAutomationWorker(prisma: PrismaClient, io: Server): EventHandler {
+  const events = createEventRouter();
+
   // ── message.received ────────────────────────────────────────────────────
-  eventBus.subscribe('message.received', async (event: AppEvent) => {
+  events.on('message.received', async (event: AppEvent) => {
     try {
       const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt } = event.payload as {
         contactId?: string;
@@ -539,7 +542,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── keyword.matched ─────────────────────────────────────────────────────
-  eventBus.subscribe('keyword.matched', async (event: AppEvent) => {
+  events.on('keyword.matched', async (event: AppEvent) => {
     try {
       const { contactId, conversationId, messageContent, ruleId, matchedKeywords, matchMode, channelType, replyToken, receivedAt } = event.payload as {
         contactId?: string;
@@ -564,7 +567,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── case.created ────────────────────────────────────────────────────────
-  eventBus.subscribe('case.created', async (event: AppEvent) => {
+  events.on('case.created', async (event: AppEvent) => {
     try {
       const { contactId, conversationId, caseId } = event.payload as {
         contactId?: string;
@@ -590,7 +593,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── conversation.created ────────────────────────────────────────────────
-  eventBus.subscribe('conversation.created', async (event: AppEvent) => {
+  events.on('conversation.created', async (event: AppEvent) => {
     try {
       const { contactId, conversationId } = event.payload as {
         contactId?: string;
@@ -608,7 +611,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── contact.tagged ──────────────────────────────────────────────────────
-  eventBus.subscribe('contact.tagged', async (event: AppEvent) => {
+  events.on('contact.tagged', async (event: AppEvent) => {
     try {
       const { contactId, source } = event.payload as {
         contactId?: string;
@@ -632,7 +635,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── contact.created ─────────────────────────────────────────────────────
-  eventBus.subscribe('contact.created', async (event: AppEvent) => {
+  events.on('contact.created', async (event: AppEvent) => {
     try {
       const { contactId } = event.payload as { contactId?: string };
 
@@ -647,7 +650,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── case.escalated ──────────────────────────────────────────────────────
-  eventBus.subscribe('case.escalated', async (event: AppEvent) => {
+  events.on('case.escalated', async (event: AppEvent) => {
     try {
       const { contactId, conversationId, caseId } = event.payload as {
         contactId?: string;
@@ -666,7 +669,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── portal.activity.submitted ──────────────────────────────────────────
-  eventBus.subscribe('portal.activity.submitted', async (event: AppEvent) => {
+  events.on('portal.activity.submitted', async (event: AppEvent) => {
     try {
       const { contactId, activityId } = event.payload as {
         contactId?: string;
@@ -684,7 +687,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
   });
 
   // ── link.clicked ──────────────────────────────────────────────────────────
-  eventBus.subscribe('link.clicked', async (event: AppEvent) => {
+  events.on('link.clicked', async (event: AppEvent) => {
     try {
       const { contactId, shortLinkId, slug } = event.payload as {
         contactId?: string;
@@ -702,6 +705,5 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server) {
     }
   });
 
-  logger.info('[AutomationWorker] Subscribed to events: message.received, keyword.matched, case.created, conversation.created, contact.created, contact.tagged, case.escalated, portal.activity.submitted, link.clicked');
-  logger.info('[AutomationWorker] Auto-handoff enabled with configurable BotConfig per channel');
+  return events.handle;
 }

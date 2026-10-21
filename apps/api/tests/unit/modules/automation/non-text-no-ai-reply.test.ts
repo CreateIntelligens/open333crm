@@ -11,8 +11,9 @@ const calls = vi.hoisted(() => ({ kb: [] as string[], agent: [] as string[], enq
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   Queue: class {
-    async add() {
-      calls.enqueued += 1;
+    // eventBus 也把衍生事件送進訂閱者佇列；這裡只計算規則評估的 job
+    async add(name: string) {
+      if (name === 'automation:evaluate') calls.enqueued += 1;
     }
   },
 }));
@@ -37,7 +38,6 @@ vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: asy
 vi.mock('#src/modules/ai/ai.service.js', () => ({ summarizeConversation: async () => ({ summary: '' }) }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({ deliverToChannel: async () => true }));
 
-const { eventBus } = await import('#src/events/event-bus.js');
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
 
 const conversation = { id: 'conv-1', status: 'BOT_HANDLED', botRepliesCount: 0, handoffReason: null as string | null };
@@ -57,8 +57,10 @@ const prisma = {
   automationRule: { findMany: async () => [] },
 };
 
+let handle: Awaited<ReturnType<typeof setupAutomationWorker>>;
+
 beforeAll(() => {
-  setupAutomationWorker(prisma as never, { to: () => ({ emit: () => {} }) } as never);
+  handle = setupAutomationWorker(prisma as never, { to: () => ({ emit: () => {} }) } as never);
 });
 
 beforeEach(() => {
@@ -70,7 +72,8 @@ beforeEach(() => {
 
 /** 發布 message.received，等處理流程走到最後一步（排入自動化規則的佇列） */
 async function receive(contentType: string | undefined, content: Record<string, unknown>) {
-  eventBus.publish({
+  void handle({
+    id: crypto.randomUUID(),
     name: 'message.received',
     tenantId: 'tenant-1',
     timestamp: new Date(),

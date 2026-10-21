@@ -32,10 +32,11 @@
 
 ## 5. 訂閱者佇列與舊寫法的轉送
 
-- [ ] 5.1 寫失敗的單元測試 `apps/api/tests/unit/events/event-bus.test.ts`，涵蓋 Scenario「舊寫法發出事件」：`eventBus.publish()` 為每個訂閱者佇列 `add()` 一個帶事件 id 的 job，不寫 outbox
-- [ ] 5.2 把 `eventBus` 改成轉送器（design 決策 7），讓 5.1 通過
-- [ ] 5.3 寫失敗的單元測試 `apps/api/tests/unit/events/subscriber-workers.test.ts`，涵蓋 Scenario「webhook 失敗重試」：webhook job 失敗時，自動化佇列沒有新增 job
-- [ ] 5.4 在 API 行程建立三個訂閱者佇列的 `Worker`（design 決策 4），三個訂閱者改從佇列取得事件，不再訂閱 `eventBus`。job data 的 `timestamp` 轉回 `Date` 再交給處理程式，5.3 一併斷言處理程式收到的 `timestamp` 是 `Date`。讓 5.3 通過
+- [x] 5.1 寫失敗的單元測試 `apps/api/tests/unit/events/event-bus.test.ts`，涵蓋 Scenario「舊寫法發出事件」：`eventBus.publish()` 為每個訂閱者佇列 `add()` 一個帶事件 id 的 job，不寫 outbox
+- [x] 5.2 把 `eventBus` 改成轉送器（design 決策 7），讓 5.1 通過
+- [x] 5.3 寫失敗的單元測試 `apps/api/tests/unit/events/subscriber-workers.test.ts`，涵蓋 Scenario「webhook 失敗重試」：webhook job 失敗時，自動化佇列沒有新增 job
+- [x] 5.4 在 API 行程建立三個訂閱者佇列的 `Worker`（design 決策 4），三個訂閱者改從佇列取得事件，不再訂閱 `eventBus`。job data 的 `timestamp` 轉回 `Date` 再交給處理程式，5.3 一併斷言處理程式收到的 `timestamp` 是 `Date`。讓 5.3 通過
+  - `eventBus.publish()` 仍在行程內 emit，只給測試以 `subscribe()` 觀察；正式的訂閱者都改從佇列取得事件。`keyword.matched` 暫時留在 core 的自動化訂閱清單，否則 8.11、9.2 完成之前關鍵字規則不會執行；8.11 移除
 
 ## 6. 通知訂閱者
 

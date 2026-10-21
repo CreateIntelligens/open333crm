@@ -1,14 +1,12 @@
 /**
- * Notification event-bus worker.
- *
- * Subscribes to application events and enqueues notification jobs.
- * Actual DB persistence and socket delivery are handled by apps/workers.
+ * 通知訂閱者：處理 event-notification 佇列的事件，送出 notification:dispatch job。
+ * 站內通知的寫入與推播由 apps/workers 處理（change outbox-event-delivery，design 決策 10）。
  */
 
 import type { PrismaClient } from '@prisma/client';
 import { Queue } from 'bullmq';
-import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
+import { createEventRouter, type EventHandler } from '../../events/subscriber-workers.js';
 import { logger } from '@open333crm/core';
 import { sendQuotaWarningEmail, sendQuotaCriticalEmail } from '../trial/usage-alert-emails.js';
 import { getConfig } from '../../config/env.js';
@@ -41,9 +39,11 @@ async function getSupervisorAndAdminIds(
   return agents.map((a) => a.id);
 }
 
-export function setupNotificationWorker(prisma: PrismaClient) {
+export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
+  const events = createEventRouter();
+
   // ── case.assigned ──────────────────────────────────────────────────────
-  eventBus.subscribe('case.assigned', async (event: AppEvent) => {
+  events.on('case.assigned', async (event: AppEvent) => {
     try {
       const { caseId, assigneeId, title } = event.payload as {
         caseId: string;
@@ -69,7 +69,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   });
 
   // ── case.escalated ─────────────────────────────────────────────────────
-  eventBus.subscribe('case.escalated', async (event: AppEvent) => {
+  events.on('case.escalated', async (event: AppEvent) => {
     try {
       const { caseId, reason, notifyTargets, previousAssigneeId, actorId } = event.payload as {
         caseId: string;
@@ -104,7 +104,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   });
 
   // ── sla.warning ────────────────────────────────────────────────────────
-  eventBus.subscribe('sla.warning', async (event: AppEvent) => {
+  events.on('sla.warning', async (event: AppEvent) => {
     try {
       const { caseId, assigneeId, title } = event.payload as {
         caseId: string;
@@ -130,7 +130,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   });
 
   // ── sla.breached ───────────────────────────────────────────────────────
-  eventBus.subscribe('sla.breached', async (event: AppEvent) => {
+  events.on('sla.breached', async (event: AppEvent) => {
     try {
       const { caseId, assigneeId, title } = event.payload as {
         caseId: string;
@@ -165,7 +165,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   });
 
   // ── message.received ───────────────────────────────────────────────────
-  eventBus.subscribe('message.received', async (event: AppEvent) => {
+  events.on('message.received', async (event: AppEvent) => {
     try {
       const { conversationId } = event.payload as {
         conversationId?: string;
@@ -212,7 +212,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   });
 
   // ── conversation.assigned ──────────────────────────────────────────────
-  eventBus.subscribe('conversation.assigned', async (event: AppEvent) => {
+  events.on('conversation.assigned', async (event: AppEvent) => {
     try {
       const { conversationId, assignedToId } = event.payload as {
         conversationId?: string;
@@ -237,7 +237,7 @@ export function setupNotificationWorker(prisma: PrismaClient) {
   });
 
   // ── usage.quota.threshold（AI 用量達 80%/100% 告警給租戶 ADMIN）──────────
-  eventBus.subscribe('usage.quota.threshold', async (event: AppEvent) => {
+  events.on('usage.quota.threshold', async (event: AppEvent) => {
     try {
       const { level, usedTokens, limitTokens, monthKey } = event.payload as {
         level: 'warning' | 'critical';
@@ -301,7 +301,5 @@ export function setupNotificationWorker(prisma: PrismaClient) {
     }
   });
 
-  logger.info(
-    '[NotificationWorker] Subscribed to events: case.assigned, case.escalated, sla.warning, sla.breached, message.received, conversation.assigned, usage.quota.threshold',
-  );
+  return events.handle;
 }

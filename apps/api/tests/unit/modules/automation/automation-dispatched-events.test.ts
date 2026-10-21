@@ -6,19 +6,23 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { AUTOMATION_EVENT_DEFINITIONS } from '@open333crm/automation';
-import { eventBus } from '#src/events/event-bus.js';
-import { setupAutomationWorker } from '#src/modules/automation/automation.worker.js';
+import { EVENT_AUTOMATION_QUEUE, subscriberQueuesOf } from '@open333crm/core';
+import { createEventRouter } from '#src/events/subscriber-workers.js';
 
-test('契約標為會送出的事件，就是 automation worker 訂閱的事件（SLA 事件由 workers 自己查規則）', () => {
-  const subscribed = new Set<string>();
-  const spy = vi.spyOn(eventBus, 'subscribe').mockImplementation((name) => {
-    subscribed.add(String(name));
-  });
-  try {
-    setupAutomationWorker({} as never, {} as never);
-  } finally {
-    spy.mockRestore();
-  }
+vi.mock('#src/events/subscriber-workers.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('#src/events/subscriber-workers.js')>();
+  return { ...original, createEventRouter: vi.fn(original.createEventRouter) };
+});
+
+test('契約標為會送出的事件，就是送進自動化佇列、且自動化訂閱者會處理的事件（SLA 事件由 workers 自己查規則）', async () => {
+  const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
+  setupAutomationWorker({} as never, {} as never);
+  const router = vi.mocked(createEventRouter).mock.results[0].value as ReturnType<typeof createEventRouter>;
+  const handled = new Set(router.names());
+  // 送進自動化佇列（core 的訂閱清單）而且有處理程式，才算會送出
+  const subscribed = new Set(
+    [...handled].filter((name) => subscriberQueuesOf(name).includes(EVENT_AUTOMATION_QUEUE)),
+  );
 
   for (const event of AUTOMATION_EVENT_DEFINITIONS) {
     const delivered = event.name.startsWith('sla.') || subscribed.has(event.name);

@@ -1,12 +1,12 @@
 /**
- * Webhook Dispatcher — subscribes to eventBus wildcard and dispatches
- * matching events to registered webhook subscriptions with HMAC signing.
+ * Webhook Dispatcher — 處理 event-webhook 佇列的事件，送給租戶訂閱的網址，以 HMAC 簽章。
  */
 
 import type { PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { createHmac } from 'node:crypto';
-import { eventBus, type AppEvent } from '../../events/event-bus.js';
+import type { AppEvent } from '../../events/event-bus.js';
+import type { EventHandler } from '../../events/subscriber-workers.js';
 import { logger } from '@open333crm/core';
 import { isBlockedUrl } from '../webhook/downstream-forwarder.js';
 
@@ -129,11 +129,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Setup the webhook dispatcher — subscribes to eventBus wildcard
- * and dispatches matching events to registered subscriptions.
+ * 對外 webhook 訂閱者：event-webhook 佇列的每個事件，送給訂閱了這個事件的網址。
  */
-export function setupWebhookDispatcher(prisma: PrismaClient) {
-  eventBus.subscribe('*', async (event: AppEvent) => {
+export function setupWebhookDispatcher(prisma: PrismaClient): EventHandler {
+  return async (event: AppEvent) => {
     try {
       // Find all active subscriptions for this tenant that subscribe to this event
       const subscriptions = await prisma.webhookSubscription.findMany({
@@ -162,7 +161,5 @@ export function setupWebhookDispatcher(prisma: PrismaClient) {
     } catch (err) {
       logger.error('[WebhookDispatcher] Error processing event:', err);
     }
-  });
-
-  logger.info('[WebhookDispatcher] Started — listening on eventBus wildcard');
+  };
 }

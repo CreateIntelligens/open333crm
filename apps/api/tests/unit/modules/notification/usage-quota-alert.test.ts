@@ -32,7 +32,6 @@ vi.mock('#src/modules/email/email.service.js', () => ({
 }));
 
 import { loadEnvConfig } from '#src/config/env.js';
-import { eventBus } from '#src/events/event-bus.js';
 import { setupNotificationWorker } from '#src/modules/notification/notification.worker.js';
 
 loadEnvConfig();
@@ -44,7 +43,7 @@ const admins = [
   { id: 'admin-2', email: 'a2@example.com' },
 ];
 
-setupNotificationWorker({
+const handle = setupNotificationWorker({
   agent: {
     findMany: async ({ where }: { where: { role: string; isActive: boolean } }) =>
       where.role === 'ADMIN' && where.isActive ? admins : [],
@@ -60,7 +59,8 @@ beforeEach(() => {
 });
 
 async function alert(level: 'warning' | 'critical') {
-  eventBus.publish({
+  await handle({
+    id: crypto.randomUUID(),
     name: 'usage.quota.threshold',
     tenantId: TENANT,
     timestamp: new Date(),
