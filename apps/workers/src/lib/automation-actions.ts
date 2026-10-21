@@ -13,7 +13,8 @@ import {
   couponSourceName,
   issueInstances,
   issueWalletToken,
-  walletLinkUrl,
+  couponLiffConfig,
+  couponLinkUrl,
   type WalletTokenStore,
 } from '@open333crm/core';
 
@@ -596,6 +597,11 @@ export async function executeWorkerAutomationActions(
           instanceId: instance.id,
         });
         const webBaseUrl = process.env.WEB_BASE_URL || 'http://localhost:3000';
+        // 渠道設定了 LIFF 與 Login channel 時，連結走 LIFF（design D20）
+        const channel = await prisma.channel.findFirst({
+          where: { id: conv.channelId, tenantId: context.tenantId },
+          select: { settings: true },
+        });
         await deliverToChannelFromWorker(
           prisma,
           redisPublisher,
@@ -604,7 +610,7 @@ export async function executeWorkerAutomationActions(
           {
             contentType: 'text',
             content: {
-              text: buildCouponMessage({ couponName: coupon.name, url: walletLinkUrl(webBaseUrl, walletToken) }),
+              text: buildCouponMessage({ couponName: coupon.name, url: couponLinkUrl(webBaseUrl, walletToken, couponLiffConfig(channel?.settings)) }),
             },
             // keyword.matched 帶 replyToken 時走 reply（免費）；否則自動落 push
             delivery: keywordReplyDelivery(context),

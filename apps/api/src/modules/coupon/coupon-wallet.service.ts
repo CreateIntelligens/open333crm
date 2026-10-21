@@ -7,7 +7,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import QRCode from 'qrcode';
-import { readWalletToken } from '@open333crm/core';
+import { couponLiffConfig, readWalletToken } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { signFanToken } from '../portal/portal-auth.service.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
@@ -295,4 +295,62 @@ export async function getWalletQrCode(
   if (!own) return { ok: false, reason: 'NOT_FOUND' };
   const dataUrl = await QRCode.toDataURL(own.code, { margin: 1, width: 480, errorCorrectionLevel: 'M' });
   return { ok: true, dataUrl };
+}
+
+// ── LINE Login 驗證（design D20） ─────────────────────────────────────────
+
+export interface LineLoginDeps extends WalletDeps {
+  /** 向 LINE 驗證 ID token；clientId 為 Login Channel ID。驗證不通過回 null */
+  verifyLineIdToken: (idToken: string, clientId: string) => Promise<{ sub: string } | null>;
+}
+
+export type LineLoginResult =
+  /** 已記錄歸戶驗證，接著照一般流程開啟票券 */
+  | { status: 'verified' }
+  | { status: 'expired' }
+  /** 渠道沒有設定 LIFF 與 Login Channel ID，改走 One ID 登記 */
+  | { status: 'not_configured' }
+  | { status: 'verification_failed' }
+  /** ID token 的 LINE 帳號不是收到這張券的帳號（連結被轉傳） */
+  | { status: 'account_mismatch' };
+
+/**
+ * 以 LIFF 取得的 ID token 驗證收券的 LINE 顧客。租戶與收券身分取自票券權杖（伺服器發的隨機值），
+ * 不信任網址參數；ID token 以該渠道的 Login Channel ID 向 LINE 驗證，其他租戶或 Login channel 簽的驗不過。
+ */
+export async function openWalletSessionWithLine(
+  prisma: PrismaClient,
+  deps: LineLoginDeps,
+  token: string,
+  idToken: string,
+): Promise<LineLoginResult> {
+  const payload = await readWalletToken(deps.store, token);
+  if (!payload) return { status: 'expired' };
+  const { tenantId } = payload;
+
+  const target = await withTenant(prisma, tenantId, async (tx) => {
+    const channel = await tx.channel.findFirst({ where: { id: payload.channelId, tenantId }, select: { settings: true } });
+    const identity = await tx.channelIdentity.findFirst({
+      where: { id: payload.channelIdentityId, contact: { tenantId } },
+      select: { uid: true },
+    });
+    return { liff: couponLiffConfig(channel?.settings), uid: identity?.uid ?? null };
+  });
+  if (!target.liff || !target.uid) return { status: 'not_configured' };
+
+  const verified = await deps.verifyLineIdToken(idToken, target.liff.loginChannelId);
+  if (!verified) return { status: 'verification_failed' };
+  if (verified.sub !== target.uid) return { status: 'account_mismatch' };
+
+  const marked = await withTenant(prisma, tenantId, async (tx) => {
+    // 收到連結後聯絡人可能被合併：記在合併後保留的聯絡人上
+    const liveId = await resolveLiveContactId(tx, tenantId, payload.contactId);
+    if (!liveId) return false;
+    await tx.contact.updateMany({
+      where: { id: liveId, tenantId, identityVerifiedAt: null },
+      data: { identityVerifiedAt: new Date(nowOf(deps)), identityVerifiedVia: 'line' },
+    });
+    return true;
+  });
+  return marked ? { status: 'verified' } : { status: 'expired' };
 }

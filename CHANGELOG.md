@@ -34,6 +34,8 @@ All notable changes to **open333CRM** will be documented in this file.
 - 券的狀態流轉失敗訊息改用中文狀態名稱。
 - **優惠券與會員綁定路由改用 Zod 驗證輸入**：格式不對時回 400 與可讀的訊息，發放方式只接受代號格式。
 
+- **LINE 顧客以 LINE 帳號自動驗證身分**（design D20）：LINE 渠道設定新增「LINE Login Channel ID」，與既有的 LIFF App ID 都填好後，從該渠道發出的票券連結改為 LIFF 網址，顧客在 LINE 開啟時以 ID token 向 LINE 驗證，不必登記 email 或手機。後端以該渠道的 Login Channel ID 驗證，租戶取自票券權杖；ID token 不是收券帳號（連結被轉傳）時拒絕。驗證失敗或沒設定時照舊走 One ID 登記。新端點 `POST /api/v1/fan/coupons/liff-session`。設定頁附上 Endpoint URL 與設定步驟（LIFF Scope 要勾 openid）。
+
 ### Changed
 
 - **email 登記改為先驗證信箱**（add-coupon-system design D15）：顧客送出 email 後先寄 6 位數驗證碼到該信箱，輸入正確才寫入與歸戶。原本輸入別人的 email 就能併入對方、看到對方的券。驗證碼 10 分鐘有效、最多錯 5 次，同一個登記連結最多寄 3 次；寄信失敗回 502 並保留連結。新端點 `POST /api/v1/public/email-registration/:token/verify`。部署前確認 `EMAIL_DELIVERY_MODE` 不是只寫 log。

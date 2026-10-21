@@ -61,6 +61,30 @@ export function walletLinkUrl(webBaseUrl: string, token: string): string {
   return `${webBaseUrl.replace(/\/+$/, '')}/coupon/open/${token}`;
 }
 
+/** LINE 渠道的 LIFF 設定：LIFF App ID 與它所在的 LINE Login Channel ID（design D20） */
+export interface CouponLiffConfig {
+  liffId: string;
+  loginChannelId: string;
+}
+
+/** 從渠道 settings 取出 LIFF 設定；兩個都有才算設定完成，否則 null（其他渠道沒有 liffConfig） */
+export function couponLiffConfig(settings: unknown): CouponLiffConfig | null {
+  const cfg = (settings as { liffConfig?: { liffId?: unknown; loginChannelId?: unknown } } | null)?.liffConfig;
+  const liffId = typeof cfg?.liffId === 'string' ? cfg.liffId.trim() : '';
+  const loginChannelId = typeof cfg?.loginChannelId === 'string' ? cfg.loginChannelId.trim() : '';
+  return liffId && loginChannelId ? { liffId, loginChannelId } : null;
+}
+
+/**
+ * 發券訊息裡的票券連結：渠道設定了 LIFF 與 Login channel 時走 LIFF（LINE 內自動驗證身分），
+ * 否則為一般網址（One ID 登記）。LIFF 入口頁（/liff/redirect）以 ct 判斷是票券連結。
+ */
+export function couponLinkUrl(webBaseUrl: string, token: string, liff: CouponLiffConfig | null): string {
+  if (!liff) return walletLinkUrl(webBaseUrl, token);
+  const id = encodeURIComponent(liff.liffId);
+  return `https://liff.line.me/${id}?ct=${token}&lid=${id}`;
+}
+
 /**
  * 發券訊息。純文字加連結——各渠道都支援，不依賴特定版型能力。
  * 條款只在票券頁呈現，訊息不帶（spec「條款僅於券詳情頁呈現」）。

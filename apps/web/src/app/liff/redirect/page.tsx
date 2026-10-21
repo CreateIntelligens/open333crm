@@ -13,6 +13,8 @@
 import { useEffect, useState } from 'react';
 import { initLiff, resolveLiffParams, withTimeout } from '@/lib/liff';
 import { REALTIME_ORIGIN } from '@/lib/constants';
+import fanApi from '@/lib/fan-api';
+import { openCouponViaLiff } from '@/lib/coupon/liff-coupon';
 
 const TIMEOUT_MS = 8000;
 
@@ -21,7 +23,18 @@ export default function LiffEndpointPage() {
 
   useEffect(() => {
     (async () => {
-      const { s, cid, lid } = resolveLiffParams(window.location.search);
+      const { s, ct, cid, lid } = resolveLiffParams(window.location.search);
+      // 票券連結：以 LINE 帳號驗證顧客身分後開啟票券（add-coupon-system design D20）
+      if (ct && lid) {
+        const outcome = await openCouponViaLiff(ct, lid, {
+          initLiff: (id) => withTimeout(initLiff(id), TIMEOUT_MS, 'liff.init'),
+          post: (url, body) => fanApi.post(url, body),
+          currentUrl: window.location.href,
+        });
+        if (outcome.kind === 'navigate') window.location.replace(outcome.to);
+        if (outcome.kind === 'message') setError(outcome.text);
+        return;
+      }
       if (!s) {
         setError('連結無效');
         return;

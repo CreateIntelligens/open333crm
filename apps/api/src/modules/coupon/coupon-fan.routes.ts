@@ -14,10 +14,12 @@ import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.j
 import { getBindingStore } from '../identity-binding/binding-code.js';
 import { claimByToken, openInstance, redeemCoupon } from './coupon-redeem.service.js';
 import { getFanCoupon, isOwnedByFan } from './coupon-fan.service.js';
+import { verifyLineIdToken } from './line-id-token.js';
 import {
   getWalletQrCode,
   listWallet,
   openWalletSession,
+  openWalletSessionWithLine,
   redeemWithStaffCode,
   startStaffCodeSession,
   type WalletDeps,
@@ -70,6 +72,24 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   app.post('/session', async (request, reply) => {
     const { token } = z.object({ token: z.string().min(1).max(100) }).parse(request.body);
     const result = await openWalletSession(app.prisma, deps(), token);
+    if (result.status === 'expired') {
+      return reply.status(410).send({
+        success: false,
+        error: { code: 'LINK_EXPIRED', message: '連結已失效，請回到對話重新點選，或到券夾查看已領取的券' },
+      });
+    }
+    return { success: true, data: result };
+  });
+
+  /**
+   * LINE 顧客以 LIFF 的 ID token 驗證身分（design D20）。成功後前端照一般流程呼叫 /session 開啟票券。
+   * 驗證失敗或渠道沒設定時回 200 與原因，前端改走 One ID 登記；連結失效回 410。
+   */
+  app.post('/liff-session', async (request, reply) => {
+    const { token, idToken } = z
+      .object({ token: z.string().min(1).max(100), idToken: z.string().min(1).max(4096) })
+      .parse(request.body ?? {});
+    const result = await openWalletSessionWithLine(app.prisma, { ...deps(), verifyLineIdToken }, token, idToken);
     if (result.status === 'expired') {
       return reply.status(410).send({
         success: false,

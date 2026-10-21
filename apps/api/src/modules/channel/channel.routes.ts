@@ -71,13 +71,25 @@ const webchatCredentialsSchema = z.record(z.unknown());
 
 /** LIFF ID：10 位數字、-、8 個英數字（LINE 文件範例 1234567890-AbcdEfgh） */
 const LIFF_ID_PATTERN = /^\d{10}-[A-Za-z0-9]{8}$/;
+/** LINE Login Channel ID：10 位數字（優惠券以 LIFF 驗證顧客身分，add-coupon-system design D20） */
+const LOGIN_CHANNEL_ID_PATTERN = /^\d{10}$/;
 
 /**
  * 驗證 `settings.liffConfig.liffId`（BotConfigForm 寫入、短連結的 LIFF 轉址讀取）。
  * 去頭尾空白後比對格式；空字串表示清除。沒有這個鍵時不檢查。
  */
 function validateLiffIdSettings(settings: Record<string, unknown> | undefined, ctx: z.RefinementCtx): void {
-  const liffConfig = settings?.liffConfig as { liffId?: unknown } | undefined;
+  const liffConfig = settings?.liffConfig as { liffId?: unknown; loginChannelId?: unknown } | undefined;
+  const loginChannelId = typeof liffConfig?.loginChannelId === 'string' ? liffConfig.loginChannelId.trim() : liffConfig?.loginChannelId;
+  if (loginChannelId !== undefined && loginChannelId !== null && loginChannelId !== '') {
+    if (typeof loginChannelId !== 'string' || !LOGIN_CHANNEL_ID_PATTERN.test(loginChannelId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['settings', 'liffConfig', 'loginChannelId'],
+        message: 'LINE Login Channel ID 格式不正確，應為 10 位數字（在 LINE Developers 的 Login channel 基本設定可找到）',
+      });
+    }
+  }
   if (!liffConfig || liffConfig.liffId === undefined || liffConfig.liffId === null) return;
   const value = typeof liffConfig.liffId === 'string' ? liffConfig.liffId.trim() : liffConfig.liffId;
   if (value === '') return;
@@ -111,14 +123,14 @@ function validateBotConfigSettings(settings: Record<string, unknown> | undefined
   }
 }
 
-/** 存入前去掉 LIFF ID 的頭尾空白 */
+/** 存入前去掉 LIFF ID 與 Login Channel ID 的頭尾空白 */
 function normalizeLiffIdSettings<T extends { settings?: Record<string, unknown> }>(data: T): T {
-  const liffConfig = data.settings?.liffConfig as { liffId?: unknown } | undefined;
-  if (!liffConfig || typeof liffConfig.liffId !== 'string') return data;
-  return {
-    ...data,
-    settings: { ...data.settings, liffConfig: { ...liffConfig, liffId: liffConfig.liffId.trim() } },
-  };
+  const liffConfig = data.settings?.liffConfig as { liffId?: unknown; loginChannelId?: unknown } | undefined;
+  if (!liffConfig) return data;
+  const trimmed = { ...liffConfig };
+  if (typeof liffConfig.liffId === 'string') trimmed.liffId = liffConfig.liffId.trim();
+  if (typeof liffConfig.loginChannelId === 'string') trimmed.loginChannelId = liffConfig.loginChannelId.trim();
+  return { ...data, settings: { ...data.settings, liffConfig: trimmed } };
 }
 
 export const createChannelSchema = z.object({

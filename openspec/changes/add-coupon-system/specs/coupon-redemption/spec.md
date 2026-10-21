@@ -407,3 +407,42 @@
 - **WHEN** 顧客開啟已失效的票券連結
 - **THEN** 說明文字請顧客「回到對話重新點選」，不寫特定渠道
 
+### Requirement: LINE 顧客以 LINE Login 驗證身分
+
+LINE 渠道同時設定 LIFF App ID 與 LINE Login Channel ID 時，系統 SHALL 讓從該渠道收到券的顧客以 LIFF 取得的 ID token 完成歸戶驗證，不必登記 email 或手機。系統 SHALL 以該渠道的 Login Channel ID 向 LINE 驗證 ID token，租戶由票券連結決定，不信任網址參數。ID token 的使用者必須是收到這張券的 LINE 帳號。驗證失敗或渠道沒有設定時，系統 SHALL 改走 One ID 登記。
+
+#### Scenario: LINE 顧客從 LIFF 開啟票券連結
+
+- **GIVEN** LINE 渠道設定了 LIFF App ID 與 Login Channel ID，顧客還沒完成歸戶
+- **WHEN** 顧客在 LINE 開啟票券連結，LIFF 送出 LINE 驗證通過、使用者為收券帳號的 ID token
+- **THEN** 聯絡人記錄歸戶驗證（方式為 line），回應成功
+- **AND** 之後開啟這張票券直接取得顧客憑證，不要求登記
+
+#### Scenario: ID token 驗證失敗
+
+- **WHEN** ID token 過期、被竄改，或由其他 Login channel 簽發，LINE 驗證不通過
+- **THEN** 系統回報驗證失敗，聯絡人不記錄歸戶驗證，頁面改走 One ID 登記
+
+#### Scenario: 用其他 LINE 帳號開啟轉傳的連結
+
+- **WHEN** ID token 驗證通過，但使用者不是收到這張券的 LINE 帳號
+- **THEN** 系統回報帳號不符，不記錄歸戶驗證，也不回傳顧客憑證
+
+#### Scenario: 渠道沒有設定 Login Channel ID
+
+- **GIVEN** LINE 渠道只設定 LIFF App ID
+- **WHEN** 顧客以 LIFF 送出 ID token
+- **THEN** 系統回報未設定，頁面改走 One ID 登記
+- **AND** 從這個渠道發出的票券連結維持一般網址
+
+#### Scenario: 設定後發券連結改為 LIFF 網址
+
+- **GIVEN** LINE 渠道設定了 LIFF App ID 1660000000-AbCdEfGh 與 Login Channel ID
+- **WHEN** 座席在這個渠道的對話發券
+- **THEN** 訊息中的連結為 `https://liff.line.me/1660000000-AbCdEfGh?ct={票券權杖}&lid=1660000000-AbCdEfGh`
+
+#### Scenario: Login Channel ID 格式不對
+
+- **WHEN** 管理者在 LINE 渠道設定填入不是 10 位數字的 Login Channel ID
+- **THEN** 系統回報 400，說明 Login Channel ID 為 10 位數字
+

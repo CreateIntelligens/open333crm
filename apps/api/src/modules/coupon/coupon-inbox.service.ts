@@ -5,7 +5,7 @@
  * 送不出就作廢這張券、歸還名額，座席看到的「券未發出」才是真的（design D16，取代 D14 的交易內發送）。
  */
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { buildCouponMessage, issueWalletToken, walletLinkUrl } from '@open333crm/core';
+import { buildCouponMessage, couponLiffConfig, couponLinkUrl, issueWalletToken } from '@open333crm/core';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
@@ -490,9 +490,10 @@ async function reserveIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: I
       conversationId: conv.id,
       instanceId: instance.id,
     }, deps.now);
+    const channel = await tx.channel.findFirst({ where: { id: conv.channelId, tenantId }, select: { settings: true } });
     const text = buildCouponMessage({
       couponName: coupon.name,
-      url: walletLinkUrl(deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token),
+      url: couponLinkUrl(deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token, couponLiffConfig(channel?.settings)),
     });
     return {
       instanceId: instance.id,

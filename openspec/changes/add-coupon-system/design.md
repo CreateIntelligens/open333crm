@@ -252,6 +252,31 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 
 對話狀態為 `BOT_HANDLED` 時，前端發券按鈕停用並說明「機器人處理中，請先接手對話」，後端回 409 `CONVERSATION_BOT_HANDLED`。座席接手後才能發。
 
+### D20：LINE 顧客以 LINE Login（LIFF ID token）驗證身分，沿用渠道既有的 LIFF App（2026-10-21）
+
+**決策**：
+- 租戶在 LINE 渠道設定填「LINE Login Channel ID」（LIFF App 所在的 Login channel，10 位數字），LIFF App ID 沿用渠道既有的 `liffConfig.liffId`（短連結也用它，Endpoint 為 `/liff/redirect`）。不保存 Channel Secret：LINE 的 ID token 驗證 API 只需要 `id_token` 與 `client_id`。
+- 兩個都設定時，從該 LINE 渠道發出的票券連結改為 `https://liff.line.me/{liffId}?ct={票券權杖}&lid={liffId}`；沒設定時維持一般網址，走 One ID 登記（D12）。
+- LIFF 入口頁偵測到 `ct` 時：`liff.init` → 未登入就 `liff.login` → `liff.getIDToken()` → `POST /api/v1/fan/coupons/liff-session`。
+- 後端從票券權杖（伺服器發的隨機值，存 Redis）取得租戶與收券的 LINE 身分，再以該渠道的 Login Channel ID 為 `client_id` 呼叫 `https://api.line.me/oauth2/v2.1/verify`。LINE 會檢查 `aud`，別的租戶或別的 Login channel 簽的 token 驗不過。租戶不從網址參數或 token 自己宣稱的內容判斷。
+- 驗證通過且 `sub` 等於收券的 LINE userId：記錄歸戶驗證（方式 `line`），之後照一般流程開啟票券。`sub` 不同（轉傳給別人）：不驗證、回報帳號不符。驗證失敗或未設定：回到一般票券網址，改走 One ID 登記。
+
+**為什麼**：LINE 顧客不必再登記 email；LINE 驗證過的 userId 沒有冒用風險。沿用既有 LIFF App，租戶只多填一個欄位。
+
+**前提**：Login channel 要與官方帳號同一個 Provider（userId 才相同）；LIFF App 的 Scope 要勾 `openid`；Login channel 要發布（Published）一般使用者才能登入。FB、IG、網站客服的顧客維持 One ID 登記（B5 不做：2026-10-21 使用者決定各渠道一律以 One ID 歸戶，票券夾是網頁，不區分 LINE）。
+
+### D21：發券連結的點擊歸因記在券上，不另建短網址（2026-10-21）
+
+票券連結每張券都不同，且 workers（自動化發券）也要產生連結。若改用短網址，每張券會在短網址表多一筆、後台短網址列表被灌滿，workers 也要另外實作短網址。改為在票券連結被開啟時記錄：`coupon_instances.linkOpenedAt`（第一次開啟）與 `linkOpenCount`（開啟次數），未驗證身分的顧客開啟也算。單張券的成效與數據報表都顯示「開啟連結」張數。
+
+### D22：匯出序號明細超過 5,000 筆改背景產生（2026-10-21）
+
+明細不超過 5,000 筆時維持直接下載。超過時 API 回 202 並在背景產生 CSV，檔案存 Redis 24 小時，完成後以站內通知告知匯出者並附下載連結；產生失敗也發通知說明。下載端點只允許匯出者本人與同租戶。
+
+### D23：「已發優惠券」區塊即時更新（2026-10-21）
+
+券發出、顧客第一次開啟、核銷時，API 以 socket 推送 `coupon.instance.updated`（帶 contactId 與 instanceId）到 `tenant:{tenantId}`。右側區塊收到同一位聯絡人的事件就重新載入。
+
 ## Risks / Trade-offs
 
 | 風險 | 緩解 |

@@ -71,6 +71,8 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
     useState<HandoffPromptStyle>(DEFAULT_HANDOFF_PROMPT_STYLE);
   const [handoffButtonLabel, setHandoffButtonLabel] = useState(DEFAULT_HANDOFF_BUTTON_LABEL);
   const [liffId, setLiffId] = useState('');
+  const [loginChannelId, setLoginChannelId] = useState('');
+  const [liffEndpoint, setLiffEndpoint] = useState('/liff/redirect');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,11 +106,17 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
       }
     }
     const liffCfg = (channel?.settings as Record<string, unknown> | undefined)?.liffConfig as
-      | { liffId?: string }
+      | { liffId?: string; loginChannelId?: string }
       | undefined;
     setLiffId(liffCfg?.liffId ?? '');
+    setLoginChannelId(liffCfg?.loginChannelId ?? '');
     setError(null);
   }, [channel, open]);
+
+  // LINE Developers 要填的 Endpoint URL：就是這個後台的網址（瀏覽器才知道 origin）
+  useEffect(() => {
+    setLiffEndpoint(`${window.location.origin}/liff/redirect`);
+  }, []);
 
   const handleAddKeyword = () => {
     const kw = newKeyword.trim();
@@ -142,7 +150,7 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
         handoffButtonLabel: trimmedLabel || DEFAULT_HANDOFF_BUTTON_LABEL,
       };
 
-      const liffConfig = { liffId: liffId.trim() };
+      const liffConfig = { liffId: liffId.trim(), loginChannelId: loginChannelId.trim() };
 
       await api.patch(`/channels/${channel.id}`, {
         settings: {
@@ -354,6 +362,32 @@ export function BotConfigForm({ open, onOpenChange, channel, onSaved }: BotConfi
               短連結若綁定本渠道，LINE App 內點擊會經此 LIFF 取得 LINE 身份。LIFF endpoint 請在 LINE
               console 指向 <code>/liff/redirect</code>，且須與本渠道同一 provider。
             </p>
+          </div>
+
+          {/* LINE Login Channel ID（優惠券以 LIFF 驗證顧客身分，add-coupon-system design D20） */}
+          <div>
+            <label htmlFor="liff-login-channel-id" className="mb-1.5 block text-sm font-medium">
+              LINE Login Channel ID（優惠券身分驗證）
+            </label>
+            <Input
+              id="liff-login-channel-id"
+              inputMode="numeric"
+              value={loginChannelId}
+              onChange={(e) => setLoginChannelId(e.target.value)}
+              placeholder="例：1660000001（10 位數字；留空則顧客改用 email 或手機登記）"
+            />
+            <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+              <p>
+                填好 LIFF App ID 與這個欄位後，LINE 顧客開啟優惠券時會以 LINE 帳號自動驗證身分，不必再登記 email 或手機。設定步驟：
+              </p>
+              <ol className="list-decimal space-y-0.5 pl-4">
+                <li>在 LINE Developers，與這個官方帳號同一個 Provider 底下建立 LINE Login channel，並設為 Published。</li>
+                <li>
+                  在該 channel 建立 LIFF App：Endpoint URL 填 <code className="break-all">{liffEndpoint}</code>，Scope 勾選 openid。
+                </li>
+                <li>把 LIFF ID 填到上一欄，Login channel 的 Channel ID 填到這一欄。</li>
+              </ol>
+            </div>
           </div>
 
           {error && (

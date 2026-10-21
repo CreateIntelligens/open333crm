@@ -13,9 +13,10 @@ import { resolveLiffParams } from '@/lib/liff';
 
 export default function LiffCallbackRedirect() {
   useEffect(() => {
-    const { s, cid, lid } = resolveLiffParams(window.location.search);
+    const { s, ct, cid, lid } = resolveLiffParams(window.location.search);
     const url = new URL('/liff/redirect', window.location.origin);
     if (s) url.searchParams.set('s', s);
+    if (ct) url.searchParams.set('ct', ct);
     if (cid) url.searchParams.set('cid', cid);
     if (lid) url.searchParams.set('lid', lid);
     window.location.replace(url.toString());

@@ -48,7 +48,7 @@
 > 頁面與元件兩階段共用；差別僅在認證入口（A4a／A4b）與是否在 LINE webview 內開啟。
 > **勿把版面寫死在 LIFF 假設上**（如必為 LINE 內開、必有 `liff.state`）。
 
-- [ ] 3.1 路由與導流：第一階段以一般網址進入；**LIFF Gateway（`liff.state` 導流，參照 aitago `LiffGatewayController`）屬 A4b 階段**
+- [x] 3.1 路由與導流：第一階段以一般網址進入；**LIFF Gateway（`liff.state` 導流，參照 aitago `LiffGatewayController`）屬 A4b 階段**（2026-10-21 以既有 /liff/redirect 處理 ct 參數，見 A13 13.3）
 - [ ] 3.2 券夾頁：三分頁（可使用／已使用／已失效）、券卡列表、空狀態
 - [ ] 3.3 券詳情頁：券面、券號（含未生效遮蔽）、**使用條款（呈現消毒後的 HTML）**、狀態相應的動作按鈕
 - [ ] 3.4 核銷確認頁（店員模式）：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用
@@ -82,18 +82,18 @@
 > **前置**：客戶取得 LINE Login channel 並建立 LIFF app。
 > 到位後與 A4a 並存一段時間再收斂；`CouponInstance` 結構不變，僅替換認證入口。
 
-- [ ] 4b.1 `POST /api/v1/fan/auth` 支援 LIFF `id_token`，以 `line-login` 的 `verifyIdToken` 驗證
-- [ ] 4b.2 驗證通過後以 LINE userId 對應聯絡人，再簽發 fan token
-- [ ] 4b.3 **Login channel 憑證改 per-tenant**：現況 `LINE_LOGIN_CHANNEL_ID`／`SECRET` 是全域 env（`config/env.ts:31`），多租戶下壞掉
-- [ ] 4b.4 **驗證 id_token 的 `aud` 對應該租戶的 Login channel ID** —— 不驗 `aud` 等同容許跨租戶身分偽造（租戶隔離守門）
-- [ ] 4b.5 LIFF endpoint 為固定 URL，**租戶識別一律自 `aud` 反解，不得信任 URL 參數**
-- [ ] 4b.6 LIFF ID 沿用既有 `Channel.settings.liffConfig.liffId`（後台已有輸入欄位，**不新增設定處**）
-- [ ] 4b.7 前端沿用既有 `apps/web/src/lib/liff.ts`（含 `liff.state` 解析與 sessionStorage 參數保存）
-- [ ] 4b.8 A4a 的 Account Link 路徑保留或下線，依屆時客戶渠道狀況決定
+- [x] 4b.1 `POST /api/v1/fan/auth` 支援 LIFF `id_token`，以 `line-login` 的 `verifyIdToken` 驗證（改為 POST /fan/coupons/liff-session，見 design D20）
+- [x] 4b.2 驗證通過後以 LINE userId 對應聯絡人，再簽發 fan token（驗證 sub 等於收券的 LINE userId 後記錄歸戶驗證，之後走一般 /session）
+- [x] 4b.3 **Login channel 憑證改 per-tenant**：現況 `LINE_LOGIN_CHANNEL_ID`／`SECRET` 是全域 env（`config/env.ts:31`），多租戶下壞掉（Login Channel ID 存在各 LINE 渠道的 liffConfig；不需 Secret，全域 env 不再使用）
+- [x] 4b.4 **驗證 id_token 的 `aud` 對應該租戶的 Login channel ID** —— 不驗 `aud` 等同容許跨租戶身分偽造（租戶隔離守門）（以該渠道 Login Channel ID 為 client_id 向 LINE 驗證，LINE 檢查 aud）
+- [x] 4b.5 LIFF endpoint 為固定 URL，**租戶識別一律自 `aud` 反解，不得信任 URL 參數**（租戶取自伺服器發的票券權杖，不信任網址參數）
+- [x] 4b.6 LIFF ID 沿用既有 `Channel.settings.liffConfig.liffId`（後台已有輸入欄位，**不新增設定處**）（沿用 liffConfig.liffId 與既有 Endpoint /liff/redirect）
+- [x] 4b.7 前端沿用既有 `apps/web/src/lib/liff.ts`（含 `liff.state` 解析與 sessionStorage 參數保存）（resolveLiffParams 加上 ct）
+- [x] 4b.8 A4a 的 Account Link 路徑保留或下線，依屆時客戶渠道狀況決定（保留 One ID 登記：沒設定 LIFF 的渠道與 FB／IG／網站客服仍需要）
 
 ## A5. 會員綁定（產品層）
 
-- [ ] 5.1 LIFF 綁定頁：引導使用者完成平台身分驗證
+- [x] 5.1 LIFF 綁定頁：引導使用者完成平台身分驗證（LIFF 開啟即自動驗證，不需另做綁定頁）
 - [x] 5.2 綁定成功寫入 `ContactAttribute`（key 為會員編號欄位名，**不新建表**）
 - [x] 5.3 綁定成功自動貼標（沿用 `addTagToTarget`）
 - [x] 5.4 **設定驅動的對外 API 介面**：後台可填端點、認證方式、請求／回應格式、欄位對應
@@ -120,8 +120,8 @@
 > 券的內容（券夾／券詳情／核銷）全部呈現在 LIFF 頁，**不做專屬的 Flex 券卡版型**。
 > 對話中送出的只是一則帶連結的訊息，讓顧客點進 LIFF 看券。
 
-- [ ] 7.1 組出發券訊息：使用既有訊息型別（文字或既有 Flex 版型），內容含券名、面額與 LIFF 連結
-- [ ] 7.2 連結帶 `liff.state` 參數指向該張券的詳情頁
+- [x] 7.1 組出發券訊息：使用既有訊息型別（文字或既有 Flex 版型），內容含券名、面額與 LIFF 連結（文字訊息含券名與票券連結）
+- [x] 7.2 連結帶 `liff.state` 參數指向該張券的詳情頁（LIFF 網址為 liff.line.me/{liffId}?ct=&lid=，不用 liff.state 路徑）
 - [ ] 7.3 連結沿用短網址以取得點擊歸因
 
 ## B1. Inbox 對話發券
@@ -137,7 +137,7 @@
 - [x] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
 - [x] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
 - [x] B2.5 **FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」
-- [ ] B2.6 後台發券介面對高價值券標示 FB／IG 的轉發風險，讓商家自行決定是否開放該渠道
+- [x] B2.6 後台發券介面對高價值券標示 FB／IG 的轉發風險，讓商家自行決定是否開放該渠道（2026-10-21 使用者決定不做：各渠道一律以 One ID 歸戶驗證，不區分 LINE）
 
 ## B3. 觸發入口
 
@@ -158,8 +158,8 @@
 
 ## B5. FB／IG 導流
 
-- [ ] B5.1 FB／IG 卡片使用 `web_url` 按鈕連至帶 `liff.state` 的網址
-- [ ] B5.2 驗證由 FB／IG 點擊後能正確跳轉 LINE 並開啟對應券
+- [x] B5.1 FB／IG 卡片使用 `web_url` 按鈕連至帶 `liff.state` 的網址（2026-10-21 使用者決定不做：FB／IG 維持 One ID 登記）
+- [x] B5.2 驗證由 FB／IG 點擊後能正確跳轉 LINE 並開啟對應券（同 B5.1，不做）
 
 ## C1. RBAC
 
@@ -379,3 +379,29 @@
 
 - [x] 12.17 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
 - [x] 12.18 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+
+## A13. LINE Login 驗證與小功能（issue #344；design D20～D23）
+
+### LINE Login 驗證（D20）
+
+- [x] 13.1 測試「LINE 顧客從 LIFF 開啟票券連結」「ID token 驗證失敗」「用其他 LINE 帳號開啟轉傳的連結」「渠道沒設定 Login Channel ID」「設定後發券連結改為 LIFF 網址」「Login Channel ID 格式不對」
+- [x] 13.2 實作：渠道設定驗證 `liffConfig.loginChannelId`、ID token 驗證、`POST /fan/coupons/liff-session`、發券連結依渠道設定切換（API 與 workers）
+- [x] 13.3 前端：LINE 渠道設定新增 Login Channel ID 欄位與設定說明；`/liff/redirect` 處理票券連結
+
+### 點擊歸因（D21）
+
+- [ ] 13.4 migration：coupon_instances 新增 linkOpenedAt、linkOpenCount
+- [ ] 13.5 測試與實作：開啟票券連結時記錄；單張券成效與數據報表顯示「開啟連結」
+
+### 背景匯出（D22）
+
+- [ ] 13.6 測試與實作：超過 5,000 筆回 202、背景產生、通知與下載端點、失敗通知；前端提示
+
+### 即時更新（D23）
+
+- [ ] 13.7 測試與實作：發券、開啟、核銷時推送 `coupon.instance.updated`；右側區塊收到後重新載入
+
+### 完成定義
+
+- [ ] 13.8 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
+- [ ] 13.9 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
