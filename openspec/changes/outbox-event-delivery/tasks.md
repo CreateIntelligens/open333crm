@@ -5,12 +5,13 @@
 
 ## 2. 共用模組 `packages/core/src/outbox/`
 
-- [ ] 2.1 把 `apps/api/src/lib/db-invariants.ts` 搬到 `packages/core`，api 改從 `@open333crm/core` import。`apps/api/tests/unit/lib/db-invariants.test.ts` 跟著搬到 `packages/core/tests/unit/`；`apps/api/tests/feature/lib/db-invariants.test.ts` 留在 api，改從 `@open333crm/core` import。兩個測試搬移前後都通過（重構，不改行為）
-- [ ] 2.2 寫失敗的單元測試 `packages/core/tests/unit/outbox/claim.test.ts`，以 mock 的交易涵蓋 side-effect-claims 的 Scenario「第一次認領」「已經認領過」「子鍵不同」
-- [ ] 2.3 實作 `claimSideEffect()`（design 決策 3），讓 2.2 通過
-- [ ] 2.4 寫 feature 測試 `apps/api/tests/feature/lib/side-effect-claims.test.ts`，以兩個真實交易涵蓋 Scenario「已經認領過」（之後的查詢成功）、「兩個交易同時認領同一個鍵」「先認領的交易 rollback」。這些行為來自 PostgreSQL 的 `ON CONFLICT DO NOTHING`，測試寫好就會通過，以突變驗證：把 `skipDuplicates` 拿掉，確認「已經認領過」失敗，再還原。突變記在本項下方
-- [ ] 2.5 寫失敗的單元測試 `packages/core/tests/unit/outbox/dispatch.test.ts`，以 mock 的 `Queue` 涵蓋 event-delivery 的 Scenario「一般情況」「只送給訂閱了這個事件的訂閱者」「建立 job 失敗」，以及 `kind = 'job'` 送到 `queueName`
-- [ ] 2.6 實作 `writeOutbox()`、`dispatchOutboxRows()`、佇列名稱、訂閱者清單與對外事件清單（design 決策 3、4、11），讓 2.5 通過
+- [x] 2.1 把 `apps/api/src/lib/db-invariants.ts` 搬到 `packages/core`，api 改從 `@open333crm/core` import。`apps/api/tests/unit/lib/db-invariants.test.ts` 跟著搬到 `packages/core/tests/unit/`；`apps/api/tests/feature/lib/db-invariants.test.ts` 留在 api，改從 `@open333crm/core` import。兩個測試搬移前後都通過（重構，不改行為）
+- [x] 2.2 寫失敗的單元測試 `packages/core/tests/unit/outbox/claim.test.ts`，以 mock 的交易涵蓋 side-effect-claims 的 Scenario「第一次認領」「已經認領過」「子鍵不同」
+- [x] 2.3 實作 `claimSideEffect()`（design 決策 3），讓 2.2 通過
+- [x] 2.4 寫 feature 測試 `apps/api/tests/feature/lib/side-effect-claims.test.ts`，以兩個真實交易涵蓋 Scenario「已經認領過」（之後的查詢成功）、「兩個交易同時認領同一個鍵」「先認領的交易 rollback」。這些行為來自 PostgreSQL 的 `ON CONFLICT DO NOTHING`，測試寫好就會通過，以突變驗證：把 `skipDuplicates` 拿掉，確認「已經認領過」失敗，再還原。突變記在本項下方
+  - 突變（2026-10-21）：拿掉 `claimSideEffect()` 的 `skipDuplicates`，「已經認領過」與「兩個交易同時認領同一個鍵」失敗（`Unique constraint failed`），還原後通過
+- [x] 2.5 寫失敗的單元測試 `packages/core/tests/unit/outbox/dispatch.test.ts`，以 mock 的 `Queue` 涵蓋 event-delivery 的 Scenario「一般情況」「只送給訂閱了這個事件的訂閱者」「建立 job 失敗」，以及 `kind = 'job'` 送到 `queueName`
+- [x] 2.6 實作 `writeOutbox()`、`dispatchOutboxRows()`、佇列名稱、訂閱者清單與對外事件清單（design 決策 3、4、11），讓 2.5 通過
 
 ## 3. `TenantCtx` 改走 outbox
 

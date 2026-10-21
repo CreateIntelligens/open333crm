@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { inTenant, type TenantCtx } from '#src/lib/tenant-ctx.js';
-import { createOrFindExisting } from '#src/lib/db-invariants.js';
+import { createOrFindExisting } from '@open333crm/core';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
 const ADMIN_URL = process.env.DATABASE_URL_ADMIN;

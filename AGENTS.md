@@ -231,8 +231,9 @@ A service obeys these rules:
   `apps/api/src/events/socket-push.ts` selects the room for each Socket event.
 - Do not catch a unique-constraint error (`P2002`) and then continue inside the transaction. After
   the first error, PostgreSQL rejects each subsequent query in the transaction. To write a row or
-  use the row that exists, use `createOrFindExisting()` from `apps/api/src/lib/db-invariants.ts`.
-  To claim one row with a conditional update, use `claimOne()` from the same file.
+  use the row that exists, use `createOrFindExisting()` from `@open333crm/core`
+  (`packages/core/src/db/db-invariants.ts`). To claim one row with a conditional update, use
+  `claimOne()` from the same file.
 
 - **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
   and its writes succeed or fail together. With the old parameter type `TenantDb`, the caller
