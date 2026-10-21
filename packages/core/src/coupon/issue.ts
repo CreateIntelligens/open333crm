@@ -44,6 +44,23 @@ export function generateClaimToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
+/**
+ * 計入每人上限的券（design D14，2026-10-21 依設計稿決定）：已使用的一律計入；未使用的只算還沒過期的。
+ * 已過期與已撤回的不計入。系統沒有排程把券改成 EXPIRED，所以要以效期判斷，不能只看狀態。
+ * 發券、領取（改綁）與對話發券面板共用這個條件，三處的上限判斷才會一致。
+ */
+export function countsTowardContactLimit(now: Date) {
+  return {
+    OR: [
+      { status: 'REDEEMED' as const },
+      {
+        status: { in: ['ISSUED' as const, 'CLAIMED' as const, 'OPENED' as const] },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    ],
+  };
+}
+
 export type IssueSkipReason =
   | 'TOTAL_LIMIT_REACHED'
   | 'PER_CONTACT_LIMIT_REACHED'
@@ -177,13 +194,7 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
     }
 
     const held = await tx.couponInstance.count({
-      where: {
-        couponId: coupon.id,
-        tenantId,
-        contactId,
-        // 領過就算（含已使用），已過期與已撤回不算（2026-10-21 依對話發券設計稿決定，design D14）
-        status: { in: ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED'] },
-      },
+      where: { couponId: coupon.id, tenantId, contactId, ...countsTowardContactLimit(new Date()) },
     });
     if (held >= coupon.perContactLimit) {
       skipped.push({ contactId, reason: 'PER_CONTACT_LIMIT_REACHED' });

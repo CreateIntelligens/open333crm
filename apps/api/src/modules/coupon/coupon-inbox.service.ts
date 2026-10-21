@@ -6,7 +6,7 @@
  * 這裡只放單一交易的步驟（收 TenantCtx）；三個步驟的串接在 coupon-inbox.flow.ts。
  */
 import type { Prisma } from '@prisma/client';
-import { buildCouponMessage, couponLiffConfig, couponLinkUrl, issueWalletToken } from '@open333crm/core';
+import { buildCouponMessage, countsTowardContactLimit, couponLiffConfig, couponLinkUrl, issueWalletToken } from '@open333crm/core';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
@@ -90,7 +90,6 @@ export interface IssueContext {
 // ── 判定規則（純函式） ─────────────────────────────────────────────────────
 
 /** 佔每人上限的狀態：領過就算（含已使用），已過期與已撤回不算（design D14） */
-const HELD_STATUSES = ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED'] as const;
 
 /** 已發券的狀態：已使用 → 已過期 → 已撤回 → 已領取（顧客開啟過連結）→ 已發送 */
 export function issuedStatus(
@@ -182,7 +181,7 @@ export async function getIssueContext(
   });
   const held = coupons.length
     ? await tx.couponInstance.findMany({
-      where: { tenantId, contactId, couponId: { in: coupons.map((c) => c.id) }, status: { in: [...HELD_STATUSES] } },
+      where: { tenantId, contactId, couponId: { in: coupons.map((c) => c.id) }, ...countsTowardContactLimit(new Date(now)) },
       orderBy: { issuedAt: 'desc' },
       select: { couponId: true, claimedAt: true, issuedAt: true, redeemedAt: true },
     })
@@ -347,7 +346,7 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
     const reason = outcome.skipped[0]?.reason;
     if (reason === 'PER_CONTACT_LIMIT_REACHED') {
       const last = await tx.couponInstance.findFirst({
-        where: { tenantId, couponId: coupon.id, contactId, status: { in: [...HELD_STATUSES] } },
+        where: { tenantId, couponId: coupon.id, contactId, ...countsTowardContactLimit(new Date(nowOf(deps))) },
         orderBy: { issuedAt: 'desc' },
         select: { issuedByName: true, issuedAt: true },
       });

@@ -8,7 +8,7 @@
  *    只回「失敗」會讓店員無法向顧客解釋。
  */
 import type { Prisma } from '@prisma/client';
-import { afterClaimExpiry, couponCodeKey, logger } from '@open333crm/core';
+import { afterClaimExpiry, countsTowardContactLimit, couponCodeKey, logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { applyClaimTag } from './coupon-tagging.js';
 
@@ -96,7 +96,7 @@ export async function claimByToken(
       couponId: instance.couponId,
       contactId,
       id: { not: instance.id },
-      status: { in: ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED'] },
+      ...countsTowardContactLimit(new Date()),
     },
   });
   if (held >= instance.coupon.perContactLimit) {

@@ -499,6 +499,22 @@ describe('發行控制：每人上限的計算', () => {
     const second = await issue(p);
     assert.equal(second.issued.length, 1);
   });
+
+  it('效期已過、狀態還沒改成已過期的券也不計入每人上限（發券與發券面板）', async () => {
+    const p = await person('時間過期');
+    const first = await issue(p);
+    assert.equal(first.issued.length, 1);
+    // 系統沒有排程把券改成 EXPIRED：只有效期過了，狀態仍是已領取
+    await owner.couponInstance.update({ where: { id: first.issued[0].id }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+
+    const ctx = await runInTenant(prisma, T, (c) => getIssueContext(c, deps, p.conversationId));
+    const panel = ctx?.coupons.find((c) => c.id === coupons.limitOne);
+    assert.equal(panel?.limitReached, false, '發券面板仍顯示已達上限');
+    assert.equal(panel?.receivedCount, 0);
+
+    const second = await issue(p);
+    assert.equal(second.issued.length, 1, JSON.stringify(second.skipped));
+  });
 });
 
 describe('對話發券先保留再發送（design D16）', () => {
