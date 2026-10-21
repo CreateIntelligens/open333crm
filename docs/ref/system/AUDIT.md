@@ -326,6 +326,8 @@ CLI token 的停用問題另見 AUTH-02。
 
 **修正方向**：reconcile 只補上「預設有、但租戶從未設定過」的新權限碼，不刪除也不重加既有的碼；這需要記錄每個角色已經同步到哪一版註冊表。腳本結束前清除 `perms:*` 快取，並納入部署流程。
 
+**部分緩解（2026-10-21，add-coupon-system）**：新增 `scripts/grant-new-role-permissions.mjs`。它只把「指定的權限碼 ∩ 該角色的預設權限」補到各租戶的系統角色，已存在的略過，不刪除也不重建，所以不會覆蓋租戶的修改。新增權限碼時改用這支腳本，例如優惠券上線：`node scripts/grant-new-role-permissions.mjs coupon.view coupon.manage coupon.issue coupon.redeem store.view store.manage`。仍未解決：要由部署的人指定這次新增的碼、腳本不清除 `perms:*` 快取（只印出提醒）、沒有納入部署流程；reconcile 腳本本身沒有改。
+
 <a id="rbac-06"></a>
 ### RBAC-06：預設角色的權限有兩份，內容已經不同
 

@@ -193,7 +193,7 @@ Redis 快取清除失敗時不會報錯，改由 10 分鐘的有效期兜底。
 
 開通之後，租戶的管理員可以修改系統角色的權限碼。
 
-**新增權限碼時，既有租戶的角色不會自動取得。** 連 `admin` 也不會，因為 `admin` 的「全部權限」是開通當下的全部。要讓既有租戶取得新的碼，必須手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶重新執行 `seedRolesForTenant()`，而 `seedRolesForTenant()` 先刪除系統角色的所有權限碼，再依預設值重建。租戶管理員對系統角色做過的修改會被覆蓋，見 `../system/AUDIT.md` 的 RBAC-05。
+**新增權限碼時，既有租戶的角色不會自動取得。** 連 `admin` 也不會，因為 `admin` 的「全部權限」是開通當下的全部。要讓既有租戶取得新的碼，必須手動執行 `scripts/reconcile-system-role-permissions.mjs`。這個腳本對每個租戶重新執行 `seedRolesForTenant()`，而 `seedRolesForTenant()` 先刪除系統角色的所有權限碼，再依預設值重建。租戶管理員對系統角色做過的修改會被覆蓋，見 `../system/AUDIT.md` 的 RBAC-05。只要補上新增的權限碼時，改用 `scripts/grant-new-role-permissions.mjs <權限碼...>`：它只把指定的碼補到預設有這些碼的系統角色，不刪除、不重建，租戶的修改會保留。兩支腳本執行後都要清除 Redis 的權限快取。
 
 新增一個權限碼的步驟：
 
