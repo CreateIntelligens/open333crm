@@ -6,6 +6,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { emitCouponInstanceUpdated } from './coupon-events.js';
 import { parseDateOnly } from '@open333crm/core';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import {
@@ -318,6 +319,11 @@ export default async function couponRoutes(app: FastifyInstance) {
         },
       });
     }
+    emitCouponInstanceUpdated(app.io, request.agent.tenantId, {
+      instanceId: result.instanceId,
+      contactId: result.contactId,
+      change: 'redeemed',
+    });
     return { success: true, data: result };
   });
 }

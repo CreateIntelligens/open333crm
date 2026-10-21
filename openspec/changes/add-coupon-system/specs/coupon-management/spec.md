@@ -760,3 +760,30 @@
 - **WHEN** 管理者查看這張券的成效
 - **THEN** 開啟連結為 3
 
+### Requirement: 已發優惠券區塊即時更新
+
+券發出、顧客開啟票券、券被核銷（核銷台、後台、顧客自助或店員驗證碼）時，系統 SHALL 以 socket 推送 `coupon.instance.updated` 到該租戶，內容帶券的 instanceId、持有的聯絡人與變化（issued、viewed、redeemed）。收件匣右側的「已發優惠券」區塊收到同一位聯絡人或已列出的券的事件時 SHALL 重新載入，不必重新整理頁面。
+
+#### Scenario: 座席發券後推送
+
+- **WHEN** 座席在對話發券成功
+- **THEN** 租戶收到 coupon.instance.updated，變化為 issued，帶這位聯絡人
+
+#### Scenario: 顧客開啟票券後推送
+
+- **WHEN** 已歸戶的顧客開啟票券連結
+- **THEN** 租戶收到 coupon.instance.updated，變化為 viewed
+
+#### Scenario: 券被核銷後推送
+
+- **WHEN** 券在核銷台、後台或顧客自助核銷成功
+- **THEN** 租戶收到 coupon.instance.updated，變化為 redeemed
+- **WHEN** 核銷失敗
+- **THEN** 不推送
+
+#### Scenario: 右側區塊收到事件後重新載入
+
+- **GIVEN** 座席正在看某位聯絡人的「已發優惠券」
+- **WHEN** 收到這位聯絡人的 coupon.instance.updated
+- **THEN** 區塊重新載入；其他聯絡人的事件不觸發重新載入
+

@@ -14,6 +14,7 @@ import type { BindingStore } from '../identity-binding/binding-code.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import { issueCouponsInTx } from './coupon-issue.service.js';
 import { applyClaimTag } from './coupon-tagging.js';
+import { COUPON_INSTANCE_UPDATED } from './coupon-events.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export interface InboxIssueDeps {
@@ -403,6 +404,12 @@ async function runIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: Inbox
     const payload = { conversationId: input.conversationId, message: socketMessage(message) };
     deps.emit(`conversation:${input.conversationId}`, 'message.new', payload);
     deps.emit(`tenant:${tenantId}`, 'message.new', payload);
+    // 右側「已發優惠券」重新載入（design D23）
+    deps.emit(`tenant:${tenantId}`, COUPON_INSTANCE_UPDATED, {
+      instanceId: reserved.instanceId,
+      contactId: reserved.contactId,
+      change: 'issued',
+    });
   }
   return {
     ok: true,

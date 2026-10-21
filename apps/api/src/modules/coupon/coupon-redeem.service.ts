@@ -37,6 +37,8 @@ export type ClaimFailure =
 export interface RedeemSuccess {
   ok: true;
   instanceId: string;
+  /** 持有者（即時事件用，design D23） */
+  contactId: string | null;
   couponName: string;
   code: string;
   redeemedAt: Date;
@@ -251,6 +253,7 @@ export async function redeemCoupon(
     return {
       ok: true as const,
       instanceId: instance.id,
+      contactId: instance.contactId,
       couponName: instance.coupon.name,
       code: instance.code,
       redeemedAt: now,

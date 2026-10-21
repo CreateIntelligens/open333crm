@@ -285,7 +285,7 @@ export function ContactInfoPanel({ conversation, onRefresh, canViewCoupons }: Co
       {canViewCoupons && (
         <>
           <div className="p-4">
-            <IssuedCouponsSection conversationId={conversation.id} />
+            <IssuedCouponsSection conversationId={conversation.id} contactId={conversation.contact?.id} />
           </div>
           <Separator />
         </>

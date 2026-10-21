@@ -8,6 +8,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { getBindingStore } from '../identity-binding/binding-code.js';
+import { emitCouponInstanceUpdated } from '../coupon/coupon-events.js';
 import { storeLoginLookups } from '../auth/store-account-login.js';
 import {
   authorizeStoreSession,
@@ -117,6 +118,15 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
         });
       }
       throw err;
+    }
+    if (result.ok) {
+      const { contactId, ...rest } = result;
+      emitCouponInstanceUpdated(app.io, request.storeSession!.tenantId, {
+        instanceId: rest.coupon.instanceId,
+        contactId: contactId ?? null,
+        change: 'redeemed',
+      });
+      return { success: true, data: rest };
     }
     // 核銷失敗（已使用、過期等）是業務結果，不是請求錯誤：照常回 200，由 data.ok 區分
     return { success: true, data: result };

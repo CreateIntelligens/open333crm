@@ -2,9 +2,11 @@
 
 /**
  * 右側面板「已發優惠券」（add-coupon-system A11）：對話聯絡人收到的券，附面額、發送人、時間與狀態。
- * 發券成功後 ChatWindow 以 issuedCouponsKey 重新整理這裡。
+ * 發券成功後 ChatWindow 以 issuedCouponsKey 重新整理這裡；其他人發券、顧客開啟、門市核銷時，
+ * 收到 socket 事件 coupon.instance.updated 也重新載入（design D23）。
  */
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useSocket } from '@/providers/SocketProvider';
 import useSWR from 'swr';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -20,10 +22,28 @@ const STATUS_CLASS: Record<IssuedStatus, string> = {
   REVOKED: 'bg-muted text-muted-foreground',
 };
 
-export function IssuedCouponsSection({ conversationId }: { conversationId: string }) {
+const COUPON_INSTANCE_UPDATED = 'coupon.instance.updated';
+
+export function IssuedCouponsSection({ conversationId, contactId }: { conversationId: string; contactId?: string }) {
   const { data, error, isLoading, mutate } = useSWR<IssuedCoupon[]>(issuedCouponsKey(conversationId), (url: string) =>
     api.get(url).then((res) => res.data.data),
   );
+  const { socket } = useSocket();
+  // 事件處理用最新的清單判斷，不因清單更新而重新訂閱
+  const listed = useRef(new Set<string>());
+  listed.current = new Set((data ?? []).map((c) => c.id));
+
+  useEffect(() => {
+    if (!socket) return;
+    const onUpdated = (e: { instanceId?: string; contactId?: string | null }) => {
+      const mine = (contactId && e.contactId === contactId) || (e.instanceId && listed.current.has(e.instanceId));
+      if (mine) void mutate();
+    };
+    socket.on(COUPON_INSTANCE_UPDATED, onUpdated);
+    return () => {
+      socket.off(COUPON_INSTANCE_UPDATED, onUpdated);
+    };
+  }, [socket, contactId, mutate]);
 
   return (
     <section aria-labelledby="issued-coupons-title">

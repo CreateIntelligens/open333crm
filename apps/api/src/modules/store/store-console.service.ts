@@ -335,7 +335,8 @@ export type StoreRedeemFailure =
   | 'KEY_REUSED';
 
 export type StoreRedeemResult =
-  | { ok: true; redeemedAt: Date; storeName: string; coupon: StoreCouponView }
+  /** contactId 只給路由推送即時事件（design D23），不回給核銷台 */
+  | { ok: true; redeemedAt: Date; storeName: string; coupon: StoreCouponView; contactId?: string | null }
   | { ok: false; reason: StoreRedeemFailure; coupon?: StoreCouponView; redeemedAt?: Date; redeemedStoreName?: string | null };
 
 const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, StoreRedeemFailure> = {
@@ -454,7 +455,7 @@ async function redeemOnce(
     store: { id: who.store.id, name: who.store.name, account: who.username },
   });
   if (redeemed.ok) {
-    return { ok: true, redeemedAt: redeemed.redeemedAt, storeName: who.store.name, coupon: lookup.coupon! };
+    return { ok: true, redeemedAt: redeemed.redeemedAt, storeName: who.store.name, coupon: lookup.coupon!, contactId: redeemed.contactId };
   }
   if (redeemed.reason === 'CONFLICT' || redeemed.reason === 'ALREADY_REDEEMED') {
     // 被另一台手機搶先：重新讀出是哪間門市、什麼時候核銷的

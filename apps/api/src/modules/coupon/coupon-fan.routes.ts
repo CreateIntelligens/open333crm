@@ -15,6 +15,7 @@ import { getBindingStore } from '../identity-binding/binding-code.js';
 import { claimByToken, openInstance, redeemCoupon } from './coupon-redeem.service.js';
 import { getFanCoupon, isOwnedByFan } from './coupon-fan.service.js';
 import { verifyLineIdToken } from './line-id-token.js';
+import { emitCouponInstanceUpdated } from './coupon-events.js';
 import {
   getWalletQrCode,
   listWallet,
@@ -77,6 +78,9 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         success: false,
         error: { code: 'LINK_EXPIRED', message: '連結已失效，請回到對話重新點選，或到券夾查看已領取的券' },
       });
+    }
+    if (result.status === 'ok') {
+      emitCouponInstanceUpdated(app.io, result.tenantId, { instanceId: result.instanceId, contactId: result.contactId, change: 'viewed' });
     }
     return { success: true, data: result };
   });
@@ -185,6 +189,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         },
       });
     }
+    emitCouponInstanceUpdated(app.io, fan.tenantId, { instanceId: id, contactId: fan.contactId, change: 'redeemed' });
     return { success: true, data: { redeemedAt: result.redeemedAt, couponName: result.couponName } };
   });
 
@@ -253,6 +258,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         error: { code: result.reason, message: messages[result.reason] ?? '核銷失敗' },
       });
     }
+    emitCouponInstanceUpdated(app.io, fan.tenantId, { instanceId: id, contactId: fan.contactId, change: 'redeemed' });
     return {
       success: true,
       data: { redeemedAt: result.redeemedAt, couponName: result.couponName },
