@@ -248,6 +248,22 @@ describe('核銷台每次操作都檢查帳號狀態', () => {
   });
 });
 
+describe('租戶停用', () => {
+  it('租戶停用後門市帳號不能登入，已登入的裝置也被擋下', async () => {
+    const username = await account('tenant-off');
+    const session = await sessionOf(username);
+    await owner.tenant.update({ where: { id: T }, data: { isActive: false } });
+    try {
+      const r = await loginStoreAccount(prisma, deps, username, 'dt3c2026x', true);
+      assert.equal(!r.ok && r.code, 'TENANT_DISABLED');
+      const a = await authorizeStoreSession(prisma, session, { requireRedeem: false });
+      assert.equal(!a.ok && a.code, 'TENANT_DISABLED');
+    } finally {
+      await owner.tenant.update({ where: { id: T }, data: { isActive: true } });
+    }
+  });
+});
+
 describe('查券不改變券的狀態', () => {
   let session: StoreSession;
   beforeAll(async () => {

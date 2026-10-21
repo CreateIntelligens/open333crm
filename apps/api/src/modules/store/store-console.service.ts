@@ -80,7 +80,7 @@ export type StoreLoginResult =
   | { ok: true; token: string; storeName: string; username: string; canRedeem: boolean }
   | { ok: false; code: 'INVALID_CREDENTIALS' }
   | { ok: false; code: 'ACCOUNT_LOCKED'; lockedUntil: Date }
-  | { ok: false; code: 'STORE_ACCOUNT_DISABLED' | 'STORE_CLOSED' };
+  | { ok: false; code: 'STORE_ACCOUNT_DISABLED' | 'STORE_CLOSED' | 'TENANT_DISABLED' };
 
 /**
  * 門市帳號登入。帳號不存在與密碼錯誤回報相同結果，不透露帳號是否存在。
@@ -101,7 +101,7 @@ export async function loginStoreAccount(
   return withTenant(prisma, tenantId, async (tx) => {
     const account = await tx.storeAccount.findFirst({
       where: { username, tenantId, deletedAt: null },
-      include: { store: { select: { name: true, isActive: true } } },
+      include: { store: { select: { name: true, isActive: true } }, tenant: { select: { isActive: true } } },
     });
     if (!account) return { ok: false as const, code: 'INVALID_CREDENTIALS' as const };
     if (account.lockedUntil && account.lockedUntil > now) {
@@ -130,6 +130,8 @@ export async function loginStoreAccount(
       where: { id: account.id, tenantId },
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
     });
+    // 租戶停用（試用到期、合約終止）時與座席登入一致擋下
+    if (!account.tenant?.isActive) return { ok: false as const, code: 'TENANT_DISABLED' as const };
     if (!account.isActive) return { ok: false as const, code: 'STORE_ACCOUNT_DISABLED' as const };
     if (!account.store.isActive) return { ok: false as const, code: 'STORE_CLOSED' as const };
 
@@ -149,7 +151,8 @@ export type StoreSessionError =
   | 'NO_REDEEM_PERMISSION'
   | 'PASSWORD_CHANGED'
   | 'SESSION_REVOKED'
-  | 'STORE_CLOSED';
+  | 'STORE_CLOSED'
+  | 'TENANT_DISABLED';
 
 export interface AuthorizedStore {
   ok: true;
@@ -169,9 +172,10 @@ export async function authorizeStoreSession(
   const account = await withTenant(prisma, session.tenantId, (tx) =>
     tx.storeAccount.findFirst({
       where: { id: session.accountId, tenantId: session.tenantId },
-      include: { store: { select: { id: true, name: true, isActive: true } } },
+      include: { store: { select: { id: true, name: true, isActive: true } }, tenant: { select: { isActive: true } } },
     }));
   if (!account || account.deletedAt) return { ok: false, code: 'STORE_ACCOUNT_NOT_FOUND' };
+  if (!account.tenant?.isActive) return { ok: false, code: 'TENANT_DISABLED' };
   if (account.passwordVersion !== session.pv) return { ok: false, code: 'PASSWORD_CHANGED' };
   if (account.sessionVersion !== session.sv) return { ok: false, code: 'SESSION_REVOKED' };
   if (!account.isActive) return { ok: false, code: 'STORE_ACCOUNT_DISABLED' };

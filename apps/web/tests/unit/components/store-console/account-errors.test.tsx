@@ -49,13 +49,14 @@ const OPEN_CASES: [string, string, string, string][] = [
   ['STORE_ACCOUNT_NOT_FOUND', '找不到此門市帳號', '請聯絡店長或總部確認', '回到登入頁'],
   ['STORE_ACCOUNT_DISABLED', '此門市帳號已停用', '請聯絡店長或總部確認', '回到登入頁'],
   ['STORE_CLOSED', '此門市目前無法核銷', '門市已停止營運，請聯絡總部', '回到登入頁'],
+  ['TENANT_DISABLED', '核銷服務已停用', '商家的核銷服務已停用，請聯絡總部', '回到登入頁'],
   ['PASSWORD_CHANGED', '請重新登入', '密碼已更改，請向店長確認最新密碼', '重新登入'],
   ['SESSION_REVOKED', '請重新登入', '此裝置已被登出', '重新登入'],
 ];
 
 for (const [code, title, description, button] of OPEN_CASES) {
   test(`開啟核銷台時 ${code}：顯示「${title}」狀態卡`, async () => {
-    api.getMe.mockRejectedValue(apiError(code === 'STORE_ACCOUNT_DISABLED' || code === 'STORE_CLOSED' ? 403 : 401, code));
+    api.getMe.mockRejectedValue(apiError(code === 'STORE_ACCOUNT_DISABLED' || code === 'STORE_CLOSED' || code === 'TENANT_DISABLED' ? 403 : 401, code));
     render(<StoreConsoleApp storeId={null} />);
     await screen.findByText(title);
     assert.ok(screen.getByText(description));

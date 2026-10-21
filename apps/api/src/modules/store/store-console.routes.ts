@@ -38,6 +38,7 @@ const SESSION_ERRORS: Record<StoreSessionError | 'SESSION_EXPIRED' | 'UNAUTHORIZ
   SESSION_REVOKED: { status: 401, message: '此裝置已被登出，請重新登入' },
   STORE_ACCOUNT_DISABLED: { status: 403, message: '此門市帳號已停用，請聯絡店長或總部確認' },
   STORE_CLOSED: { status: 403, message: '門市已停止營運，請聯絡總部' },
+  TENANT_DISABLED: { status: 403, message: '商家的核銷服務已停用，請聯絡總部' },
   NO_REDEEM_PERMISSION: { status: 403, message: '沒有核銷權限，請聯絡店長或總部開啟核銷權限' },
 };
 

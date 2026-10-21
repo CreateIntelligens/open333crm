@@ -13,6 +13,7 @@ export const ACCOUNT_ERROR_CODES = [
   'SESSION_REVOKED',
   'STORE_ACCOUNT_DISABLED',
   'STORE_CLOSED',
+  'TENANT_DISABLED',
   'NO_REDEEM_PERMISSION',
 ] as const;
 
@@ -76,6 +77,8 @@ export function accountCard(code: AccountErrorCode): AccountCard {
       return { title: '請重新登入', description: '此裝置已被登出', button: '重新登入', banner: 'kicked' };
     case 'STORE_CLOSED':
       return { title: '此門市目前無法核銷', description: '門市已停止營運，請聯絡總部', button: '回到登入頁' };
+    case 'TENANT_DISABLED':
+      return { title: '核銷服務已停用', description: '商家的核銷服務已停用，請聯絡總部', button: '回到登入頁' };
     default:
       // UNAUTHORIZED、SESSION_EXPIRED：憑證失效或過期
       return { title: '請重新登入', description: '登入已過期，請重新登入', button: '重新登入', banner: 'expired' };
