@@ -18,8 +18,8 @@ import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { verifyFanToken } from '#src/modules/portal/portal-auth.service.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
+import { issueInConversation, type InboxIssueDeps } from '#src/modules/coupon/coupon-inbox.service.js';
 import {
-  issueToConversation,
   openWalletSession,
   listWallet,
   getWalletCoupon,
@@ -35,15 +35,20 @@ const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE
 const T = TENANT_A;
 const MARK = `coupon-wallet-${Date.now()}`;
 const agentId = randomUUID();
+/** 發券座席（對話訊息的寄件者須是真的座席） */
+let issuer = '';
 const DAY = 24 * 60 * 60 * 1000;
 
 const clock = { now: Date.now() };
 const deps: WalletDeps = {
   store: memBindingStore(clock),
   now: () => clock.now,
+};
+// 對話發券：與票券夾共用同一個儲存與時鐘，測試不真的送訊息，記下送出的文字
+const inboxDeps: InboxIssueDeps = {
+  ...deps,
   webBaseUrl: 'https://crm.example.com',
-  // 測試不真的送訊息，記下送出的文字
-  deliver: async (_prisma, params) => {
+  deliver: async (_tx, params) => {
     delivered.push(params);
     return { sent: true };
   },
@@ -78,8 +83,9 @@ async function person(name: string, channelId: string, channelType: 'LINE' | 'FB
 
 /** 在對話中發一張券，回傳票券連結的權杖（從送出的訊息取出，確保顧客真的收得到） */
 async function issue(p: Person, id = couponId): Promise<{ token: string; instanceId: string }> {
-  const r = await issueToConversation(prisma, deps, {
-    tenantId: T, couponId: id, conversationId: p.conversationId, agentId, agentName: '王小美',
+  const r = await issueInConversation(prisma, inboxDeps, {
+    tenantId: T, couponId: id, conversationId: p.conversationId, agentId: issuer, agentName: '王小美',
+    expectedAssigneeId: null, requestKey: randomUUID(),
   });
   assert.ok(r.ok, `發券失敗：${JSON.stringify(r)}`);
   const msg = delivered.filter((d) => d.conversationId === p.conversationId).at(-1)!;
@@ -105,6 +111,7 @@ beforeAll(async () => {
   invalidateIdentityBindingSettings();
   const mk = (channelType: 'LINE' | 'FB') =>
     owner.channel.create({ data: { tenantId: T, channelType, displayName: `${MARK}-${channelType}`, credentialsEncrypted: 'x', isActive: true } });
+  issuer = (await owner.agent.create({ data: { tenantId: T, email: `${MARK}@example.com`, name: '王小美', passwordHash: 'x' } })).id;
   lineChannel = (await mk('LINE')).id;
   fbChannel = (await mk('FB')).id;
   const c = await withTenant(prisma, T, (tx) =>
@@ -120,11 +127,13 @@ beforeAll(async () => {
 afterAll(async () => {
   await owner.coupon.deleteMany({ where: { tenantId: T, createdById: agentId } });
   const contacts = { tenantId: T, displayName: { startsWith: MARK } };
+  await owner.message.deleteMany({ where: { conversation: { tenantId: T, contact: contacts } } });
   await owner.conversation.deleteMany({ where: { tenantId: T, contact: contacts } });
   await owner.contactTag.deleteMany({ where: { contact: contacts } });
   await owner.contactMergeLog.deleteMany({ where: { tenantId: T, survivor: contacts } }).catch(() => undefined);
   await owner.contact.deleteMany({ where: contacts });
   await owner.channel.deleteMany({ where: { tenantId: T, displayName: { startsWith: MARK } } });
+  await owner.agent.deleteMany({ where: { tenantId: T, email: `${MARK}@example.com` } });
   await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: originalSettings as object } });
   invalidateIdentityBindingSettings();
   await owner.$disconnect();

@@ -2364,6 +2364,9 @@ model CouponInstance {
   claimedAt  DateTime?
   openedAt   DateTime?
   redeemedAt DateTime?
+  /// 已歸戶的顧客第一次從票券連結開啟這張券的時間（對話發券的「已領取」，design D14）。
+  /// 對話發券直接歸戶，claimedAt 在發券當下就有值，不能用來判斷顧客是否看過
+  viewedAt   DateTime?
 
   /// 發放來源，供成效歸因；領取歸戶後不變更
   issuedVia   String?

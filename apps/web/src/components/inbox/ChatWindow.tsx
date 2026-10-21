@@ -11,6 +11,10 @@ import { ReturnToBotButton } from './ReturnToBotButton';
 import { TemplatePicker } from './TemplatePicker';
 import { TypingIndicator } from './TypingIndicator';
 import { CsatMessage } from './CsatMessage';
+import { CouponIssueDialog } from './coupon/CouponIssueDialog';
+import { CouponMessageCard } from './coupon/CouponMessageCard';
+import { CouponToast, useCouponToast } from '@/components/coupons/CouponToast';
+import { issuedCouponsKey, type CouponMessageContent } from '@/lib/coupon/issue';
 import { ChannelLabel } from '@/components/shared/ChannelLabel';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Select } from '@/components/ui/select';
@@ -44,12 +48,16 @@ interface ChatWindowProps {
   } | null;
   onShowAiSuggest?: () => void;
   showAiSuggest?: boolean;
+  /** 有 coupon.issue 權限時顯示「發券」 */
+  canIssueCoupon?: boolean;
 }
 
-export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: ChatWindowProps) {
-  const { messages, isLoading, sendMessage } = useMessages(
+export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIssueCoupon }: ChatWindowProps) {
+  const { messages, isLoading, sendMessage, mutate: mutateMessages } = useMessages(
     conversation?.id || null
   );
+  const [couponDialogOpen, setCouponDialogOpen] = useState(false);
+  const { toast, showOk } = useCouponToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateText, setTemplateText] = useState<string | null>(null);
@@ -63,6 +71,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
 
   useEffect(() => {
     setActionError(null);
+    setCouponDialogOpen(false);
   }, [conversation?.id]);
 
   // Agent list
@@ -319,6 +328,13 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
           <div className="py-4">
             {sortedMessages.map((msg: { id: string; direction: string; contentType: string; content: string | { text?: string }; senderType?: string; senderName?: string; createdAt: string; metadata?: Record<string, unknown> }) => {
               // Render CSAT survey card for csat messages
+              // 對話發券的訊息：後台畫成券卡
+              const couponContent = typeof msg.content === 'object' && msg.content
+                ? (msg.content as { coupon?: CouponMessageContent }).coupon
+                : undefined;
+              if (couponContent) {
+                return <CouponMessageCard key={msg.id} coupon={couponContent} createdAt={msg.createdAt} />;
+              }
               if (msg.contentType === 'csat') {
                 const score = typeof msg.metadata?.csatScore === 'number' ? msg.metadata.csatScore : undefined;
                 const msgContent = typeof msg.content === 'object' ? msg.content : {};
@@ -345,7 +361,23 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest }: Cha
         isBotHandled={isBotHandled}
         onTakeover={handleTakeover}
         onOpenTemplates={() => setTemplatePickerOpen(true)}
+        onOpenCoupon={canIssueCoupon ? () => setCouponDialogOpen(true) : undefined}
+        couponDisabledReason={isClosed ? '對話已結束，無法發券' : isBotHandled ? '請先接手對話再發券' : undefined}
       />
+
+      {canIssueCoupon && (
+        <CouponIssueDialog
+          open={couponDialogOpen}
+          conversationId={conversation.id}
+          onClose={() => setCouponDialogOpen(false)}
+          onIssued={({ faceText }) => {
+            showOk(`已發送 ${faceText} 補償券`);
+            globalMutate(issuedCouponsKey(conversation.id));
+            void mutateMessages();
+          }}
+        />
+      )}
+      <CouponToast toast={toast} />
 
       {/* Template Picker */}
       <TemplatePicker

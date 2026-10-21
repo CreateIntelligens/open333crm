@@ -138,6 +138,10 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
   const issued: IssuedInstance[] = [];
   const skipped: IssueOutcome['skipped'] = [];
 
+  // 鎖住這張券到交易結束：兩個請求同時發同一張券時依序處理，
+  // 否則兩邊都數到「還沒達上限」，每人上限與發行總量會超發（design D14）
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${coupon.id}, 0))`;
+
   for (const contactId of params.contactIds) {
     if (coupon.totalLimit != null) {
       // 每發一張都重查——同一批內也會累加，用批次開始時的數字會超發
@@ -153,8 +157,8 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
         couponId: coupon.id,
         tenantId,
         contactId,
-        // 已核銷／已失效不佔額度，否則回頭客永遠拿不到第二張
-        status: { in: ['ISSUED', 'CLAIMED', 'OPENED'] },
+        // 領過就算（含已使用），已過期與已撤回不算（2026-10-21 依對話發券設計稿決定，design D14）
+        status: { in: ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED'] },
       },
     });
     if (held >= coupon.perContactLimit) {

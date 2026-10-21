@@ -65,6 +65,7 @@ import emailRegistrationRoutes from './modules/identity-binding/email-registrati
 import phoneRegistrationRoutes from './modules/identity-binding/phone-registration.routes.js';
 import couponRoutes from './modules/coupon/coupon.routes.js';
 import couponInstanceRoutes from './modules/coupon/coupon-instance.routes.js';
+import couponInboxRoutes from './modules/coupon/coupon-inbox.routes.js';
 import storeRoutes from './modules/store/store.routes.js';
 import storeConsoleRoutes from './modules/store/store-console.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
@@ -199,6 +200,7 @@ export async function bootstrap() {
   await app.register(phoneRegistrationRoutes, { prefix: '/api/v1/public/phone-registration' });
   await app.register(couponRoutes, { prefix: '/api/v1/coupons' });
   await app.register(couponInstanceRoutes, { prefix: '/api/v1/coupons' });
+  await app.register(couponInboxRoutes, { prefix: '/api/v1/coupon-issue' });
   await app.register(storeRoutes, { prefix: '/api/v1/stores' });
   await app.register(storeConsoleRoutes, { prefix: '/api/v1/store-console' });
   await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });

@@ -7,7 +7,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { getAgentById } from '../auth/auth.service.js';
 import {
   listCoupons,
   getCoupon,
@@ -23,8 +22,6 @@ import {
 import { changeStatus } from './coupon-lifecycle.service.js';
 import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
-import { issueToConversation } from './coupon-wallet.service.js';
-import { getBindingStore } from '../identity-binding/binding-code.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 import { getBulkRedeemCounts } from './coupon-stats.service.js';
 
@@ -221,52 +218,6 @@ export default async function couponRoutes(app: FastifyInstance) {
         requireClaim: body.requireClaim,
       });
       return { success: true, data: result };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
-
-  /**
-   * 對話中發券（B1）。發券、產生票券連結、送訊息一次完成，座席不需分兩步。
-   * 對象一律是對話的聯絡人；所有渠道都直接歸戶，顧客開啟連結時再做歸戶驗證（design D12）。
-   */
-  app.post('/:id/issue-to-conversation', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const { conversationId } = z.object({ conversationId: z.string().uuid('對話識別格式不正確') }).parse(request.body);
-    const tenantId = request.agent.tenantId;
-
-    try {
-      // 保存發券座席當下的名稱，座席之後改名或刪除，序號明細仍顯示原名
-      const agent = await getAgentById(request.tenantPrisma, request.agent.id, tenantId);
-      const result = await issueToConversation(app.prisma, { store: getBindingStore() }, {
-        tenantId,
-        couponId: id,
-        conversationId,
-        agentId: request.agent.id,
-        agentName: agent?.name ?? undefined,
-      });
-
-      if (!result.ok) {
-        if (result.reason === 'NOT_FOUND') {
-          return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此對話或優惠券' } });
-        }
-        const messages: Record<string, string> = {
-          PER_CONTACT_LIMIT_REACHED: '此顧客已達該券的領取上限',
-          TOTAL_LIMIT_REACHED: '此券已達發行總量上限',
-          CODES_EXHAUSTED: '此券的序號已用罄，請先補充庫存',
-          SHARED_CODE_MISSING: '此券未設定共用券碼',
-          CODE_GENERATION_FAILED: '券碼產生失敗，請重試',
-          CODE_ALLOCATION_CONFLICT: '序號配發衝突，請重試',
-        };
-        return reply.status(409).send({
-          success: false,
-          error: { code: result.reason, message: messages[result.reason] ?? result.reason },
-        });
-      }
-
-      // 券已入庫即視為成功；訊息沒送出另外標示，讓座席知道要不要補發連結
-      const { ok: _ok, ...data } = result;
-      return { success: true, data };
     } catch (err) {
       return handleError(err, reply);
     }

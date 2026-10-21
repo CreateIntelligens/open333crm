@@ -1,6 +1,5 @@
 /**
  * 顧客票券夾（add-coupon-system A9、design D12）：
- * - 對話發券：發券、產生票券連結、送出訊息
  * - 票券連結換顧客憑證：已歸戶才發憑證，未歸戶回傳 One ID 登記頁網址
  * - 店員驗證碼核銷時段：5 分鐘內、最多錯 5 次
  *
@@ -8,14 +7,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import QRCode from 'qrcode';
-import {
-  buildCouponMessage,
-  issueWalletToken,
-  readWalletToken,
-  walletLinkUrl,
-  type WalletTokenPayload,
-} from '@open333crm/core';
-import { getConfig } from '../../config/env.js';
+import { readWalletToken } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { signFanToken } from '../portal/portal-auth.service.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
@@ -24,90 +16,15 @@ import { getIdentityBindingSettings } from '../identity-binding/identity-binding
 import { issueRegistrationToken, type RegistrationKind } from '../identity-binding/identifier-registration.js';
 import { PHONE_REGISTRATION } from '../identity-binding/phone-registration.service.js';
 import { EMAIL_REGISTRATION } from '../identity-binding/email-registration.service.js';
-import { issueCoupons } from './coupon-issue.service.js';
-import { sendCouponText } from './coupon-delivery.service.js';
 import { getFanCoupon, listFanCoupons, type FanIdentity } from './coupon-fan.service.js';
 import { redeemCoupon, type RedeemFailure } from './coupon-redeem.service.js';
 
 export interface WalletDeps {
   store: BindingStore;
   now?: () => number;
-  /** 票券連結的網址前綴；預設為 WEB_BASE_URL */
-  webBaseUrl?: string;
-  /** 送出發券訊息；預設走 sendCouponText（測試可替換） */
-  deliver?: (
-    prisma: PrismaClient,
-    params: { tenantId: string; conversationId: string; text: string },
-  ) => Promise<{ sent: boolean; reason?: string }>;
 }
 
 const nowOf = (deps: WalletDeps) => (deps.now ?? Date.now)();
-
-// ── 對話發券 ──────────────────────────────────────────────────────────────
-
-export type IssueToConversationResult =
-  | { ok: true; instanceId: string; code: string; messageSent: boolean; deliveryError?: string }
-  | { ok: false; reason: string };
-
-/**
- * 在對話中發券並送出帶票券連結的訊息（B1）。對象一律是對話的聯絡人，不接受請求指定 contactId。
- * 對話對象已知，所有渠道都直接歸戶為已領取（design D12）；顧客開啟連結時再做歸戶驗證。
- */
-export async function issueToConversation(
-  prisma: PrismaClient,
-  deps: WalletDeps,
-  input: { tenantId: string; couponId: string; conversationId: string; agentId: string; agentName?: string },
-): Promise<IssueToConversationResult> {
-  const { tenantId } = input;
-  const target = await withTenant(prisma, tenantId, async (tx) => {
-    const conversation = await tx.conversation.findFirst({
-      where: { id: input.conversationId, tenantId },
-      select: { id: true, contactId: true, channelId: true },
-    });
-    if (!conversation?.contactId) return null;
-    const identity = await tx.channelIdentity.findFirst({
-      where: { contactId: conversation.contactId, channelId: conversation.channelId },
-      select: { id: true },
-    });
-    const coupon = await tx.coupon.findFirst({ where: { id: input.couponId, tenantId }, select: { name: true } });
-    return identity && coupon ? { conversation, identityId: identity.id, couponName: coupon.name } : null;
-  });
-  if (!target) return { ok: false, reason: 'NOT_FOUND' };
-  const contactId = target.conversation.contactId as string;
-
-  const result = await issueCoupons(prisma, tenantId, input.couponId, {
-    contactIds: [contactId],
-    issuedVia: 'inbox',
-    issuedRefId: input.agentId,
-    issuedByName: input.agentName,
-    requireClaim: false,
-  });
-  const instance = result.issued[0];
-  if (!instance) return { ok: false, reason: result.skipped[0]?.reason ?? 'UNKNOWN' };
-
-  const payload: WalletTokenPayload = {
-    tenantId,
-    contactId,
-    channelIdentityId: target.identityId,
-    channelId: target.conversation.channelId,
-    conversationId: target.conversation.id,
-    instanceId: instance.id,
-  };
-  const token = await issueWalletToken(deps.store, payload, deps.now);
-  const text = buildCouponMessage({
-    couponName: target.couponName,
-    url: walletLinkUrl(deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token),
-  });
-  const deliver = deps.deliver ?? sendCouponText;
-  const delivery = await deliver(prisma, { tenantId, conversationId: target.conversation.id, text });
-  return {
-    ok: true,
-    instanceId: instance.id,
-    code: instance.code,
-    messageSent: delivery.sent,
-    ...(delivery.sent ? {} : { deliveryError: delivery.reason }),
-  };
-}
 
 // ── 票券連結換顧客憑證 ─────────────────────────────────────────────────────
 
@@ -153,6 +70,12 @@ export async function openWalletSession(
   if (!state) return { status: 'expired' };
 
   if (state.verified) {
+    // 對話發券的「已領取」：顧客第一次開啟這張券（design D14）
+    await withTenant(prisma, tenantId, (tx) =>
+      tx.couponInstance.updateMany({
+        where: { id: payload.instanceId, tenantId, contactId: state.liveId, viewedAt: null },
+        data: { viewedAt: new Date(nowOf(deps)) },
+      }));
     return {
       status: 'ok',
       fanToken: signFanToken(state.liveId, tenantId),

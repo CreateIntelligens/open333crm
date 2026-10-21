@@ -24,6 +24,8 @@ export function withTenant<T>(
   prisma: PrismaClient,
   tenantId: string,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  /** 交易選項；交易內要等外部 API 時延長 timeout（預設 5 秒），例如對話發券（design D14） */
+  options?: { timeout?: number; maxWait?: number },
 ): Promise<T> {
   if (!UUID_RE.test(tenantId)) {
     throw new Error(`withTenant: 不合法的 tenantId「${tenantId}」`);
@@ -32,7 +34,7 @@ export function withTenant<T>(
     // set_config(name, value, is_local=true) 等同 SET LOCAL，但可參數化（SET LOCAL 不吃佔位符）
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
     return fn(tx);
-  });
+  }, options);
 }
 
 /**

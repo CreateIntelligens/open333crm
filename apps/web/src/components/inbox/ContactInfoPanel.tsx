@@ -13,6 +13,7 @@ import { CaseCreateModal } from '@/components/case/CaseCreateModal';
 import { TagManager } from '@/components/contact/TagManager';
 import { SendBindingLinkButton } from './SendBindingLinkButton';
 import { SendEmailRegistrationLinkButton, SendPhoneRegistrationLinkButton } from './RegistrationLinkButtons';
+import { IssuedCouponsSection } from './coupon/IssuedCouponsSection';
 import { OtherChannelConversations } from './OtherChannelConversations';
 
 interface ContactInfoPanelProps {
@@ -68,9 +69,11 @@ interface ContactInfoPanelProps {
     };
   } | null;
   onRefresh?: () => void;
+  /** 有 coupon.view 權限時顯示「已發優惠券」 */
+  canViewCoupons?: boolean;
 }
 
-export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelProps) {
+export function ContactInfoPanel({ conversation, onRefresh, canViewCoupons }: ContactInfoPanelProps) {
   const [contact, setContact] = useState<Record<string, unknown> | null>(null);
   const [showCreateCase, setShowCreateCase] = useState(false);
 
@@ -278,6 +281,15 @@ export function ContactInfoPanel({ conversation, onRefresh }: ContactInfoPanelPr
       </div>
 
       <Separator />
+
+      {canViewCoupons && (
+        <>
+          <div className="p-4">
+            <IssuedCouponsSection conversationId={conversation.id} />
+          </div>
+          <Separator />
+        </>
+      )}
 
       {/* Custom Attributes */}
       {attributes && attributes.length > 0 && (

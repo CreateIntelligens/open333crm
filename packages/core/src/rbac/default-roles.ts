@@ -50,6 +50,8 @@ const SUPERVISOR_CODES = [
   'settings.manage', 'sla.manage', 'webhook.view',
   'agent.view', 'agent.manage', 'agent.role.assign',
   'billing.view',
+  // 對話發補償券、查看補償紀錄（add-coupon-system design D14）
+  'coupon.view', 'coupon.issue',
 ];
 
 // agent 預設權限（= 現行 AGENT「登入即可」的能力）
@@ -63,6 +65,8 @@ const AGENT_CODES = [
   'canvas.use', 'identity.review',
   'analytics.view.self',
   'agent.view',
+  // 對話發補償券（add-coupon-system design D14）
+  'coupon.view', 'coupon.issue',
 ];
 
 /** system role slug → 預設權限碼陣列 */

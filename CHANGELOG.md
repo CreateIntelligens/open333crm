@@ -2,6 +2,29 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-21]
+
+### Added
+
+- **對話發券**（add-coupon-system A11，design D14，Jira CM-196「對話發券 UX 規格」第一階段）— 收件匣輸入區工具列在附件、範本之後新增「發券」（需 `coupon.issue`），開啟置中 Dialog：
+  - 頂部顯示顧客近 90 天的補償次數與元折抵總額，以及最近一筆的券名、發送人、日期與狀態。
+  - 只列出發布中的客服補償券，有消費門檻的排前面並標示「可帶動消費」；已達每人上限的券停用並寫出領取與使用日期；固定效期 3 天內結束的券提示到期日。
+  - 選券後在同一個 Dialog 確認發給誰、券名與面額、有效期，「發送後無法撤回」；送出中按鈕停用。
+  - 成功時 Dialog 關閉、底部提示「已發送 NT$100 補償券」，對話中出現券卡（由哪位座席發送），右側面板新增「已發優惠券」（需 `coupon.view`）並即時更新；輸入框的草稿不受影響。
+  - 失敗時 Dialog 不關閉，五種情況各自說明並寫明券是否已發出：券已停止發放、已由其他座席發出、顧客收不到訊息、對話已不在處理範圍、網路逾時（以發送鍵查詢結果，查到前不能重送）。
+  - 對話已關閉時按鈕停用並說明原因；Facebook、Instagram 超過 24 小時回覆期限時停用所有選擇。
+  - 新 API：`/api/v1/coupon-issue/conversations/:id`（GET 面板資料、POST 發券）、`/requests/:requestKey`、`/conversations/:id/issued`。
+
+### Changed
+
+- **對話發券改為送不出就不發券**：發券、送出訊息與寫入對話訊息在同一個交易內完成，顧客封鎖等原因送不出時整筆回滾（409 `COUPON_DELIVERY_FAILED`），券、序號與標籤都不留下。原本券會先入庫，訊息沒送出也回報成功。
+- **每人上限改為領過就算**：已使用的券也計入每人上限，已過期與已撤回的不計入（關鍵字、群發與對話發券一致）。
+- **同一張券的發券依序處理**：發券時鎖住該券，兩位座席同時發給同一位顧客不會超過每人上限，後到者得知是誰已發出。
+- **系統角色「座席」與「主管」預設有 `coupon.view`、`coupon.issue`**。既有租戶部署後要執行 `scripts/reconcile-system-role-permissions.mjs`。
+- 對話發券檢查渠道可見性（CM-173）：看不到該渠道或只能看的座席不能發券。
+- 移除 `POST /api/v1/coupons/:id/issue-to-conversation`，改用 `/api/v1/coupon-issue/conversations/:id`。
+- 需要跑 migration `20261021100000_coupon_instance_viewed_at`（顧客第一次開啟票券連結的時間，用來顯示「已領取」）。
+
 ## [2026-10-20]
 
 ### Added

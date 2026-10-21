@@ -8,7 +8,7 @@
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
  * TenantDb 不含 $transaction，故此處收 PrismaClient（見 lib/tenant-db.ts 註解）。
  */
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { applyClaimTag } from './coupon-tagging.js';
@@ -56,37 +56,50 @@ export async function issueCoupons(
   if (opts.contactIds.length === 0) {
     throw new CouponValidationError('請選擇發放對象');
   }
+  return withTenant(prisma, tenantId, (tx) => issueCouponsInTx(tx, tenantId, couponId, opts));
+}
 
-  return withTenant(prisma, tenantId, async (tx) => {
-    const coupon = await tx.coupon.findFirst({ where: { id: couponId, tenantId } });
-    if (!coupon) throw new CouponValidationError('查無此券');
-    if (coupon.status !== 'ACTIVE') {
-      throw new CouponValidationError('僅能發放進行中的券');
-    }
+/**
+ * 在呼叫端的交易內發券。對話發券要在同一個交易內送出訊息，送不出就整筆回滾（design D14）。
+ * tx 必須已綁定租戶（withTenant）。
+ */
+export async function issueCouponsInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  couponId: string,
+  opts: IssueOptions,
+): Promise<IssueResult> {
+  if (opts.contactIds.length === 0) {
+    throw new CouponValidationError('請選擇發放對象');
+  }
+  const coupon = await tx.coupon.findFirst({ where: { id: couponId, tenantId } });
+  if (!coupon) throw new CouponValidationError('查無此券');
+  if (coupon.status !== 'ACTIVE') {
+    throw new CouponValidationError('僅能發放進行中的券');
+  }
 
-    const requireClaim = opts.requireClaim ?? false;
-    const outcome = await issueInstances(tx, {
-      tenantId,
-      coupon,
-      contactIds: opts.contactIds,
-      issuedVia: opts.issuedVia,
-      issuedRefId: opts.issuedRefId,
-      issuedSourceName: opts.sourceName ?? (opts.issuedVia ? DEFAULT_SOURCE_NAME[opts.issuedVia] : undefined),
-      issuedByName: opts.issuedByName,
-      requireClaim,
-      claimTokenHours: opts.claimTokenHours,
-    });
+  const requireClaim = opts.requireClaim ?? false;
+  const outcome = await issueInstances(tx, {
+    tenantId,
+    coupon,
+    contactIds: opts.contactIds,
+    issuedVia: opts.issuedVia,
+    issuedRefId: opts.issuedRefId,
+    issuedSourceName: opts.sourceName ?? (opts.issuedVia ? DEFAULT_SOURCE_NAME[opts.issuedVia] : undefined),
+    issuedByName: opts.issuedByName,
+    requireClaim,
+    claimTokenHours: opts.claimTokenHours,
+  });
 
-    // 直接歸戶者（LINE）不會經過 claimByToken，貼標要在此補上；
-    // 待領取者（FB／IG）於實際領取時才貼，避免沒領的人也被貼標
-    if (!requireClaim && coupon.claimTagId) {
-      for (const instance of outcome.issued) {
-        if (instance.contactId) {
-          await applyClaimTag(tx, tenantId, instance.contactId, coupon);
-        }
+  // 直接歸戶者（LINE）不會經過 claimByToken，貼標要在此補上；
+  // 待領取者（FB／IG）於實際領取時才貼，避免沒領的人也被貼標
+  if (!requireClaim && coupon.claimTagId) {
+    for (const instance of outcome.issued) {
+      if (instance.contactId) {
+        await applyClaimTag(tx, tenantId, instance.contactId, coupon);
       }
     }
+  }
 
-    return outcome;
-  });
+  return outcome;
 }
