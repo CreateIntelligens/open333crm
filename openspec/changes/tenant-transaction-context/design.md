@@ -82,6 +82,13 @@ fastify.post<{ Params: { id: string } }>('/:id/resolve', { preHandler: [perm.upd
 - **A 要自己處理交易結束的每一條路徑。** 成功、handler 丟錯、客戶端中途斷線，各要一個 hook。漏掉一條，連線就一直佔住，直到 Prisma 的 5 秒逾時 rollback。commit 失敗時能不能把回應改成錯誤，要看 Fastify 5 如何處理 `onSend` 丟出的錯誤，未驗證。5 秒的計時也會包含序列化回應的時間。
 - **B 擋不住在交易內送出回應。** 既有 handler 都寫 `return reply.send(...)`，自動包進交易後，回應會在 commit 之前送出。手動包可以用型別拿掉 `send()`，B 只能在執行時檢查。
 
+另一個替代方案：`inTenant()` 把 `ctx` 放進 Node 的 `AsyncLocalStorage`，service 不收 `ctx` 參數，而是呼叫 `getCtx()` 取出目前的交易。NestJS 的 `@nestjs-cls/transactional` 用的就是這個做法。好處是 service 的簽名不變，搬遷的改動少。不採用的原因：
+
+- **只讀 service 看不出保證。** 要追呼叫鏈上有沒有 `inTenant()`，這正是 #337 要解決的問題。
+- **忘了開交易，要到執行時才發現。** 收 `ctx` 參數時，這是編譯錯誤。
+- **交易內啟動、但沒有 await 的非同步工作會繼承 `ctx`。** 這些工作在交易結束之後才執行時，查詢會失敗（`Transaction already closed`）。收 `ctx` 參數時，這些工作拿不到 `ctx`，不會誤用。
+- 單元測試要先呼叫 `run()` 把 ctx 放進去，不能直接傳 mock ctx。
+
 ### 3. 測試用的 mock ctx
 
 `apps/api/tests/support/mock-tenant-ctx.ts` 提供 `createMockTenantCtx(tx, tenantId?)`，回傳：
