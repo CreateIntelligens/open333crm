@@ -10,4 +10,6 @@ export * from "./listeners/index.js";
 export * from "./rules/index.js";
 export * from "./contracts/index.js";
 export * from "./automation-facts.js";
+export * from "./bot-config.js";
+export * from "./keyword/index.js";
 export { AutomationEngine };

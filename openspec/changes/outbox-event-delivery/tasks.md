@@ -51,9 +51,9 @@
 
 ## 8. 自動化訂閱者（API）
 
-- [ ] 8.1 把 `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與關鍵字比對搬進 `packages/automation`（design 決策 8），`kb-autoreply.service.ts`、`automation.worker.ts` 與 workers 改 import 新位置。既有測試 `keyword-suppresses-ai.test.ts`、`keyword-yield-channel.test.ts` 改 import 路徑，搬移前後都通過（重構）。之後 ARCH-02 的檢查指令沒有輸出
-- [ ] 8.2 `packages/automation` 目前沒有測試設定：照 `packages/core` 加上 Vitest、`test` script 與 `#src/` imports。接著寫失敗的單元測試 `packages/automation/tests/unit/keyword-match.test.ts`，涵蓋 automation-engine 的 Scenario「舊資料含空白關鍵字」「訊息沒有命中」
-- [ ] 8.3 統一關鍵字比對，讓 8.2 通過
+- [x] 8.1 把 `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與關鍵字比對搬進 `packages/automation`（design 決策 8），`kb-autoreply.service.ts`、`automation.worker.ts` 與 workers 改 import 新位置。既有測試 `keyword-suppresses-ai.test.ts`、`keyword-yield-channel.test.ts` 改 import 路徑，搬移前後都通過（重構）。之後 ARCH-02 的檢查指令沒有輸出
+- [x] 8.2 `packages/automation` 目前沒有測試設定：照 `packages/core` 加上 Vitest、`test` script 與 `#src/` imports。接著寫失敗的單元測試 `packages/automation/tests/unit/keyword-match.test.ts`，涵蓋 automation-engine 的 Scenario「舊資料含空白關鍵字」「訊息沒有命中」
+- [x] 8.3 統一關鍵字比對，讓 8.2 通過
 - [ ] 8.4 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/auto-handoff.test.ts`，涵蓋 bot-handoff-config 的 Scenario「同一則訊息處理兩次」「兩次處理同時進行」（第二個 `claimOne` 回傳 false）「寫入系統訊息失敗」
 - [ ] 8.5 改寫自動轉接（design 決策 8）：摘要與 `prepareStoredMessageContent()` 在交易之前，交易內只做認領與寫入。讓 8.4 通過
 - [ ] 8.6 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/bot-reply-claim.test.ts`，涵蓋 automation-engine 的 Scenario「同一則訊息處理兩次」（每則入站訊息最多一則機器人回覆）、「agent 失敗改由 KB 回覆」「已認領就不呼叫 LLM」

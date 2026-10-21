@@ -32,7 +32,7 @@ import {
   DEFAULT_BOT_CONFIG,
   DEFAULT_HANDOFF_PROMPT_TEXT,
   type BotConfig,
-} from '../automation/automation.worker.js';
+} from '@open333crm/automation';
 import { logger } from '@open333crm/core';
 
 const CLARIFY_HANDOFF_FALLBACK =
