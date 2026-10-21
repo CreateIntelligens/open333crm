@@ -124,6 +124,9 @@ export async function writeBinding(
   }
 
   if (config.bindTagId) {
+    // 貼標失敗不影響綁定——綁定本身已成功，標籤是行銷輔助。交易內的 SQL 錯誤會讓整個交易失效，
+    // catch 擋不住，所以在 savepoint 內執行，失敗時只回滾貼標
+    await tx.$executeRawUnsafe('SAVEPOINT member_binding_tag');
     try {
       await addTagToTarget(tx, {
         tenantId,
@@ -132,8 +135,9 @@ export async function writeBinding(
         tagId: config.bindTagId,
         addedBy: 'system',
       });
+      await tx.$executeRawUnsafe('RELEASE SAVEPOINT member_binding_tag');
     } catch (err) {
-      // 貼標失敗不影響綁定——綁定本身已成功，標籤是行銷輔助
+      await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT member_binding_tag');
       logger.warn('[MemberBinding] 綁定貼標失敗（不影響綁定）', {
         tenantId,
         error: (err as Error).message,

@@ -234,16 +234,31 @@ function isSharedCodeCollision(err: unknown, data: { sharedCode?: unknown }): bo
 
 const SHARED_CODE_TAKEN = '與其他券重複，請換一組券號';
 
-/** 建立券並配一組券號；券號撞號時換一組重試（31^6 組合，實務上極少發生）。 */
+async function displayCodeTaken(db: Prisma.TransactionClient, tenantId: unknown, displayCode: string): Promise<boolean> {
+  if (typeof tenantId !== 'string') return false;
+  return (await db.coupon.count({ where: { tenantId, displayCode } })) > 0;
+}
+
+/**
+ * 建立券並配一組券號；券號撞號時換一組重試（31^6 組合，實務上極少發生）。
+ * 在入口開的交易內執行：撞號的 SQL 錯誤會讓整個交易失效，所以每次嘗試包在 savepoint 內，撞號時只回滾這一次。
+ */
 async function insertWithDisplayCode(db: Prisma.TransactionClient, data: Record<string, unknown>) {
   for (let attempt = 0; attempt < 5; attempt++) {
+    const displayCode = generateDisplayCode();
+    await db.$executeRawUnsafe('SAVEPOINT coupon_display_code');
     try {
-      return await db.coupon.create({
-        data: { ...data, displayCode: generateDisplayCode() } as Prisma.CouponUncheckedCreateInput,
+      const created = await db.coupon.create({
+        data: { ...data, displayCode } as Prisma.CouponUncheckedCreateInput,
       });
+      await db.$executeRawUnsafe('RELEASE SAVEPOINT coupon_display_code');
+      return created;
     } catch (err) {
+      await db.$executeRawUnsafe('ROLLBACK TO SAVEPOINT coupon_display_code');
+      // 交易內的 P2002 不一定帶約束名稱（target 為 "(not available)"），回滾後直接查這組券號是否已被使用
+      if (isDisplayCodeCollision(err) || (await displayCodeTaken(db, data.tenantId, displayCode))) continue;
       if (isSharedCodeCollision(err, data)) throw new CouponConflictError(SHARED_CODE_TAKEN);
-      if (!isDisplayCodeCollision(err)) throw err;
+      throw err;
     }
   }
   throw new Error('無法產生不重複的券號');
