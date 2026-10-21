@@ -84,11 +84,11 @@ export function hasAnyFilter(f: InstanceFilters): boolean {
 
 /**
  * date input 的 YYYY-MM-DD 轉成 ISO 時間。後端以 gte／lte 比較，
- * 迄日要用當天最後一刻才會包含當天；以使用者的時區計算，不用 UTC 零點。
+ * 迄日要用當天最後一刻才會包含當天；一律以台灣時間為界（design D17），與列表顯示的日期一致。
  */
 function dayBoundary(value: string, end: boolean): string | undefined {
   if (!value) return undefined;
-  const d = new Date(`${value}T${end ? '23:59:59.999' : '00:00:00'}`);
+  const d = new Date(`${value}T${end ? '23:59:59.999' : '00:00:00'}+08:00`);
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 

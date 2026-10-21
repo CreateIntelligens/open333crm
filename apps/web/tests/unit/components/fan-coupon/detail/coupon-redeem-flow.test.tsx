@@ -320,6 +320,9 @@ describe('店員驗證碼核銷', () => {
     fireEvent.click(button('確認核銷'));
     await flush();
     assert.ok(screen.getByRole('alert').textContent?.includes('網路連線異常'));
+    // 回應遺失時券可能已經核銷：不能告訴顧客「尚未被使用」
+    assert.ok(!screen.getByRole('alert').textContent?.includes('尚未被使用'));
+    assert.ok(screen.getByRole('alert').textContent?.includes('無法確認是否已核銷'));
     h.redeemCode.mockResolvedValueOnce({ redeemedAt: '2026-10-12T01:41:05.000Z' });
     fireEvent.click(button('確認核銷'));
     await flush();
@@ -379,6 +382,27 @@ describe('顧客自助滑動核銷', () => {
     assert.deepEqual(h.redeemSelf.mock.calls[0], [ID]);
     assert.ok(screen.getByRole('heading', { name: '核銷結果' }));
     assert.ok(screen.getByText('顧客自助'));
+  });
+
+  test('網路錯誤：不說券尚未被使用，請顧客重新查看', async () => {
+    h.redeemSelf.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    const handle = setupSelf();
+    fireEvent.keyDown(handle, { key: 'Enter' });
+    fireEvent.keyDown(handle, { key: 'Enter' });
+    await flush();
+    const alert = screen.getByRole('alert').textContent ?? '';
+    assert.ok(!alert.includes('尚未被使用'), alert);
+    assert.ok(alert.includes('無法確認是否已核銷'), alert);
+    assert.ok(h.mutate.mock.calls.length > 0, '重新讀取券的狀態');
+  });
+
+  test('伺服器拒絕（例如 400）：券確定沒被使用，可再試', async () => {
+    h.redeemSelf.mockRejectedValueOnce(apiError('VALIDATION_ERROR', {}, 400));
+    const handle = setupSelf();
+    fireEvent.keyDown(handle, { key: 'Enter' });
+    fireEvent.keyDown(handle, { key: 'Enter' });
+    await flush();
+    assert.ok(screen.getByRole('alert').textContent?.includes('尚未被使用'));
   });
 
   test('鍵盤：聚焦把手後按 Enter 兩次確認', async () => {

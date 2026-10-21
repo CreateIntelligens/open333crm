@@ -10,6 +10,7 @@ import { getApiErrorCode, getApiErrorMessage } from '@/lib/api-error';
 import { FanShell } from '../FanShell';
 import { FanCouponCard } from '../FanCouponCard';
 import { SlideToRedeem } from './SlideToRedeem';
+import { REDEEM_UNCONFIRMED_TEXT, redeemUnconfirmed } from './ui';
 import type { RedeemAbort } from './StaffCodeRedeem';
 
 const UNAVAILABLE_CODES = new Set(['EXPIRED', 'REVOKED', 'NOT_YET_VALID', 'NOT_CLAIMED', 'SELF_REDEEM_NOT_ALLOWED', 'NOT_FOUND']);
@@ -18,10 +19,12 @@ interface Props {
   item: FanCoupon;
   onBack: () => void;
   onRedeemed: (redeemedAt: string) => void;
+  /** 沒收到回應、不確定是否已核銷時重新讀取券的狀態 */
+  onUncertain?: () => void;
   onAbort: (abort: RedeemAbort) => void;
 }
 
-export function SelfRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
+export function SelfRedeem({ item, onBack, onRedeemed, onAbort, onUncertain }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   /** 失敗後換 key 讓滑桿回到起點 */
@@ -40,7 +43,11 @@ export function SelfRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
       const code = getApiErrorCode(err);
       if (code === 'ALREADY_REDEEMED' || code === 'CONFLICT') onAbort({ kind: 'already' });
       else if (code && UNAVAILABLE_CODES.has(code)) onAbort({ kind: 'unavailable', code });
-      else {
+      else if (redeemUnconfirmed(err)) {
+        setError(REDEEM_UNCONFIRMED_TEXT);
+        onUncertain?.();
+        setAttempt((n) => n + 1);
+      } else {
         setError(`${getApiErrorMessage(err, '核銷沒有送出，請重試')}（這張券尚未被使用，可再滑動一次）`);
         setAttempt((n) => n + 1);
       }

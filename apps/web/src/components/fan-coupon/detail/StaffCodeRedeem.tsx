@@ -15,7 +15,7 @@ import { getApiErrorCode, getApiErrorDetails, getApiErrorMessage } from '@/lib/a
 import { conditionText } from '@/lib/fan-coupon/labels';
 import { FanShell, StatusMessage } from '../FanShell';
 import { FanCouponCard } from '../FanCouponCard';
-import { btnPrimary, btnSubtle, formatClock } from './ui';
+import { btnPrimary, btnSubtle, formatClock, REDEEM_UNCONFIRMED_TEXT, redeemUnconfirmed } from './ui';
 import { useCountdown } from './useCountdown';
 
 /** 核銷時段長度（秒），用於進度條比例；與後端 REDEEM_SESSION_MS 一致 */
@@ -34,6 +34,8 @@ interface Props {
   item: FanCoupon;
   onBack: () => void;
   onRedeemed: (redeemedAt: string) => void;
+  /** 沒收到回應、不確定是否已核銷時重新讀取券的狀態 */
+  onUncertain?: () => void;
   onAbort: (abort: RedeemAbort) => void;
 }
 
@@ -42,7 +44,7 @@ type Phase = 'starting' | 'startError' | 'input' | 'timeup';
 /** 同一張券 24 小時內驗證碼錯誤太多次（後端 MAX_DAILY_CODE_ATTEMPTS）：重試也不會成功，不提供重試 */
 const TOO_MANY_ATTEMPTS_TEXT = '驗證碼錯誤次數過多，這張券 24 小時內不能核銷。如需協助請聯絡客服。';
 
-export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
+export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort, onUncertain }: Props) {
   const length = Math.min(6, Math.max(4, item.coupon.staffCodeLength ?? 6));
   const [phase, setPhase] = useState<Phase>('starting');
   const [startError, setStartError] = useState('');
@@ -137,6 +139,9 @@ export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
         onAbort({ kind: 'already', redeemedAt: typeof details.redeemedAt === 'string' ? details.redeemedAt : undefined });
       } else if (code && UNAVAILABLE_CODES.has(code)) {
         onAbort({ kind: 'unavailable', code });
+      } else if (redeemUnconfirmed(err)) {
+        setSubmitError(REDEEM_UNCONFIRMED_TEXT);
+        onUncertain?.();
       } else {
         setSubmitError(`${getApiErrorMessage(err, '核銷沒有送出，請重試')}（這張券尚未被使用）`);
       }

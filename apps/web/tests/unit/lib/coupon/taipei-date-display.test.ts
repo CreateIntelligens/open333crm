@@ -11,6 +11,7 @@ import { md as issueMd, mdhm as issueMdhm, ymd as issueYmd } from '#src/lib/coup
 import { md as fanMd, mdhm as fanMdhm } from '#src/components/fan-coupon/detail/ui.js';
 import { ymd as walletYmd, ymdhm as walletYmdhm, ymdhms as walletYmdhms } from '#src/lib/fan-coupon/labels.js';
 import { emptyValues, valuesFromCoupon } from '#src/components/coupons/form/form-model.js';
+import { toInstanceQuery } from '#src/components/coupons/detail/detail-helpers.js';
 
 const END = '2026-11-30T15:59:59.999Z'; // 台灣 11/30 23:59
 const START = '2026-10-31T16:00:00.000Z'; // 台灣 11/01 00:00
@@ -52,3 +53,13 @@ describe('日期顯示不受瀏覽器時區影響', () => {
     }
   });
 });
+
+test('序號明細的日期篩選以台灣日期為界', () => {
+  const q = toInstanceQuery(
+    { q: '', status: '', claimedFrom: '2026-10-21', claimedTo: '2026-10-21', redeemedFrom: '', redeemedTo: '' } as never,
+    1,
+  );
+  assert.equal(q.claimedFrom, '2026-10-20T16:00:00.000Z');
+  assert.equal(q.claimedTo, '2026-10-21T15:59:59.999Z');
+});
+

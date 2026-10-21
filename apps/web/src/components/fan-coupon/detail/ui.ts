@@ -44,3 +44,13 @@ export function formatClock(totalSeconds: number): string {
   const sec = s % 60;
   return h > 0 ? `${h}:${p2(m)}:${p2(sec)}` : `${m}:${p2(sec)}`;
 }
+
+/**
+ * 核銷請求沒有收到回應（斷線、逾時）時，券可能已經核銷，不能告訴顧客「尚未被使用」：
+ * 請顧客重新查看狀態，並由呼叫端重新讀取這張券。伺服器有回應的失敗才確定沒有核銷。
+ */
+export function redeemUnconfirmed(err: unknown): boolean {
+  return !(err as { response?: unknown })?.response;
+}
+
+export const REDEEM_UNCONFIRMED_TEXT = '網路連線異常，無法確認是否已核銷。請稍候重新查看這張券；若仍顯示可使用，再試一次。';

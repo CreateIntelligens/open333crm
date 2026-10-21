@@ -55,6 +55,12 @@ const BLOCKED_TEXT: Record<NonNullable<IssueContext['blocked']>['reason'], strin
 
 const CHECKING_BANNER: Banner = { message: '確認發送結果中…', outcome: '系統正在確認券是否已發出，查詢完成前請勿重送。' };
 const NOT_RECEIVED_BANNER: Banner = { message: '沒有發出', outcome: '系統沒有收到這次發券，券未發出，可以重新發送。' };
+/** 確認中最多等這麼久；之後讓座席可以關閉或用同一個發送鍵重送（不會重複發券） */
+const CHECK_LIMIT_MS = 60_000;
+const UNCONFIRMED_BANNER: Banner = {
+  message: '仍無法確認是否已發出',
+  outcome: '請稍後到右側「已發優惠券」查看。再按一次發送會沿用同一次發券，不會重複發出。',
+};
 
 const newKey = () => crypto.randomUUID();
 
@@ -69,6 +75,9 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
   const [outOfScope, setOutOfScope] = useState(false);
   const [askAbandon, setAskAbandon] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 視窗關閉後，進行中的查詢回來也不再處理（不在別的對話跳出提示、不再排下一輪）
+  const cancelled = useRef(false);
+  const checkStartedAt = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -96,8 +105,12 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
     setBanner(null);
     setOutOfScope(false);
     setAskAbandon(false);
+    cancelled.current = false;
     void load();
-    return stopPolling;
+    return () => {
+      cancelled.current = true;
+      stopPolling();
+    };
   }, [open, load, stopPolling]);
 
   const finish = useCallback(
@@ -132,9 +145,15 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
 
   const poll = useCallback(
     (coupon: IssuableCoupon, key: string, unknownCount: number) => {
+      if (Date.now() - checkStartedAt.current > CHECK_LIMIT_MS) {
+        setPhase('idle');
+        setBanner(UNCONFIRMED_BANNER);
+        return;
+      }
       pollTimer.current = setTimeout(async () => {
         try {
           const state = await fetchIssueRequest(key);
+          if (cancelled.current) return;
           if (state.state === 'done') {
             if (state.result.ok) finish(coupon);
             else fail(state.result.reason, state.result.details);
@@ -152,7 +171,8 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
           }
           poll(coupon, key, 0);
         } catch {
-          // 查詢也失敗（網路仍不通）：繼續查，不開放重送
+          if (cancelled.current) return;
+          // 查詢也失敗（網路仍不通）：繼續查，超過時限才開放重送
           poll(coupon, key, unknownCount);
         }
       }, POLL_MS);
@@ -177,6 +197,7 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
       if (code === 'NETWORK' || code === 'ISSUE_IN_PROGRESS') {
         setPhase('checking');
         setBanner(CHECKING_BANNER);
+        checkStartedAt.current = Date.now();
         poll(coupon, requestKey, 0);
         return;
       }

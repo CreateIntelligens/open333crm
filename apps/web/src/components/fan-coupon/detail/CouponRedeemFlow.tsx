@@ -198,13 +198,13 @@ export function CouponRedeemFlow({ id }: { id: string }) {
     return <RedeemResult item={view} redeemedAt={redeemedAt} onClose={toWallet} />;
   }
   if (screen === 'staffCode') {
-    return <StaffCodeRedeem item={view} onBack={goDetail} onRedeemed={onRedeemed} onAbort={onAbort} />;
+    return <StaffCodeRedeem item={view} onBack={goDetail} onRedeemed={onRedeemed} onAbort={onAbort} onUncertain={() => void mutate()} />;
   }
   if (screen === 'qr') {
     return <QrRedeem item={view} onBack={goDetail} onAbort={onAbort} />;
   }
   if (screen === 'self') {
-    return <SelfRedeem item={view} onBack={goDetail} onRedeemed={onRedeemed} onAbort={onAbort} />;
+    return <SelfRedeem item={view} onBack={goDetail} onRedeemed={onRedeemed} onAbort={onAbort} onUncertain={() => void mutate()} />;
   }
 
   const mode = view.coupon.redeemMode;

@@ -9,16 +9,20 @@ import axios from 'axios';
 import { API_BASE_URL } from './constants';
 
 const TOKEN_KEY = 'fanCouponToken';
+/** sessionStorage 被封鎖時的備援：這次瀏覽仍可用，重新整理後要重新點連結 */
+let memoryToken: string | null = null;
 
 export function getFanToken(): string | null {
   try {
-    return typeof window === 'undefined' ? null : window.sessionStorage.getItem(TOKEN_KEY);
+    if (typeof window === 'undefined') return null;
+    return window.sessionStorage.getItem(TOKEN_KEY) ?? memoryToken;
   } catch {
-    return null;
+    return memoryToken;
   }
 }
 
 export function setFanToken(token: string | null): void {
+  memoryToken = token;
   try {
     if (token) window.sessionStorage.setItem(TOKEN_KEY, token);
     else window.sessionStorage.removeItem(TOKEN_KEY);

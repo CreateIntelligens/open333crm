@@ -214,3 +214,23 @@ test('停用的帳號重新啟用：不需確認，送出 isActive=true 並顯�
   assert.deepEqual(api.patch.mock.calls[0], ['/stores/accounts/acc-1', { isActive: true }]);
   await screen.findByText('已啟用 dt3c-neihu');
 });
+
+test('建立帳號後的密碼畫面：按 Esc 或點遮罩不會關閉，只能按按鈕關閉', async () => {
+  await renderLoaded();
+  fireEvent.click(within(storeCard('內湖門市')).getByRole('button', { name: '新增帳號' }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.change(within(dialog).getByLabelText('帳號名稱'), { target: { value: 'dt3c-xinyi' } });
+  fireEvent.change(within(dialog).getByLabelText('密碼'), { target: { value: 'dt3c2026x' } });
+  api.post.mockResolvedValueOnce({
+    data: { success: true, data: { id: 'acc-2', storeId: 'store-neihu', username: 'dt3c-xinyi', canRedeem: true, isActive: true, lockedUntil: null, lastLoginAt: null, createdAt: '2026-10-20T00:00:00Z' } },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: '建立帳號' }));
+  await within(dialog).findByText(/請把帳號密碼交給店長/);
+  const esc = new Event('cancel', { cancelable: true });
+  dialog.dispatchEvent(esc);
+  assert.equal(esc.defaultPrevented, true, 'Esc 被攔下');
+  fireEvent.click(dialog);
+  fireEvent.click(dialog);
+  assert.ok(within(dialog).getByText('dt3c2026x'), '密碼仍顯示');
+});
+

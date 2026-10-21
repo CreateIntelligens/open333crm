@@ -66,6 +66,7 @@ import { ProgressAside, type ProgressItem } from './ProgressAside';
 import { PublishConfirmDialog, type PublishPhase } from './PublishConfirmDialog';
 import { LeaveConfirmDialog } from './LeaveConfirmDialog';
 import { useLeaveGuard } from './useLeaveGuard';
+import { pad2, taipeiParts } from '@/lib/taipei-time';
 
 const LIST_HREF = '/dashboard/marketing/coupons';
 /** 後端單次匯入上限 10,000 筆（coupon-import.service.ts），超過時分批送出 */
@@ -82,9 +83,10 @@ interface Props {
   existingCodes?: number;
 }
 
+/** 「已儲存草稿 · HH:mm」：台灣時間（design D17） */
 const hm = () => {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = taipeiParts(new Date());
+  return d ? `${pad2(d.hour)}:${pad2(d.minute)}` : '';
 };
 
 const snapshot = (v: FormValues) => JSON.stringify(v);

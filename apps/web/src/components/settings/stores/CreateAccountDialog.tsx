@@ -32,10 +32,30 @@ export function CreateAccountDialog({
   onClose: () => void;
   onCreated: (account: StoreAccount) => void;
 }) {
+  // 帳號建立後密碼只顯示這一次：Esc 與點遮罩不關閉，只能按「我已交給店長」關閉
+  const [showingPassword, setShowingPassword] = useState(false);
+  const close = () => {
+    setShowingPassword(false);
+    onClose();
+  };
   return (
-    <Dialog open={store !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open={store !== null}
+      onOpenChange={(open) => !open && close()}
+      onRequestClose={showingPassword ? () => {} : undefined}
+    >
       {/* key 讓每次開啟都是乾淨的表單，避免殘留上一個門市的密碼 */}
-      {store && <CreateAccountForm key={store.id} store={store} onClose={onClose} onCreated={onCreated} />}
+      {store && (
+        <CreateAccountForm
+          key={store.id}
+          store={store}
+          onClose={close}
+          onCreated={(account) => {
+            setShowingPassword(true);
+            onCreated(account);
+          }}
+        />
+      )}
     </Dialog>
   );
 }

@@ -229,6 +229,42 @@ describe('發送失敗時 Dialog 不關閉', () => {
     assert.equal(onClose.mock.calls.length, 1);
   });
 
+  test('確認中超過 60 秒仍查不到結果：可以關閉，提示到已發優惠券查看', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    h.post.mockRejectedValue(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }));
+    h.get.mockImplementation((url: string) => (url.startsWith('/coupon-issue/requests/') ? ok({ state: 'pending' }) : ok(ctx)));
+    await toConfirm();
+    fireEvent.click(button('確認發送'));
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(62_000); });
+    assert.ok(within(screen.getByRole('alert')).getByText(/仍無法確認是否已發出/));
+    assert.equal(button('確認發送').disabled, false, '可以用同一個發送鍵再送一次');
+    const before = h.get.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    assert.equal(h.get.mock.calls.length, before, '已停止輪詢');
+  });
+
+  test('確認中關閉視窗後，輪詢結果回來也不再通知', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    h.post.mockRejectedValue(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }));
+    let resolveQuery: (v: unknown) => void = () => {};
+    h.get.mockImplementation((url: string) =>
+      url.startsWith('/coupon-issue/requests/') ? new Promise((r) => { resolveQuery = r; }) : ok(ctx));
+    const view = render(<CouponIssueDialog open conversationId={CONV} onClose={onClose} onIssued={onIssued} />);
+    await flush();
+    const card = screen.getByText('小額致歉金').closest('li') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: '選擇' }));
+    fireEvent.click(button('確認發送'));
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    view.rerender(<CouponIssueDialog open={false} conversationId={CONV} onClose={onClose} onIssued={onIssued} />);
+    await act(async () => {
+      resolveQuery({ data: { success: true, data: { state: 'done', result: { ok: true, instanceId: 'i1', code: 'X', couponId: 'k1', couponName: '小額致歉金', messageId: 'm1' } } } });
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    assert.equal(onIssued.mock.calls.length, 0);
+  });
+
   test('網路逾時後查無這次發券：可以重送，沿用同一個發送鍵', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     h.post.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
