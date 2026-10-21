@@ -61,7 +61,7 @@ import {
 } from './form-model';
 import { FieldShell, Note, OptionPanel, RadioCards, TextField } from './fields';
 import { CoverImageField } from './CoverImageField';
-import { CodeImportField, EMPTY_IMPORT, type ImportState } from './CodeImportField';
+import { availableCodeCount, CodeImportField, EMPTY_IMPORT, type ImportState } from './CodeImportField';
 import { ProgressAside, type ProgressItem } from './ProgressAside';
 import { PublishConfirmDialog, type PublishPhase } from './PublishConfirmDialog';
 import { LeaveConfirmDialog } from './LeaveConfirmDialog';
@@ -153,10 +153,7 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
   const ctx = useMemo(
     () => ({
       mode,
-      importOk:
-        importState.status === 'done' || existingCodes > 0
-          ? (importState.status === 'done' && !importState.imported ? importState.codes.length : 0) + existingCodes
-          : null,
+      importOk: availableCodeCount(importState, existingCodes),
       issuedCount,
     }),
     [mode, importState, issuedCount, existingCodes],

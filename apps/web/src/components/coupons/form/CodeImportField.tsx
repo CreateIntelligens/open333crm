@@ -31,6 +31,17 @@ export interface ImportState {
   imported: boolean;
 }
 
+/**
+ * 序號包目前可用的序號數：這次選的檔案（不論是否已寫入後端）加上頁面載入時已有的。
+ * 發布時已寫入後端、但發布失敗的序號也要算進去，否則重試時會被當成「未上傳」而不能發布。
+ * existingCodes 是頁面載入時的數字，不含這次匯入的，所以不會重複計算。
+ * 沒有選檔也沒有既有序號時回 null（「未上傳」）。
+ */
+export function availableCodeCount(state: ImportState, existingCodes: number): number | null {
+  if (state.status !== 'done' && existingCodes === 0) return null;
+  return (state.status === 'done' ? state.codes.length : 0) + existingCodes;
+}
+
 export const EMPTY_IMPORT: ImportState = { status: 'idle', codes: [], dup: 0, bad: 0, errorRows: [], imported: false };
 
 interface Props {

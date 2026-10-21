@@ -295,10 +295,13 @@ describe('同一次發券只成功一次', () => {
     let done = false;
     const first = issueInConversation(slow, req).finally(() => { done = true; });
     const retries: Promise<unknown>[] = [];
-    while (!done) {
+    // 設截止時間：第一個請求卡住時測試失敗，而不是在逾時後於背景持續重送、干擾後面的測試
+    const deadline = Date.now() + 10_000;
+    while (!done && Date.now() < deadline) {
       retries.push(issueInConversation(slow, req));
       await new Promise((r) => setTimeout(r, 1));
     }
+    assert.ok(done, '第一個發券請求在 10 秒內沒有完成');
     for (let i = 0; i < 20; i++) {
       retries.push(issueInConversation(slow, req));
       await new Promise((r) => setTimeout(r, 1));

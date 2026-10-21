@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 const { preview } = vi.hoisted(() => ({ preview: vi.fn() }));
 vi.mock('#src/hooks/useCoupons.js', () => ({ previewCodeImport: preview }));
 
-import { CodeImportField, EMPTY_IMPORT, type ImportState } from '#src/components/coupons/form/CodeImportField.js';
+import { availableCodeCount, CodeImportField, EMPTY_IMPORT, type ImportState } from '#src/components/coupons/form/CodeImportField.js';
 
 let latest: ImportState = EMPTY_IMPORT;
 function Harness() {
@@ -66,4 +66,15 @@ test('不支援的檔案格式', async () => {
   fireEvent.change(fileInput(), { target: { files: [new File(['x'], 'codes.txt', { type: 'text/plain' })] } });
   assert.ok(await screen.findByText('格式不支援，請上傳 .csv 或 .xlsx 檔，或直接貼上序號'));
   assert.equal(preview.mock.calls.length, 0);
+});
+
+test('序號包可用數：沒有選檔也沒有既有序號時為「未上傳」', () => {
+  assert.equal(availableCodeCount(EMPTY_IMPORT, 0), null);
+  assert.equal(availableCodeCount(EMPTY_IMPORT, 3), 3);
+});
+
+test('序號包可用數：發布時已寫入後端的序號仍要算進去（發布失敗重試時不被當成未上傳）', () => {
+  const done: ImportState = { ...EMPTY_IMPORT, status: 'done', codes: ['A1', 'A2'] };
+  assert.equal(availableCodeCount(done, 1), 3);
+  assert.equal(availableCodeCount({ ...done, imported: true }, 1), 3);
 });
