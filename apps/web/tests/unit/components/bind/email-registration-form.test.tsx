@@ -3,7 +3,7 @@
  * 顧客的 email 登記頁（change add-email-identity-merge，spec email-identity-merge）。
  */
 import assert from 'node:assert/strict';
-import { beforeEach, test, vi } from 'vitest';
+import { beforeEach, describe, test, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
@@ -93,4 +93,62 @@ test('兩邊的手機不同：顯示需要客服確認', async () => {
   api.post.mockResolvedValue({ data: { data: { status: 'identity_conflict' } } });
   await submit('amy@example.com');
   await screen.findByText(/需要客服確認/);
+});
+
+describe('驗證碼（design D15）', () => {
+  async function toCodeStep(email = 'amy@example.com') {
+    open();
+    api.post.mockResolvedValueOnce({ data: { data: { status: 'code_sent' } } });
+    await submit(email);
+    return screen.findByLabelText('驗證碼');
+  }
+
+  test('送出 email 後要求輸入驗證碼，並說明寄到哪個信箱', async () => {
+    await toCodeStep();
+    assert.ok(screen.getByText(/已寄出驗證碼到 amy@example.com/));
+    assert.ok(screen.getByRole('button', { name: '重新寄送' }));
+  });
+
+  test('驗證碼正確：顯示登記完成', async () => {
+    const input = await toCodeStep();
+    api.post.mockResolvedValueOnce({ data: { data: { status: 'registered' } } });
+    fireEvent.change(input, { target: { value: ' 123456 ' } });
+    fireEvent.click(screen.getByRole('button', { name: '驗證' }));
+    await screen.findByText(/已登記您的 email/);
+    assert.deepEqual(api.post.mock.calls[1], [`/public/email-registration/${TOKEN}/verify`, { code: '123456' }]);
+  });
+
+  test('驗證碼錯誤：顯示剩餘次數，可再輸入', async () => {
+    const input = await toCodeStep();
+    api.post.mockRejectedValueOnce(httpError(400, 'INVALID_VERIFICATION_CODE', '驗證碼不正確，還可以再試 4 次'));
+    fireEvent.change(input, { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: '驗證' }));
+    await screen.findByText('驗證碼不正確，還可以再試 4 次');
+    assert.ok(screen.getByLabelText('驗證碼'));
+  });
+
+  test('驗證碼過期或錯太多次：回到填 email，並說明原因', async () => {
+    const input = await toCodeStep();
+    api.post.mockRejectedValueOnce(httpError(429, 'VERIFICATION_CODE_LOCKED', '驗證碼錯誤次數過多，請重新送出 email 取得新的驗證碼'));
+    fireEvent.change(input, { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: '驗證' }));
+    await screen.findByText('驗證碼錯誤次數過多，請重新送出 email 取得新的驗證碼');
+    assert.equal((screen.getByLabelText('Email') as HTMLInputElement).value, 'amy@example.com');
+  });
+
+  test('重新寄送：再送出同一個 email', async () => {
+    await toCodeStep();
+    api.post.mockResolvedValueOnce({ data: { data: { status: 'code_sent' } } });
+    fireEvent.click(screen.getByRole('button', { name: '重新寄送' }));
+    await screen.findByText('已重新寄出驗證碼');
+    assert.deepEqual(api.post.mock.calls[1], [`/public/email-registration/${TOKEN}`, { email: 'amy@example.com' }]);
+  });
+
+  test('寄信失敗：留在填 email，顯示原因', async () => {
+    open();
+    api.post.mockRejectedValueOnce(httpError(502, 'VERIFICATION_EMAIL_FAILED', '驗證信寄送失敗，請確認 email 是否正確後再試一次'));
+    await submit('amy@example.com');
+    await screen.findByText('驗證信寄送失敗，請確認 email 是否正確後再試一次');
+    assert.ok(screen.queryByLabelText('驗證碼') === null);
+  });
 });

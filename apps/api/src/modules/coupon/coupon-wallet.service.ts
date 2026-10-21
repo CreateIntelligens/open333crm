@@ -13,7 +13,7 @@ import { signFanToken } from '../portal/portal-auth.service.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import { resolveLiveContactId } from '../identity-binding/binding-common.js';
 import { getIdentityBindingSettings } from '../identity-binding/identity-binding.service.js';
-import { issueRegistrationToken, type RegistrationKind } from '../identity-binding/identifier-registration.js';
+import { reuseOrIssueRegistrationToken, type RegistrationKind } from '../identity-binding/identifier-registration.js';
 import { PHONE_REGISTRATION } from '../identity-binding/phone-registration.service.js';
 import { EMAIL_REGISTRATION } from '../identity-binding/email-registration.service.js';
 import { getFanCoupon, listFanCoupons, type FanIdentity } from './coupon-fan.service.js';
@@ -39,10 +39,10 @@ export type WalletSessionResult =
   /** 這個渠道身分一小時內取得登記連結的次數已滿 */
   | { status: 'rate_limited' };
 
-/** 啟用的登記方式：手機優先（台灣顧客較常用），其次 email */
+/** 啟用的登記方式：email 優先（會驗證信箱擁有權，design D15），其次手機 */
 function registrationKindFor(settings: { phoneEnabled: boolean; emailEnabled: boolean }): RegistrationKind | null {
-  if (settings.phoneEnabled) return PHONE_REGISTRATION;
   if (settings.emailEnabled) return EMAIL_REGISTRATION;
+  if (settings.phoneEnabled) return PHONE_REGISTRATION;
   return null;
 }
 
@@ -87,7 +87,7 @@ export async function openWalletSession(
 
   const kind = state.settings ? registrationKindFor(state.settings) : null;
   if (!kind) return { status: 'unavailable' };
-  const issued = await issueRegistrationToken(kind, { store: deps.store, now: deps.now }, payload);
+  const issued = await reuseOrIssueRegistrationToken(kind, { store: deps.store, now: deps.now }, payload);
   if (issued.status === 'rate_limited') return { status: 'rate_limited' };
   const next = `/coupon/open/${token}`;
   return {

@@ -166,6 +166,37 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     assert.equal(new URL(s.registrationUrl, 'https://x').searchParams.get('next'), `/coupon/open/${token}`);
   });
 
+  it('兩種登記都啟用時優先用 email', async () => {
+    const p = await person('兩種都啟用', lineChannel, 'LINE');
+    const { token } = await issue(p);
+    await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
+    invalidateIdentityBindingSettings();
+    try {
+      const s = await openWalletSession(prisma, deps, token);
+      assert.equal(s.status, 'verification_required');
+      if (s.status !== 'verification_required') return;
+      assert.equal(s.kind, 'email');
+      assert.match(s.registrationUrl, /^\/bind\/email\/[A-Za-z0-9_-]+\?next=/);
+    } finally {
+      await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true } } });
+      invalidateIdentityBindingSettings();
+    }
+  });
+
+  it('未驗證顧客重複開啟票券連結', async () => {
+    const p = await person('重複開啟未驗證', lineChannel, 'LINE');
+    const { token } = await issue(p);
+    const urls = new Set<string>();
+    for (let i = 0; i < 10; i++) {
+      const s = await openWalletSession(prisma, deps, token);
+      assert.equal(s.status, 'verification_required', `第 ${i + 1} 次`);
+      if (s.status === 'verification_required') urls.add(s.registrationUrl);
+      clock.now += 60 * 1000;
+    }
+    clock.now -= 10 * 60 * 1000;
+    assert.equal(urls.size, 1, '30 分鐘內都用同一個登記連結');
+  });
+
   it('客服手動填寫的手機不算歸戶', async () => {
     const p = await person('客服填手機', lineChannel, 'LINE', { phone: '0912000111' });
     const { token } = await issue(p);

@@ -3,8 +3,9 @@
  *
  * 顧客在對話取得一次性的登記連結，在登記頁填入識別值。同租戶有另一位未封存聯絡人使用相同的值時，
  * 不經人工確認直接合併（最早使用的那位為 survivor）；沒有就只把值寫到這位聯絡人。
- * 不驗證擁有權（email：2026-10-07 決定；手機：2026-10-14 決定），以雙邊通知、7 天自助解除與
- * 同渠道衝突檢查降低誤併的影響。兩種登記的差異由 RegistrationKind 描述。
+ * email 在送出時先寄驗證碼，驗證通過才進到這裡（ownership-code.ts，add-coupon-system design D15）；
+ * 手機不驗證擁有權（2026-10-14 決定）。兩者都以雙邊通知、7 天自助解除與同渠道衝突檢查降低誤併的影響。
+ * 兩種登記的差異由 RegistrationKind 描述。
  */
 import { randomBytes } from 'node:crypto';
 import { logger } from '@open333crm/core';
@@ -126,6 +127,32 @@ export async function issueRegistrationToken(
   };
   await deps.store.set(tokenKey(kind, token), JSON.stringify(payload), 'PX', REGISTRATION_TTL_MS, 'NX');
   return { status: 'ok', token, issued };
+}
+
+/** 重用登記權杖時至少要剩下的有效期：顧客要有時間填寫與收驗證信 */
+const REUSE_MIN_REMAINING_MS = 10 * 60 * 1000;
+const reuseKey = (kind: RegistrationKind, channelIdentityId: string) => `${kind.redisPrefix}:reuse:${channelIdentityId}`;
+
+/**
+ * 取得登記權杖：同一個渠道身分還有夠長效期的權杖就重用，否則產生新的。
+ * 顧客重新整理票券頁不會每次都產生新權杖、很快碰到每小時上限。
+ */
+export async function reuseOrIssueRegistrationToken(
+  kind: RegistrationKind,
+  deps: RegistrationDeps,
+  actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
+): Promise<{ status: 'ok'; token: string } | { status: 'rate_limited' }> {
+  const key = reuseKey(kind, actor.channelIdentityId);
+  const previous = await deps.store.get(key);
+  if (previous && (await deps.store.pttl(tokenKey(kind, previous))) > REUSE_MIN_REMAINING_MS) {
+    const payload = await readRegistration(kind, deps.store, previous);
+    if (payload?.tenantId === actor.tenantId) return { status: 'ok', token: previous };
+  }
+  const issued = await issueRegistrationToken(kind, deps, actor);
+  if (issued.status === 'rate_limited') return issued;
+  await deps.store.getdel(key);
+  await deps.store.set(key, issued.token, 'PX', REGISTRATION_TTL_MS - REUSE_MIN_REMAINING_MS, 'NX');
+  return { status: 'ok', token: issued.token };
 }
 
 /**

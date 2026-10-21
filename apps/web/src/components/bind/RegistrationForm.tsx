@@ -18,6 +18,8 @@ type Phase =
   | { kind: 'loading' }
   | { kind: 'invalid'; message: string }
   | { kind: 'form'; info: RegistrationInfo }
+  /** 已寄出驗證碼，等顧客輸入（email 登記，design D15） */
+  | { kind: 'code'; info: RegistrationInfo; value: string }
   | { kind: 'done'; status: string };
 
 /** 與後端相同的格式（32 bytes base64url）；不符就不送請求，避免被組成其他 API 路徑 */
@@ -25,6 +27,12 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const INVALID_LINK = '連結無法使用，請回到對話重新取得';
 /** 登記成功後可以回到原本頁面的結果（衝突、錯誤不導回） */
 const RETURNABLE = new Set(['registered', 'merged']);
+/** 這些錯誤代表驗證碼已不能用，要回到填寫步驟重新送出 */
+const RESTART_CODES = new Set(['VERIFICATION_CODE_EXPIRED', 'VERIFICATION_CODE_LOCKED']);
+
+function errorCode(err: unknown): string | undefined {
+  return (err as { response?: { data?: { error?: { code?: string } } } }).response?.data?.error?.code;
+}
 /**
  * 登記成功後自動回到優惠券的等待時間，讓顧客先看到結果。
  * 只用於 registered；merged 有「7 天內可解除整合」的重要說明，不自動離開，讓顧客讀完再按按鈕。
@@ -71,6 +79,8 @@ export function RegistrationForm({ kind, token }: { kind: RegistrationFormKind; 
   const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
   // 從票券連結過來時，登記完成後回到那張券（next 只接受 /coupon/open/ 的相對路徑）
   const [returnTo, setReturnTo] = useState<string | null>(null);
 
@@ -108,17 +118,72 @@ export function RegistrationForm({ kind, token }: { kind: RegistrationFormKind; 
     };
   }, [token, kind.apiPath]);
 
+  /** 連結本身失效時改顯示無法登記；其他錯誤留在原步驟顯示原因 */
+  const handleError = (err: unknown, fallback: string) => {
+    const status = (err as { response?: { status?: number } }).response?.status;
+    if (status === 410 && !RESTART_CODES.has(errorCode(err) ?? '')) {
+      setPhase({ kind: 'invalid', message: getApiErrorMessage(err, '連結已失效，請回到對話重新取得') });
+    } else {
+      setError(getApiErrorMessage(err, fallback));
+    }
+  };
+
+  const submitValue = async (info: RegistrationInfo, raw: string, resend: boolean) => {
+    const res = await api.post(`/public/${kind.apiPath}/${encodeURIComponent(token)}`, { [kind.field]: raw });
+    const status = (res.data.data as { status: string }).status;
+    if (status === 'code_sent') {
+      setCode('');
+      setNotice(resend ? '已重新寄出驗證碼' : null);
+      setPhase({ kind: 'code', info, value: raw });
+    } else {
+      setPhase({ kind: 'done', status });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (phase.kind !== 'form') return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.post(`/public/${kind.apiPath}/${encodeURIComponent(token)}`, { [kind.field]: value.trim() });
+      await submitValue(phase.info, value.trim(), false);
+    } catch (err) {
+      handleError(err, '送出失敗，請稍後再試');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (phase.kind !== 'code') return;
+    setSubmitting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api.post(`/public/${kind.apiPath}/${encodeURIComponent(token)}/verify`, { code: code.trim() });
       setPhase({ kind: 'done', status: (res.data.data as { status: string }).status });
     } catch (err) {
-      const status = (err as { response?: { status?: number } }).response?.status;
-      if (status === 410) setPhase({ kind: 'invalid', message: getApiErrorMessage(err, '連結已失效，請回到對話重新取得') });
-      else setError(getApiErrorMessage(err, '送出失敗，請稍後再試'));
+      if (RESTART_CODES.has(errorCode(err) ?? '')) {
+        // 驗證碼不能再用：回到填寫步驟，保留剛才的值，顧客按送出就會收到新的驗證碼
+        setValue(phase.value);
+        setPhase({ kind: 'form', info: phase.info });
+      }
+      handleError(err, '驗證失敗，請稍後再試');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (phase.kind !== 'code') return;
+    setSubmitting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await submitValue(phase.info, phase.value, true);
+    } catch (err) {
+      handleError(err, '寄送失敗，請稍後再試');
     } finally {
       setSubmitting(false);
     }
@@ -164,6 +229,58 @@ export function RegistrationForm({ kind, token }: { kind: RegistrationFormKind; 
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? '送出中...' : '送出'}
             </Button>
+          </form>
+        )}
+
+        {phase.kind === 'code' && (
+          <form onSubmit={handleVerify} noValidate className="space-y-5">
+            <div className="space-y-1">
+              <h1 className="text-lg font-semibold">輸入驗證碼</h1>
+              <p className="text-sm text-muted-foreground">
+                已寄出驗證碼到 {phase.value}，請在 10 分鐘內輸入信中的 6 位數驗證碼。沒收到的話，請檢查垃圾郵件匣。
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="registration-code" className="text-sm font-medium">
+                驗證碼
+              </label>
+              <Input
+                id="registration-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+            </div>
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? '驗證中...' : '驗證'}
+            </Button>
+            <div className="flex justify-between text-sm">
+              <button
+                type="button"
+                className="text-muted-foreground underline-offset-4 hover:underline"
+                onClick={() => {
+                  setValue(phase.value);
+                  setError(null);
+                  setNotice(null);
+                  setPhase({ kind: 'form', info: phase.info });
+                }}
+              >
+                修改{kind.noun.trim()}
+              </button>
+              <button
+                type="button"
+                className="text-primary underline-offset-4 hover:underline disabled:opacity-50"
+                onClick={handleResend}
+                disabled={submitting}
+              >
+                重新寄送
+              </button>
+            </div>
           </form>
         )}
 
