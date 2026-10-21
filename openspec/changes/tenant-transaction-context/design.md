@@ -54,7 +54,7 @@ export function inTenant<T>(deps: TenantCtxDeps, tenantId: string, fn: (ctx: Ten
 - `notify`、`notifyAgent`、`publish`、`enqueue` 只把要做的事放進一個陣列。`withTenant()` resolve（也就是 commit 成功）之後，才依序執行。`withTenant()` reject 時陣列直接丟棄，錯誤原樣往外丟。
 - 每一項依序執行並 `await`，各自包 `try/catch`。失敗時用 `@open333crm/core` 的 `logger` 記錄，再繼續下一項。理由：資料已經 commit，回應不該因為推播或送 job 失敗而變成錯誤。`queue.add()` 回傳 promise，不 `await` 的話，失敗會變成未處理的 rejection。`await` 讓回應多等一次 Redis 寫入，通常在毫秒內完成。
 - `publish` 自己填 `tenantId` 與 `timestamp`，service 只給事件名稱與 payload。這樣事件的租戶一定等於交易綁定的租戶。
-- **事件的送出方式從 `deps.events` 注入，`inTenant()` 不 import `eventBus` 單例。** `io` 已經從 `deps` 注入，事件也應該一樣。階段 1b 改走 outbox 時，只要換掉注入的實作，不必改 `inTenant()`。單元測試也不必 `vi.mock` 整個 `event-bus.js`。`tenantHandler()` 傳入 `eventBus`。
+- **事件的送出方式從 `deps.events` 注入，`inTenant()` 不使用 `eventBus` 單例。** `tenant-ctx.ts` 仍 import `eventBus`，只給 `tenantHandler()` 當作注入的實作。 `io` 已經從 `deps` 注入，事件也應該一樣。階段 1b 改走 outbox 時，只要換掉注入的實作，不必改 `inTenant()`。單元測試也不必 `vi.mock` 整個 `event-bus.js`。`tenantHandler()` 傳入 `eventBus`。
 - `deps.io` 是選填，因為部分背景工作沒有 `io`。沒有 `io` 時呼叫 `notify` 或 `notifyAgent`，會在交易內立刻丟錯，讓交易 rollback。這是寫錯程式，要在測試階段就發現，不要等到 commit 之後才默默丟掉推播。
 - `enqueue` 收呼叫端的 BullMQ `Queue`，不從 `deps` 注入。各模組已經各自持有自己的佇列（例如 `data-export.service.ts` 的 `exportQueue()`），由 `deps` 列舉所有佇列反而讓 `inTenant()` 依賴每個模組。保證是最多一次，與推播相同。階段 1b 改由 outbox 送出，保證變成至少一次。
 
@@ -175,6 +175,7 @@ export function claimOne(update: () => Promise<{ count: number }>): Promise<bool
 - [ratchet 以正規式比對，擋不住刻意繞過的寫法] → 它防的是照舊習慣寫出的一般寫法，例如 `withTenant(`、`inTenant<T>(`。泛型參數內含括號這類寫法要靠 code review 發現。不採用 TypeScript AST：要重寫計數方式並重算基準，換來的只是擋住罕見寫法（PR #341 審查時決定）。
 - [`tenantHandler()` 的泛型與 Fastify 的型別推導不合] → 階段 2 試做時若推導不出 `request.params` 的型別，回頭調整 `tenantHandler()` 的型別，不在 route 裡加 `as`。
 - [commit 之後送進佇列的 job 可能遺失] → 保證是最多一次。例如 `data-export` 的 job 遺失時，請求會停在 pending。階段 1b 改由 outbox 送出，屆時以 MODIFIED 修改「事件與佇列 job 最多送出一次」。
+- [Redis 無法連線時，commit 之後的 `await queue.add()` 會卡住，HTTP 回應跟著卡住] → 資料已經 commit，前端等不到回應。這不是新的寫法：`data-export.service.ts` 現在就在請求內 `await` 同一個 `add()`，Queue 也沒有設定逾時。要處理就要改所有 Queue 的連線設定，不在本 change 處理（review-loop 第 1 輪，2026-10-21）。
 - [`createManyAndReturn` 的行為依賴 Prisma 版本] → feature 測試以真實的 PostgreSQL 驗證三個 Scenario，包括兩個交易同時寫入。升級 Prisma 時，這些測試會發現行為改變。
 
 ## Migration Plan
