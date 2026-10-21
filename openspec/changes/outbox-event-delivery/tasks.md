@@ -45,9 +45,9 @@
 
 ## 7. 對外 webhook
 
-- [ ] 7.1 寫失敗的單元測試 `apps/api/tests/unit/modules/webhook-subscriptions/webhook-dispatcher.test.ts`，涵蓋 webhook-subscription-egress 的 Scenario「清單內的事件」「不在清單內的名稱」「同一個事件送出兩次」「一個網址失敗」「測試網址回傳 500」
-- [ ] 7.2 實作 design 決策 11：`event-webhook` 拆成每個訂閱一個 `webhook-delivery` job、payload 的 `id`、`X-Webhook-Event-Id`、送出紀錄以 `createOrFindExisting()` 建立。`POST /webhook-subscriptions/:id/test` 改成在請求內只送一次、用新產生的事件 id。刪掉 `dispatchWebhook()` 的行程內重試迴圈，`webhook-delivery` job 與測試路由共用「送出一次 HTTP」的函式。讓 7.1 通過
-- [ ] 7.3 寫 feature 測試涵蓋 Scenario「重試期間 API 重新啟動」：第一次失敗後關閉 `Worker`、再建立新的 `Worker`，第二次照常送出
+- [x] 7.1 寫失敗的單元測試 `apps/api/tests/unit/modules/webhook-subscriptions/webhook-dispatcher.test.ts`，涵蓋 webhook-subscription-egress 的 Scenario「清單內的事件」「不在清單內的名稱」「同一個事件送出兩次」「一個網址失敗」「測試網址回傳 500」
+- [x] 7.2 實作 design 決策 11：`event-webhook` 拆成每個訂閱一個 `webhook-delivery` job、payload 的 `id`、`X-Webhook-Event-Id`、送出紀錄以 `createOrFindExisting()` 建立。`POST /webhook-subscriptions/:id/test` 改成在請求內只送一次、用新產生的事件 id。刪掉 `dispatchWebhook()` 的行程內重試迴圈，`webhook-delivery` job 與測試路由共用「送出一次 HTTP」的函式。讓 7.1 通過
+- [x] 7.3 寫 feature 測試涵蓋 Scenario「重試期間 API 重新啟動」：第一次失敗後關閉 `Worker`、再建立新的 `Worker`，第二次照常送出
 
 ## 8. 自動化訂閱者（API）
 

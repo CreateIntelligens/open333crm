@@ -17,6 +17,7 @@ import {
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
   USAGE_ALERT_EMAIL_QUEUE,
+  WEBHOOK_DELIVERY_QUEUE,
   closeOutboxQueues,
   validatePermissionRegistry,
   validateRouteCodes,
@@ -62,7 +63,7 @@ import storageRoutes from './modules/storage/storage.routes.js';
 import lineImagemapRoutes from './modules/storage/line-imagemap.routes.js';
 import { ensureBucket } from './modules/storage/storage.service.js';
 import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-subscription.routes.js';
-import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
+import { processWebhookDelivery, setupWebhookDispatcher, webhookRetryDelay } from './modules/webhook-subscriptions/webhook-dispatcher.js';
 import { startA2ABridgeWorker } from './modules/settings/a2a-bridge.worker.js';
 import portalRoutes from './modules/portal/portal.routes.js';
 import memberBindingRoutes from './modules/member-binding/member-binding.routes.js';
@@ -239,8 +240,11 @@ export async function bootstrap() {
       [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io)),
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
+      [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
     },
-    bullWorkerFactory(config.REDIS_URL),
+    bullWorkerFactory(config.REDIS_URL, {
+      [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
+    }),
   );
   app.addHook('onClose', () => subscriberWorkers.close());
   setupCanvasWorker(app.prismaAdmin, app.io);

@@ -5,7 +5,7 @@
  * 自動化要用 fastify.io 推播，也要呼叫 api 的 service。job 失敗時 BullMQ 只重試那個佇列的 job，
  * 其他訂閱者不會再處理同一個事件。
  */
-import { Worker, type Job } from 'bullmq';
+import { Worker, type Job, type WorkerOptions } from 'bullmq';
 import { logger, type EventJobData } from '@open333crm/core';
 import { appEventFromJob, type AppEvent, type AppEventName } from './event-bus.js';
 
@@ -38,9 +38,10 @@ export function subscriberProcessor(handler: EventHandler): JobProcessor {
 
 export type CreateWorker = (queue: string, processor: JobProcessor) => { close(): Promise<void> };
 
-export function bullWorkerFactory(redisUrl: string): CreateWorker {
+/** options：個別佇列的 Worker 設定，例如 webhook-delivery 的自訂重試間隔 */
+export function bullWorkerFactory(redisUrl: string, options: Record<string, Partial<WorkerOptions>> = {}): CreateWorker {
   return (queue, processor) => {
-    const worker = new Worker(queue, processor, { connection: { url: redisUrl } });
+    const worker = new Worker(queue, processor, { ...options[queue], connection: { url: redisUrl } });
     worker.on('failed', (job, err) => {
       logger.error(`[${queue}] job ${job?.id} 失敗（第 ${job?.attemptsMade ?? '?'} 次）`, err);
     });
