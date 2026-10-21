@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { executeWorkerAutomationActions } from '#src/lib/automation-actions';
+
+// outbox 的快路徑送進佇列：這裡只看 outbox，佇列換成不做事的假實作
+vi.mock('bullmq', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Queue: class {
+    async add() {}
+  },
+}));
 
 /**
  * add_tag worker 動作測試（line-material-basics-and-click-tag 第 2 塊）。
@@ -12,10 +20,22 @@ interface FakeState {
   tags: Array<{ id: string; tenantId: string; name: string }>;
   contactTags: Array<{ contactId: string; tagId: string; addedBy: string }>;
   createdTags: number;
+  outbox?: Array<{ tenantId: string; name: string; payload: any }>;
 }
 
 function makePrisma(state: FakeState) {
-  return {
+  state.outbox ??= [];
+  const prisma: Record<string, unknown> = {
+    outbox: {
+      async create({ data }: { data: { tenantId: string; name: string; payload: any } }) {
+        const row = { id: `outbox-${state.outbox!.length + 1}`, ...data, kind: 'event', queueName: null, jobOptions: null, createdAt: new Date() };
+        state.outbox!.push(row);
+        return row;
+      },
+      async updateMany() {
+        return { count: 1 };
+      },
+    },
     tag: {
       async findFirst({ where }: { where: { id?: string; name?: string; tenantId: string } }) {
         return (
@@ -46,6 +66,8 @@ function makePrisma(state: FakeState) {
       },
     },
   };
+  prisma.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma);
+  return prisma;
 }
 
 // 記錄 worker 發出的 domain event（contact.tagged 橋接）
@@ -77,12 +99,13 @@ async function testAddTagByTagIdSuccess() {
   assert.equal(state.contactTags.length, 1);
   assert.equal(state.contactTags[0].tagId, 'tag-vip');
   assert.equal(state.contactTags[0].addedBy, 'automation');
-  // 貼標後橋接發 contact.tagged（source automation）到 domain:event
-  const evt = published.find((p) => p.channel === 'domain:event');
-  assert.ok(evt, '應發 domain:event');
-  assert.equal(evt!.msg.name, 'contact.tagged');
-  assert.equal(evt!.msg.payload.source, 'automation');
-  assert.equal(evt!.msg.payload.tagId, 'tag-vip');
+  // Automation add_tag emits event：貼標與 contact.tagged 在同一個交易寫進 outbox（change outbox-event-delivery）
+  assert.equal(published.some((p) => p.channel === 'domain:event'), false);
+  const evts = state.outbox!.filter((o) => o.name === 'contact.tagged');
+  assert.equal(evts.length, 1, '應把 contact.tagged 寫進 outbox');
+  assert.equal(evts[0]!.tenantId, 'tenant-1');
+  assert.equal(evts[0]!.payload.source, 'automation');
+  assert.equal(evts[0]!.payload.tagId, 'tag-vip');
 }
 
 async function testAddTagIdempotent() {

@@ -72,10 +72,13 @@
 - [x] 9.3 寫失敗的單元測試 `apps/workers/tests/unit/lib/automation-actions.test.ts`，涵蓋 Scenario「同一個事件評估兩次」「升級工單不重複升級」「不同事件各自執行」，另外斷言 context 沒有 `eventId` 時不寫認領紀錄（SLA 路徑，design 決策 9）；`sla-outcome-once.test.ts` 照常通過
 - [x] 9.4 每個動作執行前認領 `automation_action`，`notify` 的 job id 照 design 決策 9。讓 9.3 通過
   - 突變（2026-10-21）：沒有事件 id 也認領，「沒有事件 id（SLA 路徑）」失敗；認領鍵改用規則 id 取代事件 id，「不同事件各自執行」失敗。還原後通過
-- [ ] 9.5 寫失敗的測試，涵蓋 event-delivery 的 Scenario「建立工單與事件一起寫入」「建立工單失敗」，以及 automation-engine「Unified Contact Tagging Emits contact.tagged」的 Scenario「Automation add_tag emits event」
-- [ ] 9.6 `create_case`、`add_tag` 改寫 outbox 並在 commit 之後呼叫快路徑；移除 `publishDomainEvent()` 與 `socket.plugin.ts` 的 `domain:event` 訂閱。讓 9.5 通過
-- [ ] 9.7 寫 feature 測試涵蓋 Scenario「API 行程沒有在執行」：workers 寫入 outbox 時沒有訂閱者 `Worker`，之後建立 `Worker`，事件照常處理
-- [ ] 9.8 `automation`、`notification` 佇列改成 design 決策 9、10 的 `attempts` 與保留期限。`notification` 佇列的兩個發送端（api 的 `notification.worker.ts`、workers 的 `lib/notification-queue.ts`）都要改
+- [x] 9.5 寫失敗的測試，涵蓋 event-delivery 的 Scenario「建立工單與事件一起寫入」「建立工單失敗」，以及 automation-engine「Unified Contact Tagging Emits contact.tagged」的 Scenario「Automation add_tag emits event」
+  - 改在既有的 `automation-create-case.test.ts`、`automation-add-tag.test.ts`：原本斷言 `domain:event`，改成斷言 outbox。「建立工單失敗」沿用既有的並行測試，加上 outbox 是空的斷言
+- [x] 9.6 `create_case`、`add_tag` 改寫 outbox 並在 commit 之後呼叫快路徑；移除 `publishDomainEvent()` 與 `socket.plugin.ts` 的 `domain:event` 訂閱。讓 9.5 通過
+- [x] 9.7 寫 feature 測試涵蓋 Scenario「API 行程沒有在執行」：workers 寫入 outbox 時沒有訂閱者 `Worker`，之後建立 `Worker`，事件照常處理
+  - 寫在 `apps/api/tests/feature/lib/outbox-workers.test.ts`（只有 api 有 feature 測試）。另加「快路徑也失敗」：API 啟動後由 relay 補送
+- [x] 9.8 `automation`、`notification` 佇列改成 design 決策 9、10 的 `attempts` 與保留期限。`notification` 佇列的兩個發送端（api 的 `notification.worker.ts`、workers 的 `lib/notification-queue.ts`）都要改
+  - `automation` 佇列在 8.11 改（發送端在 api）；`notification` 佇列的 api 端在 6.2、workers 端在 9.4 改
 
 ## 10. data-export 與 data-erasure
 

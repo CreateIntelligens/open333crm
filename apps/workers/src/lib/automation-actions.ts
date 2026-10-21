@@ -2,8 +2,8 @@ import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
-import { claimSideEffect, logger } from '@open333crm/core';
-import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
+import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox, type OutboxRow } from '@open333crm/core';
+import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
 import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
@@ -182,8 +182,9 @@ async function createCaseFromAutomation(
   // 後到的會因條件不成立而回滾，不會開出兩張工單，也不會留下沒有對話的孤兒工單
   const RACED = 'create_case_raced';
   let created: { id: string };
+  let outboxRow: OutboxRow;
   try {
-    created = await prisma.$transaction(async (tx) => {
+    ({ created, outboxRow } = await prisma.$transaction(async (tx) => {
       const c = await tx.case.create({
         data: {
           tenantId,
@@ -211,8 +212,23 @@ async function createCaseFromAutomation(
           payload: { title, priority, category, trigger: context.trigger ?? null },
         },
       });
-      return c;
-    });
+      // case.created 與工單一起 commit（event-delivery「workers 的事件與資料一起 commit」）
+      const row = await writeOutbox(tx, {
+        tenantId,
+        kind: 'event',
+        name: 'case.created',
+        payload: {
+          caseId: c.id,
+          contactId: conversation.contactId,
+          channelId: conversation.channelId,
+          title,
+          priority,
+          status: 'OPEN',
+          conversationId: conversation.id,
+        },
+      });
+      return { created: c, outboxRow: row };
+    }));
   } catch (err) {
     if (err instanceof Error && err.message === RACED) {
       logger.info('[automation] create_case skipped: conversation was linked to a case concurrently');
@@ -228,20 +244,20 @@ async function createCaseFromAutomation(
     assigneeId: null,
     title,
   });
-  await publishDomainEvent(redisPublisher, 'case.created', tenantId, {
-    caseId: created.id,
-    contactId: conversation.contactId,
-    channelId: conversation.channelId,
-    title,
-    priority,
-    status: 'OPEN',
-    conversationId: conversation.id,
-  }).catch((err) => logger.warn('[automation] publish case.created bridge failed:', err));
+  await dispatchAfterCommit(prisma, outboxRow);
   return created.id;
 }
 
 const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網頁聊天' };
 const channelLabel = (channelType: string) => CHANNEL_LABELS[channelType] ?? channelType;
+
+/**
+ * commit 之後的快路徑：送進訂閱者佇列。失敗只記 log，資料列留在 outbox，由 API 的 outbox-relay 補送
+ * （API 沒有在執行時也一樣，event-delivery「API 行程沒有在執行」）。
+ */
+async function dispatchAfterCommit(prisma: PrismaClient, row: OutboxRow) {
+  await dispatchOutboxRows(prisma, [row]).catch((err) => logger.warn(`[automation] outbox dispatch failed (${row.name})`, err));
+}
 
 /** 以 automation_action + 事件 id + <規則 id>#<動作序號> 認領 */
 async function claimAction(prisma: PrismaClient, context: WorkerActionContext, actionKey: string): Promise<boolean> {
@@ -323,20 +339,25 @@ export async function executeWorkerAutomationActions(
           logger.info('[automation] Worker action "add_tag" skipped: tag not found in tenant');
           continue;
         }
-        // 冪等貼標（upsert，對齊 tagging.service 語意；worker 跨 process 無法 import api service）
-        await prisma.contactTag.upsert({
-          where: { contactId_tagId: { contactId: context.contactId, tagId: tag.id } },
-          update: {},
-          create: { contactId: context.contactId, tagId: tag.id, addedBy: 'automation' },
+        // 冪等貼標（upsert，對齊 tagging.service 語意；worker 跨 process 無法 import api service）。
+        // contact.tagged 與貼標一起 commit（source='automation'，供下游規則；迴圈防護在 api 的自動化訂閱者）
+        const contactId = context.contactId;
+        const tagged = tag;
+        const outboxRow = await prisma.$transaction(async (tx) => {
+          await tx.contactTag.upsert({
+            where: { contactId_tagId: { contactId, tagId: tagged.id } },
+            update: {},
+            create: { contactId, tagId: tagged.id, addedBy: 'automation' },
+          });
+          return writeOutbox(tx, {
+            tenantId: context.tenantId,
+            kind: 'event',
+            name: 'contact.tagged',
+            payload: { contactId, tagId: tagged.id, tagName: tagged.name, source: 'automation' },
+          });
         });
-        logger.info(`[automation] add_tag: tagged contact ${context.contactId} with ${tag.id}`);
-        // 橋接 contact.tagged 回 api eventBus（source='automation'，供下游規則；迴圈防護在 api 端）
-        await publishDomainEvent(redisPublisher, 'contact.tagged', context.tenantId, {
-          contactId: context.contactId,
-          tagId: tag.id,
-          tagName: tag.name,
-          source: 'automation',
-        }).catch((err) => logger.warn('[automation] publish contact.tagged bridge failed:', err));
+        logger.info(`[automation] add_tag: tagged contact ${contactId} with ${tagged.id}`);
+        await dispatchAfterCommit(prisma, outboxRow);
         continue;
       }
 
