@@ -19,6 +19,8 @@ function mockTx(tag: { id: string; name: string } | null) {
       },
     },
     contactTag: {
+      // 尚未貼過這個標籤
+      findUnique: async () => null,
       upsert: async (args: Record<string, any>) => {
         calls.upsert = args;
         return {};
