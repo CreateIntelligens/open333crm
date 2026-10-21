@@ -11,12 +11,14 @@ import { CaseCategoryPieChart } from '@/components/analytics/CaseCategoryPieChar
 import { CaseTrendChart } from '@/components/analytics/CaseTrendChart';
 import { AgentPerformanceTable } from '@/components/analytics/AgentPerformanceTable';
 import { ChannelDistributionChart } from '@/components/analytics/ChannelDistributionChart';
+import { CouponAnalyticsPanel } from '@/components/analytics/CouponAnalyticsPanel';
 import {
   useOverviewStats,
   useMessageTrend,
   useCaseAnalytics,
   useAgentPerformance,
   useChannelAnalytics,
+  useCouponAnalytics,
 } from '@/hooks/useAnalytics';
 import api from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -58,6 +60,8 @@ export default function AnalyticsPage() {
   const caseData = useCaseAnalytics(from, to);
   const agents = useAgentPerformance(from, to);
   const channels = useChannelAnalytics(from, to);
+  // 切到該分頁才載入
+  const coupons = useCouponAnalytics(from, to, tab === 'coupons');
 
   // CSV export
   async function handleExport() {
@@ -119,6 +123,7 @@ export default function AnalyticsPage() {
             <TabsTrigger value="cases">案件報表</TabsTrigger>
             <TabsTrigger value="agents">客服績效</TabsTrigger>
             <TabsTrigger value="channels">渠道分析</TabsTrigger>
+            <TabsTrigger value="coupons">優惠券成效</TabsTrigger>
           </TabsList>
 
           {/* Tab 1: Overview */}
@@ -228,6 +233,16 @@ export default function AnalyticsPage() {
             <ChannelDistributionChart
               data={channels.data}
               isLoading={channels.isLoading}
+            />
+          </TabsContent>
+
+          {/* Tab 5: Coupons */}
+          <TabsContent value="coupons">
+            <CouponAnalyticsPanel
+              data={coupons.data}
+              isLoading={coupons.isLoading}
+              error={coupons.error}
+              onRetry={() => void coupons.mutate()}
             />
           </TabsContent>
         </Tabs>

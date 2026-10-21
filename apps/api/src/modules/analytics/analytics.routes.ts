@@ -10,6 +10,7 @@ import {
   getMyPerformance,
   exportCsv,
 } from './analytics.service.js';
+import { getCouponAnalytics } from '../coupon/coupon-stats.service.js';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission, requireAnyPermission } from '../../guards/rbac.guard.js';
 
@@ -107,6 +108,13 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   fastify.get('/contacts', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
     const data = await getContactAnalytics(request.tenantPrisma, request.agent.tenantId, from, to);
+    return reply.send(success(data));
+  });
+
+  // GET /analytics/coupons — 優惠券成效（add-coupon-system 12.16）
+  fastify.get('/coupons', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
+    const { from, to } = dateRangeSchema.parse(request.query);
+    const data = await getCouponAnalytics(request.tenantPrisma, request.agent.tenantId, from, to);
     return reply.send(success(data));
   });
 

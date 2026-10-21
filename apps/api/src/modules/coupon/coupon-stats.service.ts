@@ -216,3 +216,61 @@ export async function getBulkRedeemCounts(
   );
   return result;
 }
+
+// ── 數據報表：優惠券成效（spec「數據報表呈現優惠券成效」） ──────────────────
+
+export interface CouponAnalytics {
+  /** 期間內發出的券（依發出時間），以及其中已領取、已核銷的張數 */
+  totals: { issued: number; claimed: number; redeemed: number; redeemRate: number | null };
+  /** 每日發出與核銷張數（台灣日期，design D17）；只列有資料的日期 */
+  trend: { date: string; issued: number; redeemed: number }[];
+  /** 期間內發出的券依核銷數排序，前 10 名 */
+  topCoupons: { couponId: string; name: string; issued: number; claimed: number; redeemed: number; redeemRate: number | null }[];
+}
+
+const rate = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
+
+export async function getCouponAnalytics(db: TenantDb, tenantId: string, from: Date, to: Date): Promise<CouponAnalytics> {
+  // 發送中的券（對話發券還在等渠道回應，design D16）不計入
+  const perCoupon = await db.$queryRaw<{ coupon_id: string; name: string; issued: bigint; claimed: bigint; redeemed: bigint }[]>`
+    SELECT i."couponId" AS coupon_id, c.name,
+      COUNT(*)::bigint AS issued,
+      COUNT(*) FILTER (WHERE i.status IN ('CLAIMED', 'OPENED', 'REDEEMED'))::bigint AS claimed,
+      COUNT(*) FILTER (WHERE i.status = 'REDEEMED')::bigint AS redeemed
+    FROM coupon_instances i
+    JOIN coupons c ON c.id = i."couponId"
+    WHERE i."tenantId" = ${tenantId}::uuid
+      AND i."issuedAt" >= ${from} AND i."issuedAt" <= ${to}
+      AND i."deliveryPendingAt" IS NULL
+    GROUP BY 1, 2
+  `;
+  const coupons = perCoupon.map((r) => {
+    const issued = Number(r.issued);
+    const claimed = Number(r.claimed);
+    const redeemed = Number(r.redeemed);
+    return { couponId: r.coupon_id, name: r.name, issued, claimed, redeemed, redeemRate: rate(redeemed, claimed) };
+  });
+  const sum = (key: 'issued' | 'claimed' | 'redeemed') => coupons.reduce((n, c) => n + c[key], 0);
+  const totals = { issued: sum('issued'), claimed: sum('claimed'), redeemed: sum('redeemed'), redeemRate: rate(sum('redeemed'), sum('claimed')) };
+
+  // 台灣日期分日：發出依 issuedAt、核銷依 redeemedAt，各自落在期間內才算
+  const trendRows = await db.$queryRaw<{ day: string; issued: bigint; redeemed: bigint }[]>`
+    SELECT day, SUM(issued)::bigint AS issued, SUM(redeemed)::bigint AS redeemed FROM (
+      SELECT to_char(("issuedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD') AS day, 1 AS issued, 0 AS redeemed
+      FROM coupon_instances
+      WHERE "tenantId" = ${tenantId}::uuid AND "issuedAt" >= ${from} AND "issuedAt" <= ${to} AND "deliveryPendingAt" IS NULL
+      UNION ALL
+      SELECT to_char(("redeemedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD'), 0, 1
+      FROM coupon_instances
+      WHERE "tenantId" = ${tenantId}::uuid AND status = 'REDEEMED' AND "redeemedAt" >= ${from} AND "redeemedAt" <= ${to}
+    ) t
+    GROUP BY day
+    ORDER BY day
+  `;
+  const trend = trendRows.map((r) => ({ date: r.day, issued: Number(r.issued), redeemed: Number(r.redeemed) }));
+
+  const topCoupons = [...coupons]
+    .sort((a, b) => b.redeemed - a.redeemed || b.issued - a.issued || a.name.localeCompare(b.name))
+    .slice(0, 10);
+  return { totals, trend, topCoupons };
+}
