@@ -25,7 +25,7 @@
 
 ### Requirement: 推播、事件與佇列 job 在 commit 之後才送出
 
-交易內登記的 Socket 推播、業務事件與 BullMQ job MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的項目 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。一項送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
+交易內登記的 Socket 推播、業務事件與 BullMQ job MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的項目 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。一項送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。系統 MUST NOT 等待 job 送進佇列完成才回傳交易內程式的結果，佇列沒有回應時，回傳也不受影響。
 
 #### Scenario: commit 之前不送出
 
@@ -47,14 +47,19 @@
 - **WHEN** 交易 commit 之後，登記的第一個 job 送進佇列時失敗
 - **THEN** 系統 MUST 記錄該錯誤並送出其餘項目，呼叫端 MUST 收到交易內程式的回傳值
 
+#### Scenario: 佇列沒有回應時不阻擋回傳
+
+- **WHEN** 交易 commit 之後，登記的 job 送進佇列時，佇列一直沒有回應
+- **THEN** 呼叫端 MUST 收到交易內程式的回傳值，MUST NOT 等待該 job
+
 ### Requirement: 推播的房間由系統決定
 
 交易內登記推播時，呼叫端 MUST 只指定推播名稱與內容；給單一客服人員的推播，再指定該客服人員的 ID。呼叫端 MUST NOT 指定房間名稱。系統 MUST 依推播的種類決定房間：
 
 - 全租戶推播：送到交易綁定租戶的房間 `tenant:<tenantId>`。
-- 給客服人員的推播：送到 `agent:<agentId>`。
+- 給客服人員的推播：送到帶交易綁定租戶 ID 的成員房間 `tenant:<tenantId>:agent:<agentId>`。
 
-所以推播不會送到別的租戶的 `tenant:` 房間。系統不檢查客服人員 ID 屬於哪個租戶，呼叫端 MUST 只用交易內查詢取得的客服人員 ID。
+兩種房間的租戶 ID 都由交易綁定的租戶組成，所以推播不會送到別的租戶的連線。
 
 #### Scenario: 全租戶推播
 
@@ -64,7 +69,12 @@
 #### Scenario: 給客服人員的推播
 
 - **WHEN** 綁定租戶 A 的交易內，登記給客服人員 X 的推播 `notification.new`，之後交易 commit
-- **THEN** 系統 MUST 把該推播送到 `agent:<X 的 ID>`，MUST NOT 送到其他房間
+- **THEN** 系統 MUST 把該推播送到 `tenant:<A 的 ID>:agent:<X 的 ID>`，MUST NOT 送到其他房間
+
+#### Scenario: 給客服人員的推播用了別的租戶的客服人員 ID
+
+- **WHEN** 綁定租戶 A 的交易內，登記給客服人員 Y 的推播，Y 屬於租戶 B，之後交易 commit
+- **THEN** 系統 MUST 把該推播送到 `tenant:<A 的 ID>:agent:<Y 的 ID>`；Y 的連線只加入 `tenant:<B 的 ID>:agent:<Y 的 ID>`，所以 MUST NOT 收到該推播
 
 ### Requirement: 事件與佇列 job 最多送出一次
 

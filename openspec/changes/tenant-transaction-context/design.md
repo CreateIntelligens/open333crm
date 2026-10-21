@@ -52,7 +52,8 @@ export function inTenant<T>(deps: TenantCtxDeps, tenantId: string, fn: (ctx: Ten
 
 - 在 `withTenant()` 外面加一層，不另寫一份 `set_config`。UUID 驗證與 `SET LOCAL` 的語意都沿用既有、已經有主規格的實作。
 - `notify`、`notifyAgent`、`publish`、`enqueue` 只把要做的事放進一個陣列。`withTenant()` resolve（也就是 commit 成功）之後，才依序執行。`withTenant()` reject 時陣列直接丟棄，錯誤原樣往外丟。
-- 每一項依序執行並 `await`，各自包 `try/catch`。失敗時用 `@open333crm/core` 的 `logger` 記錄，再繼續下一項。理由：資料已經 commit，回應不該因為推播或送 job 失敗而變成錯誤。`queue.add()` 回傳 promise，不 `await` 的話，失敗會變成未處理的 rejection。`await` 讓回應多等一次 Redis 寫入，通常在毫秒內完成。
+- 每一項依序執行，各自包 `try/catch`。失敗時用 `@open333crm/core` 的 `logger` 記錄，再繼續下一項。理由：資料已經 commit，回應不該因為推播或送 job 失敗而變成錯誤。
+- **job 的 `queue.add()` 不 `await`，改接 `.catch()` 記錄錯誤。** Redis 無法連線時，`add()` 可能一直不結束；`await` 的話，資料已經 commit，回應卻跟著卡住，前端可能重送請求（PR #341 審查機器人第三輪）。保證本來就是最多一次，不 `await` 不會讓保證變差。`add()` 仍依登記順序呼叫。階段 1b 的 outbox 快路徑也照這個做法：快路徑不能阻擋回應，送不進去的由 relay 補送。
 - `publish` 自己填 `tenantId` 與 `timestamp`，service 只給事件名稱與 payload。這樣事件的租戶一定等於交易綁定的租戶。
 - **事件的送出方式從 `deps.events` 注入，`inTenant()` 不使用 `eventBus` 單例。** `tenant-ctx.ts` 仍 import `eventBus`，只給 `tenantHandler()` 當作注入的實作。 `io` 已經從 `deps` 注入，事件也應該一樣。階段 1b 改走 outbox 時，只要換掉注入的實作，不必改 `inTenant()`。單元測試也不必 `vi.mock` 整個 `event-bus.js`。`tenantHandler()` 傳入 `eventBus`。
 - `deps.io` 是選填，因為部分背景工作沒有 `io`。沒有 `io` 時呼叫 `notify` 或 `notifyAgent`，會在交易內立刻丟錯，讓交易 rollback。這是寫錯程式，要在測試階段就發現，不要等到 commit 之後才默默丟掉推播。
@@ -137,13 +138,15 @@ export type TenantPushName = 'message.new' | 'conversation.updated' | 'conversat
 export type AgentPushName = 'notification.new';
 
 export function tenantPushRoom(tenantId: string): string; // tenant:<tenantId>
-export function agentPushRoom(agentId: string): string;   // agent:<agentId>
+export function agentPushRoom(tenantId: string, agentId: string): string; // tenant:<tenantId>:agent:<agentId>
 ```
 
 - service 只說「什麼東西變了」，不說推到哪個房間。`ctx.notify` 的房間一律由 `ctx.tenantId` 組成，所以從結構上不可能推到別的租戶的 `tenant:` 房間。原本 `ctx.emit(room, …)` 在執行時檢查 `tenant:` 前綴的做法，以及對應的 Scenario「推播到別的租戶房間」，一起移除。
 - 推播名稱用型別列舉。全租戶推播與給客服人員的推播是兩個型別，用錯方法是編譯錯誤。名單是 `apps/api` 現在推到 `tenant:`、`agent:` 房間的全部名稱（2026-10-21 以 grep 盤點）。其中 5 種沒有前端監聽，要不要刪除已在 #337 詢問，在答覆之前先保留，讓既有程式可以照原樣搬遷。
 - 不提供推到 `conversation:` 房間的方法。這個房間沒有任何連線加入（#337 規劃第 8 節），既有程式推到這個房間的推播，搬遷時直接刪除。
-- `agent:` 房間沒有租戶前綴，這個模組無法檢查客服人員 ID 屬於哪個租戶，所以 spec 要求呼叫端只用交易內查詢取得的 ID。#342 統一房間名稱之後，只要改這個模組。之後的渠道可見範圍（AUDIT RBAC-04）也在這個模組實作。
+- **給客服人員的推播送到 `tenant:<tenantId>:agent:<agentId>`，不送到舊的 `agent:<agentId>`。** 舊房間沒有租戶 ID，呼叫端傳錯 agentId 時，推播會送到別的租戶的客服人員（PR #341 審查機器人第三輪）。新房間由 `ctx.tenantId` 組成；成員連線時，伺服器依 token 的身分加入自己的新房間（`socket-room-handlers.ts`）。所以 agentId 屬於別的租戶時，推播只會送到本租戶名下、沒有連線加入的房間。連線仍加入舊的 `agent:` 房間，既有直接 `io.to('agent:…')` 的程式不受影響。這條修改主規格 `socket-room-authorization` 的「連線時加入的房間」（MODIFIED）。
+- 不採用「`notifyAgent` 在交易內查詢 agent 是否屬於本租戶」：每次推播多一次查詢，`notifyAgent` 也要改成 async；房間帶租戶 ID 就能從結構上保證。
+- `subscribe` 仍只能加入舊的 `agent:` 房間（主規格 `socket-room-authorization`「訂閱目標的格式」）。有 `channel.view_all` 的成員訂閱別人的 `agent:` 房間時，收不到 `ctx.notifyAgent` 的推播。目前前端不送 `subscribe`（#337 規劃第 8 節），所以沒有影響。#342 統一房間名稱時一起處理。之後的渠道可見範圍（AUDIT RBAC-04）也在這個模組實作。
 - 不採用「推播由業務事件推導」：webhook 訂閱 `*`，畫面通知變成事件之後，租戶就能訂閱到；而且 `message.new` 這類只用來更新畫面的推播，沒有對應的業務事件。
 
 ### 7. 交易內處理唯一約束與條件認領的共用函式
@@ -175,7 +178,7 @@ export function claimOne(update: () => Promise<{ count: number }>): Promise<bool
 - [ratchet 以正規式比對，擋不住刻意繞過的寫法] → 它防的是照舊習慣寫出的一般寫法，例如 `withTenant(`、`inTenant<T>(`。泛型參數內含括號這類寫法要靠 code review 發現。不採用 TypeScript AST：要重寫計數方式並重算基準，換來的只是擋住罕見寫法（PR #341 審查時決定）。
 - [`tenantHandler()` 的泛型與 Fastify 的型別推導不合] → 階段 2 試做時若推導不出 `request.params` 的型別，回頭調整 `tenantHandler()` 的型別，不在 route 裡加 `as`。
 - [commit 之後送進佇列的 job 可能遺失] → 保證是最多一次。例如 `data-export` 的 job 遺失時，請求會停在 pending。階段 1b 改由 outbox 送出，屆時以 MODIFIED 修改「事件與佇列 job 最多送出一次」。
-- [Redis 無法連線時，commit 之後的 `await queue.add()` 會卡住，HTTP 回應跟著卡住] → 資料已經 commit，前端等不到回應。這不是新的寫法：`data-export.service.ts` 現在就在請求內 `await` 同一個 `add()`，Queue 也沒有設定逾時。要處理就要改所有 Queue 的連線設定，不在本 change 處理（review-loop 第 1 輪，2026-10-21）。
+- [Redis 無法連線時 `queue.add()` 一直不結束] → `ctx.enqueue` 不 `await`，回應不受影響（決策 1）。job 沒有送進佇列，保證是最多一次。既有程式直接在請求內 `await queue.add()`（例如 `data-export.service.ts`），搬遷之後就不再卡住回應。
 - [`createManyAndReturn` 的行為依賴 Prisma 版本] → feature 測試以真實的 PostgreSQL 驗證三個 Scenario，包括兩個交易同時寫入。升級 Prisma 時，這些測試會發現行為改變。
 
 ## Migration Plan

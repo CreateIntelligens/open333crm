@@ -126,3 +126,12 @@ test('repo 本身：舊寫法沒有比基準檔多', { timeout: 30_000 }, async 
   const { code, output } = await check(['--strict']);
   assert.equal(code, 0, `舊寫法增加。新程式請用 inTenant() / tenantHandler()；確實要減少時執行 --update-baseline：\n${output}`);
 });
+
+test('--scan-dir 或 --baseline 沒有值：exit 2 並說明缺值的參數，不丟出 TypeError', async () => {
+  for (const argv of [['--scan-dir'], ['--baseline'], ['--scan-dir', '--strict']]) {
+    const { code, output } = await check(argv);
+    assert.equal(code, 2, `${argv.join(' ')}：${output}`);
+    assert.match(output, new RegExp(`${argv[0]} 需要一個路徑`));
+    assert.doesNotMatch(output, /TypeError/);
+  }
+});

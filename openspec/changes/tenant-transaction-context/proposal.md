@@ -28,7 +28,9 @@ service 的 Prisma 參數型別是 `TenantDb`。這個聯集有三個成員：`w
 
 ### Modified Capabilities
 
-無。`tenant-isolation-rls` 規範的是「如何在交易內注入租戶身分」。`inTenant()` 建立在既有的 `withTenant()` 上，不改變這些需求。
+- `socket-room-authorization`：「連線時加入的房間」多加入帶租戶 ID 的成員房間 `tenant:<租戶 ID>:agent:<成員 ID>`。`ctx.notifyAgent()` 推到這個房間，所以給客服人員的推播不會送到別的租戶（PR #341 審查機器人第三輪）。
+
+`tenant-isolation-rls` 不修改：它規範的是「如何在交易內注入租戶身分」。`inTenant()` 建立在既有的 `withTenant()` 上，不改變這些需求。
 
 ## Impact
 

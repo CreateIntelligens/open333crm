@@ -4,13 +4,13 @@
 
 新的複查紀錄加在最上方。
 
-## 2026-10-21：RLS-09 的 `tenant:` 房間改由系統組成
+## 2026-10-21：RLS-09 的新寫法推播改由系統組成房間
 
 以 `f50e5181` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。以 unit 測試確認，沒有連 UAT。
 
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
-| RLS-09 | 狀態不變（已定方向），內容更新 | `ctx.emit(room, …)` 改成 `ctx.notify(name, data)` 與 `ctx.notifyAgent(agentId, name, data)`，房間由 `apps/api/src/events/socket-push.ts` 決定。`tenant:` 房間一律由交易綁定的租戶 ID 組成，`tests/unit/lib/tenant-ctx.test.ts` 的「全租戶推播」測試確認。`agent:` 房間仍沒有租戶前綴，等 #342。既有程式仍直接呼叫 `io.to(room)`，搬遷前不受影響 |
+| RLS-09 | 狀態不變（已定方向），內容更新 | `ctx.emit(room, …)` 改成 `ctx.notify(name, data)` 與 `ctx.notifyAgent(agentId, name, data)`，房間由 `apps/api/src/events/socket-push.ts` 決定。`tenant:` 房間與給客服人員的 `tenant:<tenantId>:agent:<agentId>` 房間，都由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的 `tenant:<tenantId>:agent:<agentId>`。`tests/unit/lib/tenant-ctx.test.ts` 的「全租戶推播」「給客服人員的推播用了別的租戶的客服人員 ID」與 `socket-room-handlers.test.ts` 確認。既有程式仍直接呼叫 `io.to(room)`，`subscribe` 仍只加入舊的 `agent:` 房間，等搬遷與 #342 |
 
 ## 2026-10-20：新增 RLS-08、RLS-09
 

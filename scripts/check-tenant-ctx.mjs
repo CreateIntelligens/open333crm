@@ -13,7 +13,7 @@
  *   node scripts/check-tenant-ctx.mjs                    # 印報告，exit 0
  *   node scripts/check-tenant-ctx.mjs --strict           # 有增加 → exit 1
  *   node scripts/check-tenant-ctx.mjs --update-baseline  # 以目前的次數重寫基準檔
- *   --scan-dir <dir>   改掃指定資料夾（測試用，預設 apps/api/src）
+ *   --scan-dir <dir>   改掃指定資料夾（測試用，預設 apps/api/src）；沒有值時 exit 2
  *   --baseline <file>  改用指定基準檔（測試用，預設 scripts/check-tenant-ctx.baseline.json）
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -24,7 +24,14 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 function argValue(name) {
   const i = process.argv.indexOf(name);
-  return i >= 0 ? resolve(process.argv[i + 1]) : null;
+  if (i < 0) return null;
+  const value = process.argv[i + 1];
+  // 沒有值，或下一個是另一個參數：不要把 undefined 或 --strict 當成路徑
+  if (!value || value.startsWith('--')) {
+    console.error(`${name} 需要一個路徑`);
+    process.exit(2);
+  }
+  return resolve(value);
 }
 
 const SCAN_DIR = argValue('--scan-dir') ?? join(ROOT, 'apps/api/src');

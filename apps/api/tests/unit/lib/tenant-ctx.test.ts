@@ -159,11 +159,34 @@ test('全租戶推播：只送到交易綁定租戶的房間', async () => {
   assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:case.updated`]);
 });
 
-test('給客服人員的推播：只送到該客服人員的房間', async () => {
+test('給客服人員的推播：只送到帶租戶 ID 的該客服人員房間', async () => {
   await inTenant(deps(), TENANT_ID, async (ctx) => {
     ctx.notifyAgent(AGENT_ID, 'notification.new', { id: 'n1' });
   });
-  assert.deepEqual(log, ['commit', `push:agent:${AGENT_ID}:notification.new`]);
+  assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:agent:${AGENT_ID}:notification.new`]);
+});
+
+test('給客服人員的推播用了別的租戶的客服人員 ID：房間仍是交易綁定的租戶', async () => {
+  // 客服人員 Y 屬於租戶 B，連線只加入 tenant:B:agent:Y（socket-room-handlers），收不到這則推播
+  const agentOfOtherTenant = 'd0000000-0000-0000-0000-000000000004';
+  await inTenant(deps(), TENANT_ID, async (ctx) => {
+    ctx.notifyAgent(agentOfOtherTenant, 'notification.new', {});
+  });
+  assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:agent:${agentOfOtherTenant}:notification.new`]);
+});
+
+test('佇列沒有回應時不阻擋回傳', async () => {
+  const hanging = { add: () => new Promise(() => {}) } as never;
+  const result = await Promise.race([
+    inTenant(deps(), TENANT_ID, async (ctx) => {
+      ctx.enqueue(hanging, 'job-1', {});
+      ctx.notify('case.updated', {});
+      return 'done';
+    }),
+    new Promise((resolve) => setTimeout(() => resolve('timeout'), 500)),
+  ]);
+  assert.equal(result, 'done');
+  assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:case.updated`]);
 });
 
 test('事件不重複送出', async () => {
@@ -235,7 +258,7 @@ test('createMockTenantCtx：依呼叫順序記錄推播（含房間）、事件�
   assert.equal(ctx.tenantId, TENANT_ID);
   assert.deepEqual(pushed, [
     { room: `tenant:${TENANT_ID}`, name: 'case.updated', data: { a: 1 } },
-    { room: `agent:${AGENT_ID}`, name: 'notification.new', data: {} },
+    { room: `tenant:${TENANT_ID}:agent:${AGENT_ID}`, name: 'notification.new', data: {} },
   ]);
   assert.deepEqual(published, [{ name: 'case.created', payload: { caseId: 'c1' } }]);
   assert.equal(enqueued.length, 1);

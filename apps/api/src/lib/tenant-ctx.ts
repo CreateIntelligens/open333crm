@@ -24,11 +24,11 @@ export interface TenantCtx {
   readonly tenantId: string;
   /** commit 之後推播到本租戶的房間；失敗只記 log，不補送 */
   notify(name: TenantPushName, data: unknown): void;
-  /** commit 之後推播給一位客服人員；agentId 只能用交易內查到的 ID */
+  /** commit 之後推播給一位客服人員；房間帶交易綁定的租戶 ID，別的租戶的客服人員收不到 */
   notifyAgent(agentId: string, name: AgentPushName, data: unknown): void;
   /** commit 之後交給 deps.events；事件的 tenantId 與時間由 ctx 填入。保證是最多一次 */
   publish(name: AppEventName, payload: Record<string, unknown>): void;
-  /** commit 之後送進呼叫端的佇列。保證是最多一次 */
+  /** commit 之後送進呼叫端的佇列，不等送進完成。保證是最多一次 */
   enqueue(queue: Queue, name: string, data: unknown, opts?: JobsOptions): void;
 }
 
@@ -49,7 +49,7 @@ export async function inTenant<T>(
   tenantId: string,
   fn: (ctx: TenantCtx) => Promise<T>,
 ): Promise<T> {
-  const effects: Array<{ label: string; run: () => unknown }> = [];
+  const effects: Array<{ label: string; run: () => void }> = [];
 
   function push(room: string, name: string, data: unknown) {
     const io = deps.io;
@@ -66,7 +66,7 @@ export async function inTenant<T>(
         push(tenantPushRoom(tenantId), name, data);
       },
       notifyAgent(agentId, name, data) {
-        push(agentPushRoom(agentId), name, data);
+        push(agentPushRoom(tenantId, agentId), name, data);
       },
       publish(name, payload) {
         effects.push({
@@ -75,16 +75,23 @@ export async function inTenant<T>(
         });
       },
       enqueue(queue, name, data, opts) {
-        effects.push({ label: `enqueue ${name}`, run: () => queue.add(name, data, opts) });
+        effects.push({
+          label: `enqueue ${name}`,
+          // 不 await：Redis 沒有回應時 add() 可能一直不結束，回應不能跟著卡住。失敗只記 log
+          run: () => {
+            queue.add(name, data, opts).catch((err: unknown) => {
+              logger.error(`[inTenant] commit 後送出失敗（enqueue ${name}）`, err);
+            });
+          },
+        });
       },
     }),
   );
 
-  // 走到這裡代表已經 commit：資料已寫入，送出失敗不能讓結果變成失敗。
-  // 依序 await：queue.add() 回傳 promise，不 await 的話失敗會變成未處理的 rejection
+  // 走到這裡代表已經 commit：資料已寫入，送出失敗不能讓結果變成失敗
   for (const effect of effects) {
     try {
-      await effect.run();
+      effect.run();
     } catch (err) {
       logger.error(`[inTenant] commit 後送出失敗（${effect.label}）`, err);
     }

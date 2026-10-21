@@ -70,6 +70,18 @@
 - [x] 8.8 重跑第 6 節的完成條件：`pnpm test`、`pnpm test:feature`、三個檢查腳本、`validate-openspec.mjs`
   - 2026-10-21：`pnpm test` 的 15 個 turbo 任務全部通過（api 177 個檔案、1131 個測試）；`pnpm test:feature` 59 個檔案、490 個測試全部通過；`tsc --noEmit` 通過；三個檢查腳本與兩個 `validate-openspec.mjs` 指令通過
 
+## 9. PR #341 審查機器人第三輪（2026-10-21，留言 6307431232）
+
+- [x] 9.1 寫失敗的測試：`socket-room-handlers.test.ts` 的「連線後加入自己的租戶與成員房間」改成三個房間，含 `tenant:<租戶>:agent:<成員>`（socket-room-authorization 的 MODIFIED Scenario）；`tenant-ctx.test.ts` 的「給客服人員的推播」改成推到 `tenant:<租戶>:agent:<成員>`，並新增「給客服人員的推播用了別的租戶的客服人員 ID」
+- [x] 9.2 `socket-room-handlers.ts` 連線時加入 `tenant:<租戶>:agent:<成員>`；`socket-push.ts` 的 `agentPushRoom` 改收租戶 ID；`inTenant()` 與 `createMockTenantCtx()` 跟著改。讓 9.1 通過
+- [x] 9.3 寫失敗的測試：「佇列沒有回應時不阻擋回傳」（`add()` 回傳永遠不 resolve 的 promise，`inTenant()` 仍回傳結果）
+- [x] 9.4 `inTenant()` 不再 `await` job 的 `add()`，改接 `.catch()` 記錄錯誤（design 決策 1）。讓 9.3 通過，「一項送出失敗不影響其他項」照常通過
+- [x] 9.5 寫失敗的測試：`check-tenant-ctx.mjs` 的 `--scan-dir`、`--baseline` 沒有值時，以 exit code 2 結束並說明哪個參數缺值，不丟出 Node 的 `TypeError`
+- [x] 9.6 `check-tenant-ctx.mjs` 檢查參數值，讓 9.5 通過
+- [x] 9.7 文件：design 決策 1、6 與 Risks；AUDIT RLS-09 與 AUDIT-REVIEWS；CHANGELOG
+- [x] 9.8 執行相關測試、`tsc --noEmit`、檢查腳本與 `validate-openspec.mjs`
+  - 2026-10-21：`pnpm test` 的 15 個 turbo 任務全部通過（api 177 個檔案、1134 個測試）；`tsc --noEmit`、三個檢查腳本、`validate-openspec.mjs` 通過。這次沒有改資料庫或 feature 測試，沒有重跑 `pnpm test:feature`。9.1、9.3、9.5 的測試在修改程式之前都因 assertion 失敗（房間清單不符、500ms 內收到 timeout、exit code 不是 2）
+
 ## Workflow follow-up
 
 - 合併後以 `pnpm exec openspec archive tenant-transaction-context` 歸檔，把新主規格的 `## Purpose` 改成正式說明，再執行 `node scripts/validate-openspec.mjs --specs`，確認「略過 N 則」沒有變多。

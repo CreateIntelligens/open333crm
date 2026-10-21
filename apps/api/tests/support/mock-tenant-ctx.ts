@@ -31,7 +31,7 @@ export function createMockTenantCtx(tx: unknown, tenantId: string = MOCK_TENANT_
       pushed.push({ room: tenantPushRoom(tenantId), name, data });
     },
     notifyAgent(agentId, name, data) {
-      pushed.push({ room: agentPushRoom(agentId), name, data });
+      pushed.push({ room: agentPushRoom(tenantId, agentId), name, data });
     },
     publish(name, payload) {
       published.push({ name, payload });
