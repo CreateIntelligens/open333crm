@@ -67,3 +67,11 @@ describe('發放來源名稱', () => {
     assert.equal(couponSourceName(null), undefined);
   });
 });
+
+describe('券號比對鍵', () => {
+  it('忽略連字號、空白、大小寫，全形英數字視同半形', async () => {
+    const { couponCodeKey } = await import('#src/coupon/issue.js');
+    assert.equal(couponCodeKey('autumn-r9xu x9rg'), 'AUTUMNR9XUX9RG');
+    assert.equal(couponCodeKey('ＡＵＴＵＭＮ－Ｒ９ＸＵ'), 'AUTUMNR9XU');
+  });
+});

@@ -99,6 +99,8 @@ it('ENDED 為終態不可復活', async () => {
   await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ENDED'));
   const r = await withTenant(prisma, tenantId, (tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'));
   assert.ok(!r.ok, 'ENDED 竟可轉回 ACTIVE');
+  // 訊息用中文狀態名稱，不顯示 ENDED、ACTIVE 等代碼
+  assert.equal(!r.ok && r.reason, '「已結束」的券無法改為「進行中」');
 });
 
 // ── 發券與配額 ──

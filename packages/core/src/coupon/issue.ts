@@ -34,7 +34,8 @@ export function generateCouponCode(prefix?: string | null, length = DEFAULT_CODE
  * 資料庫以同一個運算式建唯一索引（migration 20261021110000），去掉連字號後相同的兩組券號不能並存。
  */
 export function couponCodeKey(code: string): string {
-  return code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  // NFKC 先把全形英數字轉成半形：中文輸入法在全形模式下打的券號也找得到
+  return code.normalize('NFKC').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
 
 /** 憑證即所有權，必須用 CSPRNG——可預測的憑證等同券可被猜中領走。 */

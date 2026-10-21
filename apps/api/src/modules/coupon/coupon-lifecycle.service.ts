@@ -16,6 +16,14 @@ const ALLOWED: Record<CouponStatus, CouponStatus[]> = {
   ENDED: [],
 };
 
+/** 錯誤訊息用的中文狀態名稱（不讓 ACTIVE、ENDED 等代碼出現在畫面上） */
+const STATUS_LABEL: Record<CouponStatus, string> = {
+  DRAFT: '草稿',
+  ACTIVE: '進行中',
+  PAUSED: '已暫停',
+  ENDED: '已結束',
+};
+
 /**
  * 發布前檢查：設定不完整的券一旦發出去，顧客會拿到不能用的券。
  * 這些檢查刻意只在發布時做，讓草稿階段可以慢慢填。
@@ -97,7 +105,12 @@ export async function changeStatus(
 
   const current = coupon.status as CouponStatus;
   if (!ALLOWED[current].includes(next)) {
-    return { ok: false, reason: `無法從「${current}」轉為「${next}」` };
+    return {
+      ok: false,
+      reason: current === next
+        ? `此券已是「${STATUS_LABEL[current]}」`
+        : `「${STATUS_LABEL[current]}」的券無法改為「${STATUS_LABEL[next]}」`,
+    };
   }
   if (next === 'ACTIVE') {
     await validateForPublish(db, tenantId, couponId);
