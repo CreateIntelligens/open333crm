@@ -133,7 +133,8 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
         void load();
         return;
       }
-      if (code === 'CONVERSATION_OUT_OF_SCOPE') {
+      // 訊息已送到顧客：不能換新鍵重送，否則會發出第二張
+      if (code === 'CONVERSATION_OUT_OF_SCOPE' || code === 'DELIVERED_UNCONFIRMED') {
         setOutOfScope(true);
         return;
       }

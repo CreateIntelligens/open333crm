@@ -201,6 +201,15 @@ describe('發送失敗時 Dialog 不關閉', () => {
     assert.equal(onClose.mock.calls.length, 0);
   });
 
+  test('訊息已送出但系統沒記錄成功：不能重送', async () => {
+    h.post.mockRejectedValue(apiError('DELIVERED_UNCONFIRMED'));
+    await toConfirm();
+    fireEvent.click(button('確認發送'));
+    await flush();
+    assert.ok(within(screen.getByRole('alert')).getByText('發券訊息已送給顧客，但系統沒有記錄成功'));
+    assert.equal(button('確認發送').disabled, true);
+  });
+
   test('發送途中對話被結束或轉派', async () => {
     h.post.mockRejectedValue(apiError('CONVERSATION_OUT_OF_SCOPE'));
     await toConfirm();

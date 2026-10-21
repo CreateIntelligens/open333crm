@@ -399,6 +399,16 @@ describe('券的狀態流轉不可逆', () => {
     assert.equal(ok.ok, true, JSON.stringify(ok));
   });
 
+  it('後台以券號核銷時忽略連字號、大小寫與全形', async () => {
+    const c = await published('券號比對', { redeemMode: 'STAFF_SCAN', staffCode: null } as CouponInput);
+    const code = `${MARK.slice(-4).toUpperCase()}-AB12-CD34`;
+    const inst = await seedInstance(c.id, code, 'CLAIMED', { expiresAt: new Date(Date.now() + 86_400_000) });
+    const typed = code.replace(/-/g, '').toLowerCase().replace('ab12', 'ａｂ１２');
+    const r = await redeemCoupon(prisma, tenantId, { code: typed });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.ok && r.instanceId, inst.id);
+  });
+
   it('已結束的券不可恢復', async () => {
     const c = await published('不可恢復');
     await inTenant((tx) => changeStatus(tx, tenantId, c.id, 'ENDED'));

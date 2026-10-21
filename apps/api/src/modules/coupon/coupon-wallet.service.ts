@@ -144,11 +144,19 @@ const SESSION_KEEP_MS = REDEEM_SESSION_MS * 2;
 
 const sessionKey = (instanceId: string) => `coupon:redeem-session:${instanceId}`;
 const attemptsKey = (instanceId: string) => `coupon:redeem-session:${instanceId}:attempts`;
-const dailyAttemptsKey = (instanceId: string) => `coupon:redeem-code-attempts:${instanceId}`;
+/**
+ * 24 小時錯誤次數以「同一位顧客 × 同一張券（活動）」累計：驗證碼是整張券共用的，
+ * 以單張券計算的話，持有多張就能多試幾倍。
+ */
+async function dailyAttemptsKey(prisma: PrismaClient, fan: FanIdentity, instanceId: string): Promise<string> {
+  const row = await withTenant(prisma, fan.tenantId, (tx) =>
+    tx.couponInstance.findFirst({ where: { id: instanceId, tenantId: fan.tenantId }, select: { couponId: true } }));
+  return `coupon:redeem-code-attempts:${fan.tenantId}:${row?.couponId ?? instanceId}:${fan.contactId}`;
+}
 
 /** 24 小時內已用掉的驗證碼嘗試次數 */
-async function dailyAttempts(store: BindingStore, instanceId: string): Promise<number> {
-  return Number((await store.get(dailyAttemptsKey(instanceId))) ?? 0);
+async function dailyAttempts(store: BindingStore, key: string): Promise<number> {
+  return Number((await store.get(key)) ?? 0);
 }
 
 /** 先佔一次嘗試再比對：同時送出多個請求也都會被計入 */
@@ -184,7 +192,8 @@ export async function startStaffCodeSession(
   if (view.coupon.redeemMode !== 'STAFF_CODE') return { ok: false, reason: 'NOT_STAFF_CODE' };
   const unavailable = UNAVAILABLE_REASON[view.walletStatus];
   if (unavailable) return { ok: false, reason: unavailable };
-  if ((await dailyAttempts(deps.store, instanceId)) >= MAX_DAILY_CODE_ATTEMPTS) {
+  const dailyKey = await dailyAttemptsKey(prisma, fan, instanceId);
+  if ((await dailyAttempts(deps.store, dailyKey)) >= MAX_DAILY_CODE_ATTEMPTS) {
     return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
   }
 
@@ -239,7 +248,8 @@ export async function redeemWithStaffCode(
   const view = await getFanCoupon(prisma, fan, instanceId, now);
   if (!view) return { ok: false, reason: 'NOT_FOUND' };
 
-  if ((await dailyAttempts(deps.store, instanceId)) >= MAX_DAILY_CODE_ATTEMPTS) {
+  const dailyKey = await dailyAttemptsKey(prisma, fan, instanceId);
+  if ((await dailyAttempts(deps.store, dailyKey)) >= MAX_DAILY_CODE_ATTEMPTS) {
     return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
   }
   const session = await readSession(deps.store, instanceId);
@@ -250,7 +260,7 @@ export async function redeemWithStaffCode(
   }
 
   // 先佔用嘗試次數再比對驗證碼，同時送出的請求也逃不過上限
-  const daily = await takeAttempt(deps.store, dailyAttemptsKey(instanceId), DAILY_ATTEMPTS_MS);
+  const daily = await takeAttempt(deps.store, dailyKey, DAILY_ATTEMPTS_MS);
   if (daily > MAX_DAILY_CODE_ATTEMPTS) {
     await closeSession(deps.store, instanceId);
     return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };

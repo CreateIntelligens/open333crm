@@ -578,3 +578,26 @@ describe('對話發券先保留再發送（design D16）', () => {
     await owner.couponInstance.delete({ where: { id: fresh.id } });
   });
 });
+
+describe('訊息已送出但確認失敗', () => {
+  it('不清掉發送鍵，重送不會再發一張', async () => {
+    const p = await person('確認失敗');
+    let sends = 0;
+    const failingDeps: InboxIssueDeps = {
+      ...deps,
+      deliver: async () => {
+        sends += 1;
+        // 訊息送出後對話被刪除：確認交易寫入對話訊息時失敗
+        await owner.conversation.delete({ where: { id: p.conversationId } });
+        return { sent: true };
+      },
+    };
+    const key = randomUUID();
+    const first = await issueInConversation(prisma, failingDeps, input(p, coupons.amount, { requestKey: key }));
+    assert.equal(first.ok ? 'ok' : first.reason, 'DELIVERED_UNCONFIRMED');
+    const again = await issueInConversation(prisma, failingDeps, input(p, coupons.amount, { requestKey: key }));
+    assert.deepEqual(again, first);
+    assert.equal(sends, 1, '重送沒有再送一次訊息');
+  });
+});
+

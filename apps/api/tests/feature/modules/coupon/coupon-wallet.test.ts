@@ -381,6 +381,20 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     }
   });
 
+  it('同一位顧客持有同一張券的多張，錯誤次數合併計算', async () => {
+    const p = await person(`多張-${randomUUID().slice(0, 6)}`, lineChannel, 'LINE', { verified: true });
+    const first = await issue(p);
+    const second = await issue(p);
+    const fan = await fanOf(p, first.token);
+    for (const round of [0, 1]) {
+      assert.ok((await startStaffCodeSession(prisma, deps, fan, first.instanceId)).ok, `第 ${round + 1} 輪開始`);
+      for (let i = 0; i < 5; i++) await redeemWithStaffCode(prisma, deps, fan, first.instanceId, '111222');
+    }
+    // 換另一張同樣的券也不能再試：驗證碼是整張券共用的
+    const other = await startStaffCodeSession(prisma, deps, fan, second.instanceId);
+    assert.equal(!other.ok && other.reason, 'TOO_MANY_ATTEMPTS');
+  });
+
   it('一天內錯誤累計達 10 次就不能再核銷，重新開始也一樣', async () => {
     const { fan, instanceId } = await started();
     for (let i = 0; i < 5; i++) await redeemWithStaffCode(prisma, deps, fan, instanceId, '111222');

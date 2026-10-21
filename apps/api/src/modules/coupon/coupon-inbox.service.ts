@@ -261,6 +261,8 @@ export type InboxIssueFailure =
   | 'ISSUE_IN_PROGRESS'
   /** 同一個發送鍵用在不同的券或對話（前端每次確認都產生新鍵，正常操作不會發生） */
   | 'KEY_REUSED'
+  /** 訊息已送到顧客，但系統記錄失敗：不清掉發送鍵，避免座席重送發出第二張 */
+  | 'DELIVERED_UNCONFIRMED'
   | 'ISSUE_FAILED';
 
 export type InboxIssueResult =
@@ -366,7 +368,7 @@ async function runIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: Inbox
     return { ok: false, reason: 'COUPON_DELIVERY_FAILED' };
   }
 
-  const message = await withTenant(prisma, tenantId, async (tx) => {
+  const confirm = () => withTenant(prisma, tenantId, async (tx) => {
     const confirmed = await tx.couponInstance.updateMany({
       where: { id: reserved.instanceId, tenantId, deliveryPendingAt: { not: null } },
       data: { deliveryPendingAt: null },
@@ -395,6 +397,26 @@ async function runIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: Inbox
       now: new Date(nowOf(deps)),
     });
   });
+  // 訊息已送到顧客：確認失敗不能丟出例外（會清掉發送鍵，座席重送就發第二張），重試兩次後回報
+  let message: Awaited<ReturnType<typeof confirm>> = null;
+  let confirmError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      message = await confirm();
+      confirmError = null;
+      break;
+    } catch (err) {
+      confirmError = err;
+    }
+  }
+  if (confirmError) {
+    logger.error('[CouponInbox] 發券訊息已送出，但確認失敗', {
+      tenantId,
+      instanceId: reserved.instanceId,
+      error: (confirmError as Error).message,
+    });
+    return { ok: false, reason: 'DELIVERED_UNCONFIRMED' };
+  }
   if (!message) {
     logger.error('[CouponInbox] 發券訊息已送出，但券在確認前已被作廢', { tenantId, instanceId: reserved.instanceId });
     return { ok: false, reason: 'ISSUE_FAILED' };

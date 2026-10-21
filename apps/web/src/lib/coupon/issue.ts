@@ -260,6 +260,8 @@ export function describeIssueFailure(code: string, details?: { issuedByName?: st
       return { code, message: '顧客目前無法接收訊息，券未發出', outcome: '這次的券未發出。' };
     case 'CONVERSATION_OUT_OF_SCOPE':
       return { code, message: '此對話已不在你的處理範圍', outcome: '這次的券未發出。' };
+    case 'DELIVERED_UNCONFIRMED':
+      return { code, message: '發券訊息已送給顧客，但系統沒有記錄成功', outcome: '請不要重送，並通知管理員確認這張券。' };
     case 'CONVERSATION_BOT_HANDLED':
       return { code, message: '機器人處理中，請先接手對話再發券', outcome: '這次的券未發出。' };
     case 'REPLY_WINDOW_EXPIRED':

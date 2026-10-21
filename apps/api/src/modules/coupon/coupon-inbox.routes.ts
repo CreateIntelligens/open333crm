@@ -42,6 +42,7 @@ const FAILURES: Record<InboxIssueFailure, { status: number; message: string }> =
   ISSUE_IN_PROGRESS: { status: 409, message: '這次發券還在處理中，請稍候' },
   KEY_REUSED: { status: 409, message: '發送鍵已用於另一次發券，請重新選券' },
   ISSUE_FAILED: { status: 409, message: '發券失敗，券未發出，請重試' },
+  DELIVERED_UNCONFIRMED: { status: 409, message: '發券訊息已送給顧客，但系統沒有記錄成功，請勿重送並通知管理員確認' },
 };
 
 export default async function couponInboxRoutes(app: FastifyInstance) {

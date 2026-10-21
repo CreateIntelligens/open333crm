@@ -8,7 +8,7 @@
  *    只回「失敗」會讓店員無法向顧客解釋。
  */
 import type { PrismaClient, Prisma } from '@prisma/client';
-import { afterClaimExpiry, logger } from '@open333crm/core';
+import { afterClaimExpiry, couponCodeKey, logger } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { applyClaimTag } from './coupon-tagging.js';
 
@@ -190,12 +190,21 @@ export async function redeemCoupon(
   input: RedeemInput,
 ): Promise<RedeemSuccess | RedeemError> {
   return withTenant(prisma, tenantId, async (tx) => {
-    const instance = await tx.couponInstance.findFirst({
-      where: input.instanceId
-        ? { id: input.instanceId, tenantId }
-        : { code: input.code ?? '', tenantId },
-      include: { coupon: true },
-    });
+    // 以券號核銷時與核銷台相同的比對鍵：忽略連字號、空白、大小寫與全形（core couponCodeKey）
+    let instanceId = input.instanceId;
+    if (!instanceId) {
+      const key = couponCodeKey(input.code ?? '');
+      const rows = key
+        ? await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM coupon_instances
+            WHERE "tenantId" = ${tenantId}::uuid
+              AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ${key}`
+        : [];
+      instanceId = rows[0]?.id;
+    }
+    const instance = instanceId
+      ? await tx.couponInstance.findFirst({ where: { id: instanceId, tenantId }, include: { coupon: true } })
+      : null;
     if (!instance) return { ok: false as const, reason: 'NOT_FOUND' as const };
 
     // 先判終態，讓回報的原因是使用者能理解的那一個
