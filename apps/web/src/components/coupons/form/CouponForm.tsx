@@ -454,9 +454,9 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
       label: '效期',
       value: validityText({
         ...(input as Coupon),
-        // 只有日期時補上本地午夜，避免被當成 UTC 而在其他時區差一天
-        startAt: input.startAt ? `${input.startAt}T00:00:00` : null,
-        endAt: input.endAt ? `${input.endAt}T00:00:00` : null,
+        // 只有日期時補上台灣時間的午夜（design D17），任何時區都顯示同一天
+        startAt: input.startAt ? `${input.startAt}T00:00:00+08:00` : null,
+        endAt: input.endAt ? `${input.endAt}T00:00:00+08:00` : null,
       }),
     },
     { label: '序號模式', value: codeSummary(values, ctx) },

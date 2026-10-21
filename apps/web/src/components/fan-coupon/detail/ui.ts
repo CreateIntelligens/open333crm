@@ -3,6 +3,7 @@
  * 按鈕高 48、圓角 12；色彩一律用 globals.css 的 token，深色模式才讀得到。
  */
 import type { FanCoupon } from '@/hooks/useFanCoupons';
+import { taipeiParts } from '@/lib/taipei-time';
 
 const base =
   'inline-flex h-12 w-full items-center justify-center rounded-xl px-4 text-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed';
@@ -25,16 +26,14 @@ const p2 = (n: number) => String(n).padStart(2, '0');
 
 /** 10-05 14:31（已使用膠囊） */
 export function mdhm(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  const d = taipeiParts(value);
+  return d ? `${p2(d.month)}-${p2(d.day)} ${p2(d.hour)}:${p2(d.minute)}` : '';
 }
 
 /** 10/20（未到生效日的說明，設計稿用不補零的 M/D） */
 export function md(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}/${d.getDate()}`;
+  const d = taipeiParts(value);
+  return d ? `${d.month}/${d.day}` : '';
 }
 
 /** 倒數顯示 m:ss（設計稿 5:00、0:42）；超過一小時顯示 h:mm:ss */

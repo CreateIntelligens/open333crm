@@ -6,6 +6,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { parseDateOnly } from '@open333crm/core';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import {
   listCoupons,
@@ -28,6 +29,8 @@ import { importCodes, previewImport, removeAvailableCode } from './coupon-import
 const int = z.number().int('請輸入整數').min(-2_147_483_648, '數值過小').max(2_147_483_647, '數值過大，請確認輸入');
 // ⚠️ 日期一律用 z.coerce.date()，不可用 z.string().datetime()：前端的 date 欄位送的是「2026-10-31」
 const date = z.coerce.date({ errorMap: () => ({ message: '日期格式不正確' }) });
+/** 只有日期（YYYY-MM-DD）時保留字串，由 service 換算成台灣時間的當天起訖（design D17） */
+const dateOrDay = z.union([z.string().refine((v) => parseDateOnly(v) !== null), date]);
 
 /** 欄位格式在這裡擋；欄位間的相依（券型決定要哪些欄位、鎖定欄位）由 service 判斷。 */
 const couponInputSchema = z.object({
@@ -46,8 +49,8 @@ const couponInputSchema = z.object({
   exchangeItem: z.string().max(50).nullable(),
   exchangeValueCap: int.nullable(),
   validityMode: z.enum(['FIXED', 'AFTER_CLAIM', 'AFTER_OPEN']).nullable(),
-  startAt: date.nullable(),
-  endAt: date.nullable(),
+  startAt: dateOrDay.nullable(),
+  endAt: dateOrDay.nullable(),
   afterClaimDays: int.nullable(),
   afterOpenMinutes: int.nullable(),
   codeMode: z.enum(['SHARED_CODE', 'UNIQUE_CODE', 'IMPORTED_CODES']).nullable(),

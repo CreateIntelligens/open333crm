@@ -22,3 +22,4 @@ export * from "./identity/merge-suggestion-service.js";
 export * from "./rbac/index.js";
 export * from "./coupon/issue.js";
 export * from "./coupon/wallet-link.js";
+export * from "./coupon/taipei-time.js";

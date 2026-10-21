@@ -8,7 +8,7 @@
  *    只回「失敗」會讓店員無法向顧客解釋。
  */
 import type { PrismaClient, Prisma } from '@prisma/client';
-import { logger } from '@open333crm/core';
+import { afterClaimExpiry, logger } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { applyClaimTag } from './coupon-tagging.js';
 
@@ -101,10 +101,10 @@ export async function claimByToken(
     }
 
     const now = new Date();
-    // AFTER_CLAIM 的效期自領取此刻起算
+    // AFTER_CLAIM 的效期自領取當天（台灣日期）起算，第 N 天結束時到期（design D17）
     const expiresAt =
       instance.coupon.validityMode === 'AFTER_CLAIM' && instance.coupon.afterClaimDays
-        ? new Date(now.getTime() + instance.coupon.afterClaimDays * 24 * 60 * 60 * 1000)
+        ? afterClaimExpiry(now, instance.coupon.afterClaimDays)
         : instance.expiresAt;
 
     // 搶佔：憑證一次性，兩人同時點同一連結只有一個能成功

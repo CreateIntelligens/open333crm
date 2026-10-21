@@ -4,6 +4,7 @@
  */
 import api from '@/lib/api';
 import { getApiErrorCode, getApiErrorDetails } from '@/lib/api-error';
+import { pad2, taipeiParts } from '@/lib/taipei-time';
 
 export type IssuedStatus = 'SENT' | 'VIEWED' | 'USED' | 'EXPIRED' | 'REVOKED';
 
@@ -123,25 +124,20 @@ const nt = (n: number) => `NT$${n.toLocaleString('zh-TW')}`;
 
 /** MM/DD */
 export function md(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+  const d = taipeiParts(value);
+  return d ? `${pad2(d.month)}/${pad2(d.day)}` : '';
 }
 
 /** YYYY/MM/DD */
 export function ymd(value: string | Date | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+  const d = taipeiParts(value);
+  return d ? `${d.year}/${pad2(d.month)}/${pad2(d.day)}` : '';
 }
 
 /** MM/DD HH:mm */
 export function mdhm(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return `${md(value)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = taipeiParts(value);
+  return d ? `${md(value)} ${pad2(d.hour)}:${pad2(d.minute)}` : '';
 }
 
 type FaceFields = Pick<IssuableCoupon, 'couponType' | 'discountAmount' | 'discountPercent' | 'giftName' | 'exchangeItem'>;

@@ -10,6 +10,7 @@
  */
 import { randomBytes, randomInt } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+import { afterClaimExpiry } from './taipei-time.js';
 
 export type CouponTx = Prisma.TransactionClient;
 
@@ -122,7 +123,8 @@ async function allocateCode(
 function computeExpiresAt(coupon: CouponForIssue, claimed: boolean): Date | null {
   if (coupon.validityMode === 'FIXED') return coupon.endAt;
   if (coupon.validityMode === 'AFTER_CLAIM' && claimed && coupon.afterClaimDays) {
-    return new Date(Date.now() + coupon.afterClaimDays * 24 * 60 * 60 * 1000);
+    // 領取當天（台灣日期）加 N 天，當天結束時到期（design D17）
+    return afterClaimExpiry(new Date(), coupon.afterClaimDays);
   }
   return null;
 }

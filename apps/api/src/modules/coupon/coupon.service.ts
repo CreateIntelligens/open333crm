@@ -8,6 +8,7 @@
  */
 import { randomInt } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { parseDateOnly, taipeiDateEnd, taipeiDateStart } from '@open333crm/core';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { sanitizeTerms } from './terms-sanitizer.js';
 import { normalizePrefix } from './coupon-code.service.js';
@@ -71,8 +72,12 @@ export class CouponConflictError extends Error {
 
 type ExistingCoupon = Prisma.CouponGetPayload<Record<string, never>>;
 
-function toDate(v: string | Date | null | undefined): Date | null {
+/**
+ * 只有日期（YYYY-MM-DD）時以台灣時間換算（design D17）：生效日取當天 00:00，失效日取當天 23:59:59.999。
+ */
+function toDate(v: string | Date | null | undefined, edge: 'start' | 'end' = 'start'): Date | null {
   if (v == null) return null;
+  if (typeof v === 'string' && parseDateOnly(v)) return edge === 'start' ? taipeiDateStart(v) : taipeiDateEnd(v);
   const d = v instanceof Date ? v : new Date(v);
   if (Number.isNaN(d.getTime())) throw new CouponValidationError('日期格式不正確');
   return d;
@@ -114,7 +119,7 @@ function validateCouponShape(input: CouponInput, existing?: Partial<ExistingCoup
 
   if (merged(input, existing, 'validityMode') === 'FIXED') {
     const s = toDate(merged(input, existing, 'startAt'));
-    const e = toDate(merged(input, existing, 'endAt'));
+    const e = toDate(merged(input, existing, 'endAt'), 'end');
     if (s && e && s >= e) throw new CouponValidationError('失效日必須晚於生效日');
   }
   positiveIntOrNull(input.afterClaimDays, '至少 1 天，請輸入 1 以上的數字');
@@ -162,7 +167,7 @@ function buildData(input: CouponInput): Record<string, unknown> {
   // 條款一律消毒後才入庫，避免髒資料落地（design D9）
   if (input.terms !== undefined) d.terms = sanitizeTerms(input.terms);
   if (input.startAt !== undefined) d.startAt = toDate(input.startAt);
-  if (input.endAt !== undefined) d.endAt = toDate(input.endAt);
+  if (input.endAt !== undefined) d.endAt = toDate(input.endAt, 'end');
   if (input.sharedCode !== undefined) d.sharedCode = input.sharedCode?.trim().toUpperCase() || null;
   if (input.codePrefix !== undefined) d.codePrefix = normalizePrefix(input.codePrefix) || null;
   // 驗證碼保留原字串（含開頭的 0），只去掉前後空白

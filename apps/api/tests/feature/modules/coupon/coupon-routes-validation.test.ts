@@ -191,3 +191,45 @@ describe('後台逐欄驗證找到的問題（2026-10-21）', () => {
     assert.deepEqual(preview.json().data.alreadyImported, [code]);
   });
 });
+
+describe('券的日期一律以台灣時間計算（design D17）', () => {
+  it('固定效期的起訖以台灣時間計算', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/v1/coupons', payload: { name: `${MARK} 台灣時間` } });
+    const id = created.json().data.id as string;
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/v1/coupons/${id}`,
+      payload: { validityMode: 'FIXED', startAt: '2026-11-01', endAt: '2026-11-30' },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().data.startAt, '2026-10-31T16:00:00.000Z');
+    assert.equal(res.json().data.endAt, '2026-11-30T15:59:59.999Z');
+  });
+
+  it('領取後 N 天到期以台灣日期計算', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/v1/coupons', payload: { name: `${MARK} 領取後到期` } });
+    const id = created.json().data.id as string;
+    await app.inject({
+      method: 'PATCH', url: `/api/v1/coupons/${id}`,
+      payload: {
+        purpose: 'SERVICE', couponType: 'DISCOUNT_AMOUNT', discountAmount: 50, validityMode: 'AFTER_CLAIM', afterClaimDays: 3,
+        codeMode: 'UNIQUE_CODE', codePrefix: 'TPE', redeemMode: 'STAFF_SCAN', perContactLimit: 1,
+      },
+    });
+    const published = await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/publish` });
+    assert.equal(published.statusCode, 200, published.body);
+    const contact = await owner.contact.create({ data: { tenantId: T, displayName: `${MARK} 領取者` } });
+    try {
+      const before = new Date();
+      const issued = await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/issue`, payload: { contactIds: [contact.id] } });
+      assert.equal(issued.statusCode, 200, issued.body);
+      const instance = await owner.couponInstance.findFirst({ where: { couponId: id, contactId: contact.id } });
+      const taipeiToday = new Date(before.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+      const expected = new Date(Date.parse(`${taipeiToday}T23:59:59.999+08:00`) + 3 * 86_400_000).toISOString();
+      assert.equal(instance?.expiresAt?.toISOString(), expected);
+    } finally {
+      await owner.couponInstance.deleteMany({ where: { contactId: contact.id } });
+      await owner.contact.delete({ where: { id: contact.id } });
+    }
+  });
+});
+

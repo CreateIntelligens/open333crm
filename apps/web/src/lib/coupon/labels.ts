@@ -11,6 +11,7 @@ import type {
   RedeemMode,
   ValidityMode,
 } from '@/hooks/useCoupons';
+import { pad2, taipeiParts } from '@/lib/taipei-time';
 
 export const STATUS_LABEL: Record<CouponStatus, string> = {
   ACTIVE: '進行中',
@@ -72,20 +73,14 @@ export function formatNumber(n: number | null | undefined): string {
 
 /** 2026-10-31（ISO 或 Date）→ 2026/10/31 */
 export function formatDate(value: string | Date | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())}`;
+  const d = taipeiParts(value);
+  return d ? `${d.year}/${pad2(d.month)}/${pad2(d.day)}` : '—';
 }
 
 /** 序號明細的時間：YYYY-MM-DD HH:mm */
 export function formatDateTime(value: string | Date | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const d = taipeiParts(value);
+  return d ? `${d.year}-${pad2(d.month)}-${pad2(d.day)} ${pad2(d.hour)}:${pad2(d.minute)}` : '—';
 }
 
 /** 列表與詳情的效期值，例如「2026/10/01 – 10/31」「領取後 30 天」「開啟後 15 分鐘」 */

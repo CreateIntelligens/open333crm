@@ -13,6 +13,7 @@ import type {
   RedeemMode,
   ValidityMode,
 } from '@/hooks/useCoupons';
+import { taipeiYmd } from '@/lib/taipei-time';
 
 export type FormMode = 'create' | 'draft' | 'published';
 
@@ -60,8 +61,8 @@ export const IMPORT_CODE_PATTERN = /^[A-Za-z0-9-]{4,32}$/;
 export const HIGH_VALUE = 500;
 export const TERMS_SELF_REDEEM_LINE = '誤按即失效，無法恢復';
 
-const pad = (n: number) => String(n).padStart(2, '0');
-export const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** 台灣日期 YYYY-MM-DD（design D17） */
+export const ymd = (d: Date) => taipeiYmd(d);
 export const money = (n: number) => `NT$${Math.round(n).toLocaleString('en-US')}`;
 /** 2026-10-31 → 10/31 */
 export const md = (s: string) => (s ? s.slice(5).replace('-', '/') : '');
@@ -241,9 +242,9 @@ export function valuesFromCoupon(c: Coupon): FormValues {
     exchangeValueCap: str(c.exchangeValueCap),
     purpose: c.purpose ?? '',
     validityMode: c.validityMode ?? '',
-    // 後端以 UTC 午夜保存日期，取 ISO 的日期部分即為當初送出的 YYYY-MM-DD
-    startAt: c.startAt ? c.startAt.slice(0, 10) : c.status === 'DRAFT' ? base.startAt : '',
-    endAt: c.endAt ? c.endAt.slice(0, 10) : '',
+    // 後端以台灣時間的當天起訖保存（design D17），換回台灣日期
+    startAt: c.startAt ? taipeiYmd(c.startAt) : c.status === 'DRAFT' ? base.startAt : '',
+    endAt: c.endAt ? taipeiYmd(c.endAt) : '',
     afterClaimDays: c.afterClaimDays == null ? base.afterClaimDays : String(c.afterClaimDays),
     afterOpenMinutes: c.afterOpenMinutes == null ? base.afterOpenMinutes : String(c.afterOpenMinutes),
     codeMode: c.codeMode ?? '',
