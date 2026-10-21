@@ -35,6 +35,8 @@ export interface RegistrationText {
   invite: (url: string, minutes: number) => string;
   rateLimited: string;
   registered: string;
+  /** 從票券頁登記的值已屬於另一位聯絡人時的說明（keyword 為該種登記的關鍵字） */
+  mergeRequiresChat: (keyword: string) => string;
   channelConflict: string;
   /** 兩位聯絡人的另一種識別不一致，需要客服確認（design D6） */
   identityConflict: string;
@@ -92,6 +94,11 @@ export interface RegistrationPayload {
   channelId: string;
   conversationId: string;
   issuedAt: number;
+  /**
+   * 從票券頁發出的連結（票券訊息可能被轉傳）：值已屬於另一位聯絡人時不自動合併，
+   * 請顧客在自己的對話中登記（2026-10-21 code review 決定）
+   */
+  noMerge?: boolean;
 }
 
 export interface RegistrationDeps extends BindingDeps {
@@ -118,6 +125,7 @@ export async function issueRegistrationToken(
   deps: RegistrationDeps,
   actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
   initiatedBy: 'customer' | 'agent' = 'customer',
+  options: { noMerge?: boolean } = {},
 ): Promise<{ status: 'ok'; token: string; issued: number } | { status: 'rate_limited'; issued: number }> {
   const issued = await bumpCounter(deps.store, issueKey(kind, actor.channelIdentityId, initiatedBy));
   if (issued > MAX_ISSUES_PER_HOUR) return { status: 'rate_limited', issued };
@@ -129,6 +137,7 @@ export async function issueRegistrationToken(
     channelId: actor.channelId,
     conversationId: actor.conversationId,
     issuedAt: (deps.now ?? Date.now)(),
+    ...(options.noMerge ? { noMerge: true } : {}),
   };
   await deps.store.set(tokenKey(kind, token), JSON.stringify(payload), 'PX', REGISTRATION_TTL_MS, 'NX');
   return { status: 'ok', token, issued };
@@ -163,7 +172,7 @@ export async function reuseOrIssueRegistrationToken(
     const payload = await readRegistration(kind, deps.store, previous);
     if (payload?.tenantId === actor.tenantId) return { status: 'ok', token: previous };
   }
-  const issued = await issueRegistrationToken(kind, deps, actor);
+  const issued = await issueRegistrationToken(kind, deps, actor, 'customer', { noMerge: true });
   if (issued.status === 'rate_limited') return issued;
   await deps.store.getdel(key);
   await deps.store.set(key, issued.token, 'PX', REGISTRATION_TTL_MS - REUSE_MIN_REMAINING_MS, 'NX');
@@ -268,6 +277,8 @@ export type SubmitRegistrationResult =
   | { status: 'registered'; contactId: string }
   | { status: 'channel_conflict' }
   | { status: 'identity_conflict' }
+  /** 從票券頁登記的值已屬於另一位聯絡人：不合併、不寫入，請顧客在自己的對話中登記 */
+  | { status: 'merge_requires_chat' }
   | { status: 'merged'; survivorId: string; mergedId: string; mergeLogId: string };
 
 /**
@@ -341,6 +352,17 @@ async function register(
   // 否則會把最早的一位併入較新的一位
   const earliest = await kind.findEarliest(db, tenantId, value);
   const existing = earliest && earliest.id !== registrantId ? earliest : null;
+
+  if (existing && payload.noMerge) {
+    const settingsRow = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
+    const settings = parseIdentityBindingSettings(settingsRow?.identityBinding);
+    const keyword = (kind.name === 'email' ? settings.emailKeywords : settings.phoneKeywords)[0];
+    logger.info(`[${kind.logTag}] 票券頁登記的值已屬於其他聯絡人，不自動合併`, { tenantId, registrantId });
+    return {
+      result: { status: 'merge_requires_chat' },
+      notices: [{ conversationId, text: kind.text.mergeRequiresChat(keyword), kind: `${kind.name}_merge_requires_chat` }],
+    };
+  }
 
   if (!existing) {
     await kind.write(db, tenantId, registrantId, value);

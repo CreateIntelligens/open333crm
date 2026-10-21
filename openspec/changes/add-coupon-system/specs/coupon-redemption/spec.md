@@ -463,3 +463,24 @@ LINE 渠道同時設定 LIFF App ID 與 LINE Login Channel ID 時，系統 SHALL
 - **WHEN** 管理者在 LINE 渠道設定填入不是 10 位數字的 Login Channel ID
 - **THEN** 系統回報 400，說明 Login Channel ID 為 10 位數字
 
+### Requirement: 從票券頁登記不自動合併帳號
+
+顧客從票券連結被引導去登記時（登記頁網址帶回票券的路徑），送出並驗證的 email 若已屬於同租戶的另一位聯絡人，系統 SHALL NOT 自動合併，也不寫入 email、不記錄歸戶驗證；回應 `merge_requires_chat`，並在收券的對話送出說明，請顧客在自己的對話中輸入登記關鍵字完成整合。沒有其他聯絡人使用這個 email 時照常寫入並記錄驗證。對話中主動取得的登記連結維持原本的自動合併規則。（2026-10-21 code review：票券訊息可能被轉傳，業界做法是開券驗證不合併帳號，合併只在獨立的綁定流程中進行。）
+
+#### Scenario: 票券頁登記的 email 已屬於其他聯絡人
+
+- **GIVEN** 聯絡人 B 已使用 `amy@example.com`，A 收到的票券連結被轉傳出去
+- **WHEN** 有人從 A 的票券頁登記 `amy@example.com` 並輸入正確驗證碼
+- **THEN** A 不併入 B，A 的 email 不變、沒有歸戶驗證時間，回應為 `merge_requires_chat`
+- **AND** A 的對話收到「請在對話中輸入登記關鍵字完成整合」的說明
+
+#### Scenario: 票券頁登記的 email 沒有其他人使用
+
+- **WHEN** 顧客從票券頁登記沒有人使用的 email 並通過驗證
+- **THEN** 系統寫入 email 並記錄歸戶驗證，顧客可以開啟票券
+
+#### Scenario: 對話中主動登記仍會自動合併
+
+- **WHEN** 顧客在自己的對話輸入登記關鍵字取得連結，登記已屬於另一位聯絡人的 email 並通過驗證
+- **THEN** 依原本規則合併
+

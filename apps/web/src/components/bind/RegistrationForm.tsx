@@ -62,6 +62,11 @@ function resultText(noun: string): Record<string, { title: string; body: string 
       title: '無法自動整合帳號',
       body: `這個${noun}已由同一類帳號中的另一個帳號使用。如需協助，請直接在對話中留言，客服會為您處理。`,
     },
+    // 從票券頁登記，但這個值已屬於另一位顧客：不自動合併（票券訊息可能被轉傳）
+    merge_requires_chat: {
+      title: '需要在對話中完成整合',
+      body: `這個${noun}已登記在另一個帳號，系統沒有自動整合。已在對話中傳送說明，請回到對話依說明操作。`,
+    },
     identity_conflict: {
       title: '無法自動整合帳號',
       body: `使用這個${noun}的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在對話中與您聯繫。`,

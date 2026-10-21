@@ -152,3 +152,11 @@ describe('驗證碼（design D15）', () => {
     assert.ok(screen.queryByLabelText('驗證碼') === null);
   });
 });
+
+test('從票券頁登記的 email 已屬於其他帳號：請顧客在對話中完成整合', async () => {
+  open();
+  api.post.mockResolvedValue({ data: { data: { status: 'merge_requires_chat' } } });
+  await submit('amy@example.com');
+  await screen.findByText('需要在對話中完成整合');
+  assert.ok(screen.getByText(/請回到對話依說明操作/));
+});
