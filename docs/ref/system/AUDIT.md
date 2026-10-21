@@ -96,6 +96,7 @@
 | [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
+| [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 未處理 | 對話轉接真人時，主管與管理員收不到通知 | 靜態確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
@@ -1281,6 +1282,22 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 **修正方向**：`updateConversation()` 收到 `CLOSED` 時改走 `closeConversation()`；指派時發布 `conversation.assigned`，讓通知與對外 Webhook 接得到。
 
 **部分修正。** #294（`a3044f93`）讓狀態選單的「已關閉」改開結案視窗，走 `POST /:id/close`。2026-10-16，`updateConversation()` 收到 `CLOSED`（且對話尚未關閉）時改呼叫 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布 `conversation.closed`；同時帶負責人時先改負責人再關閉。直接呼叫 API 的路徑因此也有結案紀錄。指派仍不發布 `conversation.assigned`。
+
+<a id="conv-03"></a>
+### CONV-03：對話轉接真人時，主管與管理員收不到通知
+
+兩條路徑會把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，並發布 `conversation.handoff`：
+
+| 路徑 | 位置 |
+| --- | --- |
+| 客人點「轉接客服」按鈕（postback `handoff_request`） | `webhook/inbound-postback-interceptors.ts` |
+| 自動轉真人（機器人回覆次數到上限、客人說出轉接關鍵字、客人傳圖片、檔案或影片） | `automation/automation.worker.ts` 的 `checkAutoHandoff()` |
+
+API 行程內沒有任何程式訂閱 `conversation.handoff`。`notification.worker.ts` 沒有訂閱這個事件，所以主管與管理員收不到「對話已轉接真人」的通知。只有訂閱了這個事件的對外 Webhook 收得到。
+
+change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫「既有 `conversation.handoff` event 已有 notification.worker 訂閱者通知 supervisor」。這個前提不成立，當時沒有實作訂閱者。
+
+**規格依據。** 主規格 `bot-handoff-config` 的「Webhook intercepts handoff_request postback」規定：系統 SHALL 發布 `conversation.handoff`，讓 SUPERVISOR 與 ADMIN 收到通知。事件有發布，但通知沒有發生，現況違反這條需求，因此列為 P2。自動轉真人的路徑不在這條需求內，但發布同一個事件。
 
 <a id="case-02"></a>
 ### CASE-02：非 LINE 渠道的滿意度調查無法回覆
