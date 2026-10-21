@@ -5,10 +5,9 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { Queue } from 'bullmq';
-import type { AppEvent } from '../../events/event-bus.js';
-import { createEventRouter, type EventHandler } from '../../events/subscriber-workers.js';
-import { logger } from '@open333crm/core';
-import { sendQuotaWarningEmail, sendQuotaCriticalEmail } from '../trial/usage-alert-emails.js';
+import { createEventRouter, type EventHandler, type SubscribedEvent } from '../../events/subscriber-workers.js';
+import { logger, USAGE_ALERT_EMAIL_QUEUE } from '@open333crm/core';
+import type { UsageAlertEmailJob } from './usage-alert-email.worker.js';
 import { getConfig } from '../../config/env.js';
 import { resolveEscalationRecipients } from './notification.service.js';
 
@@ -19,9 +18,37 @@ function notificationQueue(): Queue {
   if (!_notificationQueue) {
     _notificationQueue = new Queue('notification', {
       connection: { url: process.env.REDIS_URL! },
+      // job id 由事件 id 組成：完成的 job 保留 24 小時，事件重送時 BullMQ 不建立第二個 job
+      defaultJobOptions: { removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } },
     });
   }
   return _notificationQueue;
+}
+
+let _usageAlertEmailQueue: Queue | null = null;
+function usageAlertEmailQueue(): Queue {
+  if (!_usageAlertEmailQueue) {
+    _usageAlertEmailQueue = new Queue(USAGE_ALERT_EMAIL_QUEUE, {
+      connection: { url: process.env.REDIS_URL! },
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5_000 },
+        removeOnComplete: { age: 86_400 },
+        removeOnFail: { age: 604_800 },
+      },
+    });
+  }
+  return _usageAlertEmailQueue;
+}
+
+type DispatchData = { tenantId: string; type: string; title: string; body: string; clickUrl?: string };
+
+/**
+ * 送出站內通知的 job。job id 是 <事件 id>__<客服人員 id>：同一個事件通知同一位客服人員只有一個 job
+ * （standalone-worker-runtime「同一個事件不重複建立站內通知」）。
+ */
+function enqueueDispatch(event: SubscribedEvent, agentId: string, data: DispatchData) {
+  return notificationQueue().add('notification:dispatch', { ...data, agentId }, { jobId: `${event.id}__${agentId}` });
 }
 
 async function getSupervisorAndAdminIds(
@@ -43,7 +70,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   const events = createEventRouter();
 
   // ── case.assigned ──────────────────────────────────────────────────────
-  events.on('case.assigned', async (event: AppEvent) => {
+  events.on('case.assigned', async (event: SubscribedEvent) => {
     try {
       const { caseId, assigneeId, title } = event.payload as {
         caseId: string;
@@ -53,9 +80,8 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
 
       if (!assigneeId) return;
 
-      await notificationQueue().add('notification:dispatch', {
+      await enqueueDispatch(event, assigneeId, {
         tenantId: event.tenantId,
-        agentId: assigneeId,
         type: 'case_assigned',
         title: '工單已指派給您',
         body: title ? `工單「${title}」已指派給您處理` : '您有一張新的指派工單',
@@ -69,7 +95,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   });
 
   // ── case.escalated ─────────────────────────────────────────────────────
-  events.on('case.escalated', async (event: AppEvent) => {
+  events.on('case.escalated', async (event: SubscribedEvent) => {
     try {
       const { caseId, reason, notifyTargets, previousAssigneeId, actorId } = event.payload as {
         caseId: string;
@@ -87,9 +113,8 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
       });
 
       for (const agentId of recipientIds) {
-        await notificationQueue().add('notification:dispatch', {
+        await enqueueDispatch(event, agentId, {
           tenantId: event.tenantId,
-          agentId,
           type: 'case_escalated',
           title: '工單已升級',
           body: reason ? `工單已升級：${reason}` : '有一張工單已升級，請注意處理',
@@ -104,7 +129,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   });
 
   // ── sla.warning ────────────────────────────────────────────────────────
-  events.on('sla.warning', async (event: AppEvent) => {
+  events.on('sla.warning', async (event: SubscribedEvent) => {
     try {
       const { caseId, assigneeId, title } = event.payload as {
         caseId: string;
@@ -114,9 +139,8 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
 
       if (!assigneeId) return;
 
-      await notificationQueue().add('notification:dispatch', {
+      await enqueueDispatch(event, assigneeId, {
         tenantId: event.tenantId,
-        agentId: assigneeId,
         type: 'sla_warning',
         title: 'SLA 即將到期',
         body: title ? `工單「${title}」的 SLA 即將到期，請加速處理` : '您有一張工單的 SLA 即將到期',
@@ -130,7 +154,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   });
 
   // ── sla.breached ───────────────────────────────────────────────────────
-  events.on('sla.breached', async (event: AppEvent) => {
+  events.on('sla.breached', async (event: SubscribedEvent) => {
     try {
       const { caseId, assigneeId, title } = event.payload as {
         caseId: string;
@@ -148,9 +172,8 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
       }
 
       for (const agentId of notifyIds) {
-        await notificationQueue().add('notification:dispatch', {
+        await enqueueDispatch(event, agentId, {
           tenantId: event.tenantId,
-          agentId,
           type: 'sla_breached',
           title: 'SLA 已逾期',
           body: title ? `工單「${title}」的 SLA 已逾期，請立即處理` : '有一張工單的 SLA 已逾期',
@@ -165,7 +188,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   });
 
   // ── message.received ───────────────────────────────────────────────────
-  events.on('message.received', async (event: AppEvent) => {
+  events.on('message.received', async (event: SubscribedEvent) => {
     try {
       const { conversationId } = event.payload as {
         conversationId?: string;
@@ -191,18 +214,12 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
 
       if (conversation.assignedToId) {
         // Assigned → notify the assigned agent only
-        await notificationQueue().add('notification:dispatch', {
-          ...notifPayload,
-          agentId: conversation.assignedToId,
-        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received', err));
+        await enqueueDispatch(event, conversation.assignedToId, notifPayload).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received', err));
       } else {
         // Unassigned → notify all ADMIN and SUPERVISOR agents
         const adminAndSupervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
         for (const agentId of adminAndSupervisorIds) {
-          await notificationQueue().add('notification:dispatch', {
-            ...notifPayload,
-            agentId,
-          }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received (unassigned)', err));
+          await enqueueDispatch(event, agentId, notifPayload).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received (unassigned)', err));
         }
         logger.info(`[NotificationWorker] message.received (unassigned) → ${adminAndSupervisorIds.length} admin(s)/supervisor(s)`);
       }
@@ -212,7 +229,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   });
 
   // ── conversation.assigned ──────────────────────────────────────────────
-  events.on('conversation.assigned', async (event: AppEvent) => {
+  events.on('conversation.assigned', async (event: SubscribedEvent) => {
     try {
       const { conversationId, assignedToId } = event.payload as {
         conversationId?: string;
@@ -221,9 +238,8 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
 
       if (!assignedToId || !conversationId) return;
 
-      await notificationQueue().add('notification:dispatch', {
+      await enqueueDispatch(event, assignedToId, {
         tenantId: event.tenantId,
-        agentId: assignedToId,
         type: 'new_message',
         title: '對話已指派給您',
         body: '您有一則新的對話指派',
@@ -237,7 +253,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
   });
 
   // ── usage.quota.threshold（AI 用量達 80%/100% 告警給租戶 ADMIN）──────────
-  events.on('usage.quota.threshold', async (event: AppEvent) => {
+  events.on('usage.quota.threshold', async (event: SubscribedEvent) => {
     try {
       const { level, usedTokens, limitTokens, monthKey } = event.payload as {
         level: 'warning' | 'critical';
@@ -273,24 +289,22 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
       // 逐 ADMIN 隔離：站內通知 + email，任一失敗不影響其他
       for (const admin of admins) {
         // 站內通知（複用既有 notification:dispatch job/handler）
-        await notificationQueue()
-          .add('notification:dispatch', {
-            tenantId: event.tenantId,
-            agentId: admin.id,
-            type: isCritical ? 'usage_quota_critical' : 'usage_quota_warning',
-            title: isCritical ? 'AI 用量已達上限' : 'AI 用量已達 80%',
-            body: isCritical
-              ? `本月 AI 用量已達上限（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），AI 自動回覆暫停，真人回覆不受影響。`
-              : `本月 AI 用量已達 80%（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），額度用盡後 AI 自動回覆將暫停。`,
-            clickUrl: '/dashboard/plan',
-          })
-          .catch((err) => logger.error('[NotificationWorker] Failed to enqueue usage.quota notification', err));
+        await enqueueDispatch(event, admin.id, {
+          tenantId: event.tenantId,
+          type: isCritical ? 'usage_quota_critical' : 'usage_quota_warning',
+          title: isCritical ? 'AI 用量已達上限' : 'AI 用量已達 80%',
+          body: isCritical
+            ? `本月 AI 用量已達上限（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），AI 自動回覆暫停，真人回覆不受影響。`
+            : `本月 AI 用量已達 80%（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），額度用盡後 AI 自動回覆將暫停。`,
+          clickUrl: '/dashboard/plan',
+        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue usage.quota notification', err));
 
-        // email（fire-and-forget，失敗只 log）
-        const sendEmailFn = isCritical ? sendQuotaCriticalEmail : sendQuotaWarningEmail;
-        sendEmailFn(admin.email, emailVars).catch((err) =>
-          logger.error('[NotificationWorker] usage.quota email failed', err),
-        );
+        // email 經 usage-alert-email 佇列寄出：job id 是 <事件 id>__<管理員 id>，
+        // 事件重送時不重寄；寄送失敗由 BullMQ 重試（usage-quota-alerts「事件重送時不重複寄出告警信」）
+        const emailJob: UsageAlertEmailJob = { level, to: admin.email, vars: emailVars };
+        await usageAlertEmailQueue()
+          .add('usage-alert:send', emailJob, { jobId: `${event.id}__${admin.id}` })
+          .catch((err) => logger.error('[NotificationWorker] Failed to enqueue usage.quota email', err));
       }
 
       logger.info(

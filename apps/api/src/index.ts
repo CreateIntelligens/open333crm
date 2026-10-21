@@ -16,6 +16,7 @@ import {
   EVENT_AUTOMATION_QUEUE,
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
+  USAGE_ALERT_EMAIL_QUEUE,
   closeOutboxQueues,
   validatePermissionRegistry,
   validateRouteCodes,
@@ -94,7 +95,8 @@ import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
 import { setupNotificationWorker } from './modules/notification/notification.worker.js';
 import { setupOutboxSchedulers } from './modules/outbox/outbox.scheduler.js';
-import { bullWorkerFactory, startQueueWorkers, subscriberProcessor } from './events/subscriber-workers.js';
+import { bullWorkerFactory, startQueueWorkers, subscriberProcessor, type JobProcessor } from './events/subscriber-workers.js';
+import { processUsageAlertEmail } from './modules/notification/usage-alert-email.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
@@ -236,6 +238,7 @@ export async function bootstrap() {
       [EVENT_NOTIFICATION_QUEUE]: subscriberProcessor(setupNotificationWorker(app.prismaAdmin)),
       [EVENT_AUTOMATION_QUEUE]: subscriberProcessor(setupAutomationWorker(app.prismaAdmin, app.io)),
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
+      [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL),
   );

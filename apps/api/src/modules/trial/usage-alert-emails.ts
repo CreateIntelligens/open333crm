@@ -1,7 +1,7 @@
 /**
  * 用量告警信件（AI token 月額度達 80% / 100%）。
  * 平台級、內容簡單 → 純 HTML 模板 + {{變數}} 替換，樣式對齊 trial-emails.ts。
- * 寄信一律 fire-and-forget，失敗只 log（呼叫端負責）。
+ * 寄送失敗時丟出錯誤：呼叫端是 usage-alert-email 佇列的 job，丟錯讓 BullMQ 重試。
  */
 import { renderTemplateBody } from '../marketing/template-renderer.js';
 import { sendEmail } from '../email/email.service.js';
@@ -97,15 +97,16 @@ function render(template: string, vars: Record<string, string>): string {
   return renderTemplateBody(template, escaped);
 }
 
-async function safeSend(to: string, subject: string, html: string, metadata: Record<string, unknown>): Promise<void> {
+async function send(to: string, subject: string, html: string, metadata: Record<string, unknown>): Promise<void> {
   try {
     await sendEmail({ to, subject, html, metadata });
   } catch (err) {
     logger.error(`[UsageAlertEmail] send failed to=${to} subject="${subject}":`, err);
+    throw err;
   }
 }
 
-interface QuotaEmailVars {
+export interface QuotaEmailVars {
   siteName: string;
   usedTokens: string;
   limitTokens: string;
@@ -116,11 +117,11 @@ interface QuotaEmailVars {
 /** 80% 告警信。 */
 export async function sendQuotaWarningEmail(to: string, vars: QuotaEmailVars): Promise<void> {
   const html = render(WARNING_HTML, { ...vars });
-  await safeSend(to, `【open333】AI 用量提醒（80%）：${vars.siteName}`, html, { monthKey: vars.monthKey });
+  await send(to, `【open333】AI 用量提醒（80%）：${vars.siteName}`, html, { monthKey: vars.monthKey });
 }
 
 /** 100% 已達上限信。 */
 export async function sendQuotaCriticalEmail(to: string, vars: QuotaEmailVars): Promise<void> {
   const html = render(CRITICAL_HTML, { ...vars });
-  await safeSend(to, `【open333】AI 用量已達上限：${vars.siteName}`, html, { monthKey: vars.monthKey });
+  await send(to, `【open333】AI 用量已達上限：${vars.siteName}`, html, { monthKey: vars.monthKey });
 }

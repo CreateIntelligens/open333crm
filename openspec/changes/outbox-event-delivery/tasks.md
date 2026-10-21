@@ -40,8 +40,8 @@
 
 ## 6. 通知訂閱者
 
-- [ ] 6.1 寫失敗的單元測試 `apps/api/tests/unit/modules/notification/notification.worker.test.ts`，涵蓋 standalone-worker-runtime 的 Scenario「同一個事件處理兩次」「同一個事件通知多位客服人員」（以 job id 斷言），以及 usage-quota-alerts 的 Scenario「告警事件處理兩次」
-- [ ] 6.2 實作 design 決策 10：`notification:dispatch` 的 job id、`usage-alert-email` 佇列與它的 `Worker`。讓 6.1 通過；usage-quota-alerts 既有的測試照常通過
+- [x] 6.1 寫失敗的單元測試 `apps/api/tests/unit/modules/notification/notification.worker.test.ts`，涵蓋 standalone-worker-runtime 的 Scenario「同一個事件處理兩次」「同一個事件通知多位客服人員」（以 job id 斷言），以及 usage-quota-alerts 的 Scenario「告警事件處理兩次」
+- [x] 6.2 實作 design 決策 10：`notification:dispatch` 的 job id、`usage-alert-email` 佇列與它的 `Worker`。讓 6.1 通過；usage-quota-alerts 既有的測試照常通過
 
 ## 7. 對外 webhook
 
