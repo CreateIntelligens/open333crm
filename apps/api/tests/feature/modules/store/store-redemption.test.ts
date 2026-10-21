@@ -437,6 +437,22 @@ describe('共用碼券', () => {
 });
 
 describe('序號包', () => {
+  it('配發的序號記錄給了哪一張券', async () => {
+    const c = await inTenant((tx) =>
+      createCoupon(tx, T, agentId, {
+        name: `${MARK} 序號包配發`, purpose: 'MARKETING', couponType: 'DISCOUNT_AMOUNT', discountAmount: 50,
+        validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'IMPORTED_CODES',
+        redeemMode: 'STAFF_SCAN', perContactLimit: 5,
+      }));
+    const code = `PK${Date.now().toString(36).toUpperCase()}`;
+    await importCodes(prisma, T, c.id, code);
+    assert.ok((await inTenant((tx) => changeStatus(tx, T, c.id, 'ACTIVE'))).ok);
+    const r = await issueCoupons(prisma, T, c.id, { contactIds: [contactId], issuedVia: 'keyword' });
+    const row = await owner.couponCode.findFirst({ where: { tenantId: T, code } });
+    assert.equal(row?.status, 'ASSIGNED');
+    assert.equal(row?.instanceId, r.issued[0].id);
+  });
+
   it('去掉連字號後相同的序號不能匯入', async () => {
     const c = await inTenant((tx) =>
       createCoupon(tx, T, agentId, {

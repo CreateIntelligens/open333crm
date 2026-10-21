@@ -84,7 +84,7 @@ async function allocateCode(
   tx: CouponTx,
   tenantId: string,
   coupon: CouponForIssue,
-): Promise<{ ok: true; code: string } | { ok: false; reason: IssueSkipReason }> {
+): Promise<{ ok: true; code: string; poolCodeId?: string } | { ok: false; reason: IssueSkipReason }> {
   // 共用碼：顧客看到的是共用碼，但每張券仍有自己的內部券號（以共用碼為前綴），
   // 核銷台掃 QR Code 才分得出是哪一位顧客的券
   let prefix = coupon.codePrefix;
@@ -104,7 +104,7 @@ async function allocateCode(
       data: { status: 'ASSIGNED' },
     });
     if (taken.count === 0) return { ok: false, reason: 'CODE_ALLOCATION_CONFLICT' };
-    return { ok: true, code: candidate.code };
+    return { ok: true, code: candidate.code, poolCodeId: candidate.id };
   }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -203,6 +203,13 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
         issuedByName: params.issuedByName ?? null,
       },
     });
+    // 序號包：記錄這組序號配發給哪一張券，之後查得到序號的去向
+    if (allocated.poolCodeId) {
+      await tx.couponCode.updateMany({
+        where: { id: allocated.poolCodeId, tenantId },
+        data: { instanceId: instance.id },
+      });
+    }
 
     issued.push({
       id: instance.id,
