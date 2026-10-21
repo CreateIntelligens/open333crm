@@ -14,7 +14,7 @@
 import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
-import { logger, MinioStorageProvider } from '@open333crm/core';
+import { claimOne, logger, MinioStorageProvider } from '@open333crm/core';
 import { SimpleZip, toCsv } from '../lib/simple-zip.js';
 import { enqueueNotification } from '../lib/notification-queue.js';
 
@@ -142,11 +142,20 @@ export async function handleDataExportJob(
     return;
   }
 
-  try {
-    await prisma.dataExportRequest.updateMany({
-      where: { id: requestId, tenantId },
+  // processing 的請求代表上一次執行中途結束，重新處理；completed、failed、expired 代表已經結束
+  // （tenant-data-export「worker 不重新處理已結束的匯出請求」）
+  const claimed = await claimOne(() =>
+    prisma.dataExportRequest.updateMany({
+      where: { id: requestId, tenantId, status: { in: ['pending', 'processing'] } },
       data: { status: 'processing' },
-    });
+    }),
+  );
+  if (!claimed) {
+    logger.info(`[data-export] Request ${requestId} already finished, skipping`);
+    return;
+  }
+
+  try {
 
     const data = await collectTenantData(prisma, tenantId);
 
@@ -184,17 +193,25 @@ export async function handleDataExportJob(
     await storage.upload(EXPORT_BUCKET, fileKey, buffer, 'application/zip');
 
     const expiresAt = new Date(Date.now() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    await prisma.dataExportRequest.updateMany({
-      where: { id: requestId, tenantId },
-      data: {
-        status: 'completed',
-        fileKey,
-        fileSizeBytes: buffer.length,
-        expiresAt,
-        completedAt: new Date(),
-        error: null,
-      },
-    });
+    // 只把 processing 改成 completed：兩次執行同時進行時，後完成的那次不再通知。
+    // 兩次都上傳到同一個 key，後上傳的覆蓋前一個，內容相同
+    const completed = await claimOne(() =>
+      prisma.dataExportRequest.updateMany({
+        where: { id: requestId, tenantId, status: 'processing' },
+        data: {
+          status: 'completed',
+          fileKey,
+          fileSizeBytes: buffer.length,
+          expiresAt,
+          completedAt: new Date(),
+          error: null,
+        },
+      }),
+    );
+    if (!completed) {
+      logger.info(`[data-export] Request ${requestId} completed by another run, skipping notification`);
+      return;
+    }
 
     logger.info(
       `[data-export] Completed request ${requestId}: ${buffer.length} bytes, key=${fileKey}`,
@@ -212,12 +229,17 @@ export async function handleDataExportJob(
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`[data-export] Failed request ${requestId}: ${message}`, { err });
 
-    await prisma.dataExportRequest
-      .updateMany({
-        where: { id: requestId, tenantId },
+    const markedFailed = await claimOne(() =>
+      prisma.dataExportRequest.updateMany({
+        where: { id: requestId, tenantId, status: 'processing' },
         data: { status: 'failed', error: message.slice(0, 1000) },
-      })
-      .catch((e) => logger.error('[data-export] Failed to mark request failed', { e }));
+      }),
+    ).catch((e) => {
+      logger.error('[data-export] Failed to mark request failed', { e });
+      return true;
+    });
+    // 另一個執行已經完成這個請求：不覆蓋，也不通知失敗
+    if (!markedFailed) return;
 
     await enqueueNotification({
       tenantId,

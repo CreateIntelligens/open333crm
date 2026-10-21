@@ -82,11 +82,13 @@
 
 ## 10. data-export 與 data-erasure
 
-- [ ] 10.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-erasure.handler.test.ts`，重現 bug：Scenario「已完成的請求再執行一次」（第二次執行把 `completed` 改成 `failed`），並涵蓋「上一次執行中途結束」。確認失敗是 assertion 失敗
-- [ ] 10.2 `data-erasure` worker 照 design 決策 12 修改：開頭認領 `pending` 或 `processing`；`completed` 的條件更新放在刪除交易的第一個語句；`failed` 以 `processing` 為條件。讓 10.1 通過；tenant-data-erasure 既有的 Scenario「聯絡人已不存在時記錄失敗」照常通過
-- [ ] 10.3 在 10.1 的測試檔加上 tenant-data-erasure 的 Scenario「兩次同時執行」：mock 的交易讓第二次執行的 `completed` 條件更新回傳 0 筆，斷言第二次執行的交易 rollback、請求維持 `completed`、`error` 是空值、只送進一個完成通知的 job。列鎖讓後到的交易等待，這是 PostgreSQL 的行為；workers 沒有 feature 測試套件，所以不以真實資料庫測試
-- [ ] 10.4 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-export.handler.test.ts`，涵蓋 tenant-data-export 的 Scenario「已完成的請求再執行一次」「上一次執行中途結束」「兩次同時執行」（第二次的 `completed` 條件更新回傳 0 筆）
-- [ ] 10.5 `data-export` worker 開頭認領 `pending` 或 `processing`，`completed` 與 `failed` 以 `processing` 為條件（design 決策 12）。讓 10.4 通過
+- [x] 10.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-erasure.handler.test.ts`，重現 bug：Scenario「已完成的請求再執行一次」（第二次執行把 `completed` 改成 `failed`），並涵蓋「上一次執行中途結束」。確認失敗是 assertion 失敗
+- [x] 10.2 `data-erasure` worker 照 design 決策 12 修改：開頭認領 `pending` 或 `processing`；`completed` 的條件更新放在刪除交易的第一個語句；`failed` 以 `processing` 為條件。讓 10.1 通過；tenant-data-erasure 既有的 Scenario「聯絡人已不存在時記錄失敗」照常通過
+- [x] 10.3 在 10.1 的測試檔加上 tenant-data-erasure 的 Scenario「兩次同時執行」：mock 的交易讓第二次執行的 `completed` 條件更新回傳 0 筆，斷言第二次執行的交易 rollback、請求維持 `completed`、`error` 是空值、只送進一個完成通知的 job。列鎖讓後到的交易等待，這是 PostgreSQL 的行為；workers 沒有 feature 測試套件，所以不以真實資料庫測試
+  - 突變（2026-10-21）：開頭的認領只收 `pending`，「上一次執行中途結束」失敗；交易內不檢查 `completed` 條件更新的結果，「兩次同時執行」失敗。還原後通過。假交易以 undo 紀錄 rollback，只還原自己寫過的資料，與 PostgreSQL 相同
+- [x] 10.4 寫失敗的單元測試 `apps/workers/tests/unit/handlers/data-export.handler.test.ts`，涵蓋 tenant-data-export 的 Scenario「已完成的請求再執行一次」「上一次執行中途結束」「兩次同時執行」（第二次的 `completed` 條件更新回傳 0 筆）
+- [x] 10.5 `data-export` worker 開頭認領 `pending` 或 `processing`，`completed` 與 `failed` 以 `processing` 為條件（design 決策 12）。讓 10.4 通過
+  - 突變（2026-10-21）：開頭的認領只收 `pending`，「上一次執行中途結束」失敗，還原後通過。失敗通知也只在 `processing` 改成 `failed` 成功時送出
 
 ## 11. 文件與完成檢查
 
