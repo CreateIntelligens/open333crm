@@ -140,6 +140,10 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
   importRef.current = importState;
   const submitLock = useRef(false);
   const importedBatches = useRef(0);
+  /** 進行中的草稿儲存：同時再呼叫（連點、匯入序號自動存草稿）時等同一次結果，不重複建立券 */
+  const draftInFlight = useRef<Promise<string | null> | null>(null);
+  /** 最近一次成功儲存的內容：已發布的券儲存變更時以它計算差異，不重送已存過的欄位 */
+  const savedRef = useRef<FormValues>(initial);
 
   // 已選序號包但還沒匯入，離開也會遺失
   const pendingImport = importState.status === 'done' && !importState.imported && importState.codes.length > 0;
@@ -199,7 +203,18 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
 
   // ---- 草稿 ----
   /** 儲存草稿；成功回傳券 id。失敗時保留內容並在底部列顯示原因。 */
-  const saveDraft = useCallback(async (): Promise<string | null> => {
+  const saveDraft = useCallback((): Promise<string | null> => {
+    if (!draftInFlight.current) {
+      draftInFlight.current = saveDraftOnce().finally(() => {
+        draftInFlight.current = null;
+      });
+    }
+    return draftInFlight.current;
+    // saveDraftOnce 只讀 ref 與 setState，內容不隨 render 改變
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveDraftOnce = async (): Promise<string | null> => {
     const v = valuesRef.current;
     if (!v.name.trim()) {
       setNameNeeded(true);
@@ -243,7 +258,7 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
     } finally {
       setSavingDraft(false);
     }
-  }, []);
+  };
 
   const onSaveDraftClick = async () => {
     if (savingDraft) return;
@@ -331,7 +346,8 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
       focusFirstProblem();
       return false;
     }
-    const diff = editableChanges(initial, valuesRef.current);
+    const current = valuesRef.current;
+    const diff = editableChanges(savedRef.current, current);
     if (Object.keys(diff).length === 0) {
       showOk('沒有修改任何欄位');
       return false;
@@ -341,7 +357,8 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
     setBarError('');
     try {
       await updateCoupon(couponIdRef.current!, diff);
-      setBaseline(snapshot(valuesRef.current));
+      savedRef.current = current;
+      setBaseline(snapshot(current));
       return true;
     } catch (err) {
       const msg = getApiErrorMessage(err, '儲存失敗，請稍後重試');

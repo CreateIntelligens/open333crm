@@ -456,8 +456,13 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     const results = await Promise.all(
       Array.from({ length: 8 }, (_, i) => redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, String(100000 + i))),
     );
-    const checked = results.filter((r) => !r.ok && r.reason === 'STAFF_CODE_MISMATCH');
-    assert.ok(checked.length <= 5, `一個時段最多比對 5 次，實際 ${checked.length} 次`);
+    const reasons = results.map((r) => (r.ok ? 'OK' : r.reason));
+    // 先佔用次數再比對：恰好 5 個請求比對驗證碼，其餘因時段次數用完而要求重新開始
+    assert.equal(reasons.filter((r) => r === 'STAFF_CODE_MISMATCH').length, 5, reasons.join(','));
+    assert.equal(reasons.filter((r) => r === 'SESSION_REQUIRED').length, 3, reasons.join(','));
+    // 時段已關閉：再送一次（即使是正確的碼）也不會核銷
+    const after = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '582917');
+    assert.deepEqual(after, { ok: false, reason: 'SESSION_REQUIRED' });
   });
 
   it('沒有開始就送出驗證碼', async () => {

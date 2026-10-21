@@ -402,3 +402,36 @@ describe('後台逐欄驗證找到的問題（2026-10-21）', () => {
     assert.ok(await screen.findByRole('alertdialog'));
   });
 });
+
+describe('PR #347 bot 審查（2026-10-21）', () => {
+  test('畫面更新前連點兩次儲存草稿，只建立一張券', async () => {
+    let finish: (c: Coupon) => void = () => undefined;
+    coupons.createCoupon.mockImplementation(() => new Promise<Coupon>((r) => { finish = r; }));
+    render(<CouponForm mode="create" />);
+    fireEvent.change(screen.getByLabelText(/^券名稱/), { target: { value: '連點草稿' } });
+
+    // 同一批事件內點兩次：React 還沒重新 render，按鈕尚未停用
+    const buttons = screen.getAllByRole('button', { name: '儲存草稿' });
+    act(() => {
+      buttons[0].click();
+      buttons[buttons.length - 1].click();
+    });
+    await act(async () => finish(coupon({ id: 'new-1' })));
+
+    await waitFor(() => assert.equal(router.push.mock.calls.length > 0, true));
+    assert.equal(coupons.createCoupon.mock.calls.length, 1);
+  });
+
+  test('已發布的券存檔後再存一次，只送這次新改的欄位', async () => {
+    render(<CouponForm mode="published" coupon={coupon({ status: 'ACTIVE' })} claimedCount={0} issuedCount={0} />);
+    fireEvent.change(screen.getByLabelText(/^券名稱/), { target: { value: '第一次改名' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存變更' }));
+    await waitFor(() => assert.equal(coupons.updateCoupon.mock.calls.length, 1));
+
+    // 導頁前（mock 的 router 不會真的離開）再改另一個欄位
+    fireEvent.change(screen.getByLabelText(/^使用條款/), { target: { value: '新增條款' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存變更' }));
+    await waitFor(() => assert.equal(coupons.updateCoupon.mock.calls.length, 2));
+    assert.deepEqual(Object.keys(coupons.updateCoupon.mock.calls[1][1] as object), ['terms']);
+  });
+});
