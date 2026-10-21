@@ -325,6 +325,36 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     }
   });
 
+  it('一天內錯誤累計達 10 次就不能再核銷，重新開始也一樣', async () => {
+    const { fan, instanceId } = await started();
+    for (let i = 0; i < 5; i++) await redeemWithStaffCode(prisma, deps, fan, instanceId, '111222');
+    const again = await startStaffCodeSession(prisma, deps, fan, instanceId);
+    assert.ok(again.ok, '錯誤 5 次後可以重新開始');
+    for (let i = 0; i < 5; i++) await redeemWithStaffCode(prisma, deps, fan, instanceId, '111222');
+    const third = await startStaffCodeSession(prisma, deps, fan, instanceId);
+    assert.equal(!third.ok && third.reason, 'TOO_MANY_ATTEMPTS');
+    const r = await redeemWithStaffCode(prisma, deps, fan, instanceId, '582917');
+    assert.equal(!r.ok && r.reason, 'TOO_MANY_ATTEMPTS');
+    assert.equal((await owner.couponInstance.findUnique({ where: { id: instanceId } }))?.status, 'CLAIMED');
+    // 24 小時後解除
+    clock.now += 24 * 60 * 60 * 1000 + 1000;
+    try {
+      const later = await startStaffCodeSession(prisma, deps, fan, instanceId);
+      assert.ok(later.ok, JSON.stringify(later));
+    } finally {
+      clock.now -= 24 * 60 * 60 * 1000 + 1000;
+    }
+  });
+
+  it('同時送出多個驗證碼也都計入錯誤次數', async () => {
+    const { fan, instanceId } = await started();
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => redeemWithStaffCode(prisma, deps, fan, instanceId, String(100000 + i))),
+    );
+    const checked = results.filter((r) => !r.ok && r.reason === 'STAFF_CODE_MISMATCH');
+    assert.ok(checked.length <= 5, `一個時段最多比對 5 次，實際 ${checked.length} 次`);
+  });
+
   it('沒有開始就送出驗證碼', async () => {
     const p = await person('沒開始', lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);

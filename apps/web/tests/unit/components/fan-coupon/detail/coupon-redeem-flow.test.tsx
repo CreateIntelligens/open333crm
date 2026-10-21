@@ -212,6 +212,24 @@ describe('店員驗證碼核銷', () => {
     assert.ok(screen.queryByText('核銷時間已結束') === null);
   });
 
+  test('一天內錯誤太多次：開始使用時說明 24 小時內不能核銷', async () => {
+    h.start.mockRejectedValue(apiError('TOO_MANY_ATTEMPTS', {}, 429));
+    render(<CouponRedeemFlow id={ID} />);
+    fireEvent.click(button('立即使用'));
+    await flush();
+    assert.ok(screen.getByText('驗證碼錯誤次數過多，這張券 24 小時內不能核銷。如需協助請聯絡客服。'));
+  });
+
+  test('一天內錯誤太多次：送出驗證碼時說明，不顯示重試', async () => {
+    await openStaffCode();
+    h.redeemCode.mockRejectedValue(apiError('TOO_MANY_ATTEMPTS', {}, 429));
+    fireEvent.change(codeInput(), { target: { value: '111222' } });
+    fireEvent.click(button('確認核銷'));
+    await flush();
+    assert.ok(screen.getByText('驗證碼錯誤次數過多，這張券 24 小時內不能核銷。如需協助請聯絡客服。'));
+    assert.ok(screen.queryByRole('button', { name: '重試' }) === null);
+  });
+
   test('輸入格數等於 staffCodeLength', async () => {
     h.coupon = fanCoupon({}, { staffCodeLength: 4 });
     await openStaffCode();

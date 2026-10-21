@@ -39,10 +39,14 @@ interface Props {
 
 type Phase = 'starting' | 'startError' | 'input' | 'timeup';
 
+/** 同一張券 24 小時內驗證碼錯誤太多次（後端 MAX_DAILY_CODE_ATTEMPTS）：重試也不會成功，不提供重試 */
+const TOO_MANY_ATTEMPTS_TEXT = '驗證碼錯誤次數過多，這張券 24 小時內不能核銷。如需協助請聯絡客服。';
+
 export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
   const length = Math.min(6, Math.max(4, item.coupon.staffCodeLength ?? 6));
   const [phase, setPhase] = useState<Phase>('starting');
   const [startError, setStartError] = useState('');
+  const [locked, setLocked] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
@@ -67,7 +71,9 @@ export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
       const code = getApiErrorCode(err);
       if (code === 'ALREADY_REDEEMED') return onAbort({ kind: 'already' });
       if (code && UNAVAILABLE_CODES.has(code)) return onAbort({ kind: 'unavailable', code });
-      setStartError(getApiErrorMessage(err, '無法開始核銷，請稍後重試'));
+      const tooMany = code === 'TOO_MANY_ATTEMPTS';
+      setLocked(tooMany);
+      setStartError(tooMany ? TOO_MANY_ATTEMPTS_TEXT : getApiErrorMessage(err, '無法開始核銷，請稍後重試'));
       setPhase('startError');
     }
   }, [item.id, onAbort]);
@@ -121,6 +127,10 @@ export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
         }
       } else if (code === 'SESSION_REQUIRED') {
         onAbort({ kind: 'restart' });
+      } else if (code === 'TOO_MANY_ATTEMPTS') {
+        setLocked(true);
+        setStartError(TOO_MANY_ATTEMPTS_TEXT);
+        setPhase('startError');
       } else if (code === 'SESSION_EXPIRED') {
         setPhase('timeup');
       } else if (code === 'ALREADY_REDEEMED' || code === 'CONFLICT') {
@@ -169,9 +179,11 @@ export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort }: Props) {
             <p role="alert" className="text-sm font-semibold text-destructive">
               {startError}
             </p>
-            <button type="button" className={btnPrimary} onClick={() => void start()}>
-              重試
-            </button>
+            {!locked && (
+              <button type="button" className={btnPrimary} onClick={() => void start()}>
+                重試
+              </button>
+            )}
             <button type="button" className={btnSubtle} onClick={onBack}>
               返回票券詳情
             </button>

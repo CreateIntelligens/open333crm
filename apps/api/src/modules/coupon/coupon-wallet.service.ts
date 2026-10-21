@@ -114,6 +114,12 @@ export const REDEEM_SESSION_MS = 5 * 60 * 1000;
 /** 一個時段內最多可輸入錯誤的次數 */
 export const MAX_CODE_ATTEMPTS = 5;
 /**
+ * 同一張券 24 小時內最多可輸入錯誤的次數（跨時段累計）。驗證碼是整張券共用的，
+ * 只限制單一時段的話，重新開始就能無限試下去，試出來後所有持有者都能自行核銷。
+ */
+export const MAX_DAILY_CODE_ATTEMPTS = 10;
+const DAILY_ATTEMPTS_MS = 24 * 60 * 60 * 1000;
+/**
  * Redis 保存時段的時間比時段本身長：時段結束後短時間內送出驗證碼，
  * 才能回報「核銷時間已結束」而不是「須先開始使用」。
  */
@@ -121,8 +127,22 @@ const SESSION_KEEP_MS = REDEEM_SESSION_MS * 2;
 
 const sessionKey = (instanceId: string) => `coupon:redeem-session:${instanceId}`;
 const attemptsKey = (instanceId: string) => `coupon:redeem-session:${instanceId}:attempts`;
+const dailyAttemptsKey = (instanceId: string) => `coupon:redeem-code-attempts:${instanceId}`;
 
-type StartFailure = 'NOT_FOUND' | 'NOT_STAFF_CODE' | 'ALREADY_REDEEMED' | 'EXPIRED' | 'REVOKED' | 'NOT_YET_VALID';
+/** 24 小時內已用掉的驗證碼嘗試次數 */
+async function dailyAttempts(store: BindingStore, instanceId: string): Promise<number> {
+  return Number((await store.get(dailyAttemptsKey(instanceId))) ?? 0);
+}
+
+/** 先佔一次嘗試再比對：同時送出多個請求也都會被計入 */
+async function takeAttempt(store: BindingStore, key: string, ttlMs: number): Promise<number> {
+  const n = await store.incr(key);
+  if (n === 1) await store.pexpire(key, ttlMs);
+  return n;
+}
+
+type StartFailure =
+  | 'NOT_FOUND' | 'NOT_STAFF_CODE' | 'ALREADY_REDEEMED' | 'EXPIRED' | 'REVOKED' | 'NOT_YET_VALID' | 'TOO_MANY_ATTEMPTS';
 
 const UNAVAILABLE_REASON: Record<string, StartFailure> = {
   USED: 'ALREADY_REDEEMED',
@@ -147,6 +167,9 @@ export async function startStaffCodeSession(
   if (view.coupon.redeemMode !== 'STAFF_CODE') return { ok: false, reason: 'NOT_STAFF_CODE' };
   const unavailable = UNAVAILABLE_REASON[view.walletStatus];
   if (unavailable) return { ok: false, reason: unavailable };
+  if ((await dailyAttempts(deps.store, instanceId)) >= MAX_DAILY_CODE_ATTEMPTS) {
+    return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
+  }
 
   const current = await readSession(deps.store, instanceId);
   if (current && current.expiresAt > now) {
@@ -181,7 +204,7 @@ export type StaffCodeRedeemResult =
   | { ok: true; redeemedAt: Date; couponName: string }
   | {
       ok: false;
-      reason: 'NOT_FOUND' | 'SESSION_REQUIRED' | 'SESSION_EXPIRED' | RedeemFailure;
+      reason: 'NOT_FOUND' | 'SESSION_REQUIRED' | 'SESSION_EXPIRED' | 'TOO_MANY_ATTEMPTS' | RedeemFailure;
       /** 驗證碼錯誤時剩餘可輸入次數；0＝時段已關閉，須重新開始 */
       attemptsLeft?: number;
       redeemedAt?: Date;
@@ -199,11 +222,27 @@ export async function redeemWithStaffCode(
   const view = await getFanCoupon(prisma, fan, instanceId, now);
   if (!view) return { ok: false, reason: 'NOT_FOUND' };
 
+  if ((await dailyAttempts(deps.store, instanceId)) >= MAX_DAILY_CODE_ATTEMPTS) {
+    return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
+  }
   const session = await readSession(deps.store, instanceId);
   if (!session) return { ok: false, reason: 'SESSION_REQUIRED' };
   if (session.expiresAt <= now) {
     await closeSession(deps.store, instanceId);
     return { ok: false, reason: 'SESSION_EXPIRED' };
+  }
+
+  // 先佔用嘗試次數再比對驗證碼，同時送出的請求也逃不過上限
+  const daily = await takeAttempt(deps.store, dailyAttemptsKey(instanceId), DAILY_ATTEMPTS_MS);
+  if (daily > MAX_DAILY_CODE_ATTEMPTS) {
+    await closeSession(deps.store, instanceId);
+    return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
+  }
+  const attempts = await takeAttempt(deps.store, attemptsKey(instanceId), SESSION_KEEP_MS);
+  if (attempts > MAX_CODE_ATTEMPTS) {
+    // 這個時段的次數已用完（同時送出的請求），沒有比對驗證碼，須重新開始
+    await closeSession(deps.store, instanceId);
+    return { ok: false, reason: 'SESSION_REQUIRED' };
   }
 
   const result = await redeemCoupon(prisma, fan.tenantId, {
@@ -220,9 +259,7 @@ export async function redeemWithStaffCode(
     return { ok: false, reason: result.reason, ...(result.redeemedAt ? { redeemedAt: result.redeemedAt } : {}) };
   }
 
-  const attempts = await deps.store.incr(attemptsKey(instanceId));
-  if (attempts === 1) await deps.store.pexpire(attemptsKey(instanceId), SESSION_KEEP_MS);
-  const attemptsLeft = Math.max(0, MAX_CODE_ATTEMPTS - attempts);
+  const attemptsLeft = Math.max(0, Math.min(MAX_CODE_ATTEMPTS - attempts, MAX_DAILY_CODE_ATTEMPTS - daily));
   if (attemptsLeft === 0) await closeSession(deps.store, instanceId);
   return { ok: false, reason: 'STAFF_CODE_MISMATCH', attemptsLeft };
 }

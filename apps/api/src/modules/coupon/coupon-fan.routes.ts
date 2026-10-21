@@ -51,6 +51,7 @@ const STAFF_CODE_MESSAGES: Record<string, string> = {
   REVOKED: '活動已提前結束，此券已失效',
   NOT_STAFF_CODE: '此券不是店員驗證碼券',
   CONFLICT: '此券剛被使用',
+  TOO_MANY_ATTEMPTS: '驗證碼錯誤次數過多，這張券 24 小時內不能核銷。如需協助請聯絡客服。',
 };
 
 export default async function couponFanRoutes(app: FastifyInstance) {
