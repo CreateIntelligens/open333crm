@@ -212,7 +212,7 @@ Each exported service function takes the `TenantCtx` as its first parameter:
 export async function resolveCase(ctx: TenantCtx, caseId: string) {
   const updated = await ctx.tx.case.updateMany({ where: { id: caseId, tenantId: ctx.tenantId }, ... });
   ctx.notify('case.updated', payload);   // sent to tenant:<tenantId> after commit
-  ctx.publish('case.resolved', payload); // sent after commit
+  await ctx.publish('case.resolved', payload); // written to the outbox, sent after commit
 }
 ```
 
@@ -225,10 +225,17 @@ A service obeys these rules:
   transaction, external call, transaction. Before you split it, write in the spec whether the
   external call happens at most once or at least once.
 - Send Socket events with `ctx.notify` (to all agents of the tenant) or `ctx.notifyAgent` (to one
-  agent). Send events with `ctx.publish`. Send BullMQ jobs with `ctx.enqueue`. Do not call
-  `io.emit`, `eventBus.publish` or `queue.add()` directly. `ctx` sends them after the commit and
-  drops them after a rollback. A service does not give a room name:
+  agent). Send events with `await ctx.publish`. Send BullMQ jobs with
+  `await ctx.enqueue(queueName, name, data)`. Do not call `io.emit`, `eventBus.publish` or
+  `queue.add()` directly. A service does not give a room name:
   `apps/api/src/events/socket-push.ts` selects the room for each Socket event.
+- `ctx` sends Socket events after the commit and drops them after a rollback. A Socket event is
+  sent at most once. `ctx.publish` and `ctx.enqueue` write a row to the outbox inside the
+  transaction. The row commits with the data, and the system sends it after the commit, at least
+  once. Thus the receiver can get an event or a job two times. Before a side effect that must not
+  repeat (for example, a message to a customer), claim it with `claimSideEffect()` from
+  `@open333crm/core`, or with a conditional update. `docs/ref/modules/EVENTS.md` explains the
+  outbox and the claims.
 - Do not catch a unique-constraint error (`P2002`) and then continue inside the transaction. After
   the first error, PostgreSQL rejects each subsequent query in the transaction. To write a row or
   use the row that exists, use `createOrFindExisting()` from `@open333crm/core`
@@ -387,7 +394,7 @@ RLS. The skill named below gives the steps.
 | Client | Connection | When |
 | ------ | ---------- | ---- |
 | `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | new and moved route handlers. Returns 401 when the request has no tenant. Sends the response after the commit. The `reply` inside has no `send()`: return the body instead |
-| `inTenant({ prisma, io, events: eventBus }, tenantId, (ctx) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
+| `inTenant({ prisma, io, events: createOutboxPublisher(prisma) }, tenantId, (ctx) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
 | `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
 | `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |
 | `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | old form, being moved (#337). `inTenant()` uses it internally |
@@ -442,10 +449,11 @@ Use path A when all of these conditions are true:
 - The Socket event goes to all agents of the tenant (`ctx.notify`) or to one agent (`ctx.notifyAgent`).
 - You need no more queries.
 
-**Path B — Async queue** (eventBus → BullMQ → workers → Redis pub/sub):
+**Path B — Async queue** (outbox → subscriber queue → BullMQ → workers → Redis pub/sub):
 
 ```ts
-ctx.publish("case.assigned", payload); // API process, sent to eventBus after the commit
+await ctx.publish("case.assigned", payload); // written to the outbox in the transaction
+// → after the commit: job on the event-notification queue (API process)
 // → notificationQueue.add(job)  // BullMQ
 // → apps/workers consume → publishSocketEvent(redis, room, event, data)
 ```
@@ -466,8 +474,13 @@ await redisPublisher.publish(
 );
 ```
 
-`eventBus` (`apps/api/src/events/event-bus.ts`) is an in-process EventEmitter only. It has no
-Redis connection.
+Workers send a business event with `writeOutbox()` from `@open333crm/core`, in the transaction
+that writes the data. Give the `tenantId`: the workers connection has no RLS. After the commit,
+call `dispatchOutboxRows()`.
+
+`eventBus.publish()` (`apps/api/src/events/event-bus.ts`) is the old form. It sends the event
+directly to the subscriber queues and does not write the outbox. Thus the event is lost if the
+process stops before it sends the event. New code uses `ctx.publish`.
 
 ## Architecture: Scheduled Jobs in the API Process
 

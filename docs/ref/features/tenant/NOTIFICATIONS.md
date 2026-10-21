@@ -3,26 +3,28 @@
 通知是租戶後台右上角的鈴鐺與「通知」頁。系統在客人傳訊息、工單被指派或升級、SLA 快到期、CSAT 低分、AI 額度快用完時，通知相關的成員。通知只在後台內顯示；除了 AI 額度告警，都不寄信。
 
 - **資料來源**：`apps/api/src/modules/notification/*`、`apps/workers/src/handlers/notification.handler.ts`、`apps/workers/src/handlers/sla.handler.ts`、`apps/api/src/modules/csat/csat.service.ts`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 ## 負責的模組
 
 | 模組 | 負責什麼 |
 | --- | --- |
-| `notification`（API 行程） | `notification.worker.ts` 訂閱 eventBus，決定收件人，把工作送進 `notification` queue。`notification.routes.ts` 提供通知清單、未讀數與標記已讀 |
+| `notification`（API 行程） | `notification.worker.ts` 處理 `event-notification` 佇列的事件，決定收件人，把工作送進 `notification` queue。`notification.routes.ts` 提供通知清單、未讀數與標記已讀 |
 | `apps/workers` 的 `notification.handler.ts` | 從 queue 取出工作，寫入 `Notification`，透過 Redis 推送 `notification.new` 到收件人的 socket 房間 |
 
-`notification.worker.ts` 的名稱裡有 worker，但它不是 BullMQ consumer，而是把工作送進 queue 的 producer，見 `../../system/AUDIT.md` 的 APP-04。
+`notification.worker.ts` 的名稱裡有 worker，但它回傳的是訂閱者的處理函式，由 API 行程的訂閱者 Worker 呼叫，再把工作送進 queue，見 `../../system/AUDIT.md` 的 APP-04。
 
 ## 一則通知怎麼送到
 
-1. 業務模組在 API 行程的 eventBus 發布事件，例如 `case.assigned`。
-2. `setupNotificationWorker()` 的訂閱者決定收件人，每位收件人送一個工作進 `notification` queue。
+1. 業務模組發布事件，例如 `case.assigned`。事件送進通知訂閱者的佇列 `event-notification`，見[事件與背景工作](../../modules/EVENTS.md)。
+2. `setupNotificationWorker()` 的處理函式決定收件人，每位收件人送一個工作進 `notification` queue。工作的 id 是 `<事件 id>__<成員 ID>`，所以同一個事件處理兩次時，同一位成員只收到一則通知。
 3. workers 行程的 `handleNotificationJob()` 寫入一筆 `Notification`。
 4. workers 發布到 Redis 的 `socket:emit`，API 行程轉送 `notification.new` 到 `agent:<成員 ID>` 房間。
 5. 前端收到後更新鈴鐺的未讀數。
 
 每位收件人各有一筆通知紀錄。同一個事件通知五個人，就寫五筆。
+
+AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理員送一個工作進 `usage-alert-email` queue，工作的 id 是 `<事件 id>__<成員 ID>`，由 API 行程的 `usage-alert-email.worker.ts` 寄出。所以事件重送時不會重寄；寄送失敗時，BullMQ 重試，共 3 次。
 
 下列來源不經過上面的流程：
 
