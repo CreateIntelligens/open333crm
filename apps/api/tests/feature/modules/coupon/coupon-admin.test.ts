@@ -241,6 +241,19 @@ describe('共用碼不可與其他券重複', () => {
     );
   });
 
+  it('同時建立兩張相同共用碼的券，只有一張成功', async () => {
+    for (let round = 0; round < 5; round++) {
+      const code = `RACE${Date.now().toString(36).toUpperCase()}${round}`.slice(0, 20);
+      const results = await Promise.allSettled([
+        draft(`同時共用碼甲${round}`, { codeMode: 'SHARED_CODE', sharedCode: code }),
+        draft(`同時共用碼乙${round}`, { codeMode: 'SHARED_CODE', sharedCode: code }),
+      ]);
+      assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, `第 ${round + 1} 輪兩張都建立成功`);
+      const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+      assert.ok(rejected.reason instanceof CouponConflictError, String(rejected.reason));
+    }
+  });
+
   it('其他租戶使用相同共用碼', async () => {
     const c = await withTenant(prisma, otherTenantId, (tx) =>
       createCoupon(tx, otherTenantId, agentId, { name: `${MARK} 他租戶共用碼`, codeMode: 'SHARED_CODE', sharedCode: shared }));

@@ -215,6 +215,23 @@ function isDisplayCodeCollision(err: unknown): boolean {
   );
 }
 
+/**
+ * 共用碼唯一索引的衝突（migration 20261021140000）：兩個請求同時用同一組共用碼時，
+ * 先查再寫的檢查擋不住，由資料庫擋下，轉成與事前檢查相同的訊息。
+ */
+function isSharedCodeCollision(err: unknown, data: { sharedCode?: unknown }): boolean {
+  // partial unique index 的 P2002 不帶 target，以「這次有寫共用碼、且不是券號撞號」判斷
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === 'P2002' &&
+    !isDisplayCodeCollision(err) &&
+    typeof data.sharedCode === 'string' &&
+    data.sharedCode !== ''
+  );
+}
+
+const SHARED_CODE_TAKEN = '與其他券重複，請換一組券號';
+
 /** 建立券並配一組券號；券號撞號時換一組重試（31^6 組合，實務上極少發生）。 */
 async function insertWithDisplayCode(db: TenantDb, data: Record<string, unknown>) {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -223,6 +240,7 @@ async function insertWithDisplayCode(db: TenantDb, data: Record<string, unknown>
         data: { ...data, displayCode: generateDisplayCode() } as Prisma.CouponUncheckedCreateInput,
       });
     } catch (err) {
+      if (isSharedCodeCollision(err, data)) throw new CouponConflictError(SHARED_CODE_TAKEN);
       if (!isDisplayCodeCollision(err)) throw err;
     }
   }
@@ -259,7 +277,11 @@ export async function updateCoupon(db: TenantDb, tenantId: string, id: string, i
   }
   if (input.sharedCode !== undefined) await assertSharedCodeAvailable(db, tenantId, input.sharedCode, id);
 
-  const result = await db.coupon.updateMany({ where: { id, tenantId }, data: buildData(input) });
+  const data = buildData(input);
+  const result = await db.coupon.updateMany({ where: { id, tenantId }, data }).catch((err: unknown) => {
+    if (isSharedCodeCollision(err, data)) throw new CouponConflictError(SHARED_CODE_TAKEN);
+    throw err;
+  });
   if (result.count === 0) return null;
   return db.coupon.findFirst({ where: { id, tenantId } });
 }
