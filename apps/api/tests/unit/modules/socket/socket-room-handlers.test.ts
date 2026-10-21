@@ -48,7 +48,11 @@ afterEach(() => {
 test('連線後加入自己的租戶與成員房間', () => {
   const socket = createSocket();
   registerRoomHandlers(socket, { agentId, tenantId }, allow, createLog());
-  assert.deepEqual([...socket.rooms].sort(), [`agent:${agentId}`, `tenant:${tenantId}`]);
+  assert.deepEqual([...socket.rooms].sort(), [
+    `agent:${agentId}`,
+    `tenant:${tenantId}`,
+    `tenant:${tenantId}:agent:${agentId}`,
+  ]);
 });
 
 test('不認得的房間名稱：授權回 INVALID_TARGET 時不加入房間', async () => {
