@@ -19,6 +19,8 @@ export type RedeemFailure =
   | 'NOT_YET_VALID'
   | 'REVOKED'
   | 'NOT_CLAIMED'
+  /** 開啟後計時的券還沒開啟：效期從開啟起算，不開啟就核銷等於沒有期限 */
+  | 'NOT_OPENED'
   | 'STAFF_CODE_REQUIRED'
   | 'STAFF_CODE_MISMATCH'
   | 'SELF_REDEEM_NOT_ALLOWED'
@@ -208,6 +210,8 @@ export async function redeemCoupon(
     if (instance.status === 'REVOKED') return { ok: false as const, reason: 'REVOKED' as const };
     if (instance.status === 'EXPIRED') return { ok: false as const, reason: 'EXPIRED' as const };
     if (instance.status === 'ISSUED') return { ok: false as const, reason: 'NOT_CLAIMED' as const };
+    // 提前結束的券一律不能用（作廢與發券同時進行時的最後一道防線）；暫停不影響（design D18）
+    if (instance.coupon.status === 'ENDED') return { ok: false as const, reason: 'REVOKED' as const };
 
     const now = new Date();
     if (instance.expiresAt && instance.expiresAt <= now) {
@@ -215,6 +219,9 @@ export async function redeemCoupon(
     }
     if (instance.coupon.validityMode === 'FIXED' && instance.coupon.startAt && instance.coupon.startAt > now) {
       return { ok: false as const, reason: 'NOT_YET_VALID' as const };
+    }
+    if (instance.coupon.validityMode === 'AFTER_OPEN' && instance.status === 'CLAIMED') {
+      return { ok: false as const, reason: 'NOT_OPENED' as const };
     }
 
     const redeemMode = instance.coupon.redeemMode;

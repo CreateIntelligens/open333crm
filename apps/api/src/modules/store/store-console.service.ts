@@ -330,6 +330,8 @@ export type StoreRedeemFailure =
   | 'REVOKED'
   | 'WRONG_MODE'
   | 'NOT_CLAIMED'
+  /** 開啟後計時的券顧客還沒開啟 */
+  | 'NOT_OPENED'
   | 'SHARED_CODE'
   /** 同一個重試鍵用在另一張券（前端每次確認都產生新鍵，正常操作不會發生） */
   | 'KEY_REUSED';

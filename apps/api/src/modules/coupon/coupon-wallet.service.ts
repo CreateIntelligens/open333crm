@@ -299,6 +299,8 @@ export async function getWalletQrCode(
   if (!view.code || (view.walletStatus !== 'AVAILABLE' && view.walletStatus !== 'EXPIRING')) {
     return { ok: false, reason: 'NOT_AVAILABLE' };
   }
+  // 開啟後計時的券要先開啟（效期從開啟起算）
+  if (view.coupon.validityMode === 'AFTER_OPEN' && !view.openedAt) return { ok: false, reason: 'NOT_AVAILABLE' };
   // QR 內容一律是這張券自己的券號：共用碼券顧客看到的是共用碼，但掃碼要分得出是哪一位顧客
   const own = await withTenant(prisma, fan.tenantId, (tx) =>
     tx.couponInstance.findFirst({ where: { id: instanceId, tenantId: fan.tenantId }, select: { code: true } }));

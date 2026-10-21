@@ -30,7 +30,7 @@ export interface ResultView {
   actions: { label: string; action: ResultAction; variant: 'primary' | 'outline' }[];
 }
 
-export type FailureKey = 'used' | 'expired' | 'notyet' | 'notfound' | 'wrongMode' | 'ended' | 'notClaimed' | 'sharedCode' | 'keyReused';
+export type FailureKey = 'used' | 'expired' | 'notyet' | 'notfound' | 'wrongMode' | 'ended' | 'notClaimed' | 'notOpened' | 'sharedCode' | 'keyReused';
 
 export const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, FailureKey> = {
   USED: 'used',
@@ -51,6 +51,7 @@ export const REDEEM_FAILURE: Record<RedeemFailureReason, FailureKey> = {
   WRONG_MODE: 'wrongMode',
   REVOKED: 'ended',
   NOT_CLAIMED: 'notClaimed',
+  NOT_OPENED: 'notOpened',
   SHARED_CODE: 'sharedCode',
   KEY_REUSED: 'keyReused',
 };
@@ -200,6 +201,17 @@ export function failureView(f: FailureInput): ResultView {
         description: '顧客還沒有領取這張券，請顧客先完成領取',
         rows: couponRows(c),
         say: '這張券還沒有領取，請先在手機上完成領取喔。',
+        actions: BACK_TO_SCAN,
+      };
+    case 'notOpened':
+      return {
+        tone: 'danger',
+        icon: 'ban',
+        category: '無法使用',
+        title: '尚未開啟',
+        description: '這張券從開啟後才開始計時，請顧客先在手機上開啟',
+        rows: couponRows(c),
+        say: '這張券要先在手機上打開才能使用喔。',
         actions: BACK_TO_SCAN,
       };
   }

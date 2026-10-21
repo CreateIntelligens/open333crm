@@ -153,6 +153,8 @@ export async function listInstances(
     db.couponInstance.findMany({
       where,
       include: { contact: { select: { id: true, displayName: true } } },
+      // 領取憑證是有效的領券權杖：拿到就能把還沒領的券領走，不能回給後台
+      omit: { claimToken: true, claimTokenExpiresAt: true },
       orderBy: [{ claimedAt: { sort: 'desc', nulls: 'last' } }, { issuedAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,

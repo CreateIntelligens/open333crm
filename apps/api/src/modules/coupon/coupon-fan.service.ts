@@ -97,7 +97,8 @@ export function toFanView(
     code: hideCode ? null : i.coupon.codeMode === 'SHARED_CODE' && i.coupon.sharedCode ? i.coupon.sharedCode : i.code,
     codeHidden: hideCode,
     /** 店員掃碼券的券號（與 QR Code 內容相同）：共用碼券顧客看到共用碼，掃不到時要手動輸入這組 */
-    scanCode: !hideCode && i.coupon.redeemMode === 'STAFF_SCAN' ? i.code : null,
+    // 開啟後計時的券開啟前不給：效期從開啟起算
+    scanCode: !hideCode && i.coupon.redeemMode === 'STAFF_SCAN' && !(i.coupon.validityMode === 'AFTER_OPEN' && !i.openedAt) ? i.code : null,
     availableAt: notYetValid ? i.coupon.startAt : null,
     status: i.status,
     walletStatus,

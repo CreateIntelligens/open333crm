@@ -4,6 +4,7 @@
  * 狀態機：DRAFT → ACTIVE ⇄ PAUSED → ENDED。ENDED 為終態不可逆——
  * 已結束的券若能復活，顧客手上過期的券會突然又能用。
  */
+import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { CouponValidationError } from './coupon.service.js';
 
@@ -100,6 +101,9 @@ export async function changeStatus(
   couponId: string,
   next: CouponStatus,
 ): Promise<ChangeStatusResult> {
+  // 與發券同一把鎖（core issueInstances）：結束時等進行中的發券提交後才作廢，不會漏掉剛發出的券。
+  // db 必須是 withTenant 的 tx，鎖才會維持到交易結束
+  await (db as Prisma.TransactionClient).$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${couponId}, 0))`;
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) return { ok: false, reason: 'NOT_FOUND' };
 

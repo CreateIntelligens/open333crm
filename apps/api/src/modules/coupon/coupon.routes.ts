@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { emitCouponInstanceUpdated } from './coupon-events.js';
 import { parseDateOnly } from '@open333crm/core';
 import { requirePermission } from '../../guards/rbac.guard.js';
+import { withTenant } from '../../lib/tenant-db.js';
 import {
   listCoupons,
   getCoupon,
@@ -212,7 +213,9 @@ export default async function couponRoutes(app: FastifyInstance) {
     app.post(`/:id/${path}`, { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
       const { id } = idParams.parse(request.params);
       try {
-        const result = await changeStatus(request.tenantPrisma, request.agent.tenantId, id, next);
+        // 在同一個交易內鎖券、改狀態、作廢未使用的券
+        const result = await withTenant(app.prisma, request.agent.tenantId, (tx) =>
+          changeStatus(tx, request.agent.tenantId, id, next));
         if (!result.ok) {
           if (result.reason === 'NOT_FOUND') {
             return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
@@ -303,6 +306,7 @@ export default async function couponRoutes(app: FastifyInstance) {
         ALREADY_REDEEMED: '此券已使用',
         EXPIRED: '此券已過期',
         NOT_YET_VALID: '此券尚未生效',
+        NOT_OPENED: '顧客尚未開啟這張券，請顧客先在手機上開啟',
         REVOKED: '此券已作廢',
         NOT_CLAIMED: '此券尚未領取',
         STAFF_CODE_REQUIRED: '請輸入店員驗證碼',

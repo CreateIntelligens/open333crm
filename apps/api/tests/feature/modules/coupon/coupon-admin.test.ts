@@ -23,6 +23,7 @@ import {
 } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { redeemCoupon } from '#src/modules/coupon/coupon-redeem.service.js';
+import { getWalletQrCode } from '#src/modules/coupon/coupon-wallet.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
 import { listInstances, getCouponStats } from '#src/modules/coupon/coupon-stats.service.js';
 import { importCodes } from '#src/modules/coupon/coupon-import.service.js';
@@ -358,6 +359,46 @@ describe('券的狀態流轉不可逆', () => {
     assert.equal(late.ok ? 'ok' : late.reason, 'EXPIRED');
   });
 
+  it('提前結束與發券同時進行，不留下可用的券', async () => {
+    for (let round = 0; round < 3; round++) {
+      const c = await published(`結束競態${round}`, { perContactLimit: 1, totalLimit: null } as CouponInput);
+      const contacts = await Promise.all(Array.from({ length: 40 }, (_, i) => newContact(`race${round}-${i}`)));
+      await Promise.all([
+        issueCoupons(prisma, tenantId, c.id, { contactIds: contacts, issuedVia: 'broadcast' }).catch(() => null),
+        new Promise((r) => setTimeout(r, 15)).then(() => inTenant((tx) => changeStatus(tx, tenantId, c.id, 'ENDED'))),
+      ]);
+      const usable = await owner.couponInstance.count({ where: { couponId: c.id, status: { in: ['ISSUED', 'CLAIMED', 'OPENED'] } } });
+      assert.equal(usable, 0, `第 ${round + 1} 輪：結束後還有 ${usable} 張可用的券`);
+    }
+  });
+
+  it('已結束的券不能核銷', async () => {
+    const c = await published('結束後核銷', { redeemMode: 'STAFF_SCAN', staffCode: null } as CouponInput);
+    const inst = await seedInstance(c.id, `${MARK}-ENDED-1`, 'CLAIMED', { expiresAt: new Date(Date.now() + 86_400_000) });
+    // 模擬作廢沒跑到（例如結束當下另一筆發券還沒提交）：券主檔已結束、這張券仍是已領取
+    await owner.coupon.update({ where: { id: c.id }, data: { status: 'ENDED' } });
+    const r = await redeemCoupon(prisma, tenantId, { instanceId: inst.id });
+    assert.equal(r.ok ? 'ok' : r.reason, 'REVOKED');
+  });
+
+  it('開啟後計時的券要先開啟才能核銷', async () => {
+    const c = await published('開啟後計時', {
+      validityMode: 'AFTER_OPEN', afterClaimDays: null, afterOpenMinutes: 15, redeemMode: 'STAFF_SCAN', staffCode: null,
+    } as CouponInput);
+    const contactId = await newContact('開啟後計時');
+    const inst = await seedInstance(c.id, `${MARK}-AO-1`, 'CLAIMED', { contactId });
+    const notOpened = await redeemCoupon(prisma, tenantId, { instanceId: inst.id });
+    assert.equal(notOpened.ok ? 'ok' : notOpened.reason, 'NOT_OPENED');
+    const qr = await getWalletQrCode(prisma, { tenantId, contactId }, inst.id);
+    assert.equal(qr.ok ? 'ok' : qr.reason, 'NOT_AVAILABLE', '開啟前不給 QR Code');
+    await owner.couponInstance.update({
+      where: { id: inst.id },
+      data: { status: 'OPENED', openedAt: new Date(), expiresAt: new Date(Date.now() + 15 * 60_000) },
+    });
+    const ok = await redeemCoupon(prisma, tenantId, { instanceId: inst.id });
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+  });
+
   it('已結束的券不可恢復', async () => {
     const c = await published('不可恢復');
     await inTenant((tx) => changeStatus(tx, tenantId, c.id, 'ENDED'));
@@ -414,6 +455,17 @@ describe('序號明細查詢', () => {
     const r = await inTenant((tx) => listInstances(tx, tenantId, c.id, { q: code.replace(/-/g, '').toLowerCase() }));
     assert.equal(r.total, 1);
     assert.equal(r.items[0].code, code);
+  });
+
+  it('序號明細不回傳領取憑證', async () => {
+    const c = await published('不回傳憑證');
+    await seedInstance(c.id, `${MARK}-TOKEN-1`, 'ISSUED', {
+      claimToken: `tok-${MARK}`, claimTokenExpiresAt: new Date(Date.now() + 86_400_000),
+    });
+    const r = await inTenant((tx) => listInstances(tx, tenantId, c.id, {}));
+    assert.equal(r.items.length, 1);
+    assert.ok(!('claimToken' in r.items[0]), '有 coupon.view 的座席拿到憑證就能把券領走');
+    assert.ok(!('claimTokenExpiresAt' in r.items[0]));
   });
 
   it('依狀態篩選', async () => {

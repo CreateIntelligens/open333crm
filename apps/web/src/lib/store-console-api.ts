@@ -137,6 +137,7 @@ export type RedeemFailureReason =
   | 'REVOKED'
   | 'WRONG_MODE'
   | 'NOT_CLAIMED'
+  | 'NOT_OPENED'
   | 'SHARED_CODE'
   | 'KEY_REUSED';
 
