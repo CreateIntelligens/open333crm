@@ -59,6 +59,16 @@ export async function openWalletSession(
   const { tenantId } = payload;
 
   const state = await withTenant(prisma, tenantId, async (tx) => {
+    // 點擊歸因（design D21）：不論是否已驗證身分，每次開啟都記錄
+    const openedAt = new Date(nowOf(deps));
+    await tx.couponInstance.updateMany({
+      where: { id: payload.instanceId, tenantId },
+      data: { linkOpenCount: { increment: 1 } },
+    });
+    await tx.couponInstance.updateMany({
+      where: { id: payload.instanceId, tenantId, linkOpenedAt: null },
+      data: { linkOpenedAt: openedAt },
+    });
     // 收到連結後聯絡人可能被合併：依合併鏈找到保留方，券也已隨合併移過去
     const liveId = await resolveLiveContactId(tx, tenantId, payload.contactId);
     if (!liveId) return null;

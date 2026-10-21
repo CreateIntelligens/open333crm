@@ -9,7 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { tenantScopedClient } from '#src/lib/tenant-db.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
-import { getCouponAnalytics } from '#src/modules/coupon/coupon-stats.service.js';
+import { getCouponAnalytics, getCouponStats } from '#src/modules/coupon/coupon-stats.service.js';
 import Fastify, { type FastifyRequest } from 'fastify';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import analyticsRoutes from '#src/modules/analytics/analytics.routes.js';
@@ -51,9 +51,10 @@ async function mkInstance(couponId: string, issuedAt: string, status: 'ISSUED' |
 beforeAll(async () => {
   couponA = await mkCoupon('券A');
   couponB = await mkCoupon('券B');
-  await mkInstance(couponA, '2020-03-05T02:00:00.000Z', 'REDEEMED');
-  await mkInstance(couponA, '2020-03-05T03:00:00.000Z', 'REDEEMED');
-  await mkInstance(couponA, '2020-03-06T03:00:00.000Z', 'CLAIMED');
+  const opened = { linkOpenedAt: new Date('2020-03-05T05:00:00.000Z'), linkOpenCount: 2 };
+  await mkInstance(couponA, '2020-03-05T02:00:00.000Z', 'REDEEMED', opened);
+  await mkInstance(couponA, '2020-03-05T03:00:00.000Z', 'REDEEMED', opened);
+  await mkInstance(couponA, '2020-03-06T03:00:00.000Z', 'CLAIMED', opened);
   await mkInstance(couponA, '2020-03-06T04:00:00.000Z', 'ISSUED');
   await mkInstance(couponA, '2020-02-20T04:00:00.000Z', 'REDEEMED'); // 期間開始前
   await mkInstance(couponB, '2020-03-01T16:30:00.000Z', 'CLAIMED'); // 台灣 3/2 00:30
@@ -71,7 +72,7 @@ afterAll(async () => {
 describe('數據報表呈現優惠券成效', () => {
   it('期間內的優惠券成效', async () => {
     const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
-    assert.deepEqual(r.totals, { issued: 6, claimed: 4, redeemed: 2, redeemRate: 50 });
+    assert.deepEqual({ ...r.totals, linkOpened: undefined }, { issued: 6, claimed: 4, redeemed: 2, redeemRate: 50, linkOpened: undefined });
     const mine = r.topCoupons.filter((c) => c.couponId === couponA || c.couponId === couponB);
     assert.equal(mine[0].couponId, couponA);
     assert.deepEqual(
@@ -94,6 +95,19 @@ describe('數據報表呈現優惠券成效', () => {
   it('發送中的券不計入', async () => {
     const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
     assert.equal(r.trend.find((t) => t.date === '2020-03-08')?.issued ?? 0, 0);
+  });
+});
+
+describe('記錄票券連結的開啟', () => {
+  it('成效顯示開啟連結張數', async () => {
+    const stats = await getCouponStats(tenantScopedClient(prisma, T), T, couponA);
+    assert.equal(stats?.linkOpened, 3);
+  });
+
+  it('數據報表顯示開啟連結張數', async () => {
+    const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
+    assert.equal(r.totals.linkOpened, 3);
+    assert.equal(r.topCoupons.find((c) => c.couponId === couponA)?.linkOpened, 3);
   });
 });
 

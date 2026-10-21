@@ -118,7 +118,7 @@ beforeEach(() => {
   h.perms = ['coupon.view', 'coupon.manage'];
   h.coupon = { coupon: coupon(), error: undefined, isLoading: false, mutate: h.mutate };
   h.stats = {
-    stats: { issued: 200, claimed: 50, opened: 20, redeemed: 10, claimRate: 25, redeemRate: 20 },
+    stats: { issued: 200, claimed: 50, opened: 20, redeemed: 10, linkOpened: 80, claimRate: 25, redeemRate: 20 },
     error: undefined,
     isLoading: false,
     mutate: h.mutate,
@@ -130,7 +130,7 @@ function statCard(label: string) {
   return screen.getByRole('group', { name: label });
 }
 
-describe('五個指標卡', () => {
+describe('六個指標卡', () => {
   test('領取率＝領取÷發送、開封率＝開封÷領取、核銷率＝核銷÷領取', () => {
     render(<CouponDetailView id={ID} />);
     assert.ok(within(statCard('發送')).getByText('200'));
@@ -141,8 +141,14 @@ describe('五個指標卡', () => {
     assert.ok(within(statCard('核銷率')).getByText('核銷 ÷ 領取'));
   });
 
+  test('開啟連結：顯示張數與點擊率（開啟連結 ÷ 發送）', () => {
+    render(<CouponDetailView id={ID} />);
+    assert.ok(within(statCard('開啟連結')).getByText('80'));
+    assert.ok(within(statCard('開啟連結')).getByText('點擊率 40.0%'));
+  });
+
   test('分母為 0 時百分比顯示 0.0%', () => {
-    h.stats.stats = { issued: 0, claimed: 0, opened: 0, redeemed: 0, claimRate: null, redeemRate: null };
+    h.stats.stats = { issued: 0, claimed: 0, opened: 0, redeemed: 0, linkOpened: 0, claimRate: null, redeemRate: null };
     render(<CouponDetailView id={ID} />);
     assert.ok(within(statCard('領取')).getByText('領取率 0.0%'));
     assert.ok(within(statCard('開封')).getByText('開封率 0.0%'));

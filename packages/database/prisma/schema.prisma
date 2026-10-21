@@ -2370,6 +2370,9 @@ model CouponInstance {
   /// 對話發券送出訊息前寫入、送出後清除（design D16）。有值代表發送中：顧客端看不到，
   /// 但計入每人上限與發行總量；超過 5 分鐘仍有值由排程作廢
   deliveryPendingAt DateTime?
+  /// 票券連結第一次被開啟的時間與累計次數（點擊歸因，design D21）；未驗證身分的開啟也算
+  linkOpenedAt  DateTime?
+  linkOpenCount Int       @default(0)
 
   /// 發放來源，供成效歸因；領取歸戶後不變更
   issuedVia   String?

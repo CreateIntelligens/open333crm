@@ -208,6 +208,20 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     assert.equal((ok as { channelType?: string }).channelType, 'LINE');
   });
 
+  it('未驗證的顧客開啟票券連結也記錄', async () => {
+    const p = await person('開啟記錄', lineChannel, 'LINE');
+    const { token, instanceId } = await issue(p);
+    const first = clock.now;
+    for (let i = 0; i < 3; i++) {
+      await openWalletSession(prisma, deps, token);
+      clock.now += 60_000;
+    }
+    clock.now -= 3 * 60_000;
+    const row = await owner.couponInstance.findUnique({ where: { id: instanceId } });
+    assert.equal(row?.linkOpenCount, 3);
+    assert.equal(row?.linkOpenedAt?.getTime(), first);
+  });
+
   it('客服手動填寫的手機不算歸戶', async () => {
     const p = await person('客服填手機', lineChannel, 'LINE', { phone: '0912000111' });
     const { token } = await issue(p);

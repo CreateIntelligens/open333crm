@@ -122,7 +122,7 @@
 
 - [x] 7.1 組出發券訊息：使用既有訊息型別（文字或既有 Flex 版型），內容含券名、面額與 LIFF 連結（文字訊息含券名與票券連結）
 - [x] 7.2 連結帶 `liff.state` 參數指向該張券的詳情頁（LIFF 網址為 liff.line.me/{liffId}?ct=&lid=，不用 liff.state 路徑）
-- [ ] 7.3 連結沿用短網址以取得點擊歸因
+- [x] 7.3 連結沿用短網址以取得點擊歸因（2026-10-21 改為在券上記錄開啟次數，不另建短網址，見 design D21 與 13.4、13.5）
 
 ## B1. Inbox 對話發券
 
@@ -390,8 +390,8 @@
 
 ### 點擊歸因（D21）
 
-- [ ] 13.4 migration：coupon_instances 新增 linkOpenedAt、linkOpenCount
-- [ ] 13.5 測試與實作：開啟票券連結時記錄；單張券成效與數據報表顯示「開啟連結」
+- [x] 13.4 migration：coupon_instances 新增 linkOpenedAt、linkOpenCount
+- [x] 13.5 測試與實作：開啟票券連結時記錄；單張券成效與數據報表顯示「開啟連結」
 
 ### 背景匯出（D22）
 

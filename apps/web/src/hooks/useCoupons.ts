@@ -71,6 +71,8 @@ export interface CouponStats {
   claimed: number;
   opened: number;
   redeemed: number;
+  /** 票券連結至少被開啟過一次的張數（design D21） */
+  linkOpened: number;
   claimRate: number | null;
   redeemRate: number | null;
 }

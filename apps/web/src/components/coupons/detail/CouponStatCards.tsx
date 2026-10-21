@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * 詳情頁五個指標卡（UX 規則第 4 節【PM】）：發送、領取、開封、核銷、核銷率。
+ * 詳情頁六個指標卡（UX 規則第 4 節【PM】）：發送、開啟連結、領取、開封、核銷、核銷率。
+ * 開啟連結為點擊歸因（design D21）：未驗證身分的顧客開啟也算。
  * 百分比取小數 1 位，分母為 0 時顯示 0.0%（labels.ts 的 percent()）。
  */
 import React from 'react';
@@ -41,18 +42,19 @@ export function CouponStatCards({ stats, isLoading, error, onRetry }: Props) {
 
   if (isLoading || !stats) {
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-busy="true" aria-label="成效數據載入中">
-        {Array.from({ length: 5 }, (_, i) => (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-busy="true" aria-label="成效數據載入中">
+        {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="h-[98px] animate-pulse rounded-[10px] border border-border bg-muted" />
         ))}
       </div>
     );
   }
 
-  const { issued, claimed, opened, redeemed } = stats;
+  const { issued, claimed, opened, redeemed, linkOpened } = stats;
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
       <Card label="發送" value={formatNumber(issued)} note="已發出的序號" />
+      <Card label="開啟連結" value={formatNumber(linkOpened)} note={`點擊率 ${percent(linkOpened, issued)}`} />
       <Card label="領取" value={formatNumber(claimed)} note={`領取率 ${percent(claimed, issued)}`} />
       <Card label="開封" value={formatNumber(opened)} note={`開封率 ${percent(opened, claimed)}`} />
       <Card label="核銷" value={formatNumber(redeemed)} note="已在門市使用" />

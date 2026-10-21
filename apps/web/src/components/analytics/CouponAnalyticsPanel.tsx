@@ -12,9 +12,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export interface CouponAnalyticsData {
-  totals: { issued: number; claimed: number; redeemed: number; redeemRate: number | null };
+  totals: { issued: number; claimed: number; redeemed: number; linkOpened: number; redeemRate: number | null };
   trend: { date: string; issued: number; redeemed: number }[];
-  topCoupons: { couponId: string; name: string; issued: number; claimed: number; redeemed: number; redeemRate: number | null }[];
+  topCoupons: { couponId: string; name: string; issued: number; claimed: number; redeemed: number; linkOpened: number; redeemRate: number | null }[];
 }
 
 interface Props {
@@ -66,7 +66,7 @@ export function CouponAnalyticsPanel({ data, isLoading, error, onRetry }: Props)
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Kpi label="發出" value={fmt(totals.issued)} hint="期間內發出的張數" />
+        <Kpi label="發出" value={fmt(totals.issued)} hint={`開啟連結 ${fmt(totals.linkOpened)} 張`} />
         <Kpi label="已領取" value={fmt(totals.claimed)} />
         <Kpi label="已核銷" value={fmt(totals.redeemed)} />
         <Kpi label="核銷率" value={pct(totals.redeemRate)} hint="已核銷 ÷ 已領取" />
@@ -129,6 +129,7 @@ export function CouponAnalyticsPanel({ data, isLoading, error, onRetry }: Props)
                   <tr>
                     <th className="py-2 text-left font-medium">券名</th>
                     <th className="py-2 text-right font-medium">發出</th>
+                    <th className="py-2 text-right font-medium">開啟連結</th>
                     <th className="py-2 text-right font-medium">已領取</th>
                     <th className="py-2 text-right font-medium">已核銷</th>
                     <th className="py-2 text-right font-medium">核銷率</th>
@@ -143,6 +144,7 @@ export function CouponAnalyticsPanel({ data, isLoading, error, onRetry }: Props)
                         </Link>
                       </td>
                       <td className="py-2 text-right tabular-nums">{fmt(c.issued)}</td>
+                      <td className="py-2 text-right tabular-nums">{fmt(c.linkOpened)}</td>
                       <td className="py-2 text-right tabular-nums">{fmt(c.claimed)}</td>
                       <td className="py-2 text-right tabular-nums">{fmt(c.redeemed)}</td>
                       <td className="py-2 text-right tabular-nums">{pct(c.redeemRate)}</td>

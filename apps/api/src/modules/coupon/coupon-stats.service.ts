@@ -24,6 +24,8 @@ export interface CouponStats {
   pendingClaim: number;
   /** 序號包匯入的序號總數（含已配發）；非序號包模式為 null */
   poolSize: number | null;
+  /** 票券連結至少被開啟過一次的張數（點擊歸因，design D21） */
+  linkOpened: number;
   /** 已核銷 ÷ 已領取。無人領取時為 null，不是 0——沒有分母不等於成效為零 */
   redeemRate: number | null;
   /** 已領取 ÷ 發出。衡量發券訊息的吸引力 */
@@ -53,6 +55,8 @@ export async function getCouponStats(
   const claimed = claimedOnly + openedOnly + redeemed;
   const opened = openedOnly + redeemed;
 
+  const linkOpened = await db.couponInstance.count({ where: { couponId, tenantId, linkOpenedAt: { not: null } } });
+
   const poolSize =
     coupon.codeMode === 'IMPORTED_CODES'
       ? await db.couponCode.count({ where: { couponId, tenantId } })
@@ -68,6 +72,7 @@ export async function getCouponStats(
     expired,
     revoked,
     pendingClaim,
+    linkOpened,
     redeemRate: claimed > 0 ? Math.round((redeemed / claimed) * 1000) / 10 : null,
     claimRate: issued > 0 ? Math.round((claimed / issued) * 1000) / 10 : null,
   };
@@ -222,11 +227,11 @@ export async function getBulkRedeemCounts(
 
 export interface CouponAnalytics {
   /** 期間內發出的券（依發出時間），以及其中已領取、已核銷的張數 */
-  totals: { issued: number; claimed: number; redeemed: number; redeemRate: number | null };
+  totals: { issued: number; claimed: number; redeemed: number; linkOpened: number; redeemRate: number | null };
   /** 每日發出與核銷張數（台灣日期，design D17）；期間內每一天都有一筆，沒有資料為 0 */
   trend: { date: string; issued: number; redeemed: number }[];
   /** 期間內發出的券依核銷數排序，前 10 名 */
-  topCoupons: { couponId: string; name: string; issued: number; claimed: number; redeemed: number; redeemRate: number | null }[];
+  topCoupons: { couponId: string; name: string; issued: number; claimed: number; redeemed: number; linkOpened: number; redeemRate: number | null }[];
 }
 
 /** 補齊期間內每一天（台灣日期），圖表的時間軸才是連續的；超過 400 天只列有資料的日期，避免回應過大 */
@@ -243,11 +248,12 @@ const rate = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1
 
 export async function getCouponAnalytics(db: TenantDb, tenantId: string, from: Date, to: Date): Promise<CouponAnalytics> {
   // 發送中的券（對話發券還在等渠道回應，design D16）不計入
-  const perCoupon = await db.$queryRaw<{ coupon_id: string; name: string; issued: bigint; claimed: bigint; redeemed: bigint }[]>`
+  const perCoupon = await db.$queryRaw<{ coupon_id: string; name: string; issued: bigint; claimed: bigint; redeemed: bigint; link_opened: bigint }[]>`
     SELECT i."couponId" AS coupon_id, c.name,
       COUNT(*)::bigint AS issued,
       COUNT(*) FILTER (WHERE i.status IN ('CLAIMED', 'OPENED', 'REDEEMED'))::bigint AS claimed,
-      COUNT(*) FILTER (WHERE i.status = 'REDEEMED')::bigint AS redeemed
+      COUNT(*) FILTER (WHERE i.status = 'REDEEMED')::bigint AS redeemed,
+      COUNT(*) FILTER (WHERE i."linkOpenedAt" IS NOT NULL)::bigint AS link_opened
     FROM coupon_instances i
     JOIN coupons c ON c.id = i."couponId"
     WHERE i."tenantId" = ${tenantId}::uuid
@@ -259,10 +265,17 @@ export async function getCouponAnalytics(db: TenantDb, tenantId: string, from: D
     const issued = Number(r.issued);
     const claimed = Number(r.claimed);
     const redeemed = Number(r.redeemed);
-    return { couponId: r.coupon_id, name: r.name, issued, claimed, redeemed, redeemRate: rate(redeemed, claimed) };
+    const linkOpened = Number(r.link_opened);
+    return { couponId: r.coupon_id, name: r.name, issued, claimed, redeemed, linkOpened, redeemRate: rate(redeemed, claimed) };
   });
-  const sum = (key: 'issued' | 'claimed' | 'redeemed') => coupons.reduce((n, c) => n + c[key], 0);
-  const totals = { issued: sum('issued'), claimed: sum('claimed'), redeemed: sum('redeemed'), redeemRate: rate(sum('redeemed'), sum('claimed')) };
+  const sum = (key: 'issued' | 'claimed' | 'redeemed' | 'linkOpened') => coupons.reduce((n, c) => n + c[key], 0);
+  const totals = {
+    issued: sum('issued'),
+    claimed: sum('claimed'),
+    redeemed: sum('redeemed'),
+    linkOpened: sum('linkOpened'),
+    redeemRate: rate(sum('redeemed'), sum('claimed')),
+  };
 
   // 台灣日期分日：發出依 issuedAt、核銷依 redeemedAt，各自落在期間內才算
   const trendRows = await db.$queryRaw<{ day: string; issued: bigint; redeemed: bigint }[]>`

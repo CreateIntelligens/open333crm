@@ -10,14 +10,14 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { CouponAnalyticsPanel } from '#src/components/analytics/CouponAnalyticsPanel.js';
 
 const DATA = {
-  totals: { issued: 6, claimed: 4, redeemed: 2, redeemRate: 50 },
+  totals: { issued: 6, claimed: 4, redeemed: 2, linkOpened: 5, redeemRate: 50 },
   trend: [
     { date: '2020-03-02', issued: 1, redeemed: 0 },
     { date: '2020-03-05', issued: 2, redeemed: 2 },
   ],
   topCoupons: [
-    { couponId: 'k1', name: '秋季回饋', issued: 4, claimed: 3, redeemed: 2, redeemRate: 66.7 },
-    { couponId: 'k2', name: '小額致歉金', issued: 2, claimed: 1, redeemed: 0, redeemRate: 0 },
+    { couponId: 'k1', name: '秋季回饋', issued: 4, claimed: 3, redeemed: 2, linkOpened: 4, redeemRate: 66.7 },
+    { couponId: 'k2', name: '小額致歉金', issued: 2, claimed: 1, redeemed: 0, linkOpened: 1, redeemRate: 0 },
   ],
 };
 
@@ -30,6 +30,7 @@ describe('優惠券成效', () => {
     assert.ok(within(kpi('已領取')).getByText('4'));
     assert.ok(within(kpi('已核銷')).getByText('2'));
     assert.ok(within(kpi('核銷率')).getByText('50%'));
+    assert.ok(within(kpi('發出')).getByText('開啟連結 5 張'));
   });
 
   test('券排行列出名稱、張數與核銷率，可連到券詳情', () => {
@@ -49,7 +50,7 @@ describe('優惠券成效', () => {
   });
 
   test('沒有資料', () => {
-    render(<CouponAnalyticsPanel data={{ totals: { issued: 0, claimed: 0, redeemed: 0, redeemRate: null }, trend: [], topCoupons: [] }} isLoading={false} error={undefined} onRetry={() => {}} />);
+    render(<CouponAnalyticsPanel data={{ totals: { issued: 0, claimed: 0, redeemed: 0, linkOpened: 0, redeemRate: null }, trend: [], topCoupons: [] }} isLoading={false} error={undefined} onRetry={() => {}} />);
     assert.ok(screen.getByText('這段期間沒有發出優惠券'));
     const rate = [...document.querySelectorAll<HTMLElement>('[data-kpi]')].find((el) => el.querySelector('p')?.textContent === '核銷率')!;
     assert.ok(within(rate).getByText('—'));
