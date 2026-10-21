@@ -15,8 +15,11 @@ import { CouponValidationError } from './coupon.service.js';
 
 export type { IssuedInstance };
 
-/** 入口分批發券時每批的人數：每人約 4～8 個查詢，一批要在 5 秒的交易時限內完成 */
-export const ISSUE_BATCH_SIZE = 100;
+/**
+ * 入口分批發券時每批的人數：每人約 4～8 個查詢（設了領券標籤時更多），一批要在 5 秒的交易時限內完成，
+ * 並為資料庫延遲較高的環境留餘裕
+ */
+export const ISSUE_BATCH_SIZE = 50;
 
 export interface IssueOptions {
   /** 發放對象。FB／IG 對象亦可，領取時會改綁為完成驗證的聯絡人 */

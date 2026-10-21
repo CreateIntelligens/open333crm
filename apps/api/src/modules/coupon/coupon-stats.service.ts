@@ -242,17 +242,17 @@ export async function getBulkRedeemCounts(
   const result = new Map<string, { issued: number; redeemed: number }>();
   if (couponIds.length === 0) return result;
 
-  // 同上：避開 groupBy 的聯集型別問題。每張券兩個 count，
-  // 列表頁一頁至多數十張券，成本可接受。
-  await Promise.all(
-    couponIds.map(async (couponId) => {
-      const [issued, redeemed] = await Promise.all([
-        db.couponInstance.count({ where: { tenantId, couponId } }),
-        db.couponInstance.count({ where: { tenantId, couponId, status: 'REDEEMED' } }),
-      ]);
-      result.set(couponId, { issued, redeemed });
-    }),
-  );
+  // 一次查完整頁的券：同一個交易內的查詢依序執行，每張券各查兩次會讓列表頁接近 5 秒的交易時限
+  const rows = await db.$queryRaw<{ coupon_id: string; issued: bigint; redeemed: bigint }[]>`
+    SELECT "couponId" AS coupon_id,
+      COUNT(*)::bigint AS issued,
+      COUNT(*) FILTER (WHERE status = 'REDEEMED')::bigint AS redeemed
+    FROM coupon_instances
+    WHERE "tenantId" = ${tenantId}::uuid AND "couponId" = ANY(${couponIds}::uuid[])
+    GROUP BY 1
+  `;
+  for (const couponId of couponIds) result.set(couponId, { issued: 0, redeemed: 0 });
+  for (const r of rows) result.set(r.coupon_id, { issued: Number(r.issued), redeemed: Number(r.redeemed) });
   return result;
 }
 

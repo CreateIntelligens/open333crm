@@ -2407,6 +2407,9 @@ model CouponInstance {
   @@index([tenantId, contactId, status])
   @@index([couponId, status])
   @@index([tenantId, status, expiresAt])
+  // 優惠券成效報表依發出／核銷期間統計
+  @@index([tenantId, issuedAt])
+  @@index([tenantId, redeemedAt])
   @@map("coupon_instances")
 }
 

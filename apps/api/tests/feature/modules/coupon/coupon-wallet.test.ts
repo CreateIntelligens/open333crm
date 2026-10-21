@@ -21,12 +21,14 @@ import { requestOwnershipCode } from '#src/modules/identity-binding/ownership-co
 import { EMAIL_REGISTRATION } from '#src/modules/identity-binding/email-registration.service.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
 import { issueInConversation, type InboxFlowDeps } from '#src/modules/coupon/coupon-inbox.flow.js';
-import { openWalletSessionFlow } from '#src/modules/coupon/coupon-wallet.flow.js';
+import {
+  openWalletSessionFlow,
+  redeemWithStaffCodeFlow,
+  startStaffCodeSessionFlow,
+} from '#src/modules/coupon/coupon-wallet.flow.js';
 import {
   listWallet,
   getWalletCoupon,
-  startStaffCodeSession,
-  redeemWithStaffCode,
   getWalletQrCode,
   type WalletDeps,
 } from '#src/modules/coupon/coupon-wallet.service.js';
@@ -47,6 +49,7 @@ const deps: WalletDeps = {
   store: memBindingStore(clock),
   now: () => clock.now,
 };
+const flowDeps = () => ({ ...deps, prisma, io: testIo });
 // 對話發券：與票券夾共用同一個儲存與時鐘，測試不真的送訊息，記下送出的文字
 const inboxDeps: InboxFlowDeps = {
   prisma,
@@ -100,7 +103,7 @@ async function issue(p: Person, id = couponId): Promise<{ token: string; instanc
 }
 
 async function fanOf(p: Person, token: string) {
-  const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+  const s = await openWalletSessionFlow(flowDeps(), token);
   assert.equal(s.status, 'ok', `換憑證失敗：${JSON.stringify(s)}`);
   return s.status === 'ok' ? { tenantId: s.tenantId, contactId: s.contactId } : { tenantId: T, contactId: p.contactId };
 }
@@ -149,7 +152,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
   it('已歸戶的顧客開啟票券連結', async () => {
     const p = await person('已歸戶', lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);
-    const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    const s = await openWalletSessionFlow(flowDeps(), token);
     assert.equal(s.status, 'ok');
     if (s.status !== 'ok') return;
     assert.equal(s.instanceId, instanceId);
@@ -163,7 +166,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
   it('未歸戶的顧客開啟票券連結', async () => {
     const p = await person('未歸戶', lineChannel, 'LINE');
     const { token } = await issue(p);
-    const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    const s = await openWalletSessionFlow(flowDeps(), token);
     assert.equal(s.status, 'verification_required');
     if (s.status !== 'verification_required') return;
     assert.equal(s.kind, 'email');
@@ -177,7 +180,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
     invalidateIdentityBindingSettings();
     try {
-      const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+      const s = await openWalletSessionFlow(flowDeps(), token);
       assert.equal(s.status, 'verification_required');
       if (s.status !== 'verification_required') return;
       assert.equal(s.kind, 'email');
@@ -193,7 +196,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     const { token } = await issue(p);
     const urls = new Set<string>();
     for (let i = 0; i < 10; i++) {
-      const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+      const s = await openWalletSessionFlow(flowDeps(), token);
       assert.equal(s.status, 'verification_required', `第 ${i + 1} 次`);
       if (s.status === 'verification_required') urls.add(s.registrationUrl);
       clock.now += 60 * 1000;
@@ -205,11 +208,11 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
   it('從 Facebook 開啟票券連結', async () => {
     const fb = await person('FB開啟', fbChannel, 'FB');
     const { token } = await issue(fb);
-    const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    const s = await openWalletSessionFlow(flowDeps(), token);
     assert.equal(s.status, 'verification_required');
     assert.equal((s as { channelType?: string }).channelType, 'FB');
     const line = await person('LINE開啟', lineChannel, 'LINE', { verified: true });
-    const ok = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, (await issue(line)).token);
+    const ok = await openWalletSessionFlow(flowDeps(), (await issue(line)).token);
     assert.equal((ok as { channelType?: string }).channelType, 'LINE');
   });
 
@@ -218,7 +221,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     const { token, instanceId } = await issue(p);
     const first = clock.now;
     for (let i = 0; i < 3; i++) {
-      await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+      await openWalletSessionFlow(flowDeps(), token);
       clock.now += 60_000;
     }
     clock.now -= 3 * 60_000;
@@ -230,7 +233,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
   it('客服手動填寫的手機不算歸戶', async () => {
     const p = await person('客服填手機', lineChannel, 'LINE', { phone: '0912000111' });
     const { token } = await issue(p);
-    assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'verification_required');
+    assert.equal((await openWalletSessionFlow(flowDeps(), token)).status, 'verification_required');
   });
 
   it('租戶沒有啟用任何登記方式', async () => {
@@ -239,7 +242,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: {} } });
     invalidateIdentityBindingSettings();
     try {
-      assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'unavailable');
+      assert.equal((await openWalletSessionFlow(flowDeps(), token)).status, 'unavailable');
     } finally {
       await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
       invalidateIdentityBindingSettings();
@@ -249,14 +252,14 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
   it('登記連結的驗證碼寄送次數用完後，重新開啟票券會換新連結', async () => {
     const p = await person('寄送用完', lineChannel, 'LINE');
     const { token } = await issue(p);
-    const first = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    const first = await openWalletSessionFlow(flowDeps(), token);
     assert.equal(first.status, 'verification_required');
     const regToken = /\/bind\/email\/([A-Za-z0-9_-]+)/.exec((first as { registrationUrl: string }).registrationUrl)![1];
     const send = async () => undefined;
     for (let i = 0; i < 3; i++) {
       assert.equal((await requestOwnershipCode(EMAIL_REGISTRATION, { store: deps.store, sendCode: send }, regToken, 'a@example.com')).status, 'code_sent');
     }
-    const again = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    const again = await openWalletSessionFlow(flowDeps(), token);
     assert.ok(!(again as { registrationUrl: string }).registrationUrl.includes(regToken), '應該換一個新的登記連結');
   });
 
@@ -266,7 +269,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true } } });
     invalidateIdentityBindingSettings();
     try {
-      assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'unavailable');
+      assert.equal((await openWalletSessionFlow(flowDeps(), token)).status, 'unavailable');
     } finally {
       await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
       invalidateIdentityBindingSettings();
@@ -278,10 +281,10 @@ describe('票券連結', () => {
   it('開啟有效連結', async () => {
     const p = await person('重複開啟', lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);
-    await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    await openWalletSessionFlow(flowDeps(), token);
     clock.now += 6 * DAY;
     try {
-      const again = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+      const again = await openWalletSessionFlow(flowDeps(), token);
       assert.equal(again.status, 'ok');
       assert.equal(again.status === 'ok' && again.instanceId, instanceId);
     } finally {
@@ -294,7 +297,7 @@ describe('票券連結', () => {
     const { token } = await issue(p);
     clock.now += 8 * DAY;
     try {
-      assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'expired');
+      assert.equal((await openWalletSessionFlow(flowDeps(), token)).status, 'expired');
     } finally {
       clock.now -= 8 * DAY;
     }
@@ -307,7 +310,7 @@ describe('票券連結', () => {
     // 以 owner 模擬合併：被合併方封存並指向保留方，券跟著移動
     await owner.contact.update({ where: { id: fb.contactId }, data: { isArchived: true, mergedIntoId: line.contactId } });
     await owner.couponInstance.update({ where: { id: instanceId }, data: { contactId: line.contactId } });
-    const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    const s = await openWalletSessionFlow(flowDeps(), token);
     assert.equal(s.status, 'ok');
     assert.equal(s.status === 'ok' && s.contactId, line.contactId);
   });
@@ -368,7 +371,7 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     const p = await person(`核銷-${randomUUID().slice(0, 6)}`, lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);
     const fan = await fanOf(p, token);
-    const s = await runInTenant(prisma, fan.tenantId, (ctx) => startStaffCodeSession(ctx, deps, fan, instanceId));
+    const s = await startStaffCodeSessionFlow(flowDeps(), fan, instanceId);
     assert.ok(s.ok, `開始使用失敗：${JSON.stringify(s)}`);
     // 回傳以伺服器時間算的剩餘毫秒：顧客手機時鐘不準時倒數也正確
     assert.equal(s.ok && s.remainingMs, 5 * 60 * 1000);
@@ -377,7 +380,7 @@ describe('店員驗證碼核銷須在時限內完成', () => {
 
   it('時段內輸入正確驗證碼', async () => {
     const { fan, instanceId } = await started();
-    const r = await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '582917'));
+    const r = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '582917');
     assert.ok(r.ok, JSON.stringify(r));
     const instance = await owner.couponInstance.findUnique({ where: { id: instanceId } });
     assert.equal(instance?.status, 'REDEEMED');
@@ -386,7 +389,7 @@ describe('店員驗證碼核銷須在時限內完成', () => {
 
   it('驗證碼錯誤', async () => {
     const { fan, instanceId } = await started();
-    const r = await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '111222'));
+    const r = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '111222');
     assert.equal(r.ok, false);
     assert.equal(!r.ok && r.reason, 'STAFF_CODE_MISMATCH');
     assert.equal(!r.ok && r.attemptsLeft, 4);
@@ -395,8 +398,8 @@ describe('店員驗證碼核銷須在時限內完成', () => {
 
   it('錯誤達 5 次', async () => {
     const { fan, instanceId } = await started();
-    for (let i = 0; i < 5; i++) await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '111222'));
-    const r = await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '582917'));
+    for (let i = 0; i < 5; i++) await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '111222');
+    const r = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '582917');
     assert.equal(r.ok, false);
     assert.equal(!r.ok && r.reason, 'SESSION_REQUIRED');
   });
@@ -405,7 +408,7 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     const { fan, instanceId } = await started();
     clock.now += 5 * 60 * 1000 + 1000;
     try {
-      const r = await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '582917'));
+      const r = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '582917');
       assert.equal(!r.ok && r.reason, 'SESSION_EXPIRED');
       assert.equal((await owner.couponInstance.findUnique({ where: { id: instanceId } }))?.status, 'CLAIMED');
     } finally {
@@ -419,29 +422,29 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     const second = await issue(p);
     const fan = await fanOf(p, first.token);
     for (const round of [0, 1]) {
-      assert.ok((await runInTenant(prisma, fan.tenantId, (ctx) => startStaffCodeSession(ctx, deps, fan, first.instanceId))).ok, `第 ${round + 1} 輪開始`);
-      for (let i = 0; i < 5; i++) await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, first.instanceId, '111222'));
+      assert.ok((await startStaffCodeSessionFlow(flowDeps(), fan, first.instanceId)).ok, `第 ${round + 1} 輪開始`);
+      for (let i = 0; i < 5; i++) await redeemWithStaffCodeFlow(flowDeps(), fan, first.instanceId, '111222');
     }
     // 換另一張同樣的券也不能再試：驗證碼是整張券共用的
-    const other = await runInTenant(prisma, fan.tenantId, (ctx) => startStaffCodeSession(ctx, deps, fan, second.instanceId));
+    const other = await startStaffCodeSessionFlow(flowDeps(), fan, second.instanceId);
     assert.equal(!other.ok && other.reason, 'TOO_MANY_ATTEMPTS');
   });
 
   it('一天內錯誤累計達 10 次就不能再核銷，重新開始也一樣', async () => {
     const { fan, instanceId } = await started();
-    for (let i = 0; i < 5; i++) await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '111222'));
-    const again = await runInTenant(prisma, fan.tenantId, (ctx) => startStaffCodeSession(ctx, deps, fan, instanceId));
+    for (let i = 0; i < 5; i++) await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '111222');
+    const again = await startStaffCodeSessionFlow(flowDeps(), fan, instanceId);
     assert.ok(again.ok, '錯誤 5 次後可以重新開始');
-    for (let i = 0; i < 5; i++) await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '111222'));
-    const third = await runInTenant(prisma, fan.tenantId, (ctx) => startStaffCodeSession(ctx, deps, fan, instanceId));
+    for (let i = 0; i < 5; i++) await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '111222');
+    const third = await startStaffCodeSessionFlow(flowDeps(), fan, instanceId);
     assert.equal(!third.ok && third.reason, 'TOO_MANY_ATTEMPTS');
-    const r = await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '582917'));
+    const r = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '582917');
     assert.equal(!r.ok && r.reason, 'TOO_MANY_ATTEMPTS');
     assert.equal((await owner.couponInstance.findUnique({ where: { id: instanceId } }))?.status, 'CLAIMED');
     // 24 小時後解除
     clock.now += 24 * 60 * 60 * 1000 + 1000;
     try {
-      const later = await runInTenant(prisma, fan.tenantId, (ctx) => startStaffCodeSession(ctx, deps, fan, instanceId));
+      const later = await startStaffCodeSessionFlow(flowDeps(), fan, instanceId);
       assert.ok(later.ok, JSON.stringify(later));
     } finally {
       clock.now -= 24 * 60 * 60 * 1000 + 1000;
@@ -451,7 +454,7 @@ describe('店員驗證碼核銷須在時限內完成', () => {
   it('同時送出多個驗證碼也都計入錯誤次數', async () => {
     const { fan, instanceId } = await started();
     const results = await Promise.all(
-      Array.from({ length: 8 }, (_, i) => runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, String(100000 + i)))),
+      Array.from({ length: 8 }, (_, i) => redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, String(100000 + i))),
     );
     const checked = results.filter((r) => !r.ok && r.reason === 'STAFF_CODE_MISMATCH');
     assert.ok(checked.length <= 5, `一個時段最多比對 5 次，實際 ${checked.length} 次`);
@@ -461,7 +464,7 @@ describe('店員驗證碼核銷須在時限內完成', () => {
     const p = await person('沒開始', lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);
     const fan = await fanOf(p, token);
-    const r = await runInTenant(prisma, fan.tenantId, (ctx) => redeemWithStaffCode(ctx, deps, fan, instanceId, '582917'));
+    const r = await redeemWithStaffCodeFlow(flowDeps(), fan, instanceId, '582917');
     assert.equal(!r.ok && r.reason, 'SESSION_REQUIRED');
   });
 });

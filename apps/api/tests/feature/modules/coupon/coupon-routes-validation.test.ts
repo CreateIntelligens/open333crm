@@ -244,7 +244,7 @@ describe('券的日期一律以台灣時間計算（design D17）', () => {
     });
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/publish` })).statusCode, 200);
     const name = `${MARK} 分批對象`;
-    // 250 人：三批（每批 ISSUE_BATCH_SIZE = 100）；總量 240，最後 10 人因總量用完而略過
+    // 250 人跨越多批（每批 ISSUE_BATCH_SIZE 人）；總量 240，最後 10 人因總量用完而略過
     await owner.contact.createMany({ data: Array.from({ length: 250 }, (_, n) => ({ tenantId: T, displayName: `${name}${n}` })) });
     const contacts = await owner.contact.findMany({ where: { tenantId: T, displayName: { startsWith: name } }, select: { id: true } });
     try {
