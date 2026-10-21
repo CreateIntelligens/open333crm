@@ -135,9 +135,13 @@ export function CouponInstancesPanel({ coupon, issuedCount, poolSize = null, sho
     setExporting(true);
     setExportError(null);
     try {
-      const blob = await downloadInstancesCsv(coupon.id);
-      saveBlob(blob, `${coupon.displayCode}-序號明細.csv`);
-      showOk('已匯出');
+      const result = await downloadInstancesCsv(coupon.id);
+      if (result.kind === 'background') {
+        showOk('名單較多，產生完成後會通知你下載');
+      } else {
+        saveBlob(result.blob, `${coupon.displayCode}-序號明細.csv`);
+        showOk('已匯出');
+      }
     } catch (err) {
       // 回應型別是 blob，後端錯誤訊息通常讀不到，取不到時用規則文案
       setExportError(getApiErrorMessage(err, '匯出失敗，請稍後再試'));
@@ -161,7 +165,7 @@ export function CouponInstancesPanel({ coupon, issuedCount, poolSize = null, sho
             {exporting ? '匯出中…' : '匯出 CSV'}
           </Button>
           {largeExport && !exportError && (
-            <span className="text-xs text-muted-foreground">筆數較多，可能需要較長時間</span>
+            <span className="text-xs text-muted-foreground">超過 5,000 筆會在背景產生，完成後以通知提供下載</span>
           )}
           {exportError && (
             <div role="alert" className="flex items-center gap-2 text-xs text-destructive">

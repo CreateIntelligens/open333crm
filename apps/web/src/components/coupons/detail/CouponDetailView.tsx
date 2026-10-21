@@ -12,12 +12,12 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
-import { useCoupon, useCouponStats } from '@/hooks/useCoupons';
+import { downloadExportFile, useCoupon, useCouponStats } from '@/hooks/useCoupons';
 import { CouponPurposeBadge, CouponStatusBadge } from '@/components/coupons/CouponBadges';
 import { CouponToast, useCouponToast } from '@/components/coupons/CouponToast';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { COUPON_LIST_PATH, errorStatus, isCouponId } from './detail-helpers';
+import { COUPON_LIST_PATH, errorStatus, isCouponId, saveBlob } from './detail-helpers';
 import { CouponStatCards } from './CouponStatCards';
 import { CouponInstancesPanel } from './CouponInstancesPanel';
 import { CouponSettingsPanel } from './CouponSettingsPanel';
@@ -119,6 +119,24 @@ export function CouponDetailView({ id }: { id: string }) {
     const qs = next.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [searchParams, pathname, router, showOk]);
+
+  // ── 從「序號明細已可下載」通知進來：下載背景產生的檔案，再把 export 參數清掉（design D22） ──
+  const handledExport = useRef(false);
+  useEffect(() => {
+    const jobId = searchParams.get('export');
+    if (!jobId || handledExport.current) return;
+    handledExport.current = true;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete('export');
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    downloadExportFile(jobId)
+      .then(({ blob, fileName }) => {
+        saveBlob(blob, fileName);
+        showOk('已下載序號明細');
+      })
+      .catch((err: unknown) => showError(getApiErrorMessage(err, '下載失敗，請回到序號明細重新匯出')));
+  }, [searchParams, pathname, router, showOk, showError]);
 
   const goBack = useBackToList(arrivedFromForm);
 

@@ -36,6 +36,7 @@ vi.mock('#src/hooks/useCoupons.js', () => ({
     return h.instances;
   },
   downloadInstancesCsv: vi.fn(),
+  downloadExportFile: vi.fn(),
 }));
 vi.mock('#src/hooks/useContactTags.js', () => ({
   useContactTags: () => ({ tags: [{ id: 't1', name: '秋季檔期意向', color: '#000', scope: 'CONTACT' }], isLoading: false }),
@@ -51,6 +52,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { CouponDetailView } from '#src/components/coupons/detail/CouponDetailView.js';
+import * as couponHooks from '#src/hooks/useCoupons.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 
@@ -301,3 +303,37 @@ describe('分頁', () => {
     assert.ok(String(h.router.replace.mock.calls.at(-1)?.[0]).includes('tab=settings'));
   });
 });
+
+describe('大量序號明細改背景匯出（design D22）', () => {
+  const download = () => vi.mocked(couponHooks.downloadInstancesCsv);
+  const exportFile = () => vi.mocked(couponHooks.downloadExportFile);
+  URL.createObjectURL ??= () => 'blob:x';
+  URL.revokeObjectURL ??= () => {};
+
+  test('明細超過 5,000 筆：提示產生完成後會通知', async () => {
+    download().mockResolvedValueOnce({ kind: 'background' } as never);
+    render(<CouponDetailView id={ID} />);
+    fireEvent.click(screen.getByRole('button', { name: '匯出 CSV' }));
+    assert.ok(await screen.findByText('名單較多，產生完成後會通知你下載'));
+  });
+
+  test('從通知開啟：自動下載並清掉網址參數', async () => {
+    h.search = new URLSearchParams('export=JOB123');
+    exportFile().mockResolvedValueOnce({ blob: new Blob(['x']), fileName: '秋季回饋.csv' } as never);
+    render(<CouponDetailView id={ID} />);
+    await act(async () => {});
+    assert.deepEqual(exportFile().mock.calls[0], ['JOB123']);
+    assert.ok(await screen.findByText('已下載序號明細'));
+    assert.ok(h.router.replace.mock.calls.some(([url]) => !String(url).includes('export=')));
+  });
+
+  test('從通知開啟但檔案已過期：顯示原因', async () => {
+    h.search = new URLSearchParams('export=OLD');
+    exportFile().mockRejectedValueOnce(
+      Object.assign(new Error('410'), { response: { status: 410, data: { success: false, error: { code: 'EXPORT_EXPIRED', message: '匯出檔已過期，請回到優惠券頁重新匯出' } } } }),
+    );
+    render(<CouponDetailView id={ID} />);
+    assert.ok(await screen.findByText(/匯出檔已過期/));
+  });
+});
+

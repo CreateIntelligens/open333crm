@@ -204,7 +204,34 @@ export async function importCodes(id: string, codes: string) {
   return (await api.post(`/coupons/${id}/codes`, { codes })).data.data;
 }
 
-/** 下載序號明細 CSV（後端產生，含 BOM）。 */
-export async function downloadInstancesCsv(id: string): Promise<Blob> {
-  return (await api.get(`/coupons/${id}/instances/export`, { responseType: 'blob' })).data;
+/**
+ * 下載序號明細 CSV（後端產生，含 BOM）。明細超過 5,000 筆時後端回 202 改背景產生，
+ * 完成後以站內通知告知（design D22）。
+ */
+export async function downloadInstancesCsv(id: string): Promise<{ kind: 'file'; blob: Blob } | { kind: 'background' }> {
+  const res = await api.get(`/coupons/${id}/instances/export`, { responseType: 'blob' }).catch(rethrowBlobError);
+  return res.status === 202 ? { kind: 'background' } : { kind: 'file', blob: res.data };
+}
+
+/** 下載背景產生的序號明細（站內通知的連結帶 export 參數） */
+export async function downloadExportFile(jobId: string): Promise<{ blob: Blob; fileName: string }> {
+  const res = await api
+    .get(`/coupons/export-jobs/${encodeURIComponent(jobId)}/download`, { responseType: 'blob' })
+    .catch(rethrowBlobError);
+  const disposition = String(res.headers?.['content-disposition'] ?? '');
+  const encoded = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1];
+  return { blob: res.data, fileName: encoded ? decodeURIComponent(encoded) : '序號明細.csv' };
+}
+
+/** responseType 為 blob 時，錯誤回應的內容也是 Blob：轉回 JSON，畫面才讀得到後端的訊息 */
+async function rethrowBlobError(err: unknown): Promise<never> {
+  const response = (err as { response?: { data?: unknown } })?.response;
+  if (response?.data instanceof Blob) {
+    try {
+      response.data = JSON.parse(await response.data.text());
+    } catch {
+      /* 不是 JSON，保留原樣 */
+    }
+  }
+  throw err;
 }
