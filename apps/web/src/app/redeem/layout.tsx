@@ -1,21 +1,9 @@
-'use client';
-
 /**
- * 店員核銷台（/redeem）的版面：店員用自己的手機開啟，深色模式跟隨系統設定。
- * 後台沒有深色切換邏輯，這裡比照顧客票券頁（app/coupon/layout.tsx）依系統設定套用 .dark。
+ * 店員核銷台（/redeem）的版面：一律淺色，不跟隨手機的系統深色設定
+ * （2026-10-21 使用者決定，與顧客票券頁 app/coupon/layout.tsx 一致）。
  */
-import React, { useEffect } from 'react';
+import React from 'react';
 
 export default function RedeemLayout({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => document.documentElement.classList.toggle('dark', media.matches);
-    apply();
-    media.addEventListener('change', apply);
-    return () => {
-      media.removeEventListener('change', apply);
-      document.documentElement.classList.remove('dark');
-    };
-  }, []);
   return <>{children}</>;
 }
