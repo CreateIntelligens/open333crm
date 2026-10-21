@@ -94,6 +94,25 @@ test('帳號鎖定：顯示倒數「請於 m:ss 後再試」並停用登入鈕�
   await screen.findByRole('button', { name: '請於 1:04 後再試' }, { timeout: 2500 });
 });
 
+test('帳號鎖定後改用另一個帳號：可以登入，鎖定只針對原帳號', async () => {
+  const lockedUntil = new Date(Date.now() + 14 * 60_000).toISOString();
+  api.storeLogin.mockRejectedValueOnce(apiError(423, 'ACCOUNT_LOCKED', { lockedUntil }));
+  render(<StoreConsoleApp storeId={null} />);
+  fill('dt3c-neihu', 'wrong-pass');
+  fireEvent.click(screen.getByRole('button', { name: '登入' }));
+  await screen.findByRole('button', { name: /後再試/ });
+  fill('dt3c-xinyi', 'dt3c2026x');
+  const login = screen.getByRole('button', { name: '登入' }) as HTMLButtonElement;
+  assert.equal(login.disabled, false);
+});
+
+test('帳號或密碼空白時按登入：提示要填寫', async () => {
+  render(<StoreConsoleApp storeId={null} />);
+  fireEvent.click(screen.getByRole('button', { name: '登入' }));
+  assert.ok(await screen.findByText('請輸入門市帳號與密碼'));
+  assert.equal(api.storeLogin.mock.calls.length, 0);
+});
+
 test('登入時網路錯誤：顯示說明，不可只寫在 console', async () => {
   api.storeLogin.mockRejectedValue(networkError());
   render(<StoreConsoleApp storeId={null} />);

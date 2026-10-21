@@ -137,7 +137,8 @@ export type RedeemFailureReason =
   | 'REVOKED'
   | 'WRONG_MODE'
   | 'NOT_CLAIMED'
-  | 'SHARED_CODE';
+  | 'SHARED_CODE'
+  | 'KEY_REUSED';
 
 export type RedeemResponse =
   | { ok: true; redeemedAt: string; storeName: string; coupon: StoreCoupon }

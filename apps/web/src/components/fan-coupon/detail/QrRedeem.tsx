@@ -107,7 +107,7 @@ export function QrRedeem({ item, onBack, onAbort }: Props) {
 
         <div className="flex flex-col gap-2">
           <p className="text-sm leading-5 text-muted-foreground">無法掃描請輸入券號</p>
-          <p className="break-all font-mono text-xl font-semibold tracking-[0.05em] text-foreground">{item.code}</p>
+          <p className="break-all font-mono text-xl font-semibold tracking-[0.05em] text-foreground">{item.scanCode ?? item.code}</p>
         </div>
 
         <p role="status" className="sr-only">

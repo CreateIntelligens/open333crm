@@ -52,18 +52,23 @@ export function LoginScreen({ storeId, banner: initialBanner, onLoggedIn, onAcco
 
   const invalid = banner === 'error';
 
-  const edit = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const edit = (setter: (v: string) => void, field: 'username' | 'password') => (e: React.ChangeEvent<HTMLInputElement>) => {
     setter(e.target.value);
     // 開始修改帳號或密碼就清除錯誤
     if (banner === 'error') setBanner(undefined);
     setMessage(null);
+    // 鎖定只針對被鎖的那個帳號：換帳號就解除倒數（櫃檯共用手機時不擋其他帳號）
+    if (field === 'username') setLockedUntil(null);
   };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting || locked) return;
     const name = username.trim();
-    if (!name || !password) return;
+    if (!name || !password) {
+      setMessage('請輸入門市帳號與密碼');
+      return;
+    }
     setSubmitting(true);
     setMessage(null);
     try {
@@ -127,7 +132,7 @@ export function LoginScreen({ storeId, banner: initialBanner, onLoggedIn, onAcco
               id="store-username"
               name="username"
               value={username}
-              onChange={edit(setUsername)}
+              onChange={edit(setUsername, 'username')}
               autoComplete="username"
               autoCapitalize="none"
               autoCorrect="off"
@@ -146,7 +151,7 @@ export function LoginScreen({ storeId, banner: initialBanner, onLoggedIn, onAcco
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={edit(setPassword)}
+                onChange={edit(setPassword, 'password')}
                 autoComplete="current-password"
                 aria-invalid={invalid}
                 className={cn(inputClass(invalid), 'pr-12')}

@@ -171,3 +171,30 @@ test('櫃檯海報顯示門市名稱與核銷台網址', async () => {
   assert.equal(qr.getAttribute('src'), 'data:image/png;base64,iVBORw0KGgo=');
   assert.ok(within(poster).getByText(/此 QR Code 只會開啟登入頁/));
 });
+
+test('門市名稱超過 50 字：在欄位下說明上限，不送出', async () => {
+  auth.perms = new Set(['store.view', 'store.manage']);
+  await renderLoaded();
+  fireEvent.click(screen.getByRole('button', { name: '新增門市' }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.change(within(dialog).getByLabelText('門市名稱'), { target: { value: '門'.repeat(51) } });
+  fireEvent.click(within(dialog).getByRole('button', { name: /新增|建立|儲存/ }));
+  assert.ok(await within(dialog).findByText('門市名稱最多 50 個字'));
+  assert.equal(api.post.mock.calls.length, 0);
+});
+
+test('重設密碼後顯示新密碼一次，讓管理者交給店長', async () => {
+  auth.perms = new Set(['store.view', 'store.manage']);
+  await renderLoaded();
+  fireEvent.click(within(storeCard('內湖門市')).getByRole('button', { name: 'dt3c-neihu 帳號操作' }));
+  fireEvent.click(await screen.findByText('重設密碼', { selector: '[role="menuitem"]' }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: /產生隨機密碼/ }));
+  const generated = (within(dialog).getByLabelText('新密碼') as HTMLInputElement).value;
+  assert.ok(generated.length >= 8);
+  api.post.mockResolvedValueOnce({ data: { success: true, data: {} } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '重設密碼' }));
+  await within(dialog).findByText(/請把新密碼交給店長/);
+  assert.ok(within(dialog).getByText(generated));
+  assert.ok(within(dialog).getByRole('button', { name: /複製/ }));
+});

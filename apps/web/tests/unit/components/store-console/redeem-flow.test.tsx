@@ -147,15 +147,18 @@ test('核銷成功：顯示核銷完成、明細含核銷時間與門市，下�
   await waitFor(() => assert.ok(screen.getByRole('button', { name: '紀錄 1' })));
 });
 
-test('網路錯誤：顯示網路不穩與券尚未使用，重試沿用同一個重試鍵', async () => {
+test('網路錯誤：顯示網路不穩與結果未確認，重試沿用同一個重試鍵', async () => {
   api.lookupCoupon.mockResolvedValue(lookupOk());
   api.redeemCoupon.mockRejectedValueOnce(networkError());
   api.redeemCoupon.mockResolvedValueOnce({ ok: true, redeemedAt: '2026-10-07T02:54:00.000Z', storeName: '大同3C・內湖門市', coupon: coupon() });
   await lookupAndConfirm();
   fireEvent.click(screen.getByRole('button', { name: '確認核銷' }));
   await screen.findByText('網路不穩');
-  assert.ok(screen.getByText('券尚未使用'));
-  assert.ok(screen.getByText('「網路有點慢，我再試一次。」'));
+  // 請求可能已到後端並核銷：不能說券尚未使用，請店員按重試確認結果（沿用重試鍵不會重複核銷）
+  assert.ok(screen.getByText('結果未確認'));
+  assert.ok(screen.queryByText('券尚未使用') === null);
+  assert.ok(screen.getByText('請按「重試」確認結果，不會重複核銷'));
+  assert.ok(screen.getByText('「網路有點慢，我確認一下結果。」'));
   fireEvent.click(screen.getByRole('button', { name: '重試' }));
   await screen.findByText('核銷完成');
   assert.equal(api.redeemCoupon.mock.calls.length, 2);

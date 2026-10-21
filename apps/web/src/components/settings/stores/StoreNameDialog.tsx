@@ -7,6 +7,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { cn } from "@/lib/utils";
 
 /** 新增門市與門市改名共用的名稱對話框。onSubmit 拋出的錯誤訊息顯示在欄位下方。 */
+/** 門市名稱上限，與後端 store.routes.ts 一致 */
+const STORE_NAME_MAX = 50;
+
 export function StoreNameDialog({
   open,
   title,
@@ -64,6 +67,11 @@ function NameForm({
       setError("請輸入門市名稱");
       return;
     }
+    // 與後端上限一致（store.routes.ts）：超過時後端只回籠統的「輸入內容有誤」
+    if (trimmed.length > STORE_NAME_MAX) {
+      setError(`門市名稱最多 ${STORE_NAME_MAX} 個字`);
+      return;
+    }
     setSaving(true);
     setError(await onSubmit(trimmed));
     setSaving(false);
@@ -87,7 +95,7 @@ function NameForm({
               setError(null);
             }}
             placeholder="例如 內湖門市"
-            maxLength={100}
+            maxLength={STORE_NAME_MAX}
             autoFocus
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-err` : undefined}

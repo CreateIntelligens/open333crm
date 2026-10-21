@@ -30,7 +30,7 @@ export interface ResultView {
   actions: { label: string; action: ResultAction; variant: 'primary' | 'outline' }[];
 }
 
-export type FailureKey = 'used' | 'expired' | 'notyet' | 'notfound' | 'wrongMode' | 'ended' | 'notClaimed' | 'sharedCode';
+export type FailureKey = 'used' | 'expired' | 'notyet' | 'notfound' | 'wrongMode' | 'ended' | 'notClaimed' | 'sharedCode' | 'keyReused';
 
 export const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, FailureKey> = {
   USED: 'used',
@@ -52,6 +52,7 @@ export const REDEEM_FAILURE: Record<RedeemFailureReason, FailureKey> = {
   REVOKED: 'ended',
   NOT_CLAIMED: 'notClaimed',
   SHARED_CODE: 'sharedCode',
+  KEY_REUSED: 'keyReused',
 };
 
 export interface FailureInput {
@@ -146,6 +147,17 @@ export function failureView(f: FailureInput): ResultView {
           { label: '重新掃描', action: 'scan', variant: 'outline' },
         ],
       };
+    case 'keyReused':
+      return {
+        tone: 'danger',
+        icon: 'search',
+        category: '無法使用',
+        title: '請重新查詢這張券',
+        description: '這次核銷的請求已用於另一張券，這張券沒有被核銷',
+        rows: couponRows(c),
+        say: '我重新查一次券，請稍等。',
+        actions: BACK_TO_SCAN,
+      };
     case 'sharedCode':
       return {
         tone: 'danger',
@@ -218,10 +230,11 @@ export function networkView(coupon: StoreCoupon): ResultView {
     icon: 'wifi',
     category: '請再試一次',
     title: '網路不穩',
-    description: '請確認網路後再試一次',
-    tag: '券尚未使用',
+    // 請求可能已到後端並完成核銷，也可能沒有：不能說券尚未使用。重試沿用重試鍵，會取得實際結果
+    description: '請按「重試」確認結果，不會重複核銷',
+    tag: '結果未確認',
     rows: couponRows(coupon),
-    say: '網路有點慢，我再試一次。',
+    say: '網路有點慢，我確認一下結果。',
     actions: [
       { label: '取消', action: 'cancel', variant: 'outline' },
       { label: '重試', action: 'retry', variant: 'primary' },

@@ -415,6 +415,15 @@ describe('店員掃碼', () => {
     assert.ok(screen.getByText('內湖門市'));
   });
 
+  test('共用碼券：「無法掃描請輸入券號」顯示這張券自己的券號，不是共用碼', async () => {
+    h.coupon = fanCoupon({ code: 'SUMMER2026', scanCode: 'SUMMER2026-K7P24M9XQR' }, { redeemMode: 'STAFF_SCAN', staffCodeLength: null });
+    h.qr.mockResolvedValue('data:image/png;base64,AAAA');
+    render(<CouponRedeemFlow id={ID} />);
+    fireEvent.click(button('出示 QR Code 給店員'));
+    await flush();
+    assert.ok(screen.getByText('SUMMER2026-K7P24M9XQR'));
+  });
+
   test('QR 取得失敗顯示錯誤並可重試', async () => {
     h.coupon = fanCoupon({}, { redeemMode: 'STAFF_SCAN', staffCodeLength: null });
     h.qr.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));

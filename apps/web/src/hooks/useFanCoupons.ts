@@ -14,6 +14,8 @@ export interface FanCoupon {
   /** 未到生效日且商家開啟遮蔽時為 null */
   code: string | null;
   codeHidden: boolean;
+  /** 店員掃碼券的券號（與 QR Code 內容相同）；共用碼券顧客看到共用碼，掃不到時店員要輸入這組 */
+  scanCode?: string | null;
   availableAt: string | null;
   status: string;
   walletStatus: WalletStatus;
