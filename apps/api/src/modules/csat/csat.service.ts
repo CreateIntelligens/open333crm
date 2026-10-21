@@ -8,6 +8,7 @@ import { createAndDispatch } from '../notification/notification.service.js';
 import { eventBus } from '../../events/event-bus.js';
 import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE } from '@open333crm/shared';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 
 /**
  * Build CSAT channel-specific message payload for LINE / FB / WEBCHAT.
@@ -108,14 +109,15 @@ export async function sendCsatSurvey(
   }
 
   // Create CSAT system message in conversation
+  const storedCsat = await prepareStoredMessageContent(prisma, caseRecord.tenantId, { text: '滿意度調查', caseId }, 'system');
   const csatMessage = await prisma.message.create({
     data: {
       conversationId,
       direction: 'OUTBOUND',
       senderType: 'SYSTEM',
       contentType: 'csat',
-      content: { text: '滿意度調查', caseId },
-      metadata: { type: 'csat_survey', caseId },
+      content: storedCsat.content,
+      metadata: { type: 'csat_survey', caseId, ...storedCsat.metadata },
       isRead: true,
       createdAt: now,
     },
@@ -246,6 +248,7 @@ export async function recordCsatScore(
   const followUp = getFollowUpMessage(score);
 
   if (conversationId) {
+    const storedFollowUp = await prepareStoredMessageContent(prisma, scope.tenantId, { text: followUp }, 'system');
     // Create follow-up message in conversation
     const followUpMsg = await prisma.message.create({
       data: {
@@ -253,8 +256,8 @@ export async function recordCsatScore(
         direction: 'OUTBOUND',
         senderType: 'SYSTEM',
         contentType: 'text',
-        content: { text: followUp },
-        metadata: { type: 'csat_followup', csatScore: score },
+        content: storedFollowUp.content,
+        metadata: { type: 'csat_followup', csatScore: score, ...storedFollowUp.metadata },
         isRead: true,
         createdAt: now,
       },

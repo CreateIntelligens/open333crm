@@ -14,6 +14,31 @@
 
 RBAC-05 的狀態維持「已提建議」：reconcile 腳本沒有改，快取清除與部署流程仍未處理，見 `AUDIT.md`。
 
+## 2026-10-21：新增 CONV-03
+
+以 main `1a348740` 為基礎，issue #337 階段 1b 盤點事件的發出點與訂閱者時發現。讀程式確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| CONV-03 | 新增，P2，未處理 | `grep -rn "conversation.handoff" apps/api/src` 只找到兩個發布點（`inbound-postback-interceptors.ts`、`automation.worker.ts`），沒有 `eventBus.subscribe('conversation.handoff', …)`。`notification.worker.ts` 訂閱的事件不含 `conversation.handoff`。主規格 `bot-handoff-config` 要求這個事件讓主管與管理員收到通知 |
+
+## 2026-10-21：RLS-09 的新寫法推播改由系統組成房間
+
+以 `f50e5181` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。以 unit 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RLS-09 | 狀態不變（已定方向），內容更新 | `ctx.emit(room, …)` 改成 `ctx.notify(name, data)` 與 `ctx.notifyAgent(agentId, name, data)`，房間由 `apps/api/src/events/socket-push.ts` 決定。`tenant:` 房間與給客服人員的 `tenant:<tenantId>:agent:<agentId>` 房間，都由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的 `tenant:<tenantId>:agent:<agentId>`。`tests/unit/lib/tenant-ctx.test.ts` 的「全租戶推播」「給客服人員的推播用了別的租戶的客服人員 ID」與 `socket-room-handlers.test.ts` 確認。既有程式仍直接呼叫 `io.to(room)`，`subscribe` 仍只加入舊的 `agent:` 房間，等搬遷與 #342 |
+
+## 2026-10-20：新增 RLS-08、RLS-09
+
+以 `9b5d1ac9` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。讀程式確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RLS-08 | 新增，已定方向 | `TenantDb` 的三個成員（`withTenant` 的 `tx`、`request.tenantPrisma`、`prismaAdmin`）RLS 與交易的保證不同，service 看不出自己受到什麼保護。#337 決定全面改成入口開交易。本 change 新增 `inTenant()`、`tenantHandler()` 與 ratchet 檢查腳本 `scripts/check-tenant-ctx.mjs`，不搬既有模組。基準檔記錄當天的舊寫法：`TenantDb` 445 處、`request.tenantPrisma` 304 處、service 內的 `withTenant(` 8 處、`$transaction(` 5 處 |
+| RLS-09 | 新增，已定方向 | PR #341 審查時發現：`ctx.emit()` 只能檢查 `tenant:` 開頭的房間，其他房間名稱沒有租戶 ID。房間名稱的盤點與統一格式見 #342 |
+
 ## 2026-10-20：APP-09 的滿意度問卷排程修正
 
 以 `9ba3a8db` 為基礎修正，分支 `fix/csat-schedule-claims`，change `claim-csat-schedule-rows`，issue #333。以 unit 測試確認，沒有連 UAT。

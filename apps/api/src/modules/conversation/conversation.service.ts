@@ -13,6 +13,7 @@ import { logger } from '@open333crm/core';
 import { CHANNEL_TYPE, selectSafeLineStrategy, type ConversationUpdatedPayload } from '@open333crm/shared';
 import { notFound } from '../../shared/messages/resource.js';
 import { markCaseFirstResponse } from '../case/case.service.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 
 export interface ConversationFilters {
   status?: string;
@@ -320,7 +321,7 @@ export async function sendMessage(
   conversationId: string,
   agentId: string,
   tenantId: string,
-  data: { contentType: string; content: Record<string, unknown> },
+  data: { contentType: string; content: Record<string, unknown>; privacyMode?: 'mask' | 'original' },
 ) {
   // Verify conversation exists and belongs to tenant
   const conversation = await prisma.conversation.findFirst({
@@ -335,6 +336,14 @@ export async function sendMessage(
   const sequence = await prisma.message.count({
     where: { conversationId },
   }) + 1;
+  const stored = data.contentType === 'text'
+    ? await prepareStoredMessageContent(
+        prisma,
+        tenantId,
+        data.content,
+        data.privacyMode === 'original' ? 'agent_original' : 'agent_default',
+      )
+    : { content: data.content as Prisma.InputJsonObject, metadata: {} };
 
   const message = await prisma.message.create({
     data: {
@@ -343,7 +352,8 @@ export async function sendMessage(
       senderType: 'AGENT',
       senderId: agentId,
       contentType: data.contentType,
-      content: data.content as any,
+      content: stored.content as any,
+      metadata: stored.metadata as any,
       sequence,
       isRead: true,
       createdAt: now,
@@ -451,13 +461,13 @@ export async function sendMessage(
           channelType: channel.channelType,
           to: identity.uid,
           contentType: data.contentType,
-          content: data.content,
+          content: stored.content,
         });
         const result = await plugin.sendMessage(
           identity.uid,
           {
             contentType: data.contentType,
-            content: data.content,
+            content: stored.content,
             ...(channel.channelType === CHANNEL_TYPE.LINE
               ? { delivery: { retryKey: message.id } }
               : {}),
@@ -582,14 +592,15 @@ export async function returnConversationToBot(
 
   const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
   const now = new Date();
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
       direction: 'OUTBOUND',
       senderType: 'SYSTEM',
       contentType: 'system',
-      content: { text: `${agent?.name ?? '客服'} 把對話交回 Bot` },
-      metadata: { type: 'return_to_bot', agentId },
+      content: storedContent.content,
+      metadata: { type: 'return_to_bot', agentId, ...storedContent.metadata },
       isRead: true,
       createdAt: now,
     },
@@ -672,14 +683,15 @@ export async function handoffConversation(
 
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: handoffText }, 'system');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
       direction: 'OUTBOUND',
       senderType: 'SYSTEM',
       contentType: 'system',
-      content: { text: handoffText },
-      metadata: { type: 'handoff', fromBot: true },
+      content: storedContent.content,
+      metadata: { type: 'handoff', fromBot: true, ...storedContent.metadata },
       isRead: true,
       createdAt: now,
     },
@@ -689,7 +701,7 @@ export async function handoffConversation(
   });
 
   // Deliver handoff notification to channel (LINE/FB)
-  await deliverToChannel(prisma, conversationId, handoffText);
+  await deliverToChannel(prisma, conversationId, storedContent.content.text as string);
 
   // Emit WebSocket events
   const wsPayload: ConversationUpdatedPayload = {

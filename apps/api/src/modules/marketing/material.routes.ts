@@ -131,6 +131,7 @@ const createMaterialSchema = z.object({
   channelType: z.enum(CHANNEL_TYPE_VALUES).optional(),
   contentType: z.enum(CONTENT_TYPE_VALUES).optional(),
   body: z.record(z.unknown()).optional(),
+  privacyMode: z.enum(['mask', 'original']).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
   // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入
@@ -145,6 +146,7 @@ const updateMaterialSchema = z.object({
   tags: tagsSchema.optional(),
   status: z.enum(MATERIAL_STATUS_VALUES).optional(),
   body: z.record(z.unknown()).optional(),
+  privacyMode: z.enum(['mask', 'original']).optional(),
   variables: z.array(variableSchema).optional(),
   targetChannels: z.array(z.string()).optional(),
   // 前端當 <img src> 渲染；原本 javascript:／data:／file: 都能存入

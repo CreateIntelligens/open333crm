@@ -64,7 +64,7 @@ export default function NewMaterialPage() {
     setGov({ categoryId: null, tags: [], status: 'draft' });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (privacyMode?: 'mask' | 'original') => {
     if (!draft) return;
     if (!draft.name.trim()) {
       setToast({ type: 'error', message: '素材名稱必填' });
@@ -78,6 +78,7 @@ export default function NewMaterialPage() {
         categoryId: gov.categoryId,
         tags: gov.tags,
         status: gov.status,
+        privacyMode,
       });
       // 成功：先顯示提示，短暫停留後跳到編輯頁（否則跳頁太快看不到回饋）
       setToast({ type: 'ok', message: '素材已建立' });

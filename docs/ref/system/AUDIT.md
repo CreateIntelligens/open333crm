@@ -49,6 +49,8 @@
 | [RLS-01](#rls-01) | 租戶隔離與權限 | P2 | 未處理 | Canvas 引擎不走租戶連線；`DATABASE_URL` 為 `app_tenant` 時 Canvas 靜默失效，目前沒有租戶使用 Canvas | 靜態確認 |
 | [RLS-03](#rls-03) | 租戶隔離與權限 | P3 | 未處理 | 隔離檢查腳本掃不到 `packages/*` | 靜態確認 |
 | [RLS-04](#rls-04) | 租戶隔離與權限 | P3 | 未處理 | `.env.api.example` 沒有 `DATABASE_URL_TENANT` | 靜態確認 |
+| [RLS-08](#rls-08) | 租戶隔離與權限 | P2 | 已定方向 | service 收到的 client 決定了它的 RLS 與交易保證；背景工作多半傳 `prismaAdmin`，沒有 RLS | 靜態確認 |
+| [RLS-09](#rls-09) | 租戶隔離與權限 | P3 | 已定方向 | Socket 房間只有 `tenant:` 帶租戶 ID，推播端無法檢查 `conversation:`、`agent:` 等房間屬於哪個租戶 | 靜態確認 |
 | [RBAC-01](#rbac-01) | 租戶隔離與權限 | P3 | 部分修正 | 知識庫的讀取路由不檢查 `knowledge.view`；`agent.delete`、`billing.view` 沒有強制點 | 靜態確認 |
 | [RBAC-02](#rbac-02) | 租戶隔離與權限 | P2 | 未處理 | CLI token 只看 scope，繞過角色權限與方案天花板；任何成員都能以 CLI 讀全租戶報表 | 靜態確認 |
 | [RBAC-03](#rbac-03) | 租戶隔離與權限 | P2 | 未處理 | 工單自動指派、通知收件人與「最後一位管理員」的保護看舊的角色列舉，不看細粒度角色 | 靜態確認 |
@@ -94,6 +96,7 @@
 | [SLA-05](#sla-05) | SLA | P2 | 未處理 | 沒有關聯對話的工單永遠沒有首次回應時間，套用 SLA 時必定判定逾時 | 靜態確認 |
 | [CONV-01](#conv-01) | 對話、工單與自動化 | P3 | 已提建議 | 對話的閒置自動關閉時限沒有維護介面，租戶無法調整或停用 | 靜態確認 |
 | [CONV-02](#conv-02) | 對話、工單與自動化 | P2 | 部分修正 | 指派對話不會通知；關閉已改走 `closeConversation()` | 靜態確認 |
+| [CONV-03](#conv-03) | 對話、工單與自動化 | P2 | 未處理 | 對話轉接真人時，主管與管理員收不到通知 | 靜態確認 |
 | [CASE-02](#case-02) | 對話、工單與自動化 | P2 | 未處理 | 非 LINE 渠道的客人無法回覆滿意度調查，評分永遠不會被記錄 | 靜態確認 |
 | [AUTO-02](#auto-02) | 對話、工單與自動化 | P3 | 部分修正 | 規則的執行紀錄、執行次數與最後執行時間自 `9255245` 起停止更新；規則列表已不顯示停住的數字 | 靜態確認 |
 | [AUTO-03](#auto-03) | 對話、工單與自動化 | P2 | 未處理 | 自動化貼標以名稱找標籤，不分 scope，找不到就重建 | 靜態確認 |
@@ -178,6 +181,46 @@
 照著範例檔部署時，`fastify.prisma`、`request.tenantPrisma` 與 `withTenant()` 都會連到 `crm`。RLS 這一層不會生效，而且啟動時沒有任何警告。
 
 `apps/workers/src/index.ts` 的 `main()` 對 `DATABASE_URL_ADMIN` 的處理方式相反：變數缺少就拋錯，Workers 不啟動。API 的租戶連線沒有對應的檢查。
+
+<a id="rls-08"></a>
+### RLS-08：service 收到的 client 決定了它的 RLS 與交易保證
+
+service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`），是三種 client 的聯集。三者的查詢寫法相同，保證不同：
+
+| 傳入的 client | RLS | 連續兩筆寫入是否在同一個交易 |
+| --- | --- | --- |
+| `withTenant` 的 `tx` | 有 | 是 |
+| `request.tenantPrisma` | 有 | 否，每個查詢各開一個交易；它的 `$transaction()` 不設定租戶 |
+| `prismaAdmin` | 繞過（BYPASSRLS） | 否，除非 service 自己開 `$transaction` |
+
+只讀 service 的程式，看不出它有沒有 RLS，也看不出寫入會不會一起成功或一起失敗，要往上追呼叫者。已經造成的影響：
+
+- PR #335 只看參數型別，誤判 `sendCsatSurvey()` 可能已在交易內；唯一的呼叫者其實傳 `prismaAdmin`。
+- `apps/api/src/index.ts` 把 `prismaAdmin` 傳給 automation、notification、canvas worker 與多數排程。這些路徑的租戶隔離只靠程式裡的 `where tenantId`。RLS-06 就發生在這類路徑上。
+- 聯集接近 TypeScript 的推導上限（`tenant-db.ts` 的註解）。
+- 在交易內呼叫 `io.emit`、`eventBus.publish` 的 service，會在 commit 之前送出推播與事件。
+
+**方向（#337，2026-10-20 定案）。** 全面改成「入口開一個綁定租戶的交易，service 只收 `TenantCtx`」。change `tenant-transaction-context` 建立了新寫法：`apps/api/src/lib/tenant-ctx.ts` 的 `inTenant()`、`tenantHandler()`，以及 `AGENTS.md` 結構規則 2。之後依 #337 的階段逐模組搬遷：
+
+1. 試做 tag、role。
+2. 事件改走 outbox（動手前先評估客人收到重複訊息的機率）。
+3. 搬沒有外部呼叫的模組，再搬有外部呼叫的模組。
+4. 背景工作改成「以 `prismaAdmin` 找出要處理的資料，每一筆各開自己租戶的交易」。
+5. Canvas 引擎（RLS-01）。
+6. 刪除 `TenantDb`、`tenantScopedClient`、`request.tenantPrisma`。
+
+搬遷進度看 `scripts/check-tenant-ctx.baseline.json`。`node scripts/check-tenant-ctx.mjs --strict` 在舊寫法增加時失敗。
+
+<a id="rls-09"></a>
+### RLS-09：推播端無法檢查房間屬於哪個租戶
+
+Socket.IO 房間只有 `tenant:<tenantId>` 帶租戶 ID。`conversation:<id>`、`agent:<id>`、`visitor:<channelId>:<token>`、`chatbox:<sessionId>` 只帶資料本身的 ID。
+
+前端訂閱房間時，`apps/api/src/modules/socket/socket-room-authorization.ts` 會檢查該資料屬於連線的租戶，所以別的租戶的連線進不了這些房間。推播端沒有對應的檢查：`io.to(room)` 只收一個字串。service 用了請求帶進來、沒有經過租戶查詢的 ID 時，推播會送到別的租戶的房間。用 `ctx.tx` 查出來的 ID 受 RLS 約束，不會有這個問題。目前沒有逐一檢查既有的推播呼叫，還沒有發現實際發生的路徑。
+
+新寫法 `ctx.notify()`（`apps/api/src/lib/tenant-ctx.ts`）不讓 service 指定房間：`tenant:` 房間由交易綁定的租戶 ID 組成（`apps/api/src/events/socket-push.ts`），所以不會推到別的租戶的 `tenant:` 房間。`ctx.notifyAgent()` 推到 `tenant:<tenantId>:agent:<agentId>`，房間也由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的這個房間（`socket-room-handlers.ts`）。所以新寫法的推播都不會送到別的租戶。既有程式直接呼叫 `io.to('agent:…')`，仍然無法檢查。新寫法不提供推到 `conversation:` 房間的方法。
+
+**方向（#342，2026-10-20 定案）。** 定義統一的房間名稱格式，所有房間都以 `tenant:<tenantId>` 開頭，由 `events/socket-push.ts` 組成。新寫法已經做到（`tenant:` 與 `tenant:<tenantId>:agent:` 房間）；剩下的是既有程式的搬遷，以及 `subscribe` 的房間名稱。
 
 <a id="rbac-01"></a>
 ### RBAC-01：部分權限碼沒有強制點
@@ -1241,6 +1284,22 @@ BYOK 指租戶自備 Gemini API key，說明見[用量統計](../features/platfo
 **修正方向**：`updateConversation()` 收到 `CLOSED` 時改走 `closeConversation()`；指派時發布 `conversation.assigned`，讓通知與對外 Webhook 接得到。
 
 **部分修正。** #294（`a3044f93`）讓狀態選單的「已關閉」改開結案視窗，走 `POST /:id/close`。2026-10-16，`updateConversation()` 收到 `CLOSED`（且對話尚未關閉）時改呼叫 `closeConversation()`，記錄來源 `manual`、時間與操作者並發布 `conversation.closed`；同時帶負責人時先改負責人再關閉。直接呼叫 API 的路徑因此也有結案紀錄。指派仍不發布 `conversation.assigned`。
+
+<a id="conv-03"></a>
+### CONV-03：對話轉接真人時，主管與管理員收不到通知
+
+兩條路徑會把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，並發布 `conversation.handoff`：
+
+| 路徑 | 位置 |
+| --- | --- |
+| 客人點「轉接客服」按鈕（postback `handoff_request`） | `webhook/inbound-postback-interceptors.ts` |
+| 自動轉真人（機器人回覆次數到上限、客人說出轉接關鍵字、客人傳圖片、檔案或影片） | `automation/automation.worker.ts` 的 `checkAutoHandoff()` |
+
+API 行程內沒有任何程式訂閱 `conversation.handoff`。`notification.worker.ts` 沒有訂閱這個事件，所以主管與管理員收不到「對話已轉接真人」的通知。只有訂閱了這個事件的對外 Webhook 收得到。
+
+change `handoff-prompt-configurable`（2026-06-02 歸檔）的 `design.md` 寫「既有 `conversation.handoff` event 已有 notification.worker 訂閱者通知 supervisor」。這個前提不成立，當時沒有實作訂閱者。
+
+**規格依據。** 主規格 `bot-handoff-config` 的「Webhook intercepts handoff_request postback」規定：系統 SHALL 發布 `conversation.handoff`，讓 SUPERVISOR 與 ADMIN 收到通知。事件有發布，但通知沒有發生，現況違反這條需求，因此列為 P2。自動轉真人的路徑不在這條需求內，但發布同一個事件。
 
 <a id="case-02"></a>
 ### CASE-02：非 LINE 渠道的滿意度調查無法回覆

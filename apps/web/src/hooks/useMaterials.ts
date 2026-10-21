@@ -23,6 +23,8 @@ export interface Material {
   channelType: string;
   contentType: string;
   body: Record<string, unknown>;
+  maskedBody?: Record<string, unknown> | null;
+  privacyMode?: 'mask' | 'original' | null;
   variables: MaterialVariable[];
   targetChannels: string[];
   previewImageUrl: string | null;
@@ -55,6 +57,8 @@ export interface MaterialVersionEntry {
   versionNo: number;
   name: string;
   body: Record<string, unknown>;
+  maskedBody?: Record<string, unknown> | null;
+  privacyMode?: 'mask' | 'original' | null;
   editedById: string | null;
   createdAt: string;
 }
@@ -190,6 +194,7 @@ export async function createMaterial(input: {
   channelType?: string;
   contentType?: string;
   body?: Record<string, unknown>;
+  privacyMode?: 'mask' | 'original';
   variables?: MaterialVariable[];
   targetChannels?: string[];
   previewImageUrl?: string;
@@ -198,7 +203,7 @@ export async function createMaterial(input: {
   return res.data.data as Material;
 }
 
-export async function updateMaterial(id: string, input: Partial<Material>) {
+export async function updateMaterial(id: string, input: Partial<Material> & { privacyMode?: 'mask' | 'original' }) {
   const res = await api.patch(`/marketing/materials/${id}`, input);
   return res.data.data as Material;
 }

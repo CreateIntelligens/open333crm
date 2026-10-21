@@ -5,6 +5,7 @@ import { eventBus } from '../../events/event-bus.js';
 import { handleWebhookFlowTrigger } from '../canvas/canvas.webhook.js';
 import { getOutsideHoursMessage } from '../settings/office-hours.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig, getChannelSettings } from './inbound-message.types.js';
 import { renderTemplateBody } from '../marketing/template-renderer.js';
@@ -182,6 +183,7 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
       const lastReply = outsideHoursReplyCache.get(ctx.contactId);
       if (!lastReply || ctx.now.getTime() - lastReply > OUTSIDE_HOURS_DEDUP_MS) {
         outsideHoursReplyCache.set(ctx.contactId, ctx.now.getTime());
+        const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: outsideMsg }, 'system');
 
         const autoReply = await ctx.prisma.message.create({
           data: {
@@ -189,8 +191,8 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
             direction: 'OUTBOUND',
             senderType: 'SYSTEM',
             contentType: 'text',
-            content: { text: outsideMsg },
-            metadata: { source: 'office_hours_auto_reply' },
+            content: storedContent.content,
+            metadata: { source: 'office_hours_auto_reply', ...storedContent.metadata },
           },
         });
 
@@ -200,13 +202,13 @@ export async function sendOutsideHoursAutoReply(ctx: InboundMessageContext): Pro
         });
 
         const autoReplyPayload = buildMessageNewPayload(autoReply, {
-          content: { text: outsideMsg },
+          content: storedContent.content,
           includeTypePayload: true,
         });
 
         emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', autoReplyPayload);
 
-        await deliverToChannel(ctx.prisma, ctx.conversation.id, outsideMsg);
+        await deliverToChannel(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
       }
     }
   } catch (err) {
@@ -275,14 +277,15 @@ export async function sendFirstContactGreeting(
       logger.warn('[Webhook] First-contact greeting variable render failed, sending raw template', err);
     }
 
+    const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: greeting }, 'system');
     const message = await ctx.prisma.message.create({
       data: {
         conversationId: ctx.conversation.id,
         direction: 'OUTBOUND',
         senderType: 'SYSTEM',
         contentType: 'text',
-        content: { text: greeting },
-        metadata: { source: 'first_contact_greeting' },
+        content: storedContent.content,
+        metadata: { source: 'first_contact_greeting', ...storedContent.metadata },
       },
     });
 
@@ -292,12 +295,12 @@ export async function sendFirstContactGreeting(
     });
 
     const payload = buildMessageNewPayload(message, {
-      content: { text: greeting },
+      content: storedContent.content,
       includeTypePayload: true,
     });
     emitToConversationAndTenant(ctx.io, ctx.conversation.id, ctx.tenantId, 'message.new', payload);
 
-    await deliver(ctx.prisma, ctx.conversation.id, greeting);
+    await deliver(ctx.prisma, ctx.conversation.id, storedContent.content.text as string);
 
     logger.info('[Webhook] First-contact greeting sent', {
       conversationId: ctx.conversation.id,

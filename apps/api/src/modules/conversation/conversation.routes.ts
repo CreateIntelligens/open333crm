@@ -140,6 +140,7 @@ const sendMessageSchema = z
   .object({
     contentType: z.string().default('text'),
     content: z.record(z.unknown()),
+    privacyMode: z.enum(['mask', 'original']).optional(),
   })
   .superRefine((val, ctx) => {
     const err = validateOutboundMessage(val.contentType, val.content);

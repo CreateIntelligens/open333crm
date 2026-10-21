@@ -7,6 +7,7 @@ import type { TenantDb } from '../../lib/tenant-db.js';
 import { generateEmbedding, searchSimilarArticles } from '../embedding/embedding.service.js';
 import { generateReply } from './llm.service.js';
 import { logger } from '@open333crm/core';
+import { readModelMessageContent } from './deidentification.service.js';
 
 export async function suggestReply(prisma: TenantDb, tenantId: string, conversationId: string) {
   // Fetch last few inbound messages for context
@@ -14,14 +15,11 @@ export async function suggestReply(prisma: TenantDb, tenantId: string, conversat
     where: { conversationId, conversation: { tenantId } },
     orderBy: { createdAt: 'desc' },
     take: 5,
-    select: { content: true, senderType: true },
+    select: { content: true, metadata: true, senderType: true },
   });
 
   const lastInbound = messages.find((m) => m.senderType === 'CONTACT');
-  const userText =
-    lastInbound && typeof lastInbound.content === 'object' && lastInbound.content !== null
-      ? (lastInbound.content as { text?: string }).text || ''
-      : '';
+  const userText = lastInbound ? readModelMessageContent(lastInbound.content, lastInbound.metadata) : '';
 
   if (!userText) {
     return { suggestions: [] };
@@ -85,7 +83,7 @@ export async function summarizeConversation(prisma: TenantDb, tenantId: string, 
       messages: {
         orderBy: { createdAt: 'asc' },
         take: 20,
-        select: { senderType: true, content: true, createdAt: true },
+        select: { senderType: true, content: true, metadata: true, createdAt: true },
       },
     },
   });
@@ -107,10 +105,7 @@ export async function summarizeConversation(prisma: TenantDb, tenantId: string, 
           : m.senderType === 'BOT'
             ? 'Bot'
             : '客服人員';
-      const text =
-        typeof m.content === 'object' && m.content !== null
-          ? (m.content as { text?: string }).text || '[非文字訊息]'
-          : '[非文字訊息]';
+      const text = readModelMessageContent(m.content, m.metadata) || '[非文字訊息]';
       return `${sender}: ${text}`;
     })
     .join('\n');

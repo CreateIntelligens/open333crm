@@ -40,13 +40,19 @@ export interface HistoryRow {
   metadata: unknown;
 }
 
+function modelText(row: HistoryRow): string {
+  const masked = (row.metadata as { privacy?: { maskedContent?: { text?: unknown } } } | null)?.privacy?.maskedContent?.text;
+  if (typeof masked === 'string') return masked;
+  const text = typeof row.content === 'object' && row.content !== null ? ((row.content as { text?: unknown }).text ?? '') : '';
+  return typeof text === 'string' ? text : '';
+}
+
 /** 對話紀錄轉成 AI 的歷史訊息：去掉系統發的綁定訊息、遮掉代碼、略過沒有文字的訊息 */
 export function toAiHistory(rows: HistoryRow[]): Array<{ role: 'user' | 'assistant'; content: string }> {
   return rows.flatMap((row) => {
     if ((row.metadata as { source?: unknown } | null)?.source === BINDING_MESSAGE_SOURCE) return [];
-    const text =
-      typeof row.content === 'object' && row.content !== null ? ((row.content as { text?: unknown }).text ?? '') : '';
-    if (typeof text !== 'string' || !text) return [];
+    const text = modelText(row);
+    if (!text) return [];
     return [{ role: row.direction === 'INBOUND' ? ('user' as const) : ('assistant' as const), content: redactBindingCodes(text) }];
   });
 }

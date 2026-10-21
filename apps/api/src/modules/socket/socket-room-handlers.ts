@@ -4,6 +4,7 @@ import {
   SOCKET_SUBSCRIPTION_RATE_WINDOW_MS,
   type SocketSubscriptionRateLimitState,
 } from './socket-subscription-rate-limit.js';
+import { agentPushRoom } from '../../events/socket-push.js';
 
 type Ack = (response: unknown) => void;
 
@@ -49,6 +50,8 @@ export function registerRoomHandlers(
   // Auto-join tenant room and agent-specific room
   socket.join(`tenant:${tenantId}`);
   socket.join(`agent:${agentId}`);
+  // 帶租戶 ID 的成員房間：ctx.notifyAgent() 推到這裡，別的租戶的推播到不了（events/socket-push.ts）
+  socket.join(agentPushRoom(tenantId, agentId));
 
   // subscribe 與 unsubscribe 共用同一個計數
   let subscriptionRateState: SocketSubscriptionRateLimitState = {

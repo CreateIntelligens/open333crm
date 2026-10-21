@@ -1,4 +1,5 @@
 import type { InboundMessageContext, InboundMessageResult } from './inbound-message.types.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 
 export async function findDuplicateInboundMessage(
   ctx: InboundMessageContext,
@@ -49,6 +50,7 @@ export async function createInboundMessage(ctx: InboundMessageContext): Promise<
   const sequence = await ctx.prisma.message.count({
     where: { conversationId: ctx.conversation.id },
   }) + 1;
+  const stored = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, ctx.content, 'inbound');
 
   try {
     ctx.message = await ctx.prisma.message.create({
@@ -58,8 +60,8 @@ export async function createInboundMessage(ctx: InboundMessageContext): Promise<
         senderType: 'CONTACT',
         senderId: null,
         contentType: ctx.contentType,
-        content: ctx.content as any,
-        metadata: (ctx.options.messageMetadata ?? {}) as any,
+        content: stored.content as any,
+        metadata: { ...(ctx.options.messageMetadata ?? {}), ...stored.metadata } as any,
         channelMsgId: ctx.channelMsgId ?? null,
         clientMessageId: ctx.options.clientMessageId ?? null,
         sequence,

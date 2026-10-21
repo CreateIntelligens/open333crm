@@ -12,6 +12,7 @@ import { Queue } from 'bullmq';
 import { eventBus } from '../../events/event-bus.js';
 import type { AppEvent } from '../../events/event-bus.js';
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { autoClassifyNewCase } from '../ai/classify.service.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
@@ -152,6 +153,7 @@ async function checkAutoHandoff(
       const systemText = summary
         ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
         : `自動轉接人工客服：${reason}`;
+      const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
 
       const systemMessage = await prisma.message.create({
         data: {
@@ -159,8 +161,8 @@ async function checkAutoHandoff(
           direction: 'OUTBOUND',
           senderType: 'SYSTEM',
           contentType: 'system',
-          content: { text: systemText },
-          metadata: { type: 'auto_handoff', reason, summary: summary || undefined },
+          content: storedContent.content,
+          metadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
           isRead: true,
           createdAt: now,
         },

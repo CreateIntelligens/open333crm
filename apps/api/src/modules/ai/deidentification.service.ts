@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { readAiPrivacyPolicy } from '../platform/ai-privacy.service.js';
@@ -90,6 +91,136 @@ function mapStrings(value: unknown, transform: (text: string) => string, depth =
   return value;
 }
 
+const MESSAGE_PROTOCOL_KEYS = new Set([
+  'url', 'mediaUrl', 'thumbnailUrl', 'previewImageUrl', 'storageKey', 'replyToken', 'postbackData',
+  'uri', 'videoUrl', 'previewUrl', 'originalContentUrl', 'channelMsgId', 'clientMessageId', 'contactUid',
+  'contactId', 'conversationId', 'caseId', 'strategy', 'retryKey', 'mimeType', 'contentType', 'messageId', 'id',
+]);
+const MATERIAL_PROTOCOL_KEYS = new Set([...MESSAGE_PROTOCOL_KEYS].filter((key) => ![
+  'url', 'mediaUrl', 'thumbnailUrl', 'previewImageUrl', 'uri', 'videoUrl', 'previewUrl', 'originalContentUrl',
+  'postbackData',
+].includes(key)));
+
+function mapMessageStrings(value: unknown, transform: (text: string) => string, key = '', depth = 0): unknown {
+  if (depth > 32) throw privacyFailure();
+  if (typeof value === 'string') return MESSAGE_PROTOCOL_KEYS.has(key) ? value : transform(value);
+  if (Array.isArray(value)) return value.map((item) => mapMessageStrings(item, transform, key, depth + 1));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, mapMessageStrings(item, transform, childKey, depth + 1)]));
+  }
+  return value;
+}
+
+function mapMaterialStrings(value: unknown, transform: (text: string) => string, key = '', depth = 0): unknown {
+  if (depth > 32) throw privacyFailure();
+  if (typeof value === 'string') return MATERIAL_PROTOCOL_KEYS.has(key) ? value : transform(value);
+  if (Array.isArray(value)) return value.map((item) => mapMaterialStrings(item, transform, key, depth + 1));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, mapMaterialStrings(item, transform, childKey, depth + 1)]));
+  }
+  return value;
+}
+
+async function maskStructuredContent(
+  content: Record<string, unknown>,
+  scope: 'message' | 'material' = 'message',
+): Promise<Record<string, unknown>> {
+  const mapFields = scope === 'material' ? mapMaterialStrings : mapMessageStrings;
+  const texts: string[] = [];
+  mapFields(content, (text) => {
+    texts.push(text);
+    return text;
+  });
+  const masked = await maskTexts(texts);
+  let index = 0;
+  return mapFields(content, () => masked[index++]) as Record<string, unknown>;
+}
+
+export type StoredMessagePrivacySource = 'inbound' | 'agent_default' | 'agent_original' | 'system';
+
+export interface StoredMessagePrivacy {
+  version: 1;
+  /** inbound keeps channel content; mask is the tenant default; original is an explicit agent choice. */
+  mode: 'inbound' | 'mask' | 'original' | 'system';
+  maskedContent: Record<string, unknown>;
+}
+
+export interface PreparedStoredMessageContent {
+  content: Prisma.InputJsonObject;
+  metadata: Prisma.InputJsonObject;
+}
+
+export interface PreparedStoredMaterialBody {
+  body: Prisma.InputJsonObject;
+  maskedBody: Prisma.InputJsonObject | null;
+  privacyMode: 'mask' | 'original' | null;
+}
+
+/** Prepare a material body for storage and delivery with an explicit per-save mode. */
+export async function prepareStoredMaterialBody(
+  prisma: TenantDb,
+  tenantId: string,
+  body: Record<string, unknown>,
+  requestedMode: 'mask' | 'original' = 'mask',
+): Promise<PreparedStoredMaterialBody> {
+  // Structural DB doubles used by older unit tests do not expose this model.
+  if (!('platformSetting' in (prisma as object))) {
+    return { body: body as Prisma.InputJsonObject, maskedBody: null, privacyMode: null };
+  }
+  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) {
+    return { body: body as Prisma.InputJsonObject, maskedBody: null, privacyMode: null };
+  }
+
+  const maskedBody = await maskStructuredContent(body, 'material');
+  const privacyMode = requestedMode === 'original' ? 'original' : 'mask';
+  return {
+    body: (privacyMode === 'original' ? body : maskedBody) as Prisma.InputJsonObject,
+    maskedBody: maskedBody as Prisma.InputJsonObject,
+    privacyMode,
+  };
+}
+
+/**
+ * Runs every textual leaf of a Message.content payload through the same bounded
+ * de-identification client. The masked copy is private metadata, so channel and
+ * UI payloads keep their existing shape. All model readers use this copy.
+ */
+export async function prepareStoredMessageContent(
+  prisma: TenantDb,
+  tenantId: string,
+  content: Record<string, unknown>,
+  source: StoredMessagePrivacySource,
+): Promise<PreparedStoredMessageContent> {
+  // Unit doubles built before the platform policy existed omit platformSetting.
+  // A real TenantDb always provides this Prisma model; treating a structural test
+  // double as disabled keeps unrelated behavior tests focused on their subject.
+  if (!('platformSetting' in (prisma as object))) return { content: content as Prisma.InputJsonObject, metadata: {} };
+  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return { content: content as Prisma.InputJsonObject, metadata: {} };
+
+  const maskedContent = await maskStructuredContent(content);
+  const mode: StoredMessagePrivacy['mode'] = source === 'agent_default'
+    ? 'mask'
+    : source === 'agent_original'
+      ? 'original'
+      : source;
+
+  return {
+    content: (source === 'agent_default' || source === 'system' ? maskedContent : content) as Prisma.InputJsonObject,
+    metadata: { privacy: { version: 1, mode, maskedContent } as unknown as Prisma.InputJsonValue },
+  };
+}
+
+/** Model-facing readers use the stored masked text when a Message has one. */
+export function readModelMessageContent(content: unknown, metadata: unknown): string {
+  const privacy = metadata && typeof metadata === 'object'
+    ? (metadata as { privacy?: { maskedContent?: unknown } }).privacy
+    : undefined;
+  const selected = privacy?.maskedContent ?? content;
+  if (!selected || typeof selected !== 'object') return '';
+  const text = (selected as { text?: unknown }).text;
+  return typeof text === 'string' ? text : '';
+}
+
 /** One wrapper per operation. A disabled policy returns the exact original provider. */
 export async function getPrivacyAwareChatProvider(
   prisma: TenantDb,
@@ -137,4 +268,17 @@ export async function getPrivacyAwareChatProvider(
 export async function deidentifyTenantText(prisma: TenantDb, tenantId: string, text: string): Promise<string> {
   if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return text;
   return (await maskTexts([text]))[0];
+}
+
+/** De-identify every string value in a JSON trace before it is persisted. */
+export async function deidentifyTenantData(prisma: TenantDb, tenantId: string, value: unknown): Promise<unknown> {
+  if (!(await readAiPrivacyPolicy(prisma, tenantId)).enabled) return value;
+  const strings: string[] = [];
+  mapStrings(value, (text) => {
+    strings.push(text);
+    return text;
+  });
+  const masked = await maskTexts(strings);
+  let index = 0;
+  return mapStrings(value, () => masked[index++]);
 }

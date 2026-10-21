@@ -1070,6 +1070,8 @@ model Material {
   channelType     String
   contentType     String
   body            Json
+  maskedBody      Json?
+  privacyMode     String?
   variables       Json      @default("[]")
   targetChannels  String[]  @default([])
   previewImageUrl String?
@@ -1118,6 +1120,8 @@ model MaterialVersion {
   versionNo  Int
   name       String
   body       Json
+  maskedBody Json?
+  privacyMode String?
   editedById String?  @db.Uuid
   createdAt  DateTime @default(now())
 

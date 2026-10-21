@@ -154,7 +154,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
     }
   };
 
-  const handleSend = useCallback(async (content: string, contentType?: string, contentData?: Record<string, unknown>) => {
+  const handleSend = useCallback(async (content: string, contentType?: string, contentData?: Record<string, unknown>, privacyMode?: 'mask' | 'original') => {
     if (contentType === 'image' || contentType === 'file') {
       await sendMessage(JSON.stringify({ url: contentData?.url, fileName: contentData?.fileName }), contentType);
     } else {
@@ -162,7 +162,7 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
       const extra = contentData?.quickReplies
         ? { quickReplies: contentData.quickReplies }
         : undefined;
-      await sendMessage(content, 'text', extra);
+      await sendMessage(content, 'text', extra, privacyMode);
     }
   }, [sendMessage]);
 

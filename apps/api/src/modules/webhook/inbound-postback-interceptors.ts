@@ -7,6 +7,7 @@ import { recordKbFeedback } from '../knowledge/kb-feedback.service.js';
 import { addTagToTarget } from '../tag/tagging.service.js';
 import type { InboundMessageContext } from './inbound-message.types.js';
 import { getBotConfig } from './inbound-message.types.js';
+import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import {
   buildConversationUpdatedPayload,
   buildMessageNewPayload,
@@ -117,14 +118,15 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       });
     } else if (ctx.conversation.status === 'BOT_HANDLED') {
       const reason = 'user_requested_handoff';
+      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '使用者主動點按按鈕轉接人工客服' }, 'system');
       const systemMessage = await ctx.prisma.message.create({
         data: {
           conversationId: ctx.conversation.id,
           direction: 'OUTBOUND',
           senderType: 'SYSTEM',
           contentType: 'system',
-          content: { text: '使用者主動點按按鈕轉接人工客服' },
-          metadata: { type: 'user_requested_handoff', reason },
+          content: storedContent.content,
+          metadata: { type: 'user_requested_handoff', reason, ...storedContent.metadata },
           isRead: true,
           createdAt: new Date(),
         },
