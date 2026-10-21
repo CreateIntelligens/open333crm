@@ -327,11 +327,10 @@ export async function listCoupons(
   }
 
   const ids = coupons.map((c) => c.id);
-  const instanceWhere = { tenantId, couponId: { in: ids } };
   const countBy = (extra: Prisma.CouponInstanceWhereInput) =>
     ids.length === 0
       ? Promise.resolve([] as { couponId: string; _count: { _all: number } }[])
-      : tx.couponInstance.groupBy({ by: ['couponId'], where: { ...instanceWhere, ...extra }, _count: { _all: true } });
+      : tx.couponInstance.groupBy({ by: ['couponId'], where: { ...extra, tenantId, couponId: { in: ids } }, _count: { _all: true } });
   const [issued, claimed, redeemed] = await Promise.all([
     countBy({}),
     // 已領取：曾經領取過的都算（含之後已核銷、已過期、已作廢），核銷率的分母才正確
