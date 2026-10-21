@@ -122,7 +122,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 | `sentiment` | 入站訊息 id | 空字串 | 情緒分析的結果與 `sentiment.negative` |
 | `keyword_matched` | 入站訊息 id | 規則 id | 給對外 Webhook 的 `keyword.matched` |
 
-呼叫 LLM 之前，先查有沒有認領紀錄，已有紀錄就不呼叫。這個檢查只為了省費用；兩次處理同時通過檢查時，交易內的認領仍只讓一次成功。
+系統呼叫 LLM 之前，先查這則訊息有沒有認領紀錄。已有紀錄時，系統不呼叫 LLM。這個檢查只為了省費用；兩次處理同時通過檢查時，交易內的認領仍只讓一次成功。
 
 認領成功之後，送出失敗或行程中斷時，認領紀錄不還原。所以這些副作用是最多一次：寧可少送一則，也不重複送。
 

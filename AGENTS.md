@@ -280,7 +280,7 @@ Import the `.service.ts` of the other module, or a helper file of that module. D
   can change them and not know about an import in a different module. A service is the
   interface of a module to other modules.
 - **Check**: `grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes|worker|scheduler)\.js'" apps/api/src/modules`
-- **Existing exceptions**: `docs/ref/system/AUDIT.md`, ARCH-02.
+- **Existing exceptions**: none. The check above has no output.
 
 #### 5. Channel differences go through the plugin registry
 

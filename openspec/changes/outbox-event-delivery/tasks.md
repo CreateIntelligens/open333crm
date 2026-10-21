@@ -92,19 +92,23 @@
 
 ## 11. 文件與完成檢查
 
-- [ ] 11.1 更新文件：
+- [x] 11.1 更新文件：
   - `docs/ref/modules/EVENTS.md`：訂閱者、佇列、outbox、對外事件清單。
   - `docs/ref/features/tenant/GOVERNANCE.md`：webhook 的重試、事件 id 與測試送出。
   - `AGENTS.md`：Socket Event Routing 的 Path B 改寫 outbox。
   - 提到 `domain:event` 的文件改成 outbox：`docs/ref/features/tenant/CONTACTS.md`、`docs/ref/features/tenant/README.md`、`docs/ref/features/tenant/AUTOMATION.md`、`docs/ref/system/INFRASTRUCTURE.md`。完成後 `grep -rn "domain:event" docs AGENTS.md` 只剩 AUDIT 的歷史紀錄
-- [ ] 11.2 更新 `docs/ref/system/AUDIT.md`，並在 `AUDIT-REVIEWS.md` 記錄：
+  - 另外更新了 `OVERVIEW.md`、`NOTIFICATIONS.md`、`CANVAS-FLOW-ENGINE.md`、`docs/ref/system/README.md`，它們也描述 eventBus 的訂閱者
+- [x] 11.2 更新 `docs/ref/system/AUDIT.md`，並在 `AUDIT-REVIEWS.md` 記錄：
   - RLS-08 的進度。
   - ARCH-02 移除。
   - HOOK-01 改為部分修正：有了對外事件清單，`replyToken` 仍待決定。
   - APP-08 改為部分修正：新的佇列與 `automation`、`notification` 以時間保留 job。
   - APP-09：`domain:event` 那一列移除。
-- [ ] 11.3 `CHANGELOG.md`：`Changed` 寫事件改走 outbox 與 webhook 的改動，`Fixed` 寫 data-erasure 重跑的 bug 與自動轉接的並行重複
-- [ ] 11.4 `pnpm test`、`pnpm test:feature` 通過
-- [ ] 11.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規；`node scripts/check-tenant-ctx.mjs --strict` 通過，舊寫法減少時以 `--update-baseline` 更新基準檔
-- [ ] 11.6 `node scripts/validate-openspec.mjs outbox-event-delivery` 與 `--specs` 通過
+  - ARCH-02 完全修正，依 AUDIT 的規則移除；`AGENTS.md` 結構規則 4 的既有例外改成「沒有」。APP-04、AUTO-05 的內容也一併更新
+- [x] 11.3 `CHANGELOG.md`：`Changed` 寫事件改走 outbox 與 webhook 的改動，`Fixed` 寫 data-erasure 重跑的 bug 與自動轉接的並行重複
+- [x] 11.4 `pnpm test`、`pnpm test:feature` 通過
+  - 2026-10-21：`pnpm test:feature` 65 個檔案、507 個測試全數通過。`pnpm test` 只有 api 的「repo 本身：舊寫法沒有比基準檔多」失敗，這個失敗在 `origin/main` 上就有（見 11.5）
+- [x] 11.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規；`node scripts/check-tenant-ctx.mjs --strict` 通過，舊寫法減少時以 `--update-baseline` 更新基準檔
+  - `check-tenant-scoping` 與 main 比對後，新增一處 `automation.worker.ts` 的 `findUnique` 沒帶 `tenantId`，已改成 `findFirst` 並帶 `tenantId`，改後沒有新增。`check-prisma-admin-usage` 通過。`check-tenant-ctx --strict` 失敗，原因是 main 上的 `deidentification.service.ts`（TenantDb 3 → 7）與 `ai.routes.ts`（request.tenantPrisma 7 → 8），本 change 沒有改動這兩個檔案；不以 `--update-baseline` 蓋過，另行回報
+- [x] 11.6 `node scripts/validate-openspec.mjs outbox-event-delivery` 與 `--specs` 通過
 - [ ] 11.7 合併後以 `pnpm exec openspec archive outbox-event-delivery` 歸檔，確認 `event-delivery`、`side-effect-claims` 兩份新主規格的 `## Purpose` 是 delta 的內容，不是「TBD」，再執行 `node scripts/validate-openspec.mjs --specs`，確認「略過 N 則」沒有變多

@@ -165,7 +165,7 @@ async function checkAutoHandoff(
         summary,
         previousStatus: 'BOT_HANDLED',
       });
-      const updatedConversation = await tx.conversation.findUnique({ where: { id: conversationId } });
+      const updatedConversation = await tx.conversation.findFirst({ where: { id: conversationId, tenantId } });
       return { systemMessage, updatedConversation };
     });
     if (!handedOff) return;

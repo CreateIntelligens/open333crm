@@ -13,6 +13,19 @@
 | RBAC-05 | 本機以 `--dry-run` 執行，指定 6 個優惠券權限碼 | 只列出 supervisor 與 agent 缺少的 `coupon.view`、`coupon.issue`，admin 已有全部權限碼所以沒有補；其他權限碼不受影響 |
 
 RBAC-05 的狀態維持「已提建議」：reconcile 腳本沒有改，快取清除與部署流程仍未處理，見 `AUDIT.md`。
+## 2026-10-21：事件改走 outbox（#337 階段 1b）
+
+分支 `feat/outbox-event-delivery`，以 main `776189ea` 為基礎，change `outbox-event-delivery`。以 unit 與 feature 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| ARCH-02 | 修正，自 `AUDIT.md` 移除 | `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 搬到 `@open333crm/automation`（`feb78055`）。`grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes\|worker\|scheduler)\.js'" apps/api/src/modules` 沒有輸出 |
+| HOOK-01 | 未處理改為部分修正 | 對外 Webhook 只轉送 `EXTERNAL_EVENT_NAMES` 內的事件，payload 帶事件 id，每個網址各自重試（`717d32bf`）。第一版清單等於所有事件，`replyToken` 仍會送出，待產品決定 |
+| APP-08 | 已提建議改為部分修正 | `notification`（`5f392e60`、`3710b293`）、`automation`（`0585cd33`）與新增的事件佇列以時間保留 job。`rich-menu-bind`、`data-export`、`sla` 與兩個清理佇列仍全部保留；Redis 仍沒有 `maxmemory` |
+| APP-09 | 狀態不變（部分修正），內容更新 | `domain:event` 頻道移除（`d6bb430a`），業務事件的訂閱者改走 BullMQ 佇列，每個 job 只由一個行程處理 |
+| RLS-08 | 狀態不變（已定方向），內容更新 | 搬遷計畫的第 2 步（事件改走 outbox）完成，`9c2aff5c` 起 `ctx.publish`、`ctx.enqueue` 寫 outbox |
+| APP-04 | 狀態不變，內容更新 | `setupNotificationWorker()`、`setupAutomationWorker()` 改成回傳訂閱者的處理函式（`ed572fdd`） |
+| AUTO-05 | 狀態不變，內容更新 | `keyword.matched` 改由 workers 處理 `message.received` 時比對（`0585cd33`） |
 
 ## 2026-10-21：新增 HOOK-01
 

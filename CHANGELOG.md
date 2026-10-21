@@ -4,10 +4,28 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-22]
 
+### Changed
+
+- **業務事件改走 outbox，至少送出一次；訂閱者改從各自的佇列取得事件**（#337 階段 1b，change `outbox-event-delivery`，AUDIT RLS-08）— 事件原本經 API 行程內的 EventEmitter 送給訂閱者，API 在 commit 之後、訂閱者做完之前結束（例如部署），通知、自動化規則與對外 Webhook 就不會發生，也不會補做。現在 `ctx.publish`、`ctx.enqueue` 在交易內寫進新的 `outbox` 資料表，與業務資料一起 commit；commit 之後送進佇列，沒送出的由新排程 `outbox-relay` 每分鐘補送，`outbox-cleanup` 每天清掉送出超過 7 天的資料列。通知、自動化與對外 Webhook 各有一個佇列（`event-notification`、`event-automation`、`event-webhook`），Worker 在 API 行程內，job id 是事件 id，一個訂閱者重試不會讓其他訂閱者再處理一次。還沒搬遷的 `eventBus.publish()` 也送進同樣的佇列，但不寫 outbox，仍是最多一次。workers 的 `create_case`、`add_tag` 在同一個交易寫入 `case.created`、`contact.tagged`；Redis 的 `domain:event` 頻道移除（AUDIT APP-09）。
+  - 部署：**API 與 workers 要一起部署**。需要跑 migration `20261021100000_add_outbox_and_side_effect_claims`。Redis 多 5 個佇列，沒有新的環境變數。
+  - 內部 API：`ctx.publish` 改成 async，`ctx.enqueue` 改收佇列名稱；`claimOne()`、`createOrFindExisting()` 搬到 `@open333crm/core`。
+
+- **同一個事件處理兩次時，對客人的訊息與規則動作不重複**— 新增 `side_effect_claims` 資料表，不能重複的副作用執行前先認領，撞到唯一鍵就跳過。每則入站訊息最多一則機器人回覆（AI agent、知識庫回覆、自動轉接的轉接訊息），已經回覆過就不再呼叫 LLM；情緒分析與 `sentiment.negative` 每則訊息最多一次；workers 的每個規則動作每個事件最多執行一次，沒有指定優先度的升級不會再升一級。站內通知與用量告警信以 `<事件 id>__<收件人>` 當 job id，告警信改走 `usage-alert-email` 佇列，寄送失敗由 BullMQ 重試。`notification`、`automation` 佇列改成完成的 job 保留 24 小時、失敗的保留 7 天（AUDIT APP-08 部分修正）。認領之後送出失敗不重送，這些副作用寧可少送一次，也不重複。
+
+- **關鍵字規則改由 workers 處理收到的訊息時比對**— API 原本比對關鍵字後發出 `keyword.matched`，再由 workers 執行規則。現在 workers 評估 `message.received` 時一併比對，命中的規則仍以 `keyword.matched` 執行，LINE 照舊用 reply 回覆。`keyword.matched` 只發給對外 Webhook，每則訊息每條規則最多一次。AI 是否讓步與 workers 用同一個比對函式；關鍵字比對、`BotConfig` 搬到 `@open333crm/automation`，`kb-autoreply` 不再 import worker 檔（AUDIT ARCH-02）。
+
+- **對外 Webhook 每個網址各自重試，送出的內容帶事件 id**（AUDIT HOOK-01 部分修正）— 原本一個事件的所有網址在 API 行程內以 `sleep()` 依序重試，API 重新啟動時重試遺失。現在每個網址一個 `webhook-delivery` job，共送 3 次、間隔 1 秒與 5 秒，重啟後照常繼續。payload 加 `id`，標頭加 `X-Webhook-Event-Id`；同一個事件送給同一個訂閱只有一筆送出紀錄（`webhook_deliveries` 新增 `eventId`），重試時 `X-Webhook-Delivery` 不變。只轉送對外事件清單內的事件，第一版清單等於所有事件。測試送出（`POST /webhook-subscriptions/:id/test`）改成在請求內只送一次、不重試。
+
 ### Fixed
 
 - **優惠券上線的部署在產生 OpenAPI 文件時失敗**（PR #347 合併後）：優惠券狀態流轉的 4 個路由（publish、pause、resume、end）在迴圈中以 template string 註冊，產生器只認字面值路徑；會員綁定的後台與顧客端路由放在同一個檔案，產生器以檔案對應掛載路徑而重複產生 `/api/v1/fan/member-binding`。改為逐一以字面值註冊，顧客端路由拆到 `member-binding-fan.routes.ts`。新增單元測試以目前原始碼執行產生器，同類問題在 `pnpm test` 就會失敗。
 - **Node.js 執行環境升級至 24.22.1 LTS 安全版** — Docker 開發、API、Web、Workers 與部署驗證皆固定使用 `node:24.22.1-bookworm-slim`，根目錄 Node 範圍同步收斂為 `>=24.22.1 <25`，pnpm 安裝階段會拒絕其他版本。此版本包含 Node.js 2026-10-21 安全發布修補的 High 嚴重度 TLS、DNS 與 Brotli 漏洞。
+
+- **同一個資料刪除工作執行兩次時，第二次把已完成的請求改成失敗**— 硬刪除完成後，同一個工作再執行一次會找不到聯絡人，把請求從 `completed` 改成 `failed`。現在 data-erasure 與 data-export 的 worker 開頭以條件更新認領 `pending` 或 `processing` 的請求，已結束的請求直接略過；`processing` 代表上一次執行中途結束，重新處理。data-erasure 把 `completed` 寫在刪除交易的第一個語句，兩次同時執行時只有一次 commit；`completed`、`failed` 都以 `processing` 為條件，只發一則通知。
+
+- **自動轉真人在兩次處理同時進行時可能轉接兩次**— 原本先讀對話狀態，再以 id 更新。現在以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理寫系統訊息、發出 `conversation.handoff`，commit 之後送出轉接訊息。
+
+- **空白關鍵字的規則命中所有訊息**— API 的關鍵字觸發不排除空白或非字串的關鍵字（AI 讓步判斷有排除），加上存檔驗證之前的舊資料會讓每則訊息都觸發該規則。兩邊改用同一個比對函式，空白關鍵字不命中。
 
 ## [2026-10-21]
 
