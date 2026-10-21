@@ -30,7 +30,7 @@ export interface ResultView {
   actions: { label: string; action: ResultAction; variant: 'primary' | 'outline' }[];
 }
 
-export type FailureKey = 'used' | 'expired' | 'notyet' | 'notfound' | 'wrongMode' | 'ended' | 'notClaimed';
+export type FailureKey = 'used' | 'expired' | 'notyet' | 'notfound' | 'wrongMode' | 'ended' | 'notClaimed' | 'sharedCode';
 
 export const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, FailureKey> = {
   USED: 'used',
@@ -40,6 +40,7 @@ export const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, FailureKey> = {
   WRONG_MODE: 'wrongMode',
   ENDED: 'ended',
   NOT_CLAIMED: 'notClaimed',
+  SHARED_CODE: 'sharedCode',
 };
 
 export const REDEEM_FAILURE: Record<RedeemFailureReason, FailureKey> = {
@@ -50,6 +51,7 @@ export const REDEEM_FAILURE: Record<RedeemFailureReason, FailureKey> = {
   WRONG_MODE: 'wrongMode',
   REVOKED: 'ended',
   NOT_CLAIMED: 'notClaimed',
+  SHARED_CODE: 'sharedCode',
 };
 
 export interface FailureInput {
@@ -143,6 +145,17 @@ export function failureView(f: FailureInput): ResultView {
           { label: '確認序號後重新輸入', action: 'manual', variant: 'primary' },
           { label: '重新掃描', action: 'scan', variant: 'outline' },
         ],
+      };
+    case 'sharedCode':
+      return {
+        tone: 'danger',
+        icon: 'search',
+        category: '無法使用',
+        title: '這是共用券號',
+        description: '每位顧客的共用券號都相同，分不出是誰的券',
+        rows: [{ k: '處理方式', v: '請掃描顧客手機上的 QR Code' }],
+        say: '麻煩出示手機上的優惠券 QR Code，我幫您掃描。',
+        actions: BACK_TO_SCAN,
       };
     case 'wrongMode':
       return {

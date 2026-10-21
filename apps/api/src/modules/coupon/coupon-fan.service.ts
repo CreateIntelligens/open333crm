@@ -53,7 +53,7 @@ const COUPON_SELECT = {
   couponType: true, discountAmount: true, discountPercent: true, minSpend: true, percentCap: true,
   giftName: true, giftQty: true, exchangeItem: true, exchangeValueCap: true,
   validityMode: true, startAt: true, endAt: true, afterClaimDays: true, afterOpenMinutes: true,
-  redeemMode: true, maskCodeBeforeStart: true,
+  redeemMode: true, maskCodeBeforeStart: true, codeMode: true, sharedCode: true,
   // 只用來算位數，toFanView 不會輸出驗證碼本身
   staffCode: true,
 } as const;
@@ -67,6 +67,7 @@ type FanCoupon = {
   exchangeItem?: string | null; exchangeValueCap?: number | null;
   validityMode: string | null; startAt: Date | null; endAt?: Date | null; afterClaimDays?: number | null;
   afterOpenMinutes: number | null; redeemMode: string | null; maskCodeBeforeStart?: boolean;
+  codeMode?: string | null; sharedCode?: string | null;
   staffCode?: string | null;
 };
 
@@ -92,7 +93,8 @@ export function toFanView(
 
   return {
     id: i.id,
-    code: hideCode ? null : i.code,
+    // 共用碼券：顧客看到共用碼；內部券號只用在店員掃碼的 QR Code
+    code: hideCode ? null : i.coupon.codeMode === 'SHARED_CODE' && i.coupon.sharedCode ? i.coupon.sharedCode : i.code,
     codeHidden: hideCode,
     availableAt: notYetValid ? i.coupon.startAt : null,
     status: i.status,

@@ -245,6 +245,10 @@ export async function getWalletQrCode(
   if (!view.code || (view.walletStatus !== 'AVAILABLE' && view.walletStatus !== 'EXPIRING')) {
     return { ok: false, reason: 'NOT_AVAILABLE' };
   }
-  const dataUrl = await QRCode.toDataURL(view.code, { margin: 1, width: 480, errorCorrectionLevel: 'M' });
+  // QR 內容一律是這張券自己的券號：共用碼券顧客看到的是共用碼，但掃碼要分得出是哪一位顧客
+  const own = await withTenant(prisma, fan.tenantId, (tx) =>
+    tx.couponInstance.findFirst({ where: { id: instanceId, tenantId: fan.tenantId }, select: { code: true } }));
+  if (!own) return { ok: false, reason: 'NOT_FOUND' };
+  const dataUrl = await QRCode.toDataURL(own.code, { margin: 1, width: 480, errorCorrectionLevel: 'M' });
   return { ok: true, dataUrl };
 }

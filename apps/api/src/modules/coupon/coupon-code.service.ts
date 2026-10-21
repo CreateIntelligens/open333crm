@@ -4,6 +4,7 @@
  * 券碼會被店員口頭覆述、手動輸入，因此避開易混淆字元（0/O、1/I/L）——
  * 這是設計決策不是實作細節，改動會讓既有券碼與新券碼的字集不一致。
  */
+import { couponCodeKey } from '@open333crm/core';
 import { randomInt } from 'node:crypto';
 
 /** 去除 0/O/1/I/L 的字集，避免人工輸入誤判。 */
@@ -67,11 +68,13 @@ export function parseCodeList(input: string): ParsedCodeList {
       invalid.push(code);
       continue;
     }
-    if (seen.has(code)) {
+    // 去掉連字號後相同視為重複：核銷台輸入時忽略連字號，兩組會分不出來
+    const key = couponCodeKey(code);
+    if (seen.has(key)) {
       duplicatesInInput.push(code);
       continue;
     }
-    seen.add(code);
+    seen.add(key);
     valid.push(code);
   }
 

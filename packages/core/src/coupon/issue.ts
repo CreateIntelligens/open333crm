@@ -29,6 +29,14 @@ export function generateCouponCode(prefix?: string | null, length = DEFAULT_CODE
   return p ? `${p}-${body}` : body;
 }
 
+/**
+ * 券號的比對鍵：去掉英數以外的字元並轉大寫。核銷台手動輸入時不必打連字號；
+ * 資料庫以同一個運算式建唯一索引（migration 20261021110000），去掉連字號後相同的兩組券號不能並存。
+ */
+export function couponCodeKey(code: string): string {
+  return code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
 /** 憑證即所有權，必須用 CSPRNG——可預測的憑證等同券可被猜中領走。 */
 export function generateClaimToken(): string {
   return randomBytes(32).toString('base64url');
@@ -77,9 +85,12 @@ async function allocateCode(
   tenantId: string,
   coupon: CouponForIssue,
 ): Promise<{ ok: true; code: string } | { ok: false; reason: IssueSkipReason }> {
+  // 共用碼：顧客看到的是共用碼，但每張券仍有自己的內部券號（以共用碼為前綴），
+  // 核銷台掃 QR Code 才分得出是哪一位顧客的券
+  let prefix = coupon.codePrefix;
   if (coupon.codeMode === 'SHARED_CODE') {
     if (!coupon.sharedCode) return { ok: false, reason: 'SHARED_CODE_MISSING' };
-    return { ok: true, code: coupon.sharedCode };
+    prefix = coupon.sharedCode;
   }
 
   if (coupon.codeMode === 'IMPORTED_CODES') {
@@ -97,7 +108,7 @@ async function allocateCode(
   }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const code = generateCouponCode(coupon.codePrefix);
+    const code = generateCouponCode(prefix);
     const exists = await tx.couponInstance.findFirst({
       where: { tenantId, code },
       select: { id: true },

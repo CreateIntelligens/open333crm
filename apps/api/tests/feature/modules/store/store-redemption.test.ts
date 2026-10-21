@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
 import { loadEnvConfig, getConfig } from '#src/config/env.js';
 import { withTenant } from '#src/lib/tenant-db.js';
 import { isAgentAccessToken } from '#src/lib/agent-token.js';
@@ -17,6 +18,9 @@ import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { getFanCoupon } from '#src/modules/coupon/coupon-fan.service.js';
+import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
+import { importCodes } from '#src/modules/coupon/coupon-import.service.js';
+import { getWalletQrCode } from '#src/modules/coupon/coupon-wallet.service.js';
 import {
   createStore,
   updateStore,
@@ -357,5 +361,68 @@ describe('今日核銷紀錄', () => {
     assert.equal(r.items.length, 2);
     assert.equal(r.summary.discountTotal, 300);
     assert.ok(r.items.every((i) => i.customerName === '陳◯明'));
+  });
+});
+
+describe('共用碼券', () => {
+  let session: StoreSession;
+  let sharedId = '';
+  const SHARED = `S${Date.now().toString(36).toUpperCase()}`.slice(0, 12);
+  beforeAll(async () => {
+    session = await sessionOf(await account('shared'));
+    const c = await inTenant((tx) =>
+      createCoupon(tx, T, agentId, {
+        name: `${MARK} 共用碼券`, purpose: 'MARKETING', couponType: 'DISCOUNT_AMOUNT', discountAmount: 50,
+        validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'SHARED_CODE', sharedCode: SHARED,
+        redeemMode: 'STAFF_SCAN', perContactLimit: 5,
+      }));
+    sharedId = c.id;
+    assert.ok((await inTenant((tx) => changeStatus(tx, T, sharedId, 'ACTIVE'))).ok);
+  });
+
+  it('共用碼可以發給多位顧客，顧客看到的都是共用碼', async () => {
+    const other = (await owner.contact.create({ data: { tenantId: T, displayName: '林小華', avatarUrl: MARK } })).id;
+    const r = await issueCoupons(prisma, T, sharedId, { contactIds: [contactId, other], issuedVia: 'keyword' });
+    assert.equal(r.issued.length, 2, JSON.stringify(r.skipped));
+    for (const i of r.issued) {
+      const view = await getFanCoupon(prisma, { tenantId: T, contactId: i.contactId! }, i.id, clock.now);
+      assert.equal(view?.code, SHARED);
+    }
+  });
+
+  it('核銷台掃描共用碼券的 QR Code 找得到是哪一位顧客', async () => {
+    const r = await issueCoupons(prisma, T, sharedId, { contactIds: [contactId], issuedVia: 'keyword' });
+    const inst = await owner.couponInstance.findUnique({ where: { id: r.issued[0].id } });
+    assert.ok(inst && inst.code !== SHARED, '每張共用碼券有自己的內部券號');
+    // 顧客手機上的 QR Code 內容是這張券自己的券號，不是共用碼
+    const qr = await getWalletQrCode(prisma, { tenantId: T, contactId }, inst.id, clock.now);
+    assert.ok(qr.ok);
+    assert.equal(qr.dataUrl, await QRCode.toDataURL(inst.code, { margin: 1, width: 480, errorCorrectionLevel: 'M' }));
+    const found = await lookupStoreCoupon(prisma, session, inst.code, clock.now);
+    assert.equal(found.result, 'OK');
+    assert.equal(found.coupon?.instanceId, inst.id);
+  });
+
+  it('核銷台輸入共用券號', async () => {
+    const found = await lookupStoreCoupon(prisma, session, SHARED.toLowerCase(), clock.now);
+    assert.equal(found.result, 'SHARED_CODE');
+  });
+});
+
+describe('序號包', () => {
+  it('去掉連字號後相同的序號不能匯入', async () => {
+    const c = await inTenant((tx) =>
+      createCoupon(tx, T, agentId, {
+        name: `${MARK} 序號包`, purpose: 'MARKETING', couponType: 'DISCOUNT_AMOUNT', discountAmount: 50,
+        validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'IMPORTED_CODES',
+        redeemMode: 'STAFF_SCAN', perContactLimit: 5,
+      }));
+    const base = `${Date.now().toString(36).toUpperCase()}`.slice(-6);
+    const first = await importCodes(prisma, T, c.id, `AB-${base}`);
+    assert.equal(first.imported, 1);
+    const second = await importCodes(prisma, T, c.id, `A-B${base}\nAB${base}`);
+    assert.equal(second.imported, 0);
+    assert.deepEqual(second.conflicts, [`A-B${base}`]);
+    assert.deepEqual(second.duplicatesInInput, [`AB${base}`]);
   });
 });

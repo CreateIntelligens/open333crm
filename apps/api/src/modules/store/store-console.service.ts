@@ -7,6 +7,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { couponCodeKey } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
 import { withTenant } from '../../lib/tenant-db.js';
 import { verifyPassword } from '../../shared/utils/password.js';
@@ -195,11 +196,10 @@ export function maskCustomerName(name: string | null | undefined): string {
 }
 
 /** 券號正規化：去掉連字號、空白與其他符號並轉大寫。比對時兩邊都這樣處理，店員不用打連字號。 */
-function normalizeCode(raw: string): string {
-  return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-}
 
-export type LookupResult = 'OK' | 'USED' | 'EXPIRED' | 'NOT_YET' | 'ENDED' | 'WRONG_MODE' | 'NOT_CLAIMED' | 'NOT_FOUND';
+/** SHARED_CODE：輸入的是共用碼券的共用券號，所有持有者相同，分不出是哪一位顧客 */
+export type LookupResult =
+  | 'OK' | 'USED' | 'EXPIRED' | 'NOT_YET' | 'ENDED' | 'WRONG_MODE' | 'NOT_CLAIMED' | 'NOT_FOUND' | 'SHARED_CODE';
 
 export interface StoreCouponView {
   instanceId: string;
@@ -231,16 +231,18 @@ export interface StoreLookup {
   availableAt?: Date;
 }
 
-/** 以券號找出這個租戶的券（忽略連字號與大小寫）。查無或屬於其他租戶都回 null。 */
+/**
+ * 以券號找出這個租戶的券（忽略連字號與大小寫）。查無或屬於其他租戶都回 null。
+ * 比對運算式必須與唯一索引 coupon_instances_tenantId_code_key_norm 相同，才會走索引且最多一筆。
+ */
 async function findInstanceByCode(prisma: PrismaClient, tenantId: string, rawCode: string) {
-  const normalized = normalizeCode(rawCode);
-  if (!normalized) return null;
+  const key = couponCodeKey(rawCode);
+  if (!key) return null;
   return withTenant(prisma, tenantId, async (tx) => {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM coupon_instances
       WHERE "tenantId" = ${tenantId}::uuid
-        AND upper(regexp_replace(code, '[^A-Za-z0-9]', '', 'g')) = ${normalized}
-      LIMIT 1`;
+        AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ${key}`;
     if (rows.length === 0) return null;
     return tx.couponInstance.findFirst({
       where: { id: rows[0].id, tenantId },
@@ -301,8 +303,17 @@ export async function lookupStoreCoupon(
   now: number = Date.now(),
 ): Promise<StoreLookup> {
   const instance = await findInstanceByCode(prisma, session.tenantId, rawCode);
-  if (!instance) return { result: 'NOT_FOUND' };
+  if (!instance) return { result: (await isSharedCode(prisma, session.tenantId, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
   return judge(instance, now);
+}
+
+/** 輸入的是否為某張共用碼券的共用券號（共用碼存為大寫英數） */
+async function isSharedCode(prisma: PrismaClient, tenantId: string, rawCode: string): Promise<boolean> {
+  const key = couponCodeKey(rawCode);
+  if (!key) return false;
+  const coupon = await withTenant(prisma, tenantId, (tx) =>
+    tx.coupon.findFirst({ where: { tenantId, codeMode: 'SHARED_CODE', sharedCode: key }, select: { id: true } }));
+  return coupon != null;
 }
 
 // ── 核銷 ──────────────────────────────────────────────────────────────────
@@ -314,7 +325,8 @@ export type StoreRedeemFailure =
   | 'NOT_YET_VALID'
   | 'REVOKED'
   | 'WRONG_MODE'
-  | 'NOT_CLAIMED';
+  | 'NOT_CLAIMED'
+  | 'SHARED_CODE';
 
 export type StoreRedeemResult =
   | { ok: true; redeemedAt: Date; storeName: string; coupon: StoreCouponView }
@@ -328,6 +340,7 @@ const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, StoreRedeemFailure> = 
   WRONG_MODE: 'WRONG_MODE',
   NOT_CLAIMED: 'NOT_CLAIMED',
   NOT_FOUND: 'NOT_FOUND',
+  SHARED_CODE: 'SHARED_CODE',
 };
 
 const idempotencyKey = (accountId: string, key: string) => `store-redeem:${accountId}:${key}`;
@@ -370,7 +383,9 @@ async function redeemOnce(
 ): Promise<StoreRedeemResult> {
   const now = (deps.now ?? Date.now)();
   const instance = await findInstanceByCode(prisma, session.tenantId, rawCode);
-  if (!instance) return { ok: false, reason: 'NOT_FOUND' };
+  if (!instance) {
+    return { ok: false, reason: (await isSharedCode(prisma, session.tenantId, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
+  }
   const lookup = judge(instance, now);
   if (lookup.result !== 'OK') {
     return {

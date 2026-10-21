@@ -5,7 +5,8 @@
  * 因此逐筆分類為 成功／清單內重複／與既有券碼衝突／格式錯誤，各自回報
  * ——只回「匯入失敗」會讓商家無從修正。
  */
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
+import { couponCodeKey } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { parseCodeList, normalizeImportedCode } from './coupon-code.service.js';
 import { CouponValidationError } from './coupon.service.js';
@@ -54,26 +55,12 @@ export async function importCodes(
       throw new CouponValidationError('已結束的券無法匯入序號');
     }
 
-    // 與既有券碼比對。券碼在租戶內唯一，故同時查庫存表與已發出的券
-    const [existingCodes, existingInstances] = await Promise.all([
-      tx.couponCode.findMany({
-        where: { tenantId, code: { in: parsed.valid } },
-        select: { code: true },
-      }),
-      tx.couponInstance.findMany({
-        where: { tenantId, code: { in: parsed.valid } },
-        select: { code: true },
-      }),
-    ]);
-    const taken = new Set([
-      ...existingCodes.map((c) => c.code),
-      ...existingInstances.map((c) => c.code),
-    ]);
-
+    // 與既有券碼比對（同時查庫存表與已發出的券）
+    const taken = await takenKeys(tx, tenantId, parsed.valid);
     const conflicts: string[] = [];
     const toInsert: string[] = [];
     for (const code of parsed.valid) {
-      if (taken.has(code)) conflicts.push(code);
+      if (taken.has(couponCodeKey(code))) conflicts.push(code);
       else toInsert.push(code);
     }
 
@@ -108,15 +95,8 @@ export async function previewImport(
   const parsed = parseCodeList(rawInput);
 
   return withTenant(prisma, tenantId, async (tx) => {
-    const [existingCodes, existingInstances] = await Promise.all([
-      tx.couponCode.findMany({ where: { tenantId, code: { in: parsed.valid } }, select: { code: true } }),
-      tx.couponInstance.findMany({ where: { tenantId, code: { in: parsed.valid } }, select: { code: true } }),
-    ]);
-    const taken = new Set([
-      ...existingCodes.map((c) => c.code),
-      ...existingInstances.map((c) => c.code),
-    ]);
-    const conflicts = parsed.valid.filter((c) => taken.has(c));
+    const taken = await takenKeys(tx, tenantId, parsed.valid);
+    const conflicts = parsed.valid.filter((c) => taken.has(couponCodeKey(c)));
 
     return {
       willImport: parsed.valid.length - conflicts.length,
@@ -150,4 +130,21 @@ export async function removeAvailableCode(
     });
     return { removed: result.count > 0 };
   });
+}
+
+/**
+ * 租戶內已被使用的券號比對鍵（去掉連字號、轉大寫）。券號在租戶內以比對鍵唯一
+ * （migration 20261021110000 的運算式唯一索引），AB-CD1234 與 ABCD-1234 視為同一組。
+ * 運算式與索引相同才會走索引。
+ */
+async function takenKeys(tx: Prisma.TransactionClient, tenantId: string, codes: string[]): Promise<Set<string>> {
+  const keys = [...new Set(codes.map(couponCodeKey))];
+  if (keys.length === 0) return new Set();
+  const rows = await tx.$queryRaw<{ key: string }[]>`
+    SELECT upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) AS key FROM coupon_codes
+    WHERE "tenantId" = ${tenantId}::uuid AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ANY(${keys}::text[])
+    UNION
+    SELECT upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) AS key FROM coupon_instances
+    WHERE "tenantId" = ${tenantId}::uuid AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ANY(${keys}::text[])`;
+  return new Set(rows.map((r) => r.key));
 }

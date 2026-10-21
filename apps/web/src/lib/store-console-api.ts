@@ -117,7 +117,8 @@ export interface StoreCoupon {
   customerName: string;
 }
 
-export type LookupResult = 'OK' | 'USED' | 'EXPIRED' | 'NOT_YET' | 'ENDED' | 'WRONG_MODE' | 'NOT_CLAIMED' | 'NOT_FOUND';
+/** SHARED_CODE：輸入的是共用碼券的共用券號，分不出是哪一位顧客 */
+export type LookupResult = 'OK' | 'USED' | 'EXPIRED' | 'NOT_YET' | 'ENDED' | 'WRONG_MODE' | 'NOT_CLAIMED' | 'NOT_FOUND' | 'SHARED_CODE';
 
 export interface LookupResponse {
   result: LookupResult;
@@ -135,7 +136,8 @@ export type RedeemFailureReason =
   | 'NOT_YET_VALID'
   | 'REVOKED'
   | 'WRONG_MODE'
-  | 'NOT_CLAIMED';
+  | 'NOT_CLAIMED'
+  | 'SHARED_CODE';
 
 export type RedeemResponse =
   | { ok: true; redeemedAt: string; storeName: string; coupon: StoreCoupon }
