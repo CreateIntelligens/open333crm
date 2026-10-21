@@ -113,7 +113,7 @@ export function SlideToRedeem({ onConfirm, busy = false, disabled = false }: Pro
       />
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 flex items-center justify-center pl-10 text-base font-semibold text-primary-hover dark:text-primary"
+        className="pointer-events-none absolute inset-0 flex items-center justify-center pl-10 text-base font-semibold text-primary-hover"
       >
         {label}
       </span>

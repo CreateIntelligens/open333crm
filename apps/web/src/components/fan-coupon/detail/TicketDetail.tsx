@@ -126,7 +126,7 @@ export function TicketDetail({ item, onAfterOpenTimeUp }: Props) {
       <div aria-hidden className="relative h-0">
         <span className="absolute -left-[19px] -top-[19px] h-[38px] w-[38px] rounded-full bg-muted" />
         <span className="absolute -right-[19px] -top-[19px] h-[38px] w-[38px] rounded-full bg-muted" />
-        <div className="mx-7 border-t-2 border-dashed border-[#D1C8BB] dark:border-border" />
+        <div className="mx-7 border-t-2 border-dashed border-[#D1C8BB]" />
       </div>
 
       {/* 下半部：票券資訊 */}
@@ -134,7 +134,7 @@ export function TicketDetail({ item, onAfterOpenTimeUp }: Props) {
         {showAfterOpenTimer && <AfterOpenTimer expiresAt={item.expiresAt!} onTimeUp={onAfterOpenTimeUp} />}
 
         <section aria-label="券號" className="overflow-hidden rounded-2xl border border-border">
-          <div className="bg-[#F2F1EE] px-4 py-3 dark:bg-muted">
+          <div className="bg-[#F2F1EE] px-4 py-3">
             <p className="text-xs font-semibold text-muted-foreground">券號</p>
             <p
               className={cn(

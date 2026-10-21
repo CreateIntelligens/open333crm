@@ -23,6 +23,7 @@ All notable changes to **open333CRM** will be documented in this file.
 - **系統角色「座席」與「主管」預設有 `coupon.view`、`coupon.issue`**。既有租戶部署後要執行 `scripts/reconcile-system-role-permissions.mjs`。
 - 對話發券檢查渠道可見性（CM-173）：看不到該渠道或只能看的座席不能發券。
 - 移除 `POST /api/v1/coupons/:id/issue-to-conversation`，改用 `/api/v1/coupon-issue/conversations/:id`。
+- **顧客票券頁一律淺色**：`/coupon/*` 不再跟隨手機的系統深色設定。
 - 需要跑 migration `20261021100000_coupon_instance_viewed_at`（顧客第一次開啟票券連結的時間，用來顯示「已領取」）。
 
 ## [2026-10-20]
