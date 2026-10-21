@@ -1,6 +1,6 @@
 ## Purpose
 
-定義租戶資料存取的交易邊界：入口如何開一個綁定租戶的交易、交易內的寫入如何一起成功或一起失敗、推播與事件在什麼時候送出，以及搬遷期間舊寫法不得增加的檢查。
+定義租戶資料存取的交易邊界：入口如何開一個綁定租戶的交易、交易內的寫入如何一起成功或一起失敗、推播與事件與佇列 job 在什麼時候送出、推播的房間由誰決定、交易內處理唯一約束與條件認領的共用函式，以及搬遷期間舊寫法不得增加的檢查。
 
 ## ADDED Requirements
 
@@ -23,38 +23,52 @@
 - **WHEN** 入口以 `not-a-uuid` 作為租戶 ID 開啟交易
 - **THEN** 系統 MUST 丟出錯誤，交易內的程式 MUST NOT 執行
 
-### Requirement: 推播與事件在 commit 之後才送出
+### Requirement: 推播、事件與佇列 job 在 commit 之後才送出
 
-交易內登記的 Socket 推播與業務事件 MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的推播與事件 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。推播的房間以 `tenant:` 開頭、但不是交易綁定租戶的房間時，系統 MUST 在交易內丟出錯誤，讓交易 rollback。房間不以 `tenant:` 開頭時，系統不檢查房間所屬的租戶，呼叫端 MUST 只用交易內查詢取得的 ID 組成房間名稱。一項推播或事件送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
+交易內登記的 Socket 推播、業務事件與 BullMQ job MUST 在交易 commit 之後才送出，並依登記的順序送出。交易 rollback 時，登記的項目 MUST 全部丟棄，呼叫端 MUST 收到原本的錯誤。一項送出失敗時，系統 MUST 記錄錯誤並繼續送出其餘項目，MUST NOT 讓已經 commit 的結果變成失敗。
 
 #### Scenario: commit 之前不送出
 
-- **WHEN** 交易內登記一則推播與一個事件，之後交易內的程式仍在執行
-- **THEN** 在交易 commit 之前，前端 MUST NOT 收到該推播，事件訂閱者 MUST NOT 收到該事件
+- **WHEN** 交易內登記一則推播、一個事件與一個 job，之後交易內的程式仍在執行
+- **THEN** 在交易 commit 之前，前端 MUST NOT 收到該推播，事件訂閱者 MUST NOT 收到該事件，佇列 MUST NOT 收到該 job
 
 #### Scenario: commit 之後依登記順序送出
 
-- **WHEN** 交易內依序登記推播 P1、事件 E1、推播 P2，之後交易 commit
-- **THEN** 系統 MUST 依 P1、E1、P2 的順序送出
+- **WHEN** 交易內依序登記推播 P1、事件 E1、job J1、推播 P2，之後交易 commit
+- **THEN** 系統 MUST 依 P1、E1、J1、P2 的順序送出
 
 #### Scenario: rollback 時全部丟棄
 
-- **WHEN** 交易內登記一則推播與一個事件，之後交易內的程式丟出錯誤
-- **THEN** 該推播與事件 MUST NOT 送出，呼叫端收到該錯誤
-
-#### Scenario: 推播到別的租戶房間
-
-- **WHEN** 綁定租戶 A 的交易內，登記一則推播到租戶 B 的房間 `tenant:<B 的 ID>`
-- **THEN** 系統 MUST 在交易內丟出錯誤，交易 rollback，交易內登記的推播與事件 MUST NOT 送出
+- **WHEN** 交易內登記一則推播、一個事件與一個 job，之後交易內的程式丟出錯誤
+- **THEN** 該推播、事件與 job MUST NOT 送出，呼叫端收到該錯誤
 
 #### Scenario: 一項送出失敗不影響其他項
 
-- **WHEN** 交易 commit 之後，登記的第一則推播送出時丟出錯誤
+- **WHEN** 交易 commit 之後，登記的第一個 job 送進佇列時失敗
 - **THEN** 系統 MUST 記錄該錯誤並送出其餘項目，呼叫端 MUST 收到交易內程式的回傳值
 
-### Requirement: 事件最多送出一次
+### Requirement: 推播的房間由系統決定
 
-業務事件在 commit 之後交給 API 行程內的事件匯流排。行程在 commit 之後、事件送出之前結束時，該事件 MUST NOT 補送。推播也一樣，MUST NOT 補送。這是規格接受的行為：事件的保證是最多一次，與事件直接交給行程內事件匯流排的寫法相同。
+交易內登記推播時，呼叫端 MUST 只指定推播名稱與內容；給單一客服人員的推播，再指定該客服人員的 ID。呼叫端 MUST NOT 指定房間名稱。系統 MUST 依推播的種類決定房間：
+
+- 全租戶推播：送到交易綁定租戶的房間 `tenant:<tenantId>`。
+- 給客服人員的推播：送到 `agent:<agentId>`。
+
+所以推播不會送到別的租戶的 `tenant:` 房間。系統不檢查客服人員 ID 屬於哪個租戶，呼叫端 MUST 只用交易內查詢取得的客服人員 ID。
+
+#### Scenario: 全租戶推播
+
+- **WHEN** 綁定租戶 A 的交易內登記推播 `case.updated`，之後交易 commit
+- **THEN** 系統 MUST 把該推播送到 `tenant:<A 的 ID>`，MUST NOT 送到其他房間
+
+#### Scenario: 給客服人員的推播
+
+- **WHEN** 綁定租戶 A 的交易內，登記給客服人員 X 的推播 `notification.new`，之後交易 commit
+- **THEN** 系統 MUST 把該推播送到 `agent:<X 的 ID>`，MUST NOT 送到其他房間
+
+### Requirement: 事件與佇列 job 最多送出一次
+
+業務事件在 commit 之後交給 API 行程內的事件匯流排，job 在 commit 之後送進佇列。行程在 commit 之後、事件或 job 送出之前結束時，該事件或 job MUST NOT 補送。推播也一樣，MUST NOT 補送。這是規格接受的行為：保證是最多一次，與直接交給事件匯流排或佇列的寫法相同。
 
 #### Scenario: 事件不重複送出
 
@@ -103,3 +117,41 @@ repo MUST 提供一個檢查腳本，計算下列寫法在 `apps/api/src` 中出
 
 - **WHEN** 任一寫法的次數比基準多，不帶 `--strict` 執行腳本
 - **THEN** 腳本 MUST 輸出報告並以 exit code 0 結束
+
+### Requirement: 寫入撞到唯一鍵時改用既有資料
+
+repo MUST 提供一個共用函式，在綁定租戶的交易內寫入一筆資料。資料違反唯一約束時，函式 MUST NOT 丟出錯誤，改為查出既有的那一筆。函式 MUST 回報回傳的資料是否由本次寫入。函式執行之後，同一個交易 MUST 仍可繼續查詢與寫入。寫入被略過、但查不到既有資料時，函式 MUST 丟出錯誤。
+
+#### Scenario: 沒有衝突
+
+- **WHEN** 交易內以共用函式寫入一筆唯一鍵還不存在的資料
+- **THEN** 函式 MUST 回傳新寫入的資料，並回報這筆資料由本次寫入
+
+#### Scenario: 與已存在的資料衝突
+
+- **WHEN** 交易內以共用函式寫入一筆資料，資料庫已有相同唯一鍵的資料
+- **THEN** 函式 MUST 回傳既有的資料，並回報這筆資料不是本次寫入；之後同一個交易內的查詢 MUST 成功
+
+#### Scenario: 兩個交易同時寫入同一個唯一鍵
+
+- **WHEN** 兩個交易以共用函式寫入相同唯一鍵的資料，第一個交易先寫入，之後才 commit
+- **THEN** 第二個交易 MUST 回傳第一個交易寫入的資料，並回報這筆資料不是本次寫入，MUST NOT 丟出錯誤
+
+### Requirement: 條件更新認領
+
+repo MUST 提供一個共用函式，執行一次條件更新，並回報是否認領成功。更新筆數是 1 時，函式 MUST 回報認領成功；更新筆數是 0 時，MUST 回報認領失敗。認領的條件只能對應一筆資料，所以更新筆數大於 1 時，函式 MUST 丟出錯誤，讓交易 rollback。
+
+#### Scenario: 認領成功
+
+- **WHEN** 條件更新更新了 1 筆資料
+- **THEN** 函式 MUST 回報認領成功
+
+#### Scenario: 已經被認領
+
+- **WHEN** 條件更新更新了 0 筆資料
+- **THEN** 函式 MUST 回報認領失敗
+
+#### Scenario: 條件對應多筆資料
+
+- **WHEN** 條件更新更新了 2 筆資料
+- **THEN** 函式 MUST 丟出錯誤
