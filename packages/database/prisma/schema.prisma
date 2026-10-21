@@ -2367,6 +2367,9 @@ model CouponInstance {
   /// 已歸戶的顧客第一次從票券連結開啟這張券的時間（對話發券的「已領取」，design D14）。
   /// 對話發券直接歸戶，claimedAt 在發券當下就有值，不能用來判斷顧客是否看過
   viewedAt   DateTime?
+  /// 對話發券送出訊息前寫入、送出後清除（design D16）。有值代表發送中：顧客端看不到，
+  /// 但計入每人上限與發行總量；超過 5 分鐘仍有值由排程作廢
+  deliveryPendingAt DateTime?
 
   /// 發放來源，供成效歸因；領取歸戶後不變更
   issuedVia   String?

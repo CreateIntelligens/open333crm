@@ -17,7 +17,8 @@ import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
-import { openWalletSession } from '#src/modules/coupon/coupon-wallet.service.js';
+import { listWallet, openWalletSession } from '#src/modules/coupon/coupon-wallet.service.js';
+import { sweepStalePendingIssues } from '#src/modules/coupon/coupon-inbox.service.js';
 import {
   getIssueContext,
   getIssueRequest,
@@ -479,5 +480,91 @@ describe('發行控制：每人上限的計算', () => {
     await owner.couponInstance.update({ where: { id: first.issued[0].id }, data: { status: 'EXPIRED' } });
     const second = await issue(p);
     assert.equal(second.issued.length, 1);
+  });
+});
+
+describe('對話發券先保留再發送（design D16）', () => {
+  it('發送時不佔住券的鎖', async () => {
+    const slow = await person('慢渠道');
+    const other = await person('同時發其他人');
+    deliverDelayMs = 800;
+    try {
+      const pending = issueInConversation(prisma, deps, input(slow, coupons.amount));
+      await new Promise((r) => setTimeout(r, 150));
+      const started = Date.now();
+      // 同一張券的其他發放（群發、關鍵字）不必等慢渠道回應
+      const bulk = await issueCoupons(prisma, T, coupons.amount, { contactIds: [other.contactId], issuedVia: 'broadcast' });
+      const elapsed = Date.now() - started;
+      assert.equal(bulk.issued.length, 1);
+      assert.ok(elapsed < 400, `群發等了 ${elapsed}ms，代表被對話發券的鎖擋住`);
+      assert.equal((await pending).ok, true);
+    } finally {
+      deliverDelayMs = 0;
+    }
+  });
+
+  it('發券訊息送不出時券作廢並歸還名額', async () => {
+    const p = await person('封鎖後再發');
+    unreachable.add(p.conversationId);
+    const failed = await issueInConversation(prisma, deps, input(p, coupons.limitOne));
+    assert.equal(failed.ok ? 'ok' : failed.reason, 'COUPON_DELIVERY_FAILED');
+    assert.equal(await heldBy(p, coupons.limitOne), 0, '券不留下');
+    assert.equal(await owner.message.count({ where: { conversationId: p.conversationId } }), 0, '對話不留下券訊息');
+    unreachable.delete(p.conversationId);
+    // 每人一張的券，送失敗後名額歸還，可以再發
+    const retry = await issueInConversation(prisma, deps, input(p, coupons.limitOne));
+    assert.equal(retry.ok, true, JSON.stringify(retry));
+  });
+
+  it('發券訊息送不出時序號包的序號放回', async () => {
+    // 序號包要先有序號才能發布
+    const draft = await withTenant(prisma, T, (tx) =>
+      createCoupon(tx, T, creatorId, {
+        name: `${MARK} 序號包補償券`, couponType: 'DISCOUNT_AMOUNT', discountAmount: 100, purpose: 'SERVICE',
+        validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'IMPORTED_CODES',
+        redeemMode: 'STAFF_CODE', staffCode: '582917', perContactLimit: 5,
+      } as never));
+    const id = draft.id;
+    const code = await owner.couponCode.create({ data: { tenantId: T, couponId: id, code: `${MARK.slice(-8).toUpperCase()}POOL` } });
+    assert.ok((await withTenant(prisma, T, (tx) => changeStatus(tx, T, id, 'ACTIVE'))).ok);
+    const p = await person('序號包封鎖');
+    unreachable.add(p.conversationId);
+    const r = await issueInConversation(prisma, deps, input(p, id));
+    assert.equal(r.ok ? 'ok' : r.reason, 'COUPON_DELIVERY_FAILED');
+    const after = await owner.couponCode.findUnique({ where: { id: code.id } });
+    assert.equal(after?.status, 'AVAILABLE');
+    assert.equal(after?.instanceId, null);
+  });
+
+  it('發送中的券顧客看不到', async () => {
+    const p = await person('發送中', lineChannel, 'LINE', { verified: true });
+    deliverDelayMs = 500;
+    try {
+      const pending = issueInConversation(prisma, deps, input(p, coupons.amount));
+      await new Promise((r) => setTimeout(r, 150));
+      assert.equal(await heldBy(p, coupons.amount), 1, '已保留');
+      const wallet = await listWallet(prisma, { tenantId: T, contactId: p.contactId });
+      assert.equal(wallet.items.length, 0, '發送完成前不出現在票券夾');
+      assert.equal((await pending).ok, true);
+      const after = await listWallet(prisma, { tenantId: T, contactId: p.contactId });
+      assert.equal(after.items.length, 1);
+    } finally {
+      deliverDelayMs = 0;
+    }
+  });
+
+  it('卡在發送中的券由排程作廢', async () => {
+    const p = await person('卡住');
+    const stale = await owner.couponInstance.create({
+      data: { tenantId: T, couponId: coupons.limitOne, contactId: p.contactId, code: `${MARK.slice(-6).toUpperCase()}STALE`, status: 'CLAIMED', claimedAt: new Date(), issuedVia: 'inbox', deliveryPendingAt: new Date(Date.now() - 6 * 60 * 1000) },
+    });
+    const fresh = await owner.couponInstance.create({
+      data: { tenantId: T, couponId: coupons.amount, contactId: p.contactId, code: `${MARK.slice(-6).toUpperCase()}FRESH`, status: 'CLAIMED', claimedAt: new Date(), issuedVia: 'inbox', deliveryPendingAt: new Date(Date.now() - 60 * 1000) },
+    });
+    const swept = await sweepStalePendingIssues(owner, Date.now());
+    assert.ok(swept >= 1);
+    assert.equal(await owner.couponInstance.count({ where: { id: stale.id } }), 0, '超過 5 分鐘的作廢');
+    assert.equal(await owner.couponInstance.count({ where: { id: fresh.id } }), 1, '還在發送中的不動');
+    await owner.couponInstance.delete({ where: { id: fresh.id } });
   });
 });

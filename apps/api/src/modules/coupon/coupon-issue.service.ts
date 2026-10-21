@@ -32,6 +32,8 @@ export interface IssueOptions {
   sourceName?: string;
   /** 發券座席名稱快照（對話發券） */
   issuedByName?: string;
+  /** 不在此貼標：對話發券要等訊息送出後才貼（design D16） */
+  skipClaimTag?: boolean;
 }
 
 
@@ -54,7 +56,7 @@ export async function issueCoupons(
 }
 
 /**
- * 在呼叫端的交易內發券。對話發券要在同一個交易內送出訊息，送不出就整筆回滾（design D14）。
+ * 在呼叫端的交易內發券（對話發券先在短交易內保留，見 design D16）。
  * tx 必須已綁定租戶（withTenant）。
  */
 export async function issueCouponsInTx(
@@ -87,7 +89,7 @@ export async function issueCouponsInTx(
 
   // 直接歸戶者（LINE）不會經過 claimByToken，貼標要在此補上；
   // 待領取者（FB／IG）於實際領取時才貼，避免沒領的人也被貼標
-  if (!requireClaim && coupon.claimTagId) {
+  if (!requireClaim && coupon.claimTagId && !opts.skipClaimTag) {
     for (const instance of outcome.issued) {
       if (instance.contactId) {
         await applyClaimTag(tx, tenantId, instance.contactId, coupon);

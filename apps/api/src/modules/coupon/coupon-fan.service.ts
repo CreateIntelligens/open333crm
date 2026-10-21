@@ -144,7 +144,8 @@ export type FanCouponView = ReturnType<typeof toFanView>;
 export async function listFanCoupons(prisma: PrismaClient, fan: FanIdentity, now: number = Date.now()) {
   const rows = await withTenant(prisma, fan.tenantId, (tx) =>
     tx.couponInstance.findMany({
-      where: { tenantId: fan.tenantId, contactId: fan.contactId, status: { not: 'ISSUED' } },
+      // 發送中的券（對話發券還在等渠道回應，design D16）不算顧客的券
+      where: { tenantId: fan.tenantId, contactId: fan.contactId, status: { not: 'ISSUED' }, deliveryPendingAt: null },
       include: COUPON_INCLUDE,
       orderBy: [{ expiresAt: { sort: 'asc', nulls: 'last' } }, { claimedAt: 'desc' }],
     }));
@@ -158,7 +159,7 @@ export async function listFanCoupons(prisma: PrismaClient, fan: FanIdentity, now
 export async function getFanCoupon(prisma: PrismaClient, fan: FanIdentity, id: string, now: number = Date.now()) {
   const instance = await withTenant(prisma, fan.tenantId, (tx) =>
     tx.couponInstance.findFirst({
-      where: { id, tenantId: fan.tenantId, contactId: fan.contactId },
+      where: { id, tenantId: fan.tenantId, contactId: fan.contactId, deliveryPendingAt: null },
       include: COUPON_INCLUDE,
     }));
   return instance ? toFanView(instance, now) : null;
@@ -168,7 +169,7 @@ export async function getFanCoupon(prisma: PrismaClient, fan: FanIdentity, id: s
 export async function isOwnedByFan(prisma: PrismaClient, fan: FanIdentity, id: string): Promise<boolean> {
   const owned = await withTenant(prisma, fan.tenantId, (tx) =>
     tx.couponInstance.findFirst({
-      where: { id, tenantId: fan.tenantId, contactId: fan.contactId },
+      where: { id, tenantId: fan.tenantId, contactId: fan.contactId, deliveryPendingAt: null },
       select: { id: true },
     }));
   return owned != null;

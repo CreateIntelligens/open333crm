@@ -66,6 +66,7 @@ import phoneRegistrationRoutes from './modules/identity-binding/phone-registrati
 import couponRoutes from './modules/coupon/coupon.routes.js';
 import couponInstanceRoutes from './modules/coupon/coupon-instance.routes.js';
 import couponInboxRoutes from './modules/coupon/coupon-inbox.routes.js';
+import { setupCouponScheduler } from './modules/coupon/coupon.scheduler.js';
 import storeRoutes from './modules/store/store.routes.js';
 import storeConsoleRoutes from './modules/store/store-console.routes.js';
 import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
@@ -234,6 +235,7 @@ export async function bootstrap() {
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
   setupCanvasScheduler(jobScheduler);
   setupTrialScheduler(jobScheduler, app.prismaAdmin);
+  setupCouponScheduler(jobScheduler, app.prismaAdmin);
   jobScheduler.start();
   app.addHook('onClose', () => jobScheduler.close());
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));
