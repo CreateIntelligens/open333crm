@@ -54,6 +54,9 @@ const STAFF_CODE_MESSAGES: Record<string, string> = {
   TOO_MANY_ATTEMPTS: '驗證碼錯誤次數過多，這張券 24 小時內不能核銷。如需協助請聯絡客服。',
 };
 
+/** 券 id：格式不對直接回 400，不讓資料庫丟錯 */
+const idParams = z.object({ id: z.string().uuid('券識別格式不正確') });
+
 export default async function couponFanRoutes(app: FastifyInstance) {
   const deps = (): WalletDeps => ({ store: getBindingStore() });
 
@@ -82,10 +85,8 @@ export default async function couponFanRoutes(app: FastifyInstance) {
    */
   app.post('/claim', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { claimToken } = request.body as { claimToken?: string };
-    if (!claimToken) {
-      return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: '缺少領取憑證' } });
-    }
+    const { claimToken } = z.object({ claimToken: z.string({ required_error: '缺少領取憑證' }).min(1, '缺少領取憑證').max(200) })
+      .parse(request.body ?? {});
 
     const result = await claimByToken(app.prisma, claimToken, fan.contactId, fan.tenantId);
     if (!result.ok) {
@@ -114,7 +115,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   /** 店員掃碼券的 QR Code（data URL）。只在可使用時產生。 */
   app.get('/:id/qrcode', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const result = await getWalletQrCode(app.prisma, fan, id);
     if (!result.ok) {
       const messages = { NOT_FOUND: '查無此券', NOT_STAFF_SCAN: '此券不需出示 QR Code', NOT_AVAILABLE: '此券目前無法使用' };
@@ -129,7 +130,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   /** 開始使用店員驗證碼券：開啟 5 分鐘的核銷時段，回傳結束時間。 */
   app.post('/:id/start', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const result = await startStaffCodeSession(app.prisma, deps(), fan, id);
     if (!result.ok) {
       const status = result.reason === 'NOT_FOUND' ? 404 : 409;
@@ -144,7 +145,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   /** 店員在顧客手機上輸入驗證碼核銷。錯誤時回報剩餘次數，不透露正確的碼。 */
   app.post('/:id/redeem-code', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const { code } = z.object({ code: z.string().regex(/^\d{4,6}$/, '需 4–6 位數字') }).parse(request.body);
     const result = await redeemWithStaffCode(app.prisma, deps(), fan, id, code);
     if (!result.ok) {
@@ -168,7 +169,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
 
   app.get('/:id', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
 
     const instance = await getFanCoupon(app.prisma, fan, id);
     if (!instance) {
@@ -180,7 +181,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   /** 開啟券。AFTER_OPEN 模式由此刻起算效期，故是有副作用的動作，用 POST。 */
   app.post('/:id/open', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
 
     const result = await openInstance(app.prisma, fan.tenantId, id, fan.contactId);
     if (!result.ok) {
@@ -198,7 +199,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
    */
   app.post('/:id/redeem', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
 
     // 先確認這張券屬於請求者，避免以他人 instanceId 觸發核銷
     const owned = await isOwnedByFan(app.prisma, fan, id);

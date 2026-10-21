@@ -22,13 +22,16 @@ const instanceQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
 });
 
+/** 券 id：格式不對直接回 400，不讓資料庫丟錯 */
+const idParams = z.object({ id: z.string().uuid('券識別格式不正確') });
+
 export default async function couponInstanceRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
   // ── 成效與名單 ──
 
   app.get('/:id/stats', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const stats = await getCouponStats(request.tenantPrisma, request.agent.tenantId, id);
     if (!stats) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
@@ -37,7 +40,7 @@ export default async function couponInstanceRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/instances', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const query = instanceQuerySchema.parse(request.query);
     const result = await listInstances(request.tenantPrisma, request.agent.tenantId, id, query);
     return {
@@ -48,7 +51,7 @@ export default async function couponInstanceRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id/instances/export', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const coupon = await getCoupon(request.tenantPrisma, request.agent.tenantId, id);
     if (!coupon) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });

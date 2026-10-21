@@ -23,7 +23,6 @@ import { changeStatus } from './coupon-lifecycle.service.js';
 import { issueCoupons } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
-import { getBulkRedeemCounts } from './coupon-stats.service.js';
 
 const int = z.number().int();
 // ⚠️ 日期一律用 z.coerce.date()，不可用 z.string().datetime()：前端的 date 欄位送的是「2026-10-31」
@@ -62,6 +61,28 @@ const couponInputSchema = z.object({
   claimTagTtlDays: int.nullable(),
   maskCodeBeforeStart: z.boolean(),
 }).partial();
+
+/** 券 id：格式不對直接回 400，不讓資料庫丟錯 */
+const idParams = z.object({ id: z.string().uuid('優惠券識別格式不正確') });
+
+const issueSchema = z.object({
+  contactIds: z.array(z.string().uuid('聯絡人識別格式不正確'), { invalid_type_error: '發放對象須為聯絡人清單' })
+    .min(1, '請選擇發放對象')
+    .max(1000, '單次最多發給 1000 位聯絡人'),
+  // 發放方式寫進成效歸因，只接受代號格式（例如 inbox、broadcast、keyword.matched）
+  issuedVia: z.string().regex(/^[a-z][a-z0-9._-]{0,39}$/, '發放方式格式不正確').optional(),
+  issuedRefId: z.string().max(100).optional(),
+  requireClaim: z.boolean().optional(),
+});
+
+/** 序號清單：一行一組或以逗號分隔的文字（前端 CodeImportField 送出的格式） */
+const codesSchema = z.object({ codes: z.string({ invalid_type_error: '序號清單須為文字' }).max(2_000_000, '序號清單過長，請分批匯入').default('') });
+
+const redeemSchema = z.object({
+  code: z.string().min(1).max(64).optional(),
+  instanceId: z.string().uuid('券識別格式不正確').optional(),
+  staffCode: z.string().max(10).optional(),
+});
 
 const listQuerySchema = z.object({
   status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ENDED']).optional(),
@@ -102,7 +123,7 @@ export default async function couponRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const coupon = await getCoupon(request.tenantPrisma, request.agent.tenantId, id);
     if (!coupon) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
@@ -125,7 +146,7 @@ export default async function couponRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     try {
       const coupon = await updateCoupon(
         request.tenantPrisma,
@@ -144,7 +165,7 @@ export default async function couponRoutes(app: FastifyInstance) {
 
   /** 複製為新草稿，回傳新券（前端導向其編輯頁）。 */
   app.post('/:id/duplicate', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const copy = await duplicateCoupon(request.tenantPrisma, request.agent.tenantId, id, request.agent.id);
     if (!copy) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
@@ -162,7 +183,7 @@ export default async function couponRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = idParams.parse(request.params);
     const result = await deleteCoupon(request.tenantPrisma, request.agent.tenantId, id);
     if (!result.deleted) {
       if (result.reason === 'NOT_FOUND') {
@@ -184,7 +205,7 @@ export default async function couponRoutes(app: FastifyInstance) {
     ['end', 'ENDED'],
   ] as const) {
     app.post(`/:id/${path}`, { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-      const { id } = request.params as { id: string };
+      const { id } = idParams.parse(request.params);
       try {
         const result = await changeStatus(request.tenantPrisma, request.agent.tenantId, id, next);
         if (!result.ok) {
@@ -203,16 +224,11 @@ export default async function couponRoutes(app: FastifyInstance) {
   }
 
   app.post('/:id/issue', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = request.body as {
-      contactIds?: string[];
-      issuedVia?: string;
-      issuedRefId?: string;
-      requireClaim?: boolean;
-    };
+    const { id } = idParams.parse(request.params);
+    const body = issueSchema.parse(request.body);
     try {
       const result = await issueCoupons(app.prisma, request.agent.tenantId, id, {
-        contactIds: body.contactIds ?? [],
+        contactIds: body.contactIds,
         issuedVia: body.issuedVia ?? 'inbox',
         issuedRefId: body.issuedRefId ?? request.agent.id,
         requireClaim: body.requireClaim,
@@ -226,9 +242,10 @@ export default async function couponRoutes(app: FastifyInstance) {
   // ── 序號包匯入 ──
 
   app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    const body = request.body as { codes?: string };
+    idParams.parse(request.params);
+    const body = codesSchema.parse(request.body ?? {});
     try {
-      const result = await previewImport(app.prisma, request.agent.tenantId, body.codes ?? '');
+      const result = await previewImport(app.prisma, request.agent.tenantId, body.codes);
       return { success: true, data: result };
     } catch (err) {
       return handleError(err, reply);
@@ -236,10 +253,10 @@ export default async function couponRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/codes', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = request.body as { codes?: string };
+    const { id } = idParams.parse(request.params);
+    const body = codesSchema.parse(request.body ?? {});
     try {
-      const result = await importCodes(app.prisma, request.agent.tenantId, id, body.codes ?? '');
+      const result = await importCodes(app.prisma, request.agent.tenantId, id, body.codes);
       return { success: true, data: result };
     } catch (err) {
       return handleError(err, reply);
@@ -247,7 +264,7 @@ export default async function couponRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id/codes/:code', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    const { id, code } = request.params as { id: string; code: string };
+    const { id, code } = idParams.extend({ code: z.string().min(1).max(64) }).parse(request.params);
     const result = await removeAvailableCode(app.prisma, request.agent.tenantId, id, code);
     if (!result.removed) {
       if (result.reason === 'NOT_FOUND') {
@@ -263,7 +280,7 @@ export default async function couponRoutes(app: FastifyInstance) {
 
   // 核銷台。掃碼或手動輸入券號皆走此端點
   app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, async (request, reply) => {
-    const body = request.body as { code?: string; instanceId?: string; staffCode?: string };
+    const body = redeemSchema.parse(request.body ?? {});
     if (!body.code && !body.instanceId) {
       return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: '請提供券號' } });
     }

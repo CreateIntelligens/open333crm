@@ -4,6 +4,7 @@
  * - 顧客端綁定：/api/v1/fan/member-binding（需 fan token）
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
 import {
@@ -45,6 +46,32 @@ function maskConfig(config: MemberBindingConfig | null) {
   };
 }
 
+/** 設定的結構（member-binding.types.ts MemberBindingConfig）；網址的 SSRF 檢查在 saveBindingConfig */
+const configSchema = z.object({
+  enabled: z.boolean(),
+  endpoint: z.string().max(2000),
+  method: z.enum(['GET', 'POST'], { errorMap: () => ({ message: '查詢方式須為 GET 或 POST' }) }),
+  auth: z.object({
+    type: z.enum(['none', 'bearer', 'api_key', 'basic']),
+    credential: z.string().max(4000).optional(),
+    headerName: z.string().max(100).optional(),
+  }).default({ type: 'none' }),
+  headers: z.record(z.string().max(2000)).optional(),
+  bodyTemplate: z.string().max(10_000).optional(),
+  fieldMapping: z.record(z.string().max(200)),
+  notFoundWhen: z.object({
+    fieldIsEmpty: z.string().max(200).optional(),
+    fieldEquals: z.object({ path: z.string().max(200), value: z.union([z.string(), z.number(), z.boolean()]) }).optional(),
+  }).optional(),
+  attributeKey: z.string().max(100).optional(),
+  bindTagId: z.string().uuid('標籤識別格式不正確').nullable().optional(),
+  timeoutMs: z.number().int().min(500).max(30_000).optional(),
+});
+
+/** 顧客或客服輸入的識別資料（會員編號、手機等），一律是文字 */
+const lookupInputSchema = z.record(z.string().max(200, '輸入內容過長'), { invalid_type_error: '輸入格式不正確' });
+const contactParams = z.object({ contactId: z.string().uuid('聯絡人識別格式不正確') });
+
 export default async function memberBindingRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
@@ -54,7 +81,7 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
   });
 
   app.put('/', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
-    const body = request.body as MemberBindingConfig;
+    const body: MemberBindingConfig = configSchema.parse(request.body);
     if (body.enabled && !body.endpoint) {
       return reply.status(400).send({
         success: false,
@@ -77,7 +104,7 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
 
     await saveBindingConfig(app.prisma, request.agent.tenantId, {
       ...body,
-      auth: { ...(body.auth ?? { type: 'none' }), credential },
+      auth: { ...body.auth, credential },
     });
     return { success: true };
   });
@@ -89,7 +116,7 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
    * 否則此端點會變成用我們的伺服器對任意位址發送任意金鑰的跳板。
    */
   app.post('/test', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
-    const body = request.body as { input?: Record<string, string> };
+    const body = z.object({ input: lookupInputSchema.optional() }).parse(request.body ?? {});
     const config = await getBindingConfig(app.prisma, request.agent.tenantId);
     if (!config) {
       return reply.status(400).send({
@@ -125,8 +152,8 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
 
   /** 後台代顧客綁定（客服協助情境）。 */
   app.post('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, async (request, reply) => {
-    const { contactId } = request.params as { contactId: string };
-    const body = request.body as Record<string, string>;
+    const { contactId } = contactParams.parse(request.params);
+    const body = lookupInputSchema.parse(request.body ?? {});
     const result = await bindMember(app.prisma, request.agent.tenantId, contactId, body);
     if (!result.ok) {
       return reply.status(FAILURE_STATUS[result.reason]).send({
@@ -138,7 +165,7 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
   });
 
   app.delete('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, async (request) => {
-    const { contactId } = request.params as { contactId: string };
+    const { contactId } = contactParams.parse(request.params);
     const result = await unbindMember(app.prisma, request.agent.tenantId, contactId);
     return { success: true, data: result };
   });
@@ -186,7 +213,7 @@ export async function memberBindingFanRoutes(app: FastifyInstance) {
 
   app.post('/', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanBinding!;
-    const body = request.body as Record<string, string>;
+    const body = lookupInputSchema.parse(request.body ?? {});
     const result = await bindMember(app.prisma, fan.tenantId, fan.contactId, body);
     if (!result.ok) {
       return reply.status(FAILURE_STATUS[result.reason]).send({
