@@ -11,6 +11,7 @@ import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { claimSideEffect, type SideEffectKey } from '@open333crm/core';
 import { inTenant } from '#src/lib/tenant-ctx.js';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { backendPid, waitUntilBlockedBy } from '../../support/wait-for-lock-wait.js';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
@@ -25,7 +26,7 @@ const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
 const adminDb = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 // kind 的型別只收四種名稱；測試用獨特的值標記自己寫入的資料，方便清除
 const MARK = `claims-${randomUUID()}` as SideEffectKey['kind'];
-const deps = { prisma: tenantDb, events: { publish() {} } };
+const deps = { prisma: tenantDb, events: createOutboxPublisher(tenantDb) };
 
 afterAll(async () => {
   await adminDb.sideEffectClaim.deleteMany({ where: { kind: MARK } });

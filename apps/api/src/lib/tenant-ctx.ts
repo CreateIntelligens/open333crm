@@ -3,17 +3,20 @@
  *
  * 入口（route、背景工作）以 inTenant() 開一個綁定租戶的交易，service 只收 TenantCtx：
  * - 交易內的寫入一起成功或一起失敗，查詢都受 RLS 約束到 ctx.tenantId。
- * - 推播（notify）、事件（publish）與佇列 job（enqueue）只先登記，commit 之後才依序送出；
- *   rollback 時全部丟棄。
+ * - 事件（publish）與佇列 job（enqueue）在交易內寫進 outbox，與業務資料一起 commit；
+ *   commit 之後交給快路徑送進佇列，沒送出的由 outbox-relay 補送（至少一次，change outbox-event-delivery）。
+ * - 推播（notify）只先登記，commit 之後才送出，rollback 時丟棄；推播是最多一次。
+ * - commit 之後的推播與快路徑依登記的順序執行。
  *
  * service 不自己開交易，也不在交易內呼叫外部服務（LINE、LLM 等）。
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteGenericInterface } from 'fastify';
 import type { Prisma, PrismaClient } from '@prisma/client';
-import type { JobsOptions, Queue } from 'bullmq';
+import type { JobsOptions } from 'bullmq';
 import type { Server } from 'socket.io';
-import { logger } from '@open333crm/core';
-import { eventBus, type AppEvent, type AppEventName } from '../events/event-bus.js';
+import { logger, type OutboxInput, type OutboxRow } from '@open333crm/core';
+import type { AppEventName } from '../events/event-bus.js';
+import { createOutboxPublisher } from '../events/outbox-publisher.js';
 import { agentPushRoom, tenantPushRoom, type AgentPushName, type TenantPushName } from '../events/socket-push.js';
 import { withTenant } from './tenant-db.js';
 import { AppError } from '../shared/utils/response.js';
@@ -26,15 +29,18 @@ export interface TenantCtx {
   notify(name: TenantPushName, data: unknown): void;
   /** commit 之後推播給一位客服人員；房間帶交易綁定的租戶 ID，別的租戶的客服人員收不到 */
   notifyAgent(agentId: string, name: AgentPushName, data: unknown): void;
-  /** commit 之後交給 deps.events；事件的 tenantId 與時間由 ctx 填入。保證是最多一次 */
-  publish(name: AppEventName, payload: Record<string, unknown>): void;
-  /** commit 之後送進呼叫端的佇列，不等送進完成。保證是最多一次 */
-  enqueue(queue: Queue, name: string, data: unknown, opts?: JobsOptions): void;
+  /** 在交易內寫進 outbox，事件的 tenantId 由 ctx 填入；commit 之後送給訂閱者。保證是至少一次 */
+  publish(name: AppEventName, payload: Record<string, unknown>): Promise<void>;
+  /** 在交易內寫進 outbox；commit 之後送進 queueName 的佇列，job id 是 outbox id。保證是至少一次 */
+  enqueue(queueName: string, name: string, data: unknown, opts?: JobsOptions): Promise<void>;
 }
 
-/** 業務事件的送出方式；階段 1b 換成 outbox 時只換這個實作 */
+/** 業務事件與 job 的送出方式。正式程式用 createOutboxPublisher()，單元測試注入假的實作 */
 export interface EventPublisher {
-  publish(event: AppEvent): void;
+  /** 在交易內寫入一筆 outbox */
+  write(tx: Prisma.TransactionClient, input: OutboxInput): Promise<OutboxRow>;
+  /** commit 之後的快路徑：送進佇列並標記已送出。失敗的資料列留給 relay 補送 */
+  dispatch(rows: OutboxRow[]): Promise<void>;
 }
 
 export interface TenantCtxDeps {
@@ -58,6 +64,19 @@ export async function inTenant<T>(
     effects.push({ label: `push ${name}`, run: () => io.to(room).emit(name, data) });
   }
 
+  function dispatchEffect(label: string, row: OutboxRow) {
+    return {
+      label,
+      // 不 await：Redis 沒有回應時 add() 可能一直不結束，回應不能跟著卡住。
+      // 失敗只記 log：資料列已在 outbox，relay 會補送
+      run: () => {
+        deps.events.dispatch([row]).catch((err: unknown) => {
+          logger.error(`[inTenant] commit 後送出失敗，留給 relay 補送（${label}）`, err);
+        });
+      },
+    };
+  }
+
   const result = await withTenant(deps.prisma, tenantId, (tx) =>
     fn({
       tx,
@@ -68,22 +87,20 @@ export async function inTenant<T>(
       notifyAgent(agentId, name, data) {
         push(agentPushRoom(tenantId, agentId), name, data);
       },
-      publish(name, payload) {
-        effects.push({
-          label: `publish ${name}`,
-          run: () => deps.events.publish({ name, tenantId, timestamp: new Date(), payload }),
-        });
+      async publish(name, payload) {
+        const row = await deps.events.write(tx, { tenantId, kind: 'event', name, payload });
+        effects.push(dispatchEffect(`publish ${name}`, row));
       },
-      enqueue(queue, name, data, opts) {
-        effects.push({
-          label: `enqueue ${name}`,
-          // 不 await：Redis 沒有回應時 add() 可能一直不結束，回應不能跟著卡住。失敗只記 log
-          run: () => {
-            queue.add(name, data, opts).catch((err: unknown) => {
-              logger.error(`[inTenant] commit 後送出失敗（enqueue ${name}）`, err);
-            });
-          },
+      async enqueue(queueName, name, data, opts) {
+        const row = await deps.events.write(tx, {
+          tenantId,
+          kind: 'job',
+          queueName,
+          name,
+          payload: data,
+          ...(opts ? { jobOptions: opts as Record<string, unknown> } : {}),
         });
+        effects.push(dispatchEffect(`enqueue ${name}`, row));
       },
     }),
   );
@@ -153,7 +170,8 @@ export function tenantHandler<RouteGeneric extends RouteGenericInterface = Route
     if (!tenantId) throw new AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401);
 
     const deferred = deferReply();
-    const body = await inTenant({ prisma: fastify.prisma, io: fastify.io, events: eventBus }, tenantId, (ctx) =>
+    const events = createOutboxPublisher(fastify.prisma);
+    const body = await inTenant({ prisma: fastify.prisma, io: fastify.io, events }, tenantId, (ctx) =>
       handler(request, deferred.reply, ctx),
     );
     deferred.applyTo(reply);
