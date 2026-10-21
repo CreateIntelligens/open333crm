@@ -14,7 +14,6 @@ import type { BindingStore } from '../identity-binding/binding-code.js';
 import { resolveLiveContactId } from '../identity-binding/binding-common.js';
 import { getIdentityBindingSettings } from '../identity-binding/identity-binding.service.js';
 import { reuseOrIssueRegistrationToken, type RegistrationKind } from '../identity-binding/identifier-registration.js';
-import { PHONE_REGISTRATION } from '../identity-binding/phone-registration.service.js';
 import { EMAIL_REGISTRATION } from '../identity-binding/email-registration.service.js';
 import { getFanCoupon, listFanCoupons, type FanIdentity } from './coupon-fan.service.js';
 import { redeemCoupon, type RedeemFailure } from './coupon-redeem.service.js';
@@ -42,10 +41,12 @@ export type WalletSessionResult =
   /** 這個渠道身分一小時內取得登記連結的次數已滿 */
   | WithChannel<{ status: 'rate_limited' }>;
 
-/** 啟用的登記方式：email 優先（會驗證信箱擁有權，design D15），其次手機 */
+/**
+ * 票券夾的歸戶驗證只接受 email（寄驗證碼，design D15）或 LINE Login（D20）。
+ * 手機登記沒有簡訊驗證、不算驗證，租戶只啟用手機時無法驗證（2026-10-21 code review 決定）
+ */
 function registrationKindFor(settings: { phoneEnabled: boolean; emailEnabled: boolean }): RegistrationKind | null {
   if (settings.emailEnabled) return EMAIL_REGISTRATION;
-  if (settings.phoneEnabled) return PHONE_REGISTRATION;
   return null;
 }
 

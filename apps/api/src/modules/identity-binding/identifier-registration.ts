@@ -66,6 +66,11 @@ export interface RegistrationKind {
   otherIdentifierConflicts: (registrant: ContactIdentifiers, existing: ContactIdentifiers) => boolean;
   mergeSource: MergeSource;
   stitchSource: 'EMAIL_MATCH' | 'PHONE_MATCH';
+  /**
+   * 登記是否證明了擁有這個值（email 先寄驗證碼）。只有證明過的才記錄歸戶驗證：
+   * 手機沒有簡訊驗證，任何人都能填別人的號碼（2026-10-21 code review 決定）
+   */
+  provesOwnership: boolean;
   text: RegistrationText;
 }
 
@@ -441,6 +446,7 @@ async function register(
  * 合併時記在保留方——合併後顧客的所有渠道身分都屬於它。
  */
 async function markIdentityVerified(kind: RegistrationKind, db: TenantDb, tenantId: string, contactId: string): Promise<void> {
+  if (!kind.provesOwnership) return;
   await db.contact.updateMany({
     where: { id: contactId, tenantId },
     data: { identityVerifiedAt: new Date(), identityVerifiedVia: kind.name },

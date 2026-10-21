@@ -367,21 +367,21 @@ scenario('一邊已經用 email 歸戶過', async (f) => {
 
 // ── 歸戶驗證時間（add-coupon-system「歸戶驗證完成時記錄時間」）──────────────────
 
-scenario('登記手機後記錄', async (f) => {
+// 手機登記沒有簡訊驗證，任何人都能填別人的號碼：不記錄歸戶驗證（2026-10-21 code review 決定）
+scenario('手機登記不記錄', async (f) => {
   const a = await f.person('A');
   assert.equal((await submit(f, await linkFor(f, a), '0912345678')).status, 'registered');
   const c = await f.tx.contact.findFirst({ where: { id: a.contactId } });
-  assert.equal(c?.identityVerifiedVia, 'phone');
-  assert.ok(c?.identityVerifiedAt instanceof Date, '沒有寫入歸戶驗證時間');
+  assert.equal(c?.phone, '0912345678', '手機照樣寫入');
+  assert.equal(c?.identityVerifiedAt, null);
 });
 
-scenario('登記觸發合併時記錄在保留方', async (f) => {
+scenario('手機登記觸發合併也不記錄', async (f) => {
   const b = await f.person('B', { channel: f.fbCh, phone: '0912345678', createdAt: new Date(Date.now() - DAY) });
   const a = await f.person('A');
   assert.equal((await submit(f, await linkFor(f, a), '0912345678')).status, 'merged');
   const survivor = await f.tx.contact.findFirst({ where: { id: b.contactId } });
-  assert.equal(survivor?.identityVerifiedVia, 'phone');
-  assert.ok(survivor?.identityVerifiedAt instanceof Date, '保留方沒有歸戶驗證時間');
+  assert.equal(survivor?.identityVerifiedAt, null, '冒填別人的手機被併入後，不能拿到對方的票券夾');
 });
 
 scenario('客服手動填寫的手機不算歸戶', async (f) => {

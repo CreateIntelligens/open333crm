@@ -105,8 +105,8 @@ beforeAll(async () => {
   originalSettings = settings?.identityBinding ?? {};
   await owner.tenantSettings.upsert({
     where: { tenantId: T },
-    create: { tenantId: T, identityBinding: { phoneEnabled: true } },
-    update: { identityBinding: { phoneEnabled: true } },
+    create: { tenantId: T, identityBinding: { phoneEnabled: true, emailEnabled: true } },
+    update: { identityBinding: { phoneEnabled: true, emailEnabled: true } },
   });
   invalidateIdentityBindingSettings();
   const mk = (channelType: 'LINE' | 'FB') =>
@@ -161,8 +161,8 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     const s = await openWalletSession(prisma, deps, token);
     assert.equal(s.status, 'verification_required');
     if (s.status !== 'verification_required') return;
-    assert.equal(s.kind, 'phone');
-    assert.match(s.registrationUrl, /^\/bind\/phone\/[A-Za-z0-9_-]+\?next=/);
+    assert.equal(s.kind, 'email');
+    assert.match(s.registrationUrl, /^\/bind\/email\/[A-Za-z0-9_-]+\?next=/);
     assert.equal(new URL(s.registrationUrl, 'https://x').searchParams.get('next'), `/coupon/open/${token}`);
   });
 
@@ -178,7 +178,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
       assert.equal(s.kind, 'email');
       assert.match(s.registrationUrl, /^\/bind\/email\/[A-Za-z0-9_-]+\?next=/);
     } finally {
-      await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true } } });
+      await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
       invalidateIdentityBindingSettings();
     }
   });
@@ -236,7 +236,20 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     try {
       assert.equal((await openWalletSession(prisma, deps, token)).status, 'unavailable');
     } finally {
-      await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true } } });
+      await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
+      invalidateIdentityBindingSettings();
+    }
+  });
+
+  it('租戶只啟用手機登記', async () => {
+    const p = await person('只有手機', lineChannel, 'LINE');
+    const { token } = await issue(p);
+    await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true } } });
+    invalidateIdentityBindingSettings();
+    try {
+      assert.equal((await openWalletSession(prisma, deps, token)).status, 'unavailable');
+    } finally {
+      await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
       invalidateIdentityBindingSettings();
     }
   });
