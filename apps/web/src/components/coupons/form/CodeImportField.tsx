@@ -1,14 +1,15 @@
 'use client';
 
 /**
- * 序號包匯入（規格 2.2 第 4 區）：CSV，單欄一行一碼，上限 50,000 筆，格式 ^[A-Za-z0-9-]{4,32}$。
+ * 序號包匯入（規格 2.2 第 4 區）：CSV、Excel（.xlsx，第一個工作表的 A 欄）或直接貼上，一行一碼，
+ * 上限 50,000 筆，格式 ^[A-Za-z0-9-]{4,32}$。
  *
  * 後端的檢查端點掛在券底下（POST /coupons/:id/codes/preview），所以還沒有券 id 時，
  * 先由 ensureCouponId() 自動儲存草稿取得 id，再請後端比對「與其他券的序號重複」。
  * 檔內的格式錯誤與重複在前端就能判斷，並保留行號供「下載錯誤清單」。
  * 真正寫入序號（importCodes）在發布前才做，見 CouponForm。
  */
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { previewCodeImport } from '@/hooks/useCoupons';
@@ -44,6 +45,9 @@ interface Props {
 
 /** 序號的比對鍵：去掉連字號、轉大寫，與後端和核銷台一致（AB-1234 與 AB1234 視為同一組） */
 const codeKey = (code: string) => code.replace(/-/g, '').toUpperCase();
+
+/** 貼上序號時顯示在檔名位置的文字 */
+const PASTED_NAME = '貼上的序號';
 
 /** 第一行若是欄位名稱（code、序號、券號），不是序號 */
 const HEADER_RE = /^(codes?|serials?|序號|券號|代碼)$/i;
@@ -86,6 +90,22 @@ export function parseCodeFile(text: string): ParsedCodeFile {
   return { total: rows.length, ok, dup, bad, errorRows };
 }
 
+/**
+ * Excel 檔轉成一行一碼的文字：取第一個工作表的 A 欄。行號對應 Excel 的列號，錯誤清單才對得上。
+ * 數字格式的儲存格取顯示的文字（避免 00012345 變成 12345 或科學記號）。
+ */
+export async function codesTextFromWorkbook(data: ArrayBuffer): Promise<string> {
+  const XLSX = await import('@e965/xlsx');
+  const book = XLSX.read(data, { type: 'array' });
+  const sheet = book.Sheets[book.SheetNames[0]];
+  if (!sheet || !sheet['!ref']) return '';
+  const firstRow = XLSX.utils.decode_range(sheet['!ref']).s.r;
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, blankrows: true, defval: '' });
+  // 用分隔字元以外的值當作一格：Excel 的值本身可能含逗號，交給 parseCodeFile 時只取第一欄
+  const cells = rows.map((row) => String(row[0] ?? '').replace(/[,\r\n]/g, ' ').trim());
+  return [...Array<string>(firstRow).fill(''), ...cells].join('\n');
+}
+
 /** CSV 欄位可能被引號包住，也可能有 BOM；只取每行第一欄。 */
 function cellOf(line: string): string {
   const first = line.split(',')[0] ?? '';
@@ -94,26 +114,18 @@ function cellOf(line: string): string {
 
 export function CodeImportField({ id, state, onChange, ensureCouponId, missing, warn }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState('');
+  const [pasteError, setPasteError] = useState('');
 
-  const handleFile = async (file: File) => {
-    if (!/\.csv$/i.test(file.name)) {
-      onChange({ ...EMPTY_IMPORT, status: 'error', message: '格式不支援，請上傳 .csv 檔' });
-      return;
-    }
-    onChange({ ...EMPTY_IMPORT, status: 'checking', fileName: file.name });
-    let text: string;
-    try {
-      text = await file.text();
-    } catch {
-      onChange({ ...EMPTY_IMPORT, status: 'error', fileName: file.name, message: '無法讀取檔案，請重新上傳' });
-      return;
-    }
+  /** 解析、檢查與其他券重複；sourceName 是檔名或「貼上的序號」 */
+  const processText = async (text: string, sourceName: string) => {
     const parsed = parseCodeFile(text);
     if (parsed.total > MAX_IMPORT_CODES) {
       onChange({
         ...EMPTY_IMPORT,
         status: 'error',
-        fileName: file.name,
+        fileName: sourceName,
         message: `共 ${parsed.total.toLocaleString('en-US')} 筆，超過上限 50,000 筆，請分批匯入`,
       });
       return;
@@ -124,7 +136,7 @@ export function CodeImportField({ id, state, onChange, ensureCouponId, missing, 
 
     const couponId = await ensureCouponId();
     if (!couponId) {
-      onChange({ ...EMPTY_IMPORT, status: 'error', fileName: file.name, message: '需要先儲存草稿才能檢查序號，請修正後重新上傳' });
+      onChange({ ...EMPTY_IMPORT, status: 'error', fileName: sourceName, message: '需要先儲存草稿才能檢查序號，請修正後重新上傳' });
       return;
     }
     try {
@@ -148,10 +160,40 @@ export function CodeImportField({ id, state, onChange, ensureCouponId, missing, 
         }
       }
       errorRows.sort((a, b) => Number(a.split(',')[0]) - Number(b.split(',')[0]));
-      onChange({ status: 'done', fileName: file.name, codes, dup, bad, errorRows, imported: false });
+      onChange({ status: 'done', fileName: sourceName, codes, dup, bad, errorRows, imported: false });
     } catch (err) {
-      onChange({ ...EMPTY_IMPORT, status: 'error', fileName: file.name, message: getApiErrorMessage(err, '檢查序號失敗，請重新上傳') });
+      onChange({ ...EMPTY_IMPORT, status: 'error', fileName: sourceName, message: getApiErrorMessage(err, '檢查序號失敗，請重新上傳') });
     }
+  };
+
+  const handleFile = async (file: File) => {
+    const isCsv = /\.csv$/i.test(file.name);
+    const isExcel = /\.xlsx$/i.test(file.name);
+    if (!isCsv && !isExcel) {
+      onChange({ ...EMPTY_IMPORT, status: 'error', message: '格式不支援，請上傳 .csv 或 .xlsx 檔，或直接貼上序號' });
+      return;
+    }
+    setPasting(false);
+    onChange({ ...EMPTY_IMPORT, status: 'checking', fileName: file.name });
+    let text: string;
+    try {
+      text = isExcel ? await codesTextFromWorkbook(await file.arrayBuffer()) : await file.text();
+    } catch {
+      onChange({ ...EMPTY_IMPORT, status: 'error', fileName: file.name, message: '無法讀取檔案，請確認檔案沒有損壞後重新上傳' });
+      return;
+    }
+    await processText(text, file.name);
+  };
+
+  const handlePaste = async () => {
+    if (!pasted.trim()) {
+      setPasteError('請貼上至少一組序號');
+      return;
+    }
+    setPasteError('');
+    onChange({ ...EMPTY_IMPORT, status: 'checking', fileName: PASTED_NAME });
+    await processText(pasted, PASTED_NAME);
+    setPasting(false);
   };
 
   const downloadErrors = () => {
@@ -203,29 +245,67 @@ export function CodeImportField({ id, state, onChange, ensureCouponId, missing, 
             </button>
           )}
         </div>
+      ) : pasting ? (
+        <div className="flex flex-col gap-2 rounded-[10px] border bg-background p-3">
+          <label htmlFor={`${id}-paste`} className="text-xs font-medium text-muted-foreground">
+            貼上序號
+          </label>
+          <textarea
+            id={`${id}-paste`}
+            rows={6}
+            value={pasted}
+            onChange={(e) => setPasted(e.target.value)}
+            placeholder={'ABCD-1234\nEFGH-5678'}
+            className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          {pasteError && (
+            <p className="text-xs text-destructive" role="alert">
+              {pasteError}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" disabled={checking} onClick={() => void handlePaste()}>
+              {checking ? '檢查中…' : '檢查序號'}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" disabled={checking} onClick={() => setPasting(false)}>
+              取消
+            </Button>
+          </div>
+        </div>
       ) : (
-        <button
-          id={id}
-          type="button"
-          aria-labelledby={`${id}-label`}
-          aria-describedby={`${id}-help${error || missing ? ` ${id}-err` : ''}`}
-          disabled={checking}
-          onClick={() => inputRef.current?.click()}
-          className={cn(
-            'flex h-11 items-center gap-2.5 rounded-[10px] border border-dashed bg-background px-4 text-sm font-medium text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait',
-            error || missing ? 'border-destructive' : 'border-muted-foreground/40',
+        <div className="flex flex-col gap-1.5">
+          <button
+            id={id}
+            type="button"
+            aria-labelledby={`${id}-label`}
+            aria-describedby={`${id}-help${error || missing ? ` ${id}-err` : ''}`}
+            disabled={checking}
+            onClick={() => inputRef.current?.click()}
+            className={cn(
+              'flex h-11 items-center gap-2.5 rounded-[10px] border border-dashed bg-background px-4 text-sm font-medium text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait',
+              error || missing ? 'border-destructive' : 'border-muted-foreground/40',
+            )}
+          >
+            <FileUp className="h-4 w-4" aria-hidden="true" />
+            {checking ? (
+              <span role="status">上傳中，正在檢查序號… {state.fileName}</span>
+            ) : (
+              '選擇 CSV 或 Excel 檔上傳'
+            )}
+          </button>
+          {!checking && (
+            <button
+              type="button"
+              onClick={() => setPasting(true)}
+              className="self-start text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              直接貼上序號
+            </button>
           )}
-        >
-          <FileUp className="h-4 w-4" aria-hidden="true" />
-          {checking ? (
-            <span role="status">上傳中，正在檢查序號… {state.fileName}</span>
-          ) : (
-            '選擇 CSV 檔上傳'
-          )}
-        </button>
+        </div>
       )}
       <p id={`${id}-help`} className="text-xs text-muted-foreground">
-        CSV · 單欄一行一碼 · 上限 50,000 筆
+        CSV 或 Excel（第一個工作表的 A 欄）· 一行一碼 · 上限 50,000 筆
       </p>
       {warn && state.status === 'done' && <p className="text-xs text-warning">{warn}</p>}
       {(error || (missing && state.status !== 'done')) && (
@@ -236,7 +316,7 @@ export function CodeImportField({ id, state, onChange, ensureCouponId, missing, 
       <input
         ref={inputRef}
         type="file"
-        accept=".csv,text/csv"
+        accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         className="hidden"
         tabIndex={-1}
         aria-hidden="true"

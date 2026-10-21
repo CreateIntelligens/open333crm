@@ -15,6 +15,7 @@
     "test": "vitest run --project unit"
   },
   "dependencies": {
+    "@e965/xlsx": "0.20.3",
     "@open333crm/automation": "workspace:*",
     "@open333crm/shared": "workspace:*",
     "@simplewebauthn/browser": "13.3.0",

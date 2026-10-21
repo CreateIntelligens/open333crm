@@ -239,6 +239,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@e965/xlsx':
+        specifier: 0.20.3
+        version: 0.20.3
       '@open333crm/automation':
         specifier: workspace:*
         version: link:../../packages/automation
