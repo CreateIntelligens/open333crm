@@ -6,7 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Added
 
-- **新增 `inTenant()`、`tenantHandler()`：入口開一個綁定租戶的交易，service 改收 `TenantCtx`**— service 原本收 `TenantDb`，傳入的是 `withTenant` 的交易、`request.tenantPrisma` 或 `prismaAdmin`，三者的 RLS 與交易保證不同，service 看不出自己受到什麼保護（#337，AUDIT RLS-08）。新寫法由入口開交易：交易內的寫入一起成功或一起失敗；`ctx.emit`、`ctx.publish` 登記的推播與事件在 commit 之後才送出，rollback 時丟棄；route 的回應也在 commit 之後才送出。新增 `scripts/check-tenant-ctx.mjs`，舊寫法在任一檔案增加時失敗，由 `pnpm test` 執行。本次不搬既有模組，既有程式的行為不變。
+- **新增 `inTenant()`、`tenantHandler()`：入口開一個綁定租戶的交易，service 改收 `TenantCtx`**— service 原本收 `TenantDb`，傳入的是 `withTenant` 的交易、`request.tenantPrisma` 或 `prismaAdmin`，三者的 RLS 與交易保證不同，service 看不出自己受到什麼保護（#337，AUDIT RLS-08）。新寫法由入口開交易：交易內的寫入一起成功或一起失敗；`ctx.notify`、`ctx.publish`、`ctx.enqueue` 登記的推播、事件與佇列 job 在 commit 之後才送出，rollback 時丟棄；route 的回應也在 commit 之後才送出。推播的房間由 `events/socket-push.ts` 決定，service 不指定房間，所以不會推到別的租戶的 `tenant:` 房間。新增 `lib/db-invariants.ts`：交易內「撞到唯一鍵就改用既有資料」與「條件更新認領」的共用函式，取代「接住 P2002 再查一次」這種在單一交易內會讓交易失效的寫法。新增 `scripts/check-tenant-ctx.mjs`，舊寫法在任一檔案增加時失敗，由 `pnpm test` 執行。本次不搬既有模組，既有程式的行為不變。
 
 - **平台可逐租戶強制啟用個資遮罩，預設關閉**— 平台租戶詳細頁增加開關，設定與操作稽核在同一交易內寫入，租戶端無法覆寫。啟用後，客服回覆、Agent 每輪上下文（含工具結果與巢狀參數）及 Embedding 文字先送至 2md 做完整類別標記遮罩，再交給模型；政策讀取或遮罩失敗時停止該次模型呼叫。服務回傳的原文 mapping 與 CSV 會被丟棄，原始客服紀錄仍依既有保存規則保留。使用既有平台設定儲存，無需 migration。
 

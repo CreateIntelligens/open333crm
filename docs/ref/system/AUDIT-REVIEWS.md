@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-21：RLS-09 的 `tenant:` 房間改由系統組成
+
+以 `f50e5181` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。以 unit 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| RLS-09 | 狀態不變（已定方向），內容更新 | `ctx.emit(room, …)` 改成 `ctx.notify(name, data)` 與 `ctx.notifyAgent(agentId, name, data)`，房間由 `apps/api/src/events/socket-push.ts` 決定。`tenant:` 房間一律由交易綁定的租戶 ID 組成，`tests/unit/lib/tenant-ctx.test.ts` 的「全租戶推播」測試確認。`agent:` 房間仍沒有租戶前綴，等 #342。既有程式仍直接呼叫 `io.to(room)`，搬遷前不受影響 |
+
 ## 2026-10-20：新增 RLS-08、RLS-09
 
 以 `9b5d1ac9` 為基礎，分支 `feat/tenant-transaction-context`，change `tenant-transaction-context`，issue #337。讀程式確認，沒有連 UAT。

@@ -3,15 +3,18 @@
  *
  * 入口（route、背景工作）以 inTenant() 開一個綁定租戶的交易，service 只收 TenantCtx：
  * - 交易內的寫入一起成功或一起失敗，查詢都受 RLS 約束到 ctx.tenantId。
- * - 推播（emit）與事件（publish）只先登記，commit 之後才依序送出；rollback 時全部丟棄。
+ * - 推播（notify）、事件（publish）與佇列 job（enqueue）只先登記，commit 之後才依序送出；
+ *   rollback 時全部丟棄。
  *
  * service 不自己開交易，也不在交易內呼叫外部服務（LINE、LLM 等）。
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteGenericInterface } from 'fastify';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import type { JobsOptions, Queue } from 'bullmq';
 import type { Server } from 'socket.io';
 import { logger } from '@open333crm/core';
-import { eventBus, type AppEventName } from '../events/event-bus.js';
+import { eventBus, type AppEvent, type AppEventName } from '../events/event-bus.js';
+import { agentPushRoom, tenantPushRoom, type AgentPushName, type TenantPushName } from '../events/socket-push.js';
 import { withTenant } from './tenant-db.js';
 import { AppError } from '../shared/utils/response.js';
 
@@ -19,16 +22,26 @@ export interface TenantCtx {
   /** 已設定 app.current_tenant 的交易；ctx 內的查詢都要用它 */
   readonly tx: Prisma.TransactionClient;
   readonly tenantId: string;
-  /** commit 之後推播到 Socket.IO 房間；失敗只記 log，不補送 */
-  emit(room: string, event: string, data: unknown): void;
-  /** commit 之後交給 eventBus；事件的 tenantId 與時間由 ctx 填入。保證是最多一次 */
+  /** commit 之後推播到本租戶的房間；失敗只記 log，不補送 */
+  notify(name: TenantPushName, data: unknown): void;
+  /** commit 之後推播給一位客服人員；agentId 只能用交易內查到的 ID */
+  notifyAgent(agentId: string, name: AgentPushName, data: unknown): void;
+  /** commit 之後交給 deps.events；事件的 tenantId 與時間由 ctx 填入。保證是最多一次 */
   publish(name: AppEventName, payload: Record<string, unknown>): void;
+  /** commit 之後送進呼叫端的佇列。保證是最多一次 */
+  enqueue(queue: Queue, name: string, data: unknown, opts?: JobsOptions): void;
+}
+
+/** 業務事件的送出方式；階段 1b 換成 outbox 時只換這個實作 */
+export interface EventPublisher {
+  publish(event: AppEvent): void;
 }
 
 export interface TenantCtxDeps {
   prisma: PrismaClient;
-  /** 沒有 io 的背景工作不能 emit */
+  /** 沒有 io 的背景工作不能推播 */
   io?: Server;
+  events: EventPublisher;
 }
 
 export async function inTenant<T>(
@@ -36,35 +49,42 @@ export async function inTenant<T>(
   tenantId: string,
   fn: (ctx: TenantCtx) => Promise<T>,
 ): Promise<T> {
-  const effects: Array<{ label: string; run: () => void }> = [];
+  const effects: Array<{ label: string; run: () => unknown }> = [];
+
+  function push(room: string, name: string, data: unknown) {
+    const io = deps.io;
+    // 寫錯程式：在交易內丟錯讓它 rollback，不要等到 commit 後才默默丟掉推播
+    if (!io) throw new Error(`inTenant: 沒有 io，不能推播 ${name}`);
+    effects.push({ label: `push ${name}`, run: () => io.to(room).emit(name, data) });
+  }
 
   const result = await withTenant(deps.prisma, tenantId, (tx) =>
     fn({
       tx,
       tenantId,
-      emit(room, event, data) {
-        const io = deps.io;
-        // 寫錯程式：在交易內丟錯讓它 rollback，不要等到 commit 後才默默丟掉推播
-        if (!io) throw new Error(`inTenant: 沒有 io，不能推播 ${event}`);
-        // conversation:、agent: 等房間沒有租戶前綴，這裡擋不到；只擋明顯推到別的租戶
-        if (room.startsWith('tenant:') && room !== `tenant:${tenantId}`) {
-          throw new Error(`inTenant: 不能推播 ${event} 到別的租戶房間 ${room}`);
-        }
-        effects.push({ label: `emit ${event}`, run: () => io.to(room).emit(event, data) });
+      notify(name, data) {
+        push(tenantPushRoom(tenantId), name, data);
+      },
+      notifyAgent(agentId, name, data) {
+        push(agentPushRoom(agentId), name, data);
       },
       publish(name, payload) {
         effects.push({
           label: `publish ${name}`,
-          run: () => eventBus.publish({ name, tenantId, timestamp: new Date(), payload }),
+          run: () => deps.events.publish({ name, tenantId, timestamp: new Date(), payload }),
         });
+      },
+      enqueue(queue, name, data, opts) {
+        effects.push({ label: `enqueue ${name}`, run: () => queue.add(name, data, opts) });
       },
     }),
   );
 
-  // 走到這裡代表已經 commit：資料已寫入，送出失敗不能讓結果變成失敗
+  // 走到這裡代表已經 commit：資料已寫入，送出失敗不能讓結果變成失敗。
+  // 依序 await：queue.add() 回傳 promise，不 await 的話失敗會變成未處理的 rejection
   for (const effect of effects) {
     try {
-      effect.run();
+      await effect.run();
     } catch (err) {
       logger.error(`[inTenant] commit 後送出失敗（${effect.label}）`, err);
     }
@@ -126,7 +146,7 @@ export function tenantHandler<RouteGeneric extends RouteGenericInterface = Route
     if (!tenantId) throw new AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401);
 
     const deferred = deferReply();
-    const body = await inTenant({ prisma: fastify.prisma, io: fastify.io }, tenantId, (ctx) =>
+    const body = await inTenant({ prisma: fastify.prisma, io: fastify.io, events: eventBus }, tenantId, (ctx) =>
       handler(request, deferred.reply, ctx),
     );
     deferred.applyTo(reply);

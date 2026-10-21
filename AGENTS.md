@@ -211,8 +211,8 @@ Each exported service function takes the `TenantCtx` as its first parameter:
 ```ts
 export async function resolveCase(ctx: TenantCtx, caseId: string) {
   const updated = await ctx.tx.case.updateMany({ where: { id: caseId, tenantId: ctx.tenantId }, ... });
-  ctx.emit(`tenant:${ctx.tenantId}`, 'case.updated', payload); // sent after commit
-  ctx.publish('case.resolved', payload);                        // sent after commit
+  ctx.notify('case.updated', payload);   // sent to tenant:<tenantId> after commit
+  ctx.publish('case.resolved', payload); // sent after commit
 }
 ```
 
@@ -224,8 +224,15 @@ A service obeys these rules:
   timeout of 5 seconds, and it holds a database connection. Split the flow into three steps:
   transaction, external call, transaction. Before you split it, write in the spec whether the
   external call happens at most once or at least once.
-- Send Socket events with `ctx.emit` and events with `ctx.publish`. Do not call `io.emit` or
-  `eventBus.publish` directly. `ctx` sends them after the commit and drops them after a rollback.
+- Send Socket events with `ctx.notify` (to all agents of the tenant) or `ctx.notifyAgent` (to one
+  agent). Send events with `ctx.publish`. Send BullMQ jobs with `ctx.enqueue`. Do not call
+  `io.emit`, `eventBus.publish` or `queue.add()` directly. `ctx` sends them after the commit and
+  drops them after a rollback. A service does not give a room name:
+  `apps/api/src/events/socket-push.ts` selects the room for each Socket event.
+- Do not catch a unique-constraint error (`P2002`) and then continue inside the transaction. After
+  the first error, PostgreSQL rejects each subsequent query in the transaction. To write a row or
+  use the row that exists, use `createOrFindExisting()` from `apps/api/src/lib/db-invariants.ts`.
+  To claim one row with a conditional update, use `claimOne()` from the same file.
 
 - **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
   and its writes succeed or fail together. With the old parameter type `TenantDb`, the caller
@@ -379,7 +386,7 @@ RLS. The skill named below gives the steps.
 | Client | Connection | When |
 | ------ | ---------- | ---- |
 | `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | new and moved route handlers. Returns 401 when the request has no tenant. Sends the response after the commit. The `reply` inside has no `send()`: return the body instead |
-| `inTenant({ prisma, io }, tenantId, (ctx) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
+| `inTenant({ prisma, io, events: eventBus }, tenantId, (ctx) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
 | `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
 | `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |
 | `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | old form, being moved (#337). `inTenant()` uses it internally |
@@ -421,7 +428,7 @@ There are two paths. Select the correct path.
 **Path A — Direct emit** (API process, inline):
 
 ```ts
-ctx.emit(room, event, data); // inside tenantHandler() or inTenant(): sent after the commit
+ctx.notify(name, data); // inside tenantHandler() or inTenant(): sent to tenant:<tenantId> after the commit
 ```
 
 Old code calls `fastify.io.to(room).emit(event, data)` directly. Inside a transaction, that call
@@ -431,7 +438,7 @@ Use path A when all of these conditions are true:
 
 - The event is the direct result of the current HTTP request.
 - The data is already in the database.
-- You know the room.
+- The Socket event goes to all agents of the tenant (`ctx.notify`) or to one agent (`ctx.notifyAgent`).
 - You need no more queries.
 
 **Path B — Async queue** (eventBus → BullMQ → workers → Redis pub/sub):
