@@ -87,6 +87,7 @@ import { setupTrialScheduler } from './modules/trial/trial.scheduler.js';
 import { setupCanvasWorker } from './modules/canvas/canvas.worker.js';
 import { setupAutomationWorker } from './modules/automation/automation.worker.js';
 import { setupNotificationWorker } from './modules/notification/notification.worker.js';
+import { setupOutboxSchedulers } from './modules/outbox/outbox.scheduler.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
@@ -237,6 +238,7 @@ export async function bootstrap() {
   setupCanvasScheduler(jobScheduler);
   setupTrialScheduler(jobScheduler, app.prismaAdmin);
   setupCouponScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
+  setupOutboxSchedulers(jobScheduler, app.prismaAdmin);
   jobScheduler.start();
   app.addHook('onClose', () => jobScheduler.close());
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));

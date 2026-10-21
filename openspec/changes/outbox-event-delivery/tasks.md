@@ -15,17 +15,20 @@
 
 ## 3. `TenantCtx` 改走 outbox
 
-- [ ] 3.1 修改 `apps/api/tests/unit/lib/tenant-ctx.test.ts`：`publish`、`enqueue` 在交易內寫 outbox、commit 之後交給快路徑；rollback 時不交給快路徑。刪除「事件不重複送出」測試（requirement 已移除）。確認新測試失敗
-- [ ] 3.2 修改 `tenant-ctx.ts`（design 決策 5）與 `tests/support/mock-tenant-ctx.ts`，讓 3.1 通過；`tsc --noEmit` 通過
-- [ ] 3.3 寫 feature 測試 `apps/api/tests/feature/lib/outbox.test.ts`，涵蓋 event-delivery 的 Scenario「commit 之後 outbox 有這個事件」「rollback 時 outbox 沒有這個事件」，以及 tenant-transaction-context 的 Scenario「行程在送出 job 之前結束」（不執行快路徑，直接呼叫 relay）與「行程在推播之前結束」
+- [x] 3.1 修改 `apps/api/tests/unit/lib/tenant-ctx.test.ts`：`publish`、`enqueue` 在交易內寫 outbox、commit 之後交給快路徑；rollback 時不交給快路徑。刪除「事件不重複送出」測試（requirement 已移除）。確認新測試失敗
+- [x] 3.2 修改 `tenant-ctx.ts`（design 決策 5）與 `tests/support/mock-tenant-ctx.ts`，讓 3.1 通過；`tsc --noEmit` 通過
+- [x] 3.3 寫 feature 測試 `apps/api/tests/feature/lib/outbox.test.ts`，涵蓋 event-delivery 的 Scenario「commit 之後 outbox 有這個事件」「rollback 時 outbox 沒有這個事件」，以及 tenant-transaction-context 的 Scenario「行程在送出 job 之前結束」（不執行快路徑，直接呼叫 relay）與「行程在推播之前結束」
+  - 另加 Scenario：快路徑以綁定租戶的短交易標記已送出。快路徑原本要用 `prismaAdmin`，`check-prisma-admin-usage.mjs` 不允許 `tenant-ctx.ts` 使用，改成 `withTenant()` 之後仍受 RLS 約束
 
 ## 4. relay 與清理
 
-- [ ] 4.1 寫失敗的單元測試 `apps/api/tests/unit/modules/outbox/outbox-relay.test.ts`，涵蓋 Scenario「行程在送出前結束」「寬限時間內不補送」（event-delivery）
-- [ ] 4.2 實作 `outbox-relay` 排程（design 決策 6），在 `index.ts` 註冊，讓 4.1 通過。`schedule-registrations.test.ts` 跟著更新
-- [ ] 4.3 寫失敗的單元測試 `apps/api/tests/unit/modules/outbox/outbox-cleanup.test.ts`，涵蓋 Scenario「已送出 8 天」「未送出的事件」（event-delivery）、「建立 31 天的紀錄」「建立 29 天的紀錄」（side-effect-claims）
-- [ ] 4.4 實作 `outbox-cleanup` 排程，讓 4.3 通過
-- [ ] 4.5 寫 feature 測試 `apps/api/tests/feature/lib/outbox-dedupe.test.ts`，以真實 Redis 涵蓋 Scenario「快路徑與補送同時送出」「job 已完成 1 小時後再送一次」。行為來自 BullMQ 的 job id 去重，以突變驗證：拿掉 job id，確認失敗，再還原
+- [x] 4.1 寫失敗的單元測試 `apps/api/tests/unit/modules/outbox/outbox-relay.test.ts`，涵蓋 Scenario「行程在送出前結束」「寬限時間內不補送」（event-delivery）
+- [x] 4.2 實作 `outbox-relay` 排程（design 決策 6），在 `index.ts` 註冊，讓 4.1 通過。`schedule-registrations.test.ts` 跟著更新
+- [x] 4.3 寫失敗的單元測試 `apps/api/tests/unit/modules/outbox/outbox-cleanup.test.ts`，涵蓋 Scenario「已送出 8 天」「未送出的事件」（event-delivery）、「建立 31 天的紀錄」「建立 29 天的紀錄」（side-effect-claims）
+- [x] 4.4 實作 `outbox-cleanup` 排程，讓 4.3 通過
+  - 突變（2026-10-21）：寬限時間改成 0，「寬限時間內不補送」失敗；outbox 保留改成 5 天、認領紀錄改成 28 天，「已送出 6 天：保留」「建立 29 天的認領紀錄：保留」失敗；outbox 改以 `createdAt` 判斷，「未送出的事件」失敗。還原後通過
+- [x] 4.5 寫 feature 測試 `apps/api/tests/feature/lib/outbox-dedupe.test.ts`，以真實 Redis 涵蓋 Scenario「快路徑與補送同時送出」「job 已完成 1 小時後再送一次」。行為來自 BullMQ 的 job id 去重，以突變驗證：拿掉 job id，確認失敗，再還原
+  - 突變（2026-10-21）：拿掉訂閱者 job 的 `jobId`，兩個 Scenario 都失敗，還原後通過
 
 ## 5. 訂閱者佇列與舊寫法的轉送
 
