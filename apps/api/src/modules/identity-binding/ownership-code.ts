@@ -4,14 +4,21 @@
  */
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { bumpCounter, readCounter, type BindingStore } from './binding-code.js';
-import { REGISTRATION_TTL_MS, readRegistration, type RegistrationKind } from './identifier-registration.js';
+import {
+  MAX_CODES_PER_LINK,
+  REGISTRATION_TTL_MS,
+  ownershipSendKey,
+  readRegistration,
+  type RegistrationKind,
+} from './identifier-registration.js';
 
 /** 驗證碼有效期 */
 export const OWNERSHIP_CODE_TTL_MS = 10 * 60 * 1000;
 /** 同一組驗證碼最多可輸入錯的次數 */
 export const MAX_CODE_ATTEMPTS = 5;
-/** 同一個登記連結最多寄出的驗證碼數 */
-export const MAX_CODES_PER_LINK = 3;
+export { MAX_CODES_PER_LINK };
+/** 寄送中的鎖：同一個連結同時送出兩次時只寄一封，否則信中的驗證碼可能被另一次蓋掉 */
+const SEND_LOCK_MS = 30_000;
 
 export interface OwnershipCodeDeps {
   store: BindingStore;
@@ -26,7 +33,8 @@ interface PendingCode {
 
 const codeKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:code:${token}`;
 const attemptKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:codeattempt:${token}`;
-const sendKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:codesend:${token}`;
+const sendKey = ownershipSendKey;
+const sendLockKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:codesendlock:${token}`;
 
 /** 以登記連結的 token 作為鹽：同一組數字在不同連結的雜湊不同 */
 function hashCode(token: string, code: string): string {
@@ -38,6 +46,8 @@ export type RequestCodeResult =
   | { status: 'expired' }
   | { status: 'invalid_value' }
   | { status: 'too_many_codes' }
+  /** 同一個連結正在寄送另一封驗證信 */
+  | { status: 'in_progress' }
   | { status: 'send_failed' };
 
 /**
@@ -52,21 +62,28 @@ export async function requestOwnershipCode(
   if (!(await readRegistration(kind, deps.store, token))) return { status: 'expired' };
   const value = kind.normalize(rawValue);
   if (!value) return { status: 'invalid_value' };
-  if ((await readCounter(deps.store, sendKey(kind, token))) >= MAX_CODES_PER_LINK) return { status: 'too_many_codes' };
-
-  const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  try {
-    await deps.sendCode(value, code);
-  } catch {
-    return { status: 'send_failed' };
+  if ((await deps.store.set(sendLockKey(kind, token), '1', 'PX', SEND_LOCK_MS, 'NX')) !== 'OK') {
+    return { status: 'in_progress' };
   }
-  // 寄出後才換掉舊的驗證碼：寄信失敗時，前一封信的驗證碼仍可使用
-  await deps.store.getdel(codeKey(kind, token));
-  await deps.store.getdel(attemptKey(kind, token));
-  const pending: PendingCode = { value, codeHash: hashCode(token, code) };
-  await deps.store.set(codeKey(kind, token), JSON.stringify(pending), 'PX', OWNERSHIP_CODE_TTL_MS, 'NX');
-  await bumpCounter(deps.store, sendKey(kind, token), REGISTRATION_TTL_MS);
-  return { status: 'code_sent' };
+  try {
+    if ((await readCounter(deps.store, sendKey(kind, token))) >= MAX_CODES_PER_LINK) return { status: 'too_many_codes' };
+
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    try {
+      await deps.sendCode(value, code);
+    } catch {
+      return { status: 'send_failed' };
+    }
+    // 寄出後才換掉舊的驗證碼：寄信失敗時，前一封信的驗證碼仍可使用
+    await deps.store.getdel(codeKey(kind, token));
+    await deps.store.getdel(attemptKey(kind, token));
+    const pending: PendingCode = { value, codeHash: hashCode(token, code) };
+    await deps.store.set(codeKey(kind, token), JSON.stringify(pending), 'PX', OWNERSHIP_CODE_TTL_MS, 'NX');
+    await bumpCounter(deps.store, sendKey(kind, token), REGISTRATION_TTL_MS);
+    return { status: 'code_sent' };
+  } finally {
+    await deps.store.getdel(sendLockKey(kind, token));
+  }
 }
 
 export type VerifyCodeResult =

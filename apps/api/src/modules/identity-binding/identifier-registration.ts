@@ -13,7 +13,7 @@ import { getConfig } from '../../config/env.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import { isSameChannelConflict, mergeContacts, type MergeSource } from '../contact/contact-merge.service.js';
-import { MAX_ISSUES_PER_HOUR, bumpCounter, type BindingStore } from './binding-code.js';
+import { MAX_ISSUES_PER_HOUR, bumpCounter, readCounter, type BindingStore } from './binding-code.js';
 import {
   hasSharedChannel,
   inTransaction,
@@ -134,6 +134,11 @@ export async function issueRegistrationToken(
   return { status: 'ok', token, issued };
 }
 
+/** 這個登記連結已寄出的驗證碼數（ownership-code.ts 寫入）；重用連結前要確認還能寄 */
+export const ownershipSendKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:codesend:${token}`;
+/** 同一個登記連結最多寄出的驗證碼數 */
+export const MAX_CODES_PER_LINK = 3;
+
 /** 重用登記權杖時至少要剩下的有效期：顧客要有時間填寫與收驗證信 */
 const REUSE_MIN_REMAINING_MS = 10 * 60 * 1000;
 const reuseKey = (kind: RegistrationKind, channelIdentityId: string) => `${kind.redisPrefix}:reuse:${channelIdentityId}`;
@@ -149,7 +154,12 @@ export async function reuseOrIssueRegistrationToken(
 ): Promise<{ status: 'ok'; token: string } | { status: 'rate_limited' }> {
   const key = reuseKey(kind, actor.channelIdentityId);
   const previous = await deps.store.get(key);
-  if (previous && (await deps.store.pttl(tokenKey(kind, previous))) > REUSE_MIN_REMAINING_MS) {
+  if (
+    previous &&
+    (await deps.store.pttl(tokenKey(kind, previous))) > REUSE_MIN_REMAINING_MS &&
+    // 驗證碼寄送次數用完的連結不再重用，否則顧客重新整理也一直卡在「寄送次數過多」
+    (await readCounter(deps.store, ownershipSendKey(kind, previous))) < MAX_CODES_PER_LINK
+  ) {
     const payload = await readRegistration(kind, deps.store, previous);
     if (payload?.tenantId === actor.tenantId) return { status: 'ok', token: previous };
   }

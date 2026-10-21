@@ -28,7 +28,10 @@ const deliver = async (_db: unknown, conversationId: string, text: string) => {
 };
 const mails: Array<{ to: string; code: string }> = [];
 let mailFails = false;
+/** 寄信耗時（模擬 SMTP），讓同時送出的兩個請求真的重疊 */
+let mailDelayMs = 0;
 const sendVerificationEmail = async (to: string, code: string) => {
+  if (mailDelayMs) await new Promise((r) => setTimeout(r, mailDelayMs));
   if (mailFails) throw new Error('SMTP 逾時');
   mails.push({ to, code });
 };
@@ -236,3 +239,15 @@ test('格式錯誤不寄驗證碼', async () => {
   assert.equal(res.json().error.code, 'INVALID_EMAIL');
   assert.equal(mails.length, 0);
 });
+
+test('同時送出兩次：只寄出一封，寄出的驗證碼可以用', async () => {
+  const token = await newToken();
+  mailDelayMs = 50;
+  const [a, b] = await Promise.all([submit(token, `${stamp}@example.com`), submit(token, `${stamp}@example.com`)]).finally(() => {
+    mailDelayMs = 0;
+  });
+  assert.deepEqual([a.statusCode, b.statusCode].sort(), [200, 409]);
+  assert.equal(mails.length, 1);
+  assert.equal((await verify(token, mails[0].code)).statusCode, 200);
+});
+

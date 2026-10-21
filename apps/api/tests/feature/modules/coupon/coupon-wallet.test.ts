@@ -17,6 +17,8 @@ import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { verifyFanToken } from '#src/modules/portal/portal-auth.service.js';
+import { requestOwnershipCode } from '#src/modules/identity-binding/ownership-code.js';
+import { EMAIL_REGISTRATION } from '#src/modules/identity-binding/email-registration.service.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
 import { issueInConversation, type InboxIssueDeps } from '#src/modules/coupon/coupon-inbox.service.js';
 import {
@@ -239,6 +241,20 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
       await owner.tenantSettings.update({ where: { tenantId: T }, data: { identityBinding: { phoneEnabled: true, emailEnabled: true } } });
       invalidateIdentityBindingSettings();
     }
+  });
+
+  it('登記連結的驗證碼寄送次數用完後，重新開啟票券會換新連結', async () => {
+    const p = await person('寄送用完', lineChannel, 'LINE');
+    const { token } = await issue(p);
+    const first = await openWalletSession(prisma, deps, token);
+    assert.equal(first.status, 'verification_required');
+    const regToken = /\/bind\/email\/([A-Za-z0-9_-]+)/.exec((first as { registrationUrl: string }).registrationUrl)![1];
+    const send = async () => undefined;
+    for (let i = 0; i < 3; i++) {
+      assert.equal((await requestOwnershipCode(EMAIL_REGISTRATION, { store: deps.store, sendCode: send }, regToken, 'a@example.com')).status, 'code_sent');
+    }
+    const again = await openWalletSession(prisma, deps, token);
+    assert.ok(!(again as { registrationUrl: string }).registrationUrl.includes(regToken), '應該換一個新的登記連結');
   });
 
   it('租戶只啟用手機登記', async () => {

@@ -127,6 +127,9 @@ export function createRegistrationRoutes(spec: RegistrationRouteSpec) {
       const sent = await requestOwnershipCode(kind, { store: store(), sendCode: await codeSender(payload.tenantId) }, token, value);
       if (sent.status === 'expired') throw expired();
       if (sent.status === 'invalid_value') throw new AppError(spec.invalid.message, spec.invalid.code, 400);
+      if (sent.status === 'in_progress') {
+        throw new AppError('驗證信寄送中，請稍候查看信箱', 'VERIFICATION_EMAIL_IN_PROGRESS', 409);
+      }
       if (sent.status === 'too_many_codes') {
         throw new AppError('驗證碼寄送次數過多，請回到對話重新取得連結', 'TOO_MANY_VERIFICATION_EMAILS', 429);
       }

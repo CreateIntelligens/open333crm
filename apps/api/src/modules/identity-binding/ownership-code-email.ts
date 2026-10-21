@@ -17,7 +17,8 @@ function escapeHtml(s: string): string {
 export function buildVerificationEmail(senderName: string, code: string): { subject: string; html: string; text: string } {
   const minutes = Math.round(OWNERSHIP_CODE_TTL_MS / 60000);
   const name = escapeHtml(senderName);
-  const subject = `${senderName} email 驗證碼：${code}`;
+  // 主旨不放驗證碼：寄信方式為 log 時主旨會寫進 log，信件預覽也會直接露出
+  const subject = `${senderName} email 驗證碼`;
   const text = `您的 email 驗證碼是 ${code}，${minutes} 分鐘內有效。請回到登記頁輸入。若不是您本人操作，請忽略此信。`;
   const html = `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
