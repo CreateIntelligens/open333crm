@@ -6,6 +6,7 @@
  */
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { isBlockedIp } from '../../shared/utils/ip-guard.js';
 
 /** 回應大小上限。對方回超大內容不該吃爆我們的記憶體。 */
 export const MAX_RESPONSE_BYTES = 1024 * 1024; // 1 MB
@@ -17,33 +18,11 @@ export type EndpointRejection =
   | 'DNS_FAILED';
 
 /**
- * 判斷 IP 是否落在不可對外呼叫的網段。
- * 涵蓋私有網段、loopback、link-local（含雲端 metadata 169.254.169.254）。
+ * 判斷 IP 是否落在不可對外呼叫的網段（私有、loopback、link-local、雲端 metadata、CGNAT 等）。
+ * IPv6 的各種寫法（含 IPv4-mapped 的十六進位形式）由共用的 isBlockedIp 展開後判斷。
  */
 export function isPrivateAddress(ip: string): boolean {
-  const v = isIP(ip);
-  if (v === 4) {
-    const p = ip.split('.').map(Number);
-    if (p[0] === 10) return true;
-    if (p[0] === 127) return true;
-    if (p[0] === 0) return true;
-    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
-    if (p[0] === 192 && p[1] === 168) return true;
-    if (p[0] === 169 && p[1] === 254) return true; // link-local／雲端 metadata
-    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // CGNAT
-    return false;
-  }
-  if (v === 6) {
-    const s = ip.toLowerCase().replace(/^\[|\]$/g, '');
-    if (s === '::1' || s === '::') return true;
-    if (s.startsWith('fc') || s.startsWith('fd')) return true; // unique local
-    if (s.startsWith('fe80')) return true; // link-local
-    // IPv4-mapped：::ffff:127.0.0.1
-    const m = s.match(/^::ffff:(.+)$/);
-    if (m && isIP(m[1]) === 4) return isPrivateAddress(m[1]);
-    return false;
-  }
-  return false;
+  return isBlockedIp(ip);
 }
 
 /**

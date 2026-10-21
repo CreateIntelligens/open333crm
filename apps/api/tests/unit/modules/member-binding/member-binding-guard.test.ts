@@ -83,6 +83,19 @@ it('辨識出私有／內網位址', () => {
   }
 });
 
+it('IPv4-mapped 的十六進位寫法也擋下（new URL 會把 [::ffff:127.0.0.1] 正規化成 [::ffff:7f00:1]）', async () => {
+  const saved = process.env.MEMBER_BINDING_ALLOW_LOCAL;
+  delete process.env.MEMBER_BINDING_ALLOW_LOCAL;
+  try {
+    for (const url of ['http://[::ffff:127.0.0.1]:3001/members', 'http://[::ffff:a9fe:a9fe]/latest/meta-data', 'http://[64:ff9b::7f00:1]/']) {
+      const r = await assertEndpointAllowed(url);
+      assert.ok(r.ok === false && r.reason === 'PRIVATE_ADDRESS', `${url} 應被擋下`);
+    }
+  } finally {
+    if (saved !== undefined) process.env.MEMBER_BINDING_ALLOW_LOCAL = saved;
+  }
+});
+
 it('公開位址不被誤判', () => {
   for (const ip of ['8.8.8.8', '1.1.1.1', '203.0.113.5', '2001:4860:4860::8888']) {
     assert.ok(!isPrivateAddress(ip), `${ip} 不應被判定為私有位址`);
