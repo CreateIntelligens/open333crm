@@ -403,5 +403,5 @@
 
 ### 完成定義
 
-- [ ] 13.8 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
-- [ ] 13.9 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+- [x] 13.8 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
+- [x] 13.9 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
