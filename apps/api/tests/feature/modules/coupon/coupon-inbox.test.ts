@@ -24,8 +24,10 @@ import {
   getIssueContext,
   getIssueRequest,
   listIssuedCoupons,
+  voidPendingInstance,
   type InboxIssueInput,
 } from '#src/modules/coupon/coupon-inbox.service.js';
+import { backendPid, waitUntilBlockedBy } from '#tests/support/wait-for-lock-wait.js';
 import { issueInConversation, type InboxFlowDeps } from '#src/modules/coupon/coupon-inbox.flow.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
 
@@ -582,6 +584,47 @@ describe('對話發券先保留再發送（design D16）', () => {
     assert.equal(await owner.couponInstance.count({ where: { id: stale.id } }), 0, '超過 5 分鐘的作廢');
     assert.equal(await owner.couponInstance.count({ where: { id: fresh.id } }), 1, '還在發送中的不動');
     await owner.couponInstance.delete({ where: { id: fresh.id } });
+  });
+
+  it('確認交易進行中時作廢，不會歸還已發出的序號', async () => {
+    const p = await person('確認競態');
+    const tag = MARK.slice(-6).toUpperCase();
+    const inst = await owner.couponInstance.create({
+      data: { tenantId: T, couponId: coupons.limitOne, contactId: p.contactId, code: `${tag}RACE`, status: 'CLAIMED', claimedAt: new Date(), issuedVia: 'inbox', deliveryPendingAt: new Date(Date.now() - 6 * 60 * 1000) },
+    });
+    const poolCode = await owner.couponCode.create({
+      data: { tenantId: T, couponId: coupons.limitOne, code: `${tag}RACEPOOL`, status: 'ASSIGNED', instanceId: inst.id },
+    });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    let confirmPid = 0;
+    let markConfirmed: () => void = () => undefined;
+    const confirmedInTx = new Promise<void>((r) => { markConfirmed = r; });
+    try {
+      // 確認交易：清除發送中標記（持有列鎖）後先不提交
+      const confirming = withTenant(prisma, T, async (tx) => {
+        confirmPid = await backendPid(tx);
+        await tx.couponInstance.updateMany({
+          where: { id: inst.id, tenantId: T, deliveryPendingAt: { not: null } },
+          data: { deliveryPendingAt: null },
+        });
+        markConfirmed();
+        await gate;
+      });
+      await confirmedInTx;
+      const voiding = runInTenant(prisma, T, (ctx) => voidPendingInstance(ctx, inst.id));
+      await waitUntilBlockedBy(owner, confirmPid);
+      release();
+      await confirming;
+      assert.equal(await voiding, false, '已確認的券不能作廢');
+      const after = await owner.couponCode.findUnique({ where: { id: poolCode.id } });
+      assert.equal(after?.status, 'ASSIGNED', '已發出的序號被歸還，之後會再發給別人');
+      assert.equal(after?.instanceId, inst.id);
+    } finally {
+      release();
+      await owner.couponCode.deleteMany({ where: { id: poolCode.id } });
+      await owner.couponInstance.deleteMany({ where: { id: inst.id } });
+    }
   });
 });
 

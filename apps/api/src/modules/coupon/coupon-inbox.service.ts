@@ -395,11 +395,13 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
  */
 export async function voidPendingInstance(ctx: TenantCtx, instanceId: string): Promise<boolean> {
   const { tx, tenantId } = ctx;
-  const pending = await tx.couponInstance.findFirst({
-    where: { id: instanceId, tenantId, deliveryPendingAt: { not: null } },
-    select: { id: true },
-  });
-  if (!pending) return false;
+  // 先鎖住這張券再判斷：確認流程（confirmIssue）正在清除發送中標記時，等它提交後再看。
+  // 不鎖的話，確認在「查到發送中」與「刪除」之間提交，序號會被歸還、之後再發給別人
+  const pending = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM coupon_instances
+    WHERE id = ${instanceId}::uuid AND "tenantId" = ${tenantId}::uuid AND "deliveryPendingAt" IS NOT NULL
+    FOR UPDATE`;
+  if (pending.length === 0) return false;
   await tx.couponCode.updateMany({ where: { tenantId, instanceId }, data: { status: 'AVAILABLE', instanceId: null } });
   const removed = await tx.couponInstance.deleteMany({ where: { id: instanceId, tenantId, deliveryPendingAt: { not: null } } });
   return removed.count > 0;
