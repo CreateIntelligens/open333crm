@@ -4,7 +4,7 @@
  * spec coupon-redemption「顧客須完成歸戶驗證才能開啟票券夾」「票券連結」；design D12。
  */
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, test, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => {
@@ -186,7 +186,7 @@ test('網路錯誤：顯示錯誤並可重試', async () => {
 });
 
 test('回到 LINE：無法關閉分頁時提示自行關閉', async () => {
-  mocks.openWalletSession.mockResolvedValue({ status: 'unavailable' });
+  mocks.openWalletSession.mockResolvedValue({ status: 'unavailable', channelType: 'LINE' });
   const close = vi.spyOn(window, 'close').mockImplementation(() => {});
   try {
     render(<CouponEntry token={TOKEN} />);
@@ -199,3 +199,24 @@ test('回到 LINE：無法關閉分頁時提示自行關閉', async () => {
     close.mockRestore();
   }
 });
+
+describe('票券頁依顧客的渠道顯示返回文字', () => {
+  for (const [channelType, label] of [['LINE', '回到 LINE'], ['FB', '回到 Messenger'], ['THREADS', '回到 Instagram'], ['WEBCHAT', '回到對話'], [null, '回到對話']] as const) {
+    test(`${channelType ?? '不知道渠道'}：${label}`, async () => {
+      mocks.openWalletSession.mockResolvedValue({ status: 'unavailable', channelType });
+      render(<CouponEntry token={TOKEN} />);
+      await screen.findByText('目前無法開啟優惠券');
+      assert.ok(screen.getByRole('button', { name: label }));
+      if (channelType !== 'LINE') assert.ok(screen.queryByText(/LINE/) === null);
+    });
+  }
+
+  test('連結失效時不知道渠道：請顧客回到對話重新點選', async () => {
+    mocks.openWalletSession.mockRejectedValue(httpError(410));
+    render(<CouponEntry token={TOKEN} />);
+    await screen.findByText('連結已失效');
+    assert.ok(screen.getByText(/請回到對話重新點選/));
+    assert.ok(screen.queryByText(/LINE/) === null);
+  });
+});
+

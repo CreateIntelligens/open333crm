@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation';
 import { Clock, Link2Off, Loader2, MessageCircle, ShieldCheck, WifiOff } from 'lucide-react';
 import { openWalletSession, useFanCoupon, type FanCoupon } from '@/hooks/useFanCoupons';
 import { getFanToken, setFanToken } from '@/lib/fan-api';
-import { ymd } from '@/lib/fan-coupon/labels';
+import { backToChatLabel, ymd } from '@/lib/fan-coupon/labels';
 import { FanShell, StatusMessage } from '../FanShell';
 import { FanCouponCard } from '../FanCouponCard';
 import { FanButton } from './FanButton';
@@ -51,6 +51,8 @@ export function CouponEntry({ token }: { token: string }) {
   const { tryClose, showHint } = useTryClose();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  // 連結所屬的渠道；連結失效時不知道，顯示「回到對話」
+  const [channelType, setChannelType] = useState<string | null>(null);
   // 開發模式的 StrictMode 會讓 effect 跑兩次；同一個 token 同一次嘗試只換一次憑證
   const requested = useRef<string | null>(null);
 
@@ -61,6 +63,7 @@ export function CouponEntry({ token }: { token: string }) {
     setPhase({ kind: 'loading' });
     openWalletSession(token)
       .then((session) => {
+        setChannelType(session.channelType ?? null);
         switch (session.status) {
           case 'ok':
             setFanToken(session.fanToken);
@@ -88,7 +91,7 @@ export function CouponEntry({ token }: { token: string }) {
   const backToLine = (
     <>
       <FanButton variant="subtle" onClick={tryClose}>
-        回到 LINE
+        {backToChatLabel(channelType)}
       </FanButton>
       {showHint && (
         <p role="status" className="text-center text-sm font-medium text-muted-foreground">
@@ -159,7 +162,7 @@ export function CouponEntry({ token }: { token: string }) {
         <StatusMessage
           icon={<Link2Off className="h-9 w-9" aria-hidden />}
           title="連結已失效"
-          description={'連結可能已過期或不完整\n請回到 LINE 重新點選\n或到券夾查看已領取的券'}
+          description={'連結可能已過期或不完整\n請回到對話重新點選\n或到券夾查看已領取的券'}
         />
       );
       footer = (

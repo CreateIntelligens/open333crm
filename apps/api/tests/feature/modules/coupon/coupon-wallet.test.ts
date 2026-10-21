@@ -197,6 +197,17 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     assert.equal(urls.size, 1, '30 分鐘內都用同一個登記連結');
   });
 
+  it('從 Facebook 開啟票券連結', async () => {
+    const fb = await person('FB開啟', fbChannel, 'FB');
+    const { token } = await issue(fb);
+    const s = await openWalletSession(prisma, deps, token);
+    assert.equal(s.status, 'verification_required');
+    assert.equal((s as { channelType?: string }).channelType, 'FB');
+    const line = await person('LINE開啟', lineChannel, 'LINE', { verified: true });
+    const ok = await openWalletSession(prisma, deps, (await issue(line)).token);
+    assert.equal((ok as { channelType?: string }).channelType, 'LINE');
+  });
+
   it('客服手動填寫的手機不算歸戶', async () => {
     const p = await person('客服填手機', lineChannel, 'LINE', { phone: '0912000111' });
     const { token } = await issue(p);

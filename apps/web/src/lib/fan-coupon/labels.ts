@@ -2,28 +2,26 @@
  * 顧客票券夾的顯示文字。文案依 Figma「優惠券系統 (New)」顧客端（Jira CM-197）。
  */
 import type { FanCoupon, WalletStatus } from '@/hooks/useFanCoupons';
+import { taipeiParts } from '@/lib/taipei-time';
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 
-/** 2026-10-31 */
+/** 2026-10-31（台灣日期，design D17） */
 export function ymd(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const d = taipeiParts(value);
+  return d ? `${d.year}-${p2(d.month)}-${p2(d.day)}` : '';
 }
 
 /** 2026-10-05 14:31 */
 export function ymdhm(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : `${ymd(value)} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  const d = taipeiParts(value);
+  return d ? `${ymd(value)} ${p2(d.hour)}:${p2(d.minute)}` : '';
 }
 
-/** 2026-10-05 14:31:07（核銷結果到秒） */
+/** 2026-10-05 14:31:07（核銷結果到秒；秒數與時區無關） */
 export function ymdhms(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : `${ymdhm(value)}:${p2(d.getSeconds())}`;
+  const d = taipeiParts(value);
+  return d && value ? `${ymdhm(value)}:${p2(new Date(value).getUTCSeconds())}` : '';
 }
 
 /**
@@ -105,3 +103,15 @@ export function termsHtml(terms: string): string {
   if (lines.length === 0) return '';
   return `<ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`;
 }
+
+/** 返回按鈕的文字：依顧客開啟票券連結的渠道（網站客服或不知道渠道時為「回到對話」） */
+const BACK_LABEL: Record<string, string> = {
+  LINE: '回到 LINE',
+  FB: '回到 Messenger',
+  THREADS: '回到 Instagram',
+};
+
+export function backToChatLabel(channelType: string | null | undefined): string {
+  return (channelType && BACK_LABEL[channelType]) || '回到對話';
+}
+

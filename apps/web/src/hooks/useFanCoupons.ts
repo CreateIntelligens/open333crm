@@ -52,11 +52,13 @@ export interface FanCoupon {
   };
 }
 
-export type WalletSession =
+/** channelType：連結所屬的渠道，票券頁依此顯示返回文字 */
+export type WalletSession = { channelType?: string | null } & (
   | { status: 'ok'; fanToken: string; tenantId: string; contactId: string; instanceId: string }
   | { status: 'verification_required'; kind: 'phone' | 'email'; registrationUrl: string }
   | { status: 'unavailable' }
-  | { status: 'rate_limited' };
+  | { status: 'rate_limited' }
+);
 
 const fetcher = (url: string) => fanApi.get(url).then((r) => r.data);
 

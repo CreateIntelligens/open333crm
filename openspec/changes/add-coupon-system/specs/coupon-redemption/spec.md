@@ -386,3 +386,24 @@
 - **WHEN** 解除該次合併
 - **THEN** 券回到原 FB 聯絡人，保留方被帶入的歸戶驗證移除
 
+### Requirement: 票券頁依顧客的渠道顯示返回文字
+
+票券連結換取顧客憑證時，系統 SHALL 回傳連結所屬的渠道類型，票券頁的返回按鈕與說明 SHALL 依渠道顯示：LINE 為「回到 LINE」、Facebook 為「回到 Messenger」、Instagram 為「回到 Instagram」，網站客服與無法判斷時為「回到對話」。
+
+#### Scenario: 從 Facebook 開啟票券連結
+
+- **GIVEN** 發券訊息由 Facebook 對話送出
+- **WHEN** 顧客開啟票券連結
+- **THEN** 回應的渠道類型為 FB，票券頁顯示「回到 Messenger」，不出現「LINE」
+
+#### Scenario: 從網站客服開啟票券連結
+
+- **GIVEN** 發券訊息由網站客服對話送出
+- **WHEN** 顧客開啟票券連結
+- **THEN** 票券頁顯示「回到對話」
+
+#### Scenario: 連結失效時不知道渠道
+
+- **WHEN** 顧客開啟已失效的票券連結
+- **THEN** 說明文字請顧客「回到對話重新點選」，不寫特定渠道
+

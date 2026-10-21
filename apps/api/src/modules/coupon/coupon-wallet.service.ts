@@ -28,16 +28,19 @@ const nowOf = (deps: WalletDeps) => (deps.now ?? Date.now)();
 
 // ── 票券連結換顧客憑證 ─────────────────────────────────────────────────────
 
+/** 連結所屬的渠道類型：票券頁依此顯示「回到 LINE」「回到 Messenger」等文字 */
+type WithChannel<T> = T & { channelType: string | null };
+
 export type WalletSessionResult =
-  | { status: 'ok'; fanToken: string; tenantId: string; contactId: string; instanceId: string }
+  | WithChannel<{ status: 'ok'; fanToken: string; tenantId: string; contactId: string; instanceId: string }>
   /** 未歸戶：帶顧客去登記，登記頁送出後回到 next（原票券連結） */
-  | { status: 'verification_required'; kind: 'phone' | 'email'; registrationUrl: string }
+  | WithChannel<{ status: 'verification_required'; kind: 'phone' | 'email'; registrationUrl: string }>
   /** 連結不存在或過期（不透露任何租戶或聯絡人資料） */
   | { status: 'expired' }
   /** 租戶沒有啟用任何登記方式，無法驗證 */
-  | { status: 'unavailable' }
+  | WithChannel<{ status: 'unavailable' }>
   /** 這個渠道身分一小時內取得登記連結的次數已滿 */
-  | { status: 'rate_limited' };
+  | WithChannel<{ status: 'rate_limited' }>;
 
 /** 啟用的登記方式：email 優先（會驗證信箱擁有權，design D15），其次手機 */
 function registrationKindFor(settings: { phoneEnabled: boolean; emailEnabled: boolean }): RegistrationKind | null {
@@ -65,7 +68,8 @@ export async function openWalletSession(
     });
     if (!contact) return null;
     const settings = contact.identityVerifiedAt ? null : await getIdentityBindingSettings(tx, tenantId);
-    return { liveId, verified: contact.identityVerifiedAt != null, settings };
+    const channel = await tx.channel.findFirst({ where: { id: payload.channelId, tenantId }, select: { channelType: true } });
+    return { liveId, verified: contact.identityVerifiedAt != null, settings, channelType: channel?.channelType ?? null };
   });
   if (!state) return { status: 'expired' };
 
@@ -82,16 +86,19 @@ export async function openWalletSession(
       tenantId,
       contactId: state.liveId,
       instanceId: payload.instanceId,
+      channelType: state.channelType,
     };
   }
 
   const kind = state.settings ? registrationKindFor(state.settings) : null;
-  if (!kind) return { status: 'unavailable' };
+  const { channelType } = state;
+  if (!kind) return { status: 'unavailable', channelType };
   const issued = await reuseOrIssueRegistrationToken(kind, { store: deps.store, now: deps.now }, payload);
-  if (issued.status === 'rate_limited') return { status: 'rate_limited' };
+  if (issued.status === 'rate_limited') return { status: 'rate_limited', channelType };
   const next = `/coupon/open/${token}`;
   return {
     status: 'verification_required',
+    channelType,
     kind: kind.name,
     registrationUrl: `/bind/${kind.pathSegment}/${issued.token}?next=${encodeURIComponent(next)}`,
   };

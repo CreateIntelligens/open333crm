@@ -9,6 +9,7 @@ import { describe, test, vi } from 'vitest';
 import { formatDate, formatDateTime } from '#src/lib/coupon/labels.js';
 import { md as issueMd, mdhm as issueMdhm, ymd as issueYmd } from '#src/lib/coupon/issue.js';
 import { md as fanMd, mdhm as fanMdhm } from '#src/components/fan-coupon/detail/ui.js';
+import { ymd as walletYmd, ymdhm as walletYmdhm, ymdhms as walletYmdhms } from '#src/lib/fan-coupon/labels.js';
 import { emptyValues, valuesFromCoupon } from '#src/components/coupons/form/form-model.js';
 
 const END = '2026-11-30T15:59:59.999Z'; // 台灣 11/30 23:59
@@ -30,6 +31,9 @@ describe('日期顯示不受瀏覽器時區影響', () => {
   test('顧客票券頁', () => {
     assert.equal(fanMd(START), '11/1');
     assert.equal(fanMdhm(START), '11-01 00:00');
+    assert.equal(walletYmd(START), '2026-11-01');
+    assert.equal(walletYmdhm(START), '2026-11-01 00:00');
+    assert.equal(walletYmdhms('2026-10-31T16:00:07.000Z'), '2026-11-01 00:00:07');
   });
 
   test('編輯券時表單帶回台灣日期', () => {
