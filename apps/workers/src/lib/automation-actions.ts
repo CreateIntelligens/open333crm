@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
 import { bumpSlaPriority, CASE_CATEGORIES } from '@open333crm/shared';
-import { logger } from '@open333crm/core';
+import { claimSideEffect, logger } from '@open333crm/core';
 import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
@@ -243,15 +243,34 @@ async function createCaseFromAutomation(
 const CHANNEL_LABELS: Record<string, string> = { line: 'LINE', fb: 'Facebook', threads: 'Instagram', webchat: '網頁聊天' };
 const channelLabel = (channelType: string) => CHANNEL_LABELS[channelType] ?? channelType;
 
+/** 以 automation_action + 事件 id + <規則 id>#<動作序號> 認領 */
+async function claimAction(prisma: PrismaClient, context: WorkerActionContext, actionKey: string): Promise<boolean> {
+  return prisma.$transaction((tx) =>
+    claimSideEffect(tx, { tenantId: context.tenantId, kind: 'automation_action', sourceId: context.eventId!, subKey: actionKey }),
+  );
+}
+
+/** notify 的 job id：<事件 id>__<規則 id>#<序號>__<客服人員 id>。沒有事件 id（SLA 路徑）時不指定 */
+function notifyJobOptions(context: WorkerActionContext, actionKey: string | null, agentId: string) {
+  return actionKey ? { jobId: `${context.eventId}__${actionKey}__${agentId}` } : undefined;
+}
+
 export async function executeWorkerAutomationActions(
   prisma: PrismaClient,
   redisPublisher: IORedis,
   actions: WorkerAutomationAction[],
   context: WorkerActionContext,
 ): Promise<void> {
-  for (const action of actions) {
+  for (const [index, action] of actions.entries()) {
     try {
       const params = action.params ?? action.payload ?? {};
+      // 同一個事件的同一個動作最多執行一次（automation-engine「規則動作每個事件最多執行一次」）。
+      // 認領之後執行失敗也不還原：送出訊息這類動作寧可少做，不重複做
+      const actionKey = context.eventId && context.ruleId ? `${context.ruleId}#${index}` : null;
+      if (actionKey && !(await claimAction(prisma, context, actionKey))) {
+        logger.info(`[automation] Worker action "${action.type}" skipped: already executed for event ${context.eventId} (${actionKey})`);
+        continue;
+      }
 
       if (action.type === 'create_case') {
         const caseId = await createCaseFromAutomation(prisma, redisPublisher, params, context);
@@ -405,7 +424,7 @@ export async function executeWorkerAutomationActions(
               : context.conversationId
                 ? `/dashboard/inbox?conv=${context.conversationId}`
                 : undefined,
-          });
+          }, notifyJobOptions(context, actionKey, agentId));
         }
         continue;
       }
@@ -420,7 +439,7 @@ export async function executeWorkerAutomationActions(
             title: AUTOMATION_NOTIFY_TITLE,
             body: String(params['message'] ?? AUTOMATION_NOTIFY_DEFAULT_BODY),
             clickUrl: context.caseId ? `/dashboard/cases/${context.caseId}` : undefined,
-          });
+          }, notifyJobOptions(context, actionKey, agentId));
         }
         continue;
       }

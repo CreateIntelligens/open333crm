@@ -69,8 +69,9 @@
 - [x] 9.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/automation.handler.test.ts`，涵蓋 automation-engine 的 Scenario「訊息命中關鍵字規則」（以 `keyword.matched` 執行、LINE 用 reply）與「keyword.matched 每則訊息每條規則最多發出一次」的「同一則訊息評估兩次」。既有測試 `automation-keyword-scope.test.ts`、`automation-keyword-reply.test.ts` 以 `keyword.matched` job 為前提，改成以 `message.received` job 觸發關鍵字規則；改動前先以 `git log -S` 確認這些斷言的來源
 - [x] 9.2 實作 design 決策 9 的關鍵字規則評估與 `keyword_matched` 認領，讓 9.1 通過
   - `automation-keyword-scope.test.ts` 不改：API 部署前已送出的 `keyword.matched` job 仍只評估 `ruleId` 那條規則，避免部署時重複回覆（`8217364b`）。`automation-keyword-reply.test.ts` 測的是 `executeWorkerAutomationActions()` 以 `keyword.matched` 執行時用 reply，行為沒變，也不改
-- [ ] 9.3 寫失敗的單元測試 `apps/workers/tests/unit/lib/automation-actions.test.ts`，涵蓋 Scenario「同一個事件評估兩次」「升級工單不重複升級」「不同事件各自執行」，另外斷言 context 沒有 `eventId` 時不寫認領紀錄（SLA 路徑，design 決策 9）；`sla-outcome-once.test.ts` 照常通過
-- [ ] 9.4 每個動作執行前認領 `automation_action`，`notify` 的 job id 照 design 決策 9。讓 9.3 通過
+- [x] 9.3 寫失敗的單元測試 `apps/workers/tests/unit/lib/automation-actions.test.ts`，涵蓋 Scenario「同一個事件評估兩次」「升級工單不重複升級」「不同事件各自執行」，另外斷言 context 沒有 `eventId` 時不寫認領紀錄（SLA 路徑，design 決策 9）；`sla-outcome-once.test.ts` 照常通過
+- [x] 9.4 每個動作執行前認領 `automation_action`，`notify` 的 job id 照 design 決策 9。讓 9.3 通過
+  - 突變（2026-10-21）：沒有事件 id 也認領，「沒有事件 id（SLA 路徑）」失敗；認領鍵改用規則 id 取代事件 id，「不同事件各自執行」失敗。還原後通過
 - [ ] 9.5 寫失敗的測試，涵蓋 event-delivery 的 Scenario「建立工單與事件一起寫入」「建立工單失敗」，以及 automation-engine「Unified Contact Tagging Emits contact.tagged」的 Scenario「Automation add_tag emits event」
 - [ ] 9.6 `create_case`、`add_tag` 改寫 outbox 並在 commit 之後呼叫快路徑；移除 `publishDomainEvent()` 與 `socket.plugin.ts` 的 `domain:event` 訂閱。讓 9.5 通過
 - [ ] 9.7 寫 feature 測試涵蓋 Scenario「API 行程沒有在執行」：workers 寫入 outbox 時沒有訂閱者 `Worker`，之後建立 `Worker`，事件照常處理
