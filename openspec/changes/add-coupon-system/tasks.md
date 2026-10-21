@@ -377,5 +377,5 @@
 
 ### 完成定義
 
-- [ ] 12.17 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
-- [ ] 12.18 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+- [x] 12.17 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
+- [x] 12.18 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
