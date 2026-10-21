@@ -50,7 +50,9 @@ export type IssueSkipReason =
   | 'CODES_EXHAUSTED'
   | 'SHARED_CODE_MISSING'
   | 'CODE_GENERATION_FAILED'
-  | 'CODE_ALLOCATION_CONFLICT';
+  | 'CODE_ALLOCATION_CONFLICT'
+  /** 聯絡人不存在或不屬於本租戶（外鍵檢查不受 RLS 限制，不先擋會建出跨租戶的券或整批失敗） */
+  | 'CONTACT_NOT_FOUND';
 
 export interface IssuedInstance {
   id: string;
@@ -156,7 +158,15 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
   // 否則兩邊都數到「還沒達上限」，每人上限與發行總量會超發（design D14）
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${coupon.id}, 0))`;
 
+  const known = new Set(
+    (await tx.contact.findMany({ where: { id: { in: params.contactIds }, tenantId }, select: { id: true } })).map((c) => c.id),
+  );
+
   for (const contactId of params.contactIds) {
+    if (!known.has(contactId)) {
+      skipped.push({ contactId, reason: 'CONTACT_NOT_FOUND' });
+      continue;
+    }
     if (coupon.totalLimit != null) {
       // 每發一張都重查——同一批內也會累加，用批次開始時的數字會超發
       const total = await tx.couponInstance.count({ where: { couponId: coupon.id, tenantId } });
@@ -246,6 +256,16 @@ export function couponSourceName(issuedVia: string | null | undefined): string |
 const CLAIM_TAG_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * 重複貼領券標籤時的到期時間：已是永久的維持永久（手動貼的 VIP 不能變成會被排程刪掉），
+ * 都有期限時取較晚的，不把別處設定的較長期限提早。existing 為 undefined 表示還沒有貼。
+ */
+export function mergeClaimTagExpiry(existing: Date | null | undefined, next: Date | null): Date | null {
+  if (existing === undefined) return next;
+  if (existing === null || next === null) return null;
+  return existing.getTime() >= next.getTime() ? existing : next;
+}
+
+/**
  * 領券自動貼標（對話發券與自動化發券共用）。只貼這個租戶、適用於聯絡人的標籤；
  * 設了時效就寫入到期時間（重複貼標時續期），交給 tag-expiry 排程移除。
  * 回傳貼上的標籤，讓呼叫端各自發出 contact.tagged 事件；沒有貼回傳 null。
@@ -263,7 +283,14 @@ export async function applyCouponClaimTag(
     select: { id: true, name: true },
   });
   if (!tag) return null;
-  const expiresAt = coupon.claimTagTtlDays ? new Date(now + coupon.claimTagTtlDays * CLAIM_TAG_DAY_MS) : null;
+  const existing = await tx.contactTag.findUnique({
+    where: { contactId_tagId: { contactId, tagId: tag.id } },
+    select: { expiresAt: true },
+  });
+  const expiresAt = mergeClaimTagExpiry(
+    existing ? existing.expiresAt : undefined,
+    coupon.claimTagTtlDays ? new Date(now + coupon.claimTagTtlDays * CLAIM_TAG_DAY_MS) : null,
+  );
   await tx.contactTag.upsert({
     where: { contactId_tagId: { contactId, tagId: tag.id } },
     update: { expiresAt },

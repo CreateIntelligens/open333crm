@@ -446,6 +446,26 @@ describe('只有草稿可以刪除', () => {
   });
 });
 
+describe('發券只發給本租戶的聯絡人', () => {
+  it('不存在或其他租戶的聯絡人列為略過，其餘照常發出', async () => {
+    const c = await published('對象檢查', { perContactLimit: 5, totalLimit: null } as CouponInput);
+    const mine = await newContact('對象檢查');
+    const other = (await owner.contact.create({ data: { tenantId: otherTenantId, displayName: `${MARK}-他租戶` } })).id;
+    const missing = randomUUID();
+    try {
+      const r = await issueCoupons(prisma, tenantId, c.id, { contactIds: [mine, other, missing], issuedVia: 'broadcast' });
+      assert.deepEqual(r.issued.map((i) => i.contactId), [mine]);
+      assert.deepEqual(
+        r.skipped.map((x) => x.reason).sort(),
+        ['CONTACT_NOT_FOUND', 'CONTACT_NOT_FOUND'],
+      );
+      assert.equal(await owner.couponInstance.count({ where: { couponId: c.id, contactId: other } }), 0);
+    } finally {
+      await owner.contact.delete({ where: { id: other } });
+    }
+  });
+});
+
 describe('序號明細查詢', () => {
   it('序號搜尋忽略連字號與大小寫', async () => {
     const c = await published('序號搜尋');
@@ -535,5 +555,26 @@ describe('領券時自動貼標', () => {
     assert.ok(ct?.expiresAt, '標籤沒有到期時間');
     const days = (ct.expiresAt.getTime() - before) / 86_400_000;
     assert.ok(days > 29.9 && days < 30.1, `到期時間不是 30 天後：${days}`);
+  });
+
+  it('原本手動貼的永久標籤不會變成有期限', async () => {
+    const tag = await owner.tag.create({ data: { tenantId, name: `${MARK}-VIP` } });
+    const c = await published('永久標籤', { claimTagId: tag.id, claimTagTtlDays: 7 });
+    const contact = await newContact('永久標籤');
+    await owner.contactTag.create({ data: { contactId: contact, tagId: tag.id, addedBy: 'agent', expiresAt: null } });
+    await issueCoupons(prisma, tenantId, c.id, { contactIds: [contact], issuedVia: 'inbox' });
+    const ct = await owner.contactTag.findUnique({ where: { contactId_tagId: { contactId: contact, tagId: tag.id } } });
+    assert.equal(ct?.expiresAt, null, '永久標籤被改成 7 天後到期，排程會把它刪掉');
+  });
+
+  it('原本較晚到期的標籤不會被提早', async () => {
+    const tag = await owner.tag.create({ data: { tenantId, name: `${MARK}-較晚` } });
+    const c = await published('較晚到期', { claimTagId: tag.id, claimTagTtlDays: 7 });
+    const contact = await newContact('較晚到期');
+    const later = new Date(Date.now() + 60 * 86_400_000);
+    await owner.contactTag.create({ data: { contactId: contact, tagId: tag.id, addedBy: 'system', expiresAt: later } });
+    await issueCoupons(prisma, tenantId, c.id, { contactIds: [contact], issuedVia: 'inbox' });
+    const ct = await owner.contactTag.findUnique({ where: { contactId_tagId: { contactId: contact, tagId: tag.id } } });
+    assert.equal(ct?.expiresAt?.getTime(), later.getTime());
   });
 });

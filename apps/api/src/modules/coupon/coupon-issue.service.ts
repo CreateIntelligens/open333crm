@@ -16,6 +16,9 @@ import { CouponValidationError } from './coupon.service.js';
 
 export type { IssuedInstance };
 
+/** 批次發券的交易時限 */
+const BULK_ISSUE_TX_TIMEOUT_MS = 60_000;
+
 export interface IssueOptions {
   /** 發放對象。FB／IG 對象亦可，領取時會改綁為完成驗證的聯絡人 */
   contactIds: string[];
@@ -52,7 +55,8 @@ export async function issueCoupons(
   if (opts.contactIds.length === 0) {
     throw new CouponValidationError('請選擇發放對象');
   }
-  return withTenant(prisma, tenantId, (tx) => issueCouponsInTx(tx, tenantId, couponId, opts));
+  // 一次最多 1,000 人，每人約 4～8 個查詢：預設 5 秒的交易時限不夠，逾時會整批回滾
+  return withTenant(prisma, tenantId, (tx) => issueCouponsInTx(tx, tenantId, couponId, opts), { timeout: BULK_ISSUE_TX_TIMEOUT_MS });
 }
 
 /**

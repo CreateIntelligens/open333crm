@@ -59,7 +59,8 @@ export function startBackgroundExport(
   const done = (async () => {
     try {
       await deps.beforeGenerate?.();
-      const csv = await withTenant(prisma, job.tenantId, (tx) => exportInstancesCsv(tx, job.tenantId, job.couponId));
+      // 超過 5,000 筆才走背景，查詢與組字串都較久：放寬交易時限
+      const csv = await withTenant(prisma, job.tenantId, (tx) => exportInstancesCsv(tx, job.tenantId, job.couponId), { timeout: 120_000 });
       const stored: StoredExport = { tenantId: job.tenantId, agentId: job.agentId, fileName: job.fileName, csv };
       await deps.store.set(fileKey(jobId), JSON.stringify(stored), 'PX', EXPORT_FILE_TTL_MS, 'NX');
       await deps.notify({
