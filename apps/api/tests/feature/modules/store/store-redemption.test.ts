@@ -179,6 +179,13 @@ describe('門市帳號登入核銷台', () => {
     assert.deepEqual(missing, { ok: false, code: 'INVALID_CREDENTIALS' });
   });
 
+  it('同時送出多個錯誤密碼也會鎖定', async () => {
+    const username = await account('lock-race');
+    await Promise.all(Array.from({ length: 8 }, () => loginStoreAccount(prisma, deps, username, 'wrong-pass', true)));
+    const locked = await loginStoreAccount(prisma, deps, username, 'dt3c2026x', true);
+    assert.equal(!locked.ok && locked.code, 'ACCOUNT_LOCKED', '並行請求各自讀到 0 再寫回 1，永遠到不了上限');
+  });
+
   it('密碼錯誤 5 次後鎖定', async () => {
     const username = await account('lock');
     for (let i = 0; i < 5; i++) await loginStoreAccount(prisma, deps, username, 'wrong-pass', true);

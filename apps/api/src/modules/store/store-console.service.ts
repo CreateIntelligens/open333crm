@@ -99,6 +99,11 @@ export async function loginStoreAccount(
   const now = new Date((deps.now ?? Date.now)());
 
   return withTenant(prisma, tenantId, async (tx) => {
+    // 鎖住這個帳號到交易結束：同時送出多個錯誤密碼時依序計數，不會各自讀到 0 再寫回 1 而永遠不鎖定
+    await tx.$queryRaw`
+      SELECT id FROM store_accounts
+      WHERE username = ${username} AND "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+      FOR UPDATE`;
     const account = await tx.storeAccount.findFirst({
       where: { username, tenantId, deletedAt: null },
       include: { store: { select: { name: true, isActive: true } }, tenant: { select: { isActive: true } } },

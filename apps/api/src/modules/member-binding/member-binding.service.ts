@@ -106,6 +106,9 @@ export async function bindMember(
   const attributeKey = config.attributeKey || DEFAULT_ATTRIBUTE_KEY;
 
   return withTenant(prisma, tenantId, async (tx) => {
+    // 同一個會員編號的綁定依序處理：先查再寫之間沒有鎖的話，兩人同時綁都查不到對方、都會成功
+    const lockKey = `member-binding:${tenantId}:${lookup.memberId}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
     // 同一會員編號不可綁到多個聯絡人——否則兩人共享同一會員權益
     const conflicting = await tx.contactAttribute.findFirst({
       where: {

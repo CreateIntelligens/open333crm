@@ -5,6 +5,7 @@
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import rateLimit from '@fastify/rate-limit';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
 import {
@@ -192,6 +193,8 @@ async function authenticateFan(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function memberBindingFanRoutes(app: FastifyInstance) {
+  // 每次綁定都會呼叫客戶的會員 API，且回應分得出查無會員與已被綁定：限制頻率，避免被拿來列舉會員編號
+  await app.register(rateLimit, { global: false });
   /** 綁定頁需知道要讓顧客填什麼——由設定的佔位符推導。 */
   app.get('/fields', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fanBinding!;
@@ -211,7 +214,10 @@ export async function memberBindingFanRoutes(app: FastifyInstance) {
     return { success: true, data: result };
   });
 
-  app.post('/', { preHandler: authenticateFan }, async (request, reply) => {
+  app.post('/', {
+    preHandler: authenticateFan,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute', keyGenerator: (request) => request.ip } },
+  }, async (request, reply) => {
     const fan = request.fanBinding!;
     const body = lookupInputSchema.parse(request.body ?? {});
     const result = await bindMember(app.prisma, fan.tenantId, fan.contactId, body);

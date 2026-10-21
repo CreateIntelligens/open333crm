@@ -154,3 +154,11 @@ it('解除綁定移除會員欄位', async () => {
   const after = await getBinding(tenantDb, tenantId, contactA);
   assert.ok(!after.bound, '解除後仍顯示已綁定');
 });
+
+it('兩位聯絡人同時綁同一個會員編號，只有一位成功', async () => {
+  for (let round = 0; round < 8; round++) {
+    const contacts = await Promise.all([0, 1, 2, 3].map((i) => mkContact(`同時${round}-${i}`)));
+    const results = await Promise.all(contacts.map((c) => bindMember(tenantDb, tenantId, c, { memberId: `RACE${round}` })));
+    assert.equal(results.filter((r) => r.ok).length, 1, `第 ${round + 1} 輪：${JSON.stringify(results)}`);
+  }
+});
