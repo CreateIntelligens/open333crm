@@ -73,9 +73,15 @@ export async function getCouponStats(
 }
 
 /** CSV 欄位一律加引號並轉義內部引號——券名與券碼來自使用者輸入，可能含逗號。 */
-function csvCell(v: unknown): string {
+/**
+ * CSV 儲存格。以 = + - @ 或 Tab、換行開頭的值，Excel 會當成公式執行（持有者名稱來自顧客自訂的暱稱），
+ * 前面加單引號當成文字。
+ */
+export function csvCell(v: unknown): string {
   if (v == null) return '""';
-  return `"${String(v).replace(/"/g, '""')}"`;
+  const text = String(v);
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 function formatDate(d: Date | null): string {
