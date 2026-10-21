@@ -235,7 +235,7 @@ export async function bootstrap() {
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);
   setupCanvasScheduler(jobScheduler);
   setupTrialScheduler(jobScheduler, app.prismaAdmin);
-  setupCouponScheduler(jobScheduler, app.prismaAdmin);
+  setupCouponScheduler(jobScheduler, { admin: app.prismaAdmin, prisma: app.prisma });
   jobScheduler.start();
   app.addHook('onClose', () => jobScheduler.close());
   ensureBucket().catch((err) => app.log.warn({ err }, 'MinIO bucket init skipped'));

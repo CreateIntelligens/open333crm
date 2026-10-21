@@ -13,6 +13,7 @@ import { getCouponAnalytics, getCouponStats } from '#src/modules/coupon/coupon-s
 import Fastify, { type FastifyRequest } from 'fastify';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import analyticsRoutes from '#src/modules/analytics/analytics.routes.js';
+import { runInTenant } from '#tests/support/tenant-run.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -71,7 +72,7 @@ afterAll(async () => {
 
 describe('數據報表呈現優惠券成效', () => {
   it('期間內的優惠券成效', async () => {
-    const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
+    const r = await runInTenant(prisma, T, (ctx) => getCouponAnalytics(ctx, FROM, TO));
     assert.deepEqual({ ...r.totals, linkOpened: undefined }, { issued: 6, claimed: 4, redeemed: 2, redeemRate: 50, linkOpened: undefined });
     const mine = r.topCoupons.filter((c) => c.couponId === couponA || c.couponId === couponB);
     assert.equal(mine[0].couponId, couponA);
@@ -83,7 +84,7 @@ describe('數據報表呈現優惠券成效', () => {
   });
 
   it('每日趨勢以台灣日期分日', async () => {
-    const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
+    const r = await runInTenant(prisma, T, (ctx) => getCouponAnalytics(ctx, FROM, TO));
     const day = (d: string) => r.trend.find((t) => t.date === d);
     assert.equal(day('2020-03-02')?.issued, 1);
     assert.equal(r.trend.length, 31, '3/1 到 3/31 每一天都有資料');
@@ -93,19 +94,19 @@ describe('數據報表呈現優惠券成效', () => {
   });
 
   it('發送中的券不計入', async () => {
-    const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
+    const r = await runInTenant(prisma, T, (ctx) => getCouponAnalytics(ctx, FROM, TO));
     assert.equal(r.trend.find((t) => t.date === '2020-03-08')?.issued ?? 0, 0);
   });
 });
 
 describe('記錄票券連結的開啟', () => {
   it('成效顯示開啟連結張數', async () => {
-    const stats = await getCouponStats(tenantScopedClient(prisma, T), T, couponA);
+    const stats = await runInTenant(prisma, T, (ctx) => getCouponStats(ctx, couponA));
     assert.equal(stats?.linkOpened, 3);
   });
 
   it('數據報表顯示開啟連結張數', async () => {
-    const r = await getCouponAnalytics(tenantScopedClient(prisma, T), T, FROM, TO);
+    const r = await runInTenant(prisma, T, (ctx) => getCouponAnalytics(ctx, FROM, TO));
     assert.equal(r.totals.linkOpened, 3);
     assert.equal(r.topCoupons.find((c) => c.couponId === couponA)?.linkOpened, 3);
   });

@@ -13,6 +13,7 @@ import storeRoutes from '#src/modules/store/store.routes.js';
 import storeConsoleRoutes from '#src/modules/store/store-console.routes.js';
 import { createStore, createStoreAccount, updateStoreAccount } from '#src/modules/store/store.service.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { ctxOf } from '#tests/support/tenant-run.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -65,7 +66,7 @@ beforeAll(async () => {
   viewApp = await adminApp(await role('view', ['store.view']));
   manageApp = await adminApp(await role('manage', ['store.view', 'store.manage']));
   console = await consoleApp();
-  storeId = (await withTenant(prisma, T, (tx) => createStore(tx, T, { name: `${MARK} 門市` }))).id;
+  storeId = (await withTenant(prisma, T, (tx) => createStore(ctxOf(tx, T), { name: `${MARK} 門市` }))).id;
 });
 
 afterAll(async () => {
@@ -99,11 +100,11 @@ describe('核銷台每次操作都檢查帳號狀態（HTTP）', () => {
 
   it('帳號停用後查券回 403 與錯誤碼', async () => {
     const username = `${MARK}-c`.slice(0, 32);
-    const acc = await withTenant(prisma, T, (tx) => createStoreAccount(tx, T, { storeId, username, password: 'dt3c2026x' }));
+    const acc = await withTenant(prisma, T, (tx) => createStoreAccount(ctxOf(tx, T), { storeId, username, password: 'dt3c2026x' }));
     const login = await console.inject({ method: 'POST', url: '/api/v1/store-console/login', payload: { username, password: 'dt3c2026x' } });
     assert.equal(login.statusCode, 200, login.body);
     const token = login.json().data.token as string;
-    await withTenant(prisma, T, (tx) => updateStoreAccount(tx, T, acc.id, { isActive: false }));
+    await withTenant(prisma, T, (tx) => updateStoreAccount(ctxOf(tx, T), acc.id, { isActive: false }));
     const res = await console.inject({
       method: 'GET',
       url: '/api/v1/store-console/lookup?code=ABC',

@@ -7,7 +7,7 @@
  */
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { couponCodeKey } from '@open333crm/core';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { parseCodeList, normalizeImportedCode } from './coupon-code.service.js';
 import { CouponValidationError } from './coupon.service.js';
 
@@ -28,8 +28,7 @@ export interface ImportResult {
 }
 
 export async function importCodes(
-  prisma: PrismaClient,
-  tenantId: string,
+  ctx: TenantCtx,
   couponId: string,
   rawInput: string,
 ): Promise<ImportResult> {
@@ -43,47 +42,45 @@ export async function importCodes(
   if (parsed.valid.length > MAX_CODES_PER_IMPORT) {
     throw new CouponValidationError(`單次最多匯入 ${MAX_CODES_PER_IMPORT} 筆，請分批進行`);
   }
+  const { tx, tenantId } = ctx;
+  const coupon = await tx.coupon.findFirst({ where: { id: couponId, tenantId } });
+  if (!coupon) throw new CouponValidationError('查無此券');
+  if (coupon.codeMode !== 'IMPORTED_CODES') {
+    throw new CouponValidationError('僅序號包模式的券可匯入序號');
+  }
+  // 已結束的券不再收序號——庫存加了也發不出去
+  if (coupon.status === 'ENDED') {
+    throw new CouponValidationError('已結束的券無法匯入序號');
+  }
 
-  return withTenant(prisma, tenantId, async (tx) => {
-    const coupon = await tx.coupon.findFirst({ where: { id: couponId, tenantId } });
-    if (!coupon) throw new CouponValidationError('查無此券');
-    if (coupon.codeMode !== 'IMPORTED_CODES') {
-      throw new CouponValidationError('僅序號包模式的券可匯入序號');
-    }
-    // 已結束的券不再收序號——庫存加了也發不出去
-    if (coupon.status === 'ENDED') {
-      throw new CouponValidationError('已結束的券無法匯入序號');
-    }
+  // 與既有券碼比對（同時查庫存表與已發出的券）
+  const taken = await takenKeys(tx, tenantId, parsed.valid);
+  const conflicts: string[] = [];
+  const toInsert: string[] = [];
+  for (const code of parsed.valid) {
+    if (taken.has(couponCodeKey(code))) conflicts.push(code);
+    else toInsert.push(code);
+  }
 
-    // 與既有券碼比對（同時查庫存表與已發出的券）
-    const taken = await takenKeys(tx, tenantId, parsed.valid);
-    const conflicts: string[] = [];
-    const toInsert: string[] = [];
-    for (const code of parsed.valid) {
-      if (taken.has(couponCodeKey(code))) conflicts.push(code);
-      else toInsert.push(code);
-    }
-
-    if (toInsert.length > 0) {
-      await tx.couponCode.createMany({
-        data: toInsert.map((code) => ({ tenantId, couponId, code, status: 'AVAILABLE' as const })),
-        // 併發匯入同一組碼時，唯一約束會擋下後到者；跳過而非整批失敗
-        skipDuplicates: true,
-      });
-    }
-
-    const availableTotal = await tx.couponCode.count({
-      where: { couponId, tenantId, status: 'AVAILABLE' },
+  if (toInsert.length > 0) {
+    await tx.couponCode.createMany({
+      data: toInsert.map((code) => ({ tenantId, couponId, code, status: 'AVAILABLE' as const })),
+      // 併發匯入同一組碼時，唯一約束會擋下後到者；跳過而非整批失敗
+      skipDuplicates: true,
     });
+  }
 
-    return {
-      imported: toInsert.length,
-      duplicatesInInput: parsed.duplicatesInInput,
-      conflicts,
-      invalid: parsed.invalid,
-      availableTotal,
-    };
+  const availableTotal = await tx.couponCode.count({
+    where: { couponId, tenantId, status: 'AVAILABLE' },
   });
+
+  return {
+    imported: toInsert.length,
+    duplicatesInInput: parsed.duplicatesInInput,
+    conflicts,
+    invalid: parsed.invalid,
+    availableTotal,
+  };
 }
 
 /**
@@ -91,27 +88,24 @@ export async function importCodes(
  * 帶 couponId 時，這張券自己已匯入的序號列為 alreadyImported，不算與其他券衝突。
  */
 export async function previewImport(
-  prisma: PrismaClient,
-  tenantId: string,
+  ctx: TenantCtx,
   rawInput: string,
   couponId?: string,
 ): Promise<Omit<ImportResult, 'imported' | 'availableTotal'> & { willImport: number; alreadyImported: string[] }> {
   const parsed = parseCodeList(rawInput);
+  const { tx, tenantId } = ctx;
+  const taken = await takenKeys(tx, tenantId, parsed.valid);
+  const own = couponId ? await ownKeys(tx, tenantId, couponId, parsed.valid) : new Set<string>();
+  const alreadyImported = parsed.valid.filter((c) => own.has(couponCodeKey(c)));
+  const conflicts = parsed.valid.filter((c) => taken.has(couponCodeKey(c)) && !own.has(couponCodeKey(c)));
 
-  return withTenant(prisma, tenantId, async (tx) => {
-    const taken = await takenKeys(tx, tenantId, parsed.valid);
-    const own = couponId ? await ownKeys(tx, tenantId, couponId, parsed.valid) : new Set<string>();
-    const alreadyImported = parsed.valid.filter((c) => own.has(couponCodeKey(c)));
-    const conflicts = parsed.valid.filter((c) => taken.has(couponCodeKey(c)) && !own.has(couponCodeKey(c)));
-
-    return {
-      willImport: parsed.valid.length - conflicts.length - alreadyImported.length,
-      duplicatesInInput: parsed.duplicatesInInput,
-      conflicts,
-      alreadyImported,
-      invalid: parsed.invalid,
-    };
-  });
+  return {
+    willImport: parsed.valid.length - conflicts.length - alreadyImported.length,
+    duplicatesInInput: parsed.duplicatesInInput,
+    conflicts,
+    alreadyImported,
+    invalid: parsed.invalid,
+  };
 }
 
 /** 這張券自己庫存中的序號比對鍵 */
@@ -129,25 +123,23 @@ async function ownKeys(tx: Prisma.TransactionClient, tenantId: string, couponId:
  * 移除尚未配發的序號。已配發者（ASSIGNED）不可刪——顧客手上的券會查無此碼。
  */
 export async function removeAvailableCode(
-  prisma: PrismaClient,
-  tenantId: string,
+  ctx: TenantCtx,
   couponId: string,
   code: string,
 ): Promise<{ removed: boolean; reason?: 'NOT_FOUND' | 'ALREADY_ASSIGNED' }> {
   const normalized = normalizeImportedCode(code);
-  return withTenant(prisma, tenantId, async (tx) => {
-    const existing = await tx.couponCode.findFirst({
-      where: { tenantId, couponId, code: normalized },
-    });
-    if (!existing) return { removed: false, reason: 'NOT_FOUND' as const };
-    if (existing.status === 'ASSIGNED') {
-      return { removed: false, reason: 'ALREADY_ASSIGNED' as const };
-    }
-    const result = await tx.couponCode.deleteMany({
-      where: { id: existing.id, tenantId, status: 'AVAILABLE' },
-    });
-    return { removed: result.count > 0 };
+  const { tx, tenantId } = ctx;
+  const existing = await tx.couponCode.findFirst({
+    where: { tenantId, couponId, code: normalized },
   });
+  if (!existing) return { removed: false, reason: 'NOT_FOUND' as const };
+  if (existing.status === 'ASSIGNED') {
+    return { removed: false, reason: 'ALREADY_ASSIGNED' as const };
+  }
+  const result = await tx.couponCode.deleteMany({
+    where: { id: existing.id, tenantId, status: 'AVAILABLE' },
+  });
+  return { removed: result.count > 0 };
 }
 
 /**

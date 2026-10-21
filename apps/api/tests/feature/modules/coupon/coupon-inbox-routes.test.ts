@@ -14,6 +14,7 @@ import couponInboxRoutes from '#src/modules/coupon/coupon-inbox.routes.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { ctxOf } from '#tests/support/tenant-run.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -67,13 +68,13 @@ beforeAll(async () => {
   await owner.channelIdentity.create({ data: { contactId, channelId, channelType: 'LINE', uid: `${MARK}-uid` } });
   conversationId = (await owner.conversation.create({ data: { tenantId: T, contactId, channelId, channelType: 'LINE' } })).id;
   const c = await withTenant(prisma, T, (tx) =>
-    createCoupon(tx, T, creatorId, {
+    createCoupon(ctxOf(tx, T), creatorId, {
       name: `${MARK} 補償券`, couponType: 'DISCOUNT_AMOUNT', discountAmount: 100, purpose: 'SERVICE',
       validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'UNIQUE_CODE', codePrefix: 'RT',
       redeemMode: 'STAFF_CODE', staffCode: '582917', perContactLimit: 5,
     }));
   couponId = c.id;
-  assert.ok((await withTenant(prisma, T, (tx) => changeStatus(tx, T, couponId, 'ACTIVE'))).ok);
+  assert.ok((await withTenant(prisma, T, (tx) => changeStatus(ctxOf(tx, T), couponId, 'ACTIVE'))).ok);
 });
 
 afterAll(async () => {

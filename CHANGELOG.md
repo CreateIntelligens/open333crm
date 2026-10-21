@@ -59,6 +59,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **優惠券、門市核銷台與會員綁定改用租戶交易規則（main #337）**：service 一律收 `TenantCtx`、不自己開交易；後台路由用 `tenantHandler()`，顧客端、核銷台與排程以 `inTenant()` 開交易（入口集中在 `coupon-wallet.flow.ts`、`coupon-inbox.flow.ts`、`store-console.flow.ts`、`member-binding.flow.ts`）。
+  - 外部呼叫不在交易內：對話發券的渠道送出、LINE ID token 驗證、外部會員系統查詢都拆成「交易 → 外部呼叫 → 交易」。
+  - 券狀態即時事件與匯出完成通知改由 `ctx.notify()`／`ctx.notifyAgent()` 在 commit 後推播；匯出完成通知的房間改為 `tenant:<租戶>:agent:<座席>`（socket 連線時已加入）。
+  - 後台批次發券每 100 人一個交易（交易時限 5 秒）；後段批次失敗時回傳已發出的結果與 `stopped`（原因與未處理的聯絡人）。
+  - 序號明細匯出每 2000 筆一個交易讀取。
+  - `node scripts/check-tenant-ctx.mjs --strict` 不再因本分支增加舊寫法（main 既有的 `ai/deidentification.service.ts`、`ai.routes.ts` 兩處除外）。
+
 - **email 登記改為先驗證信箱**（add-coupon-system design D15）：顧客送出 email 後先寄 6 位數驗證碼到該信箱，輸入正確才寫入與歸戶。原本輸入別人的 email 就能併入對方、看到對方的券。驗證碼 10 分鐘有效、最多錯 5 次，同一個登記連結最多寄 3 次；寄信失敗回 502 並保留連結。新端點 `POST /api/v1/public/email-registration/:token/verify`。部署前確認 `EMAIL_DELIVERY_MODE` 不是只寫 log。
 - **票券頁需要登記時改為 email 優先**，租戶只啟用手機時才用手機。
 - **未驗證顧客重複開啟票券連結不再被限流**：30 分鐘內重用同一個登記連結，不必每次都產生新連結、很快碰到每小時 5 個的上限。

@@ -17,10 +17,10 @@ import couponFanRoutes from '#src/modules/coupon/coupon-fan.routes.js';
 import storeConsoleRoutes from '#src/modules/store/store-console.routes.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
-import { issueInConversation, type InboxIssueDeps } from '#src/modules/coupon/coupon-inbox.service.js';
+import { issueInConversation, type InboxFlowDeps } from '#src/modules/coupon/coupon-inbox.flow.js';
 import { createStore, createStoreAccount } from '#src/modules/store/store.service.js';
-import { COUPON_INSTANCE_UPDATED } from '#src/modules/coupon/coupon-events.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { ctxOf, recordingIo, type PushRecord } from '#tests/support/tenant-run.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -36,17 +36,19 @@ let selfCoupon = '';
 let storeId = '';
 const username = `rt-${Date.now().toString(36)}`;
 
-const emitted: Array<{ room: string; event: string; data: Record<string, unknown> }> = [];
-const updates = () => emitted.filter((e) => e.event === COUPON_INSTANCE_UPDATED);
-const io = { to: (room: string) => ({ emit: (event: string, data: Record<string, unknown>) => emitted.push({ room, event, data }) }) };
+const emitted: PushRecord[] = [];
+const updates = () =>
+  emitted.filter((e) => e.event === 'coupon.instance.updated') as Array<PushRecord & { data: Record<string, unknown> }>;
+const io = recordingIo(emitted);
 
 let app: FastifyInstance;
 
-const inboxDeps = (): InboxIssueDeps => ({
+const inboxDeps = (): InboxFlowDeps => ({
+  prisma,
+  io,
   store: getBindingStore(),
   webBaseUrl: 'https://crm.example.com',
   deliver: async () => ({ sent: true }),
-  emit: (room, event, data) => io.to(room).emit(event, data as Record<string, unknown>),
 });
 
 async function verifiedPerson(name: string) {
@@ -59,7 +61,7 @@ async function verifiedPerson(name: string) {
 }
 
 async function issue(p: { conversationId: string }, couponId: string) {
-  const r = await issueInConversation(prisma, inboxDeps(), {
+  const r = await issueInConversation(inboxDeps(), {
     tenantId: T, couponId, conversationId: p.conversationId, agentId, agentName: '小林',
     expectedAssigneeId: null, requestKey: randomUUID(),
   });
@@ -71,12 +73,12 @@ async function issue(p: { conversationId: string }, couponId: string) {
 
 async function coupon(name: string, redeemMode: 'STAFF_SCAN' | 'SELF') {
   const c = await withTenant(prisma, T, (tx) =>
-    createCoupon(tx, T, creatorId, {
+    createCoupon(ctxOf(tx, T), creatorId, {
       name: `${MARK} ${name}`, couponType: 'DISCOUNT_AMOUNT', discountAmount: 100, purpose: 'SERVICE',
       validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'UNIQUE_CODE', codePrefix: 'RT',
       redeemMode, perContactLimit: 20,
     } as never));
-  assert.ok((await withTenant(prisma, T, (tx) => changeStatus(tx, T, c.id, 'ACTIVE'))).ok);
+  assert.ok((await withTenant(prisma, T, (tx) => changeStatus(ctxOf(tx, T), c.id, 'ACTIVE'))).ok);
   return c.id;
 }
 
@@ -90,8 +92,8 @@ beforeAll(async () => {
   })).id;
   scanCoupon = await coupon('掃碼券', 'STAFF_SCAN');
   selfCoupon = await coupon('自助券', 'SELF');
-  storeId = (await withTenant(prisma, T, (tx) => createStore(tx, T, { name: `${MARK} 門市` }))).id;
-  await withTenant(prisma, T, (tx) => createStoreAccount(tx, T, { storeId, username, password: 'rt-pass-2026' }));
+  storeId = (await withTenant(prisma, T, (tx) => createStore(ctxOf(tx, T), { name: `${MARK} 門市` }))).id;
+  await withTenant(prisma, T, (tx) => createStoreAccount(ctxOf(tx, T), { storeId, username, password: 'rt-pass-2026' }));
 
   app = Fastify();
   await app.register(errorHandlerPlugin);

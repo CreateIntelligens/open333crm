@@ -4,24 +4,16 @@
  *
  * 門市憑證是 JWT（sub 'store'、typ 'store'），沒有 agentId，後台的 isAgentAccessToken 一律拒收。
  * 憑證帶帳號的 passwordVersion 與 sessionVersion，每次操作都與資料庫比對。
+ *
+ * 函式收 TenantCtx；租戶由門市憑證或帳號名稱決定，交易由 store-console.flow.ts 開（AGENTS.md 結構規則 2）。
  */
-import type { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { couponCodeKey } from '@open333crm/core';
 import { getConfig } from '../../config/env.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { verifyPassword } from '../../shared/utils/password.js';
-import type { BindingStore } from '../identity-binding/binding-code.js';
 import { walletStatusOf } from '../coupon/coupon-fan.service.js';
 import { redeemCoupon } from '../coupon/coupon-redeem.service.js';
-
-export interface StoreConsoleDeps {
-  /** 重試鍵的儲存（Redis；測試用記憶體版本） */
-  store: BindingStore;
-  now?: () => number;
-  /** 依帳號名稱找出租戶。正式版在 modules/auth 以 BYPASSRLS 連線查（登入前還不知道租戶） */
-  resolveTenant: (username: string) => Promise<string | null>;
-}
 
 const MIN_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MIN_MS;
@@ -30,8 +22,6 @@ export const MAX_LOGIN_FAILURES = 5;
 export const LOCK_MS = 15 * MIN_MS;
 const REMEMBER_EXPIRES = '30d';
 const SESSION_EXPIRES = '12h';
-/** 重試鍵保留多久：店員在網路恢復後重送，通常在幾十秒內 */
-const IDEMPOTENCY_TTL_MS = 10 * MIN_MS;
 /** 台灣不實施日光節約時間，「今天」固定以 UTC+8 計算 */
 const TAIPEI_OFFSET_MS = 8 * 60 * MIN_MS;
 
@@ -82,70 +72,67 @@ export type StoreLoginResult =
   | { ok: false; code: 'ACCOUNT_LOCKED'; lockedUntil: Date }
   | { ok: false; code: 'STORE_ACCOUNT_DISABLED' | 'STORE_CLOSED' | 'TENANT_DISABLED' };
 
+/** 帳號名稱的比對格式：前後空白不算、不分大小寫 */
+export const normalizeStoreUsername = (raw: string) => raw.trim().toLowerCase();
+
 /**
- * 門市帳號登入。帳號不存在與密碼錯誤回報相同結果，不透露帳號是否存在。
+ * 門市帳號登入（ctx 為帳號所屬租戶的交易）。帳號不存在與密碼錯誤回報相同結果，不透露帳號是否存在。
  * 停用與停業只在密碼正確時才回報，避免拿來探測帳號。
  */
 export async function loginStoreAccount(
-  prisma: PrismaClient,
-  deps: StoreConsoleDeps,
-  rawUsername: string,
+  ctx: TenantCtx,
+  username: string,
   password: string,
   remember: boolean,
+  now: Date,
 ): Promise<StoreLoginResult> {
-  const username = rawUsername.trim().toLowerCase();
-  const tenantId = await deps.resolveTenant(username);
-  if (!tenantId) return { ok: false, code: 'INVALID_CREDENTIALS' };
-  const now = new Date((deps.now ?? Date.now)());
+  const { tx, tenantId } = ctx;
+  // 鎖住這個帳號到交易結束：同時送出多個錯誤密碼時依序計數，不會各自讀到 0 再寫回 1 而永遠不鎖定
+  await tx.$queryRaw`
+    SELECT id FROM store_accounts
+    WHERE username = ${username} AND "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
+    FOR UPDATE`;
+  const account = await tx.storeAccount.findFirst({
+    where: { username, tenantId, deletedAt: null },
+    include: { store: { select: { name: true, isActive: true } }, tenant: { select: { isActive: true } } },
+  });
+  if (!account) return { ok: false as const, code: 'INVALID_CREDENTIALS' as const };
+  if (account.lockedUntil && account.lockedUntil > now) {
+    return { ok: false as const, code: 'ACCOUNT_LOCKED' as const, lockedUntil: account.lockedUntil };
+  }
 
-  return withTenant(prisma, tenantId, async (tx) => {
-    // 鎖住這個帳號到交易結束：同時送出多個錯誤密碼時依序計數，不會各自讀到 0 再寫回 1 而永遠不鎖定
-    await tx.$queryRaw`
-      SELECT id FROM store_accounts
-      WHERE username = ${username} AND "tenantId" = ${tenantId}::uuid AND "deletedAt" IS NULL
-      FOR UPDATE`;
-    const account = await tx.storeAccount.findFirst({
-      where: { username, tenantId, deletedAt: null },
-      include: { store: { select: { name: true, isActive: true } }, tenant: { select: { isActive: true } } },
-    });
-    if (!account) return { ok: false as const, code: 'INVALID_CREDENTIALS' as const };
-    if (account.lockedUntil && account.lockedUntil > now) {
-      return { ok: false as const, code: 'ACCOUNT_LOCKED' as const, lockedUntil: account.lockedUntil };
-    }
-
-    if (!(await verifyPassword(password, account.passwordHash))) {
-      // 鎖定期滿後重新計算錯誤次數
-      const failures = (account.lockedUntil ? 0 : account.failedLoginCount) + 1;
-      if (failures >= MAX_LOGIN_FAILURES) {
-        const lockedUntil = new Date(now.getTime() + LOCK_MS);
-        await tx.storeAccount.updateMany({
-          where: { id: account.id, tenantId },
-          data: { failedLoginCount: 0, lockedUntil },
-        });
-        return { ok: false as const, code: 'ACCOUNT_LOCKED' as const, lockedUntil };
-      }
+  if (!(await verifyPassword(password, account.passwordHash))) {
+    // 鎖定期滿後重新計算錯誤次數
+    const failures = (account.lockedUntil ? 0 : account.failedLoginCount) + 1;
+    if (failures >= MAX_LOGIN_FAILURES) {
+      const lockedUntil = new Date(now.getTime() + LOCK_MS);
       await tx.storeAccount.updateMany({
         where: { id: account.id, tenantId },
-        data: { failedLoginCount: failures, lockedUntil: null },
+        data: { failedLoginCount: 0, lockedUntil },
       });
-      return { ok: false as const, code: 'INVALID_CREDENTIALS' as const };
+      return { ok: false as const, code: 'ACCOUNT_LOCKED' as const, lockedUntil };
     }
-
     await tx.storeAccount.updateMany({
       where: { id: account.id, tenantId },
-      data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
+      data: { failedLoginCount: failures, lockedUntil: null },
     });
-    // 租戶停用（試用到期、合約終止）時與座席登入一致擋下
-    if (!account.tenant?.isActive) return { ok: false as const, code: 'TENANT_DISABLED' as const };
-    if (!account.isActive) return { ok: false as const, code: 'STORE_ACCOUNT_DISABLED' as const };
-    if (!account.store.isActive) return { ok: false as const, code: 'STORE_CLOSED' as const };
+    return { ok: false as const, code: 'INVALID_CREDENTIALS' as const };
+  }
 
-    const token = signStoreToken(
-      { accountId: account.id, tenantId, storeId: account.storeId, pv: account.passwordVersion, sv: account.sessionVersion },
-      remember,
-    );
-    return { ok: true as const, token, storeName: account.store.name, username, canRedeem: account.canRedeem };
+  await tx.storeAccount.updateMany({
+    where: { id: account.id, tenantId },
+    data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
   });
+  // 租戶停用（試用到期、合約終止）時與座席登入一致擋下
+  if (!account.tenant?.isActive) return { ok: false as const, code: 'TENANT_DISABLED' as const };
+  if (!account.isActive) return { ok: false as const, code: 'STORE_ACCOUNT_DISABLED' as const };
+  if (!account.store.isActive) return { ok: false as const, code: 'STORE_CLOSED' as const };
+
+  const token = signStoreToken(
+    { accountId: account.id, tenantId, storeId: account.storeId, pv: account.passwordVersion, sv: account.sessionVersion },
+    remember,
+  );
+  return { ok: true as const, token, storeName: account.store.name, username, canRedeem: account.canRedeem };
 }
 
 // ── 帳號狀態檢查 ───────────────────────────────────────────────────────────
@@ -170,15 +157,14 @@ export interface AuthorizedStore {
  * requireRedeem 為 false 時（帳號資訊）不檢查核銷權限，讓前端能顯示「沒有核銷權限」的說明。
  */
 export async function authorizeStoreSession(
-  prisma: PrismaClient,
+  ctx: TenantCtx,
   session: StoreSession,
   opts: { requireRedeem: boolean },
 ): Promise<AuthorizedStore | { ok: false; code: StoreSessionError }> {
-  const account = await withTenant(prisma, session.tenantId, (tx) =>
-    tx.storeAccount.findFirst({
-      where: { id: session.accountId, tenantId: session.tenantId },
-      include: { store: { select: { id: true, name: true, isActive: true } }, tenant: { select: { isActive: true } } },
-    }));
+  const account = await ctx.tx.storeAccount.findFirst({
+    where: { id: session.accountId, tenantId: ctx.tenantId },
+    include: { store: { select: { id: true, name: true, isActive: true } }, tenant: { select: { isActive: true } } },
+  });
   if (!account || account.deletedAt) return { ok: false, code: 'STORE_ACCOUNT_NOT_FOUND' };
   if (!account.tenant?.isActive) return { ok: false, code: 'TENANT_DISABLED' };
   if (account.passwordVersion !== session.pv) return { ok: false, code: 'PASSWORD_CHANGED' };
@@ -244,19 +230,18 @@ export interface StoreLookup {
  * 以券號找出這個租戶的券（忽略連字號與大小寫）。查無或屬於其他租戶都回 null。
  * 比對運算式必須與唯一索引 coupon_instances_tenantId_code_key_norm 相同，才會走索引且最多一筆。
  */
-async function findInstanceByCode(prisma: PrismaClient, tenantId: string, rawCode: string) {
+async function findInstanceByCode(ctx: TenantCtx, rawCode: string) {
+  const { tx, tenantId } = ctx;
   const key = couponCodeKey(rawCode);
   if (!key) return null;
-  return withTenant(prisma, tenantId, async (tx) => {
-    const rows = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM coupon_instances
-      WHERE "tenantId" = ${tenantId}::uuid
-        AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ${key}`;
-    if (rows.length === 0) return null;
-    return tx.couponInstance.findFirst({
-      where: { id: rows[0].id, tenantId },
-      include: { coupon: true, contact: { select: { displayName: true } } },
-    });
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM coupon_instances
+    WHERE "tenantId" = ${tenantId}::uuid
+      AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ${key}`;
+  if (rows.length === 0) return null;
+  return tx.couponInstance.findFirst({
+    where: { id: rows[0].id, tenantId },
+    include: { coupon: true, contact: { select: { displayName: true } } },
   });
 }
 
@@ -305,23 +290,20 @@ function judge(i: FoundInstance, now: number): StoreLookup {
 }
 
 /** 查券：只讀，不改變券的狀態 */
-export async function lookupStoreCoupon(
-  prisma: PrismaClient,
-  session: StoreSession,
-  rawCode: string,
-  now: number = Date.now(),
-): Promise<StoreLookup> {
-  const instance = await findInstanceByCode(prisma, session.tenantId, rawCode);
-  if (!instance) return { result: (await isSharedCode(prisma, session.tenantId, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
+export async function lookupStoreCoupon(ctx: TenantCtx, rawCode: string, now: number = Date.now()): Promise<StoreLookup> {
+  const instance = await findInstanceByCode(ctx, rawCode);
+  if (!instance) return { result: (await isSharedCode(ctx, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
   return judge(instance, now);
 }
 
 /** 輸入的是否為某張共用碼券的共用券號（共用碼存為大寫英數） */
-async function isSharedCode(prisma: PrismaClient, tenantId: string, rawCode: string): Promise<boolean> {
+async function isSharedCode(ctx: TenantCtx, rawCode: string): Promise<boolean> {
   const key = couponCodeKey(rawCode);
   if (!key) return false;
-  const coupon = await withTenant(prisma, tenantId, (tx) =>
-    tx.coupon.findFirst({ where: { tenantId, codeMode: 'SHARED_CODE', sharedCode: key }, select: { id: true } }));
+  const coupon = await ctx.tx.coupon.findFirst({
+    where: { tenantId: ctx.tenantId, codeMode: 'SHARED_CODE', sharedCode: key },
+    select: { id: true },
+  });
   return coupon != null;
 }
 
@@ -342,8 +324,7 @@ export type StoreRedeemFailure =
   | 'KEY_REUSED';
 
 export type StoreRedeemResult =
-  /** contactId 只給路由推送即時事件（design D23），不回給核銷台 */
-  | { ok: true; redeemedAt: Date; storeName: string; coupon: StoreCouponView; contactId?: string | null }
+  | { ok: true; redeemedAt: Date; storeName: string; coupon: StoreCouponView }
   | { ok: false; reason: StoreRedeemFailure; coupon?: StoreCouponView; redeemedAt?: Date; redeemedStoreName?: string | null };
 
 const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, StoreRedeemFailure> = {
@@ -357,84 +338,20 @@ const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, StoreRedeemFailure> = 
   SHARED_CODE: 'SHARED_CODE',
 };
 
-const idempotencyKey = (accountId: string, key: string) => `store-redeem:${accountId}:${key}`;
-
-function reviveDates(r: StoreRedeemResult): StoreRedeemResult {
-  const date = (v: unknown) => (v ? new Date(v as string) : undefined);
-  const coupon = r.coupon
-    ? { ...r.coupon, startAt: date(r.coupon.startAt) ?? null, endAt: date(r.coupon.endAt) ?? null, expiresAt: date(r.coupon.expiresAt) ?? null }
-    : undefined;
-  return r.ok
-    ? { ...r, redeemedAt: new Date(r.redeemedAt), coupon: coupon! }
-    : { ...r, coupon, redeemedAt: date(r.redeemedAt) };
-}
-
 /**
- * 確認核銷。同一個重試鍵在 10 分鐘內回傳第一次的結果（網路逾時後重送不會重複核銷，也不會誤報已使用）。
- * 兩台手機同時核銷時，交易內的條件式更新只讓一個成功；另一個回報已使用並附核銷門市。
+ * 核銷一次（不含重試鍵，重試鍵由 flow 處理）。查券、記錄門市與核銷在同一個交易內；
+ * 兩台手機同時核銷時，條件式更新只讓一個成功，另一個回報已使用並附核銷門市。
+ * 成功時由 redeemCoupon 推播券狀態更新（commit 後送出，design D23）。
  */
-export async function redeemAtStore(
-  prisma: PrismaClient,
-  deps: StoreConsoleDeps,
+export async function redeemStoreCoupon(
+  ctx: TenantCtx,
   session: StoreSession,
   rawCode: string,
-  key: string,
+  now: number,
 ): Promise<StoreRedeemResult> {
-  const cacheKey = idempotencyKey(session.accountId, key);
-  // 重試鍵綁定券號：同一個鍵換成別張券，不回傳上一張券的結果
-  const codeKey = couponCodeKey(rawCode);
-  // 先佔住重試鍵再核銷：第一個請求還在處理時重送，等它的結果，不再核銷一次
-  //（否則第二次會撞「已使用」，店員看到已使用而拒收）
-  const claimed = await deps.store.set(cacheKey, JSON.stringify({ pending: true, code: codeKey }), 'PX', IDEMPOTENCY_TTL_MS, 'NX');
-  if (claimed !== 'OK') return waitForResult(deps.store, cacheKey, codeKey);
-
-  let result: StoreRedeemResult;
-  try {
-    result = await redeemOnce(prisma, deps, session, rawCode);
-  } catch (err) {
-    await deps.store.getdel(cacheKey);
-    throw err;
-  }
-  // 以 XX 直接把「處理中」換成結果：先刪再寫會留下空窗，重送的請求會趁空窗再核銷一次
-  await deps.store.set(cacheKey, JSON.stringify({ code: codeKey, result }), 'PX', IDEMPOTENCY_TTL_MS, 'XX');
-  return result;
-}
-
-/** 等待同一個重試鍵的第一個請求完成的最長時間 */
-const WAIT_RESULT_MS = 10_000;
-const WAIT_STEP_MS = 100;
-
-/** 核銷台的「處理中」：第一個請求在等待時間內沒有完成，請店員稍後再按（沿用同一個重試鍵） */
-export class StoreRedeemInProgressError extends Error {
-  constructor() {
-    super('上一次核銷還在處理中');
-    this.name = 'StoreRedeemInProgressError';
-  }
-}
-
-async function waitForResult(store: BindingStore, cacheKey: string, codeKey: string): Promise<StoreRedeemResult> {
-  for (let waited = 0; waited <= WAIT_RESULT_MS; waited += WAIT_STEP_MS) {
-    const raw = await store.get(cacheKey);
-    // 第一個請求失敗並清掉了鍵：結果不明，交給店員重送
-    if (!raw) break;
-    const stored = JSON.parse(raw) as { pending?: boolean; code?: string; result?: StoreRedeemResult };
-    if (stored.code !== codeKey) return { ok: false, reason: 'KEY_REUSED' };
-    if (stored.result) return reviveDates(stored.result);
-    await new Promise((r) => setTimeout(r, WAIT_STEP_MS));
-  }
-  throw new StoreRedeemInProgressError();
-}
-
-async function redeemOnce(
-  prisma: PrismaClient,
-  deps: StoreConsoleDeps,
-  session: StoreSession,
-  rawCode: string,
-): Promise<StoreRedeemResult> {
-  const now = (deps.now ?? Date.now)();
-  const instance = await findInstanceByCode(prisma, session.tenantId, rawCode);
+  const instance = await findInstanceByCode(ctx, rawCode);
   if (!instance) {
-    return { ok: false, reason: (await isSharedCode(prisma, session.tenantId, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
+    return { ok: false, reason: (await isSharedCode(ctx, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
   }
   const lookup = judge(instance, now);
   if (lookup.result !== 'OK') {
@@ -447,14 +364,13 @@ async function redeemOnce(
     };
   }
 
-  const who = await withTenant(prisma, session.tenantId, (tx) =>
-    tx.storeAccount.findFirst({
-      where: { id: session.accountId, tenantId: session.tenantId },
-      select: { username: true, store: { select: { id: true, name: true } } },
-    }));
+  const who = await ctx.tx.storeAccount.findFirst({
+    where: { id: session.accountId, tenantId: ctx.tenantId },
+    select: { username: true, store: { select: { id: true, name: true } } },
+  });
   if (!who) return { ok: false, reason: 'NOT_FOUND' };
 
-  const redeemed = await redeemCoupon(prisma, session.tenantId, {
+  const redeemed = await redeemCoupon(ctx, {
     instanceId: instance.id,
     redeemedBy: null,
     redeemChannel: 'store_console',
@@ -462,11 +378,11 @@ async function redeemOnce(
     store: { id: who.store.id, name: who.store.name, account: who.username },
   });
   if (redeemed.ok) {
-    return { ok: true, redeemedAt: redeemed.redeemedAt, storeName: who.store.name, coupon: lookup.coupon!, contactId: redeemed.contactId };
+    return { ok: true, redeemedAt: redeemed.redeemedAt, storeName: who.store.name, coupon: lookup.coupon! };
   }
   if (redeemed.reason === 'CONFLICT' || redeemed.reason === 'ALREADY_REDEEMED') {
     // 被另一台手機搶先：重新讀出是哪間門市、什麼時候核銷的
-    const latest = await findInstanceByCode(prisma, session.tenantId, rawCode);
+    const latest = await findInstanceByCode(ctx, rawCode);
     return {
       ok: false,
       reason: 'ALREADY_REDEEMED',
@@ -493,20 +409,19 @@ function startOfTaipeiDay(now: number): Date {
  * 本門市今天（台灣時間）在核銷台核銷的紀錄，時間由新到舊。
  * 折抵總額只計元折抵券的面額——% 折扣券的實際折抵金額要看消費金額，流程中沒有輸入（design D13 待 PM）。
  */
-export async function listTodayRedemptions(prisma: PrismaClient, session: StoreSession, now: number = Date.now()) {
+export async function listTodayRedemptions(ctx: TenantCtx, session: StoreSession, now: number = Date.now()) {
   const from = startOfTaipeiDay(now);
-  const rows = await withTenant(prisma, session.tenantId, (tx) =>
-    tx.couponInstance.findMany({
-      where: {
-        tenantId: session.tenantId,
-        redeemedStoreId: session.storeId,
-        status: 'REDEEMED',
-        redeemedAt: { gte: from, lt: new Date(from.getTime() + DAY_MS) },
-      },
-      include: { coupon: true, contact: { select: { displayName: true } } },
-      orderBy: { redeemedAt: 'desc' },
-      take: 500,
-    }));
+  const rows = await ctx.tx.couponInstance.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      redeemedStoreId: session.storeId,
+      status: 'REDEEMED',
+      redeemedAt: { gte: from, lt: new Date(from.getTime() + DAY_MS) },
+    },
+    include: { coupon: true, contact: { select: { displayName: true } } },
+    orderBy: { redeemedAt: 'desc' },
+    take: 500,
+  });
   const items = rows.map((r) => ({ ...toStoreView(r), redeemedAt: r.redeemedAt as Date }));
   const summary = { count: items.length, discountTotal: 0, giftCount: 0, exchangeCount: 0 };
   for (const item of items) {

@@ -12,12 +12,12 @@ import {
   EXPORT_SYNC_LIMIT,
   countInstances,
   readExportFile,
+  recordExportNotice,
   startBackgroundExport,
-  type ExportNotice,
 } from './coupon-export.service.js';
 import { getBindingStore, type BindingStore } from '../identity-binding/binding-code.js';
-import { createAndDispatch } from '../notification/notification.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
+import { eventBus } from '../../events/event-bus.js';
 
 const date = z.coerce.date({ errorMap: () => ({ message: '日期格式不正確' }) });
 
@@ -48,6 +48,11 @@ function csvDisposition(couponName: string): string {
   return `attachment; filename="coupon.csv"; filename*=UTF-8''${encodeURIComponent(`coupon_${safeName}.csv`)}`;
 }
 
+function notFound(reply: TenantReply) {
+  reply.code(404);
+  return { success: false, error: { code: 'NOT_FOUND', message: '查無此券' } };
+}
+
 export default async function couponInstanceRoutes(app: FastifyInstance, opts: CouponInstanceRoutesOptions = {}) {
   const exportStore = () => opts.exportStore ?? getBindingStore();
   const syncLimit = opts.exportSyncLimit ?? EXPORT_SYNC_LIMIT;
@@ -56,48 +61,54 @@ export default async function couponInstanceRoutes(app: FastifyInstance, opts: C
 
   // ── 成效與名單 ──
 
-  app.get('/:id/stats', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
+  app.get('/:id/stats', { preHandler: [requirePermission('coupon.view')] }, tenantHandler(app, async (request, reply, ctx) => {
     const { id } = idParams.parse(request.params);
-    const stats = await getCouponStats(request.tenantPrisma, request.agent.tenantId, id);
-    if (!stats) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-    }
+    const stats = await getCouponStats(ctx, id);
+    if (!stats) return notFound(reply);
     return { success: true, data: stats };
-  });
+  }));
 
-  app.get('/:id/instances', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
+  app.get('/:id/instances', { preHandler: [requirePermission('coupon.view')] }, tenantHandler(app, async (request, _reply, ctx) => {
     const { id } = idParams.parse(request.params);
     const query = instanceQuerySchema.parse(request.query);
-    const result = await listInstances(request.tenantPrisma, request.agent.tenantId, id, query);
+    const result = await listInstances(ctx, id, query);
     return {
       success: true,
       data: result.items,
       meta: { total: result.total, page: result.page, limit: result.limit },
     };
-  });
+  }));
 
   app.get('/:id/instances/export', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const coupon = await getCoupon(request.tenantPrisma, request.agent.tenantId, id);
-    if (!coupon) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-    }
     const { tenantId, id: agentId } = request.agent;
+    const runInTenant = <T>(fn: (ctx: TenantCtx) => Promise<T>) =>
+      inTenant({ prisma: app.prisma, io: app.io, events: eventBus }, tenantId, fn);
+
+    const found = await runInTenant(async (ctx) => {
+      const coupon = await getCoupon(ctx, id);
+      return coupon ? { name: coupon.name, count: await countInstances(ctx, id) } : null;
+    });
+    if (!found) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
+
     // 明細太多時改背景產生，完成後以站內通知告知（design D22）
-    if ((await countInstances(request.tenantPrisma, tenantId, id)) > syncLimit) {
-      const notify = (notice: ExportNotice) =>
-        withTenant(app.prisma, notice.tenantId, (tx) => createAndDispatch(tx, app.io, notice)).then(() => undefined);
+    if (found.count > syncLimit) {
       const { jobId } = startBackgroundExport(
-        app.prisma,
-        { store: exportStore(), notify, beforeGenerate: opts.beforeBackgroundExport },
-        { tenantId, agentId, couponId: id, couponName: coupon.name, fileName: coupon.name },
+        {
+          store: exportStore(),
+          notify: (notice) => runInTenant((ctx) => recordExportNotice(ctx, notice)),
+          runInTenant,
+          beforeGenerate: opts.beforeBackgroundExport,
+        },
+        { tenantId, agentId, couponId: id, couponName: found.name, fileName: found.name },
       );
       return reply.status(202).send({ success: true, data: { mode: 'background', jobId } });
     }
-    const csv = await exportInstancesCsv(request.tenantPrisma, tenantId, id);
+    // 同步匯出也分頁讀，每頁一個交易，避開 5 秒的交易時限
+    const csv = await exportInstancesCsv(runInTenant, id);
     return reply
       .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', csvDisposition(coupon.name))
+      .header('Content-Disposition', csvDisposition(found.name))
       .send(csv);
   });
 

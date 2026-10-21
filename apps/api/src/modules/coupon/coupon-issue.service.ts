@@ -3,21 +3,20 @@
  *
  * 核心邏輯在 `@open333crm/core` 的 issueInstances——關鍵字觸發的發券在 workers
  * 執行且不能相依 apps/api，兩端必須共用同一套配額規則，否則總量上限會不一致。
- * 本檔負責 apps/api 這側的租戶注入（withTenant）與錯誤轉換。
+ * 本檔負責 apps/api 這側的錯誤轉換與貼標；交易由入口開（TenantCtx）。
  *
  * ⚠️ 全程在交易內：配額檢查與建立之間若被插隊，總量會超發。
- * TenantDb 不含 $transaction，故此處收 PrismaClient（見 lib/tenant-db.ts 註解）。
  */
-import type { Prisma, PrismaClient } from '@prisma/client';
+
 import { couponSourceName, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { applyClaimTag } from './coupon-tagging.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export type { IssuedInstance };
 
-/** 批次發券的交易時限 */
-const BULK_ISSUE_TX_TIMEOUT_MS = 60_000;
+/** 入口分批發券時每批的人數：每人約 4～8 個查詢，一批要在 5 秒的交易時限內完成 */
+export const ISSUE_BATCH_SIZE = 100;
 
 export interface IssueOptions {
   /** 發放對象。FB／IG 對象亦可，領取時會改綁為完成驗證的聯絡人 */
@@ -46,29 +45,16 @@ export interface IssueResult {
   skipped: Array<{ contactId: string; reason: IssueSkipReason }>;
 }
 
-export async function issueCoupons(
-  prisma: PrismaClient,
-  tenantId: string,
-  couponId: string,
-  opts: IssueOptions,
-): Promise<IssueResult> {
-  if (opts.contactIds.length === 0) {
-    throw new CouponValidationError('請選擇發放對象');
-  }
-  // 一次最多 1,000 人，每人約 4～8 個查詢：預設 5 秒的交易時限不夠，逾時會整批回滾
-  return withTenant(prisma, tenantId, (tx) => issueCouponsInTx(tx, tenantId, couponId, opts), { timeout: BULK_ISSUE_TX_TIMEOUT_MS });
-}
-
 /**
- * 在呼叫端的交易內發券（對話發券先在短交易內保留，見 design D16）。
- * tx 必須已綁定租戶（withTenant）。
+ * 在入口開的交易內發券（對話發券先在短交易內保留，見 design D16）。
+ * 交易時限 5 秒：大批發券由入口分批，每批一個交易（券的鎖讓每人上限與總量在批次間仍正確）。
  */
-export async function issueCouponsInTx(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
+export async function issueCoupons(
+  ctx: TenantCtx,
   couponId: string,
   opts: IssueOptions,
 ): Promise<IssueResult> {
+  const { tx, tenantId } = ctx;
   if (opts.contactIds.length === 0) {
     throw new CouponValidationError('請選擇發放對象');
   }

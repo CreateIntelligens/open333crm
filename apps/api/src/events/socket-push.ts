@@ -18,7 +18,9 @@ export type TenantPushName =
   | 'case.deleted'
   | 'contact.merged'
   | 'contact.merge_reverted'
-  | 'link.stats.updated';
+  | 'link.stats.updated'
+  /** 券發出、顧客開啟、核銷：收件匣「已發優惠券」重新載入（add-coupon-system design D23） */
+  | 'coupon.instance.updated';
 
 /** 給單一客服人員的推播：送到帶租戶 ID 的成員房間 */
 export type AgentPushName = 'notification.new';

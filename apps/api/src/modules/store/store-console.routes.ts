@@ -8,22 +8,23 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { getBindingStore } from '../identity-binding/binding-code.js';
-import { emitCouponInstanceUpdated } from '../coupon/coupon-events.js';
 import { storeLoginLookups } from '../auth/store-account-login.js';
 import {
-  authorizeStoreSession,
   isExpiredStoreToken,
-  listTodayRedemptions,
-  loginStoreAccount,
-  lookupStoreCoupon,
-  redeemAtStore,
-  StoreRedeemInProgressError,
   verifyStoreToken,
   type AuthorizedStore,
-  type StoreConsoleDeps,
   type StoreSession,
   type StoreSessionError,
 } from './store-console.service.js';
+import {
+  authorizeStoreSessionFlow,
+  listTodayRedemptionsFlow,
+  loginStoreAccountFlow,
+  lookupStoreCouponFlow,
+  redeemAtStore,
+  StoreRedeemInProgressError,
+  type StoreConsoleFlowDeps,
+} from './store-console.flow.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -51,7 +52,12 @@ function sendSessionError(reply: FastifyReply, code: keyof typeof SESSION_ERRORS
 
 export default async function storeConsoleRoutes(app: FastifyInstance) {
   const lookups = storeLoginLookups(app);
-  const deps = (): StoreConsoleDeps => ({ store: getBindingStore(), resolveTenant: lookups.resolveTenant });
+  const deps = (): StoreConsoleFlowDeps => ({
+    prisma: app.prisma,
+    io: app.io,
+    store: getBindingStore(),
+    resolveTenant: lookups.resolveTenant,
+  });
 
   // 登入防暴力嘗試；帳號另有錯 5 次鎖 15 分鐘
   await app.register(rateLimit, { global: true, max: 120, timeWindow: '1 minute', keyGenerator: (request) => request.ip });
@@ -61,7 +67,7 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
     const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
     const session = token ? verifyStoreToken(token) : null;
     if (!session) return sendSessionError(reply, token && isExpiredStoreToken(token) ? 'SESSION_EXPIRED' : 'UNAUTHORIZED');
-    const auth = await authorizeStoreSession(app.prisma, session, { requireRedeem });
+    const auth = await authorizeStoreSessionFlow(deps(), session, { requireRedeem });
     if (!auth.ok) return sendSessionError(reply, auth.code);
     request.storeSession = session;
     request.storeAuth = auth;
@@ -71,7 +77,7 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
     const body = z
       .object({ username: z.string().min(1).max(64), password: z.string().min(1).max(100), remember: z.boolean().default(true) })
       .parse(request.body);
-    const result = await loginStoreAccount(app.prisma, deps(), body.username, body.password, body.remember);
+    const result = await loginStoreAccountFlow(deps(), body.username, body.password, body.remember);
     if (result.ok) return { success: true, data: result };
     if (result.code === 'INVALID_CREDENTIALS') {
       return reply.status(401).send({ success: false, error: { code: result.code, message: '帳號或密碼錯誤' } });
@@ -100,7 +106,7 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
   /** 查券：只讀，不改變券的狀態 */
   app.get('/lookup', { preHandler: guard(true) }, async (request) => {
     const { code } = z.object({ code: z.string().min(1).max(64) }).parse(request.query);
-    return { success: true, data: await lookupStoreCoupon(app.prisma, request.storeSession!, code) };
+    return { success: true, data: await lookupStoreCouponFlow(deps(), request.storeSession!, code) };
   });
 
   /** 確認核銷。key 為前端每次確認時產生的重試鍵，網路重送時沿用同一個 */
@@ -108,7 +114,7 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
     const body = z.object({ code: z.string().min(1).max(64), key: z.string().min(8).max(64) }).parse(request.body);
     let result;
     try {
-      result = await redeemAtStore(app.prisma, deps(), request.storeSession!, body.code, body.key);
+      result = await redeemAtStore(deps(), request.storeSession!, body.code, body.key);
     } catch (err) {
       // 同一個重試鍵的上一次核銷還沒完成：前端視為網路不穩，沿用同一個鍵重送即可取得結果
       if (err instanceof StoreRedeemInProgressError) {
@@ -119,20 +125,11 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
       }
       throw err;
     }
-    if (result.ok) {
-      const { contactId, ...rest } = result;
-      emitCouponInstanceUpdated(app.io, request.storeSession!.tenantId, {
-        instanceId: rest.coupon.instanceId,
-        contactId: contactId ?? null,
-        change: 'redeemed',
-      });
-      return { success: true, data: rest };
-    }
-    // 核銷失敗（已使用、過期等）是業務結果，不是請求錯誤：照常回 200，由 data.ok 區分
+    // 成功時券狀態更新由 service 在 commit 後推播。核銷失敗（已使用、過期等）是業務結果，不是請求錯誤：照常回 200，由 data.ok 區分
     return { success: true, data: result };
   });
 
   app.get('/today', { preHandler: guard(true) }, async (request) => {
-    return { success: true, data: await listTodayRedemptions(app.prisma, request.storeSession!) };
+    return { success: true, data: await listTodayRedemptionsFlow(deps(), request.storeSession!) };
   });
 }

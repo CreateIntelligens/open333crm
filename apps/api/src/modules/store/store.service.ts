@@ -1,12 +1,12 @@
 /**
  * 門市與門市帳號管理（後台，add-coupon-system design D13）。
  *
- * 租戶隔離：所有函式收 TenantDb（已綁租戶的連線），並仍帶 where tenantId。
+ * 租戶隔離：所有函式收 TenantCtx（入口開的租戶交易），並仍帶 where tenantId。
  * 回應一律不含密碼雜湊。
  */
 import { Prisma } from '@prisma/client';
 import QRCode from 'qrcode';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { hashPassword } from '../../shared/utils/password.js';
 
 /** 欄位格式錯誤，route 轉 400 */
@@ -49,7 +49,8 @@ function assertPassword(password: string): void {
 }
 
 /** 門市列表，含各門市未刪除的帳號（不含密碼雜湊） */
-export async function listStores(db: TenantDb, tenantId: string) {
+export async function listStores(ctx: TenantCtx) {
+  const { tx: db, tenantId } = ctx;
   return db.store.findMany({
     where: { tenantId },
     orderBy: { createdAt: 'asc' },
@@ -59,18 +60,21 @@ export async function listStores(db: TenantDb, tenantId: string) {
   });
 }
 
-export async function getStore(db: TenantDb, tenantId: string, id: string) {
+export async function getStore(ctx: TenantCtx, id: string) {
+  const { tx: db, tenantId } = ctx;
   return db.store.findFirst({ where: { id, tenantId } });
 }
 
-export async function createStore(db: TenantDb, tenantId: string, input: { name: string }) {
+export async function createStore(ctx: TenantCtx, input: { name: string }) {
+  const { tx: db, tenantId } = ctx;
   const name = input.name.trim();
   if (!name) throw new StoreValidationError('請填寫門市名稱');
   return db.store.create({ data: { tenantId, name } });
 }
 
 /** 改名或設定停業／恢復營業。停業的門市不能核銷，已登入的裝置下一次操作就會被擋。 */
-export async function updateStore(db: TenantDb, tenantId: string, id: string, input: { name?: string; isActive?: boolean }) {
+export async function updateStore(ctx: TenantCtx, id: string, input: { name?: string; isActive?: boolean }) {
+  const { tx: db, tenantId } = ctx;
   const data: Prisma.StoreUpdateManyMutationInput = {};
   if (input.name !== undefined) {
     const name = input.name.trim();
@@ -80,7 +84,7 @@ export async function updateStore(db: TenantDb, tenantId: string, id: string, in
   if (input.isActive !== undefined) data.isActive = input.isActive;
   const result = await db.store.updateMany({ where: { id, tenantId }, data });
   if (result.count === 0) return null;
-  return getStore(db, tenantId, id);
+  return getStore(ctx, id);
 }
 
 /**
@@ -88,10 +92,10 @@ export async function updateStore(db: TenantDb, tenantId: string, id: string, in
  * 只能靠唯一索引擋下，再轉成可讀的訊息。
  */
 export async function createStoreAccount(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   input: { storeId: string; username: string; password: string; canRedeem?: boolean },
 ): Promise<StoreAccountView> {
+  const { tx: db, tenantId } = ctx;
   const username = input.username.trim();
   if (!USERNAME_PATTERN.test(username)) {
     throw new StoreValidationError('帳號名稱只能使用英文小寫、數字與連字號，3–32 字');
@@ -119,24 +123,25 @@ export async function createStoreAccount(
   }
 }
 
-async function updateAccount(db: TenantDb, tenantId: string, id: string, data: Prisma.StoreAccountUpdateManyMutationInput) {
+async function updateAccount(ctx: TenantCtx, id: string, data: Prisma.StoreAccountUpdateManyMutationInput) {
+  const { tx: db, tenantId } = ctx;
   const result = await db.storeAccount.updateMany({ where: { id, tenantId, deletedAt: null }, data });
   if (result.count === 0) return null;
   return db.storeAccount.findFirst({ where: { id, tenantId }, select: ACCOUNT_SELECT });
 }
 
 /** 開關核銷權限、停用或啟用帳號 */
-export function updateStoreAccount(db: TenantDb, tenantId: string, id: string, input: { canRedeem?: boolean; isActive?: boolean }) {
+export function updateStoreAccount(ctx: TenantCtx, id: string, input: { canRedeem?: boolean; isActive?: boolean }) {
   const data: Prisma.StoreAccountUpdateManyMutationInput = {};
   if (input.canRedeem !== undefined) data.canRedeem = input.canRedeem;
   if (input.isActive !== undefined) data.isActive = input.isActive;
-  return updateAccount(db, tenantId, id, data);
+  return updateAccount(ctx, id, data);
 }
 
 /** 重設密碼：舊的登入全部失效（PASSWORD_CHANGED），並解除鎖定 */
-export async function resetStoreAccountPassword(db: TenantDb, tenantId: string, id: string, password: string) {
+export async function resetStoreAccountPassword(ctx: TenantCtx, id: string, password: string) {
   assertPassword(password);
-  return updateAccount(db, tenantId, id, {
+  return updateAccount(ctx, id, {
     passwordHash: await hashPassword(password),
     passwordVersion: { increment: 1 },
     failedLoginCount: 0,
@@ -145,12 +150,13 @@ export async function resetStoreAccountPassword(db: TenantDb, tenantId: string, 
 }
 
 /** 強制登出：這個帳號在所有裝置的登入都失效（SESSION_REVOKED） */
-export function forceLogoutStoreAccount(db: TenantDb, tenantId: string, id: string) {
-  return updateAccount(db, tenantId, id, { sessionVersion: { increment: 1 } });
+export function forceLogoutStoreAccount(ctx: TenantCtx, id: string) {
+  return updateAccount(ctx, id, { sessionVersion: { increment: 1 } });
 }
 
 /** 刪除帳號：保留紀錄並標記刪除，已登入的裝置得知「找不到此門市帳號」 */
-export async function deleteStoreAccount(db: TenantDb, tenantId: string, id: string): Promise<boolean> {
+export async function deleteStoreAccount(ctx: TenantCtx, id: string): Promise<boolean> {
+  const { tx: db, tenantId } = ctx;
   const result = await db.storeAccount.updateMany({
     where: { id, tenantId, deletedAt: null },
     data: { deletedAt: new Date(), isActive: false },
@@ -162,8 +168,8 @@ export async function deleteStoreAccount(db: TenantDb, tenantId: string, id: str
  * 櫃檯海報：QR Code 只開啟該門市的核銷台登入頁（網址帶門市 id，不帶任何憑證），
  * 店員仍須輸入門市帳號與密碼。網址以設定的 WEB_BASE_URL 組成，不採用瀏覽器傳來的網址。
  */
-export async function getStorePoster(db: TenantDb, tenantId: string, id: string, webBaseUrl: string) {
-  const store = await getStore(db, tenantId, id);
+export async function getStorePoster(ctx: TenantCtx, id: string, webBaseUrl: string) {
+  const store = await getStore(ctx, id);
   if (!store) return null;
   const base = webBaseUrl.replace(/\/+$/, '');
   // QR 帶門市 id，登入頁能先顯示門市名稱；印給人手打的網址不帶 id（帳號本身綁定門市，打 UUID 不實際）

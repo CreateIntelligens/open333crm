@@ -5,11 +5,10 @@
  * 產生失敗也發通知（失敗不能只寫 log）。下載只允許匯出者本人與同租戶。
  */
 import { randomBytes } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
 import { logger } from '@open333crm/core';
-import { withTenant, type TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
-import { exportInstancesCsv } from './coupon-stats.service.js';
+import { exportInstancesCsv, type RunInTenant } from './coupon-stats.service.js';
 
 /** 明細超過這個筆數改背景產生 */
 export const EXPORT_SYNC_LIMIT = 5000;
@@ -37,21 +36,37 @@ export interface ExportNotice {
 
 export interface BackgroundExportDeps {
   store: BindingStore;
-  /** 發站內通知（呼叫端以 withTenant＋createAndDispatch 實作） */
+  /** 發站內通知（呼叫端以 inTenant＋recordExportNotice 實作） */
   notify: (notice: ExportNotice) => Promise<void>;
+  /** 在租戶交易內執行（入口以 inTenant 實作）；每頁一個交易，避開 5 秒的交易時限 */
+  runInTenant: RunInTenant;
   /** 測試用：產生前執行，可丟錯模擬失敗 */
   beforeGenerate?: () => Promise<void>;
 }
 
-export function countInstances(db: TenantDb, tenantId: string, couponId: string): Promise<number> {
-  return db.couponInstance.count({ where: { couponId, tenantId } });
+/** 寫入站內通知，commit 後推播給匯出者（入口以 inTenant 開交易後呼叫） */
+export async function recordExportNotice(ctx: TenantCtx, notice: ExportNotice): Promise<void> {
+  const notification = await ctx.tx.notification.create({
+    data: {
+      tenantId: ctx.tenantId,
+      agentId: notice.agentId,
+      type: notice.type,
+      title: notice.title,
+      body: notice.body,
+      clickUrl: notice.clickUrl,
+    },
+  });
+  ctx.notifyAgent(notice.agentId, 'notification.new', notification);
+}
+
+export function countInstances(ctx: TenantCtx, couponId: string): Promise<number> {
+  return ctx.tx.couponInstance.count({ where: { couponId, tenantId: ctx.tenantId } });
 }
 
 /**
  * 開始背景匯出，立即回傳匯出編號；產生與通知在背景進行，回傳的 done 只給測試等待。
  */
 export function startBackgroundExport(
-  prisma: PrismaClient,
   deps: BackgroundExportDeps,
   job: { tenantId: string; agentId: string; couponId: string; couponName: string; fileName: string },
 ): { jobId: string; done: Promise<void> } {
@@ -59,8 +74,7 @@ export function startBackgroundExport(
   const done = (async () => {
     try {
       await deps.beforeGenerate?.();
-      // 超過 5,000 筆才走背景，查詢與組字串都較久：放寬交易時限
-      const csv = await withTenant(prisma, job.tenantId, (tx) => exportInstancesCsv(tx, job.tenantId, job.couponId), { timeout: 120_000 });
+      const csv = await exportInstancesCsv(deps.runInTenant, job.couponId);
       const stored: StoredExport = { tenantId: job.tenantId, agentId: job.agentId, fileName: job.fileName, csv };
       await deps.store.set(fileKey(jobId), JSON.stringify(stored), 'PX', EXPORT_FILE_TTL_MS, 'NX');
       await deps.notify({

@@ -5,7 +5,7 @@
  * 已結束的券若能復活，顧客手上過期的券會突然又能用。
  */
 import type { Prisma } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { CouponValidationError } from './coupon.service.js';
 
 type CouponStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
@@ -29,7 +29,9 @@ const STATUS_LABEL: Record<CouponStatus, string> = {
  * 發布前檢查：設定不完整的券一旦發出去，顧客會拿到不能用的券。
  * 這些檢查刻意只在發布時做，讓草稿階段可以慢慢填。
  */
-export async function validateForPublish(db: TenantDb, tenantId: string, couponId: string): Promise<void> {
+export async function validateForPublish(ctx: TenantCtx, couponId: string): Promise<void> {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) throw new CouponValidationError('查無此券');
 
@@ -96,14 +98,15 @@ export type ChangeStatusResult =
   | { ok: false; reason: string };
 
 export async function changeStatus(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   couponId: string,
   next: CouponStatus,
 ): Promise<ChangeStatusResult> {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   // 與發券同一把鎖（core issueInstances）：結束時等進行中的發券提交後才作廢，不會漏掉剛發出的券。
-  // db 必須是 withTenant 的 tx，鎖才會維持到交易結束
-  await (db as Prisma.TransactionClient).$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${couponId}, 0))`;
+  // ctx.tx 是入口開的交易，鎖會維持到交易結束
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${couponId}, 0))`;
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId } });
   if (!coupon) return { ok: false, reason: 'NOT_FOUND' };
 
@@ -117,7 +120,7 @@ export async function changeStatus(
     };
   }
   if (next === 'ACTIVE') {
-    await validateForPublish(db, tenantId, couponId);
+    await validateForPublish(ctx, couponId);
   }
 
   // 條件式更新：確認狀態仍是讀到的那個，避免併發下兩個請求各自轉到不同狀態
@@ -135,7 +138,7 @@ export async function changeStatus(
  * 提前結束：已發出但尚未核銷的券一律作廢，顧客不能再用。已核銷的維持原狀。
  * 回傳結束前的已領取張數與其中未使用張數，供後台提示影響範圍。
  */
-async function revokeUnredeemed(db: TenantDb, tenantId: string, couponId: string) {
+async function revokeUnredeemed(db: Prisma.TransactionClient, tenantId: string, couponId: string) {
   const where = { tenantId, couponId };
   const [claimed, unredeemed] = await Promise.all([
     db.couponInstance.count({ where: { ...where, claimedAt: { not: null } } }),

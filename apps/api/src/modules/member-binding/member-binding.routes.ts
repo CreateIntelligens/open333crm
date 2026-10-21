@@ -8,13 +8,15 @@ import { z } from 'zod';
 import rateLimit from '@fastify/rate-limit';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
+import { inTenant, tenantHandler, type TenantCtx } from '../../lib/tenant-ctx.js';
+import { eventBus } from '../../events/event-bus.js';
 import {
   getBindingConfig,
   saveBindingConfig,
-  bindMember,
   getBinding,
   unbindMember,
 } from './member-binding.service.js';
+import { bindMember } from './member-binding.flow.js';
 import { testConnection } from './member-lookup.service.js';
 import type { MemberBindingConfig, BindingFailureReason } from './member-binding.types.js';
 
@@ -73,42 +75,40 @@ const configSchema = z.object({
 const lookupInputSchema = z.record(z.string().max(200, '輸入內容過長'), { invalid_type_error: '輸入格式不正確' });
 const contactParams = z.object({ contactId: z.string().uuid('聯絡人識別格式不正確') });
 
+/** 在指定租戶的交易內執行（顧客端與連線測試用；後台的一般端點用 tenantHandler） */
+function runInTenant<T>(app: FastifyInstance, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>) {
+  return inTenant({ prisma: app.prisma, io: app.io, events: eventBus }, tenantId, fn);
+}
+
 export default async function memberBindingRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/', { preHandler: [requirePermission('settings.manage')] }, async (request) => {
-    const config = await getBindingConfig(app.prisma, request.agent.tenantId);
+  app.get('/', { preHandler: [requirePermission('settings.manage')] }, tenantHandler(app, async (_request, _reply, ctx) => {
+    const config = await getBindingConfig(ctx);
     return { success: true, data: maskConfig(config) };
-  });
+  }));
 
-  app.put('/', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
+  app.put('/', { preHandler: [requirePermission('settings.manage')] }, tenantHandler(app, async (request, reply, ctx) => {
     const body: MemberBindingConfig = configSchema.parse(request.body);
     if (body.enabled && !body.endpoint) {
-      return reply.status(400).send({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: '啟用會員綁定須填寫查詢端點' },
-      });
+      reply.code(400);
+      return { success: false, error: { code: 'VALIDATION_ERROR', message: '啟用會員綁定須填寫查詢端點' } };
     }
     if (body.enabled && !body.fieldMapping?.memberId) {
-      return reply.status(400).send({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: '欄位對應須包含 memberId' },
-      });
+      reply.code(400);
+      return { success: false, error: { code: 'VALIDATION_ERROR', message: '欄位對應須包含 memberId' } };
     }
 
     // 未重填憑證時沿用既有值——前端拿到的是遮蔽後的字串，直接存會把金鑰覆蓋成 ••••
-    const existing = await getBindingConfig(app.prisma, request.agent.tenantId);
+    const existing = await getBindingConfig(ctx);
     const credential =
       body.auth?.credential && !body.auth.credential.startsWith('••')
         ? body.auth.credential
         : existing?.auth?.credential;
 
-    await saveBindingConfig(app.prisma, request.agent.tenantId, {
-      ...body,
-      auth: { ...body.auth, credential },
-    });
+    await saveBindingConfig(ctx, { ...body, auth: { ...body.auth, credential } });
     return { success: true };
-  });
+  }));
 
   /**
    * 連線測試。存檔後可立刻驗證設定是否正確，而不是等顧客去踩雷。
@@ -118,7 +118,8 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
    */
   app.post('/test', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
     const body = z.object({ input: lookupInputSchema.optional() }).parse(request.body ?? {});
-    const config = await getBindingConfig(app.prisma, request.agent.tenantId);
+    // 讀設定在交易內，連線測試（外部呼叫）在交易外
+    const config = await runInTenant(app, request.agent.tenantId, (ctx) => getBindingConfig(ctx));
     if (!config) {
       return reply.status(400).send({
         success: false,
@@ -155,7 +156,7 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
   app.post('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, async (request, reply) => {
     const { contactId } = contactParams.parse(request.params);
     const body = lookupInputSchema.parse(request.body ?? {});
-    const result = await bindMember(app.prisma, request.agent.tenantId, contactId, body);
+    const result = await bindMember({ prisma: app.prisma, io: app.io }, request.agent.tenantId, contactId, body);
     if (!result.ok) {
       return reply.status(FAILURE_STATUS[result.reason]).send({
         success: false,
@@ -165,11 +166,10 @@ export default async function memberBindingRoutes(app: FastifyInstance) {
     return { success: true, data: { memberId: result.memberId } };
   });
 
-  app.delete('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, async (request) => {
+  app.delete('/contacts/:contactId', { preHandler: [requirePermission('contact.update')] }, tenantHandler(app, async (request, _reply, ctx) => {
     const { contactId } = contactParams.parse(request.params);
-    const result = await unbindMember(app.prisma, request.agent.tenantId, contactId);
-    return { success: true, data: result };
-  });
+    return { success: true, data: await unbindMember(ctx, contactId) };
+  }));
 }
 
 // ── 顧客端 ───────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ export async function memberBindingFanRoutes(app: FastifyInstance) {
   /** 綁定頁需知道要讓顧客填什麼——由設定的佔位符推導。 */
   app.get('/fields', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fanBinding!;
-    const config = await getBindingConfig(app.prisma, fan.tenantId);
+    const config = await runInTenant(app, fan.tenantId, (ctx) => getBindingConfig(ctx));
     if (!config?.enabled) {
       return { success: true, data: { enabled: false, fields: [] } };
     }
@@ -210,7 +210,7 @@ export async function memberBindingFanRoutes(app: FastifyInstance) {
 
   app.get('/', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fanBinding!;
-    const result = await getBinding(app.prisma, fan.tenantId, fan.contactId);
+    const result = await runInTenant(app, fan.tenantId, (ctx) => getBinding(ctx, fan.contactId));
     return { success: true, data: result };
   });
 
@@ -220,7 +220,7 @@ export async function memberBindingFanRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const fan = request.fanBinding!;
     const body = lookupInputSchema.parse(request.body ?? {});
-    const result = await bindMember(app.prisma, fan.tenantId, fan.contactId, body);
+    const result = await bindMember({ prisma: app.prisma, io: app.io }, fan.tenantId, fan.contactId, body);
     if (!result.ok) {
       return reply.status(FAILURE_STATUS[result.reason]).send({
         success: false,

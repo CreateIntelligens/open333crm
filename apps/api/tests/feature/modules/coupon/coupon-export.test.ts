@@ -14,6 +14,7 @@ import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import couponInstanceRoutes from '#src/modules/coupon/coupon-instance.routes.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
+import { agentPushRoom } from '#src/events/socket-push.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -127,7 +128,8 @@ describe('大量序號明細改背景匯出', () => {
     const n = await waitForNotification('coupon_export_ready');
     assert.equal(n.title, '序號明細已可下載');
     assert.equal(n.clickUrl, `/dashboard/marketing/coupons/${large}?export=${jobId}`);
-    assert.ok(emitted.some((e) => e.room === `agent:${agentA}` && e.event === 'notification.new'), '即時推送通知');
+    // 通知在 commit 後經 ctx.notifyAgent 推到座席房間（main #337 的推播規則）
+    assert.ok(emitted.some((e) => e.room === agentPushRoom(T, agentA) && e.event === 'notification.new'), '即時推送通知');
     const file = await app.inject({ method: 'GET', url: downloadUrl(jobId) });
     assert.equal(file.statusCode, 200, file.body);
     assert.match(String(file.headers['content-disposition']), /filename\*=UTF-8''/);

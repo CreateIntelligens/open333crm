@@ -7,7 +7,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import { taipeiDateStart, taipeiDateString } from '@open333crm/core';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 
 export interface CouponStats {
   couponId: string;
@@ -33,15 +33,15 @@ export interface CouponStats {
 }
 
 export async function getCouponStats(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   couponId: string,
 ): Promise<CouponStats | null> {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId }, select: { id: true, codeMode: true } });
   if (!coupon) return null;
 
-  // 用逐一 count 而非 groupBy —— TenantDb 是三種 client 的聯集，
-  // groupBy 的泛型簽名在聯集下不相容（TS2349）。count 在三者皆可用。
+  // 逐一 count 各狀態
   const statuses = ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED', 'EXPIRED', 'REVOKED'] as const;
   const counts = await Promise.all(
     statuses.map((status) =>
@@ -118,11 +118,12 @@ function dateRange(from?: Date, to?: Date) {
  * 故先以原生 SQL 找出符合的 id，再交給一般查詢套用其他篩選與分頁。
  */
 export async function listInstances(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   couponId: string,
   opts: InstanceListOptions = {},
 ) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const page = Math.max(1, opts.page ?? 1);
   const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
 
@@ -167,47 +168,77 @@ export async function listInstances(
 /**
  * 領取名單匯出。刻意不含 claimToken——那是有效憑證，匯出即等同外流可領取的券。
  */
-export async function exportInstancesCsv(
-  db: TenantDb,
-  tenantId: string,
-  couponId: string,
-): Promise<string> {
-  const instances = await db.couponInstance.findMany({
-    where: { couponId, tenantId },
-    include: { contact: { select: { displayName: true } } },
-    orderBy: { issuedAt: 'desc' },
-  });
+/** 匯出一頁讀取的筆數：背景匯出每頁一個交易，要在 5 秒的交易時限內完成 */
+export const EXPORT_PAGE_SIZE = 2000;
 
+type ExportRow = Prisma.CouponInstanceGetPayload<{ include: { contact: { select: { displayName: true } } } }>;
+
+/** 讀一頁序號明細（依 id 排序，以 afterId 接續）；回傳空陣列表示讀完 */
+export async function readInstancesForExport(
+  ctx: TenantCtx,
+  couponId: string,
+  afterId: string | null,
+  take: number = EXPORT_PAGE_SIZE,
+): Promise<ExportRow[]> {
+  return ctx.tx.couponInstance.findMany({
+    where: { couponId, tenantId: ctx.tenantId, ...(afterId ? { id: { gt: afterId } } : {}) },
+    include: { contact: { select: { displayName: true } } },
+    orderBy: { id: 'asc' },
+    take,
+  });
+}
+
+/** 序號明細轉成 CSV（含 BOM）。依發放時間由新到舊排序 */
+export function instancesToCsv(instances: ExportRow[]): string {
   const headers = [
     '券號', '狀態', '持有者', '發放來源', '發放時間',
     '領取時間', '開啟時間', '核銷時間', '核銷方式', '到期時間',
   ].map(csvCell).join(',');
 
-  const rows = instances.map((i) =>
-    [
-      csvCell(i.code),
-      csvCell(i.status),
-      csvCell(i.contact?.displayName ?? ''),
-      csvCell(i.issuedVia ?? ''),
-      csvCell(formatDate(i.issuedAt)),
-      csvCell(formatDate(i.claimedAt)),
-      csvCell(formatDate(i.openedAt)),
-      csvCell(formatDate(i.redeemedAt)),
-      csvCell(i.redeemMode ?? ''),
-      csvCell(formatDate(i.expiresAt)),
-    ].join(','),
-  );
+  const rows = [...instances]
+    .sort((x, y) => y.issuedAt.getTime() - x.issuedAt.getTime())
+    .map((i) =>
+      [
+        csvCell(i.code),
+        csvCell(i.status),
+        csvCell(i.contact?.displayName ?? ''),
+        csvCell(i.issuedVia ?? ''),
+        csvCell(formatDate(i.issuedAt)),
+        csvCell(formatDate(i.claimedAt)),
+        csvCell(formatDate(i.openedAt)),
+        csvCell(formatDate(i.redeemedAt)),
+        csvCell(i.redeemMode ?? ''),
+        csvCell(formatDate(i.expiresAt)),
+      ].join(','),
+    );
 
   // BOM 讓 Excel 正確辨識 UTF-8，否則中文會變亂碼
   return `﻿${headers}\n${rows.join('\n')}`;
 }
 
+/** 直接下載（筆數不多）：在同一個交易內讀完 */
+/** 在租戶交易內執行；入口以 inTenant 實作 */
+export type RunInTenant = <T>(fn: (ctx: TenantCtx) => Promise<T>) => Promise<T>;
+
+/** 匯出全部明細：每頁一個交易（避開 5 秒的交易時限），讀完再組成 CSV */
+export async function exportInstancesCsv(runInTenant: RunInTenant, couponId: string): Promise<string> {
+  const all: ExportRow[] = [];
+  for (let afterId: string | null = null; ; ) {
+    const page = await runInTenant((ctx) => readInstancesForExport(ctx, couponId, afterId));
+    all.push(...page);
+    if (page.length < EXPORT_PAGE_SIZE) break;
+    afterId = page[page.length - 1].id;
+  }
+  return instancesToCsv(all);
+}
+
 /** 券列表頁用的彙總：一次取多張券的核銷數，避免 N+1 查詢。 */
 export async function getBulkRedeemCounts(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   couponIds: string[],
 ): Promise<Map<string, { issued: number; redeemed: number }>> {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const result = new Map<string, { issued: number; redeemed: number }>();
   if (couponIds.length === 0) return result;
 
@@ -248,7 +279,9 @@ function fillDays(from: Date, to: Date): string[] {
 
 const rate = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 
-export async function getCouponAnalytics(db: TenantDb, tenantId: string, from: Date, to: Date): Promise<CouponAnalytics> {
+export async function getCouponAnalytics(ctx: TenantCtx, from: Date, to: Date): Promise<CouponAnalytics> {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   // 發送中的券（對話發券還在等渠道回應，design D16）不計入
   const perCoupon = await db.$queryRaw<{ coupon_id: string; name: string; issued: bigint; claimed: bigint; redeemed: bigint; link_opened: bigint }[]>`
     SELECT i."couponId" AS coupon_id, c.name,

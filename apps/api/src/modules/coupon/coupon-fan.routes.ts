@@ -12,19 +12,20 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
-import { claimByToken, openInstance, redeemCoupon } from './coupon-redeem.service.js';
-import { getFanCoupon, isOwnedByFan } from './coupon-fan.service.js';
+import { claimByToken, openInstance } from './coupon-redeem.service.js';
+import { getFanCoupon } from './coupon-fan.service.js';
 import { verifyLineIdToken } from './line-id-token.js';
-import { emitCouponInstanceUpdated } from './coupon-events.js';
+import { redeemSelf } from './coupon-wallet.service.js';
 import {
-  getWalletQrCode,
-  listWallet,
-  openWalletSession,
-  openWalletSessionWithLine,
-  redeemWithStaffCode,
-  startStaffCodeSession,
-  type WalletDeps,
-} from './coupon-wallet.service.js';
+  getWalletQrCodeFlow,
+  inFanTenant,
+  listWalletFlow,
+  openWalletSessionFlow,
+  openWalletSessionWithLineFlow,
+  redeemWithStaffCodeFlow,
+  startStaffCodeSessionFlow,
+  type WalletFlowDeps,
+} from './coupon-wallet.flow.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -62,7 +63,8 @@ const STAFF_CODE_MESSAGES: Record<string, string> = {
 const idParams = z.object({ id: z.string().uuid('券識別格式不正確') });
 
 export default async function couponFanRoutes(app: FastifyInstance) {
-  const deps = (): WalletDeps => ({ store: getBindingStore() });
+  // 交易由 coupon-wallet.flow 以顧客憑證或票券權杖的租戶開（公開端點沒有登入的座席）
+  const deps = (): WalletFlowDeps => ({ store: getBindingStore(), prisma: app.prisma, io: app.io });
 
   // 公開端點（票券連結換憑證）與驗證碼輸入都要防暴力嘗試
   await app.register(rateLimit, { global: true, max: 60, timeWindow: '1 minute', keyGenerator: (request) => request.ip });
@@ -73,15 +75,12 @@ export default async function couponFanRoutes(app: FastifyInstance) {
    */
   app.post('/session', async (request, reply) => {
     const { token } = z.object({ token: z.string().min(1).max(100) }).parse(request.body);
-    const result = await openWalletSession(app.prisma, deps(), token);
+    const result = await openWalletSessionFlow(deps(), token);
     if (result.status === 'expired') {
       return reply.status(410).send({
         success: false,
         error: { code: 'LINK_EXPIRED', message: '連結已失效，請回到對話重新點選，或到券夾查看已領取的券' },
       });
-    }
-    if (result.status === 'ok') {
-      emitCouponInstanceUpdated(app.io, result.tenantId, { instanceId: result.instanceId, contactId: result.contactId, change: 'viewed' });
     }
     return { success: true, data: result };
   });
@@ -94,7 +93,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const { token, idToken } = z
       .object({ token: z.string().min(1).max(100), idToken: z.string().min(1).max(4096) })
       .parse(request.body ?? {});
-    const result = await openWalletSessionWithLine(app.prisma, { ...deps(), verifyLineIdToken }, token, idToken);
+    const result = await openWalletSessionWithLineFlow({ ...deps(), verifyLineIdToken }, token, idToken);
     if (result.status === 'expired') {
       return reply.status(410).send({
         success: false,
@@ -113,7 +112,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const { claimToken } = z.object({ claimToken: z.string({ required_error: '缺少領取憑證' }).min(1, '缺少領取憑證').max(200) })
       .parse(request.body ?? {});
 
-    const result = await claimByToken(app.prisma, claimToken, fan.contactId, fan.tenantId);
+    const result = await inFanTenant(deps(), fan, (ctx) => claimByToken(ctx, claimToken, fan.contactId));
     if (!result.ok) {
       const messages: Record<string, string> = {
         TOKEN_NOT_FOUND: '連結無效',
@@ -134,7 +133,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   /** 券夾：顧客名下的券（含顧客看到的狀態）與三個分頁的數量。 */
   app.get('/', { preHandler: authenticateFan }, async (request) => {
     const fan = request.fanCoupon!;
-    const { items, counts } = await listWallet(app.prisma, fan);
+    const { items, counts } = await listWalletFlow(deps(), fan);
     return { success: true, data: items, meta: { counts } };
   });
 
@@ -142,7 +141,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   app.get('/:id/qrcode', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
-    const result = await getWalletQrCode(app.prisma, fan, id);
+    const result = await getWalletQrCodeFlow(deps(), fan, id);
     if (!result.ok) {
       const messages = { NOT_FOUND: '查無此券', NOT_STAFF_SCAN: '此券不需出示 QR Code', NOT_AVAILABLE: '此券目前無法使用' };
       return reply.status(result.reason === 'NOT_FOUND' ? 404 : 409).send({
@@ -157,7 +156,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
   app.post('/:id/start', { preHandler: authenticateFan }, async (request, reply) => {
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
-    const result = await startStaffCodeSession(app.prisma, deps(), fan, id);
+    const result = await startStaffCodeSessionFlow(deps(), fan, id);
     if (!result.ok) {
       const status = result.reason === 'NOT_FOUND' ? 404 : 409;
       return reply.status(status).send({
@@ -173,7 +172,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
     const { code } = z.object({ code: z.string().regex(/^\d{4,6}$/, '需 4–6 位數字') }).parse(request.body);
-    const result = await redeemWithStaffCode(app.prisma, deps(), fan, id, code);
+    const result = await redeemWithStaffCodeFlow(deps(), fan, id, code);
     if (!result.ok) {
       if (result.reason === 'NOT_FOUND') {
         return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
@@ -190,7 +189,6 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         },
       });
     }
-    emitCouponInstanceUpdated(app.io, fan.tenantId, { instanceId: id, contactId: fan.contactId, change: 'redeemed' });
     return { success: true, data: { redeemedAt: result.redeemedAt, couponName: result.couponName } };
   });
 
@@ -198,7 +196,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
 
-    const instance = await getFanCoupon(app.prisma, fan, id);
+    const instance = await inFanTenant(deps(), fan, (ctx) => getFanCoupon(ctx, fan, id));
     if (!instance) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }
@@ -210,7 +208,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
 
-    const result = await openInstance(app.prisma, fan.tenantId, id, fan.contactId);
+    const result = await inFanTenant(deps(), fan, (ctx) => openInstance(ctx, id, fan.contactId));
     if (!result.ok && result.reason === 'NOT_FOUND') {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }
@@ -231,18 +229,10 @@ export default async function couponFanRoutes(app: FastifyInstance) {
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
 
-    // 先確認這張券屬於請求者，避免以他人 instanceId 觸發核銷
-    const owned = await isOwnedByFan(app.prisma, fan, id);
-    if (!owned) {
+    const result = await inFanTenant(deps(), fan, (ctx) => redeemSelf(ctx, fan, id));
+    if (!result.ok && result.reason === 'NOT_FOUND') {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }
-
-    const result = await redeemCoupon(app.prisma, fan.tenantId, {
-      instanceId: id,
-      selfService: true,
-      redeemedBy: null,
-      redeemChannel: 'fan_self',
-    });
     if (!result.ok) {
       const messages: Record<string, string> = {
         ALREADY_REDEEMED: '此券已使用',
@@ -260,7 +250,6 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         error: { code: result.reason, message: messages[result.reason] ?? '核銷失敗' },
       });
     }
-    emitCouponInstanceUpdated(app.io, fan.tenantId, { instanceId: id, contactId: fan.contactId, change: 'redeemed' });
     return {
       success: true,
       data: { redeemedAt: result.redeemedAt, couponName: result.couponName },

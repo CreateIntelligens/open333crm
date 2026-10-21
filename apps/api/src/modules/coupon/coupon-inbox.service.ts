@@ -3,18 +3,17 @@
  *
  * 發券先在短交易內保留（建立發送中的券），交易外送出訊息，成功才確認並寫入對話訊息；
  * 送不出就作廢這張券、歸還名額，座席看到的「券未發出」才是真的（design D16，取代 D14 的交易內發送）。
+ * 這裡只放單一交易的步驟（收 TenantCtx）；三個步驟的串接在 coupon-inbox.flow.ts。
  */
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { buildCouponMessage, couponLiffConfig, couponLinkUrl, issueWalletToken } from '@open333crm/core';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
-import { tenantScopedClient, withTenant, type TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
-import { deliverToChannel } from '../conversation/conversation.service.js';
-import { issueCouponsInTx } from './coupon-issue.service.js';
+import { issueCoupons } from './coupon-issue.service.js';
 import { applyClaimTag } from './coupon-tagging.js';
-import { COUPON_INSTANCE_UPDATED } from './coupon-events.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export interface InboxIssueDeps {
@@ -22,15 +21,8 @@ export interface InboxIssueDeps {
   now?: () => number;
   /** 票券連結的網址前綴；預設為 WEB_BASE_URL */
   webBaseUrl?: string;
-  /** 送出發券訊息（在交易外，design D16）；預設走 deliverToChannel（測試可替換） */
-  deliver?: (
-    db: TenantDb,
-    params: { tenantId: string; conversationId: string; text: string },
-  ) => Promise<{ sent: boolean; reason?: string }>;
   /** 渠道的訊息回覆期限（小時）；預設由渠道外掛提供 */
   windowHoursFor?: (channelType: string) => number | undefined;
-  /** 發券成功後推播對話新訊息（API 傳 fastify.io 的 emit） */
-  emit?: (room: string, event: string, data: unknown) => void;
 }
 
 const nowOf = (deps: Pick<InboxIssueDeps, 'now'>) => (deps.now ?? Date.now)();
@@ -41,7 +33,7 @@ export const HISTORY_DAYS = 90;
 /** 固定效期在幾天內結束時提示即將到期 */
 export const EXPIRING_DAYS = 3;
 /** 發送鍵結果的保存時間 */
-const REQUEST_KEEP_MS = 10 * 60 * 1000;
+export const REQUEST_KEEP_MS = 10 * 60 * 1000;
 
 export type IssueBlockReason = 'CONVERSATION_CLOSED' | 'BOT_HANDLED' | 'REPLY_WINDOW_EXPIRED';
 export type IssuedStatus = 'SENT' | 'VIEWED' | 'USED' | 'EXPIRED' | 'REVOKED';
@@ -125,7 +117,7 @@ function expiringAt(c: { validityMode: string | null; endAt: Date | null }, now:
 
 /** 顧客最後一則訊息超過渠道回覆期限時回傳期限（小時），否則 null */
 async function expiredWindow(
-  tx: TenantDb,
+  tx: Prisma.TransactionClient,
   conversationId: string,
   windowHours: number | undefined,
   now: number,
@@ -150,7 +142,7 @@ const COUPON_FIELDS = {
   endAt: true, afterClaimDays: true, afterOpenMinutes: true, perContactLimit: true,
 } as const;
 
-async function loadConversation(tx: TenantDb, tenantId: string, conversationId: string) {
+async function loadConversation(tx: Prisma.TransactionClient, tenantId: string, conversationId: string) {
   return tx.conversation.findFirst({
     where: { id: conversationId, tenantId },
     select: {
@@ -161,90 +153,89 @@ async function loadConversation(tx: TenantDb, tenantId: string, conversationId: 
 }
 
 export async function getIssueContext(
-  prisma: PrismaClient,
+  ctx: TenantCtx,
   deps: InboxIssueDeps,
-  input: { tenantId: string; conversationId: string },
+  conversationId: string,
 ): Promise<IssueContext | null> {
-  const { tenantId } = input;
+  const { tx, tenantId } = ctx;
   const now = nowOf(deps);
-  return withTenant(prisma, tenantId, async (tx) => {
-    const conv = await loadConversation(tx, tenantId, input.conversationId);
-    if (!conv?.contactId) return null;
-    const contactId = conv.contactId;
+  const input = { conversationId };
+  const conv = await loadConversation(tx, tenantId, input.conversationId);
+  if (!conv?.contactId) return null;
+  const contactId = conv.contactId;
 
-    let blocked: IssueContext['blocked'] = null;
-    if (conv.status === 'CLOSED') {
-      blocked = { reason: 'CONVERSATION_CLOSED' };
-    } else if (conv.status === 'BOT_HANDLED') {
-      // 發券只能人工發（design D19）
-      blocked = { reason: 'BOT_HANDLED' };
-    } else {
-      const hours = await expiredWindow(tx, conv.id, (deps.windowHoursFor ?? defaultWindowHours)(conv.channelType), now);
-      if (hours) blocked = { reason: 'REPLY_WINDOW_EXPIRED', windowHours: hours };
-    }
+  let blocked: IssueContext['blocked'] = null;
+  if (conv.status === 'CLOSED') {
+    blocked = { reason: 'CONVERSATION_CLOSED' };
+  } else if (conv.status === 'BOT_HANDLED') {
+    // 發券只能人工發（design D19）
+    blocked = { reason: 'BOT_HANDLED' };
+  } else {
+    const hours = await expiredWindow(tx, conv.id, (deps.windowHoursFor ?? defaultWindowHours)(conv.channelType), now);
+    if (hours) blocked = { reason: 'REPLY_WINDOW_EXPIRED', windowHours: hours };
+  }
 
-    const coupons = await tx.coupon.findMany({
-      where: { tenantId, purpose: 'SERVICE', status: 'ACTIVE' },
-      orderBy: { createdAt: 'desc' },
-      select: COUPON_FIELDS,
-    });
-    const held = coupons.length
-      ? await tx.couponInstance.findMany({
-        where: { tenantId, contactId, couponId: { in: coupons.map((c) => c.id) }, status: { in: [...HELD_STATUSES] } },
-        orderBy: { issuedAt: 'desc' },
-        select: { couponId: true, claimedAt: true, issuedAt: true, redeemedAt: true },
-      })
-      : [];
-
-    const issuable = coupons.map((c): IssuableCoupon => {
-      const mine = held.filter((h) => h.couponId === c.id);
-      const latest = mine[0];
-      const lastRedeemed = mine.find((h) => h.redeemedAt);
-      return {
-        ...c,
-        receivedCount: mine.length,
-        limitReached: mine.length >= c.perContactLimit,
-        lastClaimedAt: latest ? latest.claimedAt ?? latest.issuedAt : null,
-        lastRedeemedAt: lastRedeemed?.redeemedAt ?? null,
-        expiringAt: expiringAt(c, now),
-        drivesSpend: (c.minSpend ?? 0) > 0,
-      };
-    });
-
-    const since = new Date(now - HISTORY_DAYS * DAY_MS);
-    const recent = await tx.couponInstance.findMany({
-      where: { tenantId, contactId, issuedAt: { gte: since }, coupon: { tenantId, purpose: 'SERVICE' } },
+  const coupons = await tx.coupon.findMany({
+    where: { tenantId, purpose: 'SERVICE', status: 'ACTIVE' },
+    orderBy: { createdAt: 'desc' },
+    select: COUPON_FIELDS,
+  });
+  const held = coupons.length
+    ? await tx.couponInstance.findMany({
+      where: { tenantId, contactId, couponId: { in: coupons.map((c) => c.id) }, status: { in: [...HELD_STATUSES] } },
       orderBy: { issuedAt: 'desc' },
-      select: {
-        status: true, viewedAt: true, expiresAt: true, issuedAt: true, issuedByName: true,
-        coupon: { select: { name: true, couponType: true, discountAmount: true } },
-      },
-    });
-    const first = recent[0];
+      select: { couponId: true, claimedAt: true, issuedAt: true, redeemedAt: true },
+    })
+    : [];
 
+  const issuable = coupons.map((c): IssuableCoupon => {
+    const mine = held.filter((h) => h.couponId === c.id);
+    const latest = mine[0];
+    const lastRedeemed = mine.find((h) => h.redeemedAt);
     return {
-      conversation: {
-        id: conv.id,
-        status: conv.status,
-        assignedToId: conv.assignedToId,
-        contactId,
-        contactName: conv.contact?.displayName ?? '',
-        channelType: conv.channelType,
-      },
-      blocked,
-      history: {
-        count: recent.length,
-        totalAmount: recent.reduce(
-          (sum, r) => sum + (r.coupon.couponType === 'DISCOUNT_AMOUNT' ? r.coupon.discountAmount ?? 0 : 0),
-          0,
-        ),
-        latest: first
-          ? { couponName: first.coupon.name, issuedByName: first.issuedByName, issuedAt: first.issuedAt, status: issuedStatus(first, now) }
-          : null,
-      },
-      coupons: sortIssuable(issuable),
+      ...c,
+      receivedCount: mine.length,
+      limitReached: mine.length >= c.perContactLimit,
+      lastClaimedAt: latest ? latest.claimedAt ?? latest.issuedAt : null,
+      lastRedeemedAt: lastRedeemed?.redeemedAt ?? null,
+      expiringAt: expiringAt(c, now),
+      drivesSpend: (c.minSpend ?? 0) > 0,
     };
   });
+
+  const since = new Date(now - HISTORY_DAYS * DAY_MS);
+  const recent = await tx.couponInstance.findMany({
+    where: { tenantId, contactId, issuedAt: { gte: since }, coupon: { tenantId, purpose: 'SERVICE' } },
+    orderBy: { issuedAt: 'desc' },
+    select: {
+      status: true, viewedAt: true, expiresAt: true, issuedAt: true, issuedByName: true,
+      coupon: { select: { name: true, couponType: true, discountAmount: true } },
+    },
+  });
+  const first = recent[0];
+
+  return {
+    conversation: {
+      id: conv.id,
+      status: conv.status,
+      assignedToId: conv.assignedToId,
+      contactId,
+      contactName: conv.contact?.displayName ?? '',
+      channelType: conv.channelType,
+    },
+    blocked,
+    history: {
+      count: recent.length,
+      totalAmount: recent.reduce(
+        (sum, r) => sum + (r.coupon.couponType === 'DISCOUNT_AMOUNT' ? r.coupon.discountAmount ?? 0 : 0),
+        0,
+      ),
+      latest: first
+        ? { couponName: first.coupon.name, issuedByName: first.issuedByName, issuedAt: first.issuedAt, status: issuedStatus(first, now) }
+        : null,
+    },
+    coupons: sortIssuable(issuable),
+  };
 }
 
 // ── 發券 ──────────────────────────────────────────────────────────────────
@@ -282,7 +273,7 @@ export interface InboxIssueInput {
 }
 
 /** 交易內判定失敗：丟出以回滾，外層轉成結果 */
-class IssueAbort extends Error {
+export class IssueAbort extends Error {
   constructor(readonly result: Extract<InboxIssueResult, { ok: false }>) {
     super(result.reason);
   }
@@ -291,37 +282,9 @@ class IssueAbort extends Error {
 /** 序號用盡、總量已滿等，座席看到的都是「此券已停止發放」 */
 const NOT_ISSUABLE_SKIPS = new Set(['TOTAL_LIMIT_REACHED', 'CODES_EXHAUSTED', 'SHARED_CODE_MISSING']);
 
-const requestKeyOf = (tenantId: string, requestKey: string) => `coupon:inbox-issue:${tenantId}:${requestKey}`;
+export const requestKeyOf = (tenantId: string, requestKey: string) => `coupon:inbox-issue:${tenantId}:${requestKey}`;
 
-export async function issueInConversation(
-  prisma: PrismaClient,
-  deps: InboxIssueDeps,
-  input: InboxIssueInput,
-): Promise<InboxIssueResult> {
-  const key = requestKeyOf(input.tenantId, input.requestKey);
-  // 發送鍵綁定這次發券的內容：同一個鍵換成別的券或對話，不回傳上一次的結果
-  const fingerprint = `${input.conversationId}:${input.couponId}`;
-  const claimed = await deps.store.set(key, JSON.stringify({ state: 'pending', for: fingerprint }), 'PX', REQUEST_KEEP_MS, 'NX');
-  if (claimed !== 'OK') {
-    const existing = await readStored(deps.store, key);
-    if (existing && existing.for !== fingerprint) return { ok: false, reason: 'KEY_REUSED' };
-    return existing?.state === 'done' && existing.result ? existing.result : { ok: false, reason: 'ISSUE_IN_PROGRESS' };
-  }
-
-  let result: InboxIssueResult;
-  try {
-    result = await runIssue(prisma, deps, input);
-  } catch (err) {
-    // 非預期錯誤：交易已回滾、券未發出，清掉發送鍵讓座席可以重送
-    await deps.store.getdel(key);
-    throw err;
-  }
-  // 以 XX 直接把「處理中」換成結果：先刪再寫會留下空窗，重送的請求會趁空窗再發一次
-  await deps.store.set(key, JSON.stringify({ state: 'done', for: fingerprint, result }), 'PX', REQUEST_KEEP_MS, 'XX');
-  return result;
-}
-
-interface Reserved {
+export interface Reserved {
   instanceId: string;
   code: string;
   contactId: string;
@@ -335,212 +298,103 @@ interface Reserved {
   expiresAt: Date | null;
 }
 
-/**
- * 發券分三步（design D16）：
- * 1. 交易內鎖券、檢查、建立發送中的券，立即提交（鎖只維持幾毫秒）
- * 2. 交易外送出發券訊息
- * 3. 成功：清除發送中標記、貼標、寫入對話訊息；失敗：作廢這張券並歸還名額
- */
-async function runIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: InboxIssueInput): Promise<InboxIssueResult> {
-  const { tenantId } = input;
-  const deliver = deps.deliver ?? defaultDeliver;
+/** 第 1 步：檢查並建立發送中的券。失敗以 IssueAbort 丟出，交易回滾 */
+export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: InboxIssueInput): Promise<Reserved> {
+  const { tx, tenantId } = ctx;
+  const now = nowOf(deps);
+  const conv = await loadConversation(tx, tenantId, input.conversationId);
+  const identity = conv?.contactId
+    ? await tx.channelIdentity.findFirst({
+      where: { contactId: conv.contactId, channelId: conv.channelId },
+      select: { id: true, channelId: true },
+    })
+    : null;
+  const coupon = await tx.coupon.findFirst({
+    where: { id: input.couponId, tenantId },
+    select: { ...COUPON_FIELDS, purpose: true, status: true, claimTagId: true, claimTagTtlDays: true },
+  });
+  if (!conv?.contactId || !identity || !coupon) throw new IssueAbort({ ok: false, reason: 'NOT_FOUND' });
+  const contactId = conv.contactId;
 
-  let reserved: Reserved;
+  if (conv.status === 'BOT_HANDLED') throw new IssueAbort({ ok: false, reason: 'CONVERSATION_BOT_HANDLED' });
+  if (conv.status === 'CLOSED' || conv.assignedToId !== input.expectedAssigneeId) {
+    throw new IssueAbort({ ok: false, reason: 'CONVERSATION_OUT_OF_SCOPE' });
+  }
+  const window = await expiredWindow(tx, conv.id, (deps.windowHoursFor ?? defaultWindowHours)(conv.channelType), now);
+  if (window) throw new IssueAbort({ ok: false, reason: 'REPLY_WINDOW_EXPIRED' });
+  if (coupon.purpose !== 'SERVICE' || coupon.status !== 'ACTIVE') {
+    throw new IssueAbort({ ok: false, reason: 'COUPON_NOT_ISSUABLE' });
+  }
+
+  let outcome;
   try {
-    reserved = await reserveIssue(prisma, deps, input);
+    outcome = await issueCoupons(ctx, coupon.id, {
+      contactIds: [contactId],
+      issuedVia: 'inbox',
+      issuedRefId: input.agentId,
+      issuedByName: input.agentName,
+      requireClaim: false,
+      // 送出成功後才貼標，送不出時不必撤回標籤
+      skipClaimTag: true,
+    });
   } catch (err) {
-    if (err instanceof IssueAbort) return err.result;
+    // 讀到 ACTIVE 之後、鎖住之前被暫停或結束
+    if (err instanceof CouponValidationError) throw new IssueAbort({ ok: false, reason: 'COUPON_NOT_ISSUABLE' });
     throw err;
   }
-
-  let sent = false;
-  try {
-    sent = (await deliver(tenantScopedClient(prisma, tenantId), {
-      tenantId,
-      conversationId: reserved.conversationId,
-      text: reserved.text,
-    })).sent;
-  } catch (err) {
-    logger.error('[CouponInbox] 發券訊息送出時發生錯誤，券作廢', { tenantId, instanceId: reserved.instanceId, error: (err as Error).message });
-  }
-  if (!sent) {
-    await withTenant(prisma, tenantId, (tx) => voidPendingInstance(tx, tenantId, reserved.instanceId));
-    return { ok: false, reason: 'COUPON_DELIVERY_FAILED' };
-  }
-
-  const confirm = () => withTenant(prisma, tenantId, async (tx) => {
-    const confirmed = await tx.couponInstance.updateMany({
-      where: { id: reserved.instanceId, tenantId, deliveryPendingAt: { not: null } },
-      data: { deliveryPendingAt: null },
-    });
-    // 已被排程作廢（發送超過 5 分鐘），顧客收到的連結會顯示券已失效
-    if (confirmed.count === 0) return null;
-    await applyClaimTag(tx, tenantId, reserved.contactId, reserved.coupon);
-    return createCouponMessage(tx, {
-      tenantId,
-      conversationId: reserved.conversationId,
-      agentId: input.agentId,
-      text: reserved.text,
-      coupon: {
-        instanceId: reserved.instanceId,
-        couponId: reserved.coupon.id,
-        name: reserved.coupon.name,
-        couponType: reserved.coupon.couponType,
-        discountAmount: reserved.coupon.discountAmount,
-        discountPercent: reserved.coupon.discountPercent,
-        giftName: reserved.coupon.giftName,
-        exchangeItem: reserved.coupon.exchangeItem,
-        minSpend: reserved.coupon.minSpend,
-        expiresAt: reserved.expiresAt?.toISOString() ?? null,
-        issuedByName: input.agentName ?? null,
-      },
-      now: new Date(nowOf(deps)),
-    });
-  });
-  // 訊息已送到顧客：確認失敗不能丟出例外（會清掉發送鍵，座席重送就發第二張），重試兩次後回報
-  let message: Awaited<ReturnType<typeof confirm>> = null;
-  let confirmError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      message = await confirm();
-      confirmError = null;
-      break;
-    } catch (err) {
-      confirmError = err;
-    }
-  }
-  if (confirmError) {
-    logger.error('[CouponInbox] 發券訊息已送出，但確認失敗', {
-      tenantId,
-      instanceId: reserved.instanceId,
-      error: (confirmError as Error).message,
-    });
-    return { ok: false, reason: 'DELIVERED_UNCONFIRMED' };
-  }
-  if (!message) {
-    logger.error('[CouponInbox] 發券訊息已送出，但券在確認前已被作廢', { tenantId, instanceId: reserved.instanceId });
-    return { ok: false, reason: 'ISSUE_FAILED' };
-  }
-
-  if (deps.emit) {
-    const payload = { conversationId: input.conversationId, message: socketMessage(message) };
-    deps.emit(`conversation:${input.conversationId}`, 'message.new', payload);
-    deps.emit(`tenant:${tenantId}`, 'message.new', payload);
-    // 右側「已發優惠券」重新載入（design D23）
-    deps.emit(`tenant:${tenantId}`, COUPON_INSTANCE_UPDATED, {
-      instanceId: reserved.instanceId,
-      contactId: reserved.contactId,
-      change: 'issued',
-    });
-  }
-  return {
-    ok: true,
-    instanceId: reserved.instanceId,
-    code: reserved.code,
-    couponId: reserved.coupon.id,
-    couponName: reserved.coupon.name,
-    messageId: message.id,
-  };
-}
-
-/** 第 1 步：檢查並建立發送中的券。失敗以 IssueAbort 丟出，交易回滾 */
-async function reserveIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: InboxIssueInput): Promise<Reserved> {
-  const { tenantId } = input;
-  const now = nowOf(deps);
-  return withTenant(prisma, tenantId, async (tx) => {
-    const conv = await loadConversation(tx, tenantId, input.conversationId);
-    const identity = conv?.contactId
-      ? await tx.channelIdentity.findFirst({
-        where: { contactId: conv.contactId, channelId: conv.channelId },
-        select: { id: true, channelId: true },
-      })
-      : null;
-    const coupon = await tx.coupon.findFirst({
-      where: { id: input.couponId, tenantId },
-      select: { ...COUPON_FIELDS, purpose: true, status: true, claimTagId: true, claimTagTtlDays: true },
-    });
-    if (!conv?.contactId || !identity || !coupon) throw new IssueAbort({ ok: false, reason: 'NOT_FOUND' });
-    const contactId = conv.contactId;
-
-    if (conv.status === 'BOT_HANDLED') throw new IssueAbort({ ok: false, reason: 'CONVERSATION_BOT_HANDLED' });
-    if (conv.status === 'CLOSED' || conv.assignedToId !== input.expectedAssigneeId) {
-      throw new IssueAbort({ ok: false, reason: 'CONVERSATION_OUT_OF_SCOPE' });
-    }
-    const window = await expiredWindow(tx, conv.id, (deps.windowHoursFor ?? defaultWindowHours)(conv.channelType), now);
-    if (window) throw new IssueAbort({ ok: false, reason: 'REPLY_WINDOW_EXPIRED' });
-    if (coupon.purpose !== 'SERVICE' || coupon.status !== 'ACTIVE') {
-      throw new IssueAbort({ ok: false, reason: 'COUPON_NOT_ISSUABLE' });
-    }
-
-    let outcome;
-    try {
-      outcome = await issueCouponsInTx(tx, tenantId, coupon.id, {
-        contactIds: [contactId],
-        issuedVia: 'inbox',
-        issuedRefId: input.agentId,
-        issuedByName: input.agentName,
-        requireClaim: false,
-        // 送出成功後才貼標，送不出時不必撤回標籤
-        skipClaimTag: true,
+  const instance = outcome.issued[0];
+  if (!instance) {
+    const reason = outcome.skipped[0]?.reason;
+    if (reason === 'PER_CONTACT_LIMIT_REACHED') {
+      const last = await tx.couponInstance.findFirst({
+        where: { tenantId, couponId: coupon.id, contactId, status: { in: [...HELD_STATUSES] } },
+        orderBy: { issuedAt: 'desc' },
+        select: { issuedByName: true, issuedAt: true },
       });
-    } catch (err) {
-      // 讀到 ACTIVE 之後、鎖住之前被暫停或結束
-      if (err instanceof CouponValidationError) throw new IssueAbort({ ok: false, reason: 'COUPON_NOT_ISSUABLE' });
-      throw err;
+      throw new IssueAbort({
+        ok: false,
+        reason,
+        details: { issuedByName: last?.issuedByName ?? null, issuedAt: last?.issuedAt.toISOString() },
+      });
     }
-    const instance = outcome.issued[0];
-    if (!instance) {
-      const reason = outcome.skipped[0]?.reason;
-      if (reason === 'PER_CONTACT_LIMIT_REACHED') {
-        const last = await tx.couponInstance.findFirst({
-          where: { tenantId, couponId: coupon.id, contactId, status: { in: [...HELD_STATUSES] } },
-          orderBy: { issuedAt: 'desc' },
-          select: { issuedByName: true, issuedAt: true },
-        });
-        throw new IssueAbort({
-          ok: false,
-          reason,
-          details: { issuedByName: last?.issuedByName ?? null, issuedAt: last?.issuedAt.toISOString() },
-        });
-      }
-      throw new IssueAbort({ ok: false, reason: reason && NOT_ISSUABLE_SKIPS.has(reason) ? 'COUPON_NOT_ISSUABLE' : 'ISSUE_FAILED' });
-    }
+    throw new IssueAbort({ ok: false, reason: reason && NOT_ISSUABLE_SKIPS.has(reason) ? 'COUPON_NOT_ISSUABLE' : 'ISSUE_FAILED' });
+  }
 
-    const created = await tx.couponInstance.update({
-      where: { id: instance.id },
-      data: { deliveryPendingAt: new Date(now) },
-      select: { expiresAt: true },
-    });
-    const token = await issueWalletToken(deps.store, {
-      tenantId,
-      contactId,
-      channelIdentityId: identity.id,
-      channelId: identity.channelId,
-      conversationId: conv.id,
-      instanceId: instance.id,
-    }, deps.now);
-    const channel = await tx.channel.findFirst({ where: { id: conv.channelId, tenantId }, select: { settings: true } });
-    const text = buildCouponMessage({
-      couponName: coupon.name,
-      url: couponLinkUrl(deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token, couponLiffConfig(channel?.settings)),
-    });
-    return {
-      instanceId: instance.id,
-      code: instance.code,
-      contactId,
-      conversationId: conv.id,
-      text,
-      coupon,
-      expiresAt: created.expiresAt,
-    };
+  const created = await tx.couponInstance.update({
+    where: { id: instance.id },
+    data: { deliveryPendingAt: new Date(now) },
+    select: { expiresAt: true },
   });
+  const token = await issueWalletToken(deps.store, {
+    tenantId,
+    contactId,
+    channelIdentityId: identity.id,
+    channelId: identity.channelId,
+    conversationId: conv.id,
+    instanceId: instance.id,
+  }, deps.now);
+  const channel = await tx.channel.findFirst({ where: { id: conv.channelId, tenantId }, select: { settings: true } });
+  const text = buildCouponMessage({
+    couponName: coupon.name,
+    url: couponLinkUrl(deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token, couponLiffConfig(channel?.settings)),
+  });
+  return {
+    instanceId: instance.id,
+    code: instance.code,
+    contactId,
+    conversationId: conv.id,
+    text,
+    coupon,
+    expiresAt: created.expiresAt,
+  };
 }
 
 /**
  * 作廢發送中的券：歸還序號包的序號並刪除這張券，發行總量與每人上限的名額跟著歸還。
  * 券從未送到顧客手上，不留下紀錄；只處理仍在發送中的券，已確認發出的不會被刪。
  */
-async function voidPendingInstance(tx: Prisma.TransactionClient, tenantId: string, instanceId: string): Promise<boolean> {
+export async function voidPendingInstance(ctx: TenantCtx, instanceId: string): Promise<boolean> {
+  const { tx, tenantId } = ctx;
   const pending = await tx.couponInstance.findFirst({
     where: { id: instanceId, tenantId, deliveryPendingAt: { not: null } },
     select: { id: true },
@@ -551,45 +405,46 @@ async function voidPendingInstance(tx: Prisma.TransactionClient, tenantId: strin
   return removed.count > 0;
 }
 
+/**
+ * 第 3 步（訊息送出成功後）：清除發送中標記、貼標、寫入對話訊息並推播。
+ * 回傳 null 表示券在確認前已被排程作廢（發送超過 5 分鐘）。
+ */
+export async function confirmIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: InboxIssueInput, reserved: Reserved) {
+  const { tx, tenantId } = ctx;
+  const confirmed = await tx.couponInstance.updateMany({
+    where: { id: reserved.instanceId, tenantId, deliveryPendingAt: { not: null } },
+    data: { deliveryPendingAt: null },
+  });
+  if (confirmed.count === 0) return null;
+  await applyClaimTag(tx, tenantId, reserved.contactId, reserved.coupon);
+  const message = await createCouponMessage(tx, {
+    tenantId,
+    conversationId: reserved.conversationId,
+    agentId: input.agentId,
+    text: reserved.text,
+    coupon: {
+      instanceId: reserved.instanceId,
+      couponId: reserved.coupon.id,
+      name: reserved.coupon.name,
+      couponType: reserved.coupon.couponType,
+      discountAmount: reserved.coupon.discountAmount,
+      discountPercent: reserved.coupon.discountPercent,
+      giftName: reserved.coupon.giftName,
+      exchangeItem: reserved.coupon.exchangeItem,
+      minSpend: reserved.coupon.minSpend,
+      expiresAt: reserved.expiresAt?.toISOString() ?? null,
+      issuedByName: input.agentName ?? null,
+    },
+    now: new Date(nowOf(deps)),
+  });
+  // commit 之後才推播：對話新訊息與右側「已發優惠券」重新載入（design D23）
+  ctx.notify('message.new', { conversationId: input.conversationId, message: socketMessage(message) });
+  ctx.notify('coupon.instance.updated', { instanceId: reserved.instanceId, contactId: reserved.contactId, change: 'issued' });
+  return message;
+}
+
 /** 發送中超過這個時間視為卡住（程式在送出途中結束） */
 export const STALE_PENDING_MS = 5 * 60 * 1000;
-
-/**
- * 排程：作廢卡在發送中的券（design D16 第 5 步）。跨租戶找出候選後，逐筆在該租戶的交易內作廢。
- * admin 是排程傳入的 BYPASSRLS 連線，只用來列出候選；作廢一律走 withTenant。
- */
-export async function sweepStalePendingIssues(admin: PrismaClient, now: number): Promise<number> {
-  const stale = await admin.couponInstance.findMany({
-    where: { deliveryPendingAt: { lt: new Date(now - STALE_PENDING_MS) } },
-    select: { id: true, tenantId: true },
-    take: 200,
-  });
-  let swept = 0;
-  for (const row of stale) {
-    try {
-      const removed = await withTenant(admin, row.tenantId, (tx) => voidPendingInstance(tx, row.tenantId, row.id));
-      if (removed) {
-        swept += 1;
-        logger.warn('[CouponInbox] 發送中超過 5 分鐘，券已作廢', { tenantId: row.tenantId, instanceId: row.id });
-      }
-    } catch (err) {
-      logger.error('[CouponInbox] 作廢卡住的券失敗', { tenantId: row.tenantId, instanceId: row.id, error: (err as Error).message });
-    }
-  }
-  return swept;
-}
-
-/** 預設送出：走既有 deliverToChannel；座席主動發券時 replyToken 多半已失效，固定 push（design D7） */
-async function defaultDeliver(
-  db: TenantDb,
-  params: { tenantId: string; conversationId: string; text: string },
-): Promise<{ sent: boolean }> {
-  const sent = await deliverToChannel(db, params.conversationId, {
-    contentType: 'text',
-    content: { text: params.text, strategy: 'push' },
-  });
-  return { sent };
-}
 
 /** 對話中的發券訊息：送給顧客的是文字與票券連結；content.coupon 讓後台畫成券卡 */
 async function createCouponMessage(
@@ -649,7 +504,7 @@ interface StoredRequest {
   result?: InboxIssueResult;
 }
 
-async function readStored(store: BindingStore, key: string): Promise<StoredRequest | null> {
+export async function readStored(store: BindingStore, key: string): Promise<StoredRequest | null> {
   const raw = await store.get(key);
   if (!raw) return null;
   try {
@@ -694,11 +549,12 @@ export interface IssuedCouponView {
 
 /** 對話聯絡人收到的券，新到舊，最多 20 張；查無對話回傳 null */
 export async function listIssuedCoupons(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   conversationId: string,
   now: number = Date.now(),
 ): Promise<IssuedCouponView[] | null> {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const conv = await db.conversation.findFirst({ where: { id: conversationId, tenantId }, select: { contactId: true } });
   if (!conv) return null;
   if (!conv.contactId) return [];

@@ -231,5 +231,37 @@ describe('券的日期一律以台灣時間計算（design D17）', () => {
       await owner.contact.delete({ where: { id: contact.id } });
     }
   });
-});
 
+  it('發放人數超過一批時分批發出，結果合併回傳', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/v1/coupons', payload: { name: `${MARK} 分批發放` } });
+    const id = created.json().data.id as string;
+    await app.inject({
+      method: 'PATCH', url: `/api/v1/coupons/${id}`,
+      payload: {
+        purpose: 'MARKETING', couponType: 'DISCOUNT_AMOUNT', discountAmount: 30, validityMode: 'AFTER_CLAIM', afterClaimDays: 7,
+        codeMode: 'UNIQUE_CODE', codePrefix: 'BAT', redeemMode: 'STAFF_SCAN', perContactLimit: 1, totalLimit: 240,
+      },
+    });
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/coupons/${id}/publish` })).statusCode, 200);
+    const name = `${MARK} 分批對象`;
+    // 250 人：三批（每批 ISSUE_BATCH_SIZE = 100）；總量 240，最後 10 人因總量用完而略過
+    await owner.contact.createMany({ data: Array.from({ length: 250 }, (_, n) => ({ tenantId: T, displayName: `${name}${n}` })) });
+    const contacts = await owner.contact.findMany({ where: { tenantId: T, displayName: { startsWith: name } }, select: { id: true } });
+    try {
+      const res = await app.inject({
+        method: 'POST', url: `/api/v1/coupons/${id}/issue`,
+        payload: { contactIds: contacts.map((c) => c.id) },
+      });
+      assert.equal(res.statusCode, 200, res.body);
+      const data = res.json().data as { issued: unknown[]; skipped: Array<{ reason: string }>; stopped?: unknown };
+      assert.equal(data.issued.length, 240);
+      assert.equal(data.skipped.length, 10);
+      assert.ok(data.skipped.every((x) => x.reason === 'TOTAL_LIMIT_REACHED'), res.body.slice(0, 300));
+      assert.equal(data.stopped, undefined);
+      assert.equal(await owner.couponInstance.count({ where: { couponId: id } }), 240);
+    } finally {
+      await owner.couponInstance.deleteMany({ where: { couponId: id } });
+      await owner.contact.deleteMany({ where: { tenantId: T, displayName: { startsWith: name } } });
+    }
+  });
+});

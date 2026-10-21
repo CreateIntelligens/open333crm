@@ -14,9 +14,11 @@ import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
-import { issueInConversation, type InboxIssueDeps } from '#src/modules/coupon/coupon-inbox.service.js';
-import { openWalletSession, openWalletSessionWithLine, type LineLoginDeps } from '#src/modules/coupon/coupon-wallet.service.js';
+import { issueInConversation, type InboxFlowDeps } from '#src/modules/coupon/coupon-inbox.flow.js';
+import type { LineLoginDeps } from '#src/modules/coupon/coupon-wallet.service.js';
+import { openWalletSessionFlow, openWalletSessionWithLineFlow } from '#src/modules/coupon/coupon-wallet.flow.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
+import { ctxOf, testIo } from '#tests/support/tenant-run.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -39,10 +41,12 @@ const deps: LineLoginDeps = {
   },
 };
 const delivered: Array<{ conversationId: string; text: string }> = [];
-const inboxDeps: InboxIssueDeps = {
+const inboxDeps: InboxFlowDeps = {
+  prisma,
+  io: testIo,
   store: deps.store,
   webBaseUrl: 'https://crm.example.com',
-  deliver: async (_db, params) => {
+  deliver: async (params) => {
     delivered.push(params);
     return { sent: true };
   },
@@ -62,7 +66,7 @@ async function person(name: string, channelId: string) {
 }
 
 async function issue(p: { conversationId: string }) {
-  const r = await issueInConversation(prisma, inboxDeps, {
+  const r = await issueInConversation(inboxDeps, {
     tenantId: T, couponId, conversationId: p.conversationId, agentId, agentName: '王小美',
     expectedAssigneeId: null, requestKey: randomUUID(),
   });
@@ -96,13 +100,13 @@ beforeAll(async () => {
     },
   })).id;
   const c = await withTenant(prisma, T, (tx) =>
-    createCoupon(tx, T, creatorId, {
+    createCoupon(ctxOf(tx, T), creatorId, {
       name: `${MARK} 券`, couponType: 'DISCOUNT_AMOUNT', discountAmount: 100, purpose: 'SERVICE',
       validityMode: 'AFTER_CLAIM', afterClaimDays: 30, codeMode: 'UNIQUE_CODE', codePrefix: 'LIN',
       redeemMode: 'STAFF_SCAN', perContactLimit: 20,
     } as never));
   couponId = c.id;
-  assert.ok((await withTenant(prisma, T, (tx) => changeStatus(tx, T, couponId, 'ACTIVE'))).ok);
+  assert.ok((await withTenant(prisma, T, (tx) => changeStatus(ctxOf(tx, T), couponId, 'ACTIVE'))).ok);
 });
 
 afterAll(async () => {
@@ -130,21 +134,21 @@ describe('LINE 顧客以 LINE Login 驗證身分', () => {
   it('LINE 顧客從 LIFF 開啟票券連結', async () => {
     const p = await person('驗證', liffChannel);
     const token = tokenOf(await issue(p));
-    const r = await openWalletSessionWithLine(prisma, deps, token, `valid:${LOGIN_CHANNEL_ID}:${p.uid}`);
+    const r = await openWalletSessionWithLineFlow({ ...deps, prisma, io: testIo }, token, `valid:${LOGIN_CHANNEL_ID}:${p.uid}`);
     assert.equal(r.status, 'verified', JSON.stringify(r));
     assert.deepEqual(verifyCalls.at(-1), { idToken: `valid:${LOGIN_CHANNEL_ID}:${p.uid}`, clientId: LOGIN_CHANNEL_ID });
     const contact = await owner.contact.findUnique({ where: { id: p.contactId } });
     assert.ok(contact?.identityVerifiedAt);
     assert.equal(contact?.identityVerifiedVia, 'line');
     // 之後照一般流程開啟，不再要求登記
-    assert.equal((await openWalletSession(prisma, deps, token)).status, 'ok');
+    assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'ok');
   });
 
   it('ID token 驗證失敗', async () => {
     const p = await person('失敗', liffChannel);
     const token = tokenOf(await issue(p));
     // 其他 Login channel 簽發的 token：client_id 不符
-    const r = await openWalletSessionWithLine(prisma, deps, token, `valid:9999999999:${p.uid}`);
+    const r = await openWalletSessionWithLineFlow({ ...deps, prisma, io: testIo }, token, `valid:9999999999:${p.uid}`);
     assert.equal(r.status, 'verification_failed');
     assert.equal((await owner.contact.findUnique({ where: { id: p.contactId } }))?.identityVerifiedAt, null);
   });
@@ -153,7 +157,7 @@ describe('LINE 顧客以 LINE Login 驗證身分', () => {
     const p = await person('收券者', liffChannel);
     const other = await person('轉傳對象', liffChannel);
     const token = tokenOf(await issue(p));
-    const r = await openWalletSessionWithLine(prisma, deps, token, `valid:${LOGIN_CHANNEL_ID}:${other.uid}`);
+    const r = await openWalletSessionWithLineFlow({ ...deps, prisma, io: testIo }, token, `valid:${LOGIN_CHANNEL_ID}:${other.uid}`);
     assert.equal(r.status, 'account_mismatch');
     assert.equal((r as { fanToken?: string }).fanToken, undefined);
     assert.equal((await owner.contact.findUnique({ where: { id: p.contactId } }))?.identityVerifiedAt, null);
@@ -165,13 +169,13 @@ describe('LINE 顧客以 LINE Login 驗證身分', () => {
     const text = await issue(p);
     assert.ok(text.includes('https://crm.example.com/coupon/open/'), '維持一般網址');
     const before = verifyCalls.length;
-    const r = await openWalletSessionWithLine(prisma, deps, tokenOf(text), `valid:${LOGIN_CHANNEL_ID}:${p.uid}`);
+    const r = await openWalletSessionWithLineFlow({ ...deps, prisma, io: testIo }, tokenOf(text), `valid:${LOGIN_CHANNEL_ID}:${p.uid}`);
     assert.equal(r.status, 'not_configured');
     assert.equal(verifyCalls.length, before, '沒有設定就不呼叫 LINE');
   });
 
   it('連結已失效', async () => {
-    const r = await openWalletSessionWithLine(prisma, deps, 'A'.repeat(43), `valid:${LOGIN_CHANNEL_ID}:x`);
+    const r = await openWalletSessionWithLineFlow({ ...deps, prisma, io: testIo }, 'A'.repeat(43), `valid:${LOGIN_CHANNEL_ID}:x`);
     assert.equal(r.status, 'expired');
   });
 });

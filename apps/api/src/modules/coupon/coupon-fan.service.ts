@@ -1,9 +1,9 @@
 /**
  * 顧客端券夾的資料存取與狀態判定。身分一律由呼叫端傳入已驗簽的 fan（不接受請求帶 contactId），
- * 查詢走 withTenant，RLS 兜底。
+ * 查詢走入口開的交易（TenantCtx，租戶取自顧客憑證），RLS 兜底。
  */
 import type { PrismaClient } from '@prisma/client';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { FanPayload } from '../portal/portal-auth.service.js';
 
 export type FanIdentity = Pick<FanPayload, 'tenantId' | 'contactId'>;
@@ -142,14 +142,13 @@ export type FanCouponView = ReturnType<typeof toFanView>;
  * 券夾：顧客名下已領取的券與各分頁數量。未領取（ISSUED）的券還在等人用憑證來領，不算顧客的券。
  * 排序：可使用的依到期時間由近到遠，其餘依領取時間由新到舊。
  */
-export async function listFanCoupons(prisma: PrismaClient, fan: FanIdentity, now: number = Date.now()) {
-  const rows = await withTenant(prisma, fan.tenantId, (tx) =>
-    tx.couponInstance.findMany({
-      // 發送中的券（對話發券還在等渠道回應，design D16）不算顧客的券
-      where: { tenantId: fan.tenantId, contactId: fan.contactId, status: { not: 'ISSUED' }, deliveryPendingAt: null },
-      include: COUPON_INCLUDE,
-      orderBy: [{ expiresAt: { sort: 'asc', nulls: 'last' } }, { claimedAt: 'desc' }],
-    }));
+export async function listFanCoupons(ctx: TenantCtx, fan: FanIdentity, now: number = Date.now()) {
+  const rows = await ctx.tx.couponInstance.findMany({
+    // 發送中的券（對話發券還在等渠道回應，design D16）不算顧客的券
+    where: { tenantId: ctx.tenantId, contactId: fan.contactId, status: { not: 'ISSUED' }, deliveryPendingAt: null },
+    include: COUPON_INCLUDE,
+    orderBy: [{ expiresAt: { sort: 'asc', nulls: 'last' } }, { claimedAt: 'desc' }],
+  });
   const items = rows.map((r) => toFanView(r, now));
   const counts = { available: 0, used: 0, invalid: 0 };
   for (const item of items) counts[item.walletTab] += 1;
@@ -157,21 +156,19 @@ export async function listFanCoupons(prisma: PrismaClient, fan: FanIdentity, now
 }
 
 /** 單張券；不屬於此顧客時回 null。 */
-export async function getFanCoupon(prisma: PrismaClient, fan: FanIdentity, id: string, now: number = Date.now()) {
-  const instance = await withTenant(prisma, fan.tenantId, (tx) =>
-    tx.couponInstance.findFirst({
-      where: { id, tenantId: fan.tenantId, contactId: fan.contactId, deliveryPendingAt: null },
-      include: COUPON_INCLUDE,
-    }));
+export async function getFanCoupon(ctx: TenantCtx, fan: FanIdentity, id: string, now: number = Date.now()) {
+  const instance = await ctx.tx.couponInstance.findFirst({
+    where: { id, tenantId: ctx.tenantId, contactId: fan.contactId, deliveryPendingAt: null },
+    include: COUPON_INCLUDE,
+  });
   return instance ? toFanView(instance, now) : null;
 }
 
 /** 這張券是否屬於此顧客。核銷前先確認，避免以他人 instanceId 觸發核銷。 */
-export async function isOwnedByFan(prisma: PrismaClient, fan: FanIdentity, id: string): Promise<boolean> {
-  const owned = await withTenant(prisma, fan.tenantId, (tx) =>
-    tx.couponInstance.findFirst({
-      where: { id, tenantId: fan.tenantId, contactId: fan.contactId, deliveryPendingAt: null },
-      select: { id: true },
-    }));
+export async function isOwnedByFan(ctx: TenantCtx, fan: FanIdentity, id: string): Promise<boolean> {
+  const owned = await ctx.tx.couponInstance.findFirst({
+    where: { id, tenantId: ctx.tenantId, contactId: fan.contactId, deliveryPendingAt: null },
+    select: { id: true },
+  });
   return owned != null;
 }

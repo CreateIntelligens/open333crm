@@ -13,12 +13,13 @@ import { afterAll, beforeAll, it } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
 import {
   saveBindingConfig,
-  bindMember,
   getBinding,
   getBindingConfig,
   unbindMember,
 } from '#src/modules/member-binding/member-binding.service.js';
 import type { MemberBindingConfig } from '#src/modules/member-binding/member-binding.types.js';
+import { bindMember } from '#src/modules/member-binding/member-binding.flow.js';
+import { runInTenant, testIo } from '#tests/support/tenant-run.js';
 
 // 模擬 API 跑在 127.0.0.1，需允許本機位址
 const originalAllowLocal = process.env.MEMBER_BINDING_ALLOW_LOCAL;
@@ -80,7 +81,7 @@ beforeAll(async () => {
   originalSettings = await owner.tenantSettings.findUnique({ where: { tenantId }, select: { memberBinding: true } });
   contactA = await mkContact('顧客A');
   contactB = await mkContact('顧客B');
-  await saveBindingConfig(tenantDb, tenantId, config());
+  await runInTenant(tenantDb, tenantId, (ctx) => saveBindingConfig(ctx, config()));
 });
 
 afterAll(async () => {
@@ -103,7 +104,7 @@ afterAll(async () => {
 });
 
 it('綁定成功寫入 ContactAttribute（不新建表）', async () => {
-  const r = await bindMember(tenantDb, tenantId, contactA, { memberId: 'A1' });
+  const r = await bindMember({ prisma: tenantDb, io: testIo }, tenantId, contactA, { memberId: 'A1' });
   assert.ok(r.ok, `綁定失敗：${JSON.stringify(r)}`);
   const rows = await owner.contactAttribute.findMany({ where: { contactId: contactA }, orderBy: { key: 'asc' } });
   const keys = rows.map((x) => x.key);
@@ -112,25 +113,25 @@ it('綁定成功寫入 ContactAttribute（不新建表）', async () => {
 });
 
 it('可查詢綁定狀態', async () => {
-  const r = await getBinding(tenantDb, tenantId, contactA);
+  const r = await runInTenant(tenantDb, tenantId, (ctx) => getBinding(ctx, contactA));
   assert.ok(r.bound && r.memberId === 'M-A1', `實得 ${JSON.stringify(r)}`);
 });
 
 it('同一會員編號不可綁到第二個聯絡人', async () => {
-  const r = await bindMember(tenantDb, tenantId, contactB, { memberId: 'A1' });
+  const r = await bindMember({ prisma: tenantDb, io: testIo }, tenantId, contactB, { memberId: 'A1' });
   assert.ok(!r.ok && r.reason === 'ALREADY_BOUND_TO_OTHER', `實得 ${JSON.stringify(r)}`);
-  const b = await getBinding(tenantDb, tenantId, contactB);
+  const b = await runInTenant(tenantDb, tenantId, (ctx) => getBinding(ctx, contactB));
   assert.ok(!b.bound, '衝突時竟仍寫入綁定');
 });
 
 it('不同會員編號可各自綁定', async () => {
-  const r = await bindMember(tenantDb, tenantId, contactB, { memberId: 'B2' });
+  const r = await bindMember({ prisma: tenantDb, io: testIo }, tenantId, contactB, { memberId: 'B2' });
   assert.ok(r.ok, `綁定失敗：${JSON.stringify(r)}`);
 });
 
 it('查無會員時不寫入任何 attribute', async () => {
   const c = await mkContact('顧客C');
-  const r = await bindMember(tenantDb, tenantId, c, { memberId: 'MISSING' });
+  const r = await bindMember({ prisma: tenantDb, io: testIo }, tenantId, c, { memberId: 'MISSING' });
   assert.ok(!r.ok && r.reason === 'MEMBER_NOT_FOUND');
   const n = await owner.contactAttribute.count({ where: { contactId: c } });
   assert.equal(n, 0, '查無會員竟寫入了 attribute');
@@ -144,21 +145,21 @@ it('憑證加密入庫，DB 中不存明文', async () => {
 });
 
 it('讀回設定時憑證可正確解密', async () => {
-  const c = await getBindingConfig(tenantDb, tenantId);
+  const c = await runInTenant(tenantDb, tenantId, (ctx) => getBindingConfig(ctx));
   assert.equal(c?.auth.credential, 'secret', '憑證未能正確解密還原');
 });
 
 it('解除綁定移除會員欄位', async () => {
-  const r = await unbindMember(tenantDb, tenantId, contactA);
+  const r = await runInTenant(tenantDb, tenantId, (ctx) => unbindMember(ctx, contactA));
   assert.ok(r.removed > 0, '未移除任何欄位');
-  const after = await getBinding(tenantDb, tenantId, contactA);
+  const after = await runInTenant(tenantDb, tenantId, (ctx) => getBinding(ctx, contactA));
   assert.ok(!after.bound, '解除後仍顯示已綁定');
 });
 
 it('兩位聯絡人同時綁同一個會員編號，只有一位成功', async () => {
   for (let round = 0; round < 8; round++) {
     const contacts = await Promise.all([0, 1, 2, 3].map((i) => mkContact(`同時${round}-${i}`)));
-    const results = await Promise.all(contacts.map((c) => bindMember(tenantDb, tenantId, c, { memberId: `RACE${round}` })));
+    const results = await Promise.all(contacts.map((c) => bindMember({ prisma: tenantDb, io: testIo }, tenantId, c, { memberId: `RACE${round}` })));
     assert.equal(results.filter((r) => r.ok).length, 1, `第 ${round + 1} 輪：${JSON.stringify(results)}`);
   }
 });

@@ -1,15 +1,16 @@
 /**
  * 優惠券後台 API。Prefix: /api/v1/coupons
  *
- * 租戶隔離：一律用 request.tenantPrisma（已綁租戶的連線）；需要交易者改收 app.prisma
- * 並走 withTenant。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
+ * 租戶隔離：每個 handler 以 tenantHandler() 在綁定租戶的交易內執行，service 只收 TenantCtx
+ * （AGENTS.md 結構規則 2）。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
  */
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { emitCouponInstanceUpdated } from './coupon-events.js';
 import { parseDateOnly } from '@open333crm/core';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
+import { eventBus } from '../../events/event-bus.js';
+import { AppError } from '../../shared/utils/response.js';
 import {
   listCoupons,
   getCoupon,
@@ -23,7 +24,7 @@ import {
   CouponConflictError,
 } from './coupon.service.js';
 import { changeStatus } from './coupon-lifecycle.service.js';
-import { issueCoupons } from './coupon-issue.service.js';
+import { ISSUE_BATCH_SIZE, issueCoupons, type IssueResult } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 
@@ -98,110 +99,92 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(50),
 });
 
-/** service 的錯誤轉成對應狀態碼；其餘往上拋，交給全域錯誤處理回 500。 */
-function handleError(err: unknown, reply: { status: (n: number) => { send: (b: unknown) => unknown } }) {
-  if (err instanceof CouponValidationError) {
-    return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: err.message } });
-  }
-  if (err instanceof CouponLockedError) {
-    return reply.status(409).send({
-      success: false,
-      error: { code: 'COUPON_LOCKED', message: err.message, details: { fields: err.fields } },
-    });
-  }
-  if (err instanceof CouponConflictError) {
-    return reply.status(409).send({ success: false, error: { code: 'CONFLICT', message: err.message } });
-  }
-  throw err;
+/** service 的錯誤轉成 AppError（交易會回滾）；其餘原樣往上拋，交給全域錯誤處理回 500。 */
+function toAppError(err: unknown): unknown {
+  if (err instanceof CouponValidationError) return new AppError(err.message, 'VALIDATION_ERROR', 400);
+  if (err instanceof CouponLockedError) return new AppError(err.message, 'COUPON_LOCKED', 409, { fields: err.fields });
+  if (err instanceof CouponConflictError) return new AppError(err.message, 'CONFLICT', 409);
+  return err;
+}
+
+/** tenantHandler 加上 service 錯誤的轉換 */
+function couponHandler(
+  app: FastifyInstance,
+  fn: (request: FastifyRequest, reply: TenantReply, ctx: TenantCtx) => Promise<unknown>,
+) {
+  return tenantHandler(app, async (request, reply, ctx) => {
+    try {
+      return await fn(request, reply, ctx);
+    } catch (err) {
+      throw toAppError(err);
+    }
+  });
+}
+
+/** 查無資料等非例外的失敗：設定狀態碼並回傳錯誤內容（交易照常提交，沒有寫入要回滾） */
+function fail(reply: TenantReply, status: number, code: string, message: string, extra?: Record<string, unknown>) {
+  reply.code(status);
+  return { success: false, error: { code, message, ...extra } };
 }
 
 export default async function couponRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
+  app.get('/', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, _reply, ctx) => {
     const query = listQuerySchema.parse(request.query);
-    const result = await listCoupons(request.tenantPrisma, request.agent.tenantId, query);
+    const result = await listCoupons(ctx, query);
     return {
       success: true,
       data: result.items,
       meta: { total: result.total, page: result.page, limit: result.limit, statusCounts: result.statusCounts },
     };
-  });
+  }));
 
-  app.get('/:id', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
+  app.get('/:id', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, reply, ctx) => {
     const { id } = idParams.parse(request.params);
-    const coupon = await getCoupon(request.tenantPrisma, request.agent.tenantId, id);
-    if (!coupon) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-    }
+    const coupon = await getCoupon(ctx, id);
+    if (!coupon) return fail(reply, 404, 'NOT_FOUND', '查無此券');
     return { success: true, data: coupon };
-  });
+  }));
 
-  app.post('/', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
-    try {
-      const coupon = await createCoupon(
-        request.tenantPrisma,
-        request.agent.tenantId,
-        request.agent.id,
-        couponInputSchema.parse(request.body),
-      );
-      return { success: true, data: coupon };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+  app.post('/', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
+    const coupon = await createCoupon(ctx, request.agent.id, couponInputSchema.parse(request.body));
+    return { success: true, data: coupon };
+  }));
 
-  app.patch('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+  app.patch('/:id', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
     const { id } = idParams.parse(request.params);
-    try {
-      const coupon = await updateCoupon(
-        request.tenantPrisma,
-        request.agent.tenantId,
-        id,
-        couponInputSchema.parse(request.body),
-      );
-      if (!coupon) {
-        return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-      }
-      return { success: true, data: coupon };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    const coupon = await updateCoupon(ctx, id, couponInputSchema.parse(request.body));
+    if (!coupon) return fail(reply, 404, 'NOT_FOUND', '查無此券');
+    return { success: true, data: coupon };
+  }));
 
   /** 複製為新草稿，回傳新券（前端導向其編輯頁）。 */
-  app.post('/:id/duplicate', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+  app.post('/:id/duplicate', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
     const { id } = idParams.parse(request.params);
-    const copy = await duplicateCoupon(request.tenantPrisma, request.agent.tenantId, id, request.agent.id);
-    if (!copy) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-    }
+    const copy = await duplicateCoupon(ctx, id, request.agent.id);
+    if (!copy) return fail(reply, 404, 'NOT_FOUND', '查無此券');
     return { success: true, data: copy };
-  });
+  }));
 
   /** 共用碼即時檢查（表單失焦時呼叫）。excludeId 為正在編輯的券，自己不算重複。 */
-  app.get('/shared-code/check', { preHandler: [requirePermission('coupon.manage')] }, async (request) => {
+  app.get('/shared-code/check', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
     const { code, excludeId } = z
       .object({ code: z.string().min(1), excludeId: z.string().uuid().optional() })
       .parse(request.query);
-    const result = await checkSharedCode(request.tenantPrisma, request.agent.tenantId, code, excludeId);
+    const result = await checkSharedCode(ctx, code, excludeId);
     return { success: true, data: result };
-  });
+  }));
 
-  app.delete('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+  app.delete('/:id', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
     const { id } = idParams.parse(request.params);
-    const result = await deleteCoupon(request.tenantPrisma, request.agent.tenantId, id);
+    const result = await deleteCoupon(ctx, id);
     if (!result.deleted) {
-      if (result.reason === 'NOT_FOUND') {
-        return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-      }
-      return reply.status(409).send({
-        success: false,
-        error: { code: 'NOT_DRAFT', message: '已發布的券無法刪除，請改為提前結束' },
-      });
+      if (result.reason === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND', '查無此券');
+      return fail(reply, 409, 'NOT_DRAFT', '已發布的券無法刪除，請改為提前結束');
     }
     return { success: true };
-  });
+  }));
 
   // 狀態流轉。分成獨立端點而非 PATCH status，讓權限與稽核能對應到具體動作
   for (const [path, next] of [
@@ -210,89 +193,87 @@ export default async function couponRoutes(app: FastifyInstance) {
     ['resume', 'ACTIVE'],
     ['end', 'ENDED'],
   ] as const) {
-    app.post(`/:id/${path}`, { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+    app.post(`/:id/${path}`, { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
       const { id } = idParams.parse(request.params);
-      try {
-        // 在同一個交易內鎖券、改狀態、作廢未使用的券
-        const result = await withTenant(app.prisma, request.agent.tenantId, (tx) =>
-          changeStatus(tx, request.agent.tenantId, id, next));
-        if (!result.ok) {
-          if (result.reason === 'NOT_FOUND') {
-            return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
-          }
-          return reply.status(409).send({ success: false, error: { code: 'INVALID_TRANSITION', message: result.reason } });
-        }
-        // 提前結束時帶回已領取與未使用張數，供後台提示影響範圍
-        const { ok: _ok, ...data } = result;
-        return { success: true, data };
-      } catch (err) {
-        return handleError(err, reply);
+      // 在同一個交易內鎖券、改狀態、作廢未使用的券
+      const result = await changeStatus(ctx, id, next);
+      if (!result.ok) {
+        if (result.reason === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND', '查無此券');
+        return fail(reply, 409, 'INVALID_TRANSITION', result.reason);
       }
-    });
+      // 提前結束時帶回已領取與未使用張數，供後台提示影響範圍
+      const { ok: _ok, ...data } = result;
+      return { success: true, data };
+    }));
   }
 
-  app.post('/:id/issue', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
+  /**
+   * 批次發券。每 ISSUE_BATCH_SIZE 人一個交易（交易時限 5 秒）；已提交的批次不會因後面的批次失敗而回滾。
+   * 第一批就失敗時回錯誤；之後的批次失敗時回已發出的結果，並以 stopped 告知停在哪裡、原因為何。
+   */
+  app.post('/:id/issue', { preHandler: [requirePermission('coupon.issue')] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = issueSchema.parse(request.body);
-    try {
-      const result = await issueCoupons(app.prisma, request.agent.tenantId, id, {
-        contactIds: body.contactIds,
-        issuedVia: body.issuedVia ?? 'inbox',
-        issuedRefId: body.issuedRefId ?? request.agent.id,
-        requireClaim: body.requireClaim,
-      });
-      return { success: true, data: result };
-    } catch (err) {
-      return handleError(err, reply);
+    const tenantId = request.agent.tenantId;
+    const merged: IssueResult = { issued: [], skipped: [] };
+    let stopped: { message: string; notAttempted: string[] } | undefined;
+    for (let start = 0; start < body.contactIds.length; start += ISSUE_BATCH_SIZE) {
+      const batch = body.contactIds.slice(start, start + ISSUE_BATCH_SIZE);
+      try {
+        const result = await inTenant({ prisma: app.prisma, io: app.io, events: eventBus }, tenantId, (ctx) =>
+          issueCoupons(ctx, id, {
+            contactIds: batch,
+            issuedVia: body.issuedVia ?? 'inbox',
+            issuedRefId: body.issuedRefId ?? request.agent.id,
+            requireClaim: body.requireClaim,
+          }));
+        merged.issued.push(...result.issued);
+        merged.skipped.push(...result.skipped);
+      } catch (err) {
+        if (start === 0) throw toAppError(err);
+        const reason = toAppError(err);
+        stopped = {
+          message: reason instanceof AppError ? reason.message : '發券中途失敗，其餘對象未發出',
+          notAttempted: body.contactIds.slice(start),
+        };
+        if (!(reason instanceof AppError)) request.log.error({ err }, '[Coupon] 批次發券中途失敗');
+        break;
+      }
     }
+    return { success: true, data: stopped ? { ...merged, stopped } : merged };
   });
 
   // ── 序號包匯入 ──
 
-  app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+  app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
     const { id } = idParams.parse(request.params);
     const body = codesSchema.parse(request.body ?? {});
-    try {
-      const result = await previewImport(app.prisma, request.agent.tenantId, body.codes, id);
-      return { success: true, data: result };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    const result = await previewImport(ctx, body.codes, id);
+    return { success: true, data: result };
+  }));
 
-  app.post('/:id/codes', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+  app.post('/:id/codes', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
     const { id } = idParams.parse(request.params);
     const body = codesSchema.parse(request.body ?? {});
-    try {
-      const result = await importCodes(app.prisma, request.agent.tenantId, id, body.codes);
-      return { success: true, data: result };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    const result = await importCodes(ctx, id, body.codes);
+    return { success: true, data: result };
+  }));
 
-  app.delete('/:id/codes/:code', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
+  app.delete('/:id/codes/:code', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
     const { id, code } = idParams.extend({ code: z.string().min(1).max(64) }).parse(request.params);
-    const result = await removeAvailableCode(app.prisma, request.agent.tenantId, id, code);
+    const result = await removeAvailableCode(ctx, id, code);
     if (!result.removed) {
-      if (result.reason === 'NOT_FOUND') {
-        return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此序號' } });
-      }
-      return reply.status(409).send({
-        success: false,
-        error: { code: 'ALREADY_ASSIGNED', message: '此序號已配發給顧客，無法移除' },
-      });
+      if (result.reason === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND', '查無此序號');
+      return fail(reply, 409, 'ALREADY_ASSIGNED', '此序號已配發給顧客，無法移除');
     }
     return { success: true };
-  });
+  }));
 
-  // 核銷台。掃碼或手動輸入券號皆走此端點
-  app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, async (request, reply) => {
+  // 核銷台。掃碼或手動輸入券號皆走此端點；成功時 service 推播券狀態更新（commit 後送出）
+  app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, couponHandler(app, async (request, reply, ctx) => {
     const body = redeemSchema.parse(request.body ?? {});
-    if (!body.code && !body.instanceId) {
-      return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: '請提供券號' } });
-    }
-    const result = await redeemCoupon(app.prisma, request.agent.tenantId, {
+    if (!body.code && !body.instanceId) return fail(reply, 400, 'VALIDATION_ERROR', '請提供券號');
+    const result = await redeemCoupon(ctx, {
       code: body.code,
       instanceId: body.instanceId,
       staffCode: body.staffCode,
@@ -314,20 +295,10 @@ export default async function couponRoutes(app: FastifyInstance) {
         SELF_REDEEM_NOT_ALLOWED: '此券須由店員核銷',
         CONFLICT: '此券剛被核銷，請重新確認',
       };
-      return reply.status(409).send({
-        success: false,
-        error: {
-          code: result.reason,
-          message: messages[result.reason] ?? '核銷失敗',
-          redeemedAt: result.redeemedAt,
-        },
+      return fail(reply, 409, result.reason, messages[result.reason] ?? '核銷失敗', {
+        redeemedAt: 'redeemedAt' in result ? result.redeemedAt : undefined,
       });
     }
-    emitCouponInstanceUpdated(app.io, request.agent.tenantId, {
-      instanceId: result.instanceId,
-      contactId: result.contactId,
-      change: 'redeemed',
-    });
     return { success: true, data: result };
-  });
+  }));
 }

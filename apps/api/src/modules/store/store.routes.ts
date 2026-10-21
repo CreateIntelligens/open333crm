@@ -2,10 +2,12 @@
  * 門市與門市帳號管理（後台）。Prefix: /api/v1/stores
  * 查看需 store.view，異動需 store.manage（design D13）。
  */
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { getConfig } from '../../config/env.js';
+import { tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
+import { AppError } from '../../shared/utils/response.js';
 import {
   listStores,
   createStore,
@@ -21,16 +23,26 @@ import {
 } from './store.service.js';
 
 const idParam = z.object({ id: z.string().uuid('格式不正確') });
-const notFound = { success: false, error: { code: 'NOT_FOUND', message: '查無此門市或帳號' } };
 
-function handleError(err: unknown, reply: { status: (n: number) => { send: (b: unknown) => unknown } }) {
-  if (err instanceof StoreValidationError) {
-    return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: err.message } });
-  }
-  if (err instanceof StoreConflictError) {
-    return reply.status(409).send({ success: false, error: { code: 'CONFLICT', message: err.message } });
-  }
-  throw err;
+function notFound(reply: TenantReply) {
+  reply.code(404);
+  return { success: false, error: { code: 'NOT_FOUND', message: '查無此門市或帳號' } };
+}
+
+/** tenantHandler 加上 service 錯誤的轉換（交易會回滾） */
+function storeHandler(
+  app: FastifyInstance,
+  fn: (request: FastifyRequest, reply: TenantReply, ctx: TenantCtx) => Promise<unknown>,
+) {
+  return tenantHandler(app, async (request, reply, ctx) => {
+    try {
+      return await fn(request, reply, ctx);
+    } catch (err) {
+      if (err instanceof StoreValidationError) throw new AppError(err.message, 'VALIDATION_ERROR', 400);
+      if (err instanceof StoreConflictError) throw new AppError(err.message, 'CONFLICT', 409);
+      throw err;
+    }
+  });
 }
 
 export default async function storeRoutes(app: FastifyInstance) {
@@ -38,77 +50,60 @@ export default async function storeRoutes(app: FastifyInstance) {
   const view = { preHandler: [requirePermission('store.view')] };
   const manage = { preHandler: [requirePermission('store.manage')] };
 
-  app.get('/', view, async (request) => {
-    return { success: true, data: await listStores(request.tenantPrisma, request.agent.tenantId) };
-  });
+  app.get('/', view, storeHandler(app, async (_request, _reply, ctx) => {
+    return { success: true, data: await listStores(ctx) };
+  }));
 
   /** 櫃檯海報：核銷台登入頁網址與 QR Code */
-  app.get('/:id/poster', view, async (request, reply) => {
+  app.get('/:id/poster', view, storeHandler(app, async (request, reply, ctx) => {
     const { id } = idParam.parse(request.params);
-    const poster = await getStorePoster(request.tenantPrisma, request.agent.tenantId, id, getConfig().WEB_BASE_URL);
-    return poster ? { success: true, data: poster } : reply.status(404).send(notFound);
-  });
+    const poster = await getStorePoster(ctx, id, getConfig().WEB_BASE_URL);
+    return poster ? { success: true, data: poster } : notFound(reply);
+  }));
 
-  app.post('/', manage, async (request, reply) => {
+  app.post('/', manage, storeHandler(app, async (request, _reply, ctx) => {
     const body = z.object({ name: z.string().max(50) }).parse(request.body);
-    try {
-      return { success: true, data: await createStore(request.tenantPrisma, request.agent.tenantId, body) };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    return { success: true, data: await createStore(ctx, body) };
+  }));
 
-  app.patch('/:id', manage, async (request, reply) => {
+  app.patch('/:id', manage, storeHandler(app, async (request, reply, ctx) => {
     const { id } = idParam.parse(request.params);
     const body = z.object({ name: z.string().max(50).optional(), isActive: z.boolean().optional() }).parse(request.body);
-    try {
-      const store = await updateStore(request.tenantPrisma, request.agent.tenantId, id, body);
-      return store ? { success: true, data: store } : reply.status(404).send(notFound);
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    const store = await updateStore(ctx, id, body);
+    return store ? { success: true, data: store } : notFound(reply);
+  }));
 
-  app.post('/:id/accounts', manage, async (request, reply) => {
+  app.post('/:id/accounts', manage, storeHandler(app, async (request, _reply, ctx) => {
     const { id } = idParam.parse(request.params);
     const body = z
       .object({ username: z.string().max(32), password: z.string().max(100), canRedeem: z.boolean().optional() })
       .parse(request.body);
-    try {
-      const account = await createStoreAccount(request.tenantPrisma, request.agent.tenantId, { storeId: id, ...body });
-      return { success: true, data: account };
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    return { success: true, data: await createStoreAccount(ctx, { storeId: id, ...body }) };
+  }));
 
-  app.patch('/accounts/:id', manage, async (request, reply) => {
+  app.patch('/accounts/:id', manage, storeHandler(app, async (request, reply, ctx) => {
     const { id } = idParam.parse(request.params);
     const body = z.object({ canRedeem: z.boolean().optional(), isActive: z.boolean().optional() }).parse(request.body);
-    const account = await updateStoreAccount(request.tenantPrisma, request.agent.tenantId, id, body);
-    return account ? { success: true, data: account } : reply.status(404).send(notFound);
-  });
+    const account = await updateStoreAccount(ctx, id, body);
+    return account ? { success: true, data: account } : notFound(reply);
+  }));
 
-  app.post('/accounts/:id/reset-password', manage, async (request, reply) => {
+  app.post('/accounts/:id/reset-password', manage, storeHandler(app, async (request, reply, ctx) => {
     const { id } = idParam.parse(request.params);
     const { password } = z.object({ password: z.string().max(100) }).parse(request.body);
-    try {
-      const account = await resetStoreAccountPassword(request.tenantPrisma, request.agent.tenantId, id, password);
-      return account ? { success: true, data: account } : reply.status(404).send(notFound);
-    } catch (err) {
-      return handleError(err, reply);
-    }
-  });
+    const account = await resetStoreAccountPassword(ctx, id, password);
+    return account ? { success: true, data: account } : notFound(reply);
+  }));
 
-  app.post('/accounts/:id/force-logout', manage, async (request, reply) => {
+  app.post('/accounts/:id/force-logout', manage, storeHandler(app, async (request, reply, ctx) => {
     const { id } = idParam.parse(request.params);
-    const account = await forceLogoutStoreAccount(request.tenantPrisma, request.agent.tenantId, id);
-    return account ? { success: true, data: account } : reply.status(404).send(notFound);
-  });
+    const account = await forceLogoutStoreAccount(ctx, id);
+    return account ? { success: true, data: account } : notFound(reply);
+  }));
 
-  app.delete('/accounts/:id', manage, async (request, reply) => {
+  app.delete('/accounts/:id', manage, storeHandler(app, async (request, reply, ctx) => {
     const { id } = idParam.parse(request.params);
-    const deleted = await deleteStoreAccount(request.tenantPrisma, request.agent.tenantId, id);
-    return deleted ? { success: true } : reply.status(404).send(notFound);
-  });
+    const deleted = await deleteStoreAccount(ctx, id);
+    return deleted ? { success: true } : notFound(reply);
+  }));
 }

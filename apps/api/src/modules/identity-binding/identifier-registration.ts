@@ -366,7 +366,8 @@ async function register(
 
   if (!existing) {
     await kind.write(db, tenantId, registrantId, value);
-    await markIdentityVerified(kind, db, tenantId, registrantId);
+    const verified = identityVerifiedData(kind);
+    if (verified) await db.contact.updateMany({ where: { id: registrantId, tenantId }, data: verified });
     return {
       result: { status: 'registered', contactId: registrantId },
       notices: [{ conversationId, text: kind.text.registered, kind: `${kind.name}_registered` }],
@@ -441,7 +442,8 @@ async function register(
     throw err;
   });
   if (!merge) return channelConflict();
-  await markIdentityVerified(kind, db, tenantId, existing.id);
+  const verified = identityVerifiedData(kind);
+  if (verified) await db.contact.updateMany({ where: { id: existing.id, tenantId }, data: verified });
 
   const settingsRow = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
   const unbindKeyword = parseIdentityBindingSettings(settingsRow?.identityBinding).unbindKeywords[0];
@@ -474,15 +476,11 @@ async function register(
 }
 
 /**
- * 記錄歸戶驗證：顧客本人用登記連結送出了這個值。優惠券票券夾以此判斷是否已歸戶（add-coupon-system D12）。
+ * 歸戶驗證要寫入的欄位（不證明本人的方式回 null）：顧客本人用登記連結送出了這個值。優惠券票券夾以此判斷是否已歸戶（add-coupon-system D12）。
  * 合併時記在保留方——合併後顧客的所有渠道身分都屬於它。
  */
-async function markIdentityVerified(kind: RegistrationKind, db: TenantDb, tenantId: string, contactId: string): Promise<void> {
-  if (!kind.provesOwnership) return;
-  await db.contact.updateMany({
-    where: { id: contactId, tenantId },
-    data: { identityVerifiedAt: new Date(), identityVerifiedVia: kind.name },
-  });
+function identityVerifiedData(kind: RegistrationKind) {
+  return kind.provesOwnership ? { identityVerifiedAt: new Date(), identityVerifiedVia: kind.name } : null;
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * 優惠券 service —— 券主檔的 CRUD、列表與複製。
  *
- * 租戶隔離：所有函式收 TenantDb（已綁租戶的連線），並仍帶 where tenantId ——
+ * 租戶隔離：所有函式收 TenantCtx（入口開的、已綁租戶的交易），並仍帶 where tenantId ——
  * 應用層與 RLS 兩層都要顧，不可因為有 RLS 就省略 where（見 check-tenant-scoping.mjs）。
  *
  * 草稿只要求券名；其餘必填在發布時由 coupon-lifecycle.service 的 validateForPublish 檢查。
@@ -9,7 +9,7 @@
 import { randomInt } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { parseDateOnly, taipeiDateEnd, taipeiDateStart } from '@open333crm/core';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { sanitizeTerms } from './terms-sanitizer.js';
 import { normalizePrefix } from './coupon-code.service.js';
 import { staffCodeError, findLockedChanges } from './coupon-rules.js';
@@ -177,7 +177,7 @@ function buildData(input: CouponInput): Record<string, unknown> {
 }
 
 /** 共用碼不可與同租戶其他券重複；跨租戶可以相同。 */
-async function assertSharedCodeAvailable(db: TenantDb, tenantId: string, sharedCode: string | null | undefined, selfId?: string) {
+async function assertSharedCodeAvailable(db: Prisma.TransactionClient, tenantId: string, sharedCode: string | null | undefined, selfId?: string) {
   const code = sharedCode?.trim().toUpperCase();
   if (!code) return;
   const other = await db.coupon.findFirst({
@@ -188,7 +188,9 @@ async function assertSharedCodeAvailable(db: TenantDb, tenantId: string, sharedC
 }
 
 /** 共用碼是否可用，供表單即時檢查。 */
-export async function checkSharedCode(db: TenantDb, tenantId: string, sharedCode: string, excludeId?: string) {
+export async function checkSharedCode(ctx: TenantCtx, sharedCode: string, excludeId?: string) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   try {
     await assertSharedCodeAvailable(db, tenantId, sharedCode, excludeId);
     return { available: true as const };
@@ -233,7 +235,7 @@ function isSharedCodeCollision(err: unknown, data: { sharedCode?: unknown }): bo
 const SHARED_CODE_TAKEN = '與其他券重複，請換一組券號';
 
 /** 建立券並配一組券號；券號撞號時換一組重試（31^6 組合，實務上極少發生）。 */
-async function insertWithDisplayCode(db: TenantDb, data: Record<string, unknown>) {
+async function insertWithDisplayCode(db: Prisma.TransactionClient, data: Record<string, unknown>) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       return await db.coupon.create({
@@ -247,18 +249,24 @@ async function insertWithDisplayCode(db: TenantDb, data: Record<string, unknown>
   throw new Error('無法產生不重複的券號');
 }
 
-export async function createCoupon(db: TenantDb, tenantId: string, createdById: string, input: CouponInput) {
+export async function createCoupon(ctx: TenantCtx, createdById: string, input: CouponInput) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   if (!input.name?.trim()) throw new CouponValidationError('請先填寫優惠券名稱');
   validateCouponShape(input);
   await assertSharedCodeAvailable(db, tenantId, input.sharedCode);
   return insertWithDisplayCode(db, { ...buildData(input), tenantId, createdById });
 }
 
-export async function getCoupon(db: TenantDb, tenantId: string, id: string) {
+export async function getCoupon(ctx: TenantCtx, id: string) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   return db.coupon.findFirst({ where: { id, tenantId } });
 }
 
-export async function updateCoupon(db: TenantDb, tenantId: string, id: string, input: CouponInput) {
+export async function updateCoupon(ctx: TenantCtx, id: string, input: CouponInput) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const existing = await db.coupon.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
   // 已結束的券不再接受編輯——避免改動影響既已發出的券之認定
@@ -293,10 +301,11 @@ type CountedStatus = 'ACTIVE' | 'PAUSED' | 'DRAFT' | 'ENDED';
  * 讓分頁標籤上的數字在切換狀態時保持不變。
  */
 export async function listCoupons(
-  db: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   opts: { status?: string; purpose?: string; q?: string; page?: number; limit?: number } = {},
 ) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const page = Math.max(1, opts.page ?? 1);
   const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
   const base: Prisma.CouponWhereInput = { tenantId };
@@ -312,8 +321,7 @@ export async function listCoupons(
     ? { ...base, status: opts.status as Prisma.CouponWhereInput['status'] }
     : base;
 
-  // groupBy 在 TenantDb 聯集上無法推導多載（見 lib/tenant-db.ts 的說明），沿用專案既有寫法轉型
-  const tx = db as Prisma.TransactionClient;
+  const tx = db;
   const [coupons, total, grouped] = await Promise.all([
     db.coupon.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
     db.coupon.count({ where }),
@@ -353,7 +361,9 @@ export async function listCoupons(
  * 複製為新草稿。不複製店員驗證碼與共用碼（各券須不同，避免沿用後誤以為已設定），
  * 也不複製序號庫存；名稱加「（複製）」，券號重新產生。
  */
-export async function duplicateCoupon(db: TenantDb, tenantId: string, id: string, createdById: string) {
+export async function duplicateCoupon(ctx: TenantCtx, id: string, createdById: string) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const src = await db.coupon.findFirst({ where: { id, tenantId } });
   if (!src) return null;
   const {
@@ -374,7 +384,9 @@ export function copyName(name: string): string {
 }
 
 /** 只有草稿可以刪除；已發布的券只能提前結束（顧客手上可能有券，刪掉會讓核銷時查無此券）。 */
-export async function deleteCoupon(db: TenantDb, tenantId: string, id: string) {
+export async function deleteCoupon(ctx: TenantCtx, id: string) {
+  const db = ctx.tx;
+  const { tenantId } = ctx;
   const existing = await db.coupon.findFirst({ where: { id, tenantId } });
   if (!existing) return { deleted: false as const, reason: 'NOT_FOUND' as const };
   if (existing.status !== 'DRAFT') return { deleted: false as const, reason: 'NOT_DRAFT' as const };
