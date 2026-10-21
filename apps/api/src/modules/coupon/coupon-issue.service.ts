@@ -9,7 +9,7 @@
  * TenantDb 不含 $transaction，故此處收 PrismaClient（見 lib/tenant-db.ts 註解）。
  */
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
+import { couponSourceName, issueInstances, type IssuedInstance, type IssueSkipReason } from '@open333crm/core';
 import { withTenant } from '../../lib/tenant-db.js';
 import { applyClaimTag } from './coupon-tagging.js';
 import { CouponValidationError } from './coupon.service.js';
@@ -34,12 +34,6 @@ export interface IssueOptions {
   issuedByName?: string;
 }
 
-/** 各發放方式的預設來源名稱。活動、廣播等有自己名稱的來源由呼叫端傳 sourceName。 */
-const DEFAULT_SOURCE_NAME: Record<string, string> = {
-  inbox: '對話發券',
-  automation: '自動化',
-  keyword: '關鍵字',
-};
 
 export interface IssueResult {
   issued: IssuedInstance[];
@@ -85,7 +79,7 @@ export async function issueCouponsInTx(
     contactIds: opts.contactIds,
     issuedVia: opts.issuedVia,
     issuedRefId: opts.issuedRefId,
-    issuedSourceName: opts.sourceName ?? (opts.issuedVia ? DEFAULT_SOURCE_NAME[opts.issuedVia] : undefined),
+    issuedSourceName: opts.sourceName ?? couponSourceName(opts.issuedVia),
     issuedByName: opts.issuedByName,
     requireClaim,
     claimTokenHours: opts.claimTokenHours,

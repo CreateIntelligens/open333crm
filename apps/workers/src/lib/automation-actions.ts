@@ -7,7 +7,15 @@ import { publishSocketEvent, publishDomainEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
 import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
-import { issueInstances, issueWalletToken, walletLinkUrl, buildCouponMessage, type WalletTokenStore } from '@open333crm/core';
+import {
+  applyCouponClaimTag,
+  buildCouponMessage,
+  couponSourceName,
+  issueInstances,
+  issueWalletToken,
+  walletLinkUrl,
+  type WalletTokenStore,
+} from '@open333crm/core';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -545,20 +553,36 @@ export async function executeWorkerAutomationActions(
         // 對話對象已知：所有渠道都直接歸戶，顧客開啟票券連結時再做 One ID 歸戶驗證（design D12）
         const requireClaim = false;
 
-        // 交易內完成配額檢查與建立，避免併發超發
-        const outcome = await prisma.$transaction((tx) =>
-          issueInstances(tx, {
+        // 交易內完成配額檢查、建立與領券貼標，避免併發超發；行為與 API 對話發券一致
+        const issuedVia = context.trigger ?? 'automation';
+        const { outcome, tagged } = await prisma.$transaction(async (tx) => {
+          const issued = await issueInstances(tx, {
             tenantId: context.tenantId,
             coupon,
             contactIds: [context.contactId as string],
-            issuedVia: context.trigger ?? 'automation',
+            issuedVia,
             issuedRefId: couponId,
+            issuedSourceName: couponSourceName(issuedVia),
             requireClaim,
-          }));
+          });
+          const tag = issued.issued.length > 0
+            ? await applyCouponClaimTag(tx, context.tenantId, context.contactId as string, coupon)
+            : null;
+          return { outcome: issued, tagged: tag };
+        });
 
         if (outcome.issued.length === 0) {
           logger.info('[automation] issue_coupon 未發出', { reason: outcome.skipped[0]?.reason });
           continue;
+        }
+        if (tagged) {
+          // 與 add_tag 相同：橋接 contact.tagged 回 api eventBus，供下游規則
+          await publishDomainEvent(redisPublisher, 'contact.tagged', context.tenantId, {
+            contactId: context.contactId,
+            tagId: tagged.tagId,
+            tagName: tagged.tagName,
+            source: 'system',
+          }).catch((err) => logger.warn('[automation] publish contact.tagged bridge failed:', err));
         }
 
         const instance = outcome.issued[0];

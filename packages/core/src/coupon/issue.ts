@@ -215,3 +215,50 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
 
   return { issued, skipped };
 }
+
+/** 各發放方式的預設來源名稱（序號明細的「發放來源」）。群發、活動等有自己名稱的來源由呼叫端傳入。 */
+const SOURCE_NAME: Record<string, string> = {
+  inbox: '對話發券',
+  keyword: '關鍵字',
+  'keyword.matched': '關鍵字',
+  automation: '自動化',
+};
+
+/**
+ * 發放方式的預設來源名稱。workers 以觸發事件名稱（例如 message.received）當發放方式，
+ * 沒有個別名稱的事件一律視為「自動化」。
+ */
+export function couponSourceName(issuedVia: string | null | undefined): string | undefined {
+  if (!issuedVia) return undefined;
+  return SOURCE_NAME[issuedVia] ?? (issuedVia.includes('.') ? '自動化' : undefined);
+}
+
+const CLAIM_TAG_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 領券自動貼標（對話發券與自動化發券共用）。只貼這個租戶、適用於聯絡人的標籤；
+ * 設了時效就寫入到期時間（重複貼標時續期），交給 tag-expiry 排程移除。
+ * 回傳貼上的標籤，讓呼叫端各自發出 contact.tagged 事件；沒有貼回傳 null。
+ */
+export async function applyCouponClaimTag(
+  tx: CouponTx,
+  tenantId: string,
+  contactId: string,
+  coupon: { claimTagId: string | null; claimTagTtlDays: number | null },
+  now: number = Date.now(),
+): Promise<{ tagId: string; tagName: string } | null> {
+  if (!coupon.claimTagId) return null;
+  const tag = await tx.tag.findFirst({
+    where: { id: coupon.claimTagId, tenantId, scope: 'CONTACT' },
+    select: { id: true, name: true },
+  });
+  if (!tag) return null;
+  const expiresAt = coupon.claimTagTtlDays ? new Date(now + coupon.claimTagTtlDays * CLAIM_TAG_DAY_MS) : null;
+  await tx.contactTag.upsert({
+    where: { contactId_tagId: { contactId, tagId: tag.id } },
+    update: { expiresAt },
+    // 非人工路徑，標記來源為 system 以便日後區分
+    create: { contactId, tagId: tag.id, addedBy: 'system', expiresAt },
+  });
+  return { tagId: tag.id, tagName: tag.name };
+}
