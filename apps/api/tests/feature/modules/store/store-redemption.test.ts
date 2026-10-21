@@ -326,6 +326,17 @@ describe('核銷台核銷記錄門市且可安全重試', () => {
     assert.equal(view?.redeemedStoreName, storeName);
   });
 
+  it('第一個請求還在處理時重送，回傳同一個結果，不誤報已使用', async () => {
+    const inst = await instance(scanCouponId, `${MARK}-RDM4`);
+    const key = randomUUID();
+    const [a, b] = await Promise.all([
+      redeemAtStore(prisma, deps, session, inst.code, key),
+      redeemAtStore(prisma, deps, session, inst.code, key),
+    ]);
+    assert.ok(a.ok && b.ok, JSON.stringify([a, b]));
+    assert.equal(a.ok && b.ok && a.redeemedAt.getTime(), b.ok ? b.redeemedAt.getTime() : 0);
+  });
+
   it('網路重試不重複核銷', async () => {
     const inst = await instance(scanCouponId, `${MARK}-RDM2`);
     const key = randomUUID();

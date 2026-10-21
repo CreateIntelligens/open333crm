@@ -16,6 +16,7 @@ import {
   loginStoreAccount,
   lookupStoreCoupon,
   redeemAtStore,
+  StoreRedeemInProgressError,
   verifyStoreToken,
   type AuthorizedStore,
   type StoreConsoleDeps,
@@ -102,9 +103,21 @@ export default async function storeConsoleRoutes(app: FastifyInstance) {
   });
 
   /** 確認核銷。key 為前端每次確認時產生的重試鍵，網路重送時沿用同一個 */
-  app.post('/redeem', { preHandler: guard(true) }, async (request) => {
+  app.post('/redeem', { preHandler: guard(true) }, async (request, reply) => {
     const body = z.object({ code: z.string().min(1).max(64), key: z.string().min(8).max(64) }).parse(request.body);
-    const result = await redeemAtStore(app.prisma, deps(), request.storeSession!, body.code, body.key);
+    let result;
+    try {
+      result = await redeemAtStore(app.prisma, deps(), request.storeSession!, body.code, body.key);
+    } catch (err) {
+      // 同一個重試鍵的上一次核銷還沒完成：前端視為網路不穩，沿用同一個鍵重送即可取得結果
+      if (err instanceof StoreRedeemInProgressError) {
+        return reply.status(503).send({
+          success: false,
+          error: { code: 'REDEEM_IN_PROGRESS', message: '上一次核銷還在處理中，請稍候再按一次' },
+        });
+      }
+      throw err;
+    }
     // 核銷失敗（已使用、過期等）是業務結果，不是請求錯誤：照常回 200，由 data.ok 區分
     return { success: true, data: result };
   });

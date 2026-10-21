@@ -371,12 +371,45 @@ export async function redeemAtStore(
   key: string,
 ): Promise<StoreRedeemResult> {
   const cacheKey = idempotencyKey(session.accountId, key);
-  const cached = await deps.store.get(cacheKey);
-  if (cached) return reviveDates(JSON.parse(cached) as StoreRedeemResult);
+  // 先佔住重試鍵再核銷：第一個請求還在處理時重送，等它的結果，不再核銷一次
+  //（否則第二次會撞「已使用」，店員看到已使用而拒收）
+  const claimed = await deps.store.set(cacheKey, PENDING, 'PX', IDEMPOTENCY_TTL_MS, 'NX');
+  if (claimed !== 'OK') return waitForResult(deps.store, cacheKey);
 
-  const result = await redeemOnce(prisma, deps, session, rawCode);
+  let result: StoreRedeemResult;
+  try {
+    result = await redeemOnce(prisma, deps, session, rawCode);
+  } catch (err) {
+    await deps.store.getdel(cacheKey);
+    throw err;
+  }
+  await deps.store.getdel(cacheKey);
   await deps.store.set(cacheKey, JSON.stringify(result), 'PX', IDEMPOTENCY_TTL_MS, 'NX');
   return result;
+}
+
+const PENDING = '"pending"';
+/** 等待同一個重試鍵的第一個請求完成的最長時間 */
+const WAIT_RESULT_MS = 10_000;
+const WAIT_STEP_MS = 100;
+
+/** 核銷台的「處理中」：第一個請求在等待時間內沒有完成，請店員稍後再按（沿用同一個重試鍵） */
+export class StoreRedeemInProgressError extends Error {
+  constructor() {
+    super('上一次核銷還在處理中');
+    this.name = 'StoreRedeemInProgressError';
+  }
+}
+
+async function waitForResult(store: BindingStore, cacheKey: string): Promise<StoreRedeemResult> {
+  for (let waited = 0; waited <= WAIT_RESULT_MS; waited += WAIT_STEP_MS) {
+    const raw = await store.get(cacheKey);
+    if (raw && raw !== PENDING) return reviveDates(JSON.parse(raw) as StoreRedeemResult);
+    // 第一個請求失敗並清掉了鍵：結果不明，交給店員重送
+    if (!raw) break;
+    await new Promise((r) => setTimeout(r, WAIT_STEP_MS));
+  }
+  throw new StoreRedeemInProgressError();
 }
 
 async function redeemOnce(
