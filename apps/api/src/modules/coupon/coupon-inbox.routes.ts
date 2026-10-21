@@ -37,6 +37,7 @@ const FAILURES: Record<InboxIssueFailure, { status: number; message: string }> =
   PER_CONTACT_LIMIT_REACHED: { status: 409, message: '此顧客已達該券的每人上限' },
   COUPON_DELIVERY_FAILED: { status: 409, message: '顧客目前無法接收訊息，券未發出' },
   CONVERSATION_OUT_OF_SCOPE: { status: 409, message: '此對話已不在你的處理範圍' },
+  CONVERSATION_BOT_HANDLED: { status: 409, message: '機器人處理中，請先接手對話再發券' },
   REPLY_WINDOW_EXPIRED: { status: 409, message: '已超過回覆期限，無法發送優惠券' },
   ISSUE_IN_PROGRESS: { status: 409, message: '這次發券還在處理中，請稍候' },
   KEY_REUSED: { status: 409, message: '發送鍵已用於另一次發券，請重新選券' },

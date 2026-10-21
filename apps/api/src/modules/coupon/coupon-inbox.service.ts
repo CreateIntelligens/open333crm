@@ -42,7 +42,7 @@ export const EXPIRING_DAYS = 3;
 /** 發送鍵結果的保存時間 */
 const REQUEST_KEEP_MS = 10 * 60 * 1000;
 
-export type IssueBlockReason = 'CONVERSATION_CLOSED' | 'REPLY_WINDOW_EXPIRED';
+export type IssueBlockReason = 'CONVERSATION_CLOSED' | 'BOT_HANDLED' | 'REPLY_WINDOW_EXPIRED';
 export type IssuedStatus = 'SENT' | 'VIEWED' | 'USED' | 'EXPIRED' | 'REVOKED';
 
 export interface IssuableCoupon {
@@ -174,6 +174,9 @@ export async function getIssueContext(
     let blocked: IssueContext['blocked'] = null;
     if (conv.status === 'CLOSED') {
       blocked = { reason: 'CONVERSATION_CLOSED' };
+    } else if (conv.status === 'BOT_HANDLED') {
+      // 發券只能人工發（design D19）
+      blocked = { reason: 'BOT_HANDLED' };
     } else {
       const hours = await expiredWindow(tx, conv.id, (deps.windowHoursFor ?? defaultWindowHours)(conv.channelType), now);
       if (hours) blocked = { reason: 'REPLY_WINDOW_EXPIRED', windowHours: hours };
@@ -251,6 +254,8 @@ export type InboxIssueFailure =
   | 'PER_CONTACT_LIMIT_REACHED'
   | 'COUPON_DELIVERY_FAILED'
   | 'CONVERSATION_OUT_OF_SCOPE'
+  /** 機器人處理中，座席要先接手（design D19） */
+  | 'CONVERSATION_BOT_HANDLED'
   | 'REPLY_WINDOW_EXPIRED'
   | 'ISSUE_IN_PROGRESS'
   /** 同一個發送鍵用在不同的券或對話（前端每次確認都產生新鍵，正常操作不會發生） */
@@ -428,6 +433,7 @@ async function reserveIssue(prisma: PrismaClient, deps: InboxIssueDeps, input: I
     if (!conv?.contactId || !identity || !coupon) throw new IssueAbort({ ok: false, reason: 'NOT_FOUND' });
     const contactId = conv.contactId;
 
+    if (conv.status === 'BOT_HANDLED') throw new IssueAbort({ ok: false, reason: 'CONVERSATION_BOT_HANDLED' });
     if (conv.status === 'CLOSED' || conv.assignedToId !== input.expectedAssigneeId) {
       throw new IssueAbort({ ok: false, reason: 'CONVERSATION_OUT_OF_SCOPE' });
     }

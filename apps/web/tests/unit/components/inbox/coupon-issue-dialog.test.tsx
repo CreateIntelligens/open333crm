@@ -258,6 +258,22 @@ describe('渠道限制', () => {
     await openDialog();
     assert.ok(within(screen.getByRole('alert')).getByText('對話已結束，無法發券'));
   });
+
+  test('機器人處理中的對話不能發券', async () => {
+    ctx = context({ blocked: { reason: 'BOT_HANDLED' } });
+    await openDialog();
+    assert.ok(within(screen.getByRole('alert')).getByText('請先接手對話再發券'));
+    for (const b of screen.getAllByRole('button', { name: '選擇' })) assert.equal((b as HTMLButtonElement).disabled, true);
+  });
+
+  test('送出時對話已轉給機器人', async () => {
+    h.post.mockRejectedValue(apiError('CONVERSATION_BOT_HANDLED'));
+    await toConfirm();
+    fireEvent.click(button('確認發送'));
+    await flush();
+    assert.ok(within(screen.getByRole('alert')).getByText('機器人處理中，請先接手對話再發券'));
+    assert.ok(within(screen.getByRole('alert')).getByText('這次的券未發出。'));
+  });
 });
 
 describe('關閉', () => {

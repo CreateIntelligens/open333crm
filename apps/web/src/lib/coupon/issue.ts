@@ -42,7 +42,7 @@ export interface IssueContext {
     contactName: string;
     channelType: string;
   };
-  blocked: { reason: 'CONVERSATION_CLOSED' | 'REPLY_WINDOW_EXPIRED'; windowHours?: number } | null;
+  blocked: { reason: 'CONVERSATION_CLOSED' | 'BOT_HANDLED' | 'REPLY_WINDOW_EXPIRED'; windowHours?: number } | null;
   history: {
     count: number;
     totalAmount: number;
@@ -260,6 +260,8 @@ export function describeIssueFailure(code: string, details?: { issuedByName?: st
       return { code, message: '顧客目前無法接收訊息，券未發出', outcome: '這次的券未發出。' };
     case 'CONVERSATION_OUT_OF_SCOPE':
       return { code, message: '此對話已不在你的處理範圍', outcome: '這次的券未發出。' };
+    case 'CONVERSATION_BOT_HANDLED':
+      return { code, message: '機器人處理中，請先接手對話再發券', outcome: '這次的券未發出。' };
     case 'REPLY_WINDOW_EXPIRED':
       return { code, message: '已超過回覆期限，無法發送優惠券', outcome: '這次的券未發出。' };
     default:

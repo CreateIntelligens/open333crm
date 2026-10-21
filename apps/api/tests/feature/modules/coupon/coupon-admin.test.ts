@@ -22,6 +22,7 @@ import {
   type CouponInput,
 } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
+import { redeemCoupon } from '#src/modules/coupon/coupon-redeem.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
 import { listInstances, getCouponStats } from '#src/modules/coupon/coupon-stats.service.js';
 import { importCodes } from '#src/modules/coupon/coupon-import.service.js';
@@ -344,6 +345,17 @@ describe('券的狀態流轉不可逆', () => {
     );
     const resumed = await inTenant((tx) => changeStatus(tx, tenantId, c.id, 'ACTIVE'));
     assert.ok(resumed.ok);
+  });
+
+  it('暫停中的券依效期核銷', async () => {
+    const c = await published('暫停中核銷', { redeemMode: 'STAFF_SCAN', staffCode: null } as CouponInput);
+    const valid = await seedInstance(c.id, `${MARK}-PAUSE-OK`, 'CLAIMED', { expiresAt: new Date(Date.now() + 86_400_000) });
+    const expired = await seedInstance(c.id, `${MARK}-PAUSE-EXP`, 'CLAIMED', { expiresAt: new Date(Date.now() - 60_000) });
+    assert.ok((await inTenant((tx) => changeStatus(tx, tenantId, c.id, 'PAUSED'))).ok);
+    const ok = await redeemCoupon(prisma, tenantId, { instanceId: valid.id });
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+    const late = await redeemCoupon(prisma, tenantId, { instanceId: expired.id });
+    assert.equal(late.ok ? 'ok' : late.reason, 'EXPIRED');
   });
 
   it('已結束的券不可恢復', async () => {

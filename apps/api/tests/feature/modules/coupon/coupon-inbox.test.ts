@@ -214,6 +214,16 @@ describe('對話不在座席處理範圍時不發券', () => {
     assert.equal(await heldBy(p), 0);
   });
 
+  it('機器人處理中的對話不能發券', async () => {
+    const p = await person('機器人處理中');
+    await owner.conversation.update({ where: { id: p.conversationId }, data: { status: 'BOT_HANDLED' } });
+    const ctx = await getIssueContext(prisma, deps, { tenantId: T, conversationId: p.conversationId });
+    assert.equal(ctx?.blocked?.reason, 'BOT_HANDLED');
+    const r = await issueInConversation(prisma, deps, input(p, coupons.amount));
+    assert.equal(r.ok ? 'ok' : r.reason, 'CONVERSATION_BOT_HANDLED');
+    assert.equal(await heldBy(p), 0);
+  });
+
   it('發送途中對話被轉派', async () => {
     const p = await person('轉派');
     await owner.conversation.update({ where: { id: p.conversationId }, data: { assignedToId: agentB.id } });

@@ -50,6 +50,7 @@ interface Banner {
 const BLOCKED_TEXT: Record<NonNullable<IssueContext['blocked']>['reason'], string> = {
   REPLY_WINDOW_EXPIRED: '已超過回覆期限，無法發送優惠券',
   CONVERSATION_CLOSED: '對話已結束，無法發券',
+  BOT_HANDLED: '請先接手對話再發券',
 };
 
 const CHECKING_BANNER: Banner = { message: '確認發送結果中…', outcome: '系統正在確認券是否已發出，查詢完成前請勿重送。' };
@@ -113,7 +114,7 @@ export function CouponIssueDialog({ open, conversationId, onClose, onIssued }: C
       const f = describeIssueFailure(code, details);
       setPhase('idle');
       setBanner({ message: f.message, outcome: f.outcome });
-      if (code === 'COUPON_NOT_ISSUABLE' || code === 'PER_CONTACT_LIMIT_REACHED' || code === 'REPLY_WINDOW_EXPIRED') {
+      if (code === 'COUPON_NOT_ISSUABLE' || code === 'PER_CONTACT_LIMIT_REACHED' || code === 'REPLY_WINDOW_EXPIRED' || code === 'CONVERSATION_BOT_HANDLED') {
         // 回到選券並重新整理清單，讓座席看到最新的上限與狀態
         setSelected(null);
         void load();
