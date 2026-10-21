@@ -31,6 +31,7 @@ export type ClaimFailure =
   | 'TOKEN_EXPIRED'
   | 'ALREADY_CLAIMED'
   | 'COUPON_INACTIVE'
+  | 'PER_CONTACT_LIMIT_REACHED'
   | 'CONFLICT';
 
 export interface RedeemSuccess {
@@ -70,6 +71,10 @@ export async function claimByToken(
     });
     if (!instance) return { ok: false as const, reason: 'TOKEN_NOT_FOUND' as const };
 
+    // 已作廢或過期的券不是「被別人領走」，告訴顧客活動已結束
+    if (instance.status === 'REVOKED' || instance.status === 'EXPIRED') {
+      return { ok: false as const, reason: 'COUPON_INACTIVE' as const };
+    }
     if (instance.status !== 'ISSUED') {
       return { ok: false as const, reason: 'ALREADY_CLAIMED' as const };
     }
@@ -78,6 +83,21 @@ export async function claimByToken(
     }
     if (instance.coupon.status === 'ENDED') {
       return { ok: false as const, reason: 'COUPON_INACTIVE' as const };
+    }
+
+    // 領取會把券改綁到領取者身上，也要遵守每人上限（與發券同一把鎖、同一套計算）
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${instance.couponId}, 0))`;
+    const held = await tx.couponInstance.count({
+      where: {
+        tenantId,
+        couponId: instance.couponId,
+        contactId,
+        id: { not: instance.id },
+        status: { in: ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED'] },
+      },
+    });
+    if (held >= instance.coupon.perContactLimit) {
+      return { ok: false as const, reason: 'PER_CONTACT_LIMIT_REACHED' as const };
     }
 
     const now = new Date();

@@ -132,19 +132,38 @@ it('FB／IG 發券為 ISSUED 並帶領取憑證', async () => {
   token = r.issued[0].claimToken!;
 });
 
-it('憑證換券成功並歸戶至驗證身分', async () => {
+it('領取時已達每人上限', async () => {
+  // contactA 已持有這張券（每人限 1），以別人的憑證領取也不能超過上限
   const r = await claimByToken(prisma, token, contactA, tenantId);
+  assert.deepEqual(r, { ok: false, reason: 'PER_CONTACT_LIMIT_REACHED' });
+  const inst = await withTenant(prisma, tenantId, (tx) =>
+    tx.couponInstance.findFirst({ where: { id: tokenInstance, tenantId } }));
+  assert.equal(inst?.status, 'ISSUED', '沒領成的券維持待領取');
+});
+
+it('憑證換券成功並歸戶至驗證身分', async () => {
+  // 完成驗證的聯絡人（未持有此券）以 FB 對象的憑證領取，券改綁到他身上
+  const verified = (await owner.contact.create({ data: { tenantId, displayName: `${MARK}-顧客C` } })).id;
+  const r = await claimByToken(prisma, token, verified, tenantId);
   assert.ok(r.ok, `換券失敗：${JSON.stringify(r)}`);
   const inst = await withTenant(prisma, tenantId, (tx) =>
     tx.couponInstance.findFirst({ where: { id: tokenInstance, tenantId } }));
   assert.equal(inst?.status, 'CLAIMED');
-  assert.equal(inst?.contactId, contactA, '未改綁為完成驗證的聯絡人');
+  assert.equal(inst?.contactId, verified, '未改綁為完成驗證的聯絡人');
   assert.equal(inst?.claimToken, null, '憑證未於使用後清空');
 });
 
 it('同一憑證不可重複使用', async () => {
   const r = await claimByToken(prisma, token, contactB, tenantId);
   assert.ok(!r.ok, '已用過的憑證竟可再次換券');
+});
+
+it('已作廢的券以憑證領取：回報活動已結束，不是已被領取', async () => {
+  const r = await issueCoupons(prisma, tenantId, couponId, { contactIds: [contactB], issuedVia: 'fb_inbox', requireClaim: true });
+  const revoked = r.issued[0];
+  await owner.couponInstance.update({ where: { id: revoked.id }, data: { status: 'REVOKED' } });
+  const claimed = await claimByToken(prisma, revoked.claimToken!, contactB, tenantId);
+  assert.deepEqual(claimed, { ok: false, reason: 'COUPON_INACTIVE' });
 });
 
 // ── 核銷（D3 核心）──

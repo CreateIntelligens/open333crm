@@ -95,6 +95,7 @@ export default async function couponFanRoutes(app: FastifyInstance) {
         TOKEN_EXPIRED: '領取連結已過期',
         ALREADY_CLAIMED: '這張券已經被領取了',
         COUPON_INACTIVE: '此活動已結束',
+        PER_CONTACT_LIMIT_REACHED: '您已領過這張券，已達每人上限',
         CONFLICT: '領取失敗，請重試',
       };
       return reply.status(409).send({
