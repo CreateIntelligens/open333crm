@@ -14,7 +14,19 @@ FROM node:24.22.1-bookworm-slim
 WORKDIR /app
 
 RUN corepack enable
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates bash && rm -rf /var/lib/apt/lists/*
+# curl, python3, make and g++ build the @tensorflow/tfjs-node binding (scripts/dev-build-tfjs-node.sh)
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates bash curl python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# libtensorflow for @tensorflow/tfjs-node, extracted with the system tar as
+# apps/api/Dockerfile does. The `deps` service compiles the binding against it
+# (scripts/dev-build-tfjs-node.sh explains why tfjs-node's own install script is skipped).
+RUN case "$(dpkg --print-architecture)" in \
+    arm64) TF_LIB_URL="https://storage.googleapis.com/tf-builds/libtensorflow_r2_7_linux_arm64.tar.gz" ;; \
+    amd64) TF_LIB_URL="https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-cpu-linux-x86_64-2.9.1.tar.gz" ;; \
+    *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac \
+  && mkdir -p /opt/libtensorflow \
+  && curl -fsSL "$TF_LIB_URL" | tar -xz -C /opt/libtensorflow
 
 # Warm the pnpm content-addressable store (kept OUTSIDE /app so the bind-mount
 # doesn't mask it). node_modules/dist/.next are excluded via .dockerignore.
