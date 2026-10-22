@@ -4,6 +4,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-22]
 
+### Security
+
+- **處理 GitHub Dependabot 弱點警示** — 直接依賴升到修補版：`fastify` 5.12.7、`@fastify/jwt` 10.2.5（`fast-jwt` 6.3.5，修正 RSA→HS256 演算法混淆與接受未簽章 JWT）、`@modelcontextprotocol/sdk` 1.32.1、`nodemailer` 10.2.0（大版本，只要求 Node ≥20，寄信用法不變）、`axios` 1.20.0、`next` 15.5.28、`sharp` 0.35.5、`socket.io` 4.8.4、`turbo` 2.11.10、`tsx` 4.23（`esbuild` 0.28）；widget 的 `vite` 從 5 升到 6.4.5，根目錄 `vite` 升到 8.3.5。間接依賴以根目錄 `pnpm.overrides` 固定到修補版：`proxy-addr`、`@fastify/busboy`、`follow-redirects`、`hono`、`tar` 7、`adm-zip` 0.6.1、`brace-expansion`、`js-yaml`、`@xmldom/xmldom`、`qs`、`ip-address`、`fast-uri`、`fast-xml-parser`、`moment`、`uuid`、`deepmerge-ts` 8、`postcss-selector-parser` 7.1.6 等。
+  - `postcss-selector-parser` 不用 6.1.3：tailwind 3 搭配 6.1.3 會無聲漏掉所有 `group-hover:` 樣式；7.1.6 產出的 CSS 與原本的 6.1.2 位元組完全相同。
+  - `tar` 7 與 `adm-zip` 0.6.1 只用在 `@tensorflow/tfjs-node` 的安裝腳本；已實測下載解壓 libtensorflow 與 Linux 預編譯 binding 正常。
+  - 未處理（無修補版或覆寫後會壞）：`sprintf-js` 沒有修補版（CVE-2026-97058 已被 NVD 撤銷）；`decode-uri-component` 0.5 與 `stream-json` 3 改成 ESM／新 API，覆寫後 minio 的 `query-string.parse` 與通知 Parser 失效，維持原版本（minio 只呼叫 `stringify`，專案沒有使用 bucket 通知）。
+
 ### Changed
 
 - **業務事件改走 outbox，至少送出一次；訂閱者改從各自的佇列取得事件**（#337 階段 1b，change `outbox-event-delivery`，AUDIT RLS-08）— 事件原本經 API 行程內的 EventEmitter 送給訂閱者，API 在 commit 之後、訂閱者做完之前結束（例如部署），通知、自動化規則與對外 Webhook 就不會發生，也不會補做。現在 `ctx.publish`、`ctx.enqueue` 在交易內寫進新的 `outbox` 資料表，與業務資料一起 commit；commit 之後送進佇列，沒送出的由新排程 `outbox-relay` 每分鐘補送，`outbox-cleanup` 每天清掉送出超過 7 天的資料列。通知、自動化與對外 Webhook 各有一個佇列（`event-notification`、`event-automation`、`event-webhook`），Worker 在 API 行程內，每個 Worker 同時處理多個 job，job id 是事件 id，一個訂閱者重試不會讓其他訂閱者再處理一次。還沒搬遷的 `eventBus.publish()` 也送進同樣的佇列，但不寫 outbox，仍是最多一次。workers 的 `create_case`、`add_tag` 在同一個交易寫入 `case.created`、`contact.tagged`；Redis 的 `domain:event` 頻道移除（AUDIT APP-09）。
