@@ -15,6 +15,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **本機 Docker 開發環境的 `deps` 服務安裝失敗，api、workers、web 都起不來**（#355 之後）。`pnpm.overrides` 把 `tar` 固定在 7，`@tensorflow/tfjs-node` 的安裝腳本以 npm 的 `tar` 解壓 Linux arm64 的 libtensorflow 時，`tar` 7 拒絕壓縮檔裡的連續 symlink（`TAR_SYMLINK_ERROR`）。正式 image 不受影響：`apps/api/Dockerfile` 以 `--ignore-scripts` 安裝，再以系統的 `tar` 解壓、自行編譯 binding。`docker-compose.dev.yml` 的 `deps` 改用同樣的做法：`Dockerfile.dev` 在 build 時下載並解壓 libtensorflow，加裝 `python3`、`make`、`g++`；`deps` 以 `--ignore-scripts` 安裝後，由 `scripts/dev-build-tfjs-node.sh` 編譯 binding（`node_modules` volume 裡已有 binding 時略過）。已有的本機環境要先 `docker compose -f docker-compose.dev.yml build` 重建 image。
 - **自動化（關鍵字）發券**：改為先保留、送出成功才確認、送不出作廢並歸還名額；失敗在對話留下看得到的紀錄（原本只寫 log）；網站客服擋下不建券；歸因記規則 id 與名稱，收件匣改顯示券卡並即時更新「已發優惠券」。
 - **關鍵字自動回覆一直用推播、計入 LINE 訊息額度**：workers 沒把 `receivedAt` 傳進動作，回覆期限判斷一律改推播；修正後期限內改用回覆。AI 讓步判斷也把發券算進會回覆的動作。
 - **「LINE 關鍵字回覆」頁存檔會刪掉規則上的發券動作與其他條件**：改為只更換這頁管理的動作。
@@ -26,6 +27,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **CLI 發布 0.1.2**（`@open333crm/cli`）— 自 0.1.1 以來的變更：新增 `open333 a2a execute`（A2A bridge 用，需設 `A2A_CRM_ADAPTER_ENABLED=true` 才啟用）；`engines.node` 改為 `>=24.22.1`。
 - `TenantScopedClient` 改宣告為交易 client 的 model 操作加上租戶標記（執行期行為不變），新增資料表不再讓 api 型別檢查出現數百個 TS2349。
 
 ### Security

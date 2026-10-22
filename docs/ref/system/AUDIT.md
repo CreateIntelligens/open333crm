@@ -162,6 +162,8 @@
 
 `DATABASE_URL` 同時決定 API 的租戶連線：`prisma.plugin.ts` 在沒有設定 `DATABASE_URL_TENANT` 時，租戶連線就用 `DATABASE_URL`。因此 API 要讓 RLS 生效，通常 `DATABASE_URL` 就指向 `app_tenant`，Canvas 落在第二種情況。這時 `inbound-side-effects.ts` 每處理一則進站訊息，都呼叫 `canvas.webhook.ts` 的 `handleWebhookFlowTrigger()`；這個函式以 singleton 查 `interactionFlow`，結果是空陣列，流程永遠不會觸發，也沒有錯誤。
 
+**等待節點也受影響。** Canvas 的等待節點只靠 `canvas.scheduler.ts` 每 60 秒呼叫 `processResumeQueue()` 恢復，BullMQ 路徑從來沒有成功過（[APP-07](#app-07)）。`processResumeQueue()` 也用 singleton，所以同樣受上面兩種情況影響。修正 RLS-01 時，一併處理 APP-07。
+
 **優先順序。** 安全面是 P2：進入 Canvas 的路徑都不接受外部指定的 ID。`handleWebhookFlowTrigger()` 的 `tenantId` 由進站管線解析，`FlowRunner` 的 `executionId` 由租戶連線建立，因此即使 singleton 繞過 RLS，資料也不會流到其他租戶。功能面依正式環境而定：有租戶建立啟用中的 Canvas 流程，而正式環境的 `DATABASE_URL` 指向 `app_tenant` 時，這一項就是功能失效，應該回到 P1。issue #197 回報正式環境的 `DATABASE_URL` 指向 `app_tenant`，而且 `interaction_flows` 與 `flow_executions` 都是 0 筆（2026-10-02），沒有租戶使用 Canvas，因此維持 P2。
 
 <a id="rls-03"></a>
@@ -1653,7 +1655,7 @@ API 的 `automation.worker.ts` 與 `notification.worker.ts` 回傳訂閱者的�
 
 所以 Canvas 的喚醒完全靠 API 行程的 `canvas.scheduler.ts` 每 60 秒輪詢，精度是 60 秒。`CANVAS-FLOW-ENGINE.md` 原本寫「優先用 BullMQ 的延遲工作」，已改正。
 
-**修正方向**：移除 BullMQ 路徑，或改用不含冒號的名稱並在 workers 加上消費者。
+**修正方向**：移除 BullMQ 路徑，或改用不含冒號的名稱並在 workers 加上消費者。只改名而不加消費者時，工作會一直留在 Redis 的 delayed set。輪詢也受 [RLS-01](#rls-01) 影響，修正 RLS-01 時一併處理。
 
 <a id="app-08"></a>
 ### APP-08：多數 BullMQ 佇列永遠保留已完成的工作
