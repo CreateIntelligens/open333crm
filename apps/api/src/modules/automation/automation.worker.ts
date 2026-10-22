@@ -45,11 +45,12 @@ function automationQueue(): Queue {
   return _automationQueue;
 }
 
-/** 送出規則評估。eventId 供 workers 認領規則動作（automation_action） */
+/**
+ * 送出規則評估。eventId 供 workers 認領規則動作（automation_action）。
+ * 送不出時丟錯：訂閱者的 job 失敗，由 BullMQ 重試（event-delivery「每個訂閱者各自處理」）
+ */
 async function enqueueEvaluate(event: SubscribedEvent, trigger: string, context: Record<string, unknown>) {
-  await automationQueue()
-    .add('automation:evaluate', { tenantId: event.tenantId, eventId: event.id, trigger, context }, { jobId: event.id })
-    .catch((err) => logger.error(`[AutomationWorker] Failed to enqueue ${trigger}`, err));
+  await automationQueue().add('automation:evaluate', { tenantId: event.tenantId, eventId: event.id, trigger, context }, { jobId: event.id });
 }
 
 async function getConversationBotConfig(
@@ -359,6 +360,8 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
       });
     } catch (err) {
       logger.error('[AutomationWorker] Error handling message.received:', err);
+      // 重試時，轉接、機器人回覆與情緒分析都已認領，不會重複
+      throw err;
     }
   });
 
@@ -382,6 +385,8 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
       }
     } catch (err) {
       logger.error('[AutomationWorker] Error handling case.created:', err);
+      // 重試時，轉接、機器人回覆與情緒分析都已認領，不會重複
+      throw err;
     }
   });
 

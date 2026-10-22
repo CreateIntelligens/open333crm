@@ -6,11 +6,13 @@ import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 
 const queued = vi.hoisted(() => [] as Array<{ name: string; data: Record<string, unknown>; opts?: Record<string, unknown> }>);
+const redis = vi.hoisted(() => ({ down: false }));
 
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   Queue: class {
     async add(name: string, data: Record<string, unknown>, opts?: Record<string, unknown>) {
+      if (redis.down) throw new Error('redis down');
       queued.push({ name, data, opts });
     }
   },
@@ -31,6 +33,7 @@ const { createHarness, messageReceived, MESSAGE, TENANT } = await import('./auto
 
 beforeEach(() => {
   queued.length = 0;
+  redis.down = false;
 });
 
 function setup() {
@@ -80,4 +83,16 @@ test('API 不再發出 keyword.matched：命中關鍵字規則時，規則由 wo
   assert.deepEqual(published.filter((n) => n === 'keyword.matched'), []);
   assert.equal(subscriberQueuesOf('keyword.matched').includes(EVENT_AUTOMATION_QUEUE), false);
   assert.deepEqual(evaluations().map((q) => q.data.trigger), ['message.received']);
+});
+
+test('Subscriber cannot enqueue the next job：送不出 automation:evaluate 時處理失敗，由 BullMQ 重試', async () => {
+  const { handle } = setup();
+  redis.down = true;
+  const contactCreated = { id: crypto.randomUUID(), name: 'contact.created' as const, tenantId: TENANT, timestamp: new Date(), payload: { contactId: 'x' } };
+  await assert.rejects(handle(contactCreated), /redis down/);
+  await assert.rejects(handle(messageReceived()), /redis down/);
+  await assert.rejects(
+    handle({ id: crypto.randomUUID(), name: 'case.created' as const, tenantId: TENANT, timestamp: new Date(), payload: { caseId: 'c' } }),
+    /redis down/,
+  );
 });

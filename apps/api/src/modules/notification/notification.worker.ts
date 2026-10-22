@@ -1,6 +1,7 @@
 /**
  * 通知訂閱者：處理 event-notification 佇列的事件，送出 notification:dispatch job。
  * 站內通知的寫入與推播由 apps/workers 處理（change outbox-event-delivery，design 決策 10）。
+ * job 送不出時丟錯，由 BullMQ 重試這個事件；job id 是 <事件 id>__<收件人 id>，重試不會重複送出。
  */
 
 import type { PrismaClient } from '@prisma/client';
@@ -86,11 +87,12 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
         title: '工單已指派給您',
         body: title ? `工單「${title}」已指派給您處理` : '您有一張新的指派工單',
         clickUrl: `/dashboard/cases/${caseId}`,
-      }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue case.assigned', err));
+      });
 
       logger.info(`[NotificationWorker] case.assigned → agent ${assigneeId}`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling case.assigned:', err);
+      throw err;
     }
   });
 
@@ -119,12 +121,13 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
           title: '工單已升級',
           body: reason ? `工單已升級：${reason}` : '有一張工單已升級，請注意處理',
           clickUrl: `/dashboard/cases/${caseId}`,
-        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue case.escalated', err));
+        });
       }
 
       logger.info(`[NotificationWorker] case.escalated → ${recipientIds.length} recipient(s)`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling case.escalated:', err);
+      throw err;
     }
   });
 
@@ -145,11 +148,12 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
         title: 'SLA 即將到期',
         body: title ? `工單「${title}」的 SLA 即將到期，請加速處理` : '您有一張工單的 SLA 即將到期',
         clickUrl: `/dashboard/cases/${caseId}`,
-      }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue sla.warning', err));
+      });
 
       logger.info(`[NotificationWorker] sla.warning → agent ${assigneeId}`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling sla.warning:', err);
+      throw err;
     }
   });
 
@@ -178,12 +182,13 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
           title: 'SLA 已逾期',
           body: title ? `工單「${title}」的 SLA 已逾期，請立即處理` : '有一張工單的 SLA 已逾期',
           clickUrl: `/dashboard/cases/${caseId}`,
-        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue sla.breached', err));
+        });
       }
 
       logger.info(`[NotificationWorker] sla.breached → ${notifyIds.length} agent(s)`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling sla.breached:', err);
+      throw err;
     }
   });
 
@@ -214,17 +219,18 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
 
       if (conversation.assignedToId) {
         // Assigned → notify the assigned agent only
-        await enqueueDispatch(event, conversation.assignedToId, notifPayload).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received', err));
+        await enqueueDispatch(event, conversation.assignedToId, notifPayload);
       } else {
         // Unassigned → notify all ADMIN and SUPERVISOR agents
         const adminAndSupervisorIds = await getSupervisorAndAdminIds(prisma, event.tenantId);
         for (const agentId of adminAndSupervisorIds) {
-          await enqueueDispatch(event, agentId, notifPayload).catch((err) => logger.error('[NotificationWorker] Failed to enqueue message.received (unassigned)', err));
+          await enqueueDispatch(event, agentId, notifPayload);
         }
         logger.info(`[NotificationWorker] message.received (unassigned) → ${adminAndSupervisorIds.length} admin(s)/supervisor(s)`);
       }
     } catch (err) {
       logger.error('[NotificationWorker] Error handling message.received:', err);
+      throw err;
     }
   });
 
@@ -244,11 +250,12 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
         title: '對話已指派給您',
         body: '您有一則新的對話指派',
         clickUrl: `/dashboard/inbox?conv=${conversationId}`,
-      }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue conversation.assigned', err));
+      });
 
       logger.info(`[NotificationWorker] conversation.assigned → agent ${assignedToId}`);
     } catch (err) {
       logger.error('[NotificationWorker] Error handling conversation.assigned:', err);
+      throw err;
     }
   });
 
@@ -286,7 +293,8 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
         usageUrl: `${getConfig().WEB_BASE_URL}/dashboard/plan`,
       };
 
-      // 逐 ADMIN 隔離：站內通知 + email，任一失敗不影響其他
+      // 每位 ADMIN 一則站內通知、一封 email。任一 job 送不出時丟錯，BullMQ 重試整個事件；
+      // job id 固定，已送出的 job 不會重複
       for (const admin of admins) {
         // 站內通知（複用既有 notification:dispatch job/handler）
         await enqueueDispatch(event, admin.id, {
@@ -297,14 +305,13 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
             ? `本月 AI 用量已達上限（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），AI 自動回覆暫停，真人回覆不受影響。`
             : `本月 AI 用量已達 80%（${emailVars.usedTokens}/${emailVars.limitTokens} tokens），額度用盡後 AI 自動回覆將暫停。`,
           clickUrl: '/dashboard/plan',
-        }).catch((err) => logger.error('[NotificationWorker] Failed to enqueue usage.quota notification', err));
+        });
 
         // email 經 usage-alert-email 佇列寄出：job id 是 <事件 id>__<管理員 id>，
         // 事件重送時不重寄；寄送失敗由 BullMQ 重試（usage-quota-alerts「事件重送時不重複寄出告警信」）
         const emailJob: UsageAlertEmailJob = { level, to: admin.email, vars: emailVars };
         await usageAlertEmailQueue()
-          .add('usage-alert:send', emailJob, { jobId: `${event.id}__${admin.id}` })
-          .catch((err) => logger.error('[NotificationWorker] Failed to enqueue usage.quota email', err));
+          .add('usage-alert:send', emailJob, { jobId: `${event.id}__${admin.id}` });
       }
 
       logger.info(
@@ -312,6 +319,7 @@ export function setupNotificationWorker(prisma: PrismaClient): EventHandler {
       );
     } catch (err) {
       logger.error('[NotificationWorker] Error handling usage.quota.threshold:', err);
+      throw err;
     }
   });
 

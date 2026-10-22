@@ -17,12 +17,14 @@ import { beforeEach, test, vi } from 'vitest';
 const sent = vi.hoisted(() => ({
   jobs: [] as Array<{ queue: string; name: string; data: Record<string, unknown>; opts?: Record<string, unknown> }>,
   emails: [] as string[],
+  redisDown: false,
 }));
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<typeof import('bullmq')>()),
   Queue: class {
     constructor(private readonly queueName: string) {}
     async add(name: string, data: Record<string, unknown>, opts?: Record<string, unknown>) {
+      if (sent.redisDown) throw new Error('redis down');
       sent.jobs.push({ queue: this.queueName, name, data, opts });
     }
   },
@@ -58,6 +60,7 @@ const handle = setupNotificationWorker({
 beforeEach(() => {
   sent.jobs = [];
   sent.emails = [];
+  sent.redisDown = false;
 });
 
 function event(name: string, payload: Record<string, unknown>) {
@@ -85,4 +88,10 @@ test('告警事件處理兩次：告警信改走 usage-alert-email 佇列，兩�
   const emailJobs = sent.jobs.filter((j) => j.queue === USAGE_ALERT_EMAIL_QUEUE);
   assert.deepEqual(emailJobs.map((j) => j.opts?.jobId), [`${EVENT}__admin-b`, `${EVENT}__admin-b`]);
   assert.deepEqual(sent.emails, []);
+});
+
+test('Subscriber cannot enqueue the next job：送不出通知或告警信的 job 時處理失敗，由 BullMQ 重試', async () => {
+  sent.redisDown = true;
+  await assert.rejects(handle(event('case.assigned', { caseId: 'case-1', assigneeId: 'agent-x', title: 'T' })), /redis down/);
+  await assert.rejects(handle(event('message.received', { conversationId: 'conv-1', contactId: 'contact-1' })), /redis down/);
 });
