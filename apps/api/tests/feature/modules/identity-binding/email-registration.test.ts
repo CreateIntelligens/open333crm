@@ -408,6 +408,30 @@ scenario('票券頁登記的 email 已屬於其他聯絡人', async (f) => {
   assert.ok(textsTo(f, a.conversationId).some((t) => /登記email/.test(t)), 'A 的對話收到說明');
 });
 
+// 附券廣播的收件人可能只有渠道身分、沒有對話（A15 15.22、design D29）：票券連結不帶對話
+const withoutConversation = (actor: BindingActor) => ({ ...actor, conversationId: undefined });
+
+scenario('票券連結沒有對話時登記完成不送通知', async (f) => {
+  const a = await f.person('A', { conversation: false });
+  const r = await reuseOrIssueRegistrationToken(EMAIL_REGISTRATION, f.deps, withoutConversation(a));
+  assert.equal(r.status, 'ok');
+  const result = await submit(f, (r as { token: string }).token, 'solo@example.com');
+  assert.equal(result.status, 'registered');
+  assert.equal((await f.tx.contact.findFirst({ where: { id: a.contactId } }))?.email, 'solo@example.com');
+  assert.deepEqual(f.sent, [], '沒有對話可以送，不送通知（登記頁本身會顯示結果）');
+});
+
+scenario('票券連結沒有對話、登記前顧客已開始對話', async (f) => {
+  const a = await f.person('A', { conversation: false });
+  const r = await reuseOrIssueRegistrationToken(EMAIL_REGISTRATION, f.deps, withoutConversation(a));
+  const conv = await f.tx.conversation.create({
+    data: { tenantId: T, contactId: a.contactId, channelId: a.channelId, channelType: 'LINE' },
+  });
+  const result = await submit(f, (r as { token: string }).token, 'later@example.com');
+  assert.equal(result.status, 'registered');
+  assert.equal(textsTo(f, conv.id).length, 1, '通知送到顧客在收券渠道最近的對話');
+});
+
 scenario('票券頁登記的 email 沒有其他人使用', async (f) => {
   const a = await f.person('A');
   const result = await submit(f, await couponPageToken(f, a), 'new@example.com');

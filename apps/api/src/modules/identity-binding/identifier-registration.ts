@@ -92,7 +92,11 @@ export interface RegistrationPayload {
   tenantId: string;
   channelIdentityId: string;
   channelId: string;
-  conversationId: string;
+  /**
+   * 發出連結的對話：登記完成後在這裡送通知。附券廣播的收件人可能沒有對話，這時沒有值，
+   * 登記時改找顧客在該渠道最近的對話（add-coupon-system design D29）
+   */
+  conversationId?: string;
   issuedAt: number;
   /**
    * 從票券頁發出的連結（票券訊息可能被轉傳）：值已屬於另一位聯絡人時不自動合併，
@@ -107,6 +111,9 @@ export interface RegistrationDeps extends BindingDeps {
 }
 
 export type IssueRegistrationLinkResult = { status: 'sent' } | { status: 'rate_limited' } | { status: 'delivery_failed' };
+
+/** 產生登記連結的對象；票券連結可能沒有對話（附券廣播的收件人，design D29） */
+export type RegistrationActor = Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId'> & { conversationId?: string };
 
 const tokenKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:${token}`;
 const issueKey = (kind: RegistrationKind, channelIdentityId: string, initiatedBy: 'customer' | 'agent') =>
@@ -123,7 +130,7 @@ export function registrationUrl(kind: RegistrationKind, webBaseUrl: string, toke
 export async function issueRegistrationToken(
   kind: RegistrationKind,
   deps: RegistrationDeps,
-  actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
+  actor: RegistrationActor,
   initiatedBy: 'customer' | 'agent' = 'customer',
   options: { noMerge?: boolean } = {},
 ): Promise<{ status: 'ok'; token: string; issued: number } | { status: 'rate_limited'; issued: number }> {
@@ -135,7 +142,7 @@ export async function issueRegistrationToken(
     tenantId: actor.tenantId,
     channelIdentityId: actor.channelIdentityId,
     channelId: actor.channelId,
-    conversationId: actor.conversationId,
+    ...(actor.conversationId ? { conversationId: actor.conversationId } : {}),
     issuedAt: (deps.now ?? Date.now)(),
     ...(options.noMerge ? { noMerge: true } : {}),
   };
@@ -159,7 +166,7 @@ const reuseKey = (kind: RegistrationKind, channelIdentityId: string) => `${kind.
 export async function reuseOrIssueRegistrationToken(
   kind: RegistrationKind,
   deps: RegistrationDeps,
-  actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
+  actor: RegistrationActor,
 ): Promise<{ status: 'ok'; token: string } | { status: 'rate_limited' }> {
   const key = reuseKey(kind, actor.channelIdentityId);
   const previous = await deps.store.get(key);
@@ -340,7 +347,15 @@ async function register(
   // 身分在發連結之後可能被併入別人：以目前持有它的聯絡人為準
   const registrantId = await resolveLiveContactId(db, tenantId, identity.contactId);
   if (!registrantId) return { result: { status: 'expired' }, notices: [] };
-  const conversationId = payload.conversationId;
+  // 連結沒有對話（附券廣播的收件人沒有對話時）：改找顧客在收券渠道最近的對話；仍然沒有就不送通知，
+  // 登記頁本身會顯示結果（design D29）
+  const conversationId = payload.conversationId ?? (await db.conversation.findFirst({
+    where: { tenantId, contactId: registrantId, channelId: payload.channelId },
+    orderBy: { lastMessageAt: 'desc' },
+    select: { id: true },
+  }))?.id;
+  const noticeTo = (text: string, noticeKind: string): RegistrationNotice[] =>
+    conversationId ? [{ conversationId, text, kind: noticeKind }] : [];
 
   // 同一個值的登記依序處理（AUDIT IDENT-04）：沒有這個鎖時，兩位聯絡人同時登記一個新的值，
   // 兩邊都查不到使用者、都寫入但不合併。鎖在交易結束時釋放，db 必須是 withTenant 的 tx。
@@ -360,7 +375,7 @@ async function register(
     logger.info(`[${kind.logTag}] 票券頁登記的值已屬於其他聯絡人，不自動合併`, { tenantId, registrantId });
     return {
       result: { status: 'merge_requires_chat' },
-      notices: [{ conversationId, text: kind.text.mergeRequiresChat(keyword), kind: `${kind.name}_merge_requires_chat` }],
+      notices: noticeTo(kind.text.mergeRequiresChat(keyword), `${kind.name}_merge_requires_chat`),
     };
   }
 
@@ -370,7 +385,7 @@ async function register(
     if (verified) await db.contact.updateMany({ where: { id: registrantId, tenantId }, data: verified });
     return {
       result: { status: 'registered', contactId: registrantId },
-      notices: [{ conversationId, text: kind.text.registered, kind: `${kind.name}_registered` }],
+      notices: noticeTo(kind.text.registered, `${kind.name}_registered`),
     };
   }
 
@@ -378,7 +393,7 @@ async function register(
     logger.warn(`[${kind.logTag}] 雙方在同一渠道都有帳號，拒絕合併`, { tenantId, existingId: existing.id, registrantId });
     return {
       result: { status: 'channel_conflict' },
-      notices: [{ conversationId, text: kind.text.channelConflict, kind: `${kind.name}_channel_conflict` }],
+      notices: noticeTo(kind.text.channelConflict, `${kind.name}_channel_conflict`),
     };
   };
   if (await hasSharedChannel(db, existing.id, registrantId)) return channelConflict();
@@ -394,7 +409,7 @@ async function register(
     logger.warn(`[${kind.logTag}] 另一種識別不一致，不自動合併`, { tenantId, existingId: existing.id, registrantId });
     return {
       result: { status: 'identity_conflict' },
-      notices: [{ conversationId, text: kind.text.identityConflict, kind: `${kind.name}_identity_conflict` }],
+      notices: noticeTo(kind.text.identityConflict, `${kind.name}_identity_conflict`),
     };
   }
 
@@ -454,13 +469,10 @@ async function register(
     : null;
   const existingName = notifiedIdentity?.profileName || existing.displayName || '未命名';
 
-  const notices: RegistrationNotice[] = [
-    {
-      conversationId,
-      text: kind.text.mergedToRegistrant(existingLabel, existingName, unbindKeyword),
-      kind: `${kind.name}_merged`,
-    },
-  ];
+  const notices: RegistrationNotice[] = noticeTo(
+    kind.text.mergedToRegistrant(existingLabel, existingName, unbindKeyword),
+    `${kind.name}_merged`,
+  );
   if (existingConversation && existingConversation.id !== conversationId) {
     notices.push({
       conversationId: existingConversation.id,

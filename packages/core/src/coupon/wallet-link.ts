@@ -22,10 +22,14 @@ export interface WalletTokenPayload {
   tenantId: string;
   /** 發券當下的聯絡人；之後若被合併，開啟時依合併鏈找到保留方 */
   contactId: string;
-  /** 收到訊息的渠道身分與對話：未歸戶時用來產生 One ID 登記連結 */
+  /** 收到訊息的渠道身分：未歸戶時用來產生 One ID 登記連結 */
   channelIdentityId: string;
   channelId: string;
-  conversationId: string;
+  /**
+   * 發券的對話：登記完成後在這裡送通知。附券廣播的收件人可能沒有對話，這時不帶（design D29）；
+   * 登記時改找顧客在該渠道最近的對話，仍然沒有就不送通知
+   */
+  conversationId?: string;
   instanceId: string;
 }
 
