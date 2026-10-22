@@ -1306,6 +1306,18 @@ model Broadcast {
   skippedCount   Int       @default(0)
   // 發送失敗的原因（中文，給後台顯示）：排程發送失敗時原本只寫 log，後台看不到（issue #287）
   failureReason  String?
+  // 發送失敗的代碼（例如 LINE_QUOTA_INSUFFICIENT），前端依此顯示對應說明
+  failureCode    String?
+  // 附券廣播（add-coupon-system design D29、D31）：每位收件人各得一張券與自己的票券連結
+  couponId           String?  @db.Uuid
+  // 發放方式：broadcast（廣播頁）或 batch（券詳情頁「發送給…」）
+  couponIssuedVia    String?
+  // 批次發放的訊息文字（沒填用預設發券文字）
+  couponMessage      String?
+  // 批次發放的操作者名稱快照（發放者）
+  couponIssuedByName String?
+  // 已確認發出的券數（帶連結的訊息送達）
+  couponIssuedCount  Int      @default(0)
   totalSent      Int       @default(0)
   totalDelivered Int       @default(0)
   totalReplied   Int       @default(0)
@@ -1322,6 +1334,7 @@ model Broadcast {
 
   @@index([tenantId, status])
   @@index([status, scheduledAt])
+  @@index([tenantId, couponId])
   @@map("broadcasts")
 }
 
@@ -1335,6 +1348,10 @@ model BroadcastRecipient {
   caseId         String?   @db.Uuid
   caseCreatedAt  DateTime?
   sentAt         DateTime  @default(now())
+  // 附券廣播：這位收件人的券（作廢後清空）
+  couponInstanceId String?  @db.Uuid
+  // 跳過（deliveryStatus=skipped）或失敗（failed）的原因代碼，例如 PER_CONTACT_LIMIT_REACHED
+  skipReason       String?
 
   broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
 
