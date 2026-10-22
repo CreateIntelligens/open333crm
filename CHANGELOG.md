@@ -24,7 +24,16 @@ All notable changes to **open333CRM** will be documented in this file.
   - `tar` 7 與 `adm-zip` 0.6.1 只用在 `@tensorflow/tfjs-node` 的安裝腳本；已實測下載解壓 libtensorflow 與 Linux 預編譯 binding 正常。
   - 未處理（無修補版或覆寫後會壞）：`sprintf-js` 沒有修補版（CVE-2026-97058 已被 NVD 撤銷）；`decode-uri-component` 0.5 與 `stream-json` 3 改成 ESM／新 API，覆寫後 minio 的 `query-string.parse` 與通知 Parser 失效，維持原版本（minio 只呼叫 `stringify`，專案沒有使用 bucket 通知）。
 
+### Added
+
+- **平台後台的佇列監控**（change `queue-monitoring`）— 平台後台側邊欄新增「佇列監控」，以 bull-board 9.10.4 列出 API 與 workers 兩個行程的所有 BullMQ 佇列，看得到工作、失敗原因與 stack，可以重送單一個 failed 的工作。只放行讀取與單筆重送，清空、刪除、重送整個狀態、修改工作資料等操作一律 403，bull-board 升級後新增的寫入操作也預設拒絕。工作資料只顯示 id 類欄位，其他值顯示為「[已遮蔽]」。存取限制：來源 IP 須在 `QUEUE_DASHBOARD_ALLOWED_CIDRS` 的網段內（沒有設定時一律 403），再以平台 JWT 換發 1 小時的監控 cookie；cookie 與平台 JWT 不能互換，平台帳號停用或須改密碼時立即拒絕。重送成功時寫入平台稽核 `queue.job.retry`。重送後，工作的回傳值列出被認領擋下而沒有再執行的副作用（`skippedClaims`）。
+  - 部署：在 `.env.api` 設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（例如公司網段），沒有設定時監控畫面回 403，其他功能不受影響。說明見 `docs/ref/features/platform/QUEUE-MONITORING.md`。
+- **維運告警**（change `queue-monitoring`）— 任何佇列的工作移到 failed set（重試用完，或丟出不可重試的錯誤）時，API 發出一則告警，含佇列名稱、工作 id、租戶 id、重試次數與監控畫面的連結，不含失敗原因與工作資料。同一個佇列 10 分鐘內只送一則，下一則帶上這段期間沒有送出的次數。告警經新的 `ops-alert` 佇列送出，失敗時重試 3 次。
+  - 部署：建立 Slack Incoming Webhook 之後，在 `.env.api` 設定 `OPS_ALERT_SLACK_WEBHOOK_URL`；沒有設定時告警只寫 log。
+
 ### Changed
+
+- **所有 BullMQ 佇列都有保留期限；`notification` 寫入失敗時重試**（change `queue-monitoring`，AUDIT APP-08 部分修正）— `rich-menu-bind`、`data-export` 與 4 個週期佇列（`sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup`）原本永遠保留完成與失敗的工作，現在完成保留 24 小時、失敗保留 7 天。已排定的週期工作會延續註冊時的選項，所以 workers 啟動時先刪除既有的週期工作，再以新選項重新註冊。`notification` 佇列的兩處生產者加上重試：共 3 次，指數退避，基準 5 秒；站內通知因此是至少一次，workers 在寫入通知之後、工作完成之前停止時，成員會收到兩則相同的通知。Redis 的 `maxmemory` 仍未設定。
 
 - **CLI 發布 0.1.2**（`@open333crm/cli`）— 自 0.1.1 以來的變更：新增 `open333 a2a execute`（A2A bridge 用，需設 `A2A_CRM_ADAPTER_ENABLED=true` 才啟用）；`engines.node` 改為 `>=24.22.1`。
 
@@ -42,6 +51,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **站內通知的即時推播失敗時，通知工作跟著失敗**（change `queue-monitoring`）— workers 寫入通知之後，推播到 Redis 失敗會讓 `notification:dispatch` 工作失敗；加上重試之後會重複寫入通知。現在推播失敗只記 log，工作照常完成：通知已經寫入，成員重新整理就看得到。
 - **本機 Docker 開發環境的 `deps` 服務安裝失敗，api、workers、web 都起不來**（#355 之後）。`pnpm.overrides` 把 `tar` 固定在 7，`@tensorflow/tfjs-node` 的安裝腳本以 npm 的 `tar` 解壓 Linux arm64 的 libtensorflow 時，`tar` 7 拒絕壓縮檔裡的連續 symlink（`TAR_SYMLINK_ERROR`）。正式 image 不受影響：`apps/api/Dockerfile` 以 `--ignore-scripts` 安裝，再以系統的 `tar` 解壓、自行編譯 binding。`docker-compose.dev.yml` 的 `deps` 改用同樣的做法：`Dockerfile.dev` 在 build 時下載並解壓 libtensorflow，加裝 `python3`、`make`、`g++`；`deps` 以 `--ignore-scripts` 安裝後，由 `scripts/dev-build-tfjs-node.sh` 編譯 binding（`node_modules` volume 裡已有 binding 時略過）。已有的本機環境要先 `docker compose -f docker-compose.dev.yml build` 重建 image。
 - **已歸戶顧客的票券連結被轉傳後，別人不用驗證就能打開票券夾**（UAT 實測：同一位顧客先用 LINE 驗證，之後 Messenger 的券連結點開就直接進去，可看券甚至顧客自助核銷）。原本只要聯絡人曾完成歸戶驗證，任何票券連結都直接換發顧客憑證。改為「記住裝置＋只認原 email」（design D24）：顧客在某台裝置完成驗證（email 驗證碼、LIFF 或 email 登記）後取得 180 天的裝置憑證，前端存在 `localStorage`，開啟票券時帶上才直接開啟；新裝置或被轉傳的連結改為寄 6 位數驗證碼到聯絡人原本的 email（畫面只顯示遮蔽後的 email，不能改填），新增 `POST /api/v1/fan/coupons/session/code` 與 `/session/code/verify`（10 分鐘有效、同一連結 10 分鐘最多寄 3 次、同一組最多錯 5 次）。只以 LINE 驗證、沒有 email 的聯絡人仍走 email 登記（issue #344）。驗證碼只能用一次：並行送出同一組碼只有一個請求成功；開啟票券的後續流程失敗時可用同一組驗證碼再試。
 - **優惠券操作手冊實測發現的問題**（UAT 實機走過三種核銷方式後修正）：

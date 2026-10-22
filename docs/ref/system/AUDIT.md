@@ -122,7 +122,7 @@
 | [APP-05](#app-05) | 部署與應用程式 | P4 | 未處理 | API 行程訂閱的 `sla.warning`、`sla.breached` 沒有發布端 | 靜態確認 |
 | [APP-06](#app-06) | 部署與應用程式 | P3 | 未處理 | 訊息模擬器的 API 在正式環境可用，成員可偽造進站訊息 | 靜態確認 |
 | [APP-07](#app-07) | 部署與應用程式 | P4 | 已提建議 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | 靜態確認 |
-| [APP-08](#app-08) | 部署與應用程式 | P3 | 部分修正 | 部分 BullMQ 佇列永遠保留已完成的工作，Redis 沒有記憶體上限；`notification`、`automation` 與事件的佇列已改成以時間保留 | 靜態確認 |
+| [APP-08](#app-08) | 部署與應用程式 | P3 | 部分修正 | Redis 沒有記憶體上限；所有 BullMQ 佇列已設定完成與失敗工作的保留期限 | 靜態確認 |
 | [APP-09](#app-09) | 部署與應用程式 | P3 | 部分修正 | API 行程假設只有一份：Canvas 的 Redis 廣播會重複處理、行程記憶體的狀態各自一份，無法水平擴充；排程已改為每一期只產生一筆 job，job 重跑時大多以條件更新擋住重複處理，只剩 Canvas 等待節點喚醒（#334）；業務事件已改走佇列 | 靜態確認 |
 | [APP-10](#app-10) | 部署與應用程式 | P2 | 已提建議 | 沒有獨立的正式環境：合併到 `main` 就直接部署到客戶在用的環境 | 間接確認 |
 | [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
@@ -1658,23 +1658,25 @@ API 的 `automation.worker.ts` 與 `notification.worker.ts` 回傳訂閱者的�
 **修正方向**：移除 BullMQ 路徑，或改用不含冒號的名稱並在 workers 加上消費者。只改名而不加消費者時，工作會一直留在 Redis 的 delayed set。輪詢也受 [RLS-01](#rls-01) 影響，修正 RLS-01 時一併處理。
 
 <a id="app-08"></a>
-### APP-08：多數 BullMQ 佇列永遠保留已完成的工作
+### APP-08：Redis 沒有記憶體上限（佇列的保留期限已補上）
 
 BullMQ 預設保留所有完成與失敗的工作。
 
-**已修正的部分。** 以事件 id 當 job id 的佇列改成以時間保留：完成 24 小時、失敗 7 天。包括 `notification`（`5f392e60`、`3710b293`）、`automation`（`0585cd33`），以及新增的 `event-notification`、`event-automation`、`event-webhook`、`webhook-delivery`、`usage-alert-email`。`data-erasure` 原本就以筆數保留。
+**已修正的部分。** 所有佇列都已設定保留期限：
 
-**未修正的部分。** 下列佇列與 `apps/workers` 的所有 `Worker` 都沒有設定 `removeOnComplete` 與 `removeOnFail`：
+| 佇列 | 保留期限 | 修正 |
+| --- | --- | --- |
+| `notification`、`automation` | 完成 24 小時、失敗 7 天 | `5f392e60`、`3710b293`、`0585cd33` |
+| `event-notification`、`event-automation`、`event-webhook`、`webhook-delivery`、`usage-alert-email` | 完成 24 小時、失敗 7 天 | change `outbox-event-delivery` 新增時就設定 |
+| `rich-menu-bind`、`data-export` | 完成 24 小時、失敗 7 天 | change `queue-monitoring`（`aabe714f`） |
+| `sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup` | 完成 24 小時、失敗 7 天。workers 啟動時刪除既有的重複工作再重新註冊，部署前已排定的工作也套用 | change `queue-monitoring`（`aabe714f`）。`tag-expiry-cleanup` 先前漏列在本表 |
+| `ops-alert` | 完成 24 小時、失敗 7 天 | change `queue-monitoring` 新增時就設定 |
+| `data-erasure` | 完成 100 筆、失敗 50 筆 | 原本就設定 |
+| `api-scheduler` | 完成 100 筆、失敗 50 筆 | 原本就設定 |
 
-| 佇列 | 產生頻率 |
-| --- | --- |
-| `sla` | 重複工作，每 5 分鐘一筆 |
-| `data-export-cleanup`、`agent-retention-cleanup` | 重複工作，每小時各一筆 |
-| `rich-menu-bind`、`data-export` | 依操作 |
+**未修正的部分。** Redis（`docker-compose.yml`、`docker-compose.prod.yml`）沒有設定 `maxmemory` 或淘汰策略。每筆工作以 hash 存在 Redis，含完整的 `data`；保留期限限制了工作的數量，但 Redis 的用量仍沒有上限。
 
-每筆工作以 hash 存在 Redis，含完整的 `data`。`docker-compose.prod.yml` 的 Redis 沒有設定 `maxmemory` 或淘汰策略，因此用量會隨訊息量持續成長，直到主機記憶體不足。
-
-**修正方向**：其餘佇列設定 `removeOnComplete` 與 `removeOnFail`（以筆數或時間為上限）；Redis 設定 `maxmemory`，但淘汰策略要用 `noeviction`，避免佇列的鍵被淘汰。
+**修正方向**：Redis 設定 `maxmemory`，淘汰策略要用 `noeviction`，避免佇列的鍵被淘汰。
 
 <a id="app-09"></a>
 ### APP-09：API 行程假設只有一份

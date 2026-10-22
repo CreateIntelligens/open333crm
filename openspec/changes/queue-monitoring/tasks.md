@@ -81,21 +81,26 @@
 
 ## 9. 文件
 
-- [ ] 9.1 `AGENTS.md` 結構規則 2：標題改成「讀寫租戶資料的 service 收 `TenantCtx`」，寫明不在範圍內的兩類（平台層資料表的 service、不讀資料庫的函式），ratchet 腳本不改
-- [ ] 9.2 `.env.api.example` 加上 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（本機用 `127.0.0.1/32`，不寫公司網段）與 `OPS_ALERT_SLACK_WEBHOOK_URL`，附上說明
-- [ ] 9.3 `docs/ref/modules/EVENTS.md`：佇列表的重試與保留欄、「失敗與重試」一節，加上 `ops-alert` 佇列與監控畫面。`docs/ref/features/tenant/NOTIFICATIONS.md`：通知的重試與至少一次
-- [ ] 9.4 `docs/ref/features/platform/` 新增佇列監控的說明：怎麼進入、可以做什麼、重送與認領、告警，並加進該目錄的 `README.md`
-- [ ] 9.5 `docs/ref/system/AUDIT.md` 的 APP-08：移除已補上保留期限的佇列，表中補上 `tag-expiry-cleanup` 的狀態，只留下 Redis 的 `maxmemory`。`AUDIT-REVIEWS.md` 新增一筆紀錄
-- [ ] 9.6 `CHANGELOG.md` 在最新的日期段落新增 Added（佇列監控、維運告警）、Changed（保留期限、`notification` 重試）、Fixed（推播失敗讓通知 job 失敗）
+- [x] 9.1 `AGENTS.md` 結構規則 2：標題改成「讀寫租戶資料的 service 收 `TenantCtx`」，寫明不在範圍內的兩類（平台層資料表的 service、不讀資料庫的函式），ratchet 腳本不改
+- [x] 9.2 `.env.api.example` 加上 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（本機用 `127.0.0.1/32`，不寫公司網段）與 `OPS_ALERT_SLACK_WEBHOOK_URL`，附上說明
+  - 範例值改成 `172.16.0.0/12`：10.6 實測本機 Docker 的 API 看到的來源 IP 是 Docker 閘道 `172.18.0.1`，設定 `127.0.0.1/32` 時一律 403。`.env.api` 只給 Docker 使用，主機直接執行的 API 讀根目錄的 `.env`
+- [x] 9.3 `docs/ref/modules/EVENTS.md`：佇列表的重試與保留欄、「失敗與重試」一節，加上 `ops-alert` 佇列與監控畫面。`docs/ref/features/tenant/NOTIFICATIONS.md`：通知的重試與至少一次
+- [x] 9.4 `docs/ref/features/platform/` 新增佇列監控的說明：怎麼進入、可以做什麼、重送與認領、告警，並加進該目錄的 `README.md`
+- [x] 9.5 `docs/ref/system/AUDIT.md` 的 APP-08：移除已補上保留期限的佇列，表中補上 `tag-expiry-cleanup` 的狀態，只留下 Redis 的 `maxmemory`。`AUDIT-REVIEWS.md` 新增一筆紀錄
+- [x] 9.6 `CHANGELOG.md` 在最新的日期段落新增 Added（佇列監控、維運告警）、Changed（保留期限、`notification` 重試）、Fixed（推播失敗讓通知 job 失敗）
 
 ## 10. 完成檢查
 
-- [ ] 10.1 `pnpm test` 通過，包括 `openapi-inventory-routes.test.ts`
-- [ ] 10.2 `pnpm build` 通過（改了 `packages/core` 與相依套件）
-- [ ] 10.3 `pnpm test:feature` 通過（7.3 使用 Redis）
-- [ ] 10.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict` 沒有新增違規。稽核寫入使用 `prismaAdmin`，若不在白名單內，依腳本說明處理
-- [ ] 10.5 `node scripts/validate-openspec.mjs queue-monitoring` 與 `node scripts/validate-openspec.mjs --specs` 通過
-- [ ] 10.6 本機以 docker 起完整堆疊，設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS=127.0.0.1/32`，從平台後台點「佇列監控」，確認兩個行程的佇列都列出、job 資料已遮蔽、重送 failed job 成功、清空佇列的按鈕回 403
+- [x] 10.1 `pnpm test` 通過，包括 `openapi-inventory-routes.test.ts`
+- [x] 10.2 `pnpm build` 通過（改了 `packages/core` 與相依套件）
+- [x] 10.3 `pnpm test:feature` 通過（7.3 使用 Redis）
+- [x] 10.4 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict` 沒有新增違規。稽核寫入使用 `prismaAdmin`，若不在白名單內，依腳本說明處理
+  - `check-prisma-admin-usage` 擋下 `queue-monitoring.routes.ts` 的兩處 `prismaAdmin`（讀平台帳號、寫平台稽核）。兩者都是平台層資料表，所以只把這個檔案加進白名單並註明理由。`check-tenant-scoping`、`check-tenant-ctx` 沒有新增違規
+- [x] 10.5 `node scripts/validate-openspec.mjs queue-monitoring` 與 `node scripts/validate-openspec.mjs --specs` 通過
+- [x] 10.6 本機以 docker 起完整堆疊，設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS=127.0.0.1/32`，從平台後台點「佇列監控」，確認兩個行程的佇列都列出、job 資料已遮蔽、重送 failed job 成功、清空佇列的按鈕回 403
+  - 2026-10-22：本機 `.env.api` 設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS=172.18.0.1/32`。從平台後台點「佇列監控」，新分頁開啟 bull-board，16 個佇列都列出
+  - 送一個 `agentId` 不存在的 `notification:dispatch`：重試 3 次後移到 failed set，API log 出現一則告警，只含佇列、job id、job 名稱、租戶 id、重試次數與連結
+  - 以 curl 確認：job 資料的 `title`、`body` 顯示為 `[已遮蔽]`，失敗原因照常顯示；重送這個 failed job 回 204，`platform_audit_logs` 多一筆 `queue.job.retry`（targetId `notification:qm-verify-1`）；清空佇列與重送整個 failed 狀態回 403；沒有 cookie 時靜態檔回 401
 
 ## Workflow follow-up
 

@@ -18,11 +18,13 @@
 
 1. 業務模組發布事件，例如 `case.assigned`。事件送進通知訂閱者的佇列 `event-notification`，見[事件與背景工作](../../modules/EVENTS.md)。
 2. `setupNotificationWorker()` 的處理函式決定收件人，每位收件人送一個工作進 `notification` queue。工作的 id 是 `<事件 id>__<成員 ID>`，所以同一個事件處理兩次時，同一位成員只收到一則通知。這個去重只在 job 的保留期間有效：完成的 job 保留 24 小時，失敗的保留 7 天。
-3. workers 行程的 `handleNotificationJob()` 寫入一筆 `Notification`。
-4. workers 發布到 Redis 的 `socket:emit`，API 行程轉送 `notification.new` 到 `agent:<成員 ID>` 房間。
+3. workers 行程的 `handleNotificationJob()` 寫入一筆 `Notification`。寫入失敗時，工作失敗並由 BullMQ 重試，共 3 次，指數退避，基準 5 秒。
+4. workers 發布到 Redis 的 `socket:emit`，API 行程轉送 `notification.new` 到 `agent:<成員 ID>` 房間。推播失敗時只記 log，工作照常完成：通知已經寫入，成員重新整理後就看得到。
 5. 前端收到後更新鈴鐺的未讀數。
 
 每位收件人各有一筆通知紀錄。同一個事件通知五個人，就寫五筆。
+
+站內通知是至少一次：workers 在寫入通知之後、工作標為完成之前停止時，BullMQ 重新執行這個工作，成員會收到兩則相同的通知。系統接受這個重複。
 
 AI 額度告警的信不在訂閱者內直接寄出。訂閱者為每位管理員送一個工作進 `usage-alert-email` queue，工作的 id 是 `<事件 id>__<成員 ID>`，由 API 行程的 `usage-alert-email.worker.ts` 寄出。所以事件重送時不會重寄；寄送失敗時，BullMQ 重試，共 3 次。
 
