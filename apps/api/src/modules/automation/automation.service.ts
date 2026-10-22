@@ -122,16 +122,23 @@ async function assertSendMaterialReferences(
  * 「發送優惠券」的 couponId 要是同租戶、進行中的券（add-coupon-system design D25）。
  * 原本是文字框、存檔不檢查，貼錯或其他租戶的券都能存，規則觸發時才發不出去。
  * 關鍵字回覆頁、加好友禮頁與 API 都經過這裡。
+ *
+ * 只檢查新增或更換的券（2026-10-22 審查決定）：規則原本就指向的券之後被暫停或結束時，
+ * 商家仍要能改關鍵字或素材；workers 觸發時會留下「券不是進行中」的紀錄。
  */
 async function assertIssueCouponReferences(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   prisma: { coupon: { findMany(args: any): PromiseLike<Array<{ id: string }>> } },
   tenantId: string,
   actions: Array<Record<string, unknown>>,
+  previousActions: unknown = [],
 ): Promise<void> {
-  const ids = actions
-    .filter((a) => a.type === 'issue_coupon')
-    .map((a) => (a.params as { couponId?: unknown } | undefined)?.couponId);
+  const couponIdsOf = (list: unknown) =>
+    (Array.isArray(list) ? (list as Array<Record<string, unknown>>) : [])
+      .filter((a) => a?.type === 'issue_coupon')
+      .map((a) => (a.params as { couponId?: unknown } | undefined)?.couponId);
+  const unchanged = new Set(couponIdsOf(previousActions).filter((id): id is string => typeof id === 'string'));
+  const ids = couponIdsOf(actions).filter((id) => !(typeof id === 'string' && unchanged.has(id)));
   if (ids.length === 0) return;
 
   const message = '找不到可發放的優惠券：發送優惠券要選同一個帳號下、進行中的券';
@@ -229,7 +236,7 @@ export async function updateRule(
     validateRuleContract(nextEventType, nextConditions, nextActions);
     if (data.actions !== undefined) {
       await assertSendMaterialReferences(prisma, tenantId, nextActions);
-      await assertIssueCouponReferences(prisma, tenantId, nextActions);
+      await assertIssueCouponReferences(prisma, tenantId, nextActions, existing.actions);
     }
   }
 

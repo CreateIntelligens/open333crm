@@ -113,3 +113,20 @@ test('素材與優惠券都沒選：表單提示至少選一個，不送出', as
   screen.getByText('回覆素材與優惠券至少要選一個');
   assert.equal(onSave.mock.calls.length, 0);
 });
+
+test('規則上的券已暫停，只修改關鍵字可以存檔：表單不擋，仍標示券已暫停', async () => {
+  const onSave = openDialog({
+    id: 'r1', name: '秋季領券', keywords: ['領券'], matchMode: 'any', materialId: null, couponId: 'k-paused', failureText: '',
+    isActive: true, createdAt: '2026-10-01T00:00:00.000Z', actions: [], conditions: null,
+  });
+  await screen.findByRole('option', { name: '秋季九折（CP-24A7）· 行銷' });
+  screen.getByText(/這張券已暫停、已結束或被刪除/);
+  fireEvent.change(screen.getByPlaceholderText(/輸入關鍵字後按 Enter/), { target: { value: '優惠' } });
+  fireEvent.click(screen.getByRole('button', { name: /加入/ }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+  });
+  assert.equal(onSave.mock.calls.length, 1);
+  assert.equal(onSave.mock.calls[0][0].couponId, 'k-paused');
+  assert.deepEqual(onSave.mock.calls[0][0].keywords, ['領券', '優惠']);
+});

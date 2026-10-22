@@ -20,7 +20,7 @@ const coupons = [
   { id: COUPON_OTHER_TENANT, tenantId: 'tenant-b', status: 'ACTIVE' },
 ];
 
-function fakeDb() {
+function fakeDb(existingCouponId = COUPON_PAUSED) {
   const writes: Array<Record<string, unknown>> = [];
   const db = {
     coupon: {
@@ -43,7 +43,7 @@ function fakeDb() {
         eventType: 'keyword.matched',
         trigger: { type: 'keyword.matched', keywords: ['領券'], match_mode: 'any' },
         conditions: { all: [] },
-        actions: [{ type: 'issue_coupon', params: { couponId: COUPON_PAUSED } }],
+        actions: [{ type: 'issue_coupon', params: { couponId: existingCouponId } }],
       }),
       update: async ({ data }: { data: Record<string, unknown> }) => {
         writes.push(data);
@@ -94,4 +94,34 @@ test('沒有送 actions 時不檢查：既有規則的券已暫停，仍可停�
   await updateRule(db, 'r1', T, { name: '改名' });
   await updateRule(db, 'r1', T, { isActive: false });
   assert.equal(writes.length, 2);
+});
+
+// ── 券沒有更換就不檢查（2026-10-22 審查決定）：券被暫停後，商家仍要能改關鍵字或素材 ──
+
+test('規則上的券已暫停，只修改關鍵字可以存檔', async () => {
+  const { db, writes } = fakeDb(COUPON_PAUSED);
+  await updateRule(db, 'r1', T, {
+    trigger: { type: 'keyword.matched', keywords: ['領券', '優惠'], match_mode: 'any' },
+    actions: [{ type: 'issue_coupon', params: { couponId: COUPON_PAUSED, failureText: '您已經領過這張券囉' } }],
+  });
+  assert.equal(writes.length, 1);
+});
+
+test('更換成暫停的券會被擋', async () => {
+  const { db, writes } = fakeDb(COUPON_OK);
+  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(COUPON_PAUSED).actions }), is400);
+  assert.equal(writes.length, 0);
+});
+
+test('更換成其他租戶的券會被擋', async () => {
+  const { db } = fakeDb(COUPON_PAUSED);
+  await assert.rejects(updateRule(db, 'r1', T, { actions: rule(COUPON_OTHER_TENANT).actions }), is400);
+});
+
+test('新增第二個發券動作指向暫停的券會被擋', async () => {
+  const { db } = fakeDb(COUPON_OK);
+  await assert.rejects(
+    updateRule(db, 'r1', T, { actions: [...rule(COUPON_OK).actions, ...rule(COUPON_PAUSED).actions] }),
+    is400,
+  );
 });

@@ -450,7 +450,7 @@
 
 - [x] 15.10 core：`voidPendingInstance`、確認（清除發送中＋貼標）搬到 `packages/core/src/coupon/delivery.ts`，API 對話發券改用它（`apps/api/src/modules/coupon/coupon-inbox.service.ts`）；發放方式代碼與 `couponSourceName`（`packages/core/src/coupon/issue.ts`）
 - [x] 15.11 契約：`issue_coupon` 參數型別改 `coupon`、新增選填 `failureText`、動作加 `editorHidden: true`（`packages/automation/src/contracts/actions.ts`、`types.ts`）；自動化規則編輯器不列出隱藏動作、既有發券動作唯讀顯示（`apps/web/src/components/automation/ActionEditor.tsx` 與動作選單）
-- [x] 15.12a API 存檔檢查 `couponId`（`apps/api/src/modules/automation/automation.service.ts`，比照 `assertSendMaterialReferences`）
+- [x] 15.12a API 存檔檢查 `couponId`（`apps/api/src/modules/automation/automation.service.ts`，比照 `assertSendMaterialReferences`）；只檢查新增或更換的券，券沒有更換時照常可以存檔（2026-10-22 審查決定；測試「規則上的券已暫停，只修改關鍵字可以存檔」「更換成暫停的券會被擋」，前端「規則上的券已暫停，只修改關鍵字可以存檔」）
 - [x] 15.12b workers `issue_coupon` 改為保留、送出、確認／作廢；失敗紀錄與 `failureText` 回覆；不支援的渠道擋下；歸因代碼、規則 id 與名稱；券卡訊息；推 `coupon.instance.updated`（`apps/workers/src/lib/automation-actions.ts`、`channel-delivery.ts`，`deliverToChannelFromWorker` 要能寫入券卡內容並回傳失敗原因）
 - [x] 15.12c `automation.handler.ts` 把 `receivedAt` 傳進動作 context（`apps/workers/src/handlers/automation.handler.ts`）
 - [x] 15.12d AI 讓步算入 `issue_coupon`（`apps/api/src/modules/automation/keyword-yield.ts`）
@@ -499,6 +499,7 @@
   - 15.7：「不認得的值顯示其他方式」——不認得的值改為顯示原代碼，測試失敗；「關鍵字規則發券的歸因：上行規則名稱，下行關鍵字」——上下行對調，測試失敗
   - 15.8：「座席發的券仍顯示座席名稱」——券卡不看 `issuedByName`、一律顯示規則，測試失敗；`chat-window-coupon.test.tsx`「收件匣顯示自動化發出的券卡」——ChatWindow 不把 `metadata.ruleName` 傳給券卡，測試失敗
   - 15.9：「規則的優惠券不是進行中」——讓步判斷拿掉 `status: 'ACTIVE'`，測試失敗；「網站聊天室的發券規則」——拿掉 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 判斷，測試失敗
+  - 15.12a：「更換成暫停的券會被擋」「更換成其他租戶的券會被擋」「新增第二個發券動作指向暫停的券會被擋」——把原本的動作當成更新後的動作傳入（所有券都視為沒有更換），測試失敗；前端「規則上的券已暫停，只修改關鍵字可以存檔」——表單在券已暫停時擋下儲存，測試失敗
   - 15.12b：既有的 `automation-issue-coupon-tag.test.ts` 改為新行為（貼標從發券交易移到送出成功後的確認交易，design D16、D25 的刻意變更），仍斷言 contact.tagged 在交易內寫入 outbox、不經 domain:event
 
 ### 工作量
