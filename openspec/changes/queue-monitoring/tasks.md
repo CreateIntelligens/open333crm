@@ -52,15 +52,18 @@
 
 ## 6. 掛載 bull-board
 
-- [ ] 6.1 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts`，涵蓋 Scenario「列出 workers 行程的佇列」：監控清單包含兩個行程的每個佇列，並以 `apps/workers/src/index.ts`、`subscriber-workers` 的 processor 清單核對沒有遺漏
-- [ ] 6.2 實作佇列清單與 bull-board plugin（design 決策 1），在 `apps/api/src/index.ts` 註冊，讓 6.1 通過
-- [ ] 6.3 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/operation-allowlist.test.ts`，涵蓋 Scenario「重送一個 failed job」「重送一個 completed job」「重送整個 failed 狀態」「刪除整個佇列」「修改 job 資料」，並對 design 決策 4 拒絕的每條路由檢查回 403
-- [ ] 6.4 實作 `handlerHooks.before` 的白名單，讓 6.3 通過
-- [ ] 6.5 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/retry-audit.test.ts`，涵蓋 Scenario「重送成功時寫入稽核」「被拒絕的重送不寫入稽核」
-- [ ] 6.6 實作稽核的 `onResponse` hook（design 決策 5），讓 6.5 通過
-- [ ] 6.7 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/mask-job-data.test.ts`，涵蓋 Scenario「遮蔽訊息內容」「巢狀的 name 不是識別欄位」，以及陣列與新增欄位
-- [ ] 6.8 實作 `maskJobData()` 並以 `setFormatter('data', …)` 套用到每個佇列（design 決策 6），讓 6.7 通過
-- [ ] 6.9 寫測試涵蓋 Scenario「顯示失敗原因」：以 `fastify.inject()` 讀取一個 failed job 的細節，回應含失敗原因。bull-board 本身就有這個行為，以突變驗證：把 `failedReason` 也套用遮蔽，確認測試失敗，再還原。突變記在本項下方
+- [x] 6.1 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/monitored-queues.test.ts`，涵蓋 Scenario「列出 workers 行程的佇列」：監控清單包含兩個行程的每個佇列，並以 `apps/workers/src/index.ts`、`subscriber-workers` 的 processor 清單核對沒有遺漏
+  - 「列出 workers 行程的佇列」先以回傳空陣列的 `createMonitoredQueues()` 確認失敗。兩個核對測試寫好就通過（清單本來就正確），以突變驗證：從 `WORKERS_QUEUES` 拿掉 `sla`，workers 的核對失敗；從 `API_QUEUES` 拿掉 `ops-alert`，API 的核對失敗
+- [x] 6.2 實作佇列清單與 bull-board plugin（design 決策 1），在 `apps/api/src/index.ts` 註冊，讓 6.1 通過
+- [x] 6.3 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/operation-allowlist.test.ts`，涵蓋 Scenario「重送一個 failed job」「重送一個 completed job」「重送整個 failed 狀態」「刪除整個佇列」「修改 job 資料」，並對 design 決策 4 拒絕的每條路由檢查回 403
+- [x] 6.4 實作 `handlerHooks.before` 的白名單，讓 6.3 通過
+- [x] 6.5 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/retry-audit.test.ts`，涵蓋 Scenario「重送成功時寫入稽核」「被拒絕的重送不寫入稽核」
+- [x] 6.6 實作稽核的 `onResponse` hook（design 決策 5），讓 6.5 通過
+- [x] 6.7 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/mask-job-data.test.ts`，涵蓋 Scenario「遮蔽訊息內容」「巢狀的 name 不是識別欄位」，以及陣列與新增欄位
+- [x] 6.8 實作 `maskJobData()` 並以 `setFormatter('data', …)` 套用到每個佇列（design 決策 6），讓 6.7 通過
+- [x] 6.9 寫測試涵蓋 Scenario「顯示失敗原因」：以 `fastify.inject()` 讀取一個 failed job 的細節，回應含失敗原因。bull-board 本身就有這個行為，以突變驗證：把 `failedReason` 也套用遮蔽，確認測試失敗，再還原。突變記在本項下方
+  - 測試在 `apps/api/tests/unit/modules/queue-monitoring/job-detail.test.ts`，同一個檔案也檢查經監控路由讀到的 job 資料已遮蔽（套用 `setFormatter` 之前失敗）
+  - 突變：加上 `handlerHooks.after`，把 job 的 `failedReason` 換成 `[已遮蔽]`、清空 stack。「顯示失敗原因」失敗
 
 ## 7. 告警監聽（queue-monitoring「job 移到 failed set 時發出告警」）
 

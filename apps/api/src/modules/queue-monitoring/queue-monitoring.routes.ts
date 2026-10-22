@@ -16,7 +16,9 @@ import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { isAllowedIp, parseAllowedCidrs } from './ip-allowlist.js';
 import { QUEUE_SESSION_COOKIE, QUEUE_SESSION_TTL_SECONDS, signQueueSession, verifyQueueSession } from './queue-session.js';
-import { getPlatformUserStatus } from './queue-monitoring.service.js';
+import { auditJobRetry, getPlatformUserStatus } from './queue-monitoring.service.js';
+import { allowQueueOperation, RETRY_JOB_ROUTE } from './operation-allowlist.js';
+import { maskJobData } from './mask-job-data.js';
 
 export interface QueueMonitoringOptions {
   /** QUEUE_DASHBOARD_ALLOWED_CIDRS：以逗號分隔的網段；沒有設定時拒絕所有連線 */
@@ -81,12 +83,29 @@ export default async function queueMonitoringRoutes(fastify: FastifyInstance, op
       request.platformUser = { id: platformUserId, role: 'PLATFORM_SUPERUSER', mustChangePassword: false };
     });
 
+    // 重送成功時寫入平台稽核（design 決策 5）。handlerHooks 拿不到 Fastify 的 request，所以寫在 onResponse
+    const retryRoute = `${basePath}${RETRY_JOB_ROUTE}`;
+    board.addHook('onResponse', async (request, reply) => {
+      if (request.method !== 'PUT' || request.routeOptions.url !== retryRoute) return;
+      if (reply.statusCode < 200 || reply.statusCode >= 300 || !request.platformUser) return;
+      const { queueName, jobId } = request.params as { queueName: string; jobId: string };
+      await auditJobRetry(fastify.prismaAdmin, { platformUserId: request.platformUser.id, queueName, jobId });
+    });
+
     const serverAdapter = new FastifyAdapter();
     serverAdapter.setBasePath(basePath);
     createBullBoard({
-      queues: opts.queues.map((queue) => new BullMQAdapter(queue)),
+      queues: opts.queues.map((queue) => {
+        const adapter = new BullMQAdapter(queue);
+        // job 資料可能含客人的個資，只顯示識別欄位（design 決策 6）
+        adapter.setFormatter('data', maskJobData);
+        return adapter;
+      }),
       serverAdapter,
-      options: { uiConfig: { boardTitle: 'open333CRM 佇列監控' } },
+      options: {
+        uiConfig: { boardTitle: 'open333CRM 佇列監控' },
+        handlerHooks: { before: allowQueueOperation },
+      },
     });
     await board.register(serverAdapter.registerPlugin());
   });

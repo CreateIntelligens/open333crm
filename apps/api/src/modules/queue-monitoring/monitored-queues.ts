@@ -12,6 +12,7 @@ import {
   USAGE_ALERT_EMAIL_QUEUE,
   WEBHOOK_DELIVERY_QUEUE,
 } from '@open333crm/core';
+import { Queue } from 'bullmq';
 import { OPS_ALERT_QUEUE } from '../ops-alert/ops-alert.service.js';
 
 /** API 行程消費的佇列 */
@@ -45,3 +46,11 @@ export const MONITORED_QUEUES: readonly string[] = [...API_QUEUES, ...WORKERS_QU
  * 告警送不出時只記 log，不再發出新的告警（ops-alert「送出告警至少一次」）。
  */
 export const ALERTED_QUEUES: readonly string[] = MONITORED_QUEUES.filter((name) => name !== OPS_ALERT_QUEUE);
+
+/**
+ * 為每個監控的佇列建立一個 Queue 物件，交給 bull-board 讀取與重送。
+ * 這些物件與 Worker 分開，API 關機時由呼叫端關閉。
+ */
+export function createMonitoredQueues(redisUrl: string): Queue[] {
+  return MONITORED_QUEUES.map((name) => new Queue(name, { connection: { url: redisUrl } }));
+}

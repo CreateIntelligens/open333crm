@@ -82,6 +82,8 @@ import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 import webchatRoutes from './modules/webchat/webchat.routes.js';
 import platformRoutes from './modules/platform/platform.routes.js';
+import queueMonitoringRoutes from './modules/queue-monitoring/queue-monitoring.routes.js';
+import { createMonitoredQueues } from './modules/queue-monitoring/monitored-queues.js';
 import trialRoutes from './modules/trial/trial.routes.js';
 import planChangeRoutes from './modules/platform/plan-change.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
@@ -227,6 +229,14 @@ export async function bootstrap() {
   await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
   await app.register(platformRoutes, { prefix: '/api/v1/platform' });
+  // 佇列監控（change queue-monitoring）：監控用的 Queue 物件與 Worker 分開，關機時一起關閉
+  const monitoredQueues = createMonitoredQueues(config.REDIS_URL);
+  app.addHook('onClose', () => Promise.all(monitoredQueues.map((queue) => queue.close())).then(() => undefined));
+  await app.register(queueMonitoringRoutes, {
+    prefix: '/api/v1/platform/queues',
+    allowedCidrs: config.QUEUE_DASHBOARD_ALLOWED_CIDRS,
+    queues: monitoredQueues,
+  });
   await app.register(trialRoutes, { prefix: '/api/v1/trial' });
   await app.register(planChangeRoutes, { prefix: '/api/v1/plan-change' });
   await app.register(mcpRoutes);
