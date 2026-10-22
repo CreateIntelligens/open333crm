@@ -10,7 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 部署：**API 與 workers 要一起部署**。需要跑 migration `20261021100000_add_outbox_and_side_effect_claims`。Redis 多 5 個佇列，沒有新的環境變數。
   - 內部 API：`ctx.publish` 改成 async，`ctx.enqueue` 改收佇列名稱；`claimOne()`、`createOrFindExisting()` 搬到 `@open333crm/core`。
 
-- **同一個事件處理兩次時，對客人的訊息與規則動作不重複**— 新增 `side_effect_claims` 資料表，不能重複的副作用執行前先認領，撞到唯一鍵就跳過。每則入站訊息最多一則機器人回覆（AI agent、知識庫回覆、自動轉接的轉接訊息），已經回覆過就不再呼叫 LLM；情緒分析與 `sentiment.negative` 每則訊息最多一次；workers 的每個規則動作每個事件最多執行一次，沒有指定優先度的升級不會再升一級。站內通知與用量告警信以 `<事件 id>__<收件人>` 當 job id，告警信改走 `usage-alert-email` 佇列，寄送失敗由 BullMQ 重試。`notification`、`automation` 佇列改成完成的 job 保留 24 小時、失敗的保留 7 天（AUDIT APP-08 部分修正）。認領之後送出失敗不重送，這些副作用寧可少送一次，也不重複。
+- **同一個事件處理兩次時，對客人的訊息與規則動作不重複**— 新增 `side_effect_claims` 資料表，不能重複的副作用執行前先認領，撞到唯一鍵就跳過。每則入站訊息最多一則機器人回覆（AI agent、知識庫回覆、自動轉接的轉接訊息），已經回覆過就不再呼叫 LLM；情緒分析與 `sentiment.negative` 每則訊息最多一次；workers 的每個規則動作每個事件最多執行一次，沒有指定優先度的升級不會再升一級。站內通知與用量告警信以 `<事件 id>__<收件人>` 當 job id，告警信改走 `usage-alert-email` 佇列，寄送失敗由 BullMQ 重試；寄信服務收下信之後、job 完成之前中斷時，可能多寄一封。`notification`、`automation` 佇列改成完成的 job 保留 24 小時、失敗的保留 7 天（AUDIT APP-08 部分修正）。認領之後送出失敗不重送，這些副作用寧可少送一次，也不重複。
 
 - **關鍵字規則改由 workers 處理收到的訊息時比對**— API 原本比對關鍵字後發出 `keyword.matched`，再由 workers 執行規則。現在 workers 評估 `message.received` 時一併比對，命中的規則仍以 `keyword.matched` 執行，LINE 照舊用 reply 回覆。`keyword.matched` 只發給對外 Webhook，每則訊息每條規則最多一次。AI 是否讓步與 workers 用同一個比對函式；關鍵字比對、`BotConfig` 搬到 `@open333crm/automation`，`kb-autoreply` 不再 import worker 檔（AUDIT ARCH-02）。
 

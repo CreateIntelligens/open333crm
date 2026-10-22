@@ -147,7 +147,7 @@ api 與 workers 共用（規劃 9.8 的決定）：
 
 - `notification:dispatch` 的 job id 是 `<事件 id>__<客服人員 id>`。
 - `notification` 佇列有兩個發送端，各自建立 `Queue`：api 的 `notification.worker.ts` 與 workers 的 `lib/notification-queue.ts`。保留期限由發送端的 `defaultJobOptions` 決定，所以兩邊都改成完成的 job 保留 24 小時。
-- 用量告警信移到新的 `usage-alert-email` 佇列，API 行程處理，job id 是 `<事件 id>__<管理員 id>`，`attempts: 3`。訂閱者 job 不直接寄信，所以重試不會重寄。
+- 用量告警信移到新的 `usage-alert-email` 佇列，API 行程處理，job id 是 `<事件 id>__<管理員 id>`，`attempts: 3`。訂閱者 job 不直接寄信，所以訂閱者重試不會重寄。告警信的保證是至少一次：寄信服務收下信之後、job 完成之前中斷時，重試會多寄一封。不寄告警信（例如 AI 額度用完）的代價比多收一封大，所以不改成寄信前認領（review-loop 2026-10-22 決定）。
 
 ### 11. 對外 webhook
 

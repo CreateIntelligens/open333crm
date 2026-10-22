@@ -122,3 +122,9 @@ test('email 寄送失敗：其他管理員的通知與 email 照常發送', asyn
   assert.equal(sent.jobs.length, 2);
   assert.deepEqual(sent.emails.map((e) => e.to), ['a2@example.com']);
 });
+
+test('Email provider fails：寄信的 job 失敗，由佇列重試', async () => {
+  sent.failEmailTo = 'a1@example.com';
+  const job = { data: { level: 'critical' as const, to: 'a1@example.com', vars: { siteName: 'S', usedTokens: '1', limitTokens: '1', monthKey: '2026-10', usageUrl: 'https://crm.example/dashboard/plan' } } };
+  await assert.rejects(processUsageAlertEmail(job as never), /smtp down/);
+});
