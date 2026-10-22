@@ -75,8 +75,9 @@
 
 ## 8. 平台後台
 
-- [ ] 8.1 寫失敗的元件測試 `apps/web/tests/unit/components/admin/queue-monitor-link.test.tsx`：點擊「佇列監控」時，先呼叫 `POST /api/v1/platform/queues/session`，成功後在新分頁開啟 `/api/v1/platform/queues`
-- [ ] 8.2 在平台後台加上「佇列監控」連結（`apps/web/src/app/admin`），讓 8.1 通過
+- [x] 8.1 寫失敗的元件測試 `apps/web/tests/unit/components/admin/queue-monitor-link.test.tsx`：點擊「佇列監控」時，先呼叫 `POST /api/v1/platform/queues/session`，成功後在新分頁開啟 `/api/v1/platform/queues`
+- [x] 8.2 在平台後台加上「佇列監控」連結（`apps/web/src/app/admin`），讓 8.1 通過
+  - 分頁在點擊當下開啟，換發成功後才導向監控畫面：在 await 之後才呼叫 `window.open` 會被瀏覽器擋下。換發請求帶 `withCredentials`：本機的網頁與 API 不同來源，不帶時瀏覽器不存 cookie。換發失敗時關閉分頁並顯示錯誤訊息
 
 ## 9. 文件
 
