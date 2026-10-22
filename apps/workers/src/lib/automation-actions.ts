@@ -601,7 +601,8 @@ export async function executeWorkerAutomationActions(
 
         // 交易內完成配額檢查、建立與領券貼標，避免併發超發；行為與 API 對話發券一致
         const issuedVia = context.trigger ?? 'automation';
-        const { outcome, tagged } = await prisma.$transaction(async (tx) => {
+        // 貼標時 contact.tagged 與發券一起 commit（event-delivery「workers 的事件與資料一起 commit」），與 add_tag 相同
+        const { outcome, outboxRow } = await prisma.$transaction(async (tx) => {
           const issued = await issueInstances(tx, {
             tenantId: context.tenantId,
             coupon,
@@ -614,22 +615,22 @@ export async function executeWorkerAutomationActions(
           const tag = issued.issued.length > 0
             ? await applyCouponClaimTag(tx, context.tenantId, context.contactId as string, coupon)
             : null;
-          return { outcome: issued, tagged: tag };
+          const row = tag
+            ? await writeOutbox(tx, {
+                tenantId: context.tenantId,
+                kind: 'event',
+                name: 'contact.tagged',
+                payload: { contactId: context.contactId, tagId: tag.tagId, tagName: tag.tagName, source: 'system' },
+              })
+            : null;
+          return { outcome: issued, outboxRow: row };
         });
 
         if (outcome.issued.length === 0) {
           logger.info('[automation] issue_coupon 未發出', { reason: outcome.skipped[0]?.reason });
           continue;
         }
-        if (tagged) {
-          // 與 add_tag 相同：橋接 contact.tagged 回 api eventBus，供下游規則
-          await publishDomainEvent(redisPublisher, 'contact.tagged', context.tenantId, {
-            contactId: context.contactId,
-            tagId: tagged.tagId,
-            tagName: tagged.tagName,
-            source: 'system',
-          }).catch((err) => logger.warn('[automation] publish contact.tagged bridge failed:', err));
-        }
+        if (outboxRow) await dispatchAfterCommit(prisma, outboxRow);
 
         const instance = outcome.issued[0];
         // 票券連結與文案與 API 對話發券共用 core 的同一套（design D12）
