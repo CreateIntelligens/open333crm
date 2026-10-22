@@ -417,4 +417,5 @@
 - [x] 14.7 `pnpm test`、優惠券與 identity-binding feature 測試通過；三個租戶隔離檢查 `--strict` 無新增違規；`node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
 - [x] 14.8 測試（PR #359 bot 審查）：並行送出同一組驗證碼只有一次成功、開啟票券時資料庫暫時失敗可用同一組再試（兩者修正前失敗）；「驗證碼只能用於寄出它的連結」寫完即通過，突變驗證：讓所有連結共用同一組驗證碼的 Redis 鍵與鹽，測試失敗
 - [x] 14.9 實作：驗證碼通過後以 GETDEL 取走（consumeVerificationCode），後續失敗時以剩餘效期放回（restoreVerificationCode）；驗證碼畫面的錯誤處理在錯誤不是物件時改顯示預設訊息
+- [x] 14.10 測試（PR #359 bot 第三輪）：序號包整批重送時成功回應、不重複寫入（前端分批匯入沒收到回應而重送時，存草稿與發布不會卡住）。寫完即通過，突變驗證：整批都已存在時改為丟錯，測試失敗
 
