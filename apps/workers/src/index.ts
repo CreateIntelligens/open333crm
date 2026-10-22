@@ -16,6 +16,7 @@ import {
   handleDataExportCleanup,
 } from './handlers/data-export.handler.js';
 import { closeNotificationQueue } from './lib/notification-queue.js';
+import { registerRepeatingJobs } from './lib/repeating-jobs.js';
 import { handleAgentRetentionCleanup } from './handlers/agent-retention.handler.js';
 import { handleTagExpiryCleanup } from './handlers/tag-expiry.handler.js';
 
@@ -55,33 +56,7 @@ async function main() {
   logger.info('Workers starting...');
 
   // ── Queues (register repeating jobs) ──────────────────────────────────────────
-  const slaQueue = new Queue('sla', { connection });
-
-  await slaQueue.add('sla:poll', {}, { repeat: { every: 300_000 }, jobId: 'sla:poll' });
-
-  // 資料匯出保留期清理：每小時掃一次，把到期的 completed 轉 expired 並刪 MinIO 物件
-  const dataExportCleanupQueue = new Queue('data-export-cleanup', { connection });
-  await dataExportCleanupQueue.add(
-    'data-export:cleanup',
-    {},
-    { repeat: { every: 3_600_000 }, jobId: 'data-export:cleanup' },
-  );
-
-  // 時效標籤清理：每小時掃一次，刪掉 expiresAt 已過的 contact_tags。
-  // 用刪列而非查詢時過濾——標籤讀取點過多，逐一加條件必然會漏。
-  const tagExpiryQueue = new Queue('tag-expiry-cleanup', { connection });
-  await tagExpiryQueue.add(
-    'tag:expiry-cleanup',
-    {},
-    { repeat: { every: 3_600_000 }, jobId: 'tag:expiry-cleanup' },
-  );
-
-  const agentRetentionQueue = new Queue('agent-retention-cleanup', { connection });
-  await agentRetentionQueue.add(
-    'agent:retention-cleanup',
-    {},
-    { repeat: { every: 3_600_000 }, jobId: 'agent:retention-cleanup' },
-  );
+  const repeatingQueues = await registerRepeatingJobs((name) => new Queue(name, { connection }));
 
   // 順手清掉舊的 broadcast repeatable job（如果之前 worker 跑過、Redis 仍有殘留）
   const legacyBroadcastQueue = new Queue('broadcast', { connection });
@@ -208,9 +183,7 @@ async function main() {
       dataExportCleanupWorker.close(),
       agentRetentionWorker.close(),
     ]);
-    await slaQueue.close();
-    await dataExportCleanupQueue.close();
-    await agentRetentionQueue.close();
+    await Promise.all(repeatingQueues.map((queue) => queue.close()));
     await closeNotificationQueue();
     await prisma.$disconnect();
     connection.disconnect();

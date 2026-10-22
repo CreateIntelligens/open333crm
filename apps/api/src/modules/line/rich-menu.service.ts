@@ -21,7 +21,10 @@ export const RICH_MENU_BIND_QUEUE = 'rich-menu-bind';
 let _bindQueue: Queue | null = null;
 function richMenuBindQueue(): Queue {
   if (!_bindQueue) {
-    _bindQueue = new Queue(RICH_MENU_BIND_QUEUE, { connection: { url: process.env.REDIS_URL! } });
+    _bindQueue = new Queue(RICH_MENU_BIND_QUEUE, {
+      connection: { url: process.env.REDIS_URL! },
+      defaultJobOptions: { removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } },
+    });
   }
   return _bindQueue;
 }

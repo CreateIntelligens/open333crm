@@ -23,6 +23,7 @@ function exportQueue(): Queue {
   if (!_exportQueue) {
     _exportQueue = new Queue(DATA_EXPORT_QUEUE, {
       connection: { url: process.env.REDIS_URL! },
+      defaultJobOptions: { removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } },
     });
   }
   return _exportQueue;

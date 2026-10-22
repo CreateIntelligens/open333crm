@@ -1,20 +1,26 @@
 ## 1. `notification` 佇列（standalone-worker-runtime）
 
-- [ ] 1.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/notification.handler.test.ts`，涵蓋 Scenario「Database write succeeds but Redis publish fails」：mock 的 `redisPublisher.publish` 丟錯時，handler 不丟錯並記 log。執行後確認失敗在斷言（目前 handler 會丟錯）
-- [ ] 1.2 `notification.handler.ts` 以 try/catch 包住 `publishSocketEvent()`（design 決策 10），讓 1.1 通過
-- [ ] 1.3 在 1.1 的檔案加上 Scenario「Notification job consumed by worker」「Database write fails」「Worker stops after the record is written」（同一個 job 執行兩次，建立兩筆通知）。這些行為已存在，以突變驗證：(1) 把寫入改成依 job id 去重，確認「Worker stops after the record is written」失敗。(2) 在 handler 以 try/catch 吞掉 `create` 的錯誤，確認「Database write fails」失敗。還原後通過，突變記在本項下方
-- [ ] 1.4 Scenario「Redis unavailable at enqueue time」（Notification Job Consumer）：行為已存在，由 `apps/api/tests/unit/modules/notification/notification.worker.test.ts` 的「Subscriber cannot enqueue the next job」涵蓋。測試名稱加上這個 scenario 名稱，再以突變驗證：把 `notification.worker.ts` 兩處 catch 的 `throw err` 拿掉，確認測試失敗，再還原。突變記在本項下方
-- [ ] 1.5 寫失敗的單元測試，涵蓋 Scenario「Both producers set the retry policy」與「Database write keeps failing」的 job 選項部分：`apps/api/tests/unit/modules/notification/notification-queue-options.test.ts` 檢查 API 的 `notification` 佇列，`apps/workers/tests/unit/lib/notification-queue.test.ts` 檢查 workers 的佇列；兩者的 `defaultJobOptions` 都是 `attempts: 3`、指數退避 5 秒
-- [ ] 1.6 兩處生產者的 `defaultJobOptions` 加上重試設定，讓 1.5 通過
+- [x] 1.1 寫失敗的單元測試 `apps/workers/tests/unit/handlers/notification.handler.test.ts`，涵蓋 Scenario「Database write succeeds but Redis publish fails」：mock 的 `redisPublisher.publish` 丟錯時，handler 不丟錯並記 log。執行後確認失敗在斷言（目前 handler 會丟錯）
+- [x] 1.2 `notification.handler.ts` 以 try/catch 包住 `publishSocketEvent()`（design 決策 10），讓 1.1 通過
+- [x] 1.3 在 1.1 的檔案加上 Scenario「Notification job consumed by worker」「Database write fails」「Worker stops after the record is written」（同一個 job 執行兩次，建立兩筆通知）。這些行為已存在，以突變驗證：(1) 把寫入改成依 job id 去重，確認「Worker stops after the record is written」失敗。(2) 在 handler 以 try/catch 吞掉 `create` 的錯誤，確認「Database write fails」失敗。還原後通過，突變記在本項下方
+  - 突變 (1)：handler 以模組層的 `Set` 依 job id 去重。「Worker stops after the record is written」失敗。另外兩個測試也失敗，因為四個測試共用同一個 job id，`Set` 跨測試保留
+  - 突變 (2)：以 try/catch 吞掉 `create` 的錯誤後 return。只有「Database write fails」失敗
+- [x] 1.4 Scenario「Redis unavailable at enqueue time」（Notification Job Consumer）：行為已存在，由 `apps/api/tests/unit/modules/notification/notification.worker.test.ts` 的「Subscriber cannot enqueue the next job」涵蓋。測試名稱加上這個 scenario 名稱，再以突變驗證：把 `notification.worker.ts` 兩處 catch 的 `throw err` 拿掉，確認測試失敗，再還原。突變記在本項下方
+  - 突變：拿掉兩處的 `throw err`，測試失敗。只拿掉 `message.received` 的 `throw err`，測試也失敗（第二個 `assert.rejects`）
+- [x] 1.5 寫失敗的單元測試，涵蓋 Scenario「Both producers set the retry policy」與「Database write keeps failing」的 job 選項部分：`apps/api/tests/unit/modules/notification/notification-queue-options.test.ts` 檢查 API 的 `notification` 佇列，`apps/workers/tests/unit/lib/notification-queue.test.ts` 檢查 workers 的佇列；兩者的 `defaultJobOptions` 都是 `attempts: 3`、指數退避 5 秒
+- [x] 1.6 兩處生產者的 `defaultJobOptions` 加上重試設定，讓 1.5 通過
 
 ## 2. 保留期限（queue-monitoring「各佇列 job 的保留期限」）
 
-- [ ] 2.1 寫失敗的單元測試 `apps/api/tests/unit/modules/line/rich-menu-bind-queue-options.test.ts` 與 `apps/api/tests/unit/modules/data-export/data-export-queue-options.test.ts`：建立 `Queue` 時的 `defaultJobOptions` 是完成保留 24 小時、失敗保留 7 天
-- [ ] 2.2 `rich-menu.service.ts`、`data-export.service.ts` 加上保留期限，讓 2.1 通過
-- [ ] 2.3 把 `apps/workers/src/index.ts` 註冊週期 job 的程式抽成 `apps/workers/src/lib/repeating-jobs.ts`（重構，行為不變），再寫失敗的單元測試 `apps/workers/tests/unit/lib/repeating-jobs.test.ts`，以 mock 的 `Queue` 涵蓋 Scenario「部署前已排定的週期 job」：先以 `removeRepeatableByKey()` 刪除既有的 repeatable job，再以帶保留期限的選項 `add()`，job id 維持 `sla:poll` 等名稱
-- [ ] 2.4 實作 design 決策 11 的重新註冊，讓 2.3 通過
-- [ ] 2.5 在本機 docker 的 Redis 驗證 Scenario「部署前已排定的週期 job」：先以舊版 workers 啟動，再以新版啟動，以 `redis-cli HGET bull:sla:<下一期 job id> opts` 確認新的一期帶 `removeOnComplete` 與 `removeOnFail`。結果記在本項下方
-- [ ] 2.6 Scenario「completed job 超過 24 小時」「failed job 超過 7 天」由 BullMQ 依選項執行，2.1、2.3 檢查選項即涵蓋，不另寫測試
+- [x] 2.1 寫失敗的單元測試 `apps/api/tests/unit/modules/line/rich-menu-bind-queue-options.test.ts` 與 `apps/api/tests/unit/modules/data-export/data-export-queue-options.test.ts`：建立 `Queue` 時的 `defaultJobOptions` 是完成保留 24 小時、失敗保留 7 天
+- [x] 2.2 `rich-menu.service.ts`、`data-export.service.ts` 加上保留期限，讓 2.1 通過
+- [x] 2.3 把 `apps/workers/src/index.ts` 註冊週期 job 的程式抽成 `apps/workers/src/lib/repeating-jobs.ts`（重構，行為不變），再寫失敗的單元測試 `apps/workers/tests/unit/lib/repeating-jobs.test.ts`，以 mock 的 `Queue` 涵蓋 Scenario「部署前已排定的週期 job」：先以 `removeRepeatableByKey()` 刪除既有的 repeatable job，再以帶保留期限的選項 `add()`，job id 維持 `sla:poll` 等名稱
+- [x] 2.4 實作 design 決策 11 的重新註冊，讓 2.3 通過
+- [x] 2.5 在本機 docker 的 Redis 驗證 Scenario「部署前已排定的週期 job」：先以舊版 workers 啟動，再以新版啟動，以 `redis-cli HGET bull:sla:<下一期 job id> opts` 確認新的一期帶 `removeOnComplete` 與 `removeOnFail`。結果記在本項下方
+  - 2026-10-22：刪除 4 個週期佇列的排程後，以舊版 `index.ts` 啟動 workers。`sla` 的下一期 job（`repeat:1e0e…:1792658700000`）的 `opts` 沒有 `removeOnComplete` 與 `removeOnFail`
+  - 換回新版重啟。同一期 job 的 `opts` 帶 `removeOnComplete: { age: 86400 }`、`removeOnFail: { age: 604800 }`，`repeat.jobId` 仍是 `sla:poll`
+  - 這一期執行完後，BullMQ 產生的再下一期（`…:1792659000000`）也帶同樣的保留期限
+- [x] 2.6 Scenario「completed job 超過 24 小時」「failed job 超過 7 天」由 BullMQ 依選項執行，2.1、2.3 檢查選項即涵蓋，不另寫測試
 
 ## 3. 被認領擋下的副作用（queue-monitoring「被認領擋下的副作用標示跳過」）
 

@@ -90,7 +90,7 @@ test('告警事件處理兩次：告警信改走 usage-alert-email 佇列，兩�
   assert.deepEqual(sent.emails, []);
 });
 
-test('Subscriber cannot enqueue the next job：送不出通知或告警信的 job 時處理失敗，由 BullMQ 重試', async () => {
+test('Redis unavailable at enqueue time（Subscriber cannot enqueue the next job）：送不出通知或告警信的 job 時處理失敗，由 BullMQ 重試', async () => {
   sent.redisDown = true;
   await assert.rejects(handle(event('case.assigned', { caseId: 'case-1', assigneeId: 'agent-x', title: 'T' })), /redis down/);
   await assert.rejects(handle(event('message.received', { conversationId: 'conv-1', contactId: 'contact-1' })), /redis down/);
