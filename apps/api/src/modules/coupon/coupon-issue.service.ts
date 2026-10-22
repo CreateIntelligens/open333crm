@@ -22,17 +22,11 @@ export type { IssuedInstance };
 export const ISSUE_BATCH_SIZE = 50;
 
 export interface IssueOptions {
-  /** 發放對象。FB／IG 對象亦可，領取時會改綁為完成驗證的聯絡人 */
+  /** 發放對象。發券一律直接歸戶（design D30），顧客開啟票券連結時才做歸戶驗證 */
   contactIds: string[];
   /** 發放來源，供成效歸因（inbox／keyword／broadcast／public…） */
   issuedVia?: string;
   issuedRefId?: string;
-  /**
-   * 是否需要顧客領取。LINE 已知身分者傳 false（直接 CLAIMED）；
-   * FB／IG 與公開領券傳 true（ISSUED + claimToken），見 design D10。
-   */
-  requireClaim?: boolean;
-  claimTokenHours?: number;
   /** 發放來源名稱快照；未給時依 issuedVia 帶預設名稱（例如 inbox → 對話發券） */
   sourceName?: string;
   /** 發券座席名稱快照（對話發券） */
@@ -69,7 +63,6 @@ export async function issueCoupons(
     throw new CouponValidationError('僅能發放進行中的券');
   }
 
-  const requireClaim = opts.requireClaim ?? false;
   const outcome = await issueInstances(tx, {
     tenantId,
     coupon,
@@ -78,13 +71,10 @@ export async function issueCoupons(
     issuedRefId: opts.issuedRefId,
     issuedSourceName: opts.sourceName ?? couponSourceName(opts.issuedVia),
     issuedByName: opts.issuedByName,
-    requireClaim,
-    claimTokenHours: opts.claimTokenHours,
   });
 
-  // 直接歸戶者（LINE）不會經過 claimByToken，貼標要在此補上；
-  // 待領取者（FB／IG）於實際領取時才貼，避免沒領的人也被貼標
-  if (!requireClaim && coupon.claimTagId && !opts.skipClaimTag) {
+  // 發券即歸戶，貼標在這裡做；對話發券等「送出後才確認」的入口傳 skipClaimTag，確認時才貼
+  if (coupon.claimTagId && !opts.skipClaimTag) {
     for (const instance of outcome.issued) {
       if (instance.contactId) {
         await applyClaimTag(tx, tenantId, instance.contactId, coupon);

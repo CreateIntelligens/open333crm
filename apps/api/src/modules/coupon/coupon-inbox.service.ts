@@ -340,7 +340,6 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
       issuedVia: COUPON_ISSUED_VIA.INBOX,
       issuedRefId: input.agentId,
       issuedByName: input.agentName,
-      requireClaim: false,
       // 送出成功後才貼標，送不出時不必撤回標籤
       skipClaimTag: true,
     });

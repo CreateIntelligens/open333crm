@@ -596,9 +596,6 @@ export async function executeWorkerAutomationActions(
           continue;
         }
 
-        // 對話對象已知：所有渠道都直接歸戶，顧客開啟票券連結時再做 One ID 歸戶驗證（design D12）
-        const requireClaim = false;
-
         // 交易內完成配額檢查、建立與領券貼標，避免併發超發；行為與 API 對話發券一致
         const issuedVia = context.trigger ?? 'automation';
         // 貼標時 contact.tagged 與發券一起 commit（event-delivery「workers 的事件與資料一起 commit」），與 add_tag 相同
@@ -610,7 +607,6 @@ export async function executeWorkerAutomationActions(
             issuedVia,
             issuedRefId: couponId,
             issuedSourceName: couponSourceName(issuedVia),
-            requireClaim,
           });
           const tag = issued.issued.length > 0
             ? await applyCouponClaimTag(tx, context.tenantId, context.contactId as string, coupon)

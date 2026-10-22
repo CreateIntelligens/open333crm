@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, it } from 'vitest';
+import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { withTenant } from '#src/lib/tenant-db.js';
@@ -16,7 +17,9 @@ import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
-import { signFanDeviceToken, verifyFanToken } from '#src/modules/portal/portal-auth.service.js';
+import { signFanDeviceToken, signFanToken, verifyFanToken } from '#src/modules/portal/portal-auth.service.js';
+import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
+import couponFanRoutes from '#src/modules/coupon/coupon-fan.routes.js';
 import { requestOwnershipCode } from '#src/modules/identity-binding/ownership-code.js';
 import { EMAIL_REGISTRATION } from '#src/modules/identity-binding/email-registration.service.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
@@ -328,7 +331,29 @@ describe('票券連結', () => {
   });
 });
 
-describe('待領取的券憑領取憑證歸戶', () => {
+describe('發券一律直接歸戶', () => {
+  it('領取憑證端點已移除', async () => {
+    // design D30：發券一律直接歸戶，沒有程式會產生領取憑證，換券端點移除
+    const app = Fastify();
+    await app.register(errorHandlerPlugin);
+    app.decorate('prisma', prisma);
+    app.decorate('io', testIo as never);
+    await app.register(couponFanRoutes, { prefix: '/api/v1/fan/coupons' });
+    await app.ready();
+    try {
+      const p = await person('憑證端點', lineChannel, 'LINE', { verified: true });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/fan/coupons/claim',
+        headers: { authorization: `Bearer ${signFanToken(p.contactId, T)}` },
+        payload: { claimToken: 'anything' },
+      });
+      assert.equal(res.statusCode, 404, res.body);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('FB 或 IG 對話中發出的券', async () => {
     const p = await person('FB顧客', fbChannel, 'FB');
     const { instanceId } = await issue(p);

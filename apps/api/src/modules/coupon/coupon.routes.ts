@@ -83,7 +83,6 @@ const issueSchema = z.object({
     .refine((v) => !isReservedCouponIssuedVia(v), '這個發放方式是系統保留的，請改用其他代碼')
     .optional(),
   issuedRefId: z.string().max(100).optional(),
-  requireClaim: z.boolean().optional(),
 });
 
 /** 序號清單：一行一組或以逗號分隔的文字（前端 CodeImportField 送出的格式） */
@@ -229,7 +228,6 @@ export default async function couponRoutes(app: FastifyInstance) {
             // 這個端點不送訊息，只給系統整合使用；沒帶時記為 api，不能算成對話發券
             issuedVia: body.issuedVia ?? COUPON_ISSUED_VIA.API,
             issuedRefId: body.issuedRefId ?? request.agent.id,
-            requireClaim: body.requireClaim,
           }));
         merged.issued.push(...result.issued);
         merged.skipped.push(...result.skipped);

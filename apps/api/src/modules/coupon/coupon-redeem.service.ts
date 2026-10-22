@@ -8,9 +8,8 @@
  *    只回「失敗」會讓店員無法向顧客解釋。
  */
 import type { Prisma } from '@prisma/client';
-import { afterClaimExpiry, countsTowardContactLimit, couponCodeKey, logger } from '@open333crm/core';
+import { couponCodeKey, logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
-import { applyClaimTag } from './coupon-tagging.js';
 
 export type RedeemFailure =
   | 'NOT_FOUND'
@@ -26,14 +25,6 @@ export type RedeemFailure =
   | 'SELF_REDEEM_NOT_ALLOWED'
   /** 核銷台只核銷店員掃碼券（onlyMode），其他方式要在顧客手機上核銷 */
   | 'WRONG_MODE'
-  | 'CONFLICT';
-
-export type ClaimFailure =
-  | 'TOKEN_NOT_FOUND'
-  | 'TOKEN_EXPIRED'
-  | 'ALREADY_CLAIMED'
-  | 'COUPON_INACTIVE'
-  | 'PER_CONTACT_LIMIT_REACHED'
   | 'CONFLICT';
 
 export interface RedeemSuccess {
@@ -55,79 +46,6 @@ export interface RedeemError {
   redeemedStoreName?: string | null;
 }
 
-
-/**
- * 以領取憑證換券並歸戶（design D10）。
- *
- * 憑證全域唯一，故此處先不帶 tenantId 查找——租戶由券本身決定。
- * 這是少數「先查再定租戶」的合法情形，查到後所有後續操作都綁該租戶。
- */
-export async function claimByToken(
-  ctx: TenantCtx,
-  token: string,
-  contactId: string,
-): Promise<{ ok: true; instanceId: string; couponId: string } | { ok: false; reason: ClaimFailure }> {
-  const { tx, tenantId } = ctx;
-  const instance = await tx.couponInstance.findFirst({
-    where: { claimToken: token, tenantId },
-    include: { coupon: true },
-  });
-  if (!instance) return { ok: false as const, reason: 'TOKEN_NOT_FOUND' as const };
-
-  // 已作廢或過期的券不是「被別人領走」，告訴顧客活動已結束
-  if (instance.status === 'REVOKED' || instance.status === 'EXPIRED') {
-    return { ok: false as const, reason: 'COUPON_INACTIVE' as const };
-  }
-  if (instance.status !== 'ISSUED') {
-    return { ok: false as const, reason: 'ALREADY_CLAIMED' as const };
-  }
-  if (instance.claimTokenExpiresAt && instance.claimTokenExpiresAt <= new Date()) {
-    return { ok: false as const, reason: 'TOKEN_EXPIRED' as const };
-  }
-  if (instance.coupon.status === 'ENDED') {
-    return { ok: false as const, reason: 'COUPON_INACTIVE' as const };
-  }
-
-  // 領取會把券改綁到領取者身上，也要遵守每人上限（與發券同一把鎖、同一套計算）
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${instance.couponId}, 0))`;
-  const held = await tx.couponInstance.count({
-    where: {
-      tenantId,
-      couponId: instance.couponId,
-      contactId,
-      id: { not: instance.id },
-      ...countsTowardContactLimit(new Date()),
-    },
-  });
-  if (held >= instance.coupon.perContactLimit) {
-    return { ok: false as const, reason: 'PER_CONTACT_LIMIT_REACHED' as const };
-  }
-
-  const now = new Date();
-  // AFTER_CLAIM 的效期自領取當天（台灣日期）起算，第 N 天結束時到期（design D17）
-  const expiresAt =
-    instance.coupon.validityMode === 'AFTER_CLAIM' && instance.coupon.afterClaimDays
-      ? afterClaimExpiry(now, instance.coupon.afterClaimDays)
-      : instance.expiresAt;
-
-  // 搶佔：憑證一次性，兩人同時點同一連結只有一個能成功
-  const taken = await tx.couponInstance.updateMany({
-    where: { id: instance.id, tenantId, status: 'ISSUED', claimToken: token },
-    data: {
-      contactId,
-      status: 'CLAIMED',
-      claimedAt: now,
-      claimToken: null,
-      claimTokenExpiresAt: null,
-      expiresAt,
-    },
-  });
-  if (taken.count === 0) return { ok: false as const, reason: 'CONFLICT' as const };
-
-  await applyClaimTag(tx, tenantId, contactId, instance.coupon);
-
-  return { ok: true as const, instanceId: instance.id, couponId: instance.couponId };
-}
 
 /** 顧客開啟券。AFTER_OPEN 模式由此刻起算效期，故需記錄 openedAt。 */
 export async function openInstance(

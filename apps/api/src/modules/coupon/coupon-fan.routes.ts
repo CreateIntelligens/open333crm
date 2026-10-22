@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { AppError } from '../../shared/utils/response.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
-import { claimByToken, openInstance } from './coupon-redeem.service.js';
+import { openInstance } from './coupon-redeem.service.js';
 import { getFanCoupon } from './coupon-fan.service.js';
 import { verifyLineIdToken } from './line-id-token.js';
 import { MAX_DEVICE_TOKENS, redeemSelf } from './coupon-wallet.service.js';
@@ -171,33 +171,6 @@ export default async function couponFanRoutes(app: FastifyInstance, opts: Coupon
       });
     }
     return { success: true, data: result };
-  });
-
-  /**
-   * 以領取憑證換券（design D10）。FB／IG 與公開領券走此路徑。
-   * 需已登入——憑證證明「這張券要給誰」，fan token 證明「你是誰」，兩者缺一不可。
-   */
-  app.post('/claim', { preHandler: authenticateFan }, async (request, reply) => {
-    const fan = request.fanCoupon!;
-    const { claimToken } = z.object({ claimToken: z.string({ required_error: '缺少領取憑證' }).min(1, '缺少領取憑證').max(200) })
-      .parse(request.body ?? {});
-
-    const result = await inFanTenant(deps(), fan, (ctx) => claimByToken(ctx, claimToken, fan.contactId));
-    if (!result.ok) {
-      const messages: Record<string, string> = {
-        TOKEN_NOT_FOUND: '連結無效',
-        TOKEN_EXPIRED: '領取連結已過期',
-        ALREADY_CLAIMED: '這張券已經被領取了',
-        COUPON_INACTIVE: '此活動已結束',
-        PER_CONTACT_LIMIT_REACHED: '您已領過這張券，已達每人上限',
-        CONFLICT: '領取失敗，請重試',
-      };
-      return reply.status(409).send({
-        success: false,
-        error: { code: result.reason, message: messages[result.reason] ?? '領取失敗' },
-      });
-    }
-    return { success: true, data: { instanceId: result.instanceId } };
   });
 
   /** 券夾：顧客名下的券（含顧客看到的狀態）與三個分頁的數量。 */
