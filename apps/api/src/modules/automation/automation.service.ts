@@ -124,7 +124,8 @@ async function assertSendMaterialReferences(
  * 關鍵字回覆頁、加好友禮頁與 API 都經過這裡。
  */
 async function assertIssueCouponReferences(
-  prisma: TenantDb,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  prisma: { coupon: { findMany(args: any): PromiseLike<Array<{ id: string }>> } },
   tenantId: string,
   actions: Array<Record<string, unknown>>,
 ): Promise<void> {
