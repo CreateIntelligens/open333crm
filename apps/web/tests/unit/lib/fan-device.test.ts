@@ -8,9 +8,9 @@ import { afterEach, beforeEach, test, vi } from 'vitest';
 import { getFanDeviceTokens, rememberFanDeviceToken } from '#src/lib/fan-device.js';
 
 /** 與後端相同結構的 JWT（簽章不檢查，前端只讀 payload 判斷是不是同一位顧客） */
-function jwt(sub: string, tid: string, iat = 1): string {
+function jwt(sub: string, tid: string, iat = 1, typ = 'fan-device'): string {
   const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
-  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ typ: 'fan-device', sub, tid, iat })}.sig`;
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ typ, sub, tid, iat })}.sig`;
 }
 
 beforeEach(() => {
@@ -44,8 +44,9 @@ test('同一位顧客（同租戶、同聯絡人）換新時取代舊的', () =>
 test('localStorage 內容壞掉時當作沒有存過', () => {
   window.localStorage.setItem('fanCouponDevices', '{not json');
   assert.deepEqual(getFanDeviceTokens(), []);
-  window.localStorage.setItem('fanCouponDevices', JSON.stringify(['ok', 3, null]));
-  assert.deepEqual(getFanDeviceTokens(), ['ok']);
+  const ok = jwt('c1', 't1');
+  window.localStorage.setItem('fanCouponDevices', JSON.stringify([ok, 3, null]));
+  assert.deepEqual(getFanDeviceTokens(), [ok]);
 });
 
 test('localStorage 被封鎖：讀寫都不丟錯', () => {
@@ -53,4 +54,11 @@ test('localStorage 被封鎖：讀寫都不丟錯', () => {
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('SecurityError'); });
   rememberFanDeviceToken(jwt('c1', 't1'));
   assert.deepEqual(getFanDeviceTokens(), []);
+});
+
+// PR #359 bot 審查：localStorage 可能被同網域的其他程式寫入任意值，只送出結構正確的裝置憑證
+test('只送出裝置憑證格式的值，其他字串略過', () => {
+  const good = jwt('c1', 't1');
+  window.localStorage.setItem('fanCouponDevices', JSON.stringify(['not-a-jwt', good, 'a.b.c', jwt('c2', 't2', 1, 'other')]));
+  assert.deepEqual(getFanDeviceTokens(), [good]);
 });

@@ -12,13 +12,17 @@ const STORAGE_KEY = 'fanCouponDevices';
 /** 與後端 /fan/coupons/session 可接受的筆數相同 */
 export const MAX_FAN_DEVICES = 5;
 
-/** 讀出憑證 payload 中的租戶與聯絡人（不驗證簽章，只用來判斷是不是同一位顧客） */
+/**
+ * 讀出裝置憑證 payload 中的租戶與聯絡人（不驗證簽章，只用來判斷是不是同一位顧客、過濾掉不是裝置憑證的值）。
+ * 不是三段式 JWT、或 typ 不是 fan-device 時回 null。簽章仍由後端驗證。
+ */
 function identityOf(token: string): string | null {
   try {
-    const part = token.split('.')[1];
-    if (!part) return null;
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
-    const payload = JSON.parse(json) as { sub?: unknown; tid?: unknown };
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[1]) return null;
+    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json) as { typ?: unknown; sub?: unknown; tid?: unknown };
+    if (payload.typ !== 'fan-device') return null;
     return typeof payload.sub === 'string' && typeof payload.tid === 'string' ? `${payload.tid}:${payload.sub}` : null;
   } catch {
     return null;
@@ -32,7 +36,8 @@ export function getFanDeviceTokens(): string[] {
     if (!raw) return [];
     const list = JSON.parse(raw) as unknown;
     if (!Array.isArray(list)) return [];
-    return list.filter((t): t is string => typeof t === 'string' && t.length > 0).slice(0, MAX_FAN_DEVICES);
+    // localStorage 可能被同網域的其他程式寫入任意值：只送出結構正確的裝置憑證
+    return list.filter((t): t is string => typeof t === 'string' && identityOf(t) !== null).slice(0, MAX_FAN_DEVICES);
   } catch {
     return [];
   }
@@ -43,7 +48,9 @@ export function rememberFanDeviceToken(token: string): void {
   if (!token || typeof window === 'undefined') return;
   try {
     const identity = identityOf(token);
-    const rest = getFanDeviceTokens().filter((t) => t !== token && (identity === null || identityOf(t) !== identity));
+    // 後端回的不是裝置憑證：不存，也不動已存的憑證
+    if (identity === null) return;
+    const rest = getFanDeviceTokens().filter((t) => t !== token && identityOf(t) !== identity);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify([token, ...rest].slice(0, MAX_FAN_DEVICES)));
   } catch {
     // 私密瀏覽或被封鎖儲存：這台裝置下次開啟仍要驗證，不影響這次開啟

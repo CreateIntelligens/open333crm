@@ -121,12 +121,15 @@ describe('驗證碼（design D15）', () => {
 
   test('email 登記完成後記住裝置：存下裝置憑證，回到票券時不必再驗證（design D24）', async () => {
     window.localStorage.clear();
+    // 前端只存結構正確的裝置憑證（typ fan-device 的三段式 JWT，簽章由後端驗證）
+    const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, '');
+    const deviceJwt = `${b64({ alg: 'HS256' })}.${b64({ typ: 'fan-device', sub: 'contact-1', tid: 'tenant-1' })}.sig`;
     const input = await toCodeStep();
-    api.post.mockResolvedValueOnce({ data: { data: { status: 'registered', deviceToken: 'device-jwt' } } });
+    api.post.mockResolvedValueOnce({ data: { data: { status: 'registered', deviceToken: deviceJwt } } });
     fireEvent.change(input, { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: '驗證' }));
     await screen.findByText(/已登記您的 email/);
-    assert.deepEqual(getFanDeviceTokens(), ['device-jwt']);
+    assert.deepEqual(getFanDeviceTokens(), [deviceJwt]);
   });
 
   test('沒有完成歸戶的結果沒有裝置憑證：不存', async () => {
