@@ -95,6 +95,9 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   // 維運告警的 Slack Incoming Webhook（change queue-monitoring：ops-alert）。沒有設定或是空值時，告警只寫 log
   OPS_ALERT_SLACK_WEBHOOK_URL: z.string().optional(),
+  // 佇列監控（/api/v1/platform/queues）允許的來源網段，以逗號分隔（change queue-monitoring）。
+  // 沒有設定、空值或任一個網段格式錯誤時，監控畫面回 403，API 照常啟動
+  QUEUE_DASHBOARD_ALLOWED_CIDRS: z.string().optional(),
 }).superRefine((cfg, ctx) => {
   if (cfg.EMAIL_DELIVERY_MODE === 'smtp' && !cfg.SMTP_HOST) {
     ctx.addIssue({

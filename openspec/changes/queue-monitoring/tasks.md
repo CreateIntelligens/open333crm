@@ -41,12 +41,14 @@
 
 ## 5. 監控畫面的連線與登入
 
-- [ ] 5.1 加入相依套件 `@bull-board/api@9.10.4`、`@bull-board/fastify@9.10.4` 到 `apps/api`。`pnpm install` 之後 `pnpm --filter @open333crm/api build` 通過
-- [ ] 5.2 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/ip-allowlist.test.ts`，以 `fastify.inject()` 的 `remoteAddress` 涵蓋 Scenario「網段內的 IP 連線」「網段外的 IP 連線」「網段外的 IP 偽造 X-Forwarded-For」「IPv4 對應的 IPv6 位址」「沒有設定網段」「換發 cookie 的端點也檢查網段」
-- [ ] 5.3 實作 IP 檢查的 `onRequest` hook（design 決策 2），`config/env.ts` 加上 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（選填），讓 5.2 通過
-- [ ] 5.4 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/session.test.ts`，涵蓋 Scenario「換發成功」「以租戶 JWT 換發」「須改密碼的平台帳號換發」，以及 platform-auth 的 Scenario「佇列監控路徑沒有 cookie」「監控 cookie 的平台帳號已停用」「平台 JWT 不能取代監控 cookie」
-- [ ] 5.5 實作換發端點與 cookie 驗證的 `onRequest` hook（design 決策 3），讓 5.4 通過
-- [ ] 5.6 在 `apps/api/tests/unit/modules/platform/platform-auth-guard.test.ts` 確認 platform-auth 原有的 Scenario 仍通過；Scenario「平台後台的其他路由不受影響」加進 5.2 的檔案
+- [x] 5.1 加入相依套件 `@bull-board/api@9.10.4`、`@bull-board/fastify@9.10.4` 到 `apps/api`。`pnpm install` 之後 `pnpm --filter @open333crm/api build` 通過
+  - 主機上 esbuild 0.28.2 的 postinstall 失敗（找到 0.25.12 的執行檔），與這兩個套件無關，所以以 `pnpm add --ignore-scripts` 加入。lockfile 不受安裝腳本影響。`pnpm why ioredis -r` 仍只有 5.9.3，bull-board 共用 bullmq 5.71.0
+- [x] 5.2 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/ip-allowlist.test.ts`，以 `fastify.inject()` 的 `remoteAddress` 涵蓋 Scenario「網段內的 IP 連線」「網段外的 IP 連線」「網段外的 IP 偽造 X-Forwarded-For」「IPv4 對應的 IPv6 位址」「沒有設定網段」「換發 cookie 的端點也檢查網段」
+- [x] 5.3 實作 IP 檢查的 `onRequest` hook（design 決策 2），`config/env.ts` 加上 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（選填），讓 5.2 通過
+- [x] 5.4 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/session.test.ts`，涵蓋 Scenario「換發成功」「以租戶 JWT 換發」「須改密碼的平台帳號換發」，以及 platform-auth 的 Scenario「佇列監控路徑沒有 cookie」「監控 cookie 的平台帳號已停用」「平台 JWT 不能取代監控 cookie」
+- [x] 5.5 實作換發端點與 cookie 驗證的 `onRequest` hook（design 決策 3），讓 5.4 通過
+  - 網段內回 200 要靠有效的 cookie 與 bull-board 的畫面，所以 5.3、5.5 一起實作，bull-board 也在這時掛上（佇列由選項傳入）。整個監控 plugin 寫成 `queue-monitoring.routes.ts`：OpenAPI 產生器只讀得到換發端點
+- [x] 5.6 在 `apps/api/tests/unit/modules/platform/platform-auth-guard.test.ts` 確認 platform-auth 原有的 Scenario 仍通過；Scenario「平台後台的其他路由不受影響」加進 5.2 的檔案
 
 ## 6. 掛載 bull-board
 
