@@ -148,6 +148,14 @@ it. These tests fail after a rename or a move, even when the behavior stays the 
 type of test only for a guarantee that a behavior test cannot reach. An example is "this route
 calls the service inside `withTenant`".
 
+**A mock does only what the real code can do.** Before you make a mock throw an error, read the
+real function. If the real function catches the error and returns a fallback, a mock that throws
+tests a path that does not exist. To test a failure, make the lowest boundary fail (for example,
+the LLM call or the HTTP request), and keep the real code between that boundary and the code
+under test. Example: `analyzeSentiment()` catches an LLM error and returns a keyword result, so
+`apps/api/tests/unit/modules/automation/sentiment-llm-fallback.test.ts` mocks the LLM, not
+`analyzeSentiment()`.
+
 **When a test passes as soon as you write it.** A test for behavior that the code already has
 cannot fail first. Verify the test with a mutation:
 
@@ -223,7 +231,10 @@ A service obeys these rules:
 - Do not call an external service (LINE, an LLM, S3) inside the transaction. The transaction has a
   timeout of 5 seconds, and it holds a database connection. Split the flow into three steps:
   transaction, external call, transaction. Before you split it, write in the spec whether the
-  external call happens at most once or at least once.
+  external call happens at most once or at least once. If the flow goes through a queue, write
+  this for each step of the flow: where the step can fail, where the data stays after the
+  failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
+  `design.md` section 14, shows such a table.
 - Send Socket events with `ctx.notify` (to all agents of the tenant) or `ctx.notifyAgent` (to one
   agent). Send events with `await ctx.publish`. Send BullMQ jobs with
   `await ctx.enqueue(queueName, name, data)`. Do not call `io.emit`, `eventBus.publish` or
@@ -236,6 +247,15 @@ A service obeys these rules:
   repeat (for example, a message to a customer), claim it with `claimSideEffect()` from
   `@open333crm/core`, or with a conditional update. `docs/ref/modules/EVENTS.md` explains the
   outbox and the claims.
+- In a job handler (a BullMQ processor or an event subscriber), do not catch an error only to
+  write a log. The job then completes, and the work is lost: the queue does not try again.
+  Let these errors go out of the handler, so that the queue tries the job again:
+  - an error before the claim commits, or in the claim transaction;
+  - an error when the handler adds the next job to a queue.
+
+  Catch an error and write a log only after the claim commits (the side effect is at most once),
+  or when the code uses a fallback on purpose (for example, a knowledge-base reply when the LLM
+  fails). `docs/ref/modules/EVENTS.md` lists the cases.
 - Do not catch a unique-constraint error (`P2002`) and then continue inside the transaction. After
   the first error, PostgreSQL rejects each subsequent query in the transaction. To write a row or
   use the row that exists, use `createOrFindExisting()` from `@open333crm/core`
@@ -326,6 +346,9 @@ No CI workflow runs these checks (see CI gates below). Run them yourself before 
 request:
 
 - [ ] `pnpm test` passes.
+- [ ] `pnpm build` passes, if you changed a file in `packages/*`, a dependency, or a file that
+      `apps/web` imports. Tests and `tsc` do not find a module that the browser bundle cannot
+      load. Only the Next.js build finds it.
 - [ ] `pnpm test:feature` passes, if you changed the database, Redis, RLS or a feature test.
 - [ ] `node scripts/check-tenant-scoping.mjs --strict` and
       `node scripts/check-prisma-admin-usage.mjs --strict` show no violation that your change
@@ -478,6 +501,10 @@ Workers send a business event with `writeOutbox()` from `@open333crm/core`, in t
 that writes the data. Give the `tenantId`: the workers connection has no RLS. After the commit,
 call `dispatchOutboxRows()`.
 
+When you create a BullMQ `Worker`, set `concurrency`. The default is 1: the worker processes one
+job at a time, and a slow job (for example, an LLM call) makes the jobs of all tenants wait.
+`apps/api/src/events/subscriber-workers.ts` sets the value for each subscriber queue.
+
 `eventBus.publish()` (`apps/api/src/events/event-bus.ts`) is the old form. It sends the event
 directly to the subscriber queues and does not write the outbox. Thus the event is lost if the
 process stops before it sends the event. New code uses `ctx.publish`.
@@ -549,6 +576,11 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
 ## Prisma Rules
 
 - Schema: `packages/database/prisma/schema.prisma`
+- A migration name starts with a timestamp, and Prisma applies migrations in name order. After you
+  rebase on `main`, compare your migration with the migrations on `main`
+  (`ls packages/database/prisma/migrations | tail`). If `main` has a migration with the same or a
+  later timestamp, rename your migration directory to a later timestamp. Do this before the
+  merge, while no environment has applied your migration.
 - In application code, get the client from Fastify (`fastify.prisma`, `request.tenantPrisma`,
   `fastify.prismaAdmin`). See the table above. Do **not** construct your own `PrismaClient`. A
   client that you construct goes around the RLS wiring.
@@ -606,6 +638,13 @@ that no code registers. Thus a renamed or removed id does not stay in Redis.
   `node scripts/check-workspace-esm.mjs --strict` does not require the field. It fails only on
   the dangerous combination: a CJS package that imports a symbol that an ESM package forwards
   in this way.
+- **Packages that `apps/web` bundles**: `apps/web` imports `@open333crm/automation` and
+  `@open333crm/shared`. Thus these packages run in the browser. Do not import
+  `@open333crm/core`, `@open333crm/channel-plugins` or `@open333crm/database` from them. The
+  `core` index loads BullMQ, and BullMQ needs Node modules (`child_process`, `net`). The web build
+  then fails, but tests and `tsc` pass. Put a function that reads the database in an
+  `apps/api` module, for example `apps/api/src/modules/automation/keyword-yield.ts`.
+  `packages/automation/tests/unit/browser-safe.test.ts` checks the `automation` package.
 - **Prisma in shared packages**: do not use the module-level `prisma` singleton from
   `@open333crm/database` inside `packages/*`. It is not bound to a tenant (RLS, see
   CM-171/CM-172). It is also the symbol that the interop problem above loses. Shared functions
