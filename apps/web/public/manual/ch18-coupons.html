@@ -160,9 +160,7 @@
         <li>檢查完會顯示「成功 N 筆 · 重複 N 筆 · 格式錯誤 N 筆」，可按「下載錯誤清單」取得每一筆的行號與原因（格式錯誤、重複、與其他券的序號重複、已在這張券的序號包）。</li>
         <li>可用序號少於發行總量時會提醒「序號用完後顧客將領不到券」。</li>
       </ul>
-      <div class="warn"><span>⚠️</span><div>序號包是在<b>按「發布優惠券」時</b>才真正寫入。如果上傳序號包後按的是「儲存草稿」，序號包<b>不會被保存</b>，下次編輯要重新上傳。請上傳後直接發布。</div></div>
-      <!-- KNOWN-ISSUE: 序號包只在發布時寫入，存草稿會遺失且沒有提示（CouponForm.tsx 214-314）。 -->
-      <!-- KNOWN-ISSUE: 表單與核銷台的券號範例 AUTUMN-7K2P-4M9X 與實際格式「前綴-10 碼」不符（CouponForm.tsx 821、ManualPanel.tsx 38）。 -->
+      <div class="info"><span>ℹ️</span><div>序號包檢查完後，按「儲存草稿」或「發布優惠券」都會把序號寫入這張券。發布後序號包就不能再更換。</div></div>
 
       <h3>⑤ 發行控制：限制總量與每人張數</h3>
       <table>
@@ -294,7 +292,7 @@
 
     <section class="doc" id="p6">
       <h2><span class="idx">6</span> 三種核銷方式</h2>
-      <p>顧客券號下方會依核銷方式提示怎麼使用。三種方式核銷完成後，顧客都會看到同一個「核銷完成」頁，顯示券名、核銷時間、核銷門市（只有核銷台核銷才有）、券號與核銷方式。暫停發放中的券仍然可以核銷。</p>
+      <p>顧客券號下方會依核銷方式提示怎麼使用。三種方式核銷完成後，顧客都會看到同一個「核銷完成」頁（可出示此畫面作為使用證明），顯示券名、核銷時間、核銷門市（只有核銷台核銷才有）、券號與核銷方式。暫停發放中的券仍然可以核銷。</p>
 
       <h3>6-1 顧客自助：顧客自己滑動確認</h3>
       <ol class="steps">
@@ -306,8 +304,7 @@
         <figure class="shot"><img src="uploads/shots/ch18-phone-4-confirm.png" alt="確認核銷頁，向右滑動以核銷" loading="lazy"><figcaption>確認核銷：向右滑動</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-phone-5-done.png" alt="核銷完成頁" loading="lazy"><figcaption>核銷完成：核銷方式「顧客自助」</figcaption></figure>
       </div>
-      <!-- KNOWN-ISSUE: 顧客自助核銷頁固定顯示「單筆訂單限用一張，不與其他優惠併用」，與商家設定的使用條款無關（SelfRedeem.tsx:85）。 -->
-      <div class="warn"><span>⚠️</span><div>確認核銷頁目前固定顯示「單筆訂單限用一張，不與其他優惠併用」，即使券沒有設定這些條款。如果你的券不是這個規則，請在使用條款中寫清楚，並提醒門市人員。</div></div>
+      <!-- SHOT-OUTDATED: ch18-phone-4-confirm 仍有已移除的「單筆訂單限用一張」；ch18-phone-5-done、ch18-fb-5-done、ch18-code-4-done 完成頁文字已改為「可出示此畫面作為使用證明」，部署後重拍 -->
 
       <h3>6-2 店員驗證碼：店員在顧客手機上輸入驗證碼</h3>
       <ol class="steps">
@@ -322,7 +319,7 @@
         <figure class="shot"><img src="uploads/shots/ch18-code-3-input.png" alt="確認核銷頁：剩餘核銷時間倒數、使用條件、4 格驗證碼輸入框" loading="lazy"><figcaption>③ 把手機交給店員：5 分鐘倒數、使用條件，店員輸入驗證碼後按「確認核銷」</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-code-4-done.png" alt="核銷完成，核銷方式店員驗證碼" loading="lazy"><figcaption>④ 核銷完成，核銷方式「店員驗證碼」</figcaption></figure>
       </div>
-      <!-- KNOWN-ISSUE: 驗證碼畫面寫「此碼會記錄於核銷紀錄中」，實際不記錄輸入的碼與店員（StaffCodeRedeem.tsx:322）；同畫面「核銷碼」與「驗證碼」用詞不一致。 -->
+      <!-- SHOT-OUTDATED: ch18-code-3-input 的提示已改為「請店員輸入 4 位數驗證碼」，部署後重拍 -->
       <table>
         <thead><tr><th>狀況</th><th>畫面與規則</th></tr></thead>
         <tbody>
@@ -462,12 +459,12 @@
           <tr><td>核銷率</td><td>核銷 ÷ 領取</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 核銷數下方固定寫「已在門市使用」，顧客自助與店員驗證碼核銷時不正確（CouponStatCards.tsx:60）。 -->
+      <!-- SHOT-OUTDATED: ch18-records 影片中的統計卡仍顯示「已在門市使用」，已改為「已使用」 -->
       <p>下方「序號明細」列出每一張券的序號、顧客、發放來源（例如「對話發券」與座席名稱）、狀態、領取與核銷時間。顧客來電詢問時，可以在「序號或顧客名稱」直接輸入序號或名字查詢，也能依狀態、領取時間、核銷時間篩選，或按「匯出 CSV」。超過 5,000 筆時匯出會改在背景產生，完成後以站內通知提供下載。「設定」分頁可以看這張券的所有設定。</p>
       <p><b>其他查看的地方：</b></p>
       <ul>
         <li><b>收件匣右側「已發優惠券」</b>：這位顧客收過哪些券、誰發的、是否已使用，顧客開券或核銷時會即時更新。</li>
-        <li><b>數據報表 →「優惠券成效」</b>：期間內的發出、已領取、已核銷與核銷率，每日發放與核銷趨勢，以及依核銷數排序的券排行。需要「檢視報表」權限。</li>
+        <li><b>數據報表 →「優惠券成效」</b>：期間內的發出、已領取、已核銷與核銷率，每日發放與核銷趨勢（核銷為虛線，兩者數字相同時也看得到發出線），以及依核銷數排序的券排行。需要「檢視報表」權限。</li>
         <li><b>核銷台「今日紀錄」</b>：門市當天在核銷台核銷的券（見第 8 節）。</li>
       </ul>
     </section>
