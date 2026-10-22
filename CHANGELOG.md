@@ -13,6 +13,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Changed
 
+- **CLI 發布 0.1.2**（`@open333crm/cli`）— 自 0.1.1 以來的變更：新增 `open333 a2a execute`（A2A bridge 用，需設 `A2A_CRM_ADAPTER_ENABLED=true` 才啟用）；`engines.node` 改為 `>=24.22.1`。
+
 - **業務事件改走 outbox，至少送出一次；訂閱者改從各自的佇列取得事件**（#337 階段 1b，change `outbox-event-delivery`，AUDIT RLS-08）— 事件原本經 API 行程內的 EventEmitter 送給訂閱者，API 在 commit 之後、訂閱者做完之前結束（例如部署），通知、自動化規則與對外 Webhook 就不會發生，也不會補做。現在 `ctx.publish`、`ctx.enqueue` 在交易內寫進新的 `outbox` 資料表，與業務資料一起 commit；commit 之後送進佇列，沒送出的由新排程 `outbox-relay` 每分鐘補送，`outbox-cleanup` 每天清掉送出超過 7 天的資料列。通知、自動化與對外 Webhook 各有一個佇列（`event-notification`、`event-automation`、`event-webhook`），Worker 在 API 行程內，每個 Worker 同時處理多個 job，job id 是事件 id，一個訂閱者重試不會讓其他訂閱者再處理一次。還沒搬遷的 `eventBus.publish()` 也送進同樣的佇列，但不寫 outbox，仍是最多一次。workers 的 `create_case`、`add_tag` 在同一個交易寫入 `case.created`、`contact.tagged`；Redis 的 `domain:event` 頻道移除（AUDIT APP-09）。
   - 部署：**API 與 workers 要一起部署**。需要跑 migration `20261022100000_add_outbox_and_side_effect_claims`。Redis 多 5 個佇列，沒有新的環境變數。
   - 內部 API：`ctx.publish` 改成 async，`ctx.enqueue` 改收佇列名稱，選項只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`；`claimOne()`、`createOrFindExisting()` 搬到 `@open333crm/core`。
