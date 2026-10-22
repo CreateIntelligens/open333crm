@@ -67,9 +67,11 @@
 
 ## 7. 告警監聽（queue-monitoring「job 移到 failed set 時發出告警」）
 
-- [ ] 7.1 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/failed-alerts.test.ts`，以 mock 的 `QueueEvents` 與 `sendOpsAlert` 涵蓋 Scenario「重試用完」「workers 行程的佇列」「告警佇列本身失敗」，以及 ops-alert 的 Scenario「告警不含失敗原因」
-- [ ] 7.2 實作 design 決策 8 的監聽，讓 7.1 通過
-- [ ] 7.3 寫 feature 測試 `apps/api/tests/feature/modules/queue-monitoring/failed-event.test.ts`，以真實的 Redis 涵蓋 Scenario「還會重試的失敗」：設定 `attempts: 3` 的 job 第 1 次失敗時 `QueueEvents` 不觸發 `failed`，第 3 次失敗時觸發。這是 BullMQ 的行為，測試寫好就通過；以突變驗證：監聽改成 `retries-exhausted` 並讓 job 丟出 `UnrecoverableError`，確認測試失敗，再還原。突變記在本項下方
+- [x] 7.1 寫失敗的單元測試 `apps/api/tests/unit/modules/queue-monitoring/failed-alerts.test.ts`，以 mock 的 `QueueEvents` 與 `sendOpsAlert` 涵蓋 Scenario「重試用完」「workers 行程的佇列」「告警佇列本身失敗」，以及 ops-alert 的 Scenario「告警不含失敗原因」
+- [x] 7.2 實作 design 決策 8 的監聽，讓 7.1 通過
+- [x] 7.3 寫 feature 測試 `apps/api/tests/feature/modules/queue-monitoring/failed-event.test.ts`，以真實的 Redis 涵蓋 Scenario「還會重試的失敗」：設定 `attempts: 3` 的 job 第 1 次失敗時 `QueueEvents` 不觸發 `failed`，第 3 次失敗時觸發。這是 BullMQ 的行為，測試寫好就通過；以突變驗證：監聽改成 `retries-exhausted` 並讓 job 丟出 `UnrecoverableError`，確認測試失敗，再還原。突變記在本項下方
+  - 測試有兩個：重試 3 次的 job（第 1 次失敗後 300 毫秒內沒有告警，第 3 次失敗後一則），以及丟出 `UnrecoverableError` 的 job（第 1 次就有一則告警）
+  - 突變：監聽改成 `retries-exhausted`。「job 丟出不可重試的錯誤時發出告警」失敗；重試用完的測試仍通過，因為 `retries-exhausted` 在第 3 次失敗時也會觸發
 
 ## 8. 平台後台
 

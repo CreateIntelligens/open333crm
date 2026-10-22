@@ -83,7 +83,9 @@ import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.rout
 import webchatRoutes from './modules/webchat/webchat.routes.js';
 import platformRoutes from './modules/platform/platform.routes.js';
 import queueMonitoringRoutes from './modules/queue-monitoring/queue-monitoring.routes.js';
-import { createMonitoredQueues } from './modules/queue-monitoring/monitored-queues.js';
+import { ALERTED_QUEUES, createMonitoredQueues } from './modules/queue-monitoring/monitored-queues.js';
+import { startFailedAlerts } from './modules/queue-monitoring/failed-alerts.js';
+import { QueueEvents } from 'bullmq';
 import trialRoutes from './modules/trial/trial.routes.js';
 import planChangeRoutes from './modules/platform/plan-change.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
@@ -100,7 +102,7 @@ import { setupNotificationWorker } from './modules/notification/notification.wor
 import { setupOutboxSchedulers } from './modules/outbox/outbox.scheduler.js';
 import { bullWorkerFactory, startQueueWorkers, subscriberProcessor, type JobProcessor } from './events/subscriber-workers.js';
 import { processUsageAlertEmail } from './modules/notification/usage-alert-email.worker.js';
-import { closeOpsAlertQueue, OPS_ALERT_QUEUE } from './modules/ops-alert/ops-alert.service.js';
+import { closeOpsAlertQueue, OPS_ALERT_QUEUE, sendOpsAlert } from './modules/ops-alert/ops-alert.service.js';
 import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
@@ -260,6 +262,16 @@ export async function bootstrap() {
     }),
   );
   app.addHook('onClose', () => subscriberWorkers.close());
+  // 任何佇列的 job 移到 failed set 時發出告警（change queue-monitoring，design 決策 8）
+  const monitoredQueueByName = new Map(monitoredQueues.map((queue) => [queue.name, queue]));
+  const failedAlerts = startFailedAlerts({
+    queueNames: ALERTED_QUEUES,
+    createQueueEvents: (name) => new QueueEvents(name, { connection: { url: config.REDIS_URL } }),
+    getJob: async (queueName, jobId) => monitoredQueueByName.get(queueName)?.getJob(jobId),
+    sendAlert: (alert) => sendOpsAlert(alert),
+    dashboardUrl: `${config.WEB_BASE_URL}/api/v1/platform/queues`,
+  });
+  app.addHook('onClose', () => failedAlerts.close());
   app.addHook('onClose', () => closeOpsAlertQueue());
   setupCanvasWorker(app.prismaAdmin, app.io);
 
