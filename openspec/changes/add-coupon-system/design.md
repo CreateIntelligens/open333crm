@@ -411,8 +411,16 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 - **名額不足**：照名單順序發到名額用完，其餘收件人跳過並回報人數。建立廣播與「可送達人數」預覽時，若受眾大於剩餘名額，顯示警示並要求勾選確認。
 - **LINE 訊息額度**：附券廣播發送前以 `getMessageQuota` 檢查，剩餘額度小於「收件人數」就整則不送、不建任何券，回報 `LINE_QUOTA_INSUFFICIENT`。LINE 以收件人數計額度，同一次推送多則訊息只算一次。不附券的廣播是否也檢查，不在本 change 範圍。
 - 票券連結：`WalletTokenPayload.conversationId` 改為選填（開啟時沒有讀取它），收件人沒有對話也能產生連結。
+  - **實查（2026-10-22）**：開啟票券本身不讀 `conversationId`；只有「需要登記」時，`coupon-wallet.flow.ts` 把它傳給 `reuseOrIssueRegistrationToken`，登記完成後 `identifier-registration.ts` 在那個對話送通知（已登記、需到對話合併、渠道衝突等）。廣播收件人是「在該渠道有身分」的聯絡人，不一定有對話：匯入、合作夥伴寫入、合併帶進來的身分都可能沒有對話。
+  - **決策**：登記連結的 `conversationId` 也改選填。連結沒有對話時，登記當下改找顧客在收券渠道最近的對話（顧客收到廣播後常會回訊息，這時已有對話）；仍然沒有就不送通知。登記頁本身會顯示結果，顧客不會漏看。不為了送通知替顧客建立空對話（會出現在收件匣、干擾座席）。
 - 執行：附券廣播的「立即發送」改為排入排程立即執行，不在 HTTP 請求內同步跑；同一則廣播重跑時，已有收件紀錄的人不再發券。
 - 不在對話寫訊息、不逐人推 `coupon.instance.updated`（與現有群發一致；「已發優惠券」區塊開啟時會載入）。
+- **實作備註（2026-10-22）**：
+  - 「立即發送」把廣播改為已排程、排程時間為現在，由每 60 秒一次的廣播排程執行（最多約一分鐘後開始），API 回 202。
+  - 中斷判定：發送中超過 5 分鐘沒有進度（每處理 20 人更新一次）可以重新排入；收件紀錄在保留券時就寫入，重送時已有紀錄的人（含發送中）一律略過。
+  - 收件紀錄的 `skipReason` 同時記跳過（`TOTAL_LIMIT_REACHED`、`PER_CONTACT_LIMIT_REACHED`、`NO_CHANNEL_IDENTITY`、`OUTSIDE_MESSAGING_WINDOW` 等）與失敗（`DELIVERY_FAILED`、`COUPON_MESSAGE_FAILED` 等）的原因；廣播另存 `failureCode`（例如 `LINE_QUOTA_INSUFFICIENT`）。
+  - 一次送多則：渠道外掛宣告 `maxMessagesPerSend`（LINE 為 5），呼叫端以 `extraMessages` 帶後續訊息，不在引擎內依渠道類型分支。
+  - 券頁批次發券要能回覆所選渠道（渠道可見性 `reply_only`），只列能主動推送的渠道（LINE、Facebook、Instagram）。
 
 **為什麼**：素材可選讓商家能沿用現成的素材，不必為了放連結重做；以帶連結的那則為準，是因為顧客沒收到連結就等於沒拿到券，名額要歸還。
 

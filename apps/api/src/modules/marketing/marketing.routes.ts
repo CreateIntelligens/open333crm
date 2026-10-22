@@ -25,6 +25,13 @@ import {
   deleteCampaign,
 } from './campaign.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
+import { inTenant } from '../../lib/tenant-ctx.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import {
+  getCouponBroadcastSummary,
+  listBroadcastRecipients,
+  queueCouponBroadcast,
+} from './broadcast-coupon.service.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
@@ -85,14 +92,18 @@ const createBroadcastSchema = z
       })
       .optional(),
     scheduledAt: z.string().optional(),
+    // 附券廣播（design D29）：只能選進行中的行銷券；素材可選，不支援舊版型
+    couponId: z.string().uuid('優惠券識別格式不正確').optional(),
   })
-  .refine((data) => Boolean(data.materialId) !== Boolean(data.templateId), {
+  .refine((data) => (data.couponId ? !data.templateId : Boolean(data.materialId) !== Boolean(data.templateId)), {
     message: '素材與版型請擇一提供，不可同時或都不填',
     path: ['materialId'],
   });
 
 const broadcastAudiencePreviewSchema = z.object({
   channelId: z.string().uuid(),
+  // 附券廣播：一併回傳剩餘名額與已達每人上限的人數
+  couponId: z.string().uuid().optional(),
   segmentId: z.string().uuid().optional(),
   targetType: z.enum(['all', 'segment', 'tags', 'contacts']),
   targetConfig: z
@@ -104,6 +115,8 @@ const broadcastAudiencePreviewSchema = z.object({
 });
 
 export default async function marketingRoutes(fastify: FastifyInstance) {
+  const tenantDeps = () => ({ prisma: fastify.prisma, io: fastify.io, events: createOutboxPublisher(fastify.prisma) });
+
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
   fastify.addHook('preHandler', requirePermission('marketing.view'));
@@ -289,7 +302,24 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
     );
-    return reply.send(success(broadcast));
+    // 附券廣播的結果：發券張數、依原因分列的跳過與失敗人數（design D29）
+    const couponSummary = broadcast.couponId
+      ? await inTenant(tenantDeps(), request.agent.tenantId, (ctx) => getCouponBroadcastSummary(ctx, broadcast.id))
+      : null;
+    return reply.send(success({ ...broadcast, couponSummary }));
+  });
+
+  // GET /broadcasts/:id/recipients — 結果頁列出收件人與跳過、失敗的原因
+  fastify.get<{ Params: { id: string } }>('/broadcasts/:id/recipients', async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid('廣播識別格式不正確') }).parse(request.params);
+    const query = z.object({
+      status: z.enum(['sent', 'failed', 'skipped', 'pending']).optional(),
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().positive().max(100).default(50),
+    }).parse(request.query);
+    const result = await inTenant(tenantDeps(), request.agent.tenantId, (ctx) => listBroadcastRecipients(ctx, id, query));
+    if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到這則廣播' } });
+    return reply.send(paginated(result.items, result.total, result.page, result.limit));
   });
 
   // POST /broadcasts/:id/send — manually trigger broadcast execution
@@ -299,6 +329,11 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       request.params.id,
       request.agent.tenantId,
     );
+    // 附券廣播：排入排程立即執行，不在 HTTP 請求內發送（design D29）；結果在廣播列表查看
+    if (broadcast.couponId) {
+      const queued = await inTenant(tenantDeps(), request.agent.tenantId, (ctx) => queueCouponBroadcast(ctx, broadcast.id));
+      return reply.status(202).send(success(queued));
+    }
     const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id);
     return reply.send(success(result));
   });

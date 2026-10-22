@@ -102,6 +102,7 @@ import { bullWorkerFactory, startQueueWorkers, subscriberProcessor, type JobProc
 import { processUsageAlertEmail } from './modules/notification/usage-alert-email.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
+import { getBindingStore } from './modules/identity-binding/binding-code.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -258,7 +259,8 @@ export async function bootstrap() {
   // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, app.prismaAdmin);
-  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io);
+  // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
+  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, { prisma: app.prisma, store: getBindingStore() });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);

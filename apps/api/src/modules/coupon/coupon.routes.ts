@@ -28,6 +28,13 @@ import { changeStatus } from './coupon-lifecycle.service.js';
 import { ISSUE_BATCH_SIZE, issueCoupons, type IssueResult } from './coupon-issue.service.js';
 import { redeemCoupon } from './coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
+import { assertChannelVisible } from '../../services/channel-visibility.js';
+import { previewBroadcastAudience } from '../marketing/marketing.service.js';
+import {
+  BATCH_ISSUE_MAX_RECIPIENTS,
+  createBatchIssue,
+  listCouponBroadcasts,
+} from '../marketing/broadcast-coupon.service.js';
 
 // 資料庫欄位是 int4：超過範圍時在這裡擋下，不讓資料庫丟錯變成 500
 const int = z.number().int('請輸入整數').min(-2_147_483_648, '數值過小').max(2_147_483_647, '數值過大，請確認輸入');
@@ -83,6 +90,20 @@ const issueSchema = z.object({
     .refine((v) => !isReservedCouponIssuedVia(v), '這個發放方式是系統保留的，請改用其他代碼')
     .optional(),
   issuedRefId: z.string().max(100).optional(),
+});
+
+/** 券詳情頁「發送給…」（design D31）：選一個渠道與對象，最多 1,000 人 */
+const batchAudienceSchema = z.object({
+  channelId: z.string().uuid('渠道識別格式不正確'),
+  targetType: z.enum(['segment', 'tags', 'contacts']),
+  segmentId: z.string().uuid('分眾識別格式不正確').optional(),
+  tagIds: z.array(z.string().uuid('標籤識別格式不正確')).max(50, '最多選 50 個標籤').optional(),
+  contactIds: z.array(z.string().uuid('聯絡人識別格式不正確'))
+    .max(BATCH_ISSUE_MAX_RECIPIENTS, `單次最多發給 ${BATCH_ISSUE_MAX_RECIPIENTS} 位聯絡人`)
+    .optional(),
+});
+const batchIssueSchema = batchAudienceSchema.extend({
+  message: z.string().trim().max(500, '訊息文字最多 500 字').optional(),
 });
 
 /** 序號清單：一行一組或以逗號分隔的文字（前端 CodeImportField 送出的格式） */
@@ -244,6 +265,39 @@ export default async function couponRoutes(app: FastifyInstance) {
     }
     return { success: true, data: stopped ? { ...merged, stopped } : merged };
   });
+
+  // ── 券詳情頁「發送給…」：建立一則附券廣播（發放方式 batch），由排程在背景發送（design D31）──
+
+  /** 送出前預覽：可送達人數、剩餘名額與已達每人上限的人數 */
+  app.post('/:id/batch-issue/preview', { preHandler: [requirePermission('coupon.issue')] }, couponHandler(app, async (request, _reply, ctx) => {
+    const { id } = idParams.parse(request.params);
+    const body = batchAudienceSchema.parse(request.body ?? {});
+    await assertChannelVisible(request, body.channelId, 'reply_only');
+    const result = await previewBroadcastAudience(ctx.tx, ctx.tenantId, {
+      channelId: body.channelId,
+      targetType: body.targetType,
+      segmentId: body.segmentId,
+      targetConfig: { tagIds: body.tagIds, contactIds: body.contactIds },
+      couponId: id,
+    });
+    return { success: true, data: { ...result, maxRecipients: BATCH_ISSUE_MAX_RECIPIENTS } };
+  }));
+
+  /** 只需要 coupon.issue：券頁建立的廣播只能帶這張券與發券文字，不能選素材 */
+  app.post('/:id/batch-issue', { preHandler: [requirePermission('coupon.issue')] }, couponHandler(app, async (request, reply, ctx) => {
+    const { id } = idParams.parse(request.params);
+    const body = batchIssueSchema.parse(request.body ?? {});
+    await assertChannelVisible(request, body.channelId, 'reply_only');
+    const result = await createBatchIssue(ctx, request.agent.id, id, body);
+    reply.code(202);
+    return { success: true, data: result };
+  }));
+
+  /** 這張券的附券廣播與批次發放紀錄（新到舊），附發券張數與跳過、失敗原因 */
+  app.get('/:id/batch-issues', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, _reply, ctx) => {
+    const { id } = idParams.parse(request.params);
+    return { success: true, data: await listCouponBroadcasts(ctx, id) };
+  }));
 
   // ── 序號包匯入 ──
 

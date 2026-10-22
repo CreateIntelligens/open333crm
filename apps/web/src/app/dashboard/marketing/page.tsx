@@ -37,6 +37,9 @@ import {
   materialChannelKey,
   segmentConditionsError,
 } from '@/lib/marketing/broadcast-form';
+import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
+import { BroadcastCouponField } from '@/components/marketing/BroadcastCouponField';
+import { BroadcastCouponResult } from '@/components/marketing/BroadcastCouponResult';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────
 
@@ -218,6 +221,14 @@ function CampaignTab() {
 const META_WINDOW_SEND_NOTICE =
   'Facebook／Instagram 只會送給 24 小時內傳過訊息給粉專或 IG 帳號的人，其他人會自動略過，不算發送失敗。';
 
+/** 附券廣播發送中超過這個時間沒有進度，視為中斷，可以重新發送（與後端 STALE_SENDING_MS 相同） */
+const COUPON_BROADCAST_STALE_MS = 5 * 60 * 1000;
+
+function isStaleCouponBroadcast(b: { couponId?: string | null; status: string; updatedAt?: string }): boolean {
+  return Boolean(b.couponId) && b.status === 'sending' && Boolean(b.updatedAt)
+    && Date.now() - new Date(b.updatedAt as string).getTime() > COUPON_BROADCAST_STALE_MS;
+}
+
 
 function BroadcastTab() {
   const { broadcasts, isLoading, mutate } = useBroadcasts();
@@ -247,8 +258,14 @@ function BroadcastTab() {
     targetType: 'all',
     tagIds: [] as string[],
     scheduledAt: '',
+    // 附券廣播（design D29）：只能選進行中的行銷券；選了券素材就可以不選
+    couponId: '',
   };
   const [formData, setFormData] = useState(emptyForm);
+  // 名額不足時，使用者勾選「我了解」才能建立
+  const [couponAck, setCouponAck] = useState(false);
+  // 正在查看結果的附券廣播
+  const [resultId, setResultId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -277,16 +294,18 @@ function BroadcastTab() {
 
   // 預估符合條件與可送達人數：FB／IG 只能發給 24 小時內傳過訊息的人，送出前先讓使用者知道
   const [audiencePreview, setAudiencePreview] = useState<
-    { matched: number; reachable: number; messagingWindowHours: number | null } | null
+    (CouponAudiencePreview & { matched: number; messagingWindowHours: number | null }) | null
   >(null);
   const [audiencePreviewError, setAudiencePreviewError] = useState<string | null>(null);
   const tagKey = formData.tagIds.join(',');
   useEffect(() => {
     setAudiencePreview(null);
     setAudiencePreviewError(null);
+    setCouponAck(false);
     if (!dialogOpen || !formData.channelId || audienceError) return;
     let cancelled = false;
     const payload: Record<string, unknown> = { channelId: formData.channelId, targetType: formData.targetType };
+    if (formData.couponId) payload.couponId = formData.couponId;
     if (formData.targetType === 'segment' && formData.segmentId) payload.segmentId = formData.segmentId;
     if (formData.targetType === 'tags') payload.targetConfig = { tagIds: formData.tagIds };
     api
@@ -302,7 +321,13 @@ function BroadcastTab() {
     };
     // tagIds 以字串比較，避免每次重繪產生新陣列就重新查詢
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError]);
+  }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError, formData.couponId]);
+
+  const couponWarning = formData.couponId ? couponCapacityWarning(audiencePreview) : null;
+  // 附券廣播素材可以不選（只送預設發券文字）；名額不足要先勾選確認
+  const createBlocked =
+    !formData.name || !formData.channelId || (!formData.materialId && !formData.couponId) || Boolean(audienceError)
+    || Boolean(couponWarning && !couponAck);
 
   const toggleTag = (tagId: string) => {
     setFormData((prev) => ({
@@ -314,17 +339,18 @@ function BroadcastTab() {
   };
 
   const handleCreate = async () => {
-    if (!formData.name || !formData.materialId || !formData.channelId || audienceError) {
+    if (createBlocked) {
       return;
     }
     setSaving(true);
     try {
       const payload: any = {
         name: formData.name,
-        materialId: formData.materialId,
         channelId: formData.channelId,
         targetType: formData.targetType,
       };
+      if (formData.materialId) payload.materialId = formData.materialId;
+      if (formData.couponId) payload.couponId = formData.couponId;
       if (formData.campaignId) payload.campaignId = formData.campaignId;
       if (formData.targetType === 'segment' && formData.segmentId) {
         payload.segmentId = formData.segmentId;
@@ -352,11 +378,16 @@ function BroadcastTab() {
       : '確定要立即發送嗎？訊息會馬上送給所選受眾，送出後無法收回。';
     const broadcast = broadcasts.find((b: any) => b.id === id);
     const channel = channels.find((c: any) => c.id === broadcast?.channelId);
-    const question = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
+    const withWindow = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
+    // 附券廣播在背景發送；重送時已處理的人不會再收到（design D29）
+    const question = broadcast?.couponId
+      ? `${withWindow}\n\n附券廣播會排入背景發送，約一分鐘內開始；已收到券的人不會重複收到。`
+      : withWindow;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
-      await api.post(`/marketing/broadcasts/${id}/send`);
+      const res = await api.post(`/marketing/broadcasts/${id}/send`);
+      if (res.status === 202) alert('已排入發送，結果請在廣播列表查看');
     } catch (err: any) {
       alert(err.response?.data?.error?.message || '發送失敗');
     } finally {
@@ -416,7 +447,10 @@ function BroadcastTab() {
             <tbody>
               {broadcasts.map((b: any) => (
                 <tr key={b.id} className="border-b">
-                  <td className="py-3 font-medium">{b.name}</td>
+                  <td className="py-3 font-medium">
+                    {b.name}
+                    {b.couponId && <Badge variant="secondary" className="ml-2 text-[11px]">附券</Badge>}
+                  </td>
                   <td className="py-3 text-xs text-muted-foreground">
                     {b.material?.name ?? (b.templateId ? '（舊範本）' : '—')}
                   </td>
@@ -439,7 +473,10 @@ function BroadcastTab() {
                       <span className="ml-1 text-xs text-muted-foreground">略過 {b.skippedCount}</span>
                     )}
                   </td>
-                  <td className="py-3 text-success">{b.successCount}</td>
+                  <td className="py-3 text-success">
+                    {b.successCount}
+                    {b.couponId && <span className="ml-1 text-xs text-muted-foreground">發券 {b.couponIssuedCount ?? 0}</span>}
+                  </td>
                   <td className="py-3 text-destructive">{b.failedCount}</td>
                   <td className="py-3 text-muted-foreground">
                     {b.sentAt
@@ -450,6 +487,23 @@ function BroadcastTab() {
                   </td>
                   <td className="py-3">
                     <div className="flex gap-1">
+                      {b.couponId && ['completed', 'failed', 'sending'].includes(b.status) && (
+                        <Button size="sm" variant="ghost" onClick={() => setResultId(b.id)} title="發券結果" aria-label="查看發券結果">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {isStaleCouponBroadcast(b) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleSend(b.id, true)}
+                          title="發送中斷，重新發送"
+                          aria-label="重新發送廣播"
+                          disabled={busy}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      )}
                       {['draft', 'scheduled'].includes(b.status) && (
                         <>
                           <Button
@@ -552,7 +606,7 @@ function BroadcastTab() {
               <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材</p>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">素材 *</label>
+              <label className="mb-1 block text-sm font-medium">{formData.couponId ? '素材（附券時可不選）' : '素材 *'}</label>
               <Select
                 value={formData.materialId}
                 onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
@@ -678,6 +732,13 @@ function BroadcastTab() {
                 )}
               </div>
             )}
+            <BroadcastCouponField
+              value={formData.couponId}
+              onChange={(couponId) => setFormData({ ...formData, couponId })}
+              preview={audiencePreview}
+              acknowledged={couponAck}
+              onAcknowledge={setCouponAck}
+            />
             <div>
               <label className="mb-1 block text-sm font-medium">排程發送（留空為草稿）</label>
               <Input
@@ -695,12 +756,24 @@ function BroadcastTab() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={
-                saving || !formData.name || !formData.materialId || !formData.channelId || Boolean(audienceError)
-              }
+              disabled={saving || createBlocked}
             >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               建立
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resultId !== null} onOpenChange={(open) => !open && setResultId(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>發券結果</DialogTitle>
+          </DialogHeader>
+          {resultId && <BroadcastCouponResult broadcastId={resultId} />}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResultId(null)}>
+              關閉
             </Button>
           </DialogFooter>
         </DialogContent>

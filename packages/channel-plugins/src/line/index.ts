@@ -279,6 +279,8 @@ function safeStoredMime(served: string | null): string {
 
 export class LinePlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.LINE;
+  /** LINE 推送一次最多 5 則訊息 */
+  readonly maxMessagesPerSend = 5;
 
   // ─── Task 2.1: verifySignature ───────────────────────────────────
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
@@ -437,7 +439,8 @@ export class LinePlugin implements ChannelPlugin {
     const token = credentials.channelAccessToken as string;
     const { contentType, content } = message;
     const lineMsg = buildLineMessage(contentType, content);
-    const messages = [lineMsg];
+    // 同一次推送接著送的訊息（附券廣播的素材＋發券文字），LINE 一次最多 5 則
+    const messages = [lineMsg, ...(message.extraMessages ?? []).map((m) => buildLineMessage(m.contentType, m.content))];
     const strategy = (content.strategy as string) ?? 'push';
     const retryKey = message.delivery?.retryKey;
     // logger.info(`strategy: ${strategy}`);

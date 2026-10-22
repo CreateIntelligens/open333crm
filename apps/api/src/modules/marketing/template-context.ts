@@ -29,6 +29,13 @@ export const STATIC_VARIABLE_METADATA: VariableCategory[] = [
     ],
   },
   {
+    // 只在附券廣播代入每位收件人自己的票券連結；素材沒有這個變數時，連結另以一則發券文字送出（design D29）
+    category: '優惠券',
+    variables: [
+      { key: 'coupon.url', label: '票券連結（僅附券廣播）', example: 'https://crm.example.com/coupon/open/…' },
+    ],
+  },
+  {
     category: '系統',
     variables: [
       { key: 'storage.base_url', label: '儲存空間網址', example: 'https://storage.example.com' },

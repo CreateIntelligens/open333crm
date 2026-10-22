@@ -34,6 +34,11 @@ export interface OutboundPayload {
     receivedAt?: string;
     retryKey?: string;
   };
+  /**
+   * 同一次請求接著送出的其他訊息（依序顯示）。只有 maxMessagesPerSend 大於 1 的渠道會收到，
+   * 例如附券廣播的「素材＋發券文字」在 LINE 以一次推送送出，兩則同時成功或失敗（add-coupon-system design D29）
+   */
+  extraMessages?: Array<{ contentType: string; content: Record<string, unknown> }>;
 }
 
 /** Callback injected by the API layer to handle file storage. */
@@ -52,6 +57,11 @@ export interface ChannelPlugin {
    * 沒有限制的渠道不設定。群發依此略過視窗外的人。
    */
   readonly messagingWindowHours?: number;
+  /**
+   * 一次請求最多能送幾則訊息（含 payload 本身與 extraMessages）。沒有設定視為 1：
+   * 多則訊息要分次呼叫 sendMessage。
+   */
+  readonly maxMessagesPerSend?: number;
 
   /** Verify incoming webhook signature */
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean;
