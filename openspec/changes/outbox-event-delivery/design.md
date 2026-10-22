@@ -181,7 +181,7 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 
 - 認領、寫入結果或寫入 outbox 的交易失敗，以及送出下一步的 job 失敗：丟錯，由佇列重試。
 - 認領 commit 之後執行副作用的失敗：只記 log，不重試。
-- 刻意的降級（LLM 失敗改由 KB 回覆、略過情緒分析等）：照舊只記 log。
+- 刻意的降級（LLM 失敗改由 KB 回覆、情緒分析改用關鍵字判斷等）：照舊只記 log。
 
 送出 job 的選項也從黑名單改成白名單，`dispatchOutboxRows()` 另外檢查佇列回傳的 job id。BullMQ 以後新增會讓 job 不被建立的選項時，`dispatchOutboxRows()` 也不會把資料列標記為已送出。
 
@@ -196,7 +196,7 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 | `apps/api/src/modules/automation/automation.worker.ts`，`checkAutoHandoff` | 原本包住整段 | 拿掉外層 catch；只包 commit 之後的送出與推播 |
 | `automation.worker.ts`，摘要的 catch | 摘要的 LLM 呼叫 | 降級（沒有摘要也轉接），不變 |
 | `automation.worker.ts`，agent 與 KB 回覆的 catch | 回覆流程 | 遇到 `ClaimTransactionError` 往外丟，其他照舊降級 |
-| `automation.worker.ts`，情緒分析 | 情緒分析 | LLM 失敗在 `analyzeSentimentOnce()` 內略過（降級）；查認領紀錄與交易的失敗往外丟（第 5 輪補上） |
+| `automation.worker.ts`，情緒分析 | 情緒分析 | LLM 失敗時 `analyzeSentiment()` 自己改用關鍵字判斷（既有的降級）；查認領紀錄與交易的失敗往外丟（第 5 輪補上） |
 | `automation.worker.ts`，`message.received` 與 `case.created` 的外層 catch | 整個處理 | 步驟的失敗最後一起丟錯；`case.created` 記 log 後丟錯 |
 | `automation.worker.ts`，`autoClassifyNewCase` 的 catch | 自動分類（LLM） | 降級；重複執行不改變結果，不認領，不變 |
 | `apps/api/src/modules/notification/notification.worker.ts` | 送出通知與告警信的 job | 第 1 輪已改：丟錯 |
@@ -223,7 +223,7 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 | 通知訂閱者 | → `notification:dispatch`、`usage-alert-email` | 送不出時丟錯，訂閱者 job 重試；job id 固定，不重複建立 | 站內通知：每位客服人員一個 job。告警信：至少一次，中斷時可能多寄一封 |
 | 自動化訂閱者，`message.received` | 自動轉接 | 交易失敗丟錯重試；commit 之後送出轉接訊息失敗只記 log | 轉接最多一次 |
 | | 機器人回覆（agent、KB） | 認領的交易失敗丟錯重試；LLM 失敗改由 KB 回覆（降級）；送出失敗只記 log | 每則入站訊息最多一則 |
-| | 情緒分析 | 查認領或交易失敗丟錯重試；LLM 失敗略過 | 最多一次 |
+| | 情緒分析 | 查認領或交易失敗丟錯重試；LLM 失敗改用關鍵字判斷 | 最多一次 |
 | | → `automation:evaluate` | 送不出時丟錯重試；job id 是事件 id | 至少一次 |
 | workers 規則評估 | `keyword.matched` | 認領與 outbox 同一個交易；交易失敗丟錯重試 | 每則訊息每條規則最多發出一次；發出之後至少一次送達 |
 | | 規則動作 | 認領失敗丟錯重試；認領之後執行失敗只記 log | 每個事件每個動作最多一次。重試時以當下的資料重新評估條件（已知限制） |

@@ -131,7 +131,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 - 認領、寫入結果或寫入 outbox 的交易失敗。沒有 commit 就沒有認領紀錄，也沒有 outbox，只有佇列的重試能補做。API 的機器人回覆以 `ClaimTransactionError`（`bot-reply-guard.ts`）標示這種失敗。降級用的 catch（例如「agent 失敗改由 KB 回覆」）遇到這個錯誤時，會往外丟，不會吞掉。
 - 把下一步的 job 送進佇列失敗，例如規則評估、站內通知、告警信。
 
-刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時略過，照舊只記 log。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
+刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時改用關鍵字判斷，照舊只記 log。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
 
 對話轉接以條件更新認領對話（`BOT_HANDLED` 改成 `AGENT_HANDLED`），不另外寫認領紀錄。
 

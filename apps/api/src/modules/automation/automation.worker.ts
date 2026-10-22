@@ -215,7 +215,7 @@ async function checkAutoHandoff(
 /**
  * 情緒分析（automation-engine「情緒分析每則訊息最多一次」）。呼叫 LLM 之前先查有沒有 sentiment 認領；
  * LLM 之後在一個交易內認領、寫入結果，負面且信心值至少 0.6 時發出 sentiment.negative。
- * 只有 LLM 失敗會降級（略過）；查認領紀錄與交易的失敗往外丟，由佇列重試。
+ * LLM 失敗時改用關鍵字判斷的結果（analyzeSentiment() 內的降級）；查認領紀錄與交易的失敗往外丟，由佇列重試。
  */
 async function analyzeSentimentOnce(
   prisma: PrismaClient,
@@ -228,14 +228,8 @@ async function analyzeSentimentOnce(
   const key = { tenantId, kind: 'sentiment' as const, sourceId: messageId };
   if (await hasSideEffectClaim(prisma, key)) return;
 
-  let sentimentResult: Awaited<ReturnType<typeof analyzeSentiment>>;
-  try {
-    sentimentResult = await analyzeSentiment(prisma, tenantId, text);
-  } catch (err) {
-    // 降級：LLM 失敗時略過這則訊息的情緒分析。查認領紀錄與寫入結果的失敗不在這裡接，往外丟由佇列重試
-    logger.error('[AutomationWorker] Sentiment LLM failed, skipped:', err);
-    return;
-  }
+  // LLM 失敗時，analyzeSentiment() 自己改用關鍵字判斷，不丟錯（降級）
+  const sentimentResult = await analyzeSentiment(prisma, tenantId, text);
   const written = await inTenant(tenantDeps, tenantId, async (ctx) => {
     // 兩次處理同時通過上面的檢查時，只有一次寫入結果
     if (!(await claimSideEffect(ctx.tx, key))) return false;
@@ -376,7 +370,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
         try {
           await analyzeSentimentOnce(prisma, tenantDeps, event.tenantId, messageId, text, { conversationId, contactId });
         } catch (err) {
-          // LLM 失敗已在 analyzeSentimentOnce 內降級；走到這裡的是查認領紀錄或寫入結果的失敗
+          // LLM 失敗已在 analyzeSentiment() 內降級；走到這裡的是查認領紀錄或寫入結果的失敗
           logger.error('[AutomationWorker] Sentiment analysis failed, will retry:', err);
           failures.push(err);
         }

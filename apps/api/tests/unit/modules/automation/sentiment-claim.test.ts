@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ llm: 0, llmFails: false }));
+const calls = vi.hoisted(() => ({ llm: 0 }));
 
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -17,7 +17,6 @@ vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () =>
 vi.mock('#src/modules/ai/sentiment.service.js', () => ({
   analyzeSentiment: async () => {
     calls.llm += 1;
-    if (calls.llmFails) throw new Error('LLM down');
     // 讓出執行權：兩次處理同時進行時，都先通過 LLM 前的檢查
     await new Promise((r) => setTimeout(r, 5));
     return { sentiment: 'negative', score: -0.7, confidence: 0.8 };
@@ -32,7 +31,6 @@ const { createHarness, messageReceived } = await import('./automation-harness.js
 
 beforeEach(() => {
   calls.llm = 0;
-  calls.llmFails = false;
 });
 
 function setup() {
@@ -75,11 +73,4 @@ test('Claim check fails：呼叫 LLM 之前查認領紀錄失敗時處理失敗�
   h.state.failClaimCheckKind = 'sentiment';
   await assert.rejects(handle(messageReceived()), /connection reset/);
   assert.equal(calls.llm, 0);
-});
-
-test('Sentiment LLM fails：略過情緒分析，處理照常完成', async () => {
-  const { h, handle } = setup();
-  calls.llmFails = true;
-  await handle(messageReceived());
-  assert.equal(negatives(h).length, 0);
 });
