@@ -113,6 +113,7 @@
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email 兩種模式都保留 | 靜態確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
+| [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 未處理 | 對外 Webhook 轉送所有內部事件，沒有對外事件清單；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | 可以建立 WhatsApp 渠道，但沒有外掛，收不到也送不出訊息；Telegram 外掛未註冊 | 執行時確認 |
@@ -1553,6 +1554,25 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 前兩項讓使用者看到不存在的頁面，或以為只匯出了部分資料。第三項在資料量大的租戶可能讓 workers 的記憶體用盡，同一個行程的其他佇列也會中斷。
 
 **修正方向**：通知連結改到實際存在的頁面，或在前端做出匯出頁面之前拿掉連結；`scope` 要嘛在 worker 生效，要嘛從 API 移除；匯出改成逐表寫入 zip，不保留全部列。
+
+<a id="hook-01"></a>
+### HOOK-01：對外 Webhook 轉送所有內部事件，`message.received` 送出 `replyToken`
+
+`webhook-dispatcher.ts` 的 `setupWebhookDispatcher()` 以 `eventBus.subscribe('*', …)` 訂閱所有事件。事件的名稱只要在訂閱的 `events` 裡，就把事件的 `payload` 原樣放進 `data` 送出。訂閱 API 的 `events` 是 `z.array(z.string())`，沒有對外事件的清單。
+
+所以 eventBus 上的每一個事件都是對外介面，包括只給內部使用的事件：
+
+| 事件 | 原本的用途 |
+| --- | --- |
+| `keyword.matched` | 自動化的中間結果：哪一條關鍵字規則命中 |
+| `sentiment.negative` | 情緒分析的中間結果 |
+| `usage.quota.threshold` | AI 用量告警 |
+
+之後新增的內部事件，也會自動成為對外介面。`docs/09_API_DESIGN.md` 的原始設計只舉業務事件為例（`case.created`、`case.closed`、`contact.tagged`），沒有說所有事件都對外。
+
+**`replyToken` 送到外部網址。** `inbound-side-effects.ts` 的 `publishMessageReceived()` 在 `message.received` 的 `payload` 放入 LINE 的 `replyToken`。訂閱這個事件的網址會收到 `replyToken`，可以在 LINE 的回覆期限內，以這個官方帳號的身分回覆客人一次。建立訂閱只需要 `webhook.manage`，不需要渠道設定的權限。
+
+**優先順序。** 不違反主規格：`webhook-subscription-egress` 只規定訂閱網址的檢查。`replyToken` 外流要有人訂閱 `message.received` 才會發生，所以列為 P2。
 
 ## 部署與應用程式
 

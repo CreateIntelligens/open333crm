@@ -2,6 +2,12 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-22]
+
+### Fixed
+
+- **Node.js 執行環境升級至 24.22.1 LTS 安全版** — Docker 開發、API、Web、Workers 與部署驗證皆固定使用 `node:24.22.1-bookworm-slim`，根目錄 Node 範圍同步收斂為 `>=24.22.1 <25`，pnpm 安裝階段會拒絕其他版本。此版本包含 Node.js 2026-10-21 安全發布修補的 High 嚴重度 TLS、DNS 與 Brotli 漏洞。
+
 ## [2026-10-21]
 
 ### Added

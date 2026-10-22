@@ -14,6 +14,14 @@
 
 RBAC-05 的狀態維持「已提建議」：reconcile 腳本沒有改，快取清除與部署流程仍未處理，見 `AUDIT.md`。
 
+## 2026-10-21：新增 HOOK-01
+
+以 main `636c71bd` 為基礎，issue #337 階段 1b 規劃時發現。讀程式確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| HOOK-01 | 新增，P2，未處理 | `webhook-dispatcher.ts` 以 `eventBus.subscribe('*', …)` 轉送所有事件，訂閱 API 的 `events` 不檢查名稱。`publishMessageReceived()` 的 `payload` 含 `replyToken`，dispatcher 把 `payload` 原樣放進 `data`。`'*'` 的寫法從 `79d0458c` 起就存在，沒有 spec 或 design 說明 |
+
 ## 2026-10-21：新增 CONV-03
 
 以 main `1a348740` 為基礎，issue #337 階段 1b 盤點事件的發出點與訂閱者時發現。讀程式確認，沒有連 UAT。
