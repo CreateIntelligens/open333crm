@@ -1,6 +1,6 @@
 {
   "name": "@open333crm/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Open333 command line interface",
   "license": "GPL-3.0-only",
   "type": "module",
