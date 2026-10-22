@@ -29,6 +29,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **本機 Docker 開發環境的 `deps` 服務安裝失敗，api、workers、web 都起不來**（#355 之後）。`pnpm.overrides` 把 `tar` 固定在 7，`@tensorflow/tfjs-node` 的安裝腳本以 npm 的 `tar` 解壓 Linux arm64 的 libtensorflow 時，`tar` 7 拒絕壓縮檔裡的連續 symlink（`TAR_SYMLINK_ERROR`）。正式 image 不受影響：`apps/api/Dockerfile` 以 `--ignore-scripts` 安裝，再以系統的 `tar` 解壓、自行編譯 binding。`docker-compose.dev.yml` 的 `deps` 改用同樣的做法：`Dockerfile.dev` 在 build 時下載並解壓 libtensorflow，加裝 `python3`、`make`、`g++`；`deps` 以 `--ignore-scripts` 安裝後，由 `scripts/dev-build-tfjs-node.sh` 編譯 binding（`node_modules` volume 裡已有 binding 時略過）。已有的本機環境要先 `docker compose -f docker-compose.dev.yml build` 重建 image。
 - **已歸戶顧客的票券連結被轉傳後，別人不用驗證就能打開票券夾**（UAT 實測：同一位顧客先用 LINE 驗證，之後 Messenger 的券連結點開就直接進去，可看券甚至顧客自助核銷）。原本只要聯絡人曾完成歸戶驗證，任何票券連結都直接換發顧客憑證。改為「記住裝置＋只認原 email」（design D24）：顧客在某台裝置完成驗證（email 驗證碼、LIFF 或 email 登記）後取得 180 天的裝置憑證，前端存在 `localStorage`，開啟票券時帶上才直接開啟；新裝置或被轉傳的連結改為寄 6 位數驗證碼到聯絡人原本的 email（畫面只顯示遮蔽後的 email，不能改填），新增 `POST /api/v1/fan/coupons/session/code` 與 `/session/code/verify`（10 分鐘有效、同一連結 10 分鐘最多寄 3 次、同一組最多錯 5 次）。只以 LINE 驗證、沒有 email 的聯絡人仍走 email 登記（issue #344）。驗證碼只能用一次：並行送出同一組碼只有一個請求成功；開啟票券的後續流程失敗時可用同一組驗證碼再試。
 - **優惠券操作手冊實測發現的問題**（UAT 實機走過三種核銷方式後修正）：
   - 序號包檢查完後按「儲存草稿」，序號沒有寫入券就離開頁面，下次編輯要重新上傳；改為存草稿時一併寫入。

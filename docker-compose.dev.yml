@@ -59,8 +59,11 @@ services:
   # correctly. Fast after the first time because the volumes persist.
   deps:
     <<: *dev-image
+    # Same steps as apps/api/Dockerfile: install without lifecycle scripts, then build
+    # only the tfjs-node binding and the Prisma client (scripts/dev-build-tfjs-node.sh).
     command: >
-      sh -c "pnpm install --frozen-lockfile &&
+      sh -c "pnpm install --frozen-lockfile --ignore-scripts &&
+             sh scripts/dev-build-tfjs-node.sh &&
              pnpm --filter @open333crm/database exec prisma generate"
     volumes: *dev-mounts
     restart: "no"
