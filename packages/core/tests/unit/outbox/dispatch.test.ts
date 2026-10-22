@@ -123,3 +123,17 @@ test('佇列沒有建立 id 等於 outbox id 的 job：該列維持未送出', a
     assert.deepEqual(marked, []);
   }
 });
+
+test('job 選項以序列化後的內容檢查：toJSON 回傳白名單外的選項時丟錯', async () => {
+  const tx = { outbox: { create: async () => assert.fail('不應寫入') } };
+  class Options {
+    attempts = 3;
+    toJSON() {
+      return { repeat: { every: 60_000, limit: 0 } };
+    }
+  }
+  await assert.rejects(
+    writeOutbox(tx as never, { tenantId: TENANT, kind: 'job', name: 'x', queueName: 'q', payload: {}, jobOptions: new Options() as never }),
+    /repeat/,
+  );
+});

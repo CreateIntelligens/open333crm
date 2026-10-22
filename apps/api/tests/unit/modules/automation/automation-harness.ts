@@ -29,6 +29,8 @@ export interface HarnessState {
   failSystemMessage: boolean;
   /** 以這個種類認領時丟錯，模擬認領的交易失敗（「Claim transaction fails」） */
   failClaimKind: string | null;
+  /** 查這個種類的認領紀錄時丟錯，模擬呼叫 LLM 之前的預查失敗（「Claim check fails」） */
+  failClaimCheckKind: string | null;
 }
 
 export function createHarness(overrides: { botRepliesCount?: number; botConfig?: Record<string, unknown> } = {}) {
@@ -48,6 +50,7 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
     messages: [{ id: MESSAGE, senderType: 'CONTACT', contentType: 'text', content: { text: 'hi' }, metadata: {} }],
     failSystemMessage: false,
     failClaimKind: null,
+    failClaimCheckKind: null,
   };
 
   const claimKey = (r: { kind: string; sourceId: string; subKey?: string }) => `${r.kind}|${r.sourceId}|${r.subKey ?? ''}`;
@@ -125,8 +128,10 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
         }
         return { count };
       },
-      count: async ({ where }: { where: { kind: string; sourceId: string; subKey?: string } }) =>
-        state.claims.includes(claimKey(where)) ? 1 : 0,
+      count: async ({ where }: { where: { kind: string; sourceId: string; subKey?: string } }) => {
+        if (where.kind === state.failClaimCheckKind) throw new Error('connection reset');
+        return state.claims.includes(claimKey(where)) ? 1 : 0;
+      },
     },
     outbox: {
       create: async ({ data }: { data: { name: string; payload: Record<string, unknown>; tenantId: string; kind: string } }) => {
@@ -144,11 +149,11 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
 
   const tenantPrisma = {
     async $transaction(cb: (tx: unknown) => Promise<unknown>) {
-      const snapshot = structuredClone({ ...state, failSystemMessage: undefined, failClaimKind: undefined });
+      const snapshot = structuredClone({ ...state, failSystemMessage: undefined, failClaimKind: undefined, failClaimCheckKind: undefined });
       try {
         return await cb({ $executeRaw: async () => 1, ...models });
       } catch (err) {
-        Object.assign(state, { ...snapshot, failSystemMessage: state.failSystemMessage, failClaimKind: state.failClaimKind });
+        Object.assign(state, { ...snapshot, failSystemMessage: state.failSystemMessage, failClaimKind: state.failClaimKind, failClaimCheckKind: state.failClaimCheckKind });
         throw err;
       }
     },

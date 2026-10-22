@@ -110,6 +110,12 @@
 - [x] 11.4 `pnpm test`、`pnpm test:feature` 通過
   - 2026-10-21：`pnpm test:feature` 65 個檔案、507 個測試全數通過。`pnpm test` 只有 api 的「repo 本身：舊寫法沒有比基準檔多」失敗，這個失敗在 `origin/main` 上就有（見 11.5）
 - [x] 11.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規；`node scripts/check-tenant-ctx.mjs --strict` 通過，舊寫法減少時以 `--update-baseline` 更新基準檔
-  - `check-tenant-scoping` 與 main 比對後，新增一處 `automation.worker.ts` 的 `findUnique` 沒帶 `tenantId`，已改成 `findFirst` 並帶 `tenantId`，改後沒有新增。`check-prisma-admin-usage` 通過。`check-tenant-ctx --strict` 失敗，原因是 main 上的 `deidentification.service.ts`（TenantDb 3 → 7）與 `ai.routes.ts`（request.tenantPrisma 7 → 8），本 change 沒有改動這兩個檔案；不以 `--update-baseline` 蓋過，另行回報
+  - `check-tenant-scoping` 與 main 比對後，新增一處 `automation.worker.ts` 的 `findUnique` 沒帶 `tenantId`，已改成 `findFirst` 並帶 `tenantId`，改後沒有新增。`check-prisma-admin-usage` 通過。`check-tenant-ctx --strict` 失敗，原因是 main 上的 `deidentification.service.ts`（TenantDb 3 → 7）與 `ai.routes.ts`（request.tenantPrisma 7 → 8），本 change 沒有改動這兩個檔案。2026-10-22 依使用者決定以 `--update-baseline` 記入基準檔，改由 #337 階段 4 處理（規劃 5.1 節）
 - [x] 11.6 `node scripts/validate-openspec.mjs outbox-event-delivery` 與 `--specs` 通過
+- [x] 11.8 review-loop（2026-10-22，5 輪）：依 Codex 與自己的審查修正，並依使用者的決定定下審查基準（design 第 14 節）、錯誤處理規則（design 第 13 節）。每個修正都先寫會失敗的測試；改動前就會通過的測試以突變驗證：
+  - `processUsageAlertEmail()` 吞掉寄信的錯誤時，「Email provider fails」失敗
+  - 轉接 commit 之後送出失敗改成往外丟時，「Delivery fails after handoff commit」失敗
+  - 規則動作的 catch 改成往外丟時，「Action fails after claim」失敗
+  - 拿掉情緒分析 LLM 失敗的降級時，「Sentiment LLM fails」失敗
+  - 2026-10-22：`pnpm test`、`pnpm test:feature`（507 個測試）全數通過
 - [ ] 11.7 合併後以 `pnpm exec openspec archive outbox-event-delivery` 歸檔，確認 `event-delivery`、`side-effect-claims` 兩份新主規格的 `## Purpose` 是 delta 的內容，不是「TBD」，再執行 `node scripts/validate-openspec.mjs --specs`，確認「略過 N 則」沒有變多

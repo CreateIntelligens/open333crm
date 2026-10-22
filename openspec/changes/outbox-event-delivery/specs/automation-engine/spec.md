@@ -115,7 +115,7 @@ workers 處理 `message.received` 的規則評估時，MUST 一併比對啟用�
 
 ### Requirement: 情緒分析每則訊息最多一次
 
-系統 MUST 以「`sentiment` + 入站訊息 id」認領，認領成功才寫入情緒結果；結果是負面且信心值至少 0.6 時，在同一個交易發出 `sentiment.negative`。呼叫 LLM 之前，這則訊息已經有認領紀錄時，系統 MUST NOT 呼叫 LLM。
+系統 MUST 以「`sentiment` + 入站訊息 id」認領，認領成功才寫入情緒結果；結果是負面且信心值至少 0.6 時，在同一個交易發出 `sentiment.negative`。呼叫 LLM 之前，這則訊息已經有認領紀錄時，系統 MUST NOT 呼叫 LLM。LLM 失敗時，系統 MUST 略過這則訊息的情緒分析；查認領紀錄或交易失敗時，處理 MUST 失敗並由佇列重試。
 
 #### Scenario: 同一則訊息處理兩次
 
@@ -126,3 +126,13 @@ workers 處理 `message.received` 的規則評估時，MUST 一併比對啟用�
 
 - **WHEN** 訊息 M 的兩次處理同時通過 LLM 前的檢查，都呼叫了 LLM
 - **THEN** 只有一次 MUST 寫入結果並發出 `sentiment.negative`
+
+#### Scenario: Claim check fails
+
+- **WHEN** 呼叫 LLM 之前，查訊息 M 的 `sentiment` 認領紀錄失敗
+- **THEN** 處理 MUST 失敗並由佇列重試，系統 MUST NOT 呼叫 LLM
+
+#### Scenario: Sentiment LLM fails
+
+- **WHEN** 分析訊息 M 的情緒時，LLM 回傳錯誤
+- **THEN** 系統 MUST 略過 M 的情緒分析，處理照常完成

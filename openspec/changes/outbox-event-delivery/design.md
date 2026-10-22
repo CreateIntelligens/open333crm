@@ -196,7 +196,7 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 | `apps/api/src/modules/automation/automation.worker.ts`，`checkAutoHandoff` | 原本包住整段 | 拿掉外層 catch；只包 commit 之後的送出與推播 |
 | `automation.worker.ts`，摘要的 catch | 摘要的 LLM 呼叫 | 降級（沒有摘要也轉接），不變 |
 | `automation.worker.ts`，agent 與 KB 回覆的 catch | 回覆流程 | 遇到 `ClaimTransactionError` 往外丟，其他照舊降級 |
-| `automation.worker.ts`，情緒分析的 catch | 情緒分析 | 遇到 `ClaimTransactionError` 記為失敗；LLM 失敗照舊略過 |
+| `automation.worker.ts`，情緒分析 | 情緒分析 | LLM 失敗在 `analyzeSentimentOnce()` 內略過（降級）；查認領紀錄與交易的失敗往外丟（第 5 輪補上） |
 | `automation.worker.ts`，`message.received` 與 `case.created` 的外層 catch | 整個處理 | 步驟的失敗最後一起丟錯；`case.created` 記 log 後丟錯 |
 | `automation.worker.ts`，`autoClassifyNewCase` 的 catch | 自動分類（LLM） | 降級；重複執行不改變結果，不認領，不變 |
 | `apps/api/src/modules/notification/notification.worker.ts` | 送出通知與告警信的 job | 第 1 輪已改：丟錯 |
@@ -208,6 +208,28 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 | `apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts`，`sendOnce` 的 catch | HTTP 送出 | 轉成失敗結果，processor 丟錯讓 BullMQ 重試，不變 |
 
 `data-export.handler.ts` 與 `data-erasure.handler.ts` 的保存期清理、MinIO 刪檔、網址解析的 catch，不是本 change 新增的認領路徑，沒有列入。
+
+### 14. 審查基準與逐跳保證（2026-10-22）
+
+**審查基準：至少達到 Laravel + Horizon 的水準。** Laravel 以 `afterCommit` 在 commit 之後推進 Redis，Horizon 提供重試、失敗清單與監控。本 change 比 Laravel 多保證一段：commit 之後、推進 Redis 之前（outbox）。Laravel 專案也會有的情況，例如重試時以當下的資料重新評估、多個 API 實例的推播，本 change 記為已知限制，不處理。
+
+每條路徑的每一跳（2026-10-22）：
+
+| 路徑 | 這一跳 | 失敗時 | 保證 |
+| --- | --- | --- | --- |
+| `ctx.publish`、`ctx.enqueue`、workers 的 `writeOutbox()` | commit → 訂閱者佇列或目標佇列 | 資料列留在 outbox，`outbox-relay` 補送；佇列沒有建立 id 相同的 job 時不標記已送出 | 至少一次 |
+| `eventBus.publish()`（還沒搬遷） | 行程內 → 訂閱者佇列 | 只記 log | 最多一次 |
+| 訂閱者 job（通知、自動化、webhook） | 佇列 → 處理程式 | 處理程式丟錯，BullMQ 重試 3 次；用完之後留在 failed set 7 天，沒有告警（見「後續」） | 至少一次，到重試用完為止 |
+| 通知訂閱者 | → `notification:dispatch`、`usage-alert-email` | 送不出時丟錯，訂閱者 job 重試；job id 固定，不重複建立 | 站內通知：每位客服人員一個 job。告警信：至少一次，中斷時可能多寄一封 |
+| 自動化訂閱者，`message.received` | 自動轉接 | 交易失敗丟錯重試；commit 之後送出轉接訊息失敗只記 log | 轉接最多一次 |
+| | 機器人回覆（agent、KB） | 認領的交易失敗丟錯重試；LLM 失敗改由 KB 回覆（降級）；送出失敗只記 log | 每則入站訊息最多一則 |
+| | 情緒分析 | 查認領或交易失敗丟錯重試；LLM 失敗略過 | 最多一次 |
+| | → `automation:evaluate` | 送不出時丟錯重試；job id 是事件 id | 至少一次 |
+| workers 規則評估 | `keyword.matched` | 認領與 outbox 同一個交易；交易失敗丟錯重試 | 每則訊息每條規則最多發出一次；發出之後至少一次送達 |
+| | 規則動作 | 認領失敗丟錯重試；認領之後執行失敗只記 log | 每個事件每個動作最多一次。重試時以當下的資料重新評估條件（已知限制） |
+| | `create_case`、`add_tag` 的事件 | 與資料同一個交易寫 outbox | 至少一次 |
+| 對外 webhook | `event-webhook` → 每個網址一個 `webhook-delivery` job | HTTP 失敗由 BullMQ 重試，共 3 次 | 至少一次；接收端以 `X-Webhook-Event-Id` 去重 |
+| data-export、data-erasure | 請求狀態 | 開頭以條件更新認領 `pending` 或 `processing`；失敗改成 `failed`（終態），不重試 | 每個請求最多完成一次 |
 
 ## Risks / Trade-offs
 
@@ -223,3 +245,14 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 - **每次都送不出的資料列會排在補送的最前面。** relay 依 `createdAt` 一次取 500 筆。某一列每次都送不出時，該列一直留在最前面；這種資料列累積到 500 筆，較新的資料列就補送不到。`writeOutbox()` 的型別要求 job 必須有 `queueName`，所以正常寫入的資料列不會每次失敗。review-loop 2026-10-22 記錄，先不處理。
 - **匯出工作同時執行、其中一次失敗時，請求停在 `failed`。** 執行 A 失敗、把請求改成 `failed` 之後，執行 B 上傳成功，但 B 改成 `completed` 的條件（`processing`）不成立，B 直接結束。請求顯示失敗，上傳的檔案留在 MinIO，沒有請求指向它；使用者要重新申請匯出。要兩次執行同時進行、其中一次失敗才會發生；`failed` 維持終態（2026-10-22 決定）。
 - **尖峰時可能等資料庫連線。** 5 個訂閱者 Worker 的並行數加起來是 35，可能超過 Prisma 連線池（`DATABASE_URL` 沒有設 `connection_limit`，預設是 CPU 數 × 2 + 1）。LLM 與 HTTP 呼叫都在交易之外，不佔連線，所以只在尖峰時排隊等連線；等超過 Prisma 的 `pool_timeout` 時，該 job 失敗並由 BullMQ 重試。試點時與規劃 6.2 的基準一起量測（review-loop 2026-10-22 記錄）。
+- **規則動作重試時，以當下的資料重新評估條件。** 規則的第一個動作可能改變這條規則的觸發條件，例如把優先度從 LOW 升成 MEDIUM。接著下一個動作的認領交易失敗時，佇列重試這個 job，重新評估的結果可能是「不再命中」。這時還沒認領的動作不會執行。要同時遇到資料庫暫時失敗、與「動作改到自己的觸發條件」才會發生。把第一次評估的結果存下來就能解決，但要新增儲存機制。Laravel 的 queued listener 重試時也是重新執行，所以依第 14 節的基準，本 change 記為已知限制（review-loop 2026-10-22）。
+
+## 後續（不在本 change）
+
+2026-10-22 review-loop 與討論後移出本 change 的項目：
+
+- **重試用完的監控與重送。** 訂閱者 job 重試用完之後留在 failed set 7 天，沒有告警，也沒有畫面。另開 change 導入 bull-board（以 Fastify hook 採白名單，只放行讀取與單筆重送），並在 Worker 的 `failed` 事件發出告警。
+- **事件順序。** relay 補送的事件可能比之後的事件晚到；Worker 同時處理多個 job，同一段對話的事件會並行。目前只有 rich-menu 記在 Risks。
+- **job 資料格式跨版本。** 部署前後的 job 格式不同（例如舊 job 沒有 `eventId`），目前各處各自判斷。
+- **多個 API 實例的推播。** 背景處理的 Socket 推播只送到處理它的實例；要支援多實例時，整體加上 Socket.IO Redis adapter。
+- **`message.received` 先送出規則評估。** 目前要等自動轉接與 AI 回覆跑完，才送出規則評估；可以把它移到最前面，或把 AI 工作拆到另一個佇列。

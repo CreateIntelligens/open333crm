@@ -48,8 +48,13 @@ const ROW_SELECT = {
  * jobOptions 只接受白名單內的選項，其他選項丟錯，所在的交易 rollback。
  */
 export async function writeOutbox(tx: Pick<Prisma.TransactionClient, 'outbox'>, input: OutboxInput): Promise<OutboxRow> {
-  if (input.kind === 'job' && input.jobOptions) {
-    const rejected = Object.keys(input.jobOptions).filter((key) => !(ALLOWED_JOB_OPTIONS as readonly string[]).includes(key));
+  // 先序列化，再檢查與保存同一份結果：檢查原物件時，toJSON() 可以換掉實際保存的內容
+  const jobOptions =
+    input.kind === 'job' && input.jobOptions
+      ? (JSON.parse(JSON.stringify(input.jobOptions)) as Record<string, unknown>)
+      : undefined;
+  if (jobOptions) {
+    const rejected = Object.keys(jobOptions).filter((key) => !(ALLOWED_JOB_OPTIONS as readonly string[]).includes(key));
     if (rejected.length > 0) {
       throw new Error(`outbox 的 job 不接受 ${rejected.join('、')}：只接受 ${ALLOWED_JOB_OPTIONS.join('、')}`);
     }
@@ -61,10 +66,7 @@ export async function writeOutbox(tx: Pick<Prisma.TransactionClient, 'outbox'>, 
       name: input.name,
       queueName: input.kind === 'job' ? input.queueName : null,
       payload: JSON.parse(JSON.stringify(input.payload ?? null)) as Prisma.InputJsonValue,
-      jobOptions:
-        input.kind === 'job' && input.jobOptions
-          ? (JSON.parse(JSON.stringify(input.jobOptions)) as Prisma.InputJsonValue)
-          : undefined,
+      jobOptions: jobOptions as Prisma.InputJsonValue | undefined,
     },
     select: ROW_SELECT,
   });
