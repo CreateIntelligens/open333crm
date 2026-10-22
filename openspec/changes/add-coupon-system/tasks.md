@@ -436,26 +436,26 @@
 
 #### 測試先行
 
-- [ ] 15.1 測試「從清單選券」「草稿或已結束的券不在清單」「已存的券被暫停」「只發券的關鍵字規則」「素材與優惠券都沒選」（`apps/web/tests/unit/components/line/keyword-reply-edit-dialog.test.tsx`）；「編輯含其他動作的關鍵字回覆」「編輯含發券動作的關鍵字回覆」（`apps/web/tests/unit/hooks/use-keyword-replies.test.tsx`）
-- [ ] 15.2 測試「Facebook 對話傳送同樣的關鍵字」（`apps/workers/tests/unit/handlers/automation-keyword-scope.test.ts`，規則帶「對話渠道等於 LINE」）；「存檔時券不存在或屬於其他租戶」（`apps/api/tests/unit/modules/automation/issue-coupon-reference.test.ts`，比照 `send-material-reference.test.ts`）
-- [ ] 15.3 測試「新增動作時沒有發送優惠券」「開啟既有的發券規則」（`apps/web/tests/unit/components/automation/action-editor.test.tsx`）；「既有的發券規則照常執行」（`apps/workers/tests/unit/lib/automation-issue-coupon-delivery.test.ts`）
-- [ ] 15.4 測試「自動化發券訊息送不出時券作廢並歸還名額」「自動化發券送出成功」（`apps/workers/tests/unit/lib/automation-issue-coupon-delivery.test.ts`）；「自動化發券卡在發送中」（`apps/api/tests/feature/modules/coupon/coupon-stale-pending.test.ts`，排程作廢 `issuedVia='keyword'` 的券）
-- [ ] 15.5 測試「顧客已達每人上限」「券已暫停」「發行總量已發完」「渠道拒收」「已達上限時回覆設定的文字」「沒有設定回覆文字」「網站客服的訪客觸發發券規則」（`apps/workers/tests/unit/lib/automation-issue-coupon-failure.test.ts`）
-- [ ] 15.6 測試「自動化發券在期限內以回覆方式送出」「超過回覆期限改用主動推送」（`apps/workers/tests/unit/lib/automation-keyword-reply.test.ts`）；「關鍵字規則在期限內回覆」「回覆失敗改用主動推送」（`apps/workers/tests/unit/handlers/automation.handler.test.ts`：handler 把 `receivedAt` 傳進動作）
-- [ ] 15.7 測試「關鍵字規則發券的歸因」「規則改名後仍顯示當下名稱」（workers unit）；「舊資料的觸發事件名稱」（`apps/web/tests/unit/components/coupons/detail-helpers.test.ts`）
-- [ ] 15.8 測試「收件匣顯示自動化發出的券卡」（`apps/web/tests/unit/components/inbox/coupon-message-card.test.tsx`）；「已發優惠券區塊即時更新」（workers unit：確認後 publish `coupon.instance.updated`）
-- [ ] 15.9 測試「規則發送進行中的優惠券」「規則的優惠券不是進行中」「網站聊天室的發券規則」（`apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts`）
+- [x] 15.1 測試「從清單選券」「草稿或已結束的券不在清單」「已存的券被暫停」「只發券的關鍵字規則」「素材與優惠券都沒選」（`apps/web/tests/unit/components/line/keyword-reply-edit-dialog.test.tsx`）；「編輯含其他動作的關鍵字回覆」「編輯含發券動作的關鍵字回覆」（`apps/web/tests/unit/hooks/use-keyword-replies.test.tsx`）
+- [x] 15.2 測試「Facebook 對話傳送同樣的關鍵字」（`apps/workers/tests/unit/handlers/automation-keyword-scope.test.ts`，規則帶「對話渠道等於 LINE」）；「存檔時券不存在或屬於其他租戶」（`apps/api/tests/unit/modules/automation/issue-coupon-reference.test.ts`，比照 `send-material-reference.test.ts`）
+- [x] 15.3 測試「新增動作時沒有發送優惠券」「開啟既有的發券規則」（`apps/web/tests/unit/components/automation/action-editor.test.tsx`）；「既有的發券規則照常執行」（`apps/workers/tests/unit/lib/automation-issue-coupon-delivery.test.ts`）
+- [x] 15.4 測試「自動化發券訊息送不出時券作廢並歸還名額」「自動化發券送出成功」（`apps/workers/tests/unit/lib/automation-issue-coupon-delivery.test.ts`）；「自動化發券卡在發送中」（`apps/api/tests/feature/modules/coupon/coupon-stale-pending.test.ts`，排程作廢 `issuedVia='keyword'` 的券）
+- [x] 15.5 測試「顧客已達每人上限」「券已暫停」「發行總量已發完」「渠道拒收」「已達上限時回覆設定的文字」「沒有設定回覆文字」「網站客服的訪客觸發發券規則」（`apps/workers/tests/unit/lib/automation-issue-coupon-failure.test.ts`）
+- [x] 15.6 測試「自動化發券在期限內以回覆方式送出」「超過回覆期限改用主動推送」（`apps/workers/tests/unit/lib/automation-keyword-reply.test.ts`）；「關鍵字規則在期限內回覆」「回覆失敗改用主動推送」（`apps/workers/tests/unit/handlers/automation.handler.test.ts`：handler 把 `receivedAt` 傳進動作）
+- [x] 15.7 測試「關鍵字規則發券的歸因」「規則改名後仍顯示當下名稱」（workers unit）；「舊資料的觸發事件名稱」（`apps/web/tests/unit/components/coupons/detail-helpers.test.ts`）
+- [x] 15.8 測試「收件匣顯示自動化發出的券卡」（`apps/web/tests/unit/components/inbox/coupon-message-card.test.tsx`）；「已發優惠券區塊即時更新」（workers unit：確認後 publish `coupon.instance.updated`）
+- [x] 15.9 測試「規則發送進行中的優惠券」「規則的優惠券不是進行中」「網站聊天室的發券規則」（`apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts`）
 
 #### 實作
 
 - [x] 15.10 core：`voidPendingInstance`、確認（清除發送中＋貼標）搬到 `packages/core/src/coupon/delivery.ts`，API 對話發券改用它（`apps/api/src/modules/coupon/coupon-inbox.service.ts`）；發放方式代碼與 `couponSourceName`（`packages/core/src/coupon/issue.ts`）
-- [ ] 15.11 契約：`issue_coupon` 參數型別改 `coupon`、新增選填 `failureText`、動作加 `editorHidden: true`（`packages/automation/src/contracts/actions.ts`、`types.ts`）；自動化規則編輯器不列出隱藏動作、既有發券動作唯讀顯示（`apps/web/src/components/automation/ActionEditor.tsx` 與動作選單）
-- [ ] 15.12a API 存檔檢查 `couponId`（`apps/api/src/modules/automation/automation.service.ts`，比照 `assertSendMaterialReferences`）
-- [ ] 15.12b workers `issue_coupon` 改為保留、送出、確認／作廢；失敗紀錄與 `failureText` 回覆；不支援的渠道擋下；歸因代碼、規則 id 與名稱；券卡訊息；推 `coupon.instance.updated`（`apps/workers/src/lib/automation-actions.ts`、`channel-delivery.ts`，`deliverToChannelFromWorker` 要能寫入券卡內容並回傳失敗原因）
-- [ ] 15.12c `automation.handler.ts` 把 `receivedAt` 傳進動作 context（`apps/workers/src/handlers/automation.handler.ts`）
-- [ ] 15.12d AI 讓步算入 `issue_coupon`（`apps/api/src/modules/automation/keyword-yield.ts`）
-- [ ] 15.12e 關鍵字回覆頁：「同時發送優惠券」下拉選單（`CouponSelectField`）、「發不出時回覆顧客」、素材改選填、列表列出只發券的規則、儲存只換自己管的動作並確保「對話渠道等於 LINE」條件、保留其他動作與條件（`apps/web/src/hooks/useKeywordReplies.ts`、`apps/web/src/components/line/keyword-reply/KeywordReplyEditDialog.tsx`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`）
-- [ ] 15.12f 發放方式對照表（`apps/web/src/components/coupons/detail/detail-helpers.ts`）；券卡顯示規則名稱（`apps/web/src/components/inbox/coupon/CouponMessageCard.tsx`）
+- [x] 15.11 契約：`issue_coupon` 參數型別改 `coupon`、新增選填 `failureText`、動作加 `editorHidden: true`（`packages/automation/src/contracts/actions.ts`、`types.ts`）；自動化規則編輯器不列出隱藏動作、既有發券動作唯讀顯示（`apps/web/src/components/automation/ActionEditor.tsx` 與動作選單）
+- [x] 15.12a API 存檔檢查 `couponId`（`apps/api/src/modules/automation/automation.service.ts`，比照 `assertSendMaterialReferences`）
+- [x] 15.12b workers `issue_coupon` 改為保留、送出、確認／作廢；失敗紀錄與 `failureText` 回覆；不支援的渠道擋下；歸因代碼、規則 id 與名稱；券卡訊息；推 `coupon.instance.updated`（`apps/workers/src/lib/automation-actions.ts`、`channel-delivery.ts`，`deliverToChannelFromWorker` 要能寫入券卡內容並回傳失敗原因）
+- [x] 15.12c `automation.handler.ts` 把 `receivedAt` 傳進動作 context（`apps/workers/src/handlers/automation.handler.ts`）
+- [x] 15.12d AI 讓步算入 `issue_coupon`（`apps/api/src/modules/automation/keyword-yield.ts`）
+- [x] 15.12e 關鍵字回覆頁：「同時發送優惠券」下拉選單（`CouponSelectField`）、「發不出時回覆顧客」、素材改選填、列表列出只發券的規則、儲存只換自己管的動作並確保「對話渠道等於 LINE」條件、保留其他動作與條件（`apps/web/src/hooks/useKeywordReplies.ts`、`apps/web/src/components/line/keyword-reply/KeywordReplyEditDialog.tsx`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`）
+- [x] 15.12f 發放方式對照表（`apps/web/src/components/coupons/detail/detail-helpers.ts`）；券卡顯示規則名稱（`apps/web/src/components/inbox/coupon/CouponMessageCard.tsx`）
 
 ### 二、加好友禮（design D28）
 
@@ -493,6 +493,13 @@
 - [ ] 15.35 寫好就通過的測試以突變驗證並記在此處（例如「其他租戶的代碼」、「取消好友不觸發」、「既有的發券規則照常執行」）
   - 15.10：`delivery.test.ts`「已確認發出的券（不在發送中）不刪除」——拿掉「不在發送中就回 false」的判斷，測試失敗；`coupon-inbox.test.ts`「送出成功後貼領券標籤並發出 contact.tagged」（對話發券原本沒有貼標的測試，搬移前補上；改走 outbox 是刻意的改變，原本在交易內直接 `eventBus.publish`）——拿掉 `ctx.publish('contact.tagged')`、或讓 core 確認時不貼標，測試各自失敗；`issued-via.test.ts`「沒有值或不認得的值回 undefined」——不認得的值改回「其他方式」，測試失敗；「整合程式自訂的代碼不是保留」——保留判斷改為一律 true，測試失敗
   - 15.33：「整合程式自訂的發放方式照常發券」——路由改為拒絕所有帶入的發放方式，測試失敗
+  - 15.2：「Facebook 對話傳送同樣的關鍵字」（workers）——handler 評估時把規則條件換成空條件，測試失敗
+  - 15.4：「自動化發券卡在發送中」——排程只掃 `issuedVia='inbox'` 的券，測試失敗
+  - 15.6：「自動化發券在期限內以回覆方式送出」——動作不帶 `receivedAt`，測試失敗；「超過回覆期限改用主動推送」——`channel-delivery` 不經 `selectSafeLineStrategy`、一律走 reply，測試失敗
+  - 15.7：「不認得的值顯示其他方式」——不認得的值改為顯示原代碼，測試失敗；「關鍵字規則發券的歸因：上行規則名稱，下行關鍵字」——上下行對調，測試失敗
+  - 15.8：「座席發的券仍顯示座席名稱」——券卡不看 `issuedByName`、一律顯示規則，測試失敗；`chat-window-coupon.test.tsx`「收件匣顯示自動化發出的券卡」——ChatWindow 不把 `metadata.ruleName` 傳給券卡，測試失敗
+  - 15.9：「規則的優惠券不是進行中」——讓步判斷拿掉 `status: 'ACTIVE'`，測試失敗；「網站聊天室的發券規則」——拿掉 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 判斷，測試失敗
+  - 15.12b：既有的 `automation-issue-coupon-tag.test.ts` 改為新行為（貼標從發券交易移到送出成功後的確認交易，design D16、D25 的刻意變更），仍斷言 contact.tagged 在交易內寫入 outbox、不經 domain:event
 
 ### 工作量
 
