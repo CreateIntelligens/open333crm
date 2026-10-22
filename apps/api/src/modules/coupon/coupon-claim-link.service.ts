@@ -253,6 +253,7 @@ export interface PublicClaimPage {
     percentCap: number | null;
     minSpend: number | null;
     giftName: string | null;
+    giftQty: number | null;
     exchangeItem: string | null;
     validityMode: string | null;
     startAt: Date | null;
@@ -275,7 +276,7 @@ export async function openPublicClaimPage(ctx: TenantCtx, code: string, now: Dat
       coupon: {
         select: {
           status: true, name: true, description: true, imageUrl: true, couponType: true, discountAmount: true,
-          discountPercent: true, percentCap: true, minSpend: true, giftName: true, exchangeItem: true,
+          discountPercent: true, percentCap: true, minSpend: true, giftName: true, giftQty: true, exchangeItem: true,
           validityMode: true, startAt: true, endAt: true, afterClaimDays: true, afterOpenMinutes: true,
         },
       },
