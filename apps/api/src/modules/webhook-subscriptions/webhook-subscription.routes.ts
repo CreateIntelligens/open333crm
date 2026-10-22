@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError, success } from '../../shared/utils/response.js';
@@ -97,7 +98,9 @@ export default async function webhookSubscriptionRoutes(fastify: FastifyInstance
   fastify.post<{ Params: { id: string } }>('/:id/test', { preHandler: requirePermission('webhook.manage') }, async (request, reply) => {
     const sub = await getSubscription(request.tenantPrisma, request.params.id, request.agent.tenantId);
 
+    // 測試送出只送一次，不重試；事件 id 每次新產生（webhook-subscription-egress「測試送出只送一次」）
     const testPayload = {
+      id: randomUUID(),
       event: 'webhook.test',
       tenantId: request.agent.tenantId,
       timestamp: new Date().toISOString(),

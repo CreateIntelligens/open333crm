@@ -47,7 +47,6 @@
 - **WHEN** worker 以 `anonymize` 處理一位聯絡人，聯絡人與他的渠道身分的頭像存在本租戶的 `avatars` 目錄
 - **THEN** 這些頭像檔已從物件儲存刪除
 
-
 ### Requirement: 硬刪除聯絡人
 
 `hard_delete` 模式 SHALL 在同一個交易內刪除該聯絡人的對話與訊息、工單、活動提交、積分紀錄，以及聯絡人本身。聯絡人的屬性、渠道身分、`IdentityMap`、長期記憶、標籤與聯絡人關係隨聯絡人一起刪除。交易成功後，系統 SHALL 刪除這些訊息在物件儲存的媒體檔，以及依「刪除頭像檔的範圍」刪除聯絡人與渠道身分的頭像檔；單一檔案刪除失敗時只記錄 log。
@@ -104,3 +103,22 @@
 #### Scenario: 聯絡人已不存在時記錄失敗
 - **WHEN** worker 開始處理時，請求指定的聯絡人已經不存在
 - **THEN** 請求改為 `failed`，`error` 記錄原因
+
+### Requirement: worker 不重新處理已結束的刪除請求
+
+worker 開始處理刪除工作時，MUST 以條件更新把請求從 `pending` 或 `processing` 改成 `processing`。請求是 `completed` 或 `failed` 時，worker MUST 直接結束，MUST NOT 刪除資料、改變請求狀態、寫稽核或通知。請求是 `processing` 時，代表上一次執行中途結束，worker MUST 重新處理。同一個請求的刪除 MUST 最多 commit 一次。
+
+#### Scenario: 已完成的請求再執行一次
+
+- **WHEN** 硬刪除請求已經是 `completed`，同一個刪除工作再執行一次
+- **THEN** 請求 MUST 仍是 `completed`，`error` MUST 是空值，系統 MUST NOT 寫新的稽核或通知
+
+#### Scenario: 上一次執行中途結束
+
+- **WHEN** 匿名化請求是 `processing`，聯絡人的資料還沒有匿名化，同一個刪除工作再執行一次
+- **THEN** 聯絡人 MUST 被匿名化，請求 MUST 是 `completed`
+
+#### Scenario: 兩次同時執行
+
+- **WHEN** 同一個硬刪除工作同時執行兩次
+- **THEN** 請求 MUST 是 `completed`，`error` MUST 是空值，發起的成員 MUST 只收到一則完成通知

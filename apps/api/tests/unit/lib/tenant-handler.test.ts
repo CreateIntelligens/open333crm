@@ -9,11 +9,22 @@ import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import { tenantHandler } from '#src/lib/tenant-ctx.js';
 import { AppError } from '#src/shared/utils/response.js';
-import { eventBus, type AppEvent } from '#src/events/event-bus.js';
+
+// 快路徑換成記錄呼叫：確認 commit 之後才送出
+const dispatched = vi.hoisted(() => [] as Array<{ db: unknown; names: string[] }>);
+vi.mock('@open333crm/core', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@open333crm/core')>();
+  return {
+    ...original,
+    dispatchOutboxRows: async (db: unknown, rows: Array<{ name: string }>) => {
+      dispatched.push({ db, names: rows.map((r) => r.name) });
+    },
+  };
+});
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
@@ -22,7 +33,16 @@ let log: string[] = [];
 let commitError: Error | null = null;
 let handlerRan = false;
 
-const tx = { $executeRaw: async () => 1 };
+const tx = {
+  $executeRaw: async () => 1,
+  outbox: {
+    async create(args: { data: { name: string; tenantId: string } }) {
+      log.push(`write:${args.data.name}`);
+      return { id: 'o1', ...args.data, createdAt: new Date() };
+    },
+  },
+};
+
 const prisma = {
   async $transaction(cb: (t: typeof tx) => Promise<unknown>) {
     const result = await cb(tx);
@@ -83,7 +103,7 @@ beforeAll(async () => {
   app.post(
     '/publish',
     tenantHandler(app, async (_request, _reply, ctx) => {
-      ctx.publish('case.resolved', { caseId: 'c1' });
+      await ctx.publish('case.resolved', { caseId: 'c1' });
       log.push('handler-end');
       return { success: true };
     }),
@@ -106,6 +126,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   log = [];
+  dispatched.length = 0;
   commitError = null;
   handlerRan = false;
 });
@@ -169,16 +190,9 @@ test('型別：交易內的 reply 不能送出回應，推播名稱依種類限�
   }
 });
 
-test('事件交給 eventBus，在 commit 之後送出', async () => {
-  const onEvent = (event: AppEvent) => {
-    if (event.tenantId === TENANT_ID) log.push(`publish:${event.name}`);
-  };
-  eventBus.subscribe('case.resolved', onEvent);
-  try {
-    const res = await app.inject({ method: 'POST', url: '/publish', headers: { 'x-tenant': TENANT_ID } });
-    assert.equal(res.statusCode, 200);
-    assert.deepEqual(log, ['handler-end', 'commit', 'publish:case.resolved']);
-  } finally {
-    eventBus.unsubscribe('case.resolved', onEvent);
-  }
+test('事件在交易內寫 outbox，commit 之後交給快路徑', async () => {
+  const res = await app.inject({ method: 'POST', url: '/publish', headers: { 'x-tenant': TENANT_ID } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(log, ['write:case.resolved', 'handler-end', 'commit']);
+  assert.deepEqual(dispatched.map((d) => d.names), [['case.resolved']]);
 });

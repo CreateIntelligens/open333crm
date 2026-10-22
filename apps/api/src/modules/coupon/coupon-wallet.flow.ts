@@ -8,7 +8,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { readWalletToken } from '@open333crm/core';
 import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { eventBus } from '../../events/event-bus.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import type { FanIdentity } from './coupon-fan.service.js';
 import { reuseOrIssueRegistrationToken } from '../identity-binding/identifier-registration.js';
 import {
@@ -48,7 +48,7 @@ export interface WalletFlowDeps extends WalletDeps {
 }
 
 function inTenantOf<T>(deps: WalletFlowDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: eventBus }, tenantId, fn);
+  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, fn);
 }
 
 /** 以顧客憑證的租戶開交易 */

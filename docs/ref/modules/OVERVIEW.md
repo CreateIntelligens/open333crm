@@ -3,7 +3,7 @@
 本文件說明 `apps/api/src/modules/` 的每個模組服務哪一群使用者，並列出每個模組的路由前綴、對應的前端頁面與權限要求。模組之間的程式碼相依請看[應用程式與共用套件](../system/COMPONENTS.md)。
 
 - **資料來源**：`apps/api/src/index.ts` 的路由註冊、`apps/api/src/modules/*`、`apps/api/src/plugins/auth.plugin.ts`、`apps/web/src/app/*`、`apps/web/src/components/layout/Sidebar.tsx`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 各表的「說明文件」欄指向描述該模組行為的功能區文件。改一個模組之前，先讀這一欄列出的文件，確認現有的規則與已知限制。「無」表示目前沒有文件描述這個模組，要直接讀程式碼。
 
@@ -204,17 +204,19 @@
 
 背景工作分在兩個行程執行，兩邊的機制不同。事件與佇列的發布端、消費端與失敗處理，見[事件與背景工作](./EVENTS.md)。
 
-- **API 行程**跑的是 in-process 的 eventBus 監聽器，以及由 BullMQ Job Scheduler 觸發的排程（`api-scheduler` queue 的 Worker 也在 API 行程內）。函式名稱裡的 `Worker` **不代表 BullMQ consumer**：`setupNotificationWorker` 與 `setupAutomationWorker` 訂閱 eventBus，再把工作送進 BullMQ queue，扮演的是 producer。
-- **`apps/workers` 行程**消費一般的 BullMQ queue。唯一的例外是 `api-scheduler`，它的 Worker 在 API 行程內，只執行 API 行程內的排程。
+- **API 行程**跑的是業務事件的訂閱者、對外 Webhook 與告警信的送出，以及由 BullMQ Job Scheduler 觸發的排程。這些佇列的 Worker 都在 API 行程內：`event-notification`、`event-automation`、`event-webhook`、`webhook-delivery`、`usage-alert-email` 與 `api-scheduler`。函式名稱裡的 `Worker` **不代表 BullMQ consumer**：`setupNotificationWorker` 與 `setupAutomationWorker` 回傳訂閱者的處理函式，處理函式再把工作送進 `notification`、`automation` queue。
+- **`apps/workers` 行程**消費其他的 BullMQ queue。
 
 在 API 行程啟動（`apps/api/src/index.ts`）：
 
 | 啟動函式 | 所屬模組 | 機制 | 說明文件 |
 | --- | --- | --- | --- |
-| `setupNotificationWorker` | `notification` | 訂閱 eventBus，送入 `notification` queue | [通知](../features/tenant/NOTIFICATIONS.md) |
-| `setupAutomationWorker` | `automation` | 訂閱 eventBus，送入 `automation` queue | [自動化](../features/tenant/AUTOMATION.md) |
-| `setupCanvasWorker` | `canvas` | 訂閱 eventBus，直接執行動作 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) |
-| `setupWebhookDispatcher` | `webhook-subscriptions` | 訂閱 eventBus，發送對外 Webhook | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
+| `setupNotificationWorker` | `notification` | 處理 `event-notification` 佇列的事件，送入 `notification`、`usage-alert-email` queue | [通知](../features/tenant/NOTIFICATIONS.md) |
+| `setupAutomationWorker` | `automation` | 處理 `event-automation` 佇列的事件，送入 `automation` queue | [自動化](../features/tenant/AUTOMATION.md) |
+| `setupCanvasWorker` | `canvas` | 訂閱 `crm:events`，直接執行動作 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) |
+| `setupWebhookDispatcher`、`processWebhookDelivery` | `webhook-subscriptions` | 處理 `event-webhook` 佇列的事件，每個網址送一個 `webhook-delivery` job 並送出 | [稽核、資料權利與對外整合](../features/tenant/GOVERNANCE.md) |
+| `startQueueWorkers`（`events/subscriber-workers.ts`） | 無 | 為上面的訂閱者佇列與送出佇列建立 Worker | [事件與背景工作](./EVENTS.md) |
+| `setupOutboxSchedulers` | `outbox` | Job Scheduler：補送每 60 秒、清理每天 03:30 | [事件與背景工作](./EVENTS.md) |
 | `setupCanvasScheduler` | `canvas` | Job Scheduler 週期執行 | [互動流程引擎](./CANVAS-FLOW-ENGINE.md) |
 | `setupTrialScheduler` | `trial` | Job Scheduler 週期執行 | [試用管理](../features/platform/TRIALS.md) |
 | `setupAnalyticsScheduler` | `analytics` | Job Scheduler 每天 02:00 | [報表](../features/tenant/ANALYTICS.md) |

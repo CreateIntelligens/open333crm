@@ -77,15 +77,6 @@
 - **WHEN** 綁定租戶 A 的交易內，登記給客服人員 Y 的推播，Y 屬於租戶 B，之後交易 commit
 - **THEN** 系統 MUST 把該推播送到 `tenant:<A 的 ID>:agent:<Y 的 ID>`；Y 的連線只加入 `tenant:<B 的 ID>:agent:<Y 的 ID>`，所以 MUST NOT 收到該推播
 
-### Requirement: 事件與佇列 job 最多送出一次
-
-業務事件在 commit 之後交給 API 行程內的事件匯流排，job 在 commit 之後送進佇列。行程在 commit 之後、事件或 job 送出之前結束時，該事件或 job MUST NOT 補送。推播也一樣，MUST NOT 補送。這是規格接受的行為：保證是最多一次，與直接交給事件匯流排或佇列的寫法相同。
-
-#### Scenario: 事件不重複送出
-
-- **WHEN** 交易內登記一個事件，交易 commit，事件送出成功
-- **THEN** 事件訂閱者 MUST 只收到該事件一次
-
 ### Requirement: route 的回應在 commit 之後才送出
 
 以綁定租戶的交易執行的 route，MUST 從已登入請求的租戶身分取得租戶 ID。route 的回應 MUST 在交易 commit 之後才送出，回應內容是交易內程式的回傳值，狀態碼與 header 依交易內程式的設定，並在 commit 之後才套用到回應。交易內的程式丟出錯誤或 commit 失敗時，回應 MUST 是錯誤回應，MUST NOT 是成功回應。請求沒有租戶身分時，系統 MUST 回應 401，MUST NOT 開啟交易。
@@ -166,3 +157,24 @@ repo MUST 提供一個共用函式，執行一次條件更新，並回報是否�
 
 - **WHEN** 條件更新更新了 2 筆資料
 - **THEN** 函式 MUST 丟出錯誤
+
+### Requirement: 事件與佇列 job 至少送出一次
+
+交易內登記的事件與佇列 job MUST 經 outbox 送出（見 `event-delivery`）。交易 commit 之後，行程在送出之前結束時，系統 MUST 補送。補送時，job 的 id MUST 與第一次送出相同。登記 job 時，選項 MUST 只能是 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項 MUST 丟錯。其他選項可能讓佇列不建立這個 job，或不用 outbox 的 id 當 job id，例如 `jobId`、`deduplication`、`debounce`、`repeat`。
+
+推播 MUST 維持最多一次：行程在推播送出之前結束時，系統 MUST NOT 補送推播。
+
+#### Scenario: 行程在送出 job 之前結束
+
+- **WHEN** 交易登記 job J 並 commit，API 行程在 J 送進佇列之前結束，之後補送排程執行
+- **THEN** 佇列 MUST 收到 J，J 的 id MUST 等於它在 outbox 的 id
+
+#### Scenario: job 選項不在白名單內
+
+- **WHEN** 交易登記 job 時帶 `deduplication`、`debounce`、`repeat` 或 `jobId` 選項
+- **THEN** 登記 MUST 丟錯，交易 MUST rollback
+
+#### Scenario: 行程在推播之前結束
+
+- **WHEN** 交易登記推播 P 並 commit，API 行程在 P 送出之前結束
+- **THEN** 系統 MUST NOT 補送 P

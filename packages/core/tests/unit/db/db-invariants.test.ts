@@ -3,11 +3,11 @@
  * （主規格 tenant-transaction-context「寫入撞到唯一鍵時改用既有資料」「條件更新認領」）。
  *
  * 寫入與查詢以 callback 傳入，這裡用假的 callback 驗證判斷邏輯。
- * 對真實 PostgreSQL 的行為（交易不失效、兩個交易同時寫入）見 tests/feature/lib/db-invariants.test.ts。
+ * 對真實 PostgreSQL 的行為（交易不失效、兩個交易同時寫入）見 apps/api/tests/feature/lib/db-invariants.test.ts。
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { claimOne, createOrFindExisting } from '#src/lib/db-invariants.js';
+import { claimOne, createOrFindExisting } from '#src/db/db-invariants.js';
 
 test('claimOne：更新 1 筆，認領成功', async () => {
   assert.equal(await claimOne(async () => ({ count: 1 })), true);

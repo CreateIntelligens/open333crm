@@ -1,6 +1,7 @@
 /**
  * 用量告警的站內通知與信件（主規格 usage-quota-alerts「告警的通知與信件」「告警不影響 AI 回覆」）。
- * 佇列與寄信換成 mock；信件內容走真的模板。
+ * 佇列與寄信換成 mock；信件內容走真的模板。訂閱者建立告警信的 job 之後，
+ * 測試逐一執行 usage-alert-email 的 processor（change outbox-event-delivery）。
  */
 process.env.DATABASE_URL ||= 'postgresql://user:pass@localhost:5432/open333crm';
 process.env.REDIS_URL ||= 'redis://localhost:6379';
@@ -13,14 +14,16 @@ import { beforeEach, test, vi } from 'vitest';
 
 const sent = vi.hoisted(() => ({
   jobs: [] as Array<{ agentId: string; type: string; clickUrl: string }>,
+  emailJobs: [] as unknown[],
   emails: [] as Array<{ to: string; subject: string; html: string }>,
   failEmailTo: null as string | null,
 }));
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<typeof import('bullmq')>()),
   Queue: class {
-    async add(_name: string, data: { agentId: string; type: string; clickUrl: string }) {
-      sent.jobs.push(data);
+    async add(name: string, data: { agentId: string; type: string; clickUrl: string }) {
+      if (name === 'usage-alert:send') sent.emailJobs.push(data);
+      else sent.jobs.push(data);
     }
   },
 }));
@@ -32,8 +35,8 @@ vi.mock('#src/modules/email/email.service.js', () => ({
 }));
 
 import { loadEnvConfig } from '#src/config/env.js';
-import { eventBus } from '#src/events/event-bus.js';
 import { setupNotificationWorker } from '#src/modules/notification/notification.worker.js';
+import { processUsageAlertEmail } from '#src/modules/notification/usage-alert-email.worker.js';
 
 loadEnvConfig();
 
@@ -44,7 +47,7 @@ const admins = [
   { id: 'admin-2', email: 'a2@example.com' },
 ];
 
-setupNotificationWorker({
+const handle = setupNotificationWorker({
   agent: {
     findMany: async ({ where }: { where: { role: string; isActive: boolean } }) =>
       where.role === 'ADMIN' && where.isActive ? admins : [],
@@ -54,19 +57,24 @@ setupNotificationWorker({
 
 beforeEach(() => {
   sent.jobs = [];
+  sent.emailJobs = [];
   sent.emails = [];
   sent.failEmailTo = null;
   tenant.name = '測試站台';
 });
 
 async function alert(level: 'warning' | 'critical') {
-  eventBus.publish({
+  await handle({
+    id: crypto.randomUUID(),
     name: 'usage.quota.threshold',
     tenantId: TENANT,
     timestamp: new Date(),
     payload: { level, usedTokens: 1000, limitTokens: 1000, monthKey: '2026-10' },
   });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  // 每個告警信的 job 各自執行；一封寄送失敗只讓那個 job 失敗
+  for (const data of sent.emailJobs.splice(0)) {
+    await processUsageAlertEmail({ data } as never).catch(() => {});
+  }
 }
 
 test('每位管理員都收到通知與 email：兩位管理員各一則 usage_quota_critical 與一封 critical email', async () => {
@@ -113,4 +121,10 @@ test('email 寄送失敗：其他管理員的通知與 email 照常發送', asyn
 
   assert.equal(sent.jobs.length, 2);
   assert.deepEqual(sent.emails.map((e) => e.to), ['a2@example.com']);
+});
+
+test('Email provider fails：寄信的 job 失敗，由佇列重試', async () => {
+  sent.failEmailTo = 'a1@example.com';
+  const job = { data: { level: 'critical' as const, to: 'a1@example.com', vars: { siteName: 'S', usedTokens: '1', limitTokens: '1', monthKey: '2026-10', usageUrl: 'https://crm.example/dashboard/plan' } } };
+  await assert.rejects(processUsageAlertEmail(job as never), /smtp down/);
 });

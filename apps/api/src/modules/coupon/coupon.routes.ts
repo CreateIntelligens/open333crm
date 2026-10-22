@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { parseDateOnly } from '@open333crm/core';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
-import { eventBus } from '../../events/event-bus.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { AppError } from '../../shared/utils/response.js';
 import {
   listCoupons,
@@ -219,7 +219,7 @@ export default async function couponRoutes(app: FastifyInstance) {
     for (let start = 0; start < body.contactIds.length; start += ISSUE_BATCH_SIZE) {
       const batch = body.contactIds.slice(start, start + ISSUE_BATCH_SIZE);
       try {
-        const result = await inTenant({ prisma: app.prisma, io: app.io, events: eventBus }, tenantId, (ctx) =>
+        const result = await inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, (ctx) =>
           issueCoupons(ctx, id, {
             contactIds: batch,
             issuedVia: body.issuedVia ?? 'inbox',
