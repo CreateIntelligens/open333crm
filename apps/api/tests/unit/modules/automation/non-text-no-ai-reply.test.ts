@@ -29,10 +29,9 @@ vi.mock('#src/modules/ai/agent/agent.service.js', () => ({
     return { handled: true };
   },
 }));
+// 真的 analyzeSentiment() 不會丟錯（LLM 失敗時改用關鍵字判斷），這裡回傳固定的中性結果
 vi.mock('#src/modules/ai/sentiment.service.js', () => ({
-  analyzeSentiment: async () => {
-    throw new Error('not in this test');
-  },
+  analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
 }));
 vi.mock('#src/modules/ai/classify.service.js', () => ({ autoClassifyNewCase: async () => {} }));
 vi.mock('#src/modules/ai/ai.service.js', () => ({ summarizeConversation: async () => ({ summary: '' }) }));
@@ -60,7 +59,12 @@ const prisma = {
     },
     findUnique: async () => ({ ...conversation, assignedToId: null, unreadCount: 0, lastMessageAt: new Date(), updatedAt: new Date() }),
   },
-  message: { create: async ({ data }: { data: { content: unknown } }) => ({ id: 'sys-1', content: data.content }) },
+  message: {
+    create: async ({ data }: { data: { content: unknown } }) => ({ id: 'sys-1', content: data.content }),
+    // 情緒分析寫入結果
+    findUnique: async () => ({ metadata: {} }),
+    update: async () => ({}),
+  },
   automationRule: { findMany: async () => [] },
   sideEffectClaim: { createMany: async () => ({ count: 1 }), count: async () => 0 },
   outbox: {
