@@ -263,23 +263,32 @@
         <thead><tr><th>渠道</th><th>顧客怎麼驗證</th></tr></thead>
         <tbody>
           <tr><td>LINE（已設定 LIFF）</td><td>直接用 LINE 帳號驗證，第一次會出現 LINE 的授權畫面，按「許可」即可，<b>不用輸入 email</b></td></tr>
-          <tr><td>Facebook、Instagram、網站客服、未設定 LIFF 的 LINE</td><td>第一次要輸入 email，收 6 位數驗證碼後輸入，驗證成功才看得到券。<b>顧客之前已經驗證過身分</b>（例如用 LINE 驗證過，且兩個渠道已歸戶為同一人），點開就直接進入</td></tr>
+          <tr><td>Facebook、Instagram、網站客服、未設定 LIFF 的 LINE</td><td>第一次要輸入 email，收 6 位數驗證碼後輸入，驗證成功才看得到券</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 已驗證的聯絡人，非 LINE 渠道的券連結點開即登入、不綁裝置；連結被轉傳時他人可直接開啟票券夾（coupon-wallet.service.ts openWalletSession）。 -->
+      <p><b>系統會記住驗證過的裝置。</b>顧客在某支手機（瀏覽器）完成驗證後，180 天內在同一支手機點開自己的券連結會直接進入。換了手機、清除瀏覽器資料，或券連結被轉傳給別人時，畫面會顯示「為了確認是你本人，我們會寄 6 位數驗證碼到 d***@…」：驗證碼<b>只會寄到這位顧客原本登記的 email</b>，不能改填其他信箱，所以拿到轉傳連結的人無法打開別人的券。</p>
+      <table>
+        <thead><tr><th>驗證碼規則</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>有效時間</td><td>寄出後 10 分鐘內有效</td></tr>
+          <tr><td>重新寄送</td><td>寄出後 60 秒可重寄；同一個券連結 10 分鐘內最多寄 3 封</td></tr>
+          <tr><td>輸錯</td><td>顯示剩餘次數；同一組驗證碼錯 5 次就作廢，要重新寄送</td></tr>
+        </tbody>
+      </table>
+      <!-- SHOT-PENDING: 新裝置開券時的「寄送驗證碼」與輸入驗證碼畫面，部署後補拍 -->
       <p>以下是 LINE 顧客的開券畫面：</p>
       <div class="phone-shots">
         <figure class="shot"><img src="uploads/shots/ch18-phone-1-message.png" alt="LINE 收到「為您準備了一張優惠券」訊息與連結" loading="lazy"><figcaption>① 在 LINE 收到券訊息，點連結（連結已模糊）</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-phone-2-consent.png" alt="LINE 授權畫面，按許可" loading="lazy"><figcaption>② 第一次開啟會出現 LINE 授權，按「許可」</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-phone-3-wallet.png" alt="已存入我的優惠券" loading="lazy"><figcaption>③ 券已存入「我的優惠券」，按「查看此票券」</figcaption></figure>
       </div>
-      <p>Facebook Messenger 顧客的畫面（這位顧客已用 LINE 驗證過，所以沒有出現 email 登記）。返回按鈕會依渠道顯示「回到 Messenger」：</p>
+      <p>Facebook Messenger 顧客的畫面（這支手機之前已經驗證過，所以直接進入）。返回按鈕會依渠道顯示「回到 Messenger」：</p>
       <div class="phone-shots">
         <figure class="shot"><img src="uploads/shots/ch18-fb-1-message.png" alt="Messenger 收到券訊息" loading="lazy"><figcaption>① 在 Messenger 收到券訊息（連結已模糊）</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-fb-2-wallet.png" alt="已存入我的優惠券，回到 Messenger" loading="lazy"><figcaption>② 已存入「我的優惠券」</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-fb-3-detail.png" alt="優惠券詳情：券號、有效期限、立即使用" loading="lazy"><figcaption>③ 券詳情：券號、有效期限、領取時間</figcaption></figure>
       </div>
-      <div class="warn"><span>⚠️</span><div>請提醒顧客<b>不要把券訊息轉傳給別人</b>。已驗證過身分的顧客，Facebook、Instagram、網站客服的券連結點開就能直接使用；轉傳出去，對方也能打開並使用這位顧客的券。</div></div>
+      <div class="info"><span>ℹ️</span><div>只用 LINE 驗證過、沒有登記 email 的顧客，在 LINE 以外開券時會被要求登記 email。顧客的 email 若是由客服在後台填寫，驗證碼也會寄到那個信箱，請確認聯絡人資料正確。</div></div>
       <div class="info"><span>ℹ️</span><div>
         <ul>
           <li>LINE 自動驗證要先在「設定 → 渠道管理」該 LINE 渠道的「Bot 設定」填好 <b>LIFF App ID</b> 與 <b>LINE Login Channel ID</b>，詳見 <a href="ch15-channels.html">15 · 渠道管理</a>。</li>
