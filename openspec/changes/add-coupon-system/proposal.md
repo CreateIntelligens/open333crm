@@ -61,7 +61,8 @@ LINE 官方帳號內建的優惠券雖然能發，但**拿不回資料**。查�
 - `member-binding`: 平台身分驗證後將聯絡人綁定至商家會員，含設定驅動的對外 API 介面。
 
 ### Modified Capabilities
-<!-- 無：既有的發送層、貼標、短網址、關鍵字、圖文選單皆直接沿用，行為不變。 -->
+- `automation-engine`：AI 讓步把「發送優惠券」算成會回覆的動作；新增「加入好友」事件與加入次數紀錄；workers 的回覆動作在期限內以 reply 送出；關鍵字回覆頁保留其他動作（2026-10-22 盤點，design D25、D28）。
+- `email-identity-merge`：email 登記改為驗證碼（design D15）。
 
 ## Impact
 

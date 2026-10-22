@@ -33,9 +33,9 @@
 - [x] 2.3c 匯入結果回報：成功筆數、因重複略過、因衝突拒絕，各自列出
 - [x] 2.3d 序號庫存追加：已發布的券可補充序號，不影響已配發者
 - [x] 2.4 領取 API：狀態轉 `claimed`，依效期模式計算 `expiresAt` 落地
-- [x] 2.4a **憑證換券 API**（`POST /api/v1/fan/coupons/claim`）：交易內條件式更新（`WHERE claimToken=? AND status='issued' AND claimTokenExpiresAt > now()`）→ `contactId` 改為已驗證身分、狀態轉 `claimed`、憑證清空；受影響列數 0 即回報
+- [x] 2.4a（2026-10-22 design D30 決定移除，見 A15 15.31）**憑證換券 API**（`POST /api/v1/fan/coupons/claim`）：交易內條件式更新（`WHERE claimToken=? AND status='issued' AND claimTokenExpiresAt > now()`）→ `contactId` 改為已驗證身分、狀態轉 `claimed`、憑證清空；受影響列數 0 即回報
 - [x] 2.4b 換券失敗分類回報：憑證已被領取／已過期／不存在，不可只回泛稱失敗
-- [x] 2.4c 發券時依渠道決定初始狀態：LINE 直接建 `claimed`；FB／IG 與公開連結建 `issued` + 憑證
+- [x] 2.4c 發券時依渠道決定初始狀態：LINE 直接建 `claimed`；FB／IG 與公開連結建 `issued` + 憑證（已被 design D12、D30 取代：一律直接歸戶）
 - [x] 2.5 核銷 API：**DB transaction 內條件式更新搶狀態**（`WHERE status='claimed'`），受影響列數 0 即回報已使用
 - [x] 2.5a 失敗分類回報：已使用／已過期／尚未生效／查無此券，不可只回泛稱失敗
 - [x] 2.5b 粉絲端自助核銷端點：**僅當該券 `redeemMode='self'` 時開放**，其他模式回 403
@@ -54,7 +54,7 @@
 - [ ] 3.4 核銷確認頁（店員模式）：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用
 - [ ] 3.4a 核銷確認頁（自助模式）：**滑動確認**而非按鈕（少了店員這道關卡，需以持續動作提高誤觸成本）
 - [ ] 3.5 核銷完成頁：金額、時間、店員碼（店員需在一個手臂距離外可辨識）
-- [ ] 3.5a 領取頁（`/coupon/claim/{claimToken}`）：身分驗證後自動換券，成功導向券詳情；失敗依原因顯示對應說明
+- [~] 3.5a ~~領取頁（`/coupon/claim/{claimToken}`）：身分驗證後自動換券，成功導向券詳情；失敗依原因顯示對應說明~~（不做：design D30 改為傳訊領券，`/coupon/claim/{代碼}` 是公開領券頁，見 A15 15.32）
 - [ ] 3.6 券夾 API 掛於既有 `/api/v1/fan` 前綴
 - [x] 3.7 顧客票券頁一律淺色，不跟隨系統深色設定（2026-10-21 使用者決定；原規劃為跟隨系統並兩套主題可讀）
 
@@ -133,10 +133,13 @@
 ## B2. 發送策略接線
 
 - [x] B2.1 客服發券用 `push`
-- [x] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
-- [x] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
+- [ ] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
+      2026-10-22 盤點：未生效。workers 沒把 `receivedAt` 傳進動作，`selectSafeLineStrategy` 一律回 push；也沒有加好友觸發。改由 A15 15.6、15.12c、15.13～15.16 完成（design D25、D28）
+- [ ] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
+      2026-10-22 盤點：未實作，群發模組沒有券。每人連結不同，multicast 做不到，改為每人 push。改由 A15 15.17～15.24 完成（design D29、D31）
 - [x] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
-- [x] B2.5 **FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」
+- [~] B2.5 ~~**FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」~~
+      2026-10-22 盤點：沒有實作，已被 design D12 取代（FB／IG 也直接歸戶，走票券連結與 One ID）。領取憑證端點依 design D30 移除（A15 15.31）
 - [x] B2.6 後台發券介面對高價值券標示 FB／IG 的轉發風險，讓商家自行決定是否開放該渠道（2026-10-21 使用者決定不做：各渠道一律以 One ID 歸戶驗證，不區分 LINE）
 
 ## B3. 觸發入口
@@ -145,11 +148,17 @@
 > `uri` action（`line/rich-menu.service.ts:36`）、短網址已有 `tagOnClick` 接到
 > `addTagToTarget`（`shortlink.service.ts:12`）。券頁就是一個網址，設定即可指向。
 > 這幾項屬**設定作業**，列在此供上線時檢核，不是開發項目。
+>
+> **2026-10-22 盤點更正**：上面的前提不成立。票券連結每張券不同、7 天到期，不能放在圖文選單、
+> 卡片或短網址上；`/coupon/claim/{claimToken}` 頁面不存在，也沒有程式產生 `claimToken`。
+> 沒有可以公開指向的領券網址，B3.1／B3.3／B3.4 改回未完成，待 A15 的公開領券連結（design D30）
+> 完成後，再以設定作業檢核。
 
-- [x] B3.1 圖文選單按鈕可指向領券／綁定頁（既有 `uri` action，設定即可）
+- [ ] B3.1 圖文選單按鈕可指向領券／綁定頁（既有 `uri` action，設定即可）：待 A15 15.25～15.32 的領券連結完成後檢核
 - [x] B3.2 關鍵字回覆可觸發發券（新增 `issue_coupon` automation action）
-- [x] B3.3 卡片訊息按鈕可指向券頁（既有 uri 按鈕，設定即可）
-- [x] B3.4 短網址帶歸因（既有 `tagOnClick`；券連結改走短網址即可）
+      2026-10-22 盤點：動作存在，但選券、失敗紀錄、送不出時作廢、關鍵字回覆頁覆蓋、AI 讓步、歸因都有問題，由 A15 15.1～15.12f 修正；發券改在 LINE 關鍵字回覆頁設定（design D25～D27）
+- [ ] B3.3 卡片訊息按鈕可指向券頁（既有 uri 按鈕，設定即可）：待領券連結完成後檢核；附券廣播的素材以 `{{coupon.url}}` 放入個人連結（A15 15.22）
+- [ ] B3.4 短網址帶歸因（既有 `tagOnClick`；券連結改走短網址即可）：票券連結不走短網址（design D21）；領券連結本身記錄開啟數與領取數（A15 15.29），短網址可包領券網址，待領券連結完成後檢核
 
 ## B4. 領券自動貼標
 
@@ -419,3 +428,88 @@
 - [x] 14.9 實作：驗證碼通過後以 GETDEL 取走（consumeVerificationCode），後續失敗時以剩餘效期放回（restoreVerificationCode）；驗證碼畫面的錯誤處理在錯誤不是物件時改顯示預設訊息
 - [x] 14.10 測試（PR #359 bot 第三輪）：序號包整批重送時成功回應、不重複寫入（前端分批匯入沒收到回應而重送時，存草稿與發布不會卡住）。寫完即通過，突變驗證：整批都已存在時改為丟錯，測試失敗
 
+## A15. 發券入口補齊（2026-10-22 盤點；design D25～D33）
+
+> 2026-10-22 使用者已定案 design D25～D33 的所有取捨：一般自動化規則不提供發券，關鍵字發券在「LINE 關鍵字回覆」頁設定、加好友禮在「加好友禮」頁設定；近 90 天補償紀錄不改；附券廣播的連結放素材可選。
+
+### 一、關鍵字發券與規則發券的後端修正（design D25～D27）
+
+#### 測試先行
+
+- [ ] 15.1 測試「從清單選券」「草稿或已結束的券不在清單」「已存的券被暫停」「只發券的關鍵字規則」「素材與優惠券都沒選」（`apps/web/tests/unit/components/line/keyword-reply-edit-dialog.test.tsx`）；「編輯含其他動作的關鍵字回覆」「編輯含發券動作的關鍵字回覆」（`apps/web/tests/unit/hooks/use-keyword-replies.test.tsx`）
+- [ ] 15.2 測試「Facebook 對話傳送同樣的關鍵字」（`apps/workers/tests/unit/handlers/automation-keyword-scope.test.ts`，規則帶「對話渠道等於 LINE」）；「存檔時券不存在或屬於其他租戶」（`apps/api/tests/unit/modules/automation/issue-coupon-reference.test.ts`，比照 `send-material-reference.test.ts`）
+- [ ] 15.3 測試「新增動作時沒有發送優惠券」「開啟既有的發券規則」（`apps/web/tests/unit/components/automation/action-editor.test.tsx`）；「既有的發券規則照常執行」（`apps/workers/tests/unit/lib/automation-issue-coupon-delivery.test.ts`）
+- [ ] 15.4 測試「自動化發券訊息送不出時券作廢並歸還名額」「自動化發券送出成功」（`apps/workers/tests/unit/lib/automation-issue-coupon-delivery.test.ts`）；「自動化發券卡在發送中」（`apps/api/tests/feature/modules/coupon/coupon-stale-pending.test.ts`，排程作廢 `issuedVia='keyword'` 的券）
+- [ ] 15.5 測試「顧客已達每人上限」「券已暫停」「發行總量已發完」「渠道拒收」「已達上限時回覆設定的文字」「沒有設定回覆文字」「網站客服的訪客觸發發券規則」（`apps/workers/tests/unit/lib/automation-issue-coupon-failure.test.ts`）
+- [ ] 15.6 測試「自動化發券在期限內以回覆方式送出」「超過回覆期限改用主動推送」（`apps/workers/tests/unit/lib/automation-keyword-reply.test.ts`）；「關鍵字規則在期限內回覆」「回覆失敗改用主動推送」（`apps/workers/tests/unit/handlers/automation.handler.test.ts`：handler 把 `receivedAt` 傳進動作）
+- [ ] 15.7 測試「關鍵字規則發券的歸因」「規則改名後仍顯示當下名稱」（workers unit）；「舊資料的觸發事件名稱」（`apps/web/tests/unit/components/coupons/detail-helpers.test.ts`）
+- [ ] 15.8 測試「收件匣顯示自動化發出的券卡」（`apps/web/tests/unit/components/inbox/coupon-message-card.test.tsx`）；「已發優惠券區塊即時更新」（workers unit：確認後 publish `coupon.instance.updated`）
+- [ ] 15.9 測試「規則發送進行中的優惠券」「規則的優惠券不是進行中」「網站聊天室的發券規則」（`apps/api/tests/unit/modules/automation/keyword-yield-channel.test.ts`）
+
+#### 實作
+
+- [ ] 15.10 core：`voidPendingInstance`、確認（清除發送中＋貼標）搬到 `packages/core/src/coupon/delivery.ts`，API 對話發券改用它（`apps/api/src/modules/coupon/coupon-inbox.service.ts`）；發放方式代碼與 `couponSourceName`（`packages/core/src/coupon/issue.ts`）
+- [ ] 15.11 契約：`issue_coupon` 參數型別改 `coupon`、新增選填 `failureText`、動作加 `editorHidden: true`（`packages/automation/src/contracts/actions.ts`、`types.ts`）；自動化規則編輯器不列出隱藏動作、既有發券動作唯讀顯示（`apps/web/src/components/automation/ActionEditor.tsx` 與動作選單）
+- [ ] 15.12a API 存檔檢查 `couponId`（`apps/api/src/modules/automation/automation.service.ts`，比照 `assertSendMaterialReferences`）
+- [ ] 15.12b workers `issue_coupon` 改為保留、送出、確認／作廢；失敗紀錄與 `failureText` 回覆；不支援的渠道擋下；歸因代碼、規則 id 與名稱；券卡訊息；推 `coupon.instance.updated`（`apps/workers/src/lib/automation-actions.ts`、`channel-delivery.ts`，`deliverToChannelFromWorker` 要能寫入券卡內容並回傳失敗原因）
+- [ ] 15.12c `automation.handler.ts` 把 `receivedAt` 傳進動作 context（`apps/workers/src/handlers/automation.handler.ts`）
+- [ ] 15.12d AI 讓步算入 `issue_coupon`（`apps/api/src/modules/automation/keyword-yield.ts`）
+- [ ] 15.12e 關鍵字回覆頁：「同時發送優惠券」下拉選單（`CouponSelectField`）、「發不出時回覆顧客」、素材改選填、列表列出只發券的規則、儲存只換自己管的動作並確保「對話渠道等於 LINE」條件、保留其他動作與條件（`apps/web/src/hooks/useKeywordReplies.ts`、`apps/web/src/components/line/keyword-reply/KeywordReplyEditDialog.tsx`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`）
+- [ ] 15.12f 發放方式對照表（`apps/web/src/components/coupons/detail/detail-helpers.ts`）；券卡顯示規則名稱（`apps/web/src/components/inbox/coupon/CouponMessageCard.tsx`）
+
+### 二、加好友禮（design D28）
+
+- [ ] 15.13 migration：`channel_identities` 新增 `firstFollowedAt`、`lastFollowedAt`、`followCount`；既有 LINE 渠道身分回填 `firstFollowedAt = linkedAt`
+- [ ] 15.14 測試「加好友觸發規則」「取消好友不觸發」「加好友不觸發收到訊息的關鍵字規則」（`apps/api/tests/unit/modules/automation/automation.worker.test.ts`）；「第一次加入」「封鎖後再加入」「上線前就是好友的顧客」（`apps/api/tests/feature/modules/webhook/follow-tracking.test.ts`）；「新好友收到加好友禮」「封鎖後再加入不發券」「上線前就是好友的顧客再加入」（workers unit，發放方式 `follow`、reply）；「加好友禮頁的條件不能移除」「停用加好友禮」（`apps/web/tests/unit/components/line/follow-gift-page.test.tsx`）
+- [ ] 15.15 實作：事件定義 `contact.followed` 與 fact `follow.isFirst`（`packages/automation/src/contracts/events.ts`、`facts.ts`）；follow 事件寫入加入紀錄（`apps/api/src/modules/webhook/inbound-contact-resolver.ts` 或新 helper）；`automation.worker.ts` 對 `contentType='follow'` 排入 `contact.followed`（帶 `replyToken`、`receivedAt`、`isFirstFollow`）
+- [ ] 15.16 前端：「LINE 管理 → 加好友禮」頁（`apps/web/src/app/dashboard/line/follow-gift/page.tsx`，建立或更新租戶唯一的規則）；自動化規則編輯器事件清單加「加入好友」
+
+### 三、附券廣播與券頁批次發券（design D29、D31）
+
+- [ ] 15.17 migration：`broadcasts` 新增 `couponId`、`couponIssuedCount`；`broadcast_recipients` 新增 `couponInstanceId`、`skipReason`
+- [ ] 15.18 測試「附上客服補償券」「附上草稿券」（`apps/api/tests/unit/modules/marketing/broadcast-coupon-validation.test.ts`）
+- [ ] 15.19 測試「素材含票券連結變數」「素材沒有票券連結變數」「沒有選素材」「兩位收件人收到不同的連結」「帶連結的訊息送出成功才確認」「素材送不出時不送發券文字」「收件人沒有對話」「名額不足」「收件人已達每人上限」「收件人封鎖官方帳號」「分眾群發」（`apps/api/tests/feature/modules/marketing/broadcast-coupon.test.ts`）
+- [ ] 15.20 測試「預覽顯示剩餘名額」「LINE 訊息額度不足」「立即發送不等待完成」「重送跳過已處理的收件人」（同上檔案）
+- [ ] 15.21 測試「勾選聯絡人發券」「對象沒有這個渠道的身分」「超過人數上限」「缺少發券權限」（`apps/api/tests/feature/modules/coupon/coupon-batch-issue.test.ts`）
+- [ ] 15.22 實作：附券廣播的建立檢查、`{{coupon.url}}` 變數、沒有變數時附送發券文字（LINE 同一次推送）、每人保留／送出／以帶連結的那則確認或作廢、跳過與失敗紀錄、額度檢查、排入排程執行與重送略過（`apps/api/src/modules/marketing/marketing.service.ts`、`template-context.ts`、`broadcast.scheduler.ts`）；`WalletTokenPayload.conversationId` 改選填（`packages/core/src/coupon/wallet-link.ts`）
+- [ ] 15.23 實作：券頁批次發券 API（`apps/api/src/modules/coupon/coupon.routes.ts` 新路由，權限 `coupon.issue`，呼叫 marketing service 建立附券廣播；行銷與客服補償券都可以）
+- [ ] 15.24 前端：廣播表單選券、名額警示、結果頁跳過與失敗原因（`apps/web/src/app/dashboard/marketing/page.tsx`、`lib/marketing/broadcast-form.ts`）；券詳情頁「發送給…」（`apps/web/src/components/coupons/detail/`，聯絡人搜尋與勾選、標籤、分眾）；元件測試
+
+### 四、公開領券連結（design D30）
+
+- [ ] 15.25 migration：`coupon_claim_links`（RLS，比照既有券表的 policy）
+- [ ] 15.26 測試「建立領券連結」「客服補償券不能建立領券連結」「其他租戶的渠道」「缺少管理權限」（`apps/api/tests/feature/modules/coupon/coupon-claim-link.test.ts`）
+- [ ] 15.27 測試「開啟有效的領券頁」「已停用的連結」「不存在的代碼」（同上，公開端點）
+- [ ] 15.28 測試「顧客傳送領券訊息」「顧客改動預填文字」「Instagram 顧客點導流連結」「已領過」「已領完」「代碼送到其他渠道」「其他租戶的代碼」（`apps/api/tests/feature/modules/coupon/coupon-claim-inbound.test.ts`）
+- [ ] 15.29 實作：領券連結 service 與後台路由、QR Code、開啟數與領取數（`apps/api/src/modules/coupon/coupon-claim-link.service.ts`、`.routes.ts`）；公開頁資料端點
+- [ ] 15.30 實作：入站辨認領券代碼並發券、回覆、略過 AI 與關鍵字（`apps/api/src/modules/webhook/inbound-side-effects.ts` 附近，比照 `inbound-identity-binding.ts`）；發券沿用 15.10 的保留、確認、作廢
+- [ ] 15.31 測試「領取憑證端點已移除」（`apps/api/tests/feature/modules/coupon/coupon-wallet.test.ts`）；實作：移除 `POST /fan/coupons/claim`、`claimByToken` 與 `issueInstances` 的 `requireClaim`，刪除只測領取憑證的既有測試（這是刻意的行為變更，見 design D30）；資料表欄位保留
+- [ ] 15.32 前端：券詳情頁「領券連結」分頁（建立、停用、QR 下載、複製網址、數字）；公開領券頁 `apps/web/src/app/coupon/claim/[code]/page.tsx`；元件測試
+
+### 五、其他
+
+- [ ] 15.33 測試「沒有帶發放方式」「冒用對話發券」（`apps/api/tests/feature/modules/coupon/coupon-routes-validation.test.ts`）；實作：發券 API 預設 `api`、拒絕保留代碼（`coupon.routes.ts`）
+- [ ] 15.34 測試「發送中的券不出現在序號明細」（`apps/api/tests/feature/modules/coupon/coupon.service.test.ts`）；實作：`getCouponStats`、`listInstances` 排除發送中（`coupon-stats.service.ts`）
+- [ ] 15.35 寫好就通過的測試以突變驗證並記在此處（例如「其他租戶的代碼」、「取消好友不觸發」、「既有的發券規則照常執行」）
+
+### 工作量
+
+| 塊 | 任務 | 估計 | 依賴 |
+|---|---|---|---|
+| ① core 共用 | 15.10 | 0.5～1 天 | 最先做 |
+| ② 關鍵字發券與後端修正 | 15.1～15.9、15.11～15.12f | 3～4 天 | 依賴 ①；15.12c 可先做 |
+| ③ 加好友禮 | 15.13～15.16 | 2～2.5 天 | 依賴 15.12c 與 ② 的 workers 發券流程 |
+| ④ 附券廣播＋批次發券 | 15.17～15.24 | 4～5 天 | 依賴 ① |
+| ⑤ 公開領券 | 15.25～15.32 | 3～4 天 | 依賴 ① |
+| ⑥ 小修 | 15.33、15.34 | 0.5 天 | 獨立 |
+
+① 完成後 ②、④、⑤ 可並行；③ 接在 ② 的 workers 部分之後；⑥ 隨時可做。前端可另一人並行。合計約 13.5～17 個人天，不含 UAT 與操作手冊。
+
+### 完成定義
+
+- [ ] 15.36 `pnpm test`、`pnpm test:feature` 通過
+- [ ] 15.37 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規（workers 走 BYPASSRLS，每個查詢自帶 tenantId）
+- [ ] 15.38 `node scripts/validate-openspec.mjs add-coupon-system` 通過
+- [ ] 15.39 CHANGELOG.md 新增條目（date-only heading）
+- [ ] 15.40 部署清單：新 migration（`coupon_claim_links`、廣播欄位、加好友紀錄回填）；若新增權限點要跑 reconcile 並清快取
+- [ ] 15.41 UAT 驗收：關鍵字領券（成功、已達上限、封鎖）、加好友禮（第一次加入、封鎖再加入）、附券廣播（素材有無連結變數）、券頁批次發券、海報 QR 傳訊領券；之後撰寫操作手冊
