@@ -12,9 +12,8 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteGenericInterface } from 'fastify';
 import type { Prisma, PrismaClient } from '@prisma/client';
-import type { JobsOptions } from 'bullmq';
 import type { Server } from 'socket.io';
-import { logger, type OutboxInput, type OutboxRow } from '@open333crm/core';
+import { logger, type OutboxInput, type OutboxJobOptions, type OutboxRow } from '@open333crm/core';
 import type { AppEventName } from '../events/event-bus.js';
 import { createOutboxPublisher } from '../events/outbox-publisher.js';
 import { agentPushRoom, tenantPushRoom, type AgentPushName, type TenantPushName } from '../events/socket-push.js';
@@ -33,12 +32,10 @@ export interface TenantCtx {
   publish(name: AppEventName, payload: Record<string, unknown>): Promise<void>;
   /**
    * 在交易內寫進 outbox；commit 之後送進 queueName 的佇列，job id 是 outbox id。保證是至少一次。
-   * opts 不接受 jobId、deduplication、debounce：這些選項會讓 BullMQ 不建立這筆 job
+   * opts 只接受 OutboxJobOptions 的白名單（attempts、backoff、delay、priority、removeOnComplete、removeOnFail）
    */
   enqueue(queueName: string, name: string, data: unknown, opts?: OutboxJobOptions): Promise<void>;
 }
-
-export type OutboxJobOptions = Omit<JobsOptions, 'jobId' | 'deduplication' | 'debounce'>;
 
 /** 業務事件與 job 的送出方式。正式程式用 createOutboxPublisher()，單元測試注入假的實作 */
 export interface EventPublisher {
@@ -103,7 +100,7 @@ export async function inTenant<T>(
           queueName,
           name,
           payload: data,
-          ...(opts ? { jobOptions: opts as Record<string, unknown> } : {}),
+          ...(opts ? { jobOptions: opts } : {}),
         });
         effects.push(dispatchEffect(`enqueue ${name}`, row));
       },

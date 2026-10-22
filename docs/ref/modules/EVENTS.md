@@ -109,7 +109,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 4. 快路徑與補送同時送出時，BullMQ 以 job id 擋住重複的 job。訂閱者佇列保留完成的 job 24 小時、失敗的 job 7 天，這段時間內同一個事件 id 不會再建立 job。
 5. `outbox-cleanup` 排程每天刪除已送出超過 7 天的資料列。未送出的資料列不刪。
 
-`ctx.enqueue(queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 不能帶 `jobId`、`deduplication`、`debounce`：job id 由 outbox id 決定，去重鍵會讓 BullMQ 不建立這個 job，事件就此遺失。
+`ctx.enqueue(queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，佇列回傳的 job id 不等於 outbox id，這一列就不標記已送出，留給補送排程。
 
 ### 副作用的認領紀錄
 
@@ -125,6 +125,13 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 系統呼叫 LLM 之前，先查這則訊息有沒有認領紀錄。已有紀錄時，系統不呼叫 LLM。這個檢查只為了省費用；兩次處理同時通過檢查時，交易內的認領仍只讓一次成功。
 
 認領成功之後，送出失敗或行程中斷時，認領紀錄不還原。所以這些副作用是最多一次：寧可少送一則，也不重複送。
+
+認領 commit 之前的失敗要讓 job 失敗，由佇列重試，不能只記 log：
+
+- 認領、寫入結果或寫入 outbox 的交易失敗。沒有 commit 就沒有認領紀錄，也沒有 outbox，只有佇列的重試能補做。API 的機器人回覆以 `ClaimTransactionError`（`bot-reply-guard.ts`）標示這種失敗。降級用的 catch（例如「agent 失敗改由 KB 回覆」）遇到這個錯誤時，會往外丟，不會吞掉。
+- 把下一步的 job 送進佇列失敗，例如規則評估、站內通知、告警信。
+
+刻意的降級不算失敗：LLM 失敗時改由 KB 回覆、KB 找不到答案、情緒分析的 LLM 失敗時略過，照舊只記 log。`message.received` 的每個步驟都會執行，處理結束時，再丟出失敗步驟的錯誤。重試時，已完成的步驟都已認領，會略過。轉接失敗時，這次不做 AI 回覆，因為 AI 回覆會先認領 `bot_reply`，重試時轉接就認領不到。
 
 對話轉接以條件更新認領對話（`BOT_HANDLED` 改成 `AGENT_HANDLED`），不另外寫認領紀錄。
 
@@ -261,7 +268,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：在交易內用 `ctx.enqueue()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
 4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：在寫入業務資料的交易內用 `writeOutbox()`，帶入租戶 ID；commit 之後呼叫 `dispatchOutboxRows()`。
-6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。
+6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。認領的交易失敗時丟錯讓 job 重試；認領之後的失敗只記 log。
 7. **定期工作**：需要 `fastify.io` 或 API 行程內的狀態時，在 API 行程以 `registerSchedule()` 註冊，`run` 要承受重跑；其他放在 workers 以 BullMQ 重複工作執行，並給固定的 `jobId`。兩種做法在多個行程時，每一期都只產生一筆 job；但 job 可能在行程被強制結束後重跑，所以都不保證只執行一次。不要用 `setInterval` 或 `setTimeout` 排定定期工作。
 
 新增事件之後，確認它同時有發布端與訂閱端。只有一邊的事件，不會產生任何錯誤或警告。

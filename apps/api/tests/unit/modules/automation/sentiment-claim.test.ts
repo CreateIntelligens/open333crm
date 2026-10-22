@@ -60,3 +60,10 @@ test('兩次處理同時進行：只有一次寫入結果並發出 sentiment.neg
   assert.equal(calls.llm, 2);
   assert.equal(negatives(h).length, 1);
 });
+
+test('Claim transaction fails：sentiment 認領的交易失敗時處理失敗，由佇列重試', async () => {
+  const { h, handle } = setup();
+  h.state.failClaimKind = 'sentiment';
+  await assert.rejects(handle(messageReceived()), /connection reset/);
+  assert.equal(negatives(h).length, 0);
+});

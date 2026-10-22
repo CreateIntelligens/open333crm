@@ -109,13 +109,13 @@ t('讓步判斷要在 runAgentReply 之前（擋在呼叫前才有意義）', ()
 });
 
 t('比對出錯時不應連帶擋掉 AI（寧可多回一則，不要完全沒回應）', () => {
-  // hasMatchingKeywordRule 內部若拋錯會往外傳，外層 try/catch 會接住，
-  // 此時整段 bot 回覆都不會執行——確認外層確實有 try/catch 兜底。
+  // hasMatchingKeywordRule 內部若拋錯會往外傳，AI 回覆步驟的 try/catch 會接住，
+  // 此時這次的 bot 回覆不會執行，情緒分析與規則評估照常執行，最後由佇列重試。
   const code = src('modules/automation/automation.worker.ts');
   const idx = code.indexOf('const keywordWillHandle');
   const after = code.slice(idx);
   assert.ok(
-    /catch \(err\) \{[\s\S]{0,200}Error handling message\.received/.test(after),
-    'message.received 外層缺少 try/catch，比對出錯會讓整條鏈中斷',
+    /catch \(err\) \{[\s\S]{0,200}AI reply failed, will retry/.test(after),
+    'AI 回覆步驟缺少 try/catch，比對出錯會讓整條鏈中斷',
   );
 });

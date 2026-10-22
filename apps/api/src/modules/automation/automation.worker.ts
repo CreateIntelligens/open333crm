@@ -23,7 +23,7 @@ import { analyzeSentiment } from '../ai/sentiment.service.js';
 import { autoClassifyNewCase } from '../ai/classify.service.js';
 import { isAgentEnabled, runAgentReply } from '../ai/agent/agent.service.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
-import { createBotReplyGuard } from './bot-reply-guard.js';
+import { ClaimTransactionError, createBotReplyGuard } from './bot-reply-guard.js';
 
 // Lazy init：避免在 dotenv 載入前讀到 undefined REDIS_URL，
 // ioredis fallback default 6379 會噴一堆 ECONNREFUSED 噪音
@@ -70,6 +70,7 @@ async function getConversationBotConfig(
  *
  * 判斷、摘要與遮罩都在交易之外。交易內以條件更新把對話從 BOT_HANDLED 改成 AGENT_HANDLED，
  * 成功才寫系統訊息、認領 bot_reply、發出 conversation.handoff；commit 之後才送出轉接訊息。
+ * commit 之前的失敗往外丟，由佇列重試；commit 之後送出轉接訊息的失敗只記 log。
  */
 async function checkAutoHandoff(
   prisma: PrismaClient,
@@ -81,96 +82,97 @@ async function checkAutoHandoff(
   contentType: string | undefined,
   inboundMessageId: string | undefined,
 ) {
-  try {
-    const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-      include: { channel: { select: { settings: true } } },
-    });
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
+    include: { channel: { select: { settings: true } } },
+  });
 
-    if (!conversation) return;
+  if (!conversation) return;
 
-    // Read bot config from channel settings
-    const botConfig = getBotConfig(conversation.channel?.settings);
+  // Read bot config from channel settings
+  const botConfig = getBotConfig(conversation.channel?.settings);
 
-    let shouldHandoff = false;
-    let reason = '';
+  let shouldHandoff = false;
+  let reason = '';
 
-    // Check 1: Bot replies count exceeded threshold
-    if (conversation.botRepliesCount >= botConfig.maxBotReplies) {
-      shouldHandoff = true;
-      reason = `Bot 回覆次數已達上限 (${conversation.botRepliesCount}/${botConfig.maxBotReplies})`;
-    }
+  // Check 1: Bot replies count exceeded threshold
+  if (conversation.botRepliesCount >= botConfig.maxBotReplies) {
+    shouldHandoff = true;
+    reason = `Bot 回覆次數已達上限 (${conversation.botRepliesCount}/${botConfig.maxBotReplies})`;
+  }
 
-    // Check 2: Keyword match for human agent request
-    if (!shouldHandoff && messageContent && botConfig.handoffKeywords.length > 0) {
-      const lowerContent = messageContent.toLowerCase();
-      for (const keyword of botConfig.handoffKeywords) {
-        if (lowerContent.includes(keyword.toLowerCase())) {
-          shouldHandoff = true;
-          reason = `客戶要求轉接真人 (關鍵字: ${keyword})`;
-          break;
-        }
+  // Check 2: Keyword match for human agent request
+  if (!shouldHandoff && messageContent && botConfig.handoffKeywords.length > 0) {
+    const lowerContent = messageContent.toLowerCase();
+    for (const keyword of botConfig.handoffKeywords) {
+      if (lowerContent.includes(keyword.toLowerCase())) {
+        shouldHandoff = true;
+        reason = `客戶要求轉接真人 (關鍵字: ${keyword})`;
+        break;
       }
     }
+  }
 
-    // Check 3: Image/file message from customer (may need human handling)
-    if (!shouldHandoff && contentType && ['image', 'file', 'video'].includes(contentType)) {
-      shouldHandoff = true;
-      reason = `客戶發送了${contentType === 'image' ? '圖片' : contentType === 'file' ? '檔案' : '影片'}，需要人工處理`;
-    }
+  // Check 3: Image/file message from customer (may need human handling)
+  if (!shouldHandoff && contentType && ['image', 'file', 'video'].includes(contentType)) {
+    shouldHandoff = true;
+    reason = `客戶發送了${contentType === 'image' ? '圖片' : contentType === 'file' ? '檔案' : '影片'}，需要人工處理`;
+  }
 
-    if (!shouldHandoff) return;
+  if (!shouldHandoff) return;
 
-    // 外部呼叫在交易之前：摘要（LLM）與系統訊息的遮罩（去識別化服務）
-    let summary = '';
-    try {
-      const { summarizeConversation } = await import('../ai/ai.service.js');
-      const summaryResult = await summarizeConversation(prisma, tenantId, conversationId);
-      summary = summaryResult.summary;
-    } catch (err) {
-      logger.error('[AutoHandoff] Failed to generate summary:', err);
-    }
-    const now = new Date();
-    const systemText = summary
-      ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
-      : `自動轉接人工客服：${reason}`;
-    const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
+  // 外部呼叫在交易之前：摘要（LLM）與系統訊息的遮罩（去識別化服務）
+  let summary = '';
+  try {
+    const { summarizeConversation } = await import('../ai/ai.service.js');
+    const summaryResult = await summarizeConversation(prisma, tenantId, conversationId);
+    summary = summaryResult.summary;
+  } catch (err) {
+    logger.error('[AutoHandoff] Failed to generate summary:', err);
+  }
+  const now = new Date();
+  const systemText = summary
+    ? `自動轉接人工客服：${reason}\n\n📋 Bot 對話摘要：\n${summary}`
+    : `自動轉接人工客服：${reason}`;
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
 
-    // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領
-    const replyGuard = createBotReplyGuard(tenantDeps, prisma, tenantId, inboundMessageId);
-    const handedOff = await replyGuard.persist(async (tx, ctx) => {
-      const claimed = await claimOne(() =>
-        tx.conversation.updateMany({
-          where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
-          data: { status: 'AGENT_HANDLED', handoffReason: reason, lastMessageAt: now },
-        }),
-      );
-      // 另一個處理已經轉接了這段對話
-      if (!claimed) return null;
+  // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領
+  const replyGuard = createBotReplyGuard(tenantDeps, prisma, tenantId, inboundMessageId);
+  const handedOff = await replyGuard.persist(async (tx, ctx) => {
+    const claimed = await claimOne(() =>
+      tx.conversation.updateMany({
+        where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
+        data: { status: 'AGENT_HANDLED', handoffReason: reason, lastMessageAt: now },
+      }),
+    );
+    // 另一個處理已經轉接了這段對話
+    if (!claimed) return null;
 
-      const systemMessage = await tx.message.create({
-        data: {
-          conversationId,
-          direction: 'OUTBOUND',
-          senderType: 'SYSTEM',
-          contentType: 'system',
-          content: storedContent.content,
-          metadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
-          isRead: true,
-          createdAt: now,
-        },
-      });
-      await ctx.publish('conversation.handoff', {
+    const systemMessage = await tx.message.create({
+      data: {
         conversationId,
-        reason,
-        summary,
-        previousStatus: 'BOT_HANDLED',
-      });
-      const updatedConversation = await tx.conversation.findFirst({ where: { id: conversationId, tenantId } });
-      return { systemMessage, updatedConversation };
+        direction: 'OUTBOUND',
+        senderType: 'SYSTEM',
+        contentType: 'system',
+        content: storedContent.content,
+        metadata: { type: 'auto_handoff', reason, summary: summary || undefined, ...storedContent.metadata },
+        isRead: true,
+        createdAt: now,
+      },
     });
-    if (!handedOff) return;
+    await ctx.publish('conversation.handoff', {
+      conversationId,
+      reason,
+      summary,
+      previousStatus: 'BOT_HANDLED',
+    });
+    const updatedConversation = await tx.conversation.findFirst({ where: { id: conversationId, tenantId } });
+    return { systemMessage, updatedConversation };
+  });
+  if (!handedOff) return;
 
+  // 以下在轉接 commit 之後：失敗只記 log，不重試（轉接訊息最多送出一次）
+  try {
     // Deliver configurable handoff message to channel
     await deliverToChannel(prisma, conversationId, botConfig.handoffMessage);
 
@@ -206,7 +208,7 @@ async function checkAutoHandoff(
 
     logger.info(`[AutoHandoff] Conversation ${conversationId} auto-escalated: ${reason}`);
   } catch (err) {
-    logger.error('[AutoHandoff] Error:', err);
+    logger.error('[AutoHandoff] 轉接之後送出轉接訊息或推播失敗:', err);
   }
 }
 
@@ -249,6 +251,8 @@ async function analyzeSentimentOnce(
       });
     }
     return true;
+  }).catch((err: unknown) => {
+    throw new ClaimTransactionError(err);
   });
   if (written) {
     logger.info(`[AutomationWorker] Sentiment for message ${messageId}: ${sentimentResult.sentiment} (score=${sentimentResult.score}, confidence=${sentimentResult.confidence})`);
@@ -265,7 +269,10 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
 
   // ── message.received ────────────────────────────────────────────────────
   events.on('message.received', async (event: SubscribedEvent) => {
-    try {
+    // 每個步驟都執行，失敗的步驟最後一起丟錯，由佇列重試；重試時已完成的步驟都已認領，會略過。
+    // 只有「認領之前」的失敗會丟到這裡：LLM 失敗改用 KB、KB 找不到答案這類降級照舊只記 log
+    const failures: unknown[] = [];
+    {
       const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt } = event.payload as {
         contactId?: string;
         conversationId?: string;
@@ -282,60 +289,77 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
       const text = messageContent ?? content?.text ?? undefined;
 
       // Check auto-handoff for BOT_HANDLED conversations
+      let handoffFailed = false;
       if (conversationId) {
-        await checkAutoHandoff(prisma, tenantDeps, io, event.tenantId, conversationId, text, contentType, messageId);
+        try {
+          await checkAutoHandoff(prisma, tenantDeps, io, event.tenantId, conversationId, text, contentType, messageId);
+        } catch (err) {
+          logger.error('[AutomationWorker] Auto-handoff failed, will retry:', err);
+          failures.push(err);
+          handoffFailed = true;
+        }
       }
 
-      const botConfig = conversationId
-        ? await getConversationBotConfig(prisma, event.tenantId, conversationId)
-        : null;
+      // 轉接失敗時這次不做 AI 回覆：AI 回覆會先認領 bot_reply，重試時轉接就認領不到
+      if (!handoffFailed) {
+        try {
+          const botConfig = conversationId
+            ? await getConversationBotConfig(prisma, event.tenantId, conversationId)
+            : null;
 
-      // Attempt KB auto-reply for BOT_HANDLED conversations
-      // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
-      // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
-      const isTextMessage = !contentType || contentType === 'text';
-      const replyGuard = createBotReplyGuard(tenantDeps, prisma, event.tenantId, messageId);
-      if (conversationId && text && isTextMessage && botConfig && (await replyGuard.alreadyReplied())) {
-        // 事件重送：這則訊息已經有機器人回覆，不再呼叫 LLM
-        logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：這則訊息已有機器人回覆`);
-      } else if (conversationId && text && isTextMessage && botConfig) {
-        let agentHandled = false;
-        // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
-        // kb-autoreply 早就有這個判斷（見 attemptKbAutoReply 的 1.5），
-        // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
-        // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
-        // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
-        const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text, channelType ?? '', {
-          conversationId,
-          contactId,
-        });
-        if (keywordWillHandle) {
-          logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：關鍵字規則將處理`);
-        }
-        if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
-          try {
-            const agentResult = await runAgentReply(prisma, {
-              tenantId: event.tenantId,
+          // Attempt KB auto-reply for BOT_HANDLED conversations
+          // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
+          // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
+          const isTextMessage = !contentType || contentType === 'text';
+          const replyGuard = createBotReplyGuard(tenantDeps, prisma, event.tenantId, messageId);
+          if (conversationId && text && isTextMessage && botConfig && (await replyGuard.alreadyReplied())) {
+            // 事件重送：這則訊息已經有機器人回覆，不再呼叫 LLM
+            logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：這則訊息已有機器人回覆`);
+          } else if (conversationId && text && isTextMessage && botConfig) {
+            let agentHandled = false;
+            // 關鍵字命中時讓步給 keyword 規則，不要再讓 AI 回一次。
+            // kb-autoreply 早就有這個判斷（見 attemptKbAutoReply 的 1.5），
+            // 但 agent 這條漏掉了——結果使用者送出命中關鍵字的訊息後，
+            // 會先收到一段 AI 回覆、再收到關鍵字素材，一次兩則。
+            // 2026-09-23 使用者指出「關鍵字有命中則 AI 不應再回話」。
+            const keywordWillHandle = await hasMatchingKeywordRule(prisma, event.tenantId, text, channelType ?? '', {
               conversationId,
-              messageId,
-              userMessage: text,
-              replyToken,
-              receivedAt,
-              deliver: true,
-              io,
-              replyGuard,
+              contactId,
             });
-            agentHandled = agentResult.handled;
-          } catch (err) {
-            logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
+            if (keywordWillHandle) {
+              logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：關鍵字規則將處理`);
+            }
+            if (!keywordWillHandle && isAgentEnabled() && shouldRunAgentReply(botConfig.botMode)) {
+              try {
+                const agentResult = await runAgentReply(prisma, {
+                  tenantId: event.tenantId,
+                  conversationId,
+                  messageId,
+                  userMessage: text,
+                  replyToken,
+                  receivedAt,
+                  deliver: true,
+                  io,
+                  replyGuard,
+                });
+                agentHandled = agentResult.handled;
+              } catch (err) {
+                if (err instanceof ClaimTransactionError) throw err;
+                logger.error('[AutomationWorker] Agent reply error, falling back to KB:', err);
+              }
+            }
+            if (!agentHandled) {
+              try {
+                await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard);
+              } catch (err) {
+                if (err instanceof ClaimTransactionError) throw err;
+                logger.error('[AutomationWorker] KB auto-reply error:', err);
+              }
+            }
           }
-        }
-        if (!agentHandled) {
-          try {
-            await attemptKbAutoReply(prisma, io, event.tenantId, conversationId, text, { replyToken, receivedAt }, replyGuard);
-          } catch (err) {
-            logger.error('[AutomationWorker] KB auto-reply error:', err);
-          }
+        } catch (err) {
+          logger.error('[AutomationWorker] AI reply failed, will retry:', err);
+          failures.push(err);
         }
       }
 
@@ -345,24 +369,29 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
           await analyzeSentimentOnce(prisma, tenantDeps, event.tenantId, messageId, text, { conversationId, contactId });
         } catch (err) {
           logger.error('[AutomationWorker] Sentiment analysis error:', err);
+          // LLM 失敗時略過情緒分析（降級）；認領的交易失敗才重試
+          if (err instanceof ClaimTransactionError) failures.push(err);
         }
       }
 
       // 關鍵字規則由 workers 評估這個 job 時一併比對（design 決策 9）；入站訊息 id 供 keyword_matched 認領
-      await enqueueEvaluate(event, 'message.received', {
-        contactId,
-        conversationId,
-        messageId,
-        messageContent: text,
-        channelType,
-        replyToken,
-        receivedAt,
-      });
-    } catch (err) {
-      logger.error('[AutomationWorker] Error handling message.received:', err);
-      // 重試時，轉接、機器人回覆與情緒分析都已認領，不會重複
-      throw err;
+      try {
+        await enqueueEvaluate(event, 'message.received', {
+          contactId,
+          conversationId,
+          messageId,
+          messageContent: text,
+          channelType,
+          replyToken,
+          receivedAt,
+        });
+      } catch (err) {
+        logger.error('[AutomationWorker] Failed to enqueue message.received, will retry:', err);
+        failures.push(err);
+      }
     }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, `message.received 有 ${failures.length} 個步驟失敗`);
   });
 
   // ── case.created ────────────────────────────────────────────────────────

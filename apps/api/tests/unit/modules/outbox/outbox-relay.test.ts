@@ -29,7 +29,7 @@ function fakeQueues() {
   const getQueue = (queue: string) => ({
     async add(_name: string, _data: unknown, opts: { jobId?: string }) {
       added.push({ queue, jobId: opts.jobId });
-      return {};
+      return { id: opts.jobId };
     },
   });
   return { added, getQueue };

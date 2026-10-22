@@ -114,3 +114,20 @@ test('notify 的 job id 是 <事件 id>__<規則 id>#<序號>__<客服人員 id>
   await executeWorkerAutomationActions(db as never, redis as never, notify, context(E1));
   assert.deepEqual(calls.notified.map((n) => n.jobId), [`${E1}__rule-r#1__agent-x`]);
 });
+
+test('Claim transaction fails：認領動作的交易失敗時處理失敗，由佇列重試，動作沒有執行', async () => {
+  const { db } = fakeDb();
+  (db.sideEffectClaim as { createMany: unknown }).createMany = async () => {
+    throw new Error('connection reset');
+  };
+  await assert.rejects(executeWorkerAutomationActions(db as never, redis as never, sendMessage, context(E1)), /connection reset/);
+  assert.equal(calls.sent.length, 0);
+});
+
+test('Action fails after claim：認領之後動作失敗，只記 log，不丟錯', async () => {
+  const { db } = fakeDb();
+  (db.case as { findUnique: unknown }).findUnique = async () => {
+    throw new Error('case lookup failed');
+  };
+  await executeWorkerAutomationActions(db as never, redis as never, [{ type: 'escalate_case', params: {} }], context(E1));
+});

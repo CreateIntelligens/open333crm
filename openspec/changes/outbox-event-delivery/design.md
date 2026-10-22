@@ -175,6 +175,40 @@ api 與 workers 共用（規劃 9.8 的決定）：
 
 rich-menu 的 bind 與 unbind 本 change 不改，見風險。
 
+### 13. 錯誤處理：認領之前與認領之後（review-loop 2026-10-22）
+
+review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/catch 只記 log，連認領或 outbox 交易的失敗也吞掉。結果是事件或動作就此遺失。所以本 change 定一條規則（side-effect-claims「認領 commit 之前的失敗由佇列重試」），並依這條規則逐一檢查本 change 碰到的 catch：
+
+- 認領、寫入結果或寫入 outbox 的交易失敗，以及送出下一步的 job 失敗：丟錯，由佇列重試。
+- 認領 commit 之後執行副作用的失敗：只記 log，不重試。
+- 刻意的降級（LLM 失敗改由 KB 回覆、略過情緒分析等）：照舊只記 log。
+
+送出 job 的選項也從黑名單改成白名單，`dispatchOutboxRows()` 另外檢查佇列回傳的 job id。BullMQ 以後新增會讓 job 不被建立的選項時，`dispatchOutboxRows()` 也不會把資料列標記為已送出。
+
+逐處檢查的結果（2026-10-22）：
+
+| 位置 | 包住的內容 | 結論 |
+| --- | --- | --- |
+| `apps/workers/src/lib/automation-actions.ts`，動作迴圈的 catch | 動作本身 | 認領移到 try 之外，認領失敗丟錯；動作失敗只記 log（認領之後） |
+| `automation-actions.ts`，`createCaseFromAutomation` 的 catch | 另一個執行已連結工單（`RACED`） | 其他錯誤照舊往外丟，不變 |
+| `automation-actions.ts`，`dispatchAfterCommit` | commit 之後的快路徑 | 只記 log，資料列由 relay 補送，不變 |
+| `apps/workers/src/handlers/automation.handler.ts`，`emitKeywordMatched` | 只包快路徑 | 第 3 輪已改：交易失敗丟錯 |
+| `apps/api/src/modules/automation/automation.worker.ts`，`checkAutoHandoff` | 原本包住整段 | 拿掉外層 catch；只包 commit 之後的送出與推播 |
+| `automation.worker.ts`，摘要的 catch | 摘要的 LLM 呼叫 | 降級（沒有摘要也轉接），不變 |
+| `automation.worker.ts`，agent 與 KB 回覆的 catch | 回覆流程 | 遇到 `ClaimTransactionError` 往外丟，其他照舊降級 |
+| `automation.worker.ts`，情緒分析的 catch | 情緒分析 | 遇到 `ClaimTransactionError` 記為失敗；LLM 失敗照舊略過 |
+| `automation.worker.ts`，`message.received` 與 `case.created` 的外層 catch | 整個處理 | 步驟的失敗最後一起丟錯；`case.created` 記 log 後丟錯 |
+| `automation.worker.ts`，`autoClassifyNewCase` 的 catch | 自動分類（LLM） | 降級；重複執行不改變結果，不認領，不變 |
+| `apps/api/src/modules/notification/notification.worker.ts` | 送出通知與告警信的 job | 第 1 輪已改：丟錯 |
+| `apps/workers/src/handlers/data-export.handler.ts`，主流程的 catch | 認領 `processing` 之後的產生與上傳 | 改成 `failed`（終態），不重試；請求是使用者看得到的狀態，第 4 項已決定 |
+| `data-export.handler.ts`，標記失敗與失敗通知的 catch | 改成 `failed` 之後的通知 | 只記 log（請求已結束） |
+| `apps/workers/src/handlers/data-erasure.handler.ts`，主流程的 catch | 認領 `processing` 之後的刪除 | 同 data-export：改成 `failed`，不重試 |
+| `data-erasure.handler.ts`，稽核紀錄的 catch | 刪除 commit 之後的稽核 | 只記 log，不變 |
+| `apps/api/src/lib/tenant-ctx.ts`、`events/outbox-publisher.ts` | commit 之後的快路徑 | 只記 log，由 relay 補送，不變 |
+| `apps/api/src/modules/webhook-subscriptions/webhook-dispatcher.ts`，`sendOnce` 的 catch | HTTP 送出 | 轉成失敗結果，processor 丟錯讓 BullMQ 重試，不變 |
+
+`data-export.handler.ts` 與 `data-erasure.handler.ts` 的保存期清理、MinIO 刪檔、網址解析的 catch，不是本 change 新增的認領路徑，沒有列入。
+
 ## Risks / Trade-offs
 
 - **對客人的回覆可能少送一則。** 認領 commit 之後、送出之前行程結束或送出失敗，這則回覆不再送出。這是「最多一次」的代價，spec 已寫明。

@@ -27,6 +27,8 @@ export interface HarnessState {
   messages: Array<{ id: string; senderType: string; contentType: string; content: unknown; metadata: Record<string, unknown> }>;
   /** 寫入系統訊息時丟錯（「寫入系統訊息失敗」） */
   failSystemMessage: boolean;
+  /** 以這個種類認領時丟錯，模擬認領的交易失敗（「Claim transaction fails」） */
+  failClaimKind: string | null;
 }
 
 export function createHarness(overrides: { botRepliesCount?: number; botConfig?: Record<string, unknown> } = {}) {
@@ -45,6 +47,7 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
     outbox: [],
     messages: [{ id: MESSAGE, senderType: 'CONTACT', contentType: 'text', content: { text: 'hi' }, metadata: {} }],
     failSystemMessage: false,
+    failClaimKind: null,
   };
 
   const claimKey = (r: { kind: string; sourceId: string; subKey?: string }) => `${r.kind}|${r.sourceId}|${r.subKey ?? ''}`;
@@ -114,6 +117,7 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
     sideEffectClaim: {
       createMany: async ({ data }: { data: Array<{ kind: string; sourceId: string; subKey?: string }> }) => {
         let count = 0;
+        if (data.some((row) => row.kind === state.failClaimKind)) throw new Error('connection reset');
         for (const row of data) {
           if (state.claims.includes(claimKey(row))) continue;
           state.claims.push(claimKey(row));
@@ -140,11 +144,11 @@ export function createHarness(overrides: { botRepliesCount?: number; botConfig?:
 
   const tenantPrisma = {
     async $transaction(cb: (tx: unknown) => Promise<unknown>) {
-      const snapshot = structuredClone({ ...state, failSystemMessage: undefined });
+      const snapshot = structuredClone({ ...state, failSystemMessage: undefined, failClaimKind: undefined });
       try {
         return await cb({ $executeRaw: async () => 1, ...models });
       } catch (err) {
-        Object.assign(state, { ...snapshot, failSystemMessage: state.failSystemMessage });
+        Object.assign(state, { ...snapshot, failSystemMessage: state.failSystemMessage, failClaimKind: state.failClaimKind });
         throw err;
       }
     },

@@ -130,3 +130,11 @@ test('已認領就不呼叫 LLM：這則入站訊息已有 bot_reply 認領紀�
   assert.equal(calls.kb, 0);
   assert.deepEqual(calls.delivered, []);
 });
+
+test('Claim transaction fails：bot_reply 認領的交易失敗時處理失敗，由佇列重試', async () => {
+  const { h, handle } = setup();
+  h.state.failClaimKind = 'bot_reply';
+  await assert.rejects(handle(messageReceived()), /connection reset/);
+  assert.deepEqual(calls.delivered, []);
+  assert.equal(botMessages(h).length, 0);
+});

@@ -20,14 +20,16 @@ const CREATED_AT = new Date('2026-10-21T00:00:00.000Z');
 
 type Added = { queue: string; name: string; data: unknown; opts: Record<string, unknown> };
 
-function fakes(options: { failQueue?: string } = {}) {
+function fakes(options: { failQueue?: string; returnedId?: (opts: Record<string, unknown>) => unknown } = {}) {
   const added: Added[] = [];
   const marked: string[] = [];
   const getQueue = (queue: string) => ({
     async add(name: string, data: unknown, opts: Record<string, unknown>) {
       if (queue === options.failQueue) throw new Error(`queue ${queue} down`);
       added.push({ queue, name, data, opts });
-      return {};
+      // BullMQ 回傳建立的（或 id 相同、已存在的）job
+      const id = options.returnedId ? options.returnedId(opts) : opts.jobId;
+      return id === undefined ? undefined : { id };
     },
   });
   const db = {
@@ -96,12 +98,28 @@ test("kind = 'job'：送到 queueName，帶原本的選項，job id 是 outbox i
   assert.deepEqual(marked, ['j1']);
 });
 
-test('job 選項不能帶 deduplication 或 debounce：寫入 outbox 時丟錯，交易 rollback', async () => {
+test('job 選項只接受白名單：其他選項寫入 outbox 時丟錯，交易 rollback', async () => {
   const tx = { outbox: { create: async () => assert.fail('不應寫入') } };
-  for (const opts of [{ deduplication: { id: 'shared' } }, { debounce: { id: 'shared' } }]) {
+  for (const opts of [{ deduplication: { id: 'shared' } }, { debounce: { id: 'shared' } }, { repeat: { every: 60_000, limit: 0 } }, { jobId: 'mine' }, { lifo: true }]) {
     await assert.rejects(
-      writeOutbox(tx as never, { tenantId: TENANT, kind: 'job', name: 'x', queueName: 'q', payload: {}, jobOptions: opts }),
-      /deduplication|debounce/,
+      writeOutbox(tx as never, { tenantId: TENANT, kind: 'job', name: 'x', queueName: 'q', payload: {}, jobOptions: opts as never }),
+      new RegExp(Object.keys(opts)[0]),
     );
+  }
+});
+
+test('白名單內的選項照常寫入', async () => {
+  const created: unknown[] = [];
+  const tx = { outbox: { create: async (args: unknown) => (created.push(args), { id: 'j1' }) } };
+  const jobOptions = { attempts: 3, backoff: { type: 'exponential', delay: 1_000 }, delay: 5_000, priority: 1, removeOnComplete: true, removeOnFail: 100 };
+  await writeOutbox(tx as never, { tenantId: TENANT, kind: 'job', name: 'x', queueName: 'q', payload: {}, jobOptions });
+  assert.equal(created.length, 1);
+});
+
+test('佇列沒有建立 id 等於 outbox id 的 job：該列維持未送出', async () => {
+  for (const returnedId of [() => undefined, () => 'repeat:abc']) {
+    const { marked, getQueue, db } = fakes({ returnedId });
+    await dispatchOutboxRows(db as never, [eventRow('e1', 'case.resolved')], getQueue);
+    assert.deepEqual(marked, []);
   }
 });

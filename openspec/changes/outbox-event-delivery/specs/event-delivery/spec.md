@@ -22,7 +22,7 @@
 
 ### Requirement: commit 之後立即送給訂閱者
 
-交易 commit 之後，系統 MUST 為每個訂閱了該事件名稱的訂閱者建立一個 job，job 的 id 是事件 id。所有訂閱者的 job 都建立成功之後，系統 MUST 把該事件標記為已送出。系統 MUST NOT 等這些步驟完成才回傳交易內程式的結果。
+交易 commit 之後，系統 MUST 為每個訂閱了該事件名稱的訂閱者建立一個 job，job 的 id 是事件 id。所有訂閱者的 job 都建立成功之後，系統 MUST 把該事件標記為已送出。佇列回傳的 job id 不等於事件 id 時，系統 MUST 把這次當成建立失敗，MUST NOT 標記已送出。系統 MUST NOT 等這些步驟完成才回傳交易內程式的結果。
 
 #### Scenario: 一般情況
 
@@ -38,6 +38,12 @@
 
 - **WHEN** 交易 commit 之後，建立 job 時佇列回傳錯誤
 - **THEN** 該事件 MUST 維持未送出，呼叫端 MUST 照常收到交易內程式的回傳值
+
+#### Scenario: Queue did not create the job
+
+- **WHEN** 送出事件 E 時，佇列沒有建立 id 等於 E 的 job（回傳別的 job 或沒有回傳 job）
+- **THEN** E MUST 維持未送出，由補送排程再送一次
+
 
 ### Requirement: 補送未送出的事件
 

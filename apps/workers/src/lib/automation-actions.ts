@@ -278,15 +278,16 @@ export async function executeWorkerAutomationActions(
   context: WorkerActionContext,
 ): Promise<void> {
   for (const [index, action] of actions.entries()) {
+    // 同一個事件的同一個動作最多執行一次（automation-engine「規則動作每個事件最多執行一次」）。
+    // 認領在 try 之外：認領的交易失敗時丟錯，由佇列重試（side-effect-claims「認領 commit 之前的失敗由佇列重試」）。
+    // 認領之後執行失敗也不還原、只記 log：送出訊息這類動作寧可少做，不重複做
+    const actionKey = context.eventId && context.ruleId ? `${context.ruleId}#${index}` : null;
+    if (actionKey && !(await claimAction(prisma, context, actionKey))) {
+      logger.info(`[automation] Worker action "${action.type}" skipped: already executed for event ${context.eventId} (${actionKey})`);
+      continue;
+    }
     try {
       const params = action.params ?? action.payload ?? {};
-      // 同一個事件的同一個動作最多執行一次（automation-engine「規則動作每個事件最多執行一次」）。
-      // 認領之後執行失敗也不還原：送出訊息這類動作寧可少做，不重複做
-      const actionKey = context.eventId && context.ruleId ? `${context.ruleId}#${index}` : null;
-      if (actionKey && !(await claimAction(prisma, context, actionKey))) {
-        logger.info(`[automation] Worker action "${action.type}" skipped: already executed for event ${context.eventId} (${actionKey})`);
-        continue;
-      }
 
       if (action.type === 'create_case') {
         const caseId = await createCaseFromAutomation(prisma, redisPublisher, params, context);

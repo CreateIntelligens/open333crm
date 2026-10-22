@@ -44,6 +44,30 @@
 - **WHEN** job 認領 `bot_reply`、入站訊息 M 成功，送出回覆時渠道回傳錯誤，BullMQ 重試這個 job
 - **THEN** 重試時的認領 MUST 回報失敗，系統 MUST NOT 再送出回覆
 
+### Requirement: 認領 commit 之前的失敗由佇列重試
+
+處理不能重複的副作用時，下列失敗 MUST 讓處理這個 job 的程式丟錯，由佇列重試；程式 MUST NOT 只記錄錯誤就讓 job 完成：
+
+- 認領、寫入結果或寫入 outbox 的交易失敗。
+- 把下一步的 job 送進佇列失敗。
+
+認領 commit 之後，執行副作用的失敗依「認領之後失敗不再執行」處理，MUST NOT 重試。程式刻意改用降級結果時（例如 LLM 失敗時改由知識庫回覆、略過情緒分析），不屬於本條的失敗。
+
+#### Scenario: Claim transaction fails
+
+- **WHEN** job 處理事件 E，以 `automation_action` 認領動作的交易失敗
+- **THEN** job MUST 失敗，動作 MUST NOT 執行；佇列重試時，認領成功後 MUST 執行動作
+
+#### Scenario: Action fails after claim
+
+- **WHEN** job 認領動作成功，執行動作時失敗
+- **THEN** job MUST NOT 因為這個失敗而重試
+
+#### Scenario: Delivery fails after handoff commit
+
+- **WHEN** 自動轉接的交易已 commit，送出轉接訊息時渠道回傳錯誤
+- **THEN** 處理 MUST NOT 因為這個失敗而重試，對話 MUST 維持 `AGENT_HANDLED`
+
 ### Requirement: 認領紀錄受租戶隔離並保存 30 天
 
 認領紀錄 MUST 受 RLS 約束，每筆都屬於一個租戶。系統 MUST 每天刪除建立超過 30 天的認領紀錄。

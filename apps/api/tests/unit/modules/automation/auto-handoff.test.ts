@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 
-const calls = vi.hoisted(() => ({ delivered: [] as string[], evaluate: 0 }));
+const calls = vi.hoisted(() => ({ delivered: [] as string[], evaluate: 0, kb: 0, deliveryFails: false }));
 
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -16,7 +16,12 @@ vi.mock('bullmq', async (importOriginal) => ({
     }
   },
 }));
-vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({ attemptKbAutoReply: async () => false }));
+vi.mock('#src/modules/ai/kb-autoreply.service.js', () => ({
+  attemptKbAutoReply: async () => {
+    calls.kb += 1;
+    return false;
+  },
+}));
 vi.mock('#src/modules/ai/agent/agent.service.js', () => ({ isAgentEnabled: () => false, runAgentReply: async () => ({ handled: false }) }));
 vi.mock('#src/modules/ai/sentiment.service.js', () => ({
   analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0, confidence: 0.9 }),
@@ -34,6 +39,7 @@ vi.mock('#src/modules/ai/deidentification.service.js', () => ({
 }));
 vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   deliverToChannel: async (_p: unknown, _c: string, payload: unknown) => {
+    if (calls.deliveryFails) throw new Error('LINE 500');
     calls.delivered.push(typeof payload === 'string' ? payload : JSON.stringify(payload));
     return true;
   },
@@ -47,6 +53,8 @@ const HANDOFF_MESSAGE = '稍等，正在為您轉接客服人員';
 beforeEach(() => {
   calls.delivered.length = 0;
   calls.evaluate = 0;
+  calls.kb = 0;
+  calls.deliveryFails = false;
 });
 
 function setup() {
@@ -77,12 +85,24 @@ test('兩次處理同時進行：只有一個處理送出轉接訊息並發出 c
   assert.equal(h.state.messages.filter((m) => m.senderType === 'SYSTEM').length, 1);
 });
 
-test('寫入系統訊息失敗：對話仍是 BOT_HANDLED，不送出轉接訊息', async () => {
+test('寫入系統訊息失敗：對話仍是 BOT_HANDLED，不送出轉接訊息，處理失敗由佇列重試', async () => {
   const { h, handle } = setup();
   h.state.failSystemMessage = true;
-  await handle(messageReceived());
+  await assert.rejects(handle(messageReceived()), /system message write failed/);
 
   assert.equal(h.state.conversation.status, 'BOT_HANDLED');
   assert.deepEqual(calls.delivered, []);
   assert.equal(h.state.outbox.filter((o) => o.name === 'conversation.handoff').length, 0);
+  // 轉接失敗時不做 AI 回覆（重試時轉接要能認領 bot_reply），規則評估照常送出
+  assert.equal(calls.kb, 0);
+  assert.equal(calls.evaluate, 1);
+});
+
+test('Delivery fails after handoff commit：轉接已 commit，送出轉接訊息失敗時不重試', async () => {
+  const { h, handle } = setup();
+  calls.deliveryFails = true;
+  await handle(messageReceived());
+
+  assert.equal(h.state.conversation.status, 'AGENT_HANDLED');
+  assert.equal(h.state.outbox.filter((o) => o.name === 'conversation.handoff').length, 1);
 });
