@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Worker-Owned Automation Triggering
-The automation engine SHALL use the BullMQ worker path for event-triggered automation rule evaluation. When the automation subscriber job receives an event matching an automation trigger, it SHALL enqueue a job on the `automation` BullMQ queue with the trigger event name, the event id and the entity context as the job payload. The job id SHALL be the event id, so a redelivered event does not enqueue a second evaluation. The API process SHALL NOT call `triggerAutomation()` inline from event subscribers.
+The automation engine SHALL evaluate event-triggered rules on the BullMQ worker path. For an event that matches an automation trigger, the automation subscriber job SHALL enqueue a job on the `automation` queue with the event name, the event id and the entity context. The job id SHALL be the event id, so a redelivered event does not enqueue a second evaluation. The API process SHALL NOT call `triggerAutomation()` inline from event subscribers.
 
 #### Scenario: Automation event enqueued by API
 - **WHEN** the automation subscriber job receives an event matching an automation trigger

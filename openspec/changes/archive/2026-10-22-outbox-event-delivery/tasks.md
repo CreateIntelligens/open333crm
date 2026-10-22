@@ -119,4 +119,4 @@
   - 規則動作的 catch 改成往外丟時，「Action fails after claim」失敗
   - `analyzeSentiment()` 在 LLM 失敗時改成丟錯，`sentiment-llm-fallback.test.ts` 的「Sentiment LLM fails」失敗（最後一輪 Codex 指出：原本的測試把 `analyzeSentiment` mock 成丟錯，繞過了真正的呼叫路徑，改成只 mock LLM）
   - 2026-10-22：`pnpm test`、`pnpm test:feature`（507 個測試）全數通過
-- [ ] 11.7 合併後以 `pnpm exec openspec archive outbox-event-delivery` 歸檔，確認 `event-delivery`、`side-effect-claims` 兩份新主規格的 `## Purpose` 是 delta 的內容，不是「TBD」，再執行 `node scripts/validate-openspec.mjs --specs`，確認「略過 N 則」沒有變多
+- [x] 11.7 合併後以 `pnpm exec openspec archive outbox-event-delivery` 歸檔，確認 `event-delivery`、`side-effect-claims` 兩份新主規格的 `## Purpose` 是 delta 的內容，不是「TBD」，再執行 `node scripts/validate-openspec.mjs --specs`，確認「略過 N 則」沒有變多
