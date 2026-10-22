@@ -6,6 +6,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **優惠券上線的部署在產生 OpenAPI 文件時失敗**（PR #347 合併後）：優惠券狀態流轉的 4 個路由（publish、pause、resume、end）在迴圈中以 template string 註冊，產生器只認字面值路徑；會員綁定的後台與顧客端路由放在同一個檔案，產生器以檔案對應掛載路徑而重複產生 `/api/v1/fan/member-binding`。改為逐一以字面值註冊，顧客端路由拆到 `member-binding-fan.routes.ts`。新增單元測試以目前原始碼執行產生器，同類問題在 `pnpm test` 就會失敗。
 - **Node.js 執行環境升級至 24.22.1 LTS 安全版** — Docker 開發、API、Web、Workers 與部署驗證皆固定使用 `node:24.22.1-bookworm-slim`，根目錄 Node 範圍同步收斂為 `>=24.22.1 <25`，pnpm 安裝階段會拒絕其他版本。此版本包含 Node.js 2026-10-21 安全發布修補的 High 嚴重度 TLS、DNS 與 Brotli 漏洞。
 
 ## [2026-10-21]

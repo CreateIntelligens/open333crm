@@ -58,7 +58,8 @@ import webhookSubscriptionRoutes from './modules/webhook-subscriptions/webhook-s
 import { setupWebhookDispatcher } from './modules/webhook-subscriptions/webhook-dispatcher.js';
 import { startA2ABridgeWorker } from './modules/settings/a2a-bridge.worker.js';
 import portalRoutes from './modules/portal/portal.routes.js';
-import memberBindingRoutes, { memberBindingFanRoutes } from './modules/member-binding/member-binding.routes.js';
+import memberBindingRoutes from './modules/member-binding/member-binding.routes.js';
+import memberBindingFanRoutes from './modules/member-binding/member-binding-fan.routes.js';
 import couponFanRoutes from './modules/coupon/coupon-fan.routes.js';
 import portalPublicRoutes from './modules/portal/portal-public.routes.js';
 import emailRegistrationRoutes from './modules/identity-binding/email-registration.routes.js';
