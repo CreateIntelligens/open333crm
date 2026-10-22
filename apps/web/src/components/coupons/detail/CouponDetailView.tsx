@@ -9,7 +9,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, Pencil } from 'lucide-react';
+import { ChevronLeft, Pencil, Send } from 'lucide-react';
+import { mutate as revalidate } from 'swr';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
 import { downloadExportFile, useCoupon, useCouponStats } from '@/hooks/useCoupons';
@@ -21,6 +22,8 @@ import { COUPON_LIST_PATH, errorStatus, isCouponId, saveBlob } from './detail-he
 import { CouponStatCards } from './CouponStatCards';
 import { CouponInstancesPanel } from './CouponInstancesPanel';
 import { CouponSettingsPanel } from './CouponSettingsPanel';
+import { CouponBatchIssueDialog } from './CouponBatchIssueDialog';
+import { CouponBatchHistory } from './CouponBatchHistory';
 
 type TabKey = 'codes' | 'settings';
 const TABS: Array<{ key: TabKey; label: string }> = [
@@ -94,6 +97,9 @@ export function CouponDetailView({ id }: { id: string }) {
   const { isLoading: authLoading, hasPermission } = useAuth();
   const canView = hasPermission('coupon.view');
   const canManage = hasPermission('coupon.manage');
+  // 「發送給…」只需要發券權限（design D31）
+  const canIssue = hasPermission('coupon.issue');
+  const [batchOpen, setBatchOpen] = useState(false);
   const validId = isCouponId(id);
   const fetchId = canView && validId ? id : null;
 
@@ -236,6 +242,13 @@ export function CouponDetailView({ id }: { id: string }) {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+          {canIssue && coupon.status === 'ACTIVE' && (
+            <Button variant="outline" onClick={() => setBatchOpen(true)}>
+              <Send className="h-4 w-4" />
+              發送給…
+            </Button>
+          )}
           {editDisabledReason ? (
             <span className="group relative inline-flex">
               <button
@@ -262,7 +275,20 @@ export function CouponDetailView({ id }: { id: string }) {
               編輯
             </Link>
           )}
+          </div>
         </div>
+        {batchOpen && (
+          <CouponBatchIssueDialog
+            couponId={coupon.id}
+            couponName={coupon.name}
+            open={batchOpen}
+            onOpenChange={setBatchOpen}
+            onQueued={() => {
+              showOk('已排入發送，結果會顯示在發放紀錄');
+              void revalidate(`/coupons/${coupon.id}/batch-issues`);
+            }}
+          />
+        )}
 
         <CouponStatCards
           stats={stats.stats}
@@ -270,6 +296,8 @@ export function CouponDetailView({ id }: { id: string }) {
           error={stats.error}
           onRetry={() => stats.mutate()}
         />
+
+        <CouponBatchHistory couponId={coupon.id} />
 
         {/* 分頁 */}
         <div>
