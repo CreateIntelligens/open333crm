@@ -17,6 +17,7 @@ import { deliverToChannel } from '../../conversation/conversation.service.js';
 import { loadOtherChannelContext, withOtherChannelContext } from '../other-channel-context.js';
 import type { AccessibleChannels } from '../../../services/channel-visibility.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../../identity-binding/ai-guard.js';
+import type { BotReplyGuard } from '../../automation/bot-reply-guard.js';
 
 export const AGENT_SYSTEM_PROMPT =
   '你是 Open333CRM 的專業客服與研究助手，使用繁體中文回答。' +
@@ -37,6 +38,8 @@ export interface AgentReplyInput {
   receivedAt?: string;
   deliver?: boolean;
   io?: Server;
+  /** deliver 時必填：以 bot_reply 認領這則入站訊息，每則入站訊息最多一則機器人回覆 */
+  replyGuard?: BotReplyGuard;
   /** 客服在後台觸發時傳入客服的可見渠道；讀其他渠道的訊息時依此過濾。客人觸發時不傳（不限制） */
   accessibleChannels?: AccessibleChannels;
 }
@@ -186,15 +189,20 @@ export async function runAgentReply(prisma: TenantDb, input: AgentReplyInput): P
     : { text: result.text, blocked: false };
   const output = { ...result, text: guarded.text, handled: result.status === 'completed', runId: run.id };
   if (output.handled && input.deliver && input.conversationId && input.io) {
+    if (!input.replyGuard) throw new Error('runAgentReply：deliver 時要傳 replyGuard');
     await persistAndDeliverAgentReply(prisma, input.tenantId, input.conversationId, output.text, output.runId, input.io, {
       replyToken: input.replyToken,
       receivedAt: input.receivedAt,
-    }, guarded.blocked);
+    }, guarded.blocked, input.replyGuard);
   }
   return output;
 }
 
-async function persistAndDeliverAgentReply(
+/**
+ * 寫入 agent 的回覆並送出。遮罩會呼叫去識別化服務，所以在交易之前；
+ * 寫入在 replyGuard 的交易內，與 bot_reply 認領一起 commit，commit 之後才送出。
+ */
+export async function persistAndDeliverAgentReply(
   prisma: TenantDb,
   tenantId: string,
   conversationId: string,
@@ -202,12 +210,13 @@ async function persistAndDeliverAgentReply(
   runId: string,
   io: Server,
   delivery: { replyToken?: string; receivedAt?: string },
-  bindingCodeBlocked = false,
+  bindingCodeBlocked: boolean,
+  replyGuard: BotReplyGuard,
 ): Promise<void> {
   const now = new Date();
   const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text }, 'system');
   type PersistedAgentMessage = { id: string; metadata: unknown };
-  const persist = async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
+  const message = await replyGuard.persist(async (db: Prisma.TransactionClient): Promise<PersistedAgentMessage | null> => {
     const claimed = await db.conversation.updateMany({
       where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
       data: { botRepliesCount: { increment: 1 }, lastMessageAt: now },
@@ -226,12 +235,7 @@ async function persistAndDeliverAgentReply(
       },
       select: { id: true, metadata: true },
     }) as unknown as PersistedAgentMessage;
-  };
-  type TransactionRunner = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
-  const transaction = (prisma as unknown as { $transaction?: TransactionRunner }).$transaction;
-  const message: PersistedAgentMessage | null = transaction
-    ? await transaction.call(prisma, persist) as PersistedAgentMessage | null
-    : await persist(prisma as unknown as Prisma.TransactionClient);
+  });
   if (!message) return;
 
   const payload = {

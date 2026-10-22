@@ -2,7 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { eventBus } from '../../events/event-bus.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import type { BindingFailureReason } from './member-binding.types.js';
 
 /** 對顧客的說明。技術細節留在 detail 欄位供後台排查，不外露。 */
@@ -29,5 +29,5 @@ export const contactParams = z.object({ contactId: z.string().uuid('聯絡人識
 
 /** 在指定租戶的交易內執行（顧客端與連線測試用；後台的一般端點用 tenantHandler） */
 export function runInTenant<T>(app: FastifyInstance, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>) {
-  return inTenant({ prisma: app.prisma, io: app.io, events: eventBus }, tenantId, fn);
+  return inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, fn);
 }

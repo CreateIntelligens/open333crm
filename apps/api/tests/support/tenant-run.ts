@@ -9,7 +9,8 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { inTenant, type TenantCtx } from '#src/lib/tenant-ctx.js';
-import { eventBus } from '#src/events/event-bus.js';
+import { writeOutbox } from '@open333crm/core';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { agentPushRoom, tenantPushRoom } from '#src/events/socket-push.js';
 
 export interface PushRecord {
@@ -37,7 +38,7 @@ export function recordingIo(records: PushRecord[] = pushed): Server {
 export const testIo = recordingIo();
 
 export function runInTenant<T>(prisma: PrismaClient, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma, io: testIo, events: eventBus }, tenantId, fn);
+  return inTenant({ prisma, io: testIo, events: createOutboxPublisher(prisma) }, tenantId, fn);
 }
 
 export function ctxOf(tx: unknown, tenantId: string): TenantCtx {
@@ -50,11 +51,12 @@ export function ctxOf(tx: unknown, tenantId: string): TenantCtx {
     notifyAgent(agentId, name, data) {
       pushed.push({ room: agentPushRoom(tenantId, agentId), event: name, data });
     },
-    publish(name, payload) {
-      eventBus.publish({ name, tenantId, timestamp: new Date(), payload });
+    // 與 inTenant() 相同：事件與 job 寫進測試交易的 outbox，交易結束時跟著 commit 或 rollback
+    async publish(name, payload) {
+      await writeOutbox(tx as TenantCtx['tx'], { tenantId, kind: 'event', name, payload });
     },
-    enqueue(queue, name, data, opts) {
-      void queue.add(name, data, opts);
+    async enqueue(queueName, name, data, opts) {
+      await writeOutbox(tx as TenantCtx['tx'], { tenantId, kind: 'job', queueName, name, payload: data, ...(opts ? { jobOptions: opts } : {}) });
     },
   };
 }

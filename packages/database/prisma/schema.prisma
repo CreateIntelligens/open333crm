@@ -262,6 +262,8 @@ model Tenant {
   coupons         Coupon[]
   couponInstances CouponInstance[]
   couponCodes     CouponCode[]
+  outboxRows              Outbox[]
+  sideEffectClaims        SideEffectClaim[]
 
 
   stores         Store[]
@@ -1468,10 +1470,13 @@ model WebhookDelivery {
   attempts       Int      @default(0)
   success        Boolean  @default(false)
   errorMessage   String?
+  // 事件 id（outbox id）；同一個事件送給同一個訂閱只有一筆紀錄，重試更新同一筆。舊資料是 null
+  eventId        String?  @db.Uuid
   createdAt      DateTime @default(now())
 
   subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
+  @@unique([subscriptionId, eventId])
   @@index([subscriptionId, createdAt(sort: Desc)])
   @@map("webhook_deliveries")
 }
@@ -2481,3 +2486,42 @@ model StoreAccount {
   @@map("store_accounts")
 }
 
+// ─────────────────────────────────────────────
+// 事件送達（change outbox-event-delivery，issue #337 階段 1b）
+// ─────────────────────────────────────────────
+
+/// 交易內登記的業務事件與佇列 job。與業務資料一起 commit，commit 之後由快路徑送進佇列，
+/// 沒送出的由 outbox-relay 排程補送。id 就是事件 id，也是 BullMQ 的 job id。
+model Outbox {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @db.Uuid
+  kind         String // 'event' | 'job'
+  name         String // 事件名稱或 job 名稱
+  queueName    String? // kind = 'job' 時的目標佇列
+  payload      Json
+  jobOptions   Json? // kind = 'job' 時的 BullMQ 選項，不含 jobId
+  createdAt    DateTime  @default(now())
+  dispatchedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([dispatchedAt, createdAt])
+  @@map("outbox")
+}
+
+/// 副作用的認領紀錄：不能重複的副作用執行前先寫一筆，撞到唯一鍵代表已經做過。
+/// kind 與 sourceId、subKey 的組成見 change outbox-event-delivery design 決策 2。sourceId 不設外鍵。
+model SideEffectClaim {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  kind      String
+  sourceId  String   @db.Uuid
+  subKey    String   @default("")
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, sourceId, subKey])
+  @@index([createdAt])
+  @@map("side_effect_claims")
+}

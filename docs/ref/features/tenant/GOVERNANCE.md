@@ -3,7 +3,7 @@
 這一組功能有 API、沒有後台頁面，要透過 CLI、MCP 或直接呼叫 API 使用：查詢租戶的操作紀錄、匯出租戶資料、刪除單一客人的個人資料、把系統事件推送給外部系統，以及讓 AI 工具以 MCP 操作租戶資料。
 
 - **資料來源**：`apps/api/src/modules/tenant-audit/*`、`apps/api/src/modules/data-export/*`、`apps/api/src/modules/data-erasure/*`、`apps/api/src/modules/webhook-subscriptions/*`、`apps/api/src/modules/mcp/*`、`apps/workers/src/handlers/data-export.handler.ts`、`apps/workers/src/handlers/data-erasure.handler.ts`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 ## 負責的模組
 
@@ -85,19 +85,19 @@
 | --- | --- |
 | `GET`、`POST /webhook-subscriptions` | 列出、建立訂閱 |
 | `GET`、`PATCH`、`DELETE /webhook-subscriptions/:id` | 查看、修改、刪除訂閱 |
-| `POST /webhook-subscriptions/:id/test` | 送一個測試事件 |
+| `POST /webhook-subscriptions/:id/test` | 送一個測試事件。在請求內只送一次，不重試，回應帶這次的結果 |
 
-**怎麼送出。** `webhook-dispatcher.ts` 的 `setupWebhookDispatcher()` 在 API 行程訂閱 eventBus 的所有事件。事件發生時，找出同租戶、啟用中、而且訂閱了這個事件的網址，逐一送出：
+**怎麼送出。** 對外 Webhook 是業務事件的訂閱者之一，從 `event-webhook` 佇列取得事件（見[事件與背景工作](../../modules/EVENTS.md)）。`webhook-dispatcher.ts` 的處理函式只處理對外事件清單內的事件，找出同租戶、啟用中、而且訂閱了這個事件的網址，為每個網址建立一個 `webhook-delivery` job：
 
-- 內容是 `{ event, tenantId, timestamp, data }`，`data` 是事件的原始內容。
-- 標頭帶 `X-Webhook-Signature: sha256=<HMAC>`、`X-Webhook-Event` 與 `X-Webhook-Delivery`。HMAC 以訂閱的 `secret` 計算；建立時沒給 `secret` 就自動產生。
-- 目標網址指向內網位址時不送出。
-- 單次逾時 10 秒，失敗重試兩次，間隔逐次拉長。重試在 API 行程內等待，API 重新啟動時尚未完成的重試會遺失。
-- 每次送出寫一筆 `WebhookDelivery`。
+- 內容是 `{ id, event, tenantId, timestamp, data }`。`id` 是事件 id，`data` 是事件的原始內容。
+- 標頭帶 `X-Webhook-Signature: sha256=<HMAC>`、`X-Webhook-Event`、`X-Webhook-Event-Id` 與 `X-Webhook-Delivery`。HMAC 以訂閱的 `secret` 計算；建立時沒給 `secret` 就自動產生。
+- 目標網址指向內網位址時不送出，也不重試。
+- 每個網址各自送出與重試：每次逾時 10 秒，共送 3 次，間隔 1 秒、5 秒。重試排在 Redis，API 重新啟動之後照常繼續。一個網址失敗，不會讓其他網址再收到一次。
+- 同一個事件送給同一個訂閱只有一筆 `WebhookDelivery`，重試更新同一筆，所以重試時 `X-Webhook-Delivery` 不變。接收端可以用事件 id 去重：事件重送時，`id` 與 `X-Webhook-Event-Id` 相同。
 
-**只收得到 API 行程 eventBus 上的事件。** 有些事件在介面或文件上存在，卻不會送出：`conversation.assigned` 與兩個 SLA 事件沒有發布端。見 `../../system/AUDIT.md` 的 CONV-02 與 APP-05。
+**有些事件不會送出。** 有些事件在介面或文件上存在，卻沒有發布端：`conversation.assigned` 與兩個 SLA 事件。見 `../../system/AUDIT.md` 的 CONV-02 與 APP-05。
 
-**事件名稱沒有白名單。** 訂閱時可以填任意字串，打錯的事件名稱不會報錯，只是永遠收不到。
+**訂閱的事件名稱不檢查。** 訂閱時可以填任意字串，打錯的事件名稱不會報錯，只是永遠收不到。轉送時只送對外事件清單內的事件；第一版清單等於所有事件名稱，所以內部事件也會轉送，見 `../../system/AUDIT.md` 的 HOOK-01。
 
 讀取訂閱的端點會回傳 `secret`，持有 `webhook.view` 的成員就能看到簽章金鑰。
 
@@ -123,8 +123,7 @@ scope 的常數定義在 `mcp.constants.ts`。工具只檢查 scope，不檢查�
 | MCP 與 CLI 不受角色與方案限制 | 詳見 `../../system/AUDIT.md` 的 RBAC-02 |
 | 匯出的 `scope` 參數沒有作用、完成通知連到不存在的頁面 | 詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
 | 匯出把所有資料讀進記憶體 | 大租戶可能失敗，詳見 `../../system/AUDIT.md` 的 EXPORT-01 |
-| 對外 Webhook 的重試在記憶體中等待 | API 重新啟動會遺失 |
-| 對外 Webhook 的事件名稱沒有白名單 | 打錯不會報錯；內部事件也會轉送，`message.received` 帶出 `replyToken`。詳見 `../../system/AUDIT.md` 的 HOOK-01 |
+| 對外 Webhook 訂閱的事件名稱不檢查 | 打錯不會報錯；對外事件清單第一版等於所有事件，內部事件也會轉送，`message.received` 帶出 `replyToken`。詳見 `../../system/AUDIT.md` 的 HOOK-01 |
 | 沒有後台頁面 | 只能透過 CLI、MCP 或直接呼叫 API |
 
 模組之間怎麼接力、側欄與模組的對照，見[租戶後台](./README.md)。

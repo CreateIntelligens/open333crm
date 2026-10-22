@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { hasMatchingKeywordRule } from '#src/modules/automation/automation.worker.js';
+import { hasMatchingKeywordRule } from '#src/modules/automation/keyword-yield.js';
 
 const TENANT = 't1';
 

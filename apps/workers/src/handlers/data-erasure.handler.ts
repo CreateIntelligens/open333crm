@@ -15,7 +15,7 @@
 import type { Job } from 'bullmq';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
-import { logger, MinioStorageProvider } from '@open333crm/core';
+import { claimOne, logger, MinioStorageProvider } from '@open333crm/core';
 import { enqueueNotification } from '../lib/notification-queue.js';
 
 interface DataErasureJobData {
@@ -165,11 +165,18 @@ export async function handleDataErasureJob(
 
   logger.info(`[data-erasure] Processing request ${requestId} mode=${mode} contact=${contactId}`);
 
-  // 標記 processing
-  await prisma.dataErasureRequest.updateMany({
-    where: { id: requestId, tenantId },
-    data: { status: 'processing' },
-  });
+  // 標記 processing。processing 的請求代表上一次執行中途結束，重新處理；
+  // completed、failed 代表已經結束，不再處理（tenant-data-erasure「worker 不重新處理已結束的刪除請求」）
+  const claimed = await claimOne(() =>
+    prisma.dataErasureRequest.updateMany({
+      where: { id: requestId, tenantId, status: { in: ['pending', 'processing'] } },
+      data: { status: 'processing' },
+    }),
+  );
+  if (!claimed) {
+    logger.info(`[data-erasure] Request ${requestId} already finished, skipping`);
+    return;
+  }
 
   try {
     // 再次驗證聯絡人同租戶（防禦：請求建立到執行之間狀態可能改變）
@@ -183,22 +190,13 @@ export async function handleDataErasureJob(
 
     let affected: Record<string, number>;
 
+    // 完成狀態在刪除的交易內寫入：刪除最多 commit 一次
+    const request = { requestId, tenantId };
     if (mode === 'hard_delete') {
-      affected = await hardDelete(prisma, tenantId, contactId);
+      affected = await hardDelete(prisma, tenantId, contactId, request);
     } else {
-      affected = await anonymize(prisma, tenantId, contactId);
+      affected = await anonymize(prisma, tenantId, contactId, request);
     }
-
-    // 更新完成狀態
-    await prisma.dataErasureRequest.updateMany({
-      where: { id: requestId, tenantId },
-      data: {
-        status: 'completed',
-        affected: affected as Prisma.InputJsonValue,
-        completedAt: new Date(),
-        error: null,
-      },
-    });
 
     // 寫租戶稽核（payload 只含 contactId/mode/affected 計數，絕不含 PII）
     await prisma.tenantAuditLog
@@ -225,16 +223,52 @@ export async function handleDataErasureJob(
 
     logger.info(`[data-erasure] Completed request ${requestId} affected=${JSON.stringify(affected)}`);
   } catch (err) {
+    if (err === ALREADY_COMPLETED) {
+      logger.info(`[data-erasure] Request ${requestId} completed by another run, skipping`);
+      return;
+    }
     logger.error(`[data-erasure] Failed request ${requestId}:`, err);
-    await prisma.dataErasureRequest.updateMany({
-      where: { id: requestId, tenantId },
-      data: {
-        status: 'failed',
-        error: err instanceof Error ? err.message : String(err),
-      },
-    });
+    // 只把 processing 改成 failed：另一個執行已經完成時（例如它刪掉了聯絡人）不覆蓋 completed
+    await claimOne(() =>
+      prisma.dataErasureRequest.updateMany({
+        where: { id: requestId, tenantId, status: 'processing' },
+        data: {
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        },
+      }),
+    );
     throw err; // 讓 BullMQ 記錄失敗
   }
+}
+
+const ALREADY_COMPLETED = Symbol('data-erasure-already-completed');
+
+interface ErasureRequestRef {
+  requestId: string;
+  tenantId: string;
+}
+
+/**
+ * 刪除交易的第一個語句：把 processing 改成 completed。兩次執行同時進行時，後到的交易在這裡等待列鎖；
+ * 前一個交易 commit 之後更新筆數是 0，丟出 ALREADY_COMPLETED 讓後到的交易 rollback，不會再刪一次。
+ */
+async function markCompleted(tx: Prisma.TransactionClient, request: ErasureRequestRef): Promise<void> {
+  const claimed = await claimOne(() =>
+    tx.dataErasureRequest.updateMany({
+      where: { id: request.requestId, tenantId: request.tenantId, status: 'processing' },
+      data: { status: 'completed', completedAt: new Date(), error: null },
+    }),
+  );
+  if (!claimed) throw ALREADY_COMPLETED;
+}
+
+/** 刪除交易的最後一個語句：寫入影響計數 */
+async function writeAffected(tx: Prisma.TransactionClient, request: ErasureRequestRef, affected: Record<string, number>) {
+  await tx.dataErasureRequest.update({
+    where: { id: request.requestId },
+    data: { affected: affected as Prisma.InputJsonValue },
+  });
 }
 
 /**
@@ -248,9 +282,11 @@ async function anonymize(
   prisma: PrismaClient,
   tenantId: string,
   contactId: string,
+  request: ErasureRequestRef,
 ): Promise<Record<string, number>> {
   let avatars: AvatarObjects = { keys: [], shared: 0, skipped: 0 };
   const affected = await prisma.$transaction(async (tx) => {
+    await markCompleted(tx, request);
     avatars = await readAvatarObjects(tx, tenantId, contactId);
 
     // 抹 Contact PII
@@ -285,23 +321,23 @@ async function anonymize(
       messagesRedacted = res.count;
     }
 
-    return {
+    const counts = {
       contactAttributes: attrs.count,
       channelIdentities: identities.count,
       identityMaps: identityMaps.count,
       longTermMemories: memories.count,
       messagesRedacted,
+      avatarObjects: avatars.keys.length,
+      avatarObjectsShared: avatars.shared,
+      avatarObjectsSkipped: avatars.skipped,
     };
+    await writeAffected(tx, request, counts);
+    return counts;
   });
 
   // 頭像檔在交易外刪（best-effort），與硬刪除的媒體檔相同
   await deleteMediaObjects(avatars.keys);
-  return {
-    ...affected,
-    avatarObjects: avatars.keys.length,
-    avatarObjectsShared: avatars.shared,
-    avatarObjectsSkipped: avatars.skipped,
-  };
+  return affected;
 }
 
 /**
@@ -319,12 +355,14 @@ async function hardDelete(
   prisma: PrismaClient,
   tenantId: string,
   contactId: string,
+  request: ErasureRequestRef,
 ): Promise<Record<string, number>> {
   // storageKey 收集移進 transaction 內：與後續刪除共用同一交易快照，避免「收集後、刪除前」
   // 期間新增的對話/訊息其 MinIO 物件漏收（媒體洩漏）。DB 讀取在交易內、MinIO 刪除留到交易外。
   let storageKeys: string[] = [];
   let avatars: AvatarObjects = { keys: [], shared: 0, skipped: 0 };
   const affected = await prisma.$transaction(async (tx) => {
+    await markCompleted(tx, request);
     const conversations = await tx.conversation.findMany({
       where: { contactId, tenantId },
       select: { id: true },
@@ -373,7 +411,7 @@ async function hardDelete(
     // 5. 刪 Contact（Cascade 帶走 ContactAttribute/ChannelIdentity/IdentityMap/LongTermMemory/ContactTag/ContactRelation）
     await tx.contact.delete({ where: { id: contactId } });
 
-    return {
+    const counts = {
       conversations: convDel.count,
       messages: messageCount,
       cases: caseCount,
@@ -384,17 +422,17 @@ async function hardDelete(
       portalSubmissions: portalSubmissionCount,
       pointTransactions: pointTxCount,
       contacts: 1,
+      mediaObjects: storageKeys.length,
+      avatarObjects: avatars.keys.length,
+      avatarObjectsShared: avatars.shared,
+      avatarObjectsSkipped: avatars.skipped,
     };
+    await writeAffected(tx, request, counts);
+    return counts;
   });
 
-  // 6. 刪 MinIO 媒體物件（transaction 外，best-effort）
+  // 6. 刪 MinIO 媒體物件（transaction 外，best-effort）。交易 commit 之後行程結束時，檔案會留下
   await deleteMediaObjects([...storageKeys, ...avatars.keys]);
 
-  return {
-    ...affected,
-    mediaObjects: storageKeys.length,
-    avatarObjects: avatars.keys.length,
-    avatarObjectsShared: avatars.shared,
-    avatarObjectsSkipped: avatars.skipped,
-  };
+  return affected;
 }

@@ -2,8 +2,16 @@
  * create_case worker 動作（AUDIT AUTO-01 補實作）：條件命中時自動建立工單，行為與手動建立一致。
  */
 import assert from 'node:assert/strict';
-import { beforeEach, test } from 'vitest';
+import { beforeEach, test, vi } from 'vitest';
 import { executeWorkerAutomationActions } from '#src/lib/automation-actions';
+
+// outbox 的快路徑送進佇列：這裡只看 outbox，佇列換成不做事的假實作
+vi.mock('bullmq', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Queue: class {
+    async add() {}
+  },
+}));
 
 const T = 'tenant-1';
 interface Conv { id: string; tenantId: string; contactId: string; channelId: string; caseId: string | null }
@@ -13,6 +21,7 @@ let convs: Conv[];
 let cases: Case[];
 let events: Array<Record<string, unknown>>;
 let published: Array<{ channel: string; msg: any }>;
+let outbox: Array<{ tenantId: string; name: string; payload: any }>;
 
 beforeEach(() => {
   convs = [
@@ -22,19 +31,31 @@ beforeEach(() => {
   cases = [];
   events = [];
   published = [];
+  outbox = [];
 });
 
 const prisma: any = {
   async $transaction(fn: (tx: unknown) => Promise<unknown>) {
-    // 交易失敗時回滾：還原工單與對話
-    const snapshot = { cases: [...cases], convs: convs.map((c) => ({ ...c })) };
+    // 交易失敗時回滾：還原工單、對話與 outbox
+    const snapshot = { cases: [...cases], convs: convs.map((c) => ({ ...c })), outbox: [...outbox] };
     try {
       return await fn(prisma);
     } catch (err) {
       cases = snapshot.cases;
       convs = snapshot.convs;
+      outbox = snapshot.outbox;
       throw err;
     }
+  },
+  outbox: {
+    async create({ data }: { data: { tenantId: string; name: string; payload: any; kind: string } }) {
+      const row = { id: `outbox-${outbox.length + 1}`, ...data, queueName: null, jobOptions: null, createdAt: new Date() };
+      outbox.push(row);
+      return row;
+    },
+    async updateMany() {
+      return { count: 1 };
+    },
   },
   conversation: {
     async findFirst({ where }: { where: { id: string; tenantId: string } }) {
@@ -91,7 +112,7 @@ const run = (actions: Array<Record<string, unknown>>, ctx: Record<string, unknow
 
 const createCase = (params: Record<string, unknown> = {}) => ({ type: 'create_case', params: { title: '客訴', ...params } });
 
-test('收到訊息時建立工單：關聯對話、套用 SLA、寫事件、推播並發出 case.created', async () => {
+test('收到訊息時建立工單：關聯對話、套用 SLA、寫事件、推播，並在同一個交易把 case.created 寫進 outbox', async () => {
   const before = Date.now();
   await run([createCase({ priority: 'HIGH', category: '投訴建議' })], { trigger: 'message.received', conversationId: 'conv-1', contactId: 'contact-1' });
   assert.equal(cases.length, 1);
@@ -113,10 +134,13 @@ test('收到訊息時建立工單：關聯對話、套用 SLA、寫事件、推�
   const socket = published.find((p) => p.msg.event === 'case.created');
   assert.ok(socket, '要推播 case.created');
   assert.equal(socket!.msg.room, `tenant:${T}`);
-  const domain = published.find((p) => p.msg.name === 'case.created');
-  assert.ok(domain, '要發出 case.created 讓通知與後續規則運作');
-  assert.equal(domain!.msg.payload.caseId, c.id);
-  assert.equal(domain!.msg.payload.conversationId, 'conv-1');
+  // 建立工單與事件一起寫入（change outbox-event-delivery）：不再經 Redis domain:event 轉發
+  assert.equal(published.some((p) => p.channel === 'domain:event'), false);
+  const domain = outbox.filter((o) => o.name === 'case.created');
+  assert.equal(domain.length, 1, '要發出 case.created 讓通知與後續規則運作');
+  assert.equal(domain[0]!.tenantId, T);
+  assert.equal(domain[0]!.payload.caseId, c.id);
+  assert.equal(domain[0]!.payload.conversationId, 'conv-1');
 });
 
 test('沒指定優先度：MEDIUM、沒有對應 SLA 政策時不設 SLA', async () => {
@@ -187,6 +211,8 @@ test('建單期間對話已被別的工作關聯到未結案工單（並行）�
   }
   assert.deepEqual(cases.map((c) => c.id), ['case-raced'], '交易回滾，不留孤兒工單');
   assert.equal(convs[0]!.caseId, 'case-raced');
+  // 建立工單失敗：這次的 case.created 隨交易 rollback
+  assert.deepEqual(outbox, []);
 });
 
 test('原工單已結案、建單期間對話被別人改關聯到新工單：回滾，不開第二張', async () => {

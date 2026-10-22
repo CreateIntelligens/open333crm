@@ -5,7 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { inTenant } from '../../lib/tenant-ctx.js';
-import { eventBus } from '../../events/event-bus.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { getBindingConfig, writeBinding } from './member-binding.service.js';
 import { lookupMember } from './member-lookup.service.js';
 import type { BindingResult, MemberLookupInput } from './member-binding.types.js';
@@ -22,7 +22,7 @@ export async function bindMember(
   contactId: string,
   input: MemberLookupInput,
 ): Promise<BindingResult> {
-  const tenantDeps = { prisma: deps.prisma, io: deps.io, events: eventBus };
+  const tenantDeps = { prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) };
   const config = await inTenant(tenantDeps, tenantId, (ctx) => getBindingConfig(ctx));
   if (!config?.enabled) return { ok: false, reason: 'NOT_CONFIGURED' };
 

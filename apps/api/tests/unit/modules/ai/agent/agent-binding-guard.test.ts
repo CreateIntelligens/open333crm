@@ -61,7 +61,9 @@ test('runAgentReply 送出時：寫進資料庫與送到渠道的都是固定說
   } as never;
   const io = { to: () => ({ emit: () => {} }) } as never;
   delivered.length = 0;
-  await runAgentReply(prisma, { tenantId: 'agent-guard-tenant-2', conversationId: 'c1', userMessage: 'x', deliver: true, io });
+  // 認領換成直接在 tx 上寫入：這裡只測寫入與送出的內容
+  const replyGuard = { alreadyReplied: async () => false, persist: (write: (t: typeof tx) => Promise<unknown>) => write(tx) } as never;
+  await runAgentReply(prisma, { tenantId: 'agent-guard-tenant-2', conversationId: 'c1', userMessage: 'x', deliver: true, io, replyGuard });
   const expected = '如需綁定其他帳號，請直接傳送「綁定帳號」，系統會提供專屬的綁定連結與代碼。';
   assert.equal(created.length, 1);
   assert.equal(created[0]!.metadata.bindingCodeBlocked, true);

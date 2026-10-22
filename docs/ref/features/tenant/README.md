@@ -5,7 +5,7 @@
 本目錄依功能區拆成多份文件，每份說明該區由哪些模組負責、每個模組做什麼、有哪些規則與已知問題。本檔只放跨功能區的內容：模組怎麼分組、側欄對照、一則訊息怎麼流過各模組，以及事件怎麼在模組之間傳遞。
 
 - **資料來源**：`apps/api/src/index.ts`、`apps/api/src/modules/*`、`apps/api/src/plugins/socket.plugin.ts`、`apps/workers/src/*`、`apps/web/src/app/dashboard/*`、`apps/web/src/components/layout/Sidebar.tsx`、`packages/database/prisma/schema.prisma`
-- **核對日期**：2026-09-30
+- **核對日期**：2026-10-21
 
 ## 先讀這一段
 
@@ -83,11 +83,11 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 | 6 | `runInboundPostbackInterceptors()` | 處理按鈕回傳。點擊貼標處理完會繼續往下；CSAT 評分、知識庫回饋與轉真人處理完，管線就在這一步結束 | `tag`、`csat`、`knowledge`、`conversation` |
 | 7 | `trackInboundBroadcastReply()` | 把這次回覆記到該聯絡人最近一筆群發的收件紀錄 | `marketing` |
 | 8 | `emitInboundSocketEvents()` | 推送 `message.new` 與 `conversation.updated`，收件匣即時更新 | `socket` |
-| 9 | `publishMessageReceived()` | 在 eventBus 發布 `message.received` | 見下表 |
+| 9 | `publishMessageReceived()` | 以 `eventBus.publish()` 發出 `message.received`，送進各訂閱者的佇列 | 見下表 |
 | 10 | `triggerWebhookFlow()` | 觸發 Canvas 流程 | `canvas` |
 | 11 | `sendOutsideHoursAutoReply()` | 營業時間外送出自動回覆。同一個聯絡人在去重間隔內只回一次 | `settings`（營業時間） |
 
-`publishMessageReceived()` 發布的 `message.received`，訂閱者都在 API 行程：
+`publishMessageReceived()` 發出的 `message.received`，訂閱者都在 API 行程，各自從自己的佇列取得事件：
 
 | 訂閱者 | 做什麼 |
 | --- | --- |
@@ -102,11 +102,10 @@ SLA 另有專文：[服務水準協議](../SLA.md)。Canvas 屬於單一模組�
 
 | 機制 | 範圍 | 用途 | 例子 |
 | --- | --- | --- | --- |
-| eventBus | API 行程內 | 業務事件。`events/event-bus.ts` 的 `EventEmitter`，不經過 Redis | `message.received`、`case.created`、`contact.tagged` |
+| 業務事件 | API 或 workers 的交易 → 訂閱者佇列 → API 行程 | 交易內的 `ctx.publish()` 與 workers 寫入 outbox，至少送出一次；舊寫法 `eventBus.publish()` 直接送進佇列，最多一次 | `message.received`、`case.created`、`contact.tagged` |
 | `crm:events` | Redis 廣播 | Canvas 流程引擎的事件，與 eventBus 不相通 | `canvas.send_message` |
 | BullMQ queue | API 行程 → workers | 需要查資料或會拖慢回應的工作 | `automation`、`notification`、`rich-menu-bind`、`data-export`、`data-erasure` |
 | Redis `socket:emit` | workers → API 行程 → 前端 | workers 沒有 socket 連線，由 API 行程代為推送 | 自動化執行結果、通知 |
-| Redis `domain:event` | workers → API 行程的 eventBus | workers 產生、API 端要接著處理的業務事件 | workers 貼標後的 `contact.tagged` |
 
 每個事件由誰發布、誰訂閱，哪些事件只有一邊，失敗時會不會重試，以及為什麼目前只能跑一個 API 行程，見[事件與背景工作](../../modules/EVENTS.md)。
 

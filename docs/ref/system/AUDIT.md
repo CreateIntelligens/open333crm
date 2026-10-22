@@ -113,7 +113,7 @@
 | [AUD-01](#aud-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 租戶稽核不涵蓋登入、長效憑證、渠道憑證變更等操作 | 靜態確認 |
 | [ERASE-01](#erase-01) | 渠道、稽核與資料權利 | P3 | 未處理 | **涉及 GDPR**。資料刪除沒有涵蓋所有個人資料，預設模式保留媒體檔與表單答案；被合併的聯絡人的姓名、電話、email 兩種模式都保留 | 靜態確認 |
 | [EXPORT-01](#export-01) | 渠道、稽核與資料權利 | P3 | 未處理 | 資料匯出的完成通知連到不存在的頁面、範圍參數沒有作用，worker 把整個租戶的資料一次載入記憶體 | 靜態確認 |
-| [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 未處理 | 對外 Webhook 轉送所有內部事件，沒有對外事件清單；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
+| [HOOK-01](#hook-01) | 渠道、稽核與資料權利 | P2 | 部分修正 | 對外 Webhook 轉送所有內部事件：已有對外事件清單，但第一版等於所有事件；`message.received` 把 LINE 的 `replyToken` 送給外部網址 | 靜態確認 |
 | [DEP-01](#dep-01) | 部署與應用程式 | P4 | 未處理 | `video-worker` 只剩殘留 volume 設定 | 靜態確認 |
 | [DEP-02](#dep-02) | 部署與應用程式 | P3 | 未處理 | `.env.prod.example` 的變數只送到 nginx 與 certbot，讀取它們的 api、workers 收不到 | 靜態確認 |
 | [APP-02](#app-02) | 部署與應用程式 | P3 | 未處理 | 可以建立 WhatsApp 渠道，但沒有外掛，收不到也送不出訊息；Telegram 外掛未註冊 | 執行時確認 |
@@ -122,8 +122,8 @@
 | [APP-05](#app-05) | 部署與應用程式 | P4 | 未處理 | API 行程訂閱的 `sla.warning`、`sla.breached` 沒有發布端 | 靜態確認 |
 | [APP-06](#app-06) | 部署與應用程式 | P3 | 未處理 | 訊息模擬器的 API 在正式環境可用，成員可偽造進站訊息 | 靜態確認 |
 | [APP-07](#app-07) | 部署與應用程式 | P4 | 已提建議 | Canvas 等待節點的 BullMQ 路徑永遠失敗，佇列也沒有消費者 | 靜態確認 |
-| [APP-08](#app-08) | 部署與應用程式 | P3 | 已提建議 | 多數 BullMQ 佇列永遠保留已完成的工作，Redis 沒有記憶體上限 | 靜態確認 |
-| [APP-09](#app-09) | 部署與應用程式 | P3 | 部分修正 | API 行程假設只有一份：Redis 廣播會重複處理、行程記憶體的狀態各自一份，無法水平擴充；排程已改為每一期只產生一筆 job，job 重跑時大多以條件更新擋住重複處理，只剩 Canvas 等待節點喚醒（#334） | 靜態確認 |
+| [APP-08](#app-08) | 部署與應用程式 | P3 | 部分修正 | 部分 BullMQ 佇列永遠保留已完成的工作，Redis 沒有記憶體上限；`notification`、`automation` 與事件的佇列已改成以時間保留 | 靜態確認 |
+| [APP-09](#app-09) | 部署與應用程式 | P3 | 部分修正 | API 行程假設只有一份：Canvas 的 Redis 廣播會重複處理、行程記憶體的狀態各自一份，無法水平擴充；排程已改為每一期只產生一筆 job，job 重跑時大多以條件更新擋住重複處理，只剩 Canvas 等待節點喚醒（#334）；業務事件已改走佇列 | 靜態確認 |
 | [APP-10](#app-10) | 部署與應用程式 | P2 | 已提建議 | 沒有獨立的正式環境：合併到 `main` 就直接部署到客戶在用的環境 | 間接確認 |
 | [PKG-01](#pkg-01) | 共用套件 | P4 | 未處理 | `types` 與 `shared` 重複定義渠道型別 | 靜態確認 |
 | [PKG-02](#pkg-02) | 共用套件 | P3 | 未處理 | `channel-plugins/fb` 子路徑指向錯誤 | 執行時重現 |
@@ -132,7 +132,6 @@
 | [PKG-05](#pkg-05) | 共用套件 | P4 | 部分修正 | `core` 匯出沒有呼叫端的服務；`CaseService` 與 `AutomationEngine` 已刪除（#327） | 靜態確認 |
 | [PKG-06](#pkg-06) | 共用套件 | P4 | 未處理 | `channel-plugins` 有沒有呼叫端的方法、擴充與檔案 | 靜態確認 |
 | [ARCH-01](#arch-01) | 架構規則 | P4 | 未處理 | route 檔直接查詢資料庫 | 靜態確認 |
-| [ARCH-02](#arch-02) | 架構規則 | P4 | 未處理 | `ai` 模組 import `automation` 的 worker 檔 | 靜態確認 |
 | [STO-01](#sto-01) | Storage、LLM 與資料庫 | P2 | 未處理 | Workers 的 MinIO 設定名稱不一致 | 執行時重現 |
 | [LLM-01](#llm-01) | Storage、LLM 與資料庫 | P2 | 未處理 | 租戶的 Chat 與 Embedding 設定預設使用 Ollama，但組織不部署 Ollama | 靜態確認 |
 | [LLM-02](#llm-02) | Storage、LLM 與資料庫 | P4 | 未處理 | 兩個 Compose 檔仍有 `ollama` 服務 | 靜態確認 |
@@ -209,6 +208,8 @@ service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`�
 4. 背景工作改成「以 `prismaAdmin` 找出要處理的資料，每一筆各開自己租戶的交易」。
 5. Canvas 引擎（RLS-01）。
 6. 刪除 `TenantDb`、`tenantScopedClient`、`request.tenantPrisma`。
+
+第 2 步已在 change `outbox-event-delivery` 完成（`9c2aff5c` 起）：`ctx.publish`、`ctx.enqueue` 在交易內寫 outbox，至少送出一次；三個訂閱者改從 BullMQ 佇列取得事件，對客人發訊息等副作用以 `side_effect_claims` 認領。自動化訂閱者的認領與寫入改用 `inTenant()`，LLM 階段仍用 `prismaAdmin`。還沒搬遷的程式仍呼叫 `eventBus.publish`，保證是最多一次。
 
 搬遷進度看 `scripts/check-tenant-ctx.baseline.json`。`node scripts/check-tenant-ctx.mjs --strict` 在舊寫法增加時失敗。
 
@@ -1346,7 +1347,8 @@ workers 的 `automation-actions.ts` 執行 `add_tag` 時，以 `tag.findFirst({ 
 
 規則編輯器（`automation/[ruleId]/page.tsx`）以 `packages/automation` 的 `AUTOMATION_EVENT_DEFINITIONS` 列出全部觸發事件。實際送進 `automation` queue 的只有：
 
-- `automation.worker.ts` 訂閱並轉送的 `message.received`、`keyword.matched`、`conversation.created`、`case.created`、`case.escalated`、`contact.created`、`contact.tagged`、`link.clicked`、`portal.activity.submitted`。
+- 自動化訂閱者（`automation.worker.ts`）轉送的 `message.received`、`conversation.created`、`case.created`、`case.escalated`、`contact.created`、`contact.tagged`、`link.clicked`、`portal.activity.submitted`。
+- workers 處理 `message.received` 時一併比對的 `keyword.matched`。
 - workers 的 `sla.handler.ts` 自己查規則的五種 SLA 事件。
 
 其餘事件的規則可以儲存，但永遠不會執行：
@@ -1558,9 +1560,9 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 <a id="hook-01"></a>
 ### HOOK-01：對外 Webhook 轉送所有內部事件，`message.received` 送出 `replyToken`
 
-`webhook-dispatcher.ts` 的 `setupWebhookDispatcher()` 以 `eventBus.subscribe('*', …)` 訂閱所有事件。事件的名稱只要在訂閱的 `events` 裡，就把事件的 `payload` 原樣放進 `data` 送出。訂閱 API 的 `events` 是 `z.array(z.string())`，沒有對外事件的清單。
+對外 Webhook 訂閱者只轉送 `packages/core/src/outbox/events.ts` 的 `EXTERNAL_EVENT_NAMES`（`717d32bf`）。事件的名稱只要在清單內、也在訂閱的 `events` 裡，就把事件的 `payload` 原樣放進 `data` 送出。訂閱 API 的 `events` 是 `z.array(z.string())`，不檢查名稱。
 
-所以 eventBus 上的每一個事件都是對外介面，包括只給內部使用的事件：
+清單的機制已經有了，但第一版清單等於所有事件名稱，行為與加上清單之前相同。所以每一個業務事件仍是對外介面，包括只給內部使用的事件：
 
 | 事件 | 原本的用途 |
 | --- | --- |
@@ -1568,7 +1570,7 @@ API 行程以 `registerChannelPlugin()` 註冊 LINE、FB、WEBCHAT、THREADS 四
 | `sentiment.negative` | 情緒分析的中間結果 |
 | `usage.quota.threshold` | AI 用量告警 |
 
-之後新增的內部事件，也會自動成為對外介面。`docs/09_API_DESIGN.md` 的原始設計只舉業務事件為例（`case.created`、`case.closed`、`contact.tagged`），沒有說所有事件都對外。
+`APP_EVENT_NAMES` 之後新增的名稱，`EXTERNAL_EVENT_NAMES` 也會跟著包含，所以新增的內部事件會自動成為對外介面。清單要縮減哪些事件，待產品決定。`docs/09_API_DESIGN.md` 的原始設計只舉業務事件為例（`case.created`、`case.closed`、`contact.tagged`），沒有說所有事件都對外。
 
 **`replyToken` 送到外部網址。** `inbound-side-effects.ts` 的 `publishMessageReceived()` 在 `message.received` 的 `payload` 放入 LINE 的 `replyToken`。訂閱這個事件的網址會收到 `replyToken`，可以在 LINE 的回覆期限內，以這個官方帳號的身分回覆客人一次。建立訂閱只需要 `webhook.manage`，不需要渠道設定的權限。
 
@@ -1623,7 +1625,7 @@ API 啟動 log 寫死為 `LINE, FB, WEBCHAT`，但實際註冊表也包含 Threa
 <a id="app-04"></a>
 ### APP-04：Worker 檔名與內容不符
 
-API 的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue producer。真正的 consumer 位於 `apps/workers`。
+API 的 `automation.worker.ts` 與 `notification.worker.ts` 回傳訂閱者的處理函式，由 API 行程的訂閱者 Worker（`apps/api/src/events/subscriber-workers.ts`）呼叫。處理函式再送出 `automation`、`notification` 的 job，這兩個佇列的 consumer 位於 `apps/workers`。檔名的 worker 兩種意思都不完全對。
 
 <a id="app-05"></a>
 ### APP-05：API 行程的 SLA 通知訂閱永遠收不到事件
@@ -1656,18 +1658,21 @@ API 的 `automation.worker.ts` 與 `notification.worker.ts` 只建立 Queue prod
 <a id="app-08"></a>
 ### APP-08：多數 BullMQ 佇列永遠保留已完成的工作
 
-BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `data-erasure` 的佇列設定了 `removeOnComplete` 與 `removeOnFail`，其他佇列與 `apps/workers` 的所有 `Worker` 都沒有設定：
+BullMQ 預設保留所有完成與失敗的工作。
+
+**已修正的部分。** 以事件 id 當 job id 的佇列改成以時間保留：完成 24 小時、失敗 7 天。包括 `notification`（`5f392e60`、`3710b293`）、`automation`（`0585cd33`），以及新增的 `event-notification`、`event-automation`、`event-webhook`、`webhook-delivery`、`usage-alert-email`。`data-erasure` 原本就以筆數保留。
+
+**未修正的部分。** 下列佇列與 `apps/workers` 的所有 `Worker` 都沒有設定 `removeOnComplete` 與 `removeOnFail`：
 
 | 佇列 | 產生頻率 |
 | --- | --- |
-| `notification` | 每則進站訊息至少一筆；對話沒有負責人時，每位管理員與主管各一筆 |
 | `sla` | 重複工作，每 5 分鐘一筆 |
 | `data-export-cleanup`、`agent-retention-cleanup` | 重複工作，每小時各一筆 |
 | `rich-menu-bind`、`data-export` | 依操作 |
 
 每筆工作以 hash 存在 Redis，含完整的 `data`。`docker-compose.prod.yml` 的 Redis 沒有設定 `maxmemory` 或淘汰策略，因此用量會隨訊息量持續成長，直到主機記憶體不足。
 
-**修正方向**：所有佇列設定 `removeOnComplete` 與 `removeOnFail`（以筆數或時間為上限）；Redis 設定 `maxmemory`，但淘汰策略要用 `noeviction`，避免佇列的鍵被淘汰。
+**修正方向**：其餘佇列設定 `removeOnComplete` 與 `removeOnFail`（以筆數或時間為上限）；Redis 設定 `maxmemory`，但淘汰策略要用 `noeviction`，避免佇列的鍵被淘汰。
 
 <a id="app-09"></a>
 ### APP-09：API 行程假設只有一份
@@ -1678,7 +1683,6 @@ BullMQ 預設保留所有完成與失敗的工作。只有 `automation` 與 `dat
 | --- | --- |
 | API 行程內的排程（群發、CSAT、Canvas、閒置關閉、試用、報表彙總、權杖檢查） | **重複觸發已修正，重複處理只剩 Canvas。** 改由 BullMQ Job Scheduler 觸發（`apps/api/src/lib/job-scheduler.ts`），不論有幾個行程，每一期只產生一筆 job。這筆 job 仍可能執行不只一次：執行中的行程被強制結束時，BullMQ 會重新執行。同一個排程的兩期也可能重疊（一期跑超過週期時），Canvas 與試用以 `withoutOverlapping` 防止。寄送滿意度問卷、問卷逾時結案（#333）、閒置關閉（#302）與群發都以條件更新認領資料，重跑或和使用者操作同時發生時不會重複處理。Canvas 等待節點喚醒仍只以 id 更新，鎖過期後兩期同時執行時可能重複恢復同一個流程（#334） |
 | `crm:events`（Canvas） | 每個行程的 `canvas.worker.ts` 都收到同一則 `canvas.send_message`，客人收到多次 |
-| `domain:event` | 每個行程都轉成自己的 eventBus 事件，同一次貼標觸發多次自動化 |
 | 行程記憶體的狀態 | 非營業時間回覆的去重、工單輪流指派的位置、價目表快取（USAGE-02）、租戶方案快取，各行程各自一份 |
 | Socket.IO | 沒有 Redis adapter。`@socket.io/redis-adapter` 列在 `apps/api/package.json`，但程式沒有使用。API 直接推送的事件只送到同一個行程的客戶端 |
 
@@ -1873,17 +1877,6 @@ grep -cE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update
 | `webchat/webchat.routes.ts`、`shortlink/shortlink-redirect.routes.ts`、`platform/platform.routes.ts`、`knowledge/knowledge.routes.ts`、`conversation/conversation.routes.ts`、`analytics/analytics.routes.ts`、`ai/ai.routes.ts`、`agent/agent.routes.ts` | 各 1 | |
 
 多數是單筆查詢，搬進 service 即可。這些 route 大多沒有測試，搬移前先補上 route 的測試，確認行為不變。
-
-<a id="arch-02"></a>
-### ARCH-02：`ai` 模組 import `automation` 的 worker 檔
-
-規則 4 禁止 import 別的模組的 `.routes.ts`、`.worker.ts`、`.scheduler.ts`；引用別的模組的 helper 檔不算違規。2026-10-01 以下列指令核對，只有一處違規：
-
-```bash
-grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes|worker|scheduler)\.js'" apps/api/src/modules
-```
-
-`ai/kb-autoreply.service.ts` 從 `automation/automation.worker.ts` 匯入 `hasMatchingKeywordRule()`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與 `BotConfig`。修正方式是把這些搬到 `automation` 的 service 或 helper 檔。
 
 ## CI 與測試
 
