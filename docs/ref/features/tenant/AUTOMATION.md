@@ -43,14 +43,14 @@
 ## 規則怎麼被執行
 
 1. 業務模組發布事件，例如 `case.created`。事件送進自動化訂閱者的佇列 `event-automation`，見[事件與背景工作](../../modules/EVENTS.md)。
-2. `automation.worker.ts` 的訂閱者把事件 id、事件與上下文送進 `automation` queue。job id 是事件 id，所以同一個事件送兩次時只評估一次。
+2. `automation.worker.ts` 的訂閱者把事件 id、事件與上下文送進 `automation` queue。job id 是事件 id，所以同一個事件送兩次時只評估一次。這個去重只在完成的 job 保留期間（24 小時）有效。
 3. workers 的 `handleAutomationJob()` 取出同租戶、同事件、`isActive` 為 `true` 的規則，再用 `validateAutomationRuleContract()` 過濾掉不合契約的規則。
 4. `buildAutomationFacts()` 依上下文查出聯絡人、對話、工單等資料，組成事實。
 5. `evaluateRules()` 依 `priority` 由大到小逐條評估。命中的規則若設了 `stopOnMatch`，就停止評估其餘規則。
 6. 對每條命中的規則，`executeWorkerAutomationActions()` 依序執行動作。單一動作失敗只記 log，不影響後續動作。
 7. 推送 `automation.executed` socket 事件給租戶。
 
-**同一個事件的動作最多執行一次。** 事件可能送兩次，`automation` job 也可能重試。每個動作執行前，workers 以「`automation_action` + 事件 id + `<規則 id>#<動作序號>`」寫一筆認領紀錄，已經有紀錄就跳過。所以重送時，客人不會收到第二則訊息，沒有指定優先度的升級也不會再升一級。認領之後動作失敗不重做。SLA 排程觸發的規則沒有事件 id，不認領，由 SLA 自己的紀錄避免重複。規則在事件重送之間改了動作順序時，序號會對不上，可能重複執行一次。
+**同一個事件的動作最多執行一次。** 事件可能送兩次，`automation` job 也可能重試。每個動作執行前，workers 以「`automation_action` + 事件 id + `<規則 id>#<動作序號>`」寫一筆認領紀錄，已經有紀錄就跳過。認領紀錄保存 30 天，所以 30 天內重送時，客人不會收到第二則訊息，沒有指定優先度的升級也不會再升一級。認領之後動作失敗不重做。SLA 排程觸發的規則沒有事件 id，不認領，由 SLA 自己的紀錄避免重複。規則在事件重送之間改了動作順序時，序號會對不上，可能重複執行一次。
 
 ## 哪些事件能觸發規則
 

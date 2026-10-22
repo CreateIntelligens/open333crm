@@ -17,7 +17,7 @@
 ## 一則通知怎麼送到
 
 1. 業務模組發布事件，例如 `case.assigned`。事件送進通知訂閱者的佇列 `event-notification`，見[事件與背景工作](../../modules/EVENTS.md)。
-2. `setupNotificationWorker()` 的處理函式決定收件人，每位收件人送一個工作進 `notification` queue。工作的 id 是 `<事件 id>__<成員 ID>`，所以同一個事件處理兩次時，同一位成員只收到一則通知。
+2. `setupNotificationWorker()` 的處理函式決定收件人，每位收件人送一個工作進 `notification` queue。工作的 id 是 `<事件 id>__<成員 ID>`，所以同一個事件處理兩次時，同一位成員只收到一則通知。這個去重只在 job 的保留期間有效：完成的 job 保留 24 小時，失敗的保留 7 天。
 3. workers 行程的 `handleNotificationJob()` 寫入一筆 `Notification`。
 4. workers 發布到 Redis 的 `socket:emit`，API 行程轉送 `notification.new` 到 `agent:<成員 ID>` 房間。
 5. 前端收到後更新鈴鐺的未讀數。

@@ -254,6 +254,12 @@ review-loop 第 1、3、4 輪都在同一類問題上找到漏洞：整段 try/c
 2026-10-22 review-loop 與討論後移出本 change 的項目：
 
 - **重試用完的監控與重送。** 訂閱者 job 重試用完之後留在 failed set 7 天，沒有告警，也沒有畫面。另開 change 導入 bull-board（以 Fastify hook 採白名單，只放行讀取與單筆重送），並在 Worker 的 `failed` 事件發出告警。
+  - PR #354 機器人審查（2026-10-22）指出、一併交給這個 change 的項目：workers 的 `notification` 佇列沒有設定 `attempts`，`notification:dispatch` 失敗一次就停在 failed set，同一個 job id 也擋住之後的重送。
+- **PR #354 機器人審查指出、main 上原本就有的行為（2026-10-22）。** 本 change 沒有改變這些行為，不在本 change 處理：
+  - data-export 標記 `failed` 的更新失敗時只記 log，job 照常完成（`data-export.handler.ts`）。
+  - data-erasure 的稽核紀錄寫在刪除交易之外，`completed` commit 之後寫稽核失敗時，稽核紀錄遺失。
+  - `keyword.matched` 在規則契約驗證之前發出；契約不合法的規則仍會發出事件，與 main 上 API 發出 `keyword.matched` 的時機相同。
+  - `hasMatchingKeywordRule()` 查詢所有啟用的規則，再以 trigger 的 `type` 篩選，與 main 相同。
 - **事件順序。** relay 補送的事件可能比之後的事件晚到；Worker 同時處理多個 job，同一段對話的事件會並行。目前只有 rich-menu 記在 Risks。
 - **job 資料格式跨版本。** 部署前後的 job 格式不同（例如舊 job 沒有 `eventId`），目前各處各自判斷。
 - **多個 API 實例的推播。** 背景處理的 Socket 推播只送到處理它的實例；要支援多實例時，整體加上 Socket.IO Redis adapter。

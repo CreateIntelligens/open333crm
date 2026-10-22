@@ -115,6 +115,8 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 不能重複的副作用，執行前在交易內寫一筆 `side_effect_claims`。唯一鍵是 `(kind, sourceId, subKey)`，撞到唯一鍵時認領失敗，副作用不執行。寫入用 `INSERT … ON CONFLICT DO NOTHING`，所以認領失敗不會讓交易失效。認領紀錄保存 30 天，由 `outbox-cleanup` 刪除。
 
+去重有期限：以 job id 去重，只在佇列保留這個 job 的期間有效（完成的 job 保留 24 小時）；以認領紀錄去重，只在 30 天內有效。超過期限之後同一個事件再送一次，沒有認領的處理會再做一次。
+
 | kind | sourceId | subKey | 保護的副作用 |
 | --- | --- | --- | --- |
 | `bot_reply` | 入站訊息 id | 空字串 | agent 回覆、KB 自動回覆、自動轉接的轉接訊息：每則入站訊息最多一則機器人回覆 |
