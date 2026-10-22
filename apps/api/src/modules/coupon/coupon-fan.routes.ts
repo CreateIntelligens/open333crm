@@ -10,12 +10,13 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
+import { AppError } from '../../shared/utils/response.js';
 import { verifyFanToken, type FanPayload } from '../portal/portal-auth.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
 import { claimByToken, openInstance } from './coupon-redeem.service.js';
 import { getFanCoupon } from './coupon-fan.service.js';
 import { verifyLineIdToken } from './line-id-token.js';
-import { redeemSelf } from './coupon-wallet.service.js';
+import { MAX_DEVICE_TOKENS, redeemSelf } from './coupon-wallet.service.js';
 import {
   getWalletQrCodeFlow,
   inFanTenant,
@@ -23,9 +24,20 @@ import {
   openWalletSessionFlow,
   openWalletSessionWithLineFlow,
   redeemWithStaffCodeFlow,
+  requestWalletEmailCodeFlow,
   startStaffCodeSessionFlow,
+  verifyWalletEmailCodeFlow,
   type WalletFlowDeps,
 } from './coupon-wallet.flow.js';
+
+export interface CouponFanRoutesOptions {
+  /** 測試可注入寄開啟票券驗證碼的函式（design D24） */
+  sendEmailCode?: WalletFlowDeps['sendEmailCode'];
+}
+
+const LINK_EXPIRED_MESSAGE = '連結已失效，請回到對話重新點選，或到券夾查看已領取的券';
+const linkExpired = () => new AppError(LINK_EXPIRED_MESSAGE, 'LINK_EXPIRED', 410);
+const walletToken = z.string().min(1).max(100);
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -62,27 +74,85 @@ const STAFF_CODE_MESSAGES: Record<string, string> = {
 /** 券 id：格式不對直接回 400，不讓資料庫丟錯 */
 const idParams = z.object({ id: z.string().uuid('券識別格式不正確') });
 
-export default async function couponFanRoutes(app: FastifyInstance) {
+export default async function couponFanRoutes(app: FastifyInstance, opts: CouponFanRoutesOptions = {}) {
   // 交易由 coupon-wallet.flow 以顧客憑證或票券權杖的租戶開（公開端點沒有登入的座席）
-  const deps = (): WalletFlowDeps => ({ store: getBindingStore(), prisma: app.prisma, io: app.io });
+  const deps = (): WalletFlowDeps => ({
+    store: getBindingStore(),
+    prisma: app.prisma,
+    io: app.io,
+    ...(opts.sendEmailCode ? { sendEmailCode: opts.sendEmailCode } : {}),
+  });
 
   // 公開端點（票券連結換憑證）與驗證碼輸入都要防暴力嘗試
   await app.register(rateLimit, { global: true, max: 60, timeWindow: '1 minute', keyGenerator: (request) => request.ip });
 
   /**
-   * 票券連結換顧客憑證（不需登入）。已歸戶回傳憑證；未歸戶回傳 One ID 登記頁網址；
-   * 連結不存在或過期一律 410，不透露任何租戶或聯絡人資料。
+   * 票券連結換顧客憑證（不需登入）。deviceTokens 是這台裝置存的裝置憑證（design D24）：
+   * 已歸戶且裝置驗證過 → 回傳憑證與換新的裝置憑證；已歸戶但裝置沒驗證過 → email_code_required；
+   * 未歸戶 → One ID 登記頁網址。連結不存在或過期一律 410，不透露任何租戶或聯絡人資料。
    */
   app.post('/session', async (request, reply) => {
-    const { token } = z.object({ token: z.string().min(1).max(100) }).parse(request.body);
-    const result = await openWalletSessionFlow(deps(), token);
+    const { token, deviceTokens } = z
+      .object({
+        token: walletToken,
+        deviceTokens: z.array(z.string().min(1).max(2048)).max(MAX_DEVICE_TOKENS).optional(),
+      })
+      .parse(request.body);
+    const result = await openWalletSessionFlow(deps(), token, deviceTokens ?? []);
     if (result.status === 'expired') {
       return reply.status(410).send({
         success: false,
-        error: { code: 'LINK_EXPIRED', message: '連結已失效，請回到對話重新點選，或到券夾查看已領取的券' },
+        error: { code: 'LINK_EXPIRED', message: LINK_EXPIRED_MESSAGE },
       });
     }
     return { success: true, data: result };
+  });
+
+  /**
+   * 寄驗證碼到票券連結聯絡人原本的 email（design D24）。只給已歸戶且有 email 的聯絡人，
+   * 不接受請求帶 email。同一個票券連結 10 分鐘內最多寄 3 次。
+   */
+  app.post('/session/code', async (request) => {
+    const { token } = z.object({ token: walletToken }).parse(request.body ?? {});
+    const result = await requestWalletEmailCodeFlow(deps(), token);
+    switch (result.status) {
+      case 'code_sent':
+        return { success: true, data: result };
+      case 'expired':
+        throw linkExpired();
+      case 'unavailable':
+        throw new AppError('這張優惠券不需要 email 驗證碼，請重新開啟連結', 'EMAIL_CODE_UNAVAILABLE', 409);
+      case 'in_progress':
+        throw new AppError('驗證信寄送中，請稍候查看信箱', 'VERIFICATION_EMAIL_IN_PROGRESS', 409);
+      case 'too_many_codes':
+        throw new AppError('驗證碼寄送次數過多，請 10 分鐘後再試', 'TOO_MANY_VERIFICATION_EMAILS', 429);
+      case 'send_failed':
+        request.log.error('[coupon-wallet] 開啟票券的驗證信寄送失敗');
+        throw new AppError('驗證信寄送失敗，請稍後再試', 'VERIFICATION_EMAIL_FAILED', 502);
+    }
+  });
+
+  /** 輸入 email 驗證碼：正確回傳與 /session 的 ok 相同的資料加上裝置憑證；錯誤回剩餘次數 */
+  app.post('/session/code/verify', async (request) => {
+    const { token, code } = z.object({ token: walletToken, code: z.string().max(20) }).parse(request.body ?? {});
+    const result = await verifyWalletEmailCodeFlow(deps(), token, code);
+    switch (result.status) {
+      case 'ok':
+        return { success: true, data: result };
+      case 'expired':
+        throw linkExpired();
+      case 'code_expired':
+        throw new AppError('驗證碼已過期，請重新寄送', 'VERIFICATION_CODE_EXPIRED', 410);
+      case 'locked':
+        throw new AppError('驗證碼錯誤次數過多，請重新寄送驗證碼', 'VERIFICATION_CODE_LOCKED', 429);
+      case 'invalid_code':
+        throw new AppError(
+          result.remainingAttempts > 0 ? `驗證碼不正確，還可以再試 ${result.remainingAttempts} 次` : '驗證碼不正確，請重新寄送驗證碼',
+          'INVALID_VERIFICATION_CODE',
+          400,
+          { remainingAttempts: result.remainingAttempts },
+        );
+    }
   });
 
   /**

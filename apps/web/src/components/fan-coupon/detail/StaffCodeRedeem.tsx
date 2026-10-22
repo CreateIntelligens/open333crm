@@ -319,7 +319,7 @@ export function StaffCodeRedeem({ item, onBack, onRedeemed, onAbort, onUncertain
                 </p>
               )}
               <p id="staff-code-hint" className="text-xs font-medium leading-5 text-muted-foreground">
-                請店員輸入 {length} 位數核銷碼，此碼會記錄於核銷紀錄中
+                請店員輸入 {length} 位數驗證碼
               </p>
             </div>
           </div>

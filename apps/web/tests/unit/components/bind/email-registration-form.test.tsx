@@ -10,6 +10,7 @@ const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('#src/lib/api.js', () => ({ default: api }));
 
 import { EmailRegistrationForm } from '#src/components/bind/EmailRegistrationForm.js';
+import { getFanDeviceTokens } from '#src/lib/fan-device.js';
 
 const httpError = (status: number, code: string, message: string) =>
   Object.assign(new Error(String(status)), { response: { status, data: { success: false, error: { code, message } } } });
@@ -116,6 +117,29 @@ describe('驗證碼（design D15）', () => {
     fireEvent.click(screen.getByRole('button', { name: '驗證' }));
     await screen.findByText(/已登記您的 email/);
     assert.deepEqual(api.post.mock.calls[1], [`/public/email-registration/${TOKEN}/verify`, { code: '123456' }]);
+  });
+
+  test('email 登記完成後記住裝置：存下裝置憑證，回到票券時不必再驗證（design D24）', async () => {
+    window.localStorage.clear();
+    // 前端只存結構正確的裝置憑證（typ fan-device 的三段式 JWT，簽章由後端驗證）
+    const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/=+$/, '');
+    const deviceJwt = `${b64({ alg: 'HS256' })}.${b64({ typ: 'fan-device', sub: 'contact-1', tid: 'tenant-1' })}.sig`;
+    const input = await toCodeStep();
+    api.post.mockResolvedValueOnce({ data: { data: { status: 'registered', deviceToken: deviceJwt } } });
+    fireEvent.change(input, { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '驗證' }));
+    await screen.findByText(/已登記您的 email/);
+    assert.deepEqual(getFanDeviceTokens(), [deviceJwt]);
+  });
+
+  test('沒有完成歸戶的結果沒有裝置憑證：不存', async () => {
+    window.localStorage.clear();
+    const input = await toCodeStep();
+    api.post.mockResolvedValueOnce({ data: { data: { status: 'merge_requires_chat' } } });
+    fireEvent.change(input, { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '驗證' }));
+    await screen.findByText('需要在對話中完成整合');
+    assert.deepEqual(getFanDeviceTokens(), []);
   });
 
   test('驗證碼錯誤：顯示剩餘次數，可再輸入', async () => {

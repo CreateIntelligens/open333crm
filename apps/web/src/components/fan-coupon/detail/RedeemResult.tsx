@@ -51,7 +51,7 @@ export function RedeemResult({ item, redeemedAt, onClose }: Props) {
           <h2 ref={headingRef} tabIndex={-1} className="text-2xl font-black leading-8 text-foreground focus:outline-none">
             {isExchange ? '兌換完成' : '核銷完成'}
           </h2>
-          <p className="mt-1 text-sm font-medium text-muted-foreground">此券已使用，請向店員出示此畫面確認</p>
+          <p className="mt-1 text-sm font-medium text-muted-foreground">此券已使用，可出示此畫面作為使用證明</p>
         </div>
         <FanCouponCard item={usedItem} />
         <section aria-labelledby="redeem-detail-title" className="-mx-5 bg-card px-5 pb-4 pt-5">

@@ -3,7 +3,7 @@
  * 路由層整合測試，真實 Postgres；資料以唯一標記建立，afterAll 清除。寄信以注入函式取代。
  */
 import assert from 'node:assert/strict';
-import { afterAll, beforeEach, test } from 'vitest';
+import { afterAll, beforeEach, describe, test } from 'vitest';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
@@ -13,7 +13,9 @@ import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import emailRegistrationRoutes from '#src/modules/identity-binding/email-registration.routes.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
-import { issueEmailRegistrationLink } from '#src/modules/identity-binding/email-registration.service.js';
+import { EMAIL_REGISTRATION, issueEmailRegistrationLink } from '#src/modules/identity-binding/email-registration.service.js';
+import { reuseOrIssueRegistrationToken } from '#src/modules/identity-binding/identifier-registration.js';
+import { verifyFanDeviceToken } from '#src/modules/portal/portal-auth.service.js';
 
 loadEnvConfig();
 const prisma = new PrismaClient();
@@ -251,3 +253,37 @@ test('同時送出兩次：只寄出一封，寄出的驗證碼可以用', async
   assert.equal((await verify(token, mails[0].code)).statusCode, 200);
 });
 
+
+describe('email 登記完成後記住裝置（add-coupon-system design D24）', () => {
+  test('email 登記完成後記住裝置', async () => {
+    const token = await newToken();
+    await submit(token, `${stamp}@example.com`);
+    const res = await verify(token, mails[0].code);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().data.status, 'registered');
+    assert.deepEqual(verifyFanDeviceToken(res.json().data.deviceToken), { contactId: fixture.contact.id, tenantId: T });
+  });
+
+  test('從票券頁登記的 email 已屬於其他聯絡人：沒有完成歸戶，不給裝置憑證', async () => {
+    const taken = `${stamp}-taken@example.com`;
+    const other = await withTenant(prisma, T, (tx) => tx.contact.create({ data: { tenantId: T, displayName: `${stamp}-other`, email: taken } }));
+    try {
+      // 票券頁發出的登記連結（noMerge）
+      const issued = await reuseOrIssueRegistrationToken(EMAIL_REGISTRATION, { store, now: () => clock.now }, {
+        tenantId: T,
+        channelIdentityId: fixture.identity.id,
+        channelId: fixture.channel.id,
+        conversationId: fixture.conversation.id,
+      });
+      assert.equal(issued.status, 'ok');
+      const token = issued.status === 'ok' ? issued.token : '';
+      await submit(token, taken);
+      const res = await verify(token, mails[0].code);
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal(res.json().data.status, 'merge_requires_chat');
+      assert.equal(res.json().data.deviceToken, undefined);
+    } finally {
+      await withTenant(prisma, T, (tx) => tx.contact.deleteMany({ where: { id: other.id } }));
+    }
+  });
+});

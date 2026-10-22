@@ -405,3 +405,17 @@
 
 - [x] 13.8 `pnpm test`、`pnpm test:feature` 通過；兩個租戶隔離檢查 `--strict` 無新增違規
 - [x] 13.9 `node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+
+## A14. 票券連結確認本人（design D24，2026-10-22 UAT 發現）
+
+- [x] 14.1 測試「已驗證的裝置開啟票券連結」「新裝置或轉傳的連結開啟已歸戶顧客的票券」「其他聯絡人或其他租戶的裝置憑證不算」「合併前取得的裝置憑證仍有效」「沒有 email 的已歸戶顧客走登記」（`coupon-wallet-device.test.ts`、`coupon-wallet-device-routes.test.ts`）
+- [x] 14.2 測試「以原 email 驗證碼確認身分」「驗證碼錯誤與上限」「票券連結失效時不寄驗證碼」；驗證信用途為票券時請顧客回到優惠券頁面輸入（`ownership-code-email.test.ts`）
+- [x] 14.3 測試「LIFF 驗證後記住裝置」（`coupon-line-login.test.ts`、`liff-coupon.test.ts`）與「email 登記完成後記住裝置」（`email-verification-routes.test.ts`、`phone-registration-routes.test.ts`、`email-registration-form.test.tsx`）；`merge_requires_chat` 不給裝置憑證以突變驗證（改成一律給 → 測試失敗）
+- [x] 14.4 更新既有測試：已歸戶顧客開啟票券連結改為帶裝置憑證（`coupon-wallet.test.ts`、`coupon-inbox.test.ts`、`coupon-realtime.test.ts`、`coupon-entry.test.tsx`），這是本節刻意的行為變更
+- [x] 14.5 實作：裝置憑證簽發與驗證（portal-auth）；`openWalletSession` 檢查裝置憑證、回 `email_code_required`；`POST /fan/coupons/session` 收 `deviceTokens`；`POST /session/code`、`/session/code/verify`；驗證碼寄送與比對抽成共用函式（ownership-code）；LIFF `verified` 與 email 登記驗證成功附上裝置憑證
+- [x] 14.6 前端：`lib/fan-device.ts`；票券頁帶裝置憑證、存新的裝置憑證、新增 email 驗證碼步驟（寄送、輸入、確認、重寄冷卻、各種錯誤）；LIFF 入口與 email 登記頁存裝置憑證
+- [x] 14.7 `pnpm test`、優惠券與 identity-binding feature 測試通過；三個租戶隔離檢查 `--strict` 無新增違規；`node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+- [x] 14.8 測試（PR #359 bot 審查）：並行送出同一組驗證碼只有一次成功、開啟票券時資料庫暫時失敗可用同一組再試（兩者修正前失敗）；「驗證碼只能用於寄出它的連結」寫完即通過，突變驗證：讓所有連結共用同一組驗證碼的 Redis 鍵與鹽，測試失敗
+- [x] 14.9 實作：驗證碼通過後以 GETDEL 取走（consumeVerificationCode），後續失敗時以剩餘效期放回（restoreVerificationCode）；驗證碼畫面的錯誤處理在錯誤不是物件時改顯示預設訊息
+- [x] 14.10 測試（PR #359 bot 第三輪）：序號包整批重送時成功回應、不重複寫入（前端分批匯入沒收到回應而重送時，存草稿與發布不會卡住）。寫完即通過，突變驗證：整批都已存在時改為丟錯，測試失敗
+

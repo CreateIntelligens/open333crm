@@ -3,8 +3,9 @@
 /**
  * 票券連結入口（/coupon/open/{token}）。顧客在 LINE／FB 對話中點選發券訊息的連結後進入。
  *
- * 以連結 token 換顧客憑證（POST /fan/coupons/session，design D12）：
- * - ok：存下顧客憑證，顯示這次收到的券（對話發的券已直接存入券夾，不需領取，設計稿 C2／C2.1）
+ * 以連結 token 與這台裝置存的裝置憑證換顧客憑證（POST /fan/coupons/session，design D12、D24）：
+ * - ok：存下顧客憑證與換新的裝置憑證，顯示這次收到的券（對話發的券已直接存入券夾，不需領取，設計稿 C2／C2.1）
+ * - email_code_required：已歸戶但這台裝置沒驗證過（新裝置或被轉傳的連結），寄驗證碼到原 email 確認（EmailCodeStep）
  * - verification_required：顧客還沒完成 One ID 歸戶，引導到手機／email 登記頁，登記後會回到這裡
  * - unavailable：商家沒開啟任何登記方式，請顧客聯絡客服
  * - rate_limited：一小時內取得驗證連結太多次
@@ -14,18 +15,21 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock, Link2Off, Loader2, MessageCircle, ShieldCheck, WifiOff } from 'lucide-react';
-import { openWalletSession, useFanCoupon, type FanCoupon } from '@/hooks/useFanCoupons';
+import { openWalletSession, useFanCoupon, type FanCoupon, type WalletSessionOk } from '@/hooks/useFanCoupons';
 import { getFanToken, setFanToken } from '@/lib/fan-api';
+import { getFanDeviceTokens, rememberFanDeviceToken } from '@/lib/fan-device';
 import { backToChatLabel, ymd } from '@/lib/fan-coupon/labels';
 import { FanShell, StatusMessage } from '../FanShell';
 import { FanCouponCard } from '../FanCouponCard';
 import { FanButton } from './FanButton';
+import { EmailCodeStep } from './EmailCodeStep';
 import { CLOSE_HINT, useTryClose } from './useTryClose';
 
 type Phase =
   | { kind: 'loading' }
   | { kind: 'ok'; instanceId: string }
   | { kind: 'verify'; contact: 'phone' | 'email'; registrationUrl: string }
+  | { kind: 'email_code'; maskedEmail: string }
   | { kind: 'unavailable' }
   | { kind: 'rate_limited' }
   | { kind: 'expired' }
@@ -37,7 +41,7 @@ const WALLET_PATH = '/coupon/wallet';
 const HOW_TO_USE_HINT: Record<NonNullable<FanCoupon['coupon']['redeemMode']>, string> = {
   STAFF_CODE: '到門市結帳時，打開「我的優惠券」即可使用。',
   STAFF_SCAN: '到門市結帳時，打開「我的優惠券」即可使用。',
-  SELF: '在線上商城結帳時，打開「我的優惠券」即可使用。',
+  SELF: '結帳時，打開「我的優惠券」即可使用。',
 };
 
 /** 連結失效的回應：後端過期回 410；token 格式不符被 Zod 擋下回 400 */
@@ -56,18 +60,29 @@ export function CouponEntry({ token }: { token: string }) {
   // 開發模式的 StrictMode 會讓 effect 跑兩次；同一個 token 同一次嘗試只換一次憑證
   const requested = useRef<string | null>(null);
 
+  /** 確認身分後：存下顧客憑證與這台裝置的裝置憑證（design D24），顯示這張券 */
+  const acceptSession = useCallback((session: WalletSessionOk) => {
+    setFanToken(session.fanToken);
+    if (session.deviceToken) rememberFanDeviceToken(session.deviceToken);
+    if (session.channelType !== undefined) setChannelType(session.channelType ?? null);
+    setPhase({ kind: 'ok', instanceId: session.instanceId });
+  }, []);
+  const linkExpired = useCallback(() => setPhase({ kind: 'expired' }), []);
+
   useEffect(() => {
     const key = `${token}#${attempt}`;
     if (requested.current === key) return;
     requested.current = key;
     setPhase({ kind: 'loading' });
-    openWalletSession(token)
+    openWalletSession(token, getFanDeviceTokens())
       .then((session) => {
         setChannelType(session.channelType ?? null);
         switch (session.status) {
           case 'ok':
-            setFanToken(session.fanToken);
-            setPhase({ kind: 'ok', instanceId: session.instanceId });
+            acceptSession(session);
+            break;
+          case 'email_code_required':
+            setPhase({ kind: 'email_code', maskedEmail: session.maskedEmail });
             break;
           case 'verification_required':
             setPhase({ kind: 'verify', contact: session.kind, registrationUrl: session.registrationUrl });
@@ -83,7 +98,7 @@ export function CouponEntry({ token }: { token: string }) {
         }
       })
       .catch((err: unknown) => setPhase({ kind: isLinkInvalid(err) ? 'expired' : 'error' }));
-  }, [token, attempt]);
+  }, [token, attempt, acceptSession]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const goWallet = useCallback(() => router.push(WALLET_PATH), [router]);
@@ -115,6 +130,17 @@ export function CouponEntry({ token }: { token: string }) {
       break;
     case 'ok':
       return <OkScreen instanceId={phase.instanceId} onWallet={goWallet} onClose={tryClose} backToLine={backToLine} />;
+    case 'email_code':
+      return (
+        <EmailCodeStep
+          token={token}
+          maskedEmail={phase.maskedEmail}
+          onVerified={acceptSession}
+          onLinkExpired={linkExpired}
+          onClose={tryClose}
+          backToLine={backToLine}
+        />
+      );
     case 'verify':
       body = (
         <StatusMessage

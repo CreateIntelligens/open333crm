@@ -19,6 +19,7 @@ import type { LineLoginDeps } from '#src/modules/coupon/coupon-wallet.service.js
 import { openWalletSessionFlow, openWalletSessionWithLineFlow } from '#src/modules/coupon/coupon-wallet.flow.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
 import { ctxOf, testIo } from '#tests/support/tenant-run.js';
+import { verifyFanDeviceToken } from '#src/modules/portal/portal-auth.service.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -140,8 +141,12 @@ describe('LINE 顧客以 LINE Login 驗證身分', () => {
     const contact = await owner.contact.findUnique({ where: { id: p.contactId } });
     assert.ok(contact?.identityVerifiedAt);
     assert.equal(contact?.identityVerifiedVia, 'line');
-    // 之後照一般流程開啟，不再要求登記
-    assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'ok');
+    // 回應附上這台裝置的裝置憑證（design D24）：之後照一般流程帶上它開啟，不再要求登記
+    assert.equal(r.status === 'verified' && verifyFanDeviceToken(r.deviceToken)?.contactId, p.contactId);
+    const deviceToken = r.status === 'verified' ? r.deviceToken : '';
+    assert.equal((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token, [deviceToken])).status, 'ok');
+    // 沒有裝置憑證（例如連結被轉傳到別的裝置）就不直接開啟
+    assert.notEqual((await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token)).status, 'ok');
   });
 
   it('ID token 驗證失敗', async () => {

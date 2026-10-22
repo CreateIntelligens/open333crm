@@ -211,6 +211,18 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 把已檢查完、還沒寫入的序號包分批寫入券；重試時跳過已成功的批次。存草稿與發布共用。 */
+  const importPendingCodes = async (id: string) => {
+    const imp = importRef.current;
+    if (valuesRef.current.codeMode !== 'IMPORTED_CODES' || imp.status !== 'done' || imp.imported) return;
+    for (let i = importedBatches.current * IMPORT_BATCH; i < imp.codes.length; i += IMPORT_BATCH) {
+      await importCodes(id, imp.codes.slice(i, i + IMPORT_BATCH).join('\n'));
+      importedBatches.current += 1;
+    }
+    importRef.current = { ...imp, imported: true };
+    setImportState((st) => ({ ...st, imported: true }));
+  };
+
   const saveDraftOnce = async (): Promise<string | null> => {
     const v = valuesRef.current;
     if (!v.name.trim()) {
@@ -236,6 +248,8 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
       if (!newId) throw new Error('儲存草稿失敗');
       couponIdRef.current = newId;
       setCouponId(newId);
+      // 已檢查完的序號包一併寫入；否則離開後序號包會遺失，下次編輯要重新上傳
+      await importPendingCodes(newId);
       setBaseline(snapshot(v));
       setDraftAt(hm());
       return newId;
@@ -303,15 +317,7 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
         couponIdRef.current = id;
         setCouponId(id);
       }
-      const imp = importRef.current;
-      if (valuesRef.current.codeMode === 'IMPORTED_CODES' && imp.status === 'done' && !imp.imported) {
-        // 分批匯入；重試時跳過已成功的批次
-        for (let i = importedBatches.current * IMPORT_BATCH; i < imp.codes.length; i += IMPORT_BATCH) {
-          await importCodes(id, imp.codes.slice(i, i + IMPORT_BATCH).join('\n'));
-          importedBatches.current += 1;
-        }
-        setImportState((s) => ({ ...s, imported: true }));
-      }
+      await importPendingCodes(id);
       await publishCoupon(id);
       guard.release();
       router.push(`${LIST_HREF}/${id}?published=1`);
@@ -818,7 +824,7 @@ export function CouponForm({ mode, coupon, claimedCount = 0, issuedCount, existi
                       maxLength={PREFIX_MAX}
                     />
                     <Note>
-                      產生格式如 <span className="font-mono">{(values.codePrefix || 'AUTUMN').toUpperCase()}-7K2P-4M9X</span>，每人不同，可精準追蹤到個人。
+                      產生格式如 <span className="font-mono">{(values.codePrefix || 'AUTUMN').toUpperCase()}-7K2P4M9XQR</span>，每人不同，可精準追蹤到個人。
                     </Note>
                   </>
                 )}

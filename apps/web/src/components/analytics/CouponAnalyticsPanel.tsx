@@ -92,7 +92,8 @@ export function CouponAnalyticsPanel({ data, isLoading, error, onRetry }: Props)
                   <Legend />
                   {/* 每日張數是離散值，用直線不用平滑曲線；天數多時只在滑過時顯示點 */}
                   <Line type="linear" dataKey="issued" name="發出" stroke="var(--series-issued)" strokeWidth={2} dot={showDots && { r: 4 }} activeDot={{ r: 5 }} />
-                  <Line type="linear" dataKey="redeemed" name="核銷" stroke="var(--series-redeemed)" strokeWidth={2} dot={showDots && { r: 4 }} activeDot={{ r: 5 }} />
+                  {/* 核銷用虛線畫在上層：兩者數字相同時線會重疊，虛線的空隙讓下面的發出線露出來 */}
+                  <Line type="linear" dataKey="redeemed" name="核銷" stroke="var(--series-redeemed)" strokeWidth={2} strokeDasharray="6 4" isAnimationActive={false} dot={showDots && { r: 4 }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
               <details className="mt-3 text-sm">

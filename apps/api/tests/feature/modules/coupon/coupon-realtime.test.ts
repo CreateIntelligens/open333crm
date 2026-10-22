@@ -21,6 +21,7 @@ import { issueInConversation, type InboxFlowDeps } from '#src/modules/coupon/cou
 import { createStore, createStoreAccount } from '#src/modules/store/store.service.js';
 import { TENANT_A } from '#tests/setup/feature-config.js';
 import { ctxOf, recordingIo, type PushRecord } from '#tests/support/tenant-run.js';
+import { signFanDeviceToken } from '#src/modules/portal/portal-auth.service.js';
 
 loadEnvConfig();
 const owner = new PrismaClient();
@@ -145,7 +146,7 @@ describe('已發優惠券區塊即時更新', () => {
     const p = await verifiedPerson('開啟');
     const { instanceId, token } = await issue(p, scanCoupon);
     emitted.length = 0;
-    const res = await app.inject({ method: 'POST', url: '/api/v1/fan/coupons/session', payload: { token } });
+    const res = await app.inject({ method: 'POST', url: '/api/v1/fan/coupons/session', payload: { token, deviceTokens: [signFanDeviceToken(p.contactId, T)] } });
     assert.equal(res.statusCode, 200, res.body);
     assert.deepEqual(updates().map((e) => ({ room: e.room, ...e.data })), [
       { room: tenantRoom, instanceId, contactId: p.contactId, change: 'viewed' },
@@ -168,7 +169,7 @@ describe('已發優惠券區塊即時更新', () => {
   it('券被核銷後推送：顧客自助', async () => {
     const p = await verifiedPerson('自助核銷');
     const { instanceId, token } = await issue(p, selfCoupon);
-    const session = await app.inject({ method: 'POST', url: '/api/v1/fan/coupons/session', payload: { token } });
+    const session = await app.inject({ method: 'POST', url: '/api/v1/fan/coupons/session', payload: { token, deviceTokens: [signFanDeviceToken(p.contactId, T)] } });
     const fanToken = session.json().data.fanToken as string;
     emitted.length = 0;
     const res = await app.inject({

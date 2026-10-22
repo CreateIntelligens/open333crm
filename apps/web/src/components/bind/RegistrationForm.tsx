@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '@/lib/api-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { safeCouponReturnPath } from '@/lib/safe-return-path';
+import { rememberFanDeviceToken } from '@/lib/fan-device';
 
 interface RegistrationInfo {
   channelType: string;
@@ -167,7 +168,10 @@ export function RegistrationForm({ kind, token }: { kind: RegistrationFormKind; 
     setNotice(null);
     try {
       const res = await api.post(`/public/${kind.apiPath}/${encodeURIComponent(token)}/verify`, { code: code.trim() });
-      setPhase({ kind: 'done', status: (res.data.data as { status: string }).status });
+      const data = res.data.data as { status: string; deviceToken?: string };
+      // 完成歸戶時後端附上裝置憑證：回到票券連結時這台裝置不必再驗證（add-coupon-system design D24）
+      if (data.deviceToken) rememberFanDeviceToken(data.deviceToken);
+      setPhase({ kind: 'done', status: data.status });
     } catch (err) {
       if (RESTART_CODES.has(errorCode(err) ?? '')) {
         // 驗證碼不能再用：回到填寫步驟，保留剛才的值，顧客按送出就會收到新的驗證碼

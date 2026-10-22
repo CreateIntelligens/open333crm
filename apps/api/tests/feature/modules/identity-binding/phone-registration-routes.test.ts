@@ -134,6 +134,8 @@ test('連結使用後失效', async () => {
   const ok = await app.inject({ method: 'POST', url: url(token), payload: { phone: `+886 ${phone.slice(1)}` } });
   assert.equal(ok.statusCode, 200, ok.body);
   assert.equal(ok.json().data.status, 'registered');
+  // 手機登記沒有驗證擁有權、不算歸戶驗證：不給裝置憑證（add-coupon-system design D24）
+  assert.equal(ok.json().data.deviceToken, undefined);
   const contact = await withTenant(prisma, T, (tx) => tx.contact.findFirst({ where: { id: fixture.contact.id } }));
   assert.equal(contact?.phone, phone, '統一格式');
   assert.ok(sent.some((s) => s.conversationId === fixture.conversation.id && s.text === '已登記您的手機號碼。'), '對話收到登記完成');

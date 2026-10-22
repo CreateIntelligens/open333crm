@@ -230,6 +230,13 @@ describe('店員驗證碼核銷', () => {
     assert.ok(screen.queryByRole('button', { name: '重試' }) === null);
   });
 
+  test('提示店員輸入驗證碼，不宣稱會記錄在核銷紀錄', async () => {
+    h.coupon = fanCoupon({}, { staffCodeLength: 4 });
+    await openStaffCode();
+    assert.ok(screen.getByText('請店員輸入 4 位數驗證碼'));
+    assert.ok(screen.queryByText(/核銷紀錄|核銷碼/) === null);
+  });
+
   test('輸入格數等於 staffCodeLength', async () => {
     h.coupon = fanCoupon({}, { staffCodeLength: 4 });
     await openStaffCode();
@@ -361,6 +368,22 @@ describe('顧客自助滑動核銷', () => {
     track.getBoundingClientRect = () => ({ width: 353, left: 0, right: 353, top: 0, bottom: 48, height: 48, x: 0, y: 0, toJSON() {} }) as DOMRect;
     return screen.getByRole('slider');
   }
+
+  test('確認頁不顯示商家沒有設定的條款', () => {
+    setupSelf();
+    assert.ok(screen.queryByText(/單筆訂單限用一張/) === null);
+  });
+
+  test('核銷完成頁不要求顧客向店員出示', async () => {
+    const handle = setupSelf();
+    h.redeemSelf.mockResolvedValue({ redeemedAt: '2026-10-12T01:41:05.000Z' });
+    fireEvent.pointerDown(handle, { clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 340, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 340, pointerId: 1 });
+    await flush();
+    assert.ok(screen.getByRole('heading', { name: '核銷結果' }));
+    assert.ok(screen.queryByText(/請向店員出示/) === null);
+  });
 
   test('未滑過 90% 放開會彈回，不呼叫核銷', async () => {
     const handle = setupSelf();

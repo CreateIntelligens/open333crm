@@ -403,6 +403,30 @@ describe('後台逐欄驗證找到的問題（2026-10-21）', () => {
   });
 });
 
+describe('操作手冊實測發現的問題（2026-10-22）', () => {
+  test('匯入序號包後按儲存草稿，序號會寫入這張券，不會遺失', async () => {
+    coupons.previewCodeImport.mockResolvedValue({ conflicts: [], alreadyImported: [] });
+    coupons.importCodes.mockResolvedValue({ imported: 2 });
+    render(<CouponForm mode="draft" coupon={coupon({ codeMode: 'IMPORTED_CODES', codePrefix: null })} />);
+    fireEvent.click(screen.getByRole('button', { name: '直接貼上序號' }));
+    fireEvent.change(screen.getByLabelText('貼上序號'), { target: { value: 'ABCD-1234\nEFGH-5678' } });
+    fireEvent.click(screen.getByRole('button', { name: '檢查序號' }));
+    await screen.findByText('貼上的序號');
+
+    fireEvent.click(screen.getAllByRole('button', { name: '儲存草稿' })[0]);
+    await waitFor(() => assert.equal(router.push.mock.calls.length, 1));
+    assert.equal(coupons.importCodes.mock.calls.length, 1);
+    assert.equal(coupons.importCodes.mock.calls[0][0], 'c1');
+    assert.equal(coupons.importCodes.mock.calls[0][1], 'ABCD-1234\nEFGH-5678');
+  });
+
+  test('一人一碼的券號範例與實際產生的格式相同（前綴-10 碼）', () => {
+    render(<CouponForm mode="draft" coupon={coupon({ codePrefix: 'AUTUMN' })} />);
+    const example = screen.getByText(/^AUTUMN-/);
+    assert.match(example.textContent ?? '', /^AUTUMN-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/);
+  });
+});
+
 describe('PR #347 bot 審查（2026-10-21）', () => {
   test('畫面更新前連點兩次儲存草稿，只建立一張券', async () => {
     let finish: (c: Coupon) => void = () => undefined;

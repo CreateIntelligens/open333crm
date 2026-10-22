@@ -2,6 +2,7 @@
  * 顧客票券夾的顯示文字。文案依 Figma「優惠券系統 (New)」顧客端（Jira CM-197）。
  */
 import type { FanCoupon, WalletStatus } from '@/hooks/useFanCoupons';
+import { zhe } from '@/lib/coupon/discount-rate';
 import { taipeiParts } from '@/lib/taipei-time';
 
 const p2 = (n: number) => String(n).padStart(2, '0');
@@ -33,8 +34,8 @@ export function faceValue(c: FanCoupon['coupon']): { prefix: string; value: stri
     case 'DISCOUNT_AMOUNT':
       return { prefix: 'NT$', value: String(c.discountAmount ?? 0), suffix: '', caption: '折抵' };
     case 'DISCOUNT_PERCENT':
-      // 後端存「折掉幾 %」，台灣慣用「打幾折」：15 → 85 折
-      return { prefix: '', value: String(100 - (c.discountPercent ?? 0)), suffix: '折' };
+      // 後端存「折掉幾 %」，台灣慣用「打幾折」：15 → 85 折、20 → 8 折（與核銷台、後台一致）
+      return { prefix: '', value: zhe(c.discountPercent ?? 0), suffix: '折' };
     case 'GIFT':
       return { prefix: '贈品', value: String(c.giftQty ?? 1), suffix: '份' };
     case 'EXCHANGE':

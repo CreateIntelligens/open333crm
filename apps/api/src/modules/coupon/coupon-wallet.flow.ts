@@ -12,6 +12,15 @@ import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import type { FanIdentity } from './coupon-fan.service.js';
 import { reuseOrIssueRegistrationToken } from '../identity-binding/identifier-registration.js';
 import {
+  checkVerificationCode, consumeVerificationCode, restoreVerificationCode,
+  clearVerificationCode,
+  sendVerificationCode,
+  type VerificationCodeKeys,
+} from '../identity-binding/ownership-code.js';
+import { verificationEmailSender } from '../identity-binding/ownership-code-email.js';
+import { signFanDeviceToken } from '../portal/portal-auth.service.js';
+import {
+  completeWalletEmailCode,
   getWalletCoupon,
   getWalletQrCode,
   lineLoginTarget,
@@ -20,11 +29,13 @@ import {
   openWalletSession,
   redeemByStaffCode,
   staffCodeTarget,
+  walletEmailCodeTarget,
   type LineLoginDeps,
   type LineLoginResult,
   type StaffCodeRedeemResult,
   type StaffCodeStartFailure,
   type WalletDeps,
+  type WalletSessionOk,
   type WalletSessionResult,
 } from './coupon-wallet.service.js';
 import {
@@ -45,6 +56,8 @@ export interface WalletFlowDeps extends WalletDeps {
   prisma: PrismaClient;
   /** 推播「已發優惠券」更新；沒有 io 時 service 推播會丟錯（寫錯程式要看得到） */
   io: Server;
+  /** 寄出開啟票券的 email 驗證碼（design D24）；測試注入，預設以租戶名稱署名寄出。失敗時拋錯 */
+  sendEmailCode?: (to: string, code: string, senderName: string) => Promise<void>;
 }
 
 function inTenantOf<T>(deps: WalletFlowDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
@@ -56,11 +69,18 @@ export function inFanTenant<T>(deps: WalletFlowDeps, fan: FanIdentity, fn: (ctx:
   return inTenantOf(deps, fan.tenantId, fn);
 }
 
-/** 票券連結換顧客憑證：權杖決定租戶，不信任網址參數 */
-export async function openWalletSessionFlow(deps: WalletFlowDeps, token: string): Promise<WalletSessionResult> {
+/**
+ * 票券連結換顧客憑證：權杖決定租戶，不信任網址參數。
+ * deviceTokens 是這台裝置存的裝置憑證：已歸戶的顧客要在驗證過的裝置開啟（design D24）
+ */
+export async function openWalletSessionFlow(
+  deps: WalletFlowDeps,
+  token: string,
+  deviceTokens: readonly string[] = [],
+): Promise<WalletSessionResult> {
   const payload = await readWalletToken(deps.store, token);
   if (!payload) return { status: 'expired' };
-  const step = await inTenantOf(deps, payload.tenantId, (ctx) => openWalletSession(ctx, deps, payload));
+  const step = await inTenantOf(deps, payload.tenantId, (ctx) => openWalletSession(ctx, deps, payload, deviceTokens));
   if (step.status !== 'needs_registration') return step;
 
   // 未驗證身分：產生（或沿用）登記連結，登記頁送出後回到原票券連結
@@ -94,9 +114,89 @@ export async function openWalletSessionWithLineFlow(
   if (!verified) return { status: 'verification_failed' };
   if (verified.sub !== target.uid) return { status: 'account_mismatch' };
 
-  const marked = await inTenantOf(deps, payload.tenantId, (ctx) =>
+  const liveId = await inTenantOf(deps, payload.tenantId, (ctx) =>
     markLineVerified(ctx, payload, (deps.now ?? Date.now)()));
-  return marked ? { status: 'verified' } : { status: 'expired' };
+  // 這台裝置以收券的 LINE 帳號驗證過：記住裝置，之後照一般流程呼叫 /session 帶上它（design D24）
+  return liveId ? { status: 'verified', deviceToken: signFanDeviceToken(liveId, payload.tenantId) } : { status: 'expired' };
+}
+
+// ── 以原 email 驗證碼確認身分（design D24）────────────────────────────────
+
+/** 同一個票券連結寄驗證碼次數的計算期間（10 分鐘內最多 3 次，與 email 登記共用 MAX_CODES_PER_LINK） */
+export const WALLET_CODE_SEND_WINDOW_MS = 10 * 60 * 1000;
+
+/** 驗證碼以票券連結為單位：權杖本身是伺服器發的隨機值，同時當雜湊的鹽 */
+const walletCodeKeys = (token: string): VerificationCodeKeys => ({
+  code: `coupon:wallet-code:${token}`,
+  attempt: `coupon:wallet-code-attempt:${token}`,
+  send: `coupon:wallet-code-send:${token}`,
+  sendLock: `coupon:wallet-code-lock:${token}`,
+  salt: token,
+  sendWindowMs: WALLET_CODE_SEND_WINDOW_MS,
+});
+
+export type WalletEmailCodeRequestResult =
+  | { status: 'code_sent'; maskedEmail: string }
+  | { status: 'expired' }
+  /** 聯絡人未歸戶或沒有 email：不寄信 */
+  | { status: 'unavailable' }
+  | { status: 'too_many_codes' }
+  | { status: 'in_progress' }
+  | { status: 'send_failed' };
+
+/**
+ * 寄 6 位數驗證碼到票券連結聯絡人原本的 email。三步：找對象（交易）→ 寄信（外部呼叫，最多一次，
+ * 寄信失敗不計次數）→ 驗證碼存 Redis。寄信不放在交易內。
+ */
+export async function requestWalletEmailCodeFlow(deps: WalletFlowDeps, token: string): Promise<WalletEmailCodeRequestResult> {
+  const payload = await readWalletToken(deps.store, token);
+  if (!payload) return { status: 'expired' };
+  const target = await inTenantOf(deps, payload.tenantId, (ctx) => walletEmailCodeTarget(ctx, payload));
+  if (!target) return { status: 'unavailable' };
+
+  const send = deps.sendEmailCode
+    ? (to: string, code: string) => deps.sendEmailCode!(to, code, target.senderName)
+    : verificationEmailSender(target.senderName, 'coupon');
+  const sent = await sendVerificationCode(deps.store, walletCodeKeys(token), target.email, target.contactId, send);
+  return sent.status === 'code_sent' ? { status: 'code_sent', maskedEmail: target.maskedEmail } : sent;
+}
+
+export type WalletEmailCodeVerifyResult =
+  | WalletSessionOk
+  | { status: 'expired' }
+  | { status: 'code_expired' }
+  | { status: 'locked' }
+  | { status: 'invalid_code'; remainingAttempts: number };
+
+/**
+ * 檢查驗證碼（Redis，先計次再以固定時間比對）→ 正確則開啟票券（交易），commit 後清除驗證碼。
+ * 同一組驗證碼最多錯 5 次，錯滿作廢需重寄。
+ */
+export async function verifyWalletEmailCodeFlow(
+  deps: WalletFlowDeps,
+  token: string,
+  code: unknown,
+): Promise<WalletEmailCodeVerifyResult> {
+  const payload = await readWalletToken(deps.store, token);
+  if (!payload) return { status: 'expired' };
+  const keys = walletCodeKeys(token);
+  const checked = await checkVerificationCode(deps.store, keys, code);
+  if (checked.status !== 'ok') return checked;
+  // 驗證碼只能用一次：並行送出同一組碼時，只有先取走的請求繼續
+  const consumed = await consumeVerificationCode(deps.store, keys, checked.claim);
+  if (!consumed.ok) return { status: 'code_expired' };
+
+  let result: Awaited<ReturnType<typeof completeWalletEmailCode>>;
+  try {
+    result = await inTenantOf(deps, payload.tenantId, (ctx) => completeWalletEmailCode(ctx, deps, payload, checked.value));
+  } catch (err) {
+    // 開啟失敗（例如資料庫暫時無法連線）：放回驗證碼，顧客可用同一組再試
+    await restoreVerificationCode(deps.store, keys, checked.claim, consumed.ttlMs);
+    throw err;
+  }
+  // 驗證碼只能用一次；寄送次數保留，避免以同一個連結反覆寄信
+  await clearVerificationCode(deps.store, keys, false);
+  return result;
 }
 
 export function listWalletFlow(deps: WalletFlowDeps, fan: FanIdentity, now?: number) {
@@ -186,3 +286,4 @@ export async function redeemWithStaffCodeFlow(
 export function getWalletQrCodeFlow(deps: WalletFlowDeps, fan: FanIdentity, instanceId: string, now?: number) {
   return inFanTenant(deps, fan, (ctx) => getWalletQrCode(ctx, fan, instanceId, now));
 }
+

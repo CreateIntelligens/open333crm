@@ -5,6 +5,7 @@
 import api from '@/lib/api';
 import { getApiErrorCode, getApiErrorDetails } from '@/lib/api-error';
 import { pad2, taipeiParts } from '@/lib/taipei-time';
+import { zhe } from '@/lib/coupon/discount-rate';
 
 export type IssuedStatus = 'SENT' | 'VIEWED' | 'USED' | 'EXPIRED' | 'REVOKED';
 
@@ -148,7 +149,7 @@ export function faceShort(c: FaceFields): string {
     case 'DISCOUNT_AMOUNT':
       return c.discountAmount ? `$${c.discountAmount.toLocaleString('zh-TW')}` : '折抵';
     case 'DISCOUNT_PERCENT':
-      return c.discountPercent ? `${100 - c.discountPercent} 折` : '折扣';
+      return c.discountPercent ? `${zhe(c.discountPercent)} 折` : '折扣';
     case 'GIFT':
       return '贈品';
     case 'EXCHANGE':
@@ -164,7 +165,7 @@ export function faceText(c: FaceFields): string {
     case 'DISCOUNT_AMOUNT':
       return c.discountAmount ? nt(c.discountAmount) : '元折抵';
     case 'DISCOUNT_PERCENT':
-      return c.discountPercent ? `${100 - c.discountPercent} 折` : '% 折扣';
+      return c.discountPercent ? `${zhe(c.discountPercent)} 折` : '% 折扣';
     case 'GIFT':
       return c.giftName ? `贈品 ${c.giftName}` : '贈品';
     case 'EXCHANGE':

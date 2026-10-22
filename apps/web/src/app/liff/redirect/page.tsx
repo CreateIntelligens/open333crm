@@ -15,6 +15,7 @@ import { initLiff, resolveLiffParams, withTimeout } from '@/lib/liff';
 import { REALTIME_ORIGIN } from '@/lib/constants';
 import fanApi from '@/lib/fan-api';
 import { openCouponViaLiff } from '@/lib/coupon/liff-coupon';
+import { rememberFanDeviceToken } from '@/lib/fan-device';
 
 const TIMEOUT_MS = 8000;
 
@@ -29,6 +30,7 @@ export default function LiffEndpointPage() {
         const outcome = await openCouponViaLiff(ct, lid, {
           initLiff: (id) => withTimeout(initLiff(id), TIMEOUT_MS, 'liff.init'),
           post: (url, body) => fanApi.post(url, body),
+          rememberDeviceToken: rememberFanDeviceToken,
           currentUrl: window.location.href,
         });
         if (outcome.kind === 'navigate') window.location.replace(outcome.to);

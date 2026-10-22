@@ -271,6 +271,14 @@ it('再次匯入相同券碼須回報衝突而非重複寫入', async () => {
   assert.equal(r.availableTotal, 3);
 });
 
+// 前端分批匯入時可能沒收到回應而重送已寫入的批次（PR #359 bot 審查）：整批重送須成功、不重複寫入，存草稿與發布才不會卡住
+it('整批序號重送時成功回應，不重複寫入', async () => {
+  const r = await runInTenant(prisma, tenantId, (ctx) => importCodes(ctx, importCouponId, 'AAAA1111\nCCCC3333'));
+  assert.deepEqual(r.conflicts, ['AAAA1111', 'CCCC3333']);
+  assert.equal(r.imported, 0);
+  assert.equal(r.availableTotal, 3);
+});
+
 it('有庫存後可發布，且發券會消耗序號', async () => {
   const pub = await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), importCouponId, 'ACTIVE'));
   assert.ok(pub.ok, `發布失敗：${JSON.stringify(pub)}`);

@@ -12,6 +12,7 @@ import type {
   ValidityMode,
 } from '@/hooks/useCoupons';
 import { pad2, taipeiParts } from '@/lib/taipei-time';
+import { zhe } from '@/lib/coupon/discount-rate';
 
 export const STATUS_LABEL: Record<CouponStatus, string> = {
   ACTIVE: '進行中',
@@ -117,7 +118,7 @@ export function faceValueText(
     case 'DISCOUNT_PERCENT':
       return [
         '% 折扣',
-        c.discountPercent ? `打 ${100 - c.discountPercent} 折` : null,
+        c.discountPercent ? `打 ${zhe(c.discountPercent)} 折` : null,
         c.percentCap ? `最多折 ${nt(c.percentCap)}` : '無折抵上限',
       ].filter(Boolean).join(' · ');
     case 'GIFT':
