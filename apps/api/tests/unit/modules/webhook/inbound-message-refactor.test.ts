@@ -194,6 +194,10 @@ async function testCsatInterceptDoesNotPublishMessageReceived() {
     tenantSettings: {
       findFirst: mockFn(() => null),
     },
+    // 工單 id 的 8 碼片段會被當成領券代碼候選查一次；查不到就照一般訊息處理（design D30）
+    couponClaimLink: {
+      findMany: mockFn(() => []),
+    },
   };
 
   const events = await captureEvents(async () => {
@@ -247,6 +251,10 @@ async function testCsatLookupScopedToTenantAndSender() {
       update: mockFn(() => {
         throw new Error('不得寫入別人的工單');
       }),
+    },
+    // 工單 id 的 8 碼片段會被當成領券代碼候選查一次；查不到就照一般訊息處理（design D30）
+    couponClaimLink: {
+      findMany: mockFn(() => []),
     },
     tenantSettings: {
       findFirst: mockFn(() => null),

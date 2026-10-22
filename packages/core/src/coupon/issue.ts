@@ -8,7 +8,7 @@
  * ⚠️ 本檔收「已綁定租戶的交易 client」而非自建交易：租戶注入機制
  * （withTenant／SET LOCAL）屬 apps/api，由呼叫端負責。
  */
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { COUPON_ISSUED_VIA, couponIssuedViaLabel } from '@open333crm/shared';
 import { afterClaimExpiry } from './taipei-time.js';
@@ -18,9 +18,6 @@ export type CouponTx = Prisma.TransactionClient;
 /** 券碼字集：去除 0/O/1/I/L，避免店員口頭覆述與手動輸入時誤判。 */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const DEFAULT_CODE_LENGTH = 10;
-
-/** 領取憑證預設有效 72 小時（design D10：短效、一次性）。 */
-export const DEFAULT_CLAIM_TOKEN_HOURS = 72;
 
 export function generateCouponCode(prefix?: string | null, length = DEFAULT_CODE_LENGTH): string {
   let body = '';
@@ -38,11 +35,6 @@ export function generateCouponCode(prefix?: string | null, length = DEFAULT_CODE
 export function couponCodeKey(code: string): string {
   // NFKC 先把全形英數字轉成半形：中文輸入法在全形模式下打的券號也找得到
   return code.normalize('NFKC').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-}
-
-/** 憑證即所有權，必須用 CSPRNG——可預測的憑證等同券可被猜中領走。 */
-export function generateClaimToken(): string {
-  return randomBytes(32).toString('base64url');
 }
 
 /**
@@ -77,7 +69,6 @@ export interface IssuedInstance {
   contactId: string | null;
   code: string;
   status: string;
-  claimToken: string | null;
 }
 
 export interface IssueOutcome {
@@ -140,9 +131,9 @@ async function allocateCode(
   return { ok: false, reason: 'CODE_GENERATION_FAILED' };
 }
 
-function computeExpiresAt(coupon: CouponForIssue, claimed: boolean): Date | null {
+function computeExpiresAt(coupon: CouponForIssue): Date | null {
   if (coupon.validityMode === 'FIXED') return coupon.endAt;
-  if (coupon.validityMode === 'AFTER_CLAIM' && claimed && coupon.afterClaimDays) {
+  if (coupon.validityMode === 'AFTER_CLAIM' && coupon.afterClaimDays) {
     // 領取當天（台灣日期）加 N 天，當天結束時到期（design D17）
     return afterClaimExpiry(new Date(), coupon.afterClaimDays);
   }
@@ -158,9 +149,6 @@ export interface IssueParams {
   /** 發放當下的來源名稱與座席名稱快照；來源之後刪除或改名，明細仍顯示原名 */
   issuedSourceName?: string | null;
   issuedByName?: string | null;
-  /** true → 建 ISSUED + claimToken（FB／IG、公開領券）；false → 直接 CLAIMED（LINE） */
-  requireClaim: boolean;
-  claimTokenHours?: number;
 }
 
 /**
@@ -168,7 +156,7 @@ export interface IssueParams {
  * 其餘仍應成功——整批失敗會讓座席不知道哪些人拿到了。
  */
 export async function issueInstances(tx: CouponTx, params: IssueParams): Promise<IssueOutcome> {
-  const { tenantId, coupon, requireClaim } = params;
+  const { tenantId, coupon } = params;
   const issued: IssuedInstance[] = [];
   const skipped: IssueOutcome['skipped'] = [];
 
@@ -215,13 +203,10 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
         couponId: coupon.id,
         contactId,
         code: allocated.code,
-        status: requireClaim ? 'ISSUED' : 'CLAIMED',
-        claimToken: requireClaim ? generateClaimToken() : null,
-        claimTokenExpiresAt: requireClaim
-          ? new Date(Date.now() + (params.claimTokenHours ?? DEFAULT_CLAIM_TOKEN_HOURS) * 60 * 60 * 1000)
-          : null,
-        claimedAt: requireClaim ? null : now,
-        expiresAt: computeExpiresAt(coupon, !requireClaim),
+        // 發券一律直接歸戶（design D30）：發券當下就知道是哪一位聯絡人，狀態為已領取，不產生領取憑證
+        status: 'CLAIMED',
+        claimedAt: now,
+        expiresAt: computeExpiresAt(coupon),
         issuedVia: params.issuedVia ?? null,
         issuedRefId: params.issuedRefId ?? null,
         issuedSourceName: params.issuedSourceName ?? null,
@@ -241,7 +226,6 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
       contactId: instance.contactId,
       code: instance.code,
       status: instance.status,
-      claimToken: instance.claimToken,
     });
   }
 

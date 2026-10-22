@@ -75,6 +75,8 @@ import phoneRegistrationRoutes from './modules/identity-binding/phone-registrati
 import couponRoutes from './modules/coupon/coupon.routes.js';
 import couponInstanceRoutes from './modules/coupon/coupon-instance.routes.js';
 import couponInboxRoutes from './modules/coupon/coupon-inbox.routes.js';
+import couponClaimLinkRoutes from './modules/coupon/coupon-claim-link.routes.js';
+import couponClaimPublicRoutes from './modules/coupon/coupon-claim-public.routes.js';
 import { setupCouponScheduler } from './modules/coupon/coupon.scheduler.js';
 import storeRoutes from './modules/store/store.routes.js';
 import storeConsoleRoutes from './modules/store/store-console.routes.js';
@@ -214,6 +216,9 @@ export async function bootstrap() {
   await app.register(couponRoutes, { prefix: '/api/v1/coupons' });
   await app.register(couponInstanceRoutes, { prefix: '/api/v1/coupons' });
   await app.register(couponInboxRoutes, { prefix: '/api/v1/coupon-issue' });
+  await app.register(couponClaimLinkRoutes, { prefix: '/api/v1/coupons' });
+  // 公開領券頁（不需登入，design D30）
+  await app.register(couponClaimPublicRoutes, { prefix: '/api/v1/coupon-claim' });
   await app.register(storeRoutes, { prefix: '/api/v1/stores' });
   await app.register(storeConsoleRoutes, { prefix: '/api/v1/store-console' });
   await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });

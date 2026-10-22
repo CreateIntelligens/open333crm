@@ -477,14 +477,14 @@
 
 ### 四、公開領券連結（design D30）
 
-- [ ] 15.25 migration：`coupon_claim_links`（RLS，比照既有券表的 policy）
-- [ ] 15.26 測試「建立領券連結」「客服補償券不能建立領券連結」「其他租戶的渠道」「缺少管理權限」（`apps/api/tests/feature/modules/coupon/coupon-claim-link.test.ts`）
-- [ ] 15.27 測試「開啟有效的領券頁」「已停用的連結」「不存在的代碼」（同上，公開端點）
-- [ ] 15.28 測試「顧客傳送領券訊息」「顧客改動預填文字」「Instagram 顧客點導流連結」「已領過」「已領完」「代碼送到其他渠道」「其他租戶的代碼」（`apps/api/tests/feature/modules/coupon/coupon-claim-inbound.test.ts`）
-- [ ] 15.29 實作：領券連結 service 與後台路由、QR Code、開啟數與領取數（`apps/api/src/modules/coupon/coupon-claim-link.service.ts`、`.routes.ts`）；公開頁資料端點
-- [ ] 15.30 實作：入站辨認領券代碼並發券、回覆、略過 AI 與關鍵字（`apps/api/src/modules/webhook/inbound-side-effects.ts` 附近，比照 `inbound-identity-binding.ts`）；發券沿用 15.10 的保留、確認、作廢
-- [ ] 15.31 測試「領取憑證端點已移除」（`apps/api/tests/feature/modules/coupon/coupon-wallet.test.ts`）；實作：移除 `POST /fan/coupons/claim`、`claimByToken` 與 `issueInstances` 的 `requireClaim`，刪除只測領取憑證的既有測試（這是刻意的行為變更，見 design D30）；資料表欄位保留
-- [ ] 15.32 前端：券詳情頁「領券連結」分頁（建立、停用、QR 下載、複製網址、數字）；公開領券頁 `apps/web/src/app/coupon/claim/[code]/page.tsx`；元件測試
+- [x] 15.25 migration：`coupon_claim_links`（RLS，比照既有券表的 policy）
+- [x] 15.26 測試「建立領券連結」「客服補償券不能建立領券連結」「其他租戶的渠道」「缺少管理權限」（`apps/api/tests/feature/modules/coupon/coupon-claim-link.test.ts`）
+- [x] 15.27 測試「開啟有效的領券頁」「已停用的連結」「不存在的代碼」（同上，公開端點）
+- [x] 15.28 測試「顧客傳送領券訊息」「顧客改動預填文字」「Instagram 顧客點導流連結」「已領過」「已領完」「代碼送到其他渠道」「其他租戶的代碼」（`apps/api/tests/feature/modules/coupon/coupon-claim-inbound.test.ts`）
+- [x] 15.29 實作：領券連結 service 與後台路由、QR Code、開啟數與領取數（`apps/api/src/modules/coupon/coupon-claim-link.service.ts`、`.routes.ts`）；公開頁資料端點
+- [x] 15.30 實作：入站辨認領券代碼並發券、回覆、略過 AI 與關鍵字（`apps/api/src/modules/webhook/inbound-side-effects.ts` 附近，比照 `inbound-identity-binding.ts`）；發券沿用 15.10 的保留、確認、作廢
+- [x] 15.31 測試「領取憑證端點已移除」（`apps/api/tests/feature/modules/coupon/coupon-wallet.test.ts`）；實作：移除 `POST /fan/coupons/claim`、`claimByToken` 與 `issueInstances` 的 `requireClaim`，刪除只測領取憑證的既有測試（這是刻意的行為變更，見 design D30）；資料表欄位保留
+- [x] 15.32 前端：券詳情頁「領券連結」分頁（建立、停用、QR 下載、複製網址、數字）；公開領券頁 `apps/web/src/app/coupon/claim/[code]/page.tsx`；元件測試
 
 ### 五、其他
 
@@ -501,6 +501,10 @@
   - 15.9：「規則的優惠券不是進行中」——讓步判斷拿掉 `status: 'ACTIVE'`，測試失敗；「網站聊天室的發券規則」——拿掉 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 判斷，測試失敗
   - 15.12a：「更換成暫停的券會被擋」「更換成其他租戶的券會被擋」「新增第二個發券動作指向暫停的券會被擋」——把原本的動作當成更新後的動作傳入（所有券都視為沒有更換），測試失敗；前端「規則上的券已暫停，只修改關鍵字可以存檔」——表單在券已暫停時擋下儲存，測試失敗
   - 15.12b：既有的 `automation-issue-coupon-tag.test.ts` 改為新行為（貼標從發券交易移到送出成功後的確認交易，design D16、D25 的刻意變更），仍斷言 contact.tagged 在交易內寫入 outbox、不經 domain:event
+  - 15.27：「不存在的代碼」「格式不對的代碼也回 404」（寫路由前就因沒有路由而回 404）——公開端點查無代碼時改回 200 與空資料，兩個測試都失敗
+  - 15.28：「其他租戶的代碼」——入站查領券連結時拿掉 tenantId 條件，測試失敗（回覆「請到 … 領取」）；「一般訊息照常處理」——查無領券連結時仍當成已處理，測試失敗
+  - RLS：`rls-isolation.test.ts`「⑬ 領券連結正向隔離」「⑭ 領券連結 WITH CHECK」——在測試資料庫對 `coupon_claim_links` 執行 `DISABLE ROW LEVEL SECURITY`，兩個測試都失敗
+  - 15.32 元件測試（先以會 import 失敗的狀態寫好，元件完成後補突變）：拿掉「客服補償券」的判斷、渠道清單不過濾 LINE／FB／IG，「客服補償券不能建立領券連結」「建立領券連結」各自失敗
 
 ### 工作量
 

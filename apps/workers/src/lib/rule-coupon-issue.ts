@@ -187,7 +187,6 @@ export async function issueCouponForRule(
       issuedVia: input.issuedVia,
       issuedRefId: input.rule.id,
       issuedSourceName: input.rule.name || couponSourceName(input.issuedVia),
-      requireClaim: false,
     });
     const instance = outcome.issued[0];
     if (!instance) {

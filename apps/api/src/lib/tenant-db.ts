@@ -50,7 +50,7 @@ export function withTenant<T>(
  * 讓 raw 也在設好 app.current_tenant 的交易內執行（否則 raw 落 base 連線、FORCE 下 fail-closed
  * 回空或轉型失敗）。已 POC 驗證：覆寫後 raw query 正確走到租戶。
  */
-export function tenantScopedClient(base: PrismaClient, tenantId: string) {
+export function tenantScopedClient(base: PrismaClient, tenantId: string): TenantScopedClient {
   return base.$extends({
     query: {
       $allModels: {
@@ -89,10 +89,10 @@ export function tenantScopedClient(base: PrismaClient, tenantId: string) {
       },
       /* eslint-enable @typescript-eslint/no-explicit-any */
     },
-  });
+  }) as unknown as TenantScopedClient;
 }
 
-export type TenantScopedClient = ReturnType<typeof tenantScopedClient>;
+export type TenantScopedClient = Prisma.TransactionClient & { $isTenantScoped(): true };
 
 /**
  * service 層 prisma 參數的共用型別：可接受一般 PrismaClient、交易 client、或租戶綁定的
@@ -101,19 +101,15 @@ export type TenantScopedClient = ReturnType<typeof tenantScopedClient>;
  * 需要 $transaction 的 service 仍收 PrismaClient（走 withTenant 或 admin 連線）。
  */
 /**
- * ⚠️ 這個聯集已接近 TS 的推導上限，新增 model 關聯前請留意。
+ * ⚠️ TS 對「聯集型別上呼叫多載函式」的推導成本是各成員的乘積。
  *
- * TS 對「聯集型別上呼叫多載函式」的推導成本是各成員的乘積。目前三個成員
- * 剛好還在上限內，但 2026-09-23 嘗試新增一張 MaterialTag 關聯表時，
- * 整個 codebase 噴了 470 個 TS2349「This expression is not callable」，
- * 而且錯誤出現在完全沒改過的檔案（agent.service、material.service 等），
- * 極難定位——二分驗證後確認就是這個聯集被壓垮。
+ * 2026-09-23 新增 MaterialTag 關聯表、2026-10-22 新增 coupon_claim_links 時，
+ * 整個 codebase 都噴了數百個 TS2349「This expression is not callable」與「Excessive stack depth」，
+ * 錯誤出現在完全沒改過的檔案——原因是 TenantScopedClient 用 ReturnType<typeof $extends(...)>，
+ * 每多一個 model，extended client 的型別就更深，聯集被壓垮。
  *
- * 若日後真的需要新增關聯表：
- *   1. 先評估能否不用關聯表達成（素材標籤最後採「登記到 Tag 表」的作法）
- *   2. 真的要改，就得收斂這個型別；但改定義會牽連 200+ 處呼叫點，
- *      且 extended client 與 Prisma.TransactionClient 的 $executeRaw
- *      回傳型別不相容（[Symbol.toStringTag] 是 string vs 'PrismaPromise'），
- *      不能直接替換，需要另外定義只描述 model 操作的介面。
+ * 2026-10-22 起 TenantScopedClient 改宣告為「交易 client 的 model 操作 + $isTenantScoped 標記」
+ * （tenantScopedClient 以型別斷言回傳，執行期行為不變）：它本來就只該用 model 操作與 raw query，
+ * $transaction 不帶租戶（見上方說明），從型別上拿掉反而防止誤用。聯集只剩兩種結構，新增 model 不再壓垮推導。
  */
 export type TenantDb = PrismaClient | Prisma.TransactionClient | TenantScopedClient;
