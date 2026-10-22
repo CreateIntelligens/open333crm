@@ -35,7 +35,7 @@ export function ManualPanel({ value, onChange, onSubmit, busy, error }: Props) {
         id="store-serial"
         value={value}
         onChange={(e) => onChange(e.target.value.toUpperCase())}
-        placeholder="例如 AUTUMN-R9XU-X9RG"
+        placeholder="例如 AUTUMN-7K2P4M9XQR"
         autoCapitalize="characters"
         autoComplete="off"
         autoCorrect="off"

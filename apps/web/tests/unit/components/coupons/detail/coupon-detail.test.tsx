@@ -138,7 +138,8 @@ describe('六個指標卡', () => {
     assert.ok(within(statCard('發送')).getByText('200'));
     assert.ok(within(statCard('領取')).getByText('領取率 25.0%'));
     assert.ok(within(statCard('開封')).getByText('開封率 40.0%'));
-    assert.ok(within(statCard('核銷')).getByText('已在門市使用'));
+    // 核銷包含店員驗證碼與顧客自助，不一定在門市（操作手冊實測 2026-10-22）
+    assert.ok(within(statCard('核銷')).getByText('已使用'));
     assert.ok(within(statCard('核銷率')).getByText('20.0%'));
     assert.ok(within(statCard('核銷率')).getByText('核銷 ÷ 領取'));
   });

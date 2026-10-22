@@ -57,7 +57,7 @@ export function CouponStatCards({ stats, isLoading, error, onRetry }: Props) {
       <Card label="開啟連結" value={formatNumber(linkOpened)} note={`點擊率 ${percent(linkOpened, issued)}`} />
       <Card label="領取" value={formatNumber(claimed)} note={`領取率 ${percent(claimed, issued)}`} />
       <Card label="開封" value={formatNumber(opened)} note={`開封率 ${percent(opened, claimed)}`} />
-      <Card label="核銷" value={formatNumber(redeemed)} note="已在門市使用" />
+      <Card label="核銷" value={formatNumber(redeemed)} note="已使用" />
       <Card label="核銷率" value={percent(redeemed, claimed)} note="核銷 ÷ 領取" />
     </div>
   );

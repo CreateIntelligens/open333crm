@@ -2,6 +2,7 @@
  * 核銷台的日期與優惠文字。
  * 門市在台灣，時間一律以台灣時間顯示（不受手機時區設定影響，也讓測試結果固定）。
  */
+import { zhe } from '@/lib/coupon/discount-rate';
 import type { StoreCoupon } from '@/lib/store-console-api';
 
 const TZ = 'Asia/Taipei';
@@ -85,8 +86,7 @@ export function nt(n: number | null | undefined): string {
 
 /** 後端存「折掉幾 %」，台灣慣用「打幾折」：15 → 85 折，10 → 9 折 */
 export function percentOff(discountPercent: number | null | undefined): string {
-  const v = 100 - (discountPercent ?? 0);
-  return `${v % 10 === 0 ? v / 10 : v} 折`;
+  return `${zhe(discountPercent ?? 0)} 折`;
 }
 
 export type CouponKind = 'cash' | 'pct' | 'gift' | 'swap';

@@ -37,7 +37,7 @@ const WALLET_PATH = '/coupon/wallet';
 const HOW_TO_USE_HINT: Record<NonNullable<FanCoupon['coupon']['redeemMode']>, string> = {
   STAFF_CODE: '到門市結帳時，打開「我的優惠券」即可使用。',
   STAFF_SCAN: '到門市結帳時，打開「我的優惠券」即可使用。',
-  SELF: '在線上商城結帳時，打開「我的優惠券」即可使用。',
+  SELF: '結帳時，打開「我的優惠券」即可使用。',
 };
 
 /** 連結失效的回應：後端過期回 410；token 格式不符被 Zod 擋下回 400 */

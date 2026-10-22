@@ -115,12 +115,14 @@ test('已歸戶的顧客開啟票券連結：存下顧客憑證並顯示這張�
   assert.deepEqual(mocks.push.mock.calls.at(-1), ['/coupon/wallet']);
 });
 
-test('顧客自助券：說明改為線上使用', async () => {
+// 設計稿 C2.1 原為「在線上商城結帳時」；但表單建議顧客自助用於無人商店、活動快閃等實體場景，
+// 操作手冊實測（2026-10-22）改為不限線上或門市的說明
+test('顧客自助券：說明不限定線上或門市', async () => {
   mocks.openWalletSession.mockResolvedValue({ status: 'ok', fanToken: 'fan-jwt', tenantId: 't', contactId: 'c', instanceId: 'inst-1' });
   mocks.useFanCoupon.mockReturnValue({ coupon: coupon({}, { redeemMode: 'SELF' }), error: undefined, isLoading: false, mutate: mocks.mutate });
   render(<CouponEntry token={TOKEN} />);
-  await screen.findByText('在線上商城結帳時，打開「我的優惠券」即可使用。');
-  assert.ok(screen.queryByText(/到門市結帳時/) === null);
+  await screen.findByText('結帳時，打開「我的優惠券」即可使用。');
+  assert.ok(screen.queryByText(/線上商城|到門市結帳時/) === null);
 });
 
 test('未歸戶的顧客開啟票券連結：引導前往手機登記，不存憑證', async () => {

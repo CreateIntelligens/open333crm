@@ -13,6 +13,7 @@ import type {
   RedeemMode,
   ValidityMode,
 } from '@/hooks/useCoupons';
+import { zhe } from '@/lib/coupon/discount-rate';
 import { taipeiYmd } from '@/lib/taipei-time';
 
 export type FormMode = 'create' | 'draft' | 'published';
@@ -531,10 +532,7 @@ export function validate(v: FormValues, ctx: FormContext): Partial<Record<FieldK
 }
 
 /** 打幾折：折掉 15% → 85 折；折掉 20% → 8 折 */
-export function zhe(rate: number): string {
-  const p = 100 - rate;
-  return p % 10 === 0 ? String(p / 10) : String(p);
-}
+export { zhe };
 
 /** 單張最高可折抵的金額；null 代表沒有上限，0 代表不適用（贈品）。 */
 function perMax(v: FormValues): number | null {
