@@ -60,7 +60,8 @@ export async function recordExportNotice(ctx: TenantCtx, notice: ExportNotice): 
 }
 
 export function countInstances(ctx: TenantCtx, couponId: string): Promise<number> {
-  return ctx.tx.couponInstance.count({ where: { couponId, tenantId: ctx.tenantId } });
+  // 與匯出的內容一致：發送中的券不算
+  return ctx.tx.couponInstance.count({ where: { couponId, tenantId: ctx.tenantId, deliveryPendingAt: null } });
 }
 
 /**

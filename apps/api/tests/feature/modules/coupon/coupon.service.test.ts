@@ -20,6 +20,7 @@ import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
 import { claimByToken, redeemCoupon, openInstance } from '#src/modules/coupon/coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from '#src/modules/coupon/coupon-import.service.js';
 import { getCouponStats, exportInstancesCsv, listInstances } from '#src/modules/coupon/coupon-stats.service.js';
+import { countInstances } from '#src/modules/coupon/coupon-export.service.js';
 import { ctxOf, runInTenant } from '#tests/support/tenant-run.js';
 
 const owner = new PrismaClient();
@@ -356,6 +357,13 @@ it('發送中的券不出現在序號明細', async () => {
   // 篩選狀態時也不列出
   const claimed = await runInTenant(prisma, tenantId, (ctx) => listInstances(ctx, c.id, { status: 'CLAIMED' }));
   assert.equal(claimed.total, 3);
+  // 匯出也不列出：附券廣播會讓發送中的券變多（A15 15.22）
+  const pendingCode = r.issued[3].code;
+  const csv = await exportInstancesCsv((fn) => runInTenant(prisma, tenantId, fn), c.id);
+  assert.equal(csv.trim().split('\n').length, 1 + 3, 'CSV 應只有標題列與 3 張已送出的券');
+  assert.ok(!csv.includes(pendingCode), 'CSV 不應列出發送中的券');
+  // 決定是否改背景匯出的張數也不算發送中的券
+  assert.equal(await runInTenant(prisma, tenantId, (ctx) => countInstances(ctx, c.id)), 3);
 });
 
 it('CSV 匯出含 BOM 且不外洩領取憑證', async () => {

@@ -182,7 +182,8 @@ export async function readInstancesForExport(
   take: number = EXPORT_PAGE_SIZE,
 ): Promise<ExportRow[]> {
   return ctx.tx.couponInstance.findMany({
-    where: { couponId, tenantId: ctx.tenantId, ...(afterId ? { id: { gt: afterId } } : {}) },
+    // 發送中的券不匯出（與序號明細、成效一致，design D16）
+    where: { couponId, tenantId: ctx.tenantId, deliveryPendingAt: null, ...(afterId ? { id: { gt: afterId } } : {}) },
     include: { contact: { select: { displayName: true } } },
     orderBy: { id: 'asc' },
     take,
