@@ -16,7 +16,7 @@ import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { TENANT_A, TENANT_B } from '#tests/setup/feature-config.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
-import { verifyFanToken } from '#src/modules/portal/portal-auth.service.js';
+import { signFanDeviceToken, verifyFanToken } from '#src/modules/portal/portal-auth.service.js';
 import { requestOwnershipCode } from '#src/modules/identity-binding/ownership-code.js';
 import { EMAIL_REGISTRATION } from '#src/modules/identity-binding/email-registration.service.js';
 import { invalidateIdentityBindingSettings } from '#src/modules/identity-binding/identity-binding.service.js';
@@ -102,8 +102,11 @@ async function issue(p: Person, id = couponId): Promise<{ token: string; instanc
   return { token, instanceId: r.instanceId };
 }
 
+/** 顧客在這台裝置驗證過（design D24）：已歸戶的顧客要帶裝置憑證才直接開啟 */
+const deviceOf = (p: Person) => [signFanDeviceToken(p.contactId, T)];
+
 async function fanOf(p: Person, token: string) {
-  const s = await openWalletSessionFlow(flowDeps(), token);
+  const s = await openWalletSessionFlow(flowDeps(), token, deviceOf(p));
   assert.equal(s.status, 'ok', `換憑證失敗：${JSON.stringify(s)}`);
   return s.status === 'ok' ? { tenantId: s.tenantId, contactId: s.contactId } : { tenantId: T, contactId: p.contactId };
 }
@@ -149,10 +152,10 @@ afterAll(async () => {
 });
 
 describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
-  it('已歸戶的顧客開啟票券連結', async () => {
+  it('已驗證的裝置開啟票券連結', async () => {
     const p = await person('已歸戶', lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);
-    const s = await openWalletSessionFlow(flowDeps(), token);
+    const s = await openWalletSessionFlow(flowDeps(), token, deviceOf(p));
     assert.equal(s.status, 'ok');
     if (s.status !== 'ok') return;
     assert.equal(s.instanceId, instanceId);
@@ -212,7 +215,7 @@ describe('顧客須完成歸戶驗證才能開啟票券夾', () => {
     assert.equal(s.status, 'verification_required');
     assert.equal((s as { channelType?: string }).channelType, 'FB');
     const line = await person('LINE開啟', lineChannel, 'LINE', { verified: true });
-    const ok = await openWalletSessionFlow(flowDeps(), (await issue(line)).token);
+    const ok = await openWalletSessionFlow(flowDeps(), (await issue(line)).token, deviceOf(line));
     assert.equal((ok as { channelType?: string }).channelType, 'LINE');
   });
 
@@ -281,10 +284,10 @@ describe('票券連結', () => {
   it('開啟有效連結', async () => {
     const p = await person('重複開啟', lineChannel, 'LINE', { verified: true });
     const { token, instanceId } = await issue(p);
-    await openWalletSessionFlow(flowDeps(), token);
+    await openWalletSessionFlow(flowDeps(), token, deviceOf(p));
     clock.now += 6 * DAY;
     try {
-      const again = await openWalletSessionFlow(flowDeps(), token);
+      const again = await openWalletSessionFlow(flowDeps(), token, deviceOf(p));
       assert.equal(again.status, 'ok');
       assert.equal(again.status === 'ok' && again.instanceId, instanceId);
     } finally {
@@ -310,7 +313,7 @@ describe('票券連結', () => {
     // 以 owner 模擬合併：被合併方封存並指向保留方，券跟著移動
     await owner.contact.update({ where: { id: fb.contactId }, data: { isArchived: true, mergedIntoId: line.contactId } });
     await owner.couponInstance.update({ where: { id: instanceId }, data: { contactId: line.contactId } });
-    const s = await openWalletSessionFlow(flowDeps(), token);
+    const s = await openWalletSessionFlow(flowDeps(), token, deviceOf(line));
     assert.equal(s.status, 'ok');
     assert.equal(s.status === 'ok' && s.contactId, line.contactId);
   });

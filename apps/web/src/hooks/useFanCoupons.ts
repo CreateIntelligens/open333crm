@@ -52,19 +52,46 @@ export interface FanCoupon {
   };
 }
 
+/** 開啟成功：顧客憑證與這台裝置換新的裝置憑證（design D24） */
+export type WalletSessionOk = {
+  status: 'ok';
+  fanToken: string;
+  tenantId: string;
+  contactId: string;
+  instanceId: string;
+  deviceToken?: string;
+  channelType?: string | null;
+};
+
 /** channelType：連結所屬的渠道，票券頁依此顯示返回文字 */
-export type WalletSession = { channelType?: string | null } & (
-  | { status: 'ok'; fanToken: string; tenantId: string; contactId: string; instanceId: string }
-  | { status: 'verification_required'; kind: 'phone' | 'email'; registrationUrl: string }
-  | { status: 'unavailable' }
-  | { status: 'rate_limited' }
-);
+export type WalletSession =
+  | WalletSessionOk
+  | ({ channelType?: string | null } & (
+      | { status: 'verification_required'; kind: 'phone' | 'email'; registrationUrl: string }
+      /** 已歸戶但這台裝置沒驗證過：寄驗證碼到聯絡人原本的 email（只給遮蔽後的 email） */
+      | { status: 'email_code_required'; maskedEmail: string }
+      | { status: 'unavailable' }
+      | { status: 'rate_limited' }
+    ));
 
 const fetcher = (url: string) => fanApi.get(url).then((r) => r.data);
 
-/** 票券連結換顧客憑證。連結過期時 API 回 410（axios 會丟錯）。 */
-export async function openWalletSession(token: string): Promise<WalletSession> {
-  return (await fanApi.post('/fan/coupons/session', { token })).data.data;
+/**
+ * 票券連結換顧客憑證。deviceTokens 是這台裝置存的裝置憑證（lib/fan-device）。
+ * 連結過期時 API 回 410（axios 會丟錯）。
+ */
+export async function openWalletSession(token: string, deviceTokens: string[] = []): Promise<WalletSession> {
+  return (await fanApi.post('/fan/coupons/session', { token, deviceTokens })).data.data;
+}
+
+/** 寄 6 位數驗證碼到票券連結聯絡人原本的 email。錯誤時 axios 丟錯，error.code 說明原因 */
+export async function requestWalletEmailCode(token: string): Promise<{ status: 'code_sent'; maskedEmail: string }> {
+  return (await fanApi.post('/fan/coupons/session/code', { token })).data.data;
+}
+
+/** 輸入 email 驗證碼；正確時回傳與開啟成功相同的資料。錯誤時 details.remainingAttempts 為剩餘次數 */
+export async function verifyWalletEmailCode(token: string, code: string): Promise<WalletSessionOk> {
+  return (await fanApi.post('/fan/coupons/session/code/verify', { token, code })).data.data;
 }
 
 export function useWallet(enabled = true) {

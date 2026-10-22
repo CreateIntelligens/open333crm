@@ -9,9 +9,10 @@ const TOK = 'A'.repeat(43);
 
 function deps(overrides: Partial<LiffCouponDeps> & { loggedIn?: boolean; idToken?: string | null; result?: unknown } = {}) {
   const login = vi.fn();
+  const rememberDeviceToken = vi.fn();
   const post = vi.fn(async () => {
     if (overrides.result instanceof Error) throw overrides.result;
-    return { data: { data: overrides.result ?? { status: 'verified' } } };
+    return { data: { data: overrides.result ?? { status: 'verified', deviceToken: 'device-jwt' } } };
   });
   const d: LiffCouponDeps = {
     initLiff: async () => ({
@@ -20,17 +21,20 @@ function deps(overrides: Partial<LiffCouponDeps> & { loggedIn?: boolean; idToken
       getIDToken: () => (overrides.idToken === undefined ? 'id-token' : overrides.idToken),
     }),
     post: post as unknown as LiffCouponDeps['post'],
+    rememberDeviceToken,
     currentUrl: 'https://crm.example.com/liff/redirect?ct=tok&lid=L',
     ...overrides,
   };
-  return { d, login, post };
+  return { d, login, post, rememberDeviceToken };
 }
 
-test('驗證通過：送出 ID token 後開啟一般票券網址', async () => {
-  const { d, post } = deps();
+test('驗證通過：送出 ID token、記住這台裝置後開啟一般票券網址', async () => {
+  const { d, post, rememberDeviceToken } = deps();
   const r = await openCouponViaLiff(TOK, 'L', d);
   assert.deepEqual(r, { kind: 'navigate', to: `/coupon/open/${TOK}` });
   assert.deepEqual(post.mock.calls[0], ['/fan/coupons/liff-session', { token: TOK, idToken: 'id-token' }]);
+  // 記住裝置（design D24）：一般票券網址呼叫 /session 時帶上，不必再驗證
+  assert.deepEqual(rememberDeviceToken.mock.calls, [['device-jwt']]);
 });
 
 test('還沒登入 LINE：先登入，回到這一頁', async () => {
@@ -55,8 +59,9 @@ for (const [name, opts] of [
   ['API 錯誤或連結失效', { result: new Error('410') }],
 ] as const) {
   test(`${name}：改走一般票券網址（One ID 登記）`, async () => {
-    const { d } = deps(opts as never);
+    const { d, rememberDeviceToken } = deps(opts as never);
     assert.deepEqual(await openCouponViaLiff(TOK, 'L', d), { kind: 'navigate', to: `/coupon/open/${TOK}` });
+    assert.equal(rememberDeviceToken.mock.calls.length, 0, '沒有驗證通過不記住裝置');
   });
 }
 

@@ -21,9 +21,11 @@ import {
   submitRegistration,
   type RegistrationKind,
   type RegistrationPayload,
+  type SubmitRegistrationResult,
 } from './identifier-registration.js';
 import { consumeOwnershipCode, requestOwnershipCode, verifyOwnershipCode } from './ownership-code.js';
 import { verificationEmailSender } from './ownership-code-email.js';
+import { signFanDeviceToken } from '../portal/portal-auth.service.js';
 
 export interface RegistrationRoutesOptions {
   /** 測試可注入記憶體版儲存與送訊息函式 */
@@ -90,8 +92,8 @@ export function createRegistrationRoutes(spec: RegistrationRouteSpec) {
       return reply.send(success(info));
     });
 
-    /** 寫入識別值或合併，交易結束後送出通知 */
-    async function register(payload: RegistrationPayload, token: string, value: unknown) {
+    /** 寫入識別值或合併，交易結束後送出通知；回傳登記結果 */
+    async function register(payload: RegistrationPayload, token: string, value: unknown): Promise<SubmitRegistrationResult> {
       const { result, notices } = await withTenant(fastify.prisma, payload.tenantId, (tx) =>
         submitRegistration(kind, tx, deps(), token, value),
       );
@@ -105,7 +107,18 @@ export function createRegistrationRoutes(spec: RegistrationRouteSpec) {
       } catch (err) {
         logger.error(`[${kind.logTag}] 通知送出失敗，登記結果不受影響`, err);
       }
-      return result.status;
+      return result;
+    }
+
+    /**
+     * 證明擁有權並完成歸戶時（寫入這位聯絡人或因登記合併），附上該聯絡人的裝置憑證：登記頁存起來，
+     * 回到票券連結時這台裝置不必再驗證（add-coupon-system design D24）。其他結果沒有完成歸戶，不給
+     */
+    function deviceTokenFor(tenantId: string, result: SubmitRegistrationResult): string | undefined {
+      if (!kind.provesOwnership) return undefined;
+      if (result.status === 'registered') return signFanDeviceToken(result.contactId, tenantId);
+      if (result.status === 'merged') return signFanDeviceToken(result.survivorId, tenantId);
+      return undefined;
     }
 
     async function codeSender(tenantId: string) {
@@ -122,7 +135,7 @@ export function createRegistrationRoutes(spec: RegistrationRouteSpec) {
       const value = submitBodySchema.parse(request.body ?? {})[spec.field];
       const payload = await activePayload(token);
 
-      if (!spec.verifyOwnership) return reply.send(success({ status: await register(payload, token, value) }));
+      if (!spec.verifyOwnership) return reply.send(success({ status: (await register(payload, token, value)).status }));
 
       const sent = await requestOwnershipCode(kind, { store: store(), sendCode: await codeSender(payload.tenantId) }, token, value);
       if (sent.status === 'expired') throw expired();
@@ -163,9 +176,10 @@ export function createRegistrationRoutes(spec: RegistrationRouteSpec) {
             { remainingAttempts: checked.remainingAttempts },
           );
         }
-        const status = await register(payload, token, checked.value);
+        const result = await register(payload, token, checked.value);
         await consumeOwnershipCode(kind, store(), token);
-        return reply.send(success({ status }));
+        const deviceToken = deviceTokenFor(payload.tenantId, result);
+        return reply.send(success({ status: result.status, ...(deviceToken ? { deviceToken } : {}) }));
       });
     }
   };

@@ -19,6 +19,7 @@ import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
 import { listWallet } from '#src/modules/coupon/coupon-wallet.service.js';
 import { openWalletSessionFlow } from '#src/modules/coupon/coupon-wallet.flow.js';
+import { signFanDeviceToken } from '#src/modules/portal/portal-auth.service.js';
 import { sweepStalePendingIssues } from '#src/modules/coupon/coupon.scheduler.js';
 import {
   getIssueContext,
@@ -471,7 +472,8 @@ describe('聯絡人的已發優惠券', () => {
     const msg = delivered.filter((d) => d.conversationId === p.conversationId).at(-1)!;
     const token = /\/coupon\/open\/([A-Za-z0-9_-]+)/.exec(msg.text)?.[1];
     assert.ok(token);
-    const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token);
+    // 已歸戶的顧客在驗證過的裝置開啟（design D24）
+    const s = await openWalletSessionFlow({ ...deps, prisma, io: testIo }, token, [signFanDeviceToken(p.contactId, T)]);
     assert.equal(s.status, 'ok');
     list = await runInTenant(prisma, T, (ctx) => listIssuedCoupons(ctx, p.conversationId));
     assert.equal(list?.find((x) => x.id === r.instanceId)?.status, 'VIEWED');

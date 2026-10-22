@@ -1,6 +1,7 @@
 /**
  * 顧客票券夾（add-coupon-system A9、design D12）：
  * - 票券連結換顧客憑證：已歸戶才發憑證，未歸戶回傳 One ID 登記頁網址
+ * - 已歸戶也要在驗證過的裝置開啟，否則以聯絡人原本的 email 驗證碼確認身分（design D24）
  * - 店員驗證碼核銷時段：5 分鐘內、最多錯 5 次
  *
  * 票券連結與核銷時段存在 Redis（coupon-staff-code-session.ts），測試注入記憶體版本。
@@ -10,7 +11,7 @@
 import QRCode from 'qrcode';
 import { couponLiffConfig, type WalletToken } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
-import { signFanToken } from '../portal/portal-auth.service.js';
+import { signFanDeviceToken, signFanToken, verifyFanDeviceToken } from '../portal/portal-auth.service.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import { resolveLiveContactId } from '../identity-binding/binding-common.js';
 import { getIdentityBindingSettings } from '../identity-binding/identity-binding.service.js';
@@ -31,8 +32,23 @@ const nowOf = (deps: Pick<WalletDeps, 'now'>) => (deps.now ?? Date.now)();
 /** 連結所屬的渠道類型：票券頁依此顯示「回到 LINE」「回到 Messenger」等文字 */
 type WithChannel<T> = T & { channelType: string | null };
 
+/** 開啟成功：顧客憑證，以及這台裝置換新的裝置憑證（design D24） */
+export type WalletSessionOk = WithChannel<{
+  status: 'ok';
+  fanToken: string;
+  tenantId: string;
+  contactId: string;
+  instanceId: string;
+  deviceToken: string;
+}>;
+
 export type WalletSessionResult =
-  | WithChannel<{ status: 'ok'; fanToken: string; tenantId: string; contactId: string; instanceId: string }>
+  | WalletSessionOk
+  /**
+   * 已歸戶，但這台裝置沒有驗證過（新裝置或被轉傳的連結）：寄驗證碼到聯絡人原本的 email 確認身分。
+   * 只回遮蔽後的 email，不讓顧客輸入其他 email（design D24）
+   */
+  | WithChannel<{ status: 'email_code_required'; maskedEmail: string }>
   /** 未歸戶：帶顧客去登記，登記頁送出後回到 next（原票券連結） */
   | WithChannel<{ status: 'verification_required'; kind: 'phone' | 'email'; registrationUrl: string }>
   /** 連結不存在或過期（不透露任何租戶或聯絡人資料） */
@@ -56,13 +72,71 @@ export type WalletOpenStep =
   | Exclude<WalletSessionResult, { status: 'verification_required' } | { status: 'rate_limited' }>
   | { status: 'needs_registration'; kind: RegistrationKind; channelType: string | null };
 
+/** 一次最多檢查的裝置憑證數（同一個網域可能有多個租戶，前端最多存 5 筆） */
+export const MAX_DEVICE_TOKENS = 5;
+
+/** 遮蔽 email：保留第一個字元與網域，例如 d***@aicreate360.com */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return '***';
+  return `${email[0]}***${email.slice(at)}`;
+}
+
+/**
+ * 這台裝置是否以這位聯絡人的身分驗證過：任一裝置憑證有效、租戶相同，且憑證的聯絡人
+ * 經合併鏈解析後等於 liveId（合併前取得的憑證仍有效）。
+ */
+async function trustsDevice(ctx: TenantCtx, liveId: string, deviceTokens: readonly string[]): Promise<boolean> {
+  for (const token of deviceTokens.slice(0, MAX_DEVICE_TOKENS)) {
+    const device = verifyFanDeviceToken(token);
+    if (!device || device.tenantId !== ctx.tenantId) continue;
+    if (device.contactId === liveId) return true;
+    if ((await resolveLiveContactId(ctx.tx, ctx.tenantId, device.contactId)) === liveId) return true;
+  }
+  return false;
+}
+
+/** 確認身分後開啟票券：記錄已領取、推播，回傳顧客憑證與換新的裝置憑證 */
+async function grantWalletSession(
+  ctx: TenantCtx,
+  deps: Pick<WalletDeps, 'now'>,
+  instanceId: string,
+  liveId: string,
+  channelType: string | null,
+): Promise<WalletSessionOk> {
+  const { tx, tenantId } = ctx;
+  // 對話發券的「已領取」：顧客第一次開啟這張券（design D14）
+  await tx.couponInstance.updateMany({
+    where: { id: instanceId, tenantId, contactId: liveId, viewedAt: null },
+    data: { viewedAt: new Date(nowOf(deps)) },
+  });
+  // 收件匣「已發優惠券」重新載入（design D23）
+  ctx.notify('coupon.instance.updated', { instanceId, contactId: liveId, change: 'viewed' });
+  return {
+    status: 'ok',
+    fanToken: signFanToken(liveId, tenantId),
+    tenantId,
+    contactId: liveId,
+    instanceId,
+    channelType,
+    deviceToken: signFanDeviceToken(liveId, tenantId),
+  };
+}
+
+async function channelTypeOf(ctx: TenantCtx, channelId: string): Promise<string | null> {
+  const channel = await ctx.tx.channel.findFirst({ where: { id: channelId, tenantId: ctx.tenantId }, select: { channelType: true } });
+  return channel?.channelType ?? null;
+}
+
 /**
  * 票券連結換顧客憑證（交易內的部分）。payload 由入口先以票券權杖讀出（決定租戶），ctx 綁定 payload.tenantId。
+ * deviceTokens 是這台裝置存的裝置憑證（design D24）。
  */
 export async function openWalletSession(
   ctx: TenantCtx,
   deps: Pick<WalletDeps, 'now'>,
   payload: WalletToken,
+  deviceTokens: readonly string[] = [],
 ): Promise<WalletOpenStep> {
   const { tx, tenantId } = ctx;
   // 點擊歸因（design D21）：不論是否已驗證身分，每次開啟都記錄
@@ -80,33 +154,68 @@ export async function openWalletSession(
   if (!liveId) return { status: 'expired' };
   const contact = await tx.contact.findFirst({
     where: { id: liveId, tenantId },
-    select: { identityVerifiedAt: true },
+    select: { identityVerifiedAt: true, email: true },
   });
   if (!contact) return { status: 'expired' };
-  const channel = await tx.channel.findFirst({ where: { id: payload.channelId, tenantId }, select: { channelType: true } });
-  const channelType = channel?.channelType ?? null;
+  const channelType = await channelTypeOf(ctx, payload.channelId);
 
   if (contact.identityVerifiedAt) {
-    // 對話發券的「已領取」：顧客第一次開啟這張券（design D14）
-    await tx.couponInstance.updateMany({
-      where: { id: payload.instanceId, tenantId, contactId: liveId, viewedAt: null },
-      data: { viewedAt: new Date(nowOf(deps)) },
-    });
-    // 收件匣「已發優惠券」重新載入（design D23）
-    ctx.notify('coupon.instance.updated', { instanceId: payload.instanceId, contactId: liveId, change: 'viewed' });
-    return {
-      status: 'ok',
-      fanToken: signFanToken(liveId, tenantId),
-      tenantId,
-      contactId: liveId,
-      instanceId: payload.instanceId,
-      channelType,
-    };
+    // 已歸戶只代表「這位顧客曾驗證過」，不代表開啟連結的是本人（連結可能被轉傳）：
+    // 要在驗證過的裝置開啟，否則以原 email 驗證碼確認（design D24）
+    if (await trustsDevice(ctx, liveId, deviceTokens)) {
+      return grantWalletSession(ctx, deps, payload.instanceId, liveId, channelType);
+    }
+    const email = contact.email?.trim();
+    if (email) return { status: 'email_code_required', maskedEmail: maskEmail(email), channelType };
+    // 沒有 email（例如只以 LINE 驗證過）：走 email 登記（殘留風險見 issue #344）
   }
 
   const kind = registrationKindFor(await getIdentityBindingSettings(tx, tenantId));
   if (!kind) return { status: 'unavailable', channelType };
   return { status: 'needs_registration', kind, channelType };
+}
+
+// ── 以原 email 驗證碼確認身分（design D24；驗證碼在 Redis，寄信在交易外，由 flow 處理）──
+
+/**
+ * 寄驗證碼的對象：票券連結對應、已歸戶且有 email 的聯絡人。不符合回 null（不寄信）。
+ * senderName 為租戶名稱（驗證信署名）。
+ */
+export async function walletEmailCodeTarget(
+  ctx: TenantCtx,
+  payload: WalletToken,
+): Promise<{ contactId: string; email: string; maskedEmail: string; senderName: string } | null> {
+  const { tx, tenantId } = ctx;
+  const liveId = await resolveLiveContactId(tx, tenantId, payload.contactId);
+  if (!liveId) return null;
+  const contact = await tx.contact.findFirst({
+    where: { id: liveId, tenantId },
+    select: { identityVerifiedAt: true, email: true },
+  });
+  const email = contact?.email?.trim();
+  if (!contact?.identityVerifiedAt || !email) return null;
+  const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+  return { contactId: liveId, email, maskedEmail: maskEmail(email), senderName: tenant?.name ?? '' };
+}
+
+/**
+ * 驗證碼正確後開啟票券（交易內的部分）。codeContactId 是寄碼時的聯絡人；
+ * 兩者經合併鏈解析後須相同，且仍為已歸戶，否則視為連結失效。
+ */
+export async function completeWalletEmailCode(
+  ctx: TenantCtx,
+  deps: Pick<WalletDeps, 'now'>,
+  payload: WalletToken,
+  codeContactId: string,
+): Promise<WalletSessionOk | { status: 'expired' }> {
+  const { tx, tenantId } = ctx;
+  const liveId = await resolveLiveContactId(tx, tenantId, payload.contactId);
+  if (!liveId) return { status: 'expired' };
+  const codeLiveId = codeContactId === liveId ? liveId : await resolveLiveContactId(tx, tenantId, codeContactId);
+  if (codeLiveId !== liveId) return { status: 'expired' };
+  const contact = await tx.contact.findFirst({ where: { id: liveId, tenantId }, select: { identityVerifiedAt: true } });
+  if (!contact?.identityVerifiedAt) return { status: 'expired' };
+  return grantWalletSession(ctx, deps, payload.instanceId, liveId, await channelTypeOf(ctx, payload.channelId));
 }
 
 // ── 券夾 ──────────────────────────────────────────────────────────────────
@@ -227,8 +336,8 @@ export interface LineLoginDeps extends WalletDeps {
 }
 
 export type LineLoginResult =
-  /** 已記錄歸戶驗證，接著照一般流程開啟票券 */
-  | { status: 'verified' }
+  /** 已記錄歸戶驗證，接著照一般流程開啟票券；deviceToken 讓這台裝置之後不必再驗證（design D24） */
+  | { status: 'verified'; deviceToken: string }
   | { status: 'expired' }
   /** 渠道沒有設定 LIFF 與 Login Channel ID，改走 One ID 登記 */
   | { status: 'not_configured' }
@@ -254,14 +363,14 @@ export async function lineLoginTarget(
   return liff && identity ? { loginChannelId: liff.loginChannelId, uid: identity.uid } : null;
 }
 
-/** 第 3 步：記錄歸戶驗證（方式 line）。聯絡人已合併時記在保留方；找不到聯絡人回 false */
-export async function markLineVerified(ctx: TenantCtx, payload: WalletToken, now: number): Promise<boolean> {
+/** 第 3 步：記錄歸戶驗證（方式 line）。聯絡人已合併時記在保留方；回傳保留方，找不到聯絡人回 null */
+export async function markLineVerified(ctx: TenantCtx, payload: WalletToken, now: number): Promise<string | null> {
   const { tx, tenantId } = ctx;
   const liveId = await resolveLiveContactId(tx, tenantId, payload.contactId);
-  if (!liveId) return false;
+  if (!liveId) return null;
   await tx.contact.updateMany({
     where: { id: liveId, tenantId, identityVerifiedAt: null },
     data: { identityVerifiedAt: new Date(now), identityVerifiedVia: 'line' },
   });
-  return true;
+  return liveId;
 }

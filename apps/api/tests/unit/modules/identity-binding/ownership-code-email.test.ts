@@ -11,3 +11,11 @@ test('主旨不含驗證碼，內文有', () => {
   assert.ok(mail.html.includes('493817'));
   assert.ok(mail.text.includes('493817'));
 });
+
+test('開啟票券確認身分的驗證信：請顧客回到優惠券頁面輸入，主旨同樣不含驗證碼', () => {
+  const mail = buildVerificationEmail('好好咖啡', '493817', 'coupon');
+  assert.ok(!mail.subject.includes('493817'), mail.subject);
+  assert.match(mail.text, /回到優惠券頁面輸入/);
+  assert.ok(!mail.text.includes('登記頁'), mail.text);
+  assert.ok(mail.html.includes('493817'));
+});
