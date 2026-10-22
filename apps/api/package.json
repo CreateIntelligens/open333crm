@@ -50,7 +50,7 @@
     "jsonwebtoken": "^9.0.3",
     "magika": "^1.0.0",
     "mammoth": "^1.12.0",
-    "nodemailer": "^9.0.5",
+    "nodemailer": "^10.0.9",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "resend": "^6.26.0",
