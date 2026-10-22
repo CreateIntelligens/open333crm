@@ -463,6 +463,7 @@
 - [x] 15.14 測試「加好友觸發規則」「取消好友不觸發」「加好友不觸發收到訊息的關鍵字規則」（`apps/api/tests/unit/modules/automation/automation.worker.test.ts`）；「第一次加入」「封鎖後再加入」「上線前就是好友的顧客」（`apps/api/tests/feature/modules/webhook/follow-tracking.test.ts`）；「新好友收到加好友禮」「封鎖後再加入不發券」「上線前就是好友的顧客再加入」（workers unit，發放方式 `follow`、reply）；「加好友禮頁的條件不能移除」「停用加好友禮」（`apps/web/tests/unit/components/line/follow-gift-page.test.tsx`）
 - [x] 15.15 實作：事件定義 `contact.followed` 與 fact `follow.isFirst`（`packages/automation/src/contracts/events.ts`、`facts.ts`）；follow 事件寫入加入紀錄（`apps/api/src/modules/webhook/inbound-contact-resolver.ts` 或新 helper）；`automation.worker.ts` 對 `contentType='follow'` 排入 `contact.followed`（帶 `replyToken`、`receivedAt`、`isFirstFollow`）
 - [x] 15.16 前端：「LINE 管理 → 加好友禮」頁（`apps/web/src/app/dashboard/line/follow-gift/page.tsx`，建立或更新租戶唯一的規則）；自動化規則編輯器事件清單加「加入好友」
+- [x] 15.16a 後端擋第二條加好友禮（使用者決定 2026-10-22）：測試「另外建立第二條加好友禮」（`apps/api/tests/unit/modules/automation/follow-gift-unique.test.ts`，修正前兩個 409 測試在斷言上失敗）；實作 `assertSingleFollowGift`。突變驗證：拿掉 enabled 條件、不排除自己、不看是否發券、拿掉 tenantId，各自讓對應測試失敗
 
 ### 三、附券廣播與券頁批次發券（design D29、D31）
 

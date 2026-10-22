@@ -153,6 +153,30 @@ async function assertIssueCouponReferences(
   if (found.length !== unique.length) throw invalid();
 }
 
+/**
+ * 加好友禮每個租戶只能有一條（design D28；使用者決定 2026-10-22：後端也擋）。
+ * 「加入好友」事件且含發券動作的規則就是加好友禮；設定頁只編輯一條，另外建的同類規則也會執行，
+ * 同一位顧客會拿到兩張券。只傳送訊息或素材的「加入好友」規則不受限制；已刪除（enabled=false）的不算。
+ */
+async function assertSingleFollowGift(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  prisma: { automationRule: { findMany(args: any): PromiseLike<Array<{ actions: unknown }>> } },
+  tenantId: string,
+  eventType: string,
+  actions: Array<Record<string, unknown>>,
+  excludeRuleId?: string,
+): Promise<void> {
+  const issuesCoupon = (list: unknown) => Array.isArray(list) && list.some((a) => (a as { type?: unknown })?.type === 'issue_coupon');
+  if (eventType !== 'contact.followed' || !issuesCoupon(actions)) return;
+  const others = await prisma.automationRule.findMany({
+    where: { tenantId, enabled: true, eventType: 'contact.followed', ...(excludeRuleId ? { id: { not: excludeRuleId } } : {}) },
+    select: { actions: true },
+  });
+  if (others.some((r) => issuesCoupon(r.actions))) {
+    throw new AppError('已經有加好友禮，請到「LINE 管理 → 加好友禮」修改', 'CONFLICT', 409);
+  }
+}
+
 export async function createRule(
   prisma: TenantDb,
   tenantId: string,
@@ -172,6 +196,7 @@ export async function createRule(
   validateRuleContract(eventType, data.conditions, data.actions);
   await assertSendMaterialReferences(prisma, tenantId, data.actions);
   await assertIssueCouponReferences(prisma, tenantId, data.actions);
+  await assertSingleFollowGift(prisma, tenantId, eventType, data.actions);
 
   const rule = await prisma.automationRule.create({
     data: {
@@ -234,6 +259,7 @@ export async function updateRule(
     const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
     const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
     validateRuleContract(nextEventType, nextConditions, nextActions);
+    await assertSingleFollowGift(prisma, tenantId, nextEventType, nextActions, id);
     if (data.actions !== undefined) {
       await assertSendMaterialReferences(prisma, tenantId, nextActions);
       await assertIssueCouponReferences(prisma, tenantId, nextActions, existing.actions);
