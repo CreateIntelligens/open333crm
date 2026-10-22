@@ -126,7 +126,9 @@ api 與 workers 共用（規劃 9.8 的決定）：
 - agent 與 KB：呼叫 LLM 之前先查有沒有 `bot_reply` 認領紀錄。產生回覆並以 `prepareStoredMessageContent()` 遮罩之後，一個交易內認領 `bot_reply` 並寫入回覆訊息；commit 之後送出。`persistAndDeliverAgentReply()` 自己開的 `$transaction` 拆掉，改由呼叫端的 `inTenant()` 提供。
 - 情緒分析：同樣先查、再呼叫 LLM、再於一個交易內認領 `sentiment`、寫入結果、必要時 `ctx.publish('sentiment.negative')`。
 - `case.created` 的自動分類維持現狀：主規格「新工單的自動分類不覆蓋既有分類」已經讓重複執行不改變結果，只多一次 LLM 費用。
-- 下列符號與關鍵字比對搬進 `packages/automation`：`hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT`。`kb-autoreply.service.ts` 從 worker 檔 import 的就是這 4 個符號，全部搬走才能解決 AUDIT ARCH-02。
+- `kb-autoreply.service.ts` 從 worker 檔 import 4 個符號：`hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT`，全部搬走才能解決 AUDIT ARCH-02。
+  - `BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與關鍵字比對（`matchKeywordTrigger()`）搬進 `packages/automation`，workers 也用。
+  - `hasMatchingKeywordRule()` 搬到 `apps/api/src/modules/automation/keyword-yield.ts`（模組的 helper 檔，AGENTS.md 結構規則 4 允許跨模組 import）。它要讀資料庫，並用 `@open333crm/core`、`@open333crm/channel-plugins`；`apps/web` 會打包 `@open333crm/automation`，放進套件會把 BullMQ 帶進瀏覽器的 bundle，web build 失敗（2026-10-22 rebase 後的 `pnpm build` 發現）。`packages/automation/tests/unit/browser-safe.test.ts` 檢查這個套件不 import 這兩個套件。
 - AI 讓步判斷與 workers 呼叫同一份比對函式。
 - `packages/automation` 以結構型別接收 Prisma executor（同 `AutomationFactsDb` 的做法），不新增 database 相依。
 - `automation.worker.ts` 只剩「把事件轉成 `automation:evaluate` job」與 `message.received` 的流程，檔名維持不變，避免在本 change 混入改名。

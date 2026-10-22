@@ -19,7 +19,7 @@ RBAC-05 的狀態維持「已提建議」：reconcile 腳本沒有改，快取�
 
 | 項目 | 結果 | 依據 |
 | --- | --- | --- |
-| ARCH-02 | 修正，自 `AUDIT.md` 移除 | `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 搬到 `@open333crm/automation`（`feb78055`）。`grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes\|worker\|scheduler)\.js'" apps/api/src/modules` 沒有輸出 |
+| ARCH-02 | 修正，自 `AUDIT.md` 移除 | `BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 搬到 `@open333crm/automation`（`feb78055`），`hasMatchingKeywordRule()` 搬到 automation 模組的 `keyword-yield.ts`（2026-10-22，避免 web 打包帶進 BullMQ）。`grep -rnE "from '\.\./[a-z-]+/[a-zA-Z.-]+\.(routes\|worker\|scheduler)\.js'" apps/api/src/modules` 沒有輸出 |
 | HOOK-01 | 未處理改為部分修正 | 對外 Webhook 只轉送 `EXTERNAL_EVENT_NAMES` 內的事件，payload 帶事件 id，每個網址各自重試（`717d32bf`）。第一版清單等於所有事件，`replyToken` 仍會送出，待產品決定 |
 | APP-08 | 已提建議改為部分修正 | `notification`（`5f392e60`、`3710b293`）、`automation`（`0585cd33`）與新增的事件佇列以時間保留 job。`rich-menu-bind`、`data-export`、`sla` 與兩個清理佇列仍全部保留；Redis 仍沒有 `maxmemory` |
 | APP-09 | 狀態不變（部分修正），內容更新 | `domain:event` 頻道移除（`d6bb430a`），業務事件的訂閱者改走 BullMQ 佇列，每個 job 只由一個行程處理 |

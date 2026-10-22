@@ -1,14 +1,19 @@
 /**
- * AI 回覆是否讓步給關鍵字規則（change outbox-event-delivery，AUDIT ARCH-02：原本放在 api 的 automation.worker.ts）。
+ * AI 回覆是否讓步給關鍵字規則（change outbox-event-delivery，AUDIT ARCH-02：原本放在 automation.worker.ts，
+ * kb-autoreply 要 import worker 檔）。放在 automation 模組的 helper 檔，不放進 @open333crm/automation：
+ * 這裡要讀資料庫並用 core、channel-plugins，而 apps/web 會打包那個套件。
  *
  * 收呼叫端的 Prisma executor（AGENTS.md 結構規則 2），每個查詢都自帶 tenantId。
  */
 import { AUTOMATION_DELIVERY_CHANNEL_TYPES } from '@open333crm/channel-plugins';
 import { logger } from '@open333crm/core';
-import { buildAutomationFacts, type AutomationFactsDb } from '../automation-facts.js';
-import { validateAutomationRuleContract } from '../contracts/index.js';
-import { evaluateRules } from '../rules/index.js';
-import { matchKeywordTrigger } from './keyword-match.js';
+import {
+  buildAutomationFacts,
+  evaluateRules,
+  matchKeywordTrigger,
+  validateAutomationRuleContract,
+  type AutomationFactsDb,
+} from '@open333crm/automation';
 
 /** hasMatchingKeywordRule 用到的 Prisma model 方法。PrismaClient 與交易 client 都符合 */
 export interface KeywordYieldDb extends AutomationFactsDb {

@@ -28,11 +28,11 @@ import { deliverToChannel } from '../conversation/conversation.service.js';
 import { loadOtherChannelContext } from './other-channel-context.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
-  hasMatchingKeywordRule,
   DEFAULT_BOT_CONFIG,
   DEFAULT_HANDOFF_PROMPT_TEXT,
   type BotConfig,
 } from '@open333crm/automation';
+import { hasMatchingKeywordRule } from '../automation/keyword-yield.js';
 import { logger } from '@open333crm/core';
 import type { BotReplyGuard } from '../automation/bot-reply-guard.js';
 

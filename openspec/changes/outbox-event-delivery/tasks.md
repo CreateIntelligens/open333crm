@@ -53,6 +53,7 @@
 ## 8. 自動化訂閱者（API）
 
 - [x] 8.1 把 `hasMatchingKeywordRule()`、`BotConfig`、`DEFAULT_BOT_CONFIG`、`DEFAULT_HANDOFF_PROMPT_TEXT` 與關鍵字比對搬進 `packages/automation`（design 決策 8），`kb-autoreply.service.ts`、`automation.worker.ts` 與 workers 改 import 新位置。既有測試 `keyword-suppresses-ai.test.ts`、`keyword-yield-channel.test.ts` 改 import 路徑，搬移前後都通過（重構）。之後 ARCH-02 的檢查指令沒有輸出
+  - 2026-10-22：`hasMatchingKeywordRule()` 改放 `apps/api/src/modules/automation/keyword-yield.ts`。放在 `packages/automation` 時，web 打包那個套件會帶進 core 與 BullMQ，`pnpm build` 失敗。新增 `browser-safe.test.ts`：套件 import core 或 channel-plugins 時失敗（先寫測試，看它失敗，再搬移）
 - [x] 8.2 `packages/automation` 目前沒有測試設定：照 `packages/core` 加上 Vitest、`test` script 與 `#src/` imports。接著寫失敗的單元測試 `packages/automation/tests/unit/keyword-match.test.ts`，涵蓋 automation-engine 的 Scenario「舊資料含空白關鍵字」「訊息沒有命中」
 - [x] 8.3 統一關鍵字比對，讓 8.2 通過
 - [x] 8.4 寫失敗的單元測試 `apps/api/tests/unit/modules/automation/auto-handoff.test.ts`，涵蓋 bot-handoff-config 的 Scenario「同一則訊息處理兩次」「兩次處理同時進行」（第二個 `claimOne` 回傳 false）「寫入系統訊息失敗」

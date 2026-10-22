@@ -88,7 +88,7 @@ t('單筆查詢也排除已刪除（否則刪掉的規則仍可用網址開啟�
 
 t('worker 仍以 isActive 判斷是否觸發（行為未改變）', () => {
   // 規則在 workers 評估；AI 讓步判斷（關鍵字規則）已搬到 packages/automation（change outbox-event-delivery）
-  for (const file of ['apps/workers/src/handlers/automation.handler.ts', 'packages/automation/src/keyword/keyword-yield.ts']) {
+  for (const file of ['apps/workers/src/handlers/automation.handler.ts', 'apps/api/src/modules/automation/keyword-yield.ts']) {
     assert.ok(repoFile(file).includes('isActive: true'), `${file} 的觸發判斷應維持看 isActive`);
   }
 });
