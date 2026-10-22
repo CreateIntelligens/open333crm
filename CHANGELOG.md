@@ -23,6 +23,8 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **對外 Webhook 每個網址各自重試，送出的內容帶事件 id**（AUDIT HOOK-01 部分修正）— 原本一個事件的所有網址在 API 行程內以 `sleep()` 依序重試，API 重新啟動時重試遺失。現在每個網址一個 `webhook-delivery` job，共送 3 次、間隔 1 秒與 5 秒，重啟後照常繼續。payload 加 `id`，標頭加 `X-Webhook-Event-Id`；同一個事件送給同一個訂閱只有一筆送出紀錄（`webhook_deliveries` 新增 `eventId`），重試時 `X-Webhook-Delivery` 不變。只轉送對外事件清單內的事件，第一版清單等於所有事件。測試送出（`POST /webhook-subscriptions/:id/test`）改成在請求內只送一次、不重試。
 
+- **Node 24.22.1 後續收尾** — CLI（`@open333crm/cli`）的 `engines.node` 從 `>=24` 收緊為 `>=24.22.1`，與根目錄一致（下次發版生效；npm 上的 0.1.1 仍是 `>=20`）。README 前置需求的 Node 版本從 24.15 改為 24.22.1。新增 `.github/dependabot.yml`，每週監看 4 個 Dockerfile 的 `node` base image，合成一個 PR，不跨大版本；只開版本更新 PR，不啟用 CodeQL / GHAS。
+
 ### Fixed
 
 - **優惠券上線的部署在產生 OpenAPI 文件時失敗**（PR #347 合併後）：優惠券狀態流轉的 4 個路由（publish、pause、resume、end）在迴圈中以 template string 註冊，產生器只認字面值路徑；會員綁定的後台與顧客端路由放在同一個檔案，產生器以檔案對應掛載路徑而重複產生 `/api/v1/fan/member-binding`。改為逐一以字面值註冊，顧客端路由拆到 `member-binding-fan.routes.ts`。新增單元測試以目前原始碼執行產生器，同類問題在 `pnpm test` 就會失敗。

@@ -38,7 +38,7 @@
     "directory": "apps/cli"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.22.1"
   },
   "publishConfig": {
     "access": "public"
