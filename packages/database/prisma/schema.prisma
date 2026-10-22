@@ -262,6 +262,7 @@ model Tenant {
   coupons         Coupon[]
   couponInstances CouponInstance[]
   couponCodes     CouponCode[]
+  couponClaimLinks CouponClaimLink[]
   outboxRows              Outbox[]
   sideEffectClaims        SideEffectClaim[]
 
@@ -415,6 +416,7 @@ model Channel {
   richMenus         RichMenu[]
   chatboxSessions   ChatboxSession[]
   shortLinks        ShortLink[]         @relation("ShortLinkLineChannel")
+  couponClaimLinks  CouponClaimLink[]
 
   @@unique([channelType, externalAccountId])
   @@index([tenantId])
@@ -2341,6 +2343,7 @@ model Coupon {
   tenant    Tenant           @relation(fields: [tenantId], references: [id])
   instances CouponInstance[]
   codes     CouponCode[]
+  claimLinks CouponClaimLink[]
 
   @@unique([tenantId, displayCode])
   @@index([tenantId])
@@ -2438,6 +2441,42 @@ model CouponCode {
   @@index([tenantId])
   @@index([couponId, status])
   @@map("coupon_codes")
+}
+
+enum CouponClaimLinkStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// 公開領券連結（design D30）：海報、官網上的「傳訊領券」網址與 QR Code。
+/// 顧客開啟 `/coupon/claim/{code}` 後到指定渠道傳送含代碼的訊息，入站處理辨認代碼後發券。
+model CouponClaimLink {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String @db.Uuid
+  couponId  String @db.Uuid
+  /// 領券訊息要送到的官方帳號或粉專；代碼只在這個渠道生效
+  channelId String @db.Uuid
+  /// 投放位置的名稱（例如「門市海報」），也是發出的券的來源名稱
+  name      String
+  /// 8 碼代碼（字集同券碼）。公開網址不帶租戶，所以全系統唯一
+  code      String @unique
+  status    CouponClaimLinkStatus @default(ACTIVE)
+  startAt   DateTime?
+  endAt     DateTime?
+  /// 公開領券頁的開啟次數與成功發出的張數
+  openCount  Int @default(0)
+  claimCount Int @default(0)
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, couponId])
+  @@map("coupon_claim_links")
 }
 
 /// 門市（design D13）。停業的門市不能核銷。
