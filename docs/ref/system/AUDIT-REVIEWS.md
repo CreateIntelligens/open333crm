@@ -4,6 +4,15 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-22：RLS-01 與 APP-07 互相引用
+
+規劃導入 bull-board 時盤點所有 BullMQ 佇列，以 main `7771212f` 靜態確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| APP-07 | 狀態不變（已提建議），內容更新 | 重新確認 BullMQ 5.71.0 的 `queue-base.js` 對含 `:` 的名稱丟錯；`grep -rn "FLOW_RESUME_JOB\|flow:resume" apps packages` 只找到 `scheduler.ts`，沒有 Worker。補上：只改名不加消費者時，工作會留在 delayed set；修正 RLS-01 時一併處理 |
+| RLS-01 | 狀態不變（未處理），內容更新 | 等待節點唯一的恢復路徑 `processResumeQueue()` 也用 singleton，補上與 APP-07 的引用 |
+
 ## 2026-10-21：RBAC-05 部分緩解
 
 優惠券系統（add-coupon-system）新增 6 個權限碼，code review 指出照部署清單執行 reconcile 會覆蓋租戶對系統角色的修改。新增 `scripts/grant-new-role-permissions.mjs`，只補上指定的新權限碼。
