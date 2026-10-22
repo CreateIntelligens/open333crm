@@ -24,10 +24,10 @@
 
 ## 3. 被認領擋下的副作用（queue-monitoring「被認領擋下的副作用標示跳過」）
 
-- [ ] 3.1 寫失敗的單元測試 `packages/core/tests/unit/outbox/skipped-claims.test.ts`：`collectSkippedClaims()` 範圍內 `claimSideEffect()` 回傳 false 時，收集到這個認領鍵；回傳 true 時不收集；不在範圍內時不丟錯
-- [ ] 3.2 在 `claims.ts` 實作收集器（design 決策 7），讓 3.1 通過
-- [ ] 3.3 寫失敗的單元測試，涵蓋 Scenario「重送已執行過規則動作的 job」「第一次執行沒有跳過」：`apps/workers/tests/unit/handlers/automation-skipped-claims.test.ts` 以 mock 的交易讓 `automation_action` 認領失敗，檢查 workers `automation` processor 的回傳值；`apps/api/tests/unit/events/subscriber-workers.test.ts` 加上 `subscriberProcessor()` 的同樣檢查
-- [ ] 3.4 `subscriberProcessor()` 與 workers 的 `automation` Worker 包上 `collectSkippedClaims()`，讓 3.3 通過
+- [x] 3.1 寫失敗的單元測試 `packages/core/tests/unit/outbox/skipped-claims.test.ts`：`collectSkippedClaims()` 範圍內 `claimSideEffect()` 回傳 false 時，收集到這個認領鍵；回傳 true 時不收集；不在範圍內時不丟錯
+- [x] 3.2 在 `claims.ts` 實作收集器（design 決策 7），讓 3.1 通過
+- [x] 3.3 寫失敗的單元測試，涵蓋 Scenario「重送已執行過規則動作的 job」「第一次執行沒有跳過」：`apps/workers/tests/unit/handlers/automation-skipped-claims.test.ts` 以 mock 的交易讓 `automation_action` 認領失敗，檢查 workers `automation` processor 的回傳值；`apps/api/tests/unit/events/subscriber-workers.test.ts` 加上 `subscriberProcessor()` 的同樣檢查
+- [x] 3.4 `subscriberProcessor()` 與 workers 的 `automation` Worker 包上 `collectSkippedClaims()`，讓 3.3 通過
 
 ## 4. 維運告警模組（ops-alert）
 

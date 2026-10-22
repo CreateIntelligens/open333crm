@@ -8,7 +8,7 @@ import { handleSlaPoll } from './handlers/sla.handler.js';
 // Broadcast 排程改由 apps/api 端負責（含完整 executeBroadcast 邏輯：變數替換 / multicast / recipient 記錄）。
 // Worker 端不再 polling broadcasts 避免雙發 race。
 import { handleNotificationJob } from './handlers/notification.handler.js';
-import { handleAutomationJob } from './handlers/automation.handler.js';
+import { processAutomationJob } from './handlers/automation.handler.js';
 import { handleRichMenuBindJob } from './handlers/rich-menu-bind.handler.js';
 import { handleDataErasureJob } from './handlers/data-erasure.handler.js';
 import {
@@ -98,7 +98,7 @@ async function main() {
     'automation',
     async (job) => {
       logger.info(`[automation] Processing job ${job.id}: ${job.name}`);
-      await handleAutomationJob(job, prisma, redisPublisher, pluginRegistry);
+      return processAutomationJob(job, prisma, redisPublisher, pluginRegistry);
     },
     { connection },
   );
