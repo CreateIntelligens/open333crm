@@ -186,14 +186,10 @@ export default async function couponRoutes(app: FastifyInstance) {
     return { success: true };
   }));
 
-  // 狀態流轉。分成獨立端點而非 PATCH status，讓權限與稽核能對應到具體動作
-  for (const [path, next] of [
-    ['publish', 'ACTIVE'],
-    ['pause', 'PAUSED'],
-    ['resume', 'ACTIVE'],
-    ['end', 'ENDED'],
-  ] as const) {
-    app.post(`/:id/${path}`, { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
+  // 狀態流轉。分成獨立端點而非 PATCH status，讓權限與稽核能對應到具體動作。
+  // 路徑須寫成字串字面值：部署前的 OpenAPI 產生器（openapi-inventory.mjs）只認得字面值路徑
+  const transition = (next: 'ACTIVE' | 'PAUSED' | 'ENDED') =>
+    couponHandler(app, async (request, reply, ctx) => {
       const { id } = idParams.parse(request.params);
       // 在同一個交易內鎖券、改狀態、作廢未使用的券
       const result = await changeStatus(ctx, id, next);
@@ -204,8 +200,11 @@ export default async function couponRoutes(app: FastifyInstance) {
       // 提前結束時帶回已領取與未使用張數，供後台提示影響範圍
       const { ok: _ok, ...data } = result;
       return { success: true, data };
-    }));
-  }
+    });
+  app.post('/:id/publish', { preHandler: [requirePermission('coupon.manage')] }, transition('ACTIVE'));
+  app.post('/:id/pause', { preHandler: [requirePermission('coupon.manage')] }, transition('PAUSED'));
+  app.post('/:id/resume', { preHandler: [requirePermission('coupon.manage')] }, transition('ACTIVE'));
+  app.post('/:id/end', { preHandler: [requirePermission('coupon.manage')] }, transition('ENDED'));
 
   /**
    * 批次發券。每 ISSUE_BATCH_SIZE 人一個交易（交易時限 5 秒）；已提交的批次不會因後面的批次失敗而回滾。
