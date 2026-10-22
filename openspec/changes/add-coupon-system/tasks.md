@@ -133,8 +133,8 @@
 ## B2. 發送策略接線
 
 - [x] B2.1 客服發券用 `push`
-- [ ] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
-      2026-10-22 盤點：未生效。workers 沒把 `receivedAt` 傳進動作，`selectSafeLineStrategy` 一律回 push；也沒有加好友觸發。改由 A15 15.6、15.12c、15.13～15.16 完成（design D25、D28）
+- [x] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
+      2026-10-22 盤點：未生效。workers 沒把 `receivedAt` 傳進動作，`selectSafeLineStrategy` 一律回 push；也沒有加好友觸發。改由 A15 15.6、15.12c、15.13～15.16 完成（design D25、D28）；2026-10-23 加好友部分完成
 - [ ] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
       2026-10-22 盤點：未實作，群發模組沒有券。每人連結不同，multicast 做不到，改為每人 push。改由 A15 15.17～15.24 完成（design D29、D31）
 - [x] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
@@ -459,10 +459,10 @@
 
 ### 二、加好友禮（design D28）
 
-- [ ] 15.13 migration：`channel_identities` 新增 `firstFollowedAt`、`lastFollowedAt`、`followCount`；既有 LINE 渠道身分回填 `firstFollowedAt = linkedAt`
-- [ ] 15.14 測試「加好友觸發規則」「取消好友不觸發」「加好友不觸發收到訊息的關鍵字規則」（`apps/api/tests/unit/modules/automation/automation.worker.test.ts`）；「第一次加入」「封鎖後再加入」「上線前就是好友的顧客」（`apps/api/tests/feature/modules/webhook/follow-tracking.test.ts`）；「新好友收到加好友禮」「封鎖後再加入不發券」「上線前就是好友的顧客再加入」（workers unit，發放方式 `follow`、reply）；「加好友禮頁的條件不能移除」「停用加好友禮」（`apps/web/tests/unit/components/line/follow-gift-page.test.tsx`）
-- [ ] 15.15 實作：事件定義 `contact.followed` 與 fact `follow.isFirst`（`packages/automation/src/contracts/events.ts`、`facts.ts`）；follow 事件寫入加入紀錄（`apps/api/src/modules/webhook/inbound-contact-resolver.ts` 或新 helper）；`automation.worker.ts` 對 `contentType='follow'` 排入 `contact.followed`（帶 `replyToken`、`receivedAt`、`isFirstFollow`）
-- [ ] 15.16 前端：「LINE 管理 → 加好友禮」頁（`apps/web/src/app/dashboard/line/follow-gift/page.tsx`，建立或更新租戶唯一的規則）；自動化規則編輯器事件清單加「加入好友」
+- [x] 15.13 migration：`channel_identities` 新增 `firstFollowedAt`、`lastFollowedAt`、`followCount`；既有 LINE 渠道身分回填 `firstFollowedAt = linkedAt`
+- [x] 15.14 測試「加好友觸發規則」「取消好友不觸發」「加好友不觸發收到訊息的關鍵字規則」（`apps/api/tests/unit/modules/automation/automation.worker.test.ts`）；「第一次加入」「封鎖後再加入」「上線前就是好友的顧客」（`apps/api/tests/feature/modules/webhook/follow-tracking.test.ts`）；「新好友收到加好友禮」「封鎖後再加入不發券」「上線前就是好友的顧客再加入」（workers unit，發放方式 `follow`、reply）；「加好友禮頁的條件不能移除」「停用加好友禮」（`apps/web/tests/unit/components/line/follow-gift-page.test.tsx`）
+- [x] 15.15 實作：事件定義 `contact.followed` 與 fact `follow.isFirst`（`packages/automation/src/contracts/events.ts`、`facts.ts`）；follow 事件寫入加入紀錄（`apps/api/src/modules/webhook/inbound-contact-resolver.ts` 或新 helper）；`automation.worker.ts` 對 `contentType='follow'` 排入 `contact.followed`（帶 `replyToken`、`receivedAt`、`isFirstFollow`）
+- [x] 15.16 前端：「LINE 管理 → 加好友禮」頁（`apps/web/src/app/dashboard/line/follow-gift/page.tsx`，建立或更新租戶唯一的規則）；自動化規則編輯器事件清單加「加入好友」
 
 ### 三、附券廣播與券頁批次發券（design D29、D31）
 
@@ -515,6 +515,10 @@
     - `line-extra-messages.test.ts`「LINE 的素材與發券文字以同一次推送送出」——LINE 只送第一則，測試失敗
     - 前端：廣播表單「沒有選素材」（改回素材必填）、「預覽顯示剩餘名額」（不需勾選確認、預覽不帶券）、「立即發送不等待完成」（不提示已排入）、「重送跳過已處理的收件人」（中斷不能重送）；券詳情頁「暫停中的券不顯示發送給」「缺少發券權限」；對話框「預覽顯示剩餘名額」「只列出可以發訊息的渠道」；附券欄位「只列出進行中的行銷券」；結果「名額不足」（不帶狀態篩選）——各自改壞，測試都失敗
   - 序號明細 CSV 排除發送中：`coupon.service.test.ts`「發送中的券不出現在序號明細」——背景匯出的張數門檻不排除發送中，測試失敗（CSV 本身的斷言先寫、先失敗）
+  - 15.13：`backfill-follow-tracking.test.ts`（migration 寫好才寫測試，寫好就通過）——回填值改為 `CURRENT_TIMESTAMP`，「上線前就是好友的顧客」失敗；拿掉 `channelType = 'LINE'`，「其他渠道不回填」失敗；拿掉 `firstFollowedAt IS NULL`，「已有加入紀錄的身分不動」「回填執行兩次」失敗；guard 改為永遠通過，「執行身分不能略過 RLS 時中止」失敗
+  - 15.14：`automation.worker.test.ts`「取消好友不觸發」——unfollow 也排入 contact.followed，測試失敗；workers `automation-follow-gift.test.ts`「封鎖後再加入不發券」「上線前就是好友的顧客再加入」「沒有第一次加入資訊的事件不發券」——`follow.isFirst` 一律為 true，三個測試失敗；`follow-tracking.test.ts`（webhook）——第一次加入的條件式更新拿掉 `firstFollowedAt: null`，「封鎖後再加入」「上線前就是好友的顧客」失敗
+  - 15.16：`follow-event-options.test.ts`（契約先完成，寫好就通過）——事件名稱改掉，「事件清單列出加入好友」失敗；`issue_coupon` 改為 `editorHidden: false`，「發送優惠券不在編輯器的動作選單」失敗；fact 拿掉 `events` 限制，「第一次加入只在加入好友事件提供」失敗
+  - 15.15 的刻意變更：`automation-dispatched-events.test.ts` 把 `contact.followed` 視為經 `message.received` 轉送（新事件不是獨立的 eventBus 事件，由自動化訂閱者處理 follow 時另外排入）
 
 ### 工作量
 

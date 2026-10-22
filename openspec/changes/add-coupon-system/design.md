@@ -395,6 +395,30 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 
 **殘留風險**：回填以 `linkedAt` 推定上線前的好友；上線前只傳過訊息、從未加好友的人第一次真正加好友時拿不到加好友禮。
 
+**實作（A15 15.13～15.16）**：
+- **記錄加入**：`processInboundMessage` 存好 follow 訊息之後呼叫 `recordInboundFollow`（`apps/api/src/modules/webhook/inbound-follow-tracking.ts`）。先以條件式更新 `WHERE firstFollowedAt IS NULL` 寫入第一次、最後一次加入時間與次數；更新到 0 列才只更新最後一次加入時間與次數。同一位顧客的兩個 follow 同時處理時只有一個是第一次，加好友禮不會發兩次。判斷依外掛正規化的 `contentType === 'follow'`，不依 `channelType` 分支（結構規則 5）；目前只有 LINE 外掛送出 follow。
+- **記錄失敗**：資料庫錯誤時記 log、當成「不是第一次」（寧可少發，不重複發），不擋訊息落地與其他處理；加入事件本身已存成收件匣訊息。
+- **事件**：`message.received` 的 payload 在 follow 時帶 `isFirstFollow`。API 的自動化訂閱者收到 `contentType='follow'` 時，`message.received` 的評估不帶文字（不比對關鍵字），另外排入 `contact.followed`：事件 id 相同（規則動作仍以 `<事件 id, 規則 id#序號>` 認領，兩種事件的規則不同），BullMQ job id 為 `<事件 id>-followed`（job id 不能含「:」，也不能與 `message.received` 的相同）。`buildAutomationFacts` 把 `isFirstFollow` 轉成 fact `follow.isFirst`；沒有值時為 null，條件「等於是」不成立（fail-closed）。
+- **設定頁**：`useFollowGift` 在自動化規則 API 之上，比照 `useKeywordReplies`：列出事件為 `contact.followed` 的規則，取最早建立、含 `issue_coupon` 的那一條；儲存時固定補上「第一次加入等於是」與「對話渠道等於 LINE」（已有不重複、被移除時補回），只換發券動作的券與「發不出時回覆顧客」，其他動作與條件保留。停用時沒有選券就保留原本的券、只停用。租戶唯一由頁面維持（不另加資料庫約束）：透過 API 或自動化規則編輯器另建的同類規則仍會執行，頁面只編輯最早的那一條。
+
+**與既有進站流程的互動（2026-10-23 實查）**：一則 LINE follow 事件依序經過：建立聯絡人與渠道身分（第一次出現時發出 `contact.created`）→ 建立對話（沒有進行中的對話時發出 `conversation.created`）→ 存成 `contentType='follow'` 的收件匣訊息 → 記錄加入 → 首次招呼語 → `message.received`（帶 replyToken）→ 營業時間外自動回覆。replyToken 只有一個、只能用一次，各個會送訊息的環節：
+
+| 環節 | 送出方式 | 會不會用掉 replyToken |
+|---|---|---|
+| 首次招呼語（渠道設定，`sendFirstContactGreeting`） | 在 webhook 內同步 push，`deliverToChannel` 不帶 replyToken | 不會 |
+| 營業時間外自動回覆 | 同步 push | 不會 |
+| `contact.created`、`conversation.created` 的規則 | payload 沒有 replyToken，workers 一律 push | 不會 |
+| `message.received` 的規則（follow 事件也會觸發，既有行為） | 不在回覆類觸發內，push | 不會 |
+| 關鍵字規則、AI 回覆 | follow 不帶文字，不比對關鍵字；非文字訊息不做 AI 回覆 | 不會 |
+| `contact.followed` 的規則：加好友禮與商家自建的「加入好友」規則 | 30 秒內 reply，失敗改 push（SafeReply） | 會，依規則優先序先到先用 |
+
+所以加好友禮與招呼語不搶 replyToken：招呼語在 webhook 內先 push 送出，顧客先看到招呼語、再看到券。只有商家另外建立「加入好友」並傳送訊息的規則時，兩條規則搶同一個 replyToken：先執行的用 reply，另一條 reply 失敗後改 push，多用一次主動推送額度（與 D25「殘留風險」相同，不另處理）。
+
+**殘留風險（實作）**：
+- 上線前已是好友、但從未與官方帳號互動（系統沒有渠道身分、無從回填）的顧客，上線後封鎖再加入時會被當成第一次，領到一次加好友禮。LINE follow 事件的 `follow.isUnblocked` 可以辨認這種情況，但官方註明不保證準確，本次不採用（列為待使用者決定）。
+- LINE 重送同一個 follow webhook 時（沒有訊息 id，無法去重），加入次數會多算一次；第二次不是第一次加入，不會重複發券。
+- 同一個人加入同一個 provider 下的多個官方帳號時，每個官方帳號的渠道身分各自有「第一次加入」；若兩個身分屬於同一位聯絡人，券的每人領取上限仍會擋下第二張。
+
 ### D29：附券廣播：每位收件人各得一張券與自己的票券連結
 
 **現況（實查）**：「行銷活動」（`Campaign`）是容器，旗下有多則「廣播」（`Broadcast`）；一則廣播＝一個渠道＋一個素材＋一個受眾。發送在 API 程序執行（`executeBroadcast`，手動發送在 HTTP 請求內同步跑，排程每 60 秒撈 10 則）。LINE 且素材沒有變數時走 multicast（每批 499），否則每人 push。FB／IG 依 24 小時視窗篩掉視窗外的人。`BroadcastRecipient` 每人一筆但不存失敗原因；LINE 訊息額度只有 MCP 路徑檢查。群發不寫入對話訊息。
