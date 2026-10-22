@@ -7,6 +7,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { parseDateOnly } from '@open333crm/core';
+import { COUPON_ISSUED_VIA, isReservedCouponIssuedVia } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
 import { createOutboxPublisher } from '../../events/outbox-publisher.js';
@@ -76,8 +77,11 @@ const issueSchema = z.object({
   contactIds: z.array(z.string().uuid('聯絡人識別格式不正確'), { invalid_type_error: '發放對象須為聯絡人清單' })
     .min(1, '請選擇發放對象')
     .max(1000, '單次最多發給 1000 位聯絡人'),
-  // 發放方式寫進成效歸因，只接受代號格式（例如 inbox、broadcast、keyword.matched）
-  issuedVia: z.string().regex(/^[a-z][a-z0-9._-]{0,39}$/, '發放方式格式不正確').optional(),
+  // 發放方式寫進成效歸因，只接受代號格式；系統保留的代碼（inbox、keyword 等）只有系統自己的發券流程能寫，
+  // 整合程式帶入會被當成對話發券或關鍵字發券，所以拒絕（design D31、D32）
+  issuedVia: z.string().regex(/^[a-z][a-z0-9._-]{0,39}$/, '發放方式格式不正確')
+    .refine((v) => !isReservedCouponIssuedVia(v), '這個發放方式是系統保留的，請改用其他代碼')
+    .optional(),
   issuedRefId: z.string().max(100).optional(),
   requireClaim: z.boolean().optional(),
 });
@@ -222,7 +226,8 @@ export default async function couponRoutes(app: FastifyInstance) {
         const result = await inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, (ctx) =>
           issueCoupons(ctx, id, {
             contactIds: batch,
-            issuedVia: body.issuedVia ?? 'inbox',
+            // 這個端點不送訊息，只給系統整合使用；沒帶時記為 api，不能算成對話發券
+            issuedVia: body.issuedVia ?? COUPON_ISSUED_VIA.API,
             issuedRefId: body.issuedRefId ?? request.agent.id,
             requireClaim: body.requireClaim,
           }));

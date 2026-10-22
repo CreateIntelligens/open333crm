@@ -448,7 +448,7 @@
 
 #### 實作
 
-- [ ] 15.10 core：`voidPendingInstance`、確認（清除發送中＋貼標）搬到 `packages/core/src/coupon/delivery.ts`，API 對話發券改用它（`apps/api/src/modules/coupon/coupon-inbox.service.ts`）；發放方式代碼與 `couponSourceName`（`packages/core/src/coupon/issue.ts`）
+- [x] 15.10 core：`voidPendingInstance`、確認（清除發送中＋貼標）搬到 `packages/core/src/coupon/delivery.ts`，API 對話發券改用它（`apps/api/src/modules/coupon/coupon-inbox.service.ts`）；發放方式代碼與 `couponSourceName`（`packages/core/src/coupon/issue.ts`）
 - [ ] 15.11 契約：`issue_coupon` 參數型別改 `coupon`、新增選填 `failureText`、動作加 `editorHidden: true`（`packages/automation/src/contracts/actions.ts`、`types.ts`）；自動化規則編輯器不列出隱藏動作、既有發券動作唯讀顯示（`apps/web/src/components/automation/ActionEditor.tsx` 與動作選單）
 - [ ] 15.12a API 存檔檢查 `couponId`（`apps/api/src/modules/automation/automation.service.ts`，比照 `assertSendMaterialReferences`）
 - [ ] 15.12b workers `issue_coupon` 改為保留、送出、確認／作廢；失敗紀錄與 `failureText` 回覆；不支援的渠道擋下；歸因代碼、規則 id 與名稱；券卡訊息；推 `coupon.instance.updated`（`apps/workers/src/lib/automation-actions.ts`、`channel-delivery.ts`，`deliverToChannelFromWorker` 要能寫入券卡內容並回傳失敗原因）
@@ -488,9 +488,11 @@
 
 ### 五、其他
 
-- [ ] 15.33 測試「沒有帶發放方式」「冒用對話發券」（`apps/api/tests/feature/modules/coupon/coupon-routes-validation.test.ts`）；實作：發券 API 預設 `api`、拒絕保留代碼（`coupon.routes.ts`）
-- [ ] 15.34 測試「發送中的券不出現在序號明細」（`apps/api/tests/feature/modules/coupon/coupon.service.test.ts`）；實作：`getCouponStats`、`listInstances` 排除發送中（`coupon-stats.service.ts`）
+- [x] 15.33 測試「沒有帶發放方式」「冒用對話發券」（`apps/api/tests/feature/modules/coupon/coupon-routes-validation.test.ts`）；實作：發券 API 預設 `api`、拒絕保留代碼（`coupon.routes.ts`）
+- [x] 15.34 測試「發送中的券不出現在序號明細」（`apps/api/tests/feature/modules/coupon/coupon.service.test.ts`）；實作：`getCouponStats`、`listInstances` 排除發送中（`coupon-stats.service.ts`）
 - [ ] 15.35 寫好就通過的測試以突變驗證並記在此處（例如「其他租戶的代碼」、「取消好友不觸發」、「既有的發券規則照常執行」）
+  - 15.10：`delivery.test.ts`「已確認發出的券（不在發送中）不刪除」——拿掉「不在發送中就回 false」的判斷，測試失敗；`coupon-inbox.test.ts`「送出成功後貼領券標籤並發出 contact.tagged」（對話發券原本沒有貼標的測試，搬移前補上；改走 outbox 是刻意的改變，原本在交易內直接 `eventBus.publish`）——拿掉 `ctx.publish('contact.tagged')`、或讓 core 確認時不貼標，測試各自失敗；`issued-via.test.ts`「沒有值或不認得的值回 undefined」——不認得的值改回「其他方式」，測試失敗；「整合程式自訂的代碼不是保留」——保留判斷改為一律 true，測試失敗
+  - 15.33：「整合程式自訂的發放方式照常發券」——路由改為拒絕所有帶入的發放方式，測試失敗
 
 ### 工作量
 

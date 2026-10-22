@@ -10,6 +10,7 @@
  */
 import { randomBytes, randomInt } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+import { COUPON_ISSUED_VIA, couponIssuedViaLabel } from '@open333crm/shared';
 import { afterClaimExpiry } from './taipei-time.js';
 
 export type CouponTx = Prisma.TransactionClient;
@@ -247,21 +248,26 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
   return { issued, skipped };
 }
 
-/** 各發放方式的預設來源名稱（序號明細的「發放來源」）。群發、活動等有自己名稱的來源由呼叫端傳入。 */
-const SOURCE_NAME: Record<string, string> = {
-  inbox: '對話發券',
-  keyword: '關鍵字',
-  'keyword.matched': '關鍵字',
-  automation: '自動化',
-};
+/**
+ * 有預設來源名稱的發放方式（design D32）。關鍵字、加好友、自動化的來源名稱是規則名稱，
+ * 由呼叫端傳入；這裡的預設只在沒有規則名稱時使用。群發、批次、公開領券有自己的名稱，沒有預設。
+ */
+const DEFAULT_SOURCE_NAME_CODES: ReadonlySet<string> = new Set([
+  COUPON_ISSUED_VIA.INBOX,
+  COUPON_ISSUED_VIA.KEYWORD,
+  COUPON_ISSUED_VIA.FOLLOW,
+  COUPON_ISSUED_VIA.AUTOMATION,
+  COUPON_ISSUED_VIA.API,
+]);
 
 /**
- * 發放方式的預設來源名稱。workers 以觸發事件名稱（例如 message.received）當發放方式，
- * 沒有個別名稱的事件一律視為「自動化」。
+ * 發放方式的預設來源名稱（序號明細的「發放來源」），文字與後台的發放方式對照表同一份（@open333crm/shared）。
+ * 舊資料以觸發事件名稱當發放方式（例如 message.received），沒有個別名稱的事件一律視為「自動化」。
  */
 export function couponSourceName(issuedVia: string | null | undefined): string | undefined {
   if (!issuedVia) return undefined;
-  return SOURCE_NAME[issuedVia] ?? (issuedVia.includes('.') ? '自動化' : undefined);
+  if (!DEFAULT_SOURCE_NAME_CODES.has(issuedVia) && !issuedVia.includes('.')) return undefined;
+  return couponIssuedViaLabel(issuedVia);
 }
 
 const CLAIM_TAG_DAY_MS = 24 * 60 * 60 * 1000;

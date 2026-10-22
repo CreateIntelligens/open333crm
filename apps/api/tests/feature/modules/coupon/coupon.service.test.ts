@@ -19,7 +19,7 @@ import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
 import { claimByToken, redeemCoupon, openInstance } from '#src/modules/coupon/coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from '#src/modules/coupon/coupon-import.service.js';
-import { getCouponStats, exportInstancesCsv } from '#src/modules/coupon/coupon-stats.service.js';
+import { getCouponStats, exportInstancesCsv, listInstances } from '#src/modules/coupon/coupon-stats.service.js';
 import { ctxOf, runInTenant } from '#tests/support/tenant-run.js';
 
 const owner = new PrismaClient();
@@ -329,6 +329,33 @@ it('無人領取時核銷率為 null 而非 0', async () => {
   const stats = await withTenant(prisma, tenantId, (tx) => getCouponStats(ctxOf(tx, tenantId), c.id));
   assert.equal(stats!.redeemRate, null, '沒有分母時不應回 0');
   assert.equal(stats!.claimRate, null);
+});
+
+it('發送中的券不出現在序號明細', async () => {
+  // 3 張已送出、1 張發送中（對話或自動化發券還沒確認，design D16）
+  const c = await withTenant(prisma, tenantId, (tx) =>
+    createCoupon(ctxOf(tx, tenantId), agentId, {
+      name: '發送中排除券', couponType: 'GIFT', giftName: '濾網', purpose: 'MARKETING', perContactLimit: 4,
+      validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
+      codeMode: 'UNIQUE_CODE', redeemMode: 'SELF',
+    }));
+  assert.ok((await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), c.id, 'ACTIVE'))).ok);
+  const r = await runInTenant(prisma, tenantId, (ctx) =>
+    issueCoupons(ctx, c.id, { contactIds: [contactA, contactA, contactA, contactA], requireClaim: false }));
+  assert.equal(r.issued.length, 4);
+  const pendingId = r.issued[3].id;
+  await owner.couponInstance.update({ where: { id: pendingId }, data: { deliveryPendingAt: new Date() } });
+
+  const stats = await runInTenant(prisma, tenantId, (ctx) => getCouponStats(ctx, c.id));
+  assert.equal(stats?.issued, 3);
+  assert.equal(stats?.claimed, 3);
+  const list = await runInTenant(prisma, tenantId, (ctx) => listInstances(ctx, c.id));
+  assert.equal(list.total, 3);
+  assert.equal(list.items.length, 3);
+  assert.ok(list.items.every((i) => i.id !== pendingId), '序號明細不應列出發送中的券');
+  // 篩選狀態時也不列出
+  const claimed = await runInTenant(prisma, tenantId, (ctx) => listInstances(ctx, c.id, { status: 'CLAIMED' }));
+  assert.equal(claimed.total, 3);
 });
 
 it('CSV 匯出含 BOM 且不外洩領取憑證', async () => {
