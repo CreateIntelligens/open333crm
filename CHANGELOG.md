@@ -4,6 +4,30 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-22]
 
+### Added
+
+- **優惠券發券入口補齊**（add-coupon-system design D25～D33，tasks A15）：
+  - **LINE 關鍵字回覆可同時發券**：表單新增「同時發送優惠券」（只列進行中的券）與「發不出時回覆顧客」，素材改為選填；存檔只換這頁管的動作並補上「對話渠道等於 LINE」條件。一般自動化規則編輯器不再提供「發送優惠券」，既有動作改為唯讀可刪除。
+  - **加好友禮**：「LINE 管理 → 加好友禮」頁，只發給第一次加入的好友（封鎖後再加入不發），以 follow 事件的回覆權杖送出，不計訊息額度。新增自動化事件「加入好友」與條件「第一次加入」；渠道身分記錄第一次／最後一次加入與次數（migration `20261023120000_channel_identity_follow_tracking`，既有 LINE 身分以 `linkedAt` 回填）。
+  - **附券廣播**：廣播可附一張進行中的行銷券，每位收件人各得一張券與自己的票券連結；素材含 `{{coupon.url}}` 時代入，沒有時另附發券文字。名額不足照名單順序發完，其餘跳過並記原因；LINE 額度不足整則不送；「立即發送」改排入排程。結果頁列出跳過與失敗原因（migration `20261023100000_broadcast_coupon`）。
+  - **券詳情頁「發送給…」批次發券**：搜尋聯絡人、標籤或分眾，單一渠道、最多 1,000 人，與附券廣播共用引擎；新增「發放紀錄」。只需 `coupon.issue` 權限。
+  - **公開領券連結（傳訊領券）**：券詳情頁「領券連結」分頁可建立多個連結（名稱、渠道、期間、停用）並下載 QR Code，顯示開啟數與領取數。公開頁 `/coupon/claim/{代碼}` 引導 LINE 加好友並送出預填訊息、FB／IG 開啟對話；入站辨認代碼後直接發券並回覆，不觸發 AI 與關鍵字，領不到時回覆原因（migration `20261023110000_add_coupon_claim_links`，含 RLS）。
+
+### Fixed
+
+- **自動化（關鍵字）發券**：改為先保留、送出成功才確認、送不出作廢並歸還名額；失敗在對話留下看得到的紀錄（原本只寫 log）；網站客服擋下不建券；歸因記規則 id 與名稱，收件匣改顯示券卡並即時更新「已發優惠券」。
+- **關鍵字自動回覆一直用推播、計入 LINE 訊息額度**：workers 沒把 `receivedAt` 傳進動作，回覆期限判斷一律改推播；修正後期限內改用回覆。AI 讓步判斷也把發券算進會回覆的動作。
+- **「LINE 關鍵字回覆」頁存檔會刪掉規則上的發券動作與其他條件**：改為只更換這頁管理的動作。
+- **發券 API 預設記為「對話發券」**：沒帶發放方式時改記 `api`，冒用系統保留的代碼回 400；發送中的券不再出現在序號明細、統計與 CSV 匯出。
+
+### Removed
+
+- **未使用的領取憑證換券端點** `POST /api/v1/fan/coupons/claim`、`claimByToken` 與發券的 `requireClaim`（從未有程式產生領取憑證；資料表欄位保留）。
+
+### Changed
+
+- `TenantScopedClient` 改宣告為交易 client 的 model 操作加上租戶標記（執行期行為不變），新增資料表不再讓 api 型別檢查出現數百個 TS2349。
+
 ### Security
 
 - **處理 GitHub Dependabot 弱點警示** — 直接依賴升到修補版：`fastify` 5.12.7、`@fastify/jwt` 10.2.5（`fast-jwt` 6.3.5，修正 RSA→HS256 演算法混淆與接受未簽章 JWT）、`@modelcontextprotocol/sdk` 1.32.1、`nodemailer` 10.2.0（大版本，只要求 Node ≥20，寄信用法不變）、`axios` 1.20.0、`next` 15.5.28、`sharp` 0.35.5、`socket.io` 4.8.4、`turbo` 2.11.10、`tsx` 4.23（`esbuild` 0.28）；widget 的 `vite` 從 5 升到 6.4.5，根目錄 `vite` 升到 8.3.5。間接依賴以根目錄 `pnpm.overrides` 固定到修補版：`proxy-addr`、`@fastify/busboy`、`follow-redirects`、`hono`、`tar` 7、`adm-zip` 0.6.1、`brace-expansion`、`js-yaml`、`@xmldom/xmldom`、`qs`、`ip-address`、`fast-uri`、`fast-xml-parser`、`moment`、`uuid`、`deepmerge-ts` 8、`postcss-selector-parser` 7.1.6 等。

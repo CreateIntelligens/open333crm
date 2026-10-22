@@ -491,7 +491,7 @@
 
 - [x] 15.33 測試「沒有帶發放方式」「冒用對話發券」（`apps/api/tests/feature/modules/coupon/coupon-routes-validation.test.ts`）；實作：發券 API 預設 `api`、拒絕保留代碼（`coupon.routes.ts`）
 - [x] 15.34 測試「發送中的券不出現在序號明細」（`apps/api/tests/feature/modules/coupon/coupon.service.test.ts`）；實作：`getCouponStats`、`listInstances` 排除發送中（`coupon-stats.service.ts`）
-- [ ] 15.35 寫好就通過的測試以突變驗證並記在此處（例如「其他租戶的代碼」、「取消好友不觸發」、「既有的發券規則照常執行」）
+- [x] 15.35 寫好就通過的測試以突變驗證並記在此處（例如「其他租戶的代碼」、「取消好友不觸發」、「既有的發券規則照常執行」）
   - 15.10：`delivery.test.ts`「已確認發出的券（不在發送中）不刪除」——拿掉「不在發送中就回 false」的判斷，測試失敗；`coupon-inbox.test.ts`「送出成功後貼領券標籤並發出 contact.tagged」（對話發券原本沒有貼標的測試，搬移前補上；改走 outbox 是刻意的改變，原本在交易內直接 `eventBus.publish`）——拿掉 `ctx.publish('contact.tagged')`、或讓 core 確認時不貼標，測試各自失敗；`issued-via.test.ts`「沒有值或不認得的值回 undefined」——不認得的值改回「其他方式」，測試失敗；「整合程式自訂的代碼不是保留」——保留判斷改為一律 true，測試失敗
   - 15.33：「整合程式自訂的發放方式照常發券」——路由改為拒絕所有帶入的發放方式，測試失敗
   - 15.2：「Facebook 對話傳送同樣的關鍵字」（workers）——handler 評估時把規則條件換成空條件，測試失敗
@@ -535,9 +535,9 @@
 
 ### 完成定義
 
-- [ ] 15.36 `pnpm test`、`pnpm test:feature` 通過
-- [ ] 15.37 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規（workers 走 BYPASSRLS，每個查詢自帶 tenantId）
-- [ ] 15.38 `node scripts/validate-openspec.mjs add-coupon-system` 通過
-- [ ] 15.39 CHANGELOG.md 新增條目（date-only heading）
+- [x] 15.36 `pnpm test`、`pnpm test:feature` 通過
+- [x] 15.37 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規（workers 走 BYPASSRLS，每個查詢自帶 tenantId）
+- [x] 15.38 `node scripts/validate-openspec.mjs add-coupon-system` 通過
+- [x] 15.39 CHANGELOG.md 新增條目（date-only heading）
 - [ ] 15.40 部署清單：新 migration（`coupon_claim_links`、廣播欄位、加好友紀錄回填）；若新增權限點要跑 reconcile 並清快取
 - [ ] 15.41 UAT 驗收：關鍵字領券（成功、已達上限、封鎖）、加好友禮（第一次加入、封鎖再加入）、附券廣播（素材有無連結變數）、券頁批次發券、海報 QR 傳訊領券；之後撰寫操作手冊
