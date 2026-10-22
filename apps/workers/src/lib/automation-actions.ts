@@ -30,6 +30,8 @@ export interface WorkerActionContext {
   eventId?: string | null;
   /** 動作所屬的規則，認領的子鍵是 <規則 id>#<動作序號> */
   ruleId?: string | null;
+  /** 規則名稱：發券的來源名稱存發券當下的名稱，規則之後改名仍顯示原名（design D27） */
+  ruleName?: string | null;
   caseId?: string | null;
   conversationId?: string | null;
   contactId?: string | null;
