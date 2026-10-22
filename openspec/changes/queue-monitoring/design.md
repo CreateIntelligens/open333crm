@@ -104,7 +104,7 @@ API 為每個監控的佇列（`ops-alert` 除外）建立一個 `QueueEvents`�
 | `slack-sender.ts` | 把告警組成 Slack 訊息，以 `fetch` POST 到 Incoming Webhook，逾時 10 秒 |
 | `log-sender.ts` | 沒有設定 Webhook 網址時的送出端，只寫 log |
 
-合併：`SET ops-alert:<key> 1 NX PX 600000` 成功時送出，並以 `GETDEL ops-alert:<key>:suppressed` 取出上一段期間沒有送出的次數，放進訊息。`SET` 失敗時 `INCR ops-alert:<key>:suppressed`（同樣設定期限），不送出。計數放在 Redis，所以多個 API 實例也只送一則。
+合併：`SET ops-alert:<key> 1 NX PX 600000` 成功時送出，並以 `GETDEL ops-alert:<key>:suppressed` 取出上一段期間沒有送出的次數，放進訊息。`SET` 失敗時 `INCR ops-alert:<key>:suppressed`，不送出。計數鍵保留 24 小時：期限要比合併的 10 分鐘長，否則期間結束之前計數就過期，下一則告警讀不到次數。計數放在 Redis，所以多個 API 實例也只送一則。
 
 `ops-alert` 佇列加進 `startQueueWorkers()`，job 選項是 `attempts: 3`、指數退避 5 秒、完成保留 24 小時、失敗保留 7 天。
 

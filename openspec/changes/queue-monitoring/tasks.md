@@ -31,12 +31,13 @@
 
 ## 4. 維運告警模組（ops-alert）
 
-- [ ] 4.1 寫失敗的單元測試 `apps/api/tests/unit/modules/ops-alert/ops-alert.service.test.ts`，以 mock 的 Redis 與佇列涵蓋 Scenario「短時間內大量失敗」「下一段期間的告警帶上次數」「不同合併鍵」
-- [ ] 4.2 實作 `ops-alert.service.ts` 的 `sendOpsAlert()`（design 決策 9），讓 4.1 通過
-- [ ] 4.3 寫失敗的單元測試 `apps/api/tests/unit/modules/ops-alert/ops-alert.worker.test.ts`，以 mock 的 `fetch` 涵蓋 Scenario「送出一則告警」「沒有設定 Slack Webhook」「Slack 暫時無法連線」（processor 丟錯讓佇列重試）
-- [ ] 4.4 實作 `ops-alert.worker.ts`、`slack-sender.ts`、`log-sender.ts`，讓 4.3 通過
-- [ ] 4.5 寫失敗的單元測試，涵蓋 Scenario「Slack 持續無法連線」：`ops-alert` 佇列的 job 選項是 `attempts: 3`，而且 `ops-alert` 佇列不在告警監聽的清單內（與 6.1 共用清單）
-- [ ] 4.6 把 `ops-alert` 佇列加進 `apps/api/src/index.ts` 的 `startQueueWorkers()`，讓 4.5 通過。`config/env.ts` 加上 `OPS_ALERT_SLACK_WEBHOOK_URL`（選填）
+- [x] 4.1 寫失敗的單元測試 `apps/api/tests/unit/modules/ops-alert/ops-alert.service.test.ts`，以 mock 的 Redis 與佇列涵蓋 Scenario「短時間內大量失敗」「下一段期間的告警帶上次數」「不同合併鍵」
+- [x] 4.2 實作 `ops-alert.service.ts` 的 `sendOpsAlert()`（design 決策 9），讓 4.1 通過
+- [x] 4.3 寫失敗的單元測試 `apps/api/tests/unit/modules/ops-alert/ops-alert.worker.test.ts`，以 mock 的 `fetch` 涵蓋 Scenario「送出一則告警」「沒有設定 Slack Webhook」「Slack 暫時無法連線」（processor 丟錯讓佇列重試）
+- [x] 4.4 實作 `ops-alert.worker.ts`、`slack-sender.ts`、`log-sender.ts`，讓 4.3 通過
+- [x] 4.5 寫失敗的單元測試，涵蓋 Scenario「Slack 持續無法連線」：`ops-alert` 佇列的 job 選項是 `attempts: 3`，而且 `ops-alert` 佇列不在告警監聽的清單內（與 6.1 共用清單）
+  - 4.2 已設定 job 選項，所以測試寫好就通過，改以突變驗證：`attempts` 改成 1，測試失敗；`ALERTED_QUEUES` 改成包含 `ops-alert`，測試失敗。檔案是 `apps/api/tests/unit/modules/ops-alert/ops-alert-queue.test.ts`，清單放在 `apps/api/src/modules/queue-monitoring/monitored-queues.ts`
+- [x] 4.6 把 `ops-alert` 佇列加進 `apps/api/src/index.ts` 的 `startQueueWorkers()`，讓 4.5 通過。`config/env.ts` 加上 `OPS_ALERT_SLACK_WEBHOOK_URL`（選填）
 
 ## 5. 監控畫面的連線與登入
 

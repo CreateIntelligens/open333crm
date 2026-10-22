@@ -98,6 +98,8 @@ import { setupNotificationWorker } from './modules/notification/notification.wor
 import { setupOutboxSchedulers } from './modules/outbox/outbox.scheduler.js';
 import { bullWorkerFactory, startQueueWorkers, subscriberProcessor, type JobProcessor } from './events/subscriber-workers.js';
 import { processUsageAlertEmail } from './modules/notification/usage-alert-email.worker.js';
+import { closeOpsAlertQueue, OPS_ALERT_QUEUE } from './modules/ops-alert/ops-alert.service.js';
+import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
@@ -241,12 +243,14 @@ export async function bootstrap() {
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
+      [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
     }),
   );
   app.addHook('onClose', () => subscriberWorkers.close());
+  app.addHook('onClose', () => closeOpsAlertQueue());
   setupCanvasWorker(app.prismaAdmin, app.io);
 
   // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，

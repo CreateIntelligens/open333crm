@@ -93,6 +93,8 @@ const envSchema = z.object({
     .transform((v) => v === 'true' || v === '1'),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // 維運告警的 Slack Incoming Webhook（change queue-monitoring：ops-alert）。沒有設定或是空值時，告警只寫 log
+  OPS_ALERT_SLACK_WEBHOOK_URL: z.string().optional(),
 }).superRefine((cfg, ctx) => {
   if (cfg.EMAIL_DELIVERY_MODE === 'smtp' && !cfg.SMTP_HOST) {
     ctx.addIssue({
