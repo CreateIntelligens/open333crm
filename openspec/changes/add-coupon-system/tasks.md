@@ -466,14 +466,15 @@
 
 ### 三、附券廣播與券頁批次發券（design D29、D31）
 
-- [ ] 15.17 migration：`broadcasts` 新增 `couponId`、`couponIssuedCount`；`broadcast_recipients` 新增 `couponInstanceId`、`skipReason`
-- [ ] 15.18 測試「附上客服補償券」「附上草稿券」（`apps/api/tests/unit/modules/marketing/broadcast-coupon-validation.test.ts`）
-- [ ] 15.19 測試「素材含票券連結變數」「素材沒有票券連結變數」「沒有選素材」「兩位收件人收到不同的連結」「帶連結的訊息送出成功才確認」「素材送不出時不送發券文字」「收件人沒有對話」「名額不足」「收件人已達每人上限」「收件人封鎖官方帳號」「分眾群發」（`apps/api/tests/feature/modules/marketing/broadcast-coupon.test.ts`）
-- [ ] 15.20 測試「預覽顯示剩餘名額」「LINE 訊息額度不足」「立即發送不等待完成」「重送跳過已處理的收件人」（同上檔案）
-- [ ] 15.21 測試「勾選聯絡人發券」「對象沒有這個渠道的身分」「超過人數上限」「缺少發券權限」（`apps/api/tests/feature/modules/coupon/coupon-batch-issue.test.ts`）
-- [ ] 15.22 實作：附券廣播的建立檢查、`{{coupon.url}}` 變數、沒有變數時附送發券文字（LINE 同一次推送）、每人保留／送出／以帶連結的那則確認或作廢、跳過與失敗紀錄、額度檢查、排入排程執行與重送略過（`apps/api/src/modules/marketing/marketing.service.ts`、`template-context.ts`、`broadcast.scheduler.ts`）；`WalletTokenPayload.conversationId` 改選填（`packages/core/src/coupon/wallet-link.ts`）
-- [ ] 15.23 實作：券頁批次發券 API（`apps/api/src/modules/coupon/coupon.routes.ts` 新路由，權限 `coupon.issue`，呼叫 marketing service 建立附券廣播；行銷與客服補償券都可以）
-- [ ] 15.24 前端：廣播表單選券、名額警示、結果頁跳過與失敗原因（`apps/web/src/app/dashboard/marketing/page.tsx`、`lib/marketing/broadcast-form.ts`）；券詳情頁「發送給…」（`apps/web/src/components/coupons/detail/`，聯絡人搜尋與勾選、標籤、分眾）；元件測試
+- [x] 15.17 migration：`broadcasts` 新增 `couponId`、`couponIssuedCount`；`broadcast_recipients` 新增 `couponInstanceId`、`skipReason`
+- [x] 15.18 測試「附上客服補償券」「附上草稿券」（`apps/api/tests/unit/modules/marketing/broadcast-coupon-validation.test.ts`）
+- [x] 15.19 測試「素材含票券連結變數」「素材沒有票券連結變數」「沒有選素材」「兩位收件人收到不同的連結」「帶連結的訊息送出成功才確認」「素材送不出時不送發券文字」「收件人沒有對話」「名額不足」「收件人已達每人上限」「收件人封鎖官方帳號」「分眾群發」（`apps/api/tests/feature/modules/marketing/broadcast-coupon.test.ts`）
+- [x] 15.20 測試「預覽顯示剩餘名額」「LINE 訊息額度不足」「立即發送不等待完成」「重送跳過已處理的收件人」（同上檔案）
+- [x] 15.21 測試「勾選聯絡人發券」「對象沒有這個渠道的身分」「超過人數上限」「缺少發券權限」（`apps/api/tests/feature/modules/coupon/coupon-batch-issue.test.ts`）
+- [x] 15.22 實作：附券廣播的建立檢查、`{{coupon.url}}` 變數、沒有變數時附送發券文字（LINE 同一次推送）、每人保留／送出／以帶連結的那則確認或作廢、跳過與失敗紀錄、額度檢查、排入排程執行與重送略過（`apps/api/src/modules/marketing/marketing.service.ts`、`template-context.ts`、`broadcast.scheduler.ts`）；`WalletTokenPayload.conversationId` 改選填（`packages/core/src/coupon/wallet-link.ts`）
+      完成（2026-10-22）：引擎在 `broadcast-coupon.flow.ts`（串接、渠道 API、Redis）與 `broadcast-coupon.service.ts`（每步一個短交易）；`executeBroadcast` 遇到附券廣播改回 409。渠道外掛新增 `extraMessages` 與 `maxMessagesPerSend`（LINE 5 則），素材＋發券文字在 LINE 以同一次推送送出。收件紀錄的 `skipReason` 同時記跳過與失敗的原因代碼（`COUPON_MESSAGE_FAILED` 等）。登記連結的 `conversationId` 也改選填（design D29 補充）。另修：序號明細 CSV 匯出與背景匯出的張數門檻排除發送中的券（`coupon-stats.service.ts`、`coupon-export.service.ts`）
+- [x] 15.23 實作：券頁批次發券 API（`apps/api/src/modules/coupon/coupon.routes.ts` 新路由，權限 `coupon.issue`，呼叫 marketing service 建立附券廣播；行銷與客服補償券都可以）
+- [x] 15.24 前端：廣播表單選券、名額警示、結果頁跳過與失敗原因（`apps/web/src/app/dashboard/marketing/page.tsx`、`lib/marketing/broadcast-form.ts`）；券詳情頁「發送給…」（`apps/web/src/components/coupons/detail/`，聯絡人搜尋與勾選、標籤、分眾）；元件測試
 
 ### 四、公開領券連結（design D30）
 
@@ -493,6 +494,15 @@
 - [ ] 15.35 寫好就通過的測試以突變驗證並記在此處（例如「其他租戶的代碼」、「取消好友不觸發」、「既有的發券規則照常執行」）
   - 15.10：`delivery.test.ts`「已確認發出的券（不在發送中）不刪除」——拿掉「不在發送中就回 false」的判斷，測試失敗；`coupon-inbox.test.ts`「送出成功後貼領券標籤並發出 contact.tagged」（對話發券原本沒有貼標的測試，搬移前補上；改走 outbox 是刻意的改變，原本在交易內直接 `eventBus.publish`）——拿掉 `ctx.publish('contact.tagged')`、或讓 core 確認時不貼標，測試各自失敗；`issued-via.test.ts`「沒有值或不認得的值回 undefined」——不認得的值改回「其他方式」，測試失敗；「整合程式自訂的代碼不是保留」——保留判斷改為一律 true，測試失敗
   - 15.33：「整合程式自訂的發放方式照常發券」——路由改為拒絕所有帶入的發放方式，測試失敗
+  - 15.18～15.24（附券廣播與批次發券，寫完實作後補的測試與兩道防線各自驗證）：
+    - `broadcast-coupon.test.ts`「重送跳過已處理的收件人」——名單不略過已有收件紀錄的人、或保留時不查收件紀錄，測試各自失敗（兩道防線各有一個斷言）
+    - 「LINE 訊息額度不足」——額度判斷改為永遠足夠，測試失敗；「素材沒有票券連結變數」——LINE 改為兩則分兩次送，測試失敗
+    - 「預覽顯示剩餘名額」——已達上限的判斷由 `>=` 改為 `>`，測試失敗；「帶連結的訊息送出成功才確認」——第二則失敗的原因改為 DELIVERY_FAILED，測試失敗
+    - 「素材含票券連結變數」——不代入 `{{coupon.url}}`，測試失敗；「名額不足」——跳過的收件人改為丟錯，測試失敗；「附上客服補償券」——不檢查用途，測試失敗
+    - `coupon-batch-issue.test.ts`「缺少發券權限」——權限改為 coupon.view，測試失敗；「看不到的渠道」——拿掉渠道可見檢查，測試失敗；「對象沒有這個渠道的身分」——不記跳過紀錄，測試失敗
+    - `line-extra-messages.test.ts`「LINE 的素材與發券文字以同一次推送送出」——LINE 只送第一則，測試失敗
+    - 前端：廣播表單「沒有選素材」（改回素材必填）、「預覽顯示剩餘名額」（不需勾選確認、預覽不帶券）、「立即發送不等待完成」（不提示已排入）、「重送跳過已處理的收件人」（中斷不能重送）；券詳情頁「暫停中的券不顯示發送給」「缺少發券權限」；對話框「預覽顯示剩餘名額」「只列出可以發訊息的渠道」；附券欄位「只列出進行中的行銷券」；結果「名額不足」（不帶狀態篩選）——各自改壞，測試都失敗
+  - 序號明細 CSV 排除發送中：`coupon.service.test.ts`「發送中的券不出現在序號明細」——背景匯出的張數門檻不排除發送中，測試失敗（CSV 本身的斷言先寫、先失敗）
 
 ### 工作量
 
