@@ -537,6 +537,12 @@ model ChannelIdentity {
   profileName String?
   profilePic  String?
   linkedAt    DateTime    @default(now())
+  /// 第一次加入好友的時間（design D28）。沒有值時，下一次 follow 算第一次加入；上線前的 LINE 身分回填為 linkedAt
+  firstFollowedAt DateTime?
+  /// 最後一次加入好友的時間
+  lastFollowedAt  DateTime?
+  /// 系統記錄到的加入好友次數（上線前的加入不計）
+  followCount     Int       @default(0)
 
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
