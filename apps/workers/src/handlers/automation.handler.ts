@@ -180,6 +180,9 @@ async function evaluateAndExecute(
       typeof context['conversationId'] === 'string' ? context['conversationId'] : null;
     const replyToken =
       typeof context['replyToken'] === 'string' ? context['replyToken'] : null;
+    // 回覆權杖只在收到事件後 30 秒內安全；沒有收到時間時 selectSafeLineStrategy 一律改用 push（design D25）
+    const receivedAt =
+      typeof context['receivedAt'] === 'string' ? context['receivedAt'] : null;
 
     const contactId =
       typeof context['contactId'] === 'string' ? context['contactId'] : null;
@@ -188,11 +191,14 @@ async function evaluateAndExecute(
       tenantId,
       eventId: eventId ?? null,
       ruleId: match.ruleId,
+      // 發券的來源名稱存發券當下的規則名稱（design D27）
+      ruleName: ruleInputs.find((rule) => rule.id === match.ruleId)?.name ?? null,
       caseId,
       conversationId,
       contactId,
       trigger,
       replyToken,
+      receivedAt,
       assigneeId:
         typeof facts['case.assigneeId'] === 'string' ? facts['case.assigneeId'] : null,
       title: typeof context['title'] === 'string' ? context['title'] : null,

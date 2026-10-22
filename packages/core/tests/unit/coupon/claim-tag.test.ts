@@ -64,6 +64,9 @@ describe('發放來源名稱', () => {
     assert.equal(couponSourceName('keyword.matched'), '關鍵字');
     assert.equal(couponSourceName('message.received'), '自動化');
     assert.equal(couponSourceName('automation'), '自動化');
+    // design D32：加好友禮、發券 API 沒有個別名稱時的預設
+    assert.equal(couponSourceName('follow'), '加好友');
+    assert.equal(couponSourceName('api'), 'API');
     // 群發、活動等有自己名稱的來源由呼叫端傳入
     assert.equal(couponSourceName('broadcast'), undefined);
     assert.equal(couponSourceName(null), undefined);

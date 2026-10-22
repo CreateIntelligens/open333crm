@@ -2,6 +2,7 @@
  * 優惠券詳情頁的純函式：發放來源、核銷管道、篩選條件轉換、剪貼簿。
  * 與畫面分開，方便單獨閱讀與測試。
  */
+import { couponIssuedViaLabel } from '@open333crm/shared';
 import type { CouponInstanceRow, InstanceQuery, InstanceStatus } from '@/hooks/useCoupons';
 
 /** 詳情頁每頁筆數（UX 規則第 4 節：每頁 50 筆） */
@@ -12,23 +13,13 @@ export const LARGE_EXPORT_THRESHOLD = 5000;
 
 export const COUPON_LIST_PATH = '/dashboard/marketing/coupons';
 
-/** 後端 issuedVia 的值 → 發放方式文字。未知的值不顯示代碼，改用「其他方式」。 */
-const ISSUED_VIA_LABEL: Record<string, string> = {
-  inbox: '對話發券',
-  batch: '批次發放',
-  campaign: '行銷活動',
-  broadcast: '廣播',
-  shortlink: '短連結',
-  short_link: '短連結',
-  automation: '自動化',
-  keyword: '關鍵字',
-  api: 'API',
-  partner: '合作夥伴',
-};
-
+/**
+ * 後端 issuedVia 的值 → 發放方式文字。代碼與文字和 @open333crm/shared 同一份（design D32）；
+ * 舊資料的 keyword.matched 顯示「關鍵字」、其他觸發事件名稱顯示「自動化」。不認得的值不顯示代碼，改用「其他方式」。
+ */
 export function issuedViaLabel(via: string | null | undefined): string | null {
   if (!via) return null;
-  return ISSUED_VIA_LABEL[via] ?? '其他方式';
+  return couponIssuedViaLabel(via) ?? '其他方式';
 }
 
 /**

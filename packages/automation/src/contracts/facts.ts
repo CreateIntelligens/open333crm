@@ -82,6 +82,7 @@ export const AUTOMATION_FACT_KEYS = {
   SLA_ESCALATION_LEVEL: 'sla.escalationLevel',
   SENTIMENT_LATEST: 'sentiment.latest',
   SENTIMENT_NEGATIVE_COUNT: 'sentiment.negativeCount',
+  FOLLOW_IS_FIRST: 'follow.isFirst',
 } as const;
 
 export const AUTOMATION_FACT_DEFINITIONS: readonly AutomationFactDefinition[] = [
@@ -343,6 +344,19 @@ export const AUTOMATION_FACT_DEFINITIONS: readonly AutomationFactDefinition[] = 
     requires: ['sla'],
     operators: [...equalityOperators, ...comparableOperators],
     optional: true,
+  },
+  {
+    // design D28：這個渠道身分第一次加入好友。上線前就存在的 LINE 身分視為已加入過（migration 回填）
+    key: AUTOMATION_FACT_KEYS.FOLLOW_IS_FIRST,
+    label: '第一次加入',
+    type: 'boolean',
+    requires: ['contact'],
+    operators: ['equal', 'notEqual'],
+    values: [
+      { value: true, label: '是' },
+      { value: false, label: '否' },
+    ],
+    events: [AUTOMATION_EVENT_NAMES.CONTACT_FOLLOWED],
   },
 ] as const;
 

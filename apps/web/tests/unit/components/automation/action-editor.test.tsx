@@ -136,3 +136,47 @@ test('沒有素材檢視權限', async () => {
   fireEvent.change(input, { target: { value: 'm-typed' } });
   assert.deepEqual(onChange.mock.calls.at(-1)?.[0].payload, { materialId: 'm-typed' });
 });
+
+// ── 自動化規則編輯器不提供發券動作（add-coupon-system A15 15.3、design D25；
+//    spec coupon-management「自動化規則編輯器不提供發券動作」）──
+
+test('新增動作時沒有發送優惠券', () => {
+  render(
+    <ActionEditor
+      action={{ type: 'send_message', payload: { text: '您好' } }}
+      actionDefinitions={definitions}
+      onChange={() => {}}
+      onRemove={() => {}}
+    />,
+  );
+  const typeSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+  const labels = Array.from(typeSelect.options).map((o) => o.textContent);
+  assert.ok(labels.includes('傳送訊息'));
+  assert.equal(labels.includes('發送優惠券'), false);
+});
+
+test('開啟既有的發券規則：唯讀顯示券名與說明，可以刪除，不能改券', async () => {
+  api.get.mockImplementation((url: string) =>
+    url === '/coupons/coupon-1'
+      ? Promise.resolve({ data: { success: true, data: { id: 'coupon-1', name: '秋季九折', displayCode: 'CP-24A7', status: 'ACTIVE' } } })
+      : Promise.reject(new Error(`unexpected ${url}`)),
+  );
+  const onChange = vi.fn();
+  const onRemove = vi.fn();
+  render(
+    <ActionEditor
+      action={{ type: 'issue_coupon', payload: { couponId: 'coupon-1' } }}
+      actionDefinitions={definitions}
+      onChange={onChange}
+      onRemove={onRemove}
+    />,
+  );
+  await screen.findByText(/秋季九折/);
+  screen.getByText(/發券請到 LINE 關鍵字回覆或加好友禮設定/);
+  // 唯讀：沒有可以換動作類型或換券的下拉，也沒有輸入框
+  assert.equal(screen.queryAllByRole('combobox').length, 0);
+  assert.ok(screen.queryByRole('textbox') === null);
+  fireEvent.click(screen.getByRole('button', { name: '刪除動作' }));
+  assert.equal(onRemove.mock.calls.length, 1);
+  assert.equal(onChange.mock.calls.length, 0);
+});

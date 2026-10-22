@@ -8,8 +8,9 @@
  * ⚠️ 本檔收「已綁定租戶的交易 client」而非自建交易：租戶注入機制
  * （withTenant／SET LOCAL）屬 apps/api，由呼叫端負責。
  */
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+import { COUPON_ISSUED_VIA, couponIssuedViaLabel } from '@open333crm/shared';
 import { afterClaimExpiry } from './taipei-time.js';
 
 export type CouponTx = Prisma.TransactionClient;
@@ -17,9 +18,6 @@ export type CouponTx = Prisma.TransactionClient;
 /** 券碼字集：去除 0/O/1/I/L，避免店員口頭覆述與手動輸入時誤判。 */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const DEFAULT_CODE_LENGTH = 10;
-
-/** 領取憑證預設有效 72 小時（design D10：短效、一次性）。 */
-export const DEFAULT_CLAIM_TOKEN_HOURS = 72;
 
 export function generateCouponCode(prefix?: string | null, length = DEFAULT_CODE_LENGTH): string {
   let body = '';
@@ -37,11 +35,6 @@ export function generateCouponCode(prefix?: string | null, length = DEFAULT_CODE
 export function couponCodeKey(code: string): string {
   // NFKC 先把全形英數字轉成半形：中文輸入法在全形模式下打的券號也找得到
   return code.normalize('NFKC').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-}
-
-/** 憑證即所有權，必須用 CSPRNG——可預測的憑證等同券可被猜中領走。 */
-export function generateClaimToken(): string {
-  return randomBytes(32).toString('base64url');
 }
 
 /**
@@ -76,7 +69,6 @@ export interface IssuedInstance {
   contactId: string | null;
   code: string;
   status: string;
-  claimToken: string | null;
 }
 
 export interface IssueOutcome {
@@ -139,9 +131,9 @@ async function allocateCode(
   return { ok: false, reason: 'CODE_GENERATION_FAILED' };
 }
 
-function computeExpiresAt(coupon: CouponForIssue, claimed: boolean): Date | null {
+function computeExpiresAt(coupon: CouponForIssue): Date | null {
   if (coupon.validityMode === 'FIXED') return coupon.endAt;
-  if (coupon.validityMode === 'AFTER_CLAIM' && claimed && coupon.afterClaimDays) {
+  if (coupon.validityMode === 'AFTER_CLAIM' && coupon.afterClaimDays) {
     // 領取當天（台灣日期）加 N 天，當天結束時到期（design D17）
     return afterClaimExpiry(new Date(), coupon.afterClaimDays);
   }
@@ -157,9 +149,6 @@ export interface IssueParams {
   /** 發放當下的來源名稱與座席名稱快照；來源之後刪除或改名，明細仍顯示原名 */
   issuedSourceName?: string | null;
   issuedByName?: string | null;
-  /** true → 建 ISSUED + claimToken（FB／IG、公開領券）；false → 直接 CLAIMED（LINE） */
-  requireClaim: boolean;
-  claimTokenHours?: number;
 }
 
 /**
@@ -167,7 +156,7 @@ export interface IssueParams {
  * 其餘仍應成功——整批失敗會讓座席不知道哪些人拿到了。
  */
 export async function issueInstances(tx: CouponTx, params: IssueParams): Promise<IssueOutcome> {
-  const { tenantId, coupon, requireClaim } = params;
+  const { tenantId, coupon } = params;
   const issued: IssuedInstance[] = [];
   const skipped: IssueOutcome['skipped'] = [];
 
@@ -214,13 +203,10 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
         couponId: coupon.id,
         contactId,
         code: allocated.code,
-        status: requireClaim ? 'ISSUED' : 'CLAIMED',
-        claimToken: requireClaim ? generateClaimToken() : null,
-        claimTokenExpiresAt: requireClaim
-          ? new Date(Date.now() + (params.claimTokenHours ?? DEFAULT_CLAIM_TOKEN_HOURS) * 60 * 60 * 1000)
-          : null,
-        claimedAt: requireClaim ? null : now,
-        expiresAt: computeExpiresAt(coupon, !requireClaim),
+        // 發券一律直接歸戶（design D30）：發券當下就知道是哪一位聯絡人，狀態為已領取，不產生領取憑證
+        status: 'CLAIMED',
+        claimedAt: now,
+        expiresAt: computeExpiresAt(coupon),
         issuedVia: params.issuedVia ?? null,
         issuedRefId: params.issuedRefId ?? null,
         issuedSourceName: params.issuedSourceName ?? null,
@@ -240,28 +226,32 @@ export async function issueInstances(tx: CouponTx, params: IssueParams): Promise
       contactId: instance.contactId,
       code: instance.code,
       status: instance.status,
-      claimToken: instance.claimToken,
     });
   }
 
   return { issued, skipped };
 }
 
-/** 各發放方式的預設來源名稱（序號明細的「發放來源」）。群發、活動等有自己名稱的來源由呼叫端傳入。 */
-const SOURCE_NAME: Record<string, string> = {
-  inbox: '對話發券',
-  keyword: '關鍵字',
-  'keyword.matched': '關鍵字',
-  automation: '自動化',
-};
+/**
+ * 有預設來源名稱的發放方式（design D32）。關鍵字、加好友、自動化的來源名稱是規則名稱，
+ * 由呼叫端傳入；這裡的預設只在沒有規則名稱時使用。群發、批次、公開領券有自己的名稱，沒有預設。
+ */
+const DEFAULT_SOURCE_NAME_CODES: ReadonlySet<string> = new Set([
+  COUPON_ISSUED_VIA.INBOX,
+  COUPON_ISSUED_VIA.KEYWORD,
+  COUPON_ISSUED_VIA.FOLLOW,
+  COUPON_ISSUED_VIA.AUTOMATION,
+  COUPON_ISSUED_VIA.API,
+]);
 
 /**
- * 發放方式的預設來源名稱。workers 以觸發事件名稱（例如 message.received）當發放方式，
- * 沒有個別名稱的事件一律視為「自動化」。
+ * 發放方式的預設來源名稱（序號明細的「發放來源」），文字與後台的發放方式對照表同一份（@open333crm/shared）。
+ * 舊資料以觸發事件名稱當發放方式（例如 message.received），沒有個別名稱的事件一律視為「自動化」。
  */
 export function couponSourceName(issuedVia: string | null | undefined): string | undefined {
   if (!issuedVia) return undefined;
-  return SOURCE_NAME[issuedVia] ?? (issuedVia.includes('.') ? '自動化' : undefined);
+  if (!DEFAULT_SOURCE_NAME_CODES.has(issuedVia) && !issuedVia.includes('.')) return undefined;
+  return couponIssuedViaLabel(issuedVia);
 }
 
 const CLAIM_TAG_DAY_MS = 24 * 60 * 60 * 1000;

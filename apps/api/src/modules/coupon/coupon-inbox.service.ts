@@ -6,14 +6,22 @@
  * 這裡只放單一交易的步驟（收 TenantCtx）；三個步驟的串接在 coupon-inbox.flow.ts。
  */
 import type { Prisma } from '@prisma/client';
-import { buildCouponMessage, countsTowardContactLimit, couponLiffConfig, couponLinkUrl, issueWalletToken } from '@open333crm/core';
+import {
+  buildCouponMessage,
+  confirmPendingInstance,
+  countsTowardContactLimit,
+  couponLiffConfig,
+  couponLinkUrl,
+  issueWalletToken,
+  voidPendingInstance as voidPendingInstanceInTx,
+} from '@open333crm/core';
+import { COUPON_ISSUED_VIA } from '@open333crm/shared';
 import { getChannelPlugin } from '@open333crm/channel-plugins';
 import { getConfig } from '../../config/env.js';
 import { logger } from '@open333crm/core';
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import { issueCoupons } from './coupon-issue.service.js';
-import { applyClaimTag } from './coupon-tagging.js';
 import { CouponValidationError } from './coupon.service.js';
 
 export interface InboxIssueDeps {
@@ -329,10 +337,9 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
   try {
     outcome = await issueCoupons(ctx, coupon.id, {
       contactIds: [contactId],
-      issuedVia: 'inbox',
+      issuedVia: COUPON_ISSUED_VIA.INBOX,
       issuedRefId: input.agentId,
       issuedByName: input.agentName,
-      requireClaim: false,
       // 送出成功後才貼標，送不出時不必撤回標籤
       skipClaimTag: true,
     });
@@ -389,21 +396,10 @@ export async function reserveIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: 
 }
 
 /**
- * 作廢發送中的券：歸還序號包的序號並刪除這張券，發行總量與每人上限的名額跟著歸還。
- * 券從未送到顧客手上，不留下紀錄；只處理仍在發送中的券，已確認發出的不會被刪。
+ * 作廢發送中的券（design D16 第 4、5 步）。邏輯在 core，與 workers 的自動化發券共用。
  */
-export async function voidPendingInstance(ctx: TenantCtx, instanceId: string): Promise<boolean> {
-  const { tx, tenantId } = ctx;
-  // 先鎖住這張券再判斷：確認流程（confirmIssue）正在清除發送中標記時，等它提交後再看。
-  // 不鎖的話，確認在「查到發送中」與「刪除」之間提交，序號會被歸還、之後再發給別人
-  const pending = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id FROM coupon_instances
-    WHERE id = ${instanceId}::uuid AND "tenantId" = ${tenantId}::uuid AND "deliveryPendingAt" IS NOT NULL
-    FOR UPDATE`;
-  if (pending.length === 0) return false;
-  await tx.couponCode.updateMany({ where: { tenantId, instanceId }, data: { status: 'AVAILABLE', instanceId: null } });
-  const removed = await tx.couponInstance.deleteMany({ where: { id: instanceId, tenantId, deliveryPendingAt: { not: null } } });
-  return removed.count > 0;
+export function voidPendingInstance(ctx: TenantCtx, instanceId: string): Promise<boolean> {
+  return voidPendingInstanceInTx(ctx.tx, ctx.tenantId, instanceId);
 }
 
 /**
@@ -412,12 +408,22 @@ export async function voidPendingInstance(ctx: TenantCtx, instanceId: string): P
  */
 export async function confirmIssue(ctx: TenantCtx, deps: InboxIssueDeps, input: InboxIssueInput, reserved: Reserved) {
   const { tx, tenantId } = ctx;
-  const confirmed = await tx.couponInstance.updateMany({
-    where: { id: reserved.instanceId, tenantId, deliveryPendingAt: { not: null } },
-    data: { deliveryPendingAt: null },
+  const confirmed = await confirmPendingInstance(tx, {
+    tenantId,
+    instanceId: reserved.instanceId,
+    contactId: reserved.contactId,
+    coupon: reserved.coupon,
   });
-  if (confirmed.count === 0) return null;
-  await applyClaimTag(tx, tenantId, reserved.contactId, reserved.coupon);
+  if (!confirmed.confirmed) return null;
+  if (confirmed.tag) {
+    // 與資料一起寫進 outbox，commit 之後才送出（貼標的自動化規則由這個事件觸發）
+    await ctx.publish('contact.tagged', {
+      contactId: reserved.contactId,
+      tagId: confirmed.tag.tagId,
+      tagName: confirmed.tag.tagName,
+      source: 'system',
+    });
+  }
   const message = await createCouponMessage(tx, {
     tenantId,
     conversationId: reserved.conversationId,

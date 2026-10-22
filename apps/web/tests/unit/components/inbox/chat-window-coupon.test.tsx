@@ -139,6 +139,28 @@ describe('對話中的券卡', () => {
   });
 });
 
+describe('自動化發出的券卡（add-coupon-system A15 15.8、design D27）', () => {
+  test('收件匣顯示自動化發出的券卡：系統訊息帶 content.coupon，卡片寫由哪一條規則發送', async () => {
+    messages = [{
+      id: 'm2', direction: 'OUTBOUND', senderType: 'SYSTEM', contentType: 'text', createdAt: '2026-10-22T07:19:00.000Z',
+      metadata: { source: 'automation', ruleId: 'r1', ruleName: '秋季領券' },
+      content: {
+        text: '為您準備了一張優惠券：秋季九折\n\n點擊以下連結查看：\nhttps://crm.example.com/coupon/open/xyz',
+        coupon: {
+          instanceId: 'i9', couponId: 'k7', name: '秋季九折', couponType: 'DISCOUNT_PERCENT', discountAmount: null,
+          discountPercent: 10, giftName: null, exchangeItem: null, minSpend: null, expiresAt: null, issuedByName: null,
+        },
+      },
+    }];
+    renderChat(<ChatWindow conversation={conversation} canIssueCoupon />);
+    await flush();
+    const card = screen.getByRole('article', { name: '優惠券訊息' });
+    assert.ok(within(card).getByText('秋季九折'));
+    assert.ok(within(card).getByText('9 折'));
+    assert.match(screen.getByText(/由規則「秋季領券」發送/).textContent ?? '', /^由規則「秋季領券」發送 · \d{2}:\d{2}$/);
+  });
+});
+
 describe('右側已發優惠券', () => {
   test('列出券名、面額、發送人、時間與狀態', async () => {
     api.get.mockImplementation(() => Promise.resolve({

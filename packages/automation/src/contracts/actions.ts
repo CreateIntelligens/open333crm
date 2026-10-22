@@ -64,13 +64,21 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     label: '發送優惠券',
     requires: ['contact', 'conversation'],
     mutates: ['conversation', 'message'],
+    // 發券在「LINE 關鍵字回覆」與「加好友禮」頁設定，一般自動化規則不提供（design D25）
+    editorHidden: true,
     params: [
       {
         key: 'couponId',
         label: '優惠券',
-        type: 'string',
+        type: 'coupon',
         required: true,
-        placeholder: '從優惠券列表選擇要發放的券',
+        placeholder: '選擇要發放的進行中優惠券',
+      },
+      {
+        key: 'failureText',
+        label: '發不出時回覆顧客',
+        type: 'textarea',
+        placeholder: '例：您已經領過這張券囉',
       },
     ],
   },

@@ -107,7 +107,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 | 關鍵字領券 | `reply` | 免費；`replyToken` 有效期短（約 1 分鐘、限用一次），須在收到訊息後立即送出 |
 | 加好友禮 | `reply` | `follow` 事件亦帶 `replyToken`，免費 |
 | 客服對話發券 | `push` | 座席主動挑券，當下通常已無有效 `replyToken` |
-| 分眾群發 | `multicast` | service 層已處理 500/批切分 |
+| 分眾群發 | `multicast` | service 層已處理 500/批切分（附券廣播每人連結不同，改為每人 `push`，見 D29） |
 
 發券只需組出一則帶 LIFF 連結的 `OutboundPayload` 並指定 `strategy`，交給既有 `deliverToChannel`。**券的內容在 LIFF 頁，訊息本身只是入口**。SafeReply 降級已內建，reply 失敗自動改 push，不會漏發。
 
@@ -298,6 +298,224 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 
 **驗證碼的一次性**（PR #359 bot 審查）：比對通過後以 Redis `GETDEL` 取走驗證碼，並行送出同一組碼只有先取走的請求開啟票券；後續開啟票券的交易失敗時，以剩餘效期把驗證碼放回（NX，不覆蓋期間重寄的新碼），顧客可用同一組再試、不必消耗寄送次數。
 
+### 2026-10-22 盤點：發券入口補齊（D25～D33）
+
+**盤點結果**：除了對話發券（A11、D16），只有自動化的「發送優惠券」動作（`issue_coupon`）能發券，而且有下列問題。另有四個功能規格寫了、tasks.md 打了勾，卻沒有實作：
+
+| 項目 | 現況（實查） |
+|---|---|
+| 自動化選券 | 參數是文字框，要貼券的 UUID（`packages/automation/src/contracts/actions.ts:62-75` 的 `type: 'string'`）；存檔不檢查券存不存在 |
+| 自動化發券失敗 | 缺券、券非進行中、已達每人上限、總量或序號用完、找不到渠道身分，全部只寫 log 後 `continue`（`apps/workers/src/lib/automation-actions.ts:561-631`） |
+| 自動化訊息送不出 | 先在交易內建券（直接 CLAIMED），再送訊息；`deliverToChannelFromWorker` 的回傳值被忽略，送不出時券留著（:651） |
+| reply 從未使用 | `automation.handler.ts:187-200` 沒把 `receivedAt` 傳進動作，`selectSafeLineStrategy` 缺 `receivedAt` 一律回 `push`（`packages/shared/src/safe-reply.ts:14`）。B2.2「關鍵字用 reply」實際上全部走 push、計入訊息額度 |
+| 網站客服 | workers 的外掛表只有 LINE／FB／IG（`apps/workers/src/lib/plugin-registry.ts:9-13`，刻意，AUDIT CHAN-02）；WEBCHAT 對話的發券一定送不出，券卻已發出 |
+| 關鍵字回覆頁 | 儲存時以固定的 `[send_material]` 覆蓋整個 `actions` 與 `conditions`（`apps/web/src/hooks/useKeywordReplies.ts:106-135`），規則上的 `issue_coupon` 被刪掉 |
+| AI 讓步 | `keyword-yield.ts:108` 只把 `send_message` 與同渠道 `send_material` 算成會回覆，只發券的關鍵字規則命中時 AI 仍回覆，顧客一次收到兩則 |
+| 歸因 | `issuedVia` 寫觸發事件名稱（`keyword.matched`、`message.received`），後台對照表沒有，序號明細顯示「其他方式」；`issuedRefId` 存券 id，看不出是哪一條規則 |
+| 收件匣 | 自動化發券的訊息是純文字（`metadata.source='automation'`），不是券卡；workers 不推 `coupon.instance.updated`，「已發優惠券」不會即時更新 |
+| 分眾群發附券（B2.3） | 群發模組（`apps/api/src/modules/marketing/`）完全沒有券；LINE 無變數素材走 multicast，每人連結不同時做不到 |
+| 加好友禮（B2.2 的加好友部分） | 沒有 follow 觸發；`follow` 事件以 `contentType='follow'` 的入站訊息經 `message.received` 傳遞，`contact.created` 規則不能選發券 |
+| 公開領券（B3.1、B3.3、B3.4 的前提） | `POST /fan/coupons/claim` 還在，但沒有任何程式產生 `claimToken`，也沒有 `/coupon/claim/...` 頁面；海報、圖文選單、短網址沒有可以指向的領券網址 |
+| 後台批次發券 | `POST /api/v1/coupons/:id/issue` 沒有畫面、不送訊息、預設 `issuedVia='inbox'`，發出的券被當成對話發券 |
+
+本節的決策以下列原則串起來：**所有發券入口共用同一套「保留 → 送出 → 確認／作廢」（D16）與同一組發放方式代碼（D32）**，失敗一律留下後台看得到的紀錄。2026-10-22 使用者已定案本節所有取捨，以下皆為決策。
+
+### D25：發券改由「關鍵字回覆」與「加好友禮」設定；一般自動化規則不提供發券
+
+**使用者決定**：一般自動化規則不提供「發送優惠券」；關鍵字發券在「LINE 關鍵字回覆」頁設定。加好友禮依同樣原則，在「LINE 管理」新增「加好友禮」設定頁（D28）。
+
+**入口**：
+- **自動化規則編輯器**：動作選單不列出「發送優惠券」。契約保留 `issue_coupon`（新增 `editorHidden: true`），否則既有規則會變成「不合契約」而被 workers 整條略過（主規格「不合契約的規則不可啟用」）。
+- **既有含 `issue_coupon` 的規則（最小影響）**：照常執行，並套用本節所有後端修正。自動化規則編輯器開啟時，這個動作以唯讀方式顯示券名，註明「發券請到 LINE 關鍵字回覆或加好友禮設定」，可以刪除、不能新增或改券。觸發事件為 `keyword.matched` 的，會出現在關鍵字回覆頁，可在那裡編輯。
+- **LINE 關鍵字回覆頁**（`/dashboard/line/keyword-replies`，實查只列 LINE 素材、說明文字寫「對所有 LINE 官方帳號生效」）：表單新增「同時發送優惠券」（下拉選單，只列進行中的券，顯示「券名（CP 券號）· 用途」，行銷與客服補償兩種用途都可以選）與「發不出時回覆顧客」（選填文字，預設空白＝不回覆）。素材改為選填，但素材與優惠券至少要選一個。列表列出含「傳送素材」或「發送優惠券」的關鍵字規則。
+- **儲存不再覆蓋**：只更換規則中的「傳送素材」「發送優惠券」動作與關鍵字設定，其他動作（例如加標籤）與其他條件保留原樣。
+- **只在 LINE 生效**：這一頁儲存的規則一律帶條件「對話渠道等於 LINE」（已有就不重複加）。實查目前這頁建立的規則沒有渠道條件，在 FB、IG、網站客服的對話也會觸發：素材因渠道不符不送出、留下灰色紀錄，加上發券後就會真的對 FB、IG 發券。加上條件後，頁面說的「LINE 關鍵字回覆」才名副其實。
+- **存檔檢查**：API 建立或修改規則時，新增的 `issue_coupon` 動作或更換過的 `couponId` 要是同租戶、進行中的券，否則回 400（比照 `assertSendMaterialReferences`）。這個檢查在 API，所有入口都適用。券沒有更換時不檢查（2026-10-22 審查決定）：券被暫停後，商家仍要能改關鍵字或素材；頁面標示券已暫停，規則觸發時留下 `COUPON_INACTIVE` 紀錄。
+
+**後端流程**（workers，比照 D16）：交易內鎖券、檢查券狀態與渠道、`issueInstances` 建券並寫 `deliveryPendingAt` → 提交 → 交易外送出 → 成功：清除 `deliveryPendingAt`、貼領券標籤、寫入券卡訊息 → 失敗：新交易刪除這張券並歸還序號（`voidPendingInstance` 搬進 `packages/core/src/coupon/`，API 與 workers 共用）。卡住的券由 API 既有的 `coupon-stale-pending-issue` 排程作廢（它本來就掃全部租戶的 `deliveryPendingAt`，不分來源）。
+
+**失敗紀錄**：每一種沒發出的情況都在該對話寫一則系統訊息（`senderType: SYSTEM`、`metadata.source: 'automation'`、`metadata.couponIssueFailed: { ruleId, ruleName, couponId, reason }`），推 `message.new`。渠道拒收的沿用 `deliveryFailed`／`deliveryError`（紅色）；沒有呼叫渠道就決定不發的以灰色提示呈現，文字為「規則「{規則名}」沒有發出優惠券「{券名}」：{原因}」。
+
+| 代碼 | 文字 |
+|---|---|
+| `COUPON_NOT_FOUND` | 券已刪除或不屬於這個租戶 |
+| `COUPON_INACTIVE` | 券不是進行中（已暫停或已結束） |
+| `PER_CONTACT_LIMIT_REACHED` | 顧客已達每人領取上限 |
+| `TOTAL_LIMIT_REACHED` | 發行總量已發完 |
+| `CODES_EXHAUSTED` | 序號包的序號已用完 |
+| `NO_CHANNEL_IDENTITY` | 這位聯絡人沒有這個渠道的身分 |
+| `CHANNEL_NOT_SUPPORTED` | 這個渠道不支援自動發券（D26） |
+| `DELIVERY_FAILED` | 渠道拒收（附渠道錯誤訊息） |
+
+**發不出時回覆顧客**：有填寫時，只在沒有呼叫渠道就決定不發的情況（每人上限、總量、序號用完、券非進行中）送出這段文字；渠道拒收、找不到渠道身分、不支援的渠道不回覆（顧客收不到或不該收到）。
+
+**reply**：`automation.handler.ts` 把 `receivedAt` 傳進動作 context；`keyword.matched` 與 `contact.followed`（D28）帶 `replyToken` 時在 30 秒內走 reply，逾時或失敗改 push（既有 SafeReply）。
+
+**AI 讓步**：`issue_coupon` 算成會回覆的動作，條件是渠道在 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 內且券為 ACTIVE。
+
+**為什麼**：「失敗不可以只寫 log」是專案的硬規則（2026-09-23 關鍵字素材事件）。先建券後送訊息讓送不出的券留在顧客名下、占用名額，與 D16 對話發券的保證不一致。發券設定集中在兩個專用頁，商家不必理解自動化規則編輯器。
+
+**取捨**：既有含 `issue_coupon` 的非關鍵字規則（例如「收到訊息就發券」）仍會執行，顧客達上限後的每則訊息都留下一則灰色提示；不另做節流，提示正好讓商家發現並刪除這種規則。
+
+**殘留風險**：reply 生效後，同一個 replyToken 只能用一次。同一則訊息命中兩條都回覆的規則時，第二條 reply 失敗再改 push，多用一次額度；「每則入站訊息最多一則機器人回覆」已限制大部分情況。
+
+**殘留風險（既有關鍵字規則沒有渠道條件）**：「對話渠道等於 LINE」只在關鍵字回覆頁存檔時補上，不以 migration 批次補到既有規則（2026-10-22 審查決定）。既有規則沒有發券動作，要加發券一定要經過這一頁存檔，存檔時就會補上條件；批次修改既有規則反而會改變商家在 FB、IG 的關鍵字回覆。尚未重新存檔的既有規則仍會在 FB、IG 對話觸發傳送素材，與上線前相同。
+
+### D26：網站客服（WEBCHAT）
+
+**現況**：workers 刻意沒有 WEBCHAT 外掛（`AUTOMATION_DELIVERY_CHANNEL_TYPES = ['LINE','FB','THREADS']`，AUDIT CHAN-02）。WEBCHAT 的 `sendMessage` 是空實作，真正推給訪客的是 API 程序以 Socket.IO `/visitor` namespace 推 `agent:message`。
+
+**決策**：發券的兩個設定入口都只在 LINE 生效（關鍵字回覆頁的規則帶「對話渠道等於 LINE」，加入好友只有 LINE），新設定的規則不會在網站客服觸發，不需要讓 workers 支援 WEBCHAT。只為既有規則保留一道執行時的防線：對話渠道不在 `AUTOMATION_DELIVERY_CHANNEL_TYPES` 內時不建券，留下 `CHANNEL_NOT_SUPPORTED` 灰色提示。
+
+**為什麼**：讓 workers 支援 WEBCHAT 會同時改變 `send_message`、`send_material` 的行為與 AI 讓步規則，屬於自動化整體的變更；入口限定 LINE 之後，發券不再需要它。
+
+### D27：發券規則的歸因與收件匣呈現
+
+**決策**：
+- `issuedVia` 改用固定代碼（D32）：`keyword.matched` → `keyword`、`contact.followed` → `follow`、其他事件（只剩既有規則）→ `automation`。`issuedRefId` 改存**規則 id**，`issuedSourceName` 存發券當下的**規則名稱**。序號明細上行顯示規則名稱，下行顯示發放方式。
+- 既有資料不回填：後台對照表把 `keyword.matched` 顯示為「關鍵字」，其他含 `.` 的值顯示為「自動化」，不再顯示「其他方式」。
+- 送出成功時，workers 寫入的對話訊息改為與對話發券相同的格式：`content: { text, coupon: {...} }`、`senderType: SYSTEM`、`metadata.source: 'automation'`、`metadata.ruleId`／`ruleName`，收件匣畫成券卡，卡片下方寫「由規則「{規則名}」發送」。
+- 即時更新：workers 在確認後以 Redis socket 橋接推 `coupon.instance.updated`（`tenant:{tenantId}`，帶 contactId、instanceId、`change: 'issued'`）。這符合 AGENTS.md 的 Path B：事件發生在背景工作，workers 不能用 `fastify.io`。
+- **近 90 天補償紀錄不改**（使用者決定）：維持原規格與現有算法。
+
+### D28：加好友禮：新增事件「加入好友」與「加好友禮」設定頁
+
+**現況**：LINE `follow` 事件被當成一則 `contentType='follow'` 的入站訊息處理，經 `message.received` 傳到自動化（帶 `replyToken`），但沒有任何規則能辨認它；`contact.created` 的範圍只有聯絡人，不能選發券；首次招呼語用 push、不用 replyToken。系統沒有記錄加好友、封鎖的時間或次數（`Contact.isBlocked` 只給客服手動設定）。
+
+**決策**：
+- 新增自動化事件 `contact.followed`（「加入好友」，只有 LINE 會發出），範圍與訊息事件相同（聯絡人、對話）。API 的 `automation.worker.ts` 收到 `message.received` 且 `contentType='follow'` 時，另外以 `contact.followed` 排入評估，帶 `replyToken`、`receivedAt`、`isFirstFollow`。新增 fact `follow.isFirst`。自動化規則編輯器可用這個事件搭配傳送訊息、傳送素材（不含發券，D25）。
+- `channel_identities` 新增 `firstFollowedAt`、`lastFollowedAt`、`followCount`。follow 事件寫入；migration 把既有 LINE 渠道身分的 `firstFollowedAt` 回填為 `linkedAt`。
+- **封鎖後再加入不發（使用者決定）**：加好友禮只發給這個渠道身分第一次加入。
+- **設定入口**：「LINE 管理」新增「加好友禮」頁：啟用開關、選券（同關鍵字回覆頁的下拉選單）、選填「發不出時回覆顧客」。儲存時建立或更新一條規則：事件 `contact.followed`、條件 `follow.isFirst` 等於是（頁面固定帶上、不能移除）、動作 `issue_coupon`。一個租戶一條，對所有 LINE 官方帳號生效。
+- 回覆：用 follow 事件的 replyToken（免費）；30 秒內未送出改 push。發放方式記為 `follow`。
+
+**為什麼**：封鎖再加入刷券是常見的薅羊毛手法；LINE 的 `follow.isUnblocked` 官方註明不保證準確，不能當唯一依據，所以由系統自己記錄。
+
+**取捨**：同時設定招呼語與加好友禮時，顧客會收到兩則（招呼語 push、券 reply）。不合併成一則：招呼語是渠道設定、券是規則，合併要讓兩者知道彼此。
+
+**殘留風險**：回填以 `linkedAt` 推定上線前的好友；上線前只傳過訊息、從未加好友的人第一次真正加好友時拿不到加好友禮。
+
+**實作（A15 15.13～15.16）**：
+- **記錄加入**：`processInboundMessage` 存好 follow 訊息之後呼叫 `recordInboundFollow`（`apps/api/src/modules/webhook/inbound-follow-tracking.ts`）。先以條件式更新 `WHERE firstFollowedAt IS NULL` 寫入第一次、最後一次加入時間與次數；更新到 0 列才只更新最後一次加入時間與次數。同一位顧客的兩個 follow 同時處理時只有一個是第一次，加好友禮不會發兩次。判斷依外掛正規化的 `contentType === 'follow'`，不依 `channelType` 分支（結構規則 5）；目前只有 LINE 外掛送出 follow。
+- **記錄失敗**：資料庫錯誤時記 log、當成「不是第一次」（寧可少發，不重複發），不擋訊息落地與其他處理；加入事件本身已存成收件匣訊息。
+- **事件**：`message.received` 的 payload 在 follow 時帶 `isFirstFollow`。API 的自動化訂閱者收到 `contentType='follow'` 時，`message.received` 的評估不帶文字（不比對關鍵字），另外排入 `contact.followed`：事件 id 相同（規則動作仍以 `<事件 id, 規則 id#序號>` 認領，兩種事件的規則不同），BullMQ job id 為 `<事件 id>-followed`（job id 不能含「:」，也不能與 `message.received` 的相同）。`buildAutomationFacts` 把 `isFirstFollow` 轉成 fact `follow.isFirst`；沒有值時為 null，條件「等於是」不成立（fail-closed）。
+- **設定頁**：`useFollowGift` 在自動化規則 API 之上，比照 `useKeywordReplies`：列出事件為 `contact.followed` 的規則，取最早建立、含 `issue_coupon` 的那一條；儲存時固定補上「第一次加入等於是」與「對話渠道等於 LINE」（已有不重複、被移除時補回），只換發券動作的券與「發不出時回覆顧客」，其他動作與條件保留。停用時沒有選券就保留原本的券、只停用。租戶唯一由頁面維持（不另加資料庫約束）：透過 API 或自動化規則編輯器另建的同類規則仍會執行，頁面只編輯最早的那一條。
+
+**與既有進站流程的互動（2026-10-23 實查）**：一則 LINE follow 事件依序經過：建立聯絡人與渠道身分（第一次出現時發出 `contact.created`）→ 建立對話（沒有進行中的對話時發出 `conversation.created`）→ 存成 `contentType='follow'` 的收件匣訊息 → 記錄加入 → 首次招呼語 → `message.received`（帶 replyToken）→ 營業時間外自動回覆。replyToken 只有一個、只能用一次，各個會送訊息的環節：
+
+| 環節 | 送出方式 | 會不會用掉 replyToken |
+|---|---|---|
+| 首次招呼語（渠道設定，`sendFirstContactGreeting`） | 在 webhook 內同步 push，`deliverToChannel` 不帶 replyToken | 不會 |
+| 營業時間外自動回覆 | 同步 push | 不會 |
+| `contact.created`、`conversation.created` 的規則 | payload 沒有 replyToken，workers 一律 push | 不會 |
+| `message.received` 的規則（follow 事件也會觸發，既有行為） | 不在回覆類觸發內，push | 不會 |
+| 關鍵字規則、AI 回覆 | follow 不帶文字，不比對關鍵字；非文字訊息不做 AI 回覆 | 不會 |
+| `contact.followed` 的規則：加好友禮與商家自建的「加入好友」規則 | 30 秒內 reply，失敗改 push（SafeReply） | 會，依規則優先序先到先用 |
+
+所以加好友禮與招呼語不搶 replyToken：招呼語在 webhook 內先 push 送出，顧客先看到招呼語、再看到券。只有商家另外建立「加入好友」並傳送訊息的規則時，兩條規則搶同一個 replyToken：先執行的用 reply，另一條 reply 失敗後改 push，多用一次主動推送額度（與 D25「殘留風險」相同，不另處理）。
+
+**殘留風險（實作）**：
+- 上線前已是好友、但從未與官方帳號互動（系統沒有渠道身分、無從回填）的顧客，上線後封鎖再加入時會被當成第一次，領到一次加好友禮。「租戶唯一」原本只靠設定頁維持，使用者決定（2026-10-22）後端也擋：建立或修改規則時，若「加入好友」且含發券的規則已有另一條（未刪除），回 409（`automation.service.ts` `assertSingleFollowGift`）。
+- 使用者決定（2026-10-22）：這種顧客視為新好友，可以領一次；之後再封鎖、加回不再發（第一次加入已記錄）。不採用 LINE follow 事件的 `follow.isUnblocked`：官方註明不保證準確，用它會誤擋真正的新好友。
+- LINE 重送同一個 follow webhook 時（沒有訊息 id，無法去重），加入次數會多算一次；第二次不是第一次加入，不會重複發券。
+- 同一個人加入同一個 provider 下的多個官方帳號時，每個官方帳號的渠道身分各自有「第一次加入」；若兩個身分屬於同一位聯絡人，券的每人領取上限仍會擋下第二張。
+
+### D29：附券廣播：每位收件人各得一張券與自己的票券連結
+
+**現況（實查）**：「行銷活動」（`Campaign`）是容器，旗下有多則「廣播」（`Broadcast`）；一則廣播＝一個渠道＋一個素材＋一個受眾。發送在 API 程序執行（`executeBroadcast`，手動發送在 HTTP 請求內同步跑，排程每 60 秒撈 10 則）。LINE 且素材沒有變數時走 multicast（每批 499），否則每人 push。FB／IG 依 24 小時視窗篩掉視窗外的人。`BroadcastRecipient` 每人一筆但不存失敗原因；LINE 訊息額度只有 MCP 路徑檢查。群發不寫入對話訊息。
+
+**決策**：
+- 廣播新增選填的 `couponId`，只能選進行中的行銷券。附券的廣播**一律每人 push**，不走 multicast（每人連結不同）。
+- **券的連結放素材可選（使用者決定）**：
+  - 素材含 `{{coupon.url}}`：代入收件人自己的票券連結，只送這一則。
+  - 素材沒有這個變數：先送素材，再送一則預設的發券文字（含連結）。
+  - 沒選素材：只送預設的發券文字。
+- **保留／確認／作廢以「帶連結的那則」為準**：每位收件人先保留券，再依序送出；帶連結的訊息送出成功才確認。素材送不出時不送發券文字，券作廢、收件紀錄為失敗。素材成功、發券文字送不出時，券作廢、收件紀錄為失敗、原因註明「素材已送達，優惠券訊息送不出」。LINE 的兩則以同一次推送請求送出（同時成功或失敗）；FB、IG 分兩次呼叫。
+- 每位收件人依序：保留（`issueInstances`＋`deliveryPendingAt`，`issuedVia='broadcast'`、`issuedRefId=廣播 id`、`issuedSourceName=廣播名稱`）→ 產生票券連結 → 送出 → 確認或作廢。
+- `BroadcastRecipient` 新增 `couponInstanceId`、`skipReason`；`deliveryStatus` 新增 `skipped`。沒拿到券的收件人（已達每人上限、名額或序號用完）**不送訊息**，記 `skipped` 與原因。廣播新增 `couponIssuedCount`；結果頁依原因列出跳過與失敗人數。
+- **名額不足**：照名單順序發到名額用完，其餘收件人跳過並回報人數。建立廣播與「可送達人數」預覽時，若受眾大於剩餘名額，顯示警示並要求勾選確認。
+- **LINE 訊息額度**：附券廣播發送前以 `getMessageQuota` 檢查，剩餘額度小於「收件人數」就整則不送、不建任何券，回報 `LINE_QUOTA_INSUFFICIENT`。LINE 以收件人數計額度，同一次推送多則訊息只算一次。不附券的廣播是否也檢查，不在本 change 範圍。
+- 票券連結：`WalletTokenPayload.conversationId` 改為選填（開啟時沒有讀取它），收件人沒有對話也能產生連結。
+  - **實查（2026-10-22）**：開啟票券本身不讀 `conversationId`；只有「需要登記」時，`coupon-wallet.flow.ts` 把它傳給 `reuseOrIssueRegistrationToken`，登記完成後 `identifier-registration.ts` 在那個對話送通知（已登記、需到對話合併、渠道衝突等）。廣播收件人是「在該渠道有身分」的聯絡人，不一定有對話：匯入、合作夥伴寫入、合併帶進來的身分都可能沒有對話。
+  - **決策**：登記連結的 `conversationId` 也改選填。連結沒有對話時，登記當下改找顧客在收券渠道最近的對話（顧客收到廣播後常會回訊息，這時已有對話）；仍然沒有就不送通知。登記頁本身會顯示結果，顧客不會漏看。不為了送通知替顧客建立空對話（會出現在收件匣、干擾座席）。
+- 執行：附券廣播的「立即發送」改為排入排程立即執行，不在 HTTP 請求內同步跑；同一則廣播重跑時，已有收件紀錄的人不再發券。
+- 不在對話寫訊息、不逐人推 `coupon.instance.updated`（與現有群發一致；「已發優惠券」區塊開啟時會載入）。
+- **實作備註（2026-10-22）**：
+  - 「立即發送」把廣播改為已排程、排程時間為現在，由每 60 秒一次的廣播排程執行（最多約一分鐘後開始），API 回 202。
+  - 中斷判定：發送中超過 5 分鐘沒有進度（每處理 20 人更新一次）可以重新排入；收件紀錄在保留券時就寫入，重送時已有紀錄的人（含發送中）一律略過。
+  - 收件紀錄的 `skipReason` 同時記跳過（`TOTAL_LIMIT_REACHED`、`PER_CONTACT_LIMIT_REACHED`、`NO_CHANNEL_IDENTITY`、`OUTSIDE_MESSAGING_WINDOW` 等）與失敗（`DELIVERY_FAILED`、`COUPON_MESSAGE_FAILED` 等）的原因；廣播另存 `failureCode`（例如 `LINE_QUOTA_INSUFFICIENT`）。
+  - 一次送多則：渠道外掛宣告 `maxMessagesPerSend`（LINE 為 5），呼叫端以 `extraMessages` 帶後續訊息，不在引擎內依渠道類型分支。
+  - 券頁批次發券要能回覆所選渠道（渠道可見性 `reply_only`），只列能主動推送的渠道（LINE、Facebook、Instagram）。
+
+**為什麼**：素材可選讓商家能沿用現成的素材，不必為了放連結重做；以帶連結的那則為準，是因為顧客沒收到連結就等於沒拿到券，名額要歸還。
+
+**取捨**：素材沒有連結變數時，顧客收到兩則；素材成功、發券文字失敗時，顧客收到了講這張券的素材卻沒有連結，結果頁會列出這些人。
+
+**殘留風險**：
+- 每人 push 對大名單較慢（每人一到兩次 API 呼叫加兩個短交易），也不能用 multicast 節省呼叫次數。LINE 額度以收件人數計，與 multicast 相同，不會多花錢。
+- 廣播仍在 API 程序執行（不搬到 workers）；程式在發送途中結束時，發送中的券由排程作廢，廣播狀態停在 sending，需要人工重送（現有群發也是如此）。
+- FB／IG 附券廣播依 24 小時視窗只送給視窗內的人（主規格既有行為）。
+
+### D30：公開領券：以「傳訊領券」連結與 QR Code 實作
+
+**問題**：海報、官網、圖文選單上的連結不知道是誰在點。網頁上能確認的身分只有 LIFF（只限 LINE 且要 Login channel）與 email 驗證碼。
+
+**決策：傳訊領券**。每張行銷券可建立多個「領券連結」（各有名稱，例如「門市海報」「官網橫幅」），連結開啟公開的領券頁 `/coupon/claim/{代碼}`，顯示券名與面額，以及各渠道的按鈕：LINE「加入好友」＋「傳送領券訊息」（`line.me/R/oaMessage/{basicId}/?{預填文字}`）、Facebook／Instagram 以 `m.me`、`ig.me` 的 `ref` 帶代碼。顧客送出訊息後，系統在入站處理辨認領券代碼，對這位聯絡人發券並以 reply 回覆（免費），流程同 D25 的保留、送出、確認。
+
+**為什麼不做網頁領券**：email 領券的聯絡人沒有任何渠道身分、無法收訊息；一個人用多個 email 就能繞過每人上限；要新寫建立聯絡人與歸戶的流程。傳訊領券的身分就是渠道身分，顧客會成為好友、券歸戶在有對話的聯絡人；做法與既有的跨渠道綁定代碼（`binding-links.ts` 的 oaMessage 預填、IG／FB 的 `ref` 導流）相同。
+
+**細節**：
+- 新表 `coupon_claim_links`（RLS）：`couponId`、`channelId`（領券訊息送到哪個官方帳號或粉專）、`name`、`code`（8 碼，字集同券碼，全系統唯一，因為公開網址不帶租戶）、`status`（ACTIVE／DISABLED）、`startAt`／`endAt`（選填）、`openCount`、`claimCount`、`createdById`。一張券可以有多個連結，供不同投放位置歸因。
+- 後台：券詳情頁新增「領券連結」分頁：建立、停用、重新啟用、下載 QR Code（PNG，沿用 `shortlink/qrcode.service.ts`）、複製網址、看開啟數與領取數。**只有行銷券能建立領券連結**（公開散布的券沒有對象，補償券不應公開）。
+- 入站：文字含領券代碼的訊息，或帶 `ref=coupon_{代碼}` 的 FB／IG 導流事件，在 AI 與關鍵字規則之前處理，該則訊息不再觸發 AI 回覆與關鍵字規則（比照綁定代碼的處理位置）。
+- 領取規則：連結 ACTIVE、在期間內、券 ACTIVE；遵守每人上限與發行總量。成功與失敗都以 reply 回覆顧客（失敗原因：活動已結束、已領過、已發完），並在對話留下系統紀錄。
+- 歸因：`issuedVia='public_link'`、`issuedRefId=連結 id`、`issuedSourceName=連結名稱`。
+- 代碼只在連結指定的渠道生效；送到同租戶的其他渠道時回覆「請到 {渠道} 領取」，不發券。
+- **移除既有的領取憑證**：`POST /fan/coupons/claim` 與 `issueInstances` 的 `requireClaim` 移除（目前沒有任何呼叫端會產生憑證）；`claimToken`、`claimTokenExpiresAt` 欄位先保留，之後另做清理 migration。coupon-redemption 的「待領取的券憑領取憑證歸戶」改寫為「發券一律直接歸戶」。
+
+**殘留風險**：
+- 預填文字可以被顧客改掉；系統只認代碼（大小寫、全形、空白不影響）。
+- 代碼是公開的，任何人都能傳；每人上限與總量是唯一的防線。高價值券不應做公開領券。
+- 非好友在 LINE 送不出訊息，領券頁的「加入好友」步驟不能省。
+
+### D31：後台批次發券與附券廣播合併為同一套引擎
+
+**比較**：
+
+| | 一、各做一套 | 二、合併（採用） |
+|---|---|---|
+| 入口 | 廣播頁選券；券詳情頁「發送給…」另一套 | 兩個入口，都建立一則附券廣播 |
+| 送出、作廢、額度、24 小時視窗、報表 | 兩份 | 一份（D29） |
+| 券頁發送的紀錄 | 要另建「批次」表或只留在序號明細 | 在廣播列表與結果頁都看得到 |
+| 工作量 | 多約 2～3 天，且兩邊行為會漸漸不一致 | 券頁只多一個精簡表單 |
+
+**決策**：
+- 券詳情頁新增「發送給…」：選一個渠道（不跨渠道，與廣播一致）、選對象（標籤、分眾，或搜尋聯絡人逐一勾選，最多 1,000 人）、可選訊息文字（沒填用預設發券文字；有填時連結附在文字後），送出前顯示可送達人數、剩餘名額與已達上限人數。
+- 送出時建立一則附券廣播（`issuedVia='batch'`、`issuedByName=操作的使用者`、`issuedSourceName='批次發放 {YYYY-MM-DD HH:mm}'`），走 D29 的引擎；完成後在券詳情頁顯示結果。
+- **權限只需要 `coupon.issue`**：券頁建立的廣播只能帶這張券與發券文字，不能選素材，風險與發券相同。行銷與客服補償券都可以批次發（附券廣播的「只限行銷券」只限制廣播頁）。
+- **`POST /api/v1/coupons/:id/issue` 保留給系統整合**（CLI、合作夥伴）：不送訊息；`issuedVia` 預設改為 `api`，拒絕 `inbox`、`keyword` 等系統保留的代碼。
+
+### D32：發放方式代碼統一
+
+`issuedVia` 只寫下列代碼。後台對照表與 core 的 `couponSourceName` 同步：
+
+| 代碼 | 顯示 | `issuedRefId` | `issuedSourceName` |
+|---|---|---|---|
+| `inbox` | 對話發券 | 座席 id | 對話發券 |
+| `keyword` | 關鍵字 | 規則 id | 規則名稱 |
+| `follow` | 加好友 | 規則 id | 規則名稱 |
+| `automation` | 自動化 | 規則 id | 規則名稱（只有既有規則） |
+| `broadcast` | 廣播 | 廣播 id | 廣播名稱 |
+| `batch` | 批次發放 | 廣播 id | 批次發放 {時間} |
+| `public_link` | 公開領券 | 領券連結 id | 連結名稱 |
+| `api` | API | 呼叫者帶入 | 呼叫者帶入或「API」 |
+
+舊值 `keyword.matched` 顯示「關鍵字」，其他含 `.` 的舊值顯示「自動化」。
+
+### D33：tasks 打勾但未實作的項目改回未完成
+
+B2.2（關鍵字與加好友用 reply）、B2.3（分眾群發）、B2.5（FB／IG 領取憑證連結，已被 D12 取代）、B3.1、B3.3、B3.4（圖文選單、卡片、短網址指向領券頁：沒有公開的領券網址可以指向）改回未完成或註明取代，新工作列在 tasks「A15」。
+
 ## Risks / Trade-offs
 
 | 風險 | 緩解 |
@@ -310,6 +528,8 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 | LINE Login channel 遲遲未到位 | 過渡走 Account Link（僅需 Messaging API），認證入口可替換、資料結構不變（D11） |
 | linkToken 效期由 LINE 決定且可能變動 | 不寫死 10 分鐘假設；過期以「請重新點選領取」引導重試 |
 | 領取憑證被轉發，券遭他人領走 | 憑證一次性、短效、僅供領取；訊息明示勿轉發；高價值券限 LINE 發放 |
+| 附券廣播對大名單較慢、名額或額度不足 | 每人 push；發送前檢查 LINE 額度與剩餘名額並警示（D29） |
+| 公開領券代碼被大量散布、刷券 | 每人上限與發行總量為防線；只限行銷券；連結可設期間與停用（D30） |
 | 使用條款的 HTML 造成 XSS | 伺服器端以成熟 sanitizer 白名單消毒；禁 script/style/iframe/event handler 與 `javascript:` 連結；不自行以正則實作 |
 
 ## Migration Plan

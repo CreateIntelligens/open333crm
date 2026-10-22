@@ -17,9 +17,10 @@ import { withTenant } from '#src/lib/tenant-db.js';
 import { createCoupon, CouponValidationError } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
 import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
-import { claimByToken, redeemCoupon, openInstance } from '#src/modules/coupon/coupon-redeem.service.js';
+import { redeemCoupon, openInstance } from '#src/modules/coupon/coupon-redeem.service.js';
 import { importCodes, previewImport, removeAvailableCode } from '#src/modules/coupon/coupon-import.service.js';
-import { getCouponStats, exportInstancesCsv } from '#src/modules/coupon/coupon-stats.service.js';
+import { getCouponStats, exportInstancesCsv, listInstances } from '#src/modules/coupon/coupon-stats.service.js';
+import { countInstances } from '#src/modules/coupon/coupon-export.service.js';
 import { ctxOf, runInTenant } from '#tests/support/tenant-run.js';
 
 const owner = new PrismaClient();
@@ -105,68 +106,20 @@ it('ENDED 為終態不可復活', async () => {
 });
 
 // ── 發券與配額 ──
-it('發券給 LINE 已知身分者直接為 CLAIMED', async () => {
+it('發券直接歸戶為 CLAIMED', async () => {
   const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, couponId, {
-    contactIds: [contactA], issuedVia: 'inbox', requireClaim: false,
+    contactIds: [contactA], issuedVia: 'inbox',
   }));
   assert.equal(r.issued.length, 1);
   assert.equal(r.issued[0].status, 'CLAIMED');
-  assert.equal(r.issued[0].claimToken, null, 'LINE 發券不應有領取憑證');
 });
 
 it('超過每人上限須略過並回報原因', async () => {
   const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, couponId, {
-    contactIds: [contactA], requireClaim: false,
+    contactIds: [contactA],
   }));
   assert.equal(r.issued.length, 0);
   assert.equal(r.skipped[0]?.reason, 'PER_CONTACT_LIMIT_REACHED');
-});
-
-// ── 領取憑證（D10）──
-let tokenInstance = '';
-let token = '';
-it('FB／IG 發券為 ISSUED 並帶領取憑證', async () => {
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, couponId, {
-    contactIds: [contactB], issuedVia: 'fb_inbox', requireClaim: true,
-  }));
-  assert.equal(r.issued[0].status, 'ISSUED');
-  assert.ok(r.issued[0].claimToken, '未產生領取憑證');
-  tokenInstance = r.issued[0].id;
-  token = r.issued[0].claimToken!;
-});
-
-it('領取時已達每人上限', async () => {
-  // contactA 已持有這張券（每人限 1），以別人的憑證領取也不能超過上限
-  const r = await runInTenant(prisma, tenantId, (ctx) => claimByToken(ctx, token, contactA));
-  assert.deepEqual(r, { ok: false, reason: 'PER_CONTACT_LIMIT_REACHED' });
-  const inst = await withTenant(prisma, tenantId, (tx) =>
-    tx.couponInstance.findFirst({ where: { id: tokenInstance, tenantId } }));
-  assert.equal(inst?.status, 'ISSUED', '沒領成的券維持待領取');
-});
-
-it('憑證換券成功並歸戶至驗證身分', async () => {
-  // 完成驗證的聯絡人（未持有此券）以 FB 對象的憑證領取，券改綁到他身上
-  const verified = (await owner.contact.create({ data: { tenantId, displayName: `${MARK}-顧客C` } })).id;
-  const r = await runInTenant(prisma, tenantId, (ctx) => claimByToken(ctx, token, verified));
-  assert.ok(r.ok, `換券失敗：${JSON.stringify(r)}`);
-  const inst = await withTenant(prisma, tenantId, (tx) =>
-    tx.couponInstance.findFirst({ where: { id: tokenInstance, tenantId } }));
-  assert.equal(inst?.status, 'CLAIMED');
-  assert.equal(inst?.contactId, verified, '未改綁為完成驗證的聯絡人');
-  assert.equal(inst?.claimToken, null, '憑證未於使用後清空');
-});
-
-it('同一憑證不可重複使用', async () => {
-  const r = await runInTenant(prisma, tenantId, (ctx) => claimByToken(ctx, token, contactB));
-  assert.ok(!r.ok, '已用過的憑證竟可再次換券');
-});
-
-it('已作廢的券以憑證領取：回報活動已結束，不是已被領取', async () => {
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, couponId, { contactIds: [contactB], issuedVia: 'fb_inbox', requireClaim: true }));
-  const revoked = r.issued[0];
-  await owner.couponInstance.update({ where: { id: revoked.id }, data: { status: 'REVOKED' } });
-  const claimed = await runInTenant(prisma, tenantId, (ctx) => claimByToken(ctx, revoked.claimToken!, contactB));
-  assert.deepEqual(claimed, { ok: false, reason: 'COUPON_INACTIVE' });
 });
 
 // ── 核銷（D3 核心）──
@@ -200,7 +153,7 @@ it('重複核銷須回報已使用並附原核銷時間', async () => {
 });
 
 it('併發核銷僅一個成功（核心保證）', async () => {
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, couponId, { contactIds: [contactB], requireClaim: false }));
+  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, couponId, { contactIds: [contactB] }));
   const target = r.issued[0].id;
   const results = await Promise.all(
     Array.from({ length: 5 }, () =>
@@ -218,7 +171,7 @@ it('AFTER_OPEN 券於開啟時起算效期', async () => {
       afterOpenMinutes: 15, codeMode: 'UNIQUE_CODE', redeemMode: 'SELF', perContactLimit: 5,
     }));
   await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), c.id, 'ACTIVE'));
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactA], requireClaim: false }));
+  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactA] }));
   const inst = r.issued[0];
   const before = await withTenant(prisma, tenantId, (tx) =>
     tx.couponInstance.findFirst({ where: { id: inst.id, tenantId } }));
@@ -282,7 +235,7 @@ it('整批序號重送時成功回應，不重複寫入', async () => {
 it('有庫存後可發布，且發券會消耗序號', async () => {
   const pub = await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), importCouponId, 'ACTIVE'));
   assert.ok(pub.ok, `發布失敗：${JSON.stringify(pub)}`);
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, importCouponId, { contactIds: [contactA], requireClaim: false }));
+  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, importCouponId, { contactIds: [contactA] }));
   assert.equal(r.issued.length, 1);
   assert.ok(['AAAA1111', 'BBBB2222', 'CCCC3333'].includes(r.issued[0].code), `發出的券碼不在庫存中：${r.issued[0].code}`);
   const remaining = await withTenant(prisma, tenantId, (tx) =>
@@ -308,7 +261,7 @@ it('序號用罄時發券須回報而非拋錯中斷', async () => {
   // 清掉剩餘庫存後再發
   await withTenant(prisma, tenantId, (tx) =>
     tx.couponCode.deleteMany({ where: { couponId: importCouponId, tenantId, status: 'AVAILABLE' } }));
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, importCouponId, { contactIds: [contactB], requireClaim: false }));
+  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, importCouponId, { contactIds: [contactB] }));
   assert.equal(r.issued.length, 0);
   assert.equal(r.skipped[0]?.reason, 'CODES_EXHAUSTED', `預期回報序號用罄，實得 ${JSON.stringify(r.skipped)}`);
 });
@@ -329,6 +282,40 @@ it('無人領取時核銷率為 null 而非 0', async () => {
   const stats = await withTenant(prisma, tenantId, (tx) => getCouponStats(ctxOf(tx, tenantId), c.id));
   assert.equal(stats!.redeemRate, null, '沒有分母時不應回 0');
   assert.equal(stats!.claimRate, null);
+});
+
+it('發送中的券不出現在序號明細', async () => {
+  // 3 張已送出、1 張發送中（對話或自動化發券還沒確認，design D16）
+  const c = await withTenant(prisma, tenantId, (tx) =>
+    createCoupon(ctxOf(tx, tenantId), agentId, {
+      name: '發送中排除券', couponType: 'GIFT', giftName: '濾網', purpose: 'MARKETING', perContactLimit: 4,
+      validityMode: 'FIXED', startAt: '2026-01-01', endAt: '2030-12-31',
+      codeMode: 'UNIQUE_CODE', redeemMode: 'SELF',
+    }));
+  assert.ok((await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), c.id, 'ACTIVE'))).ok);
+  const r = await runInTenant(prisma, tenantId, (ctx) =>
+    issueCoupons(ctx, c.id, { contactIds: [contactA, contactA, contactA, contactA] }));
+  assert.equal(r.issued.length, 4);
+  const pendingId = r.issued[3].id;
+  await owner.couponInstance.update({ where: { id: pendingId }, data: { deliveryPendingAt: new Date() } });
+
+  const stats = await runInTenant(prisma, tenantId, (ctx) => getCouponStats(ctx, c.id));
+  assert.equal(stats?.issued, 3);
+  assert.equal(stats?.claimed, 3);
+  const list = await runInTenant(prisma, tenantId, (ctx) => listInstances(ctx, c.id));
+  assert.equal(list.total, 3);
+  assert.equal(list.items.length, 3);
+  assert.ok(list.items.every((i) => i.id !== pendingId), '序號明細不應列出發送中的券');
+  // 篩選狀態時也不列出
+  const claimed = await runInTenant(prisma, tenantId, (ctx) => listInstances(ctx, c.id, { status: 'CLAIMED' }));
+  assert.equal(claimed.total, 3);
+  // 匯出也不列出：附券廣播會讓發送中的券變多（A15 15.22）
+  const pendingCode = r.issued[3].code;
+  const csv = await exportInstancesCsv((fn) => runInTenant(prisma, tenantId, fn), c.id);
+  assert.equal(csv.trim().split('\n').length, 1 + 3, 'CSV 應只有標題列與 3 張已送出的券');
+  assert.ok(!csv.includes(pendingCode), 'CSV 不應列出發送中的券');
+  // 決定是否改背景匯出的張數也不算發送中的券
+  assert.equal(await runInTenant(prisma, tenantId, (ctx) => countInstances(ctx, c.id)), 3);
 });
 
 it('CSV 匯出含 BOM 且不外洩領取憑證', async () => {
@@ -352,7 +339,7 @@ it('CSV 欄位含逗號時不破壞格式', async () => {
       codeMode: 'UNIQUE_CODE', redeemMode: 'SELF',
     }));
   await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), c.id, 'ACTIVE'));
-  await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactA], requireClaim: false }));
+  await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactA] }));
   const csv = await exportInstancesCsv((fn) => runInTenant(prisma, tenantId, fn), c.id);
   const lines = csv.split('\n');
   // 每列欄位數須一致（用引號包住後，逗號不會被誤判為分隔）
@@ -382,7 +369,7 @@ it('開啟別人的券回報查無此券', async () => {
       afterOpenMinutes: 15, codeMode: 'UNIQUE_CODE', redeemMode: 'SELF', perContactLimit: 5,
     }));
   assert.ok((await withTenant(prisma, tenantId, (tx) => changeStatus(ctxOf(tx, tenantId), c.id, 'ACTIVE'))).ok);
-  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactB], requireClaim: false }));
+  const r = await runInTenant(prisma, tenantId, (ctx) => issueCoupons(ctx, c.id, { contactIds: [contactB] }));
   const opened = await runInTenant(prisma, tenantId, (ctx) => openInstance(ctx, r.issued[0].id, contactA));
   assert.equal(opened.ok, false);
   assert.equal(!opened.ok && opened.reason, 'NOT_FOUND');

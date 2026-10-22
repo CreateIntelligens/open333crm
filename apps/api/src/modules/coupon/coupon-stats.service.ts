@@ -41,11 +41,11 @@ export async function getCouponStats(
   const coupon = await db.coupon.findFirst({ where: { id: couponId, tenantId }, select: { id: true, codeMode: true } });
   if (!coupon) return null;
 
-  // 逐一 count 各狀態
+  // 逐一 count 各狀態。發送中的券（還沒確認送到顧客手上，design D16）不計，與數據報表一致
   const statuses = ['ISSUED', 'CLAIMED', 'OPENED', 'REDEEMED', 'EXPIRED', 'REVOKED'] as const;
   const counts = await Promise.all(
     statuses.map((status) =>
-      db.couponInstance.count({ where: { couponId, tenantId, status } }),
+      db.couponInstance.count({ where: { couponId, tenantId, status, deliveryPendingAt: null } }),
     ),
   );
   const [pendingClaim, claimedOnly, openedOnly, redeemed, expired, revoked] = counts;
@@ -55,7 +55,7 @@ export async function getCouponStats(
   const claimed = claimedOnly + openedOnly + redeemed;
   const opened = openedOnly + redeemed;
 
-  const linkOpened = await db.couponInstance.count({ where: { couponId, tenantId, linkOpenedAt: { not: null } } });
+  const linkOpened = await db.couponInstance.count({ where: { couponId, tenantId, deliveryPendingAt: null, linkOpenedAt: { not: null } } });
 
   const poolSize =
     coupon.codeMode === 'IMPORTED_CODES'
@@ -127,7 +127,8 @@ export async function listInstances(
   const page = Math.max(1, opts.page ?? 1);
   const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
 
-  const where: Prisma.CouponInstanceWhereInput = { couponId, tenantId };
+  // 發送中的券還沒送到顧客手上，送不出就會被作廢，不列在序號明細（與成效統計一致）
+  const where: Prisma.CouponInstanceWhereInput = { couponId, tenantId, deliveryPendingAt: null };
   if (opts.status === 'CLAIMED') where.status = { in: ['CLAIMED', 'OPENED'] };
   else if (opts.status) where.status = opts.status as never;
   const claimedAt = dateRange(opts.claimedFrom, opts.claimedTo);
@@ -181,7 +182,8 @@ export async function readInstancesForExport(
   take: number = EXPORT_PAGE_SIZE,
 ): Promise<ExportRow[]> {
   return ctx.tx.couponInstance.findMany({
-    where: { couponId, tenantId: ctx.tenantId, ...(afterId ? { id: { gt: afterId } } : {}) },
+    // 發送中的券不匯出（與序號明細、成效一致，design D16）
+    where: { couponId, tenantId: ctx.tenantId, deliveryPendingAt: null, ...(afterId ? { id: { gt: afterId } } : {}) },
     include: { contact: { select: { displayName: true } } },
     orderBy: { id: 'asc' },
     take,

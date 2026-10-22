@@ -1,0 +1,97 @@
+// @vitest-environment jsdom
+/**
+ * 券詳情頁「發送給…」（add-coupon-system A15 15.24、design D31）：選一個渠道與對象、
+ * 送出前看到可送達人數與剩餘名額，名額不足時要確認才能送出。替換 API 與資料 hook，只測畫面行為。
+ */
+import assert from 'node:assert/strict';
+import { beforeEach, describe, test, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+const h = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  channels: [
+    { id: 'ch-line', displayName: '門市 LINE', channelType: 'LINE', isActive: true },
+    { id: 'ch-web', displayName: '網站客服', channelType: 'WEBCHAT', isActive: true },
+  ],
+  preview: { matched: 1, reachable: 1, coupon: { remaining: 50, limitReached: 0 }, maxRecipients: 1000 } as Record<string, unknown>,
+}));
+
+vi.mock('#src/lib/api.js', () => ({ default: { get: h.get, post: h.post } }));
+vi.mock('#src/hooks/useChannels.js', () => {
+  const result = { channels: h.channels, isLoading: false, error: undefined, mutate: vi.fn() };
+  return { useChannels: () => result };
+});
+vi.mock('#src/hooks/useContactTags.js', () => {
+  const result = { tags: [{ id: 't1', name: '秋季檔期意向', color: '#000', scope: 'CONTACT' }], isLoading: false };
+  return { useContactTags: () => result };
+});
+vi.mock('#src/hooks/useMarketing.js', () => {
+  const result = { segments: [], isLoading: false, error: undefined, mutate: vi.fn() };
+  return { useSegments: () => result };
+});
+
+import { CouponBatchIssueDialog } from '#src/components/coupons/detail/CouponBatchIssueDialog.js';
+
+const COUPON_ID = '11111111-1111-4111-8111-111111111111';
+const AMY = { id: '22222222-2222-4222-8222-222222222222', displayName: '王小美', phone: null, email: null };
+
+beforeEach(() => {
+  h.get.mockReset();
+  h.post.mockReset();
+  h.get.mockImplementation(async (url: string) => {
+    if (url.startsWith('/contacts')) return { data: { data: [AMY] } };
+    return { data: { data: [] } };
+  });
+  h.post.mockImplementation(async (url: string) => {
+    if (url.endsWith('/batch-issue/preview')) return { data: { data: h.preview } };
+    if (url.endsWith('/batch-issue')) return { data: { data: { broadcastId: 'b1', name: '批次發放 2026-10-22 15:30', status: 'scheduled' } } };
+    throw new Error(`unexpected ${url}`);
+  });
+});
+
+async function pickAmy() {
+  fireEvent.change(screen.getByLabelText('渠道'), { target: { value: 'ch-line' } });
+  fireEvent.change(screen.getByPlaceholderText('輸入姓名、電話或 email 搜尋'), { target: { value: '小美' } });
+  const option = await screen.findByRole('checkbox', { name: /王小美/ });
+  fireEvent.click(option);
+}
+
+describe('從券詳情頁批次發券', () => {
+  test('勾選聯絡人發券', async () => {
+    const onQueued = vi.fn();
+    render(<CouponBatchIssueDialog couponId={COUPON_ID} couponName="秋季九折" open onOpenChange={() => {}} onQueued={onQueued} />);
+    await pickAmy();
+    await screen.findByText(/可送達 1 人/);
+    const submit = screen.getByRole('button', { name: '送出' });
+    await waitFor(() => assert.equal((submit as HTMLButtonElement).disabled, false));
+    await act(async () => {
+      fireEvent.click(submit);
+    });
+    const call = h.post.mock.calls.find(([url]) => url === `/coupons/${COUPON_ID}/batch-issue`);
+    assert.ok(call, '呼叫批次發券 API');
+    assert.deepEqual(call[1], { channelId: 'ch-line', targetType: 'contacts', contactIds: [AMY.id] });
+    assert.equal(onQueued.mock.calls.length, 1);
+  });
+
+  test('只列出可以發訊息的渠道', () => {
+    render(<CouponBatchIssueDialog couponId={COUPON_ID} couponName="秋季九折" open onOpenChange={() => {}} onQueued={() => {}} />);
+    const select = screen.getByLabelText('渠道') as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    assert.ok(values.includes('ch-line'));
+    assert.ok(!values.includes('ch-web'), '網站客服沒有渠道身分可以主動推送');
+  });
+
+  test('預覽顯示剩餘名額', async () => {
+    h.preview = { matched: 80, reachable: 80, coupon: { remaining: 50, limitReached: 5 }, maxRecipients: 1000 };
+    render(<CouponBatchIssueDialog couponId={COUPON_ID} couponName="秋季九折" open onOpenChange={() => {}} onQueued={() => {}} />);
+    await pickAmy();
+    await screen.findByText(/可送達 80 人，剩餘名額 50 張，5 人已達每人上限/);
+    await screen.findByText(/25 人拿不到/);
+    const submit = screen.getByRole('button', { name: '送出' }) as HTMLButtonElement;
+    assert.equal(submit.disabled, true, '名額不足時要先確認');
+    fireEvent.click(screen.getByRole('checkbox', { name: /我了解/ }));
+    await waitFor(() => assert.equal(submit.disabled, false));
+    h.preview = { matched: 1, reachable: 1, coupon: { remaining: 50, limitReached: 0 }, maxRecipients: 1000 };
+  });
+});
