@@ -118,6 +118,33 @@ async function assertSendMaterialReferences(
   }
 }
 
+/**
+ * 「發送優惠券」的 couponId 要是同租戶、進行中的券（add-coupon-system design D25）。
+ * 原本是文字框、存檔不檢查，貼錯或其他租戶的券都能存，規則觸發時才發不出去。
+ * 關鍵字回覆頁、加好友禮頁與 API 都經過這裡。
+ */
+async function assertIssueCouponReferences(
+  prisma: TenantDb,
+  tenantId: string,
+  actions: Array<Record<string, unknown>>,
+): Promise<void> {
+  const ids = actions
+    .filter((a) => a.type === 'issue_coupon')
+    .map((a) => (a.params as { couponId?: unknown } | undefined)?.couponId);
+  if (ids.length === 0) return;
+
+  const message = '找不到可發放的優惠券：發送優惠券要選同一個帳號下、進行中的券';
+  const invalid = () =>
+    new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
+  if (ids.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) throw invalid();
+  const unique = [...new Set(ids as string[])];
+  const found = await prisma.coupon.findMany({
+    where: { tenantId, status: 'ACTIVE', id: { in: unique } },
+    select: { id: true },
+  });
+  if (found.length !== unique.length) throw invalid();
+}
+
 export async function createRule(
   prisma: TenantDb,
   tenantId: string,
@@ -136,6 +163,7 @@ export async function createRule(
   const eventType = String(data.trigger.type ?? '');
   validateRuleContract(eventType, data.conditions, data.actions);
   await assertSendMaterialReferences(prisma, tenantId, data.actions);
+  await assertIssueCouponReferences(prisma, tenantId, data.actions);
 
   const rule = await prisma.automationRule.create({
     data: {
@@ -198,7 +226,10 @@ export async function updateRule(
     const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
     const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
     validateRuleContract(nextEventType, nextConditions, nextActions);
-    if (data.actions !== undefined) await assertSendMaterialReferences(prisma, tenantId, nextActions);
+    if (data.actions !== undefined) {
+      await assertSendMaterialReferences(prisma, tenantId, nextActions);
+      await assertIssueCouponReferences(prisma, tenantId, nextActions);
+    }
   }
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};

@@ -153,3 +153,40 @@ test('沒有對話與聯絡人時，有條件的規則不讓步', async () => {
   });
   assert.equal(await hasMatchingKeywordRule(prisma, TENANT, '你好', 'LINE'), false);
 });
+
+// ── 發券規則也算會回覆（add-coupon-system A15 15.9、design D25）：只發券的關鍵字規則命中時，
+//    AI 原本照常回覆，顧客一次收到兩則 ──
+
+function dbWithCoupon(couponStatus: string) {
+  return {
+    automationRule: {
+      findMany: async () => [
+        {
+          id: 'r1',
+          trigger: { type: 'keyword.matched', keywords: ['領券'], match_mode: 'any' },
+          conditions: { all: [] },
+          actions: [{ type: 'issue_coupon', params: { couponId: 'c-1' } }],
+        },
+      ],
+    },
+    coupon: {
+      findMany: async ({ where }: { where: { id: { in: string[] }; tenantId: string; status?: string } }) =>
+        [{ id: 'c-1', tenantId: TENANT, status: couponStatus }]
+          .filter((c) => where.id.in.includes(c.id) && c.tenantId === where.tenantId)
+          .filter((c) => where.status === undefined || c.status === where.status)
+          .map((c) => ({ id: c.id })),
+    },
+  } as never;
+}
+
+test('規則發送進行中的優惠券', async () => {
+  assert.equal(await hasMatchingKeywordRule(dbWithCoupon('ACTIVE'), TENANT, '我要領券', 'LINE'), true);
+});
+
+test('規則的優惠券不是進行中', async () => {
+  assert.equal(await hasMatchingKeywordRule(dbWithCoupon('PAUSED'), TENANT, '我要領券', 'LINE'), false);
+});
+
+test('網站聊天室的發券規則', async () => {
+  assert.equal(await hasMatchingKeywordRule(dbWithCoupon('ACTIVE'), TENANT, '我要領券', 'WEBCHAT'), false);
+});
