@@ -6,7 +6,7 @@
  * 其他訂閱者不會再處理同一個事件。
  */
 import { Worker, type Job, type WorkerOptions } from 'bullmq';
-import { logger, type EventJobData } from '@open333crm/core';
+import { EVENT_AUTOMATION_QUEUE, logger, WEBHOOK_DELIVERY_QUEUE, type EventJobData } from '@open333crm/core';
 import { appEventFromJob, type AppEvent, type AppEventName } from './event-bus.js';
 
 /** 訂閱者收到的事件：比 AppEvent 多了事件 id，衍生的認領鍵與 job id 都用它 */
@@ -38,10 +38,21 @@ export function subscriberProcessor(handler: EventHandler): JobProcessor {
 
 export type CreateWorker = (queue: string, processor: JobProcessor) => { close(): Promise<void> };
 
+/**
+ * 每個 Worker 同時處理的 job 數。BullMQ 預設是 1：一個事件的 AI 回覆跑幾十秒時，其他租戶的事件都要等。
+ * 自動化（呼叫 LLM）與 webhook-delivery（每次 HTTP 最多等 10 秒）比較慢，所以設得比較高。
+ */
+const WORKER_CONCURRENCY: Record<string, number> = { [EVENT_AUTOMATION_QUEUE]: 10, [WEBHOOK_DELIVERY_QUEUE]: 10 };
+const DEFAULT_WORKER_CONCURRENCY = 5;
+
 /** options：個別佇列的 Worker 設定，例如 webhook-delivery 的自訂重試間隔 */
 export function bullWorkerFactory(redisUrl: string, options: Record<string, Partial<WorkerOptions>> = {}): CreateWorker {
   return (queue, processor) => {
-    const worker = new Worker(queue, processor, { ...options[queue], connection: { url: redisUrl } });
+    const worker = new Worker(queue, processor, {
+      concurrency: WORKER_CONCURRENCY[queue] ?? DEFAULT_WORKER_CONCURRENCY,
+      ...options[queue],
+      connection: { url: redisUrl },
+    });
     worker.on('failed', (job, err) => {
       logger.error(`[${queue}] job ${job?.id} 失敗（第 ${job?.attemptsMade ?? '?'} 次）`, err);
     });

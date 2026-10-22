@@ -153,6 +153,8 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | `usage-alert-email` | 通知訂閱者 | `usage-alert-email.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `api-scheduler` | `job-scheduler.ts` | 同一個檔案的 Worker | 不重試 | 完成 100 筆、失敗 50 筆 |
 
+前 3 列的 Worker 每個同時處理多個 job，所以一個事件處理很久時，其他事件不用等。每個佇列的並行數見 `subscriber-workers.ts` 的 `WORKER_CONCURRENCY`。
+
 由 `apps/workers` 消費的佇列（`apps/workers/src/handlers/`）：
 
 | 佇列 | 生產者 | 消費者 | 完成與失敗的工作保留多久 |

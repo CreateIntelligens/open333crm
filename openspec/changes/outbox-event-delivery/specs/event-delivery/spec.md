@@ -81,6 +81,11 @@
 - **WHEN** 自動化或通知訂閱者處理事件 E 時，送出下一步的 job（規則評估、站內通知、告警信）失敗
 - **THEN** 該訂閱者處理 E 的 job MUST 失敗，由佇列重試
 
+#### Scenario: Slow event does not block other events
+
+- **WHEN** 自動化訂閱者正在處理事件 E，E 的 AI 回覆要等很久，佇列裡還有事件 F
+- **THEN** 同一個 API 行程 MUST 不等 E 處理完就開始處理 F
+
 ### Requirement: 舊寫法的事件也送給訂閱者
 
 還沒搬遷的程式直接把事件交給 API 行程內的事件匯流排。系統 MUST 為這些事件產生事件 id，並送給同樣的訂閱者佇列。這些事件不寫進 outbox，保證是最多一次：行程在送出之前結束時，事件遺失。

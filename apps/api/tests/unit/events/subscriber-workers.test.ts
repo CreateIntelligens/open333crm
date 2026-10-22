@@ -4,9 +4,31 @@
  * Worker 換成記錄 processor 的假實作；BullMQ 重試一個 job 時，只會再呼叫那個佇列的 processor。
  */
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { EVENT_AUTOMATION_QUEUE, EVENT_WEBHOOK_QUEUE, type EventJobData } from '@open333crm/core';
-import { createEventRouter, startQueueWorkers, subscriberProcessor } from '#src/events/subscriber-workers.js';
+import { test, vi } from 'vitest';
+
+const createdWorkers = vi.hoisted(() => [] as Array<{ queue: string; opts: Record<string, unknown> }>);
+vi.mock('bullmq', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Worker: class {
+    constructor(queue: string, _processor: unknown, opts: Record<string, unknown>) {
+      createdWorkers.push({ queue, opts });
+    }
+    on() {
+      return this;
+    }
+    async close() {}
+  },
+}));
+
+import {
+  EVENT_AUTOMATION_QUEUE,
+  EVENT_NOTIFICATION_QUEUE,
+  EVENT_WEBHOOK_QUEUE,
+  USAGE_ALERT_EMAIL_QUEUE,
+  WEBHOOK_DELIVERY_QUEUE,
+  type EventJobData,
+} from '@open333crm/core';
+import { bullWorkerFactory, createEventRouter, startQueueWorkers, subscriberProcessor } from '#src/events/subscriber-workers.js';
 
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
 const job = (data: EventJobData) => ({ id: data.eventId, data });
@@ -60,4 +82,25 @@ test('沒有處理程式的事件名稱：不丟錯', async () => {
   await subscriberProcessor(router.handle)(
     job({ eventId: 'e3', name: 'case.closed', tenantId: TENANT, timestamp: new Date().toISOString(), payload: {} }) as never,
   );
+});
+
+test('Slow event does not block other events：每個 Worker 同時處理多個 job', () => {
+  createdWorkers.length = 0;
+  const createWorker = bullWorkerFactory('redis://localhost:6379', {
+    [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: () => 1_000 } },
+  });
+  const noop = async () => {};
+  for (const queue of [EVENT_AUTOMATION_QUEUE, EVENT_NOTIFICATION_QUEUE, EVENT_WEBHOOK_QUEUE, USAGE_ALERT_EMAIL_QUEUE, WEBHOOK_DELIVERY_QUEUE]) {
+    createWorker(queue, noop);
+  }
+  const concurrency = Object.fromEntries(createdWorkers.map((w) => [w.queue, w.opts.concurrency]));
+  assert.deepEqual(concurrency, {
+    [EVENT_AUTOMATION_QUEUE]: 10,
+    [EVENT_NOTIFICATION_QUEUE]: 5,
+    [EVENT_WEBHOOK_QUEUE]: 5,
+    [USAGE_ALERT_EMAIL_QUEUE]: 5,
+    [WEBHOOK_DELIVERY_QUEUE]: 10,
+  });
+  // 個別佇列的設定仍然生效
+  assert.ok(createdWorkers.find((w) => w.queue === WEBHOOK_DELIVERY_QUEUE)!.opts.settings);
 });

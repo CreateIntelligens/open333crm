@@ -91,6 +91,8 @@ api 與 workers 共用（規劃 9.8 的決定）：
 - 每個訂閱者一個佇列，所以 job id 直接用事件 id。不必組成 `<事件 id>__<訂閱者>`，也避開 bullmq 不接受單一 `:` 的限制。
 - 訂閱者 job 在 API 行程處理：自動化要用 `fastify.io` 推播，也要呼叫 api 的 service（agent、KB、`deliverToChannel`）。BullMQ `Worker` 在 API 行程已有先例（`job-scheduler.ts`）。
 - 三個佇列：`removeOnComplete: { age: 86400 }`、`removeOnFail: { age: 604800 }`、`attempts: 3`、指數退避，基準 5 秒。訂閱者在本 change 內都能承受重複，所以可以重試。
+- Worker 的並行數：`event-automation` 與 `webhook-delivery` 是 10，其他是 5。BullMQ 預設是 1，一個事件的 AI 回覆跑幾十秒時，其他租戶的事件都要等；改成佇列之前，EventEmitter 的 handler 是並行執行的（review-loop 2026-10-22）。
+- 還沒處理：`message.received` 先做完自動轉接與 AI 回覆，才送出規則評估，所以關鍵字規則的回覆要等 AI 回覆跑完。把規則評估移到最前面，或把 AI 工作拆到另一個佇列，另外評估（2026-10-22 決定）。
 - 訂閱者 job 的資料庫存取分成兩段：
   - 呼叫外部服務的階段在交易之外，照舊用 `prismaAdmin`，查詢明確帶 `tenantId`。外部服務包括 LLM、去識別化服務與 KB 檢索。這個階段也有寫入，例如 `runAgentReply()` 建立 `agentRun`。
   - 認領、寫入結果與發出衍生事件放在一個 `inTenant()` 交易內。`deps.events` 是寫 outbox 的實作，所以衍生事件也經 outbox。
@@ -185,3 +187,4 @@ rich-menu 的 bind 與 unbind 本 change 不改，見風險。
 - **匯出中途結束時會整份重做。** 匯出檔的 key 固定，重做的結果覆蓋前一次的檔案，只多花一次產生檔案的時間。
 - **outbox 寫入增加交易內的工作。** 每個事件多一筆 INSERT。正式程式要到搬遷時才使用，試點時一起量測（規劃 6.2）。
 - **每次都送不出的資料列會排在補送的最前面。** relay 依 `createdAt` 一次取 500 筆。某一列每次都送不出時，該列一直留在最前面；這種資料列累積到 500 筆，較新的資料列就補送不到。`writeOutbox()` 的型別要求 job 必須有 `queueName`，所以正常寫入的資料列不會每次失敗。review-loop 2026-10-22 記錄，先不處理。
+- **匯出工作同時執行、其中一次失敗時，請求停在 `failed`。** 執行 A 失敗、把請求改成 `failed` 之後，執行 B 上傳成功，但 B 改成 `completed` 的條件（`processing`）不成立，B 直接結束。請求顯示失敗，上傳的檔案留在 MinIO，沒有請求指向它；使用者要重新申請匯出。要兩次執行同時進行、其中一次失敗才會發生；`failed` 維持終態（2026-10-22 決定）。
