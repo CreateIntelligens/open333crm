@@ -22,9 +22,14 @@ interface ApiErrorShape {
   response?: { status?: number; data?: { error?: { code?: string; details?: { remainingAttempts?: number } } } };
 }
 
+/** 取出錯誤回應；不是物件的錯誤（例如 null）回 undefined，交給預設訊息處理 */
+function responseOf(err: unknown): ApiErrorShape['response'] {
+  return err && typeof err === 'object' ? (err as ApiErrorShape).response : undefined;
+}
+
 /** 依後端錯誤代碼決定畫面上的說明；'link_expired' 表示票券連結本身失效，改顯示連結已失效頁 */
 function describeError(err: unknown, fallback: string): { message: string } | 'link_expired' {
-  const res = (err as ApiErrorShape).response;
+  const res = responseOf(err);
   const code = res?.data?.error?.code;
   switch (code) {
     case 'LINK_EXPIRED':
@@ -113,7 +118,7 @@ export function EmailCodeStep({
     try {
       onVerified(await verifyWalletEmailCode(token, code));
     } catch (err) {
-      const errorCode = (err as ApiErrorShape).response?.data?.error?.code;
+      const errorCode = responseOf(err)?.data?.error?.code;
       // 這組驗證碼已不能用：清空輸入、可以馬上重寄（伺服器仍限制寄送次數）
       if (errorCode === 'VERIFICATION_CODE_LOCKED' || errorCode === 'VERIFICATION_CODE_EXPIRED') {
         setCode('');

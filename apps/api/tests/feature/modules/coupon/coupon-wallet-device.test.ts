@@ -143,6 +143,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   mails.length = 0;
+  // 上一個測試若在用完排入的驗證碼前失敗，不讓剩下的值影響後面的測試
+  nextCodes.length = 0;
 });
 
 afterAll(async () => {
@@ -330,6 +332,28 @@ describe('以原 email 驗證碼確認身分', () => {
     assert.deepEqual([mails[0].code, mails[1].code], ['111111', '222222']);
     assert.equal((await verifyWalletEmailCodeFlow(flowDeps, token, mails[0].code)).status, 'invalid_code');
     assert.equal((await verifyWalletEmailCodeFlow(flowDeps, token, mails[1].code)).status, 'ok');
+  });
+
+  it('驗證碼只能用於寄出它的連結', async () => {
+    const p = await person('兩張券', fbChannel, 'FB', { verified: true, email: 'two@example.com' });
+    const first = await issue(p);
+    const second = await issue(p);
+    await requestWalletEmailCodeFlow(flowDeps, first.token);
+    const result = await verifyWalletEmailCodeFlow(flowDeps, second.token, mails[0].code);
+    assert.notEqual(result.status, 'ok');
+    assert.equal((await verifyWalletEmailCodeFlow(flowDeps, first.token, mails[0].code)).status, 'ok');
+  });
+
+  it('開啟票券時資料庫暫時失敗，同一組驗證碼可以再試一次', async () => {
+    const p = await person('暫時失敗', fbChannel, 'FB', { verified: true, email: 'retry@example.com' });
+    const { token } = await issue(p);
+    await requestWalletEmailCodeFlow(flowDeps, token);
+    // 開交易時失敗（例如資料庫連線暫時中斷）
+    const broken = new Proxy(prisma, {
+      get: (target, prop) => (prop === '$transaction' ? () => Promise.reject(new Error('資料庫暫時無法連線')) : Reflect.get(target, prop)),
+    });
+    await assert.rejects(verifyWalletEmailCodeFlow({ ...flowDeps, prisma: broken }, token, mails[0].code), /資料庫暫時無法連線/);
+    assert.equal((await verifyWalletEmailCodeFlow(flowDeps, token, mails[0].code)).status, 'ok');
   });
 
   it('同一組驗證碼同時送出兩次，只有一次成功（驗證碼只能用一次）', async () => {

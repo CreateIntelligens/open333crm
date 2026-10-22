@@ -328,6 +328,13 @@ describe('新裝置或轉傳的連結：以原 email 驗證碼確認身分（des
     assert.ok(!(screen.getByRole('button', { name: '寄送驗證碼' }) as HTMLButtonElement).disabled);
   });
 
+  test('寄送時收到不是物件的錯誤（例如 null）：仍顯示錯誤，不讓畫面壞掉（PR #359 bot 審查）', async () => {
+    await openCodeStep();
+    mocks.requestWalletEmailCode.mockRejectedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: '寄送驗證碼' }));
+    await screen.findByText('無法寄送驗證碼，請確認網路後再試');
+  });
+
   test('寄出後重新寄送要等冷卻時間', async () => {
     await openCodeStep();
     await sendCode();

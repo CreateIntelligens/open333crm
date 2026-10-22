@@ -12,7 +12,7 @@ import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import type { FanIdentity } from './coupon-fan.service.js';
 import { reuseOrIssueRegistrationToken } from '../identity-binding/identifier-registration.js';
 import {
-  checkVerificationCode, consumeVerificationCode,
+  checkVerificationCode, consumeVerificationCode, restoreVerificationCode,
   clearVerificationCode,
   sendVerificationCode,
   type VerificationCodeKeys,
@@ -183,9 +183,17 @@ export async function verifyWalletEmailCodeFlow(
   const checked = await checkVerificationCode(deps.store, keys, code);
   if (checked.status !== 'ok') return checked;
   // 驗證碼只能用一次：並行送出同一組碼時，只有先取走的請求繼續
-  if (!(await consumeVerificationCode(deps.store, keys, checked.claim))) return { status: 'code_expired' };
+  const consumed = await consumeVerificationCode(deps.store, keys, checked.claim);
+  if (!consumed.ok) return { status: 'code_expired' };
 
-  const result = await inTenantOf(deps, payload.tenantId, (ctx) => completeWalletEmailCode(ctx, deps, payload, checked.value));
+  let result: Awaited<ReturnType<typeof completeWalletEmailCode>>;
+  try {
+    result = await inTenantOf(deps, payload.tenantId, (ctx) => completeWalletEmailCode(ctx, deps, payload, checked.value));
+  } catch (err) {
+    // 開啟失敗（例如資料庫暫時無法連線）：放回驗證碼，顧客可用同一組再試
+    await restoreVerificationCode(deps.store, keys, checked.claim, consumed.ttlMs);
+    throw err;
+  }
   // 驗證碼只能用一次；寄送次數保留，避免以同一個連結反覆寄信
   await clearVerificationCode(deps.store, keys, false);
   return result;

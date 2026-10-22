@@ -140,8 +140,21 @@ export async function checkVerificationCode(
  * 取走通過檢查的驗證碼（GETDEL 是原子操作）：同一組驗證碼的並行請求只有第一個取得，
  * 其他請求回 false（視為驗證碼已失效）。重寄換掉驗證碼後，舊的檢查結果也取不到。
  */
-export async function consumeVerificationCode(store: BindingStore, keys: VerificationCodeKeys, claim: string): Promise<boolean> {
-  return (await store.getdel(keys.code)) === claim;
+export async function consumeVerificationCode(
+  store: BindingStore,
+  keys: VerificationCodeKeys,
+  claim: string,
+): Promise<{ ok: true; ttlMs: number } | { ok: false }> {
+  const ttlMs = await store.pttl(keys.code);
+  return (await store.getdel(keys.code)) === claim ? { ok: true, ttlMs } : { ok: false };
+}
+
+/**
+ * 取走驗證碼後的後續流程失敗（例如資料庫暫時無法連線）時放回，讓顧客用同一組驗證碼再試，
+ * 不必重寄（寄送次數有上限）。NX：期間若已重寄新的驗證碼就不覆蓋。
+ */
+export async function restoreVerificationCode(store: BindingStore, keys: VerificationCodeKeys, claim: string, ttlMs: number): Promise<void> {
+  if (ttlMs > 0) await store.set(keys.code, claim, 'PX', ttlMs, 'NX');
 }
 
 /** 清除驗證碼與錯誤次數；clearSends 為 true 時一併清除寄送次數 */

@@ -415,3 +415,6 @@
 - [x] 14.5 實作：裝置憑證簽發與驗證（portal-auth）；`openWalletSession` 檢查裝置憑證、回 `email_code_required`；`POST /fan/coupons/session` 收 `deviceTokens`；`POST /session/code`、`/session/code/verify`；驗證碼寄送與比對抽成共用函式（ownership-code）；LIFF `verified` 與 email 登記驗證成功附上裝置憑證
 - [x] 14.6 前端：`lib/fan-device.ts`；票券頁帶裝置憑證、存新的裝置憑證、新增 email 驗證碼步驟（寄送、輸入、確認、重寄冷卻、各種錯誤）；LIFF 入口與 email 登記頁存裝置憑證
 - [x] 14.7 `pnpm test`、優惠券與 identity-binding feature 測試通過；三個租戶隔離檢查 `--strict` 無新增違規；`node scripts/validate-openspec.mjs add-coupon-system` 通過；CHANGELOG 新增條目
+- [x] 14.8 測試（PR #359 bot 審查）：並行送出同一組驗證碼只有一次成功、開啟票券時資料庫暫時失敗可用同一組再試（兩者修正前失敗）；「驗證碼只能用於寄出它的連結」寫完即通過，突變驗證：讓所有連結共用同一組驗證碼的 Redis 鍵與鹽，測試失敗
+- [x] 14.9 實作：驗證碼通過後以 GETDEL 取走（consumeVerificationCode），後續失敗時以剩餘效期放回（restoreVerificationCode）；驗證碼畫面的錯誤處理在錯誤不是物件時改顯示預設訊息
+
