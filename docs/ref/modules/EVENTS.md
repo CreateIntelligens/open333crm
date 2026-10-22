@@ -109,7 +109,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 4. 快路徑與補送同時送出時，BullMQ 以 job id 擋住重複的 job。訂閱者佇列保留完成的 job 24 小時、失敗的 job 7 天，這段時間內同一個事件 id 不會再建立 job。
 5. `outbox-cleanup` 排程每天刪除已送出超過 7 天的資料列。未送出的資料列不刪。
 
-`ctx.enqueue(queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。
+`ctx.enqueue(queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 不能帶 `jobId`、`deduplication`、`debounce`：job id 由 outbox id 決定，去重鍵會讓 BullMQ 不建立這個 job，事件就此遺失。
 
 ### 副作用的認領紀錄
 

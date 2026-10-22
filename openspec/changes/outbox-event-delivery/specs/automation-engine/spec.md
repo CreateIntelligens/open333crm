@@ -108,6 +108,11 @@ workers 處理 `message.received` 的規則評估時，MUST 一併比對啟用�
 - **WHEN** 訊息 M 命中規則 R，M 的規則評估執行兩次
 - **THEN** 系統 MUST 只發出一個 R 的 `keyword.matched`
 
+#### Scenario: Keyword event write fails
+
+- **WHEN** 訊息 M 命中規則 R，認領或寫入 `keyword.matched` 的交易失敗
+- **THEN** M 的規則評估 job MUST 失敗，由佇列重試
+
 ### Requirement: 情緒分析每則訊息最多一次
 
 系統 MUST 以「`sentiment` + 入站訊息 id」認領，認領成功才寫入情緒結果；結果是負面且信心值至少 0.6 時，在同一個交易發出 `sentiment.negative`。呼叫 LLM 之前，這則訊息已經有認領紀錄時，系統 MUST NOT 呼叫 LLM。

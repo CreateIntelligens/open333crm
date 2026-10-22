@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import {
   dispatchOutboxRows,
+  writeOutbox,
   EVENT_AUTOMATION_QUEUE,
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
@@ -93,4 +94,14 @@ test("kind = 'job'：送到 queueName，帶原本的選項，job id 是 outbox i
     { queue: 'rich-menu-bind', name: 'rich-menu:bind', data: { contactId: 'x' }, opts: { attempts: 2, jobId: 'j1' } },
   ]);
   assert.deepEqual(marked, ['j1']);
+});
+
+test('job 選項不能帶 deduplication 或 debounce：寫入 outbox 時丟錯，交易 rollback', async () => {
+  const tx = { outbox: { create: async () => assert.fail('不應寫入') } };
+  for (const opts of [{ deduplication: { id: 'shared' } }, { debounce: { id: 'shared' } }]) {
+    await assert.rejects(
+      writeOutbox(tx as never, { tenantId: TENANT, kind: 'job', name: 'x', queueName: 'q', payload: {}, jobOptions: opts }),
+      /deduplication|debounce/,
+    );
+  }
 });

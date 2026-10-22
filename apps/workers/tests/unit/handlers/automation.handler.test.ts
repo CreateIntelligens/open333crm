@@ -122,3 +122,11 @@ test('同一則訊息評估兩次：只發出一個 rule-hours 的 keyword.match
   assert.equal(matched[0].payload.ruleId, 'rule-hours');
   assert.deepEqual(matched[0].payload.matchedKeywords, ['營業時間']);
 });
+
+test('Keyword event write fails：寫入 keyword.matched 的交易失敗時處理失敗，由佇列重試', async () => {
+  const { db } = fakeDb();
+  (db.outbox as { create: unknown }).create = async () => {
+    throw new Error('connection reset');
+  };
+  await assert.rejects(handleAutomationJob(job('請問營業時間'), db as never, redis as never), /connection reset/);
+});

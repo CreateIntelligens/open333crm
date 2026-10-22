@@ -112,16 +112,16 @@ async function emitKeywordMatched(
     logger.warn(`[automation] keyword.matched not emitted: job has no messageId or eventId (rule ${ruleId})`);
     return;
   }
-  try {
-    const row = await prisma.$transaction(async (tx) => {
-      if (!(await claimSideEffect(tx, { tenantId, kind: 'keyword_matched', sourceId, subKey: ruleId }))) return null;
-      return writeOutbox(tx, { tenantId, kind: 'event', name: 'keyword.matched', payload: context });
-    });
-    // 快路徑；失敗時資料列留在 outbox，由 API 的 outbox-relay 補送
-    if (row) await dispatchOutboxRows(prisma, [row]);
-  } catch (err) {
-    logger.error(`[automation] keyword.matched emit failed (rule ${ruleId})`, err);
-  }
+  // 交易失敗時丟錯：沒有認領也沒有 outbox，只能由 BullMQ 重試這個 job（規則動作已各自認領）
+  const row = await prisma.$transaction(async (tx) => {
+    if (!(await claimSideEffect(tx, { tenantId, kind: 'keyword_matched', sourceId, subKey: ruleId }))) return null;
+    return writeOutbox(tx, { tenantId, kind: 'event', name: 'keyword.matched', payload: context });
+  });
+  if (!row) return;
+  // 快路徑；失敗時資料列留在 outbox，由 API 的 outbox-relay 補送
+  await dispatchOutboxRows(prisma, [row]).catch((err: unknown) =>
+    logger.error(`[automation] keyword.matched dispatch failed, left for outbox-relay (rule ${ruleId})`, err),
+  );
 }
 
 async function evaluateAndExecute(

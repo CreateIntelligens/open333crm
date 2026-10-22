@@ -36,10 +36,22 @@ const ROW_SELECT = {
 } as const;
 
 /**
+ * BullMQ 遇到相同的去重鍵時回傳既有的 job、不建立新 job，dispatch 卻會把資料列標記已送出，
+ * 事件就此遺失；不同租戶用同一個鍵時還會互相抑制。所以 outbox 的 job 不接受這些選項。
+ */
+const FORBIDDEN_JOB_OPTIONS = ['deduplication', 'debounce'] as const;
+
+/**
  * 在交易內寫入一筆 outbox。tenantId 必填：workers 用 admin 連線寫入，沒有 RLS 補上租戶。
- * jobOptions 的 jobId 會被 outbox id 取代。
+ * jobOptions 的 jobId 會被 outbox id 取代；帶 deduplication 或 debounce 時丟錯。
  */
 export async function writeOutbox(tx: Pick<Prisma.TransactionClient, 'outbox'>, input: OutboxInput): Promise<OutboxRow> {
+  if (input.kind === 'job' && input.jobOptions) {
+    const forbidden = FORBIDDEN_JOB_OPTIONS.filter((key) => key in input.jobOptions!);
+    if (forbidden.length > 0) {
+      throw new Error(`outbox 的 job 不能帶 ${forbidden.join('、')}：job id 由 outbox id 決定`);
+    }
+  }
   return tx.outbox.create({
     data: {
       tenantId: input.tenantId,

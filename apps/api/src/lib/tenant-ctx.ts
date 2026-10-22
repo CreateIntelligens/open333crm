@@ -31,9 +31,14 @@ export interface TenantCtx {
   notifyAgent(agentId: string, name: AgentPushName, data: unknown): void;
   /** 在交易內寫進 outbox，事件的 tenantId 由 ctx 填入；commit 之後送給訂閱者。保證是至少一次 */
   publish(name: AppEventName, payload: Record<string, unknown>): Promise<void>;
-  /** 在交易內寫進 outbox；commit 之後送進 queueName 的佇列，job id 是 outbox id。保證是至少一次 */
-  enqueue(queueName: string, name: string, data: unknown, opts?: JobsOptions): Promise<void>;
+  /**
+   * 在交易內寫進 outbox；commit 之後送進 queueName 的佇列，job id 是 outbox id。保證是至少一次。
+   * opts 不接受 jobId、deduplication、debounce：這些選項會讓 BullMQ 不建立這筆 job
+   */
+  enqueue(queueName: string, name: string, data: unknown, opts?: OutboxJobOptions): Promise<void>;
 }
+
+export type OutboxJobOptions = Omit<JobsOptions, 'jobId' | 'deduplication' | 'debounce'>;
 
 /** 業務事件與 job 的送出方式。正式程式用 createOutboxPublisher()，單元測試注入假的實作 */
 export interface EventPublisher {
