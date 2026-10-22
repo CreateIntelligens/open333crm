@@ -12,7 +12,7 @@ import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import type { FanIdentity } from './coupon-fan.service.js';
 import { reuseOrIssueRegistrationToken } from '../identity-binding/identifier-registration.js';
 import {
-  checkVerificationCode,
+  checkVerificationCode, consumeVerificationCode,
   clearVerificationCode,
   sendVerificationCode,
   type VerificationCodeKeys,
@@ -182,6 +182,8 @@ export async function verifyWalletEmailCodeFlow(
   const keys = walletCodeKeys(token);
   const checked = await checkVerificationCode(deps.store, keys, code);
   if (checked.status !== 'ok') return checked;
+  // 驗證碼只能用一次：並行送出同一組碼時，只有先取走的請求繼續
+  if (!(await consumeVerificationCode(deps.store, keys, checked.claim))) return { status: 'code_expired' };
 
   const result = await inTenantOf(deps, payload.tenantId, (ctx) => completeWalletEmailCode(ctx, deps, payload, checked.value));
   // 驗證碼只能用一次；寄送次數保留，避免以同一個連結反覆寄信

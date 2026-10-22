@@ -100,7 +100,8 @@ export async function sendVerificationCode(
 }
 
 export type CheckVerificationCodeResult =
-  | { status: 'ok'; value: string }
+  /** claim 是通過時讀到的驗證碼紀錄，要「只能用一次」的呼叫端交給 consumeVerificationCode */
+  | { status: 'ok'; value: string; claim: string }
   | { status: 'code_expired' }
   | { status: 'locked' }
   | { status: 'invalid_code'; remainingAttempts: number };
@@ -132,7 +133,15 @@ export async function checkVerificationCode(
   if (!/^\d{6}$/.test(code) || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     return { status: 'invalid_code', remainingAttempts: MAX_CODE_ATTEMPTS - attempts };
   }
-  return { status: 'ok', value: pending.value };
+  return { status: 'ok', value: pending.value, claim: raw };
+}
+
+/**
+ * 取走通過檢查的驗證碼（GETDEL 是原子操作）：同一組驗證碼的並行請求只有第一個取得，
+ * 其他請求回 false（視為驗證碼已失效）。重寄換掉驗證碼後，舊的檢查結果也取不到。
+ */
+export async function consumeVerificationCode(store: BindingStore, keys: VerificationCodeKeys, claim: string): Promise<boolean> {
+  return (await store.getdel(keys.code)) === claim;
 }
 
 /** 清除驗證碼與錯誤次數；clearSends 為 true 時一併清除寄送次數 */

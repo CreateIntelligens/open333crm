@@ -39,7 +39,8 @@ export function getFanDeviceTokens(): string[] {
 }
 
 export function rememberFanDeviceToken(token: string): void {
-  if (!token) return;
+  // 只在瀏覽器執行；伺服器端轉譯或測試環境沒有 localStorage
+  if (!token || typeof window === 'undefined') return;
   try {
     const identity = identityOf(token);
     const rest = getFanDeviceTokens().filter((t) => t !== token && (identity === null || identityOf(t) !== identity));

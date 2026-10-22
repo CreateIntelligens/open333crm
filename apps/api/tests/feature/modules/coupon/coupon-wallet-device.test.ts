@@ -10,7 +10,16 @@
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, it, vi } from 'vitest';
+
+// 驗證碼由 randomInt(0, 1_000_000) 產生；排入的值依序取用，讓「重寄後舊碼失效」不會因兩組碼碰巧相同而漏測
+const nextCodes = vi.hoisted(() => [] as number[]);
+vi.mock('node:crypto', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('node:crypto')>();
+  const randomInt = ((min: number, max?: number) =>
+    min === 0 && max === 1_000_000 && nextCodes.length > 0 ? nextCodes.shift()! : (mod.randomInt as (a: number, b?: number) => number)(min, max)) as typeof mod.randomInt;
+  return { ...mod, default: { ...mod, randomInt }, randomInt };
+});
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from '#src/config/env.js';
 import { withTenant } from '#src/lib/tenant-db.js';
@@ -315,12 +324,23 @@ describe('以原 email 驗證碼確認身分', () => {
   it('重寄後舊的驗證碼不能用', async () => {
     const p = await person('重寄', fbChannel, 'FB', { verified: true, email: 'resend@example.com' });
     const { token } = await issue(p);
+    nextCodes.push(111111, 222222);
     await requestWalletEmailCodeFlow(flowDeps, token);
     await requestWalletEmailCodeFlow(flowDeps, token);
-    if (mails[0].code !== mails[1].code) {
-      assert.equal((await verifyWalletEmailCodeFlow(flowDeps, token, mails[0].code)).status, 'invalid_code');
-    }
+    assert.deepEqual([mails[0].code, mails[1].code], ['111111', '222222']);
+    assert.equal((await verifyWalletEmailCodeFlow(flowDeps, token, mails[0].code)).status, 'invalid_code');
     assert.equal((await verifyWalletEmailCodeFlow(flowDeps, token, mails[1].code)).status, 'ok');
+  });
+
+  it('同一組驗證碼同時送出兩次，只有一次成功（驗證碼只能用一次）', async () => {
+    const p = await person('並行驗證', fbChannel, 'FB', { verified: true, email: 'race@example.com' });
+    const { token } = await issue(p);
+    await requestWalletEmailCodeFlow(flowDeps, token);
+    const results = await Promise.all([
+      verifyWalletEmailCodeFlow(flowDeps, token, mails[0].code),
+      verifyWalletEmailCodeFlow(flowDeps, token, mails[0].code),
+    ]);
+    assert.equal(results.filter((r) => r.status === 'ok').length, 1);
   });
 
   it('寄信失敗', async () => {
