@@ -38,7 +38,7 @@
     "directory": "apps/cli"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.22.1"
   },
   "publishConfig": {
     "access": "public"
@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "tsx": "^4.7.0",
+    "tsx": "^4.22.0",
     "typescript": "^5.4.0"
   }
 }

@@ -4,11 +4,15 @@
   "private": true,
   "license": "GPL-3.0-only",
   "type": "module",
+  "imports": {
+    "#src/*": "./src/*"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc -w"
+    "dev": "tsc -w",
+    "test": "vitest run --project unit"
   },
   "dependencies": {
     "json-rules-engine": "^7.3.1"

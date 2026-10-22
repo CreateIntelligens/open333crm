@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { shouldRunAgentReply } from '#src/modules/automation/automation.worker.js';
+import { shouldRunAgentReply } from '@open333crm/automation';
 
 test('agent-automation-guards', async () => {
   assert.equal(shouldRunAgentReply('off'), false);

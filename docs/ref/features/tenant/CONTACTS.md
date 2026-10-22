@@ -3,7 +3,7 @@
 聯絡人是「客人是誰」。同一個人可能從 LINE、Facebook、網站聊天室各進來一次，系統一開始會把他當成不同的聯絡人，之後可以合併。標籤是貼在聯絡人、對話、工單與素材上的分類，自動化規則與群發都靠它挑對象。
 
 - **資料來源**：`apps/api/src/modules/contact/*`、`apps/api/src/modules/tag/*`、`apps/api/src/modules/webhook/inbound-contact-resolver.ts`、`apps/api/src/modules/identity-binding/email-registration.*`、`apps/api/src/modules/identity-binding/phone-registration.*`、`apps/api/src/modules/identity-binding/identifier-registration.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/api/src/modules/line/line-profile.*`、`packages/core/src/identity/*`、`apps/workers/src/lib/automation-actions.ts`
-- **核對日期**：2026-10-07
+- **核對日期**：2026-10-21
 
 ## 負責的模組
 
@@ -131,7 +131,7 @@
 | 點擊短連結或素材按鈕 | 短連結轉址與進站攔截器 | `system` |
 | 自動化規則 | workers 的 `executeWorkerAutomationActions()` | `automation` |
 
-對聯絡人貼標會發布 `contact.tagged`，事件帶著 `addedBy` 作為來源。自動化規則據此避免「自動化貼標 → 觸發自動化 → 再貼標」的迴圈。workers 貼標後透過 Redis 的 `domain:event` 頻道把事件送回 API 行程的 eventBus，由 `socket.plugin.ts` 轉發。
+對聯絡人貼標會發布 `contact.tagged`，事件帶著 `addedBy` 作為來源。自動化規則據此避免「自動化貼標 → 觸發自動化 → 再貼標」的迴圈。workers 貼標時，在同一個交易把事件寫進 outbox，再送進訂閱者佇列，見[事件與背景工作](../../modules/EVENTS.md#從-workers-回到-api)。
 
 **自動化以名稱找標籤。** 規則的「貼標」動作存的是標籤名稱。workers 依名稱找標籤時不限 scope，找不到就用這個名稱建立一個新標籤。因此標籤被刪除或改名後，規則會默默重建舊名稱的標籤，見 `../../system/AUDIT.md` 的 AUTO-03。
 

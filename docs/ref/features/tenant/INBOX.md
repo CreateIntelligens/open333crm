@@ -2,8 +2,8 @@
 
 收件匣是客服的主畫面。左欄是對話清單，右欄是訊息與聯絡人資料。客服在這裡回覆客人、把對話從機器人手上接過來、指派給同事、關閉對話，或把對話開成工單。
 
-- **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/web/src/components/inbox/*`
-- **核對日期**：2026-10-07
+- **資料來源**：`apps/api/src/modules/conversation/*`、`apps/api/src/modules/ai/ai.routes.ts`、`apps/api/src/modules/ai/ai.service.ts`、`apps/api/src/modules/automation/automation.worker.ts`、`apps/api/src/modules/automation/bot-reply-guard.ts`、`packages/automation/src/bot-config.ts`、`apps/api/src/modules/webhook/inbound-postback-interceptors.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/ai/other-channel-context.ts`、`apps/web/src/components/inbox/*`
+- **核對日期**：2026-10-21
 
 ## 負責的模組
 
@@ -32,7 +32,7 @@
 
 ## 機器人什麼時候回覆
 
-機器人的設定存在渠道上（`Channel.settings.botConfig`），沒有設定的欄位套用 `automation.worker.ts` 的 `DEFAULT_BOT_CONFIG`。因此同一個租戶的不同渠道，可以有不同的機器人行為。
+機器人的設定存在渠道上（`Channel.settings.botConfig`），沒有設定的欄位套用 `@open333crm/automation` 的 `DEFAULT_BOT_CONFIG`（`packages/automation/src/bot-config.ts`）。因此同一個租戶的不同渠道，可以有不同的機器人行為。
 
 | 欄位 | 作用 |
 | --- | --- |
@@ -43,7 +43,7 @@
 | `offlineGreeting` | 營業時間外的自動回覆，優先於營業時間設定的訊息 |
 | `handoffPromptEnabled`、`handoffPromptStyle`、`handoffButtonLabel` | 機器人回答後，要不要附上「轉接客服」的提示，以及用按鈕還是文字 |
 
-`setupAutomationWorker()` 收到 `message.received` 後，對 `BOT_HANDLED` 的對話依序做下列事情：
+自動化訂閱者（`setupAutomationWorker()`）從 `event-automation` 佇列收到 `message.received` 後，對 `BOT_HANDLED` 的對話依序做下列事情：
 
 1. **檢查自動轉真人**（`checkAutoHandoff()`）。見[轉真人](#轉真人)。
 2. **決定由誰回覆**。只處理純文字訊息。訊息會命中關鍵字規則、而且規則能在這個渠道回覆時，讓給關鍵字規則回覆，AI 不回（見[自動化](./AUTOMATION.md)）。
@@ -51,7 +51,16 @@
    - AI agent 沒有處理時，改由 `kb-autoreply.service.ts` 的 `attemptKbAutoReply()` 依知識庫回覆。知識庫回覆怎麼決定內容，見[知識庫與 AI](./KNOWLEDGE.md#機器人怎麼用知識庫回答)。
    - 兩種回覆除了目前對話最近 10 則訊息，還會讀這位聯絡人在其他對話中最近 30 天、最多 10 則的文字訊息（`other-channel-context.ts`）。這些訊息以獨立的系統指示提供，每則標示渠道、時間與發話方，並要求 AI 不主動複述其中的電話、地址、email、訂單或會員編號。系統發的綁定與 email、手機登記訊息不提供，代碼與登記連結會遮蔽。只有[歸戶](./CONTACTS.md#合併)過的聯絡人才有其他對話；合併解除後，對話搬回原聯絡人，AI 就讀不到。客服在後台以 `/ai/agent/run` 觸發時，AI 的回答給客服看，因此只讀客服可見渠道的訊息。
 
-同一個處理器接著對所有對話做情緒分析、送出規則評估與比對關鍵字，見[自動化](./AUTOMATION.md)。
+同一個處理器接著對所有對話做情緒分析，再送出規則評估；關鍵字規則由 workers 評估時比對，見[自動化](./AUTOMATION.md)。
+
+**同一則訊息處理兩次時。** 事件可能送兩次（見[事件與背景工作](../../modules/EVENTS.md#送達保證outbox-與認領)），所以每則入站訊息最多一則機器人回覆。這裡的機器人回覆指 AI agent、知識庫回覆與自動轉接的轉接訊息；關鍵字規則的回覆不在此限，每條命中的規則各送一則，由規則動作的認領避免重複（見[自動化](AUTOMATION.md)）：
+
+- AI agent、知識庫回覆與自動轉真人的轉接訊息，寫入回覆之前都以「`bot_reply` + 入站訊息 id」認領（`bot-reply-guard.ts`）。認領與寫入回覆在同一個交易，commit 之後才送出；認領失敗就不寫入、不送出。
+- 呼叫 LLM 之前，先查這則訊息有沒有認領紀錄。已有紀錄就不呼叫 LLM。
+- AI agent 在認領之前失敗時，知識庫回覆仍可認領並回覆。認領之後送出失敗時，不改由知識庫回覆，也不重送。
+- 情緒分析以「`sentiment` + 入站訊息 id」認領，每則訊息最多寫入一次結果、發出一次 `sentiment.negative`。
+
+呼叫 LLM 與去識別化服務的步驟在交易之外執行；認領、寫入結果與發出事件在一個綁定租戶的交易內執行。
 
 ## 轉真人
 
@@ -64,6 +73,8 @@
 | 客服接手 | 客服按下接手（`POST /conversations/:id/handoff`） | `conversation.service.ts` 的 `handoffConversation()` | 指定的客服；沒指定就是按下的人 |
 
 每種方式都會送一則轉接訊息給客人，並寫一則系統訊息。客人要求與自動轉真人送的是渠道設定的 `handoffMessage`；客服接手送的是請求帶的文字，沒帶就用預設文字。客人要求與自動轉真人會發布 `conversation.handoff` 事件。
+
+自動轉真人以條件更新把對話從 `BOT_HANDLED` 改成 `AGENT_HANDLED`，只有更新成功的那次處理，才寫系統訊息、發出 `conversation.handoff`（經 outbox），commit 之後送出轉接訊息。所以同一則訊息處理兩次、或兩次處理同時進行時，只轉接一次。摘要與系統訊息的遮罩在交易之前完成。
 
 客人要求與自動轉真人不指派任何人，對話會停在「未指派」。之後客人的每一則訊息，都會通知租戶內所有 `ADMIN` 與 `SUPERVISOR`，直到有人指派或接手，見[通知](./NOTIFICATIONS.md)。
 

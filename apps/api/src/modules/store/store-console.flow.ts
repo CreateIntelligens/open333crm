@@ -7,7 +7,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { couponCodeKey } from '@open333crm/core';
 import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { eventBus } from '../../events/event-bus.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import {
   authorizeStoreSession,
@@ -37,7 +37,7 @@ const MIN_MS = 60 * 1000;
 const IDEMPOTENCY_TTL_MS = 10 * MIN_MS;
 
 function inSessionTenant<T>(deps: StoreConsoleFlowDeps, session: StoreSession, fn: (ctx: TenantCtx) => Promise<T>) {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: eventBus }, session.tenantId, fn);
+  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, session.tenantId, fn);
 }
 
 /** 門市帳號登入：先依帳號名稱找出租戶，再在該租戶的交易內檢查密碼 */
@@ -51,7 +51,7 @@ export async function loginStoreAccountFlow(
   const tenantId = await deps.resolveTenant(username);
   if (!tenantId) return { ok: false, code: 'INVALID_CREDENTIALS' };
   const now = new Date((deps.now ?? Date.now)());
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: eventBus }, tenantId, (ctx) =>
+  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, (ctx) =>
     loginStoreAccount(ctx, username, password, remember, now));
 }
 

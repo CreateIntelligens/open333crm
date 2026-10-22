@@ -24,11 +24,11 @@ PostgreSQL 16 是主資料庫。專案啟用 pgvector 與 pgcrypto，並使用 P
 
 | 用途 | 生產者 | 消費者或讀取者 |
 | --- | --- | --- |
-| BullMQ | API | Workers |
+| BullMQ | API、Workers | Workers；業務事件的訂閱者佇列與 API 排程由 API 消費 |
 | `socket:emit` pub/sub | Workers | API 的 Socket plugin |
 | 快取 | API | API |
 
-另有 `domain:event` 頻道供跨程序領域事件使用。Workers 將 BullMQ 與 pub/sub 分成兩條連線，避免混用不同的連線要求。
+Workers 將 BullMQ 與 pub/sub 分成兩條連線，避免混用不同的連線要求。業務事件的佇列與送達保證，見[事件與背景工作](../modules/EVENTS.md)。
 
 ## MinIO
 

@@ -28,12 +28,13 @@ import { deliverToChannel } from '../conversation/conversation.service.js';
 import { loadOtherChannelContext } from './other-channel-context.js';
 import { AI_HISTORY_FETCH_FACTOR, guardAiReplyForTenant, toAiHistory } from '../identity-binding/ai-guard.js';
 import {
-  hasMatchingKeywordRule,
   DEFAULT_BOT_CONFIG,
   DEFAULT_HANDOFF_PROMPT_TEXT,
   type BotConfig,
-} from '../automation/automation.worker.js';
+} from '@open333crm/automation';
+import { hasMatchingKeywordRule } from '../automation/keyword-yield.js';
 import { logger } from '@open333crm/core';
+import type { BotReplyGuard } from '../automation/bot-reply-guard.js';
 
 const CLARIFY_HANDOFF_FALLBACK =
   '不好意思我這邊還沒辦法判斷您的需求，已為您轉接客服人員，請稍候。';
@@ -87,7 +88,9 @@ export async function attemptKbAutoReply(
   tenantId: string,
   conversationId: string,
   messageText: string,
-  delivery: { replyToken?: string; receivedAt?: string } = {},
+  delivery: { replyToken?: string; receivedAt?: string },
+  /** 以 bot_reply 認領這則入站訊息：每則入站訊息最多一則機器人回覆 */
+  replyGuard: BotReplyGuard,
 ): Promise<boolean> {
   const config = getConfig();
 
@@ -233,6 +236,7 @@ export async function attemptKbAutoReply(
       topSimilarity,
       metadataExtras,
       delivery,
+      replyGuard,
     });
   }
 
@@ -307,6 +311,7 @@ export async function attemptKbAutoReply(
     topSimilarity,
     metadataExtras,
     delivery,
+    replyGuard,
   });
 }
 
@@ -369,6 +374,7 @@ async function persistAndDeliver(input: {
   topSimilarity: number;
   metadataExtras: Record<string, unknown>;
   delivery?: { replyToken?: string; receivedAt?: string };
+  replyGuard: BotReplyGuard;
 }): Promise<boolean> {
   const {
     prisma,
@@ -384,6 +390,7 @@ async function persistAndDeliver(input: {
     topSimilarity,
     metadataExtras,
     delivery,
+    replyGuard,
   } = input;
 
   // 決定要不要附 handoff prompt（只在 kb_with_handoff，kb_high_confidence 不附）
@@ -394,40 +401,47 @@ async function persistAndDeliver(input: {
   const finalText = guarded.text;
   const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: finalText }, 'system');
 
-  // Persist BOT message
+  // 寫入 BOT 訊息並更新對話：與 bot_reply 認領在同一個交易，認領失敗就不寫入、不送出
   const now = new Date();
-  const botMessage = await prisma.message.create({
-    data: {
-      conversationId,
-      direction: 'OUTBOUND',
-      senderType: 'BOT',
-      contentType: 'text',
-      content: storedContent.content,
-      metadata: {
-        source: 'kb_auto_reply',
-        replyKind,
-        confidence: topSimilarity,
-        articleId: topResult?.id,
-        articleTitle: topResult?.title,
-        allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
-        ...metadataExtras,
-        ...storedContent.metadata,
-        ...(guarded.blocked ? { bindingCodeBlocked: true } : {}),
-      },
-      createdAt: now,
-    },
-  });
-
-  // Update conversation (counters + clarifyAttempts / modelGuard)
   const existingMeta = (conversation.metadata ?? {}) as Record<string, unknown>;
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: {
-      botRepliesCount: { increment: 1 },
-      lastMessageAt: now,
-      metadata: { ...existingMeta, ...metadataExtras } as Prisma.InputJsonValue,
-    },
+  const botMessage = await replyGuard.persist(async (tx) => {
+    const created = await tx.message.create({
+      data: {
+        conversationId,
+        direction: 'OUTBOUND',
+        senderType: 'BOT',
+        contentType: 'text',
+        content: storedContent.content,
+        metadata: {
+          source: 'kb_auto_reply',
+          replyKind,
+          confidence: topSimilarity,
+          articleId: topResult?.id,
+          articleTitle: topResult?.title,
+          allResults: results.map((r) => ({ id: r.id, title: r.title, similarity: r.similarity })),
+          ...metadataExtras,
+          ...storedContent.metadata,
+          ...(guarded.blocked ? { bindingCodeBlocked: true } : {}),
+        },
+        createdAt: now,
+      },
+    });
+
+    // Update conversation (counters + clarifyAttempts / modelGuard)
+    await tx.conversation.update({
+      where: { id: conversationId },
+      data: {
+        botRepliesCount: { increment: 1 },
+        lastMessageAt: now,
+        metadata: { ...existingMeta, ...metadataExtras } as Prisma.InputJsonValue,
+      },
+    });
+    return created;
   });
+  if (!botMessage) {
+    logger.info(`[KbAutoReply] conv=${conversationId} skipped: this inbound message already has a bot reply`);
+    return false;
+  }
 
   // Real-time
   const wsPayload = {

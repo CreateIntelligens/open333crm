@@ -12,7 +12,7 @@ import type { Server } from 'socket.io';
 import { logger } from '@open333crm/core';
 import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
 import { tenantScopedClient } from '../../lib/tenant-db.js';
-import { eventBus } from '../../events/event-bus.js';
+import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { deliverToChannel } from '../conversation/conversation.service.js';
 import {
   IssueAbort,
@@ -43,7 +43,7 @@ export interface InboxFlowDeps extends InboxIssueDeps {
 }
 
 function inTenantOf<T>(deps: InboxFlowDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: eventBus }, tenantId, fn);
+  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, fn);
 }
 
 /** 預設送出：走既有 deliverToChannel；座席主動發券時 replyToken 多半已失效，固定 push（design D7） */

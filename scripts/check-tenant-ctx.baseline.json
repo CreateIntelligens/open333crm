@@ -8,7 +8,7 @@
     "modules/ai/ai.routes.ts": 1,
     "modules/ai/ai.service.ts": 3,
     "modules/ai/classify.service.ts": 4,
-    "modules/ai/deidentification.service.ts": 3,
+    "modules/ai/deidentification.service.ts": 7,
     "modules/ai/flex-ai.service.ts": 3,
     "modules/ai/llm.service.ts": 3,
     "modules/ai/model-registry.service.ts": 3,
@@ -80,7 +80,7 @@
   },
   "request.tenantPrisma": {
     "modules/agent/agent.routes.ts": 16,
-    "modules/ai/ai.routes.ts": 7,
+    "modules/ai/ai.routes.ts": 8,
     "modules/analytics/analytics.routes.ts": 9,
     "modules/automation/automation.routes.ts": 7,
     "modules/canvas/canvas.routes.ts": 8,

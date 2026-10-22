@@ -9,7 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { inTenant, type TenantCtx } from '#src/lib/tenant-ctx.js';
-import { createOrFindExisting } from '#src/lib/db-invariants.js';
+import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
+import { createOrFindExisting } from '@open333crm/core';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
 const ADMIN_URL = process.env.DATABASE_URL_ADMIN;
@@ -22,7 +23,7 @@ if (!TENANT_URL || !ADMIN_URL) {
 const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
 const adminDb = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 const MARK = `db-invariants-${randomUUID()}`;
-const deps = { prisma: tenantDb, events: { publish() {} } };
+const deps = { prisma: tenantDb, events: createOutboxPublisher(tenantDb) };
 
 afterAll(async () => {
   await adminDb.tag.deleteMany({ where: { name: { startsWith: MARK } } });

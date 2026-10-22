@@ -14,6 +14,7 @@ import { setupCsatScheduler } from '#src/modules/csat/csat.scheduler.js';
 import { setupBroadcastScheduler } from '#src/modules/marketing/broadcast.scheduler.js';
 import { setupInactivityCloseWorker } from '#src/modules/conversation/inactivity-close.worker.js';
 import { setupMetaTokenHealthScheduler } from '#src/modules/channel/meta-token-health.js';
+import { setupOutboxSchedulers } from '#src/modules/outbox/outbox.scheduler.js';
 
 const aggregated: { tenantId: string; date: Date }[] = [];
 vi.mock('#src/modules/analytics/analytics.aggregator.js', () => ({
@@ -115,4 +116,13 @@ test('analytics 的 run：對每個啟用中的租戶彙總前一天', async () 
   assert.equal(aggregated.length, 1);
   assert.equal(aggregated[0].tenantId, 't1');
   assert.equal(aggregated[0].date.getDate(), 18);
+});
+
+test('outbox：補送每 60 秒，以 withoutOverlapping 防重疊，鎖最久 5 分鐘；清理每天 03:30（cron）', () => {
+  const { scheduler, defs } = fakeScheduler();
+  setupOutboxSchedulers(scheduler, prisma);
+  assert.deepEqual(defs.map(shape), [
+    { id: 'outbox-relay', every: 60_000, pattern: undefined, withoutOverlapping: { expiresInMs: 300_000 } },
+    { id: 'outbox-cleanup', every: undefined, pattern: '30 3 * * *', withoutOverlapping: undefined },
+  ]);
 });

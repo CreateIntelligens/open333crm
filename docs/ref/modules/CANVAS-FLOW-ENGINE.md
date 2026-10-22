@@ -112,7 +112,7 @@ Canvas 讓租戶定義一條多步驟的流程，針對單一聯繫人執行，�
 | `apps/api/src/modules/canvas/canvas.routes.ts` | `/api/v1/canvas` 的 CRUD、啟用、觸發、執行紀錄與成效查詢；同一個檔案另外匯出 `/api/v1/identity` 的路由 |
 | `apps/api/src/modules/canvas/canvas.service.ts` | 流程 CRUD 與 `getFlowAnalytics()`，全部收 `TenantDb` |
 | `apps/api/src/modules/canvas/canvas.webhook.ts` | 比對 webhook 事件與流程的 `triggerConfig` |
-| `apps/api/src/modules/canvas/canvas.worker.ts` | 訂閱 eventBus，實際發訊息、寄信、貼標籤 |
+| `apps/api/src/modules/canvas/canvas.worker.ts` | 訂閱 `crm:events`，實際發訊息、寄信、貼標籤 |
 | `apps/api/src/modules/canvas/canvas.scheduler.ts` | 每 60 秒輪詢到期的 `WAITING` 執行 |
 | `packages/core/src/canvas/flow-runner.ts` | 狀態機主體 |
 | `packages/core/src/canvas/scheduler.ts` | 排定喚醒時間，以及 `processResumeQueue()` |
