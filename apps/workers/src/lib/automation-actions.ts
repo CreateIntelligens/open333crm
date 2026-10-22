@@ -7,16 +7,7 @@ import { publishSocketEvent } from './socket-bridge.js';
 import { enqueueNotification } from './notification-queue.js';
 import { deliverToChannelFromWorker, recordSkippedDelivery, renderTemplateBody } from './channel-delivery.js';
 import { resolveMaterialVariables, stripUnresolvedPlaceholders } from './material-variables.js';
-import {
-  applyCouponClaimTag,
-  buildCouponMessage,
-  couponSourceName,
-  issueInstances,
-  issueWalletToken,
-  couponLiffConfig,
-  couponLinkUrl,
-  type WalletTokenStore,
-} from '@open333crm/core';
+import { couponIssuedViaForTrigger, issueCouponForRule } from './rule-coupon-issue.js';
 
 export interface WorkerAutomationAction {
   type: string;
@@ -44,8 +35,11 @@ export interface WorkerActionContext {
   pluginRegistry?: Map<string, ChannelPlugin>;
 }
 
+/** 帶回覆權杖的觸發：收到訊息命中關鍵字、加入好友（design D25）。LINE 在 30 秒內以回覆方式送出 */
+const REPLY_TRIGGERS: ReadonlySet<string> = new Set(['keyword.matched', 'contact.followed']);
+
 function keywordReplyDelivery(context: WorkerActionContext) {
-  return context.trigger === 'keyword.matched' && context.replyToken
+  return context.trigger && REPLY_TRIGGERS.has(context.trigger) && context.replyToken
     ? { strategy: 'reply' as const, replyToken: context.replyToken, receivedAt: context.receivedAt ?? undefined }
     : undefined;
 }
@@ -555,115 +549,28 @@ export async function executeWorkerAutomationActions(
       }
 
       /**
-       * 自動發券（design D7：關鍵字／加好友觸發用 reply，免費且 replyToken 效期短）。
-       *
-       * ⚠️ worker 走 DATABASE_URL_ADMIN（BYPASSRLS），RLS 不會兜底，
-       * 因此每個 query 都必須自行帶 tenantId——這裡是租戶隔離的唯一防線。
+       * 自動發券（design D16、D25～D27）：保留 → 送出 → 確認／作廢，沒發出時在對話留下紀錄。
+       * 流程在 rule-coupon-issue.ts，加好友禮重用同一個函式。
        */
       if (action.type === 'issue_coupon') {
-        if (!context.contactId || !context.conversationId || !context.pluginRegistry) {
-          logger.info('[automation] issue_coupon skipped: missing contactId/conversationId/pluginRegistry');
+        if (!context.conversationId || !context.pluginRegistry) {
+          // 沒有對話就沒有地方留下紀錄；契約要求 conversation 範圍，正常不會走到這裡
+          logger.warn('[automation] issue_coupon skipped: missing conversationId/pluginRegistry', { tenantId: context.tenantId });
           continue;
         }
-        const couponId = params['couponId'];
-        if (typeof couponId !== 'string' || !couponId) {
-          logger.info('[automation] issue_coupon skipped: missing couponId');
-          continue;
-        }
-
-        const coupon = await prisma.coupon.findFirst({
-          where: { id: couponId, tenantId: context.tenantId },
-        });
-        if (!coupon) {
-          logger.warn(`[automation] issue_coupon skipped: coupon ${couponId} not found`);
-          continue;
-        }
-        if (coupon.status !== 'ACTIVE') {
-          logger.info(`[automation] issue_coupon skipped: coupon ${couponId} is ${coupon.status}`);
-          continue;
-        }
-
-        const conv = await prisma.conversation.findFirst({
-          where: { id: context.conversationId, tenantId: context.tenantId },
-          select: { id: true, channelId: true, contactId: true },
-        });
-        const identity = conv?.contactId
-          ? await prisma.channelIdentity.findFirst({
-              where: { contactId: conv.contactId, channelId: conv.channelId, contact: { tenantId: context.tenantId } },
-              select: { id: true },
-            })
-          : null;
-        if (!conv || !identity) {
-          logger.warn('[automation] issue_coupon skipped: conversation or channel identity not found');
-          continue;
-        }
-
-        // 對話對象已知：所有渠道都直接歸戶，顧客開啟票券連結時再做 One ID 歸戶驗證（design D12）
-        const requireClaim = false;
-
-        // 交易內完成配額檢查、建立與領券貼標，避免併發超發；行為與 API 對話發券一致
-        const issuedVia = context.trigger ?? 'automation';
-        // 貼標時 contact.tagged 與發券一起 commit（event-delivery「workers 的事件與資料一起 commit」），與 add_tag 相同
-        const { outcome, outboxRow } = await prisma.$transaction(async (tx) => {
-          const issued = await issueInstances(tx, {
-            tenantId: context.tenantId,
-            coupon,
-            contactIds: [context.contactId as string],
-            issuedVia,
-            issuedRefId: couponId,
-            issuedSourceName: couponSourceName(issuedVia),
-            requireClaim,
-          });
-          const tag = issued.issued.length > 0
-            ? await applyCouponClaimTag(tx, context.tenantId, context.contactId as string, coupon)
-            : null;
-          const row = tag
-            ? await writeOutbox(tx, {
-                tenantId: context.tenantId,
-                kind: 'event',
-                name: 'contact.tagged',
-                payload: { contactId: context.contactId, tagId: tag.tagId, tagName: tag.tagName, source: 'system' },
-              })
-            : null;
-          return { outcome: issued, outboxRow: row };
-        });
-
-        if (outcome.issued.length === 0) {
-          logger.info('[automation] issue_coupon 未發出', { reason: outcome.skipped[0]?.reason });
-          continue;
-        }
-        if (outboxRow) await dispatchAfterCommit(prisma, outboxRow);
-
-        const instance = outcome.issued[0];
-        // 票券連結與文案與 API 對話發券共用 core 的同一套（design D12）
-        const walletToken = await issueWalletToken(redisPublisher as unknown as WalletTokenStore, {
+        const couponId = typeof params['couponId'] === 'string' ? params['couponId'] : '';
+        const failureText = typeof params['failureText'] === 'string' ? params['failureText'] : null;
+        await issueCouponForRule(prisma, redisPublisher, {
           tenantId: context.tenantId,
-          contactId: context.contactId as string,
-          channelIdentityId: identity.id,
-          channelId: conv.channelId,
-          conversationId: conv.id,
-          instanceId: instance.id,
+          conversationId: context.conversationId,
+          contactId: context.contactId,
+          couponId,
+          failureText,
+          rule: { id: context.ruleId ?? null, name: context.ruleName ?? null },
+          issuedVia: couponIssuedViaForTrigger(context.trigger),
+          delivery: keywordReplyDelivery(context),
+          pluginRegistry: context.pluginRegistry,
         });
-        const webBaseUrl = process.env.WEB_BASE_URL || 'http://localhost:3000';
-        // 渠道設定了 LIFF 與 Login channel 時，連結走 LIFF（design D20）
-        const channel = await prisma.channel.findFirst({
-          where: { id: conv.channelId, tenantId: context.tenantId },
-          select: { settings: true },
-        });
-        await deliverToChannelFromWorker(
-          prisma,
-          redisPublisher,
-          context.pluginRegistry,
-          context.conversationId,
-          {
-            contentType: 'text',
-            content: {
-              text: buildCouponMessage({ couponName: coupon.name, url: couponLinkUrl(webBaseUrl, walletToken, couponLiffConfig(channel?.settings)) }),
-            },
-            // keyword.matched 帶 replyToken 時走 reply（免費）；否則自動落 push
-            delivery: keywordReplyDelivery(context),
-          },
-        );
         continue;
       }
 

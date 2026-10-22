@@ -147,3 +147,53 @@ async function testReplyFailureFallsBackToPush() {
 
 test('keyword matched line send message uses reply token', testKeywordMatchedLineSendMessageUsesReplyToken);
 test('reply failure falls back to push', testReplyFailureFallsBackToPush);
+
+// ── 自動化發券也在期限內以回覆方式送出（add-coupon-system A15 15.6、design D25）──
+
+import { vi } from 'vitest';
+import { COUPON_ID, RULE, TENANT, fakeCouponDb, fakeLinePlugin, fakeRedis } from '../support/fake-coupon-db.js';
+
+vi.mock('bullmq', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Queue: class {
+    async add() {
+      return {};
+    }
+  },
+}));
+
+async function issueCouponAt(receivedAt: string, trigger = 'keyword.matched') {
+  const { db } = fakeCouponDb();
+  const { plugin, sends } = fakeLinePlugin();
+  const { redis } = fakeRedis();
+  await executeWorkerAutomationActions(db as never, redis as never, [{ type: 'issue_coupon', params: { couponId: COUPON_ID } }], {
+    tenantId: TENANT,
+    ruleId: RULE.id,
+    ruleName: RULE.name,
+    conversationId: 'conv-1',
+    contactId: 'contact-1',
+    trigger,
+    replyToken: 'reply-token-1',
+    receivedAt,
+    pluginRegistry: new Map([['LINE', plugin]]),
+  });
+  return sends;
+}
+
+test('自動化發券在期限內以回覆方式送出', async () => {
+  const sends = await issueCouponAt(new Date(Date.now() - 3_000).toISOString());
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].content.strategy, 'reply');
+  assert.equal(sends[0].content.replyToken, 'reply-token-1');
+});
+
+test('超過回覆期限改用主動推送', async () => {
+  const sends = await issueCouponAt(new Date(Date.now() - 45_000).toISOString());
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].content.strategy, 'push');
+});
+
+test('加入好友觸發的發券也在期限內以回覆方式送出', async () => {
+  const sends = await issueCouponAt(new Date(Date.now() - 3_000).toISOString(), 'contact.followed');
+  assert.equal(sends[0].content.strategy, 'reply');
+});
