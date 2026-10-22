@@ -50,8 +50,13 @@ function automationQueue(): Queue {
  * 送出規則評估。eventId 供 workers 認領規則動作（automation_action）。
  * 送不出時丟錯：訂閱者的 job 失敗，由 BullMQ 重試（event-delivery「每個訂閱者各自處理」）
  */
-async function enqueueEvaluate(event: SubscribedEvent, trigger: string, context: Record<string, unknown>) {
-  await automationQueue().add('automation:evaluate', { tenantId: event.tenantId, eventId: event.id, trigger, context }, { jobId: event.id });
+async function enqueueEvaluate(
+  event: SubscribedEvent,
+  trigger: string,
+  context: Record<string, unknown>,
+  jobId: string = event.id,
+) {
+  await automationQueue().add('automation:evaluate', { tenantId: event.tenantId, eventId: event.id, trigger, context }, { jobId });
 }
 
 async function getConversationBotConfig(
@@ -276,7 +281,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
     // 只有「認領之前」的失敗會丟到這裡：LLM 失敗改用 KB、KB 找不到答案這類降級照舊只記 log
     const failures: unknown[] = [];
     {
-      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt } = event.payload as {
+      const { contactId, conversationId, messageId, messageContent, content, contentType, channelType, replyToken, receivedAt, isFirstFollow } = event.payload as {
         contactId?: string;
         conversationId?: string;
         messageId?: string;
@@ -286,10 +291,14 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
         channelType?: string;
         replyToken?: string;
         receivedAt?: string;
+        isFirstFollow?: boolean;
       };
 
+      // 加入好友（LINE follow）是系統事件，不是顧客打的字：不帶文字，workers 不拿它比對關鍵字規則（design D28）
+      const isFollow = contentType === 'follow';
+
       // Extract message text from either direct messageContent or content.text
-      const text = messageContent ?? content?.text ?? undefined;
+      const text = isFollow ? undefined : (messageContent ?? content?.text ?? undefined);
 
       // Check auto-handoff for BOT_HANDLED conversations
       let handoffFailed = false;
@@ -391,6 +400,23 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
       } catch (err) {
         logger.error('[AutomationWorker] Failed to enqueue message.received, will retry:', err);
         failures.push(err);
+      }
+
+      // 加入好友另外以 contact.followed 評估（design D28）：帶回覆權杖與收到時間，動作在期限內用回覆方式送出。
+      // job id 與 message.received 不同（BullMQ 的 job id 不能含「:」）；事件 id 相同，規則動作仍以
+      // <事件 id, 規則 id#序號> 認領，兩個事件的規則不同，不會互相擋到
+      if (isFollow) {
+        try {
+          await enqueueEvaluate(
+            event,
+            'contact.followed',
+            { contactId, conversationId, messageId, channelType, replyToken, receivedAt, isFirstFollow: isFirstFollow === true },
+            `${event.id}-followed`,
+          );
+        } catch (err) {
+          logger.error('[AutomationWorker] Failed to enqueue contact.followed, will retry:', err);
+          failures.push(err);
+        }
       }
     }
     if (failures.length === 1) throw failures[0];

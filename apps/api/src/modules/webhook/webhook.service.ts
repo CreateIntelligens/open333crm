@@ -11,6 +11,7 @@ import {
 } from './inbound-message.types.js';
 import { resolveInboundContact } from './inbound-contact-resolver.js';
 import { resolveInboundConversation } from './inbound-conversation-resolver.js';
+import { recordInboundFollow } from './inbound-follow-tracking.js';
 import {
   createInboundMessage,
   findDuplicateInboundMessage,
@@ -340,6 +341,9 @@ export async function processInboundMessage(
   resolveInboundMediaAsync(ctx);
 
   await updateConversationAfterInboundMessage(ctx);
+
+  // 加入好友：記錄加入時間與次數，判斷是不是第一次加入（design D28）
+  await recordInboundFollow(ctx);
 
   // 跨渠道綁定（綁定關鍵字／代碼／確認／解除）：命中時不跑其他攔截與 AI／關鍵字／自動化。
   // 招呼語由攔截內部在綁定回覆之前送出（見 interceptIdentityBinding）

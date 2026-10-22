@@ -124,5 +124,7 @@ export async function buildAutomationFacts(
     [AUTOMATION_FACT_KEYS.CASE_ASSIGNEE_ID]: caseRecord?.assigneeId ?? null,
     [AUTOMATION_FACT_KEYS.CASE_TEAM_ID]: caseRecord?.teamId ?? null,
     [AUTOMATION_FACT_KEYS.CASE_CATEGORY]: caseRecord?.category ?? null,
+    // 加入好友事件才有（API 依渠道身分的加入紀錄判斷）；沒有值時條件「第一次加入等於是」不成立
+    [AUTOMATION_FACT_KEYS.FOLLOW_IS_FIRST]: typeof context.isFirstFollow === 'boolean' ? context.isFirstFollow : null,
   };
 }

@@ -96,3 +96,48 @@ test('Subscriber cannot enqueue the next job：送不出 automation:evaluate 時
     /redis down/,
   );
 });
+
+// ── 加入好友事件（add-coupon-system A15 15.14；design D28；spec automation-engine「加入好友事件」）──
+
+function followReceived(overrides: Record<string, unknown> = {}) {
+  return messageReceived({
+    contentType: 'follow',
+    content: { systemEvent: 'follow' },
+    messageContent: '',
+    replyToken: 'reply-token-follow',
+    receivedAt: '2026-10-23T01:00:00.000Z',
+    isFirstFollow: true,
+    ...overrides,
+  });
+}
+
+test('加好友觸發規則：加入好友事件另外以 contact.followed 排入評估，帶回覆權杖、收到時間與「第一次加入」', async () => {
+  const { handle } = setup();
+  const event = followReceived();
+  await handle(event);
+  const followed = evaluations().filter((q) => q.data.trigger === 'contact.followed');
+  assert.equal(followed.length, 1);
+  assert.equal(followed[0].data.eventId, event.id);
+  // job id 不能和 message.received 的相同（BullMQ 會當成同一個 job），也不能含「:」
+  assert.equal(followed[0].opts?.jobId, `${event.id}-followed`);
+  const context = followed[0].data.context as Record<string, unknown>;
+  assert.equal(context.replyToken, 'reply-token-follow');
+  assert.equal(context.receivedAt, '2026-10-23T01:00:00.000Z');
+  assert.equal(context.isFirstFollow, true);
+  assert.equal(context.conversationId, event.payload.conversationId);
+  assert.equal(context.contactId, event.payload.contactId);
+});
+
+test('取消好友不觸發：unfollow 不排入 contact.followed', async () => {
+  const { handle } = setup();
+  await handle(followReceived({ contentType: 'unfollow', content: { systemEvent: 'unfollow' }, replyToken: undefined, isFirstFollow: undefined }));
+  assert.deepEqual(evaluations().map((q) => q.data.trigger), ['message.received']);
+});
+
+test('加好友不觸發收到訊息的關鍵字規則：message.received 的評估不帶訊息文字，workers 不比對關鍵字', async () => {
+  const { handle } = setup();
+  await handle(followReceived({ content: { systemEvent: 'follow', text: '領券' }, messageContent: undefined }));
+  const received = evaluations().find((q) => q.data.trigger === 'message.received');
+  assert.ok(received);
+  assert.equal((received.data.context as Record<string, unknown>).messageContent, undefined);
+});

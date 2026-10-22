@@ -41,6 +41,11 @@ export interface InboundMessageContext {
    * 因此首次進站招呼語在多實例部署下也只會送出一次。
    */
   isFirstContact?: boolean;
+  /**
+   * 加入好友事件（contentType 'follow'）是否為這個渠道身分第一次加入（design D28）。
+   * 由 recordInboundFollow 設定；其他事件沒有值。
+   */
+  isFirstFollow?: boolean;
   channelIdentity?: {
     contactId: string;
     contact?: unknown;
