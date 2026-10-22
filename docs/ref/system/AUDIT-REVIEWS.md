@@ -4,6 +4,16 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-21：RBAC-05 部分緩解
+
+優惠券系統（add-coupon-system）新增 6 個權限碼，code review 指出照部署清單執行 reconcile 會覆蓋租戶對系統角色的修改。新增 `scripts/grant-new-role-permissions.mjs`，只補上指定的新權限碼。
+
+| 項目 | 做法 | 結果 |
+| --- | --- | --- |
+| RBAC-05 | 本機以 `--dry-run` 執行，指定 6 個優惠券權限碼 | 只列出 supervisor 與 agent 缺少的 `coupon.view`、`coupon.issue`，admin 已有全部權限碼所以沒有補；其他權限碼不受影響 |
+
+RBAC-05 的狀態維持「已提建議」：reconcile 腳本沒有改，快取清除與部署流程仍未處理，見 `AUDIT.md`。
+
 ## 2026-10-21：新增 HOOK-01
 
 以 main `636c71bd` 為基礎，issue #337 階段 1b 規劃時發現。讀程式確認，沒有連 UAT。

@@ -23,6 +23,7 @@ vi.mock('#src/hooks/useAnalytics.js', () => ({
   useCaseAnalytics: () => empty,
   useAgentPerformance: () => empty,
   useChannelAnalytics: () => empty,
+  useCouponAnalytics: () => ({ ...empty, mutate: () => undefined }),
 }));
 for (const m of ['KpiCards', 'MessageTrendChart', 'CaseCategoryPieChart', 'CaseTrendChart', 'AgentPerformanceTable', 'ChannelDistributionChart']) {
   vi.doMock(`#src/components/analytics/${m}.js`, () => ({ [m]: () => null }));
@@ -48,4 +49,12 @@ test('匯出失敗時顯示錯誤', async () => {
   fireEvent.click(screen.getByText('匯出 CSV'));
   await waitFor(() => assert.ok(screen.queryByRole('alert') !== null));
   assert.match(screen.getByRole('alert').textContent ?? '', /匯出失敗/);
+});
+
+test('優惠券成效分頁沒有對應的匯出，不顯示匯出按鈕', async () => {
+  auth.perms = new Set(['analytics.view', 'analytics.export']);
+  render(<AnalyticsPage />);
+  assert.equal(screen.queryAllByText('匯出 CSV').length, 1);
+  fireEvent.click(screen.getByRole('button', { name: '優惠券成效' }));
+  await waitFor(() => assert.equal(screen.queryAllByText('匯出 CSV').length, 0));
 });

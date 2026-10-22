@@ -65,6 +65,8 @@ export const EMAIL_REGISTRATION: RegistrationKind = {
   },
   mergeSource: 'EMAIL',
   stitchSource: 'EMAIL_MATCH',
+  // 送出時先寄驗證碼，驗證通過才寫入（add-coupon-system design D15）
+  provesOwnership: true,
   text: EMAIL_TEXT,
 };
 

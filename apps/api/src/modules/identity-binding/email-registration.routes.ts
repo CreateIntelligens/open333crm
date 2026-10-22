@@ -12,4 +12,5 @@ export default createRegistrationRoutes({
   field: 'email',
   expiredCode: 'EMAIL_REGISTRATION_EXPIRED',
   invalid: { message: 'email 格式不正確', code: 'INVALID_EMAIL' },
+  verifyOwnership: true,
 });

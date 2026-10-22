@@ -1,0 +1,160 @@
+/**
+ * 序號包匯入（IMPORTED_CODES 模式）。
+ *
+ * 匯入必須是「可預期的部分成功」：一批一萬筆裡有三筆重複，不應整批退回。
+ * 因此逐筆分類為 成功／清單內重複／與既有券碼衝突／格式錯誤，各自回報
+ * ——只回「匯入失敗」會讓商家無從修正。
+ */
+import type { Prisma, PrismaClient } from '@prisma/client';
+import { couponCodeKey } from '@open333crm/core';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
+import { parseCodeList, normalizeImportedCode } from './coupon-code.service.js';
+import { CouponValidationError } from './coupon.service.js';
+
+/** 單次匯入上限。過大的批次會讓交易持有過久，拖累其他請求。 */
+const MAX_CODES_PER_IMPORT = 10_000;
+
+export interface ImportResult {
+  /** 實際寫入的筆數 */
+  imported: number;
+  /** 同一批輸入內重複，只取第一筆 */
+  duplicatesInInput: string[];
+  /** 與 DB 既有券碼衝突（同租戶內券碼須唯一） */
+  conflicts: string[];
+  /** 格式不符 */
+  invalid: string[];
+  /** 匯入後該券的可用庫存總數 */
+  availableTotal: number;
+}
+
+export async function importCodes(
+  ctx: TenantCtx,
+  couponId: string,
+  rawInput: string,
+): Promise<ImportResult> {
+  const parsed = parseCodeList(rawInput);
+
+  if (parsed.valid.length === 0) {
+    throw new CouponValidationError(
+      parsed.invalid.length > 0 ? '沒有格式正確的券碼可匯入' : '請提供要匯入的券碼',
+    );
+  }
+  if (parsed.valid.length > MAX_CODES_PER_IMPORT) {
+    throw new CouponValidationError(`單次最多匯入 ${MAX_CODES_PER_IMPORT} 筆，請分批進行`);
+  }
+  const { tx, tenantId } = ctx;
+  const coupon = await tx.coupon.findFirst({ where: { id: couponId, tenantId } });
+  if (!coupon) throw new CouponValidationError('查無此券');
+  if (coupon.codeMode !== 'IMPORTED_CODES') {
+    throw new CouponValidationError('僅序號包模式的券可匯入序號');
+  }
+  // 已結束的券不再收序號——庫存加了也發不出去
+  if (coupon.status === 'ENDED') {
+    throw new CouponValidationError('已結束的券無法匯入序號');
+  }
+
+  // 與既有券碼比對（同時查庫存表與已發出的券）
+  const taken = await takenKeys(tx, tenantId, parsed.valid);
+  const conflicts: string[] = [];
+  const toInsert: string[] = [];
+  for (const code of parsed.valid) {
+    if (taken.has(couponCodeKey(code))) conflicts.push(code);
+    else toInsert.push(code);
+  }
+
+  if (toInsert.length > 0) {
+    await tx.couponCode.createMany({
+      data: toInsert.map((code) => ({ tenantId, couponId, code, status: 'AVAILABLE' as const })),
+      // 併發匯入同一組碼時，唯一約束會擋下後到者；跳過而非整批失敗
+      skipDuplicates: true,
+    });
+  }
+
+  const availableTotal = await tx.couponCode.count({
+    where: { couponId, tenantId, status: 'AVAILABLE' },
+  });
+
+  return {
+    imported: toInsert.length,
+    duplicatesInInput: parsed.duplicatesInInput,
+    conflicts,
+    invalid: parsed.invalid,
+    availableTotal,
+  };
+}
+
+/**
+ * 匯入前試算，讓使用者在確認前看到會發生什麼。不寫入任何資料。
+ * 帶 couponId 時，這張券自己已匯入的序號列為 alreadyImported，不算與其他券衝突。
+ */
+export async function previewImport(
+  ctx: TenantCtx,
+  rawInput: string,
+  couponId?: string,
+): Promise<Omit<ImportResult, 'imported' | 'availableTotal'> & { willImport: number; alreadyImported: string[] }> {
+  const parsed = parseCodeList(rawInput);
+  const { tx, tenantId } = ctx;
+  const taken = await takenKeys(tx, tenantId, parsed.valid);
+  const own = couponId ? await ownKeys(tx, tenantId, couponId, parsed.valid) : new Set<string>();
+  const alreadyImported = parsed.valid.filter((c) => own.has(couponCodeKey(c)));
+  const conflicts = parsed.valid.filter((c) => taken.has(couponCodeKey(c)) && !own.has(couponCodeKey(c)));
+
+  return {
+    willImport: parsed.valid.length - conflicts.length - alreadyImported.length,
+    duplicatesInInput: parsed.duplicatesInInput,
+    conflicts,
+    alreadyImported,
+    invalid: parsed.invalid,
+  };
+}
+
+/** 這張券自己庫存中的序號比對鍵 */
+async function ownKeys(tx: Prisma.TransactionClient, tenantId: string, couponId: string, codes: string[]): Promise<Set<string>> {
+  const keys = [...new Set(codes.map(couponCodeKey))];
+  if (keys.length === 0) return new Set();
+  const rows = await tx.$queryRaw<{ key: string }[]>`
+    SELECT upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) AS key FROM coupon_codes
+    WHERE "tenantId" = ${tenantId}::uuid AND "couponId" = ${couponId}::uuid
+      AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ANY(${keys}::text[])`;
+  return new Set(rows.map((r) => r.key));
+}
+
+/**
+ * 移除尚未配發的序號。已配發者（ASSIGNED）不可刪——顧客手上的券會查無此碼。
+ */
+export async function removeAvailableCode(
+  ctx: TenantCtx,
+  couponId: string,
+  code: string,
+): Promise<{ removed: boolean; reason?: 'NOT_FOUND' | 'ALREADY_ASSIGNED' }> {
+  const normalized = normalizeImportedCode(code);
+  const { tx, tenantId } = ctx;
+  const existing = await tx.couponCode.findFirst({
+    where: { tenantId, couponId, code: normalized },
+  });
+  if (!existing) return { removed: false, reason: 'NOT_FOUND' as const };
+  if (existing.status === 'ASSIGNED') {
+    return { removed: false, reason: 'ALREADY_ASSIGNED' as const };
+  }
+  const result = await tx.couponCode.deleteMany({
+    where: { id: existing.id, tenantId, status: 'AVAILABLE' },
+  });
+  return { removed: result.count > 0 };
+}
+
+/**
+ * 租戶內已被使用的券號比對鍵（去掉連字號、轉大寫）。券號在租戶內以比對鍵唯一
+ * （migration 20261021110000 的運算式唯一索引），AB-CD1234 與 ABCD-1234 視為同一組。
+ * 運算式與索引相同才會走索引。
+ */
+async function takenKeys(tx: Prisma.TransactionClient, tenantId: string, codes: string[]): Promise<Set<string>> {
+  const keys = [...new Set(codes.map(couponCodeKey))];
+  if (keys.length === 0) return new Set();
+  const rows = await tx.$queryRaw<{ key: string }[]>`
+    SELECT upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) AS key FROM coupon_codes
+    WHERE "tenantId" = ${tenantId}::uuid AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ANY(${keys}::text[])
+    UNION
+    SELECT upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) AS key FROM coupon_instances
+    WHERE "tenantId" = ${tenantId}::uuid AND upper(regexp_replace("code", '[^A-Za-z0-9]', '', 'g')) = ANY(${keys}::text[])`;
+  return new Set(rows.map((r) => r.key));
+}

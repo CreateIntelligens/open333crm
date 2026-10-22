@@ -230,6 +230,9 @@ export const EMAIL_TEXT = {
     ].join('\n\n'),
   rateLimited: 'email 登記連結申請次數過多，請一小時後再試。',
   registered: '已登記您的 email。',
+  /** 從票券頁登記的 email 已屬於另一位顧客：不自動合併，請顧客在自己的對話中登記 */
+  mergeRequiresChat: (keyword: string) =>
+    `剛才從優惠券頁登記的 email 已屬於另一個帳號，系統沒有自動整合。如果是您本人，請在這個對話中輸入「${keyword}」完成帳號整合；若不是您本人操作，可以忽略這則訊息。`,
   channelConflict: '無法自動整合帳號：這個 email 已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
   identityConflict: '無法自動整合帳號：使用這個 email 的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在這個對話與您聯繫。',
   /** 通知登記的一方；對方沒有任何渠道時 otherLabel 為 null */
@@ -254,6 +257,8 @@ export const PHONE_TEXT = {
     ].join('\n\n'),
   rateLimited: '手機登記連結申請次數過多，請一小時後再試。',
   registered: '已登記您的手機號碼。',
+  mergeRequiresChat: (keyword: string) =>
+    `剛才從優惠券頁登記的手機號碼已屬於另一個帳號，系統沒有自動整合。如果是您本人，請在這個對話中輸入「${keyword}」完成帳號整合；若不是您本人操作，可以忽略這則訊息。`,
   channelConflict: '無法自動整合帳號：這個手機號碼已由同一類帳號中的另一個帳號使用。如需協助請直接留言，客服會為您處理。',
   identityConflict: '無法自動整合帳號：使用這個手機號碼的顧客資料與您目前的資料不一致，需要客服確認是否為同一人。客服會在這個對話與您聯繫。',
   mergedToRegistrant: (otherLabel: string | null, _otherName: string, unbindKeyword: string) =>

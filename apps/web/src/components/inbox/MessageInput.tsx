@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks } from 'lucide-react';
+import { Send, Paperclip, LayoutTemplate, Zap, X, Plus, ListChecks, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 import type { ChannelType } from '@open333crm/shared';
@@ -27,6 +27,10 @@ interface MessageInputProps {
   isBotHandled?: boolean;
   onTakeover?: () => void;
   onOpenTemplates?: () => void;
+  /** 開啟發券 Dialog；沒有傳入（沒有發券權限）時不顯示「發券」按鈕 */
+  onOpenCoupon?: () => void;
+  /** 發券按鈕停用的原因（例如對話已結束），滑過或聚焦時顯示 */
+  couponDisabledReason?: string;
 }
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -40,6 +44,8 @@ export function MessageInput({
   isBotHandled,
   onTakeover,
   onOpenTemplates,
+  onOpenCoupon,
+  couponDisabledReason,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -386,6 +392,34 @@ export function MessageInput({
           >
             <LayoutTemplate className="h-4 w-4" />
           </Button>
+
+          {/* 發券（順序：附件、範本、發券）。停用時用 aria-disabled 保留焦點，滑過或聚焦能看到原因 */}
+          {onOpenCoupon && (
+            <span className="group relative shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 gap-1 px-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                aria-disabled={couponDisabledReason ? true : undefined}
+                aria-describedby={couponDisabledReason ? 'coupon-issue-disabled-reason' : undefined}
+                onClick={() => {
+                  if (!couponDisabledReason) onOpenCoupon();
+                }}
+              >
+                <Ticket className="h-4 w-4" />
+                <span className="text-xs">發券</span>
+              </Button>
+              {couponDisabledReason && (
+                <span
+                  id="coupon-issue-disabled-reason"
+                  role="tooltip"
+                  className="pointer-events-none invisible absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs text-background group-focus-within:visible group-hover:visible"
+                >
+                  {couponDisabledReason}
+                </span>
+              )}
+            </span>
+          )}
 
           {/* Quick reply button (LINE only) */}
           {supportsQuickReply && (

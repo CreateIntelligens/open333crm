@@ -74,3 +74,12 @@ export function useMyPerformance() {
   });
   return { data: data?.data, isLoading, error };
 }
+
+/** 優惠券成效（add-coupon-system 12.16） */
+export function useCouponAnalytics(from?: Date, to?: Date, enabled = true) {
+  const qs = buildParams(from, to);
+  const { data, error, isLoading, mutate } = useSWR(enabled ? `/analytics/coupons?${qs}` : null, fetcher, {
+    refreshInterval: 60000,
+  });
+  return { data: data?.data, isLoading, error, mutate };
+}

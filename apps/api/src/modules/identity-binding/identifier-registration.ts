@@ -3,8 +3,9 @@
  *
  * 顧客在對話取得一次性的登記連結，在登記頁填入識別值。同租戶有另一位未封存聯絡人使用相同的值時，
  * 不經人工確認直接合併（最早使用的那位為 survivor）；沒有就只把值寫到這位聯絡人。
- * 不驗證擁有權（email：2026-10-07 決定；手機：2026-10-14 決定），以雙邊通知、7 天自助解除與
- * 同渠道衝突檢查降低誤併的影響。兩種登記的差異由 RegistrationKind 描述。
+ * email 在送出時先寄驗證碼，驗證通過才進到這裡（ownership-code.ts，add-coupon-system design D15）；
+ * 手機不驗證擁有權（2026-10-14 決定）。兩者都以雙邊通知、7 天自助解除與同渠道衝突檢查降低誤併的影響。
+ * 兩種登記的差異由 RegistrationKind 描述。
  */
 import { randomBytes } from 'node:crypto';
 import { logger } from '@open333crm/core';
@@ -12,7 +13,7 @@ import { getConfig } from '../../config/env.js';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Prisma } from '@prisma/client';
 import { isSameChannelConflict, mergeContacts, type MergeSource } from '../contact/contact-merge.service.js';
-import { MAX_ISSUES_PER_HOUR, bumpCounter, type BindingStore } from './binding-code.js';
+import { MAX_ISSUES_PER_HOUR, bumpCounter, readCounter, type BindingStore } from './binding-code.js';
 import {
   hasSharedChannel,
   inTransaction,
@@ -34,6 +35,8 @@ export interface RegistrationText {
   invite: (url: string, minutes: number) => string;
   rateLimited: string;
   registered: string;
+  /** 從票券頁登記的值已屬於另一位聯絡人時的說明（keyword 為該種登記的關鍵字） */
+  mergeRequiresChat: (keyword: string) => string;
   channelConflict: string;
   /** 兩位聯絡人的另一種識別不一致，需要客服確認（design D6） */
   identityConflict: string;
@@ -65,6 +68,11 @@ export interface RegistrationKind {
   otherIdentifierConflicts: (registrant: ContactIdentifiers, existing: ContactIdentifiers) => boolean;
   mergeSource: MergeSource;
   stitchSource: 'EMAIL_MATCH' | 'PHONE_MATCH';
+  /**
+   * 登記是否證明了擁有這個值（email 先寄驗證碼）。只有證明過的才記錄歸戶驗證：
+   * 手機沒有簡訊驗證，任何人都能填別人的號碼（2026-10-21 code review 決定）
+   */
+  provesOwnership: boolean;
   text: RegistrationText;
 }
 
@@ -86,6 +94,11 @@ export interface RegistrationPayload {
   channelId: string;
   conversationId: string;
   issuedAt: number;
+  /**
+   * 從票券頁發出的連結（票券訊息可能被轉傳）：值已屬於另一位聯絡人時不自動合併，
+   * 請顧客在自己的對話中登記（2026-10-21 code review 決定）
+   */
+  noMerge?: boolean;
 }
 
 export interface RegistrationDeps extends BindingDeps {
@@ -104,6 +117,69 @@ export function registrationUrl(kind: RegistrationKind, webBaseUrl: string, toke
 }
 
 /**
+ * 產生登記權杖（不送訊息）。與對話中發連結共用每小時次數上限。
+ * 優惠券票券夾用它把未歸戶的顧客直接帶到登記頁（add-coupon-system design D12）。
+ */
+export async function issueRegistrationToken(
+  kind: RegistrationKind,
+  deps: RegistrationDeps,
+  actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
+  initiatedBy: 'customer' | 'agent' = 'customer',
+  options: { noMerge?: boolean } = {},
+): Promise<{ status: 'ok'; token: string; issued: number } | { status: 'rate_limited'; issued: number }> {
+  const issued = await bumpCounter(deps.store, issueKey(kind, actor.channelIdentityId, initiatedBy));
+  if (issued > MAX_ISSUES_PER_HOUR) return { status: 'rate_limited', issued };
+
+  const token = randomBytes(32).toString('base64url');
+  const payload: RegistrationPayload = {
+    tenantId: actor.tenantId,
+    channelIdentityId: actor.channelIdentityId,
+    channelId: actor.channelId,
+    conversationId: actor.conversationId,
+    issuedAt: (deps.now ?? Date.now)(),
+    ...(options.noMerge ? { noMerge: true } : {}),
+  };
+  await deps.store.set(tokenKey(kind, token), JSON.stringify(payload), 'PX', REGISTRATION_TTL_MS, 'NX');
+  return { status: 'ok', token, issued };
+}
+
+/** 這個登記連結已寄出的驗證碼數（ownership-code.ts 寫入）；重用連結前要確認還能寄 */
+export const ownershipSendKey = (kind: RegistrationKind, token: string) => `${kind.redisPrefix}:codesend:${token}`;
+/** 同一個登記連結最多寄出的驗證碼數 */
+export const MAX_CODES_PER_LINK = 3;
+
+/** 重用登記權杖時至少要剩下的有效期：顧客要有時間填寫與收驗證信 */
+const REUSE_MIN_REMAINING_MS = 10 * 60 * 1000;
+const reuseKey = (kind: RegistrationKind, channelIdentityId: string) => `${kind.redisPrefix}:reuse:${channelIdentityId}`;
+
+/**
+ * 取得登記權杖：同一個渠道身分還有夠長效期的權杖就重用，否則產生新的。
+ * 顧客重新整理票券頁不會每次都產生新權杖、很快碰到每小時上限。
+ */
+export async function reuseOrIssueRegistrationToken(
+  kind: RegistrationKind,
+  deps: RegistrationDeps,
+  actor: Pick<BindingActor, 'tenantId' | 'channelIdentityId' | 'channelId' | 'conversationId'>,
+): Promise<{ status: 'ok'; token: string } | { status: 'rate_limited' }> {
+  const key = reuseKey(kind, actor.channelIdentityId);
+  const previous = await deps.store.get(key);
+  if (
+    previous &&
+    (await deps.store.pttl(tokenKey(kind, previous))) > REUSE_MIN_REMAINING_MS &&
+    // 驗證碼寄送次數用完的連結不再重用，否則顧客重新整理也一直卡在「寄送次數過多」
+    (await readCounter(deps.store, ownershipSendKey(kind, previous))) < MAX_CODES_PER_LINK
+  ) {
+    const payload = await readRegistration(kind, deps.store, previous);
+    if (payload?.tenantId === actor.tenantId) return { status: 'ok', token: previous };
+  }
+  const issued = await issueRegistrationToken(kind, deps, actor, 'customer', { noMerge: true });
+  if (issued.status === 'rate_limited') return issued;
+  await deps.store.getdel(key);
+  await deps.store.set(key, issued.token, 'PX', REGISTRATION_TTL_MS - REUSE_MIN_REMAINING_MS, 'NX');
+  return { status: 'ok', token: issued.token };
+}
+
+/**
  * 為顧客目前的渠道身分產生登記連結，並在該對話送出。
  * @param initiatedBy 'agent'＝客服在後台代發：另計次數，超限時只回報給客服，不在顧客對話送說明
  */
@@ -115,24 +191,15 @@ export async function issueRegistrationLink(
   initiatedBy: 'customer' | 'agent' = 'customer',
 ): Promise<IssueRegistrationLinkResult> {
   const { tenantId } = actor;
-  const issued = await bumpCounter(deps.store, issueKey(kind, actor.channelIdentityId, initiatedBy));
-  if (issued > MAX_ISSUES_PER_HOUR) {
+  const issuedToken = await issueRegistrationToken(kind, deps, actor, initiatedBy);
+  if (issuedToken.status === 'rate_limited') {
     // 只在第一次超過時回覆：每則回覆都佔推播額度，否則可被拿來洗訊息
-    if (initiatedBy === 'customer' && issued === MAX_ISSUES_PER_HOUR + 1) {
+    if (initiatedBy === 'customer' && issuedToken.issued === MAX_ISSUES_PER_HOUR + 1) {
       await sendBindingMessage(db, deps, tenantId, actor.conversationId, kind.text.rateLimited, `${kind.name}_rate_limited`);
     }
     return { status: 'rate_limited' };
   }
-
-  const token = randomBytes(32).toString('base64url');
-  const payload: RegistrationPayload = {
-    tenantId,
-    channelIdentityId: actor.channelIdentityId,
-    channelId: actor.channelId,
-    conversationId: actor.conversationId,
-    issuedAt: (deps.now ?? Date.now)(),
-  };
-  await deps.store.set(tokenKey(kind, token), JSON.stringify(payload), 'PX', REGISTRATION_TTL_MS, 'NX');
+  const { token } = issuedToken;
 
   const url = registrationUrl(kind, deps.webBaseUrl ?? getConfig().WEB_BASE_URL, token);
   const text = kind.text.invite(url, Math.round(REGISTRATION_TTL_MS / 60000));
@@ -210,6 +277,8 @@ export type SubmitRegistrationResult =
   | { status: 'registered'; contactId: string }
   | { status: 'channel_conflict' }
   | { status: 'identity_conflict' }
+  /** 從票券頁登記的值已屬於另一位聯絡人：不合併、不寫入，請顧客在自己的對話中登記 */
+  | { status: 'merge_requires_chat' }
   | { status: 'merged'; survivorId: string; mergedId: string; mergeLogId: string };
 
 /**
@@ -284,8 +353,21 @@ async function register(
   const earliest = await kind.findEarliest(db, tenantId, value);
   const existing = earliest && earliest.id !== registrantId ? earliest : null;
 
+  if (existing && payload.noMerge) {
+    const settingsRow = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
+    const settings = parseIdentityBindingSettings(settingsRow?.identityBinding);
+    const keyword = (kind.name === 'email' ? settings.emailKeywords : settings.phoneKeywords)[0];
+    logger.info(`[${kind.logTag}] 票券頁登記的值已屬於其他聯絡人，不自動合併`, { tenantId, registrantId });
+    return {
+      result: { status: 'merge_requires_chat' },
+      notices: [{ conversationId, text: kind.text.mergeRequiresChat(keyword), kind: `${kind.name}_merge_requires_chat` }],
+    };
+  }
+
   if (!existing) {
     await kind.write(db, tenantId, registrantId, value);
+    const verified = identityVerifiedData(kind);
+    if (verified) await db.contact.updateMany({ where: { id: registrantId, tenantId }, data: verified });
     return {
       result: { status: 'registered', contactId: registrantId },
       notices: [{ conversationId, text: kind.text.registered, kind: `${kind.name}_registered` }],
@@ -360,6 +442,8 @@ async function register(
     throw err;
   });
   if (!merge) return channelConflict();
+  const verified = identityVerifiedData(kind);
+  if (verified) await db.contact.updateMany({ where: { id: existing.id, tenantId }, data: verified });
 
   const settingsRow = await db.tenantSettings.findFirst({ where: { tenantId }, select: { identityBinding: true } });
   const unbindKeyword = parseIdentityBindingSettings(settingsRow?.identityBinding).unbindKeywords[0];
@@ -389,6 +473,14 @@ async function register(
     result: { status: 'merged', survivorId: existing.id, mergedId: registrantId, mergeLogId: merge.mergeLogId },
     notices,
   };
+}
+
+/**
+ * 歸戶驗證要寫入的欄位（不證明本人的方式回 null）：顧客本人用登記連結送出了這個值。優惠券票券夾以此判斷是否已歸戶（add-coupon-system D12）。
+ * 合併時記在保留方——合併後顧客的所有渠道身分都屬於它。
+ */
+function identityVerifiedData(kind: RegistrationKind) {
+  return kind.provesOwnership ? { identityVerifiedAt: new Date(), identityVerifiedVia: kind.name } : null;
 }
 
 /**

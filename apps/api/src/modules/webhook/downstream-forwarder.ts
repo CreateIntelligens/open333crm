@@ -11,6 +11,7 @@
 import { lookup } from 'node:dns/promises';
 import { z } from 'zod';
 import { logger } from '@open333crm/core';
+import { isBlockedIp } from '../../shared/utils/ip-guard.js';
 
 // ─── Config schema + helper ──────────────────────────────────────────────
 
@@ -42,48 +43,6 @@ export function getDownstreamWebhookConfig(settings: unknown): DownstreamWebhook
 
 // ─── SSRF guard ───────────────────────────────────────────────────────────
 
-function ipv4ToInt(ip: string): number | null {
-  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return null;
-  const parts = m.slice(1).map(Number);
-  if (parts.some((p) => p > 255)) return null;
-  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
-}
-
-function isBlockedIpv4(ip: string): boolean {
-  const n = ipv4ToInt(ip);
-  if (n === null) return false;
-  const inRange = (base: string, bits: number): boolean => {
-    const b = ipv4ToInt(base);
-    if (b === null) return false;
-    const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
-    return (n & mask) === (b & mask);
-  };
-  return (
-    inRange('0.0.0.0', 8) || // "this" network / 0.0.0.0
-    inRange('10.0.0.0', 8) || // private
-    inRange('100.64.0.0', 10) || // CGNAT
-    inRange('127.0.0.0', 8) || // loopback
-    inRange('169.254.0.0', 16) || // link-local
-    inRange('172.16.0.0', 12) || // private
-    inRange('192.0.0.0', 24) || // IETF protocol assignments
-    inRange('192.168.0.0', 16) || // private
-    inRange('198.18.0.0', 15) || // benchmarking
-    inRange('224.0.0.0', 4) || // multicast
-    inRange('240.0.0.0', 4) // reserved
-  );
-}
-
-function isBlockedIpv6(ip: string): boolean {
-  const addr = ip.toLowerCase();
-  if (addr === '::1' || addr === '::') return true; // loopback / unspecified
-  const mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/); // IPv4-mapped
-  if (mapped) return isBlockedIpv4(mapped[1]);
-  if (/^f[cd][0-9a-f]{2}:/.test(addr)) return true; // fc00::/7 unique-local
-  if (/^fe[89ab][0-9a-f]:/.test(addr)) return true; // fe80::/10 link-local
-  return false;
-}
-
 /**
  * Resolve the URL's host and block loopback / private / link-local / reserved
  * targets. Requires https. Blocks (returns true) on any error or DNS failure.
@@ -101,8 +60,8 @@ export async function isBlockedUrl(rawUrl: string): Promise<boolean> {
     const results = await lookup(host, { all: true });
     if (results.length === 0) return true;
     for (const r of results) {
-      if (r.family === 4 && isBlockedIpv4(r.address)) return true;
-      if (r.family === 6 && isBlockedIpv6(r.address)) return true;
+      // IPv6 的各種寫法（含 IPv4-mapped 十六進位形式）一律展開後判斷
+      if (isBlockedIp(r.address)) return true;
     }
     return false;
   } catch {

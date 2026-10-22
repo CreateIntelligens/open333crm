@@ -72,6 +72,8 @@ export const PHONE_REGISTRATION: RegistrationKind = {
   },
   mergeSource: 'PHONE',
   stitchSource: 'PHONE_MATCH',
+  // 沒有簡訊驗證：只用於歸戶，不算歸戶驗證
+  provesOwnership: false,
   text: PHONE_TEXT,
 };
 

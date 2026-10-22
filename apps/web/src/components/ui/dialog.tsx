@@ -7,9 +7,14 @@ interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
+  /**
+   * 提供時，Esc 與點遮罩不直接關閉，改呼叫此函式，由呼叫端決定是否關閉
+   * （例如填寫中先詢問是否放棄）。點遮罩一次即觸發。
+   */
+  onRequestClose?: () => void;
 }
 
-function Dialog({ open, onOpenChange, children }: DialogProps) {
+function Dialog({ open, onOpenChange, children, onRequestClose }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const lastClickTimeRef = useRef<number>(0);
 
@@ -31,7 +36,16 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
       ref={dialogRef}
       className="fixed inset-0 z-50 m-auto w-fit rounded-xl border bg-background p-0 shadow-dropdown backdrop:bg-black/50"
       onClose={() => onOpenChange(false)}
+      onCancel={(e) => {
+        if (!onRequestClose) return;
+        e.preventDefault();
+        onRequestClose();
+      }}
       onClick={(e) => {
+        if (e.target === dialogRef.current && onRequestClose) {
+          onRequestClose();
+          return;
+        }
         if (e.target === dialogRef.current) {
           const now = Date.now();
           if (now - lastClickTimeRef.current < 300) {

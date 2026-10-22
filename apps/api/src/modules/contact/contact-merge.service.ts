@@ -34,6 +34,8 @@ export interface MovedRecords {
   flowExecution: string[];
   kbArticleFeedback: string[];
   broadcastRecipient: string[];
+  /** 搬過去的優惠券（舊紀錄沒有這個欄位） */
+  couponInstance?: string[];
   /** 搬過去的 tagId（解除時不回收） */
   contactTag: string[];
   /** 搬過去的屬性 key（解除時不回收） */
@@ -89,7 +91,8 @@ type RevertibleKey =
   | 'clickLog'
   | 'flowExecution'
   | 'kbArticleFeedback'
-  | 'broadcastRecipient';
+  | 'broadcastRecipient'
+  | 'couponInstance';
 
 async function moveIds(
   find: () => Promise<Array<{ id: string }>>,
@@ -279,6 +282,11 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     () => db.kbArticleFeedback.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
     (ids) => db.kbArticleFeedback.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
   );
+  // 優惠券跟著顧客走：合併後顧客開票券夾看到的是保留方的券（add-coupon-system）
+  const couponInstance = await moveIds(
+    () => db.couponInstance.findMany({ where: { tenantId, contactId: mergedId }, select: { id: true } }),
+    (ids) => db.couponInstance.updateMany({ where: { tenantId, id: { in: ids } }, data: to }),
+  );
 
   // ── 2. 有唯一鍵的表：survivor 已有的保留 survivor，其餘搬過去 ─────────────
   // 標籤：唯一鍵 [contactId, tagId]；用 updateMany 搬才能保留 addedAt / expiresAt
@@ -383,6 +391,12 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     fill.displayName = merged.displayName;
     filledFields.push('displayName');
   }
+  // 歸戶驗證跟著顧客：被合併方驗證過、保留方沒有時帶入，合併後不必再驗證一次
+  if (!survivor.identityVerifiedAt && merged.identityVerifiedAt) {
+    fill.identityVerifiedAt = merged.identityVerifiedAt;
+    fill.identityVerifiedVia = merged.identityVerifiedVia;
+    filledFields.push('identityVerified');
+  }
   if (filledFields.length > 0) {
     await db.contact.update({ where: { id: survivorId, tenantId }, data: fill });
   }
@@ -399,6 +413,7 @@ export async function mergeContacts(db: TenantDb, input: MergeContactsInput): Pr
     flowExecution,
     kbArticleFeedback,
     broadcastRecipient,
+    couponInstance,
     contactTag,
     contactAttribute,
     filledFields,
@@ -535,6 +550,9 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
   if (has('kbArticleFeedback')) {
     await db.kbArticleFeedback.updateMany({ where: { tenantId, id: inList('kbArticleFeedback'), contactId: heldBy }, data: back });
   }
+  if (has('couponInstance')) {
+    await db.couponInstance.updateMany({ where: { tenantId, id: inList('couponInstance'), contactId: heldBy }, data: back });
+  }
   if (has('broadcastRecipient')) {
     await db.broadcastRecipient.updateMany({ where: { id: inList('broadcastRecipient'), contactId: heldBy }, data: back });
   }
@@ -594,6 +612,15 @@ export async function revertMerge(db: TenantDb, input: RevertMergeInput): Promis
           }
           // displayName 為必填，只在合併前 survivor 名稱為空白時才補過；清回空字串
           if (field === 'displayName' && holder.displayName === restoredContact.displayName) clear.displayName = '';
+          // 帶入的歸戶驗證屬於被合併方本人，解除後保留方要重新驗證
+          if (
+            field === 'identityVerified' &&
+            restoredContact.identityVerifiedAt &&
+            holder.identityVerifiedAt?.getTime() === restoredContact.identityVerifiedAt.getTime()
+          ) {
+            clear.identityVerifiedAt = null;
+            clear.identityVerifiedVia = null;
+          }
         }
         if (Object.keys(clear).length > 0) {
           await db.contact.update({ where: { id: holder.id, tenantId }, data: clear });
