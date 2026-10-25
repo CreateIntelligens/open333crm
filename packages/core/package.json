@@ -35,7 +35,7 @@
     "minio": "^8.0.0",
     "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "zod": "^3.22.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
