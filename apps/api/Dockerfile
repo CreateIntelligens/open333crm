@@ -2,7 +2,7 @@ FROM node:26.12.1-bookworm-slim AS deps
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 
 # Alpine deps for Prisma
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -57,7 +57,7 @@ FROM node:26.12.1-bookworm-slim AS runner
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 RUN apt-get update && apt-get install -y --no-install-recommends \
   openssl ca-certificates libstdc++6 \
   && rm -rf /var/lib/apt/lists/*

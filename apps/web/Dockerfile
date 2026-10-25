@@ -2,7 +2,7 @@ FROM node:26.12.1-bookworm-slim AS deps
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY .env.web .env.web
@@ -35,7 +35,7 @@ FROM node:26.12.1-bookworm-slim AS runner
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g corepack@latest && corepack enable
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
