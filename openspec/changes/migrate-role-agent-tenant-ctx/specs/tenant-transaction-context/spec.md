@@ -23,3 +23,22 @@
 
 - **WHEN** 交易內依序登記推播 P1、動作 A1、推播 P2，之後交易 commit
 - **THEN** 系統 MUST 依 P1、A1、P2 的順序執行
+
+### Requirement: service 直接使用 Redis 與 LLM 的數量不得增加
+
+「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算兩種寫法在 service 檔中出現的次數，並與同一個基準檔比較：值的 import 引入 Redis client（`@open333crm/core` 的 `redis`、`ioredis`），以及值的 import 引入 LLM 入口（`generateReply`、`getChatProvider`）。只引入型別的 import MUST NOT 計入，flow 檔與 route 檔的 import MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
+
+#### Scenario: service 檔新增 Redis client 的 import
+
+- **WHEN** 一個 service 檔新增 `import { redis } from '@open333crm/core'`，以 `--strict` 執行腳本
+- **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含該寫法與該檔案路徑
+
+#### Scenario: service 檔新增 LLM 入口的 import
+
+- **WHEN** 一個 service 檔新增 `import { generateReply } from '../ai/llm.service.js'`，以 `--strict` 執行腳本
+- **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含該寫法與該檔案路徑
+
+#### Scenario: 只引入型別，或在 flow 檔引入
+
+- **WHEN** 一個 service 檔新增 `import type { Redis } from 'ioredis'`，一個 flow 檔新增 `import { redis } from '@open333crm/core'`，以 `--strict` 執行腳本
+- **THEN** 腳本 MUST 以 exit code 0 結束

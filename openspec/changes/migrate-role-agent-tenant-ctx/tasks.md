@@ -33,6 +33,28 @@
 - [x] 4.5 `agent.routes.ts` 改用 `tenantHandler()`：在交易之前算好新密碼的雜湊，稽核改用 `recordTenantAudit(ctx, …)`
 - [x] 4.6 跑 `pnpm test:feature -- agent-management role-management permission-check tenant-audit-routes`，全部通過
 
+## 6. 試點檢討：`TenantCtx` 只留資料存取，加上 flow 層（design 決策 6～8）
+
+- [x] 6.1 改寫 `apps/api/tests/unit/lib/tenant-ctx.test.ts`：`inTenant(prisma, tenantId, fn)` 給的 scope 只有 `tx`、`tenantId`、`afterCommit`；推播、事件、job 改用 `notifyTenant`、`notifyAgent`、`publishEvent`、`enqueueJob`。主規格「推播、事件與佇列 job 在 commit 之後才送出」「推播的房間由系統決定」與本 change 的 Scenario 都要有對應的測試。執行後確認是斷言或型別失敗，不是 import 錯誤
+- [x] 6.2 實作 `TenantCtx`、`TenantScope`、`inTenant()` 與四個副作用函式，讓 6.1 通過。`tenantHandler()` 的 handler 改收 `TenantCtx`
+  - `tenantHandler()` 的 handler 拿不到 `afterCommit`，所以 3.5 補在 `tenant-handler.test.ts` 的「afterCommit 的動作完成之後才送出回應」移除。route 等 flow 回傳，flow 等 `inTenant()` 回傳，所以「回應在動作完成之後」由 `tenant-ctx.test.ts` 的「afterCommit：commit 之後執行，回傳之前完成」涵蓋；3.5 的突變（`void effect.run()`）仍使它失敗。型別測試 `tests/types/tenant-handler.types.ts` 以 `@ts-expect-error` 確認 handler 的 ctx 與 service 的 `TenantCtx` 不能登記副作用
+- [x] 6.3 `tests/support/mock-tenant-ctx.ts`、`tests/support/tenant-run.ts` 改成新的契約
+- [x] 6.4 `role`：寫失敗的單元測試 `role.flow` 以 `afterCommit` 登記權限快取的清除，並寫稽核；新增 `role.flow.ts`，`role.service.ts` 不再登記 `afterCommit`，`role.routes.ts` 的寫入改呼叫 flow
+- [x] 6.5 `agent`：寫失敗的單元測試 `agent.flow`：建立成員在開啟交易之前雜湊密碼，並寫稽核；新增 `agent.flow.ts`，`agent.routes.ts` 的寫入改呼叫 flow，移除 `tenantHandler(fastify, …)(request, reply)` 的寫法
+- [x] 6.6 `coupon`、`marketing`、`member-binding`、`store`、`automation` 改成新的契約：service 回傳結果，推播與事件移到 flow 或入口（design 決策 8）
+- [x] 6.7 `pnpm test`、`pnpm test:feature` 通過；`coupon-realtime`、`coupon-export`、`broadcast-coupon` 等檢查推播與事件的 feature 測試不修改斷言
+  - 2026-10-27：api 1365、web 787、workers 117、core 86 項單元測試通過；feature 881 項通過。feature 測試只改呼叫方式（`inTenant(prisma, …)`、`publishEvent()` 等），沒有修改斷言
+- [x] 6.8 突變驗證：把 `redeemCoupon` 4 個入口之一的推播移除，確認 `coupon-realtime.test.ts` 失敗，再還原。把突變記在本項下方
+  - 突變（2026-10-27）：`coupon-redeem.flow.ts` 的推播條件改成 `false && result.ok`，「券被核銷後推送：後台」失敗；`store-console.flow.ts` 的推播條件改成 `false && outcome.redeemed`，「券被核銷後推送：核銷台」失敗。還原後都通過
+- [x] 6.9 `AGENTS.md`：後綴表加入 `.flow.ts`；結構規則 2 改寫 service、flow 與副作用函式的分工；「Which Prisma client to use」與 Socket Event Routing 的範例改成新的寫法。`docs/ref/modules/EVENTS.md` 同步更新
+- [x] 6.10 `CHANGELOG.md` 更新 Changed 的條目；規劃檔第 10 節記錄決策 6～8
+
+## 7. service 直接使用 Redis 與 LLM 的檢查（design 決策 9）
+
+- [x] 7.1 在 `apps/api/tests/unit/tenant-ctx-ratchet.test.ts` 寫失敗的測試，涵蓋 Scenario「service 檔新增 Redis client 的 import」「service 檔新增 LLM 入口的 import」「只引入型別，或在 flow 檔引入」。執行後確認前兩個以斷言失敗（exit code 是 0，不是 1）
+- [x] 7.2 `scripts/check-tenant-ctx.mjs` 加上兩種寫法，讓 7.1 通過；以 `--update-baseline` 記下現況（2026-10-27：Redis client 5 個檔案、LLM 入口 8 個檔案）
+- [x] 7.3 `AGENTS.md` 結構規則 2 的 Check 寫明這兩種寫法
+
 ## 5. 文件與完成條件
 
 - [x] 5.1 `AGENTS.md` 結構規則 2：加入 `ctx.afterCommit`（快取失效這類最多一次、回應之前要完成的動作）與 `recordTenantAudit()`（交易內的稽核，失敗時整筆 rollback）

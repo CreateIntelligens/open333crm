@@ -9,11 +9,20 @@
 
 ## What Changes
 
-- `TenantCtx` 新增 `afterCommit(label, fn)`：commit 之後、`inTenant()` 回傳之前執行，依登記順序執行並等待完成。失敗只記 log；rollback 時丟棄。用在快取失效這類「最多一次、要在回應之前完成」的動作。
-- 新增 `recordTenantAudit(ctx, input)`：在交易內寫稽核，`tenantId` 由 ctx 填入。寫入失敗時丟出錯誤，主操作一起 rollback。還沒搬的呼叫端繼續用 `writeTenantAudit()`，行為不變。
-- `role.service.ts`、`agent.service.ts` 的函式改收 `TenantCtx`。`role.routes.ts`、`agent.routes.ts` 改用 `tenantHandler()`，稽核改用 `recordTenantAudit()`。
+試點的檢討（2026-10-27）發現 `TenantCtx` 把資料存取、業務事件、推播、佇列與 commit 之後的動作都放在同一個物件上。service 拿得到這些方法，就會在 service 裡決定所有副作用；每多一種副作用，物件就多一個方法。本 change 一併修正：
+
+- **`TenantCtx` 只剩資料存取**：`{ tx, tenantId }`。service 只收這個型別，拿不到任何副作用的能力。
+- **`inTenant()` 給入口的 `TenantScope`**：`TenantCtx` 加上 `afterCommit(label, fn)`。`afterCommit` 是唯一需要 `inTenant()` 才做得到的原語：commit 之後、`inTenant()` 回傳之前執行，依登記順序執行並等待完成；失敗只記 log；rollback 時丟棄。
+- **其他副作用改成收 scope 的獨立函式**，依賴由呼叫端傳入：
+  - `publishEvent(scope, publisher, …)`、`enqueueJob(scope, publisher, …)`（`events/outbox-publisher.ts`）：交易內寫 outbox，再以 `afterCommit` 登記快路徑。
+  - `notifyTenant(scope, io, …)`、`notifyAgent(scope, io, …)`（`events/socket-push.ts`）：以 `afterCommit` 登記推播。
+  - `recordTenantAudit(scope, input)`（`modules/tenant-audit/tenant-audit.service.ts`）：在交易內寫稽核，`tenantId` 由 scope 填入。寫入失敗時丟出錯誤，主操作一起 rollback。還沒搬的呼叫端繼續用 `writeTenantAudit()`，行為不變。
+- **use case 層沿用既有的 `<name>.flow.ts`**：flow 開啟 `inTenant()`，呼叫 service，再決定稽核、推播、事件、快取。route 有任何副作用時就呼叫 flow；沒有副作用的 route 用 `tenantHandler()`，handler 只拿到 `TenantCtx`。
+- `role`、`agent` 的 service 改收 `TenantCtx`；新增 `role.flow.ts`、`agent.flow.ts`，收齊兩個模組的寫入、稽核與權限快取的清除。
+- 已用 `TenantCtx` 的模組（`coupon`、`marketing`、`member-binding`、`store`、`automation`）改成新的契約：service 回傳結果，推播與事件移到 flow 或入口。
 - `services/channel-team-access.ts` 的 `setAgentChannels()`、`listChannelsForAgent()` 改收 `TenantCtx`。`setAgentChannels()` 不再自己開交易。
-- bcrypt 雜湊移到交易之外：route 先算好新密碼的雜湊，再傳給 service。
+- bcrypt 雜湊移到交易之外：flow 先算好新密碼的雜湊，再開交易。
+- `scripts/check-tenant-ctx.mjs` 另外計算 service 檔直接 import Redis client 與 LLM 入口的次數，只減不增（design 決策 9）。
 
 **可觀察的差異：**
 
@@ -29,14 +38,14 @@
 
 ### Modified Capabilities
 
-- `tenant-transaction-context`：新增「commit 之後、回傳之前執行的動作」。
+- `tenant-transaction-context`：新增「commit 之後、回傳之前執行的動作」。主規格其他需求以「交易內登記」描述行為，不指定由哪個物件登記，所以不修改。另新增「service 直接使用 Redis 與 LLM 的數量不得增加」。
 - `tenant-audit-log`：「稽核寫入失敗不影響主操作」只適用於交易外的 `writeTenantAudit()`；新增交易內稽核與主操作一起 commit 的需求。
 
 `permission-check` 不修改：「在修改的請求回應之前清除快取」維持不變，`afterCommit` 在回應之前完成。
 
 ## Impact
 
-- 程式：`apps/api/src/lib/tenant-ctx.ts`、`apps/api/tests/support/mock-tenant-ctx.ts`、`apps/api/src/modules/tenant-audit/tenant-audit.service.ts`、`apps/api/src/modules/role/*`、`apps/api/src/modules/agent/*`、`apps/api/src/services/channel-team-access.ts`。
+- 程式：`apps/api/src/lib/tenant-ctx.ts`、`apps/api/src/events/outbox-publisher.ts`、`apps/api/src/events/socket-push.ts`、`apps/api/src/modules/tenant-audit/tenant-audit.service.ts`、`apps/api/src/modules/{role,agent,coupon,marketing,member-binding,store,automation}/*`、`apps/api/src/services/channel-team-access.ts`，以及測試輔助 `apps/api/tests/support/{mock-tenant-ctx,tenant-run}.ts`。
 - ratchet 基準檔：`role`、`agent` 的舊寫法減少。
-- 文件：`AGENTS.md`（結構規則 2 加入 `afterCommit` 與交易內稽核）、`CHANGELOG.md`。
+- 文件：`AGENTS.md`（後綴表加入 `.flow.ts`；結構規則 2 改寫 service、flow 與副作用函式的分工）、`docs/ref/modules/EVENTS.md`、`CHANGELOG.md`。
 - 沒有 schema 變更，也沒有新的相依套件。
