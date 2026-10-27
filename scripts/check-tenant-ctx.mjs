@@ -7,8 +7,13 @@
  * 本腳本計算下列寫法在每個檔案的次數，與基準檔比較；任一檔案的次數變多就算增加。
  * service 檔直接 import Redis client 或 LLM 入口也算舊寫法：這些依賴不經過參數，型別擋不住
  * 「交易內不呼叫外部服務」「commit 之後才清快取」，要由 flow 注入（change migrate-role-agent-tenant-ctx）。
- * 只算值的 import；`import type` 與 `{ type X }` 不算。
  * 模組內的 tenantHandler( 也算舊寫法：route 一律呼叫 flow，沒有 route 使用之後刪除 tenantHandler()。
+ *
+ * 這三種以 TypeScript 解析語法樹計數，不用文字比對（review-loop 第 2 輪：文字比對換一種合法寫法就擋不到）：
+ * - import：靜態 import、re-export、`import x = require()`、動態 `import()`、`require()` 都算；
+ *   `import type`、`{ type X }`、註解與字串裡的文字不算。
+ * - tenantHandler：呼叫 import 進來的 tenantHandler 才算，包含改名（`as`）、指定給另一個變數、
+ *   經過 namespace（`tc.tenantHandler(`）。註解裡的不算。
  * 以檔案為單位比較，避免一個檔案減少、另一個檔案增加互相抵銷。
  *
  * 用文字比對計數，註解裡的字也會算到；基準檔用同樣的方式產生，所以不影響「只減不增」。
@@ -21,10 +26,13 @@
  *   --baseline <file>  改用指定基準檔（測試用，預設 scripts/check-tenant-ctx.baseline.json）
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
+// typescript 只裝在 apps/api：以那裡的 package.json 為起點載入
+const ts = createRequire(join(ROOT, 'apps/api/package.json'))('typescript');
 
 function argValue(name) {
   const i = process.argv.indexOf(name);
@@ -56,46 +64,112 @@ const PATTERNS = [
   { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   // route 改成呼叫 flow；沒有 route 使用之後刪除 tenantHandler()。lib/ 內的定義不算
-  { name: '模組內的 tenantHandler(', re: /\btenantHandler\s*(?:<[^>()]*>\s*)?\(/g, applies: (rel) => rel.startsWith('modules/') },
-  // Redis：core 的 redis singleton，或 ioredis 的任何值 import（預設、namespace、具名）
+  { name: '模組內的 tenantHandler(', count: (sf) => tenantHandlerCalls(sf), applies: (rel) => rel.startsWith('modules/') },
+  // Redis：core 的 redis singleton 或 namespace，或 ioredis 的任何值 import
   {
     name: 'service 直接 import Redis client',
-    count: (text) =>
-      valueImports(text).filter(
-        ({ from, clause }) =>
-          from === 'ioredis' ||
-          (from === '@open333crm/core' && (clause.namespace || clause.named.includes('redis'))),
+    count: (sf) =>
+      moduleRefs(sf).filter(
+        ({ from, names, whole }) =>
+          from === 'ioredis' || (from === '@open333crm/core' && (whole || names.includes('redis'))),
       ).length,
     applies: isServiceFile,
   },
   // LLM：llm.service 或 providers/ 底下（型別檔 types.js 除外）的任何值 import
   {
     name: 'service 直接 import LLM 入口',
-    count: (text) =>
-      valueImports(text).filter(({ from }) => /(?:^|\/)(?:llm\.service|providers\/(?!types\.js$)[^/]+)\.js$/.test(from)).length,
+    count: (sf) => moduleRefs(sf).filter(({ from }) => /(?:^|\/)(?:llm\.service|providers\/(?!types\.js$)[^/]+)\.js$/.test(from)).length,
     applies: isServiceFile,
   },
 ];
 
 /**
- * 檔案中的值 import：`import type …` 與只含 `type X` 的具名 import 不算。
- * clause.named 是不帶 type 的具名項目（取 as 之前的名稱），clause.namespace 表示 `* as X`，
- * clause.defaultName 是預設 import 的名稱。
+ * 檔案引用其他模組的值：每一筆是 { from, names, whole }。
+ * names 是具名引用的原名（`as` 之前），whole 表示引用整個模組（預設、namespace、require、動態 import）。
+ * 只引用型別的不算。
  */
-function valueImports(text) {
-  const result = [];
-  for (const m of text.matchAll(/^import\s+(?!type\b)([^;]*?)\s+from\s+['"]([^'"]+)['"]/gms)) {
-    const raw = m[1];
-    const named = [...(raw.match(/\{([^}]*)\}/)?.[1] ?? '').split(',')]
-      .map((part) => part.trim())
-      .filter((part) => part && !/^type\s/.test(part))
-      .map((part) => part.split(/\s+as\s+/)[0].trim());
-    const namespace = /\*\s*as\s+\w+/.test(raw);
-    const defaultName = raw.replace(/\{[^}]*\}/, '').replace(/\*\s*as\s+\w+/, '').replace(/,/g, '').trim();
-    if (named.length === 0 && !namespace && !defaultName) continue;
-    result.push({ from: m[2], clause: { named, namespace, defaultName } });
+function moduleRefs(sf) {
+  const refs = [];
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      if (clause && !clause.isTypeOnly) {
+        const bindings = clause.namedBindings;
+        const names =
+          bindings && ts.isNamedImports(bindings)
+            ? bindings.elements.filter((e) => !e.isTypeOnly).map((e) => (e.propertyName ?? e.name).text)
+            : [];
+        const whole = Boolean(clause.name) || Boolean(bindings && ts.isNamespaceImport(bindings));
+        if (whole || names.length > 0) refs.push({ from: node.moduleSpecifier.text, names, whole });
+      }
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.isTypeOnly) {
+        const clause = node.exportClause;
+        const names =
+          clause && ts.isNamedExports(clause)
+            ? clause.elements.filter((e) => !e.isTypeOnly).map((e) => (e.propertyName ?? e.name).text)
+            : [];
+        const whole = !clause || ts.isNamespaceExport(clause);
+        if (whole || names.length > 0) refs.push({ from: node.moduleSpecifier.text, names, whole });
+      }
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      !node.isTypeOnly &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      refs.push({ from: node.moduleReference.expression.text, names: [], whole: true });
+    } else if (ts.isCallExpression(node) && node.arguments.length > 0 && ts.isStringLiteralLike(node.arguments[0])) {
+      const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require';
+      if (isDynamicImport || isRequire) refs.push({ from: node.arguments[0].text, names: [], whole: true });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return refs;
+}
+
+/** 呼叫 tenantHandler 的次數：import 進來的名稱（含 as 改名）、指定給它的變數、namespace 的 .tenantHandler */
+function tenantHandlerCalls(sf) {
+  const aliases = new Set();
+  const collect = (node) => {
+    if (ts.isImportSpecifier(node) && (node.propertyName ?? node.name).text === 'tenantHandler' && !node.isTypeOnly) {
+      aliases.add(node.name.text);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
+  // const h = tenantHandler：重複找到沒有新的別名為止
+  for (let grew = true; grew; ) {
+    grew = false;
+    const visit = (node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isIdentifier(node.initializer) &&
+        aliases.has(node.initializer.text) &&
+        !aliases.has(node.name.text)
+      ) {
+        aliases.add(node.name.text);
+        grew = true;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
   }
-  return result;
+  let calls = 0;
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (ts.isIdentifier(callee) && aliases.has(callee.text)) calls += 1;
+      else if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'tenantHandler') calls += 1;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return calls;
 }
 
 function walk(dir, out = []) {
@@ -113,9 +187,11 @@ function count() {
   for (const file of walk(SCAN_DIR).sort()) {
     const rel = relative(SCAN_DIR, file).split(sep).join('/');
     const text = readFileSync(file, 'utf8');
+    let sf = null;
     for (const p of PATTERNS) {
       if (!p.applies(rel)) continue;
-      const n = p.count ? p.count(text) : (text.match(p.re)?.length ?? 0);
+      if (p.count) sf ??= ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+      const n = p.count ? p.count(sf) : (text.match(p.re)?.length ?? 0);
       if (n > 0) result[p.name][rel] = n;
     }
   }

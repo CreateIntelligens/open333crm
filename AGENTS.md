@@ -338,15 +338,19 @@ so these functions do not change its result.
   decides these guarantees: `prismaAdmin` has no RLS, and `request.tenantPrisma` runs each query
   in a separate transaction. A unit test also cannot run a service without a database if the
   service gets a client by itself. `tests/support/mock-tenant-ctx.ts` gives a `TenantCtx` for
-  service tests and a `TenantScope` for flow tests. The "Prisma in shared packages" convention below is this rule for `packages/*`.
-- **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when the old forms (`TenantDb`,
-  `request.tenantPrisma`, a transaction opened in a service file, `tenantHandler(` in a module)
-  increase in a file. It also fails
-  when a service file adds a value import of a Redis client (`redis` or a namespace import from
-  `@open333crm/core`, any value import from `ioredis`) or of an LLM module (`ai/llm.service.js`,
-  a file in `ai/providers/` other than `types.js`). The type checker cannot
-  stop a service that uses these module-level clients inside the transaction, so a flow receives
-  them as dependencies instead. A type-only import does not count. Also
+  service tests and a `TenantScope` for flow tests. The "Prisma in shared packages" convention below
+  is this rule for `packages/*`.
+- **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
+  - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
+  - a call of `tenantHandler` in a module;
+  - a reference from a service file to a Redis client (`redis` or the whole module from
+    `@open333crm/core`, or `ioredis`) or to an LLM module (`ai/llm.service.js`, a file in
+    `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
+    module-level clients inside the transaction, so a flow receives them as dependencies instead.
+
+  The script parses the TypeScript syntax for the last two kinds: a re-export, a dynamic
+  `import()`, `require()`, a renamed import and a namespace call count. A type-only import and a
+  comment do not count. Also
   `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
 - **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
   module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of

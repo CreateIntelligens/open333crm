@@ -153,6 +153,28 @@ test('namespace import 與直接 import provider 檔：也算增加', { timeout:
   for (const f of ['n1', 'n2', 'n3', 'n4']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
 });
 
+test('其他合法寫法也算增加：註解、前置空白、多行、re-export、動態 import()、require', { timeout: 30_000 }, async () => {
+  await put('modules/w1/w1.service.ts', ["import { /* cache */ redis } from '@open333crm/core';"]);
+  await put('modules/w2/w2.service.ts', ["  import IORedis from 'ioredis';"]);
+  await put('modules/w3/w3.service.ts', ['import {', '  logger,', '  redis,', "} from '@open333crm/core';"]);
+  await put('modules/w4/w4.service.ts', ["export { redis } from '@open333crm/core';"]);
+  await put('modules/w5/w5.service.ts', ["const { default: IORedis } = await import('ioredis');"]);
+  await put('modules/w6/w6.service.ts', ["const llm = require('../ai/llm.service.js');"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  for (const f of ['w1', 'w2', 'w3', 'w4', 'w5', 'w6']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('註解或字串裡的 import 不算', { timeout: 30_000 }, async () => {
+  await put('modules/c1/c1.service.ts', [
+    "// import { redis } from '@open333crm/core';",
+    "/* import IORedis from 'ioredis'; */",
+    "const doc = \"import { generateReply } from '../ai/llm.service.js'\";",
+  ]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
 test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout: 30_000 }, async () => {
   await put('modules/t1/t1.service.ts', [
     "import type { Redis } from 'ioredis';",
@@ -168,12 +190,36 @@ test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout:
 
 test('模組內新增 tenantHandler(：算增加；lib 內的定義不算', { timeout: 30_000 }, async () => {
   await put('lib/tenant-ctx.ts', ['export function tenantHandler(fastify, handler) {}']);
-  await put('modules/h1/h1.routes.ts', ['app.get("/", tenantHandler(app, async () => ({})));']);
+  await put('modules/h1/h1.routes.ts', [
+    "import { tenantHandler } from '../../lib/tenant-ctx.js';",
+    'app.get("/", tenantHandler(app, async () => ({})));',
+  ]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
   assert.match(output, /tenantHandler/);
   assert.match(output, /modules\/h1\/h1\.routes\.ts/);
   assert.doesNotMatch(output, /lib\/tenant-ctx\.ts/);
+});
+
+test('tenantHandler 改名或經過 namespace 呼叫也算增加；註解裡的不算', { timeout: 30_000 }, async () => {
+  await put('modules/a1/a1.routes.ts', [
+    "import { tenantHandler as wrap } from '../../lib/tenant-ctx.js';",
+    'app.get("/", wrap(app, async () => ({})));',
+  ]);
+  await put('modules/a2/a2.routes.ts', [
+    "import { tenantHandler } from '../../lib/tenant-ctx.js';",
+    'const h = tenantHandler;',
+    'app.get("/", h(app, async () => ({})));',
+  ]);
+  await put('modules/a3/a3.routes.ts', [
+    "import * as tc from '../../lib/tenant-ctx.js';",
+    'app.get("/", tc.tenantHandler(app, async () => ({})));',
+  ]);
+  await put('modules/a4/a4.routes.ts', ['// 以前用 tenantHandler(app, …)，已改成 flow']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  for (const f of ['a1', 'a2', 'a3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.routes\\.ts`));
+  assert.doesNotMatch(output, /modules\/a4\//);
 });
 
 test('repo 本身：舊寫法沒有比基準檔多', { timeout: 30_000 }, async () => {

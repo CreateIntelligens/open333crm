@@ -64,6 +64,12 @@
 - [x] 8.4 寫失敗的測試，涵蓋 Scenario「route 檔新增 tenantHandler」；`check-tenant-ctx.mjs` 加上「模組內的 tenantHandler(」，以 `--update-baseline` 記下現況（2026-10-27：13 處）
 - [x] 8.5 `AGENTS.md`、`CHANGELOG.md` 更新：route 一律呼叫 flow，`tenantHandler()` 是舊寫法
 
+## 9. ratchet 改以語法樹計數（review-loop 第 2 輪，design 決策 9）
+
+- [x] 9.1 寫失敗的測試，涵蓋 Scenario「import 內含註解、前置空白，或以動態 import 引用」「改名之後呼叫 tenantHandler」，另含多行 import、re-export、`require()`、namespace 呼叫。執行後確認兩個測試以斷言失敗（exit code 是 0，不是 1）；Scenario「註解裡的 import 不算」在改寫前已通過，留著防止改寫後退步
+- [x] 9.2 `check-tenant-ctx.mjs` 的 Redis、LLM、tenantHandler 三種計數改用 TypeScript 語法樹，讓 9.1 通過；以 `--update-baseline` 記下現況（多記 `chatbox.service.ts` 的動態 import；tenantHandler 13 → 11）
+- [x] 9.3 `AGENTS.md` 結構規則 2 的 Check、`CHANGELOG.md` 同步更新
+
 ## 5. 文件與完成條件
 
 - [x] 5.1 `AGENTS.md` 結構規則 2：加入 `ctx.afterCommit`（快取失效這類最多一次、回應之前要完成的動作）與 `recordTenantAudit()`（交易內的稽核，失敗時整筆 rollback）
