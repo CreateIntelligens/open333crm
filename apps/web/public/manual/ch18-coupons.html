@@ -275,7 +275,6 @@
           <tr><td>輸錯</td><td>顯示剩餘次數；同一組驗證碼錯 5 次就作廢，要重新寄送</td></tr>
         </tbody>
       </table>
-      <!-- SHOT-PENDING: 新裝置開券時的「寄送驗證碼」與輸入驗證碼畫面，部署後補拍 -->
       <p>以下是 LINE 顧客的開券畫面：</p>
       <div class="phone-shots">
         <figure class="shot"><img src="uploads/shots/ch18-phone-1-message.png" alt="LINE 收到「為您準備了一張優惠券」訊息與連結" loading="lazy"><figcaption>① 在 LINE 收到券訊息，點連結（連結已模糊）</figcaption></figure>
@@ -287,6 +286,11 @@
         <figure class="shot"><img src="uploads/shots/ch18-fb-1-message.png" alt="Messenger 收到券訊息" loading="lazy"><figcaption>① 在 Messenger 收到券訊息（連結已模糊）</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-fb-2-wallet.png" alt="已存入我的優惠券，回到 Messenger" loading="lazy"><figcaption>② 已存入「我的優惠券」</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-fb-3-detail.png" alt="優惠券詳情：券號、有效期限、立即使用" loading="lazy"><figcaption>③ 券詳情：券號、有效期限、領取時間</figcaption></figure>
+      </div>
+      <p>在新的手機或瀏覽器開啟（或連結被轉傳）時，會先要求驗證，畫面只顯示遮蔽後的原本 email，沒有可以改填信箱的欄位：</p>
+      <div class="phone-shots">
+        <figure class="shot"><img src="uploads/shots/ch18-email-1-send.png" alt="確認是你本人：會寄 6 位數驗證碼到 d***@aicreate360.com，寄送驗證碼按鈕" loading="lazy"><figcaption>① 按「寄送驗證碼」，驗證碼寄到顧客原本的 email</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-email-2-input.png" alt="已寄出 6 位數驗證碼，10 分鐘內有效，驗證碼輸入框與重新寄送倒數" loading="lazy"><figcaption>② 輸入信中的 6 位數驗證碼，按「確認」後打開券；沒收到可在倒數結束後重新寄送</figcaption></figure>
       </div>
       <div class="info"><span>ℹ️</span><div>只用 LINE 驗證過、沒有登記 email 的顧客，在 LINE 以外開券時會被要求登記 email。顧客的 email 若是由客服在後台填寫，驗證碼也會寄到那個信箱，請確認聯絡人資料正確。</div></div>
       <div class="info"><span>ℹ️</span><div>
@@ -313,7 +317,6 @@
         <figure class="shot"><img src="uploads/shots/ch18-phone-4-confirm.png" alt="確認核銷頁，向右滑動以核銷" loading="lazy"><figcaption>確認核銷：向右滑動</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-phone-5-done.png" alt="核銷完成頁" loading="lazy"><figcaption>核銷完成：核銷方式「顧客自助」</figcaption></figure>
       </div>
-      <!-- SHOT-OUTDATED: ch18-phone-4-confirm 仍有已移除的「單筆訂單限用一張」；ch18-phone-5-done、ch18-fb-5-done、ch18-code-4-done 完成頁文字已改為「可出示此畫面作為使用證明」，部署後重拍 -->
 
       <h3>6-2 店員驗證碼：店員在顧客手機上輸入驗證碼</h3>
       <ol class="steps">
@@ -328,7 +331,6 @@
         <figure class="shot"><img src="uploads/shots/ch18-code-3-input.png" alt="確認核銷頁：剩餘核銷時間倒數、使用條件、4 格驗證碼輸入框" loading="lazy"><figcaption>③ 把手機交給店員：5 分鐘倒數、使用條件，店員輸入驗證碼後按「確認核銷」</figcaption></figure>
         <figure class="shot"><img src="uploads/shots/ch18-code-4-done.png" alt="核銷完成，核銷方式店員驗證碼" loading="lazy"><figcaption>④ 核銷完成，核銷方式「店員驗證碼」</figcaption></figure>
       </div>
-      <!-- SHOT-OUTDATED: ch18-code-3-input 的提示已改為「請店員輸入 4 位數驗證碼」，部署後重拍 -->
       <table>
         <thead><tr><th>狀況</th><th>畫面與規則</th></tr></thead>
         <tbody>
@@ -368,6 +370,8 @@
 
       <h3>新增門市</h3>
       <p>按右上角「新增門市」，輸入「門市名稱」（最多 50 字，例如「內湖門市」）。門市名稱會印在櫃檯海報上。新增後門市卡片顯示「營業中」。</p>
+      <figure class="shot shot-narrow" style="max-width:450px"><img src="uploads/shots/ch18-store-new.png" alt="新增門市對話框：門市名稱輸入框" loading="lazy"><figcaption>新增門市：輸入門市名稱</figcaption></figure>
+      <figure class="shot"><img src="uploads/shots/ch18-store-list.png" alt="門市與核銷帳號頁：示範門市有 1 個帳號，新門市 testing 尚未建立帳號" loading="lazy"><figcaption>新增後的門市卡片顯示「營業中」，還沒有帳號時提示「建立帳號後，店員才能登入核銷台」</figcaption></figure>
       <p>門市卡片右側的按鈕：</p>
       <table>
         <thead><tr><th>按鈕</th><th>作用</th></tr></thead>
@@ -388,7 +392,7 @@
           <tr><td>可以核銷</td><td>預設勾選。取消勾選後，這個帳號登入後會直接顯示「沒有核銷權限」，無法查券也無法核銷</td></tr>
         </tbody>
       </table>
-      <!-- SHOT-PENDING: 新增門市帳號與「帳號已建立」畫面（密碼遮蔽），等使用者提供截圖 -->
+      <figure class="shot shot-narrow" style="max-width:444px"><img src="uploads/shots/ch18-store-created.png" alt="帳號已建立：門市、帳號名稱、密碼（已遮蔽）與複製按鈕" loading="lazy"><figcaption>帳號已建立：密碼只在這個畫面顯示一次（截圖中的密碼已遮蔽）</figcaption></figure>
       <div class="warn"><span>⚠️</span><div>按「建立帳號」後會出現「帳號已建立」畫面，<b>密碼只在這時候可以複製</b>，關閉後無法再查看。請用「一次複製帳號與密碼」交給店長，再按「我已交給店長，關閉」。忘記密碼只能重設。</div></div>
 
       <h3>管理帳號</h3>
@@ -468,7 +472,6 @@
           <tr><td>核銷率</td><td>核銷 ÷ 領取</td></tr>
         </tbody>
       </table>
-      <!-- SHOT-OUTDATED: ch18-records 影片中的統計卡仍顯示「已在門市使用」，已改為「已使用」 -->
       <p>下方「序號明細」列出每一張券的序號、顧客、發放來源（例如「對話發券」與座席名稱）、狀態、領取與核銷時間。顧客來電詢問時，可以在「序號或顧客名稱」直接輸入序號或名字查詢，也能依狀態、領取時間、核銷時間篩選，或按「匯出 CSV」。超過 5,000 筆時匯出會改在背景產生，完成後以站內通知提供下載。「設定」分頁可以看這張券的所有設定。</p>
       <p><b>其他查看的地方：</b></p>
       <ul>
