@@ -132,6 +132,14 @@ API 為每個監控的佇列（`ops-alert` 除外）建立一個 `QueueEvents`�
 - [刪除舊的 repeatable job 與重新註冊之間，workers 停止時，週期 job 會少一期] → 下次啟動時重新註冊。週期是 5 分鐘與 1 小時，少一期沒有影響。
 - [OpenAPI 產生器讀不懂 bull-board 以程式註冊的路由] → 換發 cookie 的路由寫在一般的路由檔；以 `pnpm test` 中的 `openapi-inventory-routes.test.ts` 確認產生器不會失敗。
 
+## 審查基準
+
+code review 以 Laravel Horizon 與 bull-board 官方 Fastify 範例的水準為準：
+
+- 這兩者也會有的情況，記錄就好。例如畫面顯示失敗原因、API 停機期間移到 failed set 的 job 不告警、多個 API 實例都收到同一個事件。
+- Risks 與 Non-Goals 已列出的項目不必重提。
+- 本 change 超出這個水準的設計（網段限制、監控 cookie、操作白名單、遮蔽 job 資料）一旦能被繞過，一律要修。
+
 ## Migration Plan
 
 1. 在 UAT 的 `.env.api` 設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS=60.248.142.0/24`，再部署。沒有設定時，監控畫面回 403，其他功能不受影響。
