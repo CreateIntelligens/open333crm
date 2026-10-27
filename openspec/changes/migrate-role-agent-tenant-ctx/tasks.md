@@ -57,8 +57,8 @@
 
 ## 8. 讀寫租戶資料的 route 一律走 flow（design 決策 7，2026-10-27 修改）
 
-- [x] 8.1 寫失敗的測試：`role.flow.test.ts` 的 createRoleFlow、renameRoleFlow 稽核與資料一起 commit；`tenant-audit-routes.test.ts` 涵蓋 Scenario「建立角色時寫稽核」「角色改名時寫稽核」。執行後確認以斷言失敗（稽核筆數 0，應為 1）
-- [x] 8.2 `role.flow.ts` 新增查詢、建立、改名的 flow；`role.routes.ts`、`agent.routes.ts` 讀寫租戶資料的 route 都改成呼叫 flow，不再使用 `tenantHandler()`
+- [x] 8.1 寫失敗的測試：`role.flow.test.ts` 的 createRoleFlow、renameRoleFlow、deleteRoleFlow 稽核與資料一起 commit；`tenant-audit-routes.test.ts` 涵蓋 Scenario「建立角色時寫稽核」「角色改名時寫稽核」「刪除角色時寫稽核」。執行後確認以斷言失敗（稽核筆數 0，應為 1）
+- [x] 8.2 `role.flow.ts` 新增查詢、建立、改名的 flow，刪除也寫稽核；`role.routes.ts`、`agent.routes.ts` 讀寫租戶資料的 route 都改成呼叫 flow，不再使用 `tenantHandler()`
 - [x] 8.3 `actorOf()` 在沒有租戶身分時回 401：`tests/unit/lib/request-actor.test.ts`
   - 先寫程式才補測試，所以以突變驗證（2026-10-27）：檢查改成 `if (false)`，「請求沒有租戶身分：丟出 401」失敗；還原後通過
 - [x] 8.4 寫失敗的測試，涵蓋 Scenario「route 檔新增 tenantHandler」；`check-tenant-ctx.mjs` 加上「模組內的 tenantHandler(」，以 `--update-baseline` 記下現況（2026-10-27：13 處）

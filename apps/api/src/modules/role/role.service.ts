@@ -86,7 +86,7 @@ export async function renameRole(ctx: TenantCtx, roleId: string, name: string) {
   return { id: role.id, slug: role.slug, name: role.name, isSystem: role.isSystem };
 }
 
-/** 刪除自訂角色（system role 不可刪；仍被指派則阻擋）。 */
+/** 刪除自訂角色（system role 不可刪；仍被指派則阻擋）。回傳被刪角色的名稱，供 flow 寫稽核。 */
 export async function deleteRole(ctx: TenantCtx, roleId: string) {
   const { tx, tenantId } = ctx;
   const role = await loadTenantRole(ctx, roleId);
@@ -107,7 +107,7 @@ export async function deleteRole(ctx: TenantCtx, roleId: string) {
     );
   }
   await tx.role.delete({ where: { id: roleId } }); // RolePermission 隨 Cascade 刪除
-  return { deleted: true };
+  return { deleted: true as const, name: role.name };
 }
 
 /**

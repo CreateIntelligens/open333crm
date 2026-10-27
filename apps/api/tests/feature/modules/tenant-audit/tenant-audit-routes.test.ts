@@ -116,6 +116,19 @@ test('角色改名時寫稽核', async () => {
   assert.equal((logs[0].payload as { name: string }).name, `${MARK.slice(-8)}改`);
 });
 
+test('刪除角色時寫稽核', async () => {
+  const doomed = await createRole('doomed', []);
+  const res = await auditorApp.inject({ method: 'DELETE', url: `/api/v1/roles/${doomed.id}` });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json().data, { deleted: true }, '回應內容不變');
+
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: T, action: 'role.delete', targetId: doomed.id } });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].targetType, 'role');
+  assert.equal(logs[0].actorId, auditor.id);
+  assert.equal((logs[0].payload as { name: string }).name, 'doomed');
+});
+
 test('依 action 篩選本租戶的稽核', async () => {
   // 這個測試自己建立符合與不符合篩選的稽核，不依賴其他測試寫入的資料
   const matching = await owner.tenantAuditLog.create({

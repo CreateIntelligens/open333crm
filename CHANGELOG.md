@@ -19,7 +19,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 寫入與租戶稽核一起 commit。稽核寫入失敗時請求回錯誤，資料不變更；原本是資料照常變更、稽核遺失。成員被永久刪除之後，以未過期的 JWT 呼叫這些 route 也會因此失敗。
   - 角色權限快取改在 commit 之後清除，仍在回應之前完成。原本在 commit 之前清除，別的請求可能以舊資料寫回快取，舊權限最多留 10 分鐘。
   - 同一個請求內的寫入一律原子，例如建立成員與寫入稽核原本分兩個交易。
-  - 建立角色、角色改名時寫租戶稽核（`role.create`、`role.rename`），原本不寫。
+  - 建立、改名、刪除角色時寫租戶稽核（`role.create`、`role.rename`、`role.delete`），原本不寫。
 - **`TenantCtx` 只留資料存取；副作用改成收 scope 的函式，由 flow 決定**（同上，架構）— service 收的 `TenantCtx` 只有 `tx`、`tenantId`。`inTenant(prisma, tenantId, fn)` 給入口的 `TenantScope` 多一個 `afterCommit(label, fn)`：commit 之後執行 `fn`，等它完成才回傳。推播、事件、job 與稽核改成獨立函式：`notifyTenant()`、`notifyAgent()`、`publishEvent()`、`enqueueJob()`、`recordTenantAudit()`。`recordTenantAudit()` 在交易內寫稽核，失敗時讓交易 rollback。use case 層沿用 `<name>.flow.ts`：讀寫租戶資料的 route 一律呼叫 flow，查詢也一樣；`tenantHandler()` 成為舊寫法，ratchet 只減不增。`coupon`、`marketing`、`member-binding`、`store`、`automation` 的推播與事件從 service 移到 flow 或入口，送出的時機與內容不變；對話券卡的 `message.new` 推播多帶 `senderId`。規則見 `AGENTS.md` 結構規則 2。
 - **`check-tenant-ctx.mjs` 另外檢查 service 直接使用 Redis 與 LLM**（同上）— service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis`、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/`）的次數記進基準檔；namespace import 也算，只減不增。這些 client 是模組層級的 singleton，型別擋不住 service 在交易內呼叫外部服務，或在 commit 之前清快取；搬遷時改由 flow 注入。
 

@@ -77,11 +77,19 @@ export function setRolePermissionsFlow(deps: RoleFlowDeps, actor: RequestActor, 
   });
 }
 
-/** 刪除自訂角色，並清掉已刪角色的殘留快取 */
+/** 刪除自訂角色，並清掉已刪角色的殘留快取。稽核記被刪角色的名稱（角色列已不存在） */
 export function deleteRoleFlow(deps: RoleFlowDeps, actor: RequestActor, roleId: string) {
   return inTenant(deps.prisma, actor.tenantId, async (scope) => {
-    const result = await deleteRole(scope, roleId);
+    const { name } = await deleteRole(scope, roleId);
+    await recordTenantAudit(scope, {
+      actorId: actor.agentId,
+      action: 'role.delete',
+      targetType: 'role',
+      targetId: roleId,
+      payload: { name },
+      ip: actor.ip,
+    });
     clearPermissionCache(scope, roleId);
-    return result;
+    return { deleted: true as const };
   });
 }

@@ -1,7 +1,7 @@
 /**
  * role 的 flow（change migrate-role-agent-tenant-ctx，design 決策 1、7）：
  * - 角色權限快取在 commit 之後才清除。commit 之前清掉的快取，可能被另一個請求以舊資料寫回。
- * - 設定權限、建立、改名的稽核與資料在同一個交易寫入。
+ * - 設定權限、建立、改名、刪除的稽核與資料在同一個交易寫入。
  *
  * prisma.$transaction 以 mock 模擬：callback resolve 之後才算 commit。
  */
@@ -84,9 +84,10 @@ test('setRolePermissionsFlow：權限與稽核一起 commit，commit 之後才�
   ]);
 });
 
-test('deleteRoleFlow：commit 之後才清除快取', async () => {
-  await deleteRoleFlow({ prisma: mockPrisma() }, actor, ROLE_ID);
-  assert.deepEqual(log, ['commit', `invalidate:${ROLE_ID}`]);
+test('deleteRoleFlow：刪除與稽核 role.delete 一起 commit，commit 之後才清除快取', async () => {
+  const result = await deleteRoleFlow({ prisma: mockPrisma() }, actor, ROLE_ID);
+  assert.deepEqual(result, { deleted: true });
+  assert.deepEqual(log, [`audit:role.delete:${TENANT_ID}:agent-1`, 'commit', `invalidate:${ROLE_ID}`]);
 });
 
 test('createRoleFlow：建立角色與稽核 role.create 一起 commit', async () => {

@@ -5,7 +5,7 @@
 下列操作成功後，系統 SHALL 寫一筆 `TenantAuditLog`，內容包含 `tenantId`、`actorId`（操作的成員）、`action`、`targetType`、`targetId`、`payload`（變更摘要）與 `createdAt`。租戶稽核與平台的 `PlatformAuditLog` 分開存放。
 
 - 成員：建立、停用、重新啟用、永久刪除、重設密碼、指派角色、設定可見渠道。
-- 角色：建立、改名、設定角色的權限。
+- 角色：建立、改名、刪除、設定角色的權限。
 - 渠道：建立、刪除、授權團隊、撤銷團隊授權。
 - 設定：營業時間、追蹤設定、跨渠道綁定、Embedding、Chat、自備 Gemini 金鑰與 WebTalk 協作的修改。
 - 聯絡人：合併、撤銷合併。
@@ -25,6 +25,10 @@
 #### Scenario: 角色改名時寫稽核
 - **WHEN** 有 `role.manage` 的成員以 `PATCH /api/v1/roles/:id` 修改角色名稱
 - **THEN** 系統寫一筆稽核，`action` 是 `role.rename`，`targetType` 是 `role`，`targetId` 是角色 ID，`actorId` 是操作的成員，`payload.name` 是新的名稱
+
+#### Scenario: 刪除角色時寫稽核
+- **WHEN** 有 `role.manage` 的成員以 `DELETE /api/v1/roles/:id` 刪除自訂角色
+- **THEN** 系統寫一筆稽核，`action` 是 `role.delete`，`targetType` 是 `role`，`targetId` 是被刪角色的 ID，`actorId` 是操作的成員，`payload.name` 是被刪角色的名稱；回應內容仍是 `{ deleted: true }`
 
 ### Requirement: 稽核寫入失敗不影響主操作
 
