@@ -26,6 +26,9 @@ All notable changes to **open333CRM** will be documented in this file.
 ### Fixed
 
 - **站內通知的即時推播失敗時，通知工作跟著失敗**（change `queue-monitoring`）— workers 寫入通知之後，推播到 Redis 失敗會讓 `notification:dispatch` 工作失敗；加上重試之後會重複寫入通知。現在推播失敗只記 log，工作照常完成：通知已經寫入，成員重新整理就看得到。
+- **FB 素材沿用編輯器的示範圖時，廣播整批失敗**（change `fix-fb-material-site-path-urls`，2026-10-27 UAT）— FB「商品輪播」等素材沿用示範圖 `/material-samples/...`，Facebook 回「image_url should represent a valid URL」：原本只有 LINE 素材存檔時把示範圖換成公開網址，FB 素材原樣存站內路徑。現在 FB 素材存檔時，網址欄位裡的站內路徑（`/` 開頭、不是 `//`）都換成 `{WEB_BASE_URL}{路徑}`；已經存成站內路徑的舊素材，由 FB plugin 在發送時轉換（API 的廣播、附券廣播與 workers 的自動化都涵蓋）。有站內路徑但沒有設定 `WEB_BASE_URL` 時，這則訊息不送出，失敗原因寫出是哪個網址。LINE 的行為不變。
+  - 部署：確認 `.env.api` 與 `.env.workers` 都有設定 `WEB_BASE_URL`（網站的公開網址）。
+- **附券廣播「立即發送」與券詳情批次發券要等一分鐘才發出，畫面也不會自動更新**（change `fix-coupon-broadcast-immediate-run`，2026-10-27 UAT）— 原本只把廣播設成排程時間為現在，實際發送要等每 60 秒一次的排程。現在排入發送的同一個交易在 outbox 排一個 `coupon-broadcast` job，API 行程收到後馬上執行；每分鐘的排程保留為後備，兩者以條件更新搶占，只有一個發送；排程時間還沒到的廣播不會被提前發送。廣播列表在有發送中、或排程時間已到的廣播時每 5 秒自動更新，完成或失敗後停止（券詳情的發放紀錄原本就會自動更新，補上測試）。確認視窗、完成提示與操作手冊第 18 章改為「馬上開始、畫面自動更新」。
 
 ## [2026-10-25]
 

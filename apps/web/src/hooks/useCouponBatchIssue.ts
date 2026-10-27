@@ -2,7 +2,7 @@
 
 /**
  * 券詳情頁「發送給…」（add-coupon-system design D31）：預覽、送出與這張券的發放紀錄。
- * 送出後由後端排程在背景發送，結果在發放紀錄查看。
+ * 送出後後端馬上在背景發送，發放紀錄自動更新進度與結果。
  */
 import useSWR from 'swr';
 import api from '@/lib/api';

@@ -47,7 +47,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 影片可以貼網址或直接上傳，上限依渠道：LINE 200 MB（LINE 影片訊息的上限），FB 25 MB（Messenger 附件的上限）。LINE 影片走直傳（`apps/web/src/lib/direct-upload.ts`），檔案從瀏覽器直接上傳到 MinIO/S3，不經過 API，上傳時顯示進度；FB 影片走一般上傳 `/files/upload`。超過上限的檔案在選檔時就擋下。
 
-編輯器預設的示範圖是站內路徑 `/material-samples/...`，存檔不會被擋，但發送前要換成公開網址，否則客人看不到圖。
+編輯器預設的示範圖是站內路徑 `/material-samples/...`。存檔時系統換成公開網址（`material-sample-urls.ts`）：LINE 只換示範圖，換成 `{WEB_BASE_URL}/material-samples/...`；FB 換網址欄位裡所有站內路徑（`/` 開頭、不是 `//`），因為 Facebook 只收完整網址。更早存成站內路徑的 FB 素材，由 FB plugin 在發送時換成 `{WEB_BASE_URL}{路徑}`；API 與 workers 都要設定 `WEB_BASE_URL`，沒有設定時這則訊息不送出，錯誤訊息指出是哪個網址。
 
 素材的其他功能：
 
@@ -120,7 +120,7 @@ LINE 卡片訊息、圖文訊息與 Flex 的預覽文字（`altText`）顯示在
 
 **訊息視窗。** 渠道 plugin 宣告 `messagingWindowHours` 時，群發只送給發送當下往前這段時間內，在這個渠道傳過訊息給我們的人（顧客傳入的訊息，含按鈕回應）。FB 與 IG（`THREADS`）是 24 小時，因為 Meta 只允許對 24 小時內互動過的人發一般訊息，送給其他人會被擋下，大量被擋可能讓粉專被限制發訊。略過的人不送出、不寫收件紀錄，人數記在 `skippedCount`，列表顯示「略過 N」；`totalCount` 仍是符合條件的人數。全部被略過時群發標為 `failed`（`BROADCAST_OUTSIDE_MESSAGING_WINDOW`）。FB 與 IG 群發的受眾只有「24 小時內傳過訊息的人」一個選項，表單不提供分群與標籤（API 仍接受）。建立群發的表單在有視窗的渠道顯示發送注意事項，FB 群發按「立即發送」時確認視窗也會提醒。要發給視窗外的人只能用 Meta 付費的 Marketing Messages（按送達則數計費），本系統沒有支援。只按表情回應、或點 m.me 連結但沒有傳訊息的人沒有存成訊息，會被略過。LINE 沒有訊息視窗。
 
-**在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。
+**在請求內同步執行。** 立即發送的 API 會等整筆群發送完才回應。附券廣播（含券詳情頁的批次發券）例外：API 回 202，同一個交易在 outbox 寫一個 `coupon-broadcast` job，commit 後 API 行程馬上執行 `runCouponBroadcast()`；每分鐘的排程是後備，job 沒有執行時，時間到的附券廣播照樣發送。job 與排程以條件更新搶占，只有一個發送。廣播列表與券詳情的發放紀錄在有發送中、或排程時間已到的廣播時每 5 秒重新載入，完成或失敗後停止。
 
 **同一筆群發只執行一次。** `executeBroadcast()` 以條件更新把狀態從 `draft`、`scheduled` 或 `failed` 改成 `sending`，只有搶到的請求會發送。狀態已經是 `sending` 時，再送出回 409 `BROADCAST_ALREADY_SENDING`。因此連按兩次，或請求與排程器同時執行，都只會送一次。狀態是 `failed` 的群發可以重試，行銷頁的失敗群發有「重新發送」按鈕。逐人送出的群發重試時會對全部對象重新發送，送出途中失敗的群發會讓已送達的人再收到一次，見 `../../system/AUDIT.md` 的 MKT-01。
 

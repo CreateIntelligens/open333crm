@@ -1,10 +1,16 @@
 /**
- * LINE 素材儲存前把內建示範圖換成公開網址（spec material-system「LINE 素材儲存時把示範圖換成公開網址」）。
+ * 素材儲存前把站內路徑換成公開網址。
  *
- * 編輯器預設帶入的示範圖是站內路徑（/material-samples/...，由 web 公開提供），LINE 只收 https 公開網址。
- * 只換網址欄位（欄位名稱以 url 結尾，例如 mediaUrl、imageUrl、previewImageUrl、baseImageUrl、Flex 圖片的 url）
- * 裡「整個值就是示範圖路徑」的字串；文字欄位、使用者自己的網址與其他站內路徑原樣保留。
+ * - LINE（spec material-system「LINE 素材儲存時只把示範圖換成公開網址」）：只換示範圖（/material-samples/...）。
+ *   其他站內路徑原樣保留，由 LINE validate 擋下。
+ * - FB（spec material-system「FB 素材儲存時把站內路徑換成公開網址」）：網址欄位裡所有站內路徑都換成
+ *   `{WEB_BASE_URL}{路徑}`。Facebook 只收完整網址，站內路徑原樣存檔會讓發送整批失敗（2026-10-27 UAT）。
+ *
+ * 編輯器預設帶入的示範圖是站內路徑（由 web 公開提供）。只換網址欄位（欄位名稱以 url 結尾，例如 mediaUrl、
+ * imageUrl、image_url、previewImageUrl、baseImageUrl、Flex 圖片的 url）裡「整個值就是站內路徑」的字串；
+ * 文字欄位與使用者自己的完整網址原樣保留。
  */
+import { resolveSitePathUrls } from '@open333crm/channel-plugins';
 import { getApiPublicUrl } from '../storage/storage.service.js';
 
 const SAMPLE_PREFIX = '/material-samples/';
@@ -16,29 +22,17 @@ function webBaseUrl(): string {
   return (process.env.WEB_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 }
 
-const URL_KEY = /url$/i;
-
-function resolveValue(value: unknown, base: string, key = ''): unknown {
-  if (typeof value === 'string') {
-    return URL_KEY.test(key) && value.startsWith(SAMPLE_PREFIX) ? `${base}${value}` : value;
-  }
-  if (Array.isArray(value)) return value.map((v) => resolveValue(v, base, key));
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveValue(v, base, k)]));
-  }
-  return value;
-}
-
 /**
- * @returns 示範圖換成公開網址後的新 body；不是 LINE 版型時原樣回傳
+ * @returns 站內路徑換成公開網址後的新 body；不是 LINE 或 FB 版型時原樣回傳
  */
-export function resolveLineSampleImageUrls(
+export function resolveSampleImageUrls(
   contentType: string,
   body: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (contentType.startsWith('fb_')) return resolveSitePathUrls(body, webBaseUrl());
   if (!contentType.startsWith('line_')) return body;
   const base = webBaseUrl();
-  const resolved = resolveValue(body, base) as Record<string, unknown>;
+  const resolved = resolveSitePathUrls(body, base, (path) => path.startsWith(SAMPLE_PREFIX));
   if (
     contentType === 'line_imagemap' &&
     (resolved.baseImageUrl === `${base}${OLD_IMAGEMAP_SAMPLE}` || body.baseImageUrl === OLD_IMAGEMAP_SAMPLE)
