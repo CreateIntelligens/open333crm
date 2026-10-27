@@ -117,6 +117,23 @@ beforeAll(async () => {
     }),
   );
 
+  // onSend 只掛在這個子 plugin，記下回應送出的時間點，不影響其他 route 的 log
+  await app.register(async (scoped) => {
+    scoped.addHook('onSend', async () => {
+      log.push('send');
+    });
+    scoped.post(
+      '/after-commit',
+      tenantHandler(scoped, async (_request, _reply, ctx) => {
+        ctx.afterCommit('slow', async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          log.push('after:end');
+        });
+        return { success: true };
+      }),
+    );
+  });
+
   await app.ready();
 });
 
@@ -195,4 +212,10 @@ test('事件在交易內寫 outbox，commit 之後交給快路徑', async () => 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(log, ['write:case.resolved', 'handler-end', 'commit']);
   assert.deepEqual(dispatched.map((d) => d.names), [['case.resolved']]);
+});
+
+test('afterCommit 的動作完成之後才送出回應', async () => {
+  const res = await app.inject({ method: 'POST', url: '/after-commit', headers: { 'x-tenant': TENANT_ID } });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(log, ['commit', 'after:end', 'send']);
 });

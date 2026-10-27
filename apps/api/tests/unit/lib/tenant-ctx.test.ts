@@ -206,6 +206,70 @@ test('佇列沒有回應時不阻擋回傳', async () => {
   assert.deepEqual(log, ['write:job-1', 'commit', `push:tenant:${TENANT_ID}:case.updated`]);
 });
 
+test('afterCommit：commit 之後執行，回傳之前完成', async () => {
+  await inTenant(deps(), TENANT_ID, async (ctx) => {
+    ctx.afterCommit('slow', async () => {
+      log.push('after:start');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      log.push('after:end');
+    });
+    log.push('fn-end');
+  });
+  log.push('returned');
+  assert.deepEqual(log, ['fn-end', 'commit', 'after:start', 'after:end', 'returned']);
+});
+
+test('afterCommit：rollback 時不執行，呼叫端收到原本的錯誤', async () => {
+  const boom = new Error('boom');
+  await assert.rejects(
+    inTenant(deps(), TENANT_ID, async (ctx) => {
+      ctx.afterCommit('a', () => {
+        log.push('after');
+      });
+      throw boom;
+    }),
+    (err) => err === boom,
+  );
+  assert.deepEqual(log, []);
+});
+
+test('afterCommit：動作失敗不影響回傳，其後的推播照常送出', async () => {
+  const result = await inTenant(deps(), TENANT_ID, async (ctx) => {
+    ctx.afterCommit('fail', async () => {
+      throw new Error('redis down');
+    });
+    ctx.notify('case.updated', {});
+    return 'done';
+  });
+  assert.equal(result, 'done');
+  assert.deepEqual(log, ['commit', `push:tenant:${TENANT_ID}:case.updated`]);
+});
+
+test('afterCommit：與推播依登記順序執行', async () => {
+  await inTenant(deps(), TENANT_ID, async (ctx) => {
+    ctx.notify('case.created', {});
+    ctx.afterCommit('a1', () => {
+      log.push('after:a1');
+    });
+    ctx.notify('case.updated', {});
+  });
+  assert.deepEqual(log, [
+    'commit',
+    `push:tenant:${TENANT_ID}:case.created`,
+    'after:a1',
+    `push:tenant:${TENANT_ID}:case.updated`,
+  ]);
+});
+
+test('afterCommit：沒有 io 也能登記', async () => {
+  await inTenant(deps({ noIo: true }), TENANT_ID, async (ctx) => {
+    ctx.afterCommit('a', () => {
+      log.push('after');
+    });
+  });
+  assert.deepEqual(log, ['commit', 'after']);
+});
+
 test('publish 在交易內寫 outbox，帶交易綁定的 tenantId', async () => {
   let ctxTx: unknown;
   await inTenant(deps(), TENANT_ID, async (ctx) => {
@@ -256,11 +320,15 @@ test('ctx 帶交易與綁定的 tenantId', async () => {
   });
 });
 
-test('createMockTenantCtx：依呼叫順序記錄推播（含房間）、事件與 job', async () => {
+test('createMockTenantCtx：依呼叫順序記錄推播（含房間）、事件、job 與 afterCommit', async () => {
   const { createMockTenantCtx } = await import('#tests/support/mock-tenant-ctx.js');
   const tx = { contact: {} };
-  const { ctx, pushed, published, enqueued } = createMockTenantCtx(tx, TENANT_ID);
+  const { ctx, pushed, published, enqueued, afterCommitted } = createMockTenantCtx(tx, TENANT_ID);
   ctx.notify('case.updated', { a: 1 });
+  const cacheClear = () => {
+    log.push('after');
+  };
+  ctx.afterCommit('cache', cacheClear);
   await ctx.publish('case.created', { caseId: 'c1' });
   ctx.notifyAgent(AGENT_ID, 'notification.new', {});
   await ctx.enqueue('rich-menu-bind', 'job-1', { b: 2 });
@@ -272,5 +340,6 @@ test('createMockTenantCtx：依呼叫順序記錄推播（含房間）、事件�
   ]);
   assert.deepEqual(published, [{ name: 'case.created', payload: { caseId: 'c1' } }]);
   assert.deepEqual(enqueued, [{ queueName: 'rich-menu-bind', name: 'job-1', data: { b: 2 }, opts: undefined }]);
-  assert.deepEqual(log, []);
+  assert.deepEqual(afterCommitted, [{ label: 'cache', fn: cacheClear }]);
+  assert.deepEqual(log, [], 'mock ctx 只記錄 afterCommit，不執行');
 });

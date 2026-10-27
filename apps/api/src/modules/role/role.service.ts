@@ -2,12 +2,12 @@
  * Role Service — 角色與權限管理
  *
  * 對應 rbac-granular-permissions specs/role-management。
- * 租戶隔離鐵律（見 tasks 5.1）：所有 Role/RolePermission 操作 tenantId 一律來自 request.agent.tenantId，
+ * 租戶隔離鐵律（見 tasks 5.1）：所有 Role/RolePermission 操作 tenantId 一律來自 ctx.tenantId（入口以登入成員的租戶開交易），
  * 改/刪/讀前先經 loadTenantRole() 驗擁有權，杜絕跨租戶越權。
+ * 收 TenantCtx（#337）：呼叫端開交易，同一個請求的寫入一起 commit；權限快取以 ctx.afterCommit 在 commit 之後清除。
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { TenantDb } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import {
   PERMISSIONS,
   PERMISSION_BY_CODE,
@@ -25,16 +25,16 @@ const ADMIN_LOCKED = PERMISSIONS.filter((p) => p.adminLock).map((p) => p.code);
  * 【租戶隔離—必做】以 tenantId 驗證 role 屬於本租戶，找不到丟 404。
  * 任何碰 RolePermission 的操作前都必須先過這道關。
  */
-export async function loadTenantRole(prisma: TenantDb, roleId: string, tenantId: string) {
-  const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
+export async function loadTenantRole(ctx: TenantCtx, roleId: string) {
+  const role = await ctx.tx.role.findFirst({ where: { id: roleId, tenantId: ctx.tenantId } });
   if (!role) throw new AppError(notFound('role'), 'NOT_FOUND', 404);
   return role;
 }
 
 /** 列出租戶所有角色（含權限數）。 */
-export async function listRoles(prisma: TenantDb, tenantId: string) {
-  const roles = await prisma.role.findMany({
-    where: { tenantId },
+export async function listRoles(ctx: TenantCtx) {
+  const roles = await ctx.tx.role.findMany({
+    where: { tenantId: ctx.tenantId },
     orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }],
     include: { _count: { select: { permissions: true, agents: true } } },
   });
@@ -49,9 +49,9 @@ export async function listRoles(prisma: TenantDb, tenantId: string) {
 }
 
 /** 取得某角色的權限碼清單（明確授予，不含 implies）。 */
-export async function getRolePermissions(prisma: TenantDb, roleId: string, tenantId: string) {
-  await loadTenantRole(prisma, roleId, tenantId);
-  const rows = await prisma.rolePermission.findMany({
+export async function getRolePermissions(ctx: TenantCtx, roleId: string) {
+  await loadTenantRole(ctx, roleId);
+  const rows = await ctx.tx.rolePermission.findMany({
     where: { roleId },
     select: { permissionCode: true },
   });
@@ -59,37 +59,40 @@ export async function getRolePermissions(prisma: TenantDb, roleId: string, tenan
 }
 
 /** 建立自訂角色（空白，0 權限）。 */
-export async function createRole(prisma: TenantDb, tenantId: string, name: string) {
+export async function createRole(ctx: TenantCtx, name: string) {
+  const { tx, tenantId } = ctx;
   const trimmed = name.trim();
   if (!trimmed) throw new AppError('角色名稱不可為空', 'VALIDATION_ERROR', 422);
   // slug 用隨機值（custom），確保租戶內唯一
   const slug = `custom-${Math.random().toString(36).slice(2, 10)}`;
   // 名稱租戶內不可重複
-  const dup = await prisma.role.findFirst({ where: { tenantId, name: trimmed } });
+  const dup = await tx.role.findFirst({ where: { tenantId, name: trimmed } });
   if (dup) throw new AppError('已有同名角色', 'DUPLICATE', 422);
-  const role = await prisma.role.create({
+  const role = await tx.role.create({
     data: { tenantId, slug, name: trimmed, isSystem: false },
   });
   return { id: role.id, slug: role.slug, name: role.name, isSystem: false };
 }
 
 /** 改角色名稱（system role 可改 name 不可改 slug）。 */
-export async function renameRole(prisma: TenantDb, roleId: string, tenantId: string, name: string) {
-  await loadTenantRole(prisma, roleId, tenantId);
+export async function renameRole(ctx: TenantCtx, roleId: string, name: string) {
+  const { tx, tenantId } = ctx;
+  await loadTenantRole(ctx, roleId);
   const trimmed = name.trim();
   if (!trimmed) throw new AppError('角色名稱不可為空', 'VALIDATION_ERROR', 422);
-  const dup = await prisma.role.findFirst({ where: { tenantId, name: trimmed, NOT: { id: roleId } } });
+  const dup = await tx.role.findFirst({ where: { tenantId, name: trimmed, NOT: { id: roleId } } });
   if (dup) throw new AppError('已有同名角色', 'DUPLICATE', 422);
-  const role = await prisma.role.update({ where: { id: roleId }, data: { name: trimmed } });
+  const role = await tx.role.update({ where: { id: roleId }, data: { name: trimmed } });
   return { id: role.id, slug: role.slug, name: role.name, isSystem: role.isSystem };
 }
 
 /** 刪除自訂角色（system role 不可刪；仍被指派則阻擋）。 */
-export async function deleteRole(prisma: TenantDb, roleId: string, tenantId: string) {
-  const role = await loadTenantRole(prisma, roleId, tenantId);
+export async function deleteRole(ctx: TenantCtx, roleId: string) {
+  const { tx, tenantId } = ctx;
+  const role = await loadTenantRole(ctx, roleId);
   if (role.isSystem) throw new AppError('內建角色不可刪除', 'FORBIDDEN', 403);
   // 停用的成員也算使用中，且不在成員列表上：列出姓名才知道要改派誰（G18）
-  const blockingAgents = await prisma.agent.findMany({
+  const blockingAgents = await tx.agent.findMany({
     where: { roleId, tenantId },
     select: { id: true, name: true, isActive: true },
     orderBy: { name: 'asc' },
@@ -103,8 +106,8 @@ export async function deleteRole(prisma: TenantDb, roleId: string, tenantId: str
       { blockingAgentCount: blockingAgents.length, blockingAgents },
     );
   }
-  await prisma.role.delete({ where: { id: roleId } }); // RolePermission 隨 Cascade 刪除
-  await invalidateRolePermissions(roleId); // 清掉已刪角色的殘留快取
+  await tx.role.delete({ where: { id: roleId } }); // RolePermission 隨 Cascade 刪除
+  ctx.afterCommit('invalidateRolePermissions', () => invalidateRolePermissions(roleId)); // 清掉已刪角色的殘留快取
   return { deleted: true };
 }
 
@@ -113,16 +116,14 @@ export async function deleteRole(prisma: TenantDb, roleId: string, tenantId: str
  * 驗證：dependsOn 前置、admin 核心鎖定、防自鎖、越權防護。
  * @param editorRoleId 編輯者自身角色（越權/自鎖判斷）
  */
-// 收 TenantDb：呼叫端以 withTenant 包在綁定租戶交易內（roles/role_permissions 均綁定當前租戶）。
-// 內部依序刪除+建立即為原子（外層交易保證），不自開 $transaction 避免巢狀。
+// 內部依序刪除+建立即為原子（呼叫端開的交易保證）。
 export async function setRolePermissions(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   roleId: string,
-  tenantId: string,
   codes: string[],
   editorRoleId: string | null | undefined,
 ) {
-  const target = await loadTenantRole(prisma, roleId, tenantId);
+  const target = await loadTenantRole(ctx, roleId);
 
   // 1. 所有 code 必須存在於 registry
   const unknown = codes.filter((c) => !PERMISSION_CODES.has(c));
@@ -146,8 +147,8 @@ export async function setRolePermissions(
 
   // 3. 越權防護：非編輯自己以外，不可授予超出自己有效權限的權限
   //    （admin 角色的編輯者若自身即 admin 則有全部權限，不受限）
-  const editorEff = await getEffectivePermissions(prisma, editorRoleId);
-  const editorIsAdminOfTenant = await isAdminRole(prisma, editorRoleId, tenantId);
+  const editorEff = await getEffectivePermissions(ctx.tx, editorRoleId);
+  const editorIsAdminOfTenant = await isAdminRole(ctx, editorRoleId);
   if (!editorIsAdminOfTenant) {
     const escalate = [...wanted].filter((c) => !editorEff.has(c));
     if (escalate.length) {
@@ -173,14 +174,15 @@ export async function setRolePermissions(
     }
   }
 
-  // 寫入：清空重建（外層 withTenant 交易保證原子）
-  await prisma.rolePermission.deleteMany({ where: { roleId } });
-  await prisma.rolePermission.createMany({
+  // 寫入：清空重建（呼叫端開的交易保證原子）
+  await ctx.tx.rolePermission.deleteMany({ where: { roleId } });
+  await ctx.tx.rolePermission.createMany({
     data: [...wanted].map((permissionCode) => ({ roleId, permissionCode })),
     skipDuplicates: true,
   });
 
-  await invalidateRolePermissions(roleId);
+  // commit 之前清除的話，別的請求可能以舊資料寫回快取
+  ctx.afterCommit('invalidateRolePermissions', () => invalidateRolePermissions(roleId));
   return { roleId, permissions: [...wanted] };
 }
 
@@ -207,9 +209,9 @@ export function getPermissionMatrix() {
   };
 }
 
-async function isAdminRole(prisma: TenantDb, roleId: string | null | undefined, tenantId: string) {
+async function isAdminRole(ctx: TenantCtx, roleId: string | null | undefined) {
   if (!roleId) return false;
-  const r = await prisma.role.findFirst({ where: { id: roleId, tenantId }, select: { slug: true, isSystem: true } });
+  const r = await ctx.tx.role.findFirst({ where: { id: roleId, tenantId: ctx.tenantId }, select: { slug: true, isSystem: true } });
   return !!r && r.isSystem && r.slug === 'admin';
 }
 

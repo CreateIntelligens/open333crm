@@ -248,6 +248,18 @@ A service obeys these rules:
   repeat (for example, a message to a customer), claim it with `claimSideEffect()` from
   `@open333crm/core`, or with a conditional update. `docs/ref/modules/EVENTS.md` explains the
   outbox and the claims.
+- To clear a cache after a write, call `ctx.afterCommit(label, fn)`. Do not clear it inside the
+  transaction: another request can read the old data before the commit and write it back to the
+  cache. `inTenant()` runs `fn` after the commit and waits for `fn` to finish. Thus the response
+  goes out after `fn` finishes. `fn` runs at most once. If `fn` fails, the system writes a log and
+  the result stays successful. After a rollback, `fn` does not run.
+- Write a tenant audit row with `recordTenantAudit(ctx, input)` from
+  `apps/api/src/modules/tenant-audit/tenant-audit.service.ts`. The row commits with the data. If
+  the write fails, the function throws and the transaction rolls back. Do not call
+  `writeTenantAudit()` inside a transaction: it catches the database error, and after that error
+  PostgreSQL rejects each query of the transaction. The commit then becomes a rollback, but the
+  request can still return success. `writeTenantAudit()` stays only for callers that are not moved
+  yet.
 - In a job handler (a BullMQ processor or an event subscriber), do not catch an error only to
   write a log. The job then completes, and the work is lost: the queue does not try again.
   Let these errors go out of the handler, so that the queue tries the job again:

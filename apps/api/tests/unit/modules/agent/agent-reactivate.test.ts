@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
 import { reactivateAgent } from '#src/modules/agent/agent.service.js';
+import { createMockTenantCtx } from '#tests/support/mock-tenant-ctx.js';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 
@@ -28,7 +29,7 @@ function mockPrisma(opts: { maxAgents: number | null; activeCount: number; targe
 
 test('重新啟用受方案人數上限限制：已達上限時回 403 PLAN_LIMIT_EXCEEDED，不更新', async () => {
   const { prisma, update } = mockPrisma({ maxAgents: 3, activeCount: 3 });
-  await assert.rejects(reactivateAgent(prisma as never, TENANT, 'm'), (err: { code?: string; statusCode?: number }) => {
+  await assert.rejects(reactivateAgent(createMockTenantCtx(prisma, TENANT).ctx, 'm'), (err: { code?: string; statusCode?: number }) => {
     assert.equal(err.code, 'PLAN_LIMIT_EXCEEDED');
     assert.equal(err.statusCode, 403);
     return true;
@@ -38,17 +39,17 @@ test('重新啟用受方案人數上限限制：已達上限時回 403 PLAN_LIMI
 
 test('未達上限時重新啟用', async () => {
   const { prisma, update } = mockPrisma({ maxAgents: 3, activeCount: 2 });
-  await reactivateAgent(prisma as never, TENANT, 'm');
+  await reactivateAgent(createMockTenantCtx(prisma, TENANT).ctx, 'm');
   assert.deepEqual((update.mock.calls[0] as unknown as [{ data: unknown }])[0].data, { isActive: true });
 });
 
 test('成員不存在回 404', async () => {
   const { prisma } = mockPrisma({ maxAgents: null, activeCount: 0, target: null });
-  await assert.rejects(reactivateAgent(prisma as never, TENANT, 'm'), (err: { statusCode?: number }) => err.statusCode === 404);
+  await assert.rejects(reactivateAgent(createMockTenantCtx(prisma, TENANT).ctx, 'm'), (err: { statusCode?: number }) => err.statusCode === 404);
 });
 
 test('已經是啟用中的成員：不檢查上限、不更新', async () => {
   const { prisma, update } = mockPrisma({ maxAgents: 1, activeCount: 5, target: { isActive: true } });
-  await reactivateAgent(prisma as never, TENANT, 'm');
+  await reactivateAgent(createMockTenantCtx(prisma, TENANT).ctx, 'm');
   assert.equal(update.mock.calls.length, 0);
 });

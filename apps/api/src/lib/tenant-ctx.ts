@@ -6,7 +6,8 @@
  * - 事件（publish）與佇列 job（enqueue）在交易內寫進 outbox，與業務資料一起 commit；
  *   commit 之後交給快路徑送進佇列，沒送出的由 outbox-relay 補送（至少一次，change outbox-event-delivery）。
  * - 推播（notify）只先登記，commit 之後才送出，rollback 時丟棄；推播是最多一次。
- * - commit 之後的推播與快路徑依登記的順序執行。
+ * - afterCommit 的動作（例如清快取）也是最多一次，但 inTenant() 等它完成才回傳，所以在回應之前完成。
+ * - commit 之後的推播、afterCommit 與快路徑依登記的順序執行。
  *
  * service 不自己開交易，也不在交易內呼叫外部服務（LINE、LLM 等）。
  */
@@ -35,6 +36,11 @@ export interface TenantCtx {
    * opts 只接受 OutboxJobOptions 的白名單（attempts、backoff、delay、priority、removeOnComplete、removeOnFail）
    */
   enqueue(queueName: string, name: string, data: unknown, opts?: OutboxJobOptions): Promise<void>;
+  /**
+   * commit 之後執行 fn，inTenant() 等它完成才回傳；rollback 時不執行。
+   * 失敗只記 log，不補做。用在清快取這類要在回應之前完成、但不能早於 commit 的動作
+   */
+  afterCommit(label: string, fn: () => void | Promise<void>): void;
 }
 
 /** 業務事件與 job 的送出方式。正式程式用 createOutboxPublisher()，單元測試注入假的實作 */
@@ -57,7 +63,7 @@ export async function inTenant<T>(
   tenantId: string,
   fn: (ctx: TenantCtx) => Promise<T>,
 ): Promise<T> {
-  const effects: Array<{ label: string; run: () => void }> = [];
+  const effects: Array<{ label: string; run: () => unknown }> = [];
 
   function push(room: string, name: string, data: unknown) {
     const io = deps.io;
@@ -104,13 +110,16 @@ export async function inTenant<T>(
         });
         effects.push(dispatchEffect(`enqueue ${name}`, row));
       },
+      afterCommit(label, fn) {
+        effects.push({ label: `afterCommit ${label}`, run: fn });
+      },
     }),
   );
 
   // 走到這裡代表已經 commit：資料已寫入，送出失敗不能讓結果變成失敗
   for (const effect of effects) {
     try {
-      effect.run();
+      await effect.run();
     } catch (err) {
       logger.error(`[inTenant] commit 後送出失敗（${effect.label}）`, err);
     }

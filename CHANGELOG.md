@@ -15,6 +15,12 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **所有 BullMQ 佇列都有保留期限；`notification` 寫入失敗時重試**（change `queue-monitoring`，AUDIT APP-08 部分修正）— `rich-menu-bind`、`data-export` 與 4 個週期佇列（`sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup`）原本永遠保留完成與失敗的工作，現在完成保留 24 小時、失敗保留 7 天。已排定的週期工作會延續註冊時的選項，所以 workers 啟動時先刪除既有的週期工作，再以新選項重新註冊。`notification` 佇列的兩處生產者加上重試：共 3 次，指數退避，基準 5 秒；站內通知因此是至少一次，workers 在寫入通知之後、工作完成之前停止時，成員會收到兩則相同的通知。Redis 的 `maxmemory` 仍未設定。
 
+- **角色與成員管理改成一個請求一個交易**（change `migrate-role-agent-tenant-ctx`，#337 階段 2）— `/api/v1/roles`、`/api/v1/agents` 的每個請求在一個綁定租戶的交易內執行，有三項可觀察的差異：
+  - 寫入與租戶稽核一起 commit。稽核寫入失敗時請求回錯誤，資料不變更；原本是資料照常變更、稽核遺失。成員被永久刪除之後，以未過期的 JWT 呼叫這些 route 也會因此失敗。
+  - 角色權限快取改在 commit 之後清除，仍在回應之前完成。原本在 commit 之前清除，別的請求可能以舊資料寫回快取，舊權限最多留 10 分鐘。
+  - 同一個請求內的寫入一律原子，例如建立成員與寫入稽核原本分兩個交易。
+- **`TenantCtx` 新增 `afterCommit`，租戶稽核新增 `recordTenantAudit()`**（同上）— `ctx.afterCommit(label, fn)` 在 commit 之後執行 `fn`，等它完成才回傳。`recordTenantAudit(ctx, input)` 在交易內寫稽核，失敗時讓交易 rollback。規則見 `AGENTS.md` 結構規則 2。
+
 ### Fixed
 
 - **站內通知的即時推播失敗時，通知工作跟著失敗**（change `queue-monitoring`）— workers 寫入通知之後，推播到 Redis 失敗會讓 `notification:dispatch` 工作失敗；加上重試之後會重複寫入通知。現在推播失敗只記 log，工作照常完成：通知已經寫入，成員重新整理就看得到。

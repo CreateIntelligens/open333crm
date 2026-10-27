@@ -1,11 +1,9 @@
-import type { PrismaClient } from '@prisma/client';
 import { ALL_CHANNELS, type ChannelAccessLevel, type ChannelGrantScope } from '../../services/channel-visibility.js';
 import { insertAgentChannelAccess } from '../../services/channel-team-access.js';
-import type { TenantDb } from '../../lib/tenant-db.js';
-import { withTenant } from '../../lib/tenant-db.js';
+import type { TenantCtx } from '../../lib/tenant-ctx.js';
 import { PERMISSIONS } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
-import { hashPassword, verifyPassword } from '../../shared/utils/password.js';
+import { verifyPassword } from '../../shared/utils/password.js';
 import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 import { getEffectiveLimit } from '../platform/plan-limits.service.js';
 import { loadTenantRole } from '../role/role.service.js';
@@ -39,14 +37,13 @@ const SLUG_TO_ENUM: Record<string, AgentRoleValue> = {
 
 /** 依 enum role 查該租戶對應 system role 的 roleId（雙寫用；查無回 null）。 */
 async function resolveRoleId(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   role: string,
 ): Promise<string | null> {
   const slug = ENUM_TO_SLUG[role];
   if (!slug) return null;
-  const r = await prisma.role.findFirst({
-    where: { tenantId, slug, isSystem: true },
+  const r = await ctx.tx.role.findFirst({
+    where: { tenantId: ctx.tenantId, slug, isSystem: true },
     select: { id: true },
   });
   return r?.id ?? null;
@@ -61,22 +58,21 @@ async function resolveRoleId(
  * @param targetRoleId   欲指派給成員的目標角色 id（已驗證屬同租戶）
  */
 async function assertNoRoleEscalation(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   assignerRoleId: string | null | undefined,
   targetRoleId: string,
 ): Promise<void> {
   // 指派者若為該租戶 admin system role → 擁有全部權限，直接放行
   const assignerRole = assignerRoleId
-    ? await prisma.role.findFirst({
-        where: { id: assignerRoleId, tenantId },
+    ? await ctx.tx.role.findFirst({
+        where: { id: assignerRoleId, tenantId: ctx.tenantId },
         select: { slug: true, isSystem: true },
       })
     : null;
   if (assignerRole?.isSystem && assignerRole.slug === 'admin') return;
 
-  const assignerEff = await getEffectivePermissions(prisma, assignerRoleId);
-  const targetEff = await getEffectivePermissions(prisma, targetRoleId);
+  const assignerEff = await getEffectivePermissions(ctx.tx, assignerRoleId);
+  const targetEff = await getEffectivePermissions(ctx.tx, targetRoleId);
   const escalate = [...targetEff].filter((c) => !assignerEff.has(c));
   if (escalate.length) {
     throw new AppError(
@@ -97,17 +93,16 @@ async function assertNoRoleEscalation(
  * @param assignerRoleId 指派者角色（越權防護用；null/undefined 表示不做越權檢查，如離線工具）
  */
 async function resolveRoleAssignment(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   input: { role?: AgentRoleValue; roleId?: string },
   fallbackRole: AgentRoleValue,
   assignerRoleId: string | null | undefined,
 ): Promise<{ role: AgentRoleValue; roleId: string | null }> {
   if (input.roleId) {
     // 跨租戶必 404（loadTenantRole 以 tenantId 驗擁有權）
-    const target = await loadTenantRole(prisma, input.roleId, tenantId);
+    const target = await loadTenantRole(ctx, input.roleId);
     // 越權防護：不可指派超出自身權限的角色
-    await assertNoRoleEscalation(prisma, tenantId, assignerRoleId, target.id);
+    await assertNoRoleEscalation(ctx, assignerRoleId, target.id);
     // legacy role 反填：system role 對應 enum；custom role 用傳入 role 或 fallback
     const legacyRole: AgentRoleValue = target.isSystem
       ? SLUG_TO_ENUM[target.slug] ?? input.role ?? fallbackRole
@@ -117,7 +112,7 @@ async function resolveRoleAssignment(
 
   // 只給 legacy role：解析對應 system role 的 roleId（既有雙寫）
   const role = input.role ?? fallbackRole;
-  const roleId = await resolveRoleId(prisma, tenantId, role);
+  const roleId = await resolveRoleId(ctx, role);
   // 該租戶缺對應 system role → 資料未正確初始化，直接擋下而非用 null 覆蓋既有 roleId
   // （否則成員 roleId 會被清空，getEffectivePermissions(null) 回空集合把人鎖死）。
   if (!roleId) {
@@ -129,7 +124,7 @@ async function resolveRoleAssignment(
     );
   }
   // legacy 路徑同樣做越權防護（例：SUPERVISOR 不可指派 ADMIN），取代舊 inline 硬規則
-  await assertNoRoleEscalation(prisma, tenantId, assignerRoleId, roleId);
+  await assertNoRoleEscalation(ctx, assignerRoleId, roleId);
   return { role, roleId };
 }
 
@@ -153,8 +148,7 @@ const agentSelect = {
  * 都在建立成員之前檢查，不留下半套。
  */
 async function resolveNewAgentChannels(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   requested: string[] | undefined,
   grantable: ChannelGrantScope,
 ): Promise<Array<{ channelId: string; accessLevel: ChannelAccessLevel }>> {
@@ -162,7 +156,7 @@ async function resolveNewAgentChannels(
     if (grantable !== ALL_CHANNELS) {
       return Array.from(grantable, ([channelId, accessLevel]) => ({ channelId, accessLevel }));
     }
-    const channels = await prisma.channel.findMany({ where: { tenantId }, select: { id: true } });
+    const channels = await ctx.tx.channel.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true } });
     return channels.map((c) => ({ channelId: c.id, accessLevel: 'full' }));
   }
   const ids = Array.from(new Set(requested));
@@ -170,7 +164,7 @@ async function resolveNewAgentChannels(
   if (grantable !== ALL_CHANNELS && ids.some((id) => !grantable.has(id))) {
     throw new AppError('不能指派自己看不到的渠道', 'FORBIDDEN', 403);
   }
-  const owned = await prisma.channel.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true } });
+  const owned = await ctx.tx.channel.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true } });
   if (owned.length !== ids.length) {
     throw new AppError('指定的渠道中有部分不存在或不屬於此租戶', 'BAD_REQUEST', 400);
   }
@@ -181,19 +175,18 @@ async function resolveNewAgentChannels(
 }
 
 export async function createAgent(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   data: CreateAgentInput,
   assignerRoleId: string | null | undefined,
   /**
-   * 新成員的可見渠道：建立者可指派的範圍與授權人。沒給時不寫入綁定（僅供既有內部呼叫）。
+   * grantable、grantedById：新成員的可見渠道，建立者可指派的範圍與授權人。
    * passwordHash：呼叫端先在交易外雜湊好，避免 bcrypt 佔住交易與連線。
    */
-  channelGrant?: { grantable: ChannelGrantScope; grantedById?: string; passwordHash?: string },
+  opts: { grantable: ChannelGrantScope; grantedById?: string; passwordHash: string },
 ) {
   // email 全域唯一。這裡只查得到同租戶的成員：路由以綁定租戶的連線呼叫，RLS 會藏起其他租戶的成員。
   // 跨租戶撞 email 時由資料庫的唯一約束擋下（P2002），error-handler.plugin.ts 轉成 409 CONFLICT。
-  const existing = await prisma.agent.findUnique({
+  const existing = await ctx.tx.agent.findUnique({
     where: { email: data.email },
   });
 
@@ -203,9 +196,9 @@ export async function createAgent(
 
   // 方案人數上限硬擋（建立時 count 檢查；無上限 = null 時跳過）。
   // 在權限檢查之後、實際建立之前，正交於 RBAC。
-  const maxAgents = await getEffectiveLimit(prisma, tenantId, 'maxAgents');
+  const maxAgents = await getEffectiveLimit(ctx.tx, ctx.tenantId, 'maxAgents');
   if (maxAgents !== null) {
-    const activeCount = await prisma.agent.count({ where: { tenantId, isActive: true } });
+    const activeCount = await ctx.tx.agent.count({ where: { tenantId: ctx.tenantId, isActive: true } });
     if (activeCount >= maxAgents) {
       throw new AppError('已達方案客服人數上限，請升級方案', 'PLAN_LIMIT_EXCEEDED', 403, {
         limitKey: 'maxAgents',
@@ -215,51 +208,44 @@ export async function createAgent(
     }
   }
 
-  const channels = channelGrant
-    ? await resolveNewAgentChannels(prisma, tenantId, data.channelIds, channelGrant.grantable)
-    : [];
-
-  const passwordHash = channelGrant?.passwordHash ?? (await hashPassword(data.password));
+  const channels = await resolveNewAgentChannels(ctx, data.channelIds, opts.grantable);
   // 雙寫：legacy role enum + granular roleId。提供 roleId 時以 roleId 為準並做越權防護。
-  const { role, roleId } = await resolveRoleAssignment(
-    prisma,
-    tenantId,
+  const { role, roleId } = await resolveRoleAssignment(ctx,
     { role: data.role, roleId: data.roleId },
     data.role,
     assignerRoleId,
   );
 
-  const agent = await prisma.agent.create({
+  const agent = await ctx.tx.agent.create({
     data: {
-      tenantId,
+      tenantId: ctx.tenantId,
       name: data.name,
       email: data.email,
       role,
       roleId,
-      passwordHash,
+      passwordHash: opts.passwordHash,
     },
     select: agentSelect,
   });
 
   await insertAgentChannelAccess(
-    prisma,
+    ctx.tx,
     channels.map((c) => ({ ...c, agentId: agent.id })),
-    channelGrant?.grantedById,
+    opts.grantedById,
   );
 
   return agent;
 }
 
 export async function updateAgentRole(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
   input: { role?: AgentRoleValue; roleId?: string },
   assignerRoleId: string | null | undefined,
   selfAgentId: string | null | undefined,
 ) {
-  const existing = await prisma.agent.findFirst({
-    where: { id: agentId, tenantId },
+  const existing = await ctx.tx.agent.findFirst({
+    where: { id: agentId, tenantId: ctx.tenantId },
     select: { role: true },
   });
 
@@ -269,9 +255,7 @@ export async function updateAgentRole(
 
   // 雙寫：改 legacy role 同時更新 granular roleId。提供 roleId 時以 roleId 為準並做越權防護。
   // custom role 無對應 enum 時 fallback 沿用成員既有 legacy role。
-  const { role, roleId } = await resolveRoleAssignment(
-    prisma,
-    tenantId,
+  const { role, roleId } = await resolveRoleAssignment(ctx,
     input,
     existing.role as AgentRoleValue,
     assignerRoleId,
@@ -281,7 +265,7 @@ export async function updateAgentRole(
   // 的角色，否則該租戶將失去所有能管理角色/權限的人，只能手動改 DB 復原。
   // 僅在「目標即操作者本人」時檢查；改別人一律放行。
   if (selfAgentId && agentId === selfAgentId) {
-    const newEff = await getEffectivePermissions(prisma, roleId);
+    const newEff = await getEffectivePermissions(ctx.tx, roleId);
     const retainsSelfLock = SELF_LOCK_CODES.some((c) => newEff.has(c));
     if (!retainsSelfLock) {
       throw new AppError(
@@ -293,7 +277,7 @@ export async function updateAgentRole(
     }
   }
 
-  const agent = await prisma.agent.update({
+  const agent = await ctx.tx.agent.update({
     where: { id: agentId },
     data: { role, roleId },
     select: agentSelect,
@@ -302,13 +286,14 @@ export async function updateAgentRole(
   return agent;
 }
 
+/** newPasswordHash：呼叫端先在交易外雜湊好，避免 bcrypt 佔住交易與連線 */
 export async function changeOwnPassword(
-  prisma: TenantDb,
+  ctx: TenantCtx,
   agentId: string,
   currentPassword: string,
-  newPassword: string,
+  newPasswordHash: string,
 ) {
-  const agent = await prisma.agent.findUnique({
+  const agent = await ctx.tx.agent.findUnique({
     where: { id: agentId },
     select: { passwordHash: true },
   });
@@ -322,29 +307,27 @@ export async function changeOwnPassword(
     throw new AppError('目前密碼不正確', 'INVALID_PASSWORD', 400);
   }
 
-  const passwordHash = await hashPassword(newPassword);
-  await prisma.agent.update({
+  await ctx.tx.agent.update({
     where: { id: agentId },
-    data: { passwordHash },
+    data: { passwordHash: newPasswordHash },
   });
 }
 
+/** passwordHash：呼叫端先在交易外雜湊好 */
 export async function resetAgentPassword(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
-  newPassword: string,
+  passwordHash: string,
 ) {
-  const existing = await prisma.agent.findFirst({
-    where: { id: agentId, tenantId },
+  const existing = await ctx.tx.agent.findFirst({
+    where: { id: agentId, tenantId: ctx.tenantId },
   });
 
   if (!existing) {
     throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
   }
 
-  const passwordHash = await hashPassword(newPassword);
-  await prisma.agent.update({
+  await ctx.tx.agent.update({
     where: { id: agentId },
     data: { passwordHash },
   });
@@ -364,23 +347,22 @@ const ADMIN_WHERE = {
  * 目標已停用（isActive=false）時不影響啟用中 admin 數，不在此擋。
  */
 async function assertNotLastActiveAdmin(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   target: { isActive: boolean; role: string; roleId: string | null },
 ): Promise<void> {
   if (!target.isActive) return;
   const targetIsAdmin =
     target.role === 'ADMIN' ||
     (target.roleId
-      ? Boolean(await prisma.role.findFirst({
-          where: { id: target.roleId, tenantId, slug: 'admin', isSystem: true },
+      ? Boolean(await ctx.tx.role.findFirst({
+          where: { id: target.roleId, tenantId: ctx.tenantId, slug: 'admin', isSystem: true },
           select: { id: true },
         }))
       : false);
   if (!targetIsAdmin) return;
 
-  const activeAdmins = await prisma.agent.count({
-    where: { tenantId, isActive: true, ...ADMIN_WHERE },
+  const activeAdmins = await ctx.tx.agent.count({
+    where: { tenantId: ctx.tenantId, isActive: true, ...ADMIN_WHERE },
   });
   if (activeAdmins <= 1) {
     throw new AppError(
@@ -392,12 +374,11 @@ async function assertNotLastActiveAdmin(
 }
 
 export async function deactivateAgent(
-  prisma: TenantDb,
-  tenantId: string,
+  ctx: TenantCtx,
   agentId: string,
 ) {
-  const existing = await prisma.agent.findFirst({
-    where: { id: agentId, tenantId },
+  const existing = await ctx.tx.agent.findFirst({
+    where: { id: agentId, tenantId: ctx.tenantId },
     select: { id: true, isActive: true, role: true, roleId: true },
   });
 
@@ -406,9 +387,9 @@ export async function deactivateAgent(
   }
 
   // 防呆：不可停用最後一位啟用中的管理員（租戶會被鎖死）
-  await assertNotLastActiveAdmin(prisma, tenantId, existing);
+  await assertNotLastActiveAdmin(ctx, existing);
 
-  await prisma.agent.update({
+  await ctx.tx.agent.update({
     where: { id: agentId },
     data: { isActive: false },
   });
@@ -422,31 +403,25 @@ export async function deactivateAgent(
  * RESTRICT 的關聯（notifications / cli_sessions / passkey_credentials），
  * 否則外鍵會擋下刪除；CASCADE（agent_team_members）與 SET NULL（cases /
  * conversations / messages 等指派欄位）由資料庫自理，歷史資料保留。
- * 全程於單一交易內執行，任一步失敗則整體回滾。
+ * 全程在呼叫端開的交易內執行，任一步失敗則整體回滾。
  */
-export async function purgeAgent(
-  prisma: PrismaClient,
-  tenantId: string,
-  agentId: string,
-) {
-  // 交易內先設好 RLS 租戶 session，再於同交易清關聯 + 刪 Agent（同連線=SET LOCAL 有效）
-  await withTenant(prisma, tenantId, async (tx) => {
-    const existing = await tx.agent.findFirst({
-      where: { id: agentId, tenantId },
-      select: { id: true, isActive: true, role: true, roleId: true },
-    });
-    if (!existing) {
-      throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
-    }
-    // 防呆：不可刪除最後一位啟用中的管理員（租戶會被鎖死）
-    await assertNotLastActiveAdmin(tx, tenantId, existing);
-    // 先清 RESTRICT 關聯（有資料會擋刪）
-    await tx.notification.deleteMany({ where: { agentId } });
-    await tx.cliSession.deleteMany({ where: { agentId } });
-    await tx.passkeyCredential.deleteMany({ where: { agentId } });
-    // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
-    await tx.agent.delete({ where: { id: agentId } });
+export async function purgeAgent(ctx: TenantCtx, agentId: string) {
+  const { tx } = ctx;
+  const existing = await tx.agent.findFirst({
+    where: { id: agentId, tenantId: ctx.tenantId },
+    select: { id: true, isActive: true, role: true, roleId: true },
   });
+  if (!existing) {
+    throw new AppError(notFound('agent'), 'NOT_FOUND', 404);
+  }
+  // 防呆：不可刪除最後一位啟用中的管理員（租戶會被鎖死）
+  await assertNotLastActiveAdmin(ctx, existing);
+  // 先清 RESTRICT 關聯（有資料會擋刪）
+  await tx.notification.deleteMany({ where: { agentId } });
+  await tx.cliSession.deleteMany({ where: { agentId } });
+  await tx.passkeyCredential.deleteMany({ where: { agentId } });
+  // 再刪 Agent（agent_team_members 會 CASCADE、cases/conversations/messages 等 SET NULL）
+  await tx.agent.delete({ where: { id: agentId } });
 }
 
 /** 成員列表的欄位（含角色與團隊）。啟用中與停用的列表共用 */
@@ -465,9 +440,9 @@ const agentListSelect = {
 } as const;
 
 /** 本租戶的成員列表。isActive=false 時列出停用的成員（供重新啟用，AUDIT AUTH-09） */
-export async function listAgents(prisma: TenantDb, tenantId: string, isActive: boolean) {
-  return prisma.agent.findMany({
-    where: { tenantId, isActive },
+export async function listAgents(ctx: TenantCtx, isActive: boolean) {
+  return ctx.tx.agent.findMany({
+    where: { tenantId: ctx.tenantId, isActive },
     select: agentListSelect,
     orderBy: { name: 'asc' },
   });
@@ -477,9 +452,9 @@ export async function listAgents(prisma: TenantDb, tenantId: string, isActive: b
  * 重新啟用停用的成員（G17，AUDIT AUTH-09）。角色維持停用前的角色。
  * 套用方案人數上限：否則「停用 → 建立新成員 → 重新啟用」可繞過建立時的上限。
  */
-export async function reactivateAgent(prisma: TenantDb, tenantId: string, agentId: string): Promise<void> {
-  const existing = await prisma.agent.findFirst({
-    where: { id: agentId, tenantId },
+export async function reactivateAgent(ctx: TenantCtx, agentId: string): Promise<void> {
+  const existing = await ctx.tx.agent.findFirst({
+    where: { id: agentId, tenantId: ctx.tenantId },
     select: { id: true, isActive: true },
   });
   if (!existing) {
@@ -487,9 +462,9 @@ export async function reactivateAgent(prisma: TenantDb, tenantId: string, agentI
   }
   if (existing.isActive) return;
 
-  const maxAgents = await getEffectiveLimit(prisma, tenantId, 'maxAgents');
+  const maxAgents = await getEffectiveLimit(ctx.tx, ctx.tenantId, 'maxAgents');
   if (maxAgents !== null) {
-    const activeCount = await prisma.agent.count({ where: { tenantId, isActive: true } });
+    const activeCount = await ctx.tx.agent.count({ where: { tenantId: ctx.tenantId, isActive: true } });
     if (activeCount >= maxAgents) {
       throw new AppError('已達方案客服人數上限，無法重新啟用，請先停用其他成員或升級方案', 'PLAN_LIMIT_EXCEEDED', 403, {
         limitKey: 'maxAgents',
@@ -499,7 +474,7 @@ export async function reactivateAgent(prisma: TenantDb, tenantId: string, agentI
     }
   }
 
-  await prisma.agent.update({
+  await ctx.tx.agent.update({
     where: { id: agentId },
     data: { isActive: true },
   });
