@@ -148,6 +148,16 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 - `import type` 不算：以參數傳入 client 時，service 只需要型別。
 - flow、route 檔不算：flow 是負責外部呼叫的那一層。
 
+## 審查基準
+
+本 change 是架構重構。可觀察的行為只允許 proposal 與 CHANGELOG 列出的差異。保證的水準以 Laravel 為參照：
+
+- controller → action（本 repo 的 flow）的分層。
+- `DB::afterCommit()`：commit 之後才執行，rollback 時丟棄。
+- 稽核與資料在同一個交易寫入。
+
+Laravel 專案也會有的情況，記錄就好，不修。下方 Risks 已經列出的限制不必重複提出。
+
 ## Risks / Trade-offs
 
 - [稽核寫入失敗時，主操作也失敗] → 這是決策 2 的取捨。稽核只寫一筆，沒有外部呼叫，失敗的原因只有資料庫本身出錯，這時主操作通常也會失敗。
