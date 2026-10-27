@@ -54,19 +54,46 @@ const PATTERNS = [
   { name: 'service 內的 withTenant(', re: /\bwithTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
-  // Redis：core 的 redis singleton，或 ioredis 的預設、具名（Redis）import
+  // Redis：core 的 redis singleton，或 ioredis 的任何值 import（預設、namespace、具名）
   {
     name: 'service 直接 import Redis client',
-    re: /^import\s+(?!type\b)(?:\{[^}]*(?<!type\s)\bredis\b[^}]*\}\s*from\s*'@open333crm\/core'|\w+(?:\s*,\s*\{[^}]*\})?\s*from\s*'ioredis'|\{[^}]*(?<!type\s)\bRedis\b[^}]*\}\s*from\s*'ioredis')/gm,
+    count: (text) =>
+      valueImports(text).filter(
+        ({ from, clause }) =>
+          from === 'ioredis' ||
+          (from === '@open333crm/core' && (clause.namespace || clause.named.includes('redis'))),
+      ).length,
     applies: isServiceFile,
   },
-  // LLM：llm.service 的 generateReply，或 providers 的 getChatProvider
+  // LLM：llm.service 或 providers/ 底下（型別檔 types.js 除外）的任何值 import
   {
     name: 'service 直接 import LLM 入口',
-    re: /^import\s+(?!type\b)\{[^}]*(?<!type\s)\b(?:generateReply|getChatProvider)\b[^}]*\}\s*from\s*'[^']*(?:llm\.service|providers\/index)\.js'/gm,
+    count: (text) =>
+      valueImports(text).filter(({ from }) => /(?:^|\/)(?:llm\.service|providers\/(?!types\.js$)[^/]+)\.js$/.test(from)).length,
     applies: isServiceFile,
   },
 ];
+
+/**
+ * 檔案中的值 import：`import type …` 與只含 `type X` 的具名 import 不算。
+ * clause.named 是不帶 type 的具名項目（取 as 之前的名稱），clause.namespace 表示 `* as X`，
+ * clause.defaultName 是預設 import 的名稱。
+ */
+function valueImports(text) {
+  const result = [];
+  for (const m of text.matchAll(/^import\s+(?!type\b)([^;]*?)\s+from\s+['"]([^'"]+)['"]/gms)) {
+    const raw = m[1];
+    const named = [...(raw.match(/\{([^}]*)\}/)?.[1] ?? '').split(',')]
+      .map((part) => part.trim())
+      .filter((part) => part && !/^type\s/.test(part))
+      .map((part) => part.split(/\s+as\s+/)[0].trim());
+    const namespace = /\*\s*as\s+\w+/.test(raw);
+    const defaultName = raw.replace(/\{[^}]*\}/, '').replace(/\*\s*as\s+\w+/, '').replace(/,/g, '').trim();
+    if (named.length === 0 && !namespace && !defaultName) continue;
+    result.push({ from: m[2], clause: { named, namespace, defaultName } });
+  }
+  return result;
+}
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -85,7 +112,7 @@ function count() {
     const text = readFileSync(file, 'utf8');
     for (const p of PATTERNS) {
       if (!p.applies(rel)) continue;
-      const n = text.match(p.re)?.length ?? 0;
+      const n = p.count ? p.count(text) : (text.match(p.re)?.length ?? 0);
       if (n > 0) result[p.name][rel] = n;
     }
   }

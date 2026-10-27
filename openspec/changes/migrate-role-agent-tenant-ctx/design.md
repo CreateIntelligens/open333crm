@@ -142,11 +142,13 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 
 決策 6 之後，service 拿不到推播與事件的能力，型別檢查會擋下。Redis 與 LLM 的 client 則是模組層級的 singleton，service 直接 import 就能用，所以型別擋不住兩條規則：交易內不呼叫外部服務、commit 之後才清快取。
 
-本 change 先補檢查，不搬遷：`check-tenant-ctx.mjs` 計算 service 檔以值的 import 引入 Redis client 或 LLM 入口（`generateReply`、`getChatProvider`）的次數，記進同一個基準檔，只減不增。各模組搬遷時，把這些依賴改由 flow 注入。
+本 change 先補檢查，不搬遷：`check-tenant-ctx.mjs` 計算 service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis` 或 namespace import、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 的檔案）的次數，記進同一個基準檔，只減不增。腳本解析 import 子句：預設、namespace、具名 import 都算，只含 `type` 的不算。各模組搬遷時，把這些依賴改由 flow 注入。
 
 - 只算 import，不算呼叫：import 才是依賴的來源，一個檔案 import 一次就能多處呼叫。
 - `import type` 不算：以參數傳入 client 時，service 只需要型別。
 - flow、route 檔不算：flow 是負責外部呼叫的那一層。
+- 從 `llm.service.js` import 不呼叫 LLM 的函式（例如 `recordAiUsage`）也算：多算只讓檢查變嚴，基準檔照實記下。
+- 擋不到的寫法：經過其他非 service 檔轉手（例如 `lib/cacheStore.ts` 包著 ioredis）、動態 `import()`。這是以 import 計數的極限，記錄就好（review-loop 第 1 輪）。
 
 ## 審查基準
 

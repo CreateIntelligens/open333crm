@@ -130,7 +130,7 @@
     "services/permission.service.ts": 1
   },
   "service 直接 import LLM 入口": {
-    "modules/ai/agent/agent.service.ts": 1,
+    "modules/ai/agent/agent.service.ts": 2,
     "modules/ai/ai.service.ts": 1,
     "modules/ai/classify.service.ts": 1,
     "modules/ai/flex-ai.service.ts": 1,

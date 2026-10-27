@@ -341,8 +341,9 @@ so these functions do not change its result.
   service tests and a `TenantScope` for flow tests. The "Prisma in shared packages" convention below is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when the old forms (`TenantDb`,
   `request.tenantPrisma`, a transaction opened in a service file) increase in a file. It also fails
-  when a service file adds a value import of a Redis client (`redis` from `@open333crm/core`,
-  `ioredis`) or of an LLM entry point (`generateReply`, `getChatProvider`). The type checker cannot
+  when a service file adds a value import of a Redis client (`redis` or a namespace import from
+  `@open333crm/core`, any value import from `ioredis`) or of an LLM module (`ai/llm.service.js`,
+  a file in `ai/providers/` other than `types.js`). The type checker cannot
   stop a service that uses these module-level clients inside the transaction, so a flow receives
   them as dependencies instead. A type-only import does not count. Also
   `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`

@@ -26,7 +26,7 @@
 
 ### Requirement: service 直接使用 Redis 與 LLM 的數量不得增加
 
-「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算兩種寫法在 service 檔中出現的次數，並與同一個基準檔比較：值的 import 引入 Redis client（`@open333crm/core` 的 `redis`、`ioredis`），以及值的 import 引入 LLM 入口（`generateReply`、`getChatProvider`）。只引入型別的 import MUST NOT 計入，flow 檔與 route 檔的 import MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
+「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算兩種寫法在 service 檔中出現的次數，並與同一個基準檔比較：值的 import 引入 Redis client（`@open333crm/core` 的 `redis` 或 namespace import、`ioredis` 的任何值 import），以及值的 import 引入 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 之外的檔案）。只引入型別的 import MUST NOT 計入，flow 檔與 route 檔的 import MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
 
 #### Scenario: service 檔新增 Redis client 的 import
 
@@ -42,3 +42,8 @@
 
 - **WHEN** 一個 service 檔新增 `import type { Redis } from 'ioredis'`，一個 flow 檔新增 `import { redis } from '@open333crm/core'`，以 `--strict` 執行腳本
 - **THEN** 腳本 MUST 以 exit code 0 結束
+
+#### Scenario: 以 namespace import 或直接 import provider 檔
+
+- **WHEN** 一個 service 檔新增 `import * as IORedis from 'ioredis'`，另一個 service 檔新增 `import { openaiProvider } from '../ai/providers/openai.js'`，以 `--strict` 執行腳本
+- **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含這兩個檔案路徑
