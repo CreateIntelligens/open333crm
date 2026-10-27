@@ -20,7 +20,7 @@ COPY packages/shared/package.json packages/shared/package.json
 COPY packages/types/package.json packages/types/package.json
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
-# Magika uses a TensorFlow native addon. Node 24 ARM64 has no prebuilt tfjs-node
+# Magika uses a TensorFlow native addon. Node 24+ ARM64 has no prebuilt tfjs-node
 # binary, so fetch the matching TensorFlow C library/header at build time and
 # compile just this addon. Runtime uses only the resulting local artifacts.
 RUN TFJS_NODE_DIR="$(realpath /app/apps/api/node_modules/@tensorflow/tfjs-node)" \
