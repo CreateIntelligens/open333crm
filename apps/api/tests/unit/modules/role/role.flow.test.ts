@@ -10,6 +10,8 @@ import { beforeEach, test, vi } from 'vitest';
 import type { RequestActor } from '#src/lib/request-actor.js';
 
 const log: string[] = [];
+/** 寫入的稽核內容，測試檢查 targetType、targetId 與 payload */
+const audits: Array<Record<string, unknown>> = [];
 vi.mock('#src/services/permission.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('#src/services/permission.service.js')>()),
   invalidateRolePermissions: async (roleId: string) => {
@@ -26,6 +28,7 @@ const actor: RequestActor = { tenantId: TENANT_ID, agentId: 'agent-1', roleId: A
 
 beforeEach(() => {
   log.length = 0;
+  audits.length = 0;
 });
 
 function mockPrisma() {
@@ -39,7 +42,10 @@ function mockPrisma() {
         if (where.id === ADMIN_ROLE_ID) return { id: ADMIN_ROLE_ID, slug: 'admin', isSystem: true };
         return { id: ROLE_ID, slug: 'custom-x', name: 'X', isSystem: false };
       },
-      delete: async () => ({}),
+      delete: async ({ where }: { where: { id: string } }) => {
+        log.push(`delete:role:${where.id}`);
+        return {};
+      },
       create: async ({ data }: { data: { name: string; slug: string } }) => {
         log.push(`write:role:${data.name}`);
         return { id: 'new-role', slug: data.slug, name: data.name, isSystem: false };
@@ -61,6 +67,7 @@ function mockPrisma() {
     tenantAuditLog: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         log.push(`audit:${data.action}:${data.tenantId}:${data.actorId}`);
+        audits.push(data);
         return data;
       },
     },
@@ -87,7 +94,17 @@ test('setRolePermissionsFlow：權限與稽核一起 commit，commit 之後才�
 test('deleteRoleFlow：刪除與稽核 role.delete 一起 commit，commit 之後才清除快取', async () => {
   const result = await deleteRoleFlow({ prisma: mockPrisma() }, actor, ROLE_ID);
   assert.deepEqual(result, { deleted: true });
-  assert.deepEqual(log, [`audit:role.delete:${TENANT_ID}:agent-1`, 'commit', `invalidate:${ROLE_ID}`]);
+  assert.deepEqual(log, [
+    `delete:role:${ROLE_ID}`,
+    `audit:role.delete:${TENANT_ID}:agent-1`,
+    'commit',
+    `invalidate:${ROLE_ID}`,
+  ]);
+  assert.deepEqual(
+    { targetType: audits[0].targetType, targetId: audits[0].targetId, payload: audits[0].payload },
+    { targetType: 'role', targetId: ROLE_ID, payload: { name: 'X' } },
+    '稽核記被刪角色的名稱',
+  );
 });
 
 test('createRoleFlow：建立角色與稽核 role.create 一起 commit', async () => {

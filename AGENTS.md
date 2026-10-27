@@ -281,8 +281,9 @@ A flow and a background job obey these rules:
 
 - Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant) or
   `notifyAgent(scope, io, agentId, name, data)` (to one agent), from `apps/api/src/events/socket-push.ts`.
-  Send events with `await publishEvent(scope, events, name, payload)`. Send BullMQ jobs with
-  `await enqueueJob(scope, events, queueName, name, data)`. Both are in
+  Send events with `await publishEvent(scope, publisher, name, payload)`. Send BullMQ jobs with
+  `await enqueueJob(scope, publisher, queueName, name, data)`. `publisher` is an `EventPublisher`,
+  for example `createOutboxPublisher(prisma)`. Both are in
   `apps/api/src/events/outbox-publisher.ts`. Do not call `io.emit`, `eventBus.publish` or
   `queue.add()` directly. The caller does not give a room name: `socket-push.ts` selects the room
   for each Socket event.
@@ -557,7 +558,7 @@ Use path A when all of these conditions are true:
 **Path B — Async queue** (outbox → subscriber queue → BullMQ → workers → Redis pub/sub):
 
 ```ts
-await publishEvent(scope, events, "case.assigned", payload); // written to the outbox in the transaction
+await publishEvent(scope, publisher, "case.assigned", payload); // written to the outbox in the transaction
 // → after the commit: job on the event-notification queue (API process)
 // → notificationQueue.add(job)  // BullMQ
 // → apps/workers consume → publishSocketEvent(redis, room, event, data)

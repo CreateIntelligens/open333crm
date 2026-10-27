@@ -28,7 +28,7 @@
 
 業務事件有三個訂閱者：通知、自動化與對外 Webhook。每個訂閱者有自己的 BullMQ 佇列，Worker 在 API 行程內。事件有兩種發出方式：
 
-- **`publishEvent(scope, events, …)`**（flow 或背景工作，在 `inTenant()` 的交易內；`apps/api/src/events/outbox-publisher.ts`）：事件寫進 `outbox` 資料表，與業務資料一起 commit；commit 之後送進訂閱者佇列。行程在送出之前結束時，補送排程會補送。保證是**至少一次**。
+- **`publishEvent(scope, publisher, …)`**（flow 或背景工作，在 `inTenant()` 的交易內；`apps/api/src/events/outbox-publisher.ts`）：事件寫進 `outbox` 資料表，與業務資料一起 commit；commit 之後送進訂閱者佇列。行程在送出之前結束時，補送排程會補送。保證是**至少一次**。
 - **`eventBus.publish()`**（還沒搬遷的舊程式）：直接送進訂閱者佇列，不寫 outbox。行程在送出之前結束時，事件遺失。保證是**最多一次**。
 
 因為事件可能送兩次，訂閱者與 workers 的規則動作都要承受重複。對客人發訊息等不能重複的副作用，執行前先寫一筆認領紀錄（`side_effect_claims`）。
@@ -54,7 +54,7 @@
 
 ```ts
 // 交易內：寫 outbox，至少一次
-await publishEvent(scope, events, 'case.created', { caseId });
+await publishEvent(scope, publisher, 'case.created', { caseId }); // publisher 是 EventPublisher，例如 createOutboxPublisher(prisma)
 // 舊寫法：直接送進訂閱者佇列，最多一次
 eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payload: { caseId } });
 ```
@@ -110,7 +110,7 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 4. 快路徑與補送同時送出時，BullMQ 以 job id 擋住重複的 job。訂閱者佇列保留完成的 job 24 小時、失敗的 job 7 天，這段時間內同一個事件 id 不會再建立 job。
 5. `outbox-cleanup` 排程每天刪除已送出超過 7 天的資料列。未送出的資料列不刪。
 
-`enqueueJob(scope, events, queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，佇列回傳的 job id 不等於 outbox id，這一列就不標記已送出，留給補送排程。
+`enqueueJob(scope, publisher, queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，佇列回傳的 job id 不等於 outbox id，這一列就不標記已送出，留給補送排程。
 
 ### 副作用的認領紀錄
 

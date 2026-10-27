@@ -13,7 +13,8 @@
  *   `import type`、`{ type X }`、註解與字串裡的文字不算。
  * 以檔案為單位比較，避免一個檔案減少、另一個檔案增加互相抵銷。
  *
- * 用文字比對計數，註解裡的字也會算到；基準檔用同樣的方式產生，所以不影響「只減不增」。
+ * 其他寫法（TenantDb、request.tenantPrisma、service 內開交易）用文字比對計數，註解裡的字也會算到；
+ * 基準檔用同樣的方式產生，所以不影響「只減不增」。
  *
  * 用法：
  *   node scripts/check-tenant-ctx.mjs                    # 印報告，exit 0
