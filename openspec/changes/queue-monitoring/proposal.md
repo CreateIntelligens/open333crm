@@ -25,9 +25,9 @@ change `outbox-event-delivery`（#337 階段 1b）之後，業務事件與 job �
 
 ### Modified Capabilities
 
-- `platform-auth`：「平台路由一律驗證平台帳號」加入佇列監控路徑的 cookie 驗證。
+- `platform-auth`：「平台路由一律驗證平台帳號」把佇列監控的路徑列為例外；新增「佇列監控路徑以監控 cookie 驗證平台帳號」。
 - `standalone-worker-runtime`：
-  - 「Notification Job Handling」寫明 `notification` 佇列的重試次數，以及至少一次的保證。
+  - 「Notification Job Handling」的 Scenario 改成 job 照常完成；新增「Notification Job Retry」，寫明 `notification` 佇列的重試次數，以及至少一次的保證。
   - 「Notification Job Consumer」的 Scenario「Redis unavailable at enqueue time」改成現行的行為：送不出 job 時，通知訂閱者的 job 失敗，由佇列重試。change `outbox-event-delivery` 改了這個行為，也在 `event-delivery` 新增「Subscriber cannot enqueue the next job」，但沒有更新這個 scenario，兩份主規格因此互相矛盾。
 
 ## Impact

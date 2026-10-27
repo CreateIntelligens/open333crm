@@ -16,8 +16,6 @@ The `apps/workers` notification worker SHALL be the **sole** processor responsib
 ### Requirement: Notification Job Handling
 Each `notification` job payload SHALL include the notification type, recipient identifiers, and relevant entity context. The notification job handler SHALL create a notification record in the database via the standalone `PrismaClient` and publish a `socket:emit` message to Redis pub/sub so the API can forward the event to the appropriate Socket.IO room.
 
-Every producer of the `notification` queue SHALL add jobs with 3 attempts and exponential backoff starting at 5 seconds. Notification delivery is at least once: when the worker process stops after the record is written and before BullMQ marks the job completed, BullMQ runs the job again and the agent receives a second identical notification. The system accepts this duplicate.
-
 #### Scenario: Notification job consumed by worker
 - **WHEN** the `notificationWorker` in `apps/workers` dequeues a `notification:dispatch` job and both the DB write and the Redis publish succeed
 - **THEN** it writes one `notification` record to the database, emits the `notification.new` socket event via Redis pub/sub, and the job completes
@@ -29,6 +27,11 @@ Every producer of the `notification` queue SHALL add jobs with 3 attempts and ex
 #### Scenario: Database write fails
 - **WHEN** the notification DB write throws
 - **THEN** the job fails and BullMQ retries according to the queue's retry policy; no Redis publish is attempted
+
+## ADDED Requirements
+
+### Requirement: Notification Job Retry
+Every producer of the `notification` queue SHALL add jobs with 3 attempts and exponential backoff starting at 5 seconds. Notification delivery is at least once: when the worker process stops after the record is written and before BullMQ marks the job completed, BullMQ runs the job again and the agent receives a second identical notification. The system accepts this duplicate.
 
 #### Scenario: Database write keeps failing
 - **WHEN** the notification DB write throws on all 3 attempts of a `notification:dispatch` job
