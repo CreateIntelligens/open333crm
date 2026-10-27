@@ -166,6 +166,16 @@ test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout:
   assert.equal(code, 0, output);
 });
 
+test('模組內新增 tenantHandler(：算增加；lib 內的定義不算', { timeout: 30_000 }, async () => {
+  await put('lib/tenant-ctx.ts', ['export function tenantHandler(fastify, handler) {}']);
+  await put('modules/h1/h1.routes.ts', ['app.get("/", tenantHandler(app, async () => ({})));']);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /tenantHandler/);
+  assert.match(output, /modules\/h1\/h1\.routes\.ts/);
+  assert.doesNotMatch(output, /lib\/tenant-ctx\.ts/);
+});
+
 test('repo 本身：舊寫法沒有比基準檔多', { timeout: 30_000 }, async () => {
   const { code, output } = await check(['--strict']);
   assert.equal(code, 0, `舊寫法增加。新程式請用 inTenant() / tenantHandler()；確實要減少時執行 --update-baseline：\n${output}`);

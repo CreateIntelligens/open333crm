@@ -47,3 +47,12 @@
 
 - **WHEN** 一個 service 檔新增 `import * as IORedis from 'ioredis'`，另一個 service 檔新增 `import { openaiProvider } from '../ai/providers/openai.js'`，以 `--strict` 執行腳本
 - **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含這兩個檔案路徑
+
+### Requirement: 模組內的 tenantHandler 數量不得增加
+
+「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算 `tenantHandler(` 在 `apps/api/src/modules` 底下出現的次數，並與同一個基準檔比較。`apps/api/src/lib` 內的定義 MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
+
+#### Scenario: route 檔新增 tenantHandler
+
+- **WHEN** 一個 route 檔新增一處 `tenantHandler(app, …)`，以 `--strict` 執行腳本
+- **THEN** 腳本 MUST 以 exit code 1 結束，輸出 MUST 包含該寫法與該檔案路徑，MUST NOT 列出 `lib/tenant-ctx.ts`

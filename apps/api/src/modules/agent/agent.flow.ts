@@ -12,12 +12,13 @@ import type { RequestActor } from '../../lib/request-actor.js';
 import { AppError } from '../../shared/utils/response.js';
 import { hashPassword } from '../../shared/utils/password.js';
 import type { ChannelGrantScope } from '../../services/channel-visibility.js';
-import { setAgentChannels } from '../../services/channel-team-access.js';
+import { listChannelsForAgent, setAgentChannels } from '../../services/channel-team-access.js';
 import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
 import {
   changeOwnPassword,
   createAgent,
   deactivateAgent,
+  listAgents,
   purgeAgent,
   reactivateAgent,
   resetAgentPassword,
@@ -27,6 +28,16 @@ import type { AgentRoleValue, CreateAgentInput } from './agent.schema.js';
 
 export interface AgentFlowDeps {
   prisma: PrismaClient;
+}
+
+/** 成員列表：isActive 為 false 時列出停用的成員 */
+export function listAgentsFlow(deps: AgentFlowDeps, actor: RequestActor, isActive: boolean) {
+  return inTenant(deps.prisma, actor.tenantId, (scope) => listAgents(scope, isActive));
+}
+
+/** 成員直綁的渠道 */
+export function listAgentChannelsFlow(deps: AgentFlowDeps, actor: RequestActor, agentId: string) {
+  return inTenant(deps.prisma, actor.tenantId, (scope) => listChannelsForAgent(scope, agentId));
 }
 
 /**

@@ -105,6 +105,7 @@ function deferReply(): { reply: TenantReply; applyTo(reply: FastifyReply): void 
 }
 
 /**
+ * 舊寫法：route 改成呼叫 flow（AGENTS.md 結構規則 2），沒有 route 使用之後刪除。
  * 包住 route handler：以 request.agent.tenantId 開綁定租戶的交易，commit 之後才送出回應。
  * 交易內程式回傳回應內容；丟出的錯誤交給 Fastify 的 error handler。
  */

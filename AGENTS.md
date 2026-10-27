@@ -214,12 +214,8 @@ query in `<name>.service.ts`.
 #### 2. A service that reads or writes tenant data receives a `TenantCtx` and never opens a transaction
 
 The entry point opens one transaction that is bound to the tenant. The entry point is a flow
-(`<name>.flow.ts`), a background job, or a route without side effects. All are in
-`apps/api/src/lib/tenant-ctx.ts`:
-
-- `inTenant(prisma, tenantId, (scope) => ...)` opens the transaction. A flow and a background job use it.
-- `tenantHandler(fastify, (request, reply, ctx) => ...)` wraps a route handler that only calls
-  services and has no side effects.
+(`<name>.flow.ts`) or a background job. It calls `inTenant(prisma, tenantId, (scope) => ...)` from
+`apps/api/src/lib/tenant-ctx.ts`.
 
 The layers have these jobs:
 
@@ -229,9 +225,13 @@ The layers have these jobs:
 | flow | work outside the transaction (bcrypt, external calls), `inTenant()`, calls services, writes the audit row, sends Socket events, events and jobs, clears caches | `TenantScope`, injected dependencies |
 | service | the business rules and the queries of one aggregate | `TenantCtx` |
 
-A route that has a side effect (an audit row, a Socket event, an event, a job, a cache, an
-external call) calls a flow. A route without side effects can use `tenantHandler()`. Its handler
-receives a `TenantCtx`, so the type checker rejects a side effect there.
+Each route that reads or writes tenant data calls a flow. This is also true for a query: when a
+query needs a cache later, the cache goes in the flow, because a service cannot use Redis and a
+cache hit must not open a transaction. A route that reads no tenant data (for example a static
+permission matrix) answers directly. `actorOf(request)` returns 401 when the request has no tenant.
+
+`tenantHandler()` is the old form. Do not use it in new code. The routes of `coupon`, `store`,
+`member-binding` and `analytics` still use it. After they move, `tenantHandler()` is deleted.
 
 Each exported service function that reads or writes tenant data takes the `TenantCtx` as its first
 parameter. A `TenantCtx` has only `tx` and `tenantId`. A service returns the facts that the flow
@@ -340,7 +340,8 @@ so these functions do not change its result.
   service gets a client by itself. `tests/support/mock-tenant-ctx.ts` gives a `TenantCtx` for
   service tests and a `TenantScope` for flow tests. The "Prisma in shared packages" convention below is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when the old forms (`TenantDb`,
-  `request.tenantPrisma`, a transaction opened in a service file) increase in a file. It also fails
+  `request.tenantPrisma`, a transaction opened in a service file, `tenantHandler(` in a module)
+  increase in a file. It also fails
   when a service file adds a value import of a Redis client (`redis` or a namespace import from
   `@open333crm/core`, any value import from `ioredis`) or of an LLM module (`ai/llm.service.js`,
   a file in `ai/providers/` other than `types.js`). The type checker cannot
@@ -492,7 +493,7 @@ RLS. The skill named below gives the steps.
 
 | Client | Connection | When |
 | ------ | ---------- | ---- |
-| `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | new and moved route handlers without side effects. Returns 401 when the request has no tenant. Sends the response after the commit. The `reply` inside has no `send()`: return the body instead |
+| `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | old form, being removed: a route calls a flow instead (structure rule 2) |
 | `inTenant(prisma, tenantId, (scope) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | flows and new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
 | `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
 | `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |

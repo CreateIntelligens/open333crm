@@ -4,6 +4,7 @@
  * route 從 request 組出 actor 交給 flow，flow 不讀 request：同一個 flow 也能由 HTTP 之外的入口呼叫。
  */
 import type { FastifyRequest } from 'fastify';
+import { AppError } from '../shared/utils/response.js';
 
 export interface RequestActor {
   tenantId: string;
@@ -14,7 +15,9 @@ export interface RequestActor {
   ip: string;
 }
 
+/** 請求沒有租戶身分時回 401，不開交易（與 tenantHandler() 相同） */
 export function actorOf(request: FastifyRequest): RequestActor {
+  if (!request.agent?.tenantId) throw new AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401);
   return {
     tenantId: request.agent.tenantId,
     agentId: request.agent.id,

@@ -94,6 +94,28 @@ test('設定角色權限時寫稽核', async () => {
   assert.deepEqual((logs[0].payload as { permissions: string[] }).permissions, ['tag.view']);
 });
 
+test('建立角色時寫稽核', async () => {
+  const res = await auditorApp.inject({ method: 'POST', url: '/api/v1/roles', payload: { name: `${MARK.slice(-8)}新` } });
+  assert.equal(res.statusCode, 201, res.body);
+  const roleId = res.json().data.id as string;
+
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: T, action: 'role.create', targetId: roleId } });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].targetType, 'role');
+  assert.equal(logs[0].actorId, auditor.id);
+  assert.equal((logs[0].payload as { name: string }).name, `${MARK.slice(-8)}新`);
+});
+
+test('角色改名時寫稽核', async () => {
+  const res = await auditorApp.inject({ method: 'PATCH', url: `/api/v1/roles/${targetRole.id}`, payload: { name: `${MARK.slice(-8)}改` } });
+  assert.equal(res.statusCode, 200, res.body);
+
+  const logs = await owner.tenantAuditLog.findMany({ where: { tenantId: T, action: 'role.rename', targetId: targetRole.id } });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].actorId, auditor.id);
+  assert.equal((logs[0].payload as { name: string }).name, `${MARK.slice(-8)}改`);
+});
+
 test('依 action 篩選本租戶的稽核', async () => {
   // 這個測試自己建立符合與不符合篩選的稽核，不依賴其他測試寫入的資料
   const matching = await owner.tenantAuditLog.create({

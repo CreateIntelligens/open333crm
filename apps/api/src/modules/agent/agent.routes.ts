@@ -2,43 +2,41 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { listChannelsForAgent } from '../../services/channel-team-access.js';
 import {
   createAgentSchema,
   updateAgentRoleSchema,
   changePasswordSchema,
   resetPasswordSchema,
 } from './agent.schema.js';
-import { listAgents } from './agent.service.js';
 import {
   changeOwnPasswordFlow,
   createAgentFlow,
   deactivateAgentFlow,
+  listAgentChannelsFlow,
+  listAgentsFlow,
   purgeAgentFlow,
   reactivateAgentFlow,
   resetAgentPasswordFlow,
   setAgentChannelsFlow,
   updateAgentRoleFlow,
 } from './agent.flow.js';
-import { tenantHandler } from '../../lib/tenant-ctx.js';
 import { actorOf } from '../../lib/request-actor.js';
 import { resolveChannelGrantScope } from '../../services/channel-visibility.js';
 
-// 查詢以 tenantHandler() 在綁定租戶的交易內執行；寫入都有稽核，經過 agent.flow
-//（bcrypt、寫入與稽核的順序都在 flow，AGENTS.md 結構規則 2）。
+// 讀寫租戶資料的 route 都呼叫 agent.flow：交易、bcrypt、稽核的順序都在 flow（AGENTS.md 結構規則 2）。
 export default async function agentRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/agents — 啟用中的成員
-  fastify.get('/', { preHandler: [requirePermission('agent.view')] }, tenantHandler(fastify, async (_request, _reply, ctx) => {
-    return success(await listAgents(ctx, true));
-  }));
+  fastify.get('/', { preHandler: [requirePermission('agent.view')] }, async (request, reply) => {
+    return reply.send(success(await listAgentsFlow(fastify, actorOf(request), true)));
+  });
 
   // GET /api/v1/agents/inactive — 停用的成員（需 agent.deactivate，供重新啟用，AUDIT AUTH-09）
-  fastify.get('/inactive', { preHandler: [requirePermission('agent.deactivate')] }, tenantHandler(fastify, async (_request, _reply, ctx) => {
-    return success(await listAgents(ctx, false));
-  }));
+  fastify.get('/inactive', { preHandler: [requirePermission('agent.deactivate')] }, async (request, reply) => {
+    return reply.send(success(await listAgentsFlow(fastify, actorOf(request), false)));
+  });
 
   // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護，在 service）
   fastify.post('/', {
@@ -112,11 +110,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   // GET /api/v1/agents/:id/channels — 該成員直綁的渠道
   fastify.get('/:id/channels', {
     preHandler: [requirePermission('channel.assign_team')],
-  }, tenantHandler(fastify, async (request, _reply, ctx) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const rows = await listChannelsForAgent(ctx, id);
-    return success(rows);
-  }));
+    return reply.send(success(await listAgentChannelsFlow(fastify, actorOf(request), id)));
+  });
 
   // PUT /api/v1/agents/:id/channels — 整組替換該成員的可用渠道
   fastify.put('/:id/channels', {

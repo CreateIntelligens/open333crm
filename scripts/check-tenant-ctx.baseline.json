@@ -122,6 +122,15 @@
     "modules/trial/trial.service.ts": 1
   },
   "service 內的 inTenant(": {},
+  "模組內的 tenantHandler(": {
+    "modules/analytics/analytics.routes.ts": 1,
+    "modules/coupon/coupon-claim-link.routes.ts": 2,
+    "modules/coupon/coupon-inbox.routes.ts": 2,
+    "modules/coupon/coupon-instance.routes.ts": 2,
+    "modules/coupon/coupon.routes.ts": 2,
+    "modules/member-binding/member-binding.routes.ts": 3,
+    "modules/store/store.routes.ts": 1
+  },
   "service 直接 import Redis client": {
     "modules/auth/passkey.service.ts": 1,
     "modules/conversation/conversation.service.ts": 1,

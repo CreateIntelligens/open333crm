@@ -120,12 +120,15 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 
 | 層 | 做什麼 | 拿到什麼 |
 | ---- | ---- | ---- |
-| route | 解析輸入、檢查權限、組出 actor、把結果轉成 HTTP 回應 | `request`、`reply` |
+| route | 解析輸入、檢查權限、以 `actorOf(request)` 組出 actor、呼叫 flow、把結果轉成 HTTP 回應 | `request`、`reply` |
 | flow | 交易外的工作（bcrypt、外部呼叫）、開啟 `inTenant()`、呼叫 service、稽核、推播、事件、快取 | `TenantScope`、注入的依賴 |
 | service | 單一聚合的業務規則與資料存取 | `TenantCtx` |
 
-- route 有任何副作用（稽核、推播、事件、job、快取、外部呼叫）時，就呼叫 flow。
-- 沒有副作用的 route（列表、查詢、純寫入）用 `tenantHandler()`。handler 拿到的是 `TenantCtx`，所以型別上就不能在 handler 裡登記副作用。
+- 讀寫租戶資料的 route 一律呼叫 flow，查詢也一樣。不讀租戶資料的 route（例如權限矩陣）直接回應。
+- 原本的分界是「route 有沒有副作用」，這個分界會隨需求移動：角色的建立與改名原本沒有稽核，補上稽核就要換寫法。查詢也會長出副作用以外的編排：資料量變大時要加 read-through 快取，而 service 不能碰 Redis（決策 9），快取命中時也不該開交易，所以快取只能放在 flow。
+- 代價是查詢的 flow 多半只有一行（`inTenant()` 包一個 service 呼叫）。同一個模組的 flow 放在同一個檔案。
+- `tenantHandler()` 成為舊寫法：ratchet 計算模組內的 `tenantHandler(`，只減不增。`coupon`、`store`、`member-binding`、`analytics` 的 route 在階段 2 的第二個 PR 改成呼叫 flow，之後刪除 `tenantHandler()`、`TenantReply` 與 `deferReply()`，並修改主規格「route 的回應在 commit 之後才送出」中依賴 `TenantReply` 的 Scenario。
+- `actorOf(request)` 在請求沒有租戶身分時回 401，與 `tenantHandler()` 相同。
 - 試點時「交易之前要做的工作」的寫法（`tenantHandler(fastify, …)(request, reply)`）移除，改由 flow 處理。
 - actor（租戶、成員、角色、IP）由 route 從 request 組出，傳給 flow，flow 不讀 request。
 

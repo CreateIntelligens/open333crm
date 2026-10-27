@@ -55,6 +55,15 @@
 - [x] 7.2 `scripts/check-tenant-ctx.mjs` 加上兩種寫法，讓 7.1 通過；以 `--update-baseline` 記下現況（2026-10-27：Redis client 5 個檔案、LLM 入口 8 個檔案）
 - [x] 7.3 `AGENTS.md` 結構規則 2 的 Check 寫明這兩種寫法
 
+## 8. 讀寫租戶資料的 route 一律走 flow（design 決策 7，2026-10-27 修改）
+
+- [x] 8.1 寫失敗的測試：`role.flow.test.ts` 的 createRoleFlow、renameRoleFlow 稽核與資料一起 commit；`tenant-audit-routes.test.ts` 涵蓋 Scenario「建立角色時寫稽核」「角色改名時寫稽核」。執行後確認以斷言失敗（稽核筆數 0，應為 1）
+- [x] 8.2 `role.flow.ts` 新增查詢、建立、改名的 flow；`role.routes.ts`、`agent.routes.ts` 讀寫租戶資料的 route 都改成呼叫 flow，不再使用 `tenantHandler()`
+- [x] 8.3 `actorOf()` 在沒有租戶身分時回 401：`tests/unit/lib/request-actor.test.ts`
+  - 先寫程式才補測試，所以以突變驗證（2026-10-27）：檢查改成 `if (false)`，「請求沒有租戶身分：丟出 401」失敗；還原後通過
+- [x] 8.4 寫失敗的測試，涵蓋 Scenario「route 檔新增 tenantHandler」；`check-tenant-ctx.mjs` 加上「模組內的 tenantHandler(」，以 `--update-baseline` 記下現況（2026-10-27：13 處）
+- [x] 8.5 `AGENTS.md`、`CHANGELOG.md` 更新：route 一律呼叫 flow，`tenantHandler()` 是舊寫法
+
 ## 5. 文件與完成條件
 
 - [x] 5.1 `AGENTS.md` 結構規則 2：加入 `ctx.afterCommit`（快取失效這類最多一次、回應之前要完成的動作）與 `recordTenantAudit()`（交易內的稽核，失敗時整筆 rollback）

@@ -8,6 +8,7 @@
  * service 檔直接 import Redis client 或 LLM 入口也算舊寫法：這些依賴不經過參數，型別擋不住
  * 「交易內不呼叫外部服務」「commit 之後才清快取」，要由 flow 注入（change migrate-role-agent-tenant-ctx）。
  * 只算值的 import；`import type` 與 `{ type X }` 不算。
+ * 模組內的 tenantHandler( 也算舊寫法：route 一律呼叫 flow，沒有 route 使用之後刪除 tenantHandler()。
  * 以檔案為單位比較，避免一個檔案減少、另一個檔案增加互相抵銷。
  *
  * 用文字比對計數，註解裡的字也會算到；基準檔用同樣的方式產生，所以不影響「只減不增」。
@@ -54,6 +55,8 @@ const PATTERNS = [
   { name: 'service 內的 withTenant(', re: /\bwithTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
+  // route 改成呼叫 flow；沒有 route 使用之後刪除 tenantHandler()。lib/ 內的定義不算
+  { name: '模組內的 tenantHandler(', re: /\btenantHandler\s*(?:<[^>()]*>\s*)?\(/g, applies: (rel) => rel.startsWith('modules/') },
   // Redis：core 的 redis singleton，或 ioredis 的任何值 import（預設、namespace、具名）
   {
     name: 'service 直接 import Redis client',

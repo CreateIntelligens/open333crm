@@ -1,7 +1,7 @@
 /**
  * role 的 flow（change migrate-role-agent-tenant-ctx，design 決策 1、7）：
  * - 角色權限快取在 commit 之後才清除。commit 之前清掉的快取，可能被另一個請求以舊資料寫回。
- * - 設定權限的稽核與權限在同一個交易寫入。
+ * - 設定權限、建立、改名的稽核與資料在同一個交易寫入。
  *
  * prisma.$transaction 以 mock 模擬：callback resolve 之後才算 commit。
  */
@@ -17,7 +17,7 @@ vi.mock('#src/services/permission.service.js', async (importOriginal) => ({
   },
 }));
 
-const { setRolePermissionsFlow, deleteRoleFlow } = await import('#src/modules/role/role.flow.js');
+const { setRolePermissionsFlow, deleteRoleFlow, createRoleFlow, renameRoleFlow } = await import('#src/modules/role/role.flow.js');
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 const ROLE_ID = 'r0000000-0000-0000-0000-000000000001';
@@ -32,12 +32,22 @@ function mockPrisma() {
   const tx = {
     $executeRaw: async () => 1,
     role: {
-      findFirst: async ({ where }: { where: { id: string; tenantId: string } }) => {
+      findFirst: async ({ where }: { where: { id?: string; tenantId: string; name?: string } }) => {
         assert.equal(where.tenantId, TENANT_ID);
+        // 同名檢查：沒有重複
+        if (where.name !== undefined) return null;
         if (where.id === ADMIN_ROLE_ID) return { id: ADMIN_ROLE_ID, slug: 'admin', isSystem: true };
         return { id: ROLE_ID, slug: 'custom-x', name: 'X', isSystem: false };
       },
       delete: async () => ({}),
+      create: async ({ data }: { data: { name: string; slug: string } }) => {
+        log.push(`write:role:${data.name}`);
+        return { id: 'new-role', slug: data.slug, name: data.name, isSystem: false };
+      },
+      update: async ({ data }: { data: { name: string } }) => {
+        log.push(`write:role:${data.name}`);
+        return { id: ROLE_ID, slug: 'custom-x', name: data.name, isSystem: false };
+      },
     },
     rolePermission: {
       findMany: async () => [],
@@ -77,4 +87,14 @@ test('setRolePermissionsFlow：權限與稽核一起 commit，commit 之後才�
 test('deleteRoleFlow：commit 之後才清除快取', async () => {
   await deleteRoleFlow({ prisma: mockPrisma() }, actor, ROLE_ID);
   assert.deepEqual(log, ['commit', `invalidate:${ROLE_ID}`]);
+});
+
+test('createRoleFlow：建立角色與稽核 role.create 一起 commit', async () => {
+  await createRoleFlow({ prisma: mockPrisma() }, actor, '客服組長');
+  assert.deepEqual(log, ['write:role:客服組長', `audit:role.create:${TENANT_ID}:agent-1`, 'commit']);
+});
+
+test('renameRoleFlow：改名與稽核 role.rename 一起 commit', async () => {
+  await renameRoleFlow({ prisma: mockPrisma() }, actor, ROLE_ID, '資深客服');
+  assert.deepEqual(log, ['write:role:資深客服', `audit:role.rename:${TENANT_ID}:agent-1`, 'commit']);
 });
