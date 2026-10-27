@@ -41,6 +41,7 @@
     <a href="#p8"><span class="n">8</span> 核銷台（店員使用）</a>
     <a href="#p9"><span class="n">9</span> 查看核銷紀錄與成效</a>
     <a href="#p10"><span class="n">10</span> 管理已發布的券</a>
+    <a href="#p11"><span class="n">11</span> 其他發券方式</a>
   </aside>
 
   <main class="manual-main">
@@ -48,7 +49,7 @@
       <div class="inner">
         <div class="eyebrow">CHAPTER 18 · 行銷與渠道</div>
         <h1>優惠券</h1>
-        <p>建立優惠券、在客服對話中直接發給顧客，顧客在手機上開券；店員用驗證碼或核銷台確認使用，後台隨時看得到誰領了、誰用了。</p>
+        <p>建立優惠券，在客服對話中直接發給顧客，或用關鍵字、加好友禮、廣播、批次發券與海報領券連結大量發出；顧客在手機上開券；店員用驗證碼或核銷台確認使用，後台隨時看得到誰領了、誰用了。</p>
       </div>
     </section>
 
@@ -57,7 +58,7 @@
       <p>優惠券從左側選單「行銷與渠道 → 行銷 → 優惠券」進入。一張券從建立到使用，會經過下面四步：</p>
       <div class="flow">
         <div class="flow-step"><span class="fn">1</span><span class="ft">建立並發布</span><span class="fd">管理員設定券型、效期、券號與核銷方式</span></div>
-        <div class="flow-step"><span class="fn">2</span><span class="ft">對話發券</span><span class="fd">座席在收件匣按「發券」送給顧客</span></div>
+        <div class="flow-step"><span class="fn">2</span><span class="ft">發券</span><span class="fd">座席在對話中發，或用關鍵字、加好友禮、廣播、批次、領券連結發出</span></div>
         <div class="flow-step"><span class="fn">3</span><span class="ft">顧客開券</span><span class="fd">驗證身分後存入「我的優惠券」</span></div>
         <div class="flow-step"><span class="fn">4</span><span class="ft">核銷</span><span class="fd">店員驗證碼、店員掃碼或顧客自助</span></div>
       </div>
@@ -66,17 +67,19 @@
         <thead><tr><th>權限</th><th>可以做的事</th><th>預設角色</th></tr></thead>
         <tbody>
           <tr><td>檢視優惠券</td><td>看優惠券列表、詳情、序號明細與報表</td><td>管理員、主管、座席</td></tr>
-          <tr><td>管理優惠券</td><td>建立、編輯、發布、暫停、提前結束、複製、刪除草稿</td><td>管理員</td></tr>
-          <tr><td>發送優惠券</td><td>在收件匣對話中發券</td><td>管理員、主管、座席</td></tr>
+          <tr><td>管理優惠券</td><td>建立、編輯、發布、暫停、提前結束、複製、刪除草稿、建立領券連結</td><td>管理員</td></tr>
+          <tr><td>發送優惠券</td><td>在收件匣對話中發券、從券詳情批次發券</td><td>管理員、主管、座席</td></tr>
           <tr><td>檢視門市與核銷帳號</td><td>看門市列表、核銷帳號與櫃檯海報</td><td>管理員</td></tr>
           <tr><td>管理門市與核銷帳號</td><td>新增門市、停業、建立核銷帳號、重設密碼、停用與強制登出</td><td>管理員</td></tr>
         </tbody>
       </table>
+      <p>關鍵字發券與加好友禮另外需要「管理自動化」權限，附券廣播需要「管理行銷」與「執行群發」權限（見第 11 節）。</p>
       <div class="quick">
         <a href="#p2"><b>建立優惠券</b>每個欄位的意思</a>
         <a href="#p4"><b>對話發券</b>在收件匣送給顧客</a>
         <a href="#p6"><b>三種核銷方式</b>顧客與店員的畫面</a>
         <a href="#p7"><b>門市與核銷帳號</b>店員登入核銷台</a>
+        <a href="#p11"><b>其他發券方式</b>關鍵字、加好友、廣播、批次、海報</a>
       </div>
     </section>
 
@@ -235,6 +238,7 @@
         <li>確認發給誰、券名與面額、有效期，按「確認發送」。<b>發送後無法撤回。</b></li>
         <li>發送成功後，對話中會出現券卡（寫著由哪位座席發送），右側聯絡人面板的「已發優惠券」也會多一筆。</li>
       </ol>
+      <div class="info"><span>ℹ️</span><div>這裡只能發「客服補償」用途的券。要讓顧客傳關鍵字或加好友時自動拿到券，或一次發給一群顧客，請見<a href="#p11">第 11 節</a>。</div></div>
       <p><b>發給 Facebook、Instagram 的顧客</b>步驟相同，但要注意 24 小時回覆期限：顧客最後一則訊息超過 24 小時，就不能發券，要等顧客再傳訊息進來。對話若還在 Bot 處理中，按「接管對話」時系統會先自動回顧客一句轉接提示。</p>
       <figure class="video">
         <video controls preload="none" playsinline poster="uploads/videos/ch18-issue-fb.jpg">
@@ -496,6 +500,173 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>券的日期一律以台灣時間計算。已結束的券無法再編輯。</div></div>
+    </section>
+
+    <section class="doc" id="p11">
+      <h2><span class="idx">11</span> 其他發券方式：關鍵字、加好友、廣播、批次與領券連結</h2>
+      <p>除了座席在對話中一張一張發（第 4 節），還有五種方式可以讓券自動或大量發出。每位顧客一樣只拿到自己的一張券與自己的票券連結，每人上限與發行總量照常計算。</p>
+      <table>
+        <thead><tr><th>方式</th><th>在哪裡設定</th><th>適合</th><th>可用的券</th><th>需要的權限</th></tr></thead>
+        <tbody>
+          <tr><td><a href="#p11-1">關鍵字發券</a></td><td>行銷與渠道 → 渠道 → LINE 關鍵字回覆</td><td>顧客在 LINE 傳某個詞就拿到券，例如「領券」</td><td>進行中的行銷或客服補償券</td><td>管理自動化</td></tr>
+          <tr><td><a href="#p11-2">加好友禮</a></td><td>行銷與渠道 → 渠道 → LINE 加好友禮</td><td>新顧客第一次加入 LINE 官方帳號時送券</td><td>進行中的行銷或客服補償券</td><td>管理自動化</td></tr>
+          <tr><td><a href="#p11-3">附券廣播</a></td><td>行銷與渠道 → 行銷 → 廣播</td><td>對一群顧客（全部、分眾或標籤）發券並附上文案</td><td>只能用進行中的<b>行銷</b>券</td><td>管理行銷、執行群發</td></tr>
+          <tr><td><a href="#p11-4">批次發券</a></td><td>券詳情頁右上角「發送給…」</td><td>直接挑幾位顧客或一個標籤發券，最多 1,000 人</td><td>進行中的行銷或客服補償券</td><td>發送優惠券</td></tr>
+          <tr><td><a href="#p11-5">領券連結（海報 QR Code）</a></td><td>券詳情頁的「領券連結」分頁</td><td>把 QR Code 印在海報、放在官網，讓不認識的顧客自己來領</td><td>只能用進行中或草稿的<b>行銷</b>券</td><td>管理優惠券</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li>關鍵字發券與加好友禮只在 LINE 對話有效。附券廣播與批次發券可以用 LINE 與 Facebook；Facebook 只會發給 24 小時內傳過訊息的顧客。網站客服沒有主動推送，不能用這幾種方式發券。</li>
+          <li><b>Instagram</b>：素材庫沒有 Instagram 素材，所以 Instagram 不能發一般廣播；附券廣播與批次發券只能送出預設的發券文字與券連結，而且只發給 24 小時內傳過訊息給 IG 帳號的人。要讓 IG 顧客自己來領，建議用領券連結，放在 IG 個人簡介或限時動態。</li>
+          <li><b>Facebook、Instagram 沒有「加好友禮」</b>：粉專與 IG 帳號被追蹤時，Meta 不會通知系統，所以無法在顧客追蹤時自動送券。可以改用領券連結（點了就開啟 Messenger 或 IG 對話並發券），放在粉專置頂貼文或 IG 個人簡介。</li>
+          <li>自動化規則編輯器沒有「發送優惠券」動作，關鍵字發券與加好友禮請在上面兩個頁面設定。</li>
+          <li>每張券是由哪種方式發出，可以在券詳情「序號明細」的「發放來源」看到：上行是規則、廣播或連結的名稱，下行是「關鍵字」「加好友」「廣播」「批次發放」「公開領券」。</li>
+        </ul>
+      </div></div>
+
+      <h3 id="p11-1">11-1 關鍵字發券：顧客傳關鍵字就拿到券</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-keyword.jpg">
+          <source src="uploads/videos/ch18-keyword.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>建立一條只發券的關鍵字回覆（約 25 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「LINE 關鍵字回覆」，按右上角「建立關鍵字回覆」。</li>
+        <li>填「規則名稱」（只給後台看，也會顯示在序號明細的發放來源），在「關鍵字」輸入後按 Enter 或「加入」，可以加多個。</li>
+        <li>「回覆素材」與「同時發送優惠券」至少選一個。只想發券時，素材可以不選；兩個都選時，顧客會同時收到素材與券。</li>
+        <li>「同時發送優惠券」只列出<b>進行中</b>的券。選好後會多一個「發不出時回覆顧客」欄位（選填），例如「您已經領過這張券囉」。</li>
+        <li>按「儲存」，列表會顯示這條規則與它要發的券。</li>
+      </ol>
+      <table>
+        <thead><tr><th>顧客傳了關鍵字之後</th><th>結果</th></tr></thead>
+        <tbody>
+          <tr><td>第一次領</td><td>收到券卡訊息與自己的票券連結；對話中出現券卡，寫著「由規則「規則名稱」發送」</td></tr>
+          <tr><td>已達每人上限、發行總量已發完、序號用完或券已暫停</td><td>不發券。有填「發不出時回覆顧客」就把那段文字回給顧客，沒填則顧客收不到任何回覆；對話都會留下一則看得到原因的系統訊息</td></tr>
+          <tr><td>顧客已封鎖官方帳號</td><td>券沒有送出就作廢，不占名額；對話留下「訊息送不出」的系統訊息</td></tr>
+          <tr><td>在 Facebook 或 Instagram 傳同一個詞</td><td>不發券（關鍵字回覆只對 LINE 有效）</td></tr>
+        </tbody>
+      </table>
+      <!-- KNOWN-ISSUE: 關鍵字回覆列表的啟用開關按下後畫面不更新（2026-10-27 UAT 驗收發現），修好後改寫這段 -->
+      <div class="warn"><span>⚠️</span><div>規則的「已啟用」開關按下後，畫面可能要重新整理才會顯示「停用」。請重新整理確認狀態，<b>不要連按兩次</b>，以免又把規則打開。規則上的券之後被暫停或結束時，列表會標示這張券，只改關鍵字仍可以存檔；要換成另一張券時，新的券必須是進行中。</div></div>
+
+      <h3 id="p11-2">11-2 加好友禮：新好友第一次加入就送券</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-follow-gift.jpg">
+          <source src="uploads/videos/ch18-follow-gift.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>啟用加好友禮並選擇要送的券（約 17 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「LINE 加好友禮」，打開「啟用加好友禮」開關。</li>
+        <li>「發送條件」固定為「只發給第一次加入好友的顧客」，不能修改。</li>
+        <li>在「加好友時發送的優惠券」選一張進行中的券；「發不出時回覆顧客」選填，例如「新朋友禮已經發完了，歡迎關注下一波活動」。</li>
+        <li>按「儲存」。之後第一次加入官方帳號的 LINE 顧客，會在加入後約 30 秒內收到券。</li>
+      </ol>
+      <ul>
+        <li><b>只送一次</b>：顧客封鎖後再加回來，不會再拿到券。這項功能上線前就已經是好友、而且曾經跟官方帳號互動過的顧客，封鎖再加回來也不會拿到。</li>
+        <li><b>每個帳戶只有一條加好友禮</b>：要換券或停用，回到這個頁面修改；在其他地方另外建立會被擋下。</li>
+        <li>如果在自動化規則裡已經有「加入好友 → 傳送歡迎訊息」的規則，這個頁面會列出來。加好友禮是另一條規則，兩條都會執行，儲存加好友禮不會改動歡迎訊息規則。</li>
+        <li>要停止送券，關掉開關後按「儲存」。</li>
+      </ul>
+      <div class="warn"><span>⚠️</span><div>加好友禮啟用期間，<b>所有</b>第一次加入的新好友都會收到券。測試時請用發行總量有上限的券，測完記得視需要關閉。</div></div>
+
+      <h3 id="p11-3">11-3 附券廣播：發給一群顧客，每人一張</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-broadcast.jpg">
+          <source src="uploads/videos/ch18-broadcast.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>建立附券廣播，受眾用標籤篩選，素材沒有放券連結（約 20 秒）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>到「廣播」，按「建立廣播」，填名稱、選渠道。</li>
+        <li>選素材（附券時可以不選）與受眾（全部聯絡人、受眾分群或依標籤篩選），下方會顯示「符合條件 N 人」。<b>請確認人數再發送</b>。</li>
+        <li>在「附上優惠券」選一張進行中的<b>行銷</b>券，下方會顯示剩餘名額。剩餘名額比人數少時會跳出警示，要勾選確認才能建立。</li>
+        <li>按「建立」，廣播先存成草稿。按列表右側的「立即發送」並確認。</li>
+        <li>附券廣播在背景發送，約一分鐘內開始。完成後列表顯示發送人數與發券張數；有人跳過或失敗時，按眼睛圖示可以看各原因的人數。</li>
+      </ol>
+      <p><b>顧客收到什麼，取決於素材：</b></p>
+      <table>
+        <thead><tr><th>素材</th><th>顧客收到</th></tr></thead>
+        <tbody>
+          <tr><td>素材文字裡有 <code>{{coupon.url}}</code></td><td>只收到這一則，<code>{{coupon.url}}</code> 會換成這位顧客自己的券連結</td></tr>
+          <tr><td>素材裡沒有 <code>{{coupon.url}}</code></td><td>先收到素材，再收到一則「為您準備了一張優惠券」與券連結</td></tr>
+          <tr><td>沒有選素材</td><td>只收到「為您準備了一張優惠券」與券連結</td></tr>
+        </tbody>
+      </table>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-broadcast-url.jpg">
+          <source src="uploads/videos/ch18-broadcast-url.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>素材放了 <code>{{coupon.url}}</code> 的附券廣播（約 22 秒）</figcaption>
+      </figure>
+      <div class="info"><span>ℹ️</span><div>
+        <ul>
+          <li><b>在素材裡放券連結</b>：在素材的訊息內容寫上 <code>{{coupon.url}}</code>（大括號與英文都要一樣），例如「秋季感謝祭！點這裡領取：{{coupon.url}}」。素材裡<b>不要</b>放固定的網址，每位顧客的連結都不一樣，發送時才會換上。實際發哪張券，是在建立廣播時選。</li>
+          <li><code>{{coupon.url}}</code> 只有附券廣播會替換。同一個素材如果用在關鍵字回覆或沒有附券的一般廣播，顧客會看到原樣的 <code>{{coupon.url}}</code> 文字。</li>
+          <li>帳戶啟用「個資遮罩」時，素材存檔前預設會遮罩個資，一般文字也可能被誤判成人名（例如「感謝祭」變成「感[姓名]」）。存檔前可在素材頁上方切換成「保留原文」，存完重新打開確認內容。</li>
+        </ul>
+      </div></div>
+      <table>
+        <thead><tr><th>情況</th><th>結果</th></tr></thead>
+        <tbody>
+          <tr><td>名額不足</td><td>依名單順序發到用完，其餘的人不會收到訊息，結果顯示「因發行總量已發完跳過 N 人」</td></tr>
+          <tr><td>顧客已達每人上限</td><td>這位顧客不會收到訊息，結果顯示「因已達每人上限跳過」</td></tr>
+          <tr><td>顧客封鎖官方帳號或訊息送不出</td><td>這位顧客的券作廢、名額歸還，結果顯示為失敗與原因</td></tr>
+          <tr><td>LINE 官方帳號本月訊息額度不足</td><td>整則廣播不送出、也不發任何券，廣播標為失敗。可到 LINE Official Account Manager 提高額度，或縮小對象後重新發送</td></tr>
+          <tr><td>發送到一半中斷後重新發送</td><td>已經收到的人不會重複收到；中斷當下正在發送的人標為「發送中斷」，不重送</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="p11-4">11-4 批次發券：從券詳情直接挑人發</h3>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-batch.jpg">
+          <source src="uploads/videos/ch18-batch.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>在券詳情頁搜尋並勾選聯絡人發券（約 23 秒，聯絡資料已模糊）</figcaption>
+      </figure>
+      <ol class="steps">
+        <li>打開一張進行中的券，按右上角「發送給…」。</li>
+        <li>選渠道，再選對象：搜尋聯絡人勾選、標籤或分眾，最多 1,000 人。沒有這個渠道身分的聯絡人不會拿到券。</li>
+        <li>「訊息文字」選填；不填就用預設的發券文字，有填時券連結會附在文字後面。</li>
+        <li>下方顯示「可送達 N 人，剩餘名額 N 張」，確認後按「送出」。</li>
+        <li>券詳情上方的「發放紀錄」先顯示「排入發送」，約一分鐘內發出。<b>畫面不會自動更新</b>，請稍後重新整理，會顯示「已完成」與發券張數，序號明細也會出現這些券。</li>
+      </ol>
+      <div class="info"><span>ℹ️</span><div>批次發券其實是建立一則附券廣播，所以廣播列表也會多一筆「批次發放」，跳過與失敗的規則跟附券廣播相同。客服補償券也可以批次發；只需要「發送優惠券」權限。</div></div>
+
+      <h3 id="p11-5">11-5 領券連結：印在海報上讓顧客自己領</h3>
+      <p>領券連結適合發給還不在名單裡的顧客。顧客掃 QR Code 打開領券頁，傳一則帶代碼的訊息給官方帳號，就會在對話中收到券。</p>
+      <ol class="steps">
+        <li>打開一張行銷券，切到「領券連結」分頁，按「建立領券連結」。</li>
+        <li>填「連結名稱」（例如「門市海報」，也會顯示在序號明細的發放來源），選「領券的渠道」，開始與結束時間選填。</li>
+        <li>按「建立」，列表會出現這條連結的網址、「下載 QR Code」與「停用」按鈕，右側顯示開啟數與領取數。</li>
+        <li>把網址或 QR Code 放到海報、官網或圖文選單。</li>
+      </ol>
+      <figure class="shot shot-narrow" style="max-width:465px"><img src="uploads/shots/ch18-claim-new.png" alt="建立領券連結對話框：連結名稱、領券的渠道、開始與結束時間" loading="lazy"><figcaption>建立領券連結</figcaption></figure>
+      <figure class="shot"><img src="uploads/shots/ch18-claim-list.png" alt="領券連結分頁：驗收海報，啟用中，網址、下載 QR Code、停用，開啟數 2、領取數 1" loading="lazy"><figcaption>領券連結列表：開啟數是領券頁被打開的次數，領取數是實際發出的張數</figcaption></figure>
+      <p><b>顧客端的流程（LINE）：</b></p>
+      <ol class="steps">
+        <li>掃 QR Code 打開領券頁，看到券名、面額與效期。</li>
+        <li>還不是好友的先按「加入好友」。</li>
+        <li>按「傳送領券訊息」，LINE 會開啟對話並帶入「我要領取優惠券，代碼 XXXXXXXX（請直接送出）」，直接送出。</li>
+        <li>幾秒內在對話收到券。這則領券訊息不會觸發 AI 回覆或關鍵字規則。</li>
+      </ol>
+      <div class="phone-shots">
+        <figure class="shot"><img src="uploads/shots/ch18-claim-phone.png" alt="手機領券頁：券名、NT$50 折抵、加入好友、傳送領券訊息按鈕" loading="lazy"><figcaption>顧客手機上的領券頁</figcaption></figure>
+      </div>
+      <figure class="shot"><img src="uploads/shots/ch18-claim-chat.png" alt="收件匣對話：顧客傳送領券代碼，系統回覆券卡，註明由領券連結「驗收海報」發送" loading="lazy"><figcaption>收件匣看到的紀錄：顧客送出代碼後收到券卡，註明由哪一條領券連結發送</figcaption></figure>
+      <table>
+        <thead><tr><th>顧客送出代碼時</th><th>顧客收到的回覆</th></tr></thead>
+        <tbody>
+          <tr><td>已領過（達每人上限）</td><td>您已經領過這張優惠券</td></tr>
+          <tr><td>發行總量或序號已用完</td><td>優惠券已全數領完</td></tr>
+          <tr><td>連結已停用、不在期間內或券不是進行中</td><td>這個領券活動目前無法領取（打開領券頁時也會顯示這句，沒有領券按鈕）</td></tr>
+          <tr><td>把代碼傳到同帳戶的其他渠道</td><td>請到 {正確的渠道名稱} 領取</td></tr>
+          <tr><td>券訊息送不出</td><td>目前無法發送優惠券，請稍後再試一次（券已作廢，不占名額）</td></tr>
+        </tbody>
+      </table>
+      <div class="info"><span>ℹ️</span><div>顧客改了預填文字也沒關係，系統比對代碼時會忽略大小寫、空白與全形字。Facebook、Instagram 渠道的領券頁是一個帶代碼的開啟對話連結，點了就會發券。客服補償券不能建立領券連結。</div></div>
     </section>
 
 <footer class="manual-footer">
