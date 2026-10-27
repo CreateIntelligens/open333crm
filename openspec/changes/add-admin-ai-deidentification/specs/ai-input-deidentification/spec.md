@@ -54,7 +54,7 @@ When enabled, the system SHALL de-identify every textual `Message.content` paylo
 
 ### Requirement: Fixed system wording keeps its authored text
 
-When enabled, the system SHALL deliver and store fixed system wording that its code composes as authored, including inserted links and names, and SHALL store its masked copy in message metadata with mode `system_template` for model-facing reads. Text that comes from a model, an automation summary, an agent or tenant configuration SHALL keep its masked delivery and storage.
+When enabled, the system SHALL deliver and store fixed system wording that its code composes as authored, including inserted links and names, and SHALL store its masked copy in message metadata with mode `system_template` for model-facing reads. Text that comes from a model, a knowledge-base reply, an automation summary or an agent SHALL keep its masked delivery and storage.
 
 #### Scenario: System template message keeps its authored text
 - **WHEN** an enabled tenant sends or records fixed system wording, such as an email or phone registration link, an account-binding notice, a CSAT survey or follow-up, the default handoff notice, a return-to-bot note or a binding-failure note
@@ -63,6 +63,26 @@ When enabled, the system SHALL deliver and store fixed system wording that its c
 #### Scenario: Agent-typed handoff notice stays masked
 - **WHEN** an enabled tenant hands a conversation to an agent with a handoff notice that the agent typed
 - **THEN** the customer receives and the conversation stores the masked notice
+
+### Requirement: Tenant-authored automatic wording keeps its authored text
+
+When enabled, the system SHALL deliver and store wording that a tenant wrote in advance and the system sends automatically as authored, including customer variables rendered into it, and SHALL store its masked copy in message metadata with mode `tenant_template` for model-facing reads. Saved marketing material keeps its own masking rule.
+
+#### Scenario: Outside-hours reply keeps its authored text
+- **WHEN** an enabled tenant's customer writes outside office hours and the tenant's outside-hours reply is sent
+- **THEN** the customer receives and the conversation stores the authored reply, and a masked copy is stored with mode `tenant_template`
+
+#### Scenario: First-contact greeting with customer variables
+- **WHEN** an enabled tenant sends a first-contact greeting that renders the customer's name, phone and email
+- **THEN** that customer receives and the conversation stores the rendered text, and every model-facing read uses the masked copy without those values
+
+#### Scenario: Canvas message node keeps its authored text
+- **WHEN** an enabled tenant's Canvas flow reaches a message node with text
+- **THEN** the customer receives and the conversation stores the node text as authored, with a masked copy for model-facing reads
+
+#### Scenario: Masking failure on tenant-authored wording
+- **WHEN** the de-identification service fails while an outside-hours reply, first-contact greeting or Canvas message is prepared
+- **THEN** that message is neither stored nor sent, as for other message writes
 
 ### Requirement: Agent chooses the outbound content representation
 
