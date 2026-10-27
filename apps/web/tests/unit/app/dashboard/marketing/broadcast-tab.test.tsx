@@ -355,3 +355,59 @@ test('重送跳過已處理的收件人：發送中斷的附券廣播可以重�
   fireEvent.click(screen.getByTitle('發送中斷，重新發送'));
   await waitFor(() => assert.equal(api.post.mock.calls[0]?.[0], '/marketing/broadcasts/b-s/send'));
 });
+
+// ─── Instagram 廣播只能附券（change add-fb-ig-keyword-coupon）────────────────────────
+// 修正前：選 Instagram 時素材選單空著，又要求必選素材，建立按鈕停用卻沒有任何說明。
+
+const IG_NOTICE = 'Instagram 沒有可用的素材，只能附上優惠券、送出預設的發券文字；只會送給 24 小時內傳過訊息給 IG 帳號的人';
+
+test('渠道選單的 Instagram：顯示「IG（Instagram）」，不出現 THREADS', () => {
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: /建立廣播/ }));
+  const dialog = screen.getByRole('dialog');
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  const labels = Array.from(channel.options).map((o) => o.textContent);
+  assert.ok(labels.includes('IG（Instagram）'), labels.join(','));
+  assert.ok(labels.includes('粉專（Facebook）'), labels.join(','));
+  assert.doesNotMatch(dialog.textContent ?? '', /THREADS/);
+});
+
+test('沒有素材也沒有附券：建立按鈕停用，表單說明「請選擇素材或附上優惠券」，不送出建立請求', () => {
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: /建立廣播/ }));
+  const dialog = screen.getByRole('dialog');
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  fireEvent.change(within(dialog).getByPlaceholderText('廣播名稱'), { target: { value: '週年慶' } });
+  fireEvent.change(channel, { target: { value: 'ch-line' } });
+  assert.equal(createButton(dialog).disabled, true);
+  within(dialog).getByText('請選擇素材或附上優惠券');
+  fireEvent.click(createButton(dialog));
+  assert.equal(api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts').length, 0);
+});
+
+test('Instagram 廣播只能附券：素材欄位改為說明，沒附券不能建立並說明原因，附券後可以建立', async () => {
+  api.get.mockImplementation(async (url: string) =>
+    String(url).startsWith('/coupons') ? { data: { data: [{ id: 'cp-1', name: '秋季九折' }] } } : { data: { data: TAGS } });
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: /建立廣播/ }));
+  const dialog = screen.getByRole('dialog');
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  fireEvent.change(within(dialog).getByPlaceholderText('廣播名稱'), { target: { value: 'IG 發券' } });
+  fireEvent.change(channel, { target: { value: 'ch-ig' } });
+
+  within(dialog).getByText(IG_NOTICE);
+  assert.ok(within(dialog).queryByRole('option', { name: '此渠道尚無可用素材' }) === null, '不顯示空白的素材選單');
+  assert.equal(createButton(dialog).disabled, true);
+  within(dialog).getByText('Instagram 廣播要附上優惠券才能建立');
+
+  await within(dialog).findByRole('option', { name: '秋季九折' });
+  fireEvent.change(within(dialog).getByLabelText('附上優惠券（選填）'), { target: { value: 'cp-1' } });
+  await waitFor(() => assert.equal(createButton(dialog).disabled, false));
+  assert.ok(within(dialog).queryByText('Instagram 廣播要附上優惠券才能建立') === null);
+  fireEvent.click(createButton(dialog));
+  const creates = () => api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts');
+  await waitFor(() => assert.equal(creates().length, 1));
+  assert.equal(creates()[0][1].channelId, 'ch-ig');
+  assert.equal(creates()[0][1].couponId, 'cp-1');
+  assert.equal(creates()[0][1].materialId, undefined);
+});

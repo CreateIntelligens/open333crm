@@ -101,6 +101,19 @@ FB 的發不出時回覆），以突變驗證（從 `AUTOMATION_DELIVERY_CHANNEL
 加上 `{ value: 'THREADS', label: 'Instagram' }`。只影響編輯器的選項，契約驗證本來就不限制值。
 同一組選項也用在「聯絡人渠道」條件，聯絡人本來就可能有 Instagram 的渠道身分，一併列出。
 
+### D8 廣播選到 Instagram 時說明只能附券
+
+查證後端：`apps/api/src/modules/marketing/marketing.routes.ts` 的 `createBroadcastSchema` 規定沒有附券時素材與舊版型要擇一，
+「Instagram ＋ 沒有素材 ＋ 沒有附券」回 400「素材與版型請擇一提供，不可同時或都不填」；附券時素材可以不選，只送預設的發券文字。
+附券廣播由 API 以 `getChannelPlugin` 送出，`threadsPlugin` 已在 API 註冊，並依 `messagingWindowHours = 24` 略過視窗外的人。
+
+素材庫沒有 Instagram 素材，前端原本顯示空白的素材選單、建立按鈕灰掉卻沒有說明。改為：
+
+- 選到 Instagram 時，素材欄位改為說明「Instagram 沒有可用的素材，只能附上優惠券、送出預設的發券文字；只會送給 24 小時內傳過訊息給 IG 帳號的人」。
+- 沒有素材也沒有附券時，建立按鈕停用並在按鈕上方說明原因（Instagram 為「Instagram 廣播要附上優惠券才能建立」，其他渠道為「請選擇素材或附上優惠券」），與後端規則一致。
+- 建立廣播與券詳情頁「發送給…」的渠道選單改為「名稱（LINE／Facebook／Instagram）」，不顯示 THREADS、FB。
+- 後端不改。
+
 ## Risks / Trade-offs
 
 - **未限定渠道且傳送 Facebook 素材又發券的舊規則**：目前在 LINE 對話也會發券；在這頁儲存後只在 Facebook 觸發。表單會明確說明，由管理員決定。

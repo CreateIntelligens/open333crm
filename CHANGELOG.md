@@ -12,6 +12,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 部署：建立 Slack Incoming Webhook 之後，在 `.env.api` 設定 `OPS_ALERT_SLACK_WEBHOOK_URL`；沒有設定時告警只寫 log。
 
 - **Facebook 與 Instagram 也能設定關鍵字回覆與關鍵字發券**（change `add-fb-ig-keyword-coupon`）— 側欄「渠道 → LINE 關鍵字回覆」改名為「關鍵字回覆」（網址不變），建立時選渠道 LINE、Facebook 或 Instagram，規則帶條件「對話渠道等於所選渠道」，只在這個渠道的對話觸發，對同一渠道類型的所有帳號生效。素材選單只列所選渠道的素材；Instagram 沒有素材，只能發券。列表新增「渠道」欄與渠道篩選。已有渠道的規則不能改渠道；沒有渠道條件的舊規則在這頁儲存時加上所選渠道的條件（預設為素材的渠道，沒有素材時為 LINE），表單會說明。既有 LINE 規則的條件、素材與啟用狀態不變。後端與 workers 不改：發券、「發不出時回覆顧客」與 AI 讓步原本就支援 Facebook 與 Instagram，本次補上測試。
+- **建立廣播選到 Instagram 時說明只能附券**（change `add-fb-ig-keyword-coupon`）— 素材庫沒有 Instagram 素材，原本素材選單空著、建立按鈕灰掉卻沒有說明。現在素材欄位改為說明「Instagram 沒有可用的素材，只能附上優惠券、送出預設的發券文字；只會送給 24 小時內傳過訊息給 IG 帳號的人」；沒有素材也沒有附券時，建立按鈕上方說明原因（與後端規則一致）。建立廣播與券詳情頁「發送給…」的渠道選單改為「名稱（LINE／Facebook／Instagram）」，不再顯示 THREADS、FB。
 - **自動化規則的「對話渠道」「聯絡人渠道」條件可選 Instagram**（change `add-fb-ig-keyword-coupon`）— 值為 `THREADS`，畫面顯示 Instagram。
 
 ### Changed

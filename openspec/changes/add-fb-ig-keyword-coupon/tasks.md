@@ -36,12 +36,18 @@
       - 頁面 `handleToggle` 拿掉 `await mutate()`：3.5「停用後列表顯示停用」失敗；還原後通過
       - 1.1 的兩個測試在修正前的程式上斷言失敗（啟用狀態停在 true、關鍵字停在舊值）；修正有兩道（重新載入明細、以列表值為準），任一道都能讓測試通過
 
-## 6. 文件與完成定義
+## 6. 廣播與批次發券的 Instagram
 
-- [x] 6.1 `docs/ref/features/tenant/AUTOMATION.md`、`docs/ref/features/tenant/LINE.md` 改寫關鍵字回覆的渠道行為
-- [x] 6.2 `CHANGELOG.md` 的 `## [2026-10-27]` 加條目
-- [x] 6.3 `pnpm --filter @open333crm/web test`、`@open333crm/api`、`@open333crm/workers`、`@open333crm/channel-plugins`、`@open333crm/automation` unit 全過
-- [x] 6.4 api、web、workers 三種 `tsc --noEmit`；`pnpm --filter @open333crm/web build`
-- [x] 6.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`
-- [x] 6.6 `node scripts/validate-openspec.mjs add-fb-ig-keyword-coupon`
-- [ ] 6.7 歸檔順序：`add-coupon-system` 歸檔後才歸檔本 change（proposal「與 add-coupon-system 的歸檔順序」）
+- [x] 6.1 測試 `apps/web/tests/unit/app/dashboard/marketing/broadcast-tab.test.tsx`：「渠道選單的 Instagram」「沒有素材也沒有附券」「Instagram 廣播只能附券」，在現有程式上失敗
+- [x] 6.2 測試 `apps/web/tests/unit/components/coupons/detail/coupon-batch-issue-dialog.test.tsx`：「渠道選單的 Instagram」，在現有程式上失敗
+- [x] 6.3 `apps/web/src/lib/marketing/broadcast-form.ts` 加 `channelTypeLabel`、`channelOptionLabel`、`broadcastSourceError`；廣播頁選 Instagram 時素材欄改為說明、顯示建立按鈕停用的原因；兩個渠道選單改用渠道名稱（design D8）
+
+## 7. 文件與完成定義
+
+- [x] 7.1 `docs/ref/features/tenant/AUTOMATION.md`、`docs/ref/features/tenant/LINE.md` 改寫關鍵字回覆的渠道行為
+- [x] 7.2 `CHANGELOG.md` 的 `## [2026-10-27]` 加條目
+- [x] 7.3 `pnpm --filter @open333crm/web test`、`@open333crm/api`、`@open333crm/workers`、`@open333crm/channel-plugins`、`@open333crm/automation` unit 全過
+- [x] 7.4 api、web、workers 三種 `tsc --noEmit`；`pnpm --filter @open333crm/web build`
+- [x] 7.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`
+- [x] 7.6 `node scripts/validate-openspec.mjs add-fb-ig-keyword-coupon`
+- [ ] 7.7 歸檔順序：`add-coupon-system` 歸檔後才歸檔本 change（proposal「與 add-coupon-system 的歸檔順序」）
