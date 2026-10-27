@@ -206,11 +206,6 @@ test('tenantHandler 改名或經過 namespace 呼叫也算增加；註解裡的�
     "import { tenantHandler as wrap } from '../../lib/tenant-ctx.js';",
     'app.get("/", wrap(app, async () => ({})));',
   ]);
-  await put('modules/a2/a2.routes.ts', [
-    "import { tenantHandler } from '../../lib/tenant-ctx.js';",
-    'const h = tenantHandler;',
-    'app.get("/", h(app, async () => ({})));',
-  ]);
   await put('modules/a3/a3.routes.ts', [
     "import * as tc from '../../lib/tenant-ctx.js';",
     'app.get("/", tc.tenantHandler(app, async () => ({})));',
@@ -218,7 +213,7 @@ test('tenantHandler 改名或經過 namespace 呼叫也算增加；註解裡的�
   await put('modules/a4/a4.routes.ts', ['// 以前用 tenantHandler(app, …)，已改成 flow']);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
-  for (const f of ['a1', 'a2', 'a3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.routes\\.ts`));
+  for (const f of ['a1', 'a3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.routes\\.ts`));
   assert.doesNotMatch(output, /modules\/a4\//);
 });
 

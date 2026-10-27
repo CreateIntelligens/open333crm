@@ -350,7 +350,8 @@ so these functions do not change its result.
 
   The script parses the TypeScript syntax for the last two kinds: a re-export, a dynamic
   `import()`, `require()`, a renamed import and a namespace call count. A type-only import and a
-  comment do not count. Also
+  comment do not count. A call of `tenantHandler` through a variable or a destructured name is not
+  counted: `tenantHandler()` is deleted when all routes call flows. Also
   `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
 - **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
   module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of

@@ -69,6 +69,7 @@
 - [x] 9.1 寫失敗的測試，涵蓋 Scenario「import 內含註解、前置空白，或以動態 import 引用」「改名之後呼叫 tenantHandler」，另含多行 import、re-export、`require()`、namespace 呼叫。執行後確認兩個測試以斷言失敗（exit code 是 0，不是 1）；Scenario「註解裡的 import 不算」在改寫前已通過，留著防止改寫後退步
 - [x] 9.2 `check-tenant-ctx.mjs` 的 Redis、LLM、tenantHandler 三種計數改用 TypeScript 語法樹，讓 9.1 通過；以 `--update-baseline` 記下現況（多記 `chatbox.service.ts` 的動態 import；tenantHandler 13 → 11）
 - [x] 9.3 `AGENTS.md` 結構規則 2 的 Check、`CHANGELOG.md` 同步更新
+- [x] 9.4 review-loop 第 3 輪：`tenantHandler` 經過變數轉手的呼叫，使用者決定不追（design 決策 9）。spec 只承諾直接呼叫、`as` 改名與 namespace 呼叫，並移除只做了一半的變數別名追蹤，讓實作與 spec 一致
 
 ## 5. 文件與完成條件
 

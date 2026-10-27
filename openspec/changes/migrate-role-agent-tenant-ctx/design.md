@@ -145,7 +145,7 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 
 決策 6 之後，service 拿不到推播與事件的能力，型別檢查會擋下。Redis 與 LLM 的 client 則是模組層級的 singleton，service 直接 import 就能用，所以型別擋不住兩條規則：交易內不呼叫外部服務、commit 之後才清快取。
 
-本 change 先補檢查，不搬遷：`check-tenant-ctx.mjs` 計算 service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis` 或 namespace import、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 的檔案）的次數，記進同一個基準檔，只減不增。腳本以 TypeScript 的 API 解析語法樹計數：靜態 import、re-export、`import x = require()`、動態 `import()`、`require()` 都算；只引用型別的、註解與字串裡的文字不算。模組內的 `tenantHandler` 呼叫也以語法樹計數，追到 `as` 改名、指定給另一個變數與 namespace 的呼叫。各模組搬遷時，把這些依賴改由 flow 注入。
+本 change 先補檢查，不搬遷：`check-tenant-ctx.mjs` 計算 service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis` 或 namespace import、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 的檔案）的次數，記進同一個基準檔，只減不增。腳本以 TypeScript 的 API 解析語法樹計數：靜態 import、re-export、`import x = require()`、動態 `import()`、`require()` 都算；只引用型別的、註解與字串裡的文字不算。模組內的 `tenantHandler` 呼叫也以語法樹計數，涵蓋直接呼叫、`as` 改名與 namespace 的呼叫。各模組搬遷時，把這些依賴改由 flow 注入。
 
 - 只算 import，不算呼叫：import 才是依賴的來源，一個檔案 import 一次就能多處呼叫。
 - `import type` 不算：以參數傳入 client 時，service 只需要型別。
@@ -153,6 +153,7 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 - 從 `llm.service.js` import 不呼叫 LLM 的函式（例如 `recordAiUsage`）也算：多算只讓檢查變嚴，基準檔照實記下。
 - 不用文字比對：review-loop 第 1、2 輪連續找到同一類問題，namespace import、import 內的註解、行首空白、`as` 改名，換一種合法寫法就擋不到。每補一種寫法就會再出現下一種，所以改成解析語法。代價是腳本依賴 `typescript`，以 `createRequire` 從 `apps/api` 載入。既有的文字計數（`TenantDb` 等）不在本 change 改寫，主規格「舊寫法的數量不得增加」寫明它以文字比對。
 - 改用語法樹之後，基準多記 `chatbox.service.ts`：它以動態 `import('@open333crm/core')` 取得 `core.redis`，文字比對沒有算到。`tenantHandler` 的基準從 13 處變成 11 處，少掉的是註解裡的文字。
+- `tenantHandler` 經過變數、解構或參數轉手的呼叫（例如 `const wrap = tc.tenantHandler`）不計數。要追到這些寫法得用型別檢查器解析每個呼叫，而 `tenantHandler()` 在階段 2 的第二個 PR 就刪除，這個計數只是過渡，所以不追（review-loop 第 3 輪，使用者決定）。刻意繞過由 code review 擋下。
 - 擋不到的寫法：經過其他非 service 檔轉手，例如 `lib/cacheStore.ts` 包著 ioredis；以變數組出模組名稱的動態 `import()`。這是以引用計數的極限，記錄就好。
 
 ## 審查基準
