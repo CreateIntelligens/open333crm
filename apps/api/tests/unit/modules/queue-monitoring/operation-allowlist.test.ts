@@ -99,7 +99,7 @@ test('bull-board 的每一條寫入路由都回 403（單筆重送 failed job �
 
   const wrong: string[] = [];
   for (const { method, route } of writeRoutes) {
-    if (route === RETRY_ROUTE) continue;
+    if (method === 'put' && route === RETRY_ROUTE) continue;
     const path = route
       .replace(':queueName', 'automation')
       .replace(':jobId', 'j-failed')

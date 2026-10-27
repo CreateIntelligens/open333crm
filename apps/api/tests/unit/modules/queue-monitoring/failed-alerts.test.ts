@@ -110,7 +110,25 @@ test('job 資料最上層沒有 tenantId 時不帶租戶 id', async () => {
   assert.equal(alerts[0].fields['租戶 id'], undefined);
 });
 
-test('送出告警失敗時不丟出未處理的錯誤', async () => {
+/** 執行 fn，收集期間發生的未處理 rejection */
+async function collectUnhandledRejections(fn: () => Promise<void>): Promise<unknown[]> {
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => rejections.push(reason);
+  process.on('unhandledRejection', onRejection);
+  try {
+    await fn();
+    // unhandledRejection 在 microtask 清空之後才發出
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    process.off('unhandledRejection', onRejection);
+  }
+  return rejections;
+}
+
+function startFailing(
+  getJob: () => Promise<{ name: string; data: unknown; attemptsMade: number }>,
+  sendAlert: (alert: OpsAlert) => Promise<unknown>,
+) {
   startFailedAlerts({
     queueNames: ['automation'],
     createQueueEvents(name) {
@@ -118,15 +136,43 @@ test('送出告警失敗時不丟出未處理的錯誤', async () => {
       emitters.set(name, emitter);
       return Object.assign(emitter, { close: async () => {} });
     },
-    getJob: async () => {
-      throw new Error('redis down');
-    },
-    sendAlert: async () => {
-      throw new Error('redis down');
-    },
+    getJob,
+    sendAlert,
     dashboardUrl: DASHBOARD,
   });
+}
 
-  await fail('automation', 'j1');
+test('讀取 job 失敗時仍送出告警，只帶 job id', async () => {
+  startFailing(
+    async () => {
+      throw new Error('redis down');
+    },
+    async (alert) => {
+      alerts.push(alert);
+    },
+  );
+
+  const rejections = await collectUnhandledRejections(() => fail('automation', 'j1'));
+
+  assert.deepEqual(rejections, []);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].fields['job id'], 'j1');
+  assert.equal(alerts[0].fields['job 名稱'], undefined);
+});
+
+test('送出告警失敗時不丟出未處理的錯誤', async () => {
+  let sendCalls = 0;
+  startFailing(
+    async () => ({ name: 'automation:run', data: {}, attemptsMade: 3 }),
+    async () => {
+      sendCalls += 1;
+      throw new Error('redis down');
+    },
+  );
+
+  const rejections = await collectUnhandledRejections(() => fail('automation', 'j1'));
+
+  assert.equal(sendCalls, 1, '告警有送出');
+  assert.deepEqual(rejections, []);
   assert.ok(emitters.get('automation')!.listenerCount('error') > 0, 'QueueEvents 有 error 監聽');
 });

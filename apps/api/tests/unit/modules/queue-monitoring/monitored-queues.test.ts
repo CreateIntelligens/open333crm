@@ -43,8 +43,11 @@ test('列出 workers 行程的佇列', async () => {
 test('workers 行程的每個 Worker 都在監控清單內', () => {
   const source = readFileSync(join(repoRoot, 'apps/workers/src/index.ts'), 'utf8');
   const workerQueues = [...source.matchAll(/new Worker\(\s*'([^']+)'/g)].map((m) => m[1]);
+  // 佇列名稱不是單引號字串時（常數、雙引號），上面的比對抓不到，這裡就會不相等
+  const workerCount = source.match(/new Worker\(/g)?.length ?? 0;
 
   assert.ok(workerQueues.length > 0, '找不到 workers 的 Worker');
+  assert.equal(workerQueues.length, workerCount, '有 Worker 的佇列名稱不是單引號字串，請改用字串或更新這個測試');
   assert.deepEqual(sorted(WORKERS_QUEUES), sorted(workerQueues));
 });
 
