@@ -32,13 +32,7 @@ type ClaimDb = Pick<Prisma.TransactionClient, 'sideEffectClaim'>;
 export async function claimSideEffect(tx: ClaimDb, key: SideEffectKey): Promise<boolean> {
   const row = { tenantId: key.tenantId, kind: key.kind, sourceId: key.sourceId, subKey: key.subKey ?? '' };
   const claimed = await claimOne(() => tx.sideEffectClaim.createMany({ data: [row], skipDuplicates: true }));
-  if (!claimed) {
-    skippedClaimsScope.getStore()?.push({
-      kind: key.kind,
-      sourceId: key.sourceId,
-      ...(key.subKey ? { subKey: key.subKey } : {}),
-    });
-  }
+  if (!claimed) recordSkippedClaim(key);
   return claimed;
 }
 
@@ -50,6 +44,8 @@ export async function hasSideEffectClaim(db: ClaimDb, key: SideEffectKey): Promi
   const count = await db.sideEffectClaim.count({
     where: { tenantId: key.tenantId, kind: key.kind, sourceId: key.sourceId, subKey: key.subKey ?? '' },
   });
+  // 呼叫端查到紀錄就不再認領，副作用同樣被跳過
+  if (count > 0) recordSkippedClaim(key);
   return count > 0;
 }
 
@@ -62,8 +58,18 @@ export interface SkippedClaim {
 
 const skippedClaimsScope = new AsyncLocalStorage<SkippedClaim[]>();
 
+/** 加進目前範圍的清單；同一個認領鍵只列一次。不在任何範圍內時不做任何事 */
+function recordSkippedClaim(key: SideEffectKey): void {
+  const list = skippedClaimsScope.getStore();
+  if (!list) return;
+  const subKey = key.subKey || undefined;
+  if (list.some((c) => c.kind === key.kind && c.sourceId === key.sourceId && c.subKey === subKey)) return;
+  list.push({ kind: key.kind, sourceId: key.sourceId, ...(subKey ? { subKey } : {}) });
+}
+
 /**
- * 在一個新的收集範圍內執行 fn，回傳 fn 的結果與範圍內 claimSideEffect() 回傳 false 的認領鍵。
+ * 在一個新的收集範圍內執行 fn，回傳 fn 的結果，以及範圍內被跳過的認領鍵：claimSideEffect() 回傳 false，
+ * 或 hasSideEffectClaim() 查到紀錄（呼叫端查到就不再認領）。
  * job processor 以這份清單標示重送時沒有再執行的副作用（change queue-monitoring，design 決策 7）。
  * 不在任何範圍內時，claimSideEffect() 不收集。
  */

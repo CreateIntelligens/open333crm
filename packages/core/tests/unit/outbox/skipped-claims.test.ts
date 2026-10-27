@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { claimSideEffect, collectSkippedClaims } from '#src/outbox/claims.js';
+import { claimSideEffect, collectSkippedClaims, hasSideEffectClaim } from '#src/outbox/claims.js';
 
 const TENANT = 'a0000000-0000-0000-0000-000000000001';
 const EVENT = '22222222-2222-2222-2222-222222222222';
@@ -58,4 +58,29 @@ test('兩個範圍同時執行時各自收集', async () => {
 
   assert.deepEqual(a.skippedClaims.map((c) => c.sourceId), ['a']);
   assert.deepEqual(b.skippedClaims.map((c) => c.sourceId), ['b']);
+});
+
+/** count 回傳的筆數：1 代表認領鍵已有紀錄 */
+function fakeDb(count: 0 | 1) {
+  return { sideEffectClaim: { count: async () => count, createMany: async () => ({ count: 0 }) } } as never;
+}
+
+test('預先查詢到認領紀錄而跳過時也收集', async () => {
+  // 機器人回覆與情緒分析在呼叫 LLM 之前先查認領紀錄，查到就不再認領
+  const { skippedClaims } = await collectSkippedClaims(async () => {
+    await hasSideEffectClaim(fakeDb(1), { tenantId: TENANT, kind: 'bot_reply', sourceId: EVENT });
+    await hasSideEffectClaim(fakeDb(0), { tenantId: TENANT, kind: 'sentiment', sourceId: EVENT });
+  });
+
+  assert.deepEqual(skippedClaims, [{ kind: 'bot_reply', sourceId: EVENT }]);
+});
+
+test('同一個認領鍵先查詢、再認領失敗時只列一次', async () => {
+  const key = { tenantId: TENANT, kind: 'bot_reply' as const, sourceId: EVENT };
+  const { skippedClaims } = await collectSkippedClaims(async () => {
+    await hasSideEffectClaim(fakeDb(1), key);
+    await claimSideEffect(fakeDb(1), key);
+  });
+
+  assert.deepEqual(skippedClaims, [{ kind: 'bot_reply', sourceId: EVENT }]);
 });

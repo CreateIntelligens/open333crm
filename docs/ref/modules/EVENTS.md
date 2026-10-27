@@ -269,7 +269,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 - 設定 `OPS_ALERT_SLACK_WEBHOOK_URL` 時送到 Slack，否則只寫 log。`ops-alert` 自己的工作重試用完時只寫 log。
 - 監聽用 `QueueEvents`，從最新的事件開始讀。API 停機期間移到 failed set 的工作不會告警，但會在 failed set 保留 7 天。
 
-重送之後，3 個訂閱者佇列與 `automation` 的工作回傳值列出被認領擋下而沒有再執行的副作用（`skippedClaims`），見[副作用的認領紀錄](#副作用的認領紀錄)。沒有副作用被跳過時，回傳值是空的。
+重送之後，3 個訂閱者佇列與 `automation` 的工作回傳值列出被認領擋下而沒有再執行的副作用（`skippedClaims`），包括呼叫 LLM 之前先查到認領紀錄而跳過的機器人回覆與情緒分析，見[副作用的認領紀錄](#副作用的認領紀錄)。沒有副作用被跳過時，回傳值是空的。
 
 ## 只能跑一個 API 行程
 

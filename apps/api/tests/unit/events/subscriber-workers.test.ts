@@ -22,6 +22,7 @@ vi.mock('bullmq', async (importOriginal) => ({
 
 import {
   claimSideEffect,
+  hasSideEffectClaim,
   EVENT_AUTOMATION_QUEUE,
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
@@ -126,4 +127,16 @@ test('第一次執行沒有跳過：subscriberProcessor 回傳 undefined', async
   const result = await subscriberProcessor(claimingHandler(1))(job(automationData) as never);
 
   assert.equal(result, undefined);
+});
+
+test('重送已回覆過的訊息：預先查詢到認領紀錄而跳過的機器人回覆也列出', async () => {
+  // bot-reply-guard 與情緒分析在呼叫 LLM 之前先查認領紀錄，查到就不再認領
+  const db = { sideEffectClaim: { count: async () => 1 } } as never;
+  const handler = async (event: { id: string; tenantId: string }) => {
+    if (await hasSideEffectClaim(db, { tenantId: event.tenantId, kind: 'bot_reply', sourceId: 'message-1' })) return;
+  };
+
+  const result = await subscriberProcessor(handler)(job(automationData) as never);
+
+  assert.deepEqual(result, { skippedClaims: [{ kind: 'bot_reply', sourceId: 'message-1' }] });
 });

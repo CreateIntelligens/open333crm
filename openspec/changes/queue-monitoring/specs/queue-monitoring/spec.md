@@ -173,6 +173,11 @@
 - **WHEN** `automation` 佇列的 job 第一次執行時，已認領並執行規則動作 A，之後 job 失敗，管理員重送這個 job
 - **THEN** 重送完成後，job 的回傳值列出 A 的認領鍵，種類是 `automation_action`
 
+#### Scenario: 重送已回覆過的訊息
+
+- **WHEN** `event-automation` 佇列的 job 第一次執行時已送出機器人回覆，之後 job 失敗，管理員重送這個 job；重送時處理函式先查到 `bot_reply` 的認領紀錄，不再呼叫 LLM
+- **THEN** 重送完成後，job 的回傳值列出這個認領鍵，種類是 `bot_reply`
+
 #### Scenario: 第一次執行沒有跳過
 
 - **WHEN** `automation` 佇列的 job 第一次執行，所有規則動作都認領成功
