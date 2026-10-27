@@ -4,7 +4,7 @@
 
 畫面是 [bull-board](https://github.com/felixmosh/bull-board)，掛在 API 行程的 `/api/v1/platform/queues`。系統只放行讀取與單筆重送，其他操作一律拒絕。
 
-- **資料來源**：`apps/api/src/modules/queue-monitoring/*`、`apps/api/src/modules/ops-alert/*`、`apps/web/src/app/admin/lib/QueueMonitorLink.tsx`、`openspec/changes/queue-monitoring/`
+- **資料來源**：`apps/api/src/modules/queue-monitoring/*`、`apps/api/src/modules/ops-alert/*`、`apps/web/src/app/admin/lib/QueueMonitorLink.tsx`、`openspec/specs/queue-monitoring/`、`openspec/specs/ops-alert/`（設計決策見 `openspec/changes/archive/2026-10-27-queue-monitoring/design.md`）
 - **核對日期**：2026-10-22
 
 ## 這份文件回答的問題
