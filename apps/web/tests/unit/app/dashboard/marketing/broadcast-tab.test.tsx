@@ -341,7 +341,7 @@ test('立即發送不等待完成：附券廣播回應已排入發送', async ()
   render(<MarketingPage />);
   fireEvent.click(screen.getByTitle('立即發送'));
   await waitFor(() => assert.equal(alertSpy.mock.calls.length, 1));
-  assert.match(String(alertSpy.mock.calls[0][0]), /已排入發送/);
+  assert.match(String(alertSpy.mock.calls[0][0]), /已開始在背景發送.*自動更新/);
 });
 
 test('重送跳過已處理的收件人：發送中斷的附券廣播可以重新發送', async () => {

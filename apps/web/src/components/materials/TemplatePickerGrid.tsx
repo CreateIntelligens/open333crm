@@ -88,7 +88,8 @@ const FB_TYPES: ContentTypeOption[] = [
   { value: 'fb_video', label: '影片', desc: '發送一段影片給顧客', group: 'basic' },
   { value: 'fb_generic', label: '商品輪播', desc: '多商品橫向滑動展示', group: 'advanced' },
   { value: 'fb_button', label: '按鈕選單', desc: '文字 + 1-3 顆按鈕引導下一步', group: 'advanced' },
-  { value: 'fb_media', label: '大圖／影片廣告', desc: '大圖或影片 + 1 顆 CTA 按鈕', group: 'advanced' },
+  // Facebook 媒體範本只接受 Facebook 託管的素材，一般網址必定回 (#100)，先不提供（2026-10-27 UAT 實測）
+  { value: 'fb_media', label: '大圖／影片廣告', desc: '大圖或影片 + 1 顆 CTA 按鈕', group: 'advanced', hidden: true },
   { value: 'fb_coupon', label: '優惠券', desc: 'Messenger 專屬優惠券模板', group: 'advanced' },
   { value: 'fb_receipt', label: '訂單收據', desc: '電商訂單明細', group: 'advanced' },
   { value: 'fb_feedback', label: '滿意度調查', desc: 'CSAT / NPS 評分量表', group: 'advanced' },

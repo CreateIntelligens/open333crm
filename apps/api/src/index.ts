@@ -108,6 +108,9 @@ import { closeOpsAlertQueue, OPS_ALERT_QUEUE, sendOpsAlert } from './modules/ops
 import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
+import { createCouponBroadcastProcessor } from './modules/marketing/broadcast-coupon.worker.js';
+import { COUPON_BROADCAST_QUEUE } from './modules/marketing/broadcast-coupon.service.js';
+import { runCouponBroadcast } from './modules/marketing/broadcast-coupon.flow.js';
 import { getBindingStore } from './modules/identity-binding/binding-code.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
@@ -262,6 +265,9 @@ export async function bootstrap() {
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
       [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
+      // 附券廣播「立即發送」與批次發券：送出後馬上執行，不等每分鐘的排程（排程仍是後備）
+      [COUPON_BROADCAST_QUEUE]: createCouponBroadcastProcessor((tenantId, broadcastId) =>
+        runCouponBroadcast({ prisma: app.prisma, io: app.io, store: getBindingStore() }, tenantId, broadcastId)) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },

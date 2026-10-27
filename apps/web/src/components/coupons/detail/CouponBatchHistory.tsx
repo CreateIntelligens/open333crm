@@ -2,7 +2,7 @@
 
 /**
  * 券詳情頁的發放紀錄（add-coupon-system design D31）：這張券的附券廣播與「發送給…」批次發放，
- * 依原因列出跳過與失敗人數。排程中或發送中時自動重新載入。沒有紀錄時不顯示。
+ * 依原因列出跳過與失敗人數。排入發送或發送中時每 5 秒重新載入，完成或失敗後停止。沒有紀錄時不顯示。
  */
 import React from 'react';
 import { useCouponBatchIssues, type CouponBatchRecord } from '@/hooks/useCouponBatchIssue';
