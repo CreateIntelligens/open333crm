@@ -11,6 +11,7 @@ import {
 } from './inbound-message.types.js';
 import { resolveInboundContact } from './inbound-contact-resolver.js';
 import { resolveInboundConversation } from './inbound-conversation-resolver.js';
+import { recordInboundFollow } from './inbound-follow-tracking.js';
 import {
   createInboundMessage,
   findDuplicateInboundMessage,
@@ -18,6 +19,7 @@ import {
 } from './inbound-message-writer.js';
 import { runInboundPostbackInterceptors } from './inbound-postback-interceptors.js';
 import { handleReferralEvent, interceptIdentityBinding } from './inbound-identity-binding.js';
+import { handleCouponClaimReferral, interceptCouponClaim } from './inbound-coupon-claim.js';
 import {
   emitInboundSocketEvents,
   publishMessageReceived,
@@ -301,10 +303,13 @@ export async function processInboundMessage(
 
   // FB／IG 點 m.me／ig.me 連結產生的 referral 事件只帶 ref、沒有訊息內容，不落地成收件匣訊息
   if (ctx.contentType === 'referral') {
-    await handleReferralEvent(ctx, async (c) => {
+    const resolve = async (c: typeof ctx) => {
       await resolveInboundContact(c);
       await resolveInboundConversation(c);
-    });
+    };
+    // ref 為領券代碼（coupon_XXXXXXXX）時發券；其餘交給綁定代碼的處理
+    if (await handleCouponClaimReferral(ctx, resolve)) return;
+    await handleReferralEvent(ctx, resolve);
     return;
   }
 
@@ -337,10 +342,19 @@ export async function processInboundMessage(
 
   await updateConversationAfterInboundMessage(ctx);
 
+  // 加入好友：記錄加入時間與次數，判斷是不是第一次加入（design D28）
+  await recordInboundFollow(ctx);
+
   // 跨渠道綁定（綁定關鍵字／代碼／確認／解除）：命中時不跑其他攔截與 AI／關鍵字／自動化。
   // 招呼語由攔截內部在綁定回覆之前送出（見 interceptIdentityBinding）
   const binding = await interceptIdentityBinding(ctx);
   if (binding.handled) {
+    return { conversation: ctx.conversation, message: ctx.message, duplicate: false };
+  }
+
+  // 傳訊領券（領券代碼）：命中時發券並回覆，不跑其他攔截與 AI／關鍵字／自動化（design D30）。
+  // 招呼語由攔截內部在發券回覆之前送出
+  if (await interceptCouponClaim(ctx)) {
     return { conversation: ctx.conversation, message: ctx.message, duplicate: false };
   }
 

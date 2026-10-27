@@ -17,6 +17,39 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ## [2026-10-22]
 
+### Added
+
+- **優惠券發券入口補齊**（add-coupon-system design D25～D33，tasks A15）：
+  - **LINE 關鍵字回覆可同時發券**：表單新增「同時發送優惠券」（只列進行中的券）與「發不出時回覆顧客」，素材改為選填；存檔只換這頁管的動作並補上「對話渠道等於 LINE」條件。一般自動化規則編輯器不再提供「發送優惠券」，既有動作改為唯讀可刪除。
+  - **加好友禮**：「LINE 管理 → 加好友禮」頁，只發給第一次加入的好友（封鎖後再加入不發），以 follow 事件的回覆權杖送出，不計訊息額度。每個帳戶只能有一條加好友禮，經 API 另外建立時回 409。新增自動化事件「加入好友」與條件「第一次加入」；渠道身分記錄第一次／最後一次加入與次數（migration `20261023120000_channel_identity_follow_tracking`，既有 LINE 身分以 `linkedAt` 回填）。
+  - **附券廣播**：廣播可附一張進行中的行銷券，每位收件人各得一張券與自己的票券連結；素材含 `{{coupon.url}}` 時代入，沒有時另附發券文字。名額不足照名單順序發完，其餘跳過並記原因；LINE 額度不足整則不送；「立即發送」改排入排程。結果頁列出跳過與失敗原因（migration `20261023100000_broadcast_coupon`）。
+  - **券詳情頁「發送給…」批次發券**：搜尋聯絡人、標籤或分眾，單一渠道、最多 1,000 人，與附券廣播共用引擎；新增「發放紀錄」。只需 `coupon.issue` 權限。
+  - **公開領券連結（傳訊領券）**：券詳情頁「領券連結」分頁可建立多個連結（名稱、渠道、期間、停用）並下載 QR Code，顯示開啟數與領取數。公開頁 `/coupon/claim/{代碼}` 引導 LINE 加好友並送出預填訊息、FB／IG 開啟對話；入站辨認代碼後直接發券並回覆，不觸發 AI 與關鍵字，領不到時回覆原因（migration `20261023110000_add_coupon_claim_links`，含 RLS）。
+
+### Fixed
+
+- **本機 Docker 開發環境的 `deps` 服務安裝失敗，api、workers、web 都起不來**（#355 之後）。`pnpm.overrides` 把 `tar` 固定在 7，`@tensorflow/tfjs-node` 的安裝腳本以 npm 的 `tar` 解壓 Linux arm64 的 libtensorflow 時，`tar` 7 拒絕壓縮檔裡的連續 symlink（`TAR_SYMLINK_ERROR`）。正式 image 不受影響：`apps/api/Dockerfile` 以 `--ignore-scripts` 安裝，再以系統的 `tar` 解壓、自行編譯 binding。`docker-compose.dev.yml` 的 `deps` 改用同樣的做法：`Dockerfile.dev` 在 build 時下載並解壓 libtensorflow，加裝 `python3`、`make`、`g++`；`deps` 以 `--ignore-scripts` 安裝後，由 `scripts/dev-build-tfjs-node.sh` 編譯 binding（`node_modules` volume 裡已有 binding 時略過）。已有的本機環境要先 `docker compose -f docker-compose.dev.yml build` 重建 image。
+- **自動化（關鍵字）發券**：改為先保留、送出成功才確認、送不出作廢並歸還名額；失敗在對話留下看得到的紀錄（原本只寫 log）；網站客服擋下不建券；歸因記規則 id 與名稱，收件匣改顯示券卡並即時更新「已發優惠券」。
+- **關鍵字自動回覆一直用推播、計入 LINE 訊息額度**：workers 沒把 `receivedAt` 傳進動作，回覆期限判斷一律改推播；修正後期限內改用回覆。AI 讓步判斷也把發券算進會回覆的動作。
+- **「LINE 關鍵字回覆」頁存檔會刪掉規則上的發券動作與其他條件**：改為只更換這頁管理的動作。
+- **發券 API 預設記為「對話發券」**：沒帶發放方式時改記 `api`，冒用系統保留的代碼回 400；發送中的券不再出現在序號明細、統計與 CSV 匯出。
+- **附券廣播與自動發券的細節**（PR #364 審查）：素材含變數的連結不換短連結時，內部欄位 `tagOnClick` 仍會移除（原本留在 LINE payload）；廣播頁「附上優惠券」逐頁載入全部進行中的行銷券（原本只列前 100 張）；中斷後重送時，上次停在發送中的收件人改標「發送中斷」，不重送也不再一直顯示發送中；自動化發券的收券人一律是對話的聯絡人（原本用事件帶的聯絡人，可能與收到訊息的人不同）。券頁批次發券的勾選名單在 service 也檢查 1,000 人上限（原本只靠路由驗證）；傳訊領券的領券標籤到期時間改以流程的時間計算；LINE 外掛一次超過 5 則時不呼叫 LINE、直接回報錯誤（原本整批送出被 LINE 拒收）。
+- **LINE 關鍵字回覆頁存檔會讓「傳送非 LINE 素材」的規則靜默失效**（PR #364 第二輪審查，預防性修正；UAT 查無此類規則）：這頁存檔一律加上「對話渠道等於 LINE」，在一般自動化規則建的「關鍵字＋Facebook 素材」規則出現在這頁時，只改關鍵字就存檔，規則會變成只在 LINE 觸發、卻送 Facebook 素材，從此不再送出。改為：素材不是啟用中的 LINE 素材（其他渠道、已刪除、已停用或讀不到）且沒有改選時擋下存檔並說明原因，列表也標示原因並連到自動化規則編輯。
+- **中斷的附券廣播重新排入後，舊的執行若仍在跑會繼續發券並覆寫結果**（PR #364 第三輪審查）：「發送中超過 5 分鐘沒有進度」的廣播可以重新發送，但舊的執行可能只是停滯（例如渠道逾時）。原本兩個執行都會繼續處理收件人，並互相覆寫進度與最終狀態（同時建立收件紀錄時還會撞唯一鍵，把廣播標成失敗）。改以搶占時間（`broadcasts.sentAt`）當執行代次，保留券、更新進度、寫入結果與標記失敗前都要比對，被取代的舊執行停止且不寫入。
+- **傳訊領券的發券訊息送不出時，顧客收不到任何回應**（PR #364 第四輪審查）：原本只作廢券並在對話留下紅色紀錄。改為作廢後再回覆一次「目前無法發送優惠券，請稍後再試一次」（只試一次），對話留下顧客實際收到的說明與原因。
+- **券頁批次發券的標籤載入失敗時顯示「尚無標籤」**：改為顯示載入失敗的原因與重試按鈕。
+- **加好友禮頁看不到既有的「加入好友」規則**：在自動化規則建的歡迎訊息等不發券的加入好友規則，頁面上完全看不到，商家會以為沒有任何設定；改為列出這些規則並說明加好友禮會另外建立、兩條都會執行。
+- **附券廣播的人數預覽沒有檢查券**：預覽原本只確認券存在，已暫停的券或客服補償券仍算出人數，按建立才被擋；改為與建立時相同的檢查（進行中；廣播只接受行銷券，券詳情頁批次發放也接受客服補償券），錯誤訊息相同。
+
+### Removed
+
+- **未使用的領取憑證換券端點** `POST /api/v1/fan/coupons/claim`、`claimByToken` 與發券的 `requireClaim`（從未有程式產生領取憑證；資料表欄位保留）。
+
+### Changed
+
+- **CLI 發布 0.1.2**（`@open333crm/cli`）— 自 0.1.1 以來的變更：新增 `open333 a2a execute`（A2A bridge 用，需設 `A2A_CRM_ADAPTER_ENABLED=true` 才啟用）；`engines.node` 改為 `>=24.22.1`。
+- `TenantScopedClient` 改宣告為交易 client 的 model 操作加上租戶標記（執行期行為不變），新增資料表不再讓 api 型別檢查出現數百個 TS2349。
+
 ### Security
 
 - **處理 GitHub Dependabot 弱點警示** — 直接依賴升到修補版：`fastify` 5.12.7、`@fastify/jwt` 10.2.5（`fast-jwt` 6.3.5，修正 RSA→HS256 演算法混淆與接受未簽章 JWT）、`@modelcontextprotocol/sdk` 1.32.1、`nodemailer` 10.2.0（大版本，只要求 Node ≥20，寄信用法不變）、`axios` 1.20.0、`next` 15.5.28、`sharp` 0.35.5、`socket.io` 4.8.4、`turbo` 2.11.10、`tsx` 4.23（`esbuild` 0.28）；widget 的 `vite` 從 5 升到 6.4.5，根目錄 `vite` 升到 8.3.5。間接依賴以根目錄 `pnpm.overrides` 固定到修補版：`proxy-addr`、`@fastify/busboy`、`follow-redirects`、`hono`、`tar` 7、`adm-zip` 0.6.1、`brace-expansion`、`js-yaml`、`@xmldom/xmldom`、`qs`、`ip-address`、`fast-uri`、`fast-xml-parser`、`moment`、`uuid`、`deepmerge-ts` 8、`postcss-selector-parser` 7.1.6 等。
@@ -25,8 +58,6 @@ All notable changes to **open333CRM** will be documented in this file.
   - 未處理（無修補版或覆寫後會壞）：`sprintf-js` 沒有修補版（CVE-2026-97058 已被 NVD 撤銷）；`decode-uri-component` 0.5 與 `stream-json` 3 改成 ESM／新 API，覆寫後 minio 的 `query-string.parse` 與通知 Parser 失效，維持原版本（minio 只呼叫 `stringify`，專案沒有使用 bucket 通知）。
 
 ### Changed
-
-- **CLI 發布 0.1.2**（`@open333crm/cli`）— 自 0.1.1 以來的變更：新增 `open333 a2a execute`（A2A bridge 用，需設 `A2A_CRM_ADAPTER_ENABLED=true` 才啟用）；`engines.node` 改為 `>=24.22.1`。
 
 - **業務事件改走 outbox，至少送出一次；訂閱者改從各自的佇列取得事件**（#337 階段 1b，change `outbox-event-delivery`，AUDIT RLS-08）— 事件原本經 API 行程內的 EventEmitter 送給訂閱者，API 在 commit 之後、訂閱者做完之前結束（例如部署），通知、自動化規則與對外 Webhook 就不會發生，也不會補做。現在 `ctx.publish`、`ctx.enqueue` 在交易內寫進新的 `outbox` 資料表，與業務資料一起 commit；commit 之後送進佇列，沒送出的由新排程 `outbox-relay` 每分鐘補送，`outbox-cleanup` 每天清掉送出超過 7 天的資料列。通知、自動化與對外 Webhook 各有一個佇列（`event-notification`、`event-automation`、`event-webhook`），Worker 在 API 行程內，每個 Worker 同時處理多個 job，job id 是事件 id，一個訂閱者重試不會讓其他訂閱者再處理一次。還沒搬遷的 `eventBus.publish()` 也送進同樣的佇列，但不寫 outbox，仍是最多一次。workers 的 `create_case`、`add_tag` 在同一個交易寫入 `case.created`、`contact.tagged`；Redis 的 `domain:event` 頻道移除（AUDIT APP-09）。
   - 部署：**API 與 workers 要一起部署**。需要跑 migration `20261022100000_add_outbox_and_side_effect_claims`。Redis 多 5 個佇列，沒有新的環境變數。
@@ -42,7 +73,6 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
-- **本機 Docker 開發環境的 `deps` 服務安裝失敗，api、workers、web 都起不來**（#355 之後）。`pnpm.overrides` 把 `tar` 固定在 7，`@tensorflow/tfjs-node` 的安裝腳本以 npm 的 `tar` 解壓 Linux arm64 的 libtensorflow 時，`tar` 7 拒絕壓縮檔裡的連續 symlink（`TAR_SYMLINK_ERROR`）。正式 image 不受影響：`apps/api/Dockerfile` 以 `--ignore-scripts` 安裝，再以系統的 `tar` 解壓、自行編譯 binding。`docker-compose.dev.yml` 的 `deps` 改用同樣的做法：`Dockerfile.dev` 在 build 時下載並解壓 libtensorflow，加裝 `python3`、`make`、`g++`；`deps` 以 `--ignore-scripts` 安裝後，由 `scripts/dev-build-tfjs-node.sh` 編譯 binding（`node_modules` volume 裡已有 binding 時略過）。已有的本機環境要先 `docker compose -f docker-compose.dev.yml build` 重建 image。
 - **已歸戶顧客的票券連結被轉傳後，別人不用驗證就能打開票券夾**（UAT 實測：同一位顧客先用 LINE 驗證，之後 Messenger 的券連結點開就直接進去，可看券甚至顧客自助核銷）。原本只要聯絡人曾完成歸戶驗證，任何票券連結都直接換發顧客憑證。改為「記住裝置＋只認原 email」（design D24）：顧客在某台裝置完成驗證（email 驗證碼、LIFF 或 email 登記）後取得 180 天的裝置憑證，前端存在 `localStorage`，開啟票券時帶上才直接開啟；新裝置或被轉傳的連結改為寄 6 位數驗證碼到聯絡人原本的 email（畫面只顯示遮蔽後的 email，不能改填），新增 `POST /api/v1/fan/coupons/session/code` 與 `/session/code/verify`（10 分鐘有效、同一連結 10 分鐘最多寄 3 次、同一組最多錯 5 次）。只以 LINE 驗證、沒有 email 的聯絡人仍走 email 登記（issue #344）。驗證碼只能用一次：並行送出同一組碼只有一個請求成功；開啟票券的後續流程失敗時可用同一組驗證碼再試。
 - **優惠券操作手冊實測發現的問題**（UAT 實機走過三種核銷方式後修正）：
   - 序號包檢查完後按「儲存草稿」，序號沒有寫入券就離開頁面，下次編輯要重新上傳；改為存草稿時一併寫入。

@@ -392,6 +392,34 @@ function JsonFallbackEditor({
   );
 }
 
+/**
+ * 既有規則上的發券動作（add-coupon-system design D25）：發券改在 LINE 關鍵字回覆與加好友禮頁設定，
+ * 自動化規則編輯器只顯示券名與說明，可以刪除這個動作，不能新增或換券。
+ */
+function HiddenActionReadOnly({ definition, payload }: { definition: AutomationActionDefinition; payload: Record<string, unknown> }) {
+  const couponId = typeof payload.couponId === 'string' ? payload.couponId : '';
+  const { data: coupon, error } = useSWR(
+    couponId ? `/coupons/${couponId}` : null,
+    async (url: string) => (await api.get(url)).data?.data as { name?: string; displayCode?: string } | undefined,
+  );
+  const couponLabel = !couponId
+    ? '未指定優惠券'
+    : coupon?.name
+      ? `${coupon.name}${coupon.displayCode ? `（${coupon.displayCode}）` : ''}`
+      : error
+        ? `找不到的券或沒有檢視權限（${couponId}）`
+        : '載入中…';
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="text-xs font-medium text-muted-foreground">{definition.label}</p>
+      <p className="font-medium">{couponLabel}</p>
+      <p className="text-xs text-muted-foreground">
+        發券請到 LINE 關鍵字回覆或加好友禮設定。這個動作會照常執行，這裡只能刪除。
+      </p>
+    </div>
+  );
+}
+
 export function ActionEditor({
   action,
   actionDefinitions,
@@ -401,9 +429,23 @@ export function ActionEditor({
   // Normalize: backend may use "params" instead of "payload"
   const payload = action.payload || (action as any).params || {};
   const definition = actionDefinitions?.find((item) => item.type === action.type);
+  // 隱藏的動作（發送優惠券）不列在動作選單，只能在專用頁設定
   const actionTypeOptions =
-    actionDefinitions?.map((item) => ({ value: item.type, label: item.label })) ??
+    actionDefinitions
+      ?.filter((item) => !item.editorHidden)
+      .map((item) => ({ value: item.type, label: item.label })) ??
     ACTION_TYPES;
+
+  if (definition?.editorHidden) {
+    return (
+      <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
+        <div className="flex-1">
+          <HiddenActionReadOnly definition={definition} payload={payload} />
+        </div>
+        <RemoveActionButton onRemove={onRemove} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-3 rounded-md border border-input bg-muted/30 p-3">
@@ -427,16 +469,24 @@ export function ActionEditor({
           onChange={(p) => onChange({ ...action, payload: p })}
         />
       </div>
-      <div className="pt-5">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRemove}
-          className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      <RemoveActionButton onRemove={onRemove} />
+    </div>
+  );
+}
+
+function RemoveActionButton({ onRemove }: { onRemove: () => void }) {
+  return (
+    <div className="pt-5">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onRemove}
+        aria-label="刪除動作"
+        title="刪除動作"
+        className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

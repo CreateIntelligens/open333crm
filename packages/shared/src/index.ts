@@ -16,3 +16,4 @@ export * from './utils/runtime-endpoints.js';
 export * from './line-flex-template.js';
 export * from './safe-reply.js';
 export * from './coupon/rules.js';
+export * from './coupon/issued-via.js';

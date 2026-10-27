@@ -5,7 +5,8 @@ import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useMaterials } from '@/hooks/useMaterials';
-import type { KeywordReply, KeywordReplyInput } from '@/hooks/useKeywordReplies';
+import { CouponSelectField } from '@/components/coupons/CouponSelectField';
+import { keywordReplySaveBlock, materialIssueMessage, type KeywordReply, type KeywordReplyInput } from '@/hooks/useKeywordReplies';
 
 interface Props {
   open: boolean;
@@ -20,6 +21,8 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
   const [draftKeyword, setDraftKeyword] = useState('');
   const [matchMode, setMatchMode] = useState<'any' | 'all'>('any');
   const [materialId, setMaterialId] = useState('');
+  const [couponId, setCouponId] = useState('');
+  const [failureText, setFailureText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +35,8 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
       setKeywords(reply?.keywords ?? []);
       setMatchMode(reply?.matchMode ?? 'any');
       setMaterialId(reply?.materialId ?? '');
+      setCouponId(reply?.couponId ?? '');
+      setFailureText(reply?.failureText ?? '');
       setDraftKeyword('');
       setError(null);
     }
@@ -54,7 +59,11 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
   const handleSave = async () => {
     if (!name.trim()) { setError('請輸入規則名稱'); return; }
     if (keywords.length === 0) { setError('至少要 1 個關鍵字'); return; }
-    if (!materialId) { setError('請選擇要回覆的素材'); return; }
+    // 素材改為選填（add-coupon-system design D25），但素材與優惠券至少要選一個
+    if (!materialId && !couponId) { setError('回覆素材與優惠券至少要選一個'); return; }
+    // 原本的素材不是 LINE 素材（或已刪除、停用）且沒有改選：存檔會加上 LINE 條件讓規則不再送出，擋下
+    const blocked = keywordReplySaveBlock(reply, { materialId: materialId || null });
+    if (blocked) { setError(blocked); return; }
     setSaving(true);
     setError(null);
     try {
@@ -62,12 +71,14 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
         name: name.trim(),
         keywords,
         matchMode,
-        materialId,
+        materialId: materialId || null,
+        couponId: couponId || null,
+        failureText: couponId ? failureText.trim() : '',
       });
       onClose();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError(((err as any)?.response?.data?.error?.message) ?? '儲存失敗');
+      setError(((err as any)?.response?.data?.error?.message) ?? (err instanceof Error && err.message ? err.message : '儲存失敗'));
     } finally {
       setSaving(false);
     }
@@ -84,7 +95,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
               {reply ? '編輯關鍵字回覆' : '建立關鍵字回覆'}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              當用戶在 LINE 傳訊息中出現指定關鍵字，自動回覆對應素材
+              當用戶在 LINE 傳訊息中出現指定關鍵字，自動回覆對應素材，也可以同時發送優惠券
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -182,8 +193,20 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
           {/* 素材選擇 */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-              回覆素材 *
+              回覆素材
             </label>
+            {reply?.materialIssue && materialId === reply.materialId && (
+              <div role="alert" className="mb-2 rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                <p>{materialIssueMessage(reply.materialIssue)}</p>
+                {reply.materialIssue.kind === 'other_channel' ? (
+                  <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline">
+                    到自動化規則編輯
+                  </a>
+                ) : (
+                  <p className="mt-1">改選一個 LINE 素材，或拿掉素材只發券，就可以儲存。</p>
+                )}
+              </div>
+            )}
             <select
               value={materialId}
               onChange={(e) => setMaterialId(e.target.value)}
@@ -211,8 +234,39 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
               </div>
             )}
             <p className="mt-1 text-[11px] text-muted-foreground">
-              素材在「行銷 → 素材庫」建立，這裡只列 LINE 渠道的素材
+              素材在「行銷 → 素材庫」建立，這裡只列 LINE 渠道的素材。素材與優惠券至少要選一個
             </p>
+          </div>
+
+          {/* 優惠券（add-coupon-system design D25） */}
+          <div className="space-y-3">
+            <CouponSelectField
+              id="keyword-reply-coupon"
+              label="同時發送優惠券"
+              value={couponId}
+              onChange={setCouponId}
+            />
+            <p className="-mt-2 text-[11px] text-muted-foreground">
+              只列進行中的券。每位顧客依券的每人上限領取，發出的券會出現在收件匣與券的序號明細
+            </p>
+            {couponId && (
+              <div>
+                <label htmlFor="keyword-reply-failure-text" className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  發不出時回覆顧客
+                </label>
+                <textarea
+                  id="keyword-reply-failure-text"
+                  value={failureText}
+                  onChange={(e) => setFailureText(e.target.value.slice(0, 500))}
+                  rows={2}
+                  placeholder="例：您已經領過這張券囉"
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  選填。顧客已達領取上限、券已發完或暫停時送出這段文字；空白則不回覆。沒有發出的原因都會記在對話中
+                </p>
+              </div>
+            )}
           </div>
 
           {error && (

@@ -75,6 +75,8 @@ import phoneRegistrationRoutes from './modules/identity-binding/phone-registrati
 import couponRoutes from './modules/coupon/coupon.routes.js';
 import couponInstanceRoutes from './modules/coupon/coupon-instance.routes.js';
 import couponInboxRoutes from './modules/coupon/coupon-inbox.routes.js';
+import couponClaimLinkRoutes from './modules/coupon/coupon-claim-link.routes.js';
+import couponClaimPublicRoutes from './modules/coupon/coupon-claim-public.routes.js';
 import { setupCouponScheduler } from './modules/coupon/coupon.scheduler.js';
 import storeRoutes from './modules/store/store.routes.js';
 import storeConsoleRoutes from './modules/store/store-console.routes.js';
@@ -100,6 +102,7 @@ import { bullWorkerFactory, startQueueWorkers, subscriberProcessor, type JobProc
 import { processUsageAlertEmail } from './modules/notification/usage-alert-email.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
+import { getBindingStore } from './modules/identity-binding/binding-code.js';
 import { setupCsatScheduler } from './modules/csat/csat.scheduler.js';
 import { setupMetaTokenHealthScheduler } from './modules/channel/meta-token-health.js';
 import { redactSensitiveQuery } from './lib/log-redact.js';
@@ -214,6 +217,9 @@ export async function bootstrap() {
   await app.register(couponRoutes, { prefix: '/api/v1/coupons' });
   await app.register(couponInstanceRoutes, { prefix: '/api/v1/coupons' });
   await app.register(couponInboxRoutes, { prefix: '/api/v1/coupon-issue' });
+  await app.register(couponClaimLinkRoutes, { prefix: '/api/v1/coupons' });
+  // 公開領券頁（不需登入，design D30）
+  await app.register(couponClaimPublicRoutes, { prefix: '/api/v1/coupon-claim' });
   await app.register(storeRoutes, { prefix: '/api/v1/stores' });
   await app.register(storeConsoleRoutes, { prefix: '/api/v1/store-console' });
   await app.register(shortlinkRoutes, { prefix: '/api/v1/shortlinks' });
@@ -253,7 +259,8 @@ export async function bootstrap() {
   // Redis 連不上時 API 照常啟動，排程等 Redis 恢復後才開始
   const jobScheduler = createBullJobScheduler(config.REDIS_URL);
   setupAnalyticsScheduler(jobScheduler, app.prismaAdmin);
-  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io);
+  // 附券廣播以 app_tenant 連線逐步發送，票券連結存 Redis（design D29）
+  setupBroadcastScheduler(jobScheduler, app.prismaAdmin, app.io, { prisma: app.prisma, store: getBindingStore() });
   setupCsatScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupMetaTokenHealthScheduler(jobScheduler, app.prismaAdmin, app.io);
   setupInactivityCloseWorker(jobScheduler, app.prismaAdmin, app.io);

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { randomUUID } from 'node:crypto';
@@ -16,6 +16,8 @@ import { resolveContext } from './template-context.js';
 import { findOrCreateMaterialShortLink } from '../shortlink/shortlink.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 import { calculateSegmentContacts, effectiveSegmentConditions, type SegmentRules } from './segment.service.js';
+import { COUPON_ISSUED_VIA } from '@open333crm/shared';
+import { countsTowardContactLimit } from '@open333crm/core';
 
 // --- Broadcast audience ---
 
@@ -163,6 +165,34 @@ export async function getBroadcast(prisma: TenantDb, id: string, tenantId: strin
   };
 }
 
+/**
+ * 廣播可以附的券：廣播頁只能附進行中的行銷券；券詳情頁的批次發放行銷與客服補償券都可以（design D31）。
+ * 查不到（含其他租戶的券）也回 400：選券是輸入錯誤，不是找不到資源。
+ * 建立與預覽共用，錯誤相同（PR #364 第二輪審查：預覽原本只確認券存在）。
+ */
+async function assertBroadcastCoupon(
+  // 只用到 coupon：收最小的介面，PrismaClient、交易 client 與租戶綁定 client 都符合
+  prisma: Pick<Prisma.TransactionClient, 'coupon'>,
+  tenantId: string,
+  couponId: string,
+  couponIssuedVia: string | null | undefined,
+) {
+  const coupon = await prisma.coupon.findFirst({
+    where: { id: couponId, tenantId },
+    select: { id: true, status: true, purpose: true, totalLimit: true, perContactLimit: true, codeMode: true },
+  });
+  const purposeOk = couponIssuedVia === COUPON_ISSUED_VIA.BATCH || coupon?.purpose === 'MARKETING';
+  if (!coupon || coupon.status !== 'ACTIVE' || !purposeOk) {
+    const message = !coupon
+      ? '找不到這張優惠券'
+      : coupon.status !== 'ACTIVE'
+        ? '只能附上進行中的優惠券'
+        : '廣播只能附上行銷券，客服補償券請在對話中發送';
+    throw new AppError(message, 'INVALID_COUPON', 400, { issues: [{ path: 'couponId', message }] });
+  }
+  return coupon;
+}
+
 export async function createBroadcast(
   prisma: TenantDb,
   tenantId: string,
@@ -177,11 +207,26 @@ export async function createBroadcast(
     targetType: 'all' | 'segment' | 'tags' | 'contacts';
     targetConfig?: { tagIds?: string[]; contactIds?: string[] };
     scheduledAt?: string;
+    /** 附券廣播（design D29）：每位收件人各得一張券與自己的票券連結 */
+    couponId?: string;
+    /** 發放方式：廣播頁為 broadcast（預設），券詳情頁「發送給…」為 batch（design D31） */
+    couponIssuedVia?: typeof COUPON_ISSUED_VIA.BROADCAST | typeof COUPON_ISSUED_VIA.BATCH;
+    /** 批次發放的訊息文字；沒填用預設發券文字 */
+    couponMessage?: string;
+    /** 批次發放的操作者名稱快照 */
+    couponIssuedByName?: string;
   },
 ) {
-  if (Boolean(data.materialId) === Boolean(data.templateId)) {
+  if (data.couponId) {
+    // 附券廣播：素材可選（沒選只送預設發券文字），不支援舊版型
+    if (data.templateId) {
+      throw new AppError('附券廣播請選擇素材或不選素材，不支援舊版型', 'INVALID_INPUT', 400);
+    }
+  } else if (Boolean(data.materialId) === Boolean(data.templateId)) {
     throw new AppError('素材與版型請擇一提供，不可同時或都不填', 'INVALID_INPUT', 400);
   }
+  const couponIssuedVia = data.couponId ? data.couponIssuedVia ?? COUPON_ISSUED_VIA.BROADCAST : null;
+  if (data.couponId) await assertBroadcastCoupon(prisma, tenantId, data.couponId, couponIssuedVia);
 
   assertBroadcastAudience(data);
 
@@ -209,10 +254,10 @@ export async function createBroadcast(
       throw new AppError(notFound('material'), 'NOT_FOUND', 404);
     }
     materialChannelType = material.channelType;
-  } else {
+  } else if (data.templateId) {
     const template = await prisma.messageTemplate.findFirst({
       where: {
-        id: data.templateId!,
+        id: data.templateId,
         tenantId,
       },
     });
@@ -272,6 +317,10 @@ export async function createBroadcast(
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
       status,
       createdById: agentId,
+      couponId: data.couponId ?? null,
+      couponIssuedVia,
+      couponMessage: data.couponId ? data.couponMessage?.trim() || null : null,
+      couponIssuedByName: data.couponId ? data.couponIssuedByName ?? null : null,
     },
   });
 
@@ -304,7 +353,7 @@ export async function cancelBroadcast(prisma: TenantDb, id: string, tenantId: st
  * 涵蓋所有版型（carousel action1/2、imagemap area.action、video endCard、flex button）——
  * 靠遞迴找 type==='uri' 物件，不綁死結構。回傳深拷貝後的新 body（不改原素材）。
  */
-async function convertBodyUrlsToShortLinks(
+export async function convertBodyUrlsToShortLinks(
   prisma: PrismaClient,
   tenantId: string,
   createdById: string,
@@ -324,23 +373,30 @@ async function convertBodyUrlsToShortLinks(
       // LINE Flex 的連結按鈕是 action.uri；本地版型是 {type:'uri', uri}。兩種都攔。
       // action 上若有 tagOnClick（點擊後貼標），一併灌進短連結，並從 body 移除
       // （tagOnClick 是內部欄位，若留在 flex button action 會流進 LINE payload 被擋 unknown field）。
+      // 含變數的連結（例如附券廣播的 {{coupon.url}}）每人不同，發送時才代入，不能共用一條短連結
+      // 含變數的連結不換短連結，但 tagOnClick 一樣要移除（PR #364 審查：原本整段跳過，tagOnClick 會流進 LINE payload）
+      const tagOnClick = typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined;
       if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri) {
-        obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-          materialId,
-          targetUrl: obj.uri,
-          lineChannelId,
-          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
-        });
+        if (!hasPlaceholder(obj.uri)) {
+          obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
+            materialId,
+            targetUrl: obj.uri,
+            lineChannelId,
+            tagOnClick,
+          });
+        }
         delete obj.tagOnClick;
       }
       // imagemap 轉出的 linkUri（builders 用 linkUri），也一併處理
       if (typeof obj.linkUri === 'string' && obj.linkUri) {
-        obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-          materialId,
-          targetUrl: obj.linkUri,
-          lineChannelId,
-          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
-        });
+        if (!hasPlaceholder(obj.linkUri)) {
+          obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
+            materialId,
+            targetUrl: obj.linkUri,
+            lineChannelId,
+            tagOnClick,
+          });
+        }
         delete obj.tagOnClick;
       }
       for (const key of Object.keys(obj)) await walk(obj[key]);
@@ -351,22 +407,24 @@ async function convertBodyUrlsToShortLinks(
   return clone as Record<string, unknown>;
 }
 
+const hasPlaceholder = (value: string) => /\{\{[a-zA-Z0-9_.]+\}\}/.test(value);
+
 const SENDABLE_STATUSES = ['draft', 'scheduled', 'failed'];
 
 /** 非預期錯誤（不是 AppError）寫給後台看的原因：不外露內部錯誤內容（issue #287） */
-const UNEXPECTED_FAILURE_REASON = '發送時發生系統錯誤，請稍後重新發送；若持續失敗請聯絡管理員';
+export const UNEXPECTED_FAILURE_REASON = '發送時發生系統錯誤，請稍後重新發送；若持續失敗請聯絡管理員';
 
 /** 失敗原因寫進資料庫的長度上限：渠道錯誤可能很長 */
-const FAILURE_REASON_MAX_LENGTH = 500;
+export const FAILURE_REASON_MAX_LENGTH = 500;
 
 /** 全部收件人都失敗時的原因：失敗人數加上第一個渠道錯誤，讓行銷人員知道要從哪裡修 */
-function allRecipientsFailedReason(count: number, firstError: string | null): string {
+export function allRecipientsFailedReason(count: number, firstError: string | null): string {
   const head = `全部 ${count} 位對象都發送失敗`;
   const reason = firstError ? `${head}。渠道回應：${firstError}` : `${head}，渠道沒有回傳原因`;
   return reason.slice(0, FAILURE_REASON_MAX_LENGTH);
 }
 
-function alreadySendingError() {
+export function alreadySendingError() {
   return new AppError('此廣播正在發送中或已開始發送，請勿重複發送，稍後重新整理查看結果', 'BROADCAST_ALREADY_SENDING', 409);
 }
 
@@ -383,6 +441,10 @@ export async function executeBroadcast(
   });
   if (!broadcast) {
     throw new AppError(notFound('broadcast'), 'NOT_FOUND', 404);
+  }
+  // 附券廣播每人各發一張券，由排程在背景發送（broadcast-coupon.flow.ts，design D29），不走這裡
+  if (broadcast.couponId) {
+    throw new AppError('附券廣播由排程在背景發送，請重新整理後查看結果', 'COUPON_BROADCAST_QUEUED_ONLY', 409);
   }
   // 只有草稿、已排程、失敗（重試）可以開始發送；發送中的廣播不可再發，避免重複群發
   if (broadcast.status === 'sending') {
@@ -719,7 +781,7 @@ const WINDOW_QUERY_CHUNK = 5000;
  * 有訊息視窗的渠道（FB／IG 24 小時）只留下視窗內在此渠道傳過訊息的人。
  * 視窗從顧客傳入的訊息（含按鈕回應）起算；沒有視窗的渠道原樣回傳。
  */
-async function filterByMessagingWindow<T extends { contactId: string }>(
+export async function filterByMessagingWindow<T extends { contactId: string }>(
   prisma: TenantDb,
   tenantId: string,
   channelId: string,
@@ -757,6 +819,10 @@ export async function previewBroadcastAudience(
     targetType: string;
     segmentId?: string | null;
     targetConfig?: BroadcastTargetConfig;
+    /** 附券廣播：一併回傳券的剩餘名額與已達每人上限的人數（design D29） */
+    couponId?: string;
+    /** 發放方式：券詳情頁的批次發放傳 batch（允許客服補償券），其他為廣播 */
+    couponIssuedVia?: string;
   },
 ) {
   const channel = await prisma.channel.findFirst({
@@ -775,13 +841,50 @@ export async function previewBroadcastAudience(
   });
   const windowHours = getChannelPlugin(channel.channelType)?.messagingWindowHours;
   const reachable = await filterByMessagingWindow(prisma, tenantId, channel.id, matched, windowHours);
-  return { matched: matched.length, reachable: reachable.length, messagingWindowHours: windowHours ?? null };
+  let coupon: { remaining: number | null; limitReached: number } | null = null;
+  if (input.couponId) {
+    // 與建立時相同的檢查：進行中、依入口檢查用途
+    const c = await assertBroadcastCoupon(prisma, tenantId, input.couponId, input.couponIssuedVia ?? COUPON_ISSUED_VIA.BROADCAST);
+    // 剩餘名額：發行總量減去已發出（含發送中，與發券時的檢查一致）；序號包另受可用序號限制
+    let remaining: number | null = null;
+    if (c.totalLimit != null) {
+      remaining = Math.max(0, c.totalLimit - (await prisma.couponInstance.count({ where: { tenantId, couponId: c.id } })));
+    }
+    if (c.codeMode === 'IMPORTED_CODES') {
+      const available = await prisma.couponCode.count({ where: { tenantId, couponId: c.id, status: 'AVAILABLE' } });
+      remaining = remaining == null ? available : Math.min(remaining, available);
+    }
+    // 可送達的人中已達每人上限的人數：發送時會被跳過
+    const contactIds = [...new Set(reachable.map((r) => r.contactId))];
+    let limitReached = 0;
+    for (let i = 0; i < contactIds.length; i += WINDOW_QUERY_CHUNK) {
+      const held = await prisma.couponInstance.findMany({
+        where: {
+          tenantId,
+          couponId: c.id,
+          contactId: { in: contactIds.slice(i, i + WINDOW_QUERY_CHUNK) },
+          ...countsTowardContactLimit(new Date()),
+        },
+        select: { contactId: true },
+      });
+      const perContact = new Map<string, number>();
+      for (const h of held) if (h.contactId) perContact.set(h.contactId, (perContact.get(h.contactId) ?? 0) + 1);
+      limitReached += [...perContact.values()].filter((n) => n >= c.perContactLimit).length;
+    }
+    coupon = { remaining, limitReached };
+  }
+  return {
+    matched: matched.length,
+    reachable: reachable.length,
+    messagingWindowHours: windowHours ?? null,
+    ...(coupon ? { coupon } : {}),
+  };
 }
 
 /**
  * Resolve audience for a broadcast based on targetType.
  */
-async function resolveAudience(
+export async function resolveAudience(
   prisma: TenantDb,
   broadcast: {
     tenantId: string;
@@ -831,9 +934,12 @@ async function resolveAudience(
   const identities = await prisma.channelIdentity.findMany({
     where: identityWhere,
     select: {
+      id: true,
       uid: true,
       contactId: true,
     },
+    // 固定順序：附券廣播名額不足時依名單順序發到用完（design D29）
+    orderBy: [{ linkedAt: 'asc' }, { id: 'asc' }],
   });
 
   return identities;

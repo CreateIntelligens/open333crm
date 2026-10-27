@@ -41,6 +41,9 @@ vi.mock('#src/hooks/useCoupons.js', () => ({
 vi.mock('#src/hooks/useContactTags.js', () => ({
   useContactTags: () => ({ tags: [{ id: 't1', name: '秋季檔期意向', color: '#000', scope: 'CONTACT' }], isLoading: false }),
 }));
+vi.mock('#src/hooks/useCouponBatchIssue.js', () => ({
+  useCouponBatchIssues: () => ({ records: [], error: undefined, isLoading: false, mutate: vi.fn() }),
+}));
 vi.mock('#src/providers/AuthProvider.js', () => {
   const hasPermission = (code: string) => h.perms.includes(code);
   return { useAuth: () => ({ isLoading: false, hasPermission }) };
@@ -338,3 +341,24 @@ describe('大量序號明細改背景匯出（design D22）', () => {
   });
 });
 
+
+describe('從券詳情頁批次發券（design D31）', () => {
+  test('有發券權限時，進行中的券顯示「發送給…」', () => {
+    h.perms = ['coupon.view', 'coupon.issue'];
+    render(<CouponDetailView id={ID} />);
+    assert.ok(screen.getByRole('button', { name: /發送給/ }));
+  });
+
+  test('缺少發券權限', () => {
+    h.perms = ['coupon.view', 'coupon.manage'];
+    render(<CouponDetailView id={ID} />);
+    assert.ok(screen.queryByRole('button', { name: /發送給/ }) === null);
+  });
+
+  test('暫停中的券不顯示「發送給…」', () => {
+    h.perms = ['coupon.view', 'coupon.issue'];
+    h.coupon = { coupon: coupon({ status: 'PAUSED' }), error: undefined, isLoading: false, mutate: h.mutate };
+    render(<CouponDetailView id={ID} />);
+    assert.ok(screen.queryByRole('button', { name: /發送給/ }) === null);
+  });
+});

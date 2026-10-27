@@ -3,7 +3,7 @@
 /**
  * LINE 管理模組共用 Tab 列
  *
- * 切換 tab 走 router push 到對應頁。歡迎訊息 / 加好友自動回應為占位（尚未實作）。
+ * 切換 tab 走 router push 到對應頁。歡迎訊息為占位（尚未實作）。
  */
 
 import React from 'react';
@@ -17,6 +17,7 @@ interface Props {
 const TAB_TO_PATH: Record<string, string> = {
   'rich-menus': '/dashboard/line/rich-menus',
   'keyword-replies': '/dashboard/line/keyword-replies',
+  'follow-gift': '/dashboard/line/follow-gift',
 };
 
 export function LineModuleTabs({ active }: Props) {
@@ -33,9 +34,9 @@ export function LineModuleTabs({ active }: Props) {
         <TabsList>
           <TabsTrigger value="rich-menus">Rich Menu</TabsTrigger>
           <TabsTrigger value="keyword-replies">關鍵字回覆</TabsTrigger>
+          <TabsTrigger value="follow-gift">加好友禮</TabsTrigger>
           {/* 其餘 tab 用 placeholder 顯示「敬請期待」— Tabs 元件不支援 disabled，用樣式抑制 */}
           <DisabledTab label="歡迎訊息" />
-          <DisabledTab label="加好友自動回應" />
         </TabsList>
       </Tabs>
     </div>

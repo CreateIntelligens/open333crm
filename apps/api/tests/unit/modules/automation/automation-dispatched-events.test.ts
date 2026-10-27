@@ -26,7 +26,12 @@ test('契約標為會送出的事件，就是送進自動化佇列、且自動�
 
   for (const event of AUTOMATION_EVENT_DEFINITIONS) {
     // keyword.matched 規則由 workers 處理 message.received 時比對（change outbox-event-delivery），不經自動化佇列
-    const delivered = event.name.startsWith('sla.') || event.name === 'keyword.matched' || subscribed.has(event.name);
+    // contact.followed 由自動化訂閱者處理 message.received（contentType 'follow'）時另外排入（add-coupon-system design D28）
+    const delivered =
+      event.name.startsWith('sla.') ||
+      event.name === 'keyword.matched' ||
+      (event.name === 'contact.followed' && subscribed.has('message.received')) ||
+      subscribed.has(event.name);
     assert.equal(
       event.dispatched !== false,
       delivered,

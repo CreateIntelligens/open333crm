@@ -130,3 +130,24 @@ test('Keyword event write fails：寫入 keyword.matched 的交易失敗時處�
   };
   await assert.rejects(handleAutomationJob(job('請問營業時間'), db as never, redis as never), /connection reset/);
 });
+
+// ── 回覆動作取得事件的收到時間（add-coupon-system A15 15.6、design D25；spec automation-engine
+//    「workers 的回覆動作在期限內以回覆方式送出」）。原本 handler 沒把 receivedAt 傳進動作，
+//    selectSafeLineStrategy 缺 receivedAt 一律回 push，關鍵字回覆全部計入主動推送額度 ──
+
+function jobAt(text: string, receivedAt: string) {
+  const j = job(text) as unknown as { data: { context: Record<string, unknown> } };
+  j.data.context.receivedAt = receivedAt;
+  return j as never;
+}
+
+test('關鍵字規則在期限內回覆：動作拿到回覆權杖與收到時間，以及規則名稱', async () => {
+  const { db } = fakeDb();
+  const receivedAt = new Date(Date.now() - 3_000).toISOString();
+  await handleAutomationJob(jobAt('請問營業時間', receivedAt), db as never, redis as never);
+
+  assert.equal(executed.length, 1);
+  assert.equal(executed[0].context.replyToken, 'rt-1');
+  assert.equal(executed[0].context.receivedAt, receivedAt);
+  assert.equal(executed[0].context.ruleName, 'rule-hours');
+});

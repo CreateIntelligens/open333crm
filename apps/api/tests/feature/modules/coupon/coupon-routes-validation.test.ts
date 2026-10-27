@@ -265,3 +265,56 @@ describe('券的日期一律以台灣時間計算（design D17）', () => {
     }
   });
 });
+
+describe('發券 API 的發放方式（design D31、D32）', () => {
+  let apiCouponId = '';
+  let contactId = '';
+
+  beforeAll(async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/v1/coupons', payload: { name: `${MARK} 整合發券` } });
+    apiCouponId = created.json().data.id as string;
+    await app.inject({
+      method: 'PATCH', url: `/api/v1/coupons/${apiCouponId}`,
+      payload: {
+        purpose: 'MARKETING', couponType: 'DISCOUNT_AMOUNT', discountAmount: 20, validityMode: 'AFTER_CLAIM', afterClaimDays: 7,
+        codeMode: 'UNIQUE_CODE', codePrefix: 'API', redeemMode: 'STAFF_SCAN', perContactLimit: 5,
+      },
+    });
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/coupons/${apiCouponId}/publish` })).statusCode, 200);
+    contactId = (await owner.contact.create({ data: { tenantId: T, displayName: `${MARK} 整合對象` } })).id;
+  });
+
+  afterAll(async () => {
+    await owner.couponInstance.deleteMany({ where: { couponId: apiCouponId } });
+    await owner.contact.deleteMany({ where: { id: contactId } });
+  });
+
+  it('沒有帶發放方式', async () => {
+    const res = await app.inject({ method: 'POST', url: `/api/v1/coupons/${apiCouponId}/issue`, payload: { contactIds: [contactId] } });
+    assert.equal(res.statusCode, 200, res.body);
+    const instance = await owner.couponInstance.findFirst({ where: { couponId: apiCouponId, contactId }, orderBy: { issuedAt: 'desc' } });
+    assert.equal(instance?.issuedVia, 'api');
+    assert.equal(instance?.issuedSourceName, 'API');
+  });
+
+  it('冒用對話發券', async () => {
+    const before = await owner.couponInstance.count({ where: { couponId: apiCouponId } });
+    const body = await expect400('POST', `/api/v1/coupons/${apiCouponId}/issue`, { contactIds: [contactId], issuedVia: 'inbox' });
+    assert.match(body.error.details.issues[0].message, /系統保留/);
+    assert.equal(await owner.couponInstance.count({ where: { couponId: apiCouponId } }), before, '被拒絕的請求不應發券');
+  });
+
+  it('其他系統保留的代碼與舊的觸發事件名稱也回 400', async () => {
+    for (const issuedVia of ['keyword', 'follow', 'automation', 'broadcast', 'batch', 'public_link', 'keyword.matched']) {
+      await expect400('POST', `/api/v1/coupons/${apiCouponId}/issue`, { contactIds: [contactId], issuedVia });
+    }
+  });
+
+  it('整合程式自訂的發放方式照常發券', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/api/v1/coupons/${apiCouponId}/issue`, payload: { contactIds: [contactId], issuedVia: 'partner' },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().data.issued.length, 1, res.body);
+  });
+});

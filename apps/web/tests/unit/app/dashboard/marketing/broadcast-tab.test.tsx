@@ -292,3 +292,66 @@ test('FB 群發的受眾不提供分群與標籤', () => {
   const lineLabels = Array.from(target.options).map((o) => o.textContent);
   assert.ok(lineLabels.includes('受眾分群') && lineLabels.includes('依標籤篩選'), 'LINE 仍可分眾');
 });
+
+// ─── 附券廣播（add-coupon-system A15 15.24、design D29） ───────────────────────
+
+test('沒有選素材：附券廣播可以只送發券文字', async () => {
+  api.get.mockImplementation(async (url: string) =>
+    String(url).startsWith('/coupons') ? { data: { data: [{ id: 'cp-1', name: '秋季九折' }] } } : { data: { data: TAGS } });
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByRole('button', { name: /建立廣播/ }));
+  const dialog = screen.getByRole('dialog');
+  const [channel] = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+  fireEvent.change(within(dialog).getByPlaceholderText('廣播名稱'), { target: { value: '秋季發券' } });
+  fireEvent.change(channel, { target: { value: 'ch-line' } });
+  assert.equal(createButton(dialog).disabled, true, '沒選素材也沒選券不能建立');
+  await within(dialog).findByRole('option', { name: '秋季九折' });
+  fireEvent.change(within(dialog).getByLabelText('附上優惠券（選填）'), { target: { value: 'cp-1' } });
+  await waitFor(() => assert.equal(createButton(dialog).disabled, false));
+  fireEvent.click(createButton(dialog));
+  const creates = () => api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts');
+  await waitFor(() => assert.equal(creates().length, 1));
+  const payload = creates()[0][1];
+  assert.equal(payload.couponId, 'cp-1');
+  assert.equal(payload.materialId, undefined);
+});
+
+test('預覽顯示剩餘名額：名額不足時勾選確認才能建立', async () => {
+  api.get.mockImplementation(async (url: string) =>
+    String(url).startsWith('/coupons') ? { data: { data: [{ id: 'cp-1', name: '秋季九折' }] } } : { data: { data: TAGS } });
+  api.post.mockImplementation(async (url: string) =>
+    url === '/marketing/broadcasts/audience-preview'
+      ? { data: { data: { matched: 80, reachable: 80, messagingWindowHours: null, coupon: { remaining: 50, limitReached: 5 } } } }
+      : { data: { data: {} } });
+  const { dialog } = openCreateDialog();
+  await within(dialog).findByRole('option', { name: '秋季九折' });
+  fireEvent.change(within(dialog).getByLabelText('附上優惠券（選填）'), { target: { value: 'cp-1' } });
+  await within(dialog).findByText(/25 人拿不到/);
+  assert.equal(createButton(dialog).disabled, true);
+  fireEvent.click(within(dialog).getByRole('checkbox', { name: /我了解/ }));
+  await waitFor(() => assert.equal(createButton(dialog).disabled, false));
+  const preview = api.post.mock.calls.filter(([u]) => u === '/marketing/broadcasts/audience-preview').at(-1);
+  assert.equal(preview?.[1].couponId, 'cp-1', '預覽帶上券才算得出名額');
+});
+
+test('立即發送不等待完成：附券廣播回應已排入發送', async () => {
+  data.broadcasts = [{ id: 'b-c', name: '秋季發券', status: 'draft', couponId: 'cp-1', targetType: 'all', totalCount: 0, successCount: 0, failedCount: 0 }];
+  api.post.mockResolvedValue({ status: 202, data: { data: { status: 'scheduled' } } });
+  const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByTitle('立即發送'));
+  await waitFor(() => assert.equal(alertSpy.mock.calls.length, 1));
+  assert.match(String(alertSpy.mock.calls[0][0]), /已排入發送/);
+});
+
+test('重送跳過已處理的收件人：發送中斷的附券廣播可以重新發送', async () => {
+  data.broadcasts = [{
+    id: 'b-s', name: '秋季發券', status: 'sending', couponId: 'cp-1', targetType: 'all', totalCount: 300, successCount: 120, failedCount: 0,
+    updatedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+  }];
+  api.post.mockResolvedValue({ status: 202, data: { data: { status: 'scheduled' } } });
+  vi.spyOn(window, 'alert').mockImplementation(() => {});
+  render(<MarketingPage />);
+  fireEvent.click(screen.getByTitle('發送中斷，重新發送'));
+  await waitFor(() => assert.equal(api.post.mock.calls[0]?.[0], '/marketing/broadcasts/b-s/send'));
+});

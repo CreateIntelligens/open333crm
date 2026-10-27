@@ -200,8 +200,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     if (issue) throw new AppError(issue.message, "VALIDATION_ERROR", 400, { issues: [issue] });
     await request.tenantPrisma.tenantSettings.upsert({
       where: { tenantId },
-      create: { tenantId, identityBinding: value },
-      update: { identityBinding: value },
+      // 展開成物件字面值：介面型別沒有索引簽章，不能直接當成 JSON 欄位的值
+      create: { tenantId, identityBinding: { ...value } },
+      update: { identityBinding: { ...value } },
     });
     invalidateIdentityBindingSettings(tenantId);
     await writeTenantAudit(request.tenantPrisma, {

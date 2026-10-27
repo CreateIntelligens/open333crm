@@ -123,6 +123,8 @@ export function sampleVariables(keys: string[]): Record<string, string> {
     'attribute.membership': '白金會員',
     'attribute.company': '範例科技有限公司',
     'storage.base_url': 'https://storage.example.com',
+    // 附券廣播發送時代入每位收件人自己的票券連結（design D29）
+    'coupon.url': 'https://crm.example.com/coupon/open/sample-ticket-link',
   };
 
   const result: Record<string, string> = {};

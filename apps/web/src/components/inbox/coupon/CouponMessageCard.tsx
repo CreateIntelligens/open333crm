@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 對話中的發券訊息（add-coupon-system A11）：顧客收到的是文字與票券連結，後台畫成券卡。
+ * 對話中的發券訊息（add-coupon-system A11、A15）：顧客收到的是文字與票券連結，後台畫成券卡。
  * 「查看優惠券」開後台的券詳情，不開顧客的票券連結——座席開啟會被當成顧客本人。
  */
 import React from 'react';
@@ -9,7 +9,18 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { faceText, ymd, type CouponMessageContent } from '@/lib/coupon/issue';
 
-export function CouponMessageCard({ coupon, createdAt }: { coupon: CouponMessageContent; createdAt: string }) {
+/**
+ * ruleName：自動化規則發的券（關鍵字回覆、加好友禮），卡片下方寫「由規則「…」發送」（design D27）。
+ */
+export function CouponMessageCard({
+  coupon,
+  createdAt,
+  ruleName,
+}: {
+  coupon: CouponMessageContent;
+  createdAt: string;
+  ruleName?: string | null;
+}) {
   return (
     <div className="flex flex-col items-end px-4 py-1.5">
       <article aria-label="優惠券訊息" className="w-64 overflow-hidden rounded-xl border bg-background shadow-sm">
@@ -29,7 +40,7 @@ export function CouponMessageCard({ coupon, createdAt }: { coupon: CouponMessage
         </Link>
       </article>
       <p className="mt-1 text-[10px] text-muted-foreground">
-        {coupon.issuedByName ? `由 ${coupon.issuedByName} 發送 · ` : ''}
+        {coupon.issuedByName ? `由 ${coupon.issuedByName} 發送 · ` : ruleName ? `由規則「${ruleName}」發送 · ` : ''}
         {format(new Date(createdAt), 'HH:mm')}
       </p>
     </div>

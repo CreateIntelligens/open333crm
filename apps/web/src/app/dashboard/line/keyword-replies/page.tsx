@@ -3,8 +3,8 @@
 /**
  * LINE 關鍵字回覆管理頁
  *
- * 用戶傳訊息含關鍵字時 → 自動回對應素材。
- * 底層走 automation rules (keyword.matched + send_material)。
+ * 用戶傳訊息含關鍵字時 → 自動回對應素材，也可以同時發送優惠券。
+ * 底層走 automation rules（keyword.matched + send_material／issue_coupon，帶「對話渠道等於 LINE」條件）。
  */
 
 import React, { useState } from 'react';
@@ -13,6 +13,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/button';
 import { KeywordReplyEditDialog } from '@/components/line/keyword-reply/KeywordReplyEditDialog';
 import { useMaterials } from '@/hooks/useMaterials';
+import { UNAVAILABLE_COUPON_LABEL, couponOptionLabel, useCouponOptions } from '@/components/coupons/CouponSelectField';
 import {
   useKeywordReplies,
   createKeywordReply,
@@ -21,6 +22,7 @@ import {
   toggleKeywordReply,
   type KeywordReply,
 } from '@/hooks/useKeywordReplies';
+import { KeywordReplyMaterialCell } from '@/components/line/keyword-reply/KeywordReplyMaterialCell';
 
 export default function KeywordRepliesPage() {
   const { replies, isLoading, mutate } = useKeywordReplies();
@@ -28,14 +30,16 @@ export default function KeywordRepliesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<KeywordReply | null>(null);
 
+  const { coupons } = useCouponOptions();
   const materialMap = new Map(materials.map((m) => [m.id, m]));
+  const couponMap = new Map(coupons.map((c) => [c.id, c]));
 
   const handleOpenCreate = () => { setEditing(null); setDialogOpen(true); };
   const handleOpenEdit = (r: KeywordReply) => { setEditing(r); setDialogOpen(true); };
 
   const handleSave = async (input: Parameters<typeof createKeywordReply>[0]) => {
     if (editing) {
-      await updateKeywordReply(editing.id, input);
+      await updateKeywordReply(editing, input);
     } else {
       await createKeywordReply(input);
     }
@@ -72,7 +76,7 @@ export default function KeywordRepliesPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">關鍵字回覆</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                用戶在 LINE 傳訊息中出現指定關鍵字時，系統自動回覆對應素材（圖片 / Flex / 輪播 / 圖文等）。
+                用戶在 LINE 傳訊息中出現指定關鍵字時，系統自動回覆對應素材（圖片 / Flex / 輪播 / 圖文等），也可以同時發送優惠券。
               </p>
             </div>
             <Button onClick={handleOpenCreate}>
@@ -89,11 +93,11 @@ export default function KeywordRepliesPage() {
             </div>
             <ol className="ml-1 mt-2 list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
               <li>先到「<a href="/dashboard/marketing/materials" className="text-primary underline">行銷 → 素材庫</a>」建立你要回覆的內容（純文字、圖片、Flex、輪播都行）</li>
-              <li>回來這頁按「建立關鍵字回覆」，輸入規則名稱、關鍵字（一個或多個）、選素材</li>
-              <li>用戶在 LINE 傳訊息含關鍵字 → bot 自動回覆對應素材</li>
+              <li>回來這頁按「建立關鍵字回覆」，輸入規則名稱、關鍵字（一個或多個），選素材或要發送的優惠券（至少一個）</li>
+              <li>用戶在 LINE 傳訊息含關鍵字 → bot 自動回覆對應素材、發送優惠券；券沒有發出時，原因會記在該對話中</li>
             </ol>
             <div className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-1.5 text-xs text-warning">
-              客人每傳一則含關鍵字的訊息就會觸發一次，沒有次數上限；客服接手的對話也會自動回覆。比對方式是「包含」且不分大小寫，例如關鍵字「價」也會命中「評價」，關鍵字請盡量具體。規則對所有 LINE 官方帳號生效；命中的規則能在這個對話的渠道送出回覆時，AI 就不再另外回覆。
+              客人每傳一則含關鍵字的訊息就會觸發一次，沒有次數上限；客服接手的對話也會自動回覆。比對方式是「包含」且不分大小寫，例如關鍵字「價」也會命中「評價」，關鍵字請盡量具體。規則對所有 LINE 官方帳號生效，只在 LINE 的對話觸發；命中的規則能在這個對話的渠道送出回覆時，AI 就不再另外回覆。
             </div>
           </section>
 
@@ -120,12 +124,14 @@ export default function KeywordRepliesPage() {
                     <th className="px-4 py-2 text-left font-medium">規則名稱</th>
                     <th className="px-4 py-2 text-left font-medium">關鍵字</th>
                     <th className="px-4 py-2 text-left font-medium">回覆素材</th>
+                    <th className="px-4 py-2 text-left font-medium">優惠券</th>
                     <th className="px-4 py-2 text-right font-medium">動作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {replies.map((r) => {
-                    const mat = materialMap.get(r.materialId);
+                    const mat = r.materialId ? materialMap.get(r.materialId) : undefined;
+                    const coupon = r.couponId ? couponMap.get(r.couponId) : undefined;
                     return (
                       <tr key={r.id} className={r.isActive ? '' : 'opacity-50'}>
                         <td className="px-4 py-3">
@@ -165,13 +171,17 @@ export default function KeywordRepliesPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {mat ? (
-                            <div>
-                              <div className="text-xs font-medium">{mat.name}</div>
-                              <div className="text-[11px] text-muted-foreground">{mat.contentType}</div>
-                            </div>
+                          <KeywordReplyMaterialCell reply={r} material={mat} />
+                        </td>
+                        <td className="px-4 py-3">
+                          {!r.couponId ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : coupon?.status === 'ACTIVE' ? (
+                            <span className="text-xs font-medium">{couponOptionLabel(coupon)}</span>
                           ) : (
-                            <span className="text-xs text-destructive">素材已被刪除（id: {r.materialId.slice(0, 8)}…）</span>
+                            <span className="text-xs text-warning">
+                              {coupon ? `${coupon.name}：` : ''}{UNAVAILABLE_COUPON_LABEL}
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">

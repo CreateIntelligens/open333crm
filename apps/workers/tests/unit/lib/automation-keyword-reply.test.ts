@@ -147,3 +147,76 @@ async function testReplyFailureFallsBackToPush() {
 
 test('keyword matched line send message uses reply token', testKeywordMatchedLineSendMessageUsesReplyToken);
 test('reply failure falls back to push', testReplyFailureFallsBackToPush);
+
+// ── 自動化發券也在期限內以回覆方式送出（add-coupon-system A15 15.6、design D25）──
+
+import { vi } from 'vitest';
+import { COUPON_ID, RULE, TENANT, fakeCouponDb, fakeLinePlugin, fakeRedis } from '../support/fake-coupon-db.js';
+
+vi.mock('bullmq', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Queue: class {
+    async add() {
+      return {};
+    }
+  },
+}));
+
+async function issueCouponAt(receivedAt: string, trigger = 'keyword.matched') {
+  const { db } = fakeCouponDb();
+  const { plugin, sends } = fakeLinePlugin();
+  const { redis } = fakeRedis();
+  await executeWorkerAutomationActions(db as never, redis as never, [{ type: 'issue_coupon', params: { couponId: COUPON_ID } }], {
+    tenantId: TENANT,
+    ruleId: RULE.id,
+    ruleName: RULE.name,
+    conversationId: 'conv-1',
+    contactId: 'contact-1',
+    trigger,
+    replyToken: 'reply-token-1',
+    receivedAt,
+    pluginRegistry: new Map([['LINE', plugin]]),
+  });
+  return sends;
+}
+
+test('自動化發券在期限內以回覆方式送出', async () => {
+  const sends = await issueCouponAt(new Date(Date.now() - 3_000).toISOString());
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].content.strategy, 'reply');
+  assert.equal(sends[0].content.replyToken, 'reply-token-1');
+});
+
+test('超過回覆期限改用主動推送', async () => {
+  const sends = await issueCouponAt(new Date(Date.now() - 45_000).toISOString());
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].content.strategy, 'push');
+});
+
+test('加入好友觸發的發券也在期限內以回覆方式送出', async () => {
+  const sends = await issueCouponAt(new Date(Date.now() - 3_000).toISOString(), 'contact.followed');
+  assert.equal(sends[0].content.strategy, 'reply');
+});
+
+test('回覆權杖已被同一事件的其他動作用掉：發券改用主動推送，券照常發出', async () => {
+  // PR #364 第五份審查第 17 項：歡迎訊息規則先用掉加入好友的 replyToken，加好友禮的發券再用同一個權杖會被
+  // LINE 以 Invalid reply token 拒收。workers 送出層會改用 push（多用一次額度），券不會因此發不出去
+  const { db, state } = fakeCouponDb();
+  const { plugin, sends } = fakeLinePlugin({ replyFails: true });
+  const { redis } = fakeRedis();
+  await executeWorkerAutomationActions(db as never, redis as never, [{ type: 'issue_coupon', params: { couponId: COUPON_ID } }], {
+    tenantId: TENANT,
+    eventId: crypto.randomUUID(),
+    ruleId: RULE.id,
+    ruleName: RULE.name,
+    conversationId: 'conv-1',
+    contactId: 'contact-1',
+    trigger: 'contact.followed',
+    replyToken: 'used-reply-token',
+    receivedAt: new Date(Date.now() - 3_000).toISOString(),
+    pluginRegistry: new Map([['LINE', plugin]]),
+  });
+  assert.deepEqual(sends.map((s) => s.content.strategy), ['reply', 'push'], '回覆失敗後改推送一次');
+  assert.equal(state.instances.length, 1);
+  assert.equal(state.instances[0].deliveryPendingAt, null, '券已確認發出');
+});

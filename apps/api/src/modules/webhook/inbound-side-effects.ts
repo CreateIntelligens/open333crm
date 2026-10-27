@@ -137,6 +137,8 @@ export function publishMessageReceived(ctx: InboundMessageContext): void {
       messageContent: (ctx.content.text as string) ?? '',
       replyToken,
       receivedAt: ctx.now.toISOString(),
+      // 只有加入好友事件帶：自動化據此另外以「加入好友」（contact.followed）評估規則
+      ...(typeof ctx.isFirstFollow === 'boolean' ? { isFirstFollow: ctx.isFirstFollow } : {}),
     },
   });
 }

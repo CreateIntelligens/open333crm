@@ -333,7 +333,9 @@ export function ChatWindow({ conversation, onShowAiSuggest, showAiSuggest, canIs
                 ? (msg.content as { coupon?: CouponMessageContent }).coupon
                 : undefined;
               if (couponContent) {
-                return <CouponMessageCard key={msg.id} coupon={couponContent} createdAt={msg.createdAt} />;
+                // 自動化規則發的券：metadata.ruleName 是發券當下的規則名稱
+                const ruleName = typeof msg.metadata?.ruleName === 'string' ? msg.metadata.ruleName : null;
+                return <CouponMessageCard key={msg.id} coupon={couponContent} createdAt={msg.createdAt} ruleName={ruleName} />;
               }
               if (msg.contentType === 'csat') {
                 const score = typeof msg.metadata?.csatScore === 'number' ? msg.metadata.csatScore : undefined;

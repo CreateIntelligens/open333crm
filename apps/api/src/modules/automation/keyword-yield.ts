@@ -19,6 +19,7 @@ import {
 export interface KeywordYieldDb extends AutomationFactsDb {
   automationRule: { findMany(args: any): PromiseLike<any[]> };
   material: { findMany(args: any): PromiseLike<Array<{ channelType: string | null }>> };
+  coupon: { findMany(args: any): PromiseLike<Array<{ id: string }>> };
 }
 
 /** 規則有沒有條件。`{ all: [] }`、`{ any: [] }` 或沒有條件時，json-rules-engine 一律視為成立 */
@@ -31,6 +32,7 @@ function hasRuleConditions(conditions: unknown): boolean {
 /**
  * 訊息命中的 active keyword.matched 規則中，有沒有能在這個渠道回覆顧客的動作。
  * agent 與 KB 自動回覆用來決定是否讓步（命中就讓 keyword 規則回，避免一次兩則）。
+ * 發送進行中優惠券的規則也算（add-coupon-system design D25）。
  * 只加標籤、或素材是別的渠道的規則不算：workers 不會替它回覆，AI 讓步的話顧客什麼都收不到
  * （change fix-keyword-yield-ig-delivery）。
  * 不通過契約驗證或條件不成立的規則也不算：workers 會略過這種規則（change fix-automation-rule-gaps）。
@@ -111,12 +113,25 @@ export async function hasMatchingKeywordRule(
   const materialIds = actions
     .filter((a) => a.type === 'send_material' && typeof a.params?.materialId === 'string')
     .map((a) => a.params!.materialId as string);
-  if (materialIds.length === 0) return false;
-  const materials = await prisma.material.findMany({
-    where: { id: { in: materialIds }, tenantId },
-    select: { channelType: true },
+  if (materialIds.length > 0) {
+    const materials = await prisma.material.findMany({
+      where: { id: { in: materialIds }, tenantId },
+      select: { channelType: true },
+    });
+    const target = channelType.toLowerCase();
+    if (materials.some((m) => m.channelType?.toLowerCase() === target)) return true;
+  }
+
+  // 發券：券是進行中才會送出發券訊息（add-coupon-system design D25）。
+  // 券已暫停或結束時 workers 不發券，有填「發不出時回覆顧客」也只是一句說明，AI 照常回覆
+  const couponIds = actions
+    .filter((a) => a.type === 'issue_coupon' && typeof a.params?.couponId === 'string')
+    .map((a) => a.params!.couponId as string);
+  if (couponIds.length === 0) return false;
+  const activeCoupons = await prisma.coupon.findMany({
+    where: { id: { in: couponIds }, tenantId, status: 'ACTIVE' },
+    select: { id: true },
   });
-  const target = channelType.toLowerCase();
-  return materials.some((m) => m.channelType?.toLowerCase() === target);
+  return activeCoupons.length > 0;
 }
 

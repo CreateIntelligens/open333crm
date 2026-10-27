@@ -118,6 +118,65 @@ async function assertSendMaterialReferences(
   }
 }
 
+/**
+ * 「發送優惠券」的 couponId 要是同租戶、進行中的券（add-coupon-system design D25）。
+ * 原本是文字框、存檔不檢查，貼錯或其他租戶的券都能存，規則觸發時才發不出去。
+ * 關鍵字回覆頁、加好友禮頁與 API 都經過這裡。
+ *
+ * 只檢查新增或更換的券（2026-10-22 審查決定）：規則原本就指向的券之後被暫停或結束時，
+ * 商家仍要能改關鍵字或素材；workers 觸發時會留下「券不是進行中」的紀錄。
+ */
+async function assertIssueCouponReferences(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  prisma: { coupon: { findMany(args: any): PromiseLike<Array<{ id: string }>> } },
+  tenantId: string,
+  actions: Array<Record<string, unknown>>,
+  previousActions: unknown = [],
+): Promise<void> {
+  const couponIdsOf = (list: unknown) =>
+    (Array.isArray(list) ? (list as Array<Record<string, unknown>>) : [])
+      .filter((a) => a?.type === 'issue_coupon')
+      .map((a) => (a.params as { couponId?: unknown } | undefined)?.couponId);
+  const unchanged = new Set(couponIdsOf(previousActions).filter((id): id is string => typeof id === 'string'));
+  const ids = couponIdsOf(actions).filter((id) => !(typeof id === 'string' && unchanged.has(id)));
+  if (ids.length === 0) return;
+
+  const message = '找不到可發放的優惠券：發送優惠券要選同一個帳號下、進行中的券';
+  const invalid = () =>
+    new AppError(message, 'VALIDATION_ERROR', 400, { issues: [{ path: 'actions', message }] });
+  if (ids.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) throw invalid();
+  const unique = [...new Set(ids as string[])];
+  const found = await prisma.coupon.findMany({
+    where: { tenantId, status: 'ACTIVE', id: { in: unique } },
+    select: { id: true },
+  });
+  if (found.length !== unique.length) throw invalid();
+}
+
+/**
+ * 加好友禮每個租戶只能有一條（design D28；使用者決定 2026-10-22：後端也擋）。
+ * 「加入好友」事件且含發券動作的規則就是加好友禮；設定頁只編輯一條，另外建的同類規則也會執行，
+ * 同一位顧客會拿到兩張券。只傳送訊息或素材的「加入好友」規則不受限制；已刪除（enabled=false）的不算。
+ */
+async function assertSingleFollowGift(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  prisma: { automationRule: { findMany(args: any): PromiseLike<Array<{ actions: unknown }>> } },
+  tenantId: string,
+  eventType: string,
+  actions: Array<Record<string, unknown>>,
+  excludeRuleId?: string,
+): Promise<void> {
+  const issuesCoupon = (list: unknown) => Array.isArray(list) && list.some((a) => (a as { type?: unknown })?.type === 'issue_coupon');
+  if (eventType !== 'contact.followed' || !issuesCoupon(actions)) return;
+  const others = await prisma.automationRule.findMany({
+    where: { tenantId, enabled: true, eventType: 'contact.followed', ...(excludeRuleId ? { id: { not: excludeRuleId } } : {}) },
+    select: { actions: true },
+  });
+  if (others.some((r) => issuesCoupon(r.actions))) {
+    throw new AppError('已經有加好友禮，請到「LINE 管理 → 加好友禮」修改', 'CONFLICT', 409);
+  }
+}
+
 export async function createRule(
   prisma: TenantDb,
   tenantId: string,
@@ -136,6 +195,8 @@ export async function createRule(
   const eventType = String(data.trigger.type ?? '');
   validateRuleContract(eventType, data.conditions, data.actions);
   await assertSendMaterialReferences(prisma, tenantId, data.actions);
+  await assertIssueCouponReferences(prisma, tenantId, data.actions);
+  await assertSingleFollowGift(prisma, tenantId, eventType, data.actions);
 
   const rule = await prisma.automationRule.create({
     data: {
@@ -198,7 +259,11 @@ export async function updateRule(
     const nextConditions = data.conditions ?? (existing.conditions as Record<string, unknown>);
     const nextActions = data.actions ?? (existing.actions as Array<Record<string, unknown>>);
     validateRuleContract(nextEventType, nextConditions, nextActions);
-    if (data.actions !== undefined) await assertSendMaterialReferences(prisma, tenantId, nextActions);
+    await assertSingleFollowGift(prisma, tenantId, nextEventType, nextActions, id);
+    if (data.actions !== undefined) {
+      await assertSendMaterialReferences(prisma, tenantId, nextActions);
+      await assertIssueCouponReferences(prisma, tenantId, nextActions, existing.actions);
+    }
   }
 
   const updateData: Prisma.AutomationRuleUpdateInput = {};
