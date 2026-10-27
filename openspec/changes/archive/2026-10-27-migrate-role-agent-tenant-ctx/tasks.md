@@ -90,4 +90,4 @@
 - [x] 5.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增的違規
 - [x] 5.6 `node scripts/check-tenant-ctx.mjs --strict` 通過，以 `--update-baseline` 更新基準檔
 - [x] 5.7 `node scripts/validate-openspec.mjs migrate-role-agent-tenant-ctx` 與 `--specs` 通過
-- [ ] 5.8 歸檔之後，主規格 `tenant-audit-log` 的 `## Purpose`「寫入失敗不影響主操作」改成符合新的需求
+- [x] 5.8 歸檔之後，主規格 `tenant-audit-log` 的 `## Purpose`「寫入失敗不影響主操作」改成符合新的需求
