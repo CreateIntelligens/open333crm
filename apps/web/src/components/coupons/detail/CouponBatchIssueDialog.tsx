@@ -55,7 +55,7 @@ const TARGET_OPTIONS: Array<{ value: TargetType; label: string }> = [
 
 export function CouponBatchIssueDialog({ couponId, couponName, open, onOpenChange, onQueued }: CouponBatchIssueDialogProps) {
   const { channels, error: channelsError } = useChannels();
-  const { tags } = useContactTags();
+  const { tags, error: tagsError, mutate: reloadTags } = useContactTags();
   const { segments, error: segmentsError } = useSegments();
 
   const [channelId, setChannelId] = useState('');
@@ -253,7 +253,15 @@ export function CouponBatchIssueDialog({ couponId, couponName, open, onOpenChang
 
           {targetType === 'tags' && (
             <div className="flex max-h-40 flex-wrap gap-x-4 gap-y-2 overflow-y-auto rounded-md border p-3">
-              {tags.length === 0 ? (
+              {tagsError ? (
+                // 載入失敗不能顯示成「尚無標籤」，管理員會以為沒有標籤（PR #364 第四輪審查）
+                <div role="alert" className="flex w-full items-center justify-between gap-3 text-xs text-destructive">
+                  <span>標籤載入失敗：{getApiErrorMessage(tagsError, '請稍後再試')}</span>
+                  <button type="button" className="shrink-0 font-medium underline" onClick={() => void reloadTags()}>
+                    重試
+                  </button>
+                </div>
+              ) : tags.length === 0 ? (
                 <p className="text-xs text-muted-foreground">尚無標籤</p>
               ) : (
                 tags.map((t) => (

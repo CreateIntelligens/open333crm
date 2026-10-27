@@ -18,7 +18,7 @@ import { saveFollowGift, useFollowGift } from '@/hooks/useFollowGift';
 const FAILURE_TEXT_MAX = 500;
 
 export default function FollowGiftPage() {
-  const { gift, isLoading, error: loadError, mutate } = useFollowGift();
+  const { gift, otherRules, isLoading, error: loadError, mutate } = useFollowGift();
   const [enabled, setEnabled] = useState(false);
   const [couponId, setCouponId] = useState('');
   const [failureText, setFailureText] = useState('');
@@ -89,6 +89,22 @@ export default function FollowGiftPage() {
             <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
               無法載入加好友禮設定（可能沒有自動化規則的權限），請重新整理或洽管理員。
             </div>
+          )}
+
+          {!isLoading && otherRules.length > 0 && (
+            <section className="rounded-md border border-primary-border bg-primary-subtle px-4 py-3 text-sm">
+              <p>
+                {`另有 ${otherRules.length} 條「加入好友」規則（不發券，在自動化規則設定）。加好友禮會另外建立一條，顧客加入好友時兩條都會執行。`}
+              </p>
+              <ul className="mt-1 list-disc pl-5">
+                {otherRules.map((r) => (
+                  <li key={r.id}>
+                    <a href={`/dashboard/automation/${r.id}`} className="text-primary underline">{r.name}</a>
+                    {!r.isActive && <span className="ml-1 text-xs text-muted-foreground">（已停用）</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
 
           {isLoading ? (

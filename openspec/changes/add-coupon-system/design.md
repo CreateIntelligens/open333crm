@@ -399,7 +399,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 - **記錄加入**：`processInboundMessage` 存好 follow 訊息之後呼叫 `recordInboundFollow`（`apps/api/src/modules/webhook/inbound-follow-tracking.ts`）。先以條件式更新 `WHERE firstFollowedAt IS NULL` 寫入第一次、最後一次加入時間與次數；更新到 0 列才只更新最後一次加入時間與次數。同一位顧客的兩個 follow 同時處理時只有一個是第一次，加好友禮不會發兩次。判斷依外掛正規化的 `contentType === 'follow'`，不依 `channelType` 分支（結構規則 5）；目前只有 LINE 外掛送出 follow。
 - **記錄失敗**：資料庫錯誤時記 log、當成「不是第一次」（寧可少發，不重複發），不擋訊息落地與其他處理；加入事件本身已存成收件匣訊息。
 - **事件**：`message.received` 的 payload 在 follow 時帶 `isFirstFollow`。API 的自動化訂閱者收到 `contentType='follow'` 時，`message.received` 的評估不帶文字（不比對關鍵字），另外排入 `contact.followed`：事件 id 相同（規則動作仍以 `<事件 id, 規則 id#序號>` 認領，兩種事件的規則不同），BullMQ job id 為 `<事件 id>-followed`（job id 不能含「:」，也不能與 `message.received` 的相同）。`buildAutomationFacts` 把 `isFirstFollow` 轉成 fact `follow.isFirst`；沒有值時為 null，條件「等於是」不成立（fail-closed）。
-- **設定頁**：`useFollowGift` 在自動化規則 API 之上，比照 `useKeywordReplies`：列出事件為 `contact.followed` 的規則，取最早建立、含 `issue_coupon` 的那一條；儲存時固定補上「第一次加入等於是」與「對話渠道等於 LINE」（已有不重複、被移除時補回），只換發券動作的券與「發不出時回覆顧客」，其他動作與條件保留。停用時沒有選券就保留原本的券、只停用。租戶唯一由頁面維持（不另加資料庫約束）：透過 API 或自動化規則編輯器另建的同類規則仍會執行，頁面只編輯最早的那一條。
+- **設定頁**：`useFollowGift` 在自動化規則 API 之上，比照 `useKeywordReplies`：列出事件為 `contact.followed` 的規則，取最早建立、含 `issue_coupon` 的那一條；儲存時固定補上「第一次加入等於是」與「對話渠道等於 LINE」（已有不重複、被移除時補回），只換發券動作的券與「發不出時回覆顧客」，其他動作與條件保留。停用時沒有選券就保留原本的券、只停用。其他不發券的「加入好友」規則（例如歡迎訊息）在頁面上列出並說明兩條都會執行（PR #364 第四輪審查）；加好友禮不併進那些規則，因為它帶「第一次加入」條件，併進去會讓歡迎訊息也只發給第一次加入的人。租戶唯一由頁面維持（不另加資料庫約束）：透過 API 或自動化規則編輯器另建的同類規則仍會執行，頁面只編輯最早的那一條。
 
 **與既有進站流程的互動（2026-10-23 實查）**：一則 LINE follow 事件依序經過：建立聯絡人與渠道身分（第一次出現時發出 `contact.created`）→ 建立對話（沒有進行中的對話時發出 `conversation.created`）→ 存成 `contentType='follow'` 的收件匣訊息 → 記錄加入 → 首次招呼語 → `message.received`（帶 replyToken）→ 營業時間外自動回覆。replyToken 只有一個、只能用一次，各個會送訊息的環節：
 
@@ -470,7 +470,7 @@ LIFF 主場架構下券只活在 LINE，沒有跨渠道券夾要合併，故本 
 - 新表 `coupon_claim_links`（RLS）：`couponId`、`channelId`（領券訊息送到哪個官方帳號或粉專）、`name`、`code`（8 碼，字集同券碼，全系統唯一，因為公開網址不帶租戶）、`status`（ACTIVE／DISABLED）、`startAt`／`endAt`（選填）、`openCount`、`claimCount`、`createdById`。一張券可以有多個連結，供不同投放位置歸因。
 - 後台：券詳情頁新增「領券連結」分頁：建立、停用、重新啟用、下載 QR Code（PNG，沿用 `shortlink/qrcode.service.ts`）、複製網址、看開啟數與領取數。**只有行銷券能建立領券連結**（公開散布的券沒有對象，補償券不應公開）。
 - 入站：文字含領券代碼的訊息，或帶 `ref=coupon_{代碼}` 的 FB／IG 導流事件，在 AI 與關鍵字規則之前處理，該則訊息不再觸發 AI 回覆與關鍵字規則（比照綁定代碼的處理位置）。
-- 領取規則：連結 ACTIVE、在期間內、券 ACTIVE；遵守每人上限與發行總量。成功與失敗都以 reply 回覆顧客（失敗原因：活動已結束、已領過、已發完），並在對話留下系統紀錄。
+- 領取規則：連結 ACTIVE、在期間內、券 ACTIVE；遵守每人上限與發行總量。成功與失敗都以 reply 回覆顧客（失敗原因：活動已結束、已領過、已發完），並在對話留下系統紀錄。發券訊息本身送不出時，作廢券後再回覆一次「目前無法發送優惠券，請稍後再試一次」（只試一次、不重試；券已作廢，說明與結果一致），對話留下顧客實際收到的說明（PR #364 第四輪審查）。
 - 歸因：`issuedVia='public_link'`、`issuedRefId=連結 id`、`issuedSourceName=連結名稱`。
 - 代碼只在連結指定的渠道生效；送到同租戶的其他渠道時回覆「請到 {渠道} 領取」，不發券。
 - **移除既有的領取憑證**：`POST /fan/coupons/claim` 與 `issueInstances` 的 `requireClaim` 移除（目前沒有任何呼叫端會產生憑證）；`claimToken`、`claimTokenExpiresAt` 欄位先保留，之後另做清理 migration。coupon-redemption 的「待領取的券憑領取憑證歸戶」改寫為「發券一律直接歸戶」。

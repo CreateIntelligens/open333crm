@@ -73,7 +73,18 @@ function toFollowGift(rule: AutomationRuleDetail): FollowGift | null {
   };
 }
 
-/** 租戶的加好友禮規則；沒有時為 null */
+/** 其他「加入好友」規則（不發券，例如在自動化規則建的歡迎訊息）：與加好友禮各自執行 */
+export interface OtherFollowRule {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+/**
+ * 租戶的加好友禮規則（沒有時為 null），以及其他不發券的「加入好友」規則。
+ * 其他規則也列出來（PR #364 第四輪審查）：原本這頁完全看不到它們，商家會以為沒有任何加入好友的設定。
+ * 加好友禮不併進那些規則——它帶「第一次加入」條件，併進去會讓歡迎訊息也只發給第一次加入的人。
+ */
 export function useFollowGift() {
   const { data, error, isLoading, mutate } = useSWR(`follow-gift:${FOLLOW_GIFT_EVENT}`, async () => {
     const list = await fetchAllPages<AutomationRuleSummary>(
@@ -82,14 +93,20 @@ export function useFollowGift() {
     );
     // 最早建立的優先：每次開頁都編輯同一條
     const ordered = [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    let gift: FollowGift | null = null;
+    const others: OtherFollowRule[] = [];
     for (const summary of ordered) {
       const detail = (await api.get(`/automation/rules/${summary.id}`)).data.data as AutomationRuleDetail;
-      const gift = toFollowGift(detail);
-      if (gift) return gift;
+      const found = toFollowGift(detail);
+      if (found) {
+        gift ??= found;
+      } else {
+        others.push({ id: detail.id, name: detail.name, isActive: detail.isActive });
+      }
     }
-    return null;
+    return { gift, others };
   });
-  return { gift: data ?? null, isLoading, error, mutate };
+  return { gift: data?.gift ?? null, otherRules: data?.others ?? [], isLoading, error, mutate };
 }
 
 function sameCondition(node: unknown, target: Condition): boolean {

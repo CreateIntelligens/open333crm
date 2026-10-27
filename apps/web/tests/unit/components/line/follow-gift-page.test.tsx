@@ -150,3 +150,19 @@ test('啟用但沒有選券：提示要選券，不送出', async () => {
   assert.equal(api.post.mock.calls.length, 0);
   assert.equal(api.patch.mock.calls.length, 0);
 });
+
+test('已有不發券的「加入好友」規則：頁面列出並說明會另外建立加好友禮，不改動那條規則', async () => {
+  // PR #364 第四輪審查：原本只認含發券的規則，既有的歡迎訊息規則在這頁完全看不到，
+  // 商家會以為沒有任何加入好友的設定
+  rules = [existingRule({ id: 'r-welcome', name: '歡迎訊息', actions: [{ type: 'send_message', params: { text: '歡迎加入' } }] })];
+  render(<FollowGiftPage />);
+  const note = await screen.findByText(/另有 1 條「加入好友」規則/);
+  assert.match(note.textContent ?? '', /兩條都會執行/);
+  assert.equal(screen.getByRole('link', { name: '歡迎訊息' }).getAttribute('href'), '/dashboard/automation/r-welcome');
+
+  fireEvent.click(screen.getByRole('switch', { name: '啟用加好友禮' }));
+  fireEvent.change(await couponSelect(), { target: { value: 'k-new' } });
+  await save();
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  assert.equal(api.patch.mock.calls.length, 0, '不改動既有的歡迎訊息規則');
+});

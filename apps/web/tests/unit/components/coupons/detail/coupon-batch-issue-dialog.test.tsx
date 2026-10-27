@@ -25,10 +25,9 @@ vi.mock('#src/hooks/useChannels.js', () => {
   const result = { channels: h.channels, isLoading: false, error: undefined, mutate: vi.fn() };
   return { useChannels: () => result };
 });
-vi.mock('#src/hooks/useContactTags.js', () => {
-  const result = { tags: [{ id: 't1', name: '秋季檔期意向', color: '#000', scope: 'CONTACT' }], isLoading: false };
-  return { useContactTags: () => result };
-});
+const tagsOk = { tags: [{ id: 't1', name: '秋季檔期意向', color: '#000', scope: 'CONTACT' }], isLoading: false, error: undefined, mutate: vi.fn() };
+const tagsState = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock('#src/hooks/useContactTags.js', () => ({ useContactTags: () => tagsState.current }));
 vi.mock('#src/hooks/useMarketing.js', () => {
   const result = { segments: [], isLoading: false, error: undefined, mutate: vi.fn() };
   return { useSegments: () => result };
@@ -40,6 +39,7 @@ const COUPON_ID = '11111111-1111-4111-8111-111111111111';
 const AMY = { id: '22222222-2222-4222-8222-222222222222', displayName: '王小美', phone: null, email: null };
 
 beforeEach(() => {
+  tagsState.current = tagsOk;
   h.preview = DEFAULT_PREVIEW;
   h.get.mockReset();
   h.post.mockReset();
@@ -96,5 +96,18 @@ describe('從券詳情頁批次發券', () => {
     assert.equal(submit.disabled, true, '名額不足時要先確認');
     fireEvent.click(screen.getByRole('checkbox', { name: /我了解/ }));
     await waitFor(() => assert.equal(submit.disabled, false));
+  });
+
+  test('標籤載入失敗：說明原因並可重試，不顯示成「尚無標籤」', async () => {
+    // PR #364 第四輪審查：原本載入失敗時顯示「尚無標籤」，管理員會以為沒有標籤
+    const retry = vi.fn();
+    tagsState.current = { tags: [], isLoading: false, error: { response: { status: 500, data: { error: { message: '伺服器忙碌中' } } } }, mutate: retry };
+    render(<CouponBatchIssueDialog couponId={COUPON_ID} couponName="秋季九折" open onOpenChange={() => {}} onQueued={() => {}} />);
+    fireEvent.change(screen.getByLabelText('對象'), { target: { value: 'tags' } });
+    const alert = await screen.findByRole('alert');
+    assert.match(alert.textContent ?? '', /標籤載入失敗/);
+    assert.ok(screen.queryByText('尚無標籤') === null);
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
+    assert.equal(retry.mock.calls.length, 1);
   });
 });

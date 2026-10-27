@@ -6,7 +6,7 @@
  *
  * 1. 交易：檢查連結與渠道、建立發送中的券（reserveClaim）
  * 2. 交易外：產生票券連結（Redis）、以回覆方式送出發券訊息（渠道 API；30 秒內用 replyToken，否則 push）
- * 3. 交易：送出成功就確認（confirmClaim），失敗就作廢這張券並在對話留下紅色紀錄
+ * 3. 交易：送出成功就確認（confirmClaim），失敗就作廢這張券、再回覆一次失敗說明，並在對話留下紀錄
  *
  * 不能發時同樣以回覆方式告訴顧客原因（已領過、已領完、活動無法領取、請到其他渠道），並在對話留下紀錄。
  * 交易由這裡以 inTenant() 開；service 只收 TenantCtx。
@@ -168,9 +168,13 @@ export async function claimFromInbound(
       // 作廢失敗時券仍在發送中，排程會在 5 分鐘後作廢（design D16 第 5 步）
       logger.error('[CouponClaim] 作廢失敗，交給排程', { tenantId, instanceId, error: (err as Error).message });
     }
+    // 顧客傳了領券訊息卻什麼都沒收到會以為沒反應：再回覆一次失敗說明（只試一次，不重試；
+    // 券已作廢，說明與實際結果一致）。對話留下顧客實際收到的說明，客服從原因看得出發券訊息送不出
+    const failureText = CLAIM_REPLY_TEXT.failed;
+    const replied = await send(deps, input, failureText);
     try {
       await inTenantOf(deps, tenantId, (ctx) =>
-        recordClaimReply(ctx, link, input.conversationId, { text, reason: 'DELIVERY_FAILED', delivered: false }, now()));
+        recordClaimReply(ctx, link, input.conversationId, { text: failureText, reason: 'DELIVERY_FAILED', delivered: replied }, now()));
     } catch (err) {
       logger.error('[CouponClaim] 無法在對話留下領券紀錄', { tenantId, error: (err as Error).message });
     }

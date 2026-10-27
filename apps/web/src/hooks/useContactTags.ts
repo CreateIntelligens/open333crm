@@ -20,7 +20,8 @@ const fetcher = async (url: string) => {
  * SWR 快取，一頁多個 action editor 共用同一份、不重複打 API。
  */
 export function useContactTags() {
-  const { data, isLoading } = useSWR('/tags', fetcher);
+  const { data, isLoading, error, mutate } = useSWR('/tags', fetcher);
   const tags: ContactTag[] = ((data?.data ?? []) as ContactTag[]).filter((t) => t.scope === 'CONTACT');
-  return { tags, isLoading };
+  // error：載入失敗時呼叫端要顯示原因，不能當成「沒有標籤」
+  return { tags, isLoading, error, mutate };
 }

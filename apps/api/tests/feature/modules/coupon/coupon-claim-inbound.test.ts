@@ -330,6 +330,37 @@ describe('公開領券失敗時回覆顧客', () => {
     assert.equal(meta.couponClaimFailed?.reason, 'DELIVERY_FAILED');
   });
 
+  it('發券訊息送不出時，再回覆一次失敗說明，對話留下紀錄', async () => {
+    // PR #364 第四輪審查：原本送不出就只作廢券、留下紅色紀錄，顧客傳了領券訊息卻收不到任何回應
+    // （spec「公開領券失敗時回覆顧客」：沒有發出券時要告訴顧客）
+    const couponId = await coupon(T, '送不出再回覆');
+    const l = await link(T, couponId, channels.lineA);
+    const p = await person(channels.lineA, 'LINE');
+    const attempts: string[] = [];
+    setCouponClaimDepsForTest({
+      store: memBindingStore(),
+      webBaseUrl: WEB,
+      deliver: async (d) => {
+        attempts.push(d.text);
+        // 帶票券連結的發券訊息被渠道拒收（例如暫時性錯誤），之後的失敗說明送得出去
+        if (d.text.includes('/coupon/open/')) return false;
+        delivered.push(d);
+        return true;
+      },
+    });
+
+    await run(channels.lineA, 'LINE', text(p.uid, claimPrefillText(l.code)));
+
+    assert.equal(attempts.length, 2, '發券訊息一次、失敗說明一次，不重試');
+    assert.equal(sentTo(p.conversationId).at(-1)?.text, '目前無法發送優惠券，請稍後再試一次');
+    assert.equal((await instancesOf(p.contactId)).length, 0, '券作廢、名額歸還');
+    const note = await owner.message.findFirst({ where: { conversationId: p.conversationId, direction: 'OUTBOUND' } });
+    assert.equal((note?.content as { text?: string }).text, '目前無法發送優惠券，請稍後再試一次', '紀錄是顧客實際收到的說明');
+    const meta = note?.metadata as { deliveryFailed?: boolean; couponClaimFailed?: { reason?: string } };
+    assert.equal(meta.couponClaimFailed?.reason, 'DELIVERY_FAILED', '客服看得到發券訊息送不出');
+    assert.equal(meta.deliveryFailed, undefined, '失敗說明有送達');
+  });
+
   it('一般訊息照常處理', async () => {
     const p = await person(channels.lineA, 'LINE');
     await run(channels.lineA, 'LINE', text(p.uid, '請問 WEEKENDS 有營業嗎'));

@@ -47,6 +47,17 @@ const delivered: Array<{ conversationId: string; text: string }> = [];
 const unreachable = new Set<string>();
 /** 送出訊息前等待的毫秒數，讓兩個發券請求重疊 */
 let deliverDelayMs = 0;
+/** 有值時送出訊息前等它完成：測試可以停在「已保留、還沒送出」的狀態 */
+let deliverGate: Promise<void> | null = null;
+
+/** 輪詢到條件成立（有上限）：等狀態出現，不靠固定等待時間 */
+async function waitUntil(check: () => Promise<boolean>, label: string, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`等待逾時：${label}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 const deps: InboxFlowDeps = {
   prisma,
@@ -56,6 +67,7 @@ const deps: InboxFlowDeps = {
   webBaseUrl: 'https://crm.example.com',
   deliver: async (params) => {
     if (deliverDelayMs) await new Promise((r) => setTimeout(r, deliverDelayMs));
+    if (deliverGate) await deliverGate;
     if (unreachable.has(params.conversationId)) return { sent: false, reason: 'blocked' };
     delivered.push(params);
     return { sent: true };
@@ -602,18 +614,21 @@ describe('對話發券先保留再發送（design D16）', () => {
 
   it('發送中的券顧客看不到', async () => {
     const p = await person('發送中', lineChannel, 'LINE', { verified: true });
-    deliverDelayMs = 500;
+    // 送出前停住，直到確認過票券夾為止（原本固定等 150 毫秒，負載高時還沒保留就檢查）
+    let release!: () => void;
+    deliverGate = new Promise<void>((r) => { release = r; });
     try {
       const pending = issueInConversation(deps, input(p, coupons.amount));
-      await new Promise((r) => setTimeout(r, 150));
-      assert.equal(await heldBy(p, coupons.amount), 1, '已保留');
+      await waitUntil(async () => (await heldBy(p, coupons.amount)) === 1, '已保留');
       const wallet = await runInTenant(prisma, T, (ctx) => listWallet(ctx, { tenantId: T, contactId: p.contactId }));
       assert.equal(wallet.items.length, 0, '發送完成前不出現在票券夾');
+      release();
       assert.equal((await pending).ok, true);
       const after = await runInTenant(prisma, T, (ctx) => listWallet(ctx, { tenantId: T, contactId: p.contactId }));
       assert.equal(after.items.length, 1);
     } finally {
-      deliverDelayMs = 0;
+      release();
+      deliverGate = null;
     }
   });
 
