@@ -22,6 +22,7 @@ import { issueCoupons } from '#src/modules/coupon/coupon-issue.service.js';
 import { openWalletSessionFlow } from '#src/modules/coupon/coupon-wallet.flow.js';
 import { signFanDeviceToken } from '#src/modules/portal/portal-auth.service.js';
 import marketingRoutes from '#src/modules/marketing/marketing.routes.js';
+import { setupBroadcastScheduler } from '#src/modules/marketing/broadcast.scheduler.js';
 import { createBroadcast, previewBroadcastAudience } from '#src/modules/marketing/marketing.service.js';
 import {
   claimCouponBroadcast,
@@ -628,5 +629,40 @@ describe('附券廣播在背景執行且重送不重複發券', () => {
     assert.ok(result.status !== 'not_claimed' && 'summary' in result && result.summary);
     assert.equal(result.summary!.pending, 0, '結束時沒有停在發送中的人');
     assert.equal(result.summary!.failed.INTERRUPTED, 1);
+  });
+});
+
+describe('排程的附券廣播到時間由排程發送', () => {
+  it('建立時選了排程時間，時間到後排程發出券', async () => {
+    // PR #364 第五份審查第 16 項：bot 懷疑排程到期後仍呼叫 executeBroadcast（附券廣播會被拒絕）而永遠不發。
+    // 走一遍：建立排程 → 時間到 → 排程掃描 → runCouponBroadcast
+    const couponId = await coupon(`${MARK}秋排程`);
+    const a = await person('scheduled-a');
+    const at = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const b = await runInTenant(prisma, T, (ctx) =>
+      createBroadcast(ctx.tx, T, agentId, {
+        name: `${MARK} 排程附券`, channelId: lineChannel, couponId, targetType: 'contacts',
+        targetConfig: { contactIds: [a.contactId] }, scheduledAt: at,
+      }));
+    assert.equal((await owner.broadcast.findFirst({ where: { id: b.id } }))?.status, 'scheduled');
+    // 時間到
+    await owner.broadcast.update({ where: { id: b.id }, data: { scheduledAt: new Date(Date.now() - 1000) } });
+
+    // 只讓排程看到這一則（同一個測試資料庫裡可能有其他測試留下的排程廣播）
+    const scoped = new Proxy(owner, {
+      get(target, prop) {
+        if (prop !== 'broadcast') return Reflect.get(target, prop);
+        return { ...target.broadcast, findMany: (args: { where: Record<string, unknown> }) => target.broadcast.findMany({ ...args, where: { ...args.where, id: b.id } }) };
+      },
+    }) as PrismaClient;
+    let poll: (() => Promise<void>) | null = null;
+    setupBroadcastScheduler({ registerSchedule: (s: { run: () => Promise<void> }) => { poll = s.run; } } as never, scoped, testIo as never, { prisma, store, webBaseUrl: WEB });
+    assert.ok(poll);
+    await poll!();
+
+    const row = await owner.broadcast.findFirst({ where: { id: b.id } });
+    assert.equal(row?.status, 'completed');
+    assert.equal(sentTo(a.uid).length, 1, '收件人收到帶票券連結的訊息');
+    assert.equal((await instancesOf(a, couponId)).length, 1);
   });
 });
