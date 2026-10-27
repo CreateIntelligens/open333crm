@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   channels: [
     { id: 'ch-line', displayName: '門市 LINE', channelType: 'LINE', isActive: true },
     { id: 'ch-web', displayName: '網站客服', channelType: 'WEBCHAT', isActive: true },
+    { id: 'ch-ig', displayName: 'IG', channelType: 'THREADS', isActive: true },
   ],
   preview: {} as Record<string, unknown>,
 }));
@@ -84,6 +85,15 @@ describe('從券詳情頁批次發券', () => {
     const values = Array.from(select.options).map((o) => o.value);
     assert.ok(values.includes('ch-line'));
     assert.ok(!values.includes('ch-web'), '網站客服沒有渠道身分可以主動推送');
+  });
+
+  test('渠道選單的 Instagram：顯示「IG（Instagram）」，不出現 THREADS（change add-fb-ig-keyword-coupon）', () => {
+    render(<CouponBatchIssueDialog couponId={COUPON_ID} couponName="秋季九折" open onOpenChange={() => {}} onQueued={() => {}} />);
+    const select = screen.getByLabelText('渠道') as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent);
+    assert.ok(labels.includes('IG（Instagram）'), labels.join(','));
+    assert.ok(labels.includes('門市 LINE（LINE）'), labels.join(','));
+    assert.ok(!labels.some((l) => /THREADS/.test(l ?? '')));
   });
 
   test('預覽顯示剩餘名額', async () => {

@@ -23,6 +23,7 @@ import {
   couponCapacityWarning,
   type CouponAudiencePreview,
 } from '@/lib/marketing/coupon-broadcast';
+import { channelOptionLabel } from '@/lib/marketing/broadcast-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -196,7 +197,7 @@ export function CouponBatchIssueDialog({ couponId, couponName, open, onOpenChang
               onChange={(e) => setChannelId(e.target.value)}
               options={[
                 { value: '', label: pushChannels.length ? '請選擇渠道' : '沒有可以發送的渠道' },
-                ...pushChannels.map((c) => ({ value: c.id, label: `${c.displayName}（${c.channelType}）` })),
+                ...pushChannels.map((c) => ({ value: c.id, label: channelOptionLabel(c) })),
               ]}
             />
             {channelsError && <p className="mt-1 text-xs text-destructive">渠道清單載入失敗，請重新整理</p>}

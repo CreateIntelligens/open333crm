@@ -65,7 +65,7 @@ const NAV_TREE: NavNode[] = [
       {
         id: 'channels', label: '渠道', href: '/dashboard/line/rich-menus', icon: Smartphone, perm: 'richmenu.manage', children: [
           { id: 'line-rich-menus', label: 'LINE Rich Menu', href: '/dashboard/line/rich-menus', icon: Smartphone },
-          { id: 'line-keywords', label: 'LINE 關鍵字回覆', href: '/dashboard/line/keyword-replies', icon: MessageSquare },
+          { id: 'line-keywords', label: '關鍵字回覆', href: '/dashboard/line/keyword-replies', icon: MessageSquare },
           { id: 'line-follow-gift', label: 'LINE 加好友禮', href: '/dashboard/line/follow-gift', icon: Ticket },
           { id: 'line-quick-replies', label: 'LINE 快速回覆', href: '/dashboard/line/quick-replies', icon: MessageSquare },
         ],
