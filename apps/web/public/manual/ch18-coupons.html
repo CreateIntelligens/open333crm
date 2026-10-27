@@ -508,16 +508,17 @@
       <table>
         <thead><tr><th>方式</th><th>在哪裡設定</th><th>適合</th><th>可用的券</th><th>需要的權限</th></tr></thead>
         <tbody>
-          <tr><td><a href="#p11-1">關鍵字發券</a></td><td>行銷與渠道 → 渠道 → LINE 關鍵字回覆</td><td>顧客在 LINE 傳某個詞就拿到券，例如「領券」</td><td>進行中的行銷或客服補償券</td><td>管理自動化</td></tr>
+          <tr><td><a href="#p11-1">關鍵字發券</a></td><td>行銷與渠道 → 渠道 → 關鍵字回覆</td><td>顧客在 LINE、Facebook 或 Instagram 傳某個詞就拿到券，例如「領券」</td><td>進行中的行銷或客服補償券</td><td>管理自動化</td></tr>
           <tr><td><a href="#p11-2">加好友禮</a></td><td>行銷與渠道 → 渠道 → LINE 加好友禮</td><td>新顧客第一次加入 LINE 官方帳號時送券</td><td>進行中的行銷或客服補償券</td><td>管理自動化</td></tr>
           <tr><td><a href="#p11-3">附券廣播</a></td><td>行銷與渠道 → 行銷 → 廣播</td><td>對一群顧客（全部、分眾或標籤）發券並附上文案</td><td>只能用進行中的<b>行銷</b>券</td><td>管理行銷、執行群發</td></tr>
           <tr><td><a href="#p11-4">批次發券</a></td><td>券詳情頁右上角「發送給…」</td><td>直接挑幾位顧客或一個標籤發券，最多 1,000 人</td><td>進行中的行銷或客服補償券</td><td>發送優惠券</td></tr>
+          <tr><td><a href="#p11-6">推播卡片領券</a></td><td>素材庫做卡片 → 廣播推播</td><td>推播一張有「領取優惠券」按鈕的卡片，顧客點了就去領券</td><td>只能用進行中的<b>行銷</b>券（搭配領券連結）</td><td>管理優惠券、管理行銷、執行群發</td></tr>
           <tr><td><a href="#p11-5">領券連結（海報 QR Code）</a></td><td>券詳情頁的「領券連結」分頁</td><td>把 QR Code 印在海報、放在官網，讓不認識的顧客自己來領</td><td>只能用進行中或草稿的<b>行銷</b>券</td><td>管理優惠券</td></tr>
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>
         <ul>
-          <li>關鍵字發券與加好友禮只在 LINE 對話有效。附券廣播與批次發券可以用 LINE 與 Facebook；Facebook 只會發給 24 小時內傳過訊息的顧客。網站客服沒有主動推送，不能用這幾種方式發券。</li>
+          <li>加好友禮只在 LINE 有效；關鍵字發券可以用 LINE、Facebook、Instagram。附券廣播與批次發券可以用 LINE 與 Facebook；Facebook 只會發給 24 小時內傳過訊息的顧客。網站客服沒有主動推送，不能用這幾種方式發券。</li>
           <li><b>Instagram</b>：素材庫沒有 Instagram 素材，所以 Instagram 不能發一般廣播；附券廣播與批次發券只能送出預設的發券文字與券連結，而且只發給 24 小時內傳過訊息給 IG 帳號的人。要讓 IG 顧客自己來領，建議用領券連結，放在 IG 個人簡介或限時動態。</li>
           <li><b>Facebook、Instagram 沒有「加好友禮」</b>：粉專與 IG 帳號被追蹤時，Meta 不會通知系統，所以無法在顧客追蹤時自動送券。可以改用領券連結（點了就開啟 Messenger 或 IG 對話並發券），放在粉專置頂貼文或 IG 個人簡介。</li>
           <li>自動化規則編輯器沒有「發送優惠券」動作，關鍵字發券與加好友禮請在上面兩個頁面設定。</li>
@@ -533,11 +534,11 @@
         <figcaption><span class="tag">影片</span>建立一條只發券的關鍵字回覆（約 25 秒）</figcaption>
       </figure>
       <ol class="steps">
-        <li>到「LINE 關鍵字回覆」，按右上角「建立關鍵字回覆」。</li>
+        <li>到「關鍵字回覆」，按右上角「建立關鍵字回覆」，先選「渠道」（LINE、Facebook 或 Instagram）。規則只在所選渠道的對話觸發；儲存後不能改渠道，要換渠道請另外建一條。</li>
         <li>填「規則名稱」（只給後台看，也會顯示在序號明細的發放來源），在「關鍵字」輸入後按 Enter 或「加入」，可以加多個。</li>
-        <li>「回覆素材」與「同時發送優惠券」至少選一個。只想發券時，素材可以不選；兩個都選時，顧客會同時收到素材與券。</li>
+        <li>「回覆素材」與「同時發送優惠券」至少選一個。素材只列出所選渠道的素材；只想發券時，素材可以不選；兩個都選時，顧客會同時收到素材與券。<b>Instagram 沒有素材，只能發券。</b></li>
         <li>「同時發送優惠券」只列出<b>進行中</b>的券。選好後會多一個「發不出時回覆顧客」欄位（選填），例如「您已經領過這張券囉」。</li>
-        <li>按「儲存」，列表會顯示這條規則與它要發的券。</li>
+        <li>按「儲存」，列表會顯示這條規則的渠道與它要發的券。列表上方可以依渠道篩選。</li>
       </ol>
       <table>
         <thead><tr><th>顧客傳了關鍵字之後</th><th>結果</th></tr></thead>
@@ -545,11 +546,11 @@
           <tr><td>第一次領</td><td>收到券卡訊息與自己的票券連結；對話中出現券卡，寫著「由規則「規則名稱」發送」</td></tr>
           <tr><td>已達每人上限、發行總量已發完、序號用完或券已暫停</td><td>不發券。有填「發不出時回覆顧客」就把那段文字回給顧客，沒填則顧客收不到任何回覆；對話都會留下一則看得到原因的系統訊息</td></tr>
           <tr><td>顧客已封鎖官方帳號</td><td>券沒有送出就作廢，不占名額；對話留下「訊息送不出」的系統訊息</td></tr>
-          <tr><td>在 Facebook 或 Instagram 傳同一個詞</td><td>不發券（關鍵字回覆只對 LINE 有效）</td></tr>
+          <tr><td>在其他渠道傳同一個詞</td><td>不發券。規則只在所選渠道觸發；要讓三個渠道都能領，請各建一條</td></tr>
+          <tr><td>Facebook、Instagram 的顧客</td><td>一樣收到券連結，打開時用 email 驗證碼確認身分（見第 5 節）</td></tr>
         </tbody>
       </table>
-      <!-- KNOWN-ISSUE: 關鍵字回覆列表的啟用開關按下後畫面不更新（2026-10-27 UAT 驗收發現），修好後改寫這段 -->
-      <div class="warn"><span>⚠️</span><div>規則的「已啟用」開關按下後，畫面可能要重新整理才會顯示「停用」。請重新整理確認狀態，<b>不要連按兩次</b>，以免又把規則打開。規則上的券之後被暫停或結束時，列表會標示這張券，只改關鍵字仍可以存檔；要換成另一張券時，新的券必須是進行中。</div></div>
+      <div class="info"><span>ℹ️</span><div>按列表左側的「已啟用」可以停用規則，再按一次恢復。規則上的券之後被暫停或結束時，列表會標示這張券，只改關鍵字仍可以存檔；要換成另一張券時，新的券必須是進行中。</div></div>
 
       <h3 id="p11-2">11-2 加好友禮：新好友第一次加入就送券</h3>
       <figure class="video">
@@ -667,6 +668,54 @@
         </tbody>
       </table>
       <div class="info"><span>ℹ️</span><div>顧客改了預填文字也沒關係，系統比對代碼時會忽略大小寫、空白與全形字。Facebook、Instagram 渠道的領券頁是一個帶代碼的開啟對話連結，點了就會發券。客服補償券不能建立領券連結。</div></div>
+
+      <h3 id="p11-6">11-6 推播卡片領券：顧客點卡片按鈕就去領券（LINE、Facebook）</h3>
+      <p>想用一張好看的卡片宣傳優惠，讓顧客點「領取優惠券」按鈕領券時，把卡片按鈕的網址設成這張券的<b>領券連結</b>，再用一般廣播推播卡片。卡片按鈕不能放 <code>{{coupon.url}}</code>（LINE 會檢查網址格式），所以要透過領券連結。</p>
+      <div class="flow">
+        <div class="flow-step"><span class="fn">1</span><span class="ft">建領券連結</span><span class="fd">券詳情「領券連結」分頁，渠道選要推播的 LINE 或 Facebook</span></div>
+        <div class="flow-step"><span class="fn">2</span><span class="ft">做卡片素材</span><span class="fd">按鈕網址貼上領券連結</span></div>
+        <div class="flow-step"><span class="fn">3</span><span class="ft">廣播推播</span><span class="fd">選這個素材，不必附券</span></div>
+        <div class="flow-step"><span class="fn">4</span><span class="ft">顧客領券</span><span class="fd">點按鈕開領券頁，在對話中收到券</span></div>
+      </div>
+      <ol class="steps">
+        <li>打開要發的行銷券，在「領券連結」分頁建立連結（見 11-5），<b>渠道選要推播的那個渠道</b>，複製連結網址。LINE 和 Facebook 各要一條。</li>
+        <li>到「素材庫」新增卡片素材：
+          <ul>
+            <li><b>LINE</b>：選「卡片訊息」，版型可用「圖文」。填標題與文字說明，「動作 1」類型選「網址連結」，網址貼上 LINE 的領券連結；不需要的「動作 2」取消勾選。</li>
+            <li><b>Facebook</b>：選「商品輪播」。填卡片標題與說明，按鈕選「開啟網址」，網址貼上 Facebook 的領券連結；多餘的卡片按垃圾桶刪掉。</li>
+          </ul>
+        </li>
+        <li>帳戶有開個資遮罩時，先切成「保留原文」再按「存為素材」（見 11-3 的說明）。</li>
+        <li>到「廣播」建立廣播，選渠道、選這個卡片素材與受眾，「附上優惠券」選「不附券」，建立後按「立即發送」。</li>
+      </ol>
+      <div class="warn"><span>⚠️</span><div>Facebook 卡片的範例圖片（素材範本預設的圖）Facebook 不接受，沿用會整批發送失敗。請改成「上傳」自己的圖片，或按圖片欄位的 × 拿掉圖片。Facebook 只能推播給 24 小時內傳過訊息的人，廣播受眾也只有這一個選項。</div></div>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-card-line.jpg">
+          <source src="uploads/videos/ch18-card-line.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>LINE：做卡片素材，按鈕連到領券連結，再用廣播推播（約 55 秒）</figcaption>
+      </figure>
+      <figure class="video">
+        <video controls preload="none" playsinline poster="uploads/videos/ch18-card-fb.jpg">
+          <source src="uploads/videos/ch18-card-fb.mp4" type="video/mp4">
+        </video>
+        <figcaption><span class="tag">影片</span>Facebook：做商品輪播卡片，按鈕連到領券連結，再用廣播推播（約 45 秒）</figcaption>
+      </figure>
+      <p><b>LINE 顧客看到的流程</b>：點卡片的「領取優惠券」→ 開啟領券頁 → 按「傳送領券訊息」並直接送出 → 在對話收到券。</p>
+      <div class="phone-shots">
+        <figure class="shot"><img src="uploads/shots/ch18-card-line-1-card.png" alt="LINE 收到秋季感謝祭卡片，有領取優惠券按鈕" loading="lazy"><figcaption>① 收到卡片，按「領取優惠券」</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-card-line-2-claim.png" alt="領券頁：加入好友、傳送領券訊息" loading="lazy"><figcaption>② 領券頁，按「傳送領券訊息」</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-card-line-3-chat.png" alt="LINE 對話：送出領券代碼後收到券訊息（連結已模糊）" loading="lazy"><figcaption>③ 送出後在對話收到券（連結已模糊）</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-card-line-4-wallet.png" alt="已存入我的優惠券" loading="lazy"><figcaption>④ 券存入「我的優惠券」</figcaption></figure>
+      </div>
+      <p><b>Facebook 顧客看到的流程</b>：點卡片的「領取優惠券」→ 開啟領券頁 → 按「開啟 Messenger 領取」→ 回到 Messenger 時券已經發出，不必再傳訊息。若沒有收到，在對話傳任一訊息即可。</p>
+      <div class="phone-shots">
+        <figure class="shot"><img src="uploads/shots/ch18-card-fb-1-card.png" alt="Messenger 收到秋季感謝祭卡片，有領取優惠券按鈕" loading="lazy"><figcaption>① 收到卡片，按「領取優惠券」</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-card-fb-2-claim.png" alt="領券頁：開啟 Messenger 領取" loading="lazy"><figcaption>② 按「開啟 Messenger 領取」</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-card-fb-3-chat.png" alt="Messenger 對話：自動收到券訊息（連結已模糊）" loading="lazy"><figcaption>③ 回到 Messenger 已收到券（連結已模糊）</figcaption></figure>
+        <figure class="shot"><img src="uploads/shots/ch18-card-fb-4-wallet.png" alt="已存入我的優惠券，回到 Messenger" loading="lazy"><figcaption>④ 券存入「我的優惠券」</figcaption></figure>
+      </div>
+      <div class="info"><span>ℹ️</span><div>每人上限與發行總量照常計算；同一位顧客點了兩次，第二次會收到「您已經領過這張優惠券」。卡片推播本身是一般廣播，不會發券，所以廣播列表不會顯示發券張數；領取情況請看領券連結的「開啟數」與「領取數」。</div></div>
     </section>
 
 <footer class="manual-footer">
