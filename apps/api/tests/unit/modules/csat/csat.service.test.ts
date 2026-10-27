@@ -19,7 +19,7 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
   },
 }));
 
-const { sendCsatSurvey } = await import('#src/modules/csat/csat.service.js');
+const { sendCsatSurvey, recordCsatScore } = await import('#src/modules/csat/csat.service.js');
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 const CASE_ID = 'case-1';
@@ -137,5 +137,45 @@ test('送到客人的渠道失敗', async () => {
     assert.equal(delivered.length, 1);
   } finally {
     delivery.error = undefined;
+  }
+});
+
+/**
+ * 啟用 AI 去識別化的租戶：系統固定的感謝訊息原文送出、原文存入對話，遮罩版另存給模型
+ * （spec ai-input-deidentification「System template message keeps its authored text」）。
+ * 只替換最低層的 HTTP 呼叫，模擬 2md 把「好評」誤判成人名。
+ */
+test('System template message keeps its authored text: CSAT follow-up', async () => {
+  delivered.length = 0;
+  vi.stubGlobal('fetch', async (_url: string, options: RequestInit) => {
+    const { text } = JSON.parse(options.body as string) as { text: string };
+    return Response.json({ code: 200, data: { status: 'ok', text: text.replace('好評', '[姓名]') } });
+  });
+  try {
+    const created: Array<Record<string, unknown>> = [];
+    const db = {
+      platformSetting: { findUnique: async () => ({ value: { enabled: true } }) },
+      case: {
+        findFirst: async () => ({ id: CASE_ID, tenantId: TENANT_ID, csatScore: null, conversations: [{ id: 'conv-1' }] }),
+        update: async () => ({}),
+      },
+      message: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          created.push(data);
+          return { id: 'msg-1', createdAt: new Date(), ...data };
+        },
+      },
+      conversation: { update: async () => ({}) },
+    } as unknown as TenantDb;
+
+    assert.equal(await recordCsatScore(db, io, CASE_ID, 5, undefined, { tenantId: TENANT_ID }), true);
+
+    const text = (created[0].content as { text: string }).text;
+    assert.equal(text, '非常感謝您的好評！您的肯定是我們最大的動力，期待再次為您服務！');
+    assert.equal(delivered[0][2], text, '送給顧客的與紀錄相同');
+    const privacy = (created[0].metadata as { privacy: { maskedContent: { text: string } } }).privacy;
+    assert.match(privacy.maskedContent.text, /\[姓名\]/);
+  } finally {
+    vi.unstubAllGlobals();
   }
 });

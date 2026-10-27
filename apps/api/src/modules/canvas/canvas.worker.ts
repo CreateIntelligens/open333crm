@@ -43,7 +43,7 @@ export function setupCanvasWorker(prisma: PrismaClient, io: SocketIOServerLike) 
   logger.info('[CanvasWorker] Subscribed to canvas event bus');
 }
 
-async function handleCanvasSendMessage(
+export async function handleCanvasSendMessage(
   prisma: PrismaClient,
   io: SocketIOServerLike,
   tenantId: string,
@@ -104,7 +104,7 @@ async function handleCanvasSendMessage(
   }
 
   const outboundText = text ?? '';
-  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, { text: outboundText }, 'system');
+  const storedContent = await prepareStoredMessageContent(prisma as never, tenantId, { text: outboundText }, 'tenant_template');
   const credentials = decryptCredentials(conversation.channel.credentialsEncrypted);
   const sendResult = await plugin.sendMessage(
     identity.uid,

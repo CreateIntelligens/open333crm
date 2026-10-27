@@ -592,7 +592,7 @@ export async function returnConversationToBot(
 
   const agent = await prisma.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
   const now = new Date();
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system');
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: `${agent?.name ?? '客服'} 把對話交回 Bot` }, 'system_template');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -683,7 +683,8 @@ export async function handoffConversation(
 
   // Send handoff system message
   const handoffText = data.handoffMessage || '稍等，正在為您轉接客服人員';
-  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: handoffText }, 'system');
+  // 座席自填的轉接訊息維持遮罩；系統預設文案是固定字串，原文送出（避免 2md 誤判一般詞）
+  const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: handoffText }, data.handoffMessage ? 'system' : 'system_template');
   const systemMessage = await prisma.message.create({
     data: {
       conversationId,

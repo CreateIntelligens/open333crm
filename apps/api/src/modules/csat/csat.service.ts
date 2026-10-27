@@ -109,7 +109,7 @@ export async function sendCsatSurvey(
   }
 
   // Create CSAT system message in conversation
-  const storedCsat = await prepareStoredMessageContent(prisma, caseRecord.tenantId, { text: '滿意度調查', caseId }, 'system');
+  const storedCsat = await prepareStoredMessageContent(prisma, caseRecord.tenantId, { text: '滿意度調查', caseId }, 'system_template');
   const csatMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -248,7 +248,7 @@ export async function recordCsatScore(
   const followUp = getFollowUpMessage(score);
 
   if (conversationId) {
-    const storedFollowUp = await prepareStoredMessageContent(prisma, scope.tenantId, { text: followUp }, 'system');
+    const storedFollowUp = await prepareStoredMessageContent(prisma, scope.tenantId, { text: followUp }, 'system_template');
     // Create follow-up message in conversation
     const followUpMsg = await prisma.message.create({
       data: {
