@@ -10,6 +10,7 @@ All notable changes to **open333CRM** will be documented in this file.
   - 部署：在 `.env.api` 設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（例如公司網段），沒有設定時監控畫面回 403，其他功能不受影響。說明見 `docs/ref/features/platform/QUEUE-MONITORING.md`。
 - **維運告警**（change `queue-monitoring`）— 任何佇列的工作移到 failed set（重試用完，或丟出不可重試的錯誤）時，API 發出一則告警，含佇列名稱、工作 id、租戶 id、重試次數與監控畫面的連結，不含失敗原因與工作資料。同一個佇列 10 分鐘內只送一則，下一則帶上這段期間沒有送出的次數。告警經新的 `ops-alert` 佇列送出，失敗時重試 3 次。
   - 部署：建立 Slack Incoming Webhook 之後，在 `.env.api` 設定 `OPS_ALERT_SLACK_WEBHOOK_URL`；沒有設定時告警只寫 log。
+- **素材編輯器的「插入券連結」按鈕**（change `add-material-coupon-url-insert`）— LINE 純文字、FB 純文字素材的訊息內容欄位多一顆「插入券連結」按鈕，把 `{{coupon.url}}` 插在游標位置（沒點過輸入框時加在結尾），插入後焦點與游標留在輸入框。按鈕只插入通用佔位字，實際發哪張券仍在「建立廣播 → 附上優惠券」選擇；按鈕下方說明用在關鍵字回覆或一般廣播時不會替換。插入後超過字數上限（LINE 5000、FB 2000）時不插入，並顯示提示。
 
 ### Changed
 
