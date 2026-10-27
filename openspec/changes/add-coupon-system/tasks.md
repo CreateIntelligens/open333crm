@@ -519,6 +519,7 @@
   - 15.13：`backfill-follow-tracking.test.ts`（migration 寫好才寫測試，寫好就通過）——回填值改為 `CURRENT_TIMESTAMP`，「上線前就是好友的顧客」失敗；拿掉 `channelType = 'LINE'`，「其他渠道不回填」失敗；拿掉 `firstFollowedAt IS NULL`，「已有加入紀錄的身分不動」「回填執行兩次」失敗；guard 改為永遠通過，「執行身分不能略過 RLS 時中止」失敗
   - 15.14：`automation.worker.test.ts`「取消好友不觸發」——unfollow 也排入 contact.followed，測試失敗；workers `automation-follow-gift.test.ts`「封鎖後再加入不發券」「上線前就是好友的顧客再加入」「沒有第一次加入資訊的事件不發券」——`follow.isFirst` 一律為 true，三個測試失敗；`follow-tracking.test.ts`（webhook）——第一次加入的條件式更新拿掉 `firstFollowedAt: null`，「封鎖後再加入」「上線前就是好友的顧客」失敗
   - 15.16：`follow-event-options.test.ts`（契約先完成，寫好就通過）——事件名稱改掉，「事件清單列出加入好友」失敗；`issue_coupon` 改為 `editorHidden: false`，「發送優惠券不在編輯器的動作選單」失敗；fact 拿掉 `events` 限制，「第一次加入只在加入好友事件提供」失敗
+  - PR #364 審查修正（先寫測試、在斷言上失敗後才改程式，不需另做突變）：`material-short-link-placeholder.test.ts`「含變數的連結不換短連結，tagOnClick 仍被移除」；`broadcast-coupon-field.test.tsx`「進行中的行銷券超過 100 張時全部列出」；workers `automation-issue-coupon-recipient.test.ts`「事件的聯絡人與對話的聯絡人不同時，券發給對話的聯絡人」；`broadcast-coupon.test.ts`「中斷時發送中的收件人不重送，標為發送中斷」；`coupon-batch-issue.test.ts`「直接呼叫 service 時勾選的聯絡人也受 1,000 人上限」；`coupon-claim-inbound.test.ts`「領券貼標的到期時間以流程的時間計算」；channel-plugins `line-extra-messages.test.ts`「超過一次 5 則時不呼叫 LINE」；workers `automation-issue-coupon-atomic.test.ts`「寫入券卡訊息失敗時，確認交易整個回滾」（測試用假資料庫補上交易回滾與租戶比對，以舊版假資料庫執行時失敗）
   - 15.15 的刻意變更：`automation-dispatched-events.test.ts` 把 `contact.followed` 視為經 `message.received` 轉送（新事件不是獨立的 eventBus 事件，由自動化訂閱者處理 follow 時另外排入）
 
 ### 工作量

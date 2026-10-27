@@ -59,7 +59,9 @@ export type RecipientFailReason =
   /** 訊息已送出，但券在確認前已被排程作廢 */
   | 'CONFIRM_TOO_LATE'
   /** 訊息已送出，但系統記錄失敗 */
-  | 'DELIVERED_UNCONFIRMED';
+  | 'DELIVERED_UNCONFIRMED'
+  /** 上次發送中斷（保留券之後、確認之前程式結束），無法確定是否送達；不重送，券由排程作廢 */
+  | 'INTERRUPTED';
 
 const nowDate = (now?: number) => new Date(now ?? Date.now());
 
@@ -250,6 +252,14 @@ export async function prepareRecipients(
     const exists = new Set(noIdentity);
     noIdentity = missing.filter((id) => exists.has(id));
   }
+
+  // 開始發送時還停在 pending 的收件紀錄，是上次發送中斷留下的（搶占保證同時只有一個發送）。
+  // 不重送：可能已經送達，送兩次比漏送更糟（design D29 至多一次）；標為發送中斷，結果頁看得到原因。
+  // 這些券仍在發送中，由 coupon.scheduler 作廢並歸還名額
+  await tx.broadcastRecipient.updateMany({
+    where: { broadcastId: b.id, deliveryStatus: 'pending', broadcast: { tenantId } },
+    data: { deliveryStatus: 'failed', skipReason: 'INTERRUPTED' satisfies RecipientFailReason },
+  });
 
   const handled = new Set<string>();
   for (let i = 0; ; i += QUERY_CHUNK) {
@@ -578,7 +588,14 @@ export async function createBatchIssue(
 ) {
   const { tx, tenantId } = ctx;
   const agent = await tx.agent.findFirst({ where: { id: agentId, tenantId }, select: { name: true } });
-  const targetConfig = input.targetType === 'tags' ? { tagIds: input.tagIds ?? [] } : input.targetType === 'contacts' ? { contactIds: input.contactIds ?? [] } : {};
+  const contactIds = [...new Set(input.contactIds ?? [])];
+  const targetConfig = input.targetType === 'tags' ? { tagIds: input.tagIds ?? [] } : input.targetType === 'contacts' ? { contactIds } : {};
+
+  // 勾選的聯絡人去重後檢查上限：路由已驗證，service 也擋，其他入口呼叫時才不會繞過（PR #364 審查）
+  if (input.targetType === 'contacts' && contactIds.length > BATCH_ISSUE_MAX_RECIPIENTS) {
+    const message = `單次最多發給 ${BATCH_ISSUE_MAX_RECIPIENTS} 人，請縮小對象範圍`;
+    throw new AppError(message, 'BATCH_TOO_LARGE', 400, { issues: [{ path: 'contactIds', message }] });
+  }
 
   // 標籤與分眾的人數發送前才知道：先算一次，超過上限就不建立
   if (input.targetType !== 'contacts') {

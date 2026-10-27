@@ -439,6 +439,8 @@ export async function confirmClaim(
     instanceId: reserved.instanceId,
     contactId: actor.contactId,
     coupon: link.coupon,
+    // 標籤到期時間以流程的時間計算（PR #364 審查）
+    now: now.getTime(),
   });
   if (!confirmed.confirmed) return null;
   if (confirmed.tag) {

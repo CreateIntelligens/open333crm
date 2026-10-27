@@ -534,4 +534,26 @@ describe('附券廣播在背景執行且重送不重複發券', () => {
     assert.equal(again.kind, 'already', '保留時查到收件紀錄就不發券');
     assert.equal((await instancesOf(a, couponId)).length, 1);
   });
+
+  it('中斷時發送中的收件人不重送，標為發送中斷', async () => {
+    // PR #364 審查第 5 項：上次保留券後、送出前程式結束，收件紀錄停在 pending。
+    // 重送不能再送（可能已送達，送兩次比漏送更糟，design D29），但也不能一直顯示「發送中」
+    const couponId = await coupon(`${MARK}秋P`);
+    const a = await person('interrupt-a');
+    const b = await person('interrupt-b');
+    const id = await broadcast({ couponId, contacts: [a, b] });
+    await owner.broadcastRecipient.create({ data: { broadcastId: id, contactId: a.contactId, deliveryStatus: 'pending' } });
+    await owner.$executeRaw`UPDATE broadcasts SET status = 'sending', "updatedAt" = now() - interval '10 minutes' WHERE id = ${id}::uuid`;
+    await runInTenant(prisma, T, (ctx) => queueCouponBroadcast(ctx, id));
+    const result = await run(id);
+
+    assert.equal(sentTo(a.uid).length, 0, '甲不重送');
+    assert.equal(sentTo(b.uid).length, 1);
+    const rowA = await recipientOf(id, a);
+    assert.equal(rowA?.deliveryStatus, 'failed');
+    assert.equal(rowA?.skipReason, 'INTERRUPTED', '結果頁看得到原因');
+    assert.ok(result.status !== 'not_claimed' && 'summary' in result && result.summary);
+    assert.equal(result.summary!.pending, 0, '結束時沒有停在發送中的人');
+    assert.equal(result.summary!.failed.INTERRUPTED, 1);
+  });
 });

@@ -362,23 +362,29 @@ export async function convertBodyUrlsToShortLinks(
       // action 上若有 tagOnClick（點擊後貼標），一併灌進短連結，並從 body 移除
       // （tagOnClick 是內部欄位，若留在 flex button action 會流進 LINE payload 被擋 unknown field）。
       // 含變數的連結（例如附券廣播的 {{coupon.url}}）每人不同，發送時才代入，不能共用一條短連結
-      if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri && !hasPlaceholder(obj.uri)) {
-        obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-          materialId,
-          targetUrl: obj.uri,
-          lineChannelId,
-          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
-        });
+      // 含變數的連結不換短連結，但 tagOnClick 一樣要移除（PR #364 審查：原本整段跳過，tagOnClick 會流進 LINE payload）
+      const tagOnClick = typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined;
+      if (obj.type === 'uri' && typeof obj.uri === 'string' && obj.uri) {
+        if (!hasPlaceholder(obj.uri)) {
+          obj.uri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
+            materialId,
+            targetUrl: obj.uri,
+            lineChannelId,
+            tagOnClick,
+          });
+        }
         delete obj.tagOnClick;
       }
       // imagemap 轉出的 linkUri（builders 用 linkUri），也一併處理
-      if (typeof obj.linkUri === 'string' && obj.linkUri && !hasPlaceholder(obj.linkUri)) {
-        obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
-          materialId,
-          targetUrl: obj.linkUri,
-          lineChannelId,
-          tagOnClick: typeof obj.tagOnClick === 'string' ? obj.tagOnClick : undefined,
-        });
+      if (typeof obj.linkUri === 'string' && obj.linkUri) {
+        if (!hasPlaceholder(obj.linkUri)) {
+          obj.linkUri = await findOrCreateMaterialShortLink(prisma, tenantId, createdById, {
+            materialId,
+            targetUrl: obj.linkUri,
+            lineChannelId,
+            tagOnClick,
+          });
+        }
         delete obj.tagOnClick;
       }
       for (const key of Object.keys(obj)) await walk(obj[key]);

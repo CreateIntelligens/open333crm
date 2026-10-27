@@ -18,7 +18,7 @@ import { encryptCredentials } from '#src/modules/channel/channel.service.js';
 import couponRoutes from '#src/modules/coupon/coupon.routes.js';
 import { createCoupon } from '#src/modules/coupon/coupon.service.js';
 import { changeStatus } from '#src/modules/coupon/coupon-lifecycle.service.js';
-import { getCouponBroadcastSummary } from '#src/modules/marketing/broadcast-coupon.service.js';
+import { createBatchIssue, getCouponBroadcastSummary } from '#src/modules/marketing/broadcast-coupon.service.js';
 import { runCouponBroadcast } from '#src/modules/marketing/broadcast-coupon.flow.js';
 import { memBindingStore } from '#tests/support/mem-binding-store.js';
 import { ctxOf, runInTenant, testIo } from '#tests/support/tenant-run.js';
@@ -166,6 +166,17 @@ describe('從券詳情頁批次發券', () => {
     const contactIds = Array.from({ length: 1001 }, () => randomUUID());
     const res = await post({ channelId: lineChannel, targetType: 'contacts', contactIds });
     assert.equal(res.statusCode, 400, res.body);
+    assert.equal(await broadcastCount(), before, '不建立廣播');
+  });
+
+  it('直接呼叫 service 時勾選的聯絡人也受 1,000 人上限（不只靠路由驗證）', async () => {
+    // PR #364 審查第 4 項：上限原本只在路由的 Zod 驗證；service 自己也要擋，其他入口呼叫時才不會繞過
+    const before = await broadcastCount();
+    const contactIds = Array.from({ length: 1001 }, () => randomUUID());
+    await assert.rejects(
+      runInTenant(prisma, T, (ctx) => createBatchIssue(ctx, agent.id, couponId, { channelId: lineChannel, targetType: 'contacts', contactIds })),
+      (err: { code?: string }) => err.code === 'BATCH_TOO_LARGE',
+    );
     assert.equal(await broadcastCount(), before, '不建立廣播');
   });
 

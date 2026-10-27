@@ -97,7 +97,9 @@ export async function interceptCouponClaim(ctx: InboundMessageContext): Promise<
 
 /**
  * contentType 為 'referral' 的事件（FB／IG 既有對話點 m.me／ig.me 連結，只帶 ref）。
- * ref 是本租戶的領券代碼時處理並回傳 true；否則回 false，由綁定代碼的處理接手。
+ * ref 不是領券格式（coupon_XXXXXXXX）時回 false，由綁定代碼的處理接手。是領券格式就回 true：
+ * 本租戶查無這個代碼時只記錄、不建立聯絡人或對話——綁定代碼的格式是 BIND-…，領券格式的 ref
+ * 交給它也只會記錄「不是綁定代碼」，行為相同。
  *
  * @param resolve 解析聯絡人與對話（由 webhook.service 傳入，避免循環相依）
  */

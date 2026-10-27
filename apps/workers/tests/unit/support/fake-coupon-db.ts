@@ -3,7 +3,9 @@
  *
  * 只實作 workers 發券流程與 @open333crm/core 發券函式（issueInstances、confirmPendingInstance、
  * voidPendingInstance）會呼叫的 model 方法；core 的函式照常執行，不換成假的。
- * 每個查詢都比對 tenantId：測試資料放兩個租戶時，漏帶 tenantId 的查詢會拿到別人的資料而讓斷言失敗。
+ * 查詢帶 tenantId 時都比對 tenantId：測試資料放兩個租戶時，漏帶 tenantId 的查詢會拿到別人的資料而讓斷言失敗。
+ * （contactTag 表本身沒有 tenantId，以聯絡人區分。）
+ * $transaction 與 Prisma 相同：callback 拋錯時還原交易內的所有寫入。
  */
 import { createCipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import type { ChannelPlugin, OutboundPayload } from '@open333crm/channel-plugins';
@@ -92,6 +94,7 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
   };
 
   const byTenant = <T extends Row>(rows: T[], where: Row) => rows.filter((r) => !('tenantId' in where) || r.tenantId === where.tenantId);
+  const tenantOk = (r: Row, where: Row) => where.tenantId === undefined || r.tenantId === where.tenantId;
   const pending = (r: Row, where: Row) =>
     where.deliveryPendingAt === undefined ? true : where.deliveryPendingAt?.not === null ? r.deliveryPendingAt != null : r.deliveryPendingAt === where.deliveryPendingAt;
   const matchInstance = (r: Row, where: Row) =>
@@ -112,7 +115,14 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
 
   const db: Record<string, any> = {
     async $transaction(fn: (tx: unknown) => Promise<unknown>) {
-      return fn(db);
+      // 交易失敗時還原：與真的 Prisma 交易相同，半途寫入的券、outbox、訊息都不留下（PR #364 審查）
+      const snapshot = structuredClone(state);
+      try {
+        return await fn(db);
+      } catch (err) {
+        Object.assign(state, snapshot);
+        throw err;
+      }
     },
     // pg_advisory_xact_lock、SAVEPOINT：記憶體裡不需要
     async $executeRaw() { return 0; },
@@ -139,11 +149,12 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
         return c ? conversationView(c) : null;
       },
       async findUnique({ where }: { where: Row }) {
-        const c = state.conversations.find((x) => x.id === where.id);
+        const c = state.conversations.find((x) => x.id === where.id && tenantOk(x, where));
         return c ? conversationView(c) : null;
       },
       async update({ where, data }: { where: Row; data: Row }) {
-        const c = state.conversations.find((x) => x.id === where.id)!;
+        const c = state.conversations.find((x) => x.id === where.id && tenantOk(x, where));
+        if (!c) throw new Error('Record to update not found');
         Object.assign(c, data);
         return c;
       },
@@ -178,7 +189,8 @@ export function fakeCouponDb(opts: FakeCouponDbOptions = {}) {
         return row;
       },
       async update({ where, data }: { where: Row; data: Row }) {
-        const row = state.instances.find((r) => r.id === where.id)!;
+        const row = state.instances.find((r) => r.id === where.id && tenantOk(r, where));
+        if (!row) throw new Error('Record to update not found');
         Object.assign(row, data);
         return row;
       },

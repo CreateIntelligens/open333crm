@@ -441,6 +441,10 @@ export class LinePlugin implements ChannelPlugin {
     const lineMsg = buildLineMessage(contentType, content);
     // 同一次推送接著送的訊息（附券廣播的素材＋發券文字），LINE 一次最多 5 則
     const messages = [lineMsg, ...(message.extraMessages ?? []).map((m) => buildLineMessage(m.contentType, m.content))];
+    // 超過上限 LINE 會拒收整批：不呼叫 API，回報錯誤讓呼叫端看得到（PR #364 審查）
+    if (messages.length > this.maxMessagesPerSend) {
+      return { success: false, error: `LINE 一次最多送 ${this.maxMessagesPerSend} 則訊息（這次 ${messages.length} 則）` };
+    }
     const strategy = (content.strategy as string) ?? 'push';
     const retryKey = message.delivery?.retryKey;
     // logger.info(`strategy: ${strategy}`);

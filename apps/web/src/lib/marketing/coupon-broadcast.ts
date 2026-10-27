@@ -48,6 +48,7 @@ const REASON_LABELS: Record<string, string> = {
   LINK_FAILED: '票券連結產生失敗',
   CONFIRM_TOO_LATE: '訊息已送出，但券在確認前已作廢',
   DELIVERED_UNCONFIRMED: '訊息已送出，但系統沒有記錄成功',
+  INTERRUPTED: '發送中斷，無法確認是否送達（不重送，券已作廢）',
 };
 
 export function couponBroadcastReasonLabel(code: string | null | undefined): string {

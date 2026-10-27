@@ -160,6 +160,35 @@ describe('顧客傳送領券代碼後發券', () => {
     assert.equal((card?.content as { coupon?: { instanceId?: string } }).coupon?.instanceId, instance.id, '收件匣畫成券卡');
   });
 
+  it('領券貼標的到期時間以流程的時間計算', async () => {
+    // PR #364 審查：confirmClaim 收到流程的時間卻沒傳給貼標，標籤到期時間改用系統當下時間
+    const fixed = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const tag = await owner.tag.create({ data: { tenantId: T, name: `${MARK}-claim-tag`, scope: 'CONTACT' } });
+    try {
+      const couponId = await coupon(T, '貼標時效', { claimTagId: tag.id, claimTagTtlDays: 7 });
+      const l = await link(T, couponId, channels.lineA);
+      const p = await person(channels.lineA, 'LINE');
+      setCouponClaimDepsForTest({
+        store: memBindingStore(),
+        webBaseUrl: WEB,
+        now: () => fixed,
+        deliver: async (d) => {
+          delivered.push(d);
+          return true;
+        },
+      });
+
+      await run(channels.lineA, 'LINE', text(p.uid, claimPrefillText(l.code)));
+
+      const ct = await owner.contactTag.findUnique({ where: { contactId_tagId: { contactId: p.contactId, tagId: tag.id } } });
+      assert.equal(ct?.expiresAt?.getTime(), fixed + 7 * 24 * 60 * 60 * 1000);
+    } finally {
+      await owner.contactTag.deleteMany({ where: { tagId: tag.id } });
+      await owner.coupon.updateMany({ where: { claimTagId: tag.id }, data: { claimTagId: null } });
+      await owner.tag.deleteMany({ where: { id: tag.id } });
+    }
+  });
+
   it('顧客改動預填文字', async () => {
     const couponId = await coupon(T, '改字');
     const l = await link(T, couponId, channels.lineA);

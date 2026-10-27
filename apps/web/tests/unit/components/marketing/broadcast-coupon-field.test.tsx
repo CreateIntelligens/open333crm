@@ -51,6 +51,19 @@ describe('廣播可以附上優惠券', () => {
     assert.ok(screen.queryByText(/剩餘名額/) === null);
   });
 
+  test('進行中的行銷券超過 100 張時全部列出', async () => {
+    // PR #364 審查：原本只取第一頁 100 張，第 101 張之後選不到
+    h.get.mockImplementation(async (_url: string, config?: { params?: { page?: number } }) => {
+      const page = config?.params?.page ?? 1;
+      return page === 1
+        ? { data: { data: [{ id: 'c1', name: '秋季九折', displayCode: 'MKT-1' }], meta: { totalPages: 2 } } }
+        : { data: { data: [{ id: 'c101', name: '冬季八折', displayCode: 'MKT-101' }], meta: { totalPages: 2 } } };
+    });
+    render(<BroadcastCouponField value="" onChange={() => {}} preview={null} acknowledged={false} onAcknowledge={() => {}} />);
+    await screen.findByRole('option', { name: /冬季八折/ });
+    assert.ok(screen.getByRole('option', { name: /秋季九折/ }));
+  });
+
   test('優惠券清單載入失敗時說明原因', async () => {
     h.get.mockRejectedValue({ response: { status: 403, data: { error: { message: '權限不足' } } } });
     render(<BroadcastCouponField value="" onChange={() => {}} preview={null} acknowledged={false} onAcknowledge={() => {}} />);

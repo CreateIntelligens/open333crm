@@ -93,7 +93,7 @@ export function couponIssuedViaForTrigger(trigger: string | null | undefined): C
 export interface RuleCouponIssueInput {
   tenantId: string;
   conversationId: string;
-  /** 收券的聯絡人；沒有時用對話的聯絡人 */
+  /** 事件帶的聯絡人，只用來記錄與對話聯絡人不一致的情況；收券人一律是對話的聯絡人 */
   contactId?: string | null;
   couponId: string;
   /** 「發不出時回覆顧客」：名額類原因沒有發券時送給顧客的文字，空白表示不回覆 */
@@ -143,7 +143,14 @@ export async function issueCouponForRule(
     logger.warn('[automation] issue_coupon skipped: conversation not found in tenant', { tenantId, conversationId: input.conversationId });
     return { issued: false, reason: 'NO_CHANNEL_IDENTITY' };
   }
-  const contactId = input.contactId ?? conv.contactId;
+  // 收券人以對話的聯絡人為準：訊息送到對話聯絡人的渠道身分。事件帶的 contactId 可能已過期
+  // （例如事件排入後聯絡人被合併、對話搬到保留的聯絡人），用它會讓券與訊息落在不同人身上（PR #364 審查）
+  const contactId = conv.contactId;
+  if (input.contactId && conv.contactId && input.contactId !== conv.contactId) {
+    logger.info('[automation] issue_coupon: 事件的聯絡人與對話的聯絡人不同，以對話為準', {
+      tenantId, conversationId: conv.id, eventContactId: input.contactId, contactId: conv.contactId,
+    });
+  }
 
   const coupon = UUID_RE.test(input.couponId)
     ? await prisma.coupon.findFirst({ where: { id: input.couponId, tenantId } })

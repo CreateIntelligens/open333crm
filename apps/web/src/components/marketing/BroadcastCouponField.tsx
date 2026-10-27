@@ -7,6 +7,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { fetchAllPages } from '@/lib/fetch-all-pages';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { Select } from '@/components/ui/select';
 import { couponCapacityWarning, type CouponAudiencePreview } from '@/lib/marketing/coupon-broadcast';
@@ -32,11 +33,11 @@ export function BroadcastCouponField({ value, onChange, preview, acknowledged, o
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get('/coupons?status=ACTIVE&purpose=MARKETING&limit=100')
-      .then((res) => {
+    // 逐頁取回全部進行中的行銷券（API 單頁上限 100 張，只取一頁時第 101 張之後選不到）
+    fetchAllPages<CouponOption>((url, config) => api.get(url, config), '/coupons?status=ACTIVE&purpose=MARKETING')
+      .then((rows) => {
         if (!cancelled) {
-          setCoupons(res.data.data || []);
+          setCoupons(rows);
           setLoadError(null);
         }
       })

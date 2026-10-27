@@ -42,7 +42,6 @@ const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 
 const clock = { now: Date.now() };
-const startedAt = new Date();
 const delivered: Array<{ conversationId: string; text: string }> = [];
 /** 這些對話的訊息送不出（模擬顧客封鎖） */
 const unreachable = new Set<string>();
@@ -149,7 +148,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await owner.coupon.deleteMany({ where: { tenantId: T, createdById: creatorId } });
   const contacts = { tenantId: T, displayName: { startsWith: MARK } };
-  await owner.outbox.deleteMany({ where: { tenantId: T, name: 'contact.tagged', payload: { path: ['source'], equals: 'system' }, createdAt: { gte: startedAt } } });
+  // 只刪本檔聯絡人的事件（PR #364 審查：原本以本檔載入時間為界，會刪到同租戶其他測試的事件）
+  for (const { id } of await owner.contact.findMany({ where: contacts, select: { id: true } })) {
+    await owner.outbox.deleteMany({ where: { tenantId: T, name: 'contact.tagged', payload: { path: ['contactId'], equals: id } } });
+  }
   await owner.message.deleteMany({ where: { conversation: { tenantId: T, contact: contacts } } });
   await owner.conversation.deleteMany({ where: { tenantId: T, contact: contacts } });
   await owner.contactTag.deleteMany({ where: { contact: contacts } });

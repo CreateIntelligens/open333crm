@@ -14,8 +14,11 @@ const h = vi.hoisted(() => ({
     { id: 'ch-line', displayName: '門市 LINE', channelType: 'LINE', isActive: true },
     { id: 'ch-web', displayName: '網站客服', channelType: 'WEBCHAT', isActive: true },
   ],
-  preview: { matched: 1, reachable: 1, coupon: { remaining: 50, limitReached: 0 }, maxRecipients: 1000 } as Record<string, unknown>,
+  preview: {} as Record<string, unknown>,
 }));
+
+/** 預設預覽；每個測試開始前還原，改了它的測試中途失敗也不影響後面的測試 */
+const DEFAULT_PREVIEW = { matched: 1, reachable: 1, coupon: { remaining: 50, limitReached: 0 }, maxRecipients: 1000 };
 
 vi.mock('#src/lib/api.js', () => ({ default: { get: h.get, post: h.post } }));
 vi.mock('#src/hooks/useChannels.js', () => {
@@ -37,6 +40,7 @@ const COUPON_ID = '11111111-1111-4111-8111-111111111111';
 const AMY = { id: '22222222-2222-4222-8222-222222222222', displayName: '王小美', phone: null, email: null };
 
 beforeEach(() => {
+  h.preview = DEFAULT_PREVIEW;
   h.get.mockReset();
   h.post.mockReset();
   h.get.mockImplementation(async (url: string) => {
@@ -92,6 +96,5 @@ describe('從券詳情頁批次發券', () => {
     assert.equal(submit.disabled, true, '名額不足時要先確認');
     fireEvent.click(screen.getByRole('checkbox', { name: /我了解/ }));
     await waitFor(() => assert.equal(submit.disabled, false));
-    h.preview = { matched: 1, reachable: 1, coupon: { remaining: 50, limitReached: 0 }, maxRecipients: 1000 };
   });
 });
