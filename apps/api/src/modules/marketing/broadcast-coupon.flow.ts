@@ -54,7 +54,9 @@ export interface CouponBroadcastDeps {
 export type CouponBroadcastRunResult =
   | { status: 'not_claimed' }
   | { status: 'failed'; failureCode: string; summary?: CouponBroadcastSummary }
-  | { status: 'completed' | 'failed'; summary: CouponBroadcastSummary };
+  | { status: 'completed' | 'failed'; summary: CouponBroadcastSummary }
+  /** 這次執行已被重新排入的新執行取代：停止，進度與結果由新的執行寫入 */
+  | { status: 'superseded'; summary?: CouponBroadcastSummary };
 
 interface OutboundMessage {
   contentType: string;
@@ -140,11 +142,14 @@ export async function runCouponBroadcast(
   broadcastId: string,
 ): Promise<CouponBroadcastRunResult> {
   const now = () => (deps.now ?? Date.now)();
-  const claimed = await step(deps, tenantId, (ctx) => claimCouponBroadcast(ctx, broadcastId, now()));
+  // 搶占時間也是這次執行的代次（broadcasts.sentAt）：之後的寫入都以它比對
+  const startedAt = now();
+  const runStartedAt = new Date(startedAt);
+  const claimed = await step(deps, tenantId, (ctx) => claimCouponBroadcast(ctx, broadcastId, startedAt));
   if (!claimed.ok && claimed.reason === 'NOT_CLAIMED') return { status: 'not_claimed' };
 
   const fail = async (code: string, reason: string): Promise<CouponBroadcastRunResult> => {
-    await step(deps, tenantId, (ctx) => failCouponBroadcast(ctx, broadcastId, code, reason));
+    await step(deps, tenantId, (ctx) => failCouponBroadcast(ctx, broadcastId, code, reason, runStartedAt));
     logger.warn('[CouponBroadcast] 附券廣播沒有發送', { tenantId, broadcastId, code });
     return { status: 'failed', failureCode: code };
   };
@@ -203,6 +208,10 @@ export async function runCouponBroadcast(
     let stopped: { code: string; reason: string } | undefined;
     for (let i = 0; i < prepared.pending.length; i++) {
       const outcome = await processRecipient(deps, tenantId, plan, plugin, credentials, body, prepared.pending[i]);
+      if (outcome.superseded) {
+        logger.warn('[CouponBroadcast] 這次執行已被重新排入的新執行取代，停止', { tenantId, broadcastId });
+        return { status: 'superseded' };
+      }
       if (outcome.error && !firstError) firstError = outcome.error;
       if (outcome.couponUnavailable) {
         const left = prepared.pending.length - i;
@@ -212,16 +221,16 @@ export async function runCouponBroadcast(
         };
         break;
       }
-      if ((i + 1) % PROGRESS_EVERY === 0) await step(deps, tenantId, (ctx) => recordProgress(ctx, broadcastId));
+      if ((i + 1) % PROGRESS_EVERY === 0) await step(deps, tenantId, (ctx) => recordProgress(ctx, broadcastId, runStartedAt));
     }
 
     const result = await step(deps, tenantId, (ctx) => finalizeCouponBroadcast(ctx, plan, { stopped, firstError, now: now() }));
-    return result;
+    return result.status === 'superseded' ? { status: 'superseded', summary: result.summary } : { status: result.status, summary: result.summary };
   } catch (err) {
     // 非預期錯誤：原因寫進資料庫，後台才看得到（issue #287）；已處理的人有收件紀錄，重新發送不會重複
     const reason = err instanceof AppError ? err.message : UNEXPECTED_FAILURE_REASON;
     const code = err instanceof AppError ? err.code : 'UNEXPECTED_ERROR';
-    await step(deps, tenantId, (ctx) => failCouponBroadcast(ctx, broadcastId, code, reason)).catch((markErr: unknown) => {
+    await step(deps, tenantId, (ctx) => failCouponBroadcast(ctx, broadcastId, code, reason, runStartedAt)).catch((markErr: unknown) => {
       logger.error('[CouponBroadcast] 標記失敗時又發生錯誤', { tenantId, broadcastId, error: (markErr as Error).message });
     });
     throw err;
@@ -237,11 +246,12 @@ async function processRecipient(
   credentials: Record<string, unknown>,
   body: Record<string, unknown> | null,
   recipient: PendingRecipient,
-): Promise<{ error?: string | null; couponUnavailable?: boolean }> {
+): Promise<{ error?: string | null; couponUnavailable?: boolean; superseded?: boolean }> {
   const now = () => (deps.now ?? Date.now)();
   const broadcastId = plan.broadcast.id;
   const reservation = await step(deps, tenantId, (ctx) => reserveRecipient(ctx, plan, recipient, now()));
   if (reservation.kind === 'coupon_unavailable') return { couponUnavailable: true };
+  if (reservation.kind === 'superseded') return { superseded: true };
   if (reservation.kind !== 'reserved') return {};
   const { instanceId } = reservation;
   const voidWith = (reason: RecipientFailReason) =>

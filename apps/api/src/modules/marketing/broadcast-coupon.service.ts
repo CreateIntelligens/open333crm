@@ -105,6 +105,11 @@ export interface CouponBroadcastPlan {
   broadcast: {
     id: string;
     name: string;
+    /**
+     * 這次執行的代次：搶占時寫入 broadcasts.sentAt 的時間。重新排入後新的執行會寫入新的時間，
+     * 舊的執行之後的保留、進度與結果都以它比對，不符就停止（PR #364 第三輪審查）
+     */
+    runStartedAt: Date;
     channelId: string;
     targetType: string;
     segmentId: string | null;
@@ -175,6 +180,7 @@ export async function claimCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
       broadcast: {
         id: b.id,
         name: b.name,
+        runStartedAt: new Date(now),
         channelId: b.channelId,
         targetType: b.targetType,
         segmentId: b.segmentId,
@@ -195,9 +201,13 @@ export async function claimCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
 }
 
 /** 標記失敗：原因寫進資料庫，後台看得到（排程發送沒有人看得到回應） */
-export async function failCouponBroadcast(ctx: TenantCtx, broadcastId: string, code: string, reason: string) {
+/** 這次執行仍擁有廣播的條件：發送中，且代次相同 */
+const ownedBy = (runStartedAt: Date | undefined) => (runStartedAt ? { status: 'sending', sentAt: runStartedAt } : {});
+
+/** 標記失敗。runStartedAt 有值時只在這次執行仍擁有廣播時寫入（已被重新排入的舊執行不覆寫） */
+export async function failCouponBroadcast(ctx: TenantCtx, broadcastId: string, code: string, reason: string, runStartedAt?: Date) {
   await ctx.tx.broadcast.updateMany({
-    where: { id: broadcastId, tenantId: ctx.tenantId },
+    where: { id: broadcastId, tenantId: ctx.tenantId, ...ownedBy(runStartedAt) },
     data: { status: 'failed', failureCode: code, failureReason: reason.slice(0, FAILURE_REASON_MAX_LENGTH) },
   });
 }
@@ -308,7 +318,9 @@ export type Reservation =
   /** 已有收件紀錄（並行或重送）：不處理 */
   | { kind: 'already' }
   /** 券在發送途中被暫停或結束：停止整則廣播 */
-  | { kind: 'coupon_unavailable' };
+  | { kind: 'coupon_unavailable' }
+  /** 這次執行已被重新排入的新執行取代（或廣播已不在發送中）：停止，不寫入任何結果 */
+  | { kind: 'superseded' };
 
 /** 第 1 步：保留一張發送中的券，並寫下收件紀錄（pending） */
 export async function reserveRecipient(
@@ -319,6 +331,9 @@ export async function reserveRecipient(
 ): Promise<Reservation> {
   const { tx, tenantId } = ctx;
   const b = plan.broadcast;
+  // 先確認這次執行仍擁有廣播：舊的執行停滯被重新排入後若還在跑，不能再發券
+  const owned = await tx.broadcast.count({ where: { id: b.id, tenantId, ...ownedBy(b.runStartedAt) } });
+  if (owned === 0) return { kind: 'superseded' };
   const existing = await tx.broadcastRecipient.findFirst({
     where: { broadcastId: b.id, contactId: recipient.contactId },
     select: { id: true },
@@ -454,11 +469,14 @@ export async function getCouponBroadcastSummary(ctx: TenantCtx, broadcastId: str
 
 const sumOf = (counts: Record<string, number>) => Object.values(counts).reduce((a, b) => a + b, 0);
 
-/** 更新進度數字（發送中每處理一批呼叫一次；updatedAt 前進表示仍在發送） */
-export async function recordProgress(ctx: TenantCtx, broadcastId: string): Promise<CouponBroadcastSummary> {
+/**
+ * 更新進度數字（發送中每處理一批呼叫一次；updatedAt 前進表示仍在發送）。
+ * runStartedAt 有值時只在這次執行仍擁有廣播時寫入
+ */
+export async function recordProgress(ctx: TenantCtx, broadcastId: string, runStartedAt?: Date): Promise<CouponBroadcastSummary> {
   const s = await getCouponBroadcastSummary(ctx, broadcastId);
   await ctx.tx.broadcast.updateMany({
-    where: { id: broadcastId, tenantId: ctx.tenantId },
+    where: { id: broadcastId, tenantId: ctx.tenantId, ...ownedBy(runStartedAt) },
     data: {
       successCount: s.issued,
       couponIssuedCount: s.issued,
@@ -476,9 +494,9 @@ export async function finalizeCouponBroadcast(
   ctx: TenantCtx,
   plan: CouponBroadcastPlan,
   opts: { stopped?: { code: string; reason: string }; firstError?: string | null; now?: number } = {},
-): Promise<{ status: 'completed' | 'failed'; summary: CouponBroadcastSummary }> {
+): Promise<{ status: 'completed' | 'failed' | 'superseded'; summary: CouponBroadcastSummary }> {
   const { tx, tenantId } = ctx;
-  const s = await recordProgress(ctx, plan.broadcast.id);
+  const s = await recordProgress(ctx, plan.broadcast.id, plan.broadcast.runStartedAt);
   const failed = sumOf(s.failed) + s.pending;
   let status: 'completed' | 'failed' = 'completed';
   let failureCode: string | null = null;
@@ -492,8 +510,8 @@ export async function finalizeCouponBroadcast(
     failureCode = 'ALL_RECIPIENTS_FAILED';
     failureReason = allRecipientsFailedReason(failed, opts.firstError ?? null);
   }
-  await tx.broadcast.updateMany({
-    where: { id: plan.broadcast.id, tenantId },
+  const written = await tx.broadcast.updateMany({
+    where: { id: plan.broadcast.id, tenantId, ...ownedBy(plan.broadcast.runStartedAt) },
     data: {
       status,
       failureCode,
@@ -501,6 +519,8 @@ export async function finalizeCouponBroadcast(
       completedAt: status === 'completed' ? nowDate(opts.now) : null,
     },
   });
+  // 已被新的執行取代：結果由新的執行寫入
+  if (written.count === 0) return { status: 'superseded', summary: s };
   if (plan.material && s.issued > 0) {
     await tx.material.updateMany({
       where: { id: plan.material.id, tenantId },

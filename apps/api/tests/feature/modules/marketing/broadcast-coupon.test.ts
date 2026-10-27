@@ -24,6 +24,9 @@ import { signFanDeviceToken } from '#src/modules/portal/portal-auth.service.js';
 import marketingRoutes from '#src/modules/marketing/marketing.routes.js';
 import { createBroadcast, previewBroadcastAudience } from '#src/modules/marketing/marketing.service.js';
 import {
+  claimCouponBroadcast,
+  finalizeCouponBroadcast,
+  recordProgress,
   getCouponBroadcastSummary,
   prepareRecipients,
   queueCouponBroadcast,
@@ -572,6 +575,37 @@ describe('附券廣播在背景執行且重送不重複發券', () => {
       reserveRecipient(ctx, plan, { contactId: a.contactId, uid: a.uid, channelIdentityId: randomUUID() }));
     assert.equal(again.kind, 'already', '保留時查到收件紀錄就不發券');
     assert.equal((await instancesOf(a, couponId)).length, 1);
+  });
+
+  it('重新排入後，舊的執行不能再保留券或寫入進度與結果', async () => {
+    // PR #364 第三輪審查第 3 項：舊的執行停滯超過 5 分鐘（例如渠道逾時）被重新排入，但它其實還在跑。
+    // 原本兩個執行都能繼續發券、更新進度與最終狀態，後寫入的覆蓋先寫入的
+    const couponId = await coupon(`${MARK}秋R`);
+    const a = await person('rerun-a');
+    const b = await person('rerun-b');
+    const id = await broadcast({ couponId, contacts: [a, b] });
+    const t0 = Date.now();
+    await runInTenant(prisma, T, (ctx) => queueCouponBroadcast(ctx, id, t0));
+    const first = await runInTenant(prisma, T, (ctx) => claimCouponBroadcast(ctx, id, t0));
+    assert.ok(first.ok);
+    // 舊的執行停滯：管理者重新發送，新的執行搶占
+    await owner.$executeRaw`UPDATE broadcasts SET "updatedAt" = now() - interval '10 minutes' WHERE id = ${id}::uuid`;
+    await runInTenant(prisma, T, (ctx) => queueCouponBroadcast(ctx, id, t0 + 1000));
+    const second = await runInTenant(prisma, T, (ctx) => claimCouponBroadcast(ctx, id, t0 + 1000));
+    assert.ok(second.ok);
+
+    const stale = first.ok ? first.plan : (null as never);
+    const reservation = await runInTenant(prisma, T, (ctx) =>
+      reserveRecipient(ctx, stale, { contactId: a.contactId, uid: a.uid, channelIdentityId: randomUUID() }));
+    assert.equal(reservation.kind, 'superseded', '舊的執行不再保留券');
+    assert.equal((await instancesOf(a, couponId)).length, 0);
+
+    await runInTenant(prisma, T, (ctx) => recordProgress(ctx, id, stale.broadcast.runStartedAt));
+    const result = await runInTenant(prisma, T, (ctx) => finalizeCouponBroadcast(ctx, stale, { now: t0 + 2000 }));
+    assert.equal(result.status, 'superseded');
+    const row = await owner.broadcast.findFirst({ where: { id } });
+    assert.equal(row?.status, 'sending', '舊的執行沒有把廣播標成結束');
+    assert.equal(row?.sentAt?.getTime(), t0 + 1000, '仍是新的執行');
   });
 
   it('中斷時發送中的收件人不重送，標為發送中斷', async () => {

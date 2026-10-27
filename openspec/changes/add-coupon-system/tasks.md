@@ -521,6 +521,7 @@
   - 15.16：`follow-event-options.test.ts`（契約先完成，寫好就通過）——事件名稱改掉，「事件清單列出加入好友」失敗；`issue_coupon` 改為 `editorHidden: false`，「發送優惠券不在編輯器的動作選單」失敗；fact 拿掉 `events` 限制，「第一次加入只在加入好友事件提供」失敗
   - PR #364 審查修正（先寫測試、在斷言上失敗後才改程式，不需另做突變）：`material-short-link-placeholder.test.ts`「含變數的連結不換短連結，tagOnClick 仍被移除」；`broadcast-coupon-field.test.tsx`「進行中的行銷券超過 100 張時全部列出」；workers `automation-issue-coupon-recipient.test.ts`「事件的聯絡人與對話的聯絡人不同時，券發給對話的聯絡人」；`broadcast-coupon.test.ts`「中斷時發送中的收件人不重送，標為發送中斷」；`coupon-batch-issue.test.ts`「直接呼叫 service 時勾選的聯絡人也受 1,000 人上限」；`coupon-claim-inbound.test.ts`「領券貼標的到期時間以流程的時間計算」；channel-plugins `line-extra-messages.test.ts`「超過一次 5 則時不呼叫 LINE」；workers `automation-issue-coupon-atomic.test.ts`「寫入券卡訊息失敗時，確認交易整個回滾」（測試用假資料庫補上交易回滾與租戶比對，以舊版假資料庫執行時失敗）
   - PR #364 第二輪審查修正（先寫測試、在斷言上失敗後才改程式）：`use-keyword-replies.test.tsx`「傳送 Facebook 素材的規則：標示原因，儲存時擋下，不改規則」「素材已刪除或已停用：標示原因，沒有改選素材就不能儲存」；`keyword-reply-edit-dialog.test.tsx`「傳送 Facebook 素材的規則：開啟就說明原因，儲存時擋下」；`keyword-reply-material-cell.test.tsx`（列表標示原因）；`broadcast-coupon.test.ts`「預覽與建立用相同的券檢查」。延後項目記在 issue #362
+  - PR #364 第三輪審查修正：`broadcast-coupon.test.ts`「重新排入後，舊的執行不能再保留券或寫入進度與結果」（先在斷言上失敗：舊的執行仍保留了券）。查證不成立：傳訊領券「領取後 N 天」券的效期（領取時間＝保留時的 claimedAt，design D30）、LINE 額度按收件人計算（LINE 官方文件 pricing「How to count the number of messages sent」）
   - 15.15 的刻意變更：`automation-dispatched-events.test.ts` 把 `contact.followed` 視為經 `message.received` 轉送（新事件不是獨立的 eventBus 事件，由自動化訂閱者處理 follow 時另外排入）
 
 ### 工作量
