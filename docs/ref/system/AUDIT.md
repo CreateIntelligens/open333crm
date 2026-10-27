@@ -211,7 +211,7 @@ service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`�
 5. Canvas 引擎（RLS-01）。
 6. 刪除 `TenantDb`、`tenantScopedClient`、`request.tenantPrisma`。
 
-第 2 步已在 change `outbox-event-delivery` 完成（`9c2aff5c` 起）：`ctx.publish`、`ctx.enqueue` 在交易內寫 outbox，至少送出一次；三個訂閱者改從 BullMQ 佇列取得事件，對客人發訊息等副作用以 `side_effect_claims` 認領。自動化訂閱者的認領與寫入改用 `inTenant()`，LLM 階段仍用 `prismaAdmin`。還沒搬遷的程式仍呼叫 `eventBus.publish`，保證是最多一次。
+第 2 步已在 change `outbox-event-delivery` 完成（`9c2aff5c` 起）：`ctx.publish`、`ctx.enqueue`（change `migrate-role-agent-tenant-ctx` 起改成 `publishEvent()`、`enqueueJob()`）在交易內寫 outbox，至少送出一次；三個訂閱者改從 BullMQ 佇列取得事件，對客人發訊息等副作用以 `side_effect_claims` 認領。自動化訂閱者的認領與寫入改用 `inTenant()`，LLM 階段仍用 `prismaAdmin`。還沒搬遷的程式仍呼叫 `eventBus.publish`，保證是最多一次。
 
 搬遷進度看 `scripts/check-tenant-ctx.baseline.json`。`node scripts/check-tenant-ctx.mjs --strict` 在舊寫法增加時失敗。
 
@@ -222,7 +222,7 @@ Socket.IO 房間只有 `tenant:<tenantId>` 帶租戶 ID。`conversation:<id>`、
 
 前端訂閱房間時，`apps/api/src/modules/socket/socket-room-authorization.ts` 會檢查該資料屬於連線的租戶，所以別的租戶的連線進不了這些房間。推播端沒有對應的檢查：`io.to(room)` 只收一個字串。service 用了請求帶進來、沒有經過租戶查詢的 ID 時，推播會送到別的租戶的房間。用 `ctx.tx` 查出來的 ID 受 RLS 約束，不會有這個問題。目前沒有逐一檢查既有的推播呼叫，還沒有發現實際發生的路徑。
 
-新寫法 `ctx.notify()`（`apps/api/src/lib/tenant-ctx.ts`）不讓 service 指定房間：`tenant:` 房間由交易綁定的租戶 ID 組成（`apps/api/src/events/socket-push.ts`），所以不會推到別的租戶的 `tenant:` 房間。`ctx.notifyAgent()` 推到 `tenant:<tenantId>:agent:<agentId>`，房間也由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的這個房間（`socket-room-handlers.ts`）。所以新寫法的推播都不會送到別的租戶。既有程式直接呼叫 `io.to('agent:…')`，仍然無法檢查。新寫法不提供推到 `conversation:` 房間的方法。
+新寫法 `notifyTenant()`（`apps/api/src/events/socket-push.ts`）不讓呼叫端指定房間：`tenant:` 房間由交易綁定的租戶 ID 組成（`apps/api/src/events/socket-push.ts`），所以不會推到別的租戶的 `tenant:` 房間。`notifyAgent()` 推到 `tenant:<tenantId>:agent:<agentId>`，房間也由交易綁定的租戶 ID 組成；成員連線時，伺服器依 token 加入自己的這個房間（`socket-room-handlers.ts`）。所以新寫法的推播都不會送到別的租戶。既有程式直接呼叫 `io.to('agent:…')`，仍然無法檢查。新寫法不提供推到 `conversation:` 房間的方法。
 
 **方向（#342，2026-10-20 定案）。** 定義統一的房間名稱格式，所有房間都以 `tenant:<tenantId>` 開頭，由 `events/socket-push.ts` 組成。新寫法已經做到（`tenant:` 與 `tenant:<tenantId>:agent:` 房間）；剩下的是既有程式的搬遷，以及 `subscribe` 的房間名稱。
 

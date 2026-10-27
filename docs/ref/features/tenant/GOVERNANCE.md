@@ -17,7 +17,7 @@
 
 ## 租戶稽核日誌
 
-各模組在重要操作後呼叫 `writeTenantAudit()`，寫入操作者、動作、對象、`payload` 與 IP。`GET /tenant/audit-logs` 可以依動作、操作者與時間區間查詢，每頁最多 100 筆。
+各模組在重要操作後寫入租戶稽核：操作者、動作、對象、`payload` 與 IP。已搬到 `TenantCtx` 的模組（例如 `role`、`agent`）由 flow 呼叫 `recordTenantAudit()`，稽核與資料一起 commit，寫入失敗時整筆 rollback；其他模組仍呼叫 `writeTenantAudit()`，寫入失敗只記 log。`GET /tenant/audit-logs` 可以依動作、操作者與時間區間查詢，每頁最多 100 筆。
 
 目前會寫稽核的動作：
 

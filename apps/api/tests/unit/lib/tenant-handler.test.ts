@@ -9,22 +9,10 @@ import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, test } from 'vitest';
 import errorHandlerPlugin from '#src/plugins/error-handler.plugin.js';
 import { tenantHandler } from '#src/lib/tenant-ctx.js';
 import { AppError } from '#src/shared/utils/response.js';
-
-// 快路徑換成記錄呼叫：確認 commit 之後才送出
-const dispatched = vi.hoisted(() => [] as Array<{ db: unknown; names: string[] }>);
-vi.mock('@open333crm/core', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@open333crm/core')>();
-  return {
-    ...original,
-    dispatchOutboxRows: async (db: unknown, rows: Array<{ name: string }>) => {
-      dispatched.push({ db, names: rows.map((r) => r.name) });
-    },
-  };
-});
 
 const TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
@@ -33,15 +21,7 @@ let log: string[] = [];
 let commitError: Error | null = null;
 let handlerRan = false;
 
-const tx = {
-  $executeRaw: async () => 1,
-  outbox: {
-    async create(args: { data: { name: string; tenantId: string } }) {
-      log.push(`write:${args.data.name}`);
-      return { id: 'o1', ...args.data, createdAt: new Date() };
-    },
-  },
-};
+const tx = { $executeRaw: async () => 1 };
 
 const prisma = {
   async $transaction(cb: (t: typeof tx) => Promise<unknown>) {
@@ -51,18 +31,9 @@ const prisma = {
     return result;
   },
 };
-const io = {
-  to: () => ({
-    emit: (event: string) => {
-      log.push(`push:${event}`);
-    },
-  }),
-};
-
 beforeAll(async () => {
   app = Fastify();
   app.decorate('prisma', prisma as never);
-  app.decorate('io', io as never);
   await app.register(errorHandlerPlugin);
   // 模擬 auth：帶 x-tenant 才有租戶身分
   app.addHook('onRequest', async (request) => {
@@ -77,7 +48,6 @@ beforeAll(async () => {
     tenantHandler(app, async (_request, reply, ctx) => {
       handlerRan = true;
       reply.code(201);
-      ctx.notify('case.created', {});
       log.push('handler-end');
       return { success: true, data: { tenantId: ctx.tenantId } };
     }),
@@ -85,9 +55,8 @@ beforeAll(async () => {
 
   app.post(
     '/conflict',
-    tenantHandler(app, async (_request, _reply, ctx) => {
+    tenantHandler(app, async (_request, _reply) => {
       handlerRan = true;
-      ctx.notify('case.created', {});
       throw new AppError('重複', 'CONFLICT', 409);
     }),
   );
@@ -101,38 +70,12 @@ beforeAll(async () => {
   );
 
   app.post(
-    '/publish',
-    tenantHandler(app, async (_request, _reply, ctx) => {
-      await ctx.publish('case.resolved', { caseId: 'c1' });
-      log.push('handler-end');
-      return { success: true };
-    }),
-  );
-
-  app.post(
     '/header',
     tenantHandler(app, async (_request, reply) => {
       reply.code(201).header('location', '/created/1');
       return { success: true };
     }),
   );
-
-  // onSend 只掛在這個子 plugin，記下回應送出的時間點，不影響其他 route 的 log
-  await app.register(async (scoped) => {
-    scoped.addHook('onSend', async () => {
-      log.push('send');
-    });
-    scoped.post(
-      '/after-commit',
-      tenantHandler(scoped, async (_request, _reply, ctx) => {
-        ctx.afterCommit('slow', async () => {
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          log.push('after:end');
-        });
-        return { success: true };
-      }),
-    );
-  });
 
   await app.ready();
 });
@@ -143,7 +86,6 @@ afterAll(async () => {
 
 beforeEach(() => {
   log = [];
-  dispatched.length = 0;
   commitError = null;
   handlerRan = false;
 });
@@ -152,10 +94,10 @@ test('成功時回應交易內程式的結果', async () => {
   const res = await app.inject({ method: 'POST', url: '/ok', headers: { 'x-tenant': TENANT_ID } });
   assert.equal(res.statusCode, 201);
   assert.deepEqual(res.json(), { success: true, data: { tenantId: TENANT_ID } });
-  assert.deepEqual(log, ['handler-end', 'commit', 'push:case.created']);
+  assert.deepEqual(log, ['handler-end', 'commit']);
 });
 
-test('交易內程式丟出錯誤：回應錯誤，登記的推播不送出', async () => {
+test('交易內程式丟出錯誤：回應錯誤', async () => {
   const res = await app.inject({ method: 'POST', url: '/conflict', headers: { 'x-tenant': TENANT_ID } });
   assert.equal(res.statusCode, 409);
   assert.equal(res.json().error.code, 'CONFLICT');
@@ -194,7 +136,7 @@ test('commit 成功：回應帶交易內設定的狀態碼與 header', async () 
   assert.equal(res.headers.location, '/created/1');
 });
 
-test('型別：交易內的 reply 不能送出回應，推播名稱依種類限制', { timeout: 120_000 }, async () => {
+test('型別：交易內的 reply 不能送出回應，TenantCtx 不能登記副作用，推播名稱依種類限制', { timeout: 120_000 }, async () => {
   // tests/ 不在 apps/api 的 tsconfig 裡，另以 tests/types/tsconfig.json 檢查 tenant-handler.types.ts。
   // 該檔用 @ts-expect-error 標出不能編譯的寫法；限制被拿掉時，@ts-expect-error 沒有用到，tsc 失敗。
   const apiRoot = fileURLToPath(new URL('../../../', import.meta.url));
@@ -205,17 +147,4 @@ test('型別：交易內的 reply 不能送出回應，推播名稱依種類限�
     const e = err as { stdout?: string; stderr?: string };
     assert.fail(`tsc 型別檢查失敗：\n${e.stdout ?? ''}${e.stderr ?? ''}`);
   }
-});
-
-test('事件在交易內寫 outbox，commit 之後交給快路徑', async () => {
-  const res = await app.inject({ method: 'POST', url: '/publish', headers: { 'x-tenant': TENANT_ID } });
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(log, ['write:case.resolved', 'handler-end', 'commit']);
-  assert.deepEqual(dispatched.map((d) => d.names), [['case.resolved']]);
-});
-
-test('afterCommit 的動作完成之後才送出回應', async () => {
-  const res = await app.inject({ method: 'POST', url: '/after-commit', headers: { 'x-tenant': TENANT_ID } });
-  assert.equal(res.statusCode, 200, res.body);
-  assert.deepEqual(log, ['commit', 'after:end', 'send']);
 });

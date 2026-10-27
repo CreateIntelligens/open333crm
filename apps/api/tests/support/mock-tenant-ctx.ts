@@ -1,50 +1,40 @@
 /**
- * service 單元測試用的 TenantCtx（change tenant-transaction-context）。
+ * 單元測試用的 TenantCtx 與 TenantScope（change tenant-transaction-context、migrate-role-agent-tenant-ctx）。
  *
- * tx 用呼叫端給的 mock，只需實作 service 會呼叫的 model 方法。
- * notify、notifyAgent、publish、enqueue、afterCommit 只依呼叫順序記錄，不送出也不執行；
- * 「commit 之後才送出」由 inTenant() 自己的測試負責。
+ * tx 用呼叫端給的 mock，只需實作被測程式會呼叫的 model 方法。
+ * - createMockTenantCtx：給 service，只有 tx 與 tenantId。
+ * - createMockTenantScope：給 flow，afterCommit 只依呼叫順序記錄；測試要模擬 commit 時呼叫 commit()。
+ *   推播、事件、job 都經由 afterCommit 登記，所以 commit() 之後才會記到假的 io 或 publisher。
+ * 「commit 之後才執行」由 inTenant() 自己的測試負責。
  */
-import type { JobsOptions } from 'bullmq';
-import type { TenantCtx } from '#src/lib/tenant-ctx.js';
-import type { AppEventName } from '#src/events/event-bus.js';
-import { agentPushRoom, tenantPushRoom } from '#src/events/socket-push.js';
+import type { TenantCtx, TenantScope } from '#src/lib/tenant-ctx.js';
 
 export const MOCK_TENANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
-export interface MockTenantCtx {
-  ctx: TenantCtx;
-  /** room 是系統決定的房間，與 inTenant() 相同 */
-  pushed: Array<{ room: string; name: string; data: unknown }>;
-  published: Array<{ name: AppEventName; payload: Record<string, unknown> }>;
-  enqueued: Array<{ queueName: string; name: string; data: unknown; opts?: JobsOptions }>;
-  /** 測試要模擬 commit 時，自己依序呼叫 fn */
-  afterCommitted: Array<{ label: string; fn: () => void | Promise<void> }>;
+export function createMockTenantCtx(tx: unknown, tenantId: string = MOCK_TENANT_ID): { ctx: TenantCtx } {
+  return { ctx: { tx: tx as TenantCtx['tx'], tenantId } };
 }
 
-export function createMockTenantCtx(tx: unknown, tenantId: string = MOCK_TENANT_ID): MockTenantCtx {
-  const pushed: MockTenantCtx['pushed'] = [];
-  const published: MockTenantCtx['published'] = [];
-  const enqueued: MockTenantCtx['enqueued'] = [];
-  const afterCommitted: MockTenantCtx['afterCommitted'] = [];
-  const ctx: TenantCtx = {
-    tx: tx as TenantCtx['tx'],
-    tenantId,
-    notify(name, data) {
-      pushed.push({ room: tenantPushRoom(tenantId), name, data });
+export interface MockTenantScope {
+  scope: TenantScope;
+  afterCommitted: Array<{ label: string; fn: () => unknown }>;
+  /** 依登記順序執行 afterCommit 的動作，與 inTenant() 相同 */
+  commit(): Promise<void>;
+}
+
+export function createMockTenantScope(tx: unknown, tenantId: string = MOCK_TENANT_ID): MockTenantScope {
+  const afterCommitted: MockTenantScope['afterCommitted'] = [];
+  return {
+    scope: {
+      tx: tx as TenantCtx['tx'],
+      tenantId,
+      afterCommit(label, fn) {
+        afterCommitted.push({ label, fn });
+      },
     },
-    notifyAgent(agentId, name, data) {
-      pushed.push({ room: agentPushRoom(tenantId, agentId), name, data });
-    },
-    async publish(name, payload) {
-      published.push({ name, payload });
-    },
-    async enqueue(queueName, name, data, opts) {
-      enqueued.push({ queueName, name, data, opts });
-    },
-    afterCommit(label, fn) {
-      afterCommitted.push({ label, fn });
+    afterCommitted,
+    async commit() {
+      for (const { fn } of afterCommitted) await fn();
     },
   };
-  return { ctx, pushed, published, enqueued, afterCommitted };
 }

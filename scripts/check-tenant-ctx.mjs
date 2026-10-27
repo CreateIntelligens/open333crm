@@ -5,6 +5,9 @@
  * 搬遷 ratchet（issue #337，主規格 tenant-transaction-context）：舊寫法的數量只減不增。
  * 新寫法是「入口以 inTenant() / tenantHandler() 開交易，service 只收 TenantCtx」。
  * 本腳本計算下列寫法在每個檔案的次數，與基準檔比較；任一檔案的次數變多就算增加。
+ * service 檔直接 import Redis client 或 LLM 入口也算舊寫法：這些依賴不經過參數，型別擋不住
+ * 「交易內不呼叫外部服務」「commit 之後才清快取」，要由 flow 注入（change migrate-role-agent-tenant-ctx）。
+ * 只算值的 import；`import type` 與 `{ type X }` 不算。
  * 以檔案為單位比較，避免一個檔案減少、另一個檔案增加互相抵銷。
  *
  * 用文字比對計數，註解裡的字也會算到；基準檔用同樣的方式產生，所以不影響「只減不增」。
@@ -51,6 +54,18 @@ const PATTERNS = [
   { name: 'service 內的 withTenant(', re: /\bwithTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 $transaction(', re: /\$transaction\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
   { name: 'service 內的 inTenant(', re: /\binTenant\s*(?:<[^>()]*>\s*)?\(/g, applies: isServiceFile },
+  // Redis：core 的 redis singleton，或 ioredis 的預設、具名（Redis）import
+  {
+    name: 'service 直接 import Redis client',
+    re: /^import\s+(?!type\b)(?:\{[^}]*(?<!type\s)\bredis\b[^}]*\}\s*from\s*'@open333crm\/core'|\w+(?:\s*,\s*\{[^}]*\})?\s*from\s*'ioredis'|\{[^}]*(?<!type\s)\bRedis\b[^}]*\}\s*from\s*'ioredis')/gm,
+    applies: isServiceFile,
+  },
+  // LLM：llm.service 的 generateReply，或 providers 的 getChatProvider
+  {
+    name: 'service 直接 import LLM 入口',
+    re: /^import\s+(?!type\b)\{[^}]*(?<!type\s)\b(?:generateReply|getChatProvider)\b[^}]*\}\s*from\s*'[^']*(?:llm\.service|providers\/index)\.js'/gm,
+    applies: isServiceFile,
+  },
 ];
 
 function walk(dir, out = []) {

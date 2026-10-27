@@ -9,7 +9,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { inTenant } from '#src/lib/tenant-ctx.js';
-import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
 const ADMIN_URL = process.env.DATABASE_URL_ADMIN;
@@ -23,7 +22,6 @@ if (!TENANT_URL || !ADMIN_URL) {
 const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
 const adminDb = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 const MARK = `outbox-rls-${randomUUID()}`;
-const deps = { prisma: tenantDb, events: createOutboxPublisher(tenantDb) };
 
 afterAll(async () => {
   await adminDb.outbox.deleteMany({ where: { name: MARK } });
@@ -34,7 +32,7 @@ afterAll(async () => {
 
 test('寫入別的租戶的事件', async () => {
   await assert.rejects(
-    inTenant(deps, TENANT_A, (ctx) =>
+    inTenant(tenantDb, TENANT_A, (ctx) =>
       ctx.tx.outbox.create({ data: { tenantId: TENANT_B, kind: 'event', name: MARK, payload: {} } }),
     ),
     /row-level security/,
@@ -49,7 +47,7 @@ test('outbox：綁定租戶 A 的交易看不到租戶 B 的事件', async () =>
       { tenantId: TENANT_B, kind: 'event', name: MARK, payload: {} },
     ],
   });
-  const rows = await inTenant(deps, TENANT_A, (ctx) =>
+  const rows = await inTenant(tenantDb, TENANT_A, (ctx) =>
     ctx.tx.outbox.findMany({ where: { name: MARK }, select: { tenantId: true } }),
   );
   assert.deepEqual(rows.map((r) => r.tenantId), [TENANT_A]);
@@ -57,7 +55,7 @@ test('outbox：綁定租戶 A 的交易看不到租戶 B 的事件', async () =>
 
 test('認領紀錄：不能寫入別的租戶', async () => {
   await assert.rejects(
-    inTenant(deps, TENANT_A, (ctx) =>
+    inTenant(tenantDb, TENANT_A, (ctx) =>
       ctx.tx.sideEffectClaim.create({ data: { tenantId: TENANT_B, kind: MARK, sourceId: randomUUID() } }),
     ),
     /row-level security/,
@@ -72,7 +70,7 @@ test('認領紀錄：綁定租戶 A 的交易看不到租戶 B 的紀錄', async
       { tenantId: TENANT_B, kind: MARK, sourceId: randomUUID() },
     ],
   });
-  const rows = await inTenant(deps, TENANT_A, (ctx) =>
+  const rows = await inTenant(tenantDb, TENANT_A, (ctx) =>
     ctx.tx.sideEffectClaim.findMany({ where: { kind: MARK }, select: { tenantId: true } }),
   );
   assert.deepEqual(rows.map((r) => r.tenantId), [TENANT_A]);

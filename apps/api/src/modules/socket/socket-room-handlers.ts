@@ -50,7 +50,7 @@ export function registerRoomHandlers(
   // Auto-join tenant room and agent-specific room
   socket.join(`tenant:${tenantId}`);
   socket.join(`agent:${agentId}`);
-  // 帶租戶 ID 的成員房間：ctx.notifyAgent() 推到這裡，別的租戶的推播到不了（events/socket-push.ts）
+  // 帶租戶 ID 的成員房間：notifyAgent()（events/socket-push.ts）推到這裡，別的租戶的推播到不了（events/socket-push.ts）
   socket.join(agentPushRoom(tenantId, agentId));
 
   // subscribe 與 unsubscribe 共用同一個計數

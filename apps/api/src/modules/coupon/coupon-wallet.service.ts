@@ -96,7 +96,7 @@ async function trustsDevice(ctx: TenantCtx, liveId: string, deviceTokens: readon
   return false;
 }
 
-/** 確認身分後開啟票券：記錄已領取、推播，回傳顧客憑證與換新的裝置憑證 */
+/** 確認身分後開啟票券：記錄已領取，回傳顧客憑證與換新的裝置憑證。推播由 flow 依 status 'ok' 決定 */
 async function grantWalletSession(
   ctx: TenantCtx,
   deps: Pick<WalletDeps, 'now'>,
@@ -110,8 +110,6 @@ async function grantWalletSession(
     where: { id: instanceId, tenantId, contactId: liveId, viewedAt: null },
     data: { viewedAt: new Date(nowOf(deps)) },
   });
-  // 收件匣「已發優惠券」重新載入（design D23）
-  ctx.notify('coupon.instance.updated', { instanceId, contactId: liveId, change: 'viewed' });
   return {
     status: 'ok',
     fanToken: signFanToken(liveId, tenantId),
@@ -292,10 +290,15 @@ export async function redeemSelf(
   ctx: TenantCtx,
   fan: FanIdentity,
   instanceId: string,
-): Promise<{ ok: true; redeemedAt: Date; couponName: string } | { ok: false; reason: 'NOT_FOUND' | RedeemFailure }> {
+): Promise<
+  | { ok: true; redeemedAt: Date; couponName: string; instanceId: string; contactId: string | null }
+  | { ok: false; reason: 'NOT_FOUND' | RedeemFailure }
+> {
   if (!(await isOwnedByFan(ctx, fan, instanceId))) return { ok: false, reason: 'NOT_FOUND' };
   const result = await redeemCoupon(ctx, { instanceId, selfService: true, redeemedBy: null, redeemChannel: 'fan_self' });
-  return result.ok ? { ok: true, redeemedAt: result.redeemedAt, couponName: result.couponName } : { ok: false, reason: result.reason };
+  return result.ok
+    ? { ok: true, redeemedAt: result.redeemedAt, couponName: result.couponName, instanceId: result.instanceId, contactId: result.contactId }
+    : { ok: false, reason: result.reason };
 }
 
 // ── 店員掃碼券的 QR Code ───────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 本文件說明租戶後台怎麼決定一個成員能做什麼：權限碼從哪裡來、有效權限怎麼算、快取什麼時候失效、渠道可見範圍怎麼判斷，以及新增權限碼時要做哪些事。呼叫者的身分怎麼確認，見[認證與憑證](./AUTHENTICATION.md)；角色與權限頁的操作規則（防越權、管理員鎖定、防自鎖），見[人員與角色](../features/tenant/MEMBERS.md#角色與權限)。
 
-- **資料來源**：`packages/core/src/rbac/*`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/services/permission.service.ts`、`apps/api/src/services/tenant-plan.cache.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/socket/socket-room-authorization.ts`、`apps/api/src/modules/role/role.service.ts`、`apps/api/src/index.ts`、`scripts/reconcile-system-role-permissions.mjs`、`packages/database/prisma/seed-data/rbac-roles.ts`、`apps/web/src/providers/AuthProvider.tsx`、`apps/web/src/components/layout/Sidebar.tsx`
+- **資料來源**：`packages/core/src/rbac/*`、`apps/api/src/guards/rbac.guard.ts`、`apps/api/src/services/permission.service.ts`、`apps/api/src/services/tenant-plan.cache.ts`、`apps/api/src/services/channel-visibility.ts`、`apps/api/src/modules/socket/socket-room-authorization.ts`、`apps/api/src/modules/role/role.service.ts`、`apps/api/src/modules/role/role.flow.ts`、`apps/api/src/index.ts`、`scripts/reconcile-system-role-permissions.mjs`、`packages/database/prisma/seed-data/rbac-roles.ts`、`apps/web/src/providers/AuthProvider.tsx`、`apps/web/src/components/layout/Sidebar.tsx`
 - **核對日期**：2026-09-30
 
 ## 這份文件回答的問題
@@ -100,7 +100,7 @@ flowchart LR
 
 | 快取的內容 | 存放位置 | 有效期 | 誰清除 |
 | --- | --- | --- | --- |
-| 角色權限（已展開 `implies`） | Redis `perms:role:<roleId>` | 10 分鐘 | `invalidateRolePermissions()`：儲存或刪除角色時 |
+| 角色權限（已展開 `implies`） | Redis `perms:role:<roleId>` | 10 分鐘 | `invalidateRolePermissions()`：儲存或刪除角色時，commit 之後、回應之前（`role.flow.ts`） |
 | 有效權限 | Redis `perms:tenant:<roleId>:<planId>` | 10 分鐘 | `invalidateRolePermissions()`；`invalidatePlanPermissions()`：修改方案、核准方案異動、試用轉正式、平台修改租戶方案時 |
 | 租戶的方案 | API 行程記憶體 | 60 秒 | `invalidateTenantPlan()`：只清除處理這個請求的行程，其他 API 行程最多延遲 60 秒 |
 | 成員的 `roleId` | access token | token 的有效期 | 換發 token 時重讀，見[認證與憑證](./AUTHENTICATION.md#客服的登入與換發) |

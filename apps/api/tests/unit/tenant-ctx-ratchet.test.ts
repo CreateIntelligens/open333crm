@@ -3,6 +3,7 @@
  *
  * scripts/check-tenant-ctx.mjs 計算 TenantDb、request.tenantPrisma，以及 service 檔內的
  * withTenant(、$transaction(、inTenant( 次數，以檔案為單位與基準檔比較。
+ * service 檔直接 import Redis client 或 LLM 入口的次數也一起比較（change migrate-role-agent-tenant-ctx）。
  * 目前沒有 CI，這個測試讓 `pnpm test` 執行它。
  */
 import assert from 'node:assert/strict';
@@ -118,6 +119,38 @@ test('route 檔內的 inTenant( 不算：入口本來就該開交易', { timeout
     'const y = request.tenantPrisma;',
     'await inTenant(deps, tenantId, fn);',
   ]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 0, output);
+});
+
+test('service 檔直接 import Redis client：算增加', { timeout: 30_000 }, async () => {
+  await put('modules/r1/r1.service.ts', ["import { logger, redis } from '@open333crm/core';"]);
+  await put('modules/r2/r2.service.ts', ["import IORedis from 'ioredis';"]);
+  await put('modules/r3/r3.service.ts', ["import { Redis } from 'ioredis';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /Redis client/);
+  for (const f of ['r1', 'r2', 'r3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.service\\.ts`));
+});
+
+test('service 檔直接 import LLM 入口：算增加', { timeout: 30_000 }, async () => {
+  await put('modules/l1/l1.service.ts', ["import { generateReply } from '../ai/llm.service.js';"]);
+  await put('modules/l2/l2.service.ts', ["import { getChatProvider } from '../ai/providers/index.js';"]);
+  const { code, output } = await check(args('--strict'));
+  assert.equal(code, 1, output);
+  assert.match(output, /LLM/);
+  assert.match(output, /modules\/l1\/l1\.service\.ts/);
+  assert.match(output, /modules\/l2\/l2\.service\.ts/);
+});
+
+test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout: 30_000 }, async () => {
+  await put('modules/t1/t1.service.ts', [
+    "import type { Redis } from 'ioredis';",
+    "import type { HistoryMessage } from '../ai/llm.service.js';",
+    "import { type Redis as R } from 'ioredis';",
+  ]);
+  await put('modules/t2/t2.flow.ts', ["import { redis } from '@open333crm/core';", "import { generateReply } from '../ai/llm.service.js';"]);
+  await put('modules/t3/t3.routes.ts', ["import IORedis from 'ioredis';"]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 0, output);
 });

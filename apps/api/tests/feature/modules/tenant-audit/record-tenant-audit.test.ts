@@ -9,7 +9,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { inTenant } from '#src/lib/tenant-ctx.js';
-import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { recordTenantAudit } from '#src/modules/tenant-audit/tenant-audit.service.js';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
@@ -23,7 +22,6 @@ if (!TENANT_URL || !ADMIN_URL) {
 const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
 const adminDb = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 const MARK = `record-audit-${randomUUID()}`;
-const deps = { prisma: tenantDb, events: createOutboxPublisher(tenantDb) };
 
 afterAll(async () => {
   await adminDb.tenantAuditLog.deleteMany({ where: { action: { startsWith: MARK } } });
@@ -38,7 +36,7 @@ function createRole(tx: Parameters<Parameters<typeof inTenant>[2]>[0]['tx'], ten
 
 test('稽核與主操作一起寫入', async () => {
   const name = `${MARK}-ok`;
-  await inTenant(deps, TENANT_A, async (ctx) => {
+  await inTenant(tenantDb, TENANT_A, async (ctx) => {
     const role = await createRole(ctx.tx, ctx.tenantId, name);
     await recordTenantAudit(ctx, { action: `${MARK}.role.create`, targetType: 'role', targetId: role.id });
   });
@@ -53,7 +51,7 @@ test('稽核與主操作一起寫入', async () => {
 test('稽核寫入失敗時主操作 rollback', async () => {
   const name = `${MARK}-rollback`;
   await assert.rejects(
-    inTenant(deps, TENANT_A, async (ctx) => {
+    inTenant(tenantDb, TENANT_A, async (ctx) => {
       await createRole(ctx.tx, ctx.tenantId, name);
       // 不存在的成員：違反 tenant_audit_logs.actor_id 的外鍵
       await recordTenantAudit(ctx, { actorId: randomUUID(), action: `${MARK}.role.fail` });

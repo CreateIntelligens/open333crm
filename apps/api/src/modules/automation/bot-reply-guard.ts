@@ -11,11 +11,11 @@
  */
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { claimSideEffect, hasSideEffectClaim, type SideEffectKey } from '@open333crm/core';
-import { inTenant, type TenantCtx, type TenantCtxDeps } from '../../lib/tenant-ctx.js';
+import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
 
 export interface BotReplyGuard {
   alreadyReplied(): Promise<boolean>;
-  persist<T>(write: (tx: Prisma.TransactionClient, ctx: TenantCtx) => Promise<T | null>): Promise<T | null>;
+  persist<T>(write: (tx: Prisma.TransactionClient, scope: TenantScope) => Promise<T | null>): Promise<T | null>;
 }
 
 const NOT_WRITTEN = Symbol('bot-reply-not-written');
@@ -30,10 +30,10 @@ export class ClaimTransactionError extends Error {
 
 /**
  * inboundMessageId 沒有值時（舊資料的事件）不認領，行為與加上認領之前相同。
- * adminDb 用在交易外的檢查，查詢自帶 tenantId。
+ * tenantPrisma 是 inTenant() 的基礎連線；adminDb 用在交易外的檢查，查詢自帶 tenantId。
  */
 export function createBotReplyGuard(
-  deps: TenantCtxDeps,
+  tenantPrisma: PrismaClient,
   adminDb: Pick<PrismaClient, 'sideEffectClaim'>,
   tenantId: string,
   inboundMessageId: string | undefined,
@@ -43,9 +43,9 @@ export function createBotReplyGuard(
     alreadyReplied: async () => (key ? hasSideEffectClaim(adminDb, key) : false),
     async persist(write) {
       try {
-        return await inTenant(deps, tenantId, async (ctx) => {
-          if (key && !(await claimSideEffect(ctx.tx, key))) return null;
-          const written = await write(ctx.tx, ctx);
+        return await inTenant(tenantPrisma, tenantId, async (scope) => {
+          if (key && !(await claimSideEffect(scope.tx, key))) return null;
+          const written = await write(scope.tx, scope);
           // 沒有寫入回覆：丟錯讓交易 rollback，認領紀錄不留下，之後的回覆仍可認領
           if (written === null) throw NOT_WRITTEN;
           return written;

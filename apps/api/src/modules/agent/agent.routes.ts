@@ -1,31 +1,31 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { success, AppError } from '../../shared/utils/response.js';
+import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { listChannelsForAgent, setAgentChannels } from '../../services/channel-team-access.js';
+import { listChannelsForAgent } from '../../services/channel-team-access.js';
 import {
   createAgentSchema,
   updateAgentRoleSchema,
   changePasswordSchema,
   resetPasswordSchema,
 } from './agent.schema.js';
+import { listAgents } from './agent.service.js';
 import {
-  createAgent,
-  updateAgentRole,
-  changeOwnPassword,
-  resetAgentPassword,
-  deactivateAgent,
-  purgeAgent,
-  listAgents,
-  reactivateAgent,
-} from './agent.service.js';
-import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+  changeOwnPasswordFlow,
+  createAgentFlow,
+  deactivateAgentFlow,
+  purgeAgentFlow,
+  reactivateAgentFlow,
+  resetAgentPasswordFlow,
+  setAgentChannelsFlow,
+  updateAgentRoleFlow,
+} from './agent.flow.js';
 import { tenantHandler } from '../../lib/tenant-ctx.js';
-import { hashPassword } from '../../shared/utils/password.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { resolveChannelGrantScope } from '../../services/channel-visibility.js';
 
-// 每個 handler 在一個綁定租戶的交易內執行（tenantHandler）：寫入與稽核一起 commit。
-// bcrypt 在進入交易之前先做，不佔住交易與連線。
+// 查詢以 tenantHandler() 在綁定租戶的交易內執行；寫入都有稽核，經過 agent.flow
+//（bcrypt、寫入與稽核的順序都在 flow，AGENTS.md 結構規則 2）。
 export default async function agentRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
@@ -40,74 +40,34 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     return success(await listAgents(ctx, false));
   }));
 
-  // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護）
+  // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護，在 service）
   fastify.post('/', {
     preHandler: [requirePermission('agent.manage')],
   }, async (request, reply) => {
     const body = createAgentSchema.parse(request.body);
-
-    // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403。
-    // 渠道可見範圍是 fail-closed：建立成員與寫入可見渠道在同一個交易，可指派範圍依建立者的權限決定。
+    // 可指派的渠道範圍依建立者的權限決定（交易外讀取，design Non-Goals）
     const grantable = await resolveChannelGrantScope(request);
-    const passwordHash = await hashPassword(body.password);
-    return tenantHandler(fastify, async (req, tenantReply, ctx) => {
-      const agent = await createAgent(ctx, body, req.agent.roleId, {
-        grantable,
-        grantedById: req.agent.id,
-        passwordHash,
-      });
-      // 稽核：建立成員（payload 只放非 PII 摘要——email 不入 payload，改用 targetId 對應 agent）
-      await recordTenantAudit(ctx, {
-        actorId: req.agent.id,
-        action: 'agent.create',
-        targetType: 'agent',
-        targetId: agent.id,
-        payload: { role: agent.role },
-        ip: req.ip,
-      });
-      tenantReply.status(201);
-      return success(agent);
-    })(request, reply);
+    const agent = await createAgentFlow(fastify, actorOf(request), { data: body, grantable });
+    return reply.status(201).send(success(agent));
   });
 
   // PATCH /api/v1/agents/me/password — any authenticated agent
   // Must be defined before /:id routes to avoid route conflict
   fastify.patch('/me/password', async (request, reply) => {
     const body = changePasswordSchema.parse(request.body);
-    const newPasswordHash = await hashPassword(body.newPassword);
-    return tenantHandler(fastify, async (req, _tenantReply, ctx) => {
-      await changeOwnPassword(ctx, req.agent.id, body.currentPassword, newPasswordHash);
-      return success({ message: '密碼已更新' });
-    })(request, reply);
+    await changeOwnPasswordFlow(fastify, actorOf(request), body.currentPassword, body.newPassword);
+    return reply.send(success({ message: '密碼已更新' }));
   });
 
-  // PATCH /api/v1/agents/:id/role — 需 agent.role.assign（指派角色專用權限；越權防護在 service 層）
+  // PATCH /api/v1/agents/:id/role — 需 agent.role.assign（越權防護與自我降級守門在 service）
   fastify.patch('/:id/role', {
     preHandler: [requirePermission('agent.role.assign')],
-  }, tenantHandler(fastify, async (request, _reply, ctx) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateAgentRoleSchema.parse(request.body);
-
-    // 越權防護：不可指派權限超出自身有效權限的角色 → ROLE_ESCALATION 403
-    // 傳操作者本人 agentId（request.agent.id）供 service 做自我降級守門 → SELF_LOCK 422
-    const agent = await updateAgentRole(
-      ctx,
-      id,
-      { role: body.role, roleId: body.roleId },
-      request.agent.roleId,
-      request.agent.id,
-    );
-    // 稽核：指派/變更成員角色
-    await recordTenantAudit(ctx, {
-      actorId: request.agent.id,
-      action: 'agent.role.assign',
-      targetType: 'agent',
-      targetId: id,
-      payload: { role: agent.role, roleId: body.roleId ?? null },
-      ip: request.ip,
-    });
-    return success(agent);
-  }));
+    const agent = await updateAgentRoleFlow(fastify, actorOf(request), id, { role: body.role, roleId: body.roleId });
+    return reply.send(success(agent));
+  });
 
   // PATCH /api/v1/agents/:id/password — 需 agent.password.reset (reset another agent's password)
   fastify.patch('/:id/password', {
@@ -115,76 +75,36 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = resetPasswordSchema.parse(request.body);
-    const passwordHash = await hashPassword(body.newPassword);
-    return tenantHandler(fastify, async (req, _tenantReply, ctx) => {
-      await resetAgentPassword(ctx, id, passwordHash);
-      // 稽核：重設他人密碼（絕不記錄密碼明文，只記操作事實）
-      await recordTenantAudit(ctx, {
-        actorId: req.agent.id,
-        action: 'agent.password.reset',
-        targetType: 'agent',
-        targetId: id,
-        ip: req.ip,
-      });
-      return success({ message: '密碼已重設' });
-    })(request, reply);
+    await resetAgentPasswordFlow(fastify, actorOf(request), id, body.newPassword);
+    return reply.send(success({ message: '密碼已重設' }));
   });
 
   // POST /api/v1/agents/:id/deactivate — 需 agent.deactivate (停用，可再啟用、保留 email)
   fastify.post('/:id/deactivate', {
     preHandler: [requirePermission('agent.deactivate')],
-  }, tenantHandler(fastify, async (request, reply, ctx) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    // 防呆：不可停用自己（避免自我鎖定）
-    if (request.agent.id === id) {
-      throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
-    }
-    await deactivateAgent(ctx, id);
-    await recordTenantAudit(ctx, {
-      actorId: request.agent.id,
-      action: 'agent.deactivate',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
-    reply.status(204);
-  }));
+    await deactivateAgentFlow(fastify, actorOf(request), id);
+    return reply.status(204).send();
+  });
 
   // POST /api/v1/agents/:id/reactivate — 需 agent.deactivate（停用可以復原，角色維持停用前）
   fastify.post('/:id/reactivate', {
     preHandler: [requirePermission('agent.deactivate')],
-  }, tenantHandler(fastify, async (request, reply, ctx) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    await reactivateAgent(ctx, id);
-    await recordTenantAudit(ctx, {
-      actorId: request.agent.id,
-      action: 'agent.reactivate',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
-    reply.status(204);
-  }));
+    await reactivateAgentFlow(fastify, actorOf(request), id);
+    return reply.status(204).send();
+  });
 
   // DELETE /api/v1/agents/:id — 需 agent.purge (永久刪除、釋放 email、不可復原)
   fastify.delete('/:id', {
     preHandler: [requirePermission('agent.purge')],
-  }, tenantHandler(fastify, async (request, reply, ctx) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    // 防呆：不可刪除自己（自我鎖定；且刪除後稽核以已刪 actorId 寫入會撞 FK）
-    if (request.agent.id === id) {
-      throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
-    }
-    await purgeAgent(ctx, id);
-    await recordTenantAudit(ctx, {
-      actorId: request.agent.id,
-      action: 'agent.purge',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
-    reply.status(204);
-  }));
+    await purgeAgentFlow(fastify, actorOf(request), id);
+    return reply.status(204).send();
+  });
 
   // ─── Agent 直綁渠道（CM-173 延伸）─────────────────────────────────────────
   // 「一個帳號＝一個分店」：人員設定直接勾選可用渠道，可見性與 team 授權取聯集。
@@ -201,18 +121,10 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   // PUT /api/v1/agents/:id/channels — 整組替換該成員的可用渠道
   fastify.put('/:id/channels', {
     preHandler: [requirePermission('channel.assign_team')],
-  }, tenantHandler(fastify, async (request, _reply, ctx) => {
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = z.object({ channelIds: z.array(z.string().uuid()).max(200) }).parse(request.body);
-    const result = await setAgentChannels(ctx, id, body.channelIds, request.agent.id);
-    await recordTenantAudit(ctx, {
-      actorId: request.agent.id,
-      action: 'agent.channels.set',
-      targetType: 'agent',
-      targetId: id,
-      payload: { count: result.count },
-      ip: request.ip,
-    });
-    return success(result);
-  }));
+    const result = await setAgentChannelsFlow(fastify, actorOf(request), id, body.channelIds);
+    return reply.send(success(result));
+  });
 }

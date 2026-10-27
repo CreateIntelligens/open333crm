@@ -12,12 +12,11 @@ import {
   EXPORT_SYNC_LIMIT,
   countInstances,
   readExportFile,
-  recordExportNotice,
   startBackgroundExport,
 } from './coupon-export.service.js';
 import { getBindingStore, type BindingStore } from '../identity-binding/binding-code.js';
+import { notifyExportResult } from './coupon-export.flow.js';
 import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 
 const date = z.coerce.date({ errorMap: () => ({ message: '日期格式不正確' }) });
 
@@ -83,7 +82,7 @@ export default async function couponInstanceRoutes(app: FastifyInstance, opts: C
     const { id } = idParams.parse(request.params);
     const { tenantId, id: agentId } = request.agent;
     const runInTenant = <T>(fn: (ctx: TenantCtx) => Promise<T>) =>
-      inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, fn);
+      inTenant(app.prisma, tenantId, fn);
 
     const found = await runInTenant(async (ctx) => {
       const coupon = await getCoupon(ctx, id);
@@ -96,7 +95,7 @@ export default async function couponInstanceRoutes(app: FastifyInstance, opts: C
       const { jobId } = startBackgroundExport(
         {
           store: exportStore(),
-          notify: (notice) => runInTenant((ctx) => recordExportNotice(ctx, notice)),
+          notify: (notice) => notifyExportResult({ prisma: app.prisma, io: app.io }, notice),
           runInTenant,
           beforeGenerate: opts.beforeBackgroundExport,
         },

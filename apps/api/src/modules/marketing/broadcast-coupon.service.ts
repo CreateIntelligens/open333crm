@@ -371,14 +371,17 @@ export async function reserveRecipient(
   return { kind: 'reserved', instanceId: instance.id, vars };
 }
 
-/** 第 3 步（帶連結的訊息送達）：確認這張券、貼領券標籤、收件紀錄標為已送出 */
+/**
+ * 第 3 步（帶連結的訊息送達）：確認這張券、貼領券標籤、收件紀錄標為已送出。
+ * 回傳是否確認，以及這次貼上的標籤；contact.tagged 由 flow 發出。
+ */
 export async function confirmRecipient(
   ctx: TenantCtx,
   plan: CouponBroadcastPlan,
   recipient: PendingRecipient,
   instanceId: string,
   now: number = Date.now(),
-): Promise<boolean> {
+): Promise<{ confirmed: boolean; tag: { tagId: string; tagName: string } | null }> {
   const { tx, tenantId } = ctx;
   const confirmed = await confirmPendingInstance(tx, {
     tenantId,
@@ -389,21 +392,13 @@ export async function confirmRecipient(
   });
   if (!confirmed.confirmed) {
     await markRecipient(ctx, plan.broadcast.id, recipient.contactId, 'failed', 'CONFIRM_TOO_LATE', true);
-    return false;
-  }
-  if (confirmed.tag) {
-    await ctx.publish('contact.tagged', {
-      contactId: recipient.contactId,
-      tagId: confirmed.tag.tagId,
-      tagName: confirmed.tag.tagName,
-      source: 'system',
-    });
+    return { confirmed: false, tag: null };
   }
   await tx.broadcastRecipient.updateMany({
     where: { broadcastId: plan.broadcast.id, contactId: recipient.contactId },
     data: { deliveryStatus: 'sent', skipReason: null, sentAt: nowDate(now) },
   });
-  return true;
+  return { confirmed: true, tag: confirmed.tag };
 }
 
 /** 第 3 步（送不出）：作廢這張券、歸還名額，收件紀錄標為失敗並記原因 */

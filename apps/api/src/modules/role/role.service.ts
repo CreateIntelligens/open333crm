@@ -4,7 +4,7 @@
  * 對應 rbac-granular-permissions specs/role-management。
  * 租戶隔離鐵律（見 tasks 5.1）：所有 Role/RolePermission 操作 tenantId 一律來自 ctx.tenantId（入口以登入成員的租戶開交易），
  * 改/刪/讀前先經 loadTenantRole() 驗擁有權，杜絕跨租戶越權。
- * 收 TenantCtx（#337）：呼叫端開交易，同一個請求的寫入一起 commit；權限快取以 ctx.afterCommit 在 commit 之後清除。
+ * 收 TenantCtx（#337）：呼叫端開交易，同一個請求的寫入一起 commit；稽核與權限快取的清除在 role.flow.ts。
  */
 
 import type { TenantCtx } from '../../lib/tenant-ctx.js';
@@ -16,7 +16,7 @@ import {
   SYSTEM_ROLE_SLUGS,
 } from '@open333crm/core';
 import { AppError } from '../../shared/utils/response.js';
-import { getEffectivePermissions, invalidateRolePermissions } from '../../services/permission.service.js';
+import { getEffectivePermissions } from '../../services/permission.service.js';
 import { notFound } from '../../shared/messages/resource.js';
 
 const ADMIN_LOCKED = PERMISSIONS.filter((p) => p.adminLock).map((p) => p.code);
@@ -107,7 +107,6 @@ export async function deleteRole(ctx: TenantCtx, roleId: string) {
     );
   }
   await tx.role.delete({ where: { id: roleId } }); // RolePermission 隨 Cascade 刪除
-  ctx.afterCommit('invalidateRolePermissions', () => invalidateRolePermissions(roleId)); // 清掉已刪角色的殘留快取
   return { deleted: true };
 }
 
@@ -181,8 +180,6 @@ export async function setRolePermissions(
     skipDuplicates: true,
   });
 
-  // commit 之前清除的話，別的請求可能以舊資料寫回快取
-  ctx.afterCommit('invalidateRolePermissions', () => invalidateRolePermissions(roleId));
   return { roleId, permissions: [...wanted] };
 }
 

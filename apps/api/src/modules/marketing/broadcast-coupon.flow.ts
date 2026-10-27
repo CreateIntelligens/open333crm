@@ -15,8 +15,9 @@ import {
   logger,
   type WalletTokenStore,
 } from '@open333crm/core';
-import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
+import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
 import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import { publishCouponTag } from '../coupon/coupon-effects.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
 import { decryptCredentials } from '../channel/channel.service.js';
@@ -63,8 +64,8 @@ interface OutboundMessage {
   content: Record<string, unknown>;
 }
 
-function step<T>(deps: CouponBroadcastDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, fn);
+function step<T>(deps: CouponBroadcastDeps, tenantId: string, fn: (scope: TenantScope) => Promise<T>): Promise<T> {
+  return inTenant(deps.prisma, tenantId, fn);
 }
 
 /** 名單為空時依對象類型說明原因（與一般廣播相同的文字） */
@@ -285,7 +286,10 @@ async function processRecipient(
   let confirmError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      await step(deps, tenantId, (ctx) => confirmRecipient(ctx, plan, recipient, instanceId, now()));
+      await step(deps, tenantId, async (scope) => {
+        const confirmed = await confirmRecipient(scope, plan, recipient, instanceId, now());
+        if (confirmed.tag) await publishCouponTag(scope, createOutboxPublisher(deps.prisma), recipient.contactId, confirmed.tag);
+      });
       confirmError = null;
       break;
     } catch (err) {

@@ -1,117 +1,53 @@
 /**
  * 租戶資料存取的交易邊界（主規格 tenant-transaction-context，issue #337）。
  *
- * 入口（route、背景工作）以 inTenant() 開一個綁定租戶的交易，service 只收 TenantCtx：
- * - 交易內的寫入一起成功或一起失敗，查詢都受 RLS 約束到 ctx.tenantId。
- * - 事件（publish）與佇列 job（enqueue）在交易內寫進 outbox，與業務資料一起 commit；
- *   commit 之後交給快路徑送進佇列，沒送出的由 outbox-relay 補送（至少一次，change outbox-event-delivery）。
- * - 推播（notify）只先登記，commit 之後才送出，rollback 時丟棄；推播是最多一次。
- * - afterCommit 的動作（例如清快取）也是最多一次，但 inTenant() 等它完成才回傳，所以在回應之前完成。
- * - commit 之後的推播、afterCommit 與快路徑依登記的順序執行。
+ * 入口（flow、route、背景工作）以 inTenant() 開一個綁定租戶的交易：
+ * - 交易內的寫入一起成功或一起失敗，查詢都受 RLS 約束到 tenantId。
+ * - 入口拿到 TenantScope：TenantCtx 加上 afterCommit。afterCommit 的動作在 commit 之後依登記順序執行，
+ *   inTenant() 等它們完成才回傳；rollback 時不執行；失敗只記 log；最多一次。
+ * - service 只收 TenantCtx（tx、tenantId），拿不到任何副作用的能力。
+ *
+ * 推播、事件、job、稽核是收 scope 的獨立函式，不是 scope 的方法（change migrate-role-agent-tenant-ctx，決策 6）：
+ * notifyTenant / notifyAgent（events/socket-push.ts）、publishEvent / enqueueJob（events/outbox-publisher.ts）、
+ * recordTenantAudit（modules/tenant-audit/tenant-audit.service.ts）。什麼時候用哪個，見 AGENTS.md 結構規則 2。
  *
  * service 不自己開交易，也不在交易內呼叫外部服務（LINE、LLM 等）。
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteGenericInterface } from 'fastify';
 import type { Prisma, PrismaClient } from '@prisma/client';
-import type { Server } from 'socket.io';
-import { logger, type OutboxInput, type OutboxJobOptions, type OutboxRow } from '@open333crm/core';
-import type { AppEventName } from '../events/event-bus.js';
-import { createOutboxPublisher } from '../events/outbox-publisher.js';
-import { agentPushRoom, tenantPushRoom, type AgentPushName, type TenantPushName } from '../events/socket-push.js';
+import { logger } from '@open333crm/core';
 import { withTenant } from './tenant-db.js';
 import { AppError } from '../shared/utils/response.js';
 
+/** service 收的參數：已設定 app.current_tenant 的交易與綁定的租戶 */
 export interface TenantCtx {
-  /** 已設定 app.current_tenant 的交易；ctx 內的查詢都要用它 */
+  /** 已設定 app.current_tenant 的交易；查詢都要用它 */
   readonly tx: Prisma.TransactionClient;
   readonly tenantId: string;
-  /** commit 之後推播到本租戶的房間；失敗只記 log，不補送 */
-  notify(name: TenantPushName, data: unknown): void;
-  /** commit 之後推播給一位客服人員；房間帶交易綁定的租戶 ID，別的租戶的客服人員收不到 */
-  notifyAgent(agentId: string, name: AgentPushName, data: unknown): void;
-  /** 在交易內寫進 outbox，事件的 tenantId 由 ctx 填入；commit 之後送給訂閱者。保證是至少一次 */
-  publish(name: AppEventName, payload: Record<string, unknown>): Promise<void>;
-  /**
-   * 在交易內寫進 outbox；commit 之後送進 queueName 的佇列，job id 是 outbox id。保證是至少一次。
-   * opts 只接受 OutboxJobOptions 的白名單（attempts、backoff、delay、priority、removeOnComplete、removeOnFail）
-   */
-  enqueue(queueName: string, name: string, data: unknown, opts?: OutboxJobOptions): Promise<void>;
+}
+
+/** 入口（flow、背景工作）在 inTenant() 內拿到的 scope */
+export interface TenantScope extends TenantCtx {
   /**
    * commit 之後執行 fn，inTenant() 等它完成才回傳；rollback 時不執行。
-   * 失敗只記 log，不補做。用在清快取這類要在回應之前完成、但不能早於 commit 的動作
+   * 失敗只記 log，不補做。推播、outbox 的快路徑與清快取都經由這裡登記
    */
-  afterCommit(label: string, fn: () => void | Promise<void>): void;
-}
-
-/** 業務事件與 job 的送出方式。正式程式用 createOutboxPublisher()，單元測試注入假的實作 */
-export interface EventPublisher {
-  /** 在交易內寫入一筆 outbox */
-  write(tx: Prisma.TransactionClient, input: OutboxInput): Promise<OutboxRow>;
-  /** commit 之後的快路徑：送進佇列並標記已送出。失敗的資料列留給 relay 補送 */
-  dispatch(rows: OutboxRow[]): Promise<void>;
-}
-
-export interface TenantCtxDeps {
-  prisma: PrismaClient;
-  /** 沒有 io 的背景工作不能推播 */
-  io?: Server;
-  events: EventPublisher;
+  afterCommit(label: string, fn: () => unknown): void;
 }
 
 export async function inTenant<T>(
-  deps: TenantCtxDeps,
+  prisma: PrismaClient,
   tenantId: string,
-  fn: (ctx: TenantCtx) => Promise<T>,
+  fn: (scope: TenantScope) => Promise<T>,
 ): Promise<T> {
   const effects: Array<{ label: string; run: () => unknown }> = [];
 
-  function push(room: string, name: string, data: unknown) {
-    const io = deps.io;
-    // 寫錯程式：在交易內丟錯讓它 rollback，不要等到 commit 後才默默丟掉推播
-    if (!io) throw new Error(`inTenant: 沒有 io，不能推播 ${name}`);
-    effects.push({ label: `push ${name}`, run: () => io.to(room).emit(name, data) });
-  }
-
-  function dispatchEffect(label: string, row: OutboxRow) {
-    return {
-      label,
-      // 不 await：Redis 沒有回應時 add() 可能一直不結束，回應不能跟著卡住。
-      // 失敗只記 log：資料列已在 outbox，relay 會補送
-      run: () => {
-        deps.events.dispatch([row]).catch((err: unknown) => {
-          logger.error(`[inTenant] commit 後送出失敗，留給 relay 補送（${label}）`, err);
-        });
-      },
-    };
-  }
-
-  const result = await withTenant(deps.prisma, tenantId, (tx) =>
+  const result = await withTenant(prisma, tenantId, (tx) =>
     fn({
       tx,
       tenantId,
-      notify(name, data) {
-        push(tenantPushRoom(tenantId), name, data);
-      },
-      notifyAgent(agentId, name, data) {
-        push(agentPushRoom(tenantId, agentId), name, data);
-      },
-      async publish(name, payload) {
-        const row = await deps.events.write(tx, { tenantId, kind: 'event', name, payload });
-        effects.push(dispatchEffect(`publish ${name}`, row));
-      },
-      async enqueue(queueName, name, data, opts) {
-        const row = await deps.events.write(tx, {
-          tenantId,
-          kind: 'job',
-          queueName,
-          name,
-          payload: data,
-          ...(opts ? { jobOptions: opts } : {}),
-        });
-        effects.push(dispatchEffect(`enqueue ${name}`, row));
-      },
-      afterCommit(label, fn) {
-        effects.push({ label: `afterCommit ${label}`, run: fn });
+      afterCommit(label, run) {
+        effects.push({ label, run });
       },
     }),
   );
@@ -121,7 +57,7 @@ export async function inTenant<T>(
     try {
       await effect.run();
     } catch (err) {
-      logger.error(`[inTenant] commit 後送出失敗（${effect.label}）`, err);
+      logger.error(`[inTenant] commit 後的動作失敗（${effect.label}）`, err);
     }
   }
   return result;
@@ -181,10 +117,8 @@ export function tenantHandler<RouteGeneric extends RouteGenericInterface = Route
     if (!tenantId) throw new AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401);
 
     const deferred = deferReply();
-    const events = createOutboxPublisher(fastify.prisma);
-    const body = await inTenant({ prisma: fastify.prisma, io: fastify.io, events }, tenantId, (ctx) =>
-      handler(request, deferred.reply, ctx),
-    );
+    // handler 只拿到 TenantCtx：有副作用（稽核、推播、事件、快取、外部呼叫）的 route 要經過 flow
+    const body = await inTenant(fastify.prisma, tenantId, ({ tx }) => handler(request, deferred.reply, { tx, tenantId }));
     deferred.applyTo(reply);
     return reply.send(body);
   };

@@ -3,16 +3,15 @@ import { z } from 'zod';
 import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { tenantHandler } from '../../lib/tenant-ctx.js';
+import { actorOf } from '../../lib/request-actor.js';
 import {
   listRoles,
   getRolePermissions,
   createRole,
   renameRole,
-  deleteRole,
-  setRolePermissions,
   getPermissionMatrix,
 } from './role.service.js';
-import { recordTenantAudit } from '../tenant-audit/tenant-audit.service.js';
+import { deleteRoleFlow, setRolePermissionsFlow } from './role.flow.js';
 
 const nameSchema = z.object({ name: z.string().min(1).max(20) });
 const permsSchema = z.object({ permissions: z.array(z.string()) });
@@ -55,26 +54,17 @@ export default async function roleRoutes(fastify: FastifyInstance) {
   }));
 
   // DELETE /roles/:id — 刪除自訂角色（阻擋 system / 仍被指派）
-  fastify.delete('/:id', { preHandler: [requirePermission('role.manage')] }, tenantHandler(fastify, async (request, _reply, ctx) => {
+  fastify.delete('/:id', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const result = await deleteRole(ctx, id);
-    return success(result);
-  }));
+    const result = await deleteRoleFlow(fastify, actorOf(request), id);
+    return reply.send(success(result));
+  });
 
   // PUT /roles/:id/permissions — 設定角色權限（整批）
-  fastify.put('/:id/permissions', { preHandler: [requirePermission('role.manage')] }, tenantHandler(fastify, async (request, _reply, ctx) => {
+  fastify.put('/:id/permissions', { preHandler: [requirePermission('role.manage')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { permissions } = permsSchema.parse(request.body);
-    const result = await setRolePermissions(ctx, id, permissions, request.agent.roleId);
-    // 稽核與權限一起 commit（payload 記角色與最終權限碼清單，權限碼非 PII）
-    await recordTenantAudit(ctx, {
-      actorId: request.agent.id,
-      action: 'role.permission.update',
-      targetType: 'role',
-      targetId: id,
-      payload: { permissions: result.permissions },
-      ip: request.ip,
-    });
-    return success(result);
-  }));
+    const result = await setRolePermissionsFlow(fastify, actorOf(request), id, permissions);
+    return reply.send(success(result));
+  });
 }

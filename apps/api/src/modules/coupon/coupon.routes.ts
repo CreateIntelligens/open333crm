@@ -1,8 +1,8 @@
 /**
  * 優惠券後台 API。Prefix: /api/v1/coupons
  *
- * 租戶隔離：每個 handler 以 tenantHandler() 在綁定租戶的交易內執行，service 只收 TenantCtx
- * （AGENTS.md 結構規則 2）。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
+ * 租戶隔離：沒有副作用的 handler 以 tenantHandler() 在綁定租戶的交易內執行；有推播的核銷經過
+ * coupon-redeem.flow。service 只收 TenantCtx（AGENTS.md 結構規則 2）。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -10,7 +10,6 @@ import { parseDateOnly } from '@open333crm/core';
 import { COUPON_ISSUED_VIA, isReservedCouponIssuedVia } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { AppError } from '../../shared/utils/response.js';
 import {
   listCoupons,
@@ -26,7 +25,7 @@ import {
 } from './coupon.service.js';
 import { changeStatus } from './coupon-lifecycle.service.js';
 import { ISSUE_BATCH_SIZE, issueCoupons, type IssueResult } from './coupon-issue.service.js';
-import { redeemCoupon } from './coupon-redeem.service.js';
+import { redeemAtConsole } from './coupon-redeem.flow.js';
 import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
 import { assertChannelVisible } from '../../services/channel-visibility.js';
 import { previewBroadcastAudience } from '../marketing/marketing.service.js';
@@ -243,7 +242,7 @@ export default async function couponRoutes(app: FastifyInstance) {
     for (let start = 0; start < body.contactIds.length; start += ISSUE_BATCH_SIZE) {
       const batch = body.contactIds.slice(start, start + ISSUE_BATCH_SIZE);
       try {
-        const result = await inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, (ctx) =>
+        const result = await inTenant(app.prisma, tenantId, (ctx) =>
           issueCoupons(ctx, id, {
             contactIds: batch,
             // 這個端點不送訊息，只給系統整合使用；沒帶時記為 api，不能算成對話發券
@@ -327,11 +326,11 @@ export default async function couponRoutes(app: FastifyInstance) {
     return { success: true };
   }));
 
-  // 核銷台。掃碼或手動輸入券號皆走此端點；成功時 service 推播券狀態更新（commit 後送出）
-  app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, couponHandler(app, async (request, reply, ctx) => {
+  // 核銷台。掃碼或手動輸入券號皆走此端點；成功時 flow 推播券狀態更新（commit 後送出）
+  app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, async (request, reply) => {
     const body = redeemSchema.parse(request.body ?? {});
-    if (!body.code && !body.instanceId) return fail(reply, 400, 'VALIDATION_ERROR', '請提供券號');
-    const result = await redeemCoupon(ctx, {
+    if (!body.code && !body.instanceId) return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: '請提供券號' } });
+    const result = await redeemAtConsole({ prisma: app.prisma, io: app.io }, request.agent.tenantId, {
       code: body.code,
       instanceId: body.instanceId,
       staffCode: body.staffCode,
@@ -353,10 +352,15 @@ export default async function couponRoutes(app: FastifyInstance) {
         SELF_REDEEM_NOT_ALLOWED: '此券須由店員核銷',
         CONFLICT: '此券剛被核銷，請重新確認',
       };
-      return fail(reply, 409, result.reason, messages[result.reason] ?? '核銷失敗', {
-        redeemedAt: 'redeemedAt' in result ? result.redeemedAt : undefined,
+      return reply.code(409).send({
+        success: false,
+        error: {
+          code: result.reason,
+          message: messages[result.reason] ?? '核銷失敗',
+          redeemedAt: 'redeemedAt' in result ? result.redeemedAt : undefined,
+        },
       });
     }
-    return { success: true, data: result };
-  }));
+    return reply.send({ success: true, data: result });
+  });
 }

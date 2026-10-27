@@ -16,8 +16,14 @@ import { claimOne, claimSideEffect, hasSideEffectClaim, logger } from '@open333c
 import { getBotConfig, shouldRunAgentReply, type BotConfig } from '@open333crm/automation';
 import { hasMatchingKeywordRule } from './keyword-yield.js';
 import { createEventRouter, type EventHandler, type SubscribedEvent } from '../../events/subscriber-workers.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
-import { inTenant, type TenantCtxDeps } from '../../lib/tenant-ctx.js';
+import { createOutboxPublisher, publishEvent, type EventPublisher } from '../../events/outbox-publisher.js';
+import { inTenant } from '../../lib/tenant-ctx.js';
+
+/** 認領與寫入結果的交易：tenantPrisma 是 inTenant() 的基礎連線（受 RLS 約束），events 寫 outbox */
+interface TenantDeps {
+  tenantPrisma: PrismaClient;
+  events: EventPublisher;
+}
 import { attemptKbAutoReply } from '../ai/kb-autoreply.service.js';
 import { prepareStoredMessageContent } from '../ai/deidentification.service.js';
 import { analyzeSentiment } from '../ai/sentiment.service.js';
@@ -80,7 +86,7 @@ async function getConversationBotConfig(
  */
 async function checkAutoHandoff(
   prisma: PrismaClient,
-  tenantDeps: TenantCtxDeps,
+  tenantDeps: TenantDeps,
   io: Server,
   tenantId: string,
   conversationId: string,
@@ -143,8 +149,8 @@ async function checkAutoHandoff(
   const storedContent = await prepareStoredMessageContent(prisma, tenantId, { text: systemText }, 'system');
 
   // 轉接訊息也是對這則入站訊息的機器人回覆，與對話狀態一起認領
-  const replyGuard = createBotReplyGuard(tenantDeps, prisma, tenantId, inboundMessageId);
-  const handedOff = await replyGuard.persist(async (tx, ctx) => {
+  const replyGuard = createBotReplyGuard(tenantDeps.tenantPrisma, prisma, tenantId, inboundMessageId);
+  const handedOff = await replyGuard.persist(async (tx, scope) => {
     const claimed = await claimOne(() =>
       tx.conversation.updateMany({
         where: { id: conversationId, tenantId, status: 'BOT_HANDLED' },
@@ -166,7 +172,7 @@ async function checkAutoHandoff(
         createdAt: now,
       },
     });
-    await ctx.publish('conversation.handoff', {
+    await publishEvent(scope, tenantDeps.events, 'conversation.handoff', {
       conversationId,
       reason,
       summary,
@@ -225,7 +231,7 @@ async function checkAutoHandoff(
  */
 async function analyzeSentimentOnce(
   prisma: PrismaClient,
-  tenantDeps: TenantCtxDeps,
+  tenantDeps: TenantDeps,
   tenantId: string,
   messageId: string,
   text: string,
@@ -236,22 +242,22 @@ async function analyzeSentimentOnce(
 
   // LLM 失敗時，analyzeSentiment() 自己改用關鍵字判斷，不丟錯（降級）
   const sentimentResult = await analyzeSentiment(prisma, tenantId, text);
-  const written = await inTenant(tenantDeps, tenantId, async (ctx) => {
+  const written = await inTenant(tenantDeps.tenantPrisma, tenantId, async (scope) => {
     // 兩次處理同時通過上面的檢查時，只有一次寫入結果
-    if (!(await claimSideEffect(ctx.tx, key))) return false;
-    const existingMessage = await ctx.tx.message.findUnique({
+    if (!(await claimSideEffect(scope.tx, key))) return false;
+    const existingMessage = await scope.tx.message.findUnique({
       where: { id: messageId },
       select: { metadata: true },
     });
     const existingMetadata = (existingMessage?.metadata as Record<string, unknown>) ?? {};
-    await ctx.tx.message.update({
+    await scope.tx.message.update({
       where: { id: messageId },
       data: {
         metadata: JSON.parse(JSON.stringify({ ...existingMetadata, sentiment: sentimentResult })),
       },
     });
     if (sentimentResult.sentiment === 'negative' && sentimentResult.confidence >= 0.6) {
-      await ctx.publish('sentiment.negative', {
+      await publishEvent(scope, tenantDeps.events, 'sentiment.negative', {
         conversationId: refs.conversationId,
         messageId,
         contactId: refs.contactId,
@@ -273,7 +279,7 @@ async function analyzeSentimentOnce(
  */
 export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPrisma: PrismaClient): EventHandler {
   const events = createEventRouter();
-  const tenantDeps: TenantCtxDeps = { prisma: tenantPrisma, io, events: createOutboxPublisher(tenantPrisma) };
+  const tenantDeps: TenantDeps = { tenantPrisma, events: createOutboxPublisher(tenantPrisma) };
 
   // ── message.received ────────────────────────────────────────────────────
   events.on('message.received', async (event: SubscribedEvent) => {
@@ -323,7 +329,7 @@ export function setupAutomationWorker(prisma: PrismaClient, io: Server, tenantPr
           // 只對純文字訊息做 KB 檢索；圖片/貼圖/檔案等即使帶了「[圖片]」佔位字，
           // 也不該拿去做語意檢索（會回不相關內容）。contentType 未帶時視為 text 相容舊行為。
           const isTextMessage = !contentType || contentType === 'text';
-          const replyGuard = createBotReplyGuard(tenantDeps, prisma, event.tenantId, messageId);
+          const replyGuard = createBotReplyGuard(tenantDeps.tenantPrisma, prisma, event.tenantId, messageId);
           if (conversationId && text && isTextMessage && botConfig && (await replyGuard.alreadyReplied())) {
             // 事件重送：這則訊息已經有機器人回覆，不再呼叫 LLM
             logger.info(`[AutomationWorker] conv=${conversationId} 略過 AI 回覆：這則訊息已有機器人回覆`);

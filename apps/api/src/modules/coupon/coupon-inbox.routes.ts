@@ -13,7 +13,6 @@ import { assertConversationChannelVisible } from '../../services/channel-visibil
 import { getAgentById } from '../auth/auth.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
 import { inTenant, tenantHandler } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import {
   getIssueContext,
   getIssueRequest,
@@ -68,7 +67,7 @@ export default async function couponInboxRoutes(app: FastifyInstance) {
     await assertConversationChannelVisible(request, conversationId, 'reply_only');
     const tenantId = request.agent.tenantId;
     // 保存發券座席當下的名稱，座席之後改名或刪除，序號明細與券訊息仍顯示原名
-    const agent = await inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, (ctx) =>
+    const agent = await inTenant(app.prisma, tenantId, (ctx) =>
       getAgentById(ctx.tx, request.agent.id, tenantId));
 
     // 發券分三步（保留→送出→確認），交易由 flow 開，送出訊息不在交易內（design D16）

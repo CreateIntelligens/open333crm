@@ -121,5 +121,22 @@
     "modules/platform/platform-user.service.ts": 1,
     "modules/trial/trial.service.ts": 1
   },
-  "service 內的 inTenant(": {}
+  "service 內的 inTenant(": {},
+  "service 直接 import Redis client": {
+    "modules/auth/passkey.service.ts": 1,
+    "modules/conversation/conversation.service.ts": 1,
+    "modules/ops-alert/ops-alert.service.ts": 1,
+    "modules/trial/token-quota.service.ts": 1,
+    "services/permission.service.ts": 1
+  },
+  "service 直接 import LLM 入口": {
+    "modules/ai/agent/agent.service.ts": 1,
+    "modules/ai/ai.service.ts": 1,
+    "modules/ai/classify.service.ts": 1,
+    "modules/ai/flex-ai.service.ts": 1,
+    "modules/ai/kb-autoreply.service.ts": 1,
+    "modules/ai/llm.service.ts": 1,
+    "modules/ai/sentiment.service.ts": 1,
+    "modules/settings/chat-settings.service.ts": 1
+  }
 }

@@ -188,7 +188,8 @@ A module is in `apps/api/src/modules/<name>/`. It uses these file suffixes:
 
 | Suffix | Role |
 | ------ | ---- |
-| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a service, wrap the response |
+| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a service or a flow, wrap the response |
+| `<name>.flow.ts` | Use case: opens the tenant transaction, calls services, writes the audit row, sends Socket events, events and jobs (structure rule 2) |
 | `<name>.service.ts` | Business logic and data access |
 | `<name>.worker.ts`, `<name>.scheduler.ts` | Background work. The Socket Event Routing section tells which process runs them |
 
@@ -201,7 +202,7 @@ a different reason.
 
 #### 1. A route handler does not query the database
 
-A route handler validates input, checks permissions, calls a service, and returns. Put the
+A route handler validates input, checks permissions, calls a service or a flow, and returns. Put the
 query in `<name>.service.ts`.
 
 - **Why**: a test can reach a query in a route only through the HTTP layer, with the plugins
@@ -212,54 +213,99 @@ query in `<name>.service.ts`.
 
 #### 2. A service that reads or writes tenant data receives a `TenantCtx` and never opens a transaction
 
-The entry point opens one transaction that is bound to the tenant. A route uses
-`tenantHandler()`. A background job uses `inTenant()`. Both are in `apps/api/src/lib/tenant-ctx.ts`.
+The entry point opens one transaction that is bound to the tenant. The entry point is a flow
+(`<name>.flow.ts`), a background job, or a route without side effects. All are in
+`apps/api/src/lib/tenant-ctx.ts`:
+
+- `inTenant(prisma, tenantId, (scope) => ...)` opens the transaction. A flow and a background job use it.
+- `tenantHandler(fastify, (request, reply, ctx) => ...)` wraps a route handler that only calls
+  services and has no side effects.
+
+The layers have these jobs:
+
+| Layer | Does | Receives |
+| ----- | ---- | -------- |
+| route | parses input, checks permissions, builds the actor with `actorOf(request)`, turns the result into an HTTP response | `request`, `reply` |
+| flow | work outside the transaction (bcrypt, external calls), `inTenant()`, calls services, writes the audit row, sends Socket events, events and jobs, clears caches | `TenantScope`, injected dependencies |
+| service | the business rules and the queries of one aggregate | `TenantCtx` |
+
+A route that has a side effect (an audit row, a Socket event, an event, a job, a cache, an
+external call) calls a flow. A route without side effects can use `tenantHandler()`. Its handler
+receives a `TenantCtx`, so the type checker rejects a side effect there.
+
 Each exported service function that reads or writes tenant data takes the `TenantCtx` as its first
-parameter:
+parameter. A `TenantCtx` has only `tx` and `tenantId`. A service returns the facts that the flow
+needs, and the flow decides the side effects:
 
 ```ts
+// case.service.ts
 export async function resolveCase(ctx: TenantCtx, caseId: string) {
   const updated = await ctx.tx.case.updateMany({ where: { id: caseId, tenantId: ctx.tenantId }, ... });
-  ctx.notify('case.updated', payload);   // sent to tenant:<tenantId> after commit
-  await ctx.publish('case.resolved', payload); // written to the outbox, sent after commit
+  return updated;
+}
+
+// case.flow.ts
+export function resolveCaseFlow(deps: { prisma: PrismaClient; io: Server; events: EventPublisher }, actor: RequestActor, caseId: string) {
+  return inTenant(deps.prisma, actor.tenantId, async (scope) => {
+    const updated = await resolveCase(scope, caseId);
+    await recordTenantAudit(scope, { actorId: actor.agentId, action: 'case.resolve', ... });
+    notifyTenant(scope, deps.io, 'case.updated', payload);              // sent to tenant:<tenantId> after commit
+    await publishEvent(scope, deps.events, 'case.resolved', payload);  // written to the outbox, sent after commit
+    return updated;
+  });
 }
 ```
+
+A `TenantScope` is a `TenantCtx` with one method more: `afterCommit(label, fn)`. Only `inTenant()`
+knows when the transaction commits, so this method is the only one on the object. Each other side
+effect is a separate function that takes the scope. The caller gives the dependencies (`io`, an
+`EventPublisher`) as parameters, so the parameters show what the code depends on. Do not add a
+method to `TenantCtx` or `TenantScope` for a new side effect. Write a function that takes the scope.
 
 A service obeys these rules:
 
 - Use `ctx.tx` for each query. Do not import a client, and do not open a transaction
   (`withTenant`, `inTenant`, `$transaction`).
 - Do not call an external service (LINE, an LLM, S3) inside the transaction. The transaction has a
-  timeout of 5 seconds, and it holds a database connection. Split the flow into three steps:
-  transaction, external call, transaction. Before you split it, write in the spec whether the
+  timeout of 5 seconds, and it holds a database connection. The flow splits the work into three
+  steps: transaction, external call, transaction. Before you split it, write in the spec whether the
   external call happens at most once or at least once. If the flow goes through a queue, write
   this for each step of the flow: where the step can fail, where the data stays after the
   failure, which code does the step again, and the guarantee. Change `outbox-event-delivery`,
   `design.md` section 14, shows such a table.
-- Send Socket events with `ctx.notify` (to all agents of the tenant) or `ctx.notifyAgent` (to one
-  agent). Send events with `await ctx.publish`. Send BullMQ jobs with
-  `await ctx.enqueue(queueName, name, data)`. Do not call `io.emit`, `eventBus.publish` or
-  `queue.add()` directly. A service does not give a room name:
-  `apps/api/src/events/socket-push.ts` selects the room for each Socket event.
-- `ctx` sends Socket events after the commit and drops them after a rollback. A Socket event is
-  sent at most once. `ctx.publish` and `ctx.enqueue` write a row to the outbox inside the
+
+A flow and a background job obey these rules:
+
+- Send Socket events with `notifyTenant(scope, io, name, data)` (to all agents of the tenant) or
+  `notifyAgent(scope, io, agentId, name, data)` (to one agent), from `apps/api/src/events/socket-push.ts`.
+  Send events with `await publishEvent(scope, events, name, payload)`. Send BullMQ jobs with
+  `await enqueueJob(scope, events, queueName, name, data)`. Both are in
+  `apps/api/src/events/outbox-publisher.ts`. Do not call `io.emit`, `eventBus.publish` or
+  `queue.add()` directly. The caller does not give a room name: `socket-push.ts` selects the room
+  for each Socket event.
+- Socket events go out after the commit and are dropped after a rollback. A Socket event is
+  sent at most once. `publishEvent` and `enqueueJob` write a row to the outbox inside the
   transaction. The row commits with the data, and the system sends it after the commit, at least
   once. Thus the receiver can get an event or a job two times. Before a side effect that must not
   repeat (for example, a message to a customer), claim it with `claimSideEffect()` from
   `@open333crm/core`, or with a conditional update. `docs/ref/modules/EVENTS.md` explains the
   outbox and the claims.
-- To clear a cache after a write, call `ctx.afterCommit(label, fn)`. Do not clear it inside the
+- To clear a cache after a write, call `scope.afterCommit(label, fn)`. Do not clear it inside the
   transaction: another request can read the old data before the commit and write it back to the
-  cache. `inTenant()` runs `fn` after the commit and waits for `fn` to finish. Thus the response
-  goes out after `fn` finishes. `fn` runs at most once. If `fn` fails, the system writes a log and
-  the result stays successful. After a rollback, `fn` does not run.
-- Write a tenant audit row with `recordTenantAudit(ctx, input)` from
-  `apps/api/src/modules/tenant-audit/tenant-audit.service.ts`. The row commits with the data. If
+  cache. `inTenant()` runs `fn` after the commit and waits for `fn` to finish. Thus the flow
+  returns, and the response goes out, after `fn` finishes. `fn` runs at most once. If `fn` fails,
+  the system writes a log and the result stays successful. After a rollback, `fn` does not run.
+- Write a tenant audit row with `recordTenantAudit(scope, input)` from
+  `apps/api/src/modules/tenant-audit/tenant-audit.service.ts`. The audit row needs the actor and the
+  IP of the request, so the flow writes it, not the service. The row commits with the data. If
   the write fails, the function throws and the transaction rolls back. Do not call
   `writeTenantAudit()` inside a transaction: it catches the database error, and after that error
   PostgreSQL rejects each query of the transaction. The commit then becomes a rollback, but the
   request can still return success. `writeTenantAudit()` stays only for callers that are not moved
   yet.
+- When several entry points send the same Socket event, write the content of the event once in a
+  module function, for example `apps/api/src/modules/coupon/coupon-effects.ts`. Each entry point
+  calls that function.
 - In a job handler (a BullMQ processor or an event subscriber), do not catch an error only to
   write a log. The job then completes, and the work is lost: the queue does not try again.
   Let these errors go out of the handler, so that the queue tries the job again:
@@ -287,13 +333,18 @@ This rule does not cover two kinds of functions. They do not take a `TenantCtx`:
 so these functions do not change its result.
 
 - **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
-  and its writes succeed or fail together. With the old parameter type `TenantDb`, the caller
+  and its writes succeed or fail together. The service cannot start a side effect, so the timing of
+  each side effect is visible in the flow. With the old parameter type `TenantDb`, the caller
   decides these guarantees: `prismaAdmin` has no RLS, and `request.tenantPrisma` runs each query
   in a separate transaction. A unit test also cannot run a service without a database if the
-  service gets a client by itself. `tests/support/mock-tenant-ctx.ts` gives a `TenantCtx` for unit
-  tests. The "Prisma in shared packages" convention below is this rule for `packages/*`.
+  service gets a client by itself. `tests/support/mock-tenant-ctx.ts` gives a `TenantCtx` for
+  service tests and a `TenantScope` for flow tests. The "Prisma in shared packages" convention below is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when the old forms (`TenantDb`,
-  `request.tenantPrisma`, a transaction opened in a service file) increase in a file. Also
+  `request.tenantPrisma`, a transaction opened in a service file) increase in a file. It also fails
+  when a service file adds a value import of a Redis client (`redis` from `@open333crm/core`,
+  `ioredis`) or of an LLM entry point (`generateReply`, `getChatProvider`). The type checker cannot
+  stop a service that uses these module-level clients inside the transaction, so a flow receives
+  them as dependencies instead. A type-only import does not count. Also
   `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
 - **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
   module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of
@@ -440,8 +491,8 @@ RLS. The skill named below gives the steps.
 
 | Client | Connection | When |
 | ------ | ---------- | ---- |
-| `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | new and moved route handlers. Returns 401 when the request has no tenant. Sends the response after the commit. The `reply` inside has no `send()`: return the body instead |
-| `inTenant({ prisma, io, events: createOutboxPublisher(prisma) }, tenantId, (ctx) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
+| `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | new and moved route handlers without side effects. Returns 401 when the request has no tenant. Sends the response after the commit. The `reply` inside has no `send()`: return the body instead |
+| `inTenant(prisma, tenantId, (scope) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | flows and new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
 | `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
 | `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |
 | `withTenant(prisma, tenantId, fn)` | runs `fn` in a transaction with `app.current_tenant` set | old form, being moved (#337). `inTenant()` uses it internally |
@@ -483,7 +534,7 @@ There are two paths. Select the correct path.
 **Path A — Direct emit** (API process, inline):
 
 ```ts
-ctx.notify(name, data); // inside tenantHandler() or inTenant(): sent to tenant:<tenantId> after the commit
+notifyTenant(scope, io, name, data); // in a flow, inside inTenant(): sent to tenant:<tenantId> after the commit
 ```
 
 Old code calls `fastify.io.to(room).emit(event, data)` directly. Inside a transaction, that call
@@ -493,13 +544,13 @@ Use path A when all of these conditions are true:
 
 - The event is the direct result of the current HTTP request.
 - The data is already in the database.
-- The Socket event goes to all agents of the tenant (`ctx.notify`) or to one agent (`ctx.notifyAgent`).
+- The Socket event goes to all agents of the tenant (`notifyTenant`) or to one agent (`notifyAgent`).
 - You need no more queries.
 
 **Path B — Async queue** (outbox → subscriber queue → BullMQ → workers → Redis pub/sub):
 
 ```ts
-await ctx.publish("case.assigned", payload); // written to the outbox in the transaction
+await publishEvent(scope, events, "case.assigned", payload); // written to the outbox in the transaction
 // → after the commit: job on the event-notification queue (API process)
 // → notificationQueue.add(job)  // BullMQ
 // → apps/workers consume → publishSocketEvent(redis, room, event, data)
@@ -531,7 +582,7 @@ job at a time, and a slow job (for example, an LLM call) makes the jobs of all t
 
 `eventBus.publish()` (`apps/api/src/events/event-bus.ts`) is the old form. It sends the event
 directly to the subscriber queues and does not write the outbox. Thus the event is lost if the
-process stops before it sends the event. New code uses `ctx.publish`.
+process stops before it sends the event. New code uses `publishEvent`.
 
 ## Architecture: Scheduled Jobs in the API Process
 
