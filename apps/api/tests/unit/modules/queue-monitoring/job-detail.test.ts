@@ -22,6 +22,8 @@ beforeAll(async () => {
       stacktrace: ['Error: HTTP 500\n    at deliver (webhook-delivery.ts:1:1)'],
       attemptsMade: 3,
     },
+  ], [
+    { key: 'digest', name: 'digest', every: 60_000, template: { data: { tenantId: 't1', content: '我的電話是 0912…' } } },
   ]);
   ctx = await buildQueueMonitoringApp({ allowedCidrs: '60.248.142.0/24', queues: [webhook.queue] });
   cookie = await ctx.sessionCookie(OFFICE_IP);
@@ -47,4 +49,14 @@ test('畫面的 job 資料已遮蔽', async () => {
   const job = await getJob();
 
   assert.deepEqual(job.data, { tenantId: 't1', payload: { content: MASKED } });
+});
+
+test('排程範本的資料已遮蔽', async () => {
+  const res = await ctx.inject({ method: 'GET', url: `${QUEUES_PATH}/api/job-schedulers`, ip: OFFICE_IP, cookie });
+  assert.equal(res.statusCode, 200, res.body);
+
+  const { schedulers } = res.json() as { schedulers: Array<{ id: string; template?: { data?: unknown } }> };
+  const digest = schedulers.find((s) => s.id === 'digest');
+  assert.ok(digest, res.body);
+  assert.deepEqual(digest.template?.data, { tenantId: 't1', content: MASKED });
 });

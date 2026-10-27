@@ -57,10 +57,12 @@ cookie 用衍生的金鑰簽章，不是平台 JWT，所以它不能當作 `Auth
 
 以 `createBullBoard()` 的 `options.handlerHooks.before` 檢查每個 bull-board API 請求。只放行：
 
-- `method` 是 `get`。hook 收到的 method 是小寫。
+- `method` 是 `get`，`route` 在讀取清單內。hook 收到的 method 是小寫。讀取清單以 bull-board 9.10.4 逐條核對：只列不回傳 job 資料、或回傳的 job 資料已遮蔽的路由。job 的 log 是 processor 寫的任意文字，不放行。
 - `method` 是 `put`，`route` 是 `/api/queues/:queueName/:jobId/retry`，而且以 `request.queues` 與 `params` 查到的 job 狀態是 `failed`。
 
-其他請求回 `{ allow: false, status: 403 }`。這份清單只列放行的路由，所以 bull-board 升級後新增的寫入路由預設被拒絕。
+其他請求回 `{ allow: false, status: 403 }`。讀取與寫入都只列放行的路由，所以 bull-board 升級後新增的路由預設被拒絕。升級 bull-board 時，重新核對讀取清單。
+
+讀取原本是「GET 一律放行」。code review 依序發現兩處 bull-board 的 handler 不照外圍檢查的假設運作：重送的 handler 重讀狀態並接受 completed，排程的 handler 不經過 data formatter。所以讀取也改成白名單，並以自己的 adapter（`MonitoredQueueAdapter`）補上 bull-board 沒有的兩項限制：重送固定從 failed 移出 job（BullMQ 的 `reprocessJob` 在 Lua 內檢查），排程範本的資料也遮蔽。
 
 bull-board 的畫面與靜態檔不經過 `handlerHooks`，所以 IP 與 cookie 的檢查放在 Fastify 的 `onRequest`（決策 2、3），不放在這裡。
 

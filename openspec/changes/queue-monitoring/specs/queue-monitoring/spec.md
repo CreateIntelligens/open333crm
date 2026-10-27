@@ -94,7 +94,12 @@
 
 ### Requirement: 只放行讀取與重送單一個 failed job
 
-佇列監控的 API MUST 只放行兩種請求：`GET` 請求，以及重送單一個狀態是 failed 的 job。其他會改變佇列或 job 的請求 MUST 回 403，包括新增、刪除、清除、清空、暫停、重送整個狀態、提前執行、修改 job 資料或排程。重送狀態不是 failed 的 job（例如 completed）MUST 回 403。之後新增的寫入操作，在放行之前 MUST 回 403。
+佇列監控的 API MUST 只放行兩種請求：列出的讀取請求，以及重送單一個狀態是 failed 的 job。列出的讀取請求只回傳已遮蔽的 job 資料，或不含 job 資料；job 的 log 是 processor 寫的任意文字，MUST 回 403。其他會改變佇列或 job 的請求 MUST 回 403，包括新增、刪除、清除、清空、暫停、重送整個狀態、提前執行、修改 job 資料或排程。重送狀態不是 failed 的 job（例如 completed）MUST 回 403。之後新增的讀取或寫入操作，在放行之前 MUST 回 403。
+
+#### Scenario: 讀取 job 的 log
+
+- **WHEN** 平台管理員讀取 `event-webhook` 佇列中一個 job 的 log
+- **THEN** API 回 403，不回傳 log 的內容
 
 #### Scenario: 重送一個 failed job
 
@@ -142,7 +147,7 @@
 
 ### Requirement: job 資料只顯示識別欄位
 
-佇列監控 MUST 遮蔽 job 資料中的內容，只顯示識別欄位。識別欄位是：最上層的 `name`、`type`，以及任一層名稱為 `id` 或以 `Id` 結尾、值是字串或數字的欄位。其他欄位的值 MUST 顯示為 `[已遮蔽]`，包括之後新增的欄位。job 的失敗原因與 stack 照常顯示。
+佇列監控 MUST 遮蔽 job 資料中的內容，只顯示識別欄位。識別欄位是：最上層的 `name`、`type`，以及任一層名稱為 `id` 或以 `Id` 結尾、值是字串或數字的欄位。其他欄位的值 MUST 顯示為 `[已遮蔽]`，包括之後新增的欄位。排程範本的資料依同樣規則遮蔽。job 的失敗原因與 stack 照常顯示。
 
 #### Scenario: 遮蔽訊息內容
 
@@ -153,6 +158,11 @@
 
 - **WHEN** job 資料是 `{ name: 'contact.created', payload: { name: '王小明' } }`
 - **THEN** 最上層的 `name` 顯示 `contact.created`，`payload.name` 顯示為 `[已遮蔽]`
+
+#### Scenario: 排程範本的資料
+
+- **WHEN** 一個佇列的排程範本資料是 `{ tenantId: 't1', content: '我的電話是 0912…' }`，平台管理員開啟排程清單
+- **THEN** 範本資料的 `tenantId` 顯示 `t1`，`content` 顯示為 `[已遮蔽]`
 
 ### Requirement: 被認領擋下的副作用標示跳過
 

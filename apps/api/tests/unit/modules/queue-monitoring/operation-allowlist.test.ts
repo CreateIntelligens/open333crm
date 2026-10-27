@@ -114,10 +114,48 @@ test('bull-board 的每一條寫入路由都回 403（單筆重送 failed job �
   assert.deepEqual(automation.retries, []);
 });
 
-test('GET 請求放行', async () => {
+/** 確認過不會回傳未遮蔽 job 資料的讀取路由 */
+const ALLOWED_READS = [
+  '/api/redis/stats',
+  '/api/queues',
+  '/api/queues/has-workers',
+  '/api/job-schedulers',
+  '/api/queues/:queueName/metrics',
+  '/api/queues/:queueName/default-job-options',
+  '/api/queues/:queueName/workers',
+  '/api/queues/:queueName/rate-limit',
+  '/api/queues/:queueName/job-data-schema',
+  '/api/queues/:queueName/:jobId/flow',
+  '/api/queues/:queueName/:jobId',
+];
+
+test('放行清單內的讀取路由', async () => {
+  const wrong: string[] = [];
+  for (const route of ALLOWED_READS) {
+    const res = await call('GET', route.replace(':queueName', 'event-webhook').replace(':jobId', 'j-failed'));
+    if (res.statusCode === 403) wrong.push(`${route} → 403`);
+  }
+
+  assert.deepEqual(wrong, []);
+});
+
+test('讀取 job 的 log', async () => {
   const res = await call('GET', '/api/queues/event-webhook/j-failed/logs');
 
-  assert.notEqual(res.statusCode, 403, res.body);
+  assert.equal(res.statusCode, 403);
+  assert.doesNotMatch(res.body, /0912345678/);
+});
+
+test('bull-board 的每一條讀取路由：不在放行清單內的回 403', async () => {
+  const reads = (appRoutes.api as Array<{ method: string; route: string }>).filter((r) => r.method === 'get');
+  const wrong: string[] = [];
+  for (const { route } of reads) {
+    if (ALLOWED_READS.includes(route)) continue;
+    const res = await call('GET', route.replace(':queueName', 'event-webhook').replace(':jobId', 'j-failed'));
+    if (res.statusCode !== 403) wrong.push(`${route} → ${res.statusCode}`);
+  }
+
+  assert.deepEqual(wrong, []);
 });
 
 test('重送時 job 已不是 failed', async () => {

@@ -28,7 +28,14 @@ export interface FakeQueueHandle {
   writes: string[];
 }
 
-export function fakeBullQueue(name: string, jobs: FakeJob[] = []): FakeQueueHandle {
+export interface FakeScheduler {
+  key: string;
+  name: string;
+  every?: number;
+  template?: { data?: unknown; opts?: Record<string, unknown> };
+}
+
+export function fakeBullQueue(name: string, jobs: FakeJob[] = [], schedulers: FakeScheduler[] = []): FakeQueueHandle {
   const handle: FakeQueueHandle = {
     queue: undefined as unknown as Queue,
     jobs: new Map(jobs.map((job) => [job.id, job])),
@@ -79,7 +86,9 @@ export function fakeBullQueue(name: string, jobs: FakeJob[] = []): FakeQueueHand
     getJobCounts: async () => ({}),
     getJobs: async () => [],
     isPaused: async () => false,
-    getJobLogs: async () => ({ logs: [], count: 0 }),
+    getJobLogs: async () => ({ logs: ['客人的電話是 0912345678'], count: 1 }),
+    getJobSchedulers: async () => schedulers,
+    getJobSchedulersCount: async () => schedulers.length,
     add: write('add'),
     clean: write('clean'),
     drain: write('drain'),

@@ -16,7 +16,7 @@ import { success } from '../../shared/utils/response.js';
 import { isAllowedIp, parseAllowedCidrs } from './ip-allowlist.js';
 import { QUEUE_SESSION_COOKIE, QUEUE_SESSION_TTL_SECONDS, signQueueSession, verifyQueueSession } from './queue-session.js';
 import { auditJobRetry, getPlatformUserStatus } from './queue-monitoring.service.js';
-import { allowQueueOperation, FailedOnlyRetryAdapter, RETRY_JOB_ROUTE } from './operation-allowlist.js';
+import { allowQueueOperation, MonitoredQueueAdapter, RETRY_JOB_ROUTE } from './operation-allowlist.js';
 import { maskJobData } from './mask-job-data.js';
 
 export interface QueueMonitoringOptions {
@@ -112,7 +112,7 @@ export default async function queueMonitoringRoutes(fastify: FastifyInstance, op
     serverAdapter.setBasePath(basePath);
     createBullBoard({
       queues: opts.queues.map((queue) => {
-        const adapter = new FailedOnlyRetryAdapter(queue);
+        const adapter = new MonitoredQueueAdapter(queue);
         // job 資料可能含客人的個資，只顯示識別欄位（design 決策 6）
         adapter.setFormatter('data', maskJobData);
         return adapter;
