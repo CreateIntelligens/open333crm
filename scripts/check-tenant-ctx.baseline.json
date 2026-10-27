@@ -1,7 +1,6 @@
 {
   "TenantDb": {
     "lib/tenant-db.ts": 1,
-    "modules/agent/agent.service.ts": 13,
     "modules/ai/agent/agent.service.ts": 4,
     "modules/ai/agent/tool-registry.ts": 2,
     "modules/ai/ai-key.service.ts": 4,
@@ -61,7 +60,6 @@
     "modules/platform/plan-limits.service.ts": 2,
     "modules/portal/points.service.ts": 5,
     "modules/portal/portal.service.ts": 14,
-    "modules/role/role.service.ts": 10,
     "modules/settings/chat-settings.service.ts": 3,
     "modules/settings/embedding-settings.service.ts": 4,
     "modules/settings/office-hours.service.ts": 5,
@@ -74,12 +72,11 @@
     "modules/webhook-subscriptions/webhook-dispatcher.ts": 2,
     "modules/webhook-subscriptions/webhook-subscription.service.ts": 7,
     "modules/webtalk/webtalk.service.ts": 5,
-    "services/channel-team-access.ts": 8,
+    "services/channel-team-access.ts": 7,
     "services/channel-visibility.ts": 4,
     "services/permission.service.ts": 4
   },
   "request.tenantPrisma": {
-    "modules/agent/agent.routes.ts": 16,
     "modules/ai/ai.routes.ts": 8,
     "modules/analytics/analytics.routes.ts": 9,
     "modules/automation/automation.routes.ts": 7,
@@ -101,7 +98,6 @@
     "modules/meta-connect/meta-connect.routes.ts": 3,
     "modules/notification/notification.routes.ts": 4,
     "modules/portal/portal.routes.ts": 13,
-    "modules/role/role.routes.ts": 6,
     "modules/settings/settings.routes.ts": 31,
     "modules/shortlink/shortlink.routes.ts": 8,
     "modules/sla/sla.routes.ts": 1,
@@ -113,12 +109,10 @@
     "services/channel-visibility.ts": 6
   },
   "service 內的 withTenant(": {
-    "modules/agent/agent.service.ts": 1,
     "modules/case/case.service.ts": 1,
     "modules/portal/portal.service.ts": 1,
     "modules/sla/sla.service.ts": 3,
-    "modules/tag/tagging.service.ts": 1,
-    "services/channel-team-access.ts": 1
+    "modules/tag/tagging.service.ts": 1
   },
   "service 內的 $transaction(": {
     "modules/chatbox/chatbox.service.ts": 1,
@@ -127,5 +121,23 @@
     "modules/platform/platform-user.service.ts": 1,
     "modules/trial/trial.service.ts": 1
   },
-  "service 內的 inTenant(": {}
+  "service 內的 inTenant(": {},
+  "service 直接 import Redis client": {
+    "modules/auth/passkey.service.ts": 1,
+    "modules/chatbox/chatbox.service.ts": 1,
+    "modules/conversation/conversation.service.ts": 1,
+    "modules/ops-alert/ops-alert.service.ts": 1,
+    "modules/trial/token-quota.service.ts": 1,
+    "services/permission.service.ts": 1
+  },
+  "service 直接 import LLM 入口": {
+    "modules/ai/agent/agent.service.ts": 2,
+    "modules/ai/ai.service.ts": 1,
+    "modules/ai/classify.service.ts": 1,
+    "modules/ai/flex-ai.service.ts": 1,
+    "modules/ai/kb-autoreply.service.ts": 1,
+    "modules/ai/llm.service.ts": 1,
+    "modules/ai/sentiment.service.ts": 1,
+    "modules/settings/chat-settings.service.ts": 1
+  }
 }

@@ -70,7 +70,6 @@ vi.mock('#src/modules/conversation/conversation.service.js', () => ({
 const { setupAutomationWorker } = await import('#src/modules/automation/automation.worker.js');
 const { persistAndDeliverAgentReply } = await import('#src/modules/ai/agent/agent.service.js');
 const { createBotReplyGuard } = await import('#src/modules/automation/bot-reply-guard.js');
-const { createOutboxPublisher } = await import('#src/events/outbox-publisher.js');
 const { createHarness, messageReceived, MESSAGE, TENANT, CONVERSATION } = await import('./automation-harness.js');
 
 beforeEach(() => {
@@ -100,10 +99,9 @@ test('同一則訊息處理兩次：客人只收到一則回覆，對話只有�
 
 test('同一則訊息處理兩次，兩次都已呼叫 LLM：只有一次寫入並送出回覆', async () => {
   const h = createHarness();
-  const deps = { prisma: h.tenantPrisma as never, io: h.io as never, events: createOutboxPublisher(h.tenantPrisma as never) };
   const reply = () =>
     persistAndDeliverAgentReply(h.adminPrisma as never, TENANT, CONVERSATION, 'agent 回覆', 'run-1', h.io as never, {}, false,
-      createBotReplyGuard(deps, h.adminPrisma as never, TENANT, MESSAGE));
+      createBotReplyGuard(h.tenantPrisma as never, h.adminPrisma as never, TENANT, MESSAGE));
   await Promise.all([reply(), reply()]);
 
   assert.equal(calls.delivered.length, 1);

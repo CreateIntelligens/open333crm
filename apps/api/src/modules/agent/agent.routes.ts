@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { success, AppError } from '../../shared/utils/response.js';
+import { success } from '../../shared/utils/response.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { listChannelsForAgent, setAgentChannels } from '../../services/channel-team-access.js';
 import {
   createAgentSchema,
   updateAgentRoleSchema,
@@ -10,63 +9,43 @@ import {
   resetPasswordSchema,
 } from './agent.schema.js';
 import {
-  createAgent,
-  updateAgentRole,
-  changeOwnPassword,
-  resetAgentPassword,
-  deactivateAgent,
-  purgeAgent,
-  listAgents,
-  reactivateAgent,
-} from './agent.service.js';
-import { writeTenantAudit } from '../tenant-audit/tenant-audit.service.js';
-import { withTenant } from '../../lib/tenant-db.js';
-import { hashPassword } from '../../shared/utils/password.js';
+  changeOwnPasswordFlow,
+  createAgentFlow,
+  deactivateAgentFlow,
+  listAgentChannelsFlow,
+  listAgentsFlow,
+  purgeAgentFlow,
+  reactivateAgentFlow,
+  resetAgentPasswordFlow,
+  setAgentChannelsFlow,
+  updateAgentRoleFlow,
+} from './agent.flow.js';
+import { actorOf } from '../../lib/request-actor.js';
 import { resolveChannelGrantScope } from '../../services/channel-visibility.js';
 
+// 讀寫租戶資料的 route 都呼叫 agent.flow：交易、bcrypt、稽核的順序都在 flow（AGENTS.md 結構規則 2）。
 export default async function agentRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
   // GET /api/v1/agents — 啟用中的成員
   fastify.get('/', { preHandler: [requirePermission('agent.view')] }, async (request, reply) => {
-    return reply.send(success(await listAgents(request.tenantPrisma, request.agent.tenantId, true)));
+    return reply.send(success(await listAgentsFlow(fastify, actorOf(request), true)));
   });
 
   // GET /api/v1/agents/inactive — 停用的成員（需 agent.deactivate，供重新啟用，AUDIT AUTH-09）
   fastify.get('/inactive', { preHandler: [requirePermission('agent.deactivate')] }, async (request, reply) => {
-    return reply.send(success(await listAgents(request.tenantPrisma, request.agent.tenantId, false)));
+    return reply.send(success(await listAgentsFlow(fastify, actorOf(request), false)));
   });
 
-  // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護）
+  // POST /api/v1/agents — 需 agent.manage（建立成員；指派角色受越權防護，在 service）
   fastify.post('/', {
     preHandler: [requirePermission('agent.manage')],
   }, async (request, reply) => {
     const body = createAgentSchema.parse(request.body);
-
-    // 越權防護在 service 層：不可指派權限超出自身有效權限的角色（含 legacy 與 roleId）→ ROLE_ESCALATION 403。
-    // 渠道可見範圍是 fail-closed：建立成員與寫入可見渠道在同一個交易，可指派範圍依建立者的權限決定。
-    const tenantId = request.agent.tenantId;
+    // 可指派的渠道範圍依建立者的權限決定（交易外讀取，design Non-Goals）
     const grantable = await resolveChannelGrantScope(request);
-    // bcrypt 在交易外先做，不佔住交易與連線
-    const passwordHash = await hashPassword(body.password);
-    const agent = await withTenant(fastify.prisma, tenantId, (tx) =>
-      createAgent(tx, tenantId, body, request.agent.roleId, {
-        grantable,
-        grantedById: request.agent.id,
-        passwordHash,
-      }),
-    );
-    // 稽核：建立成員（payload 只放非 PII 摘要——email 不入 payload，改用 targetId 對應 agent）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.create',
-      targetType: 'agent',
-      targetId: agent.id,
-      payload: { role: agent.role },
-      ip: request.ip,
-    });
+    const agent = await createAgentFlow(fastify, actorOf(request), { data: body, grantable });
     return reply.status(201).send(success(agent));
   });
 
@@ -74,37 +53,17 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   // Must be defined before /:id routes to avoid route conflict
   fastify.patch('/me/password', async (request, reply) => {
     const body = changePasswordSchema.parse(request.body);
-    await changeOwnPassword(request.tenantPrisma, request.agent.id, body.currentPassword, body.newPassword);
+    await changeOwnPasswordFlow(fastify, actorOf(request), body.currentPassword, body.newPassword);
     return reply.send(success({ message: '密碼已更新' }));
   });
 
-  // PATCH /api/v1/agents/:id/role — 需 agent.role.assign（指派角色專用權限；越權防護在 service 層）
+  // PATCH /api/v1/agents/:id/role — 需 agent.role.assign（越權防護與自我降級守門在 service）
   fastify.patch('/:id/role', {
     preHandler: [requirePermission('agent.role.assign')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateAgentRoleSchema.parse(request.body);
-
-    // 越權防護：不可指派權限超出自身有效權限的角色 → ROLE_ESCALATION 403
-    // 傳操作者本人 agentId（request.agent.id）供 service 做自我降級守門 → SELF_LOCK 422
-    const agent = await updateAgentRole(
-      request.tenantPrisma,
-      request.agent.tenantId,
-      id,
-      { role: body.role, roleId: body.roleId },
-      request.agent.roleId,
-      request.agent.id,
-    );
-    // 稽核：指派/變更成員角色
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.role.assign',
-      targetType: 'agent',
-      targetId: id,
-      payload: { role: agent.role, roleId: body.roleId ?? null },
-      ip: request.ip,
-    });
+    const agent = await updateAgentRoleFlow(fastify, actorOf(request), id, { role: body.role, roleId: body.roleId });
     return reply.send(success(agent));
   });
 
@@ -114,16 +73,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = resetPasswordSchema.parse(request.body);
-    await resetAgentPassword(request.tenantPrisma, request.agent.tenantId, id, body.newPassword);
-    // 稽核：重設他人密碼（絕不記錄密碼明文，只記操作事實）
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.password.reset',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
+    await resetAgentPasswordFlow(fastify, actorOf(request), id, body.newPassword);
     return reply.send(success({ message: '密碼已重設' }));
   });
 
@@ -132,19 +82,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('agent.deactivate')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    // 防呆：不可停用自己（避免自我鎖定）
-    if (request.agent.id === id) {
-      throw new AppError('不可停用自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
-    }
-    await deactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.deactivate',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
+    await deactivateAgentFlow(fastify, actorOf(request), id);
     return reply.status(204).send();
   });
 
@@ -153,15 +91,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('agent.deactivate')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    await reactivateAgent(request.tenantPrisma, request.agent.tenantId, id);
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.reactivate',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
+    await reactivateAgentFlow(fastify, actorOf(request), id);
     return reply.status(204).send();
   });
 
@@ -170,20 +100,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('agent.purge')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    // 防呆：不可刪除自己（自我鎖定；且刪除後 writeTenantAudit 以已刪 actorId 寫入會撞 FK → 500）
-    if (request.agent.id === id) {
-      throw new AppError('不可刪除自己的帳號', 'SELF_ACTION_FORBIDDEN', 422);
-    }
-    // purgeAgent 需交易（withTenant）綁 RLS，故收 fastify.prisma 而非 request.tenantPrisma
-    await purgeAgent(fastify.prisma, request.agent.tenantId, id);
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.purge',
-      targetType: 'agent',
-      targetId: id,
-      ip: request.ip,
-    });
+    await purgeAgentFlow(fastify, actorOf(request), id);
     return reply.status(204).send();
   });
 
@@ -195,8 +112,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
     preHandler: [requirePermission('channel.assign_team')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const rows = await listChannelsForAgent(request.tenantPrisma, request.agent.tenantId, id);
-    return reply.send(success(rows));
+    return reply.send(success(await listAgentChannelsFlow(fastify, actorOf(request), id)));
   });
 
   // PUT /api/v1/agents/:id/channels — 整組替換該成員的可用渠道
@@ -205,23 +121,7 @@ export default async function agentRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = z.object({ channelIds: z.array(z.string().uuid()).max(200) }).parse(request.body);
-    // setAgentChannels 需交易（withTenant）綁 RLS，故收 fastify.prisma
-    const result = await setAgentChannels(
-      fastify.prisma,
-      request.agent.tenantId,
-      id,
-      body.channelIds,
-      request.agent.id,
-    );
-    await writeTenantAudit(request.tenantPrisma, {
-      tenantId: request.agent.tenantId,
-      actorId: request.agent.id,
-      action: 'agent.channels.set',
-      targetType: 'agent',
-      targetId: id,
-      payload: { count: result.count },
-      ip: request.ip,
-    });
+    const result = await setAgentChannelsFlow(fastify, actorOf(request), id, body.channelIds);
     return reply.send(success(result));
   });
 }

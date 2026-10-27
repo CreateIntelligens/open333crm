@@ -28,7 +28,7 @@
 
 業務事件有三個訂閱者：通知、自動化與對外 Webhook。每個訂閱者有自己的 BullMQ 佇列，Worker 在 API 行程內。事件有兩種發出方式：
 
-- **`ctx.publish()`**（`inTenant()`、`tenantHandler()` 的交易內）：事件寫進 `outbox` 資料表，與業務資料一起 commit；commit 之後送進訂閱者佇列。行程在送出之前結束時，補送排程會補送。保證是**至少一次**。
+- **`publishEvent(scope, publisher, …)`**（flow 或背景工作，在 `inTenant()` 的交易內；`apps/api/src/events/outbox-publisher.ts`）：事件寫進 `outbox` 資料表，與業務資料一起 commit；commit 之後送進訂閱者佇列。行程在送出之前結束時，補送排程會補送。保證是**至少一次**。
 - **`eventBus.publish()`**（還沒搬遷的舊程式）：直接送進訂閱者佇列，不寫 outbox。行程在送出之前結束時，事件遺失。保證是**最多一次**。
 
 因為事件可能送兩次，訂閱者與 workers 的規則動作都要承受重複。對客人發訊息等不能重複的副作用，執行前先寫一筆認領紀錄（`side_effect_claims`）。
@@ -54,7 +54,7 @@
 
 ```ts
 // 交易內：寫 outbox，至少一次
-await ctx.publish('case.created', { caseId });
+await publishEvent(scope, publisher, 'case.created', { caseId }); // publisher 是 EventPublisher，例如 createOutboxPublisher(prisma)
 // 舊寫法：直接送進訂閱者佇列，最多一次
 eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payload: { caseId } });
 ```
@@ -104,13 +104,13 @@ eventBus.publish({ name: 'case.created', tenantId, timestamp: new Date(), payloa
 
 ### outbox 的送出流程
 
-1. 交易內的 `ctx.publish()`、`ctx.enqueue()`，或 workers 交易內的 `writeOutbox()`，寫入一筆 `outbox`。`outbox` 的 id 就是事件 id，也是 BullMQ 的 job id。
+1. 交易內的 `publishEvent()`、`enqueueJob()`，或 workers 交易內的 `writeOutbox()`，寫入一筆 `outbox`。`outbox` 的 id 就是事件 id，也是 BullMQ 的 job id。
 2. 交易 commit 之後，快路徑（`dispatchOutboxRows()`）為每個訂閱者建立 job，再標記已送出。API 端以綁定租戶的短交易標記，workers 以 admin 連線標記。快路徑失敗只寫 log。
 3. `outbox-relay` 排程每 60 秒補送建立超過 2 分鐘、還沒標記已送出的資料列，每次最多 500 筆。
 4. 快路徑與補送同時送出時，BullMQ 以 job id 擋住重複的 job。訂閱者佇列保留完成的 job 24 小時、失敗的 job 7 天，這段時間內同一個事件 id 不會再建立 job。
 5. `outbox-cleanup` 排程每天刪除已送出超過 7 天的資料列。未送出的資料列不刪。
 
-`ctx.enqueue(queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，佇列回傳的 job id 不等於 outbox id，這一列就不標記已送出，留給補送排程。
+`enqueueJob(scope, publisher, queueName, name, data, opts)` 寫入的 job 也走同一條路，送到 `queueName` 的佇列。`opts` 只接受 `attempts`、`backoff`、`delay`、`priority`、`removeOnComplete`、`removeOnFail`，其他選項丟錯。`jobId`、`deduplication`、`debounce`、`repeat` 這類選項會讓 BullMQ 不建立這個 job，或不用 outbox id 當 job id。送出時，佇列回傳的 job id 不等於 outbox id，這一列就不標記已送出，留給補送排程。
 
 ### 副作用的認領紀錄
 
@@ -242,7 +242,7 @@ Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取�
 
 | 通道 | 失敗時 | API 或 workers 重啟時 |
 | --- | --- | --- |
-| outbox（`ctx.publish()`、workers 的交易） | 快路徑失敗時寫 log，由 `outbox-relay` 補送 | 還沒送出的資料列由 `outbox-relay` 補送 |
+| outbox（`publishEvent()`、workers 的交易） | 快路徑失敗時寫 log，由 `outbox-relay` 補送 | 還沒送出的資料列由 `outbox-relay` 補送 |
 | `eventBus.publish()` | 送進佇列失敗時寫 log，事件遺失 | 還沒送進佇列的事件遺失 |
 | 訂閱者佇列 | 處理函式丟錯時，BullMQ 重試該訂閱者的 job，其他訂閱者不受影響 | job 留在 Redis，重啟後繼續處理 |
 | `crm:events` | 寫 log，不重試 | 沒有訂閱者時發布的事件遺失 |
@@ -286,9 +286,9 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ## 新增事件或背景工作時
 
-1. **只是通知前端，而且資料已經在手上**：在交易內用 `ctx.notify()` 或 `ctx.notifyAgent()`。
-2. **其他模組要跟著做事**：在交易內用 `ctx.publish()`。先在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES` 加上名稱，再在 `queues.ts` 的 `EVENT_SUBSCRIBERS` 決定哪些訂閱者收到。訂閱者要承受同一個事件處理兩次。
-3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：在交易內用 `ctx.enqueue()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
+1. **只是通知前端，而且資料已經在手上**：flow 在交易內用 `notifyTenant()` 或 `notifyAgent()`（`apps/api/src/events/socket-push.ts`）。
+2. **其他模組要跟著做事**：flow 在交易內用 `publishEvent()`。先在 `packages/core/src/outbox/events.ts` 的 `APP_EVENT_NAMES` 加上名稱，再在 `queues.ts` 的 `EVENT_SUBSCRIBERS` 決定哪些訂閱者收到。訂閱者要承受同一個事件處理兩次。
+3. **工作會拖慢回應、需要查很多資料，或要能在失敗後保留**：flow 在交易內用 `enqueueJob()`，由 `apps/workers` 消費。佇列名稱不能含冒號；設定 `removeOnComplete` 與 `removeOnFail`；需要重試時設定 `attempts`。job 可能送兩次，handler 要承受重複。
 4. **workers 要推送即時事件**：用 `publishSocketEvent()`。
 5. **workers 產生的事件要觸發自動化**：在寫入業務資料的交易內用 `writeOutbox()`，帶入租戶 ID；commit 之後呼叫 `dispatchOutboxRows()`。
 6. **不能重複的副作用**：執行前在交易內用 `claimSideEffect()` 認領，或以條件更新認領資料列。認領的交易失敗時丟錯讓 job 重試；認領之後的失敗只記 log。
@@ -316,7 +316,7 @@ BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失�
 
 ```bash
 # 發布端：outbox 與舊寫法
-grep -rn "ctx.publish(\|writeOutbox(" apps --include='*.ts' | grep -v /tests/
+grep -rn "publishEvent(\|writeOutbox(" apps --include='*.ts' | grep -v /tests/
 grep -rn -A2 "eventBus.publish" apps/api/src | grep -o "name: '[a-z_.]*'" | sort | uniq -c
 
 # 訂閱者訂閱哪些事件

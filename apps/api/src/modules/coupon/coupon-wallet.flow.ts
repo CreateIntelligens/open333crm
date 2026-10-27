@@ -7,8 +7,8 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { readWalletToken } from '@open333crm/core';
-import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { notifyInstanceUpdated } from './coupon-effects.js';
 import type { FanIdentity } from './coupon-fan.service.js';
 import { reuseOrIssueRegistrationToken } from '../identity-binding/identifier-registration.js';
 import {
@@ -28,6 +28,7 @@ import {
   markLineVerified,
   openWalletSession,
   redeemByStaffCode,
+  redeemSelf,
   staffCodeTarget,
   walletEmailCodeTarget,
   type LineLoginDeps,
@@ -54,20 +55,30 @@ import {
 
 export interface WalletFlowDeps extends WalletDeps {
   prisma: PrismaClient;
-  /** 推播「已發優惠券」更新；沒有 io 時 service 推播會丟錯（寫錯程式要看得到） */
+  /** 推播「已發優惠券」更新 */
   io: Server;
   /** 寄出開啟票券的 email 驗證碼（design D24）；測試注入，預設以租戶名稱署名寄出。失敗時拋錯 */
   sendEmailCode?: (to: string, code: string, senderName: string) => Promise<void>;
 }
 
-function inTenantOf<T>(deps: WalletFlowDeps, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, fn);
+function inTenantOf<T>(deps: WalletFlowDeps, tenantId: string, fn: (scope: TenantScope) => Promise<T>): Promise<T> {
+  return inTenant(deps.prisma, tenantId, fn);
 }
 
 /** 以顧客憑證的租戶開交易 */
-export function inFanTenant<T>(deps: WalletFlowDeps, fan: FanIdentity, fn: (ctx: TenantCtx) => Promise<T>): Promise<T> {
+export function inFanTenant<T>(deps: WalletFlowDeps, fan: FanIdentity, fn: (scope: TenantScope) => Promise<T>): Promise<T> {
   return inTenantOf(deps, fan.tenantId, fn);
 }
+
+/** 顧客開啟票券：收件匣「已發優惠券」重新載入（design D23） */
+function notifyViewed<T extends { status: string }>(scope: TenantScope, deps: WalletFlowDeps, result: T): T {
+  if (isOpened(result)) {
+    notifyInstanceUpdated(scope, deps.io, { instanceId: result.instanceId, contactId: result.contactId, change: 'viewed' });
+  }
+  return result;
+}
+
+const isOpened = (result: { status: string }): result is WalletSessionOk => result.status === 'ok';
 
 /**
  * 票券連結換顧客憑證：權杖決定租戶，不信任網址參數。
@@ -80,7 +91,8 @@ export async function openWalletSessionFlow(
 ): Promise<WalletSessionResult> {
   const payload = await readWalletToken(deps.store, token);
   if (!payload) return { status: 'expired' };
-  const step = await inTenantOf(deps, payload.tenantId, (ctx) => openWalletSession(ctx, deps, payload, deviceTokens));
+  const step = await inTenantOf(deps, payload.tenantId, async (scope) =>
+    notifyViewed(scope, deps, await openWalletSession(scope, deps, payload, deviceTokens)));
   if (step.status !== 'needs_registration') return step;
 
   // 未驗證身分：產生（或沿用）登記連結，登記頁送出後回到原票券連結
@@ -188,7 +200,8 @@ export async function verifyWalletEmailCodeFlow(
 
   let result: Awaited<ReturnType<typeof completeWalletEmailCode>>;
   try {
-    result = await inTenantOf(deps, payload.tenantId, (ctx) => completeWalletEmailCode(ctx, deps, payload, checked.value));
+    result = await inTenantOf(deps, payload.tenantId, async (scope) =>
+      notifyViewed(scope, deps, await completeWalletEmailCode(scope, deps, payload, checked.value)));
   } catch (err) {
     // 開啟失敗（例如資料庫暫時無法連線）：放回驗證碼，顧客可用同一組再試
     await restoreVerificationCode(deps.store, keys, checked.claim, consumed.ttlMs);
@@ -269,7 +282,11 @@ export async function redeemWithStaffCodeFlow(
     return { ok: false, reason: 'SESSION_REQUIRED' };
   }
 
-  const result = await inFanTenant(deps, fan, (ctx) => redeemByStaffCode(ctx, instanceId, code));
+  const result = await inFanTenant(deps, fan, async (scope) => {
+    const redeemed = await redeemByStaffCode(scope, instanceId, code);
+    if (redeemed.ok) notifyInstanceUpdated(scope, deps.io, { instanceId: redeemed.instanceId, contactId: redeemed.contactId, change: 'redeemed' });
+    return redeemed;
+  });
   if (result.ok) {
     await closeSession(deps.store, instanceId);
     return { ok: true, redeemedAt: result.redeemedAt, couponName: result.couponName };
@@ -281,6 +298,16 @@ export async function redeemWithStaffCodeFlow(
   const attemptsLeft = Math.max(0, Math.min(MAX_CODE_ATTEMPTS - attempts, MAX_DAILY_CODE_ATTEMPTS - daily));
   if (attemptsLeft === 0) await closeSession(deps.store, instanceId);
   return { ok: false, reason: 'STAFF_CODE_MISMATCH', attemptsLeft };
+}
+
+/** 顧客自助核銷（只限自助券，service 擋下其他核銷方式）；成功時 commit 後推播券狀態更新 */
+export async function redeemSelfFlow(deps: WalletFlowDeps, fan: FanIdentity, instanceId: string) {
+  const result = await inFanTenant(deps, fan, async (scope) => {
+    const redeemed = await redeemSelf(scope, fan, instanceId);
+    if (redeemed.ok) notifyInstanceUpdated(scope, deps.io, { instanceId: redeemed.instanceId, contactId: redeemed.contactId, change: 'redeemed' });
+    return redeemed;
+  });
+  return result.ok ? { ok: true as const, redeemedAt: result.redeemedAt, couponName: result.couponName } : result;
 }
 
 export function getWalletQrCodeFlow(deps: WalletFlowDeps, fan: FanIdentity, instanceId: string, now?: number) {

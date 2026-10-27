@@ -78,10 +78,15 @@ const asRole = async (permissions: string[]) => buildApp({ roleId: (await create
 // 方案天花板：專用租戶的方案只含 inbox 功能
 const plan = await owner.plan.create({ data: { slug: MARK, name: MARK, features: ['inbox'] } });
 const planTenant = await owner.tenant.create({ data: { name: MARK, planId: plan.id } });
+// 登入成員要實際存在：角色路由在同一個交易寫稽核，actorId 違反外鍵時整筆請求失敗（tenant-audit-log）
+await owner.agent.create({
+  data: { id: AGENT_ID, tenantId: A, name: MARK, email: `${MARK}@example.test`, passwordHash: 'x', role: 'AGENT' },
+});
 
 afterAll(async () => {
   await Promise.all(apps.map((app) => app.close()));
   await owner.tenantAuditLog.deleteMany({ where: { tenantId: { in: [A, planTenant.id] }, actorId: AGENT_ID } });
+  await owner.agent.delete({ where: { id: AGENT_ID } });
   await owner.role.deleteMany({ where: { slug: { startsWith: MARK } } });
   await owner.tenant.delete({ where: { id: planTenant.id } });
   await owner.plan.delete({ where: { id: plan.id } });

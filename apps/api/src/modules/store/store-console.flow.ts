@@ -6,8 +6,8 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { couponCodeKey } from '@open333crm/core';
-import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { notifyInstanceUpdated } from '../coupon/coupon-effects.js';
 import type { BindingStore } from '../identity-binding/binding-code.js';
 import {
   authorizeStoreSession,
@@ -36,8 +36,8 @@ const MIN_MS = 60 * 1000;
 /** 重試鍵保留多久：店員在網路恢復後重送，通常在幾十秒內 */
 const IDEMPOTENCY_TTL_MS = 10 * MIN_MS;
 
-function inSessionTenant<T>(deps: StoreConsoleFlowDeps, session: StoreSession, fn: (ctx: TenantCtx) => Promise<T>) {
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, session.tenantId, fn);
+function inSessionTenant<T>(deps: StoreConsoleFlowDeps, session: StoreSession, fn: (scope: TenantScope) => Promise<T>) {
+  return inTenant(deps.prisma, session.tenantId, fn);
 }
 
 /** 門市帳號登入：先依帳號名稱找出租戶，再在該租戶的交易內檢查密碼 */
@@ -51,7 +51,7 @@ export async function loginStoreAccountFlow(
   const tenantId = await deps.resolveTenant(username);
   if (!tenantId) return { ok: false, code: 'INVALID_CREDENTIALS' };
   const now = new Date((deps.now ?? Date.now)());
-  return inTenant({ prisma: deps.prisma, io: deps.io, events: createOutboxPublisher(deps.prisma) }, tenantId, (ctx) =>
+  return inTenant(deps.prisma, tenantId, (ctx) =>
     loginStoreAccount(ctx, username, password, remember, now));
 }
 
@@ -104,7 +104,12 @@ export async function redeemAtStore(
   let result: StoreRedeemResult;
   try {
     const now = (deps.now ?? Date.now)();
-    result = await inSessionTenant(deps, session, (ctx) => redeemStoreCoupon(ctx, session, rawCode, now));
+    result = await inSessionTenant(deps, session, async (scope) => {
+      const outcome = await redeemStoreCoupon(scope, session, rawCode, now);
+      // 收件匣「已發優惠券」重新載入（design D23），commit 後送出
+      if (outcome.redeemed) notifyInstanceUpdated(scope, deps.io, { ...outcome.redeemed, change: 'redeemed' });
+      return outcome.result;
+    });
   } catch (err) {
     await deps.store.getdel(cacheKey);
     throw err;

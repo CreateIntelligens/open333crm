@@ -341,26 +341,29 @@ const LOOKUP_FAILURE: Record<Exclude<LookupResult, 'OK'>, StoreRedeemFailure> = 
 /**
  * 核銷一次（不含重試鍵，重試鍵由 flow 處理）。查券、記錄門市與核銷在同一個交易內；
  * 兩台手機同時核銷時，條件式更新只讓一個成功，另一個回報已使用並附核銷門市。
- * 成功時由 redeemCoupon 推播券狀態更新（commit 後送出，design D23）。
+ * 成功時 redeemed 帶核銷的券，flow 依它推播券狀態更新（commit 後送出，design D23）。
  */
 export async function redeemStoreCoupon(
   ctx: TenantCtx,
   session: StoreSession,
   rawCode: string,
   now: number,
-): Promise<StoreRedeemResult> {
+): Promise<{ result: StoreRedeemResult; redeemed: { instanceId: string; contactId: string | null } | null }> {
   const instance = await findInstanceByCode(ctx, rawCode);
   if (!instance) {
-    return { ok: false, reason: (await isSharedCode(ctx, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' };
+    return { result: { ok: false, reason: (await isSharedCode(ctx, rawCode)) ? 'SHARED_CODE' : 'NOT_FOUND' }, redeemed: null };
   }
   const lookup = judge(instance, now);
   if (lookup.result !== 'OK') {
     return {
-      ok: false,
-      reason: LOOKUP_FAILURE[lookup.result],
-      coupon: lookup.coupon,
-      redeemedAt: lookup.redeemedAt,
-      redeemedStoreName: lookup.redeemedStoreName,
+      result: {
+        ok: false,
+        reason: LOOKUP_FAILURE[lookup.result],
+        coupon: lookup.coupon,
+        redeemedAt: lookup.redeemedAt,
+        redeemedStoreName: lookup.redeemedStoreName,
+      },
+      redeemed: null,
     };
   }
 
@@ -368,7 +371,7 @@ export async function redeemStoreCoupon(
     where: { id: session.accountId, tenantId: ctx.tenantId },
     select: { username: true, store: { select: { id: true, name: true } } },
   });
-  if (!who) return { ok: false, reason: 'NOT_FOUND' };
+  if (!who) return { result: { ok: false, reason: 'NOT_FOUND' }, redeemed: null };
 
   const redeemed = await redeemCoupon(ctx, {
     instanceId: instance.id,
@@ -378,24 +381,30 @@ export async function redeemStoreCoupon(
     store: { id: who.store.id, name: who.store.name, account: who.username },
   });
   if (redeemed.ok) {
-    return { ok: true, redeemedAt: redeemed.redeemedAt, storeName: who.store.name, coupon: lookup.coupon! };
+    return {
+      result: { ok: true, redeemedAt: redeemed.redeemedAt, storeName: who.store.name, coupon: lookup.coupon! },
+      redeemed: { instanceId: redeemed.instanceId, contactId: redeemed.contactId },
+    };
   }
   if (redeemed.reason === 'CONFLICT' || redeemed.reason === 'ALREADY_REDEEMED') {
     // 被另一台手機搶先：重新讀出是哪間門市、什麼時候核銷的
     const latest = await findInstanceByCode(ctx, rawCode);
     return {
-      ok: false,
-      reason: 'ALREADY_REDEEMED',
-      coupon: lookup.coupon,
-      redeemedAt: latest?.redeemedAt ?? undefined,
-      redeemedStoreName: latest?.redeemedStoreName ?? null,
+      result: {
+        ok: false,
+        reason: 'ALREADY_REDEEMED',
+        coupon: lookup.coupon,
+        redeemedAt: latest?.redeemedAt ?? undefined,
+        redeemedStoreName: latest?.redeemedStoreName ?? null,
+      },
+      redeemed: null,
     };
   }
   const reason: StoreRedeemFailure =
     redeemed.reason === 'SELF_REDEEM_NOT_ALLOWED' || redeemed.reason === 'WRONG_MODE'
       ? 'WRONG_MODE'
       : (redeemed.reason as StoreRedeemFailure);
-  return { ok: false, reason, coupon: lookup.coupon };
+  return { result: { ok: false, reason, coupon: lookup.coupon }, redeemed: null };
 }
 
 // ── 今日核銷紀錄 ───────────────────────────────────────────────────────────

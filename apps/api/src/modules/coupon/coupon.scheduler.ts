@@ -7,7 +7,6 @@ import type { Server } from 'socket.io';
 import { logger } from '@open333crm/core';
 import type { JobScheduler } from '../../lib/job-scheduler.js';
 import { inTenant } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { STALE_PENDING_MS, voidPendingInstance } from './coupon-inbox.service.js';
 
 /** 作廢發送中超過 5 分鐘的券；回傳作廢張數。重跑也安全：只作廢仍在發送中的券 */
@@ -25,7 +24,7 @@ export async function sweepStalePendingIssues(
   let swept = 0;
   for (const row of stale) {
     try {
-      const removed = await inTenant({ prisma, io, events: createOutboxPublisher(prisma) }, row.tenantId, (ctx) =>
+      const removed = await inTenant(prisma, row.tenantId, (ctx) =>
         voidPendingInstance(ctx, row.id));
       if (removed) {
         swept += 1;

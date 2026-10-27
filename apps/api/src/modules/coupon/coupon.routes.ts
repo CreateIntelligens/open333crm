@@ -1,40 +1,36 @@
 /**
  * 優惠券後台 API。Prefix: /api/v1/coupons
  *
- * 租戶隔離：每個 handler 以 tenantHandler() 在綁定租戶的交易內執行，service 只收 TenantCtx
- * （AGENTS.md 結構規則 2）。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
+ * 租戶隔離：每個 route 呼叫 flow（coupon.flow、coupon-redeem.flow、broadcast-coupon.flow），交易由 flow 開；
+ * service 只收 TenantCtx（AGENTS.md 結構規則 2）。⚠️ 券系統任何地方都不得使用 prismaAdmin（BYPASSRLS）。
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { parseDateOnly } from '@open333crm/core';
 import { COUPON_ISSUED_VIA, isReservedCouponIssuedVia } from '@open333crm/shared';
 import { requirePermission } from '../../guards/rbac.guard.js';
-import { inTenant, tenantHandler, type TenantCtx, type TenantReply } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { AppError } from '../../shared/utils/response.js';
+import { CouponValidationError, CouponLockedError, CouponConflictError } from './coupon.service.js';
 import {
-  listCoupons,
-  getCoupon,
-  createCoupon,
-  updateCoupon,
-  deleteCoupon,
-  duplicateCoupon,
-  checkSharedCode,
-  CouponValidationError,
-  CouponLockedError,
-  CouponConflictError,
-} from './coupon.service.js';
-import { changeStatus } from './coupon-lifecycle.service.js';
-import { ISSUE_BATCH_SIZE, issueCoupons, type IssueResult } from './coupon-issue.service.js';
-import { redeemCoupon } from './coupon-redeem.service.js';
-import { importCodes, previewImport, removeAvailableCode } from './coupon-import.service.js';
+  changeStatusFlow,
+  checkSharedCodeFlow,
+  createCouponFlow,
+  deleteCouponFlow,
+  duplicateCouponFlow,
+  getCouponFlow,
+  importCodesFlow,
+  issueCouponsInBatchesFlow,
+  listCouponBroadcastsFlow,
+  listCouponsFlow,
+  previewBatchAudienceFlow,
+  previewImportFlow,
+  removeAvailableCodeFlow,
+  updateCouponFlow,
+} from './coupon.flow.js';
+import { redeemAtConsole } from './coupon-redeem.flow.js';
 import { assertChannelVisible } from '../../services/channel-visibility.js';
-import { previewBroadcastAudience } from '../marketing/marketing.service.js';
-import {
-  BATCH_ISSUE_MAX_RECIPIENTS,
-  createBatchIssue,
-  listCouponBroadcasts,
-} from '../marketing/broadcast-coupon.service.js';
+import { BATCH_ISSUE_MAX_RECIPIENTS } from '../marketing/broadcast-coupon.service.js';
+import { createBatchIssueFlow } from '../marketing/broadcast-coupon.flow.js';
 
 // 資料庫欄位是 int4：超過範圍時在這裡擋下，不讓資料庫丟錯變成 500
 const int = z.number().int('請輸入整數').min(-2_147_483_648, '數值過小').max(2_147_483_647, '數值過大，請確認輸入');
@@ -131,92 +127,87 @@ function toAppError(err: unknown): unknown {
   return err;
 }
 
-/** tenantHandler 加上 service 錯誤的轉換 */
-function couponHandler(
-  app: FastifyInstance,
-  fn: (request: FastifyRequest, reply: TenantReply, ctx: TenantCtx) => Promise<unknown>,
-) {
-  return tenantHandler(app, async (request, reply, ctx) => {
-    try {
-      return await fn(request, reply, ctx);
-    } catch (err) {
-      throw toAppError(err);
-    }
-  });
+/** service 錯誤轉成 AppError（交易已回滾） */
+async function couponErrors<T>(result: Promise<T>): Promise<T> {
+  try {
+    return await result;
+  } catch (err) {
+    throw toAppError(err);
+  }
 }
 
-/** 查無資料等非例外的失敗：設定狀態碼並回傳錯誤內容（交易照常提交，沒有寫入要回滾） */
-function fail(reply: TenantReply, status: number, code: string, message: string, extra?: Record<string, unknown>) {
-  reply.code(status);
-  return { success: false, error: { code, message, ...extra } };
+/** 查無資料等非例外的失敗：設定狀態碼並送出錯誤內容（交易照常提交，沒有寫入要回滾） */
+function fail(reply: FastifyReply, status: number, code: string, message: string, extra?: Record<string, unknown>) {
+  return reply.code(status).send({ success: false, error: { code, message, ...extra } });
 }
 
 export default async function couponRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
 
-  app.get('/', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, _reply, ctx) => {
+  app.get('/', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
     const query = listQuerySchema.parse(request.query);
-    const result = await listCoupons(ctx, query);
+    const result = await couponErrors(listCouponsFlow(app, request.agent.tenantId, query));
     return {
       success: true,
       data: result.items,
       meta: { total: result.total, page: result.page, limit: result.limit, statusCounts: result.statusCounts },
     };
-  }));
+  });
 
-  app.get('/:id', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.get('/:id', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const coupon = await getCoupon(ctx, id);
+    const coupon = await couponErrors(getCouponFlow(app, request.agent.tenantId, id));
     if (!coupon) return fail(reply, 404, 'NOT_FOUND', '查無此券');
     return { success: true, data: coupon };
-  }));
+  });
 
-  app.post('/', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
-    const coupon = await createCoupon(ctx, request.agent.id, couponInputSchema.parse(request.body));
+  app.post('/', { preHandler: [requirePermission('coupon.manage')] }, async (request) => {
+    const input = couponInputSchema.parse(request.body);
+    const coupon = await couponErrors(createCouponFlow(app, request.agent.tenantId, request.agent.id, input));
     return { success: true, data: coupon };
-  }));
+  });
 
-  app.patch('/:id', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.patch('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const coupon = await updateCoupon(ctx, id, couponInputSchema.parse(request.body));
+    const input = couponInputSchema.parse(request.body);
+    const coupon = await couponErrors(updateCouponFlow(app, request.agent.tenantId, id, input));
     if (!coupon) return fail(reply, 404, 'NOT_FOUND', '查無此券');
     return { success: true, data: coupon };
-  }));
+  });
 
   /** 複製為新草稿，回傳新券（前端導向其編輯頁）。 */
-  app.post('/:id/duplicate', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.post('/:id/duplicate', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const copy = await duplicateCoupon(ctx, id, request.agent.id);
+    const copy = await couponErrors(duplicateCouponFlow(app, request.agent.tenantId, id, request.agent.id));
     if (!copy) return fail(reply, 404, 'NOT_FOUND', '查無此券');
     return { success: true, data: copy };
-  }));
+  });
 
   /** 共用碼即時檢查（表單失焦時呼叫）。excludeId 為正在編輯的券，自己不算重複。 */
-  app.get('/shared-code/check', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
+  app.get('/shared-code/check', { preHandler: [requirePermission('coupon.manage')] }, async (request) => {
     const { code, excludeId } = z
       .object({ code: z.string().min(1), excludeId: z.string().uuid().optional() })
       .parse(request.query);
-    const result = await checkSharedCode(ctx, code, excludeId);
+    const result = await couponErrors(checkSharedCodeFlow(app, request.agent.tenantId, code, excludeId));
     return { success: true, data: result };
-  }));
+  });
 
-  app.delete('/:id', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.delete('/:id', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const result = await deleteCoupon(ctx, id);
+    const result = await couponErrors(deleteCouponFlow(app, request.agent.tenantId, id));
     if (!result.deleted) {
       if (result.reason === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND', '查無此券');
       return fail(reply, 409, 'NOT_DRAFT', '已發布的券無法刪除，請改為提前結束');
     }
     return { success: true };
-  }));
+  });
 
   // 狀態流轉。分成獨立端點而非 PATCH status，讓權限與稽核能對應到具體動作。
   // 路徑須寫成字串字面值：部署前的 OpenAPI 產生器（openapi-inventory.mjs）只認得字面值路徑
   const transition = (next: 'ACTIVE' | 'PAUSED' | 'ENDED') =>
-    couponHandler(app, async (request, reply, ctx) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       const { id } = idParams.parse(request.params);
-      // 在同一個交易內鎖券、改狀態、作廢未使用的券
-      const result = await changeStatus(ctx, id, next);
+      const result = await couponErrors(changeStatusFlow(app, request.agent.tenantId, id, next));
       if (!result.ok) {
         if (result.reason === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND', '查無此券');
         return fail(reply, 409, 'INVALID_TRANSITION', result.reason);
@@ -224,114 +215,110 @@ export default async function couponRoutes(app: FastifyInstance) {
       // 提前結束時帶回已領取與未使用張數，供後台提示影響範圍
       const { ok: _ok, ...data } = result;
       return { success: true, data };
-    });
+    };
   app.post('/:id/publish', { preHandler: [requirePermission('coupon.manage')] }, transition('ACTIVE'));
   app.post('/:id/pause', { preHandler: [requirePermission('coupon.manage')] }, transition('PAUSED'));
   app.post('/:id/resume', { preHandler: [requirePermission('coupon.manage')] }, transition('ACTIVE'));
   app.post('/:id/end', { preHandler: [requirePermission('coupon.manage')] }, transition('ENDED'));
 
   /**
-   * 批次發券。每 ISSUE_BATCH_SIZE 人一個交易（交易時限 5 秒）；已提交的批次不會因後面的批次失敗而回滾。
-   * 第一批就失敗時回錯誤；之後的批次失敗時回已發出的結果，並以 stopped 告知停在哪裡、原因為何。
+   * 批次發券。每批一個交易；第一批就失敗時回錯誤，之後的批次失敗時回已發出的結果，
+   * 並以 stopped 告知停在哪裡、原因為何（coupon.flow.ts issueCouponsInBatchesFlow）。
    */
   app.post('/:id/issue', { preHandler: [requirePermission('coupon.issue')] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = issueSchema.parse(request.body);
-    const tenantId = request.agent.tenantId;
-    const merged: IssueResult = { issued: [], skipped: [] };
-    let stopped: { message: string; notAttempted: string[] } | undefined;
-    for (let start = 0; start < body.contactIds.length; start += ISSUE_BATCH_SIZE) {
-      const batch = body.contactIds.slice(start, start + ISSUE_BATCH_SIZE);
-      try {
-        const result = await inTenant({ prisma: app.prisma, io: app.io, events: createOutboxPublisher(app.prisma) }, tenantId, (ctx) =>
-          issueCoupons(ctx, id, {
-            contactIds: batch,
-            // 這個端點不送訊息，只給系統整合使用；沒帶時記為 api，不能算成對話發券
-            issuedVia: body.issuedVia ?? COUPON_ISSUED_VIA.API,
-            issuedRefId: body.issuedRefId ?? request.agent.id,
-          }));
-        merged.issued.push(...result.issued);
-        merged.skipped.push(...result.skipped);
-      } catch (err) {
-        if (start === 0) throw toAppError(err);
-        const reason = toAppError(err);
-        stopped = {
+    const result = await couponErrors(
+      issueCouponsInBatchesFlow(app, request.agent.tenantId, id, {
+        contactIds: body.contactIds,
+        // 這個端點不送訊息，只給系統整合使用；沒帶時記為 api，不能算成對話發券
+        issuedVia: body.issuedVia ?? COUPON_ISSUED_VIA.API,
+        issuedRefId: body.issuedRefId ?? request.agent.id,
+      }),
+    );
+    const { stopped, ...merged } = result;
+    if (!stopped) return { success: true, data: merged };
+    const reason = toAppError(stopped.error);
+    if (!(reason instanceof AppError)) request.log.error({ err: stopped.error }, '[Coupon] 批次發券中途失敗');
+    return {
+      success: true,
+      data: {
+        ...merged,
+        stopped: {
           message: reason instanceof AppError ? reason.message : '發券中途失敗，其餘對象未發出',
-          notAttempted: body.contactIds.slice(start),
-        };
-        if (!(reason instanceof AppError)) request.log.error({ err }, '[Coupon] 批次發券中途失敗');
-        break;
-      }
-    }
-    return { success: true, data: stopped ? { ...merged, stopped } : merged };
+          notAttempted: stopped.notAttempted,
+        },
+      },
+    };
   });
 
   // ── 券詳情頁「發送給…」：建立一則附券廣播（發放方式 batch），由排程在背景發送（design D31）──
 
   /** 送出前預覽：可送達人數、剩餘名額與已達每人上限的人數 */
-  app.post('/:id/batch-issue/preview', { preHandler: [requirePermission('coupon.issue')] }, couponHandler(app, async (request, _reply, ctx) => {
+  app.post('/:id/batch-issue/preview', { preHandler: [requirePermission('coupon.issue')] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = batchAudienceSchema.parse(request.body ?? {});
     await assertChannelVisible(request, body.channelId, 'reply_only');
-    const result = await previewBroadcastAudience(ctx.tx, ctx.tenantId, {
-      channelId: body.channelId,
-      targetType: body.targetType,
-      segmentId: body.segmentId,
-      targetConfig: { tagIds: body.tagIds, contactIds: body.contactIds },
-      couponId: id,
-      // 批次發放允許客服補償券（design D31），檢查與建立時相同
-      couponIssuedVia: COUPON_ISSUED_VIA.BATCH,
-    });
+    const result = await couponErrors(
+      previewBatchAudienceFlow(app, request.agent.tenantId, {
+        channelId: body.channelId,
+        targetType: body.targetType,
+        segmentId: body.segmentId,
+        targetConfig: { tagIds: body.tagIds, contactIds: body.contactIds },
+        couponId: id,
+        // 批次發放允許客服補償券（design D31），檢查與建立時相同
+        couponIssuedVia: COUPON_ISSUED_VIA.BATCH,
+      }),
+    );
     return { success: true, data: { ...result, maxRecipients: BATCH_ISSUE_MAX_RECIPIENTS } };
-  }));
+  });
 
   /** 只需要 coupon.issue：券頁建立的廣播只能帶這張券與發券文字，不能選素材 */
-  app.post('/:id/batch-issue', { preHandler: [requirePermission('coupon.issue')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.post('/:id/batch-issue', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
     const body = batchIssueSchema.parse(request.body ?? {});
     await assertChannelVisible(request, body.channelId, 'reply_only');
-    const result = await createBatchIssue(ctx, request.agent.id, id, body);
-    reply.code(202);
-    return { success: true, data: result };
-  }));
+    const result = await couponErrors(createBatchIssueFlow(app, request.agent.tenantId, request.agent.id, id, body));
+    return reply.code(202).send({ success: true, data: result });
+  });
 
   /** 這張券的附券廣播與批次發放紀錄（新到舊），附發券張數與跳過、失敗原因 */
-  app.get('/:id/batch-issues', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, _reply, ctx) => {
+  app.get('/:id/batch-issues', { preHandler: [requirePermission('coupon.view')] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    return { success: true, data: await listCouponBroadcasts(ctx, id) };
-  }));
+    return { success: true, data: await couponErrors(listCouponBroadcastsFlow(app, request.agent.tenantId, id)) };
+  });
 
   // ── 序號包匯入 ──
 
-  app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
+  app.post('/:id/codes/preview', { preHandler: [requirePermission('coupon.manage')] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = codesSchema.parse(request.body ?? {});
-    const result = await previewImport(ctx, body.codes, id);
+    const result = await couponErrors(previewImportFlow(app, request.agent.tenantId, body.codes, id));
     return { success: true, data: result };
-  }));
+  });
 
-  app.post('/:id/codes', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, _reply, ctx) => {
+  app.post('/:id/codes', { preHandler: [requirePermission('coupon.manage')] }, async (request) => {
     const { id } = idParams.parse(request.params);
     const body = codesSchema.parse(request.body ?? {});
-    const result = await importCodes(ctx, id, body.codes);
+    const result = await couponErrors(importCodesFlow(app, request.agent.tenantId, id, body.codes));
     return { success: true, data: result };
-  }));
+  });
 
-  app.delete('/:id/codes/:code', { preHandler: [requirePermission('coupon.manage')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.delete('/:id/codes/:code', { preHandler: [requirePermission('coupon.manage')] }, async (request, reply) => {
     const { id, code } = idParams.extend({ code: z.string().min(1).max(64) }).parse(request.params);
-    const result = await removeAvailableCode(ctx, id, code);
+    const result = await couponErrors(removeAvailableCodeFlow(app, request.agent.tenantId, id, code));
     if (!result.removed) {
       if (result.reason === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND', '查無此序號');
       return fail(reply, 409, 'ALREADY_ASSIGNED', '此序號已配發給顧客，無法移除');
     }
     return { success: true };
-  }));
+  });
 
-  // 核銷台。掃碼或手動輸入券號皆走此端點；成功時 service 推播券狀態更新（commit 後送出）
-  app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, couponHandler(app, async (request, reply, ctx) => {
+  // 核銷台。掃碼或手動輸入券號皆走此端點；成功時 flow 推播券狀態更新（commit 後送出）
+  app.post('/redeem', { preHandler: [requirePermission('coupon.redeem')] }, async (request, reply) => {
     const body = redeemSchema.parse(request.body ?? {});
-    if (!body.code && !body.instanceId) return fail(reply, 400, 'VALIDATION_ERROR', '請提供券號');
-    const result = await redeemCoupon(ctx, {
+    if (!body.code && !body.instanceId) return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: '請提供券號' } });
+    const result = await redeemAtConsole({ prisma: app.prisma, io: app.io }, request.agent.tenantId, {
       code: body.code,
       instanceId: body.instanceId,
       staffCode: body.staffCode,
@@ -353,10 +340,15 @@ export default async function couponRoutes(app: FastifyInstance) {
         SELF_REDEEM_NOT_ALLOWED: '此券須由店員核銷',
         CONFLICT: '此券剛被核銷，請重新確認',
       };
-      return fail(reply, 409, result.reason, messages[result.reason] ?? '核銷失敗', {
-        redeemedAt: 'redeemedAt' in result ? result.redeemedAt : undefined,
+      return reply.code(409).send({
+        success: false,
+        error: {
+          code: result.reason,
+          message: messages[result.reason] ?? '核銷失敗',
+          redeemedAt: 'redeemedAt' in result ? result.redeemedAt : undefined,
+        },
       });
     }
-    return { success: true, data: result };
-  }));
+    return reply.send({ success: true, data: result });
+  });
 }

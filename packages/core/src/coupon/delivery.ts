@@ -42,7 +42,7 @@ export interface ConfirmPendingParams {
 export type ConfirmPendingResult =
   /** 券在確認前已被作廢（發送超過 5 分鐘，被排程作廢） */
   | { confirmed: false }
-  /** tag 為這次貼上的領券標籤；呼叫端用它發出 contact.tagged 事件（API 用 ctx.publish，workers 寫 outbox） */
+  /** tag 為這次貼上的領券標籤；呼叫端用它發出 contact.tagged 事件（API 的 flow 用 publishEvent，workers 寫 outbox） */
   | { confirmed: true; tag: { tagId: string; tagName: string } | null };
 
 /**

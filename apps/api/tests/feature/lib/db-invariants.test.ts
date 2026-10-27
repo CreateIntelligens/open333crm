@@ -9,7 +9,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, test } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { inTenant, type TenantCtx } from '#src/lib/tenant-ctx.js';
-import { createOutboxPublisher } from '#src/events/outbox-publisher.js';
 import { createOrFindExisting } from '@open333crm/core';
 
 const TENANT_URL = process.env.DATABASE_URL_TENANT;
@@ -23,7 +22,6 @@ if (!TENANT_URL || !ADMIN_URL) {
 const tenantDb = new PrismaClient({ datasources: { db: { url: TENANT_URL } } });
 const adminDb = new PrismaClient({ datasources: { db: { url: ADMIN_URL } } });
 const MARK = `db-invariants-${randomUUID()}`;
-const deps = { prisma: tenantDb, events: createOutboxPublisher(tenantDb) };
 
 afterAll(async () => {
   await adminDb.tag.deleteMany({ where: { name: { startsWith: MARK } } });
@@ -40,7 +38,7 @@ function createTag(ctx: TenantCtx, name: string) {
 
 test('沒有衝突：回傳新寫入的資料', async () => {
   const name = `${MARK}-new`;
-  const result = await inTenant(deps, TENANT_A, (ctx) => createTag(ctx, name));
+  const result = await inTenant(tenantDb, TENANT_A, (ctx) => createTag(ctx, name));
   assert.equal(result.created, true);
   assert.equal(result.row.name, name);
   const saved = await adminDb.tag.findUnique({ where: { id: result.row.id } });
@@ -51,7 +49,7 @@ test('與已存在的資料衝突：回傳既有的資料，之後同一個交�
   const name = `${MARK}-existing`;
   const existing = await adminDb.tag.create({ data: { tenantId: TENANT_A, name } });
 
-  const { result, countAfter } = await inTenant(deps, TENANT_A, async (ctx) => {
+  const { result, countAfter } = await inTenant(tenantDb, TENANT_A, async (ctx) => {
     const result = await createTag(ctx, name);
     // 交易若因衝突進入 aborted 狀態，這個查詢會失敗
     const countAfter = await ctx.tx.tag.count({ where: { name } });
@@ -71,7 +69,7 @@ test('兩個交易同時寫入同一個唯一鍵：第二個交易取得第一�
   const firstHasWritten = new Promise<void>((resolve) => (firstWrote = resolve));
 
   // 第一個交易寫入之後先不 commit
-  const first = inTenant(deps, TENANT_A, async (ctx) => {
+  const first = inTenant(tenantDb, TENANT_A, async (ctx) => {
     const result = await createTag(ctx, name);
     firstWrote();
     await firstMayCommit;
@@ -80,7 +78,7 @@ test('兩個交易同時寫入同一個唯一鍵：第二個交易取得第一�
   await firstHasWritten;
 
   let secondDone = false;
-  const second = inTenant(deps, TENANT_A, async (ctx) => {
+  const second = inTenant(tenantDb, TENANT_A, async (ctx) => {
     const result = await createTag(ctx, name);
     const countAfter = await ctx.tx.tag.count({ where: { name } });
     return { result, countAfter };

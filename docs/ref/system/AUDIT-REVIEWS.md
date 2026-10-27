@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-27：角色的建立、改名、刪除寫稽核（AUD-01）
+
+分支 `feat/337-pilot-role-agent`，change `migrate-role-agent-tenant-ctx`。以 feature 測試確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| AUD-01 | 未處理 → 部分修正 | 建立、改名、刪除角色寫租戶稽核 `role.create`、`role.rename`、`role.delete`，與資料在同一個交易 commit。`tests/feature/modules/tenant-audit/tenant-audit-routes.test.ts` 的「建立角色時寫稽核」「角色改名時寫稽核」「刪除角色時寫稽核」確認。表格移除「角色」一列；認證、長效憑證、渠道、業務仍未涵蓋 |
+
 ## 2026-10-22：佇列保留期限（APP-08）
 
 分支 `feat/queue-monitoring`，change `queue-monitoring`。以 unit 測試與本機 Docker 的 Redis 確認，沒有連 UAT。

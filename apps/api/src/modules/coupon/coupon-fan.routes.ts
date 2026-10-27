@@ -16,13 +16,14 @@ import { getBindingStore } from '../identity-binding/binding-code.js';
 import { openInstance } from './coupon-redeem.service.js';
 import { getFanCoupon } from './coupon-fan.service.js';
 import { verifyLineIdToken } from './line-id-token.js';
-import { MAX_DEVICE_TOKENS, redeemSelf } from './coupon-wallet.service.js';
+import { MAX_DEVICE_TOKENS } from './coupon-wallet.service.js';
 import {
   getWalletQrCodeFlow,
   inFanTenant,
   listWalletFlow,
   openWalletSessionFlow,
   openWalletSessionWithLineFlow,
+  redeemSelfFlow,
   redeemWithStaffCodeFlow,
   requestWalletEmailCodeFlow,
   startStaffCodeSessionFlow,
@@ -272,7 +273,7 @@ export default async function couponFanRoutes(app: FastifyInstance, opts: Coupon
     const fan = request.fanCoupon!;
     const { id } = idParams.parse(request.params);
 
-    const result = await inFanTenant(deps(), fan, (ctx) => redeemSelf(ctx, fan, id));
+    const result = await redeemSelfFlow(deps(), fan, id);
     if (!result.ok && result.reason === 'NOT_FOUND') {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '查無此券' } });
     }

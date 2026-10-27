@@ -22,6 +22,13 @@ All notable changes to **open333CRM** will be documented in this file.
 
 - **關鍵字回覆列表的啟用開關按下後畫面沒有更新**（change `add-fb-ig-keyword-coupon`，PR #364 bot 審查）— 後端已停用，列表仍顯示「啟用」，存檔後也仍顯示舊的關鍵字，要重新整理頁面才更新：規則明細的快取以規則 id 為 key，切換或存檔後只重新載入列表。現在同時重新載入列表與規則明細，啟用狀態與名稱以列表的最新值為準。
 - **關鍵字回覆頁存檔前的素材防線改為依規則的渠道**（change `add-fb-ig-keyword-coupon`）— 規則限定的渠道與素材的渠道不符時擋下並說明「這條規則傳送的是 Facebook 素材，與所選渠道 LINE 不符，請改選素材或到自動化規則編輯」；渠道條件這頁無法辨識（例如限定網站客服）時也擋下，不再加上第二個渠道條件讓規則永遠不成立。
+- **角色與成員管理改成一個請求一個交易**（change `migrate-role-agent-tenant-ctx`，#337 階段 2）— `/api/v1/roles`、`/api/v1/agents` 的每個請求在一個綁定租戶的交易內執行，有三項可觀察的差異：
+  - 寫入與租戶稽核一起 commit。稽核寫入失敗時請求回錯誤，資料不變更；原本是資料照常變更、稽核遺失。成員被永久刪除之後，以未過期的 JWT 呼叫這些 route 也會因此失敗。
+  - 角色權限快取改在 commit 之後清除，仍在回應之前完成。原本在 commit 之前清除，別的請求可能以舊資料寫回快取，舊權限最多留 10 分鐘。
+  - 同一個請求內的寫入一律原子，例如建立成員與寫入稽核原本分兩個交易。
+  - 建立、改名、刪除角色時寫租戶稽核（`role.create`、`role.rename`、`role.delete`），原本不寫。
+- **`TenantCtx` 只留資料存取；副作用改成收 scope 的函式，由 flow 決定**（同上，架構）— service 收的 `TenantCtx` 只有 `tx`、`tenantId`。`inTenant(prisma, tenantId, fn)` 給入口的 `TenantScope` 多一個 `afterCommit(label, fn)`：commit 之後執行 `fn`，等它完成才回傳。推播、事件、job 與稽核改成獨立函式：`notifyTenant()`、`notifyAgent()`、`publishEvent()`、`enqueueJob()`、`recordTenantAudit()`。`recordTenantAudit()` 在交易內寫稽核，失敗時讓交易 rollback。use case 層沿用 `<name>.flow.ts`：讀寫租戶資料的 route 一律呼叫 flow，查詢也一樣；只呼叫一個 service 的 flow 以 `flowOf()` 組出。`tenantHandler()`、`TenantReply` 已刪除，`coupon`、`store`、`member-binding`、`analytics`、`marketing` 的 route 一併改成呼叫 flow，回應內容與狀態碼不變。`coupon`、`marketing`、`member-binding`、`store`、`automation` 的推播與事件從 service 移到 flow 或入口，送出的時機與內容不變；對話券卡的 `message.new` 推播多帶 `senderId`。規則見 `AGENTS.md` 結構規則 2。
+- **`check-tenant-ctx.mjs` 另外檢查 service 直接使用 Redis 與 LLM**（同上）— service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis`、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/`）的次數記進基準檔；腳本解析 TypeScript 語法計數，re-export、動態 `import()`、`require()` 與改名都算，註解不算，只減不增。這些 client 是模組層級的 singleton，型別擋不住 service 在交易內呼叫外部服務，或在 commit 之前清快取；搬遷時改由 flow 注入。
 
 ### Fixed
 
