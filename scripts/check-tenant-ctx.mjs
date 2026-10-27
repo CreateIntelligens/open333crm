@@ -12,8 +12,8 @@
  * 這三種以 TypeScript 解析語法樹計數，不用文字比對（review-loop 第 2 輪：文字比對換一種合法寫法就擋不到）：
  * - import：靜態 import、re-export、`import x = require()`、動態 `import()`、`require()` 都算；
  *   `import type`、`{ type X }`、註解與字串裡的文字不算。
- * - tenantHandler：呼叫 import 進來的 tenantHandler 才算，包含改名（`as`）與經過 namespace
- *   （`tc.tenantHandler(`）。經過變數或解構轉手的呼叫不算。註解裡的不算。
+ * - tenantHandler：只算直接呼叫、`as` 改名後呼叫、`tc.tenantHandler(` 與 `tc['tenantHandler'](`。
+ *   清單以外的寫法（經過變數、解構、參數轉手等）視為刻意繞過，不算。註解裡的不算。
  * 以檔案為單位比較，避免一個檔案減少、另一個檔案增加互相抵銷。
  *
  * 用文字比對計數，註解裡的字也會算到；基準檔用同樣的方式產生，所以不影響「只減不增」。
@@ -131,8 +131,8 @@ function moduleRefs(sf) {
 }
 
 /**
- * 呼叫 tenantHandler 的次數：import 進來的名稱（含 as 改名）與 namespace 的 .tenantHandler。
- * 經過變數、解構或參數轉手的呼叫不追：tenantHandler() 在階段 2 的第二個 PR 刪除，這個計數只是過渡
+ * 呼叫 tenantHandler 的次數，只算這三種寫法（封閉清單）：直接呼叫 import 進來的名稱、as 改名後呼叫、
+ * `ns.tenantHandler(` 或 `ns['tenantHandler'](`。清單以外的寫法視為刻意繞過，不追：tenantHandler() 在階段 2 的第二個 PR 刪除，這個計數只是過渡
  *（review-loop 第 3 輪，使用者決定）。
  */
 function tenantHandlerCalls(sf) {
@@ -150,6 +150,13 @@ function tenantHandlerCalls(sf) {
       const callee = node.expression;
       if (ts.isIdentifier(callee) && aliases.has(callee.text)) calls += 1;
       else if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'tenantHandler') calls += 1;
+      else if (
+        ts.isElementAccessExpression(callee) &&
+        ts.isStringLiteralLike(callee.argumentExpression) &&
+        callee.argumentExpression.text === 'tenantHandler'
+      ) {
+        calls += 1;
+      }
     }
     ts.forEachChild(node, visit);
   };

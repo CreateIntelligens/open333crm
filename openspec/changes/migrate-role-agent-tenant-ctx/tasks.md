@@ -70,6 +70,7 @@
 - [x] 9.2 `check-tenant-ctx.mjs` 的 Redis、LLM、tenantHandler 三種計數改用 TypeScript 語法樹，讓 9.1 通過；以 `--update-baseline` 記下現況（多記 `chatbox.service.ts` 的動態 import；tenantHandler 13 → 11）
 - [x] 9.3 `AGENTS.md` 結構規則 2 的 Check、`CHANGELOG.md` 同步更新
 - [x] 9.4 review-loop 第 3 輪：`tenantHandler` 經過變數轉手的呼叫，使用者決定不追（design 決策 9）。spec 只承諾直接呼叫、`as` 改名與 namespace 呼叫，並移除只做了一半的變數別名追蹤，讓實作與 spec 一致
+- [x] 9.5 review-loop 第 4 輪：寫失敗的測試涵蓋 `tc['tenantHandler'](`（執行後確認以斷言失敗），再補上字串索引的計數。spec 改成封閉清單，清單以外的寫法視為刻意繞過（design 決策 9）
 
 ## 5. 文件與完成條件
 

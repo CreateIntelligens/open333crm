@@ -60,7 +60,7 @@
 
 ### Requirement: 模組內的 tenantHandler 數量不得增加
 
-「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算 `apps/api/src/modules` 底下呼叫 `tenantHandler` 的次數，並與同一個基準檔比較。腳本 MUST 解析 TypeScript 語法計數：直接呼叫、以 `as` 改名後呼叫、經過 namespace 呼叫都 MUST 計入；註解裡的文字 MUST NOT 計入。經過變數、解構或參數轉手的呼叫不在範圍內：`tenantHandler()` 在所有 route 改成呼叫 flow 之後刪除，這個計數只是過渡。`apps/api/src/lib` 內的定義 MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
+「舊寫法的數量不得增加」的檢查腳本 MUST 另外計算 `apps/api/src/modules` 底下呼叫 `tenantHandler` 的次數，並與同一個基準檔比較。腳本 MUST 解析 TypeScript 語法，計入下列三種呼叫：直接呼叫 import 進來的 `tenantHandler`、以 `as` 改名後呼叫、以 `ns.tenantHandler(` 或 `ns['tenantHandler'](` 經過 namespace 呼叫。註解裡的文字 MUST NOT 計入。這是封閉清單：清單以外的寫法（例如經過變數、解構或參數轉手）視為刻意繞過，不在範圍內。`tenantHandler()` 在所有 route 改成呼叫 flow 之後刪除，這個計數只是過渡。`apps/api/src/lib` 內的定義 MUST NOT 計入。比較方式與結束碼和「舊寫法的數量不得增加」相同。
 
 #### Scenario: route 檔新增 tenantHandler
 

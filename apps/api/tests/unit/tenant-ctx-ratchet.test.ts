@@ -201,7 +201,7 @@ test('模組內新增 tenantHandler(：算增加；lib 內的定義不算', { ti
   assert.doesNotMatch(output, /lib\/tenant-ctx\.ts/);
 });
 
-test('tenantHandler 改名或經過 namespace 呼叫也算增加；註解裡的不算', { timeout: 30_000 }, async () => {
+test('tenantHandler 改名、ns.tenantHandler、ns[\'tenantHandler\'] 的呼叫也算增加；註解裡的不算', { timeout: 30_000 }, async () => {
   await put('modules/a1/a1.routes.ts', [
     "import { tenantHandler as wrap } from '../../lib/tenant-ctx.js';",
     'app.get("/", wrap(app, async () => ({})));',
@@ -211,9 +211,13 @@ test('tenantHandler 改名或經過 namespace 呼叫也算增加；註解裡的�
     'app.get("/", tc.tenantHandler(app, async () => ({})));',
   ]);
   await put('modules/a4/a4.routes.ts', ['// 以前用 tenantHandler(app, …)，已改成 flow']);
+  await put('modules/a5/a5.routes.ts', [
+    "import * as tc from '../../lib/tenant-ctx.js';",
+    "app.get('/', tc['tenantHandler'](app, async () => ({})));",
+  ]);
   const { code, output } = await check(args('--strict'));
   assert.equal(code, 1, output);
-  for (const f of ['a1', 'a3']) assert.match(output, new RegExp(`modules/${f}/${f}\\.routes\\.ts`));
+  for (const f of ['a1', 'a3', 'a5']) assert.match(output, new RegExp(`modules/${f}/${f}\\.routes\\.ts`));
   assert.doesNotMatch(output, /modules\/a4\//);
 });
 
