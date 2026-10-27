@@ -1,4 +1,4 @@
-# 只監看 Dockerfile 的 base image（node:24.x-bookworm-slim）。
+# 只監看 Dockerfile 的 base image（node:26.x-bookworm-slim）。
 # 映像固定到修補版號後，Node 發安全更新不會自動拿到；由 Dependabot 開 PR 提醒調整。
 # 這裡只做版本更新 PR，不啟用 CodeQL / GitHub Advanced Security。
 version: 2
@@ -13,7 +13,7 @@ updates:
       interval: weekly
       day: monday
       timezone: Asia/Taipei
-    # 停在 Node 24 LTS；換大版本要一併改 package.json 的 engines，需人工評估。
+    # 停在 Node 26；換大版本要一併改 package.json 的 engines，需人工評估。
     ignore:
       - dependency-name: node
         update-types:

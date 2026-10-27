@@ -34,7 +34,7 @@ jobs:
 
       - name: Generate OpenAPI document for this deployment
         working-directory: /srv/open333crm
-        run: docker run --rm -v "$PWD:/workspace" -w /workspace node:24.22.1-bookworm-slim sh -c 'node --test apps/api/tests/unit/lib/openapi-inventory.test.mjs && node apps/api/src/lib/openapi-inventory.cli.mjs'
+        run: docker run --rm -v "$PWD:/workspace" -w /workspace node:26.12.1-bookworm-slim sh -c 'node --test apps/api/tests/unit/lib/openapi-inventory.test.mjs && node apps/api/src/lib/openapi-inventory.cli.mjs'
 
       - name: Fix caddy port for UAT (nginx uses 80)
         working-directory: /srv/open333crm
