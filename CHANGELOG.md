@@ -11,9 +11,15 @@ All notable changes to **open333CRM** will be documented in this file.
 - **維運告警**（change `queue-monitoring`）— 任何佇列的工作移到 failed set（重試用完，或丟出不可重試的錯誤）時，API 發出一則告警，含佇列名稱、工作 id、租戶 id、重試次數與監控畫面的連結，不含失敗原因與工作資料。同一個佇列 10 分鐘內只送一則，下一則帶上這段期間沒有送出的次數。告警經新的 `ops-alert` 佇列送出，失敗時重試 3 次。
   - 部署：建立 Slack Incoming Webhook 之後，在 `.env.api` 設定 `OPS_ALERT_SLACK_WEBHOOK_URL`；沒有設定時告警只寫 log。
 
+- **Facebook 與 Instagram 也能設定關鍵字回覆與關鍵字發券**（change `add-fb-ig-keyword-coupon`）— 側欄「渠道 → LINE 關鍵字回覆」改名為「關鍵字回覆」（網址不變），建立時選渠道 LINE、Facebook 或 Instagram，規則帶條件「對話渠道等於所選渠道」，只在這個渠道的對話觸發，對同一渠道類型的所有帳號生效。素材選單只列所選渠道的素材；Instagram 沒有素材，只能發券。列表新增「渠道」欄與渠道篩選。已有渠道的規則不能改渠道；沒有渠道條件的舊規則在這頁儲存時加上所選渠道的條件（預設為素材的渠道，沒有素材時為 LINE），表單會說明。既有 LINE 規則的條件、素材與啟用狀態不變。後端與 workers 不改：發券、「發不出時回覆顧客」與 AI 讓步原本就支援 Facebook 與 Instagram，本次補上測試。
+- **自動化規則的「對話渠道」「聯絡人渠道」條件可選 Instagram**（change `add-fb-ig-keyword-coupon`）— 值為 `THREADS`，畫面顯示 Instagram。
+
 ### Changed
 
 - **所有 BullMQ 佇列都有保留期限；`notification` 寫入失敗時重試**（change `queue-monitoring`，AUDIT APP-08 部分修正）— `rich-menu-bind`、`data-export` 與 4 個週期佇列（`sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup`）原本永遠保留完成與失敗的工作，現在完成保留 24 小時、失敗保留 7 天。已排定的週期工作會延續註冊時的選項，所以 workers 啟動時先刪除既有的週期工作，再以新選項重新註冊。`notification` 佇列的兩處生產者加上重試：共 3 次，指數退避，基準 5 秒；站內通知因此是至少一次，workers 在寫入通知之後、工作完成之前停止時，成員會收到兩則相同的通知。Redis 的 `maxmemory` 仍未設定。
+
+- **關鍵字回覆列表的啟用開關按下後畫面沒有更新**（change `add-fb-ig-keyword-coupon`，PR #364 bot 審查）— 後端已停用，列表仍顯示「啟用」，存檔後也仍顯示舊的關鍵字，要重新整理頁面才更新：規則明細的快取以規則 id 為 key，切換或存檔後只重新載入列表。現在同時重新載入列表與規則明細，啟用狀態與名稱以列表的最新值為準。
+- **關鍵字回覆頁存檔前的素材防線改為依規則的渠道**（change `add-fb-ig-keyword-coupon`）— 規則限定的渠道與素材的渠道不符時擋下並說明「這條規則傳送的是 Facebook 素材，與所選渠道 LINE 不符，請改選素材或到自動化規則編輯」；渠道條件這頁無法辨識（例如限定網站客服）時也擋下，不再加上第二個渠道條件讓規則永遠不成立。
 
 ### Fixed
 

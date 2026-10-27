@@ -393,7 +393,7 @@ function JsonFallbackEditor({
 }
 
 /**
- * 既有規則上的發券動作（add-coupon-system design D25）：發券改在 LINE 關鍵字回覆與加好友禮頁設定，
+ * 既有規則上的發券動作（add-coupon-system design D25）：發券改在關鍵字回覆與加好友禮頁設定，
  * 自動化規則編輯器只顯示券名與說明，可以刪除這個動作，不能新增或換券。
  */
 function HiddenActionReadOnly({ definition, payload }: { definition: AutomationActionDefinition; payload: Record<string, unknown> }) {
@@ -414,7 +414,7 @@ function HiddenActionReadOnly({ definition, payload }: { definition: AutomationA
       <p className="text-xs font-medium text-muted-foreground">{definition.label}</p>
       <p className="font-medium">{couponLabel}</p>
       <p className="text-xs text-muted-foreground">
-        發券請到 LINE 關鍵字回覆或加好友禮設定。這個動作會照常執行，這裡只能刪除。
+        發券請到「渠道 → 關鍵字回覆」（LINE、Facebook、Instagram）或「LINE 加好友禮」設定。這個動作會照常執行，這裡只能刪除。
       </p>
     </div>
   );

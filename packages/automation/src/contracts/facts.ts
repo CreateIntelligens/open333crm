@@ -32,9 +32,11 @@ const conversationStatusOptions = [
   { value: 'CLOSED', label: '已關閉' },
 ] satisfies AutomationValueOption[];
 
+// THREADS 是本專案的 Instagram 私訊（change add-fb-ig-keyword-coupon design D7）
 const channelOptions = [
   { value: 'LINE', label: 'LINE' },
   { value: 'FB', label: 'Facebook' },
+  { value: 'THREADS', label: 'Instagram' },
   { value: 'WEBCHAT', label: 'WebChat' },
 ] satisfies AutomationValueOption[];
 

@@ -6,41 +6,59 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useMaterials } from '@/hooks/useMaterials';
 import { CouponSelectField } from '@/components/coupons/CouponSelectField';
-import { keywordReplySaveBlock, materialIssueMessage, type KeywordReply, type KeywordReplyInput } from '@/hooks/useKeywordReplies';
+import {
+  CHANNEL_ISSUE_MESSAGE,
+  KEYWORD_REPLY_CHANNELS,
+  keywordReplyChannelLabel,
+  keywordReplySaveBlock,
+  materialIssueOf,
+  materialIssueMessage,
+  type KeywordReply,
+  type KeywordReplyChannel,
+  type KeywordReplyInput,
+} from '@/hooks/useKeywordReplies';
 
 interface Props {
   open: boolean;
   reply: KeywordReply | null; // null = 新建
+  /** 新建時預設的渠道（列表目前篩選的渠道）；沒有時為 LINE */
+  defaultChannel?: KeywordReplyChannel;
   onClose: () => void;
   onSave: (input: KeywordReplyInput) => Promise<void>;
 }
 
-export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) {
+export function KeywordReplyEditDialog({ open, reply, defaultChannel, onClose, onSave }: Props) {
   const [name, setName] = useState('');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [draftKeyword, setDraftKeyword] = useState('');
   const [matchMode, setMatchMode] = useState<'any' | 'all'>('any');
+  const [channel, setChannel] = useState<KeywordReplyChannel>('LINE');
   const [materialId, setMaterialId] = useState('');
   const [couponId, setCouponId] = useState('');
   const [failureText, setFailureText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 列出所有 LINE 素材給選
-  const { materials } = useMaterials({ channelType: 'line', isActive: true, limit: 200 });
+  // 只列所選渠道的素材；Instagram 沒有素材（素材庫只有 LINE、Facebook，design D5）
+  const channelInfo = KEYWORD_REPLY_CHANNELS.find((c) => c.value === channel) ?? KEYWORD_REPLY_CHANNELS[0];
+  const { materials: channelMaterials } = useMaterials({ channelType: channelInfo.materialChannelType ?? 'threads', isActive: true, limit: 200 });
+  const materials = channelInfo.materialChannelType ? channelMaterials : [];
+  // 已有渠道條件的規則不能改渠道（design D4）
+  const channelLocked = !!reply?.channel;
 
   useEffect(() => {
     if (open) {
       setName(reply?.name ?? '');
       setKeywords(reply?.keywords ?? []);
       setMatchMode(reply?.matchMode ?? 'any');
+      setChannel(reply ? reply.defaultChannel : (defaultChannel ?? 'LINE'));
       setMaterialId(reply?.materialId ?? '');
       setCouponId(reply?.couponId ?? '');
       setFailureText(reply?.failureText ?? '');
       setDraftKeyword('');
       setError(null);
     }
-  }, [open, reply]);
+  }, [open, reply, defaultChannel]);
 
   if (!open) return null;
 
@@ -61,14 +79,15 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
     if (keywords.length === 0) { setError('至少要 1 個關鍵字'); return; }
     // 素材改為選填（add-coupon-system design D25），但素材與優惠券至少要選一個
     if (!materialId && !couponId) { setError('回覆素材與優惠券至少要選一個'); return; }
-    // 原本的素材不是 LINE 素材（或已刪除、停用）且沒有改選：存檔會加上 LINE 條件讓規則不再送出，擋下
-    const blocked = keywordReplySaveBlock(reply, { materialId: materialId || null });
+    // 原本的素材不能在所選渠道使用（或已刪除、停用）且沒有改選：存檔會加上渠道條件讓規則不再送出，擋下
+    const blocked = keywordReplySaveBlock(reply, { channel, materialId: materialId || null });
     if (blocked) { setError(blocked); return; }
     setSaving(true);
     setError(null);
     try {
       await onSave({
         name: name.trim(),
+        channel,
         keywords,
         matchMode,
         materialId: materialId || null,
@@ -85,6 +104,16 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
   };
 
   const selectedMaterial = materials.find((m) => m.id === materialId);
+  // 原本的素材在所選渠道能不能用：改選渠道後重新判斷
+  const originalMaterialIssue = reply?.materialId && materialId === reply.materialId
+    ? materialIssueOf(reply.materialLookup, channel) ?? null
+    : null;
+
+  const handleChannelChange = (next: KeywordReplyChannel) => {
+    setChannel(next);
+    // 換渠道時清掉不屬於新渠道的素材選擇；規則原本的素材保留，由上方的說明與存檔防線處理
+    if (materialId && materialId !== reply?.materialId) setMaterialId('');
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -95,7 +124,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
               {reply ? '編輯關鍵字回覆' : '建立關鍵字回覆'}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              當用戶在 LINE 傳訊息中出現指定關鍵字，自動回覆對應素材，也可以同時發送優惠券
+              顧客在所選渠道傳送的訊息出現指定關鍵字時，自動回覆對應素材，也可以同時發送優惠券
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -104,6 +133,49 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
         </div>
 
         <div className="space-y-5 overflow-y-auto p-5">
+          {reply?.channelIssue && (
+            <div role="alert" className="rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+              <p>{CHANNEL_ISSUE_MESSAGE}</p>
+              <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline">
+                到自動化規則編輯
+              </a>
+            </div>
+          )}
+
+          {/* 渠道（change add-fb-ig-keyword-coupon design D4） */}
+          <div>
+            {channelLocked ? (
+              <>
+                <div className="text-xs font-semibold text-muted-foreground">
+                  渠道：{keywordReplyChannelLabel(channel)}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">渠道建立後不能更改；要換渠道請刪除後重新建立</p>
+              </>
+            ) : (
+              <>
+                <label htmlFor="keyword-reply-channel" className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  渠道
+                </label>
+                <select
+                  id="keyword-reply-channel"
+                  value={channel}
+                  onChange={(e) => handleChannelChange(e.target.value as KeywordReplyChannel)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {KEYWORD_REPLY_CHANNELS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+                {reply && !reply.channel && !reply.channelIssue && (
+                  <p className="mt-1 text-[11px] text-warning">這條規則原本沒有限定渠道，儲存後只在所選渠道的對話觸發</p>
+                )}
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  規則只在這個渠道的對話觸發，對這個渠道的所有帳號生效（例如所有 LINE 官方帳號或所有粉專）
+                </p>
+              </>
+            )}
+          </div>
+
           {/* 規則名稱 */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-muted-foreground">
@@ -192,27 +264,33 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
 
           {/* 素材選擇 */}
           <div>
-            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+            <label htmlFor="keyword-reply-material" className="mb-1 block text-xs font-semibold text-muted-foreground">
               回覆素材
             </label>
-            {reply?.materialIssue && materialId === reply.materialId && (
+            {originalMaterialIssue && (
               <div role="alert" className="mb-2 rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                <p>{materialIssueMessage(reply.materialIssue)}</p>
-                {reply.materialIssue.kind === 'other_channel' ? (
-                  <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline">
+                <p>{materialIssueMessage(originalMaterialIssue)}</p>
+                {originalMaterialIssue.kind === 'other_channel' ? (
+                  <a href={`/dashboard/automation/${reply!.id}`} className="mt-1 inline-block font-medium underline">
                     到自動化規則編輯
                   </a>
                 ) : (
-                  <p className="mt-1">改選一個 LINE 素材，或拿掉素材只發券，就可以儲存。</p>
+                  <p className="mt-1">改選一個{channelInfo.label}素材，或拿掉素材只發券，就可以儲存。</p>
                 )}
               </div>
             )}
             <select
+              id="keyword-reply-material"
               value={materialId}
               onChange={(e) => setMaterialId(e.target.value)}
+              disabled={!channelInfo.materialChannelType && !materialId}
               className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">— 請選擇 —</option>
+              {/* 規則原本的素材不在這個渠道的清單時仍保留選項，才看得出原本選的是什麼 */}
+              {reply?.materialId && materialId === reply.materialId && !materials.some((m) => m.id === reply.materialId) && (
+                <option value={reply.materialId}>原本的素材（id: {reply.materialId.slice(0, 8)}…）</option>
+              )}
               {materials.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}（{m.contentType}）
@@ -233,9 +311,13 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
                 )}
               </div>
             )}
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              素材在「行銷 → 素材庫」建立，這裡只列 LINE 渠道的素材。素材與優惠券至少要選一個
-            </p>
+            {channelInfo.materialChannelType ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                素材在「行銷 → 素材庫」建立，這裡只列{channelInfo.label}渠道的素材。素材與優惠券至少要選一個
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-muted-foreground">{channelInfo.label} 目前沒有素材，只能發券</p>
+            )}
           </div>
 
           {/* 優惠券（add-coupon-system design D25） */}
