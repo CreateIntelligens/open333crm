@@ -59,7 +59,8 @@ test('API 行程的每個 Worker 都在監控清單內', async () => {
 
   const core = await import('@open333crm/core');
   const opsAlert = await import('#src/modules/ops-alert/ops-alert.service.js');
-  const values = { ...core, ...opsAlert } as Record<string, unknown>;
+  const couponBroadcast = await import('#src/modules/marketing/broadcast-coupon.service.js');
+  const values = { ...core, ...opsAlert, COUPON_BROADCAST_QUEUE: couponBroadcast.COUPON_BROADCAST_QUEUE } as Record<string, unknown>;
   const apiWorkerQueues = constants.map((name) => values[name]);
 
   assert.deepEqual(sorted(API_QUEUES), sorted([...apiWorkerQueues as string[], 'api-scheduler']));

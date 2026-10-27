@@ -43,6 +43,25 @@ export const PROGRESS_EVERY = 20;
 export const BATCH_ISSUE_MAX_RECIPIENTS = 1000;
 /** 附券廣播素材裡代入票券連結的變數 */
 export const COUPON_URL_VARIABLE = 'coupon.url';
+/**
+ * 立即執行附券廣播的佇列（API 行程消費，broadcast-coupon.worker.ts）。job data 是 CouponBroadcastJobData；
+ * 每分鐘的排程（broadcast.scheduler.ts）仍是後備：job 沒送出或沒執行時，排程照樣發送
+ */
+export const COUPON_BROADCAST_QUEUE = 'coupon-broadcast';
+export interface CouponBroadcastJobData {
+  tenantId: string;
+  broadcastId: string;
+}
+/**
+ * 搶占前的錯誤（例如資料庫斷線）重試；搶占後的錯誤 runCouponBroadcast 已把廣播標成失敗，
+ * 重試時搶不到（not_claimed），不會重複發送
+ */
+const COUPON_BROADCAST_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 5_000 },
+  removeOnComplete: { age: 86_400 },
+  removeOnFail: { age: 604_800 },
+};
 
 const SENDABLE_STATUSES = ['draft', 'scheduled', 'failed'];
 
@@ -68,9 +87,11 @@ const nowDate = (now?: number) => new Date(now ?? Date.now());
 // ── 排入發送 ──────────────────────────────────────────────────────────────
 
 /**
- * 附券廣播的「立即發送」：排入排程立即執行，不在 HTTP 請求內同步發送（design D29）。
+ * 附券廣播的「立即發送」：在背景馬上開始執行，不在 HTTP 請求內同步發送（design D29）。
+ * 同一個交易寫進 outbox 一個立即執行的 job（commit 後送進 coupon-broadcast 佇列），不等每分鐘的排程；
+ * 排程時間設為現在，job 沒有執行時由排程補發（change fix-coupon-broadcast-immediate-run）。
  * 草稿、已排程、失敗可以排入；發送中但超過 5 分鐘沒有進度的（程式中途結束）也可以重新排入，
- * 已有收件紀錄的人不會再拿到券。
+ * 已有收件紀錄的人不會再拿到券。job 與排程誰先搶占（claimCouponBroadcast）誰發送，另一個不做事。
  */
 export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, now: number = Date.now()) {
   const { tx, tenantId } = ctx;
@@ -96,6 +117,8 @@ export async function queueCouponBroadcast(ctx: TenantCtx, broadcastId: string, 
     if (broadcast.status === 'sending') throw alreadySendingError();
     throw new AppError('此群發目前的狀態無法發送', 'INVALID_STATUS', 400);
   }
+  const job: CouponBroadcastJobData = { tenantId, broadcastId };
+  await ctx.enqueue(COUPON_BROADCAST_QUEUE, 'run', job, COUPON_BROADCAST_JOB_OPTIONS);
   return { id: broadcastId, status: 'scheduled' as const, scheduledAt };
 }
 
@@ -136,11 +159,14 @@ export type ClaimResult =
   /** 已搶占，但設定有問題：呼叫端標失敗 */
   | { ok: false; reason: 'INVALID'; code: string; message: string };
 
-/** 以條件式更新搶占「已排程」的附券廣播：重複的排程只有一個搶得到 */
+/**
+ * 以條件式更新搶占「已排程」且排程時間已到的附券廣播：立即執行的 job 與每分鐘的排程只有一個搶得到。
+ * 排程時間還沒到的不搶（job 晚到時，廣播可能已改成未來的排程時間）
+ */
 export async function claimCouponBroadcast(ctx: TenantCtx, broadcastId: string, now: number = Date.now()): Promise<ClaimResult> {
   const { tx, tenantId } = ctx;
   const claimed = await tx.broadcast.updateMany({
-    where: { id: broadcastId, tenantId, status: 'scheduled', couponId: { not: null } },
+    where: { id: broadcastId, tenantId, status: 'scheduled', scheduledAt: { lte: new Date(now) }, couponId: { not: null } },
     data: { status: 'sending', sentAt: new Date(now), failureReason: null, failureCode: null },
   });
   if (claimed.count === 0) return { ok: false, reason: 'NOT_CLAIMED' };

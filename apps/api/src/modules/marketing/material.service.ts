@@ -10,7 +10,7 @@ import { Prisma, type PrismaClient } from '@open333crm/database';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import { AppError } from '../../shared/utils/response.js';
 import { validateFbMaterialBody } from './fb-material-validation.js';
-import { resolveLineSampleImageUrls } from './material-sample-urls.js';
+import { resolveSampleImageUrls } from './material-sample-urls.js';
 import { formatLineValidateError } from './line-validate-error.js';
 import {
   renderTemplateBody,
@@ -231,7 +231,7 @@ async function validateLineFlexMessageWithLineApi(
  * 打 LINE validate/push API；不符時擋下並回詳細說明（哪個 property 不符 + LINE 的訊息）。
  *
  * 只驗真的能組成 LINE message 的版型。編輯器的示範圖（/material-samples/...）在呼叫前已由
- * resolveLineSampleImageUrls() 換成公開網址；其他不是 https 的網址 LINE 照樣擋下。
+ * resolveSampleImageUrls() 換成公開網址；其他不是 https 的網址 LINE 照樣擋下。
  */
 async function validateLineMaterialWithLineApi(
   prisma: TenantDb,
@@ -431,8 +431,8 @@ export async function createMaterial(
     await assertCategoryBelongsToTenant(prisma, input.categoryId, tenantId);
   }
 
-  // 示範圖換成公開網址，LINE 驗證與發送才收得到
-  body = resolveLineSampleImageUrls(contentType, body);
+  // 示範圖（FB 是所有站內路徑）換成公開網址，LINE 驗證與 LINE／FB 發送才收得到
+  body = resolveSampleImageUrls(contentType, body);
 
   const preparedBody = await prepareStoredMaterialBody(prisma, tenantId, body, input.privacyMode ?? 'mask');
   body = preparedBody.body as Record<string, unknown>;
@@ -512,8 +512,8 @@ export async function updateMaterial(
     const body = existing.contentType === LINE_FLEX_TEMPLATE_CONTENT_TYPE
       ? (assertLineFlexMessageBody(input.body) as unknown as Record<string, unknown>)
       : input.body;
-    // 與 createMaterial() 相同：示範圖換成公開網址
-    const resolvedBody = resolveLineSampleImageUrls(existing.contentType, body);
+    // 與 createMaterial() 相同：示範圖（FB 是所有站內路徑）換成公開網址
+    const resolvedBody = resolveSampleImageUrls(existing.contentType, body);
     const preparedBody = await prepareStoredMaterialBody(prisma, tenantId, resolvedBody, input.privacyMode ?? 'mask');
     data.body = preparedBody.body;
     data.maskedBody = preparedBody.maskedBody ?? Prisma.DbNull;

@@ -387,13 +387,13 @@ function BroadcastTab() {
     const withWindow = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
     // 附券廣播在背景發送；重送時已處理的人不會再收到（design D29）
     const question = broadcast?.couponId
-      ? `${withWindow}\n\n附券廣播會排入背景發送，約一分鐘內開始；已收到券的人不會重複收到。`
+      ? `${withWindow}\n\n附券廣播會在背景馬上開始發送，進度會顯示在廣播列表；已收到券的人不會重複收到。`
       : withWindow;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
       const res = await api.post(`/marketing/broadcasts/${id}/send`);
-      if (res.status === 202) alert('已排入發送，結果請在廣播列表查看');
+      if (res.status === 202) alert('已開始在背景發送，廣播列表會自動更新進度與結果');
     } catch (err: any) {
       alert(err.response?.data?.error?.message || '發送失敗');
     } finally {

@@ -14,6 +14,7 @@ import {
 } from '@open333crm/core';
 import { Queue } from 'bullmq';
 import { OPS_ALERT_QUEUE } from '../ops-alert/ops-alert.service.js';
+import { COUPON_BROADCAST_QUEUE } from '../marketing/broadcast-coupon.service.js';
 
 /** API 行程消費的佇列 */
 export const API_QUEUES: readonly string[] = [
@@ -24,6 +25,7 @@ export const API_QUEUES: readonly string[] = [
   USAGE_ALERT_EMAIL_QUEUE,
   'api-scheduler',
   OPS_ALERT_QUEUE,
+  COUPON_BROADCAST_QUEUE,
 ];
 
 /** workers 行程消費的佇列 */

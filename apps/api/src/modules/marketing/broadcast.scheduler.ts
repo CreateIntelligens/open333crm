@@ -11,7 +11,8 @@ const POLL_INTERVAL_MS = 60_000; // 60 seconds
  * Polls for scheduled broadcasts whose scheduledAt <= now and executes them.
  *
  * 附券廣播（couponId 有值）改由 runCouponBroadcast 以 app_tenant 的連線逐步發送（design D29），
- * 需要 couponDeps 的 app_tenant 基底連線與票券連結儲存（Redis）；「立即發送」也是排到這裡執行。
+ * 需要 couponDeps 的 app_tenant 基底連線與票券連結儲存（Redis）。「立即發送」與批次發券由
+ * coupon-broadcast 佇列馬上執行（broadcast-coupon.worker.ts），這裡是後備：job 沒有執行時，時間到的廣播照樣發送。
  */
 export function setupBroadcastScheduler(
   scheduler: JobScheduler,

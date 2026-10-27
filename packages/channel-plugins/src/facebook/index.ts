@@ -3,13 +3,27 @@ import crypto from 'crypto';
 import { CHANNEL_TYPE } from '@open333crm/shared';
 import { refOf } from '../referral.js';
 import { signaturesMatch } from '../signature.js';
+import { findSitePathUrl, resolveSitePathUrls } from '../site-path-urls.js';
 
 const FB_GRAPH_API = 'https://graph.facebook.com/v21.0';
+
+export interface FbPluginOptions {
+  /**
+   * 網站的公開網址，用來把素材裡的站內路徑（例如示範圖 /material-samples/...）換成 Facebook 收得到的完整網址。
+   * 預設在發送當下讀環境變數 WEB_BASE_URL（API 與 workers 都會送 FB 訊息）
+   */
+  siteBaseUrl?: () => string | undefined;
+}
 
 export class FbPlugin implements ChannelPlugin {
   readonly channelType = CHANNEL_TYPE.FB;
   /** Messenger／IG 只能對 24 小時內互動過的人發一般訊息 */
   readonly messagingWindowHours = 24;
+  private readonly siteBaseUrl: () => string | undefined;
+
+  constructor(options: FbPluginOptions = {}) {
+    this.siteBaseUrl = options.siteBaseUrl ?? (() => process.env.WEB_BASE_URL);
+  }
 
   verifySignature(rawBody: Buffer, headers: Record<string, string>, secret: string): boolean {
     const signature = headers['x-hub-signature-256'];
@@ -129,7 +143,19 @@ export class FbPlugin implements ChannelPlugin {
 
   async sendMessage(to: string, message: OutboundPayload, credentials: Record<string, unknown>): Promise<{ success: boolean; channelMsgId?: string; error?: string }> {
     const token = credentials.pageAccessToken as string;
-    const { contentType, content } = message;
+    const { contentType } = message;
+
+    // 站內路徑（存檔前的舊素材、示範圖）Facebook 不收，送出前換成公開網址
+    // （spec material-system「FB 素材發送時把站內路徑換成公開網址」）
+    const sitePath = findSitePathUrl(message.content);
+    const base = this.siteBaseUrl()?.trim();
+    if (sitePath && !base) {
+      return {
+        success: false,
+        error: `素材的網址「${sitePath}」是站內路徑，系統沒有設定網站公開網址（WEB_BASE_URL），Facebook 無法讀取。請把網址改成 https:// 開頭的完整網址，或請管理員設定 WEB_BASE_URL`,
+      };
+    }
+    const content = sitePath && base ? resolveSitePathUrls(message.content, base) : message.content;
 
     const fbMessage = this.buildFbMessage(contentType, content);
 
