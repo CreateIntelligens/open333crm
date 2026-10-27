@@ -65,3 +65,11 @@ FB 外掛送出訊息前 SHALL 把內容中網址欄位裡以單一 `/` 開頭�
 #### Scenario: 沒有設定網站公開網址
 - **WHEN** 沒有設定 `WEB_BASE_URL`，送出卡片 `image_url` 是 `/material-samples/product.jpeg` 的 `fb_generic`
 - **THEN** 外掛沒有呼叫 Facebook，回傳失敗，錯誤訊息含 `/material-samples/product.jpeg` 與 `WEB_BASE_URL`
+
+### Requirement: 建立素材的版型清單不提供 FB 大圖／影片廣告
+
+建立素材時的版型清單 SHALL NOT 列出 FB「大圖／影片廣告」（`fb_media`）。Facebook 的媒體範本只接受 Facebook 託管的素材（attachment_id 或 Facebook 網址），以一般網址發送一定會被拒收（`(#100)` 網址參數包含非 Facebook 網址，2026-10-27 UAT 實測）。已存在的 `fb_media` 素材 SHALL 仍可開啟與編輯。
+
+#### Scenario: FB 版型清單沒有大圖／影片廣告
+- **WHEN** 使用者在建立素材頁選擇 FB Messenger 平台
+- **THEN** 版型清單列出商品輪播等其他 FB 版型，沒有「大圖／影片廣告」

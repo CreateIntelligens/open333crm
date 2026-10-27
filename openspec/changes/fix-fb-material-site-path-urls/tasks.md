@@ -10,11 +10,16 @@
 - [x] 2.2 `FbPlugin` 加建構參數 `siteBaseUrl`（預設讀 `WEB_BASE_URL`），`sendMessage()` 送出前轉換，沒有公開網址時回傳看得到的錯誤（design D2、D3）
 - [x] 2.3 `.env.workers.example` 加上 `WEB_BASE_URL`
 
+## 2b. 版型清單不提供 FB 大圖／影片廣告
+
+- [x] 2b.1 測試 `apps/web/tests/unit/components/materials/template-picker-fb-media.test.tsx`「FB 版型清單沒有大圖／影片廣告」，在現有程式上斷言失敗
+- [x] 2b.2 `TemplatePickerGrid` 的 `fb_media` 加上 `hidden: true`
+
 ## 3. 完成定義
 
 - [x] 3.1 `pnpm test`（api、web、workers、channel-plugins unit）
 - [x] 3.2 三種 tsc
-- [ ] 3.2a web build（2026-10-27 本機磁碟已滿 ENOSPC 未能完成，push 前要補跑）
+- [x] 3.2a web build（2026-10-27 清出磁碟空間後補跑通過）
 - [x] 3.3 `check-tenant-scoping`、`check-prisma-admin-usage`、`check-tenant-ctx` 加 `--strict`
 - [x] 3.4 `node scripts/validate-openspec.mjs fix-fb-material-site-path-urls`
 - [x] 3.5 `CHANGELOG.md` 的 `## [2026-10-27]` Fixed 加條目；`docs/ref/features/tenant/MARKETING.md` 更新示範圖說明
