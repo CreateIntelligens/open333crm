@@ -84,6 +84,10 @@ import shortlinkRoutes from './modules/shortlink/shortlink.routes.js';
 import shortlinkRedirectRoutes from './modules/shortlink/shortlink-redirect.routes.js';
 import webchatRoutes from './modules/webchat/webchat.routes.js';
 import platformRoutes from './modules/platform/platform.routes.js';
+import queueMonitoringRoutes from './modules/queue-monitoring/queue-monitoring.routes.js';
+import { ALERTED_QUEUES, createMonitoredQueues } from './modules/queue-monitoring/monitored-queues.js';
+import { startFailedAlerts } from './modules/queue-monitoring/failed-alerts.js';
+import { QueueEvents } from 'bullmq';
 import trialRoutes from './modules/trial/trial.routes.js';
 import planChangeRoutes from './modules/platform/plan-change.routes.js';
 import chatboxRoutes from './modules/chatbox/chatbox.routes.js';
@@ -100,6 +104,8 @@ import { setupNotificationWorker } from './modules/notification/notification.wor
 import { setupOutboxSchedulers } from './modules/outbox/outbox.scheduler.js';
 import { bullWorkerFactory, startQueueWorkers, subscriberProcessor, type JobProcessor } from './events/subscriber-workers.js';
 import { processUsageAlertEmail } from './modules/notification/usage-alert-email.worker.js';
+import { closeOpsAlertQueue, OPS_ALERT_QUEUE, sendOpsAlert } from './modules/ops-alert/ops-alert.service.js';
+import { createOpsAlertProcessor } from './modules/ops-alert/ops-alert.worker.js';
 import { setupAnalyticsScheduler } from './modules/analytics/analytics.scheduler.js';
 import { setupBroadcastScheduler } from './modules/marketing/broadcast.scheduler.js';
 import { getBindingStore } from './modules/identity-binding/binding-code.js';
@@ -231,6 +237,14 @@ export async function bootstrap() {
   await app.register(chatboxRoutes, { prefix: '/api/v1/chatbox' });
   await app.register(cliRoutes, { prefix: '/api/v1/cli' });
   await app.register(platformRoutes, { prefix: '/api/v1/platform' });
+  // 佇列監控（change queue-monitoring）：監控用的 Queue 物件與 Worker 分開，關機時一起關閉
+  const monitoredQueues = createMonitoredQueues(config.REDIS_URL);
+  app.addHook('onClose', () => Promise.all(monitoredQueues.map((queue) => queue.close())).then(() => undefined));
+  await app.register(queueMonitoringRoutes, {
+    prefix: '/api/v1/platform/queues',
+    allowedCidrs: config.QUEUE_DASHBOARD_ALLOWED_CIDRS,
+    queues: monitoredQueues,
+  });
   await app.register(trialRoutes, { prefix: '/api/v1/trial' });
   await app.register(planChangeRoutes, { prefix: '/api/v1/plan-change' });
   await app.register(mcpRoutes);
@@ -247,12 +261,24 @@ export async function bootstrap() {
       [EVENT_WEBHOOK_QUEUE]: subscriberProcessor(setupWebhookDispatcher(app.prismaAdmin)),
       [USAGE_ALERT_EMAIL_QUEUE]: processUsageAlertEmail as JobProcessor,
       [WEBHOOK_DELIVERY_QUEUE]: processWebhookDelivery(app.prismaAdmin) as JobProcessor,
+      [OPS_ALERT_QUEUE]: createOpsAlertProcessor(config.OPS_ALERT_SLACK_WEBHOOK_URL) as JobProcessor,
     },
     bullWorkerFactory(config.REDIS_URL, {
       [WEBHOOK_DELIVERY_QUEUE]: { settings: { backoffStrategy: webhookRetryDelay } },
     }),
   );
   app.addHook('onClose', () => subscriberWorkers.close());
+  // 任何佇列的 job 移到 failed set 時發出告警（change queue-monitoring，design 決策 8）
+  const monitoredQueueByName = new Map(monitoredQueues.map((queue) => [queue.name, queue]));
+  const failedAlerts = startFailedAlerts({
+    queueNames: ALERTED_QUEUES,
+    createQueueEvents: (name) => new QueueEvents(name, { connection: { url: config.REDIS_URL } }),
+    getJob: async (queueName, jobId) => monitoredQueueByName.get(queueName)?.getJob(jobId),
+    sendAlert: (alert) => sendOpsAlert(alert),
+    dashboardUrl: `${config.WEB_BASE_URL}/api/v1/platform/queues`,
+  });
+  app.addHook('onClose', () => failedAlerts.close());
+  app.addHook('onClose', () => closeOpsAlertQueue());
   setupCanvasWorker(app.prismaAdmin, app.io);
 
   // 定時工作一律經 Job Scheduler：多個實例時每一期只執行一次。註冊不等 Redis 回應，

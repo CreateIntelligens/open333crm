@@ -4,6 +4,14 @@
 
 新的複查紀錄加在最上方。
 
+## 2026-10-22：佇列保留期限（APP-08）
+
+分支 `feat/queue-monitoring`，change `queue-monitoring`。以 unit 測試與本機 Docker 的 Redis 確認，沒有連 UAT。
+
+| 項目 | 結果 | 依據 |
+| --- | --- | --- |
+| APP-08 | 狀態不變（部分修正），內容更新 | `rich-menu-bind`、`data-export` 與 4 個週期佇列加上保留期限（`aabe714f`）。本機先以舊版 workers 啟動，`sla` 的下一期工作沒有 `removeOnComplete`；換新版重啟後，下一期與再下一期都帶完成 24 小時、失敗 7 天。補上先前漏列的 `tag-expiry-cleanup`。剩下 Redis 的 `maxmemory` |
+
 ## 2026-10-22：RLS-01 與 APP-07 互相引用
 
 規劃導入 bull-board 時盤點所有 BullMQ 佇列，以 main `7771212f` 靜態確認，沒有連 UAT。

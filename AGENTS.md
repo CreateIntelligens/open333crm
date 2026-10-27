@@ -210,11 +210,12 @@ query in `<name>.service.ts`.
 - **Check**: `grep -nE '(prisma|tenantPrisma|prismaAdmin|\btx)\.[a-zA-Z]+\.(find|create|update|delete|upsert|count|aggregate|groupBy)' apps/api/src/modules/*/*.routes.ts`
 - **Existing exceptions**: `docs/ref/system/AUDIT.md`, ARCH-01.
 
-#### 2. A service receives a `TenantCtx` and never opens a transaction
+#### 2. A service that reads or writes tenant data receives a `TenantCtx` and never opens a transaction
 
 The entry point opens one transaction that is bound to the tenant. A route uses
 `tenantHandler()`. A background job uses `inTenant()`. Both are in `apps/api/src/lib/tenant-ctx.ts`.
-Each exported service function takes the `TenantCtx` as its first parameter:
+Each exported service function that reads or writes tenant data takes the `TenantCtx` as its first
+parameter:
 
 ```ts
 export async function resolveCase(ctx: TenantCtx, caseId: string) {
@@ -261,6 +262,17 @@ A service obeys these rules:
   use the row that exists, use `createOrFindExisting()` from `@open333crm/core`
   (`packages/core/src/db/db-invariants.ts`). To claim one row with a conditional update, use
   `claimOne()` from the same file.
+
+This rule does not cover two kinds of functions. They do not take a `TenantCtx`:
+
+- A service for platform-layer tables (see the list in the Multi-Tenancy section), for example
+  `platform-audit.service.ts`. These tables belong to no tenant, so the service uses `prismaAdmin`.
+- A function that does not read the database, for example `sendOpsAlert()` in
+  `apps/api/src/modules/ops-alert/ops-alert.service.ts`. It writes Redis and a queue only, so do
+  not call it inside a tenant transaction (see the rule about external calls below).
+
+`scripts/check-tenant-ctx.mjs` does not know about these two kinds. It counts only the old forms,
+so these functions do not change its result.
 
 - **Why**: the service then knows its guarantees from its parameter type. Its queries have RLS,
   and its writes succeed or fail together. With the old parameter type `TenantDb`, the caller

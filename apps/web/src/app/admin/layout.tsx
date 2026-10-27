@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getPlatformToken, setPlatformToken, getMustChangePassword } from './lib/platform-api';
+import { QueueMonitorLink } from './lib/QueueMonitorLink';
 
 const NAV = [
   { href: '/admin/plans', label: '方案與上限' },
@@ -97,7 +98,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 24, padding: '0 4px', letterSpacing: '.01em' }}>
           平台控制台
         </div>
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{NAV.map((n) => navItem(n.href, n.label))}</nav>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {NAV.map((n) => navItem(n.href, n.label))}
+          <QueueMonitorLink />
+        </nav>
 
         <div style={{ marginTop: 'auto', paddingTop: 20 }}>
           <div style={{ height: 1, background: 'rgba(255,255,255,.15)', margin: '0 4px 14px' }} />

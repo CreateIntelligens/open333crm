@@ -2,6 +2,23 @@
 
 All notable changes to **open333CRM** will be documented in this file.
 
+## [2026-10-27]
+
+### Added
+
+- **平台後台的佇列監控**（change `queue-monitoring`）— 平台後台側邊欄新增「佇列監控」，以 bull-board 9.10.4 列出 API 與 workers 兩個行程的所有 BullMQ 佇列，看得到工作、失敗原因與 stack，可以重送單一個 failed 的工作。只放行讀取與單筆重送，清空、刪除、重送整個狀態、修改工作資料等操作一律 403，bull-board 升級後新增的寫入操作也預設拒絕。工作資料只顯示 id 類欄位，其他值顯示為「[已遮蔽]」。存取限制：來源 IP 須在 `QUEUE_DASHBOARD_ALLOWED_CIDRS` 的網段內（沒有設定時一律 403），再以平台 JWT 換發 1 小時的監控 cookie；cookie 與平台 JWT 不能互換，平台帳號停用或須改密碼時立即拒絕。重送成功時寫入平台稽核 `queue.job.retry`。重送後，工作的回傳值列出被認領擋下而沒有再執行的副作用（`skippedClaims`）。
+  - 部署：在 `.env.api` 設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS`（例如公司網段），沒有設定時監控畫面回 403，其他功能不受影響。說明見 `docs/ref/features/platform/QUEUE-MONITORING.md`。
+- **維運告警**（change `queue-monitoring`）— 任何佇列的工作移到 failed set（重試用完，或丟出不可重試的錯誤）時，API 發出一則告警，含佇列名稱、工作 id、租戶 id、重試次數與監控畫面的連結，不含失敗原因與工作資料。同一個佇列 10 分鐘內只送一則，下一則帶上這段期間沒有送出的次數。告警經新的 `ops-alert` 佇列送出，失敗時重試 3 次。
+  - 部署：建立 Slack Incoming Webhook 之後，在 `.env.api` 設定 `OPS_ALERT_SLACK_WEBHOOK_URL`；沒有設定時告警只寫 log。
+
+### Changed
+
+- **所有 BullMQ 佇列都有保留期限；`notification` 寫入失敗時重試**（change `queue-monitoring`，AUDIT APP-08 部分修正）— `rich-menu-bind`、`data-export` 與 4 個週期佇列（`sla`、`data-export-cleanup`、`tag-expiry-cleanup`、`agent-retention-cleanup`）原本永遠保留完成與失敗的工作，現在完成保留 24 小時、失敗保留 7 天。已排定的週期工作會延續註冊時的選項，所以 workers 啟動時先刪除既有的週期工作，再以新選項重新註冊。`notification` 佇列的兩處生產者加上重試：共 3 次，指數退避，基準 5 秒；站內通知因此是至少一次，workers 在寫入通知之後、工作完成之前停止時，成員會收到兩則相同的通知。Redis 的 `maxmemory` 仍未設定。
+
+### Fixed
+
+- **站內通知的即時推播失敗時，通知工作跟著失敗**（change `queue-monitoring`）— workers 寫入通知之後，推播到 Redis 失敗會讓 `notification:dispatch` 工作失敗；加上重試之後會重複寫入通知。現在推播失敗只記 log，工作照常完成：通知已經寫入，成員重新整理就看得到。
+
 ## [2026-10-25]
 
 ### 🛡️ Security & Runtime Upgrade (Node.js 26.12.1 Security Hardening)

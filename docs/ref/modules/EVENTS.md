@@ -17,6 +17,7 @@
 | workers 怎麼推送即時事件、怎麼發出業務事件？ | [從 workers 回到 API](#從-workers-回到-api) |
 | API 行程內有哪些定期排程？ | [API 行程內的排程](#api-行程內的排程) |
 | 工作失敗時會重試嗎？API 重啟時會遺失什麼？ | [失敗與重試](#失敗與重試) |
+| 怎麼查看失敗的工作？誰會收到告警？ | [監控與告警](#監控與告警) |
 | 可以同時跑多個 API 行程嗎？ | [只能跑一個 API 行程](#只能跑一個-api-行程) |
 | 新增一個事件或背景工作時，要選哪個通道？ | [新增事件或背景工作時](#新增事件或背景工作時) |
 | 目前有哪些已知問題？ | [目前的限制](#目前的限制) |
@@ -161,6 +162,7 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 | `webhook-delivery` | 對外 Webhook 訂閱者 | `webhook-dispatcher.ts` 的 `processWebhookDelivery()` | 共 3 次，間隔 1 秒、5 秒 | 完成 24 小時、失敗 7 天 |
 | `usage-alert-email` | 通知訂閱者 | `usage-alert-email.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `api-scheduler` | `job-scheduler.ts` | 同一個檔案的 Worker | 不重試 | 完成 100 筆、失敗 50 筆 |
+| `ops-alert` | `ops-alert.service.ts` 的 `sendOpsAlert()` | `ops-alert.worker.ts` | 共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 
 前 3 列的 Worker 每個同時處理多個 job，所以一個事件處理很久時，其他事件不用等。每個佇列的並行數見 `subscriber-workers.ts` 的 `WORKER_CONCURRENCY`。
 
@@ -168,16 +170,19 @@ Redis pub/sub 會把一則訊息送給每一個訂閱的連線。因此有幾個
 
 | 佇列 | 生產者 | 消費者 | 完成與失敗的工作保留多久 |
 | --- | --- | --- | --- |
-| `notification` | API 的 `notification.worker.ts`；workers 的 `lib/notification-queue.ts` | `notification.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `notification` | API 的 `notification.worker.ts`；workers 的 `lib/notification-queue.ts` | `notification.handler.ts`。重試共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
 | `automation` | API 的 `automation.worker.ts` | `automation.handler.ts`。重試共 3 次，指數退避，基準 5 秒 | 完成 24 小時、失敗 7 天 |
-| `rich-menu-bind` | API 的 `rich-menu.service.ts` | `rich-menu-bind.handler.ts` | **全部保留** |
-| `data-export` | API 的 `data-export.service.ts` | `data-export.handler.ts` | **全部保留** |
+| `rich-menu-bind` | API 的 `rich-menu.service.ts` | `rich-menu-bind.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `data-export` | API 的 `data-export.service.ts` | `data-export.handler.ts` | 完成 24 小時、失敗 7 天 |
 | `data-erasure` | API 的 `data-erasure.service.ts` | `data-erasure.handler.ts` | 完成保留 100 筆、失敗保留 50 筆 |
-| `sla` | workers 啟動時註冊重複工作，每 5 分鐘 | `sla.handler.ts` | **全部保留** |
-| `data-export-cleanup` | workers 啟動時註冊重複工作，每小時 | `data-export.handler.ts` | **全部保留** |
-| `agent-retention-cleanup` | workers 啟動時註冊重複工作，每小時 | `agent-retention.handler.ts` | **全部保留** |
+| `sla` | workers 啟動時註冊重複工作，每 5 分鐘 | `sla.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `data-export-cleanup` | workers 啟動時註冊重複工作，每小時 | `data-export.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `tag-expiry-cleanup` | workers 啟動時註冊重複工作，每小時 | `tag-expiry.handler.ts` | 完成 24 小時、失敗 7 天 |
+| `agent-retention-cleanup` | workers 啟動時註冊重複工作，每小時 | `agent-retention.handler.ts` | 完成 24 小時、失敗 7 天 |
 
-「全部保留」表示佇列與 worker 都沒有設定 `removeOnComplete`、`removeOnFail`，BullMQ 的預設是永遠保留，見 `../system/AUDIT.md` 的 APP-08。以事件 id 當 job id 的佇列，保留期限就是去重的期限，所以以時間計算，不以筆數計算。
+以事件 id 當 job id 的佇列，保留期限就是去重的期限，所以以時間計算，不以筆數計算。
+
+重複工作列在 `apps/workers/src/lib/repeating-jobs.ts`。已排定的重複工作會延續註冊時的選項，所以 workers 每次啟動時，先刪除這 4 個佇列既有的重複工作，再以目前的選項重新註冊。刪除與重新註冊之間 workers 停止時，那一期會少執行一次，下次啟動時恢復。
 
 `data-export`、`data-erasure` 的 worker 開頭以條件更新認領 `pending` 或 `processing` 的請求。`processing` 代表上一次執行中途結束，worker 重新處理；已結束的請求直接略過。
 
@@ -249,6 +254,22 @@ Job Scheduler 不保證同一個排程的兩次執行不重疊。BullMQ 在取�
 通知與自動化訂閱者的處理函式多數在內部捕捉錯誤並寫 log，所以失敗不會觸發重試。會丟錯而重試的有 `event-webhook`、`webhook-delivery` 與 `usage-alert-email`。
 
 BullMQ 重複工作（`sla` 等）的 handler 在內部捕捉錯誤，所以失敗的一輪也記為完成。
+
+`notification:dispatch` 寫入通知失敗時，job 失敗並重試。通知是至少一次：workers 在寫入通知之後、job 標為完成之前停止時，重試會再寫一筆相同的通知。寫入之後的推播失敗只記 log，job 照常完成。
+
+### 監控與告警
+
+平台管理員從平台後台的「佇列監控」開啟 bull-board，看兩個行程所有佇列的工作與失敗原因，並可以重送單一個 failed 的工作。存取限制與操作範圍見 [佇列監控](../features/platform/QUEUE-MONITORING.md)。
+
+任何佇列（`ops-alert` 除外）的工作移到 failed set 時，API 以 `sendOpsAlert()` 發出一則告警，合併鍵是 `queue-failed:<佇列名稱>`：
+
+- 還會重試的失敗不告警。重試用完、或工作丟出 `UnrecoverableError`，才算移到 failed set。
+- 同一個合併鍵 10 分鐘內只送一則；下一則帶上這段期間沒有送出的次數。計數放在 Redis。
+- 告警只帶佇列名稱、工作名稱、工作 id、租戶 id、重試次數與監控畫面的連結，不帶失敗原因與工作資料。
+- 設定 `OPS_ALERT_SLACK_WEBHOOK_URL` 時送到 Slack，否則只寫 log。`ops-alert` 自己的工作重試用完時只寫 log。
+- 監聽用 `QueueEvents`，從最新的事件開始讀。API 停機期間移到 failed set 的工作不會告警，但會在 failed set 保留 7 天。
+
+重送之後，3 個訂閱者佇列與 `automation` 的工作回傳值列出被認領擋下而沒有再執行的副作用（`skippedClaims`），包括呼叫 LLM 之前先查到認領紀錄而跳過的機器人回覆與情緒分析，見[副作用的認領紀錄](#副作用的認領紀錄)。沒有副作用被跳過時，回傳值是空的。
 
 ## 只能跑一個 API 行程
 

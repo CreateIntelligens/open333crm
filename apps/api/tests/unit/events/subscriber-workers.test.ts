@@ -21,6 +21,8 @@ vi.mock('bullmq', async (importOriginal) => ({
 }));
 
 import {
+  claimSideEffect,
+  hasSideEffectClaim,
   EVENT_AUTOMATION_QUEUE,
   EVENT_NOTIFICATION_QUEUE,
   EVENT_WEBHOOK_QUEUE,
@@ -103,4 +105,38 @@ test('Slow event does not block other events：每個 Worker 同時處理多個 
   });
   // 個別佇列的設定仍然生效
   assert.ok(createdWorkers.find((w) => w.queue === WEBHOOK_DELIVERY_QUEUE)!.opts.settings);
+});
+
+// 被認領擋下的副作用（change queue-monitoring：queue-monitoring「被認領擋下的副作用標示跳過」）
+function claimingHandler(createCount: 0 | 1) {
+  const tx = { sideEffectClaim: { createMany: async () => ({ count: createCount }) } } as never;
+  return async (event: { id: string; tenantId: string }) => {
+    await claimSideEffect(tx, { tenantId: event.tenantId, kind: 'automation_action', sourceId: event.id, subKey: 'rule-a#0' });
+  };
+}
+
+const automationData: EventJobData = { eventId: 'e1', name: 'case.created', tenantId: TENANT, timestamp: new Date().toISOString(), payload: {} };
+
+test('重送已執行過規則動作的 job：subscriberProcessor 的回傳值列出被跳過的認領鍵', async () => {
+  const result = await subscriberProcessor(claimingHandler(0))(job(automationData) as never);
+
+  assert.deepEqual(result, { skippedClaims: [{ kind: 'automation_action', sourceId: 'e1', subKey: 'rule-a#0' }] });
+});
+
+test('第一次執行沒有跳過：subscriberProcessor 回傳 undefined', async () => {
+  const result = await subscriberProcessor(claimingHandler(1))(job(automationData) as never);
+
+  assert.equal(result, undefined);
+});
+
+test('重送已回覆過的訊息：預先查詢到認領紀錄而跳過的機器人回覆也列出', async () => {
+  // bot-reply-guard 與情緒分析在呼叫 LLM 之前先查認領紀錄，查到就不再認領
+  const db = { sideEffectClaim: { count: async () => 1 } } as never;
+  const handler = async (event: { id: string; tenantId: string }) => {
+    if (await hasSideEffectClaim(db, { tenantId: event.tenantId, kind: 'bot_reply', sourceId: 'message-1' })) return;
+  };
+
+  const result = await subscriberProcessor(handler)(job(automationData) as never);
+
+  assert.deepEqual(result, { skippedClaims: [{ kind: 'bot_reply', sourceId: 'message-1' }] });
 });

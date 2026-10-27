@@ -6,7 +6,14 @@
  * 其他訂閱者不會再處理同一個事件。
  */
 import { Worker, type Job, type WorkerOptions } from 'bullmq';
-import { EVENT_AUTOMATION_QUEUE, logger, WEBHOOK_DELIVERY_QUEUE, type EventJobData } from '@open333crm/core';
+import {
+  collectSkippedClaims,
+  EVENT_AUTOMATION_QUEUE,
+  logger,
+  WEBHOOK_DELIVERY_QUEUE,
+  type EventJobData,
+  type SkippedClaim,
+} from '@open333crm/core';
 import { appEventFromJob, type AppEvent, type AppEventName } from './event-bus.js';
 
 /** 訂閱者收到的事件：比 AppEvent 多了事件 id，衍生的認領鍵與 job id 都用它 */
@@ -33,7 +40,16 @@ export type JobProcessor = (job: Job) => Promise<unknown>;
 
 /** 訂閱者佇列的 processor：job data 轉回事件（timestamp 轉回 Date）再交給處理程式 */
 export function subscriberProcessor(handler: EventHandler): JobProcessor {
-  return (job) => handler(appEventFromJob(job.data as EventJobData));
+  return (job) => withSkippedClaims(() => handler(appEventFromJob(job.data as EventJobData)));
+}
+
+/**
+ * 以 job 的回傳值列出被認領擋下的副作用：管理員在佇列監控重送 job 之後，看得出哪些副作用沒有再執行
+ * （change queue-monitoring，design 決策 7）。沒有跳過時回傳 undefined。
+ */
+export async function withSkippedClaims(fn: () => Promise<void>): Promise<{ skippedClaims: SkippedClaim[] } | undefined> {
+  const { skippedClaims } = await collectSkippedClaims(fn);
+  return skippedClaims.length > 0 ? { skippedClaims } : undefined;
 }
 
 export type CreateWorker = (queue: string, processor: JobProcessor) => { close(): Promise<void> };

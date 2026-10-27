@@ -19,8 +19,14 @@ function notificationQueue(): Queue {
   if (!_notificationQueue) {
     _notificationQueue = new Queue('notification', {
       connection: { url: process.env.REDIS_URL! },
-      // job id 由事件 id 組成：完成的 job 保留 24 小時，事件重送時 BullMQ 不建立第二個 job
-      defaultJobOptions: { removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } },
+      // job id 由事件 id 組成：完成的 job 保留 24 小時，事件重送時 BullMQ 不建立第二個 job。
+      // 寫入通知失敗時重試；通知是至少一次，重試可能產生重複的通知（standalone-worker-runtime）
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5_000 },
+        removeOnComplete: { age: 86_400 },
+        removeOnFail: { age: 604_800 },
+      },
     });
   }
   return _notificationQueue;

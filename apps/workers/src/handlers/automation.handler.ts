@@ -2,7 +2,14 @@ import type { Job } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 import type { Redis as IORedis } from 'ioredis';
 import type { ChannelPlugin } from '@open333crm/channel-plugins';
-import { claimSideEffect, dispatchOutboxRows, logger, writeOutbox } from '@open333crm/core';
+import {
+  claimSideEffect,
+  collectSkippedClaims,
+  dispatchOutboxRows,
+  logger,
+  writeOutbox,
+  type SkippedClaim,
+} from '@open333crm/core';
 import {
   buildAutomationFacts,
   evaluateRules,
@@ -31,6 +38,22 @@ type RuleRow = {
   actions: unknown;
   trigger?: unknown;
 };
+
+/**
+ * automation 佇列的 processor：以回傳值列出被認領擋下的規則動作，管理員重送 job 之後看得出
+ * 哪些動作沒有再執行（change queue-monitoring，design 決策 7）。沒有跳過時回傳 undefined。
+ */
+export async function processAutomationJob(
+  job: Job,
+  prisma: PrismaClient,
+  redisPublisher: IORedis,
+  pluginRegistry?: Map<string, ChannelPlugin>,
+): Promise<{ skippedClaims: SkippedClaim[] } | undefined> {
+  const { skippedClaims } = await collectSkippedClaims(() =>
+    handleAutomationJob(job, prisma, redisPublisher, pluginRegistry),
+  );
+  return skippedClaims.length > 0 ? { skippedClaims } : undefined;
+}
 
 export async function handleAutomationJob(
   job: Job,

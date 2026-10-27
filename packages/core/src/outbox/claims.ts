@@ -5,6 +5,7 @@
  * 寫入用 INSERT … ON CONFLICT DO NOTHING：鍵已存在時不丟錯，所在的交易可以繼續使用。
  * 另一個交易同時寫入同一個鍵時，PostgreSQL 等對方 commit 或 rollback 才決定結果。
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma } from '@prisma/client';
 import { claimOne } from '../db/db-invariants.js';
 
@@ -30,7 +31,9 @@ type ClaimDb = Pick<Prisma.TransactionClient, 'sideEffectClaim'>;
 /** 以認領鍵寫入一筆紀錄；回傳 true 代表這次認領成功，false 代表已經有人認領 */
 export async function claimSideEffect(tx: ClaimDb, key: SideEffectKey): Promise<boolean> {
   const row = { tenantId: key.tenantId, kind: key.kind, sourceId: key.sourceId, subKey: key.subKey ?? '' };
-  return claimOne(() => tx.sideEffectClaim.createMany({ data: [row], skipDuplicates: true }));
+  const claimed = await claimOne(() => tx.sideEffectClaim.createMany({ data: [row], skipDuplicates: true }));
+  if (!claimed) recordSkippedClaim(key);
+  return claimed;
 }
 
 /**
@@ -41,5 +44,39 @@ export async function hasSideEffectClaim(db: ClaimDb, key: SideEffectKey): Promi
   const count = await db.sideEffectClaim.count({
     where: { tenantId: key.tenantId, kind: key.kind, sourceId: key.sourceId, subKey: key.subKey ?? '' },
   });
+  // 呼叫端查到紀錄就不再認領，副作用同樣被跳過
+  if (count > 0) recordSkippedClaim(key);
   return count > 0;
+}
+
+/** 被跳過的認領鍵，不含 tenantId：job 的回傳值只列出副作用的種類與來源（change queue-monitoring） */
+export interface SkippedClaim {
+  kind: SideEffectKind;
+  sourceId: string;
+  subKey?: string;
+}
+
+const skippedClaimsScope = new AsyncLocalStorage<SkippedClaim[]>();
+
+/** 加進目前範圍的清單；同一個認領鍵只列一次。不在任何範圍內時不做任何事 */
+function recordSkippedClaim(key: SideEffectKey): void {
+  const list = skippedClaimsScope.getStore();
+  if (!list) return;
+  const subKey = key.subKey || undefined;
+  if (list.some((c) => c.kind === key.kind && c.sourceId === key.sourceId && c.subKey === subKey)) return;
+  list.push({ kind: key.kind, sourceId: key.sourceId, ...(subKey ? { subKey } : {}) });
+}
+
+/**
+ * 在一個新的收集範圍內執行 fn，回傳 fn 的結果，以及範圍內被跳過的認領鍵：claimSideEffect() 回傳 false，
+ * 或 hasSideEffectClaim() 查到紀錄（呼叫端查到就不再認領）。
+ * job processor 以這份清單標示重送時沒有再執行的副作用（change queue-monitoring，design 決策 7）。
+ * 不在任何範圍內時，claimSideEffect() 不收集。
+ */
+export async function collectSkippedClaims<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; skippedClaims: SkippedClaim[] }> {
+  const skippedClaims: SkippedClaim[] = [];
+  const result = await skippedClaimsScope.run(skippedClaims, fn);
+  return { result, skippedClaims };
 }
