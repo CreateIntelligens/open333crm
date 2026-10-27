@@ -12,7 +12,7 @@
 3. token 的平台帳號不存在：回 401 `UNAUTHORIZED`。
 4. 平台帳號已停用：回 401 `PLATFORM_USER_DISABLED`。
 
-平台 JWT MUST NOT 通過租戶 API 的認證。須改密碼的限制見 `platform-user-management`。
+平台 JWT MUST NOT 通過租戶 API 的認證。
 
 #### Scenario: 未帶 token 存取平台 API
 - **WHEN** 不帶 Authorization 呼叫任一條需要登入的平台路由，例如 `GET /api/v1/platform/plans`
@@ -44,7 +44,7 @@
 ### Requirement: 佇列監控路徑以監控 cookie 驗證平台帳號
 瀏覽器開啟監控畫面時不會帶 `Authorization` 標頭，所以佇列監控的路徑 `/api/v1/platform/queues/*` MUST 以監控 cookie 取代 token 驗證平台帳號。cookie 由 `queue-monitoring` 的換發端點設定。
 
-驗證的順序與回應同「平台路由一律驗證平台帳號」，另外 MUST 拒絕須改密碼的平台帳號。換發端點本身照該需求的順序，驗證 `Authorization` 標頭的平台 JWT。
+驗證的順序與回應同「平台路由一律驗證平台帳號」，另外 MUST 拒絕須改密碼的平台帳號。其他平台路由的須改密碼限制見 `platform-user-management`。換發端點本身照該需求的順序，驗證 `Authorization` 標頭的平台 JWT。
 
 #### Scenario: 佇列監控路徑沒有 cookie
 - **WHEN** 從允許的網段開啟 `/api/v1/platform/queues`，不帶監控 cookie
