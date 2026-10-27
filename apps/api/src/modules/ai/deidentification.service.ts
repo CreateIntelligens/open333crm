@@ -136,12 +136,20 @@ async function maskStructuredContent(
   return mapFields(content, () => masked[index++]) as Record<string, unknown>;
 }
 
-export type StoredMessagePrivacySource = 'inbound' | 'agent_default' | 'agent_original' | 'system';
+/**
+ * 訊息來源決定 `content`（送出與顯示的內容）用原文還是遮罩版；遮罩版一律另存在 metadata 給模型讀。
+ * - `inbound`：渠道進站訊息，保留原文。
+ * - `agent_default` / `agent_original`：座席手打的回覆，預設遮罩，可單則選擇保留原文。
+ * - `system`：Bot／AI 產生或含座席輸入的系統訊息，送出與保存遮罩版。
+ * - `system_template`：程式內固定的系統文案（登記連結、帳號整合通知、滿意度感謝等，含系統插入的連結與名稱），
+ *   保留原文送出與保存。2md 會把一般詞誤判成人名（「下方連結」→「下[姓名]」），遮罩會把顧客收到的文字改壞。
+ */
+export type StoredMessagePrivacySource = 'inbound' | 'agent_default' | 'agent_original' | 'system' | 'system_template';
 
 export interface StoredMessagePrivacy {
   version: 1;
   /** inbound keeps channel content; mask is the tenant default; original is an explicit agent choice. */
-  mode: 'inbound' | 'mask' | 'original' | 'system';
+  mode: 'inbound' | 'mask' | 'original' | 'system' | 'system_template';
   maskedContent: Record<string, unknown>;
 }
 

@@ -45,12 +45,24 @@ When enabled, the system SHALL de-identify every textual `Message.content` paylo
 - **THEN** the CRM stores the original message for authorized customer-service work, stores its masked representation with the message, and all later model-facing reads use the masked representation
 
 #### Scenario: System-created message is protected
-- **WHEN** an enabled tenant creates a Bot, Agent, automation or system text message
-- **THEN** the message write stores a masked representation and no model-facing read uses the original content
+- **WHEN** an enabled tenant creates a Bot, Agent, automation or system text message whose text comes from a model, an automation summary or an agent
+- **THEN** the message write stores and delivers the masked content, and no model-facing read uses the original content
 
 #### Scenario: Masking storage failure preserves no unclassified model path
 - **WHEN** the de-identification service fails while an enabled tenant writes a message
 - **THEN** the write reports a bounded privacy-processing failure before downstream model work can consume the raw content
+
+### Requirement: Fixed system wording keeps its authored text
+
+When enabled, the system SHALL deliver and store fixed system wording that its code composes as authored, including inserted links and names, and SHALL store its masked copy in message metadata with mode `system_template` for model-facing reads. Text that comes from a model, an automation summary, an agent or tenant configuration SHALL keep its masked delivery and storage.
+
+#### Scenario: System template message keeps its authored text
+- **WHEN** an enabled tenant sends or records fixed system wording, such as an email or phone registration link, an account-binding notice, a CSAT survey or follow-up, the default handoff notice, a return-to-bot note or a binding-failure note
+- **THEN** the customer receives and the conversation stores the authored text, including inserted links and names, a masked copy is stored for model-facing reads, and the mode is `system_template`
+
+#### Scenario: Agent-typed handoff notice stays masked
+- **WHEN** an enabled tenant hands a conversation to an agent with a handoff notice that the agent typed
+- **THEN** the customer receives and the conversation stores the masked notice
 
 ### Requirement: Agent chooses the outbound content representation
 

@@ -156,7 +156,7 @@ async function runBindingIntent(
     // err 放第二個參數才會帶出 message 與 stack（包在物件裡會被序列化成 {}）
     logger.error(`[Webhook] Identity binding failed (intent=${intent.kind}, conversation=${conversation.id}):`, err);
     try {
-      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '跨渠道綁定處理失敗，顧客的綁定請求沒有完成，請協助確認。' }, 'system');
+      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '跨渠道綁定處理失敗，顧客的綁定請求沒有完成，請協助確認。' }, 'system_template');
       const note = await ctx.prisma.message.create({
         data: {
           conversationId: conversation.id,

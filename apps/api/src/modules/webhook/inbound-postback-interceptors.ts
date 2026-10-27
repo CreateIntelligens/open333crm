@@ -118,7 +118,7 @@ async function handleHandoffRequest(ctx: InboundMessageContext): Promise<boolean
       });
     } else if (ctx.conversation.status === 'BOT_HANDLED') {
       const reason = 'user_requested_handoff';
-      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '使用者主動點按按鈕轉接人工客服' }, 'system');
+      const storedContent = await prepareStoredMessageContent(ctx.prisma, ctx.tenantId, { text: '使用者主動點按按鈕轉接人工客服' }, 'system_template');
       const systemMessage = await ctx.prisma.message.create({
         data: {
           conversationId: ctx.conversation.id,

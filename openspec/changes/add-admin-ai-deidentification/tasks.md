@@ -56,3 +56,8 @@
 - Full `pnpm test` passed all 15 Turbo tasks; API: 173 files / 1092 tests. The web privacy control adds 4 passing interaction tests.
 - API and web TypeScript checks passed. Both strict tenant checks passed. Impeccable detector returned no deterministic issues.
 - Browser verification used synthetic platform responses in headless Chrome: desktop and mobile screenshots captured, enable/disable interactions succeeded. The control keeps a 280px minimum width within the existing admin horizontal-scroll layout on narrow screens.
+
+## 9. System template wording keeps its authored text
+
+- [x] 9.1 Add failing API unit tests (`tests/unit/modules/privacy/system-template-message.test.ts`, `tests/unit/modules/csat/csat.service.test.ts`) for the email registration link, return-to-bot note, default handoff notice and CSAT follow-up keeping their authored text while storing a masked copy; keep an agent-typed handoff notice masked. Mutation for the agent-typed case: always passing `system_template` for the handoff notice makes that test fail.
+- [x] 9.2 Add the `system_template` message source and use it for fixed system wording: identity-binding messages (email/phone registration links, binding codes and notices), CSAT survey and follow-up, the default handoff notice, the return-to-bot note, the user-requested handoff note and the binding-failure note.
