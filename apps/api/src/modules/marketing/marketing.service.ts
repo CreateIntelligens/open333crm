@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { TenantDb } from '../../lib/tenant-db.js';
 import type { Server as SocketIOServer } from 'socket.io';
 import { randomUUID } from 'node:crypto';
@@ -165,6 +165,34 @@ export async function getBroadcast(prisma: TenantDb, id: string, tenantId: strin
   };
 }
 
+/**
+ * 廣播可以附的券：廣播頁只能附進行中的行銷券；券詳情頁的批次發放行銷與客服補償券都可以（design D31）。
+ * 查不到（含其他租戶的券）也回 400：選券是輸入錯誤，不是找不到資源。
+ * 建立與預覽共用，錯誤相同（PR #364 第二輪審查：預覽原本只確認券存在）。
+ */
+async function assertBroadcastCoupon(
+  // 只用到 coupon：收最小的介面，PrismaClient、交易 client 與租戶綁定 client 都符合
+  prisma: Pick<Prisma.TransactionClient, 'coupon'>,
+  tenantId: string,
+  couponId: string,
+  couponIssuedVia: string | null | undefined,
+) {
+  const coupon = await prisma.coupon.findFirst({
+    where: { id: couponId, tenantId },
+    select: { id: true, status: true, purpose: true, totalLimit: true, perContactLimit: true, codeMode: true },
+  });
+  const purposeOk = couponIssuedVia === COUPON_ISSUED_VIA.BATCH || coupon?.purpose === 'MARKETING';
+  if (!coupon || coupon.status !== 'ACTIVE' || !purposeOk) {
+    const message = !coupon
+      ? '找不到這張優惠券'
+      : coupon.status !== 'ACTIVE'
+        ? '只能附上進行中的優惠券'
+        : '廣播只能附上行銷券，客服補償券請在對話中發送';
+    throw new AppError(message, 'INVALID_COUPON', 400, { issues: [{ path: 'couponId', message }] });
+  }
+  return coupon;
+}
+
 export async function createBroadcast(
   prisma: TenantDb,
   tenantId: string,
@@ -198,23 +226,7 @@ export async function createBroadcast(
     throw new AppError('素材與版型請擇一提供，不可同時或都不填', 'INVALID_INPUT', 400);
   }
   const couponIssuedVia = data.couponId ? data.couponIssuedVia ?? COUPON_ISSUED_VIA.BROADCAST : null;
-  if (data.couponId) {
-    const coupon = await prisma.coupon.findFirst({
-      where: { id: data.couponId, tenantId },
-      select: { id: true, status: true, purpose: true },
-    });
-    // 廣播頁只能附進行中的行銷券；券詳情頁的批次發放行銷與客服補償券都可以（design D31）。
-    // 查不到（含其他租戶的券）也回 400：選券是輸入錯誤，不是找不到資源
-    const purposeOk = couponIssuedVia === COUPON_ISSUED_VIA.BATCH || coupon?.purpose === 'MARKETING';
-    if (!coupon || coupon.status !== 'ACTIVE' || !purposeOk) {
-      const message = !coupon
-        ? '找不到這張優惠券'
-        : coupon.status !== 'ACTIVE'
-          ? '只能附上進行中的優惠券'
-          : '廣播只能附上行銷券，客服補償券請在對話中發送';
-      throw new AppError(message, 'INVALID_COUPON', 400, { issues: [{ path: 'couponId', message }] });
-    }
-  }
+  if (data.couponId) await assertBroadcastCoupon(prisma, tenantId, data.couponId, couponIssuedVia);
 
   assertBroadcastAudience(data);
 
@@ -809,6 +821,8 @@ export async function previewBroadcastAudience(
     targetConfig?: BroadcastTargetConfig;
     /** 附券廣播：一併回傳券的剩餘名額與已達每人上限的人數（design D29） */
     couponId?: string;
+    /** 發放方式：券詳情頁的批次發放傳 batch（允許客服補償券），其他為廣播 */
+    couponIssuedVia?: string;
   },
 ) {
   const channel = await prisma.channel.findFirst({
@@ -829,11 +843,8 @@ export async function previewBroadcastAudience(
   const reachable = await filterByMessagingWindow(prisma, tenantId, channel.id, matched, windowHours);
   let coupon: { remaining: number | null; limitReached: number } | null = null;
   if (input.couponId) {
-    const c = await prisma.coupon.findFirst({
-      where: { id: input.couponId, tenantId },
-      select: { id: true, totalLimit: true, perContactLimit: true, codeMode: true },
-    });
-    if (!c) throw new AppError('找不到這張優惠券', 'INVALID_COUPON', 400);
+    // 與建立時相同的檢查：進行中、依入口檢查用途
+    const c = await assertBroadcastCoupon(prisma, tenantId, input.couponId, input.couponIssuedVia ?? COUPON_ISSUED_VIA.BROADCAST);
     // 剩餘名額：發行總量減去已發出（含發送中，與發券時的檢查一致）；序號包另受可用序號限制
     let remaining: number | null = null;
     if (c.totalLimit != null) {

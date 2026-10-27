@@ -279,6 +279,8 @@ export default async function couponRoutes(app: FastifyInstance) {
       segmentId: body.segmentId,
       targetConfig: { tagIds: body.tagIds, contactIds: body.contactIds },
       couponId: id,
+      // 批次發放允許客服補償券（design D31），檢查與建立時相同
+      couponIssuedVia: COUPON_ISSUED_VIA.BATCH,
     });
     return { success: true, data: { ...result, maxRecipients: BATCH_ISSUE_MAX_RECIPIENTS } };
   }));

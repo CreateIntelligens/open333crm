@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useMaterials } from '@/hooks/useMaterials';
 import { CouponSelectField } from '@/components/coupons/CouponSelectField';
-import type { KeywordReply, KeywordReplyInput } from '@/hooks/useKeywordReplies';
+import { keywordReplySaveBlock, materialIssueMessage, type KeywordReply, type KeywordReplyInput } from '@/hooks/useKeywordReplies';
 
 interface Props {
   open: boolean;
@@ -61,6 +61,9 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
     if (keywords.length === 0) { setError('至少要 1 個關鍵字'); return; }
     // 素材改為選填（add-coupon-system design D25），但素材與優惠券至少要選一個
     if (!materialId && !couponId) { setError('回覆素材與優惠券至少要選一個'); return; }
+    // 原本的素材不是 LINE 素材（或已刪除、停用）且沒有改選：存檔會加上 LINE 條件讓規則不再送出，擋下
+    const blocked = keywordReplySaveBlock(reply, { materialId: materialId || null });
+    if (blocked) { setError(blocked); return; }
     setSaving(true);
     setError(null);
     try {
@@ -75,7 +78,7 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
       onClose();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError(((err as any)?.response?.data?.error?.message) ?? '儲存失敗');
+      setError(((err as any)?.response?.data?.error?.message) ?? (err instanceof Error && err.message ? err.message : '儲存失敗'));
     } finally {
       setSaving(false);
     }
@@ -192,6 +195,18 @@ export function KeywordReplyEditDialog({ open, reply, onClose, onSave }: Props) 
             <label className="mb-1 block text-xs font-semibold text-muted-foreground">
               回覆素材
             </label>
+            {reply?.materialIssue && materialId === reply.materialId && (
+              <div role="alert" className="mb-2 rounded border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                <p>{materialIssueMessage(reply.materialIssue)}</p>
+                {reply.materialIssue.kind === 'other_channel' ? (
+                  <a href={`/dashboard/automation/${reply.id}`} className="mt-1 inline-block font-medium underline">
+                    到自動化規則編輯
+                  </a>
+                ) : (
+                  <p className="mt-1">改選一個 LINE 素材，或拿掉素材只發券，就可以儲存。</p>
+                )}
+              </div>
+            )}
             <select
               value={materialId}
               onChange={(e) => setMaterialId(e.target.value)}

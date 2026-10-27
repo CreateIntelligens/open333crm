@@ -130,3 +130,35 @@ test('規則上的券已暫停，只修改關鍵字可以存檔：表單不擋�
   assert.equal(onSave.mock.calls[0][0].couponId, 'k-paused');
   assert.deepEqual(onSave.mock.calls[0][0].keywords, ['領券', '優惠']);
 });
+
+// ── 傳送的素材不是 LINE 素材（PR #364 第二輪審查）──────────────────────────
+const fbReply: KeywordReply = {
+  id: 'r-fb', name: '詢價', keywords: ['價格'], matchMode: 'any', materialId: 'm-fb', couponId: null, failureText: '',
+  isActive: true, createdAt: '2026-10-01T00:00:00.000Z', actions: [], conditions: null,
+  materialIssue: { kind: 'other_channel', channelLabel: 'Facebook' },
+};
+
+test('傳送 Facebook 素材的規則：開啟就說明原因，儲存時擋下', async () => {
+  const onSave = openDialog(fbReply);
+  await screen.findByText('這條規則傳送的是 Facebook 素材，請到自動化規則編輯');
+  fireEvent.change(screen.getByPlaceholderText(/輸入關鍵字後按 Enter/), { target: { value: '多少錢' } });
+  fireEvent.click(screen.getByRole('button', { name: /加入/ }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+  });
+  assert.equal(onSave.mock.calls.length, 0, '不送出');
+  assert.ok(screen.getAllByText('這條規則傳送的是 Facebook 素材，請到自動化規則編輯').length >= 1);
+  const link = screen.getByRole('link', { name: '到自動化規則編輯' });
+  assert.equal(link.getAttribute('href'), '/dashboard/automation/r-fb');
+});
+
+test('傳送 Facebook 素材的規則改選 LINE 素材：可以儲存', async () => {
+  const onSave = openDialog(fbReply);
+  await screen.findByRole('option', { name: /歡迎訊息/ });
+  fireEvent.change(screen.getByDisplayValue('— 請選擇 —'), { target: { value: 'm-1' } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+  });
+  assert.equal(onSave.mock.calls.length, 1);
+  assert.equal(onSave.mock.calls[0][0].materialId, 'm-1');
+});

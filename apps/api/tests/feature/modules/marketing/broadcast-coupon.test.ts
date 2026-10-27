@@ -450,6 +450,45 @@ describe('附券廣播發送前檢查名額與訊息額度', () => {
     assert.equal(result.coupon?.limitReached, 1, '已達每人上限的人數');
   });
 
+  it('預覽與建立用相同的券檢查：非進行中或客服補償券回相同的錯誤', async () => {
+    // PR #364 第二輪審查：預覽原本只確認券存在，暫停的券或客服補償券仍算出人數，按建立才被擋
+    const p = await person('preview-check');
+    const preview = (couponId: string, couponIssuedVia?: string) =>
+      runInTenant(prisma, T, (ctx) =>
+        previewBroadcastAudience(ctx.tx, T, {
+          channelId: lineChannel, targetType: 'contacts', targetConfig: { contactIds: [p.contactId] }, couponId,
+          ...(couponIssuedVia ? { couponIssuedVia } : {}),
+        }));
+    const create = (couponId: string) =>
+      runInTenant(prisma, T, (ctx) =>
+        createBroadcast(ctx.tx, T, agentId, {
+          name: `${MARK} 預覽檢查`, channelId: lineChannel, targetType: 'contacts', targetConfig: { contactIds: [p.contactId] }, couponId,
+        }));
+    const errorOf = async (fn: () => Promise<unknown>) => {
+      try {
+        await fn();
+        return null;
+      } catch (err) {
+        return { code: (err as { code?: string }).code, message: (err as Error).message };
+      }
+    };
+
+    const paused = await coupon(`${MARK}秋暫停`);
+    await withTenant(prisma, T, (tx) => changeStatus(ctxOf(tx, T), paused, 'PAUSED'));
+    const pausedError = await errorOf(() => preview(paused));
+    assert.deepEqual(pausedError, { code: 'INVALID_COUPON', message: '只能附上進行中的優惠券' });
+    assert.deepEqual(pausedError, await errorOf(() => create(paused)), '與建立時的錯誤相同');
+
+    const service = await coupon(`${MARK}補償`, { purpose: 'SERVICE' });
+    const serviceError = await errorOf(() => preview(service));
+    assert.deepEqual(serviceError, { code: 'INVALID_COUPON', message: '廣播只能附上行銷券，客服補償券請在對話中發送' });
+    assert.deepEqual(serviceError, await errorOf(() => create(service)));
+
+    // 券詳情頁的批次發放允許客服補償券（design D31）
+    const batch = await preview(service, 'batch');
+    assert.equal(batch.reachable, 1);
+  });
+
   it('LINE 訊息額度不足', async () => {
     const couponId = await coupon(`${MARK}秋M`);
     const a = await person('lq-a');

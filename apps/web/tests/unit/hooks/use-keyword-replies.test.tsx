@@ -42,8 +42,17 @@ function ruleDetail(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** 素材的渠道與狀態（GET /marketing/materials/:id）；沒列在這裡的素材視為 LINE、啟用中 */
+let materialInfo: Record<string, { channelType: string; isActive: boolean } | 'not_found'> = {};
+
 function mockRules(details: Array<Record<string, unknown>>) {
   api.get.mockImplementation(async (url: string) => {
+    if (url.startsWith('/marketing/materials/')) {
+      const id = url.split('/').pop()!;
+      const info = materialInfo[id] ?? { channelType: 'line', isActive: true };
+      if (info === 'not_found') throw Object.assign(new Error('404'), { response: { status: 404 } });
+      return { data: { success: true, data: { id, name: `素材 ${id}`, ...info } } };
+    }
     if (url.startsWith('/automation/rules/')) {
       const id = url.split('/').pop();
       return { data: { success: true, data: details.find((d) => d.id === id) } };
@@ -67,6 +76,7 @@ async function loadReplies(details: Array<Record<string, unknown>>): Promise<Key
 }
 
 beforeEach(() => {
+  materialInfo = {};
   api.get.mockReset();
   api.post.mockReset().mockResolvedValue({ data: { success: true } });
   api.patch.mockReset().mockResolvedValue({ data: { success: true } });
@@ -165,4 +175,49 @@ test('任一條件群組：LINE 條件與原本的群組都要成立', async () 
   await updateKeywordReply(reply, { name: '詢價', keywords: ['價格'], matchMode: 'any', materialId: 'm-1', couponId: null, failureText: '' });
 
   assert.deepEqual(lastPatchBody().conditions, { all: [LINE_CONDITION, { any: [VIP_CONDITION] }] });
+});
+
+// ── 傳送的素材不是 LINE 素材（PR #364 第二輪審查）──────────────────────────
+// 修正前：這頁存檔一律加上「對話渠道等於 LINE」。在一般自動化規則建的「關鍵字＋Facebook 素材」規則
+// 出現在這頁時，只改關鍵字就存檔，規則會變成只在 LINE 觸發、卻送 Facebook 素材，從此不再送出。
+
+test('傳送 Facebook 素材的規則：標示原因，儲存時擋下，不改規則', async () => {
+  materialInfo = { 'm-fb': { channelType: 'fb', isActive: true } };
+  const [reply] = await loadReplies([ruleDetail({ conditions: { all: [] }, actions: [{ type: 'send_material', params: { materialId: 'm-fb' } }] })]);
+  assert.deepEqual(reply.materialIssue, { kind: 'other_channel', channelLabel: 'Facebook' });
+
+  await assert.rejects(
+    updateKeywordReply(reply, { name: '詢價', keywords: ['價格', '多少錢'], matchMode: 'any', materialId: 'm-fb', couponId: null, failureText: '' }),
+    /Facebook 素材.*自動化規則/,
+  );
+  assert.equal(api.patch.mock.calls.length, 0, '不送出：不會被加上 LINE 條件而靜默失效');
+});
+
+test('傳送 Facebook 素材的規則改選 LINE 素材：可以儲存', async () => {
+  materialInfo = { 'm-fb': { channelType: 'fb', isActive: true } };
+  const [reply] = await loadReplies([ruleDetail({ actions: [{ type: 'send_material', params: { materialId: 'm-fb' } }] })]);
+  await updateKeywordReply(reply, { name: '詢價', keywords: ['價格'], matchMode: 'any', materialId: 'm-1', couponId: null, failureText: '' });
+  assert.deepEqual(lastPatchBody().actions, [{ type: 'send_material', params: { materialId: 'm-1' } }]);
+});
+
+test('素材已刪除或已停用：標示原因，沒有改選素材就不能儲存', async () => {
+  materialInfo = { 'm-gone': 'not_found', 'm-off': { channelType: 'line', isActive: false } };
+  const replies = await loadReplies([
+    ruleDetail({ id: 'r-gone', actions: [{ type: 'send_material', params: { materialId: 'm-gone' } }] }),
+    ruleDetail({ id: 'r-off', actions: [{ type: 'send_material', params: { materialId: 'm-off' } }] }),
+  ]);
+  const gone = replies.find((r) => r.id === 'r-gone')!;
+  const off = replies.find((r) => r.id === 'r-off')!;
+  assert.deepEqual(gone.materialIssue, { kind: 'missing' });
+  assert.deepEqual(off.materialIssue, { kind: 'inactive' });
+  await assert.rejects(
+    updateKeywordReply(gone, { name: '詢價', keywords: ['價格'], matchMode: 'any', materialId: 'm-gone', couponId: null, failureText: '' }),
+    /素材已刪除/,
+  );
+  assert.equal(api.patch.mock.calls.length, 0);
+});
+
+test('LINE 素材的規則：沒有標示，照常儲存', async () => {
+  const [reply] = await loadReplies([ruleDetail()]);
+  assert.equal(reply.materialIssue, null);
 });

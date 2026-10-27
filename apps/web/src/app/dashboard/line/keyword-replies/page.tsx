@@ -22,6 +22,7 @@ import {
   toggleKeywordReply,
   type KeywordReply,
 } from '@/hooks/useKeywordReplies';
+import { KeywordReplyMaterialCell } from '@/components/line/keyword-reply/KeywordReplyMaterialCell';
 
 export default function KeywordRepliesPage() {
   const { replies, isLoading, mutate } = useKeywordReplies();
@@ -170,16 +171,7 @@ export default function KeywordRepliesPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {!r.materialId ? (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          ) : mat ? (
-                            <div>
-                              <div className="text-xs font-medium">{mat.name}</div>
-                              <div className="text-[11px] text-muted-foreground">{mat.contentType}</div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-destructive">素材已被刪除（id: {r.materialId.slice(0, 8)}…）</span>
-                          )}
+                          <KeywordReplyMaterialCell reply={r} material={mat} />
                         </td>
                         <td className="px-4 py-3">
                           {!r.couponId ? (

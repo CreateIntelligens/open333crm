@@ -34,6 +34,43 @@ export interface AutomationRuleDetail extends AutomationRuleRaw {
   conditions?: Record<string, unknown> | null;
 }
 
+/**
+ * 規則傳送的素材不能在這頁使用的原因（PR #364 第二輪審查）。這頁存檔一律加上「對話渠道等於 LINE」，
+ * 素材不是 LINE 素材時規則會變成只在 LINE 觸發、卻送別的渠道的素材，從此不再送出，所以要擋下並說明。
+ * - other_channel：素材屬於其他渠道（在一般自動化規則建立的）
+ * - missing：素材已刪除
+ * - inactive：素材已停用
+ * - unknown：讀不到素材（網路或伺服器錯誤），無法確認，先不讓存檔
+ */
+export type KeywordReplyMaterialIssue =
+  | { kind: 'other_channel'; channelLabel: string }
+  | { kind: 'missing' }
+  | { kind: 'inactive' }
+  | { kind: 'unknown' };
+
+const MATERIAL_CHANNEL_LABELS: Record<string, string> = {
+  fb: 'Facebook',
+  facebook: 'Facebook',
+  threads: 'Instagram',
+  instagram: 'Instagram',
+  ig: 'Instagram',
+  webchat: '網站客服',
+};
+
+/** 存檔被擋下時顯示的說明 */
+export function materialIssueMessage(issue: KeywordReplyMaterialIssue): string {
+  switch (issue.kind) {
+    case 'other_channel':
+      return `這條規則傳送的是 ${issue.channelLabel} 素材，請到自動化規則編輯`;
+    case 'missing':
+      return '這條規則的素材已刪除，請重新選擇 LINE 素材';
+    case 'inactive':
+      return '這條規則的素材已停用，請重新選擇 LINE 素材';
+    case 'unknown':
+      return '無法確認這條規則的素材，請重新整理頁面後再試';
+  }
+}
+
 export interface KeywordReply {
   id: string;
   name: string;
@@ -50,6 +87,8 @@ export interface KeywordReply {
   /** 規則原本的動作與條件：儲存時保留這一頁不管的部分 */
   actions: RuleAction[];
   conditions: Record<string, unknown> | null;
+  /** 素材不能在這頁使用的原因；null 表示沒有問題（含沒有素材） */
+  materialIssue?: KeywordReplyMaterialIssue | null;
 }
 
 const MANAGED_ACTIONS = new Set(['send_material', 'issue_coupon']);
@@ -62,7 +101,36 @@ function stringParam(action: RuleAction | undefined, key: string): string | null
   return typeof value === 'string' && value ? value : null;
 }
 
-function ruleToKeywordReply(rule: AutomationRuleDetail): KeywordReply | null {
+type MaterialLookup = { channelType?: string | null; isActive?: boolean } | 'not_found' | 'error';
+
+function materialIssueOf(lookup: MaterialLookup | undefined): KeywordReplyMaterialIssue | null {
+  if (lookup === undefined) return null;
+  if (lookup === 'not_found') return { kind: 'missing' };
+  if (lookup === 'error') return { kind: 'unknown' };
+  const channel = (lookup.channelType ?? '').toLowerCase();
+  if (channel !== 'line') return { kind: 'other_channel', channelLabel: MATERIAL_CHANNEL_LABELS[channel] ?? (lookup.channelType || '其他渠道') };
+  if (lookup.isActive === false) return { kind: 'inactive' };
+  return null;
+}
+
+/** 讀出每個素材的渠道與狀態；已刪除回 not_found，其他錯誤回 error */
+async function lookupMaterials(ids: string[]): Promise<Map<string, MaterialLookup>> {
+  const entries = await Promise.all(
+    ids.map(async (id): Promise<[string, MaterialLookup]> => {
+      try {
+        const res = await api.get(`/marketing/materials/${id}`);
+        const m = res.data.data as { channelType?: string | null; isActive?: boolean };
+        return [id, { channelType: m?.channelType, isActive: m?.isActive }];
+      } catch (err) {
+        const status = (err as { response?: { status?: number } }).response?.status;
+        return [id, status === 404 ? 'not_found' : 'error'];
+      }
+    }),
+  );
+  return new Map(entries);
+}
+
+function ruleToKeywordReply(rule: AutomationRuleDetail, materials: Map<string, MaterialLookup>): KeywordReply | null {
   if (rule.trigger?.type !== 'keyword.matched') return null;
   const actions = Array.isArray(rule.actions) ? rule.actions : [];
   const materialId = stringParam(actions.find((a) => a.type === 'send_material'), 'materialId');
@@ -81,6 +149,7 @@ function ruleToKeywordReply(rule: AutomationRuleDetail): KeywordReply | null {
     createdAt: rule.createdAt,
     actions,
     conditions: rule.conditions ?? null,
+    materialIssue: materialId ? materialIssueOf(materials.get(materialId)) : null,
   };
 }
 
@@ -103,15 +172,22 @@ export function useKeywordReplies() {
   const { data: detailData } = useSWR(
     list.length > 0 ? ['keyword-reply-details', list.map((r) => r.id).join(',')] : null,
     async () => {
-      const details = await Promise.all(
+      const details = (await Promise.all(
         list.map((r) => api.get(`/automation/rules/${r.id}`).then((res) => res.data.data)),
-      );
-      return details as AutomationRuleDetail[];
+      )) as AutomationRuleDetail[];
+      // 素材的渠道與狀態：非 LINE 素材的規則不能在這頁存檔（見 KeywordReplyMaterialIssue）
+      const materialIds = [...new Set(details.flatMap((d) =>
+        (Array.isArray(d.actions) ? d.actions : [])
+          .filter((a) => a.type === 'send_material')
+          .map((a) => stringParam(a, 'materialId'))
+          .filter((id): id is string => id !== null),
+      ))];
+      return { details, materials: await lookupMaterials(materialIds) };
     },
   );
 
-  const replies = (detailData ?? [])
-    .map(ruleToKeywordReply)
+  const replies = (detailData?.details ?? [])
+    .map((rule) => ruleToKeywordReply(rule, detailData!.materials))
     .filter((x): x is KeywordReply => x !== null);
 
   return { replies, isLoading, error, mutate };
@@ -197,10 +273,22 @@ export async function createKeywordReply(input: KeywordReplyInput): Promise<void
   await api.post('/automation/rules', buildRulePayload(input));
 }
 
+/**
+ * 這次存檔要不要擋下：規則原本的素材不能在這頁使用，而且沒有改選素材（或拿掉素材）時擋下，
+ * 回傳要顯示的說明。改選 LINE 素材或拿掉素材就可以存。
+ */
+export function keywordReplySaveBlock(existing: KeywordReply | null, input: Pick<KeywordReplyInput, 'materialId'>): string | null {
+  if (!existing?.materialIssue || !existing.materialId) return null;
+  return input.materialId === existing.materialId ? materialIssueMessage(existing.materialIssue) : null;
+}
+
 export async function updateKeywordReply(
   existing: KeywordReply,
   input: KeywordReplyInput,
 ): Promise<void> {
+  // 頁面已先擋；這裡再擋一次，任何呼叫端都不會把非 LINE 素材的規則加上 LINE 條件而靜默失效
+  const blocked = keywordReplySaveBlock(existing, input);
+  if (blocked) throw new Error(blocked);
   await api.patch(`/automation/rules/${existing.id}`, buildRulePayload(input, existing));
 }
 
