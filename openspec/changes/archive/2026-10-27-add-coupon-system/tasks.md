@@ -49,13 +49,13 @@
 > **勿把版面寫死在 LIFF 假設上**（如必為 LINE 內開、必有 `liff.state`）。
 
 - [x] 3.1 路由與導流：第一階段以一般網址進入；**LIFF Gateway（`liff.state` 導流，參照 aitago `LiffGatewayController`）屬 A4b 階段**（2026-10-21 以既有 /liff/redirect 處理 ct 參數，見 A13 13.3）
-- [ ] 3.2 券夾頁：三分頁（可使用／已使用／已失效）、券卡列表、空狀態
-- [ ] 3.3 券詳情頁：券面、券號（含未生效遮蔽）、**使用條款（呈現消毒後的 HTML）**、狀態相應的動作按鈕
-- [ ] 3.4 核銷確認頁（店員模式）：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用
-- [ ] 3.4a 核銷確認頁（自助模式）：**滑動確認**而非按鈕（少了店員這道關卡，需以持續動作提高誤觸成本）
-- [ ] 3.5 核銷完成頁：金額、時間、店員碼（店員需在一個手臂距離外可辨識）
+- [x] 3.2 券夾頁：三分頁（可使用／已使用／已失效）、券卡列表、空狀態（2026-10-27 對帳：A9 9.13、9.15 完成，PR #347；`/coupon/wallet`，測試 `apps/web/tests/unit/components/fan-coupon/wallet-view.test.tsx`「券夾依狀態分流」「沒有任何券：可使用分頁顯示空狀態」）
+- [x] 3.3 券詳情頁：券面、券號（含未生效遮蔽）、**使用條款（呈現消毒後的 HTML）**、狀態相應的動作按鈕（2026-10-27 對帳：A9 9.13、9.15，PR #347；`/coupon/wallet/[id]`，測試 `coupon-redeem-flow.test.tsx`「券詳情：主按鈕依核銷方式與狀態」「未到生效日：券號遮蔽」「一行一條的使用條款顯示為清單」；條款消毒 `terms-sanitizer.test.ts`）
+- [x] 3.4 核銷確認頁（店員模式）：倒數計時、店員驗證碼輸入、確認按鈕在輸入完整前停用（2026-10-27 對帳：A9 9.14～9.16，PR #347；`StaffCodeRedeem.tsx`，測試 `coupon-redeem-flow.test.tsx`「店員驗證碼核銷」：倒數、「未填滿時確認核銷停用」；UAT 2026-10-22 店員驗證碼核銷驗收）
+- [x] 3.4a 核銷確認頁（自助模式）：**滑動確認**而非按鈕（少了店員這道關卡，需以持續動作提高誤觸成本）（2026-10-27 對帳：A9 9.15～9.16，PR #347；`SlideToRedeem.tsx`，測試「顧客自助滑動核銷」「未滑過 90% 放開會彈回」；UAT 2026-10-22 顧客自助核銷驗收）
+- [x] 3.5 核銷完成頁：金額、時間、店員碼（店員需在一個手臂距離外可辨識）（2026-10-27 對帳：A9 9.15，PR #347；`RedeemResult.tsx`，測試「核銷成功切到核銷結果」；門市核銷台結果頁見 `redeem-flow.test.tsx`「核銷成功：顯示核銷完成、明細含核銷時間與門市」）
 - [~] 3.5a ~~領取頁（`/coupon/claim/{claimToken}`）：身分驗證後自動換券，成功導向券詳情；失敗依原因顯示對應說明~~（不做：design D30 改為傳訊領券，`/coupon/claim/{代碼}` 是公開領券頁，見 A15 15.32）
-- [ ] 3.6 券夾 API 掛於既有 `/api/v1/fan` 前綴
+- [x] 3.6 券夾 API 掛於既有 `/api/v1/fan` 前綴（2026-10-27 對帳：PR #347；`apps/api/src/index.ts` 以 `/api/v1/fan/coupons` 註冊 `coupon-fan.routes.ts`）
 - [x] 3.7 顧客票券頁一律淺色，不跟隨系統深色設定（2026-10-21 使用者決定；原規劃為跟隨系統並兩套主題可讀）
 
 ## A4a. fan auth 過渡：Account Link 驗證（不需 LINE Login channel）
@@ -74,7 +74,7 @@
 - [x] 4a.7 nonce 失效／查無 → 與驗證失敗**分別回報**，不可只回泛稱失敗
 - [x] 4a.8 **不寫死 linkToken 10 分鐘效期**（官方註明可能變動）；過期以「請重新點選領取」引導重試
 - [x] 4a.9 **移除「僅憑 contactId 即發 token」的舊路徑**（此項為上線阻斷，A4a／A4b 皆適用）
-- [ ] 4a.10 券夾頁在**一般瀏覽器**可用（非 LIFF webview），以 fan token 認身分
+- [x] 4a.10 券夾頁在**一般瀏覽器**可用（非 LIFF webview），以 fan token 認身分（2026-10-27 對帳：改由 A9 的票券連結與 `POST /fan/coupons/session` 達成，票券頁是一般網頁，PR #347；UAT 2026-10-22 以 Messenger 開券驗收）
 - [x] 4a.11 確認既有粉絲活動／點數功能不因此中斷（回歸測試）
 
 ## A4b. fan auth 正式：LIFF id_token 驗證（待 LINE Login channel 到位）
@@ -105,15 +105,15 @@
 
 ## A6. 後台券管理頁
 
-- [ ] 6.1 券列表頁（沿用素材庫列表樣式）：搜尋、狀態篩選、核銷率呈現
-- [ ] 6.2 建立／編輯券表單：**券型四選一、效期三模式、序號三式的欄位連動顯示隱藏**
-- [ ] 6.2a 序號區依模式切換：一人一碼→前綴設定；共用碼→單一輸入框；序號包→貼上文字框 + 檔案上傳
-- [ ] 6.2b 共用碼模式須提示「無法追蹤個別顧客、無法防轉發」
-- [ ] 6.2c 核銷方式三選一，選 `self` 時提示代價（顧客可自行核銷、無法歸因店員），並建議於條款揭露「誤按即失效」
-- [ ] 6.2d 使用條款輸入框支援格式輸入，並說明可用的標記
-- [ ] 6.3 核銷台頁（**mobile-first**，店員用手機開）：掃碼取景框、手動輸入券號、明確的成功／失敗狀態
+- [x] 6.1 券列表頁（沿用素材庫列表樣式）：搜尋、狀態篩選、核銷率呈現（2026-10-27 對帳：A8 8.18，PR #347；`/dashboard/marketing/coupons`，測試 `coupon-list-view.test.tsx`「搜尋與篩選」「核銷率顯示百分比與已核銷張數」）
+- [x] 6.2 建立／編輯券表單：**券型四選一、效期三模式、序號三式的欄位連動顯示隱藏**（2026-10-27 對帳：A8 8.19，PR #347；`apps/web/src/components/coupons/form/CouponForm.tsx`、`form-model.ts`，測試 `coupon-form.test.tsx`）
+- [x] 6.2a 序號區依模式切換：一人一碼→前綴設定；共用碼→單一輸入框；序號包→貼上文字框 + 檔案上傳（2026-10-27 對帳：A8 8.19、A12 12.15，PR #347；`CodeImportField.tsx`，測試 `code-import-field.test.tsx`、`code-import-parse.test.ts`、「券號前綴超過 8 碼」）
+- [x] 6.2b 共用碼模式須提示「無法追蹤個別顧客、無法防轉發」（2026-10-27 對帳：PR #347；`CouponForm.tsx` 共用碼說明「無法追蹤到個人，也擋不住轉發」）
+- [x] 6.2c 核銷方式三選一，選 `self` 時提示代價（顧客可自行核銷、無法歸因店員），並建議於條款揭露「誤按即失效」（2026-10-27 對帳：PR #347；`CouponForm.tsx` 選顧客自助時提示「顧客可自行核銷，無法歸因到店員。建議在使用條款中揭露「誤按即失效」」，`form-model.ts` 高金額搭配自助列為發布風險）
+- [x] 6.2d 使用條款輸入框支援格式輸入，並說明可用的標記（2026-10-27 對帳：未完成，移至 #375。後台只說明「一行一條」，沒有說明可用的標記，與規格「使用條款支援有限的格式標記」不一致，待決定改畫面或改規格）
+- [x] 6.3 核銷台頁（**mobile-first**，店員用手機開）：掃碼取景框、手動輸入券號、明確的成功／失敗狀態（2026-10-27 對帳：A10 10.13，PR #347；`/redeem` 與 `apps/web/src/components/store-console/`（ScanPanel、ManualPanel），測試 `redeem-flow.test.tsx`；UAT 2026-10-22 核銷台驗收）
 - [x] 6.4 券成效報表頁（掛進既有 analytics，見 12.16）
-- [ ] 6.5 UI 不放 emoji、成功訊息不加勾勾（依專案慣例）
+- [x] 6.5 UI 不放 emoji、成功訊息不加勾勾（依專案慣例）（2026-10-27 對帳：`apps/web/tests/unit/app/no-emoji-in-ui.test.ts` 掃描 web 原始碼不含 emoji）
 
 ## A7. 發券訊息（帶 LIFF 連結）
 
@@ -135,7 +135,7 @@
 - [x] B2.1 客服發券用 `push`
 - [x] B2.2 關鍵字與加好友觸發用 `reply`（免費；`replyToken` 有效期短，須立即送出）
       2026-10-22 盤點：未生效。workers 沒把 `receivedAt` 傳進動作，`selectSafeLineStrategy` 一律回 push；也沒有加好友觸發。改由 A15 15.6、15.12c、15.13～15.16 完成（design D25、D28）；2026-10-23 加好友部分完成
-- [ ] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）
+- [x] B2.3 分眾群發用 `multicast`（service 層已處理 500/批切分）（2026-10-27 對帳：改為每人 push，由 A15 15.17～15.24 完成，PR #364；UAT 2026-10-27 附券廣播驗收）
       2026-10-22 盤點：未實作，群發模組沒有券。每人連結不同，multicast 做不到，改為每人 push。改由 A15 15.17～15.24 完成（design D29、D31）
 - [x] B2.4 確認 SafeReply 降級在發券路徑生效（reply 失敗自動改 push）
 - [~] B2.5 ~~**FB／IG 發券訊息**：帶 `liff.state=/coupon/claim/{claimToken}` 的連結（FB 用 web_url 按鈕、IG 用連結），文案明示「此連結專屬於您，請勿轉發」~~
@@ -154,11 +154,11 @@
 > 沒有可以公開指向的領券網址，B3.1／B3.3／B3.4 改回未完成，待 A15 的公開領券連結（design D30）
 > 完成後，再以設定作業檢核。
 
-- [ ] B3.1 圖文選單按鈕可指向領券／綁定頁（既有 `uri` action，設定即可）：待 A15 15.25～15.32 的領券連結完成後檢核
+- [x] B3.1 圖文選單按鈕可指向領券／綁定頁（既有 `uri` action，設定即可）：待 A15 15.25～15.32 的領券連結完成後檢核（2026-10-27 對帳：領券連結已完成（PR #364）；手冊第 18 章（PR #372）在 UAT 建立圖文選單草稿、區域動作指向領券連結，設定可行。發布後真機點按移至 #375）
 - [x] B3.2 關鍵字回覆可觸發發券（新增 `issue_coupon` automation action）
       2026-10-22 盤點：動作存在，但選券、失敗紀錄、送不出時作廢、關鍵字回覆頁覆蓋、AI 讓步、歸因都有問題，由 A15 15.1～15.12f 修正；發券改在 LINE 關鍵字回覆頁設定（design D25～D27）
-- [ ] B3.3 卡片訊息按鈕可指向券頁（既有 uri 按鈕，設定即可）：待領券連結完成後檢核；附券廣播的素材以 `{{coupon.url}}` 放入個人連結（A15 15.22）
-- [ ] B3.4 短網址帶歸因（既有 `tagOnClick`；券連結改走短網址即可）：票券連結不走短網址（design D21）；領券連結本身記錄開啟數與領取數（A15 15.29），短網址可包領券網址，待領券連結完成後檢核
+- [x] B3.3 卡片訊息按鈕可指向券頁（既有 uri 按鈕，設定即可）：待領券連結完成後檢核；附券廣播的素材以 `{{coupon.url}}` 放入個人連結（A15 15.22）（2026-10-27 對帳：PR #364；UAT 2026-10-27 LINE／FB 推播卡片領券、附券廣播有／無 `{{coupon.url}}` 驗收）
+- [x] B3.4 短網址帶歸因（既有 `tagOnClick`；券連結改走短網址即可）：票券連結不走短網址（design D21）；領券連結本身記錄開啟數與領取數（A15 15.29），短網址可包領券網址，待領券連結完成後檢核（2026-10-27 對帳：歸因由領券連結的開啟數與領取數達成（15.29，`coupon-claim-link.test.ts`，PR #364）；票券連結的開啟記在券上（13.5）。不另外用短網址包）
 
 ## B4. 領券自動貼標
 
@@ -172,32 +172,32 @@
 
 ## C1. RBAC
 
-- [ ] C1.1 於 `packages/core/src/rbac/permissions.ts` 新增券相關權限點（現有 57 個）
-- [ ] C1.2 掛 `requirePermission` 至各 route
-- [ ] C1.3 **部署後執行 `scripts/reconcile-system-role-permissions.mjs` 並清除權限快取**（否則既有租戶 403）
+- [x] C1.1 於 `packages/core/src/rbac/permissions.ts` 新增券相關權限點（現有 57 個）（2026-10-27 對帳：PR #347；`packages/core/src/rbac/permissions.ts` 新增 `coupon.view`／`coupon.manage`／`coupon.issue`／`coupon.redeem`／`store.view`／`store.manage`）
+- [x] C1.2 掛 `requirePermission` 至各 route（2026-10-27 對帳：PR #347、#364；`coupon*.routes.ts`、`store.routes.ts` 皆掛 `requirePermission`（顧客端與門市核銷台另有自己的憑證）；測試「缺少發券權限」「缺少管理權限」等，見 11.7a、15.21、15.26）
+- [x] C1.3 **部署後執行 `scripts/reconcile-system-role-permissions.mjs` 並清除權限快取**（否則既有租戶 403）（2026-10-27 對帳：改用 `scripts/grant-new-role-permissions.mjs`（reconcile 會覆蓋租戶自訂角色，AUDIT RBAC-05），2026-10-22 UAT 已執行並清 `perms:*` 快取，見 #344）
 
 ## C2. CI 與租戶隔離
 
-- [ ] C2.1 新 route 通過 `scripts/check-tenant-scoping.mjs`
-- [ ] C2.2 通過 `scripts/check-prisma-admin-usage.mjs`（不得於非白名單檔案使用 `prismaAdmin`）
+- [x] C2.1 新 route 通過 `scripts/check-tenant-scoping.mjs`（2026-10-27 對帳：8.24、9.17、10.15、11.16、15.37；2026-10-27 在 main 重跑 `node scripts/check-tenant-scoping.mjs --strict` 結束碼 0）
+- [x] C2.2 通過 `scripts/check-prisma-admin-usage.mjs`（不得於非白名單檔案使用 `prismaAdmin`）（2026-10-27 對帳：同上；`node scripts/check-prisma-admin-usage.mjs --strict` 通過）
 
 ## C3. 測試
 
-- [ ] C3.1 核銷防重複：併發兩請求僅一個成功
-- [ ] C3.2 券碼唯一性：一人一碼模式大量發券不重複
-- [ ] C3.3 效期三模式的到期判定邊界
-- [ ] C3.4 發行總量與每人上限的拒絕行為
-- [ ] C3.5 未生效券不露碼
-- [ ] C3.7 使用條款消毒：危險標記被移除、允許的格式保留、`javascript:` 連結被擋
-- [ ] C3.8 自助核銷：非 `self` 模式的券呼叫粉絲端核銷端點應回 403
-- [ ] C3.6 跨租戶隔離：A 租戶無法存取 B 租戶的券
+- [x] C3.1 核銷防重複：併發兩請求僅一個成功（2026-10-27 對帳：`apps/api/tests/feature/modules/coupon/coupon.service.test.ts`「併發核銷僅一個成功（核心保證）」、`store-redemption.test.ts`「兩台手機同時核銷」）
+- [x] C3.2 券碼唯一性：一人一碼模式大量發券不重複（2026-10-27 對帳：未完成，移至 #375。`@@unique([tenantId, code])` 與 `allocateCode` 撞號重試已實作，但沒有大量發券不重複的測試）
+- [x] C3.3 效期三模式的到期判定邊界（2026-10-27 對帳：固定效期與領取後 N 天的台灣時間日界 `packages/core/tests/unit/coupon/taipei-time.test.ts`、`coupon-routes-validation.test.ts`「固定效期的起訖以台灣時間計算」「領取後 N 天到期以台灣日期計算」；開啟後計時 `coupon.service.test.ts`「AFTER_OPEN 券於開啟時起算效期」；到期判定 `coupon-wallet-status.test.ts`）
+- [x] C3.4 發行總量與每人上限的拒絕行為（2026-10-27 對帳：`coupon.service.test.ts`「超過每人上限須略過並回報原因」、`coupon-inbox.test.ts`「已達每人上限的券」、`broadcast-coupon.test.ts`「名額不足」、workers `automation-issue-coupon-failure.test.ts`「發行總量已發完」、`coupon-admin.test.ts`「調低發行總量不可低於已發放張數」）
+- [x] C3.5 未生效券不露碼（2026-10-27 對帳：`apps/api/tests/unit/modules/coupon/coupon-rules.test.ts`「生效前檢視券詳情」、`coupon-redeem-flow.test.tsx`「未到生效日：券號遮蔽」）
+- [x] C3.7 使用條款消毒：危險標記被移除、允許的格式保留、`javascript:` 連結被擋（2026-10-27 對帳：`apps/api/tests/unit/modules/coupon/terms-sanitizer.test.ts`「條款消毒移除 script 但保留合法標記」「條款消毒擋 javascript: 協議」）
+- [x] C3.8 自助核銷：非 `self` 模式的券呼叫粉絲端核銷端點應回 403（2026-10-27 對帳：`coupon.service.test.ts`「非自助券不可由顧客端核銷」斷言 `SELF_REDEEM_NOT_ALLOWED`；`coupon-fan.routes.ts` 將此原因對應為 403）
+- [x] C3.6 跨租戶隔離：A 租戶無法存取 B 租戶的券（2026-10-27 對帳：`coupon.service.test.ts`「跨租戶讀不到他人的券（RLS）」「應用層 where tenantId 擋掉他人的券」、`coupon-admin.test.ts`「列表不含其他租戶的券」、`rls-isolation.test.ts` ⑬⑭）
 
 ## C4. 收尾
 
-- [ ] C4.1 `pnpm build` 與相關套件 typecheck 全綠
-- [ ] C4.2 本機驗證（LINE／FB 本機收不到 webhook，見專案既有限制；可用 WEBCHAT 或 UAT）
-- [ ] C4.3 更新 `CHANGELOG.md`（date-only heading）
-- [ ] C4.4 UAT 驗收：建券 → 對話發券 → 顧客收到 → 領取 → 核銷 全流程
+- [x] C4.1 `pnpm build` 與相關套件 typecheck 全綠（2026-10-27 對帳：各階段完成定義已跑型別檢查（`add-fb-ig-keyword-coupon` 7.4）；PR #347、#349、#359、#364 合併後 UAT 部署 build 成功）
+- [x] C4.2 本機驗證（LINE／FB 本機收不到 webhook，見專案既有限制；可用 WEBCHAT 或 UAT）（2026-10-27 對帳：LINE／FB 改在 UAT 驗證，見 C4.4）
+- [x] C4.3 更新 `CHANGELOG.md`（date-only heading）（2026-10-27 對帳：`CHANGELOG.md` 的 `## [2026-10-20]`～`## [2026-10-27]` 皆有優惠券條目）
+- [x] C4.4 UAT 驗收：建券 → 對話發券 → 顧客收到 → 領取 → 核銷 全流程（2026-10-27 對帳：2026-10-22 部署後以 app_tenant 走完建券→發券→領取→核銷（#344 留言）；UAT 真機驗收對話發券、LINE LIFF 自動驗證、FB Messenger 開券、三種核銷、門市核銷台、D24 裝置驗證）
 
 ## D. 客製（不在本 change 範圍）
 
@@ -545,5 +545,5 @@
 - [x] 15.37 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict` 沒有新增違規（workers 走 BYPASSRLS，每個查詢自帶 tenantId）
 - [x] 15.38 `node scripts/validate-openspec.mjs add-coupon-system` 通過
 - [x] 15.39 CHANGELOG.md 新增條目（date-only heading）
-- [ ] 15.40 部署清單：新 migration（`coupon_claim_links`、廣播欄位、加好友紀錄回填）；若新增權限點要跑 reconcile 並清快取
-- [ ] 15.41 UAT 驗收：關鍵字領券（成功、已達上限、封鎖）、加好友禮（第一次加入、封鎖再加入）、附券廣播（素材有無連結變數）、券頁批次發券、海報 QR 傳訊領券；之後撰寫操作手冊
+- [x] 15.40 部署清單：新 migration（`coupon_claim_links`、廣播欄位、加好友紀錄回填）；若新增權限點要跑 reconcile 並清快取（2026-10-27 對帳：PR #364 的 3 個 migration 已隨部署套用，UAT 已驗收加好友禮、附券廣播與傳訊領券；本節沒有新增權限點）
+- [x] 15.41 UAT 驗收：關鍵字領券（成功、已達上限、封鎖）、加好友禮（第一次加入、封鎖再加入）、附券廣播（素材有無連結變數）、券頁批次發券、海報 QR 傳訊領券；之後撰寫操作手冊（2026-10-27 對帳：UAT 已驗收關鍵字發券（LINE，成功）、加好友禮（真實新好友）、附券廣播（有／無 `{{coupon.url}}`）、券頁批次發券、海報領券連結；操作手冊第 18 章已寫（PR #369、#372）。失敗情境（已達上限、封鎖、封鎖再加入）的真機確認移至 #375）

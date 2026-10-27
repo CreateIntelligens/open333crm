@@ -50,4 +50,4 @@
 - [x] 7.4 api、web、workers 三種 `tsc --noEmit`；`pnpm --filter @open333crm/web build`
 - [x] 7.5 `node scripts/check-tenant-scoping.mjs --strict`、`node scripts/check-prisma-admin-usage.mjs --strict`、`node scripts/check-tenant-ctx.mjs --strict`
 - [x] 7.6 `node scripts/validate-openspec.mjs add-fb-ig-keyword-coupon`
-- [ ] 7.7 歸檔順序：`add-coupon-system` 歸檔後才歸檔本 change（proposal「與 add-coupon-system 的歸檔順序」）
+- [x] 7.7 歸檔順序：`add-coupon-system` 歸檔後才歸檔本 change（proposal「與 add-coupon-system 的歸檔順序」）（2026-10-27 依此順序以 `pnpm exec openspec archive` 歸檔）
