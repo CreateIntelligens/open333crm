@@ -8,8 +8,9 @@
  * 編輯器在 media_type、currency、question_type、expires_in_days 沒有值時顯示預設值（image／TWD／csat／7），
  * FB 外掛也有預設，所以這幾個欄位只在有值時檢查，避免畫面顯示 TWD 卻被說幣別不正確。
  *
- * 網址沿用 LINE 的「先存草稿、發送前換成公開網址」：接受 http(s) 與站內路徑（編輯器預設的示範圖是
- * /material-samples/...），擋下 javascript:、data: 等其他 scheme。
+ * 網址接受 http(s) 與站內路徑（編輯器預設的示範圖是 /material-samples/...），擋下 javascript:、data: 等其他 scheme。
+ * 站內路徑在存檔前由 resolveSampleImageUrls() 換成 {WEB_BASE_URL}{路徑}；之前存的舊素材由 FB 外掛在發送時換
+ * （spec material-system「FB 素材儲存時把站內路徑換成公開網址」「FB 素材發送時把站內路徑換成公開網址」）。
  */
 import { AppError } from '../../shared/utils/response.js';
 

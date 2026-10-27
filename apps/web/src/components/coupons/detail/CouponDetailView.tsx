@@ -287,7 +287,7 @@ export function CouponDetailView({ id }: { id: string }) {
             open={batchOpen}
             onOpenChange={setBatchOpen}
             onQueued={() => {
-              showOk('已排入發送，結果會顯示在發放紀錄');
+              showOk('已開始在背景發送，發放紀錄會自動更新進度與結果');
               void revalidate(`/coupons/${coupon.id}/batch-issues`);
             }}
           />

@@ -15,6 +15,41 @@ export function materialChannelKey(channelType: string | undefined | null): 'lin
   }
 }
 
+/** 渠道類型的顯示名稱：畫面不顯示 THREADS、FB 等內部代碼（change add-fb-ig-keyword-coupon） */
+const CHANNEL_TYPE_LABELS: Record<string, string> = {
+  LINE: 'LINE',
+  FB: 'Facebook',
+  THREADS: 'Instagram',
+  WEBCHAT: '網站客服',
+};
+
+export function channelTypeLabel(channelType: string | undefined | null): string {
+  const key = (channelType ?? '').toUpperCase();
+  return CHANNEL_TYPE_LABELS[key] ?? (channelType ?? '');
+}
+
+/** 渠道選單的選項文字，例如「IG（Instagram）」 */
+export function channelOptionLabel(channel: { displayName: string; channelType: string }): string {
+  return `${channel.displayName}（${channelTypeLabel(channel.channelType)}）`;
+}
+
+/** Instagram 沒有素材（素材庫只有 line、fb），廣播只能附券送出預設的發券文字 */
+export const INSTAGRAM_BROADCAST_NOTICE =
+  'Instagram 沒有可用的素材，只能附上優惠券、送出預設的發券文字；只會送給 24 小時內傳過訊息給 IG 帳號的人';
+
+/**
+ * 廣播的訊息來源缺漏時回傳提示文字：沒有素材也沒有附券不能建立（與後端 createBroadcastSchema 一致，
+ * 沒有舊版型時素材與優惠券至少一個）。Instagram 沒有素材，只能附券。
+ */
+export function broadcastSourceError(
+  channelType: string | undefined | null,
+  form: { materialId: string; couponId: string },
+): string | null {
+  if (form.materialId || form.couponId) return null;
+  if ((channelType ?? '').toUpperCase() === 'THREADS') return 'Instagram 廣播要附上優惠券才能建立';
+  return '請選擇素材或附上優惠券';
+}
+
 /**
  * 受眾選項。「手動選擇」目前沒有挑選聯絡人的介面，先不提供，
  * 避免送出空名單（後端會拒絕）。

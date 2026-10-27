@@ -31,9 +31,9 @@ import { assertChannelVisible } from '../../services/channel-visibility.js';
 import { previewBroadcastAudience } from '../marketing/marketing.service.js';
 import {
   BATCH_ISSUE_MAX_RECIPIENTS,
-  createBatchIssue,
   listCouponBroadcasts,
 } from '../marketing/broadcast-coupon.service.js';
+import { createBatchIssueFlow } from '../marketing/broadcast-coupon.flow.js';
 
 // 資料庫欄位是 int4：超過範圍時在這裡擋下，不讓資料庫丟錯變成 500
 const int = z.number().int('請輸入整數').min(-2_147_483_648, '數值過小').max(2_147_483_647, '數值過大，請確認輸入');
@@ -285,14 +285,18 @@ export default async function couponRoutes(app: FastifyInstance) {
   }));
 
   /** 只需要 coupon.issue：券頁建立的廣播只能帶這張券與發券文字，不能選素材 */
-  app.post('/:id/batch-issue', { preHandler: [requirePermission('coupon.issue')] }, couponHandler(app, async (request, reply, ctx) => {
+  app.post('/:id/batch-issue', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
     const { id } = idParams.parse(request.params);
     const body = batchIssueSchema.parse(request.body ?? {});
     await assertChannelVisible(request, body.channelId, 'reply_only');
-    const result = await createBatchIssue(ctx, request.agent.id, id, body);
-    reply.code(202);
-    return { success: true, data: result };
-  }));
+    let result;
+    try {
+      result = await createBatchIssueFlow(app, request.agent.tenantId, request.agent.id, id, body);
+    } catch (err) {
+      throw toAppError(err);
+    }
+    return reply.code(202).send({ success: true, data: result });
+  });
 
   /** 這張券的附券廣播與批次發放紀錄（新到舊），附發券張數與跳過、失敗原因 */
   app.get('/:id/batch-issues', { preHandler: [requirePermission('coupon.view')] }, couponHandler(app, async (request, _reply, ctx) => {

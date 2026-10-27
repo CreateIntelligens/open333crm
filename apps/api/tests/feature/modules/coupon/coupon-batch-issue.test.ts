@@ -115,6 +115,8 @@ afterAll(async () => {
   await app.close();
   const broadcasts = await owner.broadcast.findMany({ where: { tenantId: T, couponId }, select: { id: true } });
   await owner.broadcastRecipient.deleteMany({ where: { broadcastId: { in: broadcasts.map((b) => b.id) } } });
+  const broadcastIds = broadcasts.map((b) => b.id);
+  await owner.$executeRaw`DELETE FROM outbox WHERE "queueName" = 'coupon-broadcast' AND payload->>'broadcastId' = ANY(${broadcastIds}::text[])`;
   await owner.broadcast.deleteMany({ where: { tenantId: T, couponId } });
   await owner.couponInstance.deleteMany({ where: { tenantId: T, couponId } });
   await owner.coupon.deleteMany({ where: { id: couponId } });
@@ -146,6 +148,17 @@ describe('從券詳情頁批次發券', () => {
       assert.equal(instance?.issuedByName, '座席阿哲', '發放者為這位座席');
       assert.match(instance?.issuedSourceName ?? '', /^批次發放 \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     }
+  });
+
+  it('批次發券送出後馬上開始執行', async () => {
+    // change fix-coupon-broadcast-immediate-run：2026-10-27 UAT 送出後要等每分鐘的排程，發放紀錄停在「排入發送」
+    const p = await person('immediate-a');
+    const res = await post({ channelId: lineChannel, targetType: 'contacts', contactIds: [p.contactId] });
+    assert.equal(res.statusCode, 202, res.body);
+    const broadcastId = res.json().data.broadcastId as string;
+    const jobs = await owner.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM outbox WHERE "queueName" = 'coupon-broadcast' AND payload->>'broadcastId' = ${broadcastId}`;
+    assert.equal(jobs.length, 1, '與建立廣播同一個交易排了立即執行的 job');
   });
 
   it('對象沒有這個渠道的身分', async () => {

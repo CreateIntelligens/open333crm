@@ -31,8 +31,11 @@ import api from '@/lib/api';
 import { toLocalInputValue } from '@/lib/datetime-local';
 import {
   BROADCAST_TARGET_LABELS,
+  INSTAGRAM_BROADCAST_NOTICE,
   broadcastAudienceError,
+  broadcastSourceError,
   broadcastTargetOptions,
+  channelOptionLabel,
   hasMessagingWindow,
   materialChannelKey,
   segmentConditionsError,
@@ -324,9 +327,12 @@ function BroadcastTab() {
   }, [dialogOpen, formData.channelId, formData.targetType, formData.segmentId, tagKey, audienceError, formData.couponId]);
 
   const couponWarning = formData.couponId ? couponCapacityWarning(audiencePreview) : null;
-  // 附券廣播素材可以不選（只送預設發券文字）；名額不足要先勾選確認
+  // 附券廣播素材可以不選（只送預設發券文字）；沒有素材也沒有附券時說明原因（Instagram 只能附券）
+  const sourceError = broadcastSourceError(selectedChannel?.channelType, formData);
+  const isInstagram = (selectedChannel?.channelType ?? '').toUpperCase() === 'THREADS';
+  // 名額不足要先勾選確認
   const createBlocked =
-    !formData.name || !formData.channelId || (!formData.materialId && !formData.couponId) || Boolean(audienceError)
+    !formData.name || !formData.channelId || Boolean(sourceError) || Boolean(audienceError)
     || Boolean(couponWarning && !couponAck);
 
   const toggleTag = (tagId: string) => {
@@ -381,13 +387,13 @@ function BroadcastTab() {
     const withWindow = hasMessagingWindow(channel?.channelType) ? `${base}\n\n${META_WINDOW_SEND_NOTICE}` : base;
     // 附券廣播在背景發送；重送時已處理的人不會再收到（design D29）
     const question = broadcast?.couponId
-      ? `${withWindow}\n\n附券廣播會排入背景發送，約一分鐘內開始；已收到券的人不會重複收到。`
+      ? `${withWindow}\n\n附券廣播會在背景馬上開始發送，進度會顯示在廣播列表；已收到券的人不會重複收到。`
       : withWindow;
     if (!confirm(question)) return;
     setSendingId(id);
     try {
       const res = await api.post(`/marketing/broadcasts/${id}/send`);
-      if (res.status === 202) alert('已排入發送，結果請在廣播列表查看');
+      if (res.status === 202) alert('已開始在背景發送，廣播列表會自動更新進度與結果');
     } catch (err: any) {
       alert(err.response?.data?.error?.message || '發送失敗');
     } finally {
@@ -599,14 +605,20 @@ function BroadcastTab() {
                   { value: '', label: '請選擇渠道' },
                   ...activeChannels.map((c: any) => ({
                     value: c.id,
-                    label: `${c.displayName} (${c.channelType})`,
+                    label: channelOptionLabel(c),
                   })),
                 ]}
               />
               <p className="mt-1 text-xs text-muted-foreground">先選渠道，才能看到對應的素材</p>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">{formData.couponId ? '素材（附券時可不選）' : '素材 *'}</label>
+              <label className="mb-1 block text-sm font-medium">{formData.couponId || isInstagram ? '素材（附券時可不選）' : '素材 *'}</label>
+              {isInstagram ? (
+                // Instagram 沒有素材：不顯示空白的選單，說明只能附券（change add-fb-ig-keyword-coupon）
+                <p className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning">
+                  {INSTAGRAM_BROADCAST_NOTICE}
+                </p>
+              ) : (
               <Select
                 value={formData.materialId}
                 onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
@@ -626,6 +638,7 @@ function BroadcastTab() {
                   })),
                 ]}
               />
+              )}
               {formData.materialId && (() => {
                 const selected = materials.find((m: Material) => m.id === formData.materialId);
                 if (!selected) return null;
@@ -750,6 +763,10 @@ function BroadcastTab() {
               />
             </div>
           </div>
+          {formData.channelId && sourceError && (
+            // 建立按鈕停用的原因要看得到，不能只有灰掉的按鈕
+            <p role="status" className="text-xs text-destructive">{sourceError}</p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消

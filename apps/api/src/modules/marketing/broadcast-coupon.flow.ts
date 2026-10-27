@@ -16,7 +16,7 @@ import {
   type WalletTokenStore,
 } from '@open333crm/core';
 import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
-import { createOutboxPublisher } from '../../events/outbox-publisher.js';
+import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
 import { publishCouponTag } from '../coupon/coupon-effects.js';
 import { getConfig } from '../../config/env.js';
 import { AppError } from '../../shared/utils/response.js';
@@ -24,9 +24,13 @@ import { decryptCredentials } from '../channel/channel.service.js';
 import { UNEXPECTED_FAILURE_REASON, convertBodyUrlsToShortLinks } from './marketing.service.js';
 import { buildVariableMap, renderTemplateBody } from './template-renderer.js';
 import {
+  COUPON_BROADCAST_JOB_OPTIONS,
+  COUPON_BROADCAST_QUEUE,
   COUPON_URL_VARIABLE,
   PROGRESS_EVERY,
   claimCouponBroadcast,
+  createBatchIssue,
+  queueCouponBroadcast,
   confirmRecipient,
   failCouponBroadcast,
   finalizeCouponBroadcast,
@@ -35,11 +39,48 @@ import {
   recordProgress,
   reserveRecipient,
   voidRecipient,
+  type BatchIssueInput,
+  type CouponBroadcastJobData,
   type CouponBroadcastPlan,
   type CouponBroadcastSummary,
   type PendingRecipient,
   type RecipientFailReason,
 } from './broadcast-coupon.service.js';
+
+/** 排入發送的入口：events 預設寫 outbox（測試可替換） */
+export interface QueueBroadcastDeps {
+  prisma: PrismaClient;
+  events?: EventPublisher;
+}
+
+/** 立即執行的 job 與排入發送在同一個交易寫進 outbox，commit 後送進 coupon-broadcast 佇列 */
+function enqueueBroadcastRun(scope: TenantScope, deps: QueueBroadcastDeps, job: CouponBroadcastJobData) {
+  return enqueueJob(scope, deps.events ?? createOutboxPublisher(deps.prisma), COUPON_BROADCAST_QUEUE, 'run', job, COUPON_BROADCAST_JOB_OPTIONS);
+}
+
+/** 附券廣播「立即發送」：排入發送並馬上排一個執行的 job（change fix-coupon-broadcast-immediate-run） */
+export function queueCouponBroadcastFlow(deps: QueueBroadcastDeps, tenantId: string, broadcastId: string, now?: number) {
+  return inTenant(deps.prisma, tenantId, async (scope) => {
+    const { job, ...queued } = await queueCouponBroadcast(scope, broadcastId, now);
+    await enqueueBroadcastRun(scope, deps, job);
+    return queued;
+  });
+}
+
+/** 券詳情頁的批次發券：建立廣播、排入發送並馬上排一個執行的 job */
+export function createBatchIssueFlow(
+  deps: QueueBroadcastDeps,
+  tenantId: string,
+  agentId: string,
+  couponId: string,
+  input: BatchIssueInput,
+) {
+  return inTenant(deps.prisma, tenantId, async (scope) => {
+    const { job, ...created } = await createBatchIssue(scope, agentId, couponId, input);
+    await enqueueBroadcastRun(scope, deps, job);
+    return created;
+  });
+}
 
 export interface CouponBroadcastDeps {
   /** app_tenant 的基底連線（inTenant 用） */

@@ -1,10 +1,12 @@
 'use client';
 
 /**
- * LINE 關鍵字回覆管理頁
+ * 關鍵字回覆管理頁（LINE、Facebook、Instagram）
  *
- * 用戶傳訊息含關鍵字時 → 自動回對應素材，也可以同時發送優惠券。
- * 底層走 automation rules（keyword.matched + send_material／issue_coupon，帶「對話渠道等於 LINE」條件）。
+ * 顧客傳訊息含關鍵字時 → 自動回對應素材，也可以同時發送優惠券。
+ * 底層走 automation rules（keyword.matched + send_material／issue_coupon，帶「對話渠道等於所選渠道」條件）。
+ * 網址仍是 /dashboard/line/keyword-replies：手冊、E2E 與書籤都連到這裡，畫面上不再寫「LINE 關鍵字回覆」
+ * （change add-fb-ig-keyword-coupon design D1）。
  */
 
 import React, { useState } from 'react';
@@ -15,20 +17,47 @@ import { KeywordReplyEditDialog } from '@/components/line/keyword-reply/KeywordR
 import { useMaterials } from '@/hooks/useMaterials';
 import { UNAVAILABLE_COUPON_LABEL, couponOptionLabel, useCouponOptions } from '@/components/coupons/CouponSelectField';
 import {
+  KEYWORD_REPLY_CHANNELS,
+  keywordReplyChannelLabel,
   useKeywordReplies,
   createKeywordReply,
   updateKeywordReply,
   deleteKeywordReply,
   toggleKeywordReply,
   type KeywordReply,
+  type KeywordReplyChannel,
 } from '@/hooks/useKeywordReplies';
+
+type ChannelFilter = 'ALL' | KeywordReplyChannel;
+
+/** 列表的渠道欄 */
+function ChannelCell({ reply }: { reply: KeywordReply }) {
+  if (reply.channel) {
+    return (
+      <span className="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium">
+        {keywordReplyChannelLabel(reply.channel)}
+      </span>
+    );
+  }
+  if (reply.channelIssue) {
+    return (
+      <a href={`/dashboard/automation/${reply.id}`} className="text-[11px] text-warning underline">
+        渠道條件請到自動化規則編輯
+      </a>
+    );
+  }
+  return <span className="text-[11px] text-muted-foreground">未限定渠道</span>;
+}
 import { KeywordReplyMaterialCell } from '@/components/line/keyword-reply/KeywordReplyMaterialCell';
 
 export default function KeywordRepliesPage() {
   const { replies, isLoading, mutate } = useKeywordReplies();
-  const { materials } = useMaterials({ channelType: 'line', isActive: true, limit: 200 });
+  // 各渠道的素材都要顯示名稱，不限渠道
+  const { materials } = useMaterials({ isActive: true, limit: 200 });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<KeywordReply | null>(null);
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('ALL');
+  const visibleReplies = channelFilter === 'ALL' ? replies : replies.filter((r) => r.channel === channelFilter);
 
   const { coupons } = useCouponOptions();
   const materialMap = new Map(materials.map((m) => [m.id, m]));
@@ -50,7 +79,7 @@ export default function KeywordRepliesPage() {
     if (!confirm('確定刪除這條關鍵字回覆？')) return;
     try {
       await deleteKeywordReply(id);
-      mutate();
+      await mutate();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       alert(((err as any)?.response?.data?.error?.message) ?? '刪除失敗');
@@ -60,7 +89,7 @@ export default function KeywordRepliesPage() {
   const handleToggle = async (r: KeywordReply) => {
     try {
       await toggleKeywordReply(r.id, !r.isActive);
-      mutate();
+      await mutate();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       alert(((err as any)?.response?.data?.error?.message) ?? '更新失敗');
@@ -69,14 +98,14 @@ export default function KeywordRepliesPage() {
 
   return (
     <div className="flex h-screen flex-col bg-muted">
-      <Topbar title="LINE 管理" />
+      <Topbar title="渠道" />
       <main className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-5">
           <header className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">關鍵字回覆</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                用戶在 LINE 傳訊息中出現指定關鍵字時，系統自動回覆對應素材（圖片 / Flex / 輪播 / 圖文等），也可以同時發送優惠券。
+                顧客在 LINE、Facebook 或 Instagram 傳送的訊息出現指定關鍵字時，系統自動回覆對應素材，也可以同時發送優惠券。
               </p>
             </div>
             <Button onClick={handleOpenCreate}>
@@ -93,13 +122,32 @@ export default function KeywordRepliesPage() {
             </div>
             <ol className="ml-1 mt-2 list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
               <li>先到「<a href="/dashboard/marketing/materials" className="text-primary underline">行銷 → 素材庫</a>」建立你要回覆的內容（純文字、圖片、Flex、輪播都行）</li>
-              <li>回來這頁按「建立關鍵字回覆」，輸入規則名稱、關鍵字（一個或多個），選素材或要發送的優惠券（至少一個）</li>
-              <li>用戶在 LINE 傳訊息含關鍵字 → bot 自動回覆對應素材、發送優惠券；券沒有發出時，原因會記在該對話中</li>
+              <li>回來這頁按「建立關鍵字回覆」，選渠道（LINE、Facebook、Instagram），輸入規則名稱、關鍵字（一個或多個），選素材或要發送的優惠券（至少一個）。Instagram 目前沒有素材，只能發券</li>
+              <li>顧客在所選渠道傳訊息含關鍵字 → 自動回覆對應素材、發送優惠券；券沒有發出時，原因會記在該對話中</li>
             </ol>
             <div className="mt-2 rounded border border-warning/30 bg-warning-subtle px-3 py-1.5 text-xs text-warning">
-              客人每傳一則含關鍵字的訊息就會觸發一次，沒有次數上限；客服接手的對話也會自動回覆。比對方式是「包含」且不分大小寫，例如關鍵字「價」也會命中「評價」，關鍵字請盡量具體。規則對所有 LINE 官方帳號生效，只在 LINE 的對話觸發；命中的規則能在這個對話的渠道送出回覆時，AI 就不再另外回覆。
+              客人每傳一則含關鍵字的訊息就會觸發一次，沒有次數上限；客服接手的對話也會自動回覆。比對方式是「包含」且不分大小寫，例如關鍵字「價」也會命中「評價」，關鍵字請盡量具體。每條規則只在所選渠道的對話觸發，並對這個渠道的所有帳號生效（例如所有 LINE 官方帳號、所有粉專）；命中的規則能在這個對話的渠道送出回覆時，AI 就不再另外回覆。Facebook 與 Instagram 的顧客開啟票券時以 email 驗證身分。
             </div>
           </section>
+
+          {/* 渠道篩選（change add-fb-ig-keyword-coupon design D1） */}
+          <div role="group" aria-label="依渠道篩選" className="flex flex-wrap gap-1.5">
+            {([{ value: 'ALL', label: '全部' }, ...KEYWORD_REPLY_CHANNELS] as Array<{ value: ChannelFilter; label: string }>).map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                aria-pressed={channelFilter === c.value}
+                onClick={() => setChannelFilter(c.value)}
+                className={
+                  channelFilter === c.value
+                    ? 'rounded-full border border-primary bg-primary px-3 py-1 text-xs font-medium text-primary-foreground'
+                    : 'rounded-full border border-border bg-white px-3 py-1 text-xs text-muted-foreground hover:text-foreground'
+                }
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
 
           {isLoading && (
             <div className="py-12 text-center text-sm text-muted-foreground">載入中…</div>
@@ -115,13 +163,20 @@ export default function KeywordRepliesPage() {
             </div>
           )}
 
-          {!isLoading && replies.length > 0 && (
+          {!isLoading && replies.length > 0 && visibleReplies.length === 0 && (
+            <div className="rounded-lg border border-dashed border-input bg-white py-10 text-center text-sm text-muted-foreground">
+              這個渠道還沒有關鍵字回覆
+            </div>
+          )}
+
+          {!isLoading && visibleReplies.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-border bg-white">
               <table className="w-full text-sm">
                 <thead className="bg-muted text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">狀態</th>
                     <th className="px-4 py-2 text-left font-medium">規則名稱</th>
+                    <th className="px-4 py-2 text-left font-medium">渠道</th>
                     <th className="px-4 py-2 text-left font-medium">關鍵字</th>
                     <th className="px-4 py-2 text-left font-medium">回覆素材</th>
                     <th className="px-4 py-2 text-left font-medium">優惠券</th>
@@ -129,7 +184,7 @@ export default function KeywordRepliesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {replies.map((r) => {
+                  {visibleReplies.map((r) => {
                     const mat = r.materialId ? materialMap.get(r.materialId) : undefined;
                     const coupon = r.couponId ? couponMap.get(r.couponId) : undefined;
                     return (
@@ -150,6 +205,9 @@ export default function KeywordRepliesPage() {
                           </button>
                         </td>
                         <td className="px-4 py-3 font-medium">{r.name}</td>
+                        <td className="px-4 py-3">
+                          <ChannelCell reply={r} />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {r.keywords.slice(0, 5).map((k, idx) => (
@@ -210,6 +268,7 @@ export default function KeywordRepliesPage() {
       <KeywordReplyEditDialog
         open={dialogOpen}
         reply={editing}
+        defaultChannel={channelFilter === 'ALL' ? undefined : channelFilter}
         onClose={() => setDialogOpen(false)}
         onSave={handleSave}
       />

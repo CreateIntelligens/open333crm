@@ -8,7 +8,7 @@
 export const COUPON_ISSUED_VIA = {
   /** 對話發券（座席在收件匣發） */
   INBOX: 'inbox',
-  /** LINE 關鍵字回覆頁設定的發券規則 */
+  /** 關鍵字回覆頁設定的發券規則 */
   KEYWORD: 'keyword',
   /** 加好友禮 */
   FOLLOW: 'follow',

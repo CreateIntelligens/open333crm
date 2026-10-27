@@ -229,6 +229,8 @@ beforeEach(() => {
 afterAll(async () => {
   const broadcasts = await owner.broadcast.findMany({ where: { tenantId: T, name: { startsWith: MARK } }, select: { id: true } });
   await owner.broadcastRecipient.deleteMany({ where: { broadcastId: { in: broadcasts.map((b) => b.id) } } });
+  const broadcastIds = broadcasts.map((b) => b.id);
+  await owner.$executeRaw`DELETE FROM outbox WHERE "queueName" = 'coupon-broadcast' AND payload->>'broadcastId' = ANY(${broadcastIds}::text[])`;
   await owner.broadcast.deleteMany({ where: { id: { in: broadcasts.map((b) => b.id) } } });
   const contacts = await owner.contact.findMany({ where: { tenantId: T, displayName: { startsWith: MARK } }, select: { id: true } });
   const contactIds = contacts.map((c) => c.id);
@@ -542,6 +544,37 @@ describe('附券廣播在背景執行且重送不重複發券', () => {
     const row = await owner.broadcast.findFirst({ where: { id: b.id } });
     assert.equal(row?.status, 'scheduled');
     assert.ok(row?.scheduledAt && row.scheduledAt.getTime() <= Date.now(), '排程立即執行');
+    // 馬上開始執行（change fix-coupon-broadcast-immediate-run）：與排入發送同一個交易寫進 outbox，不等每分鐘的排程
+    const jobs = await owner.outbox.findMany({ where: { tenantId: T, kind: 'job', queueName: 'coupon-broadcast' } });
+    assert.ok(
+      jobs.some((j) => (j.payload as { broadcastId?: string }).broadcastId === b.id),
+      '排了一個立即執行這則廣播的 job',
+    );
+  });
+
+  it('立即執行與排程同時執行時只發送一次', async () => {
+    const couponId = await coupon(`${MARK}秋S`);
+    const a = await person('twice-a');
+    const id = await broadcast({ couponId, contacts: [a] });
+    const results = await Promise.all([run(id), run(id)]);
+    assert.deepEqual(results.map((r) => r.status).sort(), ['completed', 'not_claimed'], '只有一個執行搶到');
+    assert.equal(sentTo(a.uid).length, 1, '只收到一則訊息');
+    assert.equal((await instancesOf(a, couponId)).length, 1, '只拿到一張券');
+  });
+
+  it('排在未來的廣播不會被提前發送', async () => {
+    // 立即執行的 job 晚到時，廣播可能已改成未來的排程時間；時間到之前不能發送
+    const couponId = await coupon(`${MARK}秋T`);
+    const a = await person('future-a');
+    const b = await runInTenant(prisma, T, (ctx) =>
+      createBroadcast(ctx.tx, T, agentId, {
+        name: `${MARK} 未來排程`, channelId: lineChannel, couponId, targetType: 'contacts',
+        targetConfig: { contactIds: [a.contactId] }, scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }));
+    const result = await run(b.id);
+    assert.equal(result.status, 'not_claimed');
+    assert.equal(sentTo(a.uid).length, 0);
+    assert.equal((await owner.broadcast.findFirst({ where: { id: b.id } }))?.status, 'scheduled', '仍等排程時間');
   });
 
   it('重送跳過已處理的收件人', async () => {

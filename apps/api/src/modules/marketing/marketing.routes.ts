@@ -29,8 +29,8 @@ import { inTenant } from '../../lib/tenant-ctx.js';
 import {
   getCouponBroadcastSummary,
   listBroadcastRecipients,
-  queueCouponBroadcast,
 } from './broadcast-coupon.service.js';
+import { queueCouponBroadcastFlow } from './broadcast-coupon.flow.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
@@ -329,7 +329,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     );
     // 附券廣播：排入排程立即執行，不在 HTTP 請求內發送（design D29）；結果在廣播列表查看
     if (broadcast.couponId) {
-      const queued = await inTenant(fastify.prisma, request.agent.tenantId, (ctx) => queueCouponBroadcast(ctx, broadcast.id));
+      const queued = await queueCouponBroadcastFlow(fastify, request.agent.tenantId, broadcast.id);
       return reply.status(202).send(success(queued));
     }
     const result = await executeBroadcast(request.tenantPrisma, fastify.io, broadcast.id);

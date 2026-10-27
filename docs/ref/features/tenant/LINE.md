@@ -1,6 +1,6 @@
 # LINE 工具
 
-側欄「渠道」底下是 LINE 官方帳號專用的工具：圖文選單（Rich Menu）、關鍵字回覆與快速回覆。渠道本身的新增與設定不在這裡，見[渠道管理](./CHANNELS.md)。
+側欄「渠道」底下是 LINE 官方帳號專用的工具：圖文選單（Rich Menu）、加好友禮與快速回覆，以及 LINE、Facebook、Instagram 共用的關鍵字回覆。渠道本身的新增與設定不在這裡，見[渠道管理](./CHANNELS.md)。
 
 - **資料來源**：`apps/api/src/modules/line/*`、`apps/workers/src/handlers/rich-menu-bind.handler.ts`、`apps/web/src/app/dashboard/line/*`、`apps/web/src/components/inbox/MessageInput.tsx`
 - **核對日期**：2026-09-30
@@ -10,7 +10,7 @@
 | 頁面 | 程式 | 權限 |
 | --- | --- | --- |
 | LINE Rich Menu | `line` 的 `rich-menu.routes.ts`、`rich-menu.service.ts`；分眾綁定由 workers 的 `rich-menu-bind.handler.ts` 執行 | `richmenu.manage`（整個 plugin） |
-| LINE 關鍵字回覆 | `automation` 模組，見[自動化](./AUTOMATION.md#關鍵字回覆) | `automation.view`、`automation.manage` |
+| 關鍵字回覆（LINE、Facebook、Instagram；2026-10-27 之前名為「LINE 關鍵字回覆」） | `automation` 模組，見[自動化](./AUTOMATION.md#關鍵字回覆) | `automation.view`、`automation.manage` |
 | LINE 快速回覆 | `line` 的 `quick-reply-preset.routes.ts`、`quick-reply-preset.service.ts` | 讀取只驗登入；新增、修改、刪除需要 `quickreply.manage` |
 
 側欄的「渠道」選單要求 `richmenu.manage` 才顯示。因此只有 `automation.manage` 或 `quickreply.manage`、沒有 `richmenu.manage` 的成員，在側欄找不到關鍵字回覆與快速回覆的入口。

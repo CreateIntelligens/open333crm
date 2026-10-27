@@ -64,7 +64,7 @@ export const AUTOMATION_ACTION_DEFINITIONS: readonly AutomationActionDefinition[
     label: '發送優惠券',
     requires: ['contact', 'conversation'],
     mutates: ['conversation', 'message'],
-    // 發券在「LINE 關鍵字回覆」與「加好友禮」頁設定，一般自動化規則不提供（design D25）
+    // 發券在「關鍵字回覆」與「加好友禮」頁設定，一般自動化規則不提供（design D25）
     editorHidden: true,
     params: [
       {

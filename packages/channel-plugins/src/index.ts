@@ -189,6 +189,8 @@ export function getPlugin(channelType: ChannelType): ChannelPlugin {
 
 export { TelegramPlugin } from './telegram.js';
 export { FbPlugin, fbPlugin } from './facebook/index.js';
+export type { FbPluginOptions } from './facebook/index.js';
+export { findSitePathUrl, isSitePath, resolveSitePathUrls } from './site-path-urls.js';
 export { ThreadsPlugin, threadsPlugin }  from './threads.js';
 export {
   LinePlugin,

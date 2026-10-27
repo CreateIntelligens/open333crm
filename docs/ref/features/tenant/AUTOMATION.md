@@ -1,6 +1,6 @@
 # 自動化
 
-自動化規則讓租戶設定「某件事發生時，符合條件就自動做某些事」。例如：收到含「退貨」的訊息就貼標並通知主管；工單升級時指派給資深客服。側欄的「自動化」頁與「渠道 → LINE 關鍵字回覆」頁，底層都是同一張 `AutomationRule` 表。
+自動化規則讓租戶設定「某件事發生時，符合條件就自動做某些事」。例如：收到含「退貨」的訊息就貼標並通知主管；工單升級時指派給資深客服。側欄的「自動化」頁與「渠道 → 關鍵字回覆」頁，底層都是同一張 `AutomationRule` 表。
 
 - **資料來源**：`apps/api/src/modules/automation/*`、`apps/workers/src/handlers/automation.handler.ts`、`apps/workers/src/lib/automation-actions.ts`、`apps/workers/src/lib/automation-facts.ts`、`packages/automation/src/*`、`apps/web/src/app/dashboard/automation/*`、`apps/web/src/app/dashboard/line/keyword-replies/page.tsx`
 - **核對日期**：2026-10-21
@@ -108,7 +108,15 @@
 
 ## 關鍵字回覆
 
-「LINE 關鍵字回覆」頁建立的是 `keyword.matched` 事件加上 `send_material` 動作的規則。關鍵字與比對模式存在 `trigger.keywords` 與 `trigger.match_mode`。
+「關鍵字回覆」頁（側欄「渠道 → 關鍵字回覆」，網址仍是 `/dashboard/line/keyword-replies`）建立的是 `keyword.matched` 事件加上「傳送素材」（`send_material`）、「發送優惠券」（`issue_coupon`）至少一個動作的規則。關鍵字與比對模式存在 `trigger.keywords` 與 `trigger.match_mode`。
+
+每條關鍵字回覆屬於一個渠道：LINE、Facebook 或 Instagram（change add-fb-ig-keyword-coupon，2026-10-27 起；之前只有 LINE）。
+
+- 渠道存成條件「對話渠道等於 X」（`conversation.channelType` 的 `equal`，值為 `LINE`、`FB`、`THREADS`），規則只在這個渠道的對話觸發，並對同一渠道類型的所有帳號生效（例如所有 LINE 官方帳號、所有粉專）。沒有「只對某個帳號」的設定。
+- 建立時選渠道；已有渠道條件的規則不能改渠道。在自動化規則編輯器建立、沒有渠道條件的規則，列表顯示「未限定渠道」，在這頁儲存時加上所選渠道的條件（預設為素材的渠道，沒有素材時為 LINE）。渠道條件不是上述單一寫法的規則（例如等於 `WEBCHAT`），這頁不能儲存，要到自動化規則編輯。
+- 素材選單只列所選渠道的素材。Instagram 沒有素材（素材庫只允許 `line`、`fb`），只能發券。規則原本的素材與渠道不符、已刪除或已停用且沒有改選時，這頁擋下儲存並說明原因，列表的素材欄也標示原因。
+- 列表有「渠道」欄與渠道篩選。切換啟用開關或儲存後，列表立即重新載入規則與規則明細（2026-10-27 之前只重新載入列表，要重新整理頁面才看得到新的啟用狀態）。
+- Facebook 與 Instagram 的入站訊息沒有回覆權杖，規則的回覆與發券訊息以一般傳送送出；顧客剛傳訊息，一定在 Meta 的 24 小時視窗內。顧客開啟票券時以 email 驗證碼驗證身分。
 
 每則文字訊息進來時，workers 評估 `message.received` 的 job，以 `matchKeywordTrigger()`（`packages/automation/src/keyword/keyword-match.ts`）逐條檢查啟用中的關鍵字規則：
 

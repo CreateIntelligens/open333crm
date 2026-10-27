@@ -11,7 +11,13 @@ import { cleanup, render, screen } from '@testing-library/react';
 
 vi.mock('#src/components/layout/Topbar.js', () => ({ Topbar: () => null }));
 vi.mock('#src/hooks/useMaterials.js', () => ({ useMaterials: () => ({ materials: [] }) }));
-vi.mock('#src/hooks/useKeywordReplies.js', () => ({
+vi.mock('#src/components/coupons/CouponSelectField.js', () => ({
+  UNAVAILABLE_COUPON_LABEL: '',
+  couponOptionLabel: () => '',
+  useCouponOptions: () => ({ coupons: [] }),
+}));
+vi.mock('#src/hooks/useKeywordReplies.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useKeywordReplies: () => ({ replies: [], isLoading: false, mutate: vi.fn() }),
   createKeywordReply: vi.fn(),
   updateKeywordReply: vi.fn(),

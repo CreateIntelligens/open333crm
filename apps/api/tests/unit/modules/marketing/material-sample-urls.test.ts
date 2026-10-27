@@ -1,6 +1,7 @@
 /**
  * LINE 素材儲存時把示範圖換成公開網址（change line-sample-images-public-url，spec material-system
- * 「LINE 素材儲存時把示範圖換成公開網址」）。
+ * 「LINE 素材儲存時只把示範圖換成公開網址」）；FB 素材的站內路徑也換成公開網址（change
+ * fix-fb-material-site-path-urls，spec material-system「FB 素材儲存時把站內路徑換成公開網址」）。
  * 編輯器預設帶入的示範圖是站內路徑，LINE 驗證只收 https 公開網址；示範圖本來就由 web 公開提供。
  */
 import assert from 'node:assert/strict';
@@ -114,11 +115,43 @@ test('更新 Flex 素材時一樣轉換', async () => {
   assert.equal((writes[0].body as any).contents.hero.url, 'https://uat.example.com/material-samples/cafe.jpeg');
 });
 
-test('FB 素材不轉換', async () => {
-  const fb = await save(
+test('FB 素材的示範圖換成公開網址', async () => {
+  // 2026-10-27 UAT：FB 商品輪播沿用示範圖，Facebook 回「image_url should represent a valid URL」整批失敗
+  const generic = await save(
     'fb_generic',
     { elements: [{ title: 't', image_url: '/material-samples/product.jpeg' }] },
     'fb',
   );
-  assert.equal(fb.elements[0].image_url, '/material-samples/product.jpeg');
+  assert.equal(generic.elements[0].image_url, 'https://uat.example.com/material-samples/product.jpeg');
+  const image = await save('fb_image', { url: '/material-samples/cafe.jpeg' }, 'fb');
+  assert.equal(image.url, 'https://uat.example.com/material-samples/cafe.jpeg');
+  const media = await save('fb_media', { media_type: 'image', url: '/material-samples/product.jpeg' }, 'fb');
+  assert.equal(media.url, 'https://uat.example.com/material-samples/product.jpeg');
+  const coupon = await save('fb_coupon', { title: '8 折', image_url: '/material-samples/coupon.jpeg' }, 'fb');
+  assert.equal(coupon.image_url, 'https://uat.example.com/material-samples/coupon.jpeg');
+});
+
+test('FB 素材的其他站內路徑也換成公開網址', async () => {
+  const fb = await save(
+    'fb_generic',
+    {
+      elements: [{
+        title: '/material-samples/product.jpeg',
+        image_url: '/uploads/a.jpg',
+        buttons: [{ type: 'web_url', title: '看看', url: '/promo' }],
+      }],
+    },
+    'fb',
+  );
+  assert.equal(fb.elements[0].image_url, 'https://uat.example.com/uploads/a.jpg');
+  assert.equal(fb.elements[0].buttons[0].url, 'https://uat.example.com/promo');
+  assert.equal(fb.elements[0].title, '/material-samples/product.jpeg', '文字欄位不換');
+  const own = await save('fb_image', { url: 'https://cdn.example.com/a.jpg' }, 'fb');
+  assert.equal(own.url, 'https://cdn.example.com/a.jpg', '使用者自己的網址不變');
+});
+
+test('更新 FB 素材時一樣轉換', async () => {
+  const { db, writes } = fakeDb({ id: 'm3', tenantId: T, channelType: 'fb', contentType: 'fb_generic', body: {} });
+  await updateMaterial(db, 'm3', T, { body: { elements: [{ title: 't', image_url: '/material-samples/product.jpeg' }] } });
+  assert.equal((writes[0].body as any).elements[0].image_url, 'https://uat.example.com/material-samples/product.jpeg');
 });

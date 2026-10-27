@@ -172,7 +172,7 @@ test('開啟既有的發券規則：唯讀顯示券名與說明，可以刪除�
     />,
   );
   await screen.findByText(/秋季九折/);
-  screen.getByText(/發券請到 LINE 關鍵字回覆或加好友禮設定/);
+  screen.getByText(/發券請到「渠道 → 關鍵字回覆」（LINE、Facebook、Instagram）或「LINE 加好友禮」設定/);
   // 唯讀：沒有可以換動作類型或換券的下拉，也沒有輸入框
   assert.equal(screen.queryAllByRole('combobox').length, 0);
   assert.ok(screen.queryByRole('textbox') === null);
