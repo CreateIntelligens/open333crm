@@ -301,9 +301,15 @@ img { max-width: 100%; }
 .warn { background: #FFF0E4; border-color: var(--warning); color: #7A3B00; }
 .highlight { background: #FFFBEB; border-color: #F5C518; color: #6B5500; }
 .tip-ai { background: var(--ai-subtle); border-color: var(--ai); color: var(--text-body); }
-.info b, .warn b, .highlight b, .tip-ai b { color: var(--text-title); }
+.info b, .tip-ai b { color: var(--text-title); }
+/* 警告與重點框的底色固定，粗體沿用框內文字色，深色模式才不會變成淺字配淺底 */
+.warn b, .highlight b { color: inherit; }
 [data-theme="dark"] .warn { background: #2A1B0E; color: #F0C89A; }
 [data-theme="dark"] .highlight { background: #2A2410; color: #E5D89A; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .warn { background: #2A1B0E; color: #F0C89A; }
+  :root:not([data-theme="light"]) .highlight { background: #2A2410; color: #E5D89A; }
+}
 
 /* 流程圖 */
 .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin: 20px 0; }
