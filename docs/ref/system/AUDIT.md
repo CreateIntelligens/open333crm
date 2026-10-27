@@ -202,7 +202,7 @@ service 的 Prisma 參數型別是 `TenantDb`（`apps/api/src/lib/tenant-db.ts`�
 - 聯集接近 TypeScript 的推導上限（`tenant-db.ts` 的註解）。
 - 在交易內呼叫 `io.emit`、`eventBus.publish` 的 service，會在 commit 之前送出推播與事件。
 
-**方向（#337，2026-10-20 定案）。** 全面改成「入口開一個綁定租戶的交易，service 只收 `TenantCtx`」。change `tenant-transaction-context` 建立了新寫法：`apps/api/src/lib/tenant-ctx.ts` 的 `inTenant()`、`tenantHandler()`，以及 `AGENTS.md` 結構規則 2。之後依 #337 的階段逐模組搬遷：
+**方向（#337，2026-10-20 定案）。** 全面改成「入口開一個綁定租戶的交易，service 只收 `TenantCtx`」。change `tenant-transaction-context` 建立了新寫法：`apps/api/src/lib/tenant-ctx.ts` 的 `inTenant()`、`tenantHandler()`，以及 `AGENTS.md` 結構規則 2（change `migrate-role-agent-tenant-ctx` 起，route 一律呼叫 flow，`tenantHandler()` 已刪除）。之後依 #337 的階段逐模組搬遷：
 
 1. 試做 tag、role。
 2. 事件改走 outbox（動手前先評估客人收到重複訊息的機率）。

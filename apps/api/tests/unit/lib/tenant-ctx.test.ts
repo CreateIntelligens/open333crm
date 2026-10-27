@@ -305,3 +305,17 @@ test('createMockTenantScope：依呼叫順序記錄 afterCommit，commit() 才�
   assert.deepEqual(log, [`push:tenant:${TENANT_ID}:case.updated`, 'after']);
 });
 
+
+test('flowOf：在綁定租戶的交易內呼叫 service，傳入 scope 與其餘參數，commit 之後回傳結果', async () => {
+  const { flowOf } = await import('#src/lib/tenant-ctx.js');
+  const seen: unknown[] = [];
+  const flow = flowOf(async (ctx, id: string, n: number) => {
+    seen.push(ctx.tenantId, id, n);
+    log.push('fn');
+    return `${id}:${n}`;
+  });
+  const result = await flow({ prisma: createPrisma() }, TENANT_ID, 'x', 2);
+  assert.equal(result, 'x:2');
+  assert.deepEqual(seen, [TENANT_ID, 'x', 2]);
+  assert.deepEqual(log, ['fn', 'commit']);
+});

@@ -1,7 +1,5 @@
-/** 會員綁定後台與顧客端路由共用的錯誤對照、輸入格式與交易輔助。 */
-import type { FastifyInstance } from 'fastify';
+/** 會員綁定後台與顧客端路由共用的錯誤對照與輸入格式。 */
 import { z } from 'zod';
-import { inTenant, type TenantCtx } from '../../lib/tenant-ctx.js';
 import type { BindingFailureReason } from './member-binding.types.js';
 
 /** 對顧客的說明。技術細節留在 detail 欄位供後台排查，不外露。 */
@@ -25,8 +23,3 @@ export const FAILURE_STATUS: Record<BindingFailureReason, number> = {
 /** 顧客或客服輸入的識別資料（會員編號、手機等），一律是文字 */
 export const lookupInputSchema = z.record(z.string().max(200, '輸入內容過長'), { invalid_type_error: '輸入格式不正確' });
 export const contactParams = z.object({ contactId: z.string().uuid('聯絡人識別格式不正確') });
-
-/** 在指定租戶的交易內執行（顧客端與連線測試用；後台的一般端點用 tenantHandler） */
-export function runInTenant<T>(app: FastifyInstance, tenantId: string, fn: (ctx: TenantCtx) => Promise<T>) {
-  return inTenant(app.prisma, tenantId, fn);
-}

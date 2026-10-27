@@ -10,7 +10,8 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import { logger } from '@open333crm/core';
-import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { flowOf, inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { getAgentById } from '../auth/auth.service.js';
 import { createOutboxPublisher } from '../../events/outbox-publisher.js';
 import { notifyCouponMessage, notifyInstanceUpdated, publishCouponTag } from './coupon-effects.js';
 import { tenantScopedClient } from '../../lib/tenant-db.js';
@@ -19,6 +20,8 @@ import {
   IssueAbort,
   REQUEST_KEEP_MS,
   confirmIssue,
+  getIssueContext,
+  listIssuedCoupons,
   readStored,
   requestKeyOf,
   reserveIssue,
@@ -150,4 +153,15 @@ async function runIssue(deps: InboxFlowDeps, input: InboxIssueInput): Promise<In
     couponName: reserved.coupon.name,
     messageId: message.id,
   };
+}
+
+/** 發券面板資料（補償紀錄、可發的券、無法發券的原因） */
+export const getIssueContextFlow = flowOf(getIssueContext);
+
+/** 對話聯絡人收到的券（右側「已發優惠券」） */
+export const listIssuedCouponsFlow = flowOf(listIssuedCoupons);
+
+/** 發券座席當下的名稱：座席之後改名或刪除，序號明細與券訊息仍顯示原名 */
+export function getIssuerNameFlow(deps: { prisma: PrismaClient }, tenantId: string, agentId: string) {
+  return inTenant(deps.prisma, tenantId, async (scope) => (await getAgentById(scope.tx, agentId, tenantId))?.name ?? undefined);
 }

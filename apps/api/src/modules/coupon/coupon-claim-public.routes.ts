@@ -6,8 +6,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { inTenant } from '../../lib/tenant-ctx.js';
-import { findClaimLinkTenant, openPublicClaimPage } from './coupon-claim-link.service.js';
+import { openPublicClaimPageFlow } from './coupon-claim-link.flow.js';
 
 const NOT_FOUND = { success: false, error: { code: 'NOT_FOUND', message: '找不到這個領券活動' } } as const;
 
@@ -17,10 +16,7 @@ export default async function couponClaimPublicRoutes(app: FastifyInstance) {
 
   app.get('/:code', async (request, reply) => {
     const raw = String((request.params as { code?: unknown }).code ?? '').slice(0, 32);
-    const found = await findClaimLinkTenant(app.prisma, raw);
-    if (!found) return reply.status(404).send(NOT_FOUND);
-    const page = await inTenant(app.prisma, found.tenantId, (ctx) =>
-      openPublicClaimPage(ctx, found.code));
+    const page = await openPublicClaimPageFlow(app, raw);
     if (!page) return reply.status(404).send(NOT_FOUND);
     return { success: true, data: page };
   });

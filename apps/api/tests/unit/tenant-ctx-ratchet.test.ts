@@ -188,42 +188,9 @@ test('只 import 型別、或在 flow 與 route 檔 import：不算', { timeout:
   assert.equal(code, 0, output);
 });
 
-test('模組內新增 tenantHandler(：算增加；lib 內的定義不算', { timeout: 30_000 }, async () => {
-  await put('lib/tenant-ctx.ts', ['export function tenantHandler(fastify, handler) {}']);
-  await put('modules/h1/h1.routes.ts', [
-    "import { tenantHandler } from '../../lib/tenant-ctx.js';",
-    'app.get("/", tenantHandler(app, async () => ({})));',
-  ]);
-  const { code, output } = await check(args('--strict'));
-  assert.equal(code, 1, output);
-  assert.match(output, /tenantHandler/);
-  assert.match(output, /modules\/h1\/h1\.routes\.ts/);
-  assert.doesNotMatch(output, /lib\/tenant-ctx\.ts/);
-});
-
-test('tenantHandler 改名、ns.tenantHandler、ns[\'tenantHandler\'] 的呼叫也算增加；註解裡的不算', { timeout: 30_000 }, async () => {
-  await put('modules/a1/a1.routes.ts', [
-    "import { tenantHandler as wrap } from '../../lib/tenant-ctx.js';",
-    'app.get("/", wrap(app, async () => ({})));',
-  ]);
-  await put('modules/a3/a3.routes.ts', [
-    "import * as tc from '../../lib/tenant-ctx.js';",
-    'app.get("/", tc.tenantHandler(app, async () => ({})));',
-  ]);
-  await put('modules/a4/a4.routes.ts', ['// 以前用 tenantHandler(app, …)，已改成 flow']);
-  await put('modules/a5/a5.routes.ts', [
-    "import * as tc from '../../lib/tenant-ctx.js';",
-    "app.get('/', tc['tenantHandler'](app, async () => ({})));",
-  ]);
-  const { code, output } = await check(args('--strict'));
-  assert.equal(code, 1, output);
-  for (const f of ['a1', 'a3', 'a5']) assert.match(output, new RegExp(`modules/${f}/${f}\\.routes\\.ts`));
-  assert.doesNotMatch(output, /modules\/a4\//);
-});
-
 test('repo 本身：舊寫法沒有比基準檔多', { timeout: 30_000 }, async () => {
   const { code, output } = await check(['--strict']);
-  assert.equal(code, 0, `舊寫法增加。新程式請用 inTenant() / tenantHandler()；確實要減少時執行 --update-baseline：\n${output}`);
+  assert.equal(code, 0, `舊寫法增加。新程式由 flow 以 inTenant() 開交易；確實要減少時執行 --update-baseline：\n${output}`);
 });
 
 test('--scan-dir 或 --baseline 沒有值：exit 2 並說明缺值的參數，不丟出 TypeError', async () => {

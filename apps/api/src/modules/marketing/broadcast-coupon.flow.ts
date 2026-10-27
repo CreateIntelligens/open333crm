@@ -15,7 +15,7 @@ import {
   logger,
   type WalletTokenStore,
 } from '@open333crm/core';
-import { inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
+import { flowOf, inTenant, type TenantScope } from '../../lib/tenant-ctx.js';
 import { createOutboxPublisher, enqueueJob, type EventPublisher } from '../../events/outbox-publisher.js';
 import { publishCouponTag } from '../coupon/coupon-effects.js';
 import { getConfig } from '../../config/env.js';
@@ -34,6 +34,8 @@ import {
   confirmRecipient,
   failCouponBroadcast,
   finalizeCouponBroadcast,
+  getCouponBroadcastSummary,
+  listBroadcastRecipients,
   markRecipient,
   prepareRecipients,
   recordProgress,
@@ -46,6 +48,12 @@ import {
   type PendingRecipient,
   type RecipientFailReason,
 } from './broadcast-coupon.service.js';
+
+/** 附券廣播的結果：發券張數、依原因分列的跳過與失敗人數（design D29） */
+export const getCouponBroadcastSummaryFlow = flowOf(getCouponBroadcastSummary);
+
+/** 結果頁的收件人與跳過、失敗的原因 */
+export const listBroadcastRecipientsFlow = flowOf(listBroadcastRecipients);
 
 /** 排入發送的入口：events 預設寫 outbox（測試可替換） */
 export interface QueueBroadcastDeps {

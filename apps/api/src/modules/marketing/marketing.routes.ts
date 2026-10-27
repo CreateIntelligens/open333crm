@@ -25,12 +25,11 @@ import {
   deleteCampaign,
 } from './campaign.service.js';
 import { success, paginated } from '../../shared/utils/response.js';
-import { inTenant } from '../../lib/tenant-ctx.js';
 import {
-  getCouponBroadcastSummary,
-  listBroadcastRecipients,
-} from './broadcast-coupon.service.js';
-import { queueCouponBroadcastFlow } from './broadcast-coupon.flow.js';
+  getCouponBroadcastSummaryFlow,
+  listBroadcastRecipientsFlow,
+  queueCouponBroadcastFlow,
+} from './broadcast-coupon.flow.js';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { clampPage, clampLimit } from '../../shared/utils/pagination.js';
 
@@ -302,7 +301,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
     );
     // 附券廣播的結果：發券張數、依原因分列的跳過與失敗人數（design D29）
     const couponSummary = broadcast.couponId
-      ? await inTenant(fastify.prisma, request.agent.tenantId, (ctx) => getCouponBroadcastSummary(ctx, broadcast.id))
+      ? await getCouponBroadcastSummaryFlow(fastify, request.agent.tenantId, broadcast.id)
       : null;
     return reply.send(success({ ...broadcast, couponSummary }));
   });
@@ -315,7 +314,7 @@ export default async function marketingRoutes(fastify: FastifyInstance) {
       page: z.coerce.number().int().positive().default(1),
       limit: z.coerce.number().int().positive().max(100).default(50),
     }).parse(request.query);
-    const result = await inTenant(fastify.prisma, request.agent.tenantId, (ctx) => listBroadcastRecipients(ctx, id, query));
+    const result = await listBroadcastRecipientsFlow(fastify, request.agent.tenantId, id, query);
     if (!result) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: '找不到這則廣播' } });
     return reply.send(paginated(result.items, result.total, result.page, result.limit));
   });

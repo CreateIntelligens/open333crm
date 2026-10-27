@@ -188,7 +188,7 @@ A module is in `apps/api/src/modules/<name>/`. It uses these file suffixes:
 
 | Suffix | Role |
 | ------ | ---- |
-| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a service or a flow, wrap the response |
+| `<name>.routes.ts` | HTTP boundary: Zod validation, guards, call a flow, wrap the response |
 | `<name>.flow.ts` | Use case: opens the tenant transaction, calls services, writes the audit row, sends Socket events, events and jobs (structure rule 2) |
 | `<name>.service.ts` | Business logic and data access |
 | `<name>.worker.ts`, `<name>.scheduler.ts` | Background work. The Socket Event Routing section tells which process runs them |
@@ -202,8 +202,9 @@ a different reason.
 
 #### 1. A route handler does not query the database
 
-A route handler validates input, checks permissions, calls a service or a flow, and returns. Put the
-query in `<name>.service.ts`.
+A route handler validates input, checks permissions, calls a flow, and returns. Put the query in
+`<name>.service.ts`. Routes of modules that #337 has not moved yet still call services with the old
+clients.
 
 - **Why**: a test can reach a query in a route only through the HTTP layer, with the plugins
   and guards of the route registered. A unit test can call a query in a service directly, with
@@ -230,8 +231,10 @@ query needs a cache later, the cache goes in the flow, because a service cannot 
 cache hit must not open a transaction. A route that reads no tenant data (for example a static
 permission matrix) answers directly. `actorOf(request)` returns 401 when the request has no tenant.
 
-`tenantHandler()` is the old form. Do not use it in new code. The routes of `coupon`, `store`,
-`member-binding` and `analytics` still use it. After they move, `tenantHandler()` is deleted.
+A flow that only calls one service function can use `flowOf(fn)` from `lib/tenant-ctx.ts`, for
+example `export const listStoresFlow = flowOf(listStores)`. When the operation gets a side effect
+or work outside the transaction, write a normal flow function instead. A route does not call
+`inTenant()` itself.
 
 Each exported service function that reads or writes tenant data takes the `TenantCtx` as its first
 parameter. A `TenantCtx` has only `tx` and `tenantId`. A service returns the facts that the flow
@@ -342,17 +345,14 @@ so these functions do not change its result.
   is this rule for `packages/*`.
 - **Check**: `node scripts/check-tenant-ctx.mjs --strict` fails when one of these increases in a file:
   - the old forms `TenantDb`, `request.tenantPrisma` and a transaction opened in a service file;
-  - a call of `tenantHandler` in a module;
   - a reference from a service file to a Redis client (`redis` or the whole module from
     `@open333crm/core`, or `ioredis`) or to an LLM module (`ai/llm.service.js`, a file in
     `ai/providers/` other than `types.js`). The type checker cannot stop a service that uses these
     module-level clients inside the transaction, so a flow receives them as dependencies instead.
 
-  The script parses the TypeScript syntax for the last two kinds: a re-export, a dynamic
+  The script parses the TypeScript syntax for the last kind: a re-export, a dynamic
   `import()`, `require()`, a renamed import and a namespace call count. A type-only import and a
-  comment do not count. For `tenantHandler`, the script counts only a direct call, a call after
-  `as`, `ns.tenantHandler(` and `ns['tenantHandler'](`. Other forms (a variable, a destructured
-  name) are not counted: `tenantHandler()` is deleted when all routes call flows. Also
+  comment do not count. Also
   `grep -rnE "new PrismaClient|import \{[^}]*\bprisma\b[^}]*\} from '@open333crm/database'" apps/api/src/modules packages/*/src`
 - **Existing exceptions**: most services still take `TenantDb`. Issue #337 moves them module by
   module. `scripts/check-tenant-ctx.baseline.json` records how many remain. When you change one of
@@ -499,7 +499,6 @@ RLS. The skill named below gives the steps.
 
 | Client | Connection | When |
 | ------ | ---------- | ---- |
-| `tenantHandler(fastify, (request, reply, ctx) => ...)` | one transaction on `app_tenant`, bound to `request.agent.tenantId` | old form, being removed: a route calls a flow instead (structure rule 2) |
 | `inTenant(prisma, tenantId, (scope) => ...)` | one transaction on `app_tenant`, bound to `tenantId` | flows and new and moved background jobs. A scheduler finds its rows with `prismaAdmin`, then calls `inTenant()` for each row |
 | `fastify.prisma` | `app_tenant`, RLS enforced | the base client for `inTenant()` and `withTenant()`. Without one of them, RLS returns no rows |
 | `request.tenantPrisma` | `app_tenant`, bound to `request.agent.tenantId` | old form, being moved (#337). Each query runs in a separate transaction. Throws an error when the request is not authenticated |

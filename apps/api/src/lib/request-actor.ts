@@ -15,7 +15,7 @@ export interface RequestActor {
   ip: string;
 }
 
-/** 請求沒有租戶身分時回 401，不開交易（與 tenantHandler() 相同） */
+/** 請求沒有租戶身分時回 401，flow 不開交易（主規格 tenant-transaction-context「請求沒有租戶身分」） */
 export function actorOf(request: FastifyRequest): RequestActor {
   if (!request.agent?.tenantId) throw new AppError('需要已登入的租戶身分', 'UNAUTHORIZED', 401);
   return {

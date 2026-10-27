@@ -10,9 +10,8 @@ import {
   getMyPerformance,
   exportCsv,
 } from './analytics.service.js';
-import { getCouponAnalytics } from '../coupon/coupon-stats.service.js';
+import { getCouponAnalyticsFlow } from '../coupon/coupon-stats.flow.js';
 import { success } from '../../shared/utils/response.js';
-import { tenantHandler } from '../../lib/tenant-ctx.js';
 import { requirePermission, requireAnyPermission } from '../../guards/rbac.guard.js';
 
 const dateRangeFields = z.object({
@@ -113,10 +112,10 @@ export default async function analyticsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /analytics/coupons — 優惠券成效（add-coupon-system 12.16）
-  fastify.get('/coupons', { preHandler: requirePermission('analytics.view') }, tenantHandler(fastify, async (request, _reply, ctx) => {
+  fastify.get('/coupons', { preHandler: requirePermission('analytics.view') }, async (request, reply) => {
     const { from, to } = dateRangeSchema.parse(request.query);
-    return success(await getCouponAnalytics(ctx, from, to));
-  }));
+    return reply.send(success(await getCouponAnalyticsFlow(fastify, request.agent.tenantId, from, to)));
+  });
 
   // GET /analytics/my — 看自己的個人數據；不掛額外 requirePermission，
   // 靠 module-level 的 requireAnyPermission 放行（analytics.view.self 即可，一般專員也看得到）。

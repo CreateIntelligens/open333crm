@@ -52,7 +52,7 @@
 ## 7. service 直接使用 Redis 與 LLM 的檢查（design 決策 9）
 
 - [x] 7.1 在 `apps/api/tests/unit/tenant-ctx-ratchet.test.ts` 寫失敗的測試，涵蓋 Scenario「service 檔新增 Redis client 的 import」「service 檔新增 LLM 入口的 import」「只引入型別，或在 flow 檔引入」。執行後確認前兩個以斷言失敗（exit code 是 0，不是 1）
-- [x] 7.2 `scripts/check-tenant-ctx.mjs` 加上兩種寫法，讓 7.1 通過；以 `--update-baseline` 記下現況（2026-10-27：Redis client 5 個檔案、LLM 入口 8 個檔案）
+- [x] 7.2 `scripts/check-tenant-ctx.mjs` 加上兩種寫法，讓 7.1 通過；以 `--update-baseline` 記下現況（2026-10-27：Redis client 5 個檔案、LLM 入口 8 個檔案；9.2 改用語法樹後為 6 個與 9 處）
 - [x] 7.3 `AGENTS.md` 結構規則 2 的 Check 寫明這兩種寫法
 
 ## 8. 讀寫租戶資料的 route 一律走 flow（design 決策 7，2026-10-27 修改）
@@ -71,6 +71,15 @@
 - [x] 9.3 `AGENTS.md` 結構規則 2 的 Check、`CHANGELOG.md` 同步更新
 - [x] 9.4 review-loop 第 3 輪：`tenantHandler` 經過變數轉手的呼叫，使用者決定不追（design 決策 9）。spec 只承諾直接呼叫、`as` 改名與 namespace 呼叫，並移除只做了一半的變數別名追蹤，讓實作與 spec 一致
 - [x] 9.5 review-loop 第 4 輪：寫失敗的測試涵蓋 `tc['tenantHandler'](`（執行後確認以斷言失敗），再補上字串索引的計數。spec 改成封閉清單，清單以外的寫法視為刻意繞過（design 決策 9）
+
+## 10. 其他模組的 route 改走 flow，刪除 `tenantHandler()`（使用者決定併進本 change）
+
+- [x] 10.1 改寫 `tests/unit/lib/tenant-handler.test.ts` 為 `tests/unit/lib/route-flow.test.ts`，涵蓋修改後的 Scenario「成功時回應交易內程式的結果」「交易內程式丟出錯誤」「交易失敗時不帶交易內設定的 header」「請求沒有租戶身分」；型別測試改名為 `tests/types/tenant-ctx.types.ts`
+- [x] 10.2 `lib/tenant-ctx.ts` 新增 `flowOf(fn)`，在 `tenant-ctx.test.ts` 寫測試並以突變驗證（2026-10-27：改成不開交易直接呼叫 fn，測試失敗；還原後通過）
+- [x] 10.3 `coupon`、`store`、`member-binding`、`analytics`、`marketing` 的 route 改成呼叫 flow，route 不再呼叫 `inTenant()`；刪除 `tenantHandler()`、`TenantReply`、`deferReply()`
+- [x] 10.4 移除 ratchet 的 `tenantHandler` 計數與 delta spec 中對應的需求
+- [x] 10.5 `pnpm test`、`pnpm test:feature` 通過，feature 測試不修改斷言（2026-10-27：api 1382、feature 887）
+- [x] 10.6 `AGENTS.md`、design 決策 7 與 9、proposal、`CHANGELOG.md` 更新
 
 ## 5. 文件與完成條件
 

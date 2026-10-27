@@ -10,16 +10,15 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../../guards/rbac.guard.js';
 import { assertConversationChannelVisible } from '../../services/channel-visibility.js';
-import { getAgentById } from '../auth/auth.service.js';
 import { getBindingStore } from '../identity-binding/binding-code.js';
-import { inTenant, tenantHandler } from '../../lib/tenant-ctx.js';
+import { getIssueRequest, type InboxIssueFailure } from './coupon-inbox.service.js';
 import {
-  getIssueContext,
-  getIssueRequest,
-  listIssuedCoupons,
-  type InboxIssueFailure,
-} from './coupon-inbox.service.js';
-import { issueInConversation, type InboxFlowDeps } from './coupon-inbox.flow.js';
+  getIssueContextFlow,
+  getIssuerNameFlow,
+  issueInConversation,
+  listIssuedCouponsFlow,
+  type InboxFlowDeps,
+} from './coupon-inbox.flow.js';
 
 const paramsSchema = z.object({ conversationId: z.string().uuid('對話識別格式不正確') });
 
@@ -50,16 +49,15 @@ export default async function couponInboxRoutes(app: FastifyInstance) {
 
   const deps = (): InboxFlowDeps => ({ store: getBindingStore(), prisma: app.prisma, io: app.io });
 
-  app.get('/conversations/:conversationId', { preHandler: [requirePermission('coupon.issue')] }, tenantHandler(app, async (request, reply, ctx) => {
+  app.get('/conversations/:conversationId', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
     const { conversationId } = paramsSchema.parse(request.params);
     await assertConversationChannelVisible(request, conversationId, 'reply_only');
-    const context = await getIssueContext(ctx, deps(), conversationId);
+    const context = await getIssueContextFlow(app, request.agent.tenantId, deps(), conversationId);
     if (!context) {
-      reply.code(404);
-      return { success: false, error: { code: 'NOT_FOUND', message: FAILURES.NOT_FOUND.message } };
+      return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: FAILURES.NOT_FOUND.message } });
     }
     return { success: true, data: context };
-  }));
+  });
 
   app.post('/conversations/:conversationId', { preHandler: [requirePermission('coupon.issue')] }, async (request, reply) => {
     const { conversationId } = paramsSchema.parse(request.params);
@@ -67,8 +65,7 @@ export default async function couponInboxRoutes(app: FastifyInstance) {
     await assertConversationChannelVisible(request, conversationId, 'reply_only');
     const tenantId = request.agent.tenantId;
     // 保存發券座席當下的名稱，座席之後改名或刪除，序號明細與券訊息仍顯示原名
-    const agent = await inTenant(app.prisma, tenantId, (ctx) =>
-      getAgentById(ctx.tx, request.agent.id, tenantId));
+    const agentName = await getIssuerNameFlow(app, tenantId, request.agent.id);
 
     // 發券分三步（保留→送出→確認），交易由 flow 開，送出訊息不在交易內（design D16）
     const result = await issueInConversation(deps(), {
@@ -76,7 +73,7 @@ export default async function couponInboxRoutes(app: FastifyInstance) {
       conversationId,
       couponId: body.couponId,
       agentId: request.agent.id,
-      agentName: agent?.name ?? undefined,
+      agentName,
       expectedAssigneeId: body.expectedAssigneeId,
       requestKey: body.requestKey,
     });
@@ -96,14 +93,13 @@ export default async function couponInboxRoutes(app: FastifyInstance) {
     return { success: true, data: await getIssueRequest(deps(), request.agent.tenantId, requestKey) };
   });
 
-  app.get('/conversations/:conversationId/issued', { preHandler: [requirePermission('coupon.view')] }, tenantHandler(app, async (request, reply, ctx) => {
+  app.get('/conversations/:conversationId/issued', { preHandler: [requirePermission('coupon.view')] }, async (request, reply) => {
     const { conversationId } = paramsSchema.parse(request.params);
     await assertConversationChannelVisible(request, conversationId, 'read_only');
-    const list = await listIssuedCoupons(ctx, conversationId);
+    const list = await listIssuedCouponsFlow(app, request.agent.tenantId, conversationId);
     if (!list) {
-      reply.code(404);
-      return { success: false, error: { code: 'NOT_FOUND', message: FAILURES.NOT_FOUND.message } };
+      return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: FAILURES.NOT_FOUND.message } });
     }
     return { success: true, data: list };
-  }));
+  });
 }

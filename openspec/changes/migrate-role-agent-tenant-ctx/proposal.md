@@ -17,9 +17,10 @@
   - `publishEvent(scope, publisher, …)`、`enqueueJob(scope, publisher, …)`（`events/outbox-publisher.ts`）：交易內寫 outbox，再以 `afterCommit` 登記快路徑。
   - `notifyTenant(scope, io, …)`、`notifyAgent(scope, io, …)`（`events/socket-push.ts`）：以 `afterCommit` 登記推播。
   - `recordTenantAudit(scope, input)`（`modules/tenant-audit/tenant-audit.service.ts`）：在交易內寫稽核，`tenantId` 由 scope 填入。寫入失敗時丟出錯誤，主操作一起 rollback。還沒搬的呼叫端繼續用 `writeTenantAudit()`，行為不變。
-- **use case 層沿用既有的 `<name>.flow.ts`**：flow 開啟 `inTenant()`，呼叫 service，再決定稽核、推播、事件、快取。讀寫租戶資料的 route 一律呼叫 flow，查詢也一樣。`tenantHandler()` 成為舊寫法，ratchet 只減不增；其他模組的 route 在階段 2 的第二個 PR 搬完後刪除。
+- **use case 層沿用既有的 `<name>.flow.ts`**：flow 開啟 `inTenant()`，呼叫 service，再決定稽核、推播、事件、快取。讀寫租戶資料的 route 一律呼叫 flow，查詢也一樣。只呼叫一個 service 函式的 flow 用 `flowOf(fn)` 組出。
 - `role`、`agent` 的 service 改收 `TenantCtx`；新增 `role.flow.ts`、`agent.flow.ts`，兩個模組的 route 都改成呼叫 flow。角色的建立、改名與刪除補上稽核（`role.create`、`role.rename`、`role.delete`）。
 - 已用 `TenantCtx` 的模組（`coupon`、`marketing`、`member-binding`、`store`、`automation`）改成新的契約：service 回傳結果，推播與事件移到 flow 或入口。
+- `coupon`、`store`、`member-binding`、`analytics`、`marketing` 的 route 也改成呼叫 flow，刪除 `tenantHandler()`、`TenantReply` 與 `deferReply()`。主規格「route 的回應在 commit 之後才送出」改成以 flow 描述。
 - `services/channel-team-access.ts` 的 `setAgentChannels()`、`listChannelsForAgent()` 改收 `TenantCtx`。`setAgentChannels()` 不再自己開交易。
 - bcrypt 雜湊移到交易之外：flow 先算好新密碼的雜湊，再開交易。
 - `scripts/check-tenant-ctx.mjs` 另外計算 service 檔直接 import Redis client 與 LLM 入口的次數，只減不增（design 決策 9）。
@@ -39,7 +40,7 @@
 
 ### Modified Capabilities
 
-- `tenant-transaction-context`：新增「commit 之後、回傳之前執行的動作」。主規格其他需求以「交易內登記」描述行為，不指定由哪個物件登記，所以不修改。另新增「service 直接使用 Redis 與 LLM 的數量不得增加」。
+- `tenant-transaction-context`：修改「route 的回應在 commit 之後才送出」（改成 route 呼叫 flow）；新增「commit 之後、回傳之前執行的動作」。主規格其他需求以「交易內登記」描述行為，不指定由哪個物件登記，所以不修改。另新增「service 直接使用 Redis 與 LLM 的數量不得增加」。
 - `tenant-audit-log`：「稽核寫入失敗不影響主操作」只適用於交易外的 `writeTenantAudit()`；新增交易內稽核與主操作一起 commit 的需求；「記錄租戶內的敏感操作」加上角色的建立、改名與刪除。
 
 `permission-check` 不修改：「在修改的請求回應之前清除快取」維持不變，`afterCommit` 在回應之前完成。

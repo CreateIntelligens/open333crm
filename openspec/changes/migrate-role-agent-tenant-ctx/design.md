@@ -127,9 +127,10 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 - 讀寫租戶資料的 route 一律呼叫 flow，查詢也一樣。不讀租戶資料的 route（例如權限矩陣）直接回應。
 - 原本的分界是「route 有沒有副作用」，這個分界會隨需求移動：角色的建立與改名原本沒有稽核，補上稽核就要換寫法。查詢也會長出副作用以外的編排：資料量變大時要加 read-through 快取，而 service 不能碰 Redis（決策 9），快取命中時也不該開交易，所以快取只能放在 flow。
 - 代價是查詢的 flow 多半只有一行（`inTenant()` 包一個 service 呼叫）。同一個模組的 flow 放在同一個檔案。
-- `tenantHandler()` 成為舊寫法：ratchet 計算模組內的 `tenantHandler(`，只減不增。`coupon`、`store`、`member-binding`、`analytics` 的 route 在階段 2 的第二個 PR 改成呼叫 flow，之後刪除 `tenantHandler()`、`TenantReply` 與 `deferReply()`，並修改主規格「route 的回應在 commit 之後才送出」中依賴 `TenantReply` 的 Scenario。
-- `actorOf(request)` 在請求沒有租戶身分時回 401，與 `tenantHandler()` 相同。
-- 試點時「交易之前要做的工作」的寫法（`tenantHandler(fastify, …)(request, reply)`）移除，改由 flow 處理。
+- 本 change 一併把 `coupon`、`store`、`member-binding`、`analytics`、`marketing` 的 route 改成呼叫 flow，並刪除 `tenantHandler()`、`TenantReply` 與 `deferReply()`。主規格「route 的回應在 commit 之後才送出」改成以 flow 描述（MODIFIED）：route 等 flow 回傳之後才設定狀態碼與 header，所以失敗時不會帶成功時的 header，不需要延後套用。原本規劃成階段 2 的第二個 PR，使用者決定併進本 change，避免拆成兩個 PR 的協調成本。
+- 只呼叫一個 service 函式的 flow 用 `flowOf(fn)`（`lib/tenant-ctx.ts`）組出，不必為每個查詢手寫一行的 flow。要加副作用時再改寫成一般的 flow 函式。
+- `actorOf(request)` 在請求沒有租戶身分時回 401，flow 不開交易。
+- 試點時「交易之前要做的工作」的寫法（`tenantHandler(fastify, …)(request, reply)`）隨 `tenantHandler()` 一起移除，改由 flow 處理。
 - actor（租戶、成員、角色、IP）由 route 從 request 組出，傳給 flow，flow 不讀 request。
 
 ### 決策 8：service 回傳結果，flow 決定副作用
@@ -145,15 +146,14 @@ function inTenant<T>(prisma: PrismaClient, tenantId: string, fn: (scope: TenantS
 
 決策 6 之後，service 拿不到推播與事件的能力，型別檢查會擋下。Redis 與 LLM 的 client 則是模組層級的 singleton，service 直接 import 就能用，所以型別擋不住兩條規則：交易內不呼叫外部服務、commit 之後才清快取。
 
-本 change 先補檢查，不搬遷：`check-tenant-ctx.mjs` 計算 service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis` 或 namespace import、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 的檔案）的次數，記進同一個基準檔，只減不增。腳本以 TypeScript 的 API 解析語法樹計數：靜態 import、re-export、`import x = require()`、動態 `import()`、`require()` 都算；只引用型別的、註解與字串裡的文字不算。模組內的 `tenantHandler` 呼叫也以語法樹計數，只算封閉清單內的三種寫法：直接呼叫、`as` 改名後呼叫、`ns.tenantHandler(` 或 `ns['tenantHandler'](`。各模組搬遷時，把這些依賴改由 flow 注入。
+本 change 先補檢查，不搬遷：`check-tenant-ctx.mjs` 計算 service 檔以值的 import 引入 Redis client（`@open333crm/core` 的 `redis` 或 namespace import、`ioredis`）或 LLM 模組（`ai/llm.service.js`、`ai/providers/` 底下除了 `types.js` 的檔案）的次數，記進同一個基準檔，只減不增。腳本以 TypeScript 的 API 解析語法樹計數：靜態 import、re-export、`import x = require()`、動態 `import()`、`require()` 都算；只引用型別的、註解與字串裡的文字不算。review-loop 期間也以語法樹計數模組內的 `tenantHandler` 呼叫；本 change 刪除 `tenantHandler()` 之後，這項計數一併移除。各模組搬遷時，把這些依賴改由 flow 注入。
 
 - 只算 import，不算呼叫：import 才是依賴的來源，一個檔案 import 一次就能多處呼叫。
 - `import type` 不算：以參數傳入 client 時，service 只需要型別。
 - flow、route 檔不算：flow 是負責外部呼叫的那一層。
 - 從 `llm.service.js` import 不呼叫 LLM 的函式（例如 `recordAiUsage`）也算：多算只讓檢查變嚴，基準檔照實記下。
 - 不用文字比對：review-loop 第 1、2 輪連續找到同一類問題，namespace import、import 內的註解、行首空白、`as` 改名，換一種合法寫法就擋不到。每補一種寫法就會再出現下一種，所以改成解析語法。代價是腳本依賴 `typescript`，以 `createRequire` 從 `apps/api` 載入。既有的文字計數（`TenantDb` 等）不在本 change 改寫，主規格「舊寫法的數量不得增加」寫明它以文字比對。
-- 改用語法樹之後，基準多記 `chatbox.service.ts`：它以動態 `import('@open333crm/core')` 取得 `core.redis`，文字比對沒有算到。`tenantHandler` 的基準從 13 處變成 11 處，少掉的是註解裡的文字。
-- `tenantHandler` 經過變數、解構或參數轉手的呼叫（例如 `const wrap = tc.tenantHandler`）不計數。要追到這些寫法得用型別檢查器解析每個呼叫，而 `tenantHandler()` 在階段 2 的第二個 PR 就刪除，這個計數只是過渡，所以不追（review-loop 第 3 輪，使用者決定）。刻意繞過由 code review 擋下。review-loop 第 4 輪又找到 `tc['tenantHandler'](`：spec 寫「涵蓋 namespace 呼叫」這一類，沒有邊界，總能找到下一種寫法。所以改成封閉清單，清單以外的寫法一律不在範圍內（使用者決定）。
+- 改用語法樹之後，基準多記 `chatbox.service.ts`：它以動態 `import('@open333crm/core')` 取得 `core.redis`，文字比對沒有算到。
 - 擋不到的寫法：經過其他非 service 檔轉手，例如 `lib/cacheStore.ts` 包著 ioredis；以變數組出模組名稱的動態 `import()`。這是以引用計數的極限，記錄就好。
 
 ## 審查基準
