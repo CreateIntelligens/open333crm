@@ -38,6 +38,11 @@
 - **WHEN** 合併鍵 K 在 10 分鐘內有 1 則送出、49 則沒有送出，10 分鐘之後 K 又發出一則告警
 - **THEN** 系統送出這則告警，內容寫明前一段期間另有 49 次
 
+#### Scenario: 告警放不進佇列
+
+- **WHEN** 合併鍵 K 的告警通過合併的檢查，但放進 `ops-alert` 佇列時失敗
+- **THEN** 系統不保留 K 的合併期間；K 的下一則告警照常送出，並帶上之前沒有送出的次數
+
 #### Scenario: 不同合併鍵
 
 - **WHEN** 合併鍵 `queue-failed:event-webhook` 剛送出一則告警，合併鍵 `queue-failed:automation` 發出一則告警

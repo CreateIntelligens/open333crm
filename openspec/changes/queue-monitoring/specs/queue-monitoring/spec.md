@@ -37,11 +37,16 @@
 
 ### Requirement: 沒有設定網段時拒絕所有連線
 
-`QUEUE_DASHBOARD_ALLOWED_CIDRS` 沒有設定或是空值時，`/api/v1/platform/queues` 底下的所有路徑 MUST 回 403。API 照常啟動，平台後台的其他路由不受影響。
+`QUEUE_DASHBOARD_ALLOWED_CIDRS` 沒有設定、是空值，或任一個網段的格式錯誤時，`/api/v1/platform/queues` 底下的所有路徑 MUST 回 403。格式正確的網段是 `<IP 位址>/<十進位前綴>`，不含空白或多餘的片段。API 照常啟動，平台後台的其他路由不受影響。
 
 #### Scenario: 沒有設定網段
 
 - **WHEN** 沒有設定 `QUEUE_DASHBOARD_ALLOWED_CIDRS`，來源 IP `127.0.0.1` 帶有效的監控 cookie 開啟 `/api/v1/platform/queues`
+- **THEN** API 回 403
+
+#### Scenario: 網段的前綴是空白
+
+- **WHEN** `QUEUE_DASHBOARD_ALLOWED_CIDRS` 是 `60.248.142.0/`，來源 IP `203.0.113.5` 帶有效的監控 cookie 開啟 `/api/v1/platform/queues`
 - **THEN** API 回 403
 
 #### Scenario: 平台後台的其他路由不受影響
@@ -51,7 +56,7 @@
 
 ### Requirement: 以平台 JWT 換發監控用的 cookie
 
-平台管理員以 `Authorization: Bearer <平台 JWT>` 呼叫 `POST /api/v1/platform/queues/session`。API 依「平台路由一律驗證平台帳號」驗證這個 JWT，通過後設定監控用的 cookie。cookie MUST 是 `HttpOnly`、`SameSite=Strict`，`Path` 是 `/api/v1/platform/queues`，有效期限 MUST 不超過 1 小時。驗證失敗時，API MUST NOT 設定 cookie。
+平台管理員以 `Authorization: Bearer <平台 JWT>` 呼叫 `POST /api/v1/platform/queues/session`。API 依「平台路由一律驗證平台帳號」驗證這個 JWT，通過後設定監控用的 cookie。cookie MUST 是 `HttpOnly`、`SameSite=Strict`，`Path` 是 `/api/v1/platform/queues`，有效期限 MUST 不超過 1 小時。驗證失敗時，API MUST NOT 設定 cookie。換發端點以外的監控路徑，請求帶 `Origin` 標頭時，`Origin` MUST 與監控畫面同一個來源，否則回 403：`SameSite=Strict` 擋不住同一個上層網域的其他子網域。
 
 #### Scenario: 換發成功
 
@@ -67,6 +72,11 @@
 
 - **WHEN** `mustChangePassword` 為 true 的平台帳號，以有效的平台 JWT 從允許的網段呼叫 `POST /api/v1/platform/queues/session`
 - **THEN** API 拒絕請求，不設定 cookie
+
+#### Scenario: 其他來源的頁面帶監控 cookie 呼叫
+
+- **WHEN** 平台管理員持有有效的監控 cookie，從允許的網段開啟 `https://other.example.com` 的頁面，這個頁面帶 cookie 對 `/api/v1/platform/queues/api/queues/event-webhook/<job id>/retry` 送出 PUT
+- **THEN** API 回 403，job 不重送
 
 ### Requirement: 列出所有佇列
 
@@ -95,6 +105,11 @@
 
 - **WHEN** 平台管理員重送 `notification` 佇列中一個 completed job
 - **THEN** API 回 403，job 的狀態不變
+
+#### Scenario: 重送時 job 已不是 failed
+
+- **WHEN** 兩個重送請求同時檢查到同一個 job 是 failed，第一個請求重送之後 job 執行完成，第二個請求才實際重送
+- **THEN** 第二個請求不重送這個 job，job 維持 completed
 
 #### Scenario: 重送整個 failed 狀態
 

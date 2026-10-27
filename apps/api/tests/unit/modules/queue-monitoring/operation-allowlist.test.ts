@@ -119,3 +119,18 @@ test('GET 請求放行', async () => {
 
   assert.notEqual(res.statusCode, 403, res.body);
 });
+
+test('重送時 job 已不是 failed', async () => {
+  // 兩個重送請求同時讀到 failed，第一個重送的 job 已經跑完：第二個請求的 handler 讀到 completed
+  const job = webhook.jobs.get('j-failed')!;
+  let reads = 0;
+  job.onGetState = () => {
+    if (++reads === 1) job.state = 'completed';
+  };
+
+  const res = await call('PUT', '/api/queues/event-webhook/j-failed/retry');
+
+  assert.ok(res.statusCode >= 400, `${res.statusCode} ${res.body}`);
+  assert.deepEqual(webhook.retries, []);
+  assert.equal(job.state, 'completed');
+});

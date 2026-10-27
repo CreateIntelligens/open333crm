@@ -33,6 +33,15 @@ function fakeDeps() {
       entry.expiresAt = now + ttl;
       return 1;
     },
+    async del(key: string) {
+      return store.delete(key) ? 1 : 0;
+    },
+    async incrby(key: string, by: number) {
+      const entry = live(key);
+      const value = String(Number(entry?.value ?? 0) + by);
+      store.set(key, { value, expiresAt: entry?.expiresAt ?? Infinity });
+      return Number(value);
+    },
     async getdel(key: string) {
       const entry = live(key);
       store.delete(key);
@@ -40,8 +49,13 @@ function fakeDeps() {
     },
   };
   const added: Array<{ name: string; data: Record<string, unknown> }> = [];
+  let failNextAdd = false;
   const queue = {
     async add(name: string, data: Record<string, unknown>) {
+      if (failNextAdd) {
+        failNextAdd = false;
+        throw new Error('redis down');
+      }
       added.push({ name, data });
     },
   };
@@ -50,6 +64,9 @@ function fakeDeps() {
     added,
     advance(ms: number) {
       now += ms;
+    },
+    failNextAdd() {
+      failNextAdd = true;
     },
   };
 }
@@ -93,4 +110,19 @@ test('不同合併鍵', async () => {
 
   assert.equal(added.length, 2);
   assert.equal(added[1].data.fields && (added[1].data.fields as Record<string, unknown>)['佇列'], 'automation');
+});
+
+test('告警放不進佇列：不留下合併鍵，下一則照常送出並帶上次數', async () => {
+  const { deps, added, advance, failNextAdd } = fakeDeps();
+  await sendOpsAlert(alert('queue-failed:event-webhook'), deps);
+  for (let i = 0; i < 5; i++) await sendOpsAlert(alert('queue-failed:event-webhook'), deps);
+  advance(600_000);
+
+  failNextAdd();
+  await assert.rejects(sendOpsAlert(alert('queue-failed:event-webhook'), deps), /redis down/);
+  const sent = await sendOpsAlert(alert('queue-failed:event-webhook'), deps);
+
+  assert.equal(sent, true);
+  assert.equal(added.length, 2);
+  assert.equal(added[1].data.suppressedCount, 5);
 });

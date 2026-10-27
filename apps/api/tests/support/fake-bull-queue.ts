@@ -15,6 +15,8 @@ export interface FakeJob {
   stacktrace?: string[];
   attemptsMade?: number;
   returnvalue?: unknown;
+  /** 每次讀取狀態之後呼叫，用來模擬兩次讀取之間狀態改變 */
+  onGetState?: () => void;
 }
 
 export interface FakeQueueHandle {
@@ -47,8 +49,14 @@ export function fakeBullQueue(name: string, jobs: FakeJob[] = []): FakeQueueHand
     processedOn: undefined,
     finishedOn: undefined,
     isPaused: false,
-    getState: async () => job.state,
+    // 同 BullMQ 的 reprocessJob：只從指定的狀態集合移出 job，job 不在那個集合時丟錯（Lua 回傳 -3）
+    getState: async () => {
+      const state = job.state;
+      job.onGetState?.();
+      return state;
+    },
     retry: async (state: string) => {
+      if (job.state !== state) throw new Error(`Job ${job.id} is not in the ${state} state. reprocessJob`);
       handle.retries.push({ id: job.id, state });
       job.state = 'waiting';
     },

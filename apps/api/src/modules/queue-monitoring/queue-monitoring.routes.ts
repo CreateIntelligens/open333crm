@@ -10,14 +10,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Queue } from 'bullmq';
 import { createBullBoard } from '@bull-board/api';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { FastifyAdapter } from '@bull-board/fastify';
 import { getConfig } from '../../config/env.js';
 import { success } from '../../shared/utils/response.js';
 import { isAllowedIp, parseAllowedCidrs } from './ip-allowlist.js';
 import { QUEUE_SESSION_COOKIE, QUEUE_SESSION_TTL_SECONDS, signQueueSession, verifyQueueSession } from './queue-session.js';
 import { auditJobRetry, getPlatformUserStatus } from './queue-monitoring.service.js';
-import { allowQueueOperation, RETRY_JOB_ROUTE } from './operation-allowlist.js';
+import { allowQueueOperation, FailedOnlyRetryAdapter, RETRY_JOB_ROUTE } from './operation-allowlist.js';
 import { maskJobData } from './mask-job-data.js';
 
 export interface QueueMonitoringOptions {
@@ -25,6 +24,18 @@ export interface QueueMonitoringOptions {
   allowedCidrs?: string;
   /** 監控的佇列，只用來讀取與重送 */
   queues: Queue[];
+}
+
+/** 沒有 Origin 標頭，或 Origin 的 host 與請求的 host 相同 */
+function isSameOrigin(request: FastifyRequest): boolean {
+  const origin = request.headers.origin;
+  if (origin === undefined) return true;
+  try {
+    // 兩邊都轉成 URL 再比較，預設 port（:80、:443）才會一致
+    return new URL(origin).host === new URL(`${request.protocol}://${request.host}`).host;
+  } catch {
+    return false;
+  }
 }
 
 function deny(reply: FastifyReply, status: number, code: string, message: string) {
@@ -64,6 +75,11 @@ export default async function queueMonitoringRoutes(fastify: FastifyInstance, op
 
   await fastify.register(async (board) => {
     board.addHook('onRequest', async (request, reply) => {
+      // SameSite=Strict 擋不住同一個上層網域的其他子網域，全域 CORS 又反射任何 Origin，
+      // 所以帶 Origin 的請求必須來自監控畫面自己的來源。瀏覽器在跨來源請求一定會帶 Origin
+      if (!isSameOrigin(request)) {
+        return deny(reply, 403, 'FORBIDDEN', '只能從佇列監控畫面操作');
+      }
       const secret = getConfig().PLATFORM_JWT_SECRET;
       if (!secret) {
         return deny(reply, 503, 'PLATFORM_DISABLED', '平台管理功能尚未啟用，請聯繫系統管理員');
@@ -96,7 +112,7 @@ export default async function queueMonitoringRoutes(fastify: FastifyInstance, op
     serverAdapter.setBasePath(basePath);
     createBullBoard({
       queues: opts.queues.map((queue) => {
-        const adapter = new BullMQAdapter(queue);
+        const adapter = new FailedOnlyRetryAdapter(queue);
         // job 資料可能含客人的個資，只顯示識別欄位（design 決策 6）
         adapter.setFormatter('data', maskJobData);
         return adapter;

@@ -38,7 +38,7 @@ export interface OpsAlertJob {
 }
 
 export interface OpsAlertDeps {
-  redis: Pick<Redis, 'set' | 'incr' | 'pexpire' | 'getdel'>;
+  redis: Pick<Redis, 'set' | 'incr' | 'incrby' | 'pexpire' | 'getdel' | 'del'>;
   queue: Pick<Queue<OpsAlertJob>, 'add'>;
 }
 
@@ -85,12 +85,23 @@ export async function sendOpsAlert(
     return false;
   }
 
-  const suppressedCount = Number((await deps.redis.getdel(suppressedKey)) ?? 0);
-  await deps.queue.add('ops-alert:send', {
-    title: alert.title,
-    fields: alert.fields,
-    ...(alert.link ? { link: alert.link } : {}),
-    suppressedCount,
-  });
+  let suppressedCount = 0;
+  try {
+    suppressedCount = Number((await deps.redis.getdel(suppressedKey)) ?? 0);
+    await deps.queue.add('ops-alert:send', {
+      title: alert.title,
+      fields: alert.fields,
+      ...(alert.link ? { link: alert.link } : {}),
+      suppressedCount,
+    });
+  } catch (err) {
+    // 沒有放進佇列：刪除合併鍵並放回計數，下一則告警照常送出，不被這段期間擋下
+    await deps.redis.del(gateKey).catch(() => undefined);
+    if (suppressedCount > 0) {
+      await deps.redis.incrby(suppressedKey, suppressedCount).catch(() => undefined);
+      await deps.redis.pexpire(suppressedKey, SUPPRESSED_COUNT_TTL_MS).catch(() => undefined);
+    }
+    throw err;
+  }
   return true;
 }

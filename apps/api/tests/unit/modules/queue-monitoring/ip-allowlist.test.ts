@@ -116,3 +116,12 @@ test('平台後台的其他路由不受影響', async () => {
 
   assert.equal(res.statusCode, 200, res.body);
 });
+
+test('網段的前綴是空白（以及多出片段等其他格式錯誤）：整份清單視為空清單', async () => {
+  const { isAllowedIp, parseAllowedCidrs } = await import('#src/modules/queue-monitoring/ip-allowlist.js');
+  for (const raw of ['60.248.142.0/', '60.248.142.0/24/extra', '60.248.142.0/ 24', '60.248.142.0/0x18', '60.248.142.0/+24']) {
+    const list = parseAllowedCidrs(raw);
+    assert.equal(isAllowedIp(list, OUTSIDE_IP), false, `${raw} 讓網段外的 IP 通過`);
+    assert.equal(isAllowedIp(list, OFFICE_IP), false, `${raw} 應視為空清單`);
+  }
+});

@@ -16,15 +16,17 @@ export function parseAllowedCidrs(raw: string | undefined): BlockList {
   const entries = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const parsed: Array<{ address: string; prefix: number; family: 'ipv4' | 'ipv6' }> = [];
   for (const entry of entries) {
-    const [address, prefixText] = entry.split('/');
-    const version = isIP(address ?? '');
-    const prefix = Number(prefixText);
+    // 前綴只接受 1 到 3 位十進位數字：Number('') 是 0，空白的前綴會變成允許所有位址的 /0
+    const match = entry.match(/^([^/\s]+)\/(\d{1,3})$/);
+    const address = match?.[1] ?? '';
+    const version = isIP(address);
+    const prefix = Number(match?.[2]);
     const maxPrefix = version === 4 ? 32 : 128;
-    if (!version || prefixText === undefined || !Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) {
+    if (!match || !version || prefix > maxPrefix) {
       logger.error(`[queue-monitoring] QUEUE_DASHBOARD_ALLOWED_CIDRS 的網段格式錯誤：${entry}。所有來源都會被拒絕`);
       return new BlockList();
     }
-    parsed.push({ address: address!, prefix, family: version === 4 ? 'ipv4' : 'ipv6' });
+    parsed.push({ address, prefix, family: version === 4 ? 'ipv4' : 'ipv6' });
   }
   for (const { address, prefix, family } of parsed) list.addSubnet(address, prefix, family);
   return list;
