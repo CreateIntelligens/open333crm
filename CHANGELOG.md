@@ -25,6 +25,7 @@ All notable changes to **open333CRM** will be documented in this file.
 
 ### Fixed
 
+- **AI agent 回覆講到一半就斷掉**（創造智能 webchat，2026-10-20）— agent 路徑呼叫 Gemini 時沒有關閉 `gemini-2.5-flash` 的 thinking，推理吃掉大部分 token（實測 thoughts 479／上限 500），可見回覆只剩 17 token、停在「…公司，包含」；而且沒有檢查 `finishReason: MAX_TOKENS`，半句話被當成完成送給顧客。現在 agent 與 KB 自動回覆共用同一套設定：非 pro 模型關閉 thinking，pro 模型 `maxOutputTokens` 至少 2048；回覆被截斷時 agent 標為失敗，改由 KB 自動回覆接手，不再送出半句話。
 - **站內通知的即時推播失敗時，通知工作跟著失敗**（change `queue-monitoring`）— workers 寫入通知之後，推播到 Redis 失敗會讓 `notification:dispatch` 工作失敗；加上重試之後會重複寫入通知。現在推播失敗只記 log，工作照常完成：通知已經寫入，成員重新整理就看得到。
 
 ## [2026-10-25]
